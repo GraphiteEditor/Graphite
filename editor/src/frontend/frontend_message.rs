@@ -54,5 +54,6 @@ pub enum FrontendMessage {
 	UpdatePropertyPanelOptionsLayout { layout_target: LayoutTarget, layout: SubLayout },
 	UpdatePropertyPanelSectionsLayout { layout_target: LayoutTarget, layout: SubLayout },
 	UpdateToolOptionsLayout { layout_target: LayoutTarget, layout: SubLayout },
+	UpdateToolShelfLayout { layout_target: LayoutTarget, layout: SubLayout },
 	UpdateWorkingColors { primary: Color, secondary: Color },
 }

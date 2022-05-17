@@ -2,6 +2,7 @@ use super::tool::{message_to_tool_type, standard_tool_message, update_working_co
 use crate::document::DocumentMessageHandler;
 use crate::input::InputPreprocessorMessageHandler;
 use crate::layout::layout_message::LayoutTarget;
+use crate::layout::widgets::PropertyHolder;
 use crate::message_prelude::*;
 
 use graphene::color::Color;
@@ -75,6 +76,7 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessorMes
 
 				// Send Properties to the frontend
 				tool_data.tools.get(&tool_type).unwrap().register_properties(responses, LayoutTarget::ToolOptions);
+				tool_data.register_properties(responses, LayoutTarget::ToolShelf);
 			}
 			DocumentIsDirty => {
 				// Send the DocumentIsDirty message to the active tool's sub-tool message handler

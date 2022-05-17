@@ -2,7 +2,8 @@ use super::tools::*;
 use crate::communication::message_handler::MessageHandler;
 use crate::document::DocumentMessageHandler;
 use crate::input::InputPreprocessorMessageHandler;
-use crate::layout::widgets::PropertyHolder;
+use crate::layout::layout_message::LayoutTarget;
+use crate::layout::widgets::{IconButton, LayoutRow, PropertyHolder, Separator, SeparatorDirection, SeparatorType, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
 use crate::message_prelude::*;
 
 use graphene::color::Color;
@@ -62,6 +63,53 @@ impl ToolData {
 
 	pub fn active_tool(&self) -> &Tool {
 		self.tools.get(&self.active_tool_type).map(|x| x.as_ref()).expect("The active tool is not initialized")
+	}
+}
+
+impl PropertyHolder for ToolData {
+	fn properties(&self) -> WidgetLayout {
+		let tool_groups_layout = ToolType::list_tools_in_groups()
+			.iter()
+			.flat_map(|group| {
+				let separator = std::iter::once(WidgetHolder::new(Widget::Separator(Separator {
+					direction: SeparatorDirection::Vertical,
+					separator_type: SeparatorType::Section,
+				})));
+				let buttons = group.iter().map(|tool_type| {
+					WidgetHolder::new(Widget::IconButton(IconButton {
+						icon: tool_type.icon_name(),
+						size: 32,
+						tooltip: tool_type.tooltip(),
+						active: self.active_tool_type == *tool_type,
+						on_update: WidgetCallback::new(|_| {
+							if !tool_type.tooltip().contains("Coming Soon") {
+								ToolMessage::ActivateTool { tool_type: *tool_type }.into()
+							} else {
+								DialogMessage::RequestComingSoonDialog { issue: None }.into()
+							}
+						}),
+						..Default::default()
+					}))
+				});
+				separator.chain(buttons)
+			})
+			// Skip the initial separator
+			.skip(1)
+			.collect();
+
+		WidgetLayout {
+			layout: vec![LayoutRow::Column { widgets: tool_groups_layout }],
+		}
+	}
+
+	fn register_properties(&self, responses: &mut VecDeque<Message>, layout_target: LayoutTarget) {
+		responses.push_back(
+			LayoutMessage::SendLayout {
+				layout: self.properties(),
+				layout_target,
+			}
+			.into(),
+		)
 	}
 }
 
@@ -126,19 +174,15 @@ impl ToolFsmState {
 #[repr(usize)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum ToolType {
+	// General tool group
 	Select,
 	Artboard,
 	Navigate,
 	Eyedropper,
-	Text,
 	Fill,
 	Gradient,
-	Brush,
-	Heal,
-	Clone,
-	Patch,
-	Detail,
-	Relight,
+
+	// Vector tool group
 	Path,
 	Pen,
 	Freehand,
@@ -147,6 +191,115 @@ pub enum ToolType {
 	Rectangle,
 	Ellipse,
 	Shape,
+	Text,
+
+	// Raster tool group
+	Brush,
+	Heal,
+	Clone,
+	Patch,
+	Detail,
+	Relight,
+}
+
+impl ToolType {
+	/// List of all the tools in their conventional ordering and grouping.
+	pub fn list_tools_in_groups() -> [&'static [ToolType]; 3] {
+		[
+			&[
+				// General tool group
+				ToolType::Select,
+				ToolType::Artboard,
+				ToolType::Navigate,
+				ToolType::Eyedropper,
+				ToolType::Fill,
+				ToolType::Gradient,
+			],
+			&[
+				// Vector tool group
+				ToolType::Path,
+				ToolType::Pen,
+				ToolType::Freehand,
+				ToolType::Spline,
+				ToolType::Line,
+				ToolType::Rectangle,
+				ToolType::Ellipse,
+				ToolType::Shape,
+				ToolType::Text,
+			],
+			&[
+				// Raster tool group
+				ToolType::Brush,
+				ToolType::Heal,
+				ToolType::Clone,
+				ToolType::Patch,
+				ToolType::Detail,
+				ToolType::Relight,
+			],
+		]
+	}
+
+	pub fn icon_name(&self) -> String {
+		match self {
+			// General tool group
+			ToolType::Select => "GeneralSelectTool".into(),
+			ToolType::Artboard => "GeneralArtboardTool".into(),
+			ToolType::Navigate => "GeneralNavigateTool".into(),
+			ToolType::Eyedropper => "GeneralEyedropperTool".into(),
+			ToolType::Fill => "GeneralFillTool".into(),
+			ToolType::Gradient => "GeneralGradientTool".into(),
+
+			// Vector tool group
+			ToolType::Path => "VectorPathTool".into(),
+			ToolType::Pen => "VectorPenTool".into(),
+			ToolType::Freehand => "VectorFreehandTool".into(),
+			ToolType::Spline => "VectorSplineTool".into(),
+			ToolType::Line => "VectorLineTool".into(),
+			ToolType::Rectangle => "VectorRectangleTool".into(),
+			ToolType::Ellipse => "VectorEllipseTool".into(),
+			ToolType::Shape => "VectorShapeTool".into(),
+			ToolType::Text => "VectorTextTool".into(),
+
+			// Raster tool group
+			ToolType::Brush => "RasterBrushTool".into(),
+			ToolType::Heal => "RasterHealTool".into(),
+			ToolType::Clone => "RasterCloneTool".into(),
+			ToolType::Patch => "RasterPatchTool".into(),
+			ToolType::Detail => "RasterDetailTool".into(),
+			ToolType::Relight => "RasterRelightTool".into(),
+		}
+	}
+
+	pub fn tooltip(&self) -> String {
+		match self {
+			// General tool group
+			ToolType::Select => "Select Tool (V)".into(),
+			ToolType::Artboard => "Artboard Tool".into(),
+			ToolType::Navigate => "Navigate Tool (Z)".into(),
+			ToolType::Eyedropper => "Eyedropper Tool (I)".into(),
+			ToolType::Fill => "Fill Tool (F)".into(),
+			ToolType::Gradient => "Gradient Tool (H)".into(),
+
+			// Vector tool group
+			ToolType::Path => "Path Tool (A)".into(),
+			ToolType::Pen => "Pen Tool (P)".into(),
+			ToolType::Freehand => "Freehand Tool (N)".into(),
+			ToolType::Spline => "Spline Tool".into(),
+			ToolType::Line => "Line Tool (L)".into(),
+			ToolType::Rectangle => "Rectangle Tool (M)".into(),
+			ToolType::Ellipse => "Ellipse Tool (E)".into(),
+			ToolType::Shape => "Shape Tool (Y)".into(),
+			ToolType::Text => "Text Tool (T)".into(),
+
+			// Raster tool group
+			ToolType::Brush => "Coming Soon: Brush Tool (B)".into(),
+			ToolType::Heal => "Coming Soon: Heal Tool (J)".into(),
+			ToolType::Clone => "Coming Soon: Clone Tool (C)".into(),
+			ToolType::Patch => "Coming Soon: Patch Tool".into(),
+			ToolType::Detail => "Coming Soon: Detail Tool (D)".into(),
+			ToolType::Relight => "Coming Soon: Relight Tool (O)".into(),
+		}
+	}
 }
 
 impl fmt::Display for ToolType {
@@ -154,19 +307,15 @@ impl fmt::Display for ToolType {
 		use ToolType::*;
 
 		let name = match_variant_name!(match (self) {
+			// General tool group
 			Select,
 			Artboard,
 			Navigate,
 			Eyedropper,
-			Text,
 			Fill,
 			Gradient,
-			Brush,
-			Heal,
-			Clone,
-			Patch,
-			Detail,
-			Relight,
+
+			// Vector tool group
 			Path,
 			Pen,
 			Freehand,
@@ -174,7 +323,16 @@ impl fmt::Display for ToolType {
 			Line,
 			Rectangle,
 			Ellipse,
-			Shape
+			Shape,
+			Text,
+
+			// Raster tool group
+			Brush,
+			Heal,
+			Clone,
+			Patch,
+			Detail,
+			Relight,
 		});
 
 		formatter.write_str(name)
@@ -191,19 +349,15 @@ pub enum StandardToolMessageType {
 pub fn standard_tool_message(tool: ToolType, message_type: StandardToolMessageType) -> Option<ToolMessage> {
 	match message_type {
 		StandardToolMessageType::DocumentIsDirty => match tool {
+			// General tool group
 			ToolType::Select => Some(SelectToolMessage::DocumentIsDirty.into()),
 			ToolType::Artboard => Some(ArtboardToolMessage::DocumentIsDirty.into()),
 			ToolType::Navigate => None,   // Some(NavigateToolMessage::DocumentIsDirty.into()),
 			ToolType::Eyedropper => None, // Some(EyedropperToolMessage::DocumentIsDirty.into()),
-			ToolType::Text => Some(TextMessage::DocumentIsDirty.into()),
-			ToolType::Fill => None, // Some(FillToolMessage::DocumentIsDirty.into()),
+			ToolType::Fill => None,       // Some(FillToolMessage::DocumentIsDirty.into()),
 			ToolType::Gradient => Some(GradientToolMessage::DocumentIsDirty.into()),
-			ToolType::Brush => None,   // Some(BrushMessage::DocumentIsDirty.into()),
-			ToolType::Heal => None,    // Some(HealMessage::DocumentIsDirty.into()),
-			ToolType::Clone => None,   // Some(CloneMessage::DocumentIsDirty.into()),
-			ToolType::Patch => None,   // Some(PatchMessage::DocumentIsDirty.into()),
-			ToolType::Detail => None,  // Some(DetailToolMessage::DocumentIsDirty.into()),
-			ToolType::Relight => None, // Some(RelightMessage::DocumentIsDirty.into()),
+
+			// Vector tool group
 			ToolType::Path => Some(PathToolMessage::DocumentIsDirty.into()),
 			ToolType::Pen => Some(PenToolMessage::DocumentIsDirty.into()),
 			ToolType::Freehand => None,  // Some(FreehandToolMessage::DocumentIsDirty.into()),
@@ -212,21 +366,26 @@ pub fn standard_tool_message(tool: ToolType, message_type: StandardToolMessageTy
 			ToolType::Rectangle => None, // Some(RectangleToolMessage::DocumentIsDirty.into()),
 			ToolType::Ellipse => None,   // Some(EllipseToolMessage::DocumentIsDirty.into()),
 			ToolType::Shape => None,     // Some(ShapeToolMessage::DocumentIsDirty.into()),
+			ToolType::Text => Some(TextMessage::DocumentIsDirty.into()),
+
+			// Raster tool group
+			ToolType::Brush => None,   // Some(BrushMessage::DocumentIsDirty.into()),
+			ToolType::Heal => None,    // Some(HealMessage::DocumentIsDirty.into()),
+			ToolType::Clone => None,   // Some(CloneMessage::DocumentIsDirty.into()),
+			ToolType::Patch => None,   // Some(PatchMessage::DocumentIsDirty.into()),
+			ToolType::Detail => None,  // Some(DetailToolMessage::DocumentIsDirty.into()),
+			ToolType::Relight => None, // Some(RelightMessage::DocumentIsDirty.into()),
 		},
 		StandardToolMessageType::Abort => match tool {
+			// General tool group
 			ToolType::Select => Some(SelectToolMessage::Abort.into()),
 			ToolType::Artboard => Some(ArtboardToolMessage::Abort.into()),
 			ToolType::Navigate => Some(NavigateToolMessage::Abort.into()),
 			ToolType::Eyedropper => Some(EyedropperToolMessage::Abort.into()),
-			ToolType::Text => Some(TextMessage::Abort.into()),
 			ToolType::Fill => Some(FillToolMessage::Abort.into()),
 			ToolType::Gradient => Some(GradientToolMessage::Abort.into()),
-			// ToolType::Brush => Some(BrushMessage::Abort.into()),
-			// ToolType::Heal => Some(HealMessage::Abort.into()),
-			// ToolType::Clone => Some(CloneMessage::Abort.into()),
-			// ToolType::Patch => Some(PatchMessage::Abort.into()),
-			// ToolType::Detail => Some(DetailToolMessage::Abort.into()),
-			// ToolType::Relight => Some(RelightMessage::Abort.into()),
+
+			// Vector tool group
 			ToolType::Path => Some(PathToolMessage::Abort.into()),
 			ToolType::Pen => Some(PenToolMessage::Abort.into()),
 			ToolType::Freehand => Some(FreehandToolMessage::Abort.into()),
@@ -235,7 +394,15 @@ pub fn standard_tool_message(tool: ToolType, message_type: StandardToolMessageTy
 			ToolType::Rectangle => Some(RectangleToolMessage::Abort.into()),
 			ToolType::Ellipse => Some(EllipseToolMessage::Abort.into()),
 			ToolType::Shape => Some(ShapeToolMessage::Abort.into()),
-			_ => None,
+			ToolType::Text => Some(TextMessage::Abort.into()),
+
+			// Raster tool group
+			ToolType::Brush => None,   // Some(BrushMessage::Abort.into()),
+			ToolType::Heal => None,    // Some(HealMessage::Abort.into()),
+			ToolType::Clone => None,   // Some(CloneMessage::Abort.into()),
+			ToolType::Patch => None,   // Some(PatchMessage::Abort.into()),
+			ToolType::Detail => None,  // Some(DetailToolMessage::Abort.into()),
+			ToolType::Relight => None, // Some(RelightMessage::Abort.into()),
 		},
 		StandardToolMessageType::SelectionChanged => match tool {
 			ToolType::Path => Some(PathToolMessage::SelectionChanged.into()),
@@ -248,19 +415,15 @@ pub fn message_to_tool_type(message: &ToolMessage) -> ToolType {
 	use ToolMessage::*;
 
 	match message {
+		// General tool group
 		Select(_) => ToolType::Select,
 		Artboard(_) => ToolType::Artboard,
 		Navigate(_) => ToolType::Navigate,
 		Eyedropper(_) => ToolType::Eyedropper,
-		Text(_) => ToolType::Text,
 		Fill(_) => ToolType::Fill,
 		Gradient(_) => ToolType::Gradient,
-		// Brush(_) => ToolType::Brush,
-		// Heal(_) => ToolType::Heal,
-		// Clone(_) => ToolType::Clone,
-		// Patch(_) => ToolType::Patch,
-		// Detail(_) => ToolType::Detail,
-		// Relight(_) => ToolType::Relight,
+
+		// Vector tool group
 		Path(_) => ToolType::Path,
 		Pen(_) => ToolType::Pen,
 		Freehand(_) => ToolType::Freehand,
@@ -269,6 +432,15 @@ pub fn message_to_tool_type(message: &ToolMessage) -> ToolType {
 		Rectangle(_) => ToolType::Rectangle,
 		Ellipse(_) => ToolType::Ellipse,
 		Shape(_) => ToolType::Shape,
+		Text(_) => ToolType::Text,
+
+		// Raster tool group
+		// Brush(_) => ToolType::Brush,
+		// Heal(_) => ToolType::Heal,
+		// Clone(_) => ToolType::Clone,
+		// Patch(_) => ToolType::Patch,
+		// Detail(_) => ToolType::Detail,
+		// Relight(_) => ToolType::Relight,
 		_ => panic!("Conversion from message to tool type impossible because the given ToolMessage does not belong to a tool"),
 	}
 }

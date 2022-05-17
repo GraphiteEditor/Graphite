@@ -45,6 +45,10 @@ impl LayoutMessageHandler {
 				layout_target,
 				layout: widget_layout.layout.clone(),
 			},
+			LayoutTarget::ToolShelf => FrontendMessage::UpdateToolShelfLayout {
+				layout_target,
+				layout: widget_layout.layout.clone(),
+			},
 
 			#[remain::unsorted]
 			LayoutTarget::LayoutTargetLength => panic!("`LayoutTargetLength` is not a valid Layout Target and is used for array indexing"),

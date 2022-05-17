@@ -22,6 +22,7 @@ pub enum LayoutTarget {
 	PropertiesOptions,
 	PropertiesSections,
 	ToolOptions,
+	ToolShelf,
 
 	// KEEP THIS ENUM LAST
 	// This is a marker that is used to define an array that is used to hold widgets

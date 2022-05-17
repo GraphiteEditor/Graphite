@@ -52,8 +52,18 @@ pub type SubLayout = Vec<LayoutRow>;
 #[remain::sorted]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum LayoutRow {
-	Row { widgets: Vec<WidgetHolder> },
-	Section { name: String, layout: SubLayout },
+	Column {
+		#[serde(rename = "columnWidgets")]
+		widgets: Vec<WidgetHolder>,
+	},
+	Row {
+		#[serde(rename = "rowWidgets")]
+		widgets: Vec<WidgetHolder>,
+	},
+	Section {
+		name: String,
+		layout: SubLayout,
+	},
 }
 
 #[derive(Debug, Default)]
@@ -72,6 +82,10 @@ impl<'a> Iterator for WidgetIter<'a> {
 		}
 
 		match self.stack.pop() {
+			Some(LayoutRow::Column { widgets }) => {
+				self.current_slice = Some(widgets);
+				self.next()
+			}
 			Some(LayoutRow::Row { widgets }) => {
 				self.current_slice = Some(widgets);
 				self.next()
@@ -103,6 +117,10 @@ impl<'a> Iterator for WidgetIterMut<'a> {
 		};
 
 		match self.stack.pop() {
+			Some(LayoutRow::Column { widgets }) => {
+				self.current_slice = Some(widgets);
+				self.next()
+			}
 			Some(LayoutRow::Row { widgets }) => {
 				self.current_slice = Some(widgets);
 				self.next()
@@ -285,6 +303,7 @@ pub struct IconButton {
 	#[serde(rename = "title")]
 	pub tooltip: String,
 	pub size: u32,
+	pub active: bool,
 	#[serde(rename = "gapAfter")]
 	pub gap_after: bool,
 	#[serde(skip)]

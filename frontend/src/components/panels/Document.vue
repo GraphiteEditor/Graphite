@@ -12,43 +12,7 @@
 		<LayoutRow class="shelf-and-viewport">
 			<LayoutCol class="shelf">
 				<LayoutCol class="tools" :scrollableY="true">
-					<ShelfItemInput icon="GeneralSelectTool" title="Select Tool (V)" :active="activeTool === 'Select'" :action="() => selectTool('Select')" />
-					<ShelfItemInput icon="GeneralArtboardTool" title="Artboard Tool" :active="activeTool === 'Artboard'" :action="() => selectTool('Artboard')" />
-					<ShelfItemInput icon="GeneralNavigateTool" title="Navigate Tool (Z)" :active="activeTool === 'Navigate'" :action="() => selectTool('Navigate')" />
-					<ShelfItemInput icon="GeneralEyedropperTool" title="Eyedropper Tool (I)" :active="activeTool === 'Eyedropper'" :action="() => selectTool('Eyedropper')" />
-					<ShelfItemInput icon="GeneralFillTool" title="Fill Tool (F)" :active="activeTool === 'Fill'" :action="() => selectTool('Fill')" />
-					<ShelfItemInput icon="GeneralGradientTool" title="Gradient Tool (H)" :active="activeTool === 'Gradient'" :action="() => selectTool('Gradient')" />
-
-					<Separator :type="'Section'" :direction="'Vertical'" />
-
-					<ShelfItemInput icon="VectorPathTool" title="Path Tool (A)" :active="activeTool === 'Path'" :action="() => selectTool('Path')" />
-					<ShelfItemInput icon="VectorPenTool" title="Pen Tool (P)" :active="activeTool === 'Pen'" :action="() => selectTool('Pen')" />
-					<ShelfItemInput icon="VectorFreehandTool" title="Freehand Tool (N)" :active="activeTool === 'Freehand'" :action="() => selectTool('Freehand')" />
-					<ShelfItemInput icon="VectorSplineTool" title="Spline Tool" :active="activeTool === 'Spline'" :action="() => selectTool('Spline')" />
-					<ShelfItemInput icon="VectorLineTool" title="Line Tool (L)" :active="activeTool === 'Line'" :action="() => selectTool('Line')" />
-					<ShelfItemInput icon="VectorRectangleTool" title="Rectangle Tool (M)" :active="activeTool === 'Rectangle'" :action="() => selectTool('Rectangle')" />
-					<ShelfItemInput icon="VectorEllipseTool" title="Ellipse Tool (E)" :active="activeTool === 'Ellipse'" :action="() => selectTool('Ellipse')" />
-					<ShelfItemInput icon="VectorShapeTool" title="Shape Tool (Y)" :active="activeTool === 'Shape'" :action="() => selectTool('Shape')" />
-					<ShelfItemInput icon="VectorTextTool" title="Text Tool (T)" :active="activeTool === 'Text'" :action="() => selectTool('Text')" />
-
-					<Separator :type="'Section'" :direction="'Vertical'" />
-
-					<ShelfItemInput icon="RasterBrushTool" title="Coming Soon: Brush Tool (B)" :active="activeTool === 'Brush'" :action="() => (dialog.comingSoon(), false) && selectTool('Brush')" />
-					<ShelfItemInput icon="RasterHealTool" title="Coming Soon: Heal Tool (J)" :active="activeTool === 'Heal'" :action="() => (dialog.comingSoon(), false) && selectTool('Heal')" />
-					<ShelfItemInput icon="RasterCloneTool" title="Coming Soon: Clone Tool (C)" :active="activeTool === 'Clone'" :action="() => (dialog.comingSoon(), false) && selectTool('Clone')" />
-					<ShelfItemInput icon="RasterPatchTool" title="Coming Soon: Patch Tool" :active="activeTool === 'Patch'" :action="() => (dialog.comingSoon(), false) && selectTool('Patch')" />
-					<ShelfItemInput
-						icon="RasterDetailTool"
-						title="Coming Soon: Detail Tool (D)"
-						:active="activeTool === 'Detail'"
-						:action="() => (dialog.comingSoon(), false) && selectTool('Detail')"
-					/>
-					<ShelfItemInput
-						icon="RasterRelightTool"
-						title="Coming Soon: Relight Tool (O)"
-						:active="activeTool === 'Relight'"
-						:action="() => (dialog.comingSoon(), false) && selectTool('Relight')"
-					/>
+					<WidgetLayout :layout="toolShelfLayout" />
 				</LayoutCol>
 
 				<LayoutCol class="spacer"></LayoutCol>
@@ -138,7 +102,7 @@
 			.tools {
 				flex: 0 1 auto;
 
-				.shelf-item-input[title^="Coming Soon"] {
+				.icon-button[title^="Coming Soon"] {
 					opacity: 0.25;
 					transition: opacity 0.25s;
 
@@ -268,6 +232,7 @@ import {
 	UpdateMouseCursor,
 	UpdateDocumentModeLayout,
 	UpdateToolOptionsLayout,
+	UpdateToolShelfLayout,
 	defaultWidgetLayout,
 	UpdateDocumentBarLayout,
 	UpdateImageData,
@@ -288,7 +253,6 @@ import { loadDefaultFont, setLoadDefaultFontCallback } from "@/utilities/fonts";
 import LayoutCol from "@/components/layout/LayoutCol.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 import IconButton from "@/components/widgets/buttons/IconButton.vue";
-import ShelfItemInput from "@/components/widgets/inputs/ShelfItemInput.vue";
 import SwatchPairInput from "@/components/widgets/inputs/SwatchPairInput.vue";
 import CanvasRuler from "@/components/widgets/rulers/CanvasRuler.vue";
 import PersistentScrollbar from "@/components/widgets/scrollbars/PersistentScrollbar.vue";
@@ -351,9 +315,6 @@ export default defineComponent({
 		pageY(delta: number) {
 			const move = delta < 0 ? 1 : -1;
 			this.editor.instance.translate_canvas_by_fraction(0, move);
-		},
-		selectTool(toolName: string) {
-			this.editor.instance.select_tool(toolName);
 		},
 		swapWorkingColors() {
 			this.editor.instance.swap_colors();
@@ -490,6 +451,11 @@ export default defineComponent({
 		this.editor.dispatcher.subscribeJsMessage(UpdateDocumentBarLayout, (updateDocumentBarLayout) => {
 			this.documentBarLayout = updateDocumentBarLayout;
 		});
+
+		this.editor.dispatcher.subscribeJsMessage(UpdateToolShelfLayout, (updateToolShelfLayout) => {
+			this.toolShelfLayout = updateToolShelfLayout;
+		});
+
 		this.editor.dispatcher.subscribeJsMessage(TriggerViewportResize, this.viewportResize);
 
 		this.editor.dispatcher.subscribeJsMessage(UpdateImageData, (updateImageData) => {
@@ -565,13 +531,13 @@ export default defineComponent({
 			documentModeLayout: defaultWidgetLayout(),
 			toolOptionsLayout: defaultWidgetLayout(),
 			documentBarLayout: defaultWidgetLayout(),
+			toolShelfLayout: defaultWidgetLayout(),
 		};
 	},
 	components: {
 		LayoutRow,
 		LayoutCol,
 		SwatchPairInput,
-		ShelfItemInput,
 		Separator,
 		PersistentScrollbar,
 		CanvasRuler,
