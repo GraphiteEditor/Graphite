@@ -329,7 +329,7 @@ export default defineComponent({
 		},
 	},
 	mounted() {
-		this.editor.dispatcher.subscribeJsMessage(UpdateDocumentArtwork, (UpdateDocumentArtwork) => {
+		this.editor.subscriptions.subscribeJsMessage(UpdateDocumentArtwork, (UpdateDocumentArtwork) => {
 			this.artworkSvg = UpdateDocumentArtwork.svg;
 
 			nextTick((): void => {
@@ -365,50 +365,50 @@ export default defineComponent({
 			});
 		});
 
-		this.editor.dispatcher.subscribeJsMessage(UpdateDocumentOverlays, (updateDocumentOverlays) => {
+		this.editor.subscriptions.subscribeJsMessage(UpdateDocumentOverlays, (updateDocumentOverlays) => {
 			this.overlaysSvg = updateDocumentOverlays.svg;
 		});
 
-		this.editor.dispatcher.subscribeJsMessage(UpdateDocumentArtboards, (updateDocumentArtboards) => {
+		this.editor.subscriptions.subscribeJsMessage(UpdateDocumentArtboards, (updateDocumentArtboards) => {
 			this.artboardSvg = updateDocumentArtboards.svg;
 		});
 
-		this.editor.dispatcher.subscribeJsMessage(UpdateDocumentScrollbars, (updateDocumentScrollbars) => {
+		this.editor.subscriptions.subscribeJsMessage(UpdateDocumentScrollbars, (updateDocumentScrollbars) => {
 			this.scrollbarPos = updateDocumentScrollbars.position;
 			this.scrollbarSize = updateDocumentScrollbars.size;
 			this.scrollbarMultiplier = updateDocumentScrollbars.multiplier;
 		});
 
-		this.editor.dispatcher.subscribeJsMessage(UpdateDocumentRulers, (updateDocumentRulers) => {
+		this.editor.subscriptions.subscribeJsMessage(UpdateDocumentRulers, (updateDocumentRulers) => {
 			this.rulerOrigin = updateDocumentRulers.origin;
 			this.rulerSpacing = updateDocumentRulers.spacing;
 			this.rulerInterval = updateDocumentRulers.interval;
 		});
 
-		this.editor.dispatcher.subscribeJsMessage(UpdateMouseCursor, (updateMouseCursor) => {
+		this.editor.subscriptions.subscribeJsMessage(UpdateMouseCursor, (updateMouseCursor) => {
 			this.canvasCursor = updateMouseCursor.cursor;
 		});
-		this.editor.dispatcher.subscribeJsMessage(TriggerTextCommit, () => {
+		this.editor.subscriptions.subscribeJsMessage(TriggerTextCommit, () => {
 			if (this.textInput) {
 				const textCleaned = textInputCleanup(this.textInput.innerText);
 				this.editor.instance.on_change_text(textCleaned);
 			}
 		});
-		this.editor.dispatcher.subscribeJsMessage(TriggerFontLoad, async (triggerFontLoad) => {
+		this.editor.subscriptions.subscribeJsMessage(TriggerFontLoad, async (triggerFontLoad) => {
 			const response = await fetch(triggerFontLoad.font);
 			const responseBuffer = await response.arrayBuffer();
 			this.editor.instance.on_font_load(triggerFontLoad.font, new Uint8Array(responseBuffer), false);
 		});
-		this.editor.dispatcher.subscribeJsMessage(TriggerFontLoadDefault, loadDefaultFont);
-		this.editor.dispatcher.subscribeJsMessage(TriggerVisitLink, async (triggerOpenLink) => {
+		this.editor.subscriptions.subscribeJsMessage(TriggerFontLoadDefault, loadDefaultFont);
+		this.editor.subscriptions.subscribeJsMessage(TriggerVisitLink, async (triggerOpenLink) => {
 			window.open(triggerOpenLink.url, "_blank");
 		});
-		this.editor.dispatcher.subscribeJsMessage(TriggerTextCopy, (triggerTextCopy) => {
+		this.editor.subscriptions.subscribeJsMessage(TriggerTextCopy, (triggerTextCopy) => {
 			// If the Clipboard API is supported in the browser, copy text to the clipboard
 			navigator.clipboard?.writeText?.(triggerTextCopy.copy_text);
 		});
 
-		this.editor.dispatcher.subscribeJsMessage(DisplayEditableTextbox, (displayEditableTextbox) => {
+		this.editor.subscriptions.subscribeJsMessage(DisplayEditableTextbox, (displayEditableTextbox) => {
 			this.textInput = document.createElement("DIV") as HTMLDivElement;
 
 			if (displayEditableTextbox.text === "") this.textInput.textContent = "";
@@ -425,7 +425,7 @@ export default defineComponent({
 			};
 		});
 
-		this.editor.dispatcher.subscribeJsMessage(DisplayRemoveEditableTextbox, () => {
+		this.editor.subscriptions.subscribeJsMessage(DisplayRemoveEditableTextbox, () => {
 			this.textInput = undefined;
 			window.dispatchEvent(
 				new CustomEvent("modifyinputfield", {
@@ -434,25 +434,25 @@ export default defineComponent({
 			);
 		});
 
-		this.editor.dispatcher.subscribeJsMessage(UpdateDocumentModeLayout, (updateDocumentModeLayout) => {
+		this.editor.subscriptions.subscribeJsMessage(UpdateDocumentModeLayout, (updateDocumentModeLayout) => {
 			this.documentModeLayout = updateDocumentModeLayout;
 		});
 
-		this.editor.dispatcher.subscribeJsMessage(UpdateToolOptionsLayout, (updateToolOptionsLayout) => {
+		this.editor.subscriptions.subscribeJsMessage(UpdateToolOptionsLayout, (updateToolOptionsLayout) => {
 			this.toolOptionsLayout = updateToolOptionsLayout;
 		});
 
-		this.editor.dispatcher.subscribeJsMessage(UpdateDocumentBarLayout, (updateDocumentBarLayout) => {
+		this.editor.subscriptions.subscribeJsMessage(UpdateDocumentBarLayout, (updateDocumentBarLayout) => {
 			this.documentBarLayout = updateDocumentBarLayout;
 		});
 
-		this.editor.dispatcher.subscribeJsMessage(UpdateToolShelfLayout, (updateToolShelfLayout) => {
+		this.editor.subscriptions.subscribeJsMessage(UpdateToolShelfLayout, (updateToolShelfLayout) => {
 			this.toolShelfLayout = updateToolShelfLayout;
 		});
 
-		this.editor.dispatcher.subscribeJsMessage(TriggerViewportResize, this.viewportResize);
+		this.editor.subscriptions.subscribeJsMessage(TriggerViewportResize, this.viewportResize);
 
-		this.editor.dispatcher.subscribeJsMessage(UpdateImageData, (updateImageData) => {
+		this.editor.subscriptions.subscribeJsMessage(UpdateImageData, (updateImageData) => {
 			updateImageData.image_data.forEach(async (element) => {
 				// Using updateImageData.image_data.buffer returns undefined for some reason?
 				const blob = new Blob([new Uint8Array(element.image_data.values()).buffer], { type: element.mime });

@@ -49,14 +49,14 @@ export function createAutoSaveManager(editor: Editor, portfolio: PortfolioState)
 		storeDocumentOrder();
 	};
 
-	editor.dispatcher.subscribeJsMessage(TriggerIndexedDbWriteDocument, async (autoSaveDocument) => {
+	editor.subscriptions.subscribeJsMessage(TriggerIndexedDbWriteDocument, async (autoSaveDocument) => {
 		const db = await databaseConnection;
 		const transaction = db.transaction(GRAPHITE_AUTO_SAVE_STORE, "readwrite");
 		transaction.objectStore(GRAPHITE_AUTO_SAVE_STORE).put(autoSaveDocument);
 		storeDocumentOrder();
 	});
 
-	editor.dispatcher.subscribeJsMessage(TriggerIndexedDbRemoveDocument, async (removeAutoSaveDocument) => {
+	editor.subscriptions.subscribeJsMessage(TriggerIndexedDbRemoveDocument, async (removeAutoSaveDocument) => {
 		removeDocument(removeAutoSaveDocument.document_id);
 	});
 

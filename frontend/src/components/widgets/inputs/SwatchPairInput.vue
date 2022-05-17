@@ -130,7 +130,7 @@ export default defineComponent({
 		};
 	},
 	mounted() {
-		this.editor.dispatcher.subscribeJsMessage(UpdateWorkingColors, (updateWorkingColors) => {
+		this.editor.subscriptions.subscribeJsMessage(UpdateWorkingColors, (updateWorkingColors) => {
 			this.primaryColor = updateWorkingColors.primary.toRgba();
 			this.secondaryColor = updateWorkingColors.secondary.toRgba();
 

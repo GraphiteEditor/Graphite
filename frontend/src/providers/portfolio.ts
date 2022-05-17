@@ -14,27 +14,27 @@ export function createPortfolioState(editor: Editor) {
 	});
 
 	// Set up message subscriptions on creation
-	editor.dispatcher.subscribeJsMessage(UpdateOpenDocumentsList, (updateOpenDocumentList) => {
+	editor.subscriptions.subscribeJsMessage(UpdateOpenDocumentsList, (updateOpenDocumentList) => {
 		state.documents = updateOpenDocumentList.open_documents;
 	});
 
-	editor.dispatcher.subscribeJsMessage(UpdateActiveDocument, (updateActiveDocument) => {
+	editor.subscriptions.subscribeJsMessage(UpdateActiveDocument, (updateActiveDocument) => {
 		// Assume we receive a correct document id
 		const activeId = state.documents.findIndex((doc) => doc.id === updateActiveDocument.document_id);
 		state.activeDocumentIndex = activeId;
 	});
 
-	editor.dispatcher.subscribeJsMessage(TriggerFileUpload, async () => {
+	editor.subscriptions.subscribeJsMessage(TriggerFileUpload, async () => {
 		const extension = editor.raw.file_save_suffix();
 		const data = await upload(extension);
 		editor.instance.open_document_file(data.filename, data.content);
 	});
 
-	editor.dispatcher.subscribeJsMessage(TriggerFileDownload, (triggerFileDownload) => {
+	editor.subscriptions.subscribeJsMessage(TriggerFileDownload, (triggerFileDownload) => {
 		download(triggerFileDownload.name, triggerFileDownload.document);
 	});
 
-	editor.dispatcher.subscribeJsMessage(TriggerRasterDownload, (triggerRasterDownload) => {
+	editor.subscriptions.subscribeJsMessage(TriggerRasterDownload, (triggerRasterDownload) => {
 		// A canvas to render our svg to in order to get a raster image
 		// https://stackoverflow.com/questions/3975499/convert-svg-to-image-jpeg-png-etc-in-the-browser
 		const canvas = document.createElement("canvas");

@@ -11,7 +11,7 @@ export function createWorkspaceState(editor: Editor) {
 	});
 
 	// Set up message subscriptions on creation
-	editor.dispatcher.subscribeJsMessage(UpdateNodeGraphVisibility, (updateNodeGraphVisibility) => {
+	editor.subscriptions.subscribeJsMessage(UpdateNodeGraphVisibility, (updateNodeGraphVisibility) => {
 		state.nodeGraphVisible = updateNodeGraphVisibility.visible;
 	});
 

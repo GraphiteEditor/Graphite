@@ -58,10 +58,10 @@ export default defineComponent({
 		};
 	},
 	mounted() {
-		this.editor.dispatcher.subscribeJsMessage(UpdatePropertyPanelOptionsLayout, (updatePropertyPanelOptionsLayout) => {
+		this.editor.subscriptions.subscribeJsMessage(UpdatePropertyPanelOptionsLayout, (updatePropertyPanelOptionsLayout) => {
 			this.propertiesOptionsLayout = updatePropertyPanelOptionsLayout;
 		});
-		this.editor.dispatcher.subscribeJsMessage(UpdatePropertyPanelSectionsLayout, (updatePropertyPanelSectionsLayout) => {
+		this.editor.subscriptions.subscribeJsMessage(UpdatePropertyPanelSectionsLayout, (updatePropertyPanelSectionsLayout) => {
 			this.propertiesSectionsLayout = updatePropertyPanelSectionsLayout;
 		});
 	},

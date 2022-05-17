@@ -12,7 +12,7 @@ type JsMessageCallbackMap = {
 };
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
-export function createJsDispatcher() {
+export function createSubscriptionRouter() {
 	const subscriptions: JsMessageCallbackMap = {};
 
 	const subscribeJsMessage = <T extends JsMessage, Args extends unknown[]>(messageType: new (...args: Args) => T, callback: JsMessageCallback<T>): void => {
@@ -63,4 +63,4 @@ export function createJsDispatcher() {
 		handleJsMessage,
 	};
 }
-export type JsDispatcher = ReturnType<typeof createJsDispatcher>;
+export type SubscriptionRouter = ReturnType<typeof createSubscriptionRouter>;

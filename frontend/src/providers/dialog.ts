@@ -35,14 +35,14 @@ export function createDialogState(editor: Editor) {
 	};
 
 	// Run on creation
-	editor.dispatcher.subscribeJsMessage(DisplayDialog, (displayDialog) => {
+	editor.subscriptions.subscribeJsMessage(DisplayDialog, (displayDialog) => {
 		state.visible = true;
 		state.icon = displayDialog.icon;
 	});
 
-	editor.dispatcher.subscribeJsMessage(DisplayDialogDismiss, dismissDialog);
+	editor.subscriptions.subscribeJsMessage(DisplayDialogDismiss, dismissDialog);
 
-	editor.dispatcher.subscribeJsMessage(UpdateDialogDetails, (updateDialogDetails) => {
+	editor.subscriptions.subscribeJsMessage(UpdateDialogDetails, (updateDialogDetails) => {
 		state.widgets = updateDialogDetails;
 		state.jsCallbackBasedButtons = undefined;
 	});

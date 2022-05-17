@@ -58,7 +58,7 @@ export default defineComponent({
 		};
 	},
 	mounted() {
-		this.editor.dispatcher.subscribeJsMessage(UpdateInputHints, (updateInputHints) => {
+		this.editor.subscriptions.subscribeJsMessage(UpdateInputHints, (updateInputHints) => {
 			this.hintData = updateInputHints.hint_data;
 		});
 	},

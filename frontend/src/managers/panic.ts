@@ -6,7 +6,7 @@ import { TextButtonWidget } from "@/utilities/widgets";
 
 export function createPanicManager(editor: Editor, dialogState: DialogState): void {
 	// Code panic dialog and console error
-	editor.dispatcher.subscribeJsMessage(DisplayDialogPanic, (displayDialogPanic) => {
+	editor.subscriptions.subscribeJsMessage(DisplayDialogPanic, (displayDialogPanic) => {
 		// `Error.stackTraceLimit` is only available in V8/Chromium
 		// eslint-disable-next-line @typescript-eslint/no-explicit-any
 		(Error as any).stackTraceLimit = Infinity;
