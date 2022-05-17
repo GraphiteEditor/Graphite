@@ -1,11 +1,11 @@
 /* eslint-disable max-classes-per-file */
 import { reactive, readonly } from "vue";
 
+import { Editor } from "@/dispatcher/editor";
 import { UpdateNodeGraphVisibility } from "@/dispatcher/js-messages";
-import { EditorState } from "@/state/wasm-loader";
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
-export function createWorkspaceState(editor: EditorState) {
+export function createWorkspaceState(editor: Editor) {
 	const state = reactive({
 		nodeGraphVisible: false,
 	});

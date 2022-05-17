@@ -258,64 +258,68 @@ img {
 <script lang="ts">
 import { defineComponent } from "vue";
 
-import { createAutoSaveManager } from "@/lifetime/auto-save";
-import { initErrorHandling } from "@/lifetime/errors";
-import { createInputManager, InputManager } from "@/lifetime/input";
+import { createEditor, Editor } from "@/dispatcher/editor";
+import { createAutoSaveManager } from "@/managers/auto-save";
+import { createInputManager } from "@/managers/input";
+import { createPanicManager } from "@/managers/panic";
 import { createDialogState, DialogState } from "@/state/dialog";
 import { createFullscreenState, FullscreenState } from "@/state/fullscreen";
 import { createPortfolioState, PortfolioState } from "@/state/portfolio";
-import { createEditorState, EditorState } from "@/state/wasm-loader";
 import { createWorkspaceState, WorkspaceState } from "@/state/workspace";
 
 import LayoutCol from "@/components/layout/LayoutCol.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 import MainWindow from "@/components/window/MainWindow.vue";
 
-// Vue injects don't play well with TypeScript, and all injects will show up as `any`. As a workaround, we can define these types.
+// Vue injects don't play well with TypeScript (all injects will show up as `any`) but we can define these types as a solution
 declare module "@vue/runtime-core" {
 	interface ComponentCustomProperties {
+		// Graphite WASM editor instance
+		editor: Editor;
+
+		// Stateful Vue systems
 		dialog: DialogState;
+		fullscreen: FullscreenState;
 		portfolio: PortfolioState;
 		workspace: WorkspaceState;
-		fullscreen: FullscreenState;
-		editor: EditorState;
-		// This must be set to optional because there is a time in the lifecycle of the component where inputManager is undefined.
-		// That's because we initialize inputManager in `mounted()` rather than `data()` since the div hasn't been created yet.
-		inputManager?: InputManager;
 	}
 }
 
 export default defineComponent({
 	provide() {
 		return {
+			// Graphite WASM editor instance
 			editor: this.editor,
+
+			// Stateful Vue systems
 			dialog: this.dialog,
+			fullscreen: this.fullscreen,
 			portfolio: this.portfolio,
 			workspace: this.workspace,
-			fullscreen: this.fullscreen,
-			inputManager: this.inputManager,
 		};
 	},
 	data() {
 		// Initialize the Graphite WASM editor instance
-		const editor = createEditorState();
+		const editor = createEditor();
 
-		// Initialize other stateful Vue systems
+		// Initialize stateful Vue systems
 		const dialog = createDialogState(editor);
+		const fullscreen = createFullscreenState();
 		const portfolio = createPortfolioState(editor);
 		const workspace = createWorkspaceState(editor);
-		const fullscreen = createFullscreenState();
-		initErrorHandling(editor, dialog);
-		createAutoSaveManager(editor, portfolio);
 
 		return {
+			// Graphite WASM editor instance
 			editor,
+
+			// Stateful systems which are `provide`d by this Vue component, to be `inject`ed into descendant components
 			dialog,
+			fullscreen,
 			portfolio,
 			workspace,
-			fullscreen,
+
+			// Other data on this Vue component
 			showUnsupportedModal: !("BigInt64Array" in window),
-			inputManager: undefined as undefined | InputManager,
 		};
 	},
 	methods: {
@@ -324,12 +328,15 @@ export default defineComponent({
 		},
 	},
 	mounted() {
-		this.inputManager = createInputManager(this.editor, this.$el.parentElement, this.dialog, this.portfolio, this.fullscreen);
+		// Initialize manager systems
+		createAutoSaveManager(this.editor, this.portfolio);
+		createInputManager(this.editor, this.$el.parentElement, this.dialog, this.portfolio, this.fullscreen);
+		createPanicManager(this.editor, this.dialog);
 
+		// Initialize certain setup tasks required by the editor backend to be ready for the user now that the frontend is ready
 		this.editor.instance.init_app();
 	},
 	beforeUnmount() {
-		this.inputManager?.removeListeners();
 		this.editor.instance.free();
 	},
 	components: {

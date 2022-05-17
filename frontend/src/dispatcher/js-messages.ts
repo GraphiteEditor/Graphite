@@ -3,7 +3,7 @@
 
 import { Transform, Type } from "class-transformer";
 
-import type { RustEditorInstance, WasmInstance } from "@/state/wasm-loader";
+import type { WasmEditorInstance, WasmRawInstance } from "@/dispatcher/editor";
 import { IconName } from "@/utilities/icons";
 
 export class JsMessage {
@@ -222,7 +222,7 @@ interface DataBuffer {
 	length: BigInt;
 }
 
-export function newUpdateDocumentLayerTreeStructure(input: { data_buffer: DataBuffer }, wasm: WasmInstance): UpdateDocumentLayerTreeStructure {
+export function newUpdateDocumentLayerTreeStructure(input: { data_buffer: DataBuffer }, wasm: WasmRawInstance): UpdateDocumentLayerTreeStructure {
 	const pointerNum = Number(input.data_buffer.pointer);
 	const lengthNum = Number(input.data_buffer.length);
 
@@ -526,7 +526,7 @@ export class TriggerViewportResize extends JsMessage {}
 
 // `any` is used since the type of the object should be known from the Rust side
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-type JSMessageFactory = (data: any, wasm: WasmInstance, instance: RustEditorInstance) => JsMessage;
+type JSMessageFactory = (data: any, wasm: WasmRawInstance, instance: WasmEditorInstance) => JsMessage;
 type MessageMaker = typeof JsMessage | JSMessageFactory;
 
 export const messageMakers: Record<string, MessageMaker> = {

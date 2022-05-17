@@ -1,7 +1,7 @@
+import { Editor } from "@/dispatcher/editor";
 import { DialogState } from "@/state/dialog";
 import { FullscreenState } from "@/state/fullscreen";
 import { PortfolioState } from "@/state/portfolio";
-import { EditorState } from "@/state/wasm-loader";
 
 type EventName = keyof HTMLElementEventMap | keyof WindowEventHandlersEventMap | "modifyinputfield";
 interface EventListenerTarget {
@@ -10,7 +10,7 @@ interface EventListenerTarget {
 }
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
-export function createInputManager(editor: EditorState, container: HTMLElement, dialog: DialogState, document: PortfolioState, fullscreen: FullscreenState) {
+export function createInputManager(editor: Editor, container: HTMLElement, dialog: DialogState, document: PortfolioState, fullscreen: FullscreenState) {
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	const listeners: { target: EventListenerTarget; eventName: EventName; action: (event: any) => void; options?: boolean | AddEventListenerOptions }[] = [
 		{ target: window, eventName: "resize", action: (): void => onWindowResize(container) },
@@ -267,7 +267,6 @@ export function createInputManager(editor: EditorState, container: HTMLElement, 
 
 	return { removeListeners };
 }
-export type InputManager = ReturnType<typeof createInputManager>;
 
 export function makeModifiersBitfield(e: WheelEvent | PointerEvent | KeyboardEvent): number {
 	return Number(e.ctrlKey) | (Number(e.shiftKey) << 1) | (Number(e.altKey) << 2);

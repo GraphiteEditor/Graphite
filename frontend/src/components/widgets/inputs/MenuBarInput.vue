@@ -53,12 +53,12 @@
 <script lang="ts">
 import { defineComponent } from "vue";
 
-import { EditorState } from "@/state/wasm-loader";
+import { Editor } from "@/dispatcher/editor";
 
 import MenuList, { MenuListEntry, MenuListEntries } from "@/components/widgets/floating-menus/MenuList.vue";
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
 
-function makeEntries(editor: EditorState): MenuListEntries {
+function makeEntries(editor: Editor): MenuListEntries {
 	return [
 		{
 			label: "File",
@@ -131,14 +131,14 @@ function makeEntries(editor: EditorState): MenuListEntries {
 								{
 									label: "Raise To Front",
 									shortcut: ["KeyControl", "KeyShift", "KeyLeftBracket"],
-									action: async (): Promise<void> => editor.instance.reorder_selected_layers(editor.rawWasm.i32_max()),
+									action: async (): Promise<void> => editor.instance.reorder_selected_layers(editor.raw.i32_max()),
 								},
 								{ label: "Raise", shortcut: ["KeyControl", "KeyRightBracket"], action: async (): Promise<void> => editor.instance.reorder_selected_layers(1) },
 								{ label: "Lower", shortcut: ["KeyControl", "KeyLeftBracket"], action: async (): Promise<void> => editor.instance.reorder_selected_layers(-1) },
 								{
 									label: "Lower to Back",
 									shortcut: ["KeyControl", "KeyShift", "KeyRightBracket"],
-									action: async (): Promise<void> => editor.instance.reorder_selected_layers(editor.rawWasm.i32_min()),
+									action: async (): Promise<void> => editor.instance.reorder_selected_layers(editor.raw.i32_min()),
 								},
 							],
 						],
@@ -189,7 +189,7 @@ function makeEntries(editor: EditorState): MenuListEntries {
 							],
 						],
 					},
-					{ label: "Debug: Panic (DANGER)", action: async (): Promise<void> => editor.rawWasm.intentional_panic() },
+					{ label: "Debug: Panic (DANGER)", action: async (): Promise<void> => editor.raw.intentional_panic() },
 				],
 			],
 		},

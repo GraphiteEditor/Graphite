@@ -4,8 +4,8 @@
 import "reflect-metadata";
 import { createApp } from "vue";
 
-import "@/lifetime/errors";
-import { initWasm } from "@/state/wasm-loader";
+import { initWasm } from "@/dispatcher/editor";
+import "@/managers/panic";
 
 import App from "@/App.vue";
 

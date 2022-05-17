@@ -1,6 +1,6 @@
-// This file is where functions are defined to be called directly from JS.
-// It serves as a thin wrapper over the editor backend API that relies
-// on the dispatcher messaging system and more complex Rust data types.
+//! This file is where functions are defined to be called directly from JS.
+//! It serves as a thin wrapper over the editor backend API that relies
+//! on the dispatcher messaging system and more complex Rust data types.
 
 use crate::helpers::{translate_key, Error};
 use crate::{EDITOR_HAS_CRASHED, EDITOR_INSTANCES, JS_EDITOR_HANDLES};
@@ -478,8 +478,8 @@ impl JsEditorHandle {
 	}
 }
 
-// Needed to make JsEditorHandle functions pub to rust. Do not fully
-// understand reason but has to do with #[wasm_bindgen] procedural macro.
+// Needed to make JsEditorHandle functions pub to Rust.
+// The reason is not fully clear but it has to do with the #[wasm_bindgen] procedural macro.
 impl JsEditorHandle {
 	pub fn handle_response_rust_proxy(&self, message: FrontendMessage) {
 		self.handle_response(message);

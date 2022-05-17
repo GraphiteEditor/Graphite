@@ -1,12 +1,12 @@
 /* eslint-disable max-classes-per-file */
 import { reactive, readonly } from "vue";
 
+import { Editor } from "@/dispatcher/editor";
 import { TriggerFileDownload, TriggerRasterDownload, FrontendDocumentDetails, TriggerFileUpload, UpdateActiveDocument, UpdateOpenDocumentsList } from "@/dispatcher/js-messages";
-import { EditorState } from "@/state/wasm-loader";
 import { download, downloadBlob, upload } from "@/utilities/files";
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
-export function createPortfolioState(editor: EditorState) {
+export function createPortfolioState(editor: Editor) {
 	const state = reactive({
 		unsaved: false,
 		documents: [] as FrontendDocumentDetails[],
@@ -25,7 +25,7 @@ export function createPortfolioState(editor: EditorState) {
 	});
 
 	editor.dispatcher.subscribeJsMessage(TriggerFileUpload, async () => {
-		const extension = editor.rawWasm.file_save_suffix();
+		const extension = editor.raw.file_save_suffix();
 		const data = await upload(extension);
 		editor.instance.open_document_file(data.filename, data.content);
 	});

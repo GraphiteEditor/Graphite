@@ -1,7 +1,7 @@
 import { plainToInstance } from "class-transformer";
 
+import type { WasmEditorInstance, WasmRawInstance } from "@/dispatcher/editor";
 import { JsMessageType, messageMakers, JsMessage } from "@/dispatcher/js-messages";
-import type { RustEditorInstance, WasmInstance } from "@/state/wasm-loader";
 
 type JsMessageCallback<T extends JsMessage> = (messageData: T) => void;
 type JsMessageCallbackMap = {
@@ -19,7 +19,7 @@ export function createJsDispatcher() {
 		subscriptions[messageType.name] = callback;
 	};
 
-	const handleJsMessage = (messageType: JsMessageType, messageData: Record<string, unknown>, wasm: WasmInstance, instance: RustEditorInstance): void => {
+	const handleJsMessage = (messageType: JsMessageType, messageData: Record<string, unknown>, wasm: WasmRawInstance, instance: WasmEditorInstance): void => {
 		// Find the message maker for the message type, which can either be a JS class constructor or a function that returns an instance of the JS class
 		const messageMaker = messageMakers[messageType];
 		if (!messageMaker) {

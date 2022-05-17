@@ -1,10 +1,10 @@
+import { Editor } from "@/dispatcher/editor";
 import { DisplayDialogPanic, WidgetLayout } from "@/dispatcher/js-messages";
 import { DialogState } from "@/state/dialog";
-import { EditorState } from "@/state/wasm-loader";
 import { stripIndents } from "@/utilities/strip-indents";
 import { TextButtonWidget } from "@/utilities/widgets";
 
-export function initErrorHandling(editor: EditorState, dialogState: DialogState): void {
+export function createPanicManager(editor: Editor, dialogState: DialogState): void {
 	// Code panic dialog and console error
 	editor.dispatcher.subscribeJsMessage(DisplayDialogPanic, (displayDialogPanic) => {
 		// `Error.stackTraceLimit` is only available in V8/Chromium

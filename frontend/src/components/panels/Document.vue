@@ -244,7 +244,7 @@ import {
 	TriggerVisitLink,
 } from "@/dispatcher/js-messages";
 
-import { textInputCleanup } from "@/lifetime/input";
+import { textInputCleanup } from "@/managers/input";
 
 import { loadDefaultFont, setLoadDefaultFontCallback } from "@/utilities/fonts";
 

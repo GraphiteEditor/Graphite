@@ -1,37 +1,14 @@
+import { Editor, getWasmInstance } from "@/dispatcher/editor";
 import { TriggerIndexedDbWriteDocument, TriggerIndexedDbRemoveDocument } from "@/dispatcher/js-messages";
 import { PortfolioState } from "@/state/portfolio";
-import { EditorState, getWasmInstance } from "@/state/wasm-loader";
 
 const GRAPHITE_INDEXED_DB_VERSION = 2;
 const GRAPHITE_INDEXED_DB_NAME = "graphite-indexed-db";
 const GRAPHITE_AUTO_SAVE_STORE = "auto-save-documents";
 const GRAPHITE_AUTO_SAVE_ORDER_KEY = "auto-save-documents-order";
 
-const databaseConnection: Promise<IDBDatabase> = new Promise((resolve) => {
-	const dbOpenRequest = indexedDB.open(GRAPHITE_INDEXED_DB_NAME, GRAPHITE_INDEXED_DB_VERSION);
-
-	dbOpenRequest.onupgradeneeded = (): void => {
-		const db = dbOpenRequest.result;
-		// Wipes out all auto-save data on upgrade
-		if (db.objectStoreNames.contains(GRAPHITE_AUTO_SAVE_STORE)) {
-			db.deleteObjectStore(GRAPHITE_AUTO_SAVE_STORE);
-		}
-
-		db.createObjectStore(GRAPHITE_AUTO_SAVE_STORE, { keyPath: "details.id" });
-	};
-
-	dbOpenRequest.onerror = (): void => {
-		// eslint-disable-next-line no-console
-		console.error("Graphite IndexedDb error:", dbOpenRequest.error);
-	};
-
-	dbOpenRequest.onsuccess = (): void => {
-		resolve(dbOpenRequest.result);
-	};
-});
-
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
-export function createAutoSaveManager(editor: EditorState, portfolio: PortfolioState) {
+export function createAutoSaveManager(editor: Editor, portfolio: PortfolioState) {
 	const openAutoSavedDocuments = async (): Promise<void> => {
 		const db = await databaseConnection;
 		const transaction = db.transaction(GRAPHITE_AUTO_SAVE_STORE, "readonly");
@@ -88,3 +65,26 @@ export function createAutoSaveManager(editor: EditorState, portfolio: PortfolioS
 
 	return { openAutoSavedDocuments };
 }
+
+const databaseConnection: Promise<IDBDatabase> = new Promise((resolve) => {
+	const dbOpenRequest = indexedDB.open(GRAPHITE_INDEXED_DB_NAME, GRAPHITE_INDEXED_DB_VERSION);
+
+	dbOpenRequest.onupgradeneeded = (): void => {
+		const db = dbOpenRequest.result;
+		// Wipes out all auto-save data on upgrade
+		if (db.objectStoreNames.contains(GRAPHITE_AUTO_SAVE_STORE)) {
+			db.deleteObjectStore(GRAPHITE_AUTO_SAVE_STORE);
+		}
+
+		db.createObjectStore(GRAPHITE_AUTO_SAVE_STORE, { keyPath: "details.id" });
+	};
+
+	dbOpenRequest.onerror = (): void => {
+		// eslint-disable-next-line no-console
+		console.error("Graphite IndexedDb error:", dbOpenRequest.error);
+	};
+
+	dbOpenRequest.onsuccess = (): void => {
+		resolve(dbOpenRequest.result);
+	};
+});

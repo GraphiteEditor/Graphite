@@ -1,12 +1,12 @@
 import { reactive, readonly } from "vue";
 
+import { Editor } from "@/dispatcher/editor";
 import { defaultWidgetLayout, DisplayDialog, DisplayDialogDismiss, UpdateDialogDetails, WidgetLayout } from "@/dispatcher/js-messages";
-import { EditorState } from "@/state/wasm-loader";
 import { IconName } from "@/utilities/icons";
 import { TextButtonWidget } from "@/utilities/widgets";
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
-export function createDialogState(editor: EditorState) {
+export function createDialogState(editor: Editor) {
 	const state = reactive({
 		visible: false,
 		icon: "" as IconName,
