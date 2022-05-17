@@ -34,7 +34,6 @@ pub enum FrontendMessage {
 
 	// Update prefix: give the frontend a new value or state for it to use
 	UpdateActiveDocument { document_id: u64 },
-	UpdateActiveTool { tool_name: String },
 	UpdateDialogDetails { layout_target: LayoutTarget, layout: SubLayout },
 	UpdateDocumentArtboards { svg: String },
 	UpdateDocumentArtwork { svg: String },

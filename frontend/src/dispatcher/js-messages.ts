@@ -117,33 +117,6 @@ export class UpdateWorkingColors extends JsMessage {
 	readonly secondary!: Color;
 }
 
-export type ToolName =
-	| "Select"
-	| "Artboard"
-	| "Navigate"
-	| "Eyedropper"
-	| "Text"
-	| "Fill"
-	| "Gradient"
-	| "Brush"
-	| "Heal"
-	| "Clone"
-	| "Patch"
-	| "Detail"
-	| "Relight"
-	| "Path"
-	| "Pen"
-	| "Freehand"
-	| "Spline"
-	| "Line"
-	| "Rectangle"
-	| "Ellipse"
-	| "Shape";
-
-export class UpdateActiveTool extends JsMessage {
-	readonly tool_name!: ToolName;
-}
-
 export class UpdateActiveDocument extends JsMessage {
 	readonly document_id!: BigInt;
 }
@@ -600,7 +573,6 @@ export const messageMakers: Record<string, MessageMaker> = {
 	TriggerViewportResize,
 	TriggerVisitLink,
 	UpdateActiveDocument,
-	UpdateActiveTool,
 	UpdateDialogDetails,
 	UpdateDocumentArtboards,
 	UpdateDocumentArtwork,

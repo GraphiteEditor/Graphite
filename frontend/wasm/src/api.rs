@@ -9,7 +9,6 @@ use editor::consts::{FILE_SAVE_SUFFIX, GRAPHITE_DOCUMENT_VERSION};
 use editor::input::input_preprocessor::ModifierKeys;
 use editor::input::mouse::{EditorMouseState, ScrollDelta, ViewportBounds};
 use editor::message_prelude::*;
-use editor::viewport_tools::tool::ToolType;
 use editor::Color;
 use editor::Editor;
 use editor::LayerId;
@@ -474,11 +473,7 @@ impl JsEditorHandle {
 		let message = PortfolioMessage::UpdateDocumentWidgets;
 		self.dispatch(message);
 
-		// Switch away from, and back to, the Select tool to make it initialize the active tool correctly
-		// TODO: Fix the root cause of this issue to avoid this hacky workaround
-		let message = ToolMessage::ActivateTool { tool_type: ToolType::Path };
-		self.dispatch(message);
-		let message = ToolMessage::ActivateTool { tool_type: ToolType::Select };
+		let message = ToolMessage::InitaliseTools;
 		self.dispatch(message);
 	}
 }

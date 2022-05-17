@@ -226,8 +226,6 @@ import {
 	UpdateDocumentOverlays,
 	UpdateDocumentScrollbars,
 	UpdateDocumentRulers,
-	UpdateActiveTool,
-	ToolName,
 	UpdateDocumentArtboards,
 	UpdateMouseCursor,
 	UpdateDocumentModeLayout,
@@ -387,10 +385,6 @@ export default defineComponent({
 			this.rulerInterval = updateDocumentRulers.interval;
 		});
 
-		this.editor.dispatcher.subscribeJsMessage(UpdateActiveTool, (updateActiveTool) => {
-			this.activeTool = updateActiveTool.tool_name;
-		});
-
 		this.editor.dispatcher.subscribeJsMessage(UpdateMouseCursor, (updateMouseCursor) => {
 			this.canvasCursor = updateMouseCursor.cursor;
 		});
@@ -496,12 +490,7 @@ export default defineComponent({
 		loadBuildMetadata();
 	},
 	data() {
-		const activeTool: ToolName = "Select";
-
 		return {
-			// Tool (TODO: Move this whole widget group to the backend)
-			activeTool: activeTool as ToolName,
-
 			// Interactive text editing
 			textInput: undefined as undefined | HTMLDivElement,
 
