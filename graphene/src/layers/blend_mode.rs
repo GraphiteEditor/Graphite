@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::fmt;
 
 /// Describes how overlapping SVG elements should be blended together.
 /// See the [MDN Docs](https://developer.mozilla.org/en-US/docs/Web/CSS/blend-mode#examples) for examples.
@@ -38,9 +39,9 @@ pub enum BlendMode {
 	Luminosity,
 }
 
-impl ToString for BlendMode {
-	fn to_string(&self) -> String {
-		match self {
+impl fmt::Display for BlendMode {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		let text = match self {
 			BlendMode::Normal => "Normal".to_string(),
 
 			BlendMode::Multiply => "Multiply".to_string(),
@@ -62,7 +63,8 @@ impl ToString for BlendMode {
 			BlendMode::Saturation => "Saturation".to_string(),
 			BlendMode::Color => "Color".to_string(),
 			BlendMode::Luminosity => "Luminosity".to_string(),
-		}
+		};
+		write!(f, "{}", text)
 	}
 }
 

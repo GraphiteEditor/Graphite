@@ -471,7 +471,7 @@ export default defineComponent({
 			});
 		});
 
-		// Gets metadat populated in `frontend/vue.config.js`. We could potentially move this functionality in a build.rs file.
+		// Gets metadata populated in `frontend/vue.config.js`. We could potentially move this functionality in a build.rs file.
 		const loadBuildMetadata = (): void => {
 			const release = process.env.VUE_APP_RELEASE_SERIES;
 			let timestamp = "";

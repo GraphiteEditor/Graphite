@@ -2,7 +2,6 @@ use super::tools::*;
 use crate::communication::message_handler::MessageHandler;
 use crate::document::DocumentMessageHandler;
 use crate::input::InputPreprocessorMessageHandler;
-use crate::layout::layout_message::LayoutTarget;
 use crate::layout::widgets::{IconButton, LayoutRow, PropertyHolder, Separator, SeparatorDirection, SeparatorType, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
 use crate::message_prelude::*;
 
@@ -100,16 +99,6 @@ impl PropertyHolder for ToolData {
 		WidgetLayout {
 			layout: vec![LayoutRow::Column { widgets: tool_groups_layout }],
 		}
-	}
-
-	fn register_properties(&self, responses: &mut VecDeque<Message>, layout_target: LayoutTarget) {
-		responses.push_back(
-			LayoutMessage::SendLayout {
-				layout: self.properties(),
-				layout_target,
-			}
-			.into(),
-		)
 	}
 }
 

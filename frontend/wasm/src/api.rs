@@ -474,7 +474,8 @@ impl JsEditorHandle {
 		let message = PortfolioMessage::UpdateDocumentWidgets;
 		self.dispatch(message);
 
-		// Switch away from, and back to, the Select Tool to make it display the correct hints in the status bar
+		// Switch away from, and back to, the Select tool to make it initialize the active tool correctly
+		// TODO: Fix the root cause of this issue to avoid this hacky workaround
 		let message = ToolMessage::ActivateTool { tool_type: ToolType::Path };
 		self.dispatch(message);
 		let message = ToolMessage::ActivateTool { tool_type: ToolType::Select };
@@ -521,7 +522,7 @@ pub fn file_save_suffix() -> String {
 	FILE_SAVE_SUFFIX.into()
 }
 
-/// Get the constant `FILE_SAVE_SUFFIX`
+/// Get the constant `GRAPHITE_DOCUMENT_VERSION`
 #[wasm_bindgen]
 pub fn graphite_version() -> String {
 	GRAPHITE_DOCUMENT_VERSION.to_string()
