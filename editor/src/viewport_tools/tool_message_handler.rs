@@ -83,7 +83,7 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessorMes
 					responses.push_back(message.into());
 				}
 			}
-			InitaliseTools => {
+			InitTools => {
 				let tool_data = &mut self.tool_state.tool_data;
 				let document_data = &self.tool_state.document_tool_data;
 				let active_tool = &tool_data.active_tool_type;

@@ -473,7 +473,7 @@ impl JsEditorHandle {
 		let message = PortfolioMessage::UpdateDocumentWidgets;
 		self.dispatch(message);
 
-		let message = ToolMessage::InitaliseTools;
+		let message = ToolMessage::InitTools;
 		self.dispatch(message);
 	}
 }
