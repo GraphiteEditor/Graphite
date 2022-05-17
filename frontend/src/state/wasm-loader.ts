@@ -12,7 +12,7 @@ export async function initWasm(): Promise<void> {
 	// Skip if the wasm module is already initialized
 	if (wasmImport !== null) return;
 
-	// Separating in two lines satisfies typescript when used below
+	// Separating in two lines satisfies TypeScript
 	const importedWasm = await import("@/../wasm/pkg").then(panicProxy);
 	wasmImport = importedWasm;
 

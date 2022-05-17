@@ -61,10 +61,6 @@ export default defineComponent({
 		this.editor.dispatcher.subscribeJsMessage(UpdateInputHints, (updateInputHints) => {
 			this.hintData = updateInputHints.hint_data;
 		});
-
-		// Switch away from, and back to, the Select Tool to make it display the correct hints in the status bar
-		this.editor.instance.select_tool("Path");
-		this.editor.instance.select_tool("Select");
 	},
 	components: {
 		UserInputLabel,

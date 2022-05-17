@@ -117,33 +117,6 @@ export class UpdateWorkingColors extends JsMessage {
 	readonly secondary!: Color;
 }
 
-export type ToolName =
-	| "Select"
-	| "Artboard"
-	| "Navigate"
-	| "Eyedropper"
-	| "Text"
-	| "Fill"
-	| "Gradient"
-	| "Brush"
-	| "Heal"
-	| "Clone"
-	| "Patch"
-	| "Detail"
-	| "Relight"
-	| "Path"
-	| "Pen"
-	| "Freehand"
-	| "Spline"
-	| "Line"
-	| "Rectangle"
-	| "Ellipse"
-	| "Shape";
-
-export class UpdateActiveTool extends JsMessage {
-	readonly tool_name!: ToolName;
-}
-
 export class UpdateActiveDocument extends JsMessage {
 	readonly document_id!: BigInt;
 }
@@ -320,47 +293,15 @@ export class UpdateImageData extends JsMessage {
 
 export class DisplayRemoveEditableTextbox extends JsMessage {}
 
-export class UpdateDocumentLayer extends JsMessage {
+export class UpdateDocumentLayerDetails extends JsMessage {
 	@Type(() => LayerPanelEntry)
 	readonly data!: LayerPanelEntry;
 }
-
-export class UpdateCanvasZoom extends JsMessage {
-	readonly factor!: number;
-}
-
-export class UpdateCanvasRotation extends JsMessage {
-	readonly angle_radians!: number;
-}
-
-export type BlendMode =
-	| "Normal"
-	| "Multiply"
-	| "Darken"
-	| "ColorBurn"
-	| "Screen"
-	| "Lighten"
-	| "ColorDodge"
-	| "Overlay"
-	| "SoftLight"
-	| "HardLight"
-	| "Difference"
-	| "Exclusion"
-	| "Hue"
-	| "Saturation"
-	| "Color"
-	| "Luminosity";
 
 export class LayerPanelEntry {
 	name!: string;
 
 	visible!: boolean;
-
-	blend_mode!: BlendMode;
-
-	// On the rust side opacity is out of 1 rather than 100
-	@Transform(({ value }) => value * 100)
-	opacity!: number;
 
 	layer_type!: LayerType;
 
@@ -433,15 +374,21 @@ export function defaultWidgetLayout(): WidgetLayout {
 	};
 }
 
-export type LayoutRow = WidgetRow | WidgetSection;
+// TODO: Rename LayoutRow to something more generic
+export type LayoutRow = WidgetRow | WidgetColumn | WidgetSection;
 
-export type WidgetRow = { widgets: Widget[] };
-export function isWidgetRow(layoutRow: WidgetRow | WidgetSection): layoutRow is WidgetRow {
-	return Boolean((layoutRow as WidgetRow).widgets);
+export type WidgetColumn = { columnWidgets: Widget[] };
+export function isWidgetColumn(layoutColumn: LayoutRow): layoutColumn is WidgetColumn {
+	return Boolean((layoutColumn as WidgetColumn).columnWidgets);
+}
+
+export type WidgetRow = { rowWidgets: Widget[] };
+export function isWidgetRow(layoutRow: LayoutRow): layoutRow is WidgetRow {
+	return Boolean((layoutRow as WidgetRow).rowWidgets);
 }
 
 export type WidgetSection = { name: string; layout: LayoutRow[] };
-export function isWidgetSection(layoutRow: WidgetRow | WidgetSection): layoutRow is WidgetSection {
+export function isWidgetSection(layoutRow: LayoutRow): layoutRow is WidgetSection {
 	return Boolean((layoutRow as WidgetSection).layout);
 }
 
@@ -476,6 +423,13 @@ export class UpdateDialogDetails extends JsMessage implements WidgetLayout {
 	layout!: LayoutRow[];
 }
 
+export class UpdateDocumentModeLayout extends JsMessage implements WidgetLayout {
+	layout_target!: unknown;
+
+	@Transform(({ value }) => createWidgetLayout(value))
+	layout!: LayoutRow[];
+}
+
 export class UpdateToolOptionsLayout extends JsMessage implements WidgetLayout {
 	layout_target!: unknown;
 
@@ -484,6 +438,13 @@ export class UpdateToolOptionsLayout extends JsMessage implements WidgetLayout {
 }
 
 export class UpdateDocumentBarLayout extends JsMessage implements WidgetLayout {
+	layout_target!: unknown;
+
+	@Transform(({ value }) => createWidgetLayout(value))
+	layout!: LayoutRow[];
+}
+
+export class UpdateToolShelfLayout extends JsMessage implements WidgetLayout {
 	layout_target!: unknown;
 
 	@Transform(({ value }) => createWidgetLayout(value))
@@ -504,13 +465,20 @@ export class UpdatePropertyPanelSectionsLayout extends JsMessage implements Widg
 	layout!: LayoutRow[];
 }
 
+export class UpdateLayerTreeOptionsLayout extends JsMessage implements WidgetLayout {
+	layout_target!: unknown;
+
+	@Transform(({ value }) => createWidgetLayout(value))
+	layout!: LayoutRow[];
+}
+
 // Unpacking rust types to more usable type in the frontend
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function createWidgetLayout(widgetLayout: any[]): LayoutRow[] {
-	return widgetLayout.map((rowOrSection): LayoutRow => {
-		if (rowOrSection.Row) {
+	return widgetLayout.map((layoutType): LayoutRow => {
+		if (layoutType.Column) {
 			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			const widgets = rowOrSection.Row.widgets.map((widgetHolder: any) => {
+			const columnWidgets = layoutType.Column.columnWidgets.map((widgetHolder: any) => {
 				const { widget_id } = widgetHolder;
 				const kind = Object.keys(widgetHolder.widget)[0];
 				const props = widgetHolder.widget[kind];
@@ -518,13 +486,27 @@ function createWidgetLayout(widgetLayout: any[]): LayoutRow[] {
 				return { widget_id, kind, props };
 			});
 
-			const result: WidgetRow = { widgets };
+			const result: WidgetColumn = { columnWidgets };
 			return result;
 		}
 
-		if (rowOrSection.Section) {
-			const { name } = rowOrSection.Section;
-			const layout = createWidgetLayout(rowOrSection.Section.layout);
+		if (layoutType.Row) {
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			const rowWidgets = layoutType.Row.rowWidgets.map((widgetHolder: any) => {
+				const { widget_id } = widgetHolder;
+				const kind = Object.keys(widgetHolder.widget)[0];
+				const props = widgetHolder.widget[kind];
+
+				return { widget_id, kind, props };
+			});
+
+			const result: WidgetRow = { rowWidgets };
+			return result;
+		}
+
+		if (layoutType.Section) {
+			const { name } = layoutType.Section;
+			const layout = createWidgetLayout(layoutType.Section.layout);
 
 			const result: WidgetSection = { name, layout };
 			return result;
@@ -567,14 +549,12 @@ export const messageMakers: Record<string, MessageMaker> = {
 	TriggerViewportResize,
 	TriggerVisitLink,
 	UpdateActiveDocument,
-	UpdateActiveTool,
-	UpdateCanvasRotation,
-	UpdateCanvasZoom,
 	UpdateDialogDetails,
 	UpdateDocumentArtboards,
 	UpdateDocumentArtwork,
 	UpdateDocumentBarLayout,
-	UpdateDocumentLayer,
+	UpdateToolShelfLayout,
+	UpdateDocumentLayerDetails,
 	UpdateDocumentOverlays,
 	UpdateDocumentRulers,
 	UpdateDocumentScrollbars,
@@ -584,6 +564,8 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateOpenDocumentsList,
 	UpdatePropertyPanelOptionsLayout,
 	UpdatePropertyPanelSectionsLayout,
+	UpdateLayerTreeOptionsLayout,
+	UpdateDocumentModeLayout,
 	UpdateToolOptionsLayout,
 	UpdateWorkingColors,
 } as const;

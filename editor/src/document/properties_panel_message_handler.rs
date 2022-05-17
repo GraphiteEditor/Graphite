@@ -137,14 +137,14 @@ impl<'a> MessageHandler<PropertiesPanelMessage, PropertiesPanelMessageHandlerDat
 				responses.push_back(
 					LayoutMessage::SendLayout {
 						layout: WidgetLayout::new(vec![]),
-						layout_target: LayoutTarget::PropertiesOptionsPanel,
+						layout_target: LayoutTarget::PropertiesOptions,
 					}
 					.into(),
 				);
 				responses.push_back(
 					LayoutMessage::SendLayout {
 						layout: WidgetLayout::new(vec![]),
-						layout_target: LayoutTarget::PropertiesSectionsPanel,
+						layout_target: LayoutTarget::PropertiesSections,
 					}
 					.into(),
 				);
@@ -217,14 +217,14 @@ impl<'a> MessageHandler<PropertiesPanelMessage, PropertiesPanelMessageHandlerDat
 					self.active_selection = None;
 					responses.push_back(
 						LayoutMessage::SendLayout {
-							layout_target: LayoutTarget::PropertiesOptionsPanel,
+							layout_target: LayoutTarget::PropertiesOptions,
 							layout: WidgetLayout::default(),
 						}
 						.into(),
 					);
 					responses.push_back(
 						LayoutMessage::SendLayout {
-							layout_target: LayoutTarget::PropertiesSectionsPanel,
+							layout_target: LayoutTarget::PropertiesSections,
 							layout: WidgetLayout::default(),
 						}
 						.into(),
@@ -308,12 +308,12 @@ fn register_artboard_layer_properties(layer: &Layer, responses: &mut VecDeque<Me
 							direction: SeparatorDirection::Horizontal,
 						})),
 						WidgetHolder::new(Widget::NumberInput(NumberInput {
-							value: layer.transform.x(),
+							value: Some(layer.transform.x()),
 							label: "X".into(),
 							unit: " px".into(),
 							on_update: WidgetCallback::new(|number_input: &NumberInput| {
 								PropertiesPanelMessage::ModifyTransform {
-									value: number_input.value,
+									value: number_input.value.unwrap(),
 									transform_op: TransformOp::X,
 								}
 								.into()
@@ -325,12 +325,12 @@ fn register_artboard_layer_properties(layer: &Layer, responses: &mut VecDeque<Me
 							direction: SeparatorDirection::Horizontal,
 						})),
 						WidgetHolder::new(Widget::NumberInput(NumberInput {
-							value: layer.transform.y(),
+							value: Some(layer.transform.y()),
 							label: "Y".into(),
 							unit: " px".into(),
 							on_update: WidgetCallback::new(|number_input: &NumberInput| {
 								PropertiesPanelMessage::ModifyTransform {
-									value: number_input.value,
+									value: number_input.value.unwrap(),
 									transform_op: TransformOp::Y,
 								}
 								.into()
@@ -350,12 +350,12 @@ fn register_artboard_layer_properties(layer: &Layer, responses: &mut VecDeque<Me
 							direction: SeparatorDirection::Horizontal,
 						})),
 						WidgetHolder::new(Widget::NumberInput(NumberInput {
-							value: layer.bounding_transform(font_cache).scale_x(),
+							value: Some(layer.bounding_transform(font_cache).scale_x()),
 							label: "W".into(),
 							unit: " px".into(),
 							on_update: WidgetCallback::new(|number_input: &NumberInput| {
 								PropertiesPanelMessage::ModifyTransform {
-									value: number_input.value,
+									value: number_input.value.unwrap(),
 									transform_op: TransformOp::Width,
 								}
 								.into()
@@ -367,12 +367,12 @@ fn register_artboard_layer_properties(layer: &Layer, responses: &mut VecDeque<Me
 							direction: SeparatorDirection::Horizontal,
 						})),
 						WidgetHolder::new(Widget::NumberInput(NumberInput {
-							value: layer.bounding_transform(font_cache).scale_y(),
+							value: Some(layer.bounding_transform(font_cache).scale_y()),
 							label: "H".into(),
 							unit: " px".into(),
 							on_update: WidgetCallback::new(|number_input: &NumberInput| {
 								PropertiesPanelMessage::ModifyTransform {
-									value: number_input.value,
+									value: number_input.value.unwrap(),
 									transform_op: TransformOp::Height,
 								}
 								.into()
@@ -416,14 +416,14 @@ fn register_artboard_layer_properties(layer: &Layer, responses: &mut VecDeque<Me
 	responses.push_back(
 		LayoutMessage::SendLayout {
 			layout: WidgetLayout::new(options_bar),
-			layout_target: LayoutTarget::PropertiesOptionsPanel,
+			layout_target: LayoutTarget::PropertiesOptions,
 		}
 		.into(),
 	);
 	responses.push_back(
 		LayoutMessage::SendLayout {
 			layout: WidgetLayout::new(properties_body),
-			layout_target: LayoutTarget::PropertiesSectionsPanel,
+			layout_target: LayoutTarget::PropertiesSections,
 		}
 		.into(),
 	);
@@ -504,14 +504,14 @@ fn register_artwork_layer_properties(layer: &Layer, responses: &mut VecDeque<Mes
 	responses.push_back(
 		LayoutMessage::SendLayout {
 			layout: WidgetLayout::new(options_bar),
-			layout_target: LayoutTarget::PropertiesOptionsPanel,
+			layout_target: LayoutTarget::PropertiesOptions,
 		}
 		.into(),
 	);
 	responses.push_back(
 		LayoutMessage::SendLayout {
 			layout: WidgetLayout::new(properties_body),
-			layout_target: LayoutTarget::PropertiesSectionsPanel,
+			layout_target: LayoutTarget::PropertiesSections,
 		}
 		.into(),
 	);
@@ -532,12 +532,12 @@ fn node_section_transform(layer: &Layer, font_cache: &FontCache) -> LayoutRow {
 						direction: SeparatorDirection::Horizontal,
 					})),
 					WidgetHolder::new(Widget::NumberInput(NumberInput {
-						value: layer.transform.x(),
+						value: Some(layer.transform.x()),
 						label: "X".into(),
 						unit: " px".into(),
 						on_update: WidgetCallback::new(|number_input: &NumberInput| {
 							PropertiesPanelMessage::ModifyTransform {
-								value: number_input.value,
+								value: number_input.value.unwrap(),
 								transform_op: TransformOp::X,
 							}
 							.into()
@@ -549,12 +549,12 @@ fn node_section_transform(layer: &Layer, font_cache: &FontCache) -> LayoutRow {
 						direction: SeparatorDirection::Horizontal,
 					})),
 					WidgetHolder::new(Widget::NumberInput(NumberInput {
-						value: layer.transform.y(),
+						value: Some(layer.transform.y()),
 						label: "Y".into(),
 						unit: " px".into(),
 						on_update: WidgetCallback::new(|number_input: &NumberInput| {
 							PropertiesPanelMessage::ModifyTransform {
-								value: number_input.value,
+								value: number_input.value.unwrap(),
 								transform_op: TransformOp::Y,
 							}
 							.into()
@@ -574,12 +574,12 @@ fn node_section_transform(layer: &Layer, font_cache: &FontCache) -> LayoutRow {
 						direction: SeparatorDirection::Horizontal,
 					})),
 					WidgetHolder::new(Widget::NumberInput(NumberInput {
-						value: layer.transform.rotation() * 180. / PI,
+						value: Some(layer.transform.rotation() * 180. / PI),
 						label: "".into(),
 						unit: "°".into(),
 						on_update: WidgetCallback::new(|number_input: &NumberInput| {
 							PropertiesPanelMessage::ModifyTransform {
-								value: number_input.value / 180. * PI,
+								value: number_input.value.unwrap() / 180. * PI,
 								transform_op: TransformOp::Rotation,
 							}
 							.into()
@@ -599,12 +599,12 @@ fn node_section_transform(layer: &Layer, font_cache: &FontCache) -> LayoutRow {
 						direction: SeparatorDirection::Horizontal,
 					})),
 					WidgetHolder::new(Widget::NumberInput(NumberInput {
-						value: layer.transform.scale_x(),
+						value: Some(layer.transform.scale_x()),
 						label: "X".into(),
 						unit: "".into(),
 						on_update: WidgetCallback::new(|number_input: &NumberInput| {
 							PropertiesPanelMessage::ModifyTransform {
-								value: number_input.value,
+								value: number_input.value.unwrap(),
 								transform_op: TransformOp::ScaleX,
 							}
 							.into()
@@ -616,12 +616,12 @@ fn node_section_transform(layer: &Layer, font_cache: &FontCache) -> LayoutRow {
 						direction: SeparatorDirection::Horizontal,
 					})),
 					WidgetHolder::new(Widget::NumberInput(NumberInput {
-						value: layer.transform.scale_y(),
+						value: Some(layer.transform.scale_y()),
 						label: "Y".into(),
 						unit: "".into(),
 						on_update: WidgetCallback::new(|number_input: &NumberInput| {
 							PropertiesPanelMessage::ModifyTransform {
-								value: number_input.value,
+								value: number_input.value.unwrap(),
 								transform_op: TransformOp::ScaleY,
 							}
 							.into()
@@ -641,12 +641,12 @@ fn node_section_transform(layer: &Layer, font_cache: &FontCache) -> LayoutRow {
 						direction: SeparatorDirection::Horizontal,
 					})),
 					WidgetHolder::new(Widget::NumberInput(NumberInput {
-						value: layer.bounding_transform(font_cache).scale_x(),
+						value: Some(layer.bounding_transform(font_cache).scale_x()),
 						label: "W".into(),
 						unit: " px".into(),
 						on_update: WidgetCallback::new(|number_input: &NumberInput| {
 							PropertiesPanelMessage::ModifyTransform {
-								value: number_input.value,
+								value: number_input.value.unwrap(),
 								transform_op: TransformOp::Width,
 							}
 							.into()
@@ -658,12 +658,12 @@ fn node_section_transform(layer: &Layer, font_cache: &FontCache) -> LayoutRow {
 						direction: SeparatorDirection::Horizontal,
 					})),
 					WidgetHolder::new(Widget::NumberInput(NumberInput {
-						value: layer.bounding_transform(font_cache).scale_y(),
+						value: Some(layer.bounding_transform(font_cache).scale_y()),
 						label: "H".into(),
 						unit: " px".into(),
 						on_update: WidgetCallback::new(|number_input: &NumberInput| {
 							PropertiesPanelMessage::ModifyTransform {
-								value: number_input.value,
+								value: number_input.value.unwrap(),
 								transform_op: TransformOp::Height,
 							}
 							.into()
@@ -765,7 +765,7 @@ fn node_section_font(layer: &TextLayer) -> LayoutRow {
 						direction: SeparatorDirection::Horizontal,
 					})),
 					WidgetHolder::new(Widget::NumberInput(NumberInput {
-						value: layer.size,
+						value: Some(layer.size),
 						min: Some(1.),
 						unit: " px".into(),
 						on_update: WidgetCallback::new(move |number_input: &NumberInput| {
@@ -773,7 +773,7 @@ fn node_section_font(layer: &TextLayer) -> LayoutRow {
 								font_family: font_family.clone(),
 								font_style: font_style.clone(),
 								font_file: font_file.clone(),
-								size: number_input.value,
+								size: number_input.value.unwrap(),
 							}
 							.into()
 						}),
@@ -954,13 +954,13 @@ fn node_section_stroke(stroke: &Stroke) -> LayoutRow {
 						direction: SeparatorDirection::Horizontal,
 					})),
 					WidgetHolder::new(Widget::NumberInput(NumberInput {
-						value: stroke.weight() as f64,
+						value: Some(stroke.weight() as f64),
 						is_integer: false,
 						min: Some(0.),
 						unit: " px".into(),
 						on_update: WidgetCallback::new(move |number_input: &NumberInput| {
 							PropertiesPanelMessage::ModifyStroke {
-								stroke: internal_stroke2.clone().with_weight(number_input.value),
+								stroke: internal_stroke2.clone().with_weight(number_input.value.unwrap()),
 							}
 							.into()
 						}),
@@ -1000,13 +1000,13 @@ fn node_section_stroke(stroke: &Stroke) -> LayoutRow {
 						direction: SeparatorDirection::Horizontal,
 					})),
 					WidgetHolder::new(Widget::NumberInput(NumberInput {
-						value: stroke.dash_offset() as f64,
+						value: Some(stroke.dash_offset() as f64),
 						is_integer: true,
 						min: Some(0.),
 						unit: " px".into(),
 						on_update: WidgetCallback::new(move |number_input: &NumberInput| {
 							PropertiesPanelMessage::ModifyStroke {
-								stroke: internal_stroke4.clone().with_dash_offset(number_input.value),
+								stroke: internal_stroke4.clone().with_dash_offset(number_input.value.unwrap()),
 							}
 							.into()
 						}),
@@ -1120,13 +1120,13 @@ fn node_section_stroke(stroke: &Stroke) -> LayoutRow {
 						direction: SeparatorDirection::Horizontal,
 					})),
 					WidgetHolder::new(Widget::NumberInput(NumberInput {
-						value: stroke.line_join_miter_limit() as f64,
+						value: Some(stroke.line_join_miter_limit() as f64),
 						is_integer: true,
 						min: Some(0.),
 						unit: "".into(),
 						on_update: WidgetCallback::new(move |number_input: &NumberInput| {
 							PropertiesPanelMessage::ModifyStroke {
-								stroke: internal_stroke5.clone().with_line_join_miter_limit(number_input.value),
+								stroke: internal_stroke5.clone().with_line_join_miter_limit(number_input.value.unwrap()),
 							}
 							.into()
 						}),
