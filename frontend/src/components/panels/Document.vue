@@ -491,10 +491,8 @@ export default defineComponent({
 			this.editor.instance.populate_build_metadata(release || "", timestamp, hash, branch || "");
 		};
 
-		// TODO(mfish33): Replace with initialization system Issue:#524
-		// Get initial Document Bar
-		this.editor.instance.init_document_bar();
 		setLoadDefaultFontCallback((font: string, data: Uint8Array) => this.editor.instance.on_font_load(font, data, true));
+
 		loadBuildMetadata();
 	},
 	data() {

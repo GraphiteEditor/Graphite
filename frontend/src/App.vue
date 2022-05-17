@@ -325,6 +325,8 @@ export default defineComponent({
 	},
 	mounted() {
 		this.inputManager = createInputManager(this.editor, this.$el.parentElement, this.dialog, this.portfolio, this.fullscreen);
+
+		this.editor.instance.init_app();
 	},
 	beforeUnmount() {
 		this.inputManager?.removeListeners();

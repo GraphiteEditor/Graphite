@@ -2,8 +2,7 @@
 // It serves as a thin wrapper over the editor backend API that relies
 // on the dispatcher messaging system and more complex Rust data types.
 
-use crate::helpers::Error;
-use crate::type_translators::{translate_key, translate_tool_type};
+use crate::helpers::{translate_key, Error};
 use crate::{EDITOR_HAS_CRASHED, EDITOR_INSTANCES, JS_EDITOR_HANDLES};
 
 use editor::consts::{FILE_SAVE_SUFFIX, GRAPHITE_DOCUMENT_VERSION};
@@ -11,7 +10,6 @@ use editor::input::input_preprocessor::ModifierKeys;
 use editor::input::mouse::{EditorMouseState, ScrollDelta, ViewportBounds};
 use editor::message_prelude::*;
 use editor::viewport_tools::tool::ToolType;
-use editor::viewport_tools::tools;
 use editor::Color;
 use editor::Editor;
 use editor::LayerId;
@@ -95,19 +93,6 @@ impl JsEditorHandle {
 		self.dispatch(WorkspaceMessage::NodeGraphToggleVisibility);
 	}
 
-	/// Modify the currently selected tool in the document state store
-	pub fn select_tool(&self, tool: String) -> Result<(), JsValue> {
-		match translate_tool_type(&tool) {
-			Some(tool_type) => {
-				let message = ToolMessage::ActivateTool { tool_type };
-				self.dispatch(message);
-
-				Ok(())
-			}
-			None => Err(Error::new(&format!("Couldn't select {} because it was not recognized as a valid tool", tool)).into()),
-		}
-	}
-
 	/// Update layout of a given UI
 	pub fn update_layout(&self, layout_target: JsValue, widget_id: u64, value: JsValue) -> Result<(), JsValue> {
 		match (from_value(layout_target), from_value(value)) {
@@ -117,29 +102,6 @@ impl JsEditorHandle {
 				Ok(())
 			}
 			_ => Err(Error::new("Could not update UI").into()),
-		}
-	}
-
-	/// Send a message to a given tool
-	pub fn send_tool_message(&self, tool: String, message: &JsValue) -> Result<(), JsValue> {
-		let tool_message = match translate_tool_type(&tool) {
-			Some(tool) => match tool {
-				ToolType::Select => match serde_wasm_bindgen::from_value::<tools::select_tool::SelectToolMessage>(message.clone()) {
-					Ok(select_message) => Ok(ToolMessage::Select(select_message)),
-					Err(err) => Err(Error::new(&format!("Invalid message for {}: {}", tool, err)).into()),
-				},
-				_ => Err(Error::new(&format!("Tool message sending not implemented for {}", tool)).into()),
-			},
-			None => Err(Error::new(&format!("Couldn't send message for {} because it was not recognized as a valid tool", tool)).into()),
-		};
-
-		match tool_message {
-			Ok(message) => {
-				self.dispatch(message);
-
-				Ok(())
-			}
-			Err(err) => Err(err),
 		}
 	}
 
@@ -526,10 +488,13 @@ impl JsEditorHandle {
 		self.dispatch(message);
 	}
 
-	// TODO(mfish33): Replace with initialization system Issue:#524
-	pub fn init_document_bar(&self) {
-		let message = PortfolioMessage::UpdateDocumentWidgets;
-		self.dispatch(message)
+	// TODO: Replace with initialization system, issue #524
+	pub fn init_app(&self) {
+		// Switch away from, and back to, the Select Tool to make it display the correct hints in the status bar
+		let message = ToolMessage::ActivateTool { tool_type: ToolType::Path };
+		self.dispatch(message);
+		let message = ToolMessage::ActivateTool { tool_type: ToolType::Select };
+		self.dispatch(message);
 	}
 }
 
@@ -547,10 +512,11 @@ impl Drop for JsEditorHandle {
 	}
 }
 
-/// Access a handle to WASM memory
+/// Set the random seed used by the editor by calling this from JS upon initialization.
+/// This is necessary because WASM doesn't have a random number generator.
 #[wasm_bindgen]
-pub fn wasm_memory() -> JsValue {
-	wasm_bindgen::memory()
+pub fn set_random_seed(seed: u64) {
+	editor::communication::set_uuid_seed(seed)
 }
 
 /// Intentionally panic for debugging purposes
@@ -559,17 +525,24 @@ pub fn intentional_panic() {
 	panic!();
 }
 
-/// Get the constant FILE_SAVE_SUFFIX
+/// Access a handle to WASM memory
+#[wasm_bindgen]
+pub fn wasm_memory() -> JsValue {
+	wasm_bindgen::memory()
+}
+
+/// Get the constant `FILE_SAVE_SUFFIX`
 #[wasm_bindgen]
 pub fn file_save_suffix() -> String {
 	FILE_SAVE_SUFFIX.into()
 }
 
-/// Get the constant FILE_SAVE_SUFFIX
+/// Get the constant `FILE_SAVE_SUFFIX`
 #[wasm_bindgen]
 pub fn graphite_version() -> String {
 	GRAPHITE_DOCUMENT_VERSION.to_string()
 }
+
 /// Get the constant `i32::MAX`
 #[wasm_bindgen]
 pub fn i32_max() -> i32 {
@@ -580,9 +553,4 @@ pub fn i32_max() -> i32 {
 #[wasm_bindgen]
 pub fn i32_min() -> i32 {
 	i32::MIN
-}
-
-#[wasm_bindgen]
-pub fn set_random_seed(seed: u64) {
-	editor::communication::set_uuid_seed(seed)
 }
