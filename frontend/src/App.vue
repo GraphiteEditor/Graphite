@@ -277,7 +277,7 @@ declare module "@vue/runtime-core" {
 		// Graphite WASM editor instance
 		editor: Editor;
 
-		// Stateful Vue systems
+		// Stateful systems which are `provide`d by this Vue component, to be `inject`ed by descendant components
 		dialog: DialogState;
 		fullscreen: FullscreenState;
 		portfolio: PortfolioState;
@@ -291,7 +291,7 @@ export default defineComponent({
 			// Graphite WASM editor instance
 			editor: this.editor,
 
-			// Stateful Vue systems
+			// Stateful systems which are `provide`d by this Vue component, to be `inject`ed by descendant components
 			dialog: this.dialog,
 			fullscreen: this.fullscreen,
 			portfolio: this.portfolio,
@@ -299,24 +299,16 @@ export default defineComponent({
 		};
 	},
 	data() {
-		// Initialize the Graphite WASM editor instance
 		const editor = createEditor();
-
-		// Initialize stateful Vue systems
-		const dialog = createDialogState(editor);
-		const fullscreen = createFullscreenState();
-		const portfolio = createPortfolioState(editor);
-		const workspace = createWorkspaceState(editor);
-
 		return {
 			// Graphite WASM editor instance
 			editor,
 
-			// Stateful systems which are `provide`d by this Vue component, to be `inject`ed into descendant components
-			dialog,
-			fullscreen,
-			portfolio,
-			workspace,
+			// Stateful systems which are `provide`d by this Vue component, to be `inject`ed by descendant components
+			dialog: createDialogState(editor),
+			fullscreen: createFullscreenState(),
+			portfolio: createPortfolioState(editor),
+			workspace: createWorkspaceState(editor),
 
 			// Other data on this Vue component
 			showUnsupportedModal: !("BigInt64Array" in window),
