@@ -3,7 +3,7 @@
 
 import { Transform, Type } from "class-transformer";
 
-import type { WasmEditorInstance, WasmRawInstance } from "@/dispatcher/editor";
+import type { WasmEditorInstance, WasmRawInstance } from "@/interop/editor";
 import { IconName } from "@/utilities/icons";
 
 export class JsMessage {

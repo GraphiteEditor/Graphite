@@ -1,4 +1,4 @@
-import { Editor } from "@/dispatcher/editor";
+import { Editor } from "@/interop/editor";
 import { DialogState } from "@/state/dialog";
 import { FullscreenState } from "@/state/fullscreen";
 import { PortfolioState } from "@/state/portfolio";

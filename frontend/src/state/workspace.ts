@@ -1,8 +1,8 @@
 /* eslint-disable max-classes-per-file */
 import { reactive, readonly } from "vue";
 
-import { Editor } from "@/dispatcher/editor";
-import { UpdateNodeGraphVisibility } from "@/dispatcher/js-messages";
+import { Editor } from "@/interop/editor";
+import { UpdateNodeGraphVisibility } from "@/interop/js-messages";
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 export function createWorkspaceState(editor: Editor) {

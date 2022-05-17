@@ -1,5 +1,5 @@
-import { Editor, getWasmInstance } from "@/dispatcher/editor";
-import { TriggerIndexedDbWriteDocument, TriggerIndexedDbRemoveDocument } from "@/dispatcher/js-messages";
+import { Editor, getWasmInstance } from "@/interop/editor";
+import { TriggerIndexedDbWriteDocument, TriggerIndexedDbRemoveDocument } from "@/interop/js-messages";
 import { PortfolioState } from "@/state/portfolio";
 
 const GRAPHITE_INDEXED_DB_VERSION = 2;

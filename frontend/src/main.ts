@@ -4,7 +4,7 @@
 import "reflect-metadata";
 import { createApp } from "vue";
 
-import { initWasm } from "@/dispatcher/editor";
+import { initWasm } from "@/interop/editor";
 import "@/managers/panic";
 
 import App from "@/App.vue";

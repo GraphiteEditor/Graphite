@@ -1,7 +1,7 @@
 import { reactive, readonly } from "vue";
 
-import { Editor } from "@/dispatcher/editor";
-import { defaultWidgetLayout, DisplayDialog, DisplayDialogDismiss, UpdateDialogDetails, WidgetLayout } from "@/dispatcher/js-messages";
+import { Editor } from "@/interop/editor";
+import { defaultWidgetLayout, DisplayDialog, DisplayDialogDismiss, UpdateDialogDetails, WidgetLayout } from "@/interop/js-messages";
 import { IconName } from "@/utilities/icons";
 import { TextButtonWidget } from "@/utilities/widgets";
 

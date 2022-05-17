@@ -70,7 +70,7 @@
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
 
-import { RGBA } from "@/dispatcher/js-messages";
+import { RGBA } from "@/interop/js-messages";
 
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 import ColorPicker from "@/components/widgets/floating-menus/ColorPicker.vue";

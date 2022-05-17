@@ -69,7 +69,7 @@
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
 
-import { isWidgetRow, isWidgetSection, LayoutRow as LayoutSystemRow, WidgetSection as WidgetSectionFromJsMessages } from "@/dispatcher/js-messages";
+import { isWidgetRow, isWidgetSection, LayoutRow as LayoutSystemRow, WidgetSection as WidgetSectionFromJsMessages } from "@/interop/js-messages";
 
 import LayoutCol from "@/components/layout/LayoutCol.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";

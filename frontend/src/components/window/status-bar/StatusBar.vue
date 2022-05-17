@@ -44,7 +44,7 @@
 <script lang="ts">
 import { defineComponent } from "vue";
 
-import { HintData, UpdateInputHints } from "@/dispatcher/js-messages";
+import { HintData, UpdateInputHints } from "@/interop/js-messages";
 
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 import UserInputLabel from "@/components/widgets/labels/UserInputLabel.vue";

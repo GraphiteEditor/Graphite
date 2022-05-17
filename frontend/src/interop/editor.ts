@@ -1,7 +1,7 @@
 /* eslint-disable func-names */
 
-import { createJsDispatcher } from "@/dispatcher/js-dispatcher";
-import { JsMessageType } from "@/dispatcher/js-messages";
+import { createJsDispatcher } from "@/interop/js-dispatcher";
+import { JsMessageType } from "@/interop/js-messages";
 
 export type WasmRawInstance = typeof import("@/../wasm/pkg");
 export type WasmEditorDispatcher = ReturnType<typeof createJsDispatcher>;

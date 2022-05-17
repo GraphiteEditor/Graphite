@@ -258,7 +258,7 @@ img {
 <script lang="ts">
 import { defineComponent } from "vue";
 
-import { createEditor, Editor } from "@/dispatcher/editor";
+import { createEditor, Editor } from "@/interop/editor";
 import { createAutoSaveManager } from "@/managers/auto-save";
 import { createInputManager } from "@/managers/input";
 import { createPanicManager } from "@/managers/panic";

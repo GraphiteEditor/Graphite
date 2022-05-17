@@ -118,7 +118,7 @@
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
 
-import { RGBA } from "@/dispatcher/js-messages";
+import { RGBA } from "@/interop/js-messages";
 import { hsvaToRgba, rgbaToHsva } from "@/utilities/color";
 import { clamp } from "@/utilities/math";
 

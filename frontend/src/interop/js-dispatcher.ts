@@ -1,7 +1,7 @@
 import { plainToInstance } from "class-transformer";
 
-import type { WasmEditorInstance, WasmRawInstance } from "@/dispatcher/editor";
-import { JsMessageType, messageMakers, JsMessage } from "@/dispatcher/js-messages";
+import type { WasmEditorInstance, WasmRawInstance } from "@/interop/editor";
+import { JsMessageType, messageMakers, JsMessage } from "@/interop/js-messages";
 
 type JsMessageCallback<T extends JsMessage> = (messageData: T) => void;
 type JsMessageCallbackMap = {

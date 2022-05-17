@@ -69,7 +69,7 @@
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
 
-import { WidgetColumn, WidgetRow, isWidgetColumn, isWidgetRow } from "@/dispatcher/js-messages";
+import { WidgetColumn, WidgetRow, isWidgetColumn, isWidgetRow } from "@/interop/js-messages";
 
 import IconButton from "@/components/widgets/buttons/IconButton.vue";
 import PopoverButton from "@/components/widgets/buttons/PopoverButton.vue";

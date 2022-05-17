@@ -1,8 +1,8 @@
 /* eslint-disable max-classes-per-file */
 import { reactive, readonly } from "vue";
 
-import { Editor } from "@/dispatcher/editor";
-import { TriggerFileDownload, TriggerRasterDownload, FrontendDocumentDetails, TriggerFileUpload, UpdateActiveDocument, UpdateOpenDocumentsList } from "@/dispatcher/js-messages";
+import { Editor } from "@/interop/editor";
+import { TriggerFileDownload, TriggerRasterDownload, FrontendDocumentDetails, TriggerFileUpload, UpdateActiveDocument, UpdateOpenDocumentsList } from "@/interop/js-messages";
 import { download, downloadBlob, upload } from "@/utilities/files";
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type

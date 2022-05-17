@@ -53,7 +53,7 @@
 <script lang="ts">
 import { defineComponent } from "vue";
 
-import { Editor } from "@/dispatcher/editor";
+import { Editor } from "@/interop/editor";
 
 import MenuList, { MenuListEntry, MenuListEntries } from "@/components/widgets/floating-menus/MenuList.vue";
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
