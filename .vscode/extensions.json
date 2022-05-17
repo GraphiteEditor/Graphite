@@ -1,6 +1,6 @@
 {
 	"recommendations": [
-		"matklad.rust-analyzer",
+		"rust-lang.rust-analyzer",
 		"dbaeumer.vscode-eslint",
 		"johnsoncodehk.volar",
 		"formulahendry.auto-close-tag",

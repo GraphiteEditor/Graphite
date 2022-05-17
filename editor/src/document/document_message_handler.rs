@@ -774,10 +774,13 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 
 				responses.push_front(DocumentMessage::SelectionChanged.into());
 			}
+			DeleteSelectedVectorPoints => {}
 			DeselectAllLayers => {
 				responses.push_front(SetSelectedLayers { replacement_selected_layers: vec![] }.into());
 				self.layer_range_selection_reference.clear();
 			}
+			DeselectAllVectorPoints => {}
+			DeselectVectorPoints { layer_path, point_ids } => {}
 			DirtyRenderDocument => {
 				// Mark all non-overlay caches as dirty
 				GrapheneDocument::visit_all_shapes(&mut self.graphene_document.root, &mut |_| {});
@@ -912,6 +915,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 					.into(),
 				);
 			}
+			MoveSelectedVectorPoints { delta_x, delta_y } => {}
 			NudgeSelectedLayers { delta_x, delta_y } => {
 				self.backup(responses);
 				for path in self.selected_layers().map(|path| path.to_vec()) {
@@ -1105,6 +1109,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 					}
 				}
 			}
+			SelectVectorPoints { layer_path, point_ids, add } => {}
 			SetBlendModeForSelectedLayers { blend_mode } => {
 				self.backup(responses);
 				for path in self.layer_metadata.iter().filter_map(|(path, data)| data.selected.then(|| path.clone())) {

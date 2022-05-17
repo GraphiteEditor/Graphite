@@ -52,7 +52,13 @@ pub enum DocumentMessage {
 		layer_path: Vec<LayerId>,
 	},
 	DeleteSelectedLayers,
+	DeleteSelectedVectorPoints,
 	DeselectAllLayers,
+	DeselectAllVectorPoints,
+	DeselectVectorPoints {
+		layer_path: Vec<LayerId>,
+		point_ids: Vec<u64>,
+	},
 	DirtyRenderDocument,
 	DirtyRenderDocumentInOutlineView,
 	DocumentHistoryBackward,
@@ -75,6 +81,10 @@ pub enum DocumentMessage {
 		insert_index: isize,
 		reverse_index: bool,
 	},
+	MoveSelectedVectorPoints {
+		delta_x: f64,
+		delta_y: f64,
+	},
 	NudgeSelectedLayers {
 		delta_x: f64,
 		delta_y: f64,
@@ -96,6 +106,11 @@ pub enum DocumentMessage {
 		layer_path: Vec<LayerId>,
 		ctrl: bool,
 		shift: bool,
+	},
+	SelectVectorPoints {
+		layer_path: Vec<LayerId>,
+		point_ids: Vec<u64>,
+		add: bool,
 	},
 	SetBlendModeForSelectedLayers {
 		blend_mode: BlendMode,

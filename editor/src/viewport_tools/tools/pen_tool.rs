@@ -199,12 +199,13 @@ impl Fsm for PenToolFsmState {
 				}
 				(Drawing, DragStop) => {
 					// Deselect everything (this means we are no longer dragging the handle)
-					data.shape_editor.deselect_all_points(&mut document.graphene_document);
+					data.shape_editor.deselect_all_points(&document.graphene_document, responses);
 
 					// TODO Make this more effecient, right now this iterates all the way through all anchors to find the last one
 					// Reselect the last point
-					if let Some(last_anchor) = data.shape_editor.anchors_mut(&mut document.graphene_document).last() {
-						last_anchor.select_point(0, true);
+					if let Some(last_anchor) = data.shape_editor.anchors(&document.graphene_document).last() {
+						// last_anchor.select_point(0, true);
+						// TODO Send a message instead
 					}
 
 					Drawing
@@ -212,7 +213,7 @@ impl Fsm for PenToolFsmState {
 				(Drawing, PointerMove) => {
 					let snapped_position = data.snap_handler.snap_position(responses, input.viewport_bounds.size(), document, input.mouse.position);
 					//data.shape_editor.update_shapes(document, responses);
-					data.shape_editor.move_selected_points(&mut document.graphene_document, snapped_position, false);
+					data.shape_editor.move_selected_points(&document.graphene_document, snapped_position, false, responses);
 
 					Drawing
 				}

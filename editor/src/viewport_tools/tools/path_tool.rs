@@ -150,7 +150,7 @@ impl Fsm for PathToolFsmState {
 					// Select the first point within the threshold (in pixels)
 					if data
 						.shape_editor
-						.select_point(&mut document.graphene_document, input.mouse.position, SELECTION_THRESHOLD, add_to_selection)
+						.select_point(&document.graphene_document, input.mouse.position, SELECTION_THRESHOLD, add_to_selection, responses)
 					{
 						responses.push_back(DocumentMessage::StartTransaction.into());
 						data.snap_handler.start_snap(document, document.bounding_boxes(None, None), true, true);
@@ -205,7 +205,7 @@ impl Fsm for PathToolFsmState {
 						data.alt_debounce = alt_pressed;
 						// Only on alt down
 						if alt_pressed {
-							data.shape_editor.toggle_selected_mirror_angle(&mut document.graphene_document);
+							data.shape_editor.toggle_selected_mirror_angle(&document.graphene_document, &responses);
 						}
 					}
 
@@ -213,20 +213,21 @@ impl Fsm for PathToolFsmState {
 					let shift_pressed = input.keyboard.get(shift_mirror_distance as usize);
 					if shift_pressed != data.shift_debounce {
 						data.shift_debounce = shift_pressed;
-						data.shape_editor.toggle_selected_mirror_distance(&mut document.graphene_document);
+						data.shape_editor.toggle_selected_mirror_distance(&document.graphene_document, &responses);
 					}
 
 					// Move the selected points by the mouse position
 					let snapped_position = data.snap_handler.snap_position(responses, input.viewport_bounds.size(), document, input.mouse.position);
-					data.shape_editor.move_selected_points(&mut document.graphene_document, snapped_position - data.drag_start_pos, true);
+					data.shape_editor
+						.move_selected_points(&document.graphene_document, snapped_position - data.drag_start_pos, true, &responses);
 					Dragging
 				}
 				// DoubleClick
 				(_, Delete) => {
 					// Select the first point within the threshold (in pixels)
-					if data.shape_editor.select_point(&mut document.graphene_document, input.mouse.position, SELECTION_THRESHOLD, false) {
+					if data.shape_editor.select_point(&document.graphene_document, input.mouse.position, SELECTION_THRESHOLD, false, responses) {
 						responses.push_back(DocumentMessage::StartTransaction.into());
-						data.shape_editor.delete_selected_points(&mut document.graphene_document);
+						data.shape_editor.delete_selected_points(&document.graphene_document, responses);
 						responses.push_back(SelectionChanged.into());
 					}
 					Ready
