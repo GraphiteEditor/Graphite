@@ -131,15 +131,17 @@ export default defineComponent({
 		// enter key (via the `change` event) or when the <input> element is defocused (with the `blur` event binding)
 		onTextChanged() {
 			// The `inputElement.blur()` call at the bottom of this function causes itself to be run again, so this check skips a second run
-			if (this.editing) {
-				const newValue = parseFloat(this.text);
-				this.updateValue(newValue);
+			if (!this.editing) return;
 
-				this.editing = false;
+			const parsed = parseFloat(this.text);
+			const newValue = Number.isNaN(parsed) ? undefined : parsed;
 
-				const inputElement = (this.$refs.fieldInput as typeof FieldInput).$refs.input as HTMLInputElement;
-				inputElement.blur();
-			}
+			this.updateValue(newValue);
+
+			this.editing = false;
+
+			const inputElement = (this.$refs.fieldInput as typeof FieldInput).$refs.input as HTMLInputElement;
+			inputElement.blur();
 		},
 		onCancelTextChange() {
 			this.updateValue(undefined);
