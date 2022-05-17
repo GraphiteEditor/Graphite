@@ -1,6 +1,6 @@
 <template>
 	<FloatingMenu class="menu-list" :direction="direction" :type="'Dropdown'" ref="floatingMenu" :windowEdgeMargin="0" :scrollableY="scrollableY" data-hover-menu-keep-open>
-		<template v-for="(section, sectionIndex) in menuEntries" :key="sectionIndex">
+		<template v-for="(section, sectionIndex) in entries" :key="sectionIndex">
 			<Separator :type="'List'" :direction="'Vertical'" v-if="sectionIndex > 0" />
 			<LayoutRow
 				v-for="(entry, entryIndex) in section"
@@ -27,7 +27,7 @@
 				<MenuList
 					v-if="entry.children"
 					:direction="'TopRight'"
-					:menuEntries="entry.children"
+					:entries="entry.children"
 					v-bind="{ defaultAction, minWidth, drawIcon, scrollableY }"
 					:ref="(ref: any) => setEntryRefs(entry, ref)"
 				/>
@@ -167,7 +167,7 @@ const MenuList = defineComponent({
 	inject: ["fullscreen"],
 	props: {
 		direction: { type: String as PropType<MenuDirection>, default: "Bottom" },
-		menuEntries: { type: Array as PropType<SectionsOfMenuListEntries>, required: true },
+		entries: { type: Array as PropType<SectionsOfMenuListEntries>, required: true },
 		activeEntry: { type: Object as PropType<MenuListEntry>, required: false },
 		defaultAction: { type: Function as PropType<() => void>, required: false },
 		minWidth: { type: Number as PropType<number>, default: 0 },
@@ -243,9 +243,9 @@ const MenuList = defineComponent({
 		},
 	},
 	computed: {
-		menuEntriesWithoutRefs(): MenuListEntryData[][] {
-			return this.menuEntries.map((entries) =>
-				entries.map((entry) => {
+		entriesWithoutRefs(): MenuListEntryData[][] {
+			return this.entries.map((menuListEntries) =>
+				menuListEntries.map((entry) => {
 					const { ref, ...entryWithoutRef } = entry;
 					return entryWithoutRef;
 				})
@@ -259,7 +259,7 @@ const MenuList = defineComponent({
 		this.measureAndReportWidth();
 	},
 	watch: {
-		menuEntriesWithoutRefs: {
+		entriesWithoutRefs: {
 			handler() {
 				this.measureAndReportWidth();
 			},

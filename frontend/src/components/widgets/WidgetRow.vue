@@ -1,6 +1,6 @@
 <template>
-	<div class="widget-row">
-		<template v-for="(component, index) in widgetData.widgets" :key="index">
+	<div :class="`widget-${direction}`">
+		<template v-for="(component, index) in widgets" :key="index">
 			<!-- TODO: Use `<component :is="" v-bind="attributesObject"></component>` to avoid all the separate components with `v-if` -->
 			<CheckboxInput v-if="component.kind === 'CheckboxInput'" v-bind="component.props" @update:checked="(value: boolean) => updateLayout(component.widget_id, value)" />
 			<ColorInput v-if="component.kind === 'ColorInput'" v-bind="component.props" @update:value="(value: string) => updateLayout(component.widget_id, value)" />
@@ -35,6 +35,12 @@
 </template>
 
 <style lang="scss">
+.widget-column {
+	flex: 0 0 auto;
+	display: flex;
+	flex-direction: column;
+}
+
 .widget-row {
 	flex: 0 0 auto;
 	display: flex;
@@ -63,7 +69,7 @@
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
 
-import { WidgetRow } from "@/dispatcher/js-messages";
+import { WidgetColumn, WidgetRow, isWidgetColumn, isWidgetRow } from "@/dispatcher/js-messages";
 
 import IconButton from "@/components/widgets/buttons/IconButton.vue";
 import PopoverButton from "@/components/widgets/buttons/PopoverButton.vue";
@@ -84,8 +90,20 @@ import Separator from "@/components/widgets/separators/Separator.vue";
 export default defineComponent({
 	inject: ["editor"],
 	props: {
-		widgetData: { type: Object as PropType<WidgetRow>, required: true },
+		widgetData: { type: Object as PropType<WidgetColumn | WidgetRow>, required: true },
 		layoutTarget: { required: true },
+	},
+	computed: {
+		direction() {
+			if (isWidgetColumn(this.widgetData)) return "column";
+			if (isWidgetRow(this.widgetData)) return "row";
+			return "ERROR";
+		},
+		widgets() {
+			if (isWidgetColumn(this.widgetData)) return this.widgetData.columnWidgets;
+			if (isWidgetRow(this.widgetData)) return this.widgetData.rowWidgets;
+			return [];
+		},
 	},
 	methods: {
 		updateLayout(widgetId: BigInt, value: unknown) {
