@@ -153,14 +153,13 @@ impl Fsm for PathToolFsmState {
 						.select_point(&document.graphene_document, input.mouse.position, SELECTION_THRESHOLD, add_to_selection, responses)
 					{
 						responses.push_back(DocumentMessage::StartTransaction.into());
-						data.snap_handler.start_snap(document, document.bounding_boxes(None, None), true, true);
-						let snap_points = data
-							.shape_editor
-							.selected_anchors(&document.graphene_document)
-							.flat_map(|anchor| anchor.points[0].as_ref())
-							.map(|point| point.position)
-							.collect();
-						data.snap_handler.add_snap_points(document, snap_points);
+
+						let ignore_document = data.shape_editor.target_layers().clone();
+						data.snap_handler.start_snap(document, document.bounding_boxes(Some(&ignore_document), None), true, true);
+
+						let include_handles = data.shape_editor.target_layers_ref();
+						data.snap_handler.add_all_document_handles(document, &include_handles, &[]);
+
 						data.drag_start_pos = input.mouse.position;
 						Dragging
 					}
@@ -217,9 +216,9 @@ impl Fsm for PathToolFsmState {
 					}
 
 					// Move the selected points by the mouse position
-					let snapped_position = data.snap_handler.snap_position(responses, input.viewport_bounds.size(), document, input.mouse.position);
+					let snapped_position = data.snap_handler.snap_position(responses, document, input.mouse.position);
 					data.shape_editor
-						.move_selected_points(&document.graphene_document, snapped_position - data.drag_start_pos, true, &responses);
+						.move_selected_points(&document.graphene_document, snapped_position - data.drag_start_pos, true, responses);
 					Dragging
 				}
 				// DoubleClick

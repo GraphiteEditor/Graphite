@@ -10,8 +10,8 @@
 		@cancelTextChange="() => onCancelTextChange()"
 		ref="fieldInput"
 	>
-		<button v-if="!Number.isNaN(value)" class="arrow left" @click="() => onIncrement('Decrease')"></button>
-		<button v-if="!Number.isNaN(value)" class="arrow right" @click="() => onIncrement('Increase')"></button>
+		<button v-if="value !== undefined" class="arrow left" @click="() => onIncrement('Decrease')"></button>
+		<button v-if="value !== undefined" class="arrow right" @click="() => onIncrement('Increase')"></button>
 	</FieldInput>
 </template>
 
@@ -94,7 +94,7 @@ import FieldInput from "@/components/widgets/inputs/FieldInput.vue";
 export default defineComponent({
 	emits: ["update:value"],
 	props: {
-		value: { type: Number as PropType<number>, required: true },
+		value: { type: Number as PropType<number>, required: false }, // When not provided, a dash is displayed
 		min: { type: Number as PropType<number>, required: false },
 		max: { type: Number as PropType<number>, required: false },
 		incrementBehavior: { type: String as PropType<IncrementBehavior>, default: "Add" },
@@ -116,7 +116,7 @@ export default defineComponent({
 	},
 	methods: {
 		onTextFocused() {
-			if (Number.isNaN(this.value)) this.text = "";
+			if (this.value === undefined) this.text = "";
 			else if (this.unitIsHiddenWhenEditing) this.text = `${this.value}`;
 			else this.text = `${this.value}${this.unit}`;
 
@@ -131,18 +131,20 @@ export default defineComponent({
 		// enter key (via the `change` event) or when the <input> element is defocused (with the `blur` event binding)
 		onTextChanged() {
 			// The `inputElement.blur()` call at the bottom of this function causes itself to be run again, so this check skips a second run
-			if (this.editing) {
-				const newValue = parseFloat(this.text);
-				this.updateValue(newValue);
+			if (!this.editing) return;
 
-				this.editing = false;
+			const parsed = parseFloat(this.text);
+			const newValue = Number.isNaN(parsed) ? undefined : parsed;
 
-				const inputElement = (this.$refs.fieldInput as typeof FieldInput).$refs.input as HTMLInputElement;
-				inputElement.blur();
-			}
+			this.updateValue(newValue);
+
+			this.editing = false;
+
+			const inputElement = (this.$refs.fieldInput as typeof FieldInput).$refs.input as HTMLInputElement;
+			inputElement.blur();
 		},
 		onCancelTextChange() {
-			this.updateValue(NaN);
+			this.updateValue(undefined);
 
 			this.editing = false;
 
@@ -150,38 +152,40 @@ export default defineComponent({
 			inputElement.blur();
 		},
 		onIncrement(direction: IncrementDirection) {
-			if (Number.isNaN(this.value)) return;
+			if (this.value === undefined) return;
 
-			({
+			const actions = {
 				Add: (): void => {
 					const directionAddend = direction === "Increase" ? this.incrementFactor : -this.incrementFactor;
-					this.updateValue(this.value + directionAddend);
+					this.updateValue(this.value !== undefined ? this.value + directionAddend : undefined);
 				},
 				Multiply: (): void => {
 					const directionMultiplier = direction === "Increase" ? this.incrementFactor : 1 / this.incrementFactor;
-					this.updateValue(this.value * directionMultiplier);
+					this.updateValue(this.value !== undefined ? this.value * directionMultiplier : undefined);
 				},
 				Callback: (): void => {
-					if (direction === "Increase" && this.incrementCallbackIncrease) this.incrementCallbackIncrease();
-					if (direction === "Decrease" && this.incrementCallbackDecrease) this.incrementCallbackDecrease();
+					if (direction === "Increase") this.incrementCallbackIncrease?.();
+					if (direction === "Decrease") this.incrementCallbackDecrease?.();
 				},
 				None: (): void => undefined,
-			}[this.incrementBehavior]());
+			};
+			const action = actions[this.incrementBehavior];
+			action();
 		},
-		updateValue(newValue: number) {
-			const invalid = Number.isNaN(newValue);
+		updateValue(newValue: number | undefined) {
+			const nowValid = this.value !== undefined && this.isInteger ? Math.round(this.value) : this.value;
+			let cleaned = newValue !== undefined ? newValue : nowValid;
 
-			let sanitized = newValue;
-			if (invalid) sanitized = this.value;
-			if (this.isInteger) sanitized = Math.round(sanitized);
-			if (typeof this.min === "number" && !Number.isNaN(this.min)) sanitized = Math.max(sanitized, this.min);
-			if (typeof this.max === "number" && !Number.isNaN(this.max)) sanitized = Math.min(sanitized, this.max);
+			if (typeof this.min === "number" && !Number.isNaN(this.min) && cleaned !== undefined) cleaned = Math.max(cleaned, this.min);
+			if (typeof this.max === "number" && !Number.isNaN(this.max) && cleaned !== undefined) cleaned = Math.min(cleaned, this.max);
 
-			if (!invalid) this.$emit("update:value", sanitized);
+			if (newValue !== undefined) this.$emit("update:value", cleaned);
 
-			this.text = this.displayText(sanitized);
+			this.text = this.displayText(cleaned);
 		},
-		displayText(value: number): string {
+		displayText(value: number | undefined): string {
+			if (value === undefined) return "-";
+
 			// Find the amount of digits on the left side of the decimal
 			// 10.25 == 2
 			// 1.23 == 1
@@ -197,8 +201,8 @@ export default defineComponent({
 	},
 	watch: {
 		// Called only when `value` is changed from outside this component (with v-model)
-		value(newValue: number) {
-			if (Number.isNaN(newValue)) {
+		value(newValue: number | undefined) {
+			if (newValue === undefined) {
 				this.text = "-";
 				return;
 			}

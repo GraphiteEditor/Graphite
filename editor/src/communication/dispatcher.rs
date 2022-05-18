@@ -4,25 +4,31 @@ use crate::input::{InputMapperMessageHandler, InputPreprocessorMessageHandler};
 use crate::layout::layout_message_handler::LayoutMessageHandler;
 use crate::message_prelude::*;
 use crate::viewport_tools::tool_message_handler::ToolMessageHandler;
+use crate::workspace::WorkspaceMessageHandler;
 
 use std::collections::VecDeque;
+
+use super::BuildMetadata;
 
 #[derive(Debug, Default)]
 pub struct Dispatcher {
 	message_queue: VecDeque<Message>,
 	pub responses: Vec<FrontendMessage>,
 	message_handlers: DispatcherMessageHandlers,
+	build_metadata: BuildMetadata,
 }
 
 #[remain::sorted]
 #[derive(Debug, Default)]
 struct DispatcherMessageHandlers {
+	dialog_message_handler: DialogMessageHandler,
 	global_message_handler: GlobalMessageHandler,
 	input_mapper_message_handler: InputMapperMessageHandler,
 	input_preprocessor_message_handler: InputPreprocessorMessageHandler,
 	layout_message_handler: LayoutMessageHandler,
 	portfolio_message_handler: PortfolioMessageHandler,
 	tool_message_handler: ToolMessageHandler,
+	workspace_message_handler: WorkspaceMessageHandler,
 }
 
 /// For optimization, these are messages guaranteed to be redundant when repeated.
@@ -31,9 +37,12 @@ struct DispatcherMessageHandlers {
 const SIDE_EFFECT_FREE_MESSAGES: &[MessageDiscriminant] = &[
 	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::RenderDocument)),
 	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::Overlays(OverlaysMessageDiscriminant::Rerender))),
+	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::Artboard(
+		ArtboardMessageDiscriminant::RenderArtboards,
+	))),
 	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::FolderChanged)),
-	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::UpdateDocumentLayer),
-	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::DisplayDocumentLayerTreeStructure),
+	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::UpdateDocumentLayerDetails),
+	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::UpdateDocumentLayerTreeStructure),
 	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::UpdateOpenDocumentsList),
 	MessageDiscriminant::Tool(ToolMessageDiscriminant::DocumentIsDirty),
 ];
@@ -63,7 +72,18 @@ impl Dispatcher {
 			match message {
 				#[remain::unsorted]
 				NoOp => {}
+				Dialog(message) => {
+					self.message_handlers
+						.dialog_message_handler
+						.process_action(message, (&self.build_metadata, &self.message_handlers.portfolio_message_handler), &mut self.message_queue);
+				}
 				Frontend(message) => {
+					// Image and font loading should be immediately handled
+					if let FrontendMessage::UpdateImageData { .. } | FrontendMessage::TriggerFontLoad { .. } = message {
+						self.responses.push(message);
+						return;
+					}
+
 					// `FrontendMessage`s are saved and will be sent to the frontend after the message queue is done being processed
 					self.responses.push(message);
 				}
@@ -95,6 +115,14 @@ impl Dispatcher {
 						&mut self.message_queue,
 					);
 				}
+				Workspace(message) => {
+					self.message_handlers
+						.workspace_message_handler
+						.process_action(message, &self.message_handlers.input_preprocessor_message_handler, &mut self.message_queue);
+				}
+
+				#[remain::unsorted]
+				PopulateBuildMetadata { new } => self.build_metadata = new,
 			}
 		}
 	}
@@ -102,6 +130,7 @@ impl Dispatcher {
 	pub fn collect_actions(&self) -> ActionList {
 		// TODO: Reduce the number of heap allocations
 		let mut list = Vec::new();
+		list.extend(self.message_handlers.dialog_message_handler.actions());
 		list.extend(self.message_handlers.input_preprocessor_message_handler.actions());
 		list.extend(self.message_handlers.input_mapper_message_handler.actions());
 		list.extend(self.message_handlers.global_message_handler.actions());
@@ -113,12 +142,7 @@ impl Dispatcher {
 	fn log_message(&self, message: &Message) {
 		use Message::*;
 
-		if log::max_level() == log::LevelFilter::Trace
-			&& !(matches!(
-				message,
-				InputPreprocessor(_) | Frontend(FrontendMessage::UpdateCanvasZoom { .. }) | Frontend(FrontendMessage::UpdateCanvasRotation { .. })
-			) || MessageDiscriminant::from(message).local_name().ends_with("PointerMove"))
-		{
+		if log::max_level() == log::LevelFilter::Trace && !(matches!(message, InputPreprocessor(_)) || MessageDiscriminant::from(message).local_name().ends_with("PointerMove")) {
 			log::trace!("Message: {:?}", message);
 			// log::trace!("Hints: {:?}", self.input_mapper_message_handler.hints(self.collect_actions()));
 		}
@@ -169,9 +193,9 @@ mod test {
 		let mut editor = create_editor_with_three_layers();
 
 		let document_before_copy = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().graphene_document.clone();
-		editor.handle_message(PortfolioMessage::Copy { clipboard: Clipboard::User });
+		editor.handle_message(PortfolioMessage::Copy { clipboard: Clipboard::Internal });
 		editor.handle_message(PortfolioMessage::PasteIntoFolder {
-			clipboard: Clipboard::User,
+			clipboard: Clipboard::Internal,
 			folder_path: vec![],
 			insert_index: -1,
 		});
@@ -208,9 +232,9 @@ mod test {
 		editor.handle_message(DocumentMessage::SetSelectedLayers {
 			replacement_selected_layers: vec![vec![shape_id]],
 		});
-		editor.handle_message(PortfolioMessage::Copy { clipboard: Clipboard::User });
+		editor.handle_message(PortfolioMessage::Copy { clipboard: Clipboard::Internal });
 		editor.handle_message(PortfolioMessage::PasteIntoFolder {
-			clipboard: Clipboard::User,
+			clipboard: Clipboard::Internal,
 			folder_path: vec![],
 			insert_index: -1,
 		});
@@ -273,15 +297,15 @@ mod test {
 
 		let document_before_copy = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().graphene_document.clone();
 
-		editor.handle_message(PortfolioMessage::Copy { clipboard: Clipboard::User });
+		editor.handle_message(PortfolioMessage::Copy { clipboard: Clipboard::Internal });
 		editor.handle_message(DocumentMessage::DeleteSelectedLayers);
 		editor.handle_message(PortfolioMessage::PasteIntoFolder {
-			clipboard: Clipboard::User,
+			clipboard: Clipboard::Internal,
 			folder_path: vec![],
 			insert_index: -1,
 		});
 		editor.handle_message(PortfolioMessage::PasteIntoFolder {
-			clipboard: Clipboard::User,
+			clipboard: Clipboard::Internal,
 			folder_path: vec![],
 			insert_index: -1,
 		});
@@ -344,16 +368,16 @@ mod test {
 		editor.handle_message(DocumentMessage::SetSelectedLayers {
 			replacement_selected_layers: vec![vec![rect_id], vec![ellipse_id]],
 		});
-		editor.handle_message(PortfolioMessage::Copy { clipboard: Clipboard::User });
+		editor.handle_message(PortfolioMessage::Copy { clipboard: Clipboard::Internal });
 		editor.handle_message(DocumentMessage::DeleteSelectedLayers);
 		editor.draw_rect(0., 800., 12., 200.);
 		editor.handle_message(PortfolioMessage::PasteIntoFolder {
-			clipboard: Clipboard::User,
+			clipboard: Clipboard::Internal,
 			folder_path: vec![],
 			insert_index: -1,
 		});
 		editor.handle_message(PortfolioMessage::PasteIntoFolder {
-			clipboard: Clipboard::User,
+			clipboard: Clipboard::Internal,
 			folder_path: vec![],
 			insert_index: -1,
 		});
@@ -414,5 +438,39 @@ mod test {
 		editor.handle_message(DocumentMessage::ReorderSelectedLayers { relative_index_offset: isize::MAX });
 		let (all, non_selected, selected) = verify_order(editor.dispatcher.message_handlers.portfolio_message_handler.active_document_mut());
 		assert_eq!(all, non_selected.into_iter().chain(selected.into_iter()).collect::<Vec<_>>());
+	}
+
+	#[test]
+	fn check_if_graphite_file_version_upgrade_is_needed() {
+		use crate::layout::widgets::{LayoutRow, TextLabel, Widget};
+
+		init_logger();
+		set_uuid_seed(0);
+		let mut editor = Editor::new();
+		let test_file = include_str!("./graphite-test-document.graphite");
+		let responses = editor.handle_message(PortfolioMessage::OpenDocumentFile {
+			document_name: "Graphite Version Test".into(),
+			document_serialized_content: test_file.into(),
+		});
+
+		for response in responses {
+			if let FrontendMessage::UpdateDialogDetails { layout_target: _, layout } = response {
+				if let LayoutRow::Row { widgets } = &layout[0] {
+					if let Widget::TextLabel(TextLabel { value, .. }) = &widgets[0].widget {
+						println!();
+						println!("-------------------------------------------------");
+						println!("Failed test due to receiving a DisplayDialogError while loading the Graphite sample file!");
+						println!("This is most likely caused by forgetting to bump the `GRAPHITE_DOCUMENT_VERSION` in `editor/src/consts.rs`");
+						println!("Once bumping this version number please replace the `graphite-test-document.graphite` with a valid file.");
+						println!("DisplayDialogError details:");
+						println!();
+						println!("Description: {}", value);
+						println!("-------------------------------------------------");
+						println!();
+						panic!()
+					}
+				}
+			}
+		}
 	}
 }

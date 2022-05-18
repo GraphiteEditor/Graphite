@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Blog | {{ page.title }}.{% endblock title %}
+
+{% block head %}
+<link rel="stylesheet" href="/article.css">
+<meta property="og:title" content="{{ page.title }}.">
+<meta property="og:type" content="article" />
+<meta property="og:image" content="{{ page.extra.banner | safe }}">
+<meta property="og:url" content="{{ current_url | safe }}">
+{% endblock head %}
+
+{% block content %}
+<section id="article" class="section-row">
+	<div class="section">
+		<div class="details">
+			<h2 class="headline">{{ page.title }}.</h2>
+			<span class="publication">By {{ page.extra.author }}. {{ page.date | date(format="%B %d, %Y", timezone="America/Los_Angeles") }}.</span>
+			<img class="banner" src="{{ page.extra.banner | safe }}" />
+		</div>
+		<hr />
+		<article>
+			{{ page.content | safe }}
+		</article>
+		{% if page.extra.reddit or page.extra.twitter %}
+		<hr />
+		<div class="social">
+			{% if page.extra.reddit %}
+			<a href="{{ page.extra.reddit | safe }}" target="_blank" class="button arrow">
+				<img src="https://static.graphite.rs/icons/reddit.svg" /><span>Comment on Reddit</span>
+			</a>
+			{% endif %}
+			{% if page.extra.twitter %}
+			<a href="{{ page.extra.twitter | safe }}" target="_blank" class="button arrow">
+				<img src="https://static.graphite.rs/icons/twitter.svg" /><span>Comment on Twitter</span>
+			</a>
+			{% endif %}
+		</div>
+		{% endif %}
+	</div>
+</section>
+{% endblock content %}

@@ -59,14 +59,13 @@ pub enum ShapeOptionsUpdate {
 impl PropertyHolder for ShapeTool {
 	fn properties(&self) -> WidgetLayout {
 		WidgetLayout::new(vec![LayoutRow::Row {
-			name: "".into(),
 			widgets: vec![WidgetHolder::new(Widget::NumberInput(NumberInput {
 				label: "Sides".into(),
-				value: self.options.vertices as f64,
+				value: Some(self.options.vertices as f64),
 				is_integer: true,
 				min: Some(3.),
 				max: Some(256.),
-				on_update: WidgetCallback::new(|number_input| ShapeToolMessage::UpdateOptions(ShapeOptionsUpdate::Vertices(number_input.value as u8)).into()),
+				on_update: WidgetCallback::new(|number_input: &NumberInput| ShapeToolMessage::UpdateOptions(ShapeOptionsUpdate::Vertices(number_input.value.unwrap() as u8)).into()),
 				..NumberInput::default()
 			}))],
 		}])
@@ -150,7 +149,7 @@ impl Fsm for ShapeToolFsmState {
 		if let ToolMessage::Shape(event) = event {
 			match (self, event) {
 				(Ready, DragStart) => {
-					shape_data.start(responses, input.viewport_bounds.size(), document, input.mouse.position);
+					shape_data.start(responses, document, input.mouse.position);
 					responses.push_back(DocumentMessage::StartTransaction.into());
 					shape_data.path = Some(document.get_path_for_new_layer());
 					responses.push_back(DocumentMessage::DeselectAllLayers.into());
@@ -162,7 +161,7 @@ impl Fsm for ShapeToolFsmState {
 							insert_index: -1,
 							transform: DAffine2::ZERO.to_cols_array(),
 							sides: data.sides.into(),
-							style: style::PathStyle::new(None, Some(style::Fill::new(tool_data.primary_color))),
+							style: style::PathStyle::new(None, style::Fill::solid(tool_data.primary_color)),
 						}
 						.into(),
 					);
@@ -170,7 +169,7 @@ impl Fsm for ShapeToolFsmState {
 					Drawing
 				}
 				(state, Resize { center, lock_ratio }) => {
-					if let Some(message) = shape_data.calculate_transform(responses, input.viewport_bounds.size(), document, center, lock_ratio, input) {
+					if let Some(message) = shape_data.calculate_transform(responses, document, center, lock_ratio, input) {
 						responses.push_back(message);
 					}
 

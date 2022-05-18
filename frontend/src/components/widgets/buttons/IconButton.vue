@@ -1,5 +1,5 @@
 <template>
-	<button class="icon-button" :class="`size-${size}`" @click="(e: MouseEvent) => action(e)">
+	<button :class="['icon-button', `size-${size}`, active && 'active']" @click="(e: MouseEvent) => action(e)">
 		<IconLabel :icon="icon" />
 	</button>
 </template>
@@ -25,7 +25,11 @@
 		margin-left: 0;
 	}
 
-	&:hover {
+	&.active {
+		background: var(--color-accent);
+	}
+
+	&:hover:not(.active) {
 		background: var(--color-6-lowergray);
 		color: var(--color-f-white);
 
@@ -68,6 +72,7 @@ export default defineComponent({
 		action: { type: Function as PropType<(e?: MouseEvent) => void>, required: true },
 		icon: { type: String as PropType<IconName>, required: true },
 		size: { type: Number as PropType<IconSize>, required: true },
+		active: { type: Boolean as PropType<boolean>, default: false },
 		gapAfter: { type: Boolean as PropType<boolean>, default: false },
 	},
 	components: { IconLabel },

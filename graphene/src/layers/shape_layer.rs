@@ -1,6 +1,7 @@
 use super::layer_info::LayerData;
 use super::style::{self, PathStyle, ViewMode};
 use super::vector::vector_shape::VectorShape;
+use crate::document::FontCache;
 use crate::intersection::{intersect_quad_bez_path, Quad};
 use crate::LayerId;
 
@@ -13,17 +14,31 @@ fn glam_to_kurbo(transform: DAffine2) -> Affine {
 	Affine::new(transform.to_cols_array())
 }
 
+/// A generic SVG element defined using Bezier paths.
+/// Shapes are rendered as
+/// [`<path>`](https://developer.mozilla.org/en-US/docs/Web/SVG/Element/path)
+/// elements inside a
+/// [`<g>`](https://developer.mozilla.org/en-US/docs/Web/SVG/Element/g)
+/// group that the transformation matrix is applied to.
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct ShapeLayer {
+	/// The geometry of the layer.
 	pub shape: VectorShape,
+	/// The visual style of the shape.
 	pub style: style::PathStyle,
+	/// The rendering order.
 	pub render_index: i32,
+	/// Whether or not the [path](ShapeLayer::path) connects to itself.
 	pub closed: bool,
 }
 
 impl LayerData for ShapeLayer {
-	fn render(&mut self, svg: &mut String, transforms: &mut Vec<DAffine2>, view_mode: ViewMode) {
+	fn render(&mut self, svg: &mut String, svg_defs: &mut String, transforms: &mut Vec<DAffine2>, view_mode: ViewMode, _font_cache: &FontCache) {
 		let mut vector_shape = self.shape.clone();
+
+		let kurbo::Rect { x0, y0, x1, y1 } = vector_shape.bounding_box();
+		let layer_bounds = [(x0, y0).into(), (x1, y1).into()];
+
 		let transform = self.transform(transforms, view_mode);
 		let inverse = transform.inverse();
 		if !inverse.is_finite() {
@@ -32,16 +47,24 @@ impl LayerData for ShapeLayer {
 		}
 		vector_shape.apply_affine(transform);
 
+		let kurbo::Rect { x0, y0, x1, y1 } = vector_shape.bounding_box();
+		let transformed_bounds = [(x0, y0).into(), (x1, y1).into()];
+
 		let _ = writeln!(svg, r#"<g transform="matrix("#);
 		inverse.to_cols_array().iter().enumerate().for_each(|(i, entry)| {
 			let _ = svg.write_str(&(entry.to_string() + if i == 5 { "" } else { "," }));
 		});
 		let _ = svg.write_str(r#")">"#);
-		let _ = write!(svg, r#"<path d="{}" {} />"#, vector_shape.to_svg(), self.style.render(view_mode));
+		let _ = write!(
+			svg,
+			r#"<path d="{}" {} />"#,
+			vector_shape.to_svg(),
+			self.style.render(view_mode, svg_defs, transform, layer_bounds, transformed_bounds)
+		);
 		let _ = svg.write_str("</g>");
 	}
 
-	fn bounding_box(&self, transform: glam::DAffine2) -> Option<[DVec2; 2]> {
+	fn bounding_box(&self, transform: glam::DAffine2, _font_cache: &FontCache) -> Option<[DVec2; 2]> {
 		// TODO Avoid this clone if possible
 		let mut vector_shape = self.shape.clone();
 		if transform.matrix2 == DMat2::ZERO {
@@ -53,7 +76,7 @@ impl LayerData for ShapeLayer {
 		Some([(x0, y0).into(), (x1, y1).into()])
 	}
 
-	fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>) {
+	fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, _font_cache: &FontCache) {
 		if intersect_quad_bez_path(quad, &(&self.shape).into(), self.style.fill().is_some()) {
 			intersections.push(path.clone());
 		}
@@ -81,6 +104,10 @@ impl ShapeLayer {
 	}
 
 	/// TODO The behavior of ngon changed from the previous iteration slightly, match original behavior
+	/// Create an N-gon.
+	///
+	/// # Panics
+	/// This function panics if `sides` is zero.
 	pub fn ngon(sides: u64, style: PathStyle) -> Self {
 		Self {
 			shape: VectorShape::new_ngon(DVec2::new(0., 0.), sides, 1.),
@@ -90,6 +117,7 @@ impl ShapeLayer {
 		}
 	}
 
+	/// Create a rectangular shape.
 	pub fn rectangle(style: PathStyle) -> Self {
 		Self {
 			shape: VectorShape::new_rect(DVec2::new(0., 0.), DVec2::new(1., 1.)),
@@ -99,6 +127,7 @@ impl ShapeLayer {
 		}
 	}
 
+	/// Create an elliptical shape.
 	pub fn ellipse(style: PathStyle) -> Self {
 		Self {
 			shape: VectorShape::from_kurbo_shape(&kurbo::Ellipse::from_rect(kurbo::Rect::new(0., 0., 1., 1.)).to_path(0.01)),
@@ -108,6 +137,7 @@ impl ShapeLayer {
 		}
 	}
 
+	/// Create a straight line from (0, 0) to (1, 0).
 	pub fn line(style: PathStyle) -> Self {
 		Self {
 			shape: VectorShape::new_line(DVec2::new(0., 0.), DVec2::new(1., 0.)),
@@ -117,6 +147,7 @@ impl ShapeLayer {
 		}
 	}
 
+	/// Create a polygonal line that visits each provided point.
 	pub fn poly_line(points: Vec<impl Into<glam::DVec2>>, style: PathStyle) -> Self {
 		Self {
 			shape: VectorShape::new_poly_line(points),
@@ -128,7 +159,7 @@ impl ShapeLayer {
 
 	// TODO Remove BezPath / Kurbo usage in spline
 	/// Creates a smooth bezier spline that passes through all given points.
-	/// The algorithm used in this implementation is described here: https://www.particleincell.com/2012/bezier-splines/
+	/// The algorithm used in this implementation is described here: <https://www.particleincell.com/2012/bezier-splines/>
 	pub fn spline(points: Vec<impl Into<glam::DVec2>>, style: PathStyle) -> Self {
 		let mut path = kurbo::BezPath::new();
 
@@ -163,9 +194,9 @@ impl ShapeLayer {
 			// Solve with Thomas algorithm (see https://en.wikipedia.org/wiki/Tridiagonal_matrix_algorithm)
 			for i in 1..n {
 				let m = a[i] / b[i - 1];
-				// TODO: Fix Clippy warning which makes the borrow checker angry
-				b[i] = b[i] - m * c[i - 1];
-				r[i] = r[i] - m * r[i - 1];
+				b[i] -= m * c[i - 1];
+				let last_iteration_r = r[i - 1];
+				r[i] -= m * last_iteration_r;
 			}
 
 			// Determine first control point for each segment

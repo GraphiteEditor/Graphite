@@ -2,20 +2,17 @@
 // It serves as a thin wrapper over the editor backend API that relies
 // on the dispatcher messaging system and more complex Rust data types.
 
-use crate::helpers::Error;
-use crate::type_translators::{translate_blend_mode, translate_key, translate_tool_type};
-use crate::{EDITOR_HAS_CRASHED, EDITOR_INSTANCES};
+use crate::helpers::{translate_key, Error};
+use crate::{EDITOR_HAS_CRASHED, EDITOR_INSTANCES, JS_EDITOR_HANDLES};
 
 use editor::consts::{FILE_SAVE_SUFFIX, GRAPHITE_DOCUMENT_VERSION};
 use editor::input::input_preprocessor::ModifierKeys;
 use editor::input::mouse::{EditorMouseState, ScrollDelta, ViewportBounds};
 use editor::message_prelude::*;
-use editor::misc::EditorError;
-use editor::viewport_tools::tool::ToolType;
-use editor::viewport_tools::tools;
 use editor::Color;
 use editor::Editor;
 use editor::LayerId;
+use graphene::Operation;
 
 use serde::Serialize;
 use serde_wasm_bindgen::{self, from_value};
@@ -39,7 +36,8 @@ impl JsEditorHandle {
 		let editor_id = generate_uuid();
 		let editor = Editor::new();
 		let editor_handle = JsEditorHandle { editor_id, handle_response };
-		EDITOR_INSTANCES.with(|instances| instances.borrow_mut().insert(editor_id, (editor, editor_handle.clone())));
+		EDITOR_INSTANCES.with(|instances| instances.borrow_mut().insert(editor_id, editor));
+		JS_EDITOR_HANDLES.with(|instances| instances.borrow_mut().insert(editor_id, editor_handle.clone()));
 		editor_handle
 	}
 
@@ -55,7 +53,6 @@ impl JsEditorHandle {
 				.borrow_mut()
 				.get_mut(&self.editor_id)
 				.expect("EDITOR_INSTANCES does not contain the current editor_id")
-				.0
 				.handle_message(message.into())
 		});
 		for response in responses.into_iter() {
@@ -83,25 +80,16 @@ impl JsEditorHandle {
 	}
 
 	// ========================================================================
-	// Add additional JS -> Rust wrapper functions below as needed for calling the
-	// backend from the web frontend.
+	// Add additional JS -> Rust wrapper functions below as needed for calling
+	// the backend from the web frontend.
 	// ========================================================================
 
 	pub fn has_crashed(&self) -> bool {
 		EDITOR_HAS_CRASHED.load(Ordering::SeqCst)
 	}
 
-	/// Modify the currently selected tool in the document state store
-	pub fn select_tool(&self, tool: String) -> Result<(), JsValue> {
-		match translate_tool_type(&tool) {
-			Some(tool_type) => {
-				let message = ToolMessage::ActivateTool { tool_type };
-				self.dispatch(message);
-
-				Ok(())
-			}
-			None => Err(Error::new(&format!("Couldn't select {} because it was not recognized as a valid tool", tool)).into()),
-		}
+	pub fn toggle_node_graph_visibility(&self) {
+		self.dispatch(WorkspaceMessage::NodeGraphToggleVisibility);
 	}
 
 	/// Update layout of a given UI
@@ -116,29 +104,6 @@ impl JsEditorHandle {
 		}
 	}
 
-	/// Send a message to a given tool
-	pub fn send_tool_message(&self, tool: String, message: &JsValue) -> Result<(), JsValue> {
-		let tool_message = match translate_tool_type(&tool) {
-			Some(tool) => match tool {
-				ToolType::Select => match serde_wasm_bindgen::from_value::<tools::select_tool::SelectToolMessage>(message.clone()) {
-					Ok(select_message) => Ok(ToolMessage::Select(select_message)),
-					Err(err) => Err(Error::new(&format!("Invalid message for {}: {}", tool, err)).into()),
-				},
-				_ => Err(Error::new(&format!("Tool message sending not implemented for {}", tool)).into()),
-			},
-			None => Err(Error::new(&format!("Couldn't send message for {} because it was not recognized as a valid tool", tool)).into()),
-		};
-
-		match tool_message {
-			Ok(message) => {
-				self.dispatch(message);
-
-				Ok(())
-			}
-			Err(err) => Err(err),
-		}
-	}
-
 	pub fn select_document(&self, document_id: u64) {
 		let message = PortfolioMessage::SelectDocument { document_id };
 		self.dispatch(message);
@@ -149,8 +114,8 @@ impl JsEditorHandle {
 		self.dispatch(message);
 	}
 
-	pub fn new_document(&self) {
-		let message = PortfolioMessage::NewDocument;
+	pub fn request_new_document_dialog(&self) {
+		let message = DialogMessage::RequestNewDocumentDialog;
 		self.dispatch(message);
 	}
 
@@ -211,12 +176,23 @@ impl JsEditorHandle {
 	}
 
 	pub fn close_all_documents_with_confirmation(&self) {
-		let message = PortfolioMessage::CloseAllDocumentsWithConfirmation;
+		let message = DialogMessage::CloseAllDocumentsWithConfirmation;
+		self.dispatch(message);
+	}
+
+	pub fn populate_build_metadata(&self, release: String, timestamp: String, hash: String, branch: String) {
+		let new = editor::communication::BuildMetadata { release, timestamp, hash, branch };
+		let message = Message::PopulateBuildMetadata { new };
 		self.dispatch(message);
 	}
 
 	pub fn request_about_graphite_dialog(&self) {
-		let message = PortfolioMessage::RequestAboutGraphiteDialog;
+		let message = DialogMessage::RequestAboutGraphiteDialog;
+		self.dispatch(message);
+	}
+
+	pub fn request_coming_soon_dialog(&self, issue: Option<i32>) {
+		let message = DialogMessage::RequestComingSoonDialog { issue };
 		self.dispatch(message);
 	}
 
@@ -324,6 +300,14 @@ impl JsEditorHandle {
 		Ok(())
 	}
 
+	/// A font has been downloaded
+	pub fn on_font_load(&self, font: String, data: Vec<u8>, is_default: bool) -> Result<(), JsValue> {
+		let message = DocumentMessage::FontLoaded { font, data, is_default };
+		self.dispatch(message);
+
+		Ok(())
+	}
+
 	/// A text box was changed
 	pub fn update_bounds(&self, new_text: String) -> Result<(), JsValue> {
 		let message = TextMessage::UpdateBounds { new_text };
@@ -384,19 +368,19 @@ impl JsEditorHandle {
 
 	/// Cut selected layers
 	pub fn cut(&self) {
-		let message = PortfolioMessage::Cut { clipboard: Clipboard::User };
+		let message = PortfolioMessage::Cut { clipboard: Clipboard::Device };
 		self.dispatch(message);
 	}
 
 	/// Copy selected layers
 	pub fn copy(&self) {
-		let message = PortfolioMessage::Copy { clipboard: Clipboard::User };
+		let message = PortfolioMessage::Copy { clipboard: Clipboard::Device };
 		self.dispatch(message);
 	}
 
-	/// Paste selected layers
-	pub fn paste(&self) {
-		let message = PortfolioMessage::Paste { clipboard: Clipboard::User };
+	/// Paste layers from a serialized json representation
+	pub fn paste_serialized_data(&self, data: String) {
+		let message = PortfolioMessage::PasteSerializedData { data };
 		self.dispatch(message);
 	}
 
@@ -440,28 +424,9 @@ impl JsEditorHandle {
 		self.dispatch(message);
 	}
 
-	/// Set the blend mode for the selected layers
-	pub fn set_blend_mode_for_selected_layers(&self, blend_mode_svg_style_name: String) -> Result<(), JsValue> {
-		if let Some(blend_mode) = translate_blend_mode(blend_mode_svg_style_name.as_str()) {
-			let message = DocumentMessage::SetBlendModeForSelectedLayers { blend_mode };
-			self.dispatch(message);
-
-			Ok(())
-		} else {
-			Err(Error::new(&EditorError::Misc("UnknownBlendMode".to_string()).to_string()).into())
-		}
-	}
-
-	/// Set the opacity for the selected layers
-	pub fn set_opacity_for_selected_layers(&self, opacity_percent: f64) {
-		let opacity = opacity_percent / 100.;
-		let message = DocumentMessage::SetOpacityForSelectedLayers { opacity };
-		self.dispatch(message);
-	}
-
 	/// Export the document
 	pub fn export_document(&self) {
-		let message = DocumentMessage::ExportDocument;
+		let message = DialogMessage::RequestExportDialog;
 		self.dispatch(message);
 	}
 
@@ -477,10 +442,17 @@ impl JsEditorHandle {
 		self.dispatch(message);
 	}
 
-	/// Update the list of selected layers. The layer paths have to be stored in one array and are separated by LayerId::MAX
-	pub fn select_layers(&self, paths: Vec<LayerId>) {
-		let replacement_selected_layers = paths.split(|id| *id == LayerId::MAX).map(|path| path.to_vec()).collect();
-		let message = DocumentMessage::SetSelectedLayers { replacement_selected_layers };
+	/// Sends the blob url generated by js
+	pub fn set_image_blob_url(&self, path: Vec<LayerId>, blob_url: String, width: f64, height: f64) {
+		let dimensions = (width, height);
+		let message = Operation::SetImageBlobUrl { path, blob_url, dimensions };
+		self.dispatch(message);
+	}
+
+	/// Pastes an image
+	pub fn paste_image(&self, mime: String, image_data: Vec<u8>, mouse_x: Option<f64>, mouse_y: Option<f64>) {
+		let mouse = mouse_x.and_then(|x| mouse_y.map(|y| (x, y)));
+		let message = DocumentMessage::PasteImage { mime, image_data, mouse };
 		self.dispatch(message);
 	}
 
@@ -496,40 +468,13 @@ impl JsEditorHandle {
 		self.dispatch(message);
 	}
 
-	/// Renames a layer from the layer list
-	pub fn rename_layer(&self, layer_path: Vec<LayerId>, new_name: String) {
-		let message = DocumentMessage::RenameLayer { layer_path, new_name };
+	// TODO: Replace with initialization system, issue #524
+	pub fn init_app(&self) {
+		let message = PortfolioMessage::UpdateDocumentWidgets;
 		self.dispatch(message);
-	}
 
-	/// Deletes a layer from the layer list
-	pub fn delete_layer(&self, layer_path: Vec<LayerId>) {
-		let message = DocumentMessage::DeleteLayer { layer_path };
+		let message = ToolMessage::InitTools;
 		self.dispatch(message);
-	}
-
-	/// Requests the backend to add an empty folder inside the provided containing folder
-	pub fn add_folder(&self, container_path: Vec<LayerId>) {
-		let message = DocumentMessage::CreateEmptyFolder { container_path };
-		self.dispatch(message);
-	}
-
-	/// Creates an artboard at a specified point with a width and height
-	pub fn create_artboard_and_fit_to_viewport(&self, pos_x: f64, pos_y: f64, width: f64, height: f64) {
-		let message = ArtboardMessage::AddArtboard {
-			id: None,
-			position: (pos_x, pos_y),
-			size: (width, height),
-		};
-		self.dispatch(message);
-		let message = DocumentMessage::ZoomCanvasToFitAll;
-		self.dispatch(message);
-	}
-
-	// TODO(mfish33): Replace with initialization system Issue:#524
-	pub fn init_document_bar(&self) {
-		let message = PortfolioMessage::UpdateDocumentBar;
-		self.dispatch(message)
 	}
 }
 
@@ -547,10 +492,11 @@ impl Drop for JsEditorHandle {
 	}
 }
 
-/// Access a handle to WASM memory
+/// Set the random seed used by the editor by calling this from JS upon initialization.
+/// This is necessary because WASM doesn't have a random number generator.
 #[wasm_bindgen]
-pub fn wasm_memory() -> JsValue {
-	wasm_bindgen::memory()
+pub fn set_random_seed(seed: u64) {
+	editor::communication::set_uuid_seed(seed)
 }
 
 /// Intentionally panic for debugging purposes
@@ -559,17 +505,24 @@ pub fn intentional_panic() {
 	panic!();
 }
 
-/// Get the constant FILE_SAVE_SUFFIX
+/// Access a handle to WASM memory
+#[wasm_bindgen]
+pub fn wasm_memory() -> JsValue {
+	wasm_bindgen::memory()
+}
+
+/// Get the constant `FILE_SAVE_SUFFIX`
 #[wasm_bindgen]
 pub fn file_save_suffix() -> String {
 	FILE_SAVE_SUFFIX.into()
 }
 
-/// Get the constant FILE_SAVE_SUFFIX
+/// Get the constant `GRAPHITE_DOCUMENT_VERSION`
 #[wasm_bindgen]
 pub fn graphite_version() -> String {
 	GRAPHITE_DOCUMENT_VERSION.to_string()
 }
+
 /// Get the constant `i32::MAX`
 #[wasm_bindgen]
 pub fn i32_max() -> i32 {
@@ -580,9 +533,4 @@ pub fn i32_max() -> i32 {
 #[wasm_bindgen]
 pub fn i32_min() -> i32 {
 	i32::MIN
-}
-
-#[wasm_bindgen]
-pub fn set_random_seed(seed: u64) {
-	editor::communication::set_uuid_seed(seed)
 }

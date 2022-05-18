@@ -1,3 +1,5 @@
+use std::rc::Rc;
+
 use super::layout_message::LayoutTarget;
 use crate::message_prelude::*;
 
@@ -50,8 +52,18 @@ pub type SubLayout = Vec<LayoutRow>;
 #[remain::sorted]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum LayoutRow {
-	Row { name: String, widgets: Vec<WidgetHolder> },
-	Section { name: String, layout: SubLayout },
+	Column {
+		#[serde(rename = "columnWidgets")]
+		widgets: Vec<WidgetHolder>,
+	},
+	Row {
+		#[serde(rename = "rowWidgets")]
+		widgets: Vec<WidgetHolder>,
+	},
+	Section {
+		name: String,
+		layout: SubLayout,
+	},
 }
 
 #[derive(Debug, Default)]
@@ -64,13 +76,17 @@ impl<'a> Iterator for WidgetIter<'a> {
 	type Item = &'a WidgetHolder;
 
 	fn next(&mut self) -> Option<Self::Item> {
-		if let Some(item) = self.current_slice.map(|slice| slice.first()).flatten() {
+		if let Some(item) = self.current_slice.and_then(|slice| slice.first()) {
 			self.current_slice = Some(&self.current_slice.unwrap()[1..]);
 			return Some(item);
 		}
 
 		match self.stack.pop() {
-			Some(LayoutRow::Row { name: _, widgets }) => {
+			Some(LayoutRow::Column { widgets }) => {
+				self.current_slice = Some(widgets);
+				self.next()
+			}
+			Some(LayoutRow::Row { widgets }) => {
 				self.current_slice = Some(widgets);
 				self.next()
 			}
@@ -95,13 +111,17 @@ impl<'a> Iterator for WidgetIterMut<'a> {
 	type Item = &'a mut WidgetHolder;
 
 	fn next(&mut self) -> Option<Self::Item> {
-		if let Some((first, rest)) = self.current_slice.take().map(|slice| slice.split_first_mut()).flatten() {
+		if let Some((first, rest)) = self.current_slice.take().and_then(|slice| slice.split_first_mut()) {
 			self.current_slice = Some(rest);
 			return Some(first);
 		};
 
 		match self.stack.pop() {
-			Some(LayoutRow::Row { name: _, widgets }) => {
+			Some(LayoutRow::Column { widgets }) => {
+				self.current_slice = Some(widgets);
+				self.next()
+			}
+			Some(LayoutRow::Row { widgets }) => {
 				self.current_slice = Some(widgets);
 				self.next()
 			}
@@ -130,24 +150,28 @@ impl WidgetHolder {
 
 #[derive(Clone)]
 pub struct WidgetCallback<T> {
-	pub callback: fn(&T) -> Message,
+	pub callback: Rc<dyn Fn(&T) -> Message + 'static>,
 }
 
 impl<T> WidgetCallback<T> {
-	pub fn new(callback: fn(&T) -> Message) -> Self {
-		Self { callback }
+	pub fn new(callback: impl Fn(&T) -> Message + 'static) -> Self {
+		Self { callback: Rc::new(callback) }
 	}
 }
 
 impl<T> Default for WidgetCallback<T> {
 	fn default() -> Self {
-		Self { callback: |_| Message::NoOp }
+		Self::new(|_| Message::NoOp)
 	}
 }
 
 #[remain::sorted]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Widget {
+	CheckboxInput(CheckboxInput),
+	ColorInput(ColorInput),
+	DropdownInput(DropdownInput),
+	FontInput(FontInput),
 	IconButton(IconButton),
 	IconLabel(IconLabel),
 	NumberInput(NumberInput),
@@ -155,6 +179,8 @@ pub enum Widget {
 	PopoverButton(PopoverButton),
 	RadioInput(RadioInput),
 	Separator(Separator),
+	TextAreaInput(TextAreaInput),
+	TextButton(TextButton),
 	TextInput(TextInput),
 	TextLabel(TextLabel),
 }
@@ -162,7 +188,7 @@ pub enum Widget {
 #[derive(Clone, Serialize, Deserialize, Derivative)]
 #[derivative(Debug, PartialEq, Default)]
 pub struct NumberInput {
-	pub value: f64,
+	pub value: Option<f64>,
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
 	pub on_update: WidgetCallback<NumberInput>,
@@ -186,6 +212,7 @@ pub struct NumberInput {
 	#[serde(rename = "displayDecimalPlaces")]
 	#[derivative(Default(value = "3"))]
 	pub display_decimal_places: u32,
+	pub disabled: bool,
 }
 
 #[derive(Clone, Serialize, Deserialize, Derivative)]
@@ -195,6 +222,43 @@ pub struct TextInput {
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
 	pub on_update: WidgetCallback<TextInput>,
+}
+
+#[derive(Clone, Serialize, Deserialize, Derivative)]
+#[derivative(Debug, PartialEq, Default)]
+pub struct TextAreaInput {
+	pub value: String,
+	#[serde(skip)]
+	#[derivative(Debug = "ignore", PartialEq = "ignore")]
+	pub on_update: WidgetCallback<TextAreaInput>,
+}
+
+#[derive(Clone, Serialize, Deserialize, Derivative)]
+#[derivative(Debug, PartialEq, Default)]
+pub struct ColorInput {
+	pub value: Option<String>,
+	#[serde(skip)]
+	#[derivative(Debug = "ignore", PartialEq = "ignore")]
+	pub on_update: WidgetCallback<ColorInput>,
+	#[serde(rename = "canSetTransparent")]
+	#[derivative(Default(value = "true"))]
+	pub can_set_transparent: bool,
+}
+
+#[derive(Clone, Serialize, Deserialize, Derivative)]
+#[derivative(Debug, PartialEq, Default)]
+pub struct FontInput {
+	#[serde(rename = "isStyle")]
+	pub is_style_picker: bool,
+	#[serde(rename = "fontFamily")]
+	pub font_family: String,
+	#[serde(rename = "fontStyle")]
+	pub font_style: String,
+	#[serde(rename = "fontFile")]
+	pub font_file: String,
+	#[serde(skip)]
+	#[derivative(Debug = "ignore", PartialEq = "ignore")]
+	pub on_update: WidgetCallback<FontInput>,
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
@@ -239,11 +303,26 @@ pub struct IconButton {
 	#[serde(rename = "title")]
 	pub tooltip: String,
 	pub size: u32,
+	pub active: bool,
 	#[serde(rename = "gapAfter")]
 	pub gap_after: bool,
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
 	pub on_update: WidgetCallback<IconButton>,
+}
+
+#[derive(Clone, Serialize, Deserialize, Derivative, Default)]
+#[derivative(Debug, PartialEq)]
+#[serde(rename_all(serialize = "camelCase", deserialize = "camelCase"))]
+pub struct TextButton {
+	pub label: String,
+	pub emphasized: bool,
+	pub min_width: u32,
+	pub gap_after: bool,
+	#[serde(skip)]
+	#[derivative(Debug = "ignore", PartialEq = "ignore")]
+	pub on_update: WidgetCallback<TextButton>,
+	pub disabled: bool,
 }
 
 #[derive(Clone, Serialize, Deserialize, Derivative, Default)]
@@ -260,9 +339,53 @@ pub struct OptionalInput {
 
 #[derive(Clone, Serialize, Deserialize, Derivative, Default)]
 #[derivative(Debug, PartialEq)]
+pub struct CheckboxInput {
+	pub checked: bool,
+	pub icon: String,
+	#[serde(rename = "outlineStyle")]
+	pub outline_style: bool,
+	#[serde(rename = "title")]
+	pub tooltip: String,
+	#[serde(skip)]
+	#[derivative(Debug = "ignore", PartialEq = "ignore")]
+	pub on_update: WidgetCallback<CheckboxInput>,
+}
+
+#[derive(Clone, Serialize, Deserialize, Derivative, Default)]
+#[derivative(Debug, PartialEq)]
 pub struct PopoverButton {
 	pub title: String,
 	pub text: String,
+}
+
+#[derive(Clone, Serialize, Deserialize, Derivative, Default)]
+#[derivative(Debug, PartialEq)]
+pub struct DropdownInput {
+	pub entries: Vec<Vec<DropdownEntryData>>,
+	// This uses `u32` instead of `usize` since it will be serialized as a normal JS number (replace with usize when we switch to a native UI)
+	#[serde(rename = "selectedIndex")]
+	pub selected_index: Option<u32>,
+	#[serde(rename = "drawIcon")]
+	pub draw_icon: bool,
+	// `on_update` exists on the `DropdownEntryData`, not this parent `DropdownInput`
+	pub disabled: bool,
+}
+
+#[derive(Clone, Serialize, Deserialize, Derivative, Default)]
+#[derivative(Debug, PartialEq)]
+pub struct DropdownEntryData {
+	pub value: String,
+	pub label: String,
+	pub icon: String,
+	pub checkbox: bool,
+	pub shortcut: Vec<String>,
+	#[serde(rename = "shortcutRequiresLock")]
+	pub shortcut_requires_lock: bool,
+	pub children: Vec<Vec<DropdownEntryData>>,
+
+	#[serde(skip)]
+	#[derivative(Debug = "ignore", PartialEq = "ignore")]
+	pub on_update: WidgetCallback<()>,
 }
 
 #[derive(Clone, Serialize, Deserialize, Derivative, Default)]
@@ -300,4 +423,7 @@ pub struct TextLabel {
 	pub value: String,
 	pub bold: bool,
 	pub italic: bool,
+	pub multiline: bool,
+	#[serde(rename = "tableAlign")]
+	pub table_align: bool,
 }

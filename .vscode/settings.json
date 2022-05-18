@@ -13,6 +13,7 @@
 		"editor.formatOnSave": true,
 		"editor.defaultFormatter": "dbaeumer.vscode-eslint",
 	},
+	// Rust Analyzer config
 	"rust-analyzer.cargo.target": "wasm32-unknown-unknown",
 	"rust-analyzer.checkOnSave.command": "clippy",
 	// ESLint config

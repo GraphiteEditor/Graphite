@@ -1,5 +1,5 @@
 <template>
-	<LayoutRow class="icon-label" :class="`size-${icons[icon].size}`">
+	<LayoutRow :class="['icon-label', iconSize, iconStyle]">
 		<component :is="icon" />
 	</LayoutRow>
 </template>
@@ -23,31 +23,40 @@
 		width: 24px;
 		height: 24px;
 	}
+
+	&.node-style {
+		border-radius: 2px;
+		background: var(--color-node-background);
+		fill: var(--color-node-icon);
+	}
 }
 </style>
 
 <script lang="ts">
-import { DefineComponent, defineComponent, PropType } from "vue";
+import { defineComponent, PropType } from "vue";
 
-import { IconName, IconSize, ICON_LIST } from "@/utilities/icons";
+import { IconName, IconStyle, icons, iconComponents } from "@/utilities/icons";
 
 import LayoutRow from "@/components/layout/LayoutRow.vue";
-
-const icons: Record<IconName, { component: DefineComponent; size: IconSize }> = ICON_LIST;
 
 export default defineComponent({
 	props: {
 		icon: { type: String as PropType<IconName>, required: true },
 		gapAfter: { type: Boolean as PropType<boolean>, default: false },
+		style: { type: String as PropType<IconStyle>, default: "" },
 	},
-	data() {
-		return {
-			icons,
-		};
+	computed: {
+		iconSize(): string {
+			return `size-${icons[this.icon].size}`;
+		},
+		iconStyle(): string {
+			if (!this.style) return "";
+			return `${this.style}-style`;
+		},
 	},
 	components: {
 		LayoutRow,
-		...Object.fromEntries(Object.entries(icons).map(([name, data]) => [name, data.component])),
+		...iconComponents,
 	},
 });
 </script>

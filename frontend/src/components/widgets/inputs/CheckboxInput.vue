@@ -1,6 +1,6 @@
 <template>
 	<LayoutRow class="checkbox-input" :class="{ 'outline-style': outlineStyle }">
-		<input type="checkbox" :id="`checkbox-input-${id}`" :checked="checked" @input="(e) => $emit('update:checked', (e.target as HTMLInputElement).checked)" />
+		<input type="checkbox" :id="`checkbox-input-${id}`" :checked="checked" @change="(e) => $emit('update:checked', (e.target as HTMLInputElement).checked)" />
 		<label :for="`checkbox-input-${id}`">
 			<LayoutRow class="checkbox-box">
 				<IconLabel :icon="icon" />
@@ -12,6 +12,7 @@
 <style lang="scss">
 .checkbox-input {
 	flex: 0 0 auto;
+	align-items: center;
 
 	input {
 		display: none;
@@ -19,6 +20,7 @@
 
 	label {
 		display: flex;
+		height: 16px;
 
 		.checkbox-box {
 			flex: 0 0 auto;

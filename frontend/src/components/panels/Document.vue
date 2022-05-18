@@ -1,56 +1,18 @@
 <template>
 	<LayoutCol class="document">
 		<LayoutRow class="options-bar" :scrollableX="true">
-			<LayoutRow class="left side">
-				<DropdownInput :menuEntries="documentModeEntries" v-model:selectedIndex="documentModeSelectionIndex" :drawIcon="true" />
-
-				<Separator :type="'Section'" />
-
-				<WidgetLayout :layout="toolOptionsLayout" class="tool-options" />
-			</LayoutRow>
+			<WidgetLayout :layout="documentModeLayout" />
+			<Separator :type="'Section'" />
+			<WidgetLayout :layout="toolOptionsLayout" />
 
 			<LayoutRow class="spacer"></LayoutRow>
 
-			<WidgetLayout :layout="documentBarLayout" class="right side document-bar" />
+			<WidgetLayout :layout="documentBarLayout" />
 		</LayoutRow>
 		<LayoutRow class="shelf-and-viewport">
 			<LayoutCol class="shelf">
 				<LayoutCol class="tools" :scrollableY="true">
-					<ShelfItemInput icon="LayoutSelectTool" title="Select Tool (V)" :active="activeTool === 'Select'" :action="() => selectTool('Select')" />
-					<ShelfItemInput icon="LayoutCropTool" title="Crop Tool" :active="activeTool === 'Crop'" :action="() => selectTool('Crop')" />
-					<ShelfItemInput icon="LayoutNavigateTool" title="Navigate Tool (Z)" :active="activeTool === 'Navigate'" :action="() => selectTool('Navigate')" />
-					<ShelfItemInput icon="LayoutEyedropperTool" title="Eyedropper Tool (I)" :active="activeTool === 'Eyedropper'" :action="() => selectTool('Eyedropper')" />
-
-					<Separator :type="'Section'" :direction="'Vertical'" />
-
-					<ShelfItemInput icon="ParametricTextTool" title="Text Tool (T)" :active="activeTool === 'Text'" :action="() => selectTool('Text')" />
-					<ShelfItemInput icon="ParametricFillTool" title="Fill Tool (F)" :active="activeTool === 'Fill'" :action="() => selectTool('Fill')" />
-					<ShelfItemInput
-						icon="ParametricGradientTool"
-						title="Gradient Tool (H)"
-						:active="activeTool === 'Gradient'"
-						:action="() => (dialog.comingSoon(), false) && selectTool('Gradient')"
-					/>
-
-					<Separator :type="'Section'" :direction="'Vertical'" />
-
-					<ShelfItemInput icon="RasterBrushTool" title="Brush Tool (B)" :active="activeTool === 'Brush'" :action="() => (dialog.comingSoon(), false) && selectTool('Brush')" />
-					<ShelfItemInput icon="RasterHealTool" title="Heal Tool (J)" :active="activeTool === 'Heal'" :action="() => (dialog.comingSoon(), false) && selectTool('Heal')" />
-					<ShelfItemInput icon="RasterCloneTool" title="Clone Tool (C)" :active="activeTool === 'Clone'" :action="() => (dialog.comingSoon(), false) && selectTool('Clone')" />
-					<ShelfItemInput icon="RasterPatchTool" title="Patch Tool" :active="activeTool === 'Patch'" :action="() => (dialog.comingSoon(), false) && selectTool('Patch')" />
-					<ShelfItemInput icon="RasterDetailTool" title="Detail Tool (D)" :active="activeTool === 'Detail'" :action="() => (dialog.comingSoon(), false) && selectTool('Detail')" />
-					<ShelfItemInput icon="RasterRelightTool" title="Relight Tool (O)" :active="activeTool === 'Relight'" :action="() => (dialog.comingSoon(), false) && selectTool('Relight')" />
-
-					<Separator :type="'Section'" :direction="'Vertical'" />
-
-					<ShelfItemInput icon="VectorPathTool" title="Path Tool (A)" :active="activeTool === 'Path'" :action="() => selectTool('Path')" />
-					<ShelfItemInput icon="VectorPenTool" title="Pen Tool (P)" :active="activeTool === 'Pen'" :action="() => selectTool('Pen')" />
-					<ShelfItemInput icon="VectorFreehandTool" title="Freehand Tool (N)" :active="activeTool === 'Freehand'" :action="() => selectTool('Freehand')" />
-					<ShelfItemInput icon="VectorSplineTool" title="Spline Tool" :active="activeTool === 'Spline'" :action="() => selectTool('Spline')" />
-					<ShelfItemInput icon="VectorLineTool" title="Line Tool (L)" :active="activeTool === 'Line'" :action="() => selectTool('Line')" />
-					<ShelfItemInput icon="VectorRectangleTool" title="Rectangle Tool (M)" :active="activeTool === 'Rectangle'" :action="() => selectTool('Rectangle')" />
-					<ShelfItemInput icon="VectorEllipseTool" title="Ellipse Tool (E)" :active="activeTool === 'Ellipse'" :action="() => selectTool('Ellipse')" />
-					<ShelfItemInput icon="VectorShapeTool" title="Shape Tool (Y)" :active="activeTool === 'Shape'" :action="() => selectTool('Shape')" />
+					<WidgetLayout :layout="toolShelfLayout" />
 				</LayoutCol>
 
 				<LayoutCol class="spacer"></LayoutCol>
@@ -58,6 +20,7 @@
 				<LayoutCol class="working-colors">
 					<SwatchPairInput />
 					<LayoutRow class="swap-and-reset">
+						<!-- TODO: Remember to make these tooltip input hints customized to macOS also -->
 						<IconButton :action="swapWorkingColors" :icon="'Swap'" title="Swap (Shift+X)" :size="16" />
 						<IconButton :action="resetWorkingColors" :icon="'ResetColors'" title="Reset (Ctrl+Shift+X)" :size="16" />
 					</LayoutRow>
@@ -72,9 +35,23 @@
 						<CanvasRuler :origin="rulerOrigin.y" :majorMarkSpacing="rulerSpacing" :numberInterval="rulerInterval" :direction="'Vertical'" ref="rulerVertical" />
 					</LayoutCol>
 					<LayoutCol class="canvas-area">
-						<div class="canvas" data-canvas ref="canvas" :style="{ cursor: canvasCursor }" @pointerdown="(e: PointerEvent) => canvasPointerDown(e)">
+						<div
+							class="canvas"
+							data-canvas
+							ref="canvas"
+							:style="{ cursor: canvasCursor }"
+							@pointerdown="(e: PointerEvent) => canvasPointerDown(e)"
+							@dragover="(e) => e.preventDefault()"
+							@drop="(e) => pasteFile(e)"
+						>
 							<svg class="artboards" v-html="artboardSvg" :style="{ width: canvasSvgWidth, height: canvasSvgHeight }"></svg>
-							<svg class="artwork" v-html="artworkSvg" :style="{ width: canvasSvgWidth, height: canvasSvgHeight }"></svg>
+							<svg
+								class="artwork"
+								xmlns="http://www.w3.org/2000/svg"
+								xmlns:xlink="http://www.w3.org/1999/xlink"
+								v-html="artworkSvg"
+								:style="{ width: canvasSvgWidth, height: canvasSvgHeight }"
+							></svg>
 							<svg class="overlays" v-html="overlaysSvg" :style="{ width: canvasSvgWidth, height: canvasSvgHeight }"></svg>
 						</div>
 					</LayoutCol>
@@ -111,13 +88,7 @@
 	.options-bar {
 		height: 32px;
 		flex: 0 0 auto;
-
-		.side {
-			height: 100%;
-			flex: 0 0 auto;
-			align-items: center;
-			margin: 0 4px;
-		}
+		margin: 0 4px;
 
 		.spacer {
 			min-width: 40px;
@@ -130,6 +101,31 @@
 
 			.tools {
 				flex: 0 1 auto;
+
+				.icon-button[title^="Coming Soon"] {
+					opacity: 0.25;
+					transition: opacity 0.25s;
+
+					&:hover {
+						opacity: 1;
+					}
+				}
+
+				.color-solid {
+					fill: var(--color-f-white);
+				}
+
+				.color-general {
+					fill: var(--color-data-general);
+				}
+
+				.color-vector {
+					fill: var(--color-data-vector);
+				}
+
+				.color-raster {
+					fill: var(--color-data-raster);
+				}
 			}
 
 			.spacer {
@@ -230,30 +226,31 @@ import {
 	UpdateDocumentOverlays,
 	UpdateDocumentScrollbars,
 	UpdateDocumentRulers,
-	UpdateActiveTool,
-	UpdateCanvasZoom,
-	UpdateCanvasRotation,
-	ToolName,
 	UpdateDocumentArtboards,
 	UpdateMouseCursor,
+	UpdateDocumentModeLayout,
 	UpdateToolOptionsLayout,
+	UpdateToolShelfLayout,
 	defaultWidgetLayout,
 	UpdateDocumentBarLayout,
+	UpdateImageData,
 	TriggerTextCommit,
+	TriggerTextCopy,
 	TriggerViewportResize,
 	DisplayRemoveEditableTextbox,
 	DisplayEditableTextbox,
+	TriggerFontLoad,
+	TriggerFontLoadDefault,
+	TriggerVisitLink,
 } from "@/dispatcher/js-messages";
 
 import { textInputCleanup } from "@/lifetime/input";
 
+import { loadDefaultFont, setLoadDefaultFontCallback } from "@/utilities/fonts";
+
 import LayoutCol from "@/components/layout/LayoutCol.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 import IconButton from "@/components/widgets/buttons/IconButton.vue";
-import { SectionsOfMenuListEntries } from "@/components/widgets/floating-menus/MenuList.vue";
-import DropdownInput from "@/components/widgets/inputs/DropdownInput.vue";
-import { RadioEntries } from "@/components/widgets/inputs/RadioInput.vue";
-import ShelfItemInput from "@/components/widgets/inputs/ShelfItemInput.vue";
 import SwatchPairInput from "@/components/widgets/inputs/SwatchPairInput.vue";
 import CanvasRuler from "@/components/widgets/rulers/CanvasRuler.vue";
 import PersistentScrollbar from "@/components/widgets/scrollbars/PersistentScrollbar.vue";
@@ -281,8 +278,23 @@ export default defineComponent({
 
 			const rulerHorizontal = this.$refs.rulerHorizontal as typeof CanvasRuler;
 			const rulerVertical = this.$refs.rulerVertical as typeof CanvasRuler;
-			if (rulerHorizontal) rulerHorizontal.handleResize();
-			if (rulerVertical) rulerVertical.handleResize();
+			rulerHorizontal?.handleResize();
+			rulerVertical?.handleResize();
+		},
+		pasteFile(e: DragEvent) {
+			const { dataTransfer } = e;
+			if (!dataTransfer) return;
+			e.preventDefault();
+
+			Array.from(dataTransfer.items).forEach(async (item) => {
+				const file = item.getAsFile();
+				if (file?.type.startsWith("image")) {
+					const buffer = await file.arrayBuffer();
+					const u8Array = new Uint8Array(buffer);
+
+					this.editor.instance.paste_image(file.type, u8Array, e.clientX, e.clientY);
+				}
+			});
 		},
 		translateCanvasX(newValue: number) {
 			const delta = newValue - this.scrollbarPos.x;
@@ -301,9 +313,6 @@ export default defineComponent({
 		pageY(delta: number) {
 			const move = delta < 0 ? 1 : -1;
 			this.editor.instance.translate_canvas_by_fraction(0, move);
-		},
-		selectTool(toolName: string) {
-			this.editor.instance.select_tool(toolName);
 		},
 		swapWorkingColors() {
 			this.editor.instance.swap_colors();
@@ -336,11 +345,13 @@ export default defineComponent({
 
 						const range = document.createRange();
 						range.selectNodeContents(addedInput);
+
 						const selection = window.getSelection();
 						if (selection) {
 							selection.removeAllRanges();
 							selection.addRange(range);
 						}
+
 						addedInput.focus();
 						addedInput.click();
 					});
@@ -374,24 +385,27 @@ export default defineComponent({
 			this.rulerInterval = updateDocumentRulers.interval;
 		});
 
-		this.editor.dispatcher.subscribeJsMessage(UpdateActiveTool, (updateActiveTool) => {
-			this.activeTool = updateActiveTool.tool_name;
-		});
-
-		this.editor.dispatcher.subscribeJsMessage(UpdateCanvasZoom, (updateCanvasZoom) => {
-			this.documentZoom = updateCanvasZoom.factor * 100;
-		});
-
-		this.editor.dispatcher.subscribeJsMessage(UpdateCanvasRotation, (updateCanvasRotation) => {
-			const newRotation = updateCanvasRotation.angle_radians * (180 / Math.PI);
-			this.documentRotation = (360 + (newRotation % 360)) % 360;
-		});
-
 		this.editor.dispatcher.subscribeJsMessage(UpdateMouseCursor, (updateMouseCursor) => {
 			this.canvasCursor = updateMouseCursor.cursor;
 		});
 		this.editor.dispatcher.subscribeJsMessage(TriggerTextCommit, () => {
-			if (this.textInput) this.editor.instance.on_change_text(textInputCleanup(this.textInput.innerText));
+			if (this.textInput) {
+				const textCleaned = textInputCleanup(this.textInput.innerText);
+				this.editor.instance.on_change_text(textCleaned);
+			}
+		});
+		this.editor.dispatcher.subscribeJsMessage(TriggerFontLoad, async (triggerFontLoad) => {
+			const response = await fetch(triggerFontLoad.font);
+			const responseBuffer = await response.arrayBuffer();
+			this.editor.instance.on_font_load(triggerFontLoad.font, new Uint8Array(responseBuffer), false);
+		});
+		this.editor.dispatcher.subscribeJsMessage(TriggerFontLoadDefault, loadDefaultFont);
+		this.editor.dispatcher.subscribeJsMessage(TriggerVisitLink, async (triggerOpenLink) => {
+			window.open(triggerOpenLink.url, "_blank");
+		});
+		this.editor.dispatcher.subscribeJsMessage(TriggerTextCopy, (triggerTextCopy) => {
+			// If the Clipboard API is supported in the browser, copy text to the clipboard
+			navigator.clipboard?.writeText?.(triggerTextCopy.copy_text);
 		});
 
 		this.editor.dispatcher.subscribeJsMessage(DisplayEditableTextbox, (displayEditableTextbox) => {
@@ -404,6 +418,7 @@ export default defineComponent({
 			this.textInput.style.width = displayEditableTextbox.line_width ? `${displayEditableTextbox.line_width}px` : "max-content";
 			this.textInput.style.height = "auto";
 			this.textInput.style.fontSize = `${displayEditableTextbox.font_size}px`;
+			this.textInput.style.color = displayEditableTextbox.color.toRgbaCSS();
 
 			this.textInput.oninput = (): void => {
 				if (this.textInput) this.editor.instance.update_bounds(textInputCleanup(this.textInput.innerText));
@@ -419,6 +434,10 @@ export default defineComponent({
 			);
 		});
 
+		this.editor.dispatcher.subscribeJsMessage(UpdateDocumentModeLayout, (updateDocumentModeLayout) => {
+			this.documentModeLayout = updateDocumentModeLayout;
+		});
+
 		this.editor.dispatcher.subscribeJsMessage(UpdateToolOptionsLayout, (updateToolOptionsLayout) => {
 			this.toolOptionsLayout = updateToolOptionsLayout;
 		});
@@ -426,64 +445,90 @@ export default defineComponent({
 		this.editor.dispatcher.subscribeJsMessage(UpdateDocumentBarLayout, (updateDocumentBarLayout) => {
 			this.documentBarLayout = updateDocumentBarLayout;
 		});
+
+		this.editor.dispatcher.subscribeJsMessage(UpdateToolShelfLayout, (updateToolShelfLayout) => {
+			this.toolShelfLayout = updateToolShelfLayout;
+		});
+
 		this.editor.dispatcher.subscribeJsMessage(TriggerViewportResize, this.viewportResize);
 
-		// TODO(mfish33): Replace with initialization system Issue:#524
-		// Get initial Document Bar
-		this.editor.instance.init_document_bar();
+		this.editor.dispatcher.subscribeJsMessage(UpdateImageData, (updateImageData) => {
+			updateImageData.image_data.forEach(async (element) => {
+				// Using updateImageData.image_data.buffer returns undefined for some reason?
+				const blob = new Blob([new Uint8Array(element.image_data.values()).buffer], { type: element.mime });
+
+				const url = URL.createObjectURL(blob);
+
+				const image = await createImageBitmap(blob);
+
+				this.editor.instance.set_image_blob_url(element.path, url, image.width, image.height);
+			});
+		});
+
+		// Gets metadata populated in `frontend/vue.config.js`. We could potentially move this functionality in a build.rs file.
+		const loadBuildMetadata = (): void => {
+			const release = process.env.VUE_APP_RELEASE_SERIES;
+			let timestamp = "";
+			const hash = (process.env.VUE_APP_COMMIT_HASH || "").substring(0, 8);
+			const branch = process.env.VUE_APP_COMMIT_BRANCH;
+			{
+				const date = new Date(process.env.VUE_APP_COMMIT_DATE || "");
+				const dateString = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+				const timeString = `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+				const timezoneName = Intl.DateTimeFormat(undefined, { timeZoneName: "long" })
+					.formatToParts(new Date())
+					.find((part) => part.type === "timeZoneName");
+				const timezoneNameString = timezoneName?.value;
+				timestamp = `${dateString} ${timeString} ${timezoneNameString}`;
+			}
+
+			this.editor.instance.populate_build_metadata(release || "", timestamp, hash, branch || "");
+		};
+
+		setLoadDefaultFontCallback((font: string, data: Uint8Array) => this.editor.instance.on_font_load(font, data, true));
+
+		loadBuildMetadata();
 	},
 	data() {
-		const documentModeEntries: SectionsOfMenuListEntries = [
-			[
-				{ label: "Design Mode", icon: "ViewportDesignMode" },
-				{ label: "Select Mode", icon: "ViewportSelectMode", action: (): void => this.dialog.comingSoon(330) },
-				{ label: "Guide Mode", icon: "ViewportGuideMode", action: (): void => this.dialog.comingSoon(331) },
-			],
-		];
-		const viewModeEntries: RadioEntries = [
-			{ value: "normal", icon: "ViewModeNormal", tooltip: "View Mode: Normal", action: (): void => this.setViewMode("Normal") },
-			{ value: "outline", icon: "ViewModeOutline", tooltip: "View Mode: Outline", action: (): void => this.setViewMode("Outline") },
-			{ value: "pixels", icon: "ViewModePixels", tooltip: "View Mode: Pixels", action: (): void => this.dialog.comingSoon(320) },
-		];
-
 		return {
-			artworkSvg: "",
-			artboardSvg: "",
-			overlaysSvg: "",
+			// Interactive text editing
+			textInput: undefined as undefined | HTMLDivElement,
+
+			// CSS properties
 			canvasSvgWidth: "100%",
 			canvasSvgHeight: "100%",
 			canvasCursor: "default",
-			activeTool: "Select" as ToolName,
-			toolOptionsLayout: defaultWidgetLayout(),
-			documentBarLayout: defaultWidgetLayout(),
-			documentModeEntries,
-			viewModeEntries,
-			documentModeSelectionIndex: 0,
-			viewModeIndex: 0,
-			snappingEnabled: true,
-			gridEnabled: true,
-			overlaysEnabled: true,
-			documentRotation: 0,
-			documentZoom: 100,
+
+			// Scrollbars
 			scrollbarPos: { x: 0.5, y: 0.5 },
 			scrollbarSize: { x: 0.5, y: 0.5 },
 			scrollbarMultiplier: { x: 0, y: 0 },
+
+			// Rulers
 			rulerOrigin: { x: 0, y: 0 },
 			rulerSpacing: 100,
 			rulerInterval: 100,
-			textInput: undefined as undefined | HTMLDivElement,
+
+			// Rendered SVG viewport data
+			artworkSvg: "",
+			artboardSvg: "",
+			overlaysSvg: "",
+
+			// Layouts
+			documentModeLayout: defaultWidgetLayout(),
+			toolOptionsLayout: defaultWidgetLayout(),
+			documentBarLayout: defaultWidgetLayout(),
+			toolShelfLayout: defaultWidgetLayout(),
 		};
 	},
 	components: {
 		LayoutRow,
 		LayoutCol,
 		SwatchPairInput,
-		ShelfItemInput,
 		Separator,
 		PersistentScrollbar,
 		CanvasRuler,
 		IconButton,
-		DropdownInput,
 		WidgetLayout,
 	},
 });

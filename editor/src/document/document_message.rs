@@ -1,5 +1,6 @@
 use super::layer_panel::LayerMetadata;
 use super::utility_types::{AlignAggregate, AlignAxis, FlipAxis};
+use crate::frontend::utility_types::{ExportBounds, FileType};
 use crate::message_prelude::*;
 
 use graphene::boolean_ops::BooleanOperation as BooleanOperationType;
@@ -65,16 +66,29 @@ pub enum DocumentMessage {
 	DocumentHistoryForward,
 	DocumentStructureChanged,
 	DuplicateSelectedLayers,
-	ExportDocument,
+	ExportDocument {
+		file_name: String,
+		file_type: FileType,
+		scale_factor: f64,
+		bounds: ExportBounds,
+	},
 	FlipSelectedLayers {
 		flip_axis: FlipAxis,
 	},
 	FolderChanged {
 		affected_folder_path: Vec<LayerId>,
 	},
+	FontLoaded {
+		font: String,
+		data: Vec<u8>,
+		is_default: bool,
+	},
 	GroupSelectedLayers,
 	LayerChanged {
 		affected_layer_path: Vec<LayerId>,
+	},
+	LoadFont {
+		font: String,
 	},
 	MoveSelectedLayersTo {
 		folder_path: Vec<LayerId>,
@@ -88,6 +102,11 @@ pub enum DocumentMessage {
 	NudgeSelectedLayers {
 		delta_x: f64,
 		delta_y: f64,
+	},
+	PasteImage {
+		mime: String,
+		image_data: Vec<u8>,
+		mouse: Option<(f64, f64)>,
 	},
 	Redo,
 	RenameLayer {

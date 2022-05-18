@@ -3,12 +3,14 @@ use crate::document::DocumentMessageHandler;
 use crate::frontend::utility_types::MouseCursorIcon;
 use crate::input::keyboard::{Key, MouseMotion};
 use crate::input::InputPreprocessorMessageHandler;
-use crate::layout::widgets::{LayoutRow, NumberInput, PropertyHolder, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
+use crate::layout::layout_message::LayoutTarget;
+use crate::layout::widgets::{FontInput, LayoutRow, NumberInput, PropertyHolder, Separator, SeparatorDirection, SeparatorType, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
 use crate::message_prelude::*;
 use crate::misc::{HintData, HintGroup, HintInfo, KeysGroup};
 use crate::viewport_tools::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
 
 use glam::{DAffine2, DVec2};
+use graphene::document::FontCache;
 use graphene::intersection::Quad;
 use graphene::layers::style::{self, Fill, Stroke};
 use graphene::Operation;
@@ -24,11 +26,19 @@ pub struct TextTool {
 
 pub struct TextOptions {
 	font_size: u32,
+	font_name: String,
+	font_style: String,
+	font_file: Option<String>,
 }
 
 impl Default for TextOptions {
 	fn default() -> Self {
-		Self { font_size: 14 }
+		Self {
+			font_size: 24,
+			font_name: "Merriweather".into(),
+			font_style: "Normal (400)".into(),
+			font_file: None,
+		}
 	}
 }
 
@@ -58,22 +68,60 @@ pub enum TextMessage {
 #[remain::sorted]
 #[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize)]
 pub enum TextOptionsUpdate {
+	Font { family: String, style: String, file: String },
 	FontSize(u32),
 }
 
 impl PropertyHolder for TextTool {
 	fn properties(&self) -> WidgetLayout {
 		WidgetLayout::new(vec![LayoutRow::Row {
-			name: "".into(),
-			widgets: vec![WidgetHolder::new(Widget::NumberInput(NumberInput {
-				unit: " px".into(),
-				label: "Font Size".into(),
-				value: self.options.font_size as f64,
-				is_integer: true,
-				min: Some(1.),
-				on_update: WidgetCallback::new(|number_input| TextMessage::UpdateOptions(TextOptionsUpdate::FontSize(number_input.value as u32)).into()),
-				..NumberInput::default()
-			}))],
+			widgets: vec![
+				WidgetHolder::new(Widget::FontInput(FontInput {
+					is_style_picker: false,
+					font_family: self.options.font_name.clone(),
+					font_style: self.options.font_style.clone(),
+					on_update: WidgetCallback::new(|font_input: &FontInput| {
+						TextMessage::UpdateOptions(TextOptionsUpdate::Font {
+							family: font_input.font_family.clone(),
+							style: font_input.font_style.clone(),
+							file: font_input.font_file.clone(),
+						})
+						.into()
+					}),
+					..Default::default()
+				})),
+				WidgetHolder::new(Widget::Separator(Separator {
+					direction: SeparatorDirection::Horizontal,
+					separator_type: SeparatorType::Related,
+				})),
+				WidgetHolder::new(Widget::FontInput(FontInput {
+					is_style_picker: true,
+					font_family: self.options.font_name.clone(),
+					font_style: self.options.font_style.clone(),
+					on_update: WidgetCallback::new(|font_input: &FontInput| {
+						TextMessage::UpdateOptions(TextOptionsUpdate::Font {
+							family: font_input.font_family.clone(),
+							style: font_input.font_style.clone(),
+							file: font_input.font_file.clone(),
+						})
+						.into()
+					}),
+					..Default::default()
+				})),
+				WidgetHolder::new(Widget::Separator(Separator {
+					direction: SeparatorDirection::Horizontal,
+					separator_type: SeparatorType::Related,
+				})),
+				WidgetHolder::new(Widget::NumberInput(NumberInput {
+					unit: " px".into(),
+					label: "Size".into(),
+					value: Some(self.options.font_size as f64),
+					is_integer: true,
+					min: Some(1.),
+					on_update: WidgetCallback::new(|number_input: &NumberInput| TextMessage::UpdateOptions(TextOptionsUpdate::FontSize(number_input.value.unwrap() as u32)).into()),
+					..NumberInput::default()
+				})),
+			],
 		}])
 	}
 }
@@ -92,6 +140,13 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for TextTool {
 
 		if let ToolMessage::Text(TextMessage::UpdateOptions(action)) = action {
 			match action {
+				TextOptionsUpdate::Font { family, style, file } => {
+					self.options.font_name = family;
+					self.options.font_style = style;
+					self.options.font_file = Some(file);
+
+					self.register_properties(responses, LayoutTarget::ToolOptions);
+				}
 				TextOptionsUpdate::FontSize(font_size) => self.options.font_size = font_size,
 			}
 			return;
@@ -150,31 +205,39 @@ fn resize_overlays(overlays: &mut Vec<Vec<LayerId>>, responses: &mut VecDeque<Me
 		let operation = Operation::AddOverlayRect {
 			path,
 			transform: DAffine2::ZERO.to_cols_array(),
-			style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 1.0)), None),
+			style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 1.0)), Fill::None),
 		};
 		responses.push_back(DocumentMessage::Overlays(operation.into()).into());
 	}
 }
 
-fn update_overlays(document: &DocumentMessageHandler, data: &mut TextToolData, responses: &mut VecDeque<Message>) {
+fn update_overlays(document: &DocumentMessageHandler, data: &mut TextToolData, responses: &mut VecDeque<Message>, font_cache: &FontCache) {
 	let visible_text_layers = document.selected_visible_text_layers().collect::<Vec<_>>();
-
 	resize_overlays(&mut data.overlays, responses, visible_text_layers.len());
 
-	for (layer_path, overlay_path) in visible_text_layers.into_iter().zip(&data.overlays) {
-		let bounds = document
-			.graphene_document
-			.layer(layer_path)
-			.unwrap()
-			.current_bounding_box_with_transform(document.graphene_document.multiply_transforms(layer_path).unwrap())
-			.unwrap();
+	let bounds = visible_text_layers
+		.into_iter()
+		.zip(&data.overlays)
+		.filter_map(|(layer_path, overlay_path)| {
+			document
+				.graphene_document
+				.layer(layer_path)
+				.unwrap()
+				.aabounding_box_for_transform(document.graphene_document.multiply_transforms(layer_path).unwrap(), font_cache)
+				.map(|bounds| (bounds, overlay_path))
+		})
+		.collect::<Vec<_>>();
 
+	let new_len = bounds.len();
+
+	for (bounds, overlay_path) in bounds {
 		let operation = Operation::SetLayerTransformInViewport {
 			path: overlay_path.to_vec(),
 			transform: transform_from_box(bounds[0], bounds[1]),
 		};
 		responses.push_back(DocumentMessage::Overlays(operation.into()).into());
 	}
+	resize_overlays(&mut data.overlays, responses, new_len);
 }
 
 impl Fsm for TextToolFsmState {
@@ -197,7 +260,7 @@ impl Fsm for TextToolFsmState {
 		if let ToolMessage::Text(event) = event {
 			match (self, event) {
 				(state, DocumentIsDirty) => {
-					update_overlays(document, data, responses);
+					update_overlays(document, data, responses, &document.graphene_document.font_cache);
 
 					state
 				}
@@ -245,6 +308,9 @@ impl Fsm for TextToolFsmState {
 					else if state == TextToolFsmState::Ready {
 						let transform = DAffine2::from_translation(input.mouse.position).to_cols_array();
 						let font_size = tool_options.font_size;
+						let font_name = tool_options.font_name.clone();
+						let font_style = tool_options.font_style.clone();
+						let font_file = tool_options.font_file.clone();
 						data.path = document.get_path_for_new_layer();
 
 						responses.push_back(
@@ -253,8 +319,11 @@ impl Fsm for TextToolFsmState {
 								transform: DAffine2::ZERO.to_cols_array(),
 								insert_index: -1,
 								text: r#""#.to_string(),
-								style: style::PathStyle::new(None, Some(Fill::new(tool_data.primary_color))),
+								style: style::PathStyle::new(None, Fill::solid(tool_data.primary_color)),
 								size: font_size as f64,
+								font_name,
+								font_style,
+								font_file,
 							}
 							.into(),
 						);
@@ -330,7 +399,8 @@ impl Fsm for TextToolFsmState {
 				}
 				(Editing, UpdateBounds { new_text }) => {
 					resize_overlays(&mut data.overlays, responses, 1);
-					let mut path = document.graphene_document.layer(&data.path).unwrap().as_text().unwrap().bounding_box(&new_text).to_path(0.1);
+					let text = document.graphene_document.layer(&data.path).unwrap().as_text().unwrap();
+					let mut path = text.bounding_box(&new_text, text.load_face(&document.graphene_document.font_cache)).to_path(0.1);
 
 					fn glam_to_kurbo(transform: DAffine2) -> kurbo::Affine {
 						kurbo::Affine::new(transform.to_cols_array())

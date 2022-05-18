@@ -119,7 +119,7 @@ impl VectorShape {
 		None
 	}
 
-	/// The last anchor in the shape thus far
+	/// The last anchor in the shape
 	pub fn select_last_anchor(&mut self) -> Option<&mut VectorAnchor> {
 		if let Some(anchor) = self.0.last_mut() {
 			anchor.select_point(ControlPointType::Anchor as usize, true);

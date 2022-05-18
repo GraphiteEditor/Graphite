@@ -1,6 +1,6 @@
 import { DialogState } from "@/state/dialog";
-import { DocumentsState } from "@/state/documents";
 import { FullscreenState } from "@/state/fullscreen";
+import { PortfolioState } from "@/state/portfolio";
 import { EditorState } from "@/state/wasm-loader";
 
 type EventName = keyof HTMLElementEventMap | keyof WindowEventHandlersEventMap | "modifyinputfield";
@@ -10,7 +10,7 @@ interface EventListenerTarget {
 }
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
-export function createInputManager(editor: EditorState, container: HTMLElement, dialog: DialogState, document: DocumentsState, fullscreen: FullscreenState) {
+export function createInputManager(editor: EditorState, container: HTMLElement, dialog: DialogState, document: PortfolioState, fullscreen: FullscreenState) {
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	const listeners: { target: EventListenerTarget; eventName: EventName; action: (event: any) => void; options?: boolean | AddEventListenerOptions }[] = [
 		{ target: window, eventName: "resize", action: (): void => onWindowResize(container) },
@@ -26,6 +26,7 @@ export function createInputManager(editor: EditorState, container: HTMLElement, 
 		{ target: window, eventName: "mousedown", action: (e: MouseEvent): void => onMouseDown(e) },
 		{ target: window, eventName: "wheel", action: (e: WheelEvent): void => onMouseScroll(e), options: { passive: false } },
 		{ target: window, eventName: "modifyinputfield", action: (e: CustomEvent): void => onModifyInputField(e) },
+		{ target: window.document.body, eventName: "paste", action: (e: ClipboardEvent): void => onPaste(e) },
 	];
 
 	let viewportPointerInteractionOngoing = false;
@@ -41,9 +42,17 @@ export function createInputManager(editor: EditorState, container: HTMLElement, 
 		if (!key) return false;
 
 		// Don't redirect user input from text entry into HTML elements
-		const { target } = e;
-		if (key !== "escape" && !(key === "enter" && e.ctrlKey) && target instanceof HTMLElement && (target.nodeName === "INPUT" || target.nodeName === "TEXTAREA" || target.isContentEditable))
+		if (
+			key !== "escape" &&
+			!(key === "enter" && e.ctrlKey) &&
+			e.target instanceof HTMLElement &&
+			(e.target.nodeName === "INPUT" || e.target.nodeName === "TEXTAREA" || e.target.isContentEditable)
+		) {
 			return false;
+		}
+
+		// Don't redirect paste
+		if (key === "v" && e.ctrlKey) return false;
 
 		// Don't redirect a fullscreen request
 		if (key === "f11" && e.type === "keydown" && !e.repeat) {
@@ -56,10 +65,14 @@ export function createInputManager(editor: EditorState, container: HTMLElement, 
 		if (key === "f5") return false;
 
 		// Don't redirect debugging tools
-		if (key === "f12") return false;
+		if (key === "f12" || key === "f8") return false;
 		if (e.ctrlKey && e.shiftKey && key === "c") return false;
 		if (e.ctrlKey && e.shiftKey && key === "i") return false;
 		if (e.ctrlKey && e.shiftKey && key === "j") return false;
+
+		// Don't redirect tab or enter if not in canvas (to allow navigating elements)
+		const inCanvas = e.target instanceof Element && e.target.closest("[data-canvas]");
+		if (!inCanvas && (key === "tab" || key === "enter")) return false;
 
 		// Redirect to the backend
 		return true;
@@ -78,12 +91,6 @@ export function createInputManager(editor: EditorState, container: HTMLElement, 
 
 		if (dialog.dialogIsVisible()) {
 			if (key === "escape") dialog.dismissDialog();
-			if (key === "enter") {
-				dialog.submitDialog();
-
-				// Prevent the Enter key from acting like a click on the last clicked button, which might reopen the dialog
-				e.preventDefault();
-			}
 		}
 	};
 
@@ -100,8 +107,16 @@ export function createInputManager(editor: EditorState, container: HTMLElement, 
 
 	// Pointer events
 
+	// While any pointer button is already down, additional button down events are not reported, but they are sent as `pointermove` events and these are handled in the backend
 	const onPointerMove = (e: PointerEvent): void => {
 		if (!e.buttons) viewportPointerInteractionOngoing = false;
+
+		// Don't redirect pointer movement to the backend if there's no ongoing interaction and it's over a floating menu on top of the canvas
+		// TODO: A better approach is to pass along a boolean to the backend's input preprocessor so it can know if it's being occluded by the GUI.
+		// TODO: This would allow it to properly decide to act on removing hover focus from something that was hovered in the canvas before moving over the GUI.
+		// TODO: Further explanation: https://github.com/GraphiteEditor/Graphite/pull/623#discussion_r866436197
+		const inFloatingMenu = e.target instanceof Element && e.target.closest("[data-floating-menu-content]");
+		if (!viewportPointerInteractionOngoing && inFloatingMenu) return;
 
 		const modifiers = makeModifiersBitfield(e);
 		editor.instance.on_mouse_move(e.clientX, e.clientY, e.buttons, modifiers);
@@ -119,9 +134,10 @@ export function createInputManager(editor: EditorState, container: HTMLElement, 
 			e.stopPropagation();
 		}
 
-		if (textInput && !inTextInput) {
-			editor.instance.on_change_text(textInputCleanup(textInput.innerText));
-		} else if (inCanvas && !inTextInput) viewportPointerInteractionOngoing = true;
+		if (!inTextInput) {
+			if (textInput) editor.instance.on_change_text(textInputCleanup(textInput.innerText));
+			else if (inCanvas) viewportPointerInteractionOngoing = true;
+		}
 
 		if (viewportPointerInteractionOngoing) {
 			const modifiers = makeModifiersBitfield(e);
@@ -159,6 +175,8 @@ export function createInputManager(editor: EditorState, container: HTMLElement, 
 		const { target } = e;
 		const inCanvas = target instanceof Element && target.closest("[data-canvas]");
 
+		// Redirect vertical scroll wheel movement into a horizontal scroll on a horizontally scrollable element
+		// There seems to be no possible way to properly employ the browser's smooth scrolling interpolation
 		const horizontalScrollableElement = target instanceof Element && target.closest("[data-scrollable-x]");
 		if (horizontalScrollableElement && e.deltaY !== 0) {
 			horizontalScrollableElement.scrollTo(horizontalScrollableElement.scrollLeft + e.deltaY, 0);
@@ -208,6 +226,31 @@ export function createInputManager(editor: EditorState, container: HTMLElement, 
 		}
 	};
 
+	const onPaste = (e: ClipboardEvent): void => {
+		const dataTransfer = e.clipboardData;
+		if (!dataTransfer) return;
+		e.preventDefault();
+
+		Array.from(dataTransfer.items).forEach((item) => {
+			if (item.type === "text/plain") {
+				item.getAsString((text) => {
+					if (text.startsWith("graphite/layer: ")) {
+						editor.instance.paste_serialized_data(text.substring(16, text.length));
+					}
+				});
+			}
+
+			const file = item.getAsFile();
+			if (file?.type.startsWith("image")) {
+				file.arrayBuffer().then((buffer): void => {
+					const u8Array = new Uint8Array(buffer);
+
+					editor.instance.paste_image(file.type, u8Array, undefined, undefined);
+				});
+			}
+		});
+	};
+
 	// Event bindings
 
 	const addListeners = (): void => {
@@ -222,9 +265,7 @@ export function createInputManager(editor: EditorState, container: HTMLElement, 
 	addListeners();
 	onWindowResize(container);
 
-	return {
-		removeListeners,
-	};
+	return { removeListeners };
 }
 export type InputManager = ReturnType<typeof createInputManager>;
 
@@ -266,335 +307,336 @@ function keyCodeToKey(code: string): string | null {
 	if (code.match(/^F[1-9]|F1[0-9]|F20$/)) return code.replace("F", "").toLowerCase();
 
 	// Other characters
-	const mapping: Record<string, string> = {
-		BracketLeft: "[",
-		BracketRight: "]",
-		Backslash: "\\",
-		Slash: "/",
-		Period: ".",
-		Comma: ",",
-		Equal: "=",
-		Minus: "-",
-		Quote: "'",
-		Semicolon: ";",
-		NumpadEqual: "=",
-		NumpadDivide: "/",
-		NumpadMultiply: "*",
-		NumpadSubtract: "-",
-		NumpadAdd: "+",
-		NumpadDecimal: ".",
-	};
-	if (code in mapping) return mapping[code];
+	if (MAPPING[code]) return MAPPING[code];
 
 	return null;
 }
 
-function isKeyPrintable(key: string): boolean {
-	const allPrintableKeys: string[] = [
-		// Modifier
-		"Alt",
-		"AltGraph",
-		"CapsLock",
-		"Control",
-		"Fn",
-		"FnLock",
-		"Meta",
-		"NumLock",
-		"ScrollLock",
-		"Shift",
-		"Symbol",
-		"SymbolLock",
-		// Legacy modifier
-		"Hyper",
-		"Super",
-		// White space
-		"Enter",
-		"Tab",
-		// Navigation
-		"ArrowDown",
-		"ArrowLeft",
-		"ArrowRight",
-		"ArrowUp",
-		"End",
-		"Home",
-		"PageDown",
-		"PageUp",
-		// Editing
-		"Backspace",
-		"Clear",
-		"Copy",
-		"CrSel",
-		"Cut",
-		"Delete",
-		"EraseEof",
-		"ExSel",
-		"Insert",
-		"Paste",
-		"Redo",
-		"Undo",
-		// UI
-		"Accept",
-		"Again",
-		"Attn",
-		"Cancel",
-		"ContextMenu",
-		"Escape",
-		"Execute",
-		"Find",
-		"Help",
-		"Pause",
-		"Play",
-		"Props",
-		"Select",
-		"ZoomIn",
-		"ZoomOut",
-		// Device
-		"BrightnessDown",
-		"BrightnessUp",
-		"Eject",
-		"LogOff",
-		"Power",
-		"PowerOff",
-		"PrintScreen",
-		"Hibernate",
-		"Standby",
-		"WakeUp",
-		// IME composition keys
-		"AllCandidates",
-		"Alphanumeric",
-		"CodeInput",
-		"Compose",
-		"Convert",
-		"Dead",
-		"FinalMode",
-		"GroupFirst",
-		"GroupLast",
-		"GroupNext",
-		"GroupPrevious",
-		"ModeChange",
-		"NextCandidate",
-		"NonConvert",
-		"PreviousCandidate",
-		"Process",
-		"SingleCandidate",
-		// Korean-specific
-		"HangulMode",
-		"HanjaMode",
-		"JunjaMode",
-		// Japanese-specific
-		"Eisu",
-		"Hankaku",
-		"Hiragana",
-		"HiraganaKatakana",
-		"KanaMode",
-		"KanjiMode",
-		"Katakana",
-		"Romaji",
-		"Zenkaku",
-		"ZenkakuHankaku",
-		// Common function
-		"F1",
-		"F2",
-		"F3",
-		"F4",
-		"F5",
-		"F6",
-		"F7",
-		"F8",
-		"F9",
-		"F10",
-		"F11",
-		"F12",
-		"Soft1",
-		"Soft2",
-		"Soft3",
-		"Soft4",
-		// Multimedia
-		"ChannelDown",
-		"ChannelUp",
-		"Close",
-		"MailForward",
-		"MailReply",
-		"MailSend",
-		"MediaClose",
-		"MediaFastForward",
-		"MediaPause",
-		"MediaPlay",
-		"MediaPlayPause",
-		"MediaRecord",
-		"MediaRewind",
-		"MediaStop",
-		"MediaTrackNext",
-		"MediaTrackPrevious",
-		"New",
-		"Open",
-		"Print",
-		"Save",
-		"SpellCheck",
-		// Multimedia numpad
-		"Key11",
-		"Key12",
-		// Audio
-		"AudioBalanceLeft",
-		"AudioBalanceRight",
-		"AudioBassBoostDown",
-		"AudioBassBoostToggle",
-		"AudioBassBoostUp",
-		"AudioFaderFront",
-		"AudioFaderRear",
-		"AudioSurroundModeNext",
-		"AudioTrebleDown",
-		"AudioTrebleUp",
-		"AudioVolumeDown",
-		"AudioVolumeUp",
-		"AudioVolumeMute",
-		"MicrophoneToggle",
-		"MicrophoneVolumeDown",
-		"MicrophoneVolumeUp",
-		"MicrophoneVolumeMute",
-		// Speech
-		"SpeechCorrectionList",
-		"SpeechInputToggle",
-		// Application
-		"LaunchApplication1",
-		"LaunchApplication2",
-		"LaunchCalendar",
-		"LaunchContacts",
-		"LaunchMail",
-		"LaunchMediaPlayer",
-		"LaunchMusicPlayer",
-		"LaunchPhone",
-		"LaunchScreenSaver",
-		"LaunchSpreadsheet",
-		"LaunchWebBrowser",
-		"LaunchWebCam",
-		"LaunchWordProcessor",
-		// Browser
-		"BrowserBack",
-		"BrowserFavorites",
-		"BrowserForward",
-		"BrowserHome",
-		"BrowserRefresh",
-		"BrowserSearch",
-		"BrowserStop",
-		// Mobile phone
-		"AppSwitch",
-		"Call",
-		"Camera",
-		"CameraFocus",
-		"EndCall",
-		"GoBack",
-		"GoHome",
-		"HeadsetHook",
-		"LastNumberRedial",
-		"Notification",
-		"MannerMode",
-		"VoiceDial",
-		// TV
-		"TV",
-		"TV3DMode",
-		"TVAntennaCable",
-		"TVAudioDescription",
-		"TVAudioDescriptionMixDown",
-		"TVAudioDescriptionMixUp",
-		"TVContentsMenu",
-		"TVDataService",
-		"TVInput",
-		"TVInputComponent1",
-		"TVInputComponent2",
-		"TVInputComposite1",
-		"TVInputComposite2",
-		"TVInputHDMI1",
-		"TVInputHDMI2",
-		"TVInputHDMI3",
-		"TVInputHDMI4",
-		"TVInputVGA1",
-		"TVMediaContext",
-		"TVNetwork",
-		"TVNumberEntry",
-		"TVPower",
-		"TVRadioService",
-		"TVSatellite",
-		"TVSatelliteBS",
-		"TVSatelliteCS",
-		"TVSatelliteToggle",
-		"TVTerrestrialAnalog",
-		"TVTerrestrialDigital",
-		"TVTimer",
-		// Media controls
-		"AVRInput",
-		"AVRPower",
-		"ColorF0Red",
-		"ColorF1Green",
-		"ColorF2Yellow",
-		"ColorF3Blue",
-		"ColorF4Grey",
-		"ColorF5Brown",
-		"ClosedCaptionToggle",
-		"Dimmer",
-		"DisplaySwap",
-		"DVR",
-		"Exit",
-		"FavoriteClear0",
-		"FavoriteClear1",
-		"FavoriteClear2",
-		"FavoriteClear3",
-		"FavoriteRecall0",
-		"FavoriteRecall1",
-		"FavoriteRecall2",
-		"FavoriteRecall3",
-		"FavoriteStore0",
-		"FavoriteStore1",
-		"FavoriteStore2",
-		"FavoriteStore3",
-		"Guide",
-		"GuideNextDay",
-		"GuidePreviousDay",
-		"Info",
-		"InstantReplay",
-		"Link",
-		"ListProgram",
-		"LiveContent",
-		"Lock",
-		"MediaApps",
-		"MediaAudioTrack",
-		"MediaLast",
-		"MediaSkipBackward",
-		"MediaSkipForward",
-		"MediaStepBackward",
-		"MediaStepForward",
-		"MediaTopMenu",
-		"NavigateIn",
-		"NavigateNext",
-		"NavigateOut",
-		"NavigatePrevious",
-		"NextFavoriteChannel",
-		"NextUserProfile",
-		"OnDemand",
-		"Pairing",
-		"PinPDown",
-		"PinPMove",
-		"PinPToggle",
-		"PinPUp",
-		"PlaySpeedDown",
-		"PlaySpeedReset",
-		"PlaySpeedUp",
-		"RandomToggle",
-		"RcLowBattery",
-		"RecordSpeedNext",
-		"RfBypass",
-		"ScanChannelsToggle",
-		"ScreenModeNext",
-		"Settings",
-		"SplitScreenToggle",
-		"STBInput",
-		"STBPower",
-		"Subtitle",
-		"Teletext",
-		"VideoModeNext",
-		"Wink",
-		"ZoomToggle",
-	];
+const MAPPING: Record<string, string> = {
+	BracketLeft: "[",
+	BracketRight: "]",
+	Backslash: "\\",
+	Slash: "/",
+	Period: ".",
+	Comma: ",",
+	Equal: "=",
+	Minus: "-",
+	Quote: "'",
+	Semicolon: ";",
+	NumpadEqual: "=",
+	NumpadDivide: "/",
+	NumpadMultiply: "*",
+	NumpadSubtract: "-",
+	NumpadAdd: "+",
+	NumpadDecimal: ".",
+};
 
-	return !allPrintableKeys.includes(key);
+function isKeyPrintable(key: string): boolean {
+	return !ALL_PRINTABLE_KEYS.has(key);
 }
+
+const ALL_PRINTABLE_KEYS = new Set([
+	// Modifier
+	"Alt",
+	"AltGraph",
+	"CapsLock",
+	"Control",
+	"Fn",
+	"FnLock",
+	"Meta",
+	"NumLock",
+	"ScrollLock",
+	"Shift",
+	"Symbol",
+	"SymbolLock",
+	// Legacy modifier
+	"Hyper",
+	"Super",
+	// White space
+	"Enter",
+	"Tab",
+	// Navigation
+	"ArrowDown",
+	"ArrowLeft",
+	"ArrowRight",
+	"ArrowUp",
+	"End",
+	"Home",
+	"PageDown",
+	"PageUp",
+	// Editing
+	"Backspace",
+	"Clear",
+	"Copy",
+	"CrSel",
+	"Cut",
+	"Delete",
+	"EraseEof",
+	"ExSel",
+	"Insert",
+	"Paste",
+	"Redo",
+	"Undo",
+	// UI
+	"Accept",
+	"Again",
+	"Attn",
+	"Cancel",
+	"ContextMenu",
+	"Escape",
+	"Execute",
+	"Find",
+	"Help",
+	"Pause",
+	"Play",
+	"Props",
+	"Select",
+	"ZoomIn",
+	"ZoomOut",
+	// Device
+	"BrightnessDown",
+	"BrightnessUp",
+	"Eject",
+	"LogOff",
+	"Power",
+	"PowerOff",
+	"PrintScreen",
+	"Hibernate",
+	"Standby",
+	"WakeUp",
+	// IME composition keys
+	"AllCandidates",
+	"Alphanumeric",
+	"CodeInput",
+	"Compose",
+	"Convert",
+	"Dead",
+	"FinalMode",
+	"GroupFirst",
+	"GroupLast",
+	"GroupNext",
+	"GroupPrevious",
+	"ModeChange",
+	"NextCandidate",
+	"NonConvert",
+	"PreviousCandidate",
+	"Process",
+	"SingleCandidate",
+	// Korean-specific
+	"HangulMode",
+	"HanjaMode",
+	"JunjaMode",
+	// Japanese-specific
+	"Eisu",
+	"Hankaku",
+	"Hiragana",
+	"HiraganaKatakana",
+	"KanaMode",
+	"KanjiMode",
+	"Katakana",
+	"Romaji",
+	"Zenkaku",
+	"ZenkakuHankaku",
+	// Common function
+	"F1",
+	"F2",
+	"F3",
+	"F4",
+	"F5",
+	"F6",
+	"F7",
+	"F8",
+	"F9",
+	"F10",
+	"F11",
+	"F12",
+	"Soft1",
+	"Soft2",
+	"Soft3",
+	"Soft4",
+	// Multimedia
+	"ChannelDown",
+	"ChannelUp",
+	"Close",
+	"MailForward",
+	"MailReply",
+	"MailSend",
+	"MediaClose",
+	"MediaFastForward",
+	"MediaPause",
+	"MediaPlay",
+	"MediaPlayPause",
+	"MediaRecord",
+	"MediaRewind",
+	"MediaStop",
+	"MediaTrackNext",
+	"MediaTrackPrevious",
+	"New",
+	"Open",
+	"Print",
+	"Save",
+	"SpellCheck",
+	// Multimedia numpad
+	"Key11",
+	"Key12",
+	// Audio
+	"AudioBalanceLeft",
+	"AudioBalanceRight",
+	"AudioBassBoostDown",
+	"AudioBassBoostToggle",
+	"AudioBassBoostUp",
+	"AudioFaderFront",
+	"AudioFaderRear",
+	"AudioSurroundModeNext",
+	"AudioTrebleDown",
+	"AudioTrebleUp",
+	"AudioVolumeDown",
+	"AudioVolumeUp",
+	"AudioVolumeMute",
+	"MicrophoneToggle",
+	"MicrophoneVolumeDown",
+	"MicrophoneVolumeUp",
+	"MicrophoneVolumeMute",
+	// Speech
+	"SpeechCorrectionList",
+	"SpeechInputToggle",
+	// Application
+	"LaunchApplication1",
+	"LaunchApplication2",
+	"LaunchCalendar",
+	"LaunchContacts",
+	"LaunchMail",
+	"LaunchMediaPlayer",
+	"LaunchMusicPlayer",
+	"LaunchPhone",
+	"LaunchScreenSaver",
+	"LaunchSpreadsheet",
+	"LaunchWebBrowser",
+	"LaunchWebCam",
+	"LaunchWordProcessor",
+	// Browser
+	"BrowserBack",
+	"BrowserFavorites",
+	"BrowserForward",
+	"BrowserHome",
+	"BrowserRefresh",
+	"BrowserSearch",
+	"BrowserStop",
+	// Mobile phone
+	"AppSwitch",
+	"Call",
+	"Camera",
+	"CameraFocus",
+	"EndCall",
+	"GoBack",
+	"GoHome",
+	"HeadsetHook",
+	"LastNumberRedial",
+	"Notification",
+	"MannerMode",
+	"VoiceDial",
+	// TV
+	"TV",
+	"TV3DMode",
+	"TVAntennaCable",
+	"TVAudioDescription",
+	"TVAudioDescriptionMixDown",
+	"TVAudioDescriptionMixUp",
+	"TVContentsMenu",
+	"TVDataService",
+	"TVInput",
+	"TVInputComponent1",
+	"TVInputComponent2",
+	"TVInputComposite1",
+	"TVInputComposite2",
+	"TVInputHDMI1",
+	"TVInputHDMI2",
+	"TVInputHDMI3",
+	"TVInputHDMI4",
+	"TVInputVGA1",
+	"TVMediaContext",
+	"TVNetwork",
+	"TVNumberEntry",
+	"TVPower",
+	"TVRadioService",
+	"TVSatellite",
+	"TVSatelliteBS",
+	"TVSatelliteCS",
+	"TVSatelliteToggle",
+	"TVTerrestrialAnalog",
+	"TVTerrestrialDigital",
+	"TVTimer",
+	// Media controls
+	"AVRInput",
+	"AVRPower",
+	"ColorF0Red",
+	"ColorF1Green",
+	"ColorF2Yellow",
+	"ColorF3Blue",
+	"ColorF4Grey",
+	"ColorF5Brown",
+	"ClosedCaptionToggle",
+	"Dimmer",
+	"DisplaySwap",
+	"DVR",
+	"Exit",
+	"FavoriteClear0",
+	"FavoriteClear1",
+	"FavoriteClear2",
+	"FavoriteClear3",
+	"FavoriteRecall0",
+	"FavoriteRecall1",
+	"FavoriteRecall2",
+	"FavoriteRecall3",
+	"FavoriteStore0",
+	"FavoriteStore1",
+	"FavoriteStore2",
+	"FavoriteStore3",
+	"Guide",
+	"GuideNextDay",
+	"GuidePreviousDay",
+	"Info",
+	"InstantReplay",
+	"Link",
+	"ListProgram",
+	"LiveContent",
+	"Lock",
+	"MediaApps",
+	"MediaAudioTrack",
+	"MediaLast",
+	"MediaSkipBackward",
+	"MediaSkipForward",
+	"MediaStepBackward",
+	"MediaStepForward",
+	"MediaTopMenu",
+	"NavigateIn",
+	"NavigateNext",
+	"NavigateOut",
+	"NavigatePrevious",
+	"NextFavoriteChannel",
+	"NextUserProfile",
+	"OnDemand",
+	"Pairing",
+	"PinPDown",
+	"PinPMove",
+	"PinPToggle",
+	"PinPUp",
+	"PlaySpeedDown",
+	"PlaySpeedReset",
+	"PlaySpeedUp",
+	"RandomToggle",
+	"RcLowBattery",
+	"RecordSpeedNext",
+	"RfBypass",
+	"ScanChannelsToggle",
+	"ScreenModeNext",
+	"Settings",
+	"SplitScreenToggle",
+	"STBInput",
+	"STBPower",
+	"Subtitle",
+	"Teletext",
+	"VideoModeNext",
+	"Wink",
+	"ZoomToggle",
+]);

@@ -1,11 +1,11 @@
-use super::clipboards::{CopyBufferEntry, CLIPBOARD_COUNT};
+use super::clipboards::{CopyBufferEntry, INTERNAL_CLIPBOARD_COUNT};
 use super::DocumentMessageHandler;
 use crate::consts::{DEFAULT_DOCUMENT_NAME, GRAPHITE_DOCUMENT_VERSION};
 use crate::frontend::utility_types::FrontendDocumentDetails;
 use crate::input::InputPreprocessorMessageHandler;
 use crate::layout::layout_message::LayoutTarget;
 use crate::layout::widgets::PropertyHolder;
-use crate::message_prelude::*;
+use crate::{dialog, message_prelude::*};
 
 use graphene::Operation as DocumentOperation;
 
@@ -17,7 +17,7 @@ pub struct PortfolioMessageHandler {
 	documents: HashMap<u64, DocumentMessageHandler>,
 	document_ids: Vec<u64>,
 	active_document_id: u64,
-	copy_buffer: [Vec<CopyBufferEntry>; CLIPBOARD_COUNT as usize],
+	copy_buffer: [Vec<CopyBufferEntry>; INTERNAL_CLIPBOARD_COUNT as usize],
 }
 
 impl PortfolioMessageHandler {
@@ -29,14 +29,13 @@ impl PortfolioMessageHandler {
 		self.documents.get_mut(&self.active_document_id).unwrap()
 	}
 
-	fn generate_new_document_name(&self) -> String {
+	pub fn generate_new_document_name(&self) -> String {
 		let mut doc_title_numbers = self
 			.ordered_document_iterator()
-			.map(|doc| {
+			.filter_map(|doc| {
 				doc.name
 					.rsplit_once(DEFAULT_DOCUMENT_NAME)
 					.map(|(prefix, number)| (prefix.is_empty()).then(|| number.trim().parse::<isize>().ok()).flatten().unwrap_or(1))
-					.unwrap()
 			})
 			.collect::<Vec<isize>>();
 
@@ -52,7 +51,7 @@ impl PortfolioMessageHandler {
 		name
 	}
 
-	// TODO Fix how this doesn't preserve tab order upon loading new document from file>load
+	// TODO Fix how this doesn't preserve tab order upon loading new document from *File > Load*
 	fn load_document(&mut self, new_document: DocumentMessageHandler, document_id: u64, replace_first_empty: bool, responses: &mut VecDeque<Message>) {
 		// Special case when loading a document on an empty page
 		if replace_first_empty && self.active_document().is_unmodified_default() {
@@ -74,9 +73,13 @@ impl PortfolioMessageHandler {
 				.layer_metadata
 				.keys()
 				.filter_map(|path| new_document.layer_panel_entry_from_path(path))
-				.map(|entry| FrontendMessage::UpdateDocumentLayer { data: entry }.into())
+				.map(|entry| FrontendMessage::UpdateDocumentLayerDetails { data: entry }.into())
 				.collect::<Vec<_>>(),
 		);
+		new_document.update_layer_tree_options_bar_widgets(responses);
+
+		new_document.load_image_data(responses, &new_document.graphene_document.root.data, Vec::new());
+		new_document.load_default_font(responses);
 
 		self.documents.insert(document_id, new_document);
 
@@ -119,7 +122,7 @@ impl Default for PortfolioMessageHandler {
 		Self {
 			documents: documents_map,
 			document_ids: vec![starting_key],
-			copy_buffer: [EMPTY_VEC; CLIPBOARD_COUNT as usize],
+			copy_buffer: [EMPTY_VEC; INTERNAL_CLIPBOARD_COUNT as usize],
 			active_document_id: starting_key,
 		}
 	}
@@ -164,9 +167,6 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 
 				// Create a new blank document
 				responses.push_back(NewDocument.into());
-			}
-			CloseAllDocumentsWithConfirmation => {
-				responses.push_back(FrontendMessage::DisplayConfirmationToCloseAllDocuments.into());
 			}
 			CloseDocument { document_id } => {
 				let document_index = self.document_index(document_id);
@@ -219,7 +219,13 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 					responses.push_back(ToolMessage::AbortCurrentTool.into());
 					responses.push_back(PortfolioMessage::CloseDocument { document_id }.into());
 				} else {
-					responses.push_back(FrontendMessage::DisplayConfirmationToCloseDocument { document_id }.into());
+					let dialog = dialog::CloseDocument {
+						document_name: target_document.name.clone(),
+						document_id,
+					};
+					dialog.register_properties(responses, LayoutTarget::DialogDetails);
+					responses.push_back(FrontendMessage::DisplayDialog { icon: "File".to_string() }.into());
+
 					// Select the document being closed
 					responses.push_back(PortfolioMessage::SelectDocument { document_id }.into());
 				}
@@ -228,16 +234,28 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 				// We can't use `self.active_document()` because it counts as an immutable borrow of the entirety of `self`
 				let active_document = self.documents.get(&self.active_document_id).unwrap();
 
-				let copy_buffer = &mut self.copy_buffer;
-				copy_buffer[clipboard as usize].clear();
-
-				for layer_path in active_document.selected_layers_without_children() {
-					match (active_document.graphene_document.layer(layer_path).map(|t| t.clone()), *active_document.layer_metadata(layer_path)) {
-						(Ok(layer), layer_metadata) => {
-							copy_buffer[clipboard as usize].push(CopyBufferEntry { layer, layer_metadata });
+				let copy_val = |buffer: &mut Vec<CopyBufferEntry>| {
+					for layer_path in active_document.selected_layers_without_children() {
+						match (active_document.graphene_document.layer(layer_path).map(|t| t.clone()), *active_document.layer_metadata(layer_path)) {
+							(Ok(layer), layer_metadata) => {
+								buffer.push(CopyBufferEntry { layer, layer_metadata });
+							}
+							(Err(e), _) => warn!("Could not access selected layer {:?}: {:?}", layer_path, e),
 						}
-						(Err(e), _) => warn!("Could not access selected layer {:?}: {:?}", layer_path, e),
 					}
+				};
+
+				if clipboard == Clipboard::Device {
+					let mut buffer = Vec::new();
+					copy_val(&mut buffer);
+					let mut copy_text = String::from("graphite/layer: ");
+					copy_text += &serde_json::to_string(&buffer).expect("Could not serialize paste");
+
+					responses.push_back(FrontendMessage::TriggerTextCopy { copy_text }.into());
+				} else {
+					let copy_buffer = &mut self.copy_buffer;
+					copy_buffer[clipboard as usize].clear();
+					copy_val(&mut copy_buffer[clipboard as usize]);
 				}
 			}
 			Cut { clipboard } => {
@@ -246,6 +264,12 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 			}
 			NewDocument => {
 				let name = self.generate_new_document_name();
+				let new_document = DocumentMessageHandler::with_name(name, ipp);
+				let document_id = generate_uuid();
+				responses.push_back(ToolMessage::AbortCurrentTool.into());
+				self.load_document(new_document, document_id, false, responses);
+			}
+			NewDocumentWithName { name } => {
 				let new_document = DocumentMessageHandler::with_name(name, ipp);
 				let document_id = generate_uuid();
 				responses.push_back(ToolMessage::AbortCurrentTool.into());
@@ -288,7 +312,7 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 						self.load_document(document, document_id, true, responses);
 					}
 					Err(e) => responses.push_back(
-						FrontendMessage::DisplayDialogError {
+						DialogMessage::DisplayDialogError {
 							title: "Failed to open document".to_string(),
 							description: e.to_string(),
 						}
@@ -331,6 +355,7 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 						}
 						.into(),
 					);
+					self.active_document().load_image_data(responses, &entry.layer.data, destination_path.clone());
 					responses.push_front(
 						DocumentOperation::InsertLayer {
 							layer: entry.layer.clone(),
@@ -351,6 +376,40 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 					}
 				}
 			}
+			PasteSerializedData { data } => {
+				if let Ok(data) = serde_json::from_str::<Vec<CopyBufferEntry>>(&data) {
+					let document = self.active_document();
+					let shallowest_common_folder = document
+						.graphene_document
+						.shallowest_common_folder(document.selected_layers())
+						.expect("While pasting from serialized, the selected layers did not exist while attempting to find the appropriate folder path for insertion");
+					responses.push_back(DeselectAllLayers.into());
+					responses.push_back(StartTransaction.into());
+
+					for entry in data {
+						let destination_path = [shallowest_common_folder.to_vec(), vec![generate_uuid()]].concat();
+
+						responses.push_front(
+							DocumentMessage::UpdateLayerMetadata {
+								layer_path: destination_path.clone(),
+								layer_metadata: entry.layer_metadata,
+							}
+							.into(),
+						);
+						self.active_document().load_image_data(responses, &entry.layer.data, destination_path.clone());
+						responses.push_front(
+							DocumentOperation::InsertLayer {
+								layer: entry.layer.clone(),
+								destination_path,
+								insert_index: -1,
+							}
+							.into(),
+						);
+					}
+
+					responses.push_back(CommitTransaction.into());
+				}
+			}
 			PrevDocument => {
 				let len = self.document_ids.len();
 				let current_index = self.document_index(self.active_document_id);
@@ -358,16 +417,14 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 				let prev_id = self.document_ids[prev_index];
 				responses.push_back(PortfolioMessage::SelectDocument { document_id: prev_id }.into());
 			}
-			RequestAboutGraphiteDialog => {
-				responses.push_back(FrontendMessage::DisplayDialogAboutGraphite.into());
-			}
+
 			SelectDocument { document_id } => {
 				let active_document = self.active_document();
 				if !active_document.is_saved() {
 					responses.push_back(PortfolioMessage::AutoSaveDocument { document_id: self.active_document_id }.into());
 				}
 				responses.push_back(ToolMessage::AbortCurrentTool.into());
-				responses.push_back(SetActiveDcoument { document_id }.into());
+				responses.push_back(SetActiveDocument { document_id }.into());
 
 				responses.push_back(FrontendMessage::UpdateActiveDocument { document_id }.into());
 				responses.push_back(RenderDocument.into());
@@ -376,14 +433,14 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 					responses.push_back(DocumentMessage::LayerChanged { affected_layer_path: layer.clone() }.into());
 				}
 				responses.push_back(ToolMessage::DocumentIsDirty.into());
-				responses.push_back(PortfolioMessage::UpdateDocumentBar.into());
+				responses.push_back(PortfolioMessage::UpdateDocumentWidgets.into());
 			}
-			SetActiveDcoument { document_id } => {
+			SetActiveDocument { document_id } => {
 				self.active_document_id = document_id;
 			}
-			UpdateDocumentBar => {
+			UpdateDocumentWidgets => {
 				let active_document = self.active_document();
-				active_document.register_properties(responses, LayoutTarget::DocumentBar)
+				active_document.update_document_widgets(responses);
 			}
 			UpdateOpenDocumentsList => {
 				// Send the list of document tab names
@@ -407,7 +464,6 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 		let mut common = actions!(PortfolioMessageDiscriminant;
 			NewDocument,
 			CloseActiveDocumentWithConfirmation,
-			CloseAllDocumentsWithConfirmation,
 			CloseAllDocuments,
 			NextDocument,
 			PrevDocument,

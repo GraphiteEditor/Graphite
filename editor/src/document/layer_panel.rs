@@ -1,4 +1,4 @@
-use graphene::layers::blend_mode::BlendMode;
+use graphene::document::FontCache;
 use graphene::layers::layer_info::{Layer, LayerData, LayerDataType};
 use graphene::layers::style::ViewMode;
 use graphene::LayerId;
@@ -20,21 +20,23 @@ impl LayerMetadata {
 	}
 }
 
-pub fn layer_panel_entry(layer_metadata: &LayerMetadata, transform: DAffine2, layer: &Layer, path: Vec<LayerId>) -> LayerPanelEntry {
+pub fn layer_panel_entry(layer_metadata: &LayerMetadata, transform: DAffine2, layer: &Layer, path: Vec<LayerId>, font_cache: &FontCache) -> LayerPanelEntry {
 	let name = layer.name.clone().unwrap_or_else(|| String::from(""));
-	let arr = layer.data.bounding_box(transform).unwrap_or([DVec2::ZERO, DVec2::ZERO]);
+	let arr = layer.data.bounding_box(transform, font_cache).unwrap_or([DVec2::ZERO, DVec2::ZERO]);
 	let arr = arr.iter().map(|x| (*x).into()).collect::<Vec<(f64, f64)>>();
 
 	let mut thumbnail = String::new();
-	layer.data.clone().render(&mut thumbnail, &mut vec![transform], ViewMode::Normal);
+	let mut svg_defs = String::new();
+	layer.data.clone().render(&mut thumbnail, &mut svg_defs, &mut vec![transform], ViewMode::Normal, font_cache);
 	let transform = transform.to_cols_array().iter().map(ToString::to_string).collect::<Vec<_>>().join(",");
 	let thumbnail = if let [(x_min, y_min), (x_max, y_max)] = arr.as_slice() {
 		format!(
-			r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{} {} {} {}"><g transform="matrix({})">{}</g></svg>"#,
+			r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{} {} {} {}"><defs>{}</defs><g transform="matrix({})">{}</g></svg>"#,
 			x_min,
 			y_min,
 			x_max - x_min,
 			y_max - y_min,
+			svg_defs,
 			transform,
 			thumbnail,
 		)
@@ -45,8 +47,6 @@ pub fn layer_panel_entry(layer_metadata: &LayerMetadata, transform: DAffine2, la
 	LayerPanelEntry {
 		name,
 		visible: layer.visible,
-		blend_mode: layer.blend_mode,
-		opacity: layer.opacity,
 		layer_type: (&layer.data).into(),
 		layer_metadata: *layer_metadata,
 		path,
@@ -85,8 +85,6 @@ impl Serialize for RawBuffer {
 pub struct LayerPanelEntry {
 	pub name: String,
 	pub visible: bool,
-	pub blend_mode: BlendMode,
-	pub opacity: f64,
 	pub layer_type: LayerDataTypeDiscriminant,
 	pub layer_metadata: LayerMetadata,
 	pub path: Vec<LayerId>,
@@ -98,6 +96,7 @@ pub enum LayerDataTypeDiscriminant {
 	Folder,
 	Shape,
 	Text,
+	Image,
 }
 
 impl fmt::Display for LayerDataTypeDiscriminant {
@@ -106,6 +105,7 @@ impl fmt::Display for LayerDataTypeDiscriminant {
 			LayerDataTypeDiscriminant::Folder => "Folder",
 			LayerDataTypeDiscriminant::Shape => "Shape",
 			LayerDataTypeDiscriminant::Text => "Text",
+			LayerDataTypeDiscriminant::Image => "Image",
 		};
 
 		formatter.write_str(name)
@@ -120,6 +120,7 @@ impl From<&LayerDataType> for LayerDataTypeDiscriminant {
 			Folder(_) => LayerDataTypeDiscriminant::Folder,
 			Shape(_) => LayerDataTypeDiscriminant::Shape,
 			Text(_) => LayerDataTypeDiscriminant::Text,
+			Image(_) => LayerDataTypeDiscriminant::Image,
 		}
 	}
 }

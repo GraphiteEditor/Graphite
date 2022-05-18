@@ -4,12 +4,14 @@ pub mod communication;
 #[macro_use]
 pub mod misc;
 pub mod consts;
+pub mod dialog;
 pub mod document;
 pub mod frontend;
 pub mod global;
 pub mod input;
 pub mod layout;
 pub mod viewport_tools;
+pub mod workspace;
 
 #[doc(inline)]
 pub use graphene::color::Color;
@@ -59,6 +61,7 @@ pub mod message_prelude {
 	pub use crate::document::clipboards::Clipboard;
 	pub use crate::LayerId;
 
+	pub use crate::dialog::messages::*;
 	pub use crate::document::{ArtboardMessage, ArtboardMessageDiscriminant};
 	pub use crate::document::{DocumentMessage, DocumentMessageDiscriminant};
 	pub use crate::document::{MovementMessage, MovementMessageDiscriminant};
@@ -72,11 +75,12 @@ pub mod message_prelude {
 	pub use crate::layout::{LayoutMessage, LayoutMessageDiscriminant};
 	pub use crate::misc::derivable_custom_traits::{ToDiscriminant, TransitiveChild};
 	pub use crate::viewport_tools::tool_message::{ToolMessage, ToolMessageDiscriminant};
-	pub use crate::viewport_tools::tools::crop_tool::{CropToolMessage, CropToolMessageDiscriminant};
+	pub use crate::viewport_tools::tools::artboard_tool::{ArtboardToolMessage, ArtboardToolMessageDiscriminant};
 	pub use crate::viewport_tools::tools::ellipse_tool::{EllipseToolMessage, EllipseToolMessageDiscriminant};
 	pub use crate::viewport_tools::tools::eyedropper_tool::{EyedropperToolMessage, EyedropperToolMessageDiscriminant};
 	pub use crate::viewport_tools::tools::fill_tool::{FillToolMessage, FillToolMessageDiscriminant};
 	pub use crate::viewport_tools::tools::freehand_tool::{FreehandToolMessage, FreehandToolMessageDiscriminant};
+	pub use crate::viewport_tools::tools::gradient_tool::{GradientToolMessage, GradientToolMessageDiscriminant};
 	pub use crate::viewport_tools::tools::line_tool::{LineToolMessage, LineToolMessageDiscriminant};
 	pub use crate::viewport_tools::tools::navigate_tool::{NavigateToolMessage, NavigateToolMessageDiscriminant};
 	pub use crate::viewport_tools::tools::path_tool::{PathToolMessage, PathToolMessageDiscriminant};
@@ -86,6 +90,7 @@ pub mod message_prelude {
 	pub use crate::viewport_tools::tools::shape_tool::{ShapeToolMessage, ShapeToolMessageDiscriminant};
 	pub use crate::viewport_tools::tools::spline_tool::{SplineToolMessage, SplineToolMessageDiscriminant};
 	pub use crate::viewport_tools::tools::text_tool::{TextMessage, TextMessageDiscriminant};
+	pub use crate::workspace::{WorkspaceMessage, WorkspaceMessageDiscriminant};
 	pub use graphite_proc_macros::*;
 
 	pub use std::collections::VecDeque;

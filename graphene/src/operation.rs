@@ -1,8 +1,7 @@
 use crate::boolean_ops::BooleanOperation as BooleanOperationType;
-use crate::color::Color;
 use crate::layers::blend_mode::BlendMode;
 use crate::layers::layer_info::Layer;
-use crate::layers::style;
+use crate::layers::style::{self, Stroke};
 use crate::LayerId;
 
 use serde::{Deserialize, Serialize};
@@ -12,6 +11,7 @@ use std::hash::{Hash, Hasher};
 #[repr(C)]
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 // TODO: Rename all instances of `path` to `layer_path`
+/// Operations that can be performed to mutate the document.
 pub enum Operation {
 	AddEllipse {
 		path: Vec<LayerId>,
@@ -53,6 +53,21 @@ pub enum Operation {
 		text: String,
 		style: style::PathStyle,
 		size: f64,
+		font_name: String,
+		font_style: String,
+		font_file: Option<String>,
+	},
+	AddImage {
+		path: Vec<LayerId>,
+		transform: [f64; 6],
+		insert_index: isize,
+		mime: String,
+		image_data: Vec<u8>,
+	},
+	SetImageBlobUrl {
+		path: Vec<LayerId>,
+		blob_url: String,
+		dimensions: (f64, f64),
 	},
 	SetTextEditability {
 		path: Vec<LayerId>,
@@ -108,6 +123,13 @@ pub enum Operation {
 	},
 	DuplicateLayer {
 		path: Vec<LayerId>,
+	},
+	ModifyFont {
+		path: Vec<LayerId>,
+		font_family: String,
+		font_style: String,
+		font_file: Option<String>,
+		size: f64,
 	},
 	RenameLayer {
 		layer_path: Vec<LayerId>,
@@ -183,7 +205,11 @@ pub enum Operation {
 	},
 	SetLayerFill {
 		path: Vec<LayerId>,
-		color: Color,
+		fill: style::Fill,
+	},
+	SetLayerStroke {
+		path: Vec<LayerId>,
+		stroke: Stroke,
 	},
 }
 

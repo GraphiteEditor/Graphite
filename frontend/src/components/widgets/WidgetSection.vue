@@ -14,6 +14,8 @@
 
 <style lang="scss">
 .widget-section {
+	flex: 0 0 auto;
+
 	.header {
 		flex: 0 0 24px;
 		background: var(--color-4-dimgray);
@@ -82,13 +84,11 @@ const WidgetSection = defineComponent({
 		widgetData: { type: Object as PropType<WidgetSectionFromJsMessages>, required: true },
 		layoutTarget: { required: true },
 	},
-	data: () => {
-		return {
-			isWidgetRow,
-			isWidgetSection,
-			expanded: true,
-		};
-	},
+	data: () => ({
+		isWidgetRow,
+		isWidgetSection,
+		expanded: true,
+	}),
 	methods: {
 		updateLayout(widgetId: BigInt, value: unknown) {
 			this.editor.instance.update_layout(this.layoutTarget, widgetId, value);

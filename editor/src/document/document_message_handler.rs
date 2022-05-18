@@ -1,23 +1,27 @@
 use super::clipboards::Clipboard;
 use super::layer_panel::{layer_panel_entry, LayerDataTypeDiscriminant, LayerMetadata, LayerPanelEntry, RawBuffer};
+use super::properties_panel_message_handler::PropertiesPanelMessageHandlerData;
 use super::utility_types::{AlignAggregate, AlignAxis, DocumentSave, FlipAxis};
+use super::utility_types::{DocumentMode, TargetDocument};
 use super::{vectorize_layer_metadata, PropertiesPanelMessageHandler};
 use super::{ArtboardMessageHandler, MovementMessageHandler, OverlaysMessageHandler, TransformLayerMessageHandler};
-use crate::consts::{
-	ASYMPTOTIC_EFFECT, DEFAULT_DOCUMENT_NAME, FILE_EXPORT_SUFFIX, FILE_SAVE_SUFFIX, GRAPHITE_DOCUMENT_VERSION, SCALE_EFFECT, SCROLLBAR_SPACING, VIEWPORT_ZOOM_TO_FIT_PADDING_SCALE_FACTOR,
-};
+use crate::consts::{ASYMPTOTIC_EFFECT, DEFAULT_DOCUMENT_NAME, FILE_SAVE_SUFFIX, GRAPHITE_DOCUMENT_VERSION, SCALE_EFFECT, SCROLLBAR_SPACING, VIEWPORT_ZOOM_TO_FIT_PADDING_SCALE_FACTOR};
+use crate::frontend::utility_types::{FileType, FrontendImageData};
 use crate::input::InputPreprocessorMessageHandler;
+use crate::layout::layout_message::LayoutTarget;
 use crate::layout::widgets::{
-	IconButton, LayoutRow, NumberInput, NumberInputIncrementBehavior, OptionalInput, PopoverButton, PropertyHolder, RadioEntryData, RadioInput, Separator, SeparatorDirection, SeparatorType, Widget,
-	WidgetCallback, WidgetHolder, WidgetLayout,
+	DropdownEntryData, DropdownInput, IconButton, LayoutRow, NumberInput, NumberInputIncrementBehavior, OptionalInput, PopoverButton, RadioEntryData, RadioInput, Separator, SeparatorDirection,
+	SeparatorType, Widget, WidgetCallback, WidgetHolder, WidgetLayout,
 };
 use crate::message_prelude::*;
 use crate::EditorError;
 
+use graphene::color::Color;
 use graphene::document::Document as GrapheneDocument;
+use graphene::layers::blend_mode::BlendMode;
 use graphene::layers::folder_layer::FolderLayer;
 use graphene::layers::layer_info::LayerDataType;
-use graphene::layers::style::ViewMode;
+use graphene::layers::style::{Fill, ViewMode};
 use graphene::layers::vector::vector_shape::VectorShape;
 use graphene::{DocumentError, DocumentResponse, LayerId, Operation as DocumentOperation};
 
@@ -30,15 +34,24 @@ use std::collections::VecDeque;
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct DocumentMessageHandler {
 	pub graphene_document: GrapheneDocument,
+	pub saved_document_identifier: u64,
+	pub name: String,
+	pub version: String,
+
+	pub document_mode: DocumentMode,
+	pub view_mode: ViewMode,
+	pub snapping_enabled: bool,
+	pub overlays_visible: bool,
+
 	#[serde(skip)]
 	pub document_undo_history: Vec<DocumentSave>,
 	#[serde(skip)]
 	pub document_redo_history: Vec<DocumentSave>,
-	pub saved_document_identifier: u64,
-	pub name: String,
+
 	#[serde(with = "vectorize_layer_metadata")]
 	pub layer_metadata: HashMap<Vec<LayerId>, LayerMetadata>,
 	layer_range_selection_reference: Vec<LayerId>,
+
 	movement_handler: MovementMessageHandler,
 	#[serde(skip)]
 	overlays_message_handler: OverlaysMessageHandler,
@@ -46,31 +59,32 @@ pub struct DocumentMessageHandler {
 	#[serde(skip)]
 	transform_layer_handler: TransformLayerMessageHandler,
 	properties_panel_message_handler: PropertiesPanelMessageHandler,
-	pub overlays_visible: bool,
-	pub snapping_enabled: bool,
-	pub view_mode: ViewMode,
-	pub version: String,
 }
 
 impl Default for DocumentMessageHandler {
 	fn default() -> Self {
 		Self {
 			graphene_document: GrapheneDocument::default(),
-			document_undo_history: Vec::new(),
-			document_redo_history: Vec::new(),
 			saved_document_identifier: 0,
 			name: String::from("Untitled Document"),
+			version: GRAPHITE_DOCUMENT_VERSION.to_string(),
+
+			document_mode: DocumentMode::DesignMode,
+			view_mode: ViewMode::default(),
+			snapping_enabled: true,
+			overlays_visible: true,
+
+			document_undo_history: Vec::new(),
+			document_redo_history: Vec::new(),
+
 			layer_metadata: vec![(vec![], LayerMetadata::new(true))].into_iter().collect(),
 			layer_range_selection_reference: Vec::new(),
+
 			movement_handler: MovementMessageHandler::default(),
 			overlays_message_handler: OverlaysMessageHandler::default(),
 			artboard_message_handler: ArtboardMessageHandler::default(),
 			transform_layer_handler: TransformLayerMessageHandler::default(),
 			properties_panel_message_handler: PropertiesPanelMessageHandler::default(),
-			snapping_enabled: true,
-			overlays_visible: true,
-			view_mode: ViewMode::default(),
-			version: GRAPHITE_DOCUMENT_VERSION.to_string(),
 		}
 	}
 }
@@ -128,7 +142,7 @@ impl DocumentMessageHandler {
 		if let Some(layer) = self.layer_metadata.get_mut(path) {
 			layer.selected = true;
 			let data = self.layer_panel_entry(path.to_vec()).ok()?;
-			(!path.is_empty()).then(|| FrontendMessage::UpdateDocumentLayer { data }.into())
+			(!path.is_empty()).then(|| FrontendMessage::UpdateDocumentLayerDetails { data }.into())
 		} else {
 			log::warn!("Tried to select non existing layer {:?}", path);
 			None
@@ -143,6 +157,35 @@ impl DocumentMessageHandler {
 	pub fn artboard_bounding_box_and_transform(&self, path: &[LayerId]) -> Option<([DVec2; 2], DAffine2)> {
 		self.artboard_message_handler.artboards_graphene_document.bounding_box_and_transform(path).unwrap_or(None)
 	}
+
+	// TODO Extract new font code and apply to text conversion for VectorShape
+	// /// Create a new vector shape representation with the underlying kurbo data, VectorManipulatorShape
+	// pub fn selected_visible_layers_vector_shapes(&self, responses: &mut VecDeque<Message>) -> Vec<VectorShape> {
+	// 	let shapes = self.selected_layers().filter_map(|path_to_shape| {
+	// 		let viewport_transform = self.graphene_document.generate_transform_relative_to_viewport(path_to_shape).ok()?;
+	// 		let layer = self.graphene_document.layer(path_to_shape);
+
+	// 		match &layer {
+	// 			Ok(layer) if layer.visible => {}
+	// 			_ => return None,
+	// 		};
+
+	// 		// TODO: Create VectorManipulatorShape when creating a kurbo shape as a stopgap, rather than on each new selection
+	// 		match &layer.ok()?.data {
+	// 			LayerDataType::Shape(shape) => Some(VectorShape::new(path_to_shape.to_vec(), viewport_transform, &shape.path, shape.closed, responses)),
+	// 			LayerDataType::Text(text) => Some(VectorShape::new(
+	// 				path_to_shape.to_vec(),
+	// 				viewport_transform,
+	// 				&text.to_bez_path_nonmut(&self.graphene_document.font_cache),
+	// 				true,
+	// 				responses,
+	// 			)),
+	// 			_ => None,
+	// 		}
+	// 	});
+
+	// 	shapes.collect::<Vec<VectorShape>>()
+	// }
 
 	pub fn selected_layers(&self) -> impl Iterator<Item = &[LayerId]> {
 		self.layer_metadata.iter().filter_map(|(path, data)| data.selected.then(|| path.as_slice()))
@@ -411,7 +454,7 @@ impl DocumentMessageHandler {
 			.get_mut(&path)
 			.ok_or_else(|| EditorError::Document(format!("Could not get layer metadata for {:?}", path)))?;
 		let layer = self.graphene_document.layer(&path)?;
-		let entry = layer_panel_entry(&data, self.graphene_document.multiply_transforms(&path)?, layer, path);
+		let entry = layer_panel_entry(&data, self.graphene_document.multiply_transforms(&path)?, layer, path, &self.graphene_document.font_cache);
 		Ok(entry)
 	}
 
@@ -432,7 +475,7 @@ impl DocumentMessageHandler {
 			.ok()?;
 		let layer = self.graphene_document.layer(path).ok()?;
 
-		Some(layer_panel_entry(layer_metadata, transform, layer, path.to_vec()))
+		Some(layer_panel_entry(layer_metadata, transform, layer, path.to_vec(), &self.graphene_document.font_cache))
 	}
 
 	/// When working with an insert index, deleting the layers may cause the insert index to point to a different location (if the layer being deleted was located before the insert index).
@@ -446,9 +489,15 @@ impl DocumentMessageHandler {
 		Ok(insert_index - layer_ids_above.iter().filter(|layer_id| layers.iter().any(|x| *x == [path, &[**layer_id]].concat())).count() as isize)
 	}
 
+	/// Calculates the bounding box of all layers in the document
+	pub fn all_layer_bounds(&self) -> Option<[DVec2; 2]> {
+		self.graphene_document.viewport_bounding_box(&[]).ok().flatten()
+	}
+
+	/// Calculates the document bounds used for scrolling and centring (the layer bounds or the artboard (if applicable))
 	pub fn document_bounds(&self) -> Option<[DVec2; 2]> {
 		if self.artboard_message_handler.is_infinite_canvas() {
-			self.graphene_document.viewport_bounding_box(&[]).ok().flatten()
+			self.all_layer_bounds()
 		} else {
 			self.artboard_message_handler.artboards_graphene_document.viewport_bounding_box(&[]).ok().flatten()
 		}
@@ -463,18 +512,48 @@ impl DocumentMessageHandler {
 		path.push(generate_uuid());
 		path
 	}
-}
 
-impl PropertyHolder for DocumentMessageHandler {
-	fn properties(&self) -> WidgetLayout {
-		WidgetLayout::new(vec![LayoutRow::Row {
-			name: "".into(),
+	/// Creates the blob URLs for the image data in the document
+	pub fn load_image_data(&self, responses: &mut VecDeque<Message>, root: &LayerDataType, mut path: Vec<LayerId>) {
+		let mut image_data = Vec::new();
+		fn walk_layers(data: &LayerDataType, path: &mut Vec<LayerId>, image_data: &mut Vec<FrontendImageData>) {
+			match data {
+				LayerDataType::Folder(f) => {
+					for (id, layer) in f.layer_ids.iter().zip(f.layers().iter()) {
+						path.push(*id);
+						walk_layers(&layer.data, path, image_data);
+						path.pop();
+					}
+				}
+				LayerDataType::Image(img) => image_data.push(FrontendImageData {
+					path: path.clone(),
+					image_data: img.image_data.clone(),
+					mime: img.mime.clone(),
+				}),
+				_ => {}
+			}
+		}
+
+		walk_layers(root, &mut path, &mut image_data);
+		if !image_data.is_empty() {
+			responses.push_front(FrontendMessage::UpdateImageData { image_data }.into());
+		}
+	}
+
+	pub fn load_default_font(&self, responses: &mut VecDeque<Message>) {
+		if !self.graphene_document.font_cache.has_default() {
+			responses.push_back(FrontendMessage::TriggerFontLoadDefault.into())
+		}
+	}
+
+	pub fn update_document_widgets(&self, responses: &mut VecDeque<Message>) {
+		let document_bar_layout = WidgetLayout::new(vec![LayoutRow::Row {
 			widgets: vec![
 				WidgetHolder::new(Widget::OptionalInput(OptionalInput {
 					checked: self.snapping_enabled,
 					icon: "Snapping".into(),
 					tooltip: "Snapping".into(),
-					on_update: WidgetCallback::new(|updated_optional_input| DocumentMessage::SetSnapping { snap: updated_optional_input.checked }.into()),
+					on_update: WidgetCallback::new(|optional_input: &OptionalInput| DocumentMessage::SetSnapping { snap: optional_input.checked }.into()),
 				})),
 				WidgetHolder::new(Widget::PopoverButton(PopoverButton {
 					title: "Snapping".into(),
@@ -488,7 +567,7 @@ impl PropertyHolder for DocumentMessageHandler {
 					checked: true,
 					icon: "Grid".into(),
 					tooltip: "Grid".into(),
-					on_update: WidgetCallback::new(|_| FrontendMessage::DisplayDialogComingSoon { issue: Some(318) }.into()),
+					on_update: WidgetCallback::new(|_| DialogMessage::RequestComingSoonDialog { issue: Some(318) }.into()),
 				})),
 				WidgetHolder::new(Widget::PopoverButton(PopoverButton {
 					title: "Grid".into(),
@@ -502,12 +581,7 @@ impl PropertyHolder for DocumentMessageHandler {
 					checked: self.overlays_visible,
 					icon: "Overlays".into(),
 					tooltip: "Overlays".into(),
-					on_update: WidgetCallback::new(|updated_optional_input| {
-						DocumentMessage::SetOverlaysVisibility {
-							visible: updated_optional_input.checked,
-						}
-						.into()
-					}),
+					on_update: WidgetCallback::new(|optional_input: &OptionalInput| DocumentMessage::SetOverlaysVisibility { visible: optional_input.checked }.into()),
 				})),
 				WidgetHolder::new(Widget::PopoverButton(PopoverButton {
 					title: "Overlays".into(),
@@ -538,7 +612,7 @@ impl PropertyHolder for DocumentMessageHandler {
 							value: "pixels".into(),
 							icon: "ViewModePixels".into(),
 							tooltip: "View Mode: Pixels".into(),
-							on_update: WidgetCallback::new(|_| FrontendMessage::DisplayDialogComingSoon { issue: Some(320) }.into()),
+							on_update: WidgetCallback::new(|_| DialogMessage::RequestComingSoonDialog { issue: Some(320) }.into()),
 							..RadioEntryData::default()
 						},
 					],
@@ -553,11 +627,11 @@ impl PropertyHolder for DocumentMessageHandler {
 				})),
 				WidgetHolder::new(Widget::NumberInput(NumberInput {
 					unit: "°".into(),
-					value: self.movement_handler.tilt / (std::f64::consts::PI / 180.),
+					value: Some(self.movement_handler.tilt / (std::f64::consts::PI / 180.)),
 					increment_factor: 15.,
-					on_update: WidgetCallback::new(|number_input| {
+					on_update: WidgetCallback::new(|number_input: &NumberInput| {
 						MovementMessage::SetCanvasRotation {
-							angle_radians: number_input.value * (std::f64::consts::PI / 180.),
+							angle_radians: number_input.value.unwrap() * (std::f64::consts::PI / 180.),
 						}
 						.into()
 					}),
@@ -594,12 +668,12 @@ impl PropertyHolder for DocumentMessageHandler {
 				})),
 				WidgetHolder::new(Widget::NumberInput(NumberInput {
 					unit: "%".into(),
-					value: self.movement_handler.zoom * 100.,
+					value: Some(self.movement_handler.zoom * 100.),
 					min: Some(0.000001),
 					max: Some(1000000.),
-					on_update: WidgetCallback::new(|number_input| {
+					on_update: WidgetCallback::new(|number_input: &NumberInput| {
 						MovementMessage::SetCanvasZoom {
-							zoom_factor: number_input.value / 100.,
+							zoom_factor: number_input.value.unwrap() / 100.,
 						}
 						.into()
 					}),
@@ -609,7 +683,163 @@ impl PropertyHolder for DocumentMessageHandler {
 					..NumberInput::default()
 				})),
 			],
-		}])
+		}]);
+
+		let document_mode_layout = WidgetLayout::new(vec![LayoutRow::Row {
+			widgets: vec![WidgetHolder::new(Widget::DropdownInput(DropdownInput {
+				entries: vec![vec![
+					DropdownEntryData {
+						label: DocumentMode::DesignMode.to_string(),
+						icon: DocumentMode::DesignMode.icon_name(),
+						..DropdownEntryData::default()
+					},
+					DropdownEntryData {
+						label: DocumentMode::SelectMode.to_string(),
+						icon: DocumentMode::SelectMode.icon_name(),
+						on_update: WidgetCallback::new(|_| DialogMessage::RequestComingSoonDialog { issue: Some(330) }.into()),
+						..DropdownEntryData::default()
+					},
+					DropdownEntryData {
+						label: DocumentMode::GuideMode.to_string(),
+						icon: DocumentMode::GuideMode.icon_name(),
+						on_update: WidgetCallback::new(|_| DialogMessage::RequestComingSoonDialog { issue: Some(331) }.into()),
+						..DropdownEntryData::default()
+					},
+				]],
+				selected_index: Some(self.document_mode as u32),
+				draw_icon: true,
+				..Default::default()
+			}))],
+		}]);
+
+		responses.push_back(
+			LayoutMessage::SendLayout {
+				layout: document_bar_layout,
+				layout_target: LayoutTarget::DocumentBar,
+			}
+			.into(),
+		);
+
+		responses.push_back(
+			LayoutMessage::SendLayout {
+				layout: document_mode_layout,
+				layout_target: LayoutTarget::DocumentMode,
+			}
+			.into(),
+		);
+	}
+
+	pub fn update_layer_tree_options_bar_widgets(&self, responses: &mut VecDeque<Message>) {
+		let mut opacity = None;
+		let mut opacity_is_mixed = false;
+
+		let mut blend_mode = None;
+		let mut blend_mode_is_mixed = false;
+
+		self.layer_metadata
+			.keys()
+			.filter_map(|path| self.layer_panel_entry_from_path(path))
+			.filter(|layer_panel_entry| layer_panel_entry.layer_metadata.selected)
+			.flat_map(|layer_panel_entry| self.graphene_document.layer(layer_panel_entry.path.as_slice()))
+			.for_each(|layer| {
+				match opacity {
+					None => opacity = Some(layer.opacity),
+					Some(opacity) => {
+						if (opacity - layer.opacity).abs() > (1. / 1_000_000.) {
+							opacity_is_mixed = true;
+						}
+					}
+				}
+
+				match blend_mode {
+					None => blend_mode = Some(layer.blend_mode),
+					Some(blend_mode) => {
+						if blend_mode != layer.blend_mode {
+							blend_mode_is_mixed = true;
+						}
+					}
+				}
+			});
+
+		if opacity_is_mixed {
+			opacity = None;
+		}
+		if blend_mode_is_mixed {
+			blend_mode = None;
+		}
+
+		let blend_mode_menu_entries = BlendMode::list_modes_in_groups()
+			.iter()
+			.map(|modes| {
+				modes
+					.iter()
+					.map(|mode| DropdownEntryData {
+						label: mode.to_string(),
+						value: mode.to_string(),
+						on_update: WidgetCallback::new(|_| DocumentMessage::SetBlendModeForSelectedLayers { blend_mode: *mode }.into()),
+						..Default::default()
+					})
+					.collect()
+			})
+			.collect();
+
+		let layer_tree_options = WidgetLayout::new(vec![LayoutRow::Row {
+			widgets: vec![
+				WidgetHolder::new(Widget::DropdownInput(DropdownInput {
+					entries: blend_mode_menu_entries,
+					selected_index: blend_mode.map(|blend_mode| blend_mode as u32),
+					disabled: blend_mode.is_none() && !blend_mode_is_mixed,
+					draw_icon: false,
+				})),
+				WidgetHolder::new(Widget::Separator(Separator {
+					separator_type: SeparatorType::Related,
+					direction: SeparatorDirection::Horizontal,
+				})),
+				WidgetHolder::new(Widget::NumberInput(NumberInput {
+					label: "Opacity".into(),
+					unit: "%".into(),
+					display_decimal_places: 2,
+					disabled: opacity.is_none() && !opacity_is_mixed,
+					value: opacity.map(|opacity| opacity * 100.),
+					min: Some(0.),
+					max: Some(100.),
+					on_update: WidgetCallback::new(|number_input: &NumberInput| {
+						if let Some(value) = number_input.value {
+							DocumentMessage::SetOpacityForSelectedLayers { opacity: value / 100. }.into()
+						} else {
+							Message::NoOp
+						}
+					}),
+					..NumberInput::default()
+				})),
+				WidgetHolder::new(Widget::Separator(Separator {
+					separator_type: SeparatorType::Section,
+					direction: SeparatorDirection::Horizontal,
+				})),
+				WidgetHolder::new(Widget::IconButton(IconButton {
+					icon: "NodeFolder".into(),
+					tooltip: "New Folder (Ctrl+Shift+N)".into(), // TODO: Customize this tooltip for the Mac version of the keyboard shortcut
+					size: 24,
+					on_update: WidgetCallback::new(|_| DocumentMessage::CreateEmptyFolder { container_path: vec![] }.into()),
+					..Default::default()
+				})),
+				WidgetHolder::new(Widget::IconButton(IconButton {
+					icon: "Trash".into(),
+					tooltip: "Delete Selected (Del)".into(), // TODO: Customize this tooltip for the Mac version of the keyboard shortcut
+					size: 24,
+					on_update: WidgetCallback::new(|_| DocumentMessage::DeleteSelectedLayers.into()),
+					..Default::default()
+				})),
+			],
+		}]);
+
+		responses.push_back(
+			LayoutMessage::SendLayout {
+				layout: layer_tree_options,
+				layout_target: LayoutTarget::LayerTreeOptions,
+			}
+			.into(),
+		);
 	}
 }
 
@@ -622,7 +852,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 		match message {
 			// Sub-messages
 			#[remain::unsorted]
-			DispatchOperation(op) => match self.graphene_document.handle_operation(&op) {
+			DispatchOperation(op) => match self.graphene_document.handle_operation(*op) {
 				Ok(Some(document_responses)) => {
 					for response in document_responses {
 						match &response {
@@ -674,7 +904,14 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 			}
 			#[remain::unsorted]
 			PropertiesPanel(message) => {
-				self.properties_panel_message_handler.process_action(message, &self.graphene_document, responses);
+				self.properties_panel_message_handler.process_action(
+					message,
+					PropertiesPanelMessageHandlerData {
+						artwork_document: &self.graphene_document,
+						artboard_document: &self.artboard_message_handler.artboards_graphene_document,
+					},
+					responses,
+				);
 			}
 
 			// Messages
@@ -691,12 +928,20 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 				if selected_paths.is_empty() {
 					responses.push_back(PropertiesPanelMessage::ClearSelection.into())
 				} else {
-					responses.push_back(PropertiesPanelMessage::SetActiveLayers { paths: selected_paths }.into())
+					responses.push_back(
+						PropertiesPanelMessage::SetActiveLayers {
+							paths: selected_paths,
+							document: TargetDocument::Artwork,
+						}
+						.into(),
+					)
 				}
 
 				// TODO: Correctly update layer panel in clear_selection instead of here
 				responses.push_back(FolderChanged { affected_folder_path: vec![] }.into());
 				responses.push_back(DocumentMessage::SelectionChanged.into());
+
+				self.update_layer_tree_options_bar_widgets(responses);
 			}
 			AlignSelectedLayers { axis, aggregate } => {
 				self.backup(responses);
@@ -736,7 +981,8 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 				}
 			}
 			BooleanOperation(op) => {
-				// convert Vec<&[LayerId]> to Vec<Vec<&LayerId>> because Vec<&[LayerId]> does not implement several traits (Debug, Serialize, Deserialize, ...) required by DocumentOperation enum
+				// Convert Vec<&[LayerId]> to Vec<Vec<&LayerId>> because Vec<&[LayerId]> does not implement several traits (Debug, Serialize, Deserialize, ...) required by DocumentOperation enum
+				responses.push_back(StartTransaction.into());
 				responses.push_back(
 					DocumentOperation::BooleanOperation {
 						operation: op,
@@ -744,11 +990,13 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 					}
 					.into(),
 				);
+				responses.push_back(CommitTransaction.into());
 			}
 			CommitTransaction => (),
 			CreateEmptyFolder { mut container_path } => {
 				let id = generate_uuid();
 				container_path.push(id);
+				responses.push_back(DocumentMessage::DeselectAllLayers.into());
 				responses.push_back(DocumentOperation::CreateFolder { path: container_path.clone() }.into());
 				responses.push_back(
 					DocumentMessage::SetLayerExpansion {
@@ -783,7 +1031,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 			DeselectVectorPoints { layer_path, point_ids } => {}
 			DirtyRenderDocument => {
 				// Mark all non-overlay caches as dirty
-				GrapheneDocument::visit_all_shapes(&mut self.graphene_document.root, &mut |_| {});
+				GrapheneDocument::mark_children_as_dirty(&mut self.graphene_document.root);
 
 				responses.push_back(DocumentMessage::RenderDocument.into());
 			}
@@ -796,7 +1044,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 			DocumentHistoryForward => self.redo(responses).unwrap_or_else(|e| log::warn!("{}", e)),
 			DocumentStructureChanged => {
 				let data_buffer: RawBuffer = self.serialize_root().into();
-				responses.push_back(FrontendMessage::DisplayDocumentLayerTreeStructure { data_buffer }.into())
+				responses.push_back(FrontendMessage::UpdateDocumentLayerTreeStructure { data_buffer }.into())
 			}
 			DuplicateSelectedLayers => {
 				self.backup(responses);
@@ -804,29 +1052,53 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 					responses.push_back(DocumentOperation::DuplicateLayer { path: path.to_vec() }.into());
 				}
 			}
-			ExportDocument => {
-				// TODO(mfish33): Add Dialog to select artboards
-				let bbox = self.document_bounds().unwrap_or_else(|| [DVec2::ZERO, ipp.viewport_bounds.size()]);
+			ExportDocument {
+				file_name,
+				file_type,
+				scale_factor,
+				bounds,
+			} => {
+				// Allows the user's transform to be restored
+				let old_transform = self.graphene_document.root.transform;
+				// Reset the root's transform (required to avoid any rotation by the user)
+				self.graphene_document.root.transform = DAffine2::IDENTITY;
+				self.graphene_document.root.cache_dirty = true;
+
+				// Calculates the bounding box of the region to be exported
+				let bbox = match bounds {
+					crate::frontend::utility_types::ExportBounds::AllArtwork => self.all_layer_bounds(),
+					crate::frontend::utility_types::ExportBounds::Artboard(id) => self
+						.artboard_message_handler
+						.artboards_graphene_document
+						.layer(&[id])
+						.ok()
+						.and_then(|layer| layer.aabounding_box(&self.graphene_document.font_cache)),
+				}
+				.unwrap_or_default();
 				let size = bbox[1] - bbox[0];
-				let name = match self.name.ends_with(FILE_SAVE_SUFFIX) {
-					true => self.name.clone().replace(FILE_SAVE_SUFFIX, FILE_EXPORT_SUFFIX),
-					false => self.name.clone() + FILE_EXPORT_SUFFIX,
+
+				let file_suffix = &format!(".{file_type:?}").to_lowercase();
+				let name = match file_name.ends_with(FILE_SAVE_SUFFIX) {
+					true => file_name.replace(FILE_SAVE_SUFFIX, file_suffix),
+					false => file_name + file_suffix,
 				};
-				responses.push_back(
-					FrontendMessage::TriggerFileDownload {
-						document: format!(
-							r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{} {} {} {}">{}{}</svg>"#,
-							bbox[0].x,
-							bbox[0].y,
-							size.x,
-							size.y,
-							"\n",
-							self.graphene_document.render_root(self.view_mode)
-						),
-						name,
-					}
-					.into(),
-				)
+
+				let rendered = self.graphene_document.render_root(self.view_mode);
+				let document = format!(
+					r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{} {} {} {}" width="{}px" height="{}">{}{}</svg>"#,
+					bbox[0].x, bbox[0].y, size.x, size.y, size.x, size.y, "\n", rendered
+				);
+
+				self.graphene_document.root.transform = old_transform;
+				self.graphene_document.root.cache_dirty = true;
+
+				if file_type == FileType::Svg {
+					responses.push_back(FrontendMessage::TriggerFileDownload { document, name }.into());
+				} else {
+					let mime = file_type.to_mime().to_string();
+					let size = (size * scale_factor).into();
+					responses.push_back(FrontendMessage::TriggerRasterDownload { document, name, mime, size }.into());
+				}
 			}
 			FlipSelectedLayers { flip_axis } => {
 				self.backup(responses);
@@ -855,6 +1127,10 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 				let affected_layer_path = affected_folder_path;
 				responses.extend([LayerChanged { affected_layer_path }.into(), DocumentStructureChanged.into()]);
 			}
+			FontLoaded { font, data, is_default } => {
+				self.graphene_document.font_cache.insert(font, data, is_default);
+				responses.push_back(DocumentMessage::DirtyRenderDocument.into());
+			}
 			GroupSelectedLayers => {
 				let mut new_folder_path = self.graphene_document.shallowest_common_folder(self.selected_layers()).unwrap_or(&[]).to_vec();
 
@@ -865,13 +1141,13 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 
 				new_folder_path.push(generate_uuid());
 
-				responses.push_back(PortfolioMessage::Copy { clipboard: Clipboard::System }.into());
+				responses.push_back(PortfolioMessage::Copy { clipboard: Clipboard::Internal }.into());
 				responses.push_back(DocumentMessage::DeleteSelectedLayers.into());
 				responses.push_back(DocumentOperation::CreateFolder { path: new_folder_path.clone() }.into());
 				responses.push_back(DocumentMessage::ToggleLayerExpansion { layer_path: new_folder_path.clone() }.into());
 				responses.push_back(
 					PortfolioMessage::PasteIntoFolder {
-						clipboard: Clipboard::System,
+						clipboard: Clipboard::Internal,
 						folder_path: new_folder_path.clone(),
 						insert_index: -1,
 					}
@@ -886,9 +1162,15 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 			}
 			LayerChanged { affected_layer_path } => {
 				if let Ok(layer_entry) = self.layer_panel_entry(affected_layer_path.clone()) {
-					responses.push_back(FrontendMessage::UpdateDocumentLayer { data: layer_entry }.into());
+					responses.push_back(FrontendMessage::UpdateDocumentLayerDetails { data: layer_entry }.into());
 				}
 				responses.push_back(PropertiesPanelMessage::CheckSelectedWasUpdated { path: affected_layer_path }.into());
+				self.update_layer_tree_options_bar_widgets(responses);
+			}
+			LoadFont { font } => {
+				if !self.graphene_document.font_cache.loaded_font(&font) {
+					responses.push_front(FrontendMessage::TriggerFontLoad { font }.into());
+				}
 			}
 			MoveSelectedLayersTo {
 				folder_path,
@@ -904,11 +1186,11 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 
 				let insert_index = self.update_insert_index(&selected_layers, &folder_path, insert_index, reverse_index).unwrap();
 
-				responses.push_back(PortfolioMessage::Copy { clipboard: Clipboard::System }.into());
+				responses.push_back(PortfolioMessage::Copy { clipboard: Clipboard::Internal }.into());
 				responses.push_back(DocumentMessage::DeleteSelectedLayers.into());
 				responses.push_back(
 					PortfolioMessage::PasteIntoFolder {
-						clipboard: Clipboard::System,
+						clipboard: Clipboard::Internal,
 						folder_path,
 						insert_index,
 					}
@@ -926,6 +1208,39 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 					responses.push_back(operation.into());
 				}
 				responses.push_back(ToolMessage::DocumentIsDirty.into());
+			}
+			PasteImage { mime, image_data, mouse } => {
+				let path = vec![generate_uuid()];
+				responses.push_front(
+					FrontendMessage::UpdateImageData {
+						image_data: vec![FrontendImageData {
+							path: path.clone(),
+							image_data: image_data.clone(),
+							mime: mime.clone(),
+						}],
+					}
+					.into(),
+				);
+				responses.push_back(
+					DocumentOperation::AddImage {
+						path: path.clone(),
+						transform: DAffine2::ZERO.to_cols_array(),
+						insert_index: -1,
+						mime,
+						image_data,
+					}
+					.into(),
+				);
+				responses.push_back(
+					DocumentMessage::SetSelectedLayers {
+						replacement_selected_layers: vec![path.clone()],
+					}
+					.into(),
+				);
+
+				let mouse = mouse.map_or(ipp.mouse.position, |pos| pos.into());
+				let transform = DAffine2::from_translation(mouse - ipp.viewport_bounds.top_left).to_cols_array();
+				responses.push_back(DocumentOperation::SetLayerTransformInViewport { path, transform }.into());
 			}
 			Redo => {
 				responses.push_back(SelectToolMessage::Abort.into());
@@ -1159,11 +1474,13 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 				let text = self.graphene_document.layer(&path).unwrap().as_text().unwrap();
 				responses.push_back(DocumentOperation::SetTextEditability { path, editable }.into());
 				if editable {
+					let color = if let Fill::Solid(solid_color) = text.path_style.fill() { *solid_color } else { Color::BLACK };
 					responses.push_back(
 						FrontendMessage::DisplayEditableTextbox {
 							text: text.text.clone(),
 							line_width: text.line_width,
 							font_size: text.size,
+							color,
 						}
 						.into(),
 					);
@@ -1186,7 +1503,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 				responses.push_back(ToolMessage::DocumentIsDirty.into());
 			}
 			Undo => {
-				responses.push_back(SelectToolMessage::Abort.into());
+				responses.push_back(ToolMessage::AbortCurrentTool.into());
 				responses.push_back(DocumentHistoryBackward.into());
 				responses.push_back(ToolMessage::DocumentIsDirty.into());
 				responses.push_back(RenderDocument.into());
@@ -1200,10 +1517,10 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 					// Select them
 					DocumentMessage::SetSelectedLayers { replacement_selected_layers: select }.into(),
 					// Copy them
-					PortfolioMessage::Copy { clipboard: Clipboard::System }.into(),
+					PortfolioMessage::Copy { clipboard: Clipboard::Internal }.into(),
 					// Paste them into the folder above
 					PortfolioMessage::PasteIntoFolder {
-						clipboard: Clipboard::System,
+						clipboard: Clipboard::Internal,
 						folder_path: folder_path[..folder_path.len() - 1].to_vec(),
 						insert_index: -1,
 					}
@@ -1255,6 +1572,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 			SetSnapping,
 			DebugPrintDocument,
 			ZoomCanvasToFitAll,
+			CreateEmptyFolder,
 		);
 
 		if self.layer_metadata.values().any(|data| data.selected) {

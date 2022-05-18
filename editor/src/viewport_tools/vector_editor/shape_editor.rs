@@ -97,6 +97,14 @@ impl ShapeEditor {
 		self.target_layers = target_layers;
 	}
 
+	pub fn target_layers(&self) -> &Vec<Vec<LayerId>> {
+		&self.target_layers
+	}
+
+	pub fn target_layers_ref(&self) -> Vec<&[LayerId]> {
+		self.target_layers.iter().map(|l| l.as_slice()).collect::<Vec<_>>()
+	}
+
 	/// Clear all of the shapes we can modify
 	pub fn clear_target_layers(&mut self) {
 		self.target_layers.clear();

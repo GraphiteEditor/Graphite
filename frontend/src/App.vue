@@ -53,6 +53,7 @@
 	--color-e-nearwhite-rgb: 238, 238, 238;
 	--color-f-white: #fff;
 	--color-f-white-rgb: 255, 255, 255;
+
 	--color-accent: #3194d6;
 	--color-accent-rgb: 49, 148, 214;
 	--color-accent-hover: #49a5e2;
@@ -60,8 +61,27 @@
 	--color-accent-disabled: #416277;
 	--color-accent-disabled-rgb: 65, 98, 119;
 
+	--color-node-background: #f1decd;
+	--color-node-background-rgb: 241, 222, 205;
+	--color-node-icon: #473a3a;
+	--color-node-icon-rgb: 71, 58, 58;
+
+	--color-data-general: #c5c5c5;
+	--color-data-general-rgb: 197, 197, 197;
+	--color-data-vector: #65bbe5;
+	--color-data-vector-rgb: 101, 187, 229;
+	--color-data-vector-dim: #4b778c;
+	--color-data-vector-dim-rgb: 75, 119, 140;
 	--color-data-raster: #e4bb72;
 	--color-data-raster-rgb: 228, 187, 114;
+	--color-data-raster-dim: #8b7752;
+	--color-data-raster-dim-rgb: 139, 119, 82;
+	--color-data-mask: #8d85c7;
+	--color-data-mask-rgb: 141, 133, 199;
+	--color-data-unused1: #d6536e;
+	--color-data-unused1-rgb: 214, 83, 110;
+	--color-data-unused2: #70a898;
+	--color-data-unused2-rgb: 112, 168, 152;
 }
 
 html,
@@ -100,7 +120,7 @@ img {
 .layout-col {
 	.scrollable-x,
 	.scrollable-y {
-		// Standard
+		// Firefox (standardized in CSS, but less capable)
 		scrollbar-width: thin;
 		scrollbar-width: 6px;
 		scrollbar-gutter: 6px;
@@ -110,7 +130,7 @@ img {
 			scrollbar-width: none;
 		}
 
-		// WebKit
+		// WebKit (only in Chromium/Safari but more capable)
 		&::-webkit-scrollbar {
 			width: calc(2px + 6px + 2px);
 			height: calc(2px + 6px + 2px);
@@ -142,6 +162,10 @@ img {
 				background-color: var(--color-6-lowergray);
 			}
 		}
+
+		&::-webkit-scrollbar-corner {
+			background: none;
+		}
 	}
 
 	.scrollable-x.scrollable-y {
@@ -153,14 +177,14 @@ img {
 
 	.scrollable-x:not(.scrollable-y) {
 		// Standard
-		overflow-x: auto;
+		overflow: auto hidden;
 		// WebKit
 		overflow-x: overlay;
 	}
 
 	.scrollable-y:not(.scrollable-x) {
 		// Standard
-		overflow-y: auto;
+		overflow: hidden auto;
 		// WebKit
 		overflow-y: overlay;
 	}
@@ -238,9 +262,10 @@ import { createAutoSaveManager } from "@/lifetime/auto-save";
 import { initErrorHandling } from "@/lifetime/errors";
 import { createInputManager, InputManager } from "@/lifetime/input";
 import { createDialogState, DialogState } from "@/state/dialog";
-import { createDocumentsState, DocumentsState } from "@/state/documents";
 import { createFullscreenState, FullscreenState } from "@/state/fullscreen";
+import { createPortfolioState, PortfolioState } from "@/state/portfolio";
 import { createEditorState, EditorState } from "@/state/wasm-loader";
+import { createWorkspaceState, WorkspaceState } from "@/state/workspace";
 
 import LayoutCol from "@/components/layout/LayoutCol.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
@@ -250,7 +275,8 @@ import MainWindow from "@/components/window/MainWindow.vue";
 declare module "@vue/runtime-core" {
 	interface ComponentCustomProperties {
 		dialog: DialogState;
-		documents: DocumentsState;
+		portfolio: PortfolioState;
+		workspace: WorkspaceState;
 		fullscreen: FullscreenState;
 		editor: EditorState;
 		// This must be set to optional because there is a time in the lifecycle of the component where inputManager is undefined.
@@ -264,7 +290,8 @@ export default defineComponent({
 		return {
 			editor: this.editor,
 			dialog: this.dialog,
-			documents: this.documents,
+			portfolio: this.portfolio,
+			workspace: this.workspace,
 			fullscreen: this.fullscreen,
 			inputManager: this.inputManager,
 		};
@@ -275,15 +302,17 @@ export default defineComponent({
 
 		// Initialize other stateful Vue systems
 		const dialog = createDialogState(editor);
-		const documents = createDocumentsState(editor, dialog);
+		const portfolio = createPortfolioState(editor);
+		const workspace = createWorkspaceState(editor);
 		const fullscreen = createFullscreenState();
 		initErrorHandling(editor, dialog);
-		createAutoSaveManager(editor, documents);
+		createAutoSaveManager(editor, portfolio);
 
 		return {
 			editor,
 			dialog,
-			documents,
+			portfolio,
+			workspace,
 			fullscreen,
 			showUnsupportedModal: !("BigInt64Array" in window),
 			inputManager: undefined as undefined | InputManager,
@@ -295,14 +324,13 @@ export default defineComponent({
 		},
 	},
 	mounted() {
-		this.inputManager = createInputManager(this.editor, this.$el.parentElement, this.dialog, this.documents, this.fullscreen);
+		this.inputManager = createInputManager(this.editor, this.$el.parentElement, this.dialog, this.portfolio, this.fullscreen);
+
+		this.editor.instance.init_app();
 	},
 	beforeUnmount() {
-		const { inputManager } = this;
-		if (inputManager) inputManager.removeListeners();
-
-		const { editor } = this;
-		editor.instance.free();
+		this.inputManager?.removeListeners();
+		this.editor.instance.free();
 	},
 	components: {
 		MainWindow,

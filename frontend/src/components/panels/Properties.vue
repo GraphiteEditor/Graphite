@@ -1,10 +1,10 @@
 <template>
 	<LayoutCol class="properties">
 		<LayoutRow class="options-bar">
-			<WidgetLayout :layout="propertiesOptionsLayout"></WidgetLayout>
+			<WidgetLayout :layout="propertiesOptionsLayout" />
 		</LayoutRow>
 		<LayoutRow class="sections" :scrollableY="true">
-			<WidgetLayout :layout="propertiesSectionsLayout"></WidgetLayout>
+			<WidgetLayout :layout="propertiesSectionsLayout" />
 		</LayoutRow>
 	</LayoutCol>
 </template>
@@ -21,10 +21,20 @@
 	.options-bar {
 		height: 32px;
 		flex: 0 0 auto;
+
+		.widget-row > .icon-label:first-of-type {
+			border-radius: 2px;
+			background: var(--color-node-background);
+			fill: var(--color-node-icon);
+		}
 	}
 
 	.sections {
 		flex: 1 1 100%;
+
+		.widget-section + .widget-section {
+			margin-top: 1px;
+		}
 	}
 }
 </style>

@@ -1,11 +1,13 @@
-use crate::consts::{F64PRECISE, RAY_FUDGE_FACTOR};
+use crate::consts::F64PRECISE;
 use crate::intersection::{intersections, line_curve_intersections, valid_t, Intersect, Origin};
 use crate::layers::shape_layer::ShapeLayer;
 use crate::layers::style::PathStyle;
 
 use kurbo::{BezPath, CubicBez, Line, ParamCurve, ParamCurveArclen, ParamCurveArea, ParamCurveExtrema, PathEl, PathSeg, Point, QuadBez, Rect};
 use serde::{Deserialize, Serialize};
+use std::cell::RefCell;
 use std::fmt::{self, Debug, Formatter};
+use std::mem::swap;
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq)]
 pub enum BooleanOperation {
@@ -24,15 +26,6 @@ pub enum BooleanOperationError {
 	NothingDone, // Not necessarily an error
 	DirectionUndefined,
 	Unexpected, // For debugging, when complete nothing should be unexpected
-}
-
-/// A simple and idiomatic way to write short "if let Some(_)" statements which do nothing in the None case
-macro_rules! do_if {
-	($option:expr, $name:ident{$todo:expr}) => {
-		if let Some($name) = $option {
-			$todo
-		}
-	};
 }
 
 struct Edge {
@@ -55,7 +48,17 @@ struct Vertex {
 
 impl Debug for Vertex {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-		f.write_str(format!("\n    Intersect@ {:?}", self.intersect.point).as_str())?;
+		f.write_str(
+			format!(
+				"\n    Intersect Point: {:?} Segment index of A: {:?}, Segment index of B: {:?} t value of A: {:?} t value of B: {:?}",
+				self.intersect.point,
+				self.intersect.segment_index(Origin::Alpha),
+				self.intersect.segment_index(Origin::Beta),
+				self.intersect.t_value(Origin::Alpha),
+				self.intersect.t_value(Origin::Beta),
+			)
+			.as_str(),
+		)?;
 		f.debug_list().entries(self.edges.iter()).finish()
 	}
 }
@@ -158,7 +161,6 @@ struct PathGraph {
 /// Has somewhat (totally?) undefined behavior when shapes have self intersections.
 impl PathGraph {
 	pub fn from_paths(alpha: &BezPath, beta: &BezPath) -> Result<PathGraph, BooleanOperationError> {
-		// TODO: check for closed paths somewhere, maybe here?
 		let mut new = PathGraph {
 			vertices: intersections(alpha, beta).into_iter().map(|i| Vertex { intersect: i, edges: Vec::new() }).collect(),
 		};
@@ -219,7 +221,7 @@ impl PathGraph {
 					for (vertex_id, sub_seg) in vertex_ids.into_iter().zip(subdivided.iter()) {
 						match self.current_start {
 							Some(index) => {
-								do_if!(sub_seg, end_of_edge { self.current.push(*end_of_edge)});
+								sub_seg.map(|end_of_edge| self.current.push(end_of_edge));
 								graph.add_edge(origin, index, vertex_id, self.current.clone());
 								self.current_start = Some(vertex_id);
 								self.current = Vec::new();
@@ -227,11 +229,11 @@ impl PathGraph {
 							None => {
 								self.current_start = Some(vertex_id);
 								self.start_index = Some(vertex_id);
-								do_if!(sub_seg, end_of_beginning {self.beginning.push(*end_of_beginning)});
+								sub_seg.map(|end_of_beginning| self.beginning.push(end_of_beginning));
 							}
 						}
 					}
-					do_if!(subdivided.last().unwrap(), start_of_edge {self.current.push(*start_of_edge)});
+					subdivided.last().unwrap().map(|start_of_edge| self.current.push(start_of_edge));
 				} else {
 					match self.current_start {
 						Some(_) => self.current.push(seg),
@@ -242,28 +244,44 @@ impl PathGraph {
 			}
 
 			fn advance_by_closepath(&mut self, graph: &mut PathGraph, initial_point: &mut Point, origin: Origin) {
-				// *when a curve ends in a closepath and its start point does not equal its endpoint they should be connected with a line
-				let end_seg = match self.current.last() {
-					Some(seg) => seg,
-					None => self.beginning.last().unwrap(), // if both current and beginning are empty, the path is empty
+				// When a curve ends in a closepath and its start point does not equal its endpoint they should be connected with a line
+				let last_line = match self.current.last() {
+					Some(start_of_final_edge) => Line {
+						p0: start_of_final_edge.end(),
+						p1: *initial_point,
+					},
+					None => {
+						// When None occurs the current edge has been connected to a vertex.
+						// Either self.beginning is Some or None, if self.beginning is Some there may be a dangling edge to connect
+						// if self.beginning is None, the end of the current edge may not have closed the path
+						match self.beginning.last() {
+							Some(end_of_first_edge) => Line {
+								p0: end_of_first_edge.end(),
+								p1: *initial_point,
+							},
+							None => Line {
+								// should never panic, either a intersection has been encountered, so self.current_start is Some.
+								// or no vertex has been encountered so self.beginning.last() is Some
+								p0: graph.vertex(self.current_start.unwrap()).intersect.point,
+								p1: *initial_point,
+							},
+						}
+					}
 				};
-				let temp_copy = end_seg.end();
-				if temp_copy != *initial_point {
-					// a closepath implicitly defines a line which closes the path
-					self.advance_by_seg(graph, PathSeg::Line(Line { p0: temp_copy, p1: *initial_point }), origin);
+				if last_line.length() > F64PRECISE {
+					// A closepath implicitly defines a line which closes the path and the closepath line may contain intersections
+					self.advance_by_seg(graph, PathSeg::Line(last_line), origin);
 				}
-				// when a closepath is not followed by moveto, the next path starts at the end of the current path
-				*initial_point = temp_copy;
 			}
 
 			fn finalize_sub_path(&mut self, graph: &mut PathGraph, origin: Origin) {
 				if let (Some(current_start_), Some(start_index_)) = (self.current_start, self.start_index) {
-					//complete the current path
+					// Complete the current path
 					self.current.append(&mut self.beginning);
 					graph.add_edge(origin, current_start_, start_index_, self.current.clone());
 				} else {
-					//path has a subpath with no intersects
-					//create a dummy vertex with single edge which will be identified as cycle
+					// Path has a subpath with no intersects.
+					// Create a dummy vertex with single edge which will be identified as cycle.
 					let dumb_id = graph.add_vertex(Intersect::new(self.beginning[0].start(), 0.0, 0.0, -1, -1));
 					graph.add_edge(origin, dumb_id, dumb_id, self.beginning.clone());
 				}
@@ -272,6 +290,7 @@ impl PathGraph {
 
 		let mut algorithm_state = AlgorithmState::new();
 
+		// All valid SVG paths start with a moveto, so this will always be initialized
 		let mut initial_point = Point::new(0.0, 0.0);
 
 		for (el_index, el) in path.iter().enumerate() {
@@ -306,7 +325,7 @@ impl PathGraph {
 	}
 
 	/// Returns the `Vertex` index and intersect `t_value` for all intersects in the segment identified by `seg_index` from `origin`.
-	/// sorts both lists for ascending t_value
+	/// Sorts both lists for ascending `t_value`.
 	fn intersects_in_seg(&self, seg_index: i32, origin: Origin) -> (Vec<usize>, Vec<f64>) {
 		let mut vertex_index = Vec::new();
 		let mut t_values = Vec::new();
@@ -323,7 +342,7 @@ impl PathGraph {
 		(vertex_index, t_values)
 	}
 
-	// Returns the number of vertices in the graph. This is equivalent to the number of intersections.
+	/// Returns the number of vertices in the graph. This is equivalent to the number of intersections.
 	pub fn size(&self) -> usize {
 		self.vertices.len()
 	}
@@ -385,23 +404,23 @@ impl PathGraph {
 			concat_paths(&mut curve, &self.edge(vertices[index - 1].0, vertices[index].0, vertices[index].1).unwrap().curve);
 		}
 		curve.push(PathEl::ClosePath);
-		ShapeLayer::from_bez_path(BezPath::from_vec(curve), *style, false)
+		ShapeLayer::from_bez_path(BezPath::from_vec(curve), style.clone(), false)
 	}
 }
 
 /// If `t` is on `(0, 1)`, returns the split curve.
 /// If `t` is outside `[0, 1]`, returns `(None, None)`
-/// If `t` is 0 returns (None, `p`).
-/// If `t` is 1 returns (`p`, None).
-// TODO: test values outside 1
+/// If `t` is 0 returns `(None, p)`.
+/// If `t` is 1 returns `(p, None)`.
 pub fn split_path_seg(p: &PathSeg, t: f64) -> (Option<PathSeg>, Option<PathSeg>) {
+	if t <= -F64PRECISE || t >= 1.0 + F64PRECISE {
+		return (None, None);
+	}
 	if t <= F64PRECISE {
-		if t >= 1.0 - F64PRECISE {
-			return (None, None);
-		}
-		return (Some(*p), None);
-	} else if t >= 1.0 - F64PRECISE {
 		return (None, Some(*p));
+	}
+	if t >= 1.0 - F64PRECISE {
+		return (Some(*p), None);
 	}
 	match p {
 		PathSeg::Cubic(cubic) => {
@@ -453,11 +472,75 @@ pub fn subdivide_path_seg(p: &PathSeg, t_values: &mut [f64]) -> Vec<Option<PathS
 	sub_segments
 }
 
+pub fn composite_boolean_operation(mut select: BooleanOperation, shapes: &mut Vec<RefCell<ShapeLayer>>) -> Result<Vec<ShapeLayer>, BooleanOperationError> {
+	if select == BooleanOperation::SubtractBack {
+		select = BooleanOperation::SubtractFront;
+		let temp_len = shapes.len();
+		shapes.swap(0, temp_len - 1);
+	}
+	match select {
+		BooleanOperation::Union | BooleanOperation::Intersection => {
+			// We must attempt to union each shape with every other shape
+			let mut subject_idx = 0;
+			while subject_idx < shapes.len() {
+				let mut shape_idx = 0;
+				while shape_idx < shapes.len() && subject_idx < shapes.len() {
+					if shape_idx == subject_idx {
+						shape_idx += 1;
+						continue;
+					}
+					let partial_union = boolean_operation(select, &mut shapes[subject_idx].borrow_mut(), &mut shapes[shape_idx].borrow_mut());
+					match partial_union {
+						Ok(temp_union) => {
+							// The result of a successful union will be exactly one shape
+							shapes.push(RefCell::new(temp_union.into_iter().next().unwrap()));
+							shapes.swap_remove(subject_idx);
+							shapes.swap_remove(shape_idx);
+						}
+						Err(BooleanOperationError::NothingDone) => shape_idx += 1,
+						Err(err) => return Err(err),
+					}
+				}
+				subject_idx += 1;
+			}
+			Ok(shapes.iter().map(|ref_shape_layer| ref_shape_layer.borrow().clone()).collect())
+		}
+		BooleanOperation::SubtractFront => {
+			let mut result = vec![shapes[0].borrow().clone()];
+			for shape_idx in 1..shapes.len() {
+				let mut temp = Vec::new();
+				for mut partial in result {
+					match boolean_operation(select, &mut partial, &mut shapes[shape_idx].borrow_mut()) {
+						Ok(mut partial_result) => temp.append(&mut partial_result),
+						Err(BooleanOperationError::NothingDone) => temp.push(partial),
+						Err(err) => return Err(err),
+					}
+				}
+				result = temp; // This move should be done without copying
+			}
+			Ok(result)
+		}
+		BooleanOperation::Difference => {
+			let mut difference = Vec::new();
+			for shape_idx in 0..shapes.len() {
+				shapes.swap(0, shape_idx);
+				difference.append(&mut composite_boolean_operation(BooleanOperation::SubtractFront, shapes)?);
+			}
+			Ok(difference)
+		}
+		BooleanOperation::SubtractBack => unreachable!("composite boolean operation: unreachable subtract from back"),
+	}
+}
+
+// TODO: check if shapes are filled
 // TODO: Bug: shape with at least two subpaths and comprised of many unions sometimes has erroneous movetos embedded in edges
-// TODO: reduce copying
-pub fn boolean_operation(select: BooleanOperation, mut alpha: ShapeLayer, mut beta: ShapeLayer) -> Result<Vec<ShapeLayer>, BooleanOperationError> {
-	if alpha.shape.anchors().len() < 2 || beta.shape.anchors().len() < 2 {
+pub fn boolean_operation(mut select: BooleanOperation, alpha: &mut ShapeLayer, beta: &mut ShapeLayer) -> Result<Vec<ShapeLayer>, BooleanOperationError> {
+	if alpha.shape.is_empty() || beta.shape.is_empty() {
 		return Err(BooleanOperationError::InvalidSelection);
+	}
+	if select == BooleanOperation::SubtractBack {
+		select = BooleanOperation::SubtractFront;
+		swap(alpha, beta);
 	}
 	let mut alpha_shape = close_path(&(&alpha.shape).into());
 	let mut beta_shape = close_path(&(&beta.shape).into());
@@ -491,10 +574,10 @@ pub fn boolean_operation(select: BooleanOperation, mut alpha: ShapeLayer, mut be
 					// If shape is inside the other the Union is just the larger
 					// Check could also be done with area and single ray cast
 					if cast_horizontal_ray(point_on_curve(&beta_shape), &alpha_shape) % 2 != 0 {
-						Ok(vec![alpha])
+						Ok(vec![alpha.clone()])
 					} else if cast_horizontal_ray(point_on_curve(&alpha_shape), &beta_shape) % 2 != 0 {
-						beta.style = alpha.style;
-						Ok(vec![beta])
+						beta.style = alpha.style.clone();
+						Ok(vec![beta.clone()])
 					} else {
 						Err(BooleanOperationError::NothingDone)
 					}
@@ -532,10 +615,10 @@ pub fn boolean_operation(select: BooleanOperation, mut alpha: ShapeLayer, mut be
 				Err(BooleanOperationError::NoIntersections) => {
 					// Check could also be done with area and single ray cast
 					if cast_horizontal_ray(point_on_curve(&beta_shape), &alpha_shape) % 2 != 0 {
-						beta.style = alpha.style;
-						Ok(vec![beta])
+						beta.style = alpha.style.clone();
+						Ok(vec![beta.clone()])
 					} else if cast_horizontal_ray(point_on_curve(&alpha_shape), &beta_shape) % 2 != 0 {
-						Ok(vec![alpha])
+						Ok(vec![alpha.clone()])
 					} else {
 						Err(BooleanOperationError::NothingDone)
 					}
@@ -544,23 +627,7 @@ pub fn boolean_operation(select: BooleanOperation, mut alpha: ShapeLayer, mut be
 			}
 		}
 		BooleanOperation::SubtractBack => {
-			match if beta_dir != alpha_dir {
-				PathGraph::from_paths(&alpha_shape, &beta_shape)
-			} else {
-				PathGraph::from_paths(&alpha_shape, &beta_reverse)
-			} {
-				Ok(graph) => collect_shapes(&graph, &mut graph.get_cycles(), |dir| dir != alpha_dir, |_| &beta.style),
-				Err(BooleanOperationError::NoIntersections) => {
-					if cast_horizontal_ray(point_on_curve(&alpha_shape), &beta_shape) % 2 != 0 {
-						add_subpath(&mut beta_shape, if beta_dir == alpha_dir { reverse_path(&alpha_shape) } else { alpha_shape });
-						beta.style = alpha.style;
-						Ok(vec![beta])
-					} else {
-						Err(BooleanOperationError::NothingDone)
-					}
-				}
-				Err(err) => Err(err),
-			}
+			unreachable!("Boolean operation: unreachable subtract from back");
 		}
 		BooleanOperation::SubtractFront => {
 			match if beta_dir != alpha_dir {
@@ -571,8 +638,8 @@ pub fn boolean_operation(select: BooleanOperation, mut alpha: ShapeLayer, mut be
 				Ok(graph) => collect_shapes(&graph, &mut graph.get_cycles(), |dir| dir == alpha_dir, |_| &alpha.style),
 				Err(BooleanOperationError::NoIntersections) => {
 					if cast_horizontal_ray(point_on_curve(&beta_shape), &alpha_shape) % 2 != 0 {
-						add_subpath(&mut alpha_shape, if beta_dir == alpha_dir { reverse_path(&beta_shape) } else { beta_shape });
-						Ok(vec![alpha])
+						add_subpath(&mut alpha_shape, if beta_dir == alpha_dir { reverse_path(&beta_shape) } else { beta_shape.clone() });
+						Ok(vec![alpha.clone()])
 					} else {
 						Err(BooleanOperationError::NothingDone)
 					}
@@ -583,23 +650,16 @@ pub fn boolean_operation(select: BooleanOperation, mut alpha: ShapeLayer, mut be
 	}
 }
 
-// TODO less hacky way to handle double counts on shared endpoints
 // TODO check bounding boxes more rigorously
-pub fn cast_horizontal_ray(mut from: Point, into: &BezPath) -> usize {
-	// In practice, this makes it less likely that a ray will intersect with shared point between two curves
-	from.y += RAY_FUDGE_FACTOR;
-
-	let ray = Line {
+pub fn cast_horizontal_ray(from: Point, into: &BezPath) -> usize {
+	let mut ray = PathSeg::Line(Line {
 		p0: from,
-		p1: Point {
-			x: from.x + 1.0,
-			y: from.y + RAY_FUDGE_FACTOR,
-		},
-	};
+		p1: Point { x: from.x + 1.0, y: from.y },
+	});
 	let mut intersects = Vec::new();
-	for ref seg in into.segments() {
+	for ref mut seg in into.segments() {
 		if kurbo::ParamCurveExtrema::bounding_box(seg).x1 > from.x {
-			line_curve_intersections(&ray, seg, true, |_, b| valid_t(b), &mut intersects);
+			line_curve_intersections((&mut ray, seg), |_, b| valid_t(b), &mut intersects);
 		}
 	}
 	intersects.len()
@@ -640,7 +700,8 @@ where
 					shapes.push(graph.get_shape(cycle, style(dir)));
 				}
 			}
-			Err(err) => return Err(err),
+			// Exclude cycles with 0.0 area
+			Err(_err) => (),
 		}
 	}
 	Ok(shapes)
@@ -679,7 +740,6 @@ pub fn reverse_path(path: &BezPath) -> BezPath {
 		}
 	}
 	curve.append(&mut temp.into_iter().rev().collect());
-	log::debug!("{:?}", BezPath::from_path_segments(curve.clone().into_iter()));
 	BezPath::from_path_segments(curve.into_iter())
 }
 

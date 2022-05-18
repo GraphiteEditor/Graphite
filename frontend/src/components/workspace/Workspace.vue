@@ -2,26 +2,22 @@
 	<LayoutRow class="workspace" data-workspace>
 		<LayoutRow class="workspace-grid-subdivision">
 			<LayoutCol class="workspace-grid-subdivision">
-				<Panel
-					:panelType="'Document'"
-					:tabCloseButtons="true"
-					:tabMinWidths="true"
-					:tabLabels="documents.state.documents.map((doc) => doc.displayName)"
-					:clickAction="
-						(tabIndex) => {
-							const targetId = documents.state.documents[tabIndex].id;
-							editor.instance.select_document(targetId);
-						}
-					"
-					:closeAction="
-						(tabIndex) => {
-							const targetId = documents.state.documents[tabIndex].id;
-							editor.instance.close_document_with_confirmation(targetId);
-						}
-					"
-					:tabActiveIndex="documents.state.activeDocumentIndex"
-					ref="documentsPanel"
-				/>
+				<LayoutRow class="workspace-grid-subdivision">
+					<Panel
+						:panelType="'Document'"
+						:tabCloseButtons="true"
+						:tabMinWidths="true"
+						:tabLabels="portfolio.state.documents.map((doc) => doc.displayName)"
+						:clickAction="(tabIndex) => editor.instance.select_document(portfolio.state.documents[tabIndex].id)"
+						:closeAction="(tabIndex) => editor.instance.close_document_with_confirmation(portfolio.state.documents[tabIndex].id)"
+						:tabActiveIndex="portfolio.state.activeDocumentIndex"
+						ref="documentsPanel"
+					/>
+				</LayoutRow>
+				<LayoutRow class="workspace-grid-resize-gutter" @pointerdown="(e) => resizePanel(e)" v-if="nodeGraphVisible"></LayoutRow>
+				<LayoutRow class="workspace-grid-subdivision" v-if="nodeGraphVisible">
+					<Panel :panelType="'NodeGraph'" :tabLabels="['Node Graph']" :tabActiveIndex="0" />
+				</LayoutRow>
 			</LayoutCol>
 			<LayoutCol class="workspace-grid-resize-gutter" @pointerdown="(e) => resizePanel(e)"></LayoutCol>
 			<LayoutCol class="workspace-grid-subdivision" style="flex-grow: 0.17">
@@ -78,7 +74,7 @@ import Panel from "@/components/workspace/Panel.vue";
 const MIN_PANEL_SIZE = 100;
 
 export default defineComponent({
-	inject: ["documents", "dialog", "editor"],
+	inject: ["workspace", "portfolio", "dialog", "editor"],
 	components: {
 		LayoutRow,
 		LayoutCol,
@@ -87,7 +83,10 @@ export default defineComponent({
 	},
 	computed: {
 		activeDocumentIndex() {
-			return this.documents.state.activeDocumentIndex;
+			return this.portfolio.state.activeDocumentIndex;
+		},
+		nodeGraphVisible() {
+			return this.workspace.state.nodeGraphVisible;
 		},
 	},
 	methods: {

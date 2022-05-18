@@ -9,7 +9,7 @@ use crate::input::InputPreprocessorMessageHandler;
 use crate::layout::widgets::{IconButton, LayoutRow, PopoverButton, PropertyHolder, Separator, SeparatorDirection, SeparatorType, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
 use crate::message_prelude::*;
 use crate::misc::{HintData, HintGroup, HintInfo, KeysGroup};
-use crate::viewport_tools::snapping::SnapHandler;
+use crate::viewport_tools::snapping::{self, SnapHandler};
 use crate::viewport_tools::tool::{DocumentToolData, Fsm, ToolActionHandlerData, ToolType};
 use graphene::boolean_ops::BooleanOperation;
 use graphene::document::Document;
@@ -17,6 +17,7 @@ use graphene::intersection::Quad;
 use graphene::layers::layer_info::LayerDataType;
 use graphene::Operation;
 
+use super::shared::path_outline::*;
 use super::shared::transformation_cage::*;
 
 use glam::{DAffine2, DVec2};
@@ -60,7 +61,6 @@ pub enum SelectToolMessage {
 impl PropertyHolder for SelectTool {
 	fn properties(&self) -> WidgetLayout {
 		WidgetLayout::new(vec![LayoutRow::Row {
-			name: "".into(),
 			widgets: vec![
 				WidgetHolder::new(Widget::IconButton(IconButton {
 					icon: "AlignLeft".into(),
@@ -254,8 +254,7 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for SelectTool {
 		use SelectToolFsmState::*;
 
 		match self.fsm_state {
-			Ready => actions!(SelectToolMessageDiscriminant; DragStart, PointerMove, EditLayer),
-			Dragging => actions!(SelectToolMessageDiscriminant; DragStop, PointerMove, EditLayer),
+			Ready => actions!(SelectToolMessageDiscriminant; DragStart, PointerMove, Abort, EditLayer),
 			_ => actions!(SelectToolMessageDiscriminant; DragStop, PointerMove, Abort, EditLayer),
 		}
 	}
@@ -282,6 +281,7 @@ struct SelectToolData {
 	drag_current: ViewportPosition,
 	layers_dragging: Vec<Vec<LayerId>>, // Paths and offsets
 	drag_box_overlay_layer: Option<Vec<LayerId>>,
+	path_outlines: PathOutline,
 	bounding_box_overlays: Option<BoundingBoxOverlays>,
 	snap_handler: SnapHandler,
 	cursor: MouseCursorIcon,
@@ -339,6 +339,9 @@ impl Fsm for SelectToolFsmState {
 						(_, _) => {}
 					};
 					buffer.into_iter().rev().for_each(|message| responses.push_front(message));
+
+					data.path_outlines.update_selected(document.selected_visible_layers(), document, responses);
+
 					self
 				}
 				(_, EditLayer) => {
@@ -362,6 +365,8 @@ impl Fsm for SelectToolFsmState {
 					self
 				}
 				(Ready, DragStart { add_to_selection }) => {
+					data.path_outlines.clear_hovered(responses);
+
 					data.drag_start = input.mouse.position;
 					data.drag_current = input.mouse.position;
 					let mut buffer = Vec::new();
@@ -399,6 +404,7 @@ impl Fsm for SelectToolFsmState {
 						let snap_y = selected_edges.0 || selected_edges.1;
 
 						data.snap_handler.start_snap(document, document.bounding_boxes(Some(&selected), None), snap_x, snap_y);
+						data.snap_handler.add_all_document_handles(document, &[], &selected.iter().map(|x| x.as_slice()).collect::<Vec<_>>());
 
 						data.layers_dragging = selected;
 
@@ -408,7 +414,7 @@ impl Fsm for SelectToolFsmState {
 							let selected = selected.iter().collect::<Vec<_>>();
 							let mut selected = Selected::new(&mut bounds.original_transforms, &mut bounds.pivot, &selected, responses, &document.graphene_document);
 
-							*selected.pivot = selected.calculate_pivot();
+							*selected.pivot = selected.calculate_pivot(&document.graphene_document.font_cache);
 						}
 
 						data.layers_dragging = selected;
@@ -456,11 +462,10 @@ impl Fsm for SelectToolFsmState {
 						.layers_dragging
 						.iter()
 						.filter_map(|path| document.graphene_document.viewport_bounding_box(path).ok()?)
-						.flat_map(|[bound1, bound2]| [bound1, bound2, (bound1 + bound2) / 2.])
-						.map(|vec| vec.into())
-						.unzip();
+						.flat_map(snapping::expand_bounds)
+						.collect();
 
-					let closest_move = data.snap_handler.snap_layers(responses, document, snap, input.viewport_bounds.size(), mouse_delta);
+					let closest_move = data.snap_handler.snap_layers(responses, document, snap, mouse_delta);
 					// TODO: Cache the result of `shallowest_unique_layers` to avoid this heavy computation every frame of movement, see https://github.com/GraphiteEditor/Graphite/pull/481
 					for path in Document::shallowest_unique_layers(data.layers_dragging.iter()) {
 						responses.push_front(
@@ -481,7 +486,7 @@ impl Fsm for SelectToolFsmState {
 
 							let mouse_position = input.mouse.position;
 
-							let snapped_mouse_position = data.snap_handler.snap_position(responses, input.viewport_bounds.size(), document, mouse_position);
+							let snapped_mouse_position = data.snap_handler.snap_position(responses, document, mouse_position);
 
 							let [_position, size] = movement.new_size(snapped_mouse_position, bounds.transform, center, axis_align);
 							let delta = movement.bounds_to_scale_transform(center, size);
@@ -538,6 +543,27 @@ impl Fsm for SelectToolFsmState {
 				(Ready, PointerMove { .. }) => {
 					let cursor = data.bounding_box_overlays.as_ref().map_or(MouseCursorIcon::Default, |bounds| bounds.get_cursor(input, true));
 
+					// Generate the select outline (but not if the user is going to use the bound overlays)
+					if cursor == MouseCursorIcon::Default {
+						// Get the layer the user is hovering over
+						let tolerance = DVec2::splat(SELECTION_TOLERANCE);
+						let quad = Quad::from_box([input.mouse.position - tolerance, input.mouse.position + tolerance]);
+						let mut intersection = document.graphene_document.intersects_quad_root(quad);
+
+						// If the user is hovering over a layer they have not already selected, then update outline
+						if let Some(path) = intersection.pop() {
+							if !document.selected_visible_layers().any(|visible| visible == path.as_slice()) {
+								data.path_outlines.update_hovered(path, document, responses)
+							} else {
+								data.path_outlines.clear_hovered(responses);
+							}
+						} else {
+							data.path_outlines.clear_hovered(responses);
+						}
+					} else {
+						data.path_outlines.clear_hovered(responses);
+					}
+
 					if data.cursor != cursor {
 						data.cursor = cursor;
 						responses.push_back(FrontendMessage::UpdateMouseCursor { cursor }.into());
@@ -589,13 +615,35 @@ impl Fsm for SelectToolFsmState {
 					);
 					Ready
 				}
+				(Dragging, Abort) => {
+					data.snap_handler.cleanup(responses);
+					responses.push_back(DocumentMessage::Undo.into());
+
+					data.path_outlines.clear_selected(responses);
+
+					Ready
+				}
 				(_, Abort) => {
 					if let Some(path) = data.drag_box_overlay_layer.take() {
 						responses.push_front(DocumentMessage::Overlays(Operation::DeleteLayer { path }.into()).into())
 					};
-					if let Some(bounding_box_overlays) = data.bounding_box_overlays.take() {
+					if let Some(mut bounding_box_overlays) = data.bounding_box_overlays.take() {
+						let selected = data.layers_dragging.iter().collect::<Vec<_>>();
+						let mut selected = Selected::new(
+							&mut bounding_box_overlays.original_transforms,
+							&mut bounding_box_overlays.pivot,
+							&selected,
+							responses,
+							&document.graphene_document,
+						);
+
+						selected.revert_operation();
+
 						bounding_box_overlays.delete(responses);
 					}
+
+					data.path_outlines.clear_hovered(responses);
+					data.path_outlines.clear_selected(responses);
 
 					data.snap_handler.cleanup(responses);
 					Ready

@@ -15,10 +15,14 @@ pub enum LayoutMessage {
 #[derive(PartialEq, Clone, Deserialize, Serialize, Debug, Hash, Eq, Copy)]
 #[repr(u8)]
 pub enum LayoutTarget {
+	DialogDetails,
 	DocumentBar,
-	PropertiesOptionsPanel,
-	PropertiesSectionsPanel,
+	DocumentMode,
+	LayerTreeOptions,
+	PropertiesOptions,
+	PropertiesSections,
 	ToolOptions,
+	ToolShelf,
 
 	// KEEP THIS ENUM LAST
 	// This is a marker that is used to define an array that is used to hold widgets

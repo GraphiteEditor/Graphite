@@ -15,43 +15,19 @@ pub enum ToolMessage {
 	Select(SelectToolMessage),
 	#[remain::unsorted]
 	#[child]
-	Crop(CropToolMessage),
+	Artboard(ArtboardToolMessage),
 	#[remain::unsorted]
 	#[child]
 	Navigate(NavigateToolMessage),
 	#[remain::unsorted]
 	#[child]
 	Eyedropper(EyedropperToolMessage),
-	// #[remain::unsorted]
-	// #[child]
-	// Text(TextMessage),
-	#[remain::unsorted]
-	#[child]
-	Text(TextMessage),
 	#[remain::unsorted]
 	#[child]
 	Fill(FillToolMessage),
-	// #[remain::unsorted]
-	// #[child]
-	// Gradient(GradientMessage),
-	// #[remain::unsorted]
-	// #[child]
-	// Brush(BrushMessage),
-	// #[remain::unsorted]
-	// #[child]
-	// Heal(HealMessage),
-	// #[remain::unsorted]
-	// #[child]
-	// Clone(CloneMessage),
-	// #[remain::unsorted]
-	// #[child]
-	// Patch(PatchMessage),
-	// #[remain::unsorted]
-	// #[child]
-	// Detail(DetailMessage),
-	// #[remain::unsorted]
-	// #[child]
-	// Relight(RelightMessage),
+	#[remain::unsorted]
+	#[child]
+	Gradient(GradientToolMessage),
 	#[remain::unsorted]
 	#[child]
 	Path(PathToolMessage),
@@ -76,6 +52,27 @@ pub enum ToolMessage {
 	#[remain::unsorted]
 	#[child]
 	Shape(ShapeToolMessage),
+	#[remain::unsorted]
+	#[child]
+	Text(TextMessage),
+	// #[remain::unsorted]
+	// #[child]
+	// Brush(BrushToolMessage),
+	// #[remain::unsorted]
+	// #[child]
+	// Heal(HealToolMessage),
+	// #[remain::unsorted]
+	// #[child]
+	// Clone(CloneToolMessage),
+	// #[remain::unsorted]
+	// #[child]
+	// Patch(PatchToolMessage),
+	// #[remain::unsorted]
+	// #[child]
+	// Relight(RelightToolMessage),
+	// #[remain::unsorted]
+	// #[child]
+	// Detail(DetailToolMessage),
 
 	// Messages
 	#[remain::unsorted]
@@ -85,11 +82,13 @@ pub enum ToolMessage {
 		tool_type: ToolType,
 	},
 	DocumentIsDirty,
+	InitTools,
 	ResetColors,
 	SelectionChanged,
 	SelectPrimaryColor {
 		color: Color,
 	},
+	SelectRandomPrimaryColor,
 	SelectSecondaryColor {
 		color: Color,
 	},

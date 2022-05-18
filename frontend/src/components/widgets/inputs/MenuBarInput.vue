@@ -1,16 +1,16 @@
 <template>
 	<div class="menu-bar-input">
 		<div class="entry-container">
-			<div @click="() => visitWebsite('https://www.graphite.design')" class="entry">
+			<div @click="() => visitWebsite('https://graphite.rs')" class="entry">
 				<IconLabel :icon="'GraphiteLogo'" />
 			</div>
 		</div>
-		<div class="entry-container" v-for="(entry, index) in menuEntries" :key="index">
-			<div @click="() => handleEntryClick(entry)" class="entry" :class="{ open: entry.ref && entry.ref.isOpen() }" data-hover-menu-spawner>
+		<div class="entry-container" v-for="(entry, index) in entries" :key="index">
+			<div @click="() => handleEntryClick(entry)" class="entry" :class="{ open: entry.ref?.isOpen() }" data-hover-menu-spawner>
 				<IconLabel :icon="entry.icon" v-if="entry.icon" />
 				<span v-if="entry.label">{{ entry.label }}</span>
 			</div>
-			<MenuList :menuEntries="entry.children || []" :direction="'Bottom'" :minWidth="240" :drawIcon="true" :defaultAction="comingSoon" :ref="(ref: any) => setEntryRefs(entry, ref)" />
+			<MenuList :entries="entry.children || []" :direction="'Bottom'" :minWidth="240" :drawIcon="true" :defaultAction="comingSoon" :ref="(ref: any) => setEntryRefs(entry, ref)" />
 		</div>
 	</div>
 </template>
@@ -58,22 +58,14 @@ import { EditorState } from "@/state/wasm-loader";
 import MenuList, { MenuListEntry, MenuListEntries } from "@/components/widgets/floating-menus/MenuList.vue";
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
 
-function makeMenuEntries(editor: EditorState): MenuListEntries {
+function makeEntries(editor: EditorState): MenuListEntries {
 	return [
 		{
 			label: "File",
 			ref: undefined,
 			children: [
 				[
-					{ label: "New", icon: "File", shortcut: ["KeyControl", "KeyN"], shortcutRequiresLock: true, action: (): void => editor.instance.new_document() },
-					{
-						label: "New 1920x1080",
-						icon: "File",
-						action: (): void => {
-							editor.instance.new_document();
-							editor.instance.create_artboard_and_fit_to_viewport(0, 0, 1920, 1080);
-						},
-					},
+					{ label: "New…", icon: "File", shortcut: ["KeyControl", "KeyN"], shortcutRequiresLock: true, action: (): void => editor.instance.request_new_document_dialog() },
 					{ label: "Open…", shortcut: ["KeyControl", "KeyO"], action: (): void => editor.instance.open_document() },
 					{
 						label: "Open Recent",
@@ -119,7 +111,8 @@ function makeMenuEntries(editor: EditorState): MenuListEntries {
 				[
 					{ label: "Cut", shortcut: ["KeyControl", "KeyX"], action: async (): Promise<void> => editor.instance.cut() },
 					{ label: "Copy", icon: "Copy", shortcut: ["KeyControl", "KeyC"], action: async (): Promise<void> => editor.instance.copy() },
-					{ label: "Paste", icon: "Paste", shortcut: ["KeyControl", "KeyV"], action: async (): Promise<void> => editor.instance.paste() },
+					// TODO: Fix this
+					// { label: "Paste", icon: "Paste", shortcut: ["KeyControl", "KeyV"], action: async (): Promise<void> => editor.instance.paste() },
 				],
 			],
 		},
@@ -161,13 +154,25 @@ function makeMenuEntries(editor: EditorState): MenuListEntries {
 		{
 			label: "View",
 			ref: undefined,
-			children: [[{ label: "Menu entries coming soon" }]],
+			children: [
+				[
+					{
+						label: "Show/Hide Node Graph (In Development)",
+						action: async (): Promise<void> => editor.instance.toggle_node_graph_visibility(),
+					},
+				],
+			],
 		},
 		{
 			label: "Help",
 			ref: undefined,
 			children: [
-				[{ label: "About Graphite", action: async (): Promise<void> => editor.instance.request_about_graphite_dialog() }],
+				[
+					{
+						label: "About Graphite",
+						action: async (): Promise<void> => editor.instance.request_about_graphite_dialog(),
+					},
+				],
 				[
 					{ label: "Report a Bug", action: (): unknown => window.open("https://github.com/GraphiteEditor/Graphite/issues/new", "_blank") },
 					{ label: "Visit on GitHub", action: (): unknown => window.open("https://github.com/GraphiteEditor/Graphite", "_blank") },
@@ -192,7 +197,7 @@ function makeMenuEntries(editor: EditorState): MenuListEntries {
 }
 
 export default defineComponent({
-	inject: ["editor", "dialog"],
+	inject: ["workspace", "editor", "dialog"],
 	methods: {
 		setEntryRefs(menuEntry: MenuListEntry, ref: typeof MenuList) {
 			if (ref) menuEntry.ref = ref;
@@ -208,7 +213,7 @@ export default defineComponent({
 	},
 	data() {
 		return {
-			menuEntries: makeMenuEntries(this.editor),
+			entries: makeEntries(this.editor),
 			comingSoon: (): void => this.dialog.comingSoon(),
 		};
 	},

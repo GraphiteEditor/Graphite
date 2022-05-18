@@ -4,7 +4,7 @@ use glam::{DAffine2, DVec2};
 use kurbo::BezPath;
 
 use crate::{
-	consts::{COLOR_ACCENT, VECTOR_MANIPULATOR_ANCHOR_MARKER_SIZE},
+	consts::{COLOR_ACCENT, PATH_OUTLINE_WEIGHT, VECTOR_MANIPULATOR_ANCHOR_MARKER_SIZE},
 	message_prelude::{generate_uuid, DocumentMessage, Message},
 };
 
@@ -25,7 +25,7 @@ use graphene::{
 type AnchorOverlays = [Option<Vec<LayerId>>; 5];
 type AnchorId = u64;
 
-const POINT_STROKE_WIDTH: f32 = 2.0;
+const POINT_STROKE_WEIGHT: f64 = 2.;
 
 #[derive(Debug, Default)]
 pub struct OverlayRenderer {
@@ -139,7 +139,7 @@ impl<'a> OverlayRenderer {
 		let operation = Operation::AddOverlayShape {
 			path: layer_path.clone(),
 			bez_path,
-			style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 1.0)), None),
+			style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, PATH_OUTLINE_WEIGHT)), Fill::None),
 			closed: false,
 		};
 		responses.push_back(DocumentMessage::Overlays(operation.into()).into());
@@ -153,7 +153,7 @@ impl<'a> OverlayRenderer {
 		let operation = Operation::AddOverlayRect {
 			path: layer_path.clone(),
 			transform: DAffine2::IDENTITY.to_cols_array(),
-			style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 2.0)), Some(Fill::new(Color::WHITE))),
+			style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 2.0)), Fill::solid(Color::WHITE)),
 		};
 		responses.push_back(DocumentMessage::Overlays(operation.into()).into());
 		layer_path
@@ -169,7 +169,7 @@ impl<'a> OverlayRenderer {
 		let operation = Operation::AddOverlayEllipse {
 			path: layer_path.clone(),
 			transform: DAffine2::IDENTITY.to_cols_array(),
-			style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 2.0)), Some(Fill::new(Color::WHITE))),
+			style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 2.0)), Fill::solid(Color::WHITE)),
 		};
 		responses.push_back(DocumentMessage::Overlays(operation.into()).into());
 		Some(layer_path)
@@ -185,7 +185,7 @@ impl<'a> OverlayRenderer {
 		let operation = Operation::AddOverlayLine {
 			path: layer_path.clone(),
 			transform: DAffine2::IDENTITY.to_cols_array(),
-			style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 1.0)), None),
+			style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 1.0)), Fill::None),
 		};
 		responses.push_front(DocumentMessage::Overlays(operation.into()).into());
 
@@ -286,15 +286,15 @@ impl<'a> OverlayRenderer {
 	/// Sets the overlay style for this point
 	fn style_overlays(&self, anchor: &VectorAnchor, overlays: &AnchorOverlays, responses: &mut VecDeque<Message>) {
 		// TODO Move the style definitions out of the VectorShape, should be looked up from a stylesheet or similar
-		let selected_style = style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, POINT_STROKE_WIDTH + 1.0)), Some(Fill::new(COLOR_ACCENT)));
-		let deselected_style = style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, POINT_STROKE_WIDTH)), Some(Fill::new(Color::WHITE)));
+		let selected_style = style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, POINT_STROKE_WEIGHT + 1.0)), Fill::solid(COLOR_ACCENT));
+		let deselected_style = style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, POINT_STROKE_WEIGHT)), Fill::solid(Color::WHITE));
 
 		// Update if the anchor / handle points are shown as selected
 		// Here the index is important, even though overlays[..] has five elements we only care about the first three
 		for (index, point) in anchor.points.iter().enumerate() {
 			if let Some(point) = point {
 				if let Some(overlay) = &overlays[index] {
-					let style = if point.is_selected { selected_style } else { deselected_style };
+					let style = if point.is_selected { selected_style.clone() } else { deselected_style.clone() };
 					responses.push_back(DocumentMessage::Overlays(Operation::SetLayerStyle { path: overlay.clone(), style }.into()).into());
 				}
 			}

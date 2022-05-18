@@ -4,6 +4,7 @@
 import { Transform, Type } from "class-transformer";
 
 import type { RustEditorInstance, WasmInstance } from "@/state/wasm-loader";
+import { IconName } from "@/utilities/icons";
 
 export class JsMessage {
 	// The marker provides a way to check if an object is a sub-class constructor for a jsMessage.
@@ -37,6 +38,10 @@ export abstract class DocumentDetails {
 
 export class FrontendDocumentDetails extends DocumentDetails {
 	readonly id!: BigInt;
+}
+
+export class UpdateNodeGraphVisibility extends JsMessage {
+	readonly visible!: boolean;
 }
 
 export class UpdateOpenDocumentsList extends JsMessage {
@@ -112,41 +117,8 @@ export class UpdateWorkingColors extends JsMessage {
 	readonly secondary!: Color;
 }
 
-export type ToolName =
-	| "Select"
-	| "Crop"
-	| "Navigate"
-	| "Eyedropper"
-	| "Text"
-	| "Fill"
-	| "Gradient"
-	| "Brush"
-	| "Heal"
-	| "Clone"
-	| "Patch"
-	| "Detail"
-	| "Relight"
-	| "Path"
-	| "Pen"
-	| "Freehand"
-	| "Spline"
-	| "Line"
-	| "Rectangle"
-	| "Ellipse"
-	| "Shape";
-
-export class UpdateActiveTool extends JsMessage {
-	readonly tool_name!: ToolName;
-}
-
 export class UpdateActiveDocument extends JsMessage {
 	readonly document_id!: BigInt;
-}
-
-export class DisplayDialogError extends JsMessage {
-	readonly title!: string;
-
-	readonly description!: string;
 }
 
 export class DisplayDialogPanic extends JsMessage {
@@ -157,13 +129,9 @@ export class DisplayDialogPanic extends JsMessage {
 	readonly description!: string;
 }
 
-export class DisplayConfirmationToCloseDocument extends JsMessage {
-	readonly document_id!: BigInt;
+export class DisplayDialog extends JsMessage {
+	readonly icon!: IconName;
 }
-
-export class DisplayConfirmationToCloseAllDocuments extends JsMessage {}
-
-export class DisplayDialogAboutGraphite extends JsMessage {}
 
 export class UpdateDocumentArtwork extends JsMessage {
 	readonly svg!: string;
@@ -230,10 +198,21 @@ export class TriggerFileDownload extends JsMessage {
 
 export class TriggerFileUpload extends JsMessage {}
 
+export class TriggerRasterDownload extends JsMessage {
+	readonly document!: string;
+
+	readonly name!: string;
+
+	readonly mime!: string;
+
+	@TupleToVec2
+	readonly size!: { x: number; y: number };
+}
+
 export class DocumentChanged extends JsMessage {}
 
-export class DisplayDocumentLayerTreeStructure extends JsMessage {
-	constructor(readonly layerId: BigInt, readonly children: DisplayDocumentLayerTreeStructure[]) {
+export class UpdateDocumentLayerTreeStructure extends JsMessage {
+	constructor(readonly layerId: BigInt, readonly children: UpdateDocumentLayerTreeStructure[]) {
 		super();
 	}
 }
@@ -243,10 +222,10 @@ interface DataBuffer {
 	length: BigInt;
 }
 
-export function newDisplayDocumentLayerTreeStructure(input: { data_buffer: DataBuffer }, wasm: WasmInstance): DisplayDocumentLayerTreeStructure {
-	const { pointer, length } = input.data_buffer;
-	const pointerNum = Number(pointer);
-	const lengthNum = Number(length);
+export function newUpdateDocumentLayerTreeStructure(input: { data_buffer: DataBuffer }, wasm: WasmInstance): UpdateDocumentLayerTreeStructure {
+	const pointerNum = Number(input.data_buffer.pointer);
+	const lengthNum = Number(input.data_buffer.length);
+
 	const wasmMemoryBuffer = wasm.wasm_memory().buffer;
 
 	// Decode the folder structure encoding
@@ -260,12 +239,12 @@ export function newDisplayDocumentLayerTreeStructure(input: { data_buffer: DataB
 	const layerIdsSection = new DataView(wasmMemoryBuffer, pointerNum + 8 + structureSectionLength * 8);
 
 	let layersEncountered = 0;
-	let currentFolder = new DisplayDocumentLayerTreeStructure(BigInt(-1), []);
+	let currentFolder = new UpdateDocumentLayerTreeStructure(BigInt(-1), []);
 	const currentFolderStack = [currentFolder];
 
 	for (let i = 0; i < structureSectionLength; i += 1) {
 		const msbSigned = structureSectionMsbSigned.getBigUint64(i * 8, true);
-		const msbMask = BigInt(1) << BigInt(63);
+		const msbMask = BigInt(1) << BigInt(64 - 1);
 
 		// Set the MSB to 0 to clear the sign and then read the number as usual
 		const numberOfLayersAtThisDepth = msbSigned & ~msbMask;
@@ -275,7 +254,7 @@ export function newDisplayDocumentLayerTreeStructure(input: { data_buffer: DataB
 			const layerId = layerIdsSection.getBigUint64(layersEncountered * 8, true);
 			layersEncountered += 1;
 
-			const childLayer = new DisplayDocumentLayerTreeStructure(layerId, []);
+			const childLayer = new UpdateDocumentLayerTreeStructure(layerId, []);
 			currentFolder.children.push(childLayer);
 		}
 
@@ -303,51 +282,26 @@ export class DisplayEditableTextbox extends JsMessage {
 	readonly line_width!: undefined | number;
 
 	readonly font_size!: number;
+
+	@Type(() => Color)
+	readonly color!: Color;
+}
+
+export class UpdateImageData extends JsMessage {
+	readonly image_data!: ImageData[];
 }
 
 export class DisplayRemoveEditableTextbox extends JsMessage {}
 
-export class UpdateDocumentLayer extends JsMessage {
+export class UpdateDocumentLayerDetails extends JsMessage {
 	@Type(() => LayerPanelEntry)
 	readonly data!: LayerPanelEntry;
 }
-
-export class UpdateCanvasZoom extends JsMessage {
-	readonly factor!: number;
-}
-
-export class UpdateCanvasRotation extends JsMessage {
-	readonly angle_radians!: number;
-}
-
-export type BlendMode =
-	| "Normal"
-	| "Multiply"
-	| "Darken"
-	| "ColorBurn"
-	| "Screen"
-	| "Lighten"
-	| "ColorDodge"
-	| "Overlay"
-	| "SoftLight"
-	| "HardLight"
-	| "Difference"
-	| "Exclusion"
-	| "Hue"
-	| "Saturation"
-	| "Color"
-	| "Luminosity";
 
 export class LayerPanelEntry {
 	name!: string;
 
 	visible!: boolean;
-
-	blend_mode!: BlendMode;
-
-	// On the rust side opacity is out of 1 rather than 100
-	@Transform(({ value }) => value * 100)
-	opacity!: number;
 
 	layer_type!: LayerType;
 
@@ -366,12 +320,24 @@ export class LayerMetadata {
 	selected!: boolean;
 }
 
-export type LayerType = "Folder" | "Shape" | "Circle" | "Rect" | "Line" | "PolyLine" | "Ellipse";
+export type LayerType = "Folder" | "Image" | "Shape" | "Text";
+
+export class ImageData {
+	readonly path!: BigUint64Array;
+
+	readonly mime!: string;
+
+	readonly image_data!: Uint8Array;
+}
 
 export class IndexedDbDocumentDetails extends DocumentDetails {
 	@Transform(({ value }: { value: BigInt }) => value.toString())
 	id!: string;
 }
+
+export class TriggerFontLoadDefault extends JsMessage {}
+
+export class DisplayDialogDismiss extends JsMessage {}
 
 export class TriggerIndexedDbWriteDocument extends JsMessage {
 	document!: string;
@@ -388,9 +354,17 @@ export class TriggerIndexedDbRemoveDocument extends JsMessage {
 	document_id!: string;
 }
 
+export class TriggerFontLoad extends JsMessage {
+	font!: string;
+}
+
+export class TriggerVisitLink extends JsMessage {
+	url!: string;
+}
+
 export interface WidgetLayout {
-	layout_target: unknown;
 	layout: LayoutRow[];
+	layout_target: unknown;
 }
 
 export function defaultWidgetLayout(): WidgetLayout {
@@ -400,25 +374,60 @@ export function defaultWidgetLayout(): WidgetLayout {
 	};
 }
 
-export type LayoutRow = WidgetRow | WidgetSection;
+// TODO: Rename LayoutRow to something more generic
+export type LayoutRow = WidgetRow | WidgetColumn | WidgetSection;
 
-export type WidgetRow = { name: string; widgets: Widget[] };
-export function isWidgetRow(layoutRow: WidgetRow | WidgetSection): layoutRow is WidgetRow {
-	return Boolean((layoutRow as WidgetRow).widgets);
+export type WidgetColumn = { columnWidgets: Widget[] };
+export function isWidgetColumn(layoutColumn: LayoutRow): layoutColumn is WidgetColumn {
+	return Boolean((layoutColumn as WidgetColumn).columnWidgets);
+}
+
+export type WidgetRow = { rowWidgets: Widget[] };
+export function isWidgetRow(layoutRow: LayoutRow): layoutRow is WidgetRow {
+	return Boolean((layoutRow as WidgetRow).rowWidgets);
 }
 
 export type WidgetSection = { name: string; layout: LayoutRow[] };
-export function isWidgetSection(layoutRow: WidgetRow | WidgetSection): layoutRow is WidgetSection {
+export function isWidgetSection(layoutRow: LayoutRow): layoutRow is WidgetSection {
 	return Boolean((layoutRow as WidgetSection).layout);
 }
 
-export type WidgetKind = "NumberInput" | "Separator" | "IconButton" | "PopoverButton" | "OptionalInput" | "RadioInput" | "TextInput" | "TextLabel" | "IconLabel";
+export type WidgetKind =
+	| "CheckboxInput"
+	| "ColorInput"
+	| "DropdownInput"
+	| "FontInput"
+	| "IconButton"
+	| "IconLabel"
+	| "NumberInput"
+	| "OptionalInput"
+	| "PopoverButton"
+	| "RadioInput"
+	| "Separator"
+	| "TextAreaInput"
+	| "TextButton"
+	| "TextInput"
+	| "TextLabel";
 
 export interface Widget {
 	kind: WidgetKind;
 	widget_id: BigInt;
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	props: any;
+}
+
+export class UpdateDialogDetails extends JsMessage implements WidgetLayout {
+	layout_target!: unknown;
+
+	@Transform(({ value }) => createWidgetLayout(value))
+	layout!: LayoutRow[];
+}
+
+export class UpdateDocumentModeLayout extends JsMessage implements WidgetLayout {
+	layout_target!: unknown;
+
+	@Transform(({ value }) => createWidgetLayout(value))
+	layout!: LayoutRow[];
 }
 
 export class UpdateToolOptionsLayout extends JsMessage implements WidgetLayout {
@@ -429,6 +438,13 @@ export class UpdateToolOptionsLayout extends JsMessage implements WidgetLayout {
 }
 
 export class UpdateDocumentBarLayout extends JsMessage implements WidgetLayout {
+	layout_target!: unknown;
+
+	@Transform(({ value }) => createWidgetLayout(value))
+	layout!: LayoutRow[];
+}
+
+export class UpdateToolShelfLayout extends JsMessage implements WidgetLayout {
 	layout_target!: unknown;
 
 	@Transform(({ value }) => createWidgetLayout(value))
@@ -449,13 +465,20 @@ export class UpdatePropertyPanelSectionsLayout extends JsMessage implements Widg
 	layout!: LayoutRow[];
 }
 
+export class UpdateLayerTreeOptionsLayout extends JsMessage implements WidgetLayout {
+	layout_target!: unknown;
+
+	@Transform(({ value }) => createWidgetLayout(value))
+	layout!: LayoutRow[];
+}
+
 // Unpacking rust types to more usable type in the frontend
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function createWidgetLayout(widgetLayout: any[]): LayoutRow[] {
-	return widgetLayout.map((rowOrSection) => {
-		if (rowOrSection.Row) {
+	return widgetLayout.map((layoutType): LayoutRow => {
+		if (layoutType.Column) {
 			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			const widgets = rowOrSection.Row.widgets.map((widgetHolder: any) => {
+			const columnWidgets = layoutType.Column.columnWidgets.map((widgetHolder: any) => {
 				const { widget_id } = widgetHolder;
 				const kind = Object.keys(widgetHolder.widget)[0];
 				const props = widgetHolder.widget[kind];
@@ -463,68 +486,87 @@ function createWidgetLayout(widgetLayout: any[]): LayoutRow[] {
 				return { widget_id, kind, props };
 			});
 
-			return {
-				name: rowOrSection.Row.name,
-				widgets,
-			};
+			const result: WidgetColumn = { columnWidgets };
+			return result;
 		}
-		if (rowOrSection.Section) {
-			return {
-				name: rowOrSection.Section.name,
-				layout: createWidgetLayout(rowOrSection.Section.layout),
-			};
+
+		if (layoutType.Row) {
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			const rowWidgets = layoutType.Row.rowWidgets.map((widgetHolder: any) => {
+				const { widget_id } = widgetHolder;
+				const kind = Object.keys(widgetHolder.widget)[0];
+				const props = widgetHolder.widget[kind];
+
+				return { widget_id, kind, props };
+			});
+
+			const result: WidgetRow = { rowWidgets };
+			return result;
+		}
+
+		if (layoutType.Section) {
+			const { name } = layoutType.Section;
+			const layout = createWidgetLayout(layoutType.Section.layout);
+
+			const result: WidgetSection = { name, layout };
+			return result;
 		}
 
 		throw new Error("Layout row type does not exist");
 	});
 }
 
-export class DisplayDialogComingSoon extends JsMessage {
-	issue: number | undefined;
-}
-
 export class TriggerTextCommit extends JsMessage {}
+
+export class TriggerTextCopy extends JsMessage {
+	readonly copy_text!: string;
+}
 
 export class TriggerViewportResize extends JsMessage {}
 
-// Any is used since the type of the object should be known from the rust side
+// `any` is used since the type of the object should be known from the Rust side
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type JSMessageFactory = (data: any, wasm: WasmInstance, instance: RustEditorInstance) => JsMessage;
 type MessageMaker = typeof JsMessage | JSMessageFactory;
 
-export const messageConstructors: Record<string, MessageMaker> = {
-	DisplayConfirmationToCloseAllDocuments,
-	DisplayConfirmationToCloseDocument,
-	DisplayDialogAboutGraphite,
-	DisplayDialogComingSoon,
-	DisplayDialogError,
+export const messageMakers: Record<string, MessageMaker> = {
+	DisplayDialog,
 	DisplayDialogPanic,
-	DisplayDocumentLayerTreeStructure: newDisplayDocumentLayerTreeStructure,
+	UpdateDocumentLayerTreeStructure: newUpdateDocumentLayerTreeStructure,
 	DisplayEditableTextbox,
+	UpdateImageData,
 	DisplayRemoveEditableTextbox,
+	TriggerFontLoadDefault,
+	DisplayDialogDismiss,
 	TriggerFileDownload,
 	TriggerFileUpload,
 	TriggerIndexedDbRemoveDocument,
+	TriggerFontLoad,
 	TriggerIndexedDbWriteDocument,
+	TriggerRasterDownload,
 	TriggerTextCommit,
+	TriggerTextCopy,
 	TriggerViewportResize,
+	TriggerVisitLink,
 	UpdateActiveDocument,
-	UpdateActiveTool,
-	UpdateCanvasRotation,
-	UpdateCanvasZoom,
+	UpdateDialogDetails,
 	UpdateDocumentArtboards,
 	UpdateDocumentArtwork,
 	UpdateDocumentBarLayout,
-	UpdateDocumentLayer,
+	UpdateToolShelfLayout,
+	UpdateDocumentLayerDetails,
 	UpdateDocumentOverlays,
 	UpdateDocumentRulers,
 	UpdateDocumentScrollbars,
 	UpdateInputHints,
 	UpdateMouseCursor,
+	UpdateNodeGraphVisibility,
 	UpdateOpenDocumentsList,
 	UpdatePropertyPanelOptionsLayout,
 	UpdatePropertyPanelSectionsLayout,
+	UpdateLayerTreeOptionsLayout,
+	UpdateDocumentModeLayout,
 	UpdateToolOptionsLayout,
 	UpdateWorkingColors,
 } as const;
-export type JsMessageType = keyof typeof messageConstructors;
+export type JsMessageType = keyof typeof messageMakers;

@@ -1,5 +1,5 @@
 import { TriggerIndexedDbWriteDocument, TriggerIndexedDbRemoveDocument } from "@/dispatcher/js-messages";
-import { DocumentsState } from "@/state/documents";
+import { PortfolioState } from "@/state/portfolio";
 import { EditorState, getWasmInstance } from "@/state/wasm-loader";
 
 const GRAPHITE_INDEXED_DB_VERSION = 3;
@@ -31,7 +31,7 @@ const databaseConnection: Promise<IDBDatabase> = new Promise((resolve) => {
 });
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
-export function createAutoSaveManager(editor: EditorState, documents: DocumentsState) {
+export function createAutoSaveManager(editor: EditorState, portfolio: PortfolioState) {
 	const openAutoSavedDocuments = async (): Promise<void> => {
 		const db = await databaseConnection;
 		const transaction = db.transaction(GRAPHITE_AUTO_SAVE_STORE, "readonly");
@@ -61,7 +61,7 @@ export function createAutoSaveManager(editor: EditorState, documents: DocumentsS
 
 	const storeDocumentOrder = (): void => {
 		// Make sure to store as string since JSON does not play nice with BigInt
-		const documentOrder = documents.state.documents.map((doc) => doc.id.toString());
+		const documentOrder = portfolio.state.documents.map((doc) => doc.id.toString());
 		window.localStorage.setItem(GRAPHITE_AUTO_SAVE_ORDER_KEY, JSON.stringify(documentOrder));
 	};
 
@@ -86,7 +86,5 @@ export function createAutoSaveManager(editor: EditorState, documents: DocumentsS
 	// On creation
 	openAutoSavedDocuments();
 
-	return {
-		openAutoSavedDocuments,
-	};
+	return { openAutoSavedDocuments };
 }
