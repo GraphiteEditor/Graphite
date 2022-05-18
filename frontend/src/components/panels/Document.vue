@@ -235,12 +235,9 @@ import {
 	UpdateDocumentBarLayout,
 	UpdateImageData,
 	TriggerTextCommit,
-	TriggerTextCopy,
 	TriggerViewportResize,
 	DisplayRemoveEditableTextbox,
 	DisplayEditableTextbox,
-	TriggerFontLoad,
-	TriggerVisitLink,
 } from "@/interop/messages";
 
 import { textInputCleanup } from "@/utilities/keyboard-entry";
@@ -385,23 +382,12 @@ export default defineComponent({
 		this.editor.subscriptions.subscribeJsMessage(UpdateMouseCursor, (updateMouseCursor) => {
 			this.canvasCursor = updateMouseCursor.cursor;
 		});
+
 		this.editor.subscriptions.subscribeJsMessage(TriggerTextCommit, () => {
 			if (this.textInput) {
 				const textCleaned = textInputCleanup(this.textInput.innerText);
 				this.editor.instance.on_change_text(textCleaned);
 			}
-		});
-		this.editor.subscriptions.subscribeJsMessage(TriggerFontLoad, async (triggerFontLoad) => {
-			const response = await fetch(triggerFontLoad.font);
-			const responseBuffer = await response.arrayBuffer();
-			this.editor.instance.on_font_load(triggerFontLoad.font, new Uint8Array(responseBuffer), false);
-		});
-		this.editor.subscriptions.subscribeJsMessage(TriggerVisitLink, async (triggerOpenLink) => {
-			window.open(triggerOpenLink.url, "_blank");
-		});
-		this.editor.subscriptions.subscribeJsMessage(TriggerTextCopy, (triggerTextCopy) => {
-			// If the Clipboard API is supported in the browser, copy text to the clipboard
-			navigator.clipboard?.writeText?.(triggerTextCopy.copy_text);
 		});
 
 		this.editor.subscriptions.subscribeJsMessage(DisplayEditableTextbox, (displayEditableTextbox) => {
@@ -460,28 +446,6 @@ export default defineComponent({
 				this.editor.instance.set_image_blob_url(element.path, url, image.width, image.height);
 			});
 		});
-
-		// Gets metadata populated in `frontend/vue.config.js`. We could potentially move this functionality in a build.rs file.
-		const loadBuildMetadata = (): void => {
-			const release = process.env.VUE_APP_RELEASE_SERIES;
-			let timestamp = "";
-			const hash = (process.env.VUE_APP_COMMIT_HASH || "").substring(0, 8);
-			const branch = process.env.VUE_APP_COMMIT_BRANCH;
-			{
-				const date = new Date(process.env.VUE_APP_COMMIT_DATE || "");
-				const dateString = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
-				const timeString = `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
-				const timezoneName = Intl.DateTimeFormat(undefined, { timeZoneName: "long" })
-					.formatToParts(new Date())
-					.find((part) => part.type === "timeZoneName");
-				const timezoneNameString = timezoneName?.value;
-				timestamp = `${dateString} ${timeString} ${timezoneNameString}`;
-			}
-
-			this.editor.instance.populate_build_metadata(release || "", timestamp, hash, branch || "");
-		};
-
-		loadBuildMetadata();
 	},
 	data() {
 		return {

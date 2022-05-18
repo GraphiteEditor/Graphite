@@ -260,6 +260,9 @@ import { defineComponent } from "vue";
 
 import { createEditor, Editor } from "@/interop/editor";
 import { createAutoSaveManager } from "@/managers/auto-save";
+import { createBuildMetadataManager } from "@/managers/build-metadata";
+import { createClipboardManager } from "@/managers/clipboard";
+import { createHyperlinkManager } from "@/managers/hyperlinks";
 import { createInputManager } from "@/managers/input";
 import { createPanicManager } from "@/managers/panic";
 import { createDialogState, DialogState } from "@/providers/dialog";
@@ -316,9 +319,12 @@ export default defineComponent({
 			element.parentElement?.removeChild(element);
 		},
 	},
-	mounted() {
+	async mounted() {
 		// Initialize managers, which are isolated systems that subscribe to backend messages to link them to browser API functionality (like JS events, IndexedDB, etc.)
-		createAutoSaveManager(this.editor, this.portfolio);
+		await createAutoSaveManager(this.editor, this.portfolio);
+		createBuildMetadataManager(this.editor);
+		createClipboardManager(this.editor);
+		createHyperlinkManager(this.editor);
 		createInputManager(this.editor, this.$el.parentElement, this.dialog, this.portfolio, this.fullscreen);
 		createPanicManager(this.editor, this.dialog);
 

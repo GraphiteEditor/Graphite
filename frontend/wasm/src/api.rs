@@ -86,6 +86,9 @@ impl JsEditorHandle {
 
 	// TODO: Replace with initialization system, issue #524
 	pub fn init_app(&self) {
+		let message = PortfolioMessage::UpdateOpenDocumentsList;
+		self.dispatch(message);
+
 		let message = PortfolioMessage::UpdateDocumentWidgets;
 		self.dispatch(message);
 
@@ -122,11 +125,6 @@ impl JsEditorHandle {
 
 	pub fn select_document(&self, document_id: u64) {
 		let message = PortfolioMessage::SelectDocument { document_id };
-		self.dispatch(message);
-	}
-
-	pub fn get_open_documents_list(&self) {
-		let message = PortfolioMessage::UpdateOpenDocumentsList;
 		self.dispatch(message);
 	}
 

@@ -103,7 +103,7 @@ export default defineComponent({
 		clickDropdownBox() {
 			if (!this.disabled) (this.$refs.menuList as typeof MenuList).setOpen();
 		},
-		selectFont(newName: string) {
+		async selectFont(newName: string): Promise<void> {
 			let fontFamily;
 			let fontStyle;
 
@@ -116,24 +116,24 @@ export default defineComponent({
 				this.$emit("update:fontFamily", newName);
 
 				fontFamily = newName;
-				fontStyle = this.fonts.getFontStyles(newName)[0];
+				fontStyle = (await this.fonts).getFontStyles(newName)[0];
 			}
 
-			const fontFile = this.fonts.getFontFile(fontFamily, fontStyle);
+			const fontFile = (await this.fonts).getFontFile(fontFamily, fontStyle);
 			this.$emit("changeFont", { fontFamily, fontStyle, fontFile });
 		},
 		onWidthChanged(newWidth: number) {
 			this.minWidth = newWidth;
 		},
-		updateEntries(): { entries: SectionsOfMenuListEntries; activeEntry: MenuListEntry } {
-			const choices = this.isStyle ? this.fonts.getFontStyles(this.fontFamily) : this.fonts.state.fontNames;
+		async updateEntries(): Promise<{ entries: SectionsOfMenuListEntries; activeEntry: MenuListEntry }> {
+			const choices = this.isStyle ? (await this.fonts).getFontStyles(this.fontFamily) : (await this.fonts).state.fontNames;
 			const selectedChoice = this.isStyle ? this.fontStyle : this.fontFamily;
 
 			let selectedEntry: MenuListEntry | undefined;
 			const menuListEntries = choices.map((name) => {
 				const result: MenuListEntry = {
 					label: name,
-					action: (): void => this.selectFont(name),
+					action: async (): Promise<void> => this.selectFont(name),
 				};
 
 				if (name === selectedChoice) selectedEntry = result;
@@ -148,13 +148,13 @@ export default defineComponent({
 		},
 	},
 	watch: {
-		fontFamily() {
-			const { entries, activeEntry } = this.updateEntries();
+		async fontFamily() {
+			const { entries, activeEntry } = await this.updateEntries();
 			this.entries = entries;
 			this.activeEntry = activeEntry;
 		},
-		fontStyle() {
-			const { entries, activeEntry } = this.updateEntries();
+		async fontStyle() {
+			const { entries, activeEntry } = await this.updateEntries();
 			this.entries = entries;
 			this.activeEntry = activeEntry;
 		},

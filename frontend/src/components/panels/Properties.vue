@@ -61,6 +61,7 @@ export default defineComponent({
 		this.editor.subscriptions.subscribeJsMessage(UpdatePropertyPanelOptionsLayout, (updatePropertyPanelOptionsLayout) => {
 			this.propertiesOptionsLayout = updatePropertyPanelOptionsLayout;
 		});
+
 		this.editor.subscriptions.subscribeJsMessage(UpdatePropertyPanelSectionsLayout, (updatePropertyPanelSectionsLayout) => {
 			this.propertiesSectionsLayout = updatePropertyPanelSectionsLayout;
 		});

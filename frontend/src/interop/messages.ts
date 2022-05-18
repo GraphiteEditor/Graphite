@@ -21,9 +21,9 @@ export class JsMessage {
 // ============================================================================
 
 // Allows the auto save system to use a string for the id rather than a BigInt.
-// IndexedDb does not allow for BigInts as primary keys. TypeScript does not allow
-// subclasses to change the type of class variables in subclasses. It is an abstract
-// class to point out that it should not be instantiated directly.
+// IndexedDb does not allow for BigInts as primary keys.
+// TypeScript does not allow subclasses to change the type of class variables in subclasses.
+// It is an abstract class to point out that it should not be instantiated directly.
 export abstract class DocumentDetails {
 	readonly name!: string;
 

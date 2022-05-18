@@ -40,13 +40,13 @@ export function createPortfolioState(editor: Editor) {
 		const canvas = document.createElement("canvas");
 		canvas.width = triggerRasterDownload.size.x;
 		canvas.height = triggerRasterDownload.size.y;
-		const ctx = canvas.getContext("2d");
-		if (!ctx) return;
+		const context = canvas.getContext("2d");
+		if (!context) return;
 
 		// Fill the canvas with white if jpeg (does not support transparency and defaults to black)
 		if (triggerRasterDownload.mime.endsWith("jpg")) {
-			ctx.fillStyle = "white";
-			ctx.fillRect(0, 0, triggerRasterDownload.size.x, triggerRasterDownload.size.y);
+			context.fillStyle = "white";
+			context.fillRect(0, 0, triggerRasterDownload.size.x, triggerRasterDownload.size.y);
 		}
 
 		// Create a blob url for our svg
@@ -55,7 +55,7 @@ export function createPortfolioState(editor: Editor) {
 		const url = URL.createObjectURL(svgBlob);
 		img.onload = (): void => {
 			// Draw our svg to the canvas
-			ctx?.drawImage(img, 0, 0, triggerRasterDownload.size.x, triggerRasterDownload.size.y);
+			context?.drawImage(img, 0, 0, triggerRasterDownload.size.x, triggerRasterDownload.size.y);
 
 			// Convert the canvas to an image of the correct mime
 			const imgURI = canvas.toDataURL(triggerRasterDownload.mime);
@@ -67,10 +67,6 @@ export function createPortfolioState(editor: Editor) {
 		};
 		img.src = url;
 	});
-
-	// TODO(mfish33): Replace with initialization system Issue:#524
-	// Get the initial documents
-	editor.instance.get_open_documents_list();
 
 	return {
 		state: readonly(state),

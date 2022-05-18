@@ -1,34 +1,32 @@
 import { reactive, readonly } from "vue";
 
 import { Editor } from "@/interop/editor";
-import { TriggerFontLoadDefault } from "@/interop/messages";
+import { TriggerFontLoad, TriggerFontLoadDefault } from "@/interop/messages";
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
-export function createFontsState(editor: Editor) {
+export async function createFontsState(editor: Editor) {
 	const state = reactive({
 		fontNames: [] as string[],
 	});
 
-	let fontList = [] as { family: string; variants: string[]; files: Map<string, string> }[];
-
-	const loadDefaultFontCallback = (font: string, data: Uint8Array): void => editor.instance.on_font_load(font, data, true);
 	editor.subscriptions.subscribeJsMessage(TriggerFontLoadDefault, loadDefaultFont);
+	editor.subscriptions.subscribeJsMessage(TriggerFontLoad, async (triggerFontLoad) => {
+		const response = await (await fetch(triggerFontLoad.font)).arrayBuffer();
+		editor.instance.on_font_load(triggerFontLoad.font, new Uint8Array(response), false);
+	});
 
-	fetch(fontListAPI)
-		.then((response) => response.json())
-		.then((json) => {
-			const loadedFonts = json.items as { family: string; variants: string[]; files: { [name: string]: string } }[];
+	const response = await (await fetch(fontListAPI)).json();
+	const loadedFonts = response.items as { family: string; variants: string[]; files: { [name: string]: string } }[];
 
-			fontList = loadedFonts.map((font) => {
-				const { family } = font;
-				const variants = font.variants.map(formatFontStyleName);
-				const files = new Map(font.variants.map((x) => [formatFontStyleName(x), font.files[x]]));
-				return { family, variants, files };
-			});
-			state.fontNames = fontList.map((value) => value.family);
+	const fontList: { family: string; variants: string[]; files: Map<string, string> }[] = loadedFonts.map((font) => {
+		const { family } = font;
+		const variants = font.variants.map(formatFontStyleName);
+		const files = new Map(font.variants.map((x) => [formatFontStyleName(x), font.files[x]]));
+		return { family, variants, files };
+	});
+	state.fontNames = fontList.map((value) => value.family);
 
-			loadDefaultFont();
-		});
+	await loadDefaultFont();
 
 	function formatFontStyleName(fontStyle: string): string {
 		const isItalic = fontStyle.endsWith("italic");
@@ -52,7 +50,7 @@ export function createFontsState(editor: Editor) {
 
 		const response = await fetch(font);
 		const responseBuffer = await response.arrayBuffer();
-		loadDefaultFontCallback?.(font, new Uint8Array(responseBuffer));
+		editor.instance.on_font_load(font, new Uint8Array(responseBuffer), true);
 	}
 
 	function getFontStyles(fontFamily: string): string[] {
