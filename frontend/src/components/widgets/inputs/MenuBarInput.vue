@@ -197,7 +197,7 @@ function makeEntries(editor: Editor): MenuListEntries {
 }
 
 export default defineComponent({
-	inject: ["workspace", "editor", "dialog"],
+	inject: ["editor"],
 	methods: {
 		setEntryRefs(menuEntry: MenuListEntry, ref: typeof MenuList) {
 			if (ref) menuEntry.ref = ref;

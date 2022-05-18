@@ -258,7 +258,7 @@ import Separator from "@/components/widgets/separators/Separator.vue";
 import WidgetLayout from "@/components/widgets/WidgetLayout.vue";
 
 export default defineComponent({
-	inject: ["editor", "dialog"],
+	inject: ["editor"],
 	methods: {
 		viewportResize() {
 			// Resize the canvas

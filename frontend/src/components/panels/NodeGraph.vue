@@ -350,7 +350,6 @@ const GRID_COLLAPSE_SPACING = 10;
 const GRID_SIZE = 24;
 
 export default defineComponent({
-	inject: ["editor"],
 	data() {
 		return {
 			transform: { scale: 1, x: 0, y: 0 },
