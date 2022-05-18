@@ -1,8 +1,8 @@
+import { TextButtonWidget } from "@/components/widgets/buttons/TextButton";
 import { Editor } from "@/interop/editor";
 import { DisplayDialogPanic, WidgetLayout } from "@/interop/messages";
 import { DialogState } from "@/providers/dialog";
 import { stripIndents } from "@/utilities/strip-indents";
-import { TextButtonWidget } from "@/utilities/widgets";
 
 export function createPanicManager(editor: Editor, dialogState: DialogState): void {
 	// Code panic dialog and console error

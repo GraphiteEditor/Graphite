@@ -1,9 +1,9 @@
 import { reactive, readonly } from "vue";
 
+import { TextButtonWidget } from "@/components/widgets/buttons/TextButton";
 import { Editor } from "@/interop/editor";
 import { defaultWidgetLayout, DisplayDialog, DisplayDialogDismiss, UpdateDialogDetails, WidgetLayout } from "@/interop/messages";
 import { IconName } from "@/utilities/icons";
-import { TextButtonWidget } from "@/utilities/widgets";
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 export function createDialogState(editor: Editor) {

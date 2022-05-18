@@ -8,7 +8,7 @@ const GRAPHITE_AUTO_SAVE_STORE = "auto-save-documents";
 const GRAPHITE_AUTO_SAVE_ORDER_KEY = "auto-save-documents-order";
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
-export function createAutoSaveManager(editor: Editor, portfolio: PortfolioState) {
+export async function createAutoSaveManager(editor: Editor, portfolio: PortfolioState): Promise<void> {
 	const databaseConnection: Promise<IDBDatabase> = new Promise((resolve) => {
 		const dbOpenRequest = indexedDB.open(GRAPHITE_INDEXED_DB_NAME, GRAPHITE_INDEXED_DB_VERSION);
 
@@ -78,12 +78,10 @@ export function createAutoSaveManager(editor: Editor, portfolio: PortfolioState)
 						removeDocument(doc.details.id);
 					}
 				});
-				resolve(undefined);
+				resolve();
 			};
 		});
 	};
 
-	openAutoSavedDocuments();
-
-	return { openAutoSavedDocuments };
+	await openAutoSavedDocuments();
 }

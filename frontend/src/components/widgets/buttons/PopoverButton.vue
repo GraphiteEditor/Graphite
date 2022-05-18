@@ -49,7 +49,7 @@
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
 
-import { PopoverButtonIcon } from "@/utilities/widgets";
+import { IconName } from "@/utilities/icons";
 
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 import IconButton from "@/components/widgets/buttons/IconButton.vue";
@@ -63,7 +63,7 @@ export default defineComponent({
 	},
 	props: {
 		action: { type: Function as PropType<() => void>, required: false },
-		icon: { type: String as PropType<PopoverButtonIcon>, default: "DropdownArrow" },
+		icon: { type: String as PropType<IconName>, default: "DropdownArrow" },
 	},
 	methods: {
 		handleClick() {

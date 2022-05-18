@@ -263,6 +263,7 @@ import { createAutoSaveManager } from "@/managers/auto-save";
 import { createInputManager } from "@/managers/input";
 import { createPanicManager } from "@/managers/panic";
 import { createDialogState, DialogState } from "@/providers/dialog";
+import { createFontsState, FontsState } from "@/providers/fonts";
 import { createFullscreenState, FullscreenState } from "@/providers/fullscreen";
 import { createPortfolioState, PortfolioState } from "@/providers/portfolio";
 import { createWorkspaceState, WorkspaceState } from "@/providers/workspace";
@@ -279,6 +280,7 @@ declare module "@vue/runtime-core" {
 
 		// Stateful systems which are `provide`d by this Vue component to be `inject`ed by descendant components and used for reactive bindings
 		dialog: DialogState;
+		fonts: FontsState;
 		fullscreen: FullscreenState;
 		portfolio: PortfolioState;
 		workspace: WorkspaceState;
@@ -293,6 +295,7 @@ export default defineComponent({
 
 			// Stateful systems which are `provide`d by this Vue component to be `inject`ed by descendant components and used for reactive bindings
 			dialog: this.dialog,
+			fonts: this.fonts,
 			fullscreen: this.fullscreen,
 			portfolio: this.portfolio,
 			workspace: this.workspace,
@@ -306,6 +309,7 @@ export default defineComponent({
 
 			// Stateful systems which are `provide`d by this Vue component to be `inject`ed by descendant components and used for reactive bindings
 			dialog: createDialogState(editor),
+			fonts: createFontsState(editor),
 			fullscreen: createFullscreenState(),
 			portfolio: createPortfolioState(editor),
 			workspace: createWorkspaceState(editor),

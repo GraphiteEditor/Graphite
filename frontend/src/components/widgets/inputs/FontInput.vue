@@ -78,13 +78,12 @@
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
 
-import { fontNames, getFontFile, getFontStyles } from "@/utilities/fonts";
-
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 import MenuList, { MenuListEntry, SectionsOfMenuListEntries } from "@/components/widgets/floating-menus/MenuList.vue";
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
 
 export default defineComponent({
+	inject: ["fonts"],
 	emits: ["update:fontFamily", "update:fontStyle", "changeFont"],
 	props: {
 		fontFamily: { type: String as PropType<string>, required: true },
@@ -117,17 +116,17 @@ export default defineComponent({
 				this.$emit("update:fontFamily", newName);
 
 				fontFamily = newName;
-				fontStyle = getFontStyles(newName)[0];
+				fontStyle = this.fonts.getFontStyles(newName)[0];
 			}
 
-			const fontFile = getFontFile(fontFamily, fontStyle);
+			const fontFile = this.fonts.getFontFile(fontFamily, fontStyle);
 			this.$emit("changeFont", { fontFamily, fontStyle, fontFile });
 		},
 		onWidthChanged(newWidth: number) {
 			this.minWidth = newWidth;
 		},
 		updateEntries(): { entries: SectionsOfMenuListEntries; activeEntry: MenuListEntry } {
-			const choices = this.isStyle ? getFontStyles(this.fontFamily) : fontNames();
+			const choices = this.isStyle ? this.fonts.getFontStyles(this.fontFamily) : this.fonts.state.fontNames;
 			const selectedChoice = this.isStyle ? this.fontStyle : this.fontFamily;
 
 			let selectedEntry: MenuListEntry | undefined;

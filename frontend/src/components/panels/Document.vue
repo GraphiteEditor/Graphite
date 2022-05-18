@@ -240,13 +240,10 @@ import {
 	DisplayRemoveEditableTextbox,
 	DisplayEditableTextbox,
 	TriggerFontLoad,
-	TriggerFontLoadDefault,
 	TriggerVisitLink,
 } from "@/interop/messages";
 
-import { textInputCleanup } from "@/managers/input";
-
-import { loadDefaultFont, setLoadDefaultFontCallback } from "@/utilities/fonts";
+import { textInputCleanup } from "@/utilities/keyboard-entry";
 
 import LayoutCol from "@/components/layout/LayoutCol.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
@@ -399,7 +396,6 @@ export default defineComponent({
 			const responseBuffer = await response.arrayBuffer();
 			this.editor.instance.on_font_load(triggerFontLoad.font, new Uint8Array(responseBuffer), false);
 		});
-		this.editor.subscriptions.subscribeJsMessage(TriggerFontLoadDefault, loadDefaultFont);
 		this.editor.subscriptions.subscribeJsMessage(TriggerVisitLink, async (triggerOpenLink) => {
 			window.open(triggerOpenLink.url, "_blank");
 		});
@@ -484,8 +480,6 @@ export default defineComponent({
 
 			this.editor.instance.populate_build_metadata(release || "", timestamp, hash, branch || "");
 		};
-
-		setLoadDefaultFontCallback((font: string, data: Uint8Array) => this.editor.instance.on_font_load(font, data, true));
 
 		loadBuildMetadata();
 	},

@@ -87,9 +87,10 @@
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
 
-import { IncrementBehavior, IncrementDirection } from "@/utilities/widgets";
-
 import FieldInput from "@/components/widgets/inputs/FieldInput.vue";
+
+type IncrementBehavior = "Add" | "Multiply" | "Callback" | "None";
+type IncrementDirection = "Decrease" | "Increase";
 
 export default defineComponent({
 	emits: ["update:value"],
