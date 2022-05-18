@@ -251,8 +251,7 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 		});
 	};
 
-	// Event bindings
-
+	// Add event bindings for the lifetime of the application
 	const addListeners = (): void => {
 		listeners.forEach(({ target, eventName, action, options }) => target.addEventListener(eventName, action, options));
 	};
@@ -261,7 +260,7 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 		listeners.forEach(({ target, eventName, action }) => target.removeEventListener(eventName, action));
 	};
 
-	// Run on creation
+	// Resize on creation
 	addListeners();
 	onWindowResize(container);
 

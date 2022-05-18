@@ -277,7 +277,7 @@ declare module "@vue/runtime-core" {
 		// Graphite WASM editor instance
 		editor: Editor;
 
-		// Stateful systems which are `provide`d by this Vue component, to be `inject`ed by descendant components
+		// Stateful systems which are `provide`d by this Vue component to be `inject`ed by descendant components and used for reactive bindings
 		dialog: DialogState;
 		fullscreen: FullscreenState;
 		portfolio: PortfolioState;
@@ -291,7 +291,7 @@ export default defineComponent({
 			// Graphite WASM editor instance
 			editor: this.editor,
 
-			// Stateful systems which are `provide`d by this Vue component, to be `inject`ed by descendant components
+			// Stateful systems which are `provide`d by this Vue component to be `inject`ed by descendant components and used for reactive bindings
 			dialog: this.dialog,
 			fullscreen: this.fullscreen,
 			portfolio: this.portfolio,
@@ -304,7 +304,7 @@ export default defineComponent({
 			// Graphite WASM editor instance
 			editor,
 
-			// Stateful systems which are `provide`d by this Vue component, to be `inject`ed by descendant components
+			// Stateful systems which are `provide`d by this Vue component to be `inject`ed by descendant components and used for reactive bindings
 			dialog: createDialogState(editor),
 			fullscreen: createFullscreenState(),
 			portfolio: createPortfolioState(editor),
@@ -320,7 +320,7 @@ export default defineComponent({
 		},
 	},
 	mounted() {
-		// Initialize manager systems
+		// Initialize managers, which are isolated systems that subscribe to backend messages to link them to browser API functionality (like JS events, IndexedDB, etc.)
 		createAutoSaveManager(this.editor, this.portfolio);
 		createInputManager(this.editor, this.$el.parentElement, this.dialog, this.portfolio, this.fullscreen);
 		createPanicManager(this.editor, this.dialog);

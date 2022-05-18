@@ -49,6 +49,7 @@ impl WidgetLayout {
 
 pub type SubLayout = Vec<LayoutRow>;
 
+// TODO: Rename LayoutRow to something more generic
 #[remain::sorted]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum LayoutRow {
