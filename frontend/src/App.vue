@@ -1,7 +1,7 @@
 <template>
 	<MainWindow />
 
-	<div class="unsupported-modal-backdrop" v-if="showUnsupportedModal">
+	<div class="unsupported-modal-backdrop" v-if="apiUnsupported" ref="unsupported">
 		<LayoutCol class="unsupported-modal">
 			<h2>Your browser currently doesn't support Graphite</h2>
 			<p>Unfortunately, some features won't work properly. Please upgrade to a modern browser such as Firefox, Chrome, Edge, or Safari version 15 or later.</p>
@@ -11,7 +11,7 @@
 				API which is required for using the editor. However, you can still explore the user interface.
 			</p>
 			<LayoutRow>
-				<button class="unsupported-modal-button" @click="() => closeModal()">I understand, let's just see the interface</button>
+				<button class="unsupported-modal-button" @click="() => closeUnsupportedWarning()">I understand, let's just see the interface</button>
 			</LayoutRow>
 		</LayoutCol>
 	</div>
@@ -289,17 +289,7 @@ declare module "@vue/runtime-core" {
 
 export default defineComponent({
 	provide() {
-		return {
-			// Graphite WASM editor instance
-			editor: this.editor,
-
-			// Stateful systems which are `provide`d by this Vue component to be `inject`ed by descendant components and used for reactive bindings
-			dialog: this.dialog,
-			fonts: this.fonts,
-			fullscreen: this.fullscreen,
-			portfolio: this.portfolio,
-			workspace: this.workspace,
-		};
+		return { ...this.$data };
 	},
 	data() {
 		const editor = createEditor();
@@ -313,14 +303,17 @@ export default defineComponent({
 			fullscreen: createFullscreenState(),
 			portfolio: createPortfolioState(editor),
 			workspace: createWorkspaceState(editor),
-
-			// Other data on this Vue component
-			showUnsupportedModal: !("BigInt64Array" in window),
 		};
 	},
+	computed: {
+		apiUnsupported() {
+			return !("BigInt64Array" in window);
+		},
+	},
 	methods: {
-		closeModal() {
-			this.showUnsupportedModal = false;
+		closeUnsupportedWarning() {
+			const element = this.$refs.unsupported as HTMLElement;
+			element.parentElement?.removeChild(element);
 		},
 	},
 	mounted() {
