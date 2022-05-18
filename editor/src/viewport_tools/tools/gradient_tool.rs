@@ -249,7 +249,7 @@ impl SelectedGradient {
 
 	pub fn update_gradient(&mut self, mut mouse: DVec2, responses: &mut VecDeque<Message>, snap_rotate: bool, gradient_type: GradientType) {
 		self.gradient.gradient_type = gradient_type;
-		
+
 		if snap_rotate {
 			let point = if self.dragging_start {
 				self.transform.transform_point2(self.gradient.end)
@@ -379,7 +379,15 @@ impl Fsm for GradientToolFsmState {
 
 							let layer = document.graphene_document.layer(&intersection).unwrap();
 
-							let gradient = Gradient::new(DVec2::ZERO, tool_data.secondary_color, DVec2::ONE, tool_data.primary_color, DAffine2::IDENTITY, generate_uuid(), tool_options.gradient_type);
+							let gradient = Gradient::new(
+								DVec2::ZERO,
+								tool_data.secondary_color,
+								DVec2::ONE,
+								tool_data.primary_color,
+								DAffine2::IDENTITY,
+								generate_uuid(),
+								tool_options.gradient_type,
+							);
 							let mut selected_gradient = SelectedGradient::new(gradient, &intersection, layer, document).with_gradient_start(input.mouse.position);
 							selected_gradient.update_gradient(input.mouse.position, responses, false, tool_options.gradient_type);
 
