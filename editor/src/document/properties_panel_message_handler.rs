@@ -785,11 +785,15 @@ fn node_section_font(layer: &TextLayer) -> LayoutRow {
 	}
 }
 
-fn node_gradient_type(gradient: &Gradient, selected_index: u32) -> LayoutRow {
-	let cloned_gradient_1 = gradient.clone();
-	// cloned_gradient_1.gradient_type = GradientType::Linear;
-	let cloned_gradient_2 = gradient.clone();
-	// cloned_gradient_2.gradient_type = GradientType::Radial;
+fn node_gradient_type(gradient: &Gradient) -> LayoutRow {
+	let selected_index = match gradient.gradient_type {
+		GradientType::Linear => 0,
+		GradientType::Radial => 1,
+	};
+	let mut cloned_gradient_linear = gradient.clone();
+	cloned_gradient_linear.gradient_type = GradientType::Linear;
+	let mut cloned_gradient_radial = gradient.clone();
+	cloned_gradient_radial.gradient_type = GradientType::Radial;
 	LayoutRow::Row {
 		widgets: vec![WidgetHolder::new(Widget::RadioInput(RadioInput {
 			selected_index,
@@ -800,7 +804,7 @@ fn node_gradient_type(gradient: &Gradient, selected_index: u32) -> LayoutRow {
 					tooltip: "Linear Gradient".into(),
 					on_update: WidgetCallback::new(move |_| {
 						PropertiesPanelMessage::ModifyFill {
-							fill: Fill::LinearGradient(cloned_gradient_1.clone()),
+							fill: Fill::LinearGradient(cloned_gradient_linear.clone()),
 						}
 						.into()
 					}),
@@ -812,7 +816,7 @@ fn node_gradient_type(gradient: &Gradient, selected_index: u32) -> LayoutRow {
 					tooltip: "Radial Gradient".into(),
 					on_update: WidgetCallback::new(move |_| {
 						PropertiesPanelMessage::ModifyFill {
-							fill: Fill::RadialGradient(cloned_gradient_2.clone()),
+							fill: Fill::RadialGradient(cloned_gradient_radial.clone()),
 						}
 						.into()
 					}),
@@ -905,21 +909,9 @@ fn node_section_fill(fill: &Fill) -> Option<LayoutRow> {
 				],
 			}],
 		}),
-		Fill::LinearGradient(gradient) => Some(LayoutRow::Section {
+		Fill::LinearGradient(gradient) | Fill::RadialGradient(gradient) => Some(LayoutRow::Section {
 			name: "Fill".into(),
-			layout: vec![
-				node_gradient_type(gradient, 0),
-				node_gradient_color(gradient, "0%", 0),
-				node_gradient_color(gradient, "100%", 1),
-			],
-		}),
-		Fill::RadialGradient(gradient) => Some(LayoutRow::Section {
-			name: "Fill".into(),
-			layout: vec![
-				node_gradient_type(gradient, 1),
-				node_gradient_color(gradient, "0%", 0),
-				node_gradient_color(gradient, "100%", 1),
-			],
+			layout: vec![node_gradient_type(gradient), node_gradient_color(gradient, "0%", 0), node_gradient_color(gradient, "100%", 1)],
 		}),
 	}
 }
