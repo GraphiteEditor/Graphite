@@ -11,7 +11,7 @@ use crate::message_prelude::*;
 use graphene::color::Color;
 use graphene::document::{Document as GrapheneDocument, FontCache};
 use graphene::layers::layer_info::{Layer, LayerDataType};
-use graphene::layers::style::{Fill, Gradient, LineCap, LineJoin, Stroke};
+use graphene::layers::style::{Fill, Gradient, GradientType, LineCap, LineJoin, Stroke};
 use graphene::layers::text_layer::TextLayer;
 use graphene::{LayerId, Operation};
 
@@ -787,7 +787,9 @@ fn node_section_font(layer: &TextLayer) -> LayoutRow {
 
 fn node_gradient_type(gradient: &Gradient, selected_index: u32) -> LayoutRow {
 	let cloned_gradient_1 = gradient.clone();
+	// cloned_gradient_1.gradient_type = GradientType::Linear;
 	let cloned_gradient_2 = gradient.clone();
+	// cloned_gradient_2.gradient_type = GradientType::Radial;
 	LayoutRow::Row {
 		widgets: vec![WidgetHolder::new(Widget::RadioInput(RadioInput {
 			selected_index,
@@ -821,23 +823,21 @@ fn node_gradient_type(gradient: &Gradient, selected_index: u32) -> LayoutRow {
 	}
 }
 
-fn node_gradient_color(fill: &Fill, gradient: &Gradient, percent_label: &'static str, position: usize) -> LayoutRow {
+fn node_gradient_color(gradient: &Gradient, percent_label: &'static str, position: usize) -> LayoutRow {
 	let gradient_clone = Rc::new(gradient.clone());
-	let send_fill_message = match fill {
-		Fill::RadialGradient(_) => move |new_gradient: Gradient| {
+	let send_fill_message = match gradient.gradient_type {
+		GradientType::Radial => move |new_gradient: Gradient| {
 			PropertiesPanelMessage::ModifyFill {
 				fill: Fill::RadialGradient(new_gradient),
 			}
 			.into()
 		},
-		Fill::LinearGradient(_) => move |new_gradient: Gradient| {
+		GradientType::Linear => move |new_gradient: Gradient| {
 			PropertiesPanelMessage::ModifyFill {
 				fill: Fill::LinearGradient(new_gradient),
 			}
 			.into()
 		},
-		// This case shouldn't ever happen, will set to None
-		_ => move |_| PropertiesPanelMessage::ModifyFill { fill: Fill::None }.into(),
 	};
 	LayoutRow::Row {
 		widgets: vec![
@@ -909,16 +909,16 @@ fn node_section_fill(fill: &Fill) -> Option<LayoutRow> {
 			name: "Fill".into(),
 			layout: vec![
 				node_gradient_type(gradient, 0),
-				node_gradient_color(fill, gradient, "0%", 0),
-				node_gradient_color(fill, gradient, "100%", 1),
+				node_gradient_color(gradient, "0%", 0),
+				node_gradient_color(gradient, "100%", 1),
 			],
 		}),
 		Fill::RadialGradient(gradient) => Some(LayoutRow::Section {
 			name: "Fill".into(),
 			layout: vec![
 				node_gradient_type(gradient, 1),
-				node_gradient_color(fill, gradient, "0%", 0),
-				node_gradient_color(fill, gradient, "100%", 1),
+				node_gradient_color(gradient, "0%", 0),
+				node_gradient_color(gradient, "100%", 1),
 			],
 		}),
 	}

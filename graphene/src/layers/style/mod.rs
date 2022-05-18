@@ -36,6 +36,18 @@ impl Default for ViewMode {
 	}
 }
 
+#[derive(PartialEq, Clone, Copy, Debug, Hash, Serialize, Deserialize)]
+pub enum GradientType {
+	Linear,
+	Radial,
+}
+
+impl Default for GradientType {
+	fn default() -> Self {
+		GradientType::Linear
+	}
+}
+
 /// A gradient fill.
 ///
 /// Contains the start and end points, along with the colors at varying points along the length.
@@ -47,16 +59,19 @@ pub struct Gradient {
 	pub transform: DAffine2,
 	pub positions: Vec<(f64, Option<Color>)>,
 	uuid: u64,
+	pub gradient_type: GradientType,
 }
+
 impl Gradient {
 	/// Constructs a new gradient with the colors at 0 and 1 specified.
-	pub fn new(start: DVec2, start_color: Color, end: DVec2, end_color: Color, transform: DAffine2, uuid: u64) -> Self {
+	pub fn new(start: DVec2, start_color: Color, end: DVec2, end_color: Color, transform: DAffine2, uuid: u64, gradient_type: GradientType) -> Self {
 		Gradient {
 			start,
 			end,
 			positions: vec![(0., Some(start_color)), (1., Some(end_color))],
 			transform,
 			uuid,
+			gradient_type,
 		}
 	}
 

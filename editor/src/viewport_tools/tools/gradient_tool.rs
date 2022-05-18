@@ -12,7 +12,7 @@ use crate::viewport_tools::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
 use graphene::color::Color;
 use graphene::intersection::Quad;
 use graphene::layers::layer_info::Layer;
-use graphene::layers::style::{Fill, Gradient, PathStyle, Stroke};
+use graphene::layers::style::{Fill, Gradient, GradientType, PathStyle, Stroke};
 use graphene::Operation;
 
 use glam::{DAffine2, DVec2};
@@ -23,12 +23,6 @@ pub struct GradientTool {
 	fsm_state: GradientToolFsmState,
 	data: GradientToolData,
 	options: GradientOptions,
-}
-
-#[derive(PartialEq, Clone, Copy, Debug, Hash, Serialize, Deserialize)]
-pub enum GradientType {
-	Linear,
-	Radial,
 }
 
 pub struct GradientOptions {
@@ -254,6 +248,8 @@ impl SelectedGradient {
 	}
 
 	pub fn update_gradient(&mut self, mut mouse: DVec2, responses: &mut VecDeque<Message>, snap_rotate: bool, gradient_type: GradientType) {
+		self.gradient.gradient_type = gradient_type;
+		
 		if snap_rotate {
 			let point = if self.dragging_start {
 				self.transform.transform_point2(self.gradient.end)
@@ -383,7 +379,7 @@ impl Fsm for GradientToolFsmState {
 
 							let layer = document.graphene_document.layer(&intersection).unwrap();
 
-							let gradient = Gradient::new(DVec2::ZERO, tool_data.secondary_color, DVec2::ONE, tool_data.primary_color, DAffine2::IDENTITY, generate_uuid());
+							let gradient = Gradient::new(DVec2::ZERO, tool_data.secondary_color, DVec2::ONE, tool_data.primary_color, DAffine2::IDENTITY, generate_uuid(), tool_options.gradient_type);
 							let mut selected_gradient = SelectedGradient::new(gradient, &intersection, layer, document).with_gradient_start(input.mouse.position);
 							selected_gradient.update_gradient(input.mouse.position, responses, false, tool_options.gradient_type);
 
