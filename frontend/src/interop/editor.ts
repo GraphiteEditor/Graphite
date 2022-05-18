@@ -1,6 +1,6 @@
 /* eslint-disable func-names */
 
-import { JsMessageType } from "@/interop/js-messages";
+import { JsMessageType } from "@/interop/messages";
 import { createSubscriptionRouter, SubscriptionRouter } from "@/interop/subscription-router";
 
 export type WasmRawInstance = typeof import("@/../wasm/pkg");

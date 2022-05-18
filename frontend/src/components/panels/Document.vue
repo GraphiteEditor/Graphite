@@ -242,7 +242,7 @@ import {
 	TriggerFontLoad,
 	TriggerFontLoadDefault,
 	TriggerVisitLink,
-} from "@/interop/js-messages";
+} from "@/interop/messages";
 
 import { textInputCleanup } from "@/managers/input";
 

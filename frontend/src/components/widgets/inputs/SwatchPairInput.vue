@@ -68,7 +68,7 @@
 <script lang="ts">
 import { defineComponent } from "vue";
 
-import { type RGBA, UpdateWorkingColors } from "@/interop/js-messages";
+import { type RGBA, UpdateWorkingColors } from "@/interop/messages";
 import { rgbaToDecimalRgba } from "@/utilities/color";
 
 import LayoutCol from "@/components/layout/LayoutCol.vue";

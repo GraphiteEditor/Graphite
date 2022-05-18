@@ -1,7 +1,7 @@
 import { plainToInstance } from "class-transformer";
 
 import type { WasmEditorInstance, WasmRawInstance } from "@/interop/editor";
-import { JsMessageType, messageMakers, JsMessage } from "@/interop/js-messages";
+import { JsMessageType, messageMakers, JsMessage } from "@/interop/messages";
 
 type JsMessageCallback<T extends JsMessage> = (messageData: T) => void;
 type JsMessageCallbackMap = {
@@ -26,7 +26,7 @@ export function createSubscriptionRouter() {
 			// eslint-disable-next-line no-console
 			console.error(
 				`Received a frontend message of type "${messageType}" but was not able to parse the data. ` +
-					"(Perhaps this message parser isn't exported in `messageMakers` at the bottom of `js-messages.ts`.)"
+					"(Perhaps this message parser isn't exported in `messageMakers` at the bottom of `messages.ts`.)"
 			);
 			return;
 		}

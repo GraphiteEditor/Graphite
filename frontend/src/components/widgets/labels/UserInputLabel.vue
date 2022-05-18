@@ -99,7 +99,7 @@
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
 
-import { HintInfo, KeysGroup } from "@/interop/js-messages";
+import { HintInfo, KeysGroup } from "@/interop/messages";
 
 import { IconName } from "@/utilities/icons";
 

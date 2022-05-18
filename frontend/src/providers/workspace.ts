@@ -2,7 +2,7 @@
 import { reactive, readonly } from "vue";
 
 import { Editor } from "@/interop/editor";
-import { UpdateNodeGraphVisibility } from "@/interop/js-messages";
+import { UpdateNodeGraphVisibility } from "@/interop/messages";
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 export function createWorkspaceState(editor: Editor) {
