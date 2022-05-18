@@ -9,6 +9,53 @@ const GRAPHITE_AUTO_SAVE_ORDER_KEY = "auto-save-documents-order";
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 export function createAutoSaveManager(editor: Editor, portfolio: PortfolioState) {
+	const databaseConnection: Promise<IDBDatabase> = new Promise((resolve) => {
+		const dbOpenRequest = indexedDB.open(GRAPHITE_INDEXED_DB_NAME, GRAPHITE_INDEXED_DB_VERSION);
+
+		dbOpenRequest.onupgradeneeded = (): void => {
+			const db = dbOpenRequest.result;
+			// Wipes out all auto-save data on upgrade
+			if (db.objectStoreNames.contains(GRAPHITE_AUTO_SAVE_STORE)) {
+				db.deleteObjectStore(GRAPHITE_AUTO_SAVE_STORE);
+			}
+
+			db.createObjectStore(GRAPHITE_AUTO_SAVE_STORE, { keyPath: "details.id" });
+		};
+
+		dbOpenRequest.onerror = (): void => {
+			// eslint-disable-next-line no-console
+			console.error("Graphite IndexedDb error:", dbOpenRequest.error);
+		};
+
+		dbOpenRequest.onsuccess = (): void => {
+			resolve(dbOpenRequest.result);
+		};
+	});
+
+	const storeDocumentOrder = (): void => {
+		// Make sure to store as string since JSON does not play nice with BigInt
+		const documentOrder = portfolio.state.documents.map((doc) => doc.id.toString());
+		window.localStorage.setItem(GRAPHITE_AUTO_SAVE_ORDER_KEY, JSON.stringify(documentOrder));
+	};
+
+	const removeDocument = async (id: string): Promise<void> => {
+		const db = await databaseConnection;
+		const transaction = db.transaction(GRAPHITE_AUTO_SAVE_STORE, "readwrite");
+		transaction.objectStore(GRAPHITE_AUTO_SAVE_STORE).delete(id);
+		storeDocumentOrder();
+	};
+
+	editor.subscriptions.subscribeJsMessage(TriggerIndexedDbWriteDocument, async (autoSaveDocument) => {
+		const db = await databaseConnection;
+		const transaction = db.transaction(GRAPHITE_AUTO_SAVE_STORE, "readwrite");
+		transaction.objectStore(GRAPHITE_AUTO_SAVE_STORE).put(autoSaveDocument);
+		storeDocumentOrder();
+	});
+
+	editor.subscriptions.subscribeJsMessage(TriggerIndexedDbRemoveDocument, async (removeAutoSaveDocument) => {
+		removeDocument(removeAutoSaveDocument.document_id);
+	});
+
 	const openAutoSavedDocuments = async (): Promise<void> => {
 		const db = await databaseConnection;
 		const transaction = db.transaction(GRAPHITE_AUTO_SAVE_STORE, "readonly");
@@ -36,55 +83,7 @@ export function createAutoSaveManager(editor: Editor, portfolio: PortfolioState)
 		});
 	};
 
-	const storeDocumentOrder = (): void => {
-		// Make sure to store as string since JSON does not play nice with BigInt
-		const documentOrder = portfolio.state.documents.map((doc) => doc.id.toString());
-		window.localStorage.setItem(GRAPHITE_AUTO_SAVE_ORDER_KEY, JSON.stringify(documentOrder));
-	};
-
-	const removeDocument = async (id: string): Promise<void> => {
-		const db = await databaseConnection;
-		const transaction = db.transaction(GRAPHITE_AUTO_SAVE_STORE, "readwrite");
-		transaction.objectStore(GRAPHITE_AUTO_SAVE_STORE).delete(id);
-		storeDocumentOrder();
-	};
-
-	editor.subscriptions.subscribeJsMessage(TriggerIndexedDbWriteDocument, async (autoSaveDocument) => {
-		const db = await databaseConnection;
-		const transaction = db.transaction(GRAPHITE_AUTO_SAVE_STORE, "readwrite");
-		transaction.objectStore(GRAPHITE_AUTO_SAVE_STORE).put(autoSaveDocument);
-		storeDocumentOrder();
-	});
-
-	editor.subscriptions.subscribeJsMessage(TriggerIndexedDbRemoveDocument, async (removeAutoSaveDocument) => {
-		removeDocument(removeAutoSaveDocument.document_id);
-	});
-
-	// On creation
 	openAutoSavedDocuments();
 
 	return { openAutoSavedDocuments };
 }
-
-const databaseConnection: Promise<IDBDatabase> = new Promise((resolve) => {
-	const dbOpenRequest = indexedDB.open(GRAPHITE_INDEXED_DB_NAME, GRAPHITE_INDEXED_DB_VERSION);
-
-	dbOpenRequest.onupgradeneeded = (): void => {
-		const db = dbOpenRequest.result;
-		// Wipes out all auto-save data on upgrade
-		if (db.objectStoreNames.contains(GRAPHITE_AUTO_SAVE_STORE)) {
-			db.deleteObjectStore(GRAPHITE_AUTO_SAVE_STORE);
-		}
-
-		db.createObjectStore(GRAPHITE_AUTO_SAVE_STORE, { keyPath: "details.id" });
-	};
-
-	dbOpenRequest.onerror = (): void => {
-		// eslint-disable-next-line no-console
-		console.error("Graphite IndexedDb error:", dbOpenRequest.error);
-	};
-
-	dbOpenRequest.onsuccess = (): void => {
-		resolve(dbOpenRequest.result);
-	};
-});

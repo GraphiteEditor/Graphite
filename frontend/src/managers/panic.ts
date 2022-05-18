@@ -65,7 +65,7 @@ function preparePanicDialog(dialogState: DialogState, title: string, details: st
 	};
 	const jsCallbackBasedButtons = [reloadButton, copyErrorLogButton, reportOnGithubButton];
 
-	dialogState.createPanicDialog(widgets, jsCallbackBasedButtons);
+	dialogState.createPanicDialog("Warning", widgets, jsCallbackBasedButtons);
 }
 
 function githubUrl(panicDetails: string): string {

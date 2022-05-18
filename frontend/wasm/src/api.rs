@@ -84,10 +84,26 @@ impl JsEditorHandle {
 	// the backend from the web frontend.
 	// ========================================================================
 
+	// TODO: Replace with initialization system, issue #524
+	pub fn init_app(&self) {
+		let message = PortfolioMessage::UpdateDocumentWidgets;
+		self.dispatch(message);
+
+		let message = ToolMessage::InitTools;
+		self.dispatch(message);
+	}
+
+	/// Intentionally panic for debugging purposes
+	pub fn intentional_panic(&self) {
+		panic!();
+	}
+
+	/// Answer whether or not the editor has crashed
 	pub fn has_crashed(&self) -> bool {
 		EDITOR_HAS_CRASHED.load(Ordering::SeqCst)
 	}
 
+	/// Request that the Node Graph panel be shown or hidden by toggling the visibility state
 	pub fn toggle_node_graph_visibility(&self) {
 		self.dispatch(WorkspaceMessage::NodeGraphToggleVisibility);
 	}
@@ -467,15 +483,6 @@ impl JsEditorHandle {
 		let message = DocumentMessage::ToggleLayerExpansion { layer_path };
 		self.dispatch(message);
 	}
-
-	// TODO: Replace with initialization system, issue #524
-	pub fn init_app(&self) {
-		let message = PortfolioMessage::UpdateDocumentWidgets;
-		self.dispatch(message);
-
-		let message = ToolMessage::InitTools;
-		self.dispatch(message);
-	}
 }
 
 // Needed to make JsEditorHandle functions pub to Rust.
@@ -497,12 +504,6 @@ impl Drop for JsEditorHandle {
 #[wasm_bindgen]
 pub fn set_random_seed(seed: u64) {
 	editor::communication::set_uuid_seed(seed)
-}
-
-/// Intentionally panic for debugging purposes
-#[wasm_bindgen]
-pub fn intentional_panic() {
-	panic!();
 }
 
 /// Access a handle to WASM memory

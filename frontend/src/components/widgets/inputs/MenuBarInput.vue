@@ -189,7 +189,7 @@ function makeEntries(editor: Editor): MenuListEntries {
 							],
 						],
 					},
-					{ label: "Debug: Panic (DANGER)", action: async (): Promise<void> => editor.raw.intentional_panic() },
+					{ label: "Debug: Panic (DANGER)", action: async (): Promise<void> => editor.instance.intentional_panic() },
 				],
 			],
 		},

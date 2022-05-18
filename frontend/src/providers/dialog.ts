@@ -15,23 +15,19 @@ export function createDialogState(editor: Editor) {
 		jsCallbackBasedButtons: undefined as undefined | TextButtonWidget[],
 	});
 
-	// Creates a panic dialog from JS.
-	// Normal dialogs are created in the Rust backend, however for the crash dialog, the editor instance has panicked so it cannot respond to widget callbacks.
-	const createPanicDialog = (widgets: WidgetLayout, jsCallbackBasedButtons: TextButtonWidget[]): void => {
-		state.visible = true;
-		state.icon = "Warning";
-		state.widgets = widgets;
-		state.jsCallbackBasedButtons = jsCallbackBasedButtons;
-	};
-
 	const dismissDialog = (): void => {
 		state.visible = false;
 	};
 
 	const dialogIsVisible = (): boolean => state.visible;
 
-	const comingSoon = (issueNumber?: number): void => {
-		editor.instance.request_coming_soon_dialog(issueNumber);
+	// Creates a panic dialog from JS.
+	// Normal dialogs are created in the Rust backend, however for the crash dialog, the editor instance has panicked so it cannot respond to widget callbacks.
+	const createPanicDialog = (icon: IconName, widgets: WidgetLayout, jsCallbackBasedButtons: TextButtonWidget[]): void => {
+		state.visible = true;
+		state.icon = icon;
+		state.widgets = widgets;
+		state.jsCallbackBasedButtons = jsCallbackBasedButtons;
 	};
 
 	// Run on creation
@@ -39,20 +35,17 @@ export function createDialogState(editor: Editor) {
 		state.visible = true;
 		state.icon = displayDialog.icon;
 	});
-
-	editor.subscriptions.subscribeJsMessage(DisplayDialogDismiss, dismissDialog);
-
 	editor.subscriptions.subscribeJsMessage(UpdateDialogDetails, (updateDialogDetails) => {
 		state.widgets = updateDialogDetails;
 		state.jsCallbackBasedButtons = undefined;
 	});
+	editor.subscriptions.subscribeJsMessage(DisplayDialogDismiss, dismissDialog);
 
 	return {
 		state: readonly(state),
-		createPanicDialog,
 		dismissDialog,
 		dialogIsVisible,
-		comingSoon,
+		createPanicDialog,
 	};
 }
 export type DialogState = ReturnType<typeof createDialogState>;
