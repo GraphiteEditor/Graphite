@@ -169,10 +169,14 @@ const MenuList = defineComponent({
 		direction: { type: String as PropType<MenuDirection>, default: "Bottom" },
 		entries: { type: Array as PropType<SectionsOfMenuListEntries>, required: true },
 		activeEntry: { type: Object as PropType<MenuListEntry>, required: false },
-		defaultAction: { type: Function as PropType<() => void>, required: false },
 		minWidth: { type: Number as PropType<number>, default: 0 },
 		drawIcon: { type: Boolean as PropType<boolean>, default: false },
 		scrollableY: { type: Boolean as PropType<boolean>, default: false },
+		// WARNING: Any function passed into `defaultAction` as a prop MUST NOT be defined inline as an arrow function, it must be defined in the methods section.
+		// Otherwise bizarrely it causes the entire web page to freeze while performs infinite recursions resulting from this component being recursive.
+		// The complete recursive loop, which repeats in this sequence forever:
+		// MenuList.vue::eval() -> FloatingMenu.vue::setClosed() -> MenuList.vue::updated() -> MenuList.vue::measureAndReportWidth() -> FloatingMenu.vue::disableMinWidth() -> FloatingMenu.vue::eval()
+		defaultAction: { type: Function as PropType<() => void>, required: false },
 	},
 	methods: {
 		setEntryRefs(menuEntry: MenuListEntry, ref: typeof FloatingMenu): void {

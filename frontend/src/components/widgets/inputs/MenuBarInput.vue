@@ -214,7 +214,8 @@ export default defineComponent({
 	data() {
 		return {
 			entries: makeEntries(this.editor),
-			comingSoon: (): void => this.dialog.comingSoon(),
+			// Do not try to inline this as an arrow function in the HTML, it will cause the entire web page to freeze on load (see note in `DialogModal.vue` on the `defaultAction` prop)
+			comingSoon: (): void => this.editor.instance.request_coming_soon_dialog(),
 		};
 	},
 	components: {
