@@ -10,7 +10,7 @@ type EventListenerTarget = {
 	removeEventListener: typeof window.removeEventListener;
 };
 
-export function createInputManager(editor: Editor, container: HTMLElement, dialog: DialogState, document: PortfolioState, fullscreen: FullscreenState): void {
+export function createInputManager(editor: Editor, container: HTMLElement, dialog: DialogState, document: PortfolioState, fullscreen: FullscreenState): () => void {
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	const listeners: { target: EventListenerTarget; eventName: EventName; action: (event: any) => void; options?: boolean | AddEventListenerOptions }[] = [
 		{ target: window, eventName: "resize", action: (): void => onWindowResize(container) },
@@ -34,7 +34,7 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 
 	// Keyboard events
 
-	const shouldRedirectKeyboardEventToBackend = (e: KeyboardEvent): boolean => {
+	function shouldRedirectKeyboardEventToBackend(e: KeyboardEvent): boolean {
 		// Don't redirect when a modal is covering the workspace
 		if (dialog.dialogIsVisible()) return false;
 
@@ -76,9 +76,9 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 
 		// Redirect to the backend
 		return true;
-	};
+	}
 
-	const onKeyDown = (e: KeyboardEvent): void => {
+	function onKeyDown(e: KeyboardEvent): void {
 		const key = getLatinKey(e);
 		if (!key) return;
 
@@ -92,9 +92,9 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 		if (dialog.dialogIsVisible()) {
 			if (key === "escape") dialog.dismissDialog();
 		}
-	};
+	}
 
-	const onKeyUp = (e: KeyboardEvent): void => {
+	function onKeyUp(e: KeyboardEvent): void {
 		const key = getLatinKey(e);
 		if (!key) return;
 
@@ -103,12 +103,12 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 			const modifiers = makeKeyboardModifiersBitfield(e);
 			editor.instance.on_key_up(key, modifiers);
 		}
-	};
+	}
 
 	// Pointer events
 
 	// While any pointer button is already down, additional button down events are not reported, but they are sent as `pointermove` events and these are handled in the backend
-	const onPointerMove = (e: PointerEvent): void => {
+	function onPointerMove(e: PointerEvent): void {
 		if (!e.buttons) viewportPointerInteractionOngoing = false;
 
 		// Don't redirect pointer movement to the backend if there's no ongoing interaction and it's over a floating menu on top of the canvas
@@ -120,9 +120,9 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 
 		const modifiers = makeKeyboardModifiersBitfield(e);
 		editor.instance.on_mouse_move(e.clientX, e.clientY, e.buttons, modifiers);
-	};
+	}
 
-	const onPointerDown = (e: PointerEvent): void => {
+	function onPointerDown(e: PointerEvent): void {
 		const { target } = e;
 		const inCanvas = target instanceof Element && target.closest("[data-canvas]");
 		const inDialog = target instanceof Element && target.closest("[data-dialog-modal] [data-floating-menu-content]");
@@ -143,35 +143,35 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 			const modifiers = makeKeyboardModifiersBitfield(e);
 			editor.instance.on_mouse_down(e.clientX, e.clientY, e.buttons, modifiers);
 		}
-	};
+	}
 
-	const onPointerUp = (e: PointerEvent): void => {
+	function onPointerUp(e: PointerEvent): void {
 		if (!e.buttons) viewportPointerInteractionOngoing = false;
 
 		if (!textInput) {
 			const modifiers = makeKeyboardModifiersBitfield(e);
 			editor.instance.on_mouse_up(e.clientX, e.clientY, e.buttons, modifiers);
 		}
-	};
+	}
 
-	const onDoubleClick = (e: PointerEvent): void => {
+	function onDoubleClick(e: PointerEvent): void {
 		if (!e.buttons) viewportPointerInteractionOngoing = false;
 
 		if (!textInput) {
 			const modifiers = makeKeyboardModifiersBitfield(e);
 			editor.instance.on_double_click(e.clientX, e.clientY, e.buttons, modifiers);
 		}
-	};
+	}
 
 	// Mouse events
 
-	const onMouseDown = (e: MouseEvent): void => {
+	function onMouseDown(e: MouseEvent): void {
 		// Block middle mouse button auto-scroll mode (the circlar widget that appears and allows quick scrolling by moving the cursor above or below it)
 		// This has to be in `mousedown`, not `pointerdown`, to avoid blocking Vue's middle click detection on HTML elements
 		if (e.button === 1) e.preventDefault();
-	};
+	}
 
-	const onMouseScroll = (e: WheelEvent): void => {
+	function onMouseScroll(e: WheelEvent): void {
 		const { target } = e;
 		const inCanvas = target instanceof Element && target.closest("[data-canvas]");
 
@@ -188,15 +188,15 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 			const modifiers = makeKeyboardModifiersBitfield(e);
 			editor.instance.on_mouse_scroll(e.clientX, e.clientY, e.buttons, e.deltaX, e.deltaY, e.deltaZ, modifiers);
 		}
-	};
+	}
 
-	const onModifyInputField = (e: CustomEvent): void => {
+	function onModifyInputField(e: CustomEvent): void {
 		textInput = e.detail;
-	};
+	}
 
 	// Window events
 
-	const onWindowResize = (container: HTMLElement): void => {
+	function onWindowResize(container: HTMLElement): void {
 		const viewports = Array.from(container.querySelectorAll("[data-canvas]"));
 		const boundsOfViewports = viewports.map((canvas) => {
 			const bounds = canvas.getBoundingClientRect();
@@ -207,9 +207,9 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 		const data = Float64Array.from(flattened);
 
 		if (boundsOfViewports.length > 0) editor.instance.bounds_of_viewports(data);
-	};
+	}
 
-	const onBeforeUnload = (e: BeforeUnloadEvent): void => {
+	function onBeforeUnload(e: BeforeUnloadEvent): void {
 		const activeDocument = document.state.documents[document.state.activeDocumentIndex];
 		if (!activeDocument.is_saved) editor.instance.trigger_auto_save(activeDocument.id);
 
@@ -224,9 +224,9 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 			e.returnValue = "Unsaved work will be lost if the web browser tab is closed. Close anyway?";
 			e.preventDefault();
 		}
-	};
+	}
 
-	const onPaste = (e: ClipboardEvent): void => {
+	function onPaste(e: ClipboardEvent): void {
 		const dataTransfer = e.clipboardData;
 		if (!dataTransfer) return;
 		e.preventDefault();
@@ -249,11 +249,26 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 				});
 			}
 		});
-	};
+	}
 
-	// Add event bindings for the lifetime of the application
-	listeners.forEach(({ target, eventName, action, options }) => target.addEventListener(eventName, action, options));
+	// Event bindings
 
+	function bindListeners(): void {
+		// Add event bindings for the lifetime of the application
+		listeners.forEach(({ target, eventName, action, options }) => target.addEventListener(eventName, action, options));
+	}
+	function unbindListeners(): void {
+		// Remove event bindings after the lifetime of the application (or on hot-module replacement during development)
+		listeners.forEach(({ target, eventName, action, options }) => target.removeEventListener(eventName, action, options));
+	}
+
+	// Initialization
+
+	// Bind the event listeners
+	bindListeners();
 	// Resize on creation
 	onWindowResize(container);
+
+	// Return the destructor
+	return unbindListeners;
 }

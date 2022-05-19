@@ -2,6 +2,7 @@ import { TextButtonWidget } from "@/components/widgets/buttons/TextButton";
 import { Editor } from "@/interop/editor";
 import { DisplayDialogPanic, WidgetLayout } from "@/interop/messages";
 import { DialogState } from "@/state-providers/dialog";
+import { IconName } from "@/utilities/icons";
 import { stripIndents } from "@/utilities/strip-indents";
 
 export function createPanicManager(editor: Editor, dialogState: DialogState): void {
@@ -16,11 +17,12 @@ export function createPanicManager(editor: Editor, dialogState: DialogState): vo
 		// eslint-disable-next-line no-console
 		console.error(panicDetails);
 
-		preparePanicDialog(dialogState, displayDialogPanic.title, displayDialogPanic.description, panicDetails);
+		const panicDialog = preparePanicDialog(displayDialogPanic.title, displayDialogPanic.description, panicDetails);
+		dialogState.createPanicDialog(...panicDialog);
 	});
 }
 
-function preparePanicDialog(dialogState: DialogState, title: string, details: string, panicDetails: string): void {
+function preparePanicDialog(title: string, details: string, panicDetails: string): [IconName, WidgetLayout, TextButtonWidget[]] {
 	const widgets: WidgetLayout = {
 		layout: [
 			{
@@ -65,7 +67,7 @@ function preparePanicDialog(dialogState: DialogState, title: string, details: st
 	};
 	const jsCallbackBasedButtons = [reloadButton, copyErrorLogButton, reportOnGithubButton];
 
-	dialogState.createPanicDialog("Warning", widgets, jsCallbackBasedButtons);
+	return ["Warning", widgets, jsCallbackBasedButtons];
 }
 
 function githubUrl(panicDetails: string): string {

@@ -275,6 +275,15 @@ import LayoutCol from "@/components/layout/LayoutCol.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 import MainWindow from "@/components/window/MainWindow.vue";
 
+const managerDestructors: {
+	createAutoSaveManager?: () => void;
+	createBuildMetadataManager?: () => void;
+	createClipboardManager?: () => void;
+	createHyperlinkManager?: () => void;
+	createInputManager?: () => void;
+	createPanicManager?: () => void;
+} = {};
+
 // Vue injects don't play well with TypeScript (all injects will show up as `any`) but we can define these types as a solution
 declare module "@vue/runtime-core" {
 	// Systems `provide`d by the root App to be `inject`ed into descendant components and used for reactive bindings
@@ -322,17 +331,23 @@ export default defineComponent({
 	},
 	async mounted() {
 		// Initialize managers, which are isolated systems that subscribe to backend messages to link them to browser API functionality (like JS events, IndexedDB, etc.)
-		await createAutoSaveManager(this.editor, this.portfolio);
-		createBuildMetadataManager(this.editor);
-		createClipboardManager(this.editor);
-		createHyperlinkManager(this.editor);
-		createInputManager(this.editor, this.$el.parentElement, this.dialog, this.portfolio, this.fullscreen);
-		createPanicManager(this.editor, this.dialog);
+		Object.assign(managerDestructors, {
+			createAutoSaveManager: await createAutoSaveManager(this.editor, this.portfolio),
+			createBuildMetadataManager: createBuildMetadataManager(this.editor),
+			createClipboardManager: createClipboardManager(this.editor),
+			createHyperlinkManager: createHyperlinkManager(this.editor),
+			createInputManager: createInputManager(this.editor, this.$el.parentElement, this.dialog, this.portfolio, this.fullscreen),
+			createPanicManager: createPanicManager(this.editor, this.dialog),
+		});
 
 		// Initialize certain setup tasks required by the editor backend to be ready for the user now that the frontend is ready
 		this.editor.instance.init_app();
 	},
 	beforeUnmount() {
+		// Call the destructor for each manager
+		Object.values(managerDestructors).forEach((destructor) => destructor?.());
+
+		// Destroy the WASM editor instance
 		this.editor.instance.free();
 	},
 	components: {
