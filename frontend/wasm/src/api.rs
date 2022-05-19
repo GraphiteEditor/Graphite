@@ -315,8 +315,8 @@ impl JsEditorHandle {
 	}
 
 	/// A font has been downloaded
-	pub fn on_font_load(&self, font: String, data: Vec<u8>, is_default: bool) -> Result<(), JsValue> {
-		let message = DocumentMessage::FontLoaded { font, data, is_default };
+	pub fn on_font_load(&self, font_file_url: String, data: Vec<u8>, is_default: bool) -> Result<(), JsValue> {
+		let message = DocumentMessage::FontLoaded { font_file_url, data, is_default };
 		self.dispatch(message);
 
 		Ok(())

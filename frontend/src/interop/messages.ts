@@ -353,7 +353,7 @@ export class TriggerIndexedDbRemoveDocument extends JsMessage {
 }
 
 export class TriggerFontLoad extends JsMessage {
-	font!: string;
+	font_file_url!: string;
 }
 
 export class TriggerFontLoadDefault extends JsMessage {}

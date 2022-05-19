@@ -119,8 +119,8 @@ export default defineComponent({
 				fontStyle = (await this.fonts).getFontStyles(newName)[0];
 			}
 
-			const fontFile = (await this.fonts).getFontFile(fontFamily, fontStyle);
-			this.$emit("changeFont", { fontFamily, fontStyle, fontFile });
+			const fontFileUrl = await (await this.fonts).getFontFileUrl(fontFamily, fontStyle);
+			this.$emit("changeFont", { fontFamily, fontStyle, fontFileUrl });
 		},
 		onWidthChanged(newWidth: number) {
 			this.minWidth = newWidth;

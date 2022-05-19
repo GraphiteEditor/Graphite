@@ -3,30 +3,25 @@ import { reactive, readonly } from "vue";
 import { Editor } from "@/interop/editor";
 import { TriggerFontLoad, TriggerFontLoadDefault } from "@/interop/messages";
 
+const DEFAULT_FONT = "Merriweather";
+const DEFAULT_FONT_STYLE = "Normal (400)";
+
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 export async function createFontsState(editor: Editor) {
 	const state = reactive({
 		fontNames: [] as string[],
 	});
 
-	editor.subscriptions.subscribeJsMessage(TriggerFontLoadDefault, loadDefaultFont);
-	editor.subscriptions.subscribeJsMessage(TriggerFontLoad, async (triggerFontLoad) => {
-		const response = await (await fetch(triggerFontLoad.font)).arrayBuffer();
-		editor.instance.on_font_load(triggerFontLoad.font, new Uint8Array(response), false);
-	});
+	function getFontStyles(fontFamily: string): string[] {
+		const font = fontList.find((value) => value.family === fontFamily);
+		return font?.variants || [];
+	}
 
-	const response = await (await fetch(fontListAPI)).json();
-	const loadedFonts = response.items as { family: string; variants: string[]; files: { [name: string]: string } }[];
-
-	const fontList: { family: string; variants: string[]; files: Map<string, string> }[] = loadedFonts.map((font) => {
-		const { family } = font;
-		const variants = font.variants.map(formatFontStyleName);
-		const files = new Map(font.variants.map((x) => [formatFontStyleName(x), font.files[x]]));
-		return { family, variants, files };
-	});
-	state.fontNames = fontList.map((value) => value.family);
-
-	await loadDefaultFont();
+	function getFontFileUrl(fontFamily: string, fontStyle: string): string | undefined {
+		const font = fontList.find((value) => value.family === fontFamily);
+		const fontFile = font?.files.get(fontStyle);
+		return fontFile?.replace("http://", "https://");
+	}
 
 	function formatFontStyleName(fontStyle: string): string {
 		const isItalic = fontStyle.endsWith("italic");
@@ -44,30 +39,37 @@ export async function createFontsState(editor: Editor) {
 		return `${weightName}${isItalic ? " Italic" : ""} (${weight})`;
 	}
 
+	editor.subscriptions.subscribeJsMessage(TriggerFontLoadDefault, loadDefaultFont);
 	async function loadDefaultFont(): Promise<void> {
-		const font = getFontFile("Merriweather", "Normal (400)");
-		if (!font) return;
+		const fontFileUrl = getFontFileUrl(DEFAULT_FONT, DEFAULT_FONT_STYLE);
+		if (!fontFileUrl) return;
 
-		const response = await fetch(font);
+		const response = await fetch(fontFileUrl);
 		const responseBuffer = await response.arrayBuffer();
-		editor.instance.on_font_load(font, new Uint8Array(responseBuffer), true);
+		editor.instance.on_font_load(fontFileUrl, new Uint8Array(responseBuffer), true);
 	}
+	editor.subscriptions.subscribeJsMessage(TriggerFontLoad, async (triggerFontLoad) => {
+		const response = await (await fetch(triggerFontLoad.font_file_url)).arrayBuffer();
+		editor.instance.on_font_load(triggerFontLoad.font_file_url, new Uint8Array(response), false);
+	});
 
-	function getFontStyles(fontFamily: string): string[] {
-		const font = fontList.find((value) => value.family === fontFamily);
-		return font?.variants || [];
-	}
+	const response = await (await fetch(fontListAPI)).json();
+	const loadedFonts = response.items as { family: string; variants: string[]; files: { [name: string]: string } }[];
 
-	function getFontFile(fontFamily: string, fontStyle: string): string | undefined {
-		const font = fontList.find((value) => value.family === fontFamily);
-		const fontFile = font?.files.get(fontStyle);
-		return fontFile?.replace("http://", "https://");
-	}
+	const fontList: { family: string; variants: string[]; files: Map<string, string> }[] = loadedFonts.map((font) => {
+		const { family } = font;
+		const variants = font.variants.map(formatFontStyleName);
+		const files = new Map(font.variants.map((x) => [formatFontStyleName(x), font.files[x]]));
+		return { family, variants, files };
+	});
+	state.fontNames = fontList.map((value) => value.family);
+
+	await loadDefaultFont();
 
 	return {
 		state: readonly(state),
 		getFontStyles,
-		getFontFile,
+		getFontFileUrl,
 	};
 }
 export type FontsState = ReturnType<typeof createFontsState>;
