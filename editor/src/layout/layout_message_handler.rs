@@ -12,14 +12,12 @@ pub struct LayoutMessageHandler {
 }
 
 impl LayoutMessageHandler {
+	#[remain::check]
 	fn send_layout(&self, layout_target: LayoutTarget, responses: &mut VecDeque<Message>) {
 		let widget_layout = &self.layouts[layout_target as usize];
+		#[remain::sorted]
 		let message = match layout_target {
 			LayoutTarget::DialogDetails => FrontendMessage::UpdateDialogDetails {
-				layout_target,
-				layout: widget_layout.layout.clone(),
-			},
-			LayoutTarget::ToolOptions => FrontendMessage::UpdateToolOptionsLayout {
 				layout_target,
 				layout: widget_layout.layout.clone(),
 			},
@@ -27,15 +25,32 @@ impl LayoutMessageHandler {
 				layout_target,
 				layout: widget_layout.layout.clone(),
 			},
-			LayoutTarget::PropertiesOptionsPanel => FrontendMessage::UpdatePropertyPanelOptionsLayout {
+			LayoutTarget::DocumentMode => FrontendMessage::UpdateDocumentModeLayout {
 				layout_target,
 				layout: widget_layout.layout.clone(),
 			},
-			LayoutTarget::PropertiesSectionsPanel => FrontendMessage::UpdatePropertyPanelSectionsLayout {
+			LayoutTarget::LayerTreeOptions => FrontendMessage::UpdateLayerTreeOptionsLayout {
+				layout_target,
+				layout: widget_layout.layout.clone(),
+			},
+			LayoutTarget::PropertiesOptions => FrontendMessage::UpdatePropertyPanelOptionsLayout {
+				layout_target,
+				layout: widget_layout.layout.clone(),
+			},
+			LayoutTarget::PropertiesSections => FrontendMessage::UpdatePropertyPanelSectionsLayout {
+				layout_target,
+				layout: widget_layout.layout.clone(),
+			},
+			LayoutTarget::ToolOptions => FrontendMessage::UpdateToolOptionsLayout {
+				layout_target,
+				layout: widget_layout.layout.clone(),
+			},
+			LayoutTarget::ToolShelf => FrontendMessage::UpdateToolShelfLayout {
 				layout_target,
 				layout: widget_layout.layout.clone(),
 			},
 
+			#[remain::unsorted]
 			LayoutTarget::LayoutTargetLength => panic!("`LayoutTargetLength` is not a valid Layout Target and is used for array indexing"),
 		};
 		responses.push_back(message.into());
@@ -72,8 +87,8 @@ impl MessageHandler<LayoutMessage, ()> for LayoutMessageHandler {
 					}
 					Widget::DropdownInput(dropdown_input) => {
 						let update_value = value.as_u64().expect("DropdownInput update was not of type: u64");
-						dropdown_input.selected_index = update_value as u32;
-						let callback_message = (dropdown_input.menu_entries.iter().flatten().nth(update_value as usize).unwrap().on_update.callback)(&());
+						dropdown_input.selected_index = Some(update_value as u32);
+						let callback_message = (dropdown_input.entries.iter().flatten().nth(update_value as usize).unwrap().on_update.callback)(&());
 						responses.push_back(callback_message);
 					}
 					Widget::FontInput(font_input) => {
@@ -102,7 +117,7 @@ impl MessageHandler<LayoutMessage, ()> for LayoutMessageHandler {
 					Widget::NumberInput(number_input) => match value {
 						Value::Number(num) => {
 							let update_value = num.as_f64().unwrap();
-							number_input.value = update_value;
+							number_input.value = Some(update_value);
 							let callback_message = (number_input.on_update.callback)(number_input);
 							responses.push_back(callback_message);
 						}

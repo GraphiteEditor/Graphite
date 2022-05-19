@@ -7,7 +7,7 @@
 			</LayoutCol>
 			<LayoutCol class="main-column">
 				<WidgetLayout v-if="dialog.state.widgets.layout.length > 0" :layout="dialog.state.widgets" class="details" />
-				<LayoutRow v-if="dialog.state.jsCallbackBasedButtons?.length" class="panic-buttons-row">
+				<LayoutRow v-if="(dialog.state.jsCallbackBasedButtons?.length || NaN) > 0" class="panic-buttons-row">
 					<TextButton v-for="(button, index) in dialog.state.jsCallbackBasedButtons" :key="index" :action="() => button.callback?.()" v-bind="button.props" />
 				</LayoutRow>
 			</LayoutCol>

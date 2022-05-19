@@ -67,6 +67,6 @@ pub enum PortfolioMessage {
 	SetActiveDocument {
 		document_id: u64,
 	},
-	UpdateDocumentBar,
+	UpdateDocumentWidgets,
 	UpdateOpenDocumentsList,
 }

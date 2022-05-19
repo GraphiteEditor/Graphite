@@ -115,10 +115,10 @@ impl PropertyHolder for TextTool {
 				WidgetHolder::new(Widget::NumberInput(NumberInput {
 					unit: " px".into(),
 					label: "Size".into(),
-					value: self.options.font_size as f64,
+					value: Some(self.options.font_size as f64),
 					is_integer: true,
 					min: Some(1.),
-					on_update: WidgetCallback::new(|number_input: &NumberInput| TextMessage::UpdateOptions(TextOptionsUpdate::FontSize(number_input.value as u32)).into()),
+					on_update: WidgetCallback::new(|number_input: &NumberInput| TextMessage::UpdateOptions(TextOptionsUpdate::FontSize(number_input.value.unwrap() as u32)).into()),
 					..NumberInput::default()
 				})),
 			],

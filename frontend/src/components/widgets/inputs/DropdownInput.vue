@@ -9,7 +9,7 @@
 			v-model:activeEntry="activeEntry"
 			@update:activeEntry="(newActiveEntry: typeof MENU_LIST_ENTRY) => activeEntryChanged(newActiveEntry)"
 			@widthChanged="(newWidth: number) => onWidthChanged(newWidth)"
-			:menuEntries="menuEntries"
+			:entries="entries"
 			:direction="'Bottom'"
 			:drawIcon="drawIcon"
 			:scrollableY="true"
@@ -100,23 +100,23 @@ declare global {
 export default defineComponent({
 	emits: ["update:selectedIndex"],
 	props: {
-		menuEntries: { type: Array as PropType<SectionsOfMenuListEntries>, required: true },
-		selectedIndex: { type: Number as PropType<number>, required: true },
+		entries: { type: Array as PropType<SectionsOfMenuListEntries>, required: true },
+		selectedIndex: { type: Number as PropType<number>, required: false }, // When not provided, a dash is displayed
 		drawIcon: { type: Boolean as PropType<boolean>, default: false },
 		disabled: { type: Boolean as PropType<boolean>, default: false },
 	},
 	data() {
 		return {
-			activeEntry: this.menuEntries.flat()[this.selectedIndex],
+			activeEntry: this.selectedIndex !== undefined ? this.entries.flat()[this.selectedIndex] : { label: "-" },
 			minWidth: 0,
 		};
 	},
 	watch: {
 		// Called only when `selectedIndex` is changed from outside this component (with v-model)
-		selectedIndex(newSelectedIndex: number) {
-			const entries = this.menuEntries.flat();
+		selectedIndex(newSelectedIndex: number | undefined) {
+			const entries = this.entries.flat();
 
-			if (!Number.isNaN(newSelectedIndex) && newSelectedIndex >= 0 && newSelectedIndex < entries.length) {
+			if (newSelectedIndex !== undefined && newSelectedIndex >= 0 && newSelectedIndex < entries.length) {
 				this.activeEntry = entries[newSelectedIndex];
 			} else {
 				this.activeEntry = { label: "-" };
@@ -130,7 +130,7 @@ export default defineComponent({
 		},
 		// Called only when `activeEntry` is changed from the child MenuList component via user input
 		activeEntryChanged(newActiveEntry: MenuListEntry) {
-			this.$emit("update:selectedIndex", this.menuEntries.flat().indexOf(newActiveEntry));
+			this.$emit("update:selectedIndex", this.entries.flat().indexOf(newActiveEntry));
 		},
 		clickDropdownBox() {
 			if (!this.disabled) this.menuList().setOpen();

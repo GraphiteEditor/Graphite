@@ -120,7 +120,7 @@ img {
 .layout-col {
 	.scrollable-x,
 	.scrollable-y {
-		// Standard
+		// Firefox (standardized in CSS, but less capable)
 		scrollbar-width: thin;
 		scrollbar-width: 6px;
 		scrollbar-gutter: 6px;
@@ -130,7 +130,7 @@ img {
 			scrollbar-width: none;
 		}
 
-		// WebKit
+		// WebKit (only in Chromium/Safari but more capable)
 		&::-webkit-scrollbar {
 			width: calc(2px + 6px + 2px);
 			height: calc(2px + 6px + 2px);
@@ -177,14 +177,14 @@ img {
 
 	.scrollable-x:not(.scrollable-y) {
 		// Standard
-		overflow-x: auto;
+		overflow: auto hidden;
 		// WebKit
 		overflow-x: overlay;
 	}
 
 	.scrollable-y:not(.scrollable-x) {
 		// Standard
-		overflow-y: auto;
+		overflow: hidden auto;
 		// WebKit
 		overflow-y: overlay;
 	}
@@ -346,6 +346,8 @@ export default defineComponent({
 	},
 	mounted() {
 		this.inputManager = createInputManager(this.editor, this.$el.parentElement, this.dialog, this.portfolio, this.fullscreen);
+
+		this.editor.instance.init_app();
 	},
 	beforeUnmount() {
 		this.inputManager?.removeListeners();

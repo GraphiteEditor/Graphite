@@ -24,7 +24,7 @@ function preparePanicDialog(dialogState: DialogState, title: string, details: st
 	const widgets: WidgetLayout = {
 		layout: [
 			{
-				widgets: [
+				rowWidgets: [
 					{
 						kind: "TextLabel",
 						props: { value: title, bold: true },
@@ -34,7 +34,7 @@ function preparePanicDialog(dialogState: DialogState, title: string, details: st
 				],
 			},
 			{
-				widgets: [
+				rowWidgets: [
 					{
 						kind: "TextLabel",
 						props: { value: details, multiline: true },
