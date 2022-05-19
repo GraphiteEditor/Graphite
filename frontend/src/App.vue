@@ -265,11 +265,11 @@ import { createClipboardManager } from "@/managers/clipboard";
 import { createHyperlinkManager } from "@/managers/hyperlinks";
 import { createInputManager } from "@/managers/input";
 import { createPanicManager } from "@/managers/panic";
-import { createDialogState, DialogState } from "@/providers/dialog";
-import { createFontsState, FontsState } from "@/providers/fonts";
-import { createFullscreenState, FullscreenState } from "@/providers/fullscreen";
-import { createPortfolioState, PortfolioState } from "@/providers/portfolio";
-import { createWorkspaceState, WorkspaceState } from "@/providers/workspace";
+import { createDialogState, DialogState } from "@/state-providers/dialog";
+import { createFontsState, FontsState } from "@/state-providers/fonts";
+import { createFullscreenState, FullscreenState } from "@/state-providers/fullscreen";
+import { createPortfolioState, PortfolioState } from "@/state-providers/portfolio";
+import { createWorkspaceState, WorkspaceState } from "@/state-providers/workspace";
 
 import LayoutCol from "@/components/layout/LayoutCol.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
@@ -277,11 +277,12 @@ import MainWindow from "@/components/window/MainWindow.vue";
 
 // Vue injects don't play well with TypeScript (all injects will show up as `any`) but we can define these types as a solution
 declare module "@vue/runtime-core" {
+	// Systems `provide`d by the root App to be `inject`ed into descendant components and used for reactive bindings
 	interface ComponentCustomProperties {
 		// Graphite WASM editor instance
 		editor: Editor;
 
-		// Stateful systems which are `provide`d by this Vue component to be `inject`ed by descendant components and used for reactive bindings
+		// State provider systems
 		dialog: DialogState;
 		fonts: FontsState;
 		fullscreen: FullscreenState;
@@ -300,7 +301,7 @@ export default defineComponent({
 			// Graphite WASM editor instance
 			editor,
 
-			// Stateful systems which are `provide`d by this Vue component to be `inject`ed by descendant components and used for reactive bindings
+			// State provider systems
 			dialog: createDialogState(editor),
 			fonts: createFontsState(editor),
 			fullscreen: createFullscreenState(),

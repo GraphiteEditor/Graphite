@@ -1,7 +1,7 @@
 import { Editor } from "@/interop/editor";
-import { DialogState } from "@/providers/dialog";
-import { FullscreenState } from "@/providers/fullscreen";
-import { PortfolioState } from "@/providers/portfolio";
+import { DialogState } from "@/state-providers/dialog";
+import { FullscreenState } from "@/state-providers/fullscreen";
+import { PortfolioState } from "@/state-providers/portfolio";
 import { makeKeyboardModifiersBitfield, textInputCleanup, getLatinKey } from "@/utilities/keyboard-entry";
 
 type EventName = keyof HTMLElementEventMap | keyof WindowEventHandlersEventMap | "modifyinputfield";
