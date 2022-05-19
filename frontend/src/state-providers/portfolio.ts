@@ -17,23 +17,19 @@ export function createPortfolioState(editor: Editor) {
 	editor.subscriptions.subscribeJsMessage(UpdateOpenDocumentsList, (updateOpenDocumentList) => {
 		state.documents = updateOpenDocumentList.open_documents;
 	});
-
 	editor.subscriptions.subscribeJsMessage(UpdateActiveDocument, (updateActiveDocument) => {
 		// Assume we receive a correct document id
 		const activeId = state.documents.findIndex((doc) => doc.id === updateActiveDocument.document_id);
 		state.activeDocumentIndex = activeId;
 	});
-
 	editor.subscriptions.subscribeJsMessage(TriggerFileUpload, async () => {
 		const extension = editor.raw.file_save_suffix();
 		const data = await upload(extension);
 		editor.instance.open_document_file(data.filename, data.content);
 	});
-
 	editor.subscriptions.subscribeJsMessage(TriggerFileDownload, (triggerFileDownload) => {
 		download(triggerFileDownload.name, triggerFileDownload.document);
 	});
-
 	editor.subscriptions.subscribeJsMessage(TriggerRasterDownload, (triggerRasterDownload) => {
 		// A canvas to render our svg to in order to get a raster image
 		// https://stackoverflow.com/questions/3975499/convert-svg-to-image-jpeg-png-etc-in-the-browser

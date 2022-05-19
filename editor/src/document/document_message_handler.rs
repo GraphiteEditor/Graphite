@@ -523,6 +523,7 @@ impl DocumentMessageHandler {
 		}
 	}
 
+	// TODO: Loading the default font should happen on a per-application basis, not a per-document basis
 	pub fn load_default_font(&self, responses: &mut VecDeque<Message>) {
 		if !self.graphene_document.font_cache.has_default() {
 			responses.push_back(FrontendMessage::TriggerFontLoadDefault.into())

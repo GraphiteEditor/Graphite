@@ -335,8 +335,6 @@ export class IndexedDbDocumentDetails extends DocumentDetails {
 	id!: string;
 }
 
-export class TriggerFontLoadDefault extends JsMessage {}
-
 export class DisplayDialogDismiss extends JsMessage {}
 
 export class TriggerIndexedDbWriteDocument extends JsMessage {
@@ -357,6 +355,8 @@ export class TriggerIndexedDbRemoveDocument extends JsMessage {
 export class TriggerFontLoad extends JsMessage {
 	font!: string;
 }
+
+export class TriggerFontLoadDefault extends JsMessage {}
 
 export class TriggerVisitLink extends JsMessage {
 	url!: string;
@@ -536,12 +536,12 @@ export const messageMakers: Record<string, MessageMaker> = {
 	DisplayEditableTextbox,
 	UpdateImageData,
 	DisplayRemoveEditableTextbox,
-	TriggerFontLoadDefault,
 	DisplayDialogDismiss,
 	TriggerFileDownload,
 	TriggerFileUpload,
 	TriggerIndexedDbRemoveDocument,
 	TriggerFontLoad,
+	TriggerFontLoadDefault,
 	TriggerIndexedDbWriteDocument,
 	TriggerRasterDownload,
 	TriggerTextCommit,
