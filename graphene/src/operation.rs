@@ -121,6 +121,10 @@ pub enum Operation {
 	DeleteLayer {
 		path: Vec<LayerId>,
 	},
+	// TODO Consider removing the concept of selection here
+	DeleteSelectedVectorPoints {
+		path: Vec<LayerId>,
+	},
 	DuplicateLayer {
 		path: Vec<LayerId>,
 	},

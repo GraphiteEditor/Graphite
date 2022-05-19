@@ -261,11 +261,3 @@ impl<A> FromIterator<A> for UniqueElements<A> {
 		new
 	}
 }
-
-// impl<'b, 'a: 'b, A: 'a + Clone> FromIterator<&'b A> for UniqueElements<A> {
-// 	fn from_iter<T: IntoIterator<Item = &'b A>>(iter: T) -> Self {
-// 		let mut new = UniqueElements::default();
-// 		new.add_range(iter, -1);
-// 		new
-// 	}
-// }

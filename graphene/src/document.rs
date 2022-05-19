@@ -927,6 +927,13 @@ impl Document {
 				self.mark_as_dirty(&path)?;
 				Some([vec![DocumentChanged], update_thumbnails_upstream(&path)].concat())
 			}
+    		Operation::DeleteSelectedVectorPoints { path } => {
+				let layer = self.layer_mut(&path)?;
+				if let Some(shape) = layer.as_vector_shape_mut() {
+					shape.delete_selected();
+				}
+				Some([vec![LayerChanged { path: path.clone() }], update_thumbnails_upstream(&path)].concat())
+			},
 		};
 		Ok(responses)
 	}

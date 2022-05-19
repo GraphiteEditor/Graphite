@@ -1022,7 +1022,15 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 
 				responses.push_front(DocumentMessage::SelectionChanged.into());
 			}
-			DeleteSelectedVectorPoints => {}
+			DeleteSelectedVectorPoints => { 
+				self.backup(responses);
+
+				for path in self.selected_layers_without_children() {
+					responses.push_front(DocumentOperation::DeleteSelectedVectorPoints { path:path.to_vec() }.into());
+				}
+
+				responses.push_front(DocumentMessage::SelectionChanged.into());
+			}
 			DeselectAllLayers => {
 				responses.push_front(SetSelectedLayers { replacement_selected_layers: vec![] }.into());
 				self.layer_range_selection_reference.clear();
