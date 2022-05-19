@@ -64,13 +64,21 @@ export function setLoadDefaultFontCallback(callback: fontCallbackType): void {
 	loadDefaultFont();
 }
 
-export function fontNames(): string[] {
-	return fontList.map((value) => value.family);
+function createURL(font: string): URL {
+	const url = new URL("https://fonts.googleapis.com/css2");
+	url.searchParams.set("display", "swap");
+	url.searchParams.set("family", font);
+	url.searchParams.set("text", font);
+	return url;
 }
 
-export function getFontStyles(fontFamily: string): string[] {
+export function fontNames(): { name: string; url: URL | undefined }[] {
+	return fontList.map((font) => ({ name: font.family, url: createURL(font.family) }));
+}
+
+export function getFontStyles(fontFamily: string): { name: string; url: URL | undefined }[] {
 	const font = fontList.find((value) => value.family === fontFamily);
-	return font?.variants || [];
+	return font?.variants.map((variant) => ({ name: variant, url: undefined })) || [];
 }
 
 export function getFontFile(fontFamily: string, fontStyle: string): string | undefined {

@@ -1,10 +1,26 @@
 <template>
 	<LayoutRow class="font-input">
-		<button class="dropdown-box" :class="{ disabled }" :style="{ minWidth: `${minWidth}px` }" @click="() => clickDropdownBox()" data-hover-menu-spawner>
-			<span>{{ activeEntry.label }}</span>
+		<button class="dropdown-box" :class="{ disabled }" :style="{ minWidth: `${minWidth}px` }" tabindex="0" @click="() => setOpen()" @keydown="keydown" data-hover-menu-spawner>
+			<span>{{ activeEntry.name }}</span>
 			<IconLabel class="dropdown-arrow" :icon="'DropdownArrow'" />
 		</button>
-		<MenuList v-model:activeEntry="activeEntry" @widthChanged="(newWidth: number) => onWidthChanged(newWidth)" :entries="entries" :direction="'Bottom'" :scrollableY="true" ref="menuList" />
+		<FloatingMenu class="menu-list" :direction="'Bottom'" :type="'Dropdown'" ref="floatingMenu" :windowEdgeMargin="0" data-hover-menu-keep-open>
+			<LayoutCol :scrollableY="true" @scroll="onScroll" :style="{ width: `${minWidth}px` }" ref="scroller">
+				<LayoutRow class="spacer" :style="{ height: `${startIndex * 20}px` }"></LayoutRow>
+				<LayoutRow
+					v-for="(entry, entryIndex) in entries.slice(startIndex, endIndex)"
+					:key="entryIndex + startIndex"
+					class="row"
+					:class="{ active: entry === highlighted }"
+					@click="selectFont(entry.name)"
+				>
+					<link v-if="!isStyle" rel="stylesheet" :href="entry.url?.toString()" />
+
+					<span class="entry-label" :style="{ fontFamily: `${isStyle ? 'inherit' : entry.name}` }">{{ entry.name }}</span>
+				</LayoutRow>
+				<LayoutRow class="spacer" :style="{ height: `${totalHeight - endIndex * 20}px` }"></LayoutRow>
+			</LayoutCol>
+		</FloatingMenu>
 	</LayoutRow>
 </template>
 
@@ -28,19 +44,10 @@
 		height: 24px;
 		border-radius: 2px;
 
-		.dropdown-icon {
-			margin: 4px;
-			flex: 0 0 auto;
-		}
-
 		span {
 			margin: 0;
 			margin-left: 8px;
 			flex: 1 1 100%;
-		}
-
-		.dropdown-icon + span {
-			margin-left: 0;
 		}
 
 		.dropdown-arrow {
@@ -55,10 +62,6 @@
 			span {
 				color: var(--color-f-white);
 			}
-
-			svg {
-				fill: var(--color-f-white);
-			}
 		}
 
 		&.open {
@@ -71,27 +74,43 @@
 			span {
 				color: var(--color-8-uppergray);
 			}
-
-			svg {
-				fill: var(--color-8-uppergray);
-			}
 		}
 	}
 
 	.menu-list .floating-menu-container .floating-menu-content {
 		max-height: 400px;
+
+		padding: 4px 0;
+
+		.row {
+			height: 20px;
+			align-items: center;
+			white-space: nowrap;
+			position: relative;
+			flex: 0 0 auto;
+		}
+
+		.spacer {
+			flex: 0 0 auto;
+		}
 	}
 }
 </style>
 
 <script lang="ts">
-import { defineComponent, PropType } from "vue";
+import { defineComponent, nextTick, PropType } from "vue";
 
 import { fontNames, getFontFile, getFontStyles } from "@/utilities/fonts";
 
+import LayoutCol from "@/components/layout/LayoutCol.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
-import MenuList, { MenuListEntry, SectionsOfMenuListEntries } from "@/components/widgets/floating-menus/MenuList.vue";
+import FloatingMenu from "@/components/widgets/floating-menus/FloatingMenu.vue";
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
+
+interface FontEntry {
+	name: string;
+	url: URL | undefined;
+}
 
 export default defineComponent({
 	emits: ["update:fontFamily", "update:fontStyle", "changeFont"],
@@ -102,16 +121,38 @@ export default defineComponent({
 		isStyle: { type: Boolean as PropType<boolean>, default: false },
 	},
 	data() {
-		const { entries, activeEntry } = this.updateEntries();
+		const entries = this.getEntries() as FontEntry[];
+		const activeEntry = this.getActiveEntry(entries) as FontEntry;
 		return {
 			entries,
 			activeEntry,
-			minWidth: 0,
+			highlighted: activeEntry as FontEntry | undefined,
+			entriesStart: 0,
+			minWidth: 300,
 		};
 	},
 	methods: {
-		clickDropdownBox() {
-			if (!this.disabled) (this.$refs.menuList as typeof MenuList).setOpen();
+		floatingMenu() {
+			return this.$refs.floatingMenu as typeof FloatingMenu;
+		},
+		scroller() {
+			return (this.$refs.scroller as typeof LayoutCol)?.$el as HTMLElement;
+		},
+		setOpen() {
+			this.floatingMenu().setOpen();
+			// Reset the highlighted entry to the active one
+			this.setHighlighted(this.activeEntry);
+			// Scroll to the active entry (the scroller div does not yet exist so we must wait for vue to render)
+			nextTick((): void => {
+				const index = this.entries.indexOf(this.activeEntry);
+				this.scroller()?.scrollTo(0, Math.max(0, index * 20 - 190));
+			});
+		},
+		setClosed() {
+			this.floatingMenu().setClosed();
+		},
+		isOpen(): boolean {
+			return Boolean(this.floatingMenu()?.isOpen());
 		},
 		selectFont(newName: string) {
 			let fontFamily;
@@ -126,7 +167,7 @@ export default defineComponent({
 				this.$emit("update:fontFamily", newName);
 
 				fontFamily = newName;
-				fontStyle = getFontStyles(newName)[0];
+				fontStyle = "Normal (400)";
 			}
 
 			const fontFile = getFontFile(fontFamily, fontStyle);
@@ -135,44 +176,81 @@ export default defineComponent({
 		onWidthChanged(newWidth: number) {
 			this.minWidth = newWidth;
 		},
-		updateEntries(): { entries: SectionsOfMenuListEntries; activeEntry: MenuListEntry } {
-			const choices = this.isStyle ? getFontStyles(this.fontFamily) : fontNames();
+		getEntries(): FontEntry[] {
+			return this.isStyle ? getFontStyles(this.fontFamily) : fontNames();
+		},
+		getActiveEntry(entries: FontEntry[]): FontEntry {
 			const selectedChoice = this.isStyle ? this.fontStyle : this.fontFamily;
 
-			let selectedEntry: MenuListEntry | undefined;
-			const menuListEntries = choices.map((name) => {
-				const result: MenuListEntry = {
-					label: name,
-					action: (): void => this.selectFont(name),
-				};
+			return entries.find((entry) => entry.name === selectedChoice) as FontEntry;
+		},
+		/// Handles keyboard navigation for the menu. Returns if the entire menu stack should be dismissed
+		keydown(e: KeyboardEvent) {
+			if (this.disabled) return;
 
-				if (name === selectedChoice) selectedEntry = result;
+			const menuOpen = this.floatingMenu()?.isOpen() as boolean;
 
-				return result;
-			});
+			if (!menuOpen && (e.key === " " || e.key === "Enter")) {
+				// Allow opening menu with space or enter
+				this.setOpen();
+			} else if (menuOpen && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
+				// Navigate to the next and previous entries with arrow keys
 
-			const entries: SectionsOfMenuListEntries = [menuListEntries];
-			const activeEntry = selectedEntry || { label: "-" };
+				let newIndex = e.key === "ArrowUp" ? this.entries.length - 1 : 0;
+				if (this.highlighted) {
+					const index = this.highlighted ? this.entries.indexOf(this.highlighted) : 0;
+					newIndex = (index + (e.key === "ArrowUp" ? -1 : 1) + this.entries.length) % this.entries.length;
+				}
 
-			return { entries, activeEntry };
+				const newEntry = this.entries[newIndex];
+				this.setHighlighted(newEntry);
+			} else if (menuOpen && e.key === "Escape") {
+				// Close menu with escape key
+				this.setClosed();
+
+				// Reset active to before open
+				this.setHighlighted(this.activeEntry);
+			} else if (menuOpen && this.highlighted && e.key === "Enter") {
+				// Handle clicking on an option if enter is pressed
+				this.selectFont(this.highlighted.name);
+				e.preventDefault();
+			}
+		},
+		setHighlighted(newHighlight: FontEntry | undefined) {
+			this.highlighted = newHighlight;
+		},
+		onScroll(e: Event) {
+			this.entriesStart = (e.target as HTMLElement)?.scrollTop || 0;
 		},
 	},
 	watch: {
 		fontFamily() {
-			const { entries, activeEntry } = this.updateEntries();
-			this.entries = entries;
-			this.activeEntry = activeEntry;
+			this.entries = this.getEntries();
+			this.activeEntry = this.getActiveEntry(this.entries);
+			this.highlighted = this.activeEntry;
 		},
 		fontStyle() {
-			const { entries, activeEntry } = this.updateEntries();
-			this.entries = entries;
-			this.activeEntry = activeEntry;
+			this.entries = this.getEntries();
+			this.activeEntry = this.getActiveEntry(this.entries);
+			this.highlighted = this.activeEntry;
+		},
+	},
+	computed: {
+		totalHeight() {
+			return this.entries.length * 20;
+		},
+		startIndex() {
+			return Math.floor(this.entriesStart / 20);
+		},
+		endIndex() {
+			return Math.min(this.entries.length, this.startIndex + 3 + 400 / 20);
 		},
 	},
 	components: {
-		IconLabel,
-		MenuList,
 		LayoutRow,
+		LayoutCol,
+		IconLabel,
+		FloatingMenu,
 	},
 });
 </script>
