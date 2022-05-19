@@ -222,7 +222,7 @@ const MenuList = defineComponent({
 		/// Handles keyboard navigation for the menu. Returns if the entire menu stack should be dismissed
 		keydown(e: KeyboardEvent, submenu: boolean): boolean {
 			const menuOpen = this.isOpen();
-			const flatEntries = this.menuEntries.flat();
+			const flatEntries = this.entries.flat();
 			const openChild = flatEntries.map(this.isMenuEntryOpen).indexOf(true);
 
 			const openSubmenu = (highlighted: MenuListEntry<string>): void => {
