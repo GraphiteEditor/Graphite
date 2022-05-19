@@ -669,7 +669,8 @@ impl DocumentMessageHandler {
 		}]);
 
 		let document_mode_layout = WidgetLayout::new(vec![LayoutRow::Row {
-			widgets: vec![WidgetHolder::new(Widget::DropdownInput(DropdownInput {
+			widgets: vec![
+				WidgetHolder::new(Widget::DropdownInput(DropdownInput {
 				entries: vec![vec![
 					DropdownEntryData {
 						label: DocumentMode::DesignMode.to_string(),
@@ -692,7 +693,12 @@ impl DocumentMessageHandler {
 				selected_index: Some(self.document_mode as u32),
 				draw_icon: true,
 				..Default::default()
-			}))],
+				})),
+				WidgetHolder::new(Widget::Separator(Separator {
+					separator_type: SeparatorType::Section,
+					direction: SeparatorDirection::Horizontal,
+				})),
+			],
 		}]);
 
 		responses.push_back(

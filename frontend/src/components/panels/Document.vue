@@ -2,7 +2,6 @@
 	<LayoutCol class="document">
 		<LayoutRow class="options-bar" :scrollableX="true">
 			<WidgetLayout :layout="documentModeLayout" />
-			<Separator :type="'Section'" />
 			<WidgetLayout :layout="toolOptionsLayout" />
 
 			<LayoutRow class="spacer"></LayoutRow>
@@ -248,7 +247,6 @@ import IconButton from "@/components/widgets/buttons/IconButton.vue";
 import SwatchPairInput from "@/components/widgets/inputs/SwatchPairInput.vue";
 import CanvasRuler from "@/components/widgets/rulers/CanvasRuler.vue";
 import PersistentScrollbar from "@/components/widgets/scrollbars/PersistentScrollbar.vue";
-import Separator from "@/components/widgets/separators/Separator.vue";
 import WidgetLayout from "@/components/widgets/WidgetLayout.vue";
 
 export default defineComponent({
@@ -483,7 +481,6 @@ export default defineComponent({
 		LayoutRow,
 		LayoutCol,
 		SwatchPairInput,
-		Separator,
 		PersistentScrollbar,
 		CanvasRuler,
 		IconButton,
