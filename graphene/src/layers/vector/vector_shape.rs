@@ -81,12 +81,16 @@ impl VectorShape {
 	// TODO Implement deleting currently selected points
 	pub fn delete_selected(&mut self) {
 		// involves cloning the elements of anchors, could be replaced by a more efficient implementation possibly
-		for (index, anchor) in self.selected_anchors_mut().enumerate() {
-			// Example
+		let mut ids_to_delete: Vec<u64> = vec![];
+		for id in self.0.keys() {
 			// anchor.delete_selected_points();
-			// if anchor.points.is_empty() {
-			// 	self.anchors.remove(index);
-			// }
+			if self.0.by_id(*id).unwrap().is_anchor_selected() {
+				ids_to_delete.push(*id);
+			}
+		}
+
+		for id in ids_to_delete {
+			self.0.remove(id);
 		}
 	}
 
@@ -118,6 +122,37 @@ impl VectorShape {
 		}
 	}
 
+	/// Deselect an anchor
+	pub fn deselect_anchor(&mut self, anchor_id: u64) {
+		if let Some(anchor) = self.0.by_id_mut(anchor_id) {
+			anchor.clear_selected_points();
+			anchor.select_point(ControlPointType::Anchor as usize, false);
+		}
+	}
+
+	pub fn deselect_anchors(&mut self, anchor_ids: &[u64]) {
+		for anchor_id in anchor_ids {
+			if let Some(anchor) = self.0.by_id_mut(*anchor_id) {
+				anchor.clear_selected_points();
+				anchor.select_point(ControlPointType::Anchor as usize, false);
+			}
+		}
+	}
+
+	/// Select all the anchors in this shape
+	pub fn select_all_anchors(&mut self) {
+		for anchor in self.0.iter_mut() {
+			anchor.select_point(ControlPointType::Anchor as usize, true);
+		}
+	}
+
+	/// Clear all the selected anchors, and clear the selected points on the anchors
+	pub fn clear_selected_anchors(&mut self) {
+		for anchor in self.0.iter_mut() {
+			anchor.clear_selected_points();
+		}
+	}
+
 	/// Select an anchor by index
 	pub fn select_anchor_by_index(&mut self, anchor_index: usize) -> Option<&mut VectorAnchor> {
 		// TODO test if looking this up by index actually works
@@ -135,28 +170,6 @@ impl VectorShape {
 			return Some(anchor);
 		}
 		None
-	}
-
-	/// Deselect an anchor
-	pub fn deselect_anchor(&mut self, anchor_id: u64) {
-		if let Some(anchor) = self.0.by_id_mut(anchor_id) {
-			anchor.clear_selected_points();
-			anchor.select_point(ControlPointType::Anchor as usize, false);
-		}
-	}
-
-	/// Select all the anchors in this shape
-	pub fn select_all_anchors(&mut self) {
-		for anchor in self.0.iter_mut() {
-			anchor.select_point(ControlPointType::Anchor as usize, true);
-		}
-	}
-
-	/// Clear all the selected anchors, and clear the selected points on the anchors
-	pub fn clear_selected_anchors(&mut self) {
-		for anchor in self.0.iter_mut() {
-			anchor.clear_selected_points();
-		}
 	}
 
 	/// Return all the selected anchors by reference

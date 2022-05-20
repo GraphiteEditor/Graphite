@@ -1025,20 +1025,27 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 			DeleteSelectedVectorPoints => {
 				self.backup(responses);
 
-				for path in self.selected_layers_without_children() {
-					responses.push_front(DocumentOperation::DeleteSelectedVectorPoints { path: path.to_vec() }.into());
+				for layer_path in self.selected_layers_without_children() {
+					responses.push_front(DocumentOperation::DeleteSelectedVectorPoints { layer_path: layer_path.to_vec() }.into());
 				}
+				// Rerender
+				// responses.push_back(DocumentMessage::RenderDocument.into());
 			}
 			DeselectAllLayers => {
 				responses.push_front(SetSelectedLayers { replacement_selected_layers: vec![] }.into());
 				self.layer_range_selection_reference.clear();
 			}
-			DeselectAllVectorPoints => {}
-			DeselectVectorPoints { layer_path, anchor_ids } => {}
+			DeselectAllVectorPoints => {
+				for layer_path in self.selected_layers_without_children() {
+					responses.push_back(DocumentOperation::DeselectAllVectorPoints { layer_path: layer_path.to_vec() }.into());
+				}
+			}
+			DeselectVectorPoints { layer_path, anchor_ids } => {
+				responses.push_back(DocumentOperation::DeselectVectorPoints { layer_path, anchor_ids }.into());
+			}
 			DirtyRenderDocument => {
 				// Mark all non-overlay caches as dirty
 				GrapheneDocument::mark_children_as_dirty(&mut self.graphene_document.root);
-
 				responses.push_back(DocumentMessage::RenderDocument.into());
 			}
 			DirtyRenderDocumentInOutlineView => {

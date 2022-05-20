@@ -931,21 +931,35 @@ impl Document {
 			// We may not want the concept of selection here. For now leaving though.
 			Operation::SelectVectorPoints { layer_path, anchor_ids, add } => {
 				let layer = self.layer_mut(&layer_path)?;
-				// log::debug!("Got to selection in document");
 				if let Some(shape) = layer.as_vector_shape_mut() {
 					if !add {
 						shape.clear_selected_anchors();
 					}
 					shape.select_anchors(&anchor_ids);
 				}
-				None
+				Some(vec![LayerChanged { path: layer_path.clone() }])
 			}
-			Operation::DeleteSelectedVectorPoints { path } => {
-				let layer = self.layer_mut(&path)?;
+			Operation::DeselectVectorPoints { layer_path, anchor_ids } => {
+				let layer = self.layer_mut(&layer_path)?;
+				if let Some(shape) = layer.as_vector_shape_mut() {
+					shape.deselect_anchors(&anchor_ids);
+				}
+				Some(vec![LayerChanged { path: layer_path.clone() }])
+			}
+			Operation::DeselectAllVectorPoints { layer_path } => {
+				let layer = self.layer_mut(&layer_path)?;
+				if let Some(shape) = layer.as_vector_shape_mut() {
+					shape.clear_selected_anchors();
+				}
+				Some(vec![LayerChanged { path: layer_path.clone() }])
+			}
+			Operation::DeleteSelectedVectorPoints { layer_path } => {
+				let layer = self.layer_mut(&layer_path)?;
 				if let Some(shape) = layer.as_vector_shape_mut() {
 					shape.delete_selected();
 				}
-				Some([vec![LayerChanged { path: path.clone() }], update_thumbnails_upstream(&path)].concat())
+				self.mark_as_dirty(&layer_path)?;
+				Some([vec![DocumentChanged, LayerChanged { path: layer_path.clone() }], update_thumbnails_upstream(&layer_path)].concat())
 			}
 		};
 		Ok(responses)

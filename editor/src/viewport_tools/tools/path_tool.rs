@@ -224,10 +224,11 @@ impl Fsm for PathToolFsmState {
 				// DoubleClick
 				(_, Delete) => {
 					// Select the first point within the threshold (in pixels)
-					if data.shape_editor.select_point(&document.graphene_document, input.mouse.position, SELECTION_THRESHOLD, false, responses) {
-						responses.push_back(DocumentMessage::StartTransaction.into());
-						data.shape_editor.delete_selected_points(&document.graphene_document, responses);
-						responses.push_back(SelectionChanged.into());
+					responses.push_back(DocumentMessage::StartTransaction.into());
+					data.shape_editor.delete_selected_points(responses);
+					responses.push_back(SelectionChanged.into());
+					for layer_path in document.all_layers() {
+						data.overlay_renderer.clear_vector_shape_overlays(&document.graphene_document, layer_path.to_vec(), responses);
 					}
 					Ready
 				}
@@ -238,7 +239,9 @@ impl Fsm for PathToolFsmState {
 				}
 				(_, Abort) | (_, SelectPoint) => {
 					// TODO Tell overlay manager to remove the overlays
-					//data.shape_editor.remove_overlays();
+					for layer_path in document.all_layers() {
+						data.overlay_renderer.clear_vector_shape_overlays(&document.graphene_document, layer_path.to_vec(), responses);
+					}
 					Ready
 				}
 				(

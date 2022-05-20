@@ -123,12 +123,19 @@ pub enum Operation {
 	},
 	// TODO Consider removing the concept of selection here
 	DeleteSelectedVectorPoints {
-		path: Vec<LayerId>,
+		layer_path: Vec<LayerId>,
 	},
 	SelectVectorPoints {
 		layer_path: Vec<LayerId>,
 		anchor_ids: Vec<u64>,
 		add: bool,
+	},
+	DeselectVectorPoints {
+		layer_path: Vec<LayerId>,
+		anchor_ids: Vec<u64>,
+	},
+	DeselectAllVectorPoints {
+		layer_path: Vec<LayerId>,
 	},
 	DuplicateLayer {
 		path: Vec<LayerId>,

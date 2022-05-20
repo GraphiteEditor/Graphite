@@ -47,7 +47,7 @@ impl<'a> OverlayRenderer {
 
 		if let Ok(layer) = document.layer(&layer_path) {
 			let layer_id = layer_path.last().unwrap();
-			log::debug!("Layer id is {:?}", layer_id);
+			// log::debug!("Layer id is {:?}", layer_id);
 			self.layer_overlay_visibility(document, layer_path.clone(), true, responses);
 
 			if let Some(shape) = layer.as_vector_shape() {
@@ -58,7 +58,7 @@ impl<'a> OverlayRenderer {
 					let outline = self.create_shape_outline_overlay(shape.into(), responses);
 					self.place_outline_overlays(outline.clone(), &transform, responses);
 					self.shape_overlay_cache.insert(*layer_id, outline);
-					log::debug!("Creating new overlays for {:?}", layer_path);
+				// log::debug!("Creating new overlays for {:?}", layer_path);
 				} else if let Some(outline) = outline_cache {
 					self.place_outline_overlays(outline.clone(), &transform, responses);
 				}
@@ -246,7 +246,7 @@ impl<'a> OverlayRenderer {
 	/// Removes the anchor / handle overlays from the overlay document
 	fn remove_anchor_overlays(&self, overlay_paths: &AnchorOverlays, responses: &mut VecDeque<Message>) {
 		overlay_paths.iter().flatten().for_each(|layer_id| {
-			log::debug!("Sending delete message for: {:?}", layer_id);
+			// log::debug!("Sending delete message for: {:?}", layer_id);
 			responses.push_back(DocumentMessage::Overlays(Operation::DeleteLayer { path: layer_id.clone() }.into()).into());
 		});
 	}

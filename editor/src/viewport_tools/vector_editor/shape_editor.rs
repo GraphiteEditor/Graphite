@@ -62,28 +62,36 @@ impl ShapeEditor {
 			// selected_shape.elements = selected_shape.bez_path.clone().into_iter().collect();
 
 			// Should we select or deselect the point?
-			let should_select = if is_point_selected { !(add_to_selection && is_point_selected) } else { true };
+			let should_select = if is_point_selected { add_to_selection } else { true };
 
 			// This is selecting the anchor only for now, next to generalize to points
-			responses.push_back(
-				DocumentMessage::SelectVectorPoints {
-					layer_path: shape_layer_path.to_vec(),
-					anchor_ids: vec![anchor_id],
-					add: !add_to_selection && !is_point_selected,
-				}
-				.into(),
-			);
+			if should_select {
+				responses.push_back(
+					DocumentMessage::SelectVectorPoints {
+						layer_path: shape_layer_path.to_vec(),
+						anchor_ids: vec![anchor_id],
+						add: add_to_selection || is_point_selected,
+					}
+					.into(),
+				);
+			} else {
+				responses.push_back(
+					DocumentMessage::DeselectVectorPoints {
+						layer_path: shape_layer_path.to_vec(),
+						anchor_ids: vec![anchor_id],
+					}
+					.into(),
+				);
+			}
 
-			// Add which anchor and point was selected
-			// let selected_anchor = selected_shape.select_anchor(anchor_id).unwrap();
-			// selected_anchor.select_point(point_index, should_select);
-			// TODO Send message to select instead
-
+			// TODO Update handle states via a message
 			// Due to the shape data structure not persisting across shape selection changes we need to rely on the kurbo path to know if we should mirror
 			// selected_anchor.set_mirroring((selected_anchor.angle_between_handles().abs() - std::f64::consts::PI).abs() < MINIMUM_MIRROR_THRESHOLD);
-			// TODO Send message to select instead
 			return true;
 		}
+
+		// Deselect all points if no nearby point
+		responses.push_back(DocumentMessage::DeselectAllVectorPoints.into());
 		false
 	}
 
@@ -130,14 +138,14 @@ impl ShapeEditor {
 	}
 
 	/// Select the last anchor in this shape
-	pub fn select_last_anchor<'a>(&'a self, document: &'a Document, layer_id: &[LayerId], responses: VecDeque<Message>) {
+	pub fn select_last_anchor<'a>(&'a self, document: &'a Document, layer_id: &[LayerId], responses: &mut VecDeque<Message>) {
 		// if let Some(last) = self.shape(document, layer_id) {
 		// 	return last.select_last_anchor();
 		// }
 	}
 
 	/// Select the Nth anchor of the shape, negative numbers index from the end
-	pub fn select_nth_anchor<'a>(&'a self, document: &'a Document, layer_id: &'a [LayerId], anchor_index: i32, responses: VecDeque<Message>) {
+	pub fn select_nth_anchor<'a>(&'a self, document: &'a Document, layer_id: &'a [LayerId], anchor_index: i32, responses: &mut VecDeque<Message>) {
 		if let Some(shape) = self.shape(document, layer_id) {
 			if anchor_index < 0 {
 				let anchor_index = shape.anchors().len() - ((-anchor_index) as usize);
@@ -166,10 +174,8 @@ impl ShapeEditor {
 	}
 
 	/// Dissolve the selected points
-	pub fn delete_selected_points(&self, document: &Document, responses: &VecDeque<Message>) {
-		for shape in self.iter(document) {
-			// shape.delete_selected();
-		}
+	pub fn delete_selected_points(&self, responses: &mut VecDeque<Message>) {
+		responses.push_back(DocumentMessage::DeleteSelectedVectorPoints.into());
 	}
 
 	/// Toggle if the handles should mirror angle across the anchor positon
@@ -206,7 +212,7 @@ impl ShapeEditor {
 
 	/// Iterate over the shapes
 	pub fn iter<'a>(&'a self, document: &'a Document) -> impl Iterator<Item = &'a VectorShape> + 'a {
-		self.target_layers.iter().map(|layer_id| document.layer(layer_id)).flatten().filter_map(|shape| shape.as_vector_shape())
+		self.target_layers.iter().flat_map(|layer_id| document.layer(layer_id)).filter_map(|shape| shape.as_vector_shape())
 	}
 
 	/// Find a point that is within the selection threshold and return an index to the shape, anchor, and point
@@ -237,11 +243,12 @@ impl ShapeEditor {
 		let mut result: Option<(u64, usize, f64)> = None;
 
 		if let Some(shape) = document.layer(layer_path).ok()?.as_vector_shape() {
+			let viewspace = document.generate_transform_relative_to_viewport(layer_path).ok()?;
 			for (anchor_id, anchor) in shape.anchors().enumerate() {
-				let point_index = anchor.closest_point(pos);
+				let point_index = anchor.closest_point(&viewspace, pos);
 				if let Some(point) = &anchor.points[point_index] {
 					if point.can_be_selected {
-						let distance_squared = point.position.distance_squared(pos);
+						let distance_squared = viewspace.transform_point2(point.position).distance_squared(pos);
 						if distance_squared < closest_distance_squared {
 							closest_distance_squared = distance_squared;
 							result = Some((*anchor_id, point_index, distance_squared));
@@ -251,11 +258,6 @@ impl ShapeEditor {
 			}
 		}
 		result
-	}
-
-	// Accessor proxies for VectorShapes contained within the document + layers
-	fn shapes<'a>(&'a self, document: &'a Document) -> Vec<&'a VectorShape> {
-		self.target_layers.iter().flat_map(|layer_id| document.vector_shape_ref(layer_id)).collect()
 	}
 
 	fn shape<'a>(&'a self, document: &'a Document, layer_id: &[u64]) -> Option<&'a VectorShape> {

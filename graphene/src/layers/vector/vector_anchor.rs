@@ -64,12 +64,12 @@ impl VectorAnchor {
 	}
 
 	/// Finds the closest VectorControlPoint owned by this anchor. This can be the handles or the anchor itself
-	pub fn closest_point(&self, target: glam::DVec2) -> usize {
+	pub fn closest_point(&self, transform_space: &DAffine2, target: glam::DVec2) -> usize {
 		let mut closest_index: usize = 0;
 		let mut closest_distance_squared: f64 = f64::MAX; // Not ideal
 		for (index, point) in self.points.iter().enumerate() {
 			if let Some(point) = point {
-				let distance_squared = point.position.distance_squared(target);
+				let distance_squared = transform_space.transform_point2(point.position).distance_squared(target);
 				if distance_squared < closest_distance_squared {
 					closest_distance_squared = distance_squared;
 					closest_index = index;
