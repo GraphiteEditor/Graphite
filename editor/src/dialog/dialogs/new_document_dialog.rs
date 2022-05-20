@@ -66,13 +66,13 @@ impl PropertyHolder for NewDocument {
 				direction: SeparatorDirection::Horizontal,
 			})),
 			WidgetHolder::new(Widget::NumberInput(NumberInput {
-				value: self.dimensions.x as f64,
+				value: Some(self.dimensions.x as f64),
 				label: "W".into(),
 				unit: " px".into(),
 				disabled: self.infinite,
 				is_integer: true,
 				min: Some(0.),
-				on_update: WidgetCallback::new(|number_input: &NumberInput| NewDocumentDialogUpdate::DimensionsX(number_input.value).into()),
+				on_update: WidgetCallback::new(|number_input: &NumberInput| NewDocumentDialogUpdate::DimensionsX(number_input.value.unwrap()).into()),
 				..NumberInput::default()
 			})),
 			WidgetHolder::new(Widget::Separator(Separator {
@@ -80,13 +80,13 @@ impl PropertyHolder for NewDocument {
 				direction: SeparatorDirection::Horizontal,
 			})),
 			WidgetHolder::new(Widget::NumberInput(NumberInput {
-				value: self.dimensions.y as f64,
+				value: Some(self.dimensions.y as f64),
 				label: "H".into(),
 				unit: " px".into(),
 				disabled: self.infinite,
 				is_integer: true,
 				min: Some(0.),
-				on_update: WidgetCallback::new(|number_input: &NumberInput| NewDocumentDialogUpdate::DimensionsY(number_input.value).into()),
+				on_update: WidgetCallback::new(|number_input: &NumberInput| NewDocumentDialogUpdate::DimensionsY(number_input.value.unwrap()).into()),
 				..NumberInput::default()
 			})),
 		];

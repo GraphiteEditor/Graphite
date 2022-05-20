@@ -2,6 +2,7 @@ use super::tool::{message_to_tool_type, standard_tool_message, update_working_co
 use crate::document::DocumentMessageHandler;
 use crate::input::InputPreprocessorMessageHandler;
 use crate::layout::layout_message::LayoutTarget;
+use crate::layout::widgets::PropertyHolder;
 use crate::message_prelude::*;
 
 use graphene::color::Color;
@@ -69,12 +70,11 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessorMes
 				// Store the new active tool
 				tool_data.active_tool_type = tool_type;
 
-				// Notify the frontend about the new active tool to be displayed
-				let tool_name = tool_type.to_string();
-				responses.push_back(FrontendMessage::UpdateActiveTool { tool_name }.into());
-
 				// Send Properties to the frontend
 				tool_data.tools.get(&tool_type).unwrap().register_properties(responses, LayoutTarget::ToolOptions);
+
+				// Notify the frontend about the new active tool to be displayed
+				tool_data.register_properties(responses, LayoutTarget::ToolShelf);
 			}
 			DocumentIsDirty => {
 				// Send the DocumentIsDirty message to the active tool's sub-tool message handler
@@ -82,6 +82,21 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessorMes
 				if let Some(message) = standard_tool_message(active_tool, StandardToolMessageType::DocumentIsDirty) {
 					responses.push_back(message.into());
 				}
+			}
+			InitTools => {
+				let tool_data = &mut self.tool_state.tool_data;
+				let document_data = &self.tool_state.document_tool_data;
+				let active_tool = &tool_data.active_tool_type;
+
+				// Register initial properties
+				tool_data.tools.get(active_tool).unwrap().register_properties(responses, LayoutTarget::ToolOptions);
+
+				// Notify the frontend about the initial active tool
+				tool_data.register_properties(responses, LayoutTarget::ToolShelf);
+
+				// Set initial hints and cursor
+				tool_data.active_tool_mut().process_action(ToolMessage::UpdateHints, (document, document_data, input), responses);
+				tool_data.active_tool_mut().process_action(ToolMessage::UpdateCursor, (document, document_data, input), responses);
 			}
 			ResetColors => {
 				let document_data = &mut self.tool_state.document_tool_data;

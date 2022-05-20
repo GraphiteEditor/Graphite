@@ -61,7 +61,7 @@ impl PropertyHolder for ShapeTool {
 		WidgetLayout::new(vec![LayoutRow::Row {
 			widgets: vec![WidgetHolder::new(Widget::NumberInput(NumberInput {
 				label: "Sides".into(),
-				value: self.options.vertices as f64,
+				value: Some(self.options.vertices as f64),
 				is_integer: true,
 				min: Some(3.),
 				max: Some(1000.),

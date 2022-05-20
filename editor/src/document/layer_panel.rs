@@ -1,5 +1,4 @@
 use graphene::document::FontCache;
-use graphene::layers::blend_mode::BlendMode;
 use graphene::layers::layer_info::{Layer, LayerData, LayerDataType};
 use graphene::layers::style::ViewMode;
 use graphene::LayerId;
@@ -48,8 +47,6 @@ pub fn layer_panel_entry(layer_metadata: &LayerMetadata, transform: DAffine2, la
 	LayerPanelEntry {
 		name,
 		visible: layer.visible,
-		blend_mode: layer.blend_mode,
-		opacity: layer.opacity,
 		layer_type: (&layer.data).into(),
 		layer_metadata: *layer_metadata,
 		path,
@@ -88,8 +85,6 @@ impl Serialize for RawBuffer {
 pub struct LayerPanelEntry {
 	pub name: String,
 	pub visible: bool,
-	pub blend_mode: BlendMode,
-	pub opacity: f64,
 	pub layer_type: LayerDataTypeDiscriminant,
 	pub layer_metadata: LayerMetadata,
 	pub path: Vec<LayerId>,

@@ -52,8 +52,18 @@ pub type SubLayout = Vec<LayoutRow>;
 #[remain::sorted]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum LayoutRow {
-	Row { widgets: Vec<WidgetHolder> },
-	Section { name: String, layout: SubLayout },
+	Column {
+		#[serde(rename = "columnWidgets")]
+		widgets: Vec<WidgetHolder>,
+	},
+	Row {
+		#[serde(rename = "rowWidgets")]
+		widgets: Vec<WidgetHolder>,
+	},
+	Section {
+		name: String,
+		layout: SubLayout,
+	},
 }
 
 #[derive(Debug, Default)]
@@ -72,6 +82,10 @@ impl<'a> Iterator for WidgetIter<'a> {
 		}
 
 		match self.stack.pop() {
+			Some(LayoutRow::Column { widgets }) => {
+				self.current_slice = Some(widgets);
+				self.next()
+			}
 			Some(LayoutRow::Row { widgets }) => {
 				self.current_slice = Some(widgets);
 				self.next()
@@ -103,6 +117,10 @@ impl<'a> Iterator for WidgetIterMut<'a> {
 		};
 
 		match self.stack.pop() {
+			Some(LayoutRow::Column { widgets }) => {
+				self.current_slice = Some(widgets);
+				self.next()
+			}
 			Some(LayoutRow::Row { widgets }) => {
 				self.current_slice = Some(widgets);
 				self.next()
@@ -170,7 +188,7 @@ pub enum Widget {
 #[derive(Clone, Serialize, Deserialize, Derivative)]
 #[derivative(Debug, PartialEq, Default)]
 pub struct NumberInput {
-	pub value: f64,
+	pub value: Option<f64>,
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
 	pub on_update: WidgetCallback<NumberInput>,
@@ -285,6 +303,7 @@ pub struct IconButton {
 	#[serde(rename = "title")]
 	pub tooltip: String,
 	pub size: u32,
+	pub active: bool,
 	#[serde(rename = "gapAfter")]
 	pub gap_after: bool,
 	#[serde(skip)]
@@ -298,12 +317,12 @@ pub struct IconButton {
 pub struct TextButton {
 	pub label: String,
 	pub emphasized: bool,
-	pub disabled: bool,
 	pub min_width: u32,
 	pub gap_after: bool,
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
 	pub on_update: WidgetCallback<TextButton>,
+	pub disabled: bool,
 }
 
 #[derive(Clone, Serialize, Deserialize, Derivative, Default)]
@@ -342,16 +361,14 @@ pub struct PopoverButton {
 #[derive(Clone, Serialize, Deserialize, Derivative, Default)]
 #[derivative(Debug, PartialEq)]
 pub struct DropdownInput {
-	#[serde(rename = "menuEntries")]
-	pub menu_entries: Vec<Vec<DropdownEntryData>>,
-
-	// This uses `u32` instead of `usize` since it will be serialized as a normal JS number
-	// TODO(mfish33): Replace with usize when using native UI
+	pub entries: Vec<Vec<DropdownEntryData>>,
+	// This uses `u32` instead of `usize` since it will be serialized as a normal JS number (replace with usize when we switch to a native UI)
 	#[serde(rename = "selectedIndex")]
-	pub selected_index: u32,
-
+	pub selected_index: Option<u32>,
 	#[serde(rename = "drawIcon")]
 	pub draw_icon: bool,
+	// `on_update` exists on the `DropdownEntryData`, not this parent `DropdownInput`
+	pub disabled: bool,
 }
 
 #[derive(Clone, Serialize, Deserialize, Derivative, Default)]

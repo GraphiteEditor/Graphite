@@ -64,7 +64,7 @@ impl PropertyHolder for Export {
 		let mut export_area_options = vec![(ExportBounds::AllArtwork, "All Artwork".to_string())];
 		export_area_options.extend(artboards);
 		let index = export_area_options.iter().position(|(val, _)| val == &self.bounds).unwrap();
-		let menu_entries = vec![export_area_options
+		let entries = vec![export_area_options
 			.into_iter()
 			.map(|(val, name)| DropdownEntryData {
 				label: name,
@@ -84,8 +84,8 @@ impl PropertyHolder for Export {
 				direction: SeparatorDirection::Horizontal,
 			})),
 			WidgetHolder::new(Widget::DropdownInput(DropdownInput {
-				selected_index: index as u32,
-				menu_entries,
+				selected_index: Some(index as u32),
+				entries,
 				..Default::default()
 			})),
 		];
@@ -101,19 +101,19 @@ impl PropertyHolder for Export {
 				direction: SeparatorDirection::Horizontal,
 			})),
 			WidgetHolder::new(Widget::NumberInput(NumberInput {
-				value: self.scale_factor,
+				value: Some(self.scale_factor),
 				label: "".into(),
 				unit: " ".into(),
-				disabled: self.file_type == FileType::Svg,
 				min: Some(0.),
-				on_update: WidgetCallback::new(|number_input: &NumberInput| ExportDialogUpdate::ScaleFactor(number_input.value).into()),
+				disabled: self.file_type == FileType::Svg,
+				on_update: WidgetCallback::new(|number_input: &NumberInput| ExportDialogUpdate::ScaleFactor(number_input.value.unwrap()).into()),
 				..NumberInput::default()
 			})),
 		];
 
 		let button_widgets = vec![
 			WidgetHolder::new(Widget::TextButton(TextButton {
-				label: "OK".to_string(),
+				label: "Export".to_string(),
 				min_width: 96,
 				emphasized: true,
 				on_update: WidgetCallback::new(|_| {

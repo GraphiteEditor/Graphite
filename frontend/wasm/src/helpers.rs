@@ -1,4 +1,26 @@
+use crate::JS_EDITOR_HANDLES;
+
+use editor::{input::keyboard::Key, message_prelude::FrontendMessage};
+
+use std::panic;
 use wasm_bindgen::prelude::*;
+
+/// When a panic occurs, notify the user and log the error to the JS console before the backend dies
+pub fn panic_hook(info: &panic::PanicInfo) {
+	let panic_info = info.to_string();
+	let title = "The editor crashed — sorry about that".to_string();
+	let description = "An internal error occurred. Reload the editor to continue. Please report this by filing an issue on GitHub.".to_string();
+	log::error!("{}", info);
+	JS_EDITOR_HANDLES.with(|instances| {
+		instances.borrow_mut().values_mut().for_each(|instance| {
+			instance.handle_response_rust_proxy(FrontendMessage::DisplayDialogPanic {
+				panic_info: panic_info.clone(),
+				title: title.clone(),
+				description: description.clone(),
+			})
+		})
+	});
+}
 
 /// The JavaScript `Error` type
 #[wasm_bindgen]
@@ -10,15 +32,111 @@ extern "C" {
 	pub fn new(msg: &str) -> Error;
 }
 
-/// Takes a string and matches it to its equivalently-named enum variant (useful for simple type translations)
-macro_rules! match_string_to_enum {
-	(match ($e:expr) {$($var:ident),* $(,)?}) => {
-		match $e {
-			$(
-			stringify!($var) => Some($var),
-			)*
-			_ => None
-		}
-	};
+/// Logging to the JS console
+#[wasm_bindgen]
+extern "C" {
+	#[wasm_bindgen(js_namespace = console)]
+	fn log(msg: &str, format: &str);
+	#[wasm_bindgen(js_namespace = console)]
+	fn info(msg: &str, format: &str);
+	#[wasm_bindgen(js_namespace = console)]
+	fn warn(msg: &str, format: &str);
+	#[wasm_bindgen(js_namespace = console)]
+	fn error(msg: &str, format: &str);
 }
-pub(crate) use match_string_to_enum;
+
+#[derive(Default)]
+pub struct WasmLog;
+
+impl log::Log for WasmLog {
+	fn enabled(&self, metadata: &log::Metadata) -> bool {
+		metadata.level() <= log::Level::Info
+	}
+
+	fn log(&self, record: &log::Record) {
+		let (log, name, color): (fn(&str, &str), &str, &str) = match record.level() {
+			log::Level::Trace => (log, "trace", "color:plum"),
+			log::Level::Debug => (log, "debug", "color:cyan"),
+			log::Level::Warn => (warn, "warn", "color:goldenrod"),
+			log::Level::Info => (info, "info", "color:mediumseagreen"),
+			log::Level::Error => (error, "error", "color:red"),
+		};
+		let msg = &format!("%c{}\t{}", name, record.args());
+		log(msg, color)
+	}
+
+	fn flush(&self) {}
+}
+
+/// Translate a keyboard key from its JS name to its Rust `Key` enum
+pub fn translate_key(name: &str) -> Key {
+	use Key::*;
+
+	log::trace!("Key event received: {}", name);
+
+	match name.to_lowercase().as_str() {
+		"a" => KeyA,
+		"b" => KeyB,
+		"c" => KeyC,
+		"d" => KeyD,
+		"e" => KeyE,
+		"f" => KeyF,
+		"g" => KeyG,
+		"h" => KeyH,
+		"i" => KeyI,
+		"j" => KeyJ,
+		"k" => KeyK,
+		"l" => KeyL,
+		"m" => KeyM,
+		"n" => KeyN,
+		"o" => KeyO,
+		"p" => KeyP,
+		"q" => KeyQ,
+		"r" => KeyR,
+		"s" => KeyS,
+		"t" => KeyT,
+		"u" => KeyU,
+		"v" => KeyV,
+		"w" => KeyW,
+		"x" => KeyX,
+		"y" => KeyY,
+		"z" => KeyZ,
+		"0" => Key0,
+		"1" => Key1,
+		"2" => Key2,
+		"3" => Key3,
+		"4" => Key4,
+		"5" => Key5,
+		"6" => Key6,
+		"7" => Key7,
+		"8" => Key8,
+		"9" => Key9,
+		"enter" => KeyEnter,
+		"=" => KeyEquals,
+		"+" => KeyPlus,
+		"-" => KeyMinus,
+		"shift" => KeyShift,
+		// When using linux + chrome + the neo keyboard layout, the shift key is recognized as caps
+		"capslock" => KeyShift,
+		" " => KeySpace,
+		"control" => KeyControl,
+		"delete" => KeyDelete,
+		"backspace" => KeyBackspace,
+		"alt" => KeyAlt,
+		"escape" => KeyEscape,
+		"tab" => KeyTab,
+		"arrowup" => KeyArrowUp,
+		"arrowdown" => KeyArrowDown,
+		"arrowleft" => KeyArrowLeft,
+		"arrowright" => KeyArrowRight,
+		"[" => KeyLeftBracket,
+		"]" => KeyRightBracket,
+		"{" => KeyLeftCurlyBracket,
+		"}" => KeyRightCurlyBracket,
+		"pageup" => KeyPageUp,
+		"pagedown" => KeyPageDown,
+		"," => KeyComma,
+		"." => KeyPeriod,
+		_ => UnknownKey,
+	}
+}
