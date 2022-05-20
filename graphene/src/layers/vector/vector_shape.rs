@@ -52,7 +52,7 @@ impl VectorShape {
 
 	/// constructs an ngon
 	/// `radius` is the distance from the center to any vertex, or the radius of the circle the ngon may be inscribed inside
-	pub fn new_ngon(center: DVec2, sides: u64, radius: f64) -> Self {
+	pub fn new_ngon(center: DVec2, sides: u32, radius: f64) -> Self {
 		let mut anchors = vec![];
 		for i in 0..sides {
 			let angle = (i as f64) * std::f64::consts::TAU / (sides as f64);

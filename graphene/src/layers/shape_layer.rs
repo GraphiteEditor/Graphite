@@ -108,7 +108,31 @@ impl ShapeLayer {
 	///
 	/// # Panics
 	/// This function panics if `sides` is zero.
-	pub fn ngon(sides: u64, style: PathStyle) -> Self {
+	pub fn ngon(sides: u32, style: PathStyle) -> Self {
+		use std::f64::consts::{FRAC_PI_2, TAU};
+
+		fn unit_rotation(theta: f64) -> DVec2 {
+			DVec2::new(theta.sin(), theta.cos())
+		}
+
+		let mut path = kurbo::BezPath::new();
+
+		let apothem_offset_angle = TAU / (sides as f64);
+		// Rotate odd sided shapes by 90 degrees
+		let offset = ((sides + 1) % 2) as f64 * FRAC_PI_2;
+
+		let relative_points = (0..sides).map(|i| apothem_offset_angle * i as f64 + offset).map(unit_rotation);
+
+		let min = relative_points.clone().reduce(|a, b| a.min(b)).unwrap_or_default();
+		let transform = DAffine2::from_scale_angle_translation(DVec2::ONE / 2., 0., -min / 2.);
+		let point = |vec: DVec2| kurbo::Point::new(vec.x, vec.y);
+
+		let mut relative_points = relative_points.map(|p| point(transform.transform_point2(p)));
+		path.move_to(relative_points.next().expect("Tried to create an ngon with 0 sides"));
+		relative_points.for_each(|p| path.line_to(p));
+
+		path.close_path();
+
 		Self {
 			shape: VectorShape::new_ngon(DVec2::new(0., 0.), sides, 1.),
 			style,

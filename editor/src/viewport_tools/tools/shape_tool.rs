@@ -23,7 +23,7 @@ pub struct ShapeTool {
 }
 
 pub struct ShapeOptions {
-	vertices: u8,
+	vertices: u32,
 }
 
 impl Default for ShapeOptions {
@@ -53,7 +53,7 @@ pub enum ShapeToolMessage {
 #[remain::sorted]
 #[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize)]
 pub enum ShapeOptionsUpdate {
-	Vertices(u8),
+	Vertices(u32),
 }
 
 impl PropertyHolder for ShapeTool {
@@ -64,8 +64,8 @@ impl PropertyHolder for ShapeTool {
 				value: Some(self.options.vertices as f64),
 				is_integer: true,
 				min: Some(3.),
-				max: Some(256.),
-				on_update: WidgetCallback::new(|number_input: &NumberInput| ShapeToolMessage::UpdateOptions(ShapeOptionsUpdate::Vertices(number_input.value.unwrap() as u8)).into()),
+				max: Some(1000.),
+				on_update: WidgetCallback::new(|number_input: &NumberInput| ShapeToolMessage::UpdateOptions(ShapeOptionsUpdate::Vertices(number_input.value.unwrap() as u32)).into()),
 				..NumberInput::default()
 			}))],
 		}])
@@ -123,7 +123,7 @@ impl Default for ShapeToolFsmState {
 }
 #[derive(Clone, Debug, Default)]
 struct ShapeToolData {
-	sides: u8,
+	sides: u32,
 	data: Resize,
 }
 
