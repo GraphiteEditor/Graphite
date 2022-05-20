@@ -58,7 +58,7 @@ pub enum DocumentMessage {
 	DeselectAllVectorPoints,
 	DeselectVectorPoints {
 		layer_path: Vec<LayerId>,
-		point_ids: Vec<u64>,
+		anchor_ids: Vec<u64>,
 	},
 	DirtyRenderDocument,
 	DirtyRenderDocumentInOutlineView,
@@ -128,7 +128,7 @@ pub enum DocumentMessage {
 	},
 	SelectVectorPoints {
 		layer_path: Vec<LayerId>,
-		point_ids: Vec<u64>,
+		anchor_ids: Vec<u64>,
 		add: bool,
 	},
 	SetBlendModeForSelectedLayers {

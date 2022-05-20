@@ -1022,21 +1022,19 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 
 				responses.push_front(DocumentMessage::SelectionChanged.into());
 			}
-			DeleteSelectedVectorPoints => { 
+			DeleteSelectedVectorPoints => {
 				self.backup(responses);
 
 				for path in self.selected_layers_without_children() {
-					responses.push_front(DocumentOperation::DeleteSelectedVectorPoints { path:path.to_vec() }.into());
+					responses.push_front(DocumentOperation::DeleteSelectedVectorPoints { path: path.to_vec() }.into());
 				}
-
-				responses.push_front(DocumentMessage::SelectionChanged.into());
 			}
 			DeselectAllLayers => {
 				responses.push_front(SetSelectedLayers { replacement_selected_layers: vec![] }.into());
 				self.layer_range_selection_reference.clear();
 			}
 			DeselectAllVectorPoints => {}
-			DeselectVectorPoints { layer_path, point_ids } => {}
+			DeselectVectorPoints { layer_path, anchor_ids } => {}
 			DirtyRenderDocument => {
 				// Mark all non-overlay caches as dirty
 				GrapheneDocument::mark_children_as_dirty(&mut self.graphene_document.root);
@@ -1432,7 +1430,10 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 					}
 				}
 			}
-			SelectVectorPoints { layer_path, point_ids, add } => {}
+			// TODO Might be able to send this directly from a tool instead and bypass DocumentMessageHandler
+			SelectVectorPoints { layer_path, anchor_ids, add } => {
+				responses.push_back(DocumentOperation::SelectVectorPoints { layer_path, anchor_ids, add }.into());
+			}
 			SetBlendModeForSelectedLayers { blend_mode } => {
 				self.backup(responses);
 				for path in self.layer_metadata.iter().filter_map(|(path, data)| data.selected.then(|| path.clone())) {

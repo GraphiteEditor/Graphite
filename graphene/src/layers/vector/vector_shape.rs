@@ -109,6 +109,15 @@ impl VectorShape {
 		None
 	}
 
+	/// Select anchors by an array of IDs
+	pub fn select_anchors(&mut self, anchor_ids: &[u64]) {
+		for anchor_id in anchor_ids {
+			if let Some(anchor) = self.0.by_id_mut(*anchor_id) {
+				anchor.select_point(ControlPointType::Anchor as usize, true);
+			}
+		}
+	}
+
 	/// Select an anchor by index
 	pub fn select_anchor_by_index(&mut self, anchor_index: usize) -> Option<&mut VectorAnchor> {
 		// TODO test if looking this up by index actually works

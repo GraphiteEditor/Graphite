@@ -19,7 +19,7 @@ Overview:
 
 use std::collections::VecDeque;
 
-use crate::message_prelude::Message;
+use crate::message_prelude::{DocumentMessage, Message};
 
 use super::vector_shape::VectorShape;
 use super::{constants::MINIMUM_MIRROR_THRESHOLD, vector_anchor::VectorAnchor, vector_control_point::VectorControlPoint};
@@ -57,17 +57,22 @@ impl ShapeEditor {
 				.unwrap()
 				.is_selected;
 
-			// Deselected if we're not adding to the selection
-			if !add_to_selection && !is_point_selected {
-				self.deselect_all_points(document, responses);
-			}
-
 			let selected_shape = self.shape(document, shape_layer_path).unwrap();
 			// TODO kurbo bez_path are no long present in the vector shapes, resolve fallout
 			// selected_shape.elements = selected_shape.bez_path.clone().into_iter().collect();
 
 			// Should we select or deselect the point?
 			let should_select = if is_point_selected { !(add_to_selection && is_point_selected) } else { true };
+
+			// This is selecting the anchor only for now, next to generalize to points
+			responses.push_back(
+				DocumentMessage::SelectVectorPoints {
+					layer_path: shape_layer_path.to_vec(),
+					anchor_ids: vec![anchor_id],
+					add: !add_to_selection && !is_point_selected,
+				}
+				.into(),
+			);
 
 			// Add which anchor and point was selected
 			// let selected_anchor = selected_shape.select_anchor(anchor_id).unwrap();

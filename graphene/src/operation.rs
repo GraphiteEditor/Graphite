@@ -125,6 +125,11 @@ pub enum Operation {
 	DeleteSelectedVectorPoints {
 		path: Vec<LayerId>,
 	},
+	SelectVectorPoints {
+		layer_path: Vec<LayerId>,
+		anchor_ids: Vec<u64>,
+		add: bool,
+	},
 	DuplicateLayer {
 		path: Vec<LayerId>,
 	},
