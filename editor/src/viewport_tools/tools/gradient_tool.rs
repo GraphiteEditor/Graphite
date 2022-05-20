@@ -278,10 +278,7 @@ impl SelectedGradient {
 		}
 
 		self.gradient.transform = self.transform;
-		let fill = match gradient_type {
-			GradientType::Linear => Fill::LinearGradient(self.gradient.clone()),
-			GradientType::Radial => Fill::RadialGradient(self.gradient.clone()),
-		};
+		let fill = Fill::Gradient(self.gradient.clone());
 		let path = self.path.clone();
 		responses.push_back(Operation::SetLayerFill { path, fill }.into());
 	}
@@ -323,7 +320,7 @@ impl Fsm for GradientToolFsmState {
 					for path in document.selected_visible_layers() {
 						let layer = document.graphene_document.layer(path).unwrap();
 
-						if let Ok(Fill::LinearGradient(gradient)) | Ok(Fill::RadialGradient(gradient)) = layer.style().map(|style| style.fill()) {
+						if let Ok(Fill::Gradient(gradient)) = layer.style().map(|style| style.fill()) {
 							let dragging_start = data
 								.selected_gradient
 								.as_ref()

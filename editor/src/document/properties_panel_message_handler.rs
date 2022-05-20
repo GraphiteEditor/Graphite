@@ -804,7 +804,7 @@ fn node_gradient_type(gradient: &Gradient) -> LayoutRow {
 					tooltip: "Linear Gradient".into(),
 					on_update: WidgetCallback::new(move |_| {
 						PropertiesPanelMessage::ModifyFill {
-							fill: Fill::LinearGradient(cloned_gradient_linear.clone()),
+							fill: Fill::Gradient(cloned_gradient_linear.clone()),
 						}
 						.into()
 					}),
@@ -816,7 +816,7 @@ fn node_gradient_type(gradient: &Gradient) -> LayoutRow {
 					tooltip: "Radial Gradient".into(),
 					on_update: WidgetCallback::new(move |_| {
 						PropertiesPanelMessage::ModifyFill {
-							fill: Fill::RadialGradient(cloned_gradient_radial.clone()),
+							fill: Fill::Gradient(cloned_gradient_radial.clone()),
 						}
 						.into()
 					}),
@@ -829,20 +829,7 @@ fn node_gradient_type(gradient: &Gradient) -> LayoutRow {
 
 fn node_gradient_color(gradient: &Gradient, percent_label: &'static str, position: usize) -> LayoutRow {
 	let gradient_clone = Rc::new(gradient.clone());
-	let send_fill_message = match gradient.gradient_type {
-		GradientType::Radial => move |new_gradient: Gradient| {
-			PropertiesPanelMessage::ModifyFill {
-				fill: Fill::RadialGradient(new_gradient),
-			}
-			.into()
-		},
-		GradientType::Linear => move |new_gradient: Gradient| {
-			PropertiesPanelMessage::ModifyFill {
-				fill: Fill::LinearGradient(new_gradient),
-			}
-			.into()
-		},
-	};
+	let send_fill_message = move |new_gradient: Gradient| PropertiesPanelMessage::ModifyFill { fill: Fill::Gradient(new_gradient) }.into();
 	LayoutRow::Row {
 		widgets: vec![
 			WidgetHolder::new(Widget::TextLabel(TextLabel {
@@ -909,7 +896,7 @@ fn node_section_fill(fill: &Fill) -> Option<LayoutRow> {
 				],
 			}],
 		}),
-		Fill::LinearGradient(gradient) | Fill::RadialGradient(gradient) => Some(LayoutRow::Section {
+		Fill::Gradient(gradient) => Some(LayoutRow::Section {
 			name: "Fill".into(),
 			layout: vec![node_gradient_type(gradient), node_gradient_color(gradient, "0%", 0), node_gradient_color(gradient, "100%", 1)],
 		}),

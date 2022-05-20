@@ -129,8 +129,7 @@ impl Gradient {
 pub enum Fill {
 	None,
 	Solid(Color),
-	LinearGradient(Gradient),
-	RadialGradient(Gradient),
+	Gradient(Gradient),
 }
 
 impl Default for Fill {
@@ -145,14 +144,13 @@ impl Fill {
 		Self::Solid(color)
 	}
 
-	/// Evaluate the color at some point on the fill. Doesn't currently work for LinearGradient.
+	/// Evaluate the color at some point on the fill. Doesn't currently work for Gradient.
 	pub fn color(&self) -> Color {
 		match self {
 			Self::None => Color::BLACK,
 			Self::Solid(color) => *color,
 			// TODO: Should correctly sample the gradient
-			Self::LinearGradient(Gradient { positions, .. }) => positions[0].1.unwrap_or(Color::BLACK),
-			Self::RadialGradient(Gradient { positions, .. }) => positions[0].1.unwrap_or(Color::BLACK),
+			Self::Gradient(Gradient { positions, .. }) => positions[0].1.unwrap_or(Color::BLACK),
 		}
 	}
 
@@ -161,7 +159,7 @@ impl Fill {
 		match self {
 			Self::None => r#" fill="none""#.to_string(),
 			Self::Solid(color) => format!(r##" fill="#{}"{}"##, color.rgb_hex(), format_opacity("fill", color.a())),
-			Self::LinearGradient(gradient) | Self::RadialGradient(gradient) => {
+			Self::Gradient(gradient) => {
 				gradient.render_defs(svg_defs, multiplied_transform, bounds, transformed_bounds);
 				format!(r##" fill="url('#{}')""##, gradient.uuid)
 			}
