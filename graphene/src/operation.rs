@@ -215,8 +215,8 @@ impl Operation {
 	/// # Safety
 	/// This function reads from uninitialized memory!!!
 	/// Only use if you know what you are doing
-	unsafe fn as_slice(&self) -> &[u32] {
-		core::slice::from_raw_parts(self as *const Operation as *const u32, std::mem::size_of::<Operation>())
+	unsafe fn as_slice(&self) -> &[u8] {
+		core::slice::from_raw_parts(self as *const Operation as *const u8, std::mem::size_of::<Operation>())
 	}
 	/// Returns a pseudo hash that should uniquely identify the operation.
 	/// This is needed because `Hash` is not implemented for f64s
