@@ -229,6 +229,12 @@ export function createInputManager(editor: EditorState, container: HTMLElement, 
 	const onPaste = (e: ClipboardEvent): void => {
 		const dataTransfer = e.clipboardData;
 		if (!dataTransfer) return;
+
+		// Allow pasting into html elements
+		if (e.target instanceof HTMLElement && (e.target.nodeName === "INPUT" || e.target.nodeName === "TEXTAREA" || e.target.isContentEditable)) {
+			return;
+		}
+
 		e.preventDefault();
 
 		Array.from(dataTransfer.items).forEach((item) => {
