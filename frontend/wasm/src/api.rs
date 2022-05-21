@@ -94,6 +94,12 @@ impl JsEditorHandle {
 
 		let message = ToolMessage::InitTools;
 		self.dispatch(message);
+
+		let message = FrontendMessage::TriggerFontLoadDefault;
+		self.dispatch(message);
+
+		let message = MovementMessage::TranslateCanvas { delta: (0., 0.).into() };
+		self.dispatch(message);
 	}
 
 	/// Intentionally panic for debugging purposes
