@@ -1,4 +1,4 @@
-import { HSVA, RGBA } from "@/interop/messages";
+import { HSVA, RGBA } from "@/wasm-communication/messages";
 
 export function hsvaToRgba(hsva: HSVA): RGBA {
 	const { h, s, v, a } = hsva;

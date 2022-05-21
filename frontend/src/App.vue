@@ -258,30 +258,30 @@ img {
 <script lang="ts">
 import { defineComponent } from "vue";
 
-import { createEditor, Editor } from "@/interop/editor";
-import { createAutoSaveManager } from "@/managers/auto-save";
-import { createBuildMetadataManager } from "@/managers/build-metadata";
-import { createClipboardManager } from "@/managers/clipboard";
-import { createHyperlinkManager } from "@/managers/hyperlinks";
-import { createInputManager } from "@/managers/input";
-import { createPanicManager } from "@/managers/panic";
+import { createBuildMetadataManager } from "@/io-managers/build-metadata";
+import { createClipboardManager } from "@/io-managers/clipboard";
+import { createHyperlinkManager } from "@/io-managers/hyperlinks";
+import { createInputManager } from "@/io-managers/input";
+import { createPanicManager } from "@/io-managers/panic";
+import { createPersistenceManager } from "@/io-managers/persistence";
 import { createDialogState, DialogState } from "@/state-providers/dialog";
 import { createFontsState, FontsState } from "@/state-providers/fonts";
 import { createFullscreenState, FullscreenState } from "@/state-providers/fullscreen";
 import { createPortfolioState, PortfolioState } from "@/state-providers/portfolio";
 import { createWorkspaceState, WorkspaceState } from "@/state-providers/workspace";
+import { createEditor, Editor } from "@/wasm-communication/editor";
 
 import LayoutCol from "@/components/layout/LayoutCol.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 import MainWindow from "@/components/window/MainWindow.vue";
 
 const managerDestructors: {
-	createAutoSaveManager?: () => void;
 	createBuildMetadataManager?: () => void;
 	createClipboardManager?: () => void;
 	createHyperlinkManager?: () => void;
 	createInputManager?: () => void;
 	createPanicManager?: () => void;
+	createPersistenceManager?: () => void;
 } = {};
 
 // Vue injects don't play well with TypeScript (all injects will show up as `any`) but we can define these types as a solution
@@ -332,12 +332,12 @@ export default defineComponent({
 	async mounted() {
 		// Initialize managers, which are isolated systems that subscribe to backend messages to link them to browser API functionality (like JS events, IndexedDB, etc.)
 		Object.assign(managerDestructors, {
-			createAutoSaveManager: await createAutoSaveManager(this.editor, this.portfolio),
 			createBuildMetadataManager: createBuildMetadataManager(this.editor),
 			createClipboardManager: createClipboardManager(this.editor),
 			createHyperlinkManager: createHyperlinkManager(this.editor),
 			createInputManager: createInputManager(this.editor, this.$el.parentElement, this.dialog, this.portfolio, this.fullscreen),
 			createPanicManager: createPanicManager(this.editor, this.dialog),
+			createPersistenceManager: await createPersistenceManager(this.editor, this.portfolio),
 		});
 
 		// Initialize certain setup tasks required by the editor backend to be ready for the user now that the frontend is ready

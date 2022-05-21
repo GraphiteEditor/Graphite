@@ -1,6 +1,6 @@
-import { Editor, getWasmInstance } from "@/interop/editor";
-import { TriggerIndexedDbWriteDocument, TriggerIndexedDbRemoveDocument } from "@/interop/messages";
 import { PortfolioState } from "@/state-providers/portfolio";
+import { Editor, getWasmInstance } from "@/wasm-communication/editor";
+import { TriggerIndexedDbWriteDocument, TriggerIndexedDbRemoveDocument } from "@/wasm-communication/messages";
 
 const GRAPHITE_INDEXED_DB_VERSION = 2;
 const GRAPHITE_INDEXED_DB_NAME = "graphite-indexed-db";
@@ -8,7 +8,7 @@ const GRAPHITE_AUTO_SAVE_STORE = "auto-save-documents";
 const GRAPHITE_AUTO_SAVE_ORDER_KEY = "auto-save-documents-order";
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
-export async function createAutoSaveManager(editor: Editor, portfolio: PortfolioState): Promise<() => void> {
+export async function createPersistenceManager(editor: Editor, portfolio: PortfolioState): Promise<() => void> {
 	function storeDocumentOrder(): void {
 		// Make sure to store as string since JSON does not play nice with BigInt
 		const documentOrder = portfolio.state.documents.map((doc) => doc.id.toString());

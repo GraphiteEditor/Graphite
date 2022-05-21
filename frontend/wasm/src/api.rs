@@ -84,7 +84,6 @@ impl JsEditorHandle {
 	// the backend from the web frontend.
 	// ========================================================================
 
-	// TODO: Replace with initialization system, issue #524
 	pub fn init_app(&self) {
 		let message = PortfolioMessage::UpdateOpenDocumentsList;
 		self.dispatch(message);

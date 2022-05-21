@@ -1,5 +1,5 @@
-import { Editor } from "@/interop/editor";
-import { TriggerVisitLink } from "@/interop/messages";
+import { Editor } from "@/wasm-communication/editor";
+import { TriggerVisitLink } from "@/wasm-communication/messages";
 
 export function createHyperlinkManager(editor: Editor): void {
 	// Subscribe to process backend event

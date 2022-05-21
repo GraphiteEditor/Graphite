@@ -220,6 +220,7 @@
 <script lang="ts">
 import { defineComponent, nextTick } from "vue";
 
+import { textInputCleanup } from "@/utility-functions/keyboard-entry";
 import {
 	UpdateDocumentArtwork,
 	UpdateDocumentOverlays,
@@ -237,9 +238,7 @@ import {
 	TriggerViewportResize,
 	DisplayRemoveEditableTextbox,
 	DisplayEditableTextbox,
-} from "@/interop/messages";
-
-import { textInputCleanup } from "@/utilities/keyboard-entry";
+} from "@/wasm-communication/messages";
 
 import LayoutCol from "@/components/layout/LayoutCol.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";

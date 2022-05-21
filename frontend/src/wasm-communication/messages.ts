@@ -3,8 +3,8 @@
 
 import { Transform, Type } from "class-transformer";
 
-import type { WasmEditorInstance, WasmRawInstance } from "@/interop/editor";
-import { IconName } from "@/utilities/icons";
+import { IconName } from "@/utility-functions/icons";
+import type { WasmEditorInstance, WasmRawInstance } from "@/wasm-communication/editor";
 
 export class JsMessage {
 	// The marker provides a way to check if an object is a sub-class constructor for a jsMessage.

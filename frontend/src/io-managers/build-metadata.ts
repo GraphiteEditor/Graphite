@@ -1,4 +1,4 @@
-import { Editor } from "@/interop/editor";
+import { Editor } from "@/wasm-communication/editor";
 
 // Gets metadata populated in the `process.env` namespace by code in `frontend/vue.config.js`.
 // TODO: Move that functionality to a build.rs file so our web build system is more lightweight.

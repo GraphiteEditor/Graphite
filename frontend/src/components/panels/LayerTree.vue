@@ -263,7 +263,7 @@
 <script lang="ts">
 import { defineComponent } from "vue";
 
-import { defaultWidgetLayout, UpdateDocumentLayerTreeStructure, UpdateDocumentLayerDetails, UpdateLayerTreeOptionsLayout, LayerPanelEntry } from "@/interop/messages";
+import { defaultWidgetLayout, UpdateDocumentLayerTreeStructure, UpdateDocumentLayerDetails, UpdateLayerTreeOptionsLayout, LayerPanelEntry } from "@/wasm-communication/messages";
 
 import LayoutCol from "@/components/layout/LayoutCol.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";

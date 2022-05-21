@@ -1,4 +1,4 @@
-import { type RGBA as RGBA_ } from "@/interop/messages";
+import { type RGBA as RGBA_ } from "@/wasm-communication/messages";
 
 import FloatingMenu from "@/components/widgets/floating-menus/FloatingMenu.vue";
 import MenuList from "@/components/widgets/floating-menus/MenuList.vue";

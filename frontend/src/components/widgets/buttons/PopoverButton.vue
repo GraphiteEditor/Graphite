@@ -49,7 +49,7 @@
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
 
-import { IconName } from "@/utilities/icons";
+import { IconName } from "@/utility-functions/icons";
 
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 import IconButton from "@/components/widgets/buttons/IconButton.vue";

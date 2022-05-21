@@ -99,9 +99,8 @@
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
 
-import { HintInfo, KeysGroup } from "@/interop/messages";
-
-import { IconName } from "@/utilities/icons";
+import { IconName } from "@/utility-functions/icons";
+import { HintInfo, KeysGroup } from "@/wasm-communication/messages";
 
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";

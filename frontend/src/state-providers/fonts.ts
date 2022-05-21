@@ -1,7 +1,7 @@
 import { reactive, readonly } from "vue";
 
-import { Editor } from "@/interop/editor";
-import { TriggerFontLoad, TriggerFontLoadDefault } from "@/interop/messages";
+import { Editor } from "@/wasm-communication/editor";
+import { TriggerFontLoad, TriggerFontLoadDefault } from "@/wasm-communication/messages";
 
 const DEFAULT_FONT = "Merriweather";
 const DEFAULT_FONT_STYLE = "Normal (400)";

@@ -1,9 +1,9 @@
 import { TextButtonWidget } from "@/components/widgets/buttons/TextButton";
-import { Editor } from "@/interop/editor";
-import { DisplayDialogPanic, WidgetLayout } from "@/interop/messages";
 import { DialogState } from "@/state-providers/dialog";
-import { IconName } from "@/utilities/icons";
-import { stripIndents } from "@/utilities/strip-indents";
+import { IconName } from "@/utility-functions/icons";
+import { stripIndents } from "@/utility-functions/strip-indents";
+import { Editor } from "@/wasm-communication/editor";
+import { DisplayDialogPanic, WidgetLayout } from "@/wasm-communication/messages";
 
 export function createPanicManager(editor: Editor, dialogState: DialogState): void {
 	// Code panic dialog and console error

@@ -1,3 +1,5 @@
+// TODO: Try and get rid of the need for this file
+
 export interface TextButtonWidget {
 	kind: "TextButton";
 	tooltip?: string;

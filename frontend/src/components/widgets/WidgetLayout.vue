@@ -16,7 +16,7 @@
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
 
-import { isWidgetColumn, isWidgetRow, isWidgetSection, LayoutRow, WidgetLayout } from "@/interop/messages";
+import { isWidgetColumn, isWidgetRow, isWidgetSection, LayoutRow, WidgetLayout } from "@/wasm-communication/messages";
 
 import WidgetRow from "@/components/widgets/WidgetRow.vue";
 import WidgetSection from "@/components/widgets/WidgetSection.vue";

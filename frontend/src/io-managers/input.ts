@@ -1,8 +1,8 @@
-import { Editor } from "@/interop/editor";
 import { DialogState } from "@/state-providers/dialog";
 import { FullscreenState } from "@/state-providers/fullscreen";
 import { PortfolioState } from "@/state-providers/portfolio";
-import { makeKeyboardModifiersBitfield, textInputCleanup, getLatinKey } from "@/utilities/keyboard-entry";
+import { makeKeyboardModifiersBitfield, textInputCleanup, getLatinKey } from "@/utility-functions/keyboard-entry";
+import { Editor } from "@/wasm-communication/editor";
 
 type EventName = keyof HTMLElementEventMap | keyof WindowEventHandlersEventMap | "modifyinputfield";
 type EventListenerTarget = {

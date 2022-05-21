@@ -68,8 +68,8 @@
 <script lang="ts">
 import { defineComponent } from "vue";
 
-import { type RGBA, UpdateWorkingColors } from "@/interop/messages";
-import { rgbaToDecimalRgba } from "@/utilities/color";
+import { rgbaToDecimalRgba } from "@/utility-functions/color";
+import { type RGBA, UpdateWorkingColors } from "@/wasm-communication/messages";
 
 import LayoutCol from "@/components/layout/LayoutCol.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";

@@ -1,5 +1,5 @@
-import { Editor } from "@/interop/editor";
-import { TriggerTextCopy } from "@/interop/messages";
+import { Editor } from "@/wasm-communication/editor";
+import { TriggerTextCopy } from "@/wasm-communication/messages";
 
 export function createClipboardManager(editor: Editor): void {
 	// Subscribe to process backend event
