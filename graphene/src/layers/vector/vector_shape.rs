@@ -74,8 +74,9 @@ impl VectorShape {
 		p_line
 	}
 
-	pub fn move_selected(&mut self, delta: DVec2, relative: bool) {
-		self.selected_anchors_mut().for_each(|anchor| anchor.move_selected_points(relative, &DAffine2::from_translation(delta)));
+	pub fn move_selected(&mut self, delta: DVec2) {
+		// Determine which Point is closest and snap that one to cursor
+		self.selected_anchors_mut().for_each(|anchor| anchor.move_selected_points(true, &DAffine2::from_translation(delta)));
 	}
 
 	// TODO Implement deleting currently selected points

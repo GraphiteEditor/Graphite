@@ -217,8 +217,8 @@ impl Fsm for PathToolFsmState {
 
 					// Move the selected points by the mouse position
 					let snapped_position = data.snap_handler.snap_position(responses, document, input.mouse.position);
-					data.shape_editor
-						.move_selected_points(&document.graphene_document, snapped_position - data.drag_start_pos, true, responses);
+					//TODO This is relative position, update accordingly
+					data.shape_editor.move_selected_points(snapped_position - data.drag_start_pos, responses);
 					Dragging
 				}
 				// DoubleClick

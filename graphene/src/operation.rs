@@ -125,11 +125,6 @@ pub enum Operation {
 	DeleteSelectedVectorPoints {
 		layer_path: Vec<LayerId>,
 	},
-	SelectVectorPoints {
-		layer_path: Vec<LayerId>,
-		anchor_ids: Vec<u64>,
-		add: bool,
-	},
 	DeselectVectorPoints {
 		layer_path: Vec<LayerId>,
 		anchor_ids: Vec<u64>,
@@ -146,6 +141,10 @@ pub enum Operation {
 		font_style: String,
 		font_file: Option<String>,
 		size: f64,
+	},
+	MoveSelectedVectorPoints {
+		layer_path: Vec<LayerId>,
+		delta: (f64, f64),
 	},
 	RenameLayer {
 		layer_path: Vec<LayerId>,
@@ -170,6 +169,11 @@ pub enum Operation {
 	SetLayerTransformInViewport {
 		path: Vec<LayerId>,
 		transform: [f64; 6],
+	},
+	SelectVectorPoints {
+		layer_path: Vec<LayerId>,
+		anchor_ids: Vec<u64>,
+		add: bool,
 	},
 	SetShapePath {
 		path: Vec<LayerId>,

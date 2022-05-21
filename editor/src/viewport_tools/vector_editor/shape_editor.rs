@@ -41,7 +41,6 @@ pub struct ShapeEditor {
 impl ShapeEditor {
 	/// Select the first point within the selection threshold
 	/// Returns true if we've found a point, false otherwise
-	// TODO Refactor to select_point_from(vectorshapes[..], ...)
 	pub fn select_point(&self, document: &Document, mouse_position: DVec2, select_threshold: f64, add_to_selection: bool, responses: &mut VecDeque<Message>) -> bool {
 		if self.target_layers.is_empty() {
 			return false;
@@ -57,9 +56,7 @@ impl ShapeEditor {
 				.unwrap()
 				.is_selected;
 
-			let selected_shape = self.shape(document, shape_layer_path).unwrap();
-			// TODO kurbo bez_path are no long present in the vector shapes, resolve fallout
-			// selected_shape.elements = selected_shape.bez_path.clone().into_iter().collect();
+			// let selected_shape = self.shape(document, shape_layer_path).unwrap();
 
 			// Should we select or deselect the point?
 			let should_select = if is_point_selected { add_to_selection } else { true };
@@ -165,12 +162,17 @@ impl ShapeEditor {
 	}
 
 	/// Move the selected points by dragging the moue
-	pub fn move_selected_points<'a>(&'a self, document: &'a Document, target: DVec2, relative: bool, responses: &VecDeque<Message>) {
-		for shape in self.iter(document) {
-			// shape.move_selected(target, relative);
+	pub fn move_selected_points(&self, target: DVec2, responses: &mut VecDeque<Message>) {
+		for layer_path in &self.target_layers {
+			responses.push_back(
+				DocumentMessage::MoveSelectedVectorPoints {
+					layer_path: layer_path.clone(),
+					target_x: target.x,
+					target_y: target.y,
+				}
+				.into(),
+			);
 		}
-		// We've made our changes to the shape, submit them
-		// TODO Send changes to the renderer
 	}
 
 	/// Dissolve the selected points

@@ -961,6 +961,14 @@ impl Document {
 				self.mark_as_dirty(&layer_path)?;
 				Some([vec![DocumentChanged, LayerChanged { path: layer_path.clone() }], update_thumbnails_upstream(&layer_path)].concat())
 			}
+			Operation::MoveSelectedVectorPoints { layer_path, delta } => {
+				let layer = self.layer_mut(&layer_path)?;
+				if let Some(shape) = layer.as_vector_shape_mut() {
+					shape.move_selected(DVec2::new(delta.0, delta.1));
+				}
+				self.mark_as_dirty(&layer_path)?;
+				Some([vec![DocumentChanged, LayerChanged { path: layer_path.clone() }], update_thumbnails_upstream(&layer_path)].concat())
+			}
 		};
 		Ok(responses)
 	}

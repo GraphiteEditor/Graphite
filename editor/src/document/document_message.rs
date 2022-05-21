@@ -96,8 +96,9 @@ pub enum DocumentMessage {
 		reverse_index: bool,
 	},
 	MoveSelectedVectorPoints {
-		delta_x: f64,
-		delta_y: f64,
+		layer_path: Vec<LayerId>,
+		target_x: f64,
+		target_y: f64,
 	},
 	NudgeSelectedLayers {
 		delta_x: f64,

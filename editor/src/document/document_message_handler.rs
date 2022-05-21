@@ -1210,7 +1210,16 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 					.into(),
 				);
 			}
-			MoveSelectedVectorPoints { delta_x, delta_y } => {}
+			MoveSelectedVectorPoints { layer_path, target_x, target_y } => {
+				self.backup(responses);
+				responses.push_back(
+					DocumentOperation::MoveSelectedVectorPoints {
+						layer_path,
+						delta: (target_x, target_y),
+					}
+					.into(),
+				);
+			}
 			NudgeSelectedLayers { delta_x, delta_y } => {
 				self.backup(responses);
 				for path in self.selected_layers().map(|path| path.to_vec()) {

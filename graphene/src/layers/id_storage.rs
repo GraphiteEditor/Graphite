@@ -116,12 +116,15 @@ impl<T> UniqueElements<T> {
 	/// assert!(folder.remove_layer(123).is_ok());
 	/// assert_eq!(folder.layers().len(), 0)
 	/// ```
-	pub fn remove(&mut self, id: ElementId) -> Result<(), DocumentError> {
-		let pos = self.position_of_element(id)?;
-		self.values.remove(pos);
-		self.keys.remove(pos);
-		self.id_to_index.remove(&id);
-		Ok(())
+	pub fn remove(&mut self, id: ElementId) -> bool {
+		let pos = self.position_of_element(id);
+		if let Some(pos) = pos {
+			self.values.remove(pos);
+			self.keys.remove(pos);
+			self.id_to_index.remove(&id);
+			return true;
+		}
+		false
 	}
 
 	/// Returns a list of [ElementId]s in the within this container.
@@ -131,13 +134,13 @@ impl<T> UniqueElements<T> {
 
 	/// Get a single element with a given element ID from the within this container.
 	pub fn by_id(&self, id: ElementId) -> Option<&T> {
-		let pos = self.position_of_element(id).ok()?;
+		let pos = self.position_of_element(id)?;
 		Some(&self.values[pos])
 	}
 
 	/// Get a mutable reference to a single element with a given element ID from the within this container.
 	pub fn by_id_mut(&mut self, id: ElementId) -> Option<&mut T> {
-		let pos = self.position_of_element(id).ok()?;
+		let pos = self.position_of_element(id)?;
 		Some(&mut self.values[pos])
 	}
 
@@ -219,11 +222,11 @@ impl<T> UniqueElements<T> {
 	/// assert_eq!(folder.position_of_element(123), Ok(0));
 	/// assert_eq!(folder.position_of_element(42), Ok(1));
 	/// ```
-	pub fn position_of_element(&self, element_id: ElementId) -> Result<usize, DocumentError> {
+	pub fn position_of_element(&self, element_id: ElementId) -> Option<usize> {
 		if let Some(position) = self.id_to_index.get(&element_id) {
-			return Ok((*position) as usize);
+			return Some((*position) as usize);
 		}
-		Err(DocumentError::LayerNotFound([element_id].into()))
+		None
 	}
 }
 
