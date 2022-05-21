@@ -16,7 +16,7 @@ export function createWorkspaceState(editor: Editor) {
 	});
 
 	return {
-		state: readonly(state),
+		state: readonly(state) as typeof state,
 	};
 }
 export type WorkspaceState = ReturnType<typeof createWorkspaceState>;

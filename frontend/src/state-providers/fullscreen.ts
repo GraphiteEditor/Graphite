@@ -36,7 +36,7 @@ export function createFullscreenState() {
 	const keyboardLockApiSupported: Readonly<boolean> = "keyboard" in navigator && (navigator as any).keyboard && "lock" in (navigator as any).keyboard;
 
 	return {
-		state: readonly(state),
+		state: readonly(state) as typeof state,
 		fullscreenModeChanged,
 		enterFullscreen,
 		exitFullscreen,

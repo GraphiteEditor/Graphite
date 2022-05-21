@@ -1,10 +1,17 @@
 <template>
 	<LayoutRow class="font-input">
-		<LayoutRow class="dropdown-box" :class="{ disabled }" :style="{ minWidth: `${minWidth}px` }" @click="() => clickDropdownBox()" data-hover-menu-spawner>
-			<span>{{ activeEntry.label }}</span>
+		<LayoutRow class="dropdown-box" :class="{ disabled }" :style="{ minWidth: `${minWidth}px` }" @click="() => !disabled && (open = true)" data-hover-menu-spawner>
+			<span>{{ activeEntry?.label || "" }}</span>
 			<IconLabel class="dropdown-arrow" :icon="'DropdownArrow'" />
 		</LayoutRow>
-		<MenuList v-model:activeEntry="activeEntry" @widthChanged="(newWidth: number) => onWidthChanged(newWidth)" :entries="entries" :direction="'Bottom'" :scrollableY="true" ref="menuList" />
+		<MenuList
+			v-model:activeEntry="activeEntry"
+			v-model:open="open"
+			@naturalWidth="(newNaturalWidth: number) => (minWidth = newNaturalWidth)"
+			:entries="entries"
+			:direction="'Bottom'"
+			:scrollableY="true"
+		/>
 	</LayoutRow>
 </template>
 
@@ -92,17 +99,19 @@ export default defineComponent({
 		isStyle: { type: Boolean as PropType<boolean>, default: false },
 	},
 	data() {
-		const { entries, activeEntry } = this.updateEntries();
 		return {
-			entries,
-			activeEntry,
+			open: false,
 			minWidth: 0,
+			entries: [] as SectionsOfMenuListEntries,
+			activeEntry: undefined as undefined | MenuListEntry,
 		};
 	},
+	async mounted() {
+		const { entries, activeEntry } = await this.updateEntries();
+		this.entries = entries;
+		this.activeEntry = activeEntry;
+	},
 	methods: {
-		clickDropdownBox() {
-			if (!this.disabled) (this.$refs.menuList as typeof MenuList).setOpen();
-		},
 		async selectFont(newName: string): Promise<void> {
 			let fontFamily;
 			let fontStyle;
@@ -116,17 +125,14 @@ export default defineComponent({
 				this.$emit("update:fontFamily", newName);
 
 				fontFamily = newName;
-				fontStyle = (await this.fonts).getFontStyles(newName)[0];
+				fontStyle = (await this.fonts.getFontStyles(newName))[0];
 			}
 
-			const fontFileUrl = await (await this.fonts).getFontFileUrl(fontFamily, fontStyle);
+			const fontFileUrl = await this.fonts.getFontFileUrl(fontFamily, fontStyle);
 			this.$emit("changeFont", { fontFamily, fontStyle, fontFileUrl });
 		},
-		onWidthChanged(newWidth: number) {
-			this.minWidth = newWidth;
-		},
 		async updateEntries(): Promise<{ entries: SectionsOfMenuListEntries; activeEntry: MenuListEntry }> {
-			const choices = this.isStyle ? (await this.fonts).getFontStyles(this.fontFamily) : (await this.fonts).state.fontNames;
+			const choices = this.isStyle ? await this.fonts.getFontStyles(this.fontFamily) : this.fonts.state.fontNames;
 			const selectedChoice = this.isStyle ? this.fontStyle : this.fontFamily;
 
 			let selectedEntry: MenuListEntry | undefined;

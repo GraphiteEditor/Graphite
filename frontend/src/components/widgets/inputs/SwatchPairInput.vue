@@ -2,14 +2,14 @@
 	<LayoutCol class="swatch-pair">
 		<LayoutRow class="secondary swatch">
 			<button @click="() => clickSecondarySwatch()" ref="secondaryButton" data-hover-menu-spawner></button>
-			<FloatingMenu :type="'Popover'" :direction="'Right'" horizontal ref="secondarySwatchFloatingMenu">
-				<ColorPicker @update:color="(color: RGBA_) => secondaryColorChanged(color)" :color="secondaryColor" />
+			<FloatingMenu :type="'Popover'" :direction="'Right'" v-model:open="secondaryOpen">
+				<ColorPicker @update:color="(color: RGBA) => secondaryColorChanged(color)" :color="secondaryColor" />
 			</FloatingMenu>
 		</LayoutRow>
 		<LayoutRow class="primary swatch">
 			<button @click="() => clickPrimarySwatch()" ref="primaryButton" data-hover-menu-spawner></button>
-			<FloatingMenu :type="'Popover'" :direction="'Right'" horizontal ref="primarySwatchFloatingMenu">
-				<ColorPicker @update:color="(color: RGBA_) => primaryColorChanged(color)" :color="primaryColor" />
+			<FloatingMenu :type="'Popover'" :direction="'Right'" v-model:open="primaryOpen">
+				<ColorPicker @update:color="(color: RGBA) => primaryColorChanged(color)" :color="primaryColor" />
 			</FloatingMenu>
 		</LayoutRow>
 	</LayoutCol>
@@ -76,11 +76,6 @@ import LayoutRow from "@/components/layout/LayoutRow.vue";
 import ColorPicker from "@/components/widgets/floating-menus/ColorPicker.vue";
 import FloatingMenu from "@/components/widgets/floating-menus/FloatingMenu.vue";
 
-// Satisfies Volar (https://github.com/johnsoncodehk/volar/issues/596)
-declare global {
-	type RGBA_ = RGBA;
-}
-
 export default defineComponent({
 	inject: ["editor"],
 	components: {
@@ -89,14 +84,22 @@ export default defineComponent({
 		LayoutRow,
 		LayoutCol,
 	},
+	data() {
+		return {
+			primaryOpen: false,
+			secondaryOpen: false,
+			primaryColor: { r: 0, g: 0, b: 0, a: 1 } as RGBA,
+			secondaryColor: { r: 255, g: 255, b: 255, a: 1 } as RGBA,
+		};
+	},
 	methods: {
 		clickPrimarySwatch() {
-			(this.$refs.primarySwatchFloatingMenu as typeof FloatingMenu).setOpen();
-			(this.$refs.secondarySwatchFloatingMenu as typeof FloatingMenu).setClosed();
+			this.primaryOpen = true;
+			this.secondaryOpen = false;
 		},
 		clickSecondarySwatch() {
-			(this.$refs.secondarySwatchFloatingMenu as typeof FloatingMenu).setOpen();
-			(this.$refs.primarySwatchFloatingMenu as typeof FloatingMenu).setClosed();
+			this.primaryOpen = false;
+			this.secondaryOpen = true;
 		},
 		primaryColorChanged(color: RGBA) {
 			this.primaryColor = color;
@@ -122,12 +125,6 @@ export default defineComponent({
 			color = rgbaToDecimalRgba(this.secondaryColor);
 			this.editor.instance.update_secondary_color(color.r, color.g, color.b, color.a);
 		},
-	},
-	data() {
-		return {
-			primaryColor: { r: 0, g: 0, b: 0, a: 1 } as RGBA,
-			secondaryColor: { r: 255, g: 255, b: 255, a: 1 } as RGBA,
-		};
 	},
 	mounted() {
 		this.editor.subscriptions.subscribeJsMessage(UpdateWorkingColors, (updateWorkingColors) => {

@@ -4,8 +4,8 @@
 		<TextInput :value="displayValue" :label="label" :disabled="disabled || !value" @commitText="(value: string) => textInputUpdated(value)" :center="true" />
 		<Separator :type="'Related'" />
 		<LayoutRow class="swatch">
-			<button class="swatch-button" :class="{ 'disabled-swatch': !value }" :style="`--swatch-color: #${value}`" @click="() => menuOpen()"></button>
-			<FloatingMenu :type="'Popover'" :direction="'Bottom'" horizontal ref="colorFloatingMenu">
+			<button class="swatch-button" :class="{ 'disabled-swatch': !value }" :style="`--swatch-color: #${value}`" @click="() => $emit('update:open', true)"></button>
+			<FloatingMenu v-model:open="isOpen" :type="'Popover'" :direction="'Bottom'">
 				<ColorPicker @update:color="(color) => colorPickerUpdated(color)" :color="color" />
 			</FloatingMenu>
 		</LayoutRow>
@@ -80,12 +80,18 @@ import TextInput from "@/components/widgets/inputs/TextInput.vue";
 import Separator from "@/components/widgets/separators/Separator.vue";
 
 export default defineComponent({
-	emits: ["update:value"],
+	emits: ["update:value", "update:open"],
 	props: {
 		value: { type: String as PropType<string | undefined>, required: true },
+		open: { type: Boolean as PropType<boolean>, required: true },
 		label: { type: String as PropType<string>, required: false },
 		canSetTransparent: { type: Boolean as PropType<boolean>, required: false, default: true },
 		disabled: { type: Boolean as PropType<boolean>, default: false },
+	},
+	data() {
+		return {
+			isOpen: false,
+		};
 	},
 	computed: {
 		color() {
@@ -103,6 +109,15 @@ export default defineComponent({
 			const value = this.value.toLowerCase();
 			const shortenedIfOpaque = value.slice(-2) === "ff" ? value.slice(0, 6) : value;
 			return `#${shortenedIfOpaque}`;
+		},
+	},
+	watch: {
+		// Called only when `open` is changed from outside this component (with v-model)
+		open(newOpen: boolean) {
+			this.isOpen = newOpen;
+		},
+		isOpen(newIsOpen: boolean) {
+			this.$emit("update:open", newIsOpen);
 		},
 	},
 	methods: {
@@ -133,9 +148,6 @@ export default defineComponent({
 			}
 
 			this.$emit("update:value", sanitized);
-		},
-		menuOpen() {
-			(this.$refs.colorFloatingMenu as typeof FloatingMenu).setOpen();
 		},
 		updateEnabled(value: boolean) {
 			if (value) this.$emit("update:value", "000000");

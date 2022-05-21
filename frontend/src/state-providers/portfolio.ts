@@ -65,7 +65,7 @@ export function createPortfolioState(editor: Editor) {
 	});
 
 	return {
-		state: readonly(state),
+		state: readonly(state) as typeof state,
 	};
 }
 export type PortfolioState = ReturnType<typeof createPortfolioState>;

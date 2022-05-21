@@ -1,7 +1,7 @@
 <template>
 	<LayoutRow class="popover-button">
-		<IconButton :action="handleClick" :icon="icon" :size="16" data-hover-menu-spawner />
-		<FloatingMenu :type="'Popover'" :direction="'Bottom'" ref="floatingMenu">
+		<IconButton :action="() => onClick()" :icon="icon" :size="16" data-hover-menu-spawner />
+		<FloatingMenu v-model:open="open" :type="'Popover'" :direction="'Bottom'">
 			<slot></slot>
 		</FloatingMenu>
 	</LayoutRow>
@@ -65,9 +65,14 @@ export default defineComponent({
 		action: { type: Function as PropType<() => void>, required: false },
 		icon: { type: String as PropType<IconName>, default: "DropdownArrow" },
 	},
+	data() {
+		return {
+			open: false,
+		};
+	},
 	methods: {
-		handleClick() {
-			(this.$refs.floatingMenu as typeof FloatingMenu).setOpen();
+		onClick() {
+			this.open = true;
 
 			this.action?.();
 		},

@@ -6,11 +6,19 @@
 			</div>
 		</div>
 		<div class="entry-container" v-for="(entry, index) in entries" :key="index">
-			<div @click="() => handleEntryClick(entry)" class="entry" :class="{ open: entry.ref?.isOpen() }" data-hover-menu-spawner>
-				<IconLabel :icon="entry.icon" v-if="entry.icon" />
+			<div @click="() => onClick(entry)" class="entry" :class="{ open: entry.ref?.open }" data-hover-menu-spawner>
+				<IconLabel v-if="entry.icon" :icon="entry.icon" />
 				<span v-if="entry.label">{{ entry.label }}</span>
 			</div>
-			<MenuList :entries="entry.children || []" :direction="'Bottom'" :minWidth="240" :drawIcon="true" :defaultAction="comingSoon" :ref="(ref: any) => setEntryRefs(entry, ref)" />
+			<MenuList
+				:open="entry.ref?.open || false"
+				:entries="entry.children || []"
+				:direction="'Bottom'"
+				:minWidth="240"
+				:drawIcon="true"
+				:defaultAction="() => editor.instance.request_coming_soon_dialog()"
+				:ref="(ref: typeof MenuList) => ref && (entry.ref = ref)"
+			/>
 		</div>
 	</div>
 </template>
@@ -199,13 +207,11 @@ function makeEntries(editor: Editor): MenuListEntries {
 export default defineComponent({
 	inject: ["editor"],
 	methods: {
-		setEntryRefs(menuEntry: MenuListEntry, ref: typeof MenuList) {
-			if (ref) menuEntry.ref = ref;
-		},
-		handleEntryClick(menuEntry: MenuListEntry) {
-			if (menuEntry.ref) menuEntry.ref.setOpen();
+		onClick(menuEntry: MenuListEntry) {
+			if (menuEntry.ref) menuEntry.ref.isOpen = true;
 			else throw new Error("The menu bar floating menu has no associated ref");
 		},
+		// TODO: Move to backend
 		visitWebsite(url: string) {
 			// This method is required because `window` isn't accessible from the Vue component HTML
 			window.open(url, "_blank");
@@ -214,8 +220,7 @@ export default defineComponent({
 	data() {
 		return {
 			entries: makeEntries(this.editor),
-			// Do not try to inline this as an arrow function in the HTML, it will cause the entire web page to freeze on load (see note in `DialogModal.vue` on the `defaultAction` prop)
-			comingSoon: (): void => this.editor.instance.request_coming_soon_dialog(),
+			open: false,
 		};
 	},
 	components: {

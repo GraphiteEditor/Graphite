@@ -44,7 +44,7 @@ export function createDialogState(editor: Editor) {
 	editor.subscriptions.subscribeJsMessage(DisplayDialogDismiss, dismissDialog);
 
 	return {
-		state: readonly(state),
+		state: readonly(state) as typeof state,
 		dismissDialog,
 		dialogIsVisible,
 		createPanicDialog,

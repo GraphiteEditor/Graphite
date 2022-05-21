@@ -36,12 +36,12 @@
 					<LayoutCol class="canvas-area">
 						<div
 							class="canvas"
-							data-canvas
-							ref="canvas"
 							:style="{ cursor: canvasCursor }"
 							@pointerdown="(e: PointerEvent) => canvasPointerDown(e)"
 							@dragover="(e) => e.preventDefault()"
 							@drop="(e) => pasteFile(e)"
+							ref="canvas"
+							data-canvas
 						>
 							<svg class="artboards" v-html="artboardSvg" :style="{ width: canvasSvgWidth, height: canvasSvgHeight }"></svg>
 							<svg
@@ -267,11 +267,10 @@ export default defineComponent({
 			this.canvasSvgHeight = `${height}px`;
 
 			// Resize the rulers
-
 			const rulerHorizontal = this.$refs.rulerHorizontal as typeof CanvasRuler;
 			const rulerVertical = this.$refs.rulerVertical as typeof CanvasRuler;
-			rulerHorizontal?.handleResize();
-			rulerVertical?.handleResize();
+			rulerHorizontal?.resize();
+			rulerVertical?.resize();
 		},
 		pasteFile(e: DragEvent) {
 			const { dataTransfer } = e;
