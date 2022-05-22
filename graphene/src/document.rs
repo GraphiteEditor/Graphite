@@ -563,7 +563,7 @@ impl Document {
 				Some(vec![DocumentChanged])
 			}
 			Operation::SetTextContent { path, new_text } => {
-				// Not using Document::layer_mut is necessary because we alson need to borrow the font cache
+				// Not using Document::layer_mut is necessary because we also need to borrow the font cache
 				let mut current_folder = &mut self.root;
 
 				let (layer_path, id) = split_path(&path)?;
@@ -730,7 +730,7 @@ impl Document {
 				font_file,
 				size,
 			} => {
-				// Not using Document::layer_mut is necessary because we alson need to borrow the font cache
+				// Not using Document::layer_mut is necessary because we also need to borrow the font cache
 				let mut current_folder = &mut self.root;
 				let (folder_path, id) = split_path(&path)?;
 				for id in folder_path {
@@ -797,7 +797,7 @@ impl Document {
 				self.set_transform_relative_to_viewport(&path, transform)?;
 				self.mark_as_dirty(&path)?;
 
-				// Not using Document::layer_mut is necessary because we alson need to borrow the font cache
+				// Not using Document::layer_mut is necessary because we also need to borrow the font cache
 				let mut current_folder = &mut self.root;
 				let (folder_path, id) = split_path(&path)?;
 				for id in folder_path {

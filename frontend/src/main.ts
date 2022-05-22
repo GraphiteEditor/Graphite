@@ -4,13 +4,12 @@
 import "reflect-metadata";
 import { createApp } from "vue";
 
-import "@/lifetime/errors";
-import { initWasm } from "@/state/wasm-loader";
+import { initWasm } from "@/wasm-communication/editor";
 
 import App from "@/App.vue";
 
 (async (): Promise<void> => {
-	// Initialize the WASM editor backend
+	// Initialize the WASM module for the editor backend
 	await initWasm();
 
 	// Initialize the Vue application

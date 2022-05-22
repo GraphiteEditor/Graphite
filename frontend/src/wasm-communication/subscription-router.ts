@@ -1,7 +1,7 @@
 import { plainToInstance } from "class-transformer";
 
-import { JsMessageType, messageMakers, JsMessage } from "@/dispatcher/js-messages";
-import type { RustEditorInstance, WasmInstance } from "@/state/wasm-loader";
+import type { WasmEditorInstance, WasmRawInstance } from "@/wasm-communication/editor";
+import { JsMessageType, messageMakers, JsMessage } from "@/wasm-communication/messages";
 
 type JsMessageCallback<T extends JsMessage> = (messageData: T) => void;
 type JsMessageCallbackMap = {
@@ -12,21 +12,21 @@ type JsMessageCallbackMap = {
 };
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
-export function createJsDispatcher() {
+export function createSubscriptionRouter() {
 	const subscriptions: JsMessageCallbackMap = {};
 
 	const subscribeJsMessage = <T extends JsMessage, Args extends unknown[]>(messageType: new (...args: Args) => T, callback: JsMessageCallback<T>): void => {
 		subscriptions[messageType.name] = callback;
 	};
 
-	const handleJsMessage = (messageType: JsMessageType, messageData: Record<string, unknown>, wasm: WasmInstance, instance: RustEditorInstance): void => {
+	const handleJsMessage = (messageType: JsMessageType, messageData: Record<string, unknown>, wasm: WasmRawInstance, instance: WasmEditorInstance): void => {
 		// Find the message maker for the message type, which can either be a JS class constructor or a function that returns an instance of the JS class
 		const messageMaker = messageMakers[messageType];
 		if (!messageMaker) {
 			// eslint-disable-next-line no-console
 			console.error(
 				`Received a frontend message of type "${messageType}" but was not able to parse the data. ` +
-					"(Perhaps this message parser isn't exported in `messageMakers` at the bottom of `js-messages.ts`.)"
+					"(Perhaps this message parser isn't exported in `messageMakers` at the bottom of `messages.ts`.)"
 			);
 			return;
 		}
@@ -63,4 +63,4 @@ export function createJsDispatcher() {
 		handleJsMessage,
 	};
 }
-export type JsDispatcher = ReturnType<typeof createJsDispatcher>;
+export type SubscriptionRouter = ReturnType<typeof createSubscriptionRouter>;
