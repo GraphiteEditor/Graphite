@@ -368,6 +368,7 @@ pub struct DropdownInput {
 	pub selected_index: Option<u32>,
 	#[serde(rename = "drawIcon")]
 	pub draw_icon: bool,
+	pub interactive: bool,
 	// `on_update` exists on the `DropdownEntryData`, not this parent `DropdownInput`
 	pub disabled: bool,
 }

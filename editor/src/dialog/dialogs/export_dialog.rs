@@ -86,6 +86,7 @@ impl PropertyHolder for Export {
 			WidgetHolder::new(Widget::DropdownInput(DropdownInput {
 				selected_index: Some(index as u32),
 				entries,
+				interactive: false,
 				..Default::default()
 			})),
 		];

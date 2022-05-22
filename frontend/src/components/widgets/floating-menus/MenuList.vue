@@ -179,6 +179,7 @@ const MenuList = defineComponent({
 		direction: { type: String as PropType<MenuDirection>, default: "Bottom" },
 		minWidth: { type: Number as PropType<number>, default: 0 },
 		drawIcon: { type: Boolean as PropType<boolean>, default: false },
+		interactive: { type: Boolean as PropType<boolean>, default: false },
 		scrollableY: { type: Boolean as PropType<boolean>, default: false },
 		defaultAction: { type: Function as PropType<() => void>, required: false },
 	},
@@ -244,6 +245,9 @@ const MenuList = defineComponent({
 
 		/// Handles keyboard navigation for the menu. Returns if the entire menu stack should be dismissed
 		keydown(e: KeyboardEvent, submenu: boolean): boolean {
+			// Interactive menus should keep the active entry the same as the highlighted one
+			if (this.interactive) this.highlighted = this.activeEntry;
+
 			const menuOpen = this.isOpen;
 			const flatEntries = this.entries.flat();
 			const openChild = flatEntries.findIndex((entry) => entry.children?.length && entry.ref?.isOpen);
@@ -272,7 +276,7 @@ const MenuList = defineComponent({
 					this.isOpen = false;
 					return true;
 				}
-			} else if (menuOpen && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
+			} else if ((menuOpen || this.interactive) && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
 				// Navigate to the next and previous entries with arrow keys
 
 				let newIndex = e.key === "ArrowUp" ? flatEntries.length - 1 : 0;
@@ -312,6 +316,8 @@ const MenuList = defineComponent({
 		},
 		setHighlighted(newHighlight: MenuListEntry<string> | undefined) {
 			this.highlighted = newHighlight;
+			// Interactive menus should keep the active entry the same as the highlighted one
+			if (this.interactive) this.$emit("update:activeEntry", newHighlight);
 		},
 	},
 	computed: {

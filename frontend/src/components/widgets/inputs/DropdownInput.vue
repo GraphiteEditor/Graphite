@@ -20,6 +20,7 @@
 			@naturalWidth="(newNaturalWidth: number) => (minWidth = newNaturalWidth)"
 			:entries="entries"
 			:drawIcon="drawIcon"
+			:interactive="interactive"
 			:direction="'Bottom'"
 			:scrollableY="true"
 			ref="menuList"
@@ -109,6 +110,7 @@ export default defineComponent({
 		entries: { type: Array as PropType<SectionsOfMenuListEntries>, required: true },
 		selectedIndex: { type: Number as PropType<number>, required: false }, // When not provided, a dash is displayed
 		drawIcon: { type: Boolean as PropType<boolean>, default: false },
+		interactive: { type: Boolean as PropType<boolean>, default: true },
 		disabled: { type: Boolean as PropType<boolean>, default: false },
 	},
 	data() {
