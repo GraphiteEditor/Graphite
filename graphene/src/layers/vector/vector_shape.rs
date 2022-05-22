@@ -75,17 +75,16 @@ impl VectorShape {
 	}
 
 	pub fn move_selected(&mut self, delta: DVec2) {
-		// Determine which Point is closest and snap that one to cursor
-		self.selected_anchors_mut().for_each(|anchor| anchor.move_selected_points(true, &DAffine2::from_translation(delta)));
+		// Determine which point is closest and snap that one to cursor
+		// self.selected_anchors_mut().for_each(|anchor| anchor.move_selected_points(true, &DAffine2::from_translation(delta)));
 	}
 
 	// TODO Implement deleting currently selected points
 	pub fn delete_selected(&mut self) {
-		// involves cloning the elements of anchors, could be replaced by a more efficient implementation possibly
 		let mut ids_to_delete: Vec<u64> = vec![];
-		for id in self.0.keys() {
+		for (id, anchor) in self.0.enumerate() {
 			// anchor.delete_selected_points();
-			if self.0.by_id(*id).unwrap().is_anchor_selected() {
+			if anchor.is_anchor_selected() {
 				ids_to_delete.push(*id);
 			}
 		}

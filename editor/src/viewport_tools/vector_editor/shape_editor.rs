@@ -136,6 +136,7 @@ impl ShapeEditor {
 
 	/// Select the last anchor in this shape
 	pub fn select_last_anchor<'a>(&'a self, document: &'a Document, layer_id: &[LayerId], responses: &mut VecDeque<Message>) {
+		// TODO Send messages instead
 		// if let Some(last) = self.shape(document, layer_id) {
 		// 	return last.select_last_anchor();
 		// }
@@ -143,14 +144,13 @@ impl ShapeEditor {
 
 	/// Select the Nth anchor of the shape, negative numbers index from the end
 	pub fn select_nth_anchor<'a>(&'a self, document: &'a Document, layer_id: &'a [LayerId], anchor_index: i32, responses: &mut VecDeque<Message>) {
+		// TODO Send messages instead
 		if let Some(shape) = self.shape(document, layer_id) {
 			if anchor_index < 0 {
 				let anchor_index = shape.anchors().len() - ((-anchor_index) as usize);
-			// Send message instead
 			//return shape.select_anchor_by_index(anchor_index);
 			} else {
 				let anchor_index = anchor_index as usize;
-				// Send message instead
 				//return shape.select_anchor_by_index(anchor_index);
 			}
 		}

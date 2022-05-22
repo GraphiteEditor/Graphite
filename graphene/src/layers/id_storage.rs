@@ -17,12 +17,9 @@ type ElementIndex = i64;
 // TODO: Simplify this struct to only use a single Vec + HashMap
 pub struct UniqueElements<T> {
 	/// The IDs of the [Elements] contained within this
-	keys: Vec<ElementId>,
-	/// The data contained in this
-	values: Vec<T>,
+	elements: Vec<T>,
 	/// Map from element ids to array positions
 	id_to_index: HashMap<ElementId, ElementIndex>,
-
 	/// The ID that will be assigned to the next element that is added to this
 	#[serde(skip)]
 	next_assignment_id: ElementId,
@@ -54,10 +51,10 @@ impl<T> UniqueElements<T> {
 
 		// If the insert index is negative, it is relative to the end
 		if insert_index < 0 {
-			insert_index = self.values.len() as ElementIndex + insert_index as ElementIndex + 1;
+			insert_index = self.elements.len() as ElementIndex + insert_index as ElementIndex + 1;
 		}
 
-		if insert_index <= self.values.len() as ElementIndex && insert_index >= 0 {
+		if insert_index <= self.elements.len() as ElementIndex && insert_index >= 0 {
 			if let Some(id) = id {
 				self.next_assignment_id = id;
 
@@ -67,14 +64,13 @@ impl<T> UniqueElements<T> {
 				}
 			}
 
-			self.values.insert(insert_index as usize, element);
-			self.keys.insert(insert_index as usize, self.next_assignment_id);
-			self.id_to_index.insert(self.next_assignment_id, insert_index);
-
 			// Linear probing for collision avoidance
 			while self.id_to_index.contains_key(&self.next_assignment_id) {
 				self.next_assignment_id += 1;
 			}
+
+			self.elements.insert(insert_index as usize, element);
+			self.id_to_index.insert(self.next_assignment_id, insert_index);
 
 			Some(self.next_assignment_id)
 		} else {
@@ -99,89 +95,57 @@ impl<T> UniqueElements<T> {
 	}
 
 	/// Remove an element with a given element ID from the within this container.
-	/// This operation will fail if `id` is not present within this container.
-	///
-	/// # Example
-	/// ```
-	/// # use graphite_graphene::layers::UniqueElements;
-	/// let mut folder = PathStorage::default();
-	///
-	/// // Try to remove a layer that does not exist
-	/// assert!(folder.remove_layer(123).is_err());
-	///
-	/// // Add another folder to the folder
-	/// folder.add_layer(PathStorage::default().into(), Some(123), -1);
-	///
-	/// // Try to remove that folder again
-	/// assert!(folder.remove_layer(123).is_ok());
-	/// assert_eq!(folder.layers().len(), 0)
-	/// ```
-	pub fn remove(&mut self, id: ElementId) -> bool {
-		let pos = self.position_of_element(id);
-		if let Some(pos) = pos {
-			self.values.remove(pos);
-			self.keys.remove(pos);
-			self.id_to_index.remove(&id);
-			return true;
-		}
-		false
+	/// This operation will return false if the element ID is not found.
+	/// Preserve unique ID lookup by using swap end and updating hashmap
+	pub fn remove(&mut self, to_remove_id: ElementId) -> Option<T> {
+		let swap_index = *self.id_to_index.get(&to_remove_id)?;
+		let last_id = self.last_id()?;
+
+		let removed_anchor = self.elements.swap_remove(swap_index as usize);
+		self.id_to_index.insert(last_id, swap_index)?;
+		self.id_to_index.remove(&to_remove_id);
+		Some(removed_anchor)
 	}
 
-	/// Returns a list of [ElementId]s in the within this container.
-	pub fn keys(&self) -> &[ElementId] {
-		self.keys.as_slice()
+	/// Finds the last element of the container and returns its ID
+	fn last_id(&self) -> Option<ElementId> {
+		self.id_to_index
+			.keys()
+			.find(|&id| (*self.id_to_index.get(id).unwrap_or(&0) as usize) == self.elements.len() - 1)
+			.copied()
 	}
 
 	/// Get a single element with a given element ID from the within this container.
 	pub fn by_id(&self, id: ElementId) -> Option<&T> {
-		let pos = self.position_of_element(id)?;
-		Some(&self.values[pos])
+		self.id_to_index.get(&id).map(|index| &self.elements[*index as usize])
 	}
 
 	/// Get a mutable reference to a single element with a given element ID from the within this container.
 	pub fn by_id_mut(&mut self, id: ElementId) -> Option<&mut T> {
-		let pos = self.position_of_element(id)?;
-		Some(&mut self.values[pos])
+		self.id_to_index.get(&id).map(|index| &mut self.elements[*index as usize])
 	}
 
 	/// Get an element based on its index
 	pub fn by_index(&self, index: usize) -> Option<&T> {
-		self.values.get(index)
+		self.elements.get(index)
 	}
 
 	/// Get a mutable element based on its index
 	pub fn by_index_mut(&mut self, index: usize) -> Option<&mut T> {
-		self.values.get_mut(index)
-	}
-
-	pub fn last(&self) -> Option<&T> {
-		self.values.last()
-	}
-
-	pub fn last_mut(&mut self) -> Option<&mut T> {
-		self.values.last_mut()
-	}
-
-	pub fn len(&self) -> usize {
-		self.values.len()
-	}
-
-	pub fn is_empty(&self) -> bool {
-		self.values.is_empty()
+		self.elements.get_mut(index)
 	}
 
 	pub fn clear(&mut self) {
-		self.values.clear();
-		self.keys.clear();
+		self.elements.clear();
 		self.id_to_index.clear();
 	}
 
 	pub fn enumerate(&self) -> impl Iterator<Item = (&ElementId, &T)> {
-		self.keys.iter().zip(self.values.iter())
+		self.id_to_index.keys().zip(self.elements.iter())
 	}
 
 	pub fn enumerate_mut(&mut self) -> impl Iterator<Item = (&ElementId, &mut T)> {
-		self.keys.iter().zip(self.values.iter_mut())
+		self.id_to_index.keys().zip(self.elements.iter_mut())
 	}
 
 	/// Returns `true` if this contains an element with the given [ElementId].
@@ -233,29 +197,29 @@ impl<T> UniqueElements<T> {
 impl<T> Default for UniqueElements<T> {
 	fn default() -> Self {
 		UniqueElements {
-			keys: vec![],
-			values: vec![],
-			next_assignment_id: 0,
+			elements: vec![],
+			next_assignment_id: 1234,
 			id_to_index: HashMap::new(),
 		}
 	}
 }
 
+// Allows for usage of UniqueElements as a Vec<T>
 impl<T> Deref for UniqueElements<T> {
 	type Target = [T];
 	fn deref(&self) -> &Self::Target {
-		&self.values
+		&self.elements
 	}
 }
 
 impl<T> DerefMut for UniqueElements<T> {
 	fn deref_mut(&mut self) -> &mut Self::Target {
-		&mut self.values
+		&mut self.elements
 	}
 }
 
-/// allows use with iterators
-/// also allows constructing UniqueElements with collect
+/// Allows use with iterators
+/// Also allows constructing UniqueElements with collect
 impl<A> FromIterator<A> for UniqueElements<A> {
 	fn from_iter<T: IntoIterator<Item = A>>(iter: T) -> Self {
 		let mut new = UniqueElements::default();
