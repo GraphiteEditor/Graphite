@@ -523,6 +523,7 @@ impl DocumentMessageHandler {
 		}
 	}
 
+	// TODO: Loading the default font should happen on a per-application basis, not a per-document basis
 	pub fn load_default_font(&self, responses: &mut VecDeque<Message>) {
 		if !self.graphene_document.font_cache.has_default() {
 			responses.push_back(FrontendMessage::TriggerFontLoadDefault.into())
@@ -669,30 +670,36 @@ impl DocumentMessageHandler {
 		}]);
 
 		let document_mode_layout = WidgetLayout::new(vec![LayoutRow::Row {
-			widgets: vec![WidgetHolder::new(Widget::DropdownInput(DropdownInput {
-				entries: vec![vec![
-					DropdownEntryData {
-						label: DocumentMode::DesignMode.to_string(),
-						icon: DocumentMode::DesignMode.icon_name(),
-						..DropdownEntryData::default()
-					},
-					DropdownEntryData {
-						label: DocumentMode::SelectMode.to_string(),
-						icon: DocumentMode::SelectMode.icon_name(),
-						on_update: WidgetCallback::new(|_| DialogMessage::RequestComingSoonDialog { issue: Some(330) }.into()),
-						..DropdownEntryData::default()
-					},
-					DropdownEntryData {
-						label: DocumentMode::GuideMode.to_string(),
-						icon: DocumentMode::GuideMode.icon_name(),
-						on_update: WidgetCallback::new(|_| DialogMessage::RequestComingSoonDialog { issue: Some(331) }.into()),
-						..DropdownEntryData::default()
-					},
-				]],
-				selected_index: Some(self.document_mode as u32),
-				draw_icon: true,
-				..Default::default()
-			}))],
+			widgets: vec![
+				WidgetHolder::new(Widget::DropdownInput(DropdownInput {
+					entries: vec![vec![
+						DropdownEntryData {
+							label: DocumentMode::DesignMode.to_string(),
+							icon: DocumentMode::DesignMode.icon_name(),
+							..DropdownEntryData::default()
+						},
+						DropdownEntryData {
+							label: DocumentMode::SelectMode.to_string(),
+							icon: DocumentMode::SelectMode.icon_name(),
+							on_update: WidgetCallback::new(|_| DialogMessage::RequestComingSoonDialog { issue: Some(330) }.into()),
+							..DropdownEntryData::default()
+						},
+						DropdownEntryData {
+							label: DocumentMode::GuideMode.to_string(),
+							icon: DocumentMode::GuideMode.icon_name(),
+							on_update: WidgetCallback::new(|_| DialogMessage::RequestComingSoonDialog { issue: Some(331) }.into()),
+							..DropdownEntryData::default()
+						},
+					]],
+					selected_index: Some(self.document_mode as u32),
+					draw_icon: true,
+					..Default::default()
+				})),
+				WidgetHolder::new(Widget::Separator(Separator {
+					separator_type: SeparatorType::Section,
+					direction: SeparatorDirection::Horizontal,
+				})),
+			],
 		}]);
 
 		responses.push_back(
@@ -1107,8 +1114,8 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 				let affected_layer_path = affected_folder_path;
 				responses.extend([LayerChanged { affected_layer_path }.into(), DocumentStructureChanged.into()]);
 			}
-			FontLoaded { font, data, is_default } => {
-				self.graphene_document.font_cache.insert(font, data, is_default);
+			FontLoaded { font_file_url, data, is_default } => {
+				self.graphene_document.font_cache.insert(font_file_url, data, is_default);
 				responses.push_back(DocumentMessage::DirtyRenderDocument.into());
 			}
 			GroupSelectedLayers => {
@@ -1147,9 +1154,9 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 				responses.push_back(PropertiesPanelMessage::CheckSelectedWasUpdated { path: affected_layer_path }.into());
 				self.update_layer_tree_options_bar_widgets(responses);
 			}
-			LoadFont { font } => {
-				if !self.graphene_document.font_cache.loaded_font(&font) {
-					responses.push_front(FrontendMessage::TriggerFontLoad { font }.into());
+			LoadFont { font_file_url } => {
+				if !self.graphene_document.font_cache.loaded_font(&font_file_url) {
+					responses.push_front(FrontendMessage::TriggerFontLoad { font_file_url }.into());
 				}
 			}
 			MoveSelectedLayersTo {

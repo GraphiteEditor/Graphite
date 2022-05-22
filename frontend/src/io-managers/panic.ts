@@ -1,12 +1,13 @@
-import { DisplayDialogPanic, WidgetLayout } from "@/dispatcher/js-messages";
-import { DialogState } from "@/state/dialog";
-import { EditorState } from "@/state/wasm-loader";
-import { stripIndents } from "@/utilities/strip-indents";
-import { TextButtonWidget } from "@/utilities/widgets";
+import { TextButtonWidget } from "@/components/widgets/buttons/TextButton";
+import { DialogState } from "@/state-providers/dialog";
+import { IconName } from "@/utility-functions/icons";
+import { stripIndents } from "@/utility-functions/strip-indents";
+import { Editor } from "@/wasm-communication/editor";
+import { DisplayDialogPanic, WidgetLayout } from "@/wasm-communication/messages";
 
-export function initErrorHandling(editor: EditorState, dialogState: DialogState): void {
+export function createPanicManager(editor: Editor, dialogState: DialogState): void {
 	// Code panic dialog and console error
-	editor.dispatcher.subscribeJsMessage(DisplayDialogPanic, (displayDialogPanic) => {
+	editor.subscriptions.subscribeJsMessage(DisplayDialogPanic, (displayDialogPanic) => {
 		// `Error.stackTraceLimit` is only available in V8/Chromium
 		// eslint-disable-next-line @typescript-eslint/no-explicit-any
 		(Error as any).stackTraceLimit = Infinity;
@@ -16,11 +17,12 @@ export function initErrorHandling(editor: EditorState, dialogState: DialogState)
 		// eslint-disable-next-line no-console
 		console.error(panicDetails);
 
-		preparePanicDialog(dialogState, displayDialogPanic.title, displayDialogPanic.description, panicDetails);
+		const panicDialog = preparePanicDialog(displayDialogPanic.title, displayDialogPanic.description, panicDetails);
+		dialogState.createPanicDialog(...panicDialog);
 	});
 }
 
-function preparePanicDialog(dialogState: DialogState, title: string, details: string, panicDetails: string): void {
+function preparePanicDialog(title: string, details: string, panicDetails: string): [IconName, WidgetLayout, TextButtonWidget[]] {
 	const widgets: WidgetLayout = {
 		layout: [
 			{
@@ -65,7 +67,7 @@ function preparePanicDialog(dialogState: DialogState, title: string, details: st
 	};
 	const jsCallbackBasedButtons = [reloadButton, copyErrorLogButton, reportOnGithubButton];
 
-	dialogState.createPanicDialog(widgets, jsCallbackBasedButtons);
+	return ["Warning", widgets, jsCallbackBasedButtons];
 }
 
 function githubUrl(panicDetails: string): string {

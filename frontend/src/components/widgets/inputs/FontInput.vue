@@ -1,10 +1,17 @@
 <template>
 	<LayoutRow class="font-input">
-		<button class="dropdown-box" :class="{ disabled }" :style="{ minWidth: `${minWidth}px` }" @click="() => clickDropdownBox()" data-hover-menu-spawner>
-			<span>{{ activeEntry.label }}</span>
+		<LayoutRow class="dropdown-box" :class="{ disabled }" :style="{ minWidth: `${minWidth}px` }" @click="() => !disabled && (open = true)" data-hover-menu-spawner>
+			<span>{{ activeEntry?.label || "" }}</span>
 			<IconLabel class="dropdown-arrow" :icon="'DropdownArrow'" />
-		</button>
-		<MenuList v-model:activeEntry="activeEntry" @widthChanged="(newWidth: number) => onWidthChanged(newWidth)" :entries="entries" :direction="'Bottom'" :scrollableY="true" ref="menuList" />
+		</LayoutRow>
+		<MenuList
+			v-model:activeEntry="activeEntry"
+			v-model:open="open"
+			@naturalWidth="(newNaturalWidth: number) => (minWidth = newNaturalWidth)"
+			:entries="entries"
+			:direction="'Bottom'"
+			:scrollableY="true"
+		/>
 	</LayoutRow>
 </template>
 
@@ -87,13 +94,12 @@
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
 
-import { fontNames, getFontFile, getFontStyles } from "@/utilities/fonts";
-
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 import MenuList, { MenuListEntry, SectionsOfMenuListEntries } from "@/components/widgets/floating-menus/MenuList.vue";
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
 
 export default defineComponent({
+	inject: ["fonts"],
 	emits: ["update:fontFamily", "update:fontStyle", "changeFont"],
 	props: {
 		fontFamily: { type: String as PropType<string>, required: true },
@@ -102,18 +108,20 @@ export default defineComponent({
 		isStyle: { type: Boolean as PropType<boolean>, default: false },
 	},
 	data() {
-		const { entries, activeEntry } = this.updateEntries();
 		return {
-			entries,
-			activeEntry,
+			open: false,
 			minWidth: 0,
+			entries: [] as SectionsOfMenuListEntries,
+			activeEntry: undefined as undefined | MenuListEntry,
 		};
 	},
+	async mounted() {
+		const { entries, activeEntry } = await this.updateEntries();
+		this.entries = entries;
+		this.activeEntry = activeEntry;
+	},
 	methods: {
-		clickDropdownBox() {
-			if (!this.disabled) (this.$refs.menuList as typeof MenuList).setOpen();
-		},
-		selectFont(newName: string) {
+		async selectFont(newName: string): Promise<void> {
 			let fontFamily;
 			let fontStyle;
 
@@ -126,24 +134,21 @@ export default defineComponent({
 				this.$emit("update:fontFamily", newName);
 
 				fontFamily = newName;
-				fontStyle = getFontStyles(newName)[0];
+				fontStyle = (await this.fonts.getFontStyles(newName))[0];
 			}
 
-			const fontFile = getFontFile(fontFamily, fontStyle);
-			this.$emit("changeFont", { fontFamily, fontStyle, fontFile });
+			const fontFileUrl = await this.fonts.getFontFileUrl(fontFamily, fontStyle);
+			this.$emit("changeFont", { fontFamily, fontStyle, fontFileUrl });
 		},
-		onWidthChanged(newWidth: number) {
-			this.minWidth = newWidth;
-		},
-		updateEntries(): { entries: SectionsOfMenuListEntries; activeEntry: MenuListEntry } {
-			const choices = this.isStyle ? getFontStyles(this.fontFamily) : fontNames();
+		async updateEntries(): Promise<{ entries: SectionsOfMenuListEntries; activeEntry: MenuListEntry }> {
+			const choices = this.isStyle ? await this.fonts.getFontStyles(this.fontFamily) : this.fonts.state.fontNames;
 			const selectedChoice = this.isStyle ? this.fontStyle : this.fontFamily;
 
 			let selectedEntry: MenuListEntry | undefined;
 			const menuListEntries = choices.map((name) => {
 				const result: MenuListEntry = {
 					label: name,
-					action: (): void => this.selectFont(name),
+					action: async (): Promise<void> => this.selectFont(name),
 				};
 
 				if (name === selectedChoice) selectedEntry = result;
@@ -158,13 +163,13 @@ export default defineComponent({
 		},
 	},
 	watch: {
-		fontFamily() {
-			const { entries, activeEntry } = this.updateEntries();
+		async fontFamily() {
+			const { entries, activeEntry } = await this.updateEntries();
 			this.entries = entries;
 			this.activeEntry = activeEntry;
 		},
-		fontStyle() {
-			const { entries, activeEntry } = this.updateEntries();
+		async fontStyle() {
+			const { entries, activeEntry } = await this.updateEntries();
 			this.entries = entries;
 			this.activeEntry = activeEntry;
 		},

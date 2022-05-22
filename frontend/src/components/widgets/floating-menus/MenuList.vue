@@ -1,16 +1,24 @@
 <template>
-	<FloatingMenu class="menu-list" :direction="direction" :type="'Dropdown'" ref="floatingMenu" :windowEdgeMargin="0" :scrollableY="scrollableY" data-hover-menu-keep-open>
+	<FloatingMenu
+		class="menu-list"
+		v-model:open="isOpen"
+		@naturalWidth="(newNaturalWidth: number) => $emit('naturalWidth', newNaturalWidth)"
+		:type="'Dropdown'"
+		:windowEdgeMargin="0"
+		v-bind="{ direction, scrollableY, minWidth }"
+		ref="floatingMenu"
+		data-hover-menu-keep-open
+	>
 		<template v-for="(section, sectionIndex) in entries" :key="sectionIndex">
 			<Separator :type="'List'" :direction="'Vertical'" v-if="sectionIndex > 0" />
 			<LayoutRow
 				v-for="(entry, entryIndex) in section"
 				:key="entryIndex"
 				class="row"
-				:class="{ open: isMenuEntryOpen(entry), active: entry === highlighted }"
-				@click="() => handleEntryClick(entry)"
-				@pointerenter="() => handleEntryPointerEnter(entry)"
-				@pointerleave="() => handleEntryPointerLeave(entry)"
-				:data-hover-menu-spawner-extend="entry.children && []"
+				:class="{ open: isEntryOpen(entry), active: entry.label === highlighted?.label }"
+				@click="() => onEntryClick(entry)"
+				@pointerenter="() => onEntryPointerEnter(entry)"
+				@pointerleave="() => onEntryPointerLeave(entry)"
 			>
 				<CheckboxInput v-if="entry.checkbox" v-model:checked="entry.checked" :outlineStyle="true" class="entry-checkbox" />
 				<IconLabel v-else-if="entry.icon && drawIcon" :icon="entry.icon" class="entry-icon" />
@@ -26,10 +34,12 @@
 
 				<MenuList
 					v-if="entry.children"
+					@naturalWidth="(newNaturalWidth: number) => $emit('naturalWidth', newNaturalWidth)"
+					:open="entry.ref?.open || false"
 					:direction="'TopRight'"
 					:entries="entry.children"
 					v-bind="{ defaultAction, minWidth, drawIcon, scrollableY }"
-					:ref="(ref: any) => setEntryRefs(entry, ref)"
+					:ref="(ref: typeof FloatingMenu) => ref && (entry.ref = ref)"
 				/>
 			</LayoutRow>
 		</template>
@@ -131,7 +141,7 @@
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
 
-import { IconName } from "@/utilities/icons";
+import { IconName } from "@/utility-functions/icons";
 
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 import FloatingMenu, { MenuDirection } from "@/components/widgets/floating-menus/FloatingMenu.vue";
@@ -160,83 +170,96 @@ const KEYBOARD_LOCK_USE_FULLSCREEN = "This hotkey is reserved by the browser, bu
 const KEYBOARD_LOCK_SWITCH_BROWSER = "This hotkey is reserved by the browser, but becomes available in Chrome, Edge, and Opera which support the Keyboard.lock() API";
 
 const MenuList = defineComponent({
-	emits: {
-		"update:activeEntry": null,
-		widthChanged: (width: number) => typeof width === "number",
-	},
 	inject: ["fullscreen"],
+	emits: ["update:open", "update:activeEntry", "naturalWidth"],
 	props: {
-		direction: { type: String as PropType<MenuDirection>, default: "Bottom" },
 		entries: { type: Array as PropType<SectionsOfMenuListEntries>, required: true },
 		activeEntry: { type: Object as PropType<MenuListEntry>, required: false },
-		defaultAction: { type: Function as PropType<() => void>, required: false },
+		open: { type: Boolean as PropType<boolean>, required: true },
+		direction: { type: String as PropType<MenuDirection>, default: "Bottom" },
 		minWidth: { type: Number as PropType<number>, default: 0 },
 		drawIcon: { type: Boolean as PropType<boolean>, default: false },
 		scrollableY: { type: Boolean as PropType<boolean>, default: false },
+		defaultAction: { type: Function as PropType<() => void>, required: false },
+	},
+	data() {
+		return {
+			isOpen: this.open,
+			keyboardLockInfoMessage: this.fullscreen.keyboardLockApiSupported ? KEYBOARD_LOCK_USE_FULLSCREEN : KEYBOARD_LOCK_SWITCH_BROWSER,
+			highlighted: this.activeEntry as MenuListEntry | undefined,
+		};
+	},
+	watch: {
+		// Called only when `open` is changed from outside this component (with v-model)
+		open(newOpen: boolean) {
+			this.isOpen = newOpen;
+		},
+		isOpen(newIsOpen: boolean) {
+			this.$emit("update:open", newIsOpen);
+		},
+		entries() {
+			const floatingMenu = this.$refs.floatingMenu as typeof FloatingMenu;
+			floatingMenu.measureAndEmitNaturalWidth();
+		},
+		drawIcon() {
+			const floatingMenu = this.$refs.floatingMenu as typeof FloatingMenu;
+			floatingMenu.measureAndEmitNaturalWidth();
+		},
 	},
 	methods: {
-		setEntryRefs(menuEntry: MenuListEntry, ref: typeof FloatingMenu): void {
-			if (ref) menuEntry.ref = ref;
-		},
-		handleEntryClick(menuEntry: MenuListEntry): void {
-			(this.$refs.floatingMenu as typeof FloatingMenu).setClosed();
-
+		onEntryClick(menuEntry: MenuListEntry): void {
+			// Toggle checkbox
+			// TODO: This is broken at the moment, fix it when we get rid of using `ref`
 			if (menuEntry.checkbox) menuEntry.checked = !menuEntry.checked;
 
+			// Call the action, or a default, if either are provided
 			if (menuEntry.action) menuEntry.action();
 			else if (this.defaultAction) this.defaultAction();
 
+			// Emit the clicked entry as the new active entry
 			this.$emit("update:activeEntry", menuEntry);
+
+			// Close the containing menu
+			if (menuEntry.ref) menuEntry.ref.isOpen = false;
+			this.$emit("update:open", false);
+			this.isOpen = false; // TODO: This is a hack for MenuBarInput submenus, remove it when we get rid of using `ref`
 		},
-		handleEntryPointerEnter(menuEntry: MenuListEntry): void {
+		onEntryPointerEnter(menuEntry: MenuListEntry): void {
 			if (!menuEntry.children?.length) return;
 
-			if (menuEntry.ref) menuEntry.ref.setOpen();
-			else throw new Error("The menu bar floating menu has no associated ref");
+			if (menuEntry.ref) menuEntry.ref.isOpen = true;
+			else this.$emit("update:open", true);
 		},
-		handleEntryPointerLeave(menuEntry: MenuListEntry): void {
+		onEntryPointerLeave(menuEntry: MenuListEntry): void {
 			if (!menuEntry.children?.length) return;
 
-			if (menuEntry.ref) menuEntry.ref.setClosed();
-			else throw new Error("The menu bar floating menu has no associated ref");
+			if (menuEntry.ref) menuEntry.ref.isOpen = false;
+			else this.$emit("update:open", false);
 		},
-		isMenuEntryOpen(menuEntry: MenuListEntry): boolean {
+		isEntryOpen(menuEntry: MenuListEntry): boolean {
 			if (!menuEntry.children?.length) return false;
 
-			if (menuEntry.ref) return menuEntry.ref.isOpen();
+			return this.open;
+		},
 
-			return false;
-		},
-		setOpen() {
-			(this.$refs.floatingMenu as typeof FloatingMenu).setOpen();
-			// Reset the highlighted entry to the active one
-			this.setHighlighted(this.activeEntry);
-		},
-		setClosed() {
-			(this.$refs.floatingMenu as typeof FloatingMenu).setClosed();
-		},
-		isOpen(): boolean {
-			const floatingMenu = this.$refs.floatingMenu as typeof FloatingMenu;
-			return Boolean(floatingMenu?.isOpen());
-		},
 		/// Handles keyboard navigation for the menu. Returns if the entire menu stack should be dismissed
 		keydown(e: KeyboardEvent, submenu: boolean): boolean {
-			const menuOpen = this.isOpen();
+			const menuOpen = this.isOpen;
 			const flatEntries = this.entries.flat();
-			const openChild = flatEntries.map(this.isMenuEntryOpen).indexOf(true);
+			const openChild = flatEntries.findIndex((entry) => entry.children?.length && entry.ref?.isOpen);
 
 			const openSubmenu = (highlighted: MenuListEntry<string>): void => {
-				if (highlighted.children?.length) {
-					highlighted.ref?.setOpen();
+				if (highlighted.ref && highlighted.children?.length) {
+					highlighted.ref.isOpen = true;
 
 					// Highlight first item
-					if (highlighted.ref) highlighted.ref.setHighlighted(highlighted.children[0][0]);
+					highlighted.ref.setHighlighted(highlighted.children[0][0]);
 				}
 			};
 
 			if (!menuOpen && (e.key === " " || e.key === "Enter")) {
 				// Allow opening menu with space or enter
-				this.setOpen();
+				this.isOpen = true;
 			} else if (menuOpen && openChild >= 0) {
 				// Redirect the keyboard navigation to a submenu if one is open
 				const shouldCloseStack = flatEntries[openChild].ref?.keydown(e, true);
@@ -246,7 +269,7 @@ const MenuList = defineComponent({
 
 				// Handle the child closing the entire menu stack
 				if (shouldCloseStack) {
-					this.setClosed();
+					this.isOpen = false;
 					return true;
 				}
 			} else if (menuOpen && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
@@ -254,7 +277,7 @@ const MenuList = defineComponent({
 
 				let newIndex = e.key === "ArrowUp" ? flatEntries.length - 1 : 0;
 				if (this.highlighted) {
-					const index = this.highlighted ? flatEntries.indexOf(this.highlighted) : 0;
+					const index = this.highlighted ? flatEntries.map((entry) => entry.label).indexOf(this.highlighted.label) : 0;
 					newIndex = (index + (e.key === "ArrowUp" ? -1 : 1) + flatEntries.length) % flatEntries.length;
 				}
 
@@ -262,13 +285,13 @@ const MenuList = defineComponent({
 				this.setHighlighted(newEntry);
 			} else if (menuOpen && e.key === "Escape") {
 				// Close menu with escape key
-				this.setClosed();
+				this.isOpen = false;
 
 				// Reset active to before open
 				this.setHighlighted(this.activeEntry);
 			} else if (menuOpen && this.highlighted && e.key === "Enter") {
 				// Handle clicking on an option if enter is pressed
-				if (!this.highlighted.children?.length) this.handleEntryClick(this.highlighted);
+				if (!this.highlighted.children?.length) this.onEntryClick(this.highlighted);
 				else openSubmenu(this.highlighted);
 
 				// Stop the event from triggering a press on a new dialog
@@ -281,7 +304,7 @@ const MenuList = defineComponent({
 				openSubmenu(this.highlighted);
 			} else if (menuOpen && e.key === "ArrowLeft") {
 				// Left arrow closes a submenu
-				if (submenu) this.setClosed();
+				if (submenu) this.isOpen = false;
 			}
 
 			// By default, keep the menu stack open
@@ -289,30 +312,6 @@ const MenuList = defineComponent({
 		},
 		setHighlighted(newHighlight: MenuListEntry<string> | undefined) {
 			this.highlighted = newHighlight;
-		},
-		async measureAndReportWidth() {
-			// API is experimental but supported in all browsers - https://developer.mozilla.org/en-US/docs/Web/API/FontFaceSet/ready
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			await (document as any).fonts.ready;
-
-			const floatingMenu = this.$refs.floatingMenu as typeof FloatingMenu;
-
-			if (!floatingMenu) return;
-
-			// Save open/closed state before forcing open, if necessary, for measurement
-			const initiallyOpen = floatingMenu.isOpen();
-			if (!initiallyOpen) floatingMenu.setOpen();
-
-			floatingMenu.disableMinWidth((initialMinWidth: string) => {
-				floatingMenu.getWidth((width: number) => {
-					floatingMenu.enableMinWidth(initialMinWidth);
-
-					// Restore open/closed state if it was forced open for measurement
-					if (!initiallyOpen) floatingMenu.setClosed();
-
-					this.$emit("widthChanged", width);
-				});
-			});
 		},
 	},
 	computed: {
@@ -324,27 +323,6 @@ const MenuList = defineComponent({
 				})
 			);
 		},
-	},
-	mounted() {
-		this.measureAndReportWidth();
-	},
-	watch: {
-		entriesWithoutRefs: {
-			handler() {
-				this.measureAndReportWidth();
-			},
-			deep: true,
-		},
-		activeEntry(newEntry: MenuListEntry<string>) {
-			this.setHighlighted(newEntry);
-		},
-	},
-	data() {
-		return {
-			keyboardLockInfoMessage: this.fullscreen.keyboardLockApiSupported ? KEYBOARD_LOCK_USE_FULLSCREEN : KEYBOARD_LOCK_SWITCH_BROWSER,
-			// The highlighted entry (the current active one unless keyboard navigation is taking place)
-			highlighted: this.activeEntry,
-		};
 	},
 	components: {
 		FloatingMenu,

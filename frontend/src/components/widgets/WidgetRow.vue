@@ -3,11 +3,12 @@
 		<template v-for="(component, index) in widgets" :key="index">
 			<!-- TODO: Use `<component :is="" v-bind="attributesObject"></component>` to avoid all the separate components with `v-if` -->
 			<CheckboxInput v-if="component.kind === 'CheckboxInput'" v-bind="component.props" @update:checked="(value: boolean) => updateLayout(component.widget_id, value)" />
-			<ColorInput v-if="component.kind === 'ColorInput'" v-bind="component.props" @update:value="(value: string) => updateLayout(component.widget_id, value)" />
-			<DropdownInput v-if="component.kind === 'DropdownInput'" v-bind="component.props" @update:selectedIndex="(value: number) => updateLayout(component.widget_id, value)" />
+			<ColorInput v-if="component.kind === 'ColorInput'" v-bind="component.props" v-model:open="open" @update:value="(value: string) => updateLayout(component.widget_id, value)" />
+			<DropdownInput v-if="component.kind === 'DropdownInput'" v-bind="component.props" v-model:open="open" @update:selectedIndex="(value: number) => updateLayout(component.widget_id, value)" />
 			<FontInput
 				v-if="component.kind === 'FontInput'"
 				v-bind="component.props"
+				v-model:open="open"
 				@changeFont="(value: { name: string, style: string, file: string }) => updateLayout(component.widget_id, value)"
 			/>
 			<IconButton v-if="component.kind === 'IconButton'" v-bind="component.props" :action="() => updateLayout(component.widget_id, null)" />
@@ -69,7 +70,7 @@
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
 
-import { WidgetColumn, WidgetRow, isWidgetColumn, isWidgetRow } from "@/dispatcher/js-messages";
+import { WidgetColumn, WidgetRow, isWidgetColumn, isWidgetRow } from "@/wasm-communication/messages";
 
 import IconButton from "@/components/widgets/buttons/IconButton.vue";
 import PopoverButton from "@/components/widgets/buttons/PopoverButton.vue";
@@ -92,6 +93,11 @@ export default defineComponent({
 	props: {
 		widgetData: { type: Object as PropType<WidgetColumn | WidgetRow>, required: true },
 		layoutTarget: { required: true },
+	},
+	data() {
+		return {
+			open: false,
+		};
 	},
 	computed: {
 		direction() {

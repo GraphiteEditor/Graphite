@@ -1,5 +1,5 @@
 <template>
-	<FloatingMenu class="dialog-modal" :type="'Dialog'" :direction="'Center'" data-dialog-modal>
+	<FloatingMenu :open="true" class="dialog-modal" :type="'Dialog'" :direction="'Center'" data-dialog-modal>
 		<LayoutRow ref="main">
 			<LayoutCol class="icon-column">
 				<!-- `dialog.state.icon` class exists to provide special sizing in CSS to specific icons -->
