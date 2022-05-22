@@ -93,31 +93,6 @@ module.exports = {
 						group: "unknown",
 						position: "after",
 					},
-					{
-						pattern: "**/assets/12px-solid/*.svg",
-						group: "unknown",
-						position: "after",
-					},
-					{
-						pattern: "**/assets/16px-solid/*.svg",
-						group: "unknown",
-						position: "after",
-					},
-					{
-						pattern: "**/assets/16px-two-tone/*.svg",
-						group: "unknown",
-						position: "after",
-					},
-					{
-						pattern: "**/assets/24px-full-color/*.svg",
-						group: "unknown",
-						position: "after",
-					},
-					{
-						pattern: "**/assets/24px-two-tone/*.svg",
-						group: "unknown",
-						position: "after",
-					},
 				],
 			},
 		],
@@ -135,6 +110,7 @@ module.exports = {
 		// Vue plugin config (used to validate Vue single-file components)
 		"vue/multi-word-component-names": "off",
 
+		// Vue Accessibility plugin config (included by airbnb defaults but undesirable for a web app project)
 		"vuejs-accessibility/form-control-has-label": "off",
 		"vuejs-accessibility/label-has-for": "off",
 		"vuejs-accessibility/click-events-have-key-events": "off",
