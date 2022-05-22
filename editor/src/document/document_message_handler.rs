@@ -523,10 +523,17 @@ impl DocumentMessageHandler {
 		}
 	}
 
-	// TODO: Loading the default font should happen on a per-application basis, not a per-document basis
-	pub fn load_default_font(&self, responses: &mut VecDeque<Message>) {
+	/// Loads the default font into the document font cache if it is not already there.
+	///
+	/// If the default font is `None`, then a [`FrontendMessage::TriggerFontLoadDefault`] is sent
+	pub fn load_default_font(&mut self, default_font: &Option<(String, Vec<u8>)>, responses: &mut VecDeque<Message>) {
 		if !self.graphene_document.font_cache.has_default() {
-			responses.push_back(FrontendMessage::TriggerFontLoadDefault.into())
+			if let Some((font_name, font_data)) = default_font {
+				self.graphene_document.font_cache.insert(font_name.clone(), font_data.clone(), true);
+				responses.push_back(DocumentMessage::DirtyRenderDocument.into());
+			} else {
+				responses.push_back(FrontendMessage::TriggerFontLoadDefault.into());
+			}
 		}
 	}
 
@@ -1114,8 +1121,8 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 				let affected_layer_path = affected_folder_path;
 				responses.extend([LayerChanged { affected_layer_path }.into(), DocumentStructureChanged.into()]);
 			}
-			FontLoaded { font_file_url, data, is_default } => {
-				self.graphene_document.font_cache.insert(font_file_url, data, is_default);
+			FontLoaded { font_file_url, data } => {
+				self.graphene_document.font_cache.insert(font_file_url, data, false);
 				responses.push_back(DocumentMessage::DirtyRenderDocument.into());
 			}
 			GroupSelectedLayers => {

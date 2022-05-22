@@ -33,6 +33,10 @@ pub enum PortfolioMessage {
 	Cut {
 		clipboard: Clipboard,
 	},
+	DefaultFontLoaded {
+		font_file_url: String,
+		data: Vec<u8>,
+	},
 	NewDocument,
 	NewDocumentWithName {
 		name: String,

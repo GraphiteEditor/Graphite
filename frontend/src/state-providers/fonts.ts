@@ -46,11 +46,11 @@ export function createFontsState(editor: Editor) {
 
 		const response = await fetch(fontFileUrl);
 		const responseBuffer = await response.arrayBuffer();
-		editor.instance.on_font_load(fontFileUrl, new Uint8Array(responseBuffer), true);
+		editor.instance.on_default_font_load(fontFileUrl, new Uint8Array(responseBuffer));
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerFontLoad, async (triggerFontLoad) => {
 		const response = await (await fetch(triggerFontLoad.font_file_url)).arrayBuffer();
-		editor.instance.on_font_load(triggerFontLoad.font_file_url, new Uint8Array(response), false);
+		editor.instance.on_font_load(triggerFontLoad.font_file_url, new Uint8Array(response));
 	});
 
 	const fontList: Promise<{ family: string; variants: string[]; files: Map<string, string> }[]> = new Promise((resolve) => {

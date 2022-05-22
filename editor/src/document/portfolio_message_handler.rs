@@ -18,6 +18,7 @@ pub struct PortfolioMessageHandler {
 	document_ids: Vec<u64>,
 	active_document_id: u64,
 	copy_buffer: [Vec<CopyBufferEntry>; INTERNAL_CLIPBOARD_COUNT as usize],
+	default_font: Option<(String, Vec<u8>)>,
 }
 
 impl PortfolioMessageHandler {
@@ -52,7 +53,7 @@ impl PortfolioMessageHandler {
 	}
 
 	// TODO Fix how this doesn't preserve tab order upon loading new document from *File > Load*
-	fn load_document(&mut self, new_document: DocumentMessageHandler, document_id: u64, replace_first_empty: bool, responses: &mut VecDeque<Message>) {
+	fn load_document(&mut self, mut new_document: DocumentMessageHandler, document_id: u64, replace_first_empty: bool, responses: &mut VecDeque<Message>) {
 		// Special case when loading a document on an empty page
 		if replace_first_empty && self.active_document().is_unmodified_default() {
 			responses.push_back(ToolMessage::AbortCurrentTool.into());
@@ -79,8 +80,7 @@ impl PortfolioMessageHandler {
 		new_document.update_layer_tree_options_bar_widgets(responses);
 
 		new_document.load_image_data(responses, &new_document.graphene_document.root.data, Vec::new());
-		// TODO: Loading the default font should happen on a per-application basis, not a per-document basis
-		new_document.load_default_font(responses);
+		new_document.load_default_font(&self.default_font, responses);
 
 		self.documents.insert(document_id, new_document);
 
@@ -125,6 +125,7 @@ impl Default for PortfolioMessageHandler {
 			document_ids: vec![starting_key],
 			copy_buffer: [EMPTY_VEC; INTERNAL_CLIPBOARD_COUNT as usize],
 			active_document_id: starting_key,
+			default_font: None,
 		}
 	}
 }
@@ -262,6 +263,15 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 			Cut { clipboard } => {
 				responses.push_back(Copy { clipboard }.into());
 				responses.push_back(DeleteSelectedLayers.into());
+			}
+			DefaultFontLoaded { font_file_url, data } => {
+				// Populate the portfolio's default font
+				self.default_font = Some((font_file_url, data));
+				// Load the font into all document font caches
+				// TODO: Perhaps only load the font when required to save memory and file size.
+				for document in self.documents.values_mut() {
+					document.load_default_font(&self.default_font, responses);
+				}
 			}
 			NewDocument => {
 				let name = self.generate_new_document_name();

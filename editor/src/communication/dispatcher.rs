@@ -44,6 +44,8 @@ const SIDE_EFFECT_FREE_MESSAGES: &[MessageDiscriminant] = &[
 	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::UpdateDocumentLayerDetails),
 	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::UpdateDocumentLayerTreeStructure),
 	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::UpdateOpenDocumentsList),
+	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::TriggerFontLoad),
+	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::TriggerFontLoadDefault),
 	MessageDiscriminant::Tool(ToolMessageDiscriminant::DocumentIsDirty),
 ];
 

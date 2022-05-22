@@ -320,8 +320,16 @@ impl JsEditorHandle {
 	}
 
 	/// A font has been downloaded
-	pub fn on_font_load(&self, font_file_url: String, data: Vec<u8>, is_default: bool) -> Result<(), JsValue> {
-		let message = DocumentMessage::FontLoaded { font_file_url, data, is_default };
+	pub fn on_font_load(&self, font_file_url: String, data: Vec<u8>) -> Result<(), JsValue> {
+		let message = DocumentMessage::FontLoaded { font_file_url, data };
+		self.dispatch(message);
+
+		Ok(())
+	}
+
+	/// The default font has been downloaded
+	pub fn on_default_font_load(&self, font_file_url: String, data: Vec<u8>) -> Result<(), JsValue> {
+		let message = PortfolioMessage::DefaultFontLoaded { font_file_url, data };
 		self.dispatch(message);
 
 		Ok(())

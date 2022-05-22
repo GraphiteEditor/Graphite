@@ -75,7 +75,6 @@ pub enum DocumentMessage {
 	FontLoaded {
 		font_file_url: String,
 		data: Vec<u8>,
-		is_default: bool,
 	},
 	GroupSelectedLayers,
 	LayerChanged {
