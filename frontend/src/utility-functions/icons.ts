@@ -243,7 +243,7 @@ export type IconSize = 12 | 16 | 24 | 32;
 export type IconStyle = "node" | "";
 
 // The following helper type declarations allow us to avoid manually maintaining the `IconName` type declaration as a string union paralleling the keys of the
-// icon definitions. It lets TypeScript do that for us. Our goal is to define the big icons key-value pair by constraining its values, but inferring its keys.
+// icon definitions. It lets TypeScript do that for us. Our goal is to define the big key-value pair of icons by constraining its values, but inferring its keys.
 // Constraining its values means that TypeScript can make sure each icon definition has a valid size number from the union of numbers that is `IconSize`.
 // Inferring its keys means we don't have to specify a supertype like `string` or `any` for the key-value pair's keys, which would prevent us from accessing
 // the individual keys with `keyof typeof`. Absent a specified type for the keys, TypeScript falls back to inferring that the key-value pair's type is the

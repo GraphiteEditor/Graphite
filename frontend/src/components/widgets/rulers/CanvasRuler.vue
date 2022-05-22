@@ -121,7 +121,7 @@ export default defineComponent({
 		},
 	},
 	methods: {
-		handleResize() {
+		resize() {
 			if (!this.$refs.rulerRef) return;
 
 			const rulerElement = this.$refs.rulerRef as HTMLElement;
