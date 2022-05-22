@@ -3,8 +3,8 @@
 
 import { Transform, Type } from "class-transformer";
 
-import type { RustEditorInstance, WasmInstance } from "@/state/wasm-loader";
-import { IconName } from "@/utilities/icons";
+import { IconName } from "@/utility-functions/icons";
+import type { WasmEditorInstance, WasmRawInstance } from "@/wasm-communication/editor";
 
 export class JsMessage {
 	// The marker provides a way to check if an object is a sub-class constructor for a jsMessage.
@@ -12,7 +12,7 @@ export class JsMessage {
 }
 
 // ============================================================================
-// Add additional classes to replicate Rust's FrontendMessages and data structures below.
+// Add additional classes to replicate Rust's `FrontendMessage`s and data structures below.
 //
 // Remember to add each message to the `messageConstructors` export at the bottom of the file.
 //
@@ -21,9 +21,9 @@ export class JsMessage {
 // ============================================================================
 
 // Allows the auto save system to use a string for the id rather than a BigInt.
-// IndexedDb does not allow for BigInts as primary keys. TypeScript does not allow
-// subclasses to change the type of class variables in subclasses. It is an abstract
-// class to point out that it should not be instantiated directly.
+// IndexedDb does not allow for BigInts as primary keys.
+// TypeScript does not allow subclasses to change the type of class variables in subclasses.
+// It is an abstract class to point out that it should not be instantiated directly.
 export abstract class DocumentDetails {
 	readonly name!: string;
 
@@ -222,7 +222,7 @@ interface DataBuffer {
 	length: BigInt;
 }
 
-export function newUpdateDocumentLayerTreeStructure(input: { data_buffer: DataBuffer }, wasm: WasmInstance): UpdateDocumentLayerTreeStructure {
+export function newUpdateDocumentLayerTreeStructure(input: { data_buffer: DataBuffer }, wasm: WasmRawInstance): UpdateDocumentLayerTreeStructure {
 	const pointerNum = Number(input.data_buffer.pointer);
 	const lengthNum = Number(input.data_buffer.length);
 
@@ -335,8 +335,6 @@ export class IndexedDbDocumentDetails extends DocumentDetails {
 	id!: string;
 }
 
-export class TriggerFontLoadDefault extends JsMessage {}
-
 export class DisplayDialogDismiss extends JsMessage {}
 
 export class TriggerIndexedDbWriteDocument extends JsMessage {
@@ -355,8 +353,10 @@ export class TriggerIndexedDbRemoveDocument extends JsMessage {
 }
 
 export class TriggerFontLoad extends JsMessage {
-	font!: string;
+	font_file_url!: string;
 }
+
+export class TriggerFontLoadDefault extends JsMessage {}
 
 export class TriggerVisitLink extends JsMessage {
 	url!: string;
@@ -526,7 +526,7 @@ export class TriggerViewportResize extends JsMessage {}
 
 // `any` is used since the type of the object should be known from the Rust side
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-type JSMessageFactory = (data: any, wasm: WasmInstance, instance: RustEditorInstance) => JsMessage;
+type JSMessageFactory = (data: any, wasm: WasmRawInstance, instance: WasmEditorInstance) => JsMessage;
 type MessageMaker = typeof JsMessage | JSMessageFactory;
 
 export const messageMakers: Record<string, MessageMaker> = {
@@ -536,12 +536,12 @@ export const messageMakers: Record<string, MessageMaker> = {
 	DisplayEditableTextbox,
 	UpdateImageData,
 	DisplayRemoveEditableTextbox,
-	TriggerFontLoadDefault,
 	DisplayDialogDismiss,
 	TriggerFileDownload,
 	TriggerFileUpload,
 	TriggerIndexedDbRemoveDocument,
 	TriggerFontLoad,
+	TriggerFontLoadDefault,
 	TriggerIndexedDbWriteDocument,
 	TriggerRasterDownload,
 	TriggerTextCommit,

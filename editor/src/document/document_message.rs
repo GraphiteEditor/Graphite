@@ -73,7 +73,7 @@ pub enum DocumentMessage {
 		affected_folder_path: Vec<LayerId>,
 	},
 	FontLoaded {
-		font: String,
+		font_file_url: String,
 		data: Vec<u8>,
 		is_default: bool,
 	},
@@ -82,7 +82,7 @@ pub enum DocumentMessage {
 		affected_layer_path: Vec<LayerId>,
 	},
 	LoadFont {
-		font: String,
+		font_file_url: String,
 	},
 	MoveSelectedLayersTo {
 		folder_path: Vec<LayerId>,

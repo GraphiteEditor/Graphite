@@ -714,12 +714,12 @@ fn node_section_font(layer: &TextLayer) -> LayoutRow {
 						is_style_picker: false,
 						font_family: layer.font_family.clone(),
 						font_style: layer.font_style.clone(),
-						font_file: String::new(),
+						font_file_url: String::new(),
 						on_update: WidgetCallback::new(move |font_input: &FontInput| {
 							PropertiesPanelMessage::ModifyFont {
 								font_family: font_input.font_family.clone(),
 								font_style: font_input.font_style.clone(),
-								font_file: Some(font_input.font_file.clone()),
+								font_file: Some(font_input.font_file_url.clone()),
 								size,
 							}
 							.into()
@@ -741,12 +741,12 @@ fn node_section_font(layer: &TextLayer) -> LayoutRow {
 						is_style_picker: true,
 						font_family: layer.font_family.clone(),
 						font_style: layer.font_style.clone(),
-						font_file: String::new(),
+						font_file_url: String::new(),
 						on_update: WidgetCallback::new(move |font_input: &FontInput| {
 							PropertiesPanelMessage::ModifyFont {
 								font_family: font_input.font_family.clone(),
 								font_style: font_input.font_style.clone(),
-								font_file: Some(font_input.font_file.clone()),
+								font_file: Some(font_input.font_file_url.clone()),
 								size,
 							}
 							.into()

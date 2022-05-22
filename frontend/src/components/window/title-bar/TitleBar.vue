@@ -5,7 +5,7 @@
 			<MenuBarInput v-if="platform !== 'Mac'" />
 		</LayoutRow>
 		<LayoutRow class="header-part">
-			<WindowTitle :text="`${activeDocumentDisplayName} - Graphite`" />
+			<WindowTitle :text="windowTitle" />
 		</LayoutRow>
 		<LayoutRow class="header-part">
 			<WindowButtonsWindows :maximized="maximized" v-if="platform === 'Windows' || platform === 'Linux'" />
@@ -56,8 +56,11 @@ export default defineComponent({
 		maximized: { type: Boolean as PropType<boolean>, required: true },
 	},
 	computed: {
-		activeDocumentDisplayName() {
-			return this.portfolio.state.documents[this.portfolio.state.activeDocumentIndex].displayName;
+		windowTitle(): string {
+			const activeDocumentIndex = this.portfolio.state.activeDocumentIndex;
+			const activeDocumentDisplayName = this.portfolio.state.documents[activeDocumentIndex]?.displayName || "";
+
+			return `${activeDocumentDisplayName}${activeDocumentDisplayName && " - "}Graphite`;
 		},
 	},
 	components: {

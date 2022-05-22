@@ -79,6 +79,7 @@ impl PortfolioMessageHandler {
 		new_document.update_layer_tree_options_bar_widgets(responses);
 
 		new_document.load_image_data(responses, &new_document.graphene_document.root.data, Vec::new());
+		// TODO: Loading the default font should happen on a per-application basis, not a per-document basis
 		new_document.load_default_font(responses);
 
 		self.documents.insert(document_id, new_document);
