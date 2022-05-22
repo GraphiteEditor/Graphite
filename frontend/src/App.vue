@@ -198,16 +198,11 @@ img {
 .dropdown-input .dropdown-box,
 .font-input .dropdown-box,
 .radio-input button,
-.menu-list {
+.menu-list,
+.menu-bar-input .entry {
 	&:focus {
 		outline: 1px solid var(--color-accent);
 		outline-offset: 2px;
-	}
-}
-
-.menu-list {
-	&:focus {
-		outline-offset: -1px;
 	}
 }
 

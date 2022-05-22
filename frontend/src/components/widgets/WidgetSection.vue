@@ -18,19 +18,13 @@
 
 	.header {
 		display: flex;
-		flex-direction: row;
-		flex-grow: 1;
-		min-width: 0;
-		min-height: 0;
-		border: 0;
-		padding: 0;
-		text-align: left;
-
 		flex: 0 0 24px;
-		background: var(--color-4-dimgray);
-		align-items: center;
+		border: 0;
+		text-align: left;
 		padding: 0 8px;
 		margin: 0 -4px;
+		background: var(--color-4-dimgray);
+		align-items: center;
 
 		.expand-arrow {
 			width: 6px;

@@ -20,15 +20,6 @@
 	position: relative;
 
 	.dropdown-box {
-		display: flex;
-		flex-direction: row;
-		flex-grow: 1;
-		min-width: 0;
-		min-height: 0;
-		border: 0;
-		padding: 0;
-		text-align: left;
-
 		align-items: center;
 		white-space: nowrap;
 		background: var(--color-1-nearblack);

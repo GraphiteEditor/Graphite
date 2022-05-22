@@ -1,9 +1,9 @@
 <template>
 	<div class="menu-bar-input">
 		<div class="entry-container">
-			<div @click="() => visitWebsite('https://graphite.rs')" class="entry">
+			<button @click="() => visitWebsite('https://graphite.rs')" class="entry">
 				<IconLabel :icon="'GraphiteLogo'" />
-			</div>
+			</button>
 		</div>
 		<div class="entry-container" v-for="(entry, index) in entries" :key="index">
 			<div @click="(e) => onClick(entry, e.target)" tabindex="0" @keydown="entry.ref?.keydown" class="entry" :class="{ open: entry.ref?.open }" data-hover-menu-spawner>
@@ -36,6 +36,9 @@
 			align-items: center;
 			white-space: nowrap;
 			padding: 0 8px;
+			background: none;
+			border: 0;
+			margin: 0;
 
 			svg {
 				fill: var(--color-e-nearwhite);
