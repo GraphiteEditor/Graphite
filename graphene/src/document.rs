@@ -929,20 +929,20 @@ impl Document {
 			}
 
 			// We may not want the concept of selection here. For now leaving though.
-			Operation::SelectVectorPoints { layer_path, anchor_ids, add } => {
+			Operation::SelectVectorPoints { layer_path, point_ids, add } => {
 				let layer = self.layer_mut(&layer_path)?;
 				if let Some(shape) = layer.as_vector_shape_mut() {
 					if !add {
 						shape.clear_selected_anchors();
 					}
-					shape.select_anchors(&anchor_ids, true);
+					shape.select_points(&point_ids, true);
 				}
 				Some(vec![LayerChanged { path: layer_path.clone() }])
 			}
-			Operation::DeselectVectorPoints { layer_path, anchor_ids } => {
+			Operation::DeselectVectorPoints { layer_path, point_ids } => {
 				let layer = self.layer_mut(&layer_path)?;
 				if let Some(shape) = layer.as_vector_shape_mut() {
-					shape.select_anchors(&anchor_ids, false);
+					shape.select_points(&point_ids, false);
 				}
 				Some(vec![LayerChanged { path: layer_path.clone() }])
 			}

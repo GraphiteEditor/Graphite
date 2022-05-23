@@ -13,6 +13,17 @@ pub enum ControlPointType {
 	OutHandle = 2,
 }
 
+impl ControlPointType {
+	pub fn from_index(index: usize) -> ControlPointType {
+		match index {
+			0 => ControlPointType::Anchor,
+			1 => ControlPointType::InHandle,
+			2 => ControlPointType::OutHandle,
+			_ => ControlPointType::Anchor,
+		}
+	}
+}
+
 impl Not for ControlPointType {
 	type Output = Self;
 	fn not(self) -> Self::Output {

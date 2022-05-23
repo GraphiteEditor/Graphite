@@ -3,6 +3,7 @@ use crate::layers::blend_mode::BlendMode;
 use crate::layers::layer_info::Layer;
 use crate::layers::style::{self, Stroke};
 use crate::LayerId;
+use crate::layers::vector::constants::ControlPointType;
 
 use serde::{Deserialize, Serialize};
 use std::collections::hash_map::DefaultHasher;
@@ -127,7 +128,7 @@ pub enum Operation {
 	},
 	DeselectVectorPoints {
 		layer_path: Vec<LayerId>,
-		anchor_ids: Vec<u64>,
+		point_ids: Vec<(u64, ControlPointType)>,
 	},
 	DeselectAllVectorPoints {
 		layer_path: Vec<LayerId>,
@@ -172,7 +173,7 @@ pub enum Operation {
 	},
 	SelectVectorPoints {
 		layer_path: Vec<LayerId>,
-		anchor_ids: Vec<u64>,
+		point_ids: Vec<(u64, ControlPointType)>,
 		add: bool,
 	},
 	SetShapePath {

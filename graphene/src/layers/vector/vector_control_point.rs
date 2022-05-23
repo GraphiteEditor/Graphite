@@ -2,7 +2,7 @@ use super::constants::ControlPointType;
 use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};
 
-/// VectorControlPoint represents any grabbable point, anchor or handle
+/// VectorControlPoint represents any editable point, anchor or handle
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub struct VectorControlPoint {
 	/// The sibling element if this is a handle

@@ -1040,8 +1040,8 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 					responses.push_back(DocumentOperation::DeselectAllVectorPoints { layer_path: layer_path.to_vec() }.into());
 				}
 			}
-			DeselectVectorPoints { layer_path, anchor_ids } => {
-				responses.push_back(DocumentOperation::DeselectVectorPoints { layer_path, anchor_ids }.into());
+			DeselectVectorPoints { layer_path, point_ids } => {
+				responses.push_back(DocumentOperation::DeselectVectorPoints { layer_path, point_ids }.into());
 			}
 			DirtyRenderDocument => {
 				// Mark all non-overlay caches as dirty
@@ -1447,8 +1447,8 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 				}
 			}
 			// TODO Might be able to send this directly from a tool instead and bypass DocumentMessageHandler
-			SelectVectorPoints { layer_path, anchor_ids, add } => {
-				responses.push_back(DocumentOperation::SelectVectorPoints { layer_path, anchor_ids, add }.into());
+			SelectVectorPoints { layer_path, point_ids, add } => {
+				responses.push_back(DocumentOperation::SelectVectorPoints { layer_path, point_ids, add }.into());
 			}
 			SetBlendModeForSelectedLayers { blend_mode } => {
 				self.backup(responses);

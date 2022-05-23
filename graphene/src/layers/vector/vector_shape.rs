@@ -87,9 +87,11 @@ impl VectorShape {
 	/// Delete the selected points from the VectorShape
 	pub fn delete_selected(&mut self) {
 		let mut ids_to_delete: Vec<u64> = vec![];
-		for (id, anchor) in self.anchors().enumerate() {
+		for (id, anchor) in self.anchors_mut().enumerate_mut() {
 			if anchor.is_anchor_selected() {
 				ids_to_delete.push(*id);
+			} else {
+				anchor.delete_selected();
 			}
 		}
 
@@ -100,29 +102,24 @@ impl VectorShape {
 
 	// Apply a transformation to all of the VectorShape points
 	pub fn apply_affine(&mut self, affine: DAffine2) {
-		for anchor in self.0.iter_mut() {
+		for anchor in self.anchors_mut().iter_mut() {
 			anchor.transform(&affine);
 		}
 	}
 
 	// ** SELECTION OF POINTS **
-
-	/// Select an anchor by id
-	pub fn select_anchor(&mut self, anchor_id: u64, selected: bool) -> Option<&mut VectorAnchor> {
+	pub fn select_point(&mut self, point: (u64, ControlPointType), selected: bool) -> Option<&mut VectorAnchor> {
+		let (anchor_id, point_id) = point;
 		if let Some(anchor) = self.anchors_mut().by_id_mut(anchor_id) {
-			anchor.select_point(ControlPointType::Anchor as usize, selected);
+			anchor.select_point(point_id as usize, selected);
 			return Some(anchor);
 		}
 		None
 	}
 
-	/// Select anchors by an array of IDs
-	pub fn select_anchors(&mut self, anchor_ids: &[u64], selected: bool) {
-		for anchor_id in anchor_ids {
-			if let Some(anchor) = self.anchors_mut().by_id_mut(*anchor_id) {
-				anchor.select_point(ControlPointType::Anchor as usize, selected);
-			}
-		}
+	/// Select points in the VectorShape, given by (AnchorId, ControlPointType)
+	pub fn select_points(&mut self, points: &[(u64, ControlPointType)], selected: bool) {
+		points.iter().for_each(|point| { self.select_point(*point, selected); });
 	}
 
 	/// Select all the anchors in this shape

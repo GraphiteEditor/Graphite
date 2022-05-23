@@ -81,6 +81,17 @@ impl VectorAnchor {
 		}
 	}
 
+	/// Delete any VectorControlPoint that are selected, this includes handles or the anchor
+	pub fn delete_selected(&mut self) {
+		for point_option in self.points.iter_mut() {
+			if let Some(point) = point_option {
+				if point.editor_state.is_selected {
+					*point_option = None;
+				}
+			}
+		}
+	}
+
 	/// Returns true if any points in this anchor are selected
 	pub fn any_points_selected(&self) -> bool {
 		self.points.iter().flatten().any(|pnt| pnt.editor_state.is_selected)

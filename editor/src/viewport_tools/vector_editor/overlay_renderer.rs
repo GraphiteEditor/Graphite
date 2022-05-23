@@ -9,14 +9,14 @@ use crate::{
 };
 
 use super::{
-	constants::{ControlPointType, ROUNDING_BIAS},
+	constants::{ROUNDING_BIAS},
 	vector_anchor::VectorAnchor,
 	vector_control_point::VectorControlPoint,
 };
 use graphene::{
 	color::Color,
 	document::Document,
-	layers::style::{self, Fill, Stroke},
+	layers::{style::{self, Fill, Stroke}, vector::constants::ControlPointType},
 	LayerId, Operation,
 };
 
@@ -74,10 +74,10 @@ impl<'a> OverlayRenderer {
 						// Create if not cached
 						let anchor_overlays = [
 							Some(self.create_anchor_overlay(responses)),
-							self.create_handle_overlay(&anchor.points[ControlPointType::Handle1], responses),
-							self.create_handle_overlay(&anchor.points[ControlPointType::Handle2], responses),
-							self.create_handle_line_overlay(&anchor.points[ControlPointType::Handle1], responses),
-							self.create_handle_line_overlay(&anchor.points[ControlPointType::Handle2], responses),
+							self.create_handle_overlay(&anchor.points[ControlPointType::InHandle], responses),
+							self.create_handle_overlay(&anchor.points[ControlPointType::OutHandle], responses),
+							self.create_handle_line_overlay(&anchor.points[ControlPointType::InHandle], responses),
+							self.create_handle_line_overlay(&anchor.points[ControlPointType::OutHandle], responses),
 						];
 						self.place_anchor_overlays(anchor, &anchor_overlays, &transform, responses);
 						self.style_overlays(anchor, &anchor_overlays, responses);

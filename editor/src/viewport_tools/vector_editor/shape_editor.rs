@@ -19,6 +19,7 @@ use super::{vector_anchor::VectorAnchor, vector_control_point::VectorControlPoin
 use glam::DVec2;
 use graphene::document::Document;
 use graphene::LayerId;
+use graphene::layers::vector::constants::ControlPointType;
 
 /// ShapeEditor is the container for all of the layer paths that are
 /// represented as VectorShapes and provides functionality required
@@ -58,7 +59,7 @@ impl ShapeEditor {
 				responses.push_back(
 					DocumentMessage::SelectVectorPoints {
 						layer_path: shape_layer_path.to_vec(),
-						anchor_ids: vec![anchor_id],
+						point_ids: vec![(anchor_id, ControlPointType::from_index(point_index))],
 						add: add_to_selection || is_point_selected,
 					}
 					.into(),
@@ -67,7 +68,7 @@ impl ShapeEditor {
 				responses.push_back(
 					DocumentMessage::DeselectVectorPoints {
 						layer_path: shape_layer_path.to_vec(),
-						anchor_ids: vec![anchor_id],
+						point_ids: vec![(anchor_id, ControlPointType::from_index(point_index))],
 					}
 					.into(),
 				);

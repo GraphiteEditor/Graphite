@@ -8,7 +8,6 @@ use crate::message_prelude::*;
 use crate::misc::{HintData, HintGroup, HintInfo, KeysGroup};
 use crate::viewport_tools::snapping::SnapHandler;
 use crate::viewport_tools::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
-use crate::viewport_tools::vector_editor::constants::ControlPointType;
 use crate::viewport_tools::vector_editor::shape_editor::ShapeEditor;
 
 use graphene::layers::style;
