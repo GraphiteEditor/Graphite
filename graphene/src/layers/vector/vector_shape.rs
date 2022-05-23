@@ -15,8 +15,6 @@ use serde::{Deserialize, Serialize};
 #[derive(PartialEq, Clone, Debug, Default, Serialize, Deserialize)]
 pub struct VectorShape(VecUnique<VectorAnchor>);
 
-// TODO Implement iterator for VectorShape
-
 impl VectorShape {
 	// ** SHAPE INITIALIZATION **
 

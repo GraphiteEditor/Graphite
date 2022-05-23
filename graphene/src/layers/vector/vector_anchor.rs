@@ -5,9 +5,9 @@ use serde::{Deserialize, Serialize};
 /// Brief overview of VectorAnchor
 ///                    VectorAnchor <- Container for the anchor metadata and optional VectorControlPoints
 ///                          /
-///            [Option<VectorControlPoint>; 3] <- [0] is the anchor's draggable point (but not metadata), [1] is the handle1's draggable point, [2] is the handle2's draggable point
+///            [Option<VectorControlPoint>; 3] <- [0] is the anchor's draggable point (but not metadata), [1] is the InHandle's draggable point, [2] is the OutHandle's draggable point
 ///          /              |                      \
-///      "Anchor"        "Handle1"             "Handle2" <- These are VectorControlPoints and the only editable "primitive"
+///      "Anchor"        "InHandle"             "OutHandle" <- These are VectorControlPoints and the only editable "primitive"
 
 /// VectorAnchor is used to represent an anchor point + handles on the path that can be moved.
 /// It contains 0-2 handles that are optionally available.
@@ -32,12 +32,12 @@ impl VectorAnchor {
 	}
 
 	/// Create a new anchor with the given anchor position and handles
-	pub fn new_with_handles(anchor_pos: DVec2, handle1_pos: DVec2, handle2_pos: DVec2) -> Self {
+	pub fn new_with_handles(anchor_pos: DVec2, handle_in_pos: DVec2, handle_out_pos: DVec2) -> Self {
 		Self {
 			points: [
 				Some(VectorControlPoint::new(anchor_pos, ControlPointType::Anchor)),
-				Some(VectorControlPoint::new(handle1_pos, ControlPointType::InHandle)),
-				Some(VectorControlPoint::new(handle2_pos, ControlPointType::OutHandle)),
+				Some(VectorControlPoint::new(handle_in_pos, ControlPointType::InHandle)),
+				Some(VectorControlPoint::new(handle_out_pos, ControlPointType::OutHandle)),
 			],
 			editor_state: VectorAnchorState::default(),
 		}
