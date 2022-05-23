@@ -3,11 +3,12 @@ use std::{
 };
 use serde::{Deserialize, Serialize};
 
-/// This struct allows for unique ids while still maintaining ordering
-/// - Add to start and end
-/// - Unique ID per element
-/// - Maintain ordering
-/// - Insert by unique id
+/// Goals of this Data Structure:
+/// - Drop in replacement for a Vec
+/// - Add elements to the start or end
+/// - Provide a Unique ID per element
+/// - Maintain ordering among the elements
+/// - Insert by Unique ID
 /// - Remove elements without changing ordering or damaging unique ids
 /// This functions somewhat similar to a linklist in terms of needs.
 /// The downside is that currently it requires a lot of iteration.
