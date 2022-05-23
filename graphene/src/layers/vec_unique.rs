@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 type ElementId = u64;
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct VecUnique<T> {
-	/// Map from element ids to array positions
+	/// Contained elements
 	elements: Vec<T>,
 	/// The IDs of the [Elements] contained within this
 	element_ids: Vec<ElementId>,
