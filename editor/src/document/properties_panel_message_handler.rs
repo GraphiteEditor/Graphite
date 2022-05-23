@@ -795,35 +795,45 @@ fn node_gradient_type(gradient: &Gradient) -> LayoutRow {
 	let mut cloned_gradient_radial = gradient.clone();
 	cloned_gradient_radial.gradient_type = GradientType::Radial;
 	LayoutRow::Row {
-		widgets: vec![WidgetHolder::new(Widget::RadioInput(RadioInput {
-			selected_index,
-			entries: vec![
-				RadioEntryData {
-					value: "linear".into(),
-					label: "Linear".into(),
-					tooltip: "Linear Gradient".into(),
-					on_update: WidgetCallback::new(move |_| {
-						PropertiesPanelMessage::ModifyFill {
-							fill: Fill::Gradient(cloned_gradient_linear.clone()),
-						}
-						.into()
-					}),
-					..RadioEntryData::default()
-				},
-				RadioEntryData {
-					value: "radial".into(),
-					label: "Radial".into(),
-					tooltip: "Radial Gradient".into(),
-					on_update: WidgetCallback::new(move |_| {
-						PropertiesPanelMessage::ModifyFill {
-							fill: Fill::Gradient(cloned_gradient_radial.clone()),
-						}
-						.into()
-					}),
-					..RadioEntryData::default()
-				},
-			],
-		}))],
+		widgets: vec![
+			WidgetHolder::new(Widget::TextLabel(TextLabel {
+				value: "Gradient Type".into(),
+				..TextLabel::default()
+			})),
+			WidgetHolder::new(Widget::Separator(Separator {
+				separator_type: SeparatorType::Unrelated,
+				direction: SeparatorDirection::Horizontal,
+			})),
+			WidgetHolder::new(Widget::RadioInput(RadioInput {
+				selected_index,
+				entries: vec![
+					RadioEntryData {
+						value: "linear".into(),
+						label: "Linear".into(),
+						tooltip: "Linear Gradient".into(),
+						on_update: WidgetCallback::new(move |_| {
+							PropertiesPanelMessage::ModifyFill {
+								fill: Fill::Gradient(cloned_gradient_linear.clone()),
+							}
+							.into()
+						}),
+						..RadioEntryData::default()
+					},
+					RadioEntryData {
+						value: "radial".into(),
+						label: "Radial".into(),
+						tooltip: "Radial Gradient".into(),
+						on_update: WidgetCallback::new(move |_| {
+							PropertiesPanelMessage::ModifyFill {
+								fill: Fill::Gradient(cloned_gradient_radial.clone()),
+							}
+							.into()
+						}),
+						..RadioEntryData::default()
+					},
+				],
+			})),
+		],
 	}
 }
 
