@@ -66,5 +66,5 @@ pub const FILE_SAVE_SUFFIX: &str = ".graphite";
 pub const COLOR_ACCENT: Color = Color::from_unsafe(0x00 as f32 / 255., 0xA8 as f32 / 255., 0xFF as f32 / 255.);
 
 // Document
-pub const GRAPHITE_DOCUMENT_VERSION: &str = "0.0.9"; // Remember to save a simple document and replace the test file at: editor\src\communication\graphite-test-document.graphite
+pub const GRAPHITE_DOCUMENT_VERSION: &str = "0.0.10"; // Remember to save a simple document and replace the test file at: editor\src\communication\graphite-test-document.graphite
 pub const VIEWPORT_ZOOM_TO_FIT_PADDING_SCALE_FACTOR: f32 = 1.05;

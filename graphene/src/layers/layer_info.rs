@@ -67,7 +67,7 @@ pub trait LayerData {
 	/// assert_eq!(
 	///     svg,
 	///     "<g transform=\"matrix(\n1,-0,-0,1,-0,-0)\">\
-	///     <path d=\"M0 0L1 0L1 1L0 1Z\"  fill=\"none\" />\
+	///     <path d=\"M0 0L0 1L1 1L1 0Z\"  fill=\"none\" />\
 	///     </g>"
 	/// );
 	/// ```

@@ -441,8 +441,23 @@ mod test {
 	}
 
 	#[test]
+	/// If this test is failing take a look at `GRAPHITE_DOCUMENT_VERSION` in `editor/src/consts.rs`, it may need to be updated.
+	/// This test will fail when you make changes to the underlying serialization format for a document.
 	fn check_if_graphite_file_version_upgrade_is_needed() {
 		use crate::layout::widgets::{LayoutRow, TextLabel, Widget};
+		let print_problem_to_terminal_on_failure = |value: &String| { 						
+			println!();
+			println!("-------------------------------------------------");
+			println!("Failed test due to receiving a DisplayDialogError while loading the Graphite sample file!");
+			println!("This is most likely caused by forgetting to bump the `GRAPHITE_DOCUMENT_VERSION` in `editor/src/consts.rs`");
+			println!("After bumping this version number, please replace the `graphite-test-document.graphite` with a valid file [saved from the editor].");
+			println!("DisplayDialogError details:");
+			println!();
+			println!("Description: {}", value);
+			println!("-------------------------------------------------");
+			println!();
+			panic!()
+		};
 
 		init_logger();
 		set_uuid_seed(0);
@@ -454,20 +469,11 @@ mod test {
 		});
 
 		for response in responses {
+			// Check for the existence of the file format incompatibility warning dialog after opening the test file
 			if let FrontendMessage::UpdateDialogDetails { layout_target: _, layout } = response {
 				if let LayoutRow::Row { widgets } = &layout[0] {
 					if let Widget::TextLabel(TextLabel { value, .. }) = &widgets[0].widget {
-						println!();
-						println!("-------------------------------------------------");
-						println!("Failed test due to receiving a DisplayDialogError while loading the Graphite sample file!");
-						println!("This is most likely caused by forgetting to bump the `GRAPHITE_DOCUMENT_VERSION` in `editor/src/consts.rs`");
-						println!("Once bumping this version number please replace the `graphite-test-document.graphite` with a valid file.");
-						println!("DisplayDialogError details:");
-						println!();
-						println!("Description: {}", value);
-						println!("-------------------------------------------------");
-						println!();
-						panic!()
+						print_problem_to_terminal_on_failure(value);
 					}
 				}
 			}
