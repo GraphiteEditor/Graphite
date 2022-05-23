@@ -40,5 +40,7 @@ export async function upload(acceptedEextensions: string): Promise<{ filename: s
 		);
 
 		element.click();
+
+		// Once `element` goes out of scope, it has no references so it gets garbage collected along with its event listener, so `removeEventListener` is not needed
 	});
 }

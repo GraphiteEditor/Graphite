@@ -155,6 +155,10 @@ export default defineComponent({
 		window.addEventListener("pointerup", this.pointerUp);
 		window.addEventListener("pointermove", this.pointerMove);
 	},
+	unmounted() {
+		window.removeEventListener("pointerup", this.pointerUp);
+		window.removeEventListener("pointermove", this.pointerMove);
+	},
 	methods: {
 		trackLength(): number {
 			const track = this.$refs.scrollTrack as HTMLElement;

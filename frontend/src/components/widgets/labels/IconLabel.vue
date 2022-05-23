@@ -35,7 +35,7 @@
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
 
-import { IconName, IconStyle, icons, iconComponents } from "@/utilities/icons";
+import { IconName, IconStyle, icons, iconComponents } from "@/utility-functions/icons";
 
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 

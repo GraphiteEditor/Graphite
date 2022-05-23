@@ -168,7 +168,6 @@ const panelComponents = {
 type PanelTypes = keyof typeof panelComponents;
 
 export default defineComponent({
-	inject: ["portfolio"],
 	props: {
 		tabMinWidths: { type: Boolean as PropType<boolean>, default: false },
 		tabCloseButtons: { type: Boolean as PropType<boolean>, default: false },

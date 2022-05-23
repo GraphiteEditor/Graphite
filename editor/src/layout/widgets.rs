@@ -49,6 +49,7 @@ impl WidgetLayout {
 
 pub type SubLayout = Vec<LayoutRow>;
 
+// TODO: Rename LayoutRow to something more generic
 #[remain::sorted]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum LayoutRow {
@@ -254,8 +255,8 @@ pub struct FontInput {
 	pub font_family: String,
 	#[serde(rename = "fontStyle")]
 	pub font_style: String,
-	#[serde(rename = "fontFile")]
-	pub font_file: String,
+	#[serde(rename = "fontFileUrl")]
+	pub font_file_url: String,
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
 	pub on_update: WidgetCallback<FontInput>,
