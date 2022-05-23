@@ -282,7 +282,11 @@ const MenuList = defineComponent({
 				let newIndex = e.key === "ArrowUp" ? flatEntries.length - 1 : 0;
 				if (this.highlighted) {
 					const index = this.highlighted ? flatEntries.map((entry) => entry.label).indexOf(this.highlighted.label) : 0;
-					newIndex = (index + (e.key === "ArrowUp" ? -1 : 1) + flatEntries.length) % flatEntries.length;
+					newIndex = index + (e.key === "ArrowUp" ? -1 : 1);
+
+					// Interactive dropdowns should lock at the end whereas other dropdowns should loop
+					if (this.interactive) newIndex = Math.min(flatEntries.length - 1, Math.max(0, newIndex));
+					else newIndex = (newIndex + flatEntries.length) % flatEntries.length;
 				}
 
 				const newEntry = flatEntries[newIndex];
