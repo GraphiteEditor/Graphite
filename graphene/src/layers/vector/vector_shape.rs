@@ -119,7 +119,9 @@ impl VectorShape {
 
 	/// Select points in the VectorShape, given by (AnchorId, ControlPointType)
 	pub fn select_points(&mut self, points: &[(u64, ControlPointType)], selected: bool) {
-		points.iter().for_each(|point| { self.select_point(*point, selected); });
+		points.iter().for_each(|point| {
+			self.select_point(*point, selected);
+		});
 	}
 
 	/// Select all the anchors in this shape
@@ -129,7 +131,6 @@ impl VectorShape {
 		}
 	}
 
-	
 	/// Select an anchor by index
 	pub fn select_anchor_by_index(&mut self, anchor_index: usize) -> Option<&mut VectorAnchor> {
 		if let Some(anchor) = self.anchors_mut().by_index_mut(anchor_index) {
@@ -138,7 +139,7 @@ impl VectorShape {
 		}
 		None
 	}
-	
+
 	/// The last anchor in the shape
 	pub fn select_last_anchor(&mut self) -> Option<&mut VectorAnchor> {
 		if let Some(anchor) = self.anchors_mut().last_mut() {
@@ -166,7 +167,7 @@ impl VectorShape {
 	pub fn selected_anchors_mut(&mut self) -> impl Iterator<Item = &mut VectorAnchor> {
 		self.anchors_mut().iter_mut().filter(|anchor| anchor.is_anchor_selected())
 	}
-	
+
 	/// An alias for `self.0`
 	pub fn anchors(&self) -> &IdBackedVec<VectorAnchor> {
 		&self.0
@@ -178,7 +179,7 @@ impl VectorShape {
 	}
 
 	// ** INTERFACE WITH KURBO **
-	
+
 	// TODO Remove BezPath / kurbo reliance here
 	pub fn bounding_box(&self) -> Rect {
 		<&Self as Into<BezPath>>::into(self).bounding_box()

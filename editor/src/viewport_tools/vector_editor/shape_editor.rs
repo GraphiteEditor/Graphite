@@ -1,4 +1,3 @@
-
 // Overview:
 //          ShapeEditor
 //         /          \
@@ -7,7 +6,6 @@
 //  VectorShape ... VectorShape  <- Reference from layer paths, one Vectorshape per layer
 //      /                 \
 //  VectorAnchor ...  VectorAnchor <- VectorShape contains many VectorAnchors
-
 
 use std::collections::VecDeque;
 
@@ -18,8 +16,8 @@ use super::{vector_anchor::VectorAnchor, vector_control_point::VectorControlPoin
 
 use glam::DVec2;
 use graphene::document::Document;
-use graphene::LayerId;
 use graphene::layers::vector::constants::ControlPointType;
+use graphene::LayerId;
 
 /// ShapeEditor is the container for all of the layer paths that are
 /// represented as VectorShapes and provides functionality required
@@ -46,8 +44,9 @@ impl ShapeEditor {
 			// we can assume this point exists.. since we did just click on it hense the unwrap
 			let is_point_selected = self.shape(document, shape_layer_path).unwrap().anchors().by_id(anchor_id).unwrap().points[point_index]
 				.as_ref()
-				.unwrap().
-				editor_state.is_selected;
+				.unwrap()
+				.editor_state
+				.is_selected;
 
 			// let selected_shape = self.shape(document, shape_layer_path).unwrap();
 

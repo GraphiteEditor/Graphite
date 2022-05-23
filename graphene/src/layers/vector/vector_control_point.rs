@@ -51,7 +51,6 @@ impl VectorControlPoint {
 	}
 }
 
-
 #[derive(PartialEq, Clone, Debug)]
 pub struct VectorControlPointState {
 	/// If this control point can be selected

@@ -2,8 +2,8 @@ use crate::boolean_ops::BooleanOperation as BooleanOperationType;
 use crate::layers::blend_mode::BlendMode;
 use crate::layers::layer_info::Layer;
 use crate::layers::style::{self, Stroke};
-use crate::LayerId;
 use crate::layers::vector::constants::ControlPointType;
+use crate::LayerId;
 
 use serde::{Deserialize, Serialize};
 use std::collections::hash_map::DefaultHasher;

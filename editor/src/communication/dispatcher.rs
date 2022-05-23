@@ -445,7 +445,7 @@ mod test {
 	/// This test will fail when you make changes to the underlying serialization format for a document.
 	fn check_if_graphite_file_version_upgrade_is_needed() {
 		use crate::layout::widgets::{LayoutRow, TextLabel, Widget};
-		let print_problem_to_terminal_on_failure = |value: &String| { 						
+		let print_problem_to_terminal_on_failure = |value: &String| {
 			println!();
 			println!("-------------------------------------------------");
 			println!("Failed test due to receiving a DisplayDialogError while loading the Graphite sample file!");

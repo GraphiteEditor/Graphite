@@ -8,15 +8,14 @@ use crate::{
 	message_prelude::{generate_uuid, DocumentMessage, Message},
 };
 
-use super::{
-	constants::{ROUNDING_BIAS},
-	vector_anchor::VectorAnchor,
-	vector_control_point::VectorControlPoint,
-};
+use super::{constants::ROUNDING_BIAS, vector_anchor::VectorAnchor, vector_control_point::VectorControlPoint};
 use graphene::{
 	color::Color,
 	document::Document,
-	layers::{style::{self, Fill, Stroke}, vector::constants::ControlPointType},
+	layers::{
+		style::{self, Fill, Stroke},
+		vector::constants::ControlPointType,
+	},
 	LayerId, Operation,
 };
 

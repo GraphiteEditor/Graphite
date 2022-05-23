@@ -1,7 +1,5 @@
-use std::{
-	ops::{Deref, DerefMut},
-};
 use serde::{Deserialize, Serialize};
+use std::ops::{Deref, DerefMut};
 
 /// Brief description: A vec that allows indexing elements by both index and an assigned unique ID
 /// Goals of this Data Structure:
@@ -46,15 +44,15 @@ impl<T> IdBackedVec<T> {
 
 	/// Insert an element adjacent to the given ID
 	pub fn insert(&mut self, element: T, id: ElementId) -> Option<ElementId> {
-		if let Some(index) = self.index_from_id(id){
+		if let Some(index) = self.index_from_id(id) {
 			self.next_id += 1;
-			self.elements.insert(index, element,);
+			self.elements.insert(index, element);
 			self.element_ids.insert(index, self.next_id);
 			return Some(self.next_id);
 		}
 		None
 	}
-	
+
 	/// Push an element to the end of the vector
 	/// Overriden from Vec, so adding values without creating an id cannot occur
 	pub fn push(&mut self, element: T) -> Option<ElementId> {

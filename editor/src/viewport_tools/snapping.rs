@@ -251,7 +251,8 @@ impl SnapHandler {
 		if let LayerDataType::Shape(shape_layer) = &layer.data {
 			let transform = document_message_handler.graphene_document.multiply_transforms(path).unwrap();
 			let snap_points = shape_layer
-				.shape.anchors()
+				.shape
+				.anchors()
 				.iter()
 				.flat_map(|shape| {
 					if include_handles {
