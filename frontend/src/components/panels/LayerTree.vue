@@ -263,7 +263,7 @@
 <script lang="ts">
 import { defineComponent } from "vue";
 
-import { defaultWidgetLayout, UpdateDocumentLayerTreeStructure, UpdateDocumentLayerDetails, UpdateLayerTreeOptionsLayout, LayerPanelEntry } from "@/dispatcher/js-messages";
+import { defaultWidgetLayout, UpdateDocumentLayerTreeStructure, UpdateDocumentLayerDetails, UpdateLayerTreeOptionsLayout, LayerPanelEntry } from "@/wasm-communication/messages";
 
 import LayoutCol from "@/components/layout/LayoutCol.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
@@ -471,15 +471,15 @@ export default defineComponent({
 		},
 	},
 	mounted() {
-		this.editor.dispatcher.subscribeJsMessage(UpdateDocumentLayerTreeStructure, (updateDocumentLayerTreeStructure) => {
+		this.editor.subscriptions.subscribeJsMessage(UpdateDocumentLayerTreeStructure, (updateDocumentLayerTreeStructure) => {
 			this.rebuildLayerTree(updateDocumentLayerTreeStructure);
 		});
 
-		this.editor.dispatcher.subscribeJsMessage(UpdateLayerTreeOptionsLayout, (updateLayerTreeOptionsLayout) => {
+		this.editor.subscriptions.subscribeJsMessage(UpdateLayerTreeOptionsLayout, (updateLayerTreeOptionsLayout) => {
 			this.layerTreeOptionsLayout = updateLayerTreeOptionsLayout;
 		});
 
-		this.editor.dispatcher.subscribeJsMessage(UpdateDocumentLayerDetails, (updateDocumentLayerDetails) => {
+		this.editor.subscriptions.subscribeJsMessage(UpdateDocumentLayerDetails, (updateDocumentLayerDetails) => {
 			const targetPath = updateDocumentLayerDetails.data.path;
 			const targetLayer = updateDocumentLayerDetails.data;
 

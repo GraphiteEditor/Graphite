@@ -1,16 +1,16 @@
-import { DialogState } from "@/state/dialog";
-import { FullscreenState } from "@/state/fullscreen";
-import { PortfolioState } from "@/state/portfolio";
-import { EditorState } from "@/state/wasm-loader";
+import { DialogState } from "@/state-providers/dialog";
+import { FullscreenState } from "@/state-providers/fullscreen";
+import { PortfolioState } from "@/state-providers/portfolio";
+import { makeKeyboardModifiersBitfield, textInputCleanup, getLatinKey } from "@/utility-functions/keyboard-entry";
+import { Editor } from "@/wasm-communication/editor";
 
 type EventName = keyof HTMLElementEventMap | keyof WindowEventHandlersEventMap | "modifyinputfield";
-interface EventListenerTarget {
+type EventListenerTarget = {
 	addEventListener: typeof window.addEventListener;
 	removeEventListener: typeof window.removeEventListener;
-}
+};
 
-// eslint-disable-next-line @typescript-eslint/explicit-function-return-type
-export function createInputManager(editor: EditorState, container: HTMLElement, dialog: DialogState, document: PortfolioState, fullscreen: FullscreenState) {
+export function createInputManager(editor: Editor, container: HTMLElement, dialog: DialogState, document: PortfolioState, fullscreen: FullscreenState): () => void {
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	const listeners: { target: EventListenerTarget; eventName: EventName; action: (event: any) => void; options?: boolean | AddEventListenerOptions }[] = [
 		{ target: window, eventName: "resize", action: (): void => onWindowResize(container) },
@@ -34,7 +34,7 @@ export function createInputManager(editor: EditorState, container: HTMLElement, 
 
 	// Keyboard events
 
-	const shouldRedirectKeyboardEventToBackend = (e: KeyboardEvent): boolean => {
+	function shouldRedirectKeyboardEventToBackend(e: KeyboardEvent): boolean {
 		// Don't redirect when a modal is covering the workspace
 		if (dialog.dialogIsVisible()) return false;
 
@@ -76,15 +76,15 @@ export function createInputManager(editor: EditorState, container: HTMLElement, 
 
 		// Redirect to the backend
 		return true;
-	};
+	}
 
-	const onKeyDown = (e: KeyboardEvent): void => {
+	function onKeyDown(e: KeyboardEvent): void {
 		const key = getLatinKey(e);
 		if (!key) return;
 
 		if (shouldRedirectKeyboardEventToBackend(e)) {
 			e.preventDefault();
-			const modifiers = makeModifiersBitfield(e);
+			const modifiers = makeKeyboardModifiersBitfield(e);
 			editor.instance.on_key_down(key, modifiers);
 			return;
 		}
@@ -92,23 +92,23 @@ export function createInputManager(editor: EditorState, container: HTMLElement, 
 		if (dialog.dialogIsVisible()) {
 			if (key === "escape") dialog.dismissDialog();
 		}
-	};
+	}
 
-	const onKeyUp = (e: KeyboardEvent): void => {
+	function onKeyUp(e: KeyboardEvent): void {
 		const key = getLatinKey(e);
 		if (!key) return;
 
 		if (shouldRedirectKeyboardEventToBackend(e)) {
 			e.preventDefault();
-			const modifiers = makeModifiersBitfield(e);
+			const modifiers = makeKeyboardModifiersBitfield(e);
 			editor.instance.on_key_up(key, modifiers);
 		}
-	};
+	}
 
 	// Pointer events
 
 	// While any pointer button is already down, additional button down events are not reported, but they are sent as `pointermove` events and these are handled in the backend
-	const onPointerMove = (e: PointerEvent): void => {
+	function onPointerMove(e: PointerEvent): void {
 		if (!e.buttons) viewportPointerInteractionOngoing = false;
 
 		// Don't redirect pointer movement to the backend if there's no ongoing interaction and it's over a floating menu on top of the canvas
@@ -118,11 +118,11 @@ export function createInputManager(editor: EditorState, container: HTMLElement, 
 		const inFloatingMenu = e.target instanceof Element && e.target.closest("[data-floating-menu-content]");
 		if (!viewportPointerInteractionOngoing && inFloatingMenu) return;
 
-		const modifiers = makeModifiersBitfield(e);
+		const modifiers = makeKeyboardModifiersBitfield(e);
 		editor.instance.on_mouse_move(e.clientX, e.clientY, e.buttons, modifiers);
-	};
+	}
 
-	const onPointerDown = (e: PointerEvent): void => {
+	function onPointerDown(e: PointerEvent): void {
 		const { target } = e;
 		const inCanvas = target instanceof Element && target.closest("[data-canvas]");
 		const inDialog = target instanceof Element && target.closest("[data-dialog-modal] [data-floating-menu-content]");
@@ -140,38 +140,38 @@ export function createInputManager(editor: EditorState, container: HTMLElement, 
 		}
 
 		if (viewportPointerInteractionOngoing) {
-			const modifiers = makeModifiersBitfield(e);
+			const modifiers = makeKeyboardModifiersBitfield(e);
 			editor.instance.on_mouse_down(e.clientX, e.clientY, e.buttons, modifiers);
 		}
-	};
+	}
 
-	const onPointerUp = (e: PointerEvent): void => {
+	function onPointerUp(e: PointerEvent): void {
 		if (!e.buttons) viewportPointerInteractionOngoing = false;
 
 		if (!textInput) {
-			const modifiers = makeModifiersBitfield(e);
+			const modifiers = makeKeyboardModifiersBitfield(e);
 			editor.instance.on_mouse_up(e.clientX, e.clientY, e.buttons, modifiers);
 		}
-	};
+	}
 
-	const onDoubleClick = (e: PointerEvent): void => {
+	function onDoubleClick(e: PointerEvent): void {
 		if (!e.buttons) viewportPointerInteractionOngoing = false;
 
 		if (!textInput) {
-			const modifiers = makeModifiersBitfield(e);
+			const modifiers = makeKeyboardModifiersBitfield(e);
 			editor.instance.on_double_click(e.clientX, e.clientY, e.buttons, modifiers);
 		}
-	};
+	}
 
 	// Mouse events
 
-	const onMouseDown = (e: MouseEvent): void => {
+	function onMouseDown(e: MouseEvent): void {
 		// Block middle mouse button auto-scroll mode (the circlar widget that appears and allows quick scrolling by moving the cursor above or below it)
 		// This has to be in `mousedown`, not `pointerdown`, to avoid blocking Vue's middle click detection on HTML elements
 		if (e.button === 1) e.preventDefault();
-	};
+	}
 
-	const onMouseScroll = (e: WheelEvent): void => {
+	function onMouseScroll(e: WheelEvent): void {
 		const { target } = e;
 		const inCanvas = target instanceof Element && target.closest("[data-canvas]");
 
@@ -185,18 +185,18 @@ export function createInputManager(editor: EditorState, container: HTMLElement, 
 
 		if (inCanvas) {
 			e.preventDefault();
-			const modifiers = makeModifiersBitfield(e);
+			const modifiers = makeKeyboardModifiersBitfield(e);
 			editor.instance.on_mouse_scroll(e.clientX, e.clientY, e.buttons, e.deltaX, e.deltaY, e.deltaZ, modifiers);
 		}
-	};
+	}
 
-	const onModifyInputField = (e: CustomEvent): void => {
+	function onModifyInputField(e: CustomEvent): void {
 		textInput = e.detail;
-	};
+	}
 
 	// Window events
 
-	const onWindowResize = (container: HTMLElement): void => {
+	function onWindowResize(container: HTMLElement): void {
 		const viewports = Array.from(container.querySelectorAll("[data-canvas]"));
 		const boundsOfViewports = viewports.map((canvas) => {
 			const bounds = canvas.getBoundingClientRect();
@@ -207,9 +207,9 @@ export function createInputManager(editor: EditorState, container: HTMLElement, 
 		const data = Float64Array.from(flattened);
 
 		if (boundsOfViewports.length > 0) editor.instance.bounds_of_viewports(data);
-	};
+	}
 
-	const onBeforeUnload = (e: BeforeUnloadEvent): void => {
+	function onBeforeUnload(e: BeforeUnloadEvent): void {
 		const activeDocument = document.state.documents[document.state.activeDocumentIndex];
 		if (!activeDocument.is_saved) editor.instance.trigger_auto_save(activeDocument.id);
 
@@ -224,9 +224,9 @@ export function createInputManager(editor: EditorState, container: HTMLElement, 
 			e.returnValue = "Unsaved work will be lost if the web browser tab is closed. Close anyway?";
 			e.preventDefault();
 		}
-	};
+	}
 
-	const onPaste = (e: ClipboardEvent): void => {
+	function onPaste(e: ClipboardEvent): void {
 		const dataTransfer = e.clipboardData;
 		if (!dataTransfer) return;
 		e.preventDefault();
@@ -249,394 +249,26 @@ export function createInputManager(editor: EditorState, container: HTMLElement, 
 				});
 			}
 		});
-	};
+	}
 
 	// Event bindings
 
-	const addListeners = (): void => {
+	function bindListeners(): void {
+		// Add event bindings for the lifetime of the application
 		listeners.forEach(({ target, eventName, action, options }) => target.addEventListener(eventName, action, options));
-	};
+	}
+	function unbindListeners(): void {
+		// Remove event bindings after the lifetime of the application (or on hot-module replacement during development)
+		listeners.forEach(({ target, eventName, action, options }) => target.removeEventListener(eventName, action, options));
+	}
 
-	const removeListeners = (): void => {
-		listeners.forEach(({ target, eventName, action }) => target.removeEventListener(eventName, action));
-	};
+	// Initialization
 
-	// Run on creation
-	addListeners();
+	// Bind the event listeners
+	bindListeners();
+	// Resize on creation
 	onWindowResize(container);
 
-	return { removeListeners };
+	// Return the destructor
+	return unbindListeners;
 }
-export type InputManager = ReturnType<typeof createInputManager>;
-
-export function makeModifiersBitfield(e: WheelEvent | PointerEvent | KeyboardEvent): number {
-	return Number(e.ctrlKey) | (Number(e.shiftKey) << 1) | (Number(e.altKey) << 2);
-}
-
-// Necessary because innerText puts an extra newline character at the end when the text is more than one line.
-export function textInputCleanup(text: string): string {
-	if (text[text.length - 1] === "\n") return text.slice(0, -1);
-	return text;
-}
-
-// This function is a naive, temporary solution to allow non-Latin keyboards to fall back on the physical QWERTY layout
-function getLatinKey(e: KeyboardEvent): string | null {
-	const key = e.key.toLowerCase();
-	const isPrintable = isKeyPrintable(e.key);
-
-	// Control (non-printable) characters are handled normally
-	if (!isPrintable) return key;
-
-	// These non-Latin characters should fall back to the Latin equivalent at the key location
-	const LAST_LATIN_UNICODE_CHAR = 0x024f;
-	if (key.length > 1 || key.charCodeAt(0) > LAST_LATIN_UNICODE_CHAR) return keyCodeToKey(e.code);
-
-	// Otherwise, ths is a printable Latin character
-	return e.key.toLowerCase();
-}
-
-function keyCodeToKey(code: string): string | null {
-	// Letters
-	if (code.match(/^Key[A-Z]$/)) return code.replace("Key", "").toLowerCase();
-
-	// Numbers
-	if (code.match(/^Digit[0-9]$/)) return code.replace("Digit", "");
-	if (code.match(/^Numpad[0-9]$/)) return code.replace("Numpad", "");
-
-	// Function keys
-	if (code.match(/^F[1-9]|F1[0-9]|F20$/)) return code.replace("F", "").toLowerCase();
-
-	// Other characters
-	if (MAPPING[code]) return MAPPING[code];
-
-	return null;
-}
-
-const MAPPING: Record<string, string> = {
-	BracketLeft: "[",
-	BracketRight: "]",
-	Backslash: "\\",
-	Slash: "/",
-	Period: ".",
-	Comma: ",",
-	Equal: "=",
-	Minus: "-",
-	Quote: "'",
-	Semicolon: ";",
-	NumpadEqual: "=",
-	NumpadDivide: "/",
-	NumpadMultiply: "*",
-	NumpadSubtract: "-",
-	NumpadAdd: "+",
-	NumpadDecimal: ".",
-};
-
-function isKeyPrintable(key: string): boolean {
-	return !ALL_PRINTABLE_KEYS.has(key);
-}
-
-const ALL_PRINTABLE_KEYS = new Set([
-	// Modifier
-	"Alt",
-	"AltGraph",
-	"CapsLock",
-	"Control",
-	"Fn",
-	"FnLock",
-	"Meta",
-	"NumLock",
-	"ScrollLock",
-	"Shift",
-	"Symbol",
-	"SymbolLock",
-	// Legacy modifier
-	"Hyper",
-	"Super",
-	// White space
-	"Enter",
-	"Tab",
-	// Navigation
-	"ArrowDown",
-	"ArrowLeft",
-	"ArrowRight",
-	"ArrowUp",
-	"End",
-	"Home",
-	"PageDown",
-	"PageUp",
-	// Editing
-	"Backspace",
-	"Clear",
-	"Copy",
-	"CrSel",
-	"Cut",
-	"Delete",
-	"EraseEof",
-	"ExSel",
-	"Insert",
-	"Paste",
-	"Redo",
-	"Undo",
-	// UI
-	"Accept",
-	"Again",
-	"Attn",
-	"Cancel",
-	"ContextMenu",
-	"Escape",
-	"Execute",
-	"Find",
-	"Help",
-	"Pause",
-	"Play",
-	"Props",
-	"Select",
-	"ZoomIn",
-	"ZoomOut",
-	// Device
-	"BrightnessDown",
-	"BrightnessUp",
-	"Eject",
-	"LogOff",
-	"Power",
-	"PowerOff",
-	"PrintScreen",
-	"Hibernate",
-	"Standby",
-	"WakeUp",
-	// IME composition keys
-	"AllCandidates",
-	"Alphanumeric",
-	"CodeInput",
-	"Compose",
-	"Convert",
-	"Dead",
-	"FinalMode",
-	"GroupFirst",
-	"GroupLast",
-	"GroupNext",
-	"GroupPrevious",
-	"ModeChange",
-	"NextCandidate",
-	"NonConvert",
-	"PreviousCandidate",
-	"Process",
-	"SingleCandidate",
-	// Korean-specific
-	"HangulMode",
-	"HanjaMode",
-	"JunjaMode",
-	// Japanese-specific
-	"Eisu",
-	"Hankaku",
-	"Hiragana",
-	"HiraganaKatakana",
-	"KanaMode",
-	"KanjiMode",
-	"Katakana",
-	"Romaji",
-	"Zenkaku",
-	"ZenkakuHankaku",
-	// Common function
-	"F1",
-	"F2",
-	"F3",
-	"F4",
-	"F5",
-	"F6",
-	"F7",
-	"F8",
-	"F9",
-	"F10",
-	"F11",
-	"F12",
-	"Soft1",
-	"Soft2",
-	"Soft3",
-	"Soft4",
-	// Multimedia
-	"ChannelDown",
-	"ChannelUp",
-	"Close",
-	"MailForward",
-	"MailReply",
-	"MailSend",
-	"MediaClose",
-	"MediaFastForward",
-	"MediaPause",
-	"MediaPlay",
-	"MediaPlayPause",
-	"MediaRecord",
-	"MediaRewind",
-	"MediaStop",
-	"MediaTrackNext",
-	"MediaTrackPrevious",
-	"New",
-	"Open",
-	"Print",
-	"Save",
-	"SpellCheck",
-	// Multimedia numpad
-	"Key11",
-	"Key12",
-	// Audio
-	"AudioBalanceLeft",
-	"AudioBalanceRight",
-	"AudioBassBoostDown",
-	"AudioBassBoostToggle",
-	"AudioBassBoostUp",
-	"AudioFaderFront",
-	"AudioFaderRear",
-	"AudioSurroundModeNext",
-	"AudioTrebleDown",
-	"AudioTrebleUp",
-	"AudioVolumeDown",
-	"AudioVolumeUp",
-	"AudioVolumeMute",
-	"MicrophoneToggle",
-	"MicrophoneVolumeDown",
-	"MicrophoneVolumeUp",
-	"MicrophoneVolumeMute",
-	// Speech
-	"SpeechCorrectionList",
-	"SpeechInputToggle",
-	// Application
-	"LaunchApplication1",
-	"LaunchApplication2",
-	"LaunchCalendar",
-	"LaunchContacts",
-	"LaunchMail",
-	"LaunchMediaPlayer",
-	"LaunchMusicPlayer",
-	"LaunchPhone",
-	"LaunchScreenSaver",
-	"LaunchSpreadsheet",
-	"LaunchWebBrowser",
-	"LaunchWebCam",
-	"LaunchWordProcessor",
-	// Browser
-	"BrowserBack",
-	"BrowserFavorites",
-	"BrowserForward",
-	"BrowserHome",
-	"BrowserRefresh",
-	"BrowserSearch",
-	"BrowserStop",
-	// Mobile phone
-	"AppSwitch",
-	"Call",
-	"Camera",
-	"CameraFocus",
-	"EndCall",
-	"GoBack",
-	"GoHome",
-	"HeadsetHook",
-	"LastNumberRedial",
-	"Notification",
-	"MannerMode",
-	"VoiceDial",
-	// TV
-	"TV",
-	"TV3DMode",
-	"TVAntennaCable",
-	"TVAudioDescription",
-	"TVAudioDescriptionMixDown",
-	"TVAudioDescriptionMixUp",
-	"TVContentsMenu",
-	"TVDataService",
-	"TVInput",
-	"TVInputComponent1",
-	"TVInputComponent2",
-	"TVInputComposite1",
-	"TVInputComposite2",
-	"TVInputHDMI1",
-	"TVInputHDMI2",
-	"TVInputHDMI3",
-	"TVInputHDMI4",
-	"TVInputVGA1",
-	"TVMediaContext",
-	"TVNetwork",
-	"TVNumberEntry",
-	"TVPower",
-	"TVRadioService",
-	"TVSatellite",
-	"TVSatelliteBS",
-	"TVSatelliteCS",
-	"TVSatelliteToggle",
-	"TVTerrestrialAnalog",
-	"TVTerrestrialDigital",
-	"TVTimer",
-	// Media controls
-	"AVRInput",
-	"AVRPower",
-	"ColorF0Red",
-	"ColorF1Green",
-	"ColorF2Yellow",
-	"ColorF3Blue",
-	"ColorF4Grey",
-	"ColorF5Brown",
-	"ClosedCaptionToggle",
-	"Dimmer",
-	"DisplaySwap",
-	"DVR",
-	"Exit",
-	"FavoriteClear0",
-	"FavoriteClear1",
-	"FavoriteClear2",
-	"FavoriteClear3",
-	"FavoriteRecall0",
-	"FavoriteRecall1",
-	"FavoriteRecall2",
-	"FavoriteRecall3",
-	"FavoriteStore0",
-	"FavoriteStore1",
-	"FavoriteStore2",
-	"FavoriteStore3",
-	"Guide",
-	"GuideNextDay",
-	"GuidePreviousDay",
-	"Info",
-	"InstantReplay",
-	"Link",
-	"ListProgram",
-	"LiveContent",
-	"Lock",
-	"MediaApps",
-	"MediaAudioTrack",
-	"MediaLast",
-	"MediaSkipBackward",
-	"MediaSkipForward",
-	"MediaStepBackward",
-	"MediaStepForward",
-	"MediaTopMenu",
-	"NavigateIn",
-	"NavigateNext",
-	"NavigateOut",
-	"NavigatePrevious",
-	"NextFavoriteChannel",
-	"NextUserProfile",
-	"OnDemand",
-	"Pairing",
-	"PinPDown",
-	"PinPMove",
-	"PinPToggle",
-	"PinPUp",
-	"PlaySpeedDown",
-	"PlaySpeedReset",
-	"PlaySpeedUp",
-	"RandomToggle",
-	"RcLowBattery",
-	"RecordSpeedNext",
-	"RfBypass",
-	"ScanChannelsToggle",
-	"ScreenModeNext",
-	"Settings",
-	"SplitScreenToggle",
-	"STBInput",
-	"STBPower",
-	"Subtitle",
-	"Teletext",
-	"VideoModeNext",
-	"Wink",
-	"ZoomToggle",
-]);

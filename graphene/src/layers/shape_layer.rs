@@ -105,7 +105,7 @@ impl ShapeLayer {
 	///
 	/// # Panics
 	/// This function panics if `sides` is zero.
-	pub fn ngon(sides: u8, style: PathStyle) -> Self {
+	pub fn ngon(sides: u32, style: PathStyle) -> Self {
 		use std::f64::consts::{FRAC_PI_2, TAU};
 
 		fn unit_rotation(theta: f64) -> DVec2 {

@@ -1,6 +1,6 @@
-// This file is where functions are defined to be called directly from JS.
-// It serves as a thin wrapper over the editor backend API that relies
-// on the dispatcher messaging system and more complex Rust data types.
+//! This file is where functions are defined to be called directly from JS.
+//! It serves as a thin wrapper over the editor backend API that relies
+//! on the dispatcher messaging system and more complex Rust data types.
 
 use crate::helpers::{translate_key, Error};
 use crate::{EDITOR_HAS_CRASHED, EDITOR_INSTANCES, JS_EDITOR_HANDLES};
@@ -84,10 +84,34 @@ impl JsEditorHandle {
 	// the backend from the web frontend.
 	// ========================================================================
 
+	pub fn init_app(&self) {
+		let message = PortfolioMessage::UpdateOpenDocumentsList;
+		self.dispatch(message);
+
+		let message = PortfolioMessage::UpdateDocumentWidgets;
+		self.dispatch(message);
+
+		let message = ToolMessage::InitTools;
+		self.dispatch(message);
+
+		let message = FrontendMessage::TriggerFontLoadDefault;
+		self.dispatch(message);
+
+		let message = MovementMessage::TranslateCanvas { delta: (0., 0.).into() };
+		self.dispatch(message);
+	}
+
+	/// Intentionally panic for debugging purposes
+	pub fn intentional_panic(&self) {
+		panic!();
+	}
+
+	/// Answer whether or not the editor has crashed
 	pub fn has_crashed(&self) -> bool {
 		EDITOR_HAS_CRASHED.load(Ordering::SeqCst)
 	}
 
+	/// Request that the Node Graph panel be shown or hidden by toggling the visibility state
 	pub fn toggle_node_graph_visibility(&self) {
 		self.dispatch(WorkspaceMessage::NodeGraphToggleVisibility);
 	}
@@ -106,11 +130,6 @@ impl JsEditorHandle {
 
 	pub fn select_document(&self, document_id: u64) {
 		let message = PortfolioMessage::SelectDocument { document_id };
-		self.dispatch(message);
-	}
-
-	pub fn get_open_documents_list(&self) {
-		let message = PortfolioMessage::UpdateOpenDocumentsList;
 		self.dispatch(message);
 	}
 
@@ -301,8 +320,8 @@ impl JsEditorHandle {
 	}
 
 	/// A font has been downloaded
-	pub fn on_font_load(&self, font: String, data: Vec<u8>, is_default: bool) -> Result<(), JsValue> {
-		let message = DocumentMessage::FontLoaded { font, data, is_default };
+	pub fn on_font_load(&self, font_file_url: String, data: Vec<u8>, is_default: bool) -> Result<(), JsValue> {
+		let message = DocumentMessage::FontLoaded { font_file_url, data, is_default };
 		self.dispatch(message);
 
 		Ok(())
@@ -467,19 +486,10 @@ impl JsEditorHandle {
 		let message = DocumentMessage::ToggleLayerExpansion { layer_path };
 		self.dispatch(message);
 	}
-
-	// TODO: Replace with initialization system, issue #524
-	pub fn init_app(&self) {
-		let message = PortfolioMessage::UpdateDocumentWidgets;
-		self.dispatch(message);
-
-		let message = ToolMessage::InitTools;
-		self.dispatch(message);
-	}
 }
 
-// Needed to make JsEditorHandle functions pub to rust. Do not fully
-// understand reason but has to do with #[wasm_bindgen] procedural macro.
+// Needed to make JsEditorHandle functions pub to Rust.
+// The reason is not fully clear but it has to do with the #[wasm_bindgen] procedural macro.
 impl JsEditorHandle {
 	pub fn handle_response_rust_proxy(&self, message: FrontendMessage) {
 		self.handle_response(message);
@@ -497,12 +507,6 @@ impl Drop for JsEditorHandle {
 #[wasm_bindgen]
 pub fn set_random_seed(seed: u64) {
 	editor::communication::set_uuid_seed(seed)
-}
-
-/// Intentionally panic for debugging purposes
-#[wasm_bindgen]
-pub fn intentional_panic() {
-	panic!();
 }
 
 /// Access a handle to WASM memory

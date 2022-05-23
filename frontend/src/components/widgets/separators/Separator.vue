@@ -75,7 +75,8 @@
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
 
-import { SeparatorDirection, SeparatorType } from "@/utilities/widgets";
+export type SeparatorDirection = "Horizontal" | "Vertical";
+export type SeparatorType = "Related" | "Unrelated" | "Section" | "List";
 
 export default defineComponent({
 	props: {

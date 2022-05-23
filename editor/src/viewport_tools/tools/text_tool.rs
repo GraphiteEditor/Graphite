@@ -84,7 +84,7 @@ impl PropertyHolder for TextTool {
 						TextMessage::UpdateOptions(TextOptionsUpdate::Font {
 							family: font_input.font_family.clone(),
 							style: font_input.font_style.clone(),
-							file: font_input.font_file.clone(),
+							file: font_input.font_file_url.clone(),
 						})
 						.into()
 					}),
@@ -102,7 +102,7 @@ impl PropertyHolder for TextTool {
 						TextMessage::UpdateOptions(TextOptionsUpdate::Font {
 							family: font_input.font_family.clone(),
 							style: font_input.font_style.clone(),
-							file: font_input.font_file.clone(),
+							file: font_input.font_file_url.clone(),
 						})
 						.into()
 					}),
