@@ -3,19 +3,21 @@ use std::{
 };
 use serde::{Deserialize, Serialize};
 
+/// Brief description: A vec that allows indexing elements by both index and an assigned unique ID
 /// Goals of this Data Structure:
-/// - Drop in replacement for a Vec
-/// - Add elements to the start or end
-/// - Provide a Unique ID per element
-/// - Maintain ordering among the elements
-/// - Insert by Unique ID
-/// - Remove elements without changing ordering or damaging unique ids
-/// This functions somewhat similar to a linklist in terms of needs.
+/// - Drop-in replacement for a Vec.
+/// - Provide an auto-assigned Unique ID per element upon insertion.
+/// - Add elements to the start or end.
+/// - Insert element by Unique ID. Insert directly after an existing element by its Unique ID.
+/// - Access data by providing Unique ID.
+/// - Maintain ordering among the elements.
+/// - Remove elements without changing Unique IDs.
+/// This data structure is somewhat similar to a linked list in terms of invarients.
 /// The downside is that currently it requires a lot of iteration.
 
 type ElementId = u64;
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
-pub struct VecUnique<T> {
+pub struct IdBackedVec<T> {
 	/// Contained elements
 	elements: Vec<T>,
 	/// The IDs of the [Elements] contained within this
@@ -25,7 +27,7 @@ pub struct VecUnique<T> {
 	next_id: ElementId,
 }
 
-impl<T> VecUnique<T> {
+impl<T> IdBackedVec<T> {
 	/// Push a new element to the start of the vector
 	pub fn push_front(&mut self, element: T) -> Option<ElementId> {
 		self.next_id += 1;
@@ -51,6 +53,12 @@ impl<T> VecUnique<T> {
 			return Some(self.next_id);
 		}
 		None
+	}
+	
+	/// Push an element to the end of the vector
+	/// Overriden from Vec, so adding values without creating an id cannot occur
+	pub fn push(&mut self, element: T) -> Option<ElementId> {
+		self.push_end(element)
 	}
 
 	/// Add a range of elements of elements to the end of this vector
@@ -128,9 +136,9 @@ impl<T> VecUnique<T> {
 	}
 }
 
-impl<T> Default for VecUnique<T> {
+impl<T> Default for IdBackedVec<T> {
 	fn default() -> Self {
-		VecUnique {
+		IdBackedVec {
 			elements: vec![],
 			element_ids: vec![],
 			next_id: 0,
@@ -139,7 +147,7 @@ impl<T> Default for VecUnique<T> {
 }
 
 /// Allows for usage of UniqueElements as a Vec<T>
-impl<T> Deref for VecUnique<T> {
+impl<T> Deref for IdBackedVec<T> {
 	type Target = [T];
 	fn deref(&self) -> &Self::Target {
 		&self.elements
@@ -148,7 +156,7 @@ impl<T> Deref for VecUnique<T> {
 
 // TODO Consider removing this, it could allow for ElementIds and Elements to get out of sync
 /// Allows for mutable usage of UniqueElements as a Vec<T>
-impl<T> DerefMut for VecUnique<T> {
+impl<T> DerefMut for IdBackedVec<T> {
 	fn deref_mut(&mut self) -> &mut Self::Target {
 		&mut self.elements
 	}
@@ -156,9 +164,9 @@ impl<T> DerefMut for VecUnique<T> {
 
 /// Allows use with iterators
 /// Also allows constructing UniqueElements with collect
-impl<A> FromIterator<A> for VecUnique<A> {
+impl<A> FromIterator<A> for IdBackedVec<A> {
 	fn from_iter<T: IntoIterator<Item = A>>(iter: T) -> Self {
-		let mut new = VecUnique::default();
+		let mut new = IdBackedVec::default();
 		// Add to the end of the existing elements
 		new.push_range(iter);
 		new

@@ -1,5 +1,5 @@
 use crate::layers::{
-	vec_unique::VecUnique,
+	id_vec::IdBackedVec,
 	layer_info::{Layer, LayerDataType},
 };
 
@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 /// VectorShape represents a single vector shape, containing many anchors
 /// For each closed shape we keep a VectorShape which contains the handles and anchors that define that shape.
 #[derive(PartialEq, Clone, Debug, Default, Serialize, Deserialize)]
-pub struct VectorShape(VecUnique<VectorAnchor>);
+pub struct VectorShape(IdBackedVec<VectorAnchor>);
 
 impl VectorShape {
 	// ** SHAPE INITIALIZATION **
@@ -66,7 +66,7 @@ impl VectorShape {
 	/// Constructs a set of lines from `p1` to `pN`
 	pub fn new_poly_line<T: Into<glam::DVec2>>(points: Vec<T>) -> Self {
 		let anchors = points.into_iter().map(|point| VectorAnchor::new(point.into()));
-		let mut p_line = VectorShape(VecUnique::default());
+		let mut p_line = VectorShape(IdBackedVec::default());
 		p_line.0.push_range(anchors);
 		p_line
 	}
@@ -168,12 +168,12 @@ impl VectorShape {
 	}
 	
 	/// An alias for `self.0`
-	pub fn anchors(&self) -> &VecUnique<VectorAnchor> {
+	pub fn anchors(&self) -> &IdBackedVec<VectorAnchor> {
 		&self.0
 	}
 
 	/// An alias for `self.0` mutable
-	pub fn anchors_mut(&mut self) -> &mut VecUnique<VectorAnchor> {
+	pub fn anchors_mut(&mut self) -> &mut IdBackedVec<VectorAnchor> {
 		&mut self.0
 	}
 
