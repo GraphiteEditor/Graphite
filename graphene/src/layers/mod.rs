@@ -18,7 +18,7 @@
 pub mod blend_mode;
 /// Contains the [FolderLayer](folder_layer::FolderLayer) type that encapsulates other layers, including more folders.
 pub mod folder_layer;
-pub mod id_storage;
+pub mod vec_unique;
 /// Contains the [ImageLayer](image_layer::ImageLayer) type that contains a bitmap image.
 pub mod image_layer;
 /// Contains the base [Layer](layer_info::Layer) type, an abstraction over the different types of layers.

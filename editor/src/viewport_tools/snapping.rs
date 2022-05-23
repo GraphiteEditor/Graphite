@@ -257,8 +257,8 @@ impl SnapHandler {
 					if include_handles {
 						[
 							&shape.points[ControlPointType::Anchor],
-							&shape.points[ControlPointType::Handle1],
-							&shape.points[ControlPointType::Handle2],
+							&shape.points[ControlPointType::InHandle],
+							&shape.points[ControlPointType::OutHandle],
 						]
 					} else {
 						[&shape.points[ControlPointType::Anchor], &None, &None]

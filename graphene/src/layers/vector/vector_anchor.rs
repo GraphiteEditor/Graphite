@@ -1,34 +1,25 @@
-use std::ops::Mul;
-
 use super::{constants::ControlPointType, vector_control_point::VectorControlPoint};
 use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};
 
-/// VectorAnchor is used to represent an anchor point on the path that can be moved.
-/// It contains 0-2 handles that are optionally displayed.
-#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
+/// Brief overview of VectorAnchor
+///                    VectorAnchor <- Container for the anchor metadata and optional VectorControlPoints
+///                          /
+///            [Option<VectorControlPoint>; 3] <- [0] is the anchor's draggable point (but not metadata), [1] is the handle1's draggable point, [2] is the handle2's draggable point
+///          /              |                      \
+///      "Anchor"        "Handle1"             "Handle2" <- These are VectorControlPoints and the only editable "primitive"
+
+/// VectorAnchor is used to represent an anchor point + handles on the path that can be moved.
+/// It contains 0-2 handles that are optionally available.
+#[derive(PartialEq, Clone, Debug, Serialize, Deserialize, Default)]
 pub struct VectorAnchor {
 	// Editable points for the anchor & handles
 	pub points: [Option<VectorControlPoint>; 3],
-	// Should we maintain the angle between the handles?
 
-	// TODO Separate the editor func state from underlying data (use another struct)
-	pub mirror_angle_active: bool,
-	// Should we make the handles equidistance from the anchor?
-	pub mirror_distance_active: bool,
+	#[serde(skip)]
+	// The editor state of the anchor and handles
+	pub editor_state: VectorAnchorState,
 }
-
-impl Default for VectorAnchor {
-	fn default() -> Self {
-		Self {
-			points: [None, None, None],
-			mirror_angle_active: true,
-			mirror_distance_active: true,
-		}
-	}
-}
-
-// TODO impl index for points
 
 impl VectorAnchor {
 	/// Create a new anchor with the given position
@@ -36,8 +27,7 @@ impl VectorAnchor {
 		Self {
 			// An anchor and 2x None's which represent non-existent handles
 			points: [Some(VectorControlPoint::new(anchor_pos, ControlPointType::Anchor)), None, None],
-			mirror_angle_active: false,
-			mirror_distance_active: false,
+			editor_state: VectorAnchorState::default(),
 		}
 	}
 
@@ -46,20 +36,19 @@ impl VectorAnchor {
 		Self {
 			points: [
 				Some(VectorControlPoint::new(anchor_pos, ControlPointType::Anchor)),
-				Some(VectorControlPoint::new(handle1_pos, ControlPointType::Handle1)),
-				Some(VectorControlPoint::new(handle2_pos, ControlPointType::Handle2)),
+				Some(VectorControlPoint::new(handle1_pos, ControlPointType::InHandle)),
+				Some(VectorControlPoint::new(handle2_pos, ControlPointType::OutHandle)),
 			],
-			mirror_angle_active: false,
-			mirror_distance_active: false,
+			editor_state: VectorAnchorState::default(),
 		}
 	}
 
+	/// Create a VectorAnchor that represents a close path signal
 	pub fn closed() -> Self {
 		Self {
-			// An anchor and 2x None's which represent non-existent handles
+			// An anchor being None indicates a ClosePath (aka a path end)
 			points: [None, None, None],
-			mirror_angle_active: false,
-			mirror_distance_active: false,
+			editor_state: VectorAnchorState::default(),
 		}
 	}
 
@@ -94,13 +83,13 @@ impl VectorAnchor {
 
 	/// Returns true if any points in this anchor are selected
 	pub fn any_points_selected(&self) -> bool {
-		self.points.iter().flatten().any(|pnt| pnt.is_selected)
+		self.points.iter().flatten().any(|pnt| pnt.editor_state.is_selected)
 	}
 
 	/// Returns true if the anchor point is selected
 	pub fn is_anchor_selected(&self) -> bool {
 		if let Some(anchor) = &self.points[0] {
-			anchor.is_selected
+			anchor.editor_state.is_selected
 		} else {
 			false
 		}
@@ -133,12 +122,12 @@ impl VectorAnchor {
 
 	/// Provides the selected points in this anchor
 	pub fn selected_points(&self) -> impl Iterator<Item = &VectorControlPoint> {
-		self.points.iter().flatten().filter(|pnt| pnt.is_selected)
+		self.points.iter().flatten().filter(|pnt| pnt.editor_state.is_selected)
 	}
 
 	/// Provides mutable selected points in this anchor
 	pub fn selected_points_mut(&mut self) -> impl Iterator<Item = &mut VectorControlPoint> {
-		self.points.iter_mut().flatten().filter(|pnt| pnt.is_selected)
+		self.points.iter_mut().flatten().filter(|pnt| pnt.editor_state.is_selected)
 	}
 
 	/// Angle between handles in radians
@@ -157,7 +146,7 @@ impl VectorAnchor {
 
 	/// Set the mirroring state
 	pub fn set_mirroring(&mut self, mirroring: bool) {
-		self.mirror_angle_active = mirroring;
+		self.editor_state.mirror_angle_between_handles = mirroring;
 	}
 
 	/// Helper function to more easily set position of VectorControlPoints
@@ -167,9 +156,28 @@ impl VectorAnchor {
 		}
 	}
 
+	/// Apply an affine transformation the points
 	pub fn transform(&mut self, transform: &DAffine2) {
 		for point in self.points_mut() {
-			point.position = transform.transform_point2(point.position);
+			point.transform(transform);
 		}
 	}
 }
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct VectorAnchorState {
+	// If we should maintain the angle between the handles
+	pub mirror_angle_between_handles: bool,
+	// If we should make the handles equidistance from the anchor?
+	pub mirror_distance_between_handles: bool,
+}
+
+impl Default for VectorAnchorState {
+	fn default() -> Self {
+		Self {
+			mirror_angle_between_handles: true,
+			mirror_distance_between_handles: true,
+		}
+	}
+}
+

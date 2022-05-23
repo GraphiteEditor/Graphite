@@ -41,7 +41,6 @@ impl<'a> OverlayRenderer {
 		}
 	}
 
-	// TODO Implement a trait called HasOverlays that is implemented by Vectorshape
 	pub fn render_vector_shape_overlays(&mut self, document: &Document, layer_path: Vec<LayerId>, responses: &mut VecDeque<Message>) {
 		let transform = document.generate_transform_relative_to_viewport(&layer_path).ok().unwrap();
 
@@ -294,7 +293,7 @@ impl<'a> OverlayRenderer {
 		for (index, point) in anchor.points.iter().enumerate() {
 			if let Some(point) = point {
 				if let Some(overlay) = &overlays[index] {
-					let style = if point.is_selected { selected_style.clone() } else { deselected_style.clone() };
+					let style = if point.editor_state.is_selected { selected_style.clone() } else { deselected_style.clone() };
 					responses.push_back(DocumentMessage::Overlays(Operation::SetLayerStyle { path: overlay.clone(), style }.into()).into());
 				}
 			}

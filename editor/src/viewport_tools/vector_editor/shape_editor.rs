@@ -1,28 +1,20 @@
-/*
-Overview:
 
-						ShapeEditor
-						/          \
-				   selected_shape_layers <- Paths to selected layers that may contain VectorShapes
-					 |               |
-				VectorShape ... VectorShape  <- Reference from layer paths, one Vectorshape per layer
-					/                 \
-			   VectorAnchor ...  VectorAnchor <- VectorShape contains many VectorAnchors
+// Overview:
+//          ShapeEditor
+//         /          \
+//      selected_shape_layers <- Paths to selected layers that may contain VectorShapes
+//        |               |
+//  VectorShape ... VectorShape  <- Reference from layer paths, one Vectorshape per layer
+//      /                 \
+//  VectorAnchor ...  VectorAnchor <- VectorShape contains many VectorAnchors
 
-
-					VectorAnchor <- Container for the anchor metadata and optional VectorControlPoints
-						  /
-			[Option<VectorControlPoint>; 3] <- [0] is the anchor's draggable point (but not metadata), [1] is the handle1's draggable point, [2] is the handle2's draggable point
-			 /              |                      \
-		"Anchor"        "Handle1"          "Handle2" <- These are VectorControlPoints and the only editable / draggable "primitive"
-*/
 
 use std::collections::VecDeque;
 
 use crate::message_prelude::{DocumentMessage, Message};
 
 use super::vector_shape::VectorShape;
-use super::{constants::MINIMUM_MIRROR_THRESHOLD, vector_anchor::VectorAnchor, vector_control_point::VectorControlPoint};
+use super::{vector_anchor::VectorAnchor, vector_control_point::VectorControlPoint};
 
 use glam::DVec2;
 use graphene::document::Document;
@@ -53,8 +45,8 @@ impl ShapeEditor {
 			// we can assume this point exists.. since we did just click on it hense the unwrap
 			let is_point_selected = self.shape(document, shape_layer_path).unwrap().anchors().by_id(anchor_id).unwrap().points[point_index]
 				.as_ref()
-				.unwrap()
-				.is_selected;
+				.unwrap().
+				editor_state.is_selected;
 
 			// let selected_shape = self.shape(document, shape_layer_path).unwrap();
 
@@ -249,7 +241,7 @@ impl ShapeEditor {
 			for (anchor_id, anchor) in shape.anchors().enumerate() {
 				let point_index = anchor.closest_point(&viewspace, pos);
 				if let Some(point) = &anchor.points[point_index] {
-					if point.can_be_selected {
+					if point.editor_state.can_be_selected {
 						let distance_squared = viewspace.transform_point2(point.position).distance_squared(pos);
 						if distance_squared < closest_distance_squared {
 							closest_distance_squared = distance_squared;

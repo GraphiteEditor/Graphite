@@ -9,16 +9,16 @@ use serde::{Deserialize, Serialize};
 #[derive(PartialEq, Clone, Debug, Copy, Serialize, Deserialize)]
 pub enum ControlPointType {
 	Anchor = 0,
-	Handle1 = 1,
-	Handle2 = 2,
+	InHandle = 1,
+	OutHandle = 2,
 }
 
 impl Not for ControlPointType {
 	type Output = Self;
 	fn not(self) -> Self::Output {
 		match self {
-			ControlPointType::Handle1 => ControlPointType::Handle2,
-			ControlPointType::Handle2 => ControlPointType::Handle1,
+			ControlPointType::InHandle => ControlPointType::OutHandle,
+			ControlPointType::OutHandle => ControlPointType::InHandle,
 			_ => ControlPointType::Anchor,
 		}
 	}

@@ -935,14 +935,14 @@ impl Document {
 					if !add {
 						shape.clear_selected_anchors();
 					}
-					shape.select_anchors(&anchor_ids);
+					shape.select_anchors(&anchor_ids, true);
 				}
 				Some(vec![LayerChanged { path: layer_path.clone() }])
 			}
 			Operation::DeselectVectorPoints { layer_path, anchor_ids } => {
 				let layer = self.layer_mut(&layer_path)?;
 				if let Some(shape) = layer.as_vector_shape_mut() {
-					shape.deselect_anchors(&anchor_ids);
+					shape.select_anchors(&anchor_ids, false);
 				}
 				Some(vec![LayerChanged { path: layer_path.clone() }])
 			}
