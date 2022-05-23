@@ -123,7 +123,7 @@ impl ShapeEditor {
 
 	/// A mutable iterator of all the anchors, regardless of selection
 	pub fn anchors<'a>(&'a self, document: &'a Document) -> impl Iterator<Item = &'a VectorAnchor> {
-		self.iter(document).flat_map(|shape| shape.iter())
+		self.iter(document).flat_map(|shape| shape.anchors().iter())
 	}
 
 	/// Select the last anchor in this shape

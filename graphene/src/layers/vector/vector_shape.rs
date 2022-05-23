@@ -2,12 +2,11 @@ use crate::layers::{
 	vec_unique::VecUnique,
 	layer_info::{Layer, LayerDataType},
 };
-use std::ops::{Deref, DerefMut};
 
 use super::{constants::ControlPointType, vector_anchor::VectorAnchor, vector_control_point::VectorControlPoint};
 
 use glam::{DAffine2, DVec2};
-use kurbo::{Affine, BezPath, PathEl, Rect, Shape};
+use kurbo::{BezPath, PathEl, Rect, Shape};
 use serde::{Deserialize, Serialize};
 
 /// VectorShape represents a single vector shape, containing many anchors
@@ -136,7 +135,6 @@ impl VectorShape {
 	
 	/// Select an anchor by index
 	pub fn select_anchor_by_index(&mut self, anchor_index: usize) -> Option<&mut VectorAnchor> {
-		// TODO test if looking this up by index actually works
 		if let Some(anchor) = self.anchors_mut().by_index_mut(anchor_index) {
 			anchor.select_point(ControlPointType::Anchor as usize, true);
 			return Some(anchor);
@@ -226,14 +224,14 @@ impl<'a> TryFrom<&'a Layer> for &'a VectorShape {
 /// Create a BezPath from a VectorShape
 impl From<&VectorShape> for BezPath {
 	fn from(vector_shape: &VectorShape) -> Self {
-		if vector_shape.0.is_empty() {
+		if vector_shape.anchors().is_empty() {
 			return BezPath::new();
 		}
 
 		let mut bez_path = vec![];
 		let mut start_new_shape = true;
 
-		for elements in vector_shape.0.windows(2) {
+		for elements in vector_shape.anchors().windows(2) {
 			let first = &elements[0];
 			let second = &elements[1];
 
@@ -267,48 +265,28 @@ impl<T: Iterator<Item = PathEl>> From<T> for VectorShape {
 		for path_el in path {
 			match path_el {
 				PathEl::MoveTo(p) => {
-					vector_shape.0.push_end(VectorAnchor::new(kurbo_point_to_dvec2(p)));
+					vector_shape.anchors_mut().push_end(VectorAnchor::new(kurbo_point_to_dvec2(p)));
 				}
 				PathEl::LineTo(p) => {
-					vector_shape.0.push_end(VectorAnchor::new(kurbo_point_to_dvec2(p)));
+					vector_shape.anchors_mut().push_end(VectorAnchor::new(kurbo_point_to_dvec2(p)));
 				}
 				PathEl::QuadTo(p0, p1) => {
-					vector_shape.0.last_mut().unwrap().points[2] = Some(VectorControlPoint::new(kurbo_point_to_dvec2(p0), ControlPointType::OutHandle));
-					vector_shape.0.push_end(VectorAnchor::new(kurbo_point_to_dvec2(p1)));
-					vector_shape.0.last_mut().unwrap().points[1] = Some(VectorControlPoint::new(kurbo_point_to_dvec2(p0), ControlPointType::InHandle));
+					vector_shape.anchors_mut().last_mut().unwrap().points[2] = Some(VectorControlPoint::new(kurbo_point_to_dvec2(p0), ControlPointType::OutHandle));
+					vector_shape.anchors_mut().push_end(VectorAnchor::new(kurbo_point_to_dvec2(p1)));
+					vector_shape.anchors_mut().last_mut().unwrap().points[1] = Some(VectorControlPoint::new(kurbo_point_to_dvec2(p0), ControlPointType::InHandle));
 				}
 				PathEl::CurveTo(p0, p1, p2) => {
-					vector_shape.0.last_mut().unwrap().points[2] = Some(VectorControlPoint::new(kurbo_point_to_dvec2(p0), ControlPointType::OutHandle));
-					vector_shape.0.push_end(VectorAnchor::new(kurbo_point_to_dvec2(p2)));
-					vector_shape.0.last_mut().unwrap().points[1] = Some(VectorControlPoint::new(kurbo_point_to_dvec2(p1), ControlPointType::InHandle));
+					vector_shape.anchors_mut().last_mut().unwrap().points[2] = Some(VectorControlPoint::new(kurbo_point_to_dvec2(p0), ControlPointType::OutHandle));
+					vector_shape.anchors_mut().push_end(VectorAnchor::new(kurbo_point_to_dvec2(p2)));
+					vector_shape.anchors_mut().last_mut().unwrap().points[1] = Some(VectorControlPoint::new(kurbo_point_to_dvec2(p1), ControlPointType::InHandle));
 				}
 				PathEl::ClosePath => {
-					vector_shape.0.push_end(VectorAnchor::closed());
+					vector_shape.anchors_mut().push_end(VectorAnchor::closed());
 				}
 			}
 		}
 		vector_shape
 	}
-}
-
-// allows access to anchors as slice or iterator
-impl Deref for VectorShape {
-	type Target = [VectorAnchor];
-	fn deref(&self) -> &Self::Target {
-		&self.0
-	}
-}
-
-// allows mutable access to anchors as slice or iterator
-impl DerefMut for VectorShape {
-	fn deref_mut(&mut self) -> &mut Self::Target {
-		&mut self.0
-	}
-}
-
-#[inline]
-fn glam_to_kurbo(transform: DAffine2) -> Affine {
-	Affine::new(transform.to_cols_array())
 }
 
 #[inline]
