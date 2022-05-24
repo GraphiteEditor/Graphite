@@ -2,7 +2,6 @@
 	<LayoutCol class="document">
 		<LayoutRow class="options-bar" :scrollableX="true">
 			<WidgetLayout :layout="documentModeLayout" />
-			<Separator :type="'Section'" />
 			<WidgetLayout :layout="toolOptionsLayout" />
 
 			<LayoutRow class="spacer"></LayoutRow>
@@ -37,12 +36,12 @@
 					<LayoutCol class="canvas-area">
 						<div
 							class="canvas"
-							data-canvas
-							ref="canvas"
 							:style="{ cursor: canvasCursor }"
 							@pointerdown="(e: PointerEvent) => canvasPointerDown(e)"
 							@dragover="(e) => e.preventDefault()"
 							@drop="(e) => pasteFile(e)"
+							ref="canvas"
+							data-canvas
 						>
 							<svg class="artboards" v-html="artboardSvg" :style="{ width: canvasSvgWidth, height: canvasSvgHeight }"></svg>
 							<svg
@@ -221,6 +220,7 @@
 <script lang="ts">
 import { defineComponent, nextTick } from "vue";
 
+import { textInputCleanup } from "@/utility-functions/keyboard-entry";
 import {
 	UpdateDocumentArtwork,
 	UpdateDocumentOverlays,
@@ -235,30 +235,21 @@ import {
 	UpdateDocumentBarLayout,
 	UpdateImageData,
 	TriggerTextCommit,
-	TriggerTextCopy,
 	TriggerViewportResize,
 	DisplayRemoveEditableTextbox,
 	DisplayEditableTextbox,
-	TriggerFontLoad,
-	TriggerFontLoadDefault,
-	TriggerVisitLink,
-} from "@/dispatcher/js-messages";
-
-import { textInputCleanup } from "@/lifetime/input";
-
-import { loadDefaultFont, setLoadDefaultFontCallback } from "@/utilities/fonts";
+} from "@/wasm-communication/messages";
 
 import LayoutCol from "@/components/layout/LayoutCol.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 import IconButton from "@/components/widgets/buttons/IconButton.vue";
 import SwatchPairInput from "@/components/widgets/inputs/SwatchPairInput.vue";
-import CanvasRuler from "@/components/widgets/rulers/CanvasRuler.vue";
-import PersistentScrollbar from "@/components/widgets/scrollbars/PersistentScrollbar.vue";
-import Separator from "@/components/widgets/separators/Separator.vue";
+import CanvasRuler from "@/components/widgets/metrics/CanvasRuler.vue";
+import PersistentScrollbar from "@/components/widgets/metrics/PersistentScrollbar.vue";
 import WidgetLayout from "@/components/widgets/WidgetLayout.vue";
 
 export default defineComponent({
-	inject: ["editor", "dialog"],
+	inject: ["editor"],
 	methods: {
 		viewportResize() {
 			// Resize the canvas
@@ -275,11 +266,10 @@ export default defineComponent({
 			this.canvasSvgHeight = `${height}px`;
 
 			// Resize the rulers
-
 			const rulerHorizontal = this.$refs.rulerHorizontal as typeof CanvasRuler;
 			const rulerVertical = this.$refs.rulerVertical as typeof CanvasRuler;
-			rulerHorizontal?.handleResize();
-			rulerVertical?.handleResize();
+			rulerHorizontal?.resize();
+			rulerVertical?.resize();
 		},
 		pasteFile(e: DragEvent) {
 			const { dataTransfer } = e;
@@ -329,7 +319,7 @@ export default defineComponent({
 		},
 	},
 	mounted() {
-		this.editor.dispatcher.subscribeJsMessage(UpdateDocumentArtwork, (UpdateDocumentArtwork) => {
+		this.editor.subscriptions.subscribeJsMessage(UpdateDocumentArtwork, (UpdateDocumentArtwork) => {
 			this.artworkSvg = UpdateDocumentArtwork.svg;
 
 			nextTick((): void => {
@@ -365,50 +355,38 @@ export default defineComponent({
 			});
 		});
 
-		this.editor.dispatcher.subscribeJsMessage(UpdateDocumentOverlays, (updateDocumentOverlays) => {
+		this.editor.subscriptions.subscribeJsMessage(UpdateDocumentOverlays, (updateDocumentOverlays) => {
 			this.overlaysSvg = updateDocumentOverlays.svg;
 		});
 
-		this.editor.dispatcher.subscribeJsMessage(UpdateDocumentArtboards, (updateDocumentArtboards) => {
+		this.editor.subscriptions.subscribeJsMessage(UpdateDocumentArtboards, (updateDocumentArtboards) => {
 			this.artboardSvg = updateDocumentArtboards.svg;
 		});
 
-		this.editor.dispatcher.subscribeJsMessage(UpdateDocumentScrollbars, (updateDocumentScrollbars) => {
+		this.editor.subscriptions.subscribeJsMessage(UpdateDocumentScrollbars, (updateDocumentScrollbars) => {
 			this.scrollbarPos = updateDocumentScrollbars.position;
 			this.scrollbarSize = updateDocumentScrollbars.size;
 			this.scrollbarMultiplier = updateDocumentScrollbars.multiplier;
 		});
 
-		this.editor.dispatcher.subscribeJsMessage(UpdateDocumentRulers, (updateDocumentRulers) => {
+		this.editor.subscriptions.subscribeJsMessage(UpdateDocumentRulers, (updateDocumentRulers) => {
 			this.rulerOrigin = updateDocumentRulers.origin;
 			this.rulerSpacing = updateDocumentRulers.spacing;
 			this.rulerInterval = updateDocumentRulers.interval;
 		});
 
-		this.editor.dispatcher.subscribeJsMessage(UpdateMouseCursor, (updateMouseCursor) => {
+		this.editor.subscriptions.subscribeJsMessage(UpdateMouseCursor, (updateMouseCursor) => {
 			this.canvasCursor = updateMouseCursor.cursor;
 		});
-		this.editor.dispatcher.subscribeJsMessage(TriggerTextCommit, () => {
+
+		this.editor.subscriptions.subscribeJsMessage(TriggerTextCommit, () => {
 			if (this.textInput) {
 				const textCleaned = textInputCleanup(this.textInput.innerText);
 				this.editor.instance.on_change_text(textCleaned);
 			}
 		});
-		this.editor.dispatcher.subscribeJsMessage(TriggerFontLoad, async (triggerFontLoad) => {
-			const response = await fetch(triggerFontLoad.font);
-			const responseBuffer = await response.arrayBuffer();
-			this.editor.instance.on_font_load(triggerFontLoad.font, new Uint8Array(responseBuffer), false);
-		});
-		this.editor.dispatcher.subscribeJsMessage(TriggerFontLoadDefault, loadDefaultFont);
-		this.editor.dispatcher.subscribeJsMessage(TriggerVisitLink, async (triggerOpenLink) => {
-			window.open(triggerOpenLink.url, "_blank");
-		});
-		this.editor.dispatcher.subscribeJsMessage(TriggerTextCopy, (triggerTextCopy) => {
-			// If the Clipboard API is supported in the browser, copy text to the clipboard
-			navigator.clipboard?.writeText?.(triggerTextCopy.copy_text);
-		});
 
-		this.editor.dispatcher.subscribeJsMessage(DisplayEditableTextbox, (displayEditableTextbox) => {
+		this.editor.subscriptions.subscribeJsMessage(DisplayEditableTextbox, (displayEditableTextbox) => {
 			this.textInput = document.createElement("DIV") as HTMLDivElement;
 
 			if (displayEditableTextbox.text === "") this.textInput.textContent = "";
@@ -425,7 +403,7 @@ export default defineComponent({
 			};
 		});
 
-		this.editor.dispatcher.subscribeJsMessage(DisplayRemoveEditableTextbox, () => {
+		this.editor.subscriptions.subscribeJsMessage(DisplayRemoveEditableTextbox, () => {
 			this.textInput = undefined;
 			window.dispatchEvent(
 				new CustomEvent("modifyinputfield", {
@@ -434,25 +412,25 @@ export default defineComponent({
 			);
 		});
 
-		this.editor.dispatcher.subscribeJsMessage(UpdateDocumentModeLayout, (updateDocumentModeLayout) => {
+		this.editor.subscriptions.subscribeJsMessage(UpdateDocumentModeLayout, (updateDocumentModeLayout) => {
 			this.documentModeLayout = updateDocumentModeLayout;
 		});
 
-		this.editor.dispatcher.subscribeJsMessage(UpdateToolOptionsLayout, (updateToolOptionsLayout) => {
+		this.editor.subscriptions.subscribeJsMessage(UpdateToolOptionsLayout, (updateToolOptionsLayout) => {
 			this.toolOptionsLayout = updateToolOptionsLayout;
 		});
 
-		this.editor.dispatcher.subscribeJsMessage(UpdateDocumentBarLayout, (updateDocumentBarLayout) => {
+		this.editor.subscriptions.subscribeJsMessage(UpdateDocumentBarLayout, (updateDocumentBarLayout) => {
 			this.documentBarLayout = updateDocumentBarLayout;
 		});
 
-		this.editor.dispatcher.subscribeJsMessage(UpdateToolShelfLayout, (updateToolShelfLayout) => {
+		this.editor.subscriptions.subscribeJsMessage(UpdateToolShelfLayout, (updateToolShelfLayout) => {
 			this.toolShelfLayout = updateToolShelfLayout;
 		});
 
-		this.editor.dispatcher.subscribeJsMessage(TriggerViewportResize, this.viewportResize);
+		this.editor.subscriptions.subscribeJsMessage(TriggerViewportResize, this.viewportResize);
 
-		this.editor.dispatcher.subscribeJsMessage(UpdateImageData, (updateImageData) => {
+		this.editor.subscriptions.subscribeJsMessage(UpdateImageData, (updateImageData) => {
 			updateImageData.image_data.forEach(async (element) => {
 				// Using updateImageData.image_data.buffer returns undefined for some reason?
 				const blob = new Blob([new Uint8Array(element.image_data.values()).buffer], { type: element.mime });
@@ -464,30 +442,6 @@ export default defineComponent({
 				this.editor.instance.set_image_blob_url(element.path, url, image.width, image.height);
 			});
 		});
-
-		// Gets metadata populated in `frontend/vue.config.js`. We could potentially move this functionality in a build.rs file.
-		const loadBuildMetadata = (): void => {
-			const release = process.env.VUE_APP_RELEASE_SERIES;
-			let timestamp = "";
-			const hash = (process.env.VUE_APP_COMMIT_HASH || "").substring(0, 8);
-			const branch = process.env.VUE_APP_COMMIT_BRANCH;
-			{
-				const date = new Date(process.env.VUE_APP_COMMIT_DATE || "");
-				const dateString = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
-				const timeString = `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
-				const timezoneName = Intl.DateTimeFormat(undefined, { timeZoneName: "long" })
-					.formatToParts(new Date())
-					.find((part) => part.type === "timeZoneName");
-				const timezoneNameString = timezoneName?.value;
-				timestamp = `${dateString} ${timeString} ${timezoneNameString}`;
-			}
-
-			this.editor.instance.populate_build_metadata(release || "", timestamp, hash, branch || "");
-		};
-
-		setLoadDefaultFontCallback((font: string, data: Uint8Array) => this.editor.instance.on_font_load(font, data, true));
-
-		loadBuildMetadata();
 	},
 	data() {
 		return {
@@ -525,7 +479,6 @@ export default defineComponent({
 		LayoutRow,
 		LayoutCol,
 		SwatchPairInput,
-		Separator,
 		PersistentScrollbar,
 		CanvasRuler,
 		IconButton,

@@ -1,7 +1,7 @@
 <template>
 	<LayoutRow class="popover-button">
-		<IconButton :action="handleClick" :icon="icon" :size="16" data-hover-menu-spawner />
-		<FloatingMenu :type="'Popover'" :direction="'Bottom'" ref="floatingMenu">
+		<IconButton :action="() => onClick()" :icon="icon" :size="16" data-hover-menu-spawner />
+		<FloatingMenu v-model:open="open" :type="'Popover'" :direction="'Bottom'">
 			<slot></slot>
 		</FloatingMenu>
 	</LayoutRow>
@@ -49,11 +49,11 @@
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
 
-import { PopoverButtonIcon } from "@/utilities/widgets";
+import { IconName } from "@/utility-functions/icons";
 
+import FloatingMenu from "@/components/floating-menus/FloatingMenu.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 import IconButton from "@/components/widgets/buttons/IconButton.vue";
-import FloatingMenu from "@/components/widgets/floating-menus/FloatingMenu.vue";
 
 export default defineComponent({
 	components: {
@@ -63,11 +63,16 @@ export default defineComponent({
 	},
 	props: {
 		action: { type: Function as PropType<() => void>, required: false },
-		icon: { type: String as PropType<PopoverButtonIcon>, default: "DropdownArrow" },
+		icon: { type: String as PropType<IconName>, default: "DropdownArrow" },
+	},
+	data() {
+		return {
+			open: false,
+		};
 	},
 	methods: {
-		handleClick() {
-			(this.$refs.floatingMenu as typeof FloatingMenu).setOpen();
+		onClick() {
+			this.open = true;
 
 			this.action?.();
 		},

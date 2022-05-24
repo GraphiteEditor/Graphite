@@ -6,11 +6,19 @@
 			</div>
 		</div>
 		<div class="entry-container" v-for="(entry, index) in entries" :key="index">
-			<div @click="() => handleEntryClick(entry)" tabindex="0" @keydown="entry.ref?.keydown" class="entry" :class="{ open: entry.ref?.isOpen() }" data-hover-menu-spawner>
-				<IconLabel :icon="entry.icon" v-if="entry.icon" />
+			<div @click="() => onClick(entry)" class="entry" :class="{ open: entry.ref?.open }" data-hover-menu-spawner>
+				<IconLabel v-if="entry.icon" :icon="entry.icon" />
 				<span v-if="entry.label">{{ entry.label }}</span>
 			</div>
-			<MenuList :entries="entry.children || []" :direction="'Bottom'" :minWidth="240" :drawIcon="true" :defaultAction="comingSoon" :ref="(ref: any) => setEntryRefs(entry, ref)" />
+			<MenuList
+				:open="entry.ref?.open || false"
+				:entries="entry.children || []"
+				:direction="'Bottom'"
+				:minWidth="240"
+				:drawIcon="true"
+				:defaultAction="() => editor.instance.request_coming_soon_dialog()"
+				:ref="(ref: typeof MenuList) => ref && (entry.ref = ref)"
+			/>
 		</div>
 	</div>
 </template>
@@ -53,12 +61,12 @@
 <script lang="ts">
 import { defineComponent } from "vue";
 
-import { EditorState } from "@/state/wasm-loader";
+import { Editor } from "@/wasm-communication/editor";
 
-import MenuList, { MenuListEntry, MenuListEntries } from "@/components/widgets/floating-menus/MenuList.vue";
+import MenuList, { MenuListEntry, MenuListEntries } from "@/components/floating-menus/MenuList.vue";
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
 
-function makeEntries(editor: EditorState): MenuListEntries {
+function makeEntries(editor: Editor): MenuListEntries {
 	return [
 		{
 			label: "File",
@@ -131,14 +139,14 @@ function makeEntries(editor: EditorState): MenuListEntries {
 								{
 									label: "Raise To Front",
 									shortcut: ["KeyControl", "KeyShift", "KeyLeftBracket"],
-									action: async (): Promise<void> => editor.instance.reorder_selected_layers(editor.rawWasm.i32_max()),
+									action: async (): Promise<void> => editor.instance.reorder_selected_layers(editor.instance.i32_max()),
 								},
 								{ label: "Raise", shortcut: ["KeyControl", "KeyRightBracket"], action: async (): Promise<void> => editor.instance.reorder_selected_layers(1) },
 								{ label: "Lower", shortcut: ["KeyControl", "KeyLeftBracket"], action: async (): Promise<void> => editor.instance.reorder_selected_layers(-1) },
 								{
 									label: "Lower to Back",
 									shortcut: ["KeyControl", "KeyShift", "KeyRightBracket"],
-									action: async (): Promise<void> => editor.instance.reorder_selected_layers(editor.rawWasm.i32_min()),
+									action: async (): Promise<void> => editor.instance.reorder_selected_layers(editor.instance.i32_min()),
 								},
 							],
 						],
@@ -189,7 +197,7 @@ function makeEntries(editor: EditorState): MenuListEntries {
 							],
 						],
 					},
-					{ label: "Debug: Panic (DANGER)", action: async (): Promise<void> => editor.rawWasm.intentional_panic() },
+					{ label: "Debug: Panic (DANGER)", action: async (): Promise<void> => editor.instance.intentional_panic() },
 				],
 			],
 		},
@@ -197,18 +205,13 @@ function makeEntries(editor: EditorState): MenuListEntries {
 }
 
 export default defineComponent({
-	inject: ["workspace", "editor", "dialog"],
+	inject: ["editor"],
 	methods: {
-		setEntryRefs(menuEntry: MenuListEntry, ref: typeof MenuList) {
-			if (ref) menuEntry.ref = ref;
-		},
-		handleEntryClick(menuEntry: MenuListEntry, target: EventTarget | null) {
-			// Focus the target so that keyboard inputs are sent to the dropdown
-			(target as HTMLElement)?.focus();
-
-			if (menuEntry.ref) menuEntry.ref.setOpen();
+		onClick(menuEntry: MenuListEntry) {
+			if (menuEntry.ref) menuEntry.ref.isOpen = true;
 			else throw new Error("The menu bar floating menu has no associated ref");
 		},
+		// TODO: Move to backend
 		visitWebsite(url: string) {
 			// This method is required because `window` isn't accessible from the Vue component HTML
 			window.open(url, "_blank");
@@ -217,7 +220,7 @@ export default defineComponent({
 	data() {
 		return {
 			entries: makeEntries(this.editor),
-			comingSoon: (): void => this.dialog.comingSoon(),
+			open: false,
 		};
 	},
 	components: {

@@ -1,7 +1,7 @@
 <template>
 	<MainWindow />
 
-	<div class="unsupported-modal-backdrop" v-if="showUnsupportedModal">
+	<div class="unsupported-modal-backdrop" v-if="apiUnsupported" ref="unsupported">
 		<LayoutCol class="unsupported-modal">
 			<h2>Your browser currently doesn't support Graphite</h2>
 			<p>Unfortunately, some features won't work properly. Please upgrade to a modern browser such as Firefox, Chrome, Edge, or Safari version 15 or later.</p>
@@ -11,7 +11,7 @@
 				API which is required for using the editor. However, you can still explore the user interface.
 			</p>
 			<LayoutRow>
-				<button class="unsupported-modal-button" @click="() => closeModal()">I understand, let's just see the interface</button>
+				<button class="unsupported-modal-button" @click="() => closeUnsupportedWarning()">I understand, let's just see the interface</button>
 			</LayoutRow>
 		</LayoutCol>
 	</div>
@@ -190,27 +190,6 @@ img {
 	}
 }
 
-.icon-button,
-.text-button,
-.popover-button,
-.checkbox-input label,
-.color-input .swatch .swatch-button,
-.dropdown-input .dropdown-box,
-.font-input .dropdown-box,
-.radio-input button,
-.menu-list {
-	&:focus {
-		outline: 1px solid var(--color-accent);
-		outline-offset: 2px;
-	}
-}
-
-.menu-list {
-	&:focus {
-		outline-offset: -1px;
-	}
-}
-
 // For placeholder messages (remove eventually)
 .floating-menu {
 	h1,
@@ -279,78 +258,96 @@ img {
 <script lang="ts">
 import { defineComponent } from "vue";
 
-import { createAutoSaveManager } from "@/lifetime/auto-save";
-import { initErrorHandling } from "@/lifetime/errors";
-import { createInputManager, InputManager } from "@/lifetime/input";
-import { createDialogState, DialogState } from "@/state/dialog";
-import { createFullscreenState, FullscreenState } from "@/state/fullscreen";
-import { createPortfolioState, PortfolioState } from "@/state/portfolio";
-import { createEditorState, EditorState } from "@/state/wasm-loader";
-import { createWorkspaceState, WorkspaceState } from "@/state/workspace";
+import { createBuildMetadataManager } from "@/io-managers/build-metadata";
+import { createClipboardManager } from "@/io-managers/clipboard";
+import { createHyperlinkManager } from "@/io-managers/hyperlinks";
+import { createInputManager } from "@/io-managers/input";
+import { createPanicManager } from "@/io-managers/panic";
+import { createPersistenceManager } from "@/io-managers/persistence";
+import { createDialogState, DialogState } from "@/state-providers/dialog";
+import { createFontsState, FontsState } from "@/state-providers/fonts";
+import { createFullscreenState, FullscreenState } from "@/state-providers/fullscreen";
+import { createPortfolioState, PortfolioState } from "@/state-providers/portfolio";
+import { createWorkspaceState, WorkspaceState } from "@/state-providers/workspace";
+import { createEditor, Editor } from "@/wasm-communication/editor";
 
 import LayoutCol from "@/components/layout/LayoutCol.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 import MainWindow from "@/components/window/MainWindow.vue";
 
-// Vue injects don't play well with TypeScript, and all injects will show up as `any`. As a workaround, we can define these types.
+const managerDestructors: {
+	createBuildMetadataManager?: () => void;
+	createClipboardManager?: () => void;
+	createHyperlinkManager?: () => void;
+	createInputManager?: () => void;
+	createPanicManager?: () => void;
+	createPersistenceManager?: () => void;
+} = {};
+
+// Vue injects don't play well with TypeScript (all injects will show up as `any`) but we can define these types as a solution
 declare module "@vue/runtime-core" {
+	// Systems `provide`d by the root App to be `inject`ed into descendant components and used for reactive bindings
 	interface ComponentCustomProperties {
+		// Graphite WASM editor instance
+		editor: Editor;
+
+		// State provider systems
 		dialog: DialogState;
+		fonts: FontsState;
+		fullscreen: FullscreenState;
 		portfolio: PortfolioState;
 		workspace: WorkspaceState;
-		fullscreen: FullscreenState;
-		editor: EditorState;
-		// This must be set to optional because there is a time in the lifecycle of the component where inputManager is undefined.
-		// That's because we initialize inputManager in `mounted()` rather than `data()` since the div hasn't been created yet.
-		inputManager?: InputManager;
 	}
 }
 
 export default defineComponent({
 	provide() {
-		return {
-			editor: this.editor,
-			dialog: this.dialog,
-			portfolio: this.portfolio,
-			workspace: this.workspace,
-			fullscreen: this.fullscreen,
-			inputManager: this.inputManager,
-		};
+		return { ...this.$data };
 	},
 	data() {
-		// Initialize the Graphite WASM editor instance
-		const editor = createEditorState();
-
-		// Initialize other stateful Vue systems
-		const dialog = createDialogState(editor);
-		const portfolio = createPortfolioState(editor);
-		const workspace = createWorkspaceState(editor);
-		const fullscreen = createFullscreenState();
-		initErrorHandling(editor, dialog);
-		createAutoSaveManager(editor, portfolio);
-
+		const editor = createEditor();
 		return {
+			// Graphite WASM editor instance
 			editor,
-			dialog,
-			portfolio,
-			workspace,
-			fullscreen,
-			showUnsupportedModal: !("BigInt64Array" in window),
-			inputManager: undefined as undefined | InputManager,
+
+			// State provider systems
+			dialog: createDialogState(editor),
+			fonts: createFontsState(editor),
+			fullscreen: createFullscreenState(),
+			portfolio: createPortfolioState(editor),
+			workspace: createWorkspaceState(editor),
 		};
 	},
-	methods: {
-		closeModal() {
-			this.showUnsupportedModal = false;
+	computed: {
+		apiUnsupported() {
+			return !("BigInt64Array" in window);
 		},
 	},
-	mounted() {
-		this.inputManager = createInputManager(this.editor, this.$el.parentElement, this.dialog, this.portfolio, this.fullscreen);
+	methods: {
+		closeUnsupportedWarning() {
+			const element = this.$refs.unsupported as HTMLElement;
+			element.parentElement?.removeChild(element);
+		},
+	},
+	async mounted() {
+		// Initialize managers, which are isolated systems that subscribe to backend messages to link them to browser API functionality (like JS events, IndexedDB, etc.)
+		Object.assign(managerDestructors, {
+			createBuildMetadataManager: createBuildMetadataManager(this.editor),
+			createClipboardManager: createClipboardManager(this.editor),
+			createHyperlinkManager: createHyperlinkManager(this.editor),
+			createInputManager: createInputManager(this.editor, this.$el.parentElement, this.dialog, this.portfolio, this.fullscreen),
+			createPanicManager: createPanicManager(this.editor, this.dialog),
+			createPersistenceManager: await createPersistenceManager(this.editor, this.portfolio),
+		});
 
+		// Initialize certain setup tasks required by the editor backend to be ready for the user now that the frontend is ready
 		this.editor.instance.init_app();
 	},
 	beforeUnmount() {
-		this.inputManager?.removeListeners();
+		// Call the destructor for each manager
+		Object.values(managerDestructors).forEach((destructor) => destructor?.());
+
+		// Destroy the WASM editor instance
 		this.editor.instance.free();
 	},
 	components: {

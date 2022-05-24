@@ -1,7 +1,7 @@
 <template>
 	<LayoutRow class="checkbox-input" :class="{ 'outline-style': outlineStyle }">
 		<input type="checkbox" :id="`checkbox-input-${id}`" :checked="checked" @change="(e) => $emit('update:checked', (e.target as HTMLInputElement).checked)" />
-		<label :for="`checkbox-input-${id}`" tabindex="0" @keydown.enter="(e) => ((e.target as HTMLElement).previousSibling as HTMLInputElement).click()">
+		<label :for="`checkbox-input-${id}`">
 			<LayoutRow class="checkbox-box">
 				<IconLabel :icon="icon" />
 			</LayoutRow>
@@ -21,8 +21,6 @@
 	label {
 		display: flex;
 		height: 16px;
-		// Provides rounded corners for the :focus outline
-		border-radius: 2px;
 
 		.checkbox-box {
 			flex: 0 0 auto;
@@ -86,7 +84,7 @@
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
 
-import { IconName } from "@/utilities/icons";
+import { IconName } from "@/utility-functions/icons";
 
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";

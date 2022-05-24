@@ -350,7 +350,6 @@ const GRID_COLLAPSE_SPACING = 10;
 const GRID_SIZE = 24;
 
 export default defineComponent({
-	inject: ["editor"],
 	data() {
 		return {
 			transform: { scale: 1, x: 0, y: 0 },
@@ -467,16 +466,13 @@ export default defineComponent({
 		},
 	},
 	mounted() {
-		{
-			const outputPort = document.querySelectorAll(".output.port")[4] as HTMLElement;
-			const inputPort = document.querySelectorAll(".input.port")[1] as HTMLElement;
-			this.createWirePath(outputPort, inputPort, true, true);
-		}
-		{
-			const outputPort = document.querySelectorAll(".output.port")[6] as HTMLElement;
-			const inputPort = document.querySelectorAll(".input.port")[3] as HTMLElement;
-			this.createWirePath(outputPort, inputPort, true, false);
-		}
+		const outputPort1 = document.querySelectorAll(".output.port")[4] as HTMLElement;
+		const inputPort1 = document.querySelectorAll(".input.port")[1] as HTMLElement;
+		this.createWirePath(outputPort1, inputPort1, true, true);
+
+		const outputPort2 = document.querySelectorAll(".output.port")[6] as HTMLElement;
+		const inputPort2 = document.querySelectorAll(".input.port")[3] as HTMLElement;
+		this.createWirePath(outputPort2, inputPort2, true, false);
 	},
 	components: {
 		LayoutRow,

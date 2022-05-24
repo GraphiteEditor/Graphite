@@ -44,11 +44,11 @@
 <script lang="ts">
 import { defineComponent } from "vue";
 
-import { HintData, UpdateInputHints } from "@/dispatcher/js-messages";
+import { HintData, UpdateInputHints } from "@/wasm-communication/messages";
 
 import LayoutRow from "@/components/layout/LayoutRow.vue";
+import Separator from "@/components/widgets/labels/Separator.vue";
 import UserInputLabel from "@/components/widgets/labels/UserInputLabel.vue";
-import Separator from "@/components/widgets/separators/Separator.vue";
 
 export default defineComponent({
 	inject: ["editor"],
@@ -58,7 +58,7 @@ export default defineComponent({
 		};
 	},
 	mounted() {
-		this.editor.dispatcher.subscribeJsMessage(UpdateInputHints, (updateInputHints) => {
+		this.editor.subscriptions.subscribeJsMessage(UpdateInputHints, (updateInputHints) => {
 			this.hintData = updateInputHints.hint_data;
 		});
 	},

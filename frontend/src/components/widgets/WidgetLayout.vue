@@ -1,3 +1,5 @@
+<!-- TODO: Refactor this component (together with `WidgetRow.vue`) to be more logically consistent with our layout definition goals, in terms of naming and capabilities -->
+
 <template>
 	<div class="widget-layout">
 		<component :is="layoutRowType(layoutRow)" :widgetData="layoutRow" :layoutTarget="layout.layout_target" v-for="(layoutRow, index) in layout.layout" :key="index" />
@@ -16,10 +18,10 @@
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
 
-import { isWidgetColumn, isWidgetRow, isWidgetSection, LayoutRow, WidgetLayout } from "@/dispatcher/js-messages";
+import { isWidgetColumn, isWidgetRow, isWidgetSection, LayoutRow, WidgetLayout } from "@/wasm-communication/messages";
 
+import WidgetSection from "@/components/widgets/groups/WidgetSection.vue";
 import WidgetRow from "@/components/widgets/WidgetRow.vue";
-import WidgetSection from "@/components/widgets/WidgetSection.vue";
 
 export default defineComponent({
 	props: {
