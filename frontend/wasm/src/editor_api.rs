@@ -19,23 +19,39 @@ use serde_wasm_bindgen::{self, from_value};
 use std::sync::atomic::Ordering;
 use wasm_bindgen::prelude::*;
 
+/// Set the random seed used by the editor by calling this from JS upon initialization.
+/// This is necessary because WASM doesn't have a random number generator.
+#[wasm_bindgen]
+pub fn set_random_seed(seed: u64) {
+	editor::communication::set_uuid_seed(seed);
+}
+
+/// Access a handle to WASM memory
+#[wasm_bindgen]
+pub fn wasm_memory() -> JsValue {
+	wasm_bindgen::memory()
+}
+
 // To avoid wasm-bindgen from checking mutable reference issues using WasmRefCell we must make all methods take a non mutable reference to self.
 // Not doing this creates an issue when rust calls into JS which calls back to rust in the same call stack.
 #[wasm_bindgen]
 #[derive(Clone)]
 pub struct JsEditorHandle {
 	editor_id: u64,
-	handle_response: js_sys::Function,
+	frontend_message_handler_callback: js_sys::Function,
 }
 
 #[wasm_bindgen]
 #[allow(clippy::too_many_arguments)]
 impl JsEditorHandle {
 	#[wasm_bindgen(constructor)]
-	pub fn new(handle_response: js_sys::Function) -> Self {
+	pub fn new(frontend_message_handler_callback: js_sys::Function) -> Self {
 		let editor_id = generate_uuid();
 		let editor = Editor::new();
-		let editor_handle = JsEditorHandle { editor_id, handle_response };
+		let editor_handle = JsEditorHandle {
+			editor_id,
+			frontend_message_handler_callback,
+		};
 		EDITOR_INSTANCES.with(|instances| instances.borrow_mut().insert(editor_id, editor));
 		JS_EDITOR_HANDLES.with(|instances| instances.borrow_mut().insert(editor_id, editor_handle.clone()));
 		editor_handle
@@ -48,27 +64,27 @@ impl JsEditorHandle {
 			return;
 		}
 
-		let responses = EDITOR_INSTANCES.with(|instances| {
+		let frontend_messages = EDITOR_INSTANCES.with(|instances| {
 			instances
 				.borrow_mut()
 				.get_mut(&self.editor_id)
 				.expect("EDITOR_INSTANCES does not contain the current editor_id")
 				.handle_message(message.into())
 		});
-		for response in responses.into_iter() {
+		for message in frontend_messages.into_iter() {
 			// Send each FrontendMessage to the JavaScript frontend
-			self.handle_response(response);
+			self.send_frontend_message_to_js(message);
 		}
 	}
 
 	// Sends a FrontendMessage to JavaScript
-	fn handle_response(&self, message: FrontendMessage) {
+	fn send_frontend_message_to_js(&self, message: FrontendMessage) {
 		let message_type = message.to_discriminant().local_name();
 
 		let serializer = serde_wasm_bindgen::Serializer::new().serialize_large_number_types_as_bigints(true);
 		let message_data = message.serialize(&serializer).expect("Failed to serialize FrontendMessage");
 
-		let js_return_value = self.handle_response.call2(&JsValue::null(), &JsValue::from(message_type), &message_data);
+		let js_return_value = self.frontend_message_handler_callback.call2(&JsValue::null(), &JsValue::from(message_type), &message_data);
 
 		if let Err(error) = js_return_value {
 			log::error!(
@@ -109,6 +125,30 @@ impl JsEditorHandle {
 	/// Answer whether or not the editor has crashed
 	pub fn has_crashed(&self) -> bool {
 		EDITOR_HAS_CRASHED.load(Ordering::SeqCst)
+	}
+
+	/// Get the constant `FILE_SAVE_SUFFIX`
+	#[wasm_bindgen]
+	pub fn file_save_suffix(&self) -> String {
+		FILE_SAVE_SUFFIX.into()
+	}
+
+	/// Get the constant `GRAPHITE_DOCUMENT_VERSION`
+	#[wasm_bindgen]
+	pub fn graphite_document_version(&self) -> String {
+		GRAPHITE_DOCUMENT_VERSION.to_string()
+	}
+
+	/// Get the constant `i32::MAX`
+	#[wasm_bindgen]
+	pub fn i32_max(&self) -> i32 {
+		i32::MAX
+	}
+
+	/// Get the constant `i32::MIN`
+	#[wasm_bindgen]
+	pub fn i32_min(&self) -> i32 {
+		i32::MIN
 	}
 
 	/// Request that the Node Graph panel be shown or hidden by toggling the visibility state
@@ -491,8 +531,8 @@ impl JsEditorHandle {
 // Needed to make JsEditorHandle functions pub to Rust.
 // The reason is not fully clear but it has to do with the #[wasm_bindgen] procedural macro.
 impl JsEditorHandle {
-	pub fn handle_response_rust_proxy(&self, message: FrontendMessage) {
-		self.handle_response(message);
+	pub fn send_frontend_message_to_js_rust_proxy(&self, message: FrontendMessage) {
+		self.send_frontend_message_to_js(message);
 	}
 }
 
@@ -500,41 +540,4 @@ impl Drop for JsEditorHandle {
 	fn drop(&mut self) {
 		EDITOR_INSTANCES.with(|instances| instances.borrow_mut().remove(&self.editor_id));
 	}
-}
-
-/// Set the random seed used by the editor by calling this from JS upon initialization.
-/// This is necessary because WASM doesn't have a random number generator.
-#[wasm_bindgen]
-pub fn set_random_seed(seed: u64) {
-	editor::communication::set_uuid_seed(seed)
-}
-
-/// Access a handle to WASM memory
-#[wasm_bindgen]
-pub fn wasm_memory() -> JsValue {
-	wasm_bindgen::memory()
-}
-
-/// Get the constant `FILE_SAVE_SUFFIX`
-#[wasm_bindgen]
-pub fn file_save_suffix() -> String {
-	FILE_SAVE_SUFFIX.into()
-}
-
-/// Get the constant `GRAPHITE_DOCUMENT_VERSION`
-#[wasm_bindgen]
-pub fn graphite_version() -> String {
-	GRAPHITE_DOCUMENT_VERSION.to_string()
-}
-
-/// Get the constant `i32::MAX`
-#[wasm_bindgen]
-pub fn i32_max() -> i32 {
-	i32::MAX
-}
-
-/// Get the constant `i32::MIN`
-#[wasm_bindgen]
-pub fn i32_min() -> i32 {
-	i32::MIN
 }

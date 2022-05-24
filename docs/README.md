@@ -1,5 +1,7 @@
 # Graphite project documentation
 
+WARNING: A lot of the information in these documents are out of date.
+
 ## [Graphite editor manual](editor/README.md)
 
 Click above for the Graphite editor manual. This will evolve into the official manual for the Graphite editor. It contains documentation for each feature of Graphite focused on both usage instructions and technical details.
