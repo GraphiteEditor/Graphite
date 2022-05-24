@@ -3,7 +3,7 @@
 	"[rust]": {
 		"editor.formatOnSave": true,
 		"editor.formatOnPaste": true,
-		"editor.defaultFormatter": "matklad.rust-analyzer",
+		"editor.defaultFormatter": "rust-lang.rust-analyzer",
 	},
 	// Web: save on format
 	"[typescript][javascript][vue]": {
@@ -12,6 +12,11 @@
 		},
 		"editor.formatOnSave": true,
 		"editor.defaultFormatter": "dbaeumer.vscode-eslint",
+	},
+	// Handlebars: don't save on format
+	// (`about.hbs` is used by Cargo About to encode license information)
+	"[handlebars]": {
+		"editor.formatOnSave": false,
 	},
 	// Rust Analyzer config
 	"rust-analyzer.cargo.target": "wasm32-unknown-unknown",

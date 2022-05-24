@@ -51,9 +51,9 @@ import { defineComponent, PropType } from "vue";
 
 import { IconName } from "@/utility-functions/icons";
 
+import FloatingMenu from "@/components/floating-menus/FloatingMenu.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 import IconButton from "@/components/widgets/buttons/IconButton.vue";
-import FloatingMenu from "@/components/widgets/floating-menus/FloatingMenu.vue";
 
 export default defineComponent({
 	components: {

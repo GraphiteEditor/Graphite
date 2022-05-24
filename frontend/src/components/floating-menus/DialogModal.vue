@@ -68,10 +68,10 @@
 <script lang="ts">
 import { defineComponent } from "vue";
 
+import FloatingMenu from "@/components/floating-menus/FloatingMenu.vue";
 import LayoutCol from "@/components/layout/LayoutCol.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 import TextButton from "@/components/widgets/buttons/TextButton.vue";
-import FloatingMenu from "@/components/widgets/floating-menus/FloatingMenu.vue";
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
 import WidgetLayout from "@/components/widgets/WidgetLayout.vue";
 
