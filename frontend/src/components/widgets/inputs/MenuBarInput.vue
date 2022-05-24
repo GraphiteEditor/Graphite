@@ -63,7 +63,7 @@ import { defineComponent } from "vue";
 
 import { Editor } from "@/wasm-communication/editor";
 
-import MenuList, { MenuListEntry, MenuListEntries } from "@/components/widgets/floating-menus/MenuList.vue";
+import MenuList, { MenuListEntry, MenuListEntries } from "@/components/floating-menus/MenuList.vue";
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
 
 function makeEntries(editor: Editor): MenuListEntries {
@@ -139,14 +139,14 @@ function makeEntries(editor: Editor): MenuListEntries {
 								{
 									label: "Raise To Front",
 									shortcut: ["KeyControl", "KeyShift", "KeyLeftBracket"],
-									action: async (): Promise<void> => editor.instance.reorder_selected_layers(editor.raw.i32_max()),
+									action: async (): Promise<void> => editor.instance.reorder_selected_layers(editor.instance.i32_max()),
 								},
 								{ label: "Raise", shortcut: ["KeyControl", "KeyRightBracket"], action: async (): Promise<void> => editor.instance.reorder_selected_layers(1) },
 								{ label: "Lower", shortcut: ["KeyControl", "KeyLeftBracket"], action: async (): Promise<void> => editor.instance.reorder_selected_layers(-1) },
 								{
 									label: "Lower to Back",
 									shortcut: ["KeyControl", "KeyShift", "KeyRightBracket"],
-									action: async (): Promise<void> => editor.instance.reorder_selected_layers(editor.raw.i32_min()),
+									action: async (): Promise<void> => editor.instance.reorder_selected_layers(editor.instance.i32_min()),
 								},
 							],
 						],

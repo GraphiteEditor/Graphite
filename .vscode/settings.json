@@ -13,6 +13,11 @@
 		"editor.formatOnSave": true,
 		"editor.defaultFormatter": "dbaeumer.vscode-eslint",
 	},
+	// Handlebars: don't save on format
+	// (`about.hbs` is used by Cargo About to encode license information)
+	"[handlebars]": {
+		"editor.formatOnSave": false,
+	},
 	// Rust Analyzer config
 	"rust-analyzer.cargo.target": "wasm32-unknown-unknown",
 	"rust-analyzer.checkOnSave.command": "clippy",

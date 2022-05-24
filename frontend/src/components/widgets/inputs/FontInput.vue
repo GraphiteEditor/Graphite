@@ -85,8 +85,8 @@
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
 
+import MenuList, { MenuListEntry, SectionsOfMenuListEntries } from "@/components/floating-menus/MenuList.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
-import MenuList, { MenuListEntry, SectionsOfMenuListEntries } from "@/components/widgets/floating-menus/MenuList.vue";
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
 
 export default defineComponent({

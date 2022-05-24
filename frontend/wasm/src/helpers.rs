@@ -13,7 +13,7 @@ pub fn panic_hook(info: &panic::PanicInfo) {
 	log::error!("{}", info);
 	JS_EDITOR_HANDLES.with(|instances| {
 		instances.borrow_mut().values_mut().for_each(|instance| {
-			instance.handle_response_rust_proxy(FrontendMessage::DisplayDialogPanic {
+			instance.send_frontend_message_to_js_rust_proxy(FrontendMessage::DisplayDialogPanic {
 				panic_info: panic_info.clone(),
 				title: title.clone(),
 				description: description.clone(),

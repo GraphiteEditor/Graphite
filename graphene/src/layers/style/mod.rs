@@ -36,6 +36,18 @@ impl Default for ViewMode {
 	}
 }
 
+#[derive(PartialEq, Clone, Copy, Debug, Hash, Serialize, Deserialize)]
+pub enum GradientType {
+	Linear,
+	Radial,
+}
+
+impl Default for GradientType {
+	fn default() -> Self {
+		GradientType::Linear
+	}
+}
+
 /// A gradient fill.
 ///
 /// Contains the start and end points, along with the colors at varying points along the length.
@@ -47,16 +59,19 @@ pub struct Gradient {
 	pub transform: DAffine2,
 	pub positions: Vec<(f64, Option<Color>)>,
 	uuid: u64,
+	pub gradient_type: GradientType,
 }
+
 impl Gradient {
 	/// Constructs a new gradient with the colors at 0 and 1 specified.
-	pub fn new(start: DVec2, start_color: Color, end: DVec2, end_color: Color, transform: DAffine2, uuid: u64) -> Self {
+	pub fn new(start: DVec2, start_color: Color, end: DVec2, end_color: Color, transform: DAffine2, uuid: u64, gradient_type: GradientType) -> Self {
 		Gradient {
 			start,
 			end,
 			positions: vec![(0., Some(start_color)), (1., Some(end_color))],
 			transform,
 			uuid,
+			gradient_type,
 		}
 	}
 
@@ -86,23 +101,35 @@ impl Gradient {
 			.map(|(i, entry)| entry.to_string() + if i == 5 { "" } else { "," })
 			.collect::<String>();
 
-		let _ = write!(
-			svg_defs,
-			r#"<linearGradient id="{}" x1="{}" x2="{}" y1="{}" y2="{}" gradientTransform="matrix({})">{}</linearGradient>"#,
-			self.uuid, start.x, end.x, start.y, end.y, transform, positions
-		);
+		match self.gradient_type {
+			GradientType::Linear => {
+				let _ = write!(
+					svg_defs,
+					r#"<linearGradient id="{}" x1="{}" x2="{}" y1="{}" y2="{}" gradientTransform="matrix({})">{}</linearGradient>"#,
+					self.uuid, start.x, end.x, start.y, end.y, transform, positions
+				);
+			}
+			GradientType::Radial => {
+				let radius = (f64::powi(start.x - end.x, 2) + f64::powi(start.y - end.y, 2)).sqrt();
+				let _ = write!(
+					svg_defs,
+					r#"<radialGradient id="{}" cx="{}" cy="{}" r="{}" gradientTransform="matrix({})">{}</radialGradient>"#,
+					self.uuid, start.x, start.y, radius, transform, positions
+				);
+			}
+		}
 	}
 }
 
 /// Describes the fill of a layer.
 ///
-/// Can be None, a solid [Color], a linear [Gradient], or potentially some sort of image or pattern in the future
+/// Can be None, a solid [Color], a linear [Gradient], a radial [Gradient] or potentially some sort of image or pattern in the future
 #[repr(C)]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Fill {
 	None,
 	Solid(Color),
-	LinearGradient(Gradient),
+	Gradient(Gradient),
 }
 
 impl Default for Fill {
@@ -117,13 +144,13 @@ impl Fill {
 		Self::Solid(color)
 	}
 
-	/// Evaluate the color at some point on the fill. Doesn't currently work for LinearGradient.
+	/// Evaluate the color at some point on the fill. Doesn't currently work for Gradient.
 	pub fn color(&self) -> Color {
 		match self {
 			Self::None => Color::BLACK,
 			Self::Solid(color) => *color,
 			// TODO: Should correctly sample the gradient
-			Self::LinearGradient(Gradient { positions, .. }) => positions[0].1.unwrap_or(Color::BLACK),
+			Self::Gradient(Gradient { positions, .. }) => positions[0].1.unwrap_or(Color::BLACK),
 		}
 	}
 
@@ -132,7 +159,7 @@ impl Fill {
 		match self {
 			Self::None => r#" fill="none""#.to_string(),
 			Self::Solid(color) => format!(r##" fill="#{}"{}"##, color.rgb_hex(), format_opacity("fill", color.a())),
-			Self::LinearGradient(gradient) => {
+			Self::Gradient(gradient) => {
 				gradient.render_defs(svg_defs, multiplied_transform, bounds, transformed_bounds);
 				format!(r##" fill="url('#{}')""##, gradient.uuid)
 			}

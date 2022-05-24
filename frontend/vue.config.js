@@ -5,35 +5,6 @@ const path = require("path");
 const WasmPackPlugin = require("@wasm-tool/wasm-pack-plugin");
 const LicenseCheckerWebpackPlugin = require("license-checker-webpack-plugin");
 
-function generateRustLicenses() {
-	console.info("Generating license information for rust code");
-	const { stdout, stderr, status } = spawnSync("cargo", ["about", "generate", "about.hbs"], {
-		cwd: path.join(__dirname, ".."),
-		encoding: "utf8",
-		timeout: 60000, // one minute
-		shell: true,
-		windowsHide: true, // hide the DOS window on windows
-	});
-
-	if (status !== 0) {
-		if (status !== 101) {
-			// cargo returns 101 when the subcommand wasn't found
-			console.error("cargo-about failed", status, stderr);
-		}
-		return null;
-	}
-
-	// Make sure the output starts as expected, we don't want to eval an error message.
-	if (!stdout.trim().startsWith("GENERATED_BY_CARGO_ABOUT:")) {
-		console.error("Unexpected output from cargo-about", stdout);
-		return null;
-	}
-
-	// Security-wise, eval() isn't any worse than require(), but it doesn't need a temporary file.
-	// eslint-disable-next-line no-eval
-	return eval(stdout);
-}
-
 process.env.VUE_APP_COMMIT_DATE = execSync("git log -1 --format=%cd", { encoding: "utf-8" }).trim();
 process.env.VUE_APP_COMMIT_HASH = execSync("git rev-parse HEAD", { encoding: "utf-8" }).trim();
 process.env.VUE_APP_COMMIT_BRANCH = execSync("git rev-parse --abbrev-ref HEAD", { encoding: "utf-8" }).trim();
@@ -204,6 +175,35 @@ ${license.licenseText}
 	});
 
 	return formattedLicenseNotice;
+}
+
+function generateRustLicenses() {
+	console.info("Generating license information for rust code");
+	const { stdout, stderr, status } = spawnSync("cargo", ["about", "generate", "about.hbs"], {
+		cwd: path.join(__dirname, ".."),
+		encoding: "utf8",
+		timeout: 60000, // one minute
+		shell: true,
+		windowsHide: true, // hide the DOS window on windows
+	});
+
+	if (status !== 0) {
+		if (status !== 101) {
+			// cargo returns 101 when the subcommand wasn't found
+			console.error("cargo-about failed", status, stderr);
+		}
+		return null;
+	}
+
+	// Make sure the output starts as expected, we don't want to eval an error message.
+	if (!stdout.trim().startsWith("GENERATED_BY_CARGO_ABOUT:")) {
+		console.error("Unexpected output from cargo-about", stdout);
+		return null;
+	}
+
+	// Security-wise, eval() isn't any worse than require(), but it doesn't need a temporary file.
+	// eslint-disable-next-line no-eval
+	return eval(stdout);
 }
 
 function htmlDecode(input) {
