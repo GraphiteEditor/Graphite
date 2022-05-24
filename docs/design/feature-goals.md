@@ -37,7 +37,7 @@
 
 ## User stories
 
-Contributions welcome! If you think of something Graphite would be great for, submit a pull request or send Keavon a message on Graphite's Discord server.
+Contributions welcome! If you think of something Graphite would be great for, submit a pull request or send Keavon a message on Graphite's Discord server to add it here.
 
 ## Photography
 - Using a face detection node to sort photos into the correct folders upon export
@@ -91,5 +91,5 @@ Contributions welcome! If you think of something Graphite would be great for, su
 - Running on a server to let users upload images for a custom T-shirt printing website, and it renders their graphic on the model’s shirt (or other custom printing online stores)
 - Generating a PDF invoice based on data in a pipeline in a server
 
-## Industrial control
+## Computer vision and industrial control
 - Factory line is examining its fruit for defects. In order to verify the quality, they need to enhance the contrast, automatically orient the image and correct the lighting. They then pass the results into a machine learning algorithm to classify, and sometimes need to snoop on the stream of data to manually do quality control (ImageMagick or custom Python libraries are often used for this right now)
