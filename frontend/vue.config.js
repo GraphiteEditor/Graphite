@@ -1,14 +1,9 @@
 /* eslint-disable @typescript-eslint/no-var-requires, no-console */
-const { execSync, spawnSync } = require("child_process");
+const { spawnSync } = require("child_process");
 const path = require("path");
 
 const WasmPackPlugin = require("@wasm-tool/wasm-pack-plugin");
 const LicenseCheckerWebpackPlugin = require("license-checker-webpack-plugin");
-
-process.env.VUE_APP_COMMIT_DATE = execSync("git log -1 --format=%cd", { encoding: "utf-8" }).trim();
-process.env.VUE_APP_COMMIT_HASH = execSync("git rev-parse HEAD", { encoding: "utf-8" }).trim();
-process.env.VUE_APP_COMMIT_BRANCH = execSync("git rev-parse --abbrev-ref HEAD", { encoding: "utf-8" }).trim();
-process.env.VUE_APP_RELEASE_SERIES = "Alpha Milestone 1";
 
 module.exports = {
 	lintOnSave: "warning",
@@ -91,7 +86,7 @@ function formatThirdPartyLicenses(jsLicenses) {
 		if (rustLicenses === null) {
 			// This is probably caused by cargo about not being installed
 			console.error(`
-Could not run 'cargo about', which is required to generate license information.
+Could not run \`cargo about\`, which is required to generate license information.
 To install cargo-about on your system, you can run:
     cargo install cargo-about
 License information is required on production builds. Aborting.`);
@@ -178,18 +173,18 @@ ${license.licenseText}
 }
 
 function generateRustLicenses() {
-	console.info("Generating license information for rust code");
+	console.info("Generating license information for Rust code");
 	const { stdout, stderr, status } = spawnSync("cargo", ["about", "generate", "about.hbs"], {
 		cwd: path.join(__dirname, ".."),
 		encoding: "utf8",
-		timeout: 60000, // one minute
+		timeout: 60000, // One minute
 		shell: true,
-		windowsHide: true, // hide the DOS window on windows
+		windowsHide: true, // Hide the terminal on Windows
 	});
 
 	if (status !== 0) {
 		if (status !== 101) {
-			// cargo returns 101 when the subcommand wasn't found
+			// Cargo returns 101 when the subcommand wasn't found
 			console.error("cargo-about failed", status, stderr);
 		}
 		return null;

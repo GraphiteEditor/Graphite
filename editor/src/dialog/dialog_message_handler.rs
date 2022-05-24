@@ -1,4 +1,3 @@
-use crate::communication::BuildMetadata;
 use crate::document::PortfolioMessageHandler;
 use crate::layout::{layout_message::LayoutTarget, widgets::PropertyHolder};
 use crate::message_prelude::*;
@@ -11,9 +10,9 @@ pub struct DialogMessageHandler {
 	new_document_dialog: NewDocument,
 }
 
-impl MessageHandler<DialogMessage, (&BuildMetadata, &PortfolioMessageHandler)> for DialogMessageHandler {
+impl MessageHandler<DialogMessage, &PortfolioMessageHandler> for DialogMessageHandler {
 	#[remain::check]
-	fn process_action(&mut self, message: DialogMessage, (build_metadata, portfolio): (&BuildMetadata, &PortfolioMessageHandler), responses: &mut VecDeque<Message>) {
+	fn process_action(&mut self, message: DialogMessage, portfolio: &PortfolioMessageHandler, responses: &mut VecDeque<Message>) {
 		#[remain::sorted]
 		match message {
 			#[remain::unsorted]
@@ -36,9 +35,16 @@ impl MessageHandler<DialogMessage, (&BuildMetadata, &PortfolioMessageHandler)> f
 				responses.push_back(FrontendMessage::DisplayDialog { icon: "Warning".to_string() }.into());
 			}
 			DialogMessage::RequestAboutGraphiteDialog => {
-				let about_graphite = AboutGraphite {
-					build_metadata: build_metadata.clone(),
-				};
+				responses.push_back(
+					FrontendMessage::TriggerAboutGraphiteLocalizedCommitDate {
+						commit_date: env!("GRAPHITE_GIT_COMMIT_DATE").into(),
+					}
+					.into(),
+				);
+			}
+			DialogMessage::RequestAboutGraphiteDialogWithLocalizedCommitDate { localized_commit_date } => {
+				let about_graphite = AboutGraphite { localized_commit_date };
+
 				about_graphite.register_properties(responses, LayoutTarget::DialogDetails);
 				responses.push_back(FrontendMessage::DisplayDialog { icon: "GraphiteLogo".to_string() }.into());
 			}
