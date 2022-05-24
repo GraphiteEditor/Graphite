@@ -23,7 +23,7 @@ export function createPortfolioState(editor: Editor) {
 		state.activeDocumentIndex = activeId;
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerFileUpload, async () => {
-		const extension = editor.raw.file_save_suffix();
+		const extension = editor.instance.file_save_suffix();
 		const data = await upload(extension);
 		editor.instance.open_document_file(data.filename, data.content);
 	});

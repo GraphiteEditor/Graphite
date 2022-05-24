@@ -1,5 +1,7 @@
 # Inputs and keybindings
 
+WARNING: This document is out of date and some of the information contained herein does not accurately explain the current status or plans.
+
 ## Input categories
 
 - Keyboard
