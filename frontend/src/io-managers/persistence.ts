@@ -1,5 +1,5 @@
 import { PortfolioState } from "@/state-providers/portfolio";
-import { Editor, getWasmInstance } from "@/wasm-communication/editor";
+import { Editor } from "@/wasm-communication/editor";
 import { TriggerIndexedDbWriteDocument, TriggerIndexedDbRemoveDocument } from "@/wasm-communication/messages";
 
 const GRAPHITE_INDEXED_DB_VERSION = 2;
@@ -75,7 +75,7 @@ export async function createPersistenceManager(editor: Editor, portfolio: Portfo
 				.map((id) => previouslySavedDocuments.find((autoSave) => autoSave.details.id === id))
 				.filter((x) => x !== undefined) as TriggerIndexedDbWriteDocument[];
 
-			const currentDocumentVersion = getWasmInstance().graphite_version();
+			const currentDocumentVersion = editor.instance.graphite_document_version();
 			orderedSavedDocuments.forEach((doc: TriggerIndexedDbWriteDocument) => {
 				if (doc.version === currentDocumentVersion) {
 					editor.instance.open_auto_saved_document(BigInt(doc.details.id), doc.details.name, doc.details.is_saved, doc.document);
