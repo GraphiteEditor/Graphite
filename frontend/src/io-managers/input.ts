@@ -42,12 +42,7 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 		if (!key) return false;
 
 		// Don't redirect user input from text entry into HTML elements
-		if (
-			key !== "escape" &&
-			!(key === "enter" && e.ctrlKey) &&
-			e.target instanceof HTMLElement &&
-			(e.target.nodeName === "INPUT" || e.target.nodeName === "TEXTAREA" || e.target.isContentEditable)
-		) {
+		if (key !== "escape" && !(key === "enter" && e.ctrlKey) && targetIsTextField(e.target)) {
 			return false;
 		}
 
@@ -228,7 +223,7 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 
 	function onPaste(e: ClipboardEvent): void {
 		const dataTransfer = e.clipboardData;
-		if (!dataTransfer) return;
+		if (!dataTransfer || targetIsTextField(e.target)) return;
 		e.preventDefault();
 
 		Array.from(dataTransfer.items).forEach((item) => {
@@ -249,6 +244,10 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 				});
 			}
 		});
+	}
+
+	function targetIsTextField(target: EventTarget | null): boolean {
+		return target instanceof HTMLElement && (target.nodeName === "INPUT" || target.nodeName === "TEXTAREA" || target.isContentEditable);
 	}
 
 	// Event bindings
