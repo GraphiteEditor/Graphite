@@ -258,10 +258,10 @@ img {
 <script lang="ts">
 import { defineComponent } from "vue";
 
-import { createBuildMetadataManager } from "@/io-managers/build-metadata";
 import { createClipboardManager } from "@/io-managers/clipboard";
 import { createHyperlinkManager } from "@/io-managers/hyperlinks";
 import { createInputManager } from "@/io-managers/input";
+import { createLocalizationManager } from "@/io-managers/localization";
 import { createPanicManager } from "@/io-managers/panic";
 import { createPersistenceManager } from "@/io-managers/persistence";
 import { createDialogState, DialogState } from "@/state-providers/dialog";
@@ -276,10 +276,10 @@ import LayoutRow from "@/components/layout/LayoutRow.vue";
 import MainWindow from "@/components/window/MainWindow.vue";
 
 const managerDestructors: {
-	createBuildMetadataManager?: () => void;
 	createClipboardManager?: () => void;
 	createHyperlinkManager?: () => void;
 	createInputManager?: () => void;
+	createLocalizationManager?: () => void;
 	createPanicManager?: () => void;
 	createPersistenceManager?: () => void;
 } = {};
@@ -332,10 +332,10 @@ export default defineComponent({
 	async mounted() {
 		// Initialize managers, which are isolated systems that subscribe to backend messages to link them to browser API functionality (like JS events, IndexedDB, etc.)
 		Object.assign(managerDestructors, {
-			createBuildMetadataManager: createBuildMetadataManager(this.editor),
 			createClipboardManager: createClipboardManager(this.editor),
 			createHyperlinkManager: createHyperlinkManager(this.editor),
 			createInputManager: createInputManager(this.editor, this.$el.parentElement, this.dialog, this.portfolio, this.fullscreen),
+			createLocalizationManager: createLocalizationManager(this.editor),
 			createPanicManager: createPanicManager(this.editor, this.dialog),
 			createPersistenceManager: await createPersistenceManager(this.editor, this.portfolio),
 		});
