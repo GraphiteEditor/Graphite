@@ -359,8 +359,8 @@ pub struct PopoverButton {
 	pub text: String,
 }
 
-#[derive(Clone, Serialize, Deserialize, Derivative, Default)]
-#[derivative(Debug, PartialEq)]
+#[derive(Clone, Serialize, Deserialize, Derivative)]
+#[derivative(Debug, PartialEq, Default)]
 pub struct DropdownInput {
 	pub entries: Vec<Vec<DropdownEntryData>>,
 	// This uses `u32` instead of `usize` since it will be serialized as a normal JS number (replace with usize when we switch to a native UI)
@@ -368,6 +368,7 @@ pub struct DropdownInput {
 	pub selected_index: Option<u32>,
 	#[serde(rename = "drawIcon")]
 	pub draw_icon: bool,
+	#[derivative(Default(value = "true"))]
 	pub interactive: bool,
 	// `on_update` exists on the `DropdownEntryData`, not this parent `DropdownInput`
 	pub disabled: bool,
