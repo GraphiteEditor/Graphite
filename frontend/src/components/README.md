@@ -1,11 +1,25 @@
-# Vue components
+# Overview of `/frontend/src/components/`
+Each component represents a (usually reusable) part of the Graphite Editor GUI. These all get mounted within the Vue entry point, `App.vue`, in the `/src` directory above this one.
 
-Each component is a layout or widget in the GUI.
+## Floating Menus: `floating-menus/`
+The temporary UI areas with dark backgrounds which hover over the top of the editor window content. Examples include popovers, dropdown menu selectors, and dialog modals.
 
-This document is a growing list of quick reference information for helpful Vue solutions and best practices. Feel free to add to this to help contributors learn things, or yourself remember tricks you'll likely forget in a few months.
+## Layout: `layout/`
+Useful containers that control the flow of content held within.
+
+## Panels: `panels/`
+The dockable tabbed regions like the Document, Properties, Layer Tree, and Node Graph panels.
+
+## Widgets: `widgets/`
+The interactive input items used to display information and provide user control.
+
+## Window: `window/`
+The building blocks for the Title Bar, Workspace, and Status Bar within an editor application window.
+
+# Vue tips and tricks
+This section contains a growing list of quick reference information for helpful Vue solutions and best practices. Feel free to add to this to help contributors learn things, or yourself remember tricks you'll likely forget in a few months.
 
 ## Bi-directional props
-
 The component declares this:
 ```ts
 export default defineComponent({

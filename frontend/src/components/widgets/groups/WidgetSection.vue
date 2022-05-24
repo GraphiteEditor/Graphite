@@ -73,8 +73,8 @@ import { isWidgetRow, isWidgetSection, LayoutRow as LayoutSystemRow, WidgetSecti
 
 import LayoutCol from "@/components/layout/LayoutCol.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
+import Separator from "@/components/widgets/labels/Separator.vue";
 import TextLabel from "@/components/widgets/labels/TextLabel.vue";
-import Separator from "@/components/widgets/separators/Separator.vue";
 import WidgetRow from "@/components/widgets/WidgetRow.vue";
 
 const WidgetSection = defineComponent({

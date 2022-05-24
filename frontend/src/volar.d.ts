@@ -1,7 +1,7 @@
 import { type RGBA as RGBA_ } from "@/wasm-communication/messages";
 
-import FloatingMenu from "@/components/widgets/floating-menus/FloatingMenu.vue";
-import MenuList from "@/components/widgets/floating-menus/MenuList.vue";
+import FloatingMenu from "@/components/floating-menus/FloatingMenu.vue";
+import MenuList from "@/components/floating-menus/MenuList.vue";
 
 // TODO: When a Volar bug is fixed (likely in v0.34.16):
 // TODO: - Uncomment this block
