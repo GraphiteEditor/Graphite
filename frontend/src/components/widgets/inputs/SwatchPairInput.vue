@@ -71,10 +71,10 @@ import { defineComponent } from "vue";
 import { rgbaToDecimalRgba } from "@/utility-functions/color";
 import { type RGBA, UpdateWorkingColors } from "@/wasm-communication/messages";
 
+import ColorPicker from "@/components/floating-menus/ColorPicker.vue";
+import FloatingMenu from "@/components/floating-menus/FloatingMenu.vue";
 import LayoutCol from "@/components/layout/LayoutCol.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
-import ColorPicker from "@/components/widgets/floating-menus/ColorPicker.vue";
-import FloatingMenu from "@/components/widgets/floating-menus/FloatingMenu.vue";
 
 export default defineComponent({
 	inject: ["editor"],

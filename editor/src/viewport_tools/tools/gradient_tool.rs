@@ -3,7 +3,7 @@ use crate::document::DocumentMessageHandler;
 use crate::frontend::utility_types::MouseCursorIcon;
 use crate::input::keyboard::{Key, MouseMotion};
 use crate::input::InputPreprocessorMessageHandler;
-use crate::layout::widgets::PropertyHolder;
+use crate::layout::widgets::{LayoutRow, PropertyHolder, RadioEntryData, RadioInput, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
 use crate::message_prelude::*;
 use crate::misc::{HintData, HintGroup, HintInfo, KeysGroup};
 use crate::viewport_tools::snapping::SnapHandler;
@@ -12,7 +12,7 @@ use crate::viewport_tools::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
 use graphene::color::Color;
 use graphene::intersection::Quad;
 use graphene::layers::layer_info::Layer;
-use graphene::layers::style::{Fill, Gradient, PathStyle, Stroke};
+use graphene::layers::style::{Fill, Gradient, GradientType, PathStyle, Stroke};
 use graphene::Operation;
 
 use glam::{DAffine2, DVec2};
@@ -22,6 +22,17 @@ use serde::{Deserialize, Serialize};
 pub struct GradientTool {
 	fsm_state: GradientToolFsmState,
 	data: GradientToolData,
+	options: GradientOptions,
+}
+
+pub struct GradientOptions {
+	gradient_type: GradientType,
+}
+
+impl Default for GradientOptions {
+	fn default() -> Self {
+		Self { gradient_type: GradientType::Linear }
+	}
 }
 
 #[remain::sorted]
@@ -40,6 +51,13 @@ pub enum GradientToolMessage {
 		constrain_axis: Key,
 	},
 	PointerUp,
+	UpdateOptions(GradientOptionsUpdate),
+}
+
+#[remain::sorted]
+#[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize)]
+pub enum GradientOptionsUpdate {
+	Type(GradientType),
 }
 
 impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for GradientTool {
@@ -53,8 +71,14 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for GradientTool
 			self.fsm_state.update_cursor(responses);
 			return;
 		}
+		if let ToolMessage::Gradient(GradientToolMessage::UpdateOptions(action)) = action {
+			match action {
+				GradientOptionsUpdate::Type(gradient_type) => self.options.gradient_type = gradient_type,
+			}
+			return;
+		}
 
-		let new_state = self.fsm_state.transition(action, data.0, data.1, &mut self.data, &(), data.2, responses);
+		let new_state = self.fsm_state.transition(action, data.0, data.1, &mut self.data, &self.options, data.2, responses);
 
 		if self.fsm_state != new_state {
 			self.fsm_state = new_state;
@@ -65,7 +89,31 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for GradientTool
 	advertise_actions!(GradientToolMessageDiscriminant; PointerDown, PointerUp, PointerMove, Abort);
 }
 
-impl PropertyHolder for GradientTool {}
+impl PropertyHolder for GradientTool {
+	fn properties(&self) -> WidgetLayout {
+		WidgetLayout::new(vec![LayoutRow::Row {
+			widgets: vec![WidgetHolder::new(Widget::RadioInput(RadioInput {
+				selected_index: if self.options.gradient_type == GradientType::Radial { 1 } else { 0 },
+				entries: vec![
+					RadioEntryData {
+						value: "linear".into(),
+						label: "Linear".into(),
+						tooltip: "Linear Gradient".into(),
+						on_update: WidgetCallback::new(move |_| GradientToolMessage::UpdateOptions(GradientOptionsUpdate::Type(GradientType::Linear)).into()),
+						..RadioEntryData::default()
+					},
+					RadioEntryData {
+						value: "radial".into(),
+						label: "Radial".into(),
+						tooltip: "Radial Gradient".into(),
+						on_update: WidgetCallback::new(move |_| GradientToolMessage::UpdateOptions(GradientOptionsUpdate::Type(GradientType::Radial)).into()),
+						..RadioEntryData::default()
+					},
+				],
+			}))],
+		}])
+	}
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum GradientToolFsmState {
@@ -199,7 +247,9 @@ impl SelectedGradient {
 		self
 	}
 
-	pub fn update_gradient(&mut self, mut mouse: DVec2, responses: &mut VecDeque<Message>, snap_rotate: bool) {
+	pub fn update_gradient(&mut self, mut mouse: DVec2, responses: &mut VecDeque<Message>, snap_rotate: bool, gradient_type: GradientType) {
+		self.gradient.gradient_type = gradient_type;
+
 		if snap_rotate {
 			let point = if self.dragging_start {
 				self.transform.transform_point2(self.gradient.end)
@@ -228,7 +278,7 @@ impl SelectedGradient {
 		}
 
 		self.gradient.transform = self.transform;
-		let fill = Fill::LinearGradient(self.gradient.clone());
+		let fill = Fill::Gradient(self.gradient.clone());
 		let path = self.path.clone();
 		responses.push_back(Operation::SetLayerFill { path, fill }.into());
 	}
@@ -248,7 +298,7 @@ pub fn start_snap(snap_handler: &mut SnapHandler, document: &DocumentMessageHand
 
 impl Fsm for GradientToolFsmState {
 	type ToolData = GradientToolData;
-	type ToolOptions = ();
+	type ToolOptions = GradientOptions;
 
 	fn transition(
 		self,
@@ -256,7 +306,7 @@ impl Fsm for GradientToolFsmState {
 		document: &DocumentMessageHandler,
 		tool_data: &DocumentToolData,
 		data: &mut Self::ToolData,
-		_tool_options: &Self::ToolOptions,
+		tool_options: &Self::ToolOptions,
 		input: &InputPreprocessorMessageHandler,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
@@ -270,7 +320,7 @@ impl Fsm for GradientToolFsmState {
 					for path in document.selected_visible_layers() {
 						let layer = document.graphene_document.layer(path).unwrap();
 
-						if let Ok(Fill::LinearGradient(gradient)) = layer.style().map(|style| style.fill()) {
+						if let Ok(Fill::Gradient(gradient)) = layer.style().map(|style| style.fill()) {
 							let dragging_start = data
 								.selected_gradient
 								.as_ref()
@@ -326,9 +376,17 @@ impl Fsm for GradientToolFsmState {
 
 							let layer = document.graphene_document.layer(&intersection).unwrap();
 
-							let gradient = Gradient::new(DVec2::ZERO, tool_data.secondary_color, DVec2::ONE, tool_data.primary_color, DAffine2::IDENTITY, generate_uuid());
+							let gradient = Gradient::new(
+								DVec2::ZERO,
+								tool_data.secondary_color,
+								DVec2::ONE,
+								tool_data.primary_color,
+								DAffine2::IDENTITY,
+								generate_uuid(),
+								tool_options.gradient_type,
+							);
 							let mut selected_gradient = SelectedGradient::new(gradient, &intersection, layer, document).with_gradient_start(input.mouse.position);
-							selected_gradient.update_gradient(input.mouse.position, responses, false);
+							selected_gradient.update_gradient(input.mouse.position, responses, false, tool_options.gradient_type);
 
 							data.selected_gradient = Some(selected_gradient);
 
@@ -343,7 +401,7 @@ impl Fsm for GradientToolFsmState {
 				(GradientToolFsmState::Drawing, GradientToolMessage::PointerMove { constrain_axis }) => {
 					if let Some(selected_gradient) = &mut data.selected_gradient {
 						let mouse = data.snap_handler.snap_position(responses, document, input.mouse.position);
-						selected_gradient.update_gradient(mouse, responses, input.keyboard.get(constrain_axis as usize));
+						selected_gradient.update_gradient(mouse, responses, input.keyboard.get(constrain_axis as usize), selected_gradient.gradient.gradient_type);
 					}
 					GradientToolFsmState::Drawing
 				}

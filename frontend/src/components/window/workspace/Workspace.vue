@@ -66,10 +66,10 @@
 <script lang="ts">
 import { defineComponent } from "vue";
 
+import DialogModal from "@/components/floating-menus/DialogModal.vue";
 import LayoutCol from "@/components/layout/LayoutCol.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
-import DialogModal from "@/components/widgets/floating-menus/DialogModal.vue";
-import Panel from "@/components/workspace/Panel.vue";
+import Panel from "@/components/window/workspace/Panel.vue";
 
 const MIN_PANEL_SIZE = 100;
 

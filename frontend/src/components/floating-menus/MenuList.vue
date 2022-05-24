@@ -143,12 +143,12 @@ import { defineComponent, PropType } from "vue";
 
 import { IconName } from "@/utility-functions/icons";
 
+import FloatingMenu, { MenuDirection } from "@/components/floating-menus/FloatingMenu.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
-import FloatingMenu, { MenuDirection } from "@/components/widgets/floating-menus/FloatingMenu.vue";
 import CheckboxInput from "@/components/widgets/inputs/CheckboxInput.vue";
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
+import Separator from "@/components/widgets/labels/Separator.vue";
 import UserInputLabel from "@/components/widgets/labels/UserInputLabel.vue";
-import Separator from "@/components/widgets/separators/Separator.vue";
 
 export type MenuListEntries<Value = string> = MenuListEntry<Value>[];
 export type SectionsOfMenuListEntries<Value = string> = MenuListEntries<Value>[];

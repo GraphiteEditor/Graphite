@@ -244,8 +244,8 @@ import LayoutCol from "@/components/layout/LayoutCol.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 import IconButton from "@/components/widgets/buttons/IconButton.vue";
 import SwatchPairInput from "@/components/widgets/inputs/SwatchPairInput.vue";
-import CanvasRuler from "@/components/widgets/rulers/CanvasRuler.vue";
-import PersistentScrollbar from "@/components/widgets/scrollbars/PersistentScrollbar.vue";
+import CanvasRuler from "@/components/widgets/metrics/CanvasRuler.vue";
+import PersistentScrollbar from "@/components/widgets/metrics/PersistentScrollbar.vue";
 import WidgetLayout from "@/components/widgets/WidgetLayout.vue";
 
 export default defineComponent({
