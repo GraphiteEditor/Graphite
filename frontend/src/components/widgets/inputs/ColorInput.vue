@@ -72,12 +72,12 @@ import { defineComponent, PropType } from "vue";
 
 import { RGBA } from "@/wasm-communication/messages";
 
+import ColorPicker from "@/components/floating-menus/ColorPicker.vue";
+import FloatingMenu from "@/components/floating-menus/FloatingMenu.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
-import ColorPicker from "@/components/widgets/floating-menus/ColorPicker.vue";
-import FloatingMenu from "@/components/widgets/floating-menus/FloatingMenu.vue";
 import OptionalInput from "@/components/widgets/inputs/OptionalInput.vue";
 import TextInput from "@/components/widgets/inputs/TextInput.vue";
-import Separator from "@/components/widgets/separators/Separator.vue";
+import Separator from "@/components/widgets/labels/Separator.vue";
 
 export default defineComponent({
 	emits: ["update:value", "update:open"],
