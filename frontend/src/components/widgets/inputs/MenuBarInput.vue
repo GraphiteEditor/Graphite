@@ -63,7 +63,7 @@ import { defineComponent } from "vue";
 
 import { Editor } from "@/wasm-communication/editor";
 
-import MenuList, { MenuListEntry, MenuListEntries } from "@/components/widgets/floating-menus/MenuList.vue";
+import MenuList, { MenuListEntry, MenuListEntries } from "@/components/floating-menus/MenuList.vue";
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
 
 function makeEntries(editor: Editor): MenuListEntries {

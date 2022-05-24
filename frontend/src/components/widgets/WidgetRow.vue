@@ -1,7 +1,9 @@
+<!-- TODO: Refactor this component to use `<component :is="" v-bind="attributesObject"></component>` to avoid all the separate components with `v-if` -->
+<!-- TODO: Also rename this component, and probably move the `widget-${direction}` wrapper to be part of `WidgetLayout.vue` as part of its refactor -->
+
 <template>
 	<div :class="`widget-${direction}`">
 		<template v-for="(component, index) in widgets" :key="index">
-			<!-- TODO: Use `<component :is="" v-bind="attributesObject"></component>` to avoid all the separate components with `v-if` -->
 			<CheckboxInput v-if="component.kind === 'CheckboxInput'" v-bind="component.props" @update:checked="(value: boolean) => updateLayout(component.widget_id, value)" />
 			<ColorInput v-if="component.kind === 'ColorInput'" v-bind="component.props" v-model:open="open" @update:value="(value: string) => updateLayout(component.widget_id, value)" />
 			<DropdownInput v-if="component.kind === 'DropdownInput'" v-bind="component.props" v-model:open="open" @update:selectedIndex="(value: number) => updateLayout(component.widget_id, value)" />
@@ -85,8 +87,8 @@ import RadioInput from "@/components/widgets/inputs/RadioInput.vue";
 import TextAreaInput from "@/components/widgets/inputs/TextAreaInput.vue";
 import TextInput from "@/components/widgets/inputs/TextInput.vue";
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
+import Separator from "@/components/widgets/labels/Separator.vue";
 import TextLabel from "@/components/widgets/labels/TextLabel.vue";
-import Separator from "@/components/widgets/separators/Separator.vue";
 
 export default defineComponent({
 	inject: ["editor"],
