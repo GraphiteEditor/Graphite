@@ -323,7 +323,7 @@ const MenuList = defineComponent({
 		setHighlighted(newHighlight: MenuListEntry<string> | undefined) {
 			this.highlighted = newHighlight;
 			// Interactive menus should keep the active entry the same as the highlighted one
-			if (this.interactive) this.$emit("update:activeEntry", newHighlight);
+			if (this.interactive && newHighlight?.value !== this.activeEntry?.value) this.$emit("update:activeEntry", newHighlight);
 		},
 	},
 	computed: {
