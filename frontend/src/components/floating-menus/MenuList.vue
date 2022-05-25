@@ -20,7 +20,7 @@
 				@pointerenter="() => onEntryPointerEnter(entry)"
 				@pointerleave="() => onEntryPointerLeave(entry)"
 			>
-				<CheckboxInput v-if="entry.checkbox" v-model:checked="entry.checked" :outlineStyle="true" class="entry-checkbox" />
+				<CheckboxInput v-if="entry.checkbox" v-model:checked="entry.checked" :outlineStyle="true" :disableTabIndex="true" class="entry-checkbox" />
 				<IconLabel v-else-if="entry.icon && drawIcon" :icon="entry.icon" class="entry-icon" />
 				<div v-else-if="drawIcon" class="no-icon"></div>
 

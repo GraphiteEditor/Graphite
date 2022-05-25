@@ -200,9 +200,10 @@ img {
 .radio-input button,
 .menu-list,
 .menu-bar-input .entry {
-	&:focus {
-		outline: 1px solid var(--color-accent);
-		outline-offset: 2px;
+	&:focus-visible,
+	&.dropdown-box:focus {
+		outline: 1px dashed var(--color-accent);
+		outline-offset: -1px;
 	}
 }
 
