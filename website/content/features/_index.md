@@ -31,3 +31,4 @@ The current order of priorities right now begins with adding a node graph system
 - Data-driven template replacement
 - Native desktop application
 - Distributed rendering system
+- Localization/internationalization
