@@ -1,0 +1,11 @@
+[package]
+name = "bezier-math-library"
+publish = false
+version = "0.0.0"
+rust-version = "1.56.0"
+authors = ["Graphite Authors <contact@graphite.rs>"]
+edition = "2021"
+readme = "./README.md"
+homepage = "https://graphite.rs"
+repository = "https://github.com/GraphiteEditor/Graphite"
+license = "Apache-2.0"

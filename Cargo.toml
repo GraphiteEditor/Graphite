@@ -4,6 +4,7 @@ members = [
 	"graphene",
 	"proc-macros",
 	"frontend/wasm",
+  "bezier-rs/lib",
 ]
 
 [profile.release.package.graphite-wasm]
