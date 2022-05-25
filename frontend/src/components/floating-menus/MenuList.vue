@@ -194,6 +194,7 @@ const MenuList = defineComponent({
 		// Called only when `open` is changed from outside this component (with v-model)
 		open(newOpen: boolean) {
 			this.isOpen = newOpen;
+			this.highlighted = this.activeEntry;
 		},
 		isOpen(newIsOpen: boolean) {
 			this.$emit("update:open", newIsOpen);
@@ -264,6 +265,7 @@ const MenuList = defineComponent({
 			if (!menuOpen && (e.key === " " || e.key === "Enter")) {
 				// Allow opening menu with space or enter
 				this.isOpen = true;
+				this.highlighted = this.activeEntry;
 			} else if (menuOpen && openChild >= 0) {
 				// Redirect the keyboard navigation to a submenu if one is open
 				const shouldCloseStack = flatEntries[openChild].ref?.keydown(e, true);
