@@ -5,6 +5,7 @@
 		@naturalWidth="(newNaturalWidth: number) => $emit('naturalWidth', newNaturalWidth)"
 		:type="'Dropdown'"
 		:windowEdgeMargin="0"
+		:escapeCloses="false"
 		v-bind="{ direction, scrollableY, minWidth }"
 		ref="floatingMenu"
 		data-hover-menu-keep-open

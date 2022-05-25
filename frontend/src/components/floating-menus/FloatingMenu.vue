@@ -193,6 +193,7 @@ export default defineComponent({
 		windowEdgeMargin: { type: Number as PropType<number>, default: 6 },
 		scrollableY: { type: Boolean as PropType<boolean>, default: false },
 		minWidth: { type: Number as PropType<number>, default: 0 },
+		escapeCloses: { type: Boolean as PropType<boolean>, default: true },
 	},
 	data() {
 		// The resize observer is attached to the floating menu container, which is the zero-height div of the width of the parent element's floating menu spawner.
@@ -374,6 +375,11 @@ export default defineComponent({
 				window.removeEventListener("pointerup", this.pointerUpHandler);
 			}
 		},
+		keyDownHandler(e: KeyboardEvent) {
+			if (this.escapeCloses && e.key.toLowerCase() === "escape") {
+				this.$emit("update:open", false);
+			}
+		},
 		pointerDownHandler(e: PointerEvent) {
 			// Close the floating menu if the pointer clicked outside the floating menu (but within stray distance)
 			if (this.isPointerEventOutsideFloatingMenu(e)) {
@@ -423,6 +429,8 @@ export default defineComponent({
 			if (newState && !oldState) {
 				// Close floating menu if pointer strays far enough away
 				window.addEventListener("pointermove", this.pointerMoveHandler);
+				// Close floating menu if esc is pressed
+				window.addEventListener("keydown", this.keyDownHandler);
 				// Close floating menu if pointer is outside (but within stray distance)
 				window.addEventListener("pointerdown", this.pointerDownHandler);
 				// Cancel the subsequent click event to prevent the floating menu from reopening if the floating menu's button is the click event target
@@ -444,6 +452,7 @@ export default defineComponent({
 				this.containerResizeObserver.disconnect();
 
 				window.removeEventListener("pointermove", this.pointerMoveHandler);
+				window.removeEventListener("keydown", this.keyDownHandler);
 				window.removeEventListener("pointerdown", this.pointerDownHandler);
 				// The `pointerup` event is removed in `pointerMoveHandler()` and `pointerDownHandler()`
 			}
