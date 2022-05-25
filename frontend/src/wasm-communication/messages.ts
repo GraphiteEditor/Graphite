@@ -522,6 +522,10 @@ export class TriggerTextCopy extends JsMessage {
 	readonly copy_text!: string;
 }
 
+export class TriggerAboutGraphiteLocalizedCommitDate extends JsMessage {
+	readonly commit_date!: string;
+}
+
 export class TriggerViewportResize extends JsMessage {}
 
 // `any` is used since the type of the object should be known from the Rust side
@@ -546,6 +550,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	TriggerRasterDownload,
 	TriggerTextCommit,
 	TriggerTextCopy,
+	TriggerAboutGraphiteLocalizedCommitDate,
 	TriggerViewportResize,
 	TriggerVisitLink,
 	UpdateActiveDocument,

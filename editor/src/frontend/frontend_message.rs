@@ -20,6 +20,7 @@ pub enum FrontendMessage {
 	DisplayRemoveEditableTextbox,
 
 	// Trigger prefix: cause a browser API to do something
+	TriggerAboutGraphiteLocalizedCommitDate { commit_date: String },
 	TriggerFileDownload { document: String, name: String },
 	TriggerFileUpload,
 	TriggerFontLoad { font_file_url: String },

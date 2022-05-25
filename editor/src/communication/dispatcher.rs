@@ -8,14 +8,11 @@ use crate::workspace::WorkspaceMessageHandler;
 
 use std::collections::VecDeque;
 
-use super::BuildMetadata;
-
 #[derive(Debug, Default)]
 pub struct Dispatcher {
 	message_queue: VecDeque<Message>,
 	pub responses: Vec<FrontendMessage>,
 	message_handlers: DispatcherMessageHandlers,
-	build_metadata: BuildMetadata,
 }
 
 #[remain::sorted]
@@ -75,7 +72,7 @@ impl Dispatcher {
 				Dialog(message) => {
 					self.message_handlers
 						.dialog_message_handler
-						.process_action(message, (&self.build_metadata, &self.message_handlers.portfolio_message_handler), &mut self.message_queue);
+						.process_action(message, &self.message_handlers.portfolio_message_handler, &mut self.message_queue);
 				}
 				Frontend(message) => {
 					// Image and font loading should be immediately handled
@@ -120,9 +117,6 @@ impl Dispatcher {
 						.workspace_message_handler
 						.process_action(message, &self.message_handlers.input_preprocessor_message_handler, &mut self.message_queue);
 				}
-
-				#[remain::unsorted]
-				PopulateBuildMetadata { new } => self.build_metadata = new,
 			}
 		}
 	}

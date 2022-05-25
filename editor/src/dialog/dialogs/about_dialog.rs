@@ -1,8 +1,10 @@
-use crate::{communication::BuildMetadata, layout::widgets::*, message_prelude::FrontendMessage};
+use crate::layout::widgets::*;
+use crate::message_prelude::FrontendMessage;
+use crate::misc::build_metadata::{commit_info_localized, release_series};
 
-/// A dialog for displaying information on [`BuildMetadata`] viewable via `help -> about graphite` in the menu bar.
+/// A dialog for displaying information on [`BuildMetadata`] viewable via *Help* > *About Graphite* in the menu bar.
 pub struct AboutGraphite {
-	pub build_metadata: BuildMetadata,
+	pub localized_commit_date: String,
 }
 
 impl PropertyHolder for AboutGraphite {
@@ -33,13 +35,13 @@ impl PropertyHolder for AboutGraphite {
 			},
 			LayoutRow::Row {
 				widgets: vec![WidgetHolder::new(Widget::TextLabel(TextLabel {
-					value: self.build_metadata.release_series(),
+					value: release_series(),
 					..Default::default()
 				}))],
 			},
 			LayoutRow::Row {
 				widgets: vec![WidgetHolder::new(Widget::TextLabel(TextLabel {
-					value: self.build_metadata.commit_info(),
+					value: commit_info_localized(self.localized_commit_date.as_str()),
 					multiline: true,
 					..Default::default()
 				}))],
