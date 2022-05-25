@@ -1,6 +1,16 @@
 <template>
 	<LayoutRow class="dropdown-input">
-		<LayoutRow class="dropdown-box" :class="{ disabled }" :style="{ minWidth: `${minWidth}px` }" @click="() => !disabled && (open = true)" ref="dropdownBox" data-hover-menu-spawner>
+		<LayoutRow
+			class="dropdown-box"
+			:class="{ disabled }"
+			:style="{ minWidth: `${minWidth}px` }"
+			tabindex="0"
+			@click="() => !disabled && (open = true)"
+			@blur="() => (open = false)"
+			@keydown="(e) => keydown(e)"
+			ref="dropdownBox"
+			data-hover-menu-spawner
+		>
 			<IconLabel class="dropdown-icon" :icon="activeEntry.icon" v-if="activeEntry.icon" />
 			<span>{{ activeEntry.label }}</span>
 			<IconLabel class="dropdown-arrow" :icon="'DropdownArrow'" />
@@ -11,8 +21,10 @@
 			@naturalWidth="(newNaturalWidth: number) => (minWidth = newNaturalWidth)"
 			:entries="entries"
 			:drawIcon="drawIcon"
+			:interactive="interactive"
 			:direction="'Bottom'"
 			:scrollableY="true"
+			ref="menuList"
 		/>
 	</LayoutRow>
 </template>
@@ -99,6 +111,7 @@ export default defineComponent({
 		entries: { type: Array as PropType<SectionsOfMenuListEntries>, required: true },
 		selectedIndex: { type: Number as PropType<number>, required: false }, // When not provided, a dash is displayed
 		drawIcon: { type: Boolean as PropType<boolean>, default: false },
+		interactive: { type: Boolean as PropType<boolean>, default: true },
 		disabled: { type: Boolean as PropType<boolean>, default: false },
 	},
 	data() {
@@ -128,6 +141,9 @@ export default defineComponent({
 				return entries[this.selectedIndex];
 			}
 			return DASH_ENTRY;
+		},
+		keydown(e: KeyboardEvent) {
+			(this.$refs.menuList as typeof MenuList).keydown(e, false);
 		},
 	},
 	components: {
