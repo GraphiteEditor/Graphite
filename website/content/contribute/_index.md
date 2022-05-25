@@ -22,7 +22,7 @@ cd frontend
 npm install
 ```
 
-You only need to explicitly install Node.js dependencies. Rust's cargo dependencies will be installed automatically on your first build. One dependency in the build chain, `wasm-pack`, will be installed automatically on your system when the Node.js packages are installing. If you prefer to install this manually, you can get it from the [wasm-pack website](https://rustwasm.github.io/wasm-pack/), then install dependencies with `npm install --no-optional`. **This is necessary on Apple Silicon/M1 Macs** until [this bug](https://github.com/rustwasm/wasm-pack/issues/952) is fixed.
+You only need to explicitly install Node.js dependencies. Rust's cargo dependencies will be installed automatically on your first build. One dependency in the build chain, `wasm-pack`, will be installed automatically on your system when the Node.js packages are installing. If you prefer to install this manually, you can get it from the [wasm-pack website](https://rustwasm.github.io/wasm-pack/), then install your npm dependencies with `npm install --no-optional`.
 
 To run the project while developing:
 ```

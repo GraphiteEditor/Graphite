@@ -11,12 +11,12 @@
 	}
 
 	&.color {
-		background-color: var(--color-fog);
-		background-blend-mode: color-burn;
+		background-color: var(--color-white);
+		background-blend-mode: hard-light;
 	}
-
+	
 	&.light {
-		background-color: var(--color-manilla);
+		background-color: var(--color-fog);
 		background-blend-mode: color-burn;
 	}
 
