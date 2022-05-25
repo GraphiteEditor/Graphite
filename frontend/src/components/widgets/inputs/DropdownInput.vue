@@ -6,6 +6,7 @@
 			:style="{ minWidth: `${minWidth}px` }"
 			tabindex="0"
 			@click="() => !disabled && (open = true)"
+			@blur="() => (open = false)"
 			@keydown="(e) => keydown(e)"
 			ref="dropdownBox"
 			data-hover-menu-spawner

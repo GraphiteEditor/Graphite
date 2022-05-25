@@ -6,7 +6,15 @@
 			</button>
 		</div>
 		<div class="entry-container" v-for="(entry, index) in entries" :key="index">
-			<div @click="(e) => onClick(entry, e.target)" tabindex="0" @keydown="entry.ref?.keydown" class="entry" :class="{ open: entry.ref?.open }" data-hover-menu-spawner>
+			<div
+				@click="(e) => onClick(entry, e.target)"
+				@blur="() => close(entry)"
+				tabindex="0"
+				@keydown="entry.ref?.keydown"
+				class="entry"
+				:class="{ open: entry.ref?.open }"
+				data-hover-menu-spawner
+			>
 				<IconLabel v-if="entry.icon" :icon="entry.icon" />
 				<span v-if="entry.label">{{ entry.label }}</span>
 			</div>
@@ -216,6 +224,9 @@ export default defineComponent({
 
 			if (menuEntry.ref) menuEntry.ref.isOpen = true;
 			else throw new Error("The menu bar floating menu has no associated ref");
+		},
+		close(menuEntry: MenuListEntry) {
+			if (menuEntry.ref) menuEntry.ref.isOpen = false;
 		},
 		// TODO: Move to backend
 		visitWebsite(url: string) {
