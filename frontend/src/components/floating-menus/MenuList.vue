@@ -5,6 +5,7 @@
 		@naturalWidth="(newNaturalWidth: number) => $emit('naturalWidth', newNaturalWidth)"
 		:type="'Dropdown'"
 		:windowEdgeMargin="0"
+		:escapeCloses="false"
 		v-bind="{ direction, scrollableY, minWidth }"
 		ref="floatingMenu"
 		data-hover-menu-keep-open
@@ -15,12 +16,12 @@
 				v-for="(entry, entryIndex) in section"
 				:key="entryIndex"
 				class="row"
-				:class="{ open: isEntryOpen(entry), active: entry.label === activeEntry?.label }"
+				:class="{ open: isEntryOpen(entry), active: entry.label === highlighted?.label }"
 				@click="() => onEntryClick(entry)"
 				@pointerenter="() => onEntryPointerEnter(entry)"
 				@pointerleave="() => onEntryPointerLeave(entry)"
 			>
-				<CheckboxInput v-if="entry.checkbox" v-model:checked="entry.checked" :outlineStyle="true" class="entry-checkbox" />
+				<CheckboxInput v-if="entry.checkbox" v-model:checked="entry.checked" :outlineStyle="true" :disableTabIndex="true" class="entry-checkbox" />
 				<IconLabel v-else-if="entry.icon && drawIcon" :icon="entry.icon" class="entry-icon" />
 				<div v-else-if="drawIcon" class="no-icon"></div>
 
@@ -179,6 +180,7 @@ const MenuList = defineComponent({
 		direction: { type: String as PropType<MenuDirection>, default: "Bottom" },
 		minWidth: { type: Number as PropType<number>, default: 0 },
 		drawIcon: { type: Boolean as PropType<boolean>, default: false },
+		interactive: { type: Boolean as PropType<boolean>, default: false },
 		scrollableY: { type: Boolean as PropType<boolean>, default: false },
 		defaultAction: { type: Function as PropType<() => void>, required: false },
 	},
@@ -186,12 +188,14 @@ const MenuList = defineComponent({
 		return {
 			isOpen: this.open,
 			keyboardLockInfoMessage: this.fullscreen.keyboardLockApiSupported ? KEYBOARD_LOCK_USE_FULLSCREEN : KEYBOARD_LOCK_SWITCH_BROWSER,
+			highlighted: this.activeEntry as MenuListEntry | undefined,
 		};
 	},
 	watch: {
 		// Called only when `open` is changed from outside this component (with v-model)
 		open(newOpen: boolean) {
 			this.isOpen = newOpen;
+			this.highlighted = this.activeEntry;
 		},
 		isOpen(newIsOpen: boolean) {
 			this.$emit("update:open", newIsOpen);
@@ -239,6 +243,88 @@ const MenuList = defineComponent({
 			if (!menuEntry.children?.length) return false;
 
 			return this.open;
+		},
+
+		/// Handles keyboard navigation for the menu. Returns if the entire menu stack should be dismissed
+		keydown(e: KeyboardEvent, submenu: boolean): boolean {
+			// Interactive menus should keep the active entry the same as the highlighted one
+			if (this.interactive) this.highlighted = this.activeEntry;
+
+			const menuOpen = this.isOpen;
+			const flatEntries = this.entries.flat();
+			const openChild = flatEntries.findIndex((entry) => entry.children?.length && entry.ref?.isOpen);
+
+			const openSubmenu = (highlighted: MenuListEntry<string>): void => {
+				if (highlighted.ref && highlighted.children?.length) {
+					highlighted.ref.isOpen = true;
+
+					// Highlight first item
+					highlighted.ref.setHighlighted(highlighted.children[0][0]);
+				}
+			};
+
+			if (!menuOpen && (e.key === " " || e.key === "Enter")) {
+				// Allow opening menu with space or enter
+				this.isOpen = true;
+				this.highlighted = this.activeEntry;
+			} else if (menuOpen && openChild >= 0) {
+				// Redirect the keyboard navigation to a submenu if one is open
+				const shouldCloseStack = flatEntries[openChild].ref?.keydown(e, true);
+
+				// Highlight the menu item in the parent list that corresponds with the open submenu
+				if (e.key !== "Escape" && this.highlighted) this.setHighlighted(flatEntries[openChild]);
+
+				// Handle the child closing the entire menu stack
+				if (shouldCloseStack) {
+					this.isOpen = false;
+					return true;
+				}
+			} else if ((menuOpen || this.interactive) && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
+				// Navigate to the next and previous entries with arrow keys
+
+				let newIndex = e.key === "ArrowUp" ? flatEntries.length - 1 : 0;
+				if (this.highlighted) {
+					const index = this.highlighted ? flatEntries.map((entry) => entry.label).indexOf(this.highlighted.label) : 0;
+					newIndex = index + (e.key === "ArrowUp" ? -1 : 1);
+
+					// Interactive dropdowns should lock at the end whereas other dropdowns should loop
+					if (this.interactive) newIndex = Math.min(flatEntries.length - 1, Math.max(0, newIndex));
+					else newIndex = (newIndex + flatEntries.length) % flatEntries.length;
+				}
+
+				const newEntry = flatEntries[newIndex];
+				this.setHighlighted(newEntry);
+			} else if (menuOpen && e.key === "Escape") {
+				// Close menu with escape key
+				this.isOpen = false;
+
+				// Reset active to before open
+				this.setHighlighted(this.activeEntry);
+			} else if (menuOpen && this.highlighted && e.key === "Enter") {
+				// Handle clicking on an option if enter is pressed
+				if (!this.highlighted.children?.length) this.onEntryClick(this.highlighted);
+				else openSubmenu(this.highlighted);
+
+				// Stop the event from triggering a press on a new dialog
+				e.preventDefault();
+
+				// Enter should close the entire menu stack
+				return true;
+			} else if (menuOpen && this.highlighted && e.key === "ArrowRight") {
+				// Right arrow opens a submenu
+				openSubmenu(this.highlighted);
+			} else if (menuOpen && e.key === "ArrowLeft") {
+				// Left arrow closes a submenu
+				if (submenu) this.isOpen = false;
+			}
+
+			// By default, keep the menu stack open
+			return false;
+		},
+		setHighlighted(newHighlight: MenuListEntry<string> | undefined) {
+			this.highlighted = newHighlight;
+			// Interactive menus should keep the active entry the same as the highlighted one
+			if (this.interactive && newHighlight?.value !== this.activeEntry?.value) this.$emit("update:activeEntry", newHighlight);
 		},
 	},
 	computed: {
