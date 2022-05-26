@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-/// A font type (storing font family and font style and an optional preview url)
+/// A font type (storing font family and font style and an optional preview URL)
 #[derive(Debug, Clone, Serialize, Deserialize, Hash, PartialEq, Eq)]
 pub struct Font {
 	pub font_family: String,
@@ -17,8 +17,8 @@ impl Font {
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct FontCache {
 	/// Actual font file data used for rendering a font with ttf_parser and rustybuzz
-	data: HashMap<Font, Vec<u8>>,
-	/// Preview URLs used for showing font when live editing
+	font_file_data: HashMap<Font, Vec<u8>>,
+	/// Web font preview URLs used for showing fonts when live editing
 	preview_urls: HashMap<Font, String>,
 	/// The default font (used as a fallback)
 	default_font: Option<Font>,
@@ -35,12 +35,12 @@ impl FontCache {
 
 	/// Try to get the bytes for a font
 	pub fn get<'a>(&'a self, font: &Font) -> Option<&'a Vec<u8>> {
-		self.resolve_font(font).and_then(|font| self.data.get(font))
+		self.resolve_font(font).and_then(|font| self.font_file_data.get(font))
 	}
 
 	/// Check if the font is already loaded
 	pub fn loaded_font(&self, font: &Font) -> bool {
-		self.data.contains_key(font)
+		self.font_file_data.contains_key(font)
 	}
 
 	/// Insert a new font into the cache
@@ -48,7 +48,7 @@ impl FontCache {
 		if is_default {
 			self.default_font = Some(font.clone());
 		}
-		self.data.insert(font.clone(), data);
+		self.font_file_data.insert(font.clone(), data);
 		self.preview_urls.insert(font, perview_url);
 	}
 

@@ -5,7 +5,7 @@
 use crate::helpers::{translate_key, Error};
 use crate::{EDITOR_HAS_CRASHED, EDITOR_INSTANCES, JS_EDITOR_HANDLES};
 
-use editor::consts::{FILE_SAVE_SUFFIX, GRAPHITE_DOCUMENT_VERSION};
+use editor::consts::{DEFAULT_FONT_FAMILY, DEFAULT_FONT_STYLE, FILE_SAVE_SUFFIX, GRAPHITE_DOCUMENT_VERSION};
 use editor::input::input_preprocessor::ModifierKeys;
 use editor::input::mouse::{EditorMouseState, ScrollDelta, ViewportBounds};
 use editor::message_prelude::*;
@@ -111,7 +111,7 @@ impl JsEditorHandle {
 		self.dispatch(message);
 
 		// A default font
-		let font = graphene::layers::text_layer::Font::new("Merriweather".into(), "Normal (400)".into());
+		let font = graphene::layers::text_layer::Font::new(DEFAULT_FONT_FAMILY.into(), DEFAULT_FONT_STYLE.into());
 		let message = FrontendMessage::TriggerFontLoad { font, is_default: true };
 		self.dispatch(message);
 
