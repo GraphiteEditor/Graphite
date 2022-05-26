@@ -2,25 +2,25 @@ use crate::consts::{COLOR_ACCENT, SELECTION_TOLERANCE};
 use crate::document::DocumentMessageHandler;
 use crate::frontend::utility_types::MouseCursorIcon;
 use crate::input::keyboard::{Key, MouseMotion};
-use crate::input::InputPreprocessorMessageHandler;
 use crate::layout::layout_message::LayoutTarget;
 use crate::layout::widgets::{FontInput, LayoutRow, NumberInput, PropertyHolder, Separator, SeparatorDirection, SeparatorType, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
 use crate::message_prelude::*;
 use crate::misc::{HintData, HintGroup, HintInfo, KeysGroup};
-use crate::viewport_tools::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
+use crate::viewport_tools::tool::{Fsm, ToolActionHandlerData};
 
-use glam::{DAffine2, DVec2};
-use graphene::document::FontCache;
 use graphene::intersection::Quad;
 use graphene::layers::style::{self, Fill, Stroke};
+use graphene::layers::text_layer::FontCache;
 use graphene::Operation;
+
+use glam::{DAffine2, DVec2};
 use kurbo::Shape;
 use serde::{Deserialize, Serialize};
 
 #[derive(Default)]
 pub struct TextTool {
 	fsm_state: TextToolFsmState,
-	data: TextToolData,
+	tool_data: TextToolData,
 	options: TextOptions,
 }
 
@@ -28,7 +28,6 @@ pub struct TextOptions {
 	font_size: u32,
 	font_name: String,
 	font_style: String,
-	font_file: Option<String>,
 }
 
 impl Default for TextOptions {
@@ -37,14 +36,13 @@ impl Default for TextOptions {
 			font_size: 24,
 			font_name: "Merriweather".into(),
 			font_style: "Normal (400)".into(),
-			font_file: None,
 		}
 	}
 }
 
 #[remain::sorted]
 #[impl_message(Message, ToolMessage, Text)]
-#[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize)]
+#[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize)]
 pub enum TextMessage {
 	// Standard messages
 	#[remain::unsorted]
@@ -66,9 +64,9 @@ pub enum TextMessage {
 }
 
 #[remain::sorted]
-#[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize)]
+#[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize)]
 pub enum TextOptionsUpdate {
-	Font { family: String, style: String, file: String },
+	Font { family: String, style: String },
 	FontSize(u32),
 }
 
@@ -84,11 +82,9 @@ impl PropertyHolder for TextTool {
 						TextMessage::UpdateOptions(TextOptionsUpdate::Font {
 							family: font_input.font_family.clone(),
 							style: font_input.font_style.clone(),
-							file: font_input.font_file_url.clone(),
 						})
 						.into()
 					}),
-					..Default::default()
 				})),
 				WidgetHolder::new(Widget::Separator(Separator {
 					direction: SeparatorDirection::Horizontal,
@@ -102,11 +98,9 @@ impl PropertyHolder for TextTool {
 						TextMessage::UpdateOptions(TextOptionsUpdate::Font {
 							family: font_input.font_family.clone(),
 							style: font_input.font_style.clone(),
-							file: font_input.font_file_url.clone(),
 						})
 						.into()
 					}),
-					..Default::default()
 				})),
 				WidgetHolder::new(Widget::Separator(Separator {
 					direction: SeparatorDirection::Horizontal,
@@ -127,7 +121,7 @@ impl PropertyHolder for TextTool {
 }
 
 impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for TextTool {
-	fn process_action(&mut self, action: ToolMessage, data: ToolActionHandlerData<'a>, responses: &mut VecDeque<Message>) {
+	fn process_action(&mut self, action: ToolMessage, tool_data: ToolActionHandlerData<'a>, responses: &mut VecDeque<Message>) {
 		if action == ToolMessage::UpdateHints {
 			self.fsm_state.update_hints(responses);
 			return;
@@ -140,10 +134,9 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for TextTool {
 
 		if let ToolMessage::Text(TextMessage::UpdateOptions(action)) = action {
 			match action {
-				TextOptionsUpdate::Font { family, style, file } => {
+				TextOptionsUpdate::Font { family, style } => {
 					self.options.font_name = family;
 					self.options.font_style = style;
-					self.options.font_file = Some(file);
 
 					self.register_properties(responses, LayoutTarget::ToolOptions);
 				}
@@ -152,7 +145,7 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for TextTool {
 			return;
 		}
 
-		let new_state = self.fsm_state.transition(action, data.0, data.1, &mut self.data, &self.options, data.2, responses);
+		let new_state = self.fsm_state.transition(action, &mut self.tool_data, tool_data, &self.options, responses);
 
 		if self.fsm_state != new_state {
 			self.fsm_state = new_state;
@@ -211,13 +204,13 @@ fn resize_overlays(overlays: &mut Vec<Vec<LayerId>>, responses: &mut VecDeque<Me
 	}
 }
 
-fn update_overlays(document: &DocumentMessageHandler, data: &mut TextToolData, responses: &mut VecDeque<Message>, font_cache: &FontCache) {
+fn update_overlays(document: &DocumentMessageHandler, tool_data: &mut TextToolData, responses: &mut VecDeque<Message>, font_cache: &FontCache) {
 	let visible_text_layers = document.selected_visible_text_layers().collect::<Vec<_>>();
-	resize_overlays(&mut data.overlays, responses, visible_text_layers.len());
+	resize_overlays(&mut tool_data.overlays, responses, visible_text_layers.len());
 
 	let bounds = visible_text_layers
 		.into_iter()
-		.zip(&data.overlays)
+		.zip(&tool_data.overlays)
 		.filter_map(|(layer_path, overlay_path)| {
 			document
 				.graphene_document
@@ -237,7 +230,7 @@ fn update_overlays(document: &DocumentMessageHandler, data: &mut TextToolData, r
 		};
 		responses.push_back(DocumentMessage::Overlays(operation.into()).into());
 	}
-	resize_overlays(&mut data.overlays, responses, new_len);
+	resize_overlays(&mut tool_data.overlays, responses, new_len);
 }
 
 impl Fsm for TextToolFsmState {
@@ -247,11 +240,9 @@ impl Fsm for TextToolFsmState {
 	fn transition(
 		self,
 		event: ToolMessage,
-		document: &DocumentMessageHandler,
-		tool_data: &DocumentToolData,
-		data: &mut Self::ToolData,
+		tool_data: &mut Self::ToolData,
+		(document, global_tool_data, input, font_cache): ToolActionHandlerData,
 		tool_options: &Self::ToolOptions,
-		input: &InputPreprocessorMessageHandler,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
 		use TextMessage::*;
@@ -260,7 +251,7 @@ impl Fsm for TextToolFsmState {
 		if let ToolMessage::Text(event) = event {
 			match (self, event) {
 				(state, DocumentIsDirty) => {
-					update_overlays(document, data, responses, &document.graphene_document.font_cache);
+					update_overlays(document, tool_data, responses, font_cache);
 
 					state
 				}
@@ -271,7 +262,7 @@ impl Fsm for TextToolFsmState {
 
 					let new_state = if let Some(l) = document
 						.graphene_document
-						.intersects_quad_root(quad)
+						.intersects_quad_root(quad, font_cache)
 						.last()
 						.filter(|l| document.graphene_document.layer(l).map(|l| l.as_text().is_ok()).unwrap_or(false))
 					// Editing existing text
@@ -279,25 +270,25 @@ impl Fsm for TextToolFsmState {
 						if state == TextToolFsmState::Editing {
 							responses.push_back(
 								DocumentMessage::SetTexboxEditability {
-									path: data.path.clone(),
+									path: tool_data.path.clone(),
 									editable: false,
 								}
 								.into(),
 							);
 						}
 
-						data.path = l.clone();
+						tool_data.path = l.clone();
 
 						responses.push_back(
 							DocumentMessage::SetTexboxEditability {
-								path: data.path.clone(),
+								path: tool_data.path.clone(),
 								editable: true,
 							}
 							.into(),
 						);
 						responses.push_back(
 							DocumentMessage::SetSelectedLayers {
-								replacement_selected_layers: vec![data.path.clone()],
+								replacement_selected_layers: vec![tool_data.path.clone()],
 							}
 							.into(),
 						);
@@ -310,28 +301,32 @@ impl Fsm for TextToolFsmState {
 						let font_size = tool_options.font_size;
 						let font_name = tool_options.font_name.clone();
 						let font_style = tool_options.font_style.clone();
-						let font_file = tool_options.font_file.clone();
-						data.path = document.get_path_for_new_layer();
+						tool_data.path = document.get_path_for_new_layer();
 
 						responses.push_back(
 							Operation::AddText {
-								path: data.path.clone(),
+								path: tool_data.path.clone(),
 								transform: DAffine2::ZERO.to_cols_array(),
 								insert_index: -1,
 								text: r#""#.to_string(),
-								style: style::PathStyle::new(None, Fill::solid(tool_data.primary_color)),
+								style: style::PathStyle::new(None, Fill::solid(global_tool_data.primary_color)),
 								size: font_size as f64,
 								font_name,
 								font_style,
-								font_file,
 							}
 							.into(),
 						);
-						responses.push_back(Operation::SetLayerTransformInViewport { path: data.path.clone(), transform }.into());
+						responses.push_back(
+							Operation::SetLayerTransformInViewport {
+								path: tool_data.path.clone(),
+								transform,
+							}
+							.into(),
+						);
 
 						responses.push_back(
 							DocumentMessage::SetTexboxEditability {
-								path: data.path.clone(),
+								path: tool_data.path.clone(),
 								editable: true,
 							}
 							.into(),
@@ -339,7 +334,7 @@ impl Fsm for TextToolFsmState {
 
 						responses.push_back(
 							DocumentMessage::SetSelectedLayers {
-								replacement_selected_layers: vec![data.path.clone()],
+								replacement_selected_layers: vec![tool_data.path.clone()],
 							}
 							.into(),
 						);
@@ -349,13 +344,13 @@ impl Fsm for TextToolFsmState {
 						// Removing old text as editable
 						responses.push_back(
 							DocumentMessage::SetTexboxEditability {
-								path: data.path.clone(),
+								path: tool_data.path.clone(),
 								editable: false,
 							}
 							.into(),
 						);
 
-						resize_overlays(&mut data.overlays, responses, 0);
+						resize_overlays(&mut tool_data.overlays, responses, 0);
 
 						Ready
 					};
@@ -366,14 +361,14 @@ impl Fsm for TextToolFsmState {
 					if state == TextToolFsmState::Editing {
 						responses.push_back(
 							DocumentMessage::SetTexboxEditability {
-								path: data.path.clone(),
+								path: tool_data.path.clone(),
 								editable: false,
 							}
 							.into(),
 						);
 					}
 
-					resize_overlays(&mut data.overlays, responses, 0);
+					resize_overlays(&mut tool_data.overlays, responses, 0);
 
 					Ready
 				}
@@ -383,35 +378,41 @@ impl Fsm for TextToolFsmState {
 					Editing
 				}
 				(Editing, TextChange { new_text }) => {
-					responses.push_back(Operation::SetTextContent { path: data.path.clone(), new_text }.into());
+					responses.push_back(
+						Operation::SetTextContent {
+							path: tool_data.path.clone(),
+							new_text,
+						}
+						.into(),
+					);
 
 					responses.push_back(
 						DocumentMessage::SetTexboxEditability {
-							path: data.path.clone(),
+							path: tool_data.path.clone(),
 							editable: false,
 						}
 						.into(),
 					);
 
-					resize_overlays(&mut data.overlays, responses, 0);
+					resize_overlays(&mut tool_data.overlays, responses, 0);
 
 					Ready
 				}
 				(Editing, UpdateBounds { new_text }) => {
-					resize_overlays(&mut data.overlays, responses, 1);
-					let text = document.graphene_document.layer(&data.path).unwrap().as_text().unwrap();
-					let mut path = text.bounding_box(&new_text, text.load_face(&document.graphene_document.font_cache)).to_path(0.1);
+					resize_overlays(&mut tool_data.overlays, responses, 1);
+					let text = document.graphene_document.layer(&tool_data.path).unwrap().as_text().unwrap();
+					let mut path = text.bounding_box(&new_text, text.load_face(font_cache)).to_path(0.1);
 
 					fn glam_to_kurbo(transform: DAffine2) -> kurbo::Affine {
 						kurbo::Affine::new(transform.to_cols_array())
 					}
 
-					path.apply_affine(glam_to_kurbo(document.graphene_document.multiply_transforms(&data.path).unwrap()));
+					path.apply_affine(glam_to_kurbo(document.graphene_document.multiply_transforms(&tool_data.path).unwrap()));
 
 					let kurbo::Rect { x0, y0, x1, y1 } = path.bounding_box();
 
 					let operation = Operation::SetLayerTransformInViewport {
-						path: data.overlays[0].clone(),
+						path: tool_data.overlays[0].clone(),
 						transform: transform_from_box(DVec2::new(x0, y0), DVec2::new(x1, y1)),
 					};
 					responses.push_back(DocumentMessage::Overlays(operation.into()).into());

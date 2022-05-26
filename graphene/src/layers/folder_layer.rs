@@ -1,7 +1,7 @@
 use super::layer_info::{Layer, LayerData, LayerDataType};
 use super::style::ViewMode;
-use crate::document::FontCache;
 use crate::intersection::Quad;
+use crate::layers::text_layer::FontCache;
 use crate::{DocumentError, LayerId};
 
 use glam::DVec2;

@@ -1,13 +1,11 @@
 use super::shared::resize::Resize;
 use crate::consts::DRAG_THRESHOLD;
-use crate::document::DocumentMessageHandler;
 use crate::frontend::utility_types::MouseCursorIcon;
 use crate::input::keyboard::{Key, MouseMotion};
-use crate::input::InputPreprocessorMessageHandler;
 use crate::layout::widgets::{LayoutRow, NumberInput, PropertyHolder, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
 use crate::message_prelude::*;
 use crate::misc::{HintData, HintGroup, HintInfo, KeysGroup};
-use crate::viewport_tools::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
+use crate::viewport_tools::tool::{Fsm, ToolActionHandlerData};
 
 use graphene::layers::style;
 use graphene::Operation;
@@ -18,7 +16,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Default)]
 pub struct ShapeTool {
 	fsm_state: ShapeToolFsmState,
-	data: ShapeToolData,
+	tool_data: ShapeToolData,
 	options: ShapeOptions,
 }
 
@@ -34,7 +32,7 @@ impl Default for ShapeOptions {
 
 #[remain::sorted]
 #[impl_message(Message, ToolMessage, Shape)]
-#[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize)]
+#[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize)]
 pub enum ShapeToolMessage {
 	// Standard messages
 	#[remain::unsorted]
@@ -51,7 +49,7 @@ pub enum ShapeToolMessage {
 }
 
 #[remain::sorted]
-#[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize)]
+#[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize)]
 pub enum ShapeOptionsUpdate {
 	Vertices(u32),
 }
@@ -73,7 +71,7 @@ impl PropertyHolder for ShapeTool {
 }
 
 impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for ShapeTool {
-	fn process_action(&mut self, action: ToolMessage, data: ToolActionHandlerData<'a>, responses: &mut VecDeque<Message>) {
+	fn process_action(&mut self, action: ToolMessage, tool_data: ToolActionHandlerData<'a>, responses: &mut VecDeque<Message>) {
 		if action == ToolMessage::UpdateHints {
 			self.fsm_state.update_hints(responses);
 			return;
@@ -91,7 +89,7 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for ShapeTool {
 			return;
 		}
 
-		let new_state = self.fsm_state.transition(action, data.0, data.1, &mut self.data, &self.options, data.2, responses);
+		let new_state = self.fsm_state.transition(action, &mut self.tool_data, tool_data, &self.options, responses);
 
 		if self.fsm_state != new_state {
 			self.fsm_state = new_state;
@@ -134,34 +132,32 @@ impl Fsm for ShapeToolFsmState {
 	fn transition(
 		self,
 		event: ToolMessage,
-		document: &DocumentMessageHandler,
-		tool_data: &DocumentToolData,
-		data: &mut Self::ToolData,
+		tool_data: &mut Self::ToolData,
+		(document, global_tool_data, input, font_cache): ToolActionHandlerData,
 		tool_options: &Self::ToolOptions,
-		input: &InputPreprocessorMessageHandler,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
 		use ShapeToolFsmState::*;
 		use ShapeToolMessage::*;
 
-		let mut shape_data = &mut data.data;
+		let mut shape_data = &mut tool_data.data;
 
 		if let ToolMessage::Shape(event) = event {
 			match (self, event) {
 				(Ready, DragStart) => {
-					shape_data.start(responses, document, input.mouse.position);
+					shape_data.start(responses, document, input.mouse.position, font_cache);
 					responses.push_back(DocumentMessage::StartTransaction.into());
 					shape_data.path = Some(document.get_path_for_new_layer());
 					responses.push_back(DocumentMessage::DeselectAllLayers.into());
-					data.sides = tool_options.vertices;
+					tool_data.sides = tool_options.vertices;
 
 					responses.push_back(
 						Operation::AddNgon {
 							path: shape_data.path.clone().unwrap(),
 							insert_index: -1,
 							transform: DAffine2::ZERO.to_cols_array(),
-							sides: data.sides,
-							style: style::PathStyle::new(None, style::Fill::solid(tool_data.primary_color)),
+							sides: tool_data.sides,
+							style: style::PathStyle::new(None, style::Fill::solid(global_tool_data.primary_color)),
 						}
 						.into(),
 					);

@@ -5,6 +5,7 @@ use crate::input::InputPreprocessorMessageHandler;
 use crate::message_prelude::*;
 use crate::viewport_tools::snapping::SnapHandler;
 
+use graphene::layers::text_layer::FontCache;
 use graphene::Operation;
 
 use glam::{DAffine2, DVec2, Vec2Swizzles};
@@ -18,8 +19,8 @@ pub struct Resize {
 
 impl Resize {
 	/// Starts a resize, assigning the snap targets and snapping the starting position.
-	pub fn start(&mut self, responses: &mut VecDeque<Message>, document: &DocumentMessageHandler, mouse_position: DVec2) {
-		self.snap_handler.start_snap(document, document.bounding_boxes(None, None), true, true);
+	pub fn start(&mut self, responses: &mut VecDeque<Message>, document: &DocumentMessageHandler, mouse_position: DVec2, font_cache: &FontCache) {
+		self.snap_handler.start_snap(document, document.bounding_boxes(None, None, font_cache), true, true);
 		self.snap_handler.add_all_document_handles(document, &[], &[]);
 		self.drag_start = self.snap_handler.snap_position(responses, document, mouse_position);
 	}
