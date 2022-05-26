@@ -8,6 +8,7 @@ use crate::message_prelude::*;
 use graphene::document::Document;
 
 use glam::DVec2;
+use graphene::layers::text_layer::FontCache;
 use std::collections::{HashMap, VecDeque};
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -25,17 +26,11 @@ pub struct TransformLayerMessageHandler {
 	pivot: DVec2,
 }
 
-impl MessageHandler<TransformLayerMessage, (&mut HashMap<Vec<LayerId>, LayerMetadata>, &mut Document, &InputPreprocessorMessageHandler)> for TransformLayerMessageHandler {
+type TransformData<'a> = (&'a mut HashMap<Vec<LayerId>, LayerMetadata>, &'a mut Document, &'a InputPreprocessorMessageHandler, &'a FontCache);
+impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformLayerMessageHandler {
 	#[remain::check]
-	fn process_action(
-		&mut self,
-		message: TransformLayerMessage,
-		data: (&mut HashMap<Vec<LayerId>, LayerMetadata>, &mut Document, &InputPreprocessorMessageHandler),
-		responses: &mut VecDeque<Message>,
-	) {
+	fn process_action(&mut self, message: TransformLayerMessage, (layer_metadata, document, ipp, font_cache): TransformData, responses: &mut VecDeque<Message>) {
 		use TransformLayerMessage::*;
-
-		let (layer_metadata, document, ipp) = data;
 
 		let selected_layers = layer_metadata.iter().filter_map(|(layer_path, data)| data.selected.then(|| layer_path)).collect::<Vec<_>>();
 		let mut selected = Selected::new(&mut self.original_transforms, &mut self.pivot, &selected_layers, responses, document);
@@ -45,7 +40,7 @@ impl MessageHandler<TransformLayerMessage, (&mut HashMap<Vec<LayerId>, LayerMeta
 				selected.revert_operation();
 				typing.clear();
 			} else {
-				*selected.pivot = selected.calculate_pivot(&document.font_cache);
+				*selected.pivot = selected.calculate_pivot(font_cache);
 			}
 
 			*mouse_position = ipp.mouse.position;
@@ -128,7 +123,7 @@ impl MessageHandler<TransformLayerMessage, (&mut HashMap<Vec<LayerId>, LayerMeta
 							self.transform_operation.apply_transform_operation(&mut selected, self.snap);
 						}
 						TransformOperation::Rotating(rotation) => {
-							let selected_pivot = selected.calculate_pivot(&document.font_cache);
+							let selected_pivot = selected.calculate_pivot(font_cache);
 							let angle = {
 								let start_offset = self.mouse_position - selected_pivot;
 								let end_offset = ipp.mouse.position - selected_pivot;

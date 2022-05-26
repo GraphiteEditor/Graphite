@@ -1,11 +1,9 @@
-use crate::document::DocumentMessageHandler;
 use crate::frontend::utility_types::MouseCursorIcon;
 use crate::input::keyboard::{Key, MouseMotion};
-use crate::input::InputPreprocessorMessageHandler;
 use crate::layout::widgets::PropertyHolder;
 use crate::message_prelude::*;
 use crate::misc::{HintData, HintGroup, HintInfo, KeysGroup};
-use crate::viewport_tools::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
+use crate::viewport_tools::tool::{Fsm, ToolActionHandlerData};
 
 use glam::DVec2;
 use serde::{Deserialize, Serialize};
@@ -13,12 +11,12 @@ use serde::{Deserialize, Serialize};
 #[derive(Default)]
 pub struct NavigateTool {
 	fsm_state: NavigateToolFsmState,
-	data: NavigateToolData,
+	tool_data: NavigateToolData,
 }
 
 #[remain::sorted]
 #[impl_message(Message, ToolMessage, Navigate)]
-#[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize)]
+#[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize)]
 pub enum NavigateToolMessage {
 	// Standard messages
 	#[remain::unsorted]
@@ -41,7 +39,7 @@ pub enum NavigateToolMessage {
 impl PropertyHolder for NavigateTool {}
 
 impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for NavigateTool {
-	fn process_action(&mut self, action: ToolMessage, data: ToolActionHandlerData<'a>, responses: &mut VecDeque<Message>) {
+	fn process_action(&mut self, action: ToolMessage, tool_data: ToolActionHandlerData<'a>, responses: &mut VecDeque<Message>) {
 		if action == ToolMessage::UpdateHints {
 			self.fsm_state.update_hints(responses);
 			return;
@@ -52,7 +50,7 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for NavigateTool
 			return;
 		}
 
-		let new_state = self.fsm_state.transition(action, data.0, data.1, &mut self.data, &(), data.2, responses);
+		let new_state = self.fsm_state.transition(action, &mut self.tool_data, tool_data, &(), responses);
 
 		if self.fsm_state != new_state {
 			self.fsm_state = new_state;
@@ -97,11 +95,9 @@ impl Fsm for NavigateToolFsmState {
 	fn transition(
 		self,
 		message: ToolMessage,
-		_document: &DocumentMessageHandler,
-		_tool_data: &DocumentToolData,
-		data: &mut Self::ToolData,
+		tool_data: &mut Self::ToolData,
+		(_document, _global_tool_data, input, _font_cache): ToolActionHandlerData,
 		_tool_options: &Self::ToolOptions,
-		input: &InputPreprocessorMessageHandler,
 		messages: &mut VecDeque<Message>,
 	) -> Self {
 		if let ToolMessage::Navigate(navigate) = message {
@@ -112,7 +108,7 @@ impl Fsm for NavigateToolFsmState {
 					messages.push_front(MovementMessage::TransformCanvasEnd.into());
 
 					// Mouse has not moved from pointerdown to pointerup
-					if data.drag_start == input.mouse.position {
+					if tool_data.drag_start == input.mouse.position {
 						messages.push_front(if zoom_in {
 							MovementMessage::IncreaseCanvasZoom { center_on_mouse: true }.into()
 						} else {
@@ -128,24 +124,24 @@ impl Fsm for NavigateToolFsmState {
 							snap_angle,
 							wait_for_snap_angle_release: false,
 							snap_zoom,
-							zoom_from_viewport: Some(data.drag_start),
+							zoom_from_viewport: Some(tool_data.drag_start),
 						}
 						.into(),
 					);
 					self
 				}
 				TranslateCanvasBegin => {
-					data.drag_start = input.mouse.position;
+					tool_data.drag_start = input.mouse.position;
 					messages.push_front(MovementMessage::TranslateCanvasBegin.into());
 					NavigateToolFsmState::Panning
 				}
 				RotateCanvasBegin => {
-					data.drag_start = input.mouse.position;
+					tool_data.drag_start = input.mouse.position;
 					messages.push_front(MovementMessage::RotateCanvasBegin.into());
 					NavigateToolFsmState::Tilting
 				}
 				ZoomCanvasBegin => {
-					data.drag_start = input.mouse.position;
+					tool_data.drag_start = input.mouse.position;
 					messages.push_front(MovementMessage::ZoomCanvasBegin.into());
 					NavigateToolFsmState::Zooming
 				}

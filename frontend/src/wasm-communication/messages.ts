@@ -352,11 +352,18 @@ export class TriggerIndexedDbRemoveDocument extends JsMessage {
 	document_id!: string;
 }
 
-export class TriggerFontLoad extends JsMessage {
-	font_file_url!: string;
+export class Font {
+	font_family!: string;
+
+	font_style!: string;
 }
 
-export class TriggerFontLoadDefault extends JsMessage {}
+export class TriggerFontLoad extends JsMessage {
+	@Type(() => Font)
+	font!: Font;
+
+	is_default!: boolean;
+}
 
 export class TriggerVisitLink extends JsMessage {
 	url!: string;
@@ -545,7 +552,6 @@ export const messageMakers: Record<string, MessageMaker> = {
 	TriggerFileUpload,
 	TriggerIndexedDbRemoveDocument,
 	TriggerFontLoad,
-	TriggerFontLoadDefault,
 	TriggerIndexedDbWriteDocument,
 	TriggerRasterDownload,
 	TriggerTextCommit,

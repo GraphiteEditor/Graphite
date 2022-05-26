@@ -9,10 +9,10 @@ use crate::layout::widgets::{
 use crate::message_prelude::*;
 
 use graphene::color::Color;
-use graphene::document::{Document as GrapheneDocument, FontCache};
+use graphene::document::Document as GrapheneDocument;
 use graphene::layers::layer_info::{Layer, LayerDataType};
 use graphene::layers::style::{Fill, Gradient, GradientType, LineCap, LineJoin, Stroke};
-use graphene::layers::text_layer::TextLayer;
+use graphene::layers::text_layer::{FontCache, TextLayer};
 use graphene::{LayerId, Operation};
 
 use glam::{DAffine2, DVec2};
@@ -111,12 +111,17 @@ impl PropertiesPanelMessageHandler {
 pub struct PropertiesPanelMessageHandlerData<'a> {
 	pub artwork_document: &'a GrapheneDocument,
 	pub artboard_document: &'a GrapheneDocument,
+	pub font_cache: &'a FontCache,
 }
 
 impl<'a> MessageHandler<PropertiesPanelMessage, PropertiesPanelMessageHandlerData<'a>> for PropertiesPanelMessageHandler {
 	#[remain::check]
 	fn process_action(&mut self, message: PropertiesPanelMessage, data: PropertiesPanelMessageHandlerData, responses: &mut VecDeque<Message>) {
-		let PropertiesPanelMessageHandlerData { artwork_document, artboard_document } = data;
+		let PropertiesPanelMessageHandlerData {
+			artwork_document,
+			artboard_document,
+			font_cache,
+		} = data;
 		let get_document = |document_selector: TargetDocument| match document_selector {
 			TargetDocument::Artboard => artboard_document,
 			TargetDocument::Artwork => artwork_document,
@@ -150,21 +155,10 @@ impl<'a> MessageHandler<PropertiesPanelMessage, PropertiesPanelMessageHandlerDat
 				);
 				self.active_selection = None;
 			}
-			ModifyFont {
-				font_family,
-				font_style,
-				font_file,
-				size,
-			} => {
+			ModifyFont { font_family, font_style, size } => {
 				let (path, _) = self.active_selection.clone().expect("Received update for properties panel with no active layer");
 
-				responses.push_back(self.create_document_operation(Operation::ModifyFont {
-					path,
-					font_family,
-					font_style,
-					font_file,
-					size,
-				}));
+				responses.push_back(self.create_document_operation(Operation::ModifyFont { path, font_family, font_style, size }));
 				responses.push_back(ResendActiveProperties.into());
 			}
 			ModifyTransform { value, transform_op } => {
@@ -181,8 +175,8 @@ impl<'a> MessageHandler<PropertiesPanelMessage, PropertiesPanelMessageHandlerDat
 				};
 
 				let scale = match transform_op {
-					Width => layer.bounding_transform(&get_document(*target_document).font_cache).scale_x() / layer.transform.scale_x(),
-					Height => layer.bounding_transform(&get_document(*target_document).font_cache).scale_y() / layer.transform.scale_y(),
+					Width => layer.bounding_transform(font_cache).scale_x() / layer.transform.scale_x(),
+					Height => layer.bounding_transform(font_cache).scale_y() / layer.transform.scale_y(),
 					_ => 1.,
 				};
 
@@ -235,8 +229,8 @@ impl<'a> MessageHandler<PropertiesPanelMessage, PropertiesPanelMessageHandlerDat
 				if let Some((path, target_document)) = self.active_selection.clone() {
 					let layer = get_document(target_document).layer(&path).unwrap();
 					match target_document {
-						TargetDocument::Artboard => register_artboard_layer_properties(layer, responses, &get_document(target_document).font_cache),
-						TargetDocument::Artwork => register_artwork_layer_properties(layer, responses, &get_document(target_document).font_cache),
+						TargetDocument::Artboard => register_artboard_layer_properties(layer, responses, font_cache),
+						TargetDocument::Artwork => register_artwork_layer_properties(layer, responses, font_cache),
 					}
 				}
 			}
@@ -677,9 +671,7 @@ fn node_section_transform(layer: &Layer, font_cache: &FontCache) -> LayoutRow {
 }
 
 fn node_section_font(layer: &TextLayer) -> LayoutRow {
-	let font_family = layer.font_family.clone();
-	let font_style = layer.font_style.clone();
-	let font_file = layer.font_file.clone();
+	let font = layer.font.clone();
 	let size = layer.size;
 	LayoutRow::Section {
 		name: "Font".into(),
@@ -712,14 +704,12 @@ fn node_section_font(layer: &TextLayer) -> LayoutRow {
 					})),
 					WidgetHolder::new(Widget::FontInput(FontInput {
 						is_style_picker: false,
-						font_family: layer.font_family.clone(),
-						font_style: layer.font_style.clone(),
-						font_file_url: String::new(),
+						font_family: layer.font.font_family.clone(),
+						font_style: layer.font.font_style.clone(),
 						on_update: WidgetCallback::new(move |font_input: &FontInput| {
 							PropertiesPanelMessage::ModifyFont {
 								font_family: font_input.font_family.clone(),
 								font_style: font_input.font_style.clone(),
-								font_file: Some(font_input.font_file_url.clone()),
 								size,
 							}
 							.into()
@@ -739,14 +729,12 @@ fn node_section_font(layer: &TextLayer) -> LayoutRow {
 					})),
 					WidgetHolder::new(Widget::FontInput(FontInput {
 						is_style_picker: true,
-						font_family: layer.font_family.clone(),
-						font_style: layer.font_style.clone(),
-						font_file_url: String::new(),
+						font_family: layer.font.font_family.clone(),
+						font_style: layer.font.font_style.clone(),
 						on_update: WidgetCallback::new(move |font_input: &FontInput| {
 							PropertiesPanelMessage::ModifyFont {
 								font_family: font_input.font_family.clone(),
 								font_style: font_input.font_style.clone(),
-								font_file: Some(font_input.font_file_url.clone()),
 								size,
 							}
 							.into()
@@ -770,9 +758,8 @@ fn node_section_font(layer: &TextLayer) -> LayoutRow {
 						unit: " px".into(),
 						on_update: WidgetCallback::new(move |number_input: &NumberInput| {
 							PropertiesPanelMessage::ModifyFont {
-								font_family: font_family.clone(),
-								font_style: font_style.clone(),
-								font_file: font_file.clone(),
+								font_family: font.font_family.clone(),
+								font_style: font.font_style.clone(),
 								size: number_input.value.unwrap(),
 							}
 							.into()

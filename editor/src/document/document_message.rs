@@ -72,17 +72,9 @@ pub enum DocumentMessage {
 	FolderChanged {
 		affected_folder_path: Vec<LayerId>,
 	},
-	FontLoaded {
-		font_file_url: String,
-		data: Vec<u8>,
-		is_default: bool,
-	},
 	GroupSelectedLayers,
 	LayerChanged {
 		affected_layer_path: Vec<LayerId>,
-	},
-	LoadFont {
-		font_file_url: String,
 	},
 	MoveSelectedLayersTo {
 		folder_path: Vec<LayerId>,

@@ -41,6 +41,7 @@ const SIDE_EFFECT_FREE_MESSAGES: &[MessageDiscriminant] = &[
 	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::UpdateDocumentLayerDetails),
 	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::UpdateDocumentLayerTreeStructure),
 	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::UpdateOpenDocumentsList),
+	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::TriggerFontLoad),
 	MessageDiscriminant::Tool(ToolMessageDiscriminant::DocumentIsDirty),
 ];
 
@@ -108,6 +109,7 @@ impl Dispatcher {
 						(
 							self.message_handlers.portfolio_message_handler.active_document(),
 							&self.message_handlers.input_preprocessor_message_handler,
+							self.message_handlers.portfolio_message_handler.font_cache(),
 						),
 						&mut self.message_queue,
 					);

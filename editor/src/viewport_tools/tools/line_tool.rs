@@ -1,14 +1,12 @@
 use crate::consts::{DRAG_THRESHOLD, LINE_ROTATE_SNAP_ANGLE};
-use crate::document::DocumentMessageHandler;
 use crate::frontend::utility_types::MouseCursorIcon;
 use crate::input::keyboard::{Key, MouseMotion};
 use crate::input::mouse::ViewportPosition;
-use crate::input::InputPreprocessorMessageHandler;
 use crate::layout::widgets::{LayoutRow, NumberInput, PropertyHolder, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
 use crate::message_prelude::*;
 use crate::misc::{HintData, HintGroup, HintInfo, KeysGroup};
 use crate::viewport_tools::snapping::SnapHandler;
-use crate::viewport_tools::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
+use crate::viewport_tools::tool::{Fsm, ToolActionHandlerData};
 
 use graphene::layers::style;
 use graphene::Operation;
@@ -19,7 +17,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Default)]
 pub struct LineTool {
 	fsm_state: LineToolFsmState,
-	data: LineToolData,
+	tool_data: LineToolData,
 	options: LineOptions,
 }
 
@@ -75,7 +73,7 @@ impl PropertyHolder for LineTool {
 }
 
 impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for LineTool {
-	fn process_action(&mut self, action: ToolMessage, data: ToolActionHandlerData<'a>, responses: &mut VecDeque<Message>) {
+	fn process_action(&mut self, action: ToolMessage, tool_data: ToolActionHandlerData<'a>, responses: &mut VecDeque<Message>) {
 		if action == ToolMessage::UpdateHints {
 			self.fsm_state.update_hints(responses);
 			return;
@@ -93,7 +91,7 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for LineTool {
 			return;
 		}
 
-		let new_state = self.fsm_state.transition(action, data.0, data.1, &mut self.data, &self.options, data.2, responses);
+		let new_state = self.fsm_state.transition(action, &mut self.tool_data, tool_data, &self.options, responses);
 
 		if self.fsm_state != new_state {
 			self.fsm_state = new_state;
@@ -141,11 +139,9 @@ impl Fsm for LineToolFsmState {
 	fn transition(
 		self,
 		event: ToolMessage,
-		document: &DocumentMessageHandler,
-		tool_data: &DocumentToolData,
-		data: &mut Self::ToolData,
+		tool_data: &mut Self::ToolData,
+		(document, global_tool_data, input, font_cache): ToolActionHandlerData,
 		tool_options: &Self::ToolOptions,
-		input: &InputPreprocessorMessageHandler,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
 		use LineToolFsmState::*;
@@ -154,22 +150,22 @@ impl Fsm for LineToolFsmState {
 		if let ToolMessage::Line(event) = event {
 			match (self, event) {
 				(Ready, DragStart) => {
-					data.snap_handler.start_snap(document, document.bounding_boxes(None, None), true, true);
-					data.snap_handler.add_all_document_handles(document, &[], &[]);
-					data.drag_start = data.snap_handler.snap_position(responses, document, input.mouse.position);
+					tool_data.snap_handler.start_snap(document, document.bounding_boxes(None, None, font_cache), true, true);
+					tool_data.snap_handler.add_all_document_handles(document, &[], &[]);
+					tool_data.drag_start = tool_data.snap_handler.snap_position(responses, document, input.mouse.position);
 
 					responses.push_back(DocumentMessage::StartTransaction.into());
-					data.path = Some(document.get_path_for_new_layer());
+					tool_data.path = Some(document.get_path_for_new_layer());
 					responses.push_back(DocumentMessage::DeselectAllLayers.into());
 
-					data.weight = tool_options.line_weight;
+					tool_data.weight = tool_options.line_weight;
 
 					responses.push_back(
 						Operation::AddLine {
-							path: data.path.clone().unwrap(),
+							path: tool_data.path.clone().unwrap(),
 							insert_index: -1,
 							transform: DAffine2::ZERO.to_cols_array(),
-							style: style::PathStyle::new(Some(style::Stroke::new(tool_data.primary_color, data.weight)), style::Fill::None),
+							style: style::PathStyle::new(Some(style::Stroke::new(global_tool_data.primary_color, tool_data.weight)), style::Fill::None),
 						}
 						.into(),
 					);
@@ -177,30 +173,30 @@ impl Fsm for LineToolFsmState {
 					Drawing
 				}
 				(Drawing, Redraw { center, snap_angle, lock_angle }) => {
-					data.drag_current = data.snap_handler.snap_position(responses, document, input.mouse.position);
+					tool_data.drag_current = tool_data.snap_handler.snap_position(responses, document, input.mouse.position);
 
 					let values: Vec<_> = [lock_angle, snap_angle, center].iter().map(|k| input.keyboard.get(*k as usize)).collect();
-					responses.push_back(generate_transform(data, values[0], values[1], values[2]));
+					responses.push_back(generate_transform(tool_data, values[0], values[1], values[2]));
 
 					Drawing
 				}
 				(Drawing, DragStop) => {
-					data.drag_current = data.snap_handler.snap_position(responses, document, input.mouse.position);
-					data.snap_handler.cleanup(responses);
+					tool_data.drag_current = tool_data.snap_handler.snap_position(responses, document, input.mouse.position);
+					tool_data.snap_handler.cleanup(responses);
 
-					match data.drag_start.distance(input.mouse.position) <= DRAG_THRESHOLD {
+					match tool_data.drag_start.distance(input.mouse.position) <= DRAG_THRESHOLD {
 						true => responses.push_back(DocumentMessage::AbortTransaction.into()),
 						false => responses.push_back(DocumentMessage::CommitTransaction.into()),
 					}
 
-					data.path = None;
+					tool_data.path = None;
 
 					Ready
 				}
 				(Drawing, Abort) => {
-					data.snap_handler.cleanup(responses);
+					tool_data.snap_handler.cleanup(responses);
 					responses.push_back(DocumentMessage::AbortTransaction.into());
-					data.path = None;
+					tool_data.path = None;
 					Ready
 				}
 				_ => self,
@@ -268,16 +264,16 @@ impl Fsm for LineToolFsmState {
 	}
 }
 
-fn generate_transform(data: &mut LineToolData, lock: bool, snap: bool, center: bool) -> Message {
-	let mut start = data.drag_start;
-	let stop = data.drag_current;
+fn generate_transform(tool_data: &mut LineToolData, lock: bool, snap: bool, center: bool) -> Message {
+	let mut start = tool_data.drag_start;
+	let stop = tool_data.drag_current;
 
 	let dir = stop - start;
 
 	let mut angle = -dir.angle_between(DVec2::X);
 
 	if lock {
-		angle = data.angle
+		angle = tool_data.angle
 	};
 
 	if snap {
@@ -285,7 +281,7 @@ fn generate_transform(data: &mut LineToolData, lock: bool, snap: bool, center: b
 		angle = (angle / snap_resolution).round() * snap_resolution;
 	}
 
-	data.angle = angle;
+	tool_data.angle = angle;
 
 	let mut scale = dir.length();
 
@@ -300,7 +296,7 @@ fn generate_transform(data: &mut LineToolData, lock: bool, snap: bool, center: b
 	}
 
 	Operation::SetLayerTransformInViewport {
-		path: data.path.clone().unwrap(),
+		path: tool_data.path.clone().unwrap(),
 		transform: glam::DAffine2::from_scale_angle_translation(DVec2::new(scale, 1.), angle, start).to_cols_array(),
 	}
 	.into()
