@@ -7,27 +7,19 @@ use crate::message_prelude::*;
 
 use graphene::color::Color;
 
+use graphene::layers::text_layer::FontCache;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
 use std::fmt::{self, Debug};
 
-pub type ToolActionHandlerData<'a> = (&'a DocumentMessageHandler, &'a DocumentToolData, &'a InputPreprocessorMessageHandler);
+pub type ToolActionHandlerData<'a> = (&'a DocumentMessageHandler, &'a DocumentToolData, &'a InputPreprocessorMessageHandler, &'a FontCache);
 
 pub trait Fsm {
 	type ToolData;
 	type ToolOptions;
 
 	#[must_use]
-	fn transition(
-		self,
-		message: ToolMessage,
-		document: &DocumentMessageHandler,
-		tool_data: &DocumentToolData,
-		data: &mut Self::ToolData,
-		options: &Self::ToolOptions,
-		input: &InputPreprocessorMessageHandler,
-		messages: &mut VecDeque<Message>,
-	) -> Self;
+	fn transition(self, message: ToolMessage, tool_data: &mut Self::ToolData, transition_data: ToolActionHandlerData, options: &Self::ToolOptions, messages: &mut VecDeque<Message>) -> Self;
 
 	fn update_hints(&self, responses: &mut VecDeque<Message>);
 	fn update_cursor(&self, responses: &mut VecDeque<Message>);

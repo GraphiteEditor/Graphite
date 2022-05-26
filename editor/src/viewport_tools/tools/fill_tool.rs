@@ -1,12 +1,10 @@
 use crate::consts::SELECTION_TOLERANCE;
-use crate::document::DocumentMessageHandler;
 use crate::frontend::utility_types::MouseCursorIcon;
 use crate::input::keyboard::MouseMotion;
-use crate::input::InputPreprocessorMessageHandler;
 use crate::layout::widgets::PropertyHolder;
 use crate::message_prelude::*;
 use crate::misc::{HintData, HintGroup, HintInfo};
-use crate::viewport_tools::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
+use crate::viewport_tools::tool::{Fsm, ToolActionHandlerData};
 
 use graphene::intersection::Quad;
 use graphene::Operation;
@@ -23,7 +21,7 @@ pub struct FillTool {
 
 #[remain::sorted]
 #[impl_message(Message, ToolMessage, Fill)]
-#[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize)]
+#[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize)]
 pub enum FillToolMessage {
 	// Standard messages
 	#[remain::unsorted]
@@ -48,7 +46,7 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for FillTool {
 			return;
 		}
 
-		let new_state = self.fsm_state.transition(action, data.0, data.1, &mut self.data, &(), data.2, responses);
+		let new_state = self.fsm_state.transition(action, &mut self.data, data, &(), responses);
 
 		if self.fsm_state != new_state {
 			self.fsm_state = new_state;
@@ -81,11 +79,9 @@ impl Fsm for FillToolFsmState {
 	fn transition(
 		self,
 		event: ToolMessage,
-		document: &DocumentMessageHandler,
-		tool_data: &DocumentToolData,
-		_data: &mut Self::ToolData,
+		_tool_data: &mut Self::ToolData,
+		(document, global_tool_data, input, font_cache): ToolActionHandlerData,
 		_tool_options: &Self::ToolOptions,
-		input: &InputPreprocessorMessageHandler,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
 		use FillToolFsmState::*;
@@ -98,10 +94,10 @@ impl Fsm for FillToolFsmState {
 					let tolerance = DVec2::splat(SELECTION_TOLERANCE);
 					let quad = Quad::from_box([mouse_pos - tolerance, mouse_pos + tolerance]);
 
-					if let Some(path) = document.graphene_document.intersects_quad_root(quad).last() {
+					if let Some(path) = document.graphene_document.intersects_quad_root(quad, font_cache).last() {
 						let color = match lmb_or_rmb {
-							LeftMouseDown => tool_data.primary_color,
-							RightMouseDown => tool_data.secondary_color,
+							LeftMouseDown => global_tool_data.primary_color,
+							RightMouseDown => global_tool_data.secondary_color,
 							Abort => unreachable!(),
 						};
 						let fill = Fill::Solid(color);

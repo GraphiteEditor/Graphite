@@ -1,7 +1,5 @@
-use crate::document::DocumentMessageHandler;
 use crate::frontend::utility_types::MouseCursorIcon;
 use crate::input::keyboard::MouseMotion;
-use crate::input::InputPreprocessorMessageHandler;
 use crate::layout::widgets::{LayoutRow, NumberInput, PropertyHolder, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
 use crate::message_prelude::*;
 use crate::misc::{HintData, HintGroup, HintInfo};
@@ -92,7 +90,7 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for FreehandTool
 			return;
 		}
 
-		let new_state = self.fsm_state.transition(action, data.0, data.1, &mut self.data, &self.options, data.2, responses);
+		let new_state = self.fsm_state.transition(action, &mut self.data, data, &self.options, responses);
 
 		if self.fsm_state != new_state {
 			self.fsm_state = new_state;
@@ -130,11 +128,9 @@ impl Fsm for FreehandToolFsmState {
 	fn transition(
 		self,
 		event: ToolMessage,
-		document: &DocumentMessageHandler,
-		tool_data: &DocumentToolData,
-		data: &mut Self::ToolData,
+		tool_data: &mut Self::ToolData,
+		(document, global_tool_data, input, _font_cache): ToolActionHandlerData,
 		tool_options: &Self::ToolOptions,
-		input: &InputPreprocessorMessageHandler,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
 		use FreehandToolFsmState::*;
@@ -147,42 +143,42 @@ impl Fsm for FreehandToolFsmState {
 				(Ready, DragStart) => {
 					responses.push_back(DocumentMessage::StartTransaction.into());
 					responses.push_back(DocumentMessage::DeselectAllLayers.into());
-					data.path = Some(document.get_path_for_new_layer());
+					tool_data.path = Some(document.get_path_for_new_layer());
 
 					let pos = transform.inverse().transform_point2(input.mouse.position);
 
-					data.points.push(pos);
+					tool_data.points.push(pos);
 
-					data.weight = tool_options.line_weight;
+					tool_data.weight = tool_options.line_weight;
 
-					responses.push_back(add_polyline(data, tool_data));
+					responses.push_back(add_polyline(tool_data, global_tool_data));
 
 					Drawing
 				}
 				(Drawing, PointerMove) => {
 					let pos = transform.inverse().transform_point2(input.mouse.position);
 
-					if data.points.last() != Some(&pos) {
-						data.points.push(pos);
+					if tool_data.points.last() != Some(&pos) {
+						tool_data.points.push(pos);
 					}
 
-					responses.push_back(remove_preview(data));
-					responses.push_back(add_polyline(data, tool_data));
+					responses.push_back(remove_preview(tool_data));
+					responses.push_back(add_polyline(tool_data, global_tool_data));
 
 					Drawing
 				}
 				(Drawing, DragStop) | (Drawing, Abort) => {
-					if data.points.len() >= 2 {
+					if tool_data.points.len() >= 2 {
 						responses.push_back(DocumentMessage::DeselectAllLayers.into());
-						responses.push_back(remove_preview(data));
-						responses.push_back(add_polyline(data, tool_data));
+						responses.push_back(remove_preview(tool_data));
+						responses.push_back(add_polyline(tool_data, global_tool_data));
 						responses.push_back(DocumentMessage::CommitTransaction.into());
 					} else {
 						responses.push_back(DocumentMessage::AbortTransaction.into());
 					}
 
-					data.path = None;
-					data.points.clear();
+					tool_data.path = None;
+					tool_data.points.clear();
 
 					Ready
 				}

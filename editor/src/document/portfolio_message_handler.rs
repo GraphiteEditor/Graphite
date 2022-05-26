@@ -7,6 +7,7 @@ use crate::layout::layout_message::LayoutTarget;
 use crate::layout::widgets::PropertyHolder;
 use crate::{dialog, message_prelude::*};
 
+use graphene::layers::text_layer::{Font, FontCache};
 use graphene::Operation as DocumentOperation;
 
 use log::warn;
@@ -18,7 +19,7 @@ pub struct PortfolioMessageHandler {
 	document_ids: Vec<u64>,
 	active_document_id: u64,
 	copy_buffer: [Vec<CopyBufferEntry>; INTERNAL_CLIPBOARD_COUNT as usize],
-	default_font: Option<(String, Vec<u8>)>,
+	font_cache: FontCache,
 }
 
 impl PortfolioMessageHandler {
@@ -53,7 +54,7 @@ impl PortfolioMessageHandler {
 	}
 
 	// TODO Fix how this doesn't preserve tab order upon loading new document from *File > Load*
-	fn load_document(&mut self, mut new_document: DocumentMessageHandler, document_id: u64, replace_first_empty: bool, responses: &mut VecDeque<Message>) {
+	fn load_document(&mut self, new_document: DocumentMessageHandler, document_id: u64, replace_first_empty: bool, responses: &mut VecDeque<Message>) {
 		// Special case when loading a document on an empty page
 		if replace_first_empty && self.active_document().is_unmodified_default() {
 			responses.push_back(ToolMessage::AbortCurrentTool.into());
@@ -73,14 +74,13 @@ impl PortfolioMessageHandler {
 			new_document
 				.layer_metadata
 				.keys()
-				.filter_map(|path| new_document.layer_panel_entry_from_path(path))
+				.filter_map(|path| new_document.layer_panel_entry_from_path(path, &self.font_cache))
 				.map(|entry| FrontendMessage::UpdateDocumentLayerDetails { data: entry }.into())
 				.collect::<Vec<_>>(),
 		);
-		new_document.update_layer_tree_options_bar_widgets(responses);
+		new_document.update_layer_tree_options_bar_widgets(responses, &self.font_cache);
 
 		new_document.load_image_data(responses, &new_document.graphene_document.root.data, Vec::new());
-		new_document.load_default_font(&self.default_font, responses);
 
 		self.documents.insert(document_id, new_document);
 
@@ -110,6 +110,10 @@ impl PortfolioMessageHandler {
 	fn document_index(&self, document_id: u64) -> usize {
 		self.document_ids.iter().position(|id| id == &document_id).expect("Active document is missing from document ids")
 	}
+
+	pub fn font_cache(&self) -> &FontCache {
+		&self.font_cache
+	}
 }
 
 impl Default for PortfolioMessageHandler {
@@ -125,7 +129,7 @@ impl Default for PortfolioMessageHandler {
 			document_ids: vec![starting_key],
 			copy_buffer: [EMPTY_VEC; INTERNAL_CLIPBOARD_COUNT as usize],
 			active_document_id: starting_key,
-			default_font: None,
+			font_cache: Default::default(),
 		}
 	}
 }
@@ -140,7 +144,7 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 		match message {
 			// Sub-messages
 			#[remain::unsorted]
-			Document(message) => self.active_document_mut().process_action(message, ipp, responses),
+			Document(message) => self.documents.get_mut(&self.active_document_id).unwrap().process_action(message, (ipp, &self.font_cache), responses),
 
 			// Messages
 			AutoSaveActiveDocument => responses.push_back(PortfolioMessage::AutoSaveDocument { document_id: self.active_document_id }.into()),
@@ -264,13 +268,19 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 				responses.push_back(Copy { clipboard }.into());
 				responses.push_back(DeleteSelectedLayers.into());
 			}
-			DefaultFontLoaded { font_file_url, data } => {
-				// Populate the portfolio's default font
-				self.default_font = Some((font_file_url, data));
-				// Load the font into all document font caches
-				// TODO: Perhaps only load the font when required to save memory and file size.
-				for document in self.documents.values_mut() {
-					document.load_default_font(&self.default_font, responses);
+			FontLoaded {
+				font_family,
+				font_style,
+				preview_url,
+				data,
+				is_default,
+			} => {
+				self.font_cache.insert(Font::new(font_family, font_style), preview_url, data, is_default);
+				responses.push_back(DocumentMessage::DirtyRenderDocument.into());
+			}
+			LoadFont { font, is_default } => {
+				if !self.font_cache.loaded_font(&font) {
+					responses.push_front(FrontendMessage::TriggerFontLoad { font, is_default }.into());
 				}
 			}
 			NewDocument => {

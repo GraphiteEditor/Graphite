@@ -6,7 +6,7 @@ use crate::layers::image_layer::ImageLayer;
 use crate::layers::layer_info::{Layer, LayerData, LayerDataType};
 use crate::layers::shape_layer::ShapeLayer;
 use crate::layers::style::ViewMode;
-use crate::layers::text_layer::TextLayer;
+use crate::layers::text_layer::{Font, FontCache, TextLayer};
 use crate::{DocumentError, DocumentResponse, Operation};
 
 use glam::{DAffine2, DVec2};
@@ -15,49 +15,11 @@ use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::cmp::max;
 use std::collections::hash_map::DefaultHasher;
-use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 
 /// A number that identifies a layer.
 /// This does not technically need to be unique globally, only within a folder.
 pub type LayerId = u64;
-
-/// A cache of all loaded fonts along with a string of the name of the default font (sent from js)
-#[derive(Debug, Clone, Deserialize, Serialize, Default)]
-pub struct FontCache {
-	data: HashMap<String, Vec<u8>>,
-	default_font: Option<String>,
-}
-impl FontCache {
-	/// Returns the font family name if the font is cached, otherwise returns the default font family name if that is cached
-	pub fn resolve_font<'a>(&'a self, font: Option<&'a String>) -> Option<&'a String> {
-		font.filter(|font| self.loaded_font(font))
-			.map_or(self.default_font.as_ref().filter(|font| self.loaded_font(font)), Some)
-	}
-
-	/// Try to get the bytes for a font
-	pub fn get<'a>(&'a self, font: Option<&String>) -> Option<&'a Vec<u8>> {
-		self.resolve_font(font).and_then(|font| self.data.get(font))
-	}
-
-	/// Check if the font is already loaded
-	pub fn loaded_font(&self, font: &str) -> bool {
-		self.data.contains_key(font)
-	}
-
-	/// Insert a new font into the cache
-	pub fn insert(&mut self, font: String, data: Vec<u8>, is_default: bool) {
-		if is_default {
-			self.default_font = Some(font.clone());
-		}
-		self.data.insert(font, data);
-	}
-
-	/// Checks if the font cache has a default font
-	pub fn has_default(&self) -> bool {
-		self.default_font.is_some()
-	}
-}
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Document {
@@ -67,7 +29,6 @@ pub struct Document {
 	/// This identifier is not a hash and is not guaranteed to be equal for equivalent documents.
 	#[serde(skip)]
 	pub state_identifier: DefaultHasher,
-	pub font_cache: FontCache,
 }
 
 impl Default for Document {
@@ -75,17 +36,16 @@ impl Default for Document {
 		Self {
 			root: Layer::new(LayerDataType::Folder(FolderLayer::default()), DAffine2::IDENTITY.to_cols_array()),
 			state_identifier: DefaultHasher::new(),
-			font_cache: FontCache::default(),
 		}
 	}
 }
 
 impl Document {
 	/// Wrapper around render, that returns the whole document as a Response.
-	pub fn render_root(&mut self, mode: ViewMode) -> String {
+	pub fn render_root(&mut self, mode: ViewMode, font_cache: &FontCache) -> String {
 		let mut svg_defs = String::from("<defs>");
 
-		self.root.render(&mut vec![], mode, &mut svg_defs, &self.font_cache);
+		self.root.render(&mut vec![], mode, &mut svg_defs, font_cache);
 
 		svg_defs.push_str("</defs>");
 
@@ -98,14 +58,14 @@ impl Document {
 	}
 
 	/// Checks whether each layer under `path` intersects with the provided `quad` and adds all intersection layers as paths to `intersections`.
-	pub fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>) {
-		self.layer(path).unwrap().intersects_quad(quad, path, intersections, &self.font_cache);
+	pub fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, font_cache: &FontCache) {
+		self.layer(path).unwrap().intersects_quad(quad, path, intersections, font_cache);
 	}
 
 	/// Checks whether each layer under the root path intersects with the provided `quad` and returns the paths to all intersecting layers.
-	pub fn intersects_quad_root(&self, quad: Quad) -> Vec<Vec<LayerId>> {
+	pub fn intersects_quad_root(&self, quad: Quad, font_cache: &FontCache) -> Vec<Vec<LayerId>> {
 		let mut intersections = Vec::new();
-		self.intersects_quad(quad, &mut vec![], &mut intersections);
+		self.intersects_quad(quad, &mut vec![], &mut intersections, font_cache);
 		intersections
 	}
 
@@ -359,26 +319,26 @@ impl Document {
 		Ok(())
 	}
 
-	pub fn viewport_bounding_box(&self, path: &[LayerId]) -> Result<Option<[DVec2; 2]>, DocumentError> {
+	pub fn viewport_bounding_box(&self, path: &[LayerId], font_cache: &FontCache) -> Result<Option<[DVec2; 2]>, DocumentError> {
 		let layer = self.layer(path)?;
 		let transform = self.multiply_transforms(path)?;
-		Ok(layer.data.bounding_box(transform, &self.font_cache))
+		Ok(layer.data.bounding_box(transform, font_cache))
 	}
 
-	pub fn bounding_box_and_transform(&self, path: &[LayerId]) -> Result<Option<([DVec2; 2], DAffine2)>, DocumentError> {
+	pub fn bounding_box_and_transform(&self, path: &[LayerId], font_cache: &FontCache) -> Result<Option<([DVec2; 2], DAffine2)>, DocumentError> {
 		let layer = self.layer(path)?;
 		let transform = self.multiply_transforms(&path[..path.len() - 1])?;
-		Ok(layer.data.bounding_box(layer.transform, &self.font_cache).map(|bounds| (bounds, transform)))
+		Ok(layer.data.bounding_box(layer.transform, font_cache).map(|bounds| (bounds, transform)))
 	}
 
-	pub fn visible_layers_bounding_box(&self) -> Option<[DVec2; 2]> {
+	pub fn visible_layers_bounding_box(&self, font_cache: &FontCache) -> Option<[DVec2; 2]> {
 		let mut paths = vec![];
 		self.visible_layers(&mut vec![], &mut paths).ok()?;
-		self.combined_viewport_bounding_box(paths.iter().map(|x| x.as_slice()))
+		self.combined_viewport_bounding_box(paths.iter().map(|x| x.as_slice()), font_cache)
 	}
 
-	pub fn combined_viewport_bounding_box<'a>(&self, paths: impl Iterator<Item = &'a [LayerId]>) -> Option<[DVec2; 2]> {
-		let boxes = paths.filter_map(|path| self.viewport_bounding_box(path).ok()?);
+	pub fn combined_viewport_bounding_box<'a>(&self, paths: impl Iterator<Item = &'a [LayerId]>, font_cache: &FontCache) -> Option<[DVec2; 2]> {
+		let boxes = paths.filter_map(|path| self.viewport_bounding_box(path, font_cache).ok()?);
 		boxes.reduce(|a, b| [a[0].min(b[0]), a[1].max(b[1])])
 	}
 
@@ -473,7 +433,7 @@ impl Document {
 
 	/// Mutate the document by applying the `operation` to it. If the operation necessitates a
 	/// reaction from the frontend, responses may be returned.
-	pub fn handle_operation(&mut self, operation: Operation) -> Result<Option<Vec<DocumentResponse>>, DocumentError> {
+	pub fn handle_operation(&mut self, operation: Operation, font_cache: &FontCache) -> Result<Option<Vec<DocumentResponse>>, DocumentError> {
 		use DocumentResponse::*;
 
 		operation.pseudo_hash().hash(&mut self.state_identifier);
@@ -536,9 +496,8 @@ impl Document {
 				size,
 				font_name,
 				font_style,
-				font_file,
 			} => {
-				let layer = Layer::new(LayerDataType::Text(TextLayer::new(text, style, size, font_name, font_style, font_file, &self.font_cache)), transform);
+				let layer = Layer::new(LayerDataType::Text(TextLayer::new(text, style, size, Font::new(font_name, font_style), font_cache)), transform);
 
 				self.set_layer(&path, layer, insert_index)?;
 
@@ -575,7 +534,7 @@ impl Document {
 					.layer_mut(id)
 					.ok_or_else(|| DocumentError::LayerNotFound(path.clone()))?
 					.as_text_mut()?
-					.update_text(new_text, &self.font_cache);
+					.update_text(new_text, font_cache);
 
 				self.mark_as_dirty(&path)?;
 
@@ -723,13 +682,7 @@ impl Document {
 					return Err(DocumentError::IndexOutOfBounds);
 				}
 			}
-			Operation::ModifyFont {
-				path,
-				font_family,
-				font_style,
-				font_file,
-				size,
-			} => {
+			Operation::ModifyFont { path, font_family, font_style, size } => {
 				// Not using Document::layer_mut is necessary because we also need to borrow the font cache
 				let mut current_folder = &mut self.root;
 				let (folder_path, id) = split_path(&path)?;
@@ -739,11 +692,9 @@ impl Document {
 				let layer_mut = current_folder.as_folder_mut()?.layer_mut(id).ok_or_else(|| DocumentError::LayerNotFound(folder_path.into()))?;
 				let text = layer_mut.as_text_mut()?;
 
-				text.font_family = font_family;
-				text.font_style = font_style;
-				text.font_file = font_file;
+				text.font = Font::new(font_family, font_style);
 				text.size = size;
-				text.regenerate_path(text.load_face(&self.font_cache));
+				text.regenerate_path(text.load_face(font_cache));
 				self.mark_as_dirty(&path)?;
 				Some([vec![DocumentChanged, LayerChanged { path: path.clone() }], update_thumbnails_upstream(&path)].concat())
 			}
@@ -806,7 +757,7 @@ impl Document {
 				let layer_mut = current_folder.as_folder_mut()?.layer_mut(id).ok_or_else(|| DocumentError::LayerNotFound(folder_path.into()))?;
 
 				if let LayerDataType::Text(t) = &mut layer_mut.data {
-					let bezpath = t.to_bez_path(t.load_face(&self.font_cache));
+					let bezpath = t.to_bez_path(t.load_face(font_cache));
 					layer_mut.data = layers::layer_info::LayerDataType::Shape(ShapeLayer::from_bez_path(bezpath, t.path_style.clone(), true));
 				}
 

@@ -255,14 +255,12 @@ pub struct FontInput {
 	pub font_family: String,
 	#[serde(rename = "fontStyle")]
 	pub font_style: String,
-	#[serde(rename = "fontFileUrl")]
-	pub font_file_url: String,
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
 	pub on_update: WidgetCallback<FontInput>,
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq,Eq)]
 pub enum NumberInputIncrementBehavior {
 	Add,
 	Multiply,
@@ -275,7 +273,7 @@ impl Default for NumberInputIncrementBehavior {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Separator {
 	pub direction: SeparatorDirection,
 
@@ -283,13 +281,13 @@ pub struct Separator {
 	pub separator_type: SeparatorType,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SeparatorDirection {
 	Horizontal,
 	Vertical,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SeparatorType {
 	Related,
 	Unrelated,
@@ -412,14 +410,14 @@ pub struct RadioEntryData {
 	pub on_update: WidgetCallback<()>,
 }
 
-#[derive(Clone, Serialize, Deserialize, Derivative, Debug, PartialEq)]
+#[derive(Clone, Serialize, Deserialize, Derivative, Debug, PartialEq, Eq)]
 pub struct IconLabel {
 	pub icon: String,
 	#[serde(rename = "gapAfter")]
 	pub gap_after: bool,
 }
 
-#[derive(Clone, Serialize, Deserialize, Derivative, Debug, PartialEq, Default)]
+#[derive(Clone, Serialize, Deserialize, Derivative, Debug, PartialEq, Eq, Default)]
 pub struct TextLabel {
 	pub value: String,
 	pub bold: bool,

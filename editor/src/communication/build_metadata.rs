@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 /// Provides metadata about the build environment.
 ///
 /// This data is viewable in the editor via the [`crate::dialog::AboutGraphite`] dialog.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BuildMetadata {
 	pub release: String,
 	pub timestamp: String,

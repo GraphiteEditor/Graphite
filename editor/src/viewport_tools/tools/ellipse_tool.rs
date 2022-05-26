@@ -1,13 +1,11 @@
 use super::shared::resize::Resize;
 use crate::consts::DRAG_THRESHOLD;
-use crate::document::DocumentMessageHandler;
 use crate::frontend::utility_types::MouseCursorIcon;
 use crate::input::keyboard::{Key, MouseMotion};
-use crate::input::InputPreprocessorMessageHandler;
 use crate::layout::widgets::PropertyHolder;
 use crate::message_prelude::*;
 use crate::misc::{HintData, HintGroup, HintInfo, KeysGroup};
-use crate::viewport_tools::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
+use crate::viewport_tools::tool::{Fsm, ToolActionHandlerData};
 
 use graphene::layers::style;
 use graphene::Operation;
@@ -23,7 +21,7 @@ pub struct EllipseTool {
 
 #[remain::sorted]
 #[impl_message(Message, ToolMessage, Ellipse)]
-#[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize)]
+#[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize)]
 pub enum EllipseToolMessage {
 	// Standard messages
 	#[remain::unsorted]
@@ -52,7 +50,7 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for EllipseTool 
 			return;
 		}
 
-		let new_state = self.fsm_state.transition(action, data.0, data.1, &mut self.data, &(), data.2, responses);
+		let new_state = self.fsm_state.transition(action, &mut self.data, data, &(), responses);
 
 		if self.fsm_state != new_state {
 			self.fsm_state = new_state;
@@ -95,22 +93,20 @@ impl Fsm for EllipseToolFsmState {
 	fn transition(
 		self,
 		event: ToolMessage,
-		document: &DocumentMessageHandler,
-		tool_data: &DocumentToolData,
-		data: &mut Self::ToolData,
+		tool_data: &mut Self::ToolData,
+		(document, global_tool_data, input, font_cache): ToolActionHandlerData,
 		_tool_options: &Self::ToolOptions,
-		input: &InputPreprocessorMessageHandler,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
 		use EllipseToolFsmState::*;
 		use EllipseToolMessage::*;
 
-		let mut shape_data = &mut data.data;
+		let mut shape_data = &mut tool_data.data;
 
 		if let ToolMessage::Ellipse(event) = event {
 			match (self, event) {
 				(Ready, DragStart) => {
-					shape_data.start(responses, document, input.mouse.position);
+					shape_data.start(responses, document, input.mouse.position, font_cache);
 					responses.push_back(DocumentMessage::StartTransaction.into());
 					shape_data.path = Some(document.get_path_for_new_layer());
 					responses.push_back(DocumentMessage::DeselectAllLayers.into());
@@ -120,7 +116,7 @@ impl Fsm for EllipseToolFsmState {
 							path: shape_data.path.clone().unwrap(),
 							insert_index: -1,
 							transform: DAffine2::ZERO.to_cols_array(),
-							style: style::PathStyle::new(None, style::Fill::solid(tool_data.primary_color)),
+							style: style::PathStyle::new(None, style::Fill::solid(global_tool_data.primary_color)),
 						}
 						.into(),
 					);
