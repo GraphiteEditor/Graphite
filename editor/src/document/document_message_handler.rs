@@ -611,7 +611,7 @@ impl DocumentMessageHandler {
 				})),
 				WidgetHolder::new(Widget::NumberInput(NumberInput {
 					unit: "°".into(),
-					value: Some(self.movement_handler.tilt / (std::f64::consts::PI / 180.)),
+					value: Some(self.movement_handler.snapped_angle() / (std::f64::consts::PI / 180.)),
 					increment_factor: 15.,
 					on_update: WidgetCallback::new(|number_input: &NumberInput| {
 						MovementMessage::SetCanvasRotation {
@@ -652,7 +652,7 @@ impl DocumentMessageHandler {
 				})),
 				WidgetHolder::new(Widget::NumberInput(NumberInput {
 					unit: "%".into(),
-					value: Some(self.movement_handler.zoom * 100.),
+					value: Some(self.movement_handler.snapped_scale() * 100.),
 					min: Some(0.000001),
 					max: Some(1000000.),
 					on_update: WidgetCallback::new(|number_input: &NumberInput| {
