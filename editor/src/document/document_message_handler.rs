@@ -599,7 +599,7 @@ impl DocumentMessageHandler {
 				})),
 				WidgetHolder::new(Widget::NumberInput(NumberInput {
 					unit: "°".into(),
-					value: Some(self.movement_handler.tilt / (std::f64::consts::PI / 180.)),
+					value: Some(self.movement_handler.snapped_angle() / (std::f64::consts::PI / 180.)),
 					increment_factor: 15.,
 					on_update: WidgetCallback::new(|number_input: &NumberInput| {
 						MovementMessage::SetCanvasRotation {
@@ -640,7 +640,7 @@ impl DocumentMessageHandler {
 				})),
 				WidgetHolder::new(Widget::NumberInput(NumberInput {
 					unit: "%".into(),
-					value: Some(self.movement_handler.zoom * 100.),
+					value: Some(self.movement_handler.snapped_scale() * 100.),
 					min: Some(0.000001),
 					max: Some(1000000.),
 					on_update: WidgetCallback::new(|number_input: &NumberInput| {
@@ -768,6 +768,7 @@ impl DocumentMessageHandler {
 					selected_index: blend_mode.map(|blend_mode| blend_mode as u32),
 					disabled: blend_mode.is_none() && !blend_mode_is_mixed,
 					draw_icon: false,
+					..Default::default()
 				})),
 				WidgetHolder::new(Widget::Separator(Separator {
 					separator_type: SeparatorType::Related,

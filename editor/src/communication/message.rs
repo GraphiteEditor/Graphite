@@ -1,4 +1,3 @@
-use super::BuildMetadata;
 use crate::message_prelude::*;
 
 use graphite_proc_macros::*;
@@ -41,9 +40,6 @@ pub enum Message {
 	Tool(ToolMessage),
 	#[child]
 	Workspace(WorkspaceMessage),
-
-	#[remain::unsorted]
-	PopulateBuildMetadata { new: BuildMetadata },
 }
 
 impl Message {

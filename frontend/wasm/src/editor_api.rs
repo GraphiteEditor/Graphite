@@ -247,14 +247,13 @@ impl JsEditorHandle {
 		self.dispatch(message);
 	}
 
-	pub fn populate_build_metadata(&self, release: String, timestamp: String, hash: String, branch: String) {
-		let new = editor::communication::BuildMetadata { release, timestamp, hash, branch };
-		let message = Message::PopulateBuildMetadata { new };
+	pub fn request_about_graphite_dialog(&self) {
+		let message = DialogMessage::RequestAboutGraphiteDialog;
 		self.dispatch(message);
 	}
 
-	pub fn request_about_graphite_dialog(&self) {
-		let message = DialogMessage::RequestAboutGraphiteDialog;
+	pub fn request_about_graphite_dialog_with_localized_commit_date(&self, localized_commit_date: String) {
+		let message = DialogMessage::RequestAboutGraphiteDialogWithLocalizedCommitDate { localized_commit_date };
 		self.dispatch(message);
 	}
 
