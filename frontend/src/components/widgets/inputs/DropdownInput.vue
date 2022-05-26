@@ -1,8 +1,8 @@
 <template>
-	<LayoutRow class="dropdown-input">
+	<LayoutRow class="dropdown-input" data-dropdown-input>
 		<LayoutRow
 			class="dropdown-box"
-			:class="{ disabled }"
+			:class="{ disabled, open }"
 			:style="{ minWidth: `${minWidth}px` }"
 			tabindex="0"
 			@click="() => !disabled && (open = true)"
@@ -10,7 +10,6 @@
 			@keydown="(e) => keydown(e)"
 			ref="dropdownBox"
 			data-hover-menu-spawner
-			data-dropdown-input
 		>
 			<IconLabel class="dropdown-icon" :icon="activeEntry.icon" v-if="activeEntry.icon" />
 			<span>{{ activeEntry.label }}</span>
@@ -147,7 +146,7 @@ export default defineComponent({
 			(this.$refs.menuList as typeof MenuList).keydown(e, false);
 		},
 		blur(e: FocusEvent) {
-			if ((e.relatedTarget as HTMLElement).closest("[data-dropdown-input]") !== this.$el) this.open = false;
+			if ((e.target as HTMLElement).closest("[data-dropdown-input]") !== this.$el) this.open = false;
 		},
 	},
 	components: {
