@@ -1,7 +1,7 @@
 use super::layer_info::LayerData;
 use super::style::{self, PathStyle, ViewMode};
-use crate::document::FontCache;
 use crate::intersection::{intersect_quad_bez_path, Quad};
+use crate::layers::text_layer::FontCache;
 use crate::LayerId;
 
 use glam::{DAffine2, DMat2, DVec2};

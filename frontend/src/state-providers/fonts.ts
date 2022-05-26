@@ -1,10 +1,7 @@
 import { reactive, readonly } from "vue";
 
 import { Editor } from "@/wasm-communication/editor";
-import { TriggerFontLoad, TriggerFontLoadDefault } from "@/wasm-communication/messages";
-
-const DEFAULT_FONT = "Merriweather";
-const DEFAULT_FONT_STYLE = "Normal (400)";
+import { TriggerFontLoad } from "@/wasm-communication/messages";
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 export function createFontsState(editor: Editor) {
@@ -40,17 +37,14 @@ export function createFontsState(editor: Editor) {
 	}
 
 	// Subscribe to process backend events
-	editor.subscriptions.subscribeJsMessage(TriggerFontLoadDefault, async (): Promise<void> => {
-		const fontFileUrl = await getFontFileUrl(DEFAULT_FONT, DEFAULT_FONT_STYLE);
-		if (!fontFileUrl) return;
-
-		const response = await fetch(fontFileUrl);
-		const responseBuffer = await response.arrayBuffer();
-		editor.instance.on_font_load(fontFileUrl, new Uint8Array(responseBuffer), true);
-	});
 	editor.subscriptions.subscribeJsMessage(TriggerFontLoad, async (triggerFontLoad) => {
-		const response = await (await fetch(triggerFontLoad.font_file_url)).arrayBuffer();
-		editor.instance.on_font_load(triggerFontLoad.font_file_url, new Uint8Array(response), false);
+		const url = await getFontFileUrl(triggerFontLoad.font.font_family, triggerFontLoad.font.font_style);
+		if (url) {
+			const response = await (await fetch(url)).arrayBuffer();
+			editor.instance.on_font_load(triggerFontLoad.font.font_family, triggerFontLoad.font.font_style, url, new Uint8Array(response), triggerFontLoad.is_default);
+		} else {
+			editor.instance.error_dialog("Failed to load font", `The font ${triggerFontLoad.font.font_family} with style ${triggerFontLoad.font.font_style} does not exist`);
+		}
 	});
 
 	const fontList: Promise<{ family: string; variants: string[]; files: Map<string, string> }[]> = new Promise((resolve) => {

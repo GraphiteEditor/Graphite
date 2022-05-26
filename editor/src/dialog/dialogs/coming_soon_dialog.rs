@@ -1,5 +1,7 @@
 use crate::{layout::widgets::*, message_prelude::FrontendMessage};
 
+use std::fmt::Write;
+
 /// A dialog to notify users of an unfinished issue, optionally with an issue number.
 pub struct ComingSoon {
 	pub issue: Option<i32>,
@@ -16,7 +18,7 @@ impl PropertyHolder for ComingSoon {
 			..Default::default()
 		}))];
 		if let Some(issue) = self.issue {
-			details += &format!("— but you can help add it!\nSee issue #{issue} on GitHub.");
+			let _ = write!(details, "— but you can help add it!\nSee issue #{issue} on GitHub.");
 			buttons.push(WidgetHolder::new(Widget::TextButton(TextButton {
 				label: format!("Issue #{issue}"),
 				min_width: 96,

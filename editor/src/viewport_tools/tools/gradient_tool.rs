@@ -2,12 +2,11 @@ use crate::consts::{COLOR_ACCENT, LINE_ROTATE_SNAP_ANGLE, SELECTION_TOLERANCE, V
 use crate::document::DocumentMessageHandler;
 use crate::frontend::utility_types::MouseCursorIcon;
 use crate::input::keyboard::{Key, MouseMotion};
-use crate::input::InputPreprocessorMessageHandler;
 use crate::layout::widgets::{LayoutRow, PropertyHolder, RadioEntryData, RadioInput, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
 use crate::message_prelude::*;
 use crate::misc::{HintData, HintGroup, HintInfo, KeysGroup};
 use crate::viewport_tools::snapping::SnapHandler;
-use crate::viewport_tools::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
+use crate::viewport_tools::tool::{Fsm, ToolActionHandlerData};
 
 use graphene::color::Color;
 use graphene::intersection::Quad;
@@ -16,6 +15,7 @@ use graphene::layers::style::{Fill, Gradient, GradientType, PathStyle, Stroke};
 use graphene::Operation;
 
 use glam::{DAffine2, DVec2};
+use graphene::layers::text_layer::FontCache;
 use serde::{Deserialize, Serialize};
 
 #[derive(Default)]
@@ -37,7 +37,7 @@ impl Default for GradientOptions {
 
 #[remain::sorted]
 #[impl_message(Message, ToolMessage, Gradient)]
-#[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize)]
+#[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize)]
 pub enum GradientToolMessage {
 	// Standard messages
 	#[remain::unsorted]
@@ -55,7 +55,7 @@ pub enum GradientToolMessage {
 }
 
 #[remain::sorted]
-#[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize)]
+#[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize)]
 pub enum GradientOptionsUpdate {
 	Type(GradientType),
 }
@@ -78,7 +78,7 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for GradientTool
 			return;
 		}
 
-		let new_state = self.fsm_state.transition(action, data.0, data.1, &mut self.data, &self.options, data.2, responses);
+		let new_state = self.fsm_state.transition(action, &mut self.data, data, &self.options, responses);
 
 		if self.fsm_state != new_state {
 			self.fsm_state = new_state;
@@ -128,8 +128,8 @@ impl Default for GradientToolFsmState {
 }
 
 /// Computes the transform from gradient space to layer space (where gradient space is 0..1 in layer space)
-fn gradient_space_transform(path: &[LayerId], layer: &Layer, document: &DocumentMessageHandler) -> DAffine2 {
-	let bounds = layer.aabounding_box_for_transform(DAffine2::IDENTITY, &document.graphene_document.font_cache).unwrap();
+fn gradient_space_transform(path: &[LayerId], layer: &Layer, document: &DocumentMessageHandler, font_cache: &FontCache) -> DAffine2 {
+	let bounds = layer.aabounding_box_for_transform(DAffine2::IDENTITY, font_cache).unwrap();
 	let bound_transform = DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
 
 	let multiplied = document.graphene_document.multiply_transforms(path).unwrap();
@@ -183,8 +183,8 @@ impl GradientOverlay {
 		path
 	}
 
-	pub fn new(fill: &Gradient, dragging_start: Option<bool>, path: &[LayerId], layer: &Layer, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) -> Self {
-		let transform = gradient_space_transform(path, layer, document);
+	pub fn new(fill: &Gradient, dragging_start: Option<bool>, path: &[LayerId], layer: &Layer, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>, font_cache: &FontCache) -> Self {
+		let transform = gradient_space_transform(path, layer, document, font_cache);
 		let Gradient { start, end, .. } = fill;
 		let [start, end] = [transform.transform_point2(*start), transform.transform_point2(*end)];
 
@@ -232,8 +232,8 @@ struct SelectedGradient {
 }
 
 impl SelectedGradient {
-	pub fn new(gradient: Gradient, path: &[LayerId], layer: &Layer, document: &DocumentMessageHandler) -> Self {
-		let transform = gradient_space_transform(path, layer, document);
+	pub fn new(gradient: Gradient, path: &[LayerId], layer: &Layer, document: &DocumentMessageHandler, font_cache: &FontCache) -> Self {
+		let transform = gradient_space_transform(path, layer, document, font_cache);
 		Self {
 			path: path.to_vec(),
 			transform,
@@ -291,8 +291,8 @@ struct GradientToolData {
 	snap_handler: SnapHandler,
 }
 
-pub fn start_snap(snap_handler: &mut SnapHandler, document: &DocumentMessageHandler) {
-	snap_handler.start_snap(document, document.bounding_boxes(None, None), true, true);
+pub fn start_snap(snap_handler: &mut SnapHandler, document: &DocumentMessageHandler, font_cache: &FontCache) {
+	snap_handler.start_snap(document, document.bounding_boxes(None, None, font_cache), true, true);
 	snap_handler.add_all_document_handles(document, &[], &[]);
 }
 
@@ -303,17 +303,15 @@ impl Fsm for GradientToolFsmState {
 	fn transition(
 		self,
 		event: ToolMessage,
-		document: &DocumentMessageHandler,
-		tool_data: &DocumentToolData,
-		data: &mut Self::ToolData,
+		tool_data: &mut Self::ToolData,
+		(document, global_tool_data, input, font_cache): ToolActionHandlerData,
 		tool_options: &Self::ToolOptions,
-		input: &InputPreprocessorMessageHandler,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
 		if let ToolMessage::Gradient(event) = event {
 			match (self, event) {
 				(_, GradientToolMessage::DocumentIsDirty) => {
-					while let Some(overlay) = data.gradient_overlays.pop() {
+					while let Some(overlay) = tool_data.gradient_overlays.pop() {
 						overlay.delete_overlays(responses);
 					}
 
@@ -321,11 +319,13 @@ impl Fsm for GradientToolFsmState {
 						let layer = document.graphene_document.layer(path).unwrap();
 
 						if let Ok(Fill::Gradient(gradient)) = layer.style().map(|style| style.fill()) {
-							let dragging_start = data
+							let dragging_start = tool_data
 								.selected_gradient
 								.as_ref()
 								.and_then(|selected| if selected.path == path { Some(selected.dragging_start) } else { None });
-							data.gradient_overlays.push(GradientOverlay::new(gradient, dragging_start, path, layer, document, responses))
+							tool_data
+								.gradient_overlays
+								.push(GradientOverlay::new(gradient, dragging_start, path, layer, document, responses, font_cache))
 						}
 					}
 
@@ -338,11 +338,11 @@ impl Fsm for GradientToolFsmState {
 					let tolerance = VECTOR_MANIPULATOR_ANCHOR_MARKER_SIZE.powi(2);
 
 					let mut dragging = false;
-					for overlay in &data.gradient_overlays {
+					for overlay in &tool_data.gradient_overlays {
 						if overlay.evaluate_gradient_start().distance_squared(mouse) < tolerance {
 							dragging = true;
-							start_snap(&mut data.snap_handler, document);
-							data.selected_gradient = Some(SelectedGradient {
+							start_snap(&mut tool_data.snap_handler, document, font_cache);
+							tool_data.selected_gradient = Some(SelectedGradient {
 								path: overlay.path.clone(),
 								transform: overlay.transform,
 								gradient: overlay.gradient.clone(),
@@ -351,8 +351,8 @@ impl Fsm for GradientToolFsmState {
 						}
 						if overlay.evaluate_gradient_end().distance_squared(mouse) < tolerance {
 							dragging = true;
-							start_snap(&mut data.snap_handler, document);
-							data.selected_gradient = Some(SelectedGradient {
+							start_snap(&mut tool_data.snap_handler, document, font_cache);
+							tool_data.selected_gradient = Some(SelectedGradient {
 								path: overlay.path.clone(),
 								transform: overlay.transform,
 								gradient: overlay.gradient.clone(),
@@ -365,7 +365,7 @@ impl Fsm for GradientToolFsmState {
 					} else {
 						let tolerance = DVec2::splat(SELECTION_TOLERANCE);
 						let quad = Quad::from_box([input.mouse.position - tolerance, input.mouse.position + tolerance]);
-						let intersection = document.graphene_document.intersects_quad_root(quad).pop();
+						let intersection = document.graphene_document.intersects_quad_root(quad, font_cache).pop();
 
 						if let Some(intersection) = intersection {
 							if !document.selected_layers_contains(&intersection) {
@@ -378,19 +378,19 @@ impl Fsm for GradientToolFsmState {
 
 							let gradient = Gradient::new(
 								DVec2::ZERO,
-								tool_data.secondary_color,
+								global_tool_data.secondary_color,
 								DVec2::ONE,
-								tool_data.primary_color,
+								global_tool_data.primary_color,
 								DAffine2::IDENTITY,
 								generate_uuid(),
 								tool_options.gradient_type,
 							);
-							let mut selected_gradient = SelectedGradient::new(gradient, &intersection, layer, document).with_gradient_start(input.mouse.position);
+							let mut selected_gradient = SelectedGradient::new(gradient, &intersection, layer, document, font_cache).with_gradient_start(input.mouse.position);
 							selected_gradient.update_gradient(input.mouse.position, responses, false, tool_options.gradient_type);
 
-							data.selected_gradient = Some(selected_gradient);
+							tool_data.selected_gradient = Some(selected_gradient);
 
-							start_snap(&mut data.snap_handler, document);
+							start_snap(&mut tool_data.snap_handler, document, font_cache);
 
 							GradientToolFsmState::Drawing
 						} else {
@@ -399,23 +399,23 @@ impl Fsm for GradientToolFsmState {
 					}
 				}
 				(GradientToolFsmState::Drawing, GradientToolMessage::PointerMove { constrain_axis }) => {
-					if let Some(selected_gradient) = &mut data.selected_gradient {
-						let mouse = data.snap_handler.snap_position(responses, document, input.mouse.position);
+					if let Some(selected_gradient) = &mut tool_data.selected_gradient {
+						let mouse = tool_data.snap_handler.snap_position(responses, document, input.mouse.position);
 						selected_gradient.update_gradient(mouse, responses, input.keyboard.get(constrain_axis as usize), selected_gradient.gradient.gradient_type);
 					}
 					GradientToolFsmState::Drawing
 				}
 
 				(GradientToolFsmState::Drawing, GradientToolMessage::PointerUp) => {
-					data.snap_handler.cleanup(responses);
+					tool_data.snap_handler.cleanup(responses);
 
 					GradientToolFsmState::Ready
 				}
 
 				(_, GradientToolMessage::Abort) => {
-					data.snap_handler.cleanup(responses);
+					tool_data.snap_handler.cleanup(responses);
 
-					while let Some(overlay) = data.gradient_overlays.pop() {
+					while let Some(overlay) = tool_data.gradient_overlays.pop() {
 						overlay.delete_overlays(responses);
 					}
 					GradientToolFsmState::Ready

@@ -7,7 +7,7 @@ use crate::layout::widgets::{LayoutRow, NumberInput, PropertyHolder, Widget, Wid
 use crate::message_prelude::*;
 use crate::misc::{HintData, HintGroup, HintInfo, KeysGroup};
 use crate::viewport_tools::snapping::SnapHandler;
-use crate::viewport_tools::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
+use crate::viewport_tools::tool::{Fsm, ToolActionHandlerData};
 use crate::viewport_tools::vector_editor::constants::ControlPointType;
 use crate::viewport_tools::vector_editor::shape_editor::ShapeEditor;
 use crate::viewport_tools::vector_editor::vector_shape::VectorShape;
@@ -22,7 +22,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Default)]
 pub struct PenTool {
 	fsm_state: PenToolFsmState,
-	data: PenToolData,
+	tool_data: PenToolData,
 	options: PenOptions,
 }
 
@@ -84,7 +84,7 @@ impl PropertyHolder for PenTool {
 }
 
 impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for PenTool {
-	fn process_action(&mut self, action: ToolMessage, data: ToolActionHandlerData<'a>, responses: &mut VecDeque<Message>) {
+	fn process_action(&mut self, action: ToolMessage, tool_data: ToolActionHandlerData<'a>, responses: &mut VecDeque<Message>) {
 		if action == ToolMessage::UpdateHints {
 			self.fsm_state.update_hints(responses);
 			return;
@@ -102,7 +102,7 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for PenTool {
 			return;
 		}
 
-		let new_state = self.fsm_state.transition(action, data.0, data.1, &mut self.data, &self.options, data.2, responses);
+		let new_state = self.fsm_state.transition(action, &mut self.tool_data, tool_data, &self.options, responses);
 
 		if self.fsm_state != new_state {
 			self.fsm_state = new_state;
@@ -144,11 +144,9 @@ impl Fsm for PenToolFsmState {
 	fn transition(
 		self,
 		event: ToolMessage,
-		document: &DocumentMessageHandler,
-		tool_data: &DocumentToolData,
-		data: &mut Self::ToolData,
+		tool_data: &mut Self::ToolData,
+		(document, global_tool_data, input, font_cache): ToolActionHandlerData,
 		tool_options: &Self::ToolOptions,
-		input: &InputPreprocessorMessageHandler,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
 		use PenToolFsmState::*;
@@ -159,7 +157,7 @@ impl Fsm for PenToolFsmState {
 		if let ToolMessage::Pen(event) = event {
 			match (self, event) {
 				(_, DocumentIsDirty) => {
-					data.shape_editor.update_shapes(document, responses);
+					tool_data.shape_editor.update_shapes(document, responses);
 					self
 				}
 				(Ready, DragStart) => {
@@ -167,76 +165,76 @@ impl Fsm for PenToolFsmState {
 					responses.push_back(DocumentMessage::DeselectAllLayers.into());
 
 					// Create a new layer and prep snap system
-					data.path = Some(document.get_path_for_new_layer());
-					data.snap_handler.start_snap(document, document.bounding_boxes(None, None), true, true);
-					data.snap_handler.add_all_document_handles(document, &[], &[]);
-					let snapped_position = data.snap_handler.snap_position(responses, document, input.mouse.position);
+					tool_data.path = Some(document.get_path_for_new_layer());
+					tool_data.snap_handler.start_snap(document, document.bounding_boxes(None, None, font_cache), true, true);
+					tool_data.snap_handler.add_all_document_handles(document, &[], &[]);
+					let snapped_position = tool_data.snap_handler.snap_position(responses, document, input.mouse.position);
 
 					// Get the position and set properties
 					let start_position = transform.inverse().transform_point2(snapped_position);
-					data.weight = tool_options.line_weight;
+					tool_data.weight = tool_options.line_weight;
 
 					// Create the initial shape with a `bez_path` (only contains a moveto initially)
-					if let Some(layer_path) = &data.path {
-						data.bez_path = start_bez_path(start_position);
+					if let Some(layer_path) = &tool_data.path {
+						tool_data.bez_path = start_bez_path(start_position);
 						responses.push_back(
 							Operation::AddShape {
 								path: layer_path.clone(),
 								transform: transform.to_cols_array(),
 								insert_index: -1,
-								bez_path: data.bez_path.clone().into_iter().collect(),
-								style: style::PathStyle::new(Some(style::Stroke::new(tool_data.primary_color, data.weight)), style::Fill::None),
+								bez_path: tool_data.bez_path.clone().into_iter().collect(),
+								style: style::PathStyle::new(Some(style::Stroke::new(global_tool_data.primary_color, tool_data.weight)), style::Fill::None),
 								closed: false,
 							}
 							.into(),
 						);
 					}
 
-					add_to_curve(data, input, transform, document, responses);
+					add_to_curve(tool_data, input, transform, document, responses);
 					Drawing
 				}
 				(Drawing, DragStart) => {
-					data.drag_start_position = input.mouse.position;
-					add_to_curve(data, input, transform, document, responses);
+					tool_data.drag_start_position = input.mouse.position;
+					add_to_curve(tool_data, input, transform, document, responses);
 					Drawing
 				}
 				(Drawing, DragStop) => {
 					// Deselect everything (this means we are no longer dragging the handle)
-					data.shape_editor.deselect_all(responses);
+					tool_data.shape_editor.deselect_all(responses);
 
 					// If the drag does not exceed the threshold, then replace the curve with a line
-					if data.drag_start_position.distance(input.mouse.position) < CREATE_CURVE_THRESHOLD {
+					if tool_data.drag_start_position.distance(input.mouse.position) < CREATE_CURVE_THRESHOLD {
 						// Modify the second to last element (as we have an unplaced element tracing to the cursor as the last element)
-						let replace_index = data.bez_path.len() - 2;
-						let line_from_curve = convert_curve_to_line(data.bez_path[replace_index]);
-						replace_path_element(data, transform, replace_index, line_from_curve, responses);
+						let replace_index = tool_data.bez_path.len() - 2;
+						let line_from_curve = convert_curve_to_line(tool_data.bez_path[replace_index]);
+						replace_path_element(tool_data, transform, replace_index, line_from_curve, responses);
 					}
 
 					// Reselect the last point
-					if let Some(last_anchor) = data.shape_editor.select_last_anchor() {
+					if let Some(last_anchor) = tool_data.shape_editor.select_last_anchor() {
 						last_anchor.select_point(ControlPointType::Anchor as usize, true, responses);
 					}
 
 					// Move the newly selected points to the cursor
-					let snapped_position = data.snap_handler.snap_position(responses, document, input.mouse.position);
-					data.shape_editor.move_selected_points(snapped_position, false, responses);
+					let snapped_position = tool_data.snap_handler.snap_position(responses, document, input.mouse.position);
+					tool_data.shape_editor.move_selected_points(snapped_position, false, responses);
 
 					Drawing
 				}
 				(Drawing, PointerMove) => {
 					// Move selected points
-					let snapped_position = data.snap_handler.snap_position(responses, document, input.mouse.position);
-					data.shape_editor.move_selected_points(snapped_position, false, responses);
+					let snapped_position = tool_data.snap_handler.snap_position(responses, document, input.mouse.position);
+					tool_data.shape_editor.move_selected_points(snapped_position, false, responses);
 
 					Drawing
 				}
 				(Drawing, Confirm) | (Drawing, Abort) => {
 					// Cleanup, we are either canceling or finished drawing
-					if data.bez_path.len() >= 2 {
+					if tool_data.bez_path.len() >= 2 {
 						// Remove the last segment
-						remove_from_curve(data);
-						if let Some(layer_path) = &data.path {
-							responses.push_back(apply_bez_path(layer_path.clone(), data.bez_path.clone(), transform));
+						remove_from_curve(tool_data);
+						if let Some(layer_path) = &tool_data.path {
+							responses.push_back(apply_bez_path(layer_path.clone(), tool_data.bez_path.clone(), transform));
 						}
 
 						responses.push_back(DocumentMessage::DeselectAllLayers.into());
@@ -245,17 +243,17 @@ impl Fsm for PenToolFsmState {
 						responses.push_back(DocumentMessage::AbortTransaction.into());
 					}
 
-					data.shape_editor.remove_overlays(responses);
-					data.shape_editor.clear_shapes_to_modify();
+					tool_data.shape_editor.remove_overlays(responses);
+					tool_data.shape_editor.clear_shapes_to_modify();
 
-					data.path = None;
-					data.snap_handler.cleanup(responses);
+					tool_data.path = None;
+					tool_data.snap_handler.cleanup(responses);
 
 					Ready
 				}
 				(_, Abort) => {
-					data.shape_editor.remove_overlays(responses);
-					data.shape_editor.clear_shapes_to_modify();
+					tool_data.shape_editor.remove_overlays(responses);
+					tool_data.shape_editor.clear_shapes_to_modify();
 					Ready
 				}
 				_ => self,
@@ -298,56 +296,56 @@ impl Fsm for PenToolFsmState {
 }
 
 /// Add to the curve and select the second anchor of the last point and the newly added anchor point
-fn add_to_curve(data: &mut PenToolData, input: &InputPreprocessorMessageHandler, transform: DAffine2, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
-	// Refresh data's representation of the path
-	update_path_representation(data);
+fn add_to_curve(tool_data: &mut PenToolData, input: &InputPreprocessorMessageHandler, transform: DAffine2, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
+	// Refresh tool_data's representation of the path
+	update_path_representation(tool_data);
 
 	// Setup our position params
-	let snapped_position = data.snap_handler.snap_position(responses, document, input.mouse.position);
+	let snapped_position = tool_data.snap_handler.snap_position(responses, document, input.mouse.position);
 	let position = transform.inverse().transform_point2(snapped_position);
 
 	// Add a curve to the path
-	if let Some(layer_path) = &data.path {
+	if let Some(layer_path) = &tool_data.path {
 		// Push curve onto path
 		let point = Point { x: position.x, y: position.y };
-		data.bez_path.push(PathEl::CurveTo(point, point, point));
+		tool_data.bez_path.push(PathEl::CurveTo(point, point, point));
 
-		responses.push_back(apply_bez_path(layer_path.clone(), data.bez_path.clone(), transform));
+		responses.push_back(apply_bez_path(layer_path.clone(), tool_data.bez_path.clone(), transform));
 
 		// Clear previous overlays
-		data.shape_editor.remove_overlays(responses);
+		tool_data.shape_editor.remove_overlays(responses);
 
 		// Create a new `shape` from the updated `bez_path`
-		let bez_path = data.bez_path.clone().into_iter().collect();
-		data.curve_shape = VectorShape::new(layer_path.to_vec(), transform, &bez_path, false, responses);
-		data.shape_editor.set_shapes_to_modify(vec![data.curve_shape.clone()]);
+		let bez_path = tool_data.bez_path.clone().into_iter().collect();
+		tool_data.curve_shape = VectorShape::new(layer_path.to_vec(), transform, &bez_path, false, responses);
+		tool_data.shape_editor.set_shapes_to_modify(vec![tool_data.curve_shape.clone()]);
 
 		// Select the second to last `PathEl`'s handle
-		data.shape_editor.set_shape_selected(0);
-		let handle_element = data.shape_editor.select_nth_anchor(0, -2);
+		tool_data.shape_editor.set_shape_selected(0);
+		let handle_element = tool_data.shape_editor.select_nth_anchor(0, -2);
 		handle_element.select_point(ControlPointType::Handle2 as usize, true, responses);
 
 		// Select the last `PathEl`'s anchor point
-		if let Some(last_anchor) = data.shape_editor.select_last_anchor() {
+		if let Some(last_anchor) = tool_data.shape_editor.select_last_anchor() {
 			last_anchor.select_point(ControlPointType::Anchor as usize, true, responses);
 		}
-		data.shape_editor.set_selected_mirror_options(true, true);
+		tool_data.shape_editor.set_selected_mirror_options(true, true);
 	}
 }
 
 /// Replace a `PathEl` with another inside of `bez_path` by index
-fn replace_path_element(data: &mut PenToolData, transform: DAffine2, replace_index: usize, replacement: PathEl, responses: &mut VecDeque<Message>) {
-	data.bez_path[replace_index] = replacement;
-	if let Some(layer_path) = &data.path {
-		responses.push_back(apply_bez_path(layer_path.clone(), data.bez_path.clone(), transform));
+fn replace_path_element(tool_data: &mut PenToolData, transform: DAffine2, replace_index: usize, replacement: PathEl, responses: &mut VecDeque<Message>) {
+	tool_data.bez_path[replace_index] = replacement;
+	if let Some(layer_path) = &tool_data.path {
+		responses.push_back(apply_bez_path(layer_path.clone(), tool_data.bez_path.clone(), transform));
 	}
 }
 
 /// Remove a curve from the end of the `bez_path`
-fn remove_from_curve(data: &mut PenToolData) {
-	// Refresh data's representation of the path
-	update_path_representation(data);
-	data.bez_path.pop();
+fn remove_from_curve(tool_data: &mut PenToolData) {
+	// Refresh tool_data's representation of the path
+	update_path_representation(tool_data);
+	tool_data.bez_path.pop();
 }
 
 /// Create the initial moveto for the `bez_path`
@@ -366,13 +364,13 @@ fn convert_curve_to_line(curve: PathEl) -> PathEl {
 	}
 }
 
-/// Update data's version of `bez_path` to match `ShapeEditor`'s version
-fn update_path_representation(data: &mut PenToolData) {
+/// Update tool_data's version of `bez_path` to match `ShapeEditor`'s version
+fn update_path_representation(tool_data: &mut PenToolData) {
 	// TODO Update ShapeEditor to provide similar functionality
 	// We need to make sure we have the most up-to-date bez_path
-	if !data.shape_editor.shapes_to_modify.is_empty() {
+	if !tool_data.shape_editor.shapes_to_modify.is_empty() {
 		// Hacky way of saving the curve changes
-		data.bez_path = data.shape_editor.shapes_to_modify[0].bez_path.elements().to_vec();
+		tool_data.bez_path = tool_data.shape_editor.shapes_to_modify[0].bez_path.elements().to_vec();
 	}
 }
 
