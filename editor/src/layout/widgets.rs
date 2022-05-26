@@ -260,7 +260,7 @@ pub struct FontInput {
 	pub on_update: WidgetCallback<FontInput>,
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug, PartialEq,Eq)]
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub enum NumberInputIncrementBehavior {
 	Add,
 	Multiply,
