@@ -497,7 +497,10 @@ impl Document {
 				font_name,
 				font_style,
 			} => {
-				let layer = Layer::new(LayerDataType::Text(TextLayer::new(text, style, size, Font::new(font_name, font_style), font_cache)), transform);
+				let font = Font::new(font_name, font_style);
+				let layer_text = TextLayer::new(text, style, size, font, font_cache);
+				let layer_data = LayerDataType::Text(layer_text);
+				let layer = Layer::new(layer_data, transform);
 
 				self.set_layer(&path, layer, insert_index)?;
 

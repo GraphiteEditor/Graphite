@@ -3,11 +3,11 @@ use crate::message_prelude::*;
 use graphene::color::Color;
 use graphene::document::Document as GrapheneDocument;
 use graphene::layers::style::{self, Fill, ViewMode};
+use graphene::layers::text_layer::FontCache;
 use graphene::DocumentResponse;
 use graphene::Operation as DocumentOperation;
 
 use glam::DAffine2;
-use graphene::layers::text_layer::FontCache;
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 

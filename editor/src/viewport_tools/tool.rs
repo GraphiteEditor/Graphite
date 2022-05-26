@@ -6,8 +6,8 @@ use crate::layout::widgets::{IconButton, LayoutRow, PropertyHolder, Separator, S
 use crate::message_prelude::*;
 
 use graphene::color::Color;
-
 use graphene::layers::text_layer::FontCache;
+
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
 use std::fmt::{self, Debug};

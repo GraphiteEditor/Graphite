@@ -8,11 +8,12 @@ use crate::message_prelude::*;
 use crate::misc::{HintData, HintGroup, HintInfo, KeysGroup};
 use crate::viewport_tools::tool::{Fsm, ToolActionHandlerData};
 
-use glam::{DAffine2, DVec2};
 use graphene::intersection::Quad;
 use graphene::layers::style::{self, Fill, Stroke};
 use graphene::layers::text_layer::FontCache;
 use graphene::Operation;
+
+use glam::{DAffine2, DVec2};
 use kurbo::Shape;
 use serde::{Deserialize, Serialize};
 

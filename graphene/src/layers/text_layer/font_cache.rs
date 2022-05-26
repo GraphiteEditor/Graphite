@@ -57,7 +57,7 @@ impl FontCache {
 		self.default_font.is_some()
 	}
 
-	/// Gets the preview URL for shwoing in text field when live editing
+	/// Gets the preview URL for showing in text field when live editing
 	pub fn get_preview_url(&self, font: &Font) -> Option<&String> {
 		self.preview_urls.get(font)
 	}

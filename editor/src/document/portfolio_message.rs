@@ -1,7 +1,8 @@
 use super::clipboards::Clipboard;
 use crate::message_prelude::*;
 
-use graphene::{layers::text_layer::Font, LayerId};
+use graphene::layers::text_layer::Font;
+use graphene::LayerId;
 
 use serde::{Deserialize, Serialize};
 

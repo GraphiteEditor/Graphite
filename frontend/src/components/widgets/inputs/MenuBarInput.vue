@@ -1,5 +1,5 @@
 <template>
-	<div class="menu-bar-input" data-menu-list>
+	<div class="menu-bar-input" data-menu-bar-input>
 		<div class="entry-container">
 			<button @click="() => visitWebsite('https://graphite.rs')" class="entry">
 				<IconLabel :icon="'GraphiteLogo'" />
@@ -9,7 +9,7 @@
 			<div
 				@click="(e) => onClick(entry, e.target)"
 				tabindex="0"
-				@blur="(e:FocusEvent) => blur(e,entry)"
+				@blur="(e: FocusEvent) => blur(e,entry)"
 				@keydown="entry.ref?.keydown"
 				class="entry"
 				:class="{ open: entry.ref?.isOpen }"
@@ -226,7 +226,7 @@ export default defineComponent({
 			else throw new Error("The menu bar floating menu has no associated ref");
 		},
 		blur(e: FocusEvent, menuEntry: MenuListEntry) {
-			if ((e.target as HTMLElement).closest("[data-menu-list]") !== this.$el && menuEntry.ref) menuEntry.ref.isOpen = false;
+			if ((e.target as HTMLElement).closest("[data-menu-bar-input]") !== this.$el && menuEntry.ref) menuEntry.ref.isOpen = false;
 		},
 		// TODO: Move to backend
 		visitWebsite(url: string) {

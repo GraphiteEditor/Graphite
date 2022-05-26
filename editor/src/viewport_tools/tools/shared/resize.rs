@@ -5,7 +5,8 @@ use crate::input::InputPreprocessorMessageHandler;
 use crate::message_prelude::*;
 use crate::viewport_tools::snapping::SnapHandler;
 
-use graphene::{layers::text_layer::FontCache, Operation};
+use graphene::layers::text_layer::FontCache;
+use graphene::Operation;
 
 use glam::{DAffine2, DVec2, Vec2Swizzles};
 
