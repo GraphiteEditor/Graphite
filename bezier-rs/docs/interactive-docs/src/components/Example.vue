@@ -7,15 +7,16 @@
 
 <script>
 
-import { DrawingExample } from './drawing-example.js'
+import { BezierDrawing } from './BezierDrawing.js'
 
 export default {
   name: 'ExampleComponent',
   props: {
     title: String,
+    points: Object,
   },
   mounted() {
-    new DrawingExample(this.$refs.drawing);
+    new BezierDrawing(this.$refs.drawing, this.points);
   }
 }
 </script>
