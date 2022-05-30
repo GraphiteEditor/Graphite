@@ -1,5 +1,4 @@
-use glam::{DVec2, DVec3};
-use std::fmt::Write;
+use glam::DVec2;
 
 /// Test function to double a number
 pub fn test_double(num: i32) -> i32 {
@@ -63,22 +62,22 @@ impl Bezier {
 	}
 
 	/// Convert to SVG
-	pub fn to_svg(self, svg_def: &mut String) {
+	// TODO: Allow modifying the viewport, width and height
+	pub fn to_svg(self) -> String {
 		if self.points[0].is_none() {
-			return;
+			return "".to_string();
 		}
 		let start = self.points[0].unwrap();
 		let m_path = format!("M {} {}", start[0], start[1]);
-		let str_points: String = self.points.iter().flatten().skip(1).map(|p| format!("{} {}", p[0], p[1])).collect();
+		let str_points = self.points.iter().flatten().skip(1).map(|p| format!("{} {}", p[0], p[1])).collect::<Vec<String>>().join(", ");
 		let path = match self.bezier_type {
 			BezierType::Quadratic => format!("Q {}", str_points),
 			BezierType::Cubic => format!("C {}", str_points),
 		};
-		let _ = write!(
-			svg_def,
-			r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{} {} {} {}" width="{}px" height="{}"><path d="{} {} {}" stroke="black" fill="transparent"/></svg>"#,
-			100, 100, 100, 100, 100, 100, "\n", m_path, path
-		);
+		format!(
+			r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{} {} {} {}" width="{}px" height="{}px"><path d="{} {} {}" stroke="black" fill="transparent"/></svg>"#,
+			0, 0, 100, 100, 100, 100, "\n", m_path, path
+		)
 	}
 
 	/// Return the length of the bezier curve
