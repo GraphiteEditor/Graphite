@@ -35,7 +35,7 @@ impl Bezier {
 
 	pub fn from_cubic_coordinates(x1: f64, y1: f64, x2: f64, y2: f64, x3: f64, y3: f64, x4: f64, y4: f64) -> Self {
 		Bezier {
-			points: [Some(DVec2::from((x1, y1))), Some(DVec2::from((x2, y2))), Some(DVec2::from((x3, y3))), None],
+			points: [Some(DVec2::from((x1, y1))), Some(DVec2::from((x2, y2))), Some(DVec2::from((x3, y3))), Some(DVec2::from((x4, y4)))],
 			bezier_type: BezierType::Cubic,
 		}
 	}
@@ -49,14 +49,14 @@ impl Bezier {
 
 	/// Create a quadratic bezier curve that goes through 3 points
 	// #[inline]
-	pub fn quadratic_from_points(p1: DVec2, p2: DVec2, p3: DVec2, t: f64) -> Self {
+	pub fn quadratic_from_points(p1: DVec2, p2: DVec2, p3: DVec2, _t: f64) -> Self {
 		// TODO: Implement logic to get actual curve through the points
 		Bezier::from_quadratic_dvec2(p1, p2, p3)
 	}
 
 	/// Create a cubic bezier curve that goes through 3 points. d1 represents the strut.
 	// #[inline]
-	pub fn cubic_from_points(p1: DVec2, p2: DVec2, p3: DVec2, t: f64, d1: f64) -> Self {
+	pub fn cubic_from_points(p1: DVec2, p2: DVec2, p3: DVec2, _t: f64, _d1: f64) -> Self {
 		// TODO: Implement logic to get actual curve through the points
 		Bezier::from_quadratic_dvec2(p1, p2, p3)
 	}

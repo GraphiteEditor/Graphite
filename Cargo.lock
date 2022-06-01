@@ -35,10 +35,23 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d468802bab17cbc0cc575e9b053f41e72aa36bfa6b7f55e3529ffa43161b97fa"
 
 [[package]]
-name = "bezier-math-library"
+name = "bezier-rs"
 version = "0.0.0"
 dependencies = [
  "glam",
+]
+
+[[package]]
+name = "bezier-rs-wasm"
+version = "0.0.0"
+dependencies = [
+ "bezier-rs",
+ "js-sys",
+ "log",
+ "serde",
+ "serde-wasm-bindgen",
+ "wasm-bindgen",
+ "wasm-bindgen-test",
 ]
 
 [[package]]
