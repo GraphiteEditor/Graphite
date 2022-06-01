@@ -12,27 +12,16 @@
     "vue": "^3.2.13"
   },
   "devDependencies": {
-    "@babel/core": "^7.12.16",
-    "@babel/eslint-parser": "^7.12.16",
-    "@vue/cli-plugin-babel": "~5.0.0",
-    "@vue/cli-plugin-eslint": "~5.0.0",
-    "@vue/cli-service": "~5.0.0",
-    "eslint": "^7.32.0",
-    "eslint-plugin-vue": "^8.0.3"
-  },
-  "eslintConfig": {
-    "root": true,
-    "env": {
-      "node": true
-    },
-    "extends": [
-      "plugin:vue/vue3-essential",
-      "eslint:recommended"
-    ],
-    "parserOptions": {
-      "parser": "@babel/eslint-parser"
-    },
-    "rules": {}
+		"@vue/cli-plugin-eslint": "^5.0.4",
+		"@vue/cli-service": "^5.0.4",
+		"@vue/compiler-sfc": "^3.2.31",
+		"@vue/eslint-config-airbnb": "^6.0.0",
+		"@wasm-tool/wasm-pack-plugin": "^1.6.0",
+		"eslint": "^8.14.0",
+		"eslint-config-prettier": "^8.5.0",
+		"eslint-plugin-import": "^2.25.4",
+		"eslint-plugin-prettier-vue": "^3.1.0",
+		"eslint-plugin-vue": "^8.7.1"
   },
   "browserslist": [
     "> 1%",
