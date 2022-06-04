@@ -3,23 +3,15 @@
 
 pub mod generic;
 pub mod ops;
-pub mod structural;
+//pub mod structural;
 pub mod value;
 
 #[rustfmt::skip]
-pub trait Node< 'n, Input> {
-    type Output : 'n;
+pub trait Node<'n> {
+    type Output: 'n; // TODO: replace with generic associated type
 
-    fn eval(&'n self, input: Input) -> Self::Output;
+    fn eval(&'n self) -> Self::Output;
 }
-
-// TODO: Fix exec trait
-pub trait Exec<'n>: Node<'n, ()> {
-    fn exec(&'n self) -> Self::Output {
-        self.eval(())
-    }
-}
-impl<'n, T: Node<'n, ()>> Exec<'n> for T {}
 
 pub trait Cache {
     fn clear(&mut self);

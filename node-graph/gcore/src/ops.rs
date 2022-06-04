@@ -1,50 +1,82 @@
-use core::{marker::PhantomData, ops::Add};
+use core::ops::Add;
 
 use crate::Node;
 
 #[repr(C)]
-#[derive(Default)]
-pub struct AddNode<T>(PhantomData<T>);
-impl<'n, T: Add + Copy + 'n> Node<'n, (T, T)> for AddNode<T> {
+struct AddNode<'n, T: Add, I1: Node<'n, Output = T>, I2: Node<'n, Output = T>>(
+    pub &'n I1,
+    pub &'n I2,
+);
+impl<'n, T: Add + 'n, I1: Node<'n, Output = T>, I2: Node<'n, Output = T>> Node<'n>
+    for AddNode<'n, T, I1, I2>
+{
     type Output = <T as Add>::Output;
-    fn eval(&'n self, input: (T, T)) -> T::Output {
-        let (a, b) = input;
-        a + b
+    fn eval(&self) -> T::Output {
+        self.0.eval() + self.1.eval()
     }
 }
 
 #[repr(C)]
-#[derive(Default)]
-/// Destructures a Tuple of two values and returns the first one
-pub struct FstNode<T, U>(PhantomData<T>, PhantomData<U>);
-impl<'n, T: Copy + 'n, U> Node<'n, (T, U)> for FstNode<T, U> {
+pub struct CloneNode<'n, N: Node<'n, Output = &'n O>, O: Clone + 'n>(pub &'n N);
+impl<'n, N: Node<'n, Output = &'n O>, O: Clone> Node<'n> for CloneNode<'n, N, O> {
+    type Output = O;
+    fn eval(&self) -> Self::Output {
+        self.0.eval().clone()
+    }
+}
+
+#[repr(C)]
+pub struct FstNode<'n, N: Node<'n>>(pub &'n N);
+impl<'n, T: 'n, U, N: Node<'n, Output = (T, U)>> Node<'n> for FstNode<'n, N> {
     type Output = T;
-    fn eval(&'n self, input: (T, U)) -> Self::Output {
-        let (a, _) = input;
+    fn eval(&self) -> Self::Output {
+        let (a, _) = self.0.eval();
         a
     }
 }
 
 #[repr(C)]
-#[derive(Default)]
 /// Destructures a Tuple of two values and returns the first one
-pub struct SndNode<T, U>(PhantomData<T>, PhantomData<U>);
-impl<'n, T, U: Copy + 'n> Node<'n, (T, U)> for SndNode<T, U> {
+pub struct SndNode<'n, N: Node<'n>>(pub &'n N);
+impl<'n, T, U: 'n, N: Node<'n, Output = (T, U)>> Node<'n> for SndNode<'n, N> {
     type Output = U;
-    fn eval(&'n self, input: (T, U)) -> Self::Output {
-        let (_, b) = input;
+    fn eval(&self) -> Self::Output {
+        let (_, b) = self.0.eval();
         b
     }
 }
+
 #[repr(C)]
-#[derive(Default)]
 /// Destructures a Tuple of two values and returns the first one
-pub struct DupNode<T>(PhantomData<T>);
-impl<'n, T: Copy + 'n> Node<'n, T> for DupNode<T> {
-    type Output = (T, T);
-    fn eval(&'n self, input: T) -> Self::Output {
-        (input, input)
+pub struct SndRefNode<'n, N: Node<'n>>(pub &'n N);
+impl<'n, T: 'n, U: 'n, N: Node<'n, Output = &'n (T, U)>> Node<'n> for SndRefNode<'n, N> {
+    type Output = &'n U;
+    fn eval(&self) -> Self::Output {
+        let (_, ref b) = self.0.eval();
+        b
     }
+}
+
+#[repr(C)]
+/// Destructures a Tuple of two values and returns the first one
+pub struct DupNode<'n, N: Node<'n>>(&'n N);
+impl<'n, N: Node<'n>> Node<'n> for DupNode<'n, N> {
+    type Output = (N::Output, N::Output);
+    fn eval(&self) -> Self::Output {
+        (self.0.eval(), self.0.eval()) //TODO: use Copy/Clone implementation
+    }
+}
+
+pub fn foo() {
+    let value = crate::value::ValueNode::new(2u32);
+    let dup = DupNode(&value);
+    fn swap<'n>(input: (&'n u32, &'n u32)) -> (&'n u32, &'n u32) {
+        (input.1, input.0)
+    }
+    //let fnn = crate::generic::FnNode::new(swap, &dup); TODO fix types
+    let snd = SndNode(&dup);
+    let add = AddNode(&snd, &value);
+    let _ = add.eval();
 }
 
 #[cfg(target_arch = "spirv")]
