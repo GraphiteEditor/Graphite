@@ -1,39 +1,43 @@
 use core::marker::PhantomData;
 
 use crate::Node;
-pub struct FnNode<T: Fn(In) -> O, In, O>(T, PhantomData<In>, PhantomData<O>);
-impl<'n, T: Fn(In) -> O, In, O: 'n> Node<'n, In> for FnNode<T, In, O> {
-    type Output = O;
-
-    fn eval(&'n self, input: In) -> Self::Output {
-        self.0(input)
-    }
-}
-
-impl<T: Fn(In) -> O, In, O> FnNode<T, In, O> {
-    pub fn new(f: T) -> Self {
-        FnNode(f, PhantomData::default(), PhantomData::default())
-    }
-}
-
-pub struct FnNodeWithState<T: Fn(In, &State) -> O, In, O, State>(
+pub struct FnNode<'n, T: Fn(<N as Node>::Output) -> O, N: Node<'n>, O: 'n>(
     T,
-    State,
-    PhantomData<In>,
+    &'n N,
     PhantomData<O>,
 );
-impl<'n, T: Fn(In, &State) -> O, In, O: 'n, State> Node<'n, In>
-    for FnNodeWithState<T, In, O, State>
+impl<'n, T: Fn(<N as Node>::Output) -> O, N: Node<'n>, O> Node<'n> for FnNode<'n, T, N, O> {
+    type Output = O;
+
+    fn eval(&'n self) -> Self::Output {
+        self.0(self.1.eval())
+    }
+}
+
+impl<'n, T: Fn(<N as Node>::Output) -> O, N: Node<'n>, O> FnNode<'n, T, N, O> {
+    pub fn new(f: T, input: &'n N) -> Self {
+        FnNode(f, input, PhantomData)
+    }
+}
+
+pub struct FnNodeWithState<'n, T: Fn(N::Output, &State) -> O, N: Node<'n>, O, State>(
+    T,
+    &'n N,
+    State,
+    PhantomData<O>,
+);
+impl<'n, T: Fn(N::Output, &State) -> O, N: Node<'n>, O: 'n, State> Node<'n>
+    for FnNodeWithState<'n, T, N, O, State>
 {
     type Output = O;
 
-    fn eval(&'n self, input: In) -> Self::Output {
-        self.0(input, &self.1)
+    fn eval(&'n self) -> Self::Output {
+        self.0(self.1.eval(), &self.2)
     }
 }
 
-impl<T: Fn(In, &State) -> O, In, O, State> FnNodeWithState<T, In, O, State> {
-    pub fn new(f: T, state: State) -> Self {
-        FnNodeWithState(f, state, PhantomData::default(), PhantomData::default())
+impl<'n, T: Fn(N::Output, &State) -> O, N: Node<'n>, O, State> FnNodeWithState<'n, T, N, O, State> {
+    pub fn new(f: T, input: &'n N, state: State) -> Self {
+        FnNodeWithState(f, input, state, PhantomData)
     }
 }
