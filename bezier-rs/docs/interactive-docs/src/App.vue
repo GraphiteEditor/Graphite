@@ -10,18 +10,20 @@
 <script>
 import ExamplePane from "./components/ExamplePane.vue";
 
+// eslint-disable-next-line
 const testBezierLib = async () => {
 	// TODO: Fix below
 	// eslint seems to think this pkg is the one in the frontend folder, not the one in interactive-docs (which is not what is actually imported)
 	// eslint-disable-next-line
 	import("@/../wasm/pkg").then((wasm) => {
-		const svg = wasm.quad_to_svg(0, 0, 50, 0, 100, 100);
+		// eslint-disable-next-line
+		const bezier = new wasm.WasmBezier.new_quad(0, 0, 50, 0, 100, 100);
 		const svgContainer = document.getElementById("svg-test");
-		svgContainer.innerHTML = svg;
+		svgContainer.innerHTML = bezier.to_svg();
 	});
 };
 
-testBezierLib();
+// testBezierLib();
 
 export default {
 	name: "App",

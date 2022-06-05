@@ -80,6 +80,10 @@ impl Bezier {
 		)
 	}
 
+	pub fn get_points(self) -> [Option<DVec2>; 4] {
+		self.points
+	}
+
 	/// Return the length of the bezier curve
 	pub fn length() -> i32 {
 		0

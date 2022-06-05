@@ -26,14 +26,23 @@ const drawPoint = (ctx, p) => {
 const drawBezier = (ctx, points) => {
 	/* Until a bezier representation is finalized, treat the points as follows
 		points[0] = left endpoint
-		points[1] = right endpoint
-		points[2] = handle 1
-		points[3] = (optional) handle 2
+		points[1] = handle 1
+		points[2] = (optional) handle 2
+		points[3] = right endpoint
 	*/
 	const left = points[0];
-	const right = points[1];
-	const handle1 = points[2];
-	const handle2 = points.length === 4 ? points[3] : points[2];
+	let right = null;
+	let handle1 = null;
+	let handle2 = null;
+	if (points.length === 4) {
+		handle1 = points[1];
+		handle2 = points[2];
+		right = points[3];
+	} else {
+		handle1 = points[1];
+		handle2 = handle1;
+		right = points[2];
+	}
 
 	ctx.strokeStyle = "black";
 	ctx.lineWidth = 2;
@@ -56,56 +65,77 @@ const drawBezier = (ctx, points) => {
 };
 
 class BezierDrawing {
-	constructor(component, paramPoints) {
-		const canvas = document.createElement("canvas");
-		const points = paramPoints;
-		canvas.width = 200;
-		canvas.height = 200;
-		component.appendChild(canvas);
+	constructor(bezier) {
+		this.canvas = document.createElement("canvas");
+		this.canvas.width = 200;
+		this.canvas.height = 200;
 
-		const ctx = canvas.getContext("2d");
-		let dragIndex = null; // Index of the point being moved
-
-		canvas.addEventListener("mousedown", (evt) => {
-			const mx = evt.offsetX;
-			const my = evt.offsetY;
-
-			for (let i = 0; i < points.length; i += 1) {
-				if (
-					Math.abs(mx - points[i].x) < points[i].r + 3 && // +3 makes the points easier to grab
-					Math.abs(my - points[i].y) < points[i].r + 3
-				) {
-					dragIndex = i;
-					points[dragIndex].selected = true;
-					break;
-				}
+		this.points = bezier.get_points().map((point) => JSON.parse(point));
+		this.points.forEach((point, idx) => {
+			if (idx === 0 || idx === this.points.length - 1) {
+				point.r = 5;
+			} else {
+				point.r = 3;
 			}
 		});
-		canvas.addEventListener("mousemove", (evt) => {
-			const mx = evt.offsetX;
-			const my = evt.offsetY;
+		this.ctx = this.canvas.getContext("2d");
+		this.dragIndex = null; // Index of the point being moved
 
-			if (dragIndex != null && mx - points[dragIndex].r > 0 && my - points[dragIndex].r > 0 && mx + points[dragIndex].r < canvas.width && my + points[dragIndex].r < canvas.height) {
-				points[dragIndex].x = mx;
-				points[dragIndex].y = my;
-				ctx.clearRect(1, 1, canvas.width - 2, canvas.height - 2);
-				drawBezier(ctx, points);
+		this.canvas.addEventListener("mousedown", this.mouseDownHandler.bind(this));
+		this.canvas.addEventListener("mousemove", this.mouseMoveHandler.bind(this));
+		this.canvas.addEventListener("mouseup", this.deselectPointHandler.bind(this));
+		this.canvas.addEventListener("mouseout", this.deselectPointHandler.bind(this));
+		this.ctx.strokeRect(0, 0, this.canvas.width, this.canvas.height);
+	}
+
+	mouseMoveHandler(evt) {
+		const mx = evt.offsetX;
+		const my = evt.offsetY;
+
+		if (
+			this.dragIndex != null &&
+			mx - this.points[this.dragIndex].r > 0 &&
+			my - this.points[this.dragIndex].r > 0 &&
+			mx + this.points[this.dragIndex].r < this.canvas.width &&
+			my + this.points[this.dragIndex].r < this.canvas.height
+		) {
+			this.points[this.dragIndex].x = mx;
+			this.points[this.dragIndex].y = my;
+			this.ctx.clearRect(1, 1, this.canvas.width - 2, this.canvas.height - 2);
+			this.drawBezier();
+		}
+	}
+
+	mouseDownHandler(evt) {
+		const mx = evt.offsetX;
+		const my = evt.offsetY;
+		for (let i = 0; i < this.points.length; i += 1) {
+			if (
+				Math.abs(mx - this.points[i].x) < this.points[i].r + 3 &&
+				Math.abs(my - this.points[i].y) < this.points[i].r + 3 // Fudge factor makes the points easier to grab
+			) {
+				this.dragIndex = i;
+				this.points[this.dragIndex].selected = true;
+				break;
 			}
-		});
+		}
+	}
 
-		const deselectPointHandler = () => {
-			if (dragIndex != null) {
-				points[dragIndex].selected = false;
-				ctx.clearRect(1, 1, canvas.width - 2, canvas.height - 2);
-				drawBezier(ctx, points);
-				dragIndex = null;
-			}
-		};
-		canvas.addEventListener("mouseup", deselectPointHandler);
-		canvas.addEventListener("mouseout", deselectPointHandler);
+	deselectPointHandler() {
+		if (this.dragIndex != null) {
+			this.points[this.dragIndex].selected = false;
+			this.ctx.clearRect(1, 1, this.canvas.width - 2, this.canvas.height - 2);
+			this.drawBezier();
+			this.dragIndex = null;
+		}
+	}
 
-		ctx.strokeRect(0, 0, canvas.width, canvas.height);
-		drawBezier(ctx, points);
+	drawBezier() {
+		drawBezier(this.ctx, this.points);
+	}
+
+	getCanvas() {
+		return this.canvas;
 	}
 }
 export { BezierDrawing };

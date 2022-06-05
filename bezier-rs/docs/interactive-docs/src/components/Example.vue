@@ -12,12 +12,12 @@ export default {
 	name: "ExampleComponent",
 	props: {
 		title: String,
-		points: Object,
+		bezier: Object,
 	},
 	mounted() {
-		// TODO: Figure out to handle this properly
-		// eslint-disable-next-line
-		const bezier = new BezierDrawing(this.$refs.drawing, this.points);
+		const bezierDrawing = new BezierDrawing(this.bezier);
+		this.$refs.drawing.appendChild(bezierDrawing.getCanvas());
+		bezierDrawing.drawBezier();
 	},
 };
 </script>
