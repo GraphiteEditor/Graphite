@@ -25,6 +25,12 @@ export const drawPoint = (ctx: CanvasRenderingContext2D, p: Point): void => {
 	ctx.fill();
 };
 
+export const drawText = (ctx: CanvasRenderingContext2D, text: string, x: number, y: number) => {
+	ctx.fillStyle = "black";
+	ctx.font = "16px Arial";
+	ctx.fillText(text, x, y);
+};
+
 export const drawBezier = (ctx: CanvasRenderingContext2D, points: Point[]): void => {
 	/* Until a bezier representation is finalized, treat the points as follows
 		points[0] = start point

@@ -56,4 +56,8 @@ impl WasmBezier {
 	pub fn to_svg(&self) -> String {
 		self.internal.to_svg()
 	}
+	
+	pub fn length(self) -> f64 {
+		self.internal.length()
+	}
 }

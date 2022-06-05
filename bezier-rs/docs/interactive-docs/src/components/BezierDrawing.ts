@@ -1,5 +1,5 @@
 import { drawBezier } from "@/utils/drawing";
-import { Point, WasmBezierMutatorKey } from "@/utils/types";
+import { BezierCallback, Point, WasmBezierMutatorKey } from "@/utils/types";
 import { WasmBezierInstance } from "@/utils/wasm-comm";
 
 class BezierDrawing {
@@ -15,8 +15,11 @@ class BezierDrawing {
 
 	bezier: WasmBezierInstance;
 
-	constructor(bezier: WasmBezierInstance) {
+	callback: BezierCallback;
+
+	constructor(bezier: WasmBezierInstance, callback: BezierCallback) {
 		this.bezier = bezier;
+		this.callback = callback;
 		this.points = bezier
 			.get_points()
 			.map((p) => JSON.parse(p))
@@ -100,6 +103,7 @@ class BezierDrawing {
 
 	updateBezier(): void {
 		drawBezier(this.ctx, this.points);
+		this.callback(this.canvas, this.bezier);
 	}
 
 	getCanvas(): HTMLCanvasElement {

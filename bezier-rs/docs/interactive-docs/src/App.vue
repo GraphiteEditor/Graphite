@@ -2,13 +2,19 @@
 	<div class="App">
 		<h1>Bezier-rs Interactive Documentation</h1>
 		<p>This is the interactive documentation for the <b>bezier-rs</b> library. Click and drag on the endpoints of the example curves to visualize the various Bezier utilities and functions.</p>
-		<ExamplePane />
+		<div v-for="feature in features" :key="feature.id">
+			<ExamplePane :name="feature.name" :callback="feature.callback" />
+		</div>
 		<div id="svg-test" />
 	</div>
 </template>
 
 <script lang="ts">
 import { defineComponent } from "vue";
+
+import { drawText } from "./utils/drawing";
+
+import { WasmBezierInstance } from "./utils/types";
 
 import ExamplePane from "./components/ExamplePane.vue";
 
@@ -31,6 +37,24 @@ export default defineComponent({
 	name: "App",
 	components: {
 		ExamplePane,
+	},
+	data() {
+		return {
+			features: [
+				{
+					id: 0,
+					name: "Constructor",
+					callback: () => {},
+				},
+				{
+					id: 2,
+					name: "Length",
+					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance) => {
+						drawText(canvas.getContext("2d"), `Length: ${bezier.length().toFixed(2)}`, 5, canvas.height - 7);
+					},
+				},
+			],
+		};
 	},
 });
 </script>

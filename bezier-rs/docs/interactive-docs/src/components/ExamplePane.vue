@@ -1,13 +1,15 @@
 <template>
 	<div class="example_row">
 		<div v-for="example in exampleData" :key="example.id">
-			<Example :title="example.title" :bezier="example.bezier" />
+			<Example :title="example.title" :bezier="example.bezier" :callback="callback" />
 		</div>
 	</div>
 </template>
 
 <script lang="ts">
-import { defineComponent } from "vue";
+import { BezierCallback } from "../utils/types";
+
+import { defineComponent, PropType } from "vue";
 
 import { WasmBezierInstance } from "../utils/wasm-comm";
 
@@ -24,6 +26,13 @@ export default defineComponent({
 	name: "ExamplePane",
 	components: {
 		Example,
+	},
+	props: {
+		name: String,
+		callback: {
+			type: Function as PropType<BezierCallback>,
+			required: true,
+		},
 	},
 	data() {
 		return {
