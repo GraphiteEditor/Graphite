@@ -48,7 +48,7 @@ impl<'n, T, U: 'n, N: Node<'n, Output = (T, U)>> Node<'n> for SndNode<'n, N> {
 }
 
 #[repr(C)]
-/// Destructures a Tuple of two values and returns the first one
+/// Return a tuple with two instances of the input argument
 pub struct DupNode<'n, N: Node<'n>>(N, PhantomData<&'n ()>);
 impl<'n, N: Node<'n>> Node<'n> for DupNode<'n, N> {
     type Output = (N::Output, N::Output);
@@ -57,15 +57,39 @@ impl<'n, N: Node<'n>> Node<'n> for DupNode<'n, N> {
     }
 }
 
+#[repr(C)]
+/// Return the unit value
+pub struct UnitNode;
+impl<'n> Node<'n> for UnitNode {
+    type Output = ();
+    fn eval(&'n self) -> Self::Output {}
+}
+
+#[repr(C)]
+/// Return the Input Argument
+pub struct IdNode<'n, N: Node<'n>>(N, PhantomData<&'n ()>);
+impl<'n, N: Node<'n>> Node<'n> for IdNode<'n, N> {
+    type Output = N::Output;
+    fn eval(&'n self) -> Self::Output {
+        self.0.eval()
+    }
+}
+
 pub fn foo() {
-    let value = crate::value::ValueNode::new(2u32);
+    let unit = UnitNode;
+    let value = IdNode(crate::value::ValueNode::new(2u32), PhantomData);
     let value2 = crate::value::ValueNode::new(4u32);
-    let dup = DupNode(value, PhantomData);
+    let dup = DupNode(&value, PhantomData);
+    fn int(_: (), state: &u32) -> &u32 {
+        state
+    }
     fn swap<'n>(input: (&'n u32, &'n u32)) -> (&'n u32, &'n u32) {
         (input.1, input.0)
     }
     let fnn = crate::generic::FnNode::new(swap, &dup);
+    let fns = crate::generic::FnNodeWithState::new(int, &unit, 42u32);
     let _ = fnn.eval();
+    let _ = fns.eval();
     let snd = SndNode(&fnn, PhantomData);
     let _ = snd.eval();
     let add = AddNode(&snd, value2, PhantomData);
