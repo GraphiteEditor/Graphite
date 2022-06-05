@@ -204,7 +204,7 @@ impl Bezier {
 		for i in 1..subdivisions + 1 {
 			// get end point of the subdivision
 			let x = self.get_x_basis(f64::from(i) * ratio);
-			let y = self.get_x_basis(f64::from(i) * ratio);
+			let y = self.get_y_basis(f64::from(i) * ratio);
 			// calculate distance of subdivision
 			let dx = ox - x;
 			let dy = oy - y;
