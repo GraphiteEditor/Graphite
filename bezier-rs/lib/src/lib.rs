@@ -158,7 +158,7 @@ impl Bezier {
 		let mt = 1.0 - t;
 		let mt2 = mt * mt;
 
-		if self.points.len() == 3 {
+		if self.points[3].is_none() {
 			// quadratic
 			return mt2 * self.points[0].unwrap()[0] + 2.0 * mt * t * self.points[1].unwrap()[0] + t2 * self.points[2].unwrap()[0];
 		}
@@ -176,7 +176,7 @@ impl Bezier {
 		let mt = 1.0 - t;
 		let mt2 = mt * mt;
 
-		if self.points.len() == 3 {
+		if self.points[3].is_none() {
 			// quadratic
 			return mt2 * self.points[0].unwrap()[1] + 2.0 * mt * t * self.points[1].unwrap()[1] + t2 * self.points[2].unwrap()[1];
 		}
