@@ -2,9 +2,9 @@ use core::marker::PhantomData;
 
 use crate::Node;
 
-pub struct ComposeNode<'n, Input, Inter, FIRST, SECOND> {
-    first: &'n FIRST,
-    second: &'n SECOND,
+pub struct ComposeNode<'n, Inter, First, Second> {
+    first: &'n First,
+    second: &'n Second,
     _phantom: PhantomData<&'n Input>,
     _phantom2: PhantomData<Inter>,
 }
@@ -26,7 +26,6 @@ where
     }
 }
 
-#[cfg(feature = "nightly")]
 impl<'n, Input, Inter, FIRST, SECOND> ComposeNode<'n, Input, Inter, FIRST, SECOND>
 where
     FIRST: Node<'n, Input>,
@@ -41,20 +40,6 @@ where
     }
 }
 
-#[cfg(not(feature = "nightly"))]
-impl<'n, Input, Inter, FIRST, SECOND> ComposeNode<'n, Input, Inter, FIRST, SECOND>
-where
-    FIRST: Node<'n, Input>,
-{
-    pub fn new(first: &'n FIRST, second: &'n SECOND) -> Self {
-        ComposeNode::<'n, Input, Inter, FIRST, SECOND> {
-            first,
-            second,
-            _phantom: PhantomData,
-            _phantom2: PhantomData,
-        }
-    }
-}
 #[repr(C)]
 pub struct ComposeNodeOwned<'n, Input, Inter, FIRST, SECOND> {
     first: FIRST,

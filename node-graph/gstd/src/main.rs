@@ -25,13 +25,13 @@ mod mul {
         pub a: Option<DynNode<'n, &'n f32>>,
         pub b: Option<DynNode<'n, &'n f32>>,
     }
-    impl<'n> Node<'n, ()> for MulNodeAnyProxy<'n> {
+    impl<'n> Node<'n> for MulNodeAnyProxy<'n> {
         type Output = MulNodeInput<'n>;
-        fn eval(&'n self, _input: ()) -> <Self as graphene_std::Node<'n, ()>>::Output {
-            let a = self.a.unwrap().eval(());
+        fn eval(&'n self) -> <Self as graphene_std::Node<'n>>::Output {
+            let a = self.a.unwrap().eval();
             let a: &f32 = self
                 .a
-                .map(|v| downcast_ref(v.eval(())).unwrap())
+                .map(|v| downcast_ref(v.eval()).unwrap())
                 .unwrap_or(&1.);
             /*let b: &f32 = self
                 .b
@@ -41,11 +41,11 @@ mod mul {
             MulNodeInput { a, b: a }
         }
     }
-    impl<'n> Node<'n, ()> for MulNodeTypedProxy<'n> {
+    impl<'n> Node<'n> for MulNodeTypedProxy<'n> {
         type Output = MulNodeInput<'n>;
-        fn eval(&'n self, _input: ()) -> <Self as graphene_std::Node<'n, ()>>::Output {
-            let a = self.a.unwrap().eval(());
-            let b = self.b.unwrap().eval(());
+        fn eval(&'n self) -> <Self as graphene_std::Node<'n>>::Output {
+            let a = self.a.unwrap().eval();
+            let b = self.b.unwrap().eval();
             MulNodeInput { a, b }
         }
     }
@@ -71,7 +71,7 @@ mod mul {
         }
     }
 }
-type SNode<'n> = dyn Node<'n, (), Output = &'n dyn DynAny<'n>>;
+type SNode<'n> = dyn Node<'n, Output = &'n dyn DynAny<'n>>;
 
 struct NodeStore<'n>(borrow_stack::FixedSizeStack<'n, Box<SNode<'n>>>);
 
@@ -91,14 +91,16 @@ impl<'n> NodeStore<'n> {
 }
 
 fn main() {
+    use dyn_any::{downcast_ref, DynAny, StaticType};
     //let mut mul = mul::MulNode::new();
-    let mut stack: borrow_stack::FixedSizeStack<Box<dyn Node<'_, (), Output = &dyn DynAny>>> =
+    let mut stack: borrow_stack::FixedSizeStack<Box<dyn Node<'_, Output = &dyn DynAny>>> =
         borrow_stack::FixedSizeStack::new(42);
     unsafe { stack.push(Box::new(AnyValueNode::new(1f32))) };
     //let node = unsafe { stack.get(0) };
     //let boxed = Box::new(StorageNode::new(node));
     //unsafe { stack.push(boxed) };
-    let result = unsafe { &stack.get()[0] }.eval(());
+    let result = unsafe { &stack.get()[0] }.eval();
+    dbg!(downcast_ref::<f32>(result));
     /*unsafe {
         stack
             .push(Box::new(AnyRefNode::new(stack.get(0).as_ref()))
@@ -117,8 +119,8 @@ fn main() {
     //let foo = value::AnyRefNode::new(&cached);
     mul2.set_arg_by_index(0, &any_a);*/
     let int = value::IntNode::<32>;
-    int.exec();
-    println!("{}", int.exec());
+    Node::eval(&int);
+    println!("{}", Node::eval(&int));
     //let _add: u32 = ops::AddNode::<u32>::default().eval((int.exec(), int.exec()));
     //let fnode = generic::FnNode::new(|(a, b): &(i32, i32)| a - b);
     //let sub = fnode.any(&("a", 2));

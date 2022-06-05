@@ -1,12 +1,12 @@
 use core::marker::PhantomData;
 
 use crate::Node;
-pub struct FnNode<'n, T: Fn(<N as Node>::Output) -> O, N: Node<'n>, O: 'n>(
+pub struct FnNode<'n, T: Fn(<N as Node<'n>>::Output) -> O, N: Node<'n>, O>(
     T,
-    &'n N,
-    PhantomData<O>,
+    N,
+    PhantomData<&'n O>,
 );
-impl<'n, T: Fn(<N as Node>::Output) -> O, N: Node<'n>, O> Node<'n> for FnNode<'n, T, N, O> {
+impl<'n, T: Fn(<N as Node<'n>>::Output) -> O, N: Node<'n>, O> Node<'n> for FnNode<'n, T, N, O> {
     type Output = O;
 
     fn eval(&'n self) -> Self::Output {
@@ -14,19 +14,20 @@ impl<'n, T: Fn(<N as Node>::Output) -> O, N: Node<'n>, O> Node<'n> for FnNode<'n
     }
 }
 
-impl<'n, T: Fn(<N as Node>::Output) -> O, N: Node<'n>, O> FnNode<'n, T, N, O> {
-    pub fn new(f: T, input: &'n N) -> Self {
+impl<'n, T: Fn(<N as Node<'n>>::Output) -> O, N: Node<'n>, O> FnNode<'n, T, N, O> {
+    pub fn new(f: T, input: N) -> Self {
         FnNode(f, input, PhantomData)
     }
 }
 
-pub struct FnNodeWithState<'n, T: Fn(N::Output, &State) -> O, N: Node<'n>, O, State>(
-    T,
-    &'n N,
-    State,
-    PhantomData<O>,
-);
-impl<'n, T: Fn(N::Output, &State) -> O, N: Node<'n>, O: 'n, State> Node<'n>
+pub struct FnNodeWithState<
+    'n,
+    T: Fn(<N as Node<'n>>::Output, &State) -> O,
+    N: Node<'n>,
+    O,
+    State: 'n,
+>(T, N, State, PhantomData<&'n O>);
+impl<'n, T: Fn(<N as Node<'n>>::Output, &State) -> O, N: Node<'n>, O: 'n, State> Node<'n>
     for FnNodeWithState<'n, T, N, O, State>
 {
     type Output = O;
@@ -37,7 +38,7 @@ impl<'n, T: Fn(N::Output, &State) -> O, N: Node<'n>, O: 'n, State> Node<'n>
 }
 
 impl<'n, T: Fn(N::Output, &State) -> O, N: Node<'n>, O, State> FnNodeWithState<'n, T, N, O, State> {
-    pub fn new(f: T, input: &'n N, state: State) -> Self {
+    pub fn new(f: T, input: N, state: State) -> Self {
         FnNodeWithState(f, input, state, PhantomData)
     }
 }
