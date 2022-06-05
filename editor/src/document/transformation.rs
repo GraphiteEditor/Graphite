@@ -1,7 +1,8 @@
 use crate::consts::{ROTATE_SNAP_ANGLE, SCALE_SNAP_INTERVAL};
 use crate::message_prelude::*;
 
-use graphene::document::{Document, FontCache};
+use graphene::document::Document;
+use graphene::layers::text_layer::FontCache;
 use graphene::Operation as DocumentOperation;
 
 use glam::{DAffine2, DVec2};
@@ -9,7 +10,7 @@ use std::collections::{HashMap, VecDeque};
 
 pub type OriginalTransforms = HashMap<Vec<LayerId>, DAffine2>;
 
-#[derive(Debug, Clone, PartialEq, Copy)]
+#[derive(Debug, Clone, PartialEq, Eq, Copy)]
 pub enum Axis {
 	Both,
 	X,
@@ -270,7 +271,7 @@ impl<'a> Selected<'a> {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Typing {
 	pub digits: Vec<u8>,
 	pub contains_decimal: bool,

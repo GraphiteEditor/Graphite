@@ -23,6 +23,7 @@ use graphene::layers::blend_mode::BlendMode;
 use graphene::layers::folder_layer::FolderLayer;
 use graphene::layers::layer_info::LayerDataType;
 use graphene::layers::style::{Fill, ViewMode};
+use graphene::layers::text_layer::FontCache;
 use graphene::{DocumentError, DocumentResponse, LayerId, Operation as DocumentOperation};
 
 use glam::{DAffine2, DVec2};
@@ -136,12 +137,12 @@ impl DocumentMessageHandler {
 			&& self.name.starts_with(DEFAULT_DOCUMENT_NAME)
 	}
 
-	fn select_layer(&mut self, path: &[LayerId]) -> Option<Message> {
+	fn select_layer(&mut self, path: &[LayerId], font_cache: &FontCache) -> Option<Message> {
 		println!("Select_layer fail: {:?}", self.all_layers_sorted());
 
 		if let Some(layer) = self.layer_metadata.get_mut(path) {
 			layer.selected = true;
-			let data = self.layer_panel_entry(path.to_vec()).ok()?;
+			let data = self.layer_panel_entry(path.to_vec(), font_cache).ok()?;
 			(!path.is_empty()).then(|| FrontendMessage::UpdateDocumentLayerDetails { data }.into())
 		} else {
 			log::warn!("Tried to select non existing layer {:?}", path);
@@ -149,17 +150,17 @@ impl DocumentMessageHandler {
 		}
 	}
 
-	pub fn selected_visible_layers_bounding_box(&self) -> Option<[DVec2; 2]> {
+	pub fn selected_visible_layers_bounding_box(&self, font_cache: &FontCache) -> Option<[DVec2; 2]> {
 		let paths = self.selected_visible_layers();
-		self.graphene_document.combined_viewport_bounding_box(paths)
+		self.graphene_document.combined_viewport_bounding_box(paths, font_cache)
 	}
 
-	pub fn artboard_bounding_box_and_transform(&self, path: &[LayerId]) -> Option<([DVec2; 2], DAffine2)> {
-		self.artboard_message_handler.artboards_graphene_document.bounding_box_and_transform(path).unwrap_or(None)
+	pub fn artboard_bounding_box_and_transform(&self, path: &[LayerId], font_cache: &FontCache) -> Option<([DVec2; 2], DAffine2)> {
+		self.artboard_message_handler.artboards_graphene_document.bounding_box_and_transform(path, font_cache).unwrap_or(None)
 	}
 
 	/// Create a new vector shape representation with the underlying kurbo data, VectorManipulatorShape
-	pub fn selected_visible_layers_vector_shapes(&self, responses: &mut VecDeque<Message>) -> Vec<VectorShape> {
+	pub fn selected_visible_layers_vector_shapes(&self, responses: &mut VecDeque<Message>, font_cache: &FontCache) -> Vec<VectorShape> {
 		let shapes = self.selected_layers().filter_map(|path_to_shape| {
 			let viewport_transform = self.graphene_document.generate_transform_relative_to_viewport(path_to_shape).ok()?;
 			let layer = self.graphene_document.layer(path_to_shape);
@@ -172,13 +173,7 @@ impl DocumentMessageHandler {
 			// TODO: Create VectorManipulatorShape when creating a kurbo shape as a stopgap, rather than on each new selection
 			match &layer.ok()?.data {
 				LayerDataType::Shape(shape) => Some(VectorShape::new(path_to_shape.to_vec(), viewport_transform, &shape.path, shape.closed, responses)),
-				LayerDataType::Text(text) => Some(VectorShape::new(
-					path_to_shape.to_vec(),
-					viewport_transform,
-					&text.to_bez_path_nonmut(&self.graphene_document.font_cache),
-					true,
-					responses,
-				)),
+				LayerDataType::Text(text) => Some(VectorShape::new(path_to_shape.to_vec(), viewport_transform, &text.to_bez_path_nonmut(font_cache), true, responses)),
 				_ => None,
 			}
 		});
@@ -230,16 +225,16 @@ impl DocumentMessageHandler {
 	}
 
 	/// Returns the bounding boxes for all visible layers and artboards, optionally excluding any paths.
-	pub fn bounding_boxes<'a>(&'a self, ignore_document: Option<&'a Vec<Vec<LayerId>>>, ignore_artboard: Option<LayerId>) -> impl Iterator<Item = [DVec2; 2]> + 'a {
+	pub fn bounding_boxes<'a>(&'a self, ignore_document: Option<&'a Vec<Vec<LayerId>>>, ignore_artboard: Option<LayerId>, font_cache: &'a FontCache) -> impl Iterator<Item = [DVec2; 2]> + 'a {
 		self.visible_layers()
 			.filter(move |path| ignore_document.map_or(true, |ignore_document| !ignore_document.iter().any(|ig| ig.as_slice() == *path)))
-			.filter_map(|path| self.graphene_document.viewport_bounding_box(path).ok()?)
+			.filter_map(|path| self.graphene_document.viewport_bounding_box(path, font_cache).ok()?)
 			.chain(
 				self.artboard_message_handler
 					.artboard_ids
 					.iter()
 					.filter(move |&&id| Some(id) != ignore_artboard)
-					.filter_map(|&path| self.artboard_message_handler.artboards_graphene_document.viewport_bounding_box(&[path]).ok()?),
+					.filter_map(|&path| self.artboard_message_handler.artboards_graphene_document.viewport_bounding_box(&[path], font_cache).ok()?),
 			)
 	}
 
@@ -431,26 +426,26 @@ impl DocumentMessageHandler {
 	}
 
 	// TODO: This should probably take a slice not a vec, also why does this even exist when `layer_panel_entry_from_path` also exists?
-	pub fn layer_panel_entry(&mut self, path: Vec<LayerId>) -> Result<LayerPanelEntry, EditorError> {
+	pub fn layer_panel_entry(&mut self, path: Vec<LayerId>, font_cache: &FontCache) -> Result<LayerPanelEntry, EditorError> {
 		let data: LayerMetadata = *self
 			.layer_metadata
 			.get_mut(&path)
 			.ok_or_else(|| EditorError::Document(format!("Could not get layer metadata for {:?}", path)))?;
 		let layer = self.graphene_document.layer(&path)?;
-		let entry = layer_panel_entry(&data, self.graphene_document.multiply_transforms(&path)?, layer, path, &self.graphene_document.font_cache);
+		let entry = layer_panel_entry(&data, self.graphene_document.multiply_transforms(&path)?, layer, path, font_cache);
 		Ok(entry)
 	}
 
 	/// Returns a list of `LayerPanelEntry`s intended for display purposes. These don't contain
 	/// any actual data, but rather attributes such as visibility and names of the layers.
-	pub fn layer_panel(&mut self, path: &[LayerId]) -> Result<Vec<LayerPanelEntry>, EditorError> {
+	pub fn layer_panel(&mut self, path: &[LayerId], font_cache: &FontCache) -> Result<Vec<LayerPanelEntry>, EditorError> {
 		let folder = self.graphene_document.folder(path)?;
 		let paths: Vec<Vec<LayerId>> = folder.layer_ids.iter().map(|id| [path, &[*id]].concat()).collect();
-		let entries = paths.iter().rev().filter_map(|path| self.layer_panel_entry_from_path(path)).collect();
+		let entries = paths.iter().rev().filter_map(|path| self.layer_panel_entry_from_path(path, font_cache)).collect();
 		Ok(entries)
 	}
 
-	pub fn layer_panel_entry_from_path(&self, path: &[LayerId]) -> Option<LayerPanelEntry> {
+	pub fn layer_panel_entry_from_path(&self, path: &[LayerId], font_cache: &FontCache) -> Option<LayerPanelEntry> {
 		let layer_metadata = self.layer_metadata(path);
 		let transform = self
 			.graphene_document
@@ -458,7 +453,7 @@ impl DocumentMessageHandler {
 			.ok()?;
 		let layer = self.graphene_document.layer(path).ok()?;
 
-		Some(layer_panel_entry(layer_metadata, transform, layer, path.to_vec(), &self.graphene_document.font_cache))
+		Some(layer_panel_entry(layer_metadata, transform, layer, path.to_vec(), font_cache))
 	}
 
 	/// When working with an insert index, deleting the layers may cause the insert index to point to a different location (if the layer being deleted was located before the insert index).
@@ -473,16 +468,16 @@ impl DocumentMessageHandler {
 	}
 
 	/// Calculates the bounding box of all layers in the document
-	pub fn all_layer_bounds(&self) -> Option<[DVec2; 2]> {
-		self.graphene_document.viewport_bounding_box(&[]).ok().flatten()
+	pub fn all_layer_bounds(&self, font_cache: &FontCache) -> Option<[DVec2; 2]> {
+		self.graphene_document.viewport_bounding_box(&[], font_cache).ok().flatten()
 	}
 
 	/// Calculates the document bounds used for scrolling and centring (the layer bounds or the artboard (if applicable))
-	pub fn document_bounds(&self) -> Option<[DVec2; 2]> {
+	pub fn document_bounds(&self, font_cache: &FontCache) -> Option<[DVec2; 2]> {
 		if self.artboard_message_handler.is_infinite_canvas() {
-			self.all_layer_bounds()
+			self.all_layer_bounds(font_cache)
 		} else {
-			self.artboard_message_handler.artboards_graphene_document.viewport_bounding_box(&[]).ok().flatten()
+			self.artboard_message_handler.artboards_graphene_document.viewport_bounding_box(&[], font_cache).ok().flatten()
 		}
 	}
 
@@ -520,13 +515,6 @@ impl DocumentMessageHandler {
 		walk_layers(root, &mut path, &mut image_data);
 		if !image_data.is_empty() {
 			responses.push_front(FrontendMessage::UpdateImageData { image_data }.into());
-		}
-	}
-
-	// TODO: Loading the default font should happen on a per-application basis, not a per-document basis
-	pub fn load_default_font(&self, responses: &mut VecDeque<Message>) {
-		if !self.graphene_document.font_cache.has_default() {
-			responses.push_back(FrontendMessage::TriggerFontLoadDefault.into())
 		}
 	}
 
@@ -611,7 +599,7 @@ impl DocumentMessageHandler {
 				})),
 				WidgetHolder::new(Widget::NumberInput(NumberInput {
 					unit: "°".into(),
-					value: Some(self.movement_handler.tilt / (std::f64::consts::PI / 180.)),
+					value: Some(self.movement_handler.snapped_angle() / (std::f64::consts::PI / 180.)),
 					increment_factor: 15.,
 					on_update: WidgetCallback::new(|number_input: &NumberInput| {
 						MovementMessage::SetCanvasRotation {
@@ -652,7 +640,7 @@ impl DocumentMessageHandler {
 				})),
 				WidgetHolder::new(Widget::NumberInput(NumberInput {
 					unit: "%".into(),
-					value: Some(self.movement_handler.zoom * 100.),
+					value: Some(self.movement_handler.snapped_scale() * 100.),
 					min: Some(0.000001),
 					max: Some(1000000.),
 					on_update: WidgetCallback::new(|number_input: &NumberInput| {
@@ -720,7 +708,7 @@ impl DocumentMessageHandler {
 		);
 	}
 
-	pub fn update_layer_tree_options_bar_widgets(&self, responses: &mut VecDeque<Message>) {
+	pub fn update_layer_tree_options_bar_widgets(&self, responses: &mut VecDeque<Message>, font_cache: &FontCache) {
 		let mut opacity = None;
 		let mut opacity_is_mixed = false;
 
@@ -729,7 +717,7 @@ impl DocumentMessageHandler {
 
 		self.layer_metadata
 			.keys()
-			.filter_map(|path| self.layer_panel_entry_from_path(path))
+			.filter_map(|path| self.layer_panel_entry_from_path(path, font_cache))
 			.filter(|layer_panel_entry| layer_panel_entry.layer_metadata.selected)
 			.flat_map(|layer_panel_entry| self.graphene_document.layer(layer_panel_entry.path.as_slice()))
 			.for_each(|layer| {
@@ -782,6 +770,7 @@ impl DocumentMessageHandler {
 					disabled: blend_mode.is_none() && !blend_mode_is_mixed,
 					interactive: true,
 					draw_icon: false,
+					..Default::default()
 				})),
 				WidgetHolder::new(Widget::Separator(Separator {
 					separator_type: SeparatorType::Related,
@@ -835,16 +824,16 @@ impl DocumentMessageHandler {
 	}
 }
 
-impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for DocumentMessageHandler {
+impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCache)> for DocumentMessageHandler {
 	#[remain::check]
-	fn process_action(&mut self, message: DocumentMessage, ipp: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
+	fn process_action(&mut self, message: DocumentMessage, (ipp, font_cache): (&InputPreprocessorMessageHandler, &FontCache), responses: &mut VecDeque<Message>) {
 		use DocumentMessage::*;
 
 		#[remain::sorted]
 		match message {
 			// Sub-messages
 			#[remain::unsorted]
-			DispatchOperation(op) => match self.graphene_document.handle_operation(*op) {
+			DispatchOperation(op) => match self.graphene_document.handle_operation(*op, font_cache) {
 				Ok(Some(document_responses)) => {
 					for response in document_responses {
 						match &response {
@@ -878,7 +867,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 			},
 			#[remain::unsorted]
 			Artboard(message) => {
-				self.artboard_message_handler.process_action(message, (), responses);
+				self.artboard_message_handler.process_action(message, font_cache, responses);
 			}
 			#[remain::unsorted]
 			Movement(message) => {
@@ -886,13 +875,13 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 			}
 			#[remain::unsorted]
 			Overlays(message) => {
-				self.overlays_message_handler.process_action(message, self.overlays_visible, responses);
+				self.overlays_message_handler.process_action(message, (self.overlays_visible, font_cache), responses);
 				// responses.push_back(OverlaysMessage::RenderOverlays.into());
 			}
 			#[remain::unsorted]
 			TransformLayers(message) => {
 				self.transform_layer_handler
-					.process_action(message, (&mut self.layer_metadata, &mut self.graphene_document, ipp), responses);
+					.process_action(message, (&mut self.layer_metadata, &mut self.graphene_document, ipp, font_cache), responses);
 			}
 			#[remain::unsorted]
 			PropertiesPanel(message) => {
@@ -901,6 +890,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 					PropertiesPanelMessageHandlerData {
 						artwork_document: &self.graphene_document,
 						artboard_document: &self.artboard_message_handler.artboards_graphene_document,
+						font_cache,
 					},
 					responses,
 				);
@@ -913,7 +903,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 			}
 			AddSelectedLayers { additional_layers } => {
 				for layer_path in &additional_layers {
-					responses.extend(self.select_layer(layer_path));
+					responses.extend(self.select_layer(layer_path, font_cache));
 				}
 
 				let selected_paths: Vec<Vec<u64>> = self.selected_layers().map(|path| path.to_vec()).collect();
@@ -933,13 +923,13 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 				responses.push_back(FolderChanged { affected_folder_path: vec![] }.into());
 				responses.push_back(DocumentMessage::SelectionChanged.into());
 
-				self.update_layer_tree_options_bar_widgets(responses);
+				self.update_layer_tree_options_bar_widgets(responses, font_cache);
 			}
 			AlignSelectedLayers { axis, aggregate } => {
 				self.backup(responses);
 				let (paths, boxes): (Vec<_>, Vec<_>) = self
 					.selected_layers()
-					.filter_map(|path| self.graphene_document.viewport_bounding_box(path).ok()?.map(|b| (path, b)))
+					.filter_map(|path| self.graphene_document.viewport_bounding_box(path, font_cache).ok()?.map(|b| (path, b)))
 					.unzip();
 
 				let axis = match axis {
@@ -947,7 +937,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 					AlignAxis::Y => DVec2::Y,
 				};
 				let lerp = |bbox: &[DVec2; 2]| bbox[0].lerp(bbox[1], 0.5);
-				if let Some(combined_box) = self.graphene_document.combined_viewport_bounding_box(self.selected_layers()) {
+				if let Some(combined_box) = self.graphene_document.combined_viewport_bounding_box(self.selected_layers(), font_cache) {
 					let aggregated = match aggregate {
 						AlignAggregate::Min => combined_box[0],
 						AlignAggregate::Max => combined_box[1],
@@ -1055,13 +1045,13 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 
 				// Calculates the bounding box of the region to be exported
 				let bbox = match bounds {
-					crate::frontend::utility_types::ExportBounds::AllArtwork => self.all_layer_bounds(),
+					crate::frontend::utility_types::ExportBounds::AllArtwork => self.all_layer_bounds(font_cache),
 					crate::frontend::utility_types::ExportBounds::Artboard(id) => self
 						.artboard_message_handler
 						.artboards_graphene_document
 						.layer(&[id])
 						.ok()
-						.and_then(|layer| layer.aabounding_box(&self.graphene_document.font_cache)),
+						.and_then(|layer| layer.aabounding_box(font_cache)),
 				}
 				.unwrap_or_default();
 				let size = bbox[1] - bbox[0];
@@ -1072,7 +1062,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 					false => file_name + file_suffix,
 				};
 
-				let rendered = self.graphene_document.render_root(self.view_mode);
+				let rendered = self.graphene_document.render_root(self.view_mode, font_cache);
 				let document = format!(
 					r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{} {} {} {}" width="{}px" height="{}">{}{}</svg>"#,
 					bbox[0].x, bbox[0].y, size.x, size.y, size.x, size.y, "\n", rendered
@@ -1095,7 +1085,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 					FlipAxis::X => DVec2::new(-1., 1.),
 					FlipAxis::Y => DVec2::new(1., -1.),
 				};
-				if let Some([min, max]) = self.graphene_document.combined_viewport_bounding_box(self.selected_layers()) {
+				if let Some([min, max]) = self.graphene_document.combined_viewport_bounding_box(self.selected_layers(), font_cache) {
 					let center = (max + min) / 2.;
 					let bbox_trans = DAffine2::from_translation(-center);
 					for path in self.selected_layers() {
@@ -1112,13 +1102,9 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 				}
 			}
 			FolderChanged { affected_folder_path } => {
-				let _ = self.graphene_document.render_root(self.view_mode);
+				let _ = self.graphene_document.render_root(self.view_mode, font_cache);
 				let affected_layer_path = affected_folder_path;
 				responses.extend([LayerChanged { affected_layer_path }.into(), DocumentStructureChanged.into()]);
-			}
-			FontLoaded { font_file_url, data, is_default } => {
-				self.graphene_document.font_cache.insert(font_file_url, data, is_default);
-				responses.push_back(DocumentMessage::DirtyRenderDocument.into());
 			}
 			GroupSelectedLayers => {
 				let mut new_folder_path = self.graphene_document.shallowest_common_folder(self.selected_layers()).unwrap_or(&[]).to_vec();
@@ -1150,16 +1136,11 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 				);
 			}
 			LayerChanged { affected_layer_path } => {
-				if let Ok(layer_entry) = self.layer_panel_entry(affected_layer_path.clone()) {
+				if let Ok(layer_entry) = self.layer_panel_entry(affected_layer_path.clone(), font_cache) {
 					responses.push_back(FrontendMessage::UpdateDocumentLayerDetails { data: layer_entry }.into());
 				}
 				responses.push_back(PropertiesPanelMessage::CheckSelectedWasUpdated { path: affected_layer_path }.into());
-				self.update_layer_tree_options_bar_widgets(responses);
-			}
-			LoadFont { font_file_url } => {
-				if !self.graphene_document.font_cache.loaded_font(&font_file_url) {
-					responses.push_front(FrontendMessage::TriggerFontLoad { font_file_url }.into());
-				}
+				self.update_layer_tree_options_bar_widgets(responses, font_cache);
 			}
 			MoveSelectedLayersTo {
 				folder_path,
@@ -1241,7 +1222,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 			RenderDocument => {
 				responses.push_back(
 					FrontendMessage::UpdateDocumentArtwork {
-						svg: self.graphene_document.render_root(self.view_mode),
+						svg: self.graphene_document.render_root(self.view_mode, font_cache),
 					}
 					.into(),
 				);
@@ -1251,7 +1232,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 				let scale = 0.5 + ASYMPTOTIC_EFFECT + document_transform_scale * SCALE_EFFECT;
 				let viewport_size = ipp.viewport_bounds.size();
 				let viewport_mid = ipp.viewport_bounds.center();
-				let [bounds1, bounds2] = self.document_bounds().unwrap_or([viewport_mid; 2]);
+				let [bounds1, bounds2] = self.document_bounds(font_cache).unwrap_or([viewport_mid; 2]);
 				let bounds1 = bounds1.min(viewport_mid) - viewport_size * scale;
 				let bounds2 = bounds2.max(viewport_mid) + viewport_size * scale;
 				let bounds_length = (bounds2 - bounds1) * (1. + SCROLLBAR_SPACING);
@@ -1424,7 +1405,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 				responses.push_back(LayerChanged { affected_layer_path: layer_path }.into())
 			}
 			SetLayerName { layer_path, name } => {
-				if let Some(layer) = self.layer_panel_entry_from_path(&layer_path) {
+				if let Some(layer) = self.layer_panel_entry_from_path(&layer_path, font_cache) {
 					// Only save the history state if the name actually changed to something different
 					if layer.name != name {
 						self.backup(responses);
@@ -1533,7 +1514,7 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 				self.layer_metadata.insert(layer_path, layer_metadata);
 			}
 			ZoomCanvasToFitAll => {
-				if let Some(bounds) = self.document_bounds() {
+				if let Some(bounds) = self.document_bounds(font_cache) {
 					responses.push_back(
 						MovementMessage::FitViewportToBounds {
 							bounds,

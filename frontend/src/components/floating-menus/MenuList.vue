@@ -5,6 +5,7 @@
 		@naturalWidth="(newNaturalWidth: number) => $emit('naturalWidth', newNaturalWidth)"
 		:type="'Dropdown'"
 		:windowEdgeMargin="0"
+		:escapeCloses="false"
 		v-bind="{ direction, scrollableY, minWidth }"
 		ref="floatingMenu"
 		data-hover-menu-keep-open
@@ -20,7 +21,7 @@
 				@pointerenter="() => onEntryPointerEnter(entry)"
 				@pointerleave="() => onEntryPointerLeave(entry)"
 			>
-				<CheckboxInput v-if="entry.checkbox" v-model:checked="entry.checked" :outlineStyle="true" class="entry-checkbox" />
+				<CheckboxInput v-if="entry.checkbox" v-model:checked="entry.checked" :outlineStyle="true" :disableTabIndex="true" class="entry-checkbox" />
 				<IconLabel v-else-if="entry.icon && drawIcon" :icon="entry.icon" class="entry-icon" />
 				<div v-else-if="drawIcon" class="no-icon"></div>
 
@@ -194,6 +195,7 @@ const MenuList = defineComponent({
 		// Called only when `open` is changed from outside this component (with v-model)
 		open(newOpen: boolean) {
 			this.isOpen = newOpen;
+			this.highlighted = this.activeEntry;
 		},
 		isOpen(newIsOpen: boolean) {
 			this.$emit("update:open", newIsOpen);
@@ -264,6 +266,7 @@ const MenuList = defineComponent({
 			if (!menuOpen && (e.key === " " || e.key === "Enter")) {
 				// Allow opening menu with space or enter
 				this.isOpen = true;
+				this.highlighted = this.activeEntry;
 			} else if (menuOpen && openChild >= 0) {
 				// Redirect the keyboard navigation to a submenu if one is open
 				const shouldCloseStack = flatEntries[openChild].ref?.keydown(e, true);
@@ -321,7 +324,7 @@ const MenuList = defineComponent({
 		setHighlighted(newHighlight: MenuListEntry<string> | undefined) {
 			this.highlighted = newHighlight;
 			// Interactive menus should keep the active entry the same as the highlighted one
-			if (this.interactive) this.$emit("update:activeEntry", newHighlight);
+			if (this.interactive && newHighlight?.value !== this.activeEntry?.value) this.$emit("update:activeEntry", newHighlight);
 		},
 	},
 	computed: {

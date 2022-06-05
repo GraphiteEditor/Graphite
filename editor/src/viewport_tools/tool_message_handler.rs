@@ -6,6 +6,7 @@ use crate::layout::widgets::PropertyHolder;
 use crate::message_prelude::*;
 
 use graphene::color::Color;
+use graphene::layers::text_layer::FontCache;
 
 use std::collections::VecDeque;
 
@@ -14,12 +15,12 @@ pub struct ToolMessageHandler {
 	tool_state: ToolFsmState,
 }
 
-impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessorMessageHandler)> for ToolMessageHandler {
+impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessorMessageHandler, &FontCache)> for ToolMessageHandler {
 	#[remain::check]
-	fn process_action(&mut self, message: ToolMessage, data: (&DocumentMessageHandler, &InputPreprocessorMessageHandler), responses: &mut VecDeque<Message>) {
+	fn process_action(&mut self, message: ToolMessage, data: (&DocumentMessageHandler, &InputPreprocessorMessageHandler, &FontCache), responses: &mut VecDeque<Message>) {
 		use ToolMessage::*;
 
-		let (document, input) = data;
+		let (document, input, font_cache) = data;
 		#[remain::sorted]
 		match message {
 			// Messages
@@ -41,11 +42,11 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessorMes
 				// Send the Abort state transition to the tool
 				let mut send_abort_to_tool = |tool_type, message: ToolMessage, update_hints_and_cursor: bool| {
 					if let Some(tool) = tool_data.tools.get_mut(&tool_type) {
-						tool.process_action(message, (document, document_data, input), responses);
+						tool.process_action(message, (document, document_data, input, font_cache), responses);
 
 						if update_hints_and_cursor {
-							tool.process_action(ToolMessage::UpdateHints, (document, document_data, input), responses);
-							tool.process_action(ToolMessage::UpdateCursor, (document, document_data, input), responses);
+							tool.process_action(ToolMessage::UpdateHints, (document, document_data, input, font_cache), responses);
+							tool.process_action(ToolMessage::UpdateCursor, (document, document_data, input, font_cache), responses);
 						}
 					}
 				};
@@ -95,8 +96,12 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessorMes
 				tool_data.register_properties(responses, LayoutTarget::ToolShelf);
 
 				// Set initial hints and cursor
-				tool_data.active_tool_mut().process_action(ToolMessage::UpdateHints, (document, document_data, input), responses);
-				tool_data.active_tool_mut().process_action(ToolMessage::UpdateCursor, (document, document_data, input), responses);
+				tool_data
+					.active_tool_mut()
+					.process_action(ToolMessage::UpdateHints, (document, document_data, input, font_cache), responses);
+				tool_data
+					.active_tool_mut()
+					.process_action(ToolMessage::UpdateCursor, (document, document_data, input, font_cache), responses);
 			}
 			ResetColors => {
 				let document_data = &mut self.tool_state.document_tool_data;
@@ -157,7 +162,7 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessorMes
 
 				if let Some(tool) = tool_data.tools.get_mut(&tool_type) {
 					if tool_type == tool_data.active_tool_type {
-						tool.process_action(tool_message, (document, document_data, input), responses);
+						tool.process_action(tool_message, (document, document_data, input, font_cache), responses);
 					}
 				}
 			}

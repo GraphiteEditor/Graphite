@@ -6,6 +6,8 @@ use crate::message_prelude::*;
 use crate::misc::HintData;
 use crate::Color;
 
+use graphene::layers::text_layer::Font;
+
 use serde::{Deserialize, Serialize};
 
 #[remain::sorted]
@@ -20,10 +22,10 @@ pub enum FrontendMessage {
 	DisplayRemoveEditableTextbox,
 
 	// Trigger prefix: cause a browser API to do something
+	TriggerAboutGraphiteLocalizedCommitDate { commit_date: String },
 	TriggerFileDownload { document: String, name: String },
 	TriggerFileUpload,
-	TriggerFontLoad { font_file_url: String },
-	TriggerFontLoadDefault,
+	TriggerFontLoad { font: Font, is_default: bool },
 	TriggerIndexedDbRemoveDocument { document_id: u64 },
 	TriggerIndexedDbWriteDocument { document: String, details: FrontendDocumentDetails, version: String },
 	TriggerRasterDownload { document: String, name: String, mime: String, size: (f64, f64) },

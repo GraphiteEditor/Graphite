@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 #[remain::sorted]
 #[impl_message(Message, InputMapper)]
-#[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize)]
+#[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize)]
 pub enum InputMapperMessage {
 	// Sub-messages
 	#[remain::unsorted]

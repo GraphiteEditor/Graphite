@@ -67,7 +67,7 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 
 		// Don't redirect tab or enter if not in canvas (to allow navigating elements)
 		const inCanvas = e.target instanceof Element && e.target.closest("[data-canvas]");
-		if (!inCanvas && ["tab", "enter", "arrowdown", "arrowup", "arrowleft", "arrowright"].includes(key.toLowerCase())) return false;
+		if (!inCanvas && ["tab", "enter", " ", "arrowdown", "arrowup", "arrowleft", "arrowright"].includes(key.toLowerCase())) return false;
 
 		// Redirect to the backend
 		return true;

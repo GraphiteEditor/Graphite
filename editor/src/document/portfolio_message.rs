@@ -1,6 +1,7 @@
 use super::clipboards::Clipboard;
 use crate::message_prelude::*;
 
+use graphene::layers::text_layer::Font;
 use graphene::LayerId;
 
 use serde::{Deserialize, Serialize};
@@ -32,6 +33,17 @@ pub enum PortfolioMessage {
 	},
 	Cut {
 		clipboard: Clipboard,
+	},
+	FontLoaded {
+		font_family: String,
+		font_style: String,
+		preview_url: String,
+		data: Vec<u8>,
+		is_default: bool,
+	},
+	LoadFont {
+		font: Font,
+		is_default: bool,
 	},
 	NewDocument,
 	NewDocumentWithName {

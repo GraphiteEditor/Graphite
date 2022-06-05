@@ -1,7 +1,7 @@
 <template>
 	<LayoutRow class="checkbox-input" :class="{ 'outline-style': outlineStyle }">
 		<input type="checkbox" :id="`checkbox-input-${id}`" :checked="checked" @change="(e) => $emit('update:checked', (e.target as HTMLInputElement).checked)" />
-		<label :for="`checkbox-input-${id}`" tabindex="0" @keydown.enter="(e) => ((e.target as HTMLElement).previousSibling as HTMLInputElement).click()">
+		<label :for="`checkbox-input-${id}`" :tabindex="disableTabIndex ? -1 : 0" @keydown.enter="(e) => ((e.target as HTMLElement).previousSibling as HTMLInputElement).click()">
 			<LayoutRow class="checkbox-box">
 				<IconLabel :icon="icon" />
 			</LayoutRow>
@@ -107,6 +107,7 @@ export default defineComponent({
 		checked: { type: Boolean as PropType<boolean>, default: false },
 		icon: { type: String as PropType<IconName>, default: "Checkmark" },
 		outlineStyle: { type: Boolean as PropType<boolean>, default: false },
+		disableTabIndex: { type: Boolean as PropType<boolean>, default: false },
 	},
 	components: {
 		IconLabel,
