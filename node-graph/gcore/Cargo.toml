@@ -9,11 +9,13 @@ authors = ["Dennis Kobert <dennis@kobert.dev>"]
 
 [features]
 std = ["dyn-any"]
-default = ["gpu"]
+default = ["gpu", "async"]
 gpu = ["spirv-std"]
+async = ["async-trait"]
 nightly = []
 
 [dependencies]
 dyn-any = {path = "../dyn-any", features = ["derive"], optional = true}
 
 spirv-std = { git =  "https://github.com/EmbarkStudios/rust-gpu",  features = ["glam"] , optional = true}
+async-trait = {version = "0.1", optional = true}

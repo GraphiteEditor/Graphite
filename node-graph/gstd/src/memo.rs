@@ -1,30 +1,33 @@
 use graphene_core::{Cache, Node};
 use once_cell::sync::OnceCell;
+use std::marker::PhantomData;
 
 /// Caches the output of a given Node and acts as a proxy
-pub struct CacheNode<'n, CachedNode: Node<'n, Input>, Input> {
-    node: &'n CachedNode,
+pub struct CacheNode<'n, CachedNode: Node<'n>> {
+    node: CachedNode,
     cache: OnceCell<CachedNode::Output>,
+    _phantom: PhantomData<&'n ()>,
 }
-impl<'n, CashedNode: Node<'n, Input>, Input> Node<'n, Input> for CacheNode<'n, CashedNode, Input> {
+impl<'n, CashedNode: Node<'n>> Node<'n> for CacheNode<'n, CashedNode> {
     type Output = &'n CashedNode::Output;
-    fn eval(&'n self, input: Input) -> Self::Output {
-        self.cache.get_or_init(|| self.node.eval(input))
+    fn eval(&'n self) -> Self::Output {
+        self.cache.get_or_init(|| self.node.eval())
     }
 }
 
-impl<'n, CachedNode: Node<'n, Input>, Input> CacheNode<'n, CachedNode, Input> {
+impl<'n, CachedNode: Node<'n>> CacheNode<'n, CachedNode> {
     pub fn clear(&'n mut self) {
         self.cache = OnceCell::new();
     }
-    pub fn new(node: &'n CachedNode) -> CacheNode<'n, CachedNode, Input> {
+    pub fn new(node: CachedNode) -> CacheNode<'n, CachedNode> {
         CacheNode {
             node,
             cache: OnceCell::new(),
+            _phantom: PhantomData,
         }
     }
 }
-impl<'n, CachedNode: Node<'n, Input>, Input> Cache for CacheNode<'n, CachedNode, Input> {
+impl<'n, CachedNode: Node<'n>> Cache for CacheNode<'n, CachedNode> {
     fn clear(&mut self) {
         self.cache = OnceCell::new();
     }

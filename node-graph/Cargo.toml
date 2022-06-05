@@ -1,7 +1,7 @@
 [workspace]
 
 members = [
-    "proc-macro",
+    #"proc-macro",
     "gcore",
     "gstd",
     "borrow_stack"
