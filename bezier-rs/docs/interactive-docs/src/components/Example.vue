@@ -6,18 +6,22 @@
 </template>
 
 <script>
-import { BezierDrawing } from "./BezierDrawing";
+import BezierDrawing from "./BezierDrawing";
 
 export default {
 	name: "ExampleComponent",
 	props: {
 		title: String,
 		bezier: Object,
+		points: Object,
 	},
 	mounted() {
-		const bezierDrawing = new BezierDrawing(this.bezier);
-		this.$refs.drawing.appendChild(bezierDrawing.getCanvas());
-		bezierDrawing.drawBezier();
+		// eslint-disable-next-line
+		import("@/../wasm/pkg").then((wasm) => {
+			const bezierDrawing = new BezierDrawing(this.points, wasm);
+			this.$refs.drawing.appendChild(bezierDrawing.getCanvas());
+			bezierDrawing.updateBezier();
+		});
 	},
 };
 </script>

@@ -23,8 +23,6 @@ const testBezierLib = async () => {
 	});
 };
 
-// testBezierLib();
-
 export default {
 	name: "App",
 	components: {
