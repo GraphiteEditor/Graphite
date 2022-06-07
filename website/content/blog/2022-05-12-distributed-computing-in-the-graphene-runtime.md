@@ -3,7 +3,7 @@ title = "Distributed computing in the Graphene runtime"
 date = 2022-05-12
 
 [extra]
-banner = "https://static.graphite.rs/content/blog/2022-05-12-distributed-computing-in-the-graphene-runtime.png"
+banner = "https://static.graphite.rs/content/blog/2022-05-12-distributed-computing-in-the-graphene-runtime__2.png"
 author = "Keavon Chambers"
 reddit = "https://www.reddit.com/r/graphite/comments/unw45k/blog_post_distributed_computing_in_the_graphene/"
 twitter = "https://twitter.com/GraphiteEditor/status/1524664083554791424"
@@ -42,6 +42,8 @@ For security and portability, user-authored nodes are compiled into WebAssembly 
 # The Graphene distributed runtime
 
 In the product architecture, Graphene is a distributed runtime environment for quickly processing data in the node graph by utilizing a pool of CPU and GPU compute resources available on local and networked machines. Jobs are run where latency, speed, and bandwidth availability will be most likely to provide a responsive user experience.
+
+![Graphene in a local and cloud environment](https://static.graphite.rs/content/blog/2022-05-12-distributed-computing-in-the-graphene-runtime/local-and-cloud.png)
 
 ## Scheduler
 
