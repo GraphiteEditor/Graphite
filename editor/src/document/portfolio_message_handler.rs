@@ -8,7 +8,7 @@ use crate::layout::widgets::PropertyHolder;
 use crate::{dialog, message_prelude::*};
 
 use graphene::layers::text_layer::{Font, FontCache};
-use graphene::{response, Operation as DocumentOperation};
+use graphene::Operation as DocumentOperation;
 
 use log::warn;
 use std::collections::{HashMap, VecDeque};
