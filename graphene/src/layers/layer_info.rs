@@ -61,7 +61,7 @@ pub trait LayerData {
 	/// let mut svg = String::new();
 	///
 	/// // Render the shape without any transforms, in normal view mode
-	/// shape.render(&mut svg, &mut String::new(), &mut vec![], ViewMode::Normal, &Default::default());
+	/// shape.render(&mut svg, &mut String::new(), &mut vec![], ViewMode::Normal, &Default::default(), None);
 	///
 	/// assert_eq!(
 	///     svg,
