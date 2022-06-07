@@ -171,8 +171,15 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 				self.documents.clear();
 				self.document_ids.clear();
 
-				// Create a new blank document
-				responses.push_back(NewDocument.into());
+				// Clear out all documents and make a new default document
+				let new_document_id = generate_uuid();
+				self.documents.insert(new_document_id, DocumentMessageHandler::default());
+				self.document_ids.push(new_document_id);
+				self.active_document_id = new_document_id;
+
+				responses.push_back(ToolMessage::AbortCurrentTool.into());
+				responses.push_back(PortfolioMessage::UpdateOpenDocumentsList.into());
+				responses.push_back(PortfolioMessage::SelectDocument { document_id: new_document_id }.into())
 			}
 			CloseDocument { document_id } => {
 				let document_index = self.document_index(document_id);
