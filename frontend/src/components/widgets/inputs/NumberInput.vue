@@ -141,8 +141,8 @@ export default defineComponent({
 
 			this.editing = false;
 
-			const inputElement = (this.$refs.fieldInput as typeof FieldInput).$refs.input as HTMLInputElement;
-			inputElement.blur();
+			const inputElement = (this.$refs.fieldInput as typeof FieldInput)?.$refs?.input as HTMLInputElement | undefined;
+			inputElement?.blur();
 		},
 		onCancelTextChange() {
 			this.updateValue(undefined);
