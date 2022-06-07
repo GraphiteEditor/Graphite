@@ -72,9 +72,17 @@ impl MessageHandler<LayoutMessage, ()> for LayoutMessageHandler {
 			}
 			UpdateLayout { layout_target, widget_id, value } => {
 				let layout = &mut self.layouts[layout_target as usize];
-				let widget_holder = layout.iter_mut().find(|widget| widget.widget_id == widget_id).expect("Received invalid widget_id from the frontend");
+				let widget_holder = layout.iter_mut().find(|widget| widget.widget_id == widget_id);
+				if widget_holder.is_none() {
+					log::trace!(
+						"Could not find widget_id:{} on layout_target:{:?}. This could be an indication of a problem or just a user clicking off of an actively edited layer",
+						widget_id,
+						layout_target
+					);
+					return;
+				}
 				#[remain::sorted]
-				match &mut widget_holder.widget {
+				match &mut widget_holder.unwrap().widget {
 					Widget::CheckboxInput(checkbox_input) => {
 						let update_value = value.as_bool().expect("CheckboxInput update was not of type: bool");
 						checkbox_input.checked = update_value;
