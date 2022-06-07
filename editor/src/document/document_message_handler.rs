@@ -1060,7 +1060,7 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 					false => file_name + file_suffix,
 				};
 
-				let rendered = self.graphene_document.render_root(self.view_mode, font_cache);
+				let rendered = self.graphene_document.render_root(self.view_mode, font_cache, None);
 				let document = format!(
 					r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{} {} {} {}" width="{}px" height="{}">{}{}</svg>"#,
 					bbox[0].x, bbox[0].y, size.x, size.y, size.x, size.y, "\n", rendered
@@ -1100,7 +1100,8 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 				}
 			}
 			FolderChanged { affected_folder_path } => {
-				let _ = self.graphene_document.render_root(self.view_mode, font_cache);
+				// TODO: WHY IS IT RENDERING HERE?
+				let _ = self.graphene_document.render_root(self.view_mode, font_cache, None);
 				let affected_layer_path = affected_folder_path;
 				responses.extend([LayerChanged { affected_layer_path }.into(), DocumentStructureChanged.into()]);
 			}
@@ -1218,9 +1219,11 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 			}
 			RenameLayer { layer_path, new_name } => responses.push_back(DocumentOperation::RenameLayer { layer_path, new_name }.into()),
 			RenderDocument => {
+				// ipp bounds are relative to the entire screen
+				let culling_bounds = [(0., 0.).into(), ipp.viewport_bounds.bottom_right - ipp.viewport_bounds.top_left];
 				responses.push_back(
 					FrontendMessage::UpdateDocumentArtwork {
-						svg: self.graphene_document.render_root(self.view_mode, font_cache),
+						svg: self.graphene_document.render_root(self.view_mode, font_cache, Some(culling_bounds)),
 					}
 					.into(),
 				);

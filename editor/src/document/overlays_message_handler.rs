@@ -31,7 +31,8 @@ impl MessageHandler<OverlaysMessage, (bool, &FontCache)> for OverlaysMessageHand
 				responses.push_back(
 					FrontendMessage::UpdateDocumentOverlays {
 						svg: if overlays_visible {
-							self.overlays_graphene_document.render_root(ViewMode::Normal, font_cache)
+							// TODO: Occlude overlays as well
+							self.overlays_graphene_document.render_root(ViewMode::Normal, font_cache, None)
 						} else {
 							String::from("")
 						},

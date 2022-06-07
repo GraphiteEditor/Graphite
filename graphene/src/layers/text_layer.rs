@@ -37,7 +37,7 @@ pub struct TextLayer {
 }
 
 impl LayerData for TextLayer {
-	fn render(&mut self, svg: &mut String, svg_defs: &mut String, transforms: &mut Vec<DAffine2>, view_mode: ViewMode, font_cache: &FontCache) {
+	fn render(&mut self, svg: &mut String, svg_defs: &mut String, transforms: &mut Vec<DAffine2>, view_mode: ViewMode, font_cache: &FontCache, _culling_bounds: Option<[DVec2; 2]>) {
 		let transform = self.transform(transforms, view_mode);
 		let inverse = transform.inverse();
 

@@ -22,9 +22,9 @@ pub struct FolderLayer {
 }
 
 impl LayerData for FolderLayer {
-	fn render(&mut self, svg: &mut String, svg_defs: &mut String, transforms: &mut Vec<glam::DAffine2>, view_mode: ViewMode, font_cache: &FontCache) {
+	fn render(&mut self, svg: &mut String, svg_defs: &mut String, transforms: &mut Vec<glam::DAffine2>, view_mode: ViewMode, font_cache: &FontCache, culling_bounds: Option<[DVec2; 2]>) {
 		for layer in &mut self.layers {
-			let _ = writeln!(svg, "{}", layer.render(transforms, view_mode, svg_defs, font_cache));
+			let _ = writeln!(svg, "{}", layer.render(transforms, view_mode, svg_defs, font_cache, culling_bounds));
 		}
 	}
 
@@ -37,10 +37,13 @@ impl LayerData for FolderLayer {
 	}
 
 	fn bounding_box(&self, transform: glam::DAffine2, font_cache: &FontCache) -> Option<[DVec2; 2]> {
-		self.layers
+		let bounding_box = self
+			.layers
 			.iter()
 			.filter_map(|layer| layer.data.bounding_box(transform * layer.transform, font_cache))
-			.reduce(|a, b| [a[0].min(b[0]), a[1].max(b[1])])
+			.reduce(|a, b| [a[0].min(b[0]), a[1].max(b[1])]);
+
+		bounding_box
 	}
 }
 
