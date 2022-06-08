@@ -24,8 +24,7 @@ pub struct StorageNode<'n>(&'n dyn Node<'n, Output = &'n dyn DynAny<'n>>);
 impl<'n> Node<'n> for StorageNode<'n> {
     type Output = &'n (dyn DynAny<'n>);
     fn eval(&'n self) -> Self::Output {
-        let value = self.0.eval();
-        value
+        self.0.eval()
     }
 }
 impl<'n> StorageNode<'n> {

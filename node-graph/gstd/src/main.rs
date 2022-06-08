@@ -91,41 +91,61 @@ impl<'n> NodeStore<'n> {
 }
 
 fn main() {
-    use dyn_any::{downcast_ref, DynAny, StaticType};
-    //let mut mul = mul::MulNode::new();
-    let mut stack: borrow_stack::FixedSizeStack<Box<dyn Node<'_, Output = &dyn DynAny>>> =
-        borrow_stack::FixedSizeStack::new(42);
-    unsafe { stack.push(Box::new(AnyValueNode::new(1f32))) };
-    //let node = unsafe { stack.get(0) };
-    //let boxed = Box::new(StorageNode::new(node));
-    //unsafe { stack.push(boxed) };
-    let result = unsafe { &stack.get()[0] }.eval();
-    dbg!(downcast_ref::<f32>(result));
-    /*unsafe {
-        stack
-            .push(Box::new(AnyRefNode::new(stack.get(0).as_ref()))
-                as Box<dyn Node<(), Output = &dyn DynAny>>)
-    };*/
-    let f = (3.2f32, 3.1f32);
-    let a = ValueNode::new(1.);
-    let id = std::any::TypeId::of::<&f32>();
-    let any_a = AnyRefNode::new(&a);
-    /*let _mul2 = mul::MulNodeInput {
-        a: None,
-        b: Some(&any_a),
-    };
-    let mut mul2 = mul::new!();
-    //let cached = memo::CacheNode::new(&mul1);
-    //let foo = value::AnyRefNode::new(&cached);
-    mul2.set_arg_by_index(0, &any_a);*/
-    let int = value::IntNode::<32>;
-    Node::eval(&int);
-    println!("{}", Node::eval(&int));
-    //let _add: u32 = ops::AddNode::<u32>::default().eval((int.exec(), int.exec()));
-    //let fnode = generic::FnNode::new(|(a, b): &(i32, i32)| a - b);
-    //let sub = fnode.any(&("a", 2));
-    //let cache = memo::CacheNode::new(&fnode);
-    //let cached_result = cache.eval(&(2, 3));
+    use graphene_std::*;
+    use quote::quote;
+    use syn::parse::Parse;
+    let nodes = vec![
+        NodeKind::Input,
+        NodeKind::Value(syn::parse_quote!(1u32)),
+        NodeKind::Node(syn::parse_quote!(graphene_core::ops::AddNode), vec![0, 0]),
+    ];
 
+    //println!("{}", node_graph(1));
+
+    let nodegraph = NodeGraph {
+        nodes,
+        input: syn::Type::Verbatim(quote! {u32}),
+        output: syn::Type::Verbatim(quote! {u32}),
+    };
+
+    let pretty = pretty_token_stream::Pretty::new(nodegraph.serialize_gpu("add"));
+    pretty.print();
+    /*
+        use dyn_any::{downcast_ref, DynAny, StaticType};
+        //let mut mul = mul::MulNode::new();
+        let mut stack: borrow_stack::FixedSizeStack<Box<dyn Node<'_, Output = &dyn DynAny>>> =
+            borrow_stack::FixedSizeStack::new(42);
+        unsafe { stack.push(Box::new(AnyValueNode::new(1f32))) };
+        //let node = unsafe { stack.get(0) };
+        //let boxed = Box::new(StorageNode::new(node));
+        //unsafe { stack.push(boxed) };
+        let result = unsafe { &stack.get()[0] }.eval();
+        dbg!(downcast_ref::<f32>(result));
+        /*unsafe {
+            stack
+                .push(Box::new(AnyRefNode::new(stack.get(0).as_ref()))
+                    as Box<dyn Node<(), Output = &dyn DynAny>>)
+        };*/
+        let f = (3.2f32, 3.1f32);
+        let a = ValueNode::new(1.);
+        let id = std::any::TypeId::of::<&f32>();
+        let any_a = AnyRefNode::new(&a);
+        /*let _mul2 = mul::MulNodeInput {
+            a: None,
+            b: Some(&any_a),
+        };
+        let mut mul2 = mul::new!();
+        //let cached = memo::CacheNode::new(&mul1);
+        //let foo = value::AnyRefNode::new(&cached);
+        mul2.set_arg_by_index(0, &any_a);*/
+        let int = value::IntNode::<32>;
+        Node::eval(&int);
+        println!("{}", Node::eval(&int));
+        //let _add: u32 = ops::AddNode::<u32>::default().eval((int.exec(), int.exec()));
+        //let fnode = generic::FnNode::new(|(a, b): &(i32, i32)| a - b);
+        //let sub = fnode.any(&("a", 2));
+        //let cache = memo::CacheNode::new(&fnode);
+        //let cached_result = cache.eval(&(2, 3));
+    */
     //println!("{}", cached_result)
 }

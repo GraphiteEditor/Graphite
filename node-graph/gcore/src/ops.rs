@@ -1,9 +1,9 @@
 use core::{marker::PhantomData, ops::Add};
 
-use crate::Node;
+use crate::{Node, NodeInput};
 
 #[repr(C)]
-struct AddNode<'n, L: Add<R>, R, I1: Node<'n, Output = L>, I2: Node<'n, Output = R>>(
+pub struct AddNode<'n, L: Add<R>, R, I1: Node<'n, Output = L>, I2: Node<'n, Output = R>>(
     pub I1,
     pub I2,
     PhantomData<&'n (L, R)>,
@@ -16,6 +16,13 @@ impl<'n, L: Add<R>, R, I1: Node<'n, Output = L>, I2: Node<'n, Output = R>> Node<
         self.0.eval() + self.1.eval()
     }
 }
+impl<'n, L: Add<R>, R, I1: Node<'n, Output = L>, I2: Node<'n, Output = R>>
+    AddNode<'n, L, R, I1, I2>
+{
+    pub fn new(input: (I1, I2)) -> AddNode<'n, L, R, I1, I2> {
+        AddNode(input.0, input.1, PhantomData)
+    }
+}
 
 #[repr(C)]
 pub struct CloneNode<'n, N: Node<'n, Output = &'n O>, O: Clone + 'n>(pub N, PhantomData<&'n ()>);
@@ -23,6 +30,11 @@ impl<'n, N: Node<'n, Output = &'n O>, O: Clone> Node<'n> for CloneNode<'n, N, O>
     type Output = O;
     fn eval(&'n self) -> Self::Output {
         self.0.eval().clone()
+    }
+}
+impl<'n, N: Node<'n, Output = &'n O>, O: Clone> CloneNode<'n, N, O> {
+    pub const fn new(node: N) -> CloneNode<'n, N, O> {
+        CloneNode(node, PhantomData)
     }
 }
 
@@ -56,13 +68,12 @@ impl<'n, N: Node<'n>> Node<'n> for DupNode<'n, N> {
         (self.0.eval(), self.0.eval()) //TODO: use Copy/Clone implementation
     }
 }
+impl<'n, N: Node<'n>> NodeInput for DupNode<'n, N> {
+    type Nodes = N;
 
-#[repr(C)]
-/// Return the unit value
-pub struct UnitNode;
-impl<'n> Node<'n> for UnitNode {
-    type Output = ();
-    fn eval(&'n self) -> Self::Output {}
+    fn new(input: Self::Nodes) -> Self {
+        Self(input, PhantomData)
+    }
 }
 
 #[repr(C)]
@@ -74,11 +85,18 @@ impl<'n, N: Node<'n>> Node<'n> for IdNode<'n, N> {
         self.0.eval()
     }
 }
+impl<'n, N: Node<'n>> NodeInput for IdNode<'n, N> {
+    type Nodes = N;
+
+    fn new(input: Self::Nodes) -> Self {
+        Self(input, PhantomData)
+    }
+}
 
 pub fn foo() {
-    let unit = UnitNode;
-    let value = IdNode(crate::value::ValueNode::new(2u32), PhantomData);
-    let value2 = crate::value::ValueNode::new(4u32);
+    let unit = crate::value::UnitNode;
+    let value = IdNode(crate::value::ValueNode(2u32), PhantomData);
+    let value2 = crate::value::ValueNode(4u32);
     let dup = DupNode(&value, PhantomData);
     fn int(_: (), state: &u32) -> &u32 {
         state
@@ -120,10 +138,16 @@ pub mod gpu {
         #[spirv(storage_buffer, descriptor_set = 0, binding = 1)] y: &mut [(u32, u32)],
         #[spirv(push_constant)] push_consts: &PushConsts,
     ) {
+        fn node_graph(input: Input) -> Output {
+            let n0 = ValueNode::new(input);
+            let n1 = IdNode::new(n0);
+            let n2 = IdNode::new(n1);
+            return n2.eval();
+        }
         let gid = global_id.x as usize;
         // Only process up to n, which is the length of the buffers.
         if global_id.x < push_consts.n {
-            y[gid] = OPERATION.eval(a[gid]);
+            y[gid] = node_graph(a[gid]);
         }
     }
     #[allow(unused)]

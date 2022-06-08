@@ -14,7 +14,7 @@ pub mod ops;
 pub mod value;
 
 pub trait Node<'n> {
-    type Output: 'n; // TODO: replace with generic associated type
+    type Output; // TODO: replace with generic associated type
 
     fn eval(&'n self) -> Self::Output;
 }
@@ -27,12 +27,26 @@ impl<'n, N: Node<'n>> Node<'n> for &'n N {
     }
 }
 
+pub trait NodeInput {
+    type Nodes;
+
+    fn new(input: Self::Nodes) -> Self;
+}
+
+trait FQN {
+    fn fqn(&self) -> &'static str;
+}
+
+trait Input<I> {
+    unsafe fn input(&self, input: I);
+}
+
 #[cfg(feature = "async")]
 #[async_trait]
 pub trait AsyncNode<'n> {
-    type Output: 'n; // TODO: replace with generic associated type
+    type Output; // TODO: replace with generic associated type
 
-    async fn eval(&'n self) -> Self::Output;
+    async fn eval_async(&'n self) -> Self::Output;
 }
 
 #[cfg(feature = "async")]
@@ -40,7 +54,7 @@ pub trait AsyncNode<'n> {
 impl<'n, N: Node<'n> + Sync> AsyncNode<'n> for N {
     type Output = N::Output;
 
-    async fn eval(&'n self) -> Self::Output {
+    async fn eval_async(&'n self) -> Self::Output {
         Node::eval(self)
     }
 }
