@@ -1,0 +1,75 @@
+pub mod value;
+pub use graphene_core::{generic, ops /*, structural*/};
+
+#[cfg(feature = "caching")]
+pub mod caching;
+#[cfg(feature = "memoization")]
+pub mod memo;
+
+pub use graphene_core::*;
+
+use dyn_any::{downcast_ref, DynAny, StaticType};
+pub type DynNode<'n, T> = &'n (dyn Node<'n, Output = T> + 'n);
+pub type DynAnyNode<'n> = &'n (dyn Node<'n, Output = &'n dyn DynAny<'n>> + 'n);
+
+pub trait DynamicInput<'n> {
+    fn set_kwarg_by_name(&mut self, name: &str, value: DynAnyNode<'n>);
+    fn set_arg_by_index(&mut self, index: usize, value: DynAnyNode<'n>);
+}
+
+use quote::quote;
+use syn::{Expr, ExprPath, Type};
+
+/// Given a Node call tree, construct a function
+/// that takes an input tuple and evaluates the call graph
+/// on the gpu an fn node is constructed that takes a value
+/// node as input
+struct NodeGraph {
+    /// Collection of nodes with their corresponding inputs.
+    /// The first node always always has to be an Input Node.
+    nodes: Vec<NodeKind>,
+}
+enum NodeKind {
+    Value(Expr),
+    Input(Type),
+    Node(ExprPath, Vec<u64>),
+}
+
+impl NodeGraph {
+    pub fn serialize(&self) -> String {
+        let mut output = String::new();
+        let output_type = if let Some(NodeKind::Node(expr, _)) = self.nodes.last() {
+            expr
+        } else {
+            panic!("last node wasn't a valid node")
+        };
+        let output_type = quote! {#output_type::Output};
+        let input_type = if let Some(NodeKind::Input(type_)) = self.nodes.first() {
+            type_
+        } else {
+            panic!("first node wasn't an input node")
+        };
+
+        let mut nodes = Vec::new();
+        for (id, node) in self.nodes.iter().enumerate() {
+            let nid = |id| format!("n{id}");
+            let id = nid(&id as u64);
+            let line = match node {
+                NodeKind::Value(val) => {
+                    quote! {let #id = graphene_core::value::ValueNode::new(#val);}
+                }
+                NodeKind::Node(node, ids) => {
+                    let ids = ids.iter().map(nid).collect::<Vec<_>>();
+                    quote! {let #id = #node::new(((#(#ids),)*));}
+                }
+            };
+            nodes.push(line)
+        }
+        let function = quote! {
+            fn node_graph(input: #input_type) -> #output_type {
+                #(#nodes)*
+            }
+        };
+        function.to_string()
+    }
+}

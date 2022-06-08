@@ -8,7 +8,10 @@ pub struct CacheNode<'n, CachedNode: Node<'n>> {
     cache: OnceCell<CachedNode::Output>,
     _phantom: PhantomData<&'n ()>,
 }
-impl<'n, CashedNode: Node<'n>> Node<'n> for CacheNode<'n, CashedNode> {
+impl<'n, CashedNode: Node<'n>> Node<'n> for CacheNode<'n, CashedNode>
+where
+    CashedNode::Output: 'n,
+{
     type Output = &'n CashedNode::Output;
     fn eval(&'n self) -> Self::Output {
         self.cache.get_or_init(|| self.node.eval())
