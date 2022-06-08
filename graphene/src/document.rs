@@ -632,8 +632,8 @@ impl Document {
 
 				Some([vec![DocumentChanged, CreatedLayer { path: path.clone() }], update_thumbnails_upstream(&path)].concat())
 			}
-			Operation::AddOverlayShape { path, style, bez_path, closed } => {
-				let mut shape = ShapeLayer::from_bez_path(bez_path, style, closed);
+			Operation::AddOverlayShape { path, style, bez_path } => {
+				let mut shape = ShapeLayer::from_bez_path(bez_path, style);
 				shape.render_index = -1;
 
 				let layer = Layer::new(LayerDataType::Shape(shape), DAffine2::IDENTITY.to_cols_array());
@@ -647,9 +647,8 @@ impl Document {
 				insert_index,
 				style,
 				bez_path,
-				closed,
 			} => {
-				let shape = ShapeLayer::from_bez_path(bez_path, style, closed);
+				let shape = ShapeLayer::from_bez_path(bez_path, style);
 				self.set_layer(&path, Layer::new(LayerDataType::Shape(shape), transform), insert_index)?;
 				Some([vec![DocumentChanged, CreatedLayer { path }]].concat())
 			}
@@ -845,7 +844,7 @@ impl Document {
 
 				if let LayerDataType::Text(t) = &mut layer_mut.data {
 					let bezpath = t.to_bez_path(t.load_face(&self.font_cache));
-					layer_mut.data = layers::layer_info::LayerDataType::Shape(ShapeLayer::from_bez_path(bezpath, t.path_style.clone(), true));
+					layer_mut.data = layers::layer_info::LayerDataType::Shape(ShapeLayer::from_bez_path(bezpath, t.path_style.clone()));
 				}
 
 				if let LayerDataType::Shape(shape) = &mut layer_mut.data {
@@ -964,7 +963,8 @@ impl Document {
 			Operation::MoveSelectedVectorPoints { layer_path, delta } => {
 				let layer = self.layer_mut(&layer_path)?;
 				if let Some(shape) = layer.as_vector_shape_mut() {
-					shape.move_selected(DVec2::new(delta.0, delta.1));
+					let position = DVec2::new(delta.0, delta.1);
+					shape.move_selected(position);
 				}
 				self.mark_as_dirty(&layer_path)?;
 				Some([vec![DocumentChanged, LayerChanged { path: layer_path.clone() }], update_thumbnails_upstream(&layer_path)].concat())

@@ -28,8 +28,6 @@ pub struct ShapeLayer {
 	pub style: style::PathStyle,
 	/// The rendering order.
 	pub render_index: i32,
-	/// Whether or not the [path](ShapeLayer::path) connects to itself.
-	pub closed: bool,
 }
 
 impl LayerData for ShapeLayer {
@@ -65,7 +63,6 @@ impl LayerData for ShapeLayer {
 	}
 
 	fn bounding_box(&self, transform: glam::DAffine2, _font_cache: &FontCache) -> Option<[DVec2; 2]> {
-		// TODO Avoid this clone if possible
 		let mut vector_shape = self.shape.clone();
 		if transform.matrix2 == DMat2::ZERO {
 			return None;
@@ -94,12 +91,11 @@ impl ShapeLayer {
 	}
 
 	// TODO Wrap an adapter around this so we don't take in BezPath directly?
-	pub fn from_bez_path(bez_path: BezPath, style: PathStyle, closed: bool) -> Self {
+	pub fn from_bez_path(bez_path: BezPath, style: PathStyle) -> Self {
 		Self {
 			shape: bez_path.iter().into(),
 			style,
 			render_index: 1,
-			closed,
 		}
 	}
 
@@ -137,7 +133,6 @@ impl ShapeLayer {
 			shape: VectorShape::new_ngon(DVec2::new(0., 0.), sides, 1.),
 			style,
 			render_index: 1,
-			closed: true,
 		}
 	}
 
@@ -147,7 +142,6 @@ impl ShapeLayer {
 			shape: VectorShape::new_rect(DVec2::new(0., 0.), DVec2::new(1., 1.)),
 			style,
 			render_index: 1,
-			closed: true,
 		}
 	}
 
@@ -157,7 +151,6 @@ impl ShapeLayer {
 			shape: VectorShape::from_kurbo_shape(&kurbo::Ellipse::from_rect(kurbo::Rect::new(0., 0., 1., 1.)).to_path(0.01)),
 			style,
 			render_index: 1,
-			closed: true,
 		}
 	}
 
@@ -167,7 +160,6 @@ impl ShapeLayer {
 			shape: VectorShape::new_line(DVec2::new(0., 0.), DVec2::new(1., 0.)),
 			style,
 			render_index: 1,
-			closed: false,
 		}
 	}
 
@@ -177,7 +169,6 @@ impl ShapeLayer {
 			shape: VectorShape::new_poly_line(points),
 			style,
 			render_index: 0,
-			closed: false,
 		}
 	}
 
@@ -256,7 +247,6 @@ impl ShapeLayer {
 			shape: path.iter().into(),
 			style,
 			render_index: 0,
-			closed: false,
 		}
 	}
 }

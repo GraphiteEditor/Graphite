@@ -217,8 +217,10 @@ impl Fsm for PathToolFsmState {
 
 					// Move the selected points by the mouse position
 					let snapped_position = data.snap_handler.snap_position(responses, document, input.mouse.position);
+					log::debug!("Snapped position: {:?}", snapped_position);
 					//TODO This is relative position, update accordingly
-					data.shape_editor.move_selected_points(snapped_position - data.drag_start_pos, responses);
+					let position = DVec2::new(snapped_position.x, snapped_position.y);
+					data.shape_editor.move_selected_points(position, responses);
 					Dragging
 				}
 				// DoubleClick

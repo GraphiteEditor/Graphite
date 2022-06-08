@@ -79,9 +79,9 @@ impl VectorShape {
 	}
 
 	/// Move the selected points by the delta vector
-	pub fn move_selected(&mut self, position_delta: DVec2) {
+	pub fn move_selected(&mut self, position: DVec2) {
 		// TODO Implement
-		// self.selected_anchors_mut().for_each(|anchor| anchor.move_selected_points(true, &DAffine2::from_translation(delta)));
+		self.selected_anchors_mut().for_each(|anchor| anchor.move_selected_points(false, position));
 	}
 
 	/// Delete the selected points from the VectorShape
@@ -108,6 +108,8 @@ impl VectorShape {
 	}
 
 	// ** SELECTION OF POINTS **
+
+	/// Select a single point by providing (AnchorId, ControlPointType)
 	pub fn select_point(&mut self, point: (u64, ControlPointType), selected: bool) -> Option<&mut VectorAnchor> {
 		let (anchor_id, point_id) = point;
 		if let Some(anchor) = self.anchors_mut().by_id_mut(anchor_id) {

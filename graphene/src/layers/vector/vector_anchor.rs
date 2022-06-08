@@ -70,14 +70,14 @@ impl VectorAnchor {
 
 	/// Move the selected points by the provided transform
 	/// if relative is false the point is transformed and its original position is subtracted
-	pub fn move_selected_points(&mut self, relative: bool, transform: &DAffine2) {
+	pub fn move_selected_points(&mut self, relative: bool, position: DVec2) {
 		for point in self.selected_points_mut() {
-			if !relative {
-				let copy = point.clone().position;
-				point.transform(transform);
-				point.move_by(&(-copy));
-			}
-			point.transform(transform);
+			// if !relative {
+			// 	let copy = point.clone().position;
+			// 	point.transform(position);
+			// 	point.move_by(&(-copy));
+			// }
+			point.position = position;
 		}
 	}
 

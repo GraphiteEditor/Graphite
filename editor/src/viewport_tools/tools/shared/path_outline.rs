@@ -43,7 +43,6 @@ impl PathOutline {
 					path: overlay_path.clone(),
 					bez_path: BezPath::new(),
 					style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, PATH_OUTLINE_WEIGHT)), Fill::None),
-					closed: false,
 				};
 
 				responses.push_back(DocumentMessage::Overlays(operation.into()).into());

@@ -1219,13 +1219,20 @@ impl MessageHandler<DocumentMessage, &InputPreprocessorMessageHandler> for Docum
 			}
 			MoveSelectedVectorPoints { layer_path, target_x, target_y } => {
 				self.backup(responses);
-				responses.push_back(
-					DocumentOperation::MoveSelectedVectorPoints {
-						layer_path,
-						delta: (target_x, target_y),
-					}
-					.into(),
-				);
+				let mouse = DVec2::new(target_x, target_y) - ipp.viewport_bounds.top_left;
+				// let translation = DAffine2::from_translation(mouse - ipp.viewport_bounds.top_left);
+
+				if let Ok(layer) = self.graphene_document.layer(&layer_path) {
+					let transform = layer.transform.inverse();
+					let position = transform.transform_vector2(mouse);
+					responses.push_back(
+						DocumentOperation::MoveSelectedVectorPoints {
+							layer_path,
+							delta: (position.x, position.y),
+						}
+						.into(),
+					);
+				}
 			}
 			NudgeSelectedLayers { delta_x, delta_y } => {
 				self.backup(responses);

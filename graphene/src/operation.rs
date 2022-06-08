@@ -104,7 +104,6 @@ pub enum Operation {
 		// TODO Remove this (remove kurbo)
 		bez_path: kurbo::BezPath,
 		style: style::PathStyle,
-		closed: bool,
 	},
 	AddShape {
 		path: Vec<LayerId>,
@@ -113,7 +112,6 @@ pub enum Operation {
 		// TODO Remove this (remove kurbo)
 		bez_path: kurbo::BezPath,
 		style: style::PathStyle,
-		closed: bool,
 	},
 	BooleanOperation {
 		operation: BooleanOperationType,
@@ -122,7 +120,6 @@ pub enum Operation {
 	DeleteLayer {
 		path: Vec<LayerId>,
 	},
-	// TODO Consider removing the concept of selection here
 	DeleteSelectedVectorPoints {
 		layer_path: Vec<LayerId>,
 	},

@@ -53,12 +53,13 @@ impl<'a> OverlayRenderer {
 
 				// Create an outline if we do not have a cached one
 				if outline_cache == None {
-					let outline = self.create_shape_outline_overlay(shape.into(), responses);
-					self.place_outline_overlays(outline.clone(), &transform, responses);
-					self.shape_overlay_cache.insert(*layer_id, outline);
+					let outline_path = self.create_shape_outline_overlay(shape.into(), responses);
+					self.place_outline_overlays(outline_path.clone(), &transform, responses);
+					self.shape_overlay_cache.insert(*layer_id, outline_path);
 				// log::debug!("Creating new overlays for {:?}", layer_path);
-				} else if let Some(outline) = outline_cache {
-					self.place_outline_overlays(outline.clone(), &transform, responses);
+				} else if let Some(outline_path) = outline_cache {
+					self.modify_outline_overlays(outline_path.clone(), shape.into(), responses);
+					self.place_outline_overlays(outline_path.clone(), &transform, responses);
 				}
 
 				// Create, place and style the anchor / handle overlays
@@ -138,7 +139,6 @@ impl<'a> OverlayRenderer {
 			path: layer_path.clone(),
 			bez_path,
 			style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, PATH_OUTLINE_WEIGHT)), Fill::None),
-			closed: false,
 		};
 		responses.push_back(DocumentMessage::Overlays(operation.into()).into());
 
@@ -191,8 +191,13 @@ impl<'a> OverlayRenderer {
 	}
 
 	fn place_outline_overlays(&self, outline_path: Vec<LayerId>, parent_transform: &DAffine2, responses: &mut VecDeque<Message>) {
-		let message = self.overlay_transform_message(outline_path, parent_transform.to_cols_array());
-		responses.push_back(message);
+		let transform_message = self.overlay_transform_message(outline_path, parent_transform.to_cols_array());
+		responses.push_back(transform_message);
+	}
+
+	fn modify_outline_overlays(&self, outline_path: Vec<LayerId>, bez_path: BezPath, responses: &mut VecDeque<Message>) {
+		let outline_modify_message = self.overlay_modify_message(outline_path, bez_path);
+		responses.push_back(outline_modify_message);
 	}
 
 	/// Updates the position of the overlays based on the VectorShape points
@@ -279,6 +284,11 @@ impl<'a> OverlayRenderer {
 	/// Create a transform message for an overlay
 	fn overlay_transform_message(&self, layer_path: Vec<LayerId>, transform: [f64; 6]) -> Message {
 		DocumentMessage::Overlays(Operation::SetLayerTransformInViewport { path: layer_path, transform }.into()).into()
+	}
+
+	/// Create an update message for an overlay
+	fn overlay_modify_message(&self, layer_path: Vec<LayerId>, bez_path: BezPath) -> Message {
+		Operation::SetShapePath { path: layer_path, bez_path }.into()
 	}
 
 	/// Sets the overlay style for this point
