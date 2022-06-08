@@ -5,7 +5,7 @@
 use crate::helpers::{translate_key, Error};
 use crate::{EDITOR_HAS_CRASHED, EDITOR_INSTANCES, JS_EDITOR_HANDLES};
 
-use editor::consts::{FILE_SAVE_SUFFIX, GRAPHITE_DOCUMENT_VERSION};
+use editor::consts::{DEFAULT_FONT_FAMILY, DEFAULT_FONT_STYLE, FILE_SAVE_SUFFIX, GRAPHITE_DOCUMENT_VERSION};
 use editor::input::input_preprocessor::ModifierKeys;
 use editor::input::mouse::{EditorMouseState, ScrollDelta, ViewportBounds};
 use editor::message_prelude::*;
@@ -110,10 +110,18 @@ impl JsEditorHandle {
 		let message = ToolMessage::InitTools;
 		self.dispatch(message);
 
-		let message = FrontendMessage::TriggerFontLoadDefault;
+		// A default font
+		let font = graphene::layers::text_layer::Font::new(DEFAULT_FONT_FAMILY.into(), DEFAULT_FONT_STYLE.into());
+		let message = FrontendMessage::TriggerFontLoad { font, is_default: true };
 		self.dispatch(message);
 
 		let message = MovementMessage::TranslateCanvas { delta: (0., 0.).into() };
+		self.dispatch(message);
+	}
+
+	/// Displays a dialog with an error message
+	pub fn error_dialog(&self, title: String, description: String) {
+		let message = DialogMessage::DisplayDialogError { title, description };
 		self.dispatch(message);
 	}
 
@@ -239,14 +247,13 @@ impl JsEditorHandle {
 		self.dispatch(message);
 	}
 
-	pub fn populate_build_metadata(&self, release: String, timestamp: String, hash: String, branch: String) {
-		let new = editor::communication::BuildMetadata { release, timestamp, hash, branch };
-		let message = Message::PopulateBuildMetadata { new };
+	pub fn request_about_graphite_dialog(&self) {
+		let message = DialogMessage::RequestAboutGraphiteDialog;
 		self.dispatch(message);
 	}
 
-	pub fn request_about_graphite_dialog(&self) {
-		let message = DialogMessage::RequestAboutGraphiteDialog;
+	pub fn request_about_graphite_dialog_with_localized_commit_date(&self, localized_commit_date: String) {
+		let message = DialogMessage::RequestAboutGraphiteDialogWithLocalizedCommitDate { localized_commit_date };
 		self.dispatch(message);
 	}
 
@@ -360,8 +367,14 @@ impl JsEditorHandle {
 	}
 
 	/// A font has been downloaded
-	pub fn on_font_load(&self, font_file_url: String, data: Vec<u8>, is_default: bool) -> Result<(), JsValue> {
-		let message = DocumentMessage::FontLoaded { font_file_url, data, is_default };
+	pub fn on_font_load(&self, font_family: String, font_style: String, preview_url: String, data: Vec<u8>, is_default: bool) -> Result<(), JsValue> {
+		let message = PortfolioMessage::FontLoaded {
+			font_family,
+			font_style,
+			preview_url,
+			data,
+			is_default,
+		};
 		self.dispatch(message);
 
 		Ok(())

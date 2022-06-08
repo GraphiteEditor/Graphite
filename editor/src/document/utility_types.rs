@@ -8,19 +8,19 @@ use std::fmt;
 
 pub type DocumentSave = (GrapheneDocument, HashMap<Vec<LayerId>, LayerMetadata>);
 
-#[derive(PartialEq, Clone, Debug, Serialize, Deserialize, Hash)]
+#[derive(PartialEq, Eq, Clone, Debug, Serialize, Deserialize, Hash)]
 pub enum FlipAxis {
 	X,
 	Y,
 }
 
-#[derive(PartialEq, Clone, Debug, Serialize, Deserialize, Hash)]
+#[derive(PartialEq, Eq, Clone, Debug, Serialize, Deserialize, Hash)]
 pub enum AlignAxis {
 	X,
 	Y,
 }
 
-#[derive(PartialEq, Clone, Debug, Serialize, Deserialize, Hash)]
+#[derive(PartialEq, Eq, Clone, Debug, Serialize, Deserialize, Hash)]
 pub enum AlignAggregate {
 	Min,
 	Max,
@@ -28,13 +28,13 @@ pub enum AlignAggregate {
 	Average,
 }
 
-#[derive(PartialEq, Clone, Copy, Debug, Serialize, Deserialize)]
+#[derive(PartialEq, Eq, Clone, Copy, Debug, Serialize, Deserialize)]
 pub enum TargetDocument {
 	Artboard,
 	Artwork,
 }
 
-#[derive(PartialEq, Clone, Copy, Debug, Serialize, Deserialize)]
+#[derive(PartialEq, Eq, Clone, Copy, Debug, Serialize, Deserialize)]
 pub enum DocumentMode {
 	DesignMode,
 	SelectMode,

@@ -20,7 +20,7 @@ fn format_opacity(name: &str, opacity: f32) -> String {
 }
 
 /// Represents different ways of rendering an object
-#[derive(Debug, Clone, Copy, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 pub enum ViewMode {
 	/// Render with normal coloration at the current viewport resolution
 	Normal,
@@ -36,7 +36,7 @@ impl Default for ViewMode {
 	}
 }
 
-#[derive(PartialEq, Clone, Copy, Debug, Hash, Serialize, Deserialize)]
+#[derive(PartialEq, Eq, Clone, Copy, Debug, Hash, Serialize, Deserialize)]
 pub enum GradientType {
 	Linear,
 	Radial,
@@ -174,7 +174,7 @@ impl Fill {
 
 /// The stroke (outline) style of an SVG element.
 #[repr(C)]
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum LineCap {
 	Butt,
 	Round,
@@ -192,7 +192,7 @@ impl Display for LineCap {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum LineJoin {
 	Miter,
 	Bevel,

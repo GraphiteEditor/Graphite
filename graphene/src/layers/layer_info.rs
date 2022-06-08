@@ -5,8 +5,8 @@ use super::shape_layer::ShapeLayer;
 use super::style::{PathStyle, ViewMode};
 use super::text_layer::TextLayer;
 use super::vector::vector_shape::VectorShape;
-use crate::document::FontCache;
 use crate::intersection::Quad;
+use crate::layers::text_layer::FontCache;
 use crate::DocumentError;
 use crate::LayerId;
 

@@ -1,12 +1,20 @@
 <template>
-	<div class="menu-bar-input">
+	<div class="menu-bar-input" data-menu-bar-input>
 		<div class="entry-container">
-			<div @click="() => visitWebsite('https://graphite.rs')" class="entry">
+			<button @click="() => visitWebsite('https://graphite.rs')" class="entry">
 				<IconLabel :icon="'GraphiteLogo'" />
-			</div>
+			</button>
 		</div>
 		<div class="entry-container" v-for="(entry, index) in entries" :key="index">
-			<div @click="() => onClick(entry)" class="entry" :class="{ open: entry.ref?.open }" data-hover-menu-spawner>
+			<div
+				@click="(e) => onClick(entry, e.target)"
+				tabindex="0"
+				@blur="(e: FocusEvent) => blur(e,entry)"
+				@keydown="entry.ref?.keydown"
+				class="entry"
+				:class="{ open: entry.ref?.isOpen }"
+				data-hover-menu-spawner
+			>
 				<IconLabel v-if="entry.icon" :icon="entry.icon" />
 				<span v-if="entry.label">{{ entry.label }}</span>
 			</div>
@@ -36,6 +44,9 @@
 			align-items: center;
 			white-space: nowrap;
 			padding: 0 8px;
+			background: none;
+			border: 0;
+			margin: 0;
 
 			svg {
 				fill: var(--color-e-nearwhite);
@@ -207,9 +218,15 @@ function makeEntries(editor: Editor): MenuListEntries {
 export default defineComponent({
 	inject: ["editor"],
 	methods: {
-		onClick(menuEntry: MenuListEntry) {
+		onClick(menuEntry: MenuListEntry, target: EventTarget | null) {
+			// Focus the target so that keyboard inputs are sent to the dropdown
+			(target as HTMLElement)?.focus();
+
 			if (menuEntry.ref) menuEntry.ref.isOpen = true;
 			else throw new Error("The menu bar floating menu has no associated ref");
+		},
+		blur(e: FocusEvent, menuEntry: MenuListEntry) {
+			if ((e.target as HTMLElement).closest("[data-menu-bar-input]") !== this.$el && menuEntry.ref) menuEntry.ref.isOpen = false;
 		},
 		// TODO: Move to backend
 		visitWebsite(url: string) {

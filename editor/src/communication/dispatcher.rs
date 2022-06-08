@@ -8,14 +8,11 @@ use crate::workspace::WorkspaceMessageHandler;
 
 use std::collections::VecDeque;
 
-use super::BuildMetadata;
-
 #[derive(Debug, Default)]
 pub struct Dispatcher {
 	message_queue: VecDeque<Message>,
 	pub responses: Vec<FrontendMessage>,
 	message_handlers: DispatcherMessageHandlers,
-	build_metadata: BuildMetadata,
 }
 
 #[remain::sorted]
@@ -44,6 +41,7 @@ const SIDE_EFFECT_FREE_MESSAGES: &[MessageDiscriminant] = &[
 	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::UpdateDocumentLayerDetails),
 	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::UpdateDocumentLayerTreeStructure),
 	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::UpdateOpenDocumentsList),
+	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::TriggerFontLoad),
 	MessageDiscriminant::Tool(ToolMessageDiscriminant::DocumentIsDirty),
 ];
 
@@ -75,7 +73,7 @@ impl Dispatcher {
 				Dialog(message) => {
 					self.message_handlers
 						.dialog_message_handler
-						.process_action(message, (&self.build_metadata, &self.message_handlers.portfolio_message_handler), &mut self.message_queue);
+						.process_action(message, &self.message_handlers.portfolio_message_handler, &mut self.message_queue);
 				}
 				Frontend(message) => {
 					// Image and font loading should be immediately handled
@@ -111,6 +109,7 @@ impl Dispatcher {
 						(
 							self.message_handlers.portfolio_message_handler.active_document(),
 							&self.message_handlers.input_preprocessor_message_handler,
+							self.message_handlers.portfolio_message_handler.font_cache(),
 						),
 						&mut self.message_queue,
 					);
@@ -120,9 +119,6 @@ impl Dispatcher {
 						.workspace_message_handler
 						.process_action(message, &self.message_handlers.input_preprocessor_message_handler, &mut self.message_queue);
 				}
-
-				#[remain::unsorted]
-				PopulateBuildMetadata { new } => self.build_metadata = new,
 			}
 		}
 	}

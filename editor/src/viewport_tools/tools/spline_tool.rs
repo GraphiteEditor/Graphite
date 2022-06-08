@@ -1,8 +1,6 @@
 use crate::consts::DRAG_THRESHOLD;
-use crate::document::DocumentMessageHandler;
 use crate::frontend::utility_types::MouseCursorIcon;
 use crate::input::keyboard::{Key, MouseMotion};
-use crate::input::InputPreprocessorMessageHandler;
 use crate::layout::widgets::{LayoutRow, NumberInput, PropertyHolder, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
 use crate::message_prelude::*;
 use crate::misc::{HintData, HintGroup, HintInfo, KeysGroup};
@@ -18,7 +16,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Default)]
 pub struct SplineTool {
 	fsm_state: SplineToolFsmState,
-	data: SplineToolData,
+	tool_data: SplineToolData,
 	options: SplineOptions,
 }
 
@@ -78,7 +76,7 @@ impl PropertyHolder for SplineTool {
 }
 
 impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for SplineTool {
-	fn process_action(&mut self, action: ToolMessage, data: ToolActionHandlerData<'a>, responses: &mut VecDeque<Message>) {
+	fn process_action(&mut self, action: ToolMessage, tool_data: ToolActionHandlerData<'a>, responses: &mut VecDeque<Message>) {
 		if action == ToolMessage::UpdateHints {
 			self.fsm_state.update_hints(responses);
 			return;
@@ -96,7 +94,7 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for SplineTool {
 			return;
 		}
 
-		let new_state = self.fsm_state.transition(action, data.0, data.1, &mut self.data, &self.options, data.2, responses);
+		let new_state = self.fsm_state.transition(action, &mut self.tool_data, tool_data, &self.options, responses);
 
 		if self.fsm_state != new_state {
 			self.fsm_state = new_state;
@@ -136,11 +134,9 @@ impl Fsm for SplineToolFsmState {
 	fn transition(
 		self,
 		event: ToolMessage,
-		document: &DocumentMessageHandler,
-		tool_data: &DocumentToolData,
-		data: &mut Self::ToolData,
+		tool_data: &mut Self::ToolData,
+		(document, global_tool_data, input, font_cache): ToolActionHandlerData,
 		tool_options: &Self::ToolOptions,
-		input: &InputPreprocessorMessageHandler,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
 		use SplineToolFsmState::*;
@@ -153,62 +149,62 @@ impl Fsm for SplineToolFsmState {
 				(Ready, DragStart) => {
 					responses.push_back(DocumentMessage::StartTransaction.into());
 					responses.push_back(DocumentMessage::DeselectAllLayers.into());
-					data.path = Some(document.get_path_for_new_layer());
+					tool_data.path = Some(document.get_path_for_new_layer());
 
-					data.snap_handler.start_snap(document, document.bounding_boxes(None, None), true, true);
-					data.snap_handler.add_all_document_handles(document, &[], &[]);
-					let snapped_position = data.snap_handler.snap_position(responses, document, input.mouse.position);
+					tool_data.snap_handler.start_snap(document, document.bounding_boxes(None, None, font_cache), true, true);
+					tool_data.snap_handler.add_all_document_handles(document, &[], &[]);
+					let snapped_position = tool_data.snap_handler.snap_position(responses, document, input.mouse.position);
 
 					let pos = transform.inverse().transform_point2(snapped_position);
 
-					data.points.push(pos);
-					data.next_point = pos;
+					tool_data.points.push(pos);
+					tool_data.next_point = pos;
 
-					data.weight = tool_options.line_weight;
+					tool_data.weight = tool_options.line_weight;
 
-					responses.push_back(add_spline(data, tool_data, true));
+					responses.push_back(add_spline(tool_data, global_tool_data, true));
 
 					Drawing
 				}
 				(Drawing, DragStop) => {
-					let snapped_position = data.snap_handler.snap_position(responses, document, input.mouse.position);
+					let snapped_position = tool_data.snap_handler.snap_position(responses, document, input.mouse.position);
 					let pos = transform.inverse().transform_point2(snapped_position);
 
-					if let Some(last_pos) = data.points.last() {
+					if let Some(last_pos) = tool_data.points.last() {
 						if last_pos.distance(pos) > DRAG_THRESHOLD {
-							data.points.push(pos);
-							data.next_point = pos;
+							tool_data.points.push(pos);
+							tool_data.next_point = pos;
 						}
 					}
 
-					responses.push_back(remove_preview(data));
-					responses.push_back(add_spline(data, tool_data, true));
+					responses.push_back(remove_preview(tool_data));
+					responses.push_back(add_spline(tool_data, global_tool_data, true));
 
 					Drawing
 				}
 				(Drawing, PointerMove) => {
-					let snapped_position = data.snap_handler.snap_position(responses, document, input.mouse.position);
+					let snapped_position = tool_data.snap_handler.snap_position(responses, document, input.mouse.position);
 					let pos = transform.inverse().transform_point2(snapped_position);
-					data.next_point = pos;
+					tool_data.next_point = pos;
 
-					responses.push_back(remove_preview(data));
-					responses.push_back(add_spline(data, tool_data, true));
+					responses.push_back(remove_preview(tool_data));
+					responses.push_back(add_spline(tool_data, global_tool_data, true));
 
 					Drawing
 				}
 				(Drawing, Confirm) | (Drawing, Abort) => {
-					if data.points.len() >= 2 {
+					if tool_data.points.len() >= 2 {
 						responses.push_back(DocumentMessage::DeselectAllLayers.into());
-						responses.push_back(remove_preview(data));
-						responses.push_back(add_spline(data, tool_data, false));
+						responses.push_back(remove_preview(tool_data));
+						responses.push_back(add_spline(tool_data, global_tool_data, false));
 						responses.push_back(DocumentMessage::CommitTransaction.into());
 					} else {
 						responses.push_back(DocumentMessage::AbortTransaction.into());
 					}
 
-					data.path = None;
-					data.points.clear();
-					data.snap_handler.cleanup(responses);
+					tool_data.path = None;
+					tool_data.points.clear();
+					tool_data.snap_handler.cleanup(responses);
 
 					Ready
 				}
@@ -251,22 +247,25 @@ impl Fsm for SplineToolFsmState {
 	}
 }
 
-fn remove_preview(data: &SplineToolData) -> Message {
-	Operation::DeleteLayer { path: data.path.clone().unwrap() }.into()
+fn remove_preview(tool_data: &SplineToolData) -> Message {
+	Operation::DeleteLayer {
+		path: tool_data.path.clone().unwrap(),
+	}
+	.into()
 }
 
-fn add_spline(data: &SplineToolData, tool_data: &DocumentToolData, show_preview: bool) -> Message {
-	let mut points: Vec<(f64, f64)> = data.points.iter().map(|p| (p.x, p.y)).collect();
+fn add_spline(tool_data: &SplineToolData, global_tool_data: &DocumentToolData, show_preview: bool) -> Message {
+	let mut points: Vec<(f64, f64)> = tool_data.points.iter().map(|p| (p.x, p.y)).collect();
 	if show_preview {
-		points.push((data.next_point.x, data.next_point.y))
+		points.push((tool_data.next_point.x, tool_data.next_point.y))
 	}
 
 	Operation::AddSpline {
-		path: data.path.clone().unwrap(),
+		path: tool_data.path.clone().unwrap(),
 		insert_index: -1,
 		transform: DAffine2::IDENTITY.to_cols_array(),
 		points,
-		style: style::PathStyle::new(Some(style::Stroke::new(tool_data.primary_color, data.weight)), style::Fill::None),
+		style: style::PathStyle::new(Some(style::Stroke::new(global_tool_data.primary_color, tool_data.weight)), style::Fill::None),
 	}
 	.into()
 }

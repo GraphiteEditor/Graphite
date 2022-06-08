@@ -1,52 +1,57 @@
-![Graphite logo](https://static.graphite.rs/readme/graphite-readme-logo.svg)
+<a href="https://graphite.rs/">
+<picture>
+<source media="(prefers-color-scheme: dark)" srcset="https://static.graphite.rs/readme/graphite-readme-logo-dark-theme.svg">
+<source media="(prefers-color-scheme: light)" srcset="https://static.graphite.rs/readme/graphite-readme-logo-light-theme.svg">
+<img alt="Graphite logo" src="https://static.graphite.rs/readme/graphite-readme-logo-dark-theme.svg">
+</picture>
+</a>
 
-# Powerful 2D vector and raster editing. Procedural and nondestructive.
+<h1 align="center">Redefining state-of-the-art graphics editing.</h1>
 
-Graphite is a digital content creation software package for 2D graphics, merging traditional tool-based interactive editing workflows with a powerful node-based approach to procedural, non-destructive editing and compositing. The application strives to be the most user-friendly and versatile tool for vector and raster illustration, graphic design, photo editing, procedural texturing, data-driven visualization, and technical art.
+Graphite is an in-development raster and vector 2D graphics editor that is free and open source. It is designed to be powered by a node graph compositing engine that supercharges your layer stack, providing a completely non-destructive editing experience.
 
-While the project is still in early development, implementation progress has been moving forward at a swift pace. The Graphite Alpha release is launching soon and focuses on vector art for SVG creation. The next major milestone will introduce a nondestructive backend for vector graphics with a powerful node graph system. Later releases will provide better vector rendering capabilities and then resolution-agnostic raster editing and compositing.
+Right now, Graphite is a lightweight vector graphics editor [available for alpha testing](https://editor.graphite.rs) in your web browser. The node system is in the prototype stage and will be usable in later 2022, while raster graphics editing and a native desktop application will come next year.
 
-Play around with Graphite right now in your browser at [editor.graphite.rs](https://editor.graphite.rs). Windows, Mac, and Linux will additionally be supported with a native (not web-based) desktop client later in the development roadmap.
+Learn more on the [project website.](https://graphite.rs/)
 
-## Contributing
-
-We need Rust and web developers! See [instructions here](https://github.com/GraphiteEditor/Graphite/issues/202) for getting started.
-
-We are also in search of artists to help create material for the website. Please get in touch for more details.
+⭐ Please star this GitHub repository to help build momentum. ⭐
 
 ## Discord
 
 If the Graphite project strikes your fancy, [join our Discord community](https://discord.graphite.rs) to chat with the community and development team. You're invited to stop by just to lurk, ask questions, offer suggestions, or get involved in the project. We are seeking collaborators to help design and develop the software and this is where we communicate.
-## Vision
 
-Graphite is an open source, cross-platform digital content creation desktop and web application for 2D graphics editing, photo processing, vector art, digital painting, illustration, data visualization, compositing, and more. Inspired by the open source success of Blender in the 3D domain, it aims to bring 2D content creation to new heights with efficient workflows influenced by Photoshop/Gimp and Illustrator/Inkscape and backed by a powerful node-based, nondestructive approach proven by Houdini and Substance.
+## Contributing
 
-The user experience of Graphite is of central importance, offering a meticulously-designed UI catering towards an intuitive and efficient artistic process. Users may draw and edit in the traditional interactive (WYSIWYG) viewport with the Layer Tree panel or jump in or out of the node graph at any time to tweak previous work and construct powerful procedural image generators that seamlessly sync with the interactive viewport. A core principle of the application is its 100% nondestructive workflow that is resolution-agnostic, meaning that raster-style image editing can be infinitely zoomed and scaled to arbitrary resolutions at a later time because editing is done by recording brush strokes, vector shapes, and other manipulations parametrically.
+We need Rust and web developers! See [instructions here](https://graphite.rs/contribute/) for getting started.
 
-One might use the painting tools on a small laptop display, zoom into specific areas to add detail to finish the artwork, then perhaps try changing the simulated brush style from a blunt pencil to a soft acrylic paintbrush after-the-fact, and finally export the complete drawing at ultra high resolution for printing on a large poster.
+We are also in search of artists to create beautiful sample work in Graphite and illustrations for the website and social media. Please [get in touch](https://graphite.rs/contact/) if you are able to help out.
 
-On the surface, Graphite is an artistic medium for drawing anything imaginable— under the hood, the node graph in Graphite powers procedural graphics and parametric rendering to produce unique artwork and automated data-driven visualizations. Graphite brings together artistic workflows and empowers your creativity in a free, open source package that feels familiar but lets you delve further.
+## Design
 
-This UI mockup illustrates a future concept for the raster-based workflow in a photo editing example.
+The #1 priority for the Graphite software is providing a delightful user experience. Unlike some other open source applications, the UI, UX, and product design is not an afterthought, but a central guiding light in the software development process.
 
-![Demo UI mockup](https://files.keavon.com/-/DodgerblueSoftCreature/capture.png)
+Below are some mockups demonstrating future goals for the user interface once nodes and raster photo editing is possible.
+
+![Graphite raster UI viewport mockup](https://static.graphite.rs/content/index/gui-mockup-viewport.png)
+
+*Viewport interface mockup showcasing a photo editing project that utilizes Graphite's raster graphics pipeline, one of the upcoming roadmap milestones. Raster editing is not yet supported.*
+
+![Graphite raster UI node graph mockup](https://static.graphite.rs/content/index/gui-mockup-nodes.png)
+
+*Node graph mockup demonstrating how the layers directly correspond to nodes. Thick vertical (upward) lines represent compositing stacks and horizontal (rightward) links represent data flow connections.*
 
 ## Roadmap
 
-The Graphite team is focusing initial feature development on a simple vector graphics editor for the Alpha release.
+Graphite does not use formal version numbers because of the constant rate of feature development and continuous release cycle. Changes can be tracked by [commit hash](https://github.com/GraphiteEditor/Graphite/commits/master). Development is broken into [monthly sprints](https://github.com/GraphiteEditor/Graphite/milestones) and less frequent release series based on major technology readiness milestones:
 
-Following this MVP release, the layer system will be extended into a fleshed-out node graph system, called Graphene, to offer innovative nondestructive vector editing capabilities in the next milestone release.
+- Alpha Milestone 1 is the current release series available at [editor.graphite.rs](https://editor.graphite.rs) which encompasses minimum-viable-product (MVP) vector editing features. Features and improvements are continually added and deployed. Regrettably, file format stability isn't guaranteed at this stage since it would prohibitively hinder the pace of development.
 
-The following major releases will add a purpose-built render engine to support node-based raster editing, thereby providing a seamless combined raster and vector workflow.
+- Alpha Milestone 2 is the next release series. It will introduce the node graph system for procedural vector editing. Late summer is the optimistic target.
 
-The interim web-based frontend will be replaced by an identical native desktop client for Windows, Mac, and Linux plus the web. This new frontend will mark the release of Graphite 1.0 when complete.
+- Alpha Milestone 3 will probably focus on switching to an in-house vector graphics render engine built on [wgpu](https://wgpu.rs/).
 
-Development is broken into monthly sprints culminating in a presentation at the [Rust Gamedev Meetup](https://www.youtube.com/channel/UCrbatFmtTIvX3BCgsXOy96w) and a post in the [Rust Gamedev Newsletter](https://gamedev.rs/news/). Check out the [Task Board](https://github.com/GraphiteEditor/Graphite/projects/1) to see the current features being built and prioritized.
+- Alpha Milestone 4 will probably introduce raster compositing.
 
-## Technology stack
+- Beta versions will follow once basic procedural vector and raster editing is fully supported. File format stability, authoring + sharing custom nodes/extensions, and a downloadable native desktop client will be included during or before Beta.
 
-[Rust](https://www.rust-lang.org/) is the language of choice for many compelling reasons. It is low-level and highly efficient which is important because the nondestructive, resolution-agnostic editing approach will already be challenging to render quickly for interactive, real-time editing. Furthermore, Rust makes multithreading easy to implement and its safety guarantees will eliminate the inclusion of many bugs and crashes in the software. It is also simple to compile Rust code natively to Windows, Mac, Linux, and web browsers via WebAssembly, with the possibility of deploying Graphite to mobile devices down the road as well.
-
-[Vue.js](https://vuejs.org/) is the web frontend framework initially used for building Graphite's user interface. This means, for the moment, Graphite will only run in a browser using Rust code compiled to [WebAssembly](https://webassembly.org/) (via [wasm-bindgen](https://github.com/rustwasm/wasm-bindgen)). This web-based GUI is intended to be rewritten in a native Rust GUI framework once that ecosystem matures or the project has engineering resources to write a tailor-made GUI framework for Graphite's needs. Development initially began by writing a custom GUI system throughout 2020, but slow progress led to the decision of shelving it in lieu of a temporary web-based GUI.
-
-[WebGPU](https://gpuweb.github.io/gpuweb) (via the [WGPU Rust library](https://wgpu.rs)) will be used as the graphics API for GPU-accelerated rendering because it is modern, portable, and safe. It makes deployment on the web and native platforms easy while ensuring consistent cross-platform behavior. Shaders will be written in [Rust GPU](https://github.com/EmbarkStudios/rust-gpu) to keep the codebase in a consistent language. Early Graphite releases are relying on web browsers' built-in SVG rendering capabilities before work begins building Graphite's sophisticated render engine.
+- RAW photo editing, advanced color handling, automation and batch processing, and procedural painting workflows will be added during further Beta development.

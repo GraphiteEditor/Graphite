@@ -9,7 +9,7 @@ use std::cell::RefCell;
 use std::fmt::{self, Debug, Formatter};
 use std::mem::swap;
 
-#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq)]
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
 pub enum BooleanOperation {
 	Union,
 	Difference,
@@ -507,10 +507,10 @@ pub fn composite_boolean_operation(mut select: BooleanOperation, shapes: &mut Ve
 		}
 		BooleanOperation::SubtractFront => {
 			let mut result = vec![shapes[0].borrow().clone()];
-			for shape_idx in 1..shapes.len() {
+			for shape_idx in shapes.iter().skip(1) {
 				let mut temp = Vec::new();
 				for mut partial in result {
-					match boolean_operation(select, &mut partial, &mut shapes[shape_idx].borrow_mut()) {
+					match boolean_operation(select, &mut partial, &mut shape_idx.borrow_mut()) {
 						Ok(mut partial_result) => temp.append(&mut partial_result),
 						Err(BooleanOperationError::NothingDone) => temp.push(partial),
 						Err(err) => return Err(err),

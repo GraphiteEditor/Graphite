@@ -352,11 +352,18 @@ export class TriggerIndexedDbRemoveDocument extends JsMessage {
 	document_id!: string;
 }
 
-export class TriggerFontLoad extends JsMessage {
-	font_file_url!: string;
+export class Font {
+	font_family!: string;
+
+	font_style!: string;
 }
 
-export class TriggerFontLoadDefault extends JsMessage {}
+export class TriggerFontLoad extends JsMessage {
+	@Type(() => Font)
+	font!: Font;
+
+	is_default!: boolean;
+}
 
 export class TriggerVisitLink extends JsMessage {
 	url!: string;
@@ -522,6 +529,10 @@ export class TriggerTextCopy extends JsMessage {
 	readonly copy_text!: string;
 }
 
+export class TriggerAboutGraphiteLocalizedCommitDate extends JsMessage {
+	readonly commit_date!: string;
+}
+
 export class TriggerViewportResize extends JsMessage {}
 
 // `any` is used since the type of the object should be known from the Rust side
@@ -541,11 +552,11 @@ export const messageMakers: Record<string, MessageMaker> = {
 	TriggerFileUpload,
 	TriggerIndexedDbRemoveDocument,
 	TriggerFontLoad,
-	TriggerFontLoadDefault,
 	TriggerIndexedDbWriteDocument,
 	TriggerRasterDownload,
 	TriggerTextCommit,
 	TriggerTextCopy,
+	TriggerAboutGraphiteLocalizedCommitDate,
 	TriggerViewportResize,
 	TriggerVisitLink,
 	UpdateActiveDocument,

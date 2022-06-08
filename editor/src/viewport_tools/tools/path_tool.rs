@@ -1,13 +1,11 @@
 use crate::consts::SELECTION_THRESHOLD;
-use crate::document::DocumentMessageHandler;
 use crate::frontend::utility_types::MouseCursorIcon;
 use crate::input::keyboard::{Key, MouseMotion};
-use crate::input::InputPreprocessorMessageHandler;
 use crate::layout::widgets::PropertyHolder;
 use crate::message_prelude::*;
 use crate::misc::{HintData, HintGroup, HintInfo, KeysGroup};
 use crate::viewport_tools::snapping::SnapHandler;
-use crate::viewport_tools::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
+use crate::viewport_tools::tool::{Fsm, ToolActionHandlerData};
 use crate::viewport_tools::vector_editor::overlay_renderer::OverlayRenderer;
 use crate::viewport_tools::vector_editor::shape_editor::ShapeEditor;
 
@@ -19,12 +17,12 @@ use serde::{Deserialize, Serialize};
 #[derive(Default)]
 pub struct PathTool {
 	fsm_state: PathToolFsmState,
-	data: PathToolData,
+	tool_data: PathToolData,
 }
 
 #[remain::sorted]
 #[impl_message(Message, ToolMessage, Path)]
-#[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize)]
+#[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize)]
 pub enum PathToolMessage {
 	// Standard messages
 	#[remain::unsorted]
@@ -50,7 +48,7 @@ pub enum PathToolMessage {
 impl PropertyHolder for PathTool {}
 
 impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for PathTool {
-	fn process_action(&mut self, action: ToolMessage, data: ToolActionHandlerData<'a>, responses: &mut VecDeque<Message>) {
+	fn process_action(&mut self, action: ToolMessage, tool_data: ToolActionHandlerData<'a>, responses: &mut VecDeque<Message>) {
 		if action == ToolMessage::UpdateHints {
 			self.fsm_state.update_hints(responses);
 			return;
@@ -61,7 +59,7 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for PathTool {
 			return;
 		}
 
-		let new_state = self.fsm_state.transition(action, data.0, data.1, &mut self.data, &(), data.2, responses);
+		let new_state = self.fsm_state.transition(action, &mut self.tool_data, tool_data, &(), responses);
 
 		if self.fsm_state != new_state {
 			self.fsm_state = new_state;
@@ -113,11 +111,9 @@ impl Fsm for PathToolFsmState {
 	fn transition(
 		self,
 		event: ToolMessage,
-		document: &DocumentMessageHandler,
-		_tool_data: &DocumentToolData,
-		data: &mut Self::ToolData,
+		tool_data: &mut Self::ToolData,
+		(document, _global_tool_data, input, font_cache): ToolActionHandlerData,
 		_tool_options: &Self::ToolOptions,
-		input: &InputPreprocessorMessageHandler,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
 		if let ToolMessage::Path(event) = event {
@@ -128,17 +124,17 @@ impl Fsm for PathToolFsmState {
 				(_, SelectionChanged) => {
 					// TODO Tell overlay renderer to clear / updates the overlays
 					for layer_path in document.all_layers() {
-						data.overlay_renderer.layer_overlay_visibility(&document.graphene_document, layer_path.to_vec(), false, responses);
+						tool_data.overlay_renderer.layer_overlay_visibility(&document.graphene_document, layer_path.to_vec(), false, responses);
 					}
 
 					let layer_paths = document.selected_visible_layers().map(|layer_path| layer_path.to_vec()).collect();
-					data.shape_editor.set_target_layers(layer_paths);
+					tool_data.shape_editor.set_target_layers(layer_paths);
 					self
 				}
 				(_, DocumentIsDirty) => {
 					// TODO This should be handled by the document not by the tool, but this is a stop gap
 					for layer_path in document.selected_visible_layers() {
-						data.overlay_renderer.render_vector_shape_overlays(&document.graphene_document, layer_path.to_vec(), responses);
+						tool_data.overlay_renderer.render_vector_shape_overlays(&document.graphene_document, layer_path.to_vec(), responses);
 					}
 
 					self
@@ -148,19 +144,21 @@ impl Fsm for PathToolFsmState {
 					let add_to_selection = input.keyboard.get(add_to_selection as usize);
 
 					// Select the first point within the threshold (in pixels)
-					if data
+					if tool_data
 						.shape_editor
 						.select_point(&document.graphene_document, input.mouse.position, SELECTION_THRESHOLD, add_to_selection, responses)
 					{
 						responses.push_back(DocumentMessage::StartTransaction.into());
 
-						let ignore_document = data.shape_editor.target_layers().clone();
-						data.snap_handler.start_snap(document, document.bounding_boxes(Some(&ignore_document), None), true, true);
+						let ignore_document = tool_data.shape_editor.target_layers().clone();
+						tool_data
+							.snap_handler
+							.start_snap(document, document.bounding_boxes(Some(&ignore_document), None, font_cache), true, true);
 
-						let include_handles = data.shape_editor.target_layers_ref();
-						data.snap_handler.add_all_document_handles(document, &include_handles, &[]);
+						let include_handles = tool_data.shape_editor.target_layers_ref();
+						tool_data.snap_handler.add_all_document_handles(document, &include_handles, &[]);
 
-						data.drag_start_pos = input.mouse.position;
+						tool_data.drag_start_pos = input.mouse.position;
 						Dragging
 					}
 					// We didn't find a point nearby, so consider selecting the nearest shape instead
@@ -169,7 +167,7 @@ impl Fsm for PathToolFsmState {
 						// Select shapes directly under our mouse
 						let intersection = document
 							.graphene_document
-							.intersects_quad_root(Quad::from_box([input.mouse.position - selection_size, input.mouse.position + selection_size]));
+							.intersects_quad_root(Quad::from_box([input.mouse.position - selection_size, input.mouse.position + selection_size]), font_cache);
 						if !intersection.is_empty() {
 							if add_to_selection {
 								responses.push_back(DocumentMessage::AddSelectedLayers { additional_layers: intersection }.into());
@@ -200,49 +198,49 @@ impl Fsm for PathToolFsmState {
 				) => {
 					// Determine when alt state changes
 					let alt_pressed = input.keyboard.get(alt_mirror_angle as usize);
-					if alt_pressed != data.alt_debounce {
-						data.alt_debounce = alt_pressed;
+					if alt_pressed != tool_data.alt_debounce {
+						tool_data.alt_debounce = alt_pressed;
 						// Only on alt down
 						if alt_pressed {
-							data.shape_editor.toggle_selected_mirror_angle(&document.graphene_document, &responses);
+							tool_data.shape_editor.toggle_selected_mirror_angle(&document.graphene_document, &responses);
 						}
 					}
 
 					// Determine when shift state changes
 					let shift_pressed = input.keyboard.get(shift_mirror_distance as usize);
-					if shift_pressed != data.shift_debounce {
-						data.shift_debounce = shift_pressed;
-						data.shape_editor.toggle_selected_mirror_distance(&document.graphene_document, &responses);
+					if shift_pressed != tool_data.shift_debounce {
+						tool_data.shift_debounce = shift_pressed;
+						tool_data.shape_editor.toggle_selected_mirror_distance(&document.graphene_document, &responses);
 					}
 
 					// Move the selected points by the mouse position
-					let snapped_position = data.snap_handler.snap_position(responses, document, input.mouse.position);
+					let snapped_position = tool_data.snap_handler.snap_position(responses, document, input.mouse.position);
 					log::debug!("Snapped position: {:?}", snapped_position);
 					//TODO This is relative position, update accordingly
 					let position = DVec2::new(snapped_position.x, snapped_position.y);
-					data.shape_editor.move_selected_points(position, responses);
+					tool_data.shape_editor.move_selected_points(position, responses);
 					Dragging
 				}
 				// DoubleClick
 				(_, Delete) => {
 					// Select the first point within the threshold (in pixels)
 					responses.push_back(DocumentMessage::StartTransaction.into());
-					data.shape_editor.delete_selected_points(responses);
+					tool_data.shape_editor.delete_selected_points(responses);
 					responses.push_back(SelectionChanged.into());
 					for layer_path in document.all_layers() {
-						data.overlay_renderer.clear_vector_shape_overlays(&document.graphene_document, layer_path.to_vec(), responses);
+						tool_data.overlay_renderer.clear_vector_shape_overlays(&document.graphene_document, layer_path.to_vec(), responses);
 					}
 					Ready
 				}
 				// Mouse up
 				(_, DragStop) => {
-					data.snap_handler.cleanup(responses);
+					tool_data.snap_handler.cleanup(responses);
 					Ready
 				}
 				(_, Abort) | (_, SelectPoint) => {
 					// TODO Tell overlay manager to remove the overlays
 					for layer_path in document.all_layers() {
-						data.overlay_renderer.clear_vector_shape_overlays(&document.graphene_document, layer_path.to_vec(), responses);
+						tool_data.overlay_renderer.clear_vector_shape_overlays(&document.graphene_document, layer_path.to_vec(), responses);
 					}
 					Ready
 				}

@@ -1,4 +1,5 @@
 use graphene::color::Color;
+use graphene::layers::text_layer::Font;
 
 // Viewport
 pub const VIEWPORT_ZOOM_WHEEL_RATE: f64 = 1. / 600.;
@@ -64,6 +65,10 @@ pub const FILE_SAVE_SUFFIX: &str = ".graphite";
 
 // Colors
 pub const COLOR_ACCENT: Color = Color::from_unsafe(0x00 as f32 / 255., 0xA8 as f32 / 255., 0xFF as f32 / 255.);
+
+// Fonts
+pub const DEFAULT_FONT_FAMILY: &str = "Merriweather";
+pub const DEFAULT_FONT_STYLE: &str = "Normal (400)";
 
 // Document
 pub const GRAPHITE_DOCUMENT_VERSION: &str = "0.0.10"; // Remember to save a simple document and replace the test file at: editor\src\communication\graphite-test-document.graphite

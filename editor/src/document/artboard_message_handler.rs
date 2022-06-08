@@ -3,6 +3,7 @@ use crate::message_prelude::*;
 use graphene::color::Color;
 use graphene::document::Document as GrapheneDocument;
 use graphene::layers::style::{self, Fill, ViewMode};
+use graphene::layers::text_layer::FontCache;
 use graphene::DocumentResponse;
 use graphene::Operation as DocumentOperation;
 
@@ -22,16 +23,16 @@ impl ArtboardMessageHandler {
 	}
 }
 
-impl MessageHandler<ArtboardMessage, ()> for ArtboardMessageHandler {
+impl MessageHandler<ArtboardMessage, &FontCache> for ArtboardMessageHandler {
 	#[remain::check]
-	fn process_action(&mut self, message: ArtboardMessage, _: (), responses: &mut VecDeque<Message>) {
+	fn process_action(&mut self, message: ArtboardMessage, font_cache: &FontCache, responses: &mut VecDeque<Message>) {
 		use ArtboardMessage::*;
 
 		#[remain::sorted]
 		match message {
 			// Sub-messages
 			#[remain::unsorted]
-			DispatchOperation(operation) => match self.artboards_graphene_document.handle_operation(*operation) {
+			DispatchOperation(operation) => match self.artboards_graphene_document.handle_operation(*operation, font_cache) {
 				Ok(Some(document_responses)) => {
 					for response in document_responses {
 						match &response {
@@ -86,7 +87,7 @@ impl MessageHandler<ArtboardMessage, ()> for ArtboardMessageHandler {
 				} else {
 					responses.push_back(
 						FrontendMessage::UpdateDocumentArtboards {
-							svg: self.artboards_graphene_document.render_root(ViewMode::Normal),
+							svg: self.artboards_graphene_document.render_root(ViewMode::Normal, font_cache),
 						}
 						.into(),
 					);
