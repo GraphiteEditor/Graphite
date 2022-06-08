@@ -414,7 +414,7 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 					responses.push_back(DeselectAllLayers.into());
 					responses.push_back(StartTransaction.into());
 
-					for entry in data {
+					for entry in data.iter().rev() {
 						let destination_path = [shallowest_common_folder.to_vec(), vec![generate_uuid()]].concat();
 
 						responses.push_front(
