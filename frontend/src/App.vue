@@ -276,13 +276,13 @@ img {
 import { defineComponent } from "vue";
 
 import { createClipboardManager } from "@/io-managers/clipboard";
+import { createFontsState, FontsState } from "@/io-managers/fonts";
 import { createHyperlinkManager } from "@/io-managers/hyperlinks";
 import { createInputManager } from "@/io-managers/input";
 import { createLocalizationManager } from "@/io-managers/localization";
 import { createPanicManager } from "@/io-managers/panic";
 import { createPersistenceManager } from "@/io-managers/persistence";
 import { createDialogState, DialogState } from "@/state-providers/dialog";
-import { createFontsState, FontsState } from "@/state-providers/fonts";
 import { createFullscreenState, FullscreenState } from "@/state-providers/fullscreen";
 import { createPortfolioState, PortfolioState } from "@/state-providers/portfolio";
 import { createWorkspaceState, WorkspaceState } from "@/state-providers/workspace";

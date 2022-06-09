@@ -6,11 +6,11 @@
 		:type="'Dropdown'"
 		:windowEdgeMargin="0"
 		:escapeCloses="false"
-		v-bind="{ direction, minWidth }"
+		v-bind="{ direction, minWidth, scrollableY: !fixedHeight && scrollableY }"
 		ref="floatingMenu"
 		data-hover-menu-keep-open
 	>
-		<LayoutCol ref="scroller" :scrollableY="scrollableY" @scroll="onScroll" :style="{ width: fixedHeight ? `${minWidth}px` : `auto` }">
+		<LayoutCol ref="scroller" :scrollableY="scrollableY && fixedHeight" @scroll="onScroll" :style="{ minWidth: fixedHeight ? `${minWidth}px` : `inherit` }">
 			<LayoutRow v-if="fixedHeight" class="spacer" :style="{ height: `${startIndex * fixedHeight}px` }"></LayoutRow>
 			<template v-for="(section, sectionIndex) in entries" :key="sectionIndex">
 				<Separator :type="'List'" :direction="'Vertical'" v-if="sectionIndex > 0" />

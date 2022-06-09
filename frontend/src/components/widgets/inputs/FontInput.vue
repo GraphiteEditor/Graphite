@@ -12,6 +12,7 @@
 			:minWidth="isStyle ? 0 : minWidth"
 			:fixedHeight="isStyle ? 0 : 20"
 			:scrollableY="true"
+			@naturalWidth="(newNaturalWidth: number) => (isStyle && (minWidth = newNaturalWidth))"
 		></MenuList>
 	</LayoutRow>
 </template>
