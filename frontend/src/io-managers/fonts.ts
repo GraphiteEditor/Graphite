@@ -2,7 +2,7 @@ import { Editor } from "@/wasm-communication/editor";
 import { TriggerFontLoad } from "@/wasm-communication/messages";
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
-export function createFontsState(editor: Editor) {
+export function createFontsManager(editor: Editor) {
 	function createURL(font: string): URL {
 		const url = new URL("https://fonts.googleapis.com/css2");
 		url.searchParams.set("display", "swap");
@@ -75,7 +75,7 @@ export function createFontsState(editor: Editor) {
 		getFontFileUrl,
 	};
 }
-export type FontsState = ReturnType<typeof createFontsState>;
+export type FontsState = ReturnType<typeof createFontsManager>;
 
 const fontListAPI = "https://api.graphite.rs/font-list";
 
