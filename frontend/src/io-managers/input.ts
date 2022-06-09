@@ -31,6 +31,13 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 
 	let viewportPointerInteractionOngoing = false;
 	let textInput = undefined as undefined | HTMLDivElement;
+	let inCanvas = true;
+
+	const app = window.document.getElementById("app");
+	app?.focus();
+	app?.addEventListener("blur", () => {
+		inCanvas = false;
+	});
 
 	// Keyboard events
 
@@ -66,7 +73,6 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 		if (e.ctrlKey && e.shiftKey && key === "j") return false;
 
 		// Don't redirect tab or enter if not in canvas (to allow navigating elements)
-		const inCanvas = e.target instanceof Element && e.target.closest("[data-canvas]");
 		if (!inCanvas && ["tab", "enter", " ", "arrowdown", "arrowup", "arrowleft", "arrowright"].includes(key.toLowerCase())) return false;
 
 		// Redirect to the backend
@@ -113,6 +119,10 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 		const inFloatingMenu = e.target instanceof Element && e.target.closest("[data-floating-menu-content]");
 		if (!viewportPointerInteractionOngoing && inFloatingMenu) return;
 
+		const { target } = e;
+		inCanvas = (target instanceof Element && target.closest("[data-canvas]")) instanceof Element && !targetIsTextField(window.document.activeElement);
+		if (inCanvas) app?.focus();
+
 		const modifiers = makeKeyboardModifiersBitfield(e);
 		editor.instance.on_mouse_move(e.clientX, e.clientY, e.buttons, modifiers);
 	}
@@ -131,7 +141,7 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 
 		if (!inTextInput) {
 			if (textInput) editor.instance.on_change_text(textInputCleanup(textInput.innerText));
-			else if (inCanvas) viewportPointerInteractionOngoing = true;
+			else viewportPointerInteractionOngoing = inCanvas instanceof Element;
 		}
 
 		if (viewportPointerInteractionOngoing) {
@@ -246,7 +256,7 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 		});
 	}
 
-	function targetIsTextField(target: EventTarget | null): boolean {
+	function targetIsTextField(target: EventTarget | HTMLElement | null): boolean {
 		return target instanceof HTMLElement && (target.nodeName === "INPUT" || target.nodeName === "TEXTAREA" || target.isContentEditable);
 	}
 
