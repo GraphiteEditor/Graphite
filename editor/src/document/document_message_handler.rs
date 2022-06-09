@@ -768,7 +768,6 @@ impl DocumentMessageHandler {
 					entries: blend_mode_menu_entries,
 					selected_index: blend_mode.map(|blend_mode| blend_mode as u32),
 					disabled: blend_mode.is_none() && !blend_mode_is_mixed,
-					interactive: true,
 					draw_icon: false,
 					..Default::default()
 				})),
