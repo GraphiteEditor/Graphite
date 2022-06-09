@@ -276,7 +276,7 @@ img {
 import { defineComponent } from "vue";
 
 import { createClipboardManager } from "@/io-managers/clipboard";
-import { createFontsState, FontsState } from "@/io-managers/fonts";
+import { createFontsManager, FontsState } from "@/io-managers/fonts";
 import { createHyperlinkManager } from "@/io-managers/hyperlinks";
 import { createInputManager } from "@/io-managers/input";
 import { createLocalizationManager } from "@/io-managers/localization";
@@ -329,7 +329,7 @@ export default defineComponent({
 
 			// State provider systems
 			dialog: createDialogState(editor),
-			fonts: createFontsState(editor),
+			fonts: createFontsManager(editor),
 			fullscreen: createFullscreenState(),
 			portfolio: createPortfolioState(editor),
 			workspace: createWorkspaceState(editor),

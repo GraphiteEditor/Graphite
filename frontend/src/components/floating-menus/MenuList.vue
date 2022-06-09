@@ -6,20 +6,22 @@
 		:type="'Dropdown'"
 		:windowEdgeMargin="0"
 		:escapeCloses="false"
-		v-bind="{ direction, minWidth, scrollableY: !fixedHeight && scrollableY }"
+		v-bind="{ direction, scrollableY: scrollableY && !virtualScrollingEntryHeight, minWidth }"
 		ref="floatingMenu"
 		data-hover-menu-keep-open
 	>
-		<LayoutCol ref="scroller" :scrollableY="scrollableY && fixedHeight" @scroll="onScroll" :style="{ minWidth: fixedHeight ? `${minWidth}px` : `inherit` }">
-			<LayoutRow v-if="fixedHeight" class="spacer" :style="{ height: `${startIndex * fixedHeight}px` }"></LayoutRow>
+		<!-- If we put the scrollableY on the layoutcol for non-font dropdowns then for some reason it always creates a tiny scrollbar.
+		However when we are using the fixedHeight then we need the layoutcol to be scrolling so we can bind the events without using $refs. -->
+		<LayoutCol ref="scroller" :scrollableY="scrollableY && virtualScrollingEntryHeight" @scroll="onScroll" :style="{ minWidth: virtualScrollingEntryHeight ? `${minWidth}px` : `inherit` }">
+			<LayoutRow v-if="virtualScrollingEntryHeight" class="spacer" :style="{ height: `${virtualScrollingStartIndex * virtualScrollingEntryHeight}px` }"></LayoutRow>
 			<template v-for="(section, sectionIndex) in entries" :key="sectionIndex">
 				<Separator :type="'List'" :direction="'Vertical'" v-if="sectionIndex > 0" />
 				<LayoutRow
-					v-for="(entry, entryIndex) in fixedHeight ? section.slice(startIndex, endIndex) : section"
-					:key="entryIndex + (fixedHeight ? startIndex : 0)"
+					v-for="(entry, entryIndex) in virtualScrollingEntryHeight ? section.slice(virtualScrollingStartIndex, virtualScrollingEndIndex) : section"
+					:key="entryIndex + (virtualScrollingEntryHeight ? virtualScrollingStartIndex : 0)"
 					class="row"
 					:class="{ open: isEntryOpen(entry), active: entry.label === highlighted?.label }"
-					:style="{ height: fixedHeight || '20px' }"
+					:style="{ height: virtualScrollingEntryHeight || '20px' }"
 					@click="() => onEntryClick(entry)"
 					@pointerenter="() => onEntryPointerEnter(entry)"
 					@pointerleave="() => onEntryPointerLeave(entry)"
@@ -49,7 +51,7 @@
 					/>
 				</LayoutRow>
 			</template>
-			<LayoutRow v-if="fixedHeight" class="spacer" :style="{ height: `${totalHeight - endIndex * fixedHeight}px` }"></LayoutRow>
+			<LayoutRow v-if="virtualScrollingEntryHeight" class="spacer" :style="{ height: `${virtualScrollingTotalHeight - virtualScrollingEndIndex * virtualScrollingEntryHeight}px` }"></LayoutRow>
 		</LayoutCol>
 	</FloatingMenu>
 </template>
@@ -191,7 +193,7 @@ const MenuList = defineComponent({
 		drawIcon: { type: Boolean as PropType<boolean>, default: false },
 		interactive: { type: Boolean as PropType<boolean>, default: false },
 		scrollableY: { type: Boolean as PropType<boolean>, default: false },
-		fixedHeight: { type: Number as PropType<number>, default: 0 },
+		virtualScrollingEntryHeight: { type: Number as PropType<number>, default: 0 },
 		defaultAction: { type: Function as PropType<() => void>, required: false },
 	},
 	data() {
@@ -199,7 +201,7 @@ const MenuList = defineComponent({
 			isOpen: this.open,
 			keyboardLockInfoMessage: this.fullscreen.keyboardLockApiSupported ? KEYBOARD_LOCK_USE_FULLSCREEN : KEYBOARD_LOCK_SWITCH_BROWSER,
 			highlighted: this.activeEntry as MenuListEntry | undefined,
-			entriesStart: 0,
+			virtualScrollingEntriesStart: 0,
 		};
 	},
 	watch: {
@@ -338,8 +340,8 @@ const MenuList = defineComponent({
 			if (this.interactive && newHighlight?.value !== this.activeEntry?.value) this.$emit("update:activeEntry", newHighlight);
 		},
 		onScroll(e: Event) {
-			if (!this.fixedHeight) return;
-			this.entriesStart = (e.target as HTMLElement)?.scrollTop || 0;
+			if (!this.virtualScrollingEntryHeight) return;
+			this.virtualScrollingEntriesStart = (e.target as HTMLElement)?.scrollTop || 0;
 		},
 	},
 	computed: {
@@ -351,14 +353,14 @@ const MenuList = defineComponent({
 				})
 			);
 		},
-		totalHeight() {
-			return this.entries[0].length * this.fixedHeight;
+		virtualScrollingTotalHeight() {
+			return this.entries[0].length * this.virtualScrollingEntryHeight;
 		},
-		startIndex() {
-			return Math.floor(this.entriesStart / this.fixedHeight);
+		virtualScrollingStartIndex() {
+			return Math.floor(this.virtualScrollingEntriesStart / this.virtualScrollingEntryHeight);
 		},
-		endIndex() {
-			return Math.min(this.entries[0].length, this.startIndex + 1 + 400 / this.fixedHeight);
+		virtualScrollingEndIndex() {
+			return Math.min(this.entries[0].length, this.virtualScrollingStartIndex + 1 + 400 / this.virtualScrollingEntryHeight);
 		},
 	},
 	components: {
