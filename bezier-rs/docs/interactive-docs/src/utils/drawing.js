@@ -30,18 +30,18 @@ export const drawBezier = (ctx, points) => {
 		points[2] = (optional) handle 2
 		points[3] = right endpoint
 	*/
-	const left = points[0];
-	let right = null;
+	const start = points[0];
+	let end = null;
 	let handle1 = null;
 	let handle2 = null;
 	if (points.length === 4) {
 		handle1 = points[1];
 		handle2 = points[2];
-		right = points[3];
+		end = points[3];
 	} else {
 		handle1 = points[1];
 		handle2 = handle1;
-		right = points[2];
+		end = points[2];
 	}
 
 	ctx.strokeStyle = "black";
@@ -50,14 +50,14 @@ export const drawBezier = (ctx, points) => {
 	ctx.beginPath();
 	ctx.moveTo(points[0].x, points[0].y);
 	if (points.length === 3) {
-		ctx.quadraticCurveTo(handle1.x, handle1.y, right.x, right.y);
+		ctx.quadraticCurveTo(handle1.x, handle1.y, end.x, end.y);
 	} else {
-		ctx.bezierCurveTo(handle1.x, handle1.y, handle2.x, handle2.y, right.x, right.y);
+		ctx.bezierCurveTo(handle1.x, handle1.y, handle2.x, handle2.y, end.x, end.y);
 	}
 	ctx.stroke();
 
-	drawLine(ctx, left, handle1);
-	drawLine(ctx, right, handle2);
+	drawLine(ctx, start, handle1);
+	drawLine(ctx, end, handle2);
 
 	points.forEach((point) => {
 		drawPoint(ctx, point);

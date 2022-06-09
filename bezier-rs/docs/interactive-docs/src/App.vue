@@ -17,7 +17,7 @@ const testBezierLib = async () => {
 	// eslint-disable-next-line
 	import("@/../wasm/pkg").then((wasm) => {
 		// eslint-disable-next-line
-		const bezier = new wasm.WasmBezier.new_quad(0, 0, 50, 0, 100, 100);
+		const bezier = wasm.WasmBezier.new_quad(0, 0, 50, 0, 100, 100);
 		const svgContainer = document.getElementById("svg-test");
 		svgContainer.innerHTML = bezier.to_svg();
 	});

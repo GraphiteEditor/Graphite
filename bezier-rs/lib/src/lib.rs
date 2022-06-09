@@ -5,45 +5,52 @@ pub fn test_double(num: i32) -> i32 {
 	num + num
 }
 
-enum BezierType {
-	Quadratic,
-	Cubic,
+pub enum BezierHandles {
+	Quadratic { handle: DVec2 },
+	Cubic { handle1: DVec2, handle2: DVec2 },
 }
 
 /// Representation of a bezier curve with 2D points
 pub struct Bezier {
-	/// Vector containing the bezier points (represented as DVec2s)
-	points: [Option<DVec2>; 4],
-	/// The type of bezier curve
-	bezier_type: BezierType,
+	/// Segment representing the bezier curve
+	start: DVec2,
+	end: DVec2,
+	handles: BezierHandles,
 }
 
 impl Bezier {
 	pub fn from_quadratic_coordinates(x1: f64, y1: f64, x2: f64, y2: f64, x3: f64, y3: f64) -> Self {
 		Bezier {
-			points: [Some(DVec2::from((x1, y1))), Some(DVec2::from((x2, y2))), Some(DVec2::from((x3, y3))), None],
-			bezier_type: BezierType::Quadratic,
+			start: DVec2::from((x1, y1)),
+			handles: BezierHandles::Quadratic { handle: DVec2::from((x2, y2)) },
+			end: DVec2::from((x3, y3)),
 		}
 	}
 
 	pub fn from_quadratic_dvec2(p1: DVec2, p2: DVec2, p3: DVec2) -> Self {
 		Bezier {
-			points: [Some(p1), Some(p2), Some(p3), None],
-			bezier_type: BezierType::Quadratic,
+			start: p1,
+			handles: BezierHandles::Quadratic { handle: p2 },
+			end: p3,
 		}
 	}
 
 	pub fn from_cubic_coordinates(x1: f64, y1: f64, x2: f64, y2: f64, x3: f64, y3: f64, x4: f64, y4: f64) -> Self {
 		Bezier {
-			points: [Some(DVec2::from((x1, y1))), Some(DVec2::from((x2, y2))), Some(DVec2::from((x3, y3))), Some(DVec2::from((x4, y4)))],
-			bezier_type: BezierType::Cubic,
+			start: DVec2::from((x1, y1)),
+			handles: BezierHandles::Cubic {
+				handle1: DVec2::from((x2, y2)),
+				handle2: DVec2::from((x3, y3)),
+			},
+			end: DVec2::from((x4, y4)),
 		}
 	}
 
 	pub fn from_cubic_dvec2(p1: DVec2, p2: DVec2, p3: DVec2, p4: DVec2) -> Self {
 		Bezier {
-			points: [Some(p1), Some(p2), Some(p3), Some(p4)],
-			bezier_type: BezierType::Cubic,
+			start: p1,
+			handles: BezierHandles::Cubic { handle1: p2, handle2: p3 },
+			end: p4,
 		}
 	}
 
@@ -64,24 +71,27 @@ impl Bezier {
 	/// Convert to SVG
 	// TODO: Allow modifying the viewport, width and height
 	pub fn to_svg(self) -> String {
-		if self.points[0].is_none() {
-			return "".to_string();
-		}
-		let start = self.points[0].unwrap();
-		let m_path = format!("M {} {}", start[0], start[1]);
-		let str_points = self.points.iter().flatten().skip(1).map(|p| format!("{} {}", p[0], p[1])).collect::<Vec<String>>().join(", ");
-		let path = match self.bezier_type {
-			BezierType::Quadratic => format!("Q {}", str_points),
-			BezierType::Cubic => format!("C {}", str_points),
+		let m_path = format!("M {} {}", self.start[0], self.start[1]);
+		let handles_path = match self.handles {
+			BezierHandles::Quadratic { handle } => {
+				format!("Q {} {}", handle[0], handle[1])
+			}
+			BezierHandles::Cubic { handle1, handle2 } => {
+				format!("C {} {}, {} {}", handle1[0], handle1[1], handle2[0], handle2[1])
+			}
 		};
+		let curve_path = format!("{}, {} {}", handles_path, self.end[0], self.end[1]);
 		format!(
 			r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{} {} {} {}" width="{}px" height="{}px"><path d="{} {} {}" stroke="black" fill="transparent"/></svg>"#,
-			0, 0, 100, 100, 100, 100, "\n", m_path, path
+			0, 0, 100, 100, 100, 100, "\n", m_path, curve_path
 		)
 	}
 
 	pub fn get_points(self) -> [Option<DVec2>; 4] {
-		self.points
+		match self.handles {
+			BezierHandles::Quadratic { handle } => [Some(self.start), Some(handle), Some(self.end), None],
+			BezierHandles::Cubic { handle1, handle2 } => [Some(self.start), Some(handle1), Some(handle2), Some(self.end)],
+		}
 	}
 
 	/// Return the length of the bezier curve
