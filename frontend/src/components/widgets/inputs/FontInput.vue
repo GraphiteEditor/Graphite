@@ -1,26 +1,18 @@
 <template>
 	<LayoutRow class="font-input">
 		<LayoutRow class="dropdown-box" :class="{ disabled }" :style="{ minWidth: `${minWidth}px` }" tabindex="0" @click="toggleOpen" @keydown="keydown" data-hover-menu-spawner>
-			<span>{{ activeEntry?.name || "" }}</span>
+			<span>{{ activeEntry?.value || "" }}</span>
 			<IconLabel class="dropdown-arrow" :icon="'DropdownArrow'" />
 		</LayoutRow>
-		<FloatingMenu class="menu-list" v-model:open="open" :direction="'Bottom'" :type="'Dropdown'" ref="floatingMenu" :windowEdgeMargin="0" data-hover-menu-keep-open>
-			<LayoutCol :scrollableY="true" @scroll="onScroll" :style="{ width: `${minWidth}px` }" ref="scroller">
-				<LayoutRow class="spacer" :style="{ height: `${startIndex * 20}px` }"></LayoutRow>
-				<LayoutRow
-					v-for="(entry, entryIndex) in entries.slice(startIndex, endIndex)"
-					:key="entryIndex + startIndex"
-					class="row"
-					:class="{ active: entry === highlighted }"
-					@click="selectFont(entry.name)"
-				>
-					<link v-if="!isStyle" rel="stylesheet" :href="entry.url?.toString()" />
-
-					<span class="entry-label" :style="{ fontFamily: `${isStyle ? 'inherit' : entry.name}` }">{{ entry.name }}</span>
-				</LayoutRow>
-				<LayoutRow class="spacer" :style="{ height: `${totalHeight - endIndex * 20}px` }"></LayoutRow>
-			</LayoutCol>
-		</FloatingMenu>
+		<MenuList
+			ref="menulist"
+			v-model:activeEntry="activeEntry"
+			v-model:open="open"
+			:entries="[entries]"
+			:minWidth="isStyle ? 0 : minWidth"
+			:fixedHeight="isStyle ? 0 : 20"
+			:scrollableY="true"
+		></MenuList>
 	</LayoutRow>
 </template>
 
@@ -91,14 +83,11 @@
 import { defineComponent, nextTick, PropType } from "vue";
 
 import FloatingMenu from "@/components/floating-menus/FloatingMenu.vue";
+import MenuList, { MenuListEntry } from "@/components/floating-menus/MenuList.vue";
+
 import LayoutCol from "@/components/layout/LayoutCol.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
-
-interface FontEntry {
-	name: string;
-	url: URL | undefined;
-}
 
 export default defineComponent({
 	inject: ["fonts"],
@@ -112,11 +101,11 @@ export default defineComponent({
 	data() {
 		return {
 			open: false,
-			entries: [] as FontEntry[],
-			activeEntry: undefined as FontEntry | undefined,
-			highlighted: undefined as FontEntry | undefined,
+			entries: [] as MenuListEntry[],
+			activeEntry: undefined as MenuListEntry | undefined,
+			highlighted: undefined as MenuListEntry | undefined,
 			entriesStart: 0,
-			minWidth: 300,
+			minWidth: this.isStyle ? 0 : 300,
 		};
 	},
 	async mounted() {
@@ -129,7 +118,7 @@ export default defineComponent({
 			return this.$refs.floatingMenu as typeof FloatingMenu;
 		},
 		scroller() {
-			return (this.$refs.scroller as typeof LayoutCol)?.$el as HTMLElement;
+			return ((this.$refs.menulist as typeof MenuList).$refs.scroller as typeof LayoutCol)?.$el as HTMLElement;
 		},
 		setOpen() {
 			this.open = true;
@@ -170,13 +159,19 @@ export default defineComponent({
 		onWidthChanged(newWidth: number) {
 			this.minWidth = newWidth;
 		},
-		async getEntries(): Promise<FontEntry[]> {
-			return this.isStyle ? this.fonts.getFontStyles(this.fontFamily) : this.fonts.fontNames();
+		async getEntries(): Promise<MenuListEntry[]> {
+			const x = this.isStyle ? this.fonts.getFontStyles(this.fontFamily) : this.fonts.fontNames();
+			return (await x).map((entry) => ({
+				label: entry.name,
+				value: entry.name,
+				font: entry.url,
+				action: () => this.selectFont(entry.name),
+			}));
 		},
-		getActiveEntry(entries: FontEntry[]): FontEntry {
+		getActiveEntry(entries: MenuListEntry[]): MenuListEntry {
 			const selectedChoice = this.isStyle ? this.fontStyle : this.fontFamily;
 
-			return entries.find((entry) => entry.name === selectedChoice) as FontEntry;
+			return entries.find((entry) => entry.value === selectedChoice) as MenuListEntry;
 		},
 		/// Handles keyboard navigation for the menu. Returns if the entire menu stack should be dismissed
 		keydown(e: KeyboardEvent) {
@@ -206,11 +201,11 @@ export default defineComponent({
 				this.setHighlighted(this.activeEntry);
 			} else if (menuOpen && this.highlighted && e.key === "Enter") {
 				// Handle clicking on an option if enter is pressed
-				this.selectFont(this.highlighted.name);
+				if (this.highlighted.value) this.selectFont(this.highlighted.value);
 				e.preventDefault();
 			}
 		},
-		setHighlighted(newHighlight: FontEntry | undefined) {
+		setHighlighted(newHighlight: MenuListEntry | undefined) {
 			this.highlighted = newHighlight;
 		},
 		onScroll(e: Event) {
@@ -242,9 +237,8 @@ export default defineComponent({
 	},
 	components: {
 		LayoutRow,
-		LayoutCol,
 		IconLabel,
-		FloatingMenu,
+		MenuList,
 	},
 });
 </script>
