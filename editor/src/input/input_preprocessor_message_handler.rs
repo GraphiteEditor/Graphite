@@ -3,6 +3,7 @@ use super::keyboard::{Key, KeyStates};
 use super::mouse::{MouseKeys, MouseState, ViewportBounds};
 use crate::message_prelude::*;
 
+use glam::DVec2;
 #[doc(inline)]
 pub use graphene::DocumentResponse;
 
@@ -146,5 +147,10 @@ impl InputPreprocessorMessageHandler {
 			self.keyboard.set(key as usize);
 			responses.push_back(InputMapperMessage::KeyDown(key).into());
 		}
+	}
+
+	pub fn document_bounds(&self) -> [DVec2; 2] {
+		// ipp bounds are relative to the entire screen
+		[(0., 0.).into(), self.viewport_bounds.bottom_right - self.viewport_bounds.top_left]
 	}
 }

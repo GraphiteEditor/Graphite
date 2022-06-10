@@ -231,7 +231,9 @@ impl Layer {
 		transforms.push(self.transform);
 		if let Some(viewport_bounds) = culling_bounds {
 			if let Some(bounding_box) = self.data.bounding_box(transforms.iter().cloned().reduce(|a, b| a * b).unwrap_or(DAffine2::IDENTITY), font_cache) {
-				if !(viewport_bounds[0].x < bounding_box[1].x && bounding_box[0].x < viewport_bounds[1].x && viewport_bounds[0].y < bounding_box[1].y && bounding_box[0].y < viewport_bounds[1].y) {
+				let is_overlapping =
+					viewport_bounds[0].x < bounding_box[1].x && bounding_box[0].x < viewport_bounds[1].x && viewport_bounds[0].y < bounding_box[1].y && bounding_box[0].y < viewport_bounds[1].y;
+				if !is_overlapping {
 					transforms.pop();
 					self.cache.clear();
 					self.cache_dirty = true;

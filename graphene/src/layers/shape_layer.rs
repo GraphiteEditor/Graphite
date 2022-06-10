@@ -89,7 +89,7 @@ impl ShapeLayer {
 			(_, -1) => 0,
 			(_, x) => (transforms.len() as i32 - x).max(0) as usize,
 		};
-		transforms.iter().skip(start).cloned().reduce(|a, b| a * b).unwrap_or(DAffine2::IDENTITY)
+		transforms.iter().skip(start).fold(DAffine2::IDENTITY, |a, b| a * *b)
 	}
 
 	pub fn from_bez_path(bez_path: BezPath, style: PathStyle, closed: bool) -> Self {
