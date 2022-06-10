@@ -681,6 +681,7 @@ impl DocumentMessageHandler {
 					]],
 					selected_index: Some(self.document_mode as u32),
 					draw_icon: true,
+					interactive: false, // TODO: set to true when dialogs are not spawned
 					..Default::default()
 				})),
 				WidgetHolder::new(Widget::Separator(Separator {
