@@ -3,9 +3,10 @@ use super::keyboard::{Key, KeyStates};
 use super::mouse::{MouseKeys, MouseState, ViewportBounds};
 use crate::message_prelude::*;
 
-use glam::DVec2;
 #[doc(inline)]
 pub use graphene::DocumentResponse;
+
+use glam::DVec2;
 
 #[derive(Debug, Default)]
 pub struct InputPreprocessorMessageHandler {
