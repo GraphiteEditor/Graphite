@@ -337,6 +337,7 @@ impl Fsm for SelectToolFsmState {
 					buffer.into_iter().rev().for_each(|message| responses.push_front(message));
 
 					tool_data.path_outlines.update_selected(document.selected_visible_layers(), document, responses, font_cache);
+					tool_data.path_outlines.intersect_test_hovered(input, document, responses, font_cache);
 
 					self
 				}
@@ -552,21 +553,7 @@ impl Fsm for SelectToolFsmState {
 
 					// Generate the select outline (but not if the user is going to use the bound overlays)
 					if cursor == MouseCursorIcon::Default {
-						// Get the layer the user is hovering over
-						let tolerance = DVec2::splat(SELECTION_TOLERANCE);
-						let quad = Quad::from_box([input.mouse.position - tolerance, input.mouse.position + tolerance]);
-						let mut intersection = document.graphene_document.intersects_quad_root(quad, font_cache);
-
-						// If the user is hovering over a layer they have not already selected, then update outline
-						if let Some(path) = intersection.pop() {
-							if !document.selected_visible_layers().any(|visible| visible == path.as_slice()) {
-								tool_data.path_outlines.update_hovered(path, document, responses, font_cache)
-							} else {
-								tool_data.path_outlines.clear_hovered(responses);
-							}
-						} else {
-							tool_data.path_outlines.clear_hovered(responses);
-						}
+						tool_data.path_outlines.intersect_test_hovered(input, document, responses, font_cache);
 					} else {
 						tool_data.path_outlines.clear_hovered(responses);
 					}
