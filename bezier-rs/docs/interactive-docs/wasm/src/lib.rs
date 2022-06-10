@@ -57,7 +57,7 @@ impl WasmBezier {
 		self.internal.to_svg()
 	}
 	
-	pub fn length(self) -> f64 {
+	pub fn length(&self) -> f64 {
 		self.internal.length()
 	}
 }

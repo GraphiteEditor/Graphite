@@ -11,5 +11,5 @@ export type Point = {
 	y: number;
 	r: number;
 	mutator: WasmBezierMutatorKey;
-	selected?: boolean;
+	selected: boolean;
 };

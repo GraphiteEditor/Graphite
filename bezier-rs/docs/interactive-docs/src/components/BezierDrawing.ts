@@ -1,4 +1,4 @@
-import { drawBezier } from "@/utils/drawing";
+import { drawBezier, getContextFromCanvas } from "@/utils/drawing";
 import { BezierCallback, Point, WasmBezierMutatorKey } from "@/utils/types";
 import { WasmBezierInstance } from "@/utils/wasm-comm";
 
@@ -40,11 +40,7 @@ class BezierDrawing {
 		this.canvas.width = 200;
 		this.canvas.height = 200;
 
-		const ctx = this.canvas.getContext("2d");
-		if (ctx == null) {
-			throw Error("Failed to create context");
-		}
-		this.ctx = ctx;
+		this.ctx = getContextFromCanvas(this.canvas);
 
 		this.dragIndex = null; // Index of the point being moved
 

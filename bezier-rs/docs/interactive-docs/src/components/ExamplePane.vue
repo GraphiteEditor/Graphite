@@ -7,14 +7,12 @@
 </template>
 
 <script lang="ts">
-import { BezierCallback } from "../utils/types";
-
 import { defineComponent, PropType } from "vue";
 
+import { BezierCallback } from "../utils/types";
 import { WasmBezierInstance } from "../utils/wasm-comm";
 
 import Example from "./Example.vue";
-// import wasm from "bezier-rs-wasm";
 
 type ExampleData = {
 	id: number;

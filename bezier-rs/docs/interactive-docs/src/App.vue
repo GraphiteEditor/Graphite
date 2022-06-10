@@ -12,11 +12,9 @@
 <script lang="ts">
 import { defineComponent } from "vue";
 
-import { drawText } from "./utils/drawing";
-
-import { WasmBezierInstance } from "./utils/types";
-
 import ExamplePane from "./components/ExamplePane.vue";
+import { drawText, getContextFromCanvas } from "./utils/drawing";
+import { WasmBezierInstance } from "./utils/types";
 
 // eslint-disable-next-line
 const testBezierLib = async () => {
@@ -44,13 +42,14 @@ export default defineComponent({
 				{
 					id: 0,
 					name: "Constructor",
-					callback: () => {},
+					// eslint-disable-next-line
+					callback: (): void => {},
 				},
 				{
 					id: 2,
 					name: "Length",
-					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance) => {
-						drawText(canvas.getContext("2d"), `Length: ${bezier.length().toFixed(2)}`, 5, canvas.height - 7);
+					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance): void => {
+						drawText(getContextFromCanvas(canvas), `Length: ${bezier.length().toFixed(2)}`, 5, canvas.height - 7);
 					},
 				},
 			],

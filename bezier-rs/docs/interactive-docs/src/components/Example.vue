@@ -8,9 +8,8 @@
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
 
-import { WasmBezierInstance } from "../utils/wasm-comm";
-
 import { BezierCallback } from "../utils/types";
+import { WasmBezierInstance } from "../utils/wasm-comm";
 
 import BezierDrawing from "./BezierDrawing";
 
