@@ -25,6 +25,7 @@ pub struct ShapeLayer {
 	pub path: BezPath,
 	/// The visual style of the shape.
 	pub style: style::PathStyle,
+	// TODO: We might be able to remove this in a future refactor
 	pub render_index: i32,
 	/// Whether or not the [path](ShapeLayer::path) connects to itself.
 	pub closed: bool,

@@ -874,8 +874,6 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 			#[remain::unsorted]
 			Overlays(message) => {
 				self.overlays_message_handler.process_action(message, (self.overlays_visible, font_cache, ipp), responses);
-				// CAN THIS COMMENT BELOW BE REMOVED?
-				// responses.push_back(OverlaysMessage::RenderOverlays.into());
 			}
 			#[remain::unsorted]
 			TransformLayers(message) => {
@@ -1101,8 +1099,6 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 				}
 			}
 			FolderChanged { affected_folder_path } => {
-				// TODO: WHY IS IT RENDERING HERE? Can the line below be removed?
-				let _ = self.graphene_document.render_root(self.view_mode, font_cache, None);
 				let affected_layer_path = affected_folder_path;
 				responses.extend([LayerChanged { affected_layer_path }.into(), DocumentStructureChanged.into()]);
 			}
