@@ -6,14 +6,14 @@
 		:type="'Dropdown'"
 		:windowEdgeMargin="0"
 		:escapeCloses="false"
-		v-bind="{ direction, scrollableY: scrollableY && !virtualScrollingEntryHeight, minWidth }"
+		v-bind="{ direction, scrollableY: scrollableY && virtualScrollingEntryHeight === 0, minWidth }"
 		ref="floatingMenu"
 		data-hover-menu-keep-open
 	>
 		<!-- If we put the scrollableY on the layoutcol for non-font dropdowns then for some reason it always creates a tiny scrollbar.
 		However when we are using the virtual scrolling then we need the layoutcol to be scrolling so we can bind the events without using $refs. -->
-		<LayoutCol ref="scroller" :scrollableY="scrollableY && virtualScrollingEntryHeight" @scroll="onScroll" :style="{ minWidth: virtualScrollingEntryHeight ? `${minWidth}px` : `inherit` }">
-			<LayoutRow v-if="virtualScrollingEntryHeight" class="spacer" :style="{ height: `${virtualScrollingStartIndex * virtualScrollingEntryHeight}px` }"></LayoutRow>
+		<LayoutCol ref="scroller" :scrollableY="scrollableY && virtualScrollingEntryHeight !== 0" @scroll="onScroll" :style="{ minWidth: virtualScrollingEntryHeight ? `${minWidth}px` : `inherit` }">
+			<LayoutRow v-if="virtualScrollingEntryHeight" class="scroll-spacer" :style="{ height: `${virtualScrollingStartIndex * virtualScrollingEntryHeight}px` }"></LayoutRow>
 			<template v-for="(section, sectionIndex) in entries" :key="sectionIndex">
 				<Separator :type="'List'" :direction="'Vertical'" v-if="sectionIndex > 0" />
 				<LayoutRow
@@ -51,7 +51,11 @@
 					/>
 				</LayoutRow>
 			</template>
-			<LayoutRow v-if="virtualScrollingEntryHeight" class="spacer" :style="{ height: `${virtualScrollingTotalHeight - virtualScrollingEndIndex * virtualScrollingEntryHeight}px` }"></LayoutRow>
+			<LayoutRow
+				v-if="virtualScrollingEntryHeight"
+				class="scroll-spacer"
+				:style="{ height: `${virtualScrollingTotalHeight - virtualScrollingEndIndex * virtualScrollingEntryHeight}px` }"
+			></LayoutRow>
 		</LayoutCol>
 	</FloatingMenu>
 </template>
@@ -60,6 +64,10 @@
 .menu-list {
 	.floating-menu-container .floating-menu-content {
 		padding: 4px 0;
+
+		.scroll-spacer {
+			flex: 0 0 auto;
+		}
 
 		.row {
 			height: 20px;
