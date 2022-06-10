@@ -10,7 +10,7 @@
 			v-model:open="open"
 			:entries="[entries]"
 			:minWidth="isStyle ? 0 : minWidth"
-			:fixedHeight="isStyle ? 0 : 20"
+			:virtualScrollingEntryHeight="isStyle ? 0 : 20"
 			:scrollableY="true"
 			@naturalWidth="(newNaturalWidth: number) => (isStyle && (minWidth = newNaturalWidth))"
 		></MenuList>
@@ -65,14 +65,6 @@
 		max-height: 400px;
 		padding: 4px 0;
 
-		.row {
-			height: 20px;
-			align-items: center;
-			white-space: nowrap;
-			position: relative;
-			flex: 0 0 auto;
-		}
-
 		.spacer {
 			flex: 0 0 auto;
 		}
@@ -121,22 +113,22 @@ export default defineComponent({
 		scroller() {
 			return ((this.$refs.menulist as typeof MenuList).$refs.scroller as typeof LayoutCol)?.$el as HTMLElement;
 		},
-		setOpen() {
+		async setOpen() {
 			this.open = true;
-			// Reset the highlighted entry to the active one
-			this.setHighlighted(this.activeEntry);
 			// Scroll to the active entry (the scroller div does not yet exist so we must wait for vue to render)
-			nextTick((): void => {
-				if (this.activeEntry) {
-					const index = this.entries.indexOf(this.activeEntry);
-					this.scroller()?.scrollTo(0, Math.max(0, index * 20 - 190));
-				}
-			});
+			await nextTick();
+			if (this.activeEntry) {
+				const index = this.entries.indexOf(this.activeEntry);
+				this.scroller()?.scrollTo(0, Math.max(0, index * 20 - 190));
+			}
 		},
 		toggleOpen() {
 			if (this.disabled) return;
 			this.open = !this.open;
 			if (this.open) this.setOpen();
+		},
+		keydown(e: KeyboardEvent) {
+			(this.$refs.menulist as typeof MenuList).keydown(e, false);
 		},
 		async selectFont(newName: string): Promise<void> {
 			let fontFamily;
@@ -157,12 +149,9 @@ export default defineComponent({
 			const fontFileUrl = await this.fonts.getFontFileUrl(fontFamily, fontStyle);
 			this.$emit("changeFont", { fontFamily, fontStyle, fontFileUrl });
 		},
-		onWidthChanged(newWidth: number) {
-			this.minWidth = newWidth;
-		},
 		async getEntries(): Promise<MenuListEntry[]> {
 			const x = this.isStyle ? this.fonts.getFontStyles(this.fontFamily) : this.fonts.fontNames();
-			return (await x).map((entry) => ({
+			return (await x).map((entry: { name: string; url: URL | undefined }) => ({
 				label: entry.name,
 				value: entry.name,
 				font: entry.url,
@@ -173,44 +162,6 @@ export default defineComponent({
 			const selectedChoice = this.isStyle ? this.fontStyle : this.fontFamily;
 
 			return entries.find((entry) => entry.value === selectedChoice) as MenuListEntry;
-		},
-		/// Handles keyboard navigation for the menu. Returns if the entire menu stack should be dismissed
-		keydown(e: KeyboardEvent) {
-			if (this.disabled) return;
-
-			const menuOpen = this.open;
-
-			if (!menuOpen && (e.key === " " || e.key === "Enter")) {
-				// Allow opening menu with space or enter
-				this.setOpen();
-			} else if (menuOpen && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
-				// Navigate to the next and previous entries with arrow keys
-
-				let newIndex = e.key === "ArrowUp" ? this.entries.length - 1 : 0;
-				if (this.highlighted) {
-					const index = this.highlighted ? this.entries.indexOf(this.highlighted) : 0;
-					newIndex = (index + (e.key === "ArrowUp" ? -1 : 1) + this.entries.length) % this.entries.length;
-				}
-
-				const newEntry = this.entries[newIndex];
-				this.setHighlighted(newEntry);
-			} else if (menuOpen && e.key === "Escape") {
-				// Close menu with escape key
-				this.open = false;
-
-				// Reset active to before open
-				this.setHighlighted(this.activeEntry);
-			} else if (menuOpen && this.highlighted && e.key === "Enter") {
-				// Handle clicking on an option if enter is pressed
-				if (this.highlighted.value) this.selectFont(this.highlighted.value);
-				e.preventDefault();
-			}
-		},
-		setHighlighted(newHighlight: MenuListEntry | undefined) {
-			this.highlighted = newHighlight;
-		},
-		onScroll(e: Event) {
-			this.entriesStart = (e.target as HTMLElement)?.scrollTop || 0;
 		},
 	},
 	watch: {
@@ -223,17 +174,6 @@ export default defineComponent({
 			this.entries = await this.getEntries();
 			this.activeEntry = this.getActiveEntry(this.entries);
 			this.highlighted = this.activeEntry;
-		},
-	},
-	computed: {
-		totalHeight() {
-			return this.entries.length * 20;
-		},
-		startIndex() {
-			return Math.floor(this.entriesStart / 20);
-		},
-		endIndex() {
-			return Math.min(this.entries.length, this.startIndex + 1 + 400 / 20);
 		},
 	},
 	components: {
