@@ -87,7 +87,7 @@ impl MessageHandler<ArtboardMessage, &FontCache> for ArtboardMessageHandler {
 				} else {
 					responses.push_back(
 						FrontendMessage::UpdateDocumentArtboards {
-							svg: self.artboards_graphene_document.render_root(ViewMode::Normal, font_cache),
+							svg: self.artboards_graphene_document.render_root(ViewMode::Normal, font_cache, None),
 						}
 						.into(),
 					);
