@@ -1,5 +1,4 @@
 use glam::DVec2;
-use std::fmt::Write;
 
 pub enum BezierHandles {
 	Quadratic { handle: DVec2 },
@@ -158,15 +157,16 @@ impl Bezier {
 		let mt = 1.0 - t;
 		let mt2 = mt * mt;
 
-		if self.points[3].is_none() {
-			// quadratic
-			return mt2 * self.points[0].unwrap()[0] + 2.0 * mt * t * self.points[1].unwrap()[0] + t2 * self.points[2].unwrap()[0];
+		match self.handles {
+			BezierHandles::Quadratic { handle } => {
+				mt2 * self.start[0] + 2.0 * mt * t * handle[0] + t2 * self.end[0]
+			},
+			BezierHandles::Cubic { handle1, handle2 } => {
+				let t3 = t2 * t;
+				let mt3 = mt2 * mt;
+				mt3 * self.start[0] + 3.0 * mt2 * t * handle1[0] + 3.0 * mt * t2 * handle2[0] + t3 * self.end[0]
+			},
 		}
-
-		// cubic
-		let t3 = t2 * t;
-		let mt3 = mt2 * mt;
-		mt3 * self.points[0].unwrap()[0] + 3.0 * mt2 * t * self.points[1].unwrap()[0] + 3.0 * mt * t2 * self.points[2].unwrap()[0] + t3 * self.points[3].unwrap()[0]
 	}
 
 	///  Calculate the y-value of a point on the curve based on the t-value provided
@@ -176,15 +176,16 @@ impl Bezier {
 		let mt = 1.0 - t;
 		let mt2 = mt * mt;
 
-		if self.points[3].is_none() {
-			// quadratic
-			return mt2 * self.points[0].unwrap()[1] + 2.0 * mt * t * self.points[1].unwrap()[1] + t2 * self.points[2].unwrap()[1];
+		match self.handles {
+			BezierHandles::Quadratic { handle } => {
+				mt2 * self.start[1] + 2.0 * mt * t * handle[1] + t2 * self.end[1]
+			},
+			BezierHandles::Cubic { handle1, handle2 } => {
+				let t3 = t2 * t;
+				let mt3 = mt2 * mt;
+				mt3 * self.start[1] + 3.0 * mt2 * t * handle1[1] + 3.0 * mt * t2 * handle2[1] + t3 * self.end[1]
+			},
 		}
-
-		// cubic
-		let t3 = t2 * t;
-		let mt3 = mt2 * mt;
-		mt3 * self.points[0].unwrap()[1] + 3.0 * mt2 * t * self.points[1].unwrap()[1] + 3.0 * mt * t2 * self.points[2].unwrap()[1] + t3 * self.points[3].unwrap()[1]
 	}
 
 	/// Return an approximation of the length of the bezier curve
@@ -193,18 +194,18 @@ impl Bezier {
 		// We will use an approximate approach where
 		// we split the curve into many subdivisions
 		// and calculate the euclidean distance between the two endpoints of the subdivision
-		const subdivisions: i32 = 1000;
-		const ratio: f64 = 1.0 / (subdivisions as f64);
+		const SUBDIVISIONS: i32 = 1000;
+		const RATIO: f64 = 1.0 / (SUBDIVISIONS as f64);
 
 		// ox, oy track the starting point of the subdivision
 		let mut ox = self.get_x_basis(0.0);
 		let mut oy = self.get_y_basis(0.0);
 		let mut clen = 0.0;
 		// calculate approximate distance between subdivision
-		for i in 1..subdivisions + 1 {
+		for i in 1..SUBDIVISIONS + 1 {
 			// get end point of the subdivision
-			let x = self.get_x_basis(f64::from(i) * ratio);
-			let y = self.get_y_basis(f64::from(i) * ratio);
+			let x = self.get_x_basis(f64::from(i) * RATIO);
+			let y = self.get_y_basis(f64::from(i) * RATIO);
 			// calculate distance of subdivision
 			let dx = ox - x;
 			let dy = oy - y;
