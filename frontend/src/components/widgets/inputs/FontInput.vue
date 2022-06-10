@@ -64,10 +64,6 @@
 	.menu-list .floating-menu-container .floating-menu-content {
 		max-height: 400px;
 		padding: 4px 0;
-
-		.spacer {
-			flex: 0 0 auto;
-		}
 	}
 }
 </style>
