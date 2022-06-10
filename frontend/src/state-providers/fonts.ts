@@ -1,17 +1,27 @@
-import { reactive, readonly } from "vue";
+import { reactive } from "vue";
 
 import { Editor } from "@/wasm-communication/editor";
 import { TriggerFontLoad } from "@/wasm-communication/messages";
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 export function createFontsState(editor: Editor) {
-	const state = reactive({
-		fontNames: [] as string[],
-	});
+	const state = reactive({});
 
-	async function getFontStyles(fontFamily: string): Promise<string[]> {
+	function createURL(font: string): URL {
+		const url = new URL("https://fonts.googleapis.com/css2");
+		url.searchParams.set("display", "swap");
+		url.searchParams.set("family", font);
+		url.searchParams.set("text", font);
+		return url;
+	}
+
+	async function fontNames(): Promise<{ name: string; url: URL | undefined }[]> {
+		return (await fontList).map((font) => ({ name: font.family, url: createURL(font.family) }));
+	}
+
+	async function getFontStyles(fontFamily: string): Promise<{ name: string; url: URL | undefined }[]> {
 		const font = (await fontList).find((value) => value.family === fontFamily);
-		return font?.variants || [];
+		return font?.variants.map((variant) => ({ name: variant, url: undefined })) || [];
 	}
 
 	async function getFontFileUrl(fontFamily: string, fontStyle: string): Promise<string | undefined> {
@@ -58,17 +68,12 @@ export function createFontsState(editor: Editor) {
 					const files = new Map(font.variants.map((x) => [formatFontStyleName(x), font.files[x]]));
 					return { family, variants, files };
 				});
-				state.fontNames = result.map((value) => value.family);
 
 				resolve(result);
 			});
 	});
 
-	return {
-		state: readonly(state) as typeof state,
-		getFontStyles,
-		getFontFileUrl,
-	};
+	return { state, fontNames, getFontStyles, getFontFileUrl };
 }
 export type FontsState = ReturnType<typeof createFontsState>;
 

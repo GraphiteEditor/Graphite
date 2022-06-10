@@ -6,44 +6,57 @@
 		:type="'Dropdown'"
 		:windowEdgeMargin="0"
 		:escapeCloses="false"
-		v-bind="{ direction, scrollableY, minWidth }"
+		v-bind="{ direction, scrollableY: scrollableY && virtualScrollingEntryHeight === 0, minWidth }"
 		ref="floatingMenu"
 		data-hover-menu-keep-open
 	>
-		<template v-for="(section, sectionIndex) in entries" :key="sectionIndex">
-			<Separator :type="'List'" :direction="'Vertical'" v-if="sectionIndex > 0" />
+		<!-- If we put the scrollableY on the layoutcol for non-font dropdowns then for some reason it always creates a tiny scrollbar.
+		However when we are using the virtual scrolling then we need the layoutcol to be scrolling so we can bind the events without using $refs. -->
+		<LayoutCol ref="scroller" :scrollableY="scrollableY && virtualScrollingEntryHeight !== 0" @scroll="onScroll" :style="{ minWidth: virtualScrollingEntryHeight ? `${minWidth}px` : `inherit` }">
+			<LayoutRow v-if="virtualScrollingEntryHeight" class="scroll-spacer" :style="{ height: `${virtualScrollingStartIndex * virtualScrollingEntryHeight}px` }"></LayoutRow>
+			<template v-for="(section, sectionIndex) in entries" :key="sectionIndex">
+				<Separator :type="'List'" :direction="'Vertical'" v-if="sectionIndex > 0" />
+				<LayoutRow
+					v-for="(entry, entryIndex) in virtualScrollingEntryHeight ? section.slice(virtualScrollingStartIndex, virtualScrollingEndIndex) : section"
+					:key="entryIndex + (virtualScrollingEntryHeight ? virtualScrollingStartIndex : 0)"
+					class="row"
+					:class="{ open: isEntryOpen(entry), active: entry.label === highlighted?.label }"
+					:style="{ height: virtualScrollingEntryHeight || '20px' }"
+					@click="() => onEntryClick(entry)"
+					@pointerenter="() => onEntryPointerEnter(entry)"
+					@pointerleave="() => onEntryPointerLeave(entry)"
+				>
+					<CheckboxInput v-if="entry.checkbox" v-model:checked="entry.checked" :outlineStyle="true" :disableTabIndex="true" class="entry-checkbox" />
+					<IconLabel v-else-if="entry.icon && drawIcon" :icon="entry.icon" class="entry-icon" />
+					<div v-else-if="drawIcon" class="no-icon"></div>
+
+					<link v-if="entry.font" rel="stylesheet" :href="entry.font?.toString()" />
+
+					<span class="entry-label" :style="{ fontFamily: `${!entry.font ? 'inherit' : entry.value}` }">{{ entry.label }}</span>
+
+					<IconLabel v-if="entry.shortcutRequiresLock && !fullscreen.state.keyboardLocked" :icon="'Info'" :title="keyboardLockInfoMessage" />
+					<UserInputLabel v-else-if="entry.shortcut?.length" :inputKeys="[entry.shortcut]" />
+
+					<div class="submenu-arrow" v-if="entry.children?.length"></div>
+					<div class="no-submenu-arrow" v-else></div>
+
+					<MenuList
+						v-if="entry.children"
+						@naturalWidth="(newNaturalWidth: number) => $emit('naturalWidth', newNaturalWidth)"
+						:open="entry.ref?.open || false"
+						:direction="'TopRight'"
+						:entries="entry.children"
+						v-bind="{ defaultAction, minWidth, drawIcon, scrollableY }"
+						:ref="(ref: typeof FloatingMenu) => ref && (entry.ref = ref)"
+					/>
+				</LayoutRow>
+			</template>
 			<LayoutRow
-				v-for="(entry, entryIndex) in section"
-				:key="entryIndex"
-				class="row"
-				:class="{ open: isEntryOpen(entry), active: entry.label === highlighted?.label }"
-				@click="() => onEntryClick(entry)"
-				@pointerenter="() => onEntryPointerEnter(entry)"
-				@pointerleave="() => onEntryPointerLeave(entry)"
-			>
-				<CheckboxInput v-if="entry.checkbox" v-model:checked="entry.checked" :outlineStyle="true" :disableTabIndex="true" class="entry-checkbox" />
-				<IconLabel v-else-if="entry.icon && drawIcon" :icon="entry.icon" class="entry-icon" />
-				<div v-else-if="drawIcon" class="no-icon"></div>
-
-				<span class="entry-label">{{ entry.label }}</span>
-
-				<IconLabel v-if="entry.shortcutRequiresLock && !fullscreen.state.keyboardLocked" :icon="'Info'" :title="keyboardLockInfoMessage" />
-				<UserInputLabel v-else-if="entry.shortcut?.length" :inputKeys="[entry.shortcut]" />
-
-				<div class="submenu-arrow" v-if="entry.children?.length"></div>
-				<div class="no-submenu-arrow" v-else></div>
-
-				<MenuList
-					v-if="entry.children"
-					@naturalWidth="(newNaturalWidth: number) => $emit('naturalWidth', newNaturalWidth)"
-					:open="entry.ref?.open || false"
-					:direction="'TopRight'"
-					:entries="entry.children"
-					v-bind="{ defaultAction, minWidth, drawIcon, scrollableY }"
-					:ref="(ref: typeof FloatingMenu) => ref && (entry.ref = ref)"
-				/>
-			</LayoutRow>
-		</template>
+				v-if="virtualScrollingEntryHeight"
+				class="scroll-spacer"
+				:style="{ height: `${virtualScrollingTotalHeight - virtualScrollingEndIndex * virtualScrollingEntryHeight}px` }"
+			></LayoutRow>
+		</LayoutCol>
 	</FloatingMenu>
 </template>
 
@@ -51,6 +64,10 @@
 .menu-list {
 	.floating-menu-container .floating-menu-content {
 		padding: 4px 0;
+
+		.scroll-spacer {
+			flex: 0 0 auto;
+		}
 
 		.row {
 			height: 20px;
@@ -145,6 +162,7 @@ import { defineComponent, PropType } from "vue";
 import { IconName } from "@/utility-functions/icons";
 
 import FloatingMenu, { MenuDirection } from "@/components/floating-menus/FloatingMenu.vue";
+import LayoutCol from "@/components/layout/LayoutCol.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 import CheckboxInput from "@/components/widgets/inputs/CheckboxInput.vue";
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
@@ -158,6 +176,7 @@ interface MenuListEntryData<Value = string> {
 	value?: Value;
 	label?: string;
 	icon?: IconName;
+	font?: URL;
 	checkbox?: boolean;
 	shortcut?: string[];
 	shortcutRequiresLock?: boolean;
@@ -182,6 +201,7 @@ const MenuList = defineComponent({
 		drawIcon: { type: Boolean as PropType<boolean>, default: false },
 		interactive: { type: Boolean as PropType<boolean>, default: false },
 		scrollableY: { type: Boolean as PropType<boolean>, default: false },
+		virtualScrollingEntryHeight: { type: Number as PropType<number>, default: 0 },
 		defaultAction: { type: Function as PropType<() => void>, required: false },
 	},
 	data() {
@@ -189,6 +209,7 @@ const MenuList = defineComponent({
 			isOpen: this.open,
 			keyboardLockInfoMessage: this.fullscreen.keyboardLockApiSupported ? KEYBOARD_LOCK_USE_FULLSCREEN : KEYBOARD_LOCK_SWITCH_BROWSER,
 			highlighted: this.activeEntry as MenuListEntry | undefined,
+			virtualScrollingEntriesStart: 0,
 		};
 	},
 	watch: {
@@ -326,6 +347,10 @@ const MenuList = defineComponent({
 			// Interactive menus should keep the active entry the same as the highlighted one
 			if (this.interactive && newHighlight?.value !== this.activeEntry?.value) this.$emit("update:activeEntry", newHighlight);
 		},
+		onScroll(e: Event) {
+			if (!this.virtualScrollingEntryHeight) return;
+			this.virtualScrollingEntriesStart = (e.target as HTMLElement)?.scrollTop || 0;
+		},
 	},
 	computed: {
 		entriesWithoutRefs(): MenuListEntryData[][] {
@@ -336,6 +361,15 @@ const MenuList = defineComponent({
 				})
 			);
 		},
+		virtualScrollingTotalHeight() {
+			return this.entries[0].length * this.virtualScrollingEntryHeight;
+		},
+		virtualScrollingStartIndex() {
+			return Math.floor(this.virtualScrollingEntriesStart / this.virtualScrollingEntryHeight);
+		},
+		virtualScrollingEndIndex() {
+			return Math.min(this.entries[0].length, this.virtualScrollingStartIndex + 1 + 400 / this.virtualScrollingEntryHeight);
+		},
 	},
 	components: {
 		FloatingMenu,
@@ -344,6 +378,7 @@ const MenuList = defineComponent({
 		CheckboxInput,
 		UserInputLabel,
 		LayoutRow,
+		LayoutCol,
 	},
 });
 export default MenuList;
