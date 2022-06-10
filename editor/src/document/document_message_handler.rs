@@ -874,8 +874,7 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 			}
 			#[remain::unsorted]
 			Overlays(message) => {
-				self.overlays_message_handler.process_action(message, (self.overlays_visible, font_cache), responses);
-				// responses.push_back(OverlaysMessage::RenderOverlays.into());
+				self.overlays_message_handler.process_action(message, (self.overlays_visible, font_cache, ipp), responses);
 			}
 			#[remain::unsorted]
 			TransformLayers(message) => {
@@ -1061,7 +1060,7 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 					false => file_name + file_suffix,
 				};
 
-				let rendered = self.graphene_document.render_root(self.view_mode, font_cache);
+				let rendered = self.graphene_document.render_root(self.view_mode, font_cache, None);
 				let document = format!(
 					r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{} {} {} {}" width="{}px" height="{}">{}{}</svg>"#,
 					bbox[0].x, bbox[0].y, size.x, size.y, size.x, size.y, "\n", rendered
@@ -1101,7 +1100,6 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 				}
 			}
 			FolderChanged { affected_folder_path } => {
-				let _ = self.graphene_document.render_root(self.view_mode, font_cache);
 				let affected_layer_path = affected_folder_path;
 				responses.extend([LayerChanged { affected_layer_path }.into(), DocumentStructureChanged.into()]);
 			}
@@ -1221,7 +1219,7 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 			RenderDocument => {
 				responses.push_back(
 					FrontendMessage::UpdateDocumentArtwork {
-						svg: self.graphene_document.render_root(self.view_mode, font_cache),
+						svg: self.graphene_document.render_root(self.view_mode, font_cache, Some(ipp.document_bounds())),
 					}
 					.into(),
 				);

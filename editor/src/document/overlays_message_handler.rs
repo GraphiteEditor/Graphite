@@ -1,3 +1,4 @@
+use crate::input::InputPreprocessorMessageHandler;
 use crate::message_prelude::*;
 
 use graphene::document::Document as GrapheneDocument;
@@ -9,9 +10,9 @@ pub struct OverlaysMessageHandler {
 	pub overlays_graphene_document: GrapheneDocument,
 }
 
-impl MessageHandler<OverlaysMessage, (bool, &FontCache)> for OverlaysMessageHandler {
+impl MessageHandler<OverlaysMessage, (bool, &FontCache, &InputPreprocessorMessageHandler)> for OverlaysMessageHandler {
 	#[remain::check]
-	fn process_action(&mut self, message: OverlaysMessage, (overlays_visible, font_cache): (bool, &FontCache), responses: &mut VecDeque<Message>) {
+	fn process_action(&mut self, message: OverlaysMessage, (overlays_visible, font_cache, ipp): (bool, &FontCache, &InputPreprocessorMessageHandler), responses: &mut VecDeque<Message>) {
 		use OverlaysMessage::*;
 
 		#[remain::sorted]
@@ -31,7 +32,7 @@ impl MessageHandler<OverlaysMessage, (bool, &FontCache)> for OverlaysMessageHand
 				responses.push_back(
 					FrontendMessage::UpdateDocumentOverlays {
 						svg: if overlays_visible {
-							self.overlays_graphene_document.render_root(ViewMode::Normal, font_cache)
+							self.overlays_graphene_document.render_root(ViewMode::Normal, font_cache, Some(ipp.document_bounds()))
 						} else {
 							String::from("")
 						},
