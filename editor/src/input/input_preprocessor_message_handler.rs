@@ -6,6 +6,8 @@ use crate::message_prelude::*;
 #[doc(inline)]
 pub use graphene::DocumentResponse;
 
+use glam::DVec2;
+
 #[derive(Debug, Default)]
 pub struct InputPreprocessorMessageHandler {
 	pub keyboard: KeyStates,
@@ -151,5 +153,10 @@ impl InputPreprocessorMessageHandler {
 			self.keyboard.set(key as usize);
 			responses.push_back(InputMapperMessage::KeyDown(key).into());
 		}
+	}
+
+	pub fn document_bounds(&self) -> [DVec2; 2] {
+		// ipp bounds are relative to the entire screen
+		[(0., 0.).into(), self.viewport_bounds.bottom_right - self.viewport_bounds.top_left]
 	}
 }
