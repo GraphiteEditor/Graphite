@@ -1,8 +1,12 @@
+import { reactive } from "vue";
+
 import { Editor } from "@/wasm-communication/editor";
 import { TriggerFontLoad } from "@/wasm-communication/messages";
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
-export function createFontsManager(editor: Editor) {
+export function createFontsState(editor: Editor) {
+	const state = reactive({});
+
 	function createURL(font: string): URL {
 		const url = new URL("https://fonts.googleapis.com/css2");
 		url.searchParams.set("display", "swap");
@@ -69,13 +73,9 @@ export function createFontsManager(editor: Editor) {
 			});
 	});
 
-	return {
-		fontNames,
-		getFontStyles,
-		getFontFileUrl,
-	};
+	return { state, fontNames, getFontStyles, getFontFileUrl };
 }
-export type FontsState = ReturnType<typeof createFontsManager>;
+export type FontsState = ReturnType<typeof createFontsState>;
 
 const fontListAPI = "https://api.graphite.rs/font-list";
 
