@@ -27,7 +27,7 @@ pub fn layer_panel_entry(layer_metadata: &LayerMetadata, transform: DAffine2, la
 
 	let mut thumbnail = String::new();
 	let mut svg_defs = String::new();
-	layer.data.clone().render(&mut thumbnail, &mut svg_defs, &mut vec![transform], ViewMode::Normal, font_cache);
+	layer.data.clone().render(&mut thumbnail, &mut svg_defs, &mut vec![transform], ViewMode::Normal, font_cache, None);
 	let transform = transform.to_cols_array().iter().map(ToString::to_string).collect::<Vec<_>>().join(",");
 	let thumbnail = if let [(x_min, y_min), (x_max, y_max)] = arr.as_slice() {
 		format!(
