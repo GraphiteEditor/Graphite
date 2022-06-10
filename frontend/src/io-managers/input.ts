@@ -11,6 +11,10 @@ type EventListenerTarget = {
 };
 
 export function createInputManager(editor: Editor, container: HTMLElement, dialog: DialogState, document: PortfolioState, fullscreen: FullscreenState): () => void {
+	const app = window.document.querySelector("[data-app]") as HTMLElement | undefined;
+	app?.focus();
+	console.info(app);
+
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	const listeners: { target: EventListenerTarget; eventName: EventName; action: (event: any) => void; options?: boolean | AddEventListenerOptions }[] = [
 		{ target: window, eventName: "resize", action: (): void => onWindowResize(container) },
@@ -27,17 +31,20 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 		{ target: window, eventName: "wheel", action: (e: WheelEvent): void => onMouseScroll(e), options: { passive: false } },
 		{ target: window, eventName: "modifyinputfield", action: (e: CustomEvent): void => onModifyInputField(e) },
 		{ target: window.document.body, eventName: "paste", action: (e: ClipboardEvent): void => onPaste(e) },
+		{
+			target: app as EventListenerTarget,
+			eventName: "blur",
+			action: (): void => blurApp(),
+		},
 	];
 
 	let viewportPointerInteractionOngoing = false;
 	let textInput = undefined as undefined | HTMLDivElement;
 	let inCanvas = true;
 
-	const app = window.document.getElementById("app");
-	app?.focus();
-	app?.addEventListener("blur", () => {
+	function blurApp(): void {
 		inCanvas = false;
-	});
+	}
 
 	// Keyboard events
 
@@ -120,8 +127,11 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 		if (!viewportPointerInteractionOngoing && inFloatingMenu) return;
 
 		const { target } = e;
-		inCanvas = (target instanceof Element && target.closest("[data-canvas]")) instanceof Element && !targetIsTextField(window.document.activeElement);
-		if (inCanvas) app?.focus();
+		const newInCanvas = (target instanceof Element && target.closest("[data-canvas]")) instanceof Element && !targetIsTextField(window.document.activeElement);
+		if (newInCanvas && !inCanvas) {
+			inCanvas = true;
+			app?.focus();
+		}
 
 		const modifiers = makeKeyboardModifiersBitfield(e);
 		editor.instance.on_mouse_move(e.clientX, e.clientY, e.buttons, modifiers);
