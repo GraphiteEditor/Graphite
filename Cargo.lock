@@ -46,6 +46,7 @@ name = "bezier-rs-wasm"
 version = "0.0.0"
 dependencies = [
  "bezier-rs",
+ "glam",
  "js-sys",
  "log",
  "serde",

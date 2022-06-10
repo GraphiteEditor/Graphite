@@ -1,4 +1,6 @@
-export const drawLine = (ctx, p1, p2) => {
+import { Point } from "@/utils/types";
+
+export const drawLine = (ctx: CanvasRenderingContext2D, p1: Point, p2: Point): void => {
 	ctx.strokeStyle = "grey";
 	ctx.lineWidth = 1;
 
@@ -8,7 +10,7 @@ export const drawLine = (ctx, p1, p2) => {
 	ctx.stroke();
 };
 
-export const drawPoint = (ctx, p) => {
+export const drawPoint = (ctx: CanvasRenderingContext2D, p: Point): void => {
 	// Outline the point
 	ctx.strokeStyle = p.selected ? "blue" : "black";
 	ctx.lineWidth = p.r / 3;
@@ -23,12 +25,12 @@ export const drawPoint = (ctx, p) => {
 	ctx.fill();
 };
 
-export const drawBezier = (ctx, points) => {
+export const drawBezier = (ctx: CanvasRenderingContext2D, points: Point[]): void => {
 	/* Until a bezier representation is finalized, treat the points as follows
-		points[0] = left endpoint
+		points[0] = start point
 		points[1] = handle 1
 		points[2] = (optional) handle 2
-		points[3] = right endpoint
+		points[3] = end point
 	*/
 	const start = points[0];
 	let end = null;

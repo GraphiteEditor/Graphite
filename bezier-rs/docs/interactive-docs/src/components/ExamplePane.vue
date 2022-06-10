@@ -1,45 +1,53 @@
 <template>
 	<div class="example_row">
-		<div v-for="example in examples" :key="example.id">
-			<Example :title="example.title" :points="example.points" />
+		<div v-for="example in exampleData" :key="example.id">
+			<Example :title="example.title" :bezier="example.bezier" />
 		</div>
 	</div>
 </template>
 
-<script>
-import Example from "./Example.vue";
+<script lang="ts">
+import { defineComponent } from "vue";
 
-export default {
+import { WasmBezierInstance } from "../utils/wasm-comm";
+
+import Example from "./Example.vue";
+// import wasm from "bezier-rs-wasm";
+
+type ExampleData = {
+	id: number;
+	title: string;
+	bezier: WasmBezierInstance;
+};
+
+export default defineComponent({
 	name: "ExamplePane",
 	components: {
 		Example,
 	},
 	data() {
 		return {
-			examples: [
+			exampleData: [] as ExampleData[],
+		};
+	},
+	mounted() {
+		// eslint-disable-next-line
+		import("../../wasm/pkg").then((wasm) => {
+			this.exampleData = [
 				{
 					id: 0,
 					title: "Quadratic Bezier",
-					points: [
-						{ x: 30, y: 30, r: 5 },
-						{ x: 140, y: 20, r: 3 },
-						{ x: 160, y: 170, r: 5 },
-					],
+					bezier: wasm.WasmBezier.new_quad(30, 30, 140, 20, 160, 170),
 				},
 				{
 					id: 1,
 					title: "Cubic Bezier",
-					points: [
-						{ x: 30, y: 30, r: 5 },
-						{ x: 60, y: 140, r: 3 },
-						{ x: 150, y: 30, r: 3 },
-						{ x: 160, y: 160, r: 5 },
-					],
+					bezier: wasm.WasmBezier.new_cubic(30, 30, 60, 140, 150, 30, 160, 160),
 				},
-			],
-		};
+			];
+		});
 	},
-};
+});
 </script>
 
 <style>

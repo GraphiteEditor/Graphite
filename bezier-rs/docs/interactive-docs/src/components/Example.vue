@@ -5,26 +5,29 @@
 	</div>
 </template>
 
-<script>
+<script lang="ts">
+import { defineComponent, PropType } from "vue";
+
+import { WasmBezierInstance } from "../utils/wasm-comm";
+
 import BezierDrawing from "./BezierDrawing";
 
-export default {
+export default defineComponent({
 	name: "ExampleComponent",
 	props: {
 		title: String,
-		bezier: Object,
-		points: Object,
+		bezier: {
+			type: Object as PropType<WasmBezierInstance>,
+			required: true,
+		},
 	},
 	mounted() {
-		// eslint-disable-next-line
-		import("@/../wasm/pkg").then((wasm) => {
-			const bezierDrawing = new BezierDrawing(this.points, wasm);
-			this.$refs.drawing.appendChild(bezierDrawing.getCanvas());
-			bezierDrawing.updateBezier();
-		});
+		const bezierDrawing = new BezierDrawing(this.bezier);
+		const drawing = this.$refs.drawing as HTMLElement;
+		drawing.appendChild(bezierDrawing.getCanvas());
+		bezierDrawing.updateBezier();
 	},
-};
+});
 </script>
 
-<style scoped>
-</style>
+<style scoped></style>

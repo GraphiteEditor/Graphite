@@ -21,6 +21,7 @@ wasm-bindgen = { version = "0.2.73", features = ["serde-serialize"] }
 serde_json = "*"
 serde-wasm-bindgen = "0.4.1"
 js-sys = "0.3.55"
+glam = { version = "0.17", features = ["serde"] }
 
 [dev-dependencies]
 wasm-bindgen-test = "0.3.22"

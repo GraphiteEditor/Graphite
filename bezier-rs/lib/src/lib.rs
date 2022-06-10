@@ -1,10 +1,5 @@
 use glam::DVec2;
 
-/// Test function to double a number
-pub fn test_double(num: i32) -> i32 {
-	num + num
-}
-
 pub enum BezierHandles {
 	Quadratic { handle: DVec2 },
 	Cubic { handle1: DVec2, handle2: DVec2 },
@@ -70,7 +65,7 @@ impl Bezier {
 
 	/// Convert to SVG
 	// TODO: Allow modifying the viewport, width and height
-	pub fn to_svg(self) -> String {
+	pub fn to_svg(&self) -> String {
 		let m_path = format!("M {} {}", self.start[0], self.start[1]);
 		let handles_path = match self.handles {
 			BezierHandles::Quadratic { handle } => {
@@ -87,7 +82,68 @@ impl Bezier {
 		)
 	}
 
-	pub fn get_points(self) -> [Option<DVec2>; 4] {
+	pub fn set_start(&mut self, s: DVec2) {
+		self.start = s;
+	}
+
+	pub fn set_end(&mut self, e: DVec2) {
+		self.end = e;
+	}
+
+	pub fn set_handle1(&mut self, h1: DVec2) {
+		match self.handles {
+			BezierHandles::Quadratic { ref mut handle } => {
+				*handle = h1;
+			}
+			BezierHandles::Cubic { ref mut handle1, handle2: _} => {
+				*handle1 = h1;
+			}
+		};
+	}
+
+	pub fn set_handle2(&mut self, h2: DVec2) {
+		match self.handles {
+			BezierHandles::Quadratic { handle } => {
+				self.handles = BezierHandles::Cubic { handle1: handle, handle2: h2 };
+			}
+			BezierHandles::Cubic { handle1: _, ref mut handle2 } => {
+				*handle2 = h2;
+			}
+		};
+	}
+
+	pub fn get_start(&self) -> DVec2 {
+		self.start
+	}
+
+	pub fn get_end(&self) -> DVec2 {
+		self.end
+	}
+
+	pub fn get_handle1(&self) -> DVec2 {
+		match self.handles {
+			BezierHandles::Quadratic { handle } => {
+				handle
+			}
+			BezierHandles::Cubic { handle1, handle2: _ } => {
+				handle1
+			}
+		}
+	}
+
+	pub fn get_handle2(&self) -> Option<DVec2> {
+		match self.handles {
+			BezierHandles::Quadratic { handle: _ } => {
+				None
+			}
+			BezierHandles::Cubic { handle1: _, handle2 } => {
+				Some(handle2)
+			}
+		}
+	}
+
+
+	pub fn get_points(&self) -> [Option<DVec2>; 4] {
 		match self.handles {
 			BezierHandles::Quadratic { handle } => [Some(self.start), Some(handle), Some(self.end), None],
 			BezierHandles::Cubic { handle1, handle2 } => [Some(self.start), Some(handle1), Some(handle2), Some(self.end)],
