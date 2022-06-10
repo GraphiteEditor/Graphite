@@ -37,13 +37,10 @@ impl LayerData for FolderLayer {
 	}
 
 	fn bounding_box(&self, transform: glam::DAffine2, font_cache: &FontCache) -> Option<[DVec2; 2]> {
-		let bounding_box = self
-			.layers
+		self.layers
 			.iter()
 			.filter_map(|layer| layer.data.bounding_box(transform * layer.transform, font_cache))
-			.reduce(|a, b| [a[0].min(b[0]), a[1].max(b[1])]);
-
-		bounding_box
+			.reduce(|a, b| [a[0].min(b[0]), a[1].max(b[1])])
 	}
 }
 
