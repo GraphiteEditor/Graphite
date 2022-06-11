@@ -44,12 +44,21 @@ export default defineComponent({
 				{
 					id: 0,
 					title: "Quadratic Bezier",
-					bezier: wasm.WasmBezier.new_quad(30, 30, 140, 20, 160, 170),
+					bezier: wasm.WasmBezier.new_quad([
+						[30, 30],
+						[140, 20],
+						[160, 170],
+					]),
 				},
 				{
 					id: 1,
 					title: "Cubic Bezier",
-					bezier: wasm.WasmBezier.new_cubic(30, 30, 60, 140, 150, 30, 160, 160),
+					bezier: wasm.WasmBezier.new_cubic([
+						[30, 30],
+						[60, 140],
+						[150, 30],
+						[160, 160],
+					]),
 				},
 			];
 		});

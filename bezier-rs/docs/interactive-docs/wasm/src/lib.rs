@@ -16,32 +16,36 @@ pub struct WasmBezier {
 
 #[wasm_bindgen]
 impl WasmBezier {
-	pub fn new_quad(x1: f64, y1: f64, x2: f64, y2: f64, x3: f64, y3: f64) -> WasmBezier {
+	/// Expect js_points to be a list of 3 pairs
+	pub fn new_quad(js_points: &JsValue) -> WasmBezier {
+		let points: [DVec2; 3] = js_points.into_serde().unwrap();
 		WasmBezier {
-			internal: Bezier::from_quadratic_coordinates(x1, y1, x2, y2, x3, y3),
+			internal: Bezier::from_quadratic_dvec2(points[0], points[1], points[2]),
 		}
 	}
 
-	pub fn new_cubic(x1: f64, y1: f64, x2: f64, y2: f64, x3: f64, y3: f64, x4: f64, y4: f64) -> WasmBezier {
+	/// Expect js_points to be a list of 4 pairs
+	pub fn new_cubic(js_points: &JsValue) -> WasmBezier {
+		let points: [DVec2; 4] = js_points.into_serde().unwrap();
 		WasmBezier {
-			internal: Bezier::from_cubic_coordinates(x1, y1, x2, y2, x3, y3, x4, y4),
+			internal: Bezier::from_cubic_dvec2(points[0], points[1], points[2], points[3]),
 		}
 	}
 
 	pub fn set_start(&mut self, x: f64, y: f64) {
-		self.internal.set_start( DVec2::from((x, y)) );
+		self.internal.set_start(DVec2::from((x, y)));
 	}
 
 	pub fn set_end(&mut self, x: f64, y: f64) {
-		self.internal.set_start( DVec2::from((x, y)) );
+		self.internal.set_start(DVec2::from((x, y)));
 	}
 
 	pub fn set_handle1(&mut self, x: f64, y: f64) {
-		self.internal.set_handle1( DVec2::from((x, y)) );
+		self.internal.set_handle1(DVec2::from((x, y)));
 	}
 
 	pub fn set_handle2(&mut self, x: f64, y: f64) {
-		self.internal.set_handle2( DVec2::from((x, y)) );
+		self.internal.set_handle2(DVec2::from((x, y)));
 	}
 
 	pub fn get_points(&self) -> Vec<JsValue> {
@@ -56,7 +60,7 @@ impl WasmBezier {
 	pub fn to_svg(&self) -> String {
 		self.internal.to_svg()
 	}
-	
+
 	pub fn length(&self) -> f64 {
 		self.internal.length()
 	}

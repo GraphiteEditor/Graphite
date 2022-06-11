@@ -1,19 +1,24 @@
 use glam::DVec2;
 
+/// Representation of the handle point(s) in a bezier segment
 pub enum BezierHandles {
 	Quadratic { handle: DVec2 },
 	Cubic { handle1: DVec2, handle2: DVec2 },
 }
 
-/// Representation of a bezier curve with 2D points
+/// Representation of a bezier segment with 2D points
 pub struct Bezier {
-	/// Segment representing the bezier curve
+	/// Start point of the bezier segment
 	start: DVec2,
+	/// Start point of the bezier segment
 	end: DVec2,
+	/// Handles of the bezier segment
 	handles: BezierHandles,
 }
 
 impl Bezier {
+	// TODO: Consider removing this function
+	/// Create a quadratic bezier using the provided coordinates as the start, handle, and end points
 	pub fn from_quadratic_coordinates(x1: f64, y1: f64, x2: f64, y2: f64, x3: f64, y3: f64) -> Self {
 		Bezier {
 			start: DVec2::from((x1, y1)),
@@ -22,6 +27,7 @@ impl Bezier {
 		}
 	}
 
+	/// Create a quadratc bezier using the provided DVec2s as the start, handle, and end points
 	pub fn from_quadratic_dvec2(p1: DVec2, p2: DVec2, p3: DVec2) -> Self {
 		Bezier {
 			start: p1,
@@ -30,6 +36,8 @@ impl Bezier {
 		}
 	}
 
+	// TODO: Consider removing this function
+	/// Create a cubic bezier using the provided coordinates as the start, handles, and end points
 	pub fn from_cubic_coordinates(x1: f64, y1: f64, x2: f64, y2: f64, x3: f64, y3: f64, x4: f64, y4: f64) -> Self {
 		Bezier {
 			start: DVec2::from((x1, y1)),
@@ -41,6 +49,7 @@ impl Bezier {
 		}
 	}
 
+	/// Create a cubic bezier using the provided DVec2s as the start, handles, and end points
 	pub fn from_cubic_dvec2(p1: DVec2, p2: DVec2, p3: DVec2, p4: DVec2) -> Self {
 		Bezier {
 			start: p1,
@@ -82,25 +91,29 @@ impl Bezier {
 		)
 	}
 
+	/// Set the coordinates of the start point
 	pub fn set_start(&mut self, s: DVec2) {
 		self.start = s;
 	}
 
+	/// Set the coordinates of the end point
 	pub fn set_end(&mut self, e: DVec2) {
 		self.end = e;
 	}
 
+	/// Set the coordinates of the first handle point. This represents the only handle in a quadratic segment.
 	pub fn set_handle1(&mut self, h1: DVec2) {
 		match self.handles {
 			BezierHandles::Quadratic { ref mut handle } => {
 				*handle = h1;
 			}
-			BezierHandles::Cubic { ref mut handle1, handle2: _} => {
+			BezierHandles::Cubic { ref mut handle1, handle2: _ } => {
 				*handle1 = h1;
 			}
 		};
 	}
 
+	/// Set the coordinates of the second handle point. This will convert a quadratic segment into a cubic one.
 	pub fn set_handle2(&mut self, h2: DVec2) {
 		match self.handles {
 			BezierHandles::Quadratic { handle } => {
@@ -122,26 +135,17 @@ impl Bezier {
 
 	pub fn get_handle1(&self) -> DVec2 {
 		match self.handles {
-			BezierHandles::Quadratic { handle } => {
-				handle
-			}
-			BezierHandles::Cubic { handle1, handle2: _ } => {
-				handle1
-			}
+			BezierHandles::Quadratic { handle } => handle,
+			BezierHandles::Cubic { handle1, handle2: _ } => handle1,
 		}
 	}
 
 	pub fn get_handle2(&self) -> Option<DVec2> {
 		match self.handles {
-			BezierHandles::Quadratic { handle: _ } => {
-				None
-			}
-			BezierHandles::Cubic { handle1: _, handle2 } => {
-				Some(handle2)
-			}
+			BezierHandles::Quadratic { handle: _ } => None,
+			BezierHandles::Cubic { handle1: _, handle2 } => Some(handle2),
 		}
 	}
-
 
 	pub fn get_points(&self) -> [Option<DVec2>; 4] {
 		match self.handles {
@@ -158,14 +162,12 @@ impl Bezier {
 		let mt2 = mt * mt;
 
 		match self.handles {
-			BezierHandles::Quadratic { handle } => {
-				mt2 * self.start[0] + 2.0 * mt * t * handle[0] + t2 * self.end[0]
-			},
+			BezierHandles::Quadratic { handle } => mt2 * self.start[0] + 2.0 * mt * t * handle[0] + t2 * self.end[0],
 			BezierHandles::Cubic { handle1, handle2 } => {
 				let t3 = t2 * t;
 				let mt3 = mt2 * mt;
 				mt3 * self.start[0] + 3.0 * mt2 * t * handle1[0] + 3.0 * mt * t2 * handle2[0] + t3 * self.end[0]
-			},
+			}
 		}
 	}
 
@@ -177,14 +179,12 @@ impl Bezier {
 		let mt2 = mt * mt;
 
 		match self.handles {
-			BezierHandles::Quadratic { handle } => {
-				mt2 * self.start[1] + 2.0 * mt * t * handle[1] + t2 * self.end[1]
-			},
+			BezierHandles::Quadratic { handle } => mt2 * self.start[1] + 2.0 * mt * t * handle[1] + t2 * self.end[1],
 			BezierHandles::Cubic { handle1, handle2 } => {
 				let t3 = t2 * t;
 				let mt3 = mt2 * mt;
 				mt3 * self.start[1] + 3.0 * mt2 * t * handle1[1] + 3.0 * mt * t2 * handle2[1] + t3 * self.end[1]
-			},
+			}
 		}
 	}
 
