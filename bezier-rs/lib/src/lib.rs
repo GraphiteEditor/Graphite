@@ -171,6 +171,24 @@ impl Bezier {
 		}
 	}
 
+	/// Return a selection of equidistant points on the bezier curve
+	/// If no value is provided for `steps`, then the function will default `steps` to be 20
+	pub fn get_lookup_table(&self, steps: Option<i32>) -> Vec<DVec2> {
+		let steps_unwrapped = steps.unwrap_or(20);
+		let ratio: f64 = 1.0 / (steps_unwrapped as f64);
+		let mut steps_array = Vec::with_capacity((steps_unwrapped + 1) as usize);
+
+		for t in 0..steps_unwrapped + 1 {
+			// get point on the curve for a given t
+			// TODO: replace with `get/compute`
+			let point = self.get_basis(f64::from(t) * ratio);
+			// add point to the lookup table
+			steps_array.push(point)
+		}
+
+		steps_array
+	}
+
 	/// Return an approximation of the length of the bezier curve
 	/// code example taken from: https://gamedev.stackexchange.com/questions/5373/moving-ships-between-two-planets-along-a-bezier-missing-some-equations-for-acce/5427#5427
 	pub fn length(&self) -> f64 {
@@ -178,8 +196,8 @@ impl Bezier {
 		// we split the curve into many subdivisions
 		// and calculate the euclidean distance between the two endpoints of the subdivision
 		const SUBDIVISIONS: i32 = 1000;
-		const RATIO: f64 = 1.0 / (SUBDIVISIONS as f64);
 
+<<<<<<< HEAD
 		// start_point tracks the starting point of the subdivision
 		let mut start_point = self.get_basis(0.0);
 		let mut length_subtotal = 0.0;
@@ -191,8 +209,19 @@ impl Bezier {
 			length_subtotal += (start_point - end_point).length();
 			// update start_point for next subdivision
 			start_point = end_point;
+=======
+		let lookup_table = self.get_lookup_table(Some(SUBDIVISIONS));
+		let mut approx_curve_length = 0.0;
+		let mut prev_point = lookup_table[0];
+		// calculate approximate distance between subdivision
+		for curr_point in lookup_table.iter().skip(1) {
+			// calculate distance of subdivision
+			approx_curve_length += (*curr_point - prev_point).length();
+			// update the prev point
+			prev_point = *curr_point;
+>>>>>>> 7d7541b (added get_lookup_table to bezier library)
 		}
 
-		length_subtotal
+		approx_curve_length
 	}
 }
