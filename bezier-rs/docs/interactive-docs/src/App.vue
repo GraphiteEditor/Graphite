@@ -63,7 +63,7 @@ export default defineComponent({
 								const point = JSON.parse(serPoint);
 								point.r = 3;
 								point.selected = false;
-								drawPoint(getContextFromCanvas(canvas), point, "red");
+								drawPoint(getContextFromCanvas(canvas), point, "DarkBlue");
 							}
 						});
 						// drawText(getContextFromCanvas(canvas), `Length: ${bezier.length().toFixed(2)}`, 5, canvas.height - 7);
