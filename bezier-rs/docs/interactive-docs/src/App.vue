@@ -12,7 +12,7 @@
 <script lang="ts">
 import { defineComponent } from "vue";
 
-import { drawText, getContextFromCanvas } from "@/utils/drawing";
+import { drawText, drawPoint, getContextFromCanvas } from "@/utils/drawing";
 import { WasmBezierInstance } from "@/utils/types";
 
 import ExamplePane from "@/components/ExamplePane.vue";
@@ -51,6 +51,22 @@ export default defineComponent({
 					name: "Length",
 					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance): void => {
 						drawText(getContextFromCanvas(canvas), `Length: ${bezier.length().toFixed(2)}`, 5, canvas.height - 7);
+					},
+				},
+				{
+					id: 3,
+					name: "Lookup Table",
+					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance): void => {
+						const lookupPoints = bezier.get_lookup_table();
+						lookupPoints.forEach((serPoint, index) => {
+							if (index !== 0 && index !== lookupPoints.length - 1) {
+								const point = JSON.parse(serPoint);
+								point.r = 3;
+								point.selected = false;
+								drawPoint(getContextFromCanvas(canvas), point, "red");
+							}
+						});
+						// drawText(getContextFromCanvas(canvas), `Length: ${bezier.length().toFixed(2)}`, 5, canvas.height - 7);
 					},
 				},
 			],

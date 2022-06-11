@@ -64,4 +64,12 @@ impl WasmBezier {
 	pub fn length(&self) -> f64 {
 		self.internal.length()
 	}
+
+	pub fn get_lookup_table(&self) -> Vec<JsValue> {
+		self.internal
+			.get_lookup_table(None)
+			.iter()
+			.map(|p| JsValue::from_serde(&serde_json::to_string(&Point { x: p[0], y: p[1] }).unwrap()).unwrap())
+			.collect()
+	}
 }

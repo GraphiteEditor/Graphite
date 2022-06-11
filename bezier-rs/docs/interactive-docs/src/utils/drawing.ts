@@ -18,9 +18,9 @@ export const drawLine = (ctx: CanvasRenderingContext2D, p1: Point, p2: Point): v
 	ctx.stroke();
 };
 
-export const drawPoint = (ctx: CanvasRenderingContext2D, p: Point): void => {
+export const drawPoint = (ctx: CanvasRenderingContext2D, p: Point, stroke = "black"): void => {
 	// Outline the point
-	ctx.strokeStyle = p.selected ? "blue" : "black";
+	ctx.strokeStyle = p.selected ? "blue" : stroke;
 	ctx.lineWidth = p.r / 3;
 	ctx.beginPath();
 	ctx.arc(p.x, p.y, p.r, 0, 2 * Math.PI, false);

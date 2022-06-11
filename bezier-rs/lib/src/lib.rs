@@ -172,9 +172,9 @@ impl Bezier {
 	}
 
 	/// Return a selection of equidistant points on the bezier curve
-	/// If no value is provided for `steps`, then the function will default `steps` to be 20
+	/// If no value is provided for `steps`, then the function will default `steps` to be 10
 	pub fn get_lookup_table(&self, steps: Option<i32>) -> Vec<DVec2> {
-		let steps_unwrapped = steps.unwrap_or(20);
+		let steps_unwrapped = steps.unwrap_or(10);
 		let ratio: f64 = 1.0 / (steps_unwrapped as f64);
 		let mut steps_array = Vec::with_capacity((steps_unwrapped + 1) as usize);
 
