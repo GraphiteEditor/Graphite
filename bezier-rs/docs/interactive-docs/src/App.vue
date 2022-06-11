@@ -12,17 +12,14 @@
 <script lang="ts">
 import { defineComponent } from "vue";
 
-import ExamplePane from "./components/ExamplePane.vue";
-import { drawText, getContextFromCanvas } from "./utils/drawing";
-import { WasmBezierInstance } from "./utils/types";
+import { drawText, getContextFromCanvas } from "@/utils/drawing";
+import { WasmBezierInstance } from "@/utils/types";
+
+import ExamplePane from "@/components/ExamplePane.vue";
 
 // eslint-disable-next-line
 const testBezierLib = async () => {
-	// TODO: Fix below
-	// eslint seems to think this pkg is the one in the frontend folder, not the one in interactive-docs (which is not what is actually imported)
-	// eslint-disable-next-line
-	import("../wasm/pkg").then((wasm) => {
-		// eslint-disable-next-line
+	import("@/../wasm/pkg").then((wasm) => {
 		const bezier = wasm.WasmBezier.new_quad([
 			[0, 0],
 			[50, 0],

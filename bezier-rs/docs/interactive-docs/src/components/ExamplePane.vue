@@ -9,10 +9,10 @@
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
 
-import { BezierCallback } from "../utils/types";
-import { WasmBezierInstance } from "../utils/wasm-comm";
+import { BezierCallback } from "@/utils/types";
+import { WasmBezierInstance } from "@/utils/wasm-comm";
 
-import Example from "./Example.vue";
+import Example from "@/components/Example.vue";
 
 type ExampleData = {
 	id: number;
@@ -38,8 +38,7 @@ export default defineComponent({
 		};
 	},
 	mounted() {
-		// eslint-disable-next-line
-		import("../../wasm/pkg").then((wasm) => {
+		import("@/../wasm/pkg").then((wasm) => {
 			this.exampleData = [
 				{
 					id: 0,
