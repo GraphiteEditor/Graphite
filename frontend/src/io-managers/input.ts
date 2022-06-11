@@ -79,7 +79,7 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 		if (e.ctrlKey && e.shiftKey && key === "j") return false;
 
 		// Don't redirect tab or enter if not in canvas (to allow navigating elements)
-		if (!canvasFocused && ["tab", "enter", " ", "arrowdown", "arrowup", "arrowleft", "arrowright"].includes(key.toLowerCase())) return false;
+		if (!canvasFocused && !targetIsTextField(e.target) && ["tab", "enter", " ", "arrowdown", "arrowup", "arrowleft", "arrowright"].includes(key.toLowerCase())) return false;
 
 		// Redirect to the backend
 		return true;
