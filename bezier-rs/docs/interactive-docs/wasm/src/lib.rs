@@ -37,7 +37,7 @@ impl WasmBezier {
 	}
 
 	pub fn set_end(&mut self, x: f64, y: f64) {
-		self.internal.set_start(DVec2::from((x, y)));
+		self.internal.set_end(DVec2::from((x, y)));
 	}
 
 	pub fn set_handle1(&mut self, x: f64, y: f64) {
