@@ -1,7 +1,10 @@
 <template>
-	<div class="example_row">
-		<div v-for="example in exampleData" :key="example.id">
-			<Example :title="example.title" :bezier="example.bezier" :callback="callback" />
+	<div>
+		<h2 class="example_pane_header">{{ this.name }}</h2>
+		<div class="example_row">
+			<div v-for="example in exampleData" :key="example.id">
+				<Example :title="example.title" :bezier="example.bezier" :callback="callback" />
+			</div>
 		</div>
 	</div>
 </template>
@@ -42,7 +45,7 @@ export default defineComponent({
 			this.exampleData = [
 				{
 					id: 0,
-					title: "Quadratic Bezier",
+					title: "Quadratic",
 					bezier: wasm.WasmBezier.new_quad([
 						[30, 30],
 						[140, 20],
@@ -51,7 +54,7 @@ export default defineComponent({
 				},
 				{
 					id: 1,
-					title: "Cubic Bezier",
+					title: "Cubic",
 					bezier: wasm.WasmBezier.new_cubic([
 						[30, 30],
 						[60, 140],
@@ -70,5 +73,9 @@ export default defineComponent({
 	display: flex; /* or inline-flex */
 	flex-direction: row;
 	justify-content: center;
+}
+
+.example_pane_header {
+	margin-bottom: 0;
 }
 </style>

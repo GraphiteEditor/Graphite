@@ -1,7 +1,7 @@
 <template>
 	<div>
-		<h3>{{ title }}</h3>
-		<figure ref="drawing"></figure>
+		<h4 class="example_header">{{ title }}</h4>
+		<figure class="example_figure" ref="drawing"></figure>
 	</div>
 </template>
 
@@ -34,4 +34,11 @@ export default defineComponent({
 });
 </script>
 
-<style scoped></style>
+<style scoped>
+.example_header {
+	margin-bottom: 0;
+}
+.example_figure {
+	margin-top: 0.5em;
+}
+</style>
