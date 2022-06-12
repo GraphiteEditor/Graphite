@@ -157,16 +157,16 @@ impl Bezier {
 	///  Calculate the point on the curve based on the t-value provided
 	///  basis code based off of pseudocode found here: https://pomax.github.io/bezierinfo/#explanation
 	pub fn get_basis(&self, t: f64) -> DVec2 {
-		let t2 = t * t;
-		let mt = 1.0 - t;
-		let mt2 = mt * mt;
+		let t_squared = t * t;
+		let one_minus_t = 1.0 - t;
+		let squared_one_minus_t = one_minus_t * one_minus_t;
 
 		match self.handles {
-			BezierHandles::Quadratic { handle } => mt2 * self.start + 2.0 * mt * t * handle + t2 * self.end,
+			BezierHandles::Quadratic { handle } => squared_one_minus_t * self.start + 2.0 * one_minus_t * t * handle + t_squared * self.end,
 			BezierHandles::Cubic { handle1, handle2 } => {
-				let t3 = t2 * t;
-				let mt3 = mt2 * mt;
-				mt3 * self.start + 3.0 * mt2 * t * handle1 + 3.0 * mt * t2 * handle2 + t3 * self.end
+				let t_cubed = t_squared * t;
+				let cubed_one_minus_t = squared_one_minus_t * one_minus_t;
+				cubed_one_minus_t * self.start + 3.0 * squared_one_minus_t * t * handle1 + 3.0 * one_minus_t * t_squared * handle2 + t_cubed * self.end
 			}
 		}
 	}
@@ -180,17 +180,17 @@ impl Bezier {
 		const SUBDIVISIONS: i32 = 1000;
 		const RATIO: f64 = 1.0 / (SUBDIVISIONS as f64);
 
-		// o_point tracks the starting point of the subdivision
-		let mut o_point = self.get_basis(0.0);
+		// start_point tracks the starting point of the subdivision
+		let mut start_point = self.get_basis(0.0);
 		let mut length_subtotal = 0.0;
 		// calculate approximate distance between subdivision
-		for i in 1..SUBDIVISIONS + 1 {
+		for subdivision in 1..SUBDIVISIONS + 1 {
 			// get end point of the subdivision
-			let point = self.get_basis(f64::from(i) * RATIO);
+			let end_point = self.get_basis(f64::from(subdivision) * RATIO);
 			// calculate distance of subdivision
-			length_subtotal += (o_point - point).length();
-			// update o_point for next subdivision
-			o_point = point;
+			length_subtotal += (start_point - end_point).length();
+			// update start_point for next subdivision
+			start_point = end_point;
 		}
 
 		length_subtotal
