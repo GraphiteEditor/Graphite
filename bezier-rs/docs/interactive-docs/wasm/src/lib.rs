@@ -53,12 +53,7 @@ impl WasmBezier {
 	}
 
 	pub fn get_points(&self) -> Vec<JsValue> {
-		self.internal
-			.get_points()
-			.iter()
-			.flatten()
-			.map(vec_to_point)
-			.collect()
+		self.internal.get_points().iter().flatten().map(vec_to_point).collect()
 	}
 
 	pub fn to_svg(&self) -> String {
@@ -74,10 +69,6 @@ impl WasmBezier {
 	}
 
 	pub fn get_lookup_table(&self, steps: i32) -> Vec<JsValue> {
-		self.internal
-			.get_lookup_table(Some(steps))
-			.iter()
-			.map(vec_to_point)
-			.collect()
+		self.internal.get_lookup_table(Some(steps)).iter().map(vec_to_point).collect()
 	}
 }
