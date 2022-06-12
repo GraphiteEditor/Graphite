@@ -75,16 +75,16 @@ impl Bezier {
 	/// Convert to SVG
 	// TODO: Allow modifying the viewport, width and height
 	pub fn to_svg(&self) -> String {
-		let m_path = format!("M {} {}", self.start[0], self.start[1]);
+		let m_path = format!("M {} {}", self.start.x, self.start.y);
 		let handles_path = match self.handles {
 			BezierHandles::Quadratic { handle } => {
-				format!("Q {} {}", handle[0], handle[1])
+				format!("Q {} {}", handle.x, handle.y)
 			}
 			BezierHandles::Cubic { handle1, handle2 } => {
-				format!("C {} {}, {} {}", handle1[0], handle1[1], handle2[0], handle2[1])
+				format!("C {} {}, {} {}", handle1.x, handle1.y, handle2.x, handle2.y)
 			}
 		};
-		let curve_path = format!("{}, {} {}", handles_path, self.end[0], self.end[1]);
+		let curve_path = format!("{}, {} {}", handles_path, self.end.x, self.end.y);
 		format!(
 			r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{} {} {} {}" width="{}px" height="{}px"><path d="{} {} {}" stroke="black" fill="transparent"/></svg>"#,
 			0, 0, 100, 100, 100, 100, "\n", m_path, curve_path
@@ -107,7 +107,7 @@ impl Bezier {
 			BezierHandles::Quadratic { ref mut handle } => {
 				*handle = h1;
 			}
-			BezierHandles::Cubic { ref mut handle1, handle2: _ } => {
+			BezierHandles::Cubic { ref mut handle1, .. } => {
 				*handle1 = h1;
 			}
 		};
@@ -119,7 +119,7 @@ impl Bezier {
 			BezierHandles::Quadratic { handle } => {
 				self.handles = BezierHandles::Cubic { handle1: handle, handle2: h2 };
 			}
-			BezierHandles::Cubic { handle1: _, ref mut handle2 } => {
+			BezierHandles::Cubic { ref mut handle2, .. } => {
 				*handle2 = h2;
 			}
 		};
