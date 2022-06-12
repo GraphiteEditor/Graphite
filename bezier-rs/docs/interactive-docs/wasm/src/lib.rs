@@ -14,6 +14,10 @@ pub struct WasmBezier {
 	internal: Bezier,
 }
 
+pub fn vec_to_point(p: &DVec2) -> JsValue {
+	JsValue::from_serde(&serde_json::to_string(&Point { x: p[0], y: p[1] }).unwrap()).unwrap()
+}
+
 #[wasm_bindgen]
 impl WasmBezier {
 	/// Expect js_points to be a list of 3 pairs
@@ -53,7 +57,7 @@ impl WasmBezier {
 			.get_points()
 			.iter()
 			.flatten()
-			.map(|p| JsValue::from_serde(&serde_json::to_string(&Point { x: p[0], y: p[1] }).unwrap()).unwrap())
+			.map(vec_to_point)
 			.collect()
 	}
 
@@ -65,11 +69,15 @@ impl WasmBezier {
 		self.internal.length()
 	}
 
-	pub fn get_lookup_table(&self) -> Vec<JsValue> {
+	pub fn compute(&self, t: f64) -> JsValue {
+		vec_to_point(&self.internal.compute(t))
+	}
+
+	pub fn get_lookup_table(&self, steps: i32) -> Vec<JsValue> {
 		self.internal
-			.get_lookup_table(None)
+			.get_lookup_table(Some(steps))
 			.iter()
-			.map(|p| JsValue::from_serde(&serde_json::to_string(&Point { x: p[0], y: p[1] }).unwrap()).unwrap())
+			.map(vec_to_point)
 			.collect()
 	}
 }

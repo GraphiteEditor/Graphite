@@ -156,7 +156,11 @@ impl Bezier {
 
 	///  Calculate the point on the curve based on the t-value provided
 	///  basis code based off of pseudocode found here: https://pomax.github.io/bezierinfo/#explanation
-	pub fn get_basis(&self, t: f64) -> DVec2 {
+	pub fn compute(&self, t: f64) -> DVec2 {
+		if !(0.0..=1.0).contains(&t) {
+			panic!("Invalid argument passed to bezier::compute: t must be between 0 and 1")
+		}
+
 		let t_squared = t * t;
 		let one_minus_t = 1.0 - t;
 		let squared_one_minus_t = one_minus_t * one_minus_t;
@@ -171,6 +175,11 @@ impl Bezier {
 		}
 	}
 
+	///  Get the point on the curve based on the t-value provided, alias for compute
+	pub fn get(&self, t: f64) -> DVec2 {
+		self.compute(t)
+	}
+
 	/// Return a selection of equidistant points on the bezier curve
 	/// If no value is provided for `steps`, then the function will default `steps` to be 10
 	pub fn get_lookup_table(&self, steps: Option<i32>) -> Vec<DVec2> {
@@ -179,11 +188,7 @@ impl Bezier {
 		let mut steps_array = Vec::with_capacity((steps_unwrapped + 1) as usize);
 
 		for t in 0..steps_unwrapped + 1 {
-			// get point on the curve for a given t
-			// TODO: replace with `get/compute`
-			let point = self.get_basis(f64::from(t) * ratio);
-			// add point to the lookup table
-			steps_array.push(point)
+			steps_array.push(self.compute(f64::from(t) * ratio))
 		}
 
 		steps_array
@@ -197,19 +202,6 @@ impl Bezier {
 		// and calculate the euclidean distance between the two endpoints of the subdivision
 		const SUBDIVISIONS: i32 = 1000;
 
-<<<<<<< HEAD
-		// start_point tracks the starting point of the subdivision
-		let mut start_point = self.get_basis(0.0);
-		let mut length_subtotal = 0.0;
-		// calculate approximate distance between subdivision
-		for subdivision in 1..SUBDIVISIONS + 1 {
-			// get end point of the subdivision
-			let end_point = self.get_basis(f64::from(subdivision) * RATIO);
-			// calculate distance of subdivision
-			length_subtotal += (start_point - end_point).length();
-			// update start_point for next subdivision
-			start_point = end_point;
-=======
 		let lookup_table = self.get_lookup_table(Some(SUBDIVISIONS));
 		let mut approx_curve_length = 0.0;
 		let mut prev_point = lookup_table[0];
@@ -219,7 +211,6 @@ impl Bezier {
 			approx_curve_length += (*curr_point - prev_point).length();
 			// update the prev point
 			prev_point = *curr_point;
->>>>>>> 7d7541b (added get_lookup_table to bezier library)
 		}
 
 		approx_curve_length
