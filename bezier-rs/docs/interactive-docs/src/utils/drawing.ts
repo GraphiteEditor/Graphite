@@ -18,18 +18,18 @@ export const drawLine = (ctx: CanvasRenderingContext2D, p1: Point, p2: Point, st
 	ctx.stroke();
 };
 
-export const drawPoint = (ctx: CanvasRenderingContext2D, p: Point, stroke = "black"): void => {
+export const drawPoint = (ctx: CanvasRenderingContext2D, p: Point, r: number, stroke = "black"): void => {
 	// Outline the point
-	ctx.strokeStyle = p.selected ? "blue" : stroke;
-	ctx.lineWidth = p.r / 3;
+	ctx.strokeStyle = stroke;
+	ctx.lineWidth = r / 3;
 	ctx.beginPath();
-	ctx.arc(p.x, p.y, p.r, 0, 2 * Math.PI, false);
+	ctx.arc(p.x, p.y, r, 0, 2 * Math.PI, false);
 	ctx.stroke();
 
 	// Fill the point (hiding any overlapping lines)
 	ctx.fillStyle = "white";
 	ctx.beginPath();
-	ctx.arc(p.x, p.y, p.r * (2 / 3), 0, 2 * Math.PI, false);
+	ctx.arc(p.x, p.y, r * (2 / 3), 0, 2 * Math.PI, false);
 	ctx.fill();
 };
 
@@ -39,7 +39,7 @@ export const drawText = (ctx: CanvasRenderingContext2D, text: string, x: number,
 	ctx.fillText(text, x, y);
 };
 
-export const drawBezier = (ctx: CanvasRenderingContext2D, points: Point[]): void => {
+export const drawBezier = (ctx: CanvasRenderingContext2D, points: Point[], dragIndex: number | null = null): void => {
 	/* Until a bezier representation is finalized, treat the points as follows
 		points[0] = start point
 		points[1] = handle 1
@@ -75,7 +75,7 @@ export const drawBezier = (ctx: CanvasRenderingContext2D, points: Point[]): void
 	drawLine(ctx, start, handle1);
 	drawLine(ctx, end, handle2);
 
-	points.forEach((point) => {
-		drawPoint(ctx, point);
+	points.forEach((point, index) => {
+		drawPoint(ctx, point, index === 0 || index === points.length - 1 ? 5 : 3, index === dragIndex ? "Blue" : "Black");
 	});
 };

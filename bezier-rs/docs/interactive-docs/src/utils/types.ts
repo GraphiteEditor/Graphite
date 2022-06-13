@@ -9,7 +9,8 @@ export type BezierCallback = (canvas: HTMLCanvasElement, bezier: WasmBezierInsta
 export type Point = {
 	x: number;
 	y: number;
-	r: number;
+};
+
+export type BezierPoint = Point & {
 	mutator: WasmBezierMutatorKey;
-	selected: boolean;
 };

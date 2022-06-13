@@ -68,9 +68,7 @@ export default defineComponent({
 					name: "Compute",
 					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: string): void => {
 						const point = JSON.parse(bezier.compute(parseFloat(options)));
-						point.r = 4;
-						point.selected = false;
-						drawPoint(getContextFromCanvas(canvas), point, "DarkBlue");
+						drawPoint(getContextFromCanvas(canvas), point, 4, "Red");
 					},
 					template: markRaw(SliderExample),
 					templateOptions: tSliderOptions,
@@ -82,10 +80,7 @@ export default defineComponent({
 						const lookupPoints = bezier.compute_lookup_table(Number(options));
 						lookupPoints.forEach((serPoint, index) => {
 							if (index !== 0 && index !== lookupPoints.length - 1) {
-								const point = JSON.parse(serPoint);
-								point.r = 3;
-								point.selected = false;
-								drawPoint(getContextFromCanvas(canvas), point, "DarkBlue");
+								drawPoint(getContextFromCanvas(canvas), JSON.parse(serPoint), 3, "Red");
 							}
 						});
 					},
@@ -105,19 +100,23 @@ export default defineComponent({
 						const t = parseFloat(options);
 						const context = getContextFromCanvas(canvas);
 
-						const tangentStart = JSON.parse(bezier.compute(t));
-						tangentStart.r = 4;
+						const intersection = JSON.parse(bezier.compute(t));
+						const derivative = JSON.parse(bezier.derivative(t));
+						const curveFactor = bezier.get_points().length - 1;
 
-						const derivative = { x: 50, y: 50 }; // bezier.derivative(t)
+						const tangentStart = {
+							x: intersection.x - derivative.x / curveFactor,
+							y: intersection.y - derivative.y / curveFactor,
+						};
 						const tangentEnd = {
-							x: tangentStart.x + derivative.x,
-							y: tangentStart.y + derivative.y,
-							r: 4,
+							x: intersection.x + derivative.x / curveFactor,
+							y: intersection.y + derivative.y / curveFactor,
 						};
 
 						drawLine(context, tangentStart, tangentEnd, "Red");
-						drawPoint(context, tangentStart, "Red");
-						drawPoint(context, tangentEnd, "Red");
+						drawPoint(context, tangentStart, 3, "Red");
+						drawPoint(context, intersection, 3, "Red");
+						drawPoint(context, tangentEnd, 3, "Red");
 					},
 					template: markRaw(SliderExample),
 					templateOptions: tSliderOptions,

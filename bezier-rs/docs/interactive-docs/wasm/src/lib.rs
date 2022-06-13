@@ -15,7 +15,7 @@ pub struct WasmBezier {
 }
 
 pub fn vec_to_point(p: &DVec2) -> JsValue {
-	JsValue::from_serde(&serde_json::to_string(&Point { x: p[0], y: p[1] }).unwrap()).unwrap()
+	JsValue::from_serde(&serde_json::to_string(&Point { x: p.x, y: p.y }).unwrap()).unwrap()
 }
 
 #[wasm_bindgen]
@@ -70,5 +70,9 @@ impl WasmBezier {
 
 	pub fn compute_lookup_table(&self, steps: i32) -> Vec<JsValue> {
 		self.internal.compute_lookup_table(Some(steps)).iter().map(vec_to_point).collect()
+	}
+
+	pub fn derivative(&self, t: f64) -> JsValue {
+		vec_to_point(&self.internal.derivative(t))
 	}
 }

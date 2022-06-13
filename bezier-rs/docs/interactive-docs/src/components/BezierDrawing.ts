@@ -1,11 +1,11 @@
 import { drawBezier, getContextFromCanvas } from "@/utils/drawing";
-import { BezierCallback, Point, WasmBezierMutatorKey } from "@/utils/types";
+import { BezierCallback, BezierPoint, WasmBezierMutatorKey } from "@/utils/types";
 import { WasmBezierInstance } from "@/utils/wasm-comm";
 
 class BezierDrawing {
 	static indexToMutator: WasmBezierMutatorKey[] = ["set_start", "set_handle1", "set_handle2", "set_end"];
 
-	points: Point[];
+	points: BezierPoint[];
 
 	canvas: HTMLCanvasElement;
 
@@ -40,6 +40,7 @@ class BezierDrawing {
 		}
 		this.canvas = canvas;
 
+		this.canvas.style.border = "solid 1px black";
 		this.canvas.width = 200;
 		this.canvas.height = 200;
 
@@ -51,29 +52,25 @@ class BezierDrawing {
 		this.canvas.addEventListener("mousemove", this.mouseMoveHandler.bind(this));
 		this.canvas.addEventListener("mouseup", this.deselectPointHandler.bind(this));
 		this.canvas.addEventListener("mouseout", this.deselectPointHandler.bind(this));
-		this.ctx.strokeRect(0, 0, this.canvas.width, this.canvas.height);
 		this.updateBezier();
+	}
+
+	clearFigure(): void {
+		this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
 	}
 
 	mouseMoveHandler(evt: MouseEvent): void {
 		const mx = evt.offsetX;
 		const my = evt.offsetY;
 
-		if (
-			this.dragIndex != null &&
-			mx - this.points[this.dragIndex].r > 0 &&
-			my - this.points[this.dragIndex].r > 0 &&
-			mx + this.points[this.dragIndex].r < this.canvas.width &&
-			my + this.points[this.dragIndex].r < this.canvas.height
-		) {
+		if (this.dragIndex !== null && mx - 5 > 0 && my - 5 > 0 && mx + 5 < this.canvas.width && my + 5 < this.canvas.height) {
 			const selectedPoint = this.points[this.dragIndex];
 			selectedPoint.x = mx;
 			selectedPoint.y = my;
 			this.bezier[selectedPoint.mutator](selectedPoint.x, selectedPoint.y);
-
-			this.ctx.clearRect(1, 1, this.canvas.width - 2, this.canvas.height - 2);
-			this.updateBezier();
+			this.clearFigure();
 		}
+		this.updateBezier();
 	}
 
 	mouseDownHandler(evt: MouseEvent): void {
@@ -81,22 +78,21 @@ class BezierDrawing {
 		const my = evt.offsetY;
 		for (let i = 0; i < this.points.length; i += 1) {
 			if (
-				Math.abs(mx - this.points[i].x) < this.points[i].r + 3 &&
-				Math.abs(my - this.points[i].y) < this.points[i].r + 3 // Fudge factor makes the points easier to grab
+				Math.abs(mx - this.points[i].x) < 5 + 3 &&
+				Math.abs(my - this.points[i].y) < 5 + 3 // Fudge factor makes the points easier to grab
 			) {
 				this.dragIndex = i;
-				this.points[this.dragIndex].selected = true;
 				break;
 			}
 		}
+		this.updateBezier();
 	}
 
 	deselectPointHandler(): void {
-		if (this.dragIndex != null) {
-			this.points[this.dragIndex].selected = false;
-			this.ctx.clearRect(1, 1, this.canvas.width - 2, this.canvas.height - 2);
-			this.updateBezier();
+		if (this.dragIndex !== undefined) {
+			this.clearFigure();
 			this.dragIndex = null;
+			this.updateBezier();
 		}
 	}
 
@@ -104,8 +100,8 @@ class BezierDrawing {
 		if (options !== "") {
 			this.options = options;
 		}
-		this.ctx.clearRect(1, 1, this.canvas.width - 2, this.canvas.height - 2);
-		drawBezier(this.ctx, this.points);
+		this.clearFigure();
+		drawBezier(this.ctx, this.points, this.dragIndex);
 		this.callback(this.canvas, this.bezier, this.options);
 	}
 

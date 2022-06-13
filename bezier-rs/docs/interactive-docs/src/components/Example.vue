@@ -1,7 +1,7 @@
 <template>
 	<div>
 		<h4 class="example_header">{{ title }}</h4>
-		<figure class="example_figure" ref="drawing"></figure>
+		<figure class="example_figure" ref="drawing" />
 	</div>
 </template>
 
@@ -53,6 +53,5 @@ export default defineComponent({
 }
 .example_figure {
 	margin-top: 0.5em;
-	border: 1px black;
 }
 </style>
