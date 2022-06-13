@@ -208,4 +208,21 @@ impl Bezier {
 
 		approx_curve_length
 	}
+
+	pub fn derivative(&self, t: f64) -> DVec2 {
+		let one_minus_t = 1. - t;
+		match self.handles {
+			BezierHandles::Quadratic { handle } => {
+				let p1minusp0 = handle - self.start;
+				let p2minusp1 = self.end - handle;
+				return 2. * one_minus_t * p1minusp0 + 2. * t * p2minusp1;
+			}
+			BezierHandles::Cubic { handle1, handle2 } => {
+				let p1minusp0 = handle1 - self.start;
+				let p2minusp1 = handle2 - handle1;
+				let p3minusp2 = self.end - handle2;
+				return 3. * one_minus_t * one_minus_t * p1minusp0 + 6. * t * one_minus_t * p2minusp1 + 3. * t * t * p3minusp2;
+			}
+		}
+	}
 }
