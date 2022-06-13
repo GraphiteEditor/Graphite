@@ -1,9 +1,19 @@
-use glam::{DVec2, Mat2};
+use glam::DVec2;
 
 /// Representation of the handle point(s) in a bezier segment
 pub enum BezierHandles {
-	Quadratic { handle: DVec2 },
-	Cubic { handle1: DVec2, handle2: DVec2 },
+	/// Handles for a quadratic segment
+	Quadratic {
+		/// Point representing the location of the single handle
+		handle: DVec2,
+	},
+	/// Handles for a cubic segment
+	Cubic {
+		/// Point representing the location of the handle associated to the start point
+		handle1: DVec2,
+		/// Point representing the location of the handle associated to the end point
+		handle2: DVec2,
+	},
 }
 
 /// Representation of a bezier segment with 2D points
@@ -125,14 +135,17 @@ impl Bezier {
 		};
 	}
 
+	/// Get the coordinates of the bezier segment's start point.
 	pub fn get_start(&self) -> DVec2 {
 		self.start
 	}
 
+	/// Get the coordinates of the bezier segment's end point.
 	pub fn get_end(&self) -> DVec2 {
 		self.end
 	}
 
+	/// Get the coordinates of the bezier segment's first handle point. This represents the only handle in a quadratic segment.
 	pub fn get_handle1(&self) -> DVec2 {
 		match self.handles {
 			BezierHandles::Quadratic { handle } => handle,
@@ -140,6 +153,7 @@ impl Bezier {
 		}
 	}
 
+	/// Get the coordinates of the second handle point. This will return `None` for a quadratic segment.
 	pub fn get_handle2(&self) -> Option<DVec2> {
 		match self.handles {
 			BezierHandles::Quadratic { .. } => None,
@@ -147,6 +161,9 @@ impl Bezier {
 		}
 	}
 
+	/// Get the coordinates of all points in an array of 4 optional points.
+	/// For a quadratic segment, the order of the points will be: `start`, `handle`, `end`. The fourth element will be `None`.
+	/// For a cubic segment, the order of the points will be: `start`, `handle1`, `handle2`, `end`.
 	pub fn get_points(&self) -> [Option<DVec2>; 4] {
 		match self.handles {
 			BezierHandles::Quadratic { handle } => [Some(self.start), Some(handle), Some(self.end), None],
@@ -154,8 +171,8 @@ impl Bezier {
 		}
 	}
 
-	///  Calculate the point on the curve based on the t-value provided
-	///  basis code based off of pseudocode found here: https://pomax.github.io/bezierinfo/#explanation
+	///  Calculate the point on the curve based on the `t`-value provided.
+	///  Basis code based off of pseudocode found here: <https://pomax.github.io/bezierinfo/#explanation>
 	pub fn compute(&self, t: f64) -> DVec2 {
 		assert!((0.0..=1.0).contains(&t));
 
@@ -188,7 +205,7 @@ impl Bezier {
 	}
 
 	/// Return an approximation of the length of the bezier curve
-	/// code example taken from: https://gamedev.stackexchange.com/questions/5373/moving-ships-between-two-planets-along-a-bezier-missing-some-equations-for-acce/5427#5427
+	/// code example taken from: <https://gamedev.stackexchange.com/questions/5373/moving-ships-between-two-planets-along-a-bezier-missing-some-equations-for-acce/5427#5427>
 	pub fn length(&self) -> f64 {
 		// We will use an approximate approach where
 		// we split the curve into many subdivisions
@@ -209,7 +226,7 @@ impl Bezier {
 		approx_curve_length
 	}
 
-	/// Returns a vector representing the derivative at the point designated by t on the curve
+	/// Returns a vector representing the derivative at the point designated by `t` on the curve
 	/// Normalizing the vector gives the unit vector in the direction of the tangent at the specified point
 	pub fn derivative(&self, t: f64) -> DVec2 {
 		let one_minus_t = 1. - t;
@@ -228,7 +245,7 @@ impl Bezier {
 		}
 	}
 
-	/// Returns a normalized unit vector representing the direction of the normal at the point designated by t on the curve
+	/// Returns a normalized unit vector representing the direction of the normal at the point designated by `t` on the curve
 	pub fn normal(&self, t: f64) -> DVec2 {
 		let derivative = self.derivative(t);
 		derivative.normalize().perp()

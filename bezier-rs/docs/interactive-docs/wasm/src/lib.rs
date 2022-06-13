@@ -10,10 +10,12 @@ struct Point {
 }
 
 #[wasm_bindgen]
+/// Wrapper of the `Bezier` struct to be used in JS
 pub struct WasmBezier {
 	internal: Bezier,
 }
 
+/// Convert a `DVec2` into a `JsValue`
 pub fn vec_to_point(p: &DVec2) -> JsValue {
 	JsValue::from_serde(&serde_json::to_string(&Point { x: p.x, y: p.y }).unwrap()).unwrap()
 }
