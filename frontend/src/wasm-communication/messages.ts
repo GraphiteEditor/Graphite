@@ -29,7 +29,7 @@ export abstract class DocumentDetails {
 
 	readonly is_saved!: boolean;
 
-	readonly id!: BigInt | string;
+	readonly id!: bigint | string;
 
 	get displayName(): string {
 		return `${this.name}${this.is_saved ? "" : "*"}`;
@@ -37,7 +37,7 @@ export abstract class DocumentDetails {
 }
 
 export class FrontendDocumentDetails extends DocumentDetails {
-	readonly id!: BigInt;
+	readonly id!: bigint;
 }
 
 export class UpdateNodeGraphVisibility extends JsMessage {
@@ -118,7 +118,7 @@ export class UpdateWorkingColors extends JsMessage {
 }
 
 export class UpdateActiveDocument extends JsMessage {
-	readonly document_id!: BigInt;
+	readonly document_id!: bigint;
 }
 
 export class DisplayDialogPanic extends JsMessage {
@@ -212,14 +212,14 @@ export class TriggerRasterDownload extends JsMessage {
 export class DocumentChanged extends JsMessage {}
 
 export class UpdateDocumentLayerTreeStructure extends JsMessage {
-	constructor(readonly layerId: BigInt, readonly children: UpdateDocumentLayerTreeStructure[]) {
+	constructor(readonly layerId: bigint, readonly children: UpdateDocumentLayerTreeStructure[]) {
 		super();
 	}
 }
 
 interface DataBuffer {
-	pointer: BigInt;
-	length: BigInt;
+	pointer: bigint;
+	length: bigint;
 }
 
 export function newUpdateDocumentLayerTreeStructure(input: { data_buffer: DataBuffer }, wasm: WasmRawInstance): UpdateDocumentLayerTreeStructure {
@@ -331,7 +331,7 @@ export class ImageData {
 }
 
 export class IndexedDbDocumentDetails extends DocumentDetails {
-	@Transform(({ value }: { value: BigInt }) => value.toString())
+	@Transform(({ value }: { value: bigint }) => value.toString())
 	id!: string;
 }
 
@@ -348,7 +348,7 @@ export class TriggerIndexedDbWriteDocument extends JsMessage {
 
 export class TriggerIndexedDbRemoveDocument extends JsMessage {
 	// Use a string since IndexedDB can not use BigInts for keys
-	@Transform(({ value }: { value: BigInt }) => value.toString())
+	@Transform(({ value }: { value: bigint }) => value.toString())
 	document_id!: string;
 }
 
@@ -418,7 +418,7 @@ export type WidgetKind =
 
 export interface Widget {
 	kind: WidgetKind;
-	widget_id: BigInt;
+	widget_id: bigint;
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	props: any;
 }
