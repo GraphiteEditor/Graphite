@@ -1,17 +1,19 @@
 <template>
 	<LayoutRow class="font-input">
-		<LayoutRow class="dropdown-box" :class="{ disabled }" :style="{ minWidth: `${minWidth}px` }" @click="() => !disabled && (open = true)" data-hover-menu-spawner>
-			<span>{{ activeEntry?.label || "" }}</span>
+		<LayoutRow class="dropdown-box" :class="{ disabled }" :style="{ minWidth: `${minWidth}px` }" tabindex="0" @click="toggleOpen" @keydown="keydown" data-hover-menu-spawner>
+			<span>{{ activeEntry?.value || "" }}</span>
 			<IconLabel class="dropdown-arrow" :icon="'DropdownArrow'" />
 		</LayoutRow>
 		<MenuList
+			ref="menulist"
 			v-model:activeEntry="activeEntry"
 			v-model:open="open"
-			@naturalWidth="(newNaturalWidth: number) => (minWidth = newNaturalWidth)"
-			:entries="entries"
-			:direction="'Bottom'"
+			:entries="[entries]"
+			:minWidth="isStyle ? 0 : minWidth"
+			:virtualScrollingEntryHeight="isStyle ? 0 : 20"
 			:scrollableY="true"
-		/>
+			@naturalWidth="(newNaturalWidth: number) => (isStyle && (minWidth = newNaturalWidth))"
+		></MenuList>
 	</LayoutRow>
 </template>
 
@@ -26,19 +28,10 @@
 		height: 24px;
 		border-radius: 2px;
 
-		.dropdown-icon {
-			margin: 4px;
-			flex: 0 0 auto;
-		}
-
 		span {
 			margin: 0;
 			margin-left: 8px;
 			flex: 1 1 100%;
-		}
-
-		.dropdown-icon + span {
-			margin-left: 0;
 		}
 
 		.dropdown-arrow {
@@ -53,10 +46,6 @@
 			span {
 				color: var(--color-f-white);
 			}
-
-			svg {
-				fill: var(--color-f-white);
-			}
 		}
 
 		&.open {
@@ -69,23 +58,23 @@
 			span {
 				color: var(--color-8-uppergray);
 			}
-
-			svg {
-				fill: var(--color-8-uppergray);
-			}
 		}
 	}
 
 	.menu-list .floating-menu-container .floating-menu-content {
 		max-height: 400px;
+		padding: 4px 0;
 	}
 }
 </style>
 
 <script lang="ts">
-import { defineComponent, PropType } from "vue";
+import { defineComponent, nextTick, PropType } from "vue";
 
-import MenuList, { MenuListEntry, SectionsOfMenuListEntries } from "@/components/floating-menus/MenuList.vue";
+import FloatingMenu from "@/components/floating-menus/FloatingMenu.vue";
+import MenuList, { MenuListEntry } from "@/components/floating-menus/MenuList.vue";
+
+import LayoutCol from "@/components/layout/LayoutCol.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
 
@@ -101,17 +90,42 @@ export default defineComponent({
 	data() {
 		return {
 			open: false,
-			minWidth: 0,
-			entries: [] as SectionsOfMenuListEntries,
-			activeEntry: undefined as undefined | MenuListEntry,
+			entries: [] as MenuListEntry[],
+			activeEntry: undefined as MenuListEntry | undefined,
+			highlighted: undefined as MenuListEntry | undefined,
+			entriesStart: 0,
+			minWidth: this.isStyle ? 0 : 300,
 		};
 	},
 	async mounted() {
-		const { entries, activeEntry } = await this.updateEntries();
-		this.entries = entries;
-		this.activeEntry = activeEntry;
+		this.entries = await this.getEntries();
+		this.activeEntry = this.getActiveEntry(this.entries);
+		this.highlighted = this.activeEntry;
 	},
 	methods: {
+		floatingMenu() {
+			return this.$refs.floatingMenu as typeof FloatingMenu;
+		},
+		scroller() {
+			return ((this.$refs.menulist as typeof MenuList).$refs.scroller as typeof LayoutCol)?.$el as HTMLElement;
+		},
+		async setOpen() {
+			this.open = true;
+			// Scroll to the active entry (the scroller div does not yet exist so we must wait for vue to render)
+			await nextTick();
+			if (this.activeEntry) {
+				const index = this.entries.indexOf(this.activeEntry);
+				this.scroller()?.scrollTo(0, Math.max(0, index * 20 - 190));
+			}
+		},
+		toggleOpen() {
+			if (this.disabled) return;
+			this.open = !this.open;
+			if (this.open) this.setOpen();
+		},
+		keydown(e: KeyboardEvent) {
+			(this.$refs.menulist as typeof MenuList).keydown(e, false);
+		},
 		async selectFont(newName: string): Promise<void> {
 			let fontFamily;
 			let fontStyle;
@@ -125,50 +139,43 @@ export default defineComponent({
 				this.$emit("update:fontFamily", newName);
 
 				fontFamily = newName;
-				fontStyle = (await this.fonts.getFontStyles(newName))[0];
+				fontStyle = "Normal (400)";
 			}
 
 			const fontFileUrl = await this.fonts.getFontFileUrl(fontFamily, fontStyle);
 			this.$emit("changeFont", { fontFamily, fontStyle, fontFileUrl });
 		},
-		async updateEntries(): Promise<{ entries: SectionsOfMenuListEntries; activeEntry: MenuListEntry }> {
-			const choices = this.isStyle ? await this.fonts.getFontStyles(this.fontFamily) : this.fonts.state.fontNames;
+		async getEntries(): Promise<MenuListEntry[]> {
+			const x = this.isStyle ? this.fonts.getFontStyles(this.fontFamily) : this.fonts.fontNames();
+			return (await x).map((entry: { name: string; url: URL | undefined }) => ({
+				label: entry.name,
+				value: entry.name,
+				font: entry.url,
+				action: () => this.selectFont(entry.name),
+			}));
+		},
+		getActiveEntry(entries: MenuListEntry[]): MenuListEntry {
 			const selectedChoice = this.isStyle ? this.fontStyle : this.fontFamily;
 
-			let selectedEntry: MenuListEntry | undefined;
-			const menuListEntries = choices.map((name) => {
-				const result: MenuListEntry = {
-					label: name,
-					action: async (): Promise<void> => this.selectFont(name),
-				};
-
-				if (name === selectedChoice) selectedEntry = result;
-
-				return result;
-			});
-
-			const entries: SectionsOfMenuListEntries = [menuListEntries];
-			const activeEntry = selectedEntry || { label: "-" };
-
-			return { entries, activeEntry };
+			return entries.find((entry) => entry.value === selectedChoice) as MenuListEntry;
 		},
 	},
 	watch: {
 		async fontFamily() {
-			const { entries, activeEntry } = await this.updateEntries();
-			this.entries = entries;
-			this.activeEntry = activeEntry;
+			this.entries = await this.getEntries();
+			this.activeEntry = this.getActiveEntry(this.entries);
+			this.highlighted = this.activeEntry;
 		},
 		async fontStyle() {
-			const { entries, activeEntry } = await this.updateEntries();
-			this.entries = entries;
-			this.activeEntry = activeEntry;
+			this.entries = await this.getEntries();
+			this.activeEntry = this.getActiveEntry(this.entries);
+			this.highlighted = this.activeEntry;
 		},
 	},
 	components: {
+		LayoutRow,
 		IconLabel,
 		MenuList,
-		LayoutRow,
 	},
 });
 </script>

@@ -43,10 +43,10 @@ impl Default for Document {
 
 impl Document {
 	/// Wrapper around render, that returns the whole document as a Response.
-	pub fn render_root(&mut self, mode: ViewMode, font_cache: &FontCache) -> String {
+	pub fn render_root(&mut self, mode: ViewMode, font_cache: &FontCache, culling_bounds: Option<[DVec2; 2]>) -> String {
 		let mut svg_defs = String::from("<defs>");
 
-		self.root.render(&mut vec![], mode, &mut svg_defs, font_cache);
+		self.root.render(&mut vec![], mode, &mut svg_defs, font_cache, culling_bounds);
 
 		svg_defs.push_str("</defs>");
 

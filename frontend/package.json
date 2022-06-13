@@ -29,23 +29,23 @@
 		"@vue/cli-service": "^5.0.4",
 		"@vue/compiler-sfc": "^3.2.31",
 		"@vue/eslint-config-airbnb": "^6.0.0",
-		"@vue/eslint-config-typescript": "^10.0.0",
+		"@vue/eslint-config-typescript": "^11.0.0",
 		"@wasm-tool/wasm-pack-plugin": "^1.6.0",
 		"eslint": "^8.14.0",
 		"eslint-config-prettier": "^8.5.0",
 		"eslint-plugin-import": "^2.25.4",
-		"eslint-plugin-prettier-vue": "^3.1.0",
-		"eslint-plugin-vue": "^8.7.1",
+		"eslint-plugin-prettier-vue": "^4.1.0",
+		"eslint-plugin-vue": "^9.1.1",
 		"license-checker-webpack-plugin": "^0.2.1",
 		"prettier": "^2.6.1",
 		"sass": "^1.50.1",
-		"sass-loader": "^12.6.0",
+		"sass-loader": "^13.0.0",
 		"typescript": "^4.6.3",
 		"vue-loader": "^17.0.0",
 		"vue-template-compiler": "^2.6.14"
 	},
 	"optionalDependencies": {
-		"wasm-pack": "0.10.1"
+		"wasm-pack": "^0.10.3"
 	},
-	"//": "wasm-pack 0.10.2 is broken on Windows so it should remain pinned to 0.10.1 until a fix is released (https://github.com/rustwasm/wasm-pack/issues/1097)."
+	"//": "Notes about dependency issues and incompatibilities should be added here when needed."
 }

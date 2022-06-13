@@ -24,7 +24,7 @@ pub struct ImageLayer {
 }
 
 impl LayerData for ImageLayer {
-	fn render(&mut self, svg: &mut String, _svg_defs: &mut String, transforms: &mut Vec<DAffine2>, view_mode: ViewMode, _font_cache: &FontCache) {
+	fn render(&mut self, svg: &mut String, _svg_defs: &mut String, transforms: &mut Vec<DAffine2>, view_mode: ViewMode, _font_cache: &FontCache, _culling_bounds: Option<[DVec2; 2]>) {
 		let transform = self.transform(transforms, view_mode);
 		let inverse = transform.inverse();
 

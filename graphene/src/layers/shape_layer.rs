@@ -26,12 +26,12 @@ pub struct ShapeLayer {
 	pub shape: VectorShape,
 	/// The visual style of the shape.
 	pub style: style::PathStyle,
-	/// The rendering order.
+	// TODO: We might be able to remove this in a future refactor
 	pub render_index: i32,
 }
 
 impl LayerData for ShapeLayer {
-	fn render(&mut self, svg: &mut String, svg_defs: &mut String, transforms: &mut Vec<DAffine2>, view_mode: ViewMode, _font_cache: &FontCache) {
+	fn render(&mut self, svg: &mut String, svg_defs: &mut String, transforms: &mut Vec<DAffine2>, view_mode: ViewMode, _font_cache: &FontCache, _culling_bounds: Option<[DVec2; 2]>) {
 		let mut vector_shape = self.shape.clone();
 
 		let kurbo::Rect { x0, y0, x1, y1 } = vector_shape.bounding_box();
@@ -87,7 +87,7 @@ impl ShapeLayer {
 			(_, -1) => 0,
 			(_, x) => (transforms.len() as i32 - x).max(0) as usize,
 		};
-		transforms.iter().skip(start).cloned().reduce(|a, b| a * b).unwrap_or(DAffine2::IDENTITY)
+		transforms.iter().skip(start).fold(DAffine2::IDENTITY, |a, b| a * *b)
 	}
 
 	// TODO Wrap an adapter around this so we don't take in BezPath directly?

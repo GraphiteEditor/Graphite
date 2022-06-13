@@ -1,5 +1,4 @@
 use graphene::color::Color;
-use graphene::layers::text_layer::Font;
 
 // Viewport
 pub const VIEWPORT_ZOOM_WHEEL_RATE: f64 = 1. / 600.;

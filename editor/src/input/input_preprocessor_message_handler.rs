@@ -6,6 +6,8 @@ use crate::message_prelude::*;
 #[doc(inline)]
 pub use graphene::DocumentResponse;
 
+use glam::DVec2;
+
 #[derive(Debug, Default)]
 pub struct InputPreprocessorMessageHandler {
 	pub keyboard: KeyStates,
@@ -114,13 +116,18 @@ impl MessageHandler<InputPreprocessorMessage, ()> for InputPreprocessorMessageHa
 }
 
 impl InputPreprocessorMessageHandler {
-	fn translate_mouse_event(&mut self, new_state: MouseState, allow_first_button_down: bool, responses: &mut VecDeque<Message>) {
+	fn translate_mouse_event(&mut self, mut new_state: MouseState, allow_first_button_down: bool, responses: &mut VecDeque<Message>) {
 		for (bit_flag, key) in [(MouseKeys::LEFT, Key::Lmb), (MouseKeys::RIGHT, Key::Rmb), (MouseKeys::MIDDLE, Key::Mmb)] {
 			// Calculate the intersection between the two key states
 			let old_down = self.mouse.mouse_keys & bit_flag == bit_flag;
 			let new_down = new_state.mouse_keys & bit_flag == bit_flag;
-			if !old_down && new_down && (allow_first_button_down || self.mouse.mouse_keys != MouseKeys::NONE) {
-				responses.push_back(InputMapperMessage::KeyDown(key).into());
+			if !old_down && new_down {
+				if allow_first_button_down || self.mouse.mouse_keys != MouseKeys::NONE {
+					responses.push_back(InputMapperMessage::KeyDown(key).into());
+				} else {
+					// Required to stop a keyup being emitted for a keydown outside canvas
+					new_state.mouse_keys ^= bit_flag;
+				}
 			}
 			if old_down && !new_down {
 				responses.push_back(InputMapperMessage::KeyUp(key).into());
@@ -146,5 +153,10 @@ impl InputPreprocessorMessageHandler {
 			self.keyboard.set(key as usize);
 			responses.push_back(InputMapperMessage::KeyDown(key).into());
 		}
+	}
+
+	pub fn document_bounds(&self) -> [DVec2; 2] {
+		// ipp bounds are relative to the entire screen
+		[(0., 0.).into(), self.viewport_bounds.bottom_right - self.viewport_bounds.top_left]
 	}
 }

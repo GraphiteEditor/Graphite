@@ -1,13 +1,15 @@
-use crate::consts::{COLOR_ACCENT, PATH_OUTLINE_WEIGHT};
+use crate::consts::{COLOR_ACCENT, PATH_OUTLINE_WEIGHT, SELECTION_TOLERANCE};
 use crate::document::DocumentMessageHandler;
+use crate::input::InputPreprocessorMessageHandler;
 use crate::message_prelude::*;
 
+use graphene::intersection::Quad;
 use graphene::layers::layer_info::LayerDataType;
 use graphene::layers::style::{self, Fill, Stroke};
 use graphene::layers::text_layer::FontCache;
 use graphene::{LayerId, Operation};
 
-use glam::DAffine2;
+use glam::{DAffine2, DVec2};
 use kurbo::{BezPath, Shape};
 use std::collections::VecDeque;
 
@@ -84,16 +86,29 @@ impl PathOutline {
 		self.hovered_layer_path = None;
 	}
 
-	/// Updates the overlay, generating a new one if necessary
-	pub fn update_hovered(&mut self, new_layer_path: Vec<LayerId>, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>, font_cache: &FontCache) {
-		// Check if we are hovering over a different layer than before
-		if self.hovered_layer_path.as_ref().map_or(true, |old| &new_layer_path != old) {
-			self.hovered_overlay_path = Self::create_outline(new_layer_path.clone(), self.hovered_overlay_path.take(), document, responses, font_cache);
-			if self.hovered_overlay_path.is_none() {
+	/// Performs an intersect test and generates a hovered overlay if necessary
+	pub fn intersect_test_hovered(&mut self, input: &InputPreprocessorMessageHandler, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>, font_cache: &FontCache) {
+		// Get the layer the user is hovering over
+		let tolerance = DVec2::splat(SELECTION_TOLERANCE);
+		let quad = Quad::from_box([input.mouse.position - tolerance, input.mouse.position + tolerance]);
+		let mut intersection = document.graphene_document.intersects_quad_root(quad, font_cache);
+
+		// If the user is hovering over a layer they have not already selected, then update outline
+		if let Some(path) = intersection.pop() {
+			if !document.selected_visible_layers().any(|visible| visible == path.as_slice()) {
+				// Updates the overlay, generating a new one if necessary
+				self.hovered_overlay_path = Self::create_outline(path.clone(), self.hovered_overlay_path.take(), document, responses, font_cache);
+				if self.hovered_overlay_path.is_none() {
+					self.clear_hovered(responses);
+				}
+
+				self.hovered_layer_path = Some(path);
+			} else {
 				self.clear_hovered(responses);
 			}
+		} else {
+			self.clear_hovered(responses);
 		}
-		self.hovered_layer_path = Some(new_layer_path);
 	}
 
 	/// Clears overlays for the seleted paths and removes references
