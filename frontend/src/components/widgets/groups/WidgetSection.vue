@@ -93,7 +93,7 @@ const WidgetSection = defineComponent({
 		expanded: true,
 	}),
 	methods: {
-		updateLayout(widgetId: BigInt, value: unknown) {
+		updateLayout(widgetId: bigint, value: unknown) {
 			this.editor.instance.update_layout(this.layoutTarget, widgetId, value);
 		},
 		layoutRowType(layoutRow: LayoutSystemRow): unknown {
