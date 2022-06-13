@@ -53,5 +53,6 @@ export default defineComponent({
 }
 .example_figure {
 	margin-top: 0.5em;
+	border: 1px black;
 }
 </style>

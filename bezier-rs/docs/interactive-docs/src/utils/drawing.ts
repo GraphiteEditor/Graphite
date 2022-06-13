@@ -8,8 +8,8 @@ export const getContextFromCanvas = (canvas: HTMLCanvasElement): CanvasRendering
 	return ctx;
 };
 
-export const drawLine = (ctx: CanvasRenderingContext2D, p1: Point, p2: Point): void => {
-	ctx.strokeStyle = "grey";
+export const drawLine = (ctx: CanvasRenderingContext2D, p1: Point, p2: Point, stroke = "grey"): void => {
+	ctx.strokeStyle = stroke;
 	ctx.lineWidth = 1;
 
 	ctx.beginPath();

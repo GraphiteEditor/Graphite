@@ -13,7 +13,7 @@
 <script lang="ts">
 import { defineComponent, markRaw } from "vue";
 
-import { drawText, drawPoint, getContextFromCanvas } from "@/utils/drawing";
+import { drawText, drawPoint, drawLine, getContextFromCanvas } from "@/utils/drawing";
 import { WasmBezierInstance } from "@/utils/types";
 
 import ExamplePane from "@/components/ExamplePane.vue";
@@ -32,6 +32,14 @@ const testBezierLib = async () => {
 			svgContainer.innerHTML = bezier.to_svg();
 		}
 	});
+};
+
+const tSliderOptions = {
+	min: 0,
+	max: 1,
+	step: 0.01,
+	default: 0.5,
+	variable: "t",
 };
 
 export default defineComponent({
@@ -65,13 +73,7 @@ export default defineComponent({
 						drawPoint(getContextFromCanvas(canvas), point, "DarkBlue");
 					},
 					template: markRaw(SliderExample),
-					templateOptions: {
-						min: 0,
-						max: 1,
-						step: 0.01,
-						default: 0.5,
-						variable: "t",
-					},
+					templateOptions: tSliderOptions,
 				},
 				{
 					id: 4,
@@ -95,6 +97,30 @@ export default defineComponent({
 						default: 5,
 						variable: "Steps",
 					},
+				},
+				{
+					id: 5,
+					name: "Derivative",
+					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: string): void => {
+						const t = parseFloat(options);
+						const context = getContextFromCanvas(canvas);
+
+						const tangentStart = JSON.parse(bezier.compute(t));
+						tangentStart.r = 4;
+
+						const derivative = { x: 50, y: 50 }; // bezier.derivative(t)
+						const tangentEnd = {
+							x: tangentStart.x + derivative.x,
+							y: tangentStart.y + derivative.y,
+							r: 4,
+						};
+
+						drawLine(context, tangentStart, tangentEnd, "Red");
+						drawPoint(context, tangentStart, "Red");
+						drawPoint(context, tangentEnd, "Red");
+					},
+					template: markRaw(SliderExample),
+					templateOptions: tSliderOptions,
 				},
 			],
 		};
