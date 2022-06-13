@@ -121,6 +121,33 @@ export default defineComponent({
 					template: markRaw(SliderExample),
 					templateOptions: tSliderOptions,
 				},
+				{
+					id: 6,
+					name: "Normal",
+					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: string): void => {
+						const t = parseFloat(options);
+						const context = getContextFromCanvas(canvas);
+
+						const intersection = JSON.parse(bezier.compute(t));
+						const normal = JSON.parse(bezier.normal(t));
+
+						const normalStart = {
+							x: intersection.x - normal.x * 20,
+							y: intersection.y - normal.y * 20,
+						};
+						const normalEnd = {
+							x: intersection.x + normal.x * 20,
+							y: intersection.y + normal.y * 20,
+						};
+
+						drawLine(context, normalStart, normalEnd, "Red");
+						drawPoint(context, normalStart, 3, "Red");
+						drawPoint(context, intersection, 3, "Red");
+						drawPoint(context, normalEnd, 3, "Red");
+					},
+					template: markRaw(SliderExample),
+					templateOptions: tSliderOptions,
+				},
 			],
 		};
 	},

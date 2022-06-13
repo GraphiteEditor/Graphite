@@ -1,4 +1,4 @@
-use glam::DVec2;
+use glam::{DVec2, Mat2};
 
 /// Representation of the handle point(s) in a bezier segment
 pub enum BezierHandles {
@@ -209,6 +209,8 @@ impl Bezier {
 		approx_curve_length
 	}
 
+	/// Returns a vector representing the derivative at the point designated by t on the curve
+	/// Normalizing the vector gives the unit vector in the direction of the tangent at the specified point
 	pub fn derivative(&self, t: f64) -> DVec2 {
 		let one_minus_t = 1. - t;
 		match self.handles {
@@ -224,5 +226,11 @@ impl Bezier {
 				3. * one_minus_t * one_minus_t * p1_minus_p0 + 6. * t * one_minus_t * p2_minus_p1 + 3. * t * t * p3_minus_p2
 			}
 		}
+	}
+
+	/// Returns a normalized unit vector representing the direction of the normal at the point designated by t on the curve
+	pub fn normal(&self, t: f64) -> DVec2 {
+		let derivative = self.derivative(t);
+		derivative.normalize().perp()
 	}
 }

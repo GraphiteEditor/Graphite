@@ -75,4 +75,8 @@ impl WasmBezier {
 	pub fn derivative(&self, t: f64) -> JsValue {
 		vec_to_point(&self.internal.derivative(t))
 	}
+
+	pub fn normal(&self, t: f64) -> JsValue {
+		vec_to_point(&self.internal.normal(t))
+	}
 }
