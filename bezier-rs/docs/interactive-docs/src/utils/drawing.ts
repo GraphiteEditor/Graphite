@@ -1,5 +1,13 @@
 import { Point } from "@/utils/types";
 
+export const getContextFromCanvas = (canvas: HTMLCanvasElement): CanvasRenderingContext2D => {
+	const ctx = canvas.getContext("2d");
+	if (ctx === null) {
+		throw Error("Failed to fetch context");
+	}
+	return ctx;
+};
+
 export const drawLine = (ctx: CanvasRenderingContext2D, p1: Point, p2: Point): void => {
 	ctx.strokeStyle = "grey";
 	ctx.lineWidth = 1;
@@ -23,6 +31,12 @@ export const drawPoint = (ctx: CanvasRenderingContext2D, p: Point): void => {
 	ctx.beginPath();
 	ctx.arc(p.x, p.y, p.r * (2 / 3), 0, 2 * Math.PI, false);
 	ctx.fill();
+};
+
+export const drawText = (ctx: CanvasRenderingContext2D, text: string, x: number, y: number): void => {
+	ctx.fillStyle = "black";
+	ctx.font = "16px Arial";
+	ctx.fillText(text, x, y);
 };
 
 export const drawBezier = (ctx: CanvasRenderingContext2D, points: Point[]): void => {

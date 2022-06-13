@@ -1,19 +1,24 @@
 use glam::DVec2;
 
+/// Representation of the handle point(s) in a bezier segment
 pub enum BezierHandles {
 	Quadratic { handle: DVec2 },
 	Cubic { handle1: DVec2, handle2: DVec2 },
 }
 
-/// Representation of a bezier curve with 2D points
+/// Representation of a bezier segment with 2D points
 pub struct Bezier {
-	/// Segment representing the bezier curve
+	/// Start point of the bezier segment
 	start: DVec2,
+	/// Start point of the bezier segment
 	end: DVec2,
+	/// Handles of the bezier segment
 	handles: BezierHandles,
 }
 
 impl Bezier {
+	// TODO: Consider removing this function
+	/// Create a quadratic bezier using the provided coordinates as the start, handle, and end points
 	pub fn from_quadratic_coordinates(x1: f64, y1: f64, x2: f64, y2: f64, x3: f64, y3: f64) -> Self {
 		Bezier {
 			start: DVec2::from((x1, y1)),
@@ -22,6 +27,7 @@ impl Bezier {
 		}
 	}
 
+	/// Create a quadratc bezier using the provided DVec2s as the start, handle, and end points
 	pub fn from_quadratic_dvec2(p1: DVec2, p2: DVec2, p3: DVec2) -> Self {
 		Bezier {
 			start: p1,
@@ -30,6 +36,8 @@ impl Bezier {
 		}
 	}
 
+	// TODO: Consider removing this function
+	/// Create a cubic bezier using the provided coordinates as the start, handles, and end points
 	pub fn from_cubic_coordinates(x1: f64, y1: f64, x2: f64, y2: f64, x3: f64, y3: f64, x4: f64, y4: f64) -> Self {
 		Bezier {
 			start: DVec2::from((x1, y1)),
@@ -41,6 +49,7 @@ impl Bezier {
 		}
 	}
 
+	/// Create a cubic bezier using the provided DVec2s as the start, handles, and end points
 	pub fn from_cubic_dvec2(p1: DVec2, p2: DVec2, p3: DVec2, p4: DVec2) -> Self {
 		Bezier {
 			start: p1,
@@ -66,47 +75,51 @@ impl Bezier {
 	/// Convert to SVG
 	// TODO: Allow modifying the viewport, width and height
 	pub fn to_svg(&self) -> String {
-		let m_path = format!("M {} {}", self.start[0], self.start[1]);
+		let m_path = format!("M {} {}", self.start.x, self.start.y);
 		let handles_path = match self.handles {
 			BezierHandles::Quadratic { handle } => {
-				format!("Q {} {}", handle[0], handle[1])
+				format!("Q {} {}", handle.x, handle.y)
 			}
 			BezierHandles::Cubic { handle1, handle2 } => {
-				format!("C {} {}, {} {}", handle1[0], handle1[1], handle2[0], handle2[1])
+				format!("C {} {}, {} {}", handle1.x, handle1.y, handle2.x, handle2.y)
 			}
 		};
-		let curve_path = format!("{}, {} {}", handles_path, self.end[0], self.end[1]);
+		let curve_path = format!("{}, {} {}", handles_path, self.end.x, self.end.y);
 		format!(
 			r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{} {} {} {}" width="{}px" height="{}px"><path d="{} {} {}" stroke="black" fill="transparent"/></svg>"#,
 			0, 0, 100, 100, 100, 100, "\n", m_path, curve_path
 		)
 	}
 
+	/// Set the coordinates of the start point
 	pub fn set_start(&mut self, s: DVec2) {
 		self.start = s;
 	}
 
+	/// Set the coordinates of the end point
 	pub fn set_end(&mut self, e: DVec2) {
 		self.end = e;
 	}
 
+	/// Set the coordinates of the first handle point. This represents the only handle in a quadratic segment.
 	pub fn set_handle1(&mut self, h1: DVec2) {
 		match self.handles {
 			BezierHandles::Quadratic { ref mut handle } => {
 				*handle = h1;
 			}
-			BezierHandles::Cubic { ref mut handle1, handle2: _} => {
+			BezierHandles::Cubic { ref mut handle1, .. } => {
 				*handle1 = h1;
 			}
 		};
 	}
 
+	/// Set the coordinates of the second handle point. This will convert a quadratic segment into a cubic one.
 	pub fn set_handle2(&mut self, h2: DVec2) {
 		match self.handles {
 			BezierHandles::Quadratic { handle } => {
 				self.handles = BezierHandles::Cubic { handle1: handle, handle2: h2 };
 			}
-			BezierHandles::Cubic { handle1: _, ref mut handle2 } => {
+			BezierHandles::Cubic { ref mut handle2, .. } => {
 				*handle2 = h2;
 			}
 		};
@@ -122,26 +135,17 @@ impl Bezier {
 
 	pub fn get_handle1(&self) -> DVec2 {
 		match self.handles {
-			BezierHandles::Quadratic { handle } => {
-				handle
-			}
-			BezierHandles::Cubic { handle1, handle2: _ } => {
-				handle1
-			}
+			BezierHandles::Quadratic { handle } => handle,
+			BezierHandles::Cubic { handle1, .. } => handle1,
 		}
 	}
 
 	pub fn get_handle2(&self) -> Option<DVec2> {
 		match self.handles {
-			BezierHandles::Quadratic { handle: _ } => {
-				None
-			}
-			BezierHandles::Cubic { handle1: _, handle2 } => {
-				Some(handle2)
-			}
+			BezierHandles::Quadratic { .. } => None,
+			BezierHandles::Cubic { handle2, .. } => Some(handle2),
 		}
 	}
-
 
 	pub fn get_points(&self) -> [Option<DVec2>; 4] {
 		match self.handles {
@@ -150,29 +154,45 @@ impl Bezier {
 		}
 	}
 
-	/// Return the length of the bezier curve
-	pub fn length() -> i32 {
-		0
+	///  Calculate the point on the curve based on the t-value provided
+	///  basis code based off of pseudocode found here: https://pomax.github.io/bezierinfo/#explanation
+	pub fn get_basis(&self, t: f64) -> DVec2 {
+		let t_squared = t * t;
+		let one_minus_t = 1.0 - t;
+		let squared_one_minus_t = one_minus_t * one_minus_t;
+
+		match self.handles {
+			BezierHandles::Quadratic { handle } => squared_one_minus_t * self.start + 2.0 * one_minus_t * t * handle + t_squared * self.end,
+			BezierHandles::Cubic { handle1, handle2 } => {
+				let t_cubed = t_squared * t;
+				let cubed_one_minus_t = squared_one_minus_t * one_minus_t;
+				cubed_one_minus_t * self.start + 3.0 * squared_one_minus_t * t * handle1 + 3.0 * one_minus_t * t_squared * handle2 + t_cubed * self.end
+			}
+		}
+	}
+
+	/// Return an approximation of the length of the bezier curve
+	/// code example taken from: https://gamedev.stackexchange.com/questions/5373/moving-ships-between-two-planets-along-a-bezier-missing-some-equations-for-acce/5427#5427
+	pub fn length(&self) -> f64 {
+		// We will use an approximate approach where
+		// we split the curve into many subdivisions
+		// and calculate the euclidean distance between the two endpoints of the subdivision
+		const SUBDIVISIONS: i32 = 1000;
+		const RATIO: f64 = 1.0 / (SUBDIVISIONS as f64);
+
+		// start_point tracks the starting point of the subdivision
+		let mut start_point = self.get_basis(0.0);
+		let mut length_subtotal = 0.0;
+		// calculate approximate distance between subdivision
+		for subdivision in 1..SUBDIVISIONS + 1 {
+			// get end point of the subdivision
+			let end_point = self.get_basis(f64::from(subdivision) * RATIO);
+			// calculate distance of subdivision
+			length_subtotal += (start_point - end_point).length();
+			// update start_point for next subdivision
+			start_point = end_point;
+		}
+
+		length_subtotal
 	}
 }
-
-/*
-
-/// for computing the length of a bezier curve
-/// taken from https://pomax.github.io/bezierinfo/#arclength
-
-computeLength(curve) {
-	const z = 0.5, len = T.length;
-	let sum = 0;
-	for (let i = 0, t; i < len; i++) {
-	  t = z * T[i] + z;
-	  sum += C[i] * this.arcfn(t, curve.derivative(t));
-	}
-	return z * sum;
-}
-
-arcfn(t, d) {
-	return sqrt(d.x * d.x + d.y * d.y);
-}
-
-*/

@@ -1,18 +1,21 @@
 <template>
-	<div class="example_row">
-		<div v-for="example in exampleData" :key="example.id">
-			<Example :title="example.title" :bezier="example.bezier" />
+	<div>
+		<h2 class="example_pane_header">{{ this.name }}</h2>
+		<div class="example_row">
+			<div v-for="example in exampleData" :key="example.id">
+				<Example :title="example.title" :bezier="example.bezier" :callback="callback" />
+			</div>
 		</div>
 	</div>
 </template>
 
 <script lang="ts">
-import { defineComponent } from "vue";
+import { defineComponent, PropType } from "vue";
 
-import { WasmBezierInstance } from "../utils/wasm-comm";
+import { BezierCallback } from "@/utils/types";
+import { WasmBezierInstance } from "@/utils/wasm-comm";
 
-import Example from "./Example.vue";
-// import wasm from "bezier-rs-wasm";
+import Example from "@/components/Example.vue";
 
 type ExampleData = {
 	id: number;
@@ -25,24 +28,39 @@ export default defineComponent({
 	components: {
 		Example,
 	},
+	props: {
+		name: String,
+		callback: {
+			type: Function as PropType<BezierCallback>,
+			required: true,
+		},
+	},
 	data() {
 		return {
 			exampleData: [] as ExampleData[],
 		};
 	},
 	mounted() {
-		// eslint-disable-next-line
-		import("../../wasm/pkg").then((wasm) => {
+		import("@/../wasm/pkg").then((wasm) => {
 			this.exampleData = [
 				{
 					id: 0,
-					title: "Quadratic Bezier",
-					bezier: wasm.WasmBezier.new_quad(30, 30, 140, 20, 160, 170),
+					title: "Quadratic",
+					bezier: wasm.WasmBezier.new_quad([
+						[30, 30],
+						[140, 20],
+						[160, 170],
+					]),
 				},
 				{
 					id: 1,
-					title: "Cubic Bezier",
-					bezier: wasm.WasmBezier.new_cubic(30, 30, 60, 140, 150, 30, 160, 160),
+					title: "Cubic",
+					bezier: wasm.WasmBezier.new_cubic([
+						[30, 30],
+						[60, 140],
+						[150, 30],
+						[160, 160],
+					]),
 				},
 			];
 		});
@@ -55,5 +73,9 @@ export default defineComponent({
 	display: flex; /* or inline-flex */
 	flex-direction: row;
 	justify-content: center;
+}
+
+.example_pane_header {
+	margin-bottom: 0;
 }
 </style>

@@ -1,5 +1,5 @@
-import { drawBezier } from "@/utils/drawing";
-import { Point, WasmBezierMutatorKey } from "@/utils/types";
+import { drawBezier, getContextFromCanvas } from "@/utils/drawing";
+import { BezierCallback, Point, WasmBezierMutatorKey } from "@/utils/types";
 import { WasmBezierInstance } from "@/utils/wasm-comm";
 
 class BezierDrawing {
@@ -15,8 +15,11 @@ class BezierDrawing {
 
 	bezier: WasmBezierInstance;
 
-	constructor(bezier: WasmBezierInstance) {
+	callback: BezierCallback;
+
+	constructor(bezier: WasmBezierInstance, callback: BezierCallback) {
 		this.bezier = bezier;
+		this.callback = callback;
 		this.points = bezier
 			.get_points()
 			.map((p) => JSON.parse(p))
@@ -37,11 +40,7 @@ class BezierDrawing {
 		this.canvas.width = 200;
 		this.canvas.height = 200;
 
-		const ctx = this.canvas.getContext("2d");
-		if (ctx == null) {
-			throw Error("Failed to create context");
-		}
-		this.ctx = ctx;
+		this.ctx = getContextFromCanvas(this.canvas);
 
 		this.dragIndex = null; // Index of the point being moved
 
@@ -100,6 +99,7 @@ class BezierDrawing {
 
 	updateBezier(): void {
 		drawBezier(this.ctx, this.points);
+		this.callback(this.canvas, this.bezier);
 	}
 
 	getCanvas(): HTMLCanvasElement {

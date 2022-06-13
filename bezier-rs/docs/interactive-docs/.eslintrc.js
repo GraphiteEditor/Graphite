@@ -65,8 +65,7 @@ module.exports = {
 		"no-bitwise": "off",
 		"no-shadow": "off",
 		"no-use-before-define": "off",
-		// TODO: Vetur cannot properly recognize paths using @ which contradicts this rule
-		// "no-restricted-imports": ["error", { patterns: [".*", "!@/*"] }],
+		"no-restricted-imports": ["error", { patterns: [".*", "!@/*"] }],
 
 		// TypeScript plugin config
 		"@typescript-eslint/indent": "off",
