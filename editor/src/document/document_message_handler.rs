@@ -1024,8 +1024,6 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 				for layer_path in self.selected_layers_without_children() {
 					responses.push_front(DocumentOperation::DeleteSelectedVectorPoints { layer_path: layer_path.to_vec() }.into());
 				}
-				// Rerender
-				// responses.push_back(DocumentMessage::RenderDocument.into());
 			}
 			DeselectAllLayers => {
 				responses.push_front(SetSelectedLayers { replacement_selected_layers: vec![] }.into());
