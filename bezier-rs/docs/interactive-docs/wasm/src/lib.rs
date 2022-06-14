@@ -68,7 +68,7 @@ impl WasmBezier {
 		vec_to_point(&self.internal.compute(t))
 	}
 
-	pub fn get_lookup_table(&self, steps: i32) -> Vec<JsValue> {
-		self.internal.get_lookup_table(Some(steps)).iter().map(vec_to_point).collect()
+	pub fn compute_lookup_table(&self, steps: i32) -> Vec<JsValue> {
+		self.internal.compute_lookup_table(Some(steps)).iter().map(vec_to_point).collect()
 	}
 }

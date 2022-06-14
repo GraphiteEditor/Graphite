@@ -57,7 +57,7 @@ export default defineComponent({
 				},
 				{
 					id: 3,
-					name: "Get / Compute",
+					name: "Compute",
 					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: string): void => {
 						const point = JSON.parse(bezier.compute(parseFloat(options)));
 						point.r = 4;
@@ -77,7 +77,7 @@ export default defineComponent({
 					id: 4,
 					name: "Lookup Table",
 					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: string): void => {
-						const lookupPoints = bezier.get_lookup_table(Number(options));
+						const lookupPoints = bezier.compute_lookup_table(Number(options));
 						lookupPoints.forEach((serPoint, index) => {
 							if (index !== 0 && index !== lookupPoints.length - 1) {
 								const point = JSON.parse(serPoint);

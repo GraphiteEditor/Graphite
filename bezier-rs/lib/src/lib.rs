@@ -157,9 +157,7 @@ impl Bezier {
 	///  Calculate the point on the curve based on the t-value provided
 	///  basis code based off of pseudocode found here: https://pomax.github.io/bezierinfo/#explanation
 	pub fn compute(&self, t: f64) -> DVec2 {
-		if !(0.0..=1.0).contains(&t) {
-			panic!("Invalid argument passed to bezier::compute: t must be between 0 and 1")
-		}
+		assert!((0.0..=1.0).contains(&t));
 
 		let t_squared = t * t;
 		let one_minus_t = 1.0 - t;
@@ -175,14 +173,9 @@ impl Bezier {
 		}
 	}
 
-	///  Get the point on the curve based on the t-value provided, alias for compute
-	pub fn get(&self, t: f64) -> DVec2 {
-		self.compute(t)
-	}
-
 	/// Return a selection of equidistant points on the bezier curve
 	/// If no value is provided for `steps`, then the function will default `steps` to be 10
-	pub fn get_lookup_table(&self, steps: Option<i32>) -> Vec<DVec2> {
+	pub fn compute_lookup_table(&self, steps: Option<i32>) -> Vec<DVec2> {
 		let steps_unwrapped = steps.unwrap_or(10);
 		let ratio: f64 = 1.0 / (steps_unwrapped as f64);
 		let mut steps_array = Vec::with_capacity((steps_unwrapped + 1) as usize);
@@ -202,7 +195,7 @@ impl Bezier {
 		// and calculate the euclidean distance between the two endpoints of the subdivision
 		const SUBDIVISIONS: i32 = 1000;
 
-		let lookup_table = self.get_lookup_table(Some(SUBDIVISIONS));
+		let lookup_table = self.compute_lookup_table(Some(SUBDIVISIONS));
 		let mut approx_curve_length = 0.0;
 		let mut prev_point = lookup_table[0];
 		// calculate approximate distance between subdivision
