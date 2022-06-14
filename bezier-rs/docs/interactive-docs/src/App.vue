@@ -13,7 +13,7 @@
 <script lang="ts">
 import { defineComponent, markRaw } from "vue";
 
-import { drawText, drawPoint, drawLine, getContextFromCanvas } from "@/utils/drawing";
+import { drawText, drawPoint, drawLine, getContextFromCanvas, drawBezierHelper } from "@/utils/drawing";
 import { WasmBezierInstance } from "@/utils/types";
 
 import ExamplePane from "@/components/ExamplePane.vue";
@@ -144,6 +144,20 @@ export default defineComponent({
 						drawPoint(context, normalStart, 3, "Red");
 						drawPoint(context, intersection, 3, "Red");
 						drawPoint(context, normalEnd, 3, "Red");
+					},
+					template: markRaw(SliderExample),
+					templateOptions: tSliderOptions,
+				},
+				{
+					id: 6,
+					name: "Split",
+					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: string): void => {
+						const t = parseFloat(options);
+						const context = getContextFromCanvas(canvas);
+						const bezierPair = bezier.split(t);
+
+						drawBezierHelper(context, bezierPair.second, "orange");
+						drawBezierHelper(context, bezierPair.first, "Red");
 					},
 					template: markRaw(SliderExample),
 					templateOptions: tSliderOptions,

@@ -1,4 +1,4 @@
-import { Point } from "@/utils/types";
+import { Point, WasmBezierInstance } from "@/utils/types";
 
 const RADIUS_SIZE = {
 	large: 5,
@@ -46,7 +46,15 @@ export const drawText = (ctx: CanvasRenderingContext2D, text: string, x: number,
 	ctx.fillText(text, x, y);
 };
 
-export const drawBezier = (ctx: CanvasRenderingContext2D, points: Point[], dragIndex: number | null = null): void => {
+export const drawBezierHelper = (ctx: CanvasRenderingContext2D, bezier: WasmBezierInstance, stroke = "black"): void => {
+	drawBezier(
+		ctx,
+		bezier.get_points().map((p) => JSON.parse(p)),
+		stroke
+	);
+};
+
+export const drawBezier = (ctx: CanvasRenderingContext2D, points: Point[], stroke = "black", dragIndex: number | null = null): void => {
 	/* Until a bezier representation is finalized, treat the points as follows
 		points[0] = start point
 		points[1] = handle start
@@ -67,7 +75,7 @@ export const drawBezier = (ctx: CanvasRenderingContext2D, points: Point[], dragI
 		end = points[2];
 	}
 
-	ctx.strokeStyle = "black";
+	ctx.strokeStyle = stroke;
 	ctx.lineWidth = 2;
 
 	ctx.beginPath();
@@ -79,10 +87,10 @@ export const drawBezier = (ctx: CanvasRenderingContext2D, points: Point[], dragI
 	}
 	ctx.stroke();
 
-	drawLine(ctx, start, handleStart);
-	drawLine(ctx, end, handleEnd);
+	drawLine(ctx, start, handleStart, stroke);
+	drawLine(ctx, end, handleEnd, stroke);
 
 	points.forEach((point, index) => {
-		drawPoint(ctx, point, getPointSizeByIndex(index, points.length), index === dragIndex ? "Blue" : "Black");
+		drawPoint(ctx, point, getPointSizeByIndex(index, points.length), index === dragIndex ? "Blue" : stroke);
 	});
 };

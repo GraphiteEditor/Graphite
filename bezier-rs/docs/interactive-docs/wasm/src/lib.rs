@@ -10,9 +10,18 @@ struct Point {
 }
 
 #[wasm_bindgen]
+#[derive(Copy, Clone)]
 /// Wrapper of the `Bezier` struct to be used in JS
 pub struct WasmBezier {
 	internal: Bezier,
+}
+
+#[wasm_bindgen]
+#[derive(Copy, Clone)]
+/// Wrapper of the `Bezier` struct to be used in JS
+pub struct WasmBezierPair {
+	pub first: WasmBezier,
+	pub second: WasmBezier,
 }
 
 /// Convert a `DVec2` into a `JsValue`
@@ -80,5 +89,13 @@ impl WasmBezier {
 
 	pub fn normal(&self, t: f64) -> JsValue {
 		vec_to_point(&self.internal.normal(t))
+	}
+
+	pub fn split(&self, t: f64) -> WasmBezierPair {
+		let beziers = self.internal.split(t);
+		WasmBezierPair {
+			first: WasmBezier { internal: beziers[0] },
+			second: WasmBezier { internal: beziers[1] },
+		}
 	}
 }

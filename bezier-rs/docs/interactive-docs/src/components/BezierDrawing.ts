@@ -105,7 +105,7 @@ class BezierDrawing {
 			this.options = options;
 		}
 		this.clearFigure();
-		drawBezier(this.ctx, this.points, this.dragIndex);
+		drawBezier(this.ctx, this.points, "black", this.dragIndex);
 		this.callback(this.canvas, this.bezier, this.options);
 	}
 
