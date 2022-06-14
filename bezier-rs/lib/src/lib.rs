@@ -1,6 +1,7 @@
 use glam::DVec2;
 
 /// Representation of the handle point(s) in a bezier segment
+#[derive(Copy, Clone)]
 pub enum BezierHandles {
 	/// Handles for a quadratic segment
 	Quadratic {
@@ -17,6 +18,7 @@ pub enum BezierHandles {
 }
 
 /// Representation of a bezier segment with 2D points
+#[derive(Copy, Clone)]
 pub struct Bezier {
 	/// Start point of the bezier segment
 	start: DVec2,
@@ -253,5 +255,50 @@ impl Bezier {
 	pub fn normal(&self, t: f64) -> DVec2 {
 		let derivative = self.derivative(t);
 		derivative.normalize().perp()
+	}
+
+	pub fn split(&self, t: f64) -> [Bezier; 2] {
+		let split_point = self.compute(t);
+
+		let t_squared = t * t;
+		let t_minus_one = t - 1.;
+		let squared_t_minus_one = t_minus_one * t_minus_one;
+
+		match self.handles {
+			// TODO: Actually calculate the correct handle locations
+			BezierHandles::Quadratic { handle } => [
+				Bezier::from_quadratic_dvec2(self.start, t * handle - t_minus_one * self.start, split_point),
+				Bezier::from_quadratic_dvec2(split_point, t * self.end - t_minus_one * handle, self.end),
+			],
+			BezierHandles::Cubic { handle1, handle2 } => {
+				let t_cubed = t_squared * t;
+				let cubed_t_minus_one = squared_t_minus_one * t_minus_one;
+
+				[
+					Bezier::from_cubic_dvec2(
+						self.start,
+						t * handle1 - t_minus_one * self.start,
+						t_squared * handle2 - 2. * t * t_minus_one * handle1 + squared_t_minus_one * self.start,
+						split_point,
+					),
+					Bezier::from_cubic_dvec2(
+						split_point,
+						t_squared * self.end - 2. * t * t_minus_one * handle2 + squared_t_minus_one * handle1,
+						t * self.end - t_minus_one * handle2,
+						self.end,
+					),
+				]
+			}
+		}
+	}
+
+	pub fn subsplit(&self, t1: f64, t2: f64) -> Bezier {
+		let start = self.compute(t1);
+		let end = self.compute(t2);
+		match self.handles {
+			// TODO: Actually calculate the correct handle locations
+			BezierHandles::Quadratic { handle } => Bezier::from_quadratic_dvec2(start, handle, end),
+			BezierHandles::Cubic { handle1, handle2 } => Bezier::from_cubic_dvec2(start, handle1, handle2, end),
+		}
 	}
 }
