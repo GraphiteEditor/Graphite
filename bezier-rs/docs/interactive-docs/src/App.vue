@@ -3,19 +3,21 @@
 		<h1>Bezier-rs Interactive Documentation</h1>
 		<p>This is the interactive documentation for the <b>bezier-rs</b> library. Click and drag on the endpoints of the example curves to visualize the various Bezier utilities and functions.</p>
 		<div v-for="feature in features" :key="feature.id">
-			<ExamplePane :name="feature.name" :callback="feature.callback" />
+			<ExamplePane :template="feature.template" :templateOptions="feature.templateOptions" :name="feature.name" :callback="feature.callback" />
 		</div>
+		<br />
 		<div id="svg-test" />
 	</div>
 </template>
 
 <script lang="ts">
-import { defineComponent } from "vue";
+import { defineComponent, markRaw } from "vue";
 
-import { drawText, getContextFromCanvas } from "@/utils/drawing";
+import { drawText, drawPoint, getContextFromCanvas } from "@/utils/drawing";
 import { WasmBezierInstance } from "@/utils/types";
 
 import ExamplePane from "@/components/ExamplePane.vue";
+import SliderExample from "@/components/SliderExample.vue";
 
 // eslint-disable-next-line
 const testBezierLib = async () => {
@@ -51,6 +53,47 @@ export default defineComponent({
 					name: "Length",
 					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance): void => {
 						drawText(getContextFromCanvas(canvas), `Length: ${bezier.length().toFixed(2)}`, 5, canvas.height - 7);
+					},
+				},
+				{
+					id: 3,
+					name: "Compute",
+					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: string): void => {
+						const point = JSON.parse(bezier.compute(parseFloat(options)));
+						point.r = 4;
+						point.selected = false;
+						drawPoint(getContextFromCanvas(canvas), point, "DarkBlue");
+					},
+					template: markRaw(SliderExample),
+					templateOptions: {
+						min: 0,
+						max: 1,
+						step: 0.01,
+						default: 0.5,
+						variable: "t",
+					},
+				},
+				{
+					id: 4,
+					name: "Lookup Table",
+					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: string): void => {
+						const lookupPoints = bezier.compute_lookup_table(Number(options));
+						lookupPoints.forEach((serPoint, index) => {
+							if (index !== 0 && index !== lookupPoints.length - 1) {
+								const point = JSON.parse(serPoint);
+								point.r = 3;
+								point.selected = false;
+								drawPoint(getContextFromCanvas(canvas), point, "DarkBlue");
+							}
+						});
+					},
+					template: markRaw(SliderExample),
+					templateOptions: {
+						min: 2,
+						max: 15,
+						step: 1,
+						default: 5,
+						variable: "Steps",
 					},
 				},
 			],

@@ -1,16 +1,16 @@
 <template>
 	<div>
-		<h2 class="example_pane_header">{{ this.name }}</h2>
+		<h2 class="example_pane_header">{{ name }}</h2>
 		<div class="example_row">
 			<div v-for="example in exampleData" :key="example.id">
-				<Example :title="example.title" :bezier="example.bezier" :callback="callback" />
+				<component :is="template" :templateOptions="templateOptions" :title="example.title" :bezier="example.bezier" :callback="callback" />
 			</div>
 		</div>
 	</div>
 </template>
 
 <script lang="ts">
-import { defineComponent, PropType } from "vue";
+import { defineComponent, PropType, Component } from "vue";
 
 import { BezierCallback } from "@/utils/types";
 import { WasmBezierInstance } from "@/utils/wasm-comm";
@@ -34,6 +34,11 @@ export default defineComponent({
 			type: Function as PropType<BezierCallback>,
 			required: true,
 		},
+		template: {
+			type: Object as PropType<Component>,
+			default: Example,
+		},
+		templateOptions: Object,
 	},
 	data() {
 		return {

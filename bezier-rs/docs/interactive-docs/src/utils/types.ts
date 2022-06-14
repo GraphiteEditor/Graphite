@@ -4,7 +4,7 @@ export type WasmBezierInstance = InstanceType<WasmRawInstance["WasmBezier"]>;
 export type WasmBezierKey = keyof WasmBezierInstance;
 export type WasmBezierMutatorKey = "set_start" | "set_handle1" | "set_handle2" | "set_end";
 
-export type BezierCallback = (canvas: HTMLCanvasElement, bezier: WasmBezierInstance) => void;
+export type BezierCallback = (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: string) => void;
 
 export type Point = {
 	x: number;

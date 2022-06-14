@@ -156,7 +156,9 @@ impl Bezier {
 
 	///  Calculate the point on the curve based on the t-value provided
 	///  basis code based off of pseudocode found here: https://pomax.github.io/bezierinfo/#explanation
-	pub fn get_basis(&self, t: f64) -> DVec2 {
+	pub fn compute(&self, t: f64) -> DVec2 {
+		assert!((0.0..=1.0).contains(&t));
+
 		let t_squared = t * t;
 		let one_minus_t = 1.0 - t;
 		let squared_one_minus_t = one_minus_t * one_minus_t;
@@ -171,6 +173,20 @@ impl Bezier {
 		}
 	}
 
+	/// Return a selection of equidistant points on the bezier curve
+	/// If no value is provided for `steps`, then the function will default `steps` to be 10
+	pub fn compute_lookup_table(&self, steps: Option<i32>) -> Vec<DVec2> {
+		let steps_unwrapped = steps.unwrap_or(10);
+		let ratio: f64 = 1.0 / (steps_unwrapped as f64);
+		let mut steps_array = Vec::with_capacity((steps_unwrapped + 1) as usize);
+
+		for t in 0..steps_unwrapped + 1 {
+			steps_array.push(self.compute(f64::from(t) * ratio))
+		}
+
+		steps_array
+	}
+
 	/// Return an approximation of the length of the bezier curve
 	/// code example taken from: https://gamedev.stackexchange.com/questions/5373/moving-ships-between-two-planets-along-a-bezier-missing-some-equations-for-acce/5427#5427
 	pub fn length(&self) -> f64 {
@@ -178,21 +194,18 @@ impl Bezier {
 		// we split the curve into many subdivisions
 		// and calculate the euclidean distance between the two endpoints of the subdivision
 		const SUBDIVISIONS: i32 = 1000;
-		const RATIO: f64 = 1.0 / (SUBDIVISIONS as f64);
 
-		// start_point tracks the starting point of the subdivision
-		let mut start_point = self.get_basis(0.0);
-		let mut length_subtotal = 0.0;
+		let lookup_table = self.compute_lookup_table(Some(SUBDIVISIONS));
+		let mut approx_curve_length = 0.0;
+		let mut prev_point = lookup_table[0];
 		// calculate approximate distance between subdivision
-		for subdivision in 1..SUBDIVISIONS + 1 {
-			// get end point of the subdivision
-			let end_point = self.get_basis(f64::from(subdivision) * RATIO);
+		for curr_point in lookup_table.iter().skip(1) {
 			// calculate distance of subdivision
-			length_subtotal += (start_point - end_point).length();
-			// update start_point for next subdivision
-			start_point = end_point;
+			approx_curve_length += (*curr_point - prev_point).length();
+			// update the prev point
+			prev_point = *curr_point;
 		}
 
-		length_subtotal
+		approx_curve_length
 	}
 }

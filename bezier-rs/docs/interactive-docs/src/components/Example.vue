@@ -14,6 +14,11 @@ import { WasmBezierInstance } from "@/utils/wasm-comm";
 
 export default defineComponent({
 	name: "ExampleComponent",
+	data() {
+		return {
+			bezierDrawing: new BezierDrawing(this.bezier, this.callback, this.options),
+		};
+	},
 	props: {
 		title: String,
 		bezier: {
@@ -24,12 +29,20 @@ export default defineComponent({
 			type: Function as PropType<BezierCallback>,
 			required: true,
 		},
+		options: {
+			type: String,
+			default: "",
+		},
 	},
 	mounted() {
-		const bezierDrawing = new BezierDrawing(this.bezier, this.callback);
 		const drawing = this.$refs.drawing as HTMLElement;
-		drawing.appendChild(bezierDrawing.getCanvas());
-		bezierDrawing.updateBezier();
+		drawing.appendChild(this.bezierDrawing.getCanvas());
+		this.bezierDrawing.updateBezier();
+	},
+	watch: {
+		options() {
+			this.bezierDrawing.updateBezier(this.options);
+		},
 	},
 });
 </script>

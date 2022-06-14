@@ -17,9 +17,12 @@ class BezierDrawing {
 
 	callback: BezierCallback;
 
-	constructor(bezier: WasmBezierInstance, callback: BezierCallback) {
+	options: string;
+
+	constructor(bezier: WasmBezierInstance, callback: BezierCallback, options: string) {
 		this.bezier = bezier;
 		this.callback = callback;
+		this.options = options;
 		this.points = bezier
 			.get_points()
 			.map((p) => JSON.parse(p))
@@ -97,9 +100,13 @@ class BezierDrawing {
 		}
 	}
 
-	updateBezier(): void {
+	updateBezier(options = ""): void {
+		if (options !== "") {
+			this.options = options;
+		}
+		this.ctx.clearRect(1, 1, this.canvas.width - 2, this.canvas.height - 2);
 		drawBezier(this.ctx, this.points);
-		this.callback(this.canvas, this.bezier);
+		this.callback(this.canvas, this.bezier, this.options);
 	}
 
 	getCanvas(): HTMLCanvasElement {
