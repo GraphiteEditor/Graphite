@@ -245,6 +245,7 @@ impl From<&VectorShape> for BezPath {
 			let new_segment = match [&first.points[2], &second.points[1], &second.points[0]] {
 				[None, None, Some(p)] => PathEl::LineTo(point_to_kurbo(p)),
 				[None, Some(a), Some(p)] => PathEl::QuadTo(point_to_kurbo(a), point_to_kurbo(p)),
+				[Some(a), None, Some(p)] => PathEl::QuadTo(point_to_kurbo(a), point_to_kurbo(p)),
 				[Some(a1), Some(a2), Some(p)] => PathEl::CurveTo(point_to_kurbo(a1), point_to_kurbo(a2), point_to_kurbo(p)),
 				[None, None, None] => {
 					start_new_shape = true;
