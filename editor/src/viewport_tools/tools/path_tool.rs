@@ -122,17 +122,21 @@ impl Fsm for PathToolFsmState {
 
 			match (self, event) {
 				(_, SelectionChanged) => {
-					// TODO Tell overlay renderer to clear / updates the overlays
+					// Set the previously selected layers to invisible
 					for layer_path in document.all_layers() {
 						tool_data.overlay_renderer.layer_overlay_visibility(&document.graphene_document, layer_path.to_vec(), false, responses);
 					}
 
+					// Set the newly targeted layers to visible
 					let layer_paths = document.selected_visible_layers().map(|layer_path| layer_path.to_vec()).collect();
 					tool_data.shape_editor.set_target_layers(layer_paths);
+
+					// This can happen in any state (which is why we return self)
 					self
 				}
 				(_, DocumentIsDirty) => {
-					// TODO This should be handled by the document not by the tool, but this is a stop gap
+					// When the document has moved / needs to be redraw, re-render the overlays
+					// TODO the overlay system should probably receive this message instead of the tool
 					for layer_path in document.selected_visible_layers() {
 						tool_data.overlay_renderer.render_vector_shape_overlays(&document.graphene_document, layer_path.to_vec(), responses);
 					}
@@ -141,12 +145,12 @@ impl Fsm for PathToolFsmState {
 				}
 				// Mouse down
 				(_, DragStart { add_to_selection }) => {
-					let add_to_selection = input.keyboard.get(add_to_selection as usize);
+					let toggle_add_to_selection = input.keyboard.get(add_to_selection as usize);
 
 					// Select the first point within the threshold (in pixels)
 					if tool_data
 						.shape_editor
-						.select_point(&document.graphene_document, input.mouse.position, SELECTION_THRESHOLD, add_to_selection, responses)
+						.select_point(&document.graphene_document, input.mouse.position, SELECTION_THRESHOLD, toggle_add_to_selection, responses)
 					{
 						responses.push_back(DocumentMessage::StartTransaction.into());
 
@@ -169,7 +173,7 @@ impl Fsm for PathToolFsmState {
 							.graphene_document
 							.intersects_quad_root(Quad::from_box([input.mouse.position - selection_size, input.mouse.position + selection_size]), font_cache);
 						if !intersection.is_empty() {
-							if add_to_selection {
+							if toggle_add_to_selection {
 								responses.push_back(DocumentMessage::AddSelectedLayers { additional_layers: intersection }.into());
 							} else {
 								responses.push_back(
@@ -181,7 +185,7 @@ impl Fsm for PathToolFsmState {
 							}
 						} else {
 							// Clear the previous selection if we didn't find anything
-							if !input.keyboard.get(add_to_selection as usize) {
+							if !input.keyboard.get(toggle_add_to_selection as usize) {
 								responses.push_back(DocumentMessage::DeselectAllLayers.into());
 							}
 						}
@@ -215,13 +219,18 @@ impl Fsm for PathToolFsmState {
 
 					// Move the selected points by the mouse position
 					let snapped_position = tool_data.snap_handler.snap_position(responses, document, input.mouse.position);
-					log::debug!("Snapped position: {:?}", snapped_position);
+					// log::debug!("Snapped position: {:?}", snapped_position);
 					//TODO This is relative position, update accordingly
 					let position = DVec2::new(snapped_position.x, snapped_position.y);
 					tool_data.shape_editor.move_selected_points(position, responses);
 					Dragging
 				}
-				// DoubleClick
+				// Mouse up
+				(_, DragStop) => {
+					tool_data.snap_handler.cleanup(responses);
+					Ready
+				}
+				// Delete key
 				(_, Delete) => {
 					// Select the first point within the threshold (in pixels)
 					responses.push_back(DocumentMessage::StartTransaction.into());
@@ -230,11 +239,6 @@ impl Fsm for PathToolFsmState {
 					for layer_path in document.all_layers() {
 						tool_data.overlay_renderer.clear_vector_shape_overlays(&document.graphene_document, layer_path.to_vec(), responses);
 					}
-					Ready
-				}
-				// Mouse up
-				(_, DragStop) => {
-					tool_data.snap_handler.cleanup(responses);
 					Ready
 				}
 				(_, Abort) | (_, SelectPoint) => {

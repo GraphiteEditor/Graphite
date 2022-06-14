@@ -42,22 +42,22 @@ impl<'a> OverlayRenderer {
 
 	pub fn render_vector_shape_overlays(&mut self, document: &Document, layer_path: Vec<LayerId>, responses: &mut VecDeque<Message>) {
 		let transform = document.generate_transform_relative_to_viewport(&layer_path).ok().unwrap();
-
 		if let Ok(layer) = document.layer(&layer_path) {
 			let layer_id = layer_path.last().unwrap();
-			// log::debug!("Layer id is {:?}", layer_id);
 			self.layer_overlay_visibility(document, layer_path.clone(), true, responses);
 
 			if let Some(shape) = layer.as_vector_shape() {
 				let outline_cache = self.shape_overlay_cache.get(layer_id);
+				log::trace!("Overlay: Outline cache {:?}", &outline_cache);
 
 				// Create an outline if we do not have a cached one
 				if outline_cache == None {
 					let outline_path = self.create_shape_outline_overlay(shape.into(), responses);
+					self.shape_overlay_cache.insert(*layer_id, outline_path.clone());
 					self.place_outline_overlays(outline_path.clone(), &transform, responses);
-					self.shape_overlay_cache.insert(*layer_id, outline_path);
-				// log::debug!("Creating new overlays for {:?}", layer_path);
+					log::trace!("Overlay: Creating new outline {:?}", &outline_path);
 				} else if let Some(outline_path) = outline_cache {
+					log::trace!("Overlay: Updating overlays for {:?} owning layer: {:?}", outline_path, layer_id);
 					self.modify_outline_overlays(outline_path.clone(), shape.into(), responses);
 					self.place_outline_overlays(outline_path.clone(), &transform, responses);
 				}
@@ -68,6 +68,7 @@ impl<'a> OverlayRenderer {
 
 					// If cached update placement and style
 					if let Some(anchor_overlays) = anchor_cache {
+						log::trace!("Overlay: Updating detail overlays for {:?}", anchor_overlays);
 						self.place_anchor_overlays(anchor, anchor_overlays, &transform, responses);
 						self.style_overlays(anchor, anchor_overlays, responses);
 					} else {
@@ -249,7 +250,7 @@ impl<'a> OverlayRenderer {
 	/// Removes the anchor / handle overlays from the overlay document
 	fn remove_anchor_overlays(&self, overlay_paths: &AnchorOverlays, responses: &mut VecDeque<Message>) {
 		overlay_paths.iter().flatten().for_each(|layer_id| {
-			// log::debug!("Sending delete message for: {:?}", layer_id);
+			log::trace!("Overlay: Sending delete message for: {:?}", layer_id);
 			responses.push_back(DocumentMessage::Overlays(Operation::DeleteLayer { path: layer_id.clone() }.into()).into());
 		});
 	}
@@ -288,7 +289,7 @@ impl<'a> OverlayRenderer {
 
 	/// Create an update message for an overlay
 	fn overlay_modify_message(&self, layer_path: Vec<LayerId>, bez_path: BezPath) -> Message {
-		Operation::SetShapePath { path: layer_path, bez_path }.into()
+		DocumentMessage::Overlays(Operation::SetShapePath { path: layer_path, bez_path }.into()).into()
 	}
 
 	/// Sets the overlay style for this point
@@ -302,6 +303,7 @@ impl<'a> OverlayRenderer {
 		for (index, point) in anchor.points.iter().enumerate() {
 			if let Some(point) = point {
 				if let Some(overlay) = &overlays[index] {
+					// log::debug!("style_overlays: {:?}", &overlay);
 					let style = if point.editor_state.is_selected { selected_style.clone() } else { deselected_style.clone() };
 					responses.push_back(DocumentMessage::Overlays(Operation::SetLayerStyle { path: overlay.clone(), style }.into()).into());
 				}
