@@ -79,9 +79,8 @@ impl VectorShape {
 	}
 
 	/// Move the selected points by the delta vector
-	pub fn move_selected(&mut self, position: DVec2) {
-		// TODO Implement
-		self.selected_anchors_mut().for_each(|anchor| anchor.move_selected_points(false, position));
+	pub fn move_selected(&mut self, drag_start: DVec2, drag_end: DVec2) {
+		self.selected_anchors_mut().for_each(|anchor| anchor.move_selected_points(false, drag_start, drag_end));
 	}
 
 	/// Delete the selected points from the VectorShape

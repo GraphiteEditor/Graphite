@@ -154,13 +154,13 @@ impl ShapeEditor {
 	}
 
 	/// Move the selected points by dragging the moue
-	pub fn move_selected_points(&self, delta: DVec2, responses: &mut VecDeque<Message>) {
+	pub fn move_selected_points(&self, drag_start: DVec2, drag_end: DVec2, responses: &mut VecDeque<Message>) {
 		for layer_path in &self.target_layers {
 			responses.push_back(
 				DocumentMessage::MoveSelectedVectorPoints {
 					layer_path: layer_path.clone(),
-					target_x: delta.x,
-					target_y: delta.y,
+					drag_start: (drag_start.x, drag_start.y),
+					drag_end: (drag_end.x, drag_end.y),
 				}
 				.into(),
 			);

@@ -929,11 +929,15 @@ impl Document {
 				}
 				Some(responses)
 			}
-			Operation::MoveSelectedVectorPoints { layer_path, delta } => {
-				let layer = self.layer_mut(&layer_path)?;
-				if let Some(shape) = layer.as_vector_shape_mut() {
-					let position = DVec2::new(delta.0, delta.1);
-					shape.move_selected(position);
+			Operation::MoveSelectedVectorPoints { layer_path, drag_start, drag_end } => {
+				if let Ok(viewspace) = self.generate_transform_relative_to_viewport(&layer_path) {
+					let start = viewspace.inverse().transform_point2(DVec2::new(drag_start.0, drag_start.1));
+					let end = viewspace.inverse().transform_point2(DVec2::new(drag_end.0, drag_end.1));
+					let layer = self.layer_mut(&layer_path)?;
+					if let Some(shape) = layer.as_vector_shape_mut() {
+						let transform = viewspace.inverse();
+						shape.move_selected(start, end);
+					}
 				}
 				self.mark_as_dirty(&layer_path)?;
 				Some([vec![DocumentChanged, LayerChanged { path: layer_path.clone() }], update_thumbnails_upstream(&layer_path)].concat())

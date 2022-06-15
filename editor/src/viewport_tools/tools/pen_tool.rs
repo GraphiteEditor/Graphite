@@ -216,14 +216,14 @@ impl Fsm for PenToolFsmState {
 
 					// Move the newly selected points to the cursor
 					let snapped_position = tool_data.snap_handler.snap_position(responses, document, input.mouse.position);
-					tool_data.shape_editor.move_selected_points(snapped_position, responses);
+					tool_data.shape_editor.move_selected_points(tool_data.drag_start_position, snapped_position, responses);
 
 					Drawing
 				}
 				(Drawing, PointerMove) => {
 					// Move selected points
 					let snapped_position = tool_data.snap_handler.snap_position(responses, document, input.mouse.position);
-					tool_data.shape_editor.move_selected_points(snapped_position, responses);
+					tool_data.shape_editor.move_selected_points(tool_data.drag_start_position, snapped_position, responses);
 
 					Drawing
 				}
