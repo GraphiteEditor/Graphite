@@ -32,13 +32,26 @@ impl VectorAnchor {
 	}
 
 	/// Create a new anchor with the given anchor position and handles
-	pub fn new_with_handles(anchor_pos: DVec2, handle_in_pos: DVec2, handle_out_pos: DVec2) -> Self {
+	pub fn new_with_handles(anchor_pos: DVec2, handle_in_pos: Option<DVec2>, handle_out_pos: Option<DVec2>) -> Self {
 		Self {
-			points: [
-				Some(VectorControlPoint::new(anchor_pos, ControlPointType::Anchor)),
-				Some(VectorControlPoint::new(handle_in_pos, ControlPointType::InHandle)),
-				Some(VectorControlPoint::new(handle_out_pos, ControlPointType::OutHandle)),
-			],
+			points: match (handle_in_pos, handle_out_pos) {
+				(Some(pos1), Some(pos2)) => [
+					Some(VectorControlPoint::new(anchor_pos, ControlPointType::Anchor)),
+					Some(VectorControlPoint::new(pos1, ControlPointType::InHandle)),
+					Some(VectorControlPoint::new(pos2, ControlPointType::OutHandle)),
+				],
+				(None, Some(pos2)) => [
+					Some(VectorControlPoint::new(anchor_pos, ControlPointType::Anchor)),
+					None,
+					Some(VectorControlPoint::new(pos2, ControlPointType::OutHandle)),
+				],
+				(Some(pos1), None) => [
+					Some(VectorControlPoint::new(anchor_pos, ControlPointType::Anchor)),
+					Some(VectorControlPoint::new(pos1, ControlPointType::InHandle)),
+					None,
+				],
+				(None, None) => [Some(VectorControlPoint::new(anchor_pos, ControlPointType::Anchor)), None, None],
+			},
 			editor_state: VectorAnchorState::default(),
 		}
 	}

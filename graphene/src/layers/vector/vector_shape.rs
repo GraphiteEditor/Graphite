@@ -2,6 +2,10 @@ use crate::layers::{
 	id_vec::IdBackedVec,
 	layer_info::{Layer, LayerDataType},
 };
+use std::{
+	f64::consts::PI,
+	ops::{Deref, DerefMut},
+};
 
 use super::{constants::ControlPointType, vector_anchor::VectorAnchor, vector_control_point::VectorControlPoint};
 
@@ -22,6 +26,7 @@ impl VectorShape {
 		VectorShape { ..Default::default() }
 	}
 
+	// ? isn't this function itself the adaptor?
 	// TODO Wrap this within an adapter to separate kurbo from VectorShape
 	/// Create a new VectorShape from a kurbo Shape
 	/// This exists to smooth the transition away from Kurbo
@@ -46,9 +51,10 @@ impl VectorShape {
 		)
 	}
 
-	/// Constructs an ngon
-	/// `radius` is the distance from the center to any vertex, or the radius of the circle the ngon may be inscribed inside
-	pub fn new_ngon(center: DVec2, sides: u32, radius: f64) -> Self {
+	/// constructs an ngon
+	/// `radius` is the distance from the `center` to any vertex, or the radius of the circle the ngon may be inscribed inside
+	/// `sides` is the number of sides
+	pub fn new_ngon(center: DVec2, sides: u64, radius: f64) -> Self {
 		let mut anchors = vec![];
 		for i in 0..sides {
 			let angle = (i as f64) * std::f64::consts::TAU / (sides as f64);
@@ -71,9 +77,66 @@ impl VectorShape {
 		p_line
 	}
 
-	// ** MANIPULATION OF POINTS **
+	pub fn new_spline<T: Into<glam::DVec2>>(points: Vec<T>) -> Self {
+		let mut new = Self::default();
+		// shadow `points`
+		let points: Vec<DVec2> = points.into_iter().map(Into::<glam::DVec2>::into).collect();
 
-	/// Add a new anchor at the closest position on the nearest curve
+		// Number of points = number of points to find handles for
+		let n = points.len();
+
+		// matrix coefficients a, b and c (see https://mathworld.wolfram.com/CubicSpline.html)
+		// because the 'a' coefficients are all 1 they need not be stored
+		// this algorithm does a variation of the above algorithm.
+		// Instead of using the traditional cubic: a + bt + ct^2 + dt^3, we use the bezier cubic.
+
+		let mut b = vec![DVec2::new(4.0, 4.0); n];
+		b[0] = DVec2::new(2.0, 2.0);
+		b[n - 1] = DVec2::new(2.0, 2.0);
+
+		let mut c = vec![DVec2::new(1.0, 1.0); n];
+
+		// 'd' is the the second point in a cubic bezier, which is what we solve for
+		let mut d = vec![DVec2::ZERO; n];
+
+		d[0] = DVec2::new(2.0 * points[1].x + points[0].x, 2.0 * points[1].y + points[0].y);
+		d[n - 1] = DVec2::new(3.0 * points[n - 1].x, 3.0 * points[n - 1].y);
+		for idx in 1..(n - 1) {
+			d[idx] = DVec2::new(4.0 * points[idx].x + 2.0 * points[idx + 1].x, 4.0 * points[idx].y + 2.0 * points[idx + 1].y);
+		}
+
+		// Solve with Thomas algorithm (see https://en.wikipedia.org/wiki/Tridiagonal_matrix_algorithm)
+		// do row operations to eliminate `a` coefficients
+		c[0] /= -b[0];
+		d[0] /= -b[0];
+		for i in 1..n {
+			b[i] += c[i - 1];
+			// for some reason the below line makes the borrow checker mad
+			//d[i] += d[i-1]
+			d[i] = d[i] + d[i - 1];
+			c[i] /= -b[i];
+			d[i] /= -b[i];
+		}
+
+		// at this point b[i] == -a[i + 1], a[i] == 0,
+		// do row operations to eliminate 'c' coefficients and solve
+		d[n - 1] *= -1.0;
+		for i in (0..n - 1).rev() {
+			d[i] = d[i] - (c[i] * d[i + 1]);
+			d[i] *= -1.0; //d[i] /= b[i]
+		}
+
+		// given the second point in the n'th cubic bezier, the third point is given by 2 * points[n+1] - b[n+1].
+		// to find 'handle1_pos' for the n'th point we need the n-1 cubic bezier
+		new.0.push_end(VectorAnchor::new_with_handles(points[0], None, Some(d[0])));
+		for i in 1..n - 1 {
+			new.0.push_end(VectorAnchor::new_with_handles(points[i], Some(2.0 * points[i] - d[i]), Some(d[i])));
+		}
+		new.0.push_end(VectorAnchor::new_with_handles(points[n - 1], Some(2.0 * points[n - 1] - d[n - 1]), None));
+
+		new
+	}
+
 	pub fn add_point(&mut self, position_closest: DVec2) {
 		// TODO Implement
 	}
