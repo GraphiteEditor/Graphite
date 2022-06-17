@@ -24,7 +24,8 @@
 	// ESLint config
 	"eslint.format.enable": true,
 	"eslint.workingDirectories": [
-		"./frontend"
+		"./frontend",
+		"./bezier-rs/docs/interactive-docs",
 	],
 	"eslint.validate": [
 		"javascript",
