@@ -142,8 +142,9 @@ impl VectorShape {
 	}
 
 	/// Move the selected points by the delta vector
-	pub fn move_selected(&mut self, delta: DVec2, target: DVec2, viewspace: &DAffine2) {
-		self.selected_points_mut().for_each(|anchor| anchor.move_selected_points(delta, target, viewspace));
+	pub fn move_selected(&mut self, delta: DVec2, absolute_position: DVec2, viewspace: &DAffine2) {
+		self.selected_anchors_any_points_mut()
+			.for_each(|anchor| anchor.move_selected_points(delta, absolute_position, viewspace));
 	}
 
 	/// Delete the selected points from the VectorShape
@@ -222,7 +223,7 @@ impl VectorShape {
 
 	// ** ACCESSING ANCHORS **
 
-	/// Return all the selected anchors by reference
+	/// Return all the selected anchors, reference
 	pub fn selected_anchors(&self) -> impl Iterator<Item = &VectorAnchor> {
 		self.anchors().iter().filter(|anchor| anchor.is_anchor_selected())
 	}
@@ -232,8 +233,13 @@ impl VectorShape {
 		self.anchors_mut().iter_mut().filter(|anchor| anchor.is_anchor_selected())
 	}
 
-	/// Return all the selected points by reference
-	pub fn selected_points_mut(&mut self) -> impl Iterator<Item = &mut VectorAnchor> {
+	/// Return all the selected anchors that have any children points selected, reference
+	pub fn selected_anchors_any_points(&self) -> impl Iterator<Item = &VectorAnchor> {
+		self.anchors().iter().filter(|anchor| anchor.any_points_selected())
+	}
+
+	/// Return all the selected anchors that have any children points selected, mutable
+	pub fn selected_anchors_any_points_mut(&mut self) -> impl Iterator<Item = &mut VectorAnchor> {
 		self.anchors_mut().iter_mut().filter(|anchor| anchor.any_points_selected())
 	}
 

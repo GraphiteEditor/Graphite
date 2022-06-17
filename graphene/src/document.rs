@@ -929,18 +929,32 @@ impl Document {
 				}
 				Some(responses)
 			}
-			Operation::MoveSelectedVectorPoints { layer_path, delta, target } => {
+			Operation::MoveSelectedVectorPoints { layer_path, delta, absolute_position } => {
 				if let Ok(viewspace) = self.generate_transform_relative_to_viewport(&layer_path) {
 					let objectspace = &viewspace.inverse();
 					let delta = objectspace.transform_vector2(DVec2::new(delta.0, delta.1));
-					let target = objectspace.transform_point2(DVec2::new(target.0, target.1));
+					let absolute_position = objectspace.transform_point2(DVec2::new(absolute_position.0, absolute_position.1));
 					let layer = self.layer_mut(&layer_path)?;
 					if let Some(shape) = layer.as_vector_shape_mut() {
-						shape.move_selected(delta, target, &viewspace);
+						shape.move_selected(delta, absolute_position, &viewspace);
 					}
 				}
 				self.mark_as_dirty(&layer_path)?;
 				Some([vec![DocumentChanged, LayerChanged { path: layer_path.clone() }], update_thumbnails_upstream(&layer_path)].concat())
+			}
+			Operation::SetSelectedHandleMirroring {
+				layer_path,
+				toggle_distance,
+				toggle_angle,
+			} => {
+				let layer = self.layer_mut(&layer_path)?;
+				if let Some(shape) = layer.as_vector_shape_mut() {
+					for anchor in shape.selected_anchors_mut() {
+						anchor.toggle_mirroring(toggle_distance, toggle_angle);
+					}
+				}
+				// This does nothing visually so we don't need to send any messages
+				None
 			}
 		};
 		Ok(responses)

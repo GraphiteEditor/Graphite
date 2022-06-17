@@ -129,7 +129,7 @@ impl Fsm for PathToolFsmState {
 
 					// Set the newly targeted layers to visible
 					let layer_paths = document.selected_visible_layers().map(|layer_path| layer_path.to_vec()).collect();
-					tool_data.shape_editor.set_target_layers(layer_paths);
+					tool_data.shape_editor.set_selected_layers(layer_paths);
 
 					// This can happen in any state (which is why we return self)
 					self
@@ -154,12 +154,12 @@ impl Fsm for PathToolFsmState {
 					{
 						responses.push_back(DocumentMessage::StartTransaction.into());
 
-						let ignore_document = tool_data.shape_editor.target_layers().clone();
+						let ignore_document = tool_data.shape_editor.selected_layers().clone();
 						tool_data
 							.snap_handler
 							.start_snap(document, document.bounding_boxes(Some(&ignore_document), None, font_cache), true, true);
 
-						let include_handles = tool_data.shape_editor.target_layers_ref();
+						let include_handles = tool_data.shape_editor.selected_layers_ref();
 						tool_data.snap_handler.add_all_document_handles(document, &include_handles, &[]);
 
 						tool_data.drag_start_pos = input.mouse.position;
@@ -206,7 +206,7 @@ impl Fsm for PathToolFsmState {
 						tool_data.alt_debounce = alt_pressed;
 						// Only on alt down
 						if alt_pressed {
-							tool_data.shape_editor.toggle_selected_mirror_angle(&document.graphene_document, &responses);
+							tool_data.shape_editor.toggle_handle_mirroring_on_selected(true, false, responses);
 						}
 					}
 
@@ -214,13 +214,11 @@ impl Fsm for PathToolFsmState {
 					let shift_pressed = input.keyboard.get(shift_mirror_distance as usize);
 					if shift_pressed != tool_data.shift_debounce {
 						tool_data.shift_debounce = shift_pressed;
-						tool_data.shape_editor.toggle_selected_mirror_distance(&document.graphene_document, &responses);
+						tool_data.shape_editor.toggle_handle_mirroring_on_selected(false, true, responses);
 					}
 
 					// Move the selected points by the mouse position
 					let snapped_position = tool_data.snap_handler.snap_position(responses, document, input.mouse.position);
-					// log::debug!("Snapped position: {:?}", snapped_position);
-					//TODO This is relative position, update accordingly
 					tool_data.shape_editor.move_selected_points(snapped_position - tool_data.drag_start_pos, snapped_position, responses);
 					tool_data.drag_start_pos = snapped_position;
 					Dragging

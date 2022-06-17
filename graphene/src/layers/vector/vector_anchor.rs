@@ -1,3 +1,5 @@
+use std::ops::Deref;
+
 use super::{
 	constants::{ControlPointType, SELECTION_THRESHOLD},
 	vector_control_point::VectorControlPoint,
@@ -85,21 +87,53 @@ impl VectorAnchor {
 	}
 
 	/// Move the selected points by the provided transform
-	pub fn move_selected_points(&mut self, delta: DVec2, target: DVec2, viewspace: &DAffine2) {
-		let move_point = |point: &mut VectorControlPoint| {
-			if viewspace.transform_point2(target).distance(viewspace.transform_point2(point.position)) < SELECTION_THRESHOLD {
-				point.position = target;
-			} else {
-				point.position += delta;
-			}
+	pub fn move_selected_points(&mut self, delta: DVec2, absolute_position: DVec2, viewspace: &DAffine2) {
+		// TODO Use an ID as opposed to distance, stopgap for now
+		let is_drag_target = |point: &mut VectorControlPoint| -> bool { viewspace.transform_point2(absolute_position).distance(viewspace.transform_point2(point.position)) < SELECTION_THRESHOLD };
+
+		let move_absolute = |point: &mut VectorControlPoint, position: DVec2| {
+			point.position = position;
 		};
 
-		// Check if only the anchor is selected
-		if self.is_anchor_selected() {
-			self.points_mut().for_each(|point| move_point(point))
-		} else {
-			self.selected_points_mut().for_each(|point| move_point(point))
+		let move_relative = |point: &mut VectorControlPoint, delta: DVec2| {
+			point.position += delta;
 		};
+
+		// If the anchor is selected ignore any handle mirroring / dragging
+		if self.is_anchor_selected() {
+			for point in self.points_mut() {
+				if is_drag_target(point) {
+					move_absolute(point, absolute_position)
+				} else {
+					move_relative(point, delta)
+				}
+			}
+			return;
+		}
+
+		for point in self.selected_handles_mut() {
+			if is_drag_target(point) {
+				move_absolute(point, absolute_position)
+			} else {
+				move_relative(point, delta)
+			}
+		}
+
+		// Apply any secondary motion to unselected points
+		if let Some(position) = self.reflected_handle_position(
+			self.points[ControlPointType::InHandle].as_ref(),
+			self.editor_state.mirror_angle_between_handles,
+			self.editor_state.mirror_distance_between_handles,
+		) {
+			move_absolute(self.points[ControlPointType::OutHandle].as_mut().unwrap(), position)
+		}
+		if let Some(position) = self.reflected_handle_position(
+			self.points[ControlPointType::OutHandle].as_ref(),
+			self.editor_state.mirror_angle_between_handles,
+			self.editor_state.mirror_distance_between_handles,
+		) {
+			move_absolute(self.points[ControlPointType::InHandle].as_mut().unwrap(), position)
+		}
 	}
 
 	/// Delete any VectorControlPoint that are selected, this includes handles or the anchor
@@ -162,12 +196,47 @@ impl VectorAnchor {
 		self.points.iter_mut().flatten().filter(|pnt| pnt.editor_state.is_selected)
 	}
 
+	/// Provides the selected handles attached to this anchor
+	pub fn selected_handles(&self) -> impl Iterator<Item = &VectorControlPoint> {
+		self.points.iter().skip(1).flatten().filter(|pnt| pnt.editor_state.is_selected)
+	}
+
+	/// Provides the mutable selected handles attached to this anchor
+	pub fn selected_handles_mut(&mut self) -> impl Iterator<Item = &mut VectorControlPoint> {
+		self.points.iter_mut().skip(1).flatten().filter(|pnt| pnt.editor_state.is_selected)
+	}
+
 	/// Angle between handles in radians
 	pub fn angle_between_handles(&self) -> f64 {
 		if let [Some(a1), Some(h1), Some(h2)] = &self.points {
 			return (a1.position - h1.position).angle_between(a1.position - h2.position);
 		}
 		0.0
+	}
+
+	/// Find the correctly mirrored handle position based on mirroring settings
+	fn reflected_handle_position(&self, handle: Option<&VectorControlPoint>, mirror_angle: bool, mirror_distance: bool) -> Option<DVec2> {
+		if let Some(handle) = handle {
+			let opposing_handle = &self.opposing_handle(handle).as_ref();
+			// Early out for cases where we can't mirror
+			if !mirror_angle || !handle.is_selected() || opposing_handle.is_none() || opposing_handle.unwrap().is_selected() {
+				return None;
+			}
+
+			let opposing_handle = opposing_handle.unwrap();
+			let center = self.points[ControlPointType::Anchor].as_ref().unwrap();
+
+			// Keep rotational similarity, but distance variable
+			let radius = if mirror_distance {
+				center.position.distance(handle.position)
+			} else {
+				center.position.distance(opposing_handle.position)
+			};
+			let phi = center.position - opposing_handle.position;
+			let phi = phi.y.atan2(phi.x);
+			return Some(DVec2::new(radius * phi.cos() + center.position.x, radius * phi.sin() + center.position.y));
+		}
+		None
 	}
 
 	/// Returns the opposing handle to the handle provided
@@ -177,8 +246,13 @@ impl VectorAnchor {
 	}
 
 	/// Set the mirroring state
-	pub fn set_mirroring(&mut self, mirroring: bool) {
-		self.editor_state.mirror_angle_between_handles = mirroring;
+	pub fn toggle_mirroring(&mut self, toggle_distance: bool, toggle_angle: bool) {
+		if toggle_distance {
+			self.editor_state.mirror_distance_between_handles = !self.editor_state.mirror_distance_between_handles;
+		}
+		if toggle_angle {
+			self.editor_state.mirror_angle_between_handles = !self.editor_state.mirror_angle_between_handles;
+		}
 	}
 
 	/// Helper function to more easily set position of VectorControlPoints

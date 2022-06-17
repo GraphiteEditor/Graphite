@@ -141,7 +141,7 @@ pub enum Operation {
 	MoveSelectedVectorPoints {
 		layer_path: Vec<LayerId>,
 		delta: (f64, f64),
-		target: (f64, f64),
+		absolute_position: (f64, f64),
 	},
 	RenameLayer {
 		layer_path: Vec<LayerId>,
@@ -227,6 +227,11 @@ pub enum Operation {
 	SetLayerStroke {
 		path: Vec<LayerId>,
 		stroke: Stroke,
+	},
+	SetSelectedHandleMirroring {
+		layer_path: Vec<LayerId>,
+		toggle_distance: bool,
+		toggle_angle: bool,
 	},
 }
 

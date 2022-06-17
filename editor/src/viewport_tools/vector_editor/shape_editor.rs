@@ -25,7 +25,7 @@ use graphene::LayerId;
 #[derive(Clone, Debug, Default)]
 pub struct ShapeEditor {
 	// The layers we can select and edit anchors / handles from
-	target_layers: Vec<Vec<LayerId>>,
+	selected_layers: Vec<Vec<LayerId>>,
 }
 
 // TODO Consider keeping a list of selected anchors to minimize traversals of the layers
@@ -33,7 +33,7 @@ impl ShapeEditor {
 	/// Select the first point within the selection threshold
 	/// Returns true if we've found a point, false otherwise
 	pub fn select_point(&self, document: &Document, mouse_position: DVec2, select_threshold: f64, add_to_selection: bool, responses: &mut VecDeque<Message>) -> bool {
-		if self.target_layers.is_empty() {
+		if self.selected_layers.is_empty() {
 			return false;
 		}
 
@@ -72,10 +72,6 @@ impl ShapeEditor {
 					.into(),
 				);
 			}
-
-			// TODO Update handle states via a message
-			// Due to the shape data structure not persisting across shape selection changes we need to rely on the kurbo path to know if we should mirror
-			// selected_anchor.set_mirroring((selected_anchor.angle_between_handles().abs() - std::f64::consts::PI).abs() < MINIMUM_MIRROR_THRESHOLD);
 			return true;
 		}
 
@@ -95,25 +91,25 @@ impl ShapeEditor {
 	}
 
 	/// Set the shapes we consider for selection, we will choose draggable handles / anchors from these shapes.
-	pub fn set_target_layers(&mut self, target_layers: Vec<Vec<LayerId>>) {
-		self.target_layers = target_layers;
+	pub fn set_selected_layers(&mut self, target_layers: Vec<Vec<LayerId>>) {
+		self.selected_layers = target_layers;
 	}
 
-	pub fn target_layers(&self) -> &Vec<Vec<LayerId>> {
-		&self.target_layers
+	pub fn selected_layers(&self) -> &Vec<Vec<LayerId>> {
+		&self.selected_layers
 	}
 
-	pub fn target_layers_ref(&self) -> Vec<&[LayerId]> {
-		self.target_layers.iter().map(|l| l.as_slice()).collect::<Vec<_>>()
+	pub fn selected_layers_ref(&self) -> Vec<&[LayerId]> {
+		self.selected_layers.iter().map(|l| l.as_slice()).collect::<Vec<_>>()
 	}
 
 	/// Clear all of the shapes we can modify
-	pub fn clear_target_layers(&mut self) {
-		self.target_layers.clear();
+	pub fn clear_selected_layers(&mut self) {
+		self.selected_layers.clear();
 	}
 
-	pub fn has_target_layers(&self) -> bool {
-		!self.target_layers.is_empty()
+	pub fn has_selected_layers(&self) -> bool {
+		!self.selected_layers.is_empty()
 	}
 
 	/// Provide the currently selected anchor by reference
@@ -129,23 +125,20 @@ impl ShapeEditor {
 	/// Select the last anchor in this shape
 	pub fn select_last_anchor<'a>(&'a self, document: &'a Document, layer_id: &[LayerId], responses: &mut VecDeque<Message>) {
 		// TODO Send messages instead
-		// if let Some(last) = self.shape(document, layer_id) {
-		// 	return last.select_last_anchor();
-		// }
 	}
 
 	/// Select the Nth anchor of the shape, negative numbers index from the end
 	pub fn select_nth_anchor<'a>(&'a self, document: &'a Document, layer_id: &'a [LayerId], anchor_index: i32, responses: &mut VecDeque<Message>) {
 		// TODO Send messages instead
-		if let Some(shape) = self.shape(document, layer_id) {
-			if anchor_index < 0 {
-				let anchor_index = shape.anchors().len() - ((-anchor_index) as usize);
-			//return shape.select_anchor_by_index(anchor_index);
-			} else {
-				let anchor_index = anchor_index as usize;
-				//return shape.select_anchor_by_index(anchor_index);
-			}
-		}
+		// if let Some(shape) = self.shape(document, layer_id) {
+		// 	if anchor_index < 0 {
+		// 		let anchor_index = shape.anchors().len() - ((-anchor_index) as usize);
+		// 	//return shape.select_anchor_by_index(anchor_index);
+		// 	} else {
+		// 		let anchor_index = anchor_index as usize;
+		// 		//return shape.select_anchor_by_index(anchor_index);
+		// 	}
+		// }
 	}
 
 	/// Provide the currently selected points by reference
@@ -154,13 +147,13 @@ impl ShapeEditor {
 	}
 
 	/// Move the selected points by dragging the moue
-	pub fn move_selected_points(&self, delta: DVec2, target: DVec2, responses: &mut VecDeque<Message>) {
-		for layer_path in &self.target_layers {
+	pub fn move_selected_points(&self, delta: DVec2, absolute_position: DVec2, responses: &mut VecDeque<Message>) {
+		for layer_path in &self.selected_layers {
 			responses.push_back(
 				DocumentMessage::MoveSelectedVectorPoints {
 					layer_path: layer_path.clone(),
 					delta: (delta.x, delta.y),
-					target: (target.x, target.y),
+					absolute_position: (absolute_position.x, absolute_position.y),
 				}
 				.into(),
 			);
@@ -173,51 +166,38 @@ impl ShapeEditor {
 	}
 
 	/// Toggle if the handles should mirror angle across the anchor positon
-	pub fn toggle_selected_mirror_angle(&self, document: &Document, responses: &VecDeque<Message>) {
-		// for anchor in self.selected_anchors(document) {
-		// 	anchor.mirror_angle_active = !anchor.mirror_angle_active;
-		// }
-		// TODO Send a message instead
-	}
-
-	pub fn set_selected_mirror_options(&self, document: &Document, mirror_angle: bool, mirror_distance: bool, responses: &VecDeque<Message>) {
-		// for anchor in self.selected_anchors(document) {
-		// 	anchor.mirror_angle_active = mirror_angle;
-		// 	anchor.mirror_distance_active = mirror_distance;
-		// }
-		// TODO Send a message instead
-	}
-
-	/// Toggle if the handles should mirror distance across the anchor position
-	pub fn toggle_selected_mirror_distance(&self, document: &Document, responses: &VecDeque<Message>) {
-		// for anchor in self.selected_anchors(document) {
-		// 	anchor.mirror_distance_active = !anchor.mirror_distance_active;
-		// }
-		// TODO Send a message instead
+	pub fn toggle_handle_mirroring_on_selected(&self, toggle_angle: bool, toggle_distance: bool, responses: &mut VecDeque<Message>) {
+		for layer_path in &self.selected_layers {
+			responses.push_back(
+				DocumentMessage::ToggleSelectedHandleMirroring {
+					layer_path: layer_path.clone(),
+					toggle_angle,
+					toggle_distance,
+				}
+				.into(),
+			);
+		}
 	}
 
 	/// Deselect all anchors from the shapes the manipulation handler has created
-	pub fn deselect_all_points(&self, document: &Document, responses: &VecDeque<Message>) {
-		for shape in self.iter(document) {
-			// shape.clear_selected_anchors();
-			// TODO Send a message instead
-		}
+	pub fn deselect_all_points(&self, responses: &mut VecDeque<Message>) {
+		responses.push_back(DocumentMessage::DeselectAllVectorPoints.into());
 	}
 
 	/// Iterate over the shapes
 	pub fn iter<'a>(&'a self, document: &'a Document) -> impl Iterator<Item = &'a VectorShape> + 'a {
-		self.target_layers.iter().flat_map(|layer_id| document.layer(layer_id)).filter_map(|shape| shape.as_vector_shape())
+		self.selected_layers.iter().flat_map(|layer_id| document.layer(layer_id)).filter_map(|shape| shape.as_vector_shape())
 	}
 
 	/// Find a point that is within the selection threshold and return an index to the shape, anchor, and point
 	fn find_nearest_point_indicies(&self, document: &Document, mouse_position: DVec2, select_threshold: f64) -> Option<(&[LayerId], u64, usize)> {
-		if self.target_layers.is_empty() {
+		if self.selected_layers.is_empty() {
 			return None;
 		}
 
 		let select_threshold_squared = select_threshold * select_threshold;
 		// Find the closest control point among all elements of shapes_to_modify
-		for layer in self.target_layers.iter() {
+		for layer in self.selected_layers.iter() {
 			if let Some((anchor_id, point_index, distance_squared)) = self.closest_point_in_layer(document, layer, mouse_position) {
 				// Choose the first point under the threshold
 				if distance_squared < select_threshold_squared {

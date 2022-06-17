@@ -91,7 +91,7 @@ pub enum DocumentMessage {
 	MoveSelectedVectorPoints {
 		layer_path: Vec<LayerId>,
 		delta: (f64, f64),
-		target: (f64, f64),
+		absolute_position: (f64, f64),
 	},
 	NudgeSelectedLayers {
 		delta_x: f64,
@@ -161,6 +161,11 @@ pub enum DocumentMessage {
 	},
 	ToggleLayerVisibility {
 		layer_path: Vec<LayerId>,
+	},
+	ToggleSelectedHandleMirroring {
+		layer_path: Vec<LayerId>,
+		toggle_distance: bool,
+		toggle_angle: bool,
 	},
 	Undo,
 	UngroupLayers {

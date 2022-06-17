@@ -199,7 +199,7 @@ impl Fsm for PenToolFsmState {
 				}
 				(Drawing, DragStop) => {
 					// Deselect everything (this means we are no longer dragging the handle)
-					tool_data.shape_editor.deselect_all_points(&document.graphene_document, responses);
+					tool_data.shape_editor.deselect_all_points(responses);
 
 					// If the drag does not exceed the threshold, then replace the curve with a line
 					if tool_data.drag_start_position.distance(input.mouse.position) < CREATE_CURVE_THRESHOLD {
@@ -244,7 +244,7 @@ impl Fsm for PenToolFsmState {
 
 					// TODO Tell overlay manager to remove the overlays
 					//tool_data.shape_editor.remove_overlays();
-					tool_data.shape_editor.clear_target_layers();
+					tool_data.shape_editor.clear_selected_layers();
 
 					tool_data.path = None;
 					tool_data.snap_handler.cleanup(responses);
@@ -254,7 +254,7 @@ impl Fsm for PenToolFsmState {
 				(_, Abort) => {
 					// TODO Tell overlay manager to remove the overlays
 					//data.shape_editor.remove_overlays();
-					tool_data.shape_editor.clear_target_layers();
+					tool_data.shape_editor.clear_selected_layers();
 					Ready
 				}
 				_ => self,

@@ -40,6 +40,10 @@ impl VectorControlPoint {
 		self.editor_state.is_selected = selected;
 	}
 
+	pub fn is_selected(&self) -> bool {
+		self.editor_state.is_selected
+	}
+
 	/// Apply given transform to this point
 	pub fn transform(&mut self, delta: &DAffine2) {
 		self.position = delta.transform_point2(self.position);

@@ -1194,10 +1194,10 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 					.into(),
 				);
 			}
-			MoveSelectedVectorPoints { layer_path, delta, target } => {
+			MoveSelectedVectorPoints { layer_path, delta, absolute_position } => {
 				self.backup(responses);
 				if let Ok(_layer) = self.graphene_document.layer(&layer_path) {
-					responses.push_back(DocumentOperation::MoveSelectedVectorPoints { layer_path, delta, target }.into());
+					responses.push_back(DocumentOperation::MoveSelectedVectorPoints { layer_path, delta, absolute_position }.into());
 				}
 			}
 			NudgeSelectedLayers { delta_x, delta_y } => {
@@ -1506,6 +1506,20 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 			ToggleLayerVisibility { layer_path } => {
 				responses.push_back(DocumentOperation::ToggleLayerVisibility { path: layer_path }.into());
 				responses.push_back(ToolMessage::DocumentIsDirty.into());
+			}
+			ToggleSelectedHandleMirroring {
+				layer_path,
+				toggle_distance,
+				toggle_angle,
+			} => {
+				responses.push_back(
+					DocumentOperation::SetSelectedHandleMirroring {
+						layer_path,
+						toggle_distance,
+						toggle_angle,
+					}
+					.into(),
+				);
 			}
 			Undo => {
 				responses.push_back(ToolMessage::AbortCurrentTool.into());
