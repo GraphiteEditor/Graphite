@@ -949,7 +949,7 @@ impl Document {
 			} => {
 				let layer = self.layer_mut(&layer_path)?;
 				if let Some(shape) = layer.as_vector_shape_mut() {
-					for anchor in shape.selected_anchors_mut() {
+					for anchor in shape.selected_anchors_any_points_mut() {
 						anchor.toggle_mirroring(toggle_distance, toggle_angle);
 					}
 				}
