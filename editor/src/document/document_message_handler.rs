@@ -1194,10 +1194,10 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 					.into(),
 				);
 			}
-			MoveSelectedVectorPoints { layer_path, drag_start, drag_end } => {
+			MoveSelectedVectorPoints { layer_path, delta, target } => {
 				self.backup(responses);
-				if let Ok(layer) = self.graphene_document.layer(&layer_path) {
-					responses.push_back(DocumentOperation::MoveSelectedVectorPoints { layer_path, drag_start, drag_end }.into());
+				if let Ok(_layer) = self.graphene_document.layer(&layer_path) {
+					responses.push_back(DocumentOperation::MoveSelectedVectorPoints { layer_path, delta, target }.into());
 				}
 			}
 			NudgeSelectedLayers { delta_x, delta_y } => {

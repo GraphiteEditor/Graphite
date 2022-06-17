@@ -142,8 +142,8 @@ impl VectorShape {
 	}
 
 	/// Move the selected points by the delta vector
-	pub fn move_selected(&mut self, drag_start: DVec2, drag_end: DVec2) {
-		self.selected_anchors_mut().for_each(|anchor| anchor.move_selected_points(false, drag_start, drag_end));
+	pub fn move_selected(&mut self, delta: DVec2, target: DVec2, viewspace: &DAffine2) {
+		self.selected_points_mut().for_each(|anchor| anchor.move_selected_points(delta, target, viewspace));
 	}
 
 	/// Delete the selected points from the VectorShape
@@ -230,6 +230,11 @@ impl VectorShape {
 	/// Return all the selected anchors, mutable
 	pub fn selected_anchors_mut(&mut self) -> impl Iterator<Item = &mut VectorAnchor> {
 		self.anchors_mut().iter_mut().filter(|anchor| anchor.is_anchor_selected())
+	}
+
+	/// Return all the selected points by reference
+	pub fn selected_points_mut(&mut self) -> impl Iterator<Item = &mut VectorAnchor> {
+		self.anchors_mut().iter_mut().filter(|anchor| anchor.any_points_selected())
 	}
 
 	/// An alias for `self.0`

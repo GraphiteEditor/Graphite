@@ -48,3 +48,6 @@ impl<T> IndexMut<ControlPointType> for [T; 3] {
 		&mut self[mt as usize]
 	}
 }
+
+// Remove when no longer needed
+pub const SELECTION_THRESHOLD: f64 = 10.;

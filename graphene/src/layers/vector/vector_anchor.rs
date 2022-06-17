@@ -1,4 +1,7 @@
-use super::{constants::ControlPointType, vector_control_point::VectorControlPoint};
+use super::{
+	constants::{ControlPointType, SELECTION_THRESHOLD},
+	vector_control_point::VectorControlPoint,
+};
 use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};
 
@@ -82,15 +85,21 @@ impl VectorAnchor {
 	}
 
 	/// Move the selected points by the provided transform
-	/// if relative is false the point is transformed and its original position is subtracted
-	pub fn move_selected_points(&mut self, relative: bool, drag_start: DVec2, drag_end: DVec2) {
-		for point in self.selected_points_mut() {
-			if relative {
-				point.position = drag_end - drag_start + point.position;
+	pub fn move_selected_points(&mut self, delta: DVec2, target: DVec2, viewspace: &DAffine2) {
+		let move_point = |point: &mut VectorControlPoint| {
+			if viewspace.transform_point2(target).distance(viewspace.transform_point2(point.position)) < SELECTION_THRESHOLD {
+				point.position = target;
 			} else {
-				point.position = drag_end;
+				point.position += delta;
 			}
-		}
+		};
+
+		// Check if only the anchor is selected
+		if self.is_anchor_selected() {
+			self.points_mut().for_each(|point| move_point(point))
+		} else {
+			self.selected_points_mut().for_each(|point| move_point(point))
+		};
 	}
 
 	/// Delete any VectorControlPoint that are selected, this includes handles or the anchor

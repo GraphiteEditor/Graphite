@@ -51,7 +51,7 @@ impl ShapeEditor {
 			// let selected_shape = self.shape(document, shape_layer_path).unwrap();
 
 			// Should we select or deselect the point?
-			let should_select = if is_point_selected { add_to_selection } else { true };
+			let should_select = if is_point_selected { !add_to_selection } else { true };
 
 			// This is selecting the anchor only for now, next to generalize to points
 			if should_select {
@@ -154,13 +154,13 @@ impl ShapeEditor {
 	}
 
 	/// Move the selected points by dragging the moue
-	pub fn move_selected_points(&self, drag_start: DVec2, drag_end: DVec2, responses: &mut VecDeque<Message>) {
+	pub fn move_selected_points(&self, delta: DVec2, target: DVec2, responses: &mut VecDeque<Message>) {
 		for layer_path in &self.target_layers {
 			responses.push_back(
 				DocumentMessage::MoveSelectedVectorPoints {
 					layer_path: layer_path.clone(),
-					drag_start: (drag_start.x, drag_start.y),
-					drag_end: (drag_end.x, drag_end.y),
+					delta: (delta.x, delta.y),
+					target: (target.x, target.y),
 				}
 				.into(),
 			);

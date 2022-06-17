@@ -929,14 +929,14 @@ impl Document {
 				}
 				Some(responses)
 			}
-			Operation::MoveSelectedVectorPoints { layer_path, drag_start, drag_end } => {
+			Operation::MoveSelectedVectorPoints { layer_path, delta, target } => {
 				if let Ok(viewspace) = self.generate_transform_relative_to_viewport(&layer_path) {
-					let start = viewspace.inverse().transform_point2(DVec2::new(drag_start.0, drag_start.1));
-					let end = viewspace.inverse().transform_point2(DVec2::new(drag_end.0, drag_end.1));
+					let objectspace = &viewspace.inverse();
+					let delta = objectspace.transform_vector2(DVec2::new(delta.0, delta.1));
+					let target = objectspace.transform_point2(DVec2::new(target.0, target.1));
 					let layer = self.layer_mut(&layer_path)?;
 					if let Some(shape) = layer.as_vector_shape_mut() {
-						let transform = viewspace.inverse();
-						shape.move_selected(start, end);
+						shape.move_selected(delta, target, &viewspace);
 					}
 				}
 				self.mark_as_dirty(&layer_path)?;

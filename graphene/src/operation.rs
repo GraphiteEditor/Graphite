@@ -140,8 +140,8 @@ pub enum Operation {
 	},
 	MoveSelectedVectorPoints {
 		layer_path: Vec<LayerId>,
-		drag_start: (f64, f64),
-		drag_end: (f64, f64),
+		delta: (f64, f64),
+		target: (f64, f64),
 	},
 	RenameLayer {
 		layer_path: Vec<LayerId>,
