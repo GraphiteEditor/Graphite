@@ -11,8 +11,6 @@ let fullRippleHeight;
 let ripples;
 let activeRippleIndex;
 
-let globalCount = 0;
-
 window.addEventListener("DOMContentLoaded", initializeRipples);
 window.addEventListener("resize", () => animate(true));
 
@@ -22,7 +20,7 @@ function initializeRipples() {
 	navButtons = document.querySelectorAll("header nav a");
 	rippleSvg = document.querySelector("header .ripple");
 	ripplePath = rippleSvg.querySelector("path");
-	fullRippleHeight = Number.parseInt(window.getComputedStyle(rippleSvg).height) - 4;
+	fullRippleHeight = Number.parseInt(window.getComputedStyle(rippleSvg).height, 10) - 4;
 
 	ripples = Array.from(navButtons).map((button) => ({
 		element: button,
@@ -32,7 +30,6 @@ function initializeRipples() {
 	}));
 
 	activeRippleIndex = ripples.findIndex((ripple) => ripple.element.getAttribute("href").replace(/\//g, "") === window.location.pathname.replace(/\//g, ""));
-
 
 	ripples.forEach((ripple) => {
 		const updateTimings = (goingUp) => {
@@ -66,11 +63,8 @@ function initializeRipples() {
 
 function animate(forceRefresh) {
 	if (!ripplesInitialized) return;
-	
-	const animateThisFrame = ripples.some((ripple) => ripple.animationStartTime && ripple.animationEndTime && Date.now() <= ripple.animationEndTime);
 
-	// console.log(globalCount, new Date().getSeconds(), Date.now(), animateThisFrame, {...ripples[0]});
-	globalCount++;
+	const animateThisFrame = ripples.some((ripple) => ripple.animationStartTime && ripple.animationEndTime && Date.now() <= ripple.animationEndTime);
 
 	if (animateThisFrame || forceRefresh) {
 		setRipples();
@@ -79,7 +73,7 @@ function animate(forceRefresh) {
 }
 
 function setRipples() {
-	const navButtonFontSize = Number.parseInt(window.getComputedStyle(navButtons[0]).fontSize) || NAV_BUTTON_INITIAL_FONT_SIZE;
+	const navButtonFontSize = Number.parseInt(window.getComputedStyle(navButtons[0]).fontSize, 10) || NAV_BUTTON_INITIAL_FONT_SIZE;
 	const mediaQueryScaleFactor = navButtonFontSize / NAV_BUTTON_INITIAL_FONT_SIZE;
 
 	const rippleHeight = fullRippleHeight * (mediaQueryScaleFactor * 0.5 + 0.5);
@@ -98,12 +92,12 @@ function setRipples() {
 		const buttonRect = ripple.element.getBoundingClientRect();
 
 		const buttonCenter = buttonRect.width / 2;
-		const rippleCenter = RIPPLE_WIDTH / 2 * mediaQueryScaleFactor;
+		const rippleCenter = (RIPPLE_WIDTH / 2) * mediaQueryScaleFactor;
 		const rippleOffset = rippleCenter - buttonCenter;
 
 		const rippleStartX = buttonRect.left - rippleSvgLeft - rippleOffset;
 
-		const rippleRadius = RIPPLE_WIDTH / 2 * mediaQueryScaleFactor;
+		const rippleRadius = (RIPPLE_WIDTH / 2) * mediaQueryScaleFactor;
 		const handleRadius = rippleRadius * HANDLE_STRETCH;
 
 		path += `L ${rippleStartX},${rippleHeight + 3} `;
