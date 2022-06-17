@@ -1,14 +1,14 @@
 use graphene::LayerId;
 use serde::{Deserialize, Serialize};
 
-#[derive(PartialEq, Clone, Deserialize, Serialize, Debug)]
+#[derive(PartialEq, Eq, Clone, Deserialize, Serialize, Debug)]
 pub struct FrontendDocumentDetails {
 	pub is_saved: bool,
 	pub name: String,
 	pub id: u64,
 }
 
-#[derive(PartialEq, Clone, Deserialize, Serialize, Debug)]
+#[derive(PartialEq, Eq, Clone, Deserialize, Serialize, Debug)]
 pub struct FrontendImageData {
 	pub path: Vec<LayerId>,
 	pub mime: String,

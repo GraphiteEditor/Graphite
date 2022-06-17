@@ -1,6 +1,6 @@
-use graphene::document::FontCache;
 use graphene::layers::layer_info::{Layer, LayerData, LayerDataType};
 use graphene::layers::style::ViewMode;
+use graphene::layers::text_layer::FontCache;
 use graphene::LayerId;
 
 use glam::{DAffine2, DVec2};
@@ -8,7 +8,7 @@ use serde::ser::SerializeStruct;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Copy)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Copy)]
 pub struct LayerMetadata {
 	pub selected: bool,
 	pub expanded: bool,
@@ -27,7 +27,7 @@ pub fn layer_panel_entry(layer_metadata: &LayerMetadata, transform: DAffine2, la
 
 	let mut thumbnail = String::new();
 	let mut svg_defs = String::new();
-	layer.data.clone().render(&mut thumbnail, &mut svg_defs, &mut vec![transform], ViewMode::Normal, font_cache);
+	layer.data.clone().render(&mut thumbnail, &mut svg_defs, &mut vec![transform], ViewMode::Normal, font_cache, None);
 	let transform = transform.to_cols_array().iter().map(ToString::to_string).collect::<Vec<_>>().join(",");
 	let thumbnail = if let [(x_min, y_min), (x_max, y_max)] = arr.as_slice() {
 		format!(
@@ -54,7 +54,7 @@ pub fn layer_panel_entry(layer_metadata: &LayerMetadata, transform: DAffine2, la
 	}
 }
 
-#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 pub struct RawBuffer(Vec<u8>);
 
 impl From<Vec<u64>> for RawBuffer {
@@ -81,7 +81,7 @@ impl Serialize for RawBuffer {
 	}
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct LayerPanelEntry {
 	pub name: String,
 	pub visible: bool,

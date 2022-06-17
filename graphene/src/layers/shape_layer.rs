@@ -1,7 +1,7 @@
 use super::layer_info::LayerData;
 use super::style::{self, PathStyle, ViewMode};
-use crate::document::FontCache;
 use crate::intersection::{intersect_quad_bez_path, Quad};
+use crate::layers::text_layer::FontCache;
 use crate::LayerId;
 
 use glam::{DAffine2, DMat2, DVec2};
@@ -25,13 +25,14 @@ pub struct ShapeLayer {
 	pub path: BezPath,
 	/// The visual style of the shape.
 	pub style: style::PathStyle,
+	// TODO: We might be able to remove this in a future refactor
 	pub render_index: i32,
 	/// Whether or not the [path](ShapeLayer::path) connects to itself.
 	pub closed: bool,
 }
 
 impl LayerData for ShapeLayer {
-	fn render(&mut self, svg: &mut String, svg_defs: &mut String, transforms: &mut Vec<DAffine2>, view_mode: ViewMode, _font_cache: &FontCache) {
+	fn render(&mut self, svg: &mut String, svg_defs: &mut String, transforms: &mut Vec<DAffine2>, view_mode: ViewMode, _font_cache: &FontCache, _culling_bounds: Option<[DVec2; 2]>) {
 		let mut path = self.path.clone();
 
 		let kurbo::Rect { x0, y0, x1, y1 } = path.bounding_box();
@@ -89,7 +90,7 @@ impl ShapeLayer {
 			(_, -1) => 0,
 			(_, x) => (transforms.len() as i32 - x).max(0) as usize,
 		};
-		transforms.iter().skip(start).cloned().reduce(|a, b| a * b).unwrap_or(DAffine2::IDENTITY)
+		transforms.iter().skip(start).fold(DAffine2::IDENTITY, |a, b| a * *b)
 	}
 
 	pub fn from_bez_path(bez_path: BezPath, style: PathStyle, closed: bool) -> Self {

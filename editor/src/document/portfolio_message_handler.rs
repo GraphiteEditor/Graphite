@@ -7,6 +7,7 @@ use crate::layout::layout_message::LayoutTarget;
 use crate::layout::widgets::PropertyHolder;
 use crate::{dialog, message_prelude::*};
 
+use graphene::layers::text_layer::{Font, FontCache};
 use graphene::Operation as DocumentOperation;
 
 use log::warn;
@@ -18,6 +19,7 @@ pub struct PortfolioMessageHandler {
 	document_ids: Vec<u64>,
 	active_document_id: u64,
 	copy_buffer: [Vec<CopyBufferEntry>; INTERNAL_CLIPBOARD_COUNT as usize],
+	font_cache: FontCache,
 }
 
 impl PortfolioMessageHandler {
@@ -72,15 +74,13 @@ impl PortfolioMessageHandler {
 			new_document
 				.layer_metadata
 				.keys()
-				.filter_map(|path| new_document.layer_panel_entry_from_path(path))
+				.filter_map(|path| new_document.layer_panel_entry_from_path(path, &self.font_cache))
 				.map(|entry| FrontendMessage::UpdateDocumentLayerDetails { data: entry }.into())
 				.collect::<Vec<_>>(),
 		);
-		new_document.update_layer_tree_options_bar_widgets(responses);
+		new_document.update_layer_tree_options_bar_widgets(responses, &self.font_cache);
 
 		new_document.load_image_data(responses, &new_document.graphene_document.root.data, Vec::new());
-		// TODO: Loading the default font should happen on a per-application basis, not a per-document basis
-		new_document.load_default_font(responses);
 
 		self.documents.insert(document_id, new_document);
 
@@ -110,6 +110,10 @@ impl PortfolioMessageHandler {
 	fn document_index(&self, document_id: u64) -> usize {
 		self.document_ids.iter().position(|id| id == &document_id).expect("Active document is missing from document ids")
 	}
+
+	pub fn font_cache(&self) -> &FontCache {
+		&self.font_cache
+	}
 }
 
 impl Default for PortfolioMessageHandler {
@@ -125,6 +129,7 @@ impl Default for PortfolioMessageHandler {
 			document_ids: vec![starting_key],
 			copy_buffer: [EMPTY_VEC; INTERNAL_CLIPBOARD_COUNT as usize],
 			active_document_id: starting_key,
+			font_cache: Default::default(),
 		}
 	}
 }
@@ -139,7 +144,7 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 		match message {
 			// Sub-messages
 			#[remain::unsorted]
-			Document(message) => self.active_document_mut().process_action(message, ipp, responses),
+			Document(message) => self.documents.get_mut(&self.active_document_id).unwrap().process_action(message, (ipp, &self.font_cache), responses),
 
 			// Messages
 			AutoSaveActiveDocument => responses.push_back(PortfolioMessage::AutoSaveDocument { document_id: self.active_document_id }.into()),
@@ -166,8 +171,15 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 				self.documents.clear();
 				self.document_ids.clear();
 
-				// Create a new blank document
-				responses.push_back(NewDocument.into());
+				// Clear out all documents and make a new default document
+				let new_document_id = generate_uuid();
+				self.documents.insert(new_document_id, DocumentMessageHandler::default());
+				self.document_ids.push(new_document_id);
+				self.active_document_id = new_document_id;
+
+				responses.push_back(ToolMessage::AbortCurrentTool.into());
+				responses.push_back(PortfolioMessage::UpdateOpenDocumentsList.into());
+				responses.push_back(PortfolioMessage::SelectDocument { document_id: new_document_id }.into())
 			}
 			CloseDocument { document_id } => {
 				let document_index = self.document_index(document_id);
@@ -262,6 +274,21 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 			Cut { clipboard } => {
 				responses.push_back(Copy { clipboard }.into());
 				responses.push_back(DeleteSelectedLayers.into());
+			}
+			FontLoaded {
+				font_family,
+				font_style,
+				preview_url,
+				data,
+				is_default,
+			} => {
+				self.font_cache.insert(Font::new(font_family, font_style), preview_url, data, is_default);
+				responses.push_back(DocumentMessage::DirtyRenderDocument.into());
+			}
+			LoadFont { font, is_default } => {
+				if !self.font_cache.loaded_font(&font) {
+					responses.push_front(FrontendMessage::TriggerFontLoad { font, is_default }.into());
+				}
 			}
 			NewDocument => {
 				let name = self.generate_new_document_name();
@@ -387,7 +414,7 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 					responses.push_back(DeselectAllLayers.into());
 					responses.push_back(StartTransaction.into());
 
-					for entry in data {
+					for entry in data.iter().rev() {
 						let destination_path = [shallowest_common_folder.to_vec(), vec![generate_uuid()]].concat();
 
 						responses.push_front(

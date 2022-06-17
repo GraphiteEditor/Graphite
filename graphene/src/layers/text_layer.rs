@@ -1,8 +1,8 @@
 use super::layer_info::LayerData;
 use super::style::{PathStyle, ViewMode};
-use crate::document::FontCache;
 use crate::intersection::{intersect_quad_bez_path, Quad};
 use crate::LayerId;
+pub use font_cache::{Font, FontCache};
 
 use glam::{DAffine2, DMat2, DVec2};
 use kurbo::{Affine, BezPath, Rect, Shape};
@@ -10,6 +10,7 @@ use rustybuzz::Face;
 use serde::{Deserialize, Serialize};
 use std::fmt::Write;
 
+mod font_cache;
 mod to_kurbo;
 
 fn glam_to_kurbo(transform: DAffine2) -> Affine {
@@ -28,9 +29,7 @@ pub struct TextLayer {
 	/// Font size in pixels.
 	pub size: f64,
 	pub line_width: Option<f64>,
-	pub font_family: String,
-	pub font_style: String,
-	pub font_file: Option<String>,
+	pub font: Font,
 	#[serde(skip)]
 	pub editable: bool,
 	#[serde(skip)]
@@ -38,7 +37,7 @@ pub struct TextLayer {
 }
 
 impl LayerData for TextLayer {
-	fn render(&mut self, svg: &mut String, svg_defs: &mut String, transforms: &mut Vec<DAffine2>, view_mode: ViewMode, font_cache: &FontCache) {
+	fn render(&mut self, svg: &mut String, svg_defs: &mut String, transforms: &mut Vec<DAffine2>, view_mode: ViewMode, font_cache: &FontCache, _culling_bounds: Option<[DVec2; 2]>) {
 		let transform = self.transform(transforms, view_mode);
 		let inverse = transform.inverse();
 
@@ -54,8 +53,8 @@ impl LayerData for TextLayer {
 		let _ = svg.write_str(r#")">"#);
 
 		if self.editable {
-			let font = font_cache.resolve_font(self.font_file.as_ref());
-			if let Some(url) = font {
+			let font = font_cache.resolve_font(&self.font);
+			if let Some(url) = font.and_then(|font| font_cache.get_preview_url(font)) {
 				let _ = write!(svg, r#"<style>@font-face {{font-family: local-font;src: url({});}}")</style>"#, url);
 			}
 
@@ -118,7 +117,7 @@ impl LayerData for TextLayer {
 
 impl TextLayer {
 	pub fn load_face<'a>(&self, font_cache: &'a FontCache) -> Option<Face<'a>> {
-		font_cache.get(self.font_file.as_ref()).map(|data| rustybuzz::Face::from_slice(data, 0).expect("Loading font failed"))
+		font_cache.get(&self.font).map(|data| rustybuzz::Face::from_slice(data, 0).expect("Loading font failed"))
 	}
 
 	pub fn transform(&self, transforms: &[DAffine2], mode: ViewMode) -> DAffine2 {
@@ -129,15 +128,13 @@ impl TextLayer {
 		transforms.iter().skip(start).cloned().reduce(|a, b| a * b).unwrap_or(DAffine2::IDENTITY)
 	}
 
-	pub fn new(text: String, style: PathStyle, size: f64, font_family: String, font_style: String, font_file: Option<String>, font_cache: &FontCache) -> Self {
+	pub fn new(text: String, style: PathStyle, size: f64, font: Font, font_cache: &FontCache) -> Self {
 		let mut new = Self {
 			text,
 			path_style: style,
 			size,
 			line_width: None,
-			font_family,
-			font_style,
-			font_file,
+			font,
 			editable: false,
 			cached_path: None,
 		};

@@ -1,12 +1,10 @@
 use crate::consts::SELECTION_TOLERANCE;
-use crate::document::DocumentMessageHandler;
 use crate::frontend::utility_types::MouseCursorIcon;
 use crate::input::keyboard::MouseMotion;
-use crate::input::InputPreprocessorMessageHandler;
 use crate::layout::widgets::PropertyHolder;
 use crate::message_prelude::*;
 use crate::misc::{HintData, HintGroup, HintInfo};
-use crate::viewport_tools::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
+use crate::viewport_tools::tool::{Fsm, ToolActionHandlerData};
 
 use graphene::intersection::Quad;
 use graphene::layers::layer_info::LayerDataType;
@@ -22,7 +20,7 @@ pub struct EyedropperTool {
 
 #[remain::sorted]
 #[impl_message(Message, ToolMessage, Eyedropper)]
-#[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize)]
+#[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize)]
 pub enum EyedropperToolMessage {
 	// Standard messages
 	#[remain::unsorted]
@@ -47,7 +45,7 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for EyedropperTo
 			return;
 		}
 
-		let new_state = self.fsm_state.transition(action, data.0, data.1, &mut self.data, &(), data.2, responses);
+		let new_state = self.fsm_state.transition(action, &mut self.data, data, &(), responses);
 
 		if self.fsm_state != new_state {
 			self.fsm_state = new_state;
@@ -80,11 +78,9 @@ impl Fsm for EyedropperToolFsmState {
 	fn transition(
 		self,
 		event: ToolMessage,
-		document: &DocumentMessageHandler,
-		_tool_data: &DocumentToolData,
-		_data: &mut Self::ToolData,
+		_tool_data: &mut Self::ToolData,
+		(document, _global_tool_data, input, font_cache): ToolActionHandlerData,
 		_tool_options: &Self::ToolOptions,
-		input: &InputPreprocessorMessageHandler,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
 		use EyedropperToolFsmState::*;
@@ -98,7 +94,7 @@ impl Fsm for EyedropperToolFsmState {
 					let quad = Quad::from_box([mouse_pos - tolerance, mouse_pos + tolerance]);
 
 					// TODO: Destroy this pyramid
-					if let Some(path) = document.graphene_document.intersects_quad_root(quad).last() {
+					if let Some(path) = document.graphene_document.intersects_quad_root(quad, font_cache).last() {
 						if let Ok(layer) = document.graphene_document.layer(path) {
 							if let LayerDataType::Shape(shape) = &layer.data {
 								if shape.style.fill().is_some() {

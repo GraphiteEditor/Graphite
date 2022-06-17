@@ -73,11 +73,11 @@ Every part of the Graphite stack works based on the concept of message passing. 
 
 <details><summary><b>Additional technical details (click to show)</b></summary>
 
-A message is an enum variant of a certain message sub-type like `FrontendMessage`, `ToolMessage`, `DocumentsMessage` (plural), or `DocumentMessage` (singular). An example is `DocumentMessage::DeleteSelectedLayers` (which carries no data) or `DocumentMessage::RenameLayer(Vec<LayerId>, String)` (which carries a layer path and a string as data).
+A message is an enum variant of a certain message sub-type like `FrontendMessage`, `ToolMessage`, `PortfolioMessage`, or `DocumentMessage`. An example is `DocumentMessage::DeleteSelectedLayers` (which carries no data) or `DocumentMessage::RenameLayer(Vec<LayerId>, String)` (which carries a layer path and a string as data).
 
-Message sub-types hierarchically wrap other message sub-types; for example, `DocumentMessage` is wrapped by `DocumentsMessage` via `DocumentsMessage::Document(DocumentMessage)` (this carries the child message as data), and `EllipseMessage` is wrapped by `ToolMessage` via `ToolMessage::Ellipse(EllipseMessage)` (again, this carries the child message as data). Every message sub-type is wrapped by the top-level `Message`, so the previous example is actually `Message::Tool(ToolMessage::Ellipse(EllipseMessage))`.
+Message sub-types hierarchically wrap other message sub-types; for example, `DocumentMessage` is wrapped by `PortfolioMessage` via `PortfolioMessage::Document(DocumentMessage)` (this carries the child message as data), and `EllipseMessage` is wrapped by `ToolMessage` via `ToolMessage::Ellipse(EllipseMessage)` (again, this carries the child message as data). Every message sub-type is wrapped by the top-level `Message`, so the previous example is actually `Message::Tool(ToolMessage::Ellipse(EllipseMessage))`.
 
-Because this is cumbersome, we have a proc macro `#[child]` that automatically implements the `From` trait on message sub-types and lets you write `DocumentMessage::DeleteSelectedLayers.into()` instead of `Message(DocumentsMessage::Document(DocumentMessage::DeleteSelectedLayers))`.
+Because this is cumbersome, we have a proc macro `#[child]` that automatically implements the `From` trait on message sub-types and lets you write `DocumentMessage::DeleteSelectedLayers.into()` instead of `Message(PortfolioMessage::Document(DocumentMessage::DeleteSelectedLayers))`.
 
 </details>
 
@@ -106,4 +106,4 @@ Once you begin writing code, please open a pull request immediately and mark it 
 
 Open a new PR as a draft / Convert an existing PR to a draft:
 
-![](https://static.graphite.rs/content/contribute/draft-pr.png)
+![Screenhots showing GitHub's "Create pull request (arrow) > Create draft pull request" and "Still in progress? Convert to draft" buttons](https://static.graphite.rs/content/contribute/draft-pr.png)

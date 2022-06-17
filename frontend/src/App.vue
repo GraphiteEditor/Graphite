@@ -190,6 +190,23 @@ img {
 	}
 }
 
+.icon-button,
+.text-button,
+.popover-button,
+.checkbox-input label,
+.color-input .swatch .swatch-button,
+.dropdown-input .dropdown-box,
+.font-input .dropdown-box,
+.radio-input button,
+.menu-list,
+.menu-bar-input .entry {
+	&:focus-visible,
+	&.dropdown-box:focus {
+		outline: 1px dashed var(--color-accent);
+		outline-offset: -1px;
+	}
+}
+
 // For placeholder messages (remove eventually)
 .floating-menu {
 	h1,

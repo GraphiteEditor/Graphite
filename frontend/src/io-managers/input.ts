@@ -11,6 +11,9 @@ type EventListenerTarget = {
 };
 
 export function createInputManager(editor: Editor, container: HTMLElement, dialog: DialogState, document: PortfolioState, fullscreen: FullscreenState): () => void {
+	const app = window.document.querySelector("[data-app]") as HTMLElement | undefined;
+	app?.focus();
+
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	const listeners: { target: EventListenerTarget; eventName: EventName; action: (event: any) => void; options?: boolean | AddEventListenerOptions }[] = [
 		{ target: window, eventName: "resize", action: (): void => onWindowResize(container) },
@@ -27,10 +30,20 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 		{ target: window, eventName: "wheel", action: (e: WheelEvent): void => onMouseScroll(e), options: { passive: false } },
 		{ target: window, eventName: "modifyinputfield", action: (e: CustomEvent): void => onModifyInputField(e) },
 		{ target: window.document.body, eventName: "paste", action: (e: ClipboardEvent): void => onPaste(e) },
+		{
+			target: app as EventListenerTarget,
+			eventName: "blur",
+			action: (): void => blurApp(),
+		},
 	];
 
 	let viewportPointerInteractionOngoing = false;
 	let textInput = undefined as undefined | HTMLDivElement;
+	let canvasFocused = true;
+
+	function blurApp(): void {
+		canvasFocused = false;
+	}
 
 	// Keyboard events
 
@@ -66,8 +79,7 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 		if (e.ctrlKey && e.shiftKey && key === "j") return false;
 
 		// Don't redirect tab or enter if not in canvas (to allow navigating elements)
-		const inCanvas = e.target instanceof Element && e.target.closest("[data-canvas]");
-		if (!inCanvas && (key === "tab" || key === "enter")) return false;
+		if (!canvasFocused && !targetIsTextField(e.target) && ["tab", "enter", " ", "arrowdown", "arrowup", "arrowleft", "arrowright"].includes(key.toLowerCase())) return false;
 
 		// Redirect to the backend
 		return true;
@@ -113,13 +125,20 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 		const inFloatingMenu = e.target instanceof Element && e.target.closest("[data-floating-menu-content]");
 		if (!viewportPointerInteractionOngoing && inFloatingMenu) return;
 
+		const { target } = e;
+		const newInCanvas = (target instanceof Element && target.closest("[data-canvas]")) instanceof Element && !targetIsTextField(window.document.activeElement);
+		if (newInCanvas && !canvasFocused) {
+			canvasFocused = true;
+			app?.focus();
+		}
+
 		const modifiers = makeKeyboardModifiersBitfield(e);
 		editor.instance.on_mouse_move(e.clientX, e.clientY, e.buttons, modifiers);
 	}
 
 	function onPointerDown(e: PointerEvent): void {
 		const { target } = e;
-		const inCanvas = target instanceof Element && target.closest("[data-canvas]");
+		const isTargetingCanvas = target instanceof Element && target.closest("[data-canvas]");
 		const inDialog = target instanceof Element && target.closest("[data-dialog-modal] [data-floating-menu-content]");
 		const inTextInput = target === textInput;
 
@@ -131,7 +150,7 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 
 		if (!inTextInput) {
 			if (textInput) editor.instance.on_change_text(textInputCleanup(textInput.innerText));
-			else if (inCanvas) viewportPointerInteractionOngoing = true;
+			else viewportPointerInteractionOngoing = isTargetingCanvas instanceof Element;
 		}
 
 		if (viewportPointerInteractionOngoing) {
@@ -168,7 +187,7 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 
 	function onMouseScroll(e: WheelEvent): void {
 		const { target } = e;
-		const inCanvas = target instanceof Element && target.closest("[data-canvas]");
+		const isTargetingCanvas = target instanceof Element && target.closest("[data-canvas]");
 
 		// Redirect vertical scroll wheel movement into a horizontal scroll on a horizontally scrollable element
 		// There seems to be no possible way to properly employ the browser's smooth scrolling interpolation
@@ -178,7 +197,7 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 			return;
 		}
 
-		if (inCanvas) {
+		if (isTargetingCanvas) {
 			e.preventDefault();
 			const modifiers = makeKeyboardModifiersBitfield(e);
 			editor.instance.on_mouse_scroll(e.clientX, e.clientY, e.buttons, e.deltaX, e.deltaY, e.deltaZ, modifiers);
@@ -246,7 +265,7 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 		});
 	}
 
-	function targetIsTextField(target: EventTarget | null): boolean {
+	function targetIsTextField(target: EventTarget | HTMLElement | null): boolean {
 		return target instanceof HTMLElement && (target.nodeName === "INPUT" || target.nodeName === "TEXTAREA" || target.isContentEditable);
 	}
 

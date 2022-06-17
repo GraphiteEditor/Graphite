@@ -1,11 +1,11 @@
 <!-- TODO: Implement collapsable sections with properties system -->
 <template>
 	<LayoutCol class="widget-section">
-		<LayoutRow class="header" @click.stop="() => (expanded = !expanded)">
+		<button class="header" @click.stop="() => (expanded = !expanded)">
 			<div class="expand-arrow" :class="{ expanded }"></div>
 			<Separator :type="'Related'" />
 			<TextLabel :bold="true">{{ widgetData.name }}</TextLabel>
-		</LayoutRow>
+		</button>
 		<LayoutCol class="body" v-if="expanded">
 			<component :is="layoutRowType(layoutRow)" :widgetData="layoutRow" :layoutTarget="layoutTarget" v-for="(layoutRow, index) in widgetData.layout" :key="index"></component>
 		</LayoutCol>
@@ -17,11 +17,14 @@
 	flex: 0 0 auto;
 
 	.header {
+		display: flex;
 		flex: 0 0 24px;
-		background: var(--color-4-dimgray);
-		align-items: center;
+		border: 0;
+		text-align: left;
 		padding: 0 8px;
 		margin: 0 -4px;
+		background: var(--color-4-dimgray);
+		align-items: center;
 
 		.expand-arrow {
 			width: 6px;
@@ -90,7 +93,7 @@ const WidgetSection = defineComponent({
 		expanded: true,
 	}),
 	methods: {
-		updateLayout(widgetId: BigInt, value: unknown) {
+		updateLayout(widgetId: bigint, value: unknown) {
 			this.editor.instance.update_layout(this.layoutTarget, widgetId, value);
 		},
 		layoutRowType(layoutRow: LayoutSystemRow): unknown {
