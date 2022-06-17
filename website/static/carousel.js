@@ -7,7 +7,7 @@ let carouselDirectionNext;
 let carouselDots;
 let carouselDescriptions;
 let carouselDragLastClientX;
-let velocityDeltaWindow = Array.from({ length: FLING_VELOCITY_WINDOW_SIZE }, () => ({ time: 0, delta: 0 }));
+const velocityDeltaWindow = Array.from({ length: FLING_VELOCITY_WINDOW_SIZE }, () => ({ time: 0, delta: 0 }));
 
 window.addEventListener("DOMContentLoaded", initializeCarousel);
 window.addEventListener("pointerup", () => dragEnd(false));
@@ -25,15 +25,17 @@ function initializeCarousel() {
 	carouselDots = document.querySelectorAll(".carousel-controls .dot");
 	carouselDescriptions = document.querySelectorAll(".screenshot-description p");
 
-	carouselDirectionPrev.addEventListener("click", () => slideDirection("prev", false, true));
-	carouselDirectionNext.addEventListener("click", () => slideDirection("next", false, true));
-	Array.from(carouselDots).forEach((dot) => dot.addEventListener("click", (event) => {
-		const index = Array.from(carouselDots).indexOf(event.target);
-		slideTo(index, true);
-	}));
+	carouselDirectionPrev.addEventListener("click", () => slideDirection("prev", true, false));
+	carouselDirectionNext.addEventListener("click", () => slideDirection("next", true, false));
+	Array.from(carouselDots).forEach((dot) =>
+		dot.addEventListener("click", (event) => {
+			const index = Array.from(carouselDots).indexOf(event.target);
+			slideTo(index, true);
+		})
+	);
 }
 
-function slideDirection(direction, clamped = false, smooth) {
+function slideDirection(direction, smooth, clamped = false) {
 	const directionIndexOffset = { prev: -1, next: 1 }[direction];
 	const offsetDotIndex = currentClosestImageIndex() + directionIndexOffset;
 
@@ -53,7 +55,7 @@ function slideTo(index, smooth) {
 	activeDescription.classList.remove("active");
 	carouselDescriptions[index].classList.add("active");
 
-	setCurrentTransform(index * -100, "%", smooth)
+	setCurrentTransform(index * -100, "%", smooth);
 }
 
 function currentTransform() {
@@ -98,11 +100,11 @@ function dragEnd(dropWithoutVelocity) {
 	document.querySelector("#screenshots").classList.remove("dragging");
 
 	const onlyRecentVelocityDeltaWindow = velocityDeltaWindow.filter((delta) => delta.time > Date.now() - 1000);
-	const timeRange = Date.now() - onlyRecentVelocityDeltaWindow[0]?.time;
+	const timeRange = Date.now() - (onlyRecentVelocityDeltaWindow[0]?.time ?? NaN);
 	// Weighted (higher by recency) sum of velocity deltas from previous window of frames
 	const recentVelocity = onlyRecentVelocityDeltaWindow.reduce((acc, entry) => {
 		const timeSinceNow = Date.now() - entry.time;
-		const recencyFactorScore = 1 - (timeSinceNow / timeRange);
+		const recencyFactorScore = 1 - timeSinceNow / timeRange;
 
 		return acc + entry.delta * recencyFactorScore;
 	}, 0);
@@ -116,15 +118,16 @@ function dragEnd(dropWithoutVelocity) {
 		if (recentVelocity > 0) {
 			// Don't apply the velocity-based fling if we're already snapping to the next image
 			if (closestImageIndex >= activeDotIndex) {
-				slideDirection("prev", true, false);
+				slideDirection("prev", false, true);
 				return;
 			}
 		}
 		// Negative velocity should go to the next image
 		else {
 			// Don't apply the velocity-based fling if we're already snapping to the next image
+			// eslint-disable-next-line no-lonely-if
 			if (closestImageIndex <= activeDotIndex) {
-				slideDirection("next", true, false);
+				slideDirection("next", false, true);
 				return;
 			}
 		}

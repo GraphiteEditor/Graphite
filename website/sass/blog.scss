@@ -14,18 +14,18 @@
 
 		.feed {
 			margin-top: -4px;
-			
+
 			a {
 				text-decoration: none;
 				display: flex;
 				gap: 8px;
-				
+
 				.icon {
 					vertical-align: top;
 					width: calc(var(--font-size-link) * 1.5);
 					height: calc(var(--font-size-link) * 1.5);
 				}
-				
+
 				.link {
 					vertical-align: top;
 				}
@@ -52,7 +52,7 @@
 				max-width: 540px;
 			}
 		}
-	
+
 		.details {
 			display: flex;
 			flex-direction: column;
@@ -92,4 +92,3 @@
 		}
 	}
 }
-
