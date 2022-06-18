@@ -10,8 +10,8 @@ use crate::frontend::utility_types::{FileType, FrontendImageData};
 use crate::input::InputPreprocessorMessageHandler;
 use crate::layout::layout_message::LayoutTarget;
 use crate::layout::widgets::{
-	DropdownEntryData, DropdownInput, IconButton, LayoutRow, NumberInput, NumberInputIncrementBehavior, OptionalInput, PopoverButton, RadioEntryData, RadioInput, Separator, SeparatorDirection,
-	SeparatorType, Widget, WidgetCallback, WidgetHolder, WidgetLayout,
+	DropdownEntryData, DropdownInput, IconButton, Layout, LayoutRow, NumberInput, NumberInputIncrementBehavior, OptionalInput, PopoverButton, RadioEntryData, RadioInput, Separator,
+	SeparatorDirection, SeparatorType, Widget, WidgetCallback, WidgetHolder, WidgetLayout,
 };
 use crate::message_prelude::*;
 use crate::viewport_tools::vector_editor::vector_shape::VectorShape;
@@ -693,7 +693,7 @@ impl DocumentMessageHandler {
 
 		responses.push_back(
 			LayoutMessage::SendLayout {
-				layout: document_bar_layout,
+				layout: Layout::WidgetLayout(document_bar_layout),
 				layout_target: LayoutTarget::DocumentBar,
 			}
 			.into(),
@@ -701,7 +701,7 @@ impl DocumentMessageHandler {
 
 		responses.push_back(
 			LayoutMessage::SendLayout {
-				layout: document_mode_layout,
+				layout: Layout::WidgetLayout(document_mode_layout),
 				layout_target: LayoutTarget::DocumentMode,
 			}
 			.into(),
@@ -815,7 +815,7 @@ impl DocumentMessageHandler {
 
 		responses.push_back(
 			LayoutMessage::SendLayout {
-				layout: layer_tree_options,
+				layout: Layout::WidgetLayout(layer_tree_options),
 				layout_target: LayoutTarget::LayerTreeOptions,
 			}
 			.into(),

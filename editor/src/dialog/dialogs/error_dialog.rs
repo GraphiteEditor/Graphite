@@ -7,8 +7,8 @@ pub struct Error {
 }
 
 impl PropertyHolder for Error {
-	fn properties(&self) -> WidgetLayout {
-		WidgetLayout::new(vec![
+	fn properties(&self) -> Layout {
+		Layout::WidgetLayout(WidgetLayout::new(vec![
 			LayoutRow::Row {
 				widgets: vec![WidgetHolder::new(Widget::TextLabel(TextLabel {
 					value: self.title.clone(),
@@ -32,6 +32,6 @@ impl PropertyHolder for Error {
 					..Default::default()
 				}))],
 			},
-		])
+		]))
 	}
 }

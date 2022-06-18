@@ -8,7 +8,7 @@ pub struct CloseDocument {
 }
 
 impl PropertyHolder for CloseDocument {
-	fn properties(&self) -> WidgetLayout {
+	fn properties(&self) -> Layout {
 		let document_id = self.document_id;
 
 		let button_widgets = vec![
@@ -43,7 +43,7 @@ impl PropertyHolder for CloseDocument {
 			})),
 		];
 
-		WidgetLayout::new(vec![
+		Layout::WidgetLayout(WidgetLayout::new(vec![
 			LayoutRow::Row {
 				widgets: vec![WidgetHolder::new(Widget::TextLabel(TextLabel {
 					value: "Save changes before closing?".to_string(),
@@ -59,6 +59,6 @@ impl PropertyHolder for CloseDocument {
 				}))],
 			},
 			LayoutRow::Row { widgets: button_widgets },
-		])
+		]))
 	}
 }

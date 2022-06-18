@@ -117,6 +117,9 @@ impl JsEditorHandle {
 
 		let message = MovementMessage::TranslateCanvas { delta: (0., 0.).into() };
 		self.dispatch(message);
+
+		let message = MenuBarMessage::SendLayout;
+		self.dispatch(message);
 	}
 
 	/// Displays a dialog with an error message

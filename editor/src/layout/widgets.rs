@@ -1,14 +1,14 @@
 use std::rc::Rc;
 
 use super::layout_message::LayoutTarget;
-use crate::message_prelude::*;
+use crate::{input::keyboard::Key, message_prelude::*};
 
 use derivative::*;
 use serde::{Deserialize, Serialize};
 
 pub trait PropertyHolder {
-	fn properties(&self) -> WidgetLayout {
-		WidgetLayout::default()
+	fn properties(&self) -> Layout {
+		Layout::WidgetLayout(WidgetLayout::default())
 	}
 
 	fn register_properties(&self, responses: &mut VecDeque<Message>, layout_target: LayoutTarget) {
@@ -19,6 +19,145 @@ pub trait PropertyHolder {
 			}
 			.into(),
 		)
+	}
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum Layout {
+	WidgetLayout(WidgetLayout),
+	MenuLayout(MenuLayout),
+}
+
+impl Layout {
+	pub fn unwrap_widget_layout(self) -> WidgetLayout {
+		if let Layout::WidgetLayout(widget_layout) = self {
+			widget_layout
+		} else {
+			panic!("Tried to unwrap layout as WidgetLayout. Got {:?}", self)
+		}
+	}
+
+	pub fn unwrap_menu_layout(self) -> MenuLayout {
+		if let Layout::MenuLayout(menu_layout) = self {
+			menu_layout
+		} else {
+			panic!("Tried to unwrap layout as MenuLayout. Got {:?}", self)
+		}
+	}
+
+	pub fn iter(&self) -> Box<dyn Iterator<Item = &WidgetHolder> + '_> {
+		match self {
+			Layout::MenuLayout(menu_layout) => Box::new(menu_layout.iter()),
+			Layout::WidgetLayout(widget_layout) => Box::new(widget_layout.iter()),
+		}
+	}
+
+	pub fn iter_mut(&mut self) -> Box<dyn Iterator<Item = &mut WidgetHolder> + '_> {
+		match self {
+			Layout::MenuLayout(menu_layout) => Box::new(menu_layout.iter_mut()),
+			Layout::WidgetLayout(widget_layout) => Box::new(widget_layout.iter_mut()),
+		}
+	}
+}
+
+impl Default for Layout {
+	fn default() -> Self {
+		Layout::WidgetLayout(WidgetLayout::default())
+	}
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct MenuEntry {
+	pub label: String,
+	pub icon: Option<String>,
+	pub children: Option<Vec<Vec<MenuEntry>>>,
+	pub action: WidgetHolder,
+	pub shortcut: Option<Vec<Key>>,
+}
+
+impl MenuEntry {
+	pub fn create_action(callback: impl Fn(&()) -> Message + 'static) -> WidgetHolder {
+		WidgetHolder::new(Widget::Invisible(Invisible {
+			on_update: WidgetCallback::new(callback),
+		}))
+	}
+}
+
+impl Default for MenuEntry {
+	fn default() -> Self {
+		Self {
+			action: MenuEntry::create_action(|_| DialogMessage::RequestComingSoonDialog { issue: None }.into()),
+			label: "".into(),
+			icon: None,
+			children: None,
+			shortcut: None,
+		}
+	}
+}
+
+#[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq)]
+pub struct MenuColumn {
+	pub label: String,
+	pub children: Vec<Vec<MenuEntry>>,
+}
+
+#[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq)]
+pub struct MenuLayout {
+	pub layout: Vec<MenuColumn>,
+}
+
+impl MenuLayout {
+	pub fn new(layout: Vec<MenuColumn>) -> Self {
+		Self { layout }
+	}
+
+	pub fn iter(&self) -> impl Iterator<Item = &WidgetHolder> + '_ {
+		MenuLayoutIter {
+			stack: self.layout.iter().flat_map(|column| column.children.iter()).flat_map(|group| group.iter()).collect(),
+		}
+	}
+
+	pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut WidgetHolder> + '_ {
+		MenuLayoutIterMut {
+			stack: self.layout.iter_mut().flat_map(|column| column.children.iter_mut()).flat_map(|group| group.iter_mut()).collect(),
+		}
+	}
+}
+
+#[derive(Debug, Default)]
+pub struct MenuLayoutIter<'a> {
+	pub stack: Vec<&'a MenuEntry>,
+}
+
+impl<'a> Iterator for MenuLayoutIter<'a> {
+	type Item = &'a WidgetHolder;
+
+	fn next(&mut self) -> Option<Self::Item> {
+		match self.stack.pop() {
+			Some(menu_entry) => {
+				self.stack.extend(menu_entry.children.iter().flat_map(|group| group.iter()).flat_map(|entry| entry.iter()));
+				Some(&menu_entry.action)
+			}
+			None => None,
+		}
+	}
+}
+
+pub struct MenuLayoutIterMut<'a> {
+	pub stack: Vec<&'a mut MenuEntry>,
+}
+
+impl<'a> Iterator for MenuLayoutIterMut<'a> {
+	type Item = &'a mut WidgetHolder;
+
+	fn next(&mut self) -> Option<Self::Item> {
+		match self.stack.pop() {
+			Some(menu_entry) => {
+				self.stack.extend(menu_entry.children.iter_mut().flat_map(|group| group.iter_mut()).flat_map(|entry| entry.iter_mut()));
+				Some(&mut menu_entry.action)
+			}
+			None => None,
+		}
 	}
 }
 
@@ -175,6 +314,7 @@ pub enum Widget {
 	FontInput(FontInput),
 	IconButton(IconButton),
 	IconLabel(IconLabel),
+	Invisible(Invisible),
 	NumberInput(NumberInput),
 	OptionalInput(OptionalInput),
 	PopoverButton(PopoverButton),
@@ -424,4 +564,12 @@ pub struct TextLabel {
 	pub multiline: bool,
 	#[serde(rename = "tableAlign")]
 	pub table_align: bool,
+}
+
+#[derive(Clone, Serialize, Deserialize, Derivative, Default)]
+#[derivative(Debug, PartialEq)]
+pub struct Invisible {
+	#[serde(skip)]
+	#[derivative(Debug = "ignore", PartialEq = "ignore")]
+	pub on_update: WidgetCallback<()>,
 }

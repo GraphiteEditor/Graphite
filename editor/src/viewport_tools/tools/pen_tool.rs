@@ -3,7 +3,7 @@ use crate::document::DocumentMessageHandler;
 use crate::frontend::utility_types::MouseCursorIcon;
 use crate::input::keyboard::{Key, MouseMotion};
 use crate::input::InputPreprocessorMessageHandler;
-use crate::layout::widgets::{LayoutRow, NumberInput, PropertyHolder, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
+use crate::layout::widgets::{Layout, LayoutRow, NumberInput, PropertyHolder, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
 use crate::message_prelude::*;
 use crate::misc::{HintData, HintGroup, HintInfo, KeysGroup};
 use crate::viewport_tools::snapping::SnapHandler;
@@ -68,8 +68,8 @@ pub enum PenOptionsUpdate {
 }
 
 impl PropertyHolder for PenTool {
-	fn properties(&self) -> WidgetLayout {
-		WidgetLayout::new(vec![LayoutRow::Row {
+	fn properties(&self) -> Layout {
+		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutRow::Row {
 			widgets: vec![WidgetHolder::new(Widget::NumberInput(NumberInput {
 				unit: " px".into(),
 				label: "Weight".into(),
@@ -79,7 +79,7 @@ impl PropertyHolder for PenTool {
 				on_update: WidgetCallback::new(|number_input: &NumberInput| PenToolMessage::UpdateOptions(PenOptionsUpdate::LineWeight(number_input.value.unwrap())).into()),
 				..NumberInput::default()
 			}))],
-		}])
+		}]))
 	}
 }
 

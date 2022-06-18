@@ -18,7 +18,7 @@ pub struct Export {
 }
 
 impl PropertyHolder for Export {
-	fn properties(&self) -> WidgetLayout {
+	fn properties(&self) -> Layout {
 		let file_name = vec![
 			WidgetHolder::new(Widget::TextLabel(TextLabel {
 				value: "File Name".into(),
@@ -132,7 +132,7 @@ impl PropertyHolder for Export {
 			})),
 		];
 
-		WidgetLayout::new(vec![
+		Layout::WidgetLayout(WidgetLayout::new(vec![
 			LayoutRow::Row {
 				widgets: vec![WidgetHolder::new(Widget::TextLabel(TextLabel {
 					value: "Export".to_string(),
@@ -145,7 +145,7 @@ impl PropertyHolder for Export {
 			LayoutRow::Row { widgets: resolution },
 			LayoutRow::Row { widgets: export_area },
 			LayoutRow::Row { widgets: button_widgets },
-		])
+		]))
 	}
 }
 

@@ -485,28 +485,14 @@ function createWidgetLayout(widgetLayout: any[]): LayoutRow[] {
 	return widgetLayout.map((layoutType): LayoutRow => {
 		if (layoutType.Column) {
 			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			const columnWidgets = layoutType.Column.columnWidgets.map((widgetHolder: any) => {
-				const { widget_id } = widgetHolder;
-				const kind = Object.keys(widgetHolder.widget)[0];
-				const props = widgetHolder.widget[kind];
-
-				return { widget_id, kind, props };
-			});
-
+			const columnWidgets = hoistWidgetHolders(layoutType.Column.columnWidgets);
 			const result: WidgetColumn = { columnWidgets };
 			return result;
 		}
 
 		if (layoutType.Row) {
 			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			const rowWidgets = layoutType.Row.rowWidgets.map((widgetHolder: any) => {
-				const { widget_id } = widgetHolder;
-				const kind = Object.keys(widgetHolder.widget)[0];
-				const props = widgetHolder.widget[kind];
-
-				return { widget_id, kind, props };
-			});
-
+			const rowWidgets = hoistWidgetHolders(layoutType.Row.rowWidgets);
 			const result: WidgetRow = { rowWidgets };
 			return result;
 		}
@@ -521,6 +507,52 @@ function createWidgetLayout(widgetLayout: any[]): LayoutRow[] {
 
 		throw new Error("Layout row type does not exist");
 	});
+}
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function hoistWidgetHolders(widgetHolders: any[]): Widget[] {
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	return widgetHolders.map((widgetHolder: any) => {
+		const { widget_id } = widgetHolder;
+		const kind = Object.keys(widgetHolder.widget)[0];
+		const props = widgetHolder.widget[kind];
+
+		return { widget_id, kind, props } as Widget;
+	});
+}
+
+export class UpdateMenuBarLayout extends JsMessage {
+	layout_target!: unknown;
+
+	@Transform(({ value }) => createMenuLayout(value))
+	layout!: MenuColumn[];
+}
+
+export type MenuEntry = {
+	shortcut: string[] | undefined;
+	action: Widget;
+	label: string;
+	icon: string | undefined;
+	children: undefined | MenuEntry[][];
+};
+
+export type MenuColumn = {
+	label: string;
+	children: MenuEntry[][];
+};
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function createMenuLayout(menuLayout: any[]): MenuColumn[] {
+	return menuLayout.map((column) => ({ ...column, children: createMenuLayoutRec(column.children) }));
+}
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function createMenuLayoutRec(subLayout: any[][]): MenuEntry[][] {
+	return subLayout.map((groups) =>
+		groups.map((entry) => ({
+			...entry,
+			action: hoistWidgetHolders([entry.action])[0],
+			children: entry.children ? createMenuLayoutRec(entry.children) : undefined,
+		}))
+	);
 }
 
 export class TriggerTextCommit extends JsMessage {}
@@ -579,5 +611,6 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateDocumentModeLayout,
 	UpdateToolOptionsLayout,
 	UpdateWorkingColors,
+	UpdateMenuBarLayout,
 } as const;
 export type JsMessageType = keyof typeof messageMakers;

@@ -3,8 +3,8 @@ use super::utility_types::TargetDocument;
 use crate::document::properties_panel_message::TransformOp;
 use crate::layout::layout_message::LayoutTarget;
 use crate::layout::widgets::{
-	ColorInput, FontInput, IconLabel, LayoutRow, NumberInput, PopoverButton, RadioEntryData, RadioInput, Separator, SeparatorDirection, SeparatorType, TextAreaInput, TextInput, TextLabel, Widget,
-	WidgetCallback, WidgetHolder, WidgetLayout,
+	ColorInput, FontInput, IconLabel, Layout, LayoutRow, NumberInput, PopoverButton, RadioEntryData, RadioInput, Separator, SeparatorDirection, SeparatorType, TextAreaInput, TextInput, TextLabel,
+	Widget, WidgetCallback, WidgetHolder, WidgetLayout,
 };
 use crate::message_prelude::*;
 
@@ -141,14 +141,14 @@ impl<'a> MessageHandler<PropertiesPanelMessage, PropertiesPanelMessageHandlerDat
 			ClearSelection => {
 				responses.push_back(
 					LayoutMessage::SendLayout {
-						layout: WidgetLayout::new(vec![]),
+						layout: Layout::WidgetLayout(WidgetLayout::new(vec![])),
 						layout_target: LayoutTarget::PropertiesOptions,
 					}
 					.into(),
 				);
 				responses.push_back(
 					LayoutMessage::SendLayout {
-						layout: WidgetLayout::new(vec![]),
+						layout: Layout::WidgetLayout(WidgetLayout::new(vec![])),
 						layout_target: LayoutTarget::PropertiesSections,
 					}
 					.into(),
@@ -212,14 +212,14 @@ impl<'a> MessageHandler<PropertiesPanelMessage, PropertiesPanelMessageHandlerDat
 					responses.push_back(
 						LayoutMessage::SendLayout {
 							layout_target: LayoutTarget::PropertiesOptions,
-							layout: WidgetLayout::default(),
+							layout: Layout::WidgetLayout(WidgetLayout::default()),
 						}
 						.into(),
 					);
 					responses.push_back(
 						LayoutMessage::SendLayout {
 							layout_target: LayoutTarget::PropertiesSections,
-							layout: WidgetLayout::default(),
+							layout: Layout::WidgetLayout(WidgetLayout::default()),
 						}
 						.into(),
 					);
@@ -409,14 +409,14 @@ fn register_artboard_layer_properties(layer: &Layer, responses: &mut VecDeque<Me
 
 	responses.push_back(
 		LayoutMessage::SendLayout {
-			layout: WidgetLayout::new(options_bar),
+			layout: Layout::WidgetLayout(WidgetLayout::new(options_bar)),
 			layout_target: LayoutTarget::PropertiesOptions,
 		}
 		.into(),
 	);
 	responses.push_back(
 		LayoutMessage::SendLayout {
-			layout: WidgetLayout::new(properties_body),
+			layout: Layout::WidgetLayout(WidgetLayout::new(properties_body)),
 			layout_target: LayoutTarget::PropertiesSections,
 		}
 		.into(),
@@ -497,14 +497,14 @@ fn register_artwork_layer_properties(layer: &Layer, responses: &mut VecDeque<Mes
 
 	responses.push_back(
 		LayoutMessage::SendLayout {
-			layout: WidgetLayout::new(options_bar),
+			layout: Layout::WidgetLayout(WidgetLayout::new(options_bar)),
 			layout_target: LayoutTarget::PropertiesOptions,
 		}
 		.into(),
 	);
 	responses.push_back(
 		LayoutMessage::SendLayout {
-			layout: WidgetLayout::new(properties_body),
+			layout: Layout::WidgetLayout(WidgetLayout::new(properties_body)),
 			layout_target: LayoutTarget::PropertiesSections,
 		}
 		.into(),

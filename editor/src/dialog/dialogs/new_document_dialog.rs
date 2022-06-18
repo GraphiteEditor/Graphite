@@ -14,7 +14,7 @@ pub struct NewDocument {
 }
 
 impl PropertyHolder for NewDocument {
-	fn properties(&self) -> WidgetLayout {
+	fn properties(&self) -> Layout {
 		let title = vec![WidgetHolder::new(Widget::TextLabel(TextLabel {
 			value: "New document".into(),
 			bold: true,
@@ -112,13 +112,13 @@ impl PropertyHolder for NewDocument {
 			})),
 		];
 
-		WidgetLayout::new(vec![
+		Layout::WidgetLayout(WidgetLayout::new(vec![
 			LayoutRow::Row { widgets: title },
 			LayoutRow::Row { widgets: name },
 			LayoutRow::Row { widgets: infinite },
 			LayoutRow::Row { widgets: scale },
 			LayoutRow::Row { widgets: button_widgets },
-		])
+		]))
 	}
 }
 
