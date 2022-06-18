@@ -75,6 +75,8 @@ import BooleanIntersect from "@/../assets/icon-16px-solid/boolean-intersect.svg"
 import BooleanSubtractBack from "@/../assets/icon-16px-solid/boolean-subtract-back.svg";
 import BooleanSubtractFront from "@/../assets/icon-16px-solid/boolean-subtract-front.svg";
 import BooleanUnion from "@/../assets/icon-16px-solid/boolean-union.svg";
+import CheckboxChecked from "@/../assets/icon-16px-solid/checkbox-checked.svg";
+import CheckboxUnchecked from "@/../assets/icon-16px-solid/checkbox-unchecked.svg";
 import Copy from "@/../assets/icon-16px-solid/copy.svg";
 import EyeHidden from "@/../assets/icon-16px-solid/eye-hidden.svg";
 import EyeVisible from "@/../assets/icon-16px-solid/eye-visible.svg";
@@ -120,6 +122,8 @@ const SOLID_16PX = {
 	BooleanSubtractBack: { component: BooleanSubtractBack, size: 16 },
 	BooleanSubtractFront: { component: BooleanSubtractFront, size: 16 },
 	BooleanUnion: { component: BooleanUnion, size: 16 },
+	CheckboxChecked: { component: CheckboxChecked, size: 16 },
+	CheckboxUnchecked: { component: CheckboxUnchecked, size: 16 },
 	Copy: { component: Copy, size: 16 },
 	EyeHidden: { component: EyeHidden, size: 16 },
 	EyeVisible: { component: EyeVisible, size: 16 },
