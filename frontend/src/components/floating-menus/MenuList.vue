@@ -26,8 +26,7 @@
 					@pointerenter="() => onEntryPointerEnter(entry)"
 					@pointerleave="() => onEntryPointerLeave(entry)"
 				>
-					<CheckboxInput v-if="entry.checkbox" v-model:checked="entry.checked" :outlineStyle="true" :disableTabIndex="true" class="entry-checkbox" />
-					<IconLabel v-else-if="entry.icon && drawIcon" :icon="entry.icon" class="entry-icon" />
+					<IconLabel v-if="entry.icon && drawIcon" :icon="entry.icon" class="entry-icon" />
 					<div v-else-if="drawIcon" class="no-icon"></div>
 
 					<link v-if="entry.font" rel="stylesheet" :href="entry.font?.toString()" />
@@ -93,7 +92,6 @@
 				margin-left: 8px;
 			}
 
-			.entry-checkbox,
 			.entry-icon,
 			.no-icon {
 				margin: 0 4px;
@@ -143,14 +141,6 @@
 					color: var(--color-f-white);
 				}
 			}
-
-			&:hover .entry-checkbox label .checkbox-box {
-				border: 1px solid var(--color-f-white);
-
-				svg {
-					fill: var(--color-f-white);
-				}
-			}
 		}
 	}
 }
@@ -164,7 +154,6 @@ import { IconName } from "@/utility-functions/icons";
 import FloatingMenu, { MenuDirection } from "@/components/floating-menus/FloatingMenu.vue";
 import LayoutCol from "@/components/layout/LayoutCol.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
-import CheckboxInput from "@/components/widgets/inputs/CheckboxInput.vue";
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
 import Separator from "@/components/widgets/labels/Separator.vue";
 import UserInputLabel from "@/components/widgets/labels/UserInputLabel.vue";
@@ -177,14 +166,13 @@ interface MenuListEntryData<Value = string> {
 	label?: string;
 	icon?: IconName;
 	font?: URL;
-	checkbox?: boolean;
 	shortcut?: string[];
 	shortcutRequiresLock?: boolean;
 	action?: () => void;
 	children?: SectionsOfMenuListEntries;
 }
 
-export type MenuListEntry<Value = string> = MenuListEntryData<Value> & { ref?: typeof FloatingMenu | typeof MenuList; checked?: boolean };
+export type MenuListEntry<Value = string> = MenuListEntryData<Value> & { ref?: typeof FloatingMenu | typeof MenuList };
 
 const KEYBOARD_LOCK_USE_FULLSCREEN = "This hotkey is reserved by the browser, but becomes available in fullscreen mode";
 const KEYBOARD_LOCK_SWITCH_BROWSER = "This hotkey is reserved by the browser, but becomes available in Chrome, Edge, and Opera which support the Keyboard.lock() API";
@@ -232,10 +220,6 @@ const MenuList = defineComponent({
 	},
 	methods: {
 		onEntryClick(menuEntry: MenuListEntry): void {
-			// Toggle checkbox
-			// TODO: This is broken at the moment, fix it when we get rid of using `ref`
-			if (menuEntry.checkbox) menuEntry.checked = !menuEntry.checked;
-
 			// Call the action, or a default, if either are provided
 			if (menuEntry.action) menuEntry.action();
 			else if (this.defaultAction) this.defaultAction();
@@ -375,7 +359,6 @@ const MenuList = defineComponent({
 		FloatingMenu,
 		Separator,
 		IconLabel,
-		CheckboxInput,
 		UserInputLabel,
 		LayoutRow,
 		LayoutCol,

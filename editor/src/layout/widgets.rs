@@ -341,8 +341,6 @@ pub struct OptionalInput {
 pub struct CheckboxInput {
 	pub checked: bool,
 	pub icon: String,
-	#[serde(rename = "outlineStyle")]
-	pub outline_style: bool,
 	#[serde(rename = "title")]
 	pub tooltip: String,
 	#[serde(skip)]
@@ -378,7 +376,6 @@ pub struct DropdownEntryData {
 	pub value: String,
 	pub label: String,
 	pub icon: String,
-	pub checkbox: bool,
 	pub shortcut: Vec<String>,
 	#[serde(rename = "shortcutRequiresLock")]
 	pub shortcut_requires_lock: bool,

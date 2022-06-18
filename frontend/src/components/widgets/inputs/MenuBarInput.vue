@@ -110,7 +110,7 @@ function makeEntries(editor: Editor): MenuListEntries {
 					{ label: "Save", shortcut: ["KeyControl", "KeyS"], action: async (): Promise<void> => editor.instance.save_document() },
 					{ label: "Save As…", shortcut: ["KeyControl", "KeyShift", "KeyS"], action: async (): Promise<void> => editor.instance.save_document() },
 					{ label: "Save All", shortcut: ["KeyControl", "KeyAlt", "KeyS"] },
-					{ label: "Auto-Save", checkbox: true, checked: true },
+					{ label: "Auto-Save", icon: "CheckboxChecked" },
 				],
 				[
 					{ label: "Import…", shortcut: ["KeyControl", "KeyI"] },
