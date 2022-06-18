@@ -133,9 +133,9 @@ impl VectorShape {
 	}
 
 	// TODO Implement add_point
-	// pub fn add_point(&mut self, position_closest: DVec2) {
-	// 	// TODO Implement
-	// }
+	pub fn add_point_to_end(&mut self, anchor: VectorAnchor) {
+		self.0.push_end(anchor);
+	}
 
 	/// Move the selected points by the delta vector
 	pub fn move_selected(&mut self, delta: DVec2, absolute_position: DVec2, viewspace: &DAffine2) {
@@ -341,7 +341,6 @@ impl<T: Iterator<Item = PathEl>> From<T> for VectorShape {
 					vector_shape.anchors_mut().push_end(VectorAnchor::new(kurbo_point_to_dvec2(p)));
 				}
 				PathEl::QuadTo(p0, p1) => {
-					vector_shape.anchors_mut().last_mut().unwrap().points[2] = Some(VectorControlPoint::new(kurbo_point_to_dvec2(p0), ControlPointType::OutHandle));
 					vector_shape.anchors_mut().push_end(VectorAnchor::new(kurbo_point_to_dvec2(p1)));
 					vector_shape.anchors_mut().last_mut().unwrap().points[1] = Some(VectorControlPoint::new(kurbo_point_to_dvec2(p0), ControlPointType::InHandle));
 				}

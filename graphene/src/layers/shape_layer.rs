@@ -3,6 +3,7 @@ use super::style::{self, PathStyle, ViewMode};
 use super::vector::vector_shape::VectorShape;
 use crate::intersection::{intersect_quad_bez_path, Quad};
 use crate::layers::text_layer::FontCache;
+use crate::layers::vector::vector_anchor::VectorAnchor;
 use crate::LayerId;
 
 use glam::{DAffine2, DMat2, DVec2};
@@ -143,8 +144,11 @@ impl ShapeLayer {
 
 	/// Create an elliptical shape.
 	pub fn ellipse(style: PathStyle) -> Self {
+		let mut shape = VectorShape::from_kurbo_shape(&kurbo::Ellipse::from_rect(kurbo::Rect::new(0., 0., 1., 1.)).to_path(0.01));
+		shape.add_point_to_end(VectorAnchor::closed());
 		Self {
-			shape: VectorShape::from_kurbo_shape(&kurbo::Ellipse::from_rect(kurbo::Rect::new(0., 0., 1., 1.)).to_path(0.01)),
+			// TODO remove kurbo
+			shape,
 			style,
 			render_index: 1,
 		}
