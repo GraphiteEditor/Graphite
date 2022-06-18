@@ -42,21 +42,21 @@ export const drawText = (ctx: CanvasRenderingContext2D, text: string, x: number,
 export const drawBezier = (ctx: CanvasRenderingContext2D, points: Point[], dragIndex: number | null = null): void => {
 	/* Until a bezier representation is finalized, treat the points as follows
 		points[0] = start point
-		points[1] = handle 1
-		points[2] = (optional) handle 2
+		points[1] = handle start
+		points[2] = (optional) handle end
 		points[3] = end point
 	*/
 	const start = points[0];
 	let end = null;
-	let handle1 = null;
-	let handle2 = null;
+	let handleStart = null;
+	let handleEnd = null;
 	if (points.length === 4) {
-		handle1 = points[1];
-		handle2 = points[2];
+		handleStart = points[1];
+		handleEnd = points[2];
 		end = points[3];
 	} else {
-		handle1 = points[1];
-		handle2 = handle1;
+		handleStart = points[1];
+		handleEnd = handleStart;
 		end = points[2];
 	}
 
@@ -66,14 +66,14 @@ export const drawBezier = (ctx: CanvasRenderingContext2D, points: Point[], dragI
 	ctx.beginPath();
 	ctx.moveTo(points[0].x, points[0].y);
 	if (points.length === 3) {
-		ctx.quadraticCurveTo(handle1.x, handle1.y, end.x, end.y);
+		ctx.quadraticCurveTo(handleStart.x, handleStart.y, end.x, end.y);
 	} else {
-		ctx.bezierCurveTo(handle1.x, handle1.y, handle2.x, handle2.y, end.x, end.y);
+		ctx.bezierCurveTo(handleStart.x, handleStart.y, handleEnd.x, handleEnd.y, end.x, end.y);
 	}
 	ctx.stroke();
 
-	drawLine(ctx, start, handle1);
-	drawLine(ctx, end, handle2);
+	drawLine(ctx, start, handleStart);
+	drawLine(ctx, end, handleEnd);
 
 	points.forEach((point, index) => {
 		drawPoint(ctx, point, index === 0 || index === points.length - 1 ? 5 : 3, index === dragIndex ? "Blue" : "Black");

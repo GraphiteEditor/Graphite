@@ -46,12 +46,12 @@ impl WasmBezier {
 		self.internal.set_end(DVec2::from((x, y)));
 	}
 
-	pub fn set_handle1(&mut self, x: f64, y: f64) {
-		self.internal.set_handle1(DVec2::from((x, y)));
+	pub fn set_handle_start(&mut self, x: f64, y: f64) {
+		self.internal.set_handle_start(DVec2::from((x, y)));
 	}
 
-	pub fn set_handle2(&mut self, x: f64, y: f64) {
-		self.internal.set_handle2(DVec2::from((x, y)));
+	pub fn set_handle_end(&mut self, x: f64, y: f64) {
+		self.internal.set_handle_end(DVec2::from((x, y)));
 	}
 
 	pub fn get_points(&self) -> Vec<JsValue> {

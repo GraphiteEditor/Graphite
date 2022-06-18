@@ -10,9 +10,9 @@ pub enum BezierHandles {
 	/// Handles for a cubic segment
 	Cubic {
 		/// Point representing the location of the handle associated to the start point
-		handle1: DVec2,
+		handle_start: DVec2,
 		/// Point representing the location of the handle associated to the end point
-		handle2: DVec2,
+		handle_end: DVec2,
 	},
 }
 
@@ -52,8 +52,8 @@ impl Bezier {
 		Bezier {
 			start: DVec2::from((x1, y1)),
 			handles: BezierHandles::Cubic {
-				handle1: DVec2::from((x2, y2)),
-				handle2: DVec2::from((x3, y3)),
+				handle_start: DVec2::from((x2, y2)),
+				handle_end: DVec2::from((x3, y3)),
 			},
 			end: DVec2::from((x4, y4)),
 		}
@@ -63,7 +63,7 @@ impl Bezier {
 	pub fn from_cubic_dvec2(p1: DVec2, p2: DVec2, p3: DVec2, p4: DVec2) -> Self {
 		Bezier {
 			start: p1,
-			handles: BezierHandles::Cubic { handle1: p2, handle2: p3 },
+			handles: BezierHandles::Cubic { handle_start: p2, handle_end: p3 },
 			end: p4,
 		}
 	}
@@ -90,8 +90,8 @@ impl Bezier {
 			BezierHandles::Quadratic { handle } => {
 				format!("Q {} {}", handle.x, handle.y)
 			}
-			BezierHandles::Cubic { handle1, handle2 } => {
-				format!("C {} {}, {} {}", handle1.x, handle1.y, handle2.x, handle2.y)
+			BezierHandles::Cubic { handle_start, handle_end } => {
+				format!("C {} {}, {} {}", handle_start.x, handle_start.y, handle_end.x, handle_end.y)
 			}
 		};
 		let curve_path = format!("{}, {} {}", handles_path, self.end.x, self.end.y);
@@ -112,62 +112,62 @@ impl Bezier {
 	}
 
 	/// Set the coordinates of the first handle point. This represents the only handle in a quadratic segment.
-	pub fn set_handle1(&mut self, h1: DVec2) {
+	pub fn set_handle_start(&mut self, h1: DVec2) {
 		match self.handles {
 			BezierHandles::Quadratic { ref mut handle } => {
 				*handle = h1;
 			}
-			BezierHandles::Cubic { ref mut handle1, .. } => {
-				*handle1 = h1;
+			BezierHandles::Cubic { ref mut handle_start, .. } => {
+				*handle_start = h1;
 			}
 		};
 	}
 
 	/// Set the coordinates of the second handle point. This will convert a quadratic segment into a cubic one.
-	pub fn set_handle2(&mut self, h2: DVec2) {
+	pub fn set_handle_end(&mut self, h2: DVec2) {
 		match self.handles {
 			BezierHandles::Quadratic { handle } => {
-				self.handles = BezierHandles::Cubic { handle1: handle, handle2: h2 };
+				self.handles = BezierHandles::Cubic { handle_start: handle, handle_end: h2 };
 			}
-			BezierHandles::Cubic { ref mut handle2, .. } => {
-				*handle2 = h2;
+			BezierHandles::Cubic { ref mut handle_end, .. } => {
+				*handle_end = h2;
 			}
 		};
 	}
 
 	/// Get the coordinates of the bezier segment's start point.
-	pub fn get_start(&self) -> DVec2 {
+	pub fn start(&self) -> DVec2 {
 		self.start
 	}
 
 	/// Get the coordinates of the bezier segment's end point.
-	pub fn get_end(&self) -> DVec2 {
+	pub fn end(&self) -> DVec2 {
 		self.end
 	}
 
 	/// Get the coordinates of the bezier segment's first handle point. This represents the only handle in a quadratic segment.
-	pub fn get_handle1(&self) -> DVec2 {
+	pub fn handle_start(&self) -> DVec2 {
 		match self.handles {
 			BezierHandles::Quadratic { handle } => handle,
-			BezierHandles::Cubic { handle1, .. } => handle1,
+			BezierHandles::Cubic { handle_start, .. } => handle_start,
 		}
 	}
 
 	/// Get the coordinates of the second handle point. This will return `None` for a quadratic segment.
-	pub fn get_handle2(&self) -> Option<DVec2> {
+	pub fn handle_end(&self) -> Option<DVec2> {
 		match self.handles {
 			BezierHandles::Quadratic { .. } => None,
-			BezierHandles::Cubic { handle2, .. } => Some(handle2),
+			BezierHandles::Cubic { handle_end, .. } => Some(handle_end),
 		}
 	}
 
 	/// Get the coordinates of all points in an array of 4 optional points.
 	/// For a quadratic segment, the order of the points will be: `start`, `handle`, `end`. The fourth element will be `None`.
-	/// For a cubic segment, the order of the points will be: `start`, `handle1`, `handle2`, `end`.
+	/// For a cubic segment, the order of the points will be: `start`, `handle_start`, `handle_end`, `end`.
 	pub fn get_points(&self) -> [Option<DVec2>; 4] {
 		match self.handles {
 			BezierHandles::Quadratic { handle } => [Some(self.start), Some(handle), Some(self.end), None],
-			BezierHandles::Cubic { handle1, handle2 } => [Some(self.start), Some(handle1), Some(handle2), Some(self.end)],
+			BezierHandles::Cubic { handle_start, handle_end } => [Some(self.start), Some(handle_start), Some(handle_end), Some(self.end)],
 		}
 	}
 
@@ -182,10 +182,10 @@ impl Bezier {
 
 		match self.handles {
 			BezierHandles::Quadratic { handle } => squared_one_minus_t * self.start + 2.0 * one_minus_t * t * handle + t_squared * self.end,
-			BezierHandles::Cubic { handle1, handle2 } => {
+			BezierHandles::Cubic { handle_start, handle_end } => {
 				let t_cubed = t_squared * t;
 				let cubed_one_minus_t = squared_one_minus_t * one_minus_t;
-				cubed_one_minus_t * self.start + 3.0 * squared_one_minus_t * t * handle1 + 3.0 * one_minus_t * t_squared * handle2 + t_cubed * self.end
+				cubed_one_minus_t * self.start + 3.0 * squared_one_minus_t * t * handle_start + 3.0 * one_minus_t * t_squared * handle_end + t_cubed * self.end
 			}
 		}
 	}
@@ -227,7 +227,6 @@ impl Bezier {
 	}
 
 	/// Returns a vector representing the derivative at the point designated by `t` on the curve
-	/// Normalizing the vector gives the unit vector in the direction of the tangent at the specified point
 	pub fn derivative(&self, t: f64) -> DVec2 {
 		let one_minus_t = 1. - t;
 		match self.handles {
@@ -236,13 +235,18 @@ impl Bezier {
 				let p2_minus_p1 = self.end - handle;
 				2. * one_minus_t * p1_minus_p0 + 2. * t * p2_minus_p1
 			}
-			BezierHandles::Cubic { handle1, handle2 } => {
-				let p1_minus_p0 = handle1 - self.start;
-				let p2_minus_p1 = handle2 - handle1;
-				let p3_minus_p2 = self.end - handle2;
+			BezierHandles::Cubic { handle_start, handle_end } => {
+				let p1_minus_p0 = handle_start - self.start;
+				let p2_minus_p1 = handle_end - handle_start;
+				let p3_minus_p2 = self.end - handle_end;
 				3. * one_minus_t * one_minus_t * p1_minus_p0 + 6. * t * one_minus_t * p2_minus_p1 + 3. * t * t * p3_minus_p2
 			}
 		}
+	}
+
+	/// Returns a normalized unit vector representing the tangent at the point designated by `t` on the curve
+	pub fn tangent(&self, t: f64) -> DVec2 {
+		self.derivative(t).normalize()
 	}
 
 	/// Returns a normalized unit vector representing the direction of the normal at the point designated by `t` on the curve

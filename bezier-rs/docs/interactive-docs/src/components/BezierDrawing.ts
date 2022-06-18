@@ -3,7 +3,7 @@ import { BezierCallback, BezierPoint, WasmBezierMutatorKey } from "@/utils/types
 import { WasmBezierInstance } from "@/utils/wasm-comm";
 
 class BezierDrawing {
-	static indexToMutator: WasmBezierMutatorKey[] = ["set_start", "set_handle1", "set_handle2", "set_end"];
+	static indexToMutator: WasmBezierMutatorKey[] = ["set_start", "set_handle_start", "set_handle_end", "set_end"];
 
 	points: BezierPoint[];
 
