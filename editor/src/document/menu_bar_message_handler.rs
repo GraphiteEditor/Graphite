@@ -49,7 +49,7 @@ impl PropertyHolder for MenuBarMessageHandler {
 						MenuEntry {
 							label: "Open Recent".into(),
 							shortcut: Some(vec![Key::KeyControl, Key::KeyShift, Key::KeyO]),
-							action: MenuEntry::create_action(|_| Message::NoOp),
+							action: MenuEntry::no_action(),
 							icon: None,
 							children: Some(vec![
 								vec![
@@ -199,7 +199,7 @@ impl PropertyHolder for MenuBarMessageHandler {
 					},
 					MenuEntry {
 						label: "Order".into(),
-						action: MenuEntry::create_action(|_| Message::NoOp),
+						action: MenuEntry::no_action(),
 						children: Some(vec![vec![
 							MenuEntry {
 								label: "Raise To Front".into(),
@@ -278,7 +278,7 @@ impl PropertyHolder for MenuBarMessageHandler {
 					vec![
 						MenuEntry {
 							label: "Debug: Set Log Level".into(),
-							action: MenuEntry::create_action(|_| Message::NoOp),
+							action: MenuEntry::no_action(),
 							children: Some(vec![vec![
 								MenuEntry {
 									label: "Log Level Info".into(),

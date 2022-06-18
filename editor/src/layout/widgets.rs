@@ -81,6 +81,10 @@ impl MenuEntry {
 			on_update: WidgetCallback::new(callback),
 		}))
 	}
+
+	pub fn no_action() -> WidgetHolder {
+		MenuEntry::create_action(|_| Message::NoOp)
+	}
 }
 
 impl Default for MenuEntry {
