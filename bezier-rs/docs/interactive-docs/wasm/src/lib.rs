@@ -9,16 +9,15 @@ struct Point {
 	y: f64,
 }
 
-#[wasm_bindgen]
-#[derive(Copy, Clone)]
 /// Wrapper of the `Bezier` struct to be used in JS
+#[wasm_bindgen]
+#[derive(Clone)]
 pub struct WasmBezier {
 	internal: Bezier,
 }
 
-#[wasm_bindgen]
-#[derive(Copy, Clone)]
 /// Wrapper of the `Bezier` struct to be used in JS
+#[wasm_bindgen(getter_with_clone)]
 pub struct WasmBezierPair {
 	pub first: WasmBezier,
 	pub second: WasmBezier,

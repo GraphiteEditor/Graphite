@@ -270,25 +270,20 @@ impl Bezier {
 				Bezier::from_quadratic_dvec2(self.start, t * handle - t_minus_one * self.start, split_point),
 				Bezier::from_quadratic_dvec2(split_point, t * self.end - t_minus_one * handle, self.end),
 			],
-			BezierHandles::Cubic { handle1, handle2 } => {
-				let t_cubed = t_squared * t;
-				let cubed_t_minus_one = squared_t_minus_one * t_minus_one;
-
-				[
-					Bezier::from_cubic_dvec2(
-						self.start,
-						t * handle1 - t_minus_one * self.start,
-						t_squared * handle2 - 2. * t * t_minus_one * handle1 + squared_t_minus_one * self.start,
-						split_point,
-					),
-					Bezier::from_cubic_dvec2(
-						split_point,
-						t_squared * self.end - 2. * t * t_minus_one * handle2 + squared_t_minus_one * handle1,
-						t * self.end - t_minus_one * handle2,
-						self.end,
-					),
-				]
-			}
+			BezierHandles::Cubic { handle_start, handle_end } => [
+				Bezier::from_cubic_dvec2(
+					self.start,
+					t * handle_start - t_minus_one * self.start,
+					t_squared * handle_end - 2. * t * t_minus_one * handle_start + squared_t_minus_one * self.start,
+					split_point,
+				),
+				Bezier::from_cubic_dvec2(
+					split_point,
+					t_squared * self.end - 2. * t * t_minus_one * handle_end + squared_t_minus_one * handle_start,
+					t * self.end - t_minus_one * handle_end,
+					self.end,
+				),
+			],
 		}
 	}
 
@@ -298,7 +293,7 @@ impl Bezier {
 		match self.handles {
 			// TODO: Actually calculate the correct handle locations
 			BezierHandles::Quadratic { handle } => Bezier::from_quadratic_dvec2(start, handle, end),
-			BezierHandles::Cubic { handle1, handle2 } => Bezier::from_cubic_dvec2(start, handle1, handle2, end),
+			BezierHandles::Cubic { handle_start, handle_end } => Bezier::from_cubic_dvec2(start, handle_start, handle_end, end),
 		}
 	}
 }
