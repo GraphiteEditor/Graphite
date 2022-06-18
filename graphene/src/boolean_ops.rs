@@ -543,7 +543,7 @@ pub fn boolean_operation(mut select: BooleanOperation, alpha: &mut ShapeLayer, b
 		swap(alpha, beta);
 	}
 	let mut alpha_shape = close_path(&(&alpha.shape).into());
-	let mut beta_shape = close_path(&(&beta.shape).into());
+	let beta_shape = close_path(&(&beta.shape).into());
 	let beta_reverse = close_path(&reverse_path(&beta_shape));
 	let alpha_dir = Cycle::direction_for_path(&alpha_shape)?;
 	let beta_dir = Cycle::direction_for_path(&beta_shape)?;
@@ -638,7 +638,7 @@ pub fn boolean_operation(mut select: BooleanOperation, alpha: &mut ShapeLayer, b
 				Ok(graph) => collect_shapes(&graph, &mut graph.get_cycles(), |dir| dir == alpha_dir, |_| &alpha.style),
 				Err(BooleanOperationError::NoIntersections) => {
 					if cast_horizontal_ray(point_on_curve(&beta_shape), &alpha_shape) % 2 != 0 {
-						add_subpath(&mut alpha_shape, if beta_dir == alpha_dir { reverse_path(&beta_shape) } else { beta_shape.clone() });
+						add_subpath(&mut alpha_shape, if beta_dir == alpha_dir { reverse_path(&beta_shape) } else { beta_shape });
 						Ok(vec![alpha.clone()])
 					} else {
 						Err(BooleanOperationError::NothingDone)

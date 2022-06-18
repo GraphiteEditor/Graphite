@@ -1,5 +1,3 @@
-use std::ops::Deref;
-
 use super::{
 	constants::{ControlPointType, SELECTION_THRESHOLD},
 	vector_control_point::VectorControlPoint,

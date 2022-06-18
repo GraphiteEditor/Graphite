@@ -11,7 +11,7 @@ use crate::viewport_tools::tool::{Fsm, ToolActionHandlerData};
 use crate::viewport_tools::vector_editor::shape_editor::ShapeEditor;
 
 use graphene::layers::style;
-use graphene::layers::vector::vector_shape::VectorShape;
+// use graphene::layers::vector::vector_shape::VectorShape;
 use graphene::Operation;
 
 use glam::{DAffine2, DVec2};
@@ -129,7 +129,7 @@ impl Default for PenToolFsmState {
 struct PenToolData {
 	weight: f64,
 	path: Option<Vec<LayerId>>,
-	curve_shape: VectorShape,
+	// curve_shape: VectorShape,
 	bez_path: Vec<PathEl>,
 	snap_handler: SnapHandler,
 	shape_editor: ShapeEditor,
@@ -370,10 +370,7 @@ fn convert_curve_to_line(curve: PathEl) -> PathEl {
 /// Update data's version of `bez_path` to match `ShapeEditor`'s version
 fn update_path_representation(tool_data: &mut PenToolData) {
 	// TODO Rebuild consider no kurbo and async messages to graphene
-	// if !tool_data.shape_editor.shapes_to_modify.is_empty() {
-	// 	// Hacky way of saving the curve changes
-	// 	tool_data.bez_path = data.shape_editor.shapes_to_modify[0].bez_path.elements().to_vec();
-	// }
+	if !tool_data.shape_editor.selected_layers().is_empty() {}
 }
 
 /// Apply the `bez_path` to the `shape` in the viewport

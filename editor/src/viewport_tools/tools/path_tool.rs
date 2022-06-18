@@ -75,7 +75,6 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for PathTool {
 		match self.fsm_state {
 			Ready => actions!(PathToolMessageDiscriminant; DragStart, SelectPoint, Delete),
 			Dragging => actions!(PathToolMessageDiscriminant; DragStop, PointerMove, Delete),
-			PointSelected => actions!(PathToolMessageDiscriminant; SelectPoint, Delete/*TODO: Delete */),
 		}
 	}
 }
@@ -84,7 +83,6 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for PathTool {
 enum PathToolFsmState {
 	Ready,
 	Dragging,
-	PointSelected,
 }
 
 impl Default for PathToolFsmState {
@@ -323,20 +321,6 @@ impl Fsm for PathToolFsmState {
 				]),
 			]),
 			PathToolFsmState::Dragging => HintData(vec![HintGroup(vec![
-				HintInfo {
-					key_groups: vec![KeysGroup(vec![Key::KeyAlt])],
-					mouse: None,
-					label: String::from("Split/Align Handles (Toggle)"),
-					plus: false,
-				},
-				HintInfo {
-					key_groups: vec![KeysGroup(vec![Key::KeyShift])],
-					mouse: None,
-					label: String::from("Share Lengths of Aligned Handles"),
-					plus: false,
-				},
-			])]),
-			PathToolFsmState::PointSelected => HintData(vec![HintGroup(vec![
 				HintInfo {
 					key_groups: vec![KeysGroup(vec![Key::KeyAlt])],
 					mouse: None,

@@ -1,13 +1,8 @@
+use super::{constants::ControlPointType, vector_anchor::VectorAnchor, vector_control_point::VectorControlPoint};
 use crate::layers::{
 	id_vec::IdBackedVec,
 	layer_info::{Layer, LayerDataType},
 };
-use std::{
-	f64::consts::PI,
-	ops::{Deref, DerefMut},
-};
-
-use super::{constants::ControlPointType, vector_anchor::VectorAnchor, vector_control_point::VectorControlPoint};
 
 use glam::{DAffine2, DVec2};
 use kurbo::{BezPath, PathEl, Rect, Shape};
@@ -137,9 +132,10 @@ impl VectorShape {
 		new
 	}
 
-	pub fn add_point(&mut self, position_closest: DVec2) {
-		// TODO Implement
-	}
+	// TODO Implement add_point
+	// pub fn add_point(&mut self, position_closest: DVec2) {
+	// 	// TODO Implement
+	// }
 
 	/// Move the selected points by the delta vector
 	pub fn move_selected(&mut self, delta: DVec2, absolute_position: DVec2, viewspace: &DAffine2) {

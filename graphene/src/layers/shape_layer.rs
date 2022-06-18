@@ -6,13 +6,9 @@ use crate::layers::text_layer::FontCache;
 use crate::LayerId;
 
 use glam::{DAffine2, DMat2, DVec2};
-use kurbo::{Affine, BezPath, Shape as KurboShape};
+use kurbo::{BezPath, Shape as KurboShape};
 use serde::{Deserialize, Serialize};
 use std::fmt::Write;
-
-fn glam_to_kurbo(transform: DAffine2) -> Affine {
-	Affine::new(transform.to_cols_array())
-}
 
 /// A generic SVG element defined using Bezier paths.
 /// Shapes are rendered as
