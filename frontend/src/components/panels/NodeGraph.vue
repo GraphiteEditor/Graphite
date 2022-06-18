@@ -200,6 +200,7 @@
 			background-position: calc(var(--grid-offset-x) - var(--dot-radius)) calc(var(--grid-offset-y) - var(--dot-radius));
 			background-image: radial-gradient(circle at var(--dot-radius) var(--dot-radius), var(--color-3-darkgray) var(--dot-radius), transparent 0);
 			image-rendering: pixelated;
+			mix-blend-mode: screen;
 		}
 	}
 
@@ -235,8 +236,8 @@
 				min-width: 120px;
 				border-radius: 4px;
 				background: var(--color-4-dimgray);
-				left: calc(var(--offset-left) * 24px);
-				top: calc(var(--offset-top) * 24px);
+				left: calc((var(--offset-left) + 0.5) * 24px);
+				top: calc((var(--offset-top) + 0.5) * 24px);
 
 				.primary {
 					display: flex;
@@ -245,7 +246,7 @@
 					gap: 4px;
 					width: 100%;
 					height: 24px;
-					background: var(--color-6-lowergray);
+					background: var(--color-5-dullgray);
 					border-radius: 4px;
 
 					.icon-label {
@@ -277,7 +278,7 @@
 					&::after {
 						content: "";
 						position: absolute;
-						background: var(--color-6-lowergray);
+						background: var(--color-5-dullgray);
 						width: 4px;
 						height: 4px;
 						top: -4px;
@@ -369,7 +370,7 @@ export default defineComponent({
 			return sparse;
 		},
 		dotRadius(): number {
-			return 1 + Math.floor(this.transform.scale + 0.001) / 2;
+			return 1 + Math.floor(this.transform.scale - 0.5 + 0.001) / 2;
 		},
 	},
 	methods: {
