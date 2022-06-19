@@ -157,11 +157,6 @@ impl VectorShape {
 		new
 	}
 
-	// TODO Implement add_point
-	pub fn add_point_to_end(&mut self, anchor: VectorAnchor) {
-		self.0.push_end(anchor);
-	}
-
 	/// Move the selected points by the delta vector
 	pub fn move_selected(&mut self, delta: DVec2, absolute_position: DVec2, viewspace: &DAffine2) {
 		self.selected_anchors_any_points_mut()
@@ -277,10 +272,12 @@ impl VectorShape {
 	// ** INTERFACE WITH KURBO **
 
 	// TODO Implement our own a local bounding box calculation
+	/// Return the bounding box of the shape
 	pub fn bounding_box(&self) -> Rect {
 		<&Self as Into<BezPath>>::into(self).bounding_box()
 	}
 
+	/// Use kurbo to convert this shape into an SVG path
 	pub fn to_svg(&mut self) -> String {
 		<&Self as Into<BezPath>>::into(self).to_svg()
 	}
