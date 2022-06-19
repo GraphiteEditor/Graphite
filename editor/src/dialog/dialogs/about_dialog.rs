@@ -8,7 +8,7 @@ pub struct AboutGraphite {
 }
 
 impl PropertyHolder for AboutGraphite {
-	fn properties(&self) -> WidgetLayout {
+	fn properties(&self) -> Layout {
 		let links = [
 			("Website", "https://graphite.rs"),
 			("Credits", "https://github.com/GraphiteEditor/Graphite/graphs/contributors"),
@@ -25,28 +25,28 @@ impl PropertyHolder for AboutGraphite {
 				}))
 			})
 			.collect();
-		WidgetLayout::new(vec![
-			LayoutRow::Row {
+		Layout::WidgetLayout(WidgetLayout::new(vec![
+			LayoutGroup::Row {
 				widgets: vec![WidgetHolder::new(Widget::TextLabel(TextLabel {
 					value: "Graphite".to_string(),
 					bold: true,
 					..Default::default()
 				}))],
 			},
-			LayoutRow::Row {
+			LayoutGroup::Row {
 				widgets: vec![WidgetHolder::new(Widget::TextLabel(TextLabel {
 					value: release_series(),
 					..Default::default()
 				}))],
 			},
-			LayoutRow::Row {
+			LayoutGroup::Row {
 				widgets: vec![WidgetHolder::new(Widget::TextLabel(TextLabel {
 					value: commit_info_localized(self.localized_commit_date.as_str()),
 					multiline: true,
 					..Default::default()
 				}))],
 			},
-			LayoutRow::Row { widgets: link_widgets },
-		])
+			LayoutGroup::Row { widgets: link_widgets },
+		]))
 	}
 }

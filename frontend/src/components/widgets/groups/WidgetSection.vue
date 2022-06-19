@@ -7,7 +7,7 @@
 			<TextLabel :bold="true">{{ widgetData.name }}</TextLabel>
 		</button>
 		<LayoutCol class="body" v-if="expanded">
-			<component :is="layoutRowType(layoutRow)" :widgetData="layoutRow" :layoutTarget="layoutTarget" v-for="(layoutRow, index) in widgetData.layout" :key="index"></component>
+			<component :is="layoutGroupType(layoutRow)" :widgetData="layoutRow" :layoutTarget="layoutTarget" v-for="(layoutRow, index) in widgetData.layout" :key="index"></component>
 		</LayoutCol>
 	</LayoutCol>
 </template>
@@ -72,7 +72,7 @@
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
 
-import { isWidgetRow, isWidgetSection, LayoutRow as LayoutSystemRow, WidgetSection as WidgetSectionFromJsMessages } from "@/wasm-communication/messages";
+import { isWidgetRow, isWidgetSection, LayoutGroup, WidgetSection as WidgetSectionFromJsMessages } from "@/wasm-communication/messages";
 
 import LayoutCol from "@/components/layout/LayoutCol.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
@@ -96,9 +96,9 @@ const WidgetSection = defineComponent({
 		updateLayout(widgetId: bigint, value: unknown) {
 			this.editor.instance.update_layout(this.layoutTarget, widgetId, value);
 		},
-		layoutRowType(layoutRow: LayoutSystemRow): unknown {
-			if (isWidgetRow(layoutRow)) return WidgetRow;
-			if (isWidgetSection(layoutRow)) return WidgetSection;
+		layoutGroupType(layoutGroup: LayoutGroup): unknown {
+			if (isWidgetRow(layoutGroup)) return WidgetRow;
+			if (isWidgetSection(layoutGroup)) return WidgetSection;
 
 			throw new Error("Layout row type does not exist");
 		},

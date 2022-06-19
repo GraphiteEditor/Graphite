@@ -8,7 +8,7 @@ pub struct ComingSoon {
 }
 
 impl PropertyHolder for ComingSoon {
-	fn properties(&self) -> WidgetLayout {
+	fn properties(&self) -> Layout {
 		let mut details = "This feature is not implemented yet".to_string();
 		let mut buttons = vec![WidgetHolder::new(Widget::TextButton(TextButton {
 			label: "OK".to_string(),
@@ -31,22 +31,22 @@ impl PropertyHolder for ComingSoon {
 				..Default::default()
 			})));
 		}
-		WidgetLayout::new(vec![
-			LayoutRow::Row {
+		Layout::WidgetLayout(WidgetLayout::new(vec![
+			LayoutGroup::Row {
 				widgets: vec![WidgetHolder::new(Widget::TextLabel(TextLabel {
 					value: "Coming soon".to_string(),
 					bold: true,
 					..Default::default()
 				}))],
 			},
-			LayoutRow::Row {
+			LayoutGroup::Row {
 				widgets: vec![WidgetHolder::new(Widget::TextLabel(TextLabel {
 					value: details,
 					multiline: true,
 					..Default::default()
 				}))],
 			},
-			LayoutRow::Row { widgets: buttons },
-		])
+			LayoutGroup::Row { widgets: buttons },
+		]))
 	}
 }

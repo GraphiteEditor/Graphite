@@ -2,7 +2,7 @@
 
 <template>
 	<div class="widget-layout">
-		<component :is="layoutRowType(layoutRow)" :widgetData="layoutRow" :layoutTarget="layout.layout_target" v-for="(layoutRow, index) in layout.layout" :key="index" />
+		<component :is="LayoutGroupType(layoutRow)" :widgetData="layoutRow" :layoutTarget="layout.layout_target" v-for="(layoutRow, index) in layout.layout" :key="index" />
 	</div>
 </template>
 
@@ -18,7 +18,7 @@
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
 
-import { isWidgetColumn, isWidgetRow, isWidgetSection, LayoutRow, WidgetLayout } from "@/wasm-communication/messages";
+import { isWidgetColumn, isWidgetRow, isWidgetSection, LayoutGroup, WidgetLayout } from "@/wasm-communication/messages";
 
 import WidgetSection from "@/components/widgets/groups/WidgetSection.vue";
 import WidgetRow from "@/components/widgets/WidgetRow.vue";
@@ -28,7 +28,7 @@ export default defineComponent({
 		layout: { type: Object as PropType<WidgetLayout>, required: true },
 	},
 	methods: {
-		layoutRowType(layoutRow: LayoutRow): unknown {
+		LayoutGroupType(layoutRow: LayoutGroup): unknown {
 			if (isWidgetColumn(layoutRow)) return WidgetRow;
 			if (isWidgetRow(layoutRow)) return WidgetRow;
 			if (isWidgetSection(layoutRow)) return WidgetSection;

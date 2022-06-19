@@ -117,17 +117,15 @@ impl JsEditorHandle {
 
 		let message = MovementMessage::TranslateCanvas { delta: (0., 0.).into() };
 		self.dispatch(message);
+
+		let message = MenuBarMessage::SendLayout;
+		self.dispatch(message);
 	}
 
 	/// Displays a dialog with an error message
 	pub fn error_dialog(&self, title: String, description: String) {
 		let message = DialogMessage::DisplayDialogError { title, description };
 		self.dispatch(message);
-	}
-
-	/// Intentionally panic for debugging purposes
-	pub fn intentional_panic(&self) {
-		panic!();
 	}
 
 	/// Answer whether or not the editor has crashed
@@ -147,23 +145,6 @@ impl JsEditorHandle {
 		GRAPHITE_DOCUMENT_VERSION.to_string()
 	}
 
-	/// Get the constant `i32::MAX`
-	#[wasm_bindgen]
-	pub fn i32_max(&self) -> i32 {
-		i32::MAX
-	}
-
-	/// Get the constant `i32::MIN`
-	#[wasm_bindgen]
-	pub fn i32_min(&self) -> i32 {
-		i32::MIN
-	}
-
-	/// Request that the Node Graph panel be shown or hidden by toggling the visibility state
-	pub fn toggle_node_graph_visibility(&self) {
-		self.dispatch(WorkspaceMessage::NodeGraphToggleVisibility);
-	}
-
 	/// Update layout of a given UI
 	pub fn update_layout(&self, layout_target: JsValue, widget_id: u64, value: JsValue) -> Result<(), JsValue> {
 		match (from_value(layout_target), from_value(value)) {
@@ -178,16 +159,6 @@ impl JsEditorHandle {
 
 	pub fn select_document(&self, document_id: u64) {
 		let message = PortfolioMessage::SelectDocument { document_id };
-		self.dispatch(message);
-	}
-
-	pub fn request_new_document_dialog(&self) {
-		let message = DialogMessage::RequestNewDocumentDialog;
-		self.dispatch(message);
-	}
-
-	pub fn open_document(&self) {
-		let message = PortfolioMessage::OpenDocument;
 		self.dispatch(message);
 	}
 
@@ -209,46 +180,13 @@ impl JsEditorHandle {
 		self.dispatch(message);
 	}
 
-	pub fn save_document(&self) {
-		let message = DocumentMessage::SaveDocument;
-		self.dispatch(message);
-	}
-
 	pub fn trigger_auto_save(&self, document_id: u64) {
 		let message = PortfolioMessage::AutoSaveDocument { document_id };
 		self.dispatch(message);
 	}
 
-	pub fn close_document(&self, document_id: u64) {
-		let message = ToolMessage::AbortCurrentTool;
-		self.dispatch(message);
-
-		let message = PortfolioMessage::CloseDocument { document_id };
-		self.dispatch(message);
-	}
-
-	pub fn close_all_documents(&self) {
-		let message = PortfolioMessage::CloseAllDocuments;
-		self.dispatch(message);
-	}
-
-	pub fn close_active_document_with_confirmation(&self) {
-		let message = PortfolioMessage::CloseActiveDocumentWithConfirmation;
-		self.dispatch(message);
-	}
-
 	pub fn close_document_with_confirmation(&self, document_id: u64) {
 		let message = PortfolioMessage::CloseDocumentWithConfirmation { document_id };
-		self.dispatch(message);
-	}
-
-	pub fn close_all_documents_with_confirmation(&self) {
-		let message = DialogMessage::CloseAllDocumentsWithConfirmation;
-		self.dispatch(message);
-	}
-
-	pub fn request_about_graphite_dialog(&self) {
-		let message = DialogMessage::RequestAboutGraphiteDialog;
 		self.dispatch(message);
 	}
 
@@ -259,21 +197,6 @@ impl JsEditorHandle {
 
 	pub fn request_coming_soon_dialog(&self, issue: Option<i32>) {
 		let message = DialogMessage::RequestComingSoonDialog { issue };
-		self.dispatch(message);
-	}
-
-	pub fn log_level_info(&self) {
-		let message = GlobalMessage::LogInfo;
-		self.dispatch(message);
-	}
-
-	pub fn log_level_debug(&self) {
-		let message = GlobalMessage::LogDebug;
-		self.dispatch(message);
-	}
-
-	pub fn log_level_trace(&self) {
-		let message = GlobalMessage::LogTrace;
 		self.dispatch(message);
 	}
 
@@ -426,30 +349,6 @@ impl JsEditorHandle {
 		self.dispatch(message);
 	}
 
-	/// Undo history one step
-	pub fn undo(&self) {
-		let message = DocumentMessage::Undo;
-		self.dispatch(message);
-	}
-
-	/// Redo history one step
-	pub fn redo(&self) {
-		let message = DocumentMessage::Redo;
-		self.dispatch(message);
-	}
-
-	/// Cut selected layers
-	pub fn cut(&self) {
-		let message = PortfolioMessage::Cut { clipboard: Clipboard::Device };
-		self.dispatch(message);
-	}
-
-	/// Copy selected layers
-	pub fn copy(&self) {
-		let message = PortfolioMessage::Copy { clipboard: Clipboard::Device };
-		self.dispatch(message);
-	}
-
 	/// Paste layers from a serialized json representation
 	pub fn paste_serialized_data(&self, data: String) {
 		let message = PortfolioMessage::PasteSerializedData { data };
@@ -462,21 +361,9 @@ impl JsEditorHandle {
 		self.dispatch(message);
 	}
 
-	/// Select all layers
-	pub fn select_all_layers(&self) {
-		let message = DocumentMessage::SelectAllLayers;
-		self.dispatch(message);
-	}
-
 	/// Deselect all layers
 	pub fn deselect_all_layers(&self) {
 		let message = DocumentMessage::DeselectAllLayers;
-		self.dispatch(message);
-	}
-
-	/// Reorder selected layer
-	pub fn reorder_selected_layers(&self, relative_index_offset: isize) {
-		let message = DocumentMessage::ReorderSelectedLayers { relative_index_offset };
 		self.dispatch(message);
 	}
 
@@ -493,12 +380,6 @@ impl JsEditorHandle {
 	/// Set the name for the layer
 	pub fn set_layer_name(&self, layer_path: Vec<LayerId>, name: String) {
 		let message = DocumentMessage::SetLayerName { layer_path, name };
-		self.dispatch(message);
-	}
-
-	/// Export the document
-	pub fn export_document(&self) {
-		let message = DialogMessage::RequestExportDialog;
 		self.dispatch(message);
 	}
 
