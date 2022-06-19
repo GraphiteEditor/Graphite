@@ -906,26 +906,28 @@ impl Document {
 				}
 				Some(vec![LayerChanged { path: layer_path.clone() }])
 			}
-			Operation::DeleteSelectedVectorPoints { layer_path } => {
-				let layer = self.layer_mut(&layer_path)?;
+			Operation::DeleteSelectedVectorPoints { layer_paths } => {
 				let mut responses = vec![];
-				if let Some(shape) = layer.as_vector_shape_mut() {
-					// Delete the selected points.
-					shape.delete_selected();
+				for layer_path in layer_paths {
+					let layer = self.layer_mut(&layer_path)?;
+					if let Some(shape) = layer.as_vector_shape_mut() {
+						// Delete the selected points.
+						shape.delete_selected();
 
-					// Delete the layer if there are no longer any anchors
-					if (shape.anchors().len() - 1) == 0 {
-						self.delete(&layer_path)?;
+						// Delete the layer if there are no longer any anchors
+						if (shape.anchors().len() - 1) == 0 {
+							self.delete(&layer_path)?;
+							responses.push(DocumentChanged);
+							responses.push(DocumentResponse::DeletedLayer { path: layer_path });
+							return Ok(Some(responses));
+						}
+
+						// If we still have anchors, update the layer and thumbnails
+						self.mark_as_dirty(&layer_path)?;
 						responses.push(DocumentChanged);
-						responses.push(DocumentResponse::DeletedLayer { path: layer_path });
-						return Ok(Some(responses));
+						responses.push(LayerChanged { path: layer_path.clone() });
+						responses.append(&mut update_thumbnails_upstream(&layer_path));
 					}
-
-					// If we still have anchors, update the layer and thumbnails
-					self.mark_as_dirty(&layer_path)?;
-					responses.push(DocumentChanged);
-					responses.push(LayerChanged { path: layer_path.clone() });
-					responses.append(&mut update_thumbnails_upstream(&layer_path));
 				}
 				Some(responses)
 			}

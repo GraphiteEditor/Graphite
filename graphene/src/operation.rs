@@ -120,7 +120,7 @@ pub enum Operation {
 		path: Vec<LayerId>,
 	},
 	DeleteSelectedVectorPoints {
-		layer_path: Vec<LayerId>,
+		layer_paths: Vec<Vec<LayerId>>,
 	},
 	DeselectVectorPoints {
 		layer_path: Vec<LayerId>,

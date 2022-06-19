@@ -1019,11 +1019,14 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 				responses.push_front(DocumentMessage::SelectionChanged.into());
 			}
 			DeleteSelectedVectorPoints => {
-				self.backup(responses);
+				responses.push_back(StartTransaction.into());
 
-				for layer_path in self.selected_layers_without_children() {
-					responses.push_front(DocumentOperation::DeleteSelectedVectorPoints { layer_path: layer_path.to_vec() }.into());
-				}
+				responses.push_front(
+					DocumentOperation::DeleteSelectedVectorPoints {
+						layer_paths: self.selected_layers_without_children().iter().map(|path| path.to_vec()).collect(),
+					}
+					.into(),
+				);
 			}
 			DeselectAllLayers => {
 				responses.push_front(SetSelectedLayers { replacement_selected_layers: vec![] }.into());
