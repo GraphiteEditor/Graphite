@@ -31,19 +31,9 @@ pub enum Operation {
 		transform: [f64; 6],
 		style: style::PathStyle,
 	},
-	AddOverlayRect {
-		path: Vec<LayerId>,
-		transform: [f64; 6],
-		style: style::PathStyle,
-	},
 	AddLine {
 		path: Vec<LayerId>,
 		insert_index: isize,
-		transform: [f64; 6],
-		style: style::PathStyle,
-	},
-	AddOverlayLine {
-		path: Vec<LayerId>,
 		transform: [f64; 6],
 		style: style::PathStyle,
 	},
@@ -96,12 +86,6 @@ pub enum Operation {
 		insert_index: isize,
 		transform: [f64; 6],
 		sides: u32,
-		style: style::PathStyle,
-	},
-	AddOverlayShape {
-		path: Vec<LayerId>,
-		// TODO Remove this (remove kurbo)
-		bez_path: kurbo::BezPath,
 		style: style::PathStyle,
 	},
 	AddShape {

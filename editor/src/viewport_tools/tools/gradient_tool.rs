@@ -173,10 +173,11 @@ impl GradientOverlay {
 		let translation = start;
 		let transform = DAffine2::from_scale_angle_translation(scale, angle, translation).to_cols_array();
 
-		let operation = Operation::AddOverlayLine {
+		let operation = Operation::AddLine {
 			path: path.clone(),
 			transform,
 			style: PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 1.0)), Fill::None),
+    		insert_index: -1,
 		};
 		responses.push_back(DocumentMessage::Overlays(operation.into()).into());
 

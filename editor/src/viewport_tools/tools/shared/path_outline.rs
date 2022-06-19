@@ -48,10 +48,12 @@ impl PathOutline {
 			Some(path) => path,
 			None => {
 				let overlay_path = vec![generate_uuid()];
-				let operation = Operation::AddOverlayShape {
+				let operation = Operation::AddShape {
 					path: overlay_path.clone(),
 					bez_path: BezPath::new(),
 					style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, PATH_OUTLINE_WEIGHT)), Fill::None),
+					insert_index: -1,
+					transform: DAffine2::IDENTITY.to_cols_array(),
 				};
 
 				responses.push_back(DocumentMessage::Overlays(operation.into()).into());

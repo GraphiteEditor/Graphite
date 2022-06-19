@@ -500,30 +500,12 @@ impl Document {
 
 				Some([vec![DocumentChanged, CreatedLayer { path: path.clone() }], update_thumbnails_upstream(&path)].concat())
 			}
-			Operation::AddOverlayRect { path, transform, style } => {
-				let mut rect = ShapeLayer::rectangle(style);
-				rect.render_index = -1;
-
-				let layer = Layer::new(LayerDataType::Shape(rect), transform);
-				self.set_layer(&path, layer, -1)?;
-
-				Some([vec![DocumentChanged, CreatedLayer { path }]].concat())
-			}
 			Operation::AddLine { path, insert_index, transform, style } => {
 				let layer = Layer::new(LayerDataType::Shape(ShapeLayer::line(style)), transform);
 
 				self.set_layer(&path, layer, insert_index)?;
 
 				Some([vec![DocumentChanged, CreatedLayer { path: path.clone() }], update_thumbnails_upstream(&path)].concat())
-			}
-			Operation::AddOverlayLine { path, transform, style } => {
-				let mut line = ShapeLayer::line(style);
-				line.render_index = -1;
-
-				let layer = Layer::new(LayerDataType::Shape(line), transform);
-				self.set_layer(&path, layer, -1)?;
-
-				Some([vec![DocumentChanged, CreatedLayer { path }]].concat())
 			}
 			Operation::AddText {
 				path,
@@ -593,15 +575,6 @@ impl Document {
 				self.set_layer(&path, layer, insert_index)?;
 
 				Some([vec![DocumentChanged, CreatedLayer { path: path.clone() }], update_thumbnails_upstream(&path)].concat())
-			}
-			Operation::AddOverlayShape { path, style, bez_path } => {
-				let mut shape = ShapeLayer::from_bez_path(bez_path, style);
-				shape.render_index = -1;
-
-				let layer = Layer::new(LayerDataType::Shape(shape), DAffine2::IDENTITY.to_cols_array());
-				self.set_layer(&path, layer, -1)?;
-
-				Some([vec![DocumentChanged, CreatedLayer { path }]].concat())
 			}
 			Operation::AddShape {
 				path,

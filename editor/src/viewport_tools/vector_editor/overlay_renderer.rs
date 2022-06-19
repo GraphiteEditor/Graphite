@@ -136,10 +136,12 @@ impl<'a> OverlayRenderer {
 	/// Create the kurbo shape that matches the selected viewport shape
 	fn create_shape_outline_overlay(&self, bez_path: BezPath, responses: &mut VecDeque<Message>) -> Vec<LayerId> {
 		let layer_path = vec![generate_uuid()];
-		let operation = Operation::AddOverlayShape {
+		let operation = Operation::AddShape {
 			path: layer_path.clone(),
 			bez_path,
 			style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, PATH_OUTLINE_WEIGHT)), Fill::None),
+			insert_index: -1,
+			transform: DAffine2::IDENTITY.to_cols_array(),
 		};
 		responses.push_back(DocumentMessage::Overlays(operation.into()).into());
 
@@ -149,10 +151,11 @@ impl<'a> OverlayRenderer {
 	/// Create a single anchor overlay and return its layer id
 	fn create_anchor_overlay(&self, responses: &mut VecDeque<Message>) -> Vec<LayerId> {
 		let layer_path = vec![generate_uuid()];
-		let operation = Operation::AddOverlayRect {
+		let operation = Operation::AddRect {
 			path: layer_path.clone(),
 			transform: DAffine2::IDENTITY.to_cols_array(),
 			style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 2.0)), Fill::solid(Color::WHITE)),
+			insert_index: -1,
 		};
 		responses.push_back(DocumentMessage::Overlays(operation.into()).into());
 		layer_path
@@ -165,10 +168,11 @@ impl<'a> OverlayRenderer {
 		}
 
 		let layer_path = vec![generate_uuid()];
-		let operation = Operation::AddOverlayEllipse {
+		let operation = Operation::AddEllipse {
 			path: layer_path.clone(),
 			transform: DAffine2::IDENTITY.to_cols_array(),
 			style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 2.0)), Fill::solid(Color::WHITE)),
+			insert_index: -1,
 		};
 		responses.push_back(DocumentMessage::Overlays(operation.into()).into());
 		Some(layer_path)
@@ -181,10 +185,11 @@ impl<'a> OverlayRenderer {
 		}
 
 		let layer_path = vec![generate_uuid()];
-		let operation = Operation::AddOverlayLine {
+		let operation = Operation::AddLine {
 			path: layer_path.clone(),
 			transform: DAffine2::IDENTITY.to_cols_array(),
 			style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 1.0)), Fill::None),
+			insert_index: -1,
 		};
 		responses.push_front(DocumentMessage::Overlays(operation.into()).into());
 
