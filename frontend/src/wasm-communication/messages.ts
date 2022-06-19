@@ -198,6 +198,8 @@ export class TriggerFileDownload extends JsMessage {
 
 export class TriggerFileUpload extends JsMessage {}
 
+export class TriggerPaste extends JsMessage {}
+
 export class TriggerRasterDownload extends JsMessage {
 	readonly document!: string;
 
@@ -584,6 +586,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	TriggerIndexedDbRemoveDocument,
 	TriggerFontLoad,
 	TriggerIndexedDbWriteDocument,
+	TriggerPaste,
 	TriggerRasterDownload,
 	TriggerTextCommit,
 	TriggerTextCopy,
