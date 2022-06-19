@@ -1,5 +1,5 @@
 use super::layout_message::LayoutTarget;
-use super::widgets::WidgetLayout;
+use super::widgets::Layout;
 use crate::layout::widgets::Widget;
 use crate::message_prelude::*;
 
@@ -10,46 +10,50 @@ use std::collections::VecDeque;
 
 #[derive(Debug, Clone, Default)]
 pub struct LayoutMessageHandler {
-	layouts: [WidgetLayout; LayoutTarget::LayoutTargetLength as usize],
+	layouts: [Layout; LayoutTarget::LayoutTargetLength as usize],
 }
 
 impl LayoutMessageHandler {
 	#[remain::check]
 	fn send_layout(&self, layout_target: LayoutTarget, responses: &mut VecDeque<Message>) {
-		let widget_layout = &self.layouts[layout_target as usize];
+		let layout = &self.layouts[layout_target as usize];
 		#[remain::sorted]
 		let message = match layout_target {
 			LayoutTarget::DialogDetails => FrontendMessage::UpdateDialogDetails {
 				layout_target,
-				layout: widget_layout.layout.clone(),
+				layout: layout.clone().unwrap_widget_layout().layout,
 			},
 			LayoutTarget::DocumentBar => FrontendMessage::UpdateDocumentBarLayout {
 				layout_target,
-				layout: widget_layout.layout.clone(),
+				layout: layout.clone().unwrap_widget_layout().layout,
 			},
 			LayoutTarget::DocumentMode => FrontendMessage::UpdateDocumentModeLayout {
 				layout_target,
-				layout: widget_layout.layout.clone(),
+				layout: layout.clone().unwrap_widget_layout().layout,
 			},
 			LayoutTarget::LayerTreeOptions => FrontendMessage::UpdateLayerTreeOptionsLayout {
 				layout_target,
-				layout: widget_layout.layout.clone(),
+				layout: layout.clone().unwrap_widget_layout().layout,
+			},
+			LayoutTarget::MenuBar => FrontendMessage::UpdateMenuBarLayout {
+				layout_target,
+				layout: layout.clone().unwrap_menu_layout().layout,
 			},
 			LayoutTarget::PropertiesOptions => FrontendMessage::UpdatePropertyPanelOptionsLayout {
 				layout_target,
-				layout: widget_layout.layout.clone(),
+				layout: layout.clone().unwrap_widget_layout().layout,
 			},
 			LayoutTarget::PropertiesSections => FrontendMessage::UpdatePropertyPanelSectionsLayout {
 				layout_target,
-				layout: widget_layout.layout.clone(),
+				layout: layout.clone().unwrap_widget_layout().layout,
 			},
 			LayoutTarget::ToolOptions => FrontendMessage::UpdateToolOptionsLayout {
 				layout_target,
-				layout: widget_layout.layout.clone(),
+				layout: layout.clone().unwrap_widget_layout().layout,
 			},
 			LayoutTarget::ToolShelf => FrontendMessage::UpdateToolShelfLayout {
 				layout_target,
-				layout: widget_layout.layout.clone(),
+				layout: layout.clone().unwrap_widget_layout().layout,
 			},
 
 			#[remain::unsorted]
@@ -127,6 +131,10 @@ impl MessageHandler<LayoutMessage, ()> for LayoutMessageHandler {
 						responses.push_back(callback_message);
 					}
 					Widget::IconLabel(_) => {}
+					Widget::Invisible(invisible) => {
+						let callback_message = (invisible.on_update.callback)(&());
+						responses.push_back(callback_message);
+					}
 					Widget::NumberInput(number_input) => match value {
 						Value::Number(num) => {
 							let update_value = num.as_f64().unwrap();
