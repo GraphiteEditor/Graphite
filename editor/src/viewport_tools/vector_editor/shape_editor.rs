@@ -48,6 +48,11 @@ impl ShapeEditor {
 				.editor_state
 				.is_selected;
 
+			let point_position = self.shape(document, shape_layer_path).unwrap().anchors().by_id(anchor_id).unwrap().points[point_index]
+				.as_ref()
+				.unwrap()
+				.position;
+
 			// let selected_shape = self.shape(document, shape_layer_path).unwrap();
 
 			// Should we select or deselect the point?
@@ -63,6 +68,10 @@ impl ShapeEditor {
 					}
 					.into(),
 				);
+				// Snap the selected point to the cursor
+				if let Ok(viewspace) = document.generate_transform_relative_to_viewport(shape_layer_path) {
+					self.move_selected_points(mouse_position - viewspace.transform_point2(point_position), mouse_position, responses)
+				}
 			} else {
 				responses.push_back(
 					DocumentMessage::DeselectVectorPoints {

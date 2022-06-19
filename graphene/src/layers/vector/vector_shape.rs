@@ -264,6 +264,46 @@ impl VectorShape {
 		&self.0
 	}
 
+	/// Returns a [VectorControlPoint] from the last [VectorAnchor]
+	pub fn last_point(&self, control_type: ControlPointType) -> Option<&VectorControlPoint> {
+		self.anchors().last().and_then(|anchor| anchor.points[control_type].as_ref())
+	}
+
+	/// Returns a [VectorControlPoint] from the last [VectorAnchor], mutably
+	pub fn last_point_mut(&mut self, control_type: ControlPointType) -> Option<&mut VectorControlPoint> {
+		self.anchors_mut().last_mut().and_then(|anchor| anchor.points[control_type].as_mut())
+	}
+
+	/// Returns a [VectorControlPoint]  from the first [VectorAnchor]
+	pub fn first_point(&self, control_type: ControlPointType) -> Option<&VectorControlPoint> {
+		self.anchors().first().and_then(|anchor| anchor.points[control_type].as_ref())
+	}
+
+	/// Returns a [VectorControlPoint] from the first [VectorAnchor]
+	pub fn first_point_mut(&mut self, control_type: ControlPointType) -> Option<&mut VectorControlPoint> {
+		self.anchors_mut().first_mut().and_then(|anchor| anchor.points[control_type].as_mut())
+	}
+
+	/// Should we close the shape?
+	pub fn should_close_shape(&self) -> bool {
+		if self.last_point(ControlPointType::Anchor).is_none() {
+			return false;
+		}
+
+		self.first_point(ControlPointType::Anchor)
+			.unwrap()
+			.position
+			.distance(self.last_point(ControlPointType::Anchor).unwrap().position)
+			< 0.001 // TODO Replace with constant, a small epsilon
+	}
+
+	/// Close the shape if able
+	pub fn close_shape(&mut self) {
+		if self.should_close_shape() {
+			self.anchors_mut().push_end(VectorAnchor::closed());
+		}
+	}
+
 	/// An alias for `self.0` mutable
 	pub fn anchors_mut(&mut self) -> &mut IdBackedVec<VectorAnchor> {
 		&mut self.0
@@ -314,14 +354,7 @@ impl<'a> TryFrom<&'a Layer> for &'a VectorShape {
 /// Create a BezPath from a VectorShape
 impl From<&VectorShape> for BezPath {
 	fn from(vector_shape: &VectorShape) -> Self {
-		if vector_shape.anchors().is_empty() {
-			return BezPath::new();
-		}
-
-		let mut bez_path = vec![];
-		let mut start_new_shape = true;
-
-		// Take anchors and create path elements, lines, quads or curves, or a close indicator
+		// Take anchors and create path elements: line, quad or curve, or a close indicator
 		let anchors_to_path_el = |first: &VectorAnchor, second: &VectorAnchor| -> (PathEl, bool) {
 			match [
 				&first.points[ControlPointType::OutHandle],
@@ -355,6 +388,13 @@ impl From<&VectorShape> for BezPath {
 			}
 		};
 
+		if vector_shape.anchors().is_empty() {
+			return BezPath::new();
+		}
+
+		let mut bez_path = vec![];
+		let mut start_new_shape = true;
+
 		for elements in vector_shape.anchors().windows(2) {
 			let first = &elements[0];
 			let second = &elements[1];
@@ -367,13 +407,12 @@ impl From<&VectorShape> for BezPath {
 				start_new_shape = false;
 			}
 
-			// Take anchors and create path elements, lines, quads or curves, or a close indicator
+			// Create a path element from our first, second anchors in the window
 			let (path_el, should_start_new_shape) = anchors_to_path_el(first, second);
 			start_new_shape = should_start_new_shape;
 			bez_path.push(path_el);
 		}
 
-		// bez_path[1] = PathEl::CurveTo(, , point_to_kurbo(first.points))
 		BezPath::from_vec(bez_path)
 	}
 }
@@ -404,6 +443,7 @@ impl<T: Iterator<Item = PathEl>> From<T> for VectorShape {
 				}
 			}
 		}
+
 		vector_shape
 	}
 }
