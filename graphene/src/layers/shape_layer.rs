@@ -1,5 +1,6 @@
 use super::layer_info::LayerData;
 use super::style::{self, PathStyle, ViewMode};
+use super::vector::constants::ControlPointType;
 use super::vector::vector_shape::VectorShape;
 use crate::intersection::{intersect_quad_bez_path, Quad};
 use crate::layers::text_layer::FontCache;
@@ -144,11 +145,8 @@ impl ShapeLayer {
 
 	/// Create an elliptical shape.
 	pub fn ellipse(style: PathStyle) -> Self {
-		let mut shape = VectorShape::from_kurbo_shape(&kurbo::Ellipse::from_rect(kurbo::Rect::new(0., 0., 1., 1.)).to_path(0.01));
-		shape.add_point_to_end(VectorAnchor::closed());
 		Self {
-			// TODO remove kurbo
-			shape,
+			shape: VectorShape::new_ellipse(DVec2::new(0., 0.), DVec2::new(1., 1.)),
 			style,
 			render_index: 1,
 		}
@@ -172,7 +170,6 @@ impl ShapeLayer {
 		}
 	}
 
-	// TODO Remove BezPath / Kurbo usage in spline
 	/// Creates a smooth bezier spline that passes through all given points.
 	/// The algorithm used in this implementation is described here: <https://www.particleincell.com/2012/bezier-splines/>
 	pub fn spline(points: Vec<impl Into<glam::DVec2>>, style: PathStyle) -> Self {

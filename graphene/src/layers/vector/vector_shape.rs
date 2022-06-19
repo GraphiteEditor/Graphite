@@ -21,8 +21,6 @@ impl VectorShape {
 		VectorShape { ..Default::default() }
 	}
 
-	// ? isn't this function itself the adaptor?
-	// TODO Wrap this within an adapter to separate kurbo from VectorShape
 	/// Create a new VectorShape from a kurbo Shape
 	/// This exists to smooth the transition away from Kurbo
 	pub fn from_kurbo_shape<T: Shape>(shape: &T) -> Self {
@@ -39,6 +37,33 @@ impl VectorShape {
 				VectorAnchor::new(DVec2::new(p1.x, p2.y)),
 				VectorAnchor::new(p2),
 				VectorAnchor::new(DVec2::new(p2.x, p1.y)),
+				VectorAnchor::closed(),
+			]
+			.into_iter()
+			.collect(),
+		)
+	}
+
+	pub fn new_ellipse(p1: DVec2, p2: DVec2) -> Self {
+		let x_height = DVec2::new((p2.x - p1.x).abs(), 0.);
+		let y_height = DVec2::new(0., (p2.y - p1.y).abs());
+		let center = (p1 + p2) * 0.5;
+		let top = center + y_height * 0.5;
+		let bottom = center - y_height * 0.5;
+		let left = center + x_height * 0.5;
+		let right = center - x_height * 0.5;
+
+		// Constant explained here https://stackoverflow.com/a/27863181
+		let curve_constant = 0.55228_3;
+		let handle_offset_x = x_height * curve_constant * 0.5;
+		let handle_offset_y = y_height * curve_constant * 0.5;
+
+		VectorShape(
+			vec![
+				VectorAnchor::new_with_handles(top, Some(top + handle_offset_x), Some(top - handle_offset_x)),
+				VectorAnchor::new_with_handles(right, Some(right + handle_offset_y), Some(right - handle_offset_y)),
+				VectorAnchor::new_with_handles(bottom, Some(bottom - handle_offset_x), Some(bottom + handle_offset_x)),
+				VectorAnchor::new_with_handles(left, Some(left - handle_offset_y), Some(left + handle_offset_y)),
 				VectorAnchor::closed(),
 			]
 			.into_iter()
@@ -251,12 +276,11 @@ impl VectorShape {
 
 	// ** INTERFACE WITH KURBO **
 
-	// TODO Remove BezPath / kurbo reliance here
+	// TODO Implement our own a local bounding box calculation
 	pub fn bounding_box(&self) -> Rect {
 		<&Self as Into<BezPath>>::into(self).bounding_box()
 	}
 
-	// TODO Abstract the usage of BezPath / Kurbo here
 	pub fn to_svg(&mut self) -> String {
 		<&Self as Into<BezPath>>::into(self).to_svg()
 	}
@@ -300,30 +324,59 @@ impl From<&VectorShape> for BezPath {
 		let mut bez_path = vec![];
 		let mut start_new_shape = true;
 
+		// Take anchors and create path elements, lines, quads or curves, or a close indicator
+		let anchors_to_path_el = |first: &VectorAnchor, second: &VectorAnchor| -> (PathEl, bool) {
+			match [
+				&first.points[ControlPointType::OutHandle],
+				&second.points[ControlPointType::InHandle],
+				&second.points[ControlPointType::Anchor],
+			] {
+				[None, None, Some(anchor)] => (PathEl::LineTo(point_to_kurbo(anchor)), false),
+				[None, Some(in_handle), Some(anchor)] => (PathEl::QuadTo(point_to_kurbo(in_handle), point_to_kurbo(anchor)), false),
+				[Some(out_handle), None, Some(anchor)] => (PathEl::QuadTo(point_to_kurbo(out_handle), point_to_kurbo(anchor)), false),
+				[Some(out_handle), Some(in_handle), Some(anchor)] => (PathEl::CurveTo(point_to_kurbo(out_handle), point_to_kurbo(in_handle), point_to_kurbo(anchor)), false),
+				[Some(out_handle), None, None] => {
+					if let Some(first_anchor) = vector_shape.anchors().first() {
+						(
+							if let Some(in_handle) = &first_anchor.points[ControlPointType::InHandle] {
+								PathEl::CurveTo(
+									point_to_kurbo(out_handle),
+									point_to_kurbo(in_handle),
+									point_to_kurbo(first_anchor.points[ControlPointType::Anchor].as_ref().unwrap()),
+								)
+							} else {
+								PathEl::QuadTo(point_to_kurbo(out_handle), point_to_kurbo(first_anchor.points[ControlPointType::Anchor].as_ref().unwrap()))
+							},
+							true,
+						)
+					} else {
+						(PathEl::ClosePath, true)
+					}
+				}
+				[None, None, None] => (PathEl::ClosePath, true),
+				_ => panic!("Invalid path element {:#?}", vector_shape),
+			}
+		};
+
 		for elements in vector_shape.anchors().windows(2) {
 			let first = &elements[0];
 			let second = &elements[1];
 
+			// Tell kurbo cursor to move to the first anchor
 			if start_new_shape {
-				if let Some(anchor) = &first.points[0] {
+				if let Some(anchor) = &first.points[ControlPointType::Anchor] {
 					bez_path.push(PathEl::MoveTo(point_to_kurbo(anchor)));
 				}
 				start_new_shape = false;
 			}
 
-			let new_segment = match [&first.points[2], &second.points[1], &second.points[0]] {
-				[None, None, Some(p)] => PathEl::LineTo(point_to_kurbo(p)),
-				[None, Some(a), Some(p)] => PathEl::QuadTo(point_to_kurbo(a), point_to_kurbo(p)),
-				[Some(a), None, Some(p)] => PathEl::QuadTo(point_to_kurbo(a), point_to_kurbo(p)),
-				[Some(a1), Some(a2), Some(p)] => PathEl::CurveTo(point_to_kurbo(a1), point_to_kurbo(a2), point_to_kurbo(p)),
-				[None, None, None] => {
-					start_new_shape = true;
-					PathEl::ClosePath
-				}
-				_ => panic!("Invalid path element"),
-			};
-			bez_path.push(new_segment);
+			// Take anchors and create path elements, lines, quads or curves, or a close indicator
+			let (path_el, should_start_new_shape) = anchors_to_path_el(first, second);
+			start_new_shape = should_start_new_shape;
+			bez_path.push(path_el);
 		}
+
+		// bez_path[1] = PathEl::CurveTo(, , point_to_kurbo(first.points))
 		BezPath::from_vec(bez_path)
 	}
 }
@@ -342,12 +395,12 @@ impl<T: Iterator<Item = PathEl>> From<T> for VectorShape {
 				}
 				PathEl::QuadTo(p0, p1) => {
 					vector_shape.anchors_mut().push_end(VectorAnchor::new(kurbo_point_to_dvec2(p1)));
-					vector_shape.anchors_mut().last_mut().unwrap().points[1] = Some(VectorControlPoint::new(kurbo_point_to_dvec2(p0), ControlPointType::InHandle));
+					vector_shape.anchors_mut().last_mut().unwrap().points[ControlPointType::InHandle] = Some(VectorControlPoint::new(kurbo_point_to_dvec2(p0), ControlPointType::InHandle));
 				}
 				PathEl::CurveTo(p0, p1, p2) => {
-					vector_shape.anchors_mut().last_mut().unwrap().points[2] = Some(VectorControlPoint::new(kurbo_point_to_dvec2(p0), ControlPointType::OutHandle));
+					vector_shape.anchors_mut().last_mut().unwrap().points[ControlPointType::OutHandle] = Some(VectorControlPoint::new(kurbo_point_to_dvec2(p0), ControlPointType::OutHandle));
 					vector_shape.anchors_mut().push_end(VectorAnchor::new(kurbo_point_to_dvec2(p2)));
-					vector_shape.anchors_mut().last_mut().unwrap().points[1] = Some(VectorControlPoint::new(kurbo_point_to_dvec2(p1), ControlPointType::InHandle));
+					vector_shape.anchors_mut().last_mut().unwrap().points[ControlPointType::InHandle] = Some(VectorControlPoint::new(kurbo_point_to_dvec2(p1), ControlPointType::InHandle));
 				}
 				PathEl::ClosePath => {
 					vector_shape.anchors_mut().push_end(VectorAnchor::closed());
