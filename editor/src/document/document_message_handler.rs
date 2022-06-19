@@ -10,7 +10,7 @@ use crate::frontend::utility_types::{FileType, FrontendImageData};
 use crate::input::InputPreprocessorMessageHandler;
 use crate::layout::layout_message::LayoutTarget;
 use crate::layout::widgets::{
-	DropdownEntryData, DropdownInput, IconButton, Layout, LayoutRow, NumberInput, NumberInputIncrementBehavior, OptionalInput, PopoverButton, RadioEntryData, RadioInput, Separator,
+	DropdownEntryData, DropdownInput, IconButton, Layout, LayoutGroup, NumberInput, NumberInputIncrementBehavior, OptionalInput, PopoverButton, RadioEntryData, RadioInput, Separator,
 	SeparatorDirection, SeparatorType, Widget, WidgetCallback, WidgetHolder, WidgetLayout,
 };
 use crate::message_prelude::*;
@@ -519,7 +519,7 @@ impl DocumentMessageHandler {
 	}
 
 	pub fn update_document_widgets(&self, responses: &mut VecDeque<Message>) {
-		let document_bar_layout = WidgetLayout::new(vec![LayoutRow::Row {
+		let document_bar_layout = WidgetLayout::new(vec![LayoutGroup::Row {
 			widgets: vec![
 				WidgetHolder::new(Widget::OptionalInput(OptionalInput {
 					checked: self.snapping_enabled,
@@ -657,7 +657,7 @@ impl DocumentMessageHandler {
 			],
 		}]);
 
-		let document_mode_layout = WidgetLayout::new(vec![LayoutRow::Row {
+		let document_mode_layout = WidgetLayout::new(vec![LayoutGroup::Row {
 			widgets: vec![
 				WidgetHolder::new(Widget::DropdownInput(DropdownInput {
 					entries: vec![vec![
@@ -762,7 +762,7 @@ impl DocumentMessageHandler {
 			})
 			.collect();
 
-		let layer_tree_options = WidgetLayout::new(vec![LayoutRow::Row {
+		let layer_tree_options = WidgetLayout::new(vec![LayoutGroup::Row {
 			widgets: vec![
 				WidgetHolder::new(Widget::DropdownInput(DropdownInput {
 					entries: blend_mode_menu_entries,

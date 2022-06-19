@@ -32,21 +32,21 @@ impl PropertyHolder for ComingSoon {
 			})));
 		}
 		Layout::WidgetLayout(WidgetLayout::new(vec![
-			LayoutRow::Row {
+			LayoutGroup::Row {
 				widgets: vec![WidgetHolder::new(Widget::TextLabel(TextLabel {
 					value: "Coming soon".to_string(),
 					bold: true,
 					..Default::default()
 				}))],
 			},
-			LayoutRow::Row {
+			LayoutGroup::Row {
 				widgets: vec![WidgetHolder::new(Widget::TextLabel(TextLabel {
 					value: details,
 					multiline: true,
 					..Default::default()
 				}))],
 			},
-			LayoutRow::Row { widgets: buttons },
+			LayoutGroup::Row { widgets: buttons },
 		]))
 	}
 }

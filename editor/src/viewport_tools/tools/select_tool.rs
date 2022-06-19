@@ -4,7 +4,7 @@ use crate::document::utility_types::{AlignAggregate, AlignAxis, FlipAxis};
 use crate::frontend::utility_types::MouseCursorIcon;
 use crate::input::keyboard::{Key, MouseMotion};
 use crate::input::mouse::ViewportPosition;
-use crate::layout::widgets::{IconButton, Layout, LayoutRow, PopoverButton, PropertyHolder, Separator, SeparatorDirection, SeparatorType, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
+use crate::layout::widgets::{IconButton, Layout, LayoutGroup, PopoverButton, PropertyHolder, Separator, SeparatorDirection, SeparatorType, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
 use crate::message_prelude::*;
 use crate::misc::{HintData, HintGroup, HintInfo, KeysGroup};
 use crate::viewport_tools::snapping::{self, SnapHandler};
@@ -58,7 +58,7 @@ pub enum SelectToolMessage {
 
 impl PropertyHolder for SelectTool {
 	fn properties(&self) -> Layout {
-		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutRow::Row {
+		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row {
 			widgets: vec![
 				WidgetHolder::new(Widget::IconButton(IconButton {
 					icon: "AlignLeft".into(),

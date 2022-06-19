@@ -2,7 +2,7 @@ use super::tools::*;
 use crate::communication::message_handler::MessageHandler;
 use crate::document::DocumentMessageHandler;
 use crate::input::InputPreprocessorMessageHandler;
-use crate::layout::widgets::{IconButton, Layout, LayoutRow, PropertyHolder, Separator, SeparatorDirection, SeparatorType, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
+use crate::layout::widgets::{IconButton, Layout, LayoutGroup, PropertyHolder, Separator, SeparatorDirection, SeparatorType, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
 use crate::message_prelude::*;
 
 use graphene::color::Color;
@@ -89,7 +89,7 @@ impl PropertyHolder for ToolData {
 			.collect();
 
 		Layout::WidgetLayout(WidgetLayout {
-			layout: vec![LayoutRow::Column { widgets: tool_groups_layout }],
+			layout: vec![LayoutGroup::Column { widgets: tool_groups_layout }],
 		})
 	}
 }

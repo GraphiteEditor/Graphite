@@ -26,27 +26,27 @@ impl PropertyHolder for AboutGraphite {
 			})
 			.collect();
 		Layout::WidgetLayout(WidgetLayout::new(vec![
-			LayoutRow::Row {
+			LayoutGroup::Row {
 				widgets: vec![WidgetHolder::new(Widget::TextLabel(TextLabel {
 					value: "Graphite".to_string(),
 					bold: true,
 					..Default::default()
 				}))],
 			},
-			LayoutRow::Row {
+			LayoutGroup::Row {
 				widgets: vec![WidgetHolder::new(Widget::TextLabel(TextLabel {
 					value: release_series(),
 					..Default::default()
 				}))],
 			},
-			LayoutRow::Row {
+			LayoutGroup::Row {
 				widgets: vec![WidgetHolder::new(Widget::TextLabel(TextLabel {
 					value: commit_info_localized(self.localized_commit_date.as_str()),
 					multiline: true,
 					..Default::default()
 				}))],
 			},
-			LayoutRow::Row { widgets: link_widgets },
+			LayoutGroup::Row { widgets: link_widgets },
 		]))
 	}
 }

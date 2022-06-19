@@ -370,7 +370,7 @@ export class TriggerVisitLink extends JsMessage {
 }
 
 export interface WidgetLayout {
-	layout: LayoutRow[];
+	layout: LayoutGroup[];
 	layout_target: unknown;
 }
 
@@ -382,20 +382,20 @@ export function defaultWidgetLayout(): WidgetLayout {
 }
 
 // TODO: Rename LayoutRow to something more generic
-export type LayoutRow = WidgetRow | WidgetColumn | WidgetSection;
+export type LayoutGroup = WidgetRow | WidgetColumn | WidgetSection;
 
 export type WidgetColumn = { columnWidgets: Widget[] };
-export function isWidgetColumn(layoutColumn: LayoutRow): layoutColumn is WidgetColumn {
+export function isWidgetColumn(layoutColumn: LayoutGroup): layoutColumn is WidgetColumn {
 	return Boolean((layoutColumn as WidgetColumn).columnWidgets);
 }
 
 export type WidgetRow = { rowWidgets: Widget[] };
-export function isWidgetRow(layoutRow: LayoutRow): layoutRow is WidgetRow {
+export function isWidgetRow(layoutRow: LayoutGroup): layoutRow is WidgetRow {
 	return Boolean((layoutRow as WidgetRow).rowWidgets);
 }
 
-export type WidgetSection = { name: string; layout: LayoutRow[] };
-export function isWidgetSection(layoutRow: LayoutRow): layoutRow is WidgetSection {
+export type WidgetSection = { name: string; layout: LayoutGroup[] };
+export function isWidgetSection(layoutRow: LayoutGroup): layoutRow is WidgetSection {
 	return Boolean((layoutRow as WidgetSection).layout);
 }
 
@@ -427,62 +427,62 @@ export class UpdateDialogDetails extends JsMessage implements WidgetLayout {
 	layout_target!: unknown;
 
 	@Transform(({ value }) => createWidgetLayout(value))
-	layout!: LayoutRow[];
+	layout!: LayoutGroup[];
 }
 
 export class UpdateDocumentModeLayout extends JsMessage implements WidgetLayout {
 	layout_target!: unknown;
 
 	@Transform(({ value }) => createWidgetLayout(value))
-	layout!: LayoutRow[];
+	layout!: LayoutGroup[];
 }
 
 export class UpdateToolOptionsLayout extends JsMessage implements WidgetLayout {
 	layout_target!: unknown;
 
 	@Transform(({ value }) => createWidgetLayout(value))
-	layout!: LayoutRow[];
+	layout!: LayoutGroup[];
 }
 
 export class UpdateDocumentBarLayout extends JsMessage implements WidgetLayout {
 	layout_target!: unknown;
 
 	@Transform(({ value }) => createWidgetLayout(value))
-	layout!: LayoutRow[];
+	layout!: LayoutGroup[];
 }
 
 export class UpdateToolShelfLayout extends JsMessage implements WidgetLayout {
 	layout_target!: unknown;
 
 	@Transform(({ value }) => createWidgetLayout(value))
-	layout!: LayoutRow[];
+	layout!: LayoutGroup[];
 }
 
 export class UpdatePropertyPanelOptionsLayout extends JsMessage implements WidgetLayout {
 	layout_target!: unknown;
 
 	@Transform(({ value }) => createWidgetLayout(value))
-	layout!: LayoutRow[];
+	layout!: LayoutGroup[];
 }
 
 export class UpdatePropertyPanelSectionsLayout extends JsMessage implements WidgetLayout {
 	layout_target!: unknown;
 
 	@Transform(({ value }) => createWidgetLayout(value))
-	layout!: LayoutRow[];
+	layout!: LayoutGroup[];
 }
 
 export class UpdateLayerTreeOptionsLayout extends JsMessage implements WidgetLayout {
 	layout_target!: unknown;
 
 	@Transform(({ value }) => createWidgetLayout(value))
-	layout!: LayoutRow[];
+	layout!: LayoutGroup[];
 }
 
 // Unpacking rust types to more usable type in the frontend
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function createWidgetLayout(widgetLayout: any[]): LayoutRow[] {
-	return widgetLayout.map((layoutType): LayoutRow => {
+function createWidgetLayout(widgetLayout: any[]): LayoutGroup[] {
+	return widgetLayout.map((layoutType): LayoutGroup => {
 		if (layoutType.Column) {
 			// eslint-disable-next-line @typescript-eslint/no-explicit-any
 			const columnWidgets = hoistWidgetHolders(layoutType.Column.columnWidgets);
@@ -542,15 +542,15 @@ export type MenuColumn = {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function createMenuLayout(menuLayout: any[]): MenuColumn[] {
-	return menuLayout.map((column) => ({ ...column, children: createMenuLayoutRec(column.children) }));
+	return menuLayout.map((column) => ({ ...column, children: createMenuLayoutRecursive(column.children) }));
 }
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function createMenuLayoutRec(subLayout: any[][]): MenuEntry[][] {
+function createMenuLayoutRecursive(subLayout: any[][]): MenuEntry[][] {
 	return subLayout.map((groups) =>
 		groups.map((entry) => ({
 			...entry,
 			action: hoistWidgetHolders([entry.action])[0],
-			children: entry.children ? createMenuLayoutRec(entry.children) : undefined,
+			children: entry.children ? createMenuLayoutRecursive(entry.children) : undefined,
 		}))
 	);
 }

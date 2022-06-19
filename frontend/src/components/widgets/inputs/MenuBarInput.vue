@@ -93,19 +93,19 @@ export default defineComponent({
 	inject: ["editor"],
 	mounted() {
 		this.editor.subscriptions.subscribeJsMessage(UpdateMenuBarLayout, (updateMenuBarLayout) => {
-			const shortcutRequiresLock = (shortcut: string[]): boolean => LOCK_REQUIRING_SHORTCUTS.some((a) => shortcut.every((v, i) => v === a[i]));
+			const shortcutRequiresLock = (shortcut: string[]): boolean => LOCK_REQUIRING_SHORTCUTS.some((lockKeyCombo) => shortcut.every((shortcutKey, index) => shortcutKey === lockKeyCombo[index]));
 
-			const rec = (subLayout: MenuEntry[][]): FrontendMenuEntry[][] =>
+			const menuEntryToFrontendMenuEntry = (subLayout: MenuEntry[][]): FrontendMenuEntry[][] =>
 				subLayout.map((group) =>
 					group.map((entry) => ({
 						...entry,
-						children: entry.children ? rec(entry.children) : undefined,
+						children: entry.children ? menuEntryToFrontendMenuEntry(entry.children) : undefined,
 						action: (): void => this.editor.instance.update_layout(updateMenuBarLayout.layout_target, entry.action.widget_id, undefined),
 						shortcutRequiresLock: entry.shortcut ? shortcutRequiresLock(entry.shortcut) : undefined,
 					}))
 				);
 
-			this.entries = updateMenuBarLayout.layout.map((column) => ({ ...column, children: rec(column.children) }));
+			this.entries = updateMenuBarLayout.layout.map((column) => ({ ...column, children: menuEntryToFrontendMenuEntry(column.children) }));
 		});
 	},
 	methods: {

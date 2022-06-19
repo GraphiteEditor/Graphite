@@ -133,18 +133,18 @@ impl PropertyHolder for Export {
 		];
 
 		Layout::WidgetLayout(WidgetLayout::new(vec![
-			LayoutRow::Row {
+			LayoutGroup::Row {
 				widgets: vec![WidgetHolder::new(Widget::TextLabel(TextLabel {
 					value: "Export".to_string(),
 					bold: true,
 					..Default::default()
 				}))],
 			},
-			LayoutRow::Row { widgets: file_name },
-			LayoutRow::Row { widgets: export_type },
-			LayoutRow::Row { widgets: resolution },
-			LayoutRow::Row { widgets: export_area },
-			LayoutRow::Row { widgets: button_widgets },
+			LayoutGroup::Row { widgets: file_name },
+			LayoutGroup::Row { widgets: export_type },
+			LayoutGroup::Row { widgets: resolution },
+			LayoutGroup::Row { widgets: export_area },
+			LayoutGroup::Row { widgets: button_widgets },
 		]))
 	}
 }

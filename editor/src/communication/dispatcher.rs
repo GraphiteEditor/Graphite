@@ -438,7 +438,7 @@ mod test {
 
 	#[test]
 	fn check_if_graphite_file_version_upgrade_is_needed() {
-		use crate::layout::widgets::{LayoutRow, TextLabel, Widget};
+		use crate::layout::widgets::{LayoutGroup, TextLabel, Widget};
 
 		init_logger();
 		set_uuid_seed(0);
@@ -451,7 +451,7 @@ mod test {
 
 		for response in responses {
 			if let FrontendMessage::UpdateDialogDetails { layout_target: _, layout } = response {
-				if let LayoutRow::Row { widgets } = &layout[0] {
+				if let LayoutGroup::Row { widgets } = &layout[0] {
 					if let Widget::TextLabel(TextLabel { value, .. }) = &widgets[0].widget {
 						println!();
 						println!("-------------------------------------------------");

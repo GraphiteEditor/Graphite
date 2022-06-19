@@ -44,21 +44,21 @@ impl PropertyHolder for CloseDocument {
 		];
 
 		Layout::WidgetLayout(WidgetLayout::new(vec![
-			LayoutRow::Row {
+			LayoutGroup::Row {
 				widgets: vec![WidgetHolder::new(Widget::TextLabel(TextLabel {
 					value: "Save changes before closing?".to_string(),
 					bold: true,
 					..Default::default()
 				}))],
 			},
-			LayoutRow::Row {
+			LayoutGroup::Row {
 				widgets: vec![WidgetHolder::new(Widget::TextLabel(TextLabel {
 					value: self.document_name.clone(),
 					multiline: true,
 					..Default::default()
 				}))],
 			},
-			LayoutRow::Row { widgets: button_widgets },
+			LayoutGroup::Row { widgets: button_widgets },
 		]))
 	}
 }

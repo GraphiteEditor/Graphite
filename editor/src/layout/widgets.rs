@@ -190,12 +190,11 @@ impl WidgetLayout {
 	}
 }
 
-pub type SubLayout = Vec<LayoutRow>;
+pub type SubLayout = Vec<LayoutGroup>;
 
-// TODO: Rename LayoutRow to something more generic
 #[remain::sorted]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum LayoutRow {
+pub enum LayoutGroup {
 	Column {
 		#[serde(rename = "columnWidgets")]
 		widgets: Vec<WidgetHolder>,
@@ -212,7 +211,7 @@ pub enum LayoutRow {
 
 #[derive(Debug, Default)]
 pub struct WidgetIter<'a> {
-	pub stack: Vec<&'a LayoutRow>,
+	pub stack: Vec<&'a LayoutGroup>,
 	pub current_slice: Option<&'a [WidgetHolder]>,
 }
 
@@ -226,15 +225,15 @@ impl<'a> Iterator for WidgetIter<'a> {
 		}
 
 		match self.stack.pop() {
-			Some(LayoutRow::Column { widgets }) => {
+			Some(LayoutGroup::Column { widgets }) => {
 				self.current_slice = Some(widgets);
 				self.next()
 			}
-			Some(LayoutRow::Row { widgets }) => {
+			Some(LayoutGroup::Row { widgets }) => {
 				self.current_slice = Some(widgets);
 				self.next()
 			}
-			Some(LayoutRow::Section { name: _, layout }) => {
+			Some(LayoutGroup::Section { name: _, layout }) => {
 				for layout_row in layout {
 					self.stack.push(layout_row);
 				}
@@ -247,7 +246,7 @@ impl<'a> Iterator for WidgetIter<'a> {
 
 #[derive(Debug, Default)]
 pub struct WidgetIterMut<'a> {
-	pub stack: Vec<&'a mut LayoutRow>,
+	pub stack: Vec<&'a mut LayoutGroup>,
 	pub current_slice: Option<&'a mut [WidgetHolder]>,
 }
 
@@ -261,15 +260,15 @@ impl<'a> Iterator for WidgetIterMut<'a> {
 		};
 
 		match self.stack.pop() {
-			Some(LayoutRow::Column { widgets }) => {
+			Some(LayoutGroup::Column { widgets }) => {
 				self.current_slice = Some(widgets);
 				self.next()
 			}
-			Some(LayoutRow::Row { widgets }) => {
+			Some(LayoutGroup::Row { widgets }) => {
 				self.current_slice = Some(widgets);
 				self.next()
 			}
-			Some(LayoutRow::Section { name: _, layout }) => {
+			Some(LayoutGroup::Section { name: _, layout }) => {
 				for layout_row in layout {
 					self.stack.push(layout_row);
 				}
@@ -570,6 +569,9 @@ pub struct TextLabel {
 	pub table_align: bool,
 }
 
+// This widget allows for the flexible use of the layout system
+// In a custom layout one can define a widget that is just used to trigger code on the backend
+// This is used in MenuLayout to pipe the triggering of messages from the frontend to backend
 #[derive(Clone, Serialize, Deserialize, Derivative, Default)]
 #[derivative(Debug, PartialEq)]
 pub struct Invisible {

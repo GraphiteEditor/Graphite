@@ -3,7 +3,7 @@ use super::utility_types::TargetDocument;
 use crate::document::properties_panel_message::TransformOp;
 use crate::layout::layout_message::LayoutTarget;
 use crate::layout::widgets::{
-	ColorInput, FontInput, IconLabel, Layout, LayoutRow, NumberInput, PopoverButton, RadioEntryData, RadioInput, Separator, SeparatorDirection, SeparatorType, TextAreaInput, TextInput, TextLabel,
+	ColorInput, FontInput, IconLabel, Layout, LayoutGroup, NumberInput, PopoverButton, RadioEntryData, RadioInput, Separator, SeparatorDirection, SeparatorType, TextAreaInput, TextInput, TextLabel,
 	Widget, WidgetCallback, WidgetHolder, WidgetLayout,
 };
 use crate::message_prelude::*;
@@ -243,7 +243,7 @@ impl<'a> MessageHandler<PropertiesPanelMessage, PropertiesPanelMessageHandlerDat
 }
 
 fn register_artboard_layer_properties(layer: &Layer, responses: &mut VecDeque<Message>, font_cache: &FontCache) {
-	let options_bar = vec![LayoutRow::Row {
+	let options_bar = vec![LayoutGroup::Row {
 		widgets: vec![
 			WidgetHolder::new(Widget::IconLabel(IconLabel {
 				icon: "NodeArtboard".into(),
@@ -288,10 +288,10 @@ fn register_artboard_layer_properties(layer: &Layer, responses: &mut VecDeque<Me
 			panic!("Artboard must have a solid fill")
 		};
 
-		vec![LayoutRow::Section {
+		vec![LayoutGroup::Section {
 			name: "Artboard".into(),
 			layout: vec![
-				LayoutRow::Row {
+				LayoutGroup::Row {
 					widgets: vec![
 						WidgetHolder::new(Widget::TextLabel(TextLabel {
 							value: "Location".into(),
@@ -333,7 +333,7 @@ fn register_artboard_layer_properties(layer: &Layer, responses: &mut VecDeque<Me
 						})),
 					],
 				},
-				LayoutRow::Row {
+				LayoutGroup::Row {
 					widgets: vec![
 						WidgetHolder::new(Widget::TextLabel(TextLabel {
 							value: "Dimensions".into(),
@@ -375,7 +375,7 @@ fn register_artboard_layer_properties(layer: &Layer, responses: &mut VecDeque<Me
 						})),
 					],
 				},
-				LayoutRow::Row {
+				LayoutGroup::Row {
 					widgets: vec![
 						WidgetHolder::new(Widget::TextLabel(TextLabel {
 							value: "Background".into(),
@@ -424,7 +424,7 @@ fn register_artboard_layer_properties(layer: &Layer, responses: &mut VecDeque<Me
 }
 
 fn register_artwork_layer_properties(layer: &Layer, responses: &mut VecDeque<Message>, font_cache: &FontCache) {
-	let options_bar = vec![LayoutRow::Row {
+	let options_bar = vec![LayoutGroup::Row {
 		widgets: vec![
 			match &layer.data {
 				LayerDataType::Folder(_) => WidgetHolder::new(Widget::IconLabel(IconLabel {
@@ -511,11 +511,11 @@ fn register_artwork_layer_properties(layer: &Layer, responses: &mut VecDeque<Mes
 	);
 }
 
-fn node_section_transform(layer: &Layer, font_cache: &FontCache) -> LayoutRow {
-	LayoutRow::Section {
+fn node_section_transform(layer: &Layer, font_cache: &FontCache) -> LayoutGroup {
+	LayoutGroup::Section {
 		name: "Transform".into(),
 		layout: vec![
-			LayoutRow::Row {
+			LayoutGroup::Row {
 				widgets: vec![
 					WidgetHolder::new(Widget::TextLabel(TextLabel {
 						value: "Location".into(),
@@ -557,7 +557,7 @@ fn node_section_transform(layer: &Layer, font_cache: &FontCache) -> LayoutRow {
 					})),
 				],
 			},
-			LayoutRow::Row {
+			LayoutGroup::Row {
 				widgets: vec![
 					WidgetHolder::new(Widget::TextLabel(TextLabel {
 						value: "Rotation".into(),
@@ -582,7 +582,7 @@ fn node_section_transform(layer: &Layer, font_cache: &FontCache) -> LayoutRow {
 					})),
 				],
 			},
-			LayoutRow::Row {
+			LayoutGroup::Row {
 				widgets: vec![
 					WidgetHolder::new(Widget::TextLabel(TextLabel {
 						value: "Scale".into(),
@@ -624,7 +624,7 @@ fn node_section_transform(layer: &Layer, font_cache: &FontCache) -> LayoutRow {
 					})),
 				],
 			},
-			LayoutRow::Row {
+			LayoutGroup::Row {
 				widgets: vec![
 					WidgetHolder::new(Widget::TextLabel(TextLabel {
 						value: "Dimensions".into(),
@@ -670,13 +670,13 @@ fn node_section_transform(layer: &Layer, font_cache: &FontCache) -> LayoutRow {
 	}
 }
 
-fn node_section_font(layer: &TextLayer) -> LayoutRow {
+fn node_section_font(layer: &TextLayer) -> LayoutGroup {
 	let font = layer.font.clone();
 	let size = layer.size;
-	LayoutRow::Section {
+	LayoutGroup::Section {
 		name: "Font".into(),
 		layout: vec![
-			LayoutRow::Row {
+			LayoutGroup::Row {
 				widgets: vec![
 					WidgetHolder::new(Widget::TextLabel(TextLabel {
 						value: "Text".into(),
@@ -692,7 +692,7 @@ fn node_section_font(layer: &TextLayer) -> LayoutRow {
 					})),
 				],
 			},
-			LayoutRow::Row {
+			LayoutGroup::Row {
 				widgets: vec![
 					WidgetHolder::new(Widget::TextLabel(TextLabel {
 						value: "Font".into(),
@@ -717,7 +717,7 @@ fn node_section_font(layer: &TextLayer) -> LayoutRow {
 					})),
 				],
 			},
-			LayoutRow::Row {
+			LayoutGroup::Row {
 				widgets: vec![
 					WidgetHolder::new(Widget::TextLabel(TextLabel {
 						value: "Style".into(),
@@ -742,7 +742,7 @@ fn node_section_font(layer: &TextLayer) -> LayoutRow {
 					})),
 				],
 			},
-			LayoutRow::Row {
+			LayoutGroup::Row {
 				widgets: vec![
 					WidgetHolder::new(Widget::TextLabel(TextLabel {
 						value: "Size".into(),
@@ -772,7 +772,7 @@ fn node_section_font(layer: &TextLayer) -> LayoutRow {
 	}
 }
 
-fn node_gradient_type(gradient: &Gradient) -> LayoutRow {
+fn node_gradient_type(gradient: &Gradient) -> LayoutGroup {
 	let selected_index = match gradient.gradient_type {
 		GradientType::Linear => 0,
 		GradientType::Radial => 1,
@@ -781,7 +781,7 @@ fn node_gradient_type(gradient: &Gradient) -> LayoutRow {
 	cloned_gradient_linear.gradient_type = GradientType::Linear;
 	let mut cloned_gradient_radial = gradient.clone();
 	cloned_gradient_radial.gradient_type = GradientType::Radial;
-	LayoutRow::Row {
+	LayoutGroup::Row {
 		widgets: vec![
 			WidgetHolder::new(Widget::TextLabel(TextLabel {
 				value: "Gradient Type".into(),
@@ -824,10 +824,10 @@ fn node_gradient_type(gradient: &Gradient) -> LayoutRow {
 	}
 }
 
-fn node_gradient_color(gradient: &Gradient, percent_label: &'static str, position: usize) -> LayoutRow {
+fn node_gradient_color(gradient: &Gradient, percent_label: &'static str, position: usize) -> LayoutGroup {
 	let gradient_clone = Rc::new(gradient.clone());
 	let send_fill_message = move |new_gradient: Gradient| PropertiesPanelMessage::ModifyFill { fill: Fill::Gradient(new_gradient) }.into();
-	LayoutRow::Row {
+	LayoutGroup::Row {
 		widgets: vec![
 			WidgetHolder::new(Widget::TextLabel(TextLabel {
 				value: format!("Gradient: {}", percent_label),
@@ -860,11 +860,11 @@ fn node_gradient_color(gradient: &Gradient, percent_label: &'static str, positio
 	}
 }
 
-fn node_section_fill(fill: &Fill) -> Option<LayoutRow> {
+fn node_section_fill(fill: &Fill) -> Option<LayoutGroup> {
 	match fill {
-		Fill::Solid(_) | Fill::None => Some(LayoutRow::Section {
+		Fill::Solid(_) | Fill::None => Some(LayoutGroup::Section {
 			name: "Fill".into(),
-			layout: vec![LayoutRow::Row {
+			layout: vec![LayoutGroup::Row {
 				widgets: vec![
 					WidgetHolder::new(Widget::TextLabel(TextLabel {
 						value: "Color".into(),
@@ -893,14 +893,14 @@ fn node_section_fill(fill: &Fill) -> Option<LayoutRow> {
 				],
 			}],
 		}),
-		Fill::Gradient(gradient) => Some(LayoutRow::Section {
+		Fill::Gradient(gradient) => Some(LayoutGroup::Section {
 			name: "Fill".into(),
 			layout: vec![node_gradient_type(gradient), node_gradient_color(gradient, "0%", 0), node_gradient_color(gradient, "100%", 1)],
 		}),
 	}
 }
 
-fn node_section_stroke(stroke: &Stroke) -> LayoutRow {
+fn node_section_stroke(stroke: &Stroke) -> LayoutGroup {
 	// We have to make multiple variables because they get moved into different closures.
 	let internal_stroke1 = stroke.clone();
 	let internal_stroke2 = stroke.clone();
@@ -914,10 +914,10 @@ fn node_section_stroke(stroke: &Stroke) -> LayoutRow {
 	let internal_stroke10 = stroke.clone();
 	let internal_stroke11 = stroke.clone();
 
-	LayoutRow::Section {
+	LayoutGroup::Section {
 		name: "Stroke".into(),
 		layout: vec![
-			LayoutRow::Row {
+			LayoutGroup::Row {
 				widgets: vec![
 					WidgetHolder::new(Widget::TextLabel(TextLabel {
 						value: "Color".into(),
@@ -939,7 +939,7 @@ fn node_section_stroke(stroke: &Stroke) -> LayoutRow {
 					})),
 				],
 			},
-			LayoutRow::Row {
+			LayoutGroup::Row {
 				widgets: vec![
 					WidgetHolder::new(Widget::TextLabel(TextLabel {
 						value: "Weight".into(),
@@ -964,7 +964,7 @@ fn node_section_stroke(stroke: &Stroke) -> LayoutRow {
 					})),
 				],
 			},
-			LayoutRow::Row {
+			LayoutGroup::Row {
 				widgets: vec![
 					WidgetHolder::new(Widget::TextLabel(TextLabel {
 						value: "Dash Lengths".into(),
@@ -985,7 +985,7 @@ fn node_section_stroke(stroke: &Stroke) -> LayoutRow {
 					})),
 				],
 			},
-			LayoutRow::Row {
+			LayoutGroup::Row {
 				widgets: vec![
 					WidgetHolder::new(Widget::TextLabel(TextLabel {
 						value: "Dash Offset".into(),
@@ -1010,7 +1010,7 @@ fn node_section_stroke(stroke: &Stroke) -> LayoutRow {
 					})),
 				],
 			},
-			LayoutRow::Row {
+			LayoutGroup::Row {
 				widgets: vec![
 					WidgetHolder::new(Widget::TextLabel(TextLabel {
 						value: "Line Cap".into(),
@@ -1057,7 +1057,7 @@ fn node_section_stroke(stroke: &Stroke) -> LayoutRow {
 					})),
 				],
 			},
-			LayoutRow::Row {
+			LayoutGroup::Row {
 				widgets: vec![
 					WidgetHolder::new(Widget::TextLabel(TextLabel {
 						value: "Line Join".into(),
@@ -1105,7 +1105,7 @@ fn node_section_stroke(stroke: &Stroke) -> LayoutRow {
 				],
 			},
 			// TODO: Gray out this row when Line Join isn't set to Miter
-			LayoutRow::Row {
+			LayoutGroup::Row {
 				widgets: vec![
 					WidgetHolder::new(Widget::TextLabel(TextLabel {
 						value: "Miter Limit".into(),

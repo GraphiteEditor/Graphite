@@ -1,11 +1,11 @@
+use super::MenuBarMessage;
+
 use crate::input::keyboard::Key;
 use crate::layout::layout_message::LayoutTarget;
 use crate::layout::widgets::*;
 use crate::message_prelude::*;
 
 use std::collections::VecDeque;
-
-use super::MenuBarMessage;
 
 #[derive(Debug, Clone, Default)]
 pub struct MenuBarMessageHandler {}

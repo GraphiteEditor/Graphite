@@ -128,11 +128,6 @@ impl JsEditorHandle {
 		self.dispatch(message);
 	}
 
-	/// Intentionally panic for debugging purposes
-	pub fn intentional_panic(&self) {
-		panic!();
-	}
-
 	/// Answer whether or not the editor has crashed
 	pub fn has_crashed(&self) -> bool {
 		EDITOR_HAS_CRASHED.load(Ordering::SeqCst)
@@ -190,21 +185,8 @@ impl JsEditorHandle {
 		self.dispatch(message);
 	}
 
-	pub fn close_document(&self, document_id: u64) {
-		let message = ToolMessage::AbortCurrentTool;
-		self.dispatch(message);
-
-		let message = PortfolioMessage::CloseDocument { document_id };
-		self.dispatch(message);
-	}
-
 	pub fn close_document_with_confirmation(&self, document_id: u64) {
 		let message = PortfolioMessage::CloseDocumentWithConfirmation { document_id };
-		self.dispatch(message);
-	}
-
-	pub fn request_about_graphite_dialog(&self) {
-		let message = DialogMessage::RequestAboutGraphiteDialog;
 		self.dispatch(message);
 	}
 
@@ -376,12 +358,6 @@ impl JsEditorHandle {
 	/// Modify the layer selection based on the layer which is clicked while holding down the <kbd>Ctrl</kbd> and/or <kbd>Shift</kbd> modifier keys used for range selection behavior
 	pub fn select_layer(&self, layer_path: Vec<LayerId>, ctrl: bool, shift: bool) {
 		let message = DocumentMessage::SelectLayer { layer_path, ctrl, shift };
-		self.dispatch(message);
-	}
-
-	/// Select all layers
-	pub fn select_all_layers(&self) {
-		let message = DocumentMessage::SelectAllLayers;
 		self.dispatch(message);
 	}
 

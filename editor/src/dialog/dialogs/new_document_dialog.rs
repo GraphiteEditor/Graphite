@@ -113,11 +113,11 @@ impl PropertyHolder for NewDocument {
 		];
 
 		Layout::WidgetLayout(WidgetLayout::new(vec![
-			LayoutRow::Row { widgets: title },
-			LayoutRow::Row { widgets: name },
-			LayoutRow::Row { widgets: infinite },
-			LayoutRow::Row { widgets: scale },
-			LayoutRow::Row { widgets: button_widgets },
+			LayoutGroup::Row { widgets: title },
+			LayoutGroup::Row { widgets: name },
+			LayoutGroup::Row { widgets: infinite },
+			LayoutGroup::Row { widgets: scale },
+			LayoutGroup::Row { widgets: button_widgets },
 		]))
 	}
 }
