@@ -1204,7 +1204,7 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 					.into(),
 				);
 
-				let mouse = mouse.map_or(ipp.mouse.position, |pos| pos.into());
+				let mouse = mouse.map_or(ipp.viewport_bounds.center(), |pos| pos.into());
 				let transform = DAffine2::from_translation(mouse - ipp.viewport_bounds.top_left).to_cols_array();
 				responses.push_back(DocumentOperation::SetLayerTransformInViewport { path, transform }.into());
 			}

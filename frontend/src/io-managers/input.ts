@@ -2,7 +2,9 @@ import { DialogState } from "@/state-providers/dialog";
 import { FullscreenState } from "@/state-providers/fullscreen";
 import { PortfolioState } from "@/state-providers/portfolio";
 import { makeKeyboardModifiersBitfield, textInputCleanup, getLatinKey } from "@/utility-functions/keyboard-entry";
+import { stripIndents } from "@/utility-functions/strip-indents";
 import { Editor } from "@/wasm-communication/editor";
+import { TriggerPaste } from "@/wasm-communication/messages";
 
 type EventName = keyof HTMLElementEventMap | keyof WindowEventHandlersEventMap | "modifyinputfield";
 type EventListenerTarget = {
@@ -13,6 +15,16 @@ type EventListenerTarget = {
 export function createInputManager(editor: Editor, container: HTMLElement, dialog: DialogState, document: PortfolioState, fullscreen: FullscreenState): () => void {
 	const app = window.document.querySelector("[data-app]") as HTMLElement | undefined;
 	app?.focus();
+
+	let viewportPointerInteractionOngoing = false;
+	let textInput = undefined as undefined | HTMLDivElement;
+	let canvasFocused = true;
+
+	function blurApp(): void {
+		canvasFocused = false;
+	}
+
+	// Event listeners
 
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	const listeners: { target: EventListenerTarget; eventName: EventName; action: (event: any) => void; options?: boolean | AddEventListenerOptions }[] = [
@@ -37,12 +49,15 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 		},
 	];
 
-	let viewportPointerInteractionOngoing = false;
-	let textInput = undefined as undefined | HTMLDivElement;
-	let canvasFocused = true;
+	// Event bindings
 
-	function blurApp(): void {
-		canvasFocused = false;
+	function bindListeners(): void {
+		// Add event bindings for the lifetime of the application
+		listeners.forEach(({ target, eventName, action, options }) => target.addEventListener(eventName, action, options));
+	}
+	function unbindListeners(): void {
+		// Remove event bindings after the lifetime of the application (or on hot-module replacement during development)
+		listeners.forEach(({ target, eventName, action, options }) => target.removeEventListener(eventName, action, options));
 	}
 
 	// Keyboard events
@@ -259,26 +274,80 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 				file.arrayBuffer().then((buffer): void => {
 					const u8Array = new Uint8Array(buffer);
 
-					editor.instance.paste_image(file.type, u8Array, undefined, undefined);
+					editor.instance.paste_image(file.type, u8Array);
 				});
 			}
 		});
 	}
 
-	function targetIsTextField(target: EventTarget | HTMLElement | null): boolean {
-		return target instanceof HTMLElement && (target.nodeName === "INPUT" || target.nodeName === "TEXTAREA" || target.isContentEditable);
-	}
+	// Frontend message subscriptions
 
-	// Event bindings
+	editor.subscriptions.subscribeJsMessage(TriggerPaste, async () => {
+		// In the try block, attempt to read from the Clipboard API, which may not have permission and may not be supported in all browsers
+		// In the catch block, explain to the user why the paste failed and how to fix or work around the problem
+		try {
+			// Attempt to check if the clipboard permission is denied, and throw an error if that is the case
+			// In Firefox, the `clipboard-read` permission isn't supported, so attemping to query it throws an error
+			// In Safari, the entire Permissions API isn't supported, so the query never occurs and this block is skipped without an error and we assume we might have permission
+			const clipboardRead = "clipboard-read" as PermissionName;
+			const permission = await navigator.permissions?.query({ name: clipboardRead });
+			if (permission?.state === "denied") throw new Error("Permission denied");
 
-	function bindListeners(): void {
-		// Add event bindings for the lifetime of the application
-		listeners.forEach(({ target, eventName, action, options }) => target.addEventListener(eventName, action, options));
-	}
-	function unbindListeners(): void {
-		// Remove event bindings after the lifetime of the application (or on hot-module replacement during development)
-		listeners.forEach(({ target, eventName, action, options }) => target.removeEventListener(eventName, action, options));
-	}
+			// Read the clipboard contents if the Clipboard API is available
+			const clipboardItems = await navigator.clipboard.read();
+			if (!clipboardItems) throw new Error("Clipboard API unsupported");
+
+			// Read any layer data or images from the clipboard
+			Array.from(clipboardItems).forEach(async (item) => {
+				// Read plain text and, if it is a layer, pass it to the editor
+				if (item.types.includes("text/plain")) {
+					const blob = await item.getType("text/plain");
+					const reader = new FileReader();
+					reader.onload = (): void => {
+						const text = reader.result as string;
+
+						if (text.startsWith("graphite/layer: ")) {
+							editor.instance.paste_serialized_data(text.substring(16, text.length));
+						}
+					};
+					reader.readAsText(blob);
+				}
+
+				// Read an image from the clipboard and pass it to the editor to be loaded
+				const imageType = item.types.find((type) => type.startsWith("image/"));
+				if (imageType) {
+					const blob = await item.getType(imageType);
+					const reader = new FileReader();
+					reader.onload = (): void => {
+						const u8Array = new Uint8Array(reader.result as ArrayBuffer);
+
+						editor.instance.paste_image(imageType, u8Array);
+					};
+					reader.readAsArrayBuffer(blob);
+				}
+			});
+		} catch (err) {
+			const unsupported = stripIndents`
+				This browser does not support reading from the clipboard.
+				Use the keyboard shortcut to paste instead.
+				`;
+			const denied = stripIndents`
+				The browser's clipboard permission has been denied.
+
+				Open the browser's website settings (usually accessible
+				just left of the URL) to allow this permission.
+				`;
+
+			const matchMessage = {
+				"clipboard-read": unsupported,
+				"Clipboard API unsupported": unsupported,
+				"Permission denied": denied,
+			};
+			const message = Object.entries(matchMessage).find(([key]) => String(err).includes(key))?.[1] || String(err);
+
+			editor.instance.error_dialog("Cannot access clipboard", message);
+		}
+	});
 
 	// Initialization
 
@@ -289,4 +358,8 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 
 	// Return the destructor
 	return unbindListeners;
+}
+
+function targetIsTextField(target: EventTarget | HTMLElement | null): boolean {
+	return target instanceof HTMLElement && (target.nodeName === "INPUT" || target.nodeName === "TEXTAREA" || target.isContentEditable);
 }

@@ -3,10 +3,10 @@
 
 	<div class="unsupported-modal-backdrop" v-if="apiUnsupported" ref="unsupported">
 		<LayoutCol class="unsupported-modal">
-			<h2>Your browser currently doesn't support Graphite</h2>
+			<h2>This browser currently doesn't support Graphite</h2>
 			<p>Unfortunately, some features won't work properly. Please upgrade to a modern browser such as Firefox, Chrome, Edge, or Safari version 15 or later.</p>
 			<p>
-				Your browser is missing support for the
+				This browser is missing support for the
 				<a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/BigInt64Array#browser_compatibility" target="_blank"><code>BigInt64Array</code></a> JavaScript
 				API which is required for using the editor. However, you can still explore the user interface.
 			</p>
