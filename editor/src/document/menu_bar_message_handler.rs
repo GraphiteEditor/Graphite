@@ -176,8 +176,13 @@ impl PropertyHolder for MenuBarMessageHandler {
 							action: MenuEntry::create_action(|_| PortfolioMessage::Copy { clipboard: Clipboard::Device }.into()),
 							..MenuEntry::default()
 						},
-						// TODO: Fix this
-						// { label: "Paste", icon: "Paste", shortcut: ["KeyControl", "KeyV"], action: async (): Promise<void> => editor.instance.paste() },
+						MenuEntry {
+							label: "Paste".into(),
+							icon: Some("Paste".into()),
+							shortcut: Some(vec![Key::KeyControl, Key::KeyV]),
+							action: MenuEntry::create_action(|_| FrontendMessage::TriggerPaste.into()),
+							..MenuEntry::default()
+						},
 					],
 				],
 			},
