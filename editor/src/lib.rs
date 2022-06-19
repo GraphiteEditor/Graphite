@@ -64,6 +64,7 @@ pub mod message_prelude {
 	pub use crate::dialog::messages::*;
 	pub use crate::document::{ArtboardMessage, ArtboardMessageDiscriminant};
 	pub use crate::document::{DocumentMessage, DocumentMessageDiscriminant};
+	pub use crate::document::{MenuBarMessage, MenuBarMessageDiscriminant};
 	pub use crate::document::{MovementMessage, MovementMessageDiscriminant};
 	pub use crate::document::{OverlaysMessage, OverlaysMessageDiscriminant};
 	pub use crate::document::{PortfolioMessage, PortfolioMessageDiscriminant};

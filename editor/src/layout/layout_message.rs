@@ -1,4 +1,4 @@
-use super::widgets::WidgetLayout;
+use super::widgets::Layout;
 use crate::message_prelude::*;
 
 use serde::{Deserialize, Serialize};
@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 #[impl_message(Message, Layout)]
 #[derive(PartialEq, Clone, Deserialize, Serialize, Debug)]
 pub enum LayoutMessage {
-	SendLayout { layout: WidgetLayout, layout_target: LayoutTarget },
+	SendLayout { layout: Layout, layout_target: LayoutTarget },
 	UpdateLayout { layout_target: LayoutTarget, widget_id: u64, value: serde_json::Value },
 }
 
@@ -19,6 +19,7 @@ pub enum LayoutTarget {
 	DocumentBar,
 	DocumentMode,
 	LayerTreeOptions,
+	MenuBar,
 	PropertiesOptions,
 	PropertiesSections,
 	ToolOptions,

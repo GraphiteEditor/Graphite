@@ -7,23 +7,23 @@ pub struct Error {
 }
 
 impl PropertyHolder for Error {
-	fn properties(&self) -> WidgetLayout {
-		WidgetLayout::new(vec![
-			LayoutRow::Row {
+	fn properties(&self) -> Layout {
+		Layout::WidgetLayout(WidgetLayout::new(vec![
+			LayoutGroup::Row {
 				widgets: vec![WidgetHolder::new(Widget::TextLabel(TextLabel {
 					value: self.title.clone(),
 					bold: true,
 					..Default::default()
 				}))],
 			},
-			LayoutRow::Row {
+			LayoutGroup::Row {
 				widgets: vec![WidgetHolder::new(Widget::TextLabel(TextLabel {
 					value: self.description.clone(),
 					multiline: true,
 					..Default::default()
 				}))],
 			},
-			LayoutRow::Row {
+			LayoutGroup::Row {
 				widgets: vec![WidgetHolder::new(Widget::TextButton(TextButton {
 					label: "OK".to_string(),
 					emphasized: true,
@@ -32,6 +32,6 @@ impl PropertyHolder for Error {
 					..Default::default()
 				}))],
 			},
-		])
+		]))
 	}
 }

@@ -2,7 +2,7 @@ use super::tools::*;
 use crate::communication::message_handler::MessageHandler;
 use crate::document::DocumentMessageHandler;
 use crate::input::InputPreprocessorMessageHandler;
-use crate::layout::widgets::{IconButton, LayoutRow, PropertyHolder, Separator, SeparatorDirection, SeparatorType, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
+use crate::layout::widgets::{IconButton, Layout, LayoutGroup, PropertyHolder, Separator, SeparatorDirection, SeparatorType, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
 use crate::message_prelude::*;
 
 use graphene::color::Color;
@@ -58,7 +58,7 @@ impl ToolData {
 }
 
 impl PropertyHolder for ToolData {
-	fn properties(&self) -> WidgetLayout {
+	fn properties(&self) -> Layout {
 		let tool_groups_layout = ToolType::list_tools_in_groups()
 			.iter()
 			.flat_map(|group| {
@@ -88,9 +88,9 @@ impl PropertyHolder for ToolData {
 			.skip(1)
 			.collect();
 
-		WidgetLayout {
-			layout: vec![LayoutRow::Column { widgets: tool_groups_layout }],
-		}
+		Layout::WidgetLayout(WidgetLayout {
+			layout: vec![LayoutGroup::Column { widgets: tool_groups_layout }],
+		})
 	}
 }
 
