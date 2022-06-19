@@ -381,7 +381,6 @@ export function defaultWidgetLayout(): WidgetLayout {
 	};
 }
 
-// TODO: Rename LayoutRow to something more generic
 export type LayoutGroup = WidgetRow | WidgetColumn | WidgetSection;
 
 export type WidgetColumn = { columnWidgets: Widget[] };
