@@ -66,18 +66,18 @@ export default defineComponent({
 				{
 					id: 3,
 					name: "Compute",
-					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: string): void => {
-						const point = JSON.parse(bezier.compute(parseFloat(options)));
+					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: Record<string, number>): void => {
+						const point = JSON.parse(bezier.compute(options.t));
 						drawPoint(getContextFromCanvas(canvas), point, 4, "Red");
 					},
 					template: markRaw(SliderExample),
-					templateOptions: tSliderOptions,
+					templateOptions: { sliders: [{ ...tSliderOptions }] },
 				},
 				{
 					id: 4,
 					name: "Lookup Table",
-					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: string): void => {
-						const lookupPoints = bezier.compute_lookup_table(Number(options));
+					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: Record<string, number>): void => {
+						const lookupPoints = bezier.compute_lookup_table(options.Steps);
 						lookupPoints.forEach((serialisedPoint, index) => {
 							if (index !== 0 && index !== lookupPoints.length - 1) {
 								drawPoint(getContextFromCanvas(canvas), JSON.parse(serialisedPoint), 3, "Red");
@@ -86,22 +86,25 @@ export default defineComponent({
 					},
 					template: markRaw(SliderExample),
 					templateOptions: {
-						min: 2,
-						max: 15,
-						step: 1,
-						default: 5,
-						variable: "Steps",
+						sliders: [
+							{
+								min: 2,
+								max: 15,
+								step: 1,
+								default: 5,
+								variable: "Steps",
+							},
+						],
 					},
 				},
 				{
 					id: 5,
 					name: "Derivative",
-					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: string): void => {
-						const t = parseFloat(options);
+					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: Record<string, number>): void => {
 						const context = getContextFromCanvas(canvas);
 
-						const intersection = JSON.parse(bezier.compute(t));
-						const derivative = JSON.parse(bezier.derivative(t));
+						const intersection = JSON.parse(bezier.compute(options.t));
+						const derivative = JSON.parse(bezier.derivative(options.t));
 						const curveFactor = bezier.get_points().length - 1;
 
 						const tangentStart = {
@@ -119,17 +122,16 @@ export default defineComponent({
 						drawPoint(context, tangentEnd, 3, "Red");
 					},
 					template: markRaw(SliderExample),
-					templateOptions: tSliderOptions,
+					templateOptions: { sliders: [{ ...tSliderOptions }] },
 				},
 				{
 					id: 6,
 					name: "Normal",
-					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: string): void => {
-						const t = parseFloat(options);
+					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: Record<string, number>): void => {
 						const context = getContextFromCanvas(canvas);
 
-						const intersection = JSON.parse(bezier.compute(t));
-						const normal = JSON.parse(bezier.normal(t));
+						const intersection = JSON.parse(bezier.compute(options.t));
+						const normal = JSON.parse(bezier.normal(options.t));
 
 						const normalStart = {
 							x: intersection.x - normal.x * 20,
@@ -146,21 +148,48 @@ export default defineComponent({
 						drawPoint(context, normalEnd, 3, "Red");
 					},
 					template: markRaw(SliderExample),
-					templateOptions: tSliderOptions,
+					templateOptions: { sliders: [{ ...tSliderOptions }] },
 				},
 				{
 					id: 6,
 					name: "Split",
-					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: string): void => {
-						const t = parseFloat(options);
+					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: Record<string, number>): void => {
 						const context = getContextFromCanvas(canvas);
-						const bezierPair = bezier.split(t);
+						const bezierPair = bezier.split(options.t);
 
-						drawBezierHelper(context, bezierPair.second, "orange");
-						drawBezierHelper(context, bezierPair.first, "Red");
+						drawBezierHelper(context, bezierPair.second, "orange", 3.5);
+						drawBezierHelper(context, bezierPair.first, "Red", 3.5);
 					},
 					template: markRaw(SliderExample),
-					templateOptions: tSliderOptions,
+					templateOptions: { sliders: [{ ...tSliderOptions }] },
+				},
+				{
+					id: 7,
+					name: "Trim",
+					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: Record<string, number>): void => {
+						const context = getContextFromCanvas(canvas);
+						const trimmedBezier = bezier.trim(options.t1, options.t2);
+						drawBezierHelper(context, trimmedBezier, "Red", 3.5);
+					},
+					template: markRaw(SliderExample),
+					templateOptions: {
+						sliders: [
+							{
+								variable: "t1",
+								min: 0,
+								max: 1,
+								step: 0.01,
+								default: 0.25,
+							},
+							{
+								variable: "t2",
+								min: 0,
+								max: 1,
+								step: 0.01,
+								default: 0.75,
+							},
+						],
+					},
 				},
 			],
 		};

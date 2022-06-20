@@ -20,9 +20,9 @@ class BezierDrawing {
 
 	callback: BezierCallback;
 
-	options: string;
+	options: Record<string, number>;
 
-	constructor(bezier: WasmBezierInstance, callback: BezierCallback, options: string) {
+	constructor(bezier: WasmBezierInstance, callback: BezierCallback, options: Record<string, number>) {
 		this.bezier = bezier;
 		this.callback = callback;
 		this.options = options;
@@ -100,8 +100,8 @@ class BezierDrawing {
 		}
 	}
 
-	updateBezier(options = ""): void {
-		if (options !== "") {
+	updateBezier(options: Record<string, number> = {}): void {
+		if (Object.values(options).length !== 0) {
 			this.options = options;
 		}
 		this.clearFigure();

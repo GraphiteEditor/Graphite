@@ -287,13 +287,11 @@ impl Bezier {
 		}
 	}
 
-	pub fn subsplit(&self, t1: f64, t2: f64) -> Bezier {
-		let start = self.compute(t1);
-		let end = self.compute(t2);
-		match self.handles {
-			// TODO: Actually calculate the correct handle locations
-			BezierHandles::Quadratic { handle } => Bezier::from_quadratic_dvec2(start, handle, end),
-			BezierHandles::Cubic { handle_start, handle_end } => Bezier::from_cubic_dvec2(start, handle_start, handle_end, end),
-		}
+	pub fn trim(&self, t1: f64, t2: f64) -> Bezier {
+		let t1_split_side = if t1 < t2 { 1 } else { 0 };
+		let t2_split_side = if t1 < t2 { 0 } else { 1 };
+		let bezier_starting_at_t1 = self.split(t1)[t1_split_side];
+		let adjusted_t2 = if t1 < t2 { (t2 - t1) / (1. - t1) } else { t2 / t1 };
+		bezier_starting_at_t1.split(adjusted_t2)[t2_split_side]
 	}
 }

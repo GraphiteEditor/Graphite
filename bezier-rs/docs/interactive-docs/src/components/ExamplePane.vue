@@ -3,7 +3,7 @@
 		<h2 class="example_pane_header">{{ name }}</h2>
 		<div class="example_row">
 			<div v-for="example in exampleData" :key="example.id">
-				<component :is="template" :templateOptions="templateOptions" :title="example.title" :bezier="example.bezier" :callback="callback" />
+				<component :is="template" :templateOptions="{ ...templateOptions }" :title="example.title" :bezier="example.bezier" :callback="callback" />
 			</div>
 		</div>
 	</div>

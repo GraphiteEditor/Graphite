@@ -97,4 +97,8 @@ impl WasmBezier {
 			second: WasmBezier { internal: beziers[1] },
 		}
 	}
+
+	pub fn trim(&self, t1: f64, t2: f64) -> WasmBezier {
+		WasmBezier { internal: self.internal.trim(t1, t2) }
+	}
 }

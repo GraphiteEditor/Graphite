@@ -1,11 +1,6 @@
 import { Point, WasmBezierInstance } from "@/utils/types";
 
-const RADIUS_SIZE = {
-	large: 5,
-	small: 3,
-};
-
-export const getPointSizeByIndex = (index: number, numPoints: number): number => RADIUS_SIZE[index === 0 || index === numPoints - 1 ? "large" : "small"];
+export const getPointSizeByIndex = (index: number, numPoints: number, radius = 5): number => (index === 0 || index === numPoints - 1 ? radius : (radius * 2) / 3);
 
 export const getContextFromCanvas = (canvas: HTMLCanvasElement): CanvasRenderingContext2D => {
 	const ctx = canvas.getContext("2d");
@@ -46,15 +41,17 @@ export const drawText = (ctx: CanvasRenderingContext2D, text: string, x: number,
 	ctx.fillText(text, x, y);
 };
 
-export const drawBezierHelper = (ctx: CanvasRenderingContext2D, bezier: WasmBezierInstance, stroke = "black"): void => {
+export const drawBezierHelper = (ctx: CanvasRenderingContext2D, bezier: WasmBezierInstance, stroke = "black", radius = 5): void => {
 	drawBezier(
 		ctx,
 		bezier.get_points().map((p) => JSON.parse(p)),
-		stroke
+		stroke,
+		null,
+		radius
 	);
 };
 
-export const drawBezier = (ctx: CanvasRenderingContext2D, points: Point[], stroke = "black", dragIndex: number | null = null): void => {
+export const drawBezier = (ctx: CanvasRenderingContext2D, points: Point[], stroke = "black", dragIndex: number | null = null, radius = 5): void => {
 	/* Until a bezier representation is finalized, treat the points as follows
 		points[0] = start point
 		points[1] = handle start
@@ -91,6 +88,6 @@ export const drawBezier = (ctx: CanvasRenderingContext2D, points: Point[], strok
 	drawLine(ctx, end, handleEnd, stroke);
 
 	points.forEach((point, index) => {
-		drawPoint(ctx, point, getPointSizeByIndex(index, points.length), index === dragIndex ? "Blue" : stroke);
+		drawPoint(ctx, point, getPointSizeByIndex(index, points.length, radius), index === dragIndex ? "Blue" : stroke);
 	});
 };
