@@ -838,6 +838,7 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 						match &response {
 							DocumentResponse::FolderChanged { path } => responses.push_back(FolderChanged { affected_folder_path: path.clone() }.into()),
 							DocumentResponse::DeletedLayer { path } => {
+								responses.push_front(ToolMessage::AbortCurrentTool.into());
 								self.layer_metadata.remove(path);
 							}
 							DocumentResponse::LayerChanged { path } => responses.push_back(LayerChanged { affected_layer_path: path.clone() }.into()),
