@@ -838,7 +838,6 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 						match &response {
 							DocumentResponse::FolderChanged { path } => responses.push_back(FolderChanged { affected_folder_path: path.clone() }.into()),
 							DocumentResponse::DeletedLayer { path } => {
-								responses.push_front(ToolMessage::AbortCurrentTool.into());
 								self.layer_metadata.remove(path);
 							}
 							DocumentResponse::LayerChanged { path } => responses.push_back(LayerChanged { affected_layer_path: path.clone() }.into()),
@@ -992,6 +991,7 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 			}
 			DeleteLayer { layer_path } => {
 				responses.push_front(DocumentOperation::DeleteLayer { path: layer_path.clone() }.into());
+				responses.push_front(ToolMessage::AbortCurrentTool.into());
 				responses.push_back(PropertiesPanelMessage::CheckSelectedWasDeleted { path: layer_path }.into());
 			}
 			DeleteSelectedLayers => {
