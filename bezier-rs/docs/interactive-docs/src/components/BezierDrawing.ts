@@ -1,6 +1,6 @@
 import { WasmBezier } from "@/../wasm/pkg";
 import { COLORS, drawBezier, drawPoint, getContextFromCanvas, getPointSizeByIndex } from "@/utils/drawing";
-import { BezierCallback, BezierPoint, BezierStyleConfig, WasmBezierMutatorKey, WasmBezierInstance } from "@/utils/types";
+import { BezierCallback, BezierPoint, BezierStyleConfig, Point, WasmBezierMutatorKey, WasmBezierInstance } from "@/utils/types";
 
 // Offset to increase selectable range, used to make points easier to grab
 const FUDGE_FACTOR = 3;
@@ -81,10 +81,9 @@ class BezierDrawing {
 				selectedPoint.x = mx;
 				selectedPoint.y = my;
 				this.bezier[selectedPoint.mutator](selectedPoint.x, selectedPoint.y);
-				this.clearFigure();
 			}
 		}
-		this.updateBezier();
+		this.updateBezier({}, { x: mx, y: my });
 	}
 
 	mouseDownHandler(evt: MouseEvent): void {
@@ -102,13 +101,13 @@ class BezierDrawing {
 
 	deselectPointHandler(): void {
 		if (this.dragIndex !== undefined) {
-			this.clearFigure();
 			this.dragIndex = null;
 			this.updateBezier();
 		}
 	}
 
-	updateBezier(options: Record<string, number> = {}): void {
+	updateBezier(options: Record<string, number> = {}, mouseLocation: Point | null = null): void {
+		this.clearFigure();
 		if (Object.values(options).length !== 0) {
 			this.options = options;
 		}
@@ -146,7 +145,7 @@ class BezierDrawing {
 			// Draw the point that the curve was drawn through
 			drawPoint(this.ctx, this.points[1], getPointSizeByIndex(1, this.points.length), this.dragIndex === 1 ? COLORS.INTERACTIVE.SELECTED : COLORS.INTERACTIVE.STROKE_1);
 		}
-		this.callback(this.canvas, this.bezier, this.options);
+		this.callback(this.canvas, this.bezier, this.options, mouseLocation);
 	}
 
 	getCanvas(): HTMLCanvasElement {
