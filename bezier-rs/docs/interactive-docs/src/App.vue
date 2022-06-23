@@ -13,7 +13,7 @@
 <script lang="ts">
 import { defineComponent, markRaw } from "vue";
 
-import { drawText, drawPoint, getContextFromCanvas } from "@/utils/drawing";
+import { drawText, drawPoint, drawLine, getContextFromCanvas } from "@/utils/drawing";
 import { WasmBezierInstance } from "@/utils/types";
 
 import ExamplePane from "@/components/ExamplePane.vue";
@@ -32,6 +32,14 @@ const testBezierLib = async () => {
 			svgContainer.innerHTML = bezier.to_svg();
 		}
 	});
+};
+
+const tSliderOptions = {
+	min: 0,
+	max: 1,
+	step: 0.01,
+	default: 0.5,
+	variable: "t",
 };
 
 export default defineComponent({
@@ -60,30 +68,19 @@ export default defineComponent({
 					name: "Compute",
 					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: string): void => {
 						const point = JSON.parse(bezier.compute(parseFloat(options)));
-						point.r = 4;
-						point.selected = false;
-						drawPoint(getContextFromCanvas(canvas), point, "DarkBlue");
+						drawPoint(getContextFromCanvas(canvas), point, 4, "Red");
 					},
 					template: markRaw(SliderExample),
-					templateOptions: {
-						min: 0,
-						max: 1,
-						step: 0.01,
-						default: 0.5,
-						variable: "t",
-					},
+					templateOptions: tSliderOptions,
 				},
 				{
 					id: 4,
 					name: "Lookup Table",
 					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: string): void => {
 						const lookupPoints = bezier.compute_lookup_table(Number(options));
-						lookupPoints.forEach((serPoint, index) => {
+						lookupPoints.forEach((serialisedPoint, index) => {
 							if (index !== 0 && index !== lookupPoints.length - 1) {
-								const point = JSON.parse(serPoint);
-								point.r = 3;
-								point.selected = false;
-								drawPoint(getContextFromCanvas(canvas), point, "DarkBlue");
+								drawPoint(getContextFromCanvas(canvas), JSON.parse(serialisedPoint), 3, "Red");
 							}
 						});
 					},
@@ -95,6 +92,61 @@ export default defineComponent({
 						default: 5,
 						variable: "Steps",
 					},
+				},
+				{
+					id: 5,
+					name: "Derivative",
+					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: string): void => {
+						const t = parseFloat(options);
+						const context = getContextFromCanvas(canvas);
+
+						const intersection = JSON.parse(bezier.compute(t));
+						const derivative = JSON.parse(bezier.derivative(t));
+						const curveFactor = bezier.get_points().length - 1;
+
+						const tangentStart = {
+							x: intersection.x - derivative.x / curveFactor,
+							y: intersection.y - derivative.y / curveFactor,
+						};
+						const tangentEnd = {
+							x: intersection.x + derivative.x / curveFactor,
+							y: intersection.y + derivative.y / curveFactor,
+						};
+
+						drawLine(context, tangentStart, tangentEnd, "Red");
+						drawPoint(context, tangentStart, 3, "Red");
+						drawPoint(context, intersection, 3, "Red");
+						drawPoint(context, tangentEnd, 3, "Red");
+					},
+					template: markRaw(SliderExample),
+					templateOptions: tSliderOptions,
+				},
+				{
+					id: 6,
+					name: "Normal",
+					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: string): void => {
+						const t = parseFloat(options);
+						const context = getContextFromCanvas(canvas);
+
+						const intersection = JSON.parse(bezier.compute(t));
+						const normal = JSON.parse(bezier.normal(t));
+
+						const normalStart = {
+							x: intersection.x - normal.x * 20,
+							y: intersection.y - normal.y * 20,
+						};
+						const normalEnd = {
+							x: intersection.x + normal.x * 20,
+							y: intersection.y + normal.y * 20,
+						};
+
+						drawLine(context, normalStart, normalEnd, "Red");
+						drawPoint(context, normalStart, 3, "Red");
+						drawPoint(context, intersection, 3, "Red");
+						drawPoint(context, normalEnd, 3, "Red");
+					},
+					template: markRaw(SliderExample),
+					templateOptions: tSliderOptions,
 				},
 			],
 		};
