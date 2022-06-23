@@ -52,8 +52,8 @@ export default defineComponent({
 					id: 0,
 					title: "Quadratic",
 					bezier: wasm.WasmBezier.new_quad([
-						[30, 30],
-						[140, 20],
+						[30, 50],
+						[140, 30],
 						[160, 170],
 					]),
 				},
