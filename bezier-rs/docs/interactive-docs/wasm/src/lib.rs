@@ -10,12 +10,14 @@ struct Point {
 }
 
 #[wasm_bindgen]
+/// Wrapper of the `Bezier` struct to be used in JS
 pub struct WasmBezier {
 	internal: Bezier,
 }
 
+/// Convert a `DVec2` into a `JsValue`
 pub fn vec_to_point(p: &DVec2) -> JsValue {
-	JsValue::from_serde(&serde_json::to_string(&Point { x: p[0], y: p[1] }).unwrap()).unwrap()
+	JsValue::from_serde(&serde_json::to_string(&Point { x: p.x, y: p.y }).unwrap()).unwrap()
 }
 
 #[wasm_bindgen]
@@ -44,12 +46,12 @@ impl WasmBezier {
 		self.internal.set_end(DVec2::from((x, y)));
 	}
 
-	pub fn set_handle1(&mut self, x: f64, y: f64) {
-		self.internal.set_handle1(DVec2::from((x, y)));
+	pub fn set_handle_start(&mut self, x: f64, y: f64) {
+		self.internal.set_handle_start(DVec2::from((x, y)));
 	}
 
-	pub fn set_handle2(&mut self, x: f64, y: f64) {
-		self.internal.set_handle2(DVec2::from((x, y)));
+	pub fn set_handle_end(&mut self, x: f64, y: f64) {
+		self.internal.set_handle_end(DVec2::from((x, y)));
 	}
 
 	pub fn get_points(&self) -> Vec<JsValue> {
@@ -70,5 +72,13 @@ impl WasmBezier {
 
 	pub fn compute_lookup_table(&self, steps: i32) -> Vec<JsValue> {
 		self.internal.compute_lookup_table(Some(steps)).iter().map(vec_to_point).collect()
+	}
+
+	pub fn derivative(&self, t: f64) -> JsValue {
+		vec_to_point(&self.internal.derivative(t))
+	}
+
+	pub fn normal(&self, t: f64) -> JsValue {
+		vec_to_point(&self.internal.normal(t))
 	}
 }
