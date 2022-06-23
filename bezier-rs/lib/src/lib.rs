@@ -331,6 +331,61 @@ impl Bezier {
 		};
 		bezier_starting_at_t1.split(adjusted_t2)[t2_split_side]
 	}
+
+	// TODO: move this to a util file maybe
+	pub fn get_closest_point(&self, lut: Vec<DVec2>, point: DVec2) -> (f64, usize) {
+		let mut mdist = f64::MAX;
+		let mut mpos = 0;
+		let mut dist;
+		for (idx, p) in lut.iter().enumerate() {
+			dist = point.distance(*p);
+			if dist < mdist {
+				mdist = dist;
+				mpos = idx;
+			}
+		}
+		(mdist, mpos)
+	}
+
+	pub fn project(&self, point: DVec2) -> DVec2 {
+		// step 1: coarse check
+		let lut_size = 20;
+		let lut = self.compute_lookup_table(Some(lut_size));
+		let closest_point_data = self.get_closest_point(lut, point);
+
+		let mut mdist = closest_point_data.0;
+		let mpos = closest_point_data.1;
+		let t1 = (mpos as i32 - 1) as f64 / lut_size as f64;
+		let t2 = (mpos as i32 + 1) as f64 / lut_size as f64;
+		let step = 0.1 / (lut_size as f64);
+
+		// step 2: fine check
+		let mut t = t1;
+		let mut ft = t;
+		let mut p;
+		let mut d;
+
+		mdist += 1.;
+
+		while t < t2 + step {
+			p = self.compute(t);
+			d = point.distance(p);
+			if d < mdist {
+				mdist = d;
+				ft = t;
+			}
+
+			t += step;
+		}
+
+		if ft < 0. {
+			ft = 0.;
+		} else if ft > 1. {
+			ft = 1.;
+		}
+
+		self.compute(ft as f64)
+	}
 }
 
 #[cfg(test)]
