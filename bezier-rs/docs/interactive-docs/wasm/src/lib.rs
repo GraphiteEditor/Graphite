@@ -9,14 +9,16 @@ struct Point {
 	y: f64,
 }
 
-/// Wrapper of the `Bezier` struct to be used in JS
+/// Wrapper of the `Bezier` struct to be used in JS.
 #[wasm_bindgen]
 #[derive(Clone)]
 pub struct WasmBezier {
 	internal: Bezier,
 }
 
-/// Wrapper of the `Bezier` struct to be used in JS
+/// Struct for returning a pair of `Bezier` structs.
+/// This is a workaround because wasm_bindgen does not support lists of template type T where T is a wasm_bindgen struct.
+/// This applies to the split function.
 #[wasm_bindgen(getter_with_clone)]
 pub struct WasmBezierPair {
 	pub first: WasmBezier,
