@@ -78,9 +78,9 @@ export default defineComponent({
 					name: "Lookup Table",
 					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: string): void => {
 						const lookupPoints = bezier.compute_lookup_table(Number(options));
-						lookupPoints.forEach((serPoint, index) => {
+						lookupPoints.forEach((serialisedPoint, index) => {
 							if (index !== 0 && index !== lookupPoints.length - 1) {
-								drawPoint(getContextFromCanvas(canvas), JSON.parse(serPoint), 3, "Red");
+								drawPoint(getContextFromCanvas(canvas), JSON.parse(serialisedPoint), 3, "Red");
 							}
 						});
 					},

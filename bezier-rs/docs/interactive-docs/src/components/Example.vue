@@ -1,7 +1,7 @@
 <template>
 	<div>
 		<h4 class="example_header">{{ title }}</h4>
-		<figure class="example_figure" ref="drawing" />
+		<figure class="example_figure" ref="drawing"></figure>
 	</div>
 </template>
 

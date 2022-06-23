@@ -1,5 +1,12 @@
 import { Point } from "@/utils/types";
 
+const RADIUS_SIZE = {
+	large: 5,
+	small: 3,
+};
+
+export const getPointSizeByIndex = (index: number, numPoints: number): number => RADIUS_SIZE[index === 0 || index === numPoints - 1 ? "large" : "small"];
+
 export const getContextFromCanvas = (canvas: HTMLCanvasElement): CanvasRenderingContext2D => {
 	const ctx = canvas.getContext("2d");
 	if (ctx === null) {
@@ -8,28 +15,28 @@ export const getContextFromCanvas = (canvas: HTMLCanvasElement): CanvasRendering
 	return ctx;
 };
 
-export const drawLine = (ctx: CanvasRenderingContext2D, p1: Point, p2: Point, stroke = "grey"): void => {
-	ctx.strokeStyle = stroke;
+export const drawLine = (ctx: CanvasRenderingContext2D, point1: Point, point2: Point, strokeColor = "gray"): void => {
+	ctx.strokeStyle = strokeColor;
 	ctx.lineWidth = 1;
 
 	ctx.beginPath();
-	ctx.moveTo(p1.x, p1.y);
-	ctx.lineTo(p2.x, p2.y);
+	ctx.moveTo(point1.x, point1.y);
+	ctx.lineTo(point2.x, point2.y);
 	ctx.stroke();
 };
 
-export const drawPoint = (ctx: CanvasRenderingContext2D, p: Point, r: number, stroke = "black"): void => {
+export const drawPoint = (ctx: CanvasRenderingContext2D, point: Point, radius: number, strokeColor = "black"): void => {
 	// Outline the point
-	ctx.strokeStyle = stroke;
-	ctx.lineWidth = r / 3;
+	ctx.strokeStyle = strokeColor;
+	ctx.lineWidth = radius / 3;
 	ctx.beginPath();
-	ctx.arc(p.x, p.y, r, 0, 2 * Math.PI, false);
+	ctx.arc(point.x, point.y, radius, 0, 2 * Math.PI, false);
 	ctx.stroke();
 
 	// Fill the point (hiding any overlapping lines)
 	ctx.fillStyle = "white";
 	ctx.beginPath();
-	ctx.arc(p.x, p.y, r * (2 / 3), 0, 2 * Math.PI, false);
+	ctx.arc(point.x, point.y, radius * (2 / 3), 0, 2 * Math.PI, false);
 	ctx.fill();
 };
 
@@ -76,6 +83,6 @@ export const drawBezier = (ctx: CanvasRenderingContext2D, points: Point[], dragI
 	drawLine(ctx, end, handleEnd);
 
 	points.forEach((point, index) => {
-		drawPoint(ctx, point, index === 0 || index === points.length - 1 ? 5 : 3, index === dragIndex ? "Blue" : "Black");
+		drawPoint(ctx, point, getPointSizeByIndex(index, points.length), index === dragIndex ? "Blue" : "Black");
 	});
 };

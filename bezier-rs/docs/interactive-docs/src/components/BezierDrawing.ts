@@ -1,6 +1,9 @@
-import { drawBezier, getContextFromCanvas } from "@/utils/drawing";
+import { drawBezier, getContextFromCanvas, getPointSizeByIndex } from "@/utils/drawing";
 import { BezierCallback, BezierPoint, WasmBezierMutatorKey } from "@/utils/types";
 import { WasmBezierInstance } from "@/utils/wasm-comm";
+
+// Offset to increase selectable range, used to make points easier to grab
+const FUDGE_FACTOR = 3;
 
 class BezierDrawing {
 	static indexToMutator: WasmBezierMutatorKey[] = ["set_start", "set_handle_start", "set_handle_end", "set_end"];
@@ -29,7 +32,7 @@ class BezierDrawing {
 			.map((p, i, points) => ({
 				x: p.x,
 				y: p.y,
-				r: i === 0 || i === points.length - 1 ? 5 : 3,
+				r: getPointSizeByIndex(i, points.length),
 				selected: false,
 				mutator: BezierDrawing.indexToMutator[points.length === 3 && i > 1 ? i + 1 : i],
 			}));
@@ -63,12 +66,15 @@ class BezierDrawing {
 		const mx = evt.offsetX;
 		const my = evt.offsetY;
 
-		if (this.dragIndex !== null && mx - 5 > 0 && my - 5 > 0 && mx + 5 < this.canvas.width && my + 5 < this.canvas.height) {
-			const selectedPoint = this.points[this.dragIndex];
-			selectedPoint.x = mx;
-			selectedPoint.y = my;
-			this.bezier[selectedPoint.mutator](selectedPoint.x, selectedPoint.y);
-			this.clearFigure();
+		if (this.dragIndex !== null) {
+			const selectableRange = getPointSizeByIndex(this.dragIndex, this.points.length);
+			if (mx - selectableRange > 0 && my - selectableRange > 0 && mx + selectableRange < this.canvas.width && my + selectableRange < this.canvas.height) {
+				const selectedPoint = this.points[this.dragIndex];
+				selectedPoint.x = mx;
+				selectedPoint.y = my;
+				this.bezier[selectedPoint.mutator](selectedPoint.x, selectedPoint.y);
+				this.clearFigure();
+			}
 		}
 		this.updateBezier();
 	}
@@ -77,10 +83,8 @@ class BezierDrawing {
 		const mx = evt.offsetX;
 		const my = evt.offsetY;
 		for (let i = 0; i < this.points.length; i += 1) {
-			if (
-				Math.abs(mx - this.points[i].x) < 5 + 3 &&
-				Math.abs(my - this.points[i].y) < 5 + 3 // Fudge factor makes the points easier to grab
-			) {
+			const selectableRange = getPointSizeByIndex(i, this.points.length) + FUDGE_FACTOR;
+			if (Math.abs(mx - this.points[i].x) < selectableRange && Math.abs(my - this.points[i].y) < selectableRange) {
 				this.dragIndex = i;
 				break;
 			}
