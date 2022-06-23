@@ -1,5 +1,5 @@
 use super::layer_info::LayerData;
-use super::style::ViewMode;
+use super::style::{RenderData, ViewMode};
 use crate::intersection::{intersect_quad_bez_path, Quad};
 use crate::layers::text_layer::FontCache;
 use crate::LayerId;
@@ -9,6 +9,8 @@ use kurbo::{Affine, BezPath, Shape as KurboShape};
 use serde::{Deserialize, Serialize};
 use std::fmt::Write;
 
+mod base64_serde;
+
 fn glam_to_kurbo(transform: DAffine2) -> Affine {
 	Affine::new(transform.to_cols_array())
 }
@@ -16,6 +18,7 @@ fn glam_to_kurbo(transform: DAffine2) -> Affine {
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct ImageLayer {
 	pub mime: String,
+	#[serde(serialize_with = "base64_serde::as_base64", deserialize_with = "base64_serde::from_base64")]
 	pub image_data: Vec<u8>,
 	#[serde(skip)]
 	pub blob_url: Option<String>,
@@ -24,8 +27,8 @@ pub struct ImageLayer {
 }
 
 impl LayerData for ImageLayer {
-	fn render(&mut self, svg: &mut String, _svg_defs: &mut String, transforms: &mut Vec<DAffine2>, view_mode: ViewMode, _font_cache: &FontCache, _culling_bounds: Option<[DVec2; 2]>) {
-		let transform = self.transform(transforms, view_mode);
+	fn render(&mut self, svg: &mut String, _svg_defs: &mut String, transforms: &mut Vec<DAffine2>, render_data: RenderData) {
+		let transform = self.transform(transforms, render_data.view_mode);
 		let inverse = transform.inverse();
 
 		if !inverse.is_finite() {
@@ -47,12 +50,15 @@ impl LayerData for ImageLayer {
 			.collect::<String>();
 		let _ = write!(
 			svg,
-			r#"<image width="{}" height="{}" transform="matrix({})" xlink:href="{}" />"#,
-			self.dimensions.x,
-			self.dimensions.y,
-			svg_transform,
-			self.blob_url.as_ref().unwrap_or(&String::new())
+			r#"<image width="{}" height="{}" transform="matrix({})" href=""#,
+			self.dimensions.x, self.dimensions.y, svg_transform,
 		);
+		if render_data.embed_images {
+			let _ = write!(svg, "data:{};base64,{}", self.mime, base64::encode(&self.image_data));
+		} else {
+			let _ = write!(svg, "{}", self.blob_url.as_ref().unwrap_or(&String::new()));
+		}
+		let _ = svg.write_str(r#""/>"#);
 		let _ = svg.write_str("</g>");
 	}
 

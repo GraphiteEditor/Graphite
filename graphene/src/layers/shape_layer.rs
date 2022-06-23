@@ -1,5 +1,5 @@
 use super::layer_info::LayerData;
-use super::style::{self, PathStyle, ViewMode};
+use super::style::{self, PathStyle, RenderData, ViewMode};
 use crate::intersection::{intersect_quad_bez_path, Quad};
 use crate::layers::text_layer::FontCache;
 use crate::LayerId;
@@ -32,13 +32,13 @@ pub struct ShapeLayer {
 }
 
 impl LayerData for ShapeLayer {
-	fn render(&mut self, svg: &mut String, svg_defs: &mut String, transforms: &mut Vec<DAffine2>, view_mode: ViewMode, _font_cache: &FontCache, _culling_bounds: Option<[DVec2; 2]>) {
+	fn render(&mut self, svg: &mut String, svg_defs: &mut String, transforms: &mut Vec<DAffine2>, render_data: RenderData) {
 		let mut path = self.path.clone();
 
 		let kurbo::Rect { x0, y0, x1, y1 } = path.bounding_box();
 		let layer_bounds = [(x0, y0).into(), (x1, y1).into()];
 
-		let transform = self.transform(transforms, view_mode);
+		let transform = self.transform(transforms, render_data.view_mode);
 		let inverse = transform.inverse();
 		if !inverse.is_finite() {
 			let _ = write!(svg, "<!-- SVG shape has an invalid transform -->");
@@ -58,7 +58,7 @@ impl LayerData for ShapeLayer {
 			svg,
 			r#"<path d="{}" {} />"#,
 			path.to_svg(),
-			self.style.render(view_mode, svg_defs, transform, layer_bounds, transformed_bounds)
+			self.style.render(render_data.view_mode, svg_defs, transform, layer_bounds, transformed_bounds)
 		);
 		let _ = svg.write_str("</g>");
 	}

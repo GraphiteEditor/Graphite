@@ -5,7 +5,7 @@ use crate::layers::folder_layer::FolderLayer;
 use crate::layers::image_layer::ImageLayer;
 use crate::layers::layer_info::{Layer, LayerData, LayerDataType};
 use crate::layers::shape_layer::ShapeLayer;
-use crate::layers::style::ViewMode;
+use crate::layers::style::RenderData;
 use crate::layers::text_layer::{Font, FontCache, TextLayer};
 use crate::{DocumentError, DocumentResponse, Operation};
 
@@ -42,10 +42,10 @@ impl Default for Document {
 
 impl Document {
 	/// Wrapper around render, that returns the whole document as a Response.
-	pub fn render_root(&mut self, mode: ViewMode, font_cache: &FontCache, culling_bounds: Option<[DVec2; 2]>) -> String {
+	pub fn render_root(&mut self, render_data: RenderData) -> String {
 		let mut svg_defs = String::from("<defs>");
 
-		self.root.render(&mut vec![], mode, &mut svg_defs, font_cache, culling_bounds);
+		self.root.render(&mut vec![], &mut svg_defs, render_data);
 
 		svg_defs.push_str("</defs>");
 
@@ -697,7 +697,7 @@ impl Document {
 
 				text.font = Font::new(font_family, font_style);
 				text.size = size;
-				text.regenerate_path(text.load_face(font_cache));
+				text.cached_path = Some(text.generate_path(text.load_face(font_cache)));
 				self.mark_as_dirty(&path)?;
 				Some([vec![DocumentChanged, LayerChanged { path: path.clone() }], update_thumbnails_upstream(&path)].concat())
 			}

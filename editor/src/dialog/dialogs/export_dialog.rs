@@ -61,7 +61,7 @@ impl PropertyHolder for Export {
 		];
 
 		let artboards = self.artboards.iter().map(|(&val, name)| (ExportBounds::Artboard(val), name.to_string()));
-		let mut export_area_options = vec![(ExportBounds::AllArtwork, "All Artwork".to_string())];
+		let mut export_area_options = vec![(ExportBounds::AllArtwork, "All Artwork".to_string()), (ExportBounds::Selection, "Selection".to_string())];
 		export_area_options.extend(artboards);
 		let index = export_area_options.iter().position(|(val, _)| val == &self.bounds).unwrap();
 		let entries = vec![export_area_options

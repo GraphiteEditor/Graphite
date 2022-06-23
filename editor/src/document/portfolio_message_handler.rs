@@ -47,11 +47,10 @@ impl PortfolioMessageHandler {
 		// Uses binary search to find the index of the element where number is bigger than i
 		let new_doc_title_num = doc_title_numbers.binary_search(&0).map_or_else(|e| e, |v| v) + 1;
 
-		let name = match new_doc_title_num {
+		match new_doc_title_num {
 			1 => DEFAULT_DOCUMENT_NAME.to_string(),
 			_ => format!("{} {}", DEFAULT_DOCUMENT_NAME, new_doc_title_num),
-		};
-		name
+		}
 	}
 
 	// TODO Fix how this doesn't preserve tab order upon loading new document from *File > Load*
@@ -81,7 +80,7 @@ impl PortfolioMessageHandler {
 		);
 		new_document.update_layer_tree_options_bar_widgets(responses, &self.font_cache);
 
-		new_document.load_image_data(responses, &new_document.graphene_document.root.data, Vec::new());
+		new_document.load_layer_resources(responses, &new_document.graphene_document.root.data, Vec::new());
 
 		self.documents.insert(document_id, new_document);
 
@@ -387,7 +386,7 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 						}
 						.into(),
 					);
-					self.active_document().load_image_data(responses, &entry.layer.data, destination_path.clone());
+					self.active_document().load_layer_resources(responses, &entry.layer.data, destination_path.clone());
 					responses.push_front(
 						DocumentOperation::InsertLayer {
 							layer: entry.layer.clone(),
@@ -428,7 +427,7 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 							}
 							.into(),
 						);
-						self.active_document().load_image_data(responses, &entry.layer.data, destination_path.clone());
+						self.active_document().load_layer_resources(responses, &entry.layer.data, destination_path.clone());
 						responses.push_front(
 							DocumentOperation::InsertLayer {
 								layer: entry.layer.clone(),
