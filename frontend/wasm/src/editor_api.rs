@@ -444,7 +444,7 @@ mod layer_delete_bug_tests {
 	use editor::viewport_tools::tool::ToolType;
 
 	#[test]
-	fn should_not_crash_when_layer_is_deleted() {
+	fn should_not_crash_when_layer_is_deleted_while_using_a_tool() {
 		editor::communication::set_uuid_seed(0);
 		let mut test_editor = Editor::new();
 
