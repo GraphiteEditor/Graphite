@@ -199,7 +199,11 @@ impl<'a> Selected<'a> {
 	pub fn new(original_transforms: &'a mut OriginalTransforms, pivot: &'a mut DVec2, selected: &'a [&'a Vec<LayerId>], responses: &'a mut VecDeque<Message>, document: &'a Document) -> Self {
 		for path in selected {
 			if !original_transforms.contains_key(*path) {
-				original_transforms.insert(path.to_vec(), document.layer(path).unwrap().transform);
+				if let Ok(layer) = document.layer(path) {
+					original_transforms.insert(path.to_vec(), layer.transform);
+				} else {
+					log::warn!("Didn't find a layer for {:?}", path);
+				}
 			}
 		}
 		Self {
