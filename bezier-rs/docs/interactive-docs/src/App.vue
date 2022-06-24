@@ -240,8 +240,14 @@ export default defineComponent({
 					name: "Extrema",
 					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance): void => {
 						// const context = getContextFromCanvas(canvas);
-						const extrema = JSON.parse(bezier.extrema());
-						console.log(extrema);
+						const dimensionColours = ["red", "orange"];
+						const extrema: number[][] = JSON.parse(bezier.extrema());
+						extrema.forEach((tValues, index) => {
+							tValues.forEach((t) => {
+								const point = JSON.parse(bezier.compute(t));
+								drawPoint(getContextFromCanvas(canvas), point, 4, dimensionColours[index]);
+							});
+						});
 					},
 				},
 			],
