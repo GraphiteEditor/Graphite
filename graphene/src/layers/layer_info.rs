@@ -88,7 +88,7 @@ pub trait LayerData {
 	/// # Example
 	/// ```
 	/// # use graphite_graphene::layers::shape_layer::ShapeLayer;
-	/// # use graphite_graphene::layers::style::{Fill, PathStyle, ViewMode};
+	/// # use graphite_graphene::layers::style::{Fill, PathStyle, ViewMode, RenderData};
 	/// # use graphite_graphene::layers::layer_info::LayerData;
 	/// # use std::collections::HashMap;
 	///
@@ -96,7 +96,9 @@ pub trait LayerData {
 	/// let mut svg = String::new();
 	///
 	/// // Render the shape without any transforms, in normal view mode
-	/// shape.render(&mut svg, &mut String::new(), &mut vec![], ViewMode::Normal, &Default::default(), None);
+	/// # let font_cache = Default::default();
+	/// let render_data = RenderData::new(ViewMode::Normal, &font_cache, None, false);
+	/// shape.render(&mut svg, &mut String::new(), &mut vec![], render_data);
 	///
 	/// assert_eq!(
 	///     svg,
