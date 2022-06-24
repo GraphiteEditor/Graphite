@@ -7,10 +7,10 @@ pub mod vector_editor;
 
 #[cfg(test)]
 mod tool_crash_on_layer_delete_tests {
-	use crate::{Editor, DocumentMessage};
+	use crate::communication::set_uuid_seed;
 	use crate::misc::test_utils::EditorTestUtils;
 	use crate::viewport_tools::tool::ToolType;
-	use crate::communication::set_uuid_seed;
+	use crate::{DocumentMessage, Editor};
 
 	use test_case::test_case;
 
