@@ -7,6 +7,7 @@ use crate::layout::layout_message::LayoutTarget;
 use crate::layout::widgets::PropertyHolder;
 use crate::{dialog, message_prelude::*};
 
+use graphene::layers::layer_info::LayerDataTypeDiscriminant;
 use graphene::layers::text_layer::{Font, FontCache};
 use graphene::Operation as DocumentOperation;
 
@@ -286,7 +287,8 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 				is_default,
 			} => {
 				self.font_cache.insert(Font::new(font_family, font_style), preview_url, data, is_default);
-				responses.push_back(DocumentMessage::DirtyRenderDocument.into());
+				self.active_document_mut().graphene_document.mark_all_layer_type_as_dirty(LayerDataTypeDiscriminant::Text);
+				responses.push_back(DocumentMessage::RenderDocument.into());
 			}
 			LoadFont { font, is_default } => {
 				if !self.font_cache.loaded_font(&font) {

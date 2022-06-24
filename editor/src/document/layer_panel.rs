@@ -1,4 +1,4 @@
-use graphene::layers::layer_info::{Layer, LayerData, LayerDataType};
+use graphene::layers::layer_info::{Layer, LayerData, LayerDataTypeDiscriminant};
 use graphene::layers::style::{RenderData, ViewMode};
 use graphene::layers::text_layer::FontCache;
 use graphene::LayerId;
@@ -6,7 +6,6 @@ use graphene::LayerId;
 use glam::{DAffine2, DVec2};
 use serde::ser::SerializeStruct;
 use serde::{Deserialize, Serialize};
-use std::fmt;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Copy)]
 pub struct LayerMetadata {
@@ -90,38 +89,4 @@ pub struct LayerPanelEntry {
 	pub layer_metadata: LayerMetadata,
 	pub path: Vec<LayerId>,
 	pub thumbnail: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
-pub enum LayerDataTypeDiscriminant {
-	Folder,
-	Shape,
-	Text,
-	Image,
-}
-
-impl fmt::Display for LayerDataTypeDiscriminant {
-	fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-		let name = match self {
-			LayerDataTypeDiscriminant::Folder => "Folder",
-			LayerDataTypeDiscriminant::Shape => "Shape",
-			LayerDataTypeDiscriminant::Text => "Text",
-			LayerDataTypeDiscriminant::Image => "Image",
-		};
-
-		formatter.write_str(name)
-	}
-}
-
-impl From<&LayerDataType> for LayerDataTypeDiscriminant {
-	fn from(data: &LayerDataType) -> Self {
-		use LayerDataType::*;
-
-		match data {
-			Folder(_) => LayerDataTypeDiscriminant::Folder,
-			Shape(_) => LayerDataTypeDiscriminant::Shape,
-			Text(_) => LayerDataTypeDiscriminant::Text,
-			Image(_) => LayerDataTypeDiscriminant::Image,
-		}
-	}
 }

@@ -9,6 +9,7 @@ use crate::layers::text_layer::FontCache;
 use crate::DocumentError;
 use crate::LayerId;
 
+use core::fmt;
 use glam::{DAffine2, DMat2, DVec2};
 use serde::{Deserialize, Serialize};
 use std::fmt::Write;
@@ -42,6 +43,40 @@ impl LayerDataType {
 			LayerDataType::Folder(f) => f,
 			LayerDataType::Text(t) => t,
 			LayerDataType::Image(i) => i,
+		}
+	}
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+pub enum LayerDataTypeDiscriminant {
+	Folder,
+	Shape,
+	Text,
+	Image,
+}
+
+impl fmt::Display for LayerDataTypeDiscriminant {
+	fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+		let name = match self {
+			LayerDataTypeDiscriminant::Folder => "Folder",
+			LayerDataTypeDiscriminant::Shape => "Shape",
+			LayerDataTypeDiscriminant::Text => "Text",
+			LayerDataTypeDiscriminant::Image => "Image",
+		};
+
+		formatter.write_str(name)
+	}
+}
+
+impl From<&LayerDataType> for LayerDataTypeDiscriminant {
+	fn from(data: &LayerDataType) -> Self {
+		use LayerDataType::*;
+
+		match data {
+			Folder(_) => LayerDataTypeDiscriminant::Folder,
+			Shape(_) => LayerDataTypeDiscriminant::Shape,
+			Text(_) => LayerDataTypeDiscriminant::Text,
+			Image(_) => LayerDataTypeDiscriminant::Image,
 		}
 	}
 }

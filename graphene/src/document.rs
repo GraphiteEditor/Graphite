@@ -3,7 +3,7 @@ use crate::intersection::Quad;
 use crate::layers;
 use crate::layers::folder_layer::FolderLayer;
 use crate::layers::image_layer::ImageLayer;
-use crate::layers::layer_info::{Layer, LayerData, LayerDataType};
+use crate::layers::layer_info::{Layer, LayerData, LayerDataType, LayerDataTypeDiscriminant};
 use crate::layers::shape_layer::ShapeLayer;
 use crate::layers::style::RenderData;
 use crate::layers::text_layer::{Font, FontCache, TextLayer};
@@ -373,6 +373,23 @@ impl Document {
 	pub fn mark_as_dirty(&mut self, path: &[LayerId]) -> Result<(), DocumentError> {
 		self.mark_upstream_as_dirty(path)?;
 		Ok(())
+	}
+
+	fn mark_layer_type_as_dirty(root: &mut Layer, data_type: LayerDataTypeDiscriminant) -> bool {
+		if LayerDataTypeDiscriminant::from(&root.data) == data_type {
+			root.cache_dirty = true;
+		} else if let LayerDataType::Folder(f) = &mut root.data {
+			let mut dirty = false;
+			for l in f.layers_mut() {
+				dirty = Self::mark_layer_type_as_dirty(l, data_type) || dirty;
+			}
+			root.cache_dirty = dirty;
+		}
+		root.cache_dirty
+	}
+
+	pub fn mark_all_layer_type_as_dirty(&mut self, data_type: LayerDataTypeDiscriminant) -> bool {
+		Self::mark_layer_type_as_dirty(&mut self.root, data_type)
 	}
 
 	pub fn transforms(&self, path: &[LayerId]) -> Result<Vec<DAffine2>, DocumentError> {

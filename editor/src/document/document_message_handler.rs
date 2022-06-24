@@ -1,5 +1,5 @@
 use super::clipboards::Clipboard;
-use super::layer_panel::{layer_panel_entry, LayerDataTypeDiscriminant, LayerMetadata, LayerPanelEntry, RawBuffer};
+use super::layer_panel::{layer_panel_entry, LayerMetadata, LayerPanelEntry, RawBuffer};
 use super::properties_panel_message_handler::PropertiesPanelMessageHandlerData;
 use super::utility_types::{AlignAggregate, AlignAxis, DocumentSave, FlipAxis};
 use super::utility_types::{DocumentMode, TargetDocument};
@@ -21,7 +21,7 @@ use graphene::color::Color;
 use graphene::document::Document as GrapheneDocument;
 use graphene::layers::blend_mode::BlendMode;
 use graphene::layers::folder_layer::FolderLayer;
-use graphene::layers::layer_info::LayerDataType;
+use graphene::layers::layer_info::{LayerDataType, LayerDataTypeDiscriminant};
 use graphene::layers::style::{Fill, RenderData, ViewMode};
 use graphene::layers::text_layer::{Font, FontCache};
 use graphene::{DocumentError, DocumentResponse, LayerId, Operation as DocumentOperation};
@@ -1070,7 +1070,9 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 				};
 
 				let render_data = RenderData::new(self.view_mode, font_cache, None, true);
+				self.graphene_document.mark_all_layer_type_as_dirty(LayerDataTypeDiscriminant::Image);
 				let rendered = self.graphene_document.render_root(render_data);
+				self.graphene_document.mark_all_layer_type_as_dirty(LayerDataTypeDiscriminant::Image);
 				let document = format!(
 					r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{} {} {} {}" width="{}px" height="{}">{}{}</svg>"#,
 					bbox[0].x, bbox[0].y, size.x, size.y, size.x, size.y, "\n", rendered
