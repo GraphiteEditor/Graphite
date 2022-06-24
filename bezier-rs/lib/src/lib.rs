@@ -333,58 +333,67 @@ impl Bezier {
 	}
 
 	// TODO: move this to a util file maybe
-	pub fn get_closest_point(&self, lut: Vec<DVec2>, point: DVec2) -> (f64, usize) {
-		let mut mdist = f64::MAX;
-		let mut mpos = 0;
+	fn get_closest_point_in_lut(&self, lut: Vec<DVec2>, point: DVec2) -> (f64, usize) {
+		let mut min_distance = f64::MAX;
+		let mut min_position = 0;
 		let mut dist;
-		for (idx, p) in lut.iter().enumerate() {
-			dist = point.distance(*p);
-			if dist < mdist {
-				mdist = dist;
-				mpos = idx;
+		for (idx, lut_point) in lut.iter().enumerate() {
+			dist = point.distance(*lut_point);
+			if dist < min_distance {
+				min_distance = dist;
+				min_position = idx;
 			}
 		}
-		(mdist, mpos)
+		(min_distance, min_position)
 	}
 
+	/// Returns the closest point on the curve to the provided point
 	pub fn project(&self, point: DVec2) -> DVec2 {
-		// step 1: coarse check
+		// First find the closest point from the results of a lookup table
 		let lut_size = 20;
 		let lut = self.compute_lookup_table(Some(lut_size));
-		let closest_point_data = self.get_closest_point(lut, point);
+		let closest_point_data = self.get_closest_point_in_lut(lut, point);
 
-		let mut mdist = closest_point_data.0;
-		let mpos = closest_point_data.1;
-		let t1 = (mpos as i32 - 1) as f64 / lut_size as f64;
-		let t2 = (mpos as i32 + 1) as f64 / lut_size as f64;
+		let mut minimum_distance = closest_point_data.0;
+		let minimum_position = closest_point_data.1 as i32;
+
+		// Get the t values to the left and right of the closest result in the lookup table
+		let left_t = (0.max(minimum_position - 1) as f64) / lut_size as f64;
+		let right_t = (lut_size.min(minimum_position + 1)) as f64 / lut_size as f64;
+
+		// Iterate at finer steps (by tenths) within the range to find a closer t value
 		let step = 0.1 / (lut_size as f64);
+		let mut iterator_t = left_t;
+		let mut final_t = iterator_t;
+		let mut distance;
 
-		// step 2: fine check
-		let mut t = t1;
-		let mut ft = t;
-		let mut p;
-		let mut d;
+		// Increment minimum_distance to ensure that the distance < minimum_distance comparison will be true for at least one iteration
+		minimum_distance += 1.;
 
-		mdist += 1.;
-
-		while t < t2 + step {
-			p = self.compute(t);
-			d = point.distance(p);
-			if d < mdist {
-				mdist = d;
-				ft = t;
+		while iterator_t <= right_t {
+			distance = point.distance(self.compute(iterator_t));
+			if distance < minimum_distance {
+				minimum_distance = distance;
+				final_t = iterator_t;
 			}
-
-			t += step;
+			iterator_t += step;
 		}
 
-		if ft < 0. {
-			ft = 0.;
-		} else if ft > 1. {
-			ft = 1.;
-		}
+		self.compute(final_t)
+	}
+}
 
-		self.compute(ft as f64)
+#[cfg(test)]
+mod tests {
+	use crate::Bezier;
+	use glam::DVec2;
+	#[test]
+	fn project() {
+		let bezier = Bezier::from_cubic_coordinates(4., 4., 23., 45., 10., 30., 56., 90.);
+		assert!(bezier.project(DVec2::new(100., 100.)) == DVec2::new(56., 90.));
+		assert!(bezier.project(DVec2::new(0., 0.)) == DVec2::new(4., 4.));
+		let bezier2 = Bezier::from_quadratic_coordinates(0., 0., 0., 100., 100., 100.);
+		assert!(bezier2.project(DVec2::new(100., 0.)) == DVec2::new(0., 0.));
 	}
 }
 
