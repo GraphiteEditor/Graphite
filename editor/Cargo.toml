@@ -32,3 +32,4 @@ package = "graphite-graphene"
 
 [dev-dependencies]
 env_logger = "0.8.4"
+test-case = "2.1"
