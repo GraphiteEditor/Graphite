@@ -236,6 +236,14 @@ export default defineComponent({
 						}
 					},
 				},
+				{
+					name: "Extrema",
+					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance): void => {
+						// const context = getContextFromCanvas(canvas);
+						const extrema = JSON.parse(bezier.extrema());
+						console.log(extrema);
+					},
+				},
 			],
 		};
 	},

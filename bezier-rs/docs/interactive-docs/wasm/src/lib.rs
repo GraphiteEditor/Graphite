@@ -87,6 +87,11 @@ impl WasmBezier {
 		vec_to_point(&self.0.normal(t))
 	}
 
+	pub fn extrema(&self) -> JsValue {
+		let extrema = self.0.extrema();
+		JsValue::from_serde(&serde_json::to_string(&extrema).unwrap()).unwrap()
+	}
+
 	pub fn split(&self, t: f64) -> JsValue {
 		let bezier_points: [Vec<Point>; 2] = self
 			.0
