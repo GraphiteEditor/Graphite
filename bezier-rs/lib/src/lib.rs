@@ -418,6 +418,47 @@ impl Bezier {
 
 		self.compute(final_t)
 	}
+
+	pub fn extrema(&self) -> (Vec<f64>, Vec<f64>) {
+		let mut x_values = Vec::new();
+		let mut y_values = Vec::new();
+		match self.handles {
+			BezierHandles::Quadratic { handle } => {
+				let a = handle - self.start;
+				let b = self.end - handle;
+				// check for x extrema
+				if (b.x - a.x) != 0. {
+					x_values.push(-a.x / (b.x - a.x));
+				}
+				// check for y extrema
+				if (b.y - a.y) != 0. {
+					y_values.push(-a.y / (b.y - a.y));
+				}
+			}
+			BezierHandles::Cubic { handle_start, handle_end } => {
+				let a = 3. * (-self.start + 3. * handle_start - 3. * handle_end + self.end);
+				let b = 6. * (self.start - 2. * handle_start + handle_end);
+				let c = 3. * (handle_start - self.start);
+				// check for x extrema
+				let x_discr = b.x * b.x - 4. * a.x * c.x;
+				if x_discr > 0. {
+					x_values.push((-b.x + x_discr.sqrt()) / (2. * a.x));
+					x_values.push((-b.x - x_discr.sqrt()) / (2. * a.x));
+				} else if x_discr == 0. {
+					x_values.push(-b.x / (2. * a.x));
+				}
+				// check for y extrema
+				let y_discr = b.y * b.y - 4. * a.y * c.y;
+				if y_discr > 0. {
+					y_values.push((-b.y + y_discr.sqrt()) / (2. * a.y));
+					y_values.push((-b.y - y_discr.sqrt()) / (2. * a.y));
+				} else if y_discr == 0. {
+					y_values.push(-b.y / (2. * a.y));
+				}
+			}
+		}
+		(x_values, y_values)
+	}
 }
 
 #[cfg(test)]
