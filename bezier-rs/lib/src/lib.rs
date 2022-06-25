@@ -383,8 +383,12 @@ impl Bezier {
 		self.compute(final_t)
 	}
 
-	/// Returns the closest point on the curve to the provided point
-	pub fn project_precise(&self, point: DVec2, convergence_limit: i32, iteration_limit: i32) -> DVec2 {
+	/// Returns the closest point on the curve to the provided point and can be more precise than `project`.
+	/// Uses a searching algorithm that can be customized using the following paramenters:
+	/// * `convergence_epsilon` - Difference used between floating point numbers to be considered as equal
+	/// * `convergence_limit` - Controls the number of iterations needed to consider that minimum distance to have converged
+	/// * `iteration_limit` - Controls the maximum total number of iterations to be used
+	pub fn project_precise(&self, point: DVec2, convergence_epsilon: f64, convergence_limit: i32, iteration_limit: i32) -> DVec2 {
 		// First find the closest point from the results of a lookup table
 		let lut_size = 20;
 		let lut = self.compute_lookup_table(Some(lut_size));
@@ -407,7 +411,7 @@ impl Bezier {
 		// Maintain the previous distance to identify convergence
 		let mut previous_distance;
 		// Counter to limit the number of iterations
-		let mut count = 0;
+		let mut iteration_count = 0;
 		// Counter to identify how many iterations have had a similar result. Used for convergence test
 		let mut convergence_count = 0;
 		// Store calculated distances to minimize unnecessary recomputations
@@ -419,15 +423,17 @@ impl Bezier {
 			point.distance(lut[lut_size.min(minimum_position + 1) as usize]),
 		];
 
-		let mut count_dist = 0;
+		// TODO: Remove this variable, it is used to count how many distance computations were done
+		let mut count_dist = 2;
 
-		while left_t <= right_t && convergence_count < convergence_limit && count < iteration_limit {
+		while left_t <= right_t && convergence_count < convergence_limit && iteration_count < iteration_limit {
 			previous_distance = minimum_distance;
 			let step = (right_t - left_t) / 4.;
 			let mut iterator_t = left_t;
 			let mut target_index = 0;
 			// Iterate through first 4 points and will handle the right most point later
 			for (step_index, table_distance) in distances.iter_mut().enumerate().take(4) {
+				// Use previsouly computed distance for the left most point, and compute new values for the others
 				if step_index == 0 {
 					distance = *table_distance;
 				} else {
@@ -449,21 +455,23 @@ impl Bezier {
 			}
 
 			// Update left_t, right_t and reuse computed distances for them
+			// Ensure that the t values never exceed the [0, 1] range
 			left_t = (final_t - step).max(0.);
+			// Since target_index is a u_size, can't subtract one if it is zero
 			distances[0] = distances[if target_index == 0 { 0 } else { target_index - 1 }];
 			right_t = (final_t + step).min(1.);
 			distances[4] = distances[(target_index + 1).min(4)];
 
-			count += 1;
+			iteration_count += 1;
 			// update count for consecutive iterations of similar minimum distances
-			if previous_distance - minimum_distance < 0.0001 {
+			if previous_distance - minimum_distance < convergence_epsilon {
 				convergence_count += 1;
 			} else {
 				convergence_count = 0;
 			}
 			println!("dist: {}", minimum_distance);
 		}
-		println!("count: {}, t: {}, count dist {}", count, final_t, count_dist);
+		println!("count: {}, t: {}, count dist {}", iteration_count, final_t, count_dist);
 
 		self.compute(final_t)
 	}
@@ -485,10 +493,10 @@ mod tests {
 	#[test]
 	fn project_precise() {
 		let bezier = Bezier::from_cubic_coordinates(4., 4., 23., 45., 10., 30., 56., 90.);
-		assert!(bezier.project_precise(DVec2::new(100., 100.), 3, 10) == DVec2::new(56., 90.));
-		assert!(bezier.project_precise(DVec2::new(0., 0.), 3, 10) == DVec2::new(4., 4.));
+		assert!(bezier.project_precise(DVec2::new(100., 100.), 0.0001, 3, 10) == DVec2::new(56., 90.));
+		assert!(bezier.project_precise(DVec2::new(0., 0.), 0.0001, 3, 10) == DVec2::new(4., 4.));
 		let bezier2 = Bezier::from_quadratic_coordinates(0., 0., 0., 100., 100., 100.);
-		assert!(bezier2.project_precise(DVec2::new(100., 0.), 3, 10) == DVec2::new(0., 0.));
+		assert!(bezier2.project_precise(DVec2::new(100., 0.), 0.0001, 3, 10) == DVec2::new(0., 0.));
 	}
 
 	#[test]
@@ -496,10 +504,10 @@ mod tests {
 		let bezier = Bezier::from_cubic_coordinates(4., 4., 5030., 5050., 4090., 5050., 4., 4.);
 		let test = DVec2::new(5073., 5060.);
 		let min1 = test.distance(bezier.project(test));
-		let min2 = test.distance(bezier.project_precise(test, 3, 10));
+		let min2 = test.distance(bezier.project_precise(test, 0.0001, 3, 10));
 		println!("{} vs {}", min1, min2);
 		println!(
-			"min: {}",
+			"minimum distance between implementations: {}",
 			if min1 == min2 {
 				"both"
 			} else if min1 < min2 {
