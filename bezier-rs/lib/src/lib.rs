@@ -379,6 +379,65 @@ impl Bezier {
 			iterator_t += step;
 		}
 
+		println!("project 1: final_t: {}", final_t);
+		self.compute(final_t)
+	}
+
+	/// Returns the closest point on the curve to the provided point
+	pub fn project2(&self, point: DVec2) -> DVec2 {
+		// First find the closest point from the results of a lookup table
+		let lut_size = 20;
+		let lut = self.compute_lookup_table(Some(lut_size));
+		let closest_point_data = self.get_closest_point_in_lut(lut, point);
+
+		let mut minimum_distance = closest_point_data.0;
+		let minimum_position = closest_point_data.1 as i32;
+
+		// Get the t values to the left and right of the closest result in the lookup table
+		let mut left_t = (0.max(minimum_position - 1) as f64) / lut_size as f64;
+		let mut right_t = (lut_size.min(minimum_position + 1)) as f64 / lut_size as f64;
+
+		// Perform a finer search
+		let mut final_t = left_t;
+		let mut distance;
+
+		// Increment minimum_distance to ensure that the distance < minimum_distance comparison will be true for at least one iteration
+		minimum_distance += 1.;
+		// Maintain the previous distance to identify convergence
+		let mut prev_distance;
+		// Counter to limit the number of iterations
+		let mut count = 0;
+		let mut convergence_count = 0;
+
+		while left_t <= right_t && convergence_count < 3 && count < 12 {
+			prev_distance = minimum_distance;
+			let step = (right_t - left_t) / 4.;
+			let mut iterator_t = left_t;
+			while iterator_t <= right_t {
+				distance = point.distance(self.compute(iterator_t));
+				if distance < minimum_distance {
+					minimum_distance = distance;
+					final_t = iterator_t;
+				}
+				iterator_t += step;
+			}
+			distance = point.distance(self.compute(right_t));
+			if distance < minimum_distance {
+				minimum_distance = distance;
+				final_t = right_t;
+			}
+			left_t = (final_t - step).max(0.);
+			right_t = (final_t + step).min(1.);
+			count += 1;
+			if prev_distance - minimum_distance < 0.00001 {
+				convergence_count += 1;
+			} else {
+				convergence_count = 0;
+			}
+			println!("l, best, r: {}, {}, {}", left_t, final_t, right_t);
+		}
+		println!("count: {}, t: {}", count, final_t);
+
 		self.compute(final_t)
 	}
 }
@@ -394,6 +453,25 @@ mod tests {
 		assert!(bezier.project(DVec2::new(0., 0.)) == DVec2::new(4., 4.));
 		let bezier2 = Bezier::from_quadratic_coordinates(0., 0., 0., 100., 100., 100.);
 		assert!(bezier2.project(DVec2::new(100., 0.)) == DVec2::new(0., 0.));
+	}
+
+	#[test]
+	fn diff_project_impls() {
+		let bezier = Bezier::from_cubic_coordinates(4., 4., 5030., 5050., 4090., 5050., 4., 4.);
+		let test = DVec2::new(5073., 5060.);
+		let min1 = test.distance(bezier.project(test));
+		let min2 = test.distance(bezier.project2(test));
+		println!("{} vs {}", min1, min2);
+		println!(
+			"min: {}",
+			if min1 == min2 {
+				"both"
+			} else if min1 < min2 {
+				"project1"
+			} else {
+				"project2"
+			}
+		);
 	}
 }
 
