@@ -26,7 +26,7 @@ type AnchorId = u64;
 
 const POINT_STROKE_WEIGHT: f64 = 2.;
 
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct OverlayRenderer {
 	shape_overlay_cache: HashMap<LayerId, Vec<LayerId>>,
 	anchor_overlay_cache: HashMap<(LayerId, AnchorId), AnchorOverlays>,
