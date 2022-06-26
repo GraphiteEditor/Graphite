@@ -1,6 +1,6 @@
 <template>
 	<div>
-		<Example :title="title" :bezier="bezier" :callback="callback" :options="sliderData" />
+		<Example :title="title" :bezier="bezier" :callback="callback" :options="sliderData" :createFromPoints="createFromPoints" />
 		<div v-for="(slider, index) in templateOptions.sliders" :key="index">
 			<div class="slider_label">{{ slider.variable }} = {{ sliderData[slider.variable] }}</div>
 			<input class="slider" v-model.number="sliderData[slider.variable]" type="range" :step="slider.step" :min="slider.min" :max="slider.max" />
@@ -34,6 +34,10 @@ export default defineComponent({
 		templateOptions: {
 			type: Object,
 			default: () => ({}),
+		},
+		createFromPoints: {
+			type: Boolean,
+			default: false,
 		},
 	},
 	data() {

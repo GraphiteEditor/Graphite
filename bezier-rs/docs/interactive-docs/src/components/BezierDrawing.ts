@@ -1,4 +1,5 @@
-import { drawBezier, getContextFromCanvas, getPointSizeByIndex } from "@/utils/drawing";
+import { WasmBezier } from "@/../wasm/pkg";
+import { drawBezier, drawPoint, getContextFromCanvas, getPointSizeByIndex } from "@/utils/drawing";
 import { BezierCallback, BezierPoint, WasmBezierMutatorKey } from "@/utils/types";
 import { WasmBezierInstance } from "@/utils/wasm-comm";
 
@@ -22,10 +23,13 @@ class BezierDrawing {
 
 	options: Record<string, number>;
 
-	constructor(bezier: WasmBezierInstance, callback: BezierCallback, options: Record<string, number>) {
+	createFromPoints: boolean;
+
+	constructor(bezier: WasmBezierInstance, callback: BezierCallback, options: Record<string, number>, createFromPoints = false) {
 		this.bezier = bezier;
 		this.callback = callback;
 		this.options = options;
+		this.createFromPoints = createFromPoints;
 		this.points = bezier
 			.get_points()
 			.map((p) => JSON.parse(p))
@@ -36,6 +40,10 @@ class BezierDrawing {
 				selected: false,
 				mutator: BezierDrawing.indexToMutator[points.length === 3 && i > 1 ? i + 1 : i],
 			}));
+
+		if (this.createFromPoints && this.points.length === 4) {
+			this.points = [this.points[0], this.points[1], this.points[3]];
+		}
 
 		const canvas = document.createElement("canvas");
 		if (canvas === null) {
@@ -105,7 +113,35 @@ class BezierDrawing {
 			this.options = options;
 		}
 		this.clearFigure();
-		drawBezier(this.ctx, this.points, this.dragIndex);
+
+		const actualBezierPointLength = this.bezier.get_points().length;
+		const pointsToDraw = this.createFromPoints
+			? (actualBezierPointLength === 3
+					? WasmBezier.quad_from_points(
+							this.points.map((p) => [p.x, p.y]),
+							0.5
+					  )
+					: WasmBezier.cubic_from_points(
+							this.points.map((p) => [p.x, p.y]),
+							0.3,
+							10
+					  )
+			  )
+					.get_points()
+					.map((p) => JSON.parse(p))
+			: this.points;
+
+		const filteredDragIndex = !this.createFromPoints || this.dragIndex === 0 || this.dragIndex === actualBezierPointLength - 1 ? this.dragIndex : null;
+
+		drawBezier(this.ctx, pointsToDraw, filteredDragIndex);
+		if (this.createFromPoints) {
+			this.points.forEach((point, index) => {
+				// Draw the point that was skipped
+				if (index !== 0 && index !== this.points.length - 1) {
+					drawPoint(this.ctx, point, getPointSizeByIndex(index, this.points.length), index === this.dragIndex ? "Blue" : "black");
+				}
+			});
+		}
 		this.callback(this.canvas, this.bezier, this.options);
 	}
 

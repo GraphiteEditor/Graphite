@@ -33,6 +33,20 @@ impl WasmBezier {
 		WasmBezier(Bezier::from_cubic_dvec2(points[0], points[1], points[2], points[3]))
 	}
 
+	pub fn quad_from_points(js_points: &JsValue, t: f64) -> WasmBezier {
+		let points: [DVec2; 3] = js_points.into_serde().unwrap();
+		WasmBezier {
+			internal: Bezier::quadratic_from_points(points[0], points[1], points[2], t),
+		}
+	}
+
+	pub fn cubic_from_points(js_points: &JsValue, t: f64, d: f64) -> WasmBezier {
+		let points: [DVec2; 3] = js_points.into_serde().unwrap();
+		WasmBezier {
+			internal: Bezier::cubic_from_points(points[0], points[1], points[2], t, d),
+		}
+	}
+
 	pub fn set_start(&mut self, x: f64, y: f64) {
 		self.0.set_start(DVec2::new(x, y));
 	}

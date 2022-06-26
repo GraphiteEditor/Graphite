@@ -3,7 +3,7 @@
 		<h2 class="example_pane_header">{{ name }}</h2>
 		<div class="example_row">
 			<div v-for="example in exampleData" :key="example.id">
-				<component :is="template" :templateOptions="templateOptions" :title="example.title" :bezier="example.bezier" :callback="callback" />
+				<component :is="template" :templateOptions="templateOptions" :title="example.title" :bezier="example.bezier" :callback="callback" :createFromPoints="createFromPoints" />
 			</div>
 		</div>
 	</div>
@@ -13,7 +13,7 @@
 import { defineComponent, PropType, Component } from "vue";
 
 import { BezierCallback } from "@/utils/types";
-import { WasmBezierInstance } from "@/utils/wasm-comm";
+import { WasmBezierInstance, WasmRawInstance } from "@/utils/wasm-comm";
 
 import Example from "@/components/Example.vue";
 
@@ -39,6 +39,10 @@ export default defineComponent({
 			default: Example,
 		},
 		templateOptions: Object,
+		createFromPoints: {
+			type: Boolean,
+			default: false,
+		},
 	},
 	data() {
 		return {
@@ -46,26 +50,28 @@ export default defineComponent({
 		};
 	},
 	mounted() {
-		import("@/../wasm/pkg").then((wasm) => {
+		import("@/../wasm/pkg").then((wasm: WasmRawInstance) => {
+			const quadraticPoints = [
+				[30, 50],
+				[140, 30],
+				[160, 170],
+			];
+			const cubicPoints = [
+				[30, 30],
+				[60, 140],
+				[150, 30],
+				[160, 160],
+			];
 			this.exampleData = [
 				{
 					id: 0,
 					title: "Quadratic",
-					bezier: wasm.WasmBezier.new_quad([
-						[30, 50],
-						[140, 30],
-						[160, 170],
-					]),
+					bezier: wasm.WasmBezier.new_quad(quadraticPoints), // this.createFromPoints ? wasm.WasmBezier.quad_from_points(quadraticPoints, 0.5) :
 				},
 				{
 					id: 1,
 					title: "Cubic",
-					bezier: wasm.WasmBezier.new_cubic([
-						[30, 30],
-						[60, 140],
-						[150, 30],
-						[160, 160],
-					]),
+					bezier: wasm.WasmBezier.new_cubic(cubicPoints),
 				},
 			];
 		});

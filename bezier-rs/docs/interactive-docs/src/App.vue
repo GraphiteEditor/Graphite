@@ -3,7 +3,7 @@
 		<h1>Bezier-rs Interactive Documentation</h1>
 		<p>This is the interactive documentation for the <b>bezier-rs</b> library. Click and drag on the endpoints of the example curves to visualize the various Bezier utilities and functions.</p>
 		<div v-for="(feature, index) in features" :key="index">
-			<ExamplePane :template="feature.template" :templateOptions="feature.templateOptions" :name="feature.name" :callback="feature.callback" />
+			<ExamplePane :template="feature.template" :templateOptions="feature.templateOptions" :name="feature.name" :callback="feature.callback" :createFromPoints="feature.createFromPoints" />
 		</div>
 		<br />
 		<div id="svg-test" />
@@ -56,6 +56,16 @@ export default defineComponent({
 					callback: (): void => {},
 				},
 				{
+					id: 1,
+					name: "Bezier from points",
+					// eslint-disable-next-line
+					callback: (): void => {},
+					createFromPoints: true,
+					template: markRaw(SliderExample),
+					templateOptions: { sliders: [{ ...tSliderOptions }] },
+				},
+				{
+					id: 2,
 					name: "Length",
 					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance): void => {
 						drawText(getContextFromCanvas(canvas), `Length: ${bezier.length().toFixed(2)}`, 5, canvas.height - 7);
