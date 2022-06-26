@@ -35,16 +35,12 @@ impl WasmBezier {
 
 	pub fn quad_from_points(js_points: &JsValue, t: f64) -> WasmBezier {
 		let points: [DVec2; 3] = js_points.into_serde().unwrap();
-		WasmBezier {
-			internal: Bezier::quadratic_from_points(points[0], points[1], points[2], t),
-		}
+		WasmBezier(Bezier::quadratic_from_points(points[0], points[1], points[2], t))
 	}
 
 	pub fn cubic_from_points(js_points: &JsValue, t: f64, d: f64) -> WasmBezier {
 		let points: [DVec2; 3] = js_points.into_serde().unwrap();
-		WasmBezier {
-			internal: Bezier::cubic_from_points(points[0], points[1], points[2], t, d),
-		}
+		WasmBezier(Bezier::cubic_from_points(points[0], points[1], points[2], t, d))
 	}
 
 	pub fn set_start(&mut self, x: f64, y: f64) {

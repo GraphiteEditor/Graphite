@@ -97,6 +97,11 @@ impl Bezier {
 	/// Create a quadratic bezier curve that goes through 3 points
 	// #[inline]
 	pub fn quadratic_from_points(p1: DVec2, p2: DVec2, p3: DVec2, t: f64) -> Self {
+		if t == 0. {
+			return Bezier::from_quadratic_dvec2(p2, p2, p3);
+		} else if t == 1. {
+			return Bezier::from_quadratic_dvec2(p1, p2, p2);
+		}
 		let abc = Bezier::get_quadratic_abc(p1, p2, p3, t);
 		Bezier::from_quadratic_dvec2(p1, abc[0], p3)
 	}
@@ -104,6 +109,11 @@ impl Bezier {
 	/// Create a cubic bezier curve that goes through 3 points. d1 represents the strut.
 	// #[inline]
 	pub fn cubic_from_points(p1: DVec2, p2: DVec2, p3: DVec2, t: f64, d1: f64) -> Self {
+		if t == 0. {
+			return Bezier::from_cubic_dvec2(p2, p2, p3, p3);
+		} else if t == 1. {
+			return Bezier::from_cubic_dvec2(p1, p1, p2, p2);
+		}
 		let abc = Bezier::get_cubic_abc(p1, p2, p3, t);
 		let distance_between_start_and_end = (p3 - p1) / (p1.distance(p3));
 		let e1 = abc[1] - (distance_between_start_and_end * d1);
@@ -354,13 +364,15 @@ mod tests {
 		let p1 = DVec2::new(30., 50.);
 		let p2 = DVec2::new(140., 30.);
 		let p3 = DVec2::new(160., 170.);
+		// let abc = Bezier::get_quadratic_abc(p1, p2, p3, 0.5);
+		// println!("ABC: {}, {}, {}", abc[0], abc[1], abc[2]);
 		let bezier = Bezier::quadratic_from_points(p1, p2, p3, 0.5);
-		println!("Points: {}, {}, {}", bezier.start(), bezier.handle_start(), bezier.end());
-		let abc = Bezier::get_quadratic_abc(p1, p2, p3, 0.5);
-		println!("ABC: {}, {}, {}", abc[0], abc[1], abc[2]);
+		// println!("Points: {}, {}, {}", bezier.start(), bezier.handle_start(), bezier.end());
 		assert!(compare_points(bezier.compute(0.5), p2));
 		let bezier2 = Bezier::quadratic_from_points(p1, p2, p3, 0.8);
 		assert!(compare_points(bezier2.compute(0.8), p2));
+		let bezier3 = Bezier::quadratic_from_points(p1, p2, p3, 0.);
+		assert!(compare_points(bezier3.compute(0.), p2));
 	}
 
 	#[test]
@@ -373,8 +385,9 @@ mod tests {
 		let bezier = Bezier::cubic_from_points(p1, p2, p3, 0.3, 10.);
 		// println!("Points: {}, {}, {}, {}", bezier.start(), bezier.handle_start(), bezier.handle_end().unwrap(), bezier.end());
 		assert!(compare_points(bezier.compute(0.3), p2));
-		println!("{} vs {}", bezier.compute(0.3), p2);
-		// let bezier2 = Bezier::cubic_from_points(p1, p2, p3, 0.8, 91.7);
-		// assert!(compare_points(bezier2.compute(0.8), p2));
+		let bezier2 = Bezier::cubic_from_points(p1, p2, p3, 0.8, 91.7);
+		assert!(compare_points(bezier2.compute(0.8), p2));
+		let bezier3 = Bezier::cubic_from_points(p1, p2, p3, 0., 91.7);
+		assert!(compare_points(bezier3.compute(0.), p2));
 	}
 }

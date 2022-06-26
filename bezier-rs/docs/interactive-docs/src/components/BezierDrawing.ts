@@ -119,28 +119,28 @@ class BezierDrawing {
 			? (actualBezierPointLength === 3
 					? WasmBezier.quad_from_points(
 							this.points.map((p) => [p.x, p.y]),
-							0.5
+							this.options.t
 					  )
 					: WasmBezier.cubic_from_points(
 							this.points.map((p) => [p.x, p.y]),
-							0.3,
-							10
+							this.options.t,
+							20
 					  )
 			  )
 					.get_points()
 					.map((p) => JSON.parse(p))
 			: this.points;
 
-		const filteredDragIndex = !this.createFromPoints || this.dragIndex === 0 || this.dragIndex === actualBezierPointLength - 1 ? this.dragIndex : null;
-
-		drawBezier(this.ctx, pointsToDraw, filteredDragIndex);
+		drawBezier(this.ctx, pointsToDraw, this.dragIndex);
 		if (this.createFromPoints) {
-			this.points.forEach((point, index) => {
-				// Draw the point that was skipped
-				if (index !== 0 && index !== this.points.length - 1) {
-					drawPoint(this.ctx, point, getPointSizeByIndex(index, this.points.length), index === this.dragIndex ? "Blue" : "black");
+			pointsToDraw.forEach((point, index) => {
+				// Redraw on top of the the handler(s) to change the colour
+				if (index !== 0 && index !== pointsToDraw.length - 1) {
+					drawPoint(this.ctx, point, getPointSizeByIndex(index, pointsToDraw.length), "red");
 				}
 			});
+			// Draw the point that the curve was drawn through
+			drawPoint(this.ctx, this.points[1], getPointSizeByIndex(1, this.points.length), this.dragIndex === 1 ? "Blue" : "black");
 		}
 		this.callback(this.canvas, this.bezier, this.options);
 	}
