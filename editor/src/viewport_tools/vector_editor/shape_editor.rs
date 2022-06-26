@@ -60,6 +60,10 @@ impl ShapeEditor {
 
 			// This is selecting the anchor only for now, next to generalize to points
 			if should_select {
+				// Clear all point in other selected shapes
+				if !(add_to_selection || is_point_selected) {
+					responses.push_back(DocumentMessage::DeselectAllVectorPoints.into());
+				}
 				responses.push_back(
 					DocumentMessage::SelectVectorPoints {
 						layer_path: shape_layer_path.to_vec(),

@@ -14,7 +14,7 @@ use std::ops::{Deref, DerefMut};
 /// The downside is that currently it requires a lot of iteration.
 
 type ElementId = u64;
-#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct IdBackedVec<T> {
 	/// Contained elements
 	elements: Vec<T>,
