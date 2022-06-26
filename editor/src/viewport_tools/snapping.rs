@@ -267,6 +267,7 @@ impl SnapHandler {
 					}
 				})
 				.flatten()
+				.filter(|point| !point.is_selected())
 				.map(|point| DVec2::new(point.position.x, point.position.y))
 				.map(|pos| transform.transform_point2(pos));
 			self.add_snap_points(document_message_handler, snap_points);
