@@ -12,7 +12,7 @@
 <script lang="ts">
 import { defineComponent, PropType, Component } from "vue";
 
-import { BezierCallback } from "@/utils/types";
+import { BezierCallback, SliderOption } from "@/utils/types";
 import { WasmBezierInstance, WasmRawInstance } from "@/utils/wasm-comm";
 
 import Example from "@/components/Example.vue";
@@ -21,6 +21,7 @@ type ExampleData = {
 	id: number;
 	title: string;
 	bezier: WasmBezierInstance;
+	templateOptions: SliderOption;
 };
 
 export default defineComponent({
@@ -39,6 +40,10 @@ export default defineComponent({
 			default: Example,
 		},
 		templateOptions: Object,
+		cubicOptions: {
+			type: Object,
+			default: null,
+		},
 		createFromPoints: {
 			type: Boolean,
 			default: false,
@@ -67,11 +72,13 @@ export default defineComponent({
 					id: 0,
 					title: "Quadratic",
 					bezier: wasm.WasmBezier.new_quad(quadraticPoints), // this.createFromPoints ? wasm.WasmBezier.quad_from_points(quadraticPoints, 0.5) :
+					templateOptions: this.templateOptions as SliderOption,
 				},
 				{
 					id: 1,
 					title: "Cubic",
 					bezier: wasm.WasmBezier.new_cubic(cubicPoints),
+					templateOptions: (this.cubicOptions || this.templateOptions) as SliderOption,
 				},
 			];
 		});

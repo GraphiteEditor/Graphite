@@ -124,7 +124,7 @@ class BezierDrawing {
 					: WasmBezier.cubic_from_points(
 							this.points.map((p) => [p.x, p.y]),
 							this.options.t,
-							20
+							this.options.d1
 					  )
 			  )
 					.get_points()

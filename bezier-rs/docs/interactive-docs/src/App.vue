@@ -3,7 +3,14 @@
 		<h1>Bezier-rs Interactive Documentation</h1>
 		<p>This is the interactive documentation for the <b>bezier-rs</b> library. Click and drag on the endpoints of the example curves to visualize the various Bezier utilities and functions.</p>
 		<div v-for="(feature, index) in features" :key="index">
-			<ExamplePane :template="feature.template" :templateOptions="feature.templateOptions" :name="feature.name" :callback="feature.callback" :createFromPoints="feature.createFromPoints" />
+			<ExamplePane
+				:template="feature.template"
+				:templateOptions="feature.templateOptions"
+				:name="feature.name"
+				:callback="feature.callback"
+				:createFromPoints="feature.createFromPoints"
+				:cubicOptions="feature.cubicOptions"
+			/>
 		</div>
 		<br />
 		<div id="svg-test" />
@@ -63,6 +70,18 @@ export default defineComponent({
 					createFromPoints: true,
 					template: markRaw(SliderExample),
 					templateOptions: { sliders: [{ ...tSliderOptions }] },
+					cubicOptions: {
+						sliders: [
+							{ ...tSliderOptions },
+							{
+								min: 0,
+								max: 100,
+								step: 10,
+								default: 10,
+								variable: "d1",
+							},
+						],
+					},
 				},
 				{
 					id: 2,
