@@ -20,11 +20,11 @@
 					v-for="(entry, entryIndex) in virtualScrollingEntryHeight ? section.slice(virtualScrollingStartIndex, virtualScrollingEndIndex) : section"
 					:key="entryIndex + (virtualScrollingEntryHeight ? virtualScrollingStartIndex : 0)"
 					class="row"
-					:class="{ open: isEntryOpen(entry), active: entry.label === highlighted?.label }"
+					:class="{ open: isEntryOpen(entry), active: entry.label === highlighted?.label, disabled: entry.disabled }"
 					:style="{ height: virtualScrollingEntryHeight || '20px' }"
-					@click="() => onEntryClick(entry)"
-					@pointerenter="() => onEntryPointerEnter(entry)"
-					@pointerleave="() => onEntryPointerLeave(entry)"
+					@click="() => entry.disabled || onEntryClick(entry)"
+					@pointerenter="() => entry.disabled || onEntryPointerEnter(entry)"
+					@pointerleave="() => entry.disabled || onEntryPointerLeave(entry)"
 				>
 					<IconLabel v-if="entry.icon && drawIcon" :icon="entry.icon" class="entry-icon" />
 					<div v-else-if="drawIcon" class="no-icon"></div>
@@ -141,6 +141,18 @@
 					color: var(--color-f-white);
 				}
 			}
+
+			&.disabled {
+				background: var(--color-2-mildblack);
+
+				span {
+					color: var(--color-8-uppergray);
+				}
+
+				svg {
+					fill: var(--color-8-uppergray);
+				}
+			}
 		}
 	}
 }
@@ -168,6 +180,7 @@ interface MenuListEntryData<Value = string> {
 	font?: URL;
 	shortcut?: string[];
 	shortcutRequiresLock?: boolean;
+	disabled?: boolean;
 	action?: () => void;
 	children?: SectionsOfMenuListEntries;
 }
@@ -256,7 +269,7 @@ const MenuList = defineComponent({
 			if (this.interactive) this.highlighted = this.activeEntry;
 
 			const menuOpen = this.isOpen;
-			const flatEntries = this.entries.flat();
+			const flatEntries = this.entries.flat().filter((entry) => !entry.disabled);
 			const openChild = flatEntries.findIndex((entry) => entry.children?.length && entry.ref?.isOpen);
 
 			const openSubmenu = (highlighted: MenuListEntry<string>): void => {
