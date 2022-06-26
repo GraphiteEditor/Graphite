@@ -1046,7 +1046,7 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 				let old_transform = self.graphene_document.root.transform;
 				// Reset the root's transform (required to avoid any rotation by the user)
 				self.graphene_document.root.transform = DAffine2::IDENTITY;
-				self.graphene_document.root.cache_dirty = true;
+				GrapheneDocument::mark_children_as_dirty(&mut self.graphene_document.root);
 
 				// Calculates the bounding box of the region to be exported
 				use crate::frontend::utility_types::ExportBounds;
@@ -1070,16 +1070,14 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 				};
 
 				let render_data = RenderData::new(self.view_mode, font_cache, None, true);
-				self.graphene_document.mark_all_layers_of_type_as_dirty(LayerDataTypeDiscriminant::Image);
 				let rendered = self.graphene_document.render_root(render_data);
-				self.graphene_document.mark_all_layers_of_type_as_dirty(LayerDataTypeDiscriminant::Image);
 				let document = format!(
 					r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{} {} {} {}" width="{}px" height="{}">{}{}</svg>"#,
 					bbox[0].x, bbox[0].y, size.x, size.y, size.x, size.y, "\n", rendered
 				);
 
 				self.graphene_document.root.transform = old_transform;
-				self.graphene_document.root.cache_dirty = true;
+				GrapheneDocument::mark_children_as_dirty(&mut self.graphene_document.root);
 
 				if file_type == FileType::Svg {
 					responses.push_back(FrontendMessage::TriggerFileDownload { document, name }.into());
