@@ -29,8 +29,7 @@ use graphene::{DocumentError, DocumentResponse, LayerId, Operation as DocumentOp
 use glam::{DAffine2, DVec2};
 use log::warn;
 use serde::{Deserialize, Serialize};
-use std::collections::VecDeque;
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct DocumentMessageHandler {
@@ -1071,9 +1070,9 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 				};
 
 				let render_data = RenderData::new(self.view_mode, font_cache, None, true);
-				self.graphene_document.mark_all_layer_type_as_dirty(LayerDataTypeDiscriminant::Image);
+				self.graphene_document.mark_all_layers_of_type_as_dirty(LayerDataTypeDiscriminant::Image);
 				let rendered = self.graphene_document.render_root(render_data);
-				self.graphene_document.mark_all_layer_type_as_dirty(LayerDataTypeDiscriminant::Image);
+				self.graphene_document.mark_all_layers_of_type_as_dirty(LayerDataTypeDiscriminant::Image);
 				let document = format!(
 					r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{} {} {} {}" width="{}px" height="{}">{}{}</svg>"#,
 					bbox[0].x, bbox[0].y, size.x, size.y, size.x, size.y, "\n", rendered

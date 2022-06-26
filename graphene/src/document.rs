@@ -375,21 +375,25 @@ impl Document {
 		Ok(())
 	}
 
-	fn mark_layer_type_as_dirty(root: &mut Layer, data_type: LayerDataTypeDiscriminant) -> bool {
-		if LayerDataTypeDiscriminant::from(&root.data) == data_type {
-			root.cache_dirty = true;
-		} else if let LayerDataType::Folder(f) = &mut root.data {
+	/// Marks all decendants of the specified [Layer] of a specific [LayerDataType] as dirty
+	fn mark_layers_of_type_as_dirty(root: &mut Layer, data_type: LayerDataTypeDiscriminant) -> bool {
+		if let LayerDataType::Folder(folder) = &mut root.data {
 			let mut dirty = false;
-			for l in f.layers_mut() {
-				dirty = Self::mark_layer_type_as_dirty(l, data_type) || dirty;
+			for layer in folder.layers_mut() {
+				dirty = Self::mark_layers_of_type_as_dirty(layer, data_type) || dirty;
 			}
 			root.cache_dirty = dirty;
 		}
+		if LayerDataTypeDiscriminant::from(&root.data) == data_type {
+			root.cache_dirty = true;
+		}
+
 		root.cache_dirty
 	}
 
-	pub fn mark_all_layer_type_as_dirty(&mut self, data_type: LayerDataTypeDiscriminant) -> bool {
-		Self::mark_layer_type_as_dirty(&mut self.root, data_type)
+	/// Marks all layers in the [Document] of a specific [LayerDataType] as dirty
+	pub fn mark_all_layers_of_type_as_dirty(&mut self, data_type: LayerDataTypeDiscriminant) -> bool {
+		Self::mark_layers_of_type_as_dirty(&mut self.root, data_type)
 	}
 
 	pub fn transforms(&self, path: &[LayerId]) -> Result<Vec<DAffine2>, DocumentError> {

@@ -287,7 +287,7 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 				is_default,
 			} => {
 				self.font_cache.insert(Font::new(font_family, font_style), preview_url, data, is_default);
-				self.active_document_mut().graphene_document.mark_all_layer_type_as_dirty(LayerDataTypeDiscriminant::Text);
+				self.active_document_mut().graphene_document.mark_all_layers_of_type_as_dirty(LayerDataTypeDiscriminant::Text);
 				responses.push_back(DocumentMessage::RenderDocument.into());
 			}
 			LoadFont { font, is_default } => {
