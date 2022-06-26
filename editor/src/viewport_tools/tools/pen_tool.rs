@@ -167,7 +167,7 @@ impl Fsm for PenToolFsmState {
 					// Create a new layer and prep snap system
 					tool_data.path = Some(document.get_path_for_new_layer());
 					tool_data.snap_handler.start_snap(document, document.bounding_boxes(None, None, font_cache), true, true);
-					tool_data.snap_handler.add_all_document_handles(document, &[], &[]);
+					tool_data.snap_handler.add_all_document_handles(document, &[], &[], &[]);
 					let snapped_position = tool_data.snap_handler.snap_position(responses, document, input.mouse.position);
 
 					// Get the position and set properties

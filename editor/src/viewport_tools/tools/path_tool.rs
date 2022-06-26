@@ -146,7 +146,7 @@ impl Fsm for PathToolFsmState {
 					let toggle_add_to_selection = input.keyboard.get(add_to_selection as usize);
 
 					// Select the first point within the threshold (in pixels)
-					if tool_data
+					if let Some(new_selected) = tool_data
 						.shape_editor
 						.select_point(&document.graphene_document, input.mouse.position, SELECTION_THRESHOLD, toggle_add_to_selection, responses)
 					{
@@ -158,7 +158,7 @@ impl Fsm for PathToolFsmState {
 							.start_snap(document, document.bounding_boxes(Some(&ignore_document), None, font_cache), true, true);
 
 						let include_handles = tool_data.shape_editor.selected_layers_ref();
-						tool_data.snap_handler.add_all_document_handles(document, &include_handles, &[]);
+						tool_data.snap_handler.add_all_document_handles(document, &include_handles, &[], &new_selected);
 
 						tool_data.drag_start_pos = input.mouse.position;
 						Dragging

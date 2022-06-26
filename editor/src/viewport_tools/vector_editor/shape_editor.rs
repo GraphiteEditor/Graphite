@@ -31,10 +31,17 @@ pub struct ShapeEditor {
 // TODO Consider keeping a list of selected anchors to minimize traversals of the layers
 impl ShapeEditor {
 	/// Select the first point within the selection threshold
-	/// Returns true if we've found a point, false otherwise
-	pub fn select_point(&self, document: &Document, mouse_position: DVec2, select_threshold: f64, add_to_selection: bool, responses: &mut VecDeque<Message>) -> bool {
+	/// Returns the points if found, none otherwise
+	pub fn select_point(
+		&self,
+		document: &Document,
+		mouse_position: DVec2,
+		select_threshold: f64,
+		add_to_selection: bool,
+		responses: &mut VecDeque<Message>,
+	) -> Option<Vec<(&[LayerId], u64, ControlPointType)>> {
 		if self.selected_layers.is_empty() {
-			return false;
+			return None;
 		}
 
 		if let Some((shape_layer_path, anchor_id, point_index)) = self.find_nearest_point_indicies(document, mouse_position, select_threshold) {
@@ -53,6 +60,22 @@ impl ShapeEditor {
 				.unwrap()
 				.position;
 
+			// The currently selected points (which are then modified to reflect the selection)
+			let mut points = self
+				.selected_layers()
+				.iter()
+				.filter_map(|path| document.layer(path).ok().map(|layer| (path, layer)))
+				.filter_map(|(path, shape)| shape.as_vector_shape().map(|vector| (path, vector)))
+				.flat_map(|(path, shape)| {
+					shape
+						.anchors()
+						.enumerate()
+						.filter(|(_id, anchor)| anchor.is_anchor_selected())
+						.flat_map(|(id, anchor)| anchor.selected_points().map(move |point| (id, point.manipulator_type)))
+						.map(|(anchor, control_point)| (path.as_slice(), *anchor, control_point))
+				})
+				.collect::<Vec<_>>();
+
 			// let selected_shape = self.shape(document, shape_layer_path).unwrap();
 
 			// Should we select or deselect the point?
@@ -60,15 +83,20 @@ impl ShapeEditor {
 
 			// This is selecting the anchor only for now, next to generalize to points
 			if should_select {
+				let add = add_to_selection || is_point_selected;
+				let point = (anchor_id, ControlPointType::from_index(point_index));
 				// Clear all point in other selected shapes
-				if !(add_to_selection || is_point_selected) {
+				if !(add) {
 					responses.push_back(DocumentMessage::DeselectAllVectorPoints.into());
+					points = vec![(shape_layer_path, point.0, point.1)];
+				} else {
+					points.push((shape_layer_path, point.0, point.1));
 				}
 				responses.push_back(
 					DocumentMessage::SelectVectorPoints {
 						layer_path: shape_layer_path.to_vec(),
-						point_ids: vec![(anchor_id, ControlPointType::from_index(point_index))],
-						add: add_to_selection || is_point_selected,
+						point_ids: vec![point],
+						add,
 					}
 					.into(),
 				);
@@ -84,13 +112,15 @@ impl ShapeEditor {
 					}
 					.into(),
 				);
+				points.retain(|x| *x != (shape_layer_path, anchor_id, ControlPointType::from_index(point_index)))
 			}
-			return true;
+
+			return Some(points);
 		}
 
 		// Deselect all points if no nearby point
 		responses.push_back(DocumentMessage::DeselectAllVectorPoints.into());
-		false
+		None
 	}
 
 	/// A wrapper for find_nearest_point_indicies and returns a VectorControlPoint

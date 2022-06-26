@@ -177,7 +177,7 @@ impl GradientOverlay {
 			path: path.clone(),
 			transform,
 			style: PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 1.0)), Fill::None),
-    		insert_index: -1,
+			insert_index: -1,
 		};
 		responses.push_back(DocumentMessage::Overlays(operation.into()).into());
 
@@ -294,7 +294,7 @@ struct GradientToolData {
 
 pub fn start_snap(snap_handler: &mut SnapHandler, document: &DocumentMessageHandler, font_cache: &FontCache) {
 	snap_handler.start_snap(document, document.bounding_boxes(None, None, font_cache), true, true);
-	snap_handler.add_all_document_handles(document, &[], &[]);
+	snap_handler.add_all_document_handles(document, &[], &[], &[]);
 }
 
 impl Fsm for GradientToolFsmState {

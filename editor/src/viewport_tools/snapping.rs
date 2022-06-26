@@ -248,38 +248,44 @@ impl SnapHandler {
 	/// Add the control points (optionally including bézier handles) of the specified shape layer to the snapping points
 	///
 	/// This should be called after start_snap
-	pub fn add_snap_path(&mut self, document_message_handler: &DocumentMessageHandler, layer: &Layer, path: &[LayerId], include_handles: bool) {
+	pub fn add_snap_path(&mut self, document_message_handler: &DocumentMessageHandler, layer: &Layer, path: &[LayerId], include_handles: bool, ignore_points: &[(&[LayerId], u64, ControlPointType)]) {
 		if let LayerDataType::Shape(shape_layer) = &layer.data {
 			let transform = document_message_handler.graphene_document.multiply_transforms(path).unwrap();
 			let snap_points = shape_layer
 				.shape
 				.anchors()
-				.iter()
-				.flat_map(|shape| {
+				.enumerate()
+				.flat_map(|(id, shape)| {
 					if include_handles {
 						[
-							&shape.points[ControlPointType::Anchor],
-							&shape.points[ControlPointType::InHandle],
-							&shape.points[ControlPointType::OutHandle],
+							(*id, &shape.points[ControlPointType::Anchor]),
+							(*id, &shape.points[ControlPointType::InHandle]),
+							(*id, &shape.points[ControlPointType::OutHandle]),
 						]
 					} else {
-						[&shape.points[ControlPointType::Anchor], &None, &None]
+						[(*id, &shape.points[ControlPointType::Anchor]), (0, &None), (0, &None)]
 					}
 				})
-				.flatten()
-				.filter(|point| !point.is_selected())
-				.map(|point| DVec2::new(point.position.x, point.position.y))
+				.filter_map(|(id, point)| point.as_ref().map(|val| (id, val)))
+				.filter(|(id, point)| !ignore_points.contains(&(path, *id, point.manipulator_type)))
+				.map(|(_id, point)| DVec2::new(point.position.x, point.position.y))
 				.map(|pos| transform.transform_point2(pos));
 			self.add_snap_points(document_message_handler, snap_points);
 		}
 	}
 
 	/// Adds all of the shape handles in the document, including bézier handles of the points specified
-	pub fn add_all_document_handles(&mut self, document_message_handler: &DocumentMessageHandler, include_handles: &[&[LayerId]], exclude: &[&[LayerId]]) {
+	pub fn add_all_document_handles(
+		&mut self,
+		document_message_handler: &DocumentMessageHandler,
+		include_handles: &[&[LayerId]],
+		exclude: &[&[LayerId]],
+		ignore_points: &[(&[LayerId], u64, ControlPointType)],
+	) {
 		for path in document_message_handler.all_layers() {
 			if !exclude.contains(&path) {
 				let layer = document_message_handler.graphene_document.layer(path).expect("Could not get layer for snapping");
-				self.add_snap_path(document_message_handler, layer, path, include_handles.contains(&path));
+				self.add_snap_path(document_message_handler, layer, path, include_handles.contains(&path), ignore_points);
 			}
 		}
 	}

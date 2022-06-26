@@ -151,7 +151,7 @@ impl Fsm for LineToolFsmState {
 			match (self, event) {
 				(Ready, DragStart) => {
 					tool_data.snap_handler.start_snap(document, document.bounding_boxes(None, None, font_cache), true, true);
-					tool_data.snap_handler.add_all_document_handles(document, &[], &[]);
+					tool_data.snap_handler.add_all_document_handles(document, &[], &[], &[]);
 					tool_data.drag_start = tool_data.snap_handler.snap_position(responses, document, input.mouse.position);
 
 					responses.push_back(DocumentMessage::StartTransaction.into());
