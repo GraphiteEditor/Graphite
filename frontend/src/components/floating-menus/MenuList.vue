@@ -143,7 +143,9 @@
 			}
 
 			&.disabled {
-				background: var(--color-2-mildblack);
+				&:hover {
+					background: none;
+				}
 
 				span {
 					color: var(--color-8-uppergray);
