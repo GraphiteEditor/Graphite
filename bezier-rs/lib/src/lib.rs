@@ -288,19 +288,19 @@ impl Bezier {
 		}
 	}
 
-	/// Returns the Bezier curve representing the sub-curve starting at the point corresponding to `t1` and ending add the point corresponding to `t2`
+	/// Returns the Bezier curve representing the sub-curve starting at the point corresponding to `t1` and ending at the point corresponding to `t2`
 	pub fn trim(&self, t1: f64, t2: f64) -> Bezier {
-		// Depending on the order of t1 and t2, determine which half of the split we need to keep
+		// Depending on the order of `t1` and `t2`, determine which half of the split we need to keep
 		let t1_split_side = if t1 <= t2 { 1 } else { 0 };
 		let t2_split_side = if t1 <= t2 { 0 } else { 1 };
 		let bezier_starting_at_t1 = self.split(t1)[t1_split_side];
-		// Ajust the ratio t2 to its corresponding value on the new curve that was split on t1
+		// Adjust the ratio `t2` to its corresponding value on the new curve that was split on `t1`
 		let adjusted_t2 = if t1 < t2 || (t1 == t2 && t1 == 0.) {
 			// Case where we took the split from t1 to the end
-			// Also cover the t1 == t2 case where there would otherwise be a divide by 0
+			// Also cover the `t1` == t2 case where there would otherwise be a divide by 0
 			(t2 - t1) / (1. - t1)
 		} else {
-			// Case where we took the split from the beginning to t1
+			// Case where we took the split from the beginning to `t1`
 			t2 / t1
 		};
 		bezier_starting_at_t1.split(adjusted_t2)[t2_split_side]

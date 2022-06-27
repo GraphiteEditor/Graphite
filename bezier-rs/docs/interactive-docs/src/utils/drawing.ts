@@ -1,6 +1,10 @@
 import { Point, WasmBezierInstance } from "@/utils/types";
 
-export const getPointSizeByIndex = (index: number, numPoints: number, radius = 5): number => (index === 0 || index === numPoints - 1 ? radius : (radius * 2) / 3);
+const HANDLE_RADIUS_FACTOR = 2 / 3;
+
+export const DEFAULT_ENDPOINT_RADIUS = 5;
+
+export const getPointSizeByIndex = (index: number, numPoints: number, radius = DEFAULT_ENDPOINT_RADIUS): number => (index === 0 || index === numPoints - 1 ? radius : (radius * 2) / 3);
 
 export const getContextFromCanvas = (canvas: HTMLCanvasElement): CanvasRenderingContext2D => {
 	const ctx = canvas.getContext("2d");
@@ -31,7 +35,7 @@ export const drawPoint = (ctx: CanvasRenderingContext2D, point: Point, radius: n
 	// Fill the point (hiding any overlapping lines)
 	ctx.fillStyle = "white";
 	ctx.beginPath();
-	ctx.arc(point.x, point.y, radius * (2 / 3), 0, 2 * Math.PI, false);
+	ctx.arc(point.x, point.y, radius * HANDLE_RADIUS_FACTOR, 0, 2 * Math.PI, false);
 	ctx.fill();
 };
 
@@ -41,23 +45,22 @@ export const drawText = (ctx: CanvasRenderingContext2D, text: string, x: number,
 	ctx.fillText(text, x, y);
 };
 
-export const drawBezierHelper = (ctx: CanvasRenderingContext2D, bezier: WasmBezierInstance, stroke = "black", radius = 5): void => {
+export const drawBezierHelper = (ctx: CanvasRenderingContext2D, bezier: WasmBezierInstance, stroke = "black", radius = DEFAULT_ENDPOINT_RADIUS): void => {
 	drawBezier(
 		ctx,
-		bezier.get_points().map((p) => JSON.parse(p)),
+		bezier.get_points().map((p: string) => JSON.parse(p)),
 		stroke,
-		null,
-		radius
+		radius,
+		null
 	);
 };
 
-export const drawBezier = (ctx: CanvasRenderingContext2D, points: Point[], stroke = "black", dragIndex: number | null = null, radius = 5): void => {
-	/* Until a bezier representation is finalized, treat the points as follows
-		points[0] = start point
-		points[1] = handle start
-		points[2] = (optional) handle end
-		points[3] = end point
-	*/
+export const drawBezier = (ctx: CanvasRenderingContext2D, points: Point[], stroke = "black", radius = DEFAULT_ENDPOINT_RADIUS, dragIndex: number | null = null): void => {
+	// Points passed to drawBezier are interpreted as follows
+	//	points[0] = start point
+	//	points[1] = handle start
+	//	points[2] = (optional) handle end
+	//	points[3] = end point
 	const start = points[0];
 	let end = null;
 	let handleStart = null;

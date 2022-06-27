@@ -1,9 +1,9 @@
 <template>
 	<div>
-		<Example :title="title" :bezier="bezier" :callback="callback" :options="$data" />
+		<Example :title="title" :bezier="bezier" :callback="callback" :options="sliderData" />
 		<div v-for="(slider, index) in templateOptions.sliders" :key="index">
-			<div class="slider_label">{{ slider.variable }} = {{ $data[slider.variable] }}</div>
-			<input class="slider" v-model.number="$data[slider.variable]" type="range" :step="slider.step" :min="slider.min" :max="slider.max" />
+			<div class="slider_label">{{ slider.variable }} = {{ sliderData[slider.variable] }}</div>
+			<input class="slider" v-model.number="sliderData[slider.variable]" type="range" :step="slider.step" :min="slider.min" :max="slider.max" />
 		</div>
 	</div>
 </template>
@@ -38,7 +38,9 @@ export default defineComponent({
 	},
 	data() {
 		const sliders: SliderOption[] = this.templateOptions.sliders;
-		return Object.assign({}, ...sliders.map((s) => ({ [s.variable]: s.default })));
+		return {
+			sliderData: Object.assign({}, ...sliders.map((s) => ({ [s.variable]: s.default }))),
+		};
 	},
 });
 </script>

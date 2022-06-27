@@ -1,4 +1,4 @@
-import { drawBezier, getContextFromCanvas, getPointSizeByIndex } from "@/utils/drawing";
+import { drawBezier, getContextFromCanvas, getPointSizeByIndex, DEFAULT_ENDPOINT_RADIUS } from "@/utils/drawing";
 import { BezierCallback, BezierPoint, WasmBezierMutatorKey } from "@/utils/types";
 import { WasmBezierInstance } from "@/utils/wasm-comm";
 
@@ -105,7 +105,7 @@ class BezierDrawing {
 			this.options = options;
 		}
 		this.clearFigure();
-		drawBezier(this.ctx, this.points, "black", this.dragIndex);
+		drawBezier(this.ctx, this.points, "black", DEFAULT_ENDPOINT_RADIUS, this.dragIndex);
 		this.callback(this.canvas, this.bezier, this.options);
 	}
 
