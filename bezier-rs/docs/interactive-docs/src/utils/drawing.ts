@@ -4,6 +4,7 @@ const HANDLE_RADIUS_FACTOR = 2 / 3;
 const DEFAULT_ENDPOINT_RADIUS = 5;
 
 export const COLORS = {
+	CANVAS: "white",
 	INTERACTIVE: {
 		STROKE_1: "black",
 		STROKE_2: "grey",
@@ -44,14 +45,14 @@ export const drawPoint = (ctx: CanvasRenderingContext2D, point: Point, radius: n
 	ctx.stroke();
 
 	// Fill the point (hiding any overlapping lines)
-	ctx.fillStyle = "white";
+	ctx.fillStyle = COLORS.CANVAS;
 	ctx.beginPath();
 	ctx.arc(point.x, point.y, radius * HANDLE_RADIUS_FACTOR, 0, 2 * Math.PI, false);
 	ctx.fill();
 };
 
-export const drawText = (ctx: CanvasRenderingContext2D, text: string, x: number, y: number): void => {
-	ctx.fillStyle = "black";
+export const drawText = (ctx: CanvasRenderingContext2D, text: string, x: number, y: number, textColor = COLORS.INTERACTIVE.STROKE_1): void => {
+	ctx.fillStyle = textColor;
 	ctx.font = "16px Arial";
 	ctx.fillText(text, x, y);
 };
