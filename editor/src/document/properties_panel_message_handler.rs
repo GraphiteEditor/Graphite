@@ -1,4 +1,4 @@
-use super::layer_panel::{LayerDataTypeDiscriminant, LayerMetadata};
+use super::layer_panel::{LayerDataTypeDiscriminant};
 use super::utility_types::TargetDocument;
 use crate::document::properties_panel_message::TransformOp;
 use crate::layout::layout_message::LayoutTarget;
@@ -18,7 +18,6 @@ use graphene::{LayerId, Operation};
 use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};
 use std::f64::consts::PI;
-use std::iter::FilterMap;
 use std::rc::Rc;
 
 trait DAffine2Utils {
