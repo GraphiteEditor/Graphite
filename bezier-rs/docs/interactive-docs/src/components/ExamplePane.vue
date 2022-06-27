@@ -2,8 +2,8 @@
 	<div>
 		<h2 class="example_pane_header">{{ name }}</h2>
 		<div class="example_row">
-			<div v-for="example in exampleData" :key="example.id">
-				<component :is="template" :templateOptions="templateOptions" :title="example.title" :bezier="example.bezier" :callback="callback" :createFromPoints="createFromPoints" />
+			<div v-for="(example, index) in exampleData" :key="index">
+				<component :is="template" :templateOptions="example.templateOptions" :title="example.title" :bezier="example.bezier" :callback="callback" :createFromPoints="createFromPoints" />
 			</div>
 		</div>
 	</div>
@@ -18,7 +18,6 @@ import { WasmBezierInstance, WasmRawInstance } from "@/utils/wasm-comm";
 import Example from "@/components/Example.vue";
 
 type ExampleData = {
-	id: number;
 	title: string;
 	bezier: WasmBezierInstance;
 	templateOptions: SliderOption;
@@ -69,13 +68,11 @@ export default defineComponent({
 			];
 			this.exampleData = [
 				{
-					id: 0,
 					title: "Quadratic",
-					bezier: wasm.WasmBezier.new_quad(quadraticPoints), // this.createFromPoints ? wasm.WasmBezier.quad_from_points(quadraticPoints, 0.5) :
+					bezier: wasm.WasmBezier.new_quadratic(quadraticPoints),
 					templateOptions: this.templateOptions as SliderOption,
 				},
 				{
-					id: 1,
 					title: "Cubic",
 					bezier: wasm.WasmBezier.new_cubic(cubicPoints),
 					templateOptions: (this.cubicOptions || this.templateOptions) as SliderOption,

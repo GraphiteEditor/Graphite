@@ -29,7 +29,7 @@ import SliderExample from "@/components/SliderExample.vue";
 // eslint-disable-next-line
 const testBezierLib = async () => {
 	import("@/../wasm/pkg").then((wasm) => {
-		const bezier = wasm.WasmBezier.new_quad([
+		const bezier = wasm.WasmBezier.new_quadratic([
 			[0, 0],
 			[50, 0],
 			[100, 100],
@@ -72,11 +72,17 @@ export default defineComponent({
 					templateOptions: { sliders: [{ ...tSliderOptions }] },
 					cubicOptions: {
 						sliders: [
-							{ ...tSliderOptions },
+							{
+								min: 0.01,
+								max: 0.99,
+								step: 0.01,
+								default: 0.5,
+								variable: "t",
+							},
 							{
 								min: 0,
 								max: 100,
-								step: 10,
+								step: 5,
 								default: 10,
 								variable: "d1",
 							},

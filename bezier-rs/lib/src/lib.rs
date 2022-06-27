@@ -1,5 +1,7 @@
 use glam::DVec2;
 
+mod utils;
+
 /// Representation of the handle point(s) in a bezier segment
 #[derive(Copy, Clone)]
 pub enum BezierHandles {
@@ -70,58 +72,32 @@ impl Bezier {
 		}
 	}
 
-	// TODO: Maybe move to a utils file
-	fn compute_abc(start_point: DVec2, point_on_curve: DVec2, end_point: DVec2, t_term: f64, one_minus_t_term: f64) -> [DVec2; 3] {
-		let point_c_ratio = one_minus_t_term / (t_term + one_minus_t_term);
-		let c = point_c_ratio * start_point + (1. - point_c_ratio) * end_point;
-		let ab_bc_ratio = (t_term + one_minus_t_term - 1.).abs() / (t_term + one_minus_t_term);
-		let a = point_on_curve + (point_on_curve - c) / ab_bc_ratio;
-		[a, point_on_curve, c]
-	}
-
-	pub fn get_quadratic_abc(start_point: DVec2, point_on_curve: DVec2, end_point: DVec2, t: f64) -> [DVec2; 3] {
-		let t_squared = t * t;
-		let one_minus_t = 1. - t;
-		let squared_one_minus_t = one_minus_t * one_minus_t;
-		Bezier::compute_abc(start_point, point_on_curve, end_point, t_squared, squared_one_minus_t)
-	}
-
-	pub fn get_cubic_abc(start_point: DVec2, point_on_curve: DVec2, end_point: DVec2, t: f64) -> [DVec2; 3] {
-		let t_cubed = t * t * t;
-		let one_minus_t = 1. - t;
-		let cubed_one_minus_t = one_minus_t * one_minus_t * one_minus_t;
-
-		Bezier::compute_abc(start_point, point_on_curve, end_point, t_cubed, cubed_one_minus_t)
-	}
-
 	/// Create a quadratic bezier curve that goes through 3 points
-	// #[inline]
-	pub fn quadratic_from_points(p1: DVec2, p2: DVec2, p3: DVec2, t: f64) -> Self {
+	pub fn quadratic_through_points(p1: DVec2, p2: DVec2, p3: DVec2, t: f64) -> Self {
 		if t == 0. {
 			return Bezier::from_quadratic_dvec2(p2, p2, p3);
 		} else if t == 1. {
 			return Bezier::from_quadratic_dvec2(p1, p2, p2);
 		}
-		let abc = Bezier::get_quadratic_abc(p1, p2, p3, t);
-		Bezier::from_quadratic_dvec2(p1, abc[0], p3)
+		let [a, _, _] = utils::compute_abc_for_quadratic_through_points(p1, p2, p3, t);
+		Bezier::from_quadratic_dvec2(p1, a, p3)
 	}
 
 	/// Create a cubic bezier curve that goes through 3 points. d1 represents the strut.
-	// #[inline]
-	pub fn cubic_from_points(p1: DVec2, p2: DVec2, p3: DVec2, t: f64, d1: f64) -> Self {
+	pub fn cubic_through_points(p1: DVec2, p2: DVec2, p3: DVec2, t: f64, d1: f64) -> Self {
 		if t == 0. {
 			return Bezier::from_cubic_dvec2(p2, p2, p3, p3);
 		} else if t == 1. {
 			return Bezier::from_cubic_dvec2(p1, p1, p2, p2);
 		}
-		let abc = Bezier::get_cubic_abc(p1, p2, p3, t);
+		let [a, b, _] = utils::compute_abc_for_cubic_through_points(p1, p2, p3, t);
 		let distance_between_start_and_end = (p3 - p1) / (p1.distance(p3));
-		let e1 = abc[1] - (distance_between_start_and_end * d1);
-		let e2 = abc[1] + (distance_between_start_and_end * d1 * (1. - t) / t);
+		let e1 = b - (distance_between_start_and_end * d1);
+		let e2 = b + (distance_between_start_and_end * d1 * (1. - t) / t);
 
 		// TODO: these functions can be changed to helpers, but need to come up with an appropriate name first
-		let v1 = (e1 - t * abc[0]) / (1. - t);
-		let v2 = (e2 - (1. - t) * abc[0]) / t;
+		let v1 = (e1 - t * a) / (1. - t);
+		let v2 = (e2 - (1. - t) * a) / t;
 		let handle_start = (v1 - (1. - t) * p1) / t;
 		let handle_end = (v2 - t * p3) / (1. - t);
 		Bezier::from_cubic_dvec2(p1, handle_start, handle_end, p3)
@@ -364,30 +340,24 @@ mod tests {
 		let p1 = DVec2::new(30., 50.);
 		let p2 = DVec2::new(140., 30.);
 		let p3 = DVec2::new(160., 170.);
-		// let abc = Bezier::get_quadratic_abc(p1, p2, p3, 0.5);
-		// println!("ABC: {}, {}, {}", abc[0], abc[1], abc[2]);
-		let bezier = Bezier::quadratic_from_points(p1, p2, p3, 0.5);
-		// println!("Points: {}, {}, {}", bezier.start(), bezier.handle_start(), bezier.end());
+		let bezier = Bezier::quadratic_through_points(p1, p2, p3, 0.5);
 		assert!(compare_points(bezier.compute(0.5), p2));
-		let bezier2 = Bezier::quadratic_from_points(p1, p2, p3, 0.8);
+		let bezier2 = Bezier::quadratic_through_points(p1, p2, p3, 0.8);
 		assert!(compare_points(bezier2.compute(0.8), p2));
-		let bezier3 = Bezier::quadratic_from_points(p1, p2, p3, 0.);
+		let bezier3 = Bezier::quadratic_through_points(p1, p2, p3, 0.);
 		assert!(compare_points(bezier3.compute(0.), p2));
 	}
 
 	#[test]
-	fn cubic_from_points() {
+	fn cubic_through_points() {
 		let p1 = DVec2::new(30., 30.);
 		let p2 = DVec2::new(60., 140.);
 		let p3 = DVec2::new(160., 160.);
-		// let abc = Bezier::get_cubic_abc(p1, p2, p3, 0.3);
-		// println!("ABC: {}, {}, {}", abc[0], abc[1], abc[2]);
-		let bezier = Bezier::cubic_from_points(p1, p2, p3, 0.3, 10.);
-		// println!("Points: {}, {}, {}, {}", bezier.start(), bezier.handle_start(), bezier.handle_end().unwrap(), bezier.end());
+		let bezier = Bezier::cubic_through_points(p1, p2, p3, 0.3, 10.);
 		assert!(compare_points(bezier.compute(0.3), p2));
-		let bezier2 = Bezier::cubic_from_points(p1, p2, p3, 0.8, 91.7);
+		let bezier2 = Bezier::cubic_through_points(p1, p2, p3, 0.8, 91.7);
 		assert!(compare_points(bezier2.compute(0.8), p2));
-		let bezier3 = Bezier::cubic_from_points(p1, p2, p3, 0., 91.7);
+		let bezier3 = Bezier::cubic_through_points(p1, p2, p3, 0., 91.7);
 		assert!(compare_points(bezier3.compute(0.), p2));
 	}
 }

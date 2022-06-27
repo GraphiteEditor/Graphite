@@ -22,7 +22,7 @@ pub fn vec_to_point(p: &DVec2) -> JsValue {
 #[wasm_bindgen]
 impl WasmBezier {
 	/// Expect js_points to be a list of 3 pairs
-	pub fn new_quad(js_points: &JsValue) -> WasmBezier {
+	pub fn new_quadratic(js_points: &JsValue) -> WasmBezier {
 		let points: [DVec2; 3] = js_points.into_serde().unwrap();
 		WasmBezier(Bezier::from_quadratic_dvec2(points[0], points[1], points[2]))
 	}
@@ -33,14 +33,14 @@ impl WasmBezier {
 		WasmBezier(Bezier::from_cubic_dvec2(points[0], points[1], points[2], points[3]))
 	}
 
-	pub fn quad_from_points(js_points: &JsValue, t: f64) -> WasmBezier {
+	pub fn quadratic_through_points(js_points: &JsValue, t: f64) -> WasmBezier {
 		let points: [DVec2; 3] = js_points.into_serde().unwrap();
-		WasmBezier(Bezier::quadratic_from_points(points[0], points[1], points[2], t))
+		WasmBezier(Bezier::quadratic_through_points(points[0], points[1], points[2], t))
 	}
 
-	pub fn cubic_from_points(js_points: &JsValue, t: f64, d: f64) -> WasmBezier {
+	pub fn cubic_through_points(js_points: &JsValue, t: f64, d: f64) -> WasmBezier {
 		let points: [DVec2; 3] = js_points.into_serde().unwrap();
-		WasmBezier(Bezier::cubic_from_points(points[0], points[1], points[2], t, d))
+		WasmBezier(Bezier::cubic_through_points(points[0], points[1], points[2], t, d))
 	}
 
 	pub fn set_start(&mut self, x: f64, y: f64) {

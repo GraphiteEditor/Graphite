@@ -1,5 +1,5 @@
 import { WasmBezier } from "@/../wasm/pkg";
-import { drawBezier, drawPoint, getContextFromCanvas, getPointSizeByIndex } from "@/utils/drawing";
+import { COLORS, drawBezier, drawPoint, getContextFromCanvas, getPointSizeByIndex } from "@/utils/drawing";
 import { BezierCallback, BezierPoint, WasmBezierMutatorKey } from "@/utils/types";
 import { WasmBezierInstance } from "@/utils/wasm-comm";
 
@@ -117,11 +117,11 @@ class BezierDrawing {
 		const actualBezierPointLength = this.bezier.get_points().length;
 		const pointsToDraw = this.createFromPoints
 			? (actualBezierPointLength === 3
-					? WasmBezier.quad_from_points(
+					? WasmBezier.quadratic_through_points(
 							this.points.map((p) => [p.x, p.y]),
 							this.options.t
 					  )
-					: WasmBezier.cubic_from_points(
+					: WasmBezier.cubic_through_points(
 							this.points.map((p) => [p.x, p.y]),
 							this.options.t,
 							this.options.d1
@@ -136,11 +136,11 @@ class BezierDrawing {
 			pointsToDraw.forEach((point, index) => {
 				// Redraw on top of the the handler(s) to change the colour
 				if (index !== 0 && index !== pointsToDraw.length - 1) {
-					drawPoint(this.ctx, point, getPointSizeByIndex(index, pointsToDraw.length), "red");
+					drawPoint(this.ctx, point, getPointSizeByIndex(index, pointsToDraw.length), COLORS.NON_INTERACTIVE.STROKE_1);
 				}
 			});
 			// Draw the point that the curve was drawn through
-			drawPoint(this.ctx, this.points[1], getPointSizeByIndex(1, this.points.length), this.dragIndex === 1 ? "Blue" : "black");
+			drawPoint(this.ctx, this.points[1], getPointSizeByIndex(1, this.points.length), this.dragIndex === 1 ? COLORS.INTERACTIVE.SELECTED : COLORS.INTERACTIVE.STROKE_1);
 		}
 		this.callback(this.canvas, this.bezier, this.options);
 	}
