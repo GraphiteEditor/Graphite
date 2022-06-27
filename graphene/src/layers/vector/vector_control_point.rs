@@ -28,6 +28,7 @@ impl Default for VectorControlPoint {
 impl VectorControlPoint {
 	/// Initialize a new control point
 	pub fn new(position: glam::DVec2, manipulator_type: ControlPointType) -> Self {
+		assert!(position.is_finite(), "tried to create point with non finite position");
 		Self {
 			position,
 			manipulator_type,
@@ -47,15 +48,17 @@ impl VectorControlPoint {
 	/// Apply given transform to this point
 	pub fn transform(&mut self, delta: &DAffine2) {
 		self.position = delta.transform_point2(self.position);
+		assert!(self.position.is_finite(), "tried to transform point to non finite position");
 	}
 
 	/// Move by a delta amount
 	pub fn move_by(&mut self, delta: &DVec2) {
 		self.position += *delta;
+		assert!(self.position.is_finite(), "tried to move point to non finite position");
 	}
 }
 
-#[derive(PartialEq, Clone, Debug)]
+#[derive(PartialEq, Eq, Clone, Debug)]
 pub struct VectorControlPointState {
 	/// If this control point can be selected
 	pub can_be_selected: bool,

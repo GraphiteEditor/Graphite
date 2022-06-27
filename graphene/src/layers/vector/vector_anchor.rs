@@ -101,6 +101,7 @@ impl VectorAnchor {
 			} else {
 				point.position += delta;
 			}
+			assert!(point.position.is_finite(), "Point is not finite")
 		};
 
 		// Find the correctly mirrored handle position based on mirroring settings
@@ -114,9 +115,10 @@ impl VectorAnchor {
 			// Keep rotational similarity, but distance variable
 			let radius = if mirror_distance { center.distance(position) } else { center.distance(opposing_handle.position) };
 
-			let phi = (center - position).normalize();
-			let phi = phi.y.atan2(phi.x);
-			opposing_handle.position = DVec2::new(radius * phi.cos() + center.x, radius * phi.sin() + center.y);
+			if let Some(offset) = (position - center).try_normalize() {
+				opposing_handle.position = center - offset * radius;
+				assert!(opposing_handle.position.is_finite(), "Oposing handle not finite")
+			}
 		};
 
 		// If no points are selected, why are we here at all?
@@ -260,8 +262,11 @@ impl VectorAnchor {
 
 	/// Helper function to more easily set position of VectorControlPoints
 	pub fn set_point_position(&mut self, point_index: usize, position: DVec2) {
+		assert!(position.is_finite(), "Tried to set_point_position to non finite");
 		if let Some(point) = &mut self.points[point_index] {
 			point.position = position;
+		} else {
+			self.points[point_index] = Some(VectorControlPoint::new(position, ControlPointType::from_index(point_index)))
 		}
 	}
 
@@ -273,7 +278,7 @@ impl VectorAnchor {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VectorAnchorState {
 	// If we should maintain the angle between the handles
 	pub mirror_angle_between_handles: bool,
