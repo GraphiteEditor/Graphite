@@ -8,7 +8,7 @@ use crate::layout::widgets::{IconButton, Layout, LayoutGroup, PopoverButton, Pro
 use crate::message_prelude::*;
 use crate::misc::{HintData, HintGroup, HintInfo, KeysGroup};
 use crate::viewport_tools::snapping::{self, SnapHandler};
-use crate::viewport_tools::tool::{Fsm, ToolActionHandlerData, ToolType};
+use crate::viewport_tools::tool::{Fsm, SignalToMessage, ToolActionHandlerData, ToolTransition, ToolType};
 use graphene::boolean_ops::BooleanOperation;
 use graphene::document::Document;
 use graphene::intersection::Quad;
@@ -258,6 +258,16 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for SelectTool {
 	}
 }
 
+impl ToolTransition for SelectTool {
+	fn shared_messages(&self) -> SignalToMessage {
+		SignalToMessage {
+			document_dirty: SelectToolMessage::DocumentIsDirty.into(),
+			abort: SelectToolMessage::Abort.into(),
+			selection_changed: ToolMessage::NoOp,
+		}
+	}
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 enum SelectToolFsmState {
 	Ready,
@@ -317,6 +327,7 @@ impl Fsm for SelectToolFsmState {
 		use SelectToolMessage::*;
 
 		if let ToolMessage::Select(event) = event {
+			log::debug!("self: {:?}, even: {:?}", self, event);
 			match (self, event) {
 				(_, DocumentIsDirty) => {
 					let mut buffer = Vec::new();

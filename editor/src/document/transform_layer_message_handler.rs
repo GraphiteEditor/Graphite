@@ -55,7 +55,12 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 
 				self.transform_operation = TransformOperation::None;
 
-				responses.push_back(ToolMessage::DocumentIsDirty.into());
+				responses.push_back(
+					BroadcastMessage::TriggerSignal {
+						signal: BroadcastSignal::DocumentIsDirty,
+					}
+					.into(),
+				);
 			}
 			BeginGrab => {
 				if let TransformOperation::Grabbing(_) = self.transform_operation {
@@ -66,7 +71,12 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 
 				self.transform_operation = TransformOperation::Grabbing(Default::default());
 
-				responses.push_back(ToolMessage::DocumentIsDirty.into());
+				responses.push_back(
+					BroadcastMessage::TriggerSignal {
+						signal: BroadcastSignal::DocumentIsDirty,
+					}
+					.into(),
+				);
 			}
 			BeginRotate => {
 				if let TransformOperation::Rotating(_) = self.transform_operation {
@@ -77,7 +87,12 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 
 				self.transform_operation = TransformOperation::Rotating(Default::default());
 
-				responses.push_back(ToolMessage::DocumentIsDirty.into());
+				responses.push_back(
+					BroadcastMessage::TriggerSignal {
+						signal: BroadcastSignal::DocumentIsDirty,
+					}
+					.into(),
+				);
 			}
 			BeginScale => {
 				if let TransformOperation::Scaling(_) = self.transform_operation {
@@ -89,7 +104,12 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 				self.transform_operation = TransformOperation::Scaling(Default::default());
 				self.transform_operation.apply_transform_operation(&mut selected, self.snap);
 
-				responses.push_back(ToolMessage::DocumentIsDirty.into());
+				responses.push_back(
+					BroadcastMessage::TriggerSignal {
+						signal: BroadcastSignal::DocumentIsDirty,
+					}
+					.into(),
+				);
 			}
 			CancelTransformOperation => {
 				selected.revert_operation();
@@ -99,7 +119,12 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 
 				self.transform_operation = TransformOperation::None;
 
-				responses.push_back(ToolMessage::DocumentIsDirty.into());
+				responses.push_back(
+					BroadcastMessage::TriggerSignal {
+						signal: BroadcastSignal::DocumentIsDirty,
+					}
+					.into(),
+				);
 			}
 			ConstrainX => self.transform_operation.constrain_axis(Axis::X, &mut selected, self.snap),
 			ConstrainY => self.transform_operation.constrain_axis(Axis::Y, &mut selected, self.snap),

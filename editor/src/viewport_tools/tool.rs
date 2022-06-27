@@ -14,6 +14,12 @@ use std::fmt::{self, Debug};
 
 pub type ToolActionHandlerData<'a> = (&'a DocumentMessageHandler, &'a DocumentToolData, &'a InputPreprocessorMessageHandler, &'a FontCache);
 
+pub struct SignalToMessage {
+	pub document_dirty: ToolMessage,
+	pub selection_changed: ToolMessage,
+	pub abort: ToolMessage,
+}
+
 pub trait Fsm {
 	type ToolData;
 	type ToolOptions;
@@ -31,8 +37,61 @@ pub struct DocumentToolData {
 	pub secondary_color: Color,
 }
 
-pub trait ToolCommon: for<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> + PropertyHolder {}
-impl<T> ToolCommon for T where T: for<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> + PropertyHolder {}
+pub trait ToolTransition {
+	fn shared_messages(&self) -> SignalToMessage;
+	fn subscribe(&self, responses: &mut VecDeque<Message>) {
+		let shared_messages = self.shared_messages();
+		responses.push_back(
+			BroadcastMessage::SubscribeSignal {
+				on: BroadcastSignal::DocumentIsDirty,
+				send: Box::new(shared_messages.document_dirty.into()),
+			}
+			.into(),
+		);
+		responses.push_back(
+			BroadcastMessage::SubscribeSignal {
+				on: BroadcastSignal::Abort,
+				send: Box::new(shared_messages.abort.into()),
+			}
+			.into(),
+		);
+		responses.push_back(
+			BroadcastMessage::SubscribeSignal {
+				on: BroadcastSignal::SelectionChanged,
+				send: Box::new(shared_messages.selection_changed.into()),
+			}
+			.into(),
+		);
+	}
+
+	fn unsubscribe(&self, responses: &mut VecDeque<Message>) {
+		let shared_messages = self.shared_messages();
+		responses.push_back(
+			BroadcastMessage::UnsubscribeSignal {
+				on: BroadcastSignal::DocumentIsDirty,
+				message: Box::new(shared_messages.document_dirty.into()),
+			}
+			.into(),
+		);
+		responses.push_back(
+			BroadcastMessage::UnsubscribeSignal {
+				on: BroadcastSignal::Abort,
+				message: Box::new(shared_messages.abort.into()),
+			}
+			.into(),
+		);
+		responses.push_back(
+			BroadcastMessage::UnsubscribeSignal {
+				on: BroadcastSignal::SelectionChanged,
+				message: Box::new(shared_messages.selection_changed.into()),
+			}
+			.into(),
+		);
+	}
+}
+
+pub trait ToolCommon: for<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> + PropertyHolder + ToolTransition {}
+impl<T> ToolCommon for T where T: for<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> + PropertyHolder + ToolTransition {}
 
 type Tool = dyn ToolCommon;
 
@@ -320,78 +379,6 @@ impl fmt::Display for ToolType {
 	}
 }
 
-pub enum StandardToolMessageType {
-	Abort,
-	DocumentIsDirty,
-	SelectionChanged,
-}
-
-// TODO: Find a nicer way in Rust to make this generic so we don't have to manually map to enum variants
-pub fn standard_tool_message(tool: ToolType, message_type: StandardToolMessageType) -> Option<ToolMessage> {
-	match message_type {
-		StandardToolMessageType::DocumentIsDirty => match tool {
-			// General tool group
-			ToolType::Select => Some(SelectToolMessage::DocumentIsDirty.into()),
-			ToolType::Artboard => Some(ArtboardToolMessage::DocumentIsDirty.into()),
-			ToolType::Navigate => None,   // Some(NavigateToolMessage::DocumentIsDirty.into()),
-			ToolType::Eyedropper => None, // Some(EyedropperToolMessage::DocumentIsDirty.into()),
-			ToolType::Fill => None,       // Some(FillToolMessage::DocumentIsDirty.into()),
-			ToolType::Gradient => Some(GradientToolMessage::DocumentIsDirty.into()),
-
-			// Vector tool group
-			ToolType::Path => Some(PathToolMessage::DocumentIsDirty.into()),
-			ToolType::Pen => Some(PenToolMessage::DocumentIsDirty.into()),
-			ToolType::Freehand => None,  // Some(FreehandToolMessage::DocumentIsDirty.into()),
-			ToolType::Spline => None,    // Some(SplineToolMessage::DocumentIsDirty.into()),
-			ToolType::Line => None,      // Some(LineToolMessage::DocumentIsDirty.into()),
-			ToolType::Rectangle => None, // Some(RectangleToolMessage::DocumentIsDirty.into()),
-			ToolType::Ellipse => None,   // Some(EllipseToolMessage::DocumentIsDirty.into()),
-			ToolType::Shape => None,     // Some(ShapeToolMessage::DocumentIsDirty.into()),
-			ToolType::Text => Some(TextMessage::DocumentIsDirty.into()),
-
-			// Raster tool group
-			ToolType::Brush => None,   // Some(BrushMessage::DocumentIsDirty.into()),
-			ToolType::Heal => None,    // Some(HealMessage::DocumentIsDirty.into()),
-			ToolType::Clone => None,   // Some(CloneMessage::DocumentIsDirty.into()),
-			ToolType::Patch => None,   // Some(PatchMessage::DocumentIsDirty.into()),
-			ToolType::Detail => None,  // Some(DetailToolMessage::DocumentIsDirty.into()),
-			ToolType::Relight => None, // Some(RelightMessage::DocumentIsDirty.into()),
-		},
-		StandardToolMessageType::Abort => match tool {
-			// General tool group
-			ToolType::Select => Some(SelectToolMessage::Abort.into()),
-			ToolType::Artboard => Some(ArtboardToolMessage::Abort.into()),
-			ToolType::Navigate => Some(NavigateToolMessage::Abort.into()),
-			ToolType::Eyedropper => Some(EyedropperToolMessage::Abort.into()),
-			ToolType::Fill => Some(FillToolMessage::Abort.into()),
-			ToolType::Gradient => Some(GradientToolMessage::Abort.into()),
-
-			// Vector tool group
-			ToolType::Path => Some(PathToolMessage::Abort.into()),
-			ToolType::Pen => Some(PenToolMessage::Abort.into()),
-			ToolType::Freehand => Some(FreehandToolMessage::Abort.into()),
-			ToolType::Spline => Some(SplineToolMessage::Abort.into()),
-			ToolType::Line => Some(LineToolMessage::Abort.into()),
-			ToolType::Rectangle => Some(RectangleToolMessage::Abort.into()),
-			ToolType::Ellipse => Some(EllipseToolMessage::Abort.into()),
-			ToolType::Shape => Some(ShapeToolMessage::Abort.into()),
-			ToolType::Text => Some(TextMessage::Abort.into()),
-
-			// Raster tool group
-			ToolType::Brush => None,   // Some(BrushMessage::Abort.into()),
-			ToolType::Heal => None,    // Some(HealMessage::Abort.into()),
-			ToolType::Clone => None,   // Some(CloneMessage::Abort.into()),
-			ToolType::Patch => None,   // Some(PatchMessage::Abort.into()),
-			ToolType::Detail => None,  // Some(DetailToolMessage::Abort.into()),
-			ToolType::Relight => None, // Some(RelightMessage::Abort.into()),
-		},
-		StandardToolMessageType::SelectionChanged => match tool {
-			ToolType::Path => Some(PathToolMessage::SelectionChanged.into()),
-			_ => None,
-		},
-	}
-}
-
 pub fn message_to_tool_type(message: &ToolMessage) -> ToolType {
 	use ToolMessage::*;
 
@@ -422,7 +409,10 @@ pub fn message_to_tool_type(message: &ToolMessage) -> ToolType {
 		// Patch(_) => ToolType::Patch,
 		// Detail(_) => ToolType::Detail,
 		// Relight(_) => ToolType::Relight,
-		_ => panic!("Conversion from message to tool type impossible because the given ToolMessage does not belong to a tool"),
+		_ => panic!(
+			"Conversion from message to tool type impossible because the given ToolMessage does not belong to a tool. Got: {:?}",
+			message
+		),
 	}
 }
 

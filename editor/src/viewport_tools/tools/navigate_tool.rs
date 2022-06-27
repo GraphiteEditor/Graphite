@@ -3,7 +3,7 @@ use crate::input::keyboard::{Key, MouseMotion};
 use crate::layout::widgets::PropertyHolder;
 use crate::message_prelude::*;
 use crate::misc::{HintData, HintGroup, HintInfo, KeysGroup};
-use crate::viewport_tools::tool::{Fsm, ToolActionHandlerData};
+use crate::viewport_tools::tool::{Fsm, SignalToMessage, ToolActionHandlerData, ToolTransition};
 
 use glam::DVec2;
 use serde::{Deserialize, Serialize};
@@ -65,6 +65,16 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for NavigateTool
 		match self.fsm_state {
 			Ready => actions!(NavigateToolMessageDiscriminant; TranslateCanvasBegin, RotateCanvasBegin, ZoomCanvasBegin),
 			_ => actions!(NavigateToolMessageDiscriminant; ClickZoom, PointerMove, TransformCanvasEnd),
+		}
+	}
+}
+
+impl ToolTransition for NavigateTool {
+	fn shared_messages(&self) -> SignalToMessage {
+		SignalToMessage {
+			document_dirty: ToolMessage::NoOp,
+			abort: NavigateToolMessage::Abort.into(),
+			selection_changed: ToolMessage::NoOp,
 		}
 	}
 }

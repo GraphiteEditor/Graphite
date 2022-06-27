@@ -1,3 +1,4 @@
+use super::broadcast_message_handler::BroadcastMessageHandler;
 use crate::document::PortfolioMessageHandler;
 use crate::global::GlobalMessageHandler;
 use crate::input::{InputMapperMessageHandler, InputPreprocessorMessageHandler};
@@ -18,6 +19,7 @@ pub struct Dispatcher {
 #[remain::sorted]
 #[derive(Debug, Default)]
 struct DispatcherMessageHandlers {
+	broadcast_message_handler: BroadcastMessageHandler,
 	dialog_message_handler: DialogMessageHandler,
 	global_message_handler: GlobalMessageHandler,
 	input_mapper_message_handler: InputMapperMessageHandler,
@@ -42,7 +44,7 @@ const SIDE_EFFECT_FREE_MESSAGES: &[MessageDiscriminant] = &[
 	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::UpdateDocumentLayerTreeStructure),
 	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::UpdateOpenDocumentsList),
 	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::TriggerFontLoad),
-	MessageDiscriminant::Tool(ToolMessageDiscriminant::DocumentIsDirty),
+	// TODO: Find a way to include document is dirty again
 ];
 
 impl Dispatcher {
@@ -70,6 +72,7 @@ impl Dispatcher {
 			match message {
 				#[remain::unsorted]
 				NoOp => {}
+				Broadcast(message) => self.message_handlers.broadcast_message_handler.process_action(message, (), &mut self.message_queue),
 				Dialog(message) => {
 					self.message_handlers
 						.dialog_message_handler

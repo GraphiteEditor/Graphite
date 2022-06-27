@@ -5,7 +5,7 @@ use crate::layout::widgets::PropertyHolder;
 use crate::message_prelude::*;
 use crate::misc::{HintData, HintGroup, HintInfo, KeysGroup};
 use crate::viewport_tools::snapping::SnapHandler;
-use crate::viewport_tools::tool::{Fsm, ToolActionHandlerData};
+use crate::viewport_tools::tool::{Fsm, SignalToMessage, ToolActionHandlerData, ToolTransition};
 use crate::viewport_tools::vector_editor::shape_editor::ShapeEditor;
 
 use graphene::intersection::Quad;
@@ -72,6 +72,16 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for PathTool {
 		match self.fsm_state {
 			Ready => actions!(PathToolMessageDiscriminant; DragStart),
 			Dragging => actions!(PathToolMessageDiscriminant; DragStop, PointerMove),
+		}
+	}
+}
+
+impl ToolTransition for PathTool {
+	fn shared_messages(&self) -> SignalToMessage {
+		SignalToMessage {
+			document_dirty: PathToolMessage::DocumentIsDirty.into(),
+			abort: PathToolMessage::Abort.into(),
+			selection_changed: PathToolMessage::SelectionChanged.into(),
 		}
 	}
 }

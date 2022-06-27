@@ -12,6 +12,7 @@ pub enum PropertiesPanelMessage {
 	CheckSelectedWasDeleted { path: Vec<LayerId> },
 	CheckSelectedWasUpdated { path: Vec<LayerId> },
 	ClearSelection,
+	Init,
 	ModifyFill { fill: Fill },
 	ModifyFont { font_family: String, font_style: String, size: f64 },
 	ModifyName { name: String },
@@ -20,6 +21,7 @@ pub enum PropertiesPanelMessage {
 	ModifyTransform { value: f64, transform_op: TransformOp },
 	ResendActiveProperties,
 	SetActiveLayers { paths: Vec<Vec<LayerId>>, document: TargetDocument },
+	UpdateSelectedDocumentProperties,
 }
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug, Serialize, Deserialize)]

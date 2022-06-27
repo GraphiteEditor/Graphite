@@ -3,7 +3,7 @@ use crate::input::keyboard::MouseMotion;
 use crate::layout::widgets::{Layout, LayoutGroup, NumberInput, PropertyHolder, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
 use crate::message_prelude::*;
 use crate::misc::{HintData, HintGroup, HintInfo};
-use crate::viewport_tools::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
+use crate::viewport_tools::tool::{DocumentToolData, Fsm, SignalToMessage, ToolActionHandlerData, ToolTransition};
 
 use graphene::layers::style;
 use graphene::Operation;
@@ -105,6 +105,16 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for FreehandTool
 		match self.fsm_state {
 			Ready => actions!(FreehandToolMessageDiscriminant; DragStart, DragStop, Abort),
 			Drawing => actions!(FreehandToolMessageDiscriminant; DragStop, PointerMove, Abort),
+		}
+	}
+}
+
+impl ToolTransition for FreehandTool {
+	fn shared_messages(&self) -> SignalToMessage {
+		SignalToMessage {
+			document_dirty: ToolMessage::NoOp,
+			abort: FreehandToolMessage::Abort.into(),
+			selection_changed: ToolMessage::NoOp,
 		}
 	}
 }

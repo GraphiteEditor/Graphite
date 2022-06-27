@@ -58,7 +58,7 @@ impl PortfolioMessageHandler {
 	fn load_document(&mut self, new_document: DocumentMessageHandler, document_id: u64, replace_first_empty: bool, responses: &mut VecDeque<Message>) {
 		// Special case when loading a document on an empty page
 		if replace_first_empty && self.active_document().is_unmodified_default() {
-			responses.push_back(ToolMessage::AbortCurrentTool.into());
+			responses.push_back(BroadcastMessage::TriggerSignal { signal: BroadcastSignal::Abort }.into());
 			responses.push_back(PortfolioMessage::CloseDocument { document_id: self.active_document_id }.into());
 
 			let active_document_index = self
@@ -181,7 +181,7 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 				self.document_ids.push(new_document_id);
 				self.active_document_id = new_document_id;
 
-				responses.push_back(ToolMessage::AbortCurrentTool.into());
+				responses.push_back(BroadcastMessage::TriggerSignal { signal: BroadcastSignal::Abort }.into());
 				responses.push_back(PortfolioMessage::UpdateOpenDocumentsList.into());
 				responses.push_back(PortfolioMessage::SelectDocument { document_id: new_document_id }.into())
 			}
@@ -233,7 +233,7 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 			CloseDocumentWithConfirmation { document_id } => {
 				let target_document = self.documents.get(&document_id).unwrap();
 				if target_document.is_saved() {
-					responses.push_back(ToolMessage::AbortCurrentTool.into());
+					responses.push_back(BroadcastMessage::TriggerSignal { signal: BroadcastSignal::Abort }.into());
 					responses.push_back(PortfolioMessage::CloseDocument { document_id }.into());
 				} else {
 					let dialog = dialog::CloseDocument {
@@ -298,13 +298,13 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 				let name = self.generate_new_document_name();
 				let new_document = DocumentMessageHandler::with_name(name, ipp);
 				let document_id = generate_uuid();
-				responses.push_back(ToolMessage::AbortCurrentTool.into());
+				responses.push_back(BroadcastMessage::TriggerSignal { signal: BroadcastSignal::Abort }.into());
 				self.load_document(new_document, document_id, false, responses);
 			}
 			NewDocumentWithName { name } => {
 				let new_document = DocumentMessageHandler::with_name(name, ipp);
 				let document_id = generate_uuid();
-				responses.push_back(ToolMessage::AbortCurrentTool.into());
+				responses.push_back(BroadcastMessage::TriggerSignal { signal: BroadcastSignal::Abort }.into());
 				self.load_document(new_document, document_id, false, responses);
 			}
 			NextDocument => {
@@ -455,7 +455,7 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 				if !active_document.is_saved() {
 					responses.push_back(PortfolioMessage::AutoSaveDocument { document_id: self.active_document_id }.into());
 				}
-				responses.push_back(ToolMessage::AbortCurrentTool.into());
+				responses.push_back(BroadcastMessage::TriggerSignal { signal: BroadcastSignal::Abort }.into());
 				responses.push_back(SetActiveDocument { document_id }.into());
 
 				responses.push_back(FrontendMessage::UpdateActiveDocument { document_id }.into());
@@ -464,7 +464,18 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 				for layer in self.documents.get(&document_id).unwrap().layer_metadata.keys() {
 					responses.push_back(DocumentMessage::LayerChanged { affected_layer_path: layer.clone() }.into());
 				}
-				responses.push_back(ToolMessage::DocumentIsDirty.into());
+				responses.push_back(
+					BroadcastMessage::TriggerSignal {
+						signal: BroadcastSignal::SelectionChanged,
+					}
+					.into(),
+				);
+				responses.push_back(
+					BroadcastMessage::TriggerSignal {
+						signal: BroadcastSignal::DocumentIsDirty,
+					}
+					.into(),
+				);
 				responses.push_back(PortfolioMessage::UpdateDocumentWidgets.into());
 			}
 			SetActiveDocument { document_id } => {

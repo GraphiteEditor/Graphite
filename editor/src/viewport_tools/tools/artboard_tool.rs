@@ -6,7 +6,7 @@ use crate::layout::widgets::PropertyHolder;
 use crate::message_prelude::*;
 use crate::misc::{HintData, HintGroup, HintInfo, KeysGroup};
 use crate::viewport_tools::snapping::SnapHandler;
-use crate::viewport_tools::tool::{Fsm, ToolActionHandlerData};
+use crate::viewport_tools::tool::{Fsm, SignalToMessage, ToolActionHandlerData, ToolTransition};
 
 use graphene::intersection::Quad;
 
@@ -65,6 +65,16 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for ArtboardTool
 }
 
 impl PropertyHolder for ArtboardTool {}
+
+impl ToolTransition for ArtboardTool {
+	fn shared_messages(&self) -> SignalToMessage {
+		SignalToMessage {
+			document_dirty: ArtboardToolMessage::DocumentIsDirty.into(),
+			abort: ArtboardToolMessage::Abort.into(),
+			selection_changed: ToolMessage::NoOp,
+		}
+	}
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum ArtboardToolFsmState {
@@ -168,7 +178,12 @@ impl Fsm for ArtboardToolFsmState {
 						let quad = Quad::from_box([input.mouse.position - tolerance, input.mouse.position + tolerance]);
 						let intersection = document.artboard_message_handler.artboards_graphene_document.intersects_quad_root(quad, font_cache);
 
-						responses.push_back(ToolMessage::DocumentIsDirty.into());
+						responses.push_back(
+							BroadcastMessage::TriggerSignal {
+								signal: BroadcastSignal::DocumentIsDirty,
+							}
+							.into(),
+						);
 						if let Some(intersection) = intersection.last() {
 							tool_data.selected_board = Some(intersection[0]);
 
@@ -229,7 +244,12 @@ impl Fsm for ArtboardToolFsmState {
 								.into(),
 							);
 
-							responses.push_back(ToolMessage::DocumentIsDirty.into());
+							responses.push_back(
+								BroadcastMessage::TriggerSignal {
+									signal: BroadcastSignal::DocumentIsDirty,
+								}
+								.into(),
+							);
 						}
 					}
 					ArtboardToolFsmState::ResizingBounds
@@ -257,7 +277,12 @@ impl Fsm for ArtboardToolFsmState {
 							.into(),
 						);
 
-						responses.push_back(ToolMessage::DocumentIsDirty.into());
+						responses.push_back(
+							BroadcastMessage::TriggerSignal {
+								signal: BroadcastSignal::DocumentIsDirty,
+							}
+							.into(),
+						);
 
 						tool_data.drag_current = mouse_position + closest_move;
 					}
@@ -303,7 +328,12 @@ impl Fsm for ArtboardToolFsmState {
 						.into(),
 					);
 
-					responses.push_back(ToolMessage::DocumentIsDirty.into());
+					responses.push_back(
+						BroadcastMessage::TriggerSignal {
+							signal: BroadcastSignal::DocumentIsDirty,
+						}
+						.into(),
+					);
 
 					ArtboardToolFsmState::Drawing
 				}
@@ -333,7 +363,12 @@ impl Fsm for ArtboardToolFsmState {
 						bounds.original_transforms.clear();
 					}
 
-					responses.push_back(ToolMessage::DocumentIsDirty.into());
+					responses.push_back(
+						BroadcastMessage::TriggerSignal {
+							signal: BroadcastSignal::DocumentIsDirty,
+						}
+						.into(),
+					);
 
 					ArtboardToolFsmState::Ready
 				}
@@ -349,7 +384,12 @@ impl Fsm for ArtboardToolFsmState {
 				(_, ArtboardToolMessage::DeleteSelected) => {
 					if let Some(artboard) = tool_data.selected_board.take() {
 						responses.push_back(ArtboardMessage::DeleteArtboard { artboard }.into());
-						responses.push_back(ToolMessage::DocumentIsDirty.into());
+						responses.push_back(
+							BroadcastMessage::TriggerSignal {
+								signal: BroadcastSignal::DocumentIsDirty,
+							}
+							.into(),
+						);
 					}
 					ArtboardToolFsmState::Ready
 				}

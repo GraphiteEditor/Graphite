@@ -77,14 +77,11 @@ pub enum ToolMessage {
 	// Messages
 	#[remain::unsorted]
 	NoOp,
-	AbortCurrentTool,
 	ActivateTool {
 		tool_type: ToolType,
 	},
-	DocumentIsDirty,
 	InitTools,
 	ResetColors,
-	SelectionChanged,
 	SelectPrimaryColor {
 		color: Color,
 	},

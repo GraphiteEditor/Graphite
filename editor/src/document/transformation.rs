@@ -258,7 +258,12 @@ impl<'a> Selected<'a> {
 				);
 			}
 
-			self.responses.push_back(ToolMessage::DocumentIsDirty.into());
+			self.responses.push_back(
+				BroadcastMessage::TriggerSignal {
+					signal: BroadcastSignal::DocumentIsDirty,
+				}
+				.into(),
+			);
 		}
 	}
 

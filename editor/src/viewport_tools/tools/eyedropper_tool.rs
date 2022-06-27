@@ -4,7 +4,7 @@ use crate::input::keyboard::MouseMotion;
 use crate::layout::widgets::PropertyHolder;
 use crate::message_prelude::*;
 use crate::misc::{HintData, HintGroup, HintInfo};
-use crate::viewport_tools::tool::{Fsm, ToolActionHandlerData};
+use crate::viewport_tools::tool::{Fsm, SignalToMessage, ToolActionHandlerData, ToolTransition};
 
 use graphene::intersection::Quad;
 use graphene::layers::layer_info::LayerDataType;
@@ -55,6 +55,16 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for EyedropperTo
 	}
 
 	advertise_actions!(EyedropperToolMessageDiscriminant; LeftMouseDown, RightMouseDown);
+}
+
+impl ToolTransition for EyedropperTool {
+	fn shared_messages(&self) -> SignalToMessage {
+		SignalToMessage {
+			document_dirty: ToolMessage::NoOp,
+			abort: EyedropperToolMessage::Abort.into(),
+			selection_changed: ToolMessage::NoOp,
+		}
+	}
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

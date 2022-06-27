@@ -6,7 +6,7 @@ use crate::layout::widgets::{Layout, LayoutGroup, NumberInput, PropertyHolder, W
 use crate::message_prelude::*;
 use crate::misc::{HintData, HintGroup, HintInfo, KeysGroup};
 use crate::viewport_tools::snapping::SnapHandler;
-use crate::viewport_tools::tool::{Fsm, ToolActionHandlerData};
+use crate::viewport_tools::tool::{Fsm, SignalToMessage, ToolActionHandlerData, ToolTransition};
 
 use graphene::layers::style;
 use graphene::Operation;
@@ -106,6 +106,16 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for LineTool {
 		match self.fsm_state {
 			Ready => actions!(LineToolMessageDiscriminant; DragStart),
 			Drawing => actions!(LineToolMessageDiscriminant; DragStop, Redraw, Abort),
+		}
+	}
+}
+
+impl ToolTransition for LineTool {
+	fn shared_messages(&self) -> SignalToMessage {
+		SignalToMessage {
+			document_dirty: ToolMessage::NoOp,
+			abort: LineToolMessage::Abort.into(),
+			selection_changed: ToolMessage::NoOp,
 		}
 	}
 }

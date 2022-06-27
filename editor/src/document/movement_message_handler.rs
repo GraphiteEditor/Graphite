@@ -153,7 +153,12 @@ impl MessageHandler<MovementMessage, (&Document, &InputPreprocessorMessageHandle
 					self.zoom = 1.
 				}
 
-				responses.push_back(ToolMessage::DocumentIsDirty.into());
+				responses.push_back(
+					BroadcastMessage::TriggerSignal {
+						signal: BroadcastSignal::DocumentIsDirty,
+					}
+					.into(),
+				);
 				responses.push_back(DocumentMessage::DirtyRenderDocumentInOutlineView.into());
 				responses.push_back(PortfolioMessage::UpdateDocumentWidgets.into());
 				self.create_document_transform(&ipp.viewport_bounds, responses);
@@ -243,12 +248,22 @@ impl MessageHandler<MovementMessage, (&Document, &InputPreprocessorMessageHandle
 			SetCanvasRotation { angle_radians } => {
 				self.tilt = angle_radians;
 				self.create_document_transform(&ipp.viewport_bounds, responses);
-				responses.push_back(ToolMessage::DocumentIsDirty.into());
+				responses.push_back(
+					BroadcastMessage::TriggerSignal {
+						signal: BroadcastSignal::DocumentIsDirty,
+					}
+					.into(),
+				);
 				responses.push_back(PortfolioMessage::UpdateDocumentWidgets.into());
 			}
 			SetCanvasZoom { zoom_factor } => {
 				self.zoom = zoom_factor.clamp(VIEWPORT_ZOOM_SCALE_MIN, VIEWPORT_ZOOM_SCALE_MAX);
-				responses.push_back(ToolMessage::DocumentIsDirty.into());
+				responses.push_back(
+					BroadcastMessage::TriggerSignal {
+						signal: BroadcastSignal::DocumentIsDirty,
+					}
+					.into(),
+				);
 				responses.push_back(DocumentMessage::DirtyRenderDocumentInOutlineView.into());
 				responses.push_back(PortfolioMessage::UpdateDocumentWidgets.into());
 				self.create_document_transform(&ipp.viewport_bounds, responses);
@@ -256,7 +271,12 @@ impl MessageHandler<MovementMessage, (&Document, &InputPreprocessorMessageHandle
 			TransformCanvasEnd => {
 				self.tilt = self.snapped_angle();
 				self.zoom = self.snapped_scale();
-				responses.push_back(ToolMessage::DocumentIsDirty.into());
+				responses.push_back(
+					BroadcastMessage::TriggerSignal {
+						signal: BroadcastSignal::DocumentIsDirty,
+					}
+					.into(),
+				);
 				responses.push_back(ToolMessage::UpdateCursor.into());
 				responses.push_back(ToolMessage::UpdateHints.into());
 				self.snap_tilt = false;
@@ -270,7 +290,12 @@ impl MessageHandler<MovementMessage, (&Document, &InputPreprocessorMessageHandle
 				let transformed_delta = document.root.transform.inverse().transform_vector2(delta);
 
 				self.pan += transformed_delta;
-				responses.push_back(ToolMessage::DocumentIsDirty.into());
+				responses.push_back(
+					BroadcastMessage::TriggerSignal {
+						signal: BroadcastSignal::DocumentIsDirty,
+					}
+					.into(),
+				);
 				self.create_document_transform(&ipp.viewport_bounds, responses);
 			}
 			TranslateCanvasBegin => {
@@ -284,7 +309,12 @@ impl MessageHandler<MovementMessage, (&Document, &InputPreprocessorMessageHandle
 				let transformed_delta = document.root.transform.inverse().transform_vector2(delta * ipp.viewport_bounds.size());
 
 				self.pan += transformed_delta;
-				responses.push_back(ToolMessage::DocumentIsDirty.into());
+				responses.push_back(
+					BroadcastMessage::TriggerSignal {
+						signal: BroadcastSignal::DocumentIsDirty,
+					}
+					.into(),
+				);
 				self.create_document_transform(&ipp.viewport_bounds, responses);
 			}
 			WheelCanvasTranslate { use_y_as_x } => {

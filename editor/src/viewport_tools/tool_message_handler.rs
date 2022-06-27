@@ -1,4 +1,4 @@
-use super::tool::{message_to_tool_type, standard_tool_message, update_working_colors, StandardToolMessageType, ToolFsmState};
+use super::tool::{message_to_tool_type, update_working_colors, ToolFsmState};
 use crate::document::DocumentMessageHandler;
 use crate::input::InputPreprocessorMessageHandler;
 use crate::layout::layout_message::LayoutTarget;
@@ -24,11 +24,6 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessorMes
 		#[remain::sorted]
 		match message {
 			// Messages
-			AbortCurrentTool => {
-				if let Some(tool_message) = standard_tool_message(self.tool_state.tool_data.active_tool_type, StandardToolMessageType::Abort) {
-					responses.push_front(tool_message.into());
-				}
-			}
 			ActivateTool { tool_type } => {
 				let tool_data = &mut self.tool_state.tool_data;
 				let document_data = &self.tool_state.document_tool_data;
@@ -40,9 +35,9 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessorMes
 				}
 
 				// Send the Abort state transition to the tool
-				let mut send_abort_to_tool = |tool_type, message: ToolMessage, update_hints_and_cursor: bool| {
+				let mut send_abort_to_tool = |tool_type, update_hints_and_cursor: bool| {
 					if let Some(tool) = tool_data.tools.get_mut(&tool_type) {
-						tool.process_action(message, (document, document_data, input, font_cache), responses);
+						tool.process_action(tool.shared_messages().abort, (document, document_data, input, font_cache), responses);
 
 						if update_hints_and_cursor {
 							tool.process_action(ToolMessage::UpdateHints, (document, document_data, input, font_cache), responses);
@@ -50,26 +45,35 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessorMes
 						}
 					}
 				};
+
 				// Send the old and new tools a transition to their FSM Abort states
-				if let Some(tool_message) = standard_tool_message(tool_type, StandardToolMessageType::Abort) {
-					send_abort_to_tool(tool_type, tool_message, true);
-				}
-				if let Some(tool_message) = standard_tool_message(old_tool, StandardToolMessageType::Abort) {
-					send_abort_to_tool(old_tool, tool_message, false);
-				}
+				send_abort_to_tool(tool_type, true);
+				send_abort_to_tool(old_tool, false);
 
-				// Send the SelectionChanged message to the active tool, this will ensure the selection is updated
-				if let Some(message) = standard_tool_message(tool_type, StandardToolMessageType::SelectionChanged) {
-					responses.push_back(message.into());
-				}
-
-				// Send the DocumentIsDirty message to the active tool's sub-tool message handler
-				if let Some(message) = standard_tool_message(tool_type, StandardToolMessageType::DocumentIsDirty) {
-					responses.push_back(message.into());
-				}
+				// unsubscribe old tool from the broadcaster
+				tool_data.tools.get(&tool_type).unwrap().unsubscribe(responses);
 
 				// Store the new active tool
 				tool_data.active_tool_type = tool_type;
+
+				// subscribe new tool
+				tool_data.tools.get(&tool_type).unwrap().subscribe(responses);
+
+				// Send the SelectionChanged message to the active tool, this will ensure the selection is updated
+				responses.push_back(
+					BroadcastMessage::TriggerSignal {
+						signal: BroadcastSignal::SelectionChanged,
+					}
+					.into(),
+				);
+
+				// Send the DocumentIsDirty message to the active tool's sub-tool message handler
+				responses.push_back(
+					BroadcastMessage::TriggerSignal {
+						signal: BroadcastSignal::DocumentIsDirty,
+					}
+					.into(),
+				);
 
 				// Send Properties to the frontend
 				tool_data.tools.get(&tool_type).unwrap().register_properties(responses, LayoutTarget::ToolOptions);
@@ -77,17 +81,13 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessorMes
 				// Notify the frontend about the new active tool to be displayed
 				tool_data.register_properties(responses, LayoutTarget::ToolShelf);
 			}
-			DocumentIsDirty => {
-				// Send the DocumentIsDirty message to the active tool's sub-tool message handler
-				let active_tool = self.tool_state.tool_data.active_tool_type;
-				if let Some(message) = standard_tool_message(active_tool, StandardToolMessageType::DocumentIsDirty) {
-					responses.push_back(message.into());
-				}
-			}
 			InitTools => {
 				let tool_data = &mut self.tool_state.tool_data;
 				let document_data = &self.tool_state.document_tool_data;
 				let active_tool = &tool_data.active_tool_type;
+
+				// subscribe tool to broadcast messages
+				tool_data.tools.get(active_tool).unwrap().subscribe(responses);
 
 				// Register initial properties
 				tool_data.tools.get(active_tool).unwrap().register_properties(responses, LayoutTarget::ToolOptions);
@@ -103,6 +103,7 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessorMes
 					.active_tool_mut()
 					.process_action(ToolMessage::UpdateCursor, (document, document_data, input, font_cache), responses);
 			}
+			NoOp => {}
 			ResetColors => {
 				let document_data = &mut self.tool_state.document_tool_data;
 
@@ -110,12 +111,6 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessorMes
 				document_data.secondary_color = Color::WHITE;
 
 				update_working_colors(document_data, responses);
-			}
-			SelectionChanged => {
-				let active_tool = self.tool_state.tool_data.active_tool_type;
-				if let Some(message) = standard_tool_message(active_tool, StandardToolMessageType::SelectionChanged) {
-					responses.push_back(message.into());
-				}
 			}
 			SelectPrimaryColor { color } => {
 				let document_data = &mut self.tool_state.document_tool_data;
