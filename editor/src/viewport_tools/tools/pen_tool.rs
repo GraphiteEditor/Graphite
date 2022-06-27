@@ -1,4 +1,5 @@
-use crate::consts::{CREATE_CURVE_THRESHOLD, LINE_ROTATE_SNAP_ANGLE};
+use crate::consts::LINE_ROTATE_SNAP_ANGLE;
+use crate::document::DocumentMessageHandler;
 use crate::frontend::utility_types::MouseCursorIcon;
 use crate::input::keyboard::{Key, MouseMotion};
 use crate::input::InputPreprocessorMessageHandler;
@@ -10,11 +11,10 @@ use crate::viewport_tools::tool::{Fsm, ToolActionHandlerData};
 use crate::viewport_tools::vector_editor::overlay_renderer::OverlayRenderer;
 
 use graphene::layers::style;
-// use graphene::layers::vector::vector_shape::VectorShape;
+use graphene::layers::vector::{constants::ControlPointType, vector_anchor::VectorAnchor, vector_shape::VectorShape};
 use graphene::Operation;
 
 use glam::{DAffine2, DVec2};
-use kurbo::{PathEl, Point};
 use serde::{Deserialize, Serialize};
 
 #[derive(Default)]
@@ -131,7 +131,6 @@ struct PenToolData {
 	weight: f64,
 	path: Option<Vec<LayerId>>,
 	overlay_renderer: OverlayRenderer,
-	bez_path: Vec<PathEl>,
 	snap_handler: SnapHandler,
 }
 
@@ -180,56 +179,66 @@ impl Fsm for PenToolFsmState {
 
 					// Create the initial shape with a `bez_path` (only contains a moveto initially)
 					if let Some(layer_path) = &tool_data.path {
-						tool_data.bez_path = start_bez_path(start_position);
-						add_cubic(&mut tool_data.bez_path);
 						responses.push_back(
 							Operation::AddShape {
 								path: layer_path.clone(),
 								transform: DAffine2::IDENTITY.to_cols_array(),
 								insert_index: -1,
-								bez_path: tool_data.bez_path.clone().into_iter().collect(),
+								bez_path: Default::default(),
 								style: style::PathStyle::new(Some(style::Stroke::new(global_tool_data.primary_color, tool_data.weight)), style::Fill::None),
 							}
 							.into(),
 						);
+						responses.push_back(add_anchor(&tool_data.path, VectorAnchor::new(start_position)));
 					}
 
 					PenToolFsmState::DraggingHandle
 				}
-				(PenToolFsmState::PlacingAnchor, PenToolMessage::DragStart) => {
-					add_cubic(&mut tool_data.bez_path);
-					PenToolFsmState::DraggingHandle
-				}
+				(PenToolFsmState::PlacingAnchor, PenToolMessage::DragStart) => PenToolFsmState::DraggingHandle,
 				(PenToolFsmState::DraggingHandle, PenToolMessage::DragStop) => {
-					// TODO: If the drag does not exceed the threshold, then replace the curve with a line
-					if segement_control(tool_data.bez_path.last()).distance(input.mouse.position) < CREATE_CURVE_THRESHOLD {}
+					// Add new point onto path
+					if let Some(layer_path) = &tool_data.path {
+						if let Some(vector_anchor) = get_vector_shape(layer_path, document).and_then(|shape| shape.anchors().last()) {
+							if let Some(anchor) = &vector_anchor.points[ControlPointType::Anchor] {
+								responses.push_back(add_anchor(&tool_data.path, VectorAnchor::new(anchor.position)));
+							}
+						}
+					}
 
 					PenToolFsmState::PlacingAnchor
 				}
 				(PenToolFsmState::DraggingHandle, PenToolMessage::PointerMove { snap_angle, break_handle }) => {
 					if let Some(layer_path) = &tool_data.path {
 						let mouse = tool_data.snap_handler.snap_position(responses, document, input.mouse.position);
-						let pos = transform.inverse().transform_point2(mouse);
-						let pos = compute_snapped_angle(input, snap_angle, pos, segement_control(tool_data.bez_path.iter().nth_back(1)));
+						let mut pos = transform.inverse().transform_point2(mouse);
+						if let Some(((&id, anchor), _previous)) = get_vector_shape(layer_path, document).and_then(last_2_anchors) {
+							if let Some(anchor) = anchor.points[ControlPointType::Anchor as usize].as_ref() {
+								pos = compute_snapped_angle(input, snap_angle, pos, anchor.position);
+							}
 
-						// Update points on current segment (to show preview of new handle)
-						if let Some(PathEl::CurveTo(handle1, handle2, end)) = tool_data.bez_path.iter_mut().last() {
-							let point = Point::new(pos.x, pos.y);
-							(*handle1, *handle2, *end) = (point, point, point);
-						}
+							// Update points on current segment (to show preview of new handle)
+							let msg = Operation::MoveVectorPoint {
+								layer_path: layer_path.clone(),
+								id,
+								control_type: ControlPointType::OutHandle,
+								position: pos.into(),
+							};
+							responses.push_back(msg.into());
 
-						// Mirror handle of last segement
-						if !input.keyboard.get(break_handle as usize) {
-							if let Some(PathEl::CurveTo(_handle1, handle2, end)) = tool_data.bez_path.iter_mut().nth_back(1) {
-								let end = DVec2::new(end.x, end.y);
-
-								let pos = end - (pos - end);
-								let point = Point::new(pos.x, pos.y);
-								*handle2 = point;
+							// Mirror handle of last segement
+							if !input.keyboard.get(break_handle as usize) && get_vector_shape(layer_path, document).map(|shape| shape.anchors().len() > 1).unwrap_or_default() {
+								if let Some(anchor) = anchor.points[ControlPointType::Anchor as usize].as_ref() {
+									pos = anchor.position - (pos - anchor.position);
+								}
+								let msg = Operation::MoveVectorPoint {
+									layer_path: layer_path.clone(),
+									id,
+									control_type: ControlPointType::InHandle,
+									position: pos.into(),
+								};
+								responses.push_back(msg.into());
 							}
 						}
-
-						responses.push_back(apply_bez_path(layer_path.clone(), tool_data.bez_path.clone()));
 					}
 
 					self
@@ -237,26 +246,52 @@ impl Fsm for PenToolFsmState {
 				(PenToolFsmState::PlacingAnchor, PenToolMessage::PointerMove { snap_angle, .. }) => {
 					if let Some(layer_path) = &tool_data.path {
 						let mouse = tool_data.snap_handler.snap_position(responses, document, input.mouse.position);
-						let pos = transform.inverse().transform_point2(mouse);
-						let pos = compute_snapped_angle(input, snap_angle, pos, segement_control(tool_data.bez_path.iter().nth_back(1)));
+						let mut pos = transform.inverse().transform_point2(mouse);
 
-						// Update the current segement's last handle and end
-						if let Some(PathEl::CurveTo(_handle1, handle2, end)) = tool_data.bez_path.iter_mut().last() {
-							let point = Point::new(pos.x, pos.y);
-							(*handle2, *end) = (point, point);
+						if let Some(((&id, _anchor), previous)) = get_vector_shape(layer_path, document).and_then(last_2_anchors) {
+							if let Some(relative) = previous.as_ref().and_then(|(_, anchor)| anchor.points[ControlPointType::Anchor as usize].as_ref()) {
+								pos = compute_snapped_angle(input, snap_angle, pos, relative.position);
+							}
+
+							for control_type in [ControlPointType::Anchor, ControlPointType::InHandle, ControlPointType::OutHandle] {
+								let msg = Operation::MoveVectorPoint {
+									layer_path: layer_path.clone(),
+									id,
+									control_type,
+									position: pos.into(),
+								};
+								responses.push_back(msg.into());
+							}
 						}
-						responses.push_back(apply_bez_path(layer_path.clone(), tool_data.bez_path.clone()));
 					}
 
 					self
 				}
 				(PenToolFsmState::DraggingHandle | PenToolFsmState::PlacingAnchor, PenToolMessage::Abort | PenToolMessage::Confirm) => {
 					// Abort or commit the transaction to the undo history
-					if tool_data.bez_path.len() > 2 {
-						// Remove the last segment (an uncommitted preview)
-						if let Some(layer_path) = &tool_data.path {
-							tool_data.bez_path.pop();
-							responses.push_back(apply_bez_path(layer_path.clone(), tool_data.bez_path.clone()));
+					if let Some(layer_path) = tool_data.path.as_ref() {
+						if let Some(vector_shape) = (get_vector_shape(layer_path, document)).filter(|vector_shape| vector_shape.anchors().len() > 1) {
+							if let Some(((&(mut id), mut anchor), previous)) = last_2_anchors(vector_shape) {
+								// Remove the unplaced anchor if in anchor placing mode
+								if self == PenToolFsmState::PlacingAnchor {
+									let layer_path = layer_path.clone();
+									let op = Operation::RemoveVectorAnchor { layer_path, id };
+									responses.push_back(op.into());
+									if let Some((&new_id, new_anchor)) = previous {
+										id = new_id;
+										anchor = new_anchor;
+									}
+								}
+
+								// Remove the out handle if in dragging handle mode
+								let op = Operation::MoveVectorPoint {
+									layer_path: layer_path.clone(),
+									id,
+									control_type: ControlPointType::OutHandle,
+									position: anchor.points[ControlPointType::Anchor as usize].as_ref().unwrap().position.into(),
+								};
+								responses.push_back(op.into());
+							}
 						}
 
 						responses.push_back(DocumentMessage::DeselectAllLayers.into());
@@ -331,41 +366,6 @@ impl Fsm for PenToolFsmState {
 	}
 }
 
-/// Create the initial moveto for the `bez_path`
-fn start_bez_path(start_position: DVec2) -> Vec<PathEl> {
-	vec![PathEl::MoveTo(Point {
-		x: start_position.x,
-		y: start_position.y,
-	})]
-}
-
-/// Computes the control point (point where the path will go through), panicing if [None] or [PathEl::ClosePath]
-fn segement_control(path: Option<&PathEl>) -> DVec2 {
-	match path {
-		Some(PathEl::MoveTo(pos)) => DVec2::new(pos.x, pos.y),
-		Some(PathEl::LineTo(pos)) => DVec2::new(pos.x, pos.y),
-		Some(PathEl::CurveTo(_, _, pos)) => DVec2::new(pos.x, pos.y),
-		Some(PathEl::QuadTo(_, pos)) => DVec2::new(pos.x, pos.y),
-		_ => panic!("unexpected path data in pen tool"),
-	}
-}
-
-/// Pushes a cubic bezier onto the path with all the points set to the end of the last segment
-fn add_cubic(path: &mut Vec<PathEl>) {
-	let last_point = segement_control(path.last());
-	let point = Point::new(last_point.x, last_point.y);
-	path.push(PathEl::CurveTo(point, point, point))
-}
-
-/// Apply the `bez_path` to the `shape` in the viewport
-fn apply_bez_path(layer_path: Vec<LayerId>, bez_path: Vec<PathEl>) -> Message {
-	Operation::SetShapePath {
-		path: layer_path,
-		bez_path: bez_path.into_iter().collect(),
-	}
-	.into()
-}
-
 /// Snap the angle of the line from relative to pos if the key is pressed
 fn compute_snapped_angle(input: &InputPreprocessorMessageHandler, key: Key, pos: DVec2, relative: DVec2) -> DVec2 {
 	if input.keyboard.get(key as usize) {
@@ -382,4 +382,36 @@ fn compute_snapped_angle(input: &InputPreprocessorMessageHandler, key: Key, pos:
 	} else {
 		pos
 	}
+}
+
+/// Pushes an anchor to the current layer via an [Operation]
+fn add_anchor(layer_path: &Option<Vec<LayerId>>, anchor: VectorAnchor) -> Message {
+	if let Some(layer_path) = layer_path {
+		Operation::PushVectorAnchor {
+			layer_path: layer_path.clone(),
+			anchor,
+		}
+		.into()
+	} else {
+		Message::NoOp
+	}
+}
+
+/// Gets the currently editing [VectorShape]
+fn get_vector_shape<'a>(layer_path: &'a [LayerId], document: &'a DocumentMessageHandler) -> Option<&'a VectorShape> {
+	document.graphene_document.layer(layer_path).ok().and_then(|layer| layer.as_vector_shape())
+}
+
+type AnchorRef<'a> = (&'a u64, &'a VectorAnchor);
+
+/// Gets the last 2 [VectorAnchor] on the currently editing layer along with its id
+fn last_2_anchors(vector_shape: &VectorShape) -> Option<(AnchorRef, Option<AnchorRef>)> {
+	vector_shape.anchors().enumerate().last().map(|last| {
+		(
+			last,
+			(vector_shape.anchors().len() > 1)
+				.then(|| vector_shape.anchors().enumerate().nth(vector_shape.anchors().len() - 2))
+				.flatten(),
+		)
+	})
 }
