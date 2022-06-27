@@ -43,6 +43,8 @@ pub enum PenToolMessage {
 	DocumentIsDirty,
 	#[remain::unsorted]
 	Abort,
+	#[remain::unsorted]
+	SelectionChanged,
 
 	// Tool-specific messages
 	Confirm,
@@ -155,6 +157,13 @@ impl Fsm for PenToolFsmState {
 					// TODO the overlay system should probably receive this message instead of the tool
 					for layer_path in document.selected_visible_layers() {
 						tool_data.overlay_renderer.render_vector_shape_overlays(&document.graphene_document, layer_path.to_vec(), responses);
+					}
+					self
+				}
+				(_, PenToolMessage::SelectionChanged) => {
+					// Set the previously selected layers to invisible
+					for layer_path in document.all_layers() {
+						tool_data.overlay_renderer.layer_overlay_visibility(&document.graphene_document, layer_path.to_vec(), false, responses);
 					}
 					self
 				}
@@ -294,7 +303,6 @@ impl Fsm for PenToolFsmState {
 							}
 						}
 
-						responses.push_back(DocumentMessage::DeselectAllLayers.into());
 						responses.push_back(DocumentMessage::CommitTransaction.into());
 					} else {
 						responses.push_back(DocumentMessage::AbortTransaction.into());

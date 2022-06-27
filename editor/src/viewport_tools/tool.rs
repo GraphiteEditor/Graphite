@@ -387,6 +387,7 @@ pub fn standard_tool_message(tool: ToolType, message_type: StandardToolMessageTy
 		},
 		StandardToolMessageType::SelectionChanged => match tool {
 			ToolType::Path => Some(PathToolMessage::SelectionChanged.into()),
+			ToolType::Pen => Some(PenToolMessage::SelectionChanged.into()),
 			_ => None,
 		},
 	}

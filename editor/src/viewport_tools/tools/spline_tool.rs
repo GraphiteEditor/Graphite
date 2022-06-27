@@ -194,7 +194,6 @@ impl Fsm for SplineToolFsmState {
 				}
 				(Drawing, Confirm) | (Drawing, Abort) => {
 					if tool_data.points.len() >= 2 {
-						responses.push_back(DocumentMessage::DeselectAllLayers.into());
 						responses.push_back(remove_preview(tool_data));
 						responses.push_back(add_spline(tool_data, global_tool_data, false));
 						responses.push_back(DocumentMessage::CommitTransaction.into());
