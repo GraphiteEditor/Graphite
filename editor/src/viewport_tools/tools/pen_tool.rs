@@ -208,7 +208,7 @@ impl Fsm for PenToolFsmState {
 					// Add new point onto path
 					if let Some(layer_path) = &tool_data.path {
 						if let Some(vector_anchor) = get_vector_shape(layer_path, document).and_then(|shape| shape.anchors().last()) {
-							if let Some(anchor) = &vector_anchor.points[ControlPointType::Anchor] {
+							if let Some(anchor) = &vector_anchor.points[ControlPointType::OutHandle] {
 								responses.push_back(add_anchor(&tool_data.path, VectorAnchor::new(anchor.position)));
 							}
 						}
