@@ -12,6 +12,7 @@ use crate::viewport_tools::vector_editor::shape_editor::ShapeEditor;
 use graphene::intersection::Quad;
 
 use glam::DVec2;
+use graphene::layers::vector::constants::ControlPointType;
 use serde::{Deserialize, Serialize};
 
 #[derive(Default)]
@@ -146,7 +147,7 @@ impl Fsm for PathToolFsmState {
 					let toggle_add_to_selection = input.keyboard.get(add_to_selection as usize);
 
 					// Select the first point within the threshold (in pixels)
-					if let Some(new_selected) = tool_data
+					if let Some(mut new_selected) = tool_data
 						.shape_editor
 						.select_point(&document.graphene_document, input.mouse.position, SELECTION_THRESHOLD, toggle_add_to_selection, responses)
 					{
@@ -156,6 +157,16 @@ impl Fsm for PathToolFsmState {
 						tool_data
 							.snap_handler
 							.start_snap(document, document.bounding_boxes(Some(&ignore_document), None, font_cache), true, true);
+
+						// Do not snap against handles when anchor is selected
+						let mut extension = Vec::new();
+						for &(path, id, point_type) in new_selected.iter() {
+							if point_type == ControlPointType::Anchor {
+								extension.push((path, id, ControlPointType::InHandle));
+								extension.push((path, id, ControlPointType::OutHandle));
+							}
+						}
+						new_selected.extend(extension);
 
 						let include_handles = tool_data.shape_editor.selected_layers_ref();
 						tool_data.snap_handler.add_all_document_handles(document, &include_handles, &[], &new_selected);
