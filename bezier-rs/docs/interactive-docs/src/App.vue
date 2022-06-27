@@ -2,7 +2,7 @@
 	<div class="App">
 		<h1>Bezier-rs Interactive Documentation</h1>
 		<p>This is the interactive documentation for the <b>bezier-rs</b> library. Click and drag on the endpoints of the example curves to visualize the various Bezier utilities and functions.</p>
-		<div v-for="feature in features" :key="feature.id">
+		<div v-for="(feature, index) in features" :key="index">
 			<ExamplePane :template="feature.template" :templateOptions="feature.templateOptions" :name="feature.name" :callback="feature.callback" />
 		</div>
 		<br />
@@ -13,7 +13,7 @@
 <script lang="ts">
 import { defineComponent, markRaw } from "vue";
 
-import { drawText, drawPoint, drawBezier, drawLine, getContextFromCanvas, drawBezierHelper } from "@/utils/drawing";
+import { drawText, drawPoint, drawBezier, drawLine, getContextFromCanvas, drawBezierHelper, COLORS } from "@/utils/drawing";
 import { WasmBezierInstance } from "@/utils/types";
 
 import ExamplePane from "@/components/ExamplePane.vue";
@@ -34,9 +34,6 @@ const testBezierLib = async () => {
 	});
 };
 
-const NON_INTERACTIVE_STROKE_1 = "red";
-const NON_INTERACTIVE_STROKE_2 = "orange";
-
 const tSliderOptions = {
 	min: 0,
 	max: 1,
@@ -54,36 +51,32 @@ export default defineComponent({
 		return {
 			features: [
 				{
-					id: 0,
 					name: "Constructor",
 					// eslint-disable-next-line
 					callback: (): void => {},
 				},
 				{
-					id: 2,
 					name: "Length",
 					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance): void => {
 						drawText(getContextFromCanvas(canvas), `Length: ${bezier.length().toFixed(2)}`, 5, canvas.height - 7);
 					},
 				},
 				{
-					id: 3,
 					name: "Compute",
 					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: Record<string, number>): void => {
 						const point = JSON.parse(bezier.compute(options.t));
-						drawPoint(getContextFromCanvas(canvas), point, 4, NON_INTERACTIVE_STROKE_1);
+						drawPoint(getContextFromCanvas(canvas), point, 4, COLORS.NON_INTERACTIVE.STROKE_1);
 					},
 					template: markRaw(SliderExample),
-					templateOptions: { sliders: [{ ...tSliderOptions }] },
+					templateOptions: { sliders: [tSliderOptions] },
 				},
 				{
-					id: 4,
 					name: "Lookup Table",
 					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: Record<string, number>): void => {
 						const lookupPoints = bezier.compute_lookup_table(options.steps);
 						lookupPoints.forEach((serialisedPoint, index) => {
 							if (index !== 0 && index !== lookupPoints.length - 1) {
-								drawPoint(getContextFromCanvas(canvas), JSON.parse(serialisedPoint), 3, NON_INTERACTIVE_STROKE_1);
+								drawPoint(getContextFromCanvas(canvas), JSON.parse(serialisedPoint), 3, COLORS.NON_INTERACTIVE.STROKE_1);
 							}
 						});
 					},
@@ -101,7 +94,6 @@ export default defineComponent({
 					},
 				},
 				{
-					id: 5,
 					name: "Derivative",
 					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: Record<string, number>): void => {
 						const context = getContextFromCanvas(canvas);
@@ -119,16 +111,15 @@ export default defineComponent({
 							y: intersection.y + derivative.y / curveFactor,
 						};
 
-						drawLine(context, tangentStart, tangentEnd, NON_INTERACTIVE_STROKE_1);
-						drawPoint(context, tangentStart, 3, NON_INTERACTIVE_STROKE_1);
-						drawPoint(context, intersection, 3, NON_INTERACTIVE_STROKE_1);
-						drawPoint(context, tangentEnd, 3, NON_INTERACTIVE_STROKE_1);
+						drawLine(context, tangentStart, tangentEnd, COLORS.NON_INTERACTIVE.STROKE_1);
+						drawPoint(context, tangentStart, 3, COLORS.NON_INTERACTIVE.STROKE_1);
+						drawPoint(context, intersection, 3, COLORS.NON_INTERACTIVE.STROKE_1);
+						drawPoint(context, tangentEnd, 3, COLORS.NON_INTERACTIVE.STROKE_1);
 					},
 					template: markRaw(SliderExample),
-					templateOptions: { sliders: [{ ...tSliderOptions }] },
+					templateOptions: { sliders: [tSliderOptions] },
 				},
 				{
-					id: 6,
 					name: "Normal",
 					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: Record<string, number>): void => {
 						const context = getContextFromCanvas(canvas);
@@ -145,34 +136,32 @@ export default defineComponent({
 							y: intersection.y + normal.y * 20,
 						};
 
-						drawLine(context, normalStart, normalEnd, NON_INTERACTIVE_STROKE_1);
-						drawPoint(context, normalStart, 3, NON_INTERACTIVE_STROKE_1);
-						drawPoint(context, intersection, 3, NON_INTERACTIVE_STROKE_1);
-						drawPoint(context, normalEnd, 3, NON_INTERACTIVE_STROKE_1);
+						drawLine(context, normalStart, normalEnd, COLORS.NON_INTERACTIVE.STROKE_1);
+						drawPoint(context, normalStart, 3, COLORS.NON_INTERACTIVE.STROKE_1);
+						drawPoint(context, intersection, 3, COLORS.NON_INTERACTIVE.STROKE_1);
+						drawPoint(context, normalEnd, 3, COLORS.NON_INTERACTIVE.STROKE_1);
 					},
 					template: markRaw(SliderExample),
-					templateOptions: { sliders: [{ ...tSliderOptions }] },
+					templateOptions: { sliders: [tSliderOptions] },
 				},
 				{
-					id: 6,
 					name: "Split",
 					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: Record<string, number>): void => {
 						const context = getContextFromCanvas(canvas);
 						const bezierPairPoints = JSON.parse(bezier.split(options.t));
 
-						drawBezier(context, bezierPairPoints[0], NON_INTERACTIVE_STROKE_2, 3.5);
-						drawBezier(context, bezierPairPoints[1], NON_INTERACTIVE_STROKE_1, 3.5);
+						drawBezier(context, bezierPairPoints[0], null, COLORS.NON_INTERACTIVE.STROKE_2, 3.5);
+						drawBezier(context, bezierPairPoints[1], null, COLORS.NON_INTERACTIVE.STROKE_1, 3.5);
 					},
 					template: markRaw(SliderExample),
-					templateOptions: { sliders: [{ ...tSliderOptions }] },
+					templateOptions: { sliders: [tSliderOptions] },
 				},
 				{
-					id: 7,
 					name: "Trim",
 					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: Record<string, number>): void => {
 						const context = getContextFromCanvas(canvas);
 						const trimmedBezier = bezier.trim(options.t1, options.t2);
-						drawBezierHelper(context, trimmedBezier, NON_INTERACTIVE_STROKE_1, 3.5);
+						drawBezierHelper(context, trimmedBezier, COLORS.NON_INTERACTIVE.STROKE_1, 3.5);
 					},
 					template: markRaw(SliderExample),
 					templateOptions: {

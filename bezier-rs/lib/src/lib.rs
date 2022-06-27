@@ -33,9 +33,9 @@ impl Bezier {
 	/// Create a quadratic bezier using the provided coordinates as the start, handle, and end points
 	pub fn from_quadratic_coordinates(x1: f64, y1: f64, x2: f64, y2: f64, x3: f64, y3: f64) -> Self {
 		Bezier {
-			start: DVec2::from((x1, y1)),
-			handles: BezierHandles::Quadratic { handle: DVec2::from((x2, y2)) },
-			end: DVec2::from((x3, y3)),
+			start: DVec2::new(x1, y1),
+			handles: BezierHandles::Quadratic { handle: DVec2::new(x2, y2) },
+			end: DVec2::new(x3, y3),
 		}
 	}
 
@@ -52,12 +52,12 @@ impl Bezier {
 	/// Create a cubic bezier using the provided coordinates as the start, handles, and end points
 	pub fn from_cubic_coordinates(x1: f64, y1: f64, x2: f64, y2: f64, x3: f64, y3: f64, x4: f64, y4: f64) -> Self {
 		Bezier {
-			start: DVec2::from((x1, y1)),
+			start: DVec2::new(x1, y1),
 			handles: BezierHandles::Cubic {
-				handle_start: DVec2::from((x2, y2)),
-				handle_end: DVec2::from((x3, y3)),
+				handle_start: DVec2::new(x2, y2),
+				handle_end: DVec2::new(x3, y3),
 			},
-			end: DVec2::from((x4, y4)),
+			end: DVec2::new(x4, y4),
 		}
 	}
 
