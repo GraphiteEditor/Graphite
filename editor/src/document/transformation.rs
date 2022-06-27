@@ -269,13 +269,16 @@ impl<'a> Selected<'a> {
 
 	pub fn revert_operation(&mut self) {
 		for path in self.selected {
-			self.responses.push_back(
-				DocumentOperation::SetLayerTransform {
-					path: path.to_vec(),
-					transform: (*self.original_transforms.get(*path).unwrap()).to_cols_array(),
-				}
-				.into(),
-			);
+			if let Some(transform) = self.original_transforms.get(*path) {
+				// Push front to stop document switching before sending the transform
+				self.responses.push_front(
+					DocumentOperation::SetLayerTransform {
+						path: path.to_vec(),
+						transform: transform.to_cols_array(),
+					}
+					.into(),
+				);
+			}
 		}
 	}
 }
