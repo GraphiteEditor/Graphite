@@ -30,8 +30,8 @@ export default defineComponent({
 			required: true,
 		},
 		options: {
-			type: String,
-			default: "",
+			type: Object as PropType<Record<string, number>>,
+			default: () => ({}),
 		},
 	},
 	mounted() {
@@ -40,8 +40,11 @@ export default defineComponent({
 		this.bezierDrawing.updateBezier();
 	},
 	watch: {
-		options() {
-			this.bezierDrawing.updateBezier(this.options);
+		options: {
+			deep: true,
+			handler() {
+				this.bezierDrawing.updateBezier(this.options);
+			},
 		},
 	},
 });

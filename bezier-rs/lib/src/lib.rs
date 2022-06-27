@@ -1,6 +1,7 @@
 use glam::DVec2;
 
 /// Representation of the handle point(s) in a bezier segment
+#[derive(Copy, Clone)]
 pub enum BezierHandles {
 	/// Handles for a quadratic segment
 	Quadratic {
@@ -17,6 +18,7 @@ pub enum BezierHandles {
 }
 
 /// Representation of a bezier segment with 2D points
+#[derive(Copy, Clone)]
 pub struct Bezier {
 	/// Start point of the bezier segment
 	start: DVec2,
@@ -31,9 +33,9 @@ impl Bezier {
 	/// Create a quadratic bezier using the provided coordinates as the start, handle, and end points
 	pub fn from_quadratic_coordinates(x1: f64, y1: f64, x2: f64, y2: f64, x3: f64, y3: f64) -> Self {
 		Bezier {
-			start: DVec2::from((x1, y1)),
-			handles: BezierHandles::Quadratic { handle: DVec2::from((x2, y2)) },
-			end: DVec2::from((x3, y3)),
+			start: DVec2::new(x1, y1),
+			handles: BezierHandles::Quadratic { handle: DVec2::new(x2, y2) },
+			end: DVec2::new(x3, y3),
 		}
 	}
 
@@ -50,12 +52,12 @@ impl Bezier {
 	/// Create a cubic bezier using the provided coordinates as the start, handles, and end points
 	pub fn from_cubic_coordinates(x1: f64, y1: f64, x2: f64, y2: f64, x3: f64, y3: f64, x4: f64, y4: f64) -> Self {
 		Bezier {
-			start: DVec2::from((x1, y1)),
+			start: DVec2::new(x1, y1),
 			handles: BezierHandles::Cubic {
-				handle_start: DVec2::from((x2, y2)),
-				handle_end: DVec2::from((x3, y3)),
+				handle_start: DVec2::new(x2, y2),
+				handle_end: DVec2::new(x3, y3),
 			},
-			end: DVec2::from((x4, y4)),
+			end: DVec2::new(x4, y4),
 		}
 	}
 
@@ -253,5 +255,54 @@ impl Bezier {
 	pub fn normal(&self, t: f64) -> DVec2 {
 		let derivative = self.derivative(t);
 		derivative.normalize().perp()
+	}
+
+	/// Returns the pair of Bezier curves that result from splitting the original curve at the point corresponding to `t`
+	pub fn split(&self, t: f64) -> [Bezier; 2] {
+		let split_point = self.compute(t);
+
+		let t_squared = t * t;
+		let t_minus_one = t - 1.;
+		let squared_t_minus_one = t_minus_one * t_minus_one;
+
+		match self.handles {
+			// TODO: Actually calculate the correct handle locations
+			BezierHandles::Quadratic { handle } => [
+				Bezier::from_quadratic_dvec2(self.start, t * handle - t_minus_one * self.start, split_point),
+				Bezier::from_quadratic_dvec2(split_point, t * self.end - t_minus_one * handle, self.end),
+			],
+			BezierHandles::Cubic { handle_start, handle_end } => [
+				Bezier::from_cubic_dvec2(
+					self.start,
+					t * handle_start - t_minus_one * self.start,
+					t_squared * handle_end - 2. * t * t_minus_one * handle_start + squared_t_minus_one * self.start,
+					split_point,
+				),
+				Bezier::from_cubic_dvec2(
+					split_point,
+					t_squared * self.end - 2. * t * t_minus_one * handle_end + squared_t_minus_one * handle_start,
+					t * self.end - t_minus_one * handle_end,
+					self.end,
+				),
+			],
+		}
+	}
+
+	/// Returns the Bezier curve representing the sub-curve starting at the point corresponding to `t1` and ending at the point corresponding to `t2`
+	pub fn trim(&self, t1: f64, t2: f64) -> Bezier {
+		// Depending on the order of `t1` and `t2`, determine which half of the split we need to keep
+		let t1_split_side = if t1 <= t2 { 1 } else { 0 };
+		let t2_split_side = if t1 <= t2 { 0 } else { 1 };
+		let bezier_starting_at_t1 = self.split(t1)[t1_split_side];
+		// Adjust the ratio `t2` to its corresponding value on the new curve that was split on `t1`
+		let adjusted_t2 = if t1 < t2 || (t1 == t2 && t1 == 0.) {
+			// Case where we took the split from t1 to the end
+			// Also cover the `t1` == t2 case where there would otherwise be a divide by 0
+			(t2 - t1) / (1. - t1)
+		} else {
+			// Case where we took the split from the beginning to `t1`
+			t2 / t1
+		};
+		bezier_starting_at_t1.split(adjusted_t2)[t2_split_side]
 	}
 }
