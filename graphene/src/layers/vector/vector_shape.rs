@@ -404,7 +404,6 @@ impl From<&VectorShape> for BezPath {
 				if let Some(anchor) = &first.points[ControlPointType::Anchor] {
 					bez_path.push(PathEl::MoveTo(point_to_kurbo(anchor)));
 				}
-				start_new_shape = false;
 			}
 
 			// Create a path element from our first, second anchors in the window

@@ -779,6 +779,50 @@ impl Document {
 				}
 				Some([vec![DocumentChanged, LayerChanged { path: path.clone() }], update_thumbnails_upstream(&path)].concat())
 			}
+			Operation::InsertVectorAnchor { layer_path, anchor, after_id } => {
+				if let Ok(Some(shape)) = self.layer_mut(&layer_path).map(|layer| layer.as_vector_shape_mut()) {
+					shape.anchors_mut().insert(anchor, after_id);
+					self.mark_as_dirty(&layer_path)?;
+				}
+				Some([update_thumbnails_upstream(&layer_path), vec![DocumentChanged, LayerChanged { path: layer_path }]].concat())
+			}
+			Operation::PushVectorAnchor { layer_path, anchor } => {
+				if let Ok(Some(shape)) = self.layer_mut(&layer_path).map(|layer| layer.as_vector_shape_mut()) {
+					shape.anchors_mut().push(anchor);
+					self.mark_as_dirty(&layer_path)?;
+				}
+				Some([update_thumbnails_upstream(&layer_path), vec![DocumentChanged, LayerChanged { path: layer_path }]].concat())
+			}
+			Operation::RemoveVectorAnchor { layer_path, id } => {
+				if let Ok(Some(shape)) = self.layer_mut(&layer_path).map(|layer| layer.as_vector_shape_mut()) {
+					shape.anchors_mut().remove(id);
+					self.mark_as_dirty(&layer_path)?;
+				}
+				Some([update_thumbnails_upstream(&layer_path), vec![DocumentChanged, LayerChanged { path: layer_path }]].concat())
+			}
+			Operation::MoveVectorPoint {
+				layer_path,
+				id,
+				control_type,
+				position,
+			} => {
+				if let Ok(Some(shape)) = self.layer_mut(&layer_path).map(|layer| layer.as_vector_shape_mut()) {
+					if let Some(anchor) = shape.anchors_mut().by_id_mut(id) {
+						anchor.set_point_position(control_type as usize, position.into());
+						self.mark_as_dirty(&layer_path)?;
+					}
+				}
+				Some([update_thumbnails_upstream(&layer_path), vec![DocumentChanged, LayerChanged { path: layer_path }]].concat())
+			}
+			Operation::RemoveVectorPoint { layer_path, id, control_type } => {
+				if let Ok(Some(shape)) = self.layer_mut(&layer_path).map(|layer| layer.as_vector_shape_mut()) {
+					if let Some(anchor) = shape.anchors_mut().by_id_mut(id) {
+						anchor.points[control_type as usize] = None;
+						self.mark_as_dirty(&layer_path)?;
+					}
+				}
+				Some([update_thumbnails_upstream(&layer_path), vec![DocumentChanged, LayerChanged { path: layer_path }]].concat())
+			}
 			Operation::TransformLayerInScope { path, transform, scope } => {
 				let transform = DAffine2::from_cols_array(&transform);
 				let scope = DAffine2::from_cols_array(&scope);

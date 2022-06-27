@@ -3,6 +3,7 @@ use crate::layers::blend_mode::BlendMode;
 use crate::layers::layer_info::Layer;
 use crate::layers::style::{self, Stroke};
 use crate::layers::vector::constants::ControlPointType;
+use crate::layers::vector::vector_anchor::VectorAnchor;
 use crate::LayerId;
 
 use serde::{Deserialize, Serialize};
@@ -166,6 +167,30 @@ pub enum Operation {
 		// TODO Remove this (remove kurbo)
 		bez_path: kurbo::BezPath,
 		transform: [f64; 6],
+	},
+	InsertVectorAnchor {
+		layer_path: Vec<LayerId>,
+		anchor: VectorAnchor,
+		after_id: u64,
+	},
+	PushVectorAnchor {
+		layer_path: Vec<LayerId>,
+		anchor: VectorAnchor,
+	},
+	RemoveVectorAnchor {
+		layer_path: Vec<LayerId>,
+		id: u64,
+	},
+	MoveVectorPoint {
+		layer_path: Vec<LayerId>,
+		id: u64,
+		control_type: ControlPointType,
+		position: (f64, f64),
+	},
+	RemoveVectorPoint {
+		layer_path: Vec<LayerId>,
+		id: u64,
+		control_type: ControlPointType,
 	},
 	TransformLayerInScope {
 		path: Vec<LayerId>,
