@@ -54,35 +54,37 @@ impl MessageHandler<DialogMessage, &PortfolioMessageHandler> for DialogMessageHa
 				responses.push_back(FrontendMessage::DisplayDialog { icon: "Warning".to_string() }.into());
 			}
 			DialogMessage::RequestExportDialog => {
-				let artboard_handler = &portfolio.active_document().artboard_message_handler;
-				let mut index = 0;
-				let artboards = artboard_handler
-					.artboard_ids
-					.iter()
-					.rev()
-					.filter_map(|&artboard| artboard_handler.artboards_graphene_document.layer(&[artboard]).ok().map(|layer| (artboard, layer)))
-					.map(|(artboard, layer)| {
-						(
-							artboard,
-							format!(
-								"Artboard: {}",
-								layer.name.clone().unwrap_or_else(|| {
-									index += 1;
-									format!("Untitled {index}")
-								})
-							),
-						)
-					})
-					.collect();
+				if let Some(document) = portfolio.active_document() {
+					let artboard_handler = &document.artboard_message_handler;
+					let mut index = 0;
+					let artboards = artboard_handler
+						.artboard_ids
+						.iter()
+						.rev()
+						.filter_map(|&artboard| artboard_handler.artboards_graphene_document.layer(&[artboard]).ok().map(|layer| (artboard, layer)))
+						.map(|(artboard, layer)| {
+							(
+								artboard,
+								format!(
+									"Artboard: {}",
+									layer.name.clone().unwrap_or_else(|| {
+										index += 1;
+										format!("Untitled {index}")
+									})
+								),
+							)
+						})
+						.collect();
 
-				self.export_dialog = Export {
-					file_name: portfolio.active_document().name.clone(),
-					scale_factor: 1.,
-					artboards,
-					..Default::default()
-				};
-				self.export_dialog.register_properties(responses, LayoutTarget::DialogDetails);
-				responses.push_back(FrontendMessage::DisplayDialog { icon: "File".to_string() }.into());
+					self.export_dialog = Export {
+						file_name: document.name.clone(),
+						scale_factor: 1.,
+						artboards,
+						..Default::default()
+					};
+					self.export_dialog.register_properties(responses, LayoutTarget::DialogDetails);
+					responses.push_back(FrontendMessage::DisplayDialog { icon: "File".to_string() }.into());
+				}
 			}
 			DialogMessage::RequestNewDocumentDialog => {
 				self.new_document_dialog = NewDocument {

@@ -138,8 +138,8 @@ export default defineComponent({
 			secondaryButton.style.setProperty("--swatch-color", updateWorkingColors.secondary.toRgbaCSS());
 		});
 
-		this.updatePrimaryColor();
-		this.updateSecondaryColor();
+		// this.updatePrimaryColor();
+		// this.updateSecondaryColor();
 	},
 });
 </script>
