@@ -38,9 +38,9 @@ impl WasmBezier {
 		WasmBezier(Bezier::quadratic_through_points(points[0], points[1], points[2], t))
 	}
 
-	pub fn cubic_through_points(js_points: &JsValue, t: f64, d: f64) -> WasmBezier {
+	pub fn cubic_through_points(js_points: &JsValue, t: f64, strut: f64) -> WasmBezier {
 		let points: [DVec2; 3] = js_points.into_serde().unwrap();
-		WasmBezier(Bezier::cubic_through_points(points[0], points[1], points[2], t, d))
+		WasmBezier(Bezier::cubic_through_points(points[0], points[1], points[2], t, strut))
 	}
 
 	pub fn set_start(&mut self, x: f64, y: f64) {

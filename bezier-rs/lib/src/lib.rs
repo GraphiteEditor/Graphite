@@ -72,35 +72,40 @@ impl Bezier {
 		}
 	}
 
-	/// Create a quadratic bezier curve that goes through 3 points
-	pub fn quadratic_through_points(p1: DVec2, p2: DVec2, p3: DVec2, t: f64) -> Self {
+	/// Create a quadratic bezier curve that goes through 3 points, where the middle point will be at the corresponding position `t` on the curve.
+	/// Note that when `t = 0` or `t = 1`, the expectation is that the `point_on_curve` should be equal to `start` and `end` respectively.
+	/// In these cases, if the provided values are not equal, this function will use the `point_on_curve` as the `start`/`end` instead.
+	pub fn quadratic_through_points(start: DVec2, point_on_curve: DVec2, end: DVec2, t: f64) -> Self {
 		if t == 0. {
-			return Bezier::from_quadratic_dvec2(p2, p2, p3);
+			return Bezier::from_quadratic_dvec2(point_on_curve, point_on_curve, end);
 		} else if t == 1. {
-			return Bezier::from_quadratic_dvec2(p1, p2, p2);
+			return Bezier::from_quadratic_dvec2(start, point_on_curve, point_on_curve);
 		}
-		let [a, _, _] = utils::compute_abc_for_quadratic_through_points(p1, p2, p3, t);
-		Bezier::from_quadratic_dvec2(p1, a, p3)
+		let [a, _, _] = utils::compute_abc_for_quadratic_through_points(start, point_on_curve, end, t);
+		Bezier::from_quadratic_dvec2(start, a, end)
 	}
 
-	/// Create a cubic bezier curve that goes through 3 points. d1 represents the strut.
-	pub fn cubic_through_points(p1: DVec2, p2: DVec2, p3: DVec2, t: f64, d1: f64) -> Self {
+	/// Create a cubic bezier curve that goes through 3 points, where the middle point will be at the corresponding position `t` on the curve.
+	/// Note that when `t = 0` or `t = 1`, the expectation is that the `point_on_curve` should be equal to `start` and `end` respectively.
+	/// In these cases, if the provided values are not equal, this function will use the `point_on_curve` as the `start`/`end` instead.
+	/// * `strut` is a representation of the how wide the resulting curve will be by designating the distance between the `e1` and `e2` defined in [the projection identity section](https://pomax.github.io/bezierinfo/#abc) of Pomax's bezier curve primer.
+	pub fn cubic_through_points(start: DVec2, point_on_curve: DVec2, end: DVec2, t: f64, strut: f64) -> Self {
 		if t == 0. {
-			return Bezier::from_cubic_dvec2(p2, p2, p3, p3);
+			return Bezier::from_cubic_dvec2(point_on_curve, point_on_curve, end, end);
 		} else if t == 1. {
-			return Bezier::from_cubic_dvec2(p1, p1, p2, p2);
+			return Bezier::from_cubic_dvec2(start, start, point_on_curve, point_on_curve);
 		}
-		let [a, b, _] = utils::compute_abc_for_cubic_through_points(p1, p2, p3, t);
-		let distance_between_start_and_end = (p3 - p1) / (p1.distance(p3));
-		let e1 = b - (distance_between_start_and_end * d1);
-		let e2 = b + (distance_between_start_and_end * d1 * (1. - t) / t);
+		let [a, b, _] = utils::compute_abc_for_cubic_through_points(start, point_on_curve, end, t);
+		let distance_between_start_and_end = (end - start) / (start.distance(end));
+		let e1 = b - (distance_between_start_and_end * strut);
+		let e2 = b + (distance_between_start_and_end * strut * (1. - t) / t);
 
 		// TODO: these functions can be changed to helpers, but need to come up with an appropriate name first
 		let v1 = (e1 - t * a) / (1. - t);
 		let v2 = (e2 - (1. - t) * a) / t;
-		let handle_start = (v1 - (1. - t) * p1) / t;
-		let handle_end = (v2 - t * p3) / (1. - t);
-		Bezier::from_cubic_dvec2(p1, handle_start, handle_end, p3)
+		let handle_start = (v1 - (1. - t) * start) / t;
+		let handle_end = (v2 - t * end) / (1. - t);
+		Bezier::from_cubic_dvec2(start, handle_start, handle_end, end)
 	}
 
 	/// Convert to SVG

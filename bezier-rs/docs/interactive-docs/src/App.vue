@@ -83,7 +83,7 @@ export default defineComponent({
 								max: 100,
 								step: 5,
 								default: 10,
-								variable: "d1",
+								variable: "strut",
 							},
 						],
 					},
