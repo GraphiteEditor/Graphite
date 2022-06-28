@@ -22,3 +22,10 @@ export type Point = {
 export type BezierPoint = Point & {
 	mutator: WasmBezierMutatorKey;
 };
+
+export type BezierStyleConfig = {
+	curveStrokeColor: string;
+	handleStrokeColor: string;
+	handleLineStrokeColor: string;
+	radius: number;
+};

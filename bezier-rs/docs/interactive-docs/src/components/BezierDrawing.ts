@@ -1,7 +1,6 @@
 import { WasmBezier } from "@/../wasm/pkg";
 import { COLORS, drawBezier, drawPoint, getContextFromCanvas, getPointSizeByIndex } from "@/utils/drawing";
-import { BezierCallback, BezierPoint, WasmBezierMutatorKey } from "@/utils/types";
-import { WasmBezierInstance } from "@/utils/wasm-comm";
+import { BezierCallback, BezierPoint, WasmBezierMutatorKey, WasmBezierInstance } from "@/utils/types";
 
 // Offset to increase selectable range, used to make points easier to grab
 const FUDGE_FACTOR = 3;
@@ -115,6 +114,8 @@ class BezierDrawing {
 		}
 		this.clearFigure();
 
+		// For the create through points cases, we store a bezier where the handle is actually the point that the curve should pass through
+		// This is so that we can re-use the drag and drop logic, while simply drawing the desired bezier instead
 		const actualBezierPointLength = this.bezier.get_points().length;
 		const pointsToDraw = this.createThroughPoints
 			? (actualBezierPointLength === 3
@@ -132,14 +133,26 @@ class BezierDrawing {
 					.map((p) => JSON.parse(p))
 			: this.points;
 
-		drawBezier(this.ctx, pointsToDraw, this.dragIndex);
+		const styleConfig = {
+			handleLineStrokeColor: COLORS.INTERACTIVE.STROKE_2,
+		};
+		let dragIndex = this.dragIndex;
 		if (this.createThroughPoints) {
-			pointsToDraw.forEach((point, index) => {
-				// Redraw on top of the the handler(s) to change the colour
-				if (index !== 0 && index !== pointsToDraw.length - 1) {
-					drawPoint(this.ctx, point, getPointSizeByIndex(index, pointsToDraw.length), COLORS.NON_INTERACTIVE.STROKE_1);
-				}
-			});
+			if (this.dragIndex === 1) {
+				// Do not propagate dragIndex when the the non-endpoint is moved
+				dragIndex = null;
+			} else if (this.dragIndex === 2 && pointsToDraw.length === 4) {
+				// For the cubic case, we want to propagate the drag index when the end point is moved, but need to adjust the index
+				dragIndex = 3;
+			}
+		}
+		drawBezier(
+			this.ctx,
+			pointsToDraw,
+			dragIndex,
+			this.createThroughPoints ? { handleLineStrokeColor: COLORS.NON_INTERACTIVE.STROKE_1, handleStrokeColor: COLORS.NON_INTERACTIVE.STROKE_1 } : styleConfig
+		);
+		if (this.createThroughPoints) {
 			// Draw the point that the curve was drawn through
 			drawPoint(this.ctx, this.points[1], getPointSizeByIndex(1, this.points.length), this.dragIndex === 1 ? COLORS.INTERACTIVE.SELECTED : COLORS.INTERACTIVE.STROKE_1);
 		}

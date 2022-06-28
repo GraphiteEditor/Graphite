@@ -11,8 +11,7 @@
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
 
-import { BezierCallback, SliderOption } from "@/utils/types";
-import { WasmBezierInstance } from "@/utils/wasm-comm";
+import { BezierCallback, SliderOption, WasmBezierInstance } from "@/utils/types";
 
 import Example from "@/components/Example.vue";
 

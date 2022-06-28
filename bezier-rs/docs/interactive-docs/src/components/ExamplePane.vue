@@ -12,8 +12,7 @@
 <script lang="ts">
 import { defineComponent, PropType, Component } from "vue";
 
-import { BezierCallback, SliderOption } from "@/utils/types";
-import { WasmBezierInstance, WasmRawInstance } from "@/utils/wasm-comm";
+import { BezierCallback, SliderOption, WasmBezierInstance, WasmRawInstance } from "@/utils/types";
 
 import Example from "@/components/Example.vue";
 

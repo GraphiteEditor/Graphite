@@ -183,8 +183,8 @@ export default defineComponent({
 						const context = getContextFromCanvas(canvas);
 						const bezierPairPoints = JSON.parse(bezier.split(options.t));
 
-						drawBezier(context, bezierPairPoints[0], null, COLORS.NON_INTERACTIVE.STROKE_2, 3.5);
-						drawBezier(context, bezierPairPoints[1], null, COLORS.NON_INTERACTIVE.STROKE_1, 3.5);
+						drawBezier(context, bezierPairPoints[0], null, { curveStrokeColor: COLORS.NON_INTERACTIVE.STROKE_2, radius: 3.5 });
+						drawBezier(context, bezierPairPoints[1], null, { curveStrokeColor: COLORS.NON_INTERACTIVE.STROKE_1, radius: 3.5 });
 					},
 					template: markRaw(SliderExample),
 					templateOptions: { sliders: [tSliderOptions] },
@@ -194,7 +194,7 @@ export default defineComponent({
 					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: Record<string, number>): void => {
 						const context = getContextFromCanvas(canvas);
 						const trimmedBezier = bezier.trim(options.t1, options.t2);
-						drawBezierHelper(context, trimmedBezier, COLORS.NON_INTERACTIVE.STROKE_1, 3.5);
+						drawBezierHelper(context, trimmedBezier, { curveStrokeColor: COLORS.NON_INTERACTIVE.STROKE_1, radius: 3.5 });
 					},
 					template: markRaw(SliderExample),
 					templateOptions: {

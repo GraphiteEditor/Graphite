@@ -9,8 +9,7 @@
 import { defineComponent, PropType } from "vue";
 
 import BezierDrawing from "@/components/BezierDrawing";
-import { BezierCallback } from "@/utils/types";
-import { WasmBezierInstance } from "@/utils/wasm-comm";
+import { BezierCallback, WasmBezierInstance } from "@/utils/types";
 
 export default defineComponent({
 	name: "ExampleComponent",
