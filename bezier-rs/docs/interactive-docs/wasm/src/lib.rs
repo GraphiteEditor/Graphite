@@ -103,8 +103,8 @@ impl WasmBezier {
 		vec_to_point(&self.0.project(DVec2::new(x, y), 20, 1e-4, 3, 10))
 	}
 
-	pub fn extrema(&self) -> JsValue {
-		let extrema = self.0.extrema();
-		return JsValue::from_serde(&serde_json::to_string(&extrema).unwrap()).unwrap();
+	pub fn local_extrema(&self) -> JsValue {
+		let local_extrema = self.0.local_extrema();
+		return JsValue::from_serde(&serde_json::to_string(&local_extrema).unwrap()).unwrap();
 	}
 }

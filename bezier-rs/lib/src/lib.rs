@@ -419,7 +419,9 @@ impl Bezier {
 		self.compute(final_t)
 	}
 
-	pub fn extrema(&self) -> (Vec<f64>, Vec<f64>) {
+	/// Returns two lists of t-values representing the local extrema of the x and y parametric curves respectively
+	/// The local extrema are defined to be points at which the derivative of the curve is equal to zero
+	fn _local_extrema(&self) -> [Vec<f64>; 2] {
 		let mut x_values = Vec::new();
 		let mut y_values = Vec::new();
 		match self.handles {
@@ -457,7 +459,18 @@ impl Bezier {
 				}
 			}
 		}
-		(x_values, y_values)
+		[x_values, y_values]
+	}
+
+	/// Returns two lists of t-values representing the local extrema of the x and y parametric curves respectively
+	/// The extrema returned are restricted to those which fall within [0, 1]
+	pub fn local_extrema(&self) -> [Vec<f64>; 2] {
+		self._local_extrema()
+			.into_iter()
+			.map(|t_values| t_values.into_iter().filter(|&t| t > 0. && t < 1.).collect::<Vec<f64>>())
+			.collect::<Vec<Vec<f64>>>()
+			.try_into()
+			.unwrap()
 	}
 }
 

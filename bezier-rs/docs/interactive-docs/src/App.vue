@@ -239,13 +239,13 @@ export default defineComponent({
 				{
 					name: "Extrema",
 					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance): void => {
-						// const context = getContextFromCanvas(canvas);
-						const dimensionColours = ["red", "orange"];
-						const extrema: number[][] = JSON.parse(bezier.extrema());
+						const context = getContextFromCanvas(canvas);
+						const dimensionColours = [COLORS.NON_INTERACTIVE.STROKE_1, COLORS.NON_INTERACTIVE.STROKE_2];
+						const extrema: number[][] = JSON.parse(bezier.local_extrema());
 						extrema.forEach((tValues, index) => {
 							tValues.forEach((t) => {
 								const point = JSON.parse(bezier.compute(t));
-								drawPoint(getContextFromCanvas(canvas), point, 4, dimensionColours[index]);
+								drawPoint(context, point, 4, dimensionColours[index]);
 							});
 						});
 					},
