@@ -419,7 +419,7 @@ impl Bezier {
 		self.compute(final_t)
 	}
 
-	/// Returns two lists of t-values representing the local extrema of the x and y parametric curves respectively
+	/// Returns two lists of `t`-values representing the local extrema of the `x` and `y` parametric curves respectively
 	/// The local extrema are defined to be points at which the derivative of the curve is equal to zero
 	fn _local_extrema(&self) -> [Vec<f64>; 2] {
 		let mut x_values = Vec::new();
@@ -428,42 +428,45 @@ impl Bezier {
 			BezierHandles::Quadratic { handle } => {
 				let a = handle - self.start;
 				let b = self.end - handle;
-				// check for x extrema
-				if (b.x - a.x) != 0. {
-					x_values.push(-a.x / (b.x - a.x));
+				let b_minus_a = b - a;
+				// check for `x` extrema
+				if (b_minus_a.x) != 0. {
+					x_values.push(-a.x / (b_minus_a.x));
 				}
-				// check for y extrema
-				if (b.y - a.y) != 0. {
-					y_values.push(-a.y / (b.y - a.y));
+				// check for `y` extrema
+				if (b_minus_a.y) != 0. {
+					y_values.push(-a.y / (b_minus_a.y));
 				}
 			}
 			BezierHandles::Cubic { handle_start, handle_end } => {
 				let a = 3. * (-self.start + 3. * handle_start - 3. * handle_end + self.end);
 				let b = 6. * (self.start - 2. * handle_start + handle_end);
 				let c = 3. * (handle_start - self.start);
-				// check for x extrema
-				let x_discr = b.x * b.x - 4. * a.x * c.x;
-				if x_discr > 0. {
-					x_values.push((-b.x + x_discr.sqrt()) / (2. * a.x));
-					x_values.push((-b.x - x_discr.sqrt()) / (2. * a.x));
-				} else if x_discr == 0. {
-					x_values.push(-b.x / (2. * a.x));
+				let discriminant = b * b - 4. * a * c;
+				let two_times_a = 2. * a;
+				// check for `x` extrema using quadratic formula
+				if discriminant.x > 0. {
+					let root_discriminant_x = discriminant.x.sqrt();
+					x_values.push((-b.x + root_discriminant_x) / (two_times_a.x));
+					x_values.push((-b.x - root_discriminant_x) / (two_times_a.x));
+				} else if discriminant.x == 0. {
+					x_values.push(-b.x / (two_times_a.x));
 				}
-				// check for y extrema
-				let y_discr = b.y * b.y - 4. * a.y * c.y;
-				if y_discr > 0. {
-					y_values.push((-b.y + y_discr.sqrt()) / (2. * a.y));
-					y_values.push((-b.y - y_discr.sqrt()) / (2. * a.y));
-				} else if y_discr == 0. {
-					y_values.push(-b.y / (2. * a.y));
+				// check for `y` extrema using quadratic formula
+				if discriminant.y > 0. {
+					let root_discriminant_y = discriminant.y.sqrt();
+					y_values.push((-b.y + root_discriminant_y) / (two_times_a.y));
+					y_values.push((-b.y - root_discriminant_y) / (two_times_a.y));
+				} else if discriminant.y == 0. {
+					y_values.push(-b.y / (two_times_a.y));
 				}
 			}
 		}
 		[x_values, y_values]
 	}
 
-	/// Returns two lists of t-values representing the local extrema of the x and y parametric curves respectively
-	/// The extrema returned are restricted to those which fall within [0, 1]
+	/// Returns two lists of `t`-values representing the local extrema of the `x` and `y` parametric curves respectively
+	/// The extrema returned are restricted to those which fall within `[0, 1]`
 	pub fn local_extrema(&self) -> [Vec<f64>; 2] {
 		self._local_extrema()
 			.into_iter()
