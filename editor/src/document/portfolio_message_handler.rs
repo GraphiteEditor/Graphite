@@ -1,5 +1,5 @@
 use super::clipboards::{CopyBufferEntry, INTERNAL_CLIPBOARD_COUNT};
-use super::DocumentMessageHandler;
+use super::{DocumentMessageHandler, MenuBarMessageHandler};
 use crate::consts::{DEFAULT_DOCUMENT_NAME, GRAPHITE_DOCUMENT_VERSION};
 use crate::frontend::utility_types::FrontendDocumentDetails;
 use crate::input::InputPreprocessorMessageHandler;
@@ -15,6 +15,7 @@ use std::collections::{HashMap, VecDeque};
 
 #[derive(Debug, Clone)]
 pub struct PortfolioMessageHandler {
+	menu_bar_message_handler: MenuBarMessageHandler,
 	documents: HashMap<u64, DocumentMessageHandler>,
 	document_ids: Vec<u64>,
 	active_document_id: u64,
@@ -130,6 +131,7 @@ impl Default for PortfolioMessageHandler {
 			copy_buffer: [EMPTY_VEC; INTERNAL_CLIPBOARD_COUNT as usize],
 			active_document_id: starting_key,
 			font_cache: Default::default(),
+			menu_bar_message_handler: MenuBarMessageHandler::default(),
 		}
 	}
 }
@@ -145,6 +147,8 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 			// Sub-messages
 			#[remain::unsorted]
 			Document(message) => self.documents.get_mut(&self.active_document_id).unwrap().process_action(message, (ipp, &self.font_cache), responses),
+			#[remain::unsorted]
+			MenuBar(message) => self.menu_bar_message_handler.process_action(message, (), responses),
 
 			// Messages
 			AutoSaveActiveDocument => responses.push_back(PortfolioMessage::AutoSaveDocument { document_id: self.active_document_id }.into()),

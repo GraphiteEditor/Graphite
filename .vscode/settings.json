@@ -13,6 +13,13 @@
 		"editor.formatOnSave": true,
 		"editor.defaultFormatter": "dbaeumer.vscode-eslint",
 	},
+	"[scss]": {
+		"editor.codeActionsOnSave": {
+			"source.fixAll.eslint": true,
+		},
+		"editor.formatOnSave": true,
+		"editor.defaultFormatter": "esbenp.prettier-vscode",
+	},
 	// Handlebars: don't save on format
 	// (`about.hbs` is used by Cargo About to encode license information)
 	"[handlebars]": {
@@ -24,7 +31,9 @@
 	// ESLint config
 	"eslint.format.enable": true,
 	"eslint.workingDirectories": [
-		"./frontend"
+		"./frontend",
+		"./bezier-rs/docs/interactive-docs",
+		"./website",
 	],
 	"eslint.validate": [
 		"javascript",

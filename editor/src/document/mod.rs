@@ -8,6 +8,8 @@ mod artboard_message;
 mod artboard_message_handler;
 mod document_message;
 mod document_message_handler;
+mod menu_bar_message;
+mod menu_bar_message_handler;
 mod movement_message;
 mod movement_message_handler;
 mod overlays_message;
@@ -33,6 +35,11 @@ pub use document_message_handler::DocumentMessageHandler;
 pub use movement_message::{MovementMessage, MovementMessageDiscriminant};
 #[doc(inline)]
 pub use movement_message_handler::MovementMessageHandler;
+
+#[doc(inline)]
+pub use menu_bar_message::{MenuBarMessage, MenuBarMessageDiscriminant};
+#[doc(inline)]
+pub use menu_bar_message_handler::MenuBarMessageHandler;
 
 #[doc(inline)]
 pub use overlays_message::{OverlaysMessage, OverlaysMessageDiscriminant};

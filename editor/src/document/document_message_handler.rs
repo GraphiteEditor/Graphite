@@ -10,8 +10,8 @@ use crate::frontend::utility_types::{FileType, FrontendImageData};
 use crate::input::InputPreprocessorMessageHandler;
 use crate::layout::layout_message::LayoutTarget;
 use crate::layout::widgets::{
-	DropdownEntryData, DropdownInput, IconButton, LayoutRow, NumberInput, NumberInputIncrementBehavior, OptionalInput, PopoverButton, RadioEntryData, RadioInput, Separator, SeparatorDirection,
-	SeparatorType, Widget, WidgetCallback, WidgetHolder, WidgetLayout,
+	DropdownEntryData, DropdownInput, IconButton, Layout, LayoutGroup, NumberInput, NumberInputIncrementBehavior, OptionalInput, PopoverButton, RadioEntryData, RadioInput, Separator,
+	SeparatorDirection, SeparatorType, Widget, WidgetCallback, WidgetHolder, WidgetLayout,
 };
 use crate::message_prelude::*;
 use crate::EditorError;
@@ -535,7 +535,7 @@ impl DocumentMessageHandler {
 	}
 
 	pub fn update_document_widgets(&self, responses: &mut VecDeque<Message>) {
-		let document_bar_layout = WidgetLayout::new(vec![LayoutRow::Row {
+		let document_bar_layout = WidgetLayout::new(vec![LayoutGroup::Row {
 			widgets: vec![
 				WidgetHolder::new(Widget::OptionalInput(OptionalInput {
 					checked: self.snapping_enabled,
@@ -673,7 +673,7 @@ impl DocumentMessageHandler {
 			],
 		}]);
 
-		let document_mode_layout = WidgetLayout::new(vec![LayoutRow::Row {
+		let document_mode_layout = WidgetLayout::new(vec![LayoutGroup::Row {
 			widgets: vec![
 				WidgetHolder::new(Widget::DropdownInput(DropdownInput {
 					entries: vec![vec![
@@ -709,7 +709,7 @@ impl DocumentMessageHandler {
 
 		responses.push_back(
 			LayoutMessage::SendLayout {
-				layout: document_bar_layout,
+				layout: Layout::WidgetLayout(document_bar_layout),
 				layout_target: LayoutTarget::DocumentBar,
 			}
 			.into(),
@@ -717,7 +717,7 @@ impl DocumentMessageHandler {
 
 		responses.push_back(
 			LayoutMessage::SendLayout {
-				layout: document_mode_layout,
+				layout: Layout::WidgetLayout(document_mode_layout),
 				layout_target: LayoutTarget::DocumentMode,
 			}
 			.into(),
@@ -778,7 +778,7 @@ impl DocumentMessageHandler {
 			})
 			.collect();
 
-		let layer_tree_options = WidgetLayout::new(vec![LayoutRow::Row {
+		let layer_tree_options = WidgetLayout::new(vec![LayoutGroup::Row {
 			widgets: vec![
 				WidgetHolder::new(Widget::DropdownInput(DropdownInput {
 					entries: blend_mode_menu_entries,
@@ -831,7 +831,7 @@ impl DocumentMessageHandler {
 
 		responses.push_back(
 			LayoutMessage::SendLayout {
-				layout: layer_tree_options,
+				layout: Layout::WidgetLayout(layer_tree_options),
 				layout_target: LayoutTarget::LayerTreeOptions,
 			}
 			.into(),
@@ -1007,6 +1007,7 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 			}
 			DeleteLayer { layer_path } => {
 				responses.push_front(DocumentOperation::DeleteLayer { path: layer_path.clone() }.into());
+				responses.push_front(ToolMessage::AbortCurrentTool.into());
 				responses.push_back(PropertiesPanelMessage::CheckSelectedWasDeleted { path: layer_path }.into());
 			}
 			DeleteSelectedLayers => {
@@ -1243,7 +1244,7 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 					.into(),
 				);
 
-				let mouse = mouse.map_or(ipp.mouse.position, |pos| pos.into());
+				let mouse = mouse.map_or(ipp.viewport_bounds.center(), |pos| pos.into());
 				let transform = DAffine2::from_translation(mouse - ipp.viewport_bounds.top_left).to_cols_array();
 				responses.push_back(DocumentOperation::SetLayerTransformInViewport { path, transform }.into());
 			}

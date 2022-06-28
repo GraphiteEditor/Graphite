@@ -199,7 +199,11 @@ impl<'a> Selected<'a> {
 	pub fn new(original_transforms: &'a mut OriginalTransforms, pivot: &'a mut DVec2, selected: &'a [&'a Vec<LayerId>], responses: &'a mut VecDeque<Message>, document: &'a Document) -> Self {
 		for path in selected {
 			if !original_transforms.contains_key(*path) {
-				original_transforms.insert(path.to_vec(), document.layer(path).unwrap().transform);
+				if let Ok(layer) = document.layer(path) {
+					original_transforms.insert(path.to_vec(), layer.transform);
+				} else {
+					log::warn!("Didn't find a layer for {:?}", path);
+				}
 			}
 		}
 		Self {
@@ -260,13 +264,16 @@ impl<'a> Selected<'a> {
 
 	pub fn revert_operation(&mut self) {
 		for path in self.selected {
-			self.responses.push_back(
-				DocumentOperation::SetLayerTransform {
-					path: path.to_vec(),
-					transform: (*self.original_transforms.get(*path).unwrap()).to_cols_array(),
-				}
-				.into(),
-			);
+			if let Some(transform) = self.original_transforms.get(*path) {
+				// Push front to stop document switching before sending the transform
+				self.responses.push_front(
+					DocumentOperation::SetLayerTransform {
+						path: path.to_vec(),
+						transform: transform.to_cols_array(),
+					}
+					.into(),
+				);
+			}
 		}
 	}
 }

@@ -5,7 +5,7 @@ use crate::message_prelude::{DialogMessage, FrontendMessage, PortfolioMessage};
 pub struct CloseAllDocuments;
 
 impl PropertyHolder for CloseAllDocuments {
-	fn properties(&self) -> WidgetLayout {
+	fn properties(&self) -> Layout {
 		let button_widgets = vec![
 			WidgetHolder::new(Widget::TextButton(TextButton {
 				label: "Discard All".to_string(),
@@ -26,22 +26,22 @@ impl PropertyHolder for CloseAllDocuments {
 			})),
 		];
 
-		WidgetLayout::new(vec![
-			LayoutRow::Row {
+		Layout::WidgetLayout(WidgetLayout::new(vec![
+			LayoutGroup::Row {
 				widgets: vec![WidgetHolder::new(Widget::TextLabel(TextLabel {
 					value: "Close all documents?".to_string(),
 					bold: true,
 					..Default::default()
 				}))],
 			},
-			LayoutRow::Row {
+			LayoutGroup::Row {
 				widgets: vec![WidgetHolder::new(Widget::TextLabel(TextLabel {
 					value: "Unsaved work will be lost!".to_string(),
 					multiline: true,
 					..Default::default()
 				}))],
 			},
-			LayoutRow::Row { widgets: button_widgets },
-		])
+			LayoutGroup::Row { widgets: button_widgets },
+		]))
 	}
 }

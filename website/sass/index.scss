@@ -1,6 +1,6 @@
 #logo {
 	display: flex;
-	
+
 	img {
 		width: auto;
 		max-width: 100%;
@@ -27,7 +27,7 @@
 	display: flex;
 	gap: calc(var(--font-size-link) * 0.8);
 	flex-wrap: wrap;
-	
+
 	div {
 		display: flex;
 		gap: calc(var(--font-size-link) * 0.8);
@@ -38,7 +38,6 @@
 			display: block;
 		}
 	}
-
 }
 
 #hero-message {
@@ -250,7 +249,7 @@
 			width: 100%;
 			color: var(--color-fog);
 			box-sizing: border-box;
-			
+
 			&:not(:target) {
 				display: none;
 			}
@@ -291,7 +290,6 @@
 				&.name {
 					flex: 1 0 0;
 					min-width: 240px;
-					
 				}
 
 				&.phone {
@@ -378,7 +376,7 @@
 					width: 48px;
 					height: 48px;
 				}
-				
+
 				span {
 					line-height: 48px;
 					margin-left: 20px;
@@ -396,7 +394,7 @@
 		display: flex;
 		flex-direction: column;
 		gap: 20px;
-		
+
 		.headline a {
 			text-decoration: none;
 			color: var(--color-navy);
@@ -405,7 +403,7 @@
 		.publication {
 			font-weight: 800;
 		}
-		
+
 		.summary {
 			overflow: hidden;
 			text-overflow: ellipsis;

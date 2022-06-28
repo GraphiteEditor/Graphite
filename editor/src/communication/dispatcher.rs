@@ -440,7 +440,7 @@ mod test {
 	/// If this test is failing take a look at `GRAPHITE_DOCUMENT_VERSION` in `editor/src/consts.rs`, it may need to be updated.
 	/// This test will fail when you make changes to the underlying serialization format for a document.
 	fn check_if_graphite_file_version_upgrade_is_needed() {
-		use crate::layout::widgets::{LayoutRow, TextLabel, Widget};
+		use crate::layout::widgets::{LayoutGroup, TextLabel, Widget};
 		let print_problem_to_terminal_on_failure = |value: &String| {
 			println!();
 			println!("-------------------------------------------------");
@@ -467,7 +467,7 @@ mod test {
 		for response in responses {
 			// Check for the existence of the file format incompatibility warning dialog after opening the test file
 			if let FrontendMessage::UpdateDialogDetails { layout_target: _, layout } = response {
-				if let LayoutRow::Row { widgets } = &layout[0] {
+				if let LayoutGroup::Row { widgets } = &layout[0] {
 					if let Widget::TextLabel(TextLabel { value, .. }) = &widgets[0].widget {
 						print_problem_to_terminal_on_failure(value);
 					}

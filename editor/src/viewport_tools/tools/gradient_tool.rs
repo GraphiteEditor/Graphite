@@ -2,7 +2,7 @@ use crate::consts::{COLOR_ACCENT, LINE_ROTATE_SNAP_ANGLE, SELECTION_TOLERANCE, V
 use crate::document::DocumentMessageHandler;
 use crate::frontend::utility_types::MouseCursorIcon;
 use crate::input::keyboard::{Key, MouseMotion};
-use crate::layout::widgets::{LayoutRow, PropertyHolder, RadioEntryData, RadioInput, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
+use crate::layout::widgets::{Layout, LayoutGroup, PropertyHolder, RadioEntryData, RadioInput, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
 use crate::message_prelude::*;
 use crate::misc::{HintData, HintGroup, HintInfo, KeysGroup};
 use crate::viewport_tools::snapping::SnapHandler;
@@ -90,8 +90,8 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for GradientTool
 }
 
 impl PropertyHolder for GradientTool {
-	fn properties(&self) -> WidgetLayout {
-		WidgetLayout::new(vec![LayoutRow::Row {
+	fn properties(&self) -> Layout {
+		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row {
 			widgets: vec![WidgetHolder::new(Widget::RadioInput(RadioInput {
 				selected_index: if self.options.gradient_type == GradientType::Radial { 1 } else { 0 },
 				entries: vec![
@@ -111,7 +111,7 @@ impl PropertyHolder for GradientTool {
 					},
 				],
 			}))],
-		}])
+		}]))
 	}
 }
 

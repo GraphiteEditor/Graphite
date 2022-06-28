@@ -14,6 +14,9 @@ pub enum PortfolioMessage {
 	#[remain::unsorted]
 	#[child]
 	Document(DocumentMessage),
+	#[remain::unsorted]
+	#[child]
+	MenuBar(MenuBarMessage),
 
 	// Messages
 	AutoSaveActiveDocument,

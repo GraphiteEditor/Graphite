@@ -4,11 +4,11 @@
 			class="dropdown-box"
 			:class="{ disabled, open }"
 			:style="{ minWidth: `${minWidth}px` }"
-			tabindex="0"
 			@click="() => !disabled && (open = true)"
 			@blur="(e: FocusEvent) => blur(e)"
 			@keydown="(e) => keydown(e)"
 			ref="dropdownBox"
+			tabindex="0"
 			data-hover-menu-spawner
 		>
 			<IconLabel class="dropdown-icon" :icon="activeEntry.icon" v-if="activeEntry.icon" />
@@ -117,6 +117,7 @@ export default defineComponent({
 	data() {
 		return {
 			activeEntry: this.makeActiveEntry(this.selectedIndex),
+			activeEntrySkipWatcher: false,
 			open: false,
 			minWidth: 0,
 		};
@@ -124,9 +125,16 @@ export default defineComponent({
 	watch: {
 		// Called only when `selectedIndex` is changed from outside this component (with v-model)
 		selectedIndex() {
+			this.activeEntrySkipWatcher = true;
 			this.activeEntry = this.makeActiveEntry();
 		},
+		// Called when `activeEntry` is changed by the `v-model` on this component's MenuList component, or by the `selectedIndex()` watcher above (but we want to skip that case)
 		activeEntry(newActiveEntry: MenuListEntry) {
+			if (this.activeEntrySkipWatcher) {
+				this.activeEntrySkipWatcher = false;
+				return;
+			}
+
 			// `toRaw()` pulls it out of the Vue proxy
 			if (toRaw(newActiveEntry) === DASH_ENTRY) return;
 

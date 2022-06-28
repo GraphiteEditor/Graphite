@@ -1,7 +1,7 @@
 use super::utility_types::{FrontendDocumentDetails, FrontendImageData, MouseCursorIcon};
 use crate::document::layer_panel::{LayerPanelEntry, RawBuffer};
 use crate::layout::layout_message::LayoutTarget;
-use crate::layout::widgets::SubLayout;
+use crate::layout::widgets::{MenuColumn, SubLayout};
 use crate::message_prelude::*;
 use crate::misc::HintData;
 use crate::Color;
@@ -28,6 +28,7 @@ pub enum FrontendMessage {
 	TriggerFontLoad { font: Font, is_default: bool },
 	TriggerIndexedDbRemoveDocument { document_id: u64 },
 	TriggerIndexedDbWriteDocument { document: String, details: FrontendDocumentDetails, version: String },
+	TriggerPaste,
 	TriggerRasterDownload { document: String, name: String, mime: String, size: (f64, f64) },
 	TriggerTextCommit,
 	TriggerTextCopy { copy_text: String },
@@ -49,6 +50,7 @@ pub enum FrontendMessage {
 	UpdateImageData { image_data: Vec<FrontendImageData> },
 	UpdateInputHints { hint_data: HintData },
 	UpdateLayerTreeOptionsLayout { layout_target: LayoutTarget, layout: SubLayout },
+	UpdateMenuBarLayout { layout_target: LayoutTarget, layout: Vec<MenuColumn> },
 	UpdateMouseCursor { cursor: MouseCursorIcon },
 	UpdateNodeGraphVisibility { visible: bool },
 	UpdateOpenDocumentsList { open_documents: Vec<FrontendDocumentDetails> },
