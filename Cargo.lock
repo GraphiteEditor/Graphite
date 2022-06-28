@@ -219,7 +219,7 @@ dependencies = [
 [[package]]
 name = "kurbo"
 version = "0.8.3"
-source = "git+https://github.com/GraphiteEditor/kurbo.git#552bbe2d3a3d19beef4accb45ae10ca4f92afc1a"
+source = "git+https://github.com/linebender/kurbo.git#9ed4b73dac4f085065d7a6968121581cb8296089"
 dependencies = [
  "arrayvec",
  "serde",
