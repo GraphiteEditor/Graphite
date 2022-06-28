@@ -5,7 +5,7 @@ use crate::input::keyboard::{Key, MouseMotion};
 use crate::layout::widgets::{Layout, LayoutGroup, NumberInput, PropertyHolder, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
 use crate::message_prelude::*;
 use crate::misc::{HintData, HintGroup, HintInfo, KeysGroup};
-use crate::viewport_tools::tool::{Fsm, SignalToMessage, ToolActionHandlerData, ToolTransition};
+use crate::viewport_tools::tool::{Fsm, SignalToMessageMap, ToolActionHandlerData, ToolTransition};
 
 use graphene::layers::style;
 use graphene::Operation;
@@ -109,8 +109,8 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for ShapeTool {
 }
 
 impl ToolTransition for ShapeTool {
-	fn shared_messages(&self) -> SignalToMessage {
-		SignalToMessage {
+	fn signal_to_message_map(&self) -> SignalToMessageMap {
+		SignalToMessageMap {
 			document_dirty: ToolMessage::NoOp,
 			abort: ShapeToolMessage::Abort.into(),
 			selection_changed: ToolMessage::NoOp,

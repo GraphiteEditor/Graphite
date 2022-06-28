@@ -14,12 +14,6 @@ use std::fmt::{self, Debug};
 
 pub type ToolActionHandlerData<'a> = (&'a DocumentMessageHandler, &'a DocumentToolData, &'a InputPreprocessorMessageHandler, &'a FontCache);
 
-pub struct SignalToMessage {
-	pub document_dirty: ToolMessage,
-	pub selection_changed: ToolMessage,
-	pub abort: ToolMessage,
-}
-
 pub trait Fsm {
 	type ToolData;
 	type ToolOptions;
@@ -37,10 +31,17 @@ pub struct DocumentToolData {
 	pub secondary_color: Color,
 }
 
+#[derive(Clone, Debug)]
+pub struct SignalToMessageMap {
+	pub document_dirty: ToolMessage,
+	pub selection_changed: ToolMessage,
+	pub abort: ToolMessage,
+}
+
 pub trait ToolTransition {
-	fn shared_messages(&self) -> SignalToMessage;
-	fn subscribe(&self, responses: &mut VecDeque<Message>) {
-		let shared_messages = self.shared_messages();
+	fn signal_to_message_map(&self) -> SignalToMessageMap;
+	fn activate(&self, responses: &mut VecDeque<Message>) {
+		let shared_messages = self.signal_to_message_map();
 		responses.push_back(
 			BroadcastMessage::SubscribeSignal {
 				on: BroadcastSignal::DocumentIsDirty,
@@ -50,7 +51,7 @@ pub trait ToolTransition {
 		);
 		responses.push_back(
 			BroadcastMessage::SubscribeSignal {
-				on: BroadcastSignal::Abort,
+				on: BroadcastSignal::ToolAbort,
 				send: Box::new(shared_messages.abort.into()),
 			}
 			.into(),
@@ -64,8 +65,8 @@ pub trait ToolTransition {
 		);
 	}
 
-	fn unsubscribe(&self, responses: &mut VecDeque<Message>) {
-		let shared_messages = self.shared_messages();
+	fn deactivate(&self, responses: &mut VecDeque<Message>) {
+		let shared_messages = self.signal_to_message_map();
 		responses.push_back(
 			BroadcastMessage::UnsubscribeSignal {
 				on: BroadcastSignal::DocumentIsDirty,
@@ -75,7 +76,7 @@ pub trait ToolTransition {
 		);
 		responses.push_back(
 			BroadcastMessage::UnsubscribeSignal {
-				on: BroadcastSignal::Abort,
+				on: BroadcastSignal::ToolAbort,
 				message: Box::new(shared_messages.abort.into()),
 			}
 			.into(),
@@ -279,6 +280,7 @@ impl ToolType {
 		]
 	}
 
+	// TODO: Find a way to put this in each tool. Possibly a ToolMetadata trait
 	pub fn icon_name(&self) -> String {
 		match self {
 			// General tool group

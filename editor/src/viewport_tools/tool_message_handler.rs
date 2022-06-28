@@ -37,7 +37,7 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessorMes
 				// Send the Abort state transition to the tool
 				let mut send_abort_to_tool = |tool_type, update_hints_and_cursor: bool| {
 					if let Some(tool) = tool_data.tools.get_mut(&tool_type) {
-						tool.process_action(tool.shared_messages().abort, (document, document_data, input, font_cache), responses);
+						tool.process_action(tool.signal_to_message_map().abort, (document, document_data, input, font_cache), responses);
 
 						if update_hints_and_cursor {
 							tool.process_action(ToolMessage::UpdateHints, (document, document_data, input, font_cache), responses);
@@ -50,30 +50,20 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessorMes
 				send_abort_to_tool(tool_type, true);
 				send_abort_to_tool(old_tool, false);
 
-				// unsubscribe old tool from the broadcaster
-				tool_data.tools.get(&tool_type).unwrap().unsubscribe(responses);
+				// Unsubscribe old tool from the broadcaster
+				tool_data.tools.get(&tool_type).unwrap().deactivate(responses);
 
 				// Store the new active tool
 				tool_data.active_tool_type = tool_type;
 
-				// subscribe new tool
-				tool_data.tools.get(&tool_type).unwrap().subscribe(responses);
+				// Subscribe new tool
+				tool_data.tools.get(&tool_type).unwrap().activate(responses);
 
 				// Send the SelectionChanged message to the active tool, this will ensure the selection is updated
-				responses.push_back(
-					BroadcastMessage::TriggerSignal {
-						signal: BroadcastSignal::SelectionChanged,
-					}
-					.into(),
-				);
+				responses.push_back(BroadcastSignal::SelectionChanged.into());
 
 				// Send the DocumentIsDirty message to the active tool's sub-tool message handler
-				responses.push_back(
-					BroadcastMessage::TriggerSignal {
-						signal: BroadcastSignal::DocumentIsDirty,
-					}
-					.into(),
-				);
+				responses.push_back(BroadcastSignal::DocumentIsDirty.into());
 
 				// Send Properties to the frontend
 				tool_data.tools.get(&tool_type).unwrap().register_properties(responses, LayoutTarget::ToolOptions);
@@ -87,7 +77,7 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessorMes
 				let active_tool = &tool_data.active_tool_type;
 
 				// subscribe tool to broadcast messages
-				tool_data.tools.get(active_tool).unwrap().subscribe(responses);
+				tool_data.tools.get(active_tool).unwrap().activate(responses);
 
 				// Register initial properties
 				tool_data.tools.get(active_tool).unwrap().register_properties(responses, LayoutTarget::ToolOptions);

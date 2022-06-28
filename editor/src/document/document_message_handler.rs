@@ -1,8 +1,8 @@
 use super::clipboards::Clipboard;
 use super::layer_panel::{layer_panel_entry, LayerDataTypeDiscriminant, LayerMetadata, LayerPanelEntry, RawBuffer};
 use super::properties_panel_message_handler::PropertiesPanelMessageHandlerData;
+use super::utility_types::DocumentMode;
 use super::utility_types::{AlignAggregate, AlignAxis, DocumentSave, FlipAxis};
-use super::utility_types::{DocumentMode};
 use super::{vectorize_layer_metadata, PropertiesPanelMessageHandler};
 use super::{ArtboardMessageHandler, MovementMessageHandler, OverlaysMessageHandler, TransformLayerMessageHandler};
 use crate::consts::{ASYMPTOTIC_EFFECT, DEFAULT_DOCUMENT_NAME, FILE_SAVE_SUFFIX, GRAPHITE_DOCUMENT_VERSION, SCALE_EFFECT, SCROLLBAR_SPACING, VIEWPORT_ZOOM_TO_FIT_PADDING_SCALE_FACTOR};
@@ -858,12 +858,7 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 							}
 							DocumentResponse::DocumentChanged => responses.push_back(RenderDocument.into()),
 						};
-						responses.push_back(
-							BroadcastMessage::TriggerSignal {
-								signal: BroadcastSignal::DocumentIsDirty,
-							}
-							.into(),
-						);
+						responses.push_back(BroadcastSignal::DocumentIsDirty.into());
 					}
 				}
 				Err(e) => log::error!("DocumentError: {:?}", e),
@@ -912,12 +907,7 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 
 				// TODO: Correctly update layer panel in clear_selection instead of here
 				responses.push_back(FolderChanged { affected_folder_path: vec![] }.into());
-				responses.push_back(
-					BroadcastMessage::TriggerSignal {
-						signal: BroadcastSignal::SelectionChanged,
-					}
-					.into(),
-				);
+				responses.push_back(BroadcastSignal::SelectionChanged.into());
 
 				self.update_layer_tree_options_bar_widgets(responses, font_cache);
 			}
@@ -955,12 +945,7 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 							.into(),
 						);
 					}
-					responses.push_back(
-						BroadcastMessage::TriggerSignal {
-							signal: BroadcastSignal::DocumentIsDirty,
-						}
-						.into(),
-					);
+					responses.push_back(BroadcastSignal::DocumentIsDirty.into());
 				}
 			}
 			BooleanOperation(op) => {
@@ -994,7 +979,7 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 			}
 			DeleteLayer { layer_path } => {
 				responses.push_front(DocumentOperation::DeleteLayer { path: layer_path.clone() }.into());
-				responses.push_front(BroadcastMessage::TriggerSignalImmediate { signal: BroadcastSignal::Abort }.into());
+				responses.push_front(BroadcastSignal::ToolAbort.into_front());
 				responses.push_back(PropertiesPanelMessage::CheckSelectedWasDeleted { path: layer_path }.into());
 			}
 			DeleteSelectedLayers => {
@@ -1004,12 +989,7 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 					responses.push_front(DocumentMessage::DeleteLayer { layer_path: path.to_vec() }.into());
 				}
 
-				responses.push_front(
-					BroadcastMessage::TriggerSignalImmediate {
-						signal: BroadcastSignal::SelectionChanged,
-					}
-					.into(),
-				);
+				responses.push_front(BroadcastSignal::SelectionChanged.into_front());
 
 				responses.push_back(
 					BroadcastMessage::TriggerSignal {
@@ -1112,12 +1092,7 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 							.into(),
 						);
 					}
-					responses.push_back(
-						BroadcastMessage::TriggerSignal {
-							signal: BroadcastSignal::DocumentIsDirty,
-						}
-						.into(),
-					);
+					responses.push_back(BroadcastSignal::DocumentIsDirty.into());
 				}
 			}
 			FolderChanged { affected_folder_path } => {
@@ -1194,12 +1169,7 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 					};
 					responses.push_back(operation.into());
 				}
-				responses.push_back(
-					BroadcastMessage::TriggerSignal {
-						signal: BroadcastSignal::DocumentIsDirty,
-					}
-					.into(),
-				);
+				responses.push_back(BroadcastSignal::DocumentIsDirty.into());
 			}
 			PasteImage { mime, image_data, mouse } => {
 				let path = vec![generate_uuid()];
@@ -1237,12 +1207,7 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 			Redo => {
 				responses.push_back(SelectToolMessage::Abort.into());
 				responses.push_back(DocumentHistoryForward.into());
-				responses.push_back(
-					BroadcastMessage::TriggerSignal {
-						signal: BroadcastSignal::DocumentIsDirty,
-					}
-					.into(),
-				);
+				responses.push_back(BroadcastSignal::DocumentIsDirty.into());
 				responses.push_back(RenderDocument.into());
 				responses.push_back(FolderChanged { affected_folder_path: vec![] }.into());
 			}
@@ -1397,12 +1362,7 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 							}
 							.into(),
 						);
-						responses.push_back(
-							BroadcastMessage::TriggerSignal {
-								signal: BroadcastSignal::SelectionChanged,
-							}
-							.into(),
-						);
+						responses.push_back(BroadcastSignal::SelectionChanged.into());
 					} else {
 						paths.push(layer_path.clone());
 					}
@@ -1496,22 +1456,12 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 			}
 			ToggleLayerVisibility { layer_path } => {
 				responses.push_back(DocumentOperation::ToggleLayerVisibility { path: layer_path }.into());
-				responses.push_back(
-					BroadcastMessage::TriggerSignal {
-						signal: BroadcastSignal::DocumentIsDirty,
-					}
-					.into(),
-				);
+				responses.push_back(BroadcastSignal::DocumentIsDirty.into());
 			}
 			Undo => {
-				responses.push_back(BroadcastMessage::TriggerSignal { signal: BroadcastSignal::Abort }.into());
+				responses.push_back(BroadcastSignal::ToolAbort.into());
 				responses.push_back(DocumentHistoryBackward.into());
-				responses.push_back(
-					BroadcastMessage::TriggerSignal {
-						signal: BroadcastSignal::DocumentIsDirty,
-					}
-					.into(),
-				);
+				responses.push_back(BroadcastSignal::DocumentIsDirty.into());
 				responses.push_back(RenderDocument.into());
 				responses.push_back(FolderChanged { affected_folder_path: vec![] }.into());
 			}

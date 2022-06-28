@@ -6,7 +6,7 @@ use crate::layout::widgets::{Layout, LayoutGroup, PropertyHolder, RadioEntryData
 use crate::message_prelude::*;
 use crate::misc::{HintData, HintGroup, HintInfo, KeysGroup};
 use crate::viewport_tools::snapping::SnapHandler;
-use crate::viewport_tools::tool::{Fsm, SignalToMessage, ToolActionHandlerData, ToolTransition};
+use crate::viewport_tools::tool::{Fsm, SignalToMessageMap, ToolActionHandlerData, ToolTransition};
 
 use graphene::color::Color;
 use graphene::intersection::Quad;
@@ -285,8 +285,8 @@ impl SelectedGradient {
 }
 
 impl ToolTransition for GradientTool {
-	fn shared_messages(&self) -> SignalToMessage {
-		SignalToMessage {
+	fn signal_to_message_map(&self) -> SignalToMessageMap {
+		SignalToMessageMap {
 			document_dirty: GradientToolMessage::DocumentIsDirty.into(),
 			abort: GradientToolMessage::Abort.into(),
 			selection_changed: ToolMessage::NoOp,
@@ -342,12 +342,7 @@ impl Fsm for GradientToolFsmState {
 					self
 				}
 				(GradientToolFsmState::Ready, GradientToolMessage::PointerDown) => {
-					responses.push_back(
-						BroadcastMessage::TriggerSignal {
-							signal: BroadcastSignal::DocumentIsDirty,
-						}
-						.into(),
-					);
+					responses.push_back(BroadcastSignal::DocumentIsDirty.into());
 
 					let mouse = input.mouse.position;
 					let tolerance = VECTOR_MANIPULATOR_ANCHOR_MARKER_SIZE.powi(2);

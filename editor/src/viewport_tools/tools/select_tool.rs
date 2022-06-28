@@ -8,7 +8,7 @@ use crate::layout::widgets::{IconButton, Layout, LayoutGroup, PopoverButton, Pro
 use crate::message_prelude::*;
 use crate::misc::{HintData, HintGroup, HintInfo, KeysGroup};
 use crate::viewport_tools::snapping::{self, SnapHandler};
-use crate::viewport_tools::tool::{Fsm, SignalToMessage, ToolActionHandlerData, ToolTransition, ToolType};
+use crate::viewport_tools::tool::{Fsm, SignalToMessageMap, ToolActionHandlerData, ToolTransition, ToolType};
 use graphene::boolean_ops::BooleanOperation;
 use graphene::document::Document;
 use graphene::intersection::Quad;
@@ -259,8 +259,8 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for SelectTool {
 }
 
 impl ToolTransition for SelectTool {
-	fn shared_messages(&self) -> SignalToMessage {
-		SignalToMessage {
+	fn signal_to_message_map(&self) -> SignalToMessageMap {
+		SignalToMessageMap {
 			document_dirty: SelectToolMessage::DocumentIsDirty.into(),
 			abort: SelectToolMessage::Abort.into(),
 			selection_changed: ToolMessage::NoOp,

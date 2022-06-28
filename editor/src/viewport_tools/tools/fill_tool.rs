@@ -4,7 +4,7 @@ use crate::input::keyboard::MouseMotion;
 use crate::layout::widgets::PropertyHolder;
 use crate::message_prelude::*;
 use crate::misc::{HintData, HintGroup, HintInfo};
-use crate::viewport_tools::tool::{Fsm, SignalToMessage, ToolActionHandlerData, ToolTransition};
+use crate::viewport_tools::tool::{Fsm, SignalToMessageMap, ToolActionHandlerData, ToolTransition};
 
 use graphene::intersection::Quad;
 use graphene::Operation;
@@ -59,8 +59,8 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for FillTool {
 }
 
 impl ToolTransition for FillTool {
-	fn shared_messages(&self) -> SignalToMessage {
-		SignalToMessage {
+	fn signal_to_message_map(&self) -> SignalToMessageMap {
+		SignalToMessageMap {
 			document_dirty: ToolMessage::NoOp,
 			abort: FillToolMessage::Abort.into(),
 			selection_changed: ToolMessage::NoOp,

@@ -7,7 +7,7 @@ use crate::layout::widgets::{Layout, LayoutGroup, NumberInput, PropertyHolder, W
 use crate::message_prelude::*;
 use crate::misc::{HintData, HintGroup, HintInfo, KeysGroup};
 use crate::viewport_tools::snapping::SnapHandler;
-use crate::viewport_tools::tool::{Fsm, SignalToMessage, ToolActionHandlerData, ToolTransition};
+use crate::viewport_tools::tool::{Fsm, SignalToMessageMap, ToolActionHandlerData, ToolTransition};
 use crate::viewport_tools::vector_editor::constants::ControlPointType;
 use crate::viewport_tools::vector_editor::shape_editor::ShapeEditor;
 use crate::viewport_tools::vector_editor::vector_shape::VectorShape;
@@ -122,8 +122,8 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for PenTool {
 }
 
 impl ToolTransition for PenTool {
-	fn shared_messages(&self) -> SignalToMessage {
-		SignalToMessage {
+	fn signal_to_message_map(&self) -> SignalToMessageMap {
+		SignalToMessageMap {
 			document_dirty: PenToolMessage::DocumentIsDirty.into(),
 			abort: PenToolMessage::Abort.into(),
 			selection_changed: ToolMessage::NoOp,

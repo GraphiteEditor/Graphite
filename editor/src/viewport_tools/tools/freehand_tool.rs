@@ -3,7 +3,7 @@ use crate::input::keyboard::MouseMotion;
 use crate::layout::widgets::{Layout, LayoutGroup, NumberInput, PropertyHolder, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
 use crate::message_prelude::*;
 use crate::misc::{HintData, HintGroup, HintInfo};
-use crate::viewport_tools::tool::{DocumentToolData, Fsm, SignalToMessage, ToolActionHandlerData, ToolTransition};
+use crate::viewport_tools::tool::{DocumentToolData, Fsm, SignalToMessageMap, ToolActionHandlerData, ToolTransition};
 
 use graphene::layers::style;
 use graphene::Operation;
@@ -110,8 +110,8 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for FreehandTool
 }
 
 impl ToolTransition for FreehandTool {
-	fn shared_messages(&self) -> SignalToMessage {
-		SignalToMessage {
+	fn signal_to_message_map(&self) -> SignalToMessageMap {
+		SignalToMessageMap {
 			document_dirty: ToolMessage::NoOp,
 			abort: FreehandToolMessage::Abort.into(),
 			selection_changed: ToolMessage::NoOp,

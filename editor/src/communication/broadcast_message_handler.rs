@@ -1,6 +1,6 @@
-use std::collections::HashMap;
-
 use crate::message_prelude::*;
+
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, Default)]
 pub struct BroadcastMessageHandler {
@@ -14,7 +14,7 @@ impl MessageHandler<BroadcastMessage, ()> for BroadcastMessageHandler {
 			SubscribeSignal { on, send } => self.listeners.entry(on).or_default().push(*send),
 			UnsubscribeSignal { on, message } => self.listeners.entry(on).or_default().retain(|msg| *msg != *message),
 			TriggerSignal { signal } => responses.extend(self.listeners.entry(signal).or_default().clone().into_iter()),
-			TriggerSignalImmediate { signal } => {
+			TriggerSignalFront { signal } => {
 				for message in self.listeners.entry(signal).or_default() {
 					responses.push_front(message.clone())
 				}
