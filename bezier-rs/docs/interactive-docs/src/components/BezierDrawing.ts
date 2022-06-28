@@ -23,13 +23,13 @@ class BezierDrawing {
 
 	options: Record<string, number>;
 
-	createFromPoints: boolean;
+	createThroughPoints: boolean;
 
-	constructor(bezier: WasmBezierInstance, callback: BezierCallback, options: Record<string, number>, createFromPoints = false) {
+	constructor(bezier: WasmBezierInstance, callback: BezierCallback, options: Record<string, number>, createThroughPoints = false) {
 		this.bezier = bezier;
 		this.callback = callback;
 		this.options = options;
-		this.createFromPoints = createFromPoints;
+		this.createThroughPoints = createThroughPoints;
 		this.points = bezier
 			.get_points()
 			.map((p) => JSON.parse(p))
@@ -41,7 +41,8 @@ class BezierDrawing {
 				mutator: BezierDrawing.indexToMutator[points.length === 3 && i > 1 ? i + 1 : i],
 			}));
 
-		if (this.createFromPoints && this.points.length === 4) {
+		if (this.createThroughPoints && this.points.length === 4) {
+			// Use the first handler as the middle point
 			this.points = [this.points[0], this.points[1], this.points[3]];
 		}
 
@@ -115,7 +116,7 @@ class BezierDrawing {
 		this.clearFigure();
 
 		const actualBezierPointLength = this.bezier.get_points().length;
-		const pointsToDraw = this.createFromPoints
+		const pointsToDraw = this.createThroughPoints
 			? (actualBezierPointLength === 3
 					? WasmBezier.quadratic_through_points(
 							this.points.map((p) => [p.x, p.y]),
@@ -132,7 +133,7 @@ class BezierDrawing {
 			: this.points;
 
 		drawBezier(this.ctx, pointsToDraw, this.dragIndex);
-		if (this.createFromPoints) {
+		if (this.createThroughPoints) {
 			pointsToDraw.forEach((point, index) => {
 				// Redraw on top of the the handler(s) to change the colour
 				if (index !== 0 && index !== pointsToDraw.length - 1) {

@@ -8,7 +8,7 @@
 				:templateOptions="feature.templateOptions"
 				:name="feature.name"
 				:callback="feature.callback"
-				:createFromPoints="feature.createFromPoints"
+				:createThroughPoints="feature.createThroughPoints"
 				:cubicOptions="feature.cubicOptions"
 			/>
 		</div>
@@ -63,11 +63,10 @@ export default defineComponent({
 					callback: (): void => {},
 				},
 				{
-					id: 1,
 					name: "Bezier from points",
 					// eslint-disable-next-line
 					callback: (): void => {},
-					createFromPoints: true,
+					createThroughPoints: true,
 					template: markRaw(SliderExample),
 					templateOptions: { sliders: [{ ...tSliderOptions }] },
 					cubicOptions: {
@@ -90,7 +89,6 @@ export default defineComponent({
 					},
 				},
 				{
-					id: 2,
 					name: "Length",
 					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance): void => {
 						drawText(getContextFromCanvas(canvas), `Length: ${bezier.length().toFixed(2)}`, 5, canvas.height - 7);

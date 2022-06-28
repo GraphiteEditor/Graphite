@@ -16,7 +16,7 @@ export default defineComponent({
 	name: "ExampleComponent",
 	data() {
 		return {
-			bezierDrawing: new BezierDrawing(this.bezier, this.callback, this.options, this.createFromPoints),
+			bezierDrawing: new BezierDrawing(this.bezier, this.callback, this.options, this.createThroughPoints),
 		};
 	},
 	props: {
@@ -33,7 +33,7 @@ export default defineComponent({
 			type: Object as PropType<Record<string, number>>,
 			default: () => ({}),
 		},
-		createFromPoints: {
+		createThroughPoints: {
 			type: Boolean,
 			default: false,
 		},

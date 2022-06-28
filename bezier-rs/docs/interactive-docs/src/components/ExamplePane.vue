@@ -3,7 +3,7 @@
 		<h2 class="example_pane_header">{{ name }}</h2>
 		<div class="example_row">
 			<div v-for="(example, index) in exampleData" :key="index">
-				<component :is="template" :templateOptions="example.templateOptions" :title="example.title" :bezier="example.bezier" :callback="callback" :createFromPoints="createFromPoints" />
+				<component :is="template" :templateOptions="example.templateOptions" :title="example.title" :bezier="example.bezier" :callback="callback" :createThroughPoints="createThroughPoints" />
 			</div>
 		</div>
 	</div>
@@ -43,7 +43,7 @@ export default defineComponent({
 			type: Object,
 			default: null,
 		},
-		createFromPoints: {
+		createThroughPoints: {
 			type: Boolean,
 			default: false,
 		},
