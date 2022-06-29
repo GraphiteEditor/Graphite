@@ -117,27 +117,29 @@ class BezierDrawing {
 		// For the create through points cases, we store a bezier where the handle is actually the point that the curve should pass through
 		// This is so that we can re-use the drag and drop logic, while simply drawing the desired bezier instead
 		const actualBezierPointLength = this.bezier.get_points().length;
-		const pointsToDraw = this.createThroughPoints
-			? (actualBezierPointLength === 3
-					? WasmBezier.quadratic_through_points(
-							this.points.map((p) => [p.x, p.y]),
-							this.options.t
-					  )
-					: WasmBezier.cubic_through_points(
-							this.points.map((p) => [p.x, p.y]),
-							this.options.t,
-							this.options.strut
-					  )
-			  )
-					.get_points()
-					.map((p) => JSON.parse(p))
-			: this.points;
+		let pointsToDraw = this.points;
 
 		const styleConfig = {
 			handleLineStrokeColor: COLORS.INTERACTIVE.STROKE_2,
 		};
 		let dragIndex = this.dragIndex;
 		if (this.createThroughPoints) {
+			if (actualBezierPointLength === 3) {
+				pointsToDraw = WasmBezier.quadratic_through_points(
+					this.points.map((p) => [p.x, p.y]),
+					this.options.t
+				)
+					.get_points()
+					.map((p) => JSON.parse(p));
+			} else {
+				pointsToDraw = WasmBezier.cubic_through_points(
+					this.points.map((p) => [p.x, p.y]),
+					this.options.t,
+					this.options.strut
+				)
+					.get_points()
+					.map((p) => JSON.parse(p));
+			}
 			if (this.dragIndex === 1) {
 				// Do not propagate dragIndex when the the non-endpoint is moved
 				dragIndex = null;

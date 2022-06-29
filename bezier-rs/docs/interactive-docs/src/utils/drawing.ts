@@ -16,7 +16,9 @@ export const COLORS = {
 	},
 };
 
-export const getPointSizeByIndex = (index: number, numPoints: number, radius = DEFAULT_ENDPOINT_RADIUS): number => (index === 0 || index === numPoints - 1 ? radius : radius * HANDLE_RADIUS_FACTOR);
+export const isIndexFirstOrLast = (index: number, arrayLength: number): boolean => index === 0 || index === arrayLength - 1;
+
+export const getPointSizeByIndex = (index: number, numPoints: number, radius = DEFAULT_ENDPOINT_RADIUS): number => (isIndexFirstOrLast(index, numPoints) ? radius : radius * HANDLE_RADIUS_FACTOR);
 
 export const getContextFromCanvas = (canvas: HTMLCanvasElement): CanvasRenderingContext2D => {
 	const ctx = canvas.getContext("2d");
@@ -114,7 +116,7 @@ export const drawBezier = (ctx: CanvasRenderingContext2D, points: Point[], dragI
 	drawLine(ctx, end, handleEnd, styleConfig.handleLineStrokeColor);
 
 	points.forEach((point, index) => {
-		const strokeColor = index === 0 || index === points.length - 1 ? styleConfig.curveStrokeColor : styleConfig.handleStrokeColor;
+		const strokeColor = isIndexFirstOrLast(index, points.length) ? styleConfig.curveStrokeColor : styleConfig.handleStrokeColor;
 		drawPoint(ctx, point, getPointSizeByIndex(index, points.length, styleConfig.radius), index === dragIndex ? COLORS.INTERACTIVE.SELECTED : strokeColor);
 	});
 };

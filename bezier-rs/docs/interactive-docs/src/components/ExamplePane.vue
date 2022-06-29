@@ -12,14 +12,14 @@
 <script lang="ts">
 import { defineComponent, PropType, Component } from "vue";
 
-import { BezierCallback, SliderOption, WasmBezierInstance, WasmRawInstance } from "@/utils/types";
+import { BezierCallback, TemplateOption, WasmBezierInstance, WasmRawInstance } from "@/utils/types";
 
 import Example from "@/components/Example.vue";
 
 type ExampleData = {
 	title: string;
 	bezier: WasmBezierInstance;
-	templateOptions: SliderOption;
+	templateOptions: TemplateOption;
 };
 
 export default defineComponent({
@@ -37,13 +37,13 @@ export default defineComponent({
 			type: Object as PropType<Component>,
 			default: Example,
 		},
-		templateOptions: Object,
+		templateOptions: Object as PropType<TemplateOption>,
 		cubicOptions: {
-			type: Object,
+			type: Object as PropType<TemplateOption>,
 			default: null,
 		},
 		createThroughPoints: {
-			type: Boolean,
+			type: Boolean as PropType<boolean>,
 			default: false,
 		},
 	},
@@ -69,12 +69,12 @@ export default defineComponent({
 				{
 					title: "Quadratic",
 					bezier: wasm.WasmBezier.new_quadratic(quadraticPoints),
-					templateOptions: this.templateOptions as SliderOption,
+					templateOptions: this.templateOptions as TemplateOption,
 				},
 				{
 					title: "Cubic",
 					bezier: wasm.WasmBezier.new_cubic(cubicPoints),
-					templateOptions: (this.cubicOptions || this.templateOptions) as SliderOption,
+					templateOptions: (this.cubicOptions || this.templateOptions) as TemplateOption,
 				},
 			];
 		});

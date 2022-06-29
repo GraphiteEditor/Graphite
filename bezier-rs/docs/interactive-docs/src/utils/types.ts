@@ -14,6 +14,10 @@ export type SliderOption = {
 	variable: string;
 };
 
+export type TemplateOption = {
+	sliders: SliderOption[];
+};
+
 export type Point = {
 	x: number;
 	y: number;

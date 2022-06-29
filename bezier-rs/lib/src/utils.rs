@@ -11,7 +11,7 @@ fn compute_abc_through_points(start_point: DVec2, point_on_curve: DVec2, end_poi
 	[a, point_on_curve, c]
 }
 
-/// Compute a, b and c for a quadratic curve that fits the start, end and point on curve at `t`.
+/// Compute a, b, and c for a quadratic curve that fits the start, end and point on curve at `t`.
 /// The definition for the a, b, c points are defined in [the projection identity section](https://pomax.github.io/bezierinfo/#abc) of Pomax's bezier curve primer.
 pub fn compute_abc_for_quadratic_through_points(start_point: DVec2, point_on_curve: DVec2, end_point: DVec2, t: f64) -> [DVec2; 3] {
 	let t_squared = t * t;
@@ -20,7 +20,7 @@ pub fn compute_abc_for_quadratic_through_points(start_point: DVec2, point_on_cur
 	compute_abc_through_points(start_point, point_on_curve, end_point, t_squared, squared_one_minus_t)
 }
 
-/// Compute a, b and c for a cubic curve that fits the start, end and point on curve at `t`.
+/// Compute a, b, and c for a cubic curve that fits the start, end and point on curve at `t`.
 /// The definition for the a, b, c points are defined in [the projection identity section](https://pomax.github.io/bezierinfo/#abc) of Pomax's bezier curve primer.
 pub fn compute_abc_for_cubic_through_points(start_point: DVec2, point_on_curve: DVec2, end_point: DVec2, t: f64) -> [DVec2; 3] {
 	let t_cubed = t * t * t;

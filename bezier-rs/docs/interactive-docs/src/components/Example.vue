@@ -33,7 +33,7 @@ export default defineComponent({
 			default: () => ({}),
 		},
 		createThroughPoints: {
-			type: Boolean,
+			type: Boolean as PropType<boolean>,
 			default: false,
 		},
 	},

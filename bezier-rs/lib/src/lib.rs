@@ -78,7 +78,8 @@ impl Bezier {
 	pub fn quadratic_through_points(start: DVec2, point_on_curve: DVec2, end: DVec2, t: f64) -> Self {
 		if t == 0. {
 			return Bezier::from_quadratic_dvec2(point_on_curve, point_on_curve, end);
-		} else if t == 1. {
+		}
+		if t == 1. {
 			return Bezier::from_quadratic_dvec2(start, point_on_curve, point_on_curve);
 		}
 		let [a, _, _] = utils::compute_abc_for_quadratic_through_points(start, point_on_curve, end, t);
@@ -92,7 +93,8 @@ impl Bezier {
 	pub fn cubic_through_points(start: DVec2, point_on_curve: DVec2, end: DVec2, t: f64, strut: f64) -> Self {
 		if t == 0. {
 			return Bezier::from_cubic_dvec2(point_on_curve, point_on_curve, end, end);
-		} else if t == 1. {
+		}
+		if t == 1. {
 			return Bezier::from_cubic_dvec2(start, start, point_on_curve, point_on_curve);
 		}
 		let [a, b, _] = utils::compute_abc_for_cubic_through_points(start, point_on_curve, end, t);
@@ -345,10 +347,13 @@ mod tests {
 		let p1 = DVec2::new(30., 50.);
 		let p2 = DVec2::new(140., 30.);
 		let p3 = DVec2::new(160., 170.);
-		let bezier = Bezier::quadratic_through_points(p1, p2, p3, 0.5);
-		assert!(compare_points(bezier.compute(0.5), p2));
+
+		let bezier1 = Bezier::quadratic_through_points(p1, p2, p3, 0.5);
+		assert!(compare_points(bezier1.compute(0.5), p2));
+
 		let bezier2 = Bezier::quadratic_through_points(p1, p2, p3, 0.8);
 		assert!(compare_points(bezier2.compute(0.8), p2));
+
 		let bezier3 = Bezier::quadratic_through_points(p1, p2, p3, 0.);
 		assert!(compare_points(bezier3.compute(0.), p2));
 	}
@@ -358,10 +363,13 @@ mod tests {
 		let p1 = DVec2::new(30., 30.);
 		let p2 = DVec2::new(60., 140.);
 		let p3 = DVec2::new(160., 160.);
-		let bezier = Bezier::cubic_through_points(p1, p2, p3, 0.3, 10.);
-		assert!(compare_points(bezier.compute(0.3), p2));
+
+		let bezier1 = Bezier::cubic_through_points(p1, p2, p3, 0.3, 10.);
+		assert!(compare_points(bezier1.compute(0.3), p2));
+
 		let bezier2 = Bezier::cubic_through_points(p1, p2, p3, 0.8, 91.7);
 		assert!(compare_points(bezier2.compute(0.8), p2));
+
 		let bezier3 = Bezier::cubic_through_points(p1, p2, p3, 0., 91.7);
 		assert!(compare_points(bezier3.compute(0.), p2));
 	}
