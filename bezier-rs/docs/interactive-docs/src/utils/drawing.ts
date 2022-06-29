@@ -20,6 +20,7 @@ export const isIndexFirstOrLast = (index: number, arrayLength: number): boolean 
 
 export const getPointSizeByIndex = (index: number, numPoints: number, radius = DEFAULT_ENDPOINT_RADIUS): number => (isIndexFirstOrLast(index, numPoints) ? radius : radius * HANDLE_RADIUS_FACTOR);
 
+// Get a contrasting colour based on an index. Ensures sequental colours contrast.
 export const getUniqueColor = (n: number): string => {
 	let color = n + 36;
 	const rgb = [0, 0, 0];

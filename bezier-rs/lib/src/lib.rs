@@ -551,30 +551,25 @@ impl Bezier {
 		f64::abs(f64::acos(s)) < std::f64::consts::PI / 3.
 	}
 
-	pub fn reduce_curve(&self) -> Vec<Bezier> {
+	pub fn reduce(&self) -> Vec<Bezier> {
 		let mut extrema: Vec<f64> = self.local_extrema().into_iter().flatten().collect::<Vec<f64>>();
-		extrema.push(0.);
-		extrema.push(1.);
+		extrema.append(&mut vec![0., 1.]);
 		extrema.dedup();
 		extrema.sort_by(|ex1, ex2| ex1.partial_cmp(ex2).unwrap());
-
-		let step = 0.01;
 
 		// pass 1: split the curve on the extremas
 		let mut pass_1: Vec<Bezier> = Vec::new();
 		let mut t1: f64 = extrema[0];
-		let mut t2: f64;
-		for i in 1..extrema.len() {
-			t2 = extrema[i];
-			pass_1.push(self.trim(t1, t2));
-			t1 = t2;
+		for t2 in extrema.iter().skip(1) {
+			pass_1.push(self.trim(t1, *t2));
+			t1 = *t2;
 		}
 
 		// pass_1
 
-		// pass 2: refine the reduce such that for each segment, it has no extrema
+		// // pass 2: refine the reduce such that for each segment, it has no extrema
+		let step = 0.01;
 		let mut pass_2: Vec<Bezier> = Vec::new();
-
 		pass_1.iter().for_each(|&curve| {
 			let mut segment: Bezier;
 			let mut t1 = 0.;
@@ -583,7 +578,7 @@ impl Bezier {
 				let mut i = t1 + step;
 				while i <= 1. + step {
 					segment = curve.trim(t1, t2);
-					if segment._is_simple() {
+					if !segment._is_simple() {
 						t2 -= step;
 						// It is impossible to reduce t
 						assert!(f64::abs(t1 - t2) >= step);

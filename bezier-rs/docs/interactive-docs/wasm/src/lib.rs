@@ -119,8 +119,8 @@ impl WasmBezier {
 		self.0.line_intersection(line).iter().map(|&p| vec_to_point(&p)).collect::<Vec<JsValue>>()
 	}
 
-	pub fn reduce_curve(&self) -> JsValue {
-		let bezier_points: Vec<Vec<Point>> = self.0.reduce_curve().into_iter().map(bezier_to_points).collect();
+	pub fn reduce(&self) -> JsValue {
+		let bezier_points: Vec<Vec<Point>> = self.0.reduce().into_iter().map(bezier_to_points).collect();
 		JsValue::from_serde(&serde_json::to_string(&bezier_points).unwrap()).unwrap()
 	}
 }
