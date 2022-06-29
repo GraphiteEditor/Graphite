@@ -5,7 +5,7 @@ use crate::layout::widgets::{Layout, LayoutGroup, NumberInput, PropertyHolder, W
 use crate::message_prelude::*;
 use crate::misc::{HintData, HintGroup, HintInfo, KeysGroup};
 use crate::viewport_tools::snapping::SnapHandler;
-use crate::viewport_tools::tool::{DocumentToolData, Fsm, SignalToMessageMap, ToolActionHandlerData, ToolTransition};
+use crate::viewport_tools::tool::{DocumentToolData, Fsm, SignalToMessageMap, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
 
 use graphene::layers::style;
 use graphene::Operation;
@@ -57,6 +57,18 @@ enum SplineToolFsmState {
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub enum SplineOptionsUpdate {
 	LineWeight(f64),
+}
+
+impl ToolMetadata for SplineTool {
+	fn icon_name(&self) -> String {
+		"VectorSplineTool".into()
+	}
+	fn tooltip(&self) -> String {
+		"Spline Tool".into()
+	}
+	fn tool_type(&self) -> crate::viewport_tools::tool::ToolType {
+		ToolType::Spline
+	}
 }
 
 impl PropertyHolder for SplineTool {
@@ -116,9 +128,9 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for SplineTool {
 impl ToolTransition for SplineTool {
 	fn signal_to_message_map(&self) -> SignalToMessageMap {
 		SignalToMessageMap {
-			document_dirty: ToolMessage::NoOp,
-			abort: SplineToolMessage::Abort.into(),
-			selection_changed: ToolMessage::NoOp,
+			document_dirty: None,
+			tool_abort: Some(SplineToolMessage::Abort.into()),
+			selection_changed: None,
 		}
 	}
 }

@@ -1,4 +1,4 @@
-use super::tool::{message_to_tool_type, update_working_colors, ToolFsmState};
+use super::tool::{message_to_tool_type, DocumentToolData, ToolFsmState};
 use crate::document::DocumentMessageHandler;
 use crate::input::InputPreprocessorMessageHandler;
 use crate::layout::layout_message::LayoutTarget;
@@ -37,7 +37,9 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessorMes
 				// Send the Abort state transition to the tool
 				let mut send_abort_to_tool = |tool_type, update_hints_and_cursor: bool| {
 					if let Some(tool) = tool_data.tools.get_mut(&tool_type) {
-						tool.process_action(tool.signal_to_message_map().abort, (document, document_data, input, font_cache), responses);
+						if let Some(tool_abort_message) = tool.signal_to_message_map().tool_abort {
+							tool.process_action(tool_abort_message, (document, document_data, input, font_cache), responses);
+						}
 
 						if update_hints_and_cursor {
 							tool.process_action(ToolMessage::UpdateHints, (document, document_data, input, font_cache), responses);
@@ -93,7 +95,6 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessorMes
 					.active_tool_mut()
 					.process_action(ToolMessage::UpdateCursor, (document, document_data, input, font_cache), responses);
 			}
-			NoOp => {}
 			ResetColors => {
 				let document_data = &mut self.tool_state.document_tool_data;
 
@@ -160,4 +161,14 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessorMes
 
 		list
 	}
+}
+
+fn update_working_colors(document_data: &DocumentToolData, responses: &mut VecDeque<Message>) {
+	responses.push_back(
+		FrontendMessage::UpdateWorkingColors {
+			primary: document_data.primary_color,
+			secondary: document_data.secondary_color,
+		}
+		.into(),
+	);
 }

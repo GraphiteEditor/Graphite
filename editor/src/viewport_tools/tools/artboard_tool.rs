@@ -6,7 +6,7 @@ use crate::layout::widgets::PropertyHolder;
 use crate::message_prelude::*;
 use crate::misc::{HintData, HintGroup, HintInfo, KeysGroup};
 use crate::viewport_tools::snapping::SnapHandler;
-use crate::viewport_tools::tool::{Fsm, SignalToMessageMap, ToolActionHandlerData, ToolTransition};
+use crate::viewport_tools::tool::{Fsm, SignalToMessageMap, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
 
 use graphene::intersection::Quad;
 
@@ -41,6 +41,18 @@ pub enum ArtboardToolMessage {
 	PointerUp,
 }
 
+impl ToolMetadata for ArtboardTool {
+	fn icon_name(&self) -> String {
+		"GeneralArtboardTool".into()
+	}
+	fn tooltip(&self) -> String {
+		"Artboard Tool".into()
+	}
+	fn tool_type(&self) -> crate::viewport_tools::tool::ToolType {
+		ToolType::Artboard
+	}
+}
+
 impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for ArtboardTool {
 	fn process_action(&mut self, action: ToolMessage, data: ToolActionHandlerData<'a>, responses: &mut VecDeque<Message>) {
 		if action == ToolMessage::UpdateHints {
@@ -69,9 +81,9 @@ impl PropertyHolder for ArtboardTool {}
 impl ToolTransition for ArtboardTool {
 	fn signal_to_message_map(&self) -> SignalToMessageMap {
 		SignalToMessageMap {
-			document_dirty: ArtboardToolMessage::DocumentIsDirty.into(),
-			abort: ArtboardToolMessage::Abort.into(),
-			selection_changed: ToolMessage::NoOp,
+			document_dirty: Some(ArtboardToolMessage::DocumentIsDirty.into()),
+			tool_abort: Some(ArtboardToolMessage::Abort.into()),
+			selection_changed: None,
 		}
 	}
 }

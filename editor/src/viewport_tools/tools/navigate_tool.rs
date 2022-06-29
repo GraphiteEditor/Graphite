@@ -3,7 +3,7 @@ use crate::input::keyboard::{Key, MouseMotion};
 use crate::layout::widgets::PropertyHolder;
 use crate::message_prelude::*;
 use crate::misc::{HintData, HintGroup, HintInfo, KeysGroup};
-use crate::viewport_tools::tool::{Fsm, SignalToMessageMap, ToolActionHandlerData, ToolTransition};
+use crate::viewport_tools::tool::{Fsm, SignalToMessageMap, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
 
 use glam::DVec2;
 use serde::{Deserialize, Serialize};
@@ -34,6 +34,18 @@ pub enum NavigateToolMessage {
 	TransformCanvasEnd,
 	TranslateCanvasBegin,
 	ZoomCanvasBegin,
+}
+
+impl ToolMetadata for NavigateTool {
+	fn icon_name(&self) -> String {
+		"GeneralNavigateTool".into()
+	}
+	fn tooltip(&self) -> String {
+		"Navigate Tool (Z)".into()
+	}
+	fn tool_type(&self) -> crate::viewport_tools::tool::ToolType {
+		ToolType::Navigate
+	}
 }
 
 impl PropertyHolder for NavigateTool {}
@@ -72,9 +84,9 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for NavigateTool
 impl ToolTransition for NavigateTool {
 	fn signal_to_message_map(&self) -> SignalToMessageMap {
 		SignalToMessageMap {
-			document_dirty: ToolMessage::NoOp,
-			abort: NavigateToolMessage::Abort.into(),
-			selection_changed: ToolMessage::NoOp,
+			document_dirty: None,
+			tool_abort: Some(NavigateToolMessage::Abort.into()),
+			selection_changed: None,
 		}
 	}
 }

@@ -8,7 +8,7 @@ use crate::layout::widgets::{IconButton, Layout, LayoutGroup, PopoverButton, Pro
 use crate::message_prelude::*;
 use crate::misc::{HintData, HintGroup, HintInfo, KeysGroup};
 use crate::viewport_tools::snapping::{self, SnapHandler};
-use crate::viewport_tools::tool::{Fsm, SignalToMessageMap, ToolActionHandlerData, ToolTransition, ToolType};
+use crate::viewport_tools::tool::{Fsm, SignalToMessageMap, ToolActionHandlerData, ToolTransition, ToolType, ToolMetadata};
 use graphene::boolean_ops::BooleanOperation;
 use graphene::document::Document;
 use graphene::intersection::Quad;
@@ -54,6 +54,18 @@ pub enum SelectToolMessage {
 		snap_angle: Key,
 		center: Key,
 	},
+}
+
+impl ToolMetadata for SelectTool {
+	fn icon_name(&self) -> String {
+		"GeneralSelectTool".into()
+	}
+	fn tooltip(&self) -> String {
+		"Select Tool (V)".into()
+	}
+	fn tool_type(&self) -> crate::viewport_tools::tool::ToolType {
+		ToolType::Select
+	}
 }
 
 impl PropertyHolder for SelectTool {
@@ -261,9 +273,9 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for SelectTool {
 impl ToolTransition for SelectTool {
 	fn signal_to_message_map(&self) -> SignalToMessageMap {
 		SignalToMessageMap {
-			document_dirty: SelectToolMessage::DocumentIsDirty.into(),
-			abort: SelectToolMessage::Abort.into(),
-			selection_changed: ToolMessage::NoOp,
+			document_dirty: Some(SelectToolMessage::DocumentIsDirty.into()),
+			tool_abort: Some(SelectToolMessage::Abort.into()),
+			selection_changed: None,
 		}
 	}
 }

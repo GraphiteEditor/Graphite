@@ -5,7 +5,7 @@ use crate::layout::widgets::PropertyHolder;
 use crate::message_prelude::*;
 use crate::misc::{HintData, HintGroup, HintInfo, KeysGroup};
 use crate::viewport_tools::snapping::SnapHandler;
-use crate::viewport_tools::tool::{Fsm, SignalToMessageMap, ToolActionHandlerData, ToolTransition};
+use crate::viewport_tools::tool::{Fsm, SignalToMessageMap, ToolActionHandlerData, ToolTransition, ToolMetadata, ToolType};
 use crate::viewport_tools::vector_editor::shape_editor::ShapeEditor;
 
 use graphene::intersection::Quad;
@@ -40,6 +40,18 @@ pub enum PathToolMessage {
 		alt_mirror_angle: Key,
 		shift_mirror_distance: Key,
 	},
+}
+
+impl ToolMetadata for PathTool {
+	fn icon_name(&self) -> String {
+		"VectorPathTool".into()
+	}
+	fn tooltip(&self) -> String {
+		"Path Tool (A)".into()
+	}
+	fn tool_type(&self) -> crate::viewport_tools::tool::ToolType {
+		ToolType::Path
+	}
 }
 
 impl PropertyHolder for PathTool {}
@@ -79,9 +91,9 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for PathTool {
 impl ToolTransition for PathTool {
 	fn signal_to_message_map(&self) -> SignalToMessageMap {
 		SignalToMessageMap {
-			document_dirty: PathToolMessage::DocumentIsDirty.into(),
-			abort: PathToolMessage::Abort.into(),
-			selection_changed: PathToolMessage::SelectionChanged.into(),
+			document_dirty: Some(PathToolMessage::DocumentIsDirty.into()),
+			tool_abort: Some(PathToolMessage::Abort.into()),
+			selection_changed: Some(PathToolMessage::SelectionChanged.into()),
 		}
 	}
 }

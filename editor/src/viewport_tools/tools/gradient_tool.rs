@@ -6,7 +6,7 @@ use crate::layout::widgets::{Layout, LayoutGroup, PropertyHolder, RadioEntryData
 use crate::message_prelude::*;
 use crate::misc::{HintData, HintGroup, HintInfo, KeysGroup};
 use crate::viewport_tools::snapping::SnapHandler;
-use crate::viewport_tools::tool::{Fsm, SignalToMessageMap, ToolActionHandlerData, ToolTransition};
+use crate::viewport_tools::tool::{Fsm, SignalToMessageMap, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
 
 use graphene::color::Color;
 use graphene::intersection::Quad;
@@ -58,6 +58,18 @@ pub enum GradientToolMessage {
 #[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize)]
 pub enum GradientOptionsUpdate {
 	Type(GradientType),
+}
+
+impl ToolMetadata for GradientTool {
+	fn icon_name(&self) -> String {
+		"GeneralGradientTool".into()
+	}
+	fn tooltip(&self) -> String {
+		"Gradient Tool (H))".into()
+	}
+	fn tool_type(&self) -> crate::viewport_tools::tool::ToolType {
+		ToolType::Gradient
+	}
 }
 
 impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for GradientTool {
@@ -287,9 +299,9 @@ impl SelectedGradient {
 impl ToolTransition for GradientTool {
 	fn signal_to_message_map(&self) -> SignalToMessageMap {
 		SignalToMessageMap {
-			document_dirty: GradientToolMessage::DocumentIsDirty.into(),
-			abort: GradientToolMessage::Abort.into(),
-			selection_changed: ToolMessage::NoOp,
+			document_dirty: Some(GradientToolMessage::DocumentIsDirty.into()),
+			tool_abort: Some(GradientToolMessage::Abort.into()),
+			selection_changed: None,
 		}
 	}
 }
