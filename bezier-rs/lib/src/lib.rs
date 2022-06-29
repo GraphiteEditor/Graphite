@@ -419,24 +419,44 @@ impl Bezier {
 		self.compute(final_t)
 	}
 
+	/// Find the roots of the linear equation ax + b
+	fn solve_linear(a: f64, b: f64) -> Vec<f64> {
+		let mut roots = Vec::new();
+		if b != 0. {
+			roots.push(-b / a);
+		}
+		roots
+	}
+
+	/// Find the roots of the linear equation ax^2 + bx + c
+	fn solve_quadratic(discriminant: f64, two_times_a: f64, b: f64, c: f64) -> Vec<f64> {
+		let mut roots = Vec::new();
+		println!("{}", discriminant);
+		if two_times_a != 0. {
+			// println!("Solving Quadratic");
+			if discriminant > 0. {
+				let root_discriminant = discriminant.sqrt();
+				roots.push((-b + root_discriminant) / (two_times_a));
+				roots.push((-b - root_discriminant) / (two_times_a));
+			} else if discriminant == 0. {
+				roots.push(-b / (two_times_a));
+			}
+			println!("{:#?}", roots);
+		} else {
+			roots = Bezier::solve_linear(b, c);
+		}
+		roots
+	}
+
 	/// Returns two lists of `t`-values representing the local extrema of the `x` and `y` parametric curves respectively
 	/// The local extrema are defined to be points at which the derivative of the curve is equal to zero
 	fn _local_extrema(&self) -> [Vec<f64>; 2] {
-		let mut x_values = Vec::new();
-		let mut y_values = Vec::new();
 		match self.handles {
 			BezierHandles::Quadratic { handle } => {
 				let a = handle - self.start;
 				let b = self.end - handle;
 				let b_minus_a = b - a;
-				// check for `x` extrema
-				if (b_minus_a.x) != 0. {
-					x_values.push(-a.x / (b_minus_a.x));
-				}
-				// check for `y` extrema
-				if (b_minus_a.y) != 0. {
-					y_values.push(-a.y / (b_minus_a.y));
-				}
+				[Bezier::solve_linear(a.x, b_minus_a.x), Bezier::solve_linear(a.y, b_minus_a.y)]
 			}
 			BezierHandles::Cubic { handle_start, handle_end } => {
 				let a = 3. * (-self.start + 3. * handle_start - 3. * handle_end + self.end);
@@ -444,25 +464,12 @@ impl Bezier {
 				let c = 3. * (handle_start - self.start);
 				let discriminant = b * b - 4. * a * c;
 				let two_times_a = 2. * a;
-				// check for `x` extrema using quadratic formula
-				if discriminant.x > 0. {
-					let root_discriminant_x = discriminant.x.sqrt();
-					x_values.push((-b.x + root_discriminant_x) / (two_times_a.x));
-					x_values.push((-b.x - root_discriminant_x) / (two_times_a.x));
-				} else if discriminant.x == 0. {
-					x_values.push(-b.x / (two_times_a.x));
-				}
-				// check for `y` extrema using quadratic formula
-				if discriminant.y > 0. {
-					let root_discriminant_y = discriminant.y.sqrt();
-					y_values.push((-b.y + root_discriminant_y) / (two_times_a.y));
-					y_values.push((-b.y - root_discriminant_y) / (two_times_a.y));
-				} else if discriminant.y == 0. {
-					y_values.push(-b.y / (two_times_a.y));
-				}
+				[
+					Bezier::solve_quadratic(discriminant.x, two_times_a.x, b.x, c.x),
+					Bezier::solve_quadratic(discriminant.y, two_times_a.y, b.y, c.y),
+				]
 			}
 		}
-		[x_values, y_values]
 	}
 
 	/// Returns two lists of `t`-values representing the local extrema of the `x` and `y` parametric curves respectively
