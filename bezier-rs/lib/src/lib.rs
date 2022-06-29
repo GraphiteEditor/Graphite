@@ -453,7 +453,7 @@ impl Bezier {
 				let a = handle - self.start;
 				let b = self.end - handle;
 				let b_minus_a = b - a;
-				[Bezier::solve_linear(a.x, b_minus_a.x), Bezier::solve_linear(a.y, b_minus_a.y)]
+				[Bezier::solve_linear(b_minus_a.x, a.x), Bezier::solve_linear(b_minus_a.y, a.y)]
 			}
 			BezierHandles::Cubic { handle_start, handle_end } => {
 				let a = 3. * (-self.start + 3. * handle_start - 3. * handle_end + self.end);
