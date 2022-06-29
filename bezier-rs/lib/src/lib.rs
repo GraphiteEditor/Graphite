@@ -431,9 +431,7 @@ impl Bezier {
 	/// Find the roots of the linear equation ax^2 + bx + c
 	fn solve_quadratic(discriminant: f64, two_times_a: f64, b: f64, c: f64) -> Vec<f64> {
 		let mut roots = Vec::new();
-		println!("{}", discriminant);
 		if two_times_a != 0. {
-			// println!("Solving Quadratic");
 			if discriminant > 0. {
 				let root_discriminant = discriminant.sqrt();
 				roots.push((-b + root_discriminant) / (two_times_a));
@@ -441,7 +439,6 @@ impl Bezier {
 			} else if discriminant == 0. {
 				roots.push(-b / (two_times_a));
 			}
-			println!("{:#?}", roots);
 		} else {
 			roots = Bezier::solve_linear(b, c);
 		}
