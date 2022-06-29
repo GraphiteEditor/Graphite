@@ -538,6 +538,7 @@ impl Bezier {
 	}
 
 	fn _is_simple(&self) -> bool {
+		// return true;
 		if let BezierHandles::Cubic { handle_start, handle_end } = self.handles {
 			let angle_1 = (self.end - self.start).angle_between(handle_start - self.start);
 			let angle_2 = (self.end - self.start).angle_between(handle_end - self.start);
@@ -565,9 +566,7 @@ impl Bezier {
 			t1 = *t2;
 		}
 
-		// pass_1
-
-		// // pass 2: refine the reduce such that for each segment, it has no extrema
+		// pass 2: refine the reduce such that for each segment, the center point occurs at roughly t = 0.5
 		let step = 0.01;
 		let mut pass_2: Vec<Bezier> = Vec::new();
 		pass_1.iter().for_each(|&curve| {
@@ -575,24 +574,29 @@ impl Bezier {
 			let mut t1 = 0.;
 			let mut t2 = 0.;
 			while t2 <= 1. {
-				let mut i = t1 + step;
-				while i <= 1. + step {
-					segment = curve.trim(t1, t2);
+				t2 = t1 + step;
+				while t2 <= 1. + step {
+					segment = curve.trim(t1, f64::min(t2, 1.));
 					if !segment._is_simple() {
 						t2 -= step;
-						// It is impossible to reduce t
-						assert!(f64::abs(t1 - t2) >= step);
+
+						// If this condition fails, it is impossible to reduce this subcurve to a simple curve
+						if f64::abs(t1 - t2) < step {
+							return;
+						}
 
 						segment = curve.trim(t1, t2);
+						// TODO: Start/Endpoint Mapping shenanigans?
 						pass_2.push(segment);
 						t1 = t2;
 						break;
 					}
-					i += step;
+					t2 += step;
 				}
 			}
 			if t1 < 1. {
 				segment = curve.trim(t1, 1.);
+				// TODO: Start/Endpoint Mapping shenanigans?
 				pass_2.push(segment);
 			}
 		});
