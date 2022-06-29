@@ -15,8 +15,13 @@ struct Point {
 pub struct WasmBezier(Bezier);
 
 /// Convert a `DVec2` into a `JsValue`.
-pub fn vec_to_point(p: &DVec2) -> JsValue {
+fn vec_to_point(p: &DVec2) -> JsValue {
 	JsValue::from_serde(&serde_json::to_string(&Point { x: p.x, y: p.y }).unwrap()).unwrap()
+}
+
+/// Convert a bezier to a list of points
+fn bezier_to_points(bezier: Bezier) -> Vec<Point> {
+	bezier.get_points().iter().flatten().map(|point| Point { x: point.x, y: point.y }).collect()
 }
 
 #[wasm_bindgen]
@@ -88,10 +93,7 @@ impl WasmBezier {
 	}
 
 	pub fn split(&self, t: f64) -> JsValue {
-		let bezier_points: [Vec<Point>; 2] = self
-			.0
-			.split(t)
-			.map(|bezier| bezier.get_points().iter().flatten().map(|point| Point { x: point.x, y: point.y }).collect());
+		let bezier_points: [Vec<Point>; 2] = self.0.split(t).map(bezier_to_points);
 		JsValue::from_serde(&serde_json::to_string(&bezier_points).unwrap()).unwrap()
 	}
 
@@ -115,5 +117,10 @@ impl WasmBezier {
 	pub fn line_intersection(&self, js_points: &JsValue) -> Vec<JsValue> {
 		let line: [DVec2; 2] = js_points.into_serde().unwrap();
 		self.0.line_intersection(line).iter().map(|&p| vec_to_point(&p)).collect::<Vec<JsValue>>()
+	}
+
+	pub fn reduce_curve(&self) -> JsValue {
+		let bezier_points: Vec<Vec<Point>> = self.0.reduce_curve().into_iter().map(bezier_to_points).collect();
+		JsValue::from_serde(&serde_json::to_string(&bezier_points).unwrap()).unwrap()
 	}
 }

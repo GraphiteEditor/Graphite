@@ -242,6 +242,8 @@ export default defineComponent({
 						const context = getContextFromCanvas(canvas);
 						const dimensionColors = [COLORS.NON_INTERACTIVE.STROKE_1, COLORS.NON_INTERACTIVE.STROKE_2];
 						const extrema: number[][] = JSON.parse(bezier.local_extrema());
+						// console.log(extrema);
+						// console.log(bezier.get_points());
 						extrema.forEach((tValues, index) => {
 							tValues.forEach((t) => {
 								const point = JSON.parse(bezier.compute(t));
@@ -289,6 +291,21 @@ export default defineComponent({
 						});
 					},
 				},
+				// {
+				// 	name: "Reduce curve",
+				// 	callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance): void => {
+				// 		const context = getContextFromCanvas(canvas);
+				// 		// const dimensionColours = [COLORS.NON_INTERACTIVE.STROKE_1, COLORS.NON_INTERACTIVE.STROKE_2];
+				// 		const reduceCurves: Point[][] = JSON.parse(bezier.reduce_curve());
+				// 		reduceCurves.forEach((curvePoints, index) => {
+				// 			drawBezier(context, curvePoints, null, getUniqueColor(index), 3.5);
+				// 			// tValues.forEach((t) => {
+				// 			// 	const point = JSON.parse(bezier.compute(t));
+				// 			// 	drawPoint(context, point, 4, dimensionColours[index]);
+				// 			// });
+				// 		});
+				// 	},
+				// },
 			],
 		};
 	},

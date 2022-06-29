@@ -20,6 +20,17 @@ export const isIndexFirstOrLast = (index: number, arrayLength: number): boolean 
 
 export const getPointSizeByIndex = (index: number, numPoints: number, radius = DEFAULT_ENDPOINT_RADIUS): number => (isIndexFirstOrLast(index, numPoints) ? radius : radius * HANDLE_RADIUS_FACTOR);
 
+export const getUniqueColor = (n: number): string => {
+	let color = n + 36;
+	const rgb = [0, 0, 0];
+	for (let i = 0; i < 24; i += 1) {
+		rgb[i % 3] <<= 1;
+		rgb[i % 3] |= color & 0x01;
+		color >>= 1;
+	}
+	return `#${rgb.reduce((a, c) => `${c.toString(16).padStart(2, "0")}${a}`, "")}`;
+};
+
 export const getContextFromCanvas = (canvas: HTMLCanvasElement): CanvasRenderingContext2D => {
 	const ctx = canvas.getContext("2d");
 	if (ctx === null) {
