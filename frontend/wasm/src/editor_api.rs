@@ -167,6 +167,16 @@ impl JsEditorHandle {
 		self.dispatch(message);
 	}
 
+	pub fn new_document_dialog(&self) {
+		let message = DialogMessage::RequestNewDocumentDialog;
+		self.dispatch(message);
+	}
+
+	pub fn open_file_upload(&self) {
+		let message = FrontendMessage::TriggerFileUpload;
+		self.dispatch(message);
+	}
+
 	pub fn open_document_file(&self, document_name: String, document_serialized_content: String) {
 		let message = PortfolioMessage::OpenDocumentFile {
 			document_name,

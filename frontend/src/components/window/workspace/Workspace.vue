@@ -4,7 +4,7 @@
 			<LayoutCol class="workspace-grid-subdivision">
 				<LayoutRow class="workspace-grid-subdivision">
 					<Panel
-						:panelType="'Document'"
+						:panelType="portfolio.state.documents.length > 0 ? 'Document' : undefined"
 						:tabCloseButtons="true"
 						:tabMinWidths="true"
 						:tabLabels="portfolio.state.documents.map((doc) => doc.displayName)"

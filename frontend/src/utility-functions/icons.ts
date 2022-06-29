@@ -1,5 +1,12 @@
 /* eslint-disable import/first */
 
+// Graphics
+import GraphiteLogotypeSolid from "@/../assets/graphics/graphite-logotype-solid.svg";
+
+const GRAPHICS = {
+	GraphiteLogotypeSolid: { component: GraphiteLogotypeSolid, size: null },
+} as const;
+
 // 12px Solid
 import Checkmark from "@/../assets/icon-12px-solid/checkmark.svg";
 import CloseX from "@/../assets/icon-12px-solid/close-x.svg";
@@ -232,6 +239,7 @@ const TWO_TONE_24PX = {
 
 // All icons
 const ICON_LIST = {
+	...GRAPHICS,
 	...SOLID_12PX,
 	...SOLID_16PX,
 	...TWO_TONE_16PX,
@@ -243,7 +251,7 @@ export const icons: IconDefinitionType<typeof ICON_LIST> = ICON_LIST;
 export const iconComponents = Object.fromEntries(Object.entries(icons).map(([name, data]) => [name, data.component]));
 
 export type IconName = keyof typeof icons;
-export type IconSize = 12 | 16 | 24 | 32;
+export type IconSize = null | 12 | 16 | 24 | 32;
 export type IconStyle = "node" | "";
 
 // The following helper type declarations allow us to avoid manually maintaining the `IconName` type declaration as a string union paralleling the keys of the
