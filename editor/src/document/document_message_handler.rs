@@ -990,13 +990,7 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 				}
 
 				responses.push_front(BroadcastSignal::SelectionChanged.into_front());
-
-				responses.push_back(
-					BroadcastMessage::TriggerSignal {
-						signal: BroadcastSignal::DocumentIsDirty,
-					}
-					.into(),
-				)
+				responses.push_back(BroadcastSignal::DocumentIsDirty.into());
 			}
 			DeselectAllLayers => {
 				responses.push_front(SetSelectedLayers { replacement_selected_layers: vec![] }.into());
