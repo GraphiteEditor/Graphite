@@ -1,4 +1,3 @@
-use super::layer_panel::LayerDataTypeDiscriminant;
 use super::utility_types::TargetDocument;
 use crate::document::properties_panel_message::TransformOp;
 use crate::layout::layout_message::LayoutTarget;
@@ -10,7 +9,7 @@ use crate::message_prelude::*;
 
 use graphene::color::Color;
 use graphene::document::Document as GrapheneDocument;
-use graphene::layers::layer_info::{Layer, LayerDataType};
+use graphene::layers::layer_info::{Layer, LayerDataType, LayerDataTypeDiscriminant};
 use graphene::layers::style::{Fill, Gradient, GradientType, LineCap, LineJoin, Stroke};
 use graphene::layers::text_layer::{FontCache, TextLayer};
 use graphene::{LayerId, Operation};
