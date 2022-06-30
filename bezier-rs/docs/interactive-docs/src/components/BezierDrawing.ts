@@ -1,6 +1,6 @@
 import { WasmBezier } from "@/../wasm/pkg";
 import { COLORS, drawBezier, drawPoint, getContextFromCanvas, getPointSizeByIndex } from "@/utils/drawing";
-import { BezierCallback, BezierPoint, WasmBezierMutatorKey, WasmBezierInstance } from "@/utils/types";
+import { BezierCallback, BezierPoint, BezierStyleConfig, WasmBezierMutatorKey, WasmBezierInstance } from "@/utils/types";
 
 // Offset to increase selectable range, used to make points easier to grab
 const FUDGE_FACTOR = 3;
@@ -119,23 +119,17 @@ class BezierDrawing {
 		const actualBezierPointLength = this.bezier.get_points().length;
 		let pointsToDraw = this.points;
 
-		const styleConfig = {
+		let styleConfig: Partial<BezierStyleConfig> = {
 			handleLineStrokeColor: COLORS.INTERACTIVE.STROKE_2,
 		};
 		let dragIndex = this.dragIndex;
 		if (this.createThroughPoints) {
 			let serializedPoints;
+			const pointList = this.points.map((p) => [p.x, p.y]);
 			if (actualBezierPointLength === 3) {
-				serializedPoints = WasmBezier.quadratic_through_points(
-					this.points.map((p) => [p.x, p.y]),
-					this.options.t
-				);
+				serializedPoints = WasmBezier.quadratic_through_points(pointList, this.options.t);
 			} else {
-				serializedPoints = WasmBezier.cubic_through_points(
-					this.points.map((p) => [p.x, p.y]),
-					this.options.t,
-					this.options["midpoint separation"]
-				);
+				serializedPoints = WasmBezier.cubic_through_points(pointList, this.options.t, this.options["midpoint separation"]);
 			}
 			pointsToDraw = serializedPoints.get_points().map((p) => JSON.parse(p));
 			if (this.dragIndex === 1) {
@@ -145,13 +139,9 @@ class BezierDrawing {
 				// For the cubic case, we want to propagate the drag index when the end point is moved, but need to adjust the index
 				dragIndex = 3;
 			}
+			styleConfig = { handleLineStrokeColor: COLORS.NON_INTERACTIVE.STROKE_1, handleStrokeColor: COLORS.NON_INTERACTIVE.STROKE_1 };
 		}
-		drawBezier(
-			this.ctx,
-			pointsToDraw,
-			dragIndex,
-			this.createThroughPoints ? { handleLineStrokeColor: COLORS.NON_INTERACTIVE.STROKE_1, handleStrokeColor: COLORS.NON_INTERACTIVE.STROKE_1 } : styleConfig
-		);
+		drawBezier(this.ctx, pointsToDraw, dragIndex, styleConfig);
 		if (this.createThroughPoints) {
 			// Draw the point that the curve was drawn through
 			drawPoint(this.ctx, this.points[1], getPointSizeByIndex(1, this.points.length), this.dragIndex === 1 ? COLORS.INTERACTIVE.SELECTED : COLORS.INTERACTIVE.STROKE_1);
