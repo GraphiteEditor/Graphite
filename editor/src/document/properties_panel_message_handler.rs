@@ -1,4 +1,4 @@
-use super::layer_panel::{LayerDataTypeDiscriminant};
+use super::layer_panel::LayerDataTypeDiscriminant;
 use super::utility_types::TargetDocument;
 use crate::document::properties_panel_message::TransformOp;
 use crate::layout::layout_message::LayoutTarget;
