@@ -535,6 +535,28 @@ impl Bezier {
 			.map(|&t| self.unrestricted_compute(t))
 			.filter(|&point| utils::dvec2_approximately_in_range(point, min, max, max_abs_diff).all())
 			.collect::<Vec<DVec2>>()
+	// Returns a list of points representing the hull points for all iterations at the point corresponding to `t`
+	// For quadratic curves this list will contain 6 points
+	// for cubic curves this list will contain 10 points
+	pub fn hull(&self, t: f64) -> Vec<DVec2> {
+		let mut current_points = Vec::new();
+		let mut next_points = Vec::new();
+		match self.handles {
+			BezierHandles::Quadratic { handle } => {
+				current_points.push(self.start);
+				current_points.push(handle);
+				current_points.push(self.end);
+
+				let mut hull_points = Vec::with_capacity(6 as usize);
+
+				hull_points.push(self.start);
+				hull_points.push(handle);
+				hull_points.push(self.end);
+
+				while current_points.len() > 1 {}
+			}
+			BezierHandles::Cubic { handle_start, handle_end } => {}
+		}
 	}
 }
 
