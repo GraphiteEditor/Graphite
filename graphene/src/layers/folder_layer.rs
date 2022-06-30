@@ -1,5 +1,5 @@
 use super::layer_info::{Layer, LayerData, LayerDataType};
-use super::style::ViewMode;
+use super::style::RenderData;
 use crate::intersection::Quad;
 use crate::layers::text_layer::FontCache;
 use crate::{DocumentError, LayerId};
@@ -22,9 +22,9 @@ pub struct FolderLayer {
 }
 
 impl LayerData for FolderLayer {
-	fn render(&mut self, svg: &mut String, svg_defs: &mut String, transforms: &mut Vec<glam::DAffine2>, view_mode: ViewMode, font_cache: &FontCache, culling_bounds: Option<[DVec2; 2]>) {
+	fn render(&mut self, svg: &mut String, svg_defs: &mut String, transforms: &mut Vec<glam::DAffine2>, render_data: RenderData) {
 		for layer in &mut self.layers {
-			let _ = writeln!(svg, "{}", layer.render(transforms, view_mode, svg_defs, font_cache, culling_bounds));
+			let _ = writeln!(svg, "{}", layer.render(transforms, svg_defs, render_data));
 		}
 	}
 
