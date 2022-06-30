@@ -63,12 +63,22 @@ export default defineComponent({
 					callback: (): void => {},
 				},
 				{
-					name: "Bezier from points",
+					name: "Bezier through points",
 					// eslint-disable-next-line
 					callback: (): void => {},
 					createThroughPoints: true,
 					template: markRaw(SliderExample),
-					templateOptions: { sliders: [{ ...tSliderOptions }] },
+					templateOptions: {
+						sliders: [
+							{
+								min: 0.01,
+								max: 0.99,
+								step: 0.01,
+								default: 0.5,
+								variable: "t",
+							},
+						],
+					},
 					cubicOptions: {
 						sliders: [
 							{
@@ -83,7 +93,7 @@ export default defineComponent({
 								max: 100,
 								step: 5,
 								default: 10,
-								variable: "strut",
+								variable: "midpoint separation",
 							},
 						],
 					},

@@ -124,22 +124,20 @@ class BezierDrawing {
 		};
 		let dragIndex = this.dragIndex;
 		if (this.createThroughPoints) {
+			let serializedPoints;
 			if (actualBezierPointLength === 3) {
-				pointsToDraw = WasmBezier.quadratic_through_points(
+				serializedPoints = WasmBezier.quadratic_through_points(
 					this.points.map((p) => [p.x, p.y]),
 					this.options.t
-				)
-					.get_points()
-					.map((p) => JSON.parse(p));
+				);
 			} else {
-				pointsToDraw = WasmBezier.cubic_through_points(
+				serializedPoints = WasmBezier.cubic_through_points(
 					this.points.map((p) => [p.x, p.y]),
 					this.options.t,
-					this.options.strut
-				)
-					.get_points()
-					.map((p) => JSON.parse(p));
+					this.options["midpoint separation"]
+				);
 			}
+			pointsToDraw = serializedPoints.get_points().map((p) => JSON.parse(p));
 			if (this.dragIndex === 1) {
 				// Do not propagate dragIndex when the the non-endpoint is moved
 				dragIndex = null;
