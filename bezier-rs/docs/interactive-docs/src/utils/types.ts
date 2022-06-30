@@ -14,6 +14,10 @@ export type SliderOption = {
 	variable: string;
 };
 
+export type TemplateOption = {
+	sliders: SliderOption[];
+};
+
 export type Point = {
 	x: number;
 	y: number;
@@ -21,4 +25,11 @@ export type Point = {
 
 export type BezierPoint = Point & {
 	mutator: WasmBezierMutatorKey;
+};
+
+export type BezierStyleConfig = {
+	curveStrokeColor: string;
+	handleStrokeColor: string;
+	handleLineStrokeColor: string;
+	radius: number;
 };
