@@ -41,69 +41,41 @@ pub struct SignalToMessageMap {
 pub trait ToolTransition {
 	fn signal_to_message_map(&self) -> SignalToMessageMap;
 	fn activate(&self, responses: &mut VecDeque<Message>) {
-		let shared_messages = self.signal_to_message_map();
-		if let Some(document_is_dirty_message) = shared_messages.document_dirty {
-			responses.push_back(
-				BroadcastMessage::SubscribeSignal {
-					on: BroadcastSignal::DocumentIsDirty,
-					send: Box::new(document_is_dirty_message.into()),
-				}
-				.into(),
-			);
-		}
+		let mut subscribe_message = |broadcast_to_tool_mapping: Option<ToolMessage>, signal: BroadcastSignal| {
+			if let Some(mapping) = broadcast_to_tool_mapping {
+				responses.push_back(
+					BroadcastMessage::SubscribeSignal {
+						on: signal,
+						send: Box::new(mapping.into()),
+					}
+					.into(),
+				);
+			};
+		};
 
-		if let Some(tool_abort_message) = shared_messages.tool_abort {
-			responses.push_back(
-				BroadcastMessage::SubscribeSignal {
-					on: BroadcastSignal::ToolAbort,
-					send: Box::new(tool_abort_message.into()),
-				}
-				.into(),
-			);
-		}
-
-		if let Some(selection_changed_message) = shared_messages.selection_changed {
-			responses.push_back(
-				BroadcastMessage::SubscribeSignal {
-					on: BroadcastSignal::SelectionChanged,
-					send: Box::new(selection_changed_message.into()),
-				}
-				.into(),
-			);
-		}
+		let signal_to_tool_map = self.signal_to_message_map();
+		subscribe_message(signal_to_tool_map.document_dirty, BroadcastSignal::DocumentIsDirty);
+		subscribe_message(signal_to_tool_map.tool_abort, BroadcastSignal::ToolAbort);
+		subscribe_message(signal_to_tool_map.selection_changed, BroadcastSignal::SelectionChanged);
 	}
 
 	fn deactivate(&self, responses: &mut VecDeque<Message>) {
-		let shared_messages = self.signal_to_message_map();
-		if let Some(document_is_dirty_message) = shared_messages.document_dirty {
-			responses.push_back(
-				BroadcastMessage::UnsubscribeSignal {
-					on: BroadcastSignal::DocumentIsDirty,
-					message: Box::new(document_is_dirty_message.into()),
-				}
-				.into(),
-			);
-		}
+		let mut unsubscribe_message = |broadcast_to_tool_mapping: Option<ToolMessage>, signal: BroadcastSignal| {
+			if let Some(mapping) = broadcast_to_tool_mapping {
+				responses.push_back(
+					BroadcastMessage::UnsubscribeSignal {
+						on: signal,
+						message: Box::new(mapping.into()),
+					}
+					.into(),
+				);
+			};
+		};
 
-		if let Some(tool_abort_message) = shared_messages.tool_abort {
-			responses.push_back(
-				BroadcastMessage::UnsubscribeSignal {
-					on: BroadcastSignal::ToolAbort,
-					message: Box::new(tool_abort_message.into()),
-				}
-				.into(),
-			);
-		}
-
-		if let Some(selection_changed_message) = shared_messages.selection_changed {
-			responses.push_back(
-				BroadcastMessage::UnsubscribeSignal {
-					on: BroadcastSignal::SelectionChanged,
-					message: Box::new(selection_changed_message.into()),
-				}
-				.into(),
-			);
-		}
+		let signal_to_tool_map = self.signal_to_message_map();
+		unsubscribe_message(signal_to_tool_map.document_dirty, BroadcastSignal::DocumentIsDirty);
+		unsubscribe_message(signal_to_tool_map.tool_abort, BroadcastSignal::ToolAbort);
+		unsubscribe_message(signal_to_tool_map.selection_changed, BroadcastSignal::SelectionChanged);
 	}
 }
 pub trait ToolMetadata {
