@@ -89,7 +89,9 @@ impl VectorShape {
 		let mut anchors = vec![];
 		for i in 0..sides {
 			let angle = (i as f64) * std::f64::consts::TAU / (sides as f64);
-			anchors.push(VectorAnchor::new(DVec2::new(center.x + radius * f64::cos(angle), center.y + radius * f64::sin(angle))));
+			let center = center + DVec2::ONE * radius;
+			let position = VectorAnchor::new(DVec2::new(center.x + radius * f64::cos(angle), center.y + radius * f64::sin(angle)) * 0.5);
+			anchors.push(position);
 		}
 		anchors.push(VectorAnchor::closed());
 		VectorShape(anchors.into_iter().collect())
