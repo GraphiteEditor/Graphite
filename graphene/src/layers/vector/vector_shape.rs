@@ -330,7 +330,58 @@ impl VectorShape {
 
 	/// Use kurbo to convert this shape into an SVG path
 	pub fn to_svg(&mut self) -> String {
-		<&Self as Into<BezPath>>::into(self).to_svg()
+		fn write_positions(result: &mut String, values: [Option<DVec2>; 3]) {
+			use std::fmt::Write;
+			for pos in values.into_iter().flatten() {
+				write!(result, "{},{} ", pos.x, pos.y).unwrap();
+			}
+		}
+
+		let mut result = String::new();
+		// The out position from the previous VectorAnchor
+		let mut last_out_handle = None;
+		// The values from the last moveto (for closing the path)
+		let (mut first_in_handle, mut first_in_anchor) = (None, None);
+		// Should the next element be a moveto?
+		let mut start_new_contour = true;
+		for vector_anchor in self.anchors().iter() {
+			let in_handle = vector_anchor.points[ControlPointType::InHandle].as_ref().map(|anchor| anchor.position);
+			let anchor = vector_anchor.points[ControlPointType::Anchor].as_ref().map(|anchor| anchor.position);
+			let out_handle = vector_anchor.points[ControlPointType::OutHandle].as_ref().map(|anchor| anchor.position);
+
+			let command = match (last_out_handle.is_some(), in_handle.is_some(), anchor.is_some()) {
+				(_, _, true) if start_new_contour => 'M',
+				(true, false, true) | (false, true, true) => 'Q',
+				(true, true, true) => 'C',
+				(false, false, true) => 'L',
+				(_, false, false) => 'Z',
+				_ => panic!("Invalid shape {:#?}", self),
+			};
+
+			// Complete the last curve
+			if command == 'Z' {
+				if last_out_handle.is_some() && first_in_handle.is_some() {
+					result.push('C');
+					write_positions(&mut result, [last_out_handle, first_in_handle, first_in_anchor]);
+				} else if last_out_handle.is_some() || first_in_handle.is_some() {
+					result.push('Q');
+					write_positions(&mut result, [last_out_handle, first_in_handle, first_in_anchor]);
+				} else {
+					result.push('Z');
+				}
+			} else if command == 'M' {
+				// Update the last moveto position
+				(first_in_handle, first_in_anchor) = (in_handle, anchor);
+				result.push(command);
+				write_positions(&mut result, [None, None, anchor]);
+			} else {
+				result.push(command);
+				write_positions(&mut result, [last_out_handle, in_handle, anchor]);
+			}
+			start_new_contour = command == 'Z';
+			last_out_handle = out_handle;
+		}
+		result
 	}
 }
 
