@@ -85,9 +85,13 @@ impl PortfolioMessageHandler {
 			})
 			.collect::<Vec<_>>();
 
-		responses.push_back(FrontendMessage::UpdateOpenDocumentsList { open_documents }.into());
+		// use push front to avoid messages accidentally targeting old document
+		responses.push_front(PortfolioMessage::SelectDocument { document_id }.into());
 
-		responses.push_back(PortfolioMessage::SelectDocument { document_id }.into());
+		responses.push_back(FrontendMessage::UpdateOpenDocumentsList { open_documents }.into());
+		responses.push_back(PortfolioMessage::UpdateDocumentWidgets.into());
+		responses.push_back(ToolMessage::InitTools.into());
+		responses.push_back(MenuBarMessage::SendLayout.into());
 	}
 
 	/// Returns an iterator over the open documents in order.
@@ -274,18 +278,12 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 					responses.push_front(FrontendMessage::TriggerFontLoad { font, is_default }.into());
 				}
 			}
-			NewDocument => {
-				let name = self.generate_new_document_name();
-				let new_document = DocumentMessageHandler::with_name(name, ipp);
-				let document_id = generate_uuid();
-				responses.push_back(ToolMessage::AbortCurrentTool.into());
-
-				self.load_document(new_document, document_id, responses);
-			}
 			NewDocumentWithName { name } => {
 				let new_document = DocumentMessageHandler::with_name(name, ipp);
 				let document_id = generate_uuid();
 				responses.push_back(ToolMessage::AbortCurrentTool.into());
+				responses.push_back(MovementMessage::TranslateCanvas { delta: (0., 0.).into() }.into());
+
 				self.load_document(new_document, document_id, responses);
 			}
 			NextDocument => {
@@ -491,7 +489,6 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 
 	fn actions(&self) -> ActionList {
 		let mut common = actions!(PortfolioMessageDiscriminant;
-			NewDocument,
 			CloseActiveDocumentWithConfirmation,
 			CloseAllDocuments,
 			NextDocument,

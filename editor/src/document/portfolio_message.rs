@@ -48,7 +48,6 @@ pub enum PortfolioMessage {
 		font: Font,
 		is_default: bool,
 	},
-	NewDocument,
 	NewDocumentWithName {
 		name: String,
 	},

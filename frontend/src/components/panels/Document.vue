@@ -442,6 +442,9 @@ export default defineComponent({
 				this.editor.instance.set_image_blob_url(element.path, url, image.width, image.height);
 			});
 		});
+
+		// trigger resize on mount to send document bounds to the backend
+		window.dispatchEvent(new Event("resize"));
 	},
 	data() {
 		return {

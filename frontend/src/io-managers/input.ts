@@ -354,7 +354,7 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 	// Bind the event listeners
 	bindListeners();
 	// Resize on creation
-	setTimeout(() => onWindowResize(container), 30);
+	onWindowResize(container);
 
 	// Return the destructor
 	return unbindListeners;
