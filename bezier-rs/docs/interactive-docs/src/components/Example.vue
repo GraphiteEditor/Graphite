@@ -9,14 +9,13 @@
 import { defineComponent, PropType } from "vue";
 
 import BezierDrawing from "@/components/BezierDrawing";
-import { BezierCallback } from "@/utils/types";
-import { WasmBezierInstance } from "@/utils/wasm-comm";
+import { BezierCallback, WasmBezierInstance } from "@/utils/types";
 
 export default defineComponent({
 	name: "ExampleComponent",
 	data() {
 		return {
-			bezierDrawing: new BezierDrawing(this.bezier, this.callback, this.options),
+			bezierDrawing: new BezierDrawing(this.bezier, this.callback, this.options, this.createThroughPoints),
 		};
 	},
 	props: {
@@ -32,6 +31,10 @@ export default defineComponent({
 		options: {
 			type: Object as PropType<Record<string, number>>,
 			default: () => ({}),
+		},
+		createThroughPoints: {
+			type: Boolean as PropType<boolean>,
+			default: false,
 		},
 	},
 	mounted() {

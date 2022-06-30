@@ -3,7 +3,14 @@
 		<h1>Bezier-rs Interactive Documentation</h1>
 		<p>This is the interactive documentation for the <b>bezier-rs</b> library. Click and drag on the endpoints of the example curves to visualize the various Bezier utilities and functions.</p>
 		<div v-for="(feature, index) in features" :key="index">
-			<ExamplePane :template="feature.template" :templateOptions="feature.templateOptions" :name="feature.name" :callback="feature.callback" />
+			<ExamplePane
+				:template="feature.template"
+				:templateOptions="feature.templateOptions"
+				:name="feature.name"
+				:callback="feature.callback"
+				:createThroughPoints="feature.createThroughPoints"
+				:cubicOptions="feature.cubicOptions"
+			/>
 		</div>
 		<br />
 		<div id="svg-test" />
@@ -22,7 +29,7 @@ import SliderExample from "@/components/SliderExample.vue";
 // eslint-disable-next-line
 const testBezierLib = async () => {
 	import("@/../wasm/pkg").then((wasm) => {
-		const bezier = wasm.WasmBezier.new_quad([
+		const bezier = wasm.WasmBezier.new_quadratic([
 			[0, 0],
 			[50, 0],
 			[100, 100],
@@ -54,6 +61,42 @@ export default defineComponent({
 					name: "Constructor",
 					// eslint-disable-next-line
 					callback: (): void => {},
+				},
+				{
+					name: "Bezier through points",
+					// eslint-disable-next-line
+					callback: (): void => {},
+					createThroughPoints: true,
+					template: markRaw(SliderExample),
+					templateOptions: {
+						sliders: [
+							{
+								min: 0.01,
+								max: 0.99,
+								step: 0.01,
+								default: 0.5,
+								variable: "t",
+							},
+						],
+					},
+					cubicOptions: {
+						sliders: [
+							{
+								min: 0.01,
+								max: 0.99,
+								step: 0.01,
+								default: 0.5,
+								variable: "t",
+							},
+							{
+								min: 0,
+								max: 100,
+								step: 5,
+								default: 10,
+								variable: "midpoint separation",
+							},
+						],
+					},
 				},
 				{
 					name: "Length",
@@ -150,8 +193,8 @@ export default defineComponent({
 						const context = getContextFromCanvas(canvas);
 						const bezierPairPoints = JSON.parse(bezier.split(options.t));
 
-						drawBezier(context, bezierPairPoints[0], null, COLORS.NON_INTERACTIVE.STROKE_2, 3.5);
-						drawBezier(context, bezierPairPoints[1], null, COLORS.NON_INTERACTIVE.STROKE_1, 3.5);
+						drawBezier(context, bezierPairPoints[0], null, { curveStrokeColor: COLORS.NON_INTERACTIVE.STROKE_2, radius: 3.5 });
+						drawBezier(context, bezierPairPoints[1], null, { curveStrokeColor: COLORS.NON_INTERACTIVE.STROKE_1, radius: 3.5 });
 					},
 					template: markRaw(SliderExample),
 					templateOptions: { sliders: [tSliderOptions] },
@@ -161,7 +204,7 @@ export default defineComponent({
 					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: Record<string, number>): void => {
 						const context = getContextFromCanvas(canvas);
 						const trimmedBezier = bezier.trim(options.t1, options.t2);
-						drawBezierHelper(context, trimmedBezier, COLORS.NON_INTERACTIVE.STROKE_1, 3.5);
+						drawBezierHelper(context, trimmedBezier, { curveStrokeColor: COLORS.NON_INTERACTIVE.STROKE_1, radius: 3.5 });
 					},
 					template: markRaw(SliderExample),
 					templateOptions: {
