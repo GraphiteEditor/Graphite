@@ -30,7 +30,7 @@
 					<LayoutRow class="actions">
 						<LayoutCol>
 							<IconButton :action="() => newDocument()" :icon="'File'" :size="24" />
-							<IconButton :action="() => openDocument()" :icon="'NodeFolder'" :size="24" />
+							<IconButton :action="() => openDocument()" :icon="'Folder'" :size="24" />
 						</LayoutCol>
 						<LayoutCol>
 							<Separator :type="'Related'" />

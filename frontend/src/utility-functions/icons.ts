@@ -90,6 +90,7 @@ import EyeVisible from "@/../assets/icon-16px-solid/eye-visible.svg";
 import File from "@/../assets/icon-16px-solid/file.svg";
 import FlipHorizontal from "@/../assets/icon-16px-solid/flip-horizontal.svg";
 import FlipVertical from "@/../assets/icon-16px-solid/flip-vertical.svg";
+import Folder from "@/../assets/icon-16px-solid/folder.svg";
 import GraphiteLogo from "@/../assets/icon-16px-solid/graphite-logo.svg";
 import NodeArtboard from "@/../assets/icon-16px-solid/node-artboard.svg";
 import NodeBlur from "@/../assets/icon-16px-solid/node-blur.svg";
@@ -137,6 +138,7 @@ const SOLID_16PX = {
 	File: { component: File, size: 16 },
 	FlipHorizontal: { component: FlipHorizontal, size: 16 },
 	FlipVertical: { component: FlipVertical, size: 16 },
+	Folder: { component: Folder, size: 16 },
 	GraphiteLogo: { component: GraphiteLogo, size: 16 },
 	NodeArtboard: { component: NodeArtboard, size: 16 },
 	NodeBlur: { component: NodeBlur, size: 16 },
