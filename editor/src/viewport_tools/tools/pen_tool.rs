@@ -309,13 +309,20 @@ impl Fsm for PenToolFsmState {
 					}
 
 					// Clean up overlays
-					if let Some(layer_path) = &tool_data.path {
-						tool_data.overlay_renderer.clear_vector_shape_overlays(&document.graphene_document, layer_path.clone(), responses);
+					for layer_path in document.all_layers() {
+						tool_data.overlay_renderer.clear_vector_shape_overlays(&document.graphene_document, layer_path.to_vec(), responses);
 					}
 					tool_data.path = None;
 					tool_data.snap_handler.cleanup(responses);
 
 					PenToolFsmState::Ready
+				}
+				(_, PenToolMessage::Abort) => {
+					// Clean up overlays
+					for layer_path in document.all_layers() {
+						tool_data.overlay_renderer.clear_vector_shape_overlays(&document.graphene_document, layer_path.to_vec(), responses);
+					}
+					self
 				}
 				_ => self,
 			}
