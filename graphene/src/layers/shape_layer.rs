@@ -1,14 +1,11 @@
 use super::layer_info::LayerData;
 use super::style::{self, PathStyle, ViewMode};
-use super::vector::constants::ControlPointType;
 use super::vector::vector_shape::VectorShape;
 use crate::intersection::{intersect_quad_bez_path, Quad};
 use crate::layers::text_layer::FontCache;
-use crate::layers::vector::vector_anchor::VectorAnchor;
 use crate::LayerId;
 
 use glam::{DAffine2, DMat2, DVec2};
-use kurbo::{BezPath, Shape as KurboShape};
 use serde::{Deserialize, Serialize};
 use std::fmt::Write;
 
@@ -79,6 +76,11 @@ impl LayerData for ShapeLayer {
 }
 
 impl ShapeLayer {
+	/// Construct a new [ShapeLayer] with the specified [VectorShape] and [PathStyle]
+	pub fn new(shape: VectorShape, style: PathStyle) -> Self {
+		Self { shape, style, render_index: 1 }
+	}
+
 	pub fn transform(&self, transforms: &[DAffine2], mode: ViewMode) -> DAffine2 {
 		let start = match (mode, self.render_index) {
 			(ViewMode::Outline, _) => 0,
@@ -86,15 +88,6 @@ impl ShapeLayer {
 			(_, x) => (transforms.len() as i32 - x).max(0) as usize,
 		};
 		transforms.iter().skip(start).fold(DAffine2::IDENTITY, |a, b| a * *b)
-	}
-
-	// TODO Wrap an adapter around this so we don't take in BezPath directly?
-	pub fn from_bez_path(bez_path: BezPath, style: PathStyle) -> Self {
-		Self {
-			shape: bez_path.iter().into(),
-			style,
-			render_index: 1,
-		}
 	}
 
 	/// TODO The behavior of ngon changed from the previous iteration slightly, match original behavior

@@ -1,6 +1,5 @@
 use crate::boolean_ops::composite_boolean_operation;
 use crate::intersection::Quad;
-use crate::layers;
 use crate::layers::folder_layer::FolderLayer;
 use crate::layers::image_layer::ImageLayer;
 use crate::layers::layer_info::{Layer, LayerData, LayerDataType};
@@ -140,12 +139,12 @@ impl Document {
 
 	/// Returns a reference to the requested VectorShape by providing a path to its owner layer.
 	pub fn vector_shape_ref<'a>(&'a self, path: &[LayerId]) -> Option<&'a VectorShape> {
-		return self.layer(path).ok()?.as_vector_shape();
+		self.layer(path).ok()?.as_vector_shape()
 	}
 
 	/// Returns a mutable reference of the requested VectorShape by providing a path to its owner layer.
 	pub fn vector_shape_mut<'a>(&'a mut self, path: &'a [LayerId]) -> Option<&'a mut VectorShape> {
-		return self.layer_mut(path).ok()?.as_vector_shape_mut();
+		self.layer_mut(path).ok()?.as_vector_shape_mut()
 	}
 
 	/// Set a VectorShape at the specified path.
@@ -581,9 +580,9 @@ impl Document {
 				transform,
 				insert_index,
 				style,
-				bez_path,
+				vector_path,
 			} => {
-				let shape = ShapeLayer::from_bez_path(bez_path, style);
+				let shape = ShapeLayer::new(vector_path, style);
 				self.set_layer(&path, Layer::new(LayerDataType::Shape(shape), transform), insert_index)?;
 				Some([vec![DocumentChanged, CreatedLayer { path }]].concat())
 			}
@@ -748,36 +747,13 @@ impl Document {
 				self.mark_as_dirty(&path)?;
 				Some([vec![DocumentChanged], update_thumbnails_upstream(&path)].concat())
 			}
-			Operation::SetShapePath { path, bez_path } => {
+			Operation::SetShapePath { path, vector_path } => {
 				self.mark_as_dirty(&path)?;
 
 				if let LayerDataType::Shape(shape) = &mut self.layer_mut(&path)?.data {
-					shape.shape = bez_path.iter().into();
+					shape.shape = vector_path;
 				}
 				Some(vec![DocumentChanged, LayerChanged { path }])
-			}
-			Operation::SetShapePathInViewport { path, bez_path, transform } => {
-				let transform = DAffine2::from_cols_array(&transform);
-				self.set_transform_relative_to_viewport(&path, transform)?;
-				self.mark_as_dirty(&path)?;
-
-				// Not using Document::layer_mut is necessary because we also need to borrow the font cache
-				let mut current_folder = &mut self.root;
-				let (folder_path, id) = split_path(&path)?;
-				for id in folder_path {
-					current_folder = current_folder.as_folder_mut()?.layer_mut(*id).ok_or_else(|| DocumentError::LayerNotFound(folder_path.into()))?;
-				}
-				let layer_mut = current_folder.as_folder_mut()?.layer_mut(id).ok_or_else(|| DocumentError::LayerNotFound(folder_path.into()))?;
-
-				if let LayerDataType::Text(t) = &mut layer_mut.data {
-					let bezpath = t.to_bez_path(t.load_face(font_cache));
-					layer_mut.data = layers::layer_info::LayerDataType::Shape(ShapeLayer::from_bez_path(bezpath, t.path_style.clone()));
-				}
-
-				if let LayerDataType::Shape(shape) = &mut layer_mut.data {
-					shape.shape = bez_path.iter().into();
-				}
-				Some([vec![DocumentChanged, LayerChanged { path: path.clone() }], update_thumbnails_upstream(&path)].concat())
 			}
 			Operation::InsertVectorAnchor { layer_path, anchor, after_id } => {
 				if let Ok(Some(shape)) = self.layer_mut(&layer_path).map(|layer| layer.as_vector_shape_mut()) {

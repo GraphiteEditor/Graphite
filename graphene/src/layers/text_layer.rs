@@ -1,21 +1,17 @@
 use super::layer_info::LayerData;
 use super::style::{PathStyle, ViewMode};
+use super::vector::vector_shape::VectorShape;
 use crate::intersection::{intersect_quad_bez_path, Quad};
 use crate::LayerId;
 pub use font_cache::{Font, FontCache};
 
 use glam::{DAffine2, DMat2, DVec2};
-use kurbo::{Affine, BezPath, Rect, Shape};
 use rustybuzz::Face;
 use serde::{Deserialize, Serialize};
 use std::fmt::Write;
 
 mod font_cache;
-mod to_kurbo;
-
-fn glam_to_kurbo(transform: DAffine2) -> Affine {
-	Affine::new(transform.to_cols_array())
-}
+mod to_path;
 
 /// A line, or multiple lines, of text drawn in the document.
 /// Like [ShapeLayers](super::shape_layer::ShapeLayer), [TextLayer] are rendered as
@@ -33,7 +29,7 @@ pub struct TextLayer {
 	#[serde(skip)]
 	pub editable: bool,
 	#[serde(skip)]
-	cached_path: Option<BezPath>,
+	cached_path: Option<VectorShape>,
 }
 
 impl LayerData for TextLayer {
@@ -72,12 +68,12 @@ impl LayerData for TextLayer {
 		} else {
 			let buzz_face = self.load_face(font_cache);
 
-			let mut path = self.to_bez_path(buzz_face);
+			let mut path = self.to_vector_path(buzz_face);
 
 			let kurbo::Rect { x0, y0, x1, y1 } = path.bounding_box();
 			let bounds = [(x0, y0).into(), (x1, y1).into()];
 
-			path.apply_affine(glam_to_kurbo(transform));
+			path.apply_affine(transform);
 
 			let kurbo::Rect { x0, y0, x1, y1 } = path.bounding_box();
 			let transformed_bounds = [(x0, y0).into(), (x1, y1).into()];
@@ -95,21 +91,17 @@ impl LayerData for TextLayer {
 	fn bounding_box(&self, transform: glam::DAffine2, font_cache: &FontCache) -> Option<[DVec2; 2]> {
 		let buzz_face = Some(self.load_face(font_cache)?);
 
-		let mut path = self.bounding_box(&self.text, buzz_face).to_path(0.1);
-
 		if transform.matrix2 == DMat2::ZERO {
 			return None;
 		}
-		path.apply_affine(glam_to_kurbo(transform));
 
-		let kurbo::Rect { x0, y0, x1, y1 } = path.bounding_box();
-		Some([(x0, y0).into(), (x1, y1).into()])
+		Some((transform * self.bounding_box(&self.text, buzz_face)).bounding_box())
 	}
 
 	fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, font_cache: &FontCache) {
 		let buzz_face = self.load_face(font_cache);
 
-		if intersect_quad_bez_path(quad, &self.bounding_box(&self.text, buzz_face).to_path(0.), true) {
+		if intersect_quad_bez_path(quad, &self.bounding_box(&self.text, buzz_face).path(), true) {
 			intersections.push(path.clone());
 		}
 	}
@@ -144,32 +136,32 @@ impl TextLayer {
 		new
 	}
 
-	/// Converts to a [BezPath], populating the cache if necessary.
+	/// Converts to a [VectorShape], populating the cache if necessary.
 	#[inline]
-	pub fn to_bez_path(&mut self, buzz_face: Option<Face>) -> BezPath {
+	pub fn to_vector_path(&mut self, buzz_face: Option<Face>) -> VectorShape {
 		if self.cached_path.is_none() {
 			self.regenerate_path(buzz_face);
 		}
 		self.cached_path.clone().unwrap()
 	}
 
-	/// Converts to a [BezPath], without populating the cache.
+	/// Converts to a [VectorShape], without populating the cache.
 	#[inline]
-	pub fn to_bez_path_nonmut(&self, font_cache: &FontCache) -> BezPath {
+	pub fn to_vector_path_nonmut(&self, font_cache: &FontCache) -> VectorShape {
 		let buzz_face = self.load_face(font_cache);
 
 		self.cached_path.clone().unwrap_or_else(|| self.generate_path(buzz_face))
 	}
 
 	#[inline]
-	fn generate_path(&self, buzz_face: Option<Face>) -> BezPath {
-		to_kurbo::to_kurbo(&self.text, buzz_face, self.size, self.line_width)
+	fn generate_path(&self, buzz_face: Option<Face>) -> VectorShape {
+		to_path::to_path(&self.text, buzz_face, self.size, self.line_width)
 	}
 
 	#[inline]
-	pub fn bounding_box(&self, text: &str, buzz_face: Option<Face>) -> Rect {
-		let far = to_kurbo::bounding_box(text, buzz_face, self.size, self.line_width);
-		Rect::new(0., 0., far.x, far.y)
+	pub fn bounding_box(&self, text: &str, buzz_face: Option<Face>) -> Quad {
+		let far = to_path::bounding_box(text, buzz_face, self.size, self.line_width);
+		Quad::from_box([DVec2::ZERO, far])
 	}
 
 	/// Populate the cache.

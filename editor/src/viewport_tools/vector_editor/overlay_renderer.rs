@@ -1,7 +1,6 @@
 use std::collections::{HashMap, VecDeque};
 
 use glam::{DAffine2, DVec2};
-use kurbo::BezPath;
 
 use crate::{
 	consts::{COLOR_ACCENT, PATH_OUTLINE_WEIGHT, VECTOR_MANIPULATOR_ANCHOR_MARKER_SIZE},
@@ -9,15 +8,9 @@ use crate::{
 };
 
 use super::{constants::ROUNDING_BIAS, vector_anchor::VectorAnchor, vector_control_point::VectorControlPoint};
-use graphene::{
-	color::Color,
-	document::Document,
-	layers::{
-		style::{self, Fill, Stroke},
-		vector::constants::ControlPointType,
-	},
-	LayerId, Operation,
-};
+use graphene::layers::style::{self, Fill, Stroke};
+use graphene::layers::vector::{constants::ControlPointType, vector_shape::VectorShape};
+use graphene::{color::Color, document::Document, LayerId, Operation};
 
 /// AnchorOverlay is the collection of overlays that make up an anchor
 /// Notably the anchor point, handles and the lines for the handles
@@ -32,7 +25,7 @@ pub struct OverlayRenderer {
 	anchor_overlay_cache: HashMap<(LayerId, AnchorId), AnchorOverlays>,
 }
 
-impl<'a> OverlayRenderer {
+impl OverlayRenderer {
 	pub fn new() -> Self {
 		OverlayRenderer {
 			anchor_overlay_cache: HashMap::new(),
@@ -52,13 +45,13 @@ impl<'a> OverlayRenderer {
 
 				// Create an outline if we do not have a cached one
 				if outline_cache == None {
-					let outline_path = self.create_shape_outline_overlay(shape.into(), responses);
+					let outline_path = self.create_shape_outline_overlay(shape.clone(), responses);
 					self.shape_overlay_cache.insert(*layer_id, outline_path.clone());
 					Self::place_outline_overlays(outline_path.clone(), &transform, responses);
 					log::trace!("Overlay: Creating new outline {:?}", &outline_path);
 				} else if let Some(outline_path) = outline_cache {
 					log::trace!("Overlay: Updating overlays for {:?} owning layer: {:?}", outline_path, layer_id);
-					Self::modify_outline_overlays(outline_path.clone(), shape.into(), responses);
+					Self::modify_outline_overlays(outline_path.clone(), shape.clone(), responses);
 					Self::place_outline_overlays(outline_path.clone(), &transform, responses);
 				}
 
@@ -134,11 +127,11 @@ impl<'a> OverlayRenderer {
 	}
 
 	/// Create the kurbo shape that matches the selected viewport shape
-	fn create_shape_outline_overlay(&self, bez_path: BezPath, responses: &mut VecDeque<Message>) -> Vec<LayerId> {
+	fn create_shape_outline_overlay(&self, vector_path: VectorShape, responses: &mut VecDeque<Message>) -> Vec<LayerId> {
 		let layer_path = vec![generate_uuid()];
 		let operation = Operation::AddShape {
 			path: layer_path.clone(),
-			bez_path,
+			vector_path,
 			style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, PATH_OUTLINE_WEIGHT)), Fill::None),
 			insert_index: -1,
 			transform: DAffine2::IDENTITY.to_cols_array(),
@@ -202,8 +195,8 @@ impl<'a> OverlayRenderer {
 		responses.push_back(transform_message);
 	}
 
-	fn modify_outline_overlays(outline_path: Vec<LayerId>, bez_path: BezPath, responses: &mut VecDeque<Message>) {
-		let outline_modify_message = Self::overlay_modify_message(outline_path, bez_path);
+	fn modify_outline_overlays(outline_path: Vec<LayerId>, vector_path: VectorShape, responses: &mut VecDeque<Message>) {
+		let outline_modify_message = Self::overlay_modify_message(outline_path, vector_path);
 		responses.push_back(outline_modify_message);
 	}
 
@@ -295,8 +288,8 @@ impl<'a> OverlayRenderer {
 	}
 
 	/// Create an update message for an overlay
-	fn overlay_modify_message(layer_path: Vec<LayerId>, bez_path: BezPath) -> Message {
-		DocumentMessage::Overlays(Operation::SetShapePath { path: layer_path, bez_path }.into()).into()
+	fn overlay_modify_message(layer_path: Vec<LayerId>, vector_path: VectorShape) -> Message {
+		DocumentMessage::Overlays(Operation::SetShapePath { path: layer_path, vector_path }.into()).into()
 	}
 
 	/// Sets the overlay style for this point

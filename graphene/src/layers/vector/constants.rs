@@ -3,7 +3,7 @@ use std::ops::{Index, IndexMut, Not};
 use serde::{Deserialize, Serialize};
 
 #[repr(usize)]
-#[derive(PartialEq, Clone, Debug, Copy, Serialize, Deserialize)]
+#[derive(PartialEq, Eq, Clone, Debug, Copy, Serialize, Deserialize)]
 pub enum ControlPointType {
 	Anchor = 0,
 	InHandle = 1,

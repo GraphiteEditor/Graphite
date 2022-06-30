@@ -7,10 +7,10 @@ use graphene::intersection::Quad;
 use graphene::layers::layer_info::LayerDataType;
 use graphene::layers::style::{self, Fill, Stroke};
 use graphene::layers::text_layer::FontCache;
+use graphene::layers::vector::vector_shape::VectorShape;
 use graphene::{LayerId, Operation};
 
 use glam::{DAffine2, DVec2};
-use kurbo::{BezPath, Shape};
 use std::collections::VecDeque;
 
 /// Manages the overlay used by the select tool for outlining selected shapes and when hovering over a non selected shape.
@@ -35,12 +35,12 @@ impl PathOutline {
 
 		// TODO Purge this area of BezPath and Kurbo
 		// Get the bezpath from the shape or text
-		let path = match &document_layer.data {
-			LayerDataType::Shape(layer_shape) => Some(BezPath::from(&layer_shape.shape)),
-			LayerDataType::Text(text) => Some(text.to_bez_path_nonmut(font_cache)),
+		let vector_path = match &document_layer.data {
+			LayerDataType::Shape(layer_shape) => Some(layer_shape.shape.clone()),
+			LayerDataType::Text(text) => Some(text.to_vector_path_nonmut(font_cache)),
 			_ => document_layer
 				.aabounding_box_for_transform(DAffine2::IDENTITY, font_cache)
-				.map(|bounds| kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y).to_path(0.)),
+				.map(|[p1, p2]| VectorShape::new_rect(p1, p2)),
 		}?;
 
 		// Generate a new overlay layer if necessary
@@ -50,7 +50,7 @@ impl PathOutline {
 				let overlay_path = vec![generate_uuid()];
 				let operation = Operation::AddShape {
 					path: overlay_path.clone(),
-					bez_path: BezPath::new(),
+					vector_path: Default::default(),
 					style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, PATH_OUTLINE_WEIGHT)), Fill::None),
 					insert_index: -1,
 					transform: DAffine2::IDENTITY.to_cols_array(),
@@ -63,10 +63,7 @@ impl PathOutline {
 		};
 
 		// Update the shape bezpath
-		let operation = Operation::SetShapePath {
-			path: overlay.clone(),
-			bez_path: path,
-		};
+		let operation = Operation::SetShapePath { path: overlay.clone(), vector_path };
 		responses.push_back(DocumentMessage::Overlays(operation.into()).into());
 
 		// Update the transform to match the document

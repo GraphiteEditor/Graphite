@@ -193,7 +193,7 @@ impl Fsm for PenToolFsmState {
 								path: layer_path.clone(),
 								transform: DAffine2::IDENTITY.to_cols_array(),
 								insert_index: -1,
-								bez_path: Default::default(),
+								vector_path: Default::default(),
 								style: style::PathStyle::new(Some(style::Stroke::new(global_tool_data.primary_color, tool_data.weight)), style::Fill::None),
 							}
 							.into(),

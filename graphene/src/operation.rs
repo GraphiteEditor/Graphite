@@ -4,6 +4,7 @@ use crate::layers::layer_info::Layer;
 use crate::layers::style::{self, Stroke};
 use crate::layers::vector::constants::ControlPointType;
 use crate::layers::vector::vector_anchor::VectorAnchor;
+use crate::layers::vector::vector_shape::VectorShape;
 use crate::LayerId;
 
 use serde::{Deserialize, Serialize};
@@ -93,8 +94,7 @@ pub enum Operation {
 		path: Vec<LayerId>,
 		transform: [f64; 6],
 		insert_index: isize,
-		// TODO Remove this (remove kurbo)
-		bez_path: kurbo::BezPath,
+		vector_path: VectorShape,
 		style: style::PathStyle,
 	},
 	BooleanOperation {
@@ -159,14 +159,7 @@ pub enum Operation {
 	},
 	SetShapePath {
 		path: Vec<LayerId>,
-		// TODO Remove this (remove kurbo)
-		bez_path: kurbo::BezPath,
-	},
-	SetShapePathInViewport {
-		path: Vec<LayerId>,
-		// TODO Remove this (remove kurbo)
-		bez_path: kurbo::BezPath,
-		transform: [f64; 6],
+		vector_path: VectorShape,
 	},
 	InsertVectorAnchor {
 		layer_path: Vec<LayerId>,

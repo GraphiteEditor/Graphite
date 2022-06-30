@@ -21,6 +21,17 @@ impl VectorShape {
 		VectorShape { ..Default::default() }
 	}
 
+	/// Construct a [VectorShape] from a point iterator
+	pub fn from_points(points: impl Iterator<Item = DVec2>, closed: bool) -> Self {
+		let anchors = points.map(VectorAnchor::new);
+		let mut p_line = VectorShape(IdBackedVec::default());
+		p_line.0.push_range(anchors);
+		if closed {
+			p_line.0.push(VectorAnchor::closed());
+		}
+		p_line
+	}
+
 	/// Create a new VectorShape from a kurbo Shape
 	/// This exists to smooth the transition away from Kurbo
 	pub fn from_kurbo_shape<T: Shape>(shape: &T) -> Self {

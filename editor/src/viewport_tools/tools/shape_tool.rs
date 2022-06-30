@@ -156,7 +156,7 @@ impl Fsm for ShapeToolFsmState {
 							path: shape_data.path.clone().unwrap(),
 							insert_index: -1,
 							transform: DAffine2::ZERO.to_cols_array(),
-							sides: tool_data.sides.into(),
+							sides: tool_data.sides,
 							style: style::PathStyle::new(None, style::Fill::solid(global_tool_data.primary_color)),
 						}
 						.into(),
