@@ -2,7 +2,7 @@ use crate::input::InputPreprocessorMessageHandler;
 use crate::message_prelude::*;
 
 use graphene::document::Document as GrapheneDocument;
-use graphene::layers::style::ViewMode;
+use graphene::layers::style::{RenderData, ViewMode};
 use graphene::layers::text_layer::FontCache;
 
 #[derive(Debug, Clone, Default)]
@@ -32,7 +32,8 @@ impl MessageHandler<OverlaysMessage, (bool, &FontCache, &InputPreprocessorMessag
 				responses.push_back(
 					FrontendMessage::UpdateDocumentOverlays {
 						svg: if overlays_visible {
-							self.overlays_graphene_document.render_root(ViewMode::Normal, font_cache, Some(ipp.document_bounds()))
+							let render_data = RenderData::new(ViewMode::Normal, font_cache, Some(ipp.document_bounds()), false);
+							self.overlays_graphene_document.render_root(render_data)
 						} else {
 							String::from("")
 						},
