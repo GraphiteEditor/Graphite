@@ -1,16 +1,11 @@
 :root {
-	--color-walnut: #473a3a;
-	--color-manilla: #f1decd;
-	--color-mustard: #deba92;
-	--color-crimson: #803847;
-	--color-navy: #16323f;
+	--color-white: #ffffff;
 	--color-fog: #eeeeee;
-	--color-black: #000000;
-	--max-width: 1600px;
-	--max-width-plus-padding: calc(var(--max-width) + 40px * 2);
-	--variable-px: Min(1px, 0.15vw);
-	--page-edge-padding: 40px;
-	--border-thickness: 2px;
+	--color-navy: #16323f;
+	--color-walnut: #473a3a;
+	--color-crimson: #803847;
+	--color-mustard: #e5c299;
+
 	--font-size-intro-heading: 60px;
 	--font-size-intro-body: 22px;
 	--font-size-link: 24px;
@@ -20,6 +15,13 @@
 	--font-size-article-h1: 32px;
 	--font-size-article-h2: 24px;
 	--font-size-article-h3: 18px;
+
+	--max-width: 1600px;
+	--max-width-plus-padding: calc(var(--max-width) + 40px * 2);
+
+	--variable-px: Min(1px, 0.15vw);
+	--page-edge-padding: 40px;
+	--border-thickness: 2px;
   
 	@media screen and (max-width: 760px) {
 		--font-size-intro-heading: 40px;
@@ -27,6 +29,7 @@
 		--font-size-link: 20px;
 		--font-size-heading: 32px;
 		--font-size-body: 16px;
+
 		--page-edge-padding: 28px;
 	}
 
@@ -36,8 +39,9 @@
 		--font-size-link: 16px;
 		--font-size-heading: 28px;
 		--font-size-body: 16px;
-		--border-thickness: 1px;
+
 		--page-edge-padding: 20px;
+		--border-thickness: 1px;
 	}
 
 	@media screen and (max-width: 400px) {
@@ -46,6 +50,7 @@
 		--font-size-link: 14px;
 		--font-size-heading: 24px;
 		--font-size-body: 16px;
+
 		--page-edge-padding: 12px;
 	}
 }
@@ -57,7 +62,7 @@ body {
 	width: 100%;
 	height: 100%;
 	margin: 0;
-	background: white;
+	background: var(--color-white);
 	font-family: "Inter", sans-serif;
 	line-height: 1.5;
 	font-weight: 500;

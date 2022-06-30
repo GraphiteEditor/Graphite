@@ -15,6 +15,7 @@ pub struct Export {
 	pub scale_factor: f64,
 	pub bounds: ExportBounds,
 	pub artboards: HashMap<LayerId, String>,
+	pub has_selection: bool,
 }
 
 impl PropertyHolder for Export {
@@ -60,15 +61,19 @@ impl PropertyHolder for Export {
 			})),
 		];
 
-		let artboards = self.artboards.iter().map(|(&val, name)| (ExportBounds::Artboard(val), name.to_string()));
-		let mut export_area_options = vec![(ExportBounds::AllArtwork, "All Artwork".to_string())];
+		let artboards = self.artboards.iter().map(|(&val, name)| (ExportBounds::Artboard(val), name.to_string(), false));
+		let mut export_area_options = vec![
+			(ExportBounds::AllArtwork, "All Artwork".to_string(), false),
+			(ExportBounds::Selection, "Selection".to_string(), !self.has_selection),
+		];
 		export_area_options.extend(artboards);
-		let index = export_area_options.iter().position(|(val, _)| val == &self.bounds).unwrap();
+		let index = export_area_options.iter().position(|(val, _, _)| val == &self.bounds).unwrap();
 		let entries = vec![export_area_options
 			.into_iter()
-			.map(|(val, name)| DropdownEntryData {
+			.map(|(val, name, disabled)| DropdownEntryData {
 				label: name,
 				on_update: WidgetCallback::new(move |_| ExportDialogUpdate::ExportBounds(val).into()),
+				disabled,
 				..Default::default()
 			})
 			.collect()];

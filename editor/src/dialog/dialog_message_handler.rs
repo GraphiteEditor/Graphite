@@ -79,6 +79,7 @@ impl MessageHandler<DialogMessage, &PortfolioMessageHandler> for DialogMessageHa
 					file_name: portfolio.active_document().name.clone(),
 					scale_factor: 1.,
 					artboards,
+					has_selection: portfolio.active_document().selected_layers().next().is_some(),
 					..Default::default()
 				};
 				self.export_dialog.register_properties(responses, LayoutTarget::DialogDetails);
