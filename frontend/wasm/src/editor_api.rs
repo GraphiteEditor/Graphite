@@ -65,16 +65,21 @@ impl JsEditorHandle {
 		}
 
 		let frontend_messages = EDITOR_INSTANCES.with(|instances| {
-			instances
-				.borrow_mut()
-				.get_mut(&self.editor_id)
-				.expect("EDITOR_INSTANCES does not contain the current editor_id")
-				.handle_message(message.into())
+			instances.try_borrow_mut().map(|mut editors| {
+				editors
+					.get_mut(&self.editor_id)
+					.expect("EDITOR_INSTANCES does not contain the current editor_id")
+					.handle_message(message.into())
+			})
 		});
-		for message in frontend_messages.into_iter() {
-			// Send each FrontendMessage to the JavaScript frontend
-			self.send_frontend_message_to_js(message);
+
+		if let Ok(frontend_messages) = frontend_messages {
+			for message in frontend_messages.into_iter() {
+				// Send each FrontendMessage to the JavaScript frontend
+				self.send_frontend_message_to_js(message);
+			}
 		}
+		// If the editor cannot be borrowed then it has encountered a panic - we should just ignore new dispatches
 	}
 
 	// Sends a FrontendMessage to JavaScript

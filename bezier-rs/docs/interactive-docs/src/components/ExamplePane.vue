@@ -2,8 +2,8 @@
 	<div>
 		<h2 class="example_pane_header">{{ name }}</h2>
 		<div class="example_row">
-			<div v-for="example in exampleData" :key="example.id">
-				<component :is="template" :templateOptions="templateOptions" :title="example.title" :bezier="example.bezier" :callback="callback" />
+			<div v-for="(example, index) in exampleData" :key="index">
+				<component :is="template" :templateOptions="example.templateOptions" :title="example.title" :bezier="example.bezier" :callback="callback" :createThroughPoints="createThroughPoints" />
 			</div>
 		</div>
 	</div>
@@ -12,15 +12,14 @@
 <script lang="ts">
 import { defineComponent, PropType, Component } from "vue";
 
-import { BezierCallback } from "@/utils/types";
-import { WasmBezierInstance } from "@/utils/wasm-comm";
+import { BezierCallback, TemplateOption, WasmBezierInstance, WasmRawInstance } from "@/utils/types";
 
 import Example from "@/components/Example.vue";
 
 type ExampleData = {
-	id: number;
 	title: string;
 	bezier: WasmBezierInstance;
+	templateOptions: TemplateOption;
 };
 
 export default defineComponent({
@@ -38,7 +37,15 @@ export default defineComponent({
 			type: Object as PropType<Component>,
 			default: Example,
 		},
-		templateOptions: Object,
+		templateOptions: Object as PropType<TemplateOption>,
+		cubicOptions: {
+			type: Object as PropType<TemplateOption>,
+			default: null,
+		},
+		createThroughPoints: {
+			type: Boolean as PropType<boolean>,
+			default: false,
+		},
 	},
 	data() {
 		return {
@@ -46,26 +53,28 @@ export default defineComponent({
 		};
 	},
 	mounted() {
-		import("@/../wasm/pkg").then((wasm) => {
+		import("@/../wasm/pkg").then((wasm: WasmRawInstance) => {
+			const quadraticPoints = [
+				[30, 50],
+				[140, 30],
+				[160, 170],
+			];
+			const cubicPoints = [
+				[30, 30],
+				[60, 140],
+				[150, 30],
+				[160, 160],
+			];
 			this.exampleData = [
 				{
-					id: 0,
 					title: "Quadratic",
-					bezier: wasm.WasmBezier.new_quad([
-						[30, 50],
-						[140, 30],
-						[160, 170],
-					]),
+					bezier: wasm.WasmBezier.new_quadratic(quadraticPoints),
+					templateOptions: this.templateOptions as TemplateOption,
 				},
 				{
-					id: 1,
 					title: "Cubic",
-					bezier: wasm.WasmBezier.new_cubic([
-						[30, 30],
-						[60, 140],
-						[150, 30],
-						[160, 160],
-					]),
+					bezier: wasm.WasmBezier.new_cubic(cubicPoints),
+					templateOptions: (this.cubicOptions || this.templateOptions) as TemplateOption,
 				},
 			];
 		});

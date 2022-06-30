@@ -1,11 +1,24 @@
-import { Point } from "@/utils/types";
+import { BezierStyleConfig, Point, WasmBezierInstance } from "@/utils/types";
 
-const RADIUS_SIZE = {
-	large: 5,
-	small: 3,
+const HANDLE_RADIUS_FACTOR = 2 / 3;
+const DEFAULT_ENDPOINT_RADIUS = 5;
+
+export const COLORS = {
+	CANVAS: "white",
+	INTERACTIVE: {
+		STROKE_1: "black",
+		STROKE_2: "grey",
+		SELECTED: "blue",
+	},
+	NON_INTERACTIVE: {
+		STROKE_1: "red",
+		STROKE_2: "orange",
+	},
 };
 
-export const getPointSizeByIndex = (index: number, numPoints: number): number => RADIUS_SIZE[index === 0 || index === numPoints - 1 ? "large" : "small"];
+export const isIndexFirstOrLast = (index: number, arrayLength: number): boolean => index === 0 || index === arrayLength - 1;
+
+export const getPointSizeByIndex = (index: number, numPoints: number, radius = DEFAULT_ENDPOINT_RADIUS): number => (isIndexFirstOrLast(index, numPoints) ? radius : radius * HANDLE_RADIUS_FACTOR);
 
 export const getContextFromCanvas = (canvas: HTMLCanvasElement): CanvasRenderingContext2D => {
 	const ctx = canvas.getContext("2d");
@@ -15,7 +28,7 @@ export const getContextFromCanvas = (canvas: HTMLCanvasElement): CanvasRendering
 	return ctx;
 };
 
-export const drawLine = (ctx: CanvasRenderingContext2D, point1: Point, point2: Point, strokeColor = "gray"): void => {
+export const drawLine = (ctx: CanvasRenderingContext2D, point1: Point, point2: Point, strokeColor = COLORS.INTERACTIVE.STROKE_2): void => {
 	ctx.strokeStyle = strokeColor;
 	ctx.lineWidth = 1;
 
@@ -25,7 +38,7 @@ export const drawLine = (ctx: CanvasRenderingContext2D, point1: Point, point2: P
 	ctx.stroke();
 };
 
-export const drawPoint = (ctx: CanvasRenderingContext2D, point: Point, radius: number, strokeColor = "black"): void => {
+export const drawPoint = (ctx: CanvasRenderingContext2D, point: Point, radius: number, strokeColor = COLORS.INTERACTIVE.STROKE_1): void => {
 	// Outline the point
 	ctx.strokeStyle = strokeColor;
 	ctx.lineWidth = radius / 3;
@@ -34,25 +47,45 @@ export const drawPoint = (ctx: CanvasRenderingContext2D, point: Point, radius: n
 	ctx.stroke();
 
 	// Fill the point (hiding any overlapping lines)
-	ctx.fillStyle = "white";
+	ctx.fillStyle = COLORS.CANVAS;
 	ctx.beginPath();
-	ctx.arc(point.x, point.y, radius * (2 / 3), 0, 2 * Math.PI, false);
+	ctx.arc(point.x, point.y, radius * HANDLE_RADIUS_FACTOR, 0, 2 * Math.PI, false);
 	ctx.fill();
 };
 
-export const drawText = (ctx: CanvasRenderingContext2D, text: string, x: number, y: number): void => {
-	ctx.fillStyle = "black";
+export const drawText = (ctx: CanvasRenderingContext2D, text: string, x: number, y: number, textColor = COLORS.INTERACTIVE.STROKE_1): void => {
+	ctx.fillStyle = textColor;
 	ctx.font = "16px Arial";
 	ctx.fillText(text, x, y);
 };
 
-export const drawBezier = (ctx: CanvasRenderingContext2D, points: Point[], dragIndex: number | null = null): void => {
-	/* Until a bezier representation is finalized, treat the points as follows
-		points[0] = start point
-		points[1] = handle start
-		points[2] = (optional) handle end
-		points[3] = end point
-	*/
+export const drawBezierHelper = (ctx: CanvasRenderingContext2D, bezier: WasmBezierInstance, bezierStyleConfig: Partial<BezierStyleConfig> = {}): void => {
+	const points = bezier.get_points().map((p: string) => JSON.parse(p));
+	drawBezier(ctx, points, null, bezierStyleConfig);
+};
+
+export const drawBezier = (ctx: CanvasRenderingContext2D, points: Point[], dragIndex: number | null = null, bezierStyleConfig: Partial<BezierStyleConfig> = {}): void => {
+	const styleConfig: BezierStyleConfig = {
+		curveStrokeColor: COLORS.INTERACTIVE.STROKE_1,
+		handleStrokeColor: COLORS.INTERACTIVE.STROKE_1,
+		handleLineStrokeColor: COLORS.INTERACTIVE.STROKE_1,
+		radius: DEFAULT_ENDPOINT_RADIUS,
+		...bezierStyleConfig,
+	};
+	// if the handle or handle line colors are not specified, use the same colour as the rest of the curve
+	if (bezierStyleConfig.curveStrokeColor) {
+		if (!bezierStyleConfig.handleStrokeColor) {
+			styleConfig.handleStrokeColor = bezierStyleConfig.curveStrokeColor;
+		}
+		if (!bezierStyleConfig.handleLineStrokeColor) {
+			styleConfig.handleLineStrokeColor = bezierStyleConfig.curveStrokeColor;
+		}
+	}
+	// Points passed to drawBezier are interpreted as follows
+	//	points[0] = start point
+	//	points[1] = handle start
+	//	points[2] = (optional) handle end
+	//	points[3] = end point
 	const start = points[0];
 	let end = null;
 	let handleStart = null;
@@ -67,7 +100,7 @@ export const drawBezier = (ctx: CanvasRenderingContext2D, points: Point[], dragI
 		end = points[2];
 	}
 
-	ctx.strokeStyle = "black";
+	ctx.strokeStyle = styleConfig.curveStrokeColor;
 	ctx.lineWidth = 2;
 
 	ctx.beginPath();
@@ -79,10 +112,11 @@ export const drawBezier = (ctx: CanvasRenderingContext2D, points: Point[], dragI
 	}
 	ctx.stroke();
 
-	drawLine(ctx, start, handleStart);
-	drawLine(ctx, end, handleEnd);
+	drawLine(ctx, start, handleStart, styleConfig.handleLineStrokeColor);
+	drawLine(ctx, end, handleEnd, styleConfig.handleLineStrokeColor);
 
 	points.forEach((point, index) => {
-		drawPoint(ctx, point, getPointSizeByIndex(index, points.length), index === dragIndex ? "Blue" : "Black");
+		const strokeColor = isIndexFirstOrLast(index, points.length) ? styleConfig.curveStrokeColor : styleConfig.handleStrokeColor;
+		drawPoint(ctx, point, getPointSizeByIndex(index, points.length, styleConfig.radius), index === dragIndex ? COLORS.INTERACTIVE.SELECTED : strokeColor);
 	});
 };
