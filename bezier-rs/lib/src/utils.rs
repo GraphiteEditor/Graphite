@@ -29,3 +29,17 @@ pub fn compute_abc_for_cubic_through_points(start_point: DVec2, point_on_curve: 
 
 	compute_abc_through_points(start_point, point_on_curve, end_point, t_cubed, cubed_one_minus_t)
 }
+
+pub fn get_closest_point_in_lut(lut: &Vec<DVec2>, point: DVec2) -> (f64, usize) {
+	let mut min_distance = f64::MAX;
+	let mut min_position = 0;
+	let mut dist;
+	for (idx, lut_point) in lut.iter().enumerate() {
+		dist = point.distance(*lut_point);
+		if dist < min_distance {
+			min_distance = dist;
+			min_position = idx;
+		}
+	}
+	(min_distance, min_position)
+}

@@ -332,27 +332,12 @@ impl Bezier {
 		bezier_starting_at_t1.split(adjusted_t2)[t2_split_side]
 	}
 
-	// TODO: move this to a util file maybe
-	fn get_closest_point_in_lut(&self, lut: &Vec<DVec2>, point: DVec2) -> (f64, usize) {
-		let mut min_distance = f64::MAX;
-		let mut min_position = 0;
-		let mut dist;
-		for (idx, lut_point) in lut.iter().enumerate() {
-			dist = point.distance(*lut_point);
-			if dist < min_distance {
-				min_distance = dist;
-				min_position = idx;
-			}
-		}
-		(min_distance, min_position)
-	}
-
 	/// Returns the closest point on the curve to the provided point
 	pub fn project(&self, point: DVec2) -> DVec2 {
 		// First find the closest point from the results of a lookup table
 		let lut_size = 20;
 		let lut = self.compute_lookup_table(Some(lut_size));
-		let closest_point_data = self.get_closest_point_in_lut(&lut, point);
+		let closest_point_data = utils::get_closest_point_in_lut(&lut, point);
 
 		let mut minimum_distance = closest_point_data.0;
 		let minimum_position = closest_point_data.1 as i32;
@@ -379,7 +364,6 @@ impl Bezier {
 			iterator_t += step;
 		}
 
-		println!("project 1: final_t: {}", final_t);
 		self.compute(final_t)
 	}
 
@@ -392,7 +376,7 @@ impl Bezier {
 		// First find the closest point from the results of a lookup table
 		let lut_size = 20;
 		let lut = self.compute_lookup_table(Some(lut_size));
-		let closest_point_data = self.get_closest_point_in_lut(&lut, point);
+		let closest_point_data = utils::get_closest_point_in_lut(&lut, point);
 
 		let mut minimum_distance = closest_point_data.0;
 		let minimum_position = closest_point_data.1 as i32;
@@ -423,9 +407,6 @@ impl Bezier {
 			point.distance(lut[lut_size.min(minimum_position + 1) as usize]),
 		];
 
-		// TODO: Remove this variable, it is used to count how many distance computations were done
-		let mut count_dist = 2;
-
 		while left_t <= right_t && convergence_count < convergence_limit && iteration_count < iteration_limit {
 			previous_distance = minimum_distance;
 			let step = (right_t - left_t) / 4.;
@@ -437,7 +418,6 @@ impl Bezier {
 				if step_index == 0 {
 					distance = *table_distance;
 				} else {
-					count_dist += 1;
 					distance = point.distance(self.compute(iterator_t));
 					*table_distance = distance;
 				}
@@ -469,53 +449,9 @@ impl Bezier {
 			} else {
 				convergence_count = 0;
 			}
-			println!("dist: {}", minimum_distance);
 		}
-		println!("count: {}, t: {}, count dist {}", iteration_count, final_t, count_dist);
 
 		self.compute(final_t)
-	}
-}
-
-#[cfg(test)]
-mod tests {
-	use crate::Bezier;
-	use glam::DVec2;
-	#[test]
-	fn project() {
-		let bezier = Bezier::from_cubic_coordinates(4., 4., 23., 45., 10., 30., 56., 90.);
-		assert!(bezier.project(DVec2::new(100., 100.)) == DVec2::new(56., 90.));
-		assert!(bezier.project(DVec2::new(0., 0.)) == DVec2::new(4., 4.));
-		let bezier2 = Bezier::from_quadratic_coordinates(0., 0., 0., 100., 100., 100.);
-		assert!(bezier2.project(DVec2::new(100., 0.)) == DVec2::new(0., 0.));
-	}
-
-	#[test]
-	fn project_precise() {
-		let bezier = Bezier::from_cubic_coordinates(4., 4., 23., 45., 10., 30., 56., 90.);
-		assert!(bezier.project_precise(DVec2::new(100., 100.), 0.0001, 3, 10) == DVec2::new(56., 90.));
-		assert!(bezier.project_precise(DVec2::new(0., 0.), 0.0001, 3, 10) == DVec2::new(4., 4.));
-		let bezier2 = Bezier::from_quadratic_coordinates(0., 0., 0., 100., 100., 100.);
-		assert!(bezier2.project_precise(DVec2::new(100., 0.), 0.0001, 3, 10) == DVec2::new(0., 0.));
-	}
-
-	#[test]
-	fn diff_project_impls() {
-		let bezier = Bezier::from_cubic_coordinates(4., 4., 5030., 5050., 4090., 5050., 4., 4.);
-		let test = DVec2::new(5073., 5060.);
-		let min1 = test.distance(bezier.project(test));
-		let min2 = test.distance(bezier.project_precise(test, 0.0001, 3, 10));
-		println!("{} vs {}", min1, min2);
-		println!(
-			"minimum distance between implementations: {}",
-			if min1 == min2 {
-				"both"
-			} else if min1 < min2 {
-				"project1"
-			} else {
-				"project2"
-			}
-		);
 	}
 }
 
@@ -558,5 +494,23 @@ mod tests {
 
 		let bezier3 = Bezier::cubic_through_points(p1, p2, p3, 0., 91.7);
 		assert!(compare_points(bezier3.compute(0.), p2));
+	}
+
+	#[test]
+	fn project() {
+		let bezier = Bezier::from_cubic_coordinates(4., 4., 23., 45., 10., 30., 56., 90.);
+		assert!(bezier.project(DVec2::new(100., 100.)) == DVec2::new(56., 90.));
+		assert!(bezier.project(DVec2::new(0., 0.)) == DVec2::new(4., 4.));
+		let bezier2 = Bezier::from_quadratic_coordinates(0., 0., 0., 100., 100., 100.);
+		assert!(bezier2.project(DVec2::new(100., 0.)) == DVec2::new(0., 0.));
+	}
+
+	#[test]
+	fn project_precise() {
+		let bezier = Bezier::from_cubic_coordinates(4., 4., 23., 45., 10., 30., 56., 90.);
+		assert!(bezier.project_precise(DVec2::new(100., 100.), 0.0001, 3, 10) == DVec2::new(56., 90.));
+		assert!(bezier.project_precise(DVec2::new(0., 0.), 0.0001, 3, 10) == DVec2::new(4., 4.));
+		let bezier2 = Bezier::from_quadratic_coordinates(0., 0., 0., 100., 100., 100.);
+		assert!(bezier2.project_precise(DVec2::new(100., 0.), 0.0001, 3, 10) == DVec2::new(0., 0.));
 	}
 }
