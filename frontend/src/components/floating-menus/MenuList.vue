@@ -22,9 +22,9 @@
 					class="row"
 					:class="{ open: isEntryOpen(entry), active: entry.label === highlighted?.label, disabled: entry.disabled }"
 					:style="{ height: virtualScrollingEntryHeight || '20px' }"
-					@click="() => entry.disabled || onEntryClick(entry)"
-					@pointerenter="() => entry.disabled || onEntryPointerEnter(entry)"
-					@pointerleave="() => entry.disabled || onEntryPointerLeave(entry)"
+					@click="() => !entry.disabled && onEntryClick(entry)"
+					@pointerenter="() => !entry.disabled && onEntryPointerEnter(entry)"
+					@pointerleave="() => !entry.disabled && onEntryPointerLeave(entry)"
 				>
 					<IconLabel v-if="entry.icon && drawIcon" :icon="entry.icon" class="entry-icon" />
 					<div v-else-if="drawIcon" class="no-icon"></div>
