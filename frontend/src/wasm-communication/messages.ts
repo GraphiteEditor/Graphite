@@ -147,20 +147,22 @@ export class UpdateDocumentArtboards extends JsMessage {
 
 const TupleToVec2 = Transform(({ value }) => ({ x: value[0], y: value[1] }));
 
+export type XY = { x: number; y: number };
+
 export class UpdateDocumentScrollbars extends JsMessage {
 	@TupleToVec2
-	readonly position!: { x: number; y: number };
+	readonly position!: XY;
 
 	@TupleToVec2
-	readonly size!: { x: number; y: number };
+	readonly size!: XY;
 
 	@TupleToVec2
-	readonly multiplier!: { x: number; y: number };
+	readonly multiplier!: XY;
 }
 
 export class UpdateDocumentRulers extends JsMessage {
 	@TupleToVec2
-	readonly origin!: { x: number; y: number };
+	readonly origin!: XY;
 
 	readonly spacing!: number;
 
@@ -208,7 +210,7 @@ export class TriggerRasterDownload extends JsMessage {
 	readonly mime!: string;
 
 	@TupleToVec2
-	readonly size!: { x: number; y: number };
+	readonly size!: XY;
 }
 
 export class DocumentChanged extends JsMessage {}

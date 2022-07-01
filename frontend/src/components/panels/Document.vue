@@ -222,22 +222,14 @@ import { defineComponent, nextTick } from "vue";
 
 import { textInputCleanup } from "@/utility-functions/keyboard-entry";
 import {
-	UpdateDocumentArtwork,
-	UpdateDocumentOverlays,
-	UpdateDocumentScrollbars,
-	UpdateDocumentRulers,
-	UpdateDocumentArtboards,
-	UpdateMouseCursor,
 	UpdateDocumentModeLayout,
 	UpdateToolOptionsLayout,
 	UpdateToolShelfLayout,
 	defaultWidgetLayout,
 	UpdateDocumentBarLayout,
-	UpdateImageData,
-	TriggerTextCommit,
-	TriggerViewportResize,
-	DisplayRemoveEditableTextbox,
 	DisplayEditableTextbox,
+	MouseCursorIcon,
+	XY,
 } from "@/wasm-communication/messages";
 
 import LayoutCol from "@/components/layout/LayoutCol.vue";
@@ -249,28 +241,8 @@ import PersistentScrollbar from "@/components/widgets/metrics/PersistentScrollba
 import WidgetLayout from "@/components/widgets/WidgetLayout.vue";
 
 export default defineComponent({
-	inject: ["editor"],
+	inject: ["editor", "panels"],
 	methods: {
-		viewportResize() {
-			// Resize the canvas
-
-			const canvas = this.$refs.canvas as HTMLElement;
-
-			// Get the width and height rounded up to the nearest even number because resizing is centered and dividing an odd number by 2 for centering causes antialiasing
-			let width = Math.ceil(parseFloat(getComputedStyle(canvas).width));
-			if (width % 2 === 1) width += 1;
-			let height = Math.ceil(parseFloat(getComputedStyle(canvas).height));
-			if (height % 2 === 1) height += 1;
-
-			this.canvasSvgWidth = `${width}px`;
-			this.canvasSvgHeight = `${height}px`;
-
-			// Resize the rulers
-			const rulerHorizontal = this.$refs.rulerHorizontal as typeof CanvasRuler;
-			const rulerVertical = this.$refs.rulerVertical as typeof CanvasRuler;
-			rulerHorizontal?.resize();
-			rulerVertical?.resize();
-		},
 		pasteFile(e: DragEvent) {
 			const { dataTransfer } = e;
 			if (!dataTransfer) return;
@@ -317,10 +289,9 @@ export default defineComponent({
 				canvas.setPointerCapture(e.pointerId);
 			}
 		},
-	},
-	mounted() {
-		this.editor.subscriptions.subscribeJsMessage(UpdateDocumentArtwork, async (UpdateDocumentArtwork) => {
-			this.artworkSvg = UpdateDocumentArtwork.svg;
+		// Update rendered SVGs
+		async updateDocumentArtwork(svg: string) {
+			this.artworkSvg = svg;
 
 			await nextTick();
 
@@ -330,12 +301,7 @@ export default defineComponent({
 				if (foreignObject.children.length > 0) return;
 
 				const addedInput = foreignObject.appendChild(this.textInput);
-
-				window.dispatchEvent(
-					new CustomEvent("modifyinputfield", {
-						detail: addedInput,
-					})
-				);
+				window.dispatchEvent(new CustomEvent("modifyinputfield", { detail: addedInput }));
 
 				await nextTick();
 
@@ -353,40 +319,35 @@ export default defineComponent({
 				addedInput.focus();
 				addedInput.click();
 			}
-		});
-
-		this.editor.subscriptions.subscribeJsMessage(UpdateDocumentOverlays, (updateDocumentOverlays) => {
-			this.overlaysSvg = updateDocumentOverlays.svg;
-		});
-
-		this.editor.subscriptions.subscribeJsMessage(UpdateDocumentArtboards, (updateDocumentArtboards) => {
-			this.artboardSvg = updateDocumentArtboards.svg;
-		});
-
-		this.editor.subscriptions.subscribeJsMessage(UpdateDocumentScrollbars, (updateDocumentScrollbars) => {
-			this.scrollbarPos = updateDocumentScrollbars.position;
-			this.scrollbarSize = updateDocumentScrollbars.size;
-			this.scrollbarMultiplier = updateDocumentScrollbars.multiplier;
-		});
-
-		this.editor.subscriptions.subscribeJsMessage(UpdateDocumentRulers, (updateDocumentRulers) => {
-			this.rulerOrigin = updateDocumentRulers.origin;
-			this.rulerSpacing = updateDocumentRulers.spacing;
-			this.rulerInterval = updateDocumentRulers.interval;
-		});
-
-		this.editor.subscriptions.subscribeJsMessage(UpdateMouseCursor, (updateMouseCursor) => {
-			this.canvasCursor = updateMouseCursor.cursor;
-		});
-
-		this.editor.subscriptions.subscribeJsMessage(TriggerTextCommit, () => {
-			if (this.textInput) {
-				const textCleaned = textInputCleanup(this.textInput.innerText);
-				this.editor.instance.on_change_text(textCleaned);
-			}
-		});
-
-		this.editor.subscriptions.subscribeJsMessage(DisplayEditableTextbox, (displayEditableTextbox) => {
+		},
+		updateDocumentOverlays(svg: string) {
+			this.overlaysSvg = svg;
+		},
+		updateDocumentArtboards(svg: string) {
+			this.artboardSvg = svg;
+		},
+		// Update scrollbars and rulers
+		updateDocumentScrollbars(position: XY, size: XY, multiplier: XY) {
+			this.scrollbarPos = position;
+			this.scrollbarSize = size;
+			this.scrollbarMultiplier = multiplier;
+		},
+		updateDocumentRulers(origin: XY, spacing: number, interval: number) {
+			this.rulerOrigin = origin;
+			this.rulerSpacing = spacing;
+			this.rulerInterval = interval;
+		},
+		// Update mouse cursor icon
+		updateMouseCursor(cursor: MouseCursorIcon) {
+			this.canvasCursor = cursor;
+		},
+		// Text entry
+		triggerTextCommit() {
+			if (!this.textInput) return;
+			const textCleaned = textInputCleanup(this.textInput.innerText);
+			this.editor.instance.on_change_text(textCleaned);
+		},
+		displayEditableTextbox(displayEditableTextbox: DisplayEditableTextbox) {
 			this.textInput = document.createElement("DIV") as HTMLDivElement;
 
 			if (displayEditableTextbox.text === "") this.textInput.textContent = "";
@@ -399,51 +360,48 @@ export default defineComponent({
 			this.textInput.style.color = displayEditableTextbox.color.toRgbaCSS();
 
 			this.textInput.oninput = (): void => {
-				if (this.textInput) this.editor.instance.update_bounds(textInputCleanup(this.textInput.innerText));
+				if (!this.textInput) return;
+				this.editor.instance.update_bounds(textInputCleanup(this.textInput.innerText));
 			};
-		});
-
-		this.editor.subscriptions.subscribeJsMessage(DisplayRemoveEditableTextbox, () => {
+		},
+		displayRemoveEditableTextbox() {
 			this.textInput = undefined;
-			window.dispatchEvent(
-				new CustomEvent("modifyinputfield", {
-					detail: undefined,
-				})
-			);
-		});
-
-		this.editor.subscriptions.subscribeJsMessage(UpdateDocumentModeLayout, (updateDocumentModeLayout) => {
+			window.dispatchEvent(new CustomEvent("modifyinputfield", { detail: undefined }));
+		},
+		// Update layouts
+		updateDocumentModeLayout(updateDocumentModeLayout: UpdateDocumentModeLayout) {
 			this.documentModeLayout = updateDocumentModeLayout;
-		});
-
-		this.editor.subscriptions.subscribeJsMessage(UpdateToolOptionsLayout, (updateToolOptionsLayout) => {
+		},
+		updateToolOptionsLayout(updateToolOptionsLayout: UpdateToolOptionsLayout) {
 			this.toolOptionsLayout = updateToolOptionsLayout;
-		});
-
-		this.editor.subscriptions.subscribeJsMessage(UpdateDocumentBarLayout, (updateDocumentBarLayout) => {
+		},
+		updateDocumentBarLayout(updateDocumentBarLayout: UpdateDocumentBarLayout) {
 			this.documentBarLayout = updateDocumentBarLayout;
-		});
-
-		this.editor.subscriptions.subscribeJsMessage(UpdateToolShelfLayout, (updateToolShelfLayout) => {
+		},
+		updateToolShelfLayout(updateToolShelfLayout: UpdateToolShelfLayout) {
 			this.toolShelfLayout = updateToolShelfLayout;
-		});
+		},
+		// Resize elements to render the new viewport size
+		viewportResize() {
+			// Resize the canvas
+			// Width and height are rounded up to the nearest even number because resizing is centered, and dividing an odd number by 2 for centering causes antialiasing
+			const canvas = this.$refs.canvas as HTMLElement;
+			const width = Math.ceil(parseFloat(getComputedStyle(canvas).width));
+			const height = Math.ceil(parseFloat(getComputedStyle(canvas).height));
+			this.canvasSvgWidth = `${width % 2 === 1 ? width + 1 : width}px`;
+			this.canvasSvgHeight = `${height % 2 === 1 ? height + 1 : height}px`;
 
-		this.editor.subscriptions.subscribeJsMessage(TriggerViewportResize, this.viewportResize);
+			// Resize the rulers
+			const rulerHorizontal = this.$refs.rulerHorizontal as typeof CanvasRuler;
+			const rulerVertical = this.$refs.rulerVertical as typeof CanvasRuler;
+			rulerHorizontal?.resize();
+			rulerVertical?.resize();
+		},
+	},
+	mounted() {
+		this.panels.registerPanel("Document", this);
 
-		this.editor.subscriptions.subscribeJsMessage(UpdateImageData, (updateImageData) => {
-			updateImageData.image_data.forEach(async (element) => {
-				// Using updateImageData.image_data.buffer returns undefined for some reason?
-				const blob = new Blob([new Uint8Array(element.image_data.values()).buffer], { type: element.mime });
-
-				const url = URL.createObjectURL(blob);
-
-				const image = await createImageBitmap(blob);
-
-				this.editor.instance.set_image_blob_url(element.path, url, image.width, image.height);
-			});
-		});
-
-		// trigger resize on mount to send document bounds to the backend
+		// Once this component is mounted, we want to resend the document bounds to the backend via the resize event handler which does that
 		window.dispatchEvent(new Event("resize"));
 	},
 	data() {
@@ -452,24 +410,24 @@ export default defineComponent({
 			textInput: undefined as undefined | HTMLDivElement,
 
 			// CSS properties
-			canvasSvgWidth: "100%",
-			canvasSvgHeight: "100%",
-			canvasCursor: "default",
+			canvasSvgWidth: "100%" as string,
+			canvasSvgHeight: "100%" as string,
+			canvasCursor: "default" as MouseCursorIcon,
 
 			// Scrollbars
-			scrollbarPos: { x: 0.5, y: 0.5 },
-			scrollbarSize: { x: 0.5, y: 0.5 },
-			scrollbarMultiplier: { x: 0, y: 0 },
+			scrollbarPos: { x: 0.5, y: 0.5 } as XY,
+			scrollbarSize: { x: 0.5, y: 0.5 } as XY,
+			scrollbarMultiplier: { x: 0, y: 0 } as XY,
 
 			// Rulers
-			rulerOrigin: { x: 0, y: 0 },
-			rulerSpacing: 100,
-			rulerInterval: 100,
+			rulerOrigin: { x: 0, y: 0 } as XY,
+			rulerSpacing: 100 as number,
+			rulerInterval: 100 as number,
 
 			// Rendered SVG viewport data
-			artworkSvg: "",
-			artboardSvg: "",
-			overlaysSvg: "",
+			artworkSvg: "" as string,
+			artboardSvg: "" as string,
+			overlaysSvg: "" as string,
 
 			// Layouts
 			documentModeLayout: defaultWidgetLayout(),
