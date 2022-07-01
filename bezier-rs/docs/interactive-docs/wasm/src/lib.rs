@@ -100,6 +100,6 @@ impl WasmBezier {
 	}
 
 	pub fn project(&self, x: f64, y: f64) -> JsValue {
-		vec_to_point(&self.0.project(DVec2::new(x, y), 0.0001, 3, 10))
+		vec_to_point(&self.0.project(DVec2::new(x, y), 20, 1e-4, 3, 10))
 	}
 }
