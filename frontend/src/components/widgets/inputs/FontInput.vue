@@ -111,6 +111,7 @@ export default defineComponent({
 		},
 		async setOpen() {
 			this.open = true;
+
 			// Scroll to the active entry (the scroller div does not yet exist so we must wait for vue to render)
 			await nextTick();
 			if (this.activeEntry) {

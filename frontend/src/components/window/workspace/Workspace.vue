@@ -64,7 +64,7 @@
 </style>
 
 <script lang="ts">
-import { defineComponent } from "vue";
+import { defineComponent, nextTick } from "vue";
 
 import DialogModal from "@/components/floating-menus/DialogModal.vue";
 import LayoutCol from "@/components/layout/LayoutCol.vue";
@@ -134,12 +134,12 @@ export default defineComponent({
 		},
 	},
 	watch: {
-		activeDocumentIndex(newIndex: number) {
-			this.$nextTick(() => {
-				const documentsPanel = this.$refs.documentsPanel as typeof Panel;
-				const newActiveTab = documentsPanel.$el.querySelectorAll("[data-tab-bar] [data-tab]")[newIndex];
-				newActiveTab.scrollIntoView();
-			});
+		async activeDocumentIndex(newIndex: number) {
+			await nextTick();
+
+			const documentsPanel = this.$refs.documentsPanel as typeof Panel;
+			const newActiveTab = documentsPanel.$el.querySelectorAll("[data-tab-bar] [data-tab]")[newIndex];
+			newActiveTab.scrollIntoView();
 		},
 	},
 });

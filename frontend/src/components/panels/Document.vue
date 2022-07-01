@@ -319,40 +319,40 @@ export default defineComponent({
 		},
 	},
 	mounted() {
-		this.editor.subscriptions.subscribeJsMessage(UpdateDocumentArtwork, (UpdateDocumentArtwork) => {
+		this.editor.subscriptions.subscribeJsMessage(UpdateDocumentArtwork, async (UpdateDocumentArtwork) => {
 			this.artworkSvg = UpdateDocumentArtwork.svg;
 
-			nextTick((): void => {
-				if (this.textInput) {
-					const canvas = this.$refs.canvas as HTMLElement;
-					const foreignObject = canvas.getElementsByTagName("foreignObject")[0] as SVGForeignObjectElement;
-					if (foreignObject.children.length > 0) return;
+			await nextTick();
 
-					const addedInput = foreignObject.appendChild(this.textInput);
+			if (this.textInput) {
+				const canvas = this.$refs.canvas as HTMLElement;
+				const foreignObject = canvas.getElementsByTagName("foreignObject")[0] as SVGForeignObjectElement;
+				if (foreignObject.children.length > 0) return;
 
-					nextTick((): void => {
-						// Necessary to select contenteditable: https://stackoverflow.com/questions/6139107/programmatically-select-text-in-a-contenteditable-html-element/6150060#6150060
+				const addedInput = foreignObject.appendChild(this.textInput);
 
-						const range = document.createRange();
-						range.selectNodeContents(addedInput);
+				window.dispatchEvent(
+					new CustomEvent("modifyinputfield", {
+						detail: addedInput,
+					})
+				);
 
-						const selection = window.getSelection();
-						if (selection) {
-							selection.removeAllRanges();
-							selection.addRange(range);
-						}
+				await nextTick();
 
-						addedInput.focus();
-						addedInput.click();
-					});
+				// Necessary to select contenteditable: https://stackoverflow.com/questions/6139107/programmatically-select-text-in-a-contenteditable-html-element/6150060#6150060
 
-					window.dispatchEvent(
-						new CustomEvent("modifyinputfield", {
-							detail: addedInput,
-						})
-					);
+				const range = document.createRange();
+				range.selectNodeContents(addedInput);
+
+				const selection = window.getSelection();
+				if (selection) {
+					selection.removeAllRanges();
+					selection.addRange(range);
 				}
-			});
+
+				addedInput.focus();
+				addedInput.click();
+			}
 		});
 
 		this.editor.subscriptions.subscribeJsMessage(UpdateDocumentOverlays, (updateDocumentOverlays) => {
