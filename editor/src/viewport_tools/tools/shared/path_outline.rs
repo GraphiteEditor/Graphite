@@ -113,7 +113,7 @@ impl PathOutline {
 
 	/// Clears overlays for the seleted paths and removes references
 	pub fn clear_selected(&mut self, responses: &mut VecDeque<Message>) {
-		if let Some(path) = self.selected_overlay_paths.pop() {
+		while let Some(path) = self.selected_overlay_paths.pop() {
 			let operation = Operation::DeleteLayer { path };
 			responses.push_back(DocumentMessage::Overlays(operation.into()).into());
 		}
