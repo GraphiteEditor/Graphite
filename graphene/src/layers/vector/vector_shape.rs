@@ -334,8 +334,12 @@ impl VectorShape {
 	pub fn to_svg(&mut self) -> String {
 		fn write_positions(result: &mut String, values: [Option<DVec2>; 3]) {
 			use std::fmt::Write;
-			for pos in values.into_iter().flatten() {
+			let count = values.into_iter().flatten().count();
+			for (index, pos) in values.into_iter().flatten().enumerate() {
 				write!(result, "{},{}", pos.x, pos.y).unwrap();
+				if index != count - 1 {
+					result.push(' ');
+				}
 			}
 		}
 
