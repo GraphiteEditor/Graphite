@@ -1,5 +1,5 @@
 use super::clipboards::Clipboard;
-use super::layer_panel::{layer_panel_entry, LayerDataTypeDiscriminant, LayerMetadata, LayerPanelEntry, RawBuffer};
+use super::layer_panel::{layer_panel_entry, LayerMetadata, LayerPanelEntry, RawBuffer};
 use super::properties_panel_message_handler::PropertiesPanelMessageHandlerData;
 use super::utility_types::{AlignAggregate, AlignAxis, DocumentSave, FlipAxis};
 use super::utility_types::{DocumentMode, TargetDocument};
@@ -21,16 +21,15 @@ use graphene::color::Color;
 use graphene::document::Document as GrapheneDocument;
 use graphene::layers::blend_mode::BlendMode;
 use graphene::layers::folder_layer::FolderLayer;
-use graphene::layers::layer_info::LayerDataType;
-use graphene::layers::style::{Fill, ViewMode};
-use graphene::layers::text_layer::FontCache;
+use graphene::layers::layer_info::{LayerDataType, LayerDataTypeDiscriminant};
+use graphene::layers::style::{Fill, RenderData, ViewMode};
+use graphene::layers::text_layer::{Font, FontCache};
 use graphene::{DocumentError, DocumentResponse, LayerId, Operation as DocumentOperation};
 
 use glam::{DAffine2, DVec2};
 use log::warn;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::collections::VecDeque;
+use std::collections::{HashMap, HashSet, VecDeque};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct DocumentMessageHandler {
@@ -491,17 +490,19 @@ impl DocumentMessageHandler {
 		path
 	}
 
-	/// Creates the blob URLs for the image data in the document
-	pub fn load_image_data(&self, responses: &mut VecDeque<Message>, root: &LayerDataType, mut path: Vec<LayerId>) {
-		let mut image_data = Vec::new();
-		fn walk_layers(data: &LayerDataType, path: &mut Vec<LayerId>, image_data: &mut Vec<FrontendImageData>) {
+	/// Loads layer resources such as creating the blob URLs for the images and loading all of the fonts in the document
+	pub fn load_layer_resources(&self, responses: &mut VecDeque<Message>, root: &LayerDataType, mut path: Vec<LayerId>) {
+		fn walk_layers(data: &LayerDataType, path: &mut Vec<LayerId>, image_data: &mut Vec<FrontendImageData>, fonts: &mut HashSet<Font>) {
 			match data {
 				LayerDataType::Folder(f) => {
 					for (id, layer) in f.layer_ids.iter().zip(f.layers().iter()) {
 						path.push(*id);
-						walk_layers(&layer.data, path, image_data);
+						walk_layers(&layer.data, path, image_data, fonts);
 						path.pop();
 					}
+				}
+				LayerDataType::Text(txt) => {
+					fonts.insert(txt.font.clone());
 				}
 				LayerDataType::Image(img) => image_data.push(FrontendImageData {
 					path: path.clone(),
@@ -512,9 +513,14 @@ impl DocumentMessageHandler {
 			}
 		}
 
-		walk_layers(root, &mut path, &mut image_data);
+		let mut image_data = Vec::new();
+		let mut fonts = HashSet::new();
+		walk_layers(root, &mut path, &mut image_data, &mut fonts);
 		if !image_data.is_empty() {
 			responses.push_front(FrontendMessage::UpdateImageData { image_data }.into());
+		}
+		for font in fonts {
+			responses.push_front(FrontendMessage::TriggerFontLoad { font, is_default: false }.into());
 		}
 	}
 
@@ -1040,12 +1046,14 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 				let old_transform = self.graphene_document.root.transform;
 				// Reset the root's transform (required to avoid any rotation by the user)
 				self.graphene_document.root.transform = DAffine2::IDENTITY;
-				self.graphene_document.root.cache_dirty = true;
+				GrapheneDocument::mark_children_as_dirty(&mut self.graphene_document.root);
 
 				// Calculates the bounding box of the region to be exported
+				use crate::frontend::utility_types::ExportBounds;
 				let bbox = match bounds {
-					crate::frontend::utility_types::ExportBounds::AllArtwork => self.all_layer_bounds(font_cache),
-					crate::frontend::utility_types::ExportBounds::Artboard(id) => self
+					ExportBounds::AllArtwork => self.all_layer_bounds(font_cache),
+					ExportBounds::Selection => self.selected_visible_layers_bounding_box(font_cache),
+					ExportBounds::Artboard(id) => self
 						.artboard_message_handler
 						.artboards_graphene_document
 						.layer(&[id])
@@ -1061,14 +1069,15 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 					false => file_name + file_suffix,
 				};
 
-				let rendered = self.graphene_document.render_root(self.view_mode, font_cache, None);
+				let render_data = RenderData::new(self.view_mode, font_cache, None, true);
+				let rendered = self.graphene_document.render_root(render_data);
 				let document = format!(
 					r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{} {} {} {}" width="{}px" height="{}">{}{}</svg>"#,
 					bbox[0].x, bbox[0].y, size.x, size.y, size.x, size.y, "\n", rendered
 				);
 
 				self.graphene_document.root.transform = old_transform;
-				self.graphene_document.root.cache_dirty = true;
+				GrapheneDocument::mark_children_as_dirty(&mut self.graphene_document.root);
 
 				if file_type == FileType::Svg {
 					responses.push_back(FrontendMessage::TriggerFileDownload { document, name }.into());
@@ -1218,9 +1227,10 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 			}
 			RenameLayer { layer_path, new_name } => responses.push_back(DocumentOperation::RenameLayer { layer_path, new_name }.into()),
 			RenderDocument => {
+				let render_data = RenderData::new(self.view_mode, font_cache, Some(ipp.document_bounds()), false);
 				responses.push_back(
 					FrontendMessage::UpdateDocumentArtwork {
-						svg: self.graphene_document.render_root(self.view_mode, font_cache, Some(ipp.document_bounds())),
+						svg: self.graphene_document.render_root(render_data),
 					}
 					.into(),
 				);
