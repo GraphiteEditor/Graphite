@@ -331,6 +331,93 @@ impl Bezier {
 		};
 		bezier_starting_at_t1.split(adjusted_t2)[t2_split_side]
 	}
+
+	/// Returns the closest point on the curve to the provided point.
+	/// Uses a searching algorithm akin to binary search that can be customized using the following parameters:
+	/// - `lut_size` - Size of the lookup table for the initial passthrough
+	/// - `convergence_epsilon` - Difference used between floating point numbers to be considered as equal
+	/// - `convergence_limit` - Controls the number of iterations needed to consider that minimum distance to have converged
+	/// - `iteration_limit` - Controls the maximum total number of iterations to be used
+	pub fn project(&self, point: DVec2, lut_size: i32, convergence_epsilon: f64, convergence_limit: i32, iteration_limit: i32) -> DVec2 {
+		// First find the closest point from the results of a lookup table
+		let lut = self.compute_lookup_table(Some(lut_size));
+		let (minimum_position, minimum_distance) = utils::get_closest_point_in_lut(&lut, point);
+
+		// Get the t values to the left and right of the closest result in the lookup table
+		let mut left_t = (0.max(minimum_position - 1) as f64) / lut_size as f64;
+		let mut right_t = (lut_size.min(minimum_position + 1)) as f64 / lut_size as f64;
+
+		// Perform a finer search by finding closest t from 5 points between [left_t, right_t] inclusive
+		// Choose new left_t and right_t for a smaller range around the closest t and repeat the process
+		let mut final_t = left_t;
+		let mut distance;
+
+		// Increment minimum_distance to ensure that the distance < minimum_distance comparison will be true for at least one iteration
+		let mut new_minimum_distance = minimum_distance + 1.;
+		// Maintain the previous distance to identify convergence
+		let mut previous_distance;
+		// Counter to limit the number of iterations
+		let mut iteration_count = 0;
+		// Counter to identify how many iterations have had a similar result. Used for convergence test
+		let mut convergence_count = 0;
+		// Store calculated distances to minimize unnecessary recomputations
+		const NUM_DISTANCES: usize = 5;
+		let mut distances: [f64; NUM_DISTANCES] = [
+			point.distance(lut[0.max(minimum_position - 1) as usize]),
+			0.,
+			0.,
+			0.,
+			point.distance(lut[lut_size.min(minimum_position + 1) as usize]),
+		];
+
+		while left_t <= right_t && convergence_count < convergence_limit && iteration_count < iteration_limit {
+			previous_distance = new_minimum_distance;
+			let step = (right_t - left_t) / ((NUM_DISTANCES - 1) as f64);
+			let mut iterator_t = left_t;
+			let mut target_index = 0;
+			// Iterate through first 4 points and will handle the right most point later
+			for (step_index, table_distance) in distances.iter_mut().enumerate().take(4) {
+				// Use previously computed distance for the left most point, and compute new values for the others
+				if step_index == 0 {
+					distance = *table_distance;
+				} else {
+					distance = point.distance(self.compute(iterator_t));
+					*table_distance = distance;
+				}
+				if distance < new_minimum_distance {
+					new_minimum_distance = distance;
+					target_index = step_index;
+					final_t = iterator_t
+				}
+				iterator_t += step;
+			}
+			// Check right most edge separately since step may not perfectly add up to it (floating point errors)
+			if distances[NUM_DISTANCES - 1] < new_minimum_distance {
+				new_minimum_distance = distances[NUM_DISTANCES - 1];
+				final_t = right_t;
+			}
+
+			// Update left_t and right_t to be the t values (final_t +/- step), while handling the edges (i.e. if final_t is 0, left_t will be 0 instead of -step)
+			// Ensure that the t values never exceed the [0, 1] range
+			left_t = (final_t - step).max(0.);
+			right_t = (final_t + step).min(1.);
+
+			// Re-use the corresponding computed distances (target_index is the index corresponding to final_t)
+			// Since target_index is a u_size, can't subtract one if it is zero
+			distances[0] = distances[if target_index == 0 { 0 } else { target_index - 1 }];
+			distances[NUM_DISTANCES - 1] = distances[(target_index + 1).min(NUM_DISTANCES - 1)];
+
+			iteration_count += 1;
+			// update count for consecutive iterations of similar minimum distances
+			if previous_distance - new_minimum_distance < convergence_epsilon {
+				convergence_count += 1;
+			} else {
+				convergence_count = 0;
+			}
+		}
+
+		self.compute(final_t)
+	}
 }
 
 #[cfg(test)]
@@ -339,7 +426,7 @@ mod tests {
 	use glam::DVec2;
 
 	fn compare_points(p1: DVec2, p2: DVec2) -> bool {
-		DVec2::new(0.001, 0.001).cmpge(p1 - p2).all()
+		p1.abs_diff_eq(p2, 0.001)
 	}
 
 	#[test]
@@ -372,5 +459,15 @@ mod tests {
 
 		let bezier3 = Bezier::cubic_through_points(p1, p2, p3, 0., 91.7);
 		assert!(compare_points(bezier3.compute(0.), p2));
+	}
+
+	#[test]
+	fn project() {
+		let bezier1 = Bezier::from_cubic_coordinates(4., 4., 23., 45., 10., 30., 56., 90.);
+		assert!(bezier1.project(DVec2::new(100., 100.), 20, 0.0001, 3, 10) == DVec2::new(56., 90.));
+		assert!(bezier1.project(DVec2::new(0., 0.), 20, 0.0001, 3, 10) == DVec2::new(4., 4.));
+
+		let bezier2 = Bezier::from_quadratic_coordinates(0., 0., 0., 100., 100., 100.);
+		assert!(bezier2.project(DVec2::new(100., 0.), 20, 0.0001, 3, 10) == DVec2::new(0., 0.));
 	}
 }

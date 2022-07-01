@@ -98,4 +98,8 @@ impl WasmBezier {
 	pub fn trim(&self, t1: f64, t2: f64) -> WasmBezier {
 		WasmBezier(self.0.trim(t1, t2))
 	}
+
+	pub fn project(&self, x: f64, y: f64) -> JsValue {
+		vec_to_point(&self.0.project(DVec2::new(x, y), 20, 1e-4, 3, 10))
+	}
 }
