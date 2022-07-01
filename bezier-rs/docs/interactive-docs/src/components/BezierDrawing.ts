@@ -83,7 +83,7 @@ class BezierDrawing {
 				this.bezier[selectedPoint.mutator](selectedPoint.x, selectedPoint.y);
 			}
 		}
-		this.updateBezier({}, { x: mx, y: my });
+		this.updateBezier({ x: mx, y: my });
 	}
 
 	mouseDownHandler(evt: MouseEvent): void {
@@ -106,7 +106,7 @@ class BezierDrawing {
 		}
 	}
 
-	updateBezier(options: Record<string, number> = {}, mouseLocation: Point | null = null): void {
+	updateBezier(mouseLocation?: Point, options: Record<string, number> = {}): void {
 		this.clearFigure();
 		if (Object.values(options).length !== 0) {
 			this.options = options;
