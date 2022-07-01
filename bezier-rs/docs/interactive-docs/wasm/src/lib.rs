@@ -1,5 +1,5 @@
 use bezier_rs::Bezier;
-use glam::DVec2;
+use glam::{DMat2, DVec2};
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
 
@@ -106,5 +106,15 @@ impl WasmBezier {
 	pub fn local_extrema(&self) -> JsValue {
 		let local_extrema = self.0.local_extrema();
 		JsValue::from_serde(&serde_json::to_string(&local_extrema).unwrap()).unwrap()
+	}
+
+	pub fn rotate(&self, angle: f64) -> WasmBezier {
+		let rotation_matrx = DMat2::from_angle(angle);
+		WasmBezier(self.0.rotate(rotation_matrx))
+	}
+
+	pub fn intersection_line(&self, js_points: &JsValue) -> Vec<JsValue> {
+		let line: [DVec2; 2] = js_points.into_serde().unwrap();
+		self.0.intersection_line(line).iter().map(|&p| vec_to_point(&p)).collect::<Vec<JsValue>>()
 	}
 }

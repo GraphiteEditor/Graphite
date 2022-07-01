@@ -250,6 +250,45 @@ export default defineComponent({
 						});
 					},
 				},
+				{
+					name: "Rotate",
+					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: Record<string, number>): void => {
+						const context = getContextFromCanvas(canvas);
+						const rotatedBezier = bezier
+							.rotate((options.angle * Math.PI) / 180)
+							.get_points()
+							.map((p) => JSON.parse(p));
+						drawBezier(context, rotatedBezier, null, { curveStrokeColor: COLORS.NON_INTERACTIVE.STROKE_1, radius: 3.5 });
+					},
+					template: markRaw(SliderExample),
+					templateOptions: {
+						sliders: [
+							{
+								variable: "angle",
+								min: -90,
+								max: 90,
+								step: 5,
+								default: 15,
+							},
+						],
+					},
+				},
+				{
+					name: "Intersection Line",
+					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance): void => {
+						const context = getContextFromCanvas(canvas);
+						const line = [
+							{ x: 120, y: 150 },
+							{ x: 90, y: 30 },
+						];
+						const mappedLine = line.map((p) => [p.x, p.y]);
+						drawLine(context, line[0], line[1], COLORS.NON_INTERACTIVE.STROKE_1);
+						const intersections: Point[] = bezier.intersection_line(mappedLine).map((p) => JSON.parse(p));
+						intersections.forEach((p: Point) => {
+							drawPoint(context, p, 3, "magenta");
+						});
+					},
+				},
 			],
 		};
 	},

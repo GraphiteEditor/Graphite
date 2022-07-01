@@ -1,4 +1,4 @@
-use glam::DVec2;
+use glam::{DMat2, DVec2};
 
 mod utils;
 
@@ -453,6 +453,95 @@ impl Bezier {
 			.try_into()
 			.unwrap()
 	}
+
+	pub fn rotate(&self, rotation_matrix: DMat2) -> Bezier {
+		let rotated_start = rotation_matrix.mul_vec2(self.start);
+		let rotated_end = rotation_matrix.mul_vec2(self.end);
+		match self.handles {
+			BezierHandles::Quadratic { handle } => {
+				let rotated_handle = rotation_matrix.mul_vec2(handle);
+				Bezier::from_quadratic_dvec2(rotated_start, rotated_handle, rotated_end)
+			}
+			BezierHandles::Cubic { handle_start, handle_end } => {
+				let rotated_handle_start = rotation_matrix.mul_vec2(handle_start);
+				let rotated_handle_end = rotation_matrix.mul_vec2(handle_end);
+				Bezier::from_cubic_dvec2(rotated_start, rotated_handle_start, rotated_handle_end, rotated_end)
+			}
+		}
+	}
+
+	pub fn translate(&self, translation: DVec2) -> Bezier {
+		let translated_start = self.start + translation;
+		let translated_end = self.end + translation;
+		match self.handles {
+			BezierHandles::Quadratic { handle } => {
+				let translated_handle = handle + translation;
+				Bezier::from_quadratic_dvec2(translated_start, translated_handle, translated_end)
+			}
+			BezierHandles::Cubic { handle_start, handle_end } => {
+				let translated_handle_start = handle_start + translation;
+				let translated_handle_end = handle_end + translation;
+				Bezier::from_cubic_dvec2(translated_start, translated_handle_start, translated_handle_end, translated_end)
+			}
+		}
+	}
+
+	pub fn intersection_line(&self, line: [DVec2; 2]) -> Vec<DVec2> {
+		let slope = line[1] - line[0];
+		let angle = slope.angle_between(DVec2::new(1., 0.));
+		let rotation_matrix = DMat2::from_angle(angle);
+		// println!("angle: {}", angle * 180. / (PI as f64));
+		let rotated_bezier = self.rotate(rotation_matrix);
+		let rotated_line = [rotation_matrix.mul_vec2(line[0]), rotation_matrix.mul_vec2(line[1])];
+		let vertical_distance = rotated_line[0].y;
+		// println!("vertical_distance: {}", vertical_distance);
+
+		let translated_bezier = rotated_bezier.translate(DVec2::new(0., -vertical_distance));
+		// println!("transformed bezier: {:#?}", translated_bezier.get_points());
+		let intersection_points = match translated_bezier.handles {
+			BezierHandles::Quadratic { handle } => {
+				let a = translated_bezier.start.y - 2. * handle.y + translated_bezier.end.y;
+				let b = 2. * (handle.y - translated_bezier.start.y);
+				let c = translated_bezier.start.y;
+				let discriminant = b * b - 4. * a * c;
+				let two_times_a = 2. * a;
+				utils::solve_quadratic(discriminant, two_times_a, b, c)
+			}
+			BezierHandles::Cubic { handle_start, handle_end } => {
+				// Representing the cubic: a(t^3 + bt^2 + ct + d)
+				let a = -translated_bezier.start.y + handle_start.y - handle_end.y + translated_bezier.end.y;
+				let mut b = 3. * translated_bezier.start.y - 2. * handle_start.y + handle_end.y;
+				let mut c = 3. * translated_bezier.start.y + handle_start.y;
+				let mut d = translated_bezier.start.y;
+				if a.abs() <= 1e-5 {
+					if b.abs() <= 1e-5 {
+						utils::solve_linear(c, d)
+					} else {
+						let discriminant = c * c - 4. * b * d;
+						utils::solve_quadratic(discriminant, 2. * b, c, d)
+					}
+				} else {
+					b /= a;
+					c /= a;
+					d /= a;
+
+					// Refactor cubic to be: a(t^3 + pt + q), derivation from: https://trans4mind.com/personal_development/mathematics/polynomials/cubicAlgebra.htm
+					let p = (3. * c - b * b) / 3.;
+					let q = (2. * b * b * b - 9. * b * c + 27. * d) / 27.;
+					let p_divided_by_3 = p / 3.;
+					let q_divided_by_2 = q / 2.;
+					let discriminant = p_divided_by_3.powi(3) + q_divided_by_2.powi(2);
+					utils::solve_cubic(discriminant, b, p, q)
+				}
+			}
+		};
+		intersection_points
+			.iter()
+			.filter(|&&t| (0. ..=1.).contains(&t))
+			.map(|&t| self.compute(t))
+			.filter(|&p| (p.cmpge(line[0]).all() && p.cmple(line[1]).all()) || (p.cmpge(line[1]).all() && p.cmple(line[0]).all()))
+			.collect::<Vec<DVec2>>()
+	}
 }
 
 #[cfg(test)]
@@ -504,5 +593,22 @@ mod tests {
 
 		let bezier2 = Bezier::from_quadratic_coordinates(0., 0., 0., 100., 100., 100.);
 		assert!(bezier2.project(DVec2::new(100., 0.), 20, 0.0001, 3, 10) == DVec2::new(0., 0.));
+	}
+
+	#[test]
+	fn intersection_line() {
+		let p1 = DVec2::new(30., 50.);
+		let p2 = DVec2::new(140., 30.);
+		let p3 = DVec2::new(160., 170.);
+
+		let bezier1 = Bezier::from_quadratic_dvec2(p1, p2, p3);
+		let line1 = [DVec2::new(20., 50.), DVec2::new(40., 50.)];
+		let intersections1 = bezier1.intersection_line(line1);
+		assert!(intersections1.len() == 1);
+		assert!(intersections1[0] == p1);
+
+		let line2 = [DVec2::new(120., 150.), DVec2::new(90., 30.)];
+		let intersections2 = bezier1.intersection_line(line2);
+		println!("{:#?}", intersections2);
 	}
 }
