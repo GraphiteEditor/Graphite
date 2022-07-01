@@ -67,7 +67,7 @@ pub trait LayerData {
 	/// assert_eq!(
 	///     svg,
 	///     "<g transform=\"matrix(\n1,-0,-0,1,-0,-0)\">\
-	///     <path d=\"M0 0L0 1L1 1L1 0Z\"  fill=\"none\" />\
+	///     <path d=\"M0,0L0,1L1,1L1,0Z\"  fill=\"none\" />\
 	///     </g>"
 	/// );
 	/// ```
@@ -87,7 +87,7 @@ pub trait LayerData {
 	/// let shape_id = 42;
 	/// let mut svg = String::new();
 	///
-	/// let quad = Quad::from_box([DVec2::ZERO, DVec2::ONE]);
+	/// let quad = Quad::from_box([DVec2::ZERO, DVec2::ONE*2.]);
 	/// let mut intersections = vec![];
 	///
 	/// shape.intersects_quad(quad, &mut vec![shape_id], &mut intersections, &Default::default());

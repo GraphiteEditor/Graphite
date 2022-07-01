@@ -335,7 +335,7 @@ impl VectorShape {
 		fn write_positions(result: &mut String, values: [Option<DVec2>; 3]) {
 			use std::fmt::Write;
 			for pos in values.into_iter().flatten() {
-				write!(result, "{},{} ", pos.x, pos.y).unwrap();
+				write!(result, "{},{}", pos.x, pos.y).unwrap();
 			}
 		}
 
@@ -474,6 +474,9 @@ impl From<&VectorShape> for BezPath {
 			let (path_el, should_start_new_shape) = anchors_to_path_el(first, second);
 			start_new_shape = should_start_new_shape;
 			bez_path.push(path_el);
+			if should_start_new_shape && bez_path.last().filter(|&&el| el == PathEl::ClosePath).is_none() {
+				bez_path.push(PathEl::ClosePath)
+			}
 		}
 
 		BezPath::from_vec(bez_path)
