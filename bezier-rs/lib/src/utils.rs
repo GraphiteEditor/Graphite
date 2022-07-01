@@ -41,7 +41,7 @@ pub fn get_closest_point_in_lut(lut: &[DVec2], point: DVec2) -> (i32, f64) {
 /// Find the roots of the linear equation `ax + b`
 pub fn solve_linear(a: f64, b: f64) -> Vec<f64> {
 	let mut roots = Vec::new();
-	if b != 0. {
+	if a != 0. {
 		roots.push(-b / a);
 	}
 	roots
