@@ -22,7 +22,7 @@ module.exports = defineConfig({
 						crateDirectory: path.resolve(__dirname, "wasm"),
 						// Remove when this issue is resolved: https://github.com/wasm-tool/wasm-pack-plugin/issues/93
 						outDir: path.resolve(__dirname, "wasm/pkg"),
-						watchDirectories: ["../../../lib"].map((folder) => path.resolve(__dirname, folder)),
+						watchDirectories: ["../../lib"].map((folder) => path.resolve(__dirname, folder)),
 					})
 			)
 			.end();
