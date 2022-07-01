@@ -21,7 +21,7 @@
 import { defineComponent, markRaw } from "vue";
 
 import { drawText, drawPoint, drawBezier, drawLine, getContextFromCanvas, drawBezierHelper, COLORS } from "@/utils/drawing";
-import { WasmBezierInstance } from "@/utils/types";
+import { Point, WasmBezierInstance } from "@/utils/types";
 
 import ExamplePane from "@/components/ExamplePane.vue";
 import SliderExample from "@/components/SliderExample.vue";
@@ -224,6 +224,16 @@ export default defineComponent({
 								default: 0.75,
 							},
 						],
+					},
+				},
+				{
+					name: "Project",
+					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: Record<string, number>, mouseLocation: Point | null): void => {
+						if (mouseLocation != null) {
+							const context = getContextFromCanvas(canvas);
+							const closestPoint = JSON.parse(bezier.project(mouseLocation.x, mouseLocation.y));
+							drawLine(context, mouseLocation, closestPoint, COLORS.NON_INTERACTIVE.STROKE_1);
+						}
 					},
 				},
 			],
