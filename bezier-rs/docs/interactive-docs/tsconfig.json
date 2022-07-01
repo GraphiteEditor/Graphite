@@ -6,14 +6,15 @@
     "jsx": "preserve",
     "importHelpers": true,
     "moduleResolution": "node",
+		"experimentalDecorators": true,
+		"skipLibCheck": true,
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
-    "forceConsistentCasingInFileNames": true,
     "sourceMap": true,
+    "baseUrl": ".",
     "types": [
       "node"
     ],
-    "baseUrl": ".",
     "paths": {
       "@/*": [
         "src/*"
