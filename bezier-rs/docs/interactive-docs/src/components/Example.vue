@@ -46,7 +46,7 @@ export default defineComponent({
 		options: {
 			deep: true,
 			handler() {
-				this.bezierDrawing.updateBezier(this.options);
+				this.bezierDrawing.updateBezier(undefined, this.options);
 			},
 		},
 	},
