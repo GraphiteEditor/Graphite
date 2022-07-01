@@ -113,8 +113,8 @@ impl WasmBezier {
 		WasmBezier(self.0.rotate(rotation_matrx))
 	}
 
-	pub fn intersection_line(&self, js_points: &JsValue) -> Vec<JsValue> {
+	pub fn line_intersection(&self, js_points: &JsValue) -> Vec<JsValue> {
 		let line: [DVec2; 2] = js_points.into_serde().unwrap();
-		self.0.intersection_line(line).iter().map(|&p| vec_to_point(&p)).collect::<Vec<JsValue>>()
+		self.0.line_intersection(line).iter().map(|&p| vec_to_point(&p)).collect::<Vec<JsValue>>()
 	}
 }

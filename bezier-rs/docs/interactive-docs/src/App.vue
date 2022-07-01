@@ -274,18 +274,18 @@ export default defineComponent({
 					},
 				},
 				{
-					name: "Intersection Line",
+					name: "Line Intersection",
 					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance): void => {
 						const context = getContextFromCanvas(canvas);
 						const line = [
-							{ x: 120, y: 150 },
-							{ x: 90, y: 30 },
+							{ x: 150, y: 150 },
+							{ x: 30, y: 30 },
 						];
 						const mappedLine = line.map((p) => [p.x, p.y]);
 						drawLine(context, line[0], line[1], COLORS.NON_INTERACTIVE.STROKE_1);
-						const intersections: Point[] = bezier.intersection_line(mappedLine).map((p) => JSON.parse(p));
+						const intersections: Point[] = bezier.line_intersection(mappedLine).map((p) => JSON.parse(p));
 						intersections.forEach((p: Point) => {
-							drawPoint(context, p, 3, "magenta");
+							drawPoint(context, p, 3, COLORS.NON_INTERACTIVE.STROKE_2);
 						});
 					},
 				},
