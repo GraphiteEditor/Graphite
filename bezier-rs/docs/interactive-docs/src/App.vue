@@ -228,7 +228,7 @@ export default defineComponent({
 				},
 				{
 					name: "Project",
-					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: Record<string, number>, mouseLocation: Point | null): void => {
+					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: Record<string, number>, mouseLocation?: Point): void => {
 						if (mouseLocation != null) {
 							const context = getContextFromCanvas(canvas);
 							const closestPoint = JSON.parse(bezier.project(mouseLocation.x, mouseLocation.y));
@@ -240,12 +240,12 @@ export default defineComponent({
 					name: "Local Extrema",
 					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance): void => {
 						const context = getContextFromCanvas(canvas);
-						const dimensionColours = [COLORS.NON_INTERACTIVE.STROKE_1, COLORS.NON_INTERACTIVE.STROKE_2];
+						const dimensionColors = [COLORS.NON_INTERACTIVE.STROKE_1, COLORS.NON_INTERACTIVE.STROKE_2];
 						const extrema: number[][] = JSON.parse(bezier.local_extrema());
 						extrema.forEach((tValues, index) => {
 							tValues.forEach((t) => {
 								const point = JSON.parse(bezier.compute(t));
-								drawPoint(context, point, 4, dimensionColours[index]);
+								drawPoint(context, point, 4, dimensionColors[index]);
 							});
 						});
 					},

@@ -105,6 +105,6 @@ impl WasmBezier {
 
 	pub fn local_extrema(&self) -> JsValue {
 		let local_extrema = self.0.local_extrema();
-		return JsValue::from_serde(&serde_json::to_string(&local_extrema).unwrap()).unwrap();
+		JsValue::from_serde(&serde_json::to_string(&local_extrema).unwrap()).unwrap()
 	}
 }

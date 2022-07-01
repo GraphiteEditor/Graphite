@@ -419,9 +419,9 @@ impl Bezier {
 		self.compute(final_t)
 	}
 
-	/// Returns two lists of `t`-values representing the local extrema of the `x` and `y` parametric curves respectively
-	/// The local extrema are defined to be points at which the derivative of the curve is equal to zero
-	fn _local_extrema(&self) -> [Vec<f64>; 2] {
+	/// Returns two lists of `t`-values representing the local extrema of the `x` and `y` parametric curves respectively.
+	/// The local extrema are defined to be points at which the derivative of the curve is equal to zero.
+	fn unrestricted_local_extrema(&self) -> [Vec<f64>; 2] {
 		match self.handles {
 			BezierHandles::Quadratic { handle } => {
 				let a = handle - self.start;
@@ -446,7 +446,7 @@ impl Bezier {
 	/// Returns two lists of `t`-values representing the local extrema of the `x` and `y` parametric curves respectively
 	/// The list of `t`-values returned are filtered such that they fall within the range `[0, 1]`
 	pub fn local_extrema(&self) -> [Vec<f64>; 2] {
-		self._local_extrema()
+		self.unrestricted_local_extrema()
 			.into_iter()
 			.map(|t_values| t_values.into_iter().filter(|&t| t > 0. && t < 1.).collect::<Vec<f64>>())
 			.collect::<Vec<Vec<f64>>>()
