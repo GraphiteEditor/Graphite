@@ -237,7 +237,7 @@ export default defineComponent({
 					},
 				},
 				{
-					name: "Extrema",
+					name: "Local Extrema",
 					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance): void => {
 						const context = getContextFromCanvas(canvas);
 						const dimensionColours = [COLORS.NON_INTERACTIVE.STROKE_1, COLORS.NON_INTERACTIVE.STROKE_2];

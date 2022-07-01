@@ -419,32 +419,6 @@ impl Bezier {
 		self.compute(final_t)
 	}
 
-	/// Find the roots of the linear equation ax + b
-	fn solve_linear(a: f64, b: f64) -> Vec<f64> {
-		let mut roots = Vec::new();
-		if b != 0. {
-			roots.push(-b / a);
-		}
-		roots
-	}
-
-	/// Find the roots of the linear equation ax^2 + bx + c
-	fn solve_quadratic(discriminant: f64, two_times_a: f64, b: f64, c: f64) -> Vec<f64> {
-		let mut roots = Vec::new();
-		if two_times_a != 0. {
-			if discriminant > 0. {
-				let root_discriminant = discriminant.sqrt();
-				roots.push((-b + root_discriminant) / (two_times_a));
-				roots.push((-b - root_discriminant) / (two_times_a));
-			} else if discriminant == 0. {
-				roots.push(-b / (two_times_a));
-			}
-		} else {
-			roots = Bezier::solve_linear(b, c);
-		}
-		roots
-	}
-
 	/// Returns two lists of `t`-values representing the local extrema of the `x` and `y` parametric curves respectively
 	/// The local extrema are defined to be points at which the derivative of the curve is equal to zero
 	fn _local_extrema(&self) -> [Vec<f64>; 2] {
@@ -453,7 +427,7 @@ impl Bezier {
 				let a = handle - self.start;
 				let b = self.end - handle;
 				let b_minus_a = b - a;
-				[Bezier::solve_linear(b_minus_a.x, a.x), Bezier::solve_linear(b_minus_a.y, a.y)]
+				[utils::solve_linear(b_minus_a.x, a.x), utils::solve_linear(b_minus_a.y, a.y)]
 			}
 			BezierHandles::Cubic { handle_start, handle_end } => {
 				let a = 3. * (-self.start + 3. * handle_start - 3. * handle_end + self.end);
@@ -462,15 +436,15 @@ impl Bezier {
 				let discriminant = b * b - 4. * a * c;
 				let two_times_a = 2. * a;
 				[
-					Bezier::solve_quadratic(discriminant.x, two_times_a.x, b.x, c.x),
-					Bezier::solve_quadratic(discriminant.y, two_times_a.y, b.y, c.y),
+					utils::solve_quadratic(discriminant.x, two_times_a.x, b.x, c.x),
+					utils::solve_quadratic(discriminant.y, two_times_a.y, b.y, c.y),
 				]
 			}
 		}
 	}
 
 	/// Returns two lists of `t`-values representing the local extrema of the `x` and `y` parametric curves respectively
-	/// The extrema returned are restricted to those which fall within `[0, 1]`
+	/// The list of `t`-values returned are filtered such that they fall within the range `[0, 1]`
 	pub fn local_extrema(&self) -> [Vec<f64>; 2] {
 		self._local_extrema()
 			.into_iter()
