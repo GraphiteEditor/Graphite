@@ -43,7 +43,6 @@ pub enum PathToolMessage {
 		alt_mirror_angle: Key,
 		shift_mirror_distance: Key,
 	},
-	SelectPoint,
 }
 
 impl PropertyHolder for PathTool {}
@@ -74,7 +73,7 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for PathTool {
 		use PathToolFsmState::*;
 
 		match self.fsm_state {
-			Ready => actions!(PathToolMessageDiscriminant; DragStart, SelectPoint, Delete),
+			Ready => actions!(PathToolMessageDiscriminant; DragStart, Delete),
 			Dragging => actions!(PathToolMessageDiscriminant; DragStop, PointerMove, Delete),
 		}
 	}
@@ -248,7 +247,7 @@ impl Fsm for PathToolFsmState {
 					}
 					Ready
 				}
-				(_, Abort) | (_, SelectPoint) => {
+				(_, Abort) => {
 					// TODO Tell overlay manager to remove the overlays
 					for layer_path in document.all_layers() {
 						tool_data.overlay_renderer.clear_vector_shape_overlays(&document.graphene_document, layer_path.to_vec(), responses);

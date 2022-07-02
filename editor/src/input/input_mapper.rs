@@ -103,7 +103,6 @@ impl Default for Mapping {
 			// Path
 			entry! {action=PathToolMessage::DragStart { add_to_selection: KeyShift }, key_down=Lmb},
 			entry! {action=PathToolMessage::PointerMove { alt_mirror_angle: KeyAlt, shift_mirror_distance: KeyShift }, message=InputMapperMessage::PointerMove},
-			entry! {action=PathToolMessage::SelectPoint, message=InputMapperMessage::DoubleClick},
 			entry! {action=PathToolMessage::Delete, key_down=KeyDelete},
 			entry! {action=PathToolMessage::Delete, key_down=KeyBackspace},
 			entry! {action=PathToolMessage::DragStop, key_up=Lmb},
