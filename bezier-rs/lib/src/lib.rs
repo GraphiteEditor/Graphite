@@ -2,37 +2,37 @@ use glam::DVec2;
 
 mod utils;
 
-/// Representation of the handle point(s) in a bezier segment
+/// Representation of the handle point(s) in a bezier segment.
 #[derive(Copy, Clone)]
 pub enum BezierHandles {
-	/// Handles for a quadratic segment
+	/// Handles for a quadratic segment.
 	Quadratic {
-		/// Point representing the location of the single handle
+		/// Point representing the location of the single handle.
 		handle: DVec2,
 	},
-	/// Handles for a cubic segment
+	/// Handles for a cubic segment.
 	Cubic {
-		/// Point representing the location of the handle associated to the start point
+		/// Point representing the location of the handle associated to the start point.
 		handle_start: DVec2,
-		/// Point representing the location of the handle associated to the end point
+		/// Point representing the location of the handle associated to the end point.
 		handle_end: DVec2,
 	},
 }
 
-/// Representation of a bezier segment with 2D points
+/// Representation of a bezier segment with 2D points.
 #[derive(Copy, Clone)]
 pub struct Bezier {
-	/// Start point of the bezier segment
+	/// Start point of the bezier segment.
 	start: DVec2,
-	/// Start point of the bezier segment
+	/// Start point of the bezier segment.
 	end: DVec2,
-	/// Handles of the bezier segment
+	/// Handles of the bezier segment.
 	handles: BezierHandles,
 }
 
 impl Bezier {
 	// TODO: Consider removing this function
-	/// Create a quadratic bezier using the provided coordinates as the start, handle, and end points
+	/// Create a quadratic bezier using the provided coordinates as the start, handle, and end points.
 	pub fn from_quadratic_coordinates(x1: f64, y1: f64, x2: f64, y2: f64, x3: f64, y3: f64) -> Self {
 		Bezier {
 			start: DVec2::new(x1, y1),
@@ -41,7 +41,7 @@ impl Bezier {
 		}
 	}
 
-	/// Create a quadratc bezier using the provided DVec2s as the start, handle, and end points
+	/// Create a quadratic bezier using the provided DVec2s as the start, handle, and end points.
 	pub fn from_quadratic_dvec2(p1: DVec2, p2: DVec2, p3: DVec2) -> Self {
 		Bezier {
 			start: p1,
@@ -51,7 +51,7 @@ impl Bezier {
 	}
 
 	// TODO: Consider removing this function
-	/// Create a cubic bezier using the provided coordinates as the start, handles, and end points
+	/// Create a cubic bezier using the provided coordinates as the start, handles, and end points.
 	pub fn from_cubic_coordinates(x1: f64, y1: f64, x2: f64, y2: f64, x3: f64, y3: f64, x4: f64, y4: f64) -> Self {
 		Bezier {
 			start: DVec2::new(x1, y1),
@@ -63,7 +63,7 @@ impl Bezier {
 		}
 	}
 
-	/// Create a cubic bezier using the provided DVec2s as the start, handles, and end points
+	/// Create a cubic bezier using the provided DVec2s as the start, handles, and end points.
 	pub fn from_cubic_dvec2(p1: DVec2, p2: DVec2, p3: DVec2, p4: DVec2) -> Self {
 		Bezier {
 			start: p1,
@@ -110,7 +110,7 @@ impl Bezier {
 		Bezier::from_cubic_dvec2(start, handle_start, handle_end, end)
 	}
 
-	/// Convert to SVG
+	/// Convert to SVG.
 	// TODO: Allow modifying the viewport, width and height
 	pub fn to_svg(&self) -> String {
 		let m_path = format!("M {} {}", self.start.x, self.start.y);
@@ -129,12 +129,12 @@ impl Bezier {
 		)
 	}
 
-	/// Set the coordinates of the start point
+	/// Set the coordinates of the start point.
 	pub fn set_start(&mut self, s: DVec2) {
 		self.start = s;
 	}
 
-	/// Set the coordinates of the end point
+	/// Set the coordinates of the end point.
 	pub fn set_end(&mut self, e: DVec2) {
 		self.end = e;
 	}
@@ -199,8 +199,8 @@ impl Bezier {
 		}
 	}
 
-	///  Calculate the point on the curve based on the `t`-value provided.
-	///  Basis code based off of pseudocode found here: <https://pomax.github.io/bezierinfo/#explanation>
+	/// Calculate the point on the curve based on the `t`-value provided.
+	/// Basis code based off of pseudocode found here: <https://pomax.github.io/bezierinfo/#explanation>.
 	pub fn compute(&self, t: f64) -> DVec2 {
 		assert!((0.0..=1.0).contains(&t));
 
@@ -218,8 +218,8 @@ impl Bezier {
 		}
 	}
 
-	/// Return a selection of equidistant points on the bezier curve
-	/// If no value is provided for `steps`, then the function will default `steps` to be 10
+	/// Return a selection of equidistant points on the bezier curve.
+	/// If no value is provided for `steps`, then the function will default `steps` to be 10.
 	pub fn compute_lookup_table(&self, steps: Option<i32>) -> Vec<DVec2> {
 		let steps_unwrapped = steps.unwrap_or(10);
 		let ratio: f64 = 1.0 / (steps_unwrapped as f64);
@@ -232,8 +232,8 @@ impl Bezier {
 		steps_array
 	}
 
-	/// Return an approximation of the length of the bezier curve
-	/// code example taken from: <https://gamedev.stackexchange.com/questions/5373/moving-ships-between-two-planets-along-a-bezier-missing-some-equations-for-acce/5427#5427>
+	/// Return an approximation of the length of the bezier curve.
+	/// Code example from <https://gamedev.stackexchange.com/questions/5373/moving-ships-between-two-planets-along-a-bezier-missing-some-equations-for-acce/5427#5427>.
 	pub fn length(&self) -> f64 {
 		// We will use an approximate approach where
 		// we split the curve into many subdivisions
@@ -254,7 +254,7 @@ impl Bezier {
 		approx_curve_length
 	}
 
-	/// Returns a vector representing the derivative at the point designated by `t` on the curve
+	/// Returns a vector representing the derivative at the point designated by `t` on the curve.
 	pub fn derivative(&self, t: f64) -> DVec2 {
 		let one_minus_t = 1. - t;
 		match self.handles {
@@ -272,18 +272,18 @@ impl Bezier {
 		}
 	}
 
-	/// Returns a normalized unit vector representing the tangent at the point designated by `t` on the curve
+	/// Returns a normalized unit vector representing the tangent at the point designated by `t` on the curve.
 	pub fn tangent(&self, t: f64) -> DVec2 {
 		self.derivative(t).normalize()
 	}
 
-	/// Returns a normalized unit vector representing the direction of the normal at the point designated by `t` on the curve
+	/// Returns a normalized unit vector representing the direction of the normal at the point designated by `t` on the curve.
 	pub fn normal(&self, t: f64) -> DVec2 {
 		let derivative = self.derivative(t);
 		derivative.normalize().perp()
 	}
 
-	/// Returns the pair of Bezier curves that result from splitting the original curve at the point corresponding to `t`
+	/// Returns the pair of Bezier curves that result from splitting the original curve at the point corresponding to `t`.
 	pub fn split(&self, t: f64) -> [Bezier; 2] {
 		let split_point = self.compute(t);
 
@@ -314,7 +314,7 @@ impl Bezier {
 		}
 	}
 
-	/// Returns the Bezier curve representing the sub-curve starting at the point corresponding to `t1` and ending at the point corresponding to `t2`
+	/// Returns the Bezier curve representing the sub-curve starting at the point corresponding to `t1` and ending at the point corresponding to `t2`.
 	pub fn trim(&self, t1: f64, t2: f64) -> Bezier {
 		// Depending on the order of `t1` and `t2`, determine which half of the split we need to keep
 		let t1_split_side = if t1 <= t2 { 1 } else { 0 };
@@ -334,10 +334,10 @@ impl Bezier {
 
 	/// Returns the closest point on the curve to the provided point.
 	/// Uses a searching algorithm akin to binary search that can be customized using the following parameters:
-	/// - `lut_size` - Size of the lookup table for the initial passthrough
-	/// - `convergence_epsilon` - Difference used between floating point numbers to be considered as equal
-	/// - `convergence_limit` - Controls the number of iterations needed to consider that minimum distance to have converged
-	/// - `iteration_limit` - Controls the maximum total number of iterations to be used
+	/// - `lut_size` - Size of the lookup table for the initial passthrough.
+	/// - `convergence_epsilon` - Difference used between floating point numbers to be considered as equal.
+	/// - `convergence_limit` - Controls the number of iterations needed to consider that minimum distance to have converged.
+	/// - `iteration_limit` - Controls the maximum total number of iterations to be used.
 	pub fn project(&self, point: DVec2, lut_size: i32, convergence_epsilon: f64, convergence_limit: i32, iteration_limit: i32) -> DVec2 {
 		// First find the closest point from the results of a lookup table
 		let lut = self.compute_lookup_table(Some(lut_size));
@@ -443,8 +443,8 @@ impl Bezier {
 		}
 	}
 
-	/// Returns two lists of `t`-values representing the local extrema of the `x` and `y` parametric curves respectively
-	/// The list of `t`-values returned are filtered such that they fall within the range `[0, 1]`
+	/// Returns two lists of `t`-values representing the local extrema of the `x` and `y` parametric curves respectively.
+	/// The list of `t`-values returned are filtered such that they fall within the range `[0, 1]`.
 	pub fn local_extrema(&self) -> [Vec<f64>; 2] {
 		self.unrestricted_local_extrema()
 			.into_iter()
