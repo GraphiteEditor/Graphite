@@ -1,6 +1,6 @@
-import { drawBezier, getContextFromCanvas, getPointSizeByIndex } from "@/utils/drawing";
-import { BezierCallback, BezierPoint, WasmBezierMutatorKey } from "@/utils/types";
-import { WasmBezierInstance } from "@/utils/wasm-comm";
+import { WasmBezier } from "@/../wasm/pkg";
+import { COLORS, drawBezier, drawPoint, getContextFromCanvas, getPointSizeByIndex } from "@/utils/drawing";
+import { BezierCallback, BezierPoint, BezierStyleConfig, Point, WasmBezierMutatorKey, WasmBezierInstance } from "@/utils/types";
 
 // Offset to increase selectable range, used to make points easier to grab
 const FUDGE_FACTOR = 3;
@@ -22,10 +22,13 @@ class BezierDrawing {
 
 	options: Record<string, number>;
 
-	constructor(bezier: WasmBezierInstance, callback: BezierCallback, options: Record<string, number>) {
+	createThroughPoints: boolean;
+
+	constructor(bezier: WasmBezierInstance, callback: BezierCallback, options: Record<string, number>, createThroughPoints = false) {
 		this.bezier = bezier;
 		this.callback = callback;
 		this.options = options;
+		this.createThroughPoints = createThroughPoints;
 		this.points = bezier
 			.get_points()
 			.map((p) => JSON.parse(p))
@@ -36,6 +39,11 @@ class BezierDrawing {
 				selected: false,
 				mutator: BezierDrawing.indexToMutator[points.length === 3 && i > 1 ? i + 1 : i],
 			}));
+
+		if (this.createThroughPoints && this.points.length === 4) {
+			// Use the first handler as the middle point
+			this.points = [this.points[0], this.points[1], this.points[3]];
+		}
 
 		const canvas = document.createElement("canvas");
 		if (canvas === null) {
@@ -73,10 +81,9 @@ class BezierDrawing {
 				selectedPoint.x = mx;
 				selectedPoint.y = my;
 				this.bezier[selectedPoint.mutator](selectedPoint.x, selectedPoint.y);
-				this.clearFigure();
 			}
 		}
-		this.updateBezier();
+		this.updateBezier({ x: mx, y: my });
 	}
 
 	mouseDownHandler(evt: MouseEvent): void {
@@ -94,19 +101,51 @@ class BezierDrawing {
 
 	deselectPointHandler(): void {
 		if (this.dragIndex !== undefined) {
-			this.clearFigure();
 			this.dragIndex = null;
 			this.updateBezier();
 		}
 	}
 
-	updateBezier(options: Record<string, number> = {}): void {
+	updateBezier(mouseLocation?: Point, options: Record<string, number> = {}): void {
+		this.clearFigure();
 		if (Object.values(options).length !== 0) {
 			this.options = options;
 		}
 		this.clearFigure();
-		drawBezier(this.ctx, this.points, this.dragIndex);
-		this.callback(this.canvas, this.bezier, this.options);
+
+		// For the create through points cases, we store a bezier where the handle is actually the point that the curve should pass through
+		// This is so that we can re-use the drag and drop logic, while simply drawing the desired bezier instead
+		const actualBezierPointLength = this.bezier.get_points().length;
+		let pointsToDraw = this.points;
+
+		let styleConfig: Partial<BezierStyleConfig> = {
+			handleLineStrokeColor: COLORS.INTERACTIVE.STROKE_2,
+		};
+		let dragIndex = this.dragIndex;
+		if (this.createThroughPoints) {
+			let serializedPoints;
+			const pointList = this.points.map((p) => [p.x, p.y]);
+			if (actualBezierPointLength === 3) {
+				serializedPoints = WasmBezier.quadratic_through_points(pointList, this.options.t);
+			} else {
+				serializedPoints = WasmBezier.cubic_through_points(pointList, this.options.t, this.options["midpoint separation"]);
+			}
+			pointsToDraw = serializedPoints.get_points().map((p) => JSON.parse(p));
+			if (this.dragIndex === 1) {
+				// Do not propagate dragIndex when the the non-endpoint is moved
+				dragIndex = null;
+			} else if (this.dragIndex === 2 && pointsToDraw.length === 4) {
+				// For the cubic case, we want to propagate the drag index when the end point is moved, but need to adjust the index
+				dragIndex = 3;
+			}
+			styleConfig = { handleLineStrokeColor: COLORS.NON_INTERACTIVE.STROKE_1, handleStrokeColor: COLORS.NON_INTERACTIVE.STROKE_1 };
+		}
+		drawBezier(this.ctx, pointsToDraw, dragIndex, styleConfig);
+		if (this.createThroughPoints) {
+			// Draw the point that the curve was drawn through
+			drawPoint(this.ctx, this.points[1], getPointSizeByIndex(1, this.points.length), this.dragIndex === 1 ? COLORS.INTERACTIVE.SELECTED : COLORS.INTERACTIVE.STROKE_1);
+		}
+		this.callback(this.canvas, this.bezier, this.options, mouseLocation);
 	}
 
 	getCanvas(): HTMLCanvasElement {

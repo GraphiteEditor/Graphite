@@ -2,7 +2,7 @@ use super::blend_mode::BlendMode;
 use super::folder_layer::FolderLayer;
 use super::image_layer::ImageLayer;
 use super::shape_layer::ShapeLayer;
-use super::style::{PathStyle, ViewMode};
+use super::style::{PathStyle, RenderData};
 use super::text_layer::TextLayer;
 use super::vector::vector_shape::VectorShape;
 use crate::intersection::Quad;
@@ -10,6 +10,7 @@ use crate::layers::text_layer::FontCache;
 use crate::DocumentError;
 use crate::LayerId;
 
+use core::fmt;
 use glam::{DAffine2, DMat2, DVec2};
 use serde::{Deserialize, Serialize};
 use std::fmt::Write;
@@ -47,6 +48,40 @@ impl LayerDataType {
 	}
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+pub enum LayerDataTypeDiscriminant {
+	Folder,
+	Shape,
+	Text,
+	Image,
+}
+
+impl fmt::Display for LayerDataTypeDiscriminant {
+	fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+		let name = match self {
+			LayerDataTypeDiscriminant::Folder => "Folder",
+			LayerDataTypeDiscriminant::Shape => "Shape",
+			LayerDataTypeDiscriminant::Text => "Text",
+			LayerDataTypeDiscriminant::Image => "Image",
+		};
+
+		formatter.write_str(name)
+	}
+}
+
+impl From<&LayerDataType> for LayerDataTypeDiscriminant {
+	fn from(data: &LayerDataType) -> Self {
+		use LayerDataType::*;
+
+		match data {
+			Folder(_) => LayerDataTypeDiscriminant::Folder,
+			Shape(_) => LayerDataTypeDiscriminant::Shape,
+			Text(_) => LayerDataTypeDiscriminant::Text,
+			Image(_) => LayerDataTypeDiscriminant::Image,
+		}
+	}
+}
+
 /// Defines shared behavior for every layer type.
 pub trait LayerData {
 	/// Render the layer as an SVG tag to a given string.
@@ -54,7 +89,7 @@ pub trait LayerData {
 	/// # Example
 	/// ```
 	/// # use graphite_graphene::layers::shape_layer::ShapeLayer;
-	/// # use graphite_graphene::layers::style::{Fill, PathStyle, ViewMode};
+	/// # use graphite_graphene::layers::style::{Fill, PathStyle, ViewMode, RenderData};
 	/// # use graphite_graphene::layers::layer_info::LayerData;
 	/// # use std::collections::HashMap;
 	///
@@ -62,7 +97,9 @@ pub trait LayerData {
 	/// let mut svg = String::new();
 	///
 	/// // Render the shape without any transforms, in normal view mode
-	/// shape.render(&mut svg, &mut String::new(), &mut vec![], ViewMode::Normal, &Default::default(), None);
+	/// # let font_cache = Default::default();
+	/// let render_data = RenderData::new(ViewMode::Normal, &font_cache, None, false);
+	/// shape.render(&mut svg, &mut String::new(), &mut vec![], render_data);
 	///
 	/// assert_eq!(
 	///     svg,
@@ -71,7 +108,7 @@ pub trait LayerData {
 	///     </g>"
 	/// );
 	/// ```
-	fn render(&mut self, svg: &mut String, svg_defs: &mut String, transforms: &mut Vec<glam::DAffine2>, view_mode: ViewMode, font_cache: &FontCache, culling_bounds: Option<[DVec2; 2]>);
+	fn render(&mut self, svg: &mut String, svg_defs: &mut String, transforms: &mut Vec<glam::DAffine2>, render_data: RenderData);
 
 	/// Determine the layers within this layer that intersect a given quad.
 	/// # Example
@@ -118,8 +155,8 @@ pub trait LayerData {
 }
 
 impl LayerData for LayerDataType {
-	fn render(&mut self, svg: &mut String, svg_defs: &mut String, transforms: &mut Vec<glam::DAffine2>, view_mode: ViewMode, font_cache: &FontCache, viewport_bounds: Option<[DVec2; 2]>) {
-		self.inner_mut().render(svg, svg_defs, transforms, view_mode, font_cache, viewport_bounds)
+	fn render(&mut self, svg: &mut String, svg_defs: &mut String, transforms: &mut Vec<glam::DAffine2>, render_data: RenderData) {
+		self.inner_mut().render(svg, svg_defs, transforms, render_data)
 	}
 
 	fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, font_cache: &FontCache) {
@@ -224,14 +261,17 @@ impl Layer {
 		LayerIter { stack: vec![self] }
 	}
 
-	pub fn render(&mut self, transforms: &mut Vec<DAffine2>, view_mode: ViewMode, svg_defs: &mut String, font_cache: &FontCache, culling_bounds: Option<[DVec2; 2]>) -> &str {
+	pub fn render(&mut self, transforms: &mut Vec<DAffine2>, svg_defs: &mut String, render_data: RenderData) -> &str {
 		if !self.visible {
 			return "";
 		}
 
 		transforms.push(self.transform);
-		if let Some(viewport_bounds) = culling_bounds {
-			if let Some(bounding_box) = self.data.bounding_box(transforms.iter().cloned().reduce(|a, b| a * b).unwrap_or(DAffine2::IDENTITY), font_cache) {
+		if let Some(viewport_bounds) = render_data.culling_bounds {
+			if let Some(bounding_box) = self
+				.data
+				.bounding_box(transforms.iter().cloned().reduce(|a, b| a * b).unwrap_or(DAffine2::IDENTITY), render_data.font_cache)
+			{
 				let is_overlapping =
 					viewport_bounds[0].x < bounding_box[1].x && bounding_box[0].x < viewport_bounds[1].x && viewport_bounds[0].y < bounding_box[1].y && bounding_box[0].y < viewport_bounds[1].y;
 				if !is_overlapping {
@@ -246,7 +286,7 @@ impl Layer {
 		if self.cache_dirty {
 			self.thumbnail_cache.clear();
 			self.svg_defs_cache.clear();
-			self.data.render(&mut self.thumbnail_cache, &mut self.svg_defs_cache, transforms, view_mode, font_cache, culling_bounds);
+			self.data.render(&mut self.thumbnail_cache, &mut self.svg_defs_cache, transforms, render_data);
 
 			self.cache.clear();
 			let _ = writeln!(self.cache, r#"<g transform="matrix("#);

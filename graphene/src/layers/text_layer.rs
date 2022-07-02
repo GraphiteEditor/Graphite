@@ -1,5 +1,5 @@
 use super::layer_info::LayerData;
-use super::style::{PathStyle, ViewMode};
+use super::style::{PathStyle, RenderData, ViewMode};
 use super::vector::vector_shape::VectorShape;
 use crate::intersection::{intersect_quad_bez_path, Quad};
 use crate::LayerId;
@@ -29,12 +29,12 @@ pub struct TextLayer {
 	#[serde(skip)]
 	pub editable: bool,
 	#[serde(skip)]
-	cached_path: Option<VectorShape>,
+	pub cached_path: Option<VectorShape>,
 }
 
 impl LayerData for TextLayer {
-	fn render(&mut self, svg: &mut String, svg_defs: &mut String, transforms: &mut Vec<DAffine2>, view_mode: ViewMode, font_cache: &FontCache, _culling_bounds: Option<[DVec2; 2]>) {
-		let transform = self.transform(transforms, view_mode);
+	fn render(&mut self, svg: &mut String, svg_defs: &mut String, transforms: &mut Vec<DAffine2>, render_data: RenderData) {
+		let transform = self.transform(transforms, render_data.view_mode);
 		let inverse = transform.inverse();
 
 		if !inverse.is_finite() {
@@ -49,8 +49,8 @@ impl LayerData for TextLayer {
 		let _ = svg.write_str(r#")">"#);
 
 		if self.editable {
-			let font = font_cache.resolve_font(&self.font);
-			if let Some(url) = font.and_then(|font| font_cache.get_preview_url(font)) {
+			let font = render_data.font_cache.resolve_font(&self.font);
+			if let Some(url) = font.and_then(|font| render_data.font_cache.get_preview_url(font)) {
 				let _ = write!(svg, r#"<style>@font-face {{font-family: local-font;src: url({});}}")</style>"#, url);
 			}
 
@@ -66,7 +66,7 @@ impl LayerData for TextLayer {
 				font.map(|_| r#" style="font-family: local-font;""#).unwrap_or_default()
 			);
 		} else {
-			let buzz_face = self.load_face(font_cache);
+			let buzz_face = self.load_face(render_data.font_cache);
 
 			let mut path = self.to_vector_path(buzz_face);
 
@@ -82,7 +82,7 @@ impl LayerData for TextLayer {
 				svg,
 				r#"<path d="{}" {} />"#,
 				path.to_svg(),
-				self.path_style.render(view_mode, svg_defs, transform, bounds, transformed_bounds)
+				self.path_style.render(render_data.view_mode, svg_defs, transform, bounds, transformed_bounds)
 			);
 		}
 		let _ = svg.write_str("</g>");
@@ -131,7 +131,7 @@ impl TextLayer {
 			cached_path: None,
 		};
 
-		new.regenerate_path(new.load_face(font_cache));
+		new.cached_path = Some(new.generate_path(new.load_face(font_cache)));
 
 		new
 	}
@@ -139,8 +139,10 @@ impl TextLayer {
 	/// Converts to a [VectorShape], populating the cache if necessary.
 	#[inline]
 	pub fn to_vector_path(&mut self, buzz_face: Option<Face>) -> VectorShape {
-		if self.cached_path.is_none() {
-			self.regenerate_path(buzz_face);
+		if self.cached_path.as_ref().filter(|x| !x.is_empty()).is_none() {
+			let path = self.generate_path(buzz_face);
+			self.cached_path = Some(path.clone());
+			return path;
 		}
 		self.cached_path.clone().unwrap()
 	}
@@ -150,7 +152,7 @@ impl TextLayer {
 	pub fn to_vector_path_nonmut(&self, font_cache: &FontCache) -> VectorShape {
 		let buzz_face = self.load_face(font_cache);
 
-		self.cached_path.clone().unwrap_or_else(|| self.generate_path(buzz_face))
+		self.cached_path.clone().filter(|x| !x.is_empty()).unwrap_or_else(|| self.generate_path(buzz_face))
 	}
 
 	#[inline]
@@ -164,15 +166,10 @@ impl TextLayer {
 		Quad::from_box([DVec2::ZERO, far])
 	}
 
-	/// Populate the cache.
-	pub fn regenerate_path(&mut self, buzz_face: Option<Face>) {
-		self.cached_path = Some(self.generate_path(buzz_face));
-	}
-
 	pub fn update_text(&mut self, text: String, font_cache: &FontCache) {
 		let buzz_face = self.load_face(font_cache);
 
 		self.text = text;
-		self.regenerate_path(buzz_face);
+		self.cached_path = Some(self.generate_path(buzz_face));
 	}
 }

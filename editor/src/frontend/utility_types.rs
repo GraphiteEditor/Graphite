@@ -61,6 +61,7 @@ impl FileType {
 #[derive(Clone, Copy, Debug, Eq, Deserialize, PartialEq, Serialize)]
 pub enum ExportBounds {
 	AllArtwork,
+	Selection,
 	Artboard(LayerId),
 }
 

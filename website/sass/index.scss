@@ -125,8 +125,8 @@
 		mask-size: contain;
 
 		&.left {
-			padding-left: 120px;
-			margin-left: -120px;
+			padding-left: 80px;
+			margin-left: -80px;
 			-webkit-mask-image: url("https://static.graphite.rs/textures/torn-edge-left.png");
 			mask-image: url("https://static.graphite.rs/textures/torn-edge-left.png");
 			-webkit-mask-position: top left;
@@ -208,16 +208,16 @@
 	}
 
 	@media screen and (max-width: 1000px) {
-		margin-left: -40px;
-		margin-right: -40px;
+		margin-left: calc(-1 * var(--page-edge-padding));
+		margin-right: calc(-1 * var(--page-edge-padding));
 
 		.screenshot-details {
-			margin-left: 40px;
-			margin-right: 40px;
+			margin-left: var(--page-edge-padding);
+			margin-right: var(--page-edge-padding);
 		}
 
 		hr {
-			width: calc(100% - (32px + 40px) * 2);
+			width: calc(100% - (32px + var(--page-edge-padding)) * 2);
 			margin-left: auto;
 			margin-right: auto;
 		}

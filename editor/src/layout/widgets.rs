@@ -522,6 +522,7 @@ pub struct DropdownEntryData {
 	pub shortcut: Vec<String>,
 	#[serde(rename = "shortcutRequiresLock")]
 	pub shortcut_requires_lock: bool,
+	pub disabled: bool,
 	pub children: Vec<Vec<DropdownEntryData>>,
 
 	#[serde(skip)]

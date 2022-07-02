@@ -40,7 +40,7 @@ export function createPortfolioState(editor: Editor) {
 		if (!context) return;
 
 		// Fill the canvas with white if jpeg (does not support transparency and defaults to black)
-		if (triggerRasterDownload.mime.endsWith("jpg")) {
+		if (triggerRasterDownload.mime.endsWith("jpeg")) {
 			context.fillStyle = "white";
 			context.fillRect(0, 0, triggerRasterDownload.size.x, triggerRasterDownload.size.y);
 		}
