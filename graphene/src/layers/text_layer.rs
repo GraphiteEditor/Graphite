@@ -139,7 +139,7 @@ impl TextLayer {
 	/// Converts to a [VectorShape], populating the cache if necessary.
 	#[inline]
 	pub fn to_vector_path(&mut self, buzz_face: Option<Face>) -> VectorShape {
-		if self.cached_path.as_ref().filter(|x| !x.is_empty()).is_none() {
+		if self.cached_path.as_ref().filter(|x| !x.anchors().is_empty()).is_none() {
 			let path = self.generate_path(buzz_face);
 			self.cached_path = Some(path.clone());
 			return path;
@@ -152,11 +152,11 @@ impl TextLayer {
 	pub fn to_vector_path_nonmut(&self, font_cache: &FontCache) -> VectorShape {
 		let buzz_face = self.load_face(font_cache);
 
-		self.cached_path.clone().filter(|x| !x.is_empty()).unwrap_or_else(|| self.generate_path(buzz_face))
+		self.cached_path.clone().filter(|x| !x.anchors().is_empty()).unwrap_or_else(|| self.generate_path(buzz_face))
 	}
 
 	#[inline]
-	fn generate_path(&self, buzz_face: Option<Face>) -> VectorShape {
+	pub fn generate_path(&self, buzz_face: Option<Face>) -> VectorShape {
 		to_path::to_path(&self.text, buzz_face, self.size, self.line_width)
 	}
 
