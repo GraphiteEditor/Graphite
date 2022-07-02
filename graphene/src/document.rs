@@ -10,7 +10,6 @@ use crate::layers::vector::vector_shape::VectorShape;
 use crate::{DocumentError, DocumentResponse, Operation};
 
 use glam::{DAffine2, DVec2};
-// use kurbo::Affine;
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::cmp::max;
@@ -100,7 +99,7 @@ impl Document {
 	}
 
 	/// Returns a mutable reference to the layer or folder at the path.
-	pub fn layer_mut<'a>(&'a mut self, path: &'a [LayerId]) -> Result<&'a mut Layer, DocumentError> {
+	pub fn layer_mut(&mut self, path: &[LayerId]) -> Result<&mut Layer, DocumentError> {
 		if path.is_empty() {
 			return Ok(&mut self.root);
 		}
@@ -503,15 +502,6 @@ impl Document {
 				self.set_layer(&path, layer, insert_index)?;
 
 				Some([vec![DocumentChanged, CreatedLayer { path: path.clone() }], update_thumbnails_upstream(&path)].concat())
-			}
-			Operation::AddOverlayEllipse { path, transform, style } => {
-				let mut ellipse = ShapeLayer::ellipse(style);
-				ellipse.render_index = -1;
-
-				let layer = Layer::new(LayerDataType::Shape(ellipse), transform);
-				self.set_layer(&path, layer, -1)?;
-
-				Some([vec![DocumentChanged, CreatedLayer { path }]].concat())
 			}
 			Operation::AddRect { path, insert_index, transform, style } => {
 				let layer = Layer::new(LayerDataType::Shape(ShapeLayer::rectangle(style)), transform);

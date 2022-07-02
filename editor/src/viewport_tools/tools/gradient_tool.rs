@@ -155,10 +155,11 @@ impl GradientOverlay {
 
 		let fill = if selected { Fill::solid(COLOR_ACCENT) } else { Fill::solid(Color::WHITE) };
 
-		let operation = Operation::AddOverlayEllipse {
+		let operation = Operation::AddEllipse {
 			path: path.clone(),
 			transform: DAffine2::from_scale_angle_translation(size, 0., translation - size / 2.).to_cols_array(),
 			style: PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 1.0)), fill),
+			insert_index: -1,
 		};
 		responses.push_back(DocumentMessage::Overlays(operation.into()).into());
 

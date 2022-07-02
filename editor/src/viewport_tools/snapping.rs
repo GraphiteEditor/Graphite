@@ -60,10 +60,11 @@ impl SnapOverlays {
 							insert_index: -1,
 						}
 					} else {
-						Operation::AddOverlayEllipse {
+						Operation::AddEllipse {
 							path: layer_path.clone(),
 							transform,
 							style: style::PathStyle::new(None, style::Fill::Solid(COLOR_ACCENT)),
+							insert_index: -1,
 						}
 					}
 					.into(),

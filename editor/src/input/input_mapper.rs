@@ -105,6 +105,7 @@ impl Default for Mapping {
 			entry! {action=PathToolMessage::PointerMove { alt_mirror_angle: KeyAlt, shift_mirror_distance: KeyShift }, message=InputMapperMessage::PointerMove},
 			entry! {action=PathToolMessage::SelectPoint, message=InputMapperMessage::DoubleClick},
 			entry! {action=PathToolMessage::Delete, key_down=KeyDelete},
+			entry! {action=PathToolMessage::Delete, key_down=KeyBackspace},
 			entry! {action=PathToolMessage::DragStop, key_up=Lmb},
 			// Pen
 			entry! {action=PenToolMessage::PointerMove { snap_angle: KeyControl, break_handle: KeyShift }, message=InputMapperMessage::PointerMove},

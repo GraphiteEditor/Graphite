@@ -22,11 +22,6 @@ pub enum Operation {
 		transform: [f64; 6],
 		style: style::PathStyle,
 	},
-	AddOverlayEllipse {
-		path: Vec<LayerId>,
-		transform: [f64; 6],
-		style: style::PathStyle,
-	},
 	AddRect {
 		path: Vec<LayerId>,
 		insert_index: isize,

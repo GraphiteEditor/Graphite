@@ -17,7 +17,7 @@ use super::{vector_anchor::VectorAnchor, vector_control_point::VectorControlPoin
 use glam::DVec2;
 use graphene::document::Document;
 use graphene::layers::vector::constants::ControlPointType;
-use graphene::LayerId;
+use graphene::{LayerId, Operation};
 
 /// ShapeEditor is the container for all of the layer paths that are
 /// represented as VectorShapes and provides functionality required
@@ -93,7 +93,7 @@ impl ShapeEditor {
 					points.push((shape_layer_path, point.0, point.1));
 				}
 				responses.push_back(
-					DocumentMessage::SelectVectorPoints {
+					Operation::SelectVectorPoints {
 						layer_path: shape_layer_path.to_vec(),
 						point_ids: vec![point],
 						add,
@@ -106,7 +106,7 @@ impl ShapeEditor {
 				}
 			} else {
 				responses.push_back(
-					DocumentMessage::DeselectVectorPoints {
+					Operation::DeselectVectorPoints {
 						layer_path: shape_layer_path.to_vec(),
 						point_ids: vec![(anchor_id, ControlPointType::from_index(point_index))],
 					}

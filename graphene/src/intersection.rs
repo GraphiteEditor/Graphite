@@ -52,8 +52,8 @@ impl Quad {
 		]
 	}
 
-	/// Gets the centre of a quad
-	pub fn centre(&self) -> DVec2 {
+	/// Gets the center of a quad
+	pub fn center(&self) -> DVec2 {
 		self.0.iter().sum::<DVec2>() / 4.
 	}
 }
@@ -92,7 +92,7 @@ pub fn intersect_quad_bez_path(quad: Quad, shape: &BezPath, filled: bool) -> boo
 		return true;
 	}
 	// Check if selection is entirely within the shape
-	if filled && shape.contains(to_point(quad.centre())) {
+	if filled && shape.contains(to_point(quad.center())) {
 		return true;
 	}
 

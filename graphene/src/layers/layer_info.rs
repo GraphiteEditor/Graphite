@@ -124,7 +124,7 @@ pub trait LayerData {
 	/// let shape_id = 42;
 	/// let mut svg = String::new();
 	///
-	/// let quad = Quad::from_box([DVec2::ZERO, DVec2::ONE*2.]);
+	/// let quad = Quad::from_box([DVec2::ZERO, DVec2::ONE]);
 	/// let mut intersections = vec![];
 	///
 	/// shape.intersects_quad(quad, &mut vec![shape_id], &mut intersections, &Default::default());

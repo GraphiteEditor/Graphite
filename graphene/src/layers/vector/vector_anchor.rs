@@ -68,6 +68,11 @@ impl VectorAnchor {
 		}
 	}
 
+	/// Does this [VectorAnchor] represent a close signal?
+	pub fn is_close(&self) -> bool {
+		self.points[ControlPointType::Anchor].is_none() && self.points[ControlPointType::InHandle].is_none()
+	}
+
 	/// Finds the closest VectorControlPoint owned by this anchor. This can be the handles or the anchor itself
 	pub fn closest_point(&self, transform_space: &DAffine2, target: glam::DVec2) -> usize {
 		let mut closest_index: usize = 0;

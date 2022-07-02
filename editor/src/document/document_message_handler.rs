@@ -158,28 +158,6 @@ impl DocumentMessageHandler {
 		self.artboard_message_handler.artboards_graphene_document.bounding_box_and_transform(path, font_cache).unwrap_or(None)
 	}
 
-	/// Create a new vector shape representation with the underlying kurbo data, VectorManipulatorShape
-	// pub fn selected_visible_layers_vector_shapes(&self, responses: &mut VecDeque<Message>, font_cache: &FontCache) -> Vec<VectorShape> {
-	// 	let shapes = self.selected_layers().filter_map(|path_to_shape| {
-	// 		let viewport_transform = self.graphene_document.generate_transform_relative_to_viewport(path_to_shape).ok()?;
-	// 		let layer = self.graphene_document.layer(path_to_shape);
-
-	// 		match &layer {
-	// 			Ok(layer) if layer.visible => {}
-	// 			_ => return None,
-	// 		};
-
-	// 		// TODO: Create VectorManipulatorShape when creating a kurbo shape as a stopgap, rather than on each new selection
-	// 		match &layer.ok()?.data {
-	// 			LayerDataType::Shape(shape) => Some(VectorShape::new(path_to_shape.to_vec(), viewport_transform, &shape.path, shape.closed, responses)),
-	// 			LayerDataType::Text(text) => Some(VectorShape::new(path_to_shape.to_vec(), viewport_transform, &text.to_bez_path_nonmut(font_cache), true, responses)),
-	// 			_ => None,
-	// 		}
-	// 	});
-
-	// 	shapes.collect::<Vec<VectorShape>>()
-	// }
-
 	pub fn selected_layers(&self) -> impl Iterator<Item = &[LayerId]> {
 		self.layer_metadata.iter().filter_map(|(path, data)| data.selected.then(|| path.as_slice()))
 	}
@@ -1044,9 +1022,6 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 					responses.push_back(DocumentOperation::DeselectAllVectorPoints { layer_path: layer_path.to_vec() }.into());
 				}
 			}
-			DeselectVectorPoints { layer_path, point_ids } => {
-				responses.push_back(DocumentOperation::DeselectVectorPoints { layer_path, point_ids }.into());
-			}
 			DirtyRenderDocument => {
 				// Mark all non-overlay caches as dirty
 				GrapheneDocument::mark_children_as_dirty(&mut self.graphene_document.root);
@@ -1439,10 +1414,6 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 						responses.push_front(SetSelectedLayers { replacement_selected_layers: paths }.into());
 					}
 				}
-			}
-			// TODO Might be able to send this directly from a tool instead and bypass DocumentMessageHandler
-			SelectVectorPoints { layer_path, point_ids, add } => {
-				responses.push_back(DocumentOperation::SelectVectorPoints { layer_path, point_ids, add }.into());
 			}
 			SetBlendModeForSelectedLayers { blend_mode } => {
 				self.backup(responses);

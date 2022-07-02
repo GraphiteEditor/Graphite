@@ -9,7 +9,6 @@ use graphene::layers::style::ViewMode;
 use graphene::LayerId;
 use graphene::Operation as DocumentOperation;
 
-use graphene::layers::vector::constants::ControlPointType;
 use serde::{Deserialize, Serialize};
 
 #[remain::sorted]
@@ -57,10 +56,6 @@ pub enum DocumentMessage {
 	DeleteSelectedVectorPoints,
 	DeselectAllLayers,
 	DeselectAllVectorPoints,
-	DeselectVectorPoints {
-		layer_path: Vec<LayerId>,
-		point_ids: Vec<(u64, ControlPointType)>,
-	},
 	DirtyRenderDocument,
 	DirtyRenderDocumentInOutlineView,
 	DocumentHistoryBackward,
@@ -119,11 +114,6 @@ pub enum DocumentMessage {
 		layer_path: Vec<LayerId>,
 		ctrl: bool,
 		shift: bool,
-	},
-	SelectVectorPoints {
-		layer_path: Vec<LayerId>,
-		point_ids: Vec<(u64, ControlPointType)>,
-		add: bool,
 	},
 	SetBlendModeForSelectedLayers {
 		blend_mode: BlendMode,

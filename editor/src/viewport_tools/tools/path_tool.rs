@@ -239,7 +239,7 @@ impl Fsm for PathToolFsmState {
 				}
 				// Delete key
 				(_, Delete) => {
-					// Select the first point within the threshold (in pixels)
+					// Delete the selected points and clean up overlays
 					responses.push_back(DocumentMessage::StartTransaction.into());
 					tool_data.shape_editor.delete_selected_points(responses);
 					responses.push_back(SelectionChanged.into());
