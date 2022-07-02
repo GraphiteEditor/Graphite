@@ -12,8 +12,8 @@ fn compute_abc_through_points(start_point: DVec2, point_on_curve: DVec2, end_poi
 	[a, point_on_curve, c]
 }
 
-/// Compute a, b, and c for a quadratic curve that fits the start, end and point on curve at `t`.
-/// The definition for the a, b, c points are defined in [the projection identity section](https://pomax.github.io/bezierinfo/#abc) of Pomax's bezier curve primer.
+/// Compute `a`, `b`, and `c` for a quadratic curve that fits the start, end and point on curve at `t`.
+/// The definition for the `a`, `b`, `c` points are defined in [the projection identity section](https://pomax.github.io/bezierinfo/#abc) of Pomax's bezier curve primer.
 pub fn compute_abc_for_quadratic_through_points(start_point: DVec2, point_on_curve: DVec2, end_point: DVec2, t: f64) -> [DVec2; 3] {
 	let t_squared = t * t;
 	let one_minus_t = 1. - t;
@@ -31,6 +31,7 @@ pub fn compute_abc_for_cubic_through_points(start_point: DVec2, point_on_curve: 
 	compute_abc_through_points(start_point, point_on_curve, end_point, t_cubed, cubed_one_minus_t)
 }
 
+/// Return the index and the value of the closest point in the LUT compared to the provided point.
 pub fn get_closest_point_in_lut(lut: &[DVec2], point: DVec2) -> (i32, f64) {
 	lut.iter()
 		.enumerate()
@@ -39,7 +40,7 @@ pub fn get_closest_point_in_lut(lut: &[DVec2], point: DVec2) -> (i32, f64) {
 		.unwrap()
 }
 
-/// Find the roots of the linear equation `ax + b`
+/// Find the roots of the linear equation `ax + b`.
 pub fn solve_linear(a: f64, b: f64) -> Vec<f64> {
 	let mut roots = Vec::new();
 	if a != 0. {
@@ -48,8 +49,8 @@ pub fn solve_linear(a: f64, b: f64) -> Vec<f64> {
 	roots
 }
 
-/// Find the roots of the linear equation `ax^2 + bx + c`
-/// Precompute the `discriminant` (`b^2 - 4ac`) and `two_times_a` arguments prior to calling this function for efficiency purposes
+/// Find the roots of the linear equation `ax^2 + bx + c`.
+/// Precompute the `discriminant` (`b^2 - 4ac`) and `two_times_a` arguments prior to calling this function for efficiency purposes.
 pub fn solve_quadratic(discriminant: f64, two_times_a: f64, b: f64, c: f64) -> Vec<f64> {
 	let mut roots = Vec::new();
 	if two_times_a != 0. {
@@ -66,7 +67,7 @@ pub fn solve_quadratic(discriminant: f64, two_times_a: f64, b: f64, c: f64) -> V
 	roots
 }
 
-/// Compute the cube root of a number
+/// Compute the cube root of a number.
 fn cube_root(f: f64) -> f64 {
 	if f < 0. {
 		-(-f).powf(1. / 3.)
@@ -75,7 +76,7 @@ fn cube_root(f: f64) -> f64 {
 	}
 }
 
-// Solve a cubic of the form x^3 + px + q, derivation from: https://trans4mind.com/personal_development/mathematics/polynomials/cubicAlgebra.htm
+/// Solve a cubic of the form `x^3 + px + q`, derivation from: <https://trans4mind.com/personal_development/mathematics/polynomials/cubicAlgebra.htm>.
 pub fn solve_reformatted_cubic(discriminant: f64, a: f64, p: f64, q: f64) -> Vec<f64> {
 	let mut roots = Vec::new();
 	if p == 0. {
@@ -111,7 +112,7 @@ pub fn solve_reformatted_cubic(discriminant: f64, a: f64, p: f64, q: f64) -> Vec
 	roots
 }
 
-// Solve a cubic of the form ax^3 + bx^2 + ct + d
+/// Solve a cubic of the form `ax^3 + bx^2 + ct + d`.
 pub fn solve_cubic(a: f64, b: f64, c: f64, d: f64) -> Vec<f64> {
 	if a.abs() <= 1e-5 {
 		if b.abs() <= 1e-5 {
@@ -135,25 +136,28 @@ pub fn solve_cubic(a: f64, b: f64, c: f64, d: f64) -> Vec<f64> {
 	}
 }
 
+/// Compare two `f64` numbers with a provided max absolute value difference.
 pub fn compare_f64(f1: f64, f2: f64, max_abs_diff: f64) -> bool {
 	(f1 - f2).abs() < max_abs_diff
 }
 
+/// Determine if an `f64` number is within a given range by using a max absolute value difference comparison.
 pub fn f64_approximately_in_range(value: f64, min: f64, max: f64, max_abs_diff: f64) -> bool {
 	(min..=max).contains(&value) || compare_f64(value, min, max_abs_diff) || compare_f64(value, max, max_abs_diff)
 }
 
+/// Compare the two values in a `DVec2` independently with a provided max absolute value difference.
 pub fn compare_f64_dvec2(dv1: DVec2, dv2: DVec2, max_abs_diff: f64) -> BVec2 {
 	BVec2::new((dv1.x - dv2.x).abs() < max_abs_diff, (dv1.y - dv2.y).abs() < max_abs_diff)
 }
 
+/// Determine if the values in a `DVec2` are within a given range independently by using a max absolute value difference comparison.
 pub fn dvec2_approximately_in_range(point: DVec2, min: DVec2, max: DVec2, max_abs_diff: f64) -> BVec2 {
 	(point.cmpge(min) & point.cmple(max)) | compare_f64_dvec2(point, min, max_abs_diff) | compare_f64_dvec2(point, max, max_abs_diff)
 }
 
 #[cfg(test)]
 mod tests {
-	// use crate::Bezier;
 	use super::*;
 
 	#[test]

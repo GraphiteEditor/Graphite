@@ -200,8 +200,8 @@ impl Bezier {
 	}
 
 	///  Calculate the point on the curve based on the `t`-value provided.
-	///  Basis code based off of pseudocode found here: <https://pomax.github.io/bezierinfo/#explanation>
-	fn _compute(&self, t: f64) -> DVec2 {
+	///  Basis code based off of pseudocode found here: <https://pomax.github.io/bezierinfo/#explanation>.
+	fn unrestricted_compute(&self, t: f64) -> DVec2 {
 		let t_squared = t * t;
 		let one_minus_t = 1.0 - t;
 		let squared_one_minus_t = one_minus_t * one_minus_t;
@@ -217,14 +217,14 @@ impl Bezier {
 	}
 
 	///  Calculate the point on the curve based on the `t`-value provided.
-	///  Expects `t` to be within the inclusive range `[0, 1]`
+	///  Expects `t` to be within the inclusive range `[0, 1]`.
 	pub fn compute(&self, t: f64) -> DVec2 {
 		assert!((0.0..=1.0).contains(&t));
-		self._compute(t)
+		self.unrestricted_compute(t)
 	}
 
-	/// Return a selection of equidistant points on the bezier curve
-	/// If no value is provided for `steps`, then the function will default `steps` to be 10
+	/// Return a selection of equidistant points on the bezier curve.
+	/// If no value is provided for `steps`, then the function will default `steps` to be 10.
 	pub fn compute_lookup_table(&self, steps: Option<i32>) -> Vec<DVec2> {
 		let steps_unwrapped = steps.unwrap_or(10);
 		let ratio: f64 = 1.0 / (steps_unwrapped as f64);
@@ -459,6 +459,7 @@ impl Bezier {
 			.unwrap()
 	}
 
+	/// Returns a Bezier curve that results from rotating the cruve by the given `DMat2`.
 	pub fn rotate(&self, rotation_matrix: DMat2) -> Bezier {
 		let rotated_start = rotation_matrix.mul_vec2(self.start);
 		let rotated_end = rotation_matrix.mul_vec2(self.end);
@@ -475,6 +476,7 @@ impl Bezier {
 		}
 	}
 
+	/// Returns a Bezier curve that results from translating the cruve by the given `DVec2`.
 	pub fn translate(&self, translation: DVec2) -> Bezier {
 		let translated_start = self.start + translation;
 		let translated_end = self.end + translation;
@@ -492,7 +494,7 @@ impl Bezier {
 	}
 
 	/// Returns a list of points where the provided `line` intersects with the Bezier curve.
-	/// - `line`: Expected to be received in the format of `[start_point, end_point]`
+	/// - `line`: Expected to be received in the format of `[start_point, end_point]`.
 	pub fn line_intersection(&self, line: [DVec2; 2]) -> Vec<DVec2> {
 		// Rotate the bezier and the line by the angle that the line makes with the x axis
 		let slope = line[1] - line[0];
@@ -531,7 +533,7 @@ impl Bezier {
 		list_intersection_t
 			.iter()
 			.filter(|&&t| utils::f64_approximately_in_range(t, 0., 1., max_abs_diff))
-			.map(|&t| self._compute(t))
+			.map(|&t| self.unrestricted_compute(t))
 			.filter(|&p| utils::dvec2_approximately_in_range(p, min, max, max_abs_diff).all())
 			.collect::<Vec<DVec2>>()
 	}
