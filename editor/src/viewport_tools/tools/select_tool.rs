@@ -36,6 +36,8 @@ pub enum SelectToolMessage {
 	Abort,
 	#[remain::unsorted]
 	DocumentIsDirty,
+	#[remain::unsorted]
+	SelectionChanged,
 
 	// Tool-specific messages
 	Align {
@@ -275,7 +277,7 @@ impl ToolTransition for SelectTool {
 		SignalToMessageMap {
 			document_dirty: Some(SelectToolMessage::DocumentIsDirty.into()),
 			tool_abort: Some(SelectToolMessage::Abort.into()),
-			selection_changed: None,
+			selection_changed: Some(SelectToolMessage::SelectionChanged.into()),
 		}
 	}
 }
@@ -341,8 +343,7 @@ impl Fsm for SelectToolFsmState {
 		if let ToolMessage::Select(event) = event {
 			log::debug!("self: {:?}, even: {:?}", self, event);
 			match (self, event) {
-				(_, DocumentIsDirty) => {
-					let mut buffer = Vec::new();
+				(_, DocumentIsDirty | SelectionChanged) => {
 					match (document.selected_visible_layers_bounding_box(font_cache), tool_data.bounding_box_overlays.take()) {
 						(None, Some(bounding_box_overlays)) => bounding_box_overlays.delete(&mut buffer),
 						(Some(bounds), paths) => {
