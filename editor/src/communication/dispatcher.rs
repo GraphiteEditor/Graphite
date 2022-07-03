@@ -87,7 +87,7 @@ impl Dispatcher {
 			match message {
 				#[remain::unsorted]
 				NoOp => {}
-				Broadcast(message) => self.message_handlers.broadcast_message_handler.process_action(message, (), &mut self.message_queue),
+				Broadcast(message) => self.message_handlers.broadcast_message_handler.process_action(message, (), &mut queue),
 				Dialog(message) => {
 					self.message_handlers
 						.dialog_message_handler
