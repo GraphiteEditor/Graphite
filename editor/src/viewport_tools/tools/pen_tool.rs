@@ -140,7 +140,7 @@ impl ToolTransition for PenTool {
 		SignalToMessageMap {
 			document_dirty: Some(PenToolMessage::DocumentIsDirty.into()),
 			tool_abort: Some(PenToolMessage::Abort.into()),
-			selection_changed: None,
+			selection_changed: Some(PenToolMessage::SelectionChanged.into()),
 		}
 	}
 }
