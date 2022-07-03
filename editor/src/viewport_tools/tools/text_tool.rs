@@ -6,7 +6,7 @@ use crate::layout::layout_message::LayoutTarget;
 use crate::layout::widgets::{FontInput, Layout, LayoutGroup, NumberInput, PropertyHolder, Separator, SeparatorDirection, SeparatorType, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
 use crate::message_prelude::*;
 use crate::misc::{HintData, HintGroup, HintInfo, KeysGroup};
-use crate::viewport_tools::tool::{Fsm, ToolActionHandlerData};
+use crate::viewport_tools::tool::{Fsm, SignalToMessageMap, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
 
 use graphene::intersection::Quad;
 use graphene::layers::style::{self, Fill, Stroke};
@@ -67,6 +67,18 @@ pub enum TextMessage {
 pub enum TextOptionsUpdate {
 	Font { family: String, style: String },
 	FontSize(u32),
+}
+
+impl ToolMetadata for TextTool {
+	fn icon_name(&self) -> String {
+		"VectorTextTool".into()
+	}
+	fn tooltip(&self) -> String {
+		"Text Tool (T)".into()
+	}
+	fn tool_type(&self) -> crate::viewport_tools::tool::ToolType {
+		ToolType::Text
+	}
 }
 
 impl PropertyHolder for TextTool {
@@ -159,6 +171,16 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for TextTool {
 		match self.fsm_state {
 			Ready => actions!(TextMessageDiscriminant; Interact),
 			Editing => actions!(TextMessageDiscriminant; Interact, Abort, CommitText),
+		}
+	}
+}
+
+impl ToolTransition for TextTool {
+	fn signal_to_message_map(&self) -> SignalToMessageMap {
+		SignalToMessageMap {
+			document_dirty: Some(TextMessage::DocumentIsDirty.into()),
+			tool_abort: Some(TextMessage::Abort.into()),
+			selection_changed: None,
 		}
 	}
 }

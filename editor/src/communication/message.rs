@@ -23,6 +23,8 @@ pub enum Message {
 	#[remain::unsorted]
 	NoOp,
 	#[child]
+	Broadcast(BroadcastMessage),
+	#[child]
 	Dialog(DialogMessage),
 	#[child]
 	Frontend(FrontendMessage),

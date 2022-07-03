@@ -3,7 +3,7 @@ use crate::input::keyboard::MouseMotion;
 use crate::layout::widgets::{Layout, LayoutGroup, NumberInput, PropertyHolder, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
 use crate::message_prelude::*;
 use crate::misc::{HintData, HintGroup, HintInfo};
-use crate::viewport_tools::tool::{DocumentToolData, Fsm, ToolActionHandlerData};
+use crate::viewport_tools::tool::{DocumentToolData, Fsm, SignalToMessageMap, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
 
 use graphene::layers::style;
 use graphene::Operation;
@@ -53,6 +53,18 @@ pub enum FreehandToolMessageOptionsUpdate {
 enum FreehandToolFsmState {
 	Ready,
 	Drawing,
+}
+
+impl ToolMetadata for FreehandTool {
+	fn icon_name(&self) -> String {
+		"VectorFreehandTool".into()
+	}
+	fn tooltip(&self) -> String {
+		"Freehand Tool (N)".into()
+	}
+	fn tool_type(&self) -> crate::viewport_tools::tool::ToolType {
+		ToolType::Freehand
+	}
 }
 
 impl PropertyHolder for FreehandTool {
@@ -105,6 +117,16 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for FreehandTool
 		match self.fsm_state {
 			Ready => actions!(FreehandToolMessageDiscriminant; DragStart, DragStop, Abort),
 			Drawing => actions!(FreehandToolMessageDiscriminant; DragStop, PointerMove, Abort),
+		}
+	}
+}
+
+impl ToolTransition for FreehandTool {
+	fn signal_to_message_map(&self) -> SignalToMessageMap {
+		SignalToMessageMap {
+			document_dirty: None,
+			tool_abort: Some(FreehandToolMessage::Abort.into()),
+			selection_changed: None,
 		}
 	}
 }

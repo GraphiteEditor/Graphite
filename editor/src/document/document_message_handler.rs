@@ -1,8 +1,8 @@
 use super::clipboards::Clipboard;
 use super::layer_panel::{layer_panel_entry, LayerMetadata, LayerPanelEntry, RawBuffer};
 use super::properties_panel_message_handler::PropertiesPanelMessageHandlerData;
+use super::utility_types::DocumentMode;
 use super::utility_types::{AlignAggregate, AlignAxis, DocumentSave, FlipAxis};
-use super::utility_types::{DocumentMode, TargetDocument};
 use super::{vectorize_layer_metadata, PropertiesPanelMessageHandler};
 use super::{ArtboardMessageHandler, MovementMessageHandler, OverlaysMessageHandler, TransformLayerMessageHandler};
 use crate::consts::{ASYMPTOTIC_EFFECT, DEFAULT_DOCUMENT_NAME, FILE_SAVE_SUFFIX, GRAPHITE_DOCUMENT_VERSION, SCALE_EFFECT, SCROLLBAR_SPACING, VIEWPORT_ZOOM_TO_FIT_PADDING_SCALE_FACTOR};
@@ -858,7 +858,7 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 							}
 							DocumentResponse::DocumentChanged => responses.push_back(RenderDocument.into()),
 						};
-						responses.push_back(ToolMessage::DocumentIsDirty.into());
+						responses.push_back(BroadcastSignal::DocumentIsDirty.into());
 					}
 				}
 				Err(e) => log::error!("DocumentError: {:?}", e),
@@ -888,6 +888,7 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 					PropertiesPanelMessageHandlerData {
 						artwork_document: &self.graphene_document,
 						artboard_document: &self.artboard_message_handler.artboards_graphene_document,
+						selected_layers: &mut self.layer_metadata.iter().filter_map(|(path, data)| data.selected.then(|| path.as_slice())),
 						font_cache,
 					},
 					responses,
@@ -904,22 +905,9 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 					responses.extend(self.select_layer(layer_path, font_cache));
 				}
 
-				let selected_paths: Vec<Vec<u64>> = self.selected_layers().map(|path| path.to_vec()).collect();
-				if selected_paths.is_empty() {
-					responses.push_back(PropertiesPanelMessage::ClearSelection.into())
-				} else {
-					responses.push_back(
-						PropertiesPanelMessage::SetActiveLayers {
-							paths: selected_paths,
-							document: TargetDocument::Artwork,
-						}
-						.into(),
-					)
-				}
-
 				// TODO: Correctly update layer panel in clear_selection instead of here
 				responses.push_back(FolderChanged { affected_folder_path: vec![] }.into());
-				responses.push_back(DocumentMessage::SelectionChanged.into());
+				responses.push_back(BroadcastSignal::SelectionChanged.into());
 
 				self.update_layer_tree_options_bar_widgets(responses, font_cache);
 			}
@@ -957,7 +945,7 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 							.into(),
 						);
 					}
-					responses.push_back(ToolMessage::DocumentIsDirty.into());
+					responses.push_back(BroadcastSignal::DocumentIsDirty.into());
 				}
 			}
 			BooleanOperation(op) => {
@@ -991,7 +979,7 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 			}
 			DeleteLayer { layer_path } => {
 				responses.push_front(DocumentOperation::DeleteLayer { path: layer_path.clone() }.into());
-				responses.push_front(ToolMessage::AbortCurrentTool.into());
+				responses.push_front(BroadcastSignal::ToolAbort.into());
 				responses.push_back(PropertiesPanelMessage::CheckSelectedWasDeleted { path: layer_path }.into());
 			}
 			DeleteSelectedLayers => {
@@ -1001,7 +989,8 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 					responses.push_front(DocumentMessage::DeleteLayer { layer_path: path.to_vec() }.into());
 				}
 
-				responses.push_front(DocumentMessage::SelectionChanged.into());
+				responses.push_front(BroadcastSignal::SelectionChanged.into());
+				responses.push_back(BroadcastSignal::DocumentIsDirty.into());
 			}
 			DeleteSelectedVectorPoints => {
 				responses.push_back(StartTransaction.into());
@@ -1114,7 +1103,7 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 							.into(),
 						);
 					}
-					responses.push_back(ToolMessage::DocumentIsDirty.into());
+					responses.push_back(BroadcastSignal::DocumentIsDirty.into());
 				}
 			}
 			FolderChanged { affected_folder_path } => {
@@ -1197,7 +1186,7 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 					};
 					responses.push_back(operation.into());
 				}
-				responses.push_back(ToolMessage::DocumentIsDirty.into());
+				responses.push_back(BroadcastSignal::DocumentIsDirty.into());
 			}
 			PasteImage { mime, image_data, mouse } => {
 				let path = vec![generate_uuid()];
@@ -1235,7 +1224,7 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 			Redo => {
 				responses.push_back(SelectToolMessage::Abort.into());
 				responses.push_back(DocumentHistoryForward.into());
-				responses.push_back(ToolMessage::DocumentIsDirty.into());
+				responses.push_back(BroadcastSignal::DocumentIsDirty.into());
 				responses.push_back(RenderDocument.into());
 				responses.push_back(FolderChanged { affected_folder_path: vec![] }.into());
 			}
@@ -1367,11 +1356,6 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 				let all = self.all_layers().map(|path| path.to_vec()).collect();
 				responses.push_front(SetSelectedLayers { replacement_selected_layers: all }.into());
 			}
-			SelectionChanged => {
-				// TODO: Hoist this duplicated code into wider system
-				responses.push_back(ToolMessage::SelectionChanged.into());
-				responses.push_back(ToolMessage::DocumentIsDirty.into());
-			}
 			SelectLayer { layer_path, ctrl, shift } => {
 				let mut paths = vec![];
 				let last_selection_exists = !self.layer_range_selection_reference.is_empty();
@@ -1396,7 +1380,7 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 							}
 							.into(),
 						);
-						responses.push_back(DocumentMessage::SelectionChanged.into());
+						responses.push_back(BroadcastSignal::SelectionChanged.into());
 					} else {
 						paths.push(layer_path.clone());
 					}
@@ -1490,7 +1474,7 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 			}
 			ToggleLayerVisibility { layer_path } => {
 				responses.push_back(DocumentOperation::ToggleLayerVisibility { path: layer_path }.into());
-				responses.push_back(ToolMessage::DocumentIsDirty.into());
+				responses.push_back(BroadcastSignal::DocumentIsDirty.into());
 			}
 			ToggleSelectedHandleMirroring {
 				layer_path,
@@ -1507,9 +1491,9 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 				);
 			}
 			Undo => {
-				responses.push_back(ToolMessage::AbortCurrentTool.into());
+				responses.push_back(BroadcastSignal::ToolAbort.into());
 				responses.push_back(DocumentHistoryBackward.into());
-				responses.push_back(ToolMessage::DocumentIsDirty.into());
+				responses.push_back(BroadcastSignal::DocumentIsDirty.into());
 				responses.push_back(RenderDocument.into());
 				responses.push_back(FolderChanged { affected_folder_path: vec![] }.into());
 			}

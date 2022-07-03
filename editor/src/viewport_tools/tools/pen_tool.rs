@@ -7,7 +7,7 @@ use crate::layout::widgets::{Layout, LayoutGroup, NumberInput, PropertyHolder, W
 use crate::message_prelude::*;
 use crate::misc::{HintData, HintGroup, HintInfo, KeysGroup};
 use crate::viewport_tools::snapping::SnapHandler;
-use crate::viewport_tools::tool::{Fsm, ToolActionHandlerData};
+use crate::viewport_tools::tool::{Fsm, SignalToMessageMap, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
 use crate::viewport_tools::vector_editor::overlay_renderer::OverlayRenderer;
 
 use graphene::layers::style;
@@ -71,6 +71,18 @@ pub enum PenOptionsUpdate {
 	LineWeight(f64),
 }
 
+impl ToolMetadata for PenTool {
+	fn icon_name(&self) -> String {
+		"VectorPenTool".into()
+	}
+	fn tooltip(&self) -> String {
+		"Pen Tool (P)".into()
+	}
+	fn tool_type(&self) -> crate::viewport_tools::tool::ToolType {
+		ToolType::Pen
+	}
+}
+
 impl PropertyHolder for PenTool {
 	fn properties(&self) -> Layout {
 		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row {
@@ -119,6 +131,16 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for PenTool {
 		match self.fsm_state {
 			PenToolFsmState::Ready => actions!(PenToolMessageDiscriminant; Undo, DragStart, DragStop, Confirm, Abort),
 			PenToolFsmState::DraggingHandle | PenToolFsmState::PlacingAnchor => actions!(PenToolMessageDiscriminant; DragStart, DragStop, PointerMove, Confirm, Abort),
+		}
+	}
+}
+
+impl ToolTransition for PenTool {
+	fn signal_to_message_map(&self) -> SignalToMessageMap {
+		SignalToMessageMap {
+			document_dirty: Some(PenToolMessage::DocumentIsDirty.into()),
+			tool_abort: Some(PenToolMessage::Abort.into()),
+			selection_changed: None,
 		}
 	}
 }

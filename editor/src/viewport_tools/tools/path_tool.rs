@@ -5,7 +5,7 @@ use crate::layout::widgets::PropertyHolder;
 use crate::message_prelude::*;
 use crate::misc::{HintData, HintGroup, HintInfo, KeysGroup};
 use crate::viewport_tools::snapping::SnapHandler;
-use crate::viewport_tools::tool::{Fsm, ToolActionHandlerData};
+use crate::viewport_tools::tool::{Fsm, SignalToMessageMap, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
 use crate::viewport_tools::vector_editor::overlay_renderer::OverlayRenderer;
 use crate::viewport_tools::vector_editor::shape_editor::ShapeEditor;
 
@@ -45,6 +45,18 @@ pub enum PathToolMessage {
 	},
 }
 
+impl ToolMetadata for PathTool {
+	fn icon_name(&self) -> String {
+		"VectorPathTool".into()
+	}
+	fn tooltip(&self) -> String {
+		"Path Tool (A)".into()
+	}
+	fn tool_type(&self) -> crate::viewport_tools::tool::ToolType {
+		ToolType::Path
+	}
+}
+
 impl PropertyHolder for PathTool {}
 
 impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for PathTool {
@@ -75,6 +87,16 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for PathTool {
 		match self.fsm_state {
 			Ready => actions!(PathToolMessageDiscriminant; DragStart, Delete),
 			Dragging => actions!(PathToolMessageDiscriminant; DragStop, PointerMove, Delete),
+		}
+	}
+}
+
+impl ToolTransition for PathTool {
+	fn signal_to_message_map(&self) -> SignalToMessageMap {
+		SignalToMessageMap {
+			document_dirty: Some(PathToolMessage::DocumentIsDirty.into()),
+			tool_abort: Some(PathToolMessage::Abort.into()),
+			selection_changed: Some(PathToolMessage::SelectionChanged.into()),
 		}
 	}
 }
