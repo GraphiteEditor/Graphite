@@ -41,7 +41,7 @@ impl MessageHandler<ArtboardMessage, &FontCache> for ArtboardMessageHandler {
 							DocumentResponse::DocumentChanged => responses.push_back(ArtboardMessage::RenderArtboards.into()),
 							_ => {}
 						};
-						responses.push_back(ToolMessage::DocumentIsDirty.into());
+						responses.push_back(BroadcastSignal::DocumentIsDirty.into());
 					}
 				}
 				Ok(None) => {}
