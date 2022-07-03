@@ -120,7 +120,7 @@ impl WasmBezier {
 	}
 
 	pub fn reduce(&self) -> JsValue {
-		let bezier_points: Vec<Vec<Point>> = self.0.reduce().into_iter().map(bezier_to_points).collect();
+		let bezier_points: Vec<Vec<Point>> = self.0.reduce(None).into_iter().map(bezier_to_points).collect();
 		JsValue::from_serde(&serde_json::to_string(&bezier_points).unwrap()).unwrap()
 	}
 }

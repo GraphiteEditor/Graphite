@@ -32,4 +32,5 @@ export type BezierStyleConfig = {
 	handleStrokeColor: string;
 	handleLineStrokeColor: string;
 	radius: number;
+	drawHandles: boolean;
 };

@@ -537,8 +537,11 @@ impl Bezier {
 			.collect::<Vec<DVec2>>()
 	}
 
-	fn _is_simple(&self) -> bool {
-		// return true;
+	/// Determine if it is possible to scale the given curve, using the following conditions:
+	/// 1. all the control points are located on a single side of the curve.
+	/// See [the offset section](https://pomax.github.io/bezierinfo/#offsetting) of Pomax's bezier curve primer for more details.
+	fn is_scalable(&self) -> bool {
+		// Verify all the control points are located on a single side of the curve.
 		if let BezierHandles::Cubic { handle_start, handle_end } = self.handles {
 			let angle_1 = (self.end - self.start).angle_between(handle_start - self.start);
 			let angle_2 = (self.end - self.start).angle_between(handle_end - self.start);
@@ -546,62 +549,76 @@ impl Bezier {
 				return false;
 			}
 		}
+		// Verify the on-curve point for t = 0.5 occurs roughly in the center of the polygon.
 		let normal_0 = self.normal(0.);
 		let normal_1 = self.normal(1.);
 		let s = normal_0.x * normal_1.x + normal_0.y * normal_1.y;
 		f64::abs(f64::acos(s)) < std::f64::consts::PI / 3.
 	}
 
-	pub fn reduce(&self) -> Vec<Bezier> {
+	/// Split the curve into a number of scalable subcurves. This function may introduce gaps if subsections of the curve are not reducable.
+	/// `step_size` dictates the granularity at which the function searches for reducable subcurves.
+	/// A small granularity may increase the chance the function does not introduce gaps, but will increase computation time
+	pub fn reduce(&self, step_size: Option<f64>) -> Vec<Bezier> {
+		let step_size = step_size.unwrap_or(0.01);
+
 		let mut extrema: Vec<f64> = self.local_extrema().into_iter().flatten().collect::<Vec<f64>>();
 		extrema.append(&mut vec![0., 1.]);
 		extrema.dedup();
 		extrema.sort_by(|ex1, ex2| ex1.partial_cmp(ex2).unwrap());
 
-		// pass 1: split the curve on the extremas
-		let mut pass_1: Vec<Bezier> = Vec::new();
+		// Split the curve on the extremas. Simplifies procedure for ensuring each curve can be scaled.
+		let mut subcurves: Vec<Bezier> = Vec::new();
 		let mut t1: f64 = extrema[0];
 		for t2 in extrema.iter().skip(1) {
-			pass_1.push(self.trim(t1, *t2));
+			subcurves.push(self.trim(t1, *t2));
 			t1 = *t2;
 		}
 
-		// pass 2: refine the reduce such that for each segment, the center point occurs at roughly t = 0.5
-		let step = 0.01;
-		let mut pass_2: Vec<Bezier> = Vec::new();
-		pass_1.iter().for_each(|&curve| {
+		// Split each subcurve such that each resulting segment is scalable.
+		let mut result: Vec<Bezier> = Vec::new();
+		subcurves.iter().for_each(|&subcurve| {
+			// Do no processing on the subcurve it is already scalable.
+			if subcurve.is_scalable() {
+				result.push(subcurve);
+				return;
+			}
+			// It is generally sufficient to split an unscalable subcurve at `t = 0.5` to generate two scalable segments.
+			let [first_half, second_half] = subcurve.split(0.5);
+			if first_half.is_scalable() && second_half.is_scalable() {
+				result.push(first_half);
+				result.push(second_half);
+				return;
+			}
+
+			// Greedily iterate across the subcurve at intervals of size `step_size` to break up the curve into maximally large segments
 			let mut segment: Bezier;
 			let mut t1 = 0.;
-			let mut t2 = 0.;
-			while t2 <= 1. {
-				t2 = t1 + step;
-				while t2 <= 1. + step {
-					segment = curve.trim(t1, f64::min(t2, 1.));
-					if !segment._is_simple() {
-						t2 -= step;
+			let mut t2 = step_size;
+			while t2 <= 1. + step_size {
+				segment = subcurve.trim(t1, f64::min(t2, 1.));
+				if !segment.is_scalable() {
+					t2 -= step_size;
 
-						// If this condition fails, it is impossible to reduce this subcurve to a simple curve
-						if f64::abs(t1 - t2) < step {
-							return;
-						}
-
-						segment = curve.trim(t1, t2);
-						// TODO: Start/Endpoint Mapping shenanigans?
-						pass_2.push(segment);
-						t1 = t2;
-						break;
+					// If the previous step does not exist, the start of the subcurve is unreducable.
+					// Otherwise, add the valid segment from the previous step to the result.
+					if f64::abs(t1 - t2) >= step_size {
+						segment = subcurve.trim(t1, t2);
+						result.push(segment);
 					}
-					t2 += step;
+					t1 = t2;
+				}
+				t2 += step_size;
+			}
+			// Collect final remainder of the curve.
+			if t1 < 1. {
+				segment = subcurve.trim(t1, 1.);
+				if segment.is_scalable() {
+					result.push(segment);
 				}
 			}
-			if t1 < 1. {
-				segment = curve.trim(t1, 1.);
-				// TODO: Start/Endpoint Mapping shenanigans?
-				pass_2.push(segment);
-			}
 		});
-
-		pass_2
+		result
 	}
 }
 

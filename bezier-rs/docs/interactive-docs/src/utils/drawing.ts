@@ -20,16 +20,13 @@ export const isIndexFirstOrLast = (index: number, arrayLength: number): boolean 
 
 export const getPointSizeByIndex = (index: number, numPoints: number, radius = DEFAULT_ENDPOINT_RADIUS): number => (isIndexFirstOrLast(index, numPoints) ? radius : radius * HANDLE_RADIUS_FACTOR);
 
-// Get a contrasting colour based on an index. Ensures sequental colours contrast.
-export const getUniqueColor = (n: number): string => {
-	let color = n + 36;
-	const rgb = [0, 0, 0];
-	for (let i = 0; i < 24; i += 1) {
-		rgb[i % 3] <<= 1;
-		rgb[i % 3] |= color & 0x01;
-		color >>= 1;
-	}
-	return `#${rgb.reduce((a, c) => `${c.toString(16).padStart(2, "0")}${a}`, "")}`;
+// Based on an index, generate a color from the light spectrum such that sequential indices generate sequential colors.
+// Frequency parameter is proportional to the rate at which the colors shift through the spectrum.
+export const getSpectrumColor = (index: number, frequency = 0.5): string => {
+	const red = (Math.round(Math.sin(frequency * index - 2) * 127) + 128).toString(16).padStart(2, "0");
+	const green = (Math.round(Math.sin(frequency * index - 4) * 127) + 128).toString(16).padStart(2, "0");
+	const blue = (Math.round(Math.sin(frequency * index - 6) * 127) + 128).toString(16).padStart(2, "0");
+	return `#${red}${green}${blue}`.toUpperCase();
 };
 
 export const getContextFromCanvas = (canvas: HTMLCanvasElement): CanvasRenderingContext2D => {
@@ -82,9 +79,10 @@ export const drawBezier = (ctx: CanvasRenderingContext2D, points: Point[], dragI
 		handleStrokeColor: COLORS.INTERACTIVE.STROKE_1,
 		handleLineStrokeColor: COLORS.INTERACTIVE.STROKE_1,
 		radius: DEFAULT_ENDPOINT_RADIUS,
+		drawHandles: true,
 		...bezierStyleConfig,
 	};
-	// if the handle or handle line colors are not specified, use the same colour as the rest of the curve
+	// if the handle or handle line colors are not specified, use the same color as the rest of the curve
 	if (bezierStyleConfig.curveStrokeColor) {
 		if (!bezierStyleConfig.handleStrokeColor) {
 			styleConfig.handleStrokeColor = bezierStyleConfig.curveStrokeColor;
@@ -124,11 +122,15 @@ export const drawBezier = (ctx: CanvasRenderingContext2D, points: Point[], dragI
 	}
 	ctx.stroke();
 
-	drawLine(ctx, start, handleStart, styleConfig.handleLineStrokeColor);
-	drawLine(ctx, end, handleEnd, styleConfig.handleLineStrokeColor);
+	if (styleConfig.drawHandles) {
+		drawLine(ctx, start, handleStart, styleConfig.handleLineStrokeColor);
+		drawLine(ctx, end, handleEnd, styleConfig.handleLineStrokeColor);
+	}
 
 	points.forEach((point, index) => {
-		const strokeColor = isIndexFirstOrLast(index, points.length) ? styleConfig.curveStrokeColor : styleConfig.handleStrokeColor;
-		drawPoint(ctx, point, getPointSizeByIndex(index, points.length, styleConfig.radius), index === dragIndex ? COLORS.INTERACTIVE.SELECTED : strokeColor);
+		if (styleConfig.drawHandles || isIndexFirstOrLast(index, points.length)) {
+			const strokeColor = isIndexFirstOrLast(index, points.length) ? styleConfig.curveStrokeColor : styleConfig.handleStrokeColor;
+			drawPoint(ctx, point, getPointSizeByIndex(index, points.length, styleConfig.radius), index === dragIndex ? COLORS.INTERACTIVE.SELECTED : strokeColor);
+		}
 	});
 };

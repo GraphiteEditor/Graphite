@@ -20,7 +20,7 @@
 <script lang="ts">
 import { defineComponent, markRaw } from "vue";
 
-import { drawText, drawPoint, drawBezier, drawLine, getContextFromCanvas, drawBezierHelper, COLORS, getUniqueColor } from "@/utils/drawing";
+import { drawText, drawPoint, drawBezier, drawLine, getContextFromCanvas, drawBezierHelper, COLORS, getSpectrumColor } from "@/utils/drawing";
 import { Point, WasmBezierInstance } from "@/utils/types";
 
 import ExamplePane from "@/components/ExamplePane.vue";
@@ -242,8 +242,6 @@ export default defineComponent({
 						const context = getContextFromCanvas(canvas);
 						const dimensionColors = [COLORS.NON_INTERACTIVE.STROKE_1, COLORS.NON_INTERACTIVE.STROKE_2];
 						const extrema: number[][] = JSON.parse(bezier.local_extrema());
-						// console.log(extrema);
-						// console.log(bezier.get_points());
 						extrema.forEach((tValues, index) => {
 							tValues.forEach((t) => {
 								const point = JSON.parse(bezier.compute(t));
@@ -297,8 +295,7 @@ export default defineComponent({
 						const context = getContextFromCanvas(canvas);
 						const curves: Point[][] = JSON.parse(bezier.reduce());
 						curves.forEach((points, index) => {
-							drawBezier(context, points, null, { curveStrokeColor: getUniqueColor(index), radius: 3.5 });
-							// tValues.for
+							drawBezier(context, points, null, { curveStrokeColor: getSpectrumColor(index), radius: 3.5, drawHandles: false });
 						});
 					},
 				},
