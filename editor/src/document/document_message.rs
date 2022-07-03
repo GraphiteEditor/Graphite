@@ -102,7 +102,6 @@ pub enum DocumentMessage {
 	RollbackTransaction,
 	SaveDocument,
 	SelectAllLayers,
-	SelectionChanged,
 	SelectLayer {
 		layer_path: Vec<LayerId>,
 		ctrl: bool,

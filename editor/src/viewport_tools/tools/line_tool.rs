@@ -6,7 +6,7 @@ use crate::layout::widgets::{Layout, LayoutGroup, NumberInput, PropertyHolder, W
 use crate::message_prelude::*;
 use crate::misc::{HintData, HintGroup, HintInfo, KeysGroup};
 use crate::viewport_tools::snapping::SnapHandler;
-use crate::viewport_tools::tool::{Fsm, ToolActionHandlerData};
+use crate::viewport_tools::tool::{Fsm, SignalToMessageMap, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
 
 use graphene::layers::style;
 use graphene::Operation;
@@ -54,6 +54,18 @@ pub enum LineToolMessage {
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub enum LineOptionsUpdate {
 	LineWeight(f64),
+}
+
+impl ToolMetadata for LineTool {
+	fn icon_name(&self) -> String {
+		"VectorLineTool".into()
+	}
+	fn tooltip(&self) -> String {
+		"Line Tool (L)".into()
+	}
+	fn tool_type(&self) -> crate::viewport_tools::tool::ToolType {
+		ToolType::Line
+	}
 }
 
 impl PropertyHolder for LineTool {
@@ -106,6 +118,16 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for LineTool {
 		match self.fsm_state {
 			Ready => actions!(LineToolMessageDiscriminant; DragStart),
 			Drawing => actions!(LineToolMessageDiscriminant; DragStop, Redraw, Abort),
+		}
+	}
+}
+
+impl ToolTransition for LineTool {
+	fn signal_to_message_map(&self) -> SignalToMessageMap {
+		SignalToMessageMap {
+			document_dirty: None,
+			tool_abort: Some(LineToolMessage::Abort.into()),
+			selection_changed: None,
 		}
 	}
 }
