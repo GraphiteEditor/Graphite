@@ -14,20 +14,20 @@ struct Point {
 #[derive(Clone)]
 pub struct WasmBezier(Bezier);
 
-/// Convert a `DVec2` into a `JsValue`
+/// Convert a `DVec2` into a `JsValue`.
 pub fn vec_to_point(p: &DVec2) -> JsValue {
 	JsValue::from_serde(&serde_json::to_string(&Point { x: p.x, y: p.y }).unwrap()).unwrap()
 }
 
 #[wasm_bindgen]
 impl WasmBezier {
-	/// Expect js_points to be a list of 3 pairs
+	/// Expect js_points to be a list of 3 pairs.
 	pub fn new_quadratic(js_points: &JsValue) -> WasmBezier {
 		let points: [DVec2; 3] = js_points.into_serde().unwrap();
 		WasmBezier(Bezier::from_quadratic_dvec2(points[0], points[1], points[2]))
 	}
 
-	/// Expect js_points to be a list of 4 pairs
+	/// Expect js_points to be a list of 4 pairs.
 	pub fn new_cubic(js_points: &JsValue) -> WasmBezier {
 		let points: [DVec2; 4] = js_points.into_serde().unwrap();
 		WasmBezier(Bezier::from_cubic_dvec2(points[0], points[1], points[2], points[3]))
@@ -97,5 +97,14 @@ impl WasmBezier {
 
 	pub fn trim(&self, t1: f64, t2: f64) -> WasmBezier {
 		WasmBezier(self.0.trim(t1, t2))
+	}
+
+	pub fn project(&self, x: f64, y: f64) -> JsValue {
+		vec_to_point(&self.0.project(DVec2::new(x, y), 20, 1e-4, 3, 10))
+	}
+
+	pub fn local_extrema(&self) -> JsValue {
+		let local_extrema = self.0.local_extrema();
+		JsValue::from_serde(&serde_json::to_string(&local_extrema).unwrap()).unwrap()
 	}
 }

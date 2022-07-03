@@ -85,20 +85,7 @@ impl PortfolioMessageHandler {
 
 		self.documents.insert(document_id, new_document);
 
-		// Send the new list of document tab names
-		let open_documents = self
-			.document_ids
-			.iter()
-			.filter_map(|id| {
-				self.documents.get(id).map(|document| FrontendDocumentDetails {
-					is_saved: document.is_saved(),
-					id: *id,
-					name: document.name.clone(),
-				})
-			})
-			.collect::<Vec<_>>();
-
-		responses.push_back(FrontendMessage::UpdateOpenDocumentsList { open_documents }.into());
+		responses.push_back(PortfolioMessage::UpdateOpenDocumentsList.into());
 
 		responses.push_back(PortfolioMessage::SelectDocument { document_id }.into());
 	}
@@ -209,19 +196,7 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 				};
 
 				// Send the new list of document tab names
-				let open_documents = self
-					.document_ids
-					.iter()
-					.filter_map(|id| {
-						self.documents.get(id).map(|doc| FrontendDocumentDetails {
-							is_saved: doc.is_saved(),
-							id: *id,
-							name: doc.name.clone(),
-						})
-					})
-					.collect::<Vec<_>>();
-
-				responses.push_back(FrontendMessage::UpdateOpenDocumentsList { open_documents }.into());
+				responses.push_back(UpdateOpenDocumentsList.into());
 				responses.push_back(FrontendMessage::UpdateActiveDocument { document_id: self.active_document_id }.into());
 				responses.push_back(FrontendMessage::TriggerIndexedDbRemoveDocument { document_id }.into());
 				responses.push_back(RenderDocument.into());

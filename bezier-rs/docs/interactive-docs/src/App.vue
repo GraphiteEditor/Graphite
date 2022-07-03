@@ -21,7 +21,7 @@
 import { defineComponent, markRaw } from "vue";
 
 import { drawText, drawPoint, drawBezier, drawLine, getContextFromCanvas, drawBezierHelper, COLORS } from "@/utils/drawing";
-import { WasmBezierInstance } from "@/utils/types";
+import { Point, WasmBezierInstance } from "@/utils/types";
 
 import ExamplePane from "@/components/ExamplePane.vue";
 import SliderExample from "@/components/SliderExample.vue";
@@ -224,6 +224,30 @@ export default defineComponent({
 								default: 0.75,
 							},
 						],
+					},
+				},
+				{
+					name: "Project",
+					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: Record<string, number>, mouseLocation?: Point): void => {
+						if (mouseLocation != null) {
+							const context = getContextFromCanvas(canvas);
+							const closestPoint = JSON.parse(bezier.project(mouseLocation.x, mouseLocation.y));
+							drawLine(context, mouseLocation, closestPoint, COLORS.NON_INTERACTIVE.STROKE_1);
+						}
+					},
+				},
+				{
+					name: "Local Extrema",
+					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance): void => {
+						const context = getContextFromCanvas(canvas);
+						const dimensionColors = [COLORS.NON_INTERACTIVE.STROKE_1, COLORS.NON_INTERACTIVE.STROKE_2];
+						const extrema: number[][] = JSON.parse(bezier.local_extrema());
+						extrema.forEach((tValues, index) => {
+							tValues.forEach((t) => {
+								const point = JSON.parse(bezier.compute(t));
+								drawPoint(context, point, 4, dimensionColors[index]);
+							});
+						});
 					},
 				},
 			],

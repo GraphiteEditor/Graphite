@@ -11,7 +11,7 @@ use std::collections::VecDeque;
 
 #[derive(Debug, Default)]
 pub struct Dispatcher {
-	message_queue: VecDeque<Message>,
+	message_queues: Vec<VecDeque<Message>>,
 	pub responses: Vec<FrontendMessage>,
 	message_handlers: DispatcherMessageHandlers,
 }
@@ -40,8 +40,9 @@ const SIDE_EFFECT_FREE_MESSAGES: &[MessageDiscriminant] = &[
 		ArtboardMessageDiscriminant::RenderArtboards,
 	))),
 	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::FolderChanged)),
-	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::UpdateDocumentLayerDetails),
+	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::DocumentStructureChanged)),
 	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::UpdateDocumentLayerTreeStructure),
+	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::UpdateActiveDocument),
 	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::UpdateOpenDocumentsList),
 	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::TriggerFontLoad),
 	MessageDiscriminant::Broadcast(BroadcastMessageDiscriminant::TriggerSignal(BroadcastSignalDiscriminant::DocumentIsDirty)),
@@ -56,16 +57,30 @@ impl Dispatcher {
 	pub fn handle_message<T: Into<Message>>(&mut self, message: T) {
 		use Message::*;
 
-		self.message_queue.push_back(message.into());
+		self.message_queues.push(VecDeque::from_iter([message.into()]));
 
-		while let Some(message) = self.message_queue.pop_front() {
-			// Skip processing of this message if it will be processed later
-			if SIDE_EFFECT_FREE_MESSAGES.contains(&message.to_discriminant()) && self.message_queue.contains(&message) {
-				continue;
+		while let Some(message) = self.message_queues.last_mut().and_then(VecDeque::pop_front) {
+			// If the deepest queue is now empty (after being popped from) then remove it
+			if self.message_queues.last().filter(|queue| queue.is_empty()).is_some() {
+				self.message_queues.pop();
+			}
+
+			// Skip processing of this message if it will be processed later (at the end of the shallowest level queue)
+			if SIDE_EFFECT_FREE_MESSAGES.contains(&message.to_discriminant()) {
+				let already_in_queue = self.message_queues.first().filter(|queue| queue.contains(&message)).is_some();
+				if already_in_queue {
+					continue;
+				} else if self.message_queues.len() > 1 {
+					self.message_queues[0].push_back(message);
+					continue;
+				}
 			}
 
 			// Print the message at a verbosity level of `log`
 			self.log_message(&message);
+
+			// Create a new queue for the child messages
+			let mut queue = VecDeque::new();
 
 			// Process the action by forwarding it to the relevant message handler, or saving the FrontendMessage to be sent to the frontend
 			#[remain::sorted]
@@ -76,7 +91,7 @@ impl Dispatcher {
 				Dialog(message) => {
 					self.message_handlers
 						.dialog_message_handler
-						.process_action(message, &self.message_handlers.portfolio_message_handler, &mut self.message_queue);
+						.process_action(message, &self.message_handlers.portfolio_message_handler, &mut queue);
 				}
 				Frontend(message) => {
 					// Image and font loading should be immediately handled
@@ -89,22 +104,22 @@ impl Dispatcher {
 					self.responses.push(message);
 				}
 				Global(message) => {
-					self.message_handlers.global_message_handler.process_action(message, (), &mut self.message_queue);
+					self.message_handlers.global_message_handler.process_action(message, (), &mut queue);
 				}
 				InputMapper(message) => {
 					let actions = self.collect_actions();
 					self.message_handlers
 						.input_mapper_message_handler
-						.process_action(message, (&self.message_handlers.input_preprocessor_message_handler, actions), &mut self.message_queue);
+						.process_action(message, (&self.message_handlers.input_preprocessor_message_handler, actions), &mut queue);
 				}
 				InputPreprocessor(message) => {
-					self.message_handlers.input_preprocessor_message_handler.process_action(message, (), &mut self.message_queue);
+					self.message_handlers.input_preprocessor_message_handler.process_action(message, (), &mut queue);
 				}
-				Layout(message) => self.message_handlers.layout_message_handler.process_action(message, (), &mut self.message_queue),
+				Layout(message) => self.message_handlers.layout_message_handler.process_action(message, (), &mut queue),
 				Portfolio(message) => {
 					self.message_handlers
 						.portfolio_message_handler
-						.process_action(message, &self.message_handlers.input_preprocessor_message_handler, &mut self.message_queue);
+						.process_action(message, &self.message_handlers.input_preprocessor_message_handler, &mut queue);
 				}
 				Tool(message) => {
 					self.message_handlers.tool_message_handler.process_action(
@@ -114,14 +129,19 @@ impl Dispatcher {
 							&self.message_handlers.input_preprocessor_message_handler,
 							self.message_handlers.portfolio_message_handler.font_cache(),
 						),
-						&mut self.message_queue,
+						&mut queue,
 					);
 				}
 				Workspace(message) => {
 					self.message_handlers
 						.workspace_message_handler
-						.process_action(message, &self.message_handlers.input_preprocessor_message_handler, &mut self.message_queue);
+						.process_action(message, &self.message_handlers.input_preprocessor_message_handler, &mut queue);
 				}
+			}
+
+			// If there are child messages, append the queue to the list of queues
+			if !queue.is_empty() {
+				self.message_queues.push(queue);
 			}
 		}
 	}
