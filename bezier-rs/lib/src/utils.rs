@@ -137,23 +137,23 @@ pub fn solve_cubic(a: f64, b: f64, c: f64, d: f64) -> Vec<f64> {
 }
 
 /// Compare two `f64` numbers with a provided max absolute value difference.
-pub fn compare_f64(f1: f64, f2: f64, max_abs_diff: f64) -> bool {
+pub fn f64_compare(f1: f64, f2: f64, max_abs_diff: f64) -> bool {
 	(f1 - f2).abs() < max_abs_diff
 }
 
 /// Determine if an `f64` number is within a given range by using a max absolute value difference comparison.
 pub fn f64_approximately_in_range(value: f64, min: f64, max: f64, max_abs_diff: f64) -> bool {
-	(min..=max).contains(&value) || compare_f64(value, min, max_abs_diff) || compare_f64(value, max, max_abs_diff)
+	(min..=max).contains(&value) || f64_compare(value, min, max_abs_diff) || f64_compare(value, max, max_abs_diff)
 }
 
 /// Compare the two values in a `DVec2` independently with a provided max absolute value difference.
-pub fn compare_f64_dvec2(dv1: DVec2, dv2: DVec2, max_abs_diff: f64) -> BVec2 {
+pub fn dvec2_compare(dv1: DVec2, dv2: DVec2, max_abs_diff: f64) -> BVec2 {
 	BVec2::new((dv1.x - dv2.x).abs() < max_abs_diff, (dv1.y - dv2.y).abs() < max_abs_diff)
 }
 
 /// Determine if the values in a `DVec2` are within a given range independently by using a max absolute value difference comparison.
 pub fn dvec2_approximately_in_range(point: DVec2, min: DVec2, max: DVec2, max_abs_diff: f64) -> BVec2 {
-	(point.cmpge(min) & point.cmple(max)) | compare_f64_dvec2(point, min, max_abs_diff) | compare_f64_dvec2(point, max, max_abs_diff)
+	(point.cmpge(min) & point.cmple(max)) | dvec2_compare(point, min, max_abs_diff) | dvec2_compare(point, max, max_abs_diff)
 }
 
 #[cfg(test)]
@@ -180,14 +180,14 @@ mod tests {
 		// discriminant > 0
 		let roots4 = solve_cubic(1., 3., 0., 2.);
 		assert!(roots4.len() == 1);
-		assert!(compare_f64(roots4[0], -3.196, 1e-3));
+		assert!(f64_compare(roots4[0], -3.196, 1e-3));
 
 		// discriminant < 0
 		let roots5 = solve_cubic(1., 3., 0., -1.);
 		assert!(roots5.len() == 3);
-		assert!(compare_f64(roots5[0], 0.532, 1e-3));
-		assert!(compare_f64(roots5[1], -2.879, 1e-3));
-		assert!(compare_f64(roots5[2], -0.653, 1e-3));
+		assert!(f64_compare(roots5[0], 0.532, 1e-3));
+		assert!(f64_compare(roots5[1], -2.879, 1e-3));
+		assert!(f64_compare(roots5[2], -0.653, 1e-3));
 
 		// quadratic
 		let roots6 = solve_cubic(0., 3., 0., -3.);

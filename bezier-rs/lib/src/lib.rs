@@ -1,3 +1,5 @@
+//! Bezier-rs: A Bezier Math Library for Rust
+
 use glam::{DMat2, DVec2};
 
 mod utils;
@@ -459,48 +461,42 @@ impl Bezier {
 			.unwrap()
 	}
 
-	/// Returns a Bezier curve that results from rotating the cruve by the given `DMat2`.
-	pub fn rotate(&self, rotation_matrix: DMat2) -> Bezier {
-		let rotated_start = rotation_matrix.mul_vec2(self.start);
-		let rotated_end = rotation_matrix.mul_vec2(self.end);
+	/// Returns a Bezier curve that results from applying the tranformation function to each point in the Bezier.
+	pub fn apply_transformation(&self, transformation_function: &dyn Fn(DVec2) -> DVec2) -> Bezier {
+		let transformed_start = transformation_function(self.start);
+		let transformed_end = transformation_function(self.end);
 		match self.handles {
 			BezierHandles::Quadratic { handle } => {
-				let rotated_handle = rotation_matrix.mul_vec2(handle);
-				Bezier::from_quadratic_dvec2(rotated_start, rotated_handle, rotated_end)
+				let transformed_handle = transformation_function(handle);
+				Bezier::from_quadratic_dvec2(transformed_start, transformed_handle, transformed_end)
 			}
 			BezierHandles::Cubic { handle_start, handle_end } => {
-				let rotated_handle_start = rotation_matrix.mul_vec2(handle_start);
-				let rotated_handle_end = rotation_matrix.mul_vec2(handle_end);
-				Bezier::from_cubic_dvec2(rotated_start, rotated_handle_start, rotated_handle_end, rotated_end)
+				let transformed_handle_start = transformation_function(handle_start);
+				let transformed_handle_end = transformation_function(handle_end);
+				Bezier::from_cubic_dvec2(transformed_start, transformed_handle_start, transformed_handle_end, transformed_end)
 			}
 		}
 	}
 
-	/// Returns a Bezier curve that results from translating the cruve by the given `DVec2`.
+	/// Returns a Bezier curve that results from rotating the curve by the given angle (in radians).
+	pub fn rotate(&self, angle: f64) -> Bezier {
+		let rotation_matrix = DMat2::from_angle(angle);
+		self.apply_transformation(&|point| rotation_matrix.mul_vec2(point))
+	}
+
+	/// Returns a Bezier curve that results from translating the curve by the given `DVec2`.
 	pub fn translate(&self, translation: DVec2) -> Bezier {
-		let translated_start = self.start + translation;
-		let translated_end = self.end + translation;
-		match self.handles {
-			BezierHandles::Quadratic { handle } => {
-				let translated_handle = handle + translation;
-				Bezier::from_quadratic_dvec2(translated_start, translated_handle, translated_end)
-			}
-			BezierHandles::Cubic { handle_start, handle_end } => {
-				let translated_handle_start = handle_start + translation;
-				let translated_handle_end = handle_end + translation;
-				Bezier::from_cubic_dvec2(translated_start, translated_handle_start, translated_handle_end, translated_end)
-			}
-		}
+		self.apply_transformation(&|point| point + translation)
 	}
 
 	/// Returns a list of points where the provided `line` intersects with the Bezier curve.
-	/// - `line`: Expected to be received in the format of `[start_point, end_point]`.
+	/// - `line` - Expected to be received in the format of `[start_point, end_point]`.
 	pub fn line_intersection(&self, line: [DVec2; 2]) -> Vec<DVec2> {
 		// Rotate the bezier and the line by the angle that the line makes with the x axis
 		let slope = line[1] - line[0];
 		let angle = slope.angle_between(DVec2::new(1., 0.));
 		let rotation_matrix = DMat2::from_angle(angle);
-		let rotated_bezier = self.rotate(rotation_matrix);
+		let rotated_bezier = self.apply_transformation(&|point| rotation_matrix.mul_vec2(point));
 		let rotated_line = [rotation_matrix.mul_vec2(line[0]), rotation_matrix.mul_vec2(line[1])];
 
 		// Translate the bezier such that the line becomes aligned on top of the x-axis
@@ -546,7 +542,7 @@ mod tests {
 	use glam::DVec2;
 
 	fn compare_points(p1: DVec2, p2: DVec2) -> bool {
-		utils::compare_f64_dvec2(p1, p2, 1e-3).all()
+		utils::dvec2_compare(p1, p2, 1e-3).all()
 	}
 
 	#[test]
