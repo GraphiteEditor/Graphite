@@ -91,15 +91,17 @@ impl Bezier {
 	/// Create a cubic bezier curve that goes through 3 points, where the middle point will be at the corresponding position `t` on the curve.
 	/// Note that when `t = 0` or `t = 1`, the expectation is that the `point_on_curve` should be equal to `start` and `end` respectively.
 	/// In these cases, if the provided values are not equal, this function will use the `point_on_curve` as the `start`/`end` instead.
-	/// - `midpoint_separation` is a representation of the how wide the resulting curve will be around `t` on the curve. This parameter designates the distance between the `e1` and `e2` defined in [the projection identity section](https://pomax.github.io/bezierinfo/#abc) of Pomax's bezier curve primer.
-	pub fn cubic_through_points(start: DVec2, point_on_curve: DVec2, end: DVec2, t: f64, midpoint_separation: f64) -> Self {
+	/// - `midpoint_separation` is a representation of how wide the resulting curve will be around `t` on the curve. This parameter designates the distance between the `e1` and `e2` defined in [the projection identity section](https://pomax.github.io/bezierinfo/#abc) of Pomax's bezier curve primer. It is an optional parameter and the default value is the distance between the points `B` and `C` defined in the primer.
+	pub fn cubic_through_points(start: DVec2, point_on_curve: DVec2, end: DVec2, t: f64, midpoint_separation: Option<f64>) -> Self {
 		if t == 0. {
 			return Bezier::from_cubic_dvec2(point_on_curve, point_on_curve, end, end);
 		}
 		if t == 1. {
 			return Bezier::from_cubic_dvec2(start, start, point_on_curve, point_on_curve);
 		}
-		let [a, b, _] = utils::compute_abc_for_cubic_through_points(start, point_on_curve, end, t);
+		let [a, b, c] = utils::compute_abc_for_cubic_through_points(start, point_on_curve, end, t);
+		let default_midpoint_separation = b.distance(c);
+		let midpoint_separation = midpoint_separation.unwrap_or(default_midpoint_separation);
 		let distance_between_start_and_end = (end - start) / (start.distance(end));
 		let e1 = b - (distance_between_start_and_end * midpoint_separation);
 		let e2 = b + (distance_between_start_and_end * midpoint_separation * (1. - t) / t);
@@ -340,12 +342,18 @@ impl Bezier {
 	}
 
 	/// Returns the closest point on the curve to the provided point.
-	/// Uses a searching algorithm akin to binary search that can be customized using the following parameters:
-	/// - `lut_size` - Size of the lookup table for the initial passthrough.
-	/// - `convergence_epsilon` - Difference used between floating point numbers to be considered as equal.
-	/// - `convergence_limit` - Controls the number of iterations needed to consider that minimum distance to have converged.
-	/// - `iteration_limit` - Controls the maximum total number of iterations to be used.
-	pub fn project(&self, point: DVec2, lut_size: i32, convergence_epsilon: f64, convergence_limit: i32, iteration_limit: i32) -> DVec2 {
+	/// Uses a searching algorithm akin to binary search that can be customized using the following optional parameters:
+	/// - `lut_size` - Size of the lookup table for the initial passthrough. The default value is 20.
+	/// - `convergence_epsilon` - Difference used between floating point numbers to be considered as equal. The default value is `0.0001`
+	/// - `convergence_limit` - Controls the number of iterations needed to consider that minimum distance to have converged. The default value is 3.
+	/// - `iteration_limit` - Controls the maximum total number of iterations to be used. The default value is 10.
+	pub fn project(&self, point: DVec2, lut_size: Option<i32>, convergence_epsilon: Option<f64>, convergence_limit: Option<i32>, iteration_limit: Option<i32>) -> DVec2 {
+		// Unwrap optional parameters
+		let lut_size = lut_size.unwrap_or(20);
+		let convergence_epsilon = convergence_epsilon.unwrap_or(1e-4);
+		let convergence_limit = convergence_limit.unwrap_or(3);
+		let iteration_limit = iteration_limit.unwrap_or(10);
+
 		// First find the closest point from the results of a lookup table
 		let lut = self.compute_lookup_table(Some(lut_size));
 		let (minimum_position, minimum_distance) = utils::get_closest_point_in_lut(&lut, point);
@@ -570,24 +578,24 @@ mod tests {
 		let p2 = DVec2::new(60., 140.);
 		let p3 = DVec2::new(160., 160.);
 
-		let bezier1 = Bezier::cubic_through_points(p1, p2, p3, 0.3, 10.);
+		let bezier1 = Bezier::cubic_through_points(p1, p2, p3, 0.3, Some(10.));
 		assert!(compare_points(bezier1.compute(0.3), p2));
 
-		let bezier2 = Bezier::cubic_through_points(p1, p2, p3, 0.8, 91.7);
+		let bezier2 = Bezier::cubic_through_points(p1, p2, p3, 0.8, Some(91.7));
 		assert!(compare_points(bezier2.compute(0.8), p2));
 
-		let bezier3 = Bezier::cubic_through_points(p1, p2, p3, 0., 91.7);
+		let bezier3 = Bezier::cubic_through_points(p1, p2, p3, 0., Some(91.7));
 		assert!(compare_points(bezier3.compute(0.), p2));
 	}
 
 	#[test]
 	fn project() {
 		let bezier1 = Bezier::from_cubic_coordinates(4., 4., 23., 45., 10., 30., 56., 90.);
-		assert!(bezier1.project(DVec2::new(100., 100.), 20, 0.0001, 3, 10) == DVec2::new(56., 90.));
-		assert!(bezier1.project(DVec2::new(0., 0.), 20, 0.0001, 3, 10) == DVec2::new(4., 4.));
+		assert!(bezier1.project(DVec2::new(100., 100.), None, None, None, None) == DVec2::new(56., 90.));
+		assert!(bezier1.project(DVec2::new(0., 0.), None, None, None, None) == DVec2::new(4., 4.));
 
 		let bezier2 = Bezier::from_quadratic_coordinates(0., 0., 0., 100., 100., 100.);
-		assert!(bezier2.project(DVec2::new(100., 0.), 20, 0.0001, 3, 10) == DVec2::new(0., 0.));
+		assert!(bezier2.project(DVec2::new(100., 0.), None, None, None, None) == DVec2::new(0., 0.));
 	}
 
 	#[test]

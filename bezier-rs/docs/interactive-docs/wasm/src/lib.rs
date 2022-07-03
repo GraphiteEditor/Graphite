@@ -40,7 +40,7 @@ impl WasmBezier {
 
 	pub fn cubic_through_points(js_points: &JsValue, t: f64, midpoint_separation: f64) -> WasmBezier {
 		let points: [DVec2; 3] = js_points.into_serde().unwrap();
-		WasmBezier(Bezier::cubic_through_points(points[0], points[1], points[2], t, midpoint_separation))
+		WasmBezier(Bezier::cubic_through_points(points[0], points[1], points[2], t, Some(midpoint_separation)))
 	}
 
 	pub fn set_start(&mut self, x: f64, y: f64) {
@@ -100,7 +100,7 @@ impl WasmBezier {
 	}
 
 	pub fn project(&self, x: f64, y: f64) -> JsValue {
-		vec_to_point(&self.0.project(DVec2::new(x, y), 20, 1e-4, 3, 10))
+		vec_to_point(&self.0.project(DVec2::new(x, y), None, None, None, None))
 	}
 
 	pub fn local_extrema(&self) -> JsValue {
