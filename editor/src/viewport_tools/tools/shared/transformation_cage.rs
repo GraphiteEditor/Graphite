@@ -137,7 +137,7 @@ impl SelectedEdges {
 }
 
 /// Create a viewport relative bounding box overlay with no transform handles
-pub fn add_bounding_box(responses: &mut Vec<Message>) -> Vec<LayerId> {
+pub fn add_bounding_box(responses: &mut VecDeque<Message>) -> Vec<LayerId> {
 	let path = vec![generate_uuid()];
 
 	let operation = Operation::AddOverlayRect {
@@ -145,13 +145,13 @@ pub fn add_bounding_box(responses: &mut Vec<Message>) -> Vec<LayerId> {
 		transform: DAffine2::ZERO.to_cols_array(),
 		style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 1.0)), Fill::None),
 	};
-	responses.push(DocumentMessage::Overlays(operation.into()).into());
+	responses.push_back(DocumentMessage::Overlays(operation.into()).into());
 
 	path
 }
 
 /// Add the transform handle overlay
-fn add_transform_handles(responses: &mut Vec<Message>) -> [Vec<LayerId>; 8] {
+fn add_transform_handles(responses: &mut VecDeque<Message>) -> [Vec<LayerId>; 8] {
 	const EMPTY_VEC: Vec<LayerId> = Vec::new();
 	let mut transform_handle_paths = [EMPTY_VEC; 8];
 
@@ -163,7 +163,7 @@ fn add_transform_handles(responses: &mut Vec<Message>) -> [Vec<LayerId>; 8] {
 			transform: DAffine2::ZERO.to_cols_array(),
 			style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 2.0)), Fill::solid(Color::WHITE)),
 		};
-		responses.push(DocumentMessage::Overlays(operation.into()).into());
+		responses.push_back(DocumentMessage::Overlays(operation.into()).into());
 
 		*item = current_path;
 	}
@@ -209,10 +209,10 @@ pub struct BoundingBoxOverlays {
 
 impl BoundingBoxOverlays {
 	#[must_use]
-	pub fn new(buffer: &mut Vec<Message>) -> Self {
+	pub fn new(responses: &mut VecDeque<Message>) -> Self {
 		Self {
-			bounding_box: add_bounding_box(buffer),
-			transform_handles: add_transform_handles(buffer),
+			bounding_box: add_bounding_box(responses),
+			transform_handles: add_transform_handles(responses),
 			..Default::default()
 		}
 	}
@@ -234,10 +234,10 @@ impl BoundingBoxOverlays {
 	}
 
 	/// Update the position of the bounding box and transform handles
-	pub fn transform(&mut self, buffer: &mut Vec<Message>) {
+	pub fn transform(&mut self, responses: &mut VecDeque<Message>) {
 		let transform = transform_from_box(self.bounds[0], self.bounds[1], self.transform).to_cols_array();
 		let path = self.bounding_box.clone();
-		buffer.push(DocumentMessage::Overlays(Operation::SetLayerTransformInViewport { path, transform }.into()).into());
+		responses.push_back(DocumentMessage::Overlays(Operation::SetLayerTransformInViewport { path, transform }.into()).into());
 
 		// Helps push values that end in approximately half, plus or minus some floating point imprecision, towards the same side of the round() function
 		const BIAS: f64 = 0.0001;
@@ -247,7 +247,7 @@ impl BoundingBoxOverlays {
 			let translation = (position - (scale / 2.) - 0.5 + BIAS).round();
 			let transform = DAffine2::from_scale_angle_translation(scale, 0., translation).to_cols_array();
 			let path = path.clone();
-			buffer.push(DocumentMessage::Overlays(Operation::SetLayerTransformInViewport { path, transform }.into()).into());
+			responses.push_back(DocumentMessage::Overlays(Operation::SetLayerTransformInViewport { path, transform }.into()).into());
 		}
 	}
 
@@ -312,9 +312,9 @@ impl BoundingBoxOverlays {
 	}
 
 	/// Removes the overlays
-	pub fn delete(self, buffer: &mut impl Extend<Message>) {
-		buffer.extend([DocumentMessage::Overlays(Operation::DeleteLayer { path: self.bounding_box }.into()).into()]);
-		buffer.extend(
+	pub fn delete(self, responses: &mut VecDeque<Message>) {
+		responses.push_back(DocumentMessage::Overlays(Operation::DeleteLayer { path: self.bounding_box }.into()).into());
+		responses.extend(
 			self.transform_handles
 				.iter()
 				.map(|path| DocumentMessage::Overlays(Operation::DeleteLayer { path: path.clone() }.into()).into()),

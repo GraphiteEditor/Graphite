@@ -127,19 +127,18 @@ impl Fsm for ArtboardToolFsmState {
 		if let ToolMessage::Artboard(event) = event {
 			match (self, event) {
 				(ArtboardToolFsmState::Ready | ArtboardToolFsmState::ResizingBounds | ArtboardToolFsmState::Dragging, ArtboardToolMessage::DocumentIsDirty) => {
-					let mut buffer = Vec::new();
 					match (
 						tool_data.selected_board.map(|path| document.artboard_bounding_box_and_transform(&[path], font_cache)).unwrap_or(None),
 						tool_data.bounding_box_overlays.take(),
 					) {
-						(None, Some(bounding_box_overlays)) => bounding_box_overlays.delete(&mut buffer),
+						(None, Some(bounding_box_overlays)) => bounding_box_overlays.delete(responses),
 						(Some((bounds, transform)), paths) => {
-							let mut bounding_box_overlays = paths.unwrap_or_else(|| BoundingBoxOverlays::new(&mut buffer));
+							let mut bounding_box_overlays = paths.unwrap_or_else(|| BoundingBoxOverlays::new(responses));
 
 							bounding_box_overlays.bounds = bounds;
 							bounding_box_overlays.transform = transform;
 
-							bounding_box_overlays.transform(&mut buffer);
+							bounding_box_overlays.transform(responses);
 
 							tool_data.bounding_box_overlays = Some(bounding_box_overlays);
 
@@ -154,7 +153,6 @@ impl Fsm for ArtboardToolFsmState {
 						}
 						_ => {}
 					};
-					buffer.into_iter().rev().for_each(|message| responses.push_front(message));
 					self
 				}
 				(ArtboardToolFsmState::Ready, ArtboardToolMessage::PointerDown) => {
