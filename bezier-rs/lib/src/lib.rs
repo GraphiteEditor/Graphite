@@ -555,13 +555,13 @@ impl Bezier {
 		let normal_0 = self.normal(0.);
 		let normal_1 = self.normal(1.);
 		let s = normal_0.x * normal_1.x + normal_0.y * normal_1.y;
-		f64::abs(f64::acos(s)) < Bezier::SCALABLE_CURVE_MAX_ANGLE
+		s.acos() < Bezier::SCALABLE_CURVE_MAX_ANGLE
 	}
 
 	/// Split the curve into a number of scalable subcurves. This function may introduce gaps if subsections of the curve are not reducable.
-	/// `step_size` dictates the granularity at which the function searches for reducable subcurves.
-	/// A small granularity may increase the chance the function does not introduce gaps, but will increase computation time
-	/// See [the offset section](https://pomax.github.io/bezierinfo/#offsetting) of Pomax's bezier curve primer for more details.
+	/// The function takes the following parameter:
+	/// - `step_size` - Dictates the granularity at which the function searches for reducable subcurves. The default value is `0.01`.
+	///   A small granularity may increase the chance the function does not introduce gaps, but will increase computation time.
 	pub fn reduce(&self, step_size: Option<f64>) -> Vec<Bezier> {
 		let step_size = step_size.unwrap_or(0.01);
 

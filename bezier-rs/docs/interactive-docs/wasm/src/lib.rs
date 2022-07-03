@@ -19,7 +19,7 @@ fn vec_to_point(p: &DVec2) -> JsValue {
 	JsValue::from_serde(&serde_json::to_string(&Point { x: p.x, y: p.y }).unwrap()).unwrap()
 }
 
-/// Convert a bezier to a list of points
+/// Convert a bezier to a list of points.
 fn bezier_to_points(bezier: Bezier) -> Vec<Point> {
 	bezier.get_points().iter().flatten().map(|point| Point { x: point.x, y: point.y }).collect()
 }
