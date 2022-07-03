@@ -44,9 +44,8 @@ const SIDE_EFFECT_FREE_MESSAGES: &[MessageDiscriminant] = &[
 	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::UpdateDocumentLayerTreeStructure),
 	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::UpdateOpenDocumentsList),
 	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::TriggerFontLoad),
+	MessageDiscriminant::Broadcast(BroadcastMessageDiscriminant::TriggerSignal(BroadcastSignalDiscriminant::DocumentIsDirty)),
 ];
-
-const SIDE_EFFECT_FREE_BROADCASTS: &[BroadcastSignalDiscriminant] = &[BroadcastSignalDiscriminant::DocumentIsDirty];
 
 impl Dispatcher {
 	pub fn new() -> Self {
@@ -63,18 +62,6 @@ impl Dispatcher {
 			// Skip processing of this message if it will be processed later
 			if SIDE_EFFECT_FREE_MESSAGES.contains(&message.to_discriminant()) && self.message_queue.contains(&message) {
 				continue;
-			}
-
-			// Skip the duplicated process of signals where order does not matter
-			if let Message::Broadcast(broadcast_message) = &message {
-				match broadcast_message {
-					BroadcastMessage::TriggerSignal { signal } | BroadcastMessage::TriggerSignalFront { signal } => {
-						if SIDE_EFFECT_FREE_BROADCASTS.contains(&signal.to_discriminant()) && self.message_queue.contains(&message) {
-							continue;
-						}
-					}
-					_ => {}
-				}
 			}
 
 			// Print the message at a verbosity level of `log`

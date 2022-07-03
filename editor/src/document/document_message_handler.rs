@@ -985,7 +985,7 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 			}
 			DeleteLayer { layer_path } => {
 				responses.push_front(DocumentOperation::DeleteLayer { path: layer_path.clone() }.into());
-				responses.push_front(BroadcastSignal::ToolAbort.into_front());
+				responses.push_front(BroadcastSignal::ToolAbort.into());
 				responses.push_back(PropertiesPanelMessage::CheckSelectedWasDeleted { path: layer_path }.into());
 			}
 			DeleteSelectedLayers => {
@@ -995,7 +995,7 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 					responses.push_front(DocumentMessage::DeleteLayer { layer_path: path.to_vec() }.into());
 				}
 
-				responses.push_front(BroadcastSignal::SelectionChanged.into_front());
+				responses.push_front(BroadcastSignal::SelectionChanged.into());
 				responses.push_back(BroadcastSignal::DocumentIsDirty.into());
 			}
 			DeselectAllLayers => {

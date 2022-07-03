@@ -13,8 +13,7 @@ impl MessageHandler<BroadcastMessage, ()> for BroadcastMessageHandler {
 		match action {
 			SubscribeSignal { on, send } => self.listeners.entry(on).or_default().push(*send),
 			UnsubscribeSignal { on, message } => self.listeners.entry(on).or_default().retain(|msg| *msg != *message),
-			TriggerSignal { signal } => responses.extend(self.listeners.entry(signal).or_default().clone().into_iter()),
-			TriggerSignalFront { signal } => {
+			TriggerSignal(signal) => {
 				for message in self.listeners.entry(signal).or_default() {
 					responses.push_front(message.clone())
 				}
