@@ -722,34 +722,36 @@ impl Bezier {
 		result
 	}
 
-	pub fn inflections(&self) -> Vec<f64> {
-		let mut t_values = Vec::new();
+	/// Returns list of `t`-values representing the inflection points of the curve.
+	/// The inflection points are defined to be points at which the second derivative of the curve is equal to zero.
+	/// The formulas are from  [the inflection section](https://pomax.github.io/bezierinfo/#inflections) of Pomax's bezier curve primer.
+	pub fn unrestricted_inflections(&self) -> Vec<f64> {
 		match self.handles {
-			BezierHandles::Quadratic { handle: _ } => {} // no inflection points for quadratic
+			// There exists no inflection points for quadratic beziers.
+			BezierHandles::Quadratic { handle: _ } => Vec::new(),
 			BezierHandles::Cubic { handle_start, handle_end } => {
-				let a = handle_end.x * handle_start.y;
-				let b = self.end.x * handle_start.y;
-				let c = handle_start.x * handle_end.y;
-				let d = self.end.x * handle_end.y;
-				let x = -3. * a + 2. * b + 3. * c - d;
-				let y = 3. * a - b - 3. * c;
-				let z = c - a;
-				if x == 0. {
-					if y != 0. {
-						t_values.push(-z / y);
-					}
-				} else {
-					let discriminant = y * y - 4. * x * z;
-					if discriminant > 0. {
-						t_values.push((-y + discriminant.sqrt()) / (2. * x));
-						t_values.push((-y - discriminant.sqrt()) / (2. * x));
-					} else if discriminant == 0. {
-						t_values.push(-y / (2. * x));
-					}
-				}
+				let x1 = self.start.x;
+				let x2 = handle_start.x;
+				let x3 = handle_end.x;
+				let x4 = self.end.x;
+				let y1 = self.start.y;
+				let y2 = handle_start.y;
+				let y3 = handle_end.y;
+				let y4 = self.end.y;
+				let a = -18. * x2 * y1 + 36. * x3 * y1 - 18. * x4 * y1 + 18. * x1 * y2 - 54. * x3 * y2 + 36. * x4 * y2 - 36. * x1 * y3 + 54. * x2 * y3 - 18. * x4 * y3 + 18. * x1 * y4 - 36. * x2 * y4
+					+ 18. * x3 * y4;
+				let b = 36. * x2 * y1 - 54. * x3 * y1 + 18. * x4 * y1 - 36. * x1 * y2 + 54. * x3 * y2 - 18. * x4 * y2 + 54. * x1 * y3 - 54. * x2 * y3 - 18. * x1 * y4 + 18. * x2 * y4;
+				let c = -18. * x2 * y1 + 18. * x3 * y1 + 18. * x1 * y2 - 18. * x3 * y2 - 18. * x1 * y3 + 18. * x2 * y3;
+				let discriminant = b * b - 4. * a * c;
+				utils::solve_quadratic(discriminant, 2. * a, b, c)
 			}
 		}
-		t_values.into_iter().filter(|&t| t > 0. && t < 1.).collect::<Vec<f64>>()
+	}
+
+	/// Returns list of `t`-values representing the inflection points of the curve.
+	/// The list of `t`-values returned are filtered such that they fall within the range `[0, 1]`.
+	pub fn inflections(&self) -> Vec<f64> {
+		self.unrestricted_inflections().into_iter().filter(|&t| t > 0. && t < 1.).collect::<Vec<f64>>()
 	}
 }
 
