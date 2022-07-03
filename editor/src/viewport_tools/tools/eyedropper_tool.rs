@@ -4,7 +4,7 @@ use crate::input::keyboard::MouseMotion;
 use crate::layout::widgets::PropertyHolder;
 use crate::message_prelude::*;
 use crate::misc::{HintData, HintGroup, HintInfo};
-use crate::viewport_tools::tool::{Fsm, ToolActionHandlerData};
+use crate::viewport_tools::tool::{Fsm, SignalToMessageMap, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
 
 use graphene::intersection::Quad;
 use graphene::layers::layer_info::LayerDataType;
@@ -31,6 +31,18 @@ pub enum EyedropperToolMessage {
 	RightMouseDown,
 }
 
+impl ToolMetadata for EyedropperTool {
+	fn icon_name(&self) -> String {
+		"GeneralEyedropperTool".into()
+	}
+	fn tooltip(&self) -> String {
+		"Eyedropper Tool (I)".into()
+	}
+	fn tool_type(&self) -> crate::viewport_tools::tool::ToolType {
+		ToolType::Eyedropper
+	}
+}
+
 impl PropertyHolder for EyedropperTool {}
 
 impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for EyedropperTool {
@@ -55,6 +67,16 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for EyedropperTo
 	}
 
 	advertise_actions!(EyedropperToolMessageDiscriminant; LeftMouseDown, RightMouseDown);
+}
+
+impl ToolTransition for EyedropperTool {
+	fn signal_to_message_map(&self) -> SignalToMessageMap {
+		SignalToMessageMap {
+			document_dirty: None,
+			tool_abort: Some(EyedropperToolMessage::Abort.into()),
+			selection_changed: None,
+		}
+	}
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

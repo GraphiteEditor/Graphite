@@ -54,6 +54,7 @@ impl Default for Editor {
 }
 
 pub mod message_prelude {
+	pub use crate::communication::broadcast_message::{BroadcastMessage, BroadcastMessageDiscriminant, BroadcastSignal, BroadcastSignalDiscriminant};
 	pub use crate::communication::generate_uuid;
 	pub use crate::communication::message::{AsMessage, Message, MessageDiscriminant};
 	pub use crate::communication::message_handler::{ActionList, MessageHandler};

@@ -5,7 +5,7 @@ use crate::input::keyboard::{Key, MouseMotion};
 use crate::layout::widgets::{Layout, LayoutGroup, NumberInput, PropertyHolder, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
 use crate::message_prelude::*;
 use crate::misc::{HintData, HintGroup, HintInfo, KeysGroup};
-use crate::viewport_tools::tool::{Fsm, ToolActionHandlerData};
+use crate::viewport_tools::tool::{Fsm, SignalToMessageMap, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
 
 use graphene::layers::style;
 use graphene::Operation;
@@ -52,6 +52,18 @@ pub enum ShapeToolMessage {
 #[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize)]
 pub enum ShapeOptionsUpdate {
 	Vertices(u32),
+}
+
+impl ToolMetadata for ShapeTool {
+	fn icon_name(&self) -> String {
+		"VectorShapeTool".into()
+	}
+	fn tooltip(&self) -> String {
+		"Shape Tool (Y)".into()
+	}
+	fn tool_type(&self) -> crate::viewport_tools::tool::ToolType {
+		ToolType::Shape
+	}
 }
 
 impl PropertyHolder for ShapeTool {
@@ -104,6 +116,16 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for ShapeTool {
 		match self.fsm_state {
 			Ready => actions!(ShapeToolMessageDiscriminant; DragStart),
 			Drawing => actions!(ShapeToolMessageDiscriminant; DragStop, Abort, Resize),
+		}
+	}
+}
+
+impl ToolTransition for ShapeTool {
+	fn signal_to_message_map(&self) -> SignalToMessageMap {
+		SignalToMessageMap {
+			document_dirty: None,
+			tool_abort: Some(ShapeToolMessage::Abort.into()),
+			selection_changed: None,
 		}
 	}
 }

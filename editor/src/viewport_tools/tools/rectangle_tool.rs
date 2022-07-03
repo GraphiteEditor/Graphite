@@ -5,7 +5,7 @@ use crate::input::keyboard::{Key, MouseMotion};
 use crate::layout::widgets::PropertyHolder;
 use crate::message_prelude::*;
 use crate::misc::{HintData, HintGroup, HintInfo, KeysGroup};
-use crate::viewport_tools::tool::{Fsm, ToolActionHandlerData};
+use crate::viewport_tools::tool::{Fsm, SignalToMessageMap, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
 
 use graphene::layers::style;
 use graphene::Operation;
@@ -65,6 +65,28 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for RectangleToo
 		match self.fsm_state {
 			Ready => actions!(RectangleToolMessageDiscriminant; DragStart),
 			Drawing => actions!(RectangleToolMessageDiscriminant; DragStop, Abort, Resize),
+		}
+	}
+}
+
+impl ToolMetadata for RectangleTool {
+	fn icon_name(&self) -> String {
+		"VectorRectangleTool".into()
+	}
+	fn tooltip(&self) -> String {
+		"Rectangle Tool (M)".into()
+	}
+	fn tool_type(&self) -> crate::viewport_tools::tool::ToolType {
+		ToolType::Rectangle
+	}
+}
+
+impl ToolTransition for RectangleTool {
+	fn signal_to_message_map(&self) -> SignalToMessageMap {
+		SignalToMessageMap {
+			document_dirty: None,
+			tool_abort: Some(RectangleToolMessage::Abort.into()),
+			selection_changed: None,
 		}
 	}
 }
