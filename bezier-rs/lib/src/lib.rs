@@ -721,6 +721,36 @@ impl Bezier {
 		});
 		result
 	}
+
+	pub fn inflections(&self) -> Vec<f64> {
+		let mut t_values = Vec::new();
+		match self.handles {
+			BezierHandles::Quadratic { handle: _ } => {} // no inflection points for quadratic
+			BezierHandles::Cubic { handle_start, handle_end } => {
+				let a = handle_end.x * handle_start.y;
+				let b = self.end.x * handle_start.y;
+				let c = handle_start.x * handle_end.y;
+				let d = self.end.x * handle_end.y;
+				let x = -3. * a + 2. * b + 3. * c - d;
+				let y = 3. * a - b - 3. * c;
+				let z = c - a;
+				if x == 0. {
+					if y != 0. {
+						t_values.push(-z / y);
+					}
+				} else {
+					let discriminant = y * y - 4. * x * z;
+					if discriminant > 0. {
+						t_values.push((-y + discriminant.sqrt()) / (2. * x));
+						t_values.push((-y - discriminant.sqrt()) / (2. * x));
+					} else if discriminant == 0. {
+						t_values.push(-y / (2. * x));
+					}
+				}
+			}
+		}
+		t_values.into_iter().filter(|&t| t > 0. && t < 1.).collect::<Vec<f64>>()
+	}
 }
 
 #[cfg(test)]

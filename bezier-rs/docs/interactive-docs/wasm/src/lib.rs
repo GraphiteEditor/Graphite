@@ -138,4 +138,9 @@ impl WasmBezier {
 		let bezier_points: Vec<Vec<Point>> = self.0.reduce(None).into_iter().map(bezier_to_points).collect();
 		to_js_value(bezier_points)
 	}
+
+	pub fn inflections(&self) -> JsValue {
+		let inflections = self.0.inflections();
+		JsValue::from_serde(&serde_json::to_string(&inflections).unwrap()).unwrap()
+	}
 }
