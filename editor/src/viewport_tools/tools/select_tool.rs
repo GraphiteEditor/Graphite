@@ -341,7 +341,6 @@ impl Fsm for SelectToolFsmState {
 		use SelectToolMessage::*;
 
 		if let ToolMessage::Select(event) = event {
-			log::debug!("self: {:?}, even: {:?}", self, event);
 			match (self, event) {
 				(_, DocumentIsDirty | SelectionChanged) => {
 					match (document.selected_visible_layers_bounding_box(font_cache), tool_data.bounding_box_overlays.take()) {
