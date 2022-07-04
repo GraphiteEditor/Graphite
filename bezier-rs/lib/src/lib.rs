@@ -201,8 +201,8 @@ impl Bezier {
 		}
 	}
 
-	///  Calculate the point on the curve based on the `t`-value provided.
-	///  Basis code based off of pseudocode found here: <https://pomax.github.io/bezierinfo/#explanation>.
+	/// Calculate the point on the curve based on the `t`-value provided.
+	/// Basis code based off of pseudocode found here: <https://pomax.github.io/bezierinfo/#explanation>.
 	fn unrestricted_compute(&self, t: f64) -> DVec2 {
 		let t_squared = t * t;
 		let one_minus_t = 1.0 - t;
@@ -218,8 +218,8 @@ impl Bezier {
 		}
 	}
 
-	///  Calculate the point on the curve based on the `t`-value provided.
-	///  Expects `t` to be within the inclusive range `[0, 1]`.
+	/// Calculate the point on the curve based on the `t`-value provided.
+	/// Expects `t` to be within the inclusive range `[0, 1]`.
 	pub fn compute(&self, t: f64) -> DVec2 {
 		assert!((0.0..=1.0).contains(&t));
 		self.unrestricted_compute(t)
@@ -478,7 +478,7 @@ impl Bezier {
 		}
 	}
 
-	/// Returns a Bezier curve that results from rotating the curve by the given angle (in radians).
+	/// Returns a Bezier curve that results from rotating the curve around the origin by the given angle (in radians).
 	pub fn rotate(&self, angle: f64) -> Bezier {
 		let rotation_matrix = DMat2::from_angle(angle);
 		self.apply_transformation(&|point| rotation_matrix.mul_vec2(point))
@@ -489,8 +489,8 @@ impl Bezier {
 		self.apply_transformation(&|point| point + translation)
 	}
 
-	/// Returns a list of points where the provided `line` intersects with the Bezier curve.
-	/// - `line` - Expected to be received in the format of `[start_point, end_point]`.
+	/// Returns a list of points where the provided line segment intersects with the Bezier curve.
+	/// - `line` - A line segment expected to be received in the format of `[start_point, end_point]`.
 	pub fn line_intersection(&self, line: [DVec2; 2]) -> Vec<DVec2> {
 		// Rotate the bezier and the line by the angle that the line makes with the x axis
 		let slope = line[1] - line[0];
@@ -509,8 +509,10 @@ impl Bezier {
 				let a = translated_bezier.start.y - 2. * handle.y + translated_bezier.end.y;
 				let b = 2. * (handle.y - translated_bezier.start.y);
 				let c = translated_bezier.start.y;
+
 				let discriminant = b * b - 4. * a * c;
 				let two_times_a = 2. * a;
+
 				utils::solve_quadratic(discriminant, two_times_a, b, c)
 			}
 			BezierHandles::Cubic { handle_start, handle_end } => {
@@ -519,6 +521,7 @@ impl Bezier {
 				let b = 3. * start_y - 6. * handle_start.y + 3. * handle_end.y;
 				let c = -3. * start_y + 3. * handle_start.y;
 				let d = start_y;
+
 				utils::solve_cubic(a, b, c, d)
 			}
 		};
@@ -530,7 +533,7 @@ impl Bezier {
 			.iter()
 			.filter(|&&t| utils::f64_approximately_in_range(t, 0., 1., max_abs_diff))
 			.map(|&t| self.unrestricted_compute(t))
-			.filter(|&p| utils::dvec2_approximately_in_range(p, min, max, max_abs_diff).all())
+			.filter(|&point| utils::dvec2_approximately_in_range(point, min, max, max_abs_diff).all())
 			.collect::<Vec<DVec2>>()
 	}
 }

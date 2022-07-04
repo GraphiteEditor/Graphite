@@ -35,7 +35,7 @@ pub fn compute_abc_for_cubic_through_points(start_point: DVec2, point_on_curve: 
 pub fn get_closest_point_in_lut(lut: &[DVec2], point: DVec2) -> (i32, f64) {
 	lut.iter()
 		.enumerate()
-		.map(|(i, p)| (i as i32, point.distance(*p)))
+		.map(|(i, p)| (i as i32, point.distance_squared(*p)))
 		.min_by(|x, y| (&(x.1)).partial_cmp(&(y.1)).unwrap())
 		.unwrap()
 }
