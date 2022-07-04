@@ -236,12 +236,22 @@ export default defineComponent({
 							});
 						});
 					},
+				},
+				{
 					name: "Hull",
 					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: Record<string, number>): void => {
-						const hullPoints = bezier.hull(options.t);
-						console.log(hullPoints.length);
-						hullPoints.forEach((serializedPoint) => {
-							drawPoint(getContextFromCanvas(canvas), JSON.parse(serializedPoint), 3, COLORS.NON_INTERACTIVE.STROKE_1);
+						const hullPoints: number[][][] = JSON.parse(bezier.hull(options.t));
+						hullPoints.forEach((iteration: number[][], iterationNumber: number) => {
+							iteration.forEach((point: number[], index) => {
+								const newPoint: Point = { x: point[0], y: point[1] };
+								drawPoint(getContextFromCanvas(canvas), newPoint, 3, COLORS.NON_INTERACTIVE.STROKE_1);
+								// avoid drawing lines for the first iteration (start, end and handle points)
+								if (iterationNumber === 0 || index === 0) {
+									return;
+								}
+								const prevPoint: Point = { x: iteration[index - 1][0], y: iteration[index - 1][1] };
+								drawLine(getContextFromCanvas(canvas), newPoint, prevPoint, COLORS.NON_INTERACTIVE.STROKE_1);
+							});
 						});
 					},
 					template: markRaw(SliderExample),
