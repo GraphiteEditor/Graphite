@@ -536,10 +536,10 @@ impl Bezier {
 			.filter(|&point| utils::dvec2_approximately_in_range(point, min, max, max_abs_diff).all())
 			.collect::<Vec<DVec2>>()
 	}
-	/// Returns a list of points representing the hull points for all iterations at the point corresponding to `t` using de Casteljau's algorithm
+
+	/// Returns a list of lists of points representing the hull points for all iterations at the point corresponding to `t` using de Casteljau's algorithm
+	/// the ith list represents the points of the ith iteration
 	/// https://pomax.github.io/bezierinfo/#decasteljau
-	/// For quadratic curves this list will contain 6 points
-	/// For cubic curves this list will contain 10 points
 	pub fn hull(&self, t: f64) -> Vec<Vec<DVec2>> {
 		let mut current_points = Vec::new();
 		let mut hull_points = Vec::new();
