@@ -27,19 +27,6 @@ import ExamplePane from "@/components/ExamplePane.vue";
 import SliderExample from "@/components/SliderExample.vue";
 
 // eslint-disable-next-line
-const testBezierLib = async () => {
-	import("@/../wasm/pkg").then((wasm) => {
-		const bezier = wasm.WasmBezier.new_quadratic([
-			[0, 0],
-			[50, 0],
-			[100, 100],
-		]);
-		const svgContainer = document.getElementById("svg-test");
-		if (svgContainer) {
-			svgContainer.innerHTML = bezier.to_svg();
-		}
-	});
-};
 
 const tSliderOptions = {
 	min: 0,
@@ -248,6 +235,26 @@ export default defineComponent({
 								drawPoint(context, point, 4, dimensionColors[index]);
 							});
 						});
+					},
+					name: "Hull",
+					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: Record<string, number>): void => {
+						const hullPoints = bezier.hull(options.t);
+						console.log(hullPoints.length);
+						hullPoints.forEach((serializedPoint) => {
+							drawPoint(getContextFromCanvas(canvas), JSON.parse(serializedPoint), 3, COLORS.NON_INTERACTIVE.STROKE_1);
+						});
+					},
+					template: markRaw(SliderExample),
+					templateOptions: {
+						sliders: [
+							{
+								min: 0.01,
+								max: 0.99,
+								step: 0.01,
+								default: 0.5,
+								variable: "t",
+							},
+						],
 					},
 				},
 				{

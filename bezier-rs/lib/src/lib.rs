@@ -535,28 +535,46 @@ impl Bezier {
 			.map(|&t| self.unrestricted_compute(t))
 			.filter(|&point| utils::dvec2_approximately_in_range(point, min, max, max_abs_diff).all())
 			.collect::<Vec<DVec2>>()
-	// Returns a list of points representing the hull points for all iterations at the point corresponding to `t`
-	// For quadratic curves this list will contain 6 points
-	// for cubic curves this list will contain 10 points
-	pub fn hull(&self, t: f64) -> Vec<DVec2> {
+	}
+	/// Returns a list of points representing the hull points for all iterations at the point corresponding to `t` using de Casteljau's algorithm
+	/// https://pomax.github.io/bezierinfo/#decasteljau
+	/// For quadratic curves this list will contain 6 points
+	/// For cubic curves this list will contain 10 points
+	pub fn hull(&self, t: f64) -> Vec<Vec<DVec2>> {
 		let mut current_points = Vec::new();
-		let mut next_points = Vec::new();
+		let mut hull_points = Vec::new();
+
 		match self.handles {
 			BezierHandles::Quadratic { handle } => {
 				current_points.push(self.start);
 				current_points.push(handle);
 				current_points.push(self.end);
 
-				let mut hull_points = Vec::with_capacity(6 as usize);
-
-				hull_points.push(self.start);
-				hull_points.push(handle);
-				hull_points.push(self.end);
-
-				while current_points.len() > 1 {}
+				hull_points.push(vec![self.start, handle, self.end]);
 			}
-			BezierHandles::Cubic { handle_start, handle_end } => {}
+			BezierHandles::Cubic { handle_start, handle_end } => {
+				current_points.push(self.start);
+				current_points.push(handle_start);
+				current_points.push(handle_end);
+				current_points.push(self.end);
+
+				hull_points.push(vec![self.start, handle_start, handle_end, self.end]);
+			}
 		}
+
+		while current_points.len() > 1 {
+			let mut next_points = Vec::new();
+			// iterate until one point is left, that point will be equal to compute(t)
+			for i in 0..current_points.len() - 1 {
+				// linearly interpolate between adjacent points
+				let new_point = DVec2::lerp(current_points[i], current_points[i + 1], t);
+				next_points.push(new_point);
+			}
+			hull_points.push(next_points.clone());
+			current_points = next_points;
+		}
+
+		hull_points
 	}
 }
 

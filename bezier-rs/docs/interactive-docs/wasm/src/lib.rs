@@ -116,4 +116,8 @@ impl WasmBezier {
 		let line: [DVec2; 2] = js_points.into_serde().unwrap();
 		self.0.line_intersection(line).iter().map(|&p| vec_to_point(&p)).collect::<Vec<JsValue>>()
 	}
+
+	pub fn hull(&self, t: f64) -> Vec<Vec<JsValue>> {
+		self.0.hull(t).iter().map(vec_to_point).collect()
+	}
 }
