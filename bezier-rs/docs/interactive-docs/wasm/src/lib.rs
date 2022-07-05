@@ -107,4 +107,13 @@ impl WasmBezier {
 		let local_extrema = self.0.local_extrema();
 		JsValue::from_serde(&serde_json::to_string(&local_extrema).unwrap()).unwrap()
 	}
+
+	pub fn rotate(&self, angle: f64) -> WasmBezier {
+		WasmBezier(self.0.rotate(angle))
+	}
+
+	pub fn line_intersection(&self, js_points: &JsValue) -> Vec<JsValue> {
+		let line: [DVec2; 2] = js_points.into_serde().unwrap();
+		self.0.line_intersection(line).iter().map(|&p| vec_to_point(&p)).collect::<Vec<JsValue>>()
+	}
 }
