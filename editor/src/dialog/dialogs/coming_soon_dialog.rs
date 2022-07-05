@@ -1,4 +1,5 @@
-use crate::{layout::widgets::*, message_prelude::FrontendMessage};
+use crate::layout::widgets::*;
+use crate::message_prelude::FrontendMessage;
 
 use std::fmt::Write;
 

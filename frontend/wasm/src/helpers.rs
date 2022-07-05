@@ -1,6 +1,7 @@
 use crate::JS_EDITOR_HANDLES;
 
-use editor::{input::keyboard::Key, message_prelude::FrontendMessage};
+use editor::input::keyboard::Key;
+use editor::message_prelude::FrontendMessage;
 
 use std::panic;
 use wasm_bindgen::prelude::*;

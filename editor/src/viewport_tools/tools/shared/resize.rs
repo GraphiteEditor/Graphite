@@ -21,7 +21,7 @@ impl Resize {
 	/// Starts a resize, assigning the snap targets and snapping the starting position.
 	pub fn start(&mut self, responses: &mut VecDeque<Message>, document: &DocumentMessageHandler, mouse_position: DVec2, font_cache: &FontCache) {
 		self.snap_handler.start_snap(document, document.bounding_boxes(None, None, font_cache), true, true);
-		self.snap_handler.add_all_document_handles(document, &[], &[]);
+		self.snap_handler.add_all_document_handles(document, &[], &[], &[]);
 		self.drag_start = self.snap_handler.snap_position(responses, document, mouse_position);
 	}
 
