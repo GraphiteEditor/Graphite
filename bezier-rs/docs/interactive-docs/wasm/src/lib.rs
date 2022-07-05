@@ -24,6 +24,11 @@ fn bezier_to_points(bezier: Bezier) -> Vec<Point> {
 	bezier.get_points().iter().flatten().map(|point| Point { x: point.x, y: point.y }).collect()
 }
 
+/// Serialize some data and convert to a JsValue
+fn to_js_value<T: Serialize>(data: T) -> JsValue {
+	JsValue::from_serde(&serde_json::to_string(&data).unwrap()).unwrap()
+}
+
 #[wasm_bindgen]
 impl WasmBezier {
 	/// Expect js_points to be a list of 3 pairs.
@@ -94,7 +99,7 @@ impl WasmBezier {
 
 	pub fn split(&self, t: f64) -> JsValue {
 		let bezier_points: [Vec<Point>; 2] = self.0.split(t).map(bezier_to_points);
-		JsValue::from_serde(&serde_json::to_string(&bezier_points).unwrap()).unwrap()
+		to_js_value(bezier_points)
 	}
 
 	pub fn trim(&self, t1: f64, t2: f64) -> WasmBezier {
@@ -107,7 +112,7 @@ impl WasmBezier {
 
 	pub fn local_extrema(&self) -> JsValue {
 		let local_extrema = self.0.local_extrema();
-		JsValue::from_serde(&serde_json::to_string(&local_extrema).unwrap()).unwrap()
+		to_js_value(local_extrema)
 	}
 
 	pub fn rotate(&self, angle: f64) -> WasmBezier {
@@ -121,6 +126,6 @@ impl WasmBezier {
 
 	pub fn reduce(&self) -> JsValue {
 		let bezier_points: Vec<Vec<Point>> = self.0.reduce(None).into_iter().map(bezier_to_points).collect();
-		JsValue::from_serde(&serde_json::to_string(&bezier_points).unwrap()).unwrap()
+		to_js_value(bezier_points)
 	}
 }
