@@ -1,5 +1,6 @@
 use crate::boolean_ops::{split_path_seg, subdivide_path_seg};
 use crate::consts::{F64LOOSE, F64PRECISE};
+use crate::layers::vector::vector_shape::VectorShape;
 
 use glam::{DAffine2, DMat2, DVec2};
 use kurbo::{BezPath, CubicBez, Line, ParamCurve, ParamCurveDeriv, ParamCurveExtrema, PathSeg, Point, QuadBez, Rect, Shape, Vec2};
@@ -37,6 +38,24 @@ impl Quad {
 		path.close_path();
 		path
 	}
+
+	/// Generates a [VectorShape] of the quad
+	pub fn vector_shape(&self) -> VectorShape {
+		VectorShape::from_points(self.0.into_iter(), true)
+	}
+
+	/// Generates the axis aligned bounding box of the quad
+	pub fn bounding_box(&self) -> [DVec2; 2] {
+		[
+			self.0.into_iter().reduce(|a, b| a.min(b)).unwrap_or_default(),
+			self.0.into_iter().reduce(|a, b| a.max(b)).unwrap_or_default(),
+		]
+	}
+
+	/// Gets the center of a quad
+	pub fn center(&self) -> DVec2 {
+		self.0.iter().sum::<DVec2>() / 4.
+	}
 }
 
 impl Mul<Quad> for DAffine2 {
@@ -73,7 +92,7 @@ pub fn intersect_quad_bez_path(quad: Quad, shape: &BezPath, filled: bool) -> boo
 		return true;
 	}
 	// Check if selection is entirely within the shape
-	if filled && shape.contains(to_point(quad.0[0])) {
+	if filled && shape.contains(to_point(quad.center())) {
 		return true;
 	}
 
@@ -843,8 +862,11 @@ mod tests {
 	use super::*;
 	#[allow(unused_imports)]
 	use crate::boolean_ops::point_on_curve;
+
 	#[allow(unused_imports)]
-	use std::{fs::File, io::Write};
+	use std::fs::File;
+	#[allow(unused_imports)]
+	use std::io::Write;
 
 	/// Two intersect points, on different `PathSegs`.
 	#[ignore]

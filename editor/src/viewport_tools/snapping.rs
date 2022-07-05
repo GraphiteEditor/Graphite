@@ -7,6 +7,7 @@ use crate::message_prelude::*;
 
 use graphene::layers::layer_info::{Layer, LayerDataType};
 use graphene::layers::style::{self, Stroke};
+use graphene::layers::vector::constants::ControlPointType;
 use graphene::{LayerId, Operation};
 
 use glam::{DAffine2, DVec2};
@@ -52,16 +53,18 @@ impl SnapOverlays {
 			responses.push_back(
 				DocumentMessage::Overlays(
 					if is_axis {
-						Operation::AddOverlayLine {
+						Operation::AddLine {
 							path: layer_path.clone(),
 							transform,
 							style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 1.0)), style::Fill::None),
+							insert_index: -1,
 						}
 					} else {
-						Operation::AddOverlayEllipse {
+						Operation::AddEllipse {
 							path: layer_path.clone(),
 							transform,
 							style: style::PathStyle::new(None, style::Fill::Solid(COLOR_ACCENT)),
+							insert_index: -1,
 						}
 					}
 					.into(),
@@ -246,43 +249,44 @@ impl SnapHandler {
 	/// Add the control points (optionally including bézier handles) of the specified shape layer to the snapping points
 	///
 	/// This should be called after start_snap
-	pub fn add_snap_path(&mut self, document_message_handler: &DocumentMessageHandler, layer: &Layer, path: &[LayerId], include_handles: bool) {
-		if let LayerDataType::Shape(s) = &layer.data {
+	pub fn add_snap_path(&mut self, document_message_handler: &DocumentMessageHandler, layer: &Layer, path: &[LayerId], include_handles: bool, ignore_points: &[(&[LayerId], u64, ControlPointType)]) {
+		if let LayerDataType::Shape(shape_layer) = &layer.data {
 			let transform = document_message_handler.graphene_document.multiply_transforms(path).unwrap();
-			let snap_points = s
-				.path
-				.iter()
-				.flat_map(|shape| {
+			let snap_points = shape_layer
+				.shape
+				.anchors()
+				.enumerate()
+				.flat_map(|(id, shape)| {
 					if include_handles {
-						match shape {
-							kurbo::PathEl::MoveTo(point) => vec![point],
-							kurbo::PathEl::LineTo(point) => vec![point],
-							kurbo::PathEl::QuadTo(handle1, point) => vec![handle1, point],
-							kurbo::PathEl::CurveTo(handle1, handle2, point) => vec![handle1, handle2, point],
-							kurbo::PathEl::ClosePath => vec![],
-						}
+						[
+							(*id, &shape.points[ControlPointType::Anchor]),
+							(*id, &shape.points[ControlPointType::InHandle]),
+							(*id, &shape.points[ControlPointType::OutHandle]),
+						]
 					} else {
-						match shape {
-							kurbo::PathEl::MoveTo(point) => vec![point],
-							kurbo::PathEl::LineTo(point) => vec![point],
-							kurbo::PathEl::QuadTo(_, point) => vec![point],
-							kurbo::PathEl::CurveTo(_, _, point) => vec![point],
-							kurbo::PathEl::ClosePath => vec![],
-						}
+						[(*id, &shape.points[ControlPointType::Anchor]), (0, &None), (0, &None)]
 					}
 				})
-				.map(|point| DVec2::new(point.x, point.y))
+				.filter_map(|(id, point)| point.as_ref().map(|val| (id, val)))
+				.filter(|(id, point)| !ignore_points.contains(&(path, *id, point.manipulator_type)))
+				.map(|(_id, point)| DVec2::new(point.position.x, point.position.y))
 				.map(|pos| transform.transform_point2(pos));
 			self.add_snap_points(document_message_handler, snap_points);
 		}
 	}
 
 	/// Adds all of the shape handles in the document, including bézier handles of the points specified
-	pub fn add_all_document_handles(&mut self, document_message_handler: &DocumentMessageHandler, include_handles: &[&[LayerId]], exclude: &[&[LayerId]]) {
+	pub fn add_all_document_handles(
+		&mut self,
+		document_message_handler: &DocumentMessageHandler,
+		include_handles: &[&[LayerId]],
+		exclude: &[&[LayerId]],
+		ignore_points: &[(&[LayerId], u64, ControlPointType)],
+	) {
 		for path in document_message_handler.all_layers() {
 			if !exclude.contains(&path) {
 				let layer = document_message_handler.graphene_document.layer(path).expect("Could not get layer for snapping");
-				self.add_snap_path(document_message_handler, layer, path, include_handles.contains(&path));
+				self.add_snap_path(document_message_handler, layer, path, include_handles.contains(&path), ignore_points);
 			}
 		}
 	}

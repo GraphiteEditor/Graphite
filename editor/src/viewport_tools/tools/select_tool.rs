@@ -431,7 +431,7 @@ impl Fsm for SelectToolFsmState {
 						tool_data.snap_handler.start_snap(document, document.bounding_boxes(Some(&selected), None, font_cache), snap_x, snap_y);
 						tool_data
 							.snap_handler
-							.add_all_document_handles(document, &[], &selected.iter().map(|x| x.as_slice()).collect::<Vec<_>>());
+							.add_all_document_handles(document, &[], &selected.iter().map(|x| x.as_slice()).collect::<Vec<_>>(), &[]);
 
 						tool_data.layers_dragging = selected;
 

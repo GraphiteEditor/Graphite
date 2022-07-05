@@ -4,6 +4,7 @@ use super::image_layer::ImageLayer;
 use super::shape_layer::ShapeLayer;
 use super::style::{PathStyle, RenderData};
 use super::text_layer::TextLayer;
+use super::vector::vector_shape::VectorShape;
 use crate::intersection::Quad;
 use crate::layers::text_layer::FontCache;
 use crate::DocumentError;
@@ -103,7 +104,7 @@ pub trait LayerData {
 	/// assert_eq!(
 	///     svg,
 	///     "<g transform=\"matrix(\n1,-0,-0,1,-0,-0)\">\
-	///     <path d=\"M0 0L1 0L1 1L0 1Z\"  fill=\"none\" />\
+	///     <path d=\"M0,0L0,1L1,1L1,0Z\"  fill=\"none\" />\
 	///     </g>"
 	/// );
 	/// ```
@@ -368,6 +369,27 @@ impl Layer {
 		match &mut self.data {
 			LayerDataType::Folder(f) => Ok(f),
 			_ => Err(DocumentError::NotAFolder),
+		}
+	}
+
+	pub fn as_vector_shape(&self) -> Option<&VectorShape> {
+		match &self.data {
+			LayerDataType::Shape(s) => Some(&s.shape),
+			_ => None,
+		}
+	}
+
+	pub fn as_vector_shape_copy(&self) -> Option<VectorShape> {
+		match &self.data {
+			LayerDataType::Shape(s) => Some(s.shape.clone()),
+			_ => None,
+		}
+	}
+
+	pub fn as_vector_shape_mut(&mut self) -> Option<&mut VectorShape> {
+		match &mut self.data {
+			LayerDataType::Shape(s) => Some(&mut s.shape),
+			_ => None,
 		}
 	}
 
