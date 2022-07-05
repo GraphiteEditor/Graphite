@@ -2,6 +2,9 @@ use crate::boolean_ops::BooleanOperation as BooleanOperationType;
 use crate::layers::blend_mode::BlendMode;
 use crate::layers::layer_info::Layer;
 use crate::layers::style::{self, Stroke};
+use crate::layers::vector::constants::ControlPointType;
+use crate::layers::vector::vector_anchor::VectorAnchor;
+use crate::layers::vector::vector_shape::VectorShape;
 use crate::LayerId;
 
 use serde::{Deserialize, Serialize};
@@ -19,30 +22,15 @@ pub enum Operation {
 		transform: [f64; 6],
 		style: style::PathStyle,
 	},
-	AddOverlayEllipse {
-		path: Vec<LayerId>,
-		transform: [f64; 6],
-		style: style::PathStyle,
-	},
 	AddRect {
 		path: Vec<LayerId>,
 		insert_index: isize,
 		transform: [f64; 6],
 		style: style::PathStyle,
 	},
-	AddOverlayRect {
-		path: Vec<LayerId>,
-		transform: [f64; 6],
-		style: style::PathStyle,
-	},
 	AddLine {
 		path: Vec<LayerId>,
 		insert_index: isize,
-		transform: [f64; 6],
-		style: style::PathStyle,
-	},
-	AddOverlayLine {
-		path: Vec<LayerId>,
 		transform: [f64; 6],
 		style: style::PathStyle,
 	},
@@ -97,19 +85,12 @@ pub enum Operation {
 		sides: u32,
 		style: style::PathStyle,
 	},
-	AddOverlayShape {
-		path: Vec<LayerId>,
-		bez_path: kurbo::BezPath,
-		style: style::PathStyle,
-		closed: bool,
-	},
 	AddShape {
 		path: Vec<LayerId>,
 		transform: [f64; 6],
 		insert_index: isize,
-		bez_path: kurbo::BezPath,
+		vector_path: VectorShape,
 		style: style::PathStyle,
-		closed: bool,
 	},
 	BooleanOperation {
 		operation: BooleanOperationType,
@@ -117,6 +98,16 @@ pub enum Operation {
 	},
 	DeleteLayer {
 		path: Vec<LayerId>,
+	},
+	DeleteSelectedVectorPoints {
+		layer_paths: Vec<Vec<LayerId>>,
+	},
+	DeselectVectorPoints {
+		layer_path: Vec<LayerId>,
+		point_ids: Vec<(u64, ControlPointType)>,
+	},
+	DeselectAllVectorPoints {
+		layer_path: Vec<LayerId>,
 	},
 	DuplicateLayer {
 		path: Vec<LayerId>,
@@ -126,6 +117,11 @@ pub enum Operation {
 		font_family: String,
 		font_style: String,
 		size: f64,
+	},
+	MoveSelectedVectorPoints {
+		layer_path: Vec<LayerId>,
+		delta: (f64, f64),
+		absolute_position: (f64, f64),
 	},
 	RenameLayer {
 		layer_path: Vec<LayerId>,
@@ -151,14 +147,38 @@ pub enum Operation {
 		path: Vec<LayerId>,
 		transform: [f64; 6],
 	},
+	SelectVectorPoints {
+		layer_path: Vec<LayerId>,
+		point_ids: Vec<(u64, ControlPointType)>,
+		add: bool,
+	},
 	SetShapePath {
 		path: Vec<LayerId>,
-		bez_path: kurbo::BezPath,
+		vector_path: VectorShape,
 	},
-	SetShapePathInViewport {
-		path: Vec<LayerId>,
-		bez_path: kurbo::BezPath,
-		transform: [f64; 6],
+	InsertVectorAnchor {
+		layer_path: Vec<LayerId>,
+		anchor: VectorAnchor,
+		after_id: u64,
+	},
+	PushVectorAnchor {
+		layer_path: Vec<LayerId>,
+		anchor: VectorAnchor,
+	},
+	RemoveVectorAnchor {
+		layer_path: Vec<LayerId>,
+		id: u64,
+	},
+	MoveVectorPoint {
+		layer_path: Vec<LayerId>,
+		id: u64,
+		control_type: ControlPointType,
+		position: (f64, f64),
+	},
+	RemoveVectorPoint {
+		layer_path: Vec<LayerId>,
+		id: u64,
+		control_type: ControlPointType,
 	},
 	TransformLayerInScope {
 		path: Vec<LayerId>,
@@ -204,6 +224,11 @@ pub enum Operation {
 	SetLayerStroke {
 		path: Vec<LayerId>,
 		stroke: Stroke,
+	},
+	SetSelectedHandleMirroring {
+		layer_path: Vec<LayerId>,
+		toggle_distance: bool,
+		toggle_angle: bool,
 	},
 }
 
