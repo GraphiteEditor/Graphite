@@ -1,18 +1,21 @@
 //! Bezier-rs: A Bezier Math Library for Rust
 
+#[macro_use]
+extern crate derive_builder;
+
 use glam::{DMat2, DVec2};
 
 mod utils;
 
-/// Representation of the handle point(s) in a bezier segment.
+/// Representation of the handle point(s) in a bezier curve.
 #[derive(Copy, Clone)]
 pub enum BezierHandles {
-	/// Handles for a quadratic segment.
+	/// Handles for a quadratic curve.
 	Quadratic {
 		/// Point representing the location of the single handle.
 		handle: DVec2,
 	},
-	/// Handles for a cubic segment.
+	/// Handles for a cubic curve.
 	Cubic {
 		/// Point representing the location of the handle associated to the start point.
 		handle_start: DVec2,
@@ -21,14 +24,31 @@ pub enum BezierHandles {
 	},
 }
 
-/// Representation of a bezier segment with 2D points.
+/// Struct to represent optional parameters that can be passed to the `project` function.
+#[derive(Builder, Copy, Clone)]
+pub struct ProjectionOptions {
+	/// Size of the lookup table for the initial passthrough. The default value is 20.
+	#[builder(default = "20")]
+	pub lut_size: i32,
+	/// Difference used between floating point numbers to be considered as equal. The default value is `0.0001`
+	#[builder(default = "1e-4")]
+	pub convergence_epsilon: f64,
+	/// Controls the number of iterations needed to consider that minimum distance to have converged. The default value is 3.
+	#[builder(default = "3")]
+	pub convergence_limit: i32,
+	/// Controls the maximum total number of iterations to be used. The default value is 10.
+	#[builder(default = "10")]
+	pub iteration_limit: i32,
+}
+
+/// Representation of a bezier curve with 2D points.
 #[derive(Copy, Clone)]
 pub struct Bezier {
-	/// Start point of the bezier segment.
+	/// Start point of the bezier curve.
 	start: DVec2,
-	/// Start point of the bezier segment.
+	/// Start point of the bezier curve.
 	end: DVec2,
-	/// Handles of the bezier segment.
+	/// Handles of the bezier curve.
 	handles: BezierHandles,
 }
 
@@ -342,17 +362,13 @@ impl Bezier {
 	}
 
 	/// Returns the closest point on the curve to the provided point.
-	/// Uses a searching algorithm akin to binary search that can be customized using the following optional parameters:
-	/// - `lut_size` - Size of the lookup table for the initial passthrough. The default value is 20.
-	/// - `convergence_epsilon` - Difference used between floating point numbers to be considered as equal. The default value is `0.0001`
-	/// - `convergence_limit` - Controls the number of iterations needed to consider that minimum distance to have converged. The default value is 3.
-	/// - `iteration_limit` - Controls the maximum total number of iterations to be used. The default value is 10.
-	pub fn project(&self, point: DVec2, lut_size: Option<i32>, convergence_epsilon: Option<f64>, convergence_limit: Option<i32>, iteration_limit: Option<i32>) -> DVec2 {
+	/// Uses a searching algorithm akin to binary search that can be customized using the [ProjectionOptions] structure.
+	pub fn project(&self, point: DVec2, options: ProjectionOptions) -> DVec2 {
 		// Unwrap optional parameters
-		let lut_size = lut_size.unwrap_or(20);
-		let convergence_epsilon = convergence_epsilon.unwrap_or(1e-4);
-		let convergence_limit = convergence_limit.unwrap_or(3);
-		let iteration_limit = iteration_limit.unwrap_or(10);
+		let lut_size = options.lut_size;
+		let convergence_epsilon = options.convergence_epsilon;
+		let convergence_limit = options.convergence_limit;
+		let iteration_limit = options.iteration_limit;
 
 		// First find the closest point from the results of a lookup table
 		let lut = self.compute_lookup_table(Some(lut_size));
@@ -548,9 +564,10 @@ impl Bezier {
 
 #[cfg(test)]
 mod tests {
-	use crate::utils;
-	use crate::Bezier;
 	use glam::DVec2;
+
+	use super::*;
+	use crate::utils;
 
 	fn compare_points(p1: DVec2, p2: DVec2) -> bool {
 		utils::dvec2_compare(p1, p2, 1e-3).all()
@@ -590,12 +607,14 @@ mod tests {
 
 	#[test]
 	fn project() {
+		let project_options = ProjectionOptionsBuilder::default().build().unwrap();
+
 		let bezier1 = Bezier::from_cubic_coordinates(4., 4., 23., 45., 10., 30., 56., 90.);
-		assert!(bezier1.project(DVec2::new(100., 100.), None, None, None, None) == DVec2::new(56., 90.));
-		assert!(bezier1.project(DVec2::new(0., 0.), None, None, None, None) == DVec2::new(4., 4.));
+		assert!(bezier1.project(DVec2::new(100., 100.), project_options) == DVec2::new(56., 90.));
+		assert!(bezier1.project(DVec2::new(0., 0.), project_options) == DVec2::new(4., 4.));
 
 		let bezier2 = Bezier::from_quadratic_coordinates(0., 0., 0., 100., 100., 100.);
-		assert!(bezier2.project(DVec2::new(100., 0.), None, None, None, None) == DVec2::new(0., 0.));
+		assert!(bezier2.project(DVec2::new(100., 0.), project_options) == DVec2::new(0., 0.));
 	}
 
 	#[test]
