@@ -167,10 +167,11 @@ impl GradientOverlay {
 
 		let fill = if selected { Fill::solid(COLOR_ACCENT) } else { Fill::solid(Color::WHITE) };
 
-		let operation = Operation::AddOverlayEllipse {
+		let operation = Operation::AddEllipse {
 			path: path.clone(),
 			transform: DAffine2::from_scale_angle_translation(size, 0., translation - size / 2.).to_cols_array(),
 			style: PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 1.0)), fill),
+			insert_index: -1,
 		};
 		responses.push_back(DocumentMessage::Overlays(operation.into()).into());
 
@@ -185,10 +186,11 @@ impl GradientOverlay {
 		let translation = start;
 		let transform = DAffine2::from_scale_angle_translation(scale, angle, translation).to_cols_array();
 
-		let operation = Operation::AddOverlayLine {
+		let operation = Operation::AddLine {
 			path: path.clone(),
 			transform,
 			style: PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 1.0)), Fill::None),
+			insert_index: -1,
 		};
 		responses.push_back(DocumentMessage::Overlays(operation.into()).into());
 
@@ -315,7 +317,7 @@ struct GradientToolData {
 
 pub fn start_snap(snap_handler: &mut SnapHandler, document: &DocumentMessageHandler, font_cache: &FontCache) {
 	snap_handler.start_snap(document, document.bounding_boxes(None, None, font_cache), true, true);
-	snap_handler.add_all_document_handles(document, &[], &[]);
+	snap_handler.add_all_document_handles(document, &[], &[], &[]);
 }
 
 impl Fsm for GradientToolFsmState {

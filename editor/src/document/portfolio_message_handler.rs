@@ -1,11 +1,12 @@
 use super::clipboards::{CopyBufferEntry, INTERNAL_CLIPBOARD_COUNT};
 use super::{DocumentMessageHandler, MenuBarMessageHandler};
 use crate::consts::{DEFAULT_DOCUMENT_NAME, GRAPHITE_DOCUMENT_VERSION};
+use crate::dialog;
 use crate::frontend::utility_types::FrontendDocumentDetails;
 use crate::input::InputPreprocessorMessageHandler;
 use crate::layout::layout_message::LayoutTarget;
 use crate::layout::widgets::PropertyHolder;
-use crate::{dialog, message_prelude::*};
+use crate::message_prelude::*;
 
 use graphene::layers::layer_info::LayerDataTypeDiscriminant;
 use graphene::layers::text_layer::{Font, FontCache};

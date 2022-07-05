@@ -1,8 +1,8 @@
-use crate::document::PortfolioMessageHandler;
-use crate::layout::{layout_message::LayoutTarget, widgets::PropertyHolder};
-use crate::message_prelude::*;
-
 use super::*;
+use crate::document::PortfolioMessageHandler;
+use crate::layout::layout_message::LayoutTarget;
+use crate::layout::widgets::PropertyHolder;
+use crate::message_prelude::*;
 
 #[derive(Debug, Default, Clone)]
 pub struct DialogMessageHandler {

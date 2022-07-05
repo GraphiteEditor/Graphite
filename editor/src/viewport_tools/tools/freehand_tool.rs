@@ -191,7 +191,6 @@ impl Fsm for FreehandToolFsmState {
 				}
 				(Drawing, DragStop) | (Drawing, Abort) => {
 					if tool_data.points.len() >= 2 {
-						responses.push_back(DocumentMessage::DeselectAllLayers.into());
 						responses.push_back(remove_preview(tool_data));
 						responses.push_back(add_polyline(tool_data, global_tool_data));
 						responses.push_back(DocumentMessage::CommitTransaction.into());

@@ -53,7 +53,9 @@ pub enum DocumentMessage {
 		layer_path: Vec<LayerId>,
 	},
 	DeleteSelectedLayers,
+	DeleteSelectedVectorPoints,
 	DeselectAllLayers,
+	DeselectAllVectorPoints,
 	DirtyRenderDocument,
 	DirtyRenderDocumentInOutlineView,
 	DocumentHistoryBackward,
@@ -80,6 +82,11 @@ pub enum DocumentMessage {
 		folder_path: Vec<LayerId>,
 		insert_index: isize,
 		reverse_index: bool,
+	},
+	MoveSelectedVectorPoints {
+		layer_path: Vec<LayerId>,
+		delta: (f64, f64),
+		absolute_position: (f64, f64),
 	},
 	NudgeSelectedLayers {
 		delta_x: f64,
@@ -143,6 +150,11 @@ pub enum DocumentMessage {
 	},
 	ToggleLayerVisibility {
 		layer_path: Vec<LayerId>,
+	},
+	ToggleSelectedHandleMirroring {
+		layer_path: Vec<LayerId>,
+		toggle_distance: bool,
+		toggle_angle: bool,
 	},
 	Undo,
 	UngroupLayers {
