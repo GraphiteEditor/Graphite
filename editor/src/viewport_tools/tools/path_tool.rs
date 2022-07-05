@@ -6,9 +6,11 @@ use crate::message_prelude::*;
 use crate::misc::{HintData, HintGroup, HintInfo, KeysGroup};
 use crate::viewport_tools::snapping::SnapHandler;
 use crate::viewport_tools::tool::{Fsm, SignalToMessageMap, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
+use crate::viewport_tools::vector_editor::overlay_renderer::OverlayRenderer;
 use crate::viewport_tools::vector_editor::shape_editor::ShapeEditor;
 
 use graphene::intersection::Quad;
+use graphene::layers::vector::constants::ControlPointType;
 
 use glam::DVec2;
 use serde::{Deserialize, Serialize};
@@ -32,6 +34,7 @@ pub enum PathToolMessage {
 	SelectionChanged,
 
 	// Tool-specific messages
+	Delete,
 	DragStart {
 		add_to_selection: Key,
 	},
@@ -82,8 +85,8 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for PathTool {
 		use PathToolFsmState::*;
 
 		match self.fsm_state {
-			Ready => actions!(PathToolMessageDiscriminant; DragStart),
-			Dragging => actions!(PathToolMessageDiscriminant; DragStop, PointerMove),
+			Ready => actions!(PathToolMessageDiscriminant; DragStart, Delete),
+			Dragging => actions!(PathToolMessageDiscriminant; DragStop, PointerMove, Delete),
 		}
 	}
 }
@@ -113,6 +116,7 @@ impl Default for PathToolFsmState {
 #[derive(Default)]
 struct PathToolData {
 	shape_editor: ShapeEditor,
+	overlay_renderer: OverlayRenderer,
 	snap_handler: SnapHandler,
 
 	drag_start_pos: DVec2,
@@ -137,39 +141,56 @@ impl Fsm for PathToolFsmState {
 			use PathToolMessage::*;
 
 			match (self, event) {
-				// TODO: Capture a tool event instead of doing this?
 				(_, SelectionChanged) => {
-					// Remove any residual overlays that might exist on selection change
-					tool_data.shape_editor.remove_overlays(responses);
+					// Set the previously selected layers to invisible
+					for layer_path in document.all_layers() {
+						tool_data.overlay_renderer.layer_overlay_visibility(&document.graphene_document, layer_path.to_vec(), false, responses);
+					}
 
-					// This currently creates new VectorManipulatorShapes for every shape, which is not ideal
-					// At least it is only on selection change for now
-					tool_data.shape_editor.set_shapes_to_modify(document.selected_visible_layers_vector_shapes(responses, font_cache));
+					// Set the newly targeted layers to visible
+					let layer_paths = document.selected_visible_layers().map(|layer_path| layer_path.to_vec()).collect();
+					tool_data.shape_editor.set_selected_layers(layer_paths);
 
+					// This can happen in any state (which is why we return self)
 					self
 				}
 				(_, DocumentIsDirty) => {
-					// Update the VectorManipulatorShapes by reference so they match the kurbo tool_data
-					for shape in &mut tool_data.shape_editor.shapes_to_modify {
-						shape.update_shape(document, responses);
+					// When the document has moved / needs to be redraw, re-render the overlays
+					// TODO the overlay system should probably receive this message instead of the tool
+					for layer_path in document.selected_visible_layers() {
+						tool_data.overlay_renderer.render_vector_shape_overlays(&document.graphene_document, layer_path.to_vec(), responses);
 					}
+
 					self
 				}
 				// Mouse down
 				(_, DragStart { add_to_selection }) => {
-					let add_to_selection = input.keyboard.get(add_to_selection as usize);
+					let toggle_add_to_selection = input.keyboard.get(add_to_selection as usize);
 
 					// Select the first point within the threshold (in pixels)
-					if tool_data.shape_editor.select_point(input.mouse.position, SELECTION_THRESHOLD, add_to_selection, responses) {
+					if let Some(mut new_selected) = tool_data
+						.shape_editor
+						.select_point(&document.graphene_document, input.mouse.position, SELECTION_THRESHOLD, toggle_add_to_selection, responses)
+					{
 						responses.push_back(DocumentMessage::StartTransaction.into());
 
-						let ignore_document = tool_data.shape_editor.shapes_to_modify.iter().map(|shape| shape.layer_path.clone()).collect::<Vec<_>>();
+						let ignore_document = tool_data.shape_editor.selected_layers().clone();
 						tool_data
 							.snap_handler
 							.start_snap(document, document.bounding_boxes(Some(&ignore_document), None, font_cache), true, true);
 
-						let include_handles = tool_data.shape_editor.shapes_to_modify.iter().map(|shape| shape.layer_path.as_slice()).collect::<Vec<_>>();
-						tool_data.snap_handler.add_all_document_handles(document, &include_handles, &[]);
+						// Do not snap against handles when anchor is selected
+						let mut extension = Vec::new();
+						for &(path, id, point_type) in new_selected.iter() {
+							if point_type == ControlPointType::Anchor {
+								extension.push((path, id, ControlPointType::InHandle));
+								extension.push((path, id, ControlPointType::OutHandle));
+							}
+						}
+						new_selected.extend(extension);
+
+						let include_handles = tool_data.shape_editor.selected_layers_ref();
+						tool_data.snap_handler.add_all_document_handles(document, &include_handles, &[], &new_selected);
 
 						tool_data.drag_start_pos = input.mouse.position;
 						Dragging
@@ -182,7 +203,7 @@ impl Fsm for PathToolFsmState {
 							.graphene_document
 							.intersects_quad_root(Quad::from_box([input.mouse.position - selection_size, input.mouse.position + selection_size]), font_cache);
 						if !intersection.is_empty() {
-							if add_to_selection {
+							if toggle_add_to_selection {
 								responses.push_back(DocumentMessage::AddSelectedLayers { additional_layers: intersection }.into());
 							} else {
 								responses.push_back(
@@ -194,7 +215,7 @@ impl Fsm for PathToolFsmState {
 							}
 						} else {
 							// Clear the previous selection if we didn't find anything
-							if !input.keyboard.get(add_to_selection as usize) {
+							if !input.keyboard.get(toggle_add_to_selection as usize) {
 								responses.push_back(DocumentMessage::DeselectAllLayers.into());
 							}
 						}
@@ -215,7 +236,7 @@ impl Fsm for PathToolFsmState {
 						tool_data.alt_debounce = alt_pressed;
 						// Only on alt down
 						if alt_pressed {
-							tool_data.shape_editor.toggle_selected_mirror_angle();
+							tool_data.shape_editor.toggle_handle_mirroring_on_selected(true, false, responses);
 						}
 					}
 
@@ -223,12 +244,13 @@ impl Fsm for PathToolFsmState {
 					let shift_pressed = input.keyboard.get(shift_mirror_distance as usize);
 					if shift_pressed != tool_data.shift_debounce {
 						tool_data.shift_debounce = shift_pressed;
-						tool_data.shape_editor.toggle_selected_mirror_distance();
+						tool_data.shape_editor.toggle_handle_mirroring_on_selected(false, true, responses);
 					}
 
 					// Move the selected points by the mouse position
 					let snapped_position = tool_data.snap_handler.snap_position(responses, document, input.mouse.position);
-					tool_data.shape_editor.move_selected_points(snapped_position - tool_data.drag_start_pos, true, responses);
+					tool_data.shape_editor.move_selected_points(snapped_position - tool_data.drag_start_pos, snapped_position, responses);
+					tool_data.drag_start_pos = snapped_position;
 					Dragging
 				}
 				// Mouse up
@@ -236,8 +258,22 @@ impl Fsm for PathToolFsmState {
 					tool_data.snap_handler.cleanup(responses);
 					Ready
 				}
+				// Delete key
+				(_, Delete) => {
+					// Delete the selected points and clean up overlays
+					responses.push_back(DocumentMessage::StartTransaction.into());
+					tool_data.shape_editor.delete_selected_points(responses);
+					responses.push_back(SelectionChanged.into());
+					for layer_path in document.all_layers() {
+						tool_data.overlay_renderer.clear_vector_shape_overlays(&document.graphene_document, layer_path.to_vec(), responses);
+					}
+					Ready
+				}
 				(_, Abort) => {
-					tool_data.shape_editor.remove_overlays(responses);
+					// TODO Tell overlay manager to remove the overlays
+					for layer_path in document.all_layers() {
+						tool_data.overlay_renderer.clear_vector_shape_overlays(&document.graphene_document, layer_path.to_vec(), responses);
+					}
 					Ready
 				}
 				(

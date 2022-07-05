@@ -1,42 +1,55 @@
+use crate::layers::vector::constants::ControlPointType;
+use crate::layers::vector::vector_anchor::VectorAnchor;
+use crate::layers::vector::vector_control_point::VectorControlPoint;
+use crate::layers::vector::vector_shape::VectorShape;
+
 use glam::DVec2;
-use kurbo::{BezPath, Point, Vec2};
 use rustybuzz::{GlyphBuffer, UnicodeBuffer};
 use ttf_parser::{GlyphId, OutlineBuilder};
 
 struct Builder {
-	path: BezPath,
-	pos: Point,
-	offset: Vec2,
+	path: VectorShape,
+	pos: DVec2,
+	offset: DVec2,
 	ascender: f64,
 	scale: f64,
 }
 
+impl Builder {
+	fn point(&self, x: f32, y: f32) -> DVec2 {
+		self.pos + self.offset + DVec2::new(x as f64, self.ascender - y as f64) * self.scale
+	}
+}
+
 impl OutlineBuilder for Builder {
 	fn move_to(&mut self, x: f32, y: f32) {
-		self.path.move_to(self.pos + self.offset + Vec2::new(x as f64, self.ascender - y as f64) * self.scale);
+		let anchor = self.point(x, y);
+		if self.path.anchors().last().filter(|el| el.points.iter().any(Option::is_some)).is_some() {
+			self.path.anchors_mut().push_end(VectorAnchor::closed());
+		}
+		self.path.anchors_mut().push_end(VectorAnchor::new(anchor));
 	}
 
 	fn line_to(&mut self, x: f32, y: f32) {
-		self.path.line_to(self.pos + self.offset + Vec2::new(x as f64, self.ascender - y as f64) * self.scale);
+		let anchor = self.point(x, y);
+		self.path.anchors_mut().push_end(VectorAnchor::new(anchor));
 	}
 
 	fn quad_to(&mut self, x1: f32, y1: f32, x2: f32, y2: f32) {
-		self.path.quad_to(
-			self.pos + self.offset + Vec2::new(x1 as f64, self.ascender - y1 as f64) * self.scale,
-			self.pos + self.offset + Vec2::new(x2 as f64, self.ascender - y2 as f64) * self.scale,
-		);
+		let [handle, anchor] = [self.point(x1, y1), self.point(x2, y2)];
+		self.path.anchors_mut().last_mut().unwrap().points[ControlPointType::OutHandle] = Some(VectorControlPoint::new(handle, ControlPointType::OutHandle));
+		self.path.anchors_mut().push_end(VectorAnchor::new(anchor));
 	}
 
 	fn curve_to(&mut self, x1: f32, y1: f32, x2: f32, y2: f32, x3: f32, y3: f32) {
-		self.path.curve_to(
-			self.pos + self.offset + Vec2::new(x1 as f64, self.ascender - y1 as f64) * self.scale,
-			self.pos + self.offset + Vec2::new(x2 as f64, self.ascender - y2 as f64) * self.scale,
-			self.pos + self.offset + Vec2::new(x3 as f64, self.ascender - y3 as f64) * self.scale,
-		);
+		let [handle1, handle2, anchor] = [self.point(x1, y1), self.point(x2, y2), self.point(x3, y3)];
+		self.path.anchors_mut().last_mut().unwrap().points[ControlPointType::OutHandle] = Some(VectorControlPoint::new(handle1, ControlPointType::OutHandle));
+		self.path.anchors_mut().push_end(VectorAnchor::new(anchor));
+		self.path.anchors_mut().last_mut().unwrap().points[ControlPointType::InHandle] = Some(VectorControlPoint::new(handle2, ControlPointType::InHandle));
 	}
 
 	fn close(&mut self) {
-		self.path.close_path();
+		self.path.anchors_mut().push_end(VectorAnchor::closed());
 	}
 }
 
@@ -67,19 +80,19 @@ fn wrap_word(line_width: Option<f64>, glyph_buffer: &GlyphBuffer, scale: f64, x_
 	false
 }
 
-pub fn to_kurbo(str: &str, buzz_face: Option<rustybuzz::Face>, font_size: f64, line_width: Option<f64>) -> BezPath {
+pub fn to_path(str: &str, buzz_face: Option<rustybuzz::Face>, font_size: f64, line_width: Option<f64>) -> VectorShape {
 	let buzz_face = match buzz_face {
 		Some(face) => face,
 		// Show blank layer if font has not loaded
-		None => return BezPath::default(),
+		None => return VectorShape::default(),
 	};
 
 	let (scale, line_height, mut buffer) = font_properties(&buzz_face, font_size);
 
 	let mut builder = Builder {
-		path: BezPath::new(),
-		pos: Point::ZERO,
-		offset: Vec2::ZERO,
+		path: VectorShape::new(),
+		pos: DVec2::ZERO,
+		offset: DVec2::ZERO,
 		ascender: (buzz_face.ascender() as f64 / buzz_face.height() as f64) * font_size / scale,
 		scale,
 	};
@@ -91,23 +104,23 @@ pub fn to_kurbo(str: &str, buzz_face: Option<rustybuzz::Face>, font_size: f64, l
 			let glyph_buffer = rustybuzz::shape(&buzz_face, &[], buffer);
 
 			if wrap_word(line_width, &glyph_buffer, scale, builder.pos.x) {
-				builder.pos = Point::new(0., builder.pos.y + line_height);
+				builder.pos = DVec2::new(0., builder.pos.y + line_height);
 			}
 
 			for (glyph_position, glyph_info) in glyph_buffer.glyph_positions().iter().zip(glyph_buffer.glyph_infos()) {
 				if let Some(line_width) = line_width {
 					if builder.pos.x + (glyph_position.x_advance as f64 * builder.scale) >= line_width {
-						builder.pos = Point::new(0., builder.pos.y + line_height);
+						builder.pos = DVec2::new(0., builder.pos.y + line_height);
 					}
 				}
-				builder.offset = Vec2::new(glyph_position.x_offset as f64, glyph_position.y_offset as f64) * builder.scale;
+				builder.offset = DVec2::new(glyph_position.x_offset as f64, glyph_position.y_offset as f64) * builder.scale;
 				buzz_face.outline_glyph(GlyphId(glyph_info.glyph_id as u16), &mut builder);
-				builder.pos += Vec2::new(glyph_position.x_advance as f64, glyph_position.y_advance as f64) * builder.scale;
+				builder.pos += DVec2::new(glyph_position.x_advance as f64, glyph_position.y_advance as f64) * builder.scale;
 			}
 
 			buffer = glyph_buffer.clear();
 		}
-		builder.pos = Point::new(0., builder.pos.y + line_height);
+		builder.pos = DVec2::new(0., builder.pos.y + line_height);
 	}
 	builder.path
 }

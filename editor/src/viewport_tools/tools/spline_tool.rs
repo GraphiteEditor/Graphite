@@ -174,7 +174,7 @@ impl Fsm for SplineToolFsmState {
 					tool_data.path = Some(document.get_path_for_new_layer());
 
 					tool_data.snap_handler.start_snap(document, document.bounding_boxes(None, None, font_cache), true, true);
-					tool_data.snap_handler.add_all_document_handles(document, &[], &[]);
+					tool_data.snap_handler.add_all_document_handles(document, &[], &[], &[]);
 					let snapped_position = tool_data.snap_handler.snap_position(responses, document, input.mouse.position);
 
 					let pos = transform.inverse().transform_point2(snapped_position);
@@ -216,7 +216,6 @@ impl Fsm for SplineToolFsmState {
 				}
 				(Drawing, Confirm) | (Drawing, Abort) => {
 					if tool_data.points.len() >= 2 {
-						responses.push_back(DocumentMessage::DeselectAllLayers.into());
 						responses.push_back(remove_preview(tool_data));
 						responses.push_back(add_spline(tool_data, global_tool_data, false));
 						responses.push_back(DocumentMessage::CommitTransaction.into());

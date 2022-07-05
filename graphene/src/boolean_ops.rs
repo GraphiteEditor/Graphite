@@ -404,7 +404,7 @@ impl PathGraph {
 			concat_paths(&mut curve, &self.edge(vertices[index - 1].0, vertices[index].0, vertices[index].1).unwrap().curve);
 		}
 		curve.push(PathEl::ClosePath);
-		ShapeLayer::from_bez_path(BezPath::from_vec(curve), style.clone(), false)
+		ShapeLayer::new(BezPath::from_vec(curve).iter().into(), style.clone())
 	}
 }
 
@@ -535,24 +535,24 @@ pub fn composite_boolean_operation(mut select: BooleanOperation, shapes: &mut Ve
 // TODO: check if shapes are filled
 // TODO: Bug: shape with at least two subpaths and comprised of many unions sometimes has erroneous movetos embedded in edges
 pub fn boolean_operation(mut select: BooleanOperation, alpha: &mut ShapeLayer, beta: &mut ShapeLayer) -> Result<Vec<ShapeLayer>, BooleanOperationError> {
-	if alpha.path.is_empty() || beta.path.is_empty() {
+	if alpha.shape.anchors().is_empty() || beta.shape.anchors().is_empty() {
 		return Err(BooleanOperationError::InvalidSelection);
 	}
 	if select == BooleanOperation::SubtractBack {
 		select = BooleanOperation::SubtractFront;
 		swap(alpha, beta);
 	}
-	alpha.path = close_path(&alpha.path);
-	beta.path = close_path(&beta.path);
-	let beta_reverse = close_path(&reverse_path(&beta.path));
-	let alpha_dir = Cycle::direction_for_path(&alpha.path)?;
-	let beta_dir = Cycle::direction_for_path(&beta.path)?;
+	let mut alpha_shape = close_path(&(&alpha.shape).into());
+	let beta_shape = close_path(&(&beta.shape).into());
+	let beta_reverse = close_path(&reverse_path(&beta_shape));
+	let alpha_dir = Cycle::direction_for_path(&alpha_shape)?;
+	let beta_dir = Cycle::direction_for_path(&beta_shape)?;
 	match select {
 		BooleanOperation::Union => {
 			match if beta_dir == alpha_dir {
-				PathGraph::from_paths(&alpha.path, &beta.path)
+				PathGraph::from_paths(&alpha_shape, &beta_shape)
 			} else {
-				PathGraph::from_paths(&alpha.path, &beta_reverse)
+				PathGraph::from_paths(&alpha_shape, &beta_reverse)
 			} {
 				Ok(graph) => {
 					let mut cycles = graph.get_cycles();
@@ -562,16 +562,20 @@ pub fn boolean_operation(mut select: BooleanOperation, alpha: &mut ShapeLayer, b
 						&alpha.style,
 					);
 					for interior in collect_shapes(&graph, &mut cycles, |dir| dir != alpha_dir, |_| &alpha.style)? {
-						add_subpath(&mut boolean_union.path, interior.path);
+						//TODO: this is not very efficient or nice to read
+						let mut a_path: BezPath = (&boolean_union.shape).into();
+						let b_path: BezPath = (&interior.shape).into();
+						add_subpath(&mut a_path, b_path);
+						boolean_union.shape = a_path.iter().into();
 					}
 					Ok(vec![boolean_union])
 				}
 				Err(BooleanOperationError::NoIntersections) => {
 					// If shape is inside the other the Union is just the larger
 					// Check could also be done with area and single ray cast
-					if cast_horizontal_ray(point_on_curve(&beta.path), &alpha.path) % 2 != 0 {
+					if cast_horizontal_ray(point_on_curve(&beta_shape), &alpha_shape) % 2 != 0 {
 						Ok(vec![alpha.clone()])
-					} else if cast_horizontal_ray(point_on_curve(&alpha.path), &beta.path) % 2 != 0 {
+					} else if cast_horizontal_ray(point_on_curve(&alpha_shape), &beta_shape) % 2 != 0 {
 						beta.style = alpha.style.clone();
 						Ok(vec![beta.clone()])
 					} else {
@@ -583,17 +587,17 @@ pub fn boolean_operation(mut select: BooleanOperation, alpha: &mut ShapeLayer, b
 		}
 		BooleanOperation::Difference => {
 			let graph = if beta_dir != alpha_dir {
-				PathGraph::from_paths(&alpha.path, &beta.path)?
+				PathGraph::from_paths(&alpha_shape, &beta_shape)?
 			} else {
-				PathGraph::from_paths(&alpha.path, &beta_reverse)?
+				PathGraph::from_paths(&alpha_shape, &beta_reverse)?
 			};
 			collect_shapes(&graph, &mut graph.get_cycles(), |_| true, |dir| if dir == alpha_dir { &alpha.style } else { &beta.style })
 		}
 		BooleanOperation::Intersection => {
 			match if beta_dir == alpha_dir {
-				PathGraph::from_paths(&alpha.path, &beta.path)
+				PathGraph::from_paths(&alpha_shape, &beta_shape)
 			} else {
-				PathGraph::from_paths(&alpha.path, &beta_reverse)
+				PathGraph::from_paths(&alpha_shape, &beta_reverse)
 			} {
 				Ok(graph) => {
 					let mut cycles = graph.get_cycles();
@@ -610,10 +614,10 @@ pub fn boolean_operation(mut select: BooleanOperation, alpha: &mut ShapeLayer, b
 				}
 				Err(BooleanOperationError::NoIntersections) => {
 					// Check could also be done with area and single ray cast
-					if cast_horizontal_ray(point_on_curve(&beta.path), &alpha.path) % 2 != 0 {
+					if cast_horizontal_ray(point_on_curve(&beta_shape), &alpha_shape) % 2 != 0 {
 						beta.style = alpha.style.clone();
 						Ok(vec![beta.clone()])
-					} else if cast_horizontal_ray(point_on_curve(&alpha.path), &beta.path) % 2 != 0 {
+					} else if cast_horizontal_ray(point_on_curve(&alpha_shape), &beta_shape) % 2 != 0 {
 						Ok(vec![alpha.clone()])
 					} else {
 						Err(BooleanOperationError::NothingDone)
@@ -627,14 +631,14 @@ pub fn boolean_operation(mut select: BooleanOperation, alpha: &mut ShapeLayer, b
 		}
 		BooleanOperation::SubtractFront => {
 			match if beta_dir != alpha_dir {
-				PathGraph::from_paths(&alpha.path, &beta.path)
+				PathGraph::from_paths(&alpha_shape, &beta_shape)
 			} else {
-				PathGraph::from_paths(&alpha.path, &beta_reverse)
+				PathGraph::from_paths(&alpha_shape, &beta_reverse)
 			} {
 				Ok(graph) => collect_shapes(&graph, &mut graph.get_cycles(), |dir| dir == alpha_dir, |_| &alpha.style),
 				Err(BooleanOperationError::NoIntersections) => {
-					if cast_horizontal_ray(point_on_curve(&beta.path), &alpha.path) % 2 != 0 {
-						add_subpath(&mut alpha.path, if beta_dir == alpha_dir { reverse_path(&beta.path) } else { beta.path.clone() });
+					if cast_horizontal_ray(point_on_curve(&beta_shape), &alpha_shape) % 2 != 0 {
+						add_subpath(&mut alpha_shape, if beta_dir == alpha_dir { reverse_path(&beta_shape) } else { beta_shape });
 						Ok(vec![alpha.clone()])
 					} else {
 						Err(BooleanOperationError::NothingDone)
@@ -654,7 +658,7 @@ pub fn cast_horizontal_ray(from: Point, into: &BezPath) -> usize {
 	});
 	let mut intersects = Vec::new();
 	for ref mut seg in into.segments() {
-		if seg.bounding_box().x1 > from.x {
+		if kurbo::ParamCurveExtrema::bounding_box(seg).x1 > from.x {
 			line_curve_intersections((&mut ray, seg), |_, b| valid_t(b), &mut intersects);
 		}
 	}
