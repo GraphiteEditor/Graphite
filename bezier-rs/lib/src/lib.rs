@@ -9,7 +9,7 @@ mod utils;
 
 /// Representation of the handle point(s) in a bezier curve.
 #[derive(Copy, Clone)]
-pub enum BezierHandles {
+enum BezierHandles {
 	/// Handles for a quadratic curve.
 	Quadratic {
 		/// Point representing the location of the single handle.
@@ -95,9 +95,11 @@ impl Bezier {
 	}
 
 	/// Create a quadratic bezier curve that goes through 3 points, where the middle point will be at the corresponding position `t` on the curve.
+	/// The default value for `t` is 0.5.
 	/// Note that when `t = 0` or `t = 1`, the expectation is that the `point_on_curve` should be equal to `start` and `end` respectively.
 	/// In these cases, if the provided values are not equal, this function will use the `point_on_curve` as the `start`/`end` instead.
-	pub fn quadratic_through_points(start: DVec2, point_on_curve: DVec2, end: DVec2, t: f64) -> Self {
+	pub fn quadratic_through_points(start: DVec2, point_on_curve: DVec2, end: DVec2, t: Option<f64>) -> Self {
+		let t = t.unwrap_or(0.5);
 		if t == 0. {
 			return Bezier::from_quadratic_dvec2(point_on_curve, point_on_curve, end);
 		}
@@ -109,10 +111,12 @@ impl Bezier {
 	}
 
 	/// Create a cubic bezier curve that goes through 3 points, where the middle point will be at the corresponding position `t` on the curve.
+	/// The default value for `t` is 0.5.
 	/// Note that when `t = 0` or `t = 1`, the expectation is that the `point_on_curve` should be equal to `start` and `end` respectively.
 	/// In these cases, if the provided values are not equal, this function will use the `point_on_curve` as the `start`/`end` instead.
 	/// - `midpoint_separation` is a representation of how wide the resulting curve will be around `t` on the curve. This parameter designates the distance between the `e1` and `e2` defined in [the projection identity section](https://pomax.github.io/bezierinfo/#abc) of Pomax's bezier curve primer. It is an optional parameter and the default value is the distance between the points `B` and `C` defined in the primer.
-	pub fn cubic_through_points(start: DVec2, point_on_curve: DVec2, end: DVec2, t: f64, midpoint_separation: Option<f64>) -> Self {
+	pub fn cubic_through_points(start: DVec2, point_on_curve: DVec2, end: DVec2, t: Option<f64>, midpoint_separation: Option<f64>) -> Self {
+		let t = t.unwrap_or(0.5);
 		if t == 0. {
 			return Bezier::from_cubic_dvec2(point_on_curve, point_on_curve, end, end);
 		}
@@ -262,8 +266,9 @@ impl Bezier {
 	}
 
 	/// Return an approximation of the length of the bezier curve.
-	/// Code example from <https://gamedev.stackexchange.com/questions/5373/moving-ships-between-two-planets-along-a-bezier-missing-some-equations-for-acce/5427#5427>.
 	pub fn length(&self) -> f64 {
+		// Code example from <https://gamedev.stackexchange.com/questions/5373/moving-ships-between-two-planets-along-a-bezier-missing-some-equations-for-acce/5427#5427>.
+
 		// We will use an approximate approach where
 		// we split the curve into many subdivisions
 		// and calculate the euclidean distance between the two endpoints of the subdivision
@@ -515,7 +520,7 @@ impl Bezier {
 
 	/// Returns a list of points where the provided line segment intersects with the Bezier curve.
 	/// - `line` - A line segment expected to be received in the format of `[start_point, end_point]`.
-	pub fn line_intersection(&self, line: [DVec2; 2]) -> Vec<DVec2> {
+	pub fn intersect_line_segment(&self, line: [DVec2; 2]) -> Vec<DVec2> {
 		// Rotate the bezier and the line by the angle that the line makes with the x axis
 		let slope = line[1] - line[0];
 		let angle = slope.angle_between(DVec2::new(1., 0.));
@@ -579,13 +584,13 @@ mod tests {
 		let p2 = DVec2::new(140., 30.);
 		let p3 = DVec2::new(160., 170.);
 
-		let bezier1 = Bezier::quadratic_through_points(p1, p2, p3, 0.5);
+		let bezier1 = Bezier::quadratic_through_points(p1, p2, p3, None);
 		assert!(compare_points(bezier1.compute(0.5), p2));
 
-		let bezier2 = Bezier::quadratic_through_points(p1, p2, p3, 0.8);
+		let bezier2 = Bezier::quadratic_through_points(p1, p2, p3, Some(0.8));
 		assert!(compare_points(bezier2.compute(0.8), p2));
 
-		let bezier3 = Bezier::quadratic_through_points(p1, p2, p3, 0.);
+		let bezier3 = Bezier::quadratic_through_points(p1, p2, p3, Some(0.));
 		assert!(compare_points(bezier3.compute(0.), p2));
 	}
 
@@ -595,13 +600,13 @@ mod tests {
 		let p2 = DVec2::new(60., 140.);
 		let p3 = DVec2::new(160., 160.);
 
-		let bezier1 = Bezier::cubic_through_points(p1, p2, p3, 0.3, Some(10.));
+		let bezier1 = Bezier::cubic_through_points(p1, p2, p3, Some(0.3), Some(10.));
 		assert!(compare_points(bezier1.compute(0.3), p2));
 
-		let bezier2 = Bezier::cubic_through_points(p1, p2, p3, 0.8, Some(91.7));
+		let bezier2 = Bezier::cubic_through_points(p1, p2, p3, Some(0.8), Some(91.7));
 		assert!(compare_points(bezier2.compute(0.8), p2));
 
-		let bezier3 = Bezier::cubic_through_points(p1, p2, p3, 0., Some(91.7));
+		let bezier3 = Bezier::cubic_through_points(p1, p2, p3, Some(0.), Some(91.7));
 		assert!(compare_points(bezier3.compute(0.), p2));
 	}
 
@@ -618,7 +623,7 @@ mod tests {
 	}
 
 	#[test]
-	fn line_intersection_quadratic() {
+	fn intersect_line_segment_quadratic() {
 		let p1 = DVec2::new(30., 50.);
 		let p2 = DVec2::new(140., 30.);
 		let p3 = DVec2::new(160., 170.);
@@ -626,18 +631,18 @@ mod tests {
 		// Intersection at edge of curve
 		let bezier1 = Bezier::from_quadratic_dvec2(p1, p2, p3);
 		let line1 = [DVec2::new(20., 50.), DVec2::new(40., 50.)];
-		let intersections1 = bezier1.line_intersection(line1);
+		let intersections1 = bezier1.intersect_line_segment(line1);
 		assert!(intersections1.len() == 1);
 		assert!(compare_points(intersections1[0], p1));
 
 		// Intersection in the middle of curve
 		let line2 = [DVec2::new(150., 150.), DVec2::new(30., 30.)];
-		let intersections2 = bezier1.line_intersection(line2);
+		let intersections2 = bezier1.intersect_line_segment(line2);
 		assert!(compare_points(intersections2[0], DVec2::new(47.77355, 47.77354)));
 	}
 
 	#[test]
-	fn line_intersection_cubic() {
+	fn intersect_line_segment_cubic() {
 		let p1 = DVec2::new(30., 30.);
 		let p2 = DVec2::new(60., 140.);
 		let p3 = DVec2::new(150., 30.);
@@ -646,13 +651,13 @@ mod tests {
 		let bezier = Bezier::from_cubic_dvec2(p1, p2, p3, p4);
 		// Intersection at edge of curve, Discriminant > 0
 		let line1 = [DVec2::new(20., 30.), DVec2::new(40., 30.)];
-		let intersections1 = bezier.line_intersection(line1);
+		let intersections1 = bezier.intersect_line_segment(line1);
 		assert!(intersections1.len() == 1);
 		assert!(compare_points(intersections1[0], p1));
 
 		// Intersection at edge and in middle of curve, Discriminant < 0
 		let line2 = [DVec2::new(150., 150.), DVec2::new(30., 30.)];
-		let intersections2 = bezier.line_intersection(line2);
+		let intersections2 = bezier.intersect_line_segment(line2);
 		assert!(intersections2.len() == 2);
 		assert!(compare_points(intersections2[0], p1));
 		assert!(compare_points(intersections2[1], DVec2::new(85.84, 85.84)));

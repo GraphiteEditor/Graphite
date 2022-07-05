@@ -13,6 +13,7 @@ export const COLORS = {
 	NON_INTERACTIVE: {
 		STROKE_1: "red",
 		STROKE_2: "orange",
+		STROKE_3: "green",
 	},
 };
 
