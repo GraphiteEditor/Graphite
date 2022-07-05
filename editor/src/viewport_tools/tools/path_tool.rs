@@ -10,9 +10,9 @@ use crate::viewport_tools::vector_editor::overlay_renderer::OverlayRenderer;
 use crate::viewport_tools::vector_editor::shape_editor::ShapeEditor;
 
 use graphene::intersection::Quad;
+use graphene::layers::vector::constants::ControlPointType;
 
 use glam::DVec2;
-use graphene::layers::vector::constants::ControlPointType;
 use serde::{Deserialize, Serialize};
 
 #[derive(Default)]

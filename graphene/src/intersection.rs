@@ -862,8 +862,11 @@ mod tests {
 	use super::*;
 	#[allow(unused_imports)]
 	use crate::boolean_ops::point_on_curve;
+
 	#[allow(unused_imports)]
-	use std::{fs::File, io::Write};
+	use std::fs::File;
+	#[allow(unused_imports)]
+	use std::io::Write;
 
 	/// Two intersect points, on different `PathSegs`.
 	#[ignore]

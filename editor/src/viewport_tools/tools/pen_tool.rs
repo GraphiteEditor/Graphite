@@ -11,7 +11,9 @@ use crate::viewport_tools::tool::{Fsm, SignalToMessageMap, ToolActionHandlerData
 use crate::viewport_tools::vector_editor::overlay_renderer::OverlayRenderer;
 
 use graphene::layers::style;
-use graphene::layers::vector::{constants::ControlPointType, vector_anchor::VectorAnchor, vector_shape::VectorShape};
+use graphene::layers::vector::constants::ControlPointType;
+use graphene::layers::vector::vector_anchor::VectorAnchor;
+use graphene::layers::vector::vector_shape::VectorShape;
 use graphene::Operation;
 
 use glam::{DAffine2, DVec2};
@@ -383,7 +385,7 @@ impl Fsm for PenToolFsmState {
 				HintGroup(vec![HintInfo {
 					key_groups: vec![KeysGroup(vec![Key::KeyShift])],
 					mouse: None,
-					label: String::from("Break handle"),
+					label: String::from("Break Handle"),
 					plus: false,
 				}]),
 				HintGroup(vec![HintInfo {
@@ -403,6 +405,7 @@ impl Fsm for PenToolFsmState {
 	}
 }
 
+// TODO: Expand `pos` name below to the full word (position?)
 /// Snap the angle of the line from relative to pos if the key is pressed
 fn compute_snapped_angle(input: &InputPreprocessorMessageHandler, key: Key, pos: DVec2, relative: DVec2) -> DVec2 {
 	if input.keyboard.get(key as usize) {

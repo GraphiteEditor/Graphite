@@ -1,8 +1,8 @@
-use super::{constants::ControlPointType, vector_anchor::VectorAnchor, vector_control_point::VectorControlPoint};
-use crate::layers::{
-	id_vec::IdBackedVec,
-	layer_info::{Layer, LayerDataType},
-};
+use super::constants::ControlPointType;
+use super::vector_anchor::VectorAnchor;
+use super::vector_control_point::VectorControlPoint;
+use crate::layers::id_vec::IdBackedVec;
+use crate::layers::layer_info::{Layer, LayerDataType};
 
 use glam::{DAffine2, DVec2};
 use kurbo::{BezPath, PathEl, Rect, Shape};

@@ -1,16 +1,18 @@
-use std::collections::{HashMap, VecDeque};
+use super::constants::ROUNDING_BIAS;
+use super::vector_anchor::VectorAnchor;
+use super::vector_control_point::VectorControlPoint;
+use crate::consts::{COLOR_ACCENT, PATH_OUTLINE_WEIGHT, VECTOR_MANIPULATOR_ANCHOR_MARKER_SIZE};
+use crate::message_prelude::{generate_uuid, DocumentMessage, Message};
+
+use graphene::color::Color;
+use graphene::document::Document;
+use graphene::layers::style::{self, Fill, Stroke};
+use graphene::layers::vector::constants::ControlPointType;
+use graphene::layers::vector::vector_shape::VectorShape;
+use graphene::{LayerId, Operation};
 
 use glam::{DAffine2, DVec2};
-
-use crate::{
-	consts::{COLOR_ACCENT, PATH_OUTLINE_WEIGHT, VECTOR_MANIPULATOR_ANCHOR_MARKER_SIZE},
-	message_prelude::{generate_uuid, DocumentMessage, Message},
-};
-
-use super::{constants::ROUNDING_BIAS, vector_anchor::VectorAnchor, vector_control_point::VectorControlPoint};
-use graphene::layers::style::{self, Fill, Stroke};
-use graphene::layers::vector::{constants::ControlPointType, vector_shape::VectorShape};
-use graphene::{color::Color, document::Document, LayerId, Operation};
+use std::collections::{HashMap, VecDeque};
 
 /// AnchorOverlay is the collection of overlays that make up an anchor
 /// Notably the anchor point, handles and the lines for the handles

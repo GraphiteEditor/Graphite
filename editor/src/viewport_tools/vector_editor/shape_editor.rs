@@ -7,17 +7,17 @@
 //      /                 \
 //  VectorAnchor ...  VectorAnchor <- VectorShape contains many VectorAnchors
 
-use std::collections::VecDeque;
-
+use super::vector_anchor::VectorAnchor;
+use super::vector_control_point::VectorControlPoint;
+use super::vector_shape::VectorShape;
 use crate::message_prelude::{DocumentMessage, Message};
 
-use super::vector_shape::VectorShape;
-use super::{vector_anchor::VectorAnchor, vector_control_point::VectorControlPoint};
+use graphene::layers::vector::constants::ControlPointType;
+use graphene::{LayerId, Operation};
 
 use glam::DVec2;
 use graphene::document::Document;
-use graphene::layers::vector::constants::ControlPointType;
-use graphene::{LayerId, Operation};
+use std::collections::VecDeque;
 
 /// ShapeEditor is the container for all of the layer paths that are
 /// represented as VectorShapes and provides functionality required

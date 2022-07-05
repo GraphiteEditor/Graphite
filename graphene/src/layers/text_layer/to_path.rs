@@ -1,8 +1,11 @@
+use crate::layers::vector::constants::ControlPointType;
+use crate::layers::vector::vector_anchor::VectorAnchor;
+use crate::layers::vector::vector_control_point::VectorControlPoint;
+use crate::layers::vector::vector_shape::VectorShape;
+
 use glam::DVec2;
 use rustybuzz::{GlyphBuffer, UnicodeBuffer};
 use ttf_parser::{GlyphId, OutlineBuilder};
-
-use crate::layers::vector::{constants::ControlPointType, vector_anchor::VectorAnchor, vector_control_point::VectorControlPoint, vector_shape::VectorShape};
 
 struct Builder {
 	path: VectorShape,
