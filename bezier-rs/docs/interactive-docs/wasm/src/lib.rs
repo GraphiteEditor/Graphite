@@ -118,7 +118,12 @@ impl WasmBezier {
 	}
 
 	pub fn hull(&self, t: f64) -> JsValue {
-		let hull = self.0.hull(t);
+		let hull = self
+			.0
+			.hull(t)
+			.iter()
+			.map(|level| level.iter().map(|&point| Point { x: point.x, y: point.y }).collect::<Vec<Point>>())
+			.collect::<Vec<Vec<Point>>>();
 		JsValue::from_serde(&serde_json::to_string(&hull).unwrap()).unwrap()
 	}
 }

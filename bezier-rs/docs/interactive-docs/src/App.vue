@@ -240,17 +240,15 @@ export default defineComponent({
 				{
 					name: "Hull",
 					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: Record<string, number>): void => {
-						const hullPoints: number[][][] = JSON.parse(bezier.hull(options.t));
-						hullPoints.forEach((iteration: number[][], iterationNumber: number) => {
-							iteration.forEach((point: number[], index) => {
-								const newPoint: Point = { x: point[0], y: point[1] };
-								drawPoint(getContextFromCanvas(canvas), newPoint, 3, COLORS.NON_INTERACTIVE.STROKE_1);
-								// avoid drawing lines for the first iteration (start, end and handle points)
-								if (iterationNumber === 0 || index === 0) {
+						const hullPoints: Point[][] = JSON.parse(bezier.hull(options.t));
+						hullPoints.forEach((iteration: Point[]) => {
+							iteration.forEach((point: Point, index) => {
+								drawPoint(getContextFromCanvas(canvas), point, 3, COLORS.NON_INTERACTIVE.STROKE_1);
+								if (index === 0) {
 									return;
 								}
-								const prevPoint: Point = { x: iteration[index - 1][0], y: iteration[index - 1][1] };
-								drawLine(getContextFromCanvas(canvas), newPoint, prevPoint, COLORS.NON_INTERACTIVE.STROKE_1);
+								const prevPoint: Point = iteration[index - 1];
+								drawLine(getContextFromCanvas(canvas), point, prevPoint, COLORS.NON_INTERACTIVE.STROKE_1);
 							});
 						});
 					},
@@ -258,8 +256,8 @@ export default defineComponent({
 					templateOptions: {
 						sliders: [
 							{
-								min: 0.01,
-								max: 0.99,
+								min: 0,
+								max: 1,
 								step: 0.01,
 								default: 0.5,
 								variable: "t",
