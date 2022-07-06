@@ -1,12 +1,12 @@
 //! Bezier-rs: A Bezier Math Library for Rust
 
 mod consts;
-use consts::*;
 mod utils;
 
+use consts::*;
 use glam::{DMat2, DVec2};
 
-/// Representation of the handle point(s) in a bezier curve.
+/// Representation of the handle point(s) in a bezier segment.
 #[derive(Copy, Clone)]
 enum BezierHandles {
 	/// Handles for a quadratic curve.
@@ -567,6 +567,92 @@ impl Bezier {
 			.map(|&t| self.unrestricted_compute(t))
 			.filter(|&point| utils::dvec2_approximately_in_range(point, min, max, MAX_ABSOLUTE_DIFFERENCE).all())
 			.collect::<Vec<DVec2>>()
+	}
+
+	/// Determine if it is possible to scale the given curve, using the following conditions:
+	/// 1. All the control points are located on a single side of the curve.
+	/// 2. The on-curve point for `t = 0.5` must occur roughly in the center of the polygon defined by the curve's endpoint normals.
+	/// See [the offset section](https://pomax.github.io/bezierinfo/#offsetting) of Pomax's bezier curve primer for more details.
+	fn is_scalable(&self) -> bool {
+		// Verify all the control points are located on a single side of the curve.
+		if let BezierHandles::Cubic { handle_start, handle_end } = self.handles {
+			let angle_1 = (self.end - self.start).angle_between(handle_start - self.start);
+			let angle_2 = (self.end - self.start).angle_between(handle_end - self.start);
+			if (angle_1 > 0. && angle_2 < 0.) || (angle_1 < 0. && angle_2 > 0.) {
+				return false;
+			}
+		}
+		// Verify the angle formed by the endpoint normals is sufficiently small, ensuring the on-curve point for `t = 0.5` occurs roughly in the center of the polygon.
+		let normal_0 = self.normal(0.);
+		let normal_1 = self.normal(1.);
+		let endpoint_normal_angle = (normal_0.x * normal_1.x + normal_0.y * normal_1.y).acos();
+		endpoint_normal_angle < SCALABLE_CURVE_MAX_ENDPOINT_NORMAL_ANGLE
+	}
+
+	/// Split the curve into a number of scalable subcurves. This function may introduce gaps if subsections of the curve are not reducible.
+	/// The function takes the following parameter:
+	/// - `step_size` - Dictates the granularity at which the function searches for reducible subcurves. The default value is `0.01`.
+	///   A small granularity may increase the chance the function does not introduce gaps, but will increase computation time.
+	pub fn reduce(&self, step_size: Option<f64>) -> Vec<Bezier> {
+		let step_size = step_size.unwrap_or(REDUCE_STEP_SIZE_DEFAULT);
+
+		let mut extrema: Vec<f64> = self.local_extrema().into_iter().flatten().collect::<Vec<f64>>();
+		extrema.append(&mut vec![0., 1.]);
+		extrema.dedup();
+		extrema.sort_by(|ex1, ex2| ex1.partial_cmp(ex2).unwrap());
+
+		// Split the curve on the extremas. Simplifies procedure for ensuring each curve can be scaled.
+		let mut subcurves = Vec::new();
+		let mut t1: f64 = extrema[0];
+		for t2 in extrema.iter().skip(1) {
+			subcurves.push(self.trim(t1, *t2));
+			t1 = *t2;
+		}
+
+		// Split each subcurve such that each resulting segment is scalable.
+		let mut result: Vec<Bezier> = Vec::new();
+		subcurves.iter().for_each(|&subcurve| {
+			// Perform no processing on the subcurve if it's already scalable.
+			if subcurve.is_scalable() {
+				result.push(subcurve);
+				return;
+			}
+			// According to <https://pomax.github.io/bezierinfo/#offsetting>, it is generally sufficient to split subcurves with no local extrema at `t = 0.5` to generate two scalable segments.
+			let [first_half, second_half] = subcurve.split(0.5);
+			if first_half.is_scalable() && second_half.is_scalable() {
+				result.push(first_half);
+				result.push(second_half);
+				return;
+			}
+
+			// Greedily iterate across the subcurve at intervals of size `step_size` to break up the curve into maximally large segments
+			let mut segment: Bezier;
+			let mut t1 = 0.;
+			let mut t2 = step_size;
+			while t2 <= 1. + step_size {
+				segment = subcurve.trim(t1, f64::min(t2, 1.));
+				if !segment.is_scalable() {
+					t2 -= step_size;
+
+					// If the previous step does not exist, the start of the subcurve is irreducible.
+					// Otherwise, add the valid segment from the previous step to the result.
+					if f64::abs(t1 - t2) >= step_size {
+						segment = subcurve.trim(t1, t2);
+						result.push(segment);
+					}
+					t1 = t2;
+				}
+				t2 += step_size;
+			}
+			// Collect final remainder of the curve.
+			if t1 < 1. {
+				segment = subcurve.trim(t1, 1.);
+				if segment.is_scalable() {
+					result.push(segment);
+				}
+			}
+		});
+		result
 	}
 }
 

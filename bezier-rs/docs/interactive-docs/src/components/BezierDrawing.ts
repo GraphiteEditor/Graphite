@@ -59,10 +59,9 @@ class BezierDrawing {
 
 		this.dragIndex = null; // Index of the point being moved
 
-		this.canvas.addEventListener("mousedown", this.mouseDownHandler.bind(this));
-		this.canvas.addEventListener("mousemove", this.mouseMoveHandler.bind(this));
-		this.canvas.addEventListener("mouseup", this.deselectPointHandler.bind(this));
-		this.canvas.addEventListener("mouseout", this.deselectPointHandler.bind(this));
+		this.canvas.addEventListener("mousedown", (e) => this.mouseDownHandler(e));
+		this.canvas.addEventListener("mousemove", (e) => this.mouseMoveHandler(e));
+		this.canvas.addEventListener("mouseup", () => this.deselectPointHandler());
 		this.updateBezier();
 	}
 
@@ -71,6 +70,11 @@ class BezierDrawing {
 	}
 
 	mouseMoveHandler(evt: MouseEvent): void {
+		if (evt.buttons === 0) {
+			this.deselectPointHandler();
+			return;
+		}
+
 		const mx = evt.offsetX;
 		const my = evt.offsetY;
 
