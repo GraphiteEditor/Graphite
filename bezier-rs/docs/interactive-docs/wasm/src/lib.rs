@@ -1,4 +1,4 @@
-use bezier_rs::{Bezier, ProjectionOptionsBuilder};
+use bezier_rs::{Bezier, ProjectionOptions};
 use glam::DVec2;
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
@@ -100,7 +100,7 @@ impl WasmBezier {
 	}
 
 	pub fn project(&self, x: f64, y: f64) -> JsValue {
-		vec_to_point(&self.0.project(DVec2::new(x, y), ProjectionOptionsBuilder::default().build().unwrap()))
+		vec_to_point(&self.0.project(DVec2::new(x, y), ProjectionOptions::default()))
 	}
 
 	pub fn local_extrema(&self) -> JsValue {

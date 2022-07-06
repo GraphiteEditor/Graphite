@@ -2,9 +2,6 @@
 
 mod utils;
 
-#[macro_use]
-extern crate derive_builder;
-
 use glam::{DMat2, DVec2};
 
 /// Representation of the handle point(s) in a bezier curve.
@@ -25,20 +22,27 @@ enum BezierHandles {
 }
 
 /// Struct to represent optional parameters that can be passed to the `project` function.
-#[derive(Builder, Copy, Clone)]
+#[derive(Copy, Clone)]
 pub struct ProjectionOptions {
 	/// Size of the lookup table for the initial passthrough. The default value is 20.
-	#[builder(default = "20")]
 	pub lut_size: i32,
 	/// Difference used between floating point numbers to be considered as equal. The default value is `0.0001`
-	#[builder(default = "1e-4")]
 	pub convergence_epsilon: f64,
 	/// Controls the number of iterations needed to consider that minimum distance to have converged. The default value is 3.
-	#[builder(default = "3")]
 	pub convergence_limit: i32,
 	/// Controls the maximum total number of iterations to be used. The default value is 10.
-	#[builder(default = "10")]
 	pub iteration_limit: i32,
+}
+
+impl Default for ProjectionOptions {
+	fn default() -> Self {
+		ProjectionOptions {
+			lut_size: 20,
+			convergence_epsilon: 1e-4,
+			convergence_limit: 3,
+			iteration_limit: 10,
+		}
+	}
 }
 
 /// Representation of a bezier curve with 2D points.
@@ -612,7 +616,7 @@ mod tests {
 
 	#[test]
 	fn project() {
-		let project_options = ProjectionOptionsBuilder::default().build().unwrap();
+		let project_options = ProjectionOptions::default();
 
 		let bezier1 = Bezier::from_cubic_coordinates(4., 4., 23., 45., 10., 30., 56., 90.);
 		assert!(bezier1.project(DVec2::new(100., 100.), project_options) == DVec2::new(56., 90.));

@@ -12,4 +12,3 @@ license = "Apache-2.0"
 
 [dependencies]
 glam = { version = "0.17", features = ["serde"] }
-derive_builder = "0.11.2"
