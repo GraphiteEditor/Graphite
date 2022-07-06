@@ -295,7 +295,7 @@ export default defineComponent({
 						const context = getContextFromCanvas(canvas);
 						const curves: Point[][] = JSON.parse(bezier.reduce());
 						curves.forEach((points, index) => {
-							drawBezier(context, points, null, { curveStrokeColor: `hsl(${20 * index},100%,50%)`, radius: 3.5, drawHandles: false });
+							drawBezier(context, points, null, { curveStrokeColor: `hsl(${20 * index}, 100%, 50%)`, radius: 3.5, drawHandles: false });
 						});
 					},
 				},

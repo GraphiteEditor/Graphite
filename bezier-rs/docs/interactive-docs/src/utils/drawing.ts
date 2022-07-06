@@ -73,7 +73,7 @@ export const drawBezier = (ctx: CanvasRenderingContext2D, points: Point[], dragI
 		drawHandles: true,
 		...bezierStyleConfig,
 	};
-	// if the handle or handle line colors are not specified, use the same color as the rest of the curve
+	// If the handle or handle line colors are not specified, use the same color as the rest of the curve
 	if (bezierStyleConfig.curveStrokeColor) {
 		if (!bezierStyleConfig.handleStrokeColor) {
 			styleConfig.handleStrokeColor = bezierStyleConfig.curveStrokeColor;
