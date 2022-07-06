@@ -84,7 +84,7 @@ impl WasmBezier {
 	}
 
 	pub fn length(&self) -> f64 {
-		self.0.length()
+		self.0.length(None)
 	}
 
 	pub fn compute(&self, t: f64) -> JsValue {

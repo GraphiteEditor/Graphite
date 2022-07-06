@@ -12,7 +12,7 @@
 <script lang="ts">
 import { defineComponent, PropType, Component } from "vue";
 
-import { BezierCallback, TemplateOption, WasmBezierInstance, WasmRawInstance } from "@/utils/types";
+import { BezierCallback, BezierCurveType, TemplateOption, WasmBezierInstance, WasmRawInstance } from "@/utils/types";
 
 import Example from "@/components/Example.vue";
 
@@ -20,6 +20,10 @@ type ExampleData = {
 	title: string;
 	bezier: WasmBezierInstance;
 	templateOptions: TemplateOption;
+};
+
+type CustomPoints = {
+	[key in BezierCurveType]: number[][];
 };
 
 export default defineComponent({
@@ -47,8 +51,12 @@ export default defineComponent({
 			default: false,
 		},
 		curveDegrees: {
-			type: Set as PropType<Set<number>>,
-			default: () => new Set([1, 2, 3]),
+			type: Set as PropType<Set<BezierCurveType>>,
+			default: () => new Set(Object.values(BezierCurveType)),
+		},
+		customPoints: {
+			type: Object as PropType<CustomPoints>,
+			default: () => ({}),
 		},
 	},
 	data() {
@@ -74,24 +82,24 @@ export default defineComponent({
 				[160, 160],
 			];
 			this.exampleData = [];
-			if (this.curveDegrees.has(1)) {
+			if (this.curveDegrees.has(BezierCurveType.Linear)) {
 				this.exampleData.push({
 					title: "Linear",
-					bezier: wasm.WasmBezier.new_linear(linearPoints),
+					bezier: wasm.WasmBezier.new_linear(this.customPoints[BezierCurveType.Linear] || linearPoints),
 					templateOptions: this.templateOptions as TemplateOption,
 				});
 			}
-			if (this.curveDegrees.has(2)) {
+			if (this.curveDegrees.has(BezierCurveType.Quadratic)) {
 				this.exampleData.push({
 					title: "Quadratic",
-					bezier: wasm.WasmBezier.new_quadratic(quadraticPoints),
+					bezier: wasm.WasmBezier.new_quadratic(this.customPoints[BezierCurveType.Quadratic] || quadraticPoints),
 					templateOptions: this.templateOptions as TemplateOption,
 				});
 			}
-			if (this.curveDegrees.has(3)) {
+			if (this.curveDegrees.has(BezierCurveType.Cubic)) {
 				this.exampleData.push({
 					title: "Cubic",
-					bezier: wasm.WasmBezier.new_cubic(cubicPoints),
+					bezier: wasm.WasmBezier.new_cubic(this.customPoints[BezierCurveType.Cubic] || cubicPoints),
 					templateOptions: (this.cubicOptions || this.templateOptions) as TemplateOption,
 				});
 			}

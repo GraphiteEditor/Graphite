@@ -28,9 +28,9 @@ export const getContextFromCanvas = (canvas: HTMLCanvasElement): CanvasRendering
 	return ctx;
 };
 
-export const drawLine = (ctx: CanvasRenderingContext2D, point1: Point, point2: Point, strokeColor = COLORS.INTERACTIVE.STROKE_2): void => {
+export const drawLine = (ctx: CanvasRenderingContext2D, point1: Point, point2: Point, strokeColor = COLORS.INTERACTIVE.STROKE_2, lineWidth = 1): void => {
 	ctx.strokeStyle = strokeColor;
-	ctx.lineWidth = 1;
+	ctx.lineWidth = lineWidth;
 
 	ctx.beginPath();
 	ctx.moveTo(point1.x, point1.y);
@@ -120,7 +120,7 @@ export const drawBezier = (ctx: CanvasRenderingContext2D, points: Point[], dragI
 	}
 
 	if (points.length === 2) {
-		drawLine(ctx, start, end, styleConfig.curveStrokeColor);
+		drawLine(ctx, start, end, styleConfig.curveStrokeColor, 2);
 	} else {
 		drawCurve(ctx, points, styleConfig.curveStrokeColor);
 		if (styleConfig.drawHandles) {

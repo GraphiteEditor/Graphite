@@ -78,14 +78,11 @@ class BezierDrawing {
 	}
 
 	mouseMoveHandler(evt: MouseEvent): void {
-		if (evt.buttons === 0) {
-			this.deselectPointHandler();
-			return;
-		}
-
 		const mx = evt.offsetX;
 		const my = evt.offsetY;
-
+		if (evt.buttons === 0) {
+			this.deselectPointHandler();
+		}
 		if (this.dragIndex !== null) {
 			const selectableRange = getPointSizeByIndex(this.dragIndex, this.points.length);
 			if (mx - selectableRange > 0 && my - selectableRange > 0 && mx + selectableRange < this.canvas.width && my + selectableRange < this.canvas.height) {

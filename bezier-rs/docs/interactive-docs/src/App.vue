@@ -9,6 +9,7 @@
 				:name="feature.name"
 				:callback="feature.callback"
 				:curveDegrees="feature.curveDegrees"
+				:customPoints="feature.customPoints"
 				:createThroughPoints="feature.createThroughPoints"
 				:cubicOptions="feature.cubicOptions"
 			/>
@@ -20,7 +21,7 @@
 import { defineComponent, markRaw } from "vue";
 
 import { drawText, drawPoint, drawBezier, drawLine, getContextFromCanvas, drawBezierHelper, COLORS } from "@/utils/drawing";
-import { Point, WasmBezierInstance } from "@/utils/types";
+import { BezierCurveType, Point, WasmBezierInstance } from "@/utils/types";
 
 import ExamplePane from "@/components/ExamplePane.vue";
 import SliderExample from "@/components/SliderExample.vue";
@@ -52,7 +53,7 @@ export default defineComponent({
 					name: "Bezier Through Points",
 					// eslint-disable-next-line
 					callback: (): void => {},
-					curveDegrees: new Set([2, 3]),
+					curveDegrees: new Set([BezierCurveType.Quadratic, BezierCurveType.Cubic]),
 					createThroughPoints: true,
 					template: markRaw(SliderExample),
 					templateOptions: {
@@ -78,10 +79,17 @@ export default defineComponent({
 							{
 								min: 0,
 								max: 100,
-								step: 5,
-								default: 10,
+								step: 2,
+								default: 30,
 								variable: "midpoint separation",
 							},
+						],
+					},
+					customPoints: {
+						[BezierCurveType.Quadratic]: [
+							[30, 50],
+							[120, 70],
+							[160, 170],
 						],
 					},
 				},
@@ -138,7 +146,20 @@ export default defineComponent({
 							}
 						}
 					},
-					curveDegrees: new Set([2, 3]),
+					curveDegrees: new Set([BezierCurveType.Quadratic, BezierCurveType.Cubic]),
+					customPoints: {
+						[BezierCurveType.Quadratic]: [
+							[30, 40],
+							[110, 50],
+							[120, 130],
+						],
+						[BezierCurveType.Cubic]: [
+							[50, 50],
+							[60, 100],
+							[100, 140],
+							[140, 150],
+						],
+					},
 				},
 				{
 					name: "Tangent",
@@ -262,8 +283,8 @@ export default defineComponent({
 								variable: "angle",
 								min: 0,
 								max: 2,
-								step: 1 / 16,
-								default: 1 / 8,
+								step: 1 / 50,
+								default: 0.12,
 								unit: "π",
 							},
 						],

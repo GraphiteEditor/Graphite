@@ -193,7 +193,7 @@ impl Bezier {
 		self.end = e;
 	}
 
-	/// Set the coordinates of the first handle point. This represents the only handle in a quadratic segment.
+	/// Set the coordinates of the first handle point. This represents the only handle in a quadratic segment. If used on a linear segment, it will be changed to a quadratic.
 	pub fn set_handle_start(&mut self, h1: DVec2) {
 		match self.handles {
 			BezierHandles::Linear => {
@@ -208,7 +208,7 @@ impl Bezier {
 		};
 	}
 
-	/// Set the coordinates of the second handle point. This will convert both linear and quadratic segments into cubic ones. For the linear segment, the first handle will be set to the start point.
+	/// Set the coordinates of the second handle point. This will convert both linear and quadratic segments into cubic ones. For a linear segment, the first handle will be set to the start point.
 	pub fn set_handle_end(&mut self, h2: DVec2) {
 		match self.handles {
 			BezierHandles::Linear => {
@@ -306,17 +306,17 @@ impl Bezier {
 	}
 
 	/// Return an approximation of the length of the bezier curve.
-	pub fn length(&self) -> f64 {
+	/// - `num_subdivisions` - Number of subdivisions used to approximate the curve. The default value is 1000.
+	pub fn length(&self, num_subdivisions: Option<i32>) -> f64 {
+		// Code example from <https://gamedev.stackexchange.com/questions/5373/moving-ships-between-two-planets-along-a-bezier-missing-some-equations-for-acce/5427#5427>.
 		match self.handles {
 			BezierHandles::Linear => self.start.distance(self.end),
 			_ => {
-				// Code example from <https://gamedev.stackexchange.com/questions/5373/moving-ships-between-two-planets-along-a-bezier-missing-some-equations-for-acce/5427#5427>.
-
 				// We will use an approximate approach where
 				// we split the curve into many subdivisions
 				// and calculate the euclidean distance between the two endpoints of the subdivision
 
-				let lookup_table = self.compute_lookup_table(Some(LENGTH_SUBDIVISIONS));
+				let lookup_table = self.compute_lookup_table(Some(num_subdivisions.unwrap_or(DEFAULT_LENGTH_SUBDIVISIONS)));
 				let mut approx_curve_length = 0.0;
 				let mut prev_point = lookup_table[0];
 				// calculate approximate distance between subdivision
@@ -332,7 +332,7 @@ impl Bezier {
 		}
 	}
 
-	/// Returns a vector representing the derivative at the point designated by `t` on the curve.
+	/// Returns a Bezier representing the derivative of the original curve.
 	/// Note that this function will return `None` for a linear segment.
 	pub fn derivative(&self) -> Option<Bezier> {
 		match self.handles {
@@ -653,7 +653,7 @@ impl Bezier {
 			return vec![*self];
 		}
 
-		let step_size = step_size.unwrap_or(REDUCE_STEP_SIZE_DEFAULT);
+		let step_size = step_size.unwrap_or(DEFAULT_REDUCE_STEP_SIZE);
 
 		let mut extrema: Vec<f64> = self.local_extrema().into_iter().flatten().collect::<Vec<f64>>();
 		extrema.append(&mut vec![0., 1.]);
