@@ -20,15 +20,6 @@ export const isIndexFirstOrLast = (index: number, arrayLength: number): boolean 
 
 export const getPointSizeByIndex = (index: number, numPoints: number, radius = DEFAULT_ENDPOINT_RADIUS): number => (isIndexFirstOrLast(index, numPoints) ? radius : radius * HANDLE_RADIUS_FACTOR);
 
-// Based on an `index`, generate a color from the light spectrum such that sequential indices generate sequential colors.
-// Frequency parameter is proportional to the rate at which the colors shift through the spectrum. Generated colours are periodic in `index`.
-export const getSpectrumColor = (index: number, frequency = 0.5): string => {
-	const red = (Math.round(Math.sin(frequency * index - 2) * 127) + 128).toString(16).padStart(2, "0");
-	const green = (Math.round(Math.sin(frequency * index - 4) * 127) + 128).toString(16).padStart(2, "0");
-	const blue = (Math.round(Math.sin(frequency * index - 6) * 127) + 128).toString(16).padStart(2, "0");
-	return `#${red}${green}${blue}`.toUpperCase();
-};
-
 export const getContextFromCanvas = (canvas: HTMLCanvasElement): CanvasRenderingContext2D => {
 	const ctx = canvas.getContext("2d");
 	if (ctx === null) {

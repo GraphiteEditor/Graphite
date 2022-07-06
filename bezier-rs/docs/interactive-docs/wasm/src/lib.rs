@@ -24,7 +24,7 @@ fn bezier_to_points(bezier: Bezier) -> Vec<Point> {
 	bezier.get_points().iter().flatten().map(|point| Point { x: point.x, y: point.y }).collect()
 }
 
-/// Serialize some data and convert to a JsValue
+/// Serialize some data and then and convert it to a JsValue.
 fn to_js_value<T: Serialize>(data: T) -> JsValue {
 	JsValue::from_serde(&serde_json::to_string(&data).unwrap()).unwrap()
 }
