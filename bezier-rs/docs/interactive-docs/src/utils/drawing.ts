@@ -70,9 +70,10 @@ export const drawBezier = (ctx: CanvasRenderingContext2D, points: Point[], dragI
 		handleStrokeColor: COLORS.INTERACTIVE.STROKE_1,
 		handleLineStrokeColor: COLORS.INTERACTIVE.STROKE_1,
 		radius: DEFAULT_ENDPOINT_RADIUS,
+		drawHandles: true,
 		...bezierStyleConfig,
 	};
-	// if the handle or handle line colors are not specified, use the same colour as the rest of the curve
+	// If the handle or handle line colors are not specified, use the same color as the rest of the curve
 	if (bezierStyleConfig.curveStrokeColor) {
 		if (!bezierStyleConfig.handleStrokeColor) {
 			styleConfig.handleStrokeColor = bezierStyleConfig.curveStrokeColor;
@@ -112,11 +113,15 @@ export const drawBezier = (ctx: CanvasRenderingContext2D, points: Point[], dragI
 	}
 	ctx.stroke();
 
-	drawLine(ctx, start, handleStart, styleConfig.handleLineStrokeColor);
-	drawLine(ctx, end, handleEnd, styleConfig.handleLineStrokeColor);
+	if (styleConfig.drawHandles) {
+		drawLine(ctx, start, handleStart, styleConfig.handleLineStrokeColor);
+		drawLine(ctx, end, handleEnd, styleConfig.handleLineStrokeColor);
+	}
 
 	points.forEach((point, index) => {
-		const strokeColor = isIndexFirstOrLast(index, points.length) ? styleConfig.curveStrokeColor : styleConfig.handleStrokeColor;
-		drawPoint(ctx, point, getPointSizeByIndex(index, points.length, styleConfig.radius), index === dragIndex ? COLORS.INTERACTIVE.SELECTED : strokeColor);
+		if (styleConfig.drawHandles || isIndexFirstOrLast(index, points.length)) {
+			const strokeColor = isIndexFirstOrLast(index, points.length) ? styleConfig.curveStrokeColor : styleConfig.handleStrokeColor;
+			drawPoint(ctx, point, getPointSizeByIndex(index, points.length, styleConfig.radius), index === dragIndex ? COLORS.INTERACTIVE.SELECTED : strokeColor);
+		}
 	});
 };

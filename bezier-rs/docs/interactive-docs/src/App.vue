@@ -266,6 +266,16 @@ export default defineComponent({
 						});
 					},
 				},
+				{
+					name: "Reduce",
+					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance): void => {
+						const context = getContextFromCanvas(canvas);
+						const curves: Point[][] = JSON.parse(bezier.reduce());
+						curves.forEach((points, index) => {
+							drawBezier(context, points, null, { curveStrokeColor: `hsl(${40 * index}, 100%, 50%)`, radius: 3.5, drawHandles: false });
+						});
+					},
+				},
 			],
 		};
 	},
