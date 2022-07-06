@@ -1,5 +1,7 @@
 //! Bezier-rs: A Bezier Math Library for Rust
 
+mod consts;
+use consts::*;
 mod utils;
 
 use glam::{DMat2, DVec2};
@@ -103,7 +105,7 @@ impl Bezier {
 	/// Note that when `t = 0` or `t = 1`, the expectation is that the `point_on_curve` should be equal to `start` and `end` respectively.
 	/// In these cases, if the provided values are not equal, this function will use the `point_on_curve` as the `start`/`end` instead.
 	pub fn quadratic_through_points(start: DVec2, point_on_curve: DVec2, end: DVec2, t: Option<f64>) -> Self {
-		let t = t.unwrap_or(0.5);
+		let t = t.unwrap_or(DEFAULT_T_VALUE);
 		if t == 0. {
 			return Bezier::from_quadratic_dvec2(point_on_curve, point_on_curve, end);
 		}
@@ -120,7 +122,7 @@ impl Bezier {
 	/// In these cases, if the provided values are not equal, this function will use the `point_on_curve` as the `start`/`end` instead.
 	/// - `midpoint_separation` - A representation of how wide the resulting curve will be around `t` on the curve. This parameter designates the distance between the `e1` and `e2` defined in [the projection identity section](https://pomax.github.io/bezierinfo/#abc) of Pomax's bezier curve primer. It is an optional parameter and the default value is the distance between the points `B` and `C` defined in the primer.
 	pub fn cubic_through_points(start: DVec2, point_on_curve: DVec2, end: DVec2, t: Option<f64>, midpoint_separation: Option<f64>) -> Self {
-		let t = t.unwrap_or(0.5);
+		let t = t.unwrap_or(DEFAULT_T_VALUE);
 		if t == 0. {
 			return Bezier::from_cubic_dvec2(point_on_curve, point_on_curve, end, end);
 		}
@@ -257,7 +259,7 @@ impl Bezier {
 	/// Return a selection of equidistant points on the bezier curve.
 	/// If no value is provided for `steps`, then the function will default `steps` to be 10.
 	pub fn compute_lookup_table(&self, steps: Option<i32>) -> Vec<DVec2> {
-		let steps_unwrapped = steps.unwrap_or(10);
+		let steps_unwrapped = steps.unwrap_or(DEFAULT_LUT_STEP_SIZE);
 		let ratio: f64 = 1.0 / (steps_unwrapped as f64);
 		let mut steps_array = Vec::with_capacity((steps_unwrapped + 1) as usize);
 
@@ -275,9 +277,7 @@ impl Bezier {
 		// We will use an approximate approach where
 		// we split the curve into many subdivisions
 		// and calculate the euclidean distance between the two endpoints of the subdivision
-		const SUBDIVISIONS: i32 = 1000;
-
-		let lookup_table = self.compute_lookup_table(Some(SUBDIVISIONS));
+		let lookup_table = self.compute_lookup_table(Some(LENGTH_SUBDIVISIONS));
 		let mut approx_curve_length = 0.0;
 		let mut prev_point = lookup_table[0];
 		// calculate approximate distance between subdivision
@@ -400,8 +400,8 @@ impl Bezier {
 		let mut iteration_count = 0;
 		// Counter to identify how many iterations have had a similar result. Used for convergence test
 		let mut convergence_count = 0;
+
 		// Store calculated distances to minimize unnecessary recomputations
-		const NUM_DISTANCES: usize = 5;
 		let mut distances: [f64; NUM_DISTANCES] = [
 			point.distance(lut[0.max(minimum_position - 1) as usize]),
 			0.,
@@ -560,13 +560,12 @@ impl Bezier {
 		};
 		let min = line[0].min(line[1]);
 		let max = line[0].max(line[1]);
-		let max_abs_diff = 1e-4;
 
 		list_intersection_t
 			.iter()
-			.filter(|&&t| utils::f64_approximately_in_range(t, 0., 1., max_abs_diff))
+			.filter(|&&t| utils::f64_approximately_in_range(t, 0., 1., MAX_ABSOLUTE_DIFFERENCE))
 			.map(|&t| self.unrestricted_compute(t))
-			.filter(|&point| utils::dvec2_approximately_in_range(point, min, max, max_abs_diff).all())
+			.filter(|&point| utils::dvec2_approximately_in_range(point, min, max, MAX_ABSOLUTE_DIFFERENCE).all())
 			.collect::<Vec<DVec2>>()
 	}
 }
@@ -574,12 +573,13 @@ impl Bezier {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::consts::MAX_ABSOLUTE_DIFFERENCE;
 	use crate::utils;
 
 	use glam::DVec2;
 
 	fn compare_points(p1: DVec2, p2: DVec2) -> bool {
-		utils::dvec2_compare(p1, p2, 1e-3).all()
+		utils::dvec2_compare(p1, p2, MAX_ABSOLUTE_DIFFERENCE).all()
 	}
 
 	#[test]

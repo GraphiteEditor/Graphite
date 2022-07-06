@@ -256,7 +256,7 @@ export default defineComponent({
 						const context = getContextFromCanvas(canvas);
 						const line = [
 							{ x: 150, y: 150 },
-							{ x: 30, y: 30 },
+							{ x: 20, y: 20 },
 						];
 						const mappedLine = line.map((p) => [p.x, p.y]);
 						drawLine(context, line[0], line[1], COLORS.NON_INTERACTIVE.STROKE_1);
