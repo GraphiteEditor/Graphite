@@ -1,4 +1,4 @@
-use bezier_rs::Bezier;
+use bezier_rs::{Bezier, ProjectionOptions};
 use glam::DVec2;
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
@@ -35,12 +35,12 @@ impl WasmBezier {
 
 	pub fn quadratic_through_points(js_points: &JsValue, t: f64) -> WasmBezier {
 		let points: [DVec2; 3] = js_points.into_serde().unwrap();
-		WasmBezier(Bezier::quadratic_through_points(points[0], points[1], points[2], t))
+		WasmBezier(Bezier::quadratic_through_points(points[0], points[1], points[2], Some(t)))
 	}
 
 	pub fn cubic_through_points(js_points: &JsValue, t: f64, midpoint_separation: f64) -> WasmBezier {
 		let points: [DVec2; 3] = js_points.into_serde().unwrap();
-		WasmBezier(Bezier::cubic_through_points(points[0], points[1], points[2], t, midpoint_separation))
+		WasmBezier(Bezier::cubic_through_points(points[0], points[1], points[2], Some(t), Some(midpoint_separation)))
 	}
 
 	pub fn set_start(&mut self, x: f64, y: f64) {
@@ -79,8 +79,8 @@ impl WasmBezier {
 		self.0.compute_lookup_table(Some(steps)).iter().map(vec_to_point).collect()
 	}
 
-	pub fn derivative(&self, t: f64) -> JsValue {
-		vec_to_point(&self.0.derivative(t))
+	pub fn tangent(&self, t: f64) -> JsValue {
+		vec_to_point(&self.0.tangent(t))
 	}
 
 	pub fn normal(&self, t: f64) -> JsValue {
@@ -100,7 +100,7 @@ impl WasmBezier {
 	}
 
 	pub fn project(&self, x: f64, y: f64) -> JsValue {
-		vec_to_point(&self.0.project(DVec2::new(x, y), 20, 1e-4, 3, 10))
+		vec_to_point(&self.0.project(DVec2::new(x, y), ProjectionOptions::default()))
 	}
 
 	pub fn local_extrema(&self) -> JsValue {
@@ -112,8 +112,8 @@ impl WasmBezier {
 		WasmBezier(self.0.rotate(angle))
 	}
 
-	pub fn line_intersection(&self, js_points: &JsValue) -> Vec<JsValue> {
+	pub fn intersect_line_segment(&self, js_points: &JsValue) -> Vec<JsValue> {
 		let line: [DVec2; 2] = js_points.into_serde().unwrap();
-		self.0.line_intersection(line).iter().map(|&p| vec_to_point(&p)).collect::<Vec<JsValue>>()
+		self.0.intersect_line_segment(line).iter().map(|&p| vec_to_point(&p)).collect::<Vec<JsValue>>()
 	}
 }
