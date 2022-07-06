@@ -95,7 +95,7 @@ impl Bezier {
 	}
 
 	/// Create a quadratic bezier curve that goes through 3 points, where the middle point will be at the corresponding position `t` on the curve.
-	/// The default value for `t` is 0.5.
+	/// - `t` - A representation of how far along the curve the provide point should occur at. The default value is 0.5.
 	/// Note that when `t = 0` or `t = 1`, the expectation is that the `point_on_curve` should be equal to `start` and `end` respectively.
 	/// In these cases, if the provided values are not equal, this function will use the `point_on_curve` as the `start`/`end` instead.
 	pub fn quadratic_through_points(start: DVec2, point_on_curve: DVec2, end: DVec2, t: Option<f64>) -> Self {
@@ -111,10 +111,10 @@ impl Bezier {
 	}
 
 	/// Create a cubic bezier curve that goes through 3 points, where the middle point will be at the corresponding position `t` on the curve.
-	/// The default value for `t` is 0.5.
+	/// - `t` - A representation of how far along the curve the provide point should occur at. The default value is 0.5.
 	/// Note that when `t = 0` or `t = 1`, the expectation is that the `point_on_curve` should be equal to `start` and `end` respectively.
 	/// In these cases, if the provided values are not equal, this function will use the `point_on_curve` as the `start`/`end` instead.
-	/// - `midpoint_separation` is a representation of how wide the resulting curve will be around `t` on the curve. This parameter designates the distance between the `e1` and `e2` defined in [the projection identity section](https://pomax.github.io/bezierinfo/#abc) of Pomax's bezier curve primer. It is an optional parameter and the default value is the distance between the points `B` and `C` defined in the primer.
+	/// - `midpoint_separation` - A representation of how wide the resulting curve will be around `t` on the curve. This parameter designates the distance between the `e1` and `e2` defined in [the projection identity section](https://pomax.github.io/bezierinfo/#abc) of Pomax's bezier curve primer. It is an optional parameter and the default value is the distance between the points `B` and `C` defined in the primer.
 	pub fn cubic_through_points(start: DVec2, point_on_curve: DVec2, end: DVec2, t: Option<f64>, midpoint_separation: Option<f64>) -> Self {
 		let t = t.unwrap_or(0.5);
 		if t == 0. {
@@ -139,8 +139,8 @@ impl Bezier {
 	}
 
 	/// Convert to SVG.
-	// TODO: Allow modifying the viewport, width and height
 	pub fn to_svg(&self) -> String {
+		// TODO: Allow modifying the viewport, width and height
 		let m_path = format!("M {} {}", self.start.x, self.start.y);
 		let handles_path = match self.handles {
 			BezierHandles::Quadratic { handle } => {
