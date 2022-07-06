@@ -116,10 +116,10 @@ pub fn solve_reformatted_cubic(discriminant: f64, a: f64, p: f64, q: f64) -> Vec
 pub fn solve_cubic(a: f64, b: f64, c: f64, d: f64) -> Vec<f64> {
 	if a.abs() <= 1e-5 {
 		if b.abs() <= 1e-5 {
-			// if both a and b are approximately 0, treat as a linear problem
+			// If both a and b are approximately 0, treat as a linear problem
 			solve_linear(c, d)
 		} else {
-			// if a is approximately 0, treat as a quadratic problem
+			// If a is approximately 0, treat as a quadratic problem
 			let discriminant = c * c - 4. * b * d;
 			solve_quadratic(discriminant, 2. * b, c, d)
 		}
@@ -159,6 +159,7 @@ pub fn dvec2_approximately_in_range(point: DVec2, min: DVec2, max: DVec2, max_ab
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::consts::MAX_ABSOLUTE_DIFFERENCE;
 
 	#[test]
 	fn test_solve_cubic() {
@@ -180,14 +181,14 @@ mod tests {
 		// discriminant > 0
 		let roots4 = solve_cubic(1., 3., 0., 2.);
 		assert!(roots4.len() == 1);
-		assert!(f64_compare(roots4[0], -3.196, 1e-3));
+		assert!(f64_compare(roots4[0], -3.196, MAX_ABSOLUTE_DIFFERENCE));
 
 		// discriminant < 0
 		let roots5 = solve_cubic(1., 3., 0., -1.);
 		assert!(roots5.len() == 3);
-		assert!(f64_compare(roots5[0], 0.532, 1e-3));
-		assert!(f64_compare(roots5[1], -2.879, 1e-3));
-		assert!(f64_compare(roots5[2], -0.653, 1e-3));
+		assert!(f64_compare(roots5[0], 0.532, MAX_ABSOLUTE_DIFFERENCE));
+		assert!(f64_compare(roots5[1], -2.879, MAX_ABSOLUTE_DIFFERENCE));
+		assert!(f64_compare(roots5[2], -0.653, MAX_ABSOLUTE_DIFFERENCE));
 
 		// quadratic
 		let roots6 = solve_cubic(0., 3., 0., -3.);
