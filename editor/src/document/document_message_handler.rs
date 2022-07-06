@@ -26,7 +26,6 @@ use graphene::layers::style::{Fill, RenderData, ViewMode};
 use graphene::layers::text_layer::{Font, FontCache};
 use graphene::{DocumentError, DocumentResponse, LayerId, Operation as DocumentOperation};
 
-use core::panic;
 use glam::{DAffine2, DVec2};
 use log::warn;
 use serde::{Deserialize, Serialize};
@@ -376,12 +375,15 @@ impl DocumentMessageHandler {
 
 		match self.document_undo_history.pop() {
 			Some((document, layer_metadata)) => {
-				// Clear properties panel in case the only selected layer is deleted after the undo operation
-				if selected_paths.len() == 1 {
-					let layer_id = &selected_paths[0];
-					if !layer_metadata.contains_key(layer_id) {
-						responses.push_back(PropertiesPanelMessage::ClearSelection.into())
-					}
+				// Update currently displayed layer on property panel if selection changes after undo action
+				// Also appropriately update property panel if undo action results in a layer being deleted
+				let prev_selected_paths: Vec<Vec<u64>> = layer_metadata
+					.iter()
+					.filter_map(|(layer_id, metadata)| if metadata.selected { Some(layer_id.clone()) } else { None })
+					.collect();
+
+				if prev_selected_paths != selected_paths {
+					responses.push_back(BroadcastSignal::SelectionChanged.into());
 				}
 
 				let document = std::mem::replace(&mut self.graphene_document, document);
@@ -400,8 +402,21 @@ impl DocumentMessageHandler {
 		// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
 		responses.push_back(PortfolioMessage::UpdateOpenDocumentsList.into());
 
+		let selected_paths: Vec<Vec<u64>> = self.selected_layers().map(|path| path.to_vec()).collect();
+
 		match self.document_redo_history.pop() {
 			Some((document, layer_metadata)) => {
+				// Update currently displayed layer on property panel if selection changes after redo action
+				// Also appropriately update property panel if redo action results in a layer being added
+				let prev_selected_paths: Vec<Vec<u64>> = layer_metadata
+					.iter()
+					.filter_map(|(layer_id, metadata)| if metadata.selected { Some(layer_id.clone()) } else { None })
+					.collect();
+
+				if prev_selected_paths != selected_paths {
+					responses.push_back(BroadcastSignal::SelectionChanged.into());
+				}
+
 				let document = std::mem::replace(&mut self.graphene_document, document);
 				let layer_metadata = std::mem::replace(&mut self.layer_metadata, layer_metadata);
 				self.document_undo_history.push((document, layer_metadata));
