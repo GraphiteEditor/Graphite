@@ -2,6 +2,7 @@ export type WasmRawInstance = typeof import("../../wasm/pkg");
 export type WasmBezierInstance = InstanceType<WasmRawInstance["WasmBezier"]>;
 
 export type WasmBezierKey = keyof WasmBezierInstance;
+export type WasmBezierConstructorKey = "new_linear" | "new_quadratic" | "new_cubic";
 export type WasmBezierMutatorKey = "set_start" | "set_handle_start" | "set_handle_end" | "set_end";
 
 export enum BezierCurveType {

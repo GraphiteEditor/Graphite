@@ -12,7 +12,7 @@
 <script lang="ts">
 import { defineComponent, PropType, Component } from "vue";
 
-import { BezierCallback, BezierCurveType, TemplateOption, WasmBezierInstance, WasmRawInstance } from "@/utils/types";
+import { BezierCallback, BezierCurveType, TemplateOption, WasmBezierConstructorKey, WasmBezierInstance, WasmRawInstance } from "@/utils/types";
 
 import Example from "@/components/Example.vue";
 
@@ -22,8 +22,39 @@ type ExampleData = {
 	templateOptions: TemplateOption;
 };
 
+type CustomTemplateOptions = {
+	[key in BezierCurveType]?: TemplateOption;
+};
+
 type CustomPoints = {
-	[key in BezierCurveType]: number[][];
+	[key in BezierCurveType]?: number[][];
+};
+
+const CurveTypeMapping = {
+	[BezierCurveType.Linear]: {
+		points: [
+			[30, 60],
+			[140, 120],
+		],
+		constructor: "new_linear" as WasmBezierConstructorKey,
+	},
+	[BezierCurveType.Quadratic]: {
+		points: [
+			[30, 50],
+			[140, 30],
+			[160, 170],
+		],
+		constructor: "new_quadratic" as WasmBezierConstructorKey,
+	},
+	[BezierCurveType.Cubic]: {
+		points: [
+			[30, 30],
+			[60, 140],
+			[150, 30],
+			[160, 160],
+		],
+		constructor: "new_cubic" as WasmBezierConstructorKey,
+	},
 };
 
 export default defineComponent({
@@ -42,9 +73,9 @@ export default defineComponent({
 			default: Example,
 		},
 		templateOptions: Object as PropType<TemplateOption>,
-		cubicOptions: {
-			type: Object as PropType<TemplateOption>,
-			default: null,
+		customOptions: {
+			type: Object as PropType<CustomTemplateOptions>,
+			default: () => ({}),
 		},
 		createThroughPoints: {
 			type: Boolean as PropType<boolean>,
@@ -66,43 +97,19 @@ export default defineComponent({
 	},
 	mounted() {
 		import("@/../wasm/pkg").then((wasm: WasmRawInstance) => {
-			const linearPoints = [
-				[30, 60],
-				[140, 120],
-			];
-			const quadraticPoints = [
-				[30, 50],
-				[140, 30],
-				[160, 170],
-			];
-			const cubicPoints = [
-				[30, 30],
-				[60, 140],
-				[150, 30],
-				[160, 160],
-			];
 			this.exampleData = [];
-			if (this.curveDegrees.has(BezierCurveType.Linear)) {
-				this.exampleData.push({
-					title: "Linear",
-					bezier: wasm.WasmBezier.new_linear(this.customPoints[BezierCurveType.Linear] || linearPoints),
-					templateOptions: this.templateOptions as TemplateOption,
-				});
-			}
-			if (this.curveDegrees.has(BezierCurveType.Quadratic)) {
-				this.exampleData.push({
-					title: "Quadratic",
-					bezier: wasm.WasmBezier.new_quadratic(this.customPoints[BezierCurveType.Quadratic] || quadraticPoints),
-					templateOptions: this.templateOptions as TemplateOption,
-				});
-			}
-			if (this.curveDegrees.has(BezierCurveType.Cubic)) {
-				this.exampleData.push({
-					title: "Cubic",
-					bezier: wasm.WasmBezier.new_cubic(this.customPoints[BezierCurveType.Cubic] || cubicPoints),
-					templateOptions: (this.cubicOptions || this.templateOptions) as TemplateOption,
-				});
-			}
+			// Only add example for BezierCurveType that is in the curveDegrees set
+			Object.values(BezierCurveType).forEach((bezierType) => {
+				if (this.curveDegrees.has(bezierType)) {
+					const { points, constructor } = CurveTypeMapping[bezierType];
+					this.exampleData.push({
+						title: bezierType,
+						// Use custom options if they were provided for the current BezierCurveType
+						bezier: wasm.WasmBezier[constructor](this.customPoints[bezierType] || points),
+						templateOptions: (this.customOptions[bezierType] || this.templateOptions) as TemplateOption,
+					});
+				}
+			});
 		});
 	},
 });

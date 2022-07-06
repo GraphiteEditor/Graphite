@@ -8,10 +8,10 @@
 				:templateOptions="feature.templateOptions"
 				:name="feature.name"
 				:callback="feature.callback"
+				:createThroughPoints="feature.createThroughPoints"
 				:curveDegrees="feature.curveDegrees"
 				:customPoints="feature.customPoints"
-				:createThroughPoints="feature.createThroughPoints"
-				:cubicOptions="feature.cubicOptions"
+				:customOptions="feature.customOptions"
 			/>
 		</div>
 	</div>
@@ -67,23 +67,25 @@ export default defineComponent({
 							},
 						],
 					},
-					cubicOptions: {
-						sliders: [
-							{
-								min: 0.01,
-								max: 0.99,
-								step: 0.01,
-								default: 0.5,
-								variable: "t",
-							},
-							{
-								min: 0,
-								max: 100,
-								step: 2,
-								default: 30,
-								variable: "midpoint separation",
-							},
-						],
+					customOptions: {
+						[BezierCurveType.Cubic]: {
+							sliders: [
+								{
+									min: 0.01,
+									max: 0.99,
+									step: 0.01,
+									default: 0.5,
+									variable: "t",
+								},
+								{
+									min: 0,
+									max: 100,
+									step: 2,
+									default: 30,
+									variable: "midpoint separation",
+								},
+							],
+						},
 					},
 					customPoints: {
 						[BezierCurveType.Quadratic]: [
@@ -264,6 +266,19 @@ export default defineComponent({
 						});
 						drawText(getContextFromCanvas(canvas), "X extrema", 5, canvas.height - 20, dimensionColors[0]);
 						drawText(getContextFromCanvas(canvas), "Y extrema", 5, canvas.height - 5, dimensionColors[1]);
+					},
+					customPoints: {
+						[BezierCurveType.Quadratic]: [
+							[40, 40],
+							[160, 30],
+							[110, 150],
+						],
+						[BezierCurveType.Cubic]: [
+							[160, 180],
+							[170, 10],
+							[30, 90],
+							[180, 160],
+						],
 					},
 				},
 				{

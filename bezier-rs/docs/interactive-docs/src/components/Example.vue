@@ -56,6 +56,7 @@ export default defineComponent({
 <style scoped>
 .example_header {
 	margin-bottom: 0;
+	text-transform: capitalize;
 }
 .example_figure {
 	margin-top: 0.5em;

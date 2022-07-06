@@ -308,22 +308,21 @@ impl Bezier {
 	/// Return an approximation of the length of the bezier curve.
 	/// - `num_subdivisions` - Number of subdivisions used to approximate the curve. The default value is 1000.
 	pub fn length(&self, num_subdivisions: Option<i32>) -> f64 {
-		// Code example from <https://gamedev.stackexchange.com/questions/5373/moving-ships-between-two-planets-along-a-bezier-missing-some-equations-for-acce/5427#5427>.
 		match self.handles {
 			BezierHandles::Linear => self.start.distance(self.end),
 			_ => {
-				// We will use an approximate approach where
-				// we split the curve into many subdivisions
-				// and calculate the euclidean distance between the two endpoints of the subdivision
+				// Code example from <https://gamedev.stackexchange.com/questions/5373/moving-ships-between-two-planets-along-a-bezier-missing-some-equations-for-acce/5427#5427>.
 
+				// We will use an approximate approach where we split the curve into many subdivisions
+				// and calculate the euclidean distance between the two endpoints of the subdivision
 				let lookup_table = self.compute_lookup_table(Some(num_subdivisions.unwrap_or(DEFAULT_LENGTH_SUBDIVISIONS)));
 				let mut approx_curve_length = 0.0;
 				let mut prev_point = lookup_table[0];
-				// calculate approximate distance between subdivision
+				// Calculate approximate distance between subdivision
 				for curr_point in lookup_table.iter().skip(1) {
-					// calculate distance of subdivision
+					// Calculate distance of subdivision
 					approx_curve_length += (*curr_point - prev_point).length();
-					// update the prev point
+					// Update the previous point
 					prev_point = *curr_point;
 				}
 
