@@ -46,6 +46,10 @@ export default defineComponent({
 			type: Boolean as PropType<boolean>,
 			default: false,
 		},
+		curveDegrees: {
+			type: Set as PropType<Set<number>>,
+			default: () => new Set([1, 2, 3]),
+		},
 	},
 	data() {
 		return {
@@ -54,6 +58,10 @@ export default defineComponent({
 	},
 	mounted() {
 		import("@/../wasm/pkg").then((wasm: WasmRawInstance) => {
+			const linearPoints = [
+				[30, 60],
+				[140, 120],
+			];
 			const quadraticPoints = [
 				[30, 50],
 				[140, 30],
@@ -65,18 +73,28 @@ export default defineComponent({
 				[150, 30],
 				[160, 160],
 			];
-			this.exampleData = [
-				{
+			this.exampleData = [];
+			if (this.curveDegrees.has(1)) {
+				this.exampleData.push({
+					title: "Linear",
+					bezier: wasm.WasmBezier.new_linear(linearPoints),
+					templateOptions: this.templateOptions as TemplateOption,
+				});
+			}
+			if (this.curveDegrees.has(2)) {
+				this.exampleData.push({
 					title: "Quadratic",
 					bezier: wasm.WasmBezier.new_quadratic(quadraticPoints),
 					templateOptions: this.templateOptions as TemplateOption,
-				},
-				{
+				});
+			}
+			if (this.curveDegrees.has(3)) {
+				this.exampleData.push({
 					title: "Cubic",
 					bezier: wasm.WasmBezier.new_cubic(cubicPoints),
 					templateOptions: (this.cubicOptions || this.templateOptions) as TemplateOption,
-				},
-			];
+				});
+			}
 		});
 	},
 });

@@ -8,6 +8,7 @@
 				:templateOptions="feature.templateOptions"
 				:name="feature.name"
 				:callback="feature.callback"
+				:curveDegrees="feature.curveDegrees"
 				:createThroughPoints="feature.createThroughPoints"
 				:cubicOptions="feature.cubicOptions"
 			/>
@@ -51,6 +52,7 @@ export default defineComponent({
 					name: "Bezier Through Points",
 					// eslint-disable-next-line
 					callback: (): void => {},
+					curveDegrees: new Set([2, 3]),
 					createThroughPoints: true,
 					template: markRaw(SliderExample),
 					templateOptions: {
@@ -120,6 +122,23 @@ export default defineComponent({
 							},
 						],
 					},
+				},
+				{
+					name: "Derivative",
+					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance): void => {
+						const context = getContextFromCanvas(canvas);
+
+						const derivativeBezier = bezier.derivative();
+						if (derivativeBezier) {
+							const points: Point[] = derivativeBezier.get_points().map((p) => JSON.parse(p));
+							if (points.length === 2) {
+								drawLine(context, points[0], points[1], COLORS.NON_INTERACTIVE.STROKE_1);
+							} else {
+								drawBezier(context, points, null, { curveStrokeColor: COLORS.NON_INTERACTIVE.STROKE_1, radius: 3.5 });
+							}
+						}
+					},
+					curveDegrees: new Set([2, 3]),
 				},
 				{
 					name: "Tangent",

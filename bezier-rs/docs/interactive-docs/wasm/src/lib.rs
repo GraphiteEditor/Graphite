@@ -32,6 +32,12 @@ fn to_js_value<T: Serialize>(data: T) -> JsValue {
 #[wasm_bindgen]
 impl WasmBezier {
 	/// Expect js_points to be a list of 3 pairs.
+	pub fn new_linear(js_points: &JsValue) -> WasmBezier {
+		let points: [DVec2; 2] = js_points.into_serde().unwrap();
+		WasmBezier(Bezier::from_linear_dvec2(points[0], points[1]))
+	}
+
+	/// Expect js_points to be a list of 3 pairs.
 	pub fn new_quadratic(js_points: &JsValue) -> WasmBezier {
 		let points: [DVec2; 3] = js_points.into_serde().unwrap();
 		WasmBezier(Bezier::from_quadratic_dvec2(points[0], points[1], points[2]))
@@ -87,6 +93,10 @@ impl WasmBezier {
 
 	pub fn compute_lookup_table(&self, steps: i32) -> Vec<JsValue> {
 		self.0.compute_lookup_table(Some(steps)).iter().map(vec_to_point).collect()
+	}
+
+	pub fn derivative(&self) -> Option<WasmBezier> {
+		self.0.derivative().map(WasmBezier)
 	}
 
 	pub fn tangent(&self, t: f64) -> JsValue {
