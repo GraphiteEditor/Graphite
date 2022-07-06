@@ -1,11 +1,11 @@
 //! Bezier-rs: A Bezier Math Library for Rust
 
+mod utils;
+
 #[macro_use]
 extern crate derive_builder;
 
 use glam::{DMat2, DVec2};
-
-mod utils;
 
 /// Representation of the handle point(s) in a bezier curve.
 #[derive(Copy, Clone)]
@@ -95,7 +95,7 @@ impl Bezier {
 	}
 
 	/// Create a quadratic bezier curve that goes through 3 points, where the middle point will be at the corresponding position `t` on the curve.
-	/// - `t` - A representation of how far along the curve the provide point should occur at. The default value is 0.5.
+	/// - `t` - A representation of how far along the curve the provided point should occur at. The default value is 0.5.
 	/// Note that when `t = 0` or `t = 1`, the expectation is that the `point_on_curve` should be equal to `start` and `end` respectively.
 	/// In these cases, if the provided values are not equal, this function will use the `point_on_curve` as the `start`/`end` instead.
 	pub fn quadratic_through_points(start: DVec2, point_on_curve: DVec2, end: DVec2, t: Option<f64>) -> Self {
@@ -111,7 +111,7 @@ impl Bezier {
 	}
 
 	/// Create a cubic bezier curve that goes through 3 points, where the middle point will be at the corresponding position `t` on the curve.
-	/// - `t` - A representation of how far along the curve the provide point should occur at. The default value is 0.5.
+	/// - `t` - A representation of how far along the curve the provided point should occur at. The default value is 0.5.
 	/// Note that when `t = 0` or `t = 1`, the expectation is that the `point_on_curve` should be equal to `start` and `end` respectively.
 	/// In these cases, if the provided values are not equal, this function will use the `point_on_curve` as the `start`/`end` instead.
 	/// - `midpoint_separation` - A representation of how wide the resulting curve will be around `t` on the curve. This parameter designates the distance between the `e1` and `e2` defined in [the projection identity section](https://pomax.github.io/bezierinfo/#abc) of Pomax's bezier curve primer. It is an optional parameter and the default value is the distance between the points `B` and `C` defined in the primer.
@@ -124,8 +124,7 @@ impl Bezier {
 			return Bezier::from_cubic_dvec2(start, start, point_on_curve, point_on_curve);
 		}
 		let [a, b, c] = utils::compute_abc_for_cubic_through_points(start, point_on_curve, end, t);
-		let default_midpoint_separation = b.distance(c);
-		let midpoint_separation = midpoint_separation.unwrap_or(default_midpoint_separation);
+		let midpoint_separation = midpoint_separation.unwrap_or_else(|| b.distance(c));
 		let distance_between_start_and_end = (end - start) / (start.distance(end));
 		let e1 = b - (distance_between_start_and_end * midpoint_separation);
 		let e2 = b + (distance_between_start_and_end * midpoint_separation * (1. - t) / t);
@@ -369,11 +368,12 @@ impl Bezier {
 	/// Returns the closest point on the curve to the provided point.
 	/// Uses a searching algorithm akin to binary search that can be customized using the [ProjectionOptions] structure.
 	pub fn project(&self, point: DVec2, options: ProjectionOptions) -> DVec2 {
-		// Unwrap optional parameters
-		let lut_size = options.lut_size;
-		let convergence_epsilon = options.convergence_epsilon;
-		let convergence_limit = options.convergence_limit;
-		let iteration_limit = options.iteration_limit;
+		let ProjectionOptions {
+			lut_size,
+			convergence_epsilon,
+			convergence_limit,
+			iteration_limit,
+		} = options;
 
 		// First find the closest point from the results of a lookup table
 		let lut = self.compute_lookup_table(Some(lut_size));
@@ -569,10 +569,10 @@ impl Bezier {
 
 #[cfg(test)]
 mod tests {
-	use glam::DVec2;
-
 	use super::*;
 	use crate::utils;
+
+	use glam::DVec2;
 
 	fn compare_points(p1: DVec2, p2: DVec2) -> bool {
 		utils::dvec2_compare(p1, p2, 1e-3).all()

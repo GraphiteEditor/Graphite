@@ -12,8 +12,6 @@
 				:cubicOptions="feature.cubicOptions"
 			/>
 		</div>
-		<br />
-		<div id="svg-test" />
 	</div>
 </template>
 
@@ -26,21 +24,6 @@ import { Point, WasmBezierInstance } from "@/utils/types";
 import ExamplePane from "@/components/ExamplePane.vue";
 import SliderExample from "@/components/SliderExample.vue";
 
-// eslint-disable-next-line
-const testBezierLib = async () => {
-	import("@/../wasm/pkg").then((wasm) => {
-		const bezier = wasm.WasmBezier.new_quadratic([
-			[0, 0],
-			[50, 0],
-			[100, 100],
-		]);
-		const svgContainer = document.getElementById("svg-test");
-		if (svgContainer) {
-			svgContainer.innerHTML = bezier.to_svg();
-		}
-	});
-};
-
 const tSliderOptions = {
 	min: 0,
 	max: 1,
@@ -48,6 +31,8 @@ const tSliderOptions = {
 	default: 0.5,
 	variable: "t",
 };
+
+const SCALE_UNIT_VECTOR_FACTOR = 50;
 
 export default defineComponent({
 	name: "App",
@@ -63,7 +48,7 @@ export default defineComponent({
 					callback: (): void => {},
 				},
 				{
-					name: "Bezier through points",
+					name: "Bezier Through Points",
 					// eslint-disable-next-line
 					callback: (): void => {},
 					createThroughPoints: true,
@@ -145,8 +130,8 @@ export default defineComponent({
 						const tangent = JSON.parse(bezier.tangent(options.t));
 
 						const tangentEnd = {
-							x: intersection.x + tangent.x * 50,
-							y: intersection.y + tangent.y * 50,
+							x: intersection.x + tangent.x * SCALE_UNIT_VECTOR_FACTOR,
+							y: intersection.y + tangent.y * SCALE_UNIT_VECTOR_FACTOR,
 						};
 
 						drawPoint(context, intersection, 3, COLORS.NON_INTERACTIVE.STROKE_1);
@@ -165,8 +150,8 @@ export default defineComponent({
 						const normal = JSON.parse(bezier.normal(options.t));
 
 						const normalEnd = {
-							x: intersection.x - normal.x * 20,
-							y: intersection.y - normal.y * 20,
+							x: intersection.x - normal.x * SCALE_UNIT_VECTOR_FACTOR,
+							y: intersection.y - normal.y * SCALE_UNIT_VECTOR_FACTOR,
 						};
 
 						drawPoint(context, intersection, 3, COLORS.NON_INTERACTIVE.STROKE_1);
@@ -229,7 +214,7 @@ export default defineComponent({
 					name: "Local Extrema",
 					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance): void => {
 						const context = getContextFromCanvas(canvas);
-						const dimensionColors = [COLORS.NON_INTERACTIVE.STROKE_1, COLORS.NON_INTERACTIVE.STROKE_3];
+						const dimensionColors = ["red", "green"];
 						const extrema: number[][] = JSON.parse(bezier.local_extrema());
 						extrema.forEach((tValues, index) => {
 							tValues.forEach((t) => {
@@ -237,8 +222,8 @@ export default defineComponent({
 								drawPoint(context, point, 4, dimensionColors[index]);
 							});
 						});
-						drawText(getContextFromCanvas(canvas), "X extrema", 5, canvas.height - 20, COLORS.NON_INTERACTIVE.STROKE_1);
-						drawText(getContextFromCanvas(canvas), "Y extrema", 5, canvas.height - 5, COLORS.NON_INTERACTIVE.STROKE_3);
+						drawText(getContextFromCanvas(canvas), "X extrema", 5, canvas.height - 20, "red");
+						drawText(getContextFromCanvas(canvas), "Y extrema", 5, canvas.height - 5, "green");
 					},
 				},
 				{
@@ -260,7 +245,7 @@ export default defineComponent({
 								max: 2,
 								step: 1 / 16,
 								default: 1 / 8,
-								unit: "pi",
+								unit: "π",
 							},
 						],
 					},
