@@ -36,6 +36,8 @@ pub enum SelectToolMessage {
 	Abort,
 	#[remain::unsorted]
 	DocumentIsDirty,
+	#[remain::unsorted]
+	SelectionChanged,
 
 	// Tool-specific messages
 	Align {
@@ -275,7 +277,7 @@ impl ToolTransition for SelectTool {
 		SignalToMessageMap {
 			document_dirty: Some(SelectToolMessage::DocumentIsDirty.into()),
 			tool_abort: Some(SelectToolMessage::Abort.into()),
-			selection_changed: None,
+			selection_changed: Some(SelectToolMessage::SelectionChanged.into()),
 		}
 	}
 }
@@ -339,25 +341,22 @@ impl Fsm for SelectToolFsmState {
 		use SelectToolMessage::*;
 
 		if let ToolMessage::Select(event) = event {
-			log::debug!("self: {:?}, even: {:?}", self, event);
 			match (self, event) {
-				(_, DocumentIsDirty) => {
-					let mut buffer = Vec::new();
+				(_, DocumentIsDirty | SelectionChanged) => {
 					match (document.selected_visible_layers_bounding_box(font_cache), tool_data.bounding_box_overlays.take()) {
-						(None, Some(bounding_box_overlays)) => bounding_box_overlays.delete(&mut buffer),
+						(None, Some(bounding_box_overlays)) => bounding_box_overlays.delete(responses),
 						(Some(bounds), paths) => {
-							let mut bounding_box_overlays = paths.unwrap_or_else(|| BoundingBoxOverlays::new(&mut buffer));
+							let mut bounding_box_overlays = paths.unwrap_or_else(|| BoundingBoxOverlays::new(responses));
 
 							bounding_box_overlays.bounds = bounds;
 							bounding_box_overlays.transform = DAffine2::IDENTITY;
 
-							bounding_box_overlays.transform(&mut buffer);
+							bounding_box_overlays.transform(responses);
 
 							tool_data.bounding_box_overlays = Some(bounding_box_overlays);
 						}
 						(_, _) => {}
 					};
-					buffer.into_iter().rev().for_each(|message| responses.push_front(message));
 
 					tool_data.path_outlines.update_selected(document.selected_visible_layers(), document, responses, font_cache);
 					tool_data.path_outlines.intersect_test_hovered(input, document, responses, font_cache);
@@ -394,7 +393,6 @@ impl Fsm for SelectToolFsmState {
 
 					tool_data.drag_start = input.mouse.position;
 					tool_data.drag_current = input.mouse.position;
-					let mut buffer = Vec::new();
 
 					let dragging_bounds = if let Some(bounding_box) = &mut tool_data.bounding_box_overlays {
 						let edges = bounding_box.check_selected_edges(input.mouse.position);
@@ -448,7 +446,7 @@ impl Fsm for SelectToolFsmState {
 
 						RotatingBounds
 					} else if selected.iter().any(|path| intersection.contains(path)) {
-						buffer.push(DocumentMessage::StartTransaction.into());
+						responses.push_back(DocumentMessage::StartTransaction.into());
 						tool_data.layers_dragging = selected;
 
 						tool_data
@@ -458,14 +456,14 @@ impl Fsm for SelectToolFsmState {
 						Dragging
 					} else {
 						if !input.keyboard.get(add_to_selection as usize) {
-							buffer.push(DocumentMessage::DeselectAllLayers.into());
+							responses.push_back(DocumentMessage::DeselectAllLayers.into());
 							tool_data.layers_dragging.clear();
 						}
 
 						if let Some(intersection) = intersection.pop() {
 							selected = vec![intersection];
-							buffer.push(DocumentMessage::AddSelectedLayers { additional_layers: selected.clone() }.into());
-							buffer.push(DocumentMessage::StartTransaction.into());
+							responses.push_back(DocumentMessage::AddSelectedLayers { additional_layers: selected.clone() }.into());
+							responses.push_back(DocumentMessage::StartTransaction.into());
 							tool_data.layers_dragging.append(&mut selected);
 							tool_data
 								.snap_handler
@@ -473,11 +471,10 @@ impl Fsm for SelectToolFsmState {
 
 							Dragging
 						} else {
-							tool_data.drag_box_overlay_layer = Some(add_bounding_box(&mut buffer));
+							tool_data.drag_box_overlay_layer = Some(add_bounding_box(responses));
 							DrawingBox
 						}
 					};
-					buffer.into_iter().rev().for_each(|message| responses.push_front(message));
 
 					state
 				}

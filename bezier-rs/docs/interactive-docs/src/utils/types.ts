@@ -12,6 +12,7 @@ export type SliderOption = {
 	step: number;
 	default: number;
 	variable: string;
+	unit?: string;
 };
 
 export type TemplateOption = {
