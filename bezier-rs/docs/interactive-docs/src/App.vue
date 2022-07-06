@@ -222,8 +222,8 @@ export default defineComponent({
 								drawPoint(context, point, 4, dimensionColors[index]);
 							});
 						});
-						drawText(getContextFromCanvas(canvas), "X extrema", 5, canvas.height - 20, "red");
-						drawText(getContextFromCanvas(canvas), "Y extrema", 5, canvas.height - 5, "green");
+						drawText(getContextFromCanvas(canvas), "X extrema", 5, canvas.height - 20, dimensionColors[0]);
+						drawText(getContextFromCanvas(canvas), "Y extrema", 5, canvas.height - 5, dimensionColors[1]);
 					},
 				},
 				{
