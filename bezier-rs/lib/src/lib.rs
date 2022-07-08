@@ -768,12 +768,22 @@ impl Bezier {
 mod tests {
 	use super::*;
 	use crate::consts::MAX_ABSOLUTE_DIFFERENCE;
-	use crate::utils;
 
 	use glam::DVec2;
 
 	fn compare_points(p1: DVec2, p2: DVec2) -> bool {
-		utils::dvec2_compare(p1, p2, MAX_ABSOLUTE_DIFFERENCE).all()
+		p1.abs_diff_eq(p2, MAX_ABSOLUTE_DIFFERENCE)
+	}
+
+	fn compare_vector_of_points(vec1: Vec<DVec2>, vec2: Vec<DVec2>) -> bool {
+		vec1.len() == vec2.len() && vec1.into_iter().zip(vec2.into_iter()).all(|(a, b)| a.abs_diff_eq(b, MAX_ABSOLUTE_DIFFERENCE))
+	}
+
+	fn compare_vector_of_beziers(beziers: Vec<Bezier>, expected_bezier_points: Vec<Vec<DVec2>>) -> bool {
+		beziers
+			.iter()
+			.zip(expected_bezier_points.iter())
+			.all(|(&a, b)| compare_vector_of_points(a.get_points().into_iter().flatten().collect::<Vec<DVec2>>(), b.to_vec()))
 	}
 
 	#[test]
@@ -884,20 +894,24 @@ mod tests {
 		let p2 = DVec2::new(140., 30.);
 		let p3 = DVec2::new(160., 170.);
 		let bezier1 = Bezier::from_quadratic_dvec2(p1, p2, p3);
-		bezier1.offset(10.).into_iter().for_each(|bezier| {
-			println!("Bezier: {:?}, {:?}, {:?}", bezier.start(), bezier.end(), bezier.handle_start());
-		})
-	}
+		let expected_bezier_points1 = vec![
+			vec![DVec2::new(31.7888, 59.8387), DVec2::new(44.5924, 57.46446), DVec2::new(56.09375, 57.5)],
+			vec![DVec2::new(56.09375, 57.5), DVec2::new(94.94197, 56.5019), DVec2::new(117.6473, 84.5936)],
+			vec![DVec2::new(117.6473, 84.5936), DVec2::new(142.3985, 113.403), DVec2::new(150.1005, 171.4142)],
+		];
+		assert!(compare_vector_of_beziers(bezier1.offset(10.), expected_bezier_points1));
 
-	#[test]
-	fn offset2() {
-		let p1 = DVec2::new(32., 77.);
-		let p2 = DVec2::new(169., 25.);
-		let p3 = DVec2::new(164., 157.);
-		let bezier1 = Bezier::from_quadratic_dvec2(p1, p2, p3);
-		bezier1.offset(30.).into_iter().for_each(|bezier| {
-			println!("Bezier: {:?}, {:?}, {:?}", bezier.start(), bezier.end(), bezier.handle_start());
-		})
+		let p4 = DVec2::new(32., 77.);
+		let p5 = DVec2::new(169., 25.);
+		let p6 = DVec2::new(164., 157.);
+		let bezier2 = Bezier::from_quadratic_dvec2(p4, p5, p6);
+		let expected_bezier_points2 = vec![
+			vec![DVec2::new(42.6458, 105.04758), DVec2::new(75.0218, 91.9939), DVec2::new(98.09357, 92.3043)],
+			vec![DVec2::new(98.09357, 92.3043), DVec2::new(116.5995, 88.5479), DVec2::new(123.9055, 102.0401)],
+			vec![DVec2::new(123.9055, 102.0401), DVec2::new(136.6087, 116.9522), DVec2::new(134.1761, 147.9324)],
+			vec![DVec2::new(134.1761, 147.9324), DVec2::new(134.1812, 151.7987), DVec2::new(134.0215, 155.86445)],
+		];
+		assert!(compare_vector_of_beziers(bezier2.offset(30.), expected_bezier_points2));
 	}
 
 	#[test]
@@ -905,9 +919,13 @@ mod tests {
 		let p1 = DVec2::new(0., 0.);
 		let p2 = DVec2::new(50., 50.);
 		let p3 = DVec2::new(0., 0.);
-		let bezier1 = Bezier::from_quadratic_dvec2(p1, p2, p3);
-		bezier1.reduce(None).into_iter().for_each(|bezier| {
-			println!("Bezier: {:?}, {:?}, {:?}", bezier.start(), bezier.end(), bezier.handle_start());
-		})
+		let bezier = Bezier::from_quadratic_dvec2(p1, p2, p3);
+
+		let expected_bezier_points = vec![
+			vec![DVec2::new(0., 0.), DVec2::new(0.5, 0.5), DVec2::new(0.989, 0.989)],
+			vec![DVec2::new(0.989, 0.989), DVec2::new(2.705, 2.705), DVec2::new(4.2975, 4.2975)],
+			vec![DVec2::new(4.2975, 4.2975), DVec2::new(5.6625, 5.6625), DVec2::new(6.9375, 6.9375)],
+		];
+		assert!(compare_vector_of_beziers(bezier.reduce(None), expected_bezier_points));
 	}
 }
