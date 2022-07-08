@@ -21,7 +21,7 @@ fn vec_to_point(p: &DVec2) -> JsValue {
 
 /// Convert a bezier to a list of points.
 fn bezier_to_points(bezier: Bezier) -> Vec<Point> {
-	bezier.get_points().iter().flatten().map(|point| Point { x: point.x, y: point.y }).collect()
+	bezier.get_points().map(|point| Point { x: point.x, y: point.y }).collect()
 }
 
 /// Serialize some data and then convert it to a JsValue.
@@ -31,6 +31,12 @@ fn to_js_value<T: Serialize>(data: T) -> JsValue {
 
 #[wasm_bindgen]
 impl WasmBezier {
+	/// Expect js_points to be a list of 3 pairs.
+	pub fn new_linear(js_points: &JsValue) -> WasmBezier {
+		let points: [DVec2; 2] = js_points.into_serde().unwrap();
+		WasmBezier(Bezier::from_linear_dvec2(points[0], points[1]))
+	}
+
 	/// Expect js_points to be a list of 3 pairs.
 	pub fn new_quadratic(js_points: &JsValue) -> WasmBezier {
 		let points: [DVec2; 3] = js_points.into_serde().unwrap();
@@ -70,7 +76,7 @@ impl WasmBezier {
 	}
 
 	pub fn get_points(&self) -> Vec<JsValue> {
-		self.0.get_points().iter().flatten().map(vec_to_point).collect()
+		self.0.get_points().map(|point| vec_to_point(&point)).collect()
 	}
 
 	pub fn to_svg(&self) -> String {
@@ -78,15 +84,19 @@ impl WasmBezier {
 	}
 
 	pub fn length(&self) -> f64 {
-		self.0.length()
+		self.0.length(None)
 	}
 
-	pub fn compute(&self, t: f64) -> JsValue {
-		vec_to_point(&self.0.compute(t))
+	pub fn evaluate(&self, t: f64) -> JsValue {
+		vec_to_point(&self.0.evaluate(t))
 	}
 
 	pub fn compute_lookup_table(&self, steps: i32) -> Vec<JsValue> {
 		self.0.compute_lookup_table(Some(steps)).iter().map(vec_to_point).collect()
+	}
+
+	pub fn derivative(&self) -> Option<WasmBezier> {
+		self.0.derivative().map(WasmBezier)
 	}
 
 	pub fn tangent(&self, t: f64) -> JsValue {

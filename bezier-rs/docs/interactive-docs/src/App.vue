@@ -9,7 +9,9 @@
 				:name="feature.name"
 				:callback="feature.callback"
 				:createThroughPoints="feature.createThroughPoints"
-				:cubicOptions="feature.cubicOptions"
+				:curveDegrees="feature.curveDegrees"
+				:customPoints="feature.customPoints"
+				:customOptions="feature.customOptions"
 			/>
 		</div>
 	</div>
@@ -19,7 +21,7 @@
 import { defineComponent, markRaw } from "vue";
 
 import { drawText, drawPoint, drawBezier, drawLine, getContextFromCanvas, drawBezierHelper, COLORS } from "@/utils/drawing";
-import { Point, WasmBezierInstance } from "@/utils/types";
+import { BezierCurveType, Point, WasmBezierInstance } from "@/utils/types";
 
 import ExamplePane from "@/components/ExamplePane.vue";
 import SliderExample from "@/components/SliderExample.vue";
@@ -51,6 +53,7 @@ export default defineComponent({
 					name: "Bezier Through Points",
 					// eslint-disable-next-line
 					callback: (): void => {},
+					curveDegrees: new Set([BezierCurveType.Quadratic, BezierCurveType.Cubic]),
 					createThroughPoints: true,
 					template: markRaw(SliderExample),
 					templateOptions: {
@@ -64,22 +67,31 @@ export default defineComponent({
 							},
 						],
 					},
-					cubicOptions: {
-						sliders: [
-							{
-								min: 0.01,
-								max: 0.99,
-								step: 0.01,
-								default: 0.5,
-								variable: "t",
-							},
-							{
-								min: 0,
-								max: 100,
-								step: 5,
-								default: 10,
-								variable: "midpoint separation",
-							},
+					customOptions: {
+						[BezierCurveType.Cubic]: {
+							sliders: [
+								{
+									min: 0.01,
+									max: 0.99,
+									step: 0.01,
+									default: 0.5,
+									variable: "t",
+								},
+								{
+									min: 0,
+									max: 100,
+									step: 2,
+									default: 30,
+									variable: "midpoint separation",
+								},
+							],
+						},
+					},
+					customPoints: {
+						[BezierCurveType.Quadratic]: [
+							[30, 50],
+							[120, 70],
+							[160, 170],
 						],
 					},
 				},
@@ -90,9 +102,9 @@ export default defineComponent({
 					},
 				},
 				{
-					name: "Compute",
+					name: "Evaluate",
 					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: Record<string, number>): void => {
-						const point = JSON.parse(bezier.compute(options.t));
+						const point = JSON.parse(bezier.evaluate(options.t));
 						drawPoint(getContextFromCanvas(canvas), point, 4, COLORS.NON_INTERACTIVE.STROKE_1);
 					},
 					template: markRaw(SliderExample),
@@ -122,11 +134,41 @@ export default defineComponent({
 					},
 				},
 				{
+					name: "Derivative",
+					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance): void => {
+						const context = getContextFromCanvas(canvas);
+
+						const derivativeBezier = bezier.derivative();
+						if (derivativeBezier) {
+							const points: Point[] = derivativeBezier.get_points().map((p) => JSON.parse(p));
+							if (points.length === 2) {
+								drawLine(context, points[0], points[1], COLORS.NON_INTERACTIVE.STROKE_1);
+							} else {
+								drawBezier(context, points, null, { curveStrokeColor: COLORS.NON_INTERACTIVE.STROKE_1, radius: 3.5 });
+							}
+						}
+					},
+					curveDegrees: new Set([BezierCurveType.Quadratic, BezierCurveType.Cubic]),
+					customPoints: {
+						[BezierCurveType.Quadratic]: [
+							[30, 40],
+							[110, 50],
+							[120, 130],
+						],
+						[BezierCurveType.Cubic]: [
+							[50, 50],
+							[60, 100],
+							[100, 140],
+							[140, 150],
+						],
+					},
+				},
+				{
 					name: "Tangent",
 					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: Record<string, number>): void => {
 						const context = getContextFromCanvas(canvas);
 
-						const intersection = JSON.parse(bezier.compute(options.t));
+						const intersection = JSON.parse(bezier.evaluate(options.t));
 						const tangent = JSON.parse(bezier.tangent(options.t));
 
 						const tangentEnd = {
@@ -146,7 +188,7 @@ export default defineComponent({
 					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: Record<string, number>): void => {
 						const context = getContextFromCanvas(canvas);
 
-						const intersection = JSON.parse(bezier.compute(options.t));
+						const intersection = JSON.parse(bezier.evaluate(options.t));
 						const normal = JSON.parse(bezier.normal(options.t));
 
 						const normalEnd = {
@@ -218,12 +260,25 @@ export default defineComponent({
 						const extrema: number[][] = JSON.parse(bezier.local_extrema());
 						extrema.forEach((tValues, index) => {
 							tValues.forEach((t) => {
-								const point: Point = JSON.parse(bezier.compute(t));
+								const point: Point = JSON.parse(bezier.evaluate(t));
 								drawPoint(context, point, 4, dimensionColors[index]);
 							});
 						});
 						drawText(getContextFromCanvas(canvas), "X extrema", 5, canvas.height - 20, dimensionColors[0]);
 						drawText(getContextFromCanvas(canvas), "Y extrema", 5, canvas.height - 5, dimensionColors[1]);
+					},
+					customPoints: {
+						[BezierCurveType.Quadratic]: [
+							[40, 40],
+							[160, 30],
+							[110, 150],
+						],
+						[BezierCurveType.Cubic]: [
+							[160, 180],
+							[170, 10],
+							[30, 90],
+							[180, 160],
+						],
 					},
 				},
 				{
@@ -243,8 +298,8 @@ export default defineComponent({
 								variable: "angle",
 								min: 0,
 								max: 2,
-								step: 1 / 16,
-								default: 1 / 8,
+								step: 1 / 50,
+								default: 0.12,
 								unit: "π",
 							},
 						],
