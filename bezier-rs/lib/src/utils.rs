@@ -1,7 +1,7 @@
+use crate::consts::{MAX_ABSOLUTE_DIFFERENCE, STRICT_MAX_ABSOLUTE_DIFFERENCE};
+
 use glam::{BVec2, DVec2};
 use std::f64::consts::PI;
-
-use crate::consts::{MAX_ABSOLUTE_DIFFERENCE, STRICT_MAX_ABSOLUTE_DIFFERENCE};
 
 /// Helper to perform the computation of a and c, where b is the provided point on the curve.
 /// Given the correct power of `t` and `(1-t)`, the computation is the same for quadratic and cubic cases.
@@ -42,6 +42,7 @@ pub fn get_closest_point_in_lut(lut: &[DVec2], point: DVec2) -> (i32, f64) {
 		.unwrap()
 }
 
+// TODO: Use an `Option` return type instead of a `Vec`
 /// Find the roots of the linear equation `ax + b`.
 pub fn solve_linear(a: f64, b: f64) -> Vec<f64> {
 	let mut roots = Vec::new();
@@ -52,6 +53,7 @@ pub fn solve_linear(a: f64, b: f64) -> Vec<f64> {
 	roots
 }
 
+// TODO: Use an `impl Iterator` return type instead of a `Vec`
 /// Find the roots of the linear equation `ax^2 + bx + c`.
 /// Precompute the `discriminant` (`b^2 - 4ac`) and `two_times_a` arguments prior to calling this function for efficiency purposes.
 pub fn solve_quadratic(discriminant: f64, two_times_a: f64, b: f64, c: f64) -> Vec<f64> {
@@ -79,6 +81,7 @@ fn cube_root(f: f64) -> f64 {
 	}
 }
 
+// TODO: Use an `impl Iterator` return type instead of a `Vec`
 /// Solve a cubic of the form `x^3 + px + q`, derivation from: <https://trans4mind.com/personal_development/mathematics/polynomials/cubicAlgebra.htm>.
 pub fn solve_reformatted_cubic(discriminant: f64, a: f64, p: f64, q: f64) -> Vec<f64> {
 	let mut roots = Vec::new();
@@ -118,6 +121,7 @@ pub fn solve_reformatted_cubic(discriminant: f64, a: f64, p: f64, q: f64) -> Vec
 	roots
 }
 
+// TODO: Use an `impl Iterator` return type instead of a `Vec`
 /// Solve a cubic of the form `ax^3 + bx^2 + ct + d`.
 pub fn solve_cubic(a: f64, b: f64, c: f64, d: f64) -> Vec<f64> {
 	if a.abs() <= STRICT_MAX_ABSOLUTE_DIFFERENCE {

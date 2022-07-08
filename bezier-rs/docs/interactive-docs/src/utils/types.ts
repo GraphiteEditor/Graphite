@@ -3,7 +3,7 @@ export type WasmBezierInstance = InstanceType<WasmRawInstance["WasmBezier"]>;
 
 export type WasmBezierKey = keyof WasmBezierInstance;
 export type WasmBezierConstructorKey = "new_linear" | "new_quadratic" | "new_cubic";
-export type WasmBezierMutatorKey = "set_start" | "set_handle_start" | "set_handle_end" | "set_end";
+export type WasmBezierManipulatorKey = "set_start" | "set_handle_start" | "set_handle_end" | "set_end";
 
 export enum BezierCurveType {
 	Linear = "Linear",
@@ -32,7 +32,7 @@ export type Point = {
 };
 
 export type BezierPoint = Point & {
-	mutator: WasmBezierMutatorKey;
+	manipulator: WasmBezierManipulatorKey;
 };
 
 export type BezierStyleConfig = {

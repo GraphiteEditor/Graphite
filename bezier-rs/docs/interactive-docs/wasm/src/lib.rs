@@ -21,7 +21,7 @@ fn vec_to_point(p: &DVec2) -> JsValue {
 
 /// Convert a bezier to a list of points.
 fn bezier_to_points(bezier: Bezier) -> Vec<Point> {
-	bezier.get_points().iter().map(|point| Point { x: point.x, y: point.y }).collect()
+	bezier.get_points().map(|point| Point { x: point.x, y: point.y }).collect()
 }
 
 /// Serialize some data and then convert it to a JsValue.
@@ -76,7 +76,7 @@ impl WasmBezier {
 	}
 
 	pub fn get_points(&self) -> Vec<JsValue> {
-		self.0.get_points().iter().map(vec_to_point).collect()
+		self.0.get_points().map(|point| vec_to_point(&point)).collect()
 	}
 
 	pub fn to_svg(&self) -> String {

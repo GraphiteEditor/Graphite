@@ -4,6 +4,7 @@ mod consts;
 mod utils;
 
 use consts::*;
+
 use glam::{DMat2, DVec2};
 
 /// Representation of the handle point(s) in a bezier segment.
@@ -254,21 +255,22 @@ impl Bezier {
 		}
 	}
 
-	/// Get the coordinates of all points in a vector.
-	/// For a linear segment, the order of the points will be: `start`, `end`.
-	/// For a quadratic segment, the order of the points will be: `start`, `handle`, `end`.
-	/// For a cubic segment, the order of the points will be: `start`, `handle_start`, `handle_end`, `end`.
-	pub fn get_points(&self) -> Vec<DVec2> {
+	/// Get an iterator over the coordinates of all points in a vector.
+	/// - For a linear segment, the order of the points will be: `start`, `end`.
+	/// - For a quadratic segment, the order of the points will be: `start`, `handle`, `end`.
+	/// - For a cubic segment, the order of the points will be: `start`, `handle_start`, `handle_end`, `end`.
+	pub fn get_points(&self) -> impl Iterator<Item = DVec2> {
 		match self.handles {
-			BezierHandles::Linear => vec![self.start, self.end],
-			BezierHandles::Quadratic { handle } => vec![self.start, handle, self.end],
-			BezierHandles::Cubic { handle_start, handle_end } => vec![self.start, handle_start, handle_end, self.end],
+			BezierHandles::Linear => [self.start, self.end, DVec2::ZERO, DVec2::ZERO].into_iter().take(2),
+			BezierHandles::Quadratic { handle } => [self.start, handle, self.end, DVec2::ZERO].into_iter().take(3),
+			BezierHandles::Cubic { handle_start, handle_end } => [self.start, handle_start, handle_end, self.end].into_iter().take(4),
 		}
 	}
 
 	/// Calculate the point on the curve based on the `t`-value provided.
-	/// Basis code based off of pseudocode found here: <https://pomax.github.io/bezierinfo/#explanation>.
 	fn unrestricted_evaluate(&self, t: f64) -> DVec2 {
+		// Basis code based off of pseudocode found here: <https://pomax.github.io/bezierinfo/#explanation>.
+
 		let t_squared = t * t;
 		let one_minus_t = 1.0 - t;
 		let squared_one_minus_t = one_minus_t * one_minus_t;
@@ -572,6 +574,7 @@ impl Bezier {
 		self.apply_transformation(&|point| point + translation)
 	}
 
+	// TODO: Use an `impl Iterator` return type instead of a `Vec`
 	// TODO: Change this to `intersect(&self, other: &Bezier)` to also work on quadratic and cubic segments
 	// TODO: (or keep this and add two more functions that perform the logic, and make the `intersect` function call the correct one)
 	/// Returns a list of points where the provided line segment intersects with the Bezier curve. If the provided segment is colinear with the bezier, zero intersection points will be returned.
