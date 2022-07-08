@@ -20,7 +20,7 @@
 <script lang="ts">
 import { defineComponent, markRaw } from "vue";
 
-import { drawText, drawPoint, drawBezier, drawLine, getContextFromCanvas, drawBezierHelper, COLORS } from "@/utils/drawing";
+import { drawBezier, drawBezierHelper, drawCurve, drawLine, drawPoint, drawText, getContextFromCanvas, COLORS } from "@/utils/drawing";
 import { BezierCurveType, Point, WasmBezierInstance } from "@/utils/types";
 
 import ExamplePane from "@/components/ExamplePane.vue";
@@ -192,8 +192,8 @@ export default defineComponent({
 						const normal = JSON.parse(bezier.normal(options.t));
 
 						const normalEnd = {
-							x: intersection.x - normal.x * SCALE_UNIT_VECTOR_FACTOR,
-							y: intersection.y - normal.y * SCALE_UNIT_VECTOR_FACTOR,
+							x: intersection.x + normal.x * SCALE_UNIT_VECTOR_FACTOR,
+							y: intersection.y + normal.y * SCALE_UNIT_VECTOR_FACTOR,
 						};
 
 						drawPoint(context, intersection, 3, COLORS.NON_INTERACTIVE.STROKE_1);
@@ -329,6 +329,34 @@ export default defineComponent({
 						curves.forEach((points, index) => {
 							drawBezier(context, points, null, { curveStrokeColor: `hsl(${40 * index}, 100%, 50%)`, radius: 3.5, drawHandles: false });
 						});
+					},
+				},
+				{
+					name: "Offset",
+					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: Record<string, number>): void => {
+						const context = getContextFromCanvas(canvas);
+						const curves: Point[][] = JSON.parse(bezier.offset(options.distance));
+						curves.forEach((points, index) => {
+							if (points.length === 2) {
+								drawLine(context, points[0], points[1], `hsl(${40 * index}, 100%, 50%)`);
+							} else {
+								drawCurve(context, points, `hsl(${40 * index}, 100%, 50%)`);
+							}
+						});
+						drawPoint(context, curves[0][0], 4, "hsl(0, 100%, 50%)");
+						drawPoint(context, curves[curves.length - 1][curves[0].length - 1], 4, `hsl(${40 * (curves.length - 1)}, 100%, 50%)`);
+					},
+					template: markRaw(SliderExample),
+					templateOptions: {
+						sliders: [
+							{
+								variable: "distance",
+								min: -50,
+								max: 50,
+								step: 1,
+								default: 20,
+							},
+						],
 					},
 				},
 			],

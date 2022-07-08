@@ -636,6 +636,9 @@ impl Bezier {
 	/// 2. The on-curve point for `t = 0.5` must occur roughly in the center of the polygon defined by the curve's endpoint normals.
 	/// See [the offset section](https://pomax.github.io/bezierinfo/#offsetting) of Pomax's bezier curve primer for more details.
 	fn is_scalable(&self) -> bool {
+		if let BezierHandles::Linear = self.handles {
+			return true;
+		}
 		// Verify all the control points are located on a single side of the curve.
 		if let BezierHandles::Cubic { handle_start, handle_end } = self.handles {
 			let angle_1 = (self.end - self.start).angle_between(handle_start - self.start);
@@ -706,6 +709,8 @@ impl Bezier {
 					if f64::abs(t1 - t2) >= step_size {
 						segment = subcurve.trim(t1, t2);
 						result.push(segment);
+					} else {
+						return;
 					}
 					t1 = t2;
 				}
@@ -720,6 +725,42 @@ impl Bezier {
 			}
 		});
 		result
+	}
+
+	/// Scale will translate a bezier curve a fixed distance away from its original position, and stretch/compress the transformed curve to match the translation ratio.
+	/// Scale takes the following parameters:
+	/// - `distance` - The distance away from the curve that the new one will be scaled to. Positive values will scale the curve in the same direction as the endpoint normals,
+	/// while negative values will scale in the opposite direction.
+	pub fn scale(&self, distance: f64) -> Bezier {
+		assert!(self.is_scalable());
+
+		let normal_start = self.normal(0.);
+		let normal_end = self.normal(1.);
+
+		// If normal unit vectors are equal, then the lines are parallel
+		if normal_start == normal_end {
+			return self.translate(distance * normal_start);
+		}
+
+		// Find the intersection point of the endpoint normals
+		let intersection = utils::line_intersection(self.start, normal_start, self.end, normal_end);
+
+		let should_flip_direction = (self.start - intersection).normalize().abs_diff_eq(normal_start, MAX_ABSOLUTE_DIFFERENCE);
+		self.apply_transformation(&|point| {
+			let mut direction_unit_vector = (intersection - point).normalize();
+			if should_flip_direction {
+				direction_unit_vector *= -1.;
+			}
+			point + distance * direction_unit_vector
+		})
+	}
+
+	/// Offset will get all the reducable subcurves, and for each subcurve, it will scale the subcurve a set distance away from the original curve.
+	/// Offset takes the following parameter:
+	/// - `distance` - The distance away from the curve that the new one will be offset to. Positive values will offset the curve in the same direction as the endpoint normals,
+	/// while negative values will offset in the opposite direction.
+	pub fn offset(&self, distance: f64) -> Vec<Bezier> {
+		self.reduce(None).into_iter().map(|bezier| bezier.scale(distance)).collect()
 	}
 }
 
@@ -835,5 +876,38 @@ mod tests {
 		assert!(intersections2.len() == 2);
 		assert!(compare_points(intersections2[0], p1));
 		assert!(compare_points(intersections2[1], DVec2::new(85.84, 85.84)));
+	}
+
+	#[test]
+	fn offset() {
+		let p1 = DVec2::new(30., 50.);
+		let p2 = DVec2::new(140., 30.);
+		let p3 = DVec2::new(160., 170.);
+		let bezier1 = Bezier::from_quadratic_dvec2(p1, p2, p3);
+		bezier1.offset(10.).into_iter().for_each(|bezier| {
+			println!("Bezier: {:?}, {:?}, {:?}", bezier.start(), bezier.end(), bezier.handle_start());
+		})
+	}
+
+	#[test]
+	fn offset2() {
+		let p1 = DVec2::new(32., 77.);
+		let p2 = DVec2::new(169., 25.);
+		let p3 = DVec2::new(164., 157.);
+		let bezier1 = Bezier::from_quadratic_dvec2(p1, p2, p3);
+		bezier1.offset(30.).into_iter().for_each(|bezier| {
+			println!("Bezier: {:?}, {:?}, {:?}", bezier.start(), bezier.end(), bezier.handle_start());
+		})
+	}
+
+	#[test]
+	fn reduce() {
+		let p1 = DVec2::new(0., 0.);
+		let p2 = DVec2::new(50., 50.);
+		let p3 = DVec2::new(0., 0.);
+		let bezier1 = Bezier::from_quadratic_dvec2(p1, p2, p3);
+		bezier1.reduce(None).into_iter().for_each(|bezier| {
+			println!("Bezier: {:?}, {:?}, {:?}", bezier.start(), bezier.end(), bezier.handle_start());
+		})
 	}
 }
