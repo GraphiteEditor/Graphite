@@ -1,6 +1,6 @@
 // Implementation constants
 
-/// Constants used to determine if `f64`'s are equivalent.
+/// Constants used to determine if `f64`s are equivalent.
 pub const MAX_ABSOLUTE_DIFFERENCE: f64 = 1e-3;
 /// Number of distances used in search algorithm for `project`.
 pub const NUM_DISTANCES: usize = 5;

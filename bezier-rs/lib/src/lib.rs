@@ -317,13 +317,13 @@ impl Bezier {
 				// and calculate the euclidean distance between the two endpoints of the subdivision
 				let lookup_table = self.compute_lookup_table(Some(num_subdivisions.unwrap_or(DEFAULT_LENGTH_SUBDIVISIONS)));
 				let mut approx_curve_length = 0.0;
-				let mut prev_point = lookup_table[0];
+				let mut previous_point = lookup_table[0];
 				// Calculate approximate distance between subdivision
-				for curr_point in lookup_table.iter().skip(1) {
+				for current_point in lookup_table.iter().skip(1) {
 					// Calculate distance of subdivision
-					approx_curve_length += (*curr_point - prev_point).length();
+					approx_curve_length += (*current_point - previous_point).length();
 					// Update the previous point
-					prev_point = *curr_point;
+					previous_point = *current_point;
 				}
 
 				approx_curve_length
@@ -332,7 +332,7 @@ impl Bezier {
 	}
 
 	/// Returns a Bezier representing the derivative of the original curve.
-	/// Note that this function will return `None` for a linear segment.
+	/// - This function returns `None` for a linear segment.
 	pub fn derivative(&self) -> Option<Bezier> {
 		match self.handles {
 			BezierHandles::Linear => None,
@@ -368,31 +368,33 @@ impl Bezier {
 	pub fn split(&self, t: f64) -> [Bezier; 2] {
 		let split_point = self.compute(t);
 
-		let t_squared = t * t;
-		let t_minus_one = t - 1.;
-		let squared_t_minus_one = t_minus_one * t_minus_one;
-
 		match self.handles {
 			BezierHandles::Linear => [Bezier::from_linear_dvec2(self.start, split_point), Bezier::from_linear_dvec2(split_point, self.end)],
 			// TODO: Actually calculate the correct handle locations
-			BezierHandles::Quadratic { handle } => [
-				Bezier::from_quadratic_dvec2(self.start, t * handle - t_minus_one * self.start, split_point),
-				Bezier::from_quadratic_dvec2(split_point, t * self.end - t_minus_one * handle, self.end),
-			],
-			BezierHandles::Cubic { handle_start, handle_end } => [
-				Bezier::from_cubic_dvec2(
-					self.start,
-					t * handle_start - t_minus_one * self.start,
-					t_squared * handle_end - 2. * t * t_minus_one * handle_start + squared_t_minus_one * self.start,
-					split_point,
-				),
-				Bezier::from_cubic_dvec2(
-					split_point,
-					t_squared * self.end - 2. * t * t_minus_one * handle_end + squared_t_minus_one * handle_start,
-					t * self.end - t_minus_one * handle_end,
-					self.end,
-				),
-			],
+			BezierHandles::Quadratic { handle } => {
+				let t_minus_one = t - 1.;
+				[
+					Bezier::from_quadratic_dvec2(self.start, t * handle - t_minus_one * self.start, split_point),
+					Bezier::from_quadratic_dvec2(split_point, t * self.end - t_minus_one * handle, self.end),
+				]
+			}
+			BezierHandles::Cubic { handle_start, handle_end } => {
+				let t_minus_one = t - 1.;
+				[
+					Bezier::from_cubic_dvec2(
+						self.start,
+						t * handle_start - t_minus_one * self.start,
+						(t * t) * handle_end - 2. * t * t_minus_one * handle_start + (t_minus_one * t_minus_one) * self.start,
+						split_point,
+					),
+					Bezier::from_cubic_dvec2(
+						split_point,
+						(t * t) * self.end - 2. * t * t_minus_one * handle_end + (t_minus_one * t_minus_one) * handle_start,
+						t * self.end - t_minus_one * handle_end,
+						self.end,
+					),
+				]
+			}
 		}
 	}
 
@@ -569,6 +571,8 @@ impl Bezier {
 		self.apply_transformation(&|point| point + translation)
 	}
 
+	// TODO: Change this to `intersect(&self, other: &Bezier)` to also work on quadratic and cubic segments
+	// TODO: (or keep this and add two more functions that perform the logic, and make the `intersect` function call the correct one)
 	/// Returns a list of points where the provided line segment intersects with the Bezier curve.
 	/// - `line` - A line segment expected to be received in the format of `[start_point, end_point]`.
 	pub fn intersect_line_segment(&self, line: [DVec2; 2]) -> Vec<DVec2> {

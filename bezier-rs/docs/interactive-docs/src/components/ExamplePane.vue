@@ -1,7 +1,7 @@
 <template>
 	<div>
-		<h2 class="example_pane_header">{{ name }}</h2>
-		<div class="example_row">
+		<h2 class="example-pane-header">{{ name }}</h2>
+		<div class="example-row">
 			<div v-for="(example, index) in exampleData" :key="index">
 				<component :is="template" :templateOptions="example.templateOptions" :title="example.title" :bezier="example.bezier" :callback="callback" :createThroughPoints="createThroughPoints" />
 			</div>
@@ -63,7 +63,10 @@ export default defineComponent({
 		Example,
 	},
 	props: {
-		name: String,
+		name: {
+			type: String as PropType<string>,
+			required: true,
+		},
 		callback: {
 			type: Function as PropType<BezierCallback>,
 			required: true,
@@ -72,7 +75,10 @@ export default defineComponent({
 			type: Object as PropType<Component>,
 			default: Example,
 		},
-		templateOptions: Object as PropType<TemplateOption>,
+		templateOptions: {
+			type: Object as PropType<TemplateOption>,
+			required: false,
+		},
 		customOptions: {
 			type: Object as PropType<CustomTemplateOptions>,
 			default: () => ({}),
@@ -116,13 +122,13 @@ export default defineComponent({
 </script>
 
 <style>
-.example_row {
+.example-row {
 	display: flex; /* or inline-flex */
 	flex-direction: row;
 	justify-content: center;
 }
 
-.example_pane_header {
+.example-pane-header {
 	margin-bottom: 0;
 }
 </style>
