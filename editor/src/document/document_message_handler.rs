@@ -402,12 +402,12 @@ impl DocumentMessageHandler {
 			Some((document, layer_metadata)) => {
 				// Update currently displayed layer on property panel if selection changes after redo action
 				// Also appropriately update property panel if redo action results in a layer being added
-				let prev_selected_paths: Vec<Vec<u64>> = layer_metadata
+				let next_selected_paths: Vec<Vec<u64>> = layer_metadata
 					.iter()
 					.filter_map(|(layer_id, metadata)| if metadata.selected { Some(layer_id.clone()) } else { None })
 					.collect();
 
-				if prev_selected_paths != selected_paths {
+				if next_selected_paths != selected_paths {
 					responses.push_back(BroadcastSignal::SelectionChanged.into());
 				}
 
