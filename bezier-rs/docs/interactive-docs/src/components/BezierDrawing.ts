@@ -1,13 +1,19 @@
 import { WasmBezier } from "@/../wasm/pkg";
+
 import { COLORS, drawBezier, drawPoint, getContextFromCanvas, getPointSizeByIndex } from "@/utils/drawing";
-import { BezierCallback, BezierPoint, BezierStyleConfig, Point, WasmBezierMutatorKey, WasmBezierInstance } from "@/utils/types";
+import { BezierCallback, BezierPoint, BezierStyleConfig, Point, WasmBezierManipulatorKey, WasmBezierInstance } from "@/utils/types";
 
 // Offset to increase selectable range, used to make points easier to grab
 const FUDGE_FACTOR = 3;
 
-class BezierDrawing {
-	static indexToMutator: WasmBezierMutatorKey[] = ["set_start", "set_handle_start", "set_handle_end", "set_end"];
+// Given the number of points in the curve, map the index of a point to the correct manipulator key
+const MANIPULATOR_KEYS_FROM_BEZIER_TYPE: { [k: number]: WasmBezierManipulatorKey[] } = {
+	2: ["set_start", "set_end"],
+	3: ["set_start", "set_handle_start", "set_end"],
+	4: ["set_start", "set_handle_start", "set_handle_end", "set_end"],
+};
 
+class BezierDrawing {
 	points: BezierPoint[];
 
 	canvas: HTMLCanvasElement;
@@ -37,7 +43,7 @@ class BezierDrawing {
 				y: p.y,
 				r: getPointSizeByIndex(i, points.length),
 				selected: false,
-				mutator: BezierDrawing.indexToMutator[points.length === 3 && i > 1 ? i + 1 : i],
+				manipulator: MANIPULATOR_KEYS_FROM_BEZIER_TYPE[points.length][i],
 			}));
 
 		if (this.createThroughPoints && this.points.length === 4) {
@@ -70,10 +76,7 @@ class BezierDrawing {
 	}
 
 	mouseMoveHandler(evt: MouseEvent): void {
-		if (evt.buttons === 0) {
-			this.deselectPointHandler();
-			return;
-		}
+		if (evt.buttons === 0) this.deselectPointHandler();
 
 		const mx = evt.offsetX;
 		const my = evt.offsetY;
@@ -84,7 +87,7 @@ class BezierDrawing {
 				const selectedPoint = this.points[this.dragIndex];
 				selectedPoint.x = mx;
 				selectedPoint.y = my;
-				this.bezier[selectedPoint.mutator](selectedPoint.x, selectedPoint.y);
+				this.bezier[selectedPoint.manipulator](selectedPoint.x, selectedPoint.y);
 			}
 		}
 		this.updateBezier({ x: mx, y: my });

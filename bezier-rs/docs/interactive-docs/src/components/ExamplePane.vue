@@ -1,7 +1,7 @@
 <template>
 	<div>
-		<h2 class="example_pane_header">{{ name }}</h2>
-		<div class="example_row">
+		<h2 class="example-pane-header">{{ name }}</h2>
+		<div class="example-row">
 			<div v-for="(example, index) in exampleData" :key="index">
 				<component :is="template" :templateOptions="example.templateOptions" :title="example.title" :bezier="example.bezier" :callback="callback" :createThroughPoints="createThroughPoints" />
 			</div>
@@ -12,7 +12,7 @@
 <script lang="ts">
 import { defineComponent, PropType, Component } from "vue";
 
-import { BezierCallback, TemplateOption, WasmBezierInstance, WasmRawInstance } from "@/utils/types";
+import { BezierCallback, BezierCurveType, TemplateOption, WasmBezierConstructorKey, WasmBezierInstance, WasmRawInstance } from "@/utils/types";
 
 import Example from "@/components/Example.vue";
 
@@ -22,13 +22,51 @@ type ExampleData = {
 	templateOptions: TemplateOption;
 };
 
+type CustomTemplateOptions = {
+	[key in BezierCurveType]?: TemplateOption;
+};
+
+type CustomPoints = {
+	[key in BezierCurveType]?: number[][];
+};
+
+const CurveTypeMapping = {
+	[BezierCurveType.Linear]: {
+		points: [
+			[30, 60],
+			[140, 120],
+		],
+		constructor: "new_linear" as WasmBezierConstructorKey,
+	},
+	[BezierCurveType.Quadratic]: {
+		points: [
+			[30, 50],
+			[140, 30],
+			[160, 170],
+		],
+		constructor: "new_quadratic" as WasmBezierConstructorKey,
+	},
+	[BezierCurveType.Cubic]: {
+		points: [
+			[30, 30],
+			[60, 140],
+			[150, 30],
+			[160, 160],
+		],
+		constructor: "new_cubic" as WasmBezierConstructorKey,
+	},
+};
+
 export default defineComponent({
 	name: "ExamplePane",
 	components: {
 		Example,
 	},
 	props: {
-		name: String,
+		name: {
+			type: String as PropType<string>,
+			required: true,
+		},
 		callback: {
 			type: Function as PropType<BezierCallback>,
 			required: true,
@@ -37,14 +75,25 @@ export default defineComponent({
 			type: Object as PropType<Component>,
 			default: Example,
 		},
-		templateOptions: Object as PropType<TemplateOption>,
-		cubicOptions: {
+		templateOptions: {
 			type: Object as PropType<TemplateOption>,
-			default: null,
+			required: false,
+		},
+		customOptions: {
+			type: Object as PropType<CustomTemplateOptions>,
+			default: () => ({}),
 		},
 		createThroughPoints: {
 			type: Boolean as PropType<boolean>,
 			default: false,
+		},
+		curveDegrees: {
+			type: Set as PropType<Set<BezierCurveType>>,
+			default: () => new Set(Object.values(BezierCurveType)),
+		},
+		customPoints: {
+			type: Object as PropType<CustomPoints>,
+			default: () => ({}),
 		},
 	},
 	data() {
@@ -54,42 +103,32 @@ export default defineComponent({
 	},
 	mounted() {
 		import("@/../wasm/pkg").then((wasm: WasmRawInstance) => {
-			const quadraticPoints = [
-				[30, 50],
-				[140, 30],
-				[160, 170],
-			];
-			const cubicPoints = [
-				[30, 30],
-				[60, 140],
-				[150, 30],
-				[160, 160],
-			];
-			this.exampleData = [
-				{
-					title: "Quadratic",
-					bezier: wasm.WasmBezier.new_quadratic(quadraticPoints),
-					templateOptions: this.templateOptions as TemplateOption,
-				},
-				{
-					title: "Cubic",
-					bezier: wasm.WasmBezier.new_cubic(cubicPoints),
-					templateOptions: (this.cubicOptions || this.templateOptions) as TemplateOption,
-				},
-			];
+			this.exampleData = [];
+			// Only add example for BezierCurveType that is in the curveDegrees set
+			Object.values(BezierCurveType).forEach((bezierType) => {
+				if (this.curveDegrees.has(bezierType)) {
+					const { points, constructor } = CurveTypeMapping[bezierType];
+					this.exampleData.push({
+						title: bezierType,
+						// Use custom options if they were provided for the current BezierCurveType
+						bezier: wasm.WasmBezier[constructor](this.customPoints[bezierType] || points),
+						templateOptions: (this.customOptions[bezierType] || this.templateOptions) as TemplateOption,
+					});
+				}
+			});
 		});
 	},
 });
 </script>
 
 <style>
-.example_row {
+.example-row {
 	display: flex; /* or inline-flex */
 	flex-direction: row;
 	justify-content: center;
 }
 
-.example_pane_header {
+.example-pane-header {
 	margin-bottom: 0;
 }
 </style>
