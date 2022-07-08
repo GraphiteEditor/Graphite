@@ -136,6 +136,6 @@ impl WasmBezier {
 			.iter()
 			.map(|level| level.iter().map(|&point| Point { x: point.x, y: point.y }).collect::<Vec<Point>>())
 			.collect::<Vec<Vec<Point>>>();
-		JsValue::from_serde(&serde_json::to_string(&hull).unwrap()).unwrap()
+		to_js_value(hull)
 	}
 }

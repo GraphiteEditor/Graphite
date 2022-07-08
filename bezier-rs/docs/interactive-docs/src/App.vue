@@ -242,17 +242,7 @@ export default defineComponent({
 						});
 					},
 					template: markRaw(SliderExample),
-					templateOptions: {
-						sliders: [
-							{
-								min: 0,
-								max: 1,
-								step: 0.01,
-								default: 0.5,
-								variable: "t",
-							},
-						],
-					},
+					templateOptions: { sliders: [tSliderOptions] },
 				},
 				{
 					name: "Rotate",
