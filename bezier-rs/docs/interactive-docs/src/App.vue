@@ -102,9 +102,9 @@ export default defineComponent({
 					},
 				},
 				{
-					name: "Compute",
+					name: "Evaluate",
 					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: Record<string, number>): void => {
-						const point = JSON.parse(bezier.compute(options.t));
+						const point = JSON.parse(bezier.evaluate(options.t));
 						drawPoint(getContextFromCanvas(canvas), point, 4, COLORS.NON_INTERACTIVE.STROKE_1);
 					},
 					template: markRaw(SliderExample),
@@ -168,7 +168,7 @@ export default defineComponent({
 					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: Record<string, number>): void => {
 						const context = getContextFromCanvas(canvas);
 
-						const intersection = JSON.parse(bezier.compute(options.t));
+						const intersection = JSON.parse(bezier.evaluate(options.t));
 						const tangent = JSON.parse(bezier.tangent(options.t));
 
 						const tangentEnd = {
@@ -188,7 +188,7 @@ export default defineComponent({
 					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: Record<string, number>): void => {
 						const context = getContextFromCanvas(canvas);
 
-						const intersection = JSON.parse(bezier.compute(options.t));
+						const intersection = JSON.parse(bezier.evaluate(options.t));
 						const normal = JSON.parse(bezier.normal(options.t));
 
 						const normalEnd = {
@@ -260,7 +260,7 @@ export default defineComponent({
 						const extrema: number[][] = JSON.parse(bezier.local_extrema());
 						extrema.forEach((tValues, index) => {
 							tValues.forEach((t) => {
-								const point: Point = JSON.parse(bezier.compute(t));
+								const point: Point = JSON.parse(bezier.evaluate(t));
 								drawPoint(context, point, 4, dimensionColors[index]);
 							});
 						});

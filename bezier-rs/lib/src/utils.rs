@@ -1,6 +1,8 @@
 use glam::{BVec2, DVec2};
 use std::f64::consts::PI;
 
+use crate::consts::{MAX_ABSOLUTE_DIFFERENCE, STRICT_MAX_ABSOLUTE_DIFFERENCE};
+
 /// Helper to perform the computation of a and c, where b is the provided point on the curve.
 /// Given the correct power of `t` and `(1-t)`, the computation is the same for quadratic and cubic cases.
 /// Relevant derivation and the definitions of a, b, and c can be found in [the projection identity section](https://pomax.github.io/bezierinfo/#abc) of Pomax's bezier curve primer.
@@ -43,7 +45,8 @@ pub fn get_closest_point_in_lut(lut: &[DVec2], point: DVec2) -> (i32, f64) {
 /// Find the roots of the linear equation `ax + b`.
 pub fn solve_linear(a: f64, b: f64) -> Vec<f64> {
 	let mut roots = Vec::new();
-	if a != 0. {
+	// There exist roots when `a` is not 0
+	if a.abs() > MAX_ABSOLUTE_DIFFERENCE {
 		roots.push(-b / a);
 	}
 	roots
@@ -79,32 +82,35 @@ fn cube_root(f: f64) -> f64 {
 /// Solve a cubic of the form `x^3 + px + q`, derivation from: <https://trans4mind.com/personal_development/mathematics/polynomials/cubicAlgebra.htm>.
 pub fn solve_reformatted_cubic(discriminant: f64, a: f64, p: f64, q: f64) -> Vec<f64> {
 	let mut roots = Vec::new();
-	if p == 0. {
+	if p.abs() <= STRICT_MAX_ABSOLUTE_DIFFERENCE {
+		// Handle when p is approximately 0
 		roots.push(cube_root(-q));
-	} else if q == 0. {
+	} else if q.abs() <= STRICT_MAX_ABSOLUTE_DIFFERENCE {
+		// Handle when q is approximately 0
 		if p < 0. {
 			roots.push((-p).powf(1. / 2.));
 		}
-	} else if discriminant == 0. {
+	} else if discriminant.abs() <= STRICT_MAX_ABSOLUTE_DIFFERENCE {
+		// When discriminant is 0 (check for approximation because of floating point errors), all roots are real, and 2 are repeated
 		let q_divided_by_2 = q / 2.;
 		let a_divided_by_3 = a / 3.;
-		// all roots are real, and 2 are repeated
+
 		roots.push(2. * cube_root(-q_divided_by_2) - a_divided_by_3);
 		roots.push(cube_root(q_divided_by_2) - a_divided_by_3);
 	} else if discriminant > 0. {
-		// one real and two imaginary roots
+		// When discriminant > 0, there is one real and two imaginary roots
 		let q_divided_by_2 = q / 2.;
 		let square_root_discriminant = discriminant.powf(1. / 2.);
+
 		roots.push(cube_root(-q_divided_by_2 + square_root_discriminant) - cube_root(q_divided_by_2 + square_root_discriminant) - a / 3.);
 	} else {
-		// three real roots
+		// Otherwise, discriminant < 0 and there are three real roots
 		let p_divided_by_3 = p / 3.;
 		let a_divided_by_3 = a / 3.;
 		let cube_root_r = (-p_divided_by_3).powf(1. / 2.);
 		let phi = (-q / (2. * cube_root_r.powi(3))).acos();
 
 		let two_times_cube_root_r = 2. * cube_root_r;
-		// three real roots
 		roots.push(two_times_cube_root_r * (phi / 3.).cos() - a_divided_by_3);
 		roots.push(two_times_cube_root_r * ((phi + 2. * PI) / 3.).cos() - a_divided_by_3);
 		roots.push(two_times_cube_root_r * ((phi + 4. * PI) / 3.).cos() - a_divided_by_3);
@@ -114,8 +120,8 @@ pub fn solve_reformatted_cubic(discriminant: f64, a: f64, p: f64, q: f64) -> Vec
 
 /// Solve a cubic of the form `ax^3 + bx^2 + ct + d`.
 pub fn solve_cubic(a: f64, b: f64, c: f64, d: f64) -> Vec<f64> {
-	if a.abs() <= 1e-5 {
-		if b.abs() <= 1e-5 {
+	if a.abs() <= STRICT_MAX_ABSOLUTE_DIFFERENCE {
+		if b.abs() <= STRICT_MAX_ABSOLUTE_DIFFERENCE {
 			// If both a and b are approximately 0, treat as a linear problem
 			solve_linear(c, d)
 		} else {
@@ -161,44 +167,48 @@ mod tests {
 	use super::*;
 	use crate::consts::MAX_ABSOLUTE_DIFFERENCE;
 
+	/// Compare vectors of `f64`s with a provided max absolute value difference.
+	fn f64_compare_vector(vec1: Vec<f64>, vec2: Vec<f64>, max_abs_diff: f64) -> bool {
+		vec1.len() == vec2.len() && vec1.into_iter().zip(vec2.into_iter()).all(|(a, b)| f64_compare(a, b, max_abs_diff))
+	}
+
+	#[test]
+	fn test_solve_linear() {
+		// Line that is on the x-axis
+		assert!(solve_linear(0., 0.).is_empty());
+		// Line that is parallel to but not on the x-axis
+		assert!(solve_linear(0., 1.).is_empty());
+		// Line with a non-zero slope
+		assert!(solve_linear(2., -8.) == vec![4.]);
+	}
+
 	#[test]
 	fn test_solve_cubic() {
 		// discriminant == 0
 		let roots1 = solve_cubic(1., 0., 0., 0.);
-		assert!(roots1.len() == 1);
-		assert!(roots1[0] == 0.);
+		assert!(roots1 == vec![0.]);
 
 		let roots2 = solve_cubic(1., 3., 0., -4.);
-		assert!(roots2.len() == 2);
-		assert!(roots2[0] == 1.);
-		assert!(roots2[1] == -2.);
+		assert!(roots2 == vec![1., -2.]);
 
 		// p == 0
 		let roots3 = solve_cubic(1., 0., 0., -1.);
-		assert!(roots3.len() == 1);
-		assert!(roots3[0] == 1.);
+		assert!(roots3 == vec![1.]);
 
 		// discriminant > 0
 		let roots4 = solve_cubic(1., 3., 0., 2.);
-		assert!(roots4.len() == 1);
-		assert!(f64_compare(roots4[0], -3.196, MAX_ABSOLUTE_DIFFERENCE));
+		assert!(f64_compare_vector(roots4, vec![-3.196], MAX_ABSOLUTE_DIFFERENCE));
 
 		// discriminant < 0
 		let roots5 = solve_cubic(1., 3., 0., -1.);
-		assert!(roots5.len() == 3);
-		assert!(f64_compare(roots5[0], 0.532, MAX_ABSOLUTE_DIFFERENCE));
-		assert!(f64_compare(roots5[1], -2.879, MAX_ABSOLUTE_DIFFERENCE));
-		assert!(f64_compare(roots5[2], -0.653, MAX_ABSOLUTE_DIFFERENCE));
+		assert!(f64_compare_vector(roots5, vec![0.532, -2.879, -0.653], MAX_ABSOLUTE_DIFFERENCE));
 
 		// quadratic
 		let roots6 = solve_cubic(0., 3., 0., -3.);
-		assert!(roots6.len() == 2);
-		assert!(roots6[0] == 1.);
-		assert!(roots6[1] == -1.);
+		assert!(roots6 == vec![1., -1.]);
 
 		// linear
 		let roots7 = solve_cubic(0., 0., 1., -1.);
-		assert!(roots7.len() == 1);
-		assert!(roots7[0] == 1.);
+		assert!(roots7 == vec![1.]);
 	}
 }

@@ -6,15 +6,14 @@ import { BezierCallback, BezierPoint, BezierStyleConfig, Point, WasmBezierMutato
 // Offset to increase selectable range, used to make points easier to grab
 const FUDGE_FACTOR = 3;
 
-const MAP_LENGTH_TO_MUTATOR_INDEX: { [k: number]: number[] } = {
-	2: [0, 3],
-	3: [0, 1, 3],
-	4: [0, 1, 2, 3],
+// Given the number of points in the curve, map the index of a point to the correct mutator key
+const MAP_POINTS_TO_MUTATOR_BY_NUMBER_POINTS: { [k: number]: WasmBezierMutatorKey[] } = {
+	2: ["set_start", "set_end"],
+	3: ["set_start", "set_handle_start", "set_end"],
+	4: ["set_start", "set_handle_start", "set_handle_end", "set_end"],
 };
 
 class BezierDrawing {
-	static indexToMutator: WasmBezierMutatorKey[] = ["set_start", "set_handle_start", "set_handle_end", "set_end"];
-
 	points: BezierPoint[];
 
 	canvas: HTMLCanvasElement;
@@ -44,7 +43,7 @@ class BezierDrawing {
 				y: p.y,
 				r: getPointSizeByIndex(i, points.length),
 				selected: false,
-				mutator: BezierDrawing.indexToMutator[MAP_LENGTH_TO_MUTATOR_INDEX[points.length][i]],
+				mutator: MAP_POINTS_TO_MUTATOR_BY_NUMBER_POINTS[points.length][i],
 			}));
 
 		if (this.createThroughPoints && this.points.length === 4) {

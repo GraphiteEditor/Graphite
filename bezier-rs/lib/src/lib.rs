@@ -254,21 +254,21 @@ impl Bezier {
 		}
 	}
 
-	/// Get the coordinates of all points in an array of 4 optional points.
-	/// For a linear segment, the order of the points will be: `start`, `end`. The third and fourth elements will be `None`.
-	/// For a quadratic segment, the order of the points will be: `start`, `handle`, `end`. The fourth element will be `None`.
+	/// Get the coordinates of all points in a vector.
+	/// For a linear segment, the order of the points will be: `start`, `end`.
+	/// For a quadratic segment, the order of the points will be: `start`, `handle`, `end`.
 	/// For a cubic segment, the order of the points will be: `start`, `handle_start`, `handle_end`, `end`.
-	pub fn get_points(&self) -> [Option<DVec2>; 4] {
+	pub fn get_points(&self) -> Vec<DVec2> {
 		match self.handles {
-			BezierHandles::Linear => [Some(self.start), Some(self.end), None, None],
-			BezierHandles::Quadratic { handle } => [Some(self.start), Some(handle), Some(self.end), None],
-			BezierHandles::Cubic { handle_start, handle_end } => [Some(self.start), Some(handle_start), Some(handle_end), Some(self.end)],
+			BezierHandles::Linear => vec![self.start, self.end],
+			BezierHandles::Quadratic { handle } => vec![self.start, handle, self.end],
+			BezierHandles::Cubic { handle_start, handle_end } => vec![self.start, handle_start, handle_end, self.end],
 		}
 	}
 
 	/// Calculate the point on the curve based on the `t`-value provided.
 	/// Basis code based off of pseudocode found here: <https://pomax.github.io/bezierinfo/#explanation>.
-	fn unrestricted_compute(&self, t: f64) -> DVec2 {
+	fn unrestricted_evaluate(&self, t: f64) -> DVec2 {
 		let t_squared = t * t;
 		let one_minus_t = 1.0 - t;
 		let squared_one_minus_t = one_minus_t * one_minus_t;
@@ -286,9 +286,9 @@ impl Bezier {
 
 	/// Calculate the point on the curve based on the `t`-value provided.
 	/// Expects `t` to be within the inclusive range `[0, 1]`.
-	pub fn compute(&self, t: f64) -> DVec2 {
+	pub fn evaluate(&self, t: f64) -> DVec2 {
 		assert!((0.0..=1.0).contains(&t));
-		self.unrestricted_compute(t)
+		self.unrestricted_evaluate(t)
 	}
 
 	/// Return a selection of equidistant points on the bezier curve.
@@ -299,7 +299,7 @@ impl Bezier {
 		let mut steps_array = Vec::with_capacity((steps_unwrapped + 1) as usize);
 
 		for t in 0..steps_unwrapped + 1 {
-			steps_array.push(self.compute(f64::from(t) * ratio))
+			steps_array.push(self.evaluate(f64::from(t) * ratio))
 		}
 
 		steps_array
@@ -354,7 +354,7 @@ impl Bezier {
 	pub fn tangent(&self, t: f64) -> DVec2 {
 		match self.handles {
 			BezierHandles::Linear => self.end - self.start,
-			_ => self.derivative().unwrap().compute(t),
+			_ => self.derivative().unwrap().evaluate(t),
 		}
 		.normalize()
 	}
@@ -366,7 +366,7 @@ impl Bezier {
 
 	/// Returns the pair of Bezier curves that result from splitting the original curve at the point corresponding to `t`.
 	pub fn split(&self, t: f64) -> [Bezier; 2] {
-		let split_point = self.compute(t);
+		let split_point = self.evaluate(t);
 
 		match self.handles {
 			BezierHandles::Linear => [Bezier::from_linear_dvec2(self.start, split_point), Bezier::from_linear_dvec2(split_point, self.end)],
@@ -426,6 +426,7 @@ impl Bezier {
 			iteration_limit,
 		} = options;
 
+		// TODO: Consider optimizations from precomputing useful values, or using the GPU
 		// First find the closest point from the results of a lookup table
 		let lut = self.compute_lookup_table(Some(lut_size));
 		let (minimum_position, minimum_distance) = utils::get_closest_point_in_lut(&lut, point);
@@ -468,7 +469,7 @@ impl Bezier {
 				if step_index == 0 {
 					distance = *table_distance;
 				} else {
-					distance = point.distance(self.compute(iterator_t));
+					distance = point.distance(self.evaluate(iterator_t));
 					*table_distance = distance;
 				}
 				if distance < new_minimum_distance {
@@ -503,7 +504,7 @@ impl Bezier {
 			}
 		}
 
-		self.compute(final_t)
+		self.evaluate(final_t)
 	}
 
 	/// Returns two lists of `t`-values representing the local extrema of the `x` and `y` parametric curves respectively.
@@ -573,7 +574,7 @@ impl Bezier {
 
 	// TODO: Change this to `intersect(&self, other: &Bezier)` to also work on quadratic and cubic segments
 	// TODO: (or keep this and add two more functions that perform the logic, and make the `intersect` function call the correct one)
-	/// Returns a list of points where the provided line segment intersects with the Bezier curve.
+	/// Returns a list of points where the provided line segment intersects with the Bezier curve. If the provided segment is colinear with the bezier, zero intersection points will be returned.
 	/// - `line` - A line segment expected to be received in the format of `[start_point, end_point]`.
 	pub fn intersect_line_segment(&self, line: [DVec2; 2]) -> Vec<DVec2> {
 		// Rotate the bezier and the line by the angle that the line makes with the x axis
@@ -590,6 +591,7 @@ impl Bezier {
 		// Compute the roots of the resulting bezier curve
 		let list_intersection_t = match translated_bezier.handles {
 			BezierHandles::Linear => {
+				// If the transformed linear bezier is on the x-axis, `a` and `b` will both be zero and `solve_linear` will return no roots
 				let a = translated_bezier.end.y - translated_bezier.start.y;
 				let b = translated_bezier.start.y;
 				utils::solve_linear(a, b)
@@ -621,7 +623,7 @@ impl Bezier {
 		list_intersection_t
 			.iter()
 			.filter(|&&t| utils::f64_approximately_in_range(t, 0., 1., MAX_ABSOLUTE_DIFFERENCE))
-			.map(|&t| self.unrestricted_compute(t))
+			.map(|&t| self.unrestricted_evaluate(t))
 			.filter(|&point| utils::dvec2_approximately_in_range(point, min, max, MAX_ABSOLUTE_DIFFERENCE).all())
 			.collect::<Vec<DVec2>>()
 	}
@@ -737,13 +739,13 @@ mod tests {
 		let p3 = DVec2::new(160., 170.);
 
 		let bezier1 = Bezier::quadratic_through_points(p1, p2, p3, None);
-		assert!(compare_points(bezier1.compute(0.5), p2));
+		assert!(compare_points(bezier1.evaluate(0.5), p2));
 
 		let bezier2 = Bezier::quadratic_through_points(p1, p2, p3, Some(0.8));
-		assert!(compare_points(bezier2.compute(0.8), p2));
+		assert!(compare_points(bezier2.evaluate(0.8), p2));
 
 		let bezier3 = Bezier::quadratic_through_points(p1, p2, p3, Some(0.));
-		assert!(compare_points(bezier3.compute(0.), p2));
+		assert!(compare_points(bezier3.evaluate(0.), p2));
 	}
 
 	#[test]
@@ -753,13 +755,13 @@ mod tests {
 		let p3 = DVec2::new(160., 160.);
 
 		let bezier1 = Bezier::cubic_through_points(p1, p2, p3, Some(0.3), Some(10.));
-		assert!(compare_points(bezier1.compute(0.3), p2));
+		assert!(compare_points(bezier1.evaluate(0.3), p2));
 
 		let bezier2 = Bezier::cubic_through_points(p1, p2, p3, Some(0.8), Some(91.7));
-		assert!(compare_points(bezier2.compute(0.8), p2));
+		assert!(compare_points(bezier2.evaluate(0.8), p2));
 
 		let bezier3 = Bezier::cubic_through_points(p1, p2, p3, Some(0.), Some(91.7));
-		assert!(compare_points(bezier3.compute(0.), p2));
+		assert!(compare_points(bezier3.evaluate(0.), p2));
 	}
 
 	#[test]

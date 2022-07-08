@@ -1,7 +1,9 @@
 // Implementation constants
 
-/// Constants used to determine if `f64`s are equivalent.
+/// Constant used to determine if `f64`s are equivalent.
 pub const MAX_ABSOLUTE_DIFFERENCE: f64 = 1e-3;
+/// A stricter constant used to determine if `f64`s are equivalent.
+pub const STRICT_MAX_ABSOLUTE_DIFFERENCE: f64 = 1e-6;
 /// Number of distances used in search algorithm for `project`.
 pub const NUM_DISTANCES: usize = 5;
 /// Maximum allowed angle that the normal of the `start` or `end` point can make with the normal of the corresponding handle for a curve to be considered scalable/simple.
