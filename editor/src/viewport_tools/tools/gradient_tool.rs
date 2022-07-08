@@ -6,7 +6,7 @@ use crate::layout::widgets::{Layout, LayoutGroup, PropertyHolder, RadioEntryData
 use crate::message_prelude::*;
 use crate::misc::{HintData, HintGroup, HintInfo, KeysGroup};
 use crate::viewport_tools::snapping::SnapHandler;
-use crate::viewport_tools::tool::{Fsm, ToolActionHandlerData};
+use crate::viewport_tools::tool::{Fsm, SignalToMessageMap, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
 
 use graphene::color::Color;
 use graphene::intersection::Quad;
@@ -58,6 +58,18 @@ pub enum GradientToolMessage {
 #[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize)]
 pub enum GradientOptionsUpdate {
 	Type(GradientType),
+}
+
+impl ToolMetadata for GradientTool {
+	fn icon_name(&self) -> String {
+		"GeneralGradientTool".into()
+	}
+	fn tooltip(&self) -> String {
+		"Gradient Tool (H))".into()
+	}
+	fn tool_type(&self) -> crate::viewport_tools::tool::ToolType {
+		ToolType::Gradient
+	}
 }
 
 impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for GradientTool {
@@ -155,10 +167,11 @@ impl GradientOverlay {
 
 		let fill = if selected { Fill::solid(COLOR_ACCENT) } else { Fill::solid(Color::WHITE) };
 
-		let operation = Operation::AddOverlayEllipse {
+		let operation = Operation::AddEllipse {
 			path: path.clone(),
 			transform: DAffine2::from_scale_angle_translation(size, 0., translation - size / 2.).to_cols_array(),
 			style: PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 1.0)), fill),
+			insert_index: -1,
 		};
 		responses.push_back(DocumentMessage::Overlays(operation.into()).into());
 
@@ -173,10 +186,11 @@ impl GradientOverlay {
 		let translation = start;
 		let transform = DAffine2::from_scale_angle_translation(scale, angle, translation).to_cols_array();
 
-		let operation = Operation::AddOverlayLine {
+		let operation = Operation::AddLine {
 			path: path.clone(),
 			transform,
 			style: PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 1.0)), Fill::None),
+			insert_index: -1,
 		};
 		responses.push_back(DocumentMessage::Overlays(operation.into()).into());
 
@@ -284,6 +298,16 @@ impl SelectedGradient {
 	}
 }
 
+impl ToolTransition for GradientTool {
+	fn signal_to_message_map(&self) -> SignalToMessageMap {
+		SignalToMessageMap {
+			document_dirty: Some(GradientToolMessage::DocumentIsDirty.into()),
+			tool_abort: Some(GradientToolMessage::Abort.into()),
+			selection_changed: None,
+		}
+	}
+}
+
 #[derive(Clone, Debug, Default)]
 struct GradientToolData {
 	gradient_overlays: Vec<GradientOverlay>,
@@ -293,7 +317,7 @@ struct GradientToolData {
 
 pub fn start_snap(snap_handler: &mut SnapHandler, document: &DocumentMessageHandler, font_cache: &FontCache) {
 	snap_handler.start_snap(document, document.bounding_boxes(None, None, font_cache), true, true);
-	snap_handler.add_all_document_handles(document, &[], &[]);
+	snap_handler.add_all_document_handles(document, &[], &[], &[]);
 }
 
 impl Fsm for GradientToolFsmState {
@@ -332,7 +356,7 @@ impl Fsm for GradientToolFsmState {
 					self
 				}
 				(GradientToolFsmState::Ready, GradientToolMessage::PointerDown) => {
-					responses.push_back(ToolMessage::DocumentIsDirty.into());
+					responses.push_back(BroadcastSignal::DocumentIsDirty.into());
 
 					let mouse = input.mouse.position;
 					let tolerance = VECTOR_MANIPULATOR_ANCHOR_MARKER_SIZE.powi(2);

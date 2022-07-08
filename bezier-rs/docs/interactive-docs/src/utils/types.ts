@@ -4,7 +4,7 @@ export type WasmBezierInstance = InstanceType<WasmRawInstance["WasmBezier"]>;
 export type WasmBezierKey = keyof WasmBezierInstance;
 export type WasmBezierMutatorKey = "set_start" | "set_handle_start" | "set_handle_end" | "set_end";
 
-export type BezierCallback = (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: Record<string, number>) => void;
+export type BezierCallback = (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: Record<string, number>, mouseLocation?: Point) => void;
 
 export type SliderOption = {
 	min: number;
@@ -12,6 +12,11 @@ export type SliderOption = {
 	step: number;
 	default: number;
 	variable: string;
+	unit?: string;
+};
+
+export type TemplateOption = {
+	sliders: SliderOption[];
 };
 
 export type Point = {
@@ -21,4 +26,12 @@ export type Point = {
 
 export type BezierPoint = Point & {
 	mutator: WasmBezierMutatorKey;
+};
+
+export type BezierStyleConfig = {
+	curveStrokeColor: string;
+	handleStrokeColor: string;
+	handleLineStrokeColor: string;
+	radius: number;
+	drawHandles: boolean;
 };

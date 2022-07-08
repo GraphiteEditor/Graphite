@@ -1,4 +1,3 @@
-use super::layer_panel::LayerDataTypeDiscriminant;
 use super::utility_types::TargetDocument;
 use crate::document::properties_panel_message::TransformOp;
 use crate::layout::layout_message::LayoutTarget;
@@ -10,7 +9,7 @@ use crate::message_prelude::*;
 
 use graphene::color::Color;
 use graphene::document::Document as GrapheneDocument;
-use graphene::layers::layer_info::{Layer, LayerDataType};
+use graphene::layers::layer_info::{Layer, LayerDataType, LayerDataTypeDiscriminant};
 use graphene::layers::style::{Fill, Gradient, GradientType, LineCap, LineJoin, Stroke};
 use graphene::layers::text_layer::{FontCache, TextLayer};
 use graphene::{LayerId, Operation};
@@ -111,6 +110,7 @@ impl PropertiesPanelMessageHandler {
 pub struct PropertiesPanelMessageHandlerData<'a> {
 	pub artwork_document: &'a GrapheneDocument,
 	pub artboard_document: &'a GrapheneDocument,
+	pub selected_layers: &'a mut dyn Iterator<Item = &'a [LayerId]>,
 	pub font_cache: &'a FontCache,
 }
 
@@ -120,6 +120,7 @@ impl<'a> MessageHandler<PropertiesPanelMessage, PropertiesPanelMessageHandlerDat
 		let PropertiesPanelMessageHandlerData {
 			artwork_document,
 			artboard_document,
+			selected_layers,
 			font_cache,
 		} = data;
 		let get_document = |document_selector: TargetDocument| match document_selector {
@@ -155,6 +156,13 @@ impl<'a> MessageHandler<PropertiesPanelMessage, PropertiesPanelMessageHandlerDat
 				);
 				self.active_selection = None;
 			}
+			Init => responses.push_back(
+				BroadcastMessage::SubscribeSignal {
+					on: BroadcastSignal::SelectionChanged,
+					send: Box::new(PropertiesPanelMessage::UpdateSelectedDocumentProperties.into()),
+				}
+				.into(),
+			),
 			ModifyFont { font_family, font_style, size } => {
 				let (path, _) = self.active_selection.clone().expect("Received update for properties panel with no active layer");
 
@@ -234,6 +242,13 @@ impl<'a> MessageHandler<PropertiesPanelMessage, PropertiesPanelMessageHandlerDat
 					}
 				}
 			}
+			UpdateSelectedDocumentProperties => responses.push_back(
+				PropertiesPanelMessage::SetActiveLayers {
+					paths: selected_layers.map(|path| path.to_vec()).collect(),
+					document: TargetDocument::Artwork,
+				}
+				.into(),
+			),
 		}
 	}
 

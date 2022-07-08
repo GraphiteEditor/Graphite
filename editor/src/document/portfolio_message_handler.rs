@@ -1,12 +1,14 @@
 use super::clipboards::{CopyBufferEntry, INTERNAL_CLIPBOARD_COUNT};
 use super::{DocumentMessageHandler, MenuBarMessageHandler};
 use crate::consts::{DEFAULT_DOCUMENT_NAME, GRAPHITE_DOCUMENT_VERSION};
+use crate::dialog;
 use crate::frontend::utility_types::FrontendDocumentDetails;
 use crate::input::InputPreprocessorMessageHandler;
 use crate::layout::layout_message::LayoutTarget;
 use crate::layout::widgets::PropertyHolder;
-use crate::{dialog, message_prelude::*};
+use crate::message_prelude::*;
 
+use graphene::layers::layer_info::LayerDataTypeDiscriminant;
 use graphene::layers::text_layer::{Font, FontCache};
 use graphene::Operation as DocumentOperation;
 
@@ -47,11 +49,10 @@ impl PortfolioMessageHandler {
 		// Uses binary search to find the index of the element where number is bigger than i
 		let new_doc_title_num = doc_title_numbers.binary_search(&0).map_or_else(|e| e, |v| v) + 1;
 
-		let name = match new_doc_title_num {
+		match new_doc_title_num {
 			1 => DEFAULT_DOCUMENT_NAME.to_string(),
 			_ => format!("{} {}", DEFAULT_DOCUMENT_NAME, new_doc_title_num),
-		};
-		name
+		}
 	}
 
 	// TODO Fix how this doesn't preserve tab order upon loading new document from *File > Load*
@@ -68,27 +69,11 @@ impl PortfolioMessageHandler {
 		);
 		new_document.update_layer_tree_options_bar_widgets(responses, &self.font_cache);
 
-		new_document.load_image_data(responses, &new_document.graphene_document.root.data, Vec::new());
+		new_document.load_layer_resources(responses, &new_document.graphene_document.root.data, Vec::new());
 
 		self.documents.insert(document_id, new_document);
 
-		// Send the new list of document tab names
-		let open_documents = self
-			.document_ids
-			.iter()
-			.filter_map(|id| {
-				self.documents.get(id).map(|document| FrontendDocumentDetails {
-					is_saved: document.is_saved(),
-					id: *id,
-					name: document.name.clone(),
-				})
-			})
-			.collect::<Vec<_>>();
-
-		// use push front to avoid messages accidentally targeting old document
-		responses.push_front(PortfolioMessage::SelectDocument { document_id }.into());
-
-		responses.push_back(FrontendMessage::UpdateOpenDocumentsList { open_documents }.into());
+		responses.push_back(PortfolioMessage::UpdateOpenDocumentsList.into());
 		responses.push_back(PortfolioMessage::UpdateDocumentWidgets.into());
 		responses.push_back(ToolMessage::InitTools.into());
 		responses.push_back(MenuBarMessage::SendLayout.into());
@@ -157,7 +142,7 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 				self.documents.clear();
 				self.document_ids.clear();
 
-				responses.push_back(ToolMessage::AbortCurrentTool.into());
+				responses.push_back(BroadcastSignal::ToolAbort.into());
 				responses.push_back(PortfolioMessage::UpdateOpenDocumentsList.into());
 			}
 			CloseDocument { document_id } => {
@@ -189,19 +174,7 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 				}
 
 				// Send the new list of document tab names
-				let open_documents = self
-					.document_ids
-					.iter()
-					.filter_map(|id| {
-						self.documents.get(id).map(|doc| FrontendDocumentDetails {
-							is_saved: doc.is_saved(),
-							id: *id,
-							name: doc.name.clone(),
-						})
-					})
-					.collect::<Vec<_>>();
-
-				responses.push_back(FrontendMessage::UpdateOpenDocumentsList { open_documents }.into());
+				responses.push_back(UpdateOpenDocumentsList.into());
 				if let Some(document_id) = self.active_document_id {
 					responses.push_back(FrontendMessage::UpdateActiveDocument { document_id }.into());
 				}
@@ -217,7 +190,7 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 			CloseDocumentWithConfirmation { document_id } => {
 				let target_document = self.documents.get(&document_id).unwrap();
 				if target_document.is_saved() {
-					responses.push_back(ToolMessage::AbortCurrentTool.into());
+					responses.push_back(BroadcastSignal::ToolAbort.into());
 					responses.push_back(PortfolioMessage::CloseDocument { document_id }.into());
 				} else {
 					let dialog = dialog::CloseDocument {
@@ -271,7 +244,8 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 				is_default,
 			} => {
 				self.font_cache.insert(Font::new(font_family, font_style), preview_url, data, is_default);
-				responses.push_back(DocumentMessage::DirtyRenderDocument.into());
+				self.active_document_mut().unwrap().graphene_document.mark_all_layers_of_type_as_dirty(LayerDataTypeDiscriminant::Text);
+				responses.push_back(DocumentMessage::RenderDocument.into());
 			}
 			LoadFont { font, is_default } => {
 				if !self.font_cache.loaded_font(&font) {
@@ -281,7 +255,7 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 			NewDocumentWithName { name } => {
 				let new_document = DocumentMessageHandler::with_name(name, ipp);
 				let document_id = generate_uuid();
-				responses.push_back(ToolMessage::AbortCurrentTool.into());
+				responses.push_back(BroadcastSignal::ToolAbort.into());
 				responses.push_back(MovementMessage::TranslateCanvas { delta: (0., 0.).into() }.into());
 
 				self.load_document(new_document, document_id, responses);
@@ -372,7 +346,7 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 							}
 							.into(),
 						);
-						document.load_image_data(responses, &entry.layer.data, destination_path.clone());
+						document.load_layer_resources(responses, &entry.layer.data, destination_path.clone());
 						responses.push_front(
 							DocumentOperation::InsertLayer {
 								layer: entry.layer.clone(),
@@ -414,7 +388,7 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 								}
 								.into(),
 							);
-							document.load_image_data(responses, &entry.layer.data, destination_path.clone());
+							document.load_layer_resources(responses, &entry.layer.data, destination_path.clone());
 							responses.push_front(
 								DocumentOperation::InsertLayer {
 									layer: entry.layer.clone(),
@@ -451,7 +425,7 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 					}
 				}
 
-				responses.push_back(ToolMessage::AbortCurrentTool.into());
+				responses.push_back(BroadcastSignal::ToolAbort.into());
 				// TODO: Remove this message in favor of having tools have specific data per document instance
 				responses.push_back(SetActiveDocument { document_id }.into());
 				responses.push_back(FrontendMessage::UpdateActiveDocument { document_id }.into());
@@ -460,7 +434,8 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 				for layer in self.documents.get(&document_id).unwrap().layer_metadata.keys() {
 					responses.push_back(DocumentMessage::LayerChanged { affected_layer_path: layer.clone() }.into());
 				}
-				responses.push_back(ToolMessage::DocumentIsDirty.into());
+				responses.push_back(BroadcastSignal::SelectionChanged.into());
+				responses.push_back(BroadcastSignal::DocumentIsDirty.into());
 				responses.push_back(PortfolioMessage::UpdateDocumentWidgets.into());
 			}
 			SetActiveDocument { document_id } => self.active_document_id = Some(document_id),

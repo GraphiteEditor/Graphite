@@ -7,10 +7,10 @@ use graphene::intersection::Quad;
 use graphene::layers::layer_info::LayerDataType;
 use graphene::layers::style::{self, Fill, Stroke};
 use graphene::layers::text_layer::FontCache;
+use graphene::layers::vector::vector_shape::VectorShape;
 use graphene::{LayerId, Operation};
 
 use glam::{DAffine2, DVec2};
-use kurbo::{BezPath, Shape};
 use std::collections::VecDeque;
 
 /// Manages the overlay used by the select tool for outlining selected shapes and when hovering over a non selected shape.
@@ -33,13 +33,14 @@ impl PathOutline {
 		// Get layer data
 		let document_layer = document.graphene_document.layer(&document_layer_path).ok()?;
 
+		// TODO Purge this area of BezPath and Kurbo
 		// Get the bezpath from the shape or text
-		let path = match &document_layer.data {
-			LayerDataType::Shape(shape) => Some(shape.path.clone()),
-			LayerDataType::Text(text) => Some(text.to_bez_path_nonmut(font_cache)),
+		let vector_path = match &document_layer.data {
+			LayerDataType::Shape(layer_shape) => Some(layer_shape.shape.clone()),
+			LayerDataType::Text(text) => Some(text.to_vector_path_nonmut(font_cache)),
 			_ => document_layer
 				.aabounding_box_for_transform(DAffine2::IDENTITY, font_cache)
-				.map(|bounds| kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y).to_path(0.)),
+				.map(|[p1, p2]| VectorShape::new_rect(p1, p2)),
 		}?;
 
 		// Generate a new overlay layer if necessary
@@ -47,11 +48,12 @@ impl PathOutline {
 			Some(path) => path,
 			None => {
 				let overlay_path = vec![generate_uuid()];
-				let operation = Operation::AddOverlayShape {
+				let operation = Operation::AddShape {
 					path: overlay_path.clone(),
-					bez_path: BezPath::new(),
+					vector_path: Default::default(),
 					style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, PATH_OUTLINE_WEIGHT)), Fill::None),
-					closed: false,
+					insert_index: -1,
+					transform: DAffine2::IDENTITY.to_cols_array(),
 				};
 
 				responses.push_back(DocumentMessage::Overlays(operation.into()).into());
@@ -61,10 +63,7 @@ impl PathOutline {
 		};
 
 		// Update the shape bezpath
-		let operation = Operation::SetShapePath {
-			path: overlay.clone(),
-			bez_path: path,
-		};
+		let operation = Operation::SetShapePath { path: overlay.clone(), vector_path };
 		responses.push_back(DocumentMessage::Overlays(operation.into()).into());
 
 		// Update the transform to match the document
@@ -113,7 +112,7 @@ impl PathOutline {
 
 	/// Clears overlays for the seleted paths and removes references
 	pub fn clear_selected(&mut self, responses: &mut VecDeque<Message>) {
-		if let Some(path) = self.selected_overlay_paths.pop() {
+		while let Some(path) = self.selected_overlay_paths.pop() {
 			let operation = Operation::DeleteLayer { path };
 			responses.push_back(DocumentMessage::Overlays(operation.into()).into());
 		}

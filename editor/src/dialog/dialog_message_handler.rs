@@ -1,8 +1,8 @@
-use crate::document::PortfolioMessageHandler;
-use crate::layout::{layout_message::LayoutTarget, widgets::PropertyHolder};
-use crate::message_prelude::*;
-
 use super::*;
+use crate::document::PortfolioMessageHandler;
+use crate::layout::layout_message::LayoutTarget;
+use crate::layout::widgets::PropertyHolder;
+use crate::message_prelude::*;
 
 #[derive(Debug, Default, Clone)]
 pub struct DialogMessageHandler {
@@ -80,6 +80,7 @@ impl MessageHandler<DialogMessage, &PortfolioMessageHandler> for DialogMessageHa
 						file_name: document.name.clone(),
 						scale_factor: 1.,
 						artboards,
+						has_selection: document.selected_layers().next().is_some(),
 						..Default::default()
 					};
 					self.export_dialog.register_properties(responses, LayoutTarget::DialogDetails);

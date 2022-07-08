@@ -4,7 +4,7 @@ use crate::input::keyboard::MouseMotion;
 use crate::layout::widgets::PropertyHolder;
 use crate::message_prelude::*;
 use crate::misc::{HintData, HintGroup, HintInfo};
-use crate::viewport_tools::tool::{Fsm, ToolActionHandlerData};
+use crate::viewport_tools::tool::{Fsm, SignalToMessageMap, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
 
 use graphene::intersection::Quad;
 use graphene::Operation;
@@ -32,6 +32,18 @@ pub enum FillToolMessage {
 	RightMouseDown,
 }
 
+impl ToolMetadata for FillTool {
+	fn icon_name(&self) -> String {
+		"GeneralFillTool".into()
+	}
+	fn tooltip(&self) -> String {
+		"Fill Tool (F)".into()
+	}
+	fn tool_type(&self) -> crate::viewport_tools::tool::ToolType {
+		ToolType::Fill
+	}
+}
+
 impl PropertyHolder for FillTool {}
 
 impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for FillTool {
@@ -56,6 +68,16 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for FillTool {
 	}
 
 	advertise_actions!(FillToolMessageDiscriminant; LeftMouseDown, RightMouseDown);
+}
+
+impl ToolTransition for FillTool {
+	fn signal_to_message_map(&self) -> SignalToMessageMap {
+		SignalToMessageMap {
+			document_dirty: None,
+			tool_abort: Some(FillToolMessage::Abort.into()),
+			selection_changed: None,
+		}
+	}
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

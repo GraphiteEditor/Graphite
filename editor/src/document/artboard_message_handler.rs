@@ -2,7 +2,7 @@ use crate::message_prelude::*;
 
 use graphene::color::Color;
 use graphene::document::Document as GrapheneDocument;
-use graphene::layers::style::{self, Fill, ViewMode};
+use graphene::layers::style::{self, Fill, RenderData, ViewMode};
 use graphene::layers::text_layer::FontCache;
 use graphene::DocumentResponse;
 use graphene::Operation as DocumentOperation;
@@ -41,7 +41,7 @@ impl MessageHandler<ArtboardMessage, &FontCache> for ArtboardMessageHandler {
 							DocumentResponse::DocumentChanged => responses.push_back(ArtboardMessage::RenderArtboards.into()),
 							_ => {}
 						};
-						responses.push_back(ToolMessage::DocumentIsDirty.into());
+						responses.push_back(BroadcastSignal::DocumentIsDirty.into());
 					}
 				}
 				Ok(None) => {}
@@ -85,9 +85,10 @@ impl MessageHandler<ArtboardMessage, &FontCache> for ArtboardMessageHandler {
 						.into(),
 					)
 				} else {
+					let render_data = RenderData::new(ViewMode::Normal, font_cache, None, false);
 					responses.push_back(
 						FrontendMessage::UpdateDocumentArtboards {
-							svg: self.artboards_graphene_document.render_root(ViewMode::Normal, font_cache, None),
+							svg: self.artboards_graphene_document.render_root(render_data),
 						}
 						.into(),
 					);

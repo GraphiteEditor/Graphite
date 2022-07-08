@@ -1,20 +1,5 @@
 <template>
 	<MainWindow />
-
-	<div class="unsupported-modal-backdrop" v-if="apiUnsupported" ref="unsupported">
-		<LayoutCol class="unsupported-modal">
-			<h2>This browser currently doesn't support Graphite</h2>
-			<p>Unfortunately, some features won't work properly. Please upgrade to a modern browser such as Firefox, Chrome, Edge, or Safari version 15 or later.</p>
-			<p>
-				This browser is missing support for the
-				<a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/BigInt64Array#browser_compatibility" target="_blank"><code>BigInt64Array</code></a> JavaScript
-				API which is required for using the editor. However, you can still explore the user interface.
-			</p>
-			<LayoutRow>
-				<button class="unsupported-modal-button" @click="() => closeUnsupportedWarning()">I understand, let's just see the interface</button>
-			</LayoutRow>
-		</LayoutCol>
-	</div>
 </template>
 
 <style lang="scss">
@@ -223,53 +208,6 @@ img {
 		margin-top: 8px;
 	}
 }
-
-.unsupported-modal-backdrop {
-	background: rgba(255, 255, 255, 0.6);
-	position: absolute;
-	top: 0;
-	left: 0;
-	bottom: 0;
-	right: 0;
-	display: flex;
-	align-items: center;
-	justify-content: center;
-
-	.unsupported-modal {
-		background: var(--color-3-darkgray);
-		border-radius: 4px;
-		box-shadow: 2px 2px 5px 0 rgba(var(--color-0-black-rgb), 50%);
-		padding: 0 16px 16px 16px;
-		border: 1px solid var(--color-4-dimgray);
-		max-width: 500px;
-
-		p {
-			margin-top: 0;
-		}
-
-		a {
-			color: var(--color-accent-hover);
-		}
-
-		.unsupported-modal-button {
-			flex: 1;
-			background: var(--color-1-nearblack);
-			border: 0 none;
-			padding: 12px;
-			border-radius: 2px;
-
-			&:hover {
-				background: var(--color-6-lowergray);
-				color: var(--color-f-white);
-			}
-
-			&:active {
-				background: var(--color-accent-hover);
-				color: var(--color-f-white);
-			}
-		}
-	}
-}
 </style>
 
 <script lang="ts">
@@ -290,8 +228,6 @@ import { createPortfolioState, PortfolioState } from "@/state-providers/portfoli
 import { createWorkspaceState, WorkspaceState } from "@/state-providers/workspace";
 import { createEditor, Editor } from "@/wasm-communication/editor";
 
-import LayoutCol from "@/components/layout/LayoutCol.vue";
-import LayoutRow from "@/components/layout/LayoutRow.vue";
 import MainWindow from "@/components/window/MainWindow.vue";
 
 const managerDestructors: {
@@ -340,17 +276,6 @@ export default defineComponent({
 			workspace: createWorkspaceState(editor),
 		};
 	},
-	computed: {
-		apiUnsupported() {
-			return !("BigInt64Array" in window);
-		},
-	},
-	methods: {
-		closeUnsupportedWarning() {
-			const element = this.$refs.unsupported as HTMLElement;
-			element.parentElement?.removeChild(element);
-		},
-	},
 	async mounted() {
 		// Initialize managers, which are isolated systems that subscribe to backend messages to link them to browser API functionality (like JS events, IndexedDB, etc.)
 		Object.assign(managerDestructors, {
@@ -373,10 +298,6 @@ export default defineComponent({
 		// Destroy the WASM editor instance
 		this.editor.instance.free();
 	},
-	components: {
-		MainWindow,
-		LayoutRow,
-		LayoutCol,
-	},
+	components: { MainWindow },
 });
 </script>

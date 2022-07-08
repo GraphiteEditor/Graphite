@@ -75,6 +75,7 @@ impl MessageHandler<LayoutMessage, ()> for LayoutMessageHandler {
 				self.send_layout(layout_target, responses);
 			}
 			UpdateLayout { layout_target, widget_id, value } => {
+				self.send_layout(layout_target, responses);
 				let layout = &mut self.layouts[layout_target as usize];
 				let widget_holder = layout.iter_mut().find(|widget| widget.widget_id == widget_id);
 				if widget_holder.is_none() {
@@ -183,7 +184,6 @@ impl MessageHandler<LayoutMessage, ()> for LayoutMessageHandler {
 					}
 					Widget::TextLabel(_) => {}
 				};
-				self.send_layout(layout_target, responses);
 			}
 		}
 	}

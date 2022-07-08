@@ -6,7 +6,7 @@ use crate::layout::layout_message::LayoutTarget;
 use crate::layout::widgets::{FontInput, Layout, LayoutGroup, NumberInput, PropertyHolder, Separator, SeparatorDirection, SeparatorType, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
 use crate::message_prelude::*;
 use crate::misc::{HintData, HintGroup, HintInfo, KeysGroup};
-use crate::viewport_tools::tool::{Fsm, ToolActionHandlerData};
+use crate::viewport_tools::tool::{Fsm, SignalToMessageMap, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
 
 use graphene::intersection::Quad;
 use graphene::layers::style::{self, Fill, Stroke};
@@ -14,7 +14,6 @@ use graphene::layers::text_layer::FontCache;
 use graphene::Operation;
 
 use glam::{DAffine2, DVec2};
-use kurbo::Shape;
 use serde::{Deserialize, Serialize};
 
 #[derive(Default)]
@@ -68,6 +67,18 @@ pub enum TextMessage {
 pub enum TextOptionsUpdate {
 	Font { family: String, style: String },
 	FontSize(u32),
+}
+
+impl ToolMetadata for TextTool {
+	fn icon_name(&self) -> String {
+		"VectorTextTool".into()
+	}
+	fn tooltip(&self) -> String {
+		"Text Tool (T)".into()
+	}
+	fn tool_type(&self) -> crate::viewport_tools::tool::ToolType {
+		ToolType::Text
+	}
 }
 
 impl PropertyHolder for TextTool {
@@ -164,6 +175,16 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for TextTool {
 	}
 }
 
+impl ToolTransition for TextTool {
+	fn signal_to_message_map(&self) -> SignalToMessageMap {
+		SignalToMessageMap {
+			document_dirty: Some(TextMessage::DocumentIsDirty.into()),
+			tool_abort: Some(TextMessage::Abort.into()),
+			selection_changed: None,
+		}
+	}
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum TextToolFsmState {
 	Ready,
@@ -195,10 +216,11 @@ fn resize_overlays(overlays: &mut Vec<Vec<LayerId>>, responses: &mut VecDeque<Me
 		let path = vec![generate_uuid()];
 		overlays.push(path.clone());
 
-		let operation = Operation::AddOverlayRect {
+		let operation = Operation::AddRect {
 			path,
 			transform: DAffine2::ZERO.to_cols_array(),
 			style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 1.0)), Fill::None),
+			insert_index: -1,
 		};
 		responses.push_back(DocumentMessage::Overlays(operation.into()).into());
 	}
@@ -401,19 +423,14 @@ impl Fsm for TextToolFsmState {
 				(Editing, UpdateBounds { new_text }) => {
 					resize_overlays(&mut tool_data.overlays, responses, 1);
 					let text = document.graphene_document.layer(&tool_data.path).unwrap().as_text().unwrap();
-					let mut path = text.bounding_box(&new_text, text.load_face(font_cache)).to_path(0.1);
+					let quad = text.bounding_box(&new_text, text.load_face(font_cache));
 
-					fn glam_to_kurbo(transform: DAffine2) -> kurbo::Affine {
-						kurbo::Affine::new(transform.to_cols_array())
-					}
-
-					path.apply_affine(glam_to_kurbo(document.graphene_document.multiply_transforms(&tool_data.path).unwrap()));
-
-					let kurbo::Rect { x0, y0, x1, y1 } = path.bounding_box();
+					let transformed_quad = document.graphene_document.multiply_transforms(&tool_data.path).unwrap() * quad;
+					let bounds = transformed_quad.bounding_box();
 
 					let operation = Operation::SetLayerTransformInViewport {
 						path: tool_data.overlays[0].clone(),
-						transform: transform_from_box(DVec2::new(x0, y0), DVec2::new(x1, y1)),
+						transform: transform_from_box(bounds[0], bounds[1]),
 					};
 					responses.push_back(DocumentMessage::Overlays(operation.into()).into());
 

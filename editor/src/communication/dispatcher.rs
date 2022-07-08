@@ -1,3 +1,4 @@
+use super::broadcast_message_handler::BroadcastMessageHandler;
 use crate::document::PortfolioMessageHandler;
 use crate::global::GlobalMessageHandler;
 use crate::input::{InputMapperMessageHandler, InputPreprocessorMessageHandler};
@@ -10,7 +11,7 @@ use std::collections::VecDeque;
 
 #[derive(Debug, Default)]
 pub struct Dispatcher {
-	message_queue: VecDeque<Message>,
+	message_queues: Vec<VecDeque<Message>>,
 	pub responses: Vec<FrontendMessage>,
 	message_handlers: DispatcherMessageHandlers,
 }
@@ -18,6 +19,7 @@ pub struct Dispatcher {
 #[remain::sorted]
 #[derive(Debug, Default)]
 struct DispatcherMessageHandlers {
+	broadcast_message_handler: BroadcastMessageHandler,
 	dialog_message_handler: DialogMessageHandler,
 	global_message_handler: GlobalMessageHandler,
 	input_mapper_message_handler: InputMapperMessageHandler,
@@ -38,11 +40,12 @@ const SIDE_EFFECT_FREE_MESSAGES: &[MessageDiscriminant] = &[
 		ArtboardMessageDiscriminant::RenderArtboards,
 	))),
 	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::FolderChanged)),
-	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::UpdateDocumentLayerDetails),
+	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::DocumentStructureChanged)),
 	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::UpdateDocumentLayerTreeStructure),
+	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::UpdateActiveDocument),
 	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::UpdateOpenDocumentsList),
 	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::TriggerFontLoad),
-	MessageDiscriminant::Tool(ToolMessageDiscriminant::DocumentIsDirty),
+	MessageDiscriminant::Broadcast(BroadcastMessageDiscriminant::TriggerSignal(BroadcastSignalDiscriminant::DocumentIsDirty)),
 ];
 
 impl Dispatcher {
@@ -54,26 +57,41 @@ impl Dispatcher {
 	pub fn handle_message<T: Into<Message>>(&mut self, message: T) {
 		use Message::*;
 
-		self.message_queue.push_back(message.into());
+		self.message_queues.push(VecDeque::from_iter([message.into()]));
 
-		while let Some(message) = self.message_queue.pop_front() {
-			// Skip processing of this message if it will be processed later
-			if SIDE_EFFECT_FREE_MESSAGES.contains(&message.to_discriminant()) && self.message_queue.contains(&message) {
-				continue;
+		while let Some(message) = self.message_queues.last_mut().and_then(VecDeque::pop_front) {
+			// If the deepest queue is now empty (after being popped from) then remove it
+			if self.message_queues.last().filter(|queue| queue.is_empty()).is_some() {
+				self.message_queues.pop();
+			}
+
+			// Skip processing of this message if it will be processed later (at the end of the shallowest level queue)
+			if SIDE_EFFECT_FREE_MESSAGES.contains(&message.to_discriminant()) {
+				let already_in_queue = self.message_queues.first().filter(|queue| queue.contains(&message)).is_some();
+				if already_in_queue {
+					continue;
+				} else if self.message_queues.len() > 1 {
+					self.message_queues[0].push_back(message);
+					continue;
+				}
 			}
 
 			// Print the message at a verbosity level of `log`
 			self.log_message(&message);
+
+			// Create a new queue for the child messages
+			let mut queue = VecDeque::new();
 
 			// Process the action by forwarding it to the relevant message handler, or saving the FrontendMessage to be sent to the frontend
 			#[remain::sorted]
 			match message {
 				#[remain::unsorted]
 				NoOp => {}
+				Broadcast(message) => self.message_handlers.broadcast_message_handler.process_action(message, (), &mut queue),
 				Dialog(message) => {
 					self.message_handlers
 						.dialog_message_handler
-						.process_action(message, &self.message_handlers.portfolio_message_handler, &mut self.message_queue);
+						.process_action(message, &self.message_handlers.portfolio_message_handler, &mut queue);
 				}
 				Frontend(message) => {
 					// Image and font loading should be immediately handled
@@ -86,22 +104,22 @@ impl Dispatcher {
 					self.responses.push(message);
 				}
 				Global(message) => {
-					self.message_handlers.global_message_handler.process_action(message, (), &mut self.message_queue);
+					self.message_handlers.global_message_handler.process_action(message, (), &mut queue);
 				}
 				InputMapper(message) => {
 					let actions = self.collect_actions();
 					self.message_handlers
 						.input_mapper_message_handler
-						.process_action(message, (&self.message_handlers.input_preprocessor_message_handler, actions), &mut self.message_queue);
+						.process_action(message, (&self.message_handlers.input_preprocessor_message_handler, actions), &mut queue);
 				}
 				InputPreprocessor(message) => {
-					self.message_handlers.input_preprocessor_message_handler.process_action(message, (), &mut self.message_queue);
+					self.message_handlers.input_preprocessor_message_handler.process_action(message, (), &mut queue);
 				}
-				Layout(message) => self.message_handlers.layout_message_handler.process_action(message, (), &mut self.message_queue),
+				Layout(message) => self.message_handlers.layout_message_handler.process_action(message, (), &mut queue),
 				Portfolio(message) => {
 					self.message_handlers
 						.portfolio_message_handler
-						.process_action(message, &self.message_handlers.input_preprocessor_message_handler, &mut self.message_queue);
+						.process_action(message, &self.message_handlers.input_preprocessor_message_handler, &mut queue);
 				}
 				Tool(message) => {
 					if let Some(document) = self.message_handlers.portfolio_message_handler.active_document() {
@@ -112,7 +130,7 @@ impl Dispatcher {
 								&self.message_handlers.input_preprocessor_message_handler,
 								self.message_handlers.portfolio_message_handler.font_cache(),
 							),
-							&mut self.message_queue,
+							&mut queue,
 						);
 					} else {
 						log::warn!("Called ToolMessage without an active document.\nGot {:?}", message);
@@ -121,8 +139,13 @@ impl Dispatcher {
 				Workspace(message) => {
 					self.message_handlers
 						.workspace_message_handler
-						.process_action(message, &self.message_handlers.input_preprocessor_message_handler, &mut self.message_queue);
+						.process_action(message, &self.message_handlers.input_preprocessor_message_handler, &mut queue);
 				}
+			}
+
+			// If there are child messages, append the queue to the list of queues
+			if !queue.is_empty() {
+				self.message_queues.push(queue);
 			}
 		}
 	}
@@ -441,8 +464,23 @@ mod test {
 	}
 
 	#[test]
+	/// If this test is failing take a look at `GRAPHITE_DOCUMENT_VERSION` in `editor/src/consts.rs`, it may need to be updated.
+	/// This test will fail when you make changes to the underlying serialization format for a document.
 	fn check_if_graphite_file_version_upgrade_is_needed() {
 		use crate::layout::widgets::{LayoutGroup, TextLabel, Widget};
+		let print_problem_to_terminal_on_failure = |value: &String| {
+			println!();
+			println!("-------------------------------------------------");
+			println!("Failed test due to receiving a DisplayDialogError while loading the Graphite sample file!");
+			println!("This is most likely caused by forgetting to bump the `GRAPHITE_DOCUMENT_VERSION` in `editor/src/consts.rs`");
+			println!("After bumping this version number, please replace the `graphite-test-document.graphite` with a valid file [saved from the editor].");
+			println!("DisplayDialogError details:");
+			println!();
+			println!("Description: {}", value);
+			println!("-------------------------------------------------");
+			println!();
+			panic!()
+		};
 
 		init_logger();
 		set_uuid_seed(0);
@@ -454,20 +492,11 @@ mod test {
 		});
 
 		for response in responses {
+			// Check for the existence of the file format incompatibility warning dialog after opening the test file
 			if let FrontendMessage::UpdateDialogDetails { layout_target: _, layout } = response {
 				if let LayoutGroup::Row { widgets } = &layout[0] {
 					if let Widget::TextLabel(TextLabel { value, .. }) = &widgets[0].widget {
-						println!();
-						println!("-------------------------------------------------");
-						println!("Failed test due to receiving a DisplayDialogError while loading the Graphite sample file!");
-						println!("This is most likely caused by forgetting to bump the `GRAPHITE_DOCUMENT_VERSION` in `editor/src/consts.rs`");
-						println!("Once bumping this version number please replace the `graphite-test-document.graphite` with a valid file.");
-						println!("DisplayDialogError details:");
-						println!();
-						println!("Description: {}", value);
-						println!("-------------------------------------------------");
-						println!();
-						panic!()
+						print_problem_to_terminal_on_failure(value);
 					}
 				}
 			}

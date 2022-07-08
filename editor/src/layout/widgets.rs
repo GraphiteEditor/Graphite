@@ -1,10 +1,10 @@
-use std::rc::Rc;
-
 use super::layout_message::LayoutTarget;
-use crate::{input::keyboard::Key, message_prelude::*};
+use crate::input::keyboard::Key;
+use crate::message_prelude::*;
 
 use derivative::*;
 use serde::{Deserialize, Serialize};
+use std::rc::Rc;
 
 pub trait PropertyHolder {
 	fn properties(&self) -> Layout {
@@ -522,6 +522,7 @@ pub struct DropdownEntryData {
 	pub shortcut: Vec<String>,
 	#[serde(rename = "shortcutRequiresLock")]
 	pub shortcut_requires_lock: bool,
+	pub disabled: bool,
 	pub children: Vec<Vec<DropdownEntryData>>,
 
 	#[serde(skip)]
