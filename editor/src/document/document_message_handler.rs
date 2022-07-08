@@ -14,7 +14,6 @@ use crate::layout::widgets::{
 	SeparatorDirection, SeparatorType, Widget, WidgetCallback, WidgetHolder, WidgetLayout,
 };
 use crate::message_prelude::*;
-use crate::viewport_tools::vector_editor::vector_shape::VectorShape;
 use crate::EditorError;
 
 use graphene::color::Color;
@@ -24,6 +23,7 @@ use graphene::layers::folder_layer::FolderLayer;
 use graphene::layers::layer_info::{LayerDataType, LayerDataTypeDiscriminant};
 use graphene::layers::style::{Fill, RenderData, ViewMode};
 use graphene::layers::text_layer::{Font, FontCache};
+use graphene::layers::vector::vector_shape::VectorShape;
 use graphene::{DocumentError, DocumentResponse, LayerId, Operation as DocumentOperation};
 
 use glam::{DAffine2, DVec2};
@@ -158,28 +158,6 @@ impl DocumentMessageHandler {
 		self.artboard_message_handler.artboards_graphene_document.bounding_box_and_transform(path, font_cache).unwrap_or(None)
 	}
 
-	/// Create a new vector shape representation with the underlying kurbo data, VectorManipulatorShape
-	pub fn selected_visible_layers_vector_shapes(&self, responses: &mut VecDeque<Message>, font_cache: &FontCache) -> Vec<VectorShape> {
-		let shapes = self.selected_layers().filter_map(|path_to_shape| {
-			let viewport_transform = self.graphene_document.generate_transform_relative_to_viewport(path_to_shape).ok()?;
-			let layer = self.graphene_document.layer(path_to_shape);
-
-			match &layer {
-				Ok(layer) if layer.visible => {}
-				_ => return None,
-			};
-
-			// TODO: Create VectorManipulatorShape when creating a kurbo shape as a stopgap, rather than on each new selection
-			match &layer.ok()?.data {
-				LayerDataType::Shape(shape) => Some(VectorShape::new(path_to_shape.to_vec(), viewport_transform, &shape.path, shape.closed, responses)),
-				LayerDataType::Text(text) => Some(VectorShape::new(path_to_shape.to_vec(), viewport_transform, &text.to_bez_path_nonmut(font_cache), true, responses)),
-				_ => None,
-			}
-		});
-
-		shapes.collect::<Vec<VectorShape>>()
-	}
-
 	pub fn selected_layers(&self) -> impl Iterator<Item = &[LayerId]> {
 		self.layer_metadata.iter().filter_map(|(path, data)| data.selected.then(|| path.as_slice()))
 	}
@@ -221,6 +199,22 @@ impl DocumentMessageHandler {
 			Ok(layer) => layer.visible,
 			Err(_) => false,
 		})
+	}
+
+	/// Returns a copy of all the currently selected VectorShapes.
+	pub fn selected_vector_shapes(&self) -> Vec<VectorShape> {
+		self.selected_visible_layers()
+			.flat_map(|layer| self.graphene_document.layer(layer))
+			.flat_map(|layer| layer.as_vector_shape_copy())
+			.collect::<Vec<VectorShape>>()
+	}
+
+	/// Returns references to all the currently selected VectorShapes.
+	pub fn selected_vector_shapes_ref(&self) -> Vec<&VectorShape> {
+		self.selected_visible_layers()
+			.flat_map(|layer| self.graphene_document.layer(layer))
+			.flat_map(|layer| layer.as_vector_shape())
+			.collect::<Vec<&VectorShape>>()
 	}
 
 	/// Returns the bounding boxes for all visible layers and artboards, optionally excluding any paths.
@@ -1024,14 +1018,28 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 				responses.push_front(BroadcastSignal::SelectionChanged.into());
 				responses.push_back(BroadcastSignal::DocumentIsDirty.into());
 			}
+			DeleteSelectedVectorPoints => {
+				responses.push_back(StartTransaction.into());
+
+				responses.push_front(
+					DocumentOperation::DeleteSelectedVectorPoints {
+						layer_paths: self.selected_layers_without_children().iter().map(|path| path.to_vec()).collect(),
+					}
+					.into(),
+				);
+			}
 			DeselectAllLayers => {
 				responses.push_front(SetSelectedLayers { replacement_selected_layers: vec![] }.into());
 				self.layer_range_selection_reference.clear();
 			}
+			DeselectAllVectorPoints => {
+				for layer_path in self.selected_layers_without_children() {
+					responses.push_back(DocumentOperation::DeselectAllVectorPoints { layer_path: layer_path.to_vec() }.into());
+				}
+			}
 			DirtyRenderDocument => {
 				// Mark all non-overlay caches as dirty
 				GrapheneDocument::mark_children_as_dirty(&mut self.graphene_document.root);
-
 				responses.push_back(DocumentMessage::RenderDocument.into());
 			}
 			DirtyRenderDocumentInOutlineView => {
@@ -1188,6 +1196,12 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 					}
 					.into(),
 				);
+			}
+			MoveSelectedVectorPoints { layer_path, delta, absolute_position } => {
+				self.backup(responses);
+				if let Ok(_layer) = self.graphene_document.layer(&layer_path) {
+					responses.push_back(DocumentOperation::MoveSelectedVectorPoints { layer_path, delta, absolute_position }.into());
+				}
 			}
 			NudgeSelectedLayers { delta_x, delta_y } => {
 				self.backup(responses);
@@ -1487,6 +1501,20 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 			ToggleLayerVisibility { layer_path } => {
 				responses.push_back(DocumentOperation::ToggleLayerVisibility { path: layer_path }.into());
 				responses.push_back(BroadcastSignal::DocumentIsDirty.into());
+			}
+			ToggleSelectedHandleMirroring {
+				layer_path,
+				toggle_distance,
+				toggle_angle,
+			} => {
+				responses.push_back(
+					DocumentOperation::SetSelectedHandleMirroring {
+						layer_path,
+						toggle_distance,
+						toggle_angle,
+					}
+					.into(),
+				);
 			}
 			Undo => {
 				responses.push_back(BroadcastSignal::ToolAbort.into());

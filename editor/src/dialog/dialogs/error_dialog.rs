@@ -1,4 +1,5 @@
-use crate::{layout::widgets::*, message_prelude::FrontendMessage};
+use crate::layout::widgets::*;
+use crate::message_prelude::FrontendMessage;
 
 /// A dialog to notify users of a non-fatal error.
 pub struct Error {
