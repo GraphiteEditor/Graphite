@@ -302,7 +302,7 @@ impl OverlayRenderer {
 
 	/// Sets the overlay style for this point
 	fn style_overlays(group: &ManipulatorGroup, overlays: &ManipulatorGroupOverlays, responses: &mut VecDeque<Message>) {
-		// TODO Move the style definitions out of the VectorShape, should be looked up from a stylesheet or similar
+		// TODO Move the style definitions out of the Subpath, should be looked up from a stylesheet or similar
 		let selected_style = style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, POINT_STROKE_WEIGHT + 1.0)), Fill::solid(COLOR_ACCENT));
 		let deselected_style = style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, POINT_STROKE_WEIGHT)), Fill::solid(Color::WHITE));
 

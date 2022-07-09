@@ -77,7 +77,7 @@ impl LayerData for ShapeLayer {
 }
 
 impl ShapeLayer {
-	/// Construct a new [ShapeLayer] with the specified [VectorShape] and [PathStyle]
+	/// Construct a new [ShapeLayer] with the specified [Subpath] and [PathStyle]
 	pub fn new(shape: Subpath, style: PathStyle) -> Self {
 		Self { shape, style, render_index: 1 }
 	}

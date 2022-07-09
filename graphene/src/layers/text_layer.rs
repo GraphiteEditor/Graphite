@@ -149,7 +149,7 @@ impl TextLayer {
 
 	/// Converts to a [VectorShape], without populating the cache.
 	#[inline]
-	pub fn to_vector_path_nonmut(&self, font_cache: &FontCache) -> Subpath {
+	pub fn to_subpath_nonmut(&self, font_cache: &FontCache) -> Subpath {
 		let buzz_face = self.load_face(font_cache);
 
 		self.cached_path.clone().filter(|x| !x.groups().is_empty()).unwrap_or_else(|| self.generate_path(buzz_face))

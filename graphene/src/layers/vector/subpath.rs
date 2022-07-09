@@ -277,22 +277,22 @@ impl Subpath {
 		&self.0
 	}
 
-	/// Returns a [VectorControlPoint] from the last [ManipulatorGroup] in the Subpath.
+	/// Returns a [ManipulatorPoint] from the last [ManipulatorGroup] in the Subpath.
 	pub fn last_point(&self, control_type: ManipulatorType) -> Option<&ManipulatorPoint> {
 		self.groups().last().and_then(|group| group.points[control_type].as_ref())
 	}
 
-	/// Returns a [VectorControlPoint] from the last [ManipulatorGroup], mutably
+	/// Returns a [ManipulatorPoint] from the last [ManipulatorGroup], mutably
 	pub fn last_point_mut(&mut self, control_type: ManipulatorType) -> Option<&mut ManipulatorPoint> {
 		self.groups_mut().last_mut().and_then(|group| group.points[control_type].as_mut())
 	}
 
-	/// Returns a [VectorControlPoint]  from the first [ManipulatorGroup]
+	/// Returns a [ManipulatorPoint]  from the first [ManipulatorGroup]
 	pub fn first_point(&self, control_type: ManipulatorType) -> Option<&ManipulatorPoint> {
 		self.groups().first().and_then(|group| group.points[control_type].as_ref())
 	}
 
-	/// Returns a [VectorControlPoint] from the first [ManipulatorGroup]
+	/// Returns a [ManipulatorPoint] from the first [ManipulatorGroup]
 	pub fn first_point_mut(&mut self, control_type: ManipulatorType) -> Option<&mut ManipulatorPoint> {
 		self.groups_mut().first_mut().and_then(|group| group.points[control_type].as_mut())
 	}

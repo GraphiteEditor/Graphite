@@ -37,7 +37,7 @@ impl PathOutline {
 		// Get the bezpath from the shape or text
 		let vector_path = match &document_layer.data {
 			LayerDataType::Shape(layer_shape) => Some(layer_shape.shape.clone()),
-			LayerDataType::Text(text) => Some(text.to_vector_path_nonmut(font_cache)),
+			LayerDataType::Text(text) => Some(text.to_subpath_nonmut(font_cache)),
 			_ => document_layer.aabounding_box_for_transform(DAffine2::IDENTITY, font_cache).map(|[p1, p2]| Subpath::new_rect(p1, p2)),
 		}?;
 

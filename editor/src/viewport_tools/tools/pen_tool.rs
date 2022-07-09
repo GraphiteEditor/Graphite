@@ -437,7 +437,7 @@ fn add_manipulator_group(layer_path: &Option<Vec<LayerId>>, group: ManipulatorGr
 	}
 }
 
-/// Gets the currently editing [VectorShape]
+/// Gets the currently editing [Subpath]
 fn get_subpath<'a>(layer_path: &'a [LayerId], document: &'a DocumentMessageHandler) -> Option<&'a Subpath> {
 	document.graphene_document.layer(layer_path).ok().and_then(|layer| layer.as_subpath())
 }
