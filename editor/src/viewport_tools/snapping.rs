@@ -7,7 +7,7 @@ use crate::message_prelude::*;
 
 use graphene::layers::layer_info::{Layer, LayerDataType};
 use graphene::layers::style::{self, Stroke};
-use graphene::layers::vector::constants::ControlPointType;
+use graphene::layers::vector::constants::ManipulatorType;
 use graphene::{LayerId, Operation};
 
 use glam::{DAffine2, DVec2};
@@ -249,22 +249,22 @@ impl SnapHandler {
 	/// Add the control points (optionally including bézier handles) of the specified shape layer to the snapping points
 	///
 	/// This should be called after start_snap
-	pub fn add_snap_path(&mut self, document_message_handler: &DocumentMessageHandler, layer: &Layer, path: &[LayerId], include_handles: bool, ignore_points: &[(&[LayerId], u64, ControlPointType)]) {
+	pub fn add_snap_path(&mut self, document_message_handler: &DocumentMessageHandler, layer: &Layer, path: &[LayerId], include_handles: bool, ignore_points: &[(&[LayerId], u64, ManipulatorType)]) {
 		if let LayerDataType::Shape(shape_layer) = &layer.data {
 			let transform = document_message_handler.graphene_document.multiply_transforms(path).unwrap();
 			let snap_points = shape_layer
 				.shape
-				.anchors()
+				.groups()
 				.enumerate()
 				.flat_map(|(id, shape)| {
 					if include_handles {
 						[
-							(*id, &shape.points[ControlPointType::Anchor]),
-							(*id, &shape.points[ControlPointType::InHandle]),
-							(*id, &shape.points[ControlPointType::OutHandle]),
+							(*id, &shape.points[ManipulatorType::Anchor]),
+							(*id, &shape.points[ManipulatorType::InHandle]),
+							(*id, &shape.points[ManipulatorType::OutHandle]),
 						]
 					} else {
-						[(*id, &shape.points[ControlPointType::Anchor]), (0, &None), (0, &None)]
+						[(*id, &shape.points[ManipulatorType::Anchor]), (0, &None), (0, &None)]
 					}
 				})
 				.filter_map(|(id, point)| point.as_ref().map(|val| (id, val)))
@@ -281,7 +281,7 @@ impl SnapHandler {
 		document_message_handler: &DocumentMessageHandler,
 		include_handles: &[&[LayerId]],
 		exclude: &[&[LayerId]],
-		ignore_points: &[(&[LayerId], u64, ControlPointType)],
+		ignore_points: &[(&[LayerId], u64, ManipulatorType)],
 	) {
 		for path in document_message_handler.all_layers() {
 			if !exclude.contains(&path) {

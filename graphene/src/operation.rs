@@ -2,9 +2,9 @@ use crate::boolean_ops::BooleanOperation as BooleanOperationType;
 use crate::layers::blend_mode::BlendMode;
 use crate::layers::layer_info::Layer;
 use crate::layers::style::{self, Stroke};
-use crate::layers::vector::constants::ControlPointType;
-use crate::layers::vector::vector_anchor::VectorAnchor;
-use crate::layers::vector::vector_shape::VectorShape;
+use crate::layers::vector::constants::ManipulatorType;
+use crate::layers::vector::manipulator_group::ManipulatorGroup;
+use crate::layers::vector::subpath::Subpath;
 use crate::LayerId;
 
 use serde::{Deserialize, Serialize};
@@ -89,7 +89,7 @@ pub enum Operation {
 		path: Vec<LayerId>,
 		transform: [f64; 6],
 		insert_index: isize,
-		vector_path: VectorShape,
+		vector_path: Subpath,
 		style: style::PathStyle,
 	},
 	BooleanOperation {
@@ -104,7 +104,7 @@ pub enum Operation {
 	},
 	DeselectVectorPoints {
 		layer_path: Vec<LayerId>,
-		point_ids: Vec<(u64, ControlPointType)>,
+		point_ids: Vec<(u64, ManipulatorType)>,
 	},
 	DeselectAllVectorPoints {
 		layer_path: Vec<LayerId>,
@@ -149,21 +149,21 @@ pub enum Operation {
 	},
 	SelectVectorPoints {
 		layer_path: Vec<LayerId>,
-		point_ids: Vec<(u64, ControlPointType)>,
+		point_ids: Vec<(u64, ManipulatorType)>,
 		add: bool,
 	},
 	SetShapePath {
 		path: Vec<LayerId>,
-		vector_path: VectorShape,
+		vector_path: Subpath,
 	},
 	InsertVectorAnchor {
 		layer_path: Vec<LayerId>,
-		anchor: VectorAnchor,
+		anchor: ManipulatorGroup,
 		after_id: u64,
 	},
 	PushVectorAnchor {
 		layer_path: Vec<LayerId>,
-		anchor: VectorAnchor,
+		anchor: ManipulatorGroup,
 	},
 	RemoveVectorAnchor {
 		layer_path: Vec<LayerId>,
@@ -172,13 +172,13 @@ pub enum Operation {
 	MoveVectorPoint {
 		layer_path: Vec<LayerId>,
 		id: u64,
-		control_type: ControlPointType,
+		control_type: ManipulatorType,
 		position: (f64, f64),
 	},
 	RemoveVectorPoint {
 		layer_path: Vec<LayerId>,
 		id: u64,
-		control_type: ControlPointType,
+		control_type: ManipulatorType,
 	},
 	TransformLayerInScope {
 		path: Vec<LayerId>,

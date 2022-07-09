@@ -4,7 +4,7 @@ use super::image_layer::ImageLayer;
 use super::shape_layer::ShapeLayer;
 use super::style::{PathStyle, RenderData};
 use super::text_layer::TextLayer;
-use super::vector::vector_shape::VectorShape;
+use super::vector::subpath::Subpath;
 use crate::intersection::Quad;
 use crate::layers::text_layer::FontCache;
 use crate::DocumentError;
@@ -372,21 +372,21 @@ impl Layer {
 		}
 	}
 
-	pub fn as_vector_shape(&self) -> Option<&VectorShape> {
+	pub fn as_vector_shape(&self) -> Option<&Subpath> {
 		match &self.data {
 			LayerDataType::Shape(s) => Some(&s.shape),
 			_ => None,
 		}
 	}
 
-	pub fn as_vector_shape_copy(&self) -> Option<VectorShape> {
+	pub fn as_vector_shape_copy(&self) -> Option<Subpath> {
 		match &self.data {
 			LayerDataType::Shape(s) => Some(s.shape.clone()),
 			_ => None,
 		}
 	}
 
-	pub fn as_vector_shape_mut(&mut self) -> Option<&mut VectorShape> {
+	pub fn as_vector_shape_mut(&mut self) -> Option<&mut Subpath> {
 		match &mut self.data {
 			LayerDataType::Shape(s) => Some(&mut s.shape),
 			_ => None,

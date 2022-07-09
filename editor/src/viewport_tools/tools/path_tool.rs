@@ -10,7 +10,7 @@ use crate::viewport_tools::vector_editor::overlay_renderer::OverlayRenderer;
 use crate::viewport_tools::vector_editor::shape_editor::ShapeEditor;
 
 use graphene::intersection::Quad;
-use graphene::layers::vector::constants::ControlPointType;
+use graphene::layers::vector::constants::ManipulatorType;
 
 use glam::DVec2;
 use serde::{Deserialize, Serialize};
@@ -182,9 +182,9 @@ impl Fsm for PathToolFsmState {
 						// Do not snap against handles when anchor is selected
 						let mut extension = Vec::new();
 						for &(path, id, point_type) in new_selected.iter() {
-							if point_type == ControlPointType::Anchor {
-								extension.push((path, id, ControlPointType::InHandle));
-								extension.push((path, id, ControlPointType::OutHandle));
+							if point_type == ManipulatorType::Anchor {
+								extension.push((path, id, ManipulatorType::InHandle));
+								extension.push((path, id, ManipulatorType::OutHandle));
 							}
 						}
 						new_selected.extend(extension);

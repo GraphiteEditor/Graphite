@@ -7,7 +7,7 @@ use graphene::intersection::Quad;
 use graphene::layers::layer_info::LayerDataType;
 use graphene::layers::style::{self, Fill, Stroke};
 use graphene::layers::text_layer::FontCache;
-use graphene::layers::vector::vector_shape::VectorShape;
+use graphene::layers::vector::subpath::Subpath;
 use graphene::{LayerId, Operation};
 
 use glam::{DAffine2, DVec2};
@@ -38,9 +38,7 @@ impl PathOutline {
 		let vector_path = match &document_layer.data {
 			LayerDataType::Shape(layer_shape) => Some(layer_shape.shape.clone()),
 			LayerDataType::Text(text) => Some(text.to_vector_path_nonmut(font_cache)),
-			_ => document_layer
-				.aabounding_box_for_transform(DAffine2::IDENTITY, font_cache)
-				.map(|[p1, p2]| VectorShape::new_rect(p1, p2)),
+			_ => document_layer.aabounding_box_for_transform(DAffine2::IDENTITY, font_cache).map(|[p1, p2]| Subpath::new_rect(p1, p2)),
 		}?;
 
 		// Generate a new overlay layer if necessary

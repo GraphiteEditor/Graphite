@@ -1,14 +1,14 @@
-use crate::layers::vector::constants::ControlPointType;
-use crate::layers::vector::vector_anchor::VectorAnchor;
-use crate::layers::vector::vector_control_point::VectorControlPoint;
-use crate::layers::vector::vector_shape::VectorShape;
+use crate::layers::vector::constants::ManipulatorType;
+use crate::layers::vector::manipulator_group::ManipulatorGroup;
+use crate::layers::vector::manipulator_point::ManipulatorPoint;
+use crate::layers::vector::subpath::Subpath;
 
 use glam::DVec2;
 use rustybuzz::{GlyphBuffer, UnicodeBuffer};
 use ttf_parser::{GlyphId, OutlineBuilder};
 
 struct Builder {
-	path: VectorShape,
+	path: Subpath,
 	pos: DVec2,
 	offset: DVec2,
 	ascender: f64,
@@ -24,32 +24,32 @@ impl Builder {
 impl OutlineBuilder for Builder {
 	fn move_to(&mut self, x: f32, y: f32) {
 		let anchor = self.point(x, y);
-		if self.path.anchors().last().filter(|el| el.points.iter().any(Option::is_some)).is_some() {
-			self.path.anchors_mut().push_end(VectorAnchor::closed());
+		if self.path.groups().last().filter(|el| el.points.iter().any(Option::is_some)).is_some() {
+			self.path.groups_mut().push_end(ManipulatorGroup::closed());
 		}
-		self.path.anchors_mut().push_end(VectorAnchor::new(anchor));
+		self.path.groups_mut().push_end(ManipulatorGroup::new_with_anchor(anchor));
 	}
 
 	fn line_to(&mut self, x: f32, y: f32) {
 		let anchor = self.point(x, y);
-		self.path.anchors_mut().push_end(VectorAnchor::new(anchor));
+		self.path.groups_mut().push_end(ManipulatorGroup::new_with_anchor(anchor));
 	}
 
 	fn quad_to(&mut self, x1: f32, y1: f32, x2: f32, y2: f32) {
 		let [handle, anchor] = [self.point(x1, y1), self.point(x2, y2)];
-		self.path.anchors_mut().last_mut().unwrap().points[ControlPointType::OutHandle] = Some(VectorControlPoint::new(handle, ControlPointType::OutHandle));
-		self.path.anchors_mut().push_end(VectorAnchor::new(anchor));
+		self.path.groups_mut().last_mut().unwrap().points[ManipulatorType::OutHandle] = Some(ManipulatorPoint::new(handle, ManipulatorType::OutHandle));
+		self.path.groups_mut().push_end(ManipulatorGroup::new_with_anchor(anchor));
 	}
 
 	fn curve_to(&mut self, x1: f32, y1: f32, x2: f32, y2: f32, x3: f32, y3: f32) {
 		let [handle1, handle2, anchor] = [self.point(x1, y1), self.point(x2, y2), self.point(x3, y3)];
-		self.path.anchors_mut().last_mut().unwrap().points[ControlPointType::OutHandle] = Some(VectorControlPoint::new(handle1, ControlPointType::OutHandle));
-		self.path.anchors_mut().push_end(VectorAnchor::new(anchor));
-		self.path.anchors_mut().last_mut().unwrap().points[ControlPointType::InHandle] = Some(VectorControlPoint::new(handle2, ControlPointType::InHandle));
+		self.path.groups_mut().last_mut().unwrap().points[ManipulatorType::OutHandle] = Some(ManipulatorPoint::new(handle1, ManipulatorType::OutHandle));
+		self.path.groups_mut().push_end(ManipulatorGroup::new_with_anchor(anchor));
+		self.path.groups_mut().last_mut().unwrap().points[ManipulatorType::InHandle] = Some(ManipulatorPoint::new(handle2, ManipulatorType::InHandle));
 	}
 
 	fn close(&mut self) {
-		self.path.anchors_mut().push_end(VectorAnchor::closed());
+		self.path.groups_mut().push_end(ManipulatorGroup::closed());
 	}
 }
 
@@ -80,17 +80,17 @@ fn wrap_word(line_width: Option<f64>, glyph_buffer: &GlyphBuffer, scale: f64, x_
 	false
 }
 
-pub fn to_path(str: &str, buzz_face: Option<rustybuzz::Face>, font_size: f64, line_width: Option<f64>) -> VectorShape {
+pub fn to_path(str: &str, buzz_face: Option<rustybuzz::Face>, font_size: f64, line_width: Option<f64>) -> Subpath {
 	let buzz_face = match buzz_face {
 		Some(face) => face,
 		// Show blank layer if font has not loaded
-		None => return VectorShape::default(),
+		None => return Subpath::default(),
 	};
 
 	let (scale, line_height, mut buffer) = font_properties(&buzz_face, font_size);
 
 	let mut builder = Builder {
-		path: VectorShape::new(),
+		path: Subpath::new(),
 		pos: DVec2::ZERO,
 		offset: DVec2::ZERO,
 		ascender: (buzz_face.ascender() as f64 / buzz_face.height() as f64) * font_size / scale,

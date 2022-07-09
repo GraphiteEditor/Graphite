@@ -1,14 +1,14 @@
 use super::constants::ROUNDING_BIAS;
-use super::vector_anchor::VectorAnchor;
-use super::vector_control_point::VectorControlPoint;
+use super::manipulator_group::ManipulatorGroup;
+use super::manipulator_point::ManipulatorPoint;
 use crate::consts::{COLOR_ACCENT, PATH_OUTLINE_WEIGHT, VECTOR_MANIPULATOR_ANCHOR_MARKER_SIZE};
 use crate::message_prelude::{generate_uuid, DocumentMessage, Message};
 
 use graphene::color::Color;
 use graphene::document::Document;
 use graphene::layers::style::{self, Fill, Stroke};
-use graphene::layers::vector::constants::ControlPointType;
-use graphene::layers::vector::vector_shape::VectorShape;
+use graphene::layers::vector::constants::ManipulatorType;
+use graphene::layers::vector::subpath::Subpath;
 use graphene::{LayerId, Operation};
 
 use glam::{DAffine2, DVec2};
@@ -58,7 +58,7 @@ impl OverlayRenderer {
 				}
 
 				// Create, place and style the anchor / handle overlays
-				for (anchor_id, anchor) in shape.anchors().enumerate() {
+				for (anchor_id, anchor) in shape.groups().enumerate() {
 					let anchor_cache = self.anchor_overlay_cache.get_mut(&(*layer_id, *anchor_id));
 
 					// If cached update placement and style
@@ -70,10 +70,10 @@ impl OverlayRenderer {
 						// Create if not cached
 						let mut anchor_overlays = [
 							Some(self.create_anchor_overlay(responses)),
-							Self::create_handle_overlay_if_exists(&anchor.points[ControlPointType::InHandle], responses),
-							Self::create_handle_overlay_if_exists(&anchor.points[ControlPointType::OutHandle], responses),
-							Self::create_handle_line_overlay_if_exists(&anchor.points[ControlPointType::InHandle], responses),
-							Self::create_handle_line_overlay_if_exists(&anchor.points[ControlPointType::OutHandle], responses),
+							Self::create_handle_overlay_if_exists(&anchor.points[ManipulatorType::InHandle], responses),
+							Self::create_handle_overlay_if_exists(&anchor.points[ManipulatorType::OutHandle], responses),
+							Self::create_handle_line_overlay_if_exists(&anchor.points[ManipulatorType::InHandle], responses),
+							Self::create_handle_line_overlay_if_exists(&anchor.points[ManipulatorType::OutHandle], responses),
 						];
 						Self::place_anchor_overlays(anchor, &mut anchor_overlays, &transform, responses);
 						Self::style_overlays(anchor, &anchor_overlays, responses);
@@ -98,7 +98,7 @@ impl OverlayRenderer {
 		// Remove the anchor overlays
 		if let Ok(layer) = document.layer(&layer_path) {
 			if let Some(shape) = layer.as_vector_shape() {
-				for (id, _) in shape.anchors().enumerate() {
+				for (id, _) in shape.groups().enumerate() {
 					if let Some(anchor_overlays) = self.anchor_overlay_cache.get(&(*layer_id, *id)) {
 						Self::remove_anchor_overlays(anchor_overlays, responses);
 						self.anchor_overlay_cache.remove(&(*layer_id, *id));
@@ -119,7 +119,7 @@ impl OverlayRenderer {
 		// Hide the anchor overlays
 		if let Ok(layer) = document.layer(&layer_path) {
 			if let Some(shape) = layer.as_vector_shape() {
-				for (id, _) in shape.anchors().enumerate() {
+				for (id, _) in shape.groups().enumerate() {
 					if let Some(anchor_overlays) = self.anchor_overlay_cache.get(&(*layer_id, *id)) {
 						Self::set_anchor_overlay_visibility(anchor_overlays, visibility, responses);
 					}
@@ -129,7 +129,7 @@ impl OverlayRenderer {
 	}
 
 	/// Create the kurbo shape that matches the selected viewport shape
-	fn create_shape_outline_overlay(&self, vector_path: VectorShape, responses: &mut VecDeque<Message>) -> Vec<LayerId> {
+	fn create_shape_outline_overlay(&self, vector_path: Subpath, responses: &mut VecDeque<Message>) -> Vec<LayerId> {
 		let layer_path = vec![generate_uuid()];
 		let operation = Operation::AddShape {
 			path: layer_path.clone(),
@@ -170,7 +170,7 @@ impl OverlayRenderer {
 	}
 
 	/// Create a single handle overlay and return its layer id if it exists
-	fn create_handle_overlay_if_exists(handle: &Option<VectorControlPoint>, responses: &mut VecDeque<Message>) -> Option<Vec<LayerId>> {
+	fn create_handle_overlay_if_exists(handle: &Option<ManipulatorPoint>, responses: &mut VecDeque<Message>) -> Option<Vec<LayerId>> {
 		handle.as_ref().map(|_| Self::create_handle_overlay(responses))
 	}
 
@@ -188,7 +188,7 @@ impl OverlayRenderer {
 	}
 
 	/// Create the shape outline overlay and return its layer id
-	fn create_handle_line_overlay_if_exists(handle: &Option<VectorControlPoint>, responses: &mut VecDeque<Message>) -> Option<Vec<LayerId>> {
+	fn create_handle_line_overlay_if_exists(handle: &Option<ManipulatorPoint>, responses: &mut VecDeque<Message>) -> Option<Vec<LayerId>> {
 		handle.as_ref().map(|_| Self::create_handle_line_overlay(responses))
 	}
 
@@ -197,16 +197,16 @@ impl OverlayRenderer {
 		responses.push_back(transform_message);
 	}
 
-	fn modify_outline_overlays(outline_path: Vec<LayerId>, vector_path: VectorShape, responses: &mut VecDeque<Message>) {
+	fn modify_outline_overlays(outline_path: Vec<LayerId>, vector_path: Subpath, responses: &mut VecDeque<Message>) {
 		let outline_modify_message = Self::overlay_modify_message(outline_path, vector_path);
 		responses.push_back(outline_modify_message);
 	}
 
 	/// Updates the position of the overlays based on the VectorShape points
-	fn place_anchor_overlays(anchor: &VectorAnchor, overlays: &mut AnchorOverlays, parent_transform: &DAffine2, responses: &mut VecDeque<Message>) {
-		if let Some(anchor_point) = &anchor.points[ControlPointType::Anchor] {
+	fn place_anchor_overlays(anchor: &ManipulatorGroup, overlays: &mut AnchorOverlays, parent_transform: &DAffine2, responses: &mut VecDeque<Message>) {
+		if let Some(anchor_point) = &anchor.points[ManipulatorType::Anchor] {
 			// Helper function to keep things DRY
-			let mut place_handle_and_line = |handle: &VectorControlPoint, line_source: &mut Option<Vec<LayerId>>, marker_source: &mut Option<Vec<LayerId>>| {
+			let mut place_handle_and_line = |handle: &ManipulatorPoint, line_source: &mut Option<Vec<LayerId>>, marker_source: &mut Option<Vec<LayerId>>| {
 				let line_overlay = line_source.take().unwrap_or_else(|| Self::create_handle_line_overlay(responses));
 				let line_vector = parent_transform.transform_point2(anchor_point.position) - parent_transform.transform_point2(handle.position);
 				let scale = DVec2::splat(line_vector.length());
@@ -237,7 +237,7 @@ impl OverlayRenderer {
 			}
 
 			// Place the anchor point overlay
-			if let Some(anchor_overlay) = &overlays[ControlPointType::Anchor as usize] {
+			if let Some(anchor_overlay) = &overlays[ManipulatorType::Anchor as usize] {
 				let scale = DVec2::splat(VECTOR_MANIPULATOR_ANCHOR_MARKER_SIZE);
 				let angle = 0.;
 				let translation = (parent_transform.transform_point2(anchor_point.position) - (scale / 2.) + ROUNDING_BIAS).round();
@@ -290,12 +290,12 @@ impl OverlayRenderer {
 	}
 
 	/// Create an update message for an overlay
-	fn overlay_modify_message(layer_path: Vec<LayerId>, vector_path: VectorShape) -> Message {
+	fn overlay_modify_message(layer_path: Vec<LayerId>, vector_path: Subpath) -> Message {
 		DocumentMessage::Overlays(Operation::SetShapePath { path: layer_path, vector_path }.into()).into()
 	}
 
 	/// Sets the overlay style for this point
-	fn style_overlays(anchor: &VectorAnchor, overlays: &AnchorOverlays, responses: &mut VecDeque<Message>) {
+	fn style_overlays(anchor: &ManipulatorGroup, overlays: &AnchorOverlays, responses: &mut VecDeque<Message>) {
 		// TODO Move the style definitions out of the VectorShape, should be looked up from a stylesheet or similar
 		let selected_style = style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, POINT_STROKE_WEIGHT + 1.0)), Fill::solid(COLOR_ACCENT));
 		let deselected_style = style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, POINT_STROKE_WEIGHT)), Fill::solid(Color::WHITE));

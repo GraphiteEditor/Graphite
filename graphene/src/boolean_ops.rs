@@ -535,7 +535,7 @@ pub fn composite_boolean_operation(mut select: BooleanOperation, shapes: &mut Ve
 // TODO: check if shapes are filled
 // TODO: Bug: shape with at least two subpaths and comprised of many unions sometimes has erroneous movetos embedded in edges
 pub fn boolean_operation(mut select: BooleanOperation, alpha: &mut ShapeLayer, beta: &mut ShapeLayer) -> Result<Vec<ShapeLayer>, BooleanOperationError> {
-	if alpha.shape.anchors().is_empty() || beta.shape.anchors().is_empty() {
+	if alpha.shape.groups().is_empty() || beta.shape.groups().is_empty() {
 		return Err(BooleanOperationError::InvalidSelection);
 	}
 	if select == BooleanOperation::SubtractBack {

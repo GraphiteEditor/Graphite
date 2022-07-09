@@ -6,7 +6,7 @@ use crate::layers::layer_info::{Layer, LayerData, LayerDataType, LayerDataTypeDi
 use crate::layers::shape_layer::ShapeLayer;
 use crate::layers::style::RenderData;
 use crate::layers::text_layer::{Font, FontCache, TextLayer};
-use crate::layers::vector::vector_shape::VectorShape;
+use crate::layers::vector::subpath::Subpath;
 use crate::{DocumentError, DocumentResponse, Operation};
 
 use glam::{DAffine2, DVec2};
@@ -127,27 +127,27 @@ impl Document {
 	}
 
 	/// Return a copy of all VectorShapes currently in the document.
-	pub fn all_vector_shapes(&self) -> Vec<VectorShape> {
-		self.root.iter().flat_map(|layer| layer.as_vector_shape_copy()).collect::<Vec<VectorShape>>()
+	pub fn all_vector_shapes(&self) -> Vec<Subpath> {
+		self.root.iter().flat_map(|layer| layer.as_vector_shape_copy()).collect::<Vec<Subpath>>()
 	}
 
 	/// Returns references to all VectorShapes currently in the document.
-	pub fn all_vector_shapes_ref(&self) -> Vec<&VectorShape> {
-		self.root.iter().flat_map(|layer| layer.as_vector_shape()).collect::<Vec<&VectorShape>>()
+	pub fn all_vector_shapes_ref(&self) -> Vec<&Subpath> {
+		self.root.iter().flat_map(|layer| layer.as_vector_shape()).collect::<Vec<&Subpath>>()
 	}
 
 	/// Returns a reference to the requested VectorShape by providing a path to its owner layer.
-	pub fn vector_shape_ref<'a>(&'a self, path: &[LayerId]) -> Option<&'a VectorShape> {
+	pub fn vector_shape_ref<'a>(&'a self, path: &[LayerId]) -> Option<&'a Subpath> {
 		self.layer(path).ok()?.as_vector_shape()
 	}
 
 	/// Returns a mutable reference of the requested VectorShape by providing a path to its owner layer.
-	pub fn vector_shape_mut<'a>(&'a mut self, path: &'a [LayerId]) -> Option<&'a mut VectorShape> {
+	pub fn vector_shape_mut<'a>(&'a mut self, path: &'a [LayerId]) -> Option<&'a mut Subpath> {
 		self.layer_mut(path).ok()?.as_vector_shape_mut()
 	}
 
 	/// Set a VectorShape at the specified path.
-	pub fn set_vector_shape(&mut self, path: &[LayerId], shape: VectorShape) {
+	pub fn set_vector_shape(&mut self, path: &[LayerId], shape: Subpath) {
 		let layer = self.layer_mut(path);
 		if let Ok(layer) = layer {
 			if let LayerDataType::Shape(shape_layer) = &mut layer.data {
@@ -159,7 +159,7 @@ impl Document {
 	}
 
 	/// Set VectorShapes for multiple paths at once.
-	pub fn set_vector_shapes<'a>(&'a mut self, paths: impl Iterator<Item = &'a [LayerId]>, shapes: Vec<VectorShape>) {
+	pub fn set_vector_shapes<'a>(&'a mut self, paths: impl Iterator<Item = &'a [LayerId]>, shapes: Vec<Subpath>) {
 		paths.zip(shapes).for_each(|(path, shape)| self.set_vector_shape(path, shape));
 	}
 
@@ -768,21 +768,21 @@ impl Document {
 			}
 			Operation::InsertVectorAnchor { layer_path, anchor, after_id } => {
 				if let Ok(Some(shape)) = self.layer_mut(&layer_path).map(|layer| layer.as_vector_shape_mut()) {
-					shape.anchors_mut().insert(anchor, after_id);
+					shape.groups_mut().insert(anchor, after_id);
 					self.mark_as_dirty(&layer_path)?;
 				}
 				Some([update_thumbnails_upstream(&layer_path), vec![DocumentChanged, LayerChanged { path: layer_path }]].concat())
 			}
 			Operation::PushVectorAnchor { layer_path, anchor } => {
 				if let Ok(Some(shape)) = self.layer_mut(&layer_path).map(|layer| layer.as_vector_shape_mut()) {
-					shape.anchors_mut().push(anchor);
+					shape.groups_mut().push(anchor);
 					self.mark_as_dirty(&layer_path)?;
 				}
 				Some([update_thumbnails_upstream(&layer_path), vec![DocumentChanged, LayerChanged { path: layer_path }]].concat())
 			}
 			Operation::RemoveVectorAnchor { layer_path, id } => {
 				if let Ok(Some(shape)) = self.layer_mut(&layer_path).map(|layer| layer.as_vector_shape_mut()) {
-					shape.anchors_mut().remove(id);
+					shape.groups_mut().remove(id);
 					self.mark_as_dirty(&layer_path)?;
 				}
 				Some([update_thumbnails_upstream(&layer_path), vec![DocumentChanged, LayerChanged { path: layer_path }]].concat())
@@ -794,7 +794,7 @@ impl Document {
 				position,
 			} => {
 				if let Ok(Some(shape)) = self.layer_mut(&layer_path).map(|layer| layer.as_vector_shape_mut()) {
-					if let Some(anchor) = shape.anchors_mut().by_id_mut(id) {
+					if let Some(anchor) = shape.groups_mut().by_id_mut(id) {
 						anchor.set_point_position(control_type as usize, position.into());
 						self.mark_as_dirty(&layer_path)?;
 					}
@@ -803,7 +803,7 @@ impl Document {
 			}
 			Operation::RemoveVectorPoint { layer_path, id, control_type } => {
 				if let Ok(Some(shape)) = self.layer_mut(&layer_path).map(|layer| layer.as_vector_shape_mut()) {
-					if let Some(anchor) = shape.anchors_mut().by_id_mut(id) {
+					if let Some(anchor) = shape.groups_mut().by_id_mut(id) {
 						anchor.points[control_type as usize] = None;
 						self.mark_as_dirty(&layer_path)?;
 					}
@@ -890,7 +890,7 @@ impl Document {
 				let layer = self.layer_mut(&layer_path)?;
 				if let Some(shape) = layer.as_vector_shape_mut() {
 					if !add {
-						shape.clear_selected_anchors();
+						shape.clear_selected_groups();
 					}
 					shape.select_points(&point_ids, true);
 				}
@@ -906,7 +906,7 @@ impl Document {
 			Operation::DeselectAllVectorPoints { layer_path } => {
 				let layer = self.layer_mut(&layer_path)?;
 				if let Some(shape) = layer.as_vector_shape_mut() {
-					shape.clear_selected_anchors();
+					shape.clear_selected_groups();
 				}
 				Some(vec![LayerChanged { path: layer_path.clone() }])
 			}
@@ -919,7 +919,7 @@ impl Document {
 						shape.delete_selected();
 
 						// Delete the layer if there are no longer any anchors
-						if (shape.anchors().len() - 1) == 0 {
+						if (shape.groups().len() - 1) == 0 {
 							self.delete(&layer_path)?;
 							responses.push(DocumentChanged);
 							responses.push(DocumentResponse::DeletedLayer { path: layer_path });
@@ -955,7 +955,7 @@ impl Document {
 			} => {
 				let layer = self.layer_mut(&layer_path)?;
 				if let Some(shape) = layer.as_vector_shape_mut() {
-					for anchor in shape.selected_anchors_any_points_mut() {
+					for anchor in shape.selected_groups_any_points_mut() {
 						anchor.toggle_mirroring(toggle_distance, toggle_angle);
 					}
 				}

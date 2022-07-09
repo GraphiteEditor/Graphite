@@ -1,6 +1,6 @@
-use super::constants::ControlPointType;
-use super::vector_anchor::VectorAnchor;
-use super::vector_control_point::VectorControlPoint;
+use super::constants::ManipulatorType;
+use super::manipulator_group::ManipulatorGroup;
+use super::manipulator_point::ManipulatorPoint;
 use crate::layers::id_vec::IdBackedVec;
 use crate::layers::layer_info::{Layer, LayerDataType};
 
@@ -8,31 +8,32 @@ use glam::{DAffine2, DVec2};
 use kurbo::{BezPath, PathEl, Rect, Shape};
 use serde::{Deserialize, Serialize};
 
-/// VectorShape represents a single vector shape, containing many anchors
-/// For each closed shape we keep a VectorShape which contains the handles and anchors that define that shape.
+/// Subpath represents a single vector shape, containing many ManipulatorGroups
+/// For each closed shape we keep a Subpath which contains the ManipulatorGroups (handles and anchors) that define that shape.
+// TODO Add "closed" bool to subpath
 #[derive(PartialEq, Clone, Debug, Default, Serialize, Deserialize)]
-pub struct VectorShape(IdBackedVec<VectorAnchor>);
+pub struct Subpath(IdBackedVec<ManipulatorGroup>);
 
-impl VectorShape {
-	// ** SHAPE INITIALIZATION **
+impl Subpath {
+	// ** INITIALIZATION **
 
-	/// Create a new VectorShape with no anchors or handles
+	/// Create a new Subpath with no ManipulatorGroups
 	pub fn new() -> Self {
-		VectorShape { ..Default::default() }
+		Subpath { ..Default::default() }
 	}
 
-	/// Construct a [VectorShape] from a point iterator
+	/// Construct a [Subpath] from a point iterator
 	pub fn from_points(points: impl Iterator<Item = DVec2>, closed: bool) -> Self {
-		let anchors = points.map(VectorAnchor::new);
-		let mut p_line = VectorShape(IdBackedVec::default());
-		p_line.0.push_range(anchors);
+		let groups = points.map(ManipulatorGroup::new_with_anchor);
+		let mut p_line = Subpath(IdBackedVec::default());
+		p_line.0.push_range(groups);
 		if closed {
-			p_line.0.push(VectorAnchor::closed());
+			p_line.0.push(ManipulatorGroup::closed());
 		}
 		p_line
 	}
 
-	/// Create a new VectorShape from a kurbo Shape
+	/// Create a new Subpath from a kurbo Shape
 	/// This exists to smooth the transition away from Kurbo
 	pub fn from_kurbo_shape<T: Shape>(shape: &T) -> Self {
 		shape.path_elements(0.1).into()
@@ -42,13 +43,13 @@ impl VectorShape {
 
 	/// constructs a rectangle with `p1` as the lower left and `p2` as the top right
 	pub fn new_rect(p1: DVec2, p2: DVec2) -> Self {
-		VectorShape(
+		Subpath(
 			vec![
-				VectorAnchor::new(p1),
-				VectorAnchor::new(DVec2::new(p1.x, p2.y)),
-				VectorAnchor::new(p2),
-				VectorAnchor::new(DVec2::new(p2.x, p1.y)),
-				VectorAnchor::closed(),
+				ManipulatorGroup::new_with_anchor(p1),
+				ManipulatorGroup::new_with_anchor(DVec2::new(p1.x, p2.y)),
+				ManipulatorGroup::new_with_anchor(p2),
+				ManipulatorGroup::new_with_anchor(DVec2::new(p2.x, p1.y)),
+				ManipulatorGroup::closed(),
 			]
 			.into_iter()
 			.collect(),
@@ -69,13 +70,13 @@ impl VectorShape {
 		let handle_offset_x = x_height * curve_constant * 0.5;
 		let handle_offset_y = y_height * curve_constant * 0.5;
 
-		VectorShape(
+		Subpath(
 			vec![
-				VectorAnchor::new_with_handles(top, Some(top + handle_offset_x), Some(top - handle_offset_x)),
-				VectorAnchor::new_with_handles(right, Some(right + handle_offset_y), Some(right - handle_offset_y)),
-				VectorAnchor::new_with_handles(bottom, Some(bottom - handle_offset_x), Some(bottom + handle_offset_x)),
-				VectorAnchor::new_with_handles(left, Some(left - handle_offset_y), Some(left + handle_offset_y)),
-				VectorAnchor::closed(),
+				ManipulatorGroup::new_with_handles(top, Some(top + handle_offset_x), Some(top - handle_offset_x)),
+				ManipulatorGroup::new_with_handles(right, Some(right + handle_offset_y), Some(right - handle_offset_y)),
+				ManipulatorGroup::new_with_handles(bottom, Some(bottom - handle_offset_x), Some(bottom + handle_offset_x)),
+				ManipulatorGroup::new_with_handles(left, Some(left - handle_offset_y), Some(left + handle_offset_y)),
+				ManipulatorGroup::closed(),
 			]
 			.into_iter()
 			.collect(),
@@ -86,27 +87,27 @@ impl VectorShape {
 	/// `radius` is the distance from the `center` to any vertex, or the radius of the circle the ngon may be inscribed inside
 	/// `sides` is the number of sides
 	pub fn new_ngon(center: DVec2, sides: u64, radius: f64) -> Self {
-		let mut anchors = vec![];
+		let mut groups = vec![];
 		for i in 0..sides {
 			let angle = (i as f64) * std::f64::consts::TAU / (sides as f64);
 			let center = center + DVec2::ONE * radius;
-			let position = VectorAnchor::new(DVec2::new(center.x + radius * f64::cos(angle), center.y + radius * f64::sin(angle)) * 0.5);
-			anchors.push(position);
+			let position = ManipulatorGroup::new_with_anchor(DVec2::new(center.x + radius * f64::cos(angle), center.y + radius * f64::sin(angle)) * 0.5);
+			groups.push(position);
 		}
-		anchors.push(VectorAnchor::closed());
-		VectorShape(anchors.into_iter().collect())
+		groups.push(ManipulatorGroup::closed());
+		Subpath(groups.into_iter().collect())
 	}
 
 	/// Constructs a line from `p1` to `p2`
 	pub fn new_line(p1: DVec2, p2: DVec2) -> Self {
-		VectorShape(vec![VectorAnchor::new(p1), VectorAnchor::new(p2)].into_iter().collect())
+		Subpath(vec![ManipulatorGroup::new_with_anchor(p1), ManipulatorGroup::new_with_anchor(p2)].into_iter().collect())
 	}
 
 	/// Constructs a set of lines from `p1` to `pN`
 	pub fn new_poly_line<T: Into<glam::DVec2>>(points: Vec<T>) -> Self {
-		let anchors = points.into_iter().map(|point| VectorAnchor::new(point.into()));
-		let mut p_line = VectorShape(IdBackedVec::default());
-		p_line.0.push_range(anchors);
+		let groups = points.into_iter().map(|point| ManipulatorGroup::new_with_anchor(point.into()));
+		let mut p_line = Subpath(IdBackedVec::default());
+		p_line.0.push_range(groups);
 		p_line
 	}
 
@@ -161,58 +162,57 @@ impl VectorShape {
 
 		// given the second point in the n'th cubic bezier, the third point is given by 2 * points[n+1] - b[n+1].
 		// to find 'handle1_pos' for the n'th point we need the n-1 cubic bezier
-		new.0.push_end(VectorAnchor::new_with_handles(points[0], None, Some(d[0])));
+		new.0.push_end(ManipulatorGroup::new_with_handles(points[0], None, Some(d[0])));
 		for i in 1..n - 1 {
-			new.0.push_end(VectorAnchor::new_with_handles(points[i], Some(2.0 * points[i] - d[i]), Some(d[i])));
+			new.0.push_end(ManipulatorGroup::new_with_handles(points[i], Some(2.0 * points[i] - d[i]), Some(d[i])));
 		}
-		new.0.push_end(VectorAnchor::new_with_handles(points[n - 1], Some(2.0 * points[n - 1] - d[n - 1]), None));
+		new.0.push_end(ManipulatorGroup::new_with_handles(points[n - 1], Some(2.0 * points[n - 1] - d[n - 1]), None));
 
 		new
 	}
 
 	/// Move the selected points by the delta vector
 	pub fn move_selected(&mut self, delta: DVec2, absolute_position: DVec2, viewspace: &DAffine2) {
-		self.selected_anchors_any_points_mut()
-			.for_each(|anchor| anchor.move_selected_points(delta, absolute_position, viewspace));
+		self.selected_groups_any_points_mut().for_each(|group| group.move_selected_points(delta, absolute_position, viewspace));
 	}
 
-	/// Delete the selected points from the VectorShape
+	/// Delete the selected points from the Subpath
 	pub fn delete_selected(&mut self) {
 		let mut ids_to_delete: Vec<u64> = vec![];
-		for (id, anchor) in self.anchors_mut().enumerate_mut() {
-			if anchor.is_anchor_selected() {
+		for (id, group) in self.groups_mut().enumerate_mut() {
+			if group.is_anchor_selected() {
 				ids_to_delete.push(*id);
 			} else {
-				anchor.delete_selected();
+				group.delete_selected();
 			}
 		}
 
 		for id in ids_to_delete {
-			self.anchors_mut().remove(id);
+			self.groups_mut().remove(id);
 		}
 	}
 
-	// Apply a transformation to all of the VectorShape points
+	// Apply a transformation to all of the Subpath points
 	pub fn apply_affine(&mut self, affine: DAffine2) {
-		for anchor in self.anchors_mut().iter_mut() {
-			anchor.transform(&affine);
+		for group in self.groups_mut().iter_mut() {
+			group.transform(&affine);
 		}
 	}
 
 	// ** SELECTION OF POINTS **
 
-	/// Select a single point by providing (AnchorId, ControlPointType)
-	pub fn select_point(&mut self, point: (u64, ControlPointType), selected: bool) -> Option<&mut VectorAnchor> {
-		let (anchor_id, point_id) = point;
-		if let Some(anchor) = self.anchors_mut().by_id_mut(anchor_id) {
+	/// Select a single point by providing (GroupId, ControlPointType)
+	pub fn select_point(&mut self, point: (u64, ManipulatorType), selected: bool) -> Option<&mut ManipulatorGroup> {
+		let (group_id, point_id) = point;
+		if let Some(anchor) = self.groups_mut().by_id_mut(group_id) {
 			anchor.select_point(point_id as usize, selected);
 			return Some(anchor);
 		}
 		None
 	}
 
-	/// Select points in the VectorShape, given by (AnchorId, ControlPointType)
-	pub fn select_points(&mut self, points: &[(u64, ControlPointType)], selected: bool) {
+	/// Select points in the Subpath, given by (GroupId, ControlPointType)
+	pub fn select_points(&mut self, points: &[(u64, ManipulatorType)], selected: bool) {
 		points.iter().for_each(|point| {
 			self.select_point(*point, selected);
 		});
@@ -220,105 +220,105 @@ impl VectorShape {
 
 	/// Select all the anchors in this shape
 	pub fn select_all_anchors(&mut self) {
-		for anchor in self.anchors_mut().iter_mut() {
-			anchor.select_point(ControlPointType::Anchor as usize, true);
+		for group in self.groups_mut().iter_mut() {
+			group.select_point(ManipulatorType::Anchor as usize, true);
 		}
 	}
 
 	/// Select an anchor by index
-	pub fn select_anchor_by_index(&mut self, anchor_index: usize) -> Option<&mut VectorAnchor> {
-		if let Some(anchor) = self.anchors_mut().by_index_mut(anchor_index) {
-			anchor.select_point(ControlPointType::Anchor as usize, true);
-			return Some(anchor);
+	pub fn select_anchor_by_index(&mut self, group_index: usize) -> Option<&mut ManipulatorGroup> {
+		if let Some(group) = self.groups_mut().by_index_mut(group_index) {
+			group.select_point(ManipulatorType::Anchor as usize, true);
+			return Some(group);
 		}
 		None
 	}
 
 	/// The last anchor in the shape
-	pub fn select_last_anchor(&mut self) -> Option<&mut VectorAnchor> {
-		if let Some(anchor) = self.anchors_mut().last_mut() {
-			anchor.select_point(ControlPointType::Anchor as usize, true);
-			return Some(anchor);
+	pub fn select_last_anchor(&mut self) -> Option<&mut ManipulatorGroup> {
+		if let Some(group) = self.groups_mut().last_mut() {
+			group.select_point(ManipulatorType::Anchor as usize, true);
+			return Some(group);
 		}
 		None
 	}
 
-	/// Clear all the selected anchors, and clear the selected points on the anchors
-	pub fn clear_selected_anchors(&mut self) {
-		for anchor in self.anchors_mut().iter_mut() {
-			anchor.clear_selected_points();
+	/// Clear all the selected groups, aka clear the selected points inside the group
+	pub fn clear_selected_groups(&mut self) {
+		for group in self.groups_mut().iter_mut() {
+			group.clear_selected_points();
 		}
 	}
 
-	// ** ACCESSING ANCHORS **
+	// ** ACCESSING MANIPULATORGROUPS **
 
 	/// Return all the selected anchors, reference
-	pub fn selected_anchors(&self) -> impl Iterator<Item = &VectorAnchor> {
-		self.anchors().iter().filter(|anchor| anchor.is_anchor_selected())
+	pub fn selected_groups(&self) -> impl Iterator<Item = &ManipulatorGroup> {
+		self.groups().iter().filter(|group| group.is_anchor_selected())
 	}
 
 	/// Return all the selected anchors, mutable
-	pub fn selected_anchors_mut(&mut self) -> impl Iterator<Item = &mut VectorAnchor> {
-		self.anchors_mut().iter_mut().filter(|anchor| anchor.is_anchor_selected())
+	pub fn selected_groups_mut(&mut self) -> impl Iterator<Item = &mut ManipulatorGroup> {
+		self.groups_mut().iter_mut().filter(|group| group.is_anchor_selected())
 	}
 
-	/// Return all the selected anchors that have any children points selected, reference
-	pub fn selected_anchors_any_points(&self) -> impl Iterator<Item = &VectorAnchor> {
-		self.anchors().iter().filter(|anchor| anchor.any_points_selected())
+	/// Return all the selected ManipulatorPoints, reference
+	pub fn selected_groups_any_points(&self) -> impl Iterator<Item = &ManipulatorGroup> {
+		self.groups().iter().filter(|group| group.any_points_selected())
 	}
 
-	/// Return all the selected anchors that have any children points selected, mutable
-	pub fn selected_anchors_any_points_mut(&mut self) -> impl Iterator<Item = &mut VectorAnchor> {
-		self.anchors_mut().iter_mut().filter(|anchor| anchor.any_points_selected())
+	/// Return all the selected ManipulatorPoints, mutable
+	pub fn selected_groups_any_points_mut(&mut self) -> impl Iterator<Item = &mut ManipulatorGroup> {
+		self.groups_mut().iter_mut().filter(|group| group.any_points_selected())
 	}
 
 	/// An alias for `self.0`
-	pub fn anchors(&self) -> &IdBackedVec<VectorAnchor> {
+	pub fn groups(&self) -> &IdBackedVec<ManipulatorGroup> {
 		&self.0
 	}
 
-	/// Returns a [VectorControlPoint] from the last [VectorAnchor]
-	pub fn last_point(&self, control_type: ControlPointType) -> Option<&VectorControlPoint> {
-		self.anchors().last().and_then(|anchor| anchor.points[control_type].as_ref())
+	/// Returns a [VectorControlPoint] from the last [ManipulatorGroup] in the Subpath.
+	pub fn last_point(&self, control_type: ManipulatorType) -> Option<&ManipulatorPoint> {
+		self.groups().last().and_then(|group| group.points[control_type].as_ref())
 	}
 
-	/// Returns a [VectorControlPoint] from the last [VectorAnchor], mutably
-	pub fn last_point_mut(&mut self, control_type: ControlPointType) -> Option<&mut VectorControlPoint> {
-		self.anchors_mut().last_mut().and_then(|anchor| anchor.points[control_type].as_mut())
+	/// Returns a [VectorControlPoint] from the last [ManipulatorGroup], mutably
+	pub fn last_point_mut(&mut self, control_type: ManipulatorType) -> Option<&mut ManipulatorPoint> {
+		self.groups_mut().last_mut().and_then(|group| group.points[control_type].as_mut())
 	}
 
-	/// Returns a [VectorControlPoint]  from the first [VectorAnchor]
-	pub fn first_point(&self, control_type: ControlPointType) -> Option<&VectorControlPoint> {
-		self.anchors().first().and_then(|anchor| anchor.points[control_type].as_ref())
+	/// Returns a [VectorControlPoint]  from the first [ManipulatorGroup]
+	pub fn first_point(&self, control_type: ManipulatorType) -> Option<&ManipulatorPoint> {
+		self.groups().first().and_then(|group| group.points[control_type].as_ref())
 	}
 
-	/// Returns a [VectorControlPoint] from the first [VectorAnchor]
-	pub fn first_point_mut(&mut self, control_type: ControlPointType) -> Option<&mut VectorControlPoint> {
-		self.anchors_mut().first_mut().and_then(|anchor| anchor.points[control_type].as_mut())
+	/// Returns a [VectorControlPoint] from the first [ManipulatorGroup]
+	pub fn first_point_mut(&mut self, control_type: ManipulatorType) -> Option<&mut ManipulatorPoint> {
+		self.groups_mut().first_mut().and_then(|group| group.points[control_type].as_mut())
 	}
 
 	/// Should we close the shape?
 	pub fn should_close_shape(&self) -> bool {
-		if self.last_point(ControlPointType::Anchor).is_none() {
+		if self.last_point(ManipulatorType::Anchor).is_none() {
 			return false;
 		}
 
-		self.first_point(ControlPointType::Anchor)
+		self.first_point(ManipulatorType::Anchor)
 			.unwrap()
 			.position
-			.distance(self.last_point(ControlPointType::Anchor).unwrap().position)
+			.distance(self.last_point(ManipulatorType::Anchor).unwrap().position)
 			< 0.001 // TODO Replace with constant, a small epsilon
 	}
 
 	/// Close the shape if able
 	pub fn close_shape(&mut self) {
 		if self.should_close_shape() {
-			self.anchors_mut().push_end(VectorAnchor::closed());
+			self.groups_mut().push_end(ManipulatorGroup::closed());
 		}
 	}
 
 	/// An alias for `self.0` mutable
-	pub fn anchors_mut(&mut self) -> &mut IdBackedVec<VectorAnchor> {
+	pub fn groups_mut(&mut self) -> &mut IdBackedVec<ManipulatorGroup> {
 		&mut self.0
 	}
 
@@ -344,16 +344,16 @@ impl VectorShape {
 		}
 
 		let mut result = String::new();
-		// The out position from the previous VectorAnchor
+		// The out position from the previous ManipulatorGroup
 		let mut last_out_handle = None;
 		// The values from the last moveto (for closing the path)
 		let (mut first_in_handle, mut first_in_anchor) = (None, None);
 		// Should the next element be a moveto?
 		let mut start_new_contour = true;
-		for vector_anchor in self.anchors().iter() {
-			let in_handle = vector_anchor.points[ControlPointType::InHandle].as_ref().map(|anchor| anchor.position);
-			let anchor = vector_anchor.points[ControlPointType::Anchor].as_ref().map(|anchor| anchor.position);
-			let out_handle = vector_anchor.points[ControlPointType::OutHandle].as_ref().map(|anchor| anchor.position);
+		for group in self.groups().iter() {
+			let in_handle = group.points[ManipulatorType::InHandle].as_ref().map(|point| point.position);
+			let anchor = group.points[ManipulatorType::Anchor].as_ref().map(|point| point.position);
+			let out_handle = group.points[ManipulatorType::OutHandle].as_ref().map(|point| point.position);
 
 			let command = match (last_out_handle.is_some(), in_handle.is_some(), anchor.is_some()) {
 				(_, _, true) if start_new_contour => 'M',
@@ -393,57 +393,57 @@ impl VectorShape {
 
 // ** CONVERSIONS **
 
-/// Convert a mutable layer into a mutable VectorShape
-impl<'a> TryFrom<&'a mut Layer> for &'a mut VectorShape {
+/// Convert a mutable layer into a mutable Subpath
+impl<'a> TryFrom<&'a mut Layer> for &'a mut Subpath {
 	type Error = &'static str;
-	fn try_from(layer: &'a mut Layer) -> Result<&'a mut VectorShape, Self::Error> {
+	fn try_from(layer: &'a mut Layer) -> Result<&'a mut Subpath, Self::Error> {
 		match &mut layer.data {
 			LayerDataType::Shape(layer) => Ok(&mut layer.shape),
-			// TODO Resolve converting text into a VectorShape at the layer level
-			// LayerDataType::Text(text) => Some(VectorShape::new(path_to_shape.to_vec(), viewport_transform, true)),
+			// TODO Resolve converting text into a Subpath at the layer level
+			// LayerDataType::Text(text) => Some(Subpath::new(path_to_shape.to_vec(), viewport_transform, true)),
 			_ => Err("Did not find any shape data in the layer"),
 		}
 	}
 }
 
-/// Convert a reference to a layer into a reference of a VectorShape
-impl<'a> TryFrom<&'a Layer> for &'a VectorShape {
+/// Convert a reference to a layer into a reference of a Subpath
+impl<'a> TryFrom<&'a Layer> for &'a Subpath {
 	type Error = &'static str;
-	fn try_from(layer: &'a Layer) -> Result<&'a VectorShape, Self::Error> {
+	fn try_from(layer: &'a Layer) -> Result<&'a Subpath, Self::Error> {
 		match &layer.data {
 			LayerDataType::Shape(layer) => Ok(&layer.shape),
-			// TODO Resolve converting text into a VectorShape at the layer level
-			// LayerDataType::Text(text) => Some(VectorShape::new(path_to_shape.to_vec(), viewport_transform, true)),
+			// TODO Resolve converting text into a Subpath at the layer level
+			// LayerDataType::Text(text) => Some(Subpath::new(path_to_shape.to_vec(), viewport_transform, true)),
 			_ => Err("Did not find any shape data in the layer"),
 		}
 	}
 }
 
-/// Create a BezPath from a VectorShape
-impl From<&VectorShape> for BezPath {
-	fn from(vector_shape: &VectorShape) -> Self {
+/// Create a BezPath from a Subpath
+impl From<&Subpath> for BezPath {
+	fn from(subpath: &Subpath) -> Self {
 		// Take anchors and create path elements: line, quad or curve, or a close indicator
-		let anchors_to_path_el = |first: &VectorAnchor, second: &VectorAnchor| -> (PathEl, bool) {
+		let groups_to_path_el = |first: &ManipulatorGroup, second: &ManipulatorGroup| -> (PathEl, bool) {
 			match [
-				&first.points[ControlPointType::OutHandle],
-				&second.points[ControlPointType::InHandle],
-				&second.points[ControlPointType::Anchor],
+				&first.points[ManipulatorType::OutHandle],
+				&second.points[ManipulatorType::InHandle],
+				&second.points[ManipulatorType::Anchor],
 			] {
 				[None, None, Some(anchor)] => (PathEl::LineTo(point_to_kurbo(anchor)), false),
 				[None, Some(in_handle), Some(anchor)] => (PathEl::QuadTo(point_to_kurbo(in_handle), point_to_kurbo(anchor)), false),
 				[Some(out_handle), None, Some(anchor)] => (PathEl::QuadTo(point_to_kurbo(out_handle), point_to_kurbo(anchor)), false),
 				[Some(out_handle), Some(in_handle), Some(anchor)] => (PathEl::CurveTo(point_to_kurbo(out_handle), point_to_kurbo(in_handle), point_to_kurbo(anchor)), false),
 				[Some(out_handle), None, None] => {
-					if let Some(first_anchor) = vector_shape.anchors().first() {
+					if let Some(first_anchor) = subpath.groups().first() {
 						(
-							if let Some(in_handle) = &first_anchor.points[ControlPointType::InHandle] {
+							if let Some(in_handle) = &first_anchor.points[ManipulatorType::InHandle] {
 								PathEl::CurveTo(
 									point_to_kurbo(out_handle),
 									point_to_kurbo(in_handle),
-									point_to_kurbo(first_anchor.points[ControlPointType::Anchor].as_ref().unwrap()),
+									point_to_kurbo(first_anchor.points[ManipulatorType::Anchor].as_ref().unwrap()),
 								)
 							} else {
-								PathEl::QuadTo(point_to_kurbo(out_handle), point_to_kurbo(first_anchor.points[ControlPointType::Anchor].as_ref().unwrap()))
+								PathEl::QuadTo(point_to_kurbo(out_handle), point_to_kurbo(first_anchor.points[ManipulatorType::Anchor].as_ref().unwrap()))
 							},
 							true,
 						)
@@ -452,30 +452,30 @@ impl From<&VectorShape> for BezPath {
 					}
 				}
 				[None, None, None] => (PathEl::ClosePath, true),
-				_ => panic!("Invalid path element {:#?}", vector_shape),
+				_ => panic!("Invalid path element {:#?}", subpath),
 			}
 		};
 
-		if vector_shape.anchors().is_empty() {
+		if subpath.groups().is_empty() {
 			return BezPath::new();
 		}
 
 		let mut bez_path = vec![];
 		let mut start_new_shape = true;
 
-		for elements in vector_shape.anchors().windows(2) {
+		for elements in subpath.groups().windows(2) {
 			let first = &elements[0];
 			let second = &elements[1];
 
 			// Tell kurbo cursor to move to the first anchor
 			if start_new_shape {
-				if let Some(anchor) = &first.points[ControlPointType::Anchor] {
+				if let Some(anchor) = &first.points[ManipulatorType::Anchor] {
 					bez_path.push(PathEl::MoveTo(point_to_kurbo(anchor)));
 				}
 			}
 
 			// Create a path element from our first, second anchors in the window
-			let (path_el, should_start_new_shape) = anchors_to_path_el(first, second);
+			let (path_el, should_start_new_shape) = groups_to_path_el(first, second);
 			start_new_shape = should_start_new_shape;
 			bez_path.push(path_el);
 			if should_start_new_shape && bez_path.last().filter(|&&el| el == PathEl::ClosePath).is_none() {
@@ -487,39 +487,39 @@ impl From<&VectorShape> for BezPath {
 	}
 }
 
-/// Create a VectorShape from a BezPath
-impl<T: Iterator<Item = PathEl>> From<T> for VectorShape {
+/// Create a Subpath from a BezPath
+impl<T: Iterator<Item = PathEl>> From<T> for Subpath {
 	fn from(path: T) -> Self {
-		let mut vector_shape = VectorShape::new();
+		let mut subpath = Subpath::new();
 		for path_el in path {
 			match path_el {
 				PathEl::MoveTo(p) => {
-					vector_shape.anchors_mut().push_end(VectorAnchor::new(kurbo_point_to_dvec2(p)));
+					subpath.groups_mut().push_end(ManipulatorGroup::new_with_anchor(kurbo_point_to_dvec2(p)));
 				}
 				PathEl::LineTo(p) => {
-					vector_shape.anchors_mut().push_end(VectorAnchor::new(kurbo_point_to_dvec2(p)));
+					subpath.groups_mut().push_end(ManipulatorGroup::new_with_anchor(kurbo_point_to_dvec2(p)));
 				}
 				PathEl::QuadTo(p0, p1) => {
-					vector_shape.anchors_mut().push_end(VectorAnchor::new(kurbo_point_to_dvec2(p1)));
-					vector_shape.anchors_mut().last_mut().unwrap().points[ControlPointType::InHandle] = Some(VectorControlPoint::new(kurbo_point_to_dvec2(p0), ControlPointType::InHandle));
+					subpath.groups_mut().push_end(ManipulatorGroup::new_with_anchor(kurbo_point_to_dvec2(p1)));
+					subpath.groups_mut().last_mut().unwrap().points[ManipulatorType::InHandle] = Some(ManipulatorPoint::new(kurbo_point_to_dvec2(p0), ManipulatorType::InHandle));
 				}
 				PathEl::CurveTo(p0, p1, p2) => {
-					vector_shape.anchors_mut().last_mut().unwrap().points[ControlPointType::OutHandle] = Some(VectorControlPoint::new(kurbo_point_to_dvec2(p0), ControlPointType::OutHandle));
-					vector_shape.anchors_mut().push_end(VectorAnchor::new(kurbo_point_to_dvec2(p2)));
-					vector_shape.anchors_mut().last_mut().unwrap().points[ControlPointType::InHandle] = Some(VectorControlPoint::new(kurbo_point_to_dvec2(p1), ControlPointType::InHandle));
+					subpath.groups_mut().last_mut().unwrap().points[ManipulatorType::OutHandle] = Some(ManipulatorPoint::new(kurbo_point_to_dvec2(p0), ManipulatorType::OutHandle));
+					subpath.groups_mut().push_end(ManipulatorGroup::new_with_anchor(kurbo_point_to_dvec2(p2)));
+					subpath.groups_mut().last_mut().unwrap().points[ManipulatorType::InHandle] = Some(ManipulatorPoint::new(kurbo_point_to_dvec2(p1), ManipulatorType::InHandle));
 				}
 				PathEl::ClosePath => {
-					vector_shape.anchors_mut().push_end(VectorAnchor::closed());
+					subpath.groups_mut().push_end(ManipulatorGroup::closed());
 				}
 			}
 		}
 
-		vector_shape
+		subpath
 	}
 }
 
 #[inline]
-fn point_to_kurbo(point: &VectorControlPoint) -> kurbo::Point {
+fn point_to_kurbo(point: &ManipulatorPoint) -> kurbo::Point {
 	kurbo::Point::new(point.position.x, point.position.y)
 }
 

@@ -11,9 +11,9 @@ use crate::viewport_tools::tool::{Fsm, SignalToMessageMap, ToolActionHandlerData
 use crate::viewport_tools::vector_editor::overlay_renderer::OverlayRenderer;
 
 use graphene::layers::style;
-use graphene::layers::vector::constants::ControlPointType;
-use graphene::layers::vector::vector_anchor::VectorAnchor;
-use graphene::layers::vector::vector_shape::VectorShape;
+use graphene::layers::vector::constants::ManipulatorType;
+use graphene::layers::vector::manipulator_group::ManipulatorGroup;
+use graphene::layers::vector::subpath::Subpath;
 use graphene::Operation;
 
 use glam::{DAffine2, DVec2};
@@ -222,7 +222,7 @@ impl Fsm for PenToolFsmState {
 							}
 							.into(),
 						);
-						responses.push_back(add_anchor(&tool_data.path, VectorAnchor::new(start_position)));
+						responses.push_back(add_anchor(&tool_data.path, ManipulatorGroup::new_with_anchor(start_position)));
 					}
 
 					PenToolFsmState::DraggingHandle
@@ -231,9 +231,9 @@ impl Fsm for PenToolFsmState {
 				(PenToolFsmState::DraggingHandle, PenToolMessage::DragStop) => {
 					// Add new point onto path
 					if let Some(layer_path) = &tool_data.path {
-						if let Some(vector_anchor) = get_vector_shape(layer_path, document).and_then(|shape| shape.anchors().last()) {
-							if let Some(anchor) = &vector_anchor.points[ControlPointType::OutHandle] {
-								responses.push_back(add_anchor(&tool_data.path, VectorAnchor::new(anchor.position)));
+						if let Some(vector_anchor) = get_vector_shape(layer_path, document).and_then(|shape| shape.groups().last()) {
+							if let Some(anchor) = &vector_anchor.points[ManipulatorType::OutHandle] {
+								responses.push_back(add_anchor(&tool_data.path, ManipulatorGroup::new_with_anchor(anchor.position)));
 							}
 						}
 					}
@@ -245,7 +245,7 @@ impl Fsm for PenToolFsmState {
 						let mouse = tool_data.snap_handler.snap_position(responses, document, input.mouse.position);
 						let mut pos = transform.inverse().transform_point2(mouse);
 						if let Some(((&id, anchor), _previous)) = get_vector_shape(layer_path, document).and_then(last_2_anchors) {
-							if let Some(anchor) = anchor.points[ControlPointType::Anchor as usize].as_ref() {
+							if let Some(anchor) = anchor.points[ManipulatorType::Anchor as usize].as_ref() {
 								pos = compute_snapped_angle(input, snap_angle, pos, anchor.position);
 							}
 
@@ -253,20 +253,20 @@ impl Fsm for PenToolFsmState {
 							let msg = Operation::MoveVectorPoint {
 								layer_path: layer_path.clone(),
 								id,
-								control_type: ControlPointType::OutHandle,
+								control_type: ManipulatorType::OutHandle,
 								position: pos.into(),
 							};
 							responses.push_back(msg.into());
 
 							// Mirror handle of last segement
-							if !input.keyboard.get(break_handle as usize) && get_vector_shape(layer_path, document).map(|shape| shape.anchors().len() > 1).unwrap_or_default() {
-								if let Some(anchor) = anchor.points[ControlPointType::Anchor as usize].as_ref() {
+							if !input.keyboard.get(break_handle as usize) && get_vector_shape(layer_path, document).map(|shape| shape.groups().len() > 1).unwrap_or_default() {
+								if let Some(anchor) = anchor.points[ManipulatorType::Anchor as usize].as_ref() {
 									pos = anchor.position - (pos - anchor.position);
 								}
 								let msg = Operation::MoveVectorPoint {
 									layer_path: layer_path.clone(),
 									id,
-									control_type: ControlPointType::InHandle,
+									control_type: ManipulatorType::InHandle,
 									position: pos.into(),
 								};
 								responses.push_back(msg.into());
@@ -282,11 +282,11 @@ impl Fsm for PenToolFsmState {
 						let mut pos = transform.inverse().transform_point2(mouse);
 
 						if let Some(((&id, _anchor), previous)) = get_vector_shape(layer_path, document).and_then(last_2_anchors) {
-							if let Some(relative) = previous.as_ref().and_then(|(_, anchor)| anchor.points[ControlPointType::Anchor as usize].as_ref()) {
+							if let Some(relative) = previous.as_ref().and_then(|(_, anchor)| anchor.points[ManipulatorType::Anchor as usize].as_ref()) {
 								pos = compute_snapped_angle(input, snap_angle, pos, relative.position);
 							}
 
-							for control_type in [ControlPointType::Anchor, ControlPointType::InHandle, ControlPointType::OutHandle] {
+							for control_type in [ManipulatorType::Anchor, ManipulatorType::InHandle, ManipulatorType::OutHandle] {
 								let msg = Operation::MoveVectorPoint {
 									layer_path: layer_path.clone(),
 									id,
@@ -303,7 +303,7 @@ impl Fsm for PenToolFsmState {
 				(PenToolFsmState::DraggingHandle | PenToolFsmState::PlacingAnchor, PenToolMessage::Abort | PenToolMessage::Confirm) => {
 					// Abort or commit the transaction to the undo history
 					if let Some(layer_path) = tool_data.path.as_ref() {
-						if let Some(vector_shape) = (get_vector_shape(layer_path, document)).filter(|vector_shape| vector_shape.anchors().len() > 1) {
+						if let Some(vector_shape) = (get_vector_shape(layer_path, document)).filter(|vector_shape| vector_shape.groups().len() > 1) {
 							if let Some(((&(mut id), mut anchor), previous)) = last_2_anchors(vector_shape) {
 								// Remove the unplaced anchor if in anchor placing mode
 								if self == PenToolFsmState::PlacingAnchor {
@@ -320,8 +320,8 @@ impl Fsm for PenToolFsmState {
 								let op = Operation::MoveVectorPoint {
 									layer_path: layer_path.clone(),
 									id,
-									control_type: ControlPointType::OutHandle,
-									position: anchor.points[ControlPointType::Anchor as usize].as_ref().unwrap().position.into(),
+									control_type: ManipulatorType::OutHandle,
+									position: anchor.points[ManipulatorType::Anchor as usize].as_ref().unwrap().position.into(),
 								};
 								responses.push_back(op.into());
 							}
@@ -425,7 +425,7 @@ fn compute_snapped_angle(input: &InputPreprocessorMessageHandler, key: Key, pos:
 }
 
 /// Pushes an anchor to the current layer via an [Operation]
-fn add_anchor(layer_path: &Option<Vec<LayerId>>, anchor: VectorAnchor) -> Message {
+fn add_anchor(layer_path: &Option<Vec<LayerId>>, anchor: ManipulatorGroup) -> Message {
 	if let Some(layer_path) = layer_path {
 		Operation::PushVectorAnchor {
 			layer_path: layer_path.clone(),
@@ -438,19 +438,19 @@ fn add_anchor(layer_path: &Option<Vec<LayerId>>, anchor: VectorAnchor) -> Messag
 }
 
 /// Gets the currently editing [VectorShape]
-fn get_vector_shape<'a>(layer_path: &'a [LayerId], document: &'a DocumentMessageHandler) -> Option<&'a VectorShape> {
+fn get_vector_shape<'a>(layer_path: &'a [LayerId], document: &'a DocumentMessageHandler) -> Option<&'a Subpath> {
 	document.graphene_document.layer(layer_path).ok().and_then(|layer| layer.as_vector_shape())
 }
 
-type AnchorRef<'a> = (&'a u64, &'a VectorAnchor);
+type AnchorRef<'a> = (&'a u64, &'a ManipulatorGroup);
 
 /// Gets the last 2 [VectorAnchor] on the currently editing layer along with its id
-fn last_2_anchors(vector_shape: &VectorShape) -> Option<(AnchorRef, Option<AnchorRef>)> {
-	vector_shape.anchors().enumerate().last().map(|last| {
+fn last_2_anchors(vector_shape: &Subpath) -> Option<(AnchorRef, Option<AnchorRef>)> {
+	vector_shape.groups().enumerate().last().map(|last| {
 		(
 			last,
-			(vector_shape.anchors().len() > 1)
-				.then(|| vector_shape.anchors().enumerate().nth(vector_shape.anchors().len() - 2))
+			(vector_shape.groups().len() > 1)
+				.then(|| vector_shape.groups().enumerate().nth(vector_shape.groups().len() - 2))
 				.flatten(),
 		)
 	})

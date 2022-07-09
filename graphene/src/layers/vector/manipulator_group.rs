@@ -1,36 +1,37 @@
 use super::{
-	constants::{ControlPointType, SELECTION_THRESHOLD},
-	vector_control_point::VectorControlPoint,
+	constants::{ManipulatorType, SELECTION_THRESHOLD},
+	manipulator_point::ManipulatorPoint,
 };
 use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};
 
-/// Brief overview of VectorAnchor
-///                    VectorAnchor <- Container for the anchor metadata and optional VectorControlPoints
+/// Brief overview of ManipulatorGroup
+///                    ManipulatorGroup <- Container for the anchor metadata and optional ManipulatorPoint
 ///                          /
-///            [Option<VectorControlPoint>; 3] <- [0] is the anchor's draggable point (but not metadata), [1] is the InHandle's draggable point, [2] is the OutHandle's draggable point
-///          /              |                      \
-///      "Anchor"        "InHandle"             "OutHandle" <- These are VectorControlPoints and the only editable "primitive"
+///            [Option<ManipulatorPoint>; 3] <- [0] is the anchor's draggable point (but not metadata), [1] is the InHandle's draggable point, [2] is the OutHandle's draggable point
+///          /              |                  \
+///      "Anchor"       "InHandle"         "OutHandle" <- These are ManipulatorPoints and the only editable "primitive"
 
-/// VectorAnchor is used to represent an anchor point + handles on the path that can be moved.
+/// ManipulatorGroup is used to represent an anchor point + handles on the path that can be moved.
 /// It contains 0-2 handles that are optionally available.
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize, Default)]
-pub struct VectorAnchor {
+pub struct ManipulatorGroup {
 	// Editable points for the anchor & handles
-	pub points: [Option<VectorControlPoint>; 3],
+	pub points: [Option<ManipulatorPoint>; 3],
 
 	#[serde(skip)]
 	// The editor state of the anchor and handles
-	pub editor_state: VectorAnchorState,
+	// TODO Remove this from Graphene, editor state should be stored in the frontend if possible.
+	pub editor_state: ManipulatorGroupEditorState,
 }
 
-impl VectorAnchor {
+impl ManipulatorGroup {
 	/// Create a new anchor with the given position
-	pub fn new(anchor_pos: DVec2) -> Self {
+	pub fn new_with_anchor(anchor_pos: DVec2) -> Self {
 		Self {
 			// An anchor and 2x None's which represent non-existent handles
-			points: [Some(VectorControlPoint::new(anchor_pos, ControlPointType::Anchor)), None, None],
-			editor_state: VectorAnchorState::default(),
+			points: [Some(ManipulatorPoint::new(anchor_pos, ManipulatorType::Anchor)), None, None],
+			editor_state: ManipulatorGroupEditorState::default(),
 		}
 	}
 
@@ -39,41 +40,42 @@ impl VectorAnchor {
 		Self {
 			points: match (handle_in_pos, handle_out_pos) {
 				(Some(pos1), Some(pos2)) => [
-					Some(VectorControlPoint::new(anchor_pos, ControlPointType::Anchor)),
-					Some(VectorControlPoint::new(pos1, ControlPointType::InHandle)),
-					Some(VectorControlPoint::new(pos2, ControlPointType::OutHandle)),
+					Some(ManipulatorPoint::new(anchor_pos, ManipulatorType::Anchor)),
+					Some(ManipulatorPoint::new(pos1, ManipulatorType::InHandle)),
+					Some(ManipulatorPoint::new(pos2, ManipulatorType::OutHandle)),
 				],
 				(None, Some(pos2)) => [
-					Some(VectorControlPoint::new(anchor_pos, ControlPointType::Anchor)),
+					Some(ManipulatorPoint::new(anchor_pos, ManipulatorType::Anchor)),
 					None,
-					Some(VectorControlPoint::new(pos2, ControlPointType::OutHandle)),
+					Some(ManipulatorPoint::new(pos2, ManipulatorType::OutHandle)),
 				],
 				(Some(pos1), None) => [
-					Some(VectorControlPoint::new(anchor_pos, ControlPointType::Anchor)),
-					Some(VectorControlPoint::new(pos1, ControlPointType::InHandle)),
+					Some(ManipulatorPoint::new(anchor_pos, ManipulatorType::Anchor)),
+					Some(ManipulatorPoint::new(pos1, ManipulatorType::InHandle)),
 					None,
 				],
-				(None, None) => [Some(VectorControlPoint::new(anchor_pos, ControlPointType::Anchor)), None, None],
+				(None, None) => [Some(ManipulatorPoint::new(anchor_pos, ManipulatorType::Anchor)), None, None],
 			},
-			editor_state: VectorAnchorState::default(),
+			editor_state: ManipulatorGroupEditorState::default(),
 		}
 	}
 
-	/// Create a VectorAnchor that represents a close path signal
+	// TODO Convert into bool in subpath
+	/// Create a ManipulatorGroup that represents a close path signal
 	pub fn closed() -> Self {
 		Self {
 			// An anchor being None indicates a ClosePath (aka a path end)
 			points: [None, None, None],
-			editor_state: VectorAnchorState::default(),
+			editor_state: ManipulatorGroupEditorState::default(),
 		}
 	}
 
-	/// Does this [VectorAnchor] represent a close signal?
+	/// Does this [ManipulatorGroup] represent a close signal?
 	pub fn is_close(&self) -> bool {
-		self.points[ControlPointType::Anchor].is_none() && self.points[ControlPointType::InHandle].is_none()
+		self.points[ManipulatorType::Anchor].is_none() && self.points[ManipulatorType::InHandle].is_none()
 	}
 
-	/// Finds the closest VectorControlPoint owned by this anchor. This can be the handles or the anchor itself
+	/// Finds the closest ManipulatorPoint owned by this anchor. This can be the handles or the anchor itself
 	pub fn closest_point(&self, transform_space: &DAffine2, target: glam::DVec2) -> usize {
 		let mut closest_index: usize = 0;
 		let mut closest_distance_squared: f64 = f64::MAX; // Not ideal
@@ -97,20 +99,20 @@ impl VectorAnchor {
 
 		// TODO Use an ID as opposed to distance, stopgap for now
 		// Transformed into viewspace so SELECTION_THRESHOLD is in pixels
-		let is_drag_target = |point: &mut VectorControlPoint| -> bool { viewspace.transform_point2(absolute_position).distance(viewspace.transform_point2(point.position)) < SELECTION_THRESHOLD };
+		let is_drag_target = |point: &mut ManipulatorPoint| -> bool { viewspace.transform_point2(absolute_position).distance(viewspace.transform_point2(point.position)) < SELECTION_THRESHOLD };
 
 		// Move the point absolutely or relatively depending on if the point is under the cursor (the last selected point)
-		let move_point = |point: &mut VectorControlPoint, delta: DVec2, absolute_position: DVec2| {
+		let move_point = |point: &mut ManipulatorPoint, delta: DVec2, absolute_position: DVec2| {
 			if is_drag_target(point) {
 				point.position = absolute_position;
 			} else {
 				point.position += delta;
 			}
-			assert!(point.position.is_finite(), "Point is not finite")
+			assert!(point.position.is_finite(), "Point is not finite!")
 		};
 
 		// Find the correctly mirrored handle position based on mirroring settings
-		let move_symmetrical_handle = |position: DVec2, opposing_handle: Option<&mut VectorControlPoint>, center: DVec2| {
+		let move_symmetrical_handle = |position: DVec2, opposing_handle: Option<&mut ManipulatorPoint>, center: DVec2| {
 			// Early out for cases where we can't mirror
 			if !mirror_angle || opposing_handle.is_none() {
 				return;
@@ -122,7 +124,7 @@ impl VectorAnchor {
 
 			if let Some(offset) = (position - center).try_normalize() {
 				opposing_handle.position = center - offset * radius;
-				assert!(opposing_handle.position.is_finite(), "Oposing handle not finite")
+				assert!(opposing_handle.position.is_finite(), "Opposing handle not finite!")
 			}
 		};
 
@@ -151,7 +153,7 @@ impl VectorAnchor {
 
 		// If the anchor isn't selected, and only one handle is selected
 		// Drag the single handle
-		let reflect_center = self.points[ControlPointType::Anchor].as_ref().unwrap().position;
+		let reflect_center = self.points[ManipulatorType::Anchor].as_ref().unwrap().position;
 		let selected_handle = self.selected_handles_mut().next().unwrap();
 		move_point(selected_handle, delta, absolute_position);
 
@@ -161,7 +163,7 @@ impl VectorAnchor {
 		move_symmetrical_handle(selected_handle.position, opposing_handle, reflect_center);
 	}
 
-	/// Delete any VectorControlPoint that are selected, this includes handles or the anchor
+	/// Delete any ManipulatorPoint that are selected, this includes handles or the anchor
 	pub fn delete_selected(&mut self) {
 		for point_option in self.points.iter_mut() {
 			if let Some(point) = point_option {
@@ -192,7 +194,7 @@ impl VectorAnchor {
 	}
 
 	/// Set a point to selected by ID
-	pub fn select_point(&mut self, point_id: usize, selected: bool) -> Option<&mut VectorControlPoint> {
+	pub fn select_point(&mut self, point_id: usize, selected: bool) -> Option<&mut ManipulatorPoint> {
 		if let Some(point) = self.points[point_id].as_mut() {
 			point.set_selected(selected);
 		}
@@ -207,32 +209,32 @@ impl VectorAnchor {
 	}
 
 	/// Provides the points in this anchor
-	pub fn points(&self) -> impl Iterator<Item = &VectorControlPoint> {
+	pub fn points(&self) -> impl Iterator<Item = &ManipulatorPoint> {
 		self.points.iter().flatten()
 	}
 
 	/// Provides the points in this anchor
-	pub fn points_mut(&mut self) -> impl Iterator<Item = &mut VectorControlPoint> {
+	pub fn points_mut(&mut self) -> impl Iterator<Item = &mut ManipulatorPoint> {
 		self.points.iter_mut().flatten()
 	}
 
 	/// Provides the selected points in this anchor
-	pub fn selected_points(&self) -> impl Iterator<Item = &VectorControlPoint> {
+	pub fn selected_points(&self) -> impl Iterator<Item = &ManipulatorPoint> {
 		self.points.iter().flatten().filter(|pnt| pnt.editor_state.is_selected)
 	}
 
 	/// Provides mutable selected points in this anchor
-	pub fn selected_points_mut(&mut self) -> impl Iterator<Item = &mut VectorControlPoint> {
+	pub fn selected_points_mut(&mut self) -> impl Iterator<Item = &mut ManipulatorPoint> {
 		self.points.iter_mut().flatten().filter(|pnt| pnt.editor_state.is_selected)
 	}
 
 	/// Provides the selected handles attached to this anchor
-	pub fn selected_handles(&self) -> impl Iterator<Item = &VectorControlPoint> {
+	pub fn selected_handles(&self) -> impl Iterator<Item = &ManipulatorPoint> {
 		self.points.iter().skip(1).flatten().filter(|pnt| pnt.editor_state.is_selected)
 	}
 
 	/// Provides the mutable selected handles attached to this anchor
-	pub fn selected_handles_mut(&mut self) -> impl Iterator<Item = &mut VectorControlPoint> {
+	pub fn selected_handles_mut(&mut self) -> impl Iterator<Item = &mut ManipulatorPoint> {
 		self.points.iter_mut().skip(1).flatten().filter(|pnt| pnt.editor_state.is_selected)
 	}
 
@@ -246,12 +248,12 @@ impl VectorAnchor {
 
 	/// Returns the opposing handle to the handle provided
 	/// Returns the anchor handle if the anchor is provided
-	pub fn opposing_handle(&self, handle: &VectorControlPoint) -> Option<&VectorControlPoint> {
+	pub fn opposing_handle(&self, handle: &ManipulatorPoint) -> Option<&ManipulatorPoint> {
 		self.points[!handle.manipulator_type].as_ref()
 	}
 	/// Returns the opposing handle to the handle provided, mutable
 	/// Returns the anchor handle if the anchor is provided, mutable
-	pub fn opposing_handle_mut(&mut self, handle: &VectorControlPoint) -> Option<&mut VectorControlPoint> {
+	pub fn opposing_handle_mut(&mut self, handle: &ManipulatorPoint) -> Option<&mut ManipulatorPoint> {
 		self.points[!handle.manipulator_type].as_mut()
 	}
 
@@ -265,13 +267,13 @@ impl VectorAnchor {
 		}
 	}
 
-	/// Helper function to more easily set position of VectorControlPoints
+	/// Helper function to more easily set position of ManipulatorPoints
 	pub fn set_point_position(&mut self, point_index: usize, position: DVec2) {
 		assert!(position.is_finite(), "Tried to set_point_position to non finite");
 		if let Some(point) = &mut self.points[point_index] {
 			point.position = position;
 		} else {
-			self.points[point_index] = Some(VectorControlPoint::new(position, ControlPointType::from_index(point_index)))
+			self.points[point_index] = Some(ManipulatorPoint::new(position, ManipulatorType::from_index(point_index)))
 		}
 	}
 
@@ -284,14 +286,14 @@ impl VectorAnchor {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct VectorAnchorState {
+pub struct ManipulatorGroupEditorState {
 	// If we should maintain the angle between the handles
 	pub mirror_angle_between_handles: bool,
 	// If we should make the handles equidistance from the anchor?
 	pub mirror_distance_between_handles: bool,
 }
 
-impl Default for VectorAnchorState {
+impl Default for ManipulatorGroupEditorState {
 	fn default() -> Self {
 		Self {
 			mirror_angle_between_handles: true,

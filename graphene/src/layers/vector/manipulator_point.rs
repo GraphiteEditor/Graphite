@@ -1,38 +1,39 @@
-use super::constants::ControlPointType;
+use super::constants::ManipulatorType;
 use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};
 
-/// VectorControlPoint represents any editable point, anchor or handle
+/// ManipulatorPoint represents any editable point, anchor or handle
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
-pub struct VectorControlPoint {
+pub struct ManipulatorPoint {
 	/// The sibling element if this is a handle
 	pub position: glam::DVec2,
 	/// The type of manipulator this point is
-	pub manipulator_type: ControlPointType,
+	pub manipulator_type: ManipulatorType,
 
 	#[serde(skip)]
 	/// The state specific to the editor
-	pub editor_state: VectorControlPointState,
+	// TODO Remove this from Graphene, editor state should be stored in the frontend if possible.
+	pub editor_state: ManipulatorPointEditorState,
 }
 
-impl Default for VectorControlPoint {
+impl Default for ManipulatorPoint {
 	fn default() -> Self {
 		Self {
 			position: DVec2::ZERO,
-			manipulator_type: ControlPointType::Anchor,
-			editor_state: VectorControlPointState::default(),
+			manipulator_type: ManipulatorType::Anchor,
+			editor_state: ManipulatorPointEditorState::default(),
 		}
 	}
 }
 
-impl VectorControlPoint {
+impl ManipulatorPoint {
 	/// Initialize a new control point
-	pub fn new(position: glam::DVec2, manipulator_type: ControlPointType) -> Self {
+	pub fn new(position: glam::DVec2, manipulator_type: ManipulatorType) -> Self {
 		assert!(position.is_finite(), "tried to create point with non finite position");
 		Self {
 			position,
 			manipulator_type,
-			editor_state: VectorControlPointState::default(),
+			editor_state: ManipulatorPointEditorState::default(),
 		}
 	}
 
@@ -59,14 +60,14 @@ impl VectorControlPoint {
 }
 
 #[derive(PartialEq, Eq, Clone, Debug)]
-pub struct VectorControlPointState {
+pub struct ManipulatorPointEditorState {
 	/// If this control point can be selected
 	pub can_be_selected: bool,
 	/// Is this control point currently selected
 	pub is_selected: bool,
 }
 
-impl Default for VectorControlPointState {
+impl Default for ManipulatorPointEditorState {
 	fn default() -> Self {
 		Self {
 			can_be_selected: true,

@@ -7,12 +7,12 @@
 //      /                 \
 //  VectorAnchor ...  VectorAnchor <- VectorShape contains many VectorAnchors
 
-use super::vector_anchor::VectorAnchor;
-use super::vector_control_point::VectorControlPoint;
-use super::vector_shape::VectorShape;
+use super::manipulator_group::ManipulatorGroup;
+use super::manipulator_point::ManipulatorPoint;
+use super::subpath::Subpath;
 use crate::message_prelude::{DocumentMessage, Message};
 
-use graphene::layers::vector::constants::ControlPointType;
+use graphene::layers::vector::constants::ManipulatorType;
 use graphene::{LayerId, Operation};
 
 use glam::DVec2;
@@ -39,7 +39,7 @@ impl ShapeEditor {
 		select_threshold: f64,
 		add_to_selection: bool,
 		responses: &mut VecDeque<Message>,
-	) -> Option<Vec<(&[LayerId], u64, ControlPointType)>> {
+	) -> Option<Vec<(&[LayerId], u64, ManipulatorType)>> {
 		if self.selected_layers.is_empty() {
 			return None;
 		}
@@ -49,13 +49,13 @@ impl ShapeEditor {
 
 			// If the point we're selecting has already been selected
 			// we can assume this point exists.. since we did just click on it hense the unwrap
-			let is_point_selected = self.shape(document, shape_layer_path).unwrap().anchors().by_id(anchor_id).unwrap().points[point_index]
+			let is_point_selected = self.shape(document, shape_layer_path).unwrap().groups().by_id(anchor_id).unwrap().points[point_index]
 				.as_ref()
 				.unwrap()
 				.editor_state
 				.is_selected;
 
-			let point_position = self.shape(document, shape_layer_path).unwrap().anchors().by_id(anchor_id).unwrap().points[point_index]
+			let point_position = self.shape(document, shape_layer_path).unwrap().groups().by_id(anchor_id).unwrap().points[point_index]
 				.as_ref()
 				.unwrap()
 				.position;
@@ -68,7 +68,7 @@ impl ShapeEditor {
 				.filter_map(|(path, shape)| shape.as_vector_shape().map(|vector| (path, vector)))
 				.flat_map(|(path, shape)| {
 					shape
-						.anchors()
+						.groups()
 						.enumerate()
 						.filter(|(_id, anchor)| anchor.is_anchor_selected())
 						.flat_map(|(id, anchor)| anchor.selected_points().map(move |point| (id, point.manipulator_type)))
@@ -84,7 +84,7 @@ impl ShapeEditor {
 			// This is selecting the anchor only for now, next to generalize to points
 			if should_select {
 				let add = add_to_selection || is_point_selected;
-				let point = (anchor_id, ControlPointType::from_index(point_index));
+				let point = (anchor_id, ManipulatorType::from_index(point_index));
 				// Clear all point in other selected shapes
 				if !(add) {
 					responses.push_back(DocumentMessage::DeselectAllVectorPoints.into());
@@ -108,11 +108,11 @@ impl ShapeEditor {
 				responses.push_back(
 					Operation::DeselectVectorPoints {
 						layer_path: shape_layer_path.to_vec(),
-						point_ids: vec![(anchor_id, ControlPointType::from_index(point_index))],
+						point_ids: vec![(anchor_id, ManipulatorType::from_index(point_index))],
 					}
 					.into(),
 				);
-				points.retain(|x| *x != (shape_layer_path, anchor_id, ControlPointType::from_index(point_index)))
+				points.retain(|x| *x != (shape_layer_path, anchor_id, ManipulatorType::from_index(point_index)))
 			}
 
 			return Some(points);
@@ -124,10 +124,10 @@ impl ShapeEditor {
 	}
 
 	/// A wrapper for find_nearest_point_indicies and returns a VectorControlPoint
-	pub fn find_nearest_point<'a>(&'a self, document: &'a Document, mouse_position: DVec2, select_threshold: f64) -> Option<&'a VectorControlPoint> {
+	pub fn find_nearest_point<'a>(&'a self, document: &'a Document, mouse_position: DVec2, select_threshold: f64) -> Option<&'a ManipulatorPoint> {
 		let (shape_layer_path, anchor_id, point_index) = self.find_nearest_point_indicies(document, mouse_position, select_threshold)?;
 		let selected_shape = self.shape(document, shape_layer_path).unwrap();
-		if let Some(anchor) = selected_shape.anchors().by_id(anchor_id) {
+		if let Some(anchor) = selected_shape.groups().by_id(anchor_id) {
 			return anchor.points[point_index].as_ref();
 		}
 		None
@@ -156,17 +156,17 @@ impl ShapeEditor {
 	}
 
 	/// Provide the currently selected anchor by reference
-	pub fn selected_anchors<'a>(&'a self, document: &'a Document) -> impl Iterator<Item = &'a VectorAnchor> {
-		self.iter(document).flat_map(|shape| shape.selected_anchors())
+	pub fn selected_anchors<'a>(&'a self, document: &'a Document) -> impl Iterator<Item = &'a ManipulatorGroup> {
+		self.iter(document).flat_map(|shape| shape.selected_groups())
 	}
 
 	/// A mutable iterator of all the anchors, regardless of selection
-	pub fn anchors<'a>(&'a self, document: &'a Document) -> impl Iterator<Item = &'a VectorAnchor> {
-		self.iter(document).flat_map(|shape| shape.anchors().iter())
+	pub fn anchors<'a>(&'a self, document: &'a Document) -> impl Iterator<Item = &'a ManipulatorGroup> {
+		self.iter(document).flat_map(|shape| shape.groups().iter())
 	}
 
 	/// Provide the currently selected points by reference
-	pub fn selected_points<'a>(&'a self, document: &'a Document) -> impl Iterator<Item = &'a VectorControlPoint> {
+	pub fn selected_points<'a>(&'a self, document: &'a Document) -> impl Iterator<Item = &'a ManipulatorPoint> {
 		self.selected_anchors(document).flat_map(|anchors| anchors.selected_points())
 	}
 
@@ -209,7 +209,7 @@ impl ShapeEditor {
 	}
 
 	/// Iterate over the shapes
-	pub fn iter<'a>(&'a self, document: &'a Document) -> impl Iterator<Item = &'a VectorShape> + 'a {
+	pub fn iter<'a>(&'a self, document: &'a Document) -> impl Iterator<Item = &'a Subpath> + 'a {
 		self.selected_layers.iter().flat_map(|layer_id| document.layer(layer_id)).filter_map(|shape| shape.as_vector_shape())
 	}
 
@@ -242,7 +242,7 @@ impl ShapeEditor {
 
 		if let Some(shape) = document.layer(layer_path).ok()?.as_vector_shape() {
 			let viewspace = document.generate_transform_relative_to_viewport(layer_path).ok()?;
-			for (anchor_id, anchor) in shape.anchors().enumerate() {
+			for (anchor_id, anchor) in shape.groups().enumerate() {
 				let point_index = anchor.closest_point(&viewspace, pos);
 				if let Some(point) = &anchor.points[point_index] {
 					if point.editor_state.can_be_selected {
@@ -258,7 +258,7 @@ impl ShapeEditor {
 		result
 	}
 
-	fn shape<'a>(&'a self, document: &'a Document, layer_id: &[u64]) -> Option<&'a VectorShape> {
+	fn shape<'a>(&'a self, document: &'a Document, layer_id: &[u64]) -> Option<&'a Subpath> {
 		document.layer(layer_id).ok()?.as_vector_shape()
 	}
 }

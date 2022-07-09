@@ -23,7 +23,7 @@ use graphene::layers::folder_layer::FolderLayer;
 use graphene::layers::layer_info::{LayerDataType, LayerDataTypeDiscriminant};
 use graphene::layers::style::{Fill, RenderData, ViewMode};
 use graphene::layers::text_layer::{Font, FontCache};
-use graphene::layers::vector::vector_shape::VectorShape;
+use graphene::layers::vector::subpath::Subpath;
 use graphene::{DocumentError, DocumentResponse, LayerId, Operation as DocumentOperation};
 
 use glam::{DAffine2, DVec2};
@@ -202,19 +202,19 @@ impl DocumentMessageHandler {
 	}
 
 	/// Returns a copy of all the currently selected VectorShapes.
-	pub fn selected_vector_shapes(&self) -> Vec<VectorShape> {
+	pub fn selected_vector_shapes(&self) -> Vec<Subpath> {
 		self.selected_visible_layers()
 			.flat_map(|layer| self.graphene_document.layer(layer))
 			.flat_map(|layer| layer.as_vector_shape_copy())
-			.collect::<Vec<VectorShape>>()
+			.collect::<Vec<Subpath>>()
 	}
 
 	/// Returns references to all the currently selected VectorShapes.
-	pub fn selected_vector_shapes_ref(&self) -> Vec<&VectorShape> {
+	pub fn selected_vector_shapes_ref(&self) -> Vec<&Subpath> {
 		self.selected_visible_layers()
 			.flat_map(|layer| self.graphene_document.layer(layer))
 			.flat_map(|layer| layer.as_vector_shape())
-			.collect::<Vec<&VectorShape>>()
+			.collect::<Vec<&Subpath>>()
 	}
 
 	/// Returns the bounding boxes for all visible layers and artboards, optionally excluding any paths.
