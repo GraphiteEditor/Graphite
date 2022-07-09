@@ -1,4 +1,5 @@
 import { PortfolioState } from "@/state-providers/portfolio";
+import { stripIndents } from "@/utility-functions/strip-indents";
 import { Editor } from "@/wasm-communication/editor";
 import { TriggerIndexedDbWriteDocument, TriggerIndexedDbRemoveDocument } from "@/wasm-communication/messages";
 
@@ -53,7 +54,14 @@ export async function createPersistenceManager(editor: Editor, portfolio: Portfo
 		};
 
 		dbOpenRequest.onerror = (): void => {
-			editor.instance.error_dialog("Unable to Autosave", `Open IndexDB database error: ${dbOpenRequest.error}`);
+			const errorText = stripIndents`
+				Documents won't be saved across reloads and later visits.
+				This may be caused by Firefox's private browsing mode.
+				
+				Error on opening IndexDB:
+				${dbOpenRequest.error}
+				`;
+			editor.instance.error_dialog("Document auto-save doesn't work in this browser", errorText);
 		};
 
 		dbOpenRequest.onsuccess = (): void => {
