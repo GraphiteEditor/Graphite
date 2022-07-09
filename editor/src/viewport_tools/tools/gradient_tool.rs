@@ -1,4 +1,4 @@
-use crate::consts::{COLOR_ACCENT, LINE_ROTATE_SNAP_ANGLE, SELECTION_TOLERANCE, VECTOR_MANIPULATOR_ANCHOR_MARKER_SIZE};
+use crate::consts::{COLOR_ACCENT, LINE_ROTATE_SNAP_ANGLE, MANIPULATOR_GROUP_MARKER_SIZE, SELECTION_TOLERANCE};
 use crate::document::DocumentMessageHandler;
 use crate::frontend::utility_types::MouseCursorIcon;
 use crate::input::keyboard::{Key, MouseMotion};
@@ -163,7 +163,7 @@ impl GradientOverlay {
 	fn generate_overlay_handle(translation: DVec2, responses: &mut VecDeque<Message>, selected: bool) -> Vec<LayerId> {
 		let path = vec![generate_uuid()];
 
-		let size = DVec2::splat(VECTOR_MANIPULATOR_ANCHOR_MARKER_SIZE);
+		let size = DVec2::splat(MANIPULATOR_GROUP_MARKER_SIZE);
 
 		let fill = if selected { Fill::solid(COLOR_ACCENT) } else { Fill::solid(Color::WHITE) };
 
@@ -359,7 +359,7 @@ impl Fsm for GradientToolFsmState {
 					responses.push_back(BroadcastSignal::DocumentIsDirty.into());
 
 					let mouse = input.mouse.position;
-					let tolerance = VECTOR_MANIPULATOR_ANCHOR_MARKER_SIZE.powi(2);
+					let tolerance = MANIPULATOR_GROUP_MARKER_SIZE.powi(2);
 
 					let mut dragging = false;
 					for overlay in &tool_data.gradient_overlays {

@@ -27,9 +27,9 @@ pub struct ShapeLayer {
 
 impl LayerData for ShapeLayer {
 	fn render(&mut self, svg: &mut String, svg_defs: &mut String, transforms: &mut Vec<DAffine2>, render_data: RenderData) {
-		let mut vector_shape = self.shape.clone();
+		let mut subpath = self.shape.clone();
 
-		let kurbo::Rect { x0, y0, x1, y1 } = vector_shape.bounding_box();
+		let kurbo::Rect { x0, y0, x1, y1 } = subpath.bounding_box();
 		let layer_bounds = [(x0, y0).into(), (x1, y1).into()];
 
 		let transform = self.transform(transforms, render_data.view_mode);
@@ -38,9 +38,9 @@ impl LayerData for ShapeLayer {
 			let _ = write!(svg, "<!-- SVG shape has an invalid transform -->");
 			return;
 		}
-		vector_shape.apply_affine(transform);
+		subpath.apply_affine(transform);
 
-		let kurbo::Rect { x0, y0, x1, y1 } = vector_shape.bounding_box();
+		let kurbo::Rect { x0, y0, x1, y1 } = subpath.bounding_box();
 		let transformed_bounds = [(x0, y0).into(), (x1, y1).into()];
 
 		let _ = writeln!(svg, r#"<g transform="matrix("#);
@@ -51,20 +51,20 @@ impl LayerData for ShapeLayer {
 		let _ = write!(
 			svg,
 			r#"<path d="{}" {} />"#,
-			vector_shape.to_svg(),
+			subpath.to_svg(),
 			self.style.render(render_data.view_mode, svg_defs, transform, layer_bounds, transformed_bounds)
 		);
 		let _ = svg.write_str("</g>");
 	}
 
 	fn bounding_box(&self, transform: glam::DAffine2, _font_cache: &FontCache) -> Option<[DVec2; 2]> {
-		let mut vector_shape = self.shape.clone();
+		let mut subpath = self.shape.clone();
 		if transform.matrix2 == DMat2::ZERO {
 			return None;
 		}
-		vector_shape.apply_affine(transform);
+		subpath.apply_affine(transform);
 
-		let kurbo::Rect { x0, y0, x1, y1 } = vector_shape.bounding_box();
+		let kurbo::Rect { x0, y0, x1, y1 } = subpath.bounding_box();
 		Some([(x0, y0).into(), (x1, y1).into()])
 	}
 

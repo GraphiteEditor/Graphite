@@ -8,7 +8,7 @@ use glam::{DAffine2, DVec2};
 use kurbo::{BezPath, PathEl, Rect, Shape};
 use serde::{Deserialize, Serialize};
 
-/// Subpath represents a single vector shape, containing many ManipulatorGroups
+/// Subpath represents a single vector path, containing many ManipulatorGroups
 /// For each closed shape we keep a Subpath which contains the ManipulatorGroups (handles and anchors) that define that shape.
 // TODO Add "closed" bool to subpath
 #[derive(PartialEq, Clone, Debug, Default, Serialize, Deserialize)]

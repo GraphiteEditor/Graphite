@@ -39,8 +39,8 @@ impl Quad {
 		path
 	}
 
-	/// Generates a [VectorShape] of the quad
-	pub fn vector_shape(&self) -> Subpath {
+	/// Generates a [subpath] of the quad
+	pub fn subpath(&self) -> Subpath {
 		Subpath::from_points(self.0.into_iter(), true)
 	}
 

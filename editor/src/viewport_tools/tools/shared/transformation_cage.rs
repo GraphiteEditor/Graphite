@@ -1,4 +1,4 @@
-use crate::consts::{BOUNDS_ROTATE_THRESHOLD, BOUNDS_SELECT_THRESHOLD, COLOR_ACCENT, SELECTION_DRAG_ANGLE, VECTOR_MANIPULATOR_ANCHOR_MARKER_SIZE};
+use crate::consts::{BOUNDS_ROTATE_THRESHOLD, BOUNDS_SELECT_THRESHOLD, COLOR_ACCENT, MANIPULATOR_GROUP_MARKER_SIZE, SELECTION_DRAG_ANGLE};
 use crate::document::transformation::OriginalTransforms;
 use crate::frontend::utility_types::MouseCursorIcon;
 use crate::input::InputPreprocessorMessageHandler;
@@ -245,7 +245,7 @@ impl BoundingBoxOverlays {
 		const BIAS: f64 = 0.0001;
 
 		for (position, path) in self.evaluate_transform_handle_positions().into_iter().zip(&self.transform_handles) {
-			let scale = DVec2::splat(VECTOR_MANIPULATOR_ANCHOR_MARKER_SIZE);
+			let scale = DVec2::splat(MANIPULATOR_GROUP_MARKER_SIZE);
 			let translation = (position - (scale / 2.) - 0.5 + BIAS).round();
 			let transform = DAffine2::from_scale_angle_translation(scale, 0., translation).to_cols_array();
 			let path = path.clone();

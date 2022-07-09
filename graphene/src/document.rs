@@ -127,27 +127,27 @@ impl Document {
 	}
 
 	/// Return a copy of all VectorShapes currently in the document.
-	pub fn all_vector_shapes(&self) -> Vec<Subpath> {
-		self.root.iter().flat_map(|layer| layer.as_vector_shape_copy()).collect::<Vec<Subpath>>()
+	pub fn all_subpaths(&self) -> Vec<Subpath> {
+		self.root.iter().flat_map(|layer| layer.as_subpath_copy()).collect::<Vec<Subpath>>()
 	}
 
 	/// Returns references to all VectorShapes currently in the document.
-	pub fn all_vector_shapes_ref(&self) -> Vec<&Subpath> {
-		self.root.iter().flat_map(|layer| layer.as_vector_shape()).collect::<Vec<&Subpath>>()
+	pub fn all_subpaths_ref(&self) -> Vec<&Subpath> {
+		self.root.iter().flat_map(|layer| layer.as_subpath()).collect::<Vec<&Subpath>>()
 	}
 
 	/// Returns a reference to the requested VectorShape by providing a path to its owner layer.
-	pub fn vector_shape_ref<'a>(&'a self, path: &[LayerId]) -> Option<&'a Subpath> {
-		self.layer(path).ok()?.as_vector_shape()
+	pub fn subpath_ref<'a>(&'a self, path: &[LayerId]) -> Option<&'a Subpath> {
+		self.layer(path).ok()?.as_subpath()
 	}
 
 	/// Returns a mutable reference of the requested VectorShape by providing a path to its owner layer.
-	pub fn vector_shape_mut<'a>(&'a mut self, path: &'a [LayerId]) -> Option<&'a mut Subpath> {
-		self.layer_mut(path).ok()?.as_vector_shape_mut()
+	pub fn subpath_mut<'a>(&'a mut self, path: &'a [LayerId]) -> Option<&'a mut Subpath> {
+		self.layer_mut(path).ok()?.as_subpath_mut()
 	}
 
 	/// Set a VectorShape at the specified path.
-	pub fn set_vector_shape(&mut self, path: &[LayerId], shape: Subpath) {
+	pub fn set_subpath(&mut self, path: &[LayerId], shape: Subpath) {
 		let layer = self.layer_mut(path);
 		if let Ok(layer) = layer {
 			if let LayerDataType::Shape(shape_layer) = &mut layer.data {
@@ -159,8 +159,8 @@ impl Document {
 	}
 
 	/// Set VectorShapes for multiple paths at once.
-	pub fn set_vector_shapes<'a>(&'a mut self, paths: impl Iterator<Item = &'a [LayerId]>, shapes: Vec<Subpath>) {
-		paths.zip(shapes).for_each(|(path, shape)| self.set_vector_shape(path, shape));
+	pub fn set_subpaths<'a>(&'a mut self, paths: impl Iterator<Item = &'a [LayerId]>, shapes: Vec<Subpath>) {
+		paths.zip(shapes).for_each(|(path, shape)| self.set_subpath(path, shape));
 	}
 
 	pub fn common_layer_path_prefix<'a>(&self, layers: impl Iterator<Item = &'a [LayerId]>) -> &'a [LayerId] {
@@ -591,7 +591,7 @@ impl Document {
 				transform,
 				insert_index,
 				style,
-				vector_path,
+				subpath: vector_path,
 			} => {
 				let shape = ShapeLayer::new(vector_path, style);
 				self.set_layer(&path, Layer::new(LayerDataType::Shape(shape), transform), insert_index)?;
@@ -758,7 +758,7 @@ impl Document {
 				self.mark_as_dirty(&path)?;
 				Some([vec![DocumentChanged], update_thumbnails_upstream(&path)].concat())
 			}
-			Operation::SetShapePath { path, vector_path } => {
+			Operation::SetShapePath { path, subpath: vector_path } => {
 				self.mark_as_dirty(&path)?;
 
 				if let LayerDataType::Shape(shape) = &mut self.layer_mut(&path)?.data {
@@ -766,34 +766,41 @@ impl Document {
 				}
 				Some(vec![DocumentChanged, LayerChanged { path }])
 			}
-			Operation::InsertVectorAnchor { layer_path, anchor, after_id } => {
-				if let Ok(Some(shape)) = self.layer_mut(&layer_path).map(|layer| layer.as_vector_shape_mut()) {
+			Operation::InsertManipulatorGroup {
+				layer_path,
+				manipulator_group: anchor,
+				after_id,
+			} => {
+				if let Ok(Some(shape)) = self.layer_mut(&layer_path).map(|layer| layer.as_subpath_mut()) {
 					shape.groups_mut().insert(anchor, after_id);
 					self.mark_as_dirty(&layer_path)?;
 				}
 				Some([update_thumbnails_upstream(&layer_path), vec![DocumentChanged, LayerChanged { path: layer_path }]].concat())
 			}
-			Operation::PushVectorAnchor { layer_path, anchor } => {
-				if let Ok(Some(shape)) = self.layer_mut(&layer_path).map(|layer| layer.as_vector_shape_mut()) {
+			Operation::PushManipulatorGroup {
+				layer_path,
+				manipulator_group: anchor,
+			} => {
+				if let Ok(Some(shape)) = self.layer_mut(&layer_path).map(|layer| layer.as_subpath_mut()) {
 					shape.groups_mut().push(anchor);
 					self.mark_as_dirty(&layer_path)?;
 				}
 				Some([update_thumbnails_upstream(&layer_path), vec![DocumentChanged, LayerChanged { path: layer_path }]].concat())
 			}
-			Operation::RemoveVectorAnchor { layer_path, id } => {
-				if let Ok(Some(shape)) = self.layer_mut(&layer_path).map(|layer| layer.as_vector_shape_mut()) {
+			Operation::RemoveManipulatorGroup { layer_path, id } => {
+				if let Ok(Some(shape)) = self.layer_mut(&layer_path).map(|layer| layer.as_subpath_mut()) {
 					shape.groups_mut().remove(id);
 					self.mark_as_dirty(&layer_path)?;
 				}
 				Some([update_thumbnails_upstream(&layer_path), vec![DocumentChanged, LayerChanged { path: layer_path }]].concat())
 			}
-			Operation::MoveVectorPoint {
+			Operation::MoveManipulatorPoint {
 				layer_path,
 				id,
-				control_type,
+				manipulator_type: control_type,
 				position,
 			} => {
-				if let Ok(Some(shape)) = self.layer_mut(&layer_path).map(|layer| layer.as_vector_shape_mut()) {
+				if let Ok(Some(shape)) = self.layer_mut(&layer_path).map(|layer| layer.as_subpath_mut()) {
 					if let Some(anchor) = shape.groups_mut().by_id_mut(id) {
 						anchor.set_point_position(control_type as usize, position.into());
 						self.mark_as_dirty(&layer_path)?;
@@ -801,8 +808,12 @@ impl Document {
 				}
 				Some([update_thumbnails_upstream(&layer_path), vec![DocumentChanged, LayerChanged { path: layer_path }]].concat())
 			}
-			Operation::RemoveVectorPoint { layer_path, id, control_type } => {
-				if let Ok(Some(shape)) = self.layer_mut(&layer_path).map(|layer| layer.as_vector_shape_mut()) {
+			Operation::RemoveManipulatorPoint {
+				layer_path,
+				id,
+				manipulator_type: control_type,
+			} => {
+				if let Ok(Some(shape)) = self.layer_mut(&layer_path).map(|layer| layer.as_subpath_mut()) {
 					if let Some(anchor) = shape.groups_mut().by_id_mut(id) {
 						anchor.points[control_type as usize] = None;
 						self.mark_as_dirty(&layer_path)?;
@@ -886,9 +897,9 @@ impl Document {
 			}
 
 			// We may not want the concept of selection here. For now leaving though.
-			Operation::SelectVectorPoints { layer_path, point_ids, add } => {
+			Operation::SelectManipulatorPoints { layer_path, point_ids, add } => {
 				let layer = self.layer_mut(&layer_path)?;
-				if let Some(shape) = layer.as_vector_shape_mut() {
+				if let Some(shape) = layer.as_subpath_mut() {
 					if !add {
 						shape.clear_selected_groups();
 					}
@@ -896,25 +907,25 @@ impl Document {
 				}
 				Some(vec![LayerChanged { path: layer_path.clone() }])
 			}
-			Operation::DeselectVectorPoints { layer_path, point_ids } => {
+			Operation::DeselectManipulatorPoints { layer_path, point_ids } => {
 				let layer = self.layer_mut(&layer_path)?;
-				if let Some(shape) = layer.as_vector_shape_mut() {
+				if let Some(shape) = layer.as_subpath_mut() {
 					shape.select_points(&point_ids, false);
 				}
 				Some(vec![LayerChanged { path: layer_path.clone() }])
 			}
-			Operation::DeselectAllVectorPoints { layer_path } => {
+			Operation::DeselectAllManipulatorPoints { layer_path } => {
 				let layer = self.layer_mut(&layer_path)?;
-				if let Some(shape) = layer.as_vector_shape_mut() {
+				if let Some(shape) = layer.as_subpath_mut() {
 					shape.clear_selected_groups();
 				}
 				Some(vec![LayerChanged { path: layer_path.clone() }])
 			}
-			Operation::DeleteSelectedVectorPoints { layer_paths } => {
+			Operation::DeleteSelectedManipulatorPoints { layer_paths } => {
 				let mut responses = vec![];
 				for layer_path in layer_paths {
 					let layer = self.layer_mut(&layer_path)?;
-					if let Some(shape) = layer.as_vector_shape_mut() {
+					if let Some(shape) = layer.as_subpath_mut() {
 						// Delete the selected points.
 						shape.delete_selected();
 
@@ -935,13 +946,13 @@ impl Document {
 				}
 				Some(responses)
 			}
-			Operation::MoveSelectedVectorPoints { layer_path, delta, absolute_position } => {
+			Operation::MoveSelectedManipulatorPoints { layer_path, delta, absolute_position } => {
 				if let Ok(viewspace) = self.generate_transform_relative_to_viewport(&layer_path) {
 					let objectspace = &viewspace.inverse();
 					let delta = objectspace.transform_vector2(DVec2::new(delta.0, delta.1));
 					let absolute_position = objectspace.transform_point2(DVec2::new(absolute_position.0, absolute_position.1));
 					let layer = self.layer_mut(&layer_path)?;
-					if let Some(shape) = layer.as_vector_shape_mut() {
+					if let Some(shape) = layer.as_subpath_mut() {
 						shape.move_selected(delta, absolute_position, &viewspace);
 					}
 				}
@@ -954,7 +965,7 @@ impl Document {
 				toggle_angle,
 			} => {
 				let layer = self.layer_mut(&layer_path)?;
-				if let Some(shape) = layer.as_vector_shape_mut() {
+				if let Some(shape) = layer.as_subpath_mut() {
 					for anchor in shape.selected_groups_any_points_mut() {
 						anchor.toggle_mirroring(toggle_distance, toggle_angle);
 					}

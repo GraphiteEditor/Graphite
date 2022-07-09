@@ -158,7 +158,7 @@ impl Fsm for PathToolFsmState {
 					// When the document has moved / needs to be redraw, re-render the overlays
 					// TODO the overlay system should probably receive this message instead of the tool
 					for layer_path in document.selected_visible_layers() {
-						tool_data.overlay_renderer.render_vector_shape_overlays(&document.graphene_document, layer_path.to_vec(), responses);
+						tool_data.overlay_renderer.render_subpath_overlays(&document.graphene_document, layer_path.to_vec(), responses);
 					}
 
 					self
@@ -265,14 +265,14 @@ impl Fsm for PathToolFsmState {
 					tool_data.shape_editor.delete_selected_points(responses);
 					responses.push_back(SelectionChanged.into());
 					for layer_path in document.all_layers() {
-						tool_data.overlay_renderer.clear_vector_shape_overlays(&document.graphene_document, layer_path.to_vec(), responses);
+						tool_data.overlay_renderer.clear_subpath_overlays(&document.graphene_document, layer_path.to_vec(), responses);
 					}
 					Ready
 				}
 				(_, Abort) => {
 					// TODO Tell overlay manager to remove the overlays
 					for layer_path in document.all_layers() {
-						tool_data.overlay_renderer.clear_vector_shape_overlays(&document.graphene_document, layer_path.to_vec(), responses);
+						tool_data.overlay_renderer.clear_subpath_overlays(&document.graphene_document, layer_path.to_vec(), responses);
 					}
 					Ready
 				}

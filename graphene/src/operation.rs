@@ -89,7 +89,8 @@ pub enum Operation {
 		path: Vec<LayerId>,
 		transform: [f64; 6],
 		insert_index: isize,
-		vector_path: Subpath,
+		// TODO This will become a compound path once we support them.
+		subpath: Subpath,
 		style: style::PathStyle,
 	},
 	BooleanOperation {
@@ -99,14 +100,14 @@ pub enum Operation {
 	DeleteLayer {
 		path: Vec<LayerId>,
 	},
-	DeleteSelectedVectorPoints {
+	DeleteSelectedManipulatorPoints {
 		layer_paths: Vec<Vec<LayerId>>,
 	},
-	DeselectVectorPoints {
+	DeselectManipulatorPoints {
 		layer_path: Vec<LayerId>,
 		point_ids: Vec<(u64, ManipulatorType)>,
 	},
-	DeselectAllVectorPoints {
+	DeselectAllManipulatorPoints {
 		layer_path: Vec<LayerId>,
 	},
 	DuplicateLayer {
@@ -118,10 +119,16 @@ pub enum Operation {
 		font_style: String,
 		size: f64,
 	},
-	MoveSelectedVectorPoints {
+	MoveSelectedManipulatorPoints {
 		layer_path: Vec<LayerId>,
 		delta: (f64, f64),
 		absolute_position: (f64, f64),
+	},
+	MoveManipulatorPoint {
+		layer_path: Vec<LayerId>,
+		id: u64,
+		manipulator_type: ManipulatorType,
+		position: (f64, f64),
 	},
 	RenameLayer {
 		layer_path: Vec<LayerId>,
@@ -147,38 +154,32 @@ pub enum Operation {
 		path: Vec<LayerId>,
 		transform: [f64; 6],
 	},
-	SelectVectorPoints {
+	SelectManipulatorPoints {
 		layer_path: Vec<LayerId>,
 		point_ids: Vec<(u64, ManipulatorType)>,
 		add: bool,
 	},
 	SetShapePath {
 		path: Vec<LayerId>,
-		vector_path: Subpath,
+		subpath: Subpath,
 	},
-	InsertVectorAnchor {
+	InsertManipulatorGroup {
 		layer_path: Vec<LayerId>,
-		anchor: ManipulatorGroup,
+		manipulator_group: ManipulatorGroup,
 		after_id: u64,
 	},
-	PushVectorAnchor {
+	PushManipulatorGroup {
 		layer_path: Vec<LayerId>,
-		anchor: ManipulatorGroup,
+		manipulator_group: ManipulatorGroup,
 	},
-	RemoveVectorAnchor {
+	RemoveManipulatorGroup {
 		layer_path: Vec<LayerId>,
 		id: u64,
 	},
-	MoveVectorPoint {
+	RemoveManipulatorPoint {
 		layer_path: Vec<LayerId>,
 		id: u64,
-		control_type: ManipulatorType,
-		position: (f64, f64),
-	},
-	RemoveVectorPoint {
-		layer_path: Vec<LayerId>,
-		id: u64,
-		control_type: ManipulatorType,
+		manipulator_type: ManipulatorType,
 	},
 	TransformLayerInScope {
 		path: Vec<LayerId>,

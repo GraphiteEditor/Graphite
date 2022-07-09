@@ -48,7 +48,7 @@ impl PathOutline {
 				let overlay_path = vec![generate_uuid()];
 				let operation = Operation::AddShape {
 					path: overlay_path.clone(),
-					vector_path: Default::default(),
+					subpath: Default::default(),
 					style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, PATH_OUTLINE_WEIGHT)), Fill::None),
 					insert_index: -1,
 					transform: DAffine2::IDENTITY.to_cols_array(),
@@ -61,7 +61,10 @@ impl PathOutline {
 		};
 
 		// Update the shape bezpath
-		let operation = Operation::SetShapePath { path: overlay.clone(), vector_path };
+		let operation = Operation::SetShapePath {
+			path: overlay.clone(),
+			subpath: vector_path,
+		};
 		responses.push_back(DocumentMessage::Overlays(operation.into()).into());
 
 		// Update the transform to match the document

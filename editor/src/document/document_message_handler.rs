@@ -201,19 +201,19 @@ impl DocumentMessageHandler {
 		})
 	}
 
-	/// Returns a copy of all the currently selected VectorShapes.
-	pub fn selected_vector_shapes(&self) -> Vec<Subpath> {
+	/// Returns a copy of all the currently selected Subpaths.
+	pub fn selected_subpaths(&self) -> Vec<Subpath> {
 		self.selected_visible_layers()
 			.flat_map(|layer| self.graphene_document.layer(layer))
-			.flat_map(|layer| layer.as_vector_shape_copy())
+			.flat_map(|layer| layer.as_subpath_copy())
 			.collect::<Vec<Subpath>>()
 	}
 
-	/// Returns references to all the currently selected VectorShapes.
-	pub fn selected_vector_shapes_ref(&self) -> Vec<&Subpath> {
+	/// Returns references to all the currently selected Subpaths.
+	pub fn selected_subpaths_ref(&self) -> Vec<&Subpath> {
 		self.selected_visible_layers()
 			.flat_map(|layer| self.graphene_document.layer(layer))
-			.flat_map(|layer| layer.as_vector_shape())
+			.flat_map(|layer| layer.as_subpath())
 			.collect::<Vec<&Subpath>>()
 	}
 
@@ -992,11 +992,11 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 				responses.push_front(BroadcastSignal::SelectionChanged.into());
 				responses.push_back(BroadcastSignal::DocumentIsDirty.into());
 			}
-			DeleteSelectedVectorPoints => {
+			DeleteSelectedManipulatorPoints => {
 				responses.push_back(StartTransaction.into());
 
 				responses.push_front(
-					DocumentOperation::DeleteSelectedVectorPoints {
+					DocumentOperation::DeleteSelectedManipulatorPoints {
 						layer_paths: self.selected_layers_without_children().iter().map(|path| path.to_vec()).collect(),
 					}
 					.into(),
@@ -1006,9 +1006,9 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 				responses.push_front(SetSelectedLayers { replacement_selected_layers: vec![] }.into());
 				self.layer_range_selection_reference.clear();
 			}
-			DeselectAllVectorPoints => {
+			DeselectAllManipulatorPoints => {
 				for layer_path in self.selected_layers_without_children() {
-					responses.push_back(DocumentOperation::DeselectAllVectorPoints { layer_path: layer_path.to_vec() }.into());
+					responses.push_back(DocumentOperation::DeselectAllManipulatorPoints { layer_path: layer_path.to_vec() }.into());
 				}
 			}
 			DirtyRenderDocument => {
@@ -1171,10 +1171,10 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 					.into(),
 				);
 			}
-			MoveSelectedVectorPoints { layer_path, delta, absolute_position } => {
+			MoveSelectedManipulatorPoints { layer_path, delta, absolute_position } => {
 				self.backup(responses);
 				if let Ok(_layer) = self.graphene_document.layer(&layer_path) {
-					responses.push_back(DocumentOperation::MoveSelectedVectorPoints { layer_path, delta, absolute_position }.into());
+					responses.push_back(DocumentOperation::MoveSelectedManipulatorPoints { layer_path, delta, absolute_position }.into());
 				}
 			}
 			NudgeSelectedLayers { delta_x, delta_y } => {

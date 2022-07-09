@@ -372,21 +372,21 @@ impl Layer {
 		}
 	}
 
-	pub fn as_vector_shape(&self) -> Option<&Subpath> {
+	pub fn as_subpath(&self) -> Option<&Subpath> {
 		match &self.data {
 			LayerDataType::Shape(s) => Some(&s.shape),
 			_ => None,
 		}
 	}
 
-	pub fn as_vector_shape_copy(&self) -> Option<Subpath> {
+	pub fn as_subpath_copy(&self) -> Option<Subpath> {
 		match &self.data {
 			LayerDataType::Shape(s) => Some(s.shape.clone()),
 			_ => None,
 		}
 	}
 
-	pub fn as_vector_shape_mut(&mut self) -> Option<&mut Subpath> {
+	pub fn as_subpath_mut(&mut self) -> Option<&mut Subpath> {
 		match &mut self.data {
 			LayerDataType::Shape(s) => Some(&mut s.shape),
 			_ => None,
