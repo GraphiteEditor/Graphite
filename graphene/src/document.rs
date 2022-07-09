@@ -126,27 +126,27 @@ impl Document {
 		Ok(shapes)
 	}
 
-	/// Return a copy of all VectorShapes currently in the document.
+	/// Return a copy of all Subpaths currently in the document.
 	pub fn all_subpaths(&self) -> Vec<Subpath> {
 		self.root.iter().flat_map(|layer| layer.as_subpath_copy()).collect::<Vec<Subpath>>()
 	}
 
-	/// Returns references to all VectorShapes currently in the document.
+	/// Returns references to all Subpaths currently in the document.
 	pub fn all_subpaths_ref(&self) -> Vec<&Subpath> {
 		self.root.iter().flat_map(|layer| layer.as_subpath()).collect::<Vec<&Subpath>>()
 	}
 
-	/// Returns a reference to the requested VectorShape by providing a path to its owner layer.
+	/// Returns a reference to the requested Subpath by providing a path to its owner layer.
 	pub fn subpath_ref<'a>(&'a self, path: &[LayerId]) -> Option<&'a Subpath> {
 		self.layer(path).ok()?.as_subpath()
 	}
 
-	/// Returns a mutable reference of the requested VectorShape by providing a path to its owner layer.
+	/// Returns a mutable reference of the requested Subpath by providing a path to its owner layer.
 	pub fn subpath_mut<'a>(&'a mut self, path: &'a [LayerId]) -> Option<&'a mut Subpath> {
 		self.layer_mut(path).ok()?.as_subpath_mut()
 	}
 
-	/// Set a VectorShape at the specified path.
+	/// Set a Subpath at the specified path.
 	pub fn set_subpath(&mut self, path: &[LayerId], shape: Subpath) {
 		let layer = self.layer_mut(path);
 		if let Ok(layer) = layer {
@@ -158,7 +158,7 @@ impl Document {
 		}
 	}
 
-	/// Set VectorShapes for multiple paths at once.
+	/// Set Subpaths for multiple paths at once.
 	pub fn set_subpaths<'a>(&'a mut self, paths: impl Iterator<Item = &'a [LayerId]>, shapes: Vec<Subpath>) {
 		paths.zip(shapes).for_each(|(path, shape)| self.set_subpath(path, shape));
 	}

@@ -201,7 +201,7 @@ impl OverlayRenderer {
 		responses.push_back(outline_modify_message);
 	}
 
-	/// Updates the position of the overlays based on the VectorShape points
+	/// Updates the position of the overlays based on the Subpath points
 	fn place_manipulator_group_overlays(group: &ManipulatorGroup, overlays: &mut ManipulatorGroupOverlays, parent_transform: &DAffine2, responses: &mut VecDeque<Message>) {
 		if let Some(manipulator_point) = &group.points[ManipulatorType::Anchor] {
 			// Helper function to keep things DRY

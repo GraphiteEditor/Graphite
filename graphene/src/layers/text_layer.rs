@@ -68,7 +68,7 @@ impl LayerData for TextLayer {
 		} else {
 			let buzz_face = self.load_face(render_data.font_cache);
 
-			let mut path = self.to_vector_path(buzz_face);
+			let mut path = self.to_subpath(buzz_face);
 
 			let kurbo::Rect { x0, y0, x1, y1 } = path.bounding_box();
 			let bounds = [(x0, y0).into(), (x1, y1).into()];
@@ -136,9 +136,9 @@ impl TextLayer {
 		new
 	}
 
-	/// Converts to a [VectorShape], populating the cache if necessary.
+	/// Converts to a [Subpath], populating the cache if necessary.
 	#[inline]
-	pub fn to_vector_path(&mut self, buzz_face: Option<Face>) -> Subpath {
+	pub fn to_subpath(&mut self, buzz_face: Option<Face>) -> Subpath {
 		if self.cached_path.as_ref().filter(|x| !x.groups().is_empty()).is_none() {
 			let path = self.generate_path(buzz_face);
 			self.cached_path = Some(path.clone());
@@ -147,7 +147,7 @@ impl TextLayer {
 		self.cached_path.clone().unwrap()
 	}
 
-	/// Converts to a [VectorShape], without populating the cache.
+	/// Converts to a [Subpath], without populating the cache.
 	#[inline]
 	pub fn to_subpath_nonmut(&self, font_cache: &FontCache) -> Subpath {
 		let buzz_face = self.load_face(font_cache);
