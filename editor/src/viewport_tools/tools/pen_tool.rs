@@ -222,7 +222,10 @@ impl Fsm for PenToolFsmState {
 							}
 							.into(),
 						);
-						responses.push_back(add_manipulator_group(&tool_data.path, ManipulatorGroup::new_with_anchor(start_position)));
+						responses.push_back(add_manipulator_group(
+							&tool_data.path,
+							ManipulatorGroup::new_with_handles(start_position, Some(start_position), Some(start_position)),
+						));
 					}
 
 					PenToolFsmState::DraggingHandle
