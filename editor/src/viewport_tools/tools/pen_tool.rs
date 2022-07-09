@@ -222,7 +222,7 @@ impl Fsm for PenToolFsmState {
 							}
 							.into(),
 						);
-						responses.push_back(add_anchor(&tool_data.path, VectorAnchor::new(start_position)));
+						responses.push_back(add_anchor(&tool_data.path, VectorAnchor::new_with_handles(start_position, Some(start_position), Some(start_position))));
 					}
 
 					PenToolFsmState::DraggingHandle
