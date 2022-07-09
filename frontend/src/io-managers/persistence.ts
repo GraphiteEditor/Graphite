@@ -53,8 +53,7 @@ export async function createPersistenceManager(editor: Editor, portfolio: Portfo
 		};
 
 		dbOpenRequest.onerror = (): void => {
-			// eslint-disable-next-line no-console
-			console.error("Graphite IndexedDb error:", dbOpenRequest.error);
+			editor.instance.error_dialog("Unable to Autosave", `Open IndexDB database error: ${dbOpenRequest.error}`);
 		};
 
 		dbOpenRequest.onsuccess = (): void => {
@@ -62,29 +61,30 @@ export async function createPersistenceManager(editor: Editor, portfolio: Portfo
 		};
 	});
 
-	// Open auto-save documents
-	const db = await databaseConnection;
-	const transaction = db.transaction(GRAPHITE_AUTO_SAVE_STORE, "readonly");
-	const request = transaction.objectStore(GRAPHITE_AUTO_SAVE_STORE).getAll();
-	await new Promise((resolve): void => {
-		request.onsuccess = (): void => {
-			const previouslySavedDocuments: TriggerIndexedDbWriteDocument[] = request.result;
+	databaseConnection.then(async (db) => {
+		// Open auto-save documents
+		const transaction = db.transaction(GRAPHITE_AUTO_SAVE_STORE, "readonly");
+		const request = transaction.objectStore(GRAPHITE_AUTO_SAVE_STORE).getAll();
+		await new Promise((resolve): void => {
+			request.onsuccess = (): void => {
+				const previouslySavedDocuments: TriggerIndexedDbWriteDocument[] = request.result;
 
-			const documentOrder: string[] = JSON.parse(window.localStorage.getItem(GRAPHITE_AUTO_SAVE_ORDER_KEY) || "[]");
-			const orderedSavedDocuments = documentOrder
-				.map((id) => previouslySavedDocuments.find((autoSave) => autoSave.details.id === id))
-				.filter((x) => x !== undefined) as TriggerIndexedDbWriteDocument[];
+				const documentOrder: string[] = JSON.parse(window.localStorage.getItem(GRAPHITE_AUTO_SAVE_ORDER_KEY) || "[]");
+				const orderedSavedDocuments = documentOrder
+					.map((id) => previouslySavedDocuments.find((autoSave) => autoSave.details.id === id))
+					.filter((x) => x !== undefined) as TriggerIndexedDbWriteDocument[];
 
-			const currentDocumentVersion = editor.instance.graphite_document_version();
-			orderedSavedDocuments.forEach((doc: TriggerIndexedDbWriteDocument) => {
-				if (doc.version === currentDocumentVersion) {
-					editor.instance.open_auto_saved_document(BigInt(doc.details.id), doc.details.name, doc.details.is_saved, doc.document);
-				} else {
-					removeDocument(doc.details.id);
-				}
-			});
-			resolve(undefined);
-		};
+				const currentDocumentVersion = editor.instance.graphite_document_version();
+				orderedSavedDocuments.forEach((doc: TriggerIndexedDbWriteDocument) => {
+					if (doc.version === currentDocumentVersion) {
+						editor.instance.open_auto_saved_document(BigInt(doc.details.id), doc.details.name, doc.details.is_saved, doc.document);
+					} else {
+						removeDocument(doc.details.id);
+					}
+				});
+				resolve(undefined);
+			};
+		});
 	});
 
 	return closeDatabaseConnection;
