@@ -365,16 +365,13 @@ impl DocumentMessageHandler {
 		// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
 		responses.push_back(PortfolioMessage::UpdateOpenDocumentsList.into());
 
-		let selected_paths: Vec<Vec<u64>> = self.selected_layers().map(|path| path.to_vec()).collect();
+		let selected_paths: Vec<Vec<LayerId>> = self.selected_layers().map(|path| path.to_vec()).collect();
 
 		match self.document_undo_history.pop() {
 			Some((document, layer_metadata)) => {
-				// Update currently displayed layer on property panel if selection changes after undo action
-				// Also appropriately update property panel if undo action results in a layer being deleted
-				let prev_selected_paths: Vec<Vec<u64>> = layer_metadata
-					.iter()
-					.filter_map(|(layer_id, metadata)| if metadata.selected { Some(layer_id.clone()) } else { None })
-					.collect();
+				// Update the currently displayed layer on the Properties panel if the selection changes after an undo action
+				// Also appropriately update the Properties panel if an undo action results in a layer being deleted
+				let prev_selected_paths: Vec<Vec<LayerId>> = layer_metadata.iter().filter_map(|(layer_id, metadata)| metadata.selected.then(|| layer_id.clone())).collect();
 
 				if prev_selected_paths != selected_paths {
 					responses.push_back(BroadcastSignal::SelectionChanged.into());
@@ -383,9 +380,11 @@ impl DocumentMessageHandler {
 				let document = std::mem::replace(&mut self.graphene_document, document);
 				let layer_metadata = std::mem::replace(&mut self.layer_metadata, layer_metadata);
 				self.document_redo_history.push((document, layer_metadata));
+
 				for layer in self.layer_metadata.keys() {
 					responses.push_back(DocumentMessage::LayerChanged { affected_layer_path: layer.clone() }.into())
 				}
+
 				Ok(())
 			}
 			None => Err(EditorError::NoTransactionInProgress),
@@ -396,16 +395,13 @@ impl DocumentMessageHandler {
 		// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
 		responses.push_back(PortfolioMessage::UpdateOpenDocumentsList.into());
 
-		let selected_paths: Vec<Vec<u64>> = self.selected_layers().map(|path| path.to_vec()).collect();
+		let selected_paths: Vec<Vec<LayerId>> = self.selected_layers().map(|path| path.to_vec()).collect();
 
 		match self.document_redo_history.pop() {
 			Some((document, layer_metadata)) => {
 				// Update currently displayed layer on property panel if selection changes after redo action
 				// Also appropriately update property panel if redo action results in a layer being added
-				let next_selected_paths: Vec<Vec<u64>> = layer_metadata
-					.iter()
-					.filter_map(|(layer_id, metadata)| if metadata.selected { Some(layer_id.clone()) } else { None })
-					.collect();
+				let next_selected_paths: Vec<Vec<LayerId>> = layer_metadata.iter().filter_map(|(layer_id, metadata)| metadata.selected.then(|| layer_id.clone())).collect();
 
 				if next_selected_paths != selected_paths {
 					responses.push_back(BroadcastSignal::SelectionChanged.into());
@@ -414,9 +410,11 @@ impl DocumentMessageHandler {
 				let document = std::mem::replace(&mut self.graphene_document, document);
 				let layer_metadata = std::mem::replace(&mut self.layer_metadata, layer_metadata);
 				self.document_undo_history.push((document, layer_metadata));
+
 				for layer in self.layer_metadata.keys() {
 					responses.push_back(DocumentMessage::LayerChanged { affected_layer_path: layer.clone() }.into())
 				}
+
 				Ok(())
 			}
 			None => Err(EditorError::NoTransactionInProgress),
