@@ -150,6 +150,10 @@ impl Fsm for PathToolFsmState {
 					// Set the newly targeted layers to visible
 					let layer_paths = document.selected_visible_layers().map(|layer_path| layer_path.to_vec()).collect();
 					tool_data.shape_editor.set_selected_layers(layer_paths);
+					// Render the new overlays
+					for layer_path in tool_data.shape_editor.selected_layers() {
+						tool_data.overlay_renderer.render_vector_shape_overlays(&document.graphene_document, layer_path.to_vec(), responses);
+					}
 
 					// This can happen in any state (which is why we return self)
 					self
