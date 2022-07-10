@@ -632,13 +632,14 @@ impl Bezier {
 	}
 
 	/// Returns a list of lists of points representing the hull points for all iterations at the point corresponding to `t` using de Casteljau's algorithm
-	/// the ith element of the list represents the points of the ith iteration
+	/// The ith element of the list represents the set of points in the ith iteration
 	/// More information on the algorithm can be found in the [de Casteljau section in Pomax's Bezier Primer](https://pomax.github.io/bezierinfo/#decasteljau)
 	pub fn hull(&self, t: f64) -> Vec<Vec<DVec2>> {
 		let mut current_points = Vec::new();
 		let mut hull_points = Vec::new();
 		current_points.push(self.start);
 		match self.handles {
+			BezierHandles::Linear => {}
 			BezierHandles::Quadratic { handle } => {
 				current_points.push(handle);
 			}
