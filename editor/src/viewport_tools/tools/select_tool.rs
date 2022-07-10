@@ -812,3 +812,92 @@ impl Fsm for SelectToolFsmState {
 		responses.push_back(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default }.into());
 	}
 }
+
+#[cfg(test)]
+mod tests {
+	use crate::communication::{set_uuid_seed, DispatcherTestUtils};
+	use crate::input::input_preprocessor::ModifierKeys;
+	use crate::input::keyboard::Key;
+	use crate::input::mouse::{EditorMouseState, MouseKeys, ScrollDelta};
+	use crate::input::InputPreprocessorMessage;
+	use crate::misc::test_utils::EditorTestUtils;
+	use crate::viewport_tools::tool::ToolType;
+	use crate::Editor;
+
+	fn init_logger() {
+		let _ = env_logger::builder().is_test(true).try_init();
+	}
+
+	fn create_editor_with_rect() -> Editor {
+		set_uuid_seed(0);
+		let mut editor = Editor::new();
+		editor.draw_rect(0., 0., 100., 100.);
+
+		editor
+	}
+
+	/// Tests the behavior of dragging a selection to:
+	/// - Undoing the drag
+	/// - Escaping the drag
+	#[test]
+	fn test_dragging_abort() {
+		init_logger();
+		let mut editor = create_editor_with_rect();
+
+		const RECT_INDEX: usize = 0;
+
+		let document_before_action = &editor.dispatcher.get_active_document();
+		let layers_before_action = document_before_action.root.as_folder().unwrap().layers();
+		let rectangle_before_action = &layers_before_action[RECT_INDEX];
+
+		let (init_x, init_y) = (50f64, 50f64);
+		let (final_x, final_y) = (250f64, 250f64);
+
+		// Initialize the drag
+		editor.select_tool(ToolType::Select);
+		editor.move_mouse(
+			init_x,
+			init_y,
+			EditorMouseState {
+				editor_position: (init_x, init_y).into(),
+				mouse_keys: MouseKeys::empty(),
+				scroll_delta: ScrollDelta::default(),
+			},
+		);
+
+		let mouse_state = EditorMouseState {
+			editor_position: (init_x, init_y).into(),
+			mouse_keys: MouseKeys::LEFT,
+			scroll_delta: ScrollDelta::default(),
+		};
+
+		editor.mousedown(mouse_state);
+		editor.move_mouse(final_x, final_y, mouse_state);
+
+		// Abort the drag
+		let modifier_keys = ModifierKeys::default();
+		editor.handle_message(InputPreprocessorMessage::KeyDown { key: Key::KeyEscape, modifier_keys });
+
+		let document_after_action = &editor.dispatcher.get_active_document();
+		let layers_after_action = document_after_action.root.as_folder().unwrap().layers();
+		let rectangle_after_action = &layers_after_action[RECT_INDEX];
+
+		assert_eq!(rectangle_before_action.transform, rectangle_after_action.transform)
+	}
+
+	/// Tests the behavior or resizing the bounds of a selection to:
+	/// - Undoing the resize
+	/// - Escaping the resize
+	#[test]
+	fn test_resize_bounds_abort() {
+		todo!()
+	}
+
+	/// Tests the behavior of rotating the bounds of a selection to:
+	/// - Undoing the rotation
+	/// - Escaping the rotation
+	#[test]
+	fn test_rotate_bounds_abort() {
+		todo!()
+	}
+}

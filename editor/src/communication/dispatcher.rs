@@ -168,6 +168,19 @@ impl Dispatcher {
 	}
 }
 
+// Test Utils
+#[cfg(test)]
+pub trait DispatcherTestUtils {
+	fn get_active_document(&self) -> graphene::document::Document;
+}
+
+#[cfg(test)]
+impl DispatcherTestUtils for Dispatcher {
+	fn get_active_document(&self) -> graphene::document::Document {
+		self.message_handlers.portfolio_message_handler.active_document().graphene_document.clone()
+	}
+}
+
 #[cfg(test)]
 mod test {
 	use crate::communication::set_uuid_seed;

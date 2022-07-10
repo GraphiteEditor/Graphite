@@ -8,6 +8,7 @@ pub mod vector_editor;
 #[cfg(test)]
 mod tool_crash_on_layer_delete_tests {
 	use crate::communication::set_uuid_seed;
+	use crate::input::mouse::{EditorMouseState, MouseKeys, ScrollDelta};
 	use crate::misc::test_utils::EditorTestUtils;
 	use crate::viewport_tools::tool::ToolType;
 	use crate::{DocumentMessage, Editor};
@@ -28,7 +29,15 @@ mod tool_crash_on_layer_delete_tests {
 
 		test_editor.select_tool(tool);
 		test_editor.lmb_mousedown(0.0, 0.0);
-		test_editor.move_mouse(100.0, 100.0);
+		test_editor.move_mouse(
+			100.0,
+			100.0,
+			EditorMouseState {
+				editor_position: (100.0, 100.0).into(),
+				mouse_keys: MouseKeys::empty(),
+				scroll_delta: ScrollDelta::default(),
+			},
+		);
 
 		test_editor.handle_message(DocumentMessage::DeleteSelectedLayers);
 	}

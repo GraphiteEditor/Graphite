@@ -14,7 +14,7 @@ pub trait EditorTestUtils {
 
 	/// Select given tool and drag it from (x1, y1) to (x2, y2)
 	fn drag_tool(&mut self, typ: ToolType, x1: f64, y1: f64, x2: f64, y2: f64);
-	fn move_mouse(&mut self, x: f64, y: f64);
+	fn move_mouse(&mut self, x: f64, y: f64, state: EditorMouseState);
 	fn mousedown(&mut self, state: EditorMouseState);
 	fn mouseup(&mut self, state: EditorMouseState);
 	fn lmb_mousedown(&mut self, x: f64, y: f64);
@@ -38,9 +38,25 @@ impl EditorTestUtils for Editor {
 
 	fn drag_tool(&mut self, typ: ToolType, x1: f64, y1: f64, x2: f64, y2: f64) {
 		self.select_tool(typ);
-		self.move_mouse(x1, y1);
+		self.move_mouse(
+			x1,
+			y1,
+			EditorMouseState {
+				editor_position: (x1, y1).into(),
+				mouse_keys: MouseKeys::empty(),
+				scroll_delta: ScrollDelta::default(),
+			},
+		);
 		self.lmb_mousedown(x1, y1);
-		self.move_mouse(x2, y2);
+		self.move_mouse(
+			x2,
+			y2,
+			EditorMouseState {
+				editor_position: (x2, y2).into(),
+				mouse_keys: MouseKeys::empty(),
+				scroll_delta: ScrollDelta::default(),
+			},
+		);
 		self.mouseup(EditorMouseState {
 			editor_position: (x2, y2).into(),
 			mouse_keys: MouseKeys::empty(),
@@ -48,11 +64,13 @@ impl EditorTestUtils for Editor {
 		});
 	}
 
-	fn move_mouse(&mut self, x: f64, y: f64) {
-		let mut editor_mouse_state = EditorMouseState::new();
-		editor_mouse_state.editor_position = ViewportPosition::new(x, y);
+	fn move_mouse(&mut self, x: f64, y: f64, mut state: EditorMouseState) {
+		state.editor_position = ViewportPosition::new(x, y);
 		let modifier_keys = ModifierKeys::default();
-		self.input(InputPreprocessorMessage::PointerMove { editor_mouse_state, modifier_keys });
+		self.input(InputPreprocessorMessage::PointerMove {
+			editor_mouse_state: state,
+			modifier_keys,
+		});
 	}
 
 	fn mousedown(&mut self, editor_mouse_state: EditorMouseState) {
