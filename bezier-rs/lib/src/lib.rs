@@ -635,30 +635,21 @@ impl Bezier {
 	/// The ith element of the list represents the set of points in the ith iteration
 	/// More information on the algorithm can be found in the [de Casteljau section in Pomax's Bezier Primer](https://pomax.github.io/bezierinfo/#decasteljau)
 	pub fn hull(&self, t: f64) -> Vec<Vec<DVec2>> {
-		let mut current_points = vec![self.start];
-		match self.handles {
-			BezierHandles::Linear => {}
-			BezierHandles::Quadratic { handle } => {
-				current_points.push(handle);
-			}
-			BezierHandles::Cubic { handle_start, handle_end } => {
-				current_points.push(handle_start);
-				current_points.push(handle_end);
-			}
-		}
-		current_points.push(self.end);
+		let bezier_points = match self.handles {
+			BezierHandles::Linear => vec![self.start, self.end],
+			BezierHandles::Quadratic { handle } => vec![self.start, handle, self.end],
+			BezierHandles::Cubic { handle_start, handle_end } => vec![self.start, handle_start, handle_end, self.end],
+		};
+		let mut hull_points = vec![bezier_points];
+		let mut current_points = hull_points.last().unwrap();
 
-		let mut hull_points = vec![current_points.clone()];
+		// Iterate until one point is left, that point will be equal to `evaluate(t)`
 		while current_points.len() > 1 {
-			let mut next_points = Vec::new();
-			// Iterate until one point is left, that point will be equal to compute(t)
-			for pair in current_points.as_slice().windows(2) {
-				// Linearly interpolate between adjacent points
-				let new_point = DVec2::lerp(pair[0], pair[1], t);
-				next_points.push(new_point);
-			}
-			hull_points.push(next_points.clone());
-			current_points = next_points;
+			// Map from every adjacent pair of points to their respective midpoints, which decrements by 1 the number of points for next iteration
+			let next_points: Vec<DVec2> = current_points.as_slice().windows(2).map(|pair| DVec2::lerp(pair[0], pair[1], t)).collect();
+			hull_points.push(next_points);
+
+			current_points = hull_points.last().unwrap();
 		}
 
 		hull_points
