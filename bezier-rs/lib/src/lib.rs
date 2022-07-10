@@ -635,9 +635,7 @@ impl Bezier {
 	/// The ith element of the list represents the set of points in the ith iteration
 	/// More information on the algorithm can be found in the [de Casteljau section in Pomax's Bezier Primer](https://pomax.github.io/bezierinfo/#decasteljau)
 	pub fn hull(&self, t: f64) -> Vec<Vec<DVec2>> {
-		let mut current_points = Vec::new();
-		let mut hull_points = Vec::new();
-		current_points.push(self.start);
+		let mut current_points = vec![self.start];
 		match self.handles {
 			BezierHandles::Linear => {}
 			BezierHandles::Quadratic { handle } => {
@@ -649,14 +647,14 @@ impl Bezier {
 			}
 		}
 		current_points.push(self.end);
-		hull_points.push(current_points.clone());
 
+		let mut hull_points = vec![current_points.clone()];
 		while current_points.len() > 1 {
 			let mut next_points = Vec::new();
-			// iterate until one point is left, that point will be equal to compute(t)
-			for i in 0..current_points.len() - 1 {
-				// linearly interpolate between adjacent points
-				let new_point = DVec2::lerp(current_points[i], current_points[i + 1], t);
+			// Iterate until one point is left, that point will be equal to compute(t)
+			for pair in current_points.as_slice().windows(2) {
+				// Linearly interpolate between adjacent points
+				let new_point = DVec2::lerp(pair[0], pair[1], t);
 				next_points.push(new_point);
 			}
 			hull_points.push(next_points.clone());
