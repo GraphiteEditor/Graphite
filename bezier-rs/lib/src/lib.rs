@@ -783,7 +783,7 @@ mod tests {
 		beziers
 			.iter()
 			.zip(expected_bezier_points.iter())
-			.all(|(&a, b)| compare_vector_of_points(a.get_points().into_iter().flatten().collect::<Vec<DVec2>>(), b.to_vec()))
+			.all(|(&a, b)| compare_vector_of_points(a.get_points().collect::<Vec<DVec2>>(), b.to_vec()))
 	}
 
 	#[test]
