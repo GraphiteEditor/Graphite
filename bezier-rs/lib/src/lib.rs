@@ -1236,39 +1236,24 @@ mod tests {
 		let p4 = DVec2::new(30., 21.);
 
 		let bezier1 = Bezier::from_quadratic_dvec2(p1, p2, p3);
-		assert!(compare_points(bezier1.evaluate(0.5), DVec2::new(3., 3.)));
+		assert_eq!(bezier1.evaluate(0.5), DVec2::new(12.5, 6.25));
 
 		let bezier2 = Bezier::from_cubic_dvec2(p1, p2, p3, p4);
-		assert!(compare_points(bezier1.evaluate(0.8), DVec2::new(3., 3.)));
+		assert_eq!(bezier2.evaluate(0.5), DVec2::new(16.5, 9.625));
 	}
 
 	#[test]
 	fn compute_lookup_table() {
-		println!("compute_lookup_table");
-
 		let bezier1 = Bezier::from_quadratic_coordinates(10., 10., 30., 30., 50., 10.);
-		let expected_lookup_table1 = Vec::from([DVec2::new(0., 0.), DVec2::new(0., 0.), DVec2::new(0., 0.), DVec2::new(0., 0.), DVec2::new(0., 0.)]);
-		let actual_lookup_table1 = bezier1.compute_lookup_table(Some(4));
-		println!(
-			"{:?}, {:?}, {:?}, {:?}",
-			actual_lookup_table1[0], actual_lookup_table1[1], actual_lookup_table1[2], actual_lookup_table1[3]
-		);
-		// let lookup_table_iter1 = expected_lookup_table1.iter().zip(actual_lookup_table1.iter());
-		// for (_, (actual, expected)) in lookup_table_iter1.iter() {
-		// 	assert!(compare_points(actual, expected));
-		// }
+		let lookup_table1 = bezier1.compute_lookup_table(Some(2));
+		assert_eq!(lookup_table1, vec![bezier1.start(), bezier1.evaluate(0.5), bezier1.end()]);
 
 		let bezier2 = Bezier::from_cubic_coordinates(10., 10., 30., 30., 70., 70., 90., 10.);
-		let expected_lookup_table2 = Vec::from([DVec2::new(0., 0.), DVec2::new(0., 0.), DVec2::new(0., 0.), DVec2::new(0., 0.), DVec2::new(0., 0.)]);
-		let actual_lookup_table2 = bezier2.compute_lookup_table(Some(4));
-		println!(
-			"{:?}, {:?}, {:?}, {:?}",
-			actual_lookup_table2[0], actual_lookup_table2[1], actual_lookup_table2[2], actual_lookup_table2[3]
+		let lookup_table2 = bezier2.compute_lookup_table(Some(4));
+		assert_eq!(
+			lookup_table2,
+			vec![bezier2.start(), bezier2.evaluate(0.25), bezier2.evaluate(0.5), bezier2.evaluate(0.75), bezier2.end()]
 		);
-		// let lookup_table_iter2 = expected_lookup_table2.iter().zip(actual_lookup_table2.iter());
-		// for (_, (actual, expected)) in lookup_table_iter.iter() {
-		// 	assert!(compare_points(actual, expected));
-		// }
 	}
 
 	#[test]
@@ -1282,10 +1267,10 @@ mod tests {
 		assert!(utils::f64_compare(bezier_linear.length(None), p1.distance(p2), MAX_ABSOLUTE_DIFFERENCE));
 
 		let bezier_quadratic = Bezier::from_quadratic_dvec2(p1, p2, p3);
-		assert!(utils::f64_compare(bezier_quadratic.length(None), 204., MAX_ABSOLUTE_DIFFERENCE));
+		assert!(utils::f64_compare(bezier_quadratic.length(None), 204., 1e-2));
 
 		let bezier_cubic = Bezier::from_cubic_dvec2(p1, p2, p3, p4);
-		assert!(utils::f64_compare(bezier_cubic.length(None), 199., MAX_ABSOLUTE_DIFFERENCE));
+		assert!(utils::f64_compare(bezier_cubic.length(None), 199., 1e-2));
 	}
 
 	#[test]
@@ -1315,39 +1300,38 @@ mod tests {
 
 	#[test]
 	fn split() {
-		println!("split");
+		let line = Bezier::from_linear_coordinates(25., 25., 75., 75.);
+		let [part1, part2] = line.split(0.5);
 
-		let bezier1 = Bezier::from_quadratic_coordinates(10., 10., 50., 50., 90., 10.);
-		let expected_split1 = Vec::from([
-			Bezier::from_quadratic_coordinates(10., 10., 50., 50., 90., 10.),
-			Bezier::from_quadratic_coordinates(90., 10., 50., 50., 90., 10.),
-		]);
-		let actual_split1 = bezier1.split(0.3);
-		println!(
-			"actual_split1 {:?}, {:?}",
-			actual_split1[0].get_points().collect::<Vec<DVec2>>(),
-			actual_split1[1].get_points().collect::<Vec<DVec2>>()
-		);
-		// let split_iter1 = expected_split1.iter().zip(actual_split1.iter());
-		// for (_, (actual, expected)) in split_iter1.iter() {
-		// 	assert!(compare_points(actual, expected));
-		// }
+		assert_eq!(part1.start(), line.start());
+		assert_eq!(part1.end(), line.evaluate(0.5));
+		assert_eq!(part1.evaluate(0.5), line.evaluate(0.25));
 
-		let bezier2 = Bezier::from_cubic_coordinates(10., 10., 50., 50., 90., 10., 100., 100.);
-		let expected_split2 = Vec::from([
-			Bezier::from_cubic_coordinates(10., 10., 50., 50., 90., 10., 100., 100.),
-			Bezier::from_cubic_coordinates(90., 10., 50., 50., 90., 10., 100., 100.),
-		]);
-		let actual_split2 = bezier2.split(0.8);
-		println!(
-			"actual_split2 {:?}, {:?}",
-			actual_split2[0].get_points().collect::<Vec<DVec2>>(),
-			actual_split2[1].get_points().collect::<Vec<DVec2>>()
-		);
-		// let split_iter2 = expected_split2.iter().zip(actual_split2.iter());
-		// for (_, (actual, expected)) in split_iter2.iter() {
-		// 	assert!(compare_points(actual, expected));
-		// }
+		assert_eq!(part2.start(), line.evaluate(0.5));
+		assert_eq!(part2.end(), line.end());
+		assert_eq!(part2.evaluate(0.5), line.evaluate(0.75));
+
+		let quad_bezier = Bezier::from_quadratic_coordinates(10., 10., 50., 50., 90., 10.);
+		let [part3, part4] = quad_bezier.split(0.5);
+
+		assert_eq!(part3.start(), quad_bezier.start());
+		assert_eq!(part3.end(), quad_bezier.evaluate(0.5));
+		assert_eq!(part3.evaluate(0.5), quad_bezier.evaluate(0.25));
+
+		assert_eq!(part4.start(), quad_bezier.evaluate(0.5));
+		assert_eq!(part4.end(), quad_bezier.end());
+		assert_eq!(part4.evaluate(0.5), quad_bezier.evaluate(0.75));
+
+		let cubic_bezier = Bezier::from_cubic_coordinates(10., 10., 50., 50., 90., 10., 40., 50.);
+		let [part5, part6] = cubic_bezier.split(0.5);
+
+		assert_eq!(part5.start(), cubic_bezier.start());
+		assert_eq!(part5.end(), cubic_bezier.evaluate(0.5));
+		assert_eq!(part5.evaluate(0.5), cubic_bezier.evaluate(0.25));
+
+		assert_eq!(part6.start(), cubic_bezier.evaluate(0.5));
+		assert_eq!(part6.end(), cubic_bezier.end());
+		assert_eq!(part6.evaluate(0.5), cubic_bezier.evaluate(0.75));
 	}
 
 	#[test]
@@ -1359,48 +1343,49 @@ mod tests {
 
 		// Test splitting a quadratic bezier at the startpoint
 		let [point_bezier1, remainder1] = bezier_quadratic.split(0.);
-		assert!(point_bezier1.start() == start);
-		assert!(point_bezier1.end() == start);
-		assert!(point_bezier1.handle_start().unwrap() == start);
+		assert_eq!(point_bezier1.get_points().collect::<Vec<DVec2>>(), vec![start, start, start]);
 		assert!(remainder1.abs_diff_eq(&bezier_quadratic, MAX_ABSOLUTE_DIFFERENCE));
 
 		// Test splitting a quadratic bezier at the endpoint
 		let [remainder2, point_bezier2] = bezier_quadratic.split(1.);
-		assert!(point_bezier2.start() == end);
-		assert!(point_bezier2.handle_start().unwrap() == end);
-		assert!(point_bezier2.end() == end);
+		assert_eq!(point_bezier2.get_points().collect::<Vec<DVec2>>(), vec![end, end, end]);
 		assert!(remainder2.abs_diff_eq(&bezier_quadratic, MAX_ABSOLUTE_DIFFERENCE));
 
 		let bezier_cubic = Bezier::from_cubic_dvec2(start, DVec2::new(60., 140.), DVec2::new(150., 30.), end);
 
 		// Test splitting a cubic bezier at the startpoint
 		let [point_bezier3, remainder3] = bezier_cubic.split(0.);
-		assert!(point_bezier2.start() == start);
-		assert!(point_bezier2.handle_start().unwrap() == start);
-		assert!(point_bezier2.handle_end().unwrap() == start);
-		assert!(point_bezier2.end() == start);
+		assert_eq!(point_bezier3.get_points().collect::<Vec<DVec2>>(), vec![start, start, start, start]);
 		assert!(remainder3.abs_diff_eq(&bezier_cubic, MAX_ABSOLUTE_DIFFERENCE));
 
 		// Test splitting a cubic bezier at the endpoint
 		let [remainder4, point_bezier4] = bezier_cubic.split(1.);
-		assert!(point_bezier4.start() == end);
-		assert!(point_bezier4.handle_start().unwrap() == end);
-		assert!(point_bezier4.handle_end().unwrap() == end);
-		assert!(point_bezier4.end() == end);
+		assert_eq!(point_bezier4.get_points().collect::<Vec<DVec2>>(), vec![end, end, end, end]);
 		assert!(remainder4.abs_diff_eq(&bezier_cubic, MAX_ABSOLUTE_DIFFERENCE));
 	}
 
 	#[test]
 	fn trim() {
-		let linear = Bezier::from_linear_coordinates(4., 4., 5., 4.);
-		let trimmed_linear = linear.trim(0.25, 0.75);
-		assert!(trimmed_linear.start == DVec2::new(4.25, 4.) && trimmed_linear.end == DVec2::new(4.75, 4.));
+		let line = Bezier::from_linear_coordinates(80., 80., 40., 40.);
+		let trimmed1 = line.trim(0.25, 0.75);
 
-		let quadratic = Bezier::from_quadratic_coordinates(0., 0., 1., 1., 2., 0.);
-		let trimmed_quadratic = quadratic.trim(0.25, 0.75);
+		assert_eq!(trimmed1.start(), line.evaluate(0.25));
+		assert_eq!(trimmed1.end(), line.evaluate(0.75));
+		assert_eq!(trimmed1.evaluate(0.5), line.evaluate(0.5));
 
-		let cubic = Bezier::from_cubic_coordinates(0., 0., 1., 1., 2., 1., 2., 0.);
-		let trimmed_cubic = cubic.trim(0.25, 0.75);
+		let quadratic_bezier = Bezier::from_quadratic_coordinates(80., 80., 40., 40., 70., 70.);
+		let trimmed2 = quadratic_bezier.trim(0.25, 0.75);
+
+		assert_eq!(trimmed2.start(), quadratic_bezier.evaluate(0.25));
+		assert_eq!(trimmed2.end(), quadratic_bezier.evaluate(0.75));
+		assert_eq!(trimmed2.evaluate(0.5), quadratic_bezier.evaluate(0.5));
+
+		let cubic_bezier = Bezier::from_cubic_coordinates(80., 80., 40., 40., 70., 70., 150., 150.);
+		let trimmed3 = cubic_bezier.trim(0.25, 0.75);
+
+		assert_eq!(trimmed3.start(), cubic_bezier.evaluate(0.25));
+		assert_eq!(trimmed3.end(), cubic_bezier.evaluate(0.75));
+		assert_eq!(trimmed3.evaluate(0.5), cubic_bezier.evaluate(0.5));
 	}
 
 	#[test]
@@ -1423,94 +1408,92 @@ mod tests {
 		let project_options = ProjectionOptions::default();
 
 		let bezier1 = Bezier::from_cubic_coordinates(4., 4., 23., 45., 10., 30., 56., 90.);
-		assert!(bezier1.evaluate(bezier1.project(DVec2::new(100., 100.), project_options)) == DVec2::new(56., 90.));
-		assert!(bezier1.evaluate(bezier1.project(DVec2::new(0., 0.), project_options)) == DVec2::new(4., 4.));
+		assert_eq!(bezier1.project(DVec2::new(100., 100.), project_options), 1.);
+		assert_eq!(bezier1.project(DVec2::new(0., 0.), project_options), 0.);
 
 		let bezier2 = Bezier::from_quadratic_coordinates(0., 0., 0., 100., 100., 100.);
-		assert!(bezier2.evaluate(bezier2.project(DVec2::new(100., 0.), project_options)) == DVec2::new(0., 0.));
+		assert_eq!(bezier2.project(DVec2::new(100., 0.), project_options), 0.);
 	}
 
 	#[test]
 	fn extrema_linear() {
 		// Linear bezier cannot have extrema
 		let line = Bezier::from_linear_dvec2(DVec2::new(10., 10.), DVec2::new(50., 50.));
-		assert!(line.local_extrema().is_empty());
+		let [x_extrema, y_extrema] = line.local_extrema();
+		assert!(x_extrema.is_empty());
+		assert!(y_extrema.is_empty());
 	}
 
 	#[test]
 	fn extrema_quadratic() {
-		println!("extrema_quadratic");
+		// Test with no x-extrema, no y-extrema
+		let bezier1 = Bezier::from_quadratic_coordinates(40., 35., 149., 54., 155., 170.);
+		let [x_extrema1, y_extrema1] = bezier1.local_extrema();
+		assert!(x_extrema1.is_empty());
+		assert!(y_extrema1.is_empty());
 
-		// no x-extrema, no y-extrema
-		let bezier1 = Bezier::from_quadratic_dvec2(DVec2::new(3., 5.), DVec2::new(7., 10.), DVec2::new(10., 14.));
-		let extrema1 = bezier1.local_extrema();
-		println!("{:?}", extrema1);
-		assert!(extrema1[0].is_empty() && extrema1[1].is_empty());
+		// Test with 1 x-extrema, no y-extrema
+		let bezier2 = Bezier::from_quadratic_coordinates(45., 30., 170., 90., 45., 150.);
+		let [x_extrema2, y_extrema2] = bezier2.local_extrema();
+		assert_eq!(x_extrema2.len(), 1);
+		assert!(y_extrema2.is_empty());
 
-		// 1 x-extrema, no y-extrema
-		let bezier2 = Bezier::from_quadratic_dvec2(DVec2::new(3., 5.), DVec2::new(1., 10.), DVec2::new(19., 14.));
-		let extrema2 = bezier2.local_extrema();
-		println!("{:?}", extrema2);
-		assert!(extrema2[0].len() == 1 && extrema2[1].is_empty());
+		// Test with no x-extrema, 1 y-extrema
+		let bezier3 = Bezier::from_quadratic_coordinates(30., 130., 100., 25., 150., 130.);
+		let [x_extrema3, y_extrema3] = bezier3.local_extrema();
+		assert!(x_extrema3.is_empty());
+		assert_eq!(y_extrema3.len(), 1);
 
-		// no x-extrema, 1 y-extrema
-		let bezier3 = Bezier::from_quadratic_dvec2(DVec2::new(3., 3.), DVec2::new(10., 125.), DVec2::new(20., 15.));
-		let extrema3 = bezier3.local_extrema();
-		println!("{:?}", extrema3);
-		assert!(extrema3[0].is_empty() && extrema3[1].is_empty());
-
-		// 1 x-extrema, 1 y-extrema
-		let bezier4 = Bezier::from_quadratic_dvec2(DVec2::new(30., 3.), DVec2::new(10., 125.), DVec2::new(5., 15.));
-		let extrema4 = bezier4.local_extrema();
-		println!("{:?}", extrema4);
-		assert!(extrema4[0].len() == 1 && extrema4[1].len() == 1);
+		// Test with 1 x-extrema, 1 y-extrema
+		let bezier4 = Bezier::from_quadratic_coordinates(50., 70., 170., 35., 60., 150.);
+		let [x_extrema4, y_extrema4] = bezier4.local_extrema();
+		assert_eq!(x_extrema4.len(), 1);
+		assert_eq!(y_extrema4.len(), 1);
 	}
 
 	#[test]
 	fn extrema_cubic() {
-		println!("extrema_quadratic");
-
 		// 0 x-extrema, 0 y-extrema
-		let bezier0 = Bezier::from_cubic_coordinates(100., 105., 250., 250., 110., 150., 260., 260.);
-		let extrema0 = bezier0.local_extrema();
-		println!("{:?}", extrema0);
-		assert!(extrema0[0].is_empty() && extrema0[1].is_empty());
+		let bezier1 = Bezier::from_cubic_coordinates(100., 105., 250., 250., 110., 150., 260., 260.);
+		let [x_extrema1, y_extrema1] = bezier1.local_extrema();
+		assert!(x_extrema1.is_empty());
+		assert!(y_extrema1.is_empty());
 
 		// 1 x-extrema, 0 y-extrema
-		let bezier1 = Bezier::from_cubic_coordinates(177., 135., 170., 10., 24., 18., 20., 117.);
-		let extrema1 = bezier1.local_extrema();
-		println!("{:?}", extrema1);
-		assert!(extrema1[0].len() == 1 && extrema1[1].is_empty());
+		let bezier2 = Bezier::from_cubic_coordinates(55., 145., 40., 40., 110., 110., 180., 40.);
+		let [x_extrema2, y_extrema2] = bezier2.local_extrema();
+		assert_eq!(x_extrema2.len(), 1);
+		assert!(y_extrema2.is_empty());
 
 		// 1 x-extrema, 1 y-extrema
-		let bezier2 = Bezier::from_cubic_coordinates(100., 105., 170., 10., 24., 18., 20., 117.);
-		let extrema2 = bezier2.local_extrema();
-		println!("{:?}", extrema2);
-		assert!(extrema2[0].len() == 1 && extrema2[1].len() == 1);
+		let bezier3 = Bezier::from_cubic_coordinates(100., 105., 170., 10., 25., 20., 20., 120.);
+		let [x_extrema3, y_extrema3] = bezier3.local_extrema();
+		assert_eq!(x_extrema3.len(), 1);
+		assert_eq!(y_extrema3.len(), 1);
 
 		// 1 x-extrema, 2 y-extrema
-		let bezier3 = Bezier::from_cubic_coordinates(47., 91., 119., 16., 152., 192., 45., 153.);
-		let extrema3 = bezier3.local_extrema();
-		println!("{:?}", extrema3);
-		assert!(extrema3[0].len() == 1 && extrema3[1].len() == 2);
+		let bezier4 = Bezier::from_cubic_coordinates(50., 90., 120., 16., 150., 190., 45., 150.);
+		let [x_extrema4, y_extrema4] = bezier4.local_extrema();
+		assert_eq!(x_extrema4.len(), 1);
+		assert_eq!(y_extrema4.len(), 2);
 
 		// 2 x-extrema, 0 y-extrema
-		let bezier4 = Bezier::from_cubic_coordinates(48., 34., 136., 62., 48., 95., 48., 95.);
-		let extrema4 = bezier4.local_extrema();
-		println!("{:?}", extrema4);
-		assert!(extrema4[0].len() == 2 && extrema4[1].is_empty());
+		let bezier5 = Bezier::from_cubic_coordinates(40., 170., 150., 160., 10., 10., 170., 10.);
+		let [x_extrema5, y_extrema5] = bezier5.local_extrema();
+		assert_eq!(x_extrema5.len(), 2);
+		assert!(y_extrema5.is_empty());
 
 		// 2 x-extrema, 1 y-extrema
-		let bezier5 = Bezier::from_cubic_coordinates(100., 100., 100., 300., 300., 300., 300., 100.);
-		let extrema5 = bezier5.local_extrema();
-		println!("{:?}", extrema5);
-		assert!(extrema5[0].len() == 2 && extrema5[1].len() == 1);
+		let bezier6 = Bezier::from_cubic_coordinates(40., 170., 150., 160., 10., 10., 160., 45.);
+		let [x_extrema6, y_extrema6] = bezier6.local_extrema();
+		assert_eq!(x_extrema6.len(), 2);
+		assert_eq!(y_extrema6.len(), 1);
 
 		// 2 x-extrema, 2 y-extrema
-		let bezier6 = Bezier::from_cubic_coordinates(46., 60., 140., 8., 52., 159., 120., 118.);
-		let extrema6 = bezier6.local_extrema();
-		println!("{:?}", extrema6);
-		assert!(extrema6[0].len() == 2 && extrema6[1].len() == 2);
+		let bezier7 = Bezier::from_cubic_coordinates(46., 60., 140., 10., 50., 160., 120., 120.);
+		let [x_extrema7, y_extrema7] = bezier7.local_extrema();
+		assert_eq!(x_extrema7.len(), 2);
+		assert_eq!(y_extrema7.len(), 2);
 	}
 
 	#[test]
