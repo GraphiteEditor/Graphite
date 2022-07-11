@@ -727,23 +727,37 @@ impl Bezier {
 	/// The formulas are from  [the inflection section](https://pomax.github.io/bezierinfo/#inflections) of Pomax's bezier curve primer.
 	pub fn unrestricted_inflections(&self) -> Vec<f64> {
 		match self.handles {
-			// There exists no inflection points for quadratic beziers.
+			// There exists no inflection points for linear and quadratic beziers.
+			BezierHandles::Linear => Vec::new(),
 			BezierHandles::Quadratic { handle: _ } => Vec::new(),
-			BezierHandles::Cubic { handle_start, handle_end } => {
-				let x1 = self.start.x;
-				let x2 = handle_start.x;
-				let x3 = handle_end.x;
-				let x4 = self.end.x;
-				let y1 = self.start.y;
-				let y2 = handle_start.y;
-				let y3 = handle_end.y;
-				let y4 = self.end.y;
-				let a = -18. * x2 * y1 + 36. * x3 * y1 - 18. * x4 * y1 + 18. * x1 * y2 - 54. * x3 * y2 + 36. * x4 * y2 - 36. * x1 * y3 + 54. * x2 * y3 - 18. * x4 * y3 + 18. * x1 * y4 - 36. * x2 * y4
-					+ 18. * x3 * y4;
-				let b = 36. * x2 * y1 - 54. * x3 * y1 + 18. * x4 * y1 - 36. * x1 * y2 + 54. * x3 * y2 - 18. * x4 * y2 + 54. * x1 * y3 - 54. * x2 * y3 - 18. * x1 * y4 + 18. * x2 * y4;
-				let c = -18. * x2 * y1 + 18. * x3 * y1 + 18. * x1 * y2 - 18. * x3 * y2 - 18. * x1 * y3 + 18. * x2 * y3;
-				let discriminant = b * b - 4. * a * c;
-				utils::solve_quadratic(discriminant, 2. * a, b, c)
+			BezierHandles::Cubic { handle_start: _, handle_end: _ } => {
+				// Axis align the curve.
+				let translated_bezier = self.translate(-self.start);
+				match translated_bezier.handles {
+					BezierHandles::Linear => {
+						unreachable!("shouldn't happen")
+					}
+					BezierHandles::Quadratic { handle: _ } => {
+						unreachable!("shouldn't happen")
+					}
+					BezierHandles::Cubic {
+						handle_start: trans_handle_start,
+						handle_end: trans_handle_end,
+					} => {
+						// This naming follows https://pomax.github.io/bezierinfo/#inflections
+						let a = trans_handle_end.x * trans_handle_start.y;
+						let b = translated_bezier.end.x * trans_handle_start.y;
+						let c = trans_handle_start.x * trans_handle_end.y;
+						let d = translated_bezier.end.x * trans_handle_end.y;
+
+						let x = -3. * a + 2. * b + 3. * c - d;
+						let y = 3. * a - b - 3. * c;
+						let z = c - a;
+
+						let discriminant = y * y - 4. * x * z;
+						utils::solve_quadratic(discriminant, 2. * x, y, z)
+					}
+				}
 			}
 		}
 	}

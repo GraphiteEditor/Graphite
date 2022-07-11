@@ -141,6 +141,6 @@ impl WasmBezier {
 
 	pub fn inflections(&self) -> JsValue {
 		let inflections = self.0.inflections();
-		JsValue::from_serde(&serde_json::to_string(&inflections).unwrap()).unwrap()
+		to_js_value(inflections)
 	}
 }
