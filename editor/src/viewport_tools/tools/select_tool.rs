@@ -836,24 +836,7 @@ mod tests {
 		editor
 	}
 
-	/// Tests the behavior of dragging a selection to:
-	/// - Undoing the drag
-	/// - Escaping the drag
-	#[test]
-	fn test_dragging_abort() {
-		init_logger();
-		let mut editor = create_editor_with_rect();
-
-		const RECT_INDEX: usize = 0;
-
-		let document_before_action = &editor.dispatcher.get_active_document();
-		let layers_before_action = document_before_action.root.as_folder().unwrap().layers();
-		let rectangle_before_action = &layers_before_action[RECT_INDEX];
-
-		let (init_x, init_y) = (50f64, 50f64);
-		let (final_x, final_y) = (250f64, 250f64);
-
-		// Initialize the drag
+	fn initialize_drag(editor: &mut Editor, init_x: f64, init_y: f64, final_x: f64, final_y: f64) {
 		editor.select_tool(ToolType::Select);
 		editor.move_mouse(
 			init_x,
@@ -873,6 +856,27 @@ mod tests {
 
 		editor.mousedown(mouse_state);
 		editor.move_mouse(final_x, final_y, mouse_state);
+	}
+
+	/// Tests the behavior of dragging a selection to:
+	/// - TODO: Undoing the drag -> The selection is back to its original position.
+	/// - Escaping the drag -> The selection is back to its original position.
+	#[test]
+	fn test_dragging_abort() {
+		init_logger();
+		let mut editor = create_editor_with_rect();
+
+		const RECT_INDEX: usize = 0;
+
+		let document_before_action = &editor.dispatcher.get_active_document();
+		let layers_before_action = document_before_action.root.as_folder().unwrap().layers();
+		let rectangle_before_action = &layers_before_action[RECT_INDEX];
+
+		let (init_x, init_y) = (50f64, 50f64);
+		let (final_x, final_y) = (250f64, 250f64);
+
+		// Initialize the drag
+		initialize_drag(&mut editor, init_x, init_y, final_x, final_y);
 
 		// Abort the drag
 		let modifier_keys = ModifierKeys::default();
@@ -886,18 +890,64 @@ mod tests {
 	}
 
 	/// Tests the behavior or resizing the bounds of a selection to:
-	/// - Undoing the resize
-	/// - Escaping the resize
+	/// TODO: - Undoing the resize -> The selection reverts to its original size.
+	/// - Escaping the resize -> The selection reverts to its original size.
 	#[test]
 	fn test_resize_bounds_abort() {
-		todo!()
+		init_logger();
+		let mut editor = create_editor_with_rect();
+
+		const RECT_INDEX: usize = 0;
+
+		let document_before_action = &editor.dispatcher.get_active_document();
+		let layers_before_action = document_before_action.root.as_folder().unwrap().layers();
+		let rectangle_before_action = &layers_before_action[RECT_INDEX];
+
+		let (init_x, init_y) = (100f64, 50f64);
+		let (final_x, final_y) = (250f64, 50f64);
+
+		// Initialize the drag
+		initialize_drag(&mut editor, init_x, init_y, final_x, final_y);
+
+		// Abort the drag
+		let modifier_keys = ModifierKeys::default();
+		editor.handle_message(InputPreprocessorMessage::KeyDown { key: Key::KeyEscape, modifier_keys });
+
+		let document_after_action = &editor.dispatcher.get_active_document();
+		let layers_after_action = document_after_action.root.as_folder().unwrap().layers();
+		let rectangle_after_action = &layers_after_action[RECT_INDEX];
+
+		assert_eq!(rectangle_before_action.transform, rectangle_after_action.transform)
 	}
 
 	/// Tests the behavior of rotating the bounds of a selection to:
-	/// - Undoing the rotation
+	/// - TODO: Undoing the rotation
 	/// - Escaping the rotation
 	#[test]
 	fn test_rotate_bounds_abort() {
-		todo!()
+		init_logger();
+		let mut editor = create_editor_with_rect();
+
+		const RECT_INDEX: usize = 0;
+
+		let document_before_action = &editor.dispatcher.get_active_document();
+		let layers_before_action = document_before_action.root.as_folder().unwrap().layers();
+		let rectangle_before_action = &layers_before_action[RECT_INDEX];
+
+		let (init_x, init_y) = (110f64, 110f64);
+		let (final_x, final_y) = (150f64, 150f64);
+
+		// Initialize the drag
+		initialize_drag(&mut editor, init_x, init_y, final_x, final_y);
+
+		// Abort the drag
+		let modifier_keys = ModifierKeys::default();
+		editor.handle_message(InputPreprocessorMessage::KeyDown { key: Key::KeyEscape, modifier_keys });
+
+		let document_after_action = &editor.dispatcher.get_active_document();
+		let layers_after_action = document_after_action.root.as_folder().unwrap().layers();
+		let rectangle_after_action = &layers_after_action[RECT_INDEX];
+
+		assert_eq!(rectangle_before_action.transform, rectangle_after_action.transform)
 	}
 }
