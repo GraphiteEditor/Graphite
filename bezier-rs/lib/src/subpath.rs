@@ -2,13 +2,12 @@ use glam::DVec2;
 
 use crate::Bezier;
 
-struct ManipulatorGroup {
+pub struct ManipulatorGroup {
 	pub anchor: DVec2,
 	pub in_handle: Option<DVec2>,
 	pub out_handle: Option<DVec2>,
 }
 
-// TODO: Enforce that a Subpath cannot be closed if it has 0 or 1 points
 struct SubPath {
 	manipulator_groups: Vec<ManipulatorGroup>,
 	closed: bool,
@@ -23,11 +22,11 @@ impl Iterator for SubPathIter<'_> {
 	type Item = Bezier;
 
 	fn next(&mut self) -> Option<Self::Item> {
-		if self.index >= self.sub_path.manipulator_groups.len() - 1 + (self.sub_path.closed as usize) {
+		if self.index >= self.sub_path.len() - 1 + (self.sub_path.closed as usize) {
 			return None;
 		}
 		let start_index = self.index;
-		let end_index = (self.index + 1) % self.sub_path.manipulator_groups.len();
+		let end_index = (self.index + 1) % self.sub_path.len();
 		self.index += 1;
 
 		let start = self.sub_path.manipulator_groups[start_index].anchor;
@@ -46,7 +45,14 @@ impl Iterator for SubPathIter<'_> {
 }
 
 impl SubPath {
-	/// Create a subpath of length 2, using a bezier
+	/// Create a new SubPath using a list of ManipulatorGroups.
+	/// A SubPath with less than 2 ManipulatorGroups may not be closed.
+	pub fn new(manipulator_groups: Vec<ManipulatorGroup>, closed: bool) -> SubPath {
+		assert!(!closed || manipulator_groups.len() > 1);
+		SubPath { manipulator_groups, closed }
+	}
+
+	/// Create a subpath consisting of 2 manipulator groups from a bezier.
 	pub fn from_bezier(bezier: Bezier) -> Self {
 		SubPath {
 			manipulator_groups: vec![
@@ -65,10 +71,18 @@ impl SubPath {
 		}
 	}
 
-	fn iter(&self) -> SubPathIter {
+	/// Returns the number of ManipulatorGroups contained within the subpath.
+	pub fn len(&self) -> usize {
+		self.manipulator_groups.len()
+	}
+
+	/// Returns an iterator of the Beziers along the subpath.
+	pub fn iter(&self) -> SubPathIter {
 		SubPathIter { sub_path: self, index: 0 }
 	}
 
+	/// Return the sum of the approximation of the length of each bezier curve along the subpath.
+	/// - `num_subdivisions` - Number of subdivisions used to approximate the curve. The default value is 1000.
 	pub fn length(&self, num_subdivisions: Option<i32>) -> f64 {
 		self.iter().map(|bezier| bezier.length(num_subdivisions)).sum()
 	}
@@ -96,8 +110,8 @@ mod tests {
 		let bezier2 = Bezier::from_quadratic_dvec2(middle, handle2, end);
 		let bezier3 = Bezier::from_quadratic_dvec2(end, handle3, start);
 
-		let mut subpath = SubPath {
-			manipulator_groups: vec![
+		let mut subpath = SubPath::new(
+			vec![
 				ManipulatorGroup {
 					anchor: start,
 					in_handle: None,
@@ -114,8 +128,8 @@ mod tests {
 					out_handle: Some(handle3),
 				},
 			],
-			closed: false,
-		};
+			false,
+		);
 
 		assert_eq!(subpath.length(None), bezier1.length(None) + bezier2.length(None));
 
@@ -137,8 +151,8 @@ mod tests {
 		let bezier2 = Bezier::from_quadratic_dvec2(middle, handle1, end);
 		let bezier3 = Bezier::from_cubic_dvec2(end, handle2, handle3, start);
 
-		let mut subpath = SubPath {
-			manipulator_groups: vec![
+		let mut subpath = SubPath::new(
+			vec![
 				ManipulatorGroup {
 					anchor: start,
 					in_handle: Some(handle3),
@@ -155,8 +169,8 @@ mod tests {
 					out_handle: Some(handle2),
 				},
 			],
-			closed: false,
-		};
+			false,
+		);
 
 		assert_eq!(subpath.length(None), bezier1.length(None) + bezier2.length(None));
 
