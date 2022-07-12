@@ -8,8 +8,8 @@ use glam::{DAffine2, DVec2};
 use kurbo::{BezPath, PathEl, Rect, Shape};
 use serde::{Deserialize, Serialize};
 
-/// Subpath represents a single vector path, containing many ManipulatorGroups
-/// For each closed shape we keep a Subpath which contains the ManipulatorGroups (handles and anchors) that define that shape.
+/// [Subpath] represents a single vector path, containing many [ManipulatorGroups].
+/// For each closed shape we keep a [Subpath] which contains the [ManipulatorGroup]s (handles and anchors) that define that shape.
 // TODO Add "closed" bool to subpath
 #[derive(PartialEq, Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Subpath(IdBackedVec<ManipulatorGroup>);
@@ -17,23 +17,26 @@ pub struct Subpath(IdBackedVec<ManipulatorGroup>);
 impl Subpath {
 	// ** INITIALIZATION **
 
-	/// Create a new Subpath with no ManipulatorGroups
+	/// Create a new [Subpath] with no [ManipulatorGroup]s.
 	pub fn new() -> Self {
 		Subpath { ..Default::default() }
 	}
 
 	/// Construct a [Subpath] from a point iterator
 	pub fn from_points(points: impl Iterator<Item = DVec2>, closed: bool) -> Self {
-		let groups = points.map(ManipulatorGroup::new_with_anchor);
+		let manipulator_groups = points.map(ManipulatorGroup::new_with_anchor);
+
 		let mut p_line = Subpath(IdBackedVec::default());
-		p_line.0.push_range(groups);
+
+		p_line.0.push_range(manipulator_groups);
 		if closed {
 			p_line.0.push(ManipulatorGroup::closed());
 		}
+
 		p_line
 	}
 
-	/// Create a new Subpath from a kurbo Shape
+	/// Create a new [Subpath] from a [kurbo Shape](Shape).
 	/// This exists to smooth the transition away from Kurbo
 	pub fn from_kurbo_shape<T: Shape>(shape: &T) -> Self {
 		shape.path_elements(0.1).into()
@@ -87,15 +90,17 @@ impl Subpath {
 	/// `radius` is the distance from the `center` to any vertex, or the radius of the circle the ngon may be inscribed inside
 	/// `sides` is the number of sides
 	pub fn new_ngon(center: DVec2, sides: u64, radius: f64) -> Self {
-		let mut groups = vec![];
+		let mut manipulator_groups = vec![];
 		for i in 0..sides {
 			let angle = (i as f64) * std::f64::consts::TAU / (sides as f64);
 			let center = center + DVec2::ONE * radius;
 			let position = ManipulatorGroup::new_with_anchor(DVec2::new(center.x + radius * f64::cos(angle), center.y + radius * f64::sin(angle)) * 0.5);
-			groups.push(position);
+
+			manipulator_groups.push(position);
 		}
-		groups.push(ManipulatorGroup::closed());
-		Subpath(groups.into_iter().collect())
+		manipulator_groups.push(ManipulatorGroup::closed());
+
+		Subpath(manipulator_groups.into_iter().collect())
 	}
 
 	/// Constructs a line from `p1` to `p2`
@@ -105,9 +110,9 @@ impl Subpath {
 
 	/// Constructs a set of lines from `p1` to `pN`
 	pub fn new_poly_line<T: Into<glam::DVec2>>(points: Vec<T>) -> Self {
-		let groups = points.into_iter().map(|point| ManipulatorGroup::new_with_anchor(point.into()));
+		let manipulator_groups = points.into_iter().map(|point| ManipulatorGroup::new_with_anchor(point.into()));
 		let mut p_line = Subpath(IdBackedVec::default());
-		p_line.0.push_range(groups);
+		p_line.0.push_range(manipulator_groups);
 		p_line
 	}
 
@@ -173,45 +178,48 @@ impl Subpath {
 
 	/// Move the selected points by the delta vector
 	pub fn move_selected(&mut self, delta: DVec2, absolute_position: DVec2, viewspace: &DAffine2) {
-		self.selected_groups_any_points_mut().for_each(|group| group.move_selected_points(delta, absolute_position, viewspace));
+		self.selected_manipulator_groups_any_points_mut()
+			.for_each(|manipulator_group| manipulator_group.move_selected_points(delta, absolute_position, viewspace));
 	}
 
-	/// Delete the selected points from the Subpath
+	/// Delete the selected points from the [Subpath]
 	pub fn delete_selected(&mut self) {
 		let mut ids_to_delete: Vec<u64> = vec![];
-		for (id, group) in self.groups_mut().enumerate_mut() {
-			if group.is_anchor_selected() {
+		for (id, manipulator_group) in self.manipulator_groups_mut().enumerate_mut() {
+			if manipulator_group.is_anchor_selected() {
 				ids_to_delete.push(*id);
 			} else {
-				group.delete_selected();
+				manipulator_group.delete_selected();
 			}
 		}
 
 		for id in ids_to_delete {
-			self.groups_mut().remove(id);
+			self.manipulator_groups_mut().remove(id);
 		}
 	}
 
 	// Apply a transformation to all of the Subpath points
 	pub fn apply_affine(&mut self, affine: DAffine2) {
-		for group in self.groups_mut().iter_mut() {
-			group.transform(&affine);
+		for manipulator_group in self.manipulator_groups_mut().iter_mut() {
+			manipulator_group.transform(&affine);
 		}
 	}
 
 	// ** SELECTION OF POINTS **
 
-	/// Select a single point by providing (GroupId, ControlPointType)
+	/// Set a single point to a chosen selection state by providing `(manipulator group ID, manipulator type)`.
 	pub fn select_point(&mut self, point: (u64, ManipulatorType), selected: bool) -> Option<&mut ManipulatorGroup> {
-		let (group_id, point_id) = point;
-		if let Some(anchor) = self.groups_mut().by_id_mut(group_id) {
-			anchor.select_point(point_id as usize, selected);
-			return Some(anchor);
+		let (manipulator_group_id, point_id) = point;
+		if let Some(manipulator_group) = self.manipulator_groups_mut().by_id_mut(manipulator_group_id) {
+			manipulator_group.select_point(point_id as usize, selected);
+
+			Some(manipulator_group)
+		} else {
+			None
 		}
-		None
 	}
 
-	/// Select points in the Subpath, given by (GroupId, ControlPointType)
+	/// Set points in the [Subpath] to a chosen selection state, given by `(manipulator group ID, manipulator type)`.
 	pub fn select_points(&mut self, points: &[(u64, ManipulatorType)], selected: bool) {
 		points.iter().for_each(|point| {
 			self.select_point(*point, selected);
@@ -220,81 +228,85 @@ impl Subpath {
 
 	/// Select all the anchors in this shape
 	pub fn select_all_anchors(&mut self) {
-		for group in self.groups_mut().iter_mut() {
-			group.select_point(ManipulatorType::Anchor as usize, true);
+		for manipulator_group in self.manipulator_groups_mut().iter_mut() {
+			manipulator_group.select_point(ManipulatorType::Anchor as usize, true);
 		}
 	}
 
 	/// Select an anchor by index
-	pub fn select_anchor_by_index(&mut self, group_index: usize) -> Option<&mut ManipulatorGroup> {
-		if let Some(group) = self.groups_mut().by_index_mut(group_index) {
-			group.select_point(ManipulatorType::Anchor as usize, true);
-			return Some(group);
+	pub fn select_anchor_by_index(&mut self, manipulator_group_index: usize) -> Option<&mut ManipulatorGroup> {
+		if let Some(manipulator_group) = self.manipulator_groups_mut().by_index_mut(manipulator_group_index) {
+			manipulator_group.select_point(ManipulatorType::Anchor as usize, true);
+
+			Some(manipulator_group)
+		} else {
+			None
 		}
-		None
 	}
 
 	/// The last anchor in the shape
 	pub fn select_last_anchor(&mut self) -> Option<&mut ManipulatorGroup> {
-		if let Some(group) = self.groups_mut().last_mut() {
-			group.select_point(ManipulatorType::Anchor as usize, true);
-			return Some(group);
+		if let Some(manipulator_group) = self.manipulator_groups_mut().last_mut() {
+			manipulator_group.select_point(ManipulatorType::Anchor as usize, true);
+
+			Some(manipulator_group)
+		} else {
+			None
 		}
-		None
 	}
 
-	/// Clear all the selected groups, aka clear the selected points inside the group
-	pub fn clear_selected_groups(&mut self) {
-		for group in self.groups_mut().iter_mut() {
-			group.clear_selected_points();
+	/// Clear all the selected manipulator groups, i.e., clear the selected points inside the manipulator groups
+	pub fn clear_selected_manipulator_groups(&mut self) {
+		for manipulator_group in self.manipulator_groups_mut().iter_mut() {
+			manipulator_group.clear_selected_points();
 		}
 	}
 
 	// ** ACCESSING MANIPULATORGROUPS **
 
 	/// Return all the selected anchors, reference
-	pub fn selected_groups(&self) -> impl Iterator<Item = &ManipulatorGroup> {
-		self.groups().iter().filter(|group| group.is_anchor_selected())
+	pub fn selected_manipulator_groups(&self) -> impl Iterator<Item = &ManipulatorGroup> {
+		self.manipulator_groups().iter().filter(|manipulator_group| manipulator_group.is_anchor_selected())
 	}
 
 	/// Return all the selected anchors, mutable
-	pub fn selected_groups_mut(&mut self) -> impl Iterator<Item = &mut ManipulatorGroup> {
-		self.groups_mut().iter_mut().filter(|group| group.is_anchor_selected())
+	pub fn selected_manipulator_groups_mut(&mut self) -> impl Iterator<Item = &mut ManipulatorGroup> {
+		self.manipulator_groups_mut().iter_mut().filter(|manipulator_group| manipulator_group.is_anchor_selected())
 	}
 
-	/// Return all the selected ManipulatorPoints, reference
-	pub fn selected_groups_any_points(&self) -> impl Iterator<Item = &ManipulatorGroup> {
-		self.groups().iter().filter(|group| group.any_points_selected())
+	/// Return all the selected [ManipulatorPoint]s by reference
+	pub fn selected_manipulator_groups_any_points(&self) -> impl Iterator<Item = &ManipulatorGroup> {
+		self.manipulator_groups().iter().filter(|manipulator_group| manipulator_group.any_points_selected())
 	}
 
-	/// Return all the selected ManipulatorPoints, mutable
-	pub fn selected_groups_any_points_mut(&mut self) -> impl Iterator<Item = &mut ManipulatorGroup> {
-		self.groups_mut().iter_mut().filter(|group| group.any_points_selected())
+	/// Return all the selected [ManipulatorPoint]s by mutable reference
+	pub fn selected_manipulator_groups_any_points_mut(&mut self) -> impl Iterator<Item = &mut ManipulatorGroup> {
+		self.manipulator_groups_mut().iter_mut().filter(|manipulator_group| manipulator_group.any_points_selected())
 	}
 
 	/// An alias for `self.0`
-	pub fn groups(&self) -> &IdBackedVec<ManipulatorGroup> {
+	pub fn manipulator_groups(&self) -> &IdBackedVec<ManipulatorGroup> {
 		&self.0
 	}
 
-	/// Returns a [ManipulatorPoint] from the last [ManipulatorGroup] in the Subpath.
+	/// Returns a [ManipulatorPoint] from the last [ManipulatorGroup] in the [Subpath].
 	pub fn last_point(&self, control_type: ManipulatorType) -> Option<&ManipulatorPoint> {
-		self.groups().last().and_then(|group| group.points[control_type].as_ref())
+		self.manipulator_groups().last().and_then(|manipulator_group| manipulator_group.points[control_type].as_ref())
 	}
 
 	/// Returns a [ManipulatorPoint] from the last [ManipulatorGroup], mutably
 	pub fn last_point_mut(&mut self, control_type: ManipulatorType) -> Option<&mut ManipulatorPoint> {
-		self.groups_mut().last_mut().and_then(|group| group.points[control_type].as_mut())
+		self.manipulator_groups_mut().last_mut().and_then(|manipulator_group| manipulator_group.points[control_type].as_mut())
 	}
 
 	/// Returns a [ManipulatorPoint]  from the first [ManipulatorGroup]
 	pub fn first_point(&self, control_type: ManipulatorType) -> Option<&ManipulatorPoint> {
-		self.groups().first().and_then(|group| group.points[control_type].as_ref())
+		self.manipulator_groups().first().and_then(|manipulator_group| manipulator_group.points[control_type].as_ref())
 	}
 
 	/// Returns a [ManipulatorPoint] from the first [ManipulatorGroup]
 	pub fn first_point_mut(&mut self, control_type: ManipulatorType) -> Option<&mut ManipulatorPoint> {
-		self.groups_mut().first_mut().and_then(|group| group.points[control_type].as_mut())
+		self.manipulator_groups_mut().first_mut().and_then(|manipulator_group| manipulator_group.points[control_type].as_mut())
 	}
 
 	/// Should we close the shape?
@@ -313,12 +325,12 @@ impl Subpath {
 	/// Close the shape if able
 	pub fn close_shape(&mut self) {
 		if self.should_close_shape() {
-			self.groups_mut().push_end(ManipulatorGroup::closed());
+			self.manipulator_groups_mut().push_end(ManipulatorGroup::closed());
 		}
 	}
 
 	/// An alias for `self.0` mutable
-	pub fn groups_mut(&mut self) -> &mut IdBackedVec<ManipulatorGroup> {
+	pub fn manipulator_groups_mut(&mut self) -> &mut IdBackedVec<ManipulatorGroup> {
 		&mut self.0
 	}
 
@@ -350,10 +362,10 @@ impl Subpath {
 		let (mut first_in_handle, mut first_in_anchor) = (None, None);
 		// Should the next element be a moveto?
 		let mut start_new_contour = true;
-		for group in self.groups().iter() {
-			let in_handle = group.points[ManipulatorType::InHandle].as_ref().map(|point| point.position);
-			let anchor = group.points[ManipulatorType::Anchor].as_ref().map(|point| point.position);
-			let out_handle = group.points[ManipulatorType::OutHandle].as_ref().map(|point| point.position);
+		for manipulator_group in self.manipulator_groups().iter() {
+			let in_handle = manipulator_group.points[ManipulatorType::InHandle].as_ref().map(|point| point.position);
+			let anchor = manipulator_group.points[ManipulatorType::Anchor].as_ref().map(|point| point.position);
+			let out_handle = manipulator_group.points[ManipulatorType::OutHandle].as_ref().map(|point| point.position);
 
 			let command = match (last_out_handle.is_some(), in_handle.is_some(), anchor.is_some()) {
 				(_, _, true) if start_new_contour => 'M',
@@ -393,9 +405,9 @@ impl Subpath {
 
 // ** CONVERSIONS **
 
-/// Convert a mutable layer into a mutable Subpath
 impl<'a> TryFrom<&'a mut Layer> for &'a mut Subpath {
 	type Error = &'static str;
+	/// Convert a mutable layer into a mutable [Subpath].
 	fn try_from(layer: &'a mut Layer) -> Result<&'a mut Subpath, Self::Error> {
 		match &mut layer.data {
 			LayerDataType::Shape(layer) => Ok(&mut layer.shape),
@@ -406,9 +418,9 @@ impl<'a> TryFrom<&'a mut Layer> for &'a mut Subpath {
 	}
 }
 
-/// Convert a reference to a layer into a reference of a Subpath
 impl<'a> TryFrom<&'a Layer> for &'a Subpath {
 	type Error = &'static str;
+	/// Convert a reference to a layer into a reference of a [Subpath].
 	fn try_from(layer: &'a Layer) -> Result<&'a Subpath, Self::Error> {
 		match &layer.data {
 			LayerDataType::Shape(layer) => Ok(&layer.shape),
@@ -419,11 +431,11 @@ impl<'a> TryFrom<&'a Layer> for &'a Subpath {
 	}
 }
 
-/// Create a BezPath from a Subpath
 impl From<&Subpath> for BezPath {
+	/// Create a [BezPath] from a [Subpath].
 	fn from(subpath: &Subpath) -> Self {
-		// Take anchors and create path elements: line, quad or curve, or a close indicator
-		let groups_to_path_el = |first: &ManipulatorGroup, second: &ManipulatorGroup| -> (PathEl, bool) {
+		// Take manipulator groups and create path elements: line, quad or curve, or a close indicator
+		let manipulator_groups_to_path_el = |first: &ManipulatorGroup, second: &ManipulatorGroup| -> (PathEl, bool) {
 			match [
 				&first.points[ManipulatorType::OutHandle],
 				&second.points[ManipulatorType::InHandle],
@@ -434,7 +446,7 @@ impl From<&Subpath> for BezPath {
 				[Some(out_handle), None, Some(anchor)] => (PathEl::QuadTo(point_to_kurbo(out_handle), point_to_kurbo(anchor)), false),
 				[Some(out_handle), Some(in_handle), Some(anchor)] => (PathEl::CurveTo(point_to_kurbo(out_handle), point_to_kurbo(in_handle), point_to_kurbo(anchor)), false),
 				[Some(out_handle), None, None] => {
-					if let Some(first_anchor) = subpath.groups().first() {
+					if let Some(first_anchor) = subpath.manipulator_groups().first() {
 						(
 							if let Some(in_handle) = &first_anchor.points[ManipulatorType::InHandle] {
 								PathEl::CurveTo(
@@ -456,14 +468,14 @@ impl From<&Subpath> for BezPath {
 			}
 		};
 
-		if subpath.groups().is_empty() {
+		if subpath.manipulator_groups().is_empty() {
 			return BezPath::new();
 		}
 
 		let mut bez_path = vec![];
 		let mut start_new_shape = true;
 
-		for elements in subpath.groups().windows(2) {
+		for elements in subpath.manipulator_groups().windows(2) {
 			let first = &elements[0];
 			let second = &elements[1];
 
@@ -474,8 +486,8 @@ impl From<&Subpath> for BezPath {
 				}
 			}
 
-			// Create a path element from our first, second anchors in the window
-			let (path_el, should_start_new_shape) = groups_to_path_el(first, second);
+			// Create a path element from our first and second manipulator groups in the window
+			let (path_el, should_start_new_shape) = manipulator_groups_to_path_el(first, second);
 			start_new_shape = should_start_new_shape;
 			bez_path.push(path_el);
 			if should_start_new_shape && bez_path.last().filter(|&&el| el == PathEl::ClosePath).is_none() {
@@ -487,29 +499,29 @@ impl From<&Subpath> for BezPath {
 	}
 }
 
-/// Create a Subpath from a BezPath
 impl<T: Iterator<Item = PathEl>> From<T> for Subpath {
+	/// Create a Subpath from a [BezPath].
 	fn from(path: T) -> Self {
 		let mut subpath = Subpath::new();
 		for path_el in path {
 			match path_el {
 				PathEl::MoveTo(p) => {
-					subpath.groups_mut().push_end(ManipulatorGroup::new_with_anchor(kurbo_point_to_dvec2(p)));
+					subpath.manipulator_groups_mut().push_end(ManipulatorGroup::new_with_anchor(kurbo_point_to_dvec2(p)));
 				}
 				PathEl::LineTo(p) => {
-					subpath.groups_mut().push_end(ManipulatorGroup::new_with_anchor(kurbo_point_to_dvec2(p)));
+					subpath.manipulator_groups_mut().push_end(ManipulatorGroup::new_with_anchor(kurbo_point_to_dvec2(p)));
 				}
 				PathEl::QuadTo(p0, p1) => {
-					subpath.groups_mut().push_end(ManipulatorGroup::new_with_anchor(kurbo_point_to_dvec2(p1)));
-					subpath.groups_mut().last_mut().unwrap().points[ManipulatorType::InHandle] = Some(ManipulatorPoint::new(kurbo_point_to_dvec2(p0), ManipulatorType::InHandle));
+					subpath.manipulator_groups_mut().push_end(ManipulatorGroup::new_with_anchor(kurbo_point_to_dvec2(p1)));
+					subpath.manipulator_groups_mut().last_mut().unwrap().points[ManipulatorType::InHandle] = Some(ManipulatorPoint::new(kurbo_point_to_dvec2(p0), ManipulatorType::InHandle));
 				}
 				PathEl::CurveTo(p0, p1, p2) => {
-					subpath.groups_mut().last_mut().unwrap().points[ManipulatorType::OutHandle] = Some(ManipulatorPoint::new(kurbo_point_to_dvec2(p0), ManipulatorType::OutHandle));
-					subpath.groups_mut().push_end(ManipulatorGroup::new_with_anchor(kurbo_point_to_dvec2(p2)));
-					subpath.groups_mut().last_mut().unwrap().points[ManipulatorType::InHandle] = Some(ManipulatorPoint::new(kurbo_point_to_dvec2(p1), ManipulatorType::InHandle));
+					subpath.manipulator_groups_mut().last_mut().unwrap().points[ManipulatorType::OutHandle] = Some(ManipulatorPoint::new(kurbo_point_to_dvec2(p0), ManipulatorType::OutHandle));
+					subpath.manipulator_groups_mut().push_end(ManipulatorGroup::new_with_anchor(kurbo_point_to_dvec2(p2)));
+					subpath.manipulator_groups_mut().last_mut().unwrap().points[ManipulatorType::InHandle] = Some(ManipulatorPoint::new(kurbo_point_to_dvec2(p1), ManipulatorType::InHandle));
 				}
 				PathEl::ClosePath => {
-					subpath.groups_mut().push_end(ManipulatorGroup::closed());
+					subpath.manipulator_groups_mut().push_end(ManipulatorGroup::closed());
 				}
 			}
 		}

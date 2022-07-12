@@ -14,7 +14,7 @@ use graphene::{LayerId, Operation};
 use glam::{DAffine2, DVec2};
 use std::collections::{HashMap, VecDeque};
 
-/// ManipulatorGroupOverlays is the collection of overlays that make up an ManipulatorGroup visible in the editor
+/// [ManipulatorGroupOverlay]s is the collection of overlays that make up an [ManipulatorGroup] visible in the editor.
 type ManipulatorGroupOverlays = [Option<Vec<LayerId>>; 5];
 type ManipulatorId = u64;
 
@@ -56,27 +56,27 @@ impl OverlayRenderer {
 					Self::place_outline_overlays(outline_path.clone(), &transform, responses);
 				}
 
-				// Create, place and style the anchor / handle overlays
-				for (group_id, group) in shape.groups().enumerate() {
-					let group_cache = self.manipulator_group_overlay_cache.get_mut(&(*layer_id, *group_id));
+				// Create, place, and style the manipulator overlays
+				for (manipulator_group_id, manipulator_group) in shape.manipulator_groups().enumerate() {
+					let manipulator_group_cache = self.manipulator_group_overlay_cache.get_mut(&(*layer_id, *manipulator_group_id));
 
 					// If cached update placement and style
-					if let Some(group_overlays) = group_cache {
-						log::trace!("Overlay: Updating detail overlays for {:?}", group_overlays);
-						Self::place_manipulator_group_overlays(group, group_overlays, &transform, responses);
-						Self::style_overlays(group, group_overlays, responses);
+					if let Some(manipulator_group_overlays) = manipulator_group_cache {
+						log::trace!("Overlay: Updating detail overlays for {:?}", manipulator_group_overlays);
+						Self::place_manipulator_group_overlays(manipulator_group, manipulator_group_overlays, &transform, responses);
+						Self::style_overlays(manipulator_group, manipulator_group_overlays, responses);
 					} else {
 						// Create if not cached
-						let mut group_overlays = [
+						let mut manipulator_group_overlays = [
 							Some(self.create_anchor_overlay(responses)),
-							Self::create_handle_overlay_if_exists(&group.points[ManipulatorType::InHandle], responses),
-							Self::create_handle_overlay_if_exists(&group.points[ManipulatorType::OutHandle], responses),
-							Self::create_handle_line_overlay_if_exists(&group.points[ManipulatorType::InHandle], responses),
-							Self::create_handle_line_overlay_if_exists(&group.points[ManipulatorType::OutHandle], responses),
+							Self::create_handle_overlay_if_exists(&manipulator_group.points[ManipulatorType::InHandle], responses),
+							Self::create_handle_overlay_if_exists(&manipulator_group.points[ManipulatorType::OutHandle], responses),
+							Self::create_handle_line_overlay_if_exists(&manipulator_group.points[ManipulatorType::InHandle], responses),
+							Self::create_handle_line_overlay_if_exists(&manipulator_group.points[ManipulatorType::OutHandle], responses),
 						];
-						Self::place_manipulator_group_overlays(group, &mut group_overlays, &transform, responses);
-						Self::style_overlays(group, &group_overlays, responses);
-						self.manipulator_group_overlay_cache.insert((*layer_id, *group_id), group_overlays);
+						Self::place_manipulator_group_overlays(manipulator_group, &mut manipulator_group_overlays, &transform, responses);
+						Self::style_overlays(manipulator_group, &manipulator_group_overlays, responses);
+						self.manipulator_group_overlay_cache.insert((*layer_id, *manipulator_group_id), manipulator_group_overlays);
 					}
 				}
 				// TODO Handle removing shapes from cache so we don't memory leak
@@ -97,9 +97,9 @@ impl OverlayRenderer {
 		// Remove the ManipulatorGroup overlays
 		if let Ok(layer) = document.layer(&layer_path) {
 			if let Some(shape) = layer.as_subpath() {
-				for (id, _) in shape.groups().enumerate() {
-					if let Some(group_overlays) = self.manipulator_group_overlay_cache.get(&(*layer_id, *id)) {
-						Self::remove_manipulator_group_overlays(group_overlays, responses);
+				for (id, _) in shape.manipulator_groups().enumerate() {
+					if let Some(manipulator_group_overlays) = self.manipulator_group_overlay_cache.get(&(*layer_id, *id)) {
+						Self::remove_manipulator_group_overlays(manipulator_group_overlays, responses);
 						self.manipulator_group_overlay_cache.remove(&(*layer_id, *id));
 					}
 				}
@@ -118,7 +118,7 @@ impl OverlayRenderer {
 		// Hide the manipulator group overlays
 		if let Ok(layer) = document.layer(&layer_path) {
 			if let Some(shape) = layer.as_subpath() {
-				for (id, _) in shape.groups().enumerate() {
+				for (id, _) in shape.manipulator_groups().enumerate() {
 					if let Some(manipulator_group_overlays) = self.manipulator_group_overlay_cache.get(&(*layer_id, *id)) {
 						Self::set_manipulator_group_overlay_visibility(manipulator_group_overlays, visibility, responses);
 					}
@@ -127,12 +127,12 @@ impl OverlayRenderer {
 		}
 	}
 
-	/// Create the kurbo shape that matches the selected viewport shape
-	fn create_shape_outline_overlay(&self, vector_path: Subpath, responses: &mut VecDeque<Message>) -> Vec<LayerId> {
+	/// Create the kurbo shape that matches the selected viewport shape.
+	fn create_shape_outline_overlay(&self, subpath: Subpath, responses: &mut VecDeque<Message>) -> Vec<LayerId> {
 		let layer_path = vec![generate_uuid()];
 		let operation = Operation::AddShape {
 			path: layer_path.clone(),
-			subpath: vector_path,
+			subpath,
 			style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, PATH_OUTLINE_WEIGHT)), Fill::None),
 			insert_index: -1,
 			transform: DAffine2::IDENTITY.to_cols_array(),
@@ -142,7 +142,7 @@ impl OverlayRenderer {
 		layer_path
 	}
 
-	/// Create a single anchor overlay and return its layer id
+	/// Create a single anchor overlay and return its layer ID.
 	fn create_anchor_overlay(&self, responses: &mut VecDeque<Message>) -> Vec<LayerId> {
 		let layer_path = vec![generate_uuid()];
 		let operation = Operation::AddRect {
@@ -155,7 +155,7 @@ impl OverlayRenderer {
 		layer_path
 	}
 
-	/// Create a single handle overlay and return its layer id
+	/// Create a single handle overlay and return its layer ID.
 	fn create_handle_overlay(responses: &mut VecDeque<Message>) -> Vec<LayerId> {
 		let layer_path = vec![generate_uuid()];
 		let operation = Operation::AddEllipse {
@@ -168,12 +168,12 @@ impl OverlayRenderer {
 		layer_path
 	}
 
-	/// Create a single handle overlay and return its layer id if it exists
+	/// Create a single handle overlay and return its layer id if it exists.
 	fn create_handle_overlay_if_exists(handle: &Option<ManipulatorPoint>, responses: &mut VecDeque<Message>) -> Option<Vec<LayerId>> {
 		handle.as_ref().map(|_| Self::create_handle_overlay(responses))
 	}
 
-	/// Create the shape outline overlay and return its layer id
+	/// Create the shape outline overlay and return its layer ID.
 	fn create_handle_line_overlay(responses: &mut VecDeque<Message>) -> Vec<LayerId> {
 		let layer_path = vec![generate_uuid()];
 		let operation = Operation::AddLine {
@@ -186,7 +186,7 @@ impl OverlayRenderer {
 		layer_path
 	}
 
-	/// Create the shape outline overlay and return its layer id
+	/// Create the shape outline overlay and return its layer ID.
 	fn create_handle_line_overlay_if_exists(handle: &Option<ManipulatorPoint>, responses: &mut VecDeque<Message>) -> Option<Vec<LayerId>> {
 		handle.as_ref().map(|_| Self::create_handle_line_overlay(responses))
 	}
@@ -196,15 +196,15 @@ impl OverlayRenderer {
 		responses.push_back(transform_message);
 	}
 
-	fn modify_outline_overlays(outline_path: Vec<LayerId>, vector_path: Subpath, responses: &mut VecDeque<Message>) {
-		let outline_modify_message = Self::overlay_modify_message(outline_path, vector_path);
+	fn modify_outline_overlays(outline_path: Vec<LayerId>, subpath: Subpath, responses: &mut VecDeque<Message>) {
+		let outline_modify_message = Self::overlay_modify_message(outline_path, subpath);
 		responses.push_back(outline_modify_message);
 	}
 
-	/// Updates the position of the overlays based on the Subpath points
-	fn place_manipulator_group_overlays(group: &ManipulatorGroup, overlays: &mut ManipulatorGroupOverlays, parent_transform: &DAffine2, responses: &mut VecDeque<Message>) {
-		if let Some(manipulator_point) = &group.points[ManipulatorType::Anchor] {
-			// Helper function to keep things DRY
+	/// Updates the position of the overlays based on the [Subpath] points.
+	fn place_manipulator_group_overlays(manipulator_group: &ManipulatorGroup, overlays: &mut ManipulatorGroupOverlays, parent_transform: &DAffine2, responses: &mut VecDeque<Message>) {
+		if let Some(manipulator_point) = &manipulator_group.points[ManipulatorType::Anchor] {
+			// Helper function to keep things DRY (don't-repeat-yourself)
 			let mut place_handle_and_line = |handle: &ManipulatorPoint, line_source: &mut Option<Vec<LayerId>>, marker_source: &mut Option<Vec<LayerId>>| {
 				let line_overlay = line_source.take().unwrap_or_else(|| Self::create_handle_line_overlay(responses));
 				let line_vector = parent_transform.transform_point2(manipulator_point.position) - parent_transform.transform_point2(handle.position);
@@ -225,7 +225,7 @@ impl OverlayRenderer {
 			};
 
 			// Place the handle overlays
-			let [_, h1, h2] = &group.points;
+			let [_, h1, h2] = &manipulator_group.points;
 			let [a, b, c, line1, line2] = overlays;
 			let markers = [a, b, c];
 			if let Some(handle) = &h1 {
@@ -248,7 +248,7 @@ impl OverlayRenderer {
 		}
 	}
 
-	/// Removes the anchor / handle overlays from the overlay document
+	/// Removes the manipulator overlays from the overlay document.
 	fn remove_manipulator_group_overlays(overlay_paths: &ManipulatorGroupOverlays, responses: &mut VecDeque<Message>) {
 		overlay_paths.iter().flatten().for_each(|layer_id| {
 			log::trace!("Overlay: Sending delete message for: {:?}", layer_id);
@@ -260,7 +260,7 @@ impl OverlayRenderer {
 		responses.push_back(DocumentMessage::Overlays(Operation::DeleteLayer { path: overlay_path }.into()).into());
 	}
 
-	/// Sets the visibility of the handles overlay
+	/// Sets the visibility of the handles overlay.
 	fn set_manipulator_group_overlay_visibility(manipulator_group_overlays: &ManipulatorGroupOverlays, visibility: bool, responses: &mut VecDeque<Message>) {
 		manipulator_group_overlays.iter().flatten().for_each(|layer_id| {
 			responses.push_back(Self::overlay_visibility_message(layer_id.clone(), visibility));
@@ -271,7 +271,7 @@ impl OverlayRenderer {
 		responses.push_back(Self::overlay_visibility_message(overlay_path, visibility));
 	}
 
-	/// Create a visibility message for an overlay
+	/// Create a visibility message for an overlay.
 	fn overlay_visibility_message(layer_path: Vec<LayerId>, visibility: bool) -> Message {
 		DocumentMessage::Overlays(
 			Operation::SetLayerVisibility {
@@ -283,32 +283,25 @@ impl OverlayRenderer {
 		.into()
 	}
 
-	/// Create a transform message for an overlay
+	/// Create a transform message for an overlay.
 	fn overlay_transform_message(layer_path: Vec<LayerId>, transform: [f64; 6]) -> Message {
 		DocumentMessage::Overlays(Operation::SetLayerTransformInViewport { path: layer_path, transform }.into()).into()
 	}
 
-	/// Create an update message for an overlay
-	fn overlay_modify_message(layer_path: Vec<LayerId>, vector_path: Subpath) -> Message {
-		DocumentMessage::Overlays(
-			Operation::SetShapePath {
-				path: layer_path,
-				subpath: vector_path,
-			}
-			.into(),
-		)
-		.into()
+	/// Create an update message for an overlay.
+	fn overlay_modify_message(layer_path: Vec<LayerId>, subpath: Subpath) -> Message {
+		DocumentMessage::Overlays(Operation::SetShapePath { path: layer_path, subpath }.into()).into()
 	}
 
-	/// Sets the overlay style for this point
-	fn style_overlays(group: &ManipulatorGroup, overlays: &ManipulatorGroupOverlays, responses: &mut VecDeque<Message>) {
+	/// Sets the overlay style for this point.
+	fn style_overlays(manipulator_group: &ManipulatorGroup, overlays: &ManipulatorGroupOverlays, responses: &mut VecDeque<Message>) {
 		// TODO Move the style definitions out of the Subpath, should be looked up from a stylesheet or similar
 		let selected_style = style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, POINT_STROKE_WEIGHT + 1.0)), Fill::solid(COLOR_ACCENT));
 		let deselected_style = style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, POINT_STROKE_WEIGHT)), Fill::solid(Color::WHITE));
 
-		// Update if the anchor / handle points are shown as selected
+		// Update if the manipulator points are shown as selected
 		// Here the index is important, even though overlays[..] has five elements we only care about the first three
-		for (index, point) in group.points.iter().enumerate() {
+		for (index, point) in manipulator_group.points.iter().enumerate() {
 			if let Some(point) = point {
 				if let Some(overlay) = &overlays[index] {
 					let style = if point.editor_state.is_selected { selected_style.clone() } else { deselected_style.clone() };

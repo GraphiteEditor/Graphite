@@ -39,7 +39,7 @@ impl<T> Index<ManipulatorType> for [T; 3] {
 		&self[mt as usize]
 	}
 }
-// Allows us to use ControlPointType for indexing, mutably
+// Allows us to use ManipulatorType for indexing, mutably
 impl<T> IndexMut<ManipulatorType> for [T; 3] {
 	fn index_mut(&mut self, mt: ManipulatorType) -> &mut T {
 		&mut self[mt as usize]

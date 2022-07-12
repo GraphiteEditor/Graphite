@@ -219,7 +219,7 @@ impl BoundingBoxOverlays {
 		}
 	}
 
-	/// Calculats the transformed handle positions based on the bounding box and the transform
+	/// Calculates the transformed handle positions based on the bounding box and the transform
 	pub fn evaluate_transform_handle_positions(&self) -> [DVec2; 8] {
 		let (left, top): (f64, f64) = self.bounds[0].into();
 		let (right, bottom): (f64, f64) = self.bounds[1].into();

@@ -2,7 +2,7 @@ use super::constants::ManipulatorType;
 use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};
 
-/// ManipulatorPoint represents any editable point, anchor or handle
+/// [ManipulatorPoint] represents any editable Bezier point, either an anchor or handle
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub struct ManipulatorPoint {
 	/// The sibling element if this is a handle
@@ -27,7 +27,7 @@ impl Default for ManipulatorPoint {
 }
 
 impl ManipulatorPoint {
-	/// Initialize a new control point
+	/// Initialize a new [ManipulatorPoint].
 	pub fn new(position: glam::DVec2, manipulator_type: ManipulatorType) -> Self {
 		assert!(position.is_finite(), "tried to create point with non finite position");
 		Self {
@@ -37,11 +37,12 @@ impl ManipulatorPoint {
 		}
 	}
 
-	/// Sets if this point is selected
+	/// Sets this [ManipulatorPoint] to a chosen selection state.
 	pub fn set_selected(&mut self, selected: bool) {
 		self.editor_state.is_selected = selected;
 	}
 
+	/// Whether this [ManipulatorPoint] is currently selected.
 	pub fn is_selected(&self) -> bool {
 		self.editor_state.is_selected
 	}
@@ -61,9 +62,9 @@ impl ManipulatorPoint {
 
 #[derive(PartialEq, Eq, Clone, Debug)]
 pub struct ManipulatorPointEditorState {
-	/// If this control point can be selected
+	/// Whether or not this manipulator point can be selected.
 	pub can_be_selected: bool,
-	/// Is this control point currently selected
+	/// Whether or not this manipulator point is currently selected.
 	pub is_selected: bool,
 }
 

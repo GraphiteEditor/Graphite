@@ -69,7 +69,7 @@ impl LayerData for ShapeLayer {
 	}
 
 	fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, _font_cache: &FontCache) {
-		let filled = self.style.fill().is_some() || self.shape.groups().last().filter(|anchor| anchor.is_close()).is_some();
+		let filled = self.style.fill().is_some() || self.shape.manipulator_groups().last().filter(|manipulator_group| manipulator_group.is_close()).is_some();
 		if intersect_quad_bez_path(quad, &(&self.shape).into(), filled) {
 			intersections.push(path.clone());
 		}

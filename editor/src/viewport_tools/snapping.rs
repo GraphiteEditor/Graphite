@@ -254,7 +254,7 @@ impl SnapHandler {
 			let transform = document_message_handler.graphene_document.multiply_transforms(path).unwrap();
 			let snap_points = shape_layer
 				.shape
-				.groups()
+				.manipulator_groups()
 				.enumerate()
 				.flat_map(|(id, shape)| {
 					if include_handles {

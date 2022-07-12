@@ -139,7 +139,7 @@ impl TextLayer {
 	/// Converts to a [Subpath], populating the cache if necessary.
 	#[inline]
 	pub fn to_subpath(&mut self, buzz_face: Option<Face>) -> Subpath {
-		if self.cached_path.as_ref().filter(|x| !x.groups().is_empty()).is_none() {
+		if self.cached_path.as_ref().filter(|subpath| !subpath.manipulator_groups().is_empty()).is_none() {
 			let path = self.generate_path(buzz_face);
 			self.cached_path = Some(path.clone());
 			return path;
@@ -152,7 +152,10 @@ impl TextLayer {
 	pub fn to_subpath_nonmut(&self, font_cache: &FontCache) -> Subpath {
 		let buzz_face = self.load_face(font_cache);
 
-		self.cached_path.clone().filter(|x| !x.groups().is_empty()).unwrap_or_else(|| self.generate_path(buzz_face))
+		self.cached_path
+			.clone()
+			.filter(|subpath| !subpath.manipulator_groups().is_empty())
+			.unwrap_or_else(|| self.generate_path(buzz_face))
 	}
 
 	#[inline]

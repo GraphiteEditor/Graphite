@@ -24,32 +24,32 @@ impl Builder {
 impl OutlineBuilder for Builder {
 	fn move_to(&mut self, x: f32, y: f32) {
 		let anchor = self.point(x, y);
-		if self.path.groups().last().filter(|el| el.points.iter().any(Option::is_some)).is_some() {
-			self.path.groups_mut().push_end(ManipulatorGroup::closed());
+		if self.path.manipulator_groups().last().filter(|el| el.points.iter().any(Option::is_some)).is_some() {
+			self.path.manipulator_groups_mut().push_end(ManipulatorGroup::closed());
 		}
-		self.path.groups_mut().push_end(ManipulatorGroup::new_with_anchor(anchor));
+		self.path.manipulator_groups_mut().push_end(ManipulatorGroup::new_with_anchor(anchor));
 	}
 
 	fn line_to(&mut self, x: f32, y: f32) {
 		let anchor = self.point(x, y);
-		self.path.groups_mut().push_end(ManipulatorGroup::new_with_anchor(anchor));
+		self.path.manipulator_groups_mut().push_end(ManipulatorGroup::new_with_anchor(anchor));
 	}
 
 	fn quad_to(&mut self, x1: f32, y1: f32, x2: f32, y2: f32) {
 		let [handle, anchor] = [self.point(x1, y1), self.point(x2, y2)];
-		self.path.groups_mut().last_mut().unwrap().points[ManipulatorType::OutHandle] = Some(ManipulatorPoint::new(handle, ManipulatorType::OutHandle));
-		self.path.groups_mut().push_end(ManipulatorGroup::new_with_anchor(anchor));
+		self.path.manipulator_groups_mut().last_mut().unwrap().points[ManipulatorType::OutHandle] = Some(ManipulatorPoint::new(handle, ManipulatorType::OutHandle));
+		self.path.manipulator_groups_mut().push_end(ManipulatorGroup::new_with_anchor(anchor));
 	}
 
 	fn curve_to(&mut self, x1: f32, y1: f32, x2: f32, y2: f32, x3: f32, y3: f32) {
 		let [handle1, handle2, anchor] = [self.point(x1, y1), self.point(x2, y2), self.point(x3, y3)];
-		self.path.groups_mut().last_mut().unwrap().points[ManipulatorType::OutHandle] = Some(ManipulatorPoint::new(handle1, ManipulatorType::OutHandle));
-		self.path.groups_mut().push_end(ManipulatorGroup::new_with_anchor(anchor));
-		self.path.groups_mut().last_mut().unwrap().points[ManipulatorType::InHandle] = Some(ManipulatorPoint::new(handle2, ManipulatorType::InHandle));
+		self.path.manipulator_groups_mut().last_mut().unwrap().points[ManipulatorType::OutHandle] = Some(ManipulatorPoint::new(handle1, ManipulatorType::OutHandle));
+		self.path.manipulator_groups_mut().push_end(ManipulatorGroup::new_with_anchor(anchor));
+		self.path.manipulator_groups_mut().last_mut().unwrap().points[ManipulatorType::InHandle] = Some(ManipulatorPoint::new(handle2, ManipulatorType::InHandle));
 	}
 
 	fn close(&mut self) {
-		self.path.groups_mut().push_end(ManipulatorGroup::closed());
+		self.path.manipulator_groups_mut().push_end(ManipulatorGroup::closed());
 	}
 }
 

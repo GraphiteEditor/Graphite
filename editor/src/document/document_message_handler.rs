@@ -201,7 +201,7 @@ impl DocumentMessageHandler {
 		})
 	}
 
-	/// Returns a copy of all the currently selected Subpaths.
+	/// Returns a copy of all the currently selected [Subpath]s.
 	pub fn selected_subpaths(&self) -> Vec<Subpath> {
 		self.selected_visible_layers()
 			.flat_map(|layer| self.graphene_document.layer(layer))
@@ -209,7 +209,7 @@ impl DocumentMessageHandler {
 			.collect::<Vec<Subpath>>()
 	}
 
-	/// Returns references to all the currently selected Subpaths.
+	/// Returns references to all the currently selected [Subpath]s.
 	pub fn selected_subpaths_ref(&self) -> Vec<&Subpath> {
 		self.selected_visible_layers()
 			.flat_map(|layer| self.graphene_document.layer(layer))
@@ -501,7 +501,7 @@ impl DocumentMessageHandler {
 	/// Calculate the path that new layers should be inserted to.
 	/// Depends on the selected layers as well as their types (Folder/Non-Folder)
 	pub fn get_path_for_new_layer(&self) -> Vec<u64> {
-		// If the selected layers dont actually exist, a new uuid for the
+		// If the selected layers don't actually exist, a new uuid for the
 		// root folder will be returned
 		let mut path = self.graphene_document.shallowest_common_folder(self.selected_layers()).map_or(vec![], |v| v.to_vec());
 		path.push(generate_uuid());
@@ -1074,12 +1074,7 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 				let bbox = match bounds {
 					ExportBounds::AllArtwork => self.all_layer_bounds(font_cache),
 					ExportBounds::Selection => self.selected_visible_layers_bounding_box(font_cache),
-					ExportBounds::Artboard(id) => self
-						.artboard_message_handler
-						.artboards_graphene_document
-						.layer(&[id])
-						.ok()
-						.and_then(|layer| layer.aabounding_box(font_cache)),
+					ExportBounds::Artboard(id) => self.artboard_message_handler.artboards_graphene_document.layer(&[id]).ok().and_then(|layer| layer.aabb(font_cache)),
 				}
 				.unwrap_or_default();
 				let size = bbox[1] - bbox[0];

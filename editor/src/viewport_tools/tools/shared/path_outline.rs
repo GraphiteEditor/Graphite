@@ -35,10 +35,10 @@ impl PathOutline {
 
 		// TODO Purge this area of BezPath and Kurbo
 		// Get the bezpath from the shape or text
-		let vector_path = match &document_layer.data {
+		let subpath = match &document_layer.data {
 			LayerDataType::Shape(layer_shape) => Some(layer_shape.shape.clone()),
 			LayerDataType::Text(text) => Some(text.to_subpath_nonmut(font_cache)),
-			_ => document_layer.aabounding_box_for_transform(DAffine2::IDENTITY, font_cache).map(|[p1, p2]| Subpath::new_rect(p1, p2)),
+			_ => document_layer.aabb_for_transform(DAffine2::IDENTITY, font_cache).map(|[p1, p2]| Subpath::new_rect(p1, p2)),
 		}?;
 
 		// Generate a new overlay layer if necessary
@@ -61,10 +61,7 @@ impl PathOutline {
 		};
 
 		// Update the shape bezpath
-		let operation = Operation::SetShapePath {
-			path: overlay.clone(),
-			subpath: vector_path,
-		};
+		let operation = Operation::SetShapePath { path: overlay.clone(), subpath };
 		responses.push_back(DocumentMessage::Overlays(operation.into()).into());
 
 		// Update the transform to match the document
@@ -111,7 +108,7 @@ impl PathOutline {
 		}
 	}
 
-	/// Clears overlays for the seleted paths and removes references
+	/// Clears overlays for the selected paths and removes references
 	pub fn clear_selected(&mut self, responses: &mut VecDeque<Message>) {
 		while let Some(path) = self.selected_overlay_paths.pop() {
 			let operation = Operation::DeleteLayer { path };

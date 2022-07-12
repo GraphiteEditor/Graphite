@@ -333,26 +333,26 @@ impl Layer {
 	///
 	/// // Apply the Identity transform, which leaves the points unchanged
 	/// assert_eq!(
-	///     layer.aabounding_box_for_transform(DAffine2::IDENTITY, &Default::default()),
+	///     layer.aabb_for_transform(DAffine2::IDENTITY, &Default::default()),
 	///     Some([DVec2::ZERO, DVec2::ONE]),
 	/// );
 	///
 	/// // Apply a transform that scales every point by a factor of two
 	/// let transform = DAffine2::from_scale(DVec2::ONE * 2.);
 	/// assert_eq!(
-	///     layer.aabounding_box_for_transform(transform, &Default::default()),
+	///     layer.aabb_for_transform(transform, &Default::default()),
 	///     Some([DVec2::ZERO, DVec2::ONE * 2.]),
 	/// );
-	pub fn aabounding_box_for_transform(&self, transform: DAffine2, font_cache: &FontCache) -> Option<[DVec2; 2]> {
+	pub fn aabb_for_transform(&self, transform: DAffine2, font_cache: &FontCache) -> Option<[DVec2; 2]> {
 		self.data.bounding_box(transform, font_cache)
 	}
 
-	pub fn aabounding_box(&self, font_cache: &FontCache) -> Option<[DVec2; 2]> {
-		self.aabounding_box_for_transform(self.transform, font_cache)
+	pub fn aabb(&self, font_cache: &FontCache) -> Option<[DVec2; 2]> {
+		self.aabb_for_transform(self.transform, font_cache)
 	}
 
 	pub fn bounding_transform(&self, font_cache: &FontCache) -> DAffine2 {
-		let scale = match self.aabounding_box_for_transform(DAffine2::IDENTITY, font_cache) {
+		let scale = match self.aabb_for_transform(DAffine2::IDENTITY, font_cache) {
 			Some([a, b]) => {
 				let dimensions = b - a;
 				DAffine2::from_scale(dimensions)
