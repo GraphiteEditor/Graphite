@@ -26,7 +26,7 @@ export function createPanelsState(editor: Editor) {
 		documentPanel: DocumentComponent,
 	});
 
-	function registerPanel(type: string, panelComponent: typeof DocumentComponent): void {
+	function registerPanel(type: string, panelComponent: any): void {
 		state.documentPanel = panelComponent;
 	}
 

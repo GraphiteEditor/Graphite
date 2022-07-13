@@ -266,14 +266,12 @@ impl Default for Mapping {
 
 impl Mapping {
 	pub fn match_message(&self, message: InputMapperMessage, keys: &KeyStates, actions: ActionList) -> Option<Message> {
-		use InputMapperMessage::*;
-
 		let list = match message {
-			KeyDown(key) => &self.key_down[key as usize],
-			KeyUp(key) => &self.key_up[key as usize],
-			DoubleClick => &self.double_click,
-			MouseScroll => &self.mouse_scroll,
-			PointerMove => &self.pointer_move,
+			InputMapperMessage::KeyDown(key) => &self.key_down[key as usize],
+			InputMapperMessage::KeyUp(key) => &self.key_up[key as usize],
+			InputMapperMessage::DoubleClick => &self.double_click,
+			InputMapperMessage::MouseScroll => &self.mouse_scroll,
+			InputMapperMessage::PointerMove => &self.pointer_move,
 		};
 		list.match_mapping(keys, actions)
 	}
