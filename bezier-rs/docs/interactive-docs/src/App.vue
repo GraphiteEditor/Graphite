@@ -115,9 +115,9 @@ export default defineComponent({
 					name: "Lookup Table",
 					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: Record<string, number>): void => {
 						const lookupPoints = bezier.compute_lookup_table(options.steps);
-						lookupPoints.forEach((serialisedPoint, index) => {
+						lookupPoints.forEach((serializedPoint, index) => {
 							if (index !== 0 && index !== lookupPoints.length - 1) {
-								drawPoint(getContextFromCanvas(canvas), JSON.parse(serialisedPoint), 3, COLORS.NON_INTERACTIVE.STROKE_1);
+								drawPoint(getContextFromCanvas(canvas), JSON.parse(serializedPoint), 3, COLORS.NON_INTERACTIVE.STROKE_1);
 							}
 						});
 					},
@@ -398,9 +398,7 @@ export default defineComponent({
 
 <style>
 #app {
-	font-family: Avenir, Helvetica, Arial, sans-serif;
-	-webkit-font-smoothing: antialiased;
-	-moz-osx-font-smoothing: grayscale;
+	font-family: Arial, sans-serif;
 	text-align: center;
 	color: #2c3e50;
 	margin-top: 60px;

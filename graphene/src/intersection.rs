@@ -1,6 +1,6 @@
 use crate::boolean_ops::{split_path_seg, subdivide_path_seg};
 use crate::consts::{F64LOOSE, F64PRECISE};
-use crate::layers::vector::vector_shape::VectorShape;
+use crate::layers::vector::subpath::Subpath;
 
 use glam::{DAffine2, DMat2, DVec2};
 use kurbo::{BezPath, CubicBez, Line, ParamCurve, ParamCurveDeriv, ParamCurveExtrema, PathSeg, Point, QuadBez, Rect, Shape, Vec2};
@@ -39,9 +39,9 @@ impl Quad {
 		path
 	}
 
-	/// Generates a [VectorShape] of the quad
-	pub fn vector_shape(&self) -> VectorShape {
-		VectorShape::from_points(self.0.into_iter(), true)
+	/// Generates a [subpath] of the quad
+	pub fn subpath(&self) -> Subpath {
+		Subpath::from_points(self.0.into_iter(), true)
 	}
 
 	/// Generates the axis aligned bounding box of the quad

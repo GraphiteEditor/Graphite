@@ -7,7 +7,7 @@ use crate::message_prelude::*;
 
 use serde::{Deserialize, Serialize};
 
-/// A dialog to allow users to customise their file export.
+/// A dialog to allow users to customize their file export.
 #[derive(Debug, Clone, Default)]
 pub struct Export {
 	pub file_name: String,
