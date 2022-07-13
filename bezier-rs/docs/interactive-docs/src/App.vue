@@ -356,6 +356,22 @@ export default defineComponent({
 						});
 					},
 				},
+				{
+					name: "Bounding Box",
+					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance): void => {
+						const context = getContextFromCanvas(canvas);
+						const bboxPoints: Point[] = JSON.parse(bezier.bbox());
+						bboxPoints.forEach((point: Point, index) => {
+							if (index === 0) {
+								const prevPoint: Point = bboxPoints[bboxPoints.length - 1];
+								drawLine(getContextFromCanvas(canvas), point, prevPoint, COLORS.NON_INTERACTIVE.STROKE_1);
+							} else {
+								const prevPoint: Point = bboxPoints[index - 1];
+								drawLine(getContextFromCanvas(canvas), point, prevPoint, COLORS.NON_INTERACTIVE.STROKE_1);
+							}
+						});
+					},
+				},
 			],
 			subpathFeatures: [
 				{

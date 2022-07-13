@@ -773,6 +773,27 @@ impl Bezier {
 		});
 		result
 	}
+
+	// Return list of points that represent the bounding box of the curve
+	pub fn bbox(&self) -> Vec<DVec2> {
+		// start by taking min/max of endpoints
+		let mut min_point = self.start.min(self.end);
+		let mut max_point = self.start.max(self.end);
+
+		// iterate through extrema points
+		let extrema = self.local_extrema();
+		for t_values in extrema {
+			for t in t_values {
+				let point = self.evaluate(t);
+				// update bounding box if new min/max is found
+				min_point = min_point.min(point);
+				max_point = max_point.max(point);
+			}
+		}
+
+		// Return the 4 points that make up the bounding box
+		return vec![min_point, DVec2::new(min_point.x, max_point.y), max_point, DVec2::new(max_point.x, min_point.y)];
+	}
 }
 
 #[cfg(test)]
