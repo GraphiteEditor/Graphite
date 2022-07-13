@@ -1,4 +1,4 @@
-//! Bezier-rs: A Bezier Math Library f&or Rust
+//! Bezier-rs: A Bezier Math Library for Rust
 
 mod consts;
 mod structs;
@@ -1391,13 +1391,11 @@ mod tests {
 		let [point_bezier1, remainder1] = bezier_quadratic.split(0.);
 		assert_eq!(point_bezier1, Bezier::from_quadratic_dvec2(start, start, start));
 		assert!(remainder1.abs_diff_eq(&bezier_quadratic, MAX_ABSOLUTE_DIFFERENCE));
-		assert_eq!(remainder1, bezier_quadratic);
 
 		// Test splitting a quadratic bezier at the endpoint
 		let [remainder2, point_bezier2] = bezier_quadratic.split(1.);
 		assert_eq!(point_bezier2, Bezier::from_quadratic_dvec2(end, end, end));
 		assert!(remainder2.abs_diff_eq(&bezier_quadratic, MAX_ABSOLUTE_DIFFERENCE));
-		assert_eq!(remainder2, bezier_quadratic);
 
 		let bezier_cubic = Bezier::from_cubic_dvec2(start, DVec2::new(60., 140.), DVec2::new(150., 30.), end);
 
