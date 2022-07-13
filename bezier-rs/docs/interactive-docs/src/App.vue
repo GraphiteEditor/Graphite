@@ -337,10 +337,11 @@ export default defineComponent({
 						const context = getContextFromCanvas(canvas);
 						const inflections: number[] = JSON.parse(bezier.inflections());
 						inflections.forEach((t) => {
-							const point = JSON.parse(bezier.compute(t));
+							const point = JSON.parse(bezier.evaluate(t));
 							drawPoint(context, point, 4, COLORS.NON_INTERACTIVE.STROKE_1);
 						});
 					},
+					curveDegrees: new Set([BezierCurveType.Cubic]),
 				},
 			],
 		};

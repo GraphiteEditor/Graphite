@@ -729,26 +729,19 @@ impl Bezier {
 		match self.handles {
 			// There exists no inflection points for linear and quadratic beziers.
 			BezierHandles::Linear => Vec::new(),
-			BezierHandles::Quadratic { handle: _ } => Vec::new(),
-			BezierHandles::Cubic { handle_start: _, handle_end: _ } => {
+			BezierHandles::Quadratic { .. } => Vec::new(),
+			BezierHandles::Cubic { .. } => {
 				// Axis align the curve.
 				let translated_bezier = self.translate(-self.start);
-				match translated_bezier.handles {
-					BezierHandles::Linear => {
-						unreachable!("shouldn't happen")
-					}
-					BezierHandles::Quadratic { handle: _ } => {
-						unreachable!("shouldn't happen")
-					}
-					BezierHandles::Cubic {
-						handle_start: trans_handle_start,
-						handle_end: trans_handle_end,
-					} => {
+				let angle = translated_bezier.end.angle_between(DVec2::new(1., 0.));
+				let rotated_bezier = translated_bezier.rotate(angle);
+				match rotated_bezier.handles {
+					BezierHandles::Cubic { handle_start, handle_end } => {
 						// This naming follows https://pomax.github.io/bezierinfo/#inflections
-						let a = trans_handle_end.x * trans_handle_start.y;
-						let b = translated_bezier.end.x * trans_handle_start.y;
-						let c = trans_handle_start.x * trans_handle_end.y;
-						let d = translated_bezier.end.x * trans_handle_end.y;
+						let a = handle_end.x * handle_start.y;
+						let b = rotated_bezier.end.x * handle_start.y;
+						let c = handle_start.x * handle_end.y;
+						let d = rotated_bezier.end.x * handle_end.y;
 
 						let x = -3. * a + 2. * b + 3. * c - d;
 						let y = 3. * a - b - 3. * c;
@@ -756,6 +749,9 @@ impl Bezier {
 
 						let discriminant = y * y - 4. * x * z;
 						utils::solve_quadratic(discriminant, 2. * x, y, z)
+					}
+					_ => {
+						unreachable!("shouldn't happen")
 					}
 				}
 			}
