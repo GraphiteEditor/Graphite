@@ -364,10 +364,10 @@ export default defineComponent({
 						bboxPoints.forEach((point: Point, index) => {
 							if (index === 0) {
 								const prevPoint: Point = bboxPoints[bboxPoints.length - 1];
-								drawLine(getContextFromCanvas(canvas), point, prevPoint, COLORS.NON_INTERACTIVE.STROKE_1);
+								drawLine(context, point, prevPoint, COLORS.NON_INTERACTIVE.STROKE_1);
 							} else {
 								const prevPoint: Point = bboxPoints[index - 1];
-								drawLine(getContextFromCanvas(canvas), point, prevPoint, COLORS.NON_INTERACTIVE.STROKE_1);
+								drawLine(context, point, prevPoint, COLORS.NON_INTERACTIVE.STROKE_1);
 							}
 						});
 					},
