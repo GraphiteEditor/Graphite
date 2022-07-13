@@ -1,4 +1,4 @@
 pub mod constants;
-pub mod vector_anchor;
-pub mod vector_control_point;
-pub mod vector_shape;
+pub mod manipulator_group;
+pub mod manipulator_point;
+pub mod subpath;

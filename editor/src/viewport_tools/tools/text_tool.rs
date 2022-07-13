@@ -238,7 +238,7 @@ fn update_overlays(document: &DocumentMessageHandler, tool_data: &mut TextToolDa
 				.graphene_document
 				.layer(layer_path)
 				.unwrap()
-				.aabounding_box_for_transform(document.graphene_document.multiply_transforms(layer_path).unwrap(), font_cache)
+				.aabb_for_transform(document.graphene_document.multiply_transforms(layer_path).unwrap(), font_cache)
 				.map(|bounds| (bounds, overlay_path))
 		})
 		.collect::<Vec<_>>();

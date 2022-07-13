@@ -1,6 +1,6 @@
 use super::layer_info::LayerData;
 use super::style::{self, PathStyle, RenderData, ViewMode};
-use super::vector::vector_shape::VectorShape;
+use super::vector::subpath::Subpath;
 use crate::intersection::{intersect_quad_bez_path, Quad};
 use crate::layers::text_layer::FontCache;
 use crate::LayerId;
@@ -18,7 +18,7 @@ use std::fmt::Write;
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct ShapeLayer {
 	/// The geometry of the layer.
-	pub shape: VectorShape,
+	pub shape: Subpath,
 	/// The visual style of the shape.
 	pub style: style::PathStyle,
 	// TODO: We might be able to remove this in a future refactor
@@ -27,9 +27,9 @@ pub struct ShapeLayer {
 
 impl LayerData for ShapeLayer {
 	fn render(&mut self, svg: &mut String, svg_defs: &mut String, transforms: &mut Vec<DAffine2>, render_data: RenderData) {
-		let mut vector_shape = self.shape.clone();
+		let mut subpath = self.shape.clone();
 
-		let kurbo::Rect { x0, y0, x1, y1 } = vector_shape.bounding_box();
+		let kurbo::Rect { x0, y0, x1, y1 } = subpath.bounding_box();
 		let layer_bounds = [(x0, y0).into(), (x1, y1).into()];
 
 		let transform = self.transform(transforms, render_data.view_mode);
@@ -38,9 +38,9 @@ impl LayerData for ShapeLayer {
 			let _ = write!(svg, "<!-- SVG shape has an invalid transform -->");
 			return;
 		}
-		vector_shape.apply_affine(transform);
+		subpath.apply_affine(transform);
 
-		let kurbo::Rect { x0, y0, x1, y1 } = vector_shape.bounding_box();
+		let kurbo::Rect { x0, y0, x1, y1 } = subpath.bounding_box();
 		let transformed_bounds = [(x0, y0).into(), (x1, y1).into()];
 
 		let _ = writeln!(svg, r#"<g transform="matrix("#);
@@ -51,25 +51,25 @@ impl LayerData for ShapeLayer {
 		let _ = write!(
 			svg,
 			r#"<path d="{}" {} />"#,
-			vector_shape.to_svg(),
+			subpath.to_svg(),
 			self.style.render(render_data.view_mode, svg_defs, transform, layer_bounds, transformed_bounds)
 		);
 		let _ = svg.write_str("</g>");
 	}
 
 	fn bounding_box(&self, transform: glam::DAffine2, _font_cache: &FontCache) -> Option<[DVec2; 2]> {
-		let mut vector_shape = self.shape.clone();
+		let mut subpath = self.shape.clone();
 		if transform.matrix2 == DMat2::ZERO {
 			return None;
 		}
-		vector_shape.apply_affine(transform);
+		subpath.apply_affine(transform);
 
-		let kurbo::Rect { x0, y0, x1, y1 } = vector_shape.bounding_box();
+		let kurbo::Rect { x0, y0, x1, y1 } = subpath.bounding_box();
 		Some([(x0, y0).into(), (x1, y1).into()])
 	}
 
 	fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, _font_cache: &FontCache) {
-		let filled = self.style.fill().is_some() || self.shape.anchors().last().filter(|anchor| anchor.is_close()).is_some();
+		let filled = self.style.fill().is_some() || self.shape.manipulator_groups().last().filter(|manipulator_group| manipulator_group.is_close()).is_some();
 		if intersect_quad_bez_path(quad, &(&self.shape).into(), filled) {
 			intersections.push(path.clone());
 		}
@@ -77,8 +77,8 @@ impl LayerData for ShapeLayer {
 }
 
 impl ShapeLayer {
-	/// Construct a new [ShapeLayer] with the specified [VectorShape] and [PathStyle]
-	pub fn new(shape: VectorShape, style: PathStyle) -> Self {
+	/// Construct a new [ShapeLayer] with the specified [Subpath] and [PathStyle]
+	pub fn new(shape: Subpath, style: PathStyle) -> Self {
 		Self { shape, style, render_index: 1 }
 	}
 
@@ -122,7 +122,7 @@ impl ShapeLayer {
 		path.close_path();
 
 		Self {
-			shape: VectorShape::new_ngon(DVec2::new(0., 0.), sides.into(), 1.),
+			shape: Subpath::new_ngon(DVec2::new(0., 0.), sides.into(), 1.),
 			style,
 			render_index: 1,
 		}
@@ -131,7 +131,7 @@ impl ShapeLayer {
 	/// Create a rectangular shape.
 	pub fn rectangle(style: PathStyle) -> Self {
 		Self {
-			shape: VectorShape::new_rect(DVec2::new(0., 0.), DVec2::new(1., 1.)),
+			shape: Subpath::new_rect(DVec2::new(0., 0.), DVec2::new(1., 1.)),
 			style,
 			render_index: 1,
 		}
@@ -140,7 +140,7 @@ impl ShapeLayer {
 	/// Create an elliptical shape.
 	pub fn ellipse(style: PathStyle) -> Self {
 		Self {
-			shape: VectorShape::new_ellipse(DVec2::new(0., 0.), DVec2::new(1., 1.)),
+			shape: Subpath::new_ellipse(DVec2::new(0., 0.), DVec2::new(1., 1.)),
 			style,
 			render_index: 1,
 		}
@@ -149,7 +149,7 @@ impl ShapeLayer {
 	/// Create a straight line from (0, 0) to (1, 0).
 	pub fn line(style: PathStyle) -> Self {
 		Self {
-			shape: VectorShape::new_line(DVec2::new(0., 0.), DVec2::new(1., 0.)),
+			shape: Subpath::new_line(DVec2::new(0., 0.), DVec2::new(1., 0.)),
 			style,
 			render_index: 1,
 		}
@@ -158,7 +158,7 @@ impl ShapeLayer {
 	/// Create a polygonal line that visits each provided point.
 	pub fn poly_line(points: Vec<impl Into<glam::DVec2>>, style: PathStyle) -> Self {
 		Self {
-			shape: VectorShape::new_poly_line(points),
+			shape: Subpath::new_poly_line(points),
 			style,
 			render_index: 0,
 		}
@@ -168,7 +168,7 @@ impl ShapeLayer {
 	/// The algorithm used in this implementation is described here: <https://www.particleincell.com/2012/bezier-splines/>
 	pub fn spline(points: Vec<impl Into<glam::DVec2>>, style: PathStyle) -> Self {
 		Self {
-			shape: VectorShape::new_spline(points),
+			shape: Subpath::new_spline(points),
 			style,
 			render_index: 0,
 		}
