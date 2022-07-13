@@ -259,7 +259,7 @@ impl ManipulatorGroup {
 	}
 
 	/// Returns the opposing handle to the handle provided, mutable.
-	/// Returns [None] if the provided handle is of type [ManipulatorType::Anchor]
+	/// Returns [None] if the provided handle is of type [ManipulatorType::Anchor].
 	/// Returns [None] if the opposing handle doesn't exist.
 	pub fn opposing_handle_mut(&mut self, handle: &ManipulatorPoint) -> Option<&mut ManipulatorPoint> {
 		if handle.manipulator_type == ManipulatorType::Anchor {
