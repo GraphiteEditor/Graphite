@@ -138,8 +138,8 @@ pub struct SimpleCommaDelimeted<T>(pub Vec<T>);
 
 impl<T: Parse> Parse for SimpleCommaDelimeted<T> {
 	fn parse(input: ParseStream) -> syn::Result<Self> {
-		let punct = Punctuated::<T, Token![,]>::parse_terminated(input)?;
-		Ok(Self(punct.into_iter().collect()))
+		let punctuated = Punctuated::<T, Token![,]>::parse_terminated(input)?;
+		Ok(Self(punctuated.into_iter().collect()))
 	}
 }
 

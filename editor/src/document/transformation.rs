@@ -226,7 +226,7 @@ impl<'a> Selected<'a> {
 					.document
 					.layer(path)
 					.unwrap()
-					.aabounding_box_for_transform(multiplied_transform, font_cache)
+					.aabb_for_transform(multiplied_transform, font_cache)
 					.unwrap_or([multiplied_transform.translation; 2]);
 
 				(bounds[0] + bounds[1]) / 2.
