@@ -1,4 +1,4 @@
-use std::ops::{Index, IndexMut, Not};
+use std::ops::{Index, IndexMut};
 
 use serde::{Deserialize, Serialize};
 
