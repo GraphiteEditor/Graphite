@@ -1,3 +1,5 @@
+pub mod subpath;
+
 use bezier_rs::{Bezier, ProjectionOptions};
 use glam::DVec2;
 use serde::{Deserialize, Serialize};
@@ -31,7 +33,7 @@ fn to_js_value<T: Serialize>(data: T) -> JsValue {
 
 #[wasm_bindgen]
 impl WasmBezier {
-	/// Expect js_points to be a list of 3 pairs.
+	/// Expect js_points to be a list of 2 pairs.
 	pub fn new_linear(js_points: &JsValue) -> WasmBezier {
 		let points: [DVec2; 2] = js_points.into_serde().unwrap();
 		WasmBezier(Bezier::from_linear_dvec2(points[0], points[1]))

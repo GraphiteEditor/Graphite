@@ -14,12 +14,15 @@
 				:customOptions="feature.customOptions"
 			/>
 		</div>
+		<br />
+		<div id="svg-test" />
 	</div>
 </template>
 
 <script lang="ts">
 import { defineComponent, markRaw } from "vue";
 
+import { WasmSubPath } from "@/../wasm/pkg";
 import { drawText, drawPoint, drawBezier, drawLine, getContextFromCanvas, drawBezierHelper, COLORS } from "@/utils/drawing";
 import { BezierCurveType, Point, WasmBezierInstance } from "@/utils/types";
 
@@ -356,6 +359,22 @@ export default defineComponent({
 				},
 			],
 		};
+	},
+	mounted() {
+		const subpath = WasmSubPath.from_triples([
+			[[0, 0], null, [0, 100]],
+			[[50, 0], [50, 0], null],
+			[[50, 50], null, null],
+			[
+				[75, 75],
+				[20, 80],
+				[20, 60],
+			],
+		]);
+		const svgContainer = document.getElementById("svg-test");
+		if (svgContainer) {
+			svgContainer.innerHTML = `${subpath.to_svg()} <div> Length: ${subpath.length().toFixed(2)}`;
+		}
 	},
 });
 </script>

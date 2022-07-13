@@ -8,12 +8,12 @@ pub struct ManipulatorGroup {
 	pub out_handle: Option<DVec2>,
 }
 
-struct SubPath {
+pub struct SubPath {
 	manipulator_groups: Vec<ManipulatorGroup>,
 	closed: bool,
 }
 
-struct SubPathIter<'a> {
+pub struct SubPathIter<'a> {
 	index: usize,
 	sub_path: &'a SubPath,
 }
@@ -34,11 +34,11 @@ impl Iterator for SubPathIter<'_> {
 		let handle1 = self.sub_path.manipulator_groups[start_index].out_handle;
 		let handle2 = self.sub_path.manipulator_groups[end_index].in_handle;
 
-		if handle1.is_none() {
+		if handle1.is_none() && handle2.is_none() {
 			return Some(Bezier::from_linear_dvec2(start, end));
 		}
-		if handle2.is_none() {
-			return Some(Bezier::from_quadratic_dvec2(start, handle1.unwrap(), end));
+		if handle1.is_none() || handle2.is_none() {
+			return Some(Bezier::from_quadratic_dvec2(start, handle1.or(handle2).unwrap(), end));
 		}
 		Some(Bezier::from_cubic_dvec2(start, handle1.unwrap(), handle2.unwrap(), end))
 	}
@@ -54,8 +54,8 @@ impl SubPath {
 
 	/// Create a subpath consisting of 2 manipulator groups from a bezier.
 	pub fn from_bezier(bezier: Bezier) -> Self {
-		SubPath {
-			manipulator_groups: vec![
+		SubPath::new(
+			vec![
 				ManipulatorGroup {
 					anchor: bezier.start(),
 					in_handle: None,
@@ -67,8 +67,13 @@ impl SubPath {
 					out_handle: None,
 				},
 			],
-			closed: false,
-		}
+			false,
+		)
+	}
+
+	/// Returns true if and only if the subpath contains at least one manipulator point
+	pub fn is_empty(&self) -> bool {
+		self.manipulator_groups.is_empty()
 	}
 
 	/// Returns the number of ManipulatorGroups contained within the subpath.
@@ -79,6 +84,44 @@ impl SubPath {
 	/// Returns an iterator of the Beziers along the subpath.
 	pub fn iter(&self) -> SubPathIter {
 		SubPathIter { sub_path: self, index: 0 }
+	}
+
+	pub fn to_svg(&self) -> String {
+		if self.is_empty() {
+			return String::new();
+		}
+		let mut path_pieces = vec![format!("M {} {}", self.manipulator_groups[0].anchor.x, self.manipulator_groups[0].anchor.y)];
+
+		for start_index in 0..self.len() + (self.closed as usize) - 1 {
+			let end_index = (start_index + 1) % self.len();
+			let end = self.manipulator_groups[end_index].anchor;
+			let handle1 = self.manipulator_groups[start_index].out_handle;
+			let handle2 = self.manipulator_groups[end_index].in_handle;
+
+			let handle_path = {
+				if handle1.is_none() && handle2.is_none() {
+					String::from("L")
+				} else if handle1.is_none() || handle2.is_none() {
+					let handle = handle1.or(handle2).unwrap();
+					format!("Q {} {}", handle.x, handle.y)
+				} else {
+					format!("C {} {} {} {}", handle1.unwrap().x, handle1.unwrap().y, handle2.unwrap().x, handle2.unwrap().y)
+				}
+			};
+			path_pieces.push(format!("{} {} {}", handle_path, end.x, end.y))
+		}
+
+		format!(
+			r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{} {} {} {}" width="{}px" height="{}px"><path d="{} {}" stroke="black" fill="transparent"/></svg>"#,
+			0,
+			0,
+			100,
+			100,
+			100,
+			100,
+			"\n",
+			path_pieces.join(" ")
+		)
 	}
 
 	/// Return the sum of the approximation of the length of each bezier curve along the subpath.

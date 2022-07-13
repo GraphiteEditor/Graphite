@@ -1,7 +1,7 @@
 //! Bezier-rs: A Bezier Math Library for Rust
 
 mod consts;
-mod subpath;
+pub mod subpath;
 mod utils;
 
 use consts::*;
