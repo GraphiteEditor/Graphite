@@ -728,7 +728,9 @@ impl Bezier {
 	}
 
 	/// Scale will translate a bezier curve a fixed distance away from its original position, and stretch/compress the transformed curve to match the translation ratio.
-	/// Scale takes the following parameters:
+	/// Note that not all bezier curves are possible to scale, so this function asserts that the provided curve is scalable.
+	/// A proof for why this is true can be found in the [Curve offsetting section](https://pomax.github.io/bezierinfo/#offsetting) of Pomax's bezier curve primer.
+	/// `scale` takes the following parameters:
 	/// - `distance` - The distance away from the curve that the new one will be scaled to. Positive values will scale the curve in the same direction as the endpoint normals,
 	/// while negative values will scale in the opposite direction.
 	pub fn scale(&self, distance: f64) -> Bezier {
@@ -756,6 +758,8 @@ impl Bezier {
 	}
 
 	/// Offset will get all the reducable subcurves, and for each subcurve, it will scale the subcurve a set distance away from the original curve.
+	/// Note that not all bezier curves are possible to offset, so this function first reduces the curve to scalable segments and then offsets those segments.
+	/// A proof for why this is true can be found in the [Curve offsetting section](https://pomax.github.io/bezierinfo/#offsetting) of Pomax's bezier curve primer.
 	/// Offset takes the following parameter:
 	/// - `distance` - The distance away from the curve that the new one will be offset to. Positive values will offset the curve in the same direction as the endpoint normals,
 	/// while negative values will offset in the opposite direction.
@@ -771,14 +775,17 @@ mod tests {
 
 	use glam::DVec2;
 
+	// Compare points by allowing some maximum absolute difference to account for floating point errors
 	fn compare_points(p1: DVec2, p2: DVec2) -> bool {
 		p1.abs_diff_eq(p2, MAX_ABSOLUTE_DIFFERENCE)
 	}
 
+	// Compare vectors of points by allowing some maximum absolute difference to account for floating point errors
 	fn compare_vector_of_points(vec1: Vec<DVec2>, vec2: Vec<DVec2>) -> bool {
 		vec1.len() == vec2.len() && vec1.into_iter().zip(vec2.into_iter()).all(|(a, b)| a.abs_diff_eq(b, MAX_ABSOLUTE_DIFFERENCE))
 	}
 
+	// Compare vectors of beziers by allowing some maximum absolute difference between points to account for floating point errors
 	fn compare_vector_of_beziers(beziers: Vec<Bezier>, expected_bezier_points: Vec<Vec<DVec2>>) -> bool {
 		beziers
 			.iter()
