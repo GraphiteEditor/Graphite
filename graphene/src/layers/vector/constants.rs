@@ -5,9 +5,9 @@ use serde::{Deserialize, Serialize};
 #[repr(usize)]
 #[derive(PartialEq, Eq, Clone, Debug, Copy, Serialize, Deserialize)]
 pub enum ManipulatorType {
-	Anchor = 0,
-	InHandle = 1,
-	OutHandle = 2,
+	Anchor,
+	InHandle,
+	OutHandle,
 }
 
 impl ManipulatorType {
@@ -19,15 +19,12 @@ impl ManipulatorType {
 			_ => ManipulatorType::Anchor,
 		}
 	}
-}
 
-impl Not for ManipulatorType {
-	type Output = Self;
-	fn not(self) -> Self::Output {
+	pub fn opposite_handle(self) -> ManipulatorType {
 		match self {
+			ManipulatorType::Anchor => ManipulatorType::Anchor,
 			ManipulatorType::InHandle => ManipulatorType::OutHandle,
 			ManipulatorType::OutHandle => ManipulatorType::InHandle,
-			_ => ManipulatorType::Anchor,
 		}
 	}
 }

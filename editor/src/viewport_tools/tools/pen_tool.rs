@@ -248,8 +248,8 @@ impl Fsm for PenToolFsmState {
 						let mouse = tool_data.snap_handler.snap_position(responses, document, input.mouse.position);
 						let mut pos = transform.inverse().transform_point2(mouse);
 						if let Some(((&id, manipulator_group), _previous)) = get_subpath(layer_path, document).and_then(last_2_manipulator_groups) {
-							if let Some(manipulator_point) = manipulator_group.points[ManipulatorType::Anchor as usize].as_ref() {
-								pos = compute_snapped_angle(input, snap_angle, pos, manipulator_point.position);
+							if let Some(anchor) = manipulator_group.points[ManipulatorType::Anchor].as_ref() {
+								pos = compute_snapped_angle(input, snap_angle, pos, anchor.position);
 							}
 
 							// Update points on current segment (to show preview of new handle)
@@ -263,8 +263,8 @@ impl Fsm for PenToolFsmState {
 
 							// Mirror handle of last segment
 							if !input.keyboard.get(break_handle as usize) && get_subpath(layer_path, document).map(|shape| shape.manipulator_groups().len() > 1).unwrap_or_default() {
-								if let Some(manipulator_point) = manipulator_group.points[ManipulatorType::Anchor as usize].as_ref() {
-									pos = manipulator_point.position - (pos - manipulator_point.position);
+								if let Some(anchor) = manipulator_group.points[ManipulatorType::Anchor].as_ref() {
+									pos = anchor.position - (pos - anchor.position);
 								}
 								let msg = Operation::MoveManipulatorPoint {
 									layer_path: layer_path.clone(),
@@ -285,15 +285,15 @@ impl Fsm for PenToolFsmState {
 						let mut pos = transform.inverse().transform_point2(mouse);
 
 						if let Some(((&id, _), previous)) = get_subpath(layer_path, document).and_then(last_2_manipulator_groups) {
-							if let Some(relative) = previous.as_ref().and_then(|(_, manipulator_group)| manipulator_group.points[ManipulatorType::Anchor as usize].as_ref()) {
+							if let Some(relative) = previous.as_ref().and_then(|(_, manipulator_group)| manipulator_group.points[ManipulatorType::Anchor].as_ref()) {
 								pos = compute_snapped_angle(input, snap_angle, pos, relative.position);
 							}
 
-							for control_type in [ManipulatorType::Anchor, ManipulatorType::InHandle, ManipulatorType::OutHandle] {
+							for manipulator_type in [ManipulatorType::Anchor, ManipulatorType::InHandle, ManipulatorType::OutHandle] {
 								let msg = Operation::MoveManipulatorPoint {
 									layer_path: layer_path.clone(),
 									id,
-									manipulator_type: control_type,
+									manipulator_type,
 									position: pos.into(),
 								};
 								responses.push_back(msg.into());
@@ -324,7 +324,7 @@ impl Fsm for PenToolFsmState {
 									layer_path: layer_path.clone(),
 									id,
 									manipulator_type: ManipulatorType::OutHandle,
-									position: manipulator_group.points[ManipulatorType::Anchor as usize].as_ref().unwrap().position.into(),
+									position: manipulator_group.points[ManipulatorType::Anchor].as_ref().unwrap().position.into(),
 								};
 								responses.push_back(op.into());
 							}
@@ -376,7 +376,7 @@ impl Fsm for PenToolFsmState {
 				HintGroup(vec![HintInfo {
 					key_groups: vec![],
 					mouse: Some(MouseMotion::Lmb),
-					label: String::from("Add Control Point"),
+					label: String::from("Add Anchor"),
 					plus: false,
 				}]),
 				HintGroup(vec![HintInfo {

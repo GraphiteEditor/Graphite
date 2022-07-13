@@ -249,19 +249,23 @@ impl ManipulatorGroup {
 	}
 
 	/// Returns the opposing handle to the handle provided.
-	/// Returns the anchor handle if the anchor is provided.
+	/// Returns [None] if the provided handle is of type [ManipulatorType::Anchor].
+	/// Returns [None] if the opposing handle doesn't exist.
 	pub fn opposing_handle(&self, handle: &ManipulatorPoint) -> Option<&ManipulatorPoint> {
-		// TODO: Usage of `!` here is confusing, error-prone, and a maintainability hazard.
-		// TODO: This function should also probably return None if given an anchor, if I understand its intent?
-		self.points[!handle.manipulator_type].as_ref()
+		if handle.manipulator_type == ManipulatorType::Anchor {
+			return None;
+		}
+		self.points[handle.manipulator_type.opposite_handle()].as_ref()
 	}
 
 	/// Returns the opposing handle to the handle provided, mutable.
-	/// Returns the anchor handle if the anchor is provided, mutable.
+	/// Returns [None] if the provided handle is of type [ManipulatorType::Anchor]
+	/// Returns [None] if the opposing handle doesn't exist.
 	pub fn opposing_handle_mut(&mut self, handle: &ManipulatorPoint) -> Option<&mut ManipulatorPoint> {
-		// TODO: Usage of `!` here is confusing, error-prone, and a maintainability hazard.
-		// TODO: This function should also probably return None if given an anchor, if I understand its intent?
-		self.points[!handle.manipulator_type].as_mut()
+		if handle.manipulator_type == ManipulatorType::Anchor {
+			return None;
+		}
+		self.points[handle.manipulator_type.opposite_handle()].as_mut()
 	}
 
 	/// Set the mirroring state

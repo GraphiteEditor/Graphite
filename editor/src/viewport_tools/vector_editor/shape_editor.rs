@@ -212,8 +212,8 @@ impl ShapeEditor {
 		self.selected_layers.iter().flat_map(|layer_id| document.layer(layer_id)).filter_map(|shape| shape.as_subpath())
 	}
 
-	/// Find a point that is within the selection threshold and return an index to the shape, manipulator, and point.
-	/// Return value is an `Option` of the tuple representing `(layer path, manipulator ID, manipulator point index)`.
+	/// Find a [ManipulatorPoint] that is within the selection threshold and return the layer path, an index to the [ManipulatorGroup], and an enum index for [ManipulatorPoint].
+	/// Return value is an `Option` of the tuple representing `(layer path, [ManipulatorGroup] ID, [ManipulatorType] enum index)`.
 	fn find_nearest_point_indices(&self, document: &Document, mouse_position: DVec2, select_threshold: f64) -> Option<(&[LayerId], u64, usize)> {
 		if self.selected_layers.is_empty() {
 			return None;

@@ -246,7 +246,7 @@ impl SnapHandler {
 		}
 	}
 
-	/// Add the control points (optionally including bézier handles) of the specified shape layer to the snapping points
+	/// Add the [ManipulatorGroup]s (optionally including handles) of the specified shape layer to the snapping points
 	///
 	/// This should be called after start_snap
 	pub fn add_snap_path(&mut self, document_message_handler: &DocumentMessageHandler, layer: &Layer, path: &[LayerId], include_handles: bool, ignore_points: &[(&[LayerId], u64, ManipulatorType)]) {
