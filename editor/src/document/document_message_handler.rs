@@ -23,7 +23,7 @@ use graphene::layers::folder_layer::FolderLayer;
 use graphene::layers::layer_info::{LayerDataType, LayerDataTypeDiscriminant};
 use graphene::layers::style::{Fill, RenderData, ViewMode};
 use graphene::layers::text_layer::{Font, FontCache};
-use graphene::layers::vector::vector_shape::VectorShape;
+use graphene::layers::vector::subpath::Subpath;
 use graphene::{DocumentError, DocumentResponse, LayerId, Operation as DocumentOperation};
 
 use glam::{DAffine2, DVec2};
@@ -201,20 +201,20 @@ impl DocumentMessageHandler {
 		})
 	}
 
-	/// Returns a copy of all the currently selected VectorShapes.
-	pub fn selected_vector_shapes(&self) -> Vec<VectorShape> {
+	/// Returns a copy of all the currently selected [Subpath]s.
+	pub fn selected_subpaths(&self) -> Vec<Subpath> {
 		self.selected_visible_layers()
 			.flat_map(|layer| self.graphene_document.layer(layer))
-			.flat_map(|layer| layer.as_vector_shape_copy())
-			.collect::<Vec<VectorShape>>()
+			.flat_map(|layer| layer.as_subpath_copy())
+			.collect::<Vec<Subpath>>()
 	}
 
-	/// Returns references to all the currently selected VectorShapes.
-	pub fn selected_vector_shapes_ref(&self) -> Vec<&VectorShape> {
+	/// Returns references to all the currently selected [Subpath]s.
+	pub fn selected_subpaths_ref(&self) -> Vec<&Subpath> {
 		self.selected_visible_layers()
 			.flat_map(|layer| self.graphene_document.layer(layer))
-			.flat_map(|layer| layer.as_vector_shape())
-			.collect::<Vec<&VectorShape>>()
+			.flat_map(|layer| layer.as_subpath())
+			.collect::<Vec<&Subpath>>()
 	}
 
 	/// Returns the bounding boxes for all visible layers and artboards, optionally excluding any paths.
@@ -365,14 +365,26 @@ impl DocumentMessageHandler {
 		// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
 		responses.push_back(PortfolioMessage::UpdateOpenDocumentsList.into());
 
+		let selected_paths: Vec<Vec<LayerId>> = self.selected_layers().map(|path| path.to_vec()).collect();
+
 		match self.document_undo_history.pop() {
 			Some((document, layer_metadata)) => {
+				// Update the currently displayed layer on the Properties panel if the selection changes after an undo action
+				// Also appropriately update the Properties panel if an undo action results in a layer being deleted
+				let prev_selected_paths: Vec<Vec<LayerId>> = layer_metadata.iter().filter_map(|(layer_id, metadata)| metadata.selected.then(|| layer_id.clone())).collect();
+
+				if prev_selected_paths != selected_paths {
+					responses.push_back(BroadcastSignal::SelectionChanged.into());
+				}
+
 				let document = std::mem::replace(&mut self.graphene_document, document);
 				let layer_metadata = std::mem::replace(&mut self.layer_metadata, layer_metadata);
 				self.document_redo_history.push((document, layer_metadata));
+
 				for layer in self.layer_metadata.keys() {
 					responses.push_back(DocumentMessage::LayerChanged { affected_layer_path: layer.clone() }.into())
 				}
+
 				Ok(())
 			}
 			None => Err(EditorError::NoTransactionInProgress),
@@ -383,14 +395,26 @@ impl DocumentMessageHandler {
 		// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
 		responses.push_back(PortfolioMessage::UpdateOpenDocumentsList.into());
 
+		let selected_paths: Vec<Vec<LayerId>> = self.selected_layers().map(|path| path.to_vec()).collect();
+
 		match self.document_redo_history.pop() {
 			Some((document, layer_metadata)) => {
+				// Update currently displayed layer on property panel if selection changes after redo action
+				// Also appropriately update property panel if redo action results in a layer being added
+				let next_selected_paths: Vec<Vec<LayerId>> = layer_metadata.iter().filter_map(|(layer_id, metadata)| metadata.selected.then(|| layer_id.clone())).collect();
+
+				if next_selected_paths != selected_paths {
+					responses.push_back(BroadcastSignal::SelectionChanged.into());
+				}
+
 				let document = std::mem::replace(&mut self.graphene_document, document);
 				let layer_metadata = std::mem::replace(&mut self.layer_metadata, layer_metadata);
 				self.document_undo_history.push((document, layer_metadata));
+
 				for layer in self.layer_metadata.keys() {
 					responses.push_back(DocumentMessage::LayerChanged { affected_layer_path: layer.clone() }.into())
 				}
+
 				Ok(())
 			}
 			None => Err(EditorError::NoTransactionInProgress),
@@ -477,7 +501,7 @@ impl DocumentMessageHandler {
 	/// Calculate the path that new layers should be inserted to.
 	/// Depends on the selected layers as well as their types (Folder/Non-Folder)
 	pub fn get_path_for_new_layer(&self) -> Vec<u64> {
-		// If the selected layers dont actually exist, a new uuid for the
+		// If the selected layers don't actually exist, a new uuid for the
 		// root folder will be returned
 		let mut path = self.graphene_document.shallowest_common_folder(self.selected_layers()).map_or(vec![], |v| v.to_vec());
 		path.push(generate_uuid());
@@ -992,11 +1016,11 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 				responses.push_front(BroadcastSignal::SelectionChanged.into());
 				responses.push_back(BroadcastSignal::DocumentIsDirty.into());
 			}
-			DeleteSelectedVectorPoints => {
+			DeleteSelectedManipulatorPoints => {
 				responses.push_back(StartTransaction.into());
 
 				responses.push_front(
-					DocumentOperation::DeleteSelectedVectorPoints {
+					DocumentOperation::DeleteSelectedManipulatorPoints {
 						layer_paths: self.selected_layers_without_children().iter().map(|path| path.to_vec()).collect(),
 					}
 					.into(),
@@ -1006,9 +1030,9 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 				responses.push_front(SetSelectedLayers { replacement_selected_layers: vec![] }.into());
 				self.layer_range_selection_reference.clear();
 			}
-			DeselectAllVectorPoints => {
+			DeselectAllManipulatorPoints => {
 				for layer_path in self.selected_layers_without_children() {
-					responses.push_back(DocumentOperation::DeselectAllVectorPoints { layer_path: layer_path.to_vec() }.into());
+					responses.push_back(DocumentOperation::DeselectAllManipulatorPoints { layer_path: layer_path.to_vec() }.into());
 				}
 			}
 			DirtyRenderDocument => {
@@ -1050,12 +1074,7 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 				let bbox = match bounds {
 					ExportBounds::AllArtwork => self.all_layer_bounds(font_cache),
 					ExportBounds::Selection => self.selected_visible_layers_bounding_box(font_cache),
-					ExportBounds::Artboard(id) => self
-						.artboard_message_handler
-						.artboards_graphene_document
-						.layer(&[id])
-						.ok()
-						.and_then(|layer| layer.aabounding_box(font_cache)),
+					ExportBounds::Artboard(id) => self.artboard_message_handler.artboards_graphene_document.layer(&[id]).ok().and_then(|layer| layer.aabb(font_cache)),
 				}
 				.unwrap_or_default();
 				let size = bbox[1] - bbox[0];
@@ -1171,10 +1190,10 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 					.into(),
 				);
 			}
-			MoveSelectedVectorPoints { layer_path, delta, absolute_position } => {
+			MoveSelectedManipulatorPoints { layer_path, delta, absolute_position } => {
 				self.backup(responses);
 				if let Ok(_layer) = self.graphene_document.layer(&layer_path) {
-					responses.push_back(DocumentOperation::MoveSelectedVectorPoints { layer_path, delta, absolute_position }.into());
+					responses.push_back(DocumentOperation::MoveSelectedManipulatorPoints { layer_path, delta, absolute_position }.into());
 				}
 			}
 			NudgeSelectedLayers { delta_x, delta_y } => {

@@ -28,9 +28,9 @@ export const getContextFromCanvas = (canvas: HTMLCanvasElement): CanvasRendering
 	return ctx;
 };
 
-export const drawLine = (ctx: CanvasRenderingContext2D, point1: Point, point2: Point, strokeColor = COLORS.INTERACTIVE.STROKE_2): void => {
+export const drawLine = (ctx: CanvasRenderingContext2D, point1: Point, point2: Point, strokeColor = COLORS.INTERACTIVE.STROKE_2, lineWidth = 1): void => {
 	ctx.strokeStyle = strokeColor;
-	ctx.lineWidth = 1;
+	ctx.lineWidth = lineWidth;
 
 	ctx.beginPath();
 	ctx.moveTo(point1.x, point1.y);
@@ -57,6 +57,20 @@ export const drawText = (ctx: CanvasRenderingContext2D, text: string, x: number,
 	ctx.fillStyle = textColor;
 	ctx.font = "16px Arial";
 	ctx.fillText(text, x, y);
+};
+
+export const drawCurve = (ctx: CanvasRenderingContext2D, points: Point[], strokeColor = COLORS.INTERACTIVE.STROKE_1): void => {
+	ctx.strokeStyle = strokeColor;
+	ctx.lineWidth = 2;
+
+	ctx.beginPath();
+	ctx.moveTo(points[0].x, points[0].y);
+	if (points.length === 3) {
+		ctx.quadraticCurveTo(points[1].x, points[1].y, points[2].x, points[2].y);
+	} else {
+		ctx.bezierCurveTo(points[1].x, points[1].y, points[2].x, points[2].y, points[3].x, points[3].y);
+	}
+	ctx.stroke();
 };
 
 export const drawBezierHelper = (ctx: CanvasRenderingContext2D, bezier: WasmBezierInstance, bezierStyleConfig: Partial<BezierStyleConfig> = {}): void => {
@@ -95,27 +109,24 @@ export const drawBezier = (ctx: CanvasRenderingContext2D, points: Point[], dragI
 		handleStart = points[1];
 		handleEnd = points[2];
 		end = points[3];
-	} else {
+	} else if (points.length === 3) {
 		handleStart = points[1];
 		handleEnd = handleStart;
 		end = points[2];
-	}
-
-	ctx.strokeStyle = styleConfig.curveStrokeColor;
-	ctx.lineWidth = 2;
-
-	ctx.beginPath();
-	ctx.moveTo(points[0].x, points[0].y);
-	if (points.length === 3) {
-		ctx.quadraticCurveTo(handleStart.x, handleStart.y, end.x, end.y);
 	} else {
-		ctx.bezierCurveTo(handleStart.x, handleStart.y, handleEnd.x, handleEnd.y, end.x, end.y);
+		handleStart = start;
+		handleEnd = points[1];
+		end = handleEnd;
 	}
-	ctx.stroke();
 
-	if (styleConfig.drawHandles) {
-		drawLine(ctx, start, handleStart, styleConfig.handleLineStrokeColor);
-		drawLine(ctx, end, handleEnd, styleConfig.handleLineStrokeColor);
+	if (points.length === 2) {
+		drawLine(ctx, start, end, styleConfig.curveStrokeColor, 2);
+	} else {
+		drawCurve(ctx, points, styleConfig.curveStrokeColor);
+		if (styleConfig.drawHandles) {
+			drawLine(ctx, start, handleStart, styleConfig.handleLineStrokeColor);
+			drawLine(ctx, end, handleEnd, styleConfig.handleLineStrokeColor);
+		}
 	}
 
 	points.forEach((point, index) => {

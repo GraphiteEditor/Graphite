@@ -10,7 +10,7 @@ use std::ops::{Deref, DerefMut};
 /// - Access data by providing Unique ID.
 /// - Maintain ordering among the elements.
 /// - Remove elements without changing Unique IDs.
-/// This data structure is somewhat similar to a linked list in terms of invarients.
+/// This data structure is somewhat similar to a linked list in terms of invariants.
 /// The downside is that currently it requires a lot of iteration.
 
 type ElementId = u64;
@@ -54,7 +54,7 @@ impl<T> IdBackedVec<T> {
 	}
 
 	/// Push an element to the end of the vector
-	/// Overriden from Vec, so adding values without creating an id cannot occur
+	/// Overridden from Vec, so adding values without creating an id cannot occur
 	pub fn push(&mut self, element: T) -> Option<ElementId> {
 		self.push_end(element)
 	}

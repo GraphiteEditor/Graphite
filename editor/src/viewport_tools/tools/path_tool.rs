@@ -10,7 +10,7 @@ use crate::viewport_tools::vector_editor::overlay_renderer::OverlayRenderer;
 use crate::viewport_tools::vector_editor::shape_editor::ShapeEditor;
 
 use graphene::intersection::Quad;
-use graphene::layers::vector::constants::ControlPointType;
+use graphene::layers::vector::constants::ManipulatorType;
 
 use glam::DVec2;
 use serde::{Deserialize, Serialize};
@@ -150,6 +150,10 @@ impl Fsm for PathToolFsmState {
 					// Set the newly targeted layers to visible
 					let layer_paths = document.selected_visible_layers().map(|layer_path| layer_path.to_vec()).collect();
 					tool_data.shape_editor.set_selected_layers(layer_paths);
+					// Render the new overlays
+					for layer_path in tool_data.shape_editor.selected_layers() {
+						tool_data.overlay_renderer.render_subpath_overlays(&document.graphene_document, layer_path.to_vec(), responses);
+					}
 
 					// This can happen in any state (which is why we return self)
 					self
@@ -158,7 +162,7 @@ impl Fsm for PathToolFsmState {
 					// When the document has moved / needs to be redraw, re-render the overlays
 					// TODO the overlay system should probably receive this message instead of the tool
 					for layer_path in document.selected_visible_layers() {
-						tool_data.overlay_renderer.render_vector_shape_overlays(&document.graphene_document, layer_path.to_vec(), responses);
+						tool_data.overlay_renderer.render_subpath_overlays(&document.graphene_document, layer_path.to_vec(), responses);
 					}
 
 					self
@@ -182,9 +186,9 @@ impl Fsm for PathToolFsmState {
 						// Do not snap against handles when anchor is selected
 						let mut extension = Vec::new();
 						for &(path, id, point_type) in new_selected.iter() {
-							if point_type == ControlPointType::Anchor {
-								extension.push((path, id, ControlPointType::InHandle));
-								extension.push((path, id, ControlPointType::OutHandle));
+							if point_type == ManipulatorType::Anchor {
+								extension.push((path, id, ManipulatorType::InHandle));
+								extension.push((path, id, ManipulatorType::OutHandle));
 							}
 						}
 						new_selected.extend(extension);
@@ -265,14 +269,14 @@ impl Fsm for PathToolFsmState {
 					tool_data.shape_editor.delete_selected_points(responses);
 					responses.push_back(SelectionChanged.into());
 					for layer_path in document.all_layers() {
-						tool_data.overlay_renderer.clear_vector_shape_overlays(&document.graphene_document, layer_path.to_vec(), responses);
+						tool_data.overlay_renderer.clear_subpath_overlays(&document.graphene_document, layer_path.to_vec(), responses);
 					}
 					Ready
 				}
 				(_, Abort) => {
 					// TODO Tell overlay manager to remove the overlays
 					for layer_path in document.all_layers() {
-						tool_data.overlay_renderer.clear_vector_shape_overlays(&document.graphene_document, layer_path.to_vec(), responses);
+						tool_data.overlay_renderer.clear_subpath_overlays(&document.graphene_document, layer_path.to_vec(), responses);
 					}
 					Ready
 				}
