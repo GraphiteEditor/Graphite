@@ -1275,6 +1275,7 @@ mod tests {
 
 	#[test]
 	fn derivative() {
+		// Test derivatives of each Bezier curve type
 		let p1 = DVec2::new(10., 10.);
 		let p2 = DVec2::new(40., 30.);
 		let p3 = DVec2::new(60., 60.);
@@ -1285,18 +1286,63 @@ mod tests {
 
 		let quadratic = Bezier::from_quadratic_dvec2(p1, p2, p3);
 		let derivative_quadratic = quadratic.derivative().unwrap();
-		assert!(derivative_quadratic.abs_diff_eq(&Bezier::from_linear_coordinates(60., 40., 40., 60.), MAX_ABSOLUTE_DIFFERENCE));
+		assert_eq!(derivative_quadratic, Bezier::from_linear_coordinates(60., 40., 40., 60.));
 
 		let cubic = Bezier::from_cubic_dvec2(p1, p2, p3, p4);
 		let derivative_cubic = cubic.derivative().unwrap();
-		assert!(derivative_cubic.abs_diff_eq(&Bezier::from_quadratic_coordinates(90., 60., 60., 90., 30., 120.), MAX_ABSOLUTE_DIFFERENCE));
+		assert_eq!(derivative_cubic, Bezier::from_quadratic_coordinates(90., 60., 60., 90., 30., 120.));
+
+		// Cases where the all manipulator points are the same
+		let quadratic_point = Bezier::from_quadratic_dvec2(p1, p1, p1);
+		assert_eq!(quadratic_point.derivative().unwrap(), Bezier::from_linear_dvec2(DVec2::ZERO, DVec2::ZERO));
+
+		let cubic_point = Bezier::from_cubic_dvec2(p1, p1, p1, p1);
+		assert_eq!(cubic_point.derivative().unwrap(), Bezier::from_quadratic_dvec2(DVec2::ZERO, DVec2::ZERO, DVec2::ZERO));
 	}
 
 	#[test]
-	fn tangent() {}
+	fn tangent() {
+		// Test tangents at start and end points of each Bezier curve type
+		let p1 = DVec2::new(10., 10.);
+		let p2 = DVec2::new(40., 30.);
+		let p3 = DVec2::new(60., 60.);
+		let p4 = DVec2::new(70., 100.);
+
+		let linear = Bezier::from_linear_dvec2(p1, p2);
+		let unit_slope = DVec2::new(30., 20.).normalize();
+		assert_eq!(linear.tangent(0.), unit_slope);
+		assert_eq!(linear.tangent(1.), unit_slope);
+
+		let quadratic = Bezier::from_quadratic_dvec2(p1, p2, p3);
+		assert_eq!(quadratic.tangent(0.), DVec2::new(60., 40.).normalize());
+		assert_eq!(quadratic.tangent(1.), DVec2::new(40., 60.).normalize());
+
+		let cubic = Bezier::from_cubic_dvec2(p1, p2, p3, p4);
+		assert_eq!(cubic.tangent(0.), DVec2::new(90., 60.).normalize());
+		assert_eq!(cubic.tangent(1.), DVec2::new(30., 120.).normalize());
+	}
 
 	#[test]
-	fn normal() {}
+	fn normal() {
+		// Test normals at start and end points of each Bezier curve type
+		let p1 = DVec2::new(10., 10.);
+		let p2 = DVec2::new(40., 30.);
+		let p3 = DVec2::new(60., 60.);
+		let p4 = DVec2::new(70., 100.);
+
+		let linear = Bezier::from_linear_dvec2(p1, p2);
+		let unit_slope = DVec2::new(-20., 30.).normalize();
+		assert_eq!(linear.normal(0.), unit_slope);
+		assert_eq!(linear.normal(1.), unit_slope);
+
+		let quadratic = Bezier::from_quadratic_dvec2(p1, p2, p3);
+		assert_eq!(quadratic.normal(0.), DVec2::new(-40., 60.).normalize());
+		assert_eq!(quadratic.normal(1.), DVec2::new(-60., 40.).normalize());
+
+		let cubic = Bezier::from_cubic_dvec2(p1, p2, p3, p4);
+		assert_eq!(cubic.normal(0.), DVec2::new(-60., 90.).normalize());
+		assert_eq!(cubic.normal(1.), DVec2::new(-120., 30.).normalize());
+	}
 
 	#[test]
 	fn split() {
@@ -1343,24 +1389,26 @@ mod tests {
 
 		// Test splitting a quadratic bezier at the startpoint
 		let [point_bezier1, remainder1] = bezier_quadratic.split(0.);
-		assert_eq!(point_bezier1.get_points().collect::<Vec<DVec2>>(), vec![start, start, start]);
+		assert_eq!(point_bezier1, Bezier::from_quadratic_dvec2(start, start, start));
 		assert!(remainder1.abs_diff_eq(&bezier_quadratic, MAX_ABSOLUTE_DIFFERENCE));
+		assert_eq!(remainder1, bezier_quadratic);
 
 		// Test splitting a quadratic bezier at the endpoint
 		let [remainder2, point_bezier2] = bezier_quadratic.split(1.);
-		assert_eq!(point_bezier2.get_points().collect::<Vec<DVec2>>(), vec![end, end, end]);
+		assert_eq!(point_bezier2, Bezier::from_quadratic_dvec2(end, end, end));
 		assert!(remainder2.abs_diff_eq(&bezier_quadratic, MAX_ABSOLUTE_DIFFERENCE));
+		assert_eq!(remainder2, bezier_quadratic);
 
 		let bezier_cubic = Bezier::from_cubic_dvec2(start, DVec2::new(60., 140.), DVec2::new(150., 30.), end);
 
 		// Test splitting a cubic bezier at the startpoint
 		let [point_bezier3, remainder3] = bezier_cubic.split(0.);
-		assert_eq!(point_bezier3.get_points().collect::<Vec<DVec2>>(), vec![start, start, start, start]);
+		assert_eq!(point_bezier3, Bezier::from_cubic_dvec2(start, start, start, start));
 		assert!(remainder3.abs_diff_eq(&bezier_cubic, MAX_ABSOLUTE_DIFFERENCE));
 
 		// Test splitting a cubic bezier at the endpoint
 		let [remainder4, point_bezier4] = bezier_cubic.split(1.);
-		assert_eq!(point_bezier4.get_points().collect::<Vec<DVec2>>(), vec![end, end, end, end]);
+		assert_eq!(point_bezier4, Bezier::from_cubic_dvec2(end, end, end, end));
 		assert!(remainder4.abs_diff_eq(&bezier_cubic, MAX_ABSOLUTE_DIFFERENCE));
 	}
 
@@ -1409,7 +1457,7 @@ mod tests {
 
 		let bezier1 = Bezier::from_cubic_coordinates(4., 4., 23., 45., 10., 30., 56., 90.);
 		assert_eq!(bezier1.project(DVec2::new(100., 100.), project_options), 1.);
-		assert_eq!(bezier1.project(DVec2::new(0., 0.), project_options), 0.);
+		assert_eq!(bezier1.project(DVec2::ZERO, project_options), 0.);
 
 		let bezier2 = Bezier::from_quadratic_coordinates(0., 0., 0., 100., 100., 100.);
 		assert_eq!(bezier2.project(DVec2::new(100., 0.), project_options), 0.);
