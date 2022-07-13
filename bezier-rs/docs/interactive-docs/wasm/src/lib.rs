@@ -4,6 +4,14 @@ use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
 
 #[derive(Serialize, Deserialize)]
+struct CircleSector {
+	center: Point,
+	radius: f64,
+	start_angle: f64,
+	end_angle: f64,
+}
+
+#[derive(Serialize, Deserialize)]
 struct Point {
 	x: f64,
 	y: f64,
@@ -137,5 +145,23 @@ impl WasmBezier {
 	pub fn reduce(&self) -> JsValue {
 		let bezier_points: Vec<Vec<Point>> = self.0.reduce(None).into_iter().map(bezier_to_points).collect();
 		to_js_value(bezier_points)
+	}
+
+	pub fn arcs(&self, error: f64) -> Vec<JsValue> {
+		self.0
+			.arcs(error)
+			.iter()
+			.map(|sector| {
+				to_js_value(CircleSector {
+					center: Point {
+						x: sector.center.x,
+						y: sector.center.y,
+					},
+					radius: sector.radius,
+					start_angle: sector.start_angle,
+					end_angle: sector.end_angle,
+				})
+			})
+			.collect::<Vec<JsValue>>()
 	}
 }

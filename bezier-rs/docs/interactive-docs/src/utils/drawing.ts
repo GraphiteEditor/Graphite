@@ -1,4 +1,4 @@
-import { BezierStyleConfig, Point, WasmBezierInstance } from "@/utils/types";
+import { BezierStyleConfig, CircleSector, Point, WasmBezierInstance } from "@/utils/types";
 
 const HANDLE_RADIUS_FACTOR = 2 / 3;
 const DEFAULT_ENDPOINT_RADIUS = 5;
@@ -71,6 +71,27 @@ export const drawCurve = (ctx: CanvasRenderingContext2D, points: Point[], stroke
 		ctx.bezierCurveTo(points[1].x, points[1].y, points[2].x, points[2].y, points[3].x, points[3].y);
 	}
 	ctx.stroke();
+};
+
+export const drawCircleSector = (
+	ctx: CanvasRenderingContext2D,
+	circleSector: CircleSector,
+	ccw = false,
+	strokeColor = COLORS.INTERACTIVE.STROKE_1
+	// fillColor = COLORS.NON_INTERACTIVE.STROKE_1
+): void => {
+	ctx.strokeStyle = strokeColor;
+	ctx.fillStyle = "hsl(10, 50%, 50%, 50%)";
+	ctx.lineWidth = 2;
+
+	const { center, radius, start_angle: startAngle, end_angle: endAngle } = circleSector;
+	ctx.beginPath();
+	ctx.moveTo(center.x, center.y);
+	ctx.arc(center.x, center.y, radius, startAngle, endAngle, ccw);
+	ctx.lineTo(center.x, center.y);
+	ctx.closePath();
+	ctx.stroke();
+	ctx.fill();
 };
 
 export const drawBezierHelper = (ctx: CanvasRenderingContext2D, bezier: WasmBezierInstance, bezierStyleConfig: Partial<BezierStyleConfig> = {}): void => {

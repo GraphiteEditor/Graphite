@@ -20,8 +20,8 @@
 <script lang="ts">
 import { defineComponent, markRaw } from "vue";
 
-import { drawText, drawPoint, drawBezier, drawLine, getContextFromCanvas, drawBezierHelper, COLORS } from "@/utils/drawing";
-import { BezierCurveType, Point, WasmBezierInstance } from "@/utils/types";
+import { drawText, drawPoint, drawBezier, drawCircleSector, drawLine, getContextFromCanvas, drawBezierHelper, COLORS } from "@/utils/drawing";
+import { BezierCurveType, CircleSector, Point, WasmBezierInstance } from "@/utils/types";
 
 import ExamplePane from "@/components/ExamplePane.vue";
 import SliderExample from "@/components/SliderExample.vue";
@@ -329,6 +329,44 @@ export default defineComponent({
 						curves.forEach((points, index) => {
 							drawBezier(context, points, null, { curveStrokeColor: `hsl(${40 * index}, 100%, 50%)`, radius: 3.5, drawHandles: false });
 						});
+					},
+				},
+				{
+					name: "Arcs",
+					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: Record<string, number>): void => {
+						const context = getContextFromCanvas(canvas);
+
+						const arcs: CircleSector[] = bezier.arcs(options.error).map((sector) => JSON.parse(sector));
+						console.log(arcs);
+						arcs.forEach((circleSector) => {
+							drawCircleSector(context, circleSector, true);
+						});
+					},
+					template: markRaw(SliderExample),
+					templateOptions: {
+						sliders: [
+							{
+								variable: "error",
+								min: 0.05,
+								max: 1,
+								step: 0.05,
+								default: 0.5,
+							},
+						],
+					},
+					curveDegrees: new Set([BezierCurveType.Quadratic, BezierCurveType.Cubic]),
+					customPoints: {
+						[BezierCurveType.Quadratic]: [
+							[50, 50],
+							[85, 65],
+							[100, 100],
+						],
+						[BezierCurveType.Cubic]: [
+							[160, 180],
+							[170, 10],
+							[30, 90],
+							[180, 160],
+						],
 					},
 				},
 			],

@@ -146,6 +146,49 @@ pub fn solve_cubic(a: f64, b: f64, c: f64, d: f64) -> Vec<f64> {
 	}
 }
 
+/// Returns the intersection of two lines. The lines are given by a point on the line and its slope (represented by a vector).
+pub fn line_intersection(point1: DVec2, point1_slope_vector: DVec2, point2: DVec2, point2_slope_vector: DVec2) -> DVec2 {
+	assert!(point1_slope_vector.normalize() != point2_slope_vector.normalize());
+	/*
+		*/
+	if f64_compare(point1_slope_vector.x, 0., MAX_ABSOLUTE_DIFFERENCE) {
+		let m2 = point2_slope_vector.y / point2_slope_vector.x;
+		let b2 = point2.y - m2 * point2.x;
+		DVec2::new(point1.x, point1.x * m2 + b2)
+	} else if f64_compare(point2_slope_vector.x, 0., MAX_ABSOLUTE_DIFFERENCE) {
+		let m1 = point1_slope_vector.y / point1_slope_vector.x;
+		let b1 = point1.y - m1 * point1.x;
+		DVec2::new(point2.x, point2.x * m1 + b1)
+	} else {
+		let m1 = point1_slope_vector.y / point1_slope_vector.x;
+		let b1 = point1.y - m1 * point1.x;
+		let m2 = point2_slope_vector.y / point2_slope_vector.x;
+		let b2 = point2.y - m2 * point2.x;
+		let intersection_x = (b2 - b1) / (m1 - m2);
+		DVec2::new(intersection_x, intersection_x * m1 + b1)
+	}
+}
+
+/// Compute the center of the circle that passes through all three provided points
+pub fn compute_circle_center_from_points(p1: DVec2, p2: DVec2, p3: DVec2) -> DVec2 {
+	// TODO something breaks here
+	let midpoint_a = p1.lerp(p2, 0.5);
+	let midpoint_b = p2.lerp(p3, 0.5);
+	let midpoint_c = p3.lerp(p1, 0.5);
+
+	let tangent_a = (p1 - p2).perp();
+	let tangent_b = (p2 - p3).perp();
+	let tangent_c = (p3 - p1).perp();
+
+	let intersect_a_b = line_intersection(midpoint_a, tangent_a, midpoint_b, tangent_b);
+	let intersect_b_c = line_intersection(midpoint_b, tangent_b, midpoint_c, tangent_c);
+	let intersect_c_a = line_intersection(midpoint_c, tangent_c, midpoint_a, tangent_a);
+
+	assert!(intersect_a_b.abs_diff_eq(intersect_b_c, MAX_ABSOLUTE_DIFFERENCE));
+	assert!(intersect_b_c.abs_diff_eq(intersect_c_a, MAX_ABSOLUTE_DIFFERENCE));
+	intersect_a_b
+}
+
 /// Compare two `f64` numbers with a provided max absolute value difference.
 pub fn f64_compare(f1: f64, f2: f64, max_abs_diff: f64) -> bool {
 	(f1 - f2).abs() < max_abs_diff
@@ -214,5 +257,15 @@ mod tests {
 		// linear
 		let roots7 = solve_cubic(0., 0., 1., -1.);
 		assert!(roots7 == vec![1.]);
+	}
+
+	#[test]
+	fn test_compute_circle_center_from_points() {
+		// 3/4 of unit circle
+		let center1 = compute_circle_center_from_points(DVec2::new(0., 1.), DVec2::new(-1., 0.), DVec2::new(1., 0.));
+		assert_eq!(center1, DVec2::new(0., 0.));
+		// 1/4 of unit circle
+		let center2 = compute_circle_center_from_points(DVec2::new(-1., 0.), DVec2::new(0., 1.), DVec2::new(1., 0.));
+		assert_eq!(center2, DVec2::new(0., 0.));
 	}
 }

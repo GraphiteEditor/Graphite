@@ -42,3 +42,10 @@ export type BezierStyleConfig = {
 	radius: number;
 	drawHandles: boolean;
 };
+
+export type CircleSector = {
+	center: Point;
+	radius: number;
+	start_angle: number;
+	end_angle: number;
+};
