@@ -362,8 +362,8 @@ export default defineComponent({
 	},
 	mounted() {
 		const subpath = WasmSubPath.from_triples([
-			[[0, 0], null, [0, 100]],
-			[[50, 0], [50, 0], null],
+			[[10, 10], null, [10, 90]],
+			[[50, 10], [50, 10], null],
 			[[50, 50], null, null],
 			[
 				[75, 75],

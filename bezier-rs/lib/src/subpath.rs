@@ -91,14 +91,26 @@ impl SubPath {
 			return String::new();
 		}
 		let mut path_pieces = vec![format!("M {} {}", self.manipulator_groups[0].anchor.x, self.manipulator_groups[0].anchor.y)];
+		let mut handle_pieces = Vec::new();
+		let mut handle_circles = Vec::new();
 
 		for start_index in 0..self.len() + (self.closed as usize) - 1 {
+			let start = self.manipulator_groups[start_index].anchor;
 			let end_index = (start_index + 1) % self.len();
 			let end = self.manipulator_groups[end_index].anchor;
 			let handle1 = self.manipulator_groups[start_index].out_handle;
 			let handle2 = self.manipulator_groups[end_index].in_handle;
 
-			let handle_path = {
+			if handle1.is_some() {
+				handle_pieces.push(format!("M {} {} L {} {} ", start.x, start.y, handle1.unwrap().x, handle1.unwrap().y));
+				handle_circles.push(format!(r#"<circle cx="{}" cy="{}" r="{}"/>"#, handle1.unwrap().x, handle1.unwrap().y, 3));
+			}
+			if handle2.is_some() {
+				handle_pieces.push(format!("M {} {} L {} {}", end.x, end.y, handle2.unwrap().x, handle2.unwrap().y));
+				handle_circles.push(format!(r#"<circle cx="{}" cy="{}" r="{}"/>"#, handle2.unwrap().x, handle2.unwrap().y, 3));
+			}
+
+			let main_path = {
 				if handle1.is_none() && handle2.is_none() {
 					String::from("L")
 				} else if handle1.is_none() || handle2.is_none() {
@@ -108,11 +120,11 @@ impl SubPath {
 					format!("C {} {} {} {}", handle1.unwrap().x, handle1.unwrap().y, handle2.unwrap().x, handle2.unwrap().y)
 				}
 			};
-			path_pieces.push(format!("{} {} {}", handle_path, end.x, end.y))
+			path_pieces.push(format!("{} {} {}", main_path, end.x, end.y));
 		}
 
 		format!(
-			r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{} {} {} {}" width="{}px" height="{}px"><path d="{} {}" stroke="black" fill="transparent"/></svg>"#,
+			r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{} {} {} {}" width="{}px" height="{}px"><path d="{} {}" stroke="black" fill="transparent"/><path d="{} {}" stroke="red" fill="transparent"/>{}</svg>"#,
 			0,
 			0,
 			100,
@@ -120,7 +132,10 @@ impl SubPath {
 			100,
 			100,
 			"\n",
-			path_pieces.join(" ")
+			path_pieces.join(" "),
+			"\n",
+			handle_pieces.join(" "),
+			handle_circles.join(""),
 		)
 	}
 
