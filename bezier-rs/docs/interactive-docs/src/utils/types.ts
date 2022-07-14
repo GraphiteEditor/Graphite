@@ -5,6 +5,9 @@ export type WasmBezierKey = keyof WasmBezierInstance;
 export type WasmBezierConstructorKey = "new_linear" | "new_quadratic" | "new_cubic";
 export type WasmBezierManipulatorKey = "set_start" | "set_handle_start" | "set_handle_end" | "set_end";
 
+export type WasmSubPathInstance = InstanceType<WasmRawInstance["WasmSubPath"]>;
+export type WasmSubPathManipulatorKey = "set_anchor" | "set_in_handle" | "set_out_handle";
+
 export enum BezierCurveType {
 	Linear = "Linear",
 	Quadratic = "Quadratic",

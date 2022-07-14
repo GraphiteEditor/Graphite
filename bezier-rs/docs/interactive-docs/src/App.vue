@@ -2,8 +2,8 @@
 	<div class="App">
 		<h1>Bezier-rs Interactive Documentation</h1>
 		<p>This is the interactive documentation for the <b>bezier-rs</b> library. Click and drag on the endpoints of the example curves to visualize the various Bezier utilities and functions.</p>
-		<h2>Bezier Objects</h2>
-		<div v-for="(feature, index) in features" :key="index">
+		<h2>Beziers</h2>
+		<div v-for="(feature, index) in bezierFeatures" :key="index">
 			<ExamplePane
 				:template="feature.template"
 				:templateOptions="feature.templateOptions"
@@ -15,21 +15,22 @@
 				:customOptions="feature.customOptions"
 			/>
 		</div>
-		<br />
-		<h2>SubPath Objects</h2>
-		<div id="svg-test" />
+		<h2>SubPaths</h2>
+		<div v-for="(feature, index) in subPathFeatures" :key="index">
+			<SubPathExample :name="feature.name" />
+		</div>
 	</div>
 </template>
 
 <script lang="ts">
 import { defineComponent, markRaw } from "vue";
 
-import { WasmSubPath } from "@/../wasm/pkg";
 import { drawText, drawPoint, drawBezier, drawLine, getContextFromCanvas, drawBezierHelper, COLORS } from "@/utils/drawing";
 import { BezierCurveType, Point, WasmBezierInstance } from "@/utils/types";
 
 import ExamplePane from "@/components/ExamplePane.vue";
 import SliderExample from "@/components/SliderExample.vue";
+import SubPathExample from "@/components/SubPathExample.vue";
 
 const tSliderOptions = {
 	min: 0,
@@ -45,10 +46,11 @@ export default defineComponent({
 	name: "App",
 	components: {
 		ExamplePane,
+		SubPathExample,
 	},
 	data() {
 		return {
-			features: [
+			bezierFeatures: [
 				{
 					name: "Constructor",
 					// eslint-disable-next-line
@@ -360,38 +362,12 @@ export default defineComponent({
 					},
 				},
 			],
-		};
-	},
-	mounted() {
-		const subpath = WasmSubPath.from_triples([
-			[[20, 20], null, [10, 90]],
-			[[150, 40], [20, 20], null],
-			[[175, 175], null, null],
-			[
-				[100, 100],
-				[40, 120],
-				[20, 60],
+			subPathFeatures: [
+				{
+					name: "Constructor",
+				},
 			],
-		]);
-		const svgContainer = document.getElementById("svg-test");
-		if (svgContainer) {
-			let held = false;
-			svgContainer.addEventListener("mousedown", () => {
-				held = true;
-			});
-			svgContainer.addEventListener("mouseup", () => {
-				held = false;
-			});
-			svgContainer.addEventListener("mousemove", (evt: MouseEvent) => {
-				if (held) {
-					const mx = evt.offsetX;
-					const my = evt.offsetY;
-					subpath.set_anchor(0, mx, my);
-					svgContainer.innerHTML = `${subpath.to_svg()} <div> Length: ${subpath.length().toFixed(2)}`;
-				}
-			});
-			svgContainer.innerHTML = `${subpath.to_svg()} <div> Length: ${subpath.length().toFixed(2)}`;
-		}
+		};
 	},
 });
 </script>
@@ -402,9 +378,5 @@ export default defineComponent({
 	text-align: center;
 	color: #2c3e50;
 	margin-top: 60px;
-}
-
-svg {
-	border: solid 1px black;
 }
 </style>
