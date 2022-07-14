@@ -25,6 +25,7 @@ impl Default for ProjectionOptions {
 	}
 }
 
+#[derive(Copy, Clone)]
 pub struct CircleArc {
 	pub center: DVec2,
 	pub radius: f64,
@@ -42,5 +43,16 @@ impl Debug for CircleArc {
 			self.start_angle.to_degrees(),
 			self.end_angle.to_degrees()
 		)
+	}
+}
+
+impl Default for CircleArc {
+	fn default() -> Self {
+		CircleArc {
+			center: DVec2::ZERO,
+			radius: 0.,
+			start_angle: 0.,
+			end_angle: 0.,
+		}
 	}
 }

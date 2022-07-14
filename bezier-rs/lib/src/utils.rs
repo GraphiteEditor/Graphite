@@ -1,6 +1,6 @@
 use crate::consts::{MAX_ABSOLUTE_DIFFERENCE, STRICT_MAX_ABSOLUTE_DIFFERENCE};
 
-use glam::{BVec2, DVec2};
+use glam::{BVec2, DMat2, DVec2};
 use std::f64::consts::PI;
 
 /// Helper to perform the computation of a and c, where b is the provided point on the curve.
@@ -169,6 +169,11 @@ pub fn line_intersection(point1: DVec2, point1_slope_vector: DVec2, point2: DVec
 	}
 }
 
+pub fn are_points_collinear(p1: DVec2, p2: DVec2, p3: DVec2) -> bool {
+	let matrix = DMat2::from_cols(p1 - p2, p2 - p3);
+	matrix.determinant() / 2. == 0.
+}
+
 /// Compute the center of the circle that passes through all three provided points
 pub fn compute_circle_center_from_points(p1: DVec2, p2: DVec2, p3: DVec2) -> DVec2 {
 	// TODO something breaks here
@@ -184,9 +189,7 @@ pub fn compute_circle_center_from_points(p1: DVec2, p2: DVec2, p3: DVec2) -> DVe
 	let intersect_b_c = line_intersection(midpoint_b, tangent_b, midpoint_c, tangent_c);
 	let intersect_c_a = line_intersection(midpoint_c, tangent_c, midpoint_a, tangent_a);
 
-	assert!(intersect_a_b.abs_diff_eq(intersect_b_c, MAX_ABSOLUTE_DIFFERENCE));
-	assert!(intersect_b_c.abs_diff_eq(intersect_c_a, MAX_ABSOLUTE_DIFFERENCE));
-	intersect_a_b
+	(intersect_a_b + intersect_b_c + intersect_c_a) / 3.
 }
 
 /// Compare two `f64` numbers with a provided max absolute value difference.
@@ -267,5 +270,11 @@ mod tests {
 		// 1/4 of unit circle
 		let center2 = compute_circle_center_from_points(DVec2::new(-1., 0.), DVec2::new(0., 1.), DVec2::new(1., 0.));
 		assert_eq!(center2, DVec2::new(0., 0.));
+	}
+
+	#[test]
+	fn test_are_points_collinear() {
+		assert!(are_points_collinear(DVec2::new(2., 4.), DVec2::new(6., 8.), DVec2::new(4., 6.)));
+		assert!(!are_points_collinear(DVec2::new(1., 4.), DVec2::new(6., 8.), DVec2::new(4., 6.)));
 	}
 }

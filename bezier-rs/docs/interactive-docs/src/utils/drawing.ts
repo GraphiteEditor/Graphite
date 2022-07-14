@@ -73,24 +73,18 @@ export const drawCurve = (ctx: CanvasRenderingContext2D, points: Point[], stroke
 	ctx.stroke();
 };
 
-export const drawCircleSector = (
-	ctx: CanvasRenderingContext2D,
-	circleSector: CircleSector,
-	ccw = false,
-	strokeColor = COLORS.INTERACTIVE.STROKE_1
-	// fillColor = COLORS.NON_INTERACTIVE.STROKE_1
-): void => {
+export const drawCircleSector = (ctx: CanvasRenderingContext2D, circleSector: CircleSector, strokeColor = COLORS.INTERACTIVE.STROKE_1, fillColor = COLORS.NON_INTERACTIVE.STROKE_1): void => {
 	ctx.strokeStyle = strokeColor;
-	ctx.fillStyle = "hsl(10, 50%, 50%, 50%)";
+	ctx.fillStyle = fillColor;
 	ctx.lineWidth = 2;
 
 	const { center, radius, start_angle: startAngle, end_angle: endAngle } = circleSector;
 	ctx.beginPath();
 	ctx.moveTo(center.x, center.y);
-	ctx.arc(center.x, center.y, radius, startAngle, endAngle, ccw);
+	ctx.arc(center.x, center.y, radius, startAngle, endAngle);
 	ctx.lineTo(center.x, center.y);
 	ctx.closePath();
-	ctx.stroke();
+	// ctx.stroke();
 	ctx.fill();
 };
 
