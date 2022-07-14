@@ -157,7 +157,9 @@ impl Dispatcher {
 		list.extend(self.message_handlers.input_preprocessor_message_handler.actions());
 		list.extend(self.message_handlers.input_mapper_message_handler.actions());
 		list.extend(self.message_handlers.global_message_handler.actions());
-		list.extend(self.message_handlers.tool_message_handler.actions());
+		if self.message_handlers.portfolio_message_handler.active_document().is_some() {
+			list.extend(self.message_handlers.tool_message_handler.actions());
+		}
 		list.extend(self.message_handlers.portfolio_message_handler.actions());
 		list
 	}
