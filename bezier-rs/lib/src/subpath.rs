@@ -1,3 +1,5 @@
+use std::ops::{Index, IndexMut};
+
 use glam::DVec2;
 
 use crate::Bezier;
@@ -11,6 +13,22 @@ pub struct ManipulatorGroup {
 pub struct SubPath {
 	manipulator_groups: Vec<ManipulatorGroup>,
 	closed: bool,
+}
+
+impl Index<usize> for SubPath {
+	type Output = ManipulatorGroup;
+
+	fn index(&self, index: usize) -> &Self::Output {
+		assert!(index < self.len());
+		&self.manipulator_groups[index]
+	}
+}
+
+impl IndexMut<usize> for SubPath {
+	fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+		assert!(index < self.len());
+		&mut self.manipulator_groups[index]
+	}
 }
 
 pub struct SubPathIter<'a> {
@@ -29,10 +47,10 @@ impl Iterator for SubPathIter<'_> {
 		let end_index = (self.index + 1) % self.sub_path.len();
 		self.index += 1;
 
-		let start = self.sub_path.manipulator_groups[start_index].anchor;
-		let end = self.sub_path.manipulator_groups[end_index].anchor;
-		let handle1 = self.sub_path.manipulator_groups[start_index].out_handle;
-		let handle2 = self.sub_path.manipulator_groups[end_index].in_handle;
+		let start = self.sub_path[start_index].anchor;
+		let end = self.sub_path[end_index].anchor;
+		let handle1 = self.sub_path[start_index].out_handle;
+		let handle2 = self.sub_path[end_index].in_handle;
 
 		if handle1.is_none() && handle2.is_none() {
 			return Some(Bezier::from_linear_dvec2(start, end));
@@ -90,16 +108,16 @@ impl SubPath {
 		if self.is_empty() {
 			return String::new();
 		}
-		let mut path_pieces = vec![format!("M {} {}", self.manipulator_groups[0].anchor.x, self.manipulator_groups[0].anchor.y)];
+		let mut path_pieces = vec![format!("M {} {}", self[0].anchor.x, self[0].anchor.y)];
 		let mut handle_pieces = Vec::new();
 		let mut handle_circles = Vec::new();
 
 		for start_index in 0..self.len() + (self.closed as usize) - 1 {
-			let start = self.manipulator_groups[start_index].anchor;
+			let start = self[start_index].anchor;
 			let end_index = (start_index + 1) % self.len();
-			let end = self.manipulator_groups[end_index].anchor;
-			let handle1 = self.manipulator_groups[start_index].out_handle;
-			let handle2 = self.manipulator_groups[end_index].in_handle;
+			let end = self[end_index].anchor;
+			let handle1 = self[start_index].out_handle;
+			let handle2 = self[end_index].in_handle;
 
 			if handle1.is_some() {
 				handle_pieces.push(format!("M {} {} L {} {} ", start.x, start.y, handle1.unwrap().x, handle1.unwrap().y));
@@ -127,10 +145,10 @@ impl SubPath {
 			r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{} {} {} {}" width="{}px" height="{}px"><path d="{} {}" stroke="black" fill="transparent"/><path d="{} {}" stroke="red" fill="transparent"/>{}</svg>"#,
 			0,
 			0,
-			100,
-			100,
-			100,
-			100,
+			200,
+			200,
+			200,
+			200,
 			"\n",
 			path_pieces.join(" "),
 			"\n",

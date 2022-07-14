@@ -2,6 +2,7 @@
 	<div class="App">
 		<h1>Bezier-rs Interactive Documentation</h1>
 		<p>This is the interactive documentation for the <b>bezier-rs</b> library. Click and drag on the endpoints of the example curves to visualize the various Bezier utilities and functions.</p>
+		<h2>Bezier Objects</h2>
 		<div v-for="(feature, index) in features" :key="index">
 			<ExamplePane
 				:template="feature.template"
@@ -15,6 +16,7 @@
 			/>
 		</div>
 		<br />
+		<h2>SubPath Objects</h2>
 		<div id="svg-test" />
 	</div>
 </template>
@@ -362,17 +364,32 @@ export default defineComponent({
 	},
 	mounted() {
 		const subpath = WasmSubPath.from_triples([
-			[[10, 10], null, [10, 90]],
-			[[50, 10], [50, 10], null],
-			[[50, 50], null, null],
+			[[20, 20], null, [10, 90]],
+			[[150, 40], [20, 20], null],
+			[[175, 175], null, null],
 			[
-				[75, 75],
-				[20, 80],
+				[100, 100],
+				[40, 120],
 				[20, 60],
 			],
 		]);
 		const svgContainer = document.getElementById("svg-test");
 		if (svgContainer) {
+			let held = false;
+			svgContainer.addEventListener("mousedown", () => {
+				held = true;
+			});
+			svgContainer.addEventListener("mouseup", () => {
+				held = false;
+			});
+			svgContainer.addEventListener("mousemove", (evt: MouseEvent) => {
+				if (held) {
+					const mx = evt.offsetX;
+					const my = evt.offsetY;
+					subpath.set_anchor(0, mx, my);
+					svgContainer.innerHTML = `${subpath.to_svg()} <div> Length: ${subpath.length().toFixed(2)}`;
+				}
+			});
 			svgContainer.innerHTML = `${subpath.to_svg()} <div> Length: ${subpath.length().toFixed(2)}`;
 		}
 	},
@@ -385,5 +402,9 @@ export default defineComponent({
 	text-align: center;
 	color: #2c3e50;
 	margin-top: 60px;
+}
+
+svg {
+	border: solid 1px black;
 }
 </style>

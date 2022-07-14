@@ -1,6 +1,6 @@
 <template>
 	<div>
-		<h2 class="example-pane-header">{{ name }}</h2>
+		<h3 class="example-pane-header">{{ name }}</h3>
 		<div class="example-row">
 			<div v-for="(example, index) in exampleData" :key="index">
 				<component :is="template" :templateOptions="example.templateOptions" :title="example.title" :bezier="example.bezier" :callback="callback" :createThroughPoints="createThroughPoints" />

@@ -22,6 +22,18 @@ impl WasmSubPath {
 		WasmSubPath(SubPath::new(manip_groups, false))
 	}
 
+	pub fn set_anchor(&mut self, index: usize, x: f64, y: f64) {
+		self.0[index].anchor = DVec2::new(x, y);
+	}
+
+	pub fn set_in_handle(&mut self, index: usize, x: f64, y: f64) {
+		self.0[index].in_handle = Some(DVec2::new(x, y));
+	}
+
+	pub fn set_out_handle(&mut self, index: usize, x: f64, y: f64) {
+		self.0[index].out_handle = Some(DVec2::new(x, y));
+	}
+
 	pub fn length(&self) -> f64 {
 		self.0.length(None)
 	}
