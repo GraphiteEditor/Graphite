@@ -74,6 +74,7 @@ impl PortfolioMessageHandler {
 		self.documents.insert(document_id, new_document);
 
 		responses.push_back(PortfolioMessage::UpdateOpenDocumentsList.into());
+		responses.push_back(PortfolioMessage::SetActiveDocument { document_id }.into());
 		responses.push_back(PortfolioMessage::UpdateDocumentWidgets.into());
 		responses.push_back(ToolMessage::InitTools.into());
 		responses.push_back(MenuBarMessage::SendLayout.into());
