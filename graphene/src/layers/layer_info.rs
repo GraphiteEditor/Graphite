@@ -4,7 +4,7 @@ use super::image_layer::ImageLayer;
 use super::shape_layer::ShapeLayer;
 use super::style::{PathStyle, RenderData};
 use super::text_layer::TextLayer;
-use super::vector::vector_shape::VectorShape;
+use super::vector::subpath::Subpath;
 use crate::intersection::Quad;
 use crate::layers::text_layer::FontCache;
 use crate::DocumentError;
@@ -333,26 +333,26 @@ impl Layer {
 	///
 	/// // Apply the Identity transform, which leaves the points unchanged
 	/// assert_eq!(
-	///     layer.aabounding_box_for_transform(DAffine2::IDENTITY, &Default::default()),
+	///     layer.aabb_for_transform(DAffine2::IDENTITY, &Default::default()),
 	///     Some([DVec2::ZERO, DVec2::ONE]),
 	/// );
 	///
 	/// // Apply a transform that scales every point by a factor of two
 	/// let transform = DAffine2::from_scale(DVec2::ONE * 2.);
 	/// assert_eq!(
-	///     layer.aabounding_box_for_transform(transform, &Default::default()),
+	///     layer.aabb_for_transform(transform, &Default::default()),
 	///     Some([DVec2::ZERO, DVec2::ONE * 2.]),
 	/// );
-	pub fn aabounding_box_for_transform(&self, transform: DAffine2, font_cache: &FontCache) -> Option<[DVec2; 2]> {
+	pub fn aabb_for_transform(&self, transform: DAffine2, font_cache: &FontCache) -> Option<[DVec2; 2]> {
 		self.data.bounding_box(transform, font_cache)
 	}
 
-	pub fn aabounding_box(&self, font_cache: &FontCache) -> Option<[DVec2; 2]> {
-		self.aabounding_box_for_transform(self.transform, font_cache)
+	pub fn aabb(&self, font_cache: &FontCache) -> Option<[DVec2; 2]> {
+		self.aabb_for_transform(self.transform, font_cache)
 	}
 
 	pub fn bounding_transform(&self, font_cache: &FontCache) -> DAffine2 {
-		let scale = match self.aabounding_box_for_transform(DAffine2::IDENTITY, font_cache) {
+		let scale = match self.aabb_for_transform(DAffine2::IDENTITY, font_cache) {
 			Some([a, b]) => {
 				let dimensions = b - a;
 				DAffine2::from_scale(dimensions)
@@ -372,21 +372,21 @@ impl Layer {
 		}
 	}
 
-	pub fn as_vector_shape(&self) -> Option<&VectorShape> {
+	pub fn as_subpath(&self) -> Option<&Subpath> {
 		match &self.data {
 			LayerDataType::Shape(s) => Some(&s.shape),
 			_ => None,
 		}
 	}
 
-	pub fn as_vector_shape_copy(&self) -> Option<VectorShape> {
+	pub fn as_subpath_copy(&self) -> Option<Subpath> {
 		match &self.data {
 			LayerDataType::Shape(s) => Some(s.shape.clone()),
 			_ => None,
 		}
 	}
 
-	pub fn as_vector_shape_mut(&mut self) -> Option<&mut VectorShape> {
+	pub fn as_subpath_mut(&mut self) -> Option<&mut Subpath> {
 		match &mut self.data {
 			LayerDataType::Shape(s) => Some(&mut s.shape),
 			_ => None,

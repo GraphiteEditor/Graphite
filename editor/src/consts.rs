@@ -45,7 +45,7 @@ pub const BOUNDS_SELECT_THRESHOLD: f64 = 10.;
 pub const BOUNDS_ROTATE_THRESHOLD: f64 = 20.;
 
 // Path tool
-pub const VECTOR_MANIPULATOR_ANCHOR_MARKER_SIZE: f64 = 5.;
+pub const MANIPULATOR_GROUP_MARKER_SIZE: f64 = 5.;
 pub const SELECTION_THRESHOLD: f64 = 10.;
 
 // Pen tool

@@ -69,13 +69,15 @@ impl MessageHandler<LayoutMessage, ()> for LayoutMessageHandler {
 		use LayoutMessage::*;
 		#[remain::sorted]
 		match action {
+			RefreshLayout { layout_target } => {
+				self.send_layout(layout_target, responses);
+			}
 			SendLayout { layout, layout_target } => {
 				self.layouts[layout_target as usize] = layout;
 
 				self.send_layout(layout_target, responses);
 			}
 			UpdateLayout { layout_target, widget_id, value } => {
-				self.send_layout(layout_target, responses);
 				let layout = &mut self.layouts[layout_target as usize];
 				let widget_holder = layout.iter_mut().find(|widget| widget.widget_id == widget_id);
 				if widget_holder.is_none() {
@@ -184,6 +186,7 @@ impl MessageHandler<LayoutMessage, ()> for LayoutMessageHandler {
 					}
 					Widget::TextLabel(_) => {}
 				};
+				responses.push_back(RefreshLayout { layout_target }.into());
 			}
 		}
 	}
