@@ -285,6 +285,12 @@ impl PropertyHolder for MenuBarMessageHandler {
 							action: MenuEntry::no_action(),
 							children: Some(vec![vec![
 								MenuEntry {
+									label: "Log MessageTree".into(),
+									action: MenuEntry::create_action(|_| GlobalMessage::LogMessageTree.into()),
+									shortcut: Some(vec![Key::Key0]),
+									..MenuEntry::default()
+								},
+								MenuEntry {
 									label: "Log Level Info".into(),
 									action: MenuEntry::create_action(|_| GlobalMessage::LogInfo.into()),
 									shortcut: Some(vec![Key::Key1]),

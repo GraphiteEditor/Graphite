@@ -2,13 +2,23 @@ use crate::message_prelude::*;
 
 use std::collections::VecDeque;
 
-#[derive(Debug, Default)]
-pub struct GlobalMessageHandler {}
+#[derive(Debug)]
+pub struct GlobalMessageHandler {
+	pub log_tree: bool,
+}
+
+impl Default for GlobalMessageHandler {
+	fn default() -> Self {
+		Self { log_tree: true }
+	}
+}
 
 impl MessageHandler<GlobalMessage, ()> for GlobalMessageHandler {
 	#[remain::check]
 	fn process_action(&mut self, message: GlobalMessage, _data: (), _responses: &mut VecDeque<Message>) {
 		use GlobalMessage::*;
+
+		self.log_tree = false;
 
 		#[remain::sorted]
 		match message {
@@ -20,6 +30,11 @@ impl MessageHandler<GlobalMessage, ()> for GlobalMessageHandler {
 				log::set_max_level(log::LevelFilter::Info);
 				log::info!("Set log verbosity to info");
 			}
+			LogMessageTree => {
+				log::set_max_level(log::LevelFilter::Info);
+				log::info!("Set log to tree");
+				self.log_tree = true;
+			}
 			LogTrace => {
 				log::set_max_level(log::LevelFilter::Trace);
 				log::info!("Set log verbosity to trace");
@@ -27,5 +42,5 @@ impl MessageHandler<GlobalMessage, ()> for GlobalMessageHandler {
 		}
 	}
 
-	advertise_actions!(GlobalMessageDiscriminant; LogInfo, LogDebug, LogTrace);
+	advertise_actions!(GlobalMessageDiscriminant; LogMessageTree, LogInfo, LogDebug, LogTrace);
 }

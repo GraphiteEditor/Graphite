@@ -8,5 +8,6 @@ use serde::{Deserialize, Serialize};
 pub enum GlobalMessage {
 	LogDebug,
 	LogInfo,
+	LogMessageTree,
 	LogTrace,
 }

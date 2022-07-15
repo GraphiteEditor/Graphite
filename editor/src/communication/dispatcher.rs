@@ -60,24 +60,30 @@ impl Dispatcher {
 		self.message_queues.push(VecDeque::from_iter([message.into()]));
 
 		while let Some(message) = self.message_queues.last_mut().and_then(VecDeque::pop_front) {
-			// If the deepest queue is now empty (after being popped from) then remove it
-			if self.message_queues.last().filter(|queue| queue.is_empty()).is_some() {
-				self.message_queues.pop();
-			}
-
 			// Skip processing of this message if it will be processed later (at the end of the shallowest level queue)
 			if SIDE_EFFECT_FREE_MESSAGES.contains(&message.to_discriminant()) {
 				let already_in_queue = self.message_queues.first().filter(|queue| queue.contains(&message)).is_some();
 				if already_in_queue {
+					// If the deepest queue is now empty (after being popped from) then remove it
+					while self.message_queues.last().filter(|queue| queue.is_empty()).is_some() {
+						self.message_queues.pop();
+					}
 					continue;
 				} else if self.message_queues.len() > 1 {
+					// If the deepest queue is now empty (after being popped from) then remove it
+					while self.message_queues.last().filter(|queue| queue.is_empty()).is_some() {
+						if self.message_queues.len() == 1 {
+							break;
+						}
+						self.message_queues.pop();
+					}
 					self.message_queues[0].push_back(message);
 					continue;
 				}
 			}
 
 			// Print the message at a verbosity level of `log`
-			self.log_message(&message);
+			self.log_message(&message, &self.message_queues, self.message_handlers.global_message_handler.log_tree);
 
 			// Create a new queue for the child messages
 			let mut queue = VecDeque::new();
@@ -143,6 +149,11 @@ impl Dispatcher {
 			if !queue.is_empty() {
 				self.message_queues.push(queue);
 			}
+
+			// If the deepest queue is now empty (after being popped from) then remove it
+			while self.message_queues.last().filter(|queue| queue.is_empty()).is_some() {
+				self.message_queues.pop();
+			}
 		}
 	}
 
@@ -158,10 +169,25 @@ impl Dispatcher {
 		list
 	}
 
-	fn log_message(&self, message: &Message) {
-		use Message::*;
+	fn log_message(&self, message: &Message, queues: &[VecDeque<Message>], log_tree: bool) {
+		if log_tree && !MessageDiscriminant::from(message).local_name().ends_with("PointerMove") {
+			let indents = String::from_iter(queues.iter().enumerate().skip(1).map(|(index, queue)| {
+				if index == queues.len() - 1 {
+					if queue.is_empty() {
+						"└── "
+					} else {
+						"├── "
+					}
+				} else if queue.is_empty() {
+					"   "
+				} else {
+					"│    "
+				}
+			}));
+			log::info!("{}{:?}", indents, message.to_discriminant());
+		}
 
-		if log::max_level() == log::LevelFilter::Trace && !(matches!(message, InputPreprocessor(_)) || MessageDiscriminant::from(message).local_name().ends_with("PointerMove")) {
+		if log::max_level() == log::LevelFilter::Trace && !(matches!(message, Message::InputPreprocessor(_)) || MessageDiscriminant::from(message).local_name().ends_with("PointerMove")) {
 			log::trace!("Message: {:?}", message);
 			// log::trace!("Hints: {:?}", self.input_mapper_message_handler.hints(self.collect_actions()));
 		}
