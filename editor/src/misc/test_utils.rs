@@ -8,6 +8,8 @@ use graphene::color::Color;
 
 /// A set of utility functions to make the writing of editor test more declarative
 pub trait EditorTestUtils {
+	fn new_document(&mut self);
+
 	fn draw_rect(&mut self, x1: f64, y1: f64, x2: f64, y2: f64);
 	fn draw_shape(&mut self, x1: f64, y1: f64, x2: f64, y2: f64);
 	fn draw_ellipse(&mut self, x1: f64, y1: f64, x2: f64, y2: f64);
@@ -24,6 +26,10 @@ pub trait EditorTestUtils {
 }
 
 impl EditorTestUtils for Editor {
+	fn new_document(&mut self) {
+		self.handle_message(Message::Portfolio(PortfolioMessage::NewDocumentWithName { name: String::from("Test document") }));
+	}
+
 	fn draw_rect(&mut self, x1: f64, y1: f64, x2: f64, y2: f64) {
 		self.drag_tool(ToolType::Rectangle, x1, y1, x2, y2);
 	}

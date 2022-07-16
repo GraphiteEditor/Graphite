@@ -198,6 +198,7 @@ mod test {
 		set_uuid_seed(0);
 		let mut editor = Editor::new();
 
+		editor.new_document();
 		editor.select_primary_color(Color::RED);
 		editor.draw_rect(100., 200., 300., 400.);
 		editor.select_primary_color(Color::BLUE);
