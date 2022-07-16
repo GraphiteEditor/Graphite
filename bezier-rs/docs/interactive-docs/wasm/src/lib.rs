@@ -147,9 +147,9 @@ impl WasmBezier {
 		to_js_value(bezier_points)
 	}
 
-	pub fn arcs(&self, error: f64) -> Vec<JsValue> {
+	pub fn arcs(&self, error: Option<f64>, max_iterations: Option<i32>) -> Vec<JsValue> {
 		self.0
-			.arcs(error)
+			.arcs(error, max_iterations)
 			.iter()
 			.map(|sector| {
 				to_js_value(CircleSector {

@@ -335,10 +335,9 @@ export default defineComponent({
 					name: "Arcs",
 					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: Record<string, number>): void => {
 						const context = getContextFromCanvas(canvas);
-						console.log(bezier.get_points().map((p) => JSON.parse(p)));
-						const arcs: CircleSector[] = bezier.arcs(options.error).map((sector) => JSON.parse(sector));
+						const arcs: CircleSector[] = bezier.arcs(options.error, options.max_iterations).map((sector) => JSON.parse(sector));
 						arcs.forEach((circleSector, index) => {
-							drawCircleSector(context, circleSector, `hsl(${40 * index}, 100%, 50%, 75%)`, `hsl(${40 * index}, 100%, 50%, 37.5%)`); // hsl(10, 50%, 50%, 50%)";
+							drawCircleSector(context, circleSector, `hsl(${40 * index}, 100%, 50%, 75%)`, `hsl(${40 * index}, 100%, 50%, 37.5%)`);
 						});
 					},
 					template: markRaw(SliderExample),
@@ -350,6 +349,13 @@ export default defineComponent({
 								max: 1,
 								step: 0.05,
 								default: 0.5,
+							},
+							{
+								variable: "max_iterations",
+								min: 50,
+								max: 200,
+								step: 1,
+								default: 100,
 							},
 						],
 					},

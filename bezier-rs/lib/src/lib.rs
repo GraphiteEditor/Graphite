@@ -701,15 +701,19 @@ impl Bezier {
 	}
 
 	/// Approximate a bezier curve with circular arcs.
-	/// - `error`: the error used for approximating the arc's fit.
-	pub fn arcs(&self, error: f64) -> Vec<CircleArc> {
+	/// - `error`: The error used for approximating the arc's fit. The default is 0.5.
+	/// - `max_iterations`: The maximum number of segment iterations used as attempts for arc approximations. The default is 100.
+	pub fn arcs(&self, error: Option<f64>, max_iterations: Option<i32>) -> Vec<CircleArc> {
+		let error = error.unwrap_or(0.5);
+		let max_iterations = max_iterations.unwrap_or(100);
+
 		let mut low = 0.;
 		let mut middle = 0.5;
 		let mut high = 1.;
 
 		let mut previous_high = high;
 
-		// let mut iterations = 0;
+		let mut iterations = 0;
 
 		let mut previous_arc = CircleArc::default();
 		let mut was_previous_good = false;
@@ -717,8 +721,12 @@ impl Bezier {
 		let mut arcs = Vec::new();
 
 		// Find the arc
-		while low < 1. {
-			'myloop: loop {
+		'iterate_curve: while low < 1. {
+			'find_good_segment: loop {
+				if iterations > max_iterations {
+					break 'iterate_curve;
+				}
+				iterations += 1;
 				let p1 = self.evaluate(low);
 				let p2 = self.evaluate(middle);
 				let p3 = self.evaluate(high);
@@ -730,7 +738,7 @@ impl Bezier {
 					high = 1.;
 					middle = low + (high - low) / 2.;
 					was_previous_good = false;
-					break 'myloop;
+					break 'find_good_segment;
 				}
 
 				let center = utils::compute_circle_center_from_points(p1, p2, p3);
@@ -759,6 +767,12 @@ impl Bezier {
 					end_angle,
 				};
 
+				// TODO: we need to decide how we want to approach arc approximations:
+				// 1. always try to find the largest arc approximation but allow for incorrect arcs to be created given near-linear curve segments
+				// 2. call reduce or extrema or inflection on the curve before approximating, which would fix the above issue, but no longer guarantee the largest approximations are found
+				// 3. compare the bezier curve segment length with the arclength to see if we're returning the right sector
+				// 4. other options pending team discussion
+
 				// Use points in between low, middle and high to evaluate how well the arc approximates the curve
 				let e1 = self.evaluate(low + (middle - low) / 2.);
 				let e2 = self.evaluate(middle + (high - middle) / 2.);
@@ -769,7 +783,7 @@ impl Bezier {
 						// Found the final arc approximation
 						arcs.push(new_arc);
 						low = high;
-						break 'myloop;
+						break 'find_good_segment;
 					}
 					// If the approximation is good, expand the segment by half to try finding a larger good approximation
 					previous_high = high;
@@ -786,7 +800,7 @@ impl Bezier {
 					high = 1.;
 					middle = low + (high - low) / 2.;
 					was_previous_good = false;
-					break 'myloop;
+					break 'find_good_segment;
 				} else {
 					// If no good approximation has been seen yet, try again with half the segment
 					previous_high = high;
@@ -927,17 +941,17 @@ mod tests {
 	#[test]
 	fn test_arcs_linear() {
 		let bezier = Bezier::from_linear_coordinates(30., 60., 140., 120.);
-		let linear_arcs = bezier.arcs(0.5);
+		let linear_arcs = bezier.arcs(None, None);
 		assert!(linear_arcs.is_empty());
 	}
 
 	#[test]
 	fn test_arcs_quadratic() {
 		let bezier1 = Bezier::from_quadratic_coordinates(30., 30., 50., 50., 100., 100.);
-		assert!(bezier1.arcs(0.5).is_empty());
+		assert!(bezier1.arcs(None, None).is_empty());
 
 		let bezier2 = Bezier::from_quadratic_coordinates(50., 50., 85., 65., 100., 100.);
-		let actual_arcs = bezier2.arcs(0.5);
+		let actual_arcs = bezier2.arcs(None, None);
 		let expected_arc = CircleArc {
 			center: DVec2::new(15., 135.),
 			radius: 91.92388,
@@ -951,7 +965,7 @@ mod tests {
 	#[test]
 	fn test_arcs_cubic() {
 		let bezier = Bezier::from_cubic_coordinates(30., 30., 30., 80., 60., 80., 60., 140.);
-		let actual_arcs = bezier.arcs(0.5);
+		let actual_arcs = bezier.arcs(None, None);
 		let expected_arcs = vec![
 			CircleArc {
 				center: DVec2::new(122.394877, 30.7777189),
