@@ -53,6 +53,16 @@ impl Dispatcher {
 		Self::default()
 	}
 
+	// If the deepest queues (higher index in queues list) are now empty (after being popped from) then remove them
+	fn cleanup_queues(&mut self, leave_last: bool) {
+		while self.message_queues.last().filter(|queue| queue.is_empty()).is_some() {
+			if leave_last && self.message_queues.len() == 1 {
+				break;
+			}
+			self.message_queues.pop();
+		}
+	}
+
 	#[remain::check]
 	pub fn handle_message<T: Into<Message>>(&mut self, message: T) {
 		use Message::*;
@@ -64,19 +74,12 @@ impl Dispatcher {
 			if SIDE_EFFECT_FREE_MESSAGES.contains(&message.to_discriminant()) {
 				let already_in_queue = self.message_queues.first().filter(|queue| queue.contains(&message)).is_some();
 				if already_in_queue {
-					// If the deepest queue is now empty (after being popped from) then remove it
-					while self.message_queues.last().filter(|queue| queue.is_empty()).is_some() {
-						self.message_queues.pop();
-					}
+					self.log_deferred_message(&message, &self.message_queues, self.message_handlers.global_message_handler.log_tree);
+					self.cleanup_queues(false);
 					continue;
 				} else if self.message_queues.len() > 1 {
-					// If the deepest queue is now empty (after being popped from) then remove it
-					while self.message_queues.last().filter(|queue| queue.is_empty()).is_some() {
-						if self.message_queues.len() == 1 {
-							break;
-						}
-						self.message_queues.pop();
-					}
+					self.log_deferred_message(&message, &self.message_queues, self.message_handlers.global_message_handler.log_tree);
+					self.cleanup_queues(true);
 					self.message_queues[0].push_back(message);
 					continue;
 				}
@@ -103,6 +106,7 @@ impl Dispatcher {
 					// Image and font loading should be immediately handled
 					if let FrontendMessage::UpdateImageData { .. } | FrontendMessage::TriggerFontLoad { .. } = message {
 						self.responses.push(message);
+						self.cleanup_queues(false);
 						return;
 					}
 
@@ -150,10 +154,7 @@ impl Dispatcher {
 				self.message_queues.push(queue);
 			}
 
-			// If the deepest queue is now empty (after being popped from) then remove it
-			while self.message_queues.last().filter(|queue| queue.is_empty()).is_some() {
-				self.message_queues.pop();
-			}
+			self.cleanup_queues(false);
 		}
 	}
 
@@ -169,27 +170,40 @@ impl Dispatcher {
 		list
 	}
 
+	/// Create the tree structure for logging the messages as a tree
+	fn create_indents(queues: &[VecDeque<Message>]) -> String {
+		String::from_iter(queues.iter().enumerate().skip(1).map(|(index, queue)| {
+			if index == queues.len() - 1 {
+				if queue.is_empty() {
+					"└── "
+				} else {
+					"├── "
+				}
+			} else if queue.is_empty() {
+				"   "
+			} else {
+				"│    "
+			}
+		}))
+	}
+
+	/// Logs a message that is about to be executed,
+	/// either as a tree with a discriminant or the entire payload (depending on settings)
 	fn log_message(&self, message: &Message, queues: &[VecDeque<Message>], log_tree: bool) {
 		if log_tree && !MessageDiscriminant::from(message).local_name().ends_with("PointerMove") {
-			let indents = String::from_iter(queues.iter().enumerate().skip(1).map(|(index, queue)| {
-				if index == queues.len() - 1 {
-					if queue.is_empty() {
-						"└── "
-					} else {
-						"├── "
-					}
-				} else if queue.is_empty() {
-					"   "
-				} else {
-					"│    "
-				}
-			}));
-			log::info!("{}{:?}", indents, message.to_discriminant());
+			log::info!("{}{:?}", Self::create_indents(queues), message.to_discriminant());
 		}
 
 		if log::max_level() == log::LevelFilter::Trace && !(matches!(message, Message::InputPreprocessor(_)) || MessageDiscriminant::from(message).local_name().ends_with("PointerMove")) {
 			log::trace!("Message: {:?}", message);
 			// log::trace!("Hints: {:?}", self.input_mapper_message_handler.hints(self.collect_actions()));
+		}
+	}
+
+	/// Logs into the tree that the message is in the side effect free messages and its execution will be deferred
+	fn log_deferred_message(&self, message: &Message, queues: &[VecDeque<Message>], log_tree: bool) {
+		if log_tree {
+			log::info!("{}Deferred '{:?}' - SIDE_EFFECT_FREE_MESSAGE", Self::create_indents(queues), message.to_discriminant());
 		}
 	}
 }
