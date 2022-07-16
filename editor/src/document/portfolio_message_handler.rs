@@ -74,11 +74,13 @@ impl PortfolioMessageHandler {
 		self.documents.insert(document_id, new_document);
 
 		responses.push_back(PortfolioMessage::UpdateOpenDocumentsList.into());
-		responses.push_back(PortfolioMessage::SetActiveDocument { document_id }.into());
+		responses.push_back(PortfolioMessage::SelectDocument { document_id }.into());
 		responses.push_back(PortfolioMessage::UpdateDocumentWidgets.into());
 		responses.push_back(ToolMessage::InitTools.into());
 		responses.push_back(MenuBarMessage::SendLayout.into());
 		responses.push_back(PropertiesPanelMessage::Init.into());
+		responses.push_back(MovementMessage::TranslateCanvas { delta: (0., 0.).into() }.into());
+		responses.push_back(DocumentMessage::DocumentStructureChanged.into())
 	}
 
 	/// Returns an iterator over the open documents in order.
@@ -428,9 +430,10 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 							.into(),
 						);
 					}
+
+					responses.push_back(BroadcastSignal::ToolAbort.into());
 				}
 
-				responses.push_back(BroadcastSignal::ToolAbort.into());
 				// TODO: Remove this message in favor of having tools have specific data per document instance
 				responses.push_back(SetActiveDocument { document_id }.into());
 				responses.push_back(FrontendMessage::UpdateActiveDocument { document_id }.into());

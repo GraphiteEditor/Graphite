@@ -79,6 +79,7 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessorMes
 				let active_tool = &tool_data.active_tool_type;
 
 				// subscribe tool to broadcast messages
+				tool_data.tools.get(&tool_data.active_tool_type).unwrap().deactivate(responses);
 				tool_data.tools.get(active_tool).unwrap().activate(responses);
 
 				// Register initial properties
