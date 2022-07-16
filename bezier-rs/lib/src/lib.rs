@@ -703,15 +703,38 @@ impl Bezier {
 	/// Approximate a bezier curve with circular arcs.
 	/// - `error`: The error used for approximating the arc's fit. The default is 0.5.
 	/// - `max_iterations`: The maximum number of segment iterations used as attempts for arc approximations. The default is 100.
-	pub fn arcs(&self, error: Option<f64>, max_iterations: Option<i32>) -> Vec<CircleArc> {
+	pub fn arcs(&self, maximize_arcs: Option<bool>, error: Option<f64>, max_iterations: Option<i32>) -> Vec<CircleArc> {
+		let maximize_arcs = maximize_arcs.unwrap_or(false);
+		if maximize_arcs {
+			return self.arcs_helper(0., 1., error, max_iterations);
+		}
+		let mut extrema: Vec<f64> = self.local_extrema().into_iter().flatten().collect::<Vec<f64>>();
+		extrema.append(&mut vec![0., 1.]);
+		extrema.dedup();
+		extrema.sort_by(|ex1, ex2| ex1.partial_cmp(ex2).unwrap());
+
+		let mut t1 = extrema[0];
+		extrema
+			.iter()
+			.skip(1)
+			.flat_map(|&t2| {
+				let arcs = self.arcs_helper(t1, t2, error, max_iterations);
+				println!("t1, t2: {}, {}", t1, t2);
+				t1 = t2;
+				arcs
+			})
+			.collect::<Vec<CircleArc>>()
+	}
+
+	fn arcs_helper(&self, local_low: f64, local_high: f64, error: Option<f64>, max_iterations: Option<i32>) -> Vec<CircleArc> {
 		let error = error.unwrap_or(0.5);
 		let max_iterations = max_iterations.unwrap_or(100);
 
-		let mut low = 0.;
-		let mut middle = 0.5;
-		let mut high = 1.;
+		let mut low = local_low;
+		let mut middle = local_low + (local_high - local_low) / 2.;
+		let mut high = local_high;
 
-		let mut previous_high = high;
+		let mut previous_high = local_high;
 
 		let mut iterations = 0;
 
@@ -721,7 +744,7 @@ impl Bezier {
 		let mut arcs = Vec::new();
 
 		// Find the arc
-		'iterate_curve: while low < 1. {
+		'iterate_curve: while low < local_high {
 			'find_good_segment: loop {
 				if iterations > max_iterations {
 					break 'iterate_curve;
@@ -733,6 +756,7 @@ impl Bezier {
 
 				// if the segment is linear, move on to next segment
 				if utils::are_points_collinear(p1, p2, p3) {
+					println!("ARE COLINEAR");
 					previous_high = high;
 					low = high;
 					high = 1.;
@@ -750,6 +774,7 @@ impl Bezier {
 
 				let mut start_angle = angle_p1;
 				let mut end_angle = angle_p3;
+				println!("1:{}, 2:{}, 3:{}", angle_p1, angle_p2, angle_p3);
 
 				// Adjust start and end angles of the arc to ensure that it travels in the counter-clockwise direction
 				if angle_p1 < angle_p3 {
@@ -779,7 +804,7 @@ impl Bezier {
 
 				// Iterate until we find the largest good approximation such that the next iteration is not a good approximation with an arc
 				if utils::f64_compare(radius, e1.distance(center), error) && utils::f64_compare(radius, e2.distance(center), error) {
-					if high == 1. {
+					if high == local_high {
 						// Found the final arc approximation
 						arcs.push(new_arc);
 						low = high;
@@ -787,7 +812,7 @@ impl Bezier {
 					}
 					// If the approximation is good, expand the segment by half to try finding a larger good approximation
 					previous_high = high;
-					high = (high + (high - low) / 2.).min(1.);
+					high = (high + (high - low) / 2.).min(local_high);
 					middle = low + (high - low) / 2.;
 					previous_arc = new_arc;
 					was_previous_good = true;
@@ -797,7 +822,7 @@ impl Bezier {
 
 					// Continue searching for approximations for the rest of the curve
 					low = previous_high;
-					high = 1.;
+					high = local_high;
 					middle = low + (high - low) / 2.;
 					was_previous_good = false;
 					break 'find_good_segment;
@@ -941,17 +966,17 @@ mod tests {
 	#[test]
 	fn test_arcs_linear() {
 		let bezier = Bezier::from_linear_coordinates(30., 60., 140., 120.);
-		let linear_arcs = bezier.arcs(None, None);
+		let linear_arcs = bezier.arcs(None, None, None);
 		assert!(linear_arcs.is_empty());
 	}
 
 	#[test]
 	fn test_arcs_quadratic() {
 		let bezier1 = Bezier::from_quadratic_coordinates(30., 30., 50., 50., 100., 100.);
-		assert!(bezier1.arcs(None, None).is_empty());
+		assert!(bezier1.arcs(None, None, None).is_empty());
 
 		let bezier2 = Bezier::from_quadratic_coordinates(50., 50., 85., 65., 100., 100.);
-		let actual_arcs = bezier2.arcs(None, None);
+		let actual_arcs = bezier2.arcs(None, None, None);
 		let expected_arc = CircleArc {
 			center: DVec2::new(15., 135.),
 			radius: 91.92388,
@@ -965,7 +990,7 @@ mod tests {
 	#[test]
 	fn test_arcs_cubic() {
 		let bezier = Bezier::from_cubic_coordinates(30., 30., 30., 80., 60., 80., 60., 140.);
-		let actual_arcs = bezier.arcs(None, None);
+		let actual_arcs = bezier.arcs(None, None, None);
 		let expected_arcs = vec![
 			CircleArc {
 				center: DVec2::new(122.394877, 30.7777189),
@@ -984,5 +1009,9 @@ mod tests {
 		assert_eq!(actual_arcs.len(), 2);
 		assert!(compare_arcs(actual_arcs[0], expected_arcs[0]));
 		assert!(compare_arcs(actual_arcs[1], expected_arcs[1]));
+
+		let bezier = Bezier::from_cubic_coordinates(160., 180., 170., 10., 30., 90., 41., 182.);
+		let actual_arcs = bezier.arcs(None, None, None);
+		println!("{:?}", actual_arcs)
 	}
 }
