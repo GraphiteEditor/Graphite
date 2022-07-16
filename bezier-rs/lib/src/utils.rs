@@ -169,9 +169,10 @@ pub fn line_intersection(point1: DVec2, point1_slope_vector: DVec2, point2: DVec
 	}
 }
 
+/// Check if 3 points are collinear
 pub fn are_points_collinear(p1: DVec2, p2: DVec2, p3: DVec2) -> bool {
 	let matrix = DMat2::from_cols(p1 - p2, p2 - p3);
-	matrix.determinant() / 2. == 0.
+	f64_compare(matrix.determinant() / 2., 0., MAX_ABSOLUTE_DIFFERENCE)
 }
 
 /// Compute the center of the circle that passes through all three provided points

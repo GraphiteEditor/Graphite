@@ -700,29 +700,9 @@ impl Bezier {
 		result
 	}
 
-	//    C
-	//   /
-	// B - A
-
-	//  c - b -a
-
-	// (a-b).angle_between(c-b) % pi != 0
-
-	// fn is_linear(&self) -> bool {
-	// 	match self.handles {
-	// 		BezierHandles::Linear => true,
-	// 		BezierHandles::Quadratic { handle } => {
-	// 			(start-handle)
-	// 		},
-	// 		BezierHandles::Cubic { handle_start, handle_end } => {
-
-	// 		}
-	// 	}
-	// }
-
-	/// Approximate a bezier curve with circles
+	/// Approximate a bezier curve with circular arcs.
+	/// - `error`: the error used for approximating the arc's fit.
 	pub fn arcs(&self, error: f64) -> Vec<CircleArc> {
-		//  -> Vec
 		let mut low = 0.;
 		let mut middle = 0.5;
 		let mut high = 1.;
@@ -739,42 +719,36 @@ impl Bezier {
 		// Find the arc
 		while low < 1. {
 			'myloop: loop {
-				println!("t: {}, {}, {}", low, middle, high);
 				let p1 = self.evaluate(low);
 				let p2 = self.evaluate(middle);
 				let p3 = self.evaluate(high);
 
-				println!("points: {}, {}, {}", p1, p2, p3);
-				// TODO this is breaking / panicing
-				// if is linear, move on to next segment
+				// if the segment is linear, move on to next segment
 				if utils::are_points_collinear(p1, p2, p3) {
 					previous_high = high;
 					low = high;
 					high = 1.;
 					middle = low + (high - low) / 2.;
 					was_previous_good = false;
+					break 'myloop;
 				}
 
 				let center = utils::compute_circle_center_from_points(p1, p2, p3);
 				let radius = center.distance(p1);
-				let e1 = self.evaluate(low + (middle - low) / 2.);
-				let e2 = self.evaluate(middle + (high - middle) / 2.);
 
 				let angle_p1 = DVec2::new(1., 0.).angle_between(p1 - center);
 				let angle_p2 = DVec2::new(1., 0.).angle_between(p2 - center);
 				let angle_p3 = DVec2::new(1., 0.).angle_between(p3 - center);
-				println!("angles: {}, {}, {}", angle_p1.to_degrees(), angle_p2.to_degrees(), angle_p3.to_degrees());
 
 				let mut start_angle = angle_p1;
 				let mut end_angle = angle_p3;
 
+				// Adjust start and end angles of the arc to ensure that it travels in the counter-clockwise direction
 				if angle_p1 < angle_p3 {
 					if angle_p2 < angle_p1 || angle_p3 < angle_p2 {
-						println!("swap case 1: {}, {}, {}", angle_p1.to_degrees(), angle_p2.to_degrees(), angle_p3.to_degrees());
 						std::mem::swap(&mut start_angle, &mut end_angle);
 					}
 				} else if angle_p2 < angle_p1 && angle_p3 < angle_p2 {
-					println!("swap case 2: {}, {}, {}", angle_p1.to_degrees(), angle_p2.to_degrees(), angle_p3.to_degrees());
 					std::mem::swap(&mut start_angle, &mut end_angle);
 				}
 
@@ -785,29 +759,36 @@ impl Bezier {
 					end_angle,
 				};
 
+				// Use points in between low, middle and high to evaluate how well the arc approximates the curve
+				let e1 = self.evaluate(low + (middle - low) / 2.);
+				let e2 = self.evaluate(middle + (high - middle) / 2.);
+
+				// Iterate until we find the largest good approximation such that the next iteration is not a good approximation with an arc
 				if utils::f64_compare(radius, e1.distance(center), error) && utils::f64_compare(radius, e2.distance(center), error) {
 					if high == 1. {
 						// Found the final arc approximation
-						println!("\tFinal Arc: {:?}", new_arc);
 						arcs.push(new_arc);
 						low = high;
 						break 'myloop;
 					}
+					// If the approximation is good, expand the segment by half to try finding a larger good approximation
 					previous_high = high;
 					high = (high + (high - low) / 2.).min(1.);
 					middle = low + (high - low) / 2.;
 					previous_arc = new_arc;
 					was_previous_good = true;
 				} else if was_previous_good {
-					println!("\tArc: {:?}", previous_arc);
+					// If the previous approximation was good and the current one is bad, then we use the previous good approximation
 					arcs.push(previous_arc);
 
+					// Continue searching for approximations for the rest of the curve
 					low = previous_high;
 					high = 1.;
 					middle = low + (high - low) / 2.;
 					was_previous_good = false;
 					break 'myloop;
 				} else {
+					// If no good approximation has been seen yet, try again with half the segment
 					previous_high = high;
 					high = middle;
 					middle = low + (high - low) / 2.;
@@ -819,44 +800,25 @@ impl Bezier {
 
 		arcs
 	}
-
-	/*
-
-	Start at t=0
-	Pick two points further down the curve at some value m = t + n and e = t + 2n
-	Find the arc that these points define
-		- find the center + the radius
-
-	Determine how close the found arc is to the curve:
-		Pick two additional points e1 = t + n/2 and e2 = t + n + n/2. (from the bezier)
-
-		These points, if the arc is a good approximation of the curve interval chosen, should lie on the circle, so their distance to the center of the circle should be the same as the distance from any of the three other points to the center.
-		For point points, determine the (absolute) error between the radius of the circle, and the actual distance from the center of the circle to the point on the curve.
-		If this error is too high, we consider the arc bad, and try a smaller interval.
-	*/
-
-	/*
-	1. We start with low=0, mid=0.5 and high=1
-	2. That'll fail, so we retry with the interval halved: {0, 0.25, 0.5} A
-	  - If that arc's good, we move back up by half distance: {0, 0.375, 0.75}. A + step/2
-		- However, if the arc was still bad, we move down by half the distance: {0, 0.125, 0.25}. A/2
-	3. We keep doing this over and over until we have two arcs, in sequence, of which the first arc is good, and the second arc is bad.
-		When we find that pair, we've found the boundary between a good approximation and a bad approximation, and we pick the good arc.
-
-	*/
 }
 
 #[cfg(test)]
 mod tests {
 	use super::*;
 	use crate::consts::MAX_ABSOLUTE_DIFFERENCE;
-	// use crate::structs::*;
 	use crate::utils;
 
 	use glam::DVec2;
 
 	fn compare_points(p1: DVec2, p2: DVec2) -> bool {
 		utils::dvec2_compare(p1, p2, MAX_ABSOLUTE_DIFFERENCE).all()
+	}
+
+	fn compare_arcs(arc1: CircleArc, arc2: CircleArc) -> bool {
+		compare_points(arc1.center, arc2.center)
+			&& utils::f64_compare(arc1.radius, arc1.radius, MAX_ABSOLUTE_DIFFERENCE)
+			&& utils::f64_compare(arc1.start_angle, arc2.start_angle, MAX_ABSOLUTE_DIFFERENCE)
+			&& utils::f64_compare(arc1.end_angle, arc2.end_angle, MAX_ABSOLUTE_DIFFERENCE)
 	}
 
 	#[test]
@@ -963,75 +925,50 @@ mod tests {
 	}
 
 	#[test]
-	fn linear_arcs() {
-		let p1 = DVec2::new(30., 60.);
-		let p2 = DVec2::new(140., 120.);
-
-		// Intersection at edge of curve
-		let bezier1 = Bezier::from_linear_dvec2(p1, p2);
-		bezier1.arcs(0.5);
+	fn test_arcs_linear() {
+		let bezier = Bezier::from_linear_coordinates(30., 60., 140., 120.);
+		let linear_arcs = bezier.arcs(0.5);
+		assert!(linear_arcs.is_empty());
 	}
 
 	#[test]
-	fn quadratic_arcs() {
-		/*
+	fn test_arcs_quadratic() {
+		let bezier1 = Bezier::from_quadratic_coordinates(30., 30., 50., 50., 100., 100.);
+		assert!(bezier1.arcs(0.5).is_empty());
 
-		crashing because it's linear
-
-		0: {x: 50, y: 50}
-		1: {x: 73, y: 73}
-		2: {x: 100, y: 100}
-
-		*/
-
-		// let p1 = DVec2::new(30., 50.);
-		// let p2 = DVec2::new(140., 30.);
-		// let p3 = DVec2::new(160., 170.);
-
-		// let bezier1 = Bezier::from_quadratic_dvec2(p1, p2, p3);
-		// bezier1.arcs(0.5);
-
-		let p1 = DVec2::new(50., 50.);
-		let p2 = DVec2::new(85., 65.);
-		let p3 = DVec2::new(100., 100.);
-
-		// Intersection at edge of curve
-		let bezier1 = Bezier::from_quadratic_dvec2(p1, p2, p3);
-		let arcs = bezier1.arcs(0.5);
-		assert_eq!(arcs.len(), 1);
-		assert_eq!(arcs[0].center, DVec2::new(15., 135.));
-		// [Center: [15, 135], radius: 91.92388155425118, start to end angles: 1.1801892830972098 - 0.39060704369768695]
+		let bezier2 = Bezier::from_quadratic_coordinates(50., 50., 85., 65., 100., 100.);
+		let actual_arcs = bezier2.arcs(0.5);
+		let expected_arc = CircleArc {
+			center: DVec2::new(15., 135.),
+			radius: 91.92388,
+			start_angle: -1.18019,
+			end_angle: -0.39061,
+		};
+		assert_eq!(actual_arcs.len(), 1);
+		assert!(compare_arcs(actual_arcs[0], expected_arc));
 	}
 
 	#[test]
-	fn cubic_arcs() {
-		let p1 = DVec2::new(50., 171.);
-		let p2 = DVec2::new(170., 10.);
-		let p3 = DVec2::new(30., 90.);
-		let p4 = DVec2::new(178., 165.);
-		// Intersection at edge of curve
-		let bezier1 = Bezier::from_cubic_dvec2(p1, p2, p3, p4);
-		bezier1.arcs(0.5);
+	fn test_arcs_cubic() {
+		let bezier = Bezier::from_cubic_coordinates(30., 30., 30., 80., 60., 80., 60., 140.);
+		let actual_arcs = bezier.arcs(0.5);
+		let expected_arcs = vec![
+			CircleArc {
+				center: DVec2::new(122.394877, 30.7777189),
+				radius: 92.39815,
+				start_angle: 2.5637146,
+				end_angle: -3.1331755,
+			},
+			CircleArc {
+				center: DVec2::new(-47.54881, 136.169378),
+				radius: 107.61701,
+				start_angle: -0.53556,
+				end_angle: 0.0356025,
+			},
+		];
+
+		assert_eq!(actual_arcs.len(), 2);
+		assert!(compare_arcs(actual_arcs[0], expected_arcs[0]));
+		assert!(compare_arcs(actual_arcs[1], expected_arcs[1]));
 	}
-
-	/*
-		getting a circle
-
-		0: {x: 156, y: 13}
-		1: {x: 193, y: 11}
-		2: {x: 34, y: 10}
-		3: {x: 37, y: 164}
-
-		0: {x: 154, y: 30}
-		1: {x: 170, y: 10}
-		2: {x: 30, y: 90}
-		3: {x: 52, y: 31}
-
-
-	0: {x: 109, y: 85}
-	1: {x: 97, y: 27}
-	2: {x: 188, y: 8}
-	3: {x: 23, y: 34}
-
-		*/
 }

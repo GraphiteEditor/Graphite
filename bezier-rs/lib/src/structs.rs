@@ -35,14 +35,7 @@ pub struct CircleArc {
 
 impl Debug for CircleArc {
 	fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-		write!(
-			f,
-			"Center: {}, radius: {}, start to end angles: {} to {}",
-			self.center,
-			self.radius,
-			self.start_angle.to_degrees(),
-			self.end_angle.to_degrees()
-		)
+		write!(f, "Center: {}, radius: {}, start to end angles: {} to {}", self.center, self.radius, self.start_angle, self.end_angle)
 	}
 }
 
