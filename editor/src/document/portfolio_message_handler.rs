@@ -78,6 +78,7 @@ impl PortfolioMessageHandler {
 		responses.push_back(PortfolioMessage::UpdateDocumentWidgets.into());
 		responses.push_back(ToolMessage::InitTools.into());
 		responses.push_back(MenuBarMessage::SendLayout.into());
+		responses.push_back(PropertiesPanelMessage::Init.into());
 	}
 
 	/// Returns an iterator over the open documents in order.

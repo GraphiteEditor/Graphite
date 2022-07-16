@@ -106,9 +106,6 @@ impl JsEditorHandle {
 	// ========================================================================
 
 	pub fn init_app(&self) {
-		let message = PropertiesPanelMessage::Init;
-		self.dispatch(message);
-
 		// A default font
 		let font = graphene::layers::text_layer::Font::new(DEFAULT_FONT_FAMILY.into(), DEFAULT_FONT_STYLE.into());
 		let message = FrontendMessage::TriggerFontLoad { font, is_default: true };
