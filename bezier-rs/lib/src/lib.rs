@@ -733,7 +733,7 @@ impl Bezier {
 	/// `scale` takes the following parameters:
 	/// - `distance` - The distance away from the curve that the new one will be scaled to. Positive values will scale the curve in the same direction as the endpoint normals,
 	/// while negative values will scale in the opposite direction.
-	pub fn scale(&self, distance: f64) -> Bezier {
+	fn scale(&self, distance: f64) -> Bezier {
 		assert!(self.is_scalable());
 
 		let normal_start = self.normal(0.);

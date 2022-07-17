@@ -20,7 +20,6 @@
 <script lang="ts">
 import { defineComponent, markRaw } from "vue";
 
-import { WasmBezier } from "@/../wasm/pkg";
 import { drawBezier, drawBezierHelper, drawCurve, drawLine, drawPoint, drawText, getContextFromCanvas, COLORS } from "@/utils/drawing";
 import { BezierCurveType, Point, WasmBezierInstance } from "@/utils/types";
 
@@ -330,36 +329,6 @@ export default defineComponent({
 						curves.forEach((points, index) => {
 							drawBezier(context, points, null, { curveStrokeColor: `hsl(${40 * index}, 100%, 50%)`, radius: 3.5, drawHandles: false });
 						});
-					},
-				},
-				{
-					name: "Scale",
-					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: Record<string, number>): void => {
-						const curvePoints: Point[][] = JSON.parse(bezier.reduce());
-						const middleCurvePoints = curvePoints[Math.floor((curvePoints.length - 1) / 2)].map((point) => [point.x, point.y]);
-						let middleCurve = null;
-						if (middleCurvePoints.length === 2) {
-							middleCurve = WasmBezier.new_linear(middleCurvePoints);
-						} else if (middleCurvePoints.length === 3) {
-							middleCurve = WasmBezier.new_quadratic(middleCurvePoints);
-						} else {
-							middleCurve = WasmBezier.new_cubic(middleCurvePoints);
-						}
-						const scaledCurve = JSON.parse(middleCurve.scale(options.distance));
-
-						drawBezier(getContextFromCanvas(canvas), scaledCurve, null, { curveStrokeColor: COLORS.NON_INTERACTIVE.STROKE_1, radius: 3.5 });
-					},
-					template: markRaw(SliderExample),
-					templateOptions: {
-						sliders: [
-							{
-								variable: "distance",
-								min: -50,
-								max: 50,
-								step: 1,
-								default: 20,
-							},
-						],
 					},
 				},
 				{

@@ -139,10 +139,6 @@ impl WasmBezier {
 		to_js_value(bezier_points)
 	}
 
-	pub fn scale(&self, distance: f64) -> JsValue {
-		to_js_value(bezier_to_points(self.0.scale(distance)))
-	}
-
 	pub fn offset(&self, distance: f64) -> JsValue {
 		let bezier_points: Vec<Vec<Point>> = self.0.offset(distance).into_iter().map(bezier_to_points).collect();
 		to_js_value(bezier_points)
