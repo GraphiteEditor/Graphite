@@ -195,7 +195,7 @@ impl Dispatcher {
 		}
 
 		if log::max_level() == log::LevelFilter::Trace && !(matches!(message, Message::InputPreprocessor(_)) || MessageDiscriminant::from(message).local_name().ends_with("PointerMove")) {
-			log::trace!("Message: {:?}", message);
+			log::trace!("Message: {}{:?}", Self::create_indents(queues), message);
 			// log::trace!("Hints: {:?}", self.input_mapper_message_handler.hints(self.collect_actions()));
 		}
 	}
