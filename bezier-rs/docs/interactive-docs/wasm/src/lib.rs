@@ -1,4 +1,4 @@
-use bezier_rs::{Bezier, ProjectionOptions};
+use bezier_rs::{ArcsOptions, Bezier, ProjectionOptions};
 use glam::DVec2;
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
@@ -147,9 +147,14 @@ impl WasmBezier {
 		to_js_value(bezier_points)
 	}
 
-	pub fn arcs(&self, error: Option<f64>, max_iterations: Option<i32>) -> Vec<JsValue> {
+	pub fn arcs(&self, error: f64, max_iterations: i32) -> Vec<JsValue> {
+		let options = ArcsOptions {
+			error,
+			max_iterations,
+			..ArcsOptions::default()
+		};
 		self.0
-			.arcs(None, error, max_iterations)
+			.arcs(options)
 			.iter()
 			.map(|sector| {
 				to_js_value(CircleSector {

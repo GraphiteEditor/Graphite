@@ -701,10 +701,9 @@ impl Bezier {
 	}
 
 	/// Approximate a bezier curve with circular arcs.
-	/// - `error`: The error used for approximating the arc's fit. The default is 0.5.
-	/// - `max_iterations`: The maximum number of segment iterations used as attempts for arc approximations. The default is 100.
-	pub fn arcs(&self, maximize_arcs: Option<bool>, error: Option<f64>, max_iterations: Option<i32>) -> Vec<CircleArc> {
-		let maximize_arcs = maximize_arcs.unwrap_or(false);
+	/// The algorithm can be customized using the [ArcsOptions] structure.
+	pub fn arcs(&self, arcs_options: ArcsOptions) -> Vec<CircleArc> {
+		let ArcsOptions { maximize_arcs, error, max_iterations } = arcs_options;
 		if maximize_arcs {
 			return self.arcs_helper(0., 1., error, max_iterations);
 		}
@@ -726,10 +725,11 @@ impl Bezier {
 			.collect::<Vec<CircleArc>>()
 	}
 
-	fn arcs_helper(&self, local_low: f64, local_high: f64, error: Option<f64>, max_iterations: Option<i32>) -> Vec<CircleArc> {
-		let error = error.unwrap_or(0.5);
-		let max_iterations = max_iterations.unwrap_or(100);
-
+	/// Implements an algorithm that approximates a bezier curve with circular arcs.
+	/// This algorithm uses a method akin to binary search to find an arc that approximates a maximal segment of the curve.
+	/// Once a maximal arc has been found for a sub-segment of the curve, the algorithm continues by starting again at the end of the previous approximation.
+	/// More details can be found in the [Approximating a Bezier curve with circular arcs](https://pomax.github.io/bezierinfo/#arcapproximation) section of Pomax's bezier curve primer.
+	fn arcs_helper(&self, local_low: f64, local_high: f64, error: f64, max_iterations: i32) -> Vec<CircleArc> {
 		let mut low = local_low;
 		let mut middle = local_low + (local_high - local_low) / 2.;
 		let mut high = local_high;
@@ -756,12 +756,12 @@ impl Bezier {
 
 				// if the segment is linear, move on to next segment
 				if utils::are_points_collinear(p1, p2, p3) {
-					println!("ARE COLINEAR");
 					previous_high = high;
 					low = high;
 					high = 1.;
 					middle = low + (high - low) / 2.;
 					was_previous_good = false;
+
 					break 'find_good_segment;
 				}
 
@@ -774,7 +774,6 @@ impl Bezier {
 
 				let mut start_angle = angle_p1;
 				let mut end_angle = angle_p3;
-				println!("1:{}, 2:{}, 3:{}", angle_p1, angle_p2, angle_p3);
 
 				// Adjust start and end angles of the arc to ensure that it travels in the counter-clockwise direction
 				if angle_p1 < angle_p3 {
@@ -792,12 +791,6 @@ impl Bezier {
 					end_angle,
 				};
 
-				// TODO: we need to decide how we want to approach arc approximations:
-				// 1. always try to find the largest arc approximation but allow for incorrect arcs to be created given near-linear curve segments
-				// 2. call reduce or extrema or inflection on the curve before approximating, which would fix the above issue, but no longer guarantee the largest approximations are found
-				// 3. compare the bezier curve segment length with the arclength to see if we're returning the right sector
-				// 4. other options pending team discussion
-
 				// Use points in between low, middle and high to evaluate how well the arc approximates the curve
 				let e1 = self.evaluate(low + (middle - low) / 2.);
 				let e2 = self.evaluate(middle + (high - middle) / 2.);
@@ -808,6 +801,7 @@ impl Bezier {
 						// Found the final arc approximation
 						arcs.push(new_arc);
 						low = high;
+
 						break 'find_good_segment;
 					}
 					// If the approximation is good, expand the segment by half to try finding a larger good approximation
@@ -825,6 +819,7 @@ impl Bezier {
 					high = local_high;
 					middle = low + (high - low) / 2.;
 					was_previous_good = false;
+
 					break 'find_good_segment;
 				} else {
 					// If no good approximation has been seen yet, try again with half the segment
@@ -966,17 +961,17 @@ mod tests {
 	#[test]
 	fn test_arcs_linear() {
 		let bezier = Bezier::from_linear_coordinates(30., 60., 140., 120.);
-		let linear_arcs = bezier.arcs(None, None, None);
+		let linear_arcs = bezier.arcs(ArcsOptions::default());
 		assert!(linear_arcs.is_empty());
 	}
 
 	#[test]
 	fn test_arcs_quadratic() {
 		let bezier1 = Bezier::from_quadratic_coordinates(30., 30., 50., 50., 100., 100.);
-		assert!(bezier1.arcs(None, None, None).is_empty());
+		assert!(bezier1.arcs(ArcsOptions::default()).is_empty());
 
 		let bezier2 = Bezier::from_quadratic_coordinates(50., 50., 85., 65., 100., 100.);
-		let actual_arcs = bezier2.arcs(None, None, None);
+		let actual_arcs = bezier2.arcs(ArcsOptions::default());
 		let expected_arc = CircleArc {
 			center: DVec2::new(15., 135.),
 			radius: 91.92388,
@@ -990,7 +985,7 @@ mod tests {
 	#[test]
 	fn test_arcs_cubic() {
 		let bezier = Bezier::from_cubic_coordinates(30., 30., 30., 80., 60., 80., 60., 140.);
-		let actual_arcs = bezier.arcs(None, None, None);
+		let actual_arcs = bezier.arcs(ArcsOptions::default());
 		let expected_arcs = vec![
 			CircleArc {
 				center: DVec2::new(122.394877, 30.7777189),
@@ -1009,9 +1004,5 @@ mod tests {
 		assert_eq!(actual_arcs.len(), 2);
 		assert!(compare_arcs(actual_arcs[0], expected_arcs[0]));
 		assert!(compare_arcs(actual_arcs[1], expected_arcs[1]));
-
-		let bezier = Bezier::from_cubic_coordinates(160., 180., 170., 10., 30., 90., 41., 182.);
-		let actual_arcs = bezier.arcs(None, None, None);
-		println!("{:?}", actual_arcs)
 	}
 }
