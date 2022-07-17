@@ -1,10 +1,13 @@
-use bezier_rs::subpath::{ManipulatorGroup, SubPath};
+use bezier_rs::subpath::{ManipulatorGroup, SubPath, ToSVGOptions};
 use glam::DVec2;
 use wasm_bindgen::prelude::*;
 
 /// Wrapper of the `SubPath` struct to be used in JS.
 #[wasm_bindgen]
 pub struct WasmSubPath(SubPath);
+
+const SVG_OPEN_TAG: &str = r#"<svg xmlns="http://www.w3.org/2000/svg" width="200px" height="200px">"#;
+const SVG_CLOSE_TAG: &str = "</svg>";
 
 #[wasm_bindgen]
 impl WasmSubPath {
@@ -34,11 +37,12 @@ impl WasmSubPath {
 		self.0[index].out_handle = Some(DVec2::new(x, y));
 	}
 
-	pub fn length(&self) -> f64 {
-		self.0.length(None)
+	pub fn to_svg(&self) -> String {
+		format!("{}{}{}", SVG_OPEN_TAG, self.0.to_svg(ToSVGOptions::default()), SVG_CLOSE_TAG)
 	}
 
-	pub fn to_svg(&self) -> String {
-		self.0.to_svg()
+	pub fn length(&self) -> String {
+		let length_text = format!(r#"<text x="5" y="193" fill="black">Length: {:.2}</text>"#, self.0.length(None));
+		format!("{}{}{}{}", SVG_OPEN_TAG, self.0.to_svg(ToSVGOptions::default()), length_text, SVG_CLOSE_TAG)
 	}
 }

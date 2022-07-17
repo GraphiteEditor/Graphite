@@ -17,7 +17,7 @@
 		</div>
 		<h2>SubPaths</h2>
 		<div v-for="(feature, index) in subPathFeatures" :key="index">
-			<SubPathExample :name="feature.name" />
+			<SubPathExample :name="feature.name" :callback="feature.callback" />
 		</div>
 	</div>
 </template>
@@ -26,7 +26,7 @@
 import { defineComponent, markRaw } from "vue";
 
 import { drawText, drawPoint, drawBezier, drawLine, getContextFromCanvas, drawBezierHelper, COLORS } from "@/utils/drawing";
-import { BezierCurveType, Point, WasmBezierInstance } from "@/utils/types";
+import { BezierCurveType, Point, WasmBezierInstance, WasmSubPathInstance } from "@/utils/types";
 
 import ExamplePane from "@/components/ExamplePane.vue";
 import SliderExample from "@/components/SliderExample.vue";
@@ -365,6 +365,11 @@ export default defineComponent({
 			subPathFeatures: [
 				{
 					name: "Constructor",
+					callback: (subPath: WasmSubPathInstance): string => subPath.to_svg(),
+				},
+				{
+					name: "Length",
+					callback: (subPath: WasmSubPathInstance): string => subPath.length(),
 				},
 			],
 		};

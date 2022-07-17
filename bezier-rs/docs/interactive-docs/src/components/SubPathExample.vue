@@ -6,10 +6,10 @@
 </template>
 
 <script lang="ts">
-import { defineComponent } from "vue";
+import { defineComponent, PropType } from "vue";
 
 import { WasmSubPath } from "@/../wasm/pkg";
-import { WasmSubPathInstance, WasmSubPathManipulatorKey } from "@/utils/types";
+import { SubPathCallback, WasmSubPathInstance, WasmSubPathManipulatorKey } from "@/utils/types";
 
 const SELECTABLE_RANGE = 10;
 const pointIndexToManipulator: WasmSubPathManipulatorKey[] = ["set_anchor", "set_in_handle", "set_out_handle"];
@@ -36,6 +36,10 @@ export default defineComponent({
 	},
 	props: {
 		name: String,
+		callback: {
+			type: Function as PropType<SubPathCallback>,
+			required: true,
+		},
 	},
 	mounted() {
 		this.updateDrawing();
@@ -70,7 +74,7 @@ export default defineComponent({
 		},
 		updateDrawing() {
 			const drawing = this.$refs.drawing as HTMLElement;
-			drawing.innerHTML = this.subPath.to_svg();
+			drawing.innerHTML = this.callback(this.subPath);
 		},
 	},
 });

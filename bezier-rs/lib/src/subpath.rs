@@ -62,6 +62,41 @@ impl Iterator for SubPathIter<'_> {
 	}
 }
 
+/// Struct to represent optional parameters that can be passed to the `into_svg` function.
+pub struct ToSVGOptions {
+	pub curve_stroke_color: String,
+	pub curve_stroke_width: f64,
+	pub anchor_stroke_color: String,
+	pub anchor_stroke_width: f64,
+	pub anchor_radius: f64,
+	pub anchor_fill: String,
+	pub handle_line_stroke_color: String,
+	pub handle_line_stroke_width: f64,
+	pub handle_point_stroke: String,
+	pub handle_point_radius: f64,
+	pub handle_point_stroke_width: f64,
+	pub handle_point_fill: String,
+}
+
+impl Default for ToSVGOptions {
+	fn default() -> Self {
+		ToSVGOptions {
+			curve_stroke_color: String::from("black"),
+			curve_stroke_width: 2.,
+			anchor_stroke_color: String::from("black"),
+			anchor_stroke_width: 2.,
+			anchor_radius: 4.,
+			anchor_fill: String::from("white"),
+			handle_line_stroke_color: String::from("grey"),
+			handle_line_stroke_width: 1.,
+			handle_point_stroke: String::from("grey"),
+			handle_point_stroke_width: 1.5,
+			handle_point_radius: 3.,
+			handle_point_fill: String::from("white"),
+		}
+	}
+}
+
 impl SubPath {
 	/// Create a new SubPath using a list of ManipulatorGroups.
 	/// A SubPath with less than 2 ManipulatorGroups may not be closed.
@@ -104,28 +139,52 @@ impl SubPath {
 		SubPathIter { sub_path: self, index: 0 }
 	}
 
-	pub fn to_svg(&self) -> String {
+	pub fn to_svg(&self, options: ToSVGOptions) -> String {
 		if self.is_empty() {
 			return String::new();
 		}
+
+		let subpath_options = format!(r#"stroke="{}" stroke-width="{}" fill="transparent""#, options.curve_stroke_color, options.curve_stroke_width);
+		let anchor_options = format!(
+			r#"r="{}", stroke="{}" stroke-width="{}" fill="{}""#,
+			options.anchor_radius, options.anchor_stroke_color, options.anchor_stroke_width, options.anchor_fill
+		);
+		let handle_point_options = format!(
+			r#"r="{}", stroke="{}" stroke-width="{}" fill="{}""#,
+			options.handle_point_radius, options.handle_point_stroke, options.handle_point_stroke_width, options.handle_point_fill
+		);
+		let handle_line_options = format!(
+			r#"stroke="{}" stroke-width="{}" fill="transparent""#,
+			options.handle_line_stroke_color, options.handle_line_stroke_width
+		);
+
+		let anchor_circles = self
+			.manipulator_groups
+			.iter()
+			.map(|point| format!(r#"<circle cx="{}" cy="{}" {}/>"#, point.anchor.x, point.anchor.y, anchor_options))
+			.collect::<Vec<String>>();
 		let mut path_pieces = vec![format!("M {} {}", self[0].anchor.x, self[0].anchor.y)];
 		let mut handle_pieces = Vec::new();
 		let mut handle_circles = Vec::new();
 
 		for start_index in 0..self.len() + (self.closed as usize) - 1 {
-			let start = self[start_index].anchor;
 			let end_index = (start_index + 1) % self.len();
+
+			let start = self[start_index].anchor;
 			let end = self[end_index].anchor;
 			let handle1 = self[start_index].out_handle;
 			let handle2 = self[end_index].in_handle;
 
-			if handle1.is_some() {
-				handle_pieces.push(format!("M {} {} L {} {} ", start.x, start.y, handle1.unwrap().x, handle1.unwrap().y));
-				handle_circles.push(format!(r#"<circle cx="{}" cy="{}" r="{}"/>"#, handle1.unwrap().x, handle1.unwrap().y, 3));
-			}
-			if handle2.is_some() {
+			if handle1.is_some() && handle2.is_some() {
+				handle_pieces.push(format!("M {} {} L {} {}", start.x, start.y, handle1.unwrap().x, handle1.unwrap().y));
+				handle_circles.push(format!(r#"<circle cx="{}" cy="{}" {}/>"#, handle1.unwrap().x, handle1.unwrap().y, handle_point_options));
 				handle_pieces.push(format!("M {} {} L {} {}", end.x, end.y, handle2.unwrap().x, handle2.unwrap().y));
-				handle_circles.push(format!(r#"<circle cx="{}" cy="{}" r="{}"/>"#, handle2.unwrap().x, handle2.unwrap().y, 3));
+				handle_circles.push(format!(r#"<circle cx="{}" cy="{}" {}/>"#, handle2.unwrap().x, handle2.unwrap().y, handle_point_options));
+			} else if handle1.is_some() || handle2.is_some() {
+				let quad_handle = handle1.or(handle2).unwrap();
+				handle_pieces.push(format!("M {} {} L {} {}", start.x, start.y, quad_handle.x, quad_handle.y));
+				handle_pieces.push(format!("M {} {} L {} {}", end.x, end.y, quad_handle.x, quad_handle.y));
+				handle_circles.push(format!(r#"<circle cx="{}" cy="{}" {}/>"#, quad_handle.x, quad_handle.y, handle_point_options));
 			}
 
 			let main_path = {
@@ -142,18 +201,13 @@ impl SubPath {
 		}
 
 		format!(
-			r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{} {} {} {}" width="{}px" height="{}px"><path d="{} {}" stroke="black" fill="transparent"/><path d="{} {}" stroke="red" fill="transparent"/>{}</svg>"#,
-			0,
-			0,
-			200,
-			200,
-			200,
-			200,
-			"\n",
+			r#"<path d="{}" {}/><path d="{}" {}/>{}{}"#,
 			path_pieces.join(" "),
-			"\n",
+			subpath_options,
 			handle_pieces.join(" "),
+			handle_line_options,
 			handle_circles.join(""),
+			anchor_circles.join(""),
 		)
 	}
 
