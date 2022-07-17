@@ -282,17 +282,17 @@ export default defineComponent({
 					},
 				},
 				{
-					name: "Hull",
+					name: "de Casteljau Points",
 					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: Record<string, number>): void => {
-						const hullPoints: Point[][] = JSON.parse(bezier.hull(options.t));
-						hullPoints.forEach((iteration: Point[]) => {
+						const hullPoints: Point[][] = JSON.parse(bezier.de_casteljau_points(options.t));
+						hullPoints.forEach((iteration: Point[], iterationIndex) => {
 							iteration.forEach((point: Point, index) => {
-								drawPoint(getContextFromCanvas(canvas), point, 3, COLORS.NON_INTERACTIVE.STROKE_1);
+								drawPoint(getContextFromCanvas(canvas), point, 4, `hsl(${40 * iterationIndex}, 100%, 50%)`);
 								if (index === 0) {
 									return;
 								}
 								const prevPoint: Point = iteration[index - 1];
-								drawLine(getContextFromCanvas(canvas), point, prevPoint, COLORS.NON_INTERACTIVE.STROKE_1);
+								drawLine(getContextFromCanvas(canvas), point, prevPoint, `hsl(${40 * iterationIndex}, 100%, 60%)`);
 							});
 						});
 					},
