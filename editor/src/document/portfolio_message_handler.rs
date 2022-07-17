@@ -73,6 +73,12 @@ impl PortfolioMessageHandler {
 
 		self.documents.insert(document_id, new_document);
 
+		if self.active_document().is_some() {
+			responses.push_back(PropertiesPanelMessage::Deactivate.into());
+			responses.push_back(BroadcastSignal::ToolAbort.into());
+			responses.push_back(ToolMessage::DeactivateTools.into());
+		}
+
 		responses.push_back(PortfolioMessage::UpdateOpenDocumentsList.into());
 		responses.push_back(PortfolioMessage::SelectDocument { document_id }.into());
 		responses.push_back(PortfolioMessage::UpdateDocumentWidgets.into());
@@ -142,11 +148,17 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 				}
 			}
 			CloseAllDocuments => {
-				// Empty the list of internal document data
-				self.documents.clear();
-				self.document_ids.clear();
+				if self.active_document_id.is_some() {
+					responses.push_back(PropertiesPanelMessage::Deactivate.into());
+					responses.push_back(BroadcastSignal::ToolAbort.into());
+					responses.push_back(ToolMessage::DeactivateTools.into());
+				}
 
-				responses.push_back(BroadcastSignal::ToolAbort.into());
+				for document_id in &self.document_ids {
+					responses.push_back(FrontendMessage::TriggerIndexedDbRemoveDocument { document_id: *document_id }.into());
+				}
+
+				responses.push_back(PortfolioMessage::DestroyAllDocuments.into());
 				responses.push_back(PortfolioMessage::UpdateOpenDocumentsList.into());
 			}
 			CloseDocument { document_id } => {
@@ -156,7 +168,6 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 
 				if self.document_ids.is_empty() {
 					self.active_document_id = None;
-					responses.push_back(PropertiesPanelMessage::ClearSelection.into());
 				} else if Some(document_id) == self.active_document_id {
 					if document_index == self.document_ids.len() {
 						// If we closed the last document take the one previous (same as last)
@@ -179,9 +190,6 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 
 				// Send the new list of document tab names
 				responses.push_back(UpdateOpenDocumentsList.into());
-				if let Some(document_id) = self.active_document_id {
-					responses.push_back(FrontendMessage::UpdateActiveDocument { document_id }.into());
-				}
 				responses.push_back(FrontendMessage::TriggerIndexedDbRemoveDocument { document_id }.into());
 				responses.push_back(RenderDocument.into());
 				responses.push_back(DocumentMessage::DocumentStructureChanged.into());
@@ -240,6 +248,12 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 				responses.push_back(Copy { clipboard }.into());
 				responses.push_back(DeleteSelectedLayers.into());
 			}
+			DestroyAllDocuments => {
+				// Empty the list of internal document data
+				self.documents.clear();
+				self.document_ids.clear();
+				self.active_document_id = None;
+			}
 			FontLoaded {
 				font_family,
 				font_style,
@@ -262,8 +276,10 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 			NewDocumentWithName { name } => {
 				let new_document = DocumentMessageHandler::with_name(name, ipp);
 				let document_id = generate_uuid();
-				responses.push_back(BroadcastSignal::ToolAbort.into());
-				responses.push_back(MovementMessage::TranslateCanvas { delta: (0., 0.).into() }.into());
+				if self.active_document().is_some() {
+					responses.push_back(BroadcastSignal::ToolAbort.into());
+					responses.push_back(MovementMessage::TranslateCanvas { delta: (0., 0.).into() }.into());
+				}
 
 				self.load_document(new_document, document_id, responses);
 			}
@@ -430,12 +446,15 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 							.into(),
 						);
 					}
+				}
 
+				if self.active_document().is_some() {
 					responses.push_back(BroadcastSignal::ToolAbort.into());
 				}
 
 				// TODO: Remove this message in favor of having tools have specific data per document instance
 				responses.push_back(SetActiveDocument { document_id }.into());
+				responses.push_back(PortfolioMessage::UpdateOpenDocumentsList.into());
 				responses.push_back(FrontendMessage::UpdateActiveDocument { document_id }.into());
 				responses.push_back(RenderDocument.into());
 				responses.push_back(DocumentMessage::DocumentStructureChanged.into());
@@ -445,6 +464,7 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 				responses.push_back(BroadcastSignal::SelectionChanged.into());
 				responses.push_back(BroadcastSignal::DocumentIsDirty.into());
 				responses.push_back(PortfolioMessage::UpdateDocumentWidgets.into());
+				responses.push_back(MovementMessage::TranslateCanvas { delta: (0., 0.).into() }.into());
 			}
 			SetActiveDocument { document_id } => self.active_document_id = Some(document_id),
 			UpdateDocumentWidgets => {

@@ -79,6 +79,7 @@ pub enum ToolMessage {
 	ActivateTool {
 		tool_type: ToolType,
 	},
+	DeactivateTools,
 	InitTools,
 	ResetColors,
 	SelectPrimaryColor {

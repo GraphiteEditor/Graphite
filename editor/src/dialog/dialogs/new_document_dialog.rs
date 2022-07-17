@@ -98,7 +98,7 @@ impl PropertyHolder for NewDocument {
 				emphasized: true,
 				on_update: WidgetCallback::new(|_| {
 					DialogMessage::CloseDialogAndThen {
-						followup: Box::new(NewDocumentDialogUpdate::Submit.into()),
+						followups: vec![NewDocumentDialogUpdate::Submit.into()],
 					}
 					.into()
 				}),

@@ -25,9 +25,11 @@ impl MessageHandler<DialogMessage, &PortfolioMessageHandler> for DialogMessageHa
 				dialog.register_properties(responses, LayoutTarget::DialogDetails);
 				responses.push_back(FrontendMessage::DisplayDialog { icon: "Copy".to_string() }.into());
 			}
-			DialogMessage::CloseDialogAndThen { followup } => {
+			DialogMessage::CloseDialogAndThen { followups } => {
 				responses.push_back(FrontendMessage::DisplayDialogDismiss.into());
-				responses.push_back(*followup);
+				for message in followups.into_iter() {
+					responses.push_back(message);
+				}
 			}
 			DialogMessage::DisplayDialogError { title, description } => {
 				let dialog = dialogs::Error { title, description };

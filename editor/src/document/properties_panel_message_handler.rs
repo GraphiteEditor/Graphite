@@ -156,6 +156,13 @@ impl<'a> MessageHandler<PropertiesPanelMessage, PropertiesPanelMessageHandlerDat
 				);
 				self.active_selection = None;
 			}
+			Deactivate => responses.push_back(
+				BroadcastMessage::UnsubscribeSignal {
+					on: BroadcastSignal::SelectionChanged,
+					message: Box::new(PropertiesPanelMessage::UpdateSelectedDocumentProperties.into()),
+				}
+				.into(),
+			),
 			Init => responses.push_back(
 				BroadcastMessage::SubscribeSignal {
 					on: BroadcastSignal::SelectionChanged,

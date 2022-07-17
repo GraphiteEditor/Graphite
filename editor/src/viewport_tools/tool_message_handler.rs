@@ -73,13 +73,16 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessorMes
 				// Notify the frontend about the new active tool to be displayed
 				tool_data.register_properties(responses, LayoutTarget::ToolShelf);
 			}
+			DeactivateTools => {
+				let tool_data = &mut self.tool_state.tool_data;
+				tool_data.tools.get(&tool_data.active_tool_type).unwrap().deactivate(responses);
+			}
 			InitTools => {
 				let tool_data = &mut self.tool_state.tool_data;
 				let document_data = &self.tool_state.document_tool_data;
 				let active_tool = &tool_data.active_tool_type;
 
 				// subscribe tool to broadcast messages
-				tool_data.tools.get(&tool_data.active_tool_type).unwrap().deactivate(responses);
 				tool_data.tools.get(active_tool).unwrap().activate(responses);
 
 				// Register initial properties

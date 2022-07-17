@@ -123,7 +123,7 @@ impl PropertyHolder for Export {
 				emphasized: true,
 				on_update: WidgetCallback::new(|_| {
 					DialogMessage::CloseDialogAndThen {
-						followup: Box::new(ExportDialogUpdate::Submit.into()),
+						followups: vec![ExportDialogUpdate::Submit.into()],
 					}
 					.into()
 				}),

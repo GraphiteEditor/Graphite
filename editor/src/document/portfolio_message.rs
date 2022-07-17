@@ -37,6 +37,7 @@ pub enum PortfolioMessage {
 	Cut {
 		clipboard: Clipboard,
 	},
+	DestroyAllDocuments,
 	FontLoaded {
 		font_family: String,
 		font_style: String,
