@@ -360,7 +360,7 @@ export default defineComponent({
 					name: "Bounding Box",
 					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance): void => {
 						const context = getContextFromCanvas(canvas);
-						const bboxPoints: Point[] = JSON.parse(bezier.bbox());
+						const bboxPoints: Point[] = JSON.parse(bezier.bounding_box());
 						bboxPoints.forEach((point: Point, index) => {
 							if (index === 0) {
 								const prevPoint: Point = bboxPoints[bboxPoints.length - 1];

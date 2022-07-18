@@ -152,8 +152,8 @@ impl WasmBezier {
 		to_js_value(bezier_points)
 	}
 
-	pub fn bbox(&self) -> JsValue {
-		let bbox_points: Vec<Point> = self.0.bbox().iter().map(|&p| Point { x: p.x, y: p.y }).collect::<Vec<Point>>();
+	pub fn bounding_box(&self) -> JsValue {
+		let bbox_points: Vec<Point> = self.0.bounding_box().iter().map(|&p| Point { x: p.x, y: p.y }).collect::<Vec<Point>>();
 		to_js_value(bbox_points)
 	}
 }

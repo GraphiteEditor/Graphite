@@ -775,7 +775,7 @@ impl Bezier {
 	}
 
 	// Return list of points that represent the bounding box of the curve
-	pub fn bbox(&self) -> Vec<DVec2> {
+	pub fn bounding_box(&self) -> Vec<DVec2> {
 		// start by taking min/max of endpoints
 		let mut min_point = self.start.min(self.end);
 		let mut max_point = self.start.max(self.end);
