@@ -24,7 +24,7 @@ pub fn call_site_ident<S: AsRef<str>>(s: S) -> Ident {
 	Ident::new(s.as_ref(), Span::call_site())
 }
 
-/// Creates the path `left::right` from the idents `left` and `right`
+/// Creates the path `left::right` from the identifiers `left` and `right`
 pub fn two_segment_path(left_ident: Ident, right_ident: Ident) -> Path {
 	let mut segments: Punctuated<PathSegment, Token![::]> = Punctuated::new();
 	segments.push(PathSegment {

@@ -656,11 +656,11 @@ impl Bezier {
 	}
 
 	/// Determine if it is possible to scale the given curve, using the following conditions:
-	/// 1. All the control points are located on a single side of the curve.
+	/// 1. All the handles are located on a single side of the curve.
 	/// 2. The on-curve point for `t = 0.5` must occur roughly in the center of the polygon defined by the curve's endpoint normals.
 	/// See [the offset section](https://pomax.github.io/bezierinfo/#offsetting) of Pomax's bezier curve primer for more details.
 	fn is_scalable(&self) -> bool {
-		// Verify all the control points are located on a single side of the curve.
+		// Verify all the handles are located on a single side of the curve.
 		if let BezierHandles::Cubic { handle_start, handle_end } = self.handles {
 			let angle_1 = (self.end - self.start).angle_between(handle_start - self.start);
 			let angle_2 = (self.end - self.start).angle_between(handle_end - self.start);

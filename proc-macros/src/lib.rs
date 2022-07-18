@@ -187,7 +187,7 @@ pub fn derive_message(input_item: TokenStream) -> TokenStream {
 	TokenStream::from(derive_as_message_impl(input_item.into()).unwrap_or_else(|err| err.to_compile_error()))
 }
 
-/// This macro is basically an abbreviation for the usual [`ToDiscriminant`], [`TransitiveChild`] and [`AsMessage`] invocations
+/// This macro is basically an abbreviation for the usual [ToDiscriminant], [TransitiveChild] and [AsMessage] invocations.
 ///
 /// This macro is enum-only.
 ///

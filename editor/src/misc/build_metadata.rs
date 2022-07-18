@@ -1,6 +1,6 @@
-/// Provides metadata about the build environment.
-///
-/// This data is viewable in the editor via the [`crate::dialog::AboutGraphite`] dialog.
+//! Provides metadata about the build environment.
+//!
+//! This data is viewable in the editor via the [AboutGraphite](crate::dialog::AboutGraphite) dialog.
 
 pub fn release_series() -> String {
 	format!("Release Series: {}", env!("GRAPHITE_RELEASE_SERIES"))
