@@ -147,12 +147,8 @@ impl WasmBezier {
 		to_js_value(bezier_points)
 	}
 
-	pub fn arcs(&self, error: f64, max_iterations: i32) -> Vec<JsValue> {
-		let options = ArcsOptions {
-			error,
-			max_iterations,
-			..ArcsOptions::default()
-		};
+	pub fn arcs(&self, error: f64, max_iterations: i32, maximize_arcs: bool) -> Vec<JsValue> {
+		let options = ArcsOptions { error, max_iterations, maximize_arcs };
 		self.0
 			.arcs(options)
 			.iter()

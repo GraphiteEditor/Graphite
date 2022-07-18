@@ -335,7 +335,7 @@ export default defineComponent({
 					name: "Arcs",
 					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: Record<string, number>): void => {
 						const context = getContextFromCanvas(canvas);
-						const arcs: CircleSector[] = bezier.arcs(options.error, options.max_iterations).map((sector) => JSON.parse(sector));
+						const arcs: CircleSector[] = bezier.arcs(options.error, options.max_iterations, options.maximize_arcs === 1).map((sector) => JSON.parse(sector));
 						arcs.forEach((circleSector, index) => {
 							drawCircleSector(context, circleSector, `hsl(${40 * index}, 100%, 50%, 75%)`, `hsl(${40 * index}, 100%, 50%, 37.5%)`);
 						});
@@ -343,6 +343,13 @@ export default defineComponent({
 					template: markRaw(SliderExample),
 					templateOptions: {
 						sliders: [
+							{
+								variable: "maximize_arcs",
+								min: 0,
+								max: 1,
+								step: 1,
+								default: 0,
+							},
 							{
 								variable: "error",
 								min: 0.05,
