@@ -23,14 +23,8 @@ export type SliderOption = {
 	unit?: string;
 };
 
-export type CheckboxOption = {
-	variable: string;
-	default: boolean;
-};
-
 export type TemplateOption = {
 	sliders: SliderOption[];
-	checkboxes: CheckboxOption[];
 };
 
 export type Point = {
