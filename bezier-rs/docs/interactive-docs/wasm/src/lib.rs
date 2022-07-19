@@ -154,7 +154,11 @@ impl WasmBezier {
 
 	pub fn intersect_line_segment(&self, js_points: &JsValue) -> Vec<JsValue> {
 		let line: [DVec2; 2] = js_points.into_serde().unwrap();
-		self.0.intersect_line_segment(line).iter().map(|&p| vec_to_point(&p)).collect::<Vec<JsValue>>()
+		self.0
+			.intersections(&Bezier::from_linear_dvec2(line[0], line[1]))
+			.iter()
+			.map(|&p| vec_to_point(&p))
+			.collect::<Vec<JsValue>>()
 	}
 
 	pub fn reduce(&self) -> JsValue {
