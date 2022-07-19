@@ -115,7 +115,7 @@ export default defineComponent({
 				{
 					name: "Lookup Table",
 					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: Record<string, number>): void => {
-						const lookupPoints = bezier.compute_lookup_table(options.steps);
+						const lookupPoints: string[] = bezier.compute_lookup_table(options.steps);
 						lookupPoints.forEach((serializedPoint, index) => {
 							if (index !== 0 && index !== lookupPoints.length - 1) {
 								drawPoint(getContextFromCanvas(canvas), JSON.parse(serializedPoint), 3, COLORS.NON_INTERACTIVE.STROKE_1);
@@ -142,7 +142,7 @@ export default defineComponent({
 
 						const derivativeBezier = bezier.derivative();
 						if (derivativeBezier) {
-							const points: Point[] = derivativeBezier.get_points().map((p) => JSON.parse(p));
+							const points: Point[] = derivativeBezier.get_points().map((p: string) => JSON.parse(p));
 							if (points.length === 2) {
 								drawLine(context, points[0], points[1], COLORS.NON_INTERACTIVE.STROKE_1);
 							} else {
@@ -338,7 +338,7 @@ export default defineComponent({
 						const rotatedBezier = bezier
 							.rotate(options.angle * Math.PI)
 							.get_points()
-							.map((p) => JSON.parse(p));
+							.map((p: string) => JSON.parse(p));
 						drawBezier(context, rotatedBezier, null, { curveStrokeColor: COLORS.NON_INTERACTIVE.STROKE_1, radius: 3.5 });
 					},
 					template: markRaw(SliderExample),
@@ -356,7 +356,7 @@ export default defineComponent({
 					},
 				},
 				{
-					name: "Intersect Line Segment",
+					name: "Intersect (Line Segment)",
 					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance): void => {
 						const context = getContextFromCanvas(canvas);
 						const line = [
@@ -365,7 +365,25 @@ export default defineComponent({
 						];
 						const mappedLine = line.map((p) => [p.x, p.y]);
 						drawLine(context, line[0], line[1], COLORS.NON_INTERACTIVE.STROKE_1);
-						const intersections: Point[] = bezier.intersect_line_segment(mappedLine).map((p) => JSON.parse(p));
+						const intersections: Point[] = bezier.intersect_line_segment(mappedLine).map((p: string) => JSON.parse(p));
+						intersections.forEach((p: Point) => {
+							drawPoint(context, p, 3, COLORS.NON_INTERACTIVE.STROKE_2);
+						});
+					},
+				},
+				{
+					name: "Intersect (Cubic Segment)",
+					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance): void => {
+						const context = getContextFromCanvas(canvas);
+						const points = [
+							{ x: 40, y: 20 },
+							{ x: 100, y: 40 },
+							{ x: 40, y: 120 },
+							{ x: 175, y: 140 },
+						];
+						const mappedPoints = points.map((p) => [p.x, p.y]);
+						drawCurve(context, points, COLORS.NON_INTERACTIVE.STROKE_1);
+						const intersections: Point[] = bezier.intersect_cubic_segment(mappedPoints).map((p: string) => JSON.parse(p));
 						intersections.forEach((p: Point) => {
 							drawPoint(context, p, 3, COLORS.NON_INTERACTIVE.STROKE_2);
 						});

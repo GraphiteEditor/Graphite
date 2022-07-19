@@ -602,8 +602,26 @@ impl Bezier {
 		self.apply_transformation(&|point| point + translation)
 	}
 
+	/// Implementation of the algorithm to find curve intersections by iterating on bounding boxes.
+	fn intersection_curves(curve1: &Bezier, curve2: &Bezier, intersections: &mut Vec<DVec2>) {
+		let bounding_box1 = curve1.bounding_box();
+		let bounding_box2 = curve2.bounding_box();
+		if utils::do_rectangles_overlap(bounding_box1, bounding_box2) {
+			if (bounding_box1[1] - bounding_box1[0]).lt(&DVec2::new(0.5, 0.5)) && (bounding_box2[1] - bounding_box2[0]).lt(&DVec2::new(0.5, 0.5)) {
+				intersections.push(curve1.evaluate(0.5));
+				return;
+			}
+			let [split1a, split1b] = curve1.split(0.5);
+			let [split2a, split2b] = curve2.split(0.5);
+			Bezier::intersection_curves(&split1a, &split2a, intersections);
+			Bezier::intersection_curves(&split1a, &split2b, intersections);
+			Bezier::intersection_curves(&split1b, &split2a, intersections);
+			Bezier::intersection_curves(&split1b, &split2b, intersections);
+		}
+	}
+
 	// TODO: Use an `impl Iterator` return type instead of a `Vec`
-	/// Returns a list of intersection points between the current bezier curve and the provided one. If the provided curve is colinear with the bezier, zero intersection points will be returned.
+	/// Returns a list of intersection points between the current bezier curve and the provided one. If the provided curve is linear and is colinear with the bezier, zero intersection points will be returned.
 	pub fn intersections(&self, curve: &Bezier) -> Vec<DVec2> {
 		match curve.handles {
 			BezierHandles::Linear => {
@@ -657,7 +675,11 @@ impl Bezier {
 					.filter(|&point| utils::dvec2_approximately_in_range(point, min, max, MAX_ABSOLUTE_DIFFERENCE).all())
 					.collect::<Vec<DVec2>>()
 			}
-			_ => unimplemented!(),
+			_ => {
+				let mut intersection_points = Vec::new();
+				Bezier::intersection_curves(self, curve, &mut intersection_points);
+				intersection_points
+			}
 		}
 	}
 
@@ -907,6 +929,10 @@ mod tests {
 			.all(|(&a, b)| compare_vector_of_points(a.get_points().collect::<Vec<DVec2>>(), b.to_vec()))
 	}
 
+	fn compare_vec_of_points(vec1: Vec<DVec2>, vec2: Vec<DVec2>, max_absolute_difference: f64) -> bool {
+		vec1.into_iter().zip(vec2).all(|(p1, p2)| p1.abs_diff_eq(p2, max_absolute_difference))
+	}
+
 	#[test]
 	fn quadratic_from_points() {
 		let p1 = DVec2::new(30., 50.);
@@ -1007,6 +1033,15 @@ mod tests {
 		assert!(intersections2.len() == 2);
 		assert!(compare_points(intersections2[0], p1));
 		assert!(compare_points(intersections2[1], DVec2::new(85.84, 85.84)));
+	}
+
+	fn intersect_curve() {
+		let bezier1 = Bezier::from_cubic_coordinates(30., 30., 60., 140., 150., 30., 160., 160.);
+		let bezier2 = Bezier::from_quadratic_coordinates(175., 140., 20., 20., 120., 20.);
+
+		let intersections = bezier1.intersections(&bezier2);
+		let intersections2 = bezier2.intersections(&bezier1);
+		assert!(compare_vec_of_points(intersections, intersections2, 2.));
 	}
 
 	#[test]

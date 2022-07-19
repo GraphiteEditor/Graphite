@@ -146,6 +146,14 @@ pub fn solve_cubic(a: f64, b: f64, c: f64, d: f64) -> Vec<f64> {
 	}
 }
 
+/// Determine if two rectangles have any overlap. The rectangles are represnted by a pair of coordinates that designate the top left and bottom right corners (in a graphical coordinate system).
+pub fn do_rectangles_overlap(rectangle1: [DVec2; 2], rectangle2: [DVec2; 2]) -> bool {
+	let [bottom_left1, top_right1] = rectangle1;
+	let [bottom_left2, top_right2] = rectangle2;
+
+	top_right1.x >= bottom_left2.x && top_right2.x >= bottom_left1.x && top_right2.y >= bottom_left1.y && top_right1.y >= bottom_left2.y
+}
+
 /// Returns the intersection of two lines. The lines are given by a point on the line and its slope (represented by a vector).
 pub fn line_intersection(point1: DVec2, point1_slope_vector: DVec2, point2: DVec2, point2_slope_vector: DVec2) -> DVec2 {
 	assert!(point1_slope_vector.normalize() != point2_slope_vector.normalize());
@@ -241,6 +249,19 @@ mod tests {
 		// linear
 		let roots7 = solve_cubic(0., 0., 1., -1.);
 		assert!(roots7 == vec![1.]);
+	}
+
+	fn test_do_rectangles_overlap() {
+		// Rectangles overlap
+		assert!(do_rectangles_overlap([DVec2::new(0., 0.), DVec2::new(20., 20.)], [DVec2::new(10., 10.), DVec2::new(30., 20.)]));
+		// Rectangles share a side
+		assert!(do_rectangles_overlap([DVec2::new(0., 0.), DVec2::new(10., 10.)], [DVec2::new(10., 10.), DVec2::new(30., 30.)]));
+		// Rectangle inside the other
+		assert!(do_rectangles_overlap([DVec2::new(0., 0.), DVec2::new(10., 10.)], [DVec2::new(2., 2.), DVec2::new(6., 4.)]));
+		// No overlap, rectangles are beside each other
+		assert!(!do_rectangles_overlap([DVec2::new(0., 0.), DVec2::new(10., 10.)], [DVec2::new(20., 0.), DVec2::new(30., 10.)]));
+		// No overlap, rectangles are above and below each other
+		assert!(!do_rectangles_overlap([DVec2::new(0., 0.), DVec2::new(10., 10.)], [DVec2::new(0., 20.), DVec2::new(20., 30.)]));
 	}
 
 	#[test]
