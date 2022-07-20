@@ -337,18 +337,6 @@ impl JsEditorHandle {
 		Ok(())
 	}
 
-	/// Swap primary and secondary color
-	pub fn swap_colors(&self) {
-		let message = ToolMessage::SwapColors;
-		self.dispatch(message);
-	}
-
-	/// Reset primary and secondary colors to their defaults
-	pub fn reset_colors(&self) {
-		let message = ToolMessage::ResetColors;
-		self.dispatch(message);
-	}
-
 	/// Paste layers from a serialized json representation
 	pub fn paste_serialized_data(&self, data: String) {
 		let message = PortfolioMessage::PasteSerializedData { data };

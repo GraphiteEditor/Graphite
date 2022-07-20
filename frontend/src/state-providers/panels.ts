@@ -16,6 +16,7 @@ import {
 	UpdateMouseCursor,
 	UpdateToolOptionsLayout,
 	UpdateToolShelfLayout,
+	UpdateWorkingColorsLayout,
 } from "@/wasm-communication/messages";
 
 import DocumentComponent from "@/components/panels/Document.vue";
@@ -94,6 +95,10 @@ export function createPanelsState(editor: Editor) {
 		editor.subscriptions.subscribeJsMessage(UpdateToolShelfLayout, async (updateToolShelfLayout) => {
 			await nextTick();
 			state.documentPanel.updateToolShelfLayout(updateToolShelfLayout);
+		});
+		editor.subscriptions.subscribeJsMessage(UpdateWorkingColorsLayout, async (updateWorkingColorsLayout) => {
+			await nextTick();
+			state.documentPanel.updateWorkingColorsLayout(updateWorkingColorsLayout);
 		});
 
 		// Resize elements to render the new viewport size

@@ -59,4 +59,5 @@ pub enum FrontendMessage {
 	UpdateToolOptionsLayout { layout_target: LayoutTarget, layout: SubLayout },
 	UpdateToolShelfLayout { layout_target: LayoutTarget, layout: SubLayout },
 	UpdateWorkingColors { primary: Color, secondary: Color },
+	UpdateWorkingColorsLayout { layout_target: LayoutTarget, layout: SubLayout },
 }

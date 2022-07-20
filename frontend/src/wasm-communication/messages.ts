@@ -461,6 +461,13 @@ export class UpdateToolShelfLayout extends JsMessage implements WidgetLayout {
 	layout!: LayoutGroup[];
 }
 
+export class UpdateWorkingColorsLayout extends JsMessage implements WidgetLayout {
+	layout_target!: unknown;
+
+	@Transform(({ value }) => createWidgetLayout(value))
+	layout!: LayoutGroup[];
+}
+
 export class UpdatePropertyPanelOptionsLayout extends JsMessage implements WidgetLayout {
 	layout_target!: unknown;
 
@@ -615,6 +622,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateDocumentModeLayout,
 	UpdateToolOptionsLayout,
 	UpdateWorkingColors,
+	UpdateWorkingColorsLayout,
 	UpdateMenuBarLayout,
 } as const;
 export type JsMessageType = keyof typeof messageMakers;

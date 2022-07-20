@@ -323,6 +323,7 @@ pub enum Widget {
 	PopoverButton(PopoverButton),
 	RadioInput(RadioInput),
 	Separator(Separator),
+	SwatchPairInput(SwatchPairInput),
 	TextAreaInput(TextAreaInput),
 	TextButton(TextButton),
 	TextInput(TextInput),
@@ -423,6 +424,9 @@ pub struct Separator {
 	#[serde(rename = "type")]
 	pub separator_type: SeparatorType,
 }
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SwatchPairInput;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SeparatorDirection {

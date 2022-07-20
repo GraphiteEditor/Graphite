@@ -29,6 +29,7 @@
 			</PopoverButton>
 			<RadioInput v-if="component.kind === 'RadioInput'" v-bind="component.props" @update:selectedIndex="(value: number) => updateLayout(component.widget_id, value)" />
 			<Separator v-if="component.kind === 'Separator'" v-bind="component.props" />
+			<SwatchPairInput v-if="component.kind === 'SwatchPairInput'" />
 			<TextAreaInput v-if="component.kind === 'TextAreaInput'" v-bind="component.props" @commitText="(value: string) => updateLayout(component.widget_id, value)" />
 			<TextButton v-if="component.kind === 'TextButton'" v-bind="component.props" :action="() => updateLayout(component.widget_id, null)" />
 			<TextInput v-if="component.kind === 'TextInput'" v-bind="component.props" @commitText="(value: string) => updateLayout(component.widget_id, value)" />
@@ -84,6 +85,7 @@ import FontInput from "@/components/widgets/inputs/FontInput.vue";
 import NumberInput from "@/components/widgets/inputs/NumberInput.vue";
 import OptionalInput from "@/components/widgets/inputs/OptionalInput.vue";
 import RadioInput from "@/components/widgets/inputs/RadioInput.vue";
+import SwatchPairInput from "@/components/widgets/inputs/SwatchPairInput.vue";
 import TextAreaInput from "@/components/widgets/inputs/TextAreaInput.vue";
 import TextInput from "@/components/widgets/inputs/TextInput.vue";
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
@@ -123,21 +125,22 @@ export default defineComponent({
 		},
 	},
 	components: {
-		Separator,
-		PopoverButton,
-		TextButton,
 		CheckboxInput,
-		NumberInput,
-		TextInput,
-		IconButton,
-		OptionalInput,
-		RadioInput,
-		DropdownInput,
-		TextLabel,
-		IconLabel,
 		ColorInput,
+		DropdownInput,
 		FontInput,
+		IconButton,
+		IconLabel,
+		NumberInput,
+		OptionalInput,
+		PopoverButton,
+		RadioInput,
+		Separator,
+		SwatchPairInput,
 		TextAreaInput,
+		TextButton,
+		TextInput,
+		TextLabel,
 	},
 });
 </script>

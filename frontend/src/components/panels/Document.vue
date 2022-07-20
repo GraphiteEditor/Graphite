@@ -17,12 +17,7 @@
 				<LayoutCol class="spacer"></LayoutCol>
 
 				<LayoutCol class="working-colors">
-					<SwatchPairInput />
-					<LayoutRow class="swap-and-reset">
-						<!-- TODO: Remember to make these tooltip input hints customized to macOS also -->
-						<IconButton :action="swapWorkingColors" :icon="'Swap'" title="Swap (Shift+X)" :size="16" />
-						<IconButton :action="resetWorkingColors" :icon="'ResetColors'" title="Reset (Ctrl+Shift+X)" :size="16" />
-					</LayoutRow>
+					<WidgetLayout :layout="workingColorsLayout" />
 				</LayoutCol>
 			</LayoutCol>
 			<LayoutCol class="viewport">
@@ -135,8 +130,16 @@
 			.working-colors {
 				flex: 0 0 auto;
 
-				.swap-and-reset {
-					flex: 0 0 auto;
+				.widget-row {
+					min-height: 0;
+
+					.swatch-pair {
+						margin: 0;
+					}
+
+					.icon-button {
+						--widget-height: 0;
+					}
 				}
 			}
 		}
@@ -225,6 +228,7 @@ import {
 	UpdateDocumentModeLayout,
 	UpdateToolOptionsLayout,
 	UpdateToolShelfLayout,
+	UpdateWorkingColorsLayout,
 	defaultWidgetLayout,
 	UpdateDocumentBarLayout,
 	DisplayEditableTextbox,
@@ -234,8 +238,6 @@ import {
 
 import LayoutCol from "@/components/layout/LayoutCol.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
-import IconButton from "@/components/widgets/buttons/IconButton.vue";
-import SwatchPairInput from "@/components/widgets/inputs/SwatchPairInput.vue";
 import CanvasRuler from "@/components/widgets/metrics/CanvasRuler.vue";
 import PersistentScrollbar from "@/components/widgets/metrics/PersistentScrollbar.vue";
 import WidgetLayout from "@/components/widgets/WidgetLayout.vue";
@@ -275,12 +277,6 @@ export default defineComponent({
 		pageY(delta: number) {
 			const move = delta < 0 ? 1 : -1;
 			this.editor.instance.translate_canvas_by_fraction(0, move);
-		},
-		swapWorkingColors() {
-			this.editor.instance.swap_colors();
-		},
-		resetWorkingColors() {
-			this.editor.instance.reset_colors();
 		},
 		canvasPointerDown(e: PointerEvent) {
 			const onEditbox = e.target instanceof HTMLDivElement && e.target.contentEditable;
@@ -381,6 +377,9 @@ export default defineComponent({
 		updateToolShelfLayout(updateToolShelfLayout: UpdateToolShelfLayout) {
 			this.toolShelfLayout = updateToolShelfLayout;
 		},
+		updateWorkingColorsLayout(updateWorkingColorsLayout: UpdateWorkingColorsLayout) {
+			this.workingColorsLayout = updateWorkingColorsLayout;
+		},
 		// Resize elements to render the new viewport size
 		viewportResize() {
 			// Resize the canvas
@@ -434,15 +433,14 @@ export default defineComponent({
 			toolOptionsLayout: defaultWidgetLayout(),
 			documentBarLayout: defaultWidgetLayout(),
 			toolShelfLayout: defaultWidgetLayout(),
+			workingColorsLayout: defaultWidgetLayout(),
 		};
 	},
 	components: {
 		LayoutRow,
 		LayoutCol,
-		SwatchPairInput,
 		PersistentScrollbar,
 		CanvasRuler,
-		IconButton,
 		WidgetLayout,
 	},
 });

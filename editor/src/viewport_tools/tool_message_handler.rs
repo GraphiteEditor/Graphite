@@ -2,7 +2,7 @@ use super::tool::{message_to_tool_type, DocumentToolData, ToolFsmState};
 use crate::document::DocumentMessageHandler;
 use crate::input::InputPreprocessorMessageHandler;
 use crate::layout::layout_message::LayoutTarget;
-use crate::layout::widgets::PropertyHolder;
+use crate::layout::widgets::{IconButton, Layout, LayoutGroup, PropertyHolder, SwatchPairInput, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
 use crate::message_prelude::*;
 
 use graphene::color::Color;
@@ -168,6 +168,38 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessorMes
 }
 
 fn update_working_colors(document_data: &DocumentToolData, responses: &mut VecDeque<Message>) {
+	let layout = WidgetLayout::new(vec![
+		LayoutGroup::Row {
+			widgets: vec![WidgetHolder::new(Widget::SwatchPairInput(SwatchPairInput))],
+		},
+		LayoutGroup::Row {
+			widgets: vec![
+				WidgetHolder::new(Widget::IconButton(IconButton {
+					size: 16,
+					icon: "Swap".into(),
+					tooltip: "Swap (Shift+X)".into(), // TODO: Customize this tooltip for the Mac version of the keyboard shortcut
+					on_update: WidgetCallback::new(|_| ToolMessage::SwapColors.into()),
+					..Default::default()
+				})),
+				WidgetHolder::new(Widget::IconButton(IconButton {
+					size: 16,
+					icon: "ResetColors".into(), // TODO: Customize this tooltip for the Mac version of the keyboard shortcut
+					tooltip: "Reset (Ctrl+Shift+X)".into(),
+					on_update: WidgetCallback::new(|_| ToolMessage::ResetColors.into()),
+					..Default::default()
+				})),
+			],
+		},
+	]);
+
+	responses.push_back(
+		LayoutMessage::SendLayout {
+			layout: Layout::WidgetLayout(layout),
+			layout_target: LayoutTarget::WorkingColors,
+		}
+		.into(),
+	);
+
 	responses.push_back(
 		FrontendMessage::UpdateWorkingColors {
 			primary: document_data.primary_color,
