@@ -78,11 +78,11 @@ impl Dispatcher {
 			if SIDE_EFFECT_FREE_MESSAGES.contains(&message.to_discriminant()) {
 				let already_in_queue = self.message_queues.first().filter(|queue| queue.contains(&message)).is_some();
 				if already_in_queue {
-					self.log_deferred_message(&message, &self.message_queues, self.message_handlers.global_message_handler.log_tree);
+					self.log_deferred_message(&message, &self.message_queues, self.message_handlers.global_message_handler.trace_messsage_contents);
 					self.cleanup_queues(false);
 					continue;
 				} else if self.message_queues.len() > 1 {
-					self.log_deferred_message(&message, &self.message_queues, self.message_handlers.global_message_handler.log_tree);
+					self.log_deferred_message(&message, &self.message_queues, self.message_handlers.global_message_handler.trace_messsage_contents);
 					self.cleanup_queues(true);
 					self.message_queues[0].push_back(message);
 					continue;
@@ -90,7 +90,7 @@ impl Dispatcher {
 			}
 
 			// Print the message at a verbosity level of `log`
-			self.log_message(&message, &self.message_queues, self.message_handlers.global_message_handler.log_tree);
+			self.log_message(&message, &self.message_queues, self.message_handlers.global_message_handler.trace_messsage_contents);
 
 			// Create a new queue for the child messages
 			let mut queue = VecDeque::new();
@@ -193,21 +193,21 @@ impl Dispatcher {
 
 	/// Logs a message that is about to be executed,
 	/// either as a tree with a discriminant or the entire payload (depending on settings)
-	fn log_message(&self, message: &Message, queues: &[VecDeque<Message>], log_tree: bool) {
-		if log_tree && !MessageDiscriminant::from(message).local_name().ends_with("PointerMove") {
-			log::info!("{}{:?}", Self::create_indents(queues), message.to_discriminant());
-		}
-
-		if log::max_level() == log::LevelFilter::Trace && !(matches!(message, Message::InputPreprocessor(_)) || MessageDiscriminant::from(message).local_name().ends_with("PointerMove")) {
-			log::trace!("Message: {}{:?}", Self::create_indents(queues), message);
-			// log::trace!("Hints: {:?}", self.input_mapper_message_handler.hints(self.collect_actions()));
+	fn log_message(&self, message: &Message, queues: &[VecDeque<Message>], log_tree_contents: bool) {
+		if log::max_level() == log::LevelFilter::Trace && !MessageDiscriminant::from(message).local_name().ends_with("PointerMove") {
+			if !log_tree_contents {
+				log::trace!("{}{:?}", Self::create_indents(queues), message.to_discriminant());
+			} else if !(matches!(message, Message::InputPreprocessor(_))) {
+				log::trace!("Message: {}{:?}", Self::create_indents(queues), message);
+				// log::trace!("Hints: {:?}", self.input_mapper_message_handler.hints(self.collect_actions()));
+			}
 		}
 	}
 
 	/// Logs into the tree that the message is in the side effect free messages and its execution will be deferred
-	fn log_deferred_message(&self, message: &Message, queues: &[VecDeque<Message>], log_tree: bool) {
-		if log_tree {
-			log::info!("{}Deferred '{:?}' - SIDE_EFFECT_FREE_MESSAGE", Self::create_indents(queues), message.to_discriminant());
+	fn log_deferred_message(&self, message: &Message, queues: &[VecDeque<Message>], log_tree_contents: bool) {
+		if log::max_level() == log::LevelFilter::Trace && !log_tree_contents {
+			log::trace!("{}Deferred '{:?}' - SIDE_EFFECT_FREE_MESSAGE", Self::create_indents(queues), message.to_discriminant());
 		}
 	}
 }

@@ -225,10 +225,9 @@ impl Default for Mapping {
 			entry! {action=DocumentMessage::ReorderSelectedLayers { relative_index_offset: -1 }, key_down=KeyLeftBracket, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::ReorderSelectedLayers { relative_index_offset: isize::MIN }, key_down=KeyLeftCurlyBracket, modifiers=[KeyControl]}, // TODO: Use KeyLeftBracket with Ctrl+Shift modifiers once input system is fixed
 			// Global Actions
-			entry! {action=GlobalMessage::LogMessageTree, key_down=Key0},
-			entry! {action=GlobalMessage::LogInfo, key_down=Key1},
-			entry! {action=GlobalMessage::LogDebug, key_down=Key2},
-			entry! {action=GlobalMessage::LogTrace, key_down=Key3},
+			entry! {action=GlobalMessage::LogMaxLevelInfo, key_down=Key1},
+			entry! {action=GlobalMessage::LogMaxLevelDebug, key_down=Key2},
+			entry! {action=GlobalMessage::LogMaxLevelTrace, key_down=Key3},
 		];
 		let (mut key_up, mut key_down, mut pointer_move, mut mouse_scroll, mut double_click) = mappings;
 

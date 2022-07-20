@@ -281,31 +281,42 @@ impl PropertyHolder for MenuBarMessageHandler {
 					],
 					vec![
 						MenuEntry {
-							label: "Debug: Set Log Level".into(),
+							label: "Debug: Set Maximum Log Level".into(),
 							action: MenuEntry::no_action(),
 							children: Some(vec![vec![
 								MenuEntry {
-									label: "Log MessageTree".into(),
-									action: MenuEntry::create_action(|_| GlobalMessage::LogMessageTree.into()),
-									shortcut: Some(vec![Key::Key0]),
-									..MenuEntry::default()
-								},
-								MenuEntry {
-									label: "Log Level Info".into(),
-									action: MenuEntry::create_action(|_| GlobalMessage::LogInfo.into()),
+									label: "Max Level Info (fewest logs)".into(),
+									action: MenuEntry::create_action(|_| GlobalMessage::LogMaxLevelInfo.into()),
 									shortcut: Some(vec![Key::Key1]),
 									..MenuEntry::default()
 								},
 								MenuEntry {
-									label: "Log Level Debug".into(),
-									action: MenuEntry::create_action(|_| GlobalMessage::LogDebug.into()),
+									label: "Max Level Debug".into(),
+									action: MenuEntry::create_action(|_| GlobalMessage::LogMaxLevelDebug.into()),
 									shortcut: Some(vec![Key::Key2]),
 									..MenuEntry::default()
 								},
 								MenuEntry {
-									label: "Log Level Trace".into(),
-									action: MenuEntry::create_action(|_| GlobalMessage::LogTrace.into()),
+									label: "Max Level Trace (all logs)".into(),
+									action: MenuEntry::create_action(|_| GlobalMessage::LogMaxLevelTrace.into()),
 									shortcut: Some(vec![Key::Key3]),
+									..MenuEntry::default()
+								},
+							]]),
+							..MenuEntry::default()
+						},
+						MenuEntry {
+							label: "Debug: Configure Message Traces".into(),
+							action: MenuEntry::no_action(),
+							children: Some(vec![vec![
+								MenuEntry {
+									label: "Trace Message Discriminants".into(),
+									action: MenuEntry::create_action(|_| GlobalMessage::TraceMessageDiscriminants.into()),
+									..MenuEntry::default()
+								},
+								MenuEntry {
+									label: "Trace Full Message Contents".into(),
+									action: MenuEntry::create_action(|_| GlobalMessage::TraceMessageContents.into()),
 									..MenuEntry::default()
 								},
 							]]),

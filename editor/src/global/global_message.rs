@@ -6,8 +6,10 @@ use serde::{Deserialize, Serialize};
 #[impl_message(Message, Global)]
 #[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize)]
 pub enum GlobalMessage {
-	LogDebug,
-	LogInfo,
-	LogMessageTree,
-	LogTrace,
+	LogMaxLevelDebug,
+	LogMaxLevelInfo,
+	LogMaxLevelTrace,
+
+	TraceMessageContents,
+	TraceMessageDiscriminants,
 }
