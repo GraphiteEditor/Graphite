@@ -365,8 +365,9 @@ export default defineComponent({
 						];
 						const mappedLine = line.map((p) => [p.x, p.y]);
 						drawLine(context, line[0], line[1], COLORS.NON_INTERACTIVE.STROKE_1);
-						const intersections: Point[] = bezier.intersect_line_segment(mappedLine).map((p: string) => JSON.parse(p));
-						intersections.forEach((p: Point) => {
+						const intersections: Float64Array = bezier.intersect_line_segment(mappedLine);
+						intersections.forEach((t: number) => {
+							const p = JSON.parse(bezier.evaluate(t));
 							drawPoint(context, p, 3, COLORS.NON_INTERACTIVE.STROKE_2);
 						});
 					},
@@ -382,9 +383,10 @@ export default defineComponent({
 							{ x: 175, y: 140 },
 						];
 						const mappedPoints = points.map((p) => [p.x, p.y]);
-						drawCurve(context, points, COLORS.NON_INTERACTIVE.STROKE_1);
-						const intersections: Point[] = bezier.intersect_cubic_segment(mappedPoints).map((p: string) => JSON.parse(p));
-						intersections.forEach((p: Point) => {
+						drawCurve(context, points, COLORS.NON_INTERACTIVE.STROKE_1, 1);
+						const intersections: Float64Array = bezier.intersect_cubic_segment(mappedPoints);
+						intersections.forEach((t: number) => {
+							const p = JSON.parse(bezier.evaluate(t));
 							drawPoint(context, p, 3, COLORS.NON_INTERACTIVE.STROKE_2);
 						});
 					},
