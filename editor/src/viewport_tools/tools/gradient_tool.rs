@@ -1,4 +1,4 @@
-use crate::consts::{COLOR_ACCENT, LINE_ROTATE_SNAP_ANGLE, SELECTION_TOLERANCE, VECTOR_MANIPULATOR_ANCHOR_MARKER_SIZE};
+use crate::consts::{COLOR_ACCENT, LINE_ROTATE_SNAP_ANGLE, MANIPULATOR_GROUP_MARKER_SIZE, SELECTION_TOLERANCE};
 use crate::document::DocumentMessageHandler;
 use crate::frontend::utility_types::MouseCursorIcon;
 use crate::input::keyboard::{Key, MouseMotion};
@@ -141,7 +141,7 @@ impl Default for GradientToolFsmState {
 
 /// Computes the transform from gradient space to layer space (where gradient space is 0..1 in layer space)
 fn gradient_space_transform(path: &[LayerId], layer: &Layer, document: &DocumentMessageHandler, font_cache: &FontCache) -> DAffine2 {
-	let bounds = layer.aabounding_box_for_transform(DAffine2::IDENTITY, font_cache).unwrap();
+	let bounds = layer.aabb_for_transform(DAffine2::IDENTITY, font_cache).unwrap();
 	let bound_transform = DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
 
 	let multiplied = document.graphene_document.multiply_transforms(path).unwrap();
@@ -163,7 +163,7 @@ impl GradientOverlay {
 	fn generate_overlay_handle(translation: DVec2, responses: &mut VecDeque<Message>, selected: bool) -> Vec<LayerId> {
 		let path = vec![generate_uuid()];
 
-		let size = DVec2::splat(VECTOR_MANIPULATOR_ANCHOR_MARKER_SIZE);
+		let size = DVec2::splat(MANIPULATOR_GROUP_MARKER_SIZE);
 
 		let fill = if selected { Fill::solid(COLOR_ACCENT) } else { Fill::solid(Color::WHITE) };
 
@@ -359,7 +359,7 @@ impl Fsm for GradientToolFsmState {
 					responses.push_back(BroadcastSignal::DocumentIsDirty.into());
 
 					let mouse = input.mouse.position;
-					let tolerance = VECTOR_MANIPULATOR_ANCHOR_MARKER_SIZE.powi(2);
+					let tolerance = MANIPULATOR_GROUP_MARKER_SIZE.powi(2);
 
 					let mut dragging = false;
 					for overlay in &tool_data.gradient_overlays {

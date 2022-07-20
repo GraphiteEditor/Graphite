@@ -2,7 +2,7 @@ use crate::layout::widgets::*;
 use crate::message_prelude::FrontendMessage;
 use crate::misc::build_metadata::{commit_info_localized, release_series};
 
-/// A dialog for displaying information on [`BuildMetadata`] viewable via *Help* > *About Graphite* in the menu bar.
+/// A dialog for displaying information on [BuildMetadata] viewable via *Help* > *About Graphite* in the menu bar.
 pub struct AboutGraphite {
 	pub localized_commit_date: String,
 }

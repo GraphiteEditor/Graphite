@@ -53,9 +53,9 @@ pub enum DocumentMessage {
 		layer_path: Vec<LayerId>,
 	},
 	DeleteSelectedLayers,
-	DeleteSelectedVectorPoints,
+	DeleteSelectedManipulatorPoints,
 	DeselectAllLayers,
-	DeselectAllVectorPoints,
+	DeselectAllManipulatorPoints,
 	DirtyRenderDocument,
 	DirtyRenderDocumentInOutlineView,
 	DocumentHistoryBackward,
@@ -83,7 +83,7 @@ pub enum DocumentMessage {
 		insert_index: isize,
 		reverse_index: bool,
 	},
-	MoveSelectedVectorPoints {
+	MoveSelectedManipulatorPoints {
 		layer_path: Vec<LayerId>,
 		delta: (f64, f64),
 		absolute_position: (f64, f64),
