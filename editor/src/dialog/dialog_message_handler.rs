@@ -101,5 +101,9 @@ impl MessageHandler<DialogMessage, &PortfolioMessageHandler> for DialogMessageHa
 		}
 	}
 
-	advertise_actions!(DialogMessageDiscriminant;RequestNewDocumentDialog,RequestExportDialog,CloseAllDocumentsWithConfirmation);
+	advertise_actions!(DialogMessageDiscriminant;
+		RequestNewDocumentDialog,
+		RequestExportDialog,
+		CloseAllDocumentsWithConfirmation,
+	);
 }

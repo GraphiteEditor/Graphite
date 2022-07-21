@@ -169,8 +169,14 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for TextTool {
 		use TextToolFsmState::*;
 
 		match self.fsm_state {
-			Ready => actions!(TextMessageDiscriminant; Interact),
-			Editing => actions!(TextMessageDiscriminant; Interact, Abort, CommitText),
+			Ready => actions!(TextMessageDiscriminant;
+				Interact,
+			),
+			Editing => actions!(TextMessageDiscriminant;
+				Interact,
+				Abort,
+				CommitText,
+			),
 		}
 	}
 }

@@ -75,7 +75,6 @@ pub enum ToolMessage {
 	// Detail(DetailToolMessage),
 
 	// Messages
-	#[remain::unsorted]
 	ActivateTool {
 		tool_type: ToolType,
 	},

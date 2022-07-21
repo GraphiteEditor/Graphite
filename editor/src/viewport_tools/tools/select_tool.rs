@@ -266,8 +266,18 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for SelectTool {
 		use SelectToolFsmState::*;
 
 		match self.fsm_state {
-			Ready => actions!(SelectToolMessageDiscriminant; DragStart, PointerMove, Abort, EditLayer),
-			_ => actions!(SelectToolMessageDiscriminant; DragStop, PointerMove, Abort, EditLayer),
+			Ready => actions!(SelectToolMessageDiscriminant;
+				DragStart,
+				PointerMove,
+				Abort,
+				EditLayer,
+			),
+			_ => actions!(SelectToolMessageDiscriminant;
+				DragStop,
+				PointerMove,
+				Abort,
+				EditLayer,
+			),
 		}
 	}
 }

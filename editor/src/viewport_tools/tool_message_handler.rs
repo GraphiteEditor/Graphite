@@ -160,7 +160,12 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessorMes
 	}
 
 	fn actions(&self) -> ActionList {
-		let mut list = actions!(ToolMessageDiscriminant; SelectRandomPrimaryColor, ResetColors, SwapColors, ActivateTool);
+		let mut list = actions!(ToolMessageDiscriminant;
+			ActivateTool,
+			SelectRandomPrimaryColor,
+			ResetColors,
+			SwapColors,
+		);
 		list.extend(self.tool_state.tool_data.active_tool().actions());
 
 		list
