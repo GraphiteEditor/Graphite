@@ -30,6 +30,7 @@ pub enum FrontendMessage {
 	TriggerIndexedDbWriteDocument { document: String, details: FrontendDocumentDetails, version: String },
 	TriggerPaste,
 	TriggerRasterDownload { document: String, name: String, mime: String, size: (f64, f64) },
+	TriggerRefreshBoundsOfViewports,
 	TriggerTextCommit,
 	TriggerTextCopy { copy_text: String },
 	TriggerViewportResize,

@@ -84,7 +84,7 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessorMes
 				let document_data = &self.tool_state.document_tool_data;
 				let active_tool = &tool_data.active_tool_type;
 
-				// subscribe tool to broadcast messages
+				// Subscribe tool to broadcast messages
 				tool_data.tools.get(active_tool).unwrap().activate(responses);
 
 				// Register initial properties
@@ -92,6 +92,10 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessorMes
 
 				// Notify the frontend about the initial active tool
 				tool_data.register_properties(responses, LayoutTarget::ToolShelf);
+
+				// Notify the frontend about the initial working colors
+				update_working_colors(document_data, responses);
+				responses.push_back(FrontendMessage::TriggerRefreshBoundsOfViewports.into());
 
 				// Set initial hints and cursor
 				tool_data

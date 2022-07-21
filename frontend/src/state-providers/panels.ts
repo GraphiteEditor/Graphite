@@ -4,6 +4,7 @@ import { Editor } from "@/wasm-communication/editor";
 import {
 	DisplayEditableTextbox,
 	DisplayRemoveEditableTextbox,
+	TriggerRefreshBoundsOfViewports,
 	TriggerTextCommit,
 	TriggerViewportResize,
 	UpdateDocumentArtboards,
@@ -107,6 +108,15 @@ export function createPanelsState(editor: Editor) {
 		editor.subscriptions.subscribeJsMessage(TriggerViewportResize, async () => {
 			await nextTick();
 			state.documentPanel.viewportResize();
+		});
+		editor.subscriptions.subscribeJsMessage(TriggerRefreshBoundsOfViewports, async () => {
+			// Wait to display the unpopulated document panel (missing: tools, options bar content, scrollbar positioning, and canvas)
+			await nextTick();
+			// Wait to display the populated document panel
+			await nextTick();
+
+			// Request a resize event so the viewport gets measured now that the canvas is populated and positioned correctly
+			window.dispatchEvent(new CustomEvent("resize"));
 		});
 	}
 

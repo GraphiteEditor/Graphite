@@ -221,6 +221,8 @@ export class TriggerRasterDownload extends JsMessage {
 	readonly size!: XY;
 }
 
+export class TriggerRefreshBoundsOfViewports extends JsMessage {}
+
 export class DocumentChanged extends JsMessage {}
 
 export class UpdateDocumentLayerTreeStructure extends JsMessage {
@@ -819,6 +821,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	TriggerIndexedDbWriteDocument,
 	TriggerPaste,
 	TriggerRasterDownload,
+	TriggerRefreshBoundsOfViewports,
 	TriggerTextCommit,
 	TriggerTextCopy,
 	TriggerAboutGraphiteLocalizedCommitDate,

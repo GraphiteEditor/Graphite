@@ -117,7 +117,7 @@ export default defineComponent({
 				nextSibling.style.flexGrow = (nextSiblingSize + mouseDelta).toString();
 				previousSibling.style.flexGrow = (previousSiblingSize - mouseDelta).toString();
 
-				window.dispatchEvent(new CustomEvent("resize", { detail: {} }));
+				window.dispatchEvent(new CustomEvent("resize"));
 			}
 
 			function cleanup(event: PointerEvent): void {
