@@ -83,7 +83,6 @@ impl PortfolioMessageHandler {
 		responses.push_back(PortfolioMessage::SelectDocument { document_id }.into());
 		responses.push_back(PortfolioMessage::UpdateDocumentWidgets.into());
 		responses.push_back(ToolMessage::InitTools.into());
-		responses.push_back(MenuBarMessage::SendLayout.into());
 		responses.push_back(PropertiesPanelMessage::Init.into());
 		responses.push_back(MovementMessage::TranslateCanvas { delta: (0., 0.).into() }.into());
 		responses.push_back(DocumentMessage::DocumentStructureChanged.into())

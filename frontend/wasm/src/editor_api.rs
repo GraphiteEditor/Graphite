@@ -110,6 +110,9 @@ impl JsEditorHandle {
 		let font = graphene::layers::text_layer::Font::new(DEFAULT_FONT_FAMILY.into(), DEFAULT_FONT_STYLE.into());
 		let message = FrontendMessage::TriggerFontLoad { font, is_default: true };
 		self.dispatch(message);
+
+		let message: Message = MenuBarMessage::SendLayout.into();
+		self.dispatch(message);
 	}
 
 	/// Displays a dialog with an error message
