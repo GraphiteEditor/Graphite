@@ -87,27 +87,30 @@
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
 
+import { IncrementBehavior } from "@/wasm-communication/messages";
+
 import FieldInput from "@/components/widgets/inputs/FieldInput.vue";
 
-type IncrementBehavior = "Add" | "Multiply" | "Callback" | "None";
-type IncrementDirection = "Decrease" | "Increase";
+export type IncrementDirection = "Decrease" | "Increase";
 
 export default defineComponent({
 	emits: ["update:value"],
 	props: {
+		label: { type: String as PropType<string>, required: false },
 		value: { type: Number as PropType<number>, required: false }, // When not provided, a dash is displayed
 		min: { type: Number as PropType<number>, required: false },
 		max: { type: Number as PropType<number>, required: false },
-		incrementBehavior: { type: String as PropType<IncrementBehavior>, default: "Add" },
-		incrementFactor: { type: Number as PropType<number>, default: 1 },
-		incrementCallbackIncrease: { type: Function as PropType<() => void>, required: false },
-		incrementCallbackDecrease: { type: Function as PropType<() => void>, required: false },
 		isInteger: { type: Boolean as PropType<boolean>, default: false },
+		displayDecimalPlaces: { type: Number as PropType<number>, default: 3 },
 		unit: { type: String as PropType<string>, default: "" },
 		unitIsHiddenWhenEditing: { type: Boolean as PropType<boolean>, default: true },
-		displayDecimalPlaces: { type: Number as PropType<number>, default: 3 },
-		label: { type: String as PropType<string>, required: false },
+		incrementBehavior: { type: String as PropType<IncrementBehavior>, default: "Add" },
+		incrementFactor: { type: Number as PropType<number>, default: 1 },
 		disabled: { type: Boolean as PropType<boolean>, default: false },
+
+		// Callbacks
+		incrementCallbackIncrease: { type: Function as PropType<() => void>, required: false },
+		incrementCallbackDecrease: { type: Function as PropType<() => void>, required: false },
 	},
 	data() {
 		return {

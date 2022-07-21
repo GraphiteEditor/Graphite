@@ -1,5 +1,5 @@
 <template>
-	<LayoutRow :class="['icon-label', iconSize, iconStyle]">
+	<LayoutRow :class="['icon-label', iconSizeClass, iconStyleClass]">
 		<component :is="icon" />
 	</LayoutRow>
 </template>
@@ -42,16 +42,15 @@ import LayoutRow from "@/components/layout/LayoutRow.vue";
 export default defineComponent({
 	props: {
 		icon: { type: String as PropType<IconName>, required: true },
-		gapAfter: { type: Boolean as PropType<boolean>, default: false },
-		style: { type: String as PropType<IconStyle>, default: "" },
+		iconStyle: { type: String as PropType<IconStyle | undefined>, required: false },
 	},
 	computed: {
-		iconSize(): string {
+		iconSizeClass(): string {
 			return `size-${icons[this.icon].size}`;
 		},
-		iconStyle(): string {
-			if (!this.style) return "";
-			return `${this.style}-style`;
+		iconStyleClass(): string {
+			if (!this.iconStyle || this.iconStyle === "Normal") return "";
+			return `${this.iconStyle.toLowerCase()}-style`;
 		},
 	},
 	components: {

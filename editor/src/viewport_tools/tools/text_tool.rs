@@ -96,6 +96,7 @@ impl PropertyHolder for TextTool {
 						})
 						.into()
 					}),
+					..Default::default()
 				})),
 				WidgetHolder::new(Widget::Separator(Separator {
 					direction: SeparatorDirection::Horizontal,
@@ -112,6 +113,7 @@ impl PropertyHolder for TextTool {
 						})
 						.into()
 					}),
+					..Default::default()
 				})),
 				WidgetHolder::new(Widget::Separator(Separator {
 					direction: SeparatorDirection::Horizontal,

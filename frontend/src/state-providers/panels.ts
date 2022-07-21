@@ -27,6 +27,8 @@ export function createPanelsState(editor: Editor) {
 		documentPanel: DocumentComponent,
 	});
 
+	// We use `any` instead of `typeof DocumentComponent` as a workaround for the fact that calling this function with the `this` argument from within `Document.vue` isn't a compatible type
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	function registerPanel(type: string, panelComponent: any): void {
 		state.documentPanel = panelComponent;
 	}

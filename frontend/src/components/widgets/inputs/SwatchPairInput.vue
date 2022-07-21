@@ -1,15 +1,15 @@
 <template>
 	<LayoutCol class="swatch-pair">
 		<LayoutRow class="secondary swatch">
-			<button @click="() => clickSecondarySwatch()" ref="secondaryButton" data-hover-menu-spawner></button>
+			<button @click="() => clickSecondarySwatch()" :style="`--swatch-color: ${secondary.toRgbaCSS()}`" data-hover-menu-spawner></button>
 			<FloatingMenu :type="'Popover'" :direction="'Right'" v-model:open="secondaryOpen">
-				<ColorPicker @update:color="(color: RGBA) => secondaryColorChanged(color)" :color="secondaryColor" />
+				<ColorPicker @update:color="(color: RGBA) => secondaryColorChanged(color)" :color="secondary.toRgba()" />
 			</FloatingMenu>
 		</LayoutRow>
 		<LayoutRow class="primary swatch">
-			<button @click="() => clickPrimarySwatch()" ref="primaryButton" data-hover-menu-spawner></button>
+			<button @click="() => clickPrimarySwatch()" :style="`--swatch-color: ${primary.toRgbaCSS()}`" data-hover-menu-spawner></button>
 			<FloatingMenu :type="'Popover'" :direction="'Right'" v-model:open="primaryOpen">
-				<ColorPicker @update:color="(color: RGBA) => primaryColorChanged(color)" :color="primaryColor" />
+				<ColorPicker @update:color="(color: RGBA) => primaryColorChanged(color)" :color="primary.toRgba()" />
 			</FloatingMenu>
 		</LayoutRow>
 	</LayoutCol>
@@ -66,10 +66,10 @@
 </style>
 
 <script lang="ts">
-import { defineComponent } from "vue";
+import { defineComponent, PropType } from "vue";
 
 import { rgbaToDecimalRgba } from "@/utility-functions/color";
-import { type RGBA, UpdateWorkingColors } from "@/wasm-communication/messages";
+import { type RGBA, Color } from "@/wasm-communication/messages";
 
 import ColorPicker from "@/components/floating-menus/ColorPicker.vue";
 import FloatingMenu from "@/components/floating-menus/FloatingMenu.vue";
@@ -84,12 +84,14 @@ export default defineComponent({
 		LayoutRow,
 		LayoutCol,
 	},
+	props: {
+		primary: { type: Object as PropType<Color>, required: true },
+		secondary: { type: Object as PropType<Color>, required: true },
+	},
 	data() {
 		return {
 			primaryOpen: false,
 			secondaryOpen: false,
-			primaryColor: { r: 0, g: 0, b: 0, a: 1 } as RGBA,
-			secondaryColor: { r: 255, g: 255, b: 255, a: 1 } as RGBA,
 		};
 	},
 	methods: {
@@ -102,44 +104,13 @@ export default defineComponent({
 			this.secondaryOpen = true;
 		},
 		primaryColorChanged(color: RGBA) {
-			this.primaryColor = color;
-			this.updatePrimaryColor();
+			const newColor = rgbaToDecimalRgba(color);
+			this.editor.instance.update_primary_color(newColor.r, newColor.g, newColor.b, newColor.a);
 		},
 		secondaryColorChanged(color: RGBA) {
-			this.secondaryColor = color;
-			this.updateSecondaryColor();
+			const newColor = rgbaToDecimalRgba(color);
+			this.editor.instance.update_secondary_color(newColor.r, newColor.g, newColor.b, newColor.a);
 		},
-		async updatePrimaryColor() {
-			let color = this.primaryColor;
-			const button = this.$refs.primaryButton as HTMLButtonElement;
-			button.style.setProperty("--swatch-color", `rgba(${color.r}, ${color.g}, ${color.b}, ${color.a})`);
-
-			color = rgbaToDecimalRgba(this.primaryColor);
-			this.editor.instance.update_primary_color(color.r, color.g, color.b, color.a);
-		},
-		async updateSecondaryColor() {
-			let color = this.secondaryColor;
-			const button = this.$refs.secondaryButton as HTMLButtonElement;
-			button.style.setProperty("--swatch-color", `rgba(${color.r}, ${color.g}, ${color.b}, ${color.a})`);
-
-			color = rgbaToDecimalRgba(this.secondaryColor);
-			this.editor.instance.update_secondary_color(color.r, color.g, color.b, color.a);
-		},
-	},
-	mounted() {
-		this.editor.subscriptions.subscribeJsMessage(UpdateWorkingColors, (updateWorkingColors) => {
-			this.primaryColor = updateWorkingColors.primary.toRgba();
-			this.secondaryColor = updateWorkingColors.secondary.toRgba();
-
-			const primaryButton = this.$refs.primaryButton as HTMLButtonElement;
-			primaryButton.style.setProperty("--swatch-color", updateWorkingColors.primary.toRgbaCSS());
-
-			const secondaryButton = this.$refs.secondaryButton as HTMLButtonElement;
-			secondaryButton.style.setProperty("--swatch-color", updateWorkingColors.secondary.toRgbaCSS());
-		});
-
-		// this.updatePrimaryColor();
-		// this.updateSecondaryColor();
 	},
 });
 </script>

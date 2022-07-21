@@ -72,9 +72,9 @@
 <script lang="ts">
 import { defineComponent } from "vue";
 
-import { MenuEntry, UpdateMenuBarLayout } from "@/wasm-communication/messages";
+import { MenuEntry, UpdateMenuBarLayout, MenuListEntry } from "@/wasm-communication/messages";
 
-import MenuList, { MenuListEntry } from "@/components/floating-menus/MenuList.vue";
+import MenuList from "@/components/floating-menus/MenuList.vue";
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
 
 const LOCK_REQUIRING_SHORTCUTS = [
@@ -100,7 +100,7 @@ export default defineComponent({
 					group.map((entry) => ({
 						...entry,
 						children: entry.children ? menuEntryToFrontendMenuEntry(entry.children) : undefined,
-						action: (): void => this.editor.instance.update_layout(updateMenuBarLayout.layout_target, entry.action.widget_id, undefined),
+						action: (): void => this.editor.instance.update_layout(updateMenuBarLayout.layout_target, entry.action.widgetId, undefined),
 						shortcutRequiresLock: entry.shortcut ? shortcutRequiresLock(entry.shortcut) : undefined,
 					}))
 				);

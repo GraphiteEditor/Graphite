@@ -62,12 +62,13 @@ import TextLabel from "@/components/widgets/labels/TextLabel.vue";
 
 export default defineComponent({
 	props: {
-		action: { type: Function as PropType<(e: MouseEvent) => void>, required: true },
 		label: { type: String as PropType<string>, required: true },
 		emphasized: { type: Boolean as PropType<boolean>, default: false },
-		disabled: { type: Boolean as PropType<boolean>, default: false },
 		minWidth: { type: Number as PropType<number>, default: 0 },
-		gapAfter: { type: Boolean as PropType<boolean>, default: false },
+		disabled: { type: Boolean as PropType<boolean>, default: false },
+
+		// Callbacks
+		action: { type: Function as PropType<(e: MouseEvent) => void>, required: true },
 	},
 	components: { TextLabel },
 });

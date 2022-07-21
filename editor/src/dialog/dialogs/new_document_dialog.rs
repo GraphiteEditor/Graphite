@@ -34,6 +34,7 @@ impl PropertyHolder for NewDocument {
 			WidgetHolder::new(Widget::TextInput(TextInput {
 				value: self.name.clone(),
 				on_update: WidgetCallback::new(|text_input: &TextInput| NewDocumentDialogUpdate::Name(text_input.value.clone()).into()),
+				..Default::default()
 			})),
 		];
 

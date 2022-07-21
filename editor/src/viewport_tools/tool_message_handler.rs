@@ -1,9 +1,11 @@
-use super::tool::{message_to_tool_type, DocumentToolData, ToolFsmState};
+use super::tool::{message_to_tool_type, ToolFsmState};
 use crate::document::DocumentMessageHandler;
 use crate::input::InputPreprocessorMessageHandler;
 use crate::layout::layout_message::LayoutTarget;
-use crate::layout::widgets::{IconButton, Layout, LayoutGroup, PropertyHolder, SwatchPairInput, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
+use crate::layout::widgets::PropertyHolder;
+use crate::layout::widgets::{IconButton, Layout, LayoutGroup, SwatchPairInput, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
 use crate::message_prelude::*;
+use crate::viewport_tools::tool::DocumentToolData;
 
 use graphene::color::Color;
 use graphene::layers::text_layer::FontCache;
@@ -175,7 +177,10 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessorMes
 fn update_working_colors(document_data: &DocumentToolData, responses: &mut VecDeque<Message>) {
 	let layout = WidgetLayout::new(vec![
 		LayoutGroup::Row {
-			widgets: vec![WidgetHolder::new(Widget::SwatchPairInput(SwatchPairInput))],
+			widgets: vec![WidgetHolder::new(Widget::SwatchPairInput(SwatchPairInput {
+				primary: document_data.primary_color,
+				secondary: document_data.secondary_color,
+			}))],
 		},
 		LayoutGroup::Row {
 			widgets: vec![
@@ -201,14 +206,6 @@ fn update_working_colors(document_data: &DocumentToolData, responses: &mut VecDe
 		LayoutMessage::SendLayout {
 			layout: Layout::WidgetLayout(layout),
 			layout_target: LayoutTarget::WorkingColors,
-		}
-		.into(),
-	);
-
-	responses.push_back(
-		FrontendMessage::UpdateWorkingColors {
-			primary: document_data.primary_color,
-			secondary: document_data.secondary_color,
 		}
 		.into(),
 	);

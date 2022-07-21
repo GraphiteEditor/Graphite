@@ -64,21 +64,11 @@
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
 
-import { IconName } from "@/utility-functions/icons";
+import { RadioEntries, RadioEntryData } from "@/wasm-communication/messages";
 
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
 import TextLabel from "@/components/widgets/labels/TextLabel.vue";
-
-export interface RadioEntryData {
-	value?: string;
-	label?: string;
-	icon?: IconName;
-	tooltip?: string;
-	action?: () => void;
-}
-
-export type RadioEntries = RadioEntryData[];
 
 export default defineComponent({
 	emits: ["update:selectedIndex"],

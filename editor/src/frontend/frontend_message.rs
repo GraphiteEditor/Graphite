@@ -17,7 +17,7 @@ pub enum FrontendMessage {
 	// Display prefix: make the frontend show something, like a dialog
 	DisplayDialog { icon: String },
 	DisplayDialogDismiss,
-	DisplayDialogPanic { panic_info: String, title: String, description: String },
+	DisplayDialogPanic { panic_info: String, header: String, description: String },
 	DisplayEditableTextbox { text: String, line_width: Option<f64>, font_size: f64, color: Color },
 	DisplayRemoveEditableTextbox,
 
@@ -58,6 +58,5 @@ pub enum FrontendMessage {
 	UpdatePropertyPanelSectionsLayout { layout_target: LayoutTarget, layout: SubLayout },
 	UpdateToolOptionsLayout { layout_target: LayoutTarget, layout: SubLayout },
 	UpdateToolShelfLayout { layout_target: LayoutTarget, layout: SubLayout },
-	UpdateWorkingColors { primary: Color, secondary: Color },
 	UpdateWorkingColorsLayout { layout_target: LayoutTarget, layout: SubLayout },
 }

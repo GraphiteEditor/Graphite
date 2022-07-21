@@ -254,7 +254,7 @@ export const iconComponents = Object.fromEntries(Object.entries(icons).map(([nam
 
 export type IconName = keyof typeof icons;
 export type IconSize = null | 12 | 16 | 24 | 32;
-export type IconStyle = "node" | "";
+export type IconStyle = "Normal" | "Node";
 
 // The following helper type declarations allow us to avoid manually maintaining the `IconName` type declaration as a string union paralleling the keys of the
 // icon definitions. It lets TypeScript do that for us. Our goal is to define the big key-value pair of icons by constraining its values, but inferring its keys.

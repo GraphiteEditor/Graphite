@@ -71,9 +71,10 @@
 <script lang="ts">
 import { defineComponent, nextTick, PropType } from "vue";
 
-import FloatingMenu from "@/components/floating-menus/FloatingMenu.vue";
-import MenuList, { MenuListEntry } from "@/components/floating-menus/MenuList.vue";
+import { MenuListEntry } from "@/wasm-communication/messages";
 
+import FloatingMenu from "@/components/floating-menus/FloatingMenu.vue";
+import MenuList from "@/components/floating-menus/MenuList.vue";
 import LayoutCol from "@/components/layout/LayoutCol.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
@@ -84,8 +85,8 @@ export default defineComponent({
 	props: {
 		fontFamily: { type: String as PropType<string>, required: true },
 		fontStyle: { type: String as PropType<string>, required: true },
-		disabled: { type: Boolean as PropType<boolean>, default: false },
 		isStyle: { type: Boolean as PropType<boolean>, default: false },
+		disabled: { type: Boolean as PropType<boolean>, default: false },
 	},
 	data() {
 		return {

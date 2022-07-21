@@ -41,10 +41,10 @@
 						:title="`${listing.entry.name}\n${devMode ? 'Layer Path: ' + listing.entry.path.join(' / ') : ''}`.trim() || null"
 					>
 						<LayoutRow class="layer-type-icon">
-							<IconLabel v-if="listing.entry.layer_type === 'Folder'" :icon="'NodeFolder'" :style="'node'" title="Folder" />
-							<IconLabel v-else-if="listing.entry.layer_type === 'Image'" :icon="'NodeImage'" :style="'node'" title="Image" />
-							<IconLabel v-else-if="listing.entry.layer_type === 'Shape'" :icon="'NodeShape'" :style="'node'" title="Shape" />
-							<IconLabel v-else-if="listing.entry.layer_type === 'Text'" :icon="'NodeText'" :style="'node'" title="Path" />
+							<IconLabel v-if="listing.entry.layer_type === 'Folder'" :icon="'NodeFolder'" :iconStyle="'Node'" title="Folder" />
+							<IconLabel v-else-if="listing.entry.layer_type === 'Image'" :icon="'NodeImage'" :iconStyle="'Node'" title="Image" />
+							<IconLabel v-else-if="listing.entry.layer_type === 'Shape'" :icon="'NodeShape'" :iconStyle="'Node'" title="Shape" />
+							<IconLabel v-else-if="listing.entry.layer_type === 'Text'" :icon="'NodeText'" :iconStyle="'Node'" title="Path" />
 						</LayoutRow>
 						<LayoutRow class="layer-name" @dblclick="() => onEditLayerName(listing)">
 							<input
