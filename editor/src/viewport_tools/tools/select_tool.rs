@@ -445,7 +445,7 @@ impl Fsm for SelectToolFsmState {
 						tool_data.layers_dragging = selected;
 
 						RotatingBounds
-					} else if selected.iter().any(|path| intersection.contains(path)) {
+					} else if intersection.last().map(|last| selected.contains(last)).unwrap_or(false) {
 						responses.push_back(DocumentMessage::StartTransaction.into());
 						tool_data.layers_dragging = selected;
 
