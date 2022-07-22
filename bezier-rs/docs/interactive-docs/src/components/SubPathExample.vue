@@ -1,6 +1,6 @@
 <template>
 	<div>
-		<h4 class="example-header">{{ name }}</h4>
+		<h4 class="example-header">{{ title }}</h4>
 		<figure @mousedown="onMouseDown" @mouseup="onMouseUp" @mousemove="onMouseMove" class="example-figure" ref="drawing"></figure>
 	</div>
 </template>
@@ -16,26 +16,26 @@ const pointIndexToManipulator: WasmSubPathManipulatorKey[] = ["set_anchor", "set
 
 export default defineComponent({
 	name: "SubPathComponent",
-	data() {
-		const triples = [
-			[[20, 20], null, [10, 90]],
-			[[150, 40], [60, 40], null],
-			[[175, 175], null, null],
-			[[100, 100], [40, 120], null],
-		];
-		return {
-			triples,
-			subPath: WasmSubPath.from_triples(triples) as WasmSubPathInstance,
-			activeControllerIndex: null as number | null,
-			activePointIndex: null as number | null,
-		};
-	},
 	props: {
-		name: String,
+		title: String,
+		triples: {
+			type: Array as PropType<Array<Array<number[] | null>>>,
+			required: true,
+			mutable: true,
+		},
+		closed: Boolean,
 		callback: {
 			type: Function as PropType<SubPathCallback>,
 			required: true,
 		},
+	},
+	data() {
+		return {
+			mutableTriples: JSON.parse(JSON.stringify(this.triples)),
+			subPath: WasmSubPath.from_triples(this.triples, this.closed) as WasmSubPathInstance,
+			activeControllerIndex: null as number | null,
+			activePointIndex: null as number | null,
+		};
 	},
 	mounted() {
 		this.updateDrawing();
@@ -44,9 +44,9 @@ export default defineComponent({
 		onMouseDown(event: MouseEvent) {
 			const mx = event.offsetX;
 			const my = event.offsetY;
-			for (let controllerIndex = 0; controllerIndex < this.triples.length; controllerIndex += 1) {
+			for (let controllerIndex = 0; controllerIndex < this.mutableTriples.length; controllerIndex += 1) {
 				for (let pointIndex = 0; pointIndex < 3; pointIndex += 1) {
-					const point = this.triples[controllerIndex][pointIndex];
+					const point = this.mutableTriples[controllerIndex][pointIndex];
 					if (point != null && Math.abs(mx - point[0]) < SELECTABLE_RANGE && Math.abs(my - point[1]) < SELECTABLE_RANGE) {
 						this.activeControllerIndex = controllerIndex;
 						this.activePointIndex = pointIndex;
@@ -64,7 +64,7 @@ export default defineComponent({
 			const my = event.offsetY;
 			if (this.activeControllerIndex != null && this.activePointIndex != null) {
 				this.subPath[pointIndexToManipulator[this.activePointIndex]](this.activeControllerIndex, mx, my);
-				this.triples[this.activeControllerIndex][this.activePointIndex] = [mx, my];
+				this.mutableTriples[this.activeControllerIndex][this.activePointIndex] = [mx, my];
 				this.updateDrawing();
 			}
 		},
@@ -77,15 +77,9 @@ export default defineComponent({
 </script>
 
 <style scoped>
-.example-header {
-	margin-bottom: 0.5em;
-}
-
 .example-figure {
-	margin-top: 0.5em;
 	border: solid 1px black;
 	width: 200px;
 	height: 200px;
-	margin: auto;
 }
 </style>

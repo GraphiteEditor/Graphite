@@ -12,7 +12,7 @@ const SVG_CLOSE_TAG: &str = "</svg>";
 #[wasm_bindgen]
 impl WasmSubPath {
 	/// Expect js_points to be a list of 3 pairs.
-	pub fn from_triples(js_points: &JsValue) -> WasmSubPath {
+	pub fn from_triples(js_points: &JsValue, closed: bool) -> WasmSubPath {
 		let point_triples: Vec<[Option<DVec2>; 3]> = js_points.into_serde().unwrap();
 		let manip_groups = point_triples
 			.into_iter()
@@ -22,7 +22,7 @@ impl WasmSubPath {
 				out_handle: point_triple[2],
 			})
 			.collect();
-		WasmSubPath(SubPath::new(manip_groups, false))
+		WasmSubPath(SubPath::new(manip_groups, closed))
 	}
 
 	pub fn set_anchor(&mut self, index: usize, x: f64, y: f64) {

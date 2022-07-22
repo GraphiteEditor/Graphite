@@ -17,7 +17,7 @@
 		</div>
 		<h2>SubPaths</h2>
 		<div v-for="(feature, index) in subPathFeatures" :key="index">
-			<SubPathExample :name="feature.name" :callback="feature.callback" />
+			<SubPathExamplePane :name="feature.name" :callback="feature.callback" />
 		</div>
 	</div>
 </template>
@@ -30,7 +30,7 @@ import { BezierCurveType, Point, WasmBezierInstance, WasmSubPathInstance } from 
 
 import ExamplePane from "@/components/ExamplePane.vue";
 import SliderExample from "@/components/SliderExample.vue";
-import SubPathExample from "@/components/SubPathExample.vue";
+import SubPathExamplePane from "@/components/SubPathExamplePane.vue";
 
 const tSliderOptions = {
 	min: 0,
@@ -46,7 +46,7 @@ export default defineComponent({
 	name: "App",
 	components: {
 		ExamplePane,
-		SubPathExample,
+		SubPathExamplePane,
 	},
 	data() {
 		return {
