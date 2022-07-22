@@ -93,7 +93,7 @@ impl Dispatcher {
 				}
 				Frontend(message) => {
 					// Image and font loading should be immediately handled
-					if let FrontendMessage::UpdateImageData { .. } | FrontendMessage::TriggerFontLoad { .. } = message {
+					if let FrontendMessage::UpdateImageData { .. } | FrontendMessage::TriggerFontLoad { .. } | FrontendMessage::TriggerRefreshBoundsOfViewports = message {
 						self.responses.push(message);
 						return;
 					}
