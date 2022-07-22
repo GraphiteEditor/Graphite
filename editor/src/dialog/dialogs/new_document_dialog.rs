@@ -145,7 +145,7 @@ impl MessageHandler<NewDocumentDialogUpdate, ()> for NewDocument {
 			NewDocumentDialogUpdate::Submit => {
 				responses.push_back(PortfolioMessage::NewDocumentWithName { name: self.name.clone() }.into());
 
-				if !self.infinite && self.dimensions.x != 0 && self.dimensions.y != 0 {
+				if !self.infinite && self.dimensions.x > 0 && self.dimensions.y > 0 {
 					responses.push_back(
 						ArtboardMessage::AddArtboard {
 							id: None,
