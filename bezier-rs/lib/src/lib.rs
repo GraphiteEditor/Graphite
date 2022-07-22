@@ -617,15 +617,20 @@ impl Bezier {
 
 		// Check if the bounding boxes overlap
 		if utils::do_rectangles_overlap(bounding_box1, bounding_box2) {
+			// If bounding boxes are within the error threshold (i.e. are small enough), we have found an intersection
 			if (bounding_box1[1] - bounding_box1[0]).lt(&error_threshold) && (bounding_box2[1] - bounding_box2[0]).lt(&error_threshold) {
+				// Use the middle t value
 				intersections.push(curve1_mid_t);
 				return;
 			}
-			let [split1a, split1b] = curve1.split(0.5);
 
+			// Split curves in half and repeat with the combinations of the two halves of each curve
+			let [split1a, split1b] = curve1.split(0.5);
+			let [split2a, split2b] = curve2.split(0.5);
+
+			// Get the new t intervals for
 			let interval_1a = [curve1_start_t, curve1_mid_t];
 			let interval_1b = [curve1_mid_t, curve1_end_t];
-			let [split2a, split2b] = curve2.split(0.5);
 			Bezier::intersection_curves(&split1a, interval_1a, &split2a, intersections, error);
 			Bezier::intersection_curves(&split1a, interval_1a, &split2b, intersections, error);
 			Bezier::intersection_curves(&split1b, interval_1b, &split2a, intersections, error);
@@ -635,71 +640,75 @@ impl Bezier {
 
 	// TODO: Use an `impl Iterator` return type instead of a `Vec`
 	/// Returns a list of `t` values that correspond to intersection points between the current bezier curve and the provided one. The returned `t` values are with respect to the current bezier, not the provided parameter.
-	/// If the provided curve is linear and is colinear with current bezier, zero intersection points will be returned.
+	/// If either curve is linear, then zero intersection points will be returned along colinear segments.
+	/// - `error`: For intersections with non-linear beziers, `error` defines the threshold for bounding boxes to be considered an intersection point.
 	pub fn intersections(&self, curve: &Bezier, error: Option<f64>) -> Vec<f64> {
 		let error = error.unwrap_or(0.5);
-		match curve.handles {
-			BezierHandles::Linear => {
-				// Rotate the bezier and the line by the angle that the line makes with the x axis
-				let slope = curve.end - curve.start;
-				let angle = slope.angle_between(DVec2::new(1., 0.));
-				let rotation_matrix = DMat2::from_angle(angle);
-				let rotated_bezier = self.apply_transformation(&|point| rotation_matrix.mul_vec2(point));
-				let rotated_line = [rotation_matrix.mul_vec2(curve.start), rotation_matrix.mul_vec2(curve.end)];
+		if let BezierHandles::Linear {} = curve.handles {
+			// Rotate the bezier and the line by the angle that the line makes with the x axis
+			let slope = curve.end - curve.start;
+			let angle = slope.angle_between(DVec2::new(1., 0.));
+			let rotation_matrix = DMat2::from_angle(angle);
+			let rotated_bezier = self.apply_transformation(&|point| rotation_matrix.mul_vec2(point));
+			let rotated_line = [rotation_matrix.mul_vec2(curve.start), rotation_matrix.mul_vec2(curve.end)];
 
-				// Translate the bezier such that the line becomes aligned on top of the x-axis
-				let vertical_distance = rotated_line[0].y;
-				let translated_bezier = rotated_bezier.translate(DVec2::new(0., -vertical_distance));
+			// Translate the bezier such that the line becomes aligned on top of the x-axis
+			let vertical_distance = rotated_line[0].y;
+			let translated_bezier = rotated_bezier.translate(DVec2::new(0., -vertical_distance));
 
-				// Compute the roots of the resulting bezier curve
-				let list_intersection_t = match translated_bezier.handles {
-					BezierHandles::Linear => {
-						// If the transformed linear bezier is on the x-axis, `a` and `b` will both be zero and `solve_linear` will return no roots
-						let a = translated_bezier.end.y - translated_bezier.start.y;
-						let b = translated_bezier.start.y;
-						utils::solve_linear(a, b)
-					}
-					BezierHandles::Quadratic { handle } => {
-						let a = translated_bezier.start.y - 2. * handle.y + translated_bezier.end.y;
-						let b = 2. * (handle.y - translated_bezier.start.y);
-						let c = translated_bezier.start.y;
+			// Compute the roots of the resulting bezier curve
+			let list_intersection_t = match translated_bezier.handles {
+				BezierHandles::Linear => {
+					// If the transformed linear bezier is on the x-axis, `a` and `b` will both be zero and `solve_linear` will return no roots
+					let a = translated_bezier.end.y - translated_bezier.start.y;
+					let b = translated_bezier.start.y;
+					utils::solve_linear(a, b)
+				}
+				BezierHandles::Quadratic { handle } => {
+					let a = translated_bezier.start.y - 2. * handle.y + translated_bezier.end.y;
+					let b = 2. * (handle.y - translated_bezier.start.y);
+					let c = translated_bezier.start.y;
 
-						let discriminant = b * b - 4. * a * c;
-						let two_times_a = 2. * a;
+					let discriminant = b * b - 4. * a * c;
+					let two_times_a = 2. * a;
 
-						utils::solve_quadratic(discriminant, two_times_a, b, c)
-					}
-					BezierHandles::Cubic { handle_start, handle_end } => {
-						let start_y = translated_bezier.start.y;
-						let a = -start_y + 3. * handle_start.y - 3. * handle_end.y + translated_bezier.end.y;
-						let b = 3. * start_y - 6. * handle_start.y + 3. * handle_end.y;
-						let c = -3. * start_y + 3. * handle_start.y;
-						let d = start_y;
+					utils::solve_quadratic(discriminant, two_times_a, b, c)
+				}
+				BezierHandles::Cubic { handle_start, handle_end } => {
+					let start_y = translated_bezier.start.y;
+					let a = -start_y + 3. * handle_start.y - 3. * handle_end.y + translated_bezier.end.y;
+					let b = 3. * start_y - 6. * handle_start.y + 3. * handle_end.y;
+					let c = -3. * start_y + 3. * handle_start.y;
+					let d = start_y;
 
-						utils::solve_cubic(a, b, c, d)
-					}
-				};
+					utils::solve_cubic(a, b, c, d)
+				}
+			};
 
-				let min = curve.start.min(curve.end);
-				let max = curve.start.max(curve.end);
+			let min = curve.start.min(curve.end);
+			let max = curve.start.max(curve.end);
 
-				list_intersection_t
-					.into_iter()
-          // Accept the t value if it is approximately in [0, 1] and if the coresponding coordinates are within the range of the linear line
-					.filter(|&t| {
-						utils::f64_approximately_in_range(t, 0., 1., MAX_ABSOLUTE_DIFFERENCE)
-							&& utils::dvec2_approximately_in_range(self.unrestricted_evaluate(t), min, max, MAX_ABSOLUTE_DIFFERENCE).all()
-					})
-          // Ensure the returned value is within the correct range
-					.map(|t| t.max(0.).min(1.))
-					.collect::<Vec<f64>>()
-			}
-			_ => {
-				let mut intersection_points = Vec::new();
-				Bezier::intersection_curves(self, [0., 1.], curve, &mut intersection_points, error);
-				intersection_points
-			}
+			return list_intersection_t
+        .into_iter()
+        // Accept the t value if it is approximately in [0, 1] and if the coresponding coordinates are within the range of the linear line
+        .filter(|&t| {
+          utils::f64_approximately_in_range(t, 0., 1., MAX_ABSOLUTE_DIFFERENCE)
+            && utils::dvec2_approximately_in_range(self.unrestricted_evaluate(t), min, max, MAX_ABSOLUTE_DIFFERENCE).all()
+        })
+        // Ensure the returned value is within the correct range
+        .map(|t| t.max(0.).min(1.))
+        .collect::<Vec<f64>>();
 		}
+
+		// If the self is linear, then use the implementation for intersections with linear lines
+		if let BezierHandles::Linear = self.handles {
+			return curve.intersections(self, Some(error));
+		}
+
+		// Otherwise, use bounding box to determine intersections
+		let mut intersection_points = Vec::new();
+		Bezier::intersection_curves(self, [0., 1.], curve, &mut intersection_points, error);
+		intersection_points
 	}
 
 	/// Returns a list of lists of points representing the De Casteljau points for all iterations at the point corresponding to `t` using De Casteljau's algorithm.
