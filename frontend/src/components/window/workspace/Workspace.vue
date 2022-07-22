@@ -4,7 +4,7 @@
 			<LayoutCol class="workspace-grid-subdivision">
 				<LayoutRow class="workspace-grid-subdivision">
 					<Panel
-						:panelType="'Document'"
+						:panelType="portfolio.state.documents.length > 0 ? 'Document' : undefined"
 						:tabCloseButtons="true"
 						:tabMinWidths="true"
 						:tabLabels="portfolio.state.documents.map((doc) => doc.displayName)"
@@ -64,7 +64,7 @@
 </style>
 
 <script lang="ts">
-import { defineComponent } from "vue";
+import { defineComponent, nextTick } from "vue";
 
 import DialogModal from "@/components/floating-menus/DialogModal.vue";
 import LayoutCol from "@/components/layout/LayoutCol.vue";
@@ -117,7 +117,7 @@ export default defineComponent({
 				nextSibling.style.flexGrow = (nextSiblingSize + mouseDelta).toString();
 				previousSibling.style.flexGrow = (previousSiblingSize - mouseDelta).toString();
 
-				window.dispatchEvent(new CustomEvent("resize", { detail: {} }));
+				window.dispatchEvent(new CustomEvent("resize"));
 			}
 
 			function cleanup(event: PointerEvent): void {
@@ -134,12 +134,12 @@ export default defineComponent({
 		},
 	},
 	watch: {
-		activeDocumentIndex(newIndex: number) {
-			this.$nextTick(() => {
-				const documentsPanel = this.$refs.documentsPanel as typeof Panel;
-				const newActiveTab = documentsPanel.$el.querySelectorAll("[data-tab-bar] [data-tab]")[newIndex];
-				newActiveTab.scrollIntoView();
-			});
+		async activeDocumentIndex(newIndex: number) {
+			await nextTick();
+
+			const documentsPanel = this.$refs.documentsPanel as typeof Panel;
+			const newActiveTab = documentsPanel.$el.querySelectorAll("[data-tab-bar] [data-tab]")[newIndex];
+			newActiveTab.scrollIntoView();
 		},
 	},
 });

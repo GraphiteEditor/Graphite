@@ -119,8 +119,19 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for SplineTool {
 		use SplineToolFsmState::*;
 
 		match self.fsm_state {
-			Ready => actions!(SplineToolMessageDiscriminant; Undo, DragStart, DragStop, Confirm, Abort),
-			Drawing => actions!(SplineToolMessageDiscriminant; DragStop, PointerMove, Confirm, Abort),
+			Ready => actions!(SplineToolMessageDiscriminant;
+				Undo,
+				DragStart,
+				DragStop,
+				Confirm,
+				Abort,
+			),
+			Drawing => actions!(SplineToolMessageDiscriminant;
+				DragStop,
+				PointerMove,
+				Confirm,
+				Abort,
+			),
 		}
 	}
 }

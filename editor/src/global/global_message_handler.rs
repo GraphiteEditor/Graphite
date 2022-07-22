@@ -27,5 +27,9 @@ impl MessageHandler<GlobalMessage, ()> for GlobalMessageHandler {
 		}
 	}
 
-	advertise_actions!(GlobalMessageDiscriminant; LogInfo, LogDebug, LogTrace);
+	advertise_actions!(GlobalMessageDiscriminant;
+		LogInfo,
+		LogDebug,
+		LogTrace,
+	);
 }

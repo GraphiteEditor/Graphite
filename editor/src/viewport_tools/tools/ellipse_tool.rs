@@ -75,8 +75,14 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for EllipseTool 
 		use EllipseToolFsmState::*;
 
 		match self.fsm_state {
-			Ready => actions!(EllipseToolMessageDiscriminant; DragStart),
-			Drawing => actions!(EllipseToolMessageDiscriminant; DragStop, Abort, Resize),
+			Ready => actions!(EllipseToolMessageDiscriminant;
+				DragStart,
+			),
+			Drawing => actions!(EllipseToolMessageDiscriminant;
+				DragStop,
+				Abort,
+				Resize,
+			),
 		}
 	}
 }

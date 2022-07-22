@@ -28,7 +28,7 @@
 								<div></div>
 							</div>
 						</div>
-						<IconLabel :icon="'NodeImage'" :style="'node'" />
+						<IconLabel :icon="'NodeImage'" :iconStyle="'Node'" />
 						<TextLabel>Image</TextLabel>
 					</div>
 				</div>
@@ -42,7 +42,7 @@
 								<div></div>
 							</div>
 						</div>
-						<IconLabel :icon="'NodeImage'" :style="'node'" />
+						<IconLabel :icon="'NodeImage'" :iconStyle="'Node'" />
 						<TextLabel>Mask</TextLabel>
 					</div>
 					<div class="arguments">
@@ -69,7 +69,7 @@
 								<div></div>
 							</div>
 						</div>
-						<IconLabel :icon="'NodeTransform'" :style="'node'" />
+						<IconLabel :icon="'NodeTransform'" :iconStyle="'Node'" />
 						<TextLabel>Transform</TextLabel>
 					</div>
 				</div>
@@ -83,7 +83,7 @@
 								<div></div>
 							</div>
 						</div>
-						<IconLabel :icon="'NodeMotionBlur'" :style="'node'" />
+						<IconLabel :icon="'NodeMotionBlur'" :iconStyle="'Node'" />
 						<TextLabel>Motion Blur</TextLabel>
 					</div>
 					<div class="arguments">
@@ -110,7 +110,7 @@
 								<div></div>
 							</div>
 						</div>
-						<IconLabel :icon="'NodeShape'" :style="'node'" />
+						<IconLabel :icon="'NodeShape'" :iconStyle="'Node'" />
 						<TextLabel>Shape</TextLabel>
 					</div>
 				</div>
@@ -124,7 +124,7 @@
 								<div></div>
 							</div>
 						</div>
-						<IconLabel :icon="'NodeBrushwork'" :style="'node'" />
+						<IconLabel :icon="'NodeBrushwork'" :iconStyle="'Node'" />
 						<TextLabel>Brushwork</TextLabel>
 					</div>
 				</div>
@@ -138,7 +138,7 @@
 								<div></div>
 							</div>
 						</div>
-						<IconLabel :icon="'NodeBlur'" :style="'node'" />
+						<IconLabel :icon="'NodeBlur'" :iconStyle="'Node'" />
 						<TextLabel>Blur</TextLabel>
 					</div>
 				</div>
@@ -152,7 +152,7 @@
 								<div></div>
 							</div>
 						</div>
-						<IconLabel :icon="'NodeGradient'" :style="'node'" />
+						<IconLabel :icon="'NodeGradient'" :iconStyle="'Node'" />
 						<TextLabel>Gradient</TextLabel>
 					</div>
 				</div>

@@ -37,6 +37,7 @@ pub enum PortfolioMessage {
 	Cut {
 		clipboard: Clipboard,
 	},
+	DestroyAllDocuments,
 	FontLoaded {
 		font_family: String,
 		font_style: String,
@@ -48,7 +49,6 @@ pub enum PortfolioMessage {
 		font: Font,
 		is_default: bool,
 	},
-	NewDocument,
 	NewDocumentWithName {
 		name: String,
 	},

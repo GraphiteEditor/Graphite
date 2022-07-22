@@ -34,6 +34,7 @@ impl PropertyHolder for NewDocument {
 			WidgetHolder::new(Widget::TextInput(TextInput {
 				value: self.name.clone(),
 				on_update: WidgetCallback::new(|text_input: &TextInput| NewDocumentDialogUpdate::Name(text_input.value.clone()).into()),
+				..Default::default()
 			})),
 		];
 
@@ -98,7 +99,7 @@ impl PropertyHolder for NewDocument {
 				emphasized: true,
 				on_update: WidgetCallback::new(|_| {
 					DialogMessage::CloseDialogAndThen {
-						followup: Box::new(NewDocumentDialogUpdate::Submit.into()),
+						followups: vec![NewDocumentDialogUpdate::Submit.into()],
 					}
 					.into()
 				}),
@@ -131,9 +132,6 @@ pub enum NewDocumentDialogUpdate {
 	DimensionsY(f64),
 
 	Submit,
-	BufferArtboard,
-	AddArtboard,
-	FitCanvas,
 }
 
 impl MessageHandler<NewDocumentDialogUpdate, ()> for NewDocument {
@@ -147,26 +145,17 @@ impl MessageHandler<NewDocumentDialogUpdate, ()> for NewDocument {
 			NewDocumentDialogUpdate::Submit => {
 				responses.push_back(PortfolioMessage::NewDocumentWithName { name: self.name.clone() }.into());
 
-				responses.push_back(NewDocumentDialogUpdate::BufferArtboard.into());
-			}
-			NewDocumentDialogUpdate::BufferArtboard => {
-				if !self.infinite {
-					responses.push_back(NewDocumentDialogUpdate::AddArtboard.into());
+				if !self.infinite && self.dimensions.x > 0 && self.dimensions.y > 0 {
+					responses.push_back(
+						ArtboardMessage::AddArtboard {
+							id: None,
+							position: (0., 0.),
+							size: (self.dimensions.x as f64, self.dimensions.y as f64),
+						}
+						.into(),
+					);
+					responses.push_back(DocumentMessage::ZoomCanvasToFitAll.into());
 				}
-			}
-			NewDocumentDialogUpdate::AddArtboard => {
-				responses.push_back(
-					ArtboardMessage::AddArtboard {
-						id: None,
-						position: (0., 0.),
-						size: (self.dimensions.x as f64, self.dimensions.y as f64),
-					}
-					.into(),
-				);
-				responses.push_back(NewDocumentDialogUpdate::FitCanvas.into());
-			}
-			NewDocumentDialogUpdate::FitCanvas => {
-				responses.push_back(DocumentMessage::ZoomCanvasToFitAll.into());
 			}
 		}
 

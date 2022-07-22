@@ -13,7 +13,10 @@
 ///
 /// and
 /// ```ignore
-/// actions!(DocumentMessage; Undo, Redo);
+/// actions!(DocumentMessage;
+///     Undo,
+///     Redo,
+/// );
 /// ```
 ///
 /// expands to:

@@ -85,8 +85,15 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for PathTool {
 		use PathToolFsmState::*;
 
 		match self.fsm_state {
-			Ready => actions!(PathToolMessageDiscriminant; DragStart, Delete),
-			Dragging => actions!(PathToolMessageDiscriminant; DragStop, PointerMove, Delete),
+			Ready => actions!(PathToolMessageDiscriminant;
+				DragStart,
+				Delete,
+			),
+			Dragging => actions!(PathToolMessageDiscriminant;
+				DragStop,
+				PointerMove,
+				Delete,
+			),
 		}
 	}
 }
