@@ -48,11 +48,16 @@ impl Default for ArcsOptions {
 	}
 }
 
+/// Struct to represent the circular arc approximation used in the `arcs` bezier function.
 #[derive(Copy, Clone)]
 pub struct CircleArc {
+	// the center point of the circle
 	pub center: DVec2,
+	// the radius of the circle
 	pub radius: f64,
+	// the start angle of the circle sector in rad
 	pub start_angle: f64,
+	// the end angle of the circle sector in rad
 	pub end_angle: f64,
 }
 
