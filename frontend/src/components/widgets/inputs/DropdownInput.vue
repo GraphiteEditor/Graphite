@@ -99,7 +99,9 @@
 <script lang="ts">
 import { defineComponent, PropType, toRaw } from "vue";
 
-import MenuList, { MenuListEntry, SectionsOfMenuListEntries } from "@/components/floating-menus/MenuList.vue";
+import { MenuListEntry, SectionsOfMenuListEntries } from "@/wasm-communication/messages";
+
+import MenuList from "@/components/floating-menus/MenuList.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
 

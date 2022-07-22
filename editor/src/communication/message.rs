@@ -22,6 +22,8 @@ where
 pub enum Message {
 	#[remain::unsorted]
 	NoOp,
+	#[remain::unsorted]
+	Init,
 	#[child]
 	Broadcast(BroadcastMessage),
 	#[child]

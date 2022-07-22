@@ -63,8 +63,14 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for RectangleToo
 		use RectangleToolFsmState::*;
 
 		match self.fsm_state {
-			Ready => actions!(RectangleToolMessageDiscriminant; DragStart),
-			Drawing => actions!(RectangleToolMessageDiscriminant; DragStop, Abort, Resize),
+			Ready => actions!(RectangleToolMessageDiscriminant;
+				DragStart,
+			),
+			Drawing => actions!(RectangleToolMessageDiscriminant;
+				DragStop,
+				Abort,
+				Resize,
+			),
 		}
 	}
 }

@@ -1,7 +1,9 @@
 import { reactive, readonly } from "vue";
 
+import { Editor } from "@/wasm-communication/editor";
+
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
-export function createFullscreenState() {
+export function createFullscreenState(_: Editor) {
 	const state = reactive({
 		windowFullscreen: false,
 		keyboardLocked: false,

@@ -1,5 +1,5 @@
 <template>
-	<button :class="['icon-button', `size-${size}`, active && 'active']" @click="(e: MouseEvent) => action(e)">
+	<button :class="['icon-button', `size-${size}`, active && 'active']" @click="(e: MouseEvent) => action(e)" :title="tooltip">
 		<IconLabel :icon="icon" />
 	</button>
 </template>
@@ -69,11 +69,13 @@ import IconLabel from "@/components/widgets/labels/IconLabel.vue";
 
 export default defineComponent({
 	props: {
-		action: { type: Function as PropType<(e?: MouseEvent) => void>, required: true },
 		icon: { type: String as PropType<IconName>, required: true },
 		size: { type: Number as PropType<IconSize>, required: true },
 		active: { type: Boolean as PropType<boolean>, default: false },
-		gapAfter: { type: Boolean as PropType<boolean>, default: false },
+		tooltip: { type: String as PropType<string | undefined>, required: false },
+
+		// Callbacks
+		action: { type: Function as PropType<(e?: MouseEvent) => void>, required: true },
 	},
 	components: { IconLabel },
 });

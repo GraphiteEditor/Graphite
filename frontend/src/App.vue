@@ -213,6 +213,7 @@ img {
 <script lang="ts">
 import { defineComponent } from "vue";
 
+import { createBlobManager } from "@/io-managers/blob";
 import { createClipboardManager } from "@/io-managers/clipboard";
 import { createHyperlinkManager } from "@/io-managers/hyperlinks";
 import { createInputManager } from "@/io-managers/input";
@@ -222,6 +223,7 @@ import { createPersistenceManager } from "@/io-managers/persistence";
 import { createDialogState, DialogState } from "@/state-providers/dialog";
 import { createFontsState, FontsState } from "@/state-providers/fonts";
 import { createFullscreenState, FullscreenState } from "@/state-providers/fullscreen";
+import { createPanelsState, PanelsState } from "@/state-providers/panels";
 import { createPortfolioState, PortfolioState } from "@/state-providers/portfolio";
 import { createWorkspaceState, WorkspaceState } from "@/state-providers/workspace";
 import { createEditor, Editor } from "@/wasm-communication/editor";
@@ -229,6 +231,7 @@ import { createEditor, Editor } from "@/wasm-communication/editor";
 import MainWindow from "@/components/window/MainWindow.vue";
 
 const managerDestructors: {
+	createBlobManager?: () => void;
 	createClipboardManager?: () => void;
 	createHyperlinkManager?: () => void;
 	createInputManager?: () => void;
@@ -248,6 +251,7 @@ declare module "@vue/runtime-core" {
 		dialog: DialogState;
 		fonts: FontsState;
 		fullscreen: FullscreenState;
+		panels: PanelsState;
 		portfolio: PortfolioState;
 		workspace: WorkspaceState;
 	}
@@ -266,7 +270,8 @@ export default defineComponent({
 			// State provider systems
 			dialog: createDialogState(editor),
 			fonts: createFontsState(editor),
-			fullscreen: createFullscreenState(),
+			fullscreen: createFullscreenState(editor),
+			panels: createPanelsState(editor),
 			portfolio: createPortfolioState(editor),
 			workspace: createWorkspaceState(editor),
 		};
@@ -274,6 +279,7 @@ export default defineComponent({
 	async mounted() {
 		// Initialize managers, which are isolated systems that subscribe to backend messages to link them to browser API functionality (like JS events, IndexedDB, etc.)
 		Object.assign(managerDestructors, {
+			createBlobManager: createBlobManager(this.editor),
 			createClipboardManager: createClipboardManager(this.editor),
 			createHyperlinkManager: createHyperlinkManager(this.editor),
 			createInputManager: createInputManager(this.editor, this.$el.parentElement, this.dialog, this.portfolio, this.fullscreen),
@@ -283,7 +289,7 @@ export default defineComponent({
 		});
 
 		// Initialize certain setup tasks required by the editor backend to be ready for the user now that the frontend is ready
-		this.editor.instance.init_app();
+		this.editor.instance.init_after_frontend_ready();
 	},
 	beforeUnmount() {
 		// Call the destructor for each manager

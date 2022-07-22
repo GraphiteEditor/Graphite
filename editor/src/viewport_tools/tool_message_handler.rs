@@ -1,9 +1,11 @@
-use super::tool::{message_to_tool_type, DocumentToolData, ToolFsmState};
+use super::tool::{message_to_tool_type, ToolFsmState};
 use crate::document::DocumentMessageHandler;
 use crate::input::InputPreprocessorMessageHandler;
 use crate::layout::layout_message::LayoutTarget;
 use crate::layout::widgets::PropertyHolder;
+use crate::layout::widgets::{IconButton, Layout, LayoutGroup, SwatchPairInput, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
 use crate::message_prelude::*;
+use crate::viewport_tools::tool::DocumentToolData;
 
 use graphene::color::Color;
 use graphene::layers::text_layer::FontCache;
@@ -73,12 +75,16 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessorMes
 				// Notify the frontend about the new active tool to be displayed
 				tool_data.register_properties(responses, LayoutTarget::ToolShelf);
 			}
+			DeactivateTools => {
+				let tool_data = &mut self.tool_state.tool_data;
+				tool_data.tools.get(&tool_data.active_tool_type).unwrap().deactivate(responses);
+			}
 			InitTools => {
 				let tool_data = &mut self.tool_state.tool_data;
 				let document_data = &self.tool_state.document_tool_data;
 				let active_tool = &tool_data.active_tool_type;
 
-				// subscribe tool to broadcast messages
+				// Subscribe tool to broadcast messages
 				tool_data.tools.get(active_tool).unwrap().activate(responses);
 
 				// Register initial properties
@@ -86,6 +92,10 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessorMes
 
 				// Notify the frontend about the initial active tool
 				tool_data.register_properties(responses, LayoutTarget::ToolShelf);
+
+				// Notify the frontend about the initial working colors
+				update_working_colors(document_data, responses);
+				responses.push_back(FrontendMessage::TriggerRefreshBoundsOfViewports.into());
 
 				// Set initial hints and cursor
 				tool_data
@@ -156,7 +166,12 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessorMes
 	}
 
 	fn actions(&self) -> ActionList {
-		let mut list = actions!(ToolMessageDiscriminant; SelectRandomPrimaryColor, ResetColors, SwapColors, ActivateTool);
+		let mut list = actions!(ToolMessageDiscriminant;
+			ActivateTool,
+			SelectRandomPrimaryColor,
+			ResetColors,
+			SwapColors,
+		);
 		list.extend(self.tool_state.tool_data.active_tool().actions());
 
 		list
@@ -164,10 +179,37 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessorMes
 }
 
 fn update_working_colors(document_data: &DocumentToolData, responses: &mut VecDeque<Message>) {
+	let layout = WidgetLayout::new(vec![
+		LayoutGroup::Row {
+			widgets: vec![WidgetHolder::new(Widget::SwatchPairInput(SwatchPairInput {
+				primary: document_data.primary_color,
+				secondary: document_data.secondary_color,
+			}))],
+		},
+		LayoutGroup::Row {
+			widgets: vec![
+				WidgetHolder::new(Widget::IconButton(IconButton {
+					size: 16,
+					icon: "Swap".into(),
+					tooltip: "Swap (Shift+X)".into(), // TODO: Customize this tooltip for the Mac version of the keyboard shortcut
+					on_update: WidgetCallback::new(|_| ToolMessage::SwapColors.into()),
+					..Default::default()
+				})),
+				WidgetHolder::new(Widget::IconButton(IconButton {
+					size: 16,
+					icon: "ResetColors".into(), // TODO: Customize this tooltip for the Mac version of the keyboard shortcut
+					tooltip: "Reset (Ctrl+Shift+X)".into(),
+					on_update: WidgetCallback::new(|_| ToolMessage::ResetColors.into()),
+					..Default::default()
+				})),
+			],
+		},
+	]);
+
 	responses.push_back(
-		FrontendMessage::UpdateWorkingColors {
-			primary: document_data.primary_color,
-			secondary: document_data.secondary_color,
+		LayoutMessage::SendLayout {
+			layout: Layout::WidgetLayout(layout),
+			layout_target: LayoutTarget::WorkingColors,
 		}
 		.into(),
 	);
