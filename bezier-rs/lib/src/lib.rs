@@ -446,9 +446,9 @@ impl Bezier {
 		bezier_starting_at_t1.split(adjusted_t2)[t2_split_side]
 	}
 
-	/// Returns the closest point on the curve to the provided point.
+	/// Returns the t value that corresponds to the closest point on the curve to the provided point.
 	/// Uses a searching algorithm akin to binary search that can be customized using the [ProjectionOptions] structure.
-	pub fn project(&self, point: DVec2, options: ProjectionOptions) -> DVec2 {
+	pub fn project(&self, point: DVec2, options: ProjectionOptions) -> f64 {
 		let ProjectionOptions {
 			lut_size,
 			convergence_epsilon,
@@ -534,7 +534,7 @@ impl Bezier {
 			}
 		}
 
-		self.evaluate(final_t)
+		final_t
 	}
 
 	/// Returns two lists of `t`-values representing the local extrema of the `x` and `y` parametric curves respectively.
@@ -985,11 +985,11 @@ mod tests {
 		let project_options = ProjectionOptions::default();
 
 		let bezier1 = Bezier::from_cubic_coordinates(4., 4., 23., 45., 10., 30., 56., 90.);
-		assert!(bezier1.project(DVec2::new(100., 100.), project_options) == DVec2::new(56., 90.));
-		assert!(bezier1.project(DVec2::new(0., 0.), project_options) == DVec2::new(4., 4.));
+		assert!(bezier1.evaluate(bezier1.project(DVec2::new(100., 100.), project_options)) == DVec2::new(56., 90.));
+		assert!(bezier1.evaluate(bezier1.project(DVec2::new(0., 0.), project_options)) == DVec2::new(4., 4.));
 
 		let bezier2 = Bezier::from_quadratic_coordinates(0., 0., 0., 100., 100., 100.);
-		assert!(bezier2.project(DVec2::new(100., 0.), project_options) == DVec2::new(0., 0.));
+		assert!(bezier2.evaluate(bezier2.project(DVec2::new(100., 0.), project_options)) == DVec2::new(0., 0.));
 	}
 	#[test]
 	fn intersect_line_segment_linear() {

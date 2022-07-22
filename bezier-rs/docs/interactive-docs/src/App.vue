@@ -249,7 +249,8 @@ export default defineComponent({
 					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: Record<string, number>, mouseLocation?: Point): void => {
 						if (mouseLocation != null) {
 							const context = getContextFromCanvas(canvas);
-							const closestPoint = JSON.parse(bezier.project(mouseLocation.x, mouseLocation.y));
+							const t = bezier.project(mouseLocation.x, mouseLocation.y);
+							const closestPoint = JSON.parse(bezier.evaluate(t));
 							drawLine(context, mouseLocation, closestPoint, COLORS.NON_INTERACTIVE.STROKE_1);
 						}
 					},

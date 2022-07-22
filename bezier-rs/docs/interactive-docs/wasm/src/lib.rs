@@ -119,8 +119,8 @@ impl WasmBezier {
 		WasmBezier(self.0.trim(t1, t2))
 	}
 
-	pub fn project(&self, x: f64, y: f64) -> JsValue {
-		vec_to_point(&self.0.project(DVec2::new(x, y), ProjectionOptions::default()))
+	pub fn project(&self, x: f64, y: f64) -> f64 {
+		self.0.project(DVec2::new(x, y), ProjectionOptions::default())
 	}
 
 	pub fn local_extrema(&self) -> JsValue {
