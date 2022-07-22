@@ -375,7 +375,7 @@ export default defineComponent({
 				},
 				{
 					name: "Intersect (Cubic Segment)",
-					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance): void => {
+					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: Record<string, number>): void => {
 						const context = getContextFromCanvas(canvas);
 						const points = [
 							{ x: 40, y: 20 },
@@ -385,11 +385,23 @@ export default defineComponent({
 						];
 						const mappedPoints = points.map((p) => [p.x, p.y]);
 						drawCurve(context, points, COLORS.NON_INTERACTIVE.STROKE_1, 1);
-						const intersections: Float64Array = bezier.intersect_cubic_segment(mappedPoints);
+						const intersections: Float64Array = bezier.intersect_cubic_segment(mappedPoints, options.error);
 						intersections.forEach((t: number) => {
 							const p = JSON.parse(bezier.evaluate(t));
 							drawPoint(context, p, 3, COLORS.NON_INTERACTIVE.STROKE_2);
 						});
+					},
+					template: markRaw(SliderExample),
+					templateOptions: {
+						sliders: [
+							{
+								variable: "error",
+								min: 0.1,
+								max: 2,
+								step: 0.1,
+								default: 0.5,
+							},
+						],
 					},
 				},
 				{

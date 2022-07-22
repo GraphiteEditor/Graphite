@@ -605,7 +605,7 @@ impl Bezier {
 	/// Implementation of the algorithm to find curve intersections by iterating on bounding boxes.
 	/// `curve1_t_interval` is used to identify the t values of the original `curve1` that the current iteration is representing.
 	/// Note that the `t` interval for only the first curve is needed since we want to return `t` with repsect to it.
-	fn intersection_curves(curve1: &Bezier, curve1_t_interval: [f64; 2], curve2: &Bezier, intersections: &mut Vec<f64>) {
+	fn intersection_curves(curve1: &Bezier, curve1_t_interval: [f64; 2], curve2: &Bezier, intersections: &mut Vec<f64>, error: f64) {
 		let bounding_box1 = curve1.bounding_box();
 		let bounding_box2 = curve2.bounding_box();
 
@@ -613,8 +613,11 @@ impl Bezier {
 		let [curve1_start_t, curve1_end_t] = curve1_t_interval;
 		let curve1_mid_t = curve1_start_t + (curve1_end_t - curve1_start_t) / 2.;
 
+		let error_threshold = DVec2::new(error, error);
+
+		// Check if the bounding boxes overlap
 		if utils::do_rectangles_overlap(bounding_box1, bounding_box2) {
-			if (bounding_box1[1] - bounding_box1[0]).lt(&DVec2::new(0.5, 0.5)) && (bounding_box2[1] - bounding_box2[0]).lt(&DVec2::new(0.5, 0.5)) {
+			if (bounding_box1[1] - bounding_box1[0]).lt(&error_threshold) && (bounding_box2[1] - bounding_box2[0]).lt(&error_threshold) {
 				intersections.push(curve1_mid_t);
 				return;
 			}
@@ -623,17 +626,18 @@ impl Bezier {
 			let interval_1a = [curve1_start_t, curve1_mid_t];
 			let interval_1b = [curve1_mid_t, curve1_end_t];
 			let [split2a, split2b] = curve2.split(0.5);
-			Bezier::intersection_curves(&split1a, interval_1a, &split2a, intersections);
-			Bezier::intersection_curves(&split1a, interval_1a, &split2b, intersections);
-			Bezier::intersection_curves(&split1b, interval_1b, &split2a, intersections);
-			Bezier::intersection_curves(&split1b, interval_1b, &split2b, intersections);
+			Bezier::intersection_curves(&split1a, interval_1a, &split2a, intersections, error);
+			Bezier::intersection_curves(&split1a, interval_1a, &split2b, intersections, error);
+			Bezier::intersection_curves(&split1b, interval_1b, &split2a, intersections, error);
+			Bezier::intersection_curves(&split1b, interval_1b, &split2b, intersections, error);
 		}
 	}
 
 	// TODO: Use an `impl Iterator` return type instead of a `Vec`
 	/// Returns a list of `t` values that correspond to intersection points between the current bezier curve and the provided one. The returned `t` values are with respect to the current bezier, not the provided parameter.
-	/// If the provided curve is linear and is colinear with the bezier, zero intersection points will be returned.
-	pub fn intersections(&self, curve: &Bezier) -> Vec<f64> {
+	/// If the provided curve is linear and is colinear with current bezier, zero intersection points will be returned.
+	pub fn intersections(&self, curve: &Bezier, error: Option<f64>) -> Vec<f64> {
+		let error = error.unwrap_or(0.5);
 		match curve.handles {
 			BezierHandles::Linear => {
 				// Rotate the bezier and the line by the angle that the line makes with the x axis
@@ -692,7 +696,7 @@ impl Bezier {
 			}
 			_ => {
 				let mut intersection_points = Vec::new();
-				Bezier::intersection_curves(self, [0., 1.], curve, &mut intersection_points);
+				Bezier::intersection_curves(self, [0., 1.], curve, &mut intersection_points, error);
 				intersection_points
 			}
 		}
@@ -999,13 +1003,13 @@ mod tests {
 		// Intersection at edge of curve
 		let bezier = Bezier::from_linear_dvec2(p1, p2);
 		let line1 = Bezier::from_linear_coordinates(20., 60., 70., 60.);
-		let intersections1 = bezier.intersections(&line1);
+		let intersections1 = bezier.intersections(&line1, None);
 		assert!(intersections1.len() == 1);
 		assert!(compare_points(bezier.evaluate(intersections1[0]), DVec2::new(30., 60.)));
 
 		// Intersection in the middle of curve
 		let line2 = Bezier::from_linear_coordinates(150., 150., 30., 30.);
-		let intersections2 = bezier.intersections(&line2);
+		let intersections2 = bezier.intersections(&line2, None);
 		assert!(compare_points(bezier.evaluate(intersections2[0]), DVec2::new(96., 96.)));
 	}
 
@@ -1018,13 +1022,13 @@ mod tests {
 		// Intersection at edge of curve
 		let bezier = Bezier::from_quadratic_dvec2(p1, p2, p3);
 		let line1 = Bezier::from_linear_coordinates(20., 50., 40., 50.);
-		let intersections1 = bezier.intersections(&line1);
+		let intersections1 = bezier.intersections(&line1, None);
 		assert!(intersections1.len() == 1);
 		assert!(compare_points(bezier.evaluate(intersections1[0]), p1));
 
 		// Intersection in the middle of curve
 		let line2 = Bezier::from_linear_coordinates(150., 150., 30., 30.);
-		let intersections2 = bezier.intersections(&line2);
+		let intersections2 = bezier.intersections(&line2, None);
 		assert!(compare_points(bezier.evaluate(intersections2[0]), DVec2::new(47.77355, 47.77354)));
 	}
 
@@ -1038,13 +1042,13 @@ mod tests {
 		let bezier = Bezier::from_cubic_dvec2(p1, p2, p3, p4);
 		// Intersection at edge of curve, Discriminant > 0
 		let line1 = Bezier::from_linear_coordinates(20., 30., 40., 30.);
-		let intersections1 = bezier.intersections(&line1);
+		let intersections1 = bezier.intersections(&line1, None);
 		assert!(intersections1.len() == 1);
 		assert!(compare_points(bezier.evaluate(intersections1[0]), p1));
 
 		// Intersection at edge and in middle of curve, Discriminant < 0
 		let line2 = Bezier::from_linear_coordinates(150., 150., 30., 30.);
-		let intersections2 = bezier.intersections(&line2);
+		let intersections2 = bezier.intersections(&line2, None);
 		assert!(intersections2.len() == 2);
 		assert!(compare_points(bezier.evaluate(intersections2[0]), p1));
 		assert!(compare_points(bezier.evaluate(intersections2[1]), DVec2::new(85.84, 85.84)));
@@ -1054,8 +1058,8 @@ mod tests {
 		let bezier1 = Bezier::from_cubic_coordinates(30., 30., 60., 140., 150., 30., 160., 160.);
 		let bezier2 = Bezier::from_quadratic_coordinates(175., 140., 20., 20., 120., 20.);
 
-		let intersections = bezier1.intersections(&bezier2);
-		let intersections2 = bezier2.intersections(&bezier1);
+		let intersections = bezier1.intersections(&bezier2, None);
+		let intersections2 = bezier2.intersections(&bezier1, None);
 		assert!(compare_vec_of_points(
 			intersections.iter().map(|&t| bezier1.evaluate(t)).collect(),
 			intersections2.iter().map(|&t| bezier2.evaluate(t)).collect(),

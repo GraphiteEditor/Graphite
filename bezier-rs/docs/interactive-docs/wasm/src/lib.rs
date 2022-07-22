@@ -152,26 +152,26 @@ impl WasmBezier {
 		WasmBezier(self.0.rotate(angle))
 	}
 
-	fn intersect(&self, curve: &Bezier) -> Vec<f64> {
-		self.0.intersections(curve)
+	fn intersect(&self, curve: &Bezier, error: Option<f64>) -> Vec<f64> {
+		self.0.intersections(curve, error)
 	}
 
 	pub fn intersect_line_segment(&self, js_points: &JsValue) -> Vec<f64> {
 		let points: [DVec2; 2] = js_points.into_serde().unwrap();
 		let line = Bezier::from_linear_dvec2(points[0], points[1]);
-		self.intersect(&line)
+		self.intersect(&line, None)
 	}
 
-	pub fn intersect_quadratic_segment(&self, js_points: &JsValue) -> Vec<f64> {
+	pub fn intersect_quadratic_segment(&self, js_points: &JsValue, error: f64) -> Vec<f64> {
 		let points: [DVec2; 3] = js_points.into_serde().unwrap();
 		let quadratic = Bezier::from_quadratic_dvec2(points[0], points[1], points[2]);
-		self.intersect(&quadratic)
+		self.intersect(&quadratic, Some(error))
 	}
 
-	pub fn intersect_cubic_segment(&self, js_points: &JsValue) -> Vec<f64> {
+	pub fn intersect_cubic_segment(&self, js_points: &JsValue, error: f64) -> Vec<f64> {
 		let points: [DVec2; 4] = js_points.into_serde().unwrap();
 		let cubic = Bezier::from_cubic_dvec2(points[0], points[1], points[2], points[3]);
-		self.intersect(&cubic)
+		self.intersect(&cubic, Some(error))
 	}
 
 	pub fn reduce(&self) -> JsValue {
