@@ -11,8 +11,7 @@ export enum BezierCurveType {
 	Cubic = "Cubic",
 }
 
-export type option = number | boolean;
-export type BezierCallback = (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: Record<string, option>, mouseLocation?: Point) => void;
+export type BezierCallback = (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: Record<string, number>, mouseLocation?: Point) => void;
 
 export type SliderOption = {
 	min: number;

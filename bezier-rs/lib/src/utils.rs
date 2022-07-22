@@ -149,8 +149,7 @@ pub fn solve_cubic(a: f64, b: f64, c: f64, d: f64) -> Vec<f64> {
 /// Returns the intersection of two lines. The lines are given by a point on the line and its slope (represented by a vector).
 pub fn line_intersection(point1: DVec2, point1_slope_vector: DVec2, point2: DVec2, point2_slope_vector: DVec2) -> DVec2 {
 	assert!(point1_slope_vector.normalize() != point2_slope_vector.normalize());
-	/*
-		*/
+
 	if f64_compare(point1_slope_vector.x, 0., MAX_ABSOLUTE_DIFFERENCE) {
 		let m2 = point2_slope_vector.y / point2_slope_vector.x;
 		let b2 = point2.y - m2 * point2.x;
@@ -169,15 +168,14 @@ pub fn line_intersection(point1: DVec2, point1_slope_vector: DVec2, point2: DVec
 	}
 }
 
-/// Check if 3 points are collinear
+/// Check if 3 points are collinear.
 pub fn are_points_collinear(p1: DVec2, p2: DVec2, p3: DVec2) -> bool {
 	let matrix = DMat2::from_cols(p1 - p2, p2 - p3);
 	f64_compare(matrix.determinant() / 2., 0., MAX_ABSOLUTE_DIFFERENCE)
 }
 
-/// Compute the center of the circle that passes through all three provided points
+/// Compute the center of the circle that passes through all three provided points.
 pub fn compute_circle_center_from_points(p1: DVec2, p2: DVec2, p3: DVec2) -> DVec2 {
-	// TODO something breaks here
 	let midpoint_a = p1.lerp(p2, 0.5);
 	let midpoint_b = p2.lerp(p3, 0.5);
 	let midpoint_c = p3.lerp(p1, 0.5);

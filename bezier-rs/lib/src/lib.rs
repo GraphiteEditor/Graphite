@@ -718,7 +718,6 @@ impl Bezier {
 			.skip(1)
 			.flat_map(|&t2| {
 				let arcs = self.arcs_helper(t1, t2, error, max_iterations);
-				println!("t1, t2: {}, {}", t1, t2);
 				t1 = t2;
 				arcs
 			})
@@ -733,14 +732,11 @@ impl Bezier {
 		let mut low = local_low;
 		let mut middle = local_low + (local_high - local_low) / 2.;
 		let mut high = local_high;
-
 		let mut previous_high = local_high;
 
 		let mut iterations = 0;
-
 		let mut previous_arc = CircleArc::default();
 		let mut was_previous_good = false;
-
 		let mut arcs = Vec::new();
 
 		// Find the arc
@@ -754,7 +750,7 @@ impl Bezier {
 				let p2 = self.evaluate(middle);
 				let p3 = self.evaluate(high);
 
-				// if the segment is linear, move on to next segment
+				// If the segment is linear, move on to next segment
 				if utils::are_points_collinear(p1, p2, p3) {
 					previous_high = high;
 					low = high;
