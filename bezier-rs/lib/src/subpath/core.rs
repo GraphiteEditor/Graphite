@@ -62,47 +62,47 @@ impl SubPath {
 			options.handle_line_stroke_color, options.handle_line_stroke_width
 		);
 
+		let curve_start_argument = format!("M {} {}", self[0].anchor.x, self[0].anchor.y);
+		let mut curve_arguments: Vec<String> = self.iter().map(|bezier| bezier.svg_curve_argument()).collect();
+		if self.closed {
+			curve_arguments.push(String::from("Z"));
+		}
+
 		let anchor_circles = self
 			.manipulator_groups
 			.iter()
 			.map(|point| format!(r#"<circle cx="{}" cy="{}" {}/>"#, point.anchor.x, point.anchor.y, anchor_options))
 			.collect::<Vec<String>>();
-		let mut path_pieces = vec![format!("M {} {}", self[0].anchor.x, self[0].anchor.y)];
-		let mut handle_pieces = Vec::new();
-		let mut handle_circles = Vec::new();
-
-		for start_index in 0..self.len() + (self.closed as usize) - 1 {
-			let end_index = (start_index + 1) % self.len();
-
-			let start = self[start_index].anchor;
-			let end = self[end_index].anchor;
-			let handle1 = self[start_index].out_handle;
-			let handle2 = self[end_index].in_handle;
-
-			let main_path: String;
-			if let (Some(h1), Some(h2)) = (handle1, handle2) {
-				handle_pieces.push(format!("M {} {} L {} {}", start.x, start.y, h1.x, h1.y));
-				handle_circles.push(format!(r#"<circle cx="{}" cy="{}" {}/>"#, h1.x, h1.y, handle_point_options));
-				handle_pieces.push(format!("M {} {} L {} {}", end.x, end.y, h2.x, h2.y));
-				handle_circles.push(format!(r#"<circle cx="{}" cy="{}" {}/>"#, h2.x, h2.y, handle_point_options));
-				main_path = format!("C {} {} {} {}", h1.x, h1.y, h2.x, h2.y);
-			} else if let Some(handle) = handle1.or(handle2) {
-				handle_pieces.push(format!("M {} {} L {} {}", start.x, start.y, handle.x, handle.y));
-				handle_pieces.push(format!("M {} {} L {} {}", end.x, end.y, handle.x, handle.y));
-				handle_circles.push(format!(r#"<circle cx="{}" cy="{}" {}/>"#, handle.x, handle.y, handle_point_options));
-				main_path = format!("Q {} {}", handle.x, handle.y);
-			} else {
-				main_path = String::from("L");
-			}
-			path_pieces.push(format!("{} {} {}", main_path, end.x, end.y));
-		}
-		if self.closed {
-			path_pieces.push(String::from("Z"));
-		}
+		let handle_circles: Vec<String> = self
+			.manipulator_groups
+			.iter()
+			.flat_map(|group| [group.in_handle, group.out_handle])
+			.flatten()
+			.map(|handle| format!(r#"<circle cx="{}" cy="{}" {}/>"#, handle.x, handle.y, handle_point_options))
+			.collect();
+		let handle_pieces: Vec<String> = self
+			.iter()
+			.filter_map(|bezier| match bezier.handles {
+				BezierHandles::Linear => None,
+				BezierHandles::Quadratic { handle } => {
+					let handle_line = format!("L {} {}", handle.x, handle.y);
+					Some(format!("M {} {} {} M {} {} {}", bezier.start.x, bezier.start.y, handle_line, bezier.end.x, bezier.end.y, handle_line))
+				}
+				BezierHandles::Cubic { handle_start, handle_end } => {
+					let handle_start_line = format!("L {} {}", handle_start.x, handle_start.y);
+					let handle_end_line = format!("L {} {}", handle_end.x, handle_end.y);
+					Some(format!(
+						"M {} {} {} M {} {} {}",
+						bezier.start.x, bezier.start.y, handle_start_line, bezier.end.x, bezier.end.y, handle_end_line
+					))
+				}
+			})
+			.collect();
 
 		format!(
-			r#"<path d="{}" {}/><path d="{}" {}/>{}{}"#,
-			path_pieces.join(" "),
+			r#"<path d="{} {}" {}/><path d="{}" {}/>{}{}"#,
+			curve_start_argument,
+			curve_arguments.join(" "),
 			subpath_options,
 			handle_pieces.join(" "),
 			handle_line_options,

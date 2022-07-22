@@ -165,11 +165,9 @@ impl Bezier {
 		Bezier::from_cubic_dvec2(start, handle_start, handle_end, end)
 	}
 
-	/// Convert to SVG.
-	pub fn to_svg(&self) -> String {
-		// TODO: Allow modifying the viewport, width and height
-		let m_path = format!("M {} {}", self.start.x, self.start.y);
-		let handles_path = match self.handles {
+	/// Return the string argument used to create a curve in an SVG `path`, excluding the start point.
+	pub fn svg_curve_argument(&self) -> String {
+		let handle_args = match self.handles {
 			BezierHandles::Linear => "L".to_string(),
 			BezierHandles::Quadratic { handle } => {
 				format!("Q {} {},", handle.x, handle.y)
@@ -178,11 +176,12 @@ impl Bezier {
 				format!("C {} {}, {} {},", handle_start.x, handle_start.y, handle_end.x, handle_end.y)
 			}
 		};
-		let curve_path = format!("{} {} {}", handles_path, self.end.x, self.end.y);
-		format!(
-			r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{} {} {} {}" width="{}px" height="{}px"><path d="{} {} {}" stroke="black" fill="transparent"/></svg>"#,
-			0, 0, 100, 100, 100, 100, "\n", m_path, curve_path
-		)
+		format!("{} {} {}", handle_args, self.end.x, self.end.y)
+	}
+
+	/// Convert `Bezier` to SVG `path`.
+	pub fn to_svg(&self) -> String {
+		format!(r#"<path d="M {} {} {}" stroke="black" fill="transparent"/>"#, self.start.x, self.start.y, self.svg_curve_argument())
 	}
 
 	/// Set the coordinates of the start point.
