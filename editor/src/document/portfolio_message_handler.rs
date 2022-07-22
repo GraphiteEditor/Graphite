@@ -15,23 +15,23 @@ use graphene::Operation as DocumentOperation;
 use log::warn;
 use std::collections::{HashMap, VecDeque};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct PortfolioMessageHandler {
 	menu_bar_message_handler: MenuBarMessageHandler,
 	documents: HashMap<u64, DocumentMessageHandler>,
 	document_ids: Vec<u64>,
-	active_document_id: u64,
+	active_document_id: Option<u64>,
 	copy_buffer: [Vec<CopyBufferEntry>; INTERNAL_CLIPBOARD_COUNT as usize],
 	font_cache: FontCache,
 }
 
 impl PortfolioMessageHandler {
-	pub fn active_document(&self) -> &DocumentMessageHandler {
-		self.documents.get(&self.active_document_id).unwrap()
+	pub fn active_document(&self) -> Option<&DocumentMessageHandler> {
+		self.active_document_id.and_then(|id| self.documents.get(&id))
 	}
 
-	pub fn active_document_mut(&mut self) -> &mut DocumentMessageHandler {
-		self.documents.get_mut(&self.active_document_id).unwrap()
+	pub fn active_document_mut(&mut self) -> Option<&mut DocumentMessageHandler> {
+		self.active_document_id.and_then(|id| self.documents.get_mut(&id))
 	}
 
 	pub fn generate_new_document_name(&self) -> String {
@@ -56,21 +56,8 @@ impl PortfolioMessageHandler {
 	}
 
 	// TODO Fix how this doesn't preserve tab order upon loading new document from *File > Load*
-	fn load_document(&mut self, new_document: DocumentMessageHandler, document_id: u64, replace_first_empty: bool, responses: &mut VecDeque<Message>) {
-		// Special case when loading a document on an empty page
-		if replace_first_empty && self.active_document().is_unmodified_default() {
-			responses.push_back(BroadcastSignal::ToolAbort.into());
-			responses.push_back(PortfolioMessage::CloseDocument { document_id: self.active_document_id }.into());
-
-			let active_document_index = self
-				.document_ids
-				.iter()
-				.position(|id| self.active_document_id == *id)
-				.expect("Did not find matching active document id");
-			self.document_ids.insert(active_document_index + 1, document_id);
-		} else {
-			self.document_ids.push(document_id);
-		}
+	fn load_document(&mut self, new_document: DocumentMessageHandler, document_id: u64, responses: &mut VecDeque<Message>) {
+		self.document_ids.push(document_id);
 
 		responses.extend(
 			new_document
@@ -86,9 +73,19 @@ impl PortfolioMessageHandler {
 
 		self.documents.insert(document_id, new_document);
 
-		responses.push_back(PortfolioMessage::UpdateOpenDocumentsList.into());
+		if self.active_document().is_some() {
+			responses.push_back(PropertiesPanelMessage::Deactivate.into());
+			responses.push_back(BroadcastSignal::ToolAbort.into());
+			responses.push_back(ToolMessage::DeactivateTools.into());
+		}
 
+		responses.push_back(PortfolioMessage::UpdateOpenDocumentsList.into());
 		responses.push_back(PortfolioMessage::SelectDocument { document_id }.into());
+		responses.push_back(PortfolioMessage::UpdateDocumentWidgets.into());
+		responses.push_back(ToolMessage::InitTools.into());
+		responses.push_back(PropertiesPanelMessage::Init.into());
+		responses.push_back(MovementMessage::TranslateCanvas { delta: (0., 0.).into() }.into());
+		responses.push_back(DocumentMessage::DocumentStructureChanged.into())
 	}
 
 	/// Returns an iterator over the open documents in order.
@@ -105,25 +102,6 @@ impl PortfolioMessageHandler {
 	}
 }
 
-impl Default for PortfolioMessageHandler {
-	fn default() -> Self {
-		let mut documents_map: HashMap<u64, DocumentMessageHandler> = HashMap::with_capacity(1);
-		let starting_key = generate_uuid();
-		documents_map.insert(starting_key, DocumentMessageHandler::default());
-
-		const EMPTY_VEC: Vec<CopyBufferEntry> = vec![];
-
-		Self {
-			documents: documents_map,
-			document_ids: vec![starting_key],
-			copy_buffer: [EMPTY_VEC; INTERNAL_CLIPBOARD_COUNT as usize],
-			active_document_id: starting_key,
-			font_cache: Default::default(),
-			menu_bar_message_handler: MenuBarMessageHandler::default(),
-		}
-	}
-}
-
 impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for PortfolioMessageHandler {
 	#[remain::check]
 	fn process_action(&mut self, message: PortfolioMessage, ipp: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
@@ -134,12 +112,20 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 		match message {
 			// Sub-messages
 			#[remain::unsorted]
-			Document(message) => self.documents.get_mut(&self.active_document_id).unwrap().process_action(message, (ipp, &self.font_cache), responses),
+			Document(message) => {
+				if let Some(document) = self.active_document_id.and_then(|id| self.documents.get_mut(&id)) {
+					document.process_action(message, (ipp, &self.font_cache), responses)
+				}
+			}
 			#[remain::unsorted]
 			MenuBar(message) => self.menu_bar_message_handler.process_action(message, (), responses),
 
 			// Messages
-			AutoSaveActiveDocument => responses.push_back(PortfolioMessage::AutoSaveDocument { document_id: self.active_document_id }.into()),
+			AutoSaveActiveDocument => {
+				if let Some(document_id) = self.active_document_id {
+					responses.push_back(PortfolioMessage::AutoSaveDocument { document_id }.into());
+				}
+			}
 			AutoSaveDocument { document_id } => {
 				let document = self.documents.get(&document_id).unwrap();
 				responses.push_back(
@@ -156,54 +142,60 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 				)
 			}
 			CloseActiveDocumentWithConfirmation => {
-				responses.push_back(PortfolioMessage::CloseDocumentWithConfirmation { document_id: self.active_document_id }.into());
+				if let Some(document_id) = self.active_document_id {
+					responses.push_back(PortfolioMessage::CloseDocumentWithConfirmation { document_id }.into());
+				}
 			}
 			CloseAllDocuments => {
-				// Empty the list of internal document data
-				self.documents.clear();
-				self.document_ids.clear();
+				if self.active_document_id.is_some() {
+					responses.push_back(PropertiesPanelMessage::Deactivate.into());
+					responses.push_back(BroadcastSignal::ToolAbort.into());
+					responses.push_back(ToolMessage::DeactivateTools.into());
+				}
 
-				// Clear out all documents and make a new default document
-				let new_document_id = generate_uuid();
-				self.documents.insert(new_document_id, DocumentMessageHandler::default());
-				self.document_ids.push(new_document_id);
-				self.active_document_id = new_document_id;
+				for document_id in &self.document_ids {
+					responses.push_back(FrontendMessage::TriggerIndexedDbRemoveDocument { document_id: *document_id }.into());
+				}
 
-				responses.push_back(BroadcastSignal::ToolAbort.into());
+				responses.push_back(PortfolioMessage::DestroyAllDocuments.into());
 				responses.push_back(PortfolioMessage::UpdateOpenDocumentsList.into());
-				responses.push_back(PortfolioMessage::SelectDocument { document_id: new_document_id }.into())
 			}
 			CloseDocument { document_id } => {
 				let document_index = self.document_index(document_id);
 				self.documents.remove(&document_id);
 				self.document_ids.remove(document_index);
 
-				// Last tab was closed, so create a new blank tab
 				if self.document_ids.is_empty() {
-					let new_id = generate_uuid();
-					self.document_ids.push(new_id);
-					self.documents.insert(new_id, DocumentMessageHandler::default());
+					self.active_document_id = None;
+				} else if Some(document_id) == self.active_document_id {
+					if document_index == self.document_ids.len() {
+						// If we closed the last document take the one previous (same as last)
+						responses.push_back(
+							PortfolioMessage::SelectDocument {
+								document_id: *self.document_ids.last().unwrap(),
+							}
+							.into(),
+						);
+					} else {
+						// Move to the next tab
+						responses.push_back(
+							PortfolioMessage::SelectDocument {
+								document_id: self.document_ids[document_index],
+							}
+							.into(),
+						);
+					}
 				}
-
-				self.active_document_id = if document_id != self.active_document_id {
-					// If we are not closing the active document, stay on it
-					self.active_document_id
-				} else if document_index >= self.document_ids.len() {
-					// If we closed the last document take the one previous (same as last)
-					*self.document_ids.last().unwrap()
-				} else {
-					// Move to the next tab
-					self.document_ids[document_index]
-				};
 
 				// Send the new list of document tab names
 				responses.push_back(UpdateOpenDocumentsList.into());
-				responses.push_back(FrontendMessage::UpdateActiveDocument { document_id: self.active_document_id }.into());
 				responses.push_back(FrontendMessage::TriggerIndexedDbRemoveDocument { document_id }.into());
 				responses.push_back(RenderDocument.into());
 				responses.push_back(DocumentMessage::DocumentStructureChanged.into());
-				for layer in self.active_document().layer_metadata.keys() {
-					responses.push_back(DocumentMessage::LayerChanged { affected_layer_path: layer.clone() }.into());
+				if let Some(document) = self.active_document() {
+					for layer in document.layer_metadata.keys() {
+						responses.push_back(DocumentMessage::LayerChanged { affected_layer_path: layer.clone() }.into());
+					}
 				}
 			}
 			CloseDocumentWithConfirmation { document_id } => {
@@ -225,35 +217,41 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 			}
 			Copy { clipboard } => {
 				// We can't use `self.active_document()` because it counts as an immutable borrow of the entirety of `self`
-				let active_document = self.documents.get(&self.active_document_id).unwrap();
-
-				let copy_val = |buffer: &mut Vec<CopyBufferEntry>| {
-					for layer_path in active_document.selected_layers_without_children() {
-						match (active_document.graphene_document.layer(layer_path).map(|t| t.clone()), *active_document.layer_metadata(layer_path)) {
-							(Ok(layer), layer_metadata) => {
-								buffer.push(CopyBufferEntry { layer, layer_metadata });
+				if let Some(active_document) = self.active_document_id.and_then(|id| self.documents.get(&id)) {
+					let copy_val = |buffer: &mut Vec<CopyBufferEntry>| {
+						for layer_path in active_document.selected_layers_without_children() {
+							match (active_document.graphene_document.layer(layer_path).map(|t| t.clone()), *active_document.layer_metadata(layer_path)) {
+								(Ok(layer), layer_metadata) => {
+									buffer.push(CopyBufferEntry { layer, layer_metadata });
+								}
+								(Err(e), _) => warn!("Could not access selected layer {:?}: {:?}", layer_path, e),
 							}
-							(Err(e), _) => warn!("Could not access selected layer {:?}: {:?}", layer_path, e),
 						}
+					};
+
+					if clipboard == Clipboard::Device {
+						let mut buffer = Vec::new();
+						copy_val(&mut buffer);
+						let mut copy_text = String::from("graphite/layer: ");
+						copy_text += &serde_json::to_string(&buffer).expect("Could not serialize paste");
+
+						responses.push_back(FrontendMessage::TriggerTextCopy { copy_text }.into());
+					} else {
+						let copy_buffer = &mut self.copy_buffer;
+						copy_buffer[clipboard as usize].clear();
+						copy_val(&mut copy_buffer[clipboard as usize]);
 					}
-				};
-
-				if clipboard == Clipboard::Device {
-					let mut buffer = Vec::new();
-					copy_val(&mut buffer);
-					let mut copy_text = String::from("graphite/layer: ");
-					copy_text += &serde_json::to_string(&buffer).expect("Could not serialize paste");
-
-					responses.push_back(FrontendMessage::TriggerTextCopy { copy_text }.into());
-				} else {
-					let copy_buffer = &mut self.copy_buffer;
-					copy_buffer[clipboard as usize].clear();
-					copy_val(&mut copy_buffer[clipboard as usize]);
 				}
 			}
 			Cut { clipboard } => {
 				responses.push_back(Copy { clipboard }.into());
 				responses.push_back(DeleteSelectedLayers.into());
+			}
+			DestroyAllDocuments => {
+				// Empty the list of internal document data
+				self.documents.clear();
+				self.document_ids.clear();
+				self.active_document_id = None;
 			}
 			FontLoaded {
 				font_family,
@@ -263,33 +261,35 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 				is_default,
 			} => {
 				self.font_cache.insert(Font::new(font_family, font_style), preview_url, data, is_default);
-				self.active_document_mut().graphene_document.mark_all_layers_of_type_as_dirty(LayerDataTypeDiscriminant::Text);
-				responses.push_back(DocumentMessage::RenderDocument.into());
+
+				if let Some(document) = self.active_document_mut() {
+					document.graphene_document.mark_all_layers_of_type_as_dirty(LayerDataTypeDiscriminant::Text);
+					responses.push_back(DocumentMessage::RenderDocument.into());
+				}
 			}
 			LoadFont { font, is_default } => {
 				if !self.font_cache.loaded_font(&font) {
 					responses.push_front(FrontendMessage::TriggerFontLoad { font, is_default }.into());
 				}
 			}
-			NewDocument => {
-				let name = self.generate_new_document_name();
-				let new_document = DocumentMessageHandler::with_name(name, ipp);
-				let document_id = generate_uuid();
-				responses.push_back(BroadcastSignal::ToolAbort.into());
-				self.load_document(new_document, document_id, false, responses);
-			}
 			NewDocumentWithName { name } => {
 				let new_document = DocumentMessageHandler::with_name(name, ipp);
 				let document_id = generate_uuid();
-				responses.push_back(BroadcastSignal::ToolAbort.into());
-				self.load_document(new_document, document_id, false, responses);
+				if self.active_document().is_some() {
+					responses.push_back(BroadcastSignal::ToolAbort.into());
+					responses.push_back(MovementMessage::TranslateCanvas { delta: (0., 0.).into() }.into());
+				}
+
+				self.load_document(new_document, document_id, responses);
 			}
 			NextDocument => {
-				let current_index = self.document_index(self.active_document_id);
-				let next_index = (current_index + 1) % self.document_ids.len();
-				let next_id = self.document_ids[next_index];
+				if let Some(active_document_id) = self.active_document_id {
+					let current_index = self.document_index(active_document_id);
+					let next_index = (current_index + 1) % self.document_ids.len();
+					let next_id = self.document_ids[next_index];
 
-				responses.push_back(PortfolioMessage::SelectDocument { document_id: next_id }.into());
+					responses.push_back(PortfolioMessage::SelectDocument { document_id: next_id }.into());
+				}
 			}
 			OpenDocument => {
 				responses.push_back(FrontendMessage::TriggerFileUpload.into());
@@ -318,7 +318,7 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 				match document {
 					Ok(mut document) => {
 						document.set_save_state(document_is_saved);
-						self.load_document(document, document_id, true, responses);
+						self.load_document(document, document_id, responses);
 					}
 					Err(e) => responses.push_back(
 						DialogMessage::DisplayDialogError {
@@ -330,22 +330,26 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 				}
 			}
 			Paste { clipboard } => {
-				let document = self.active_document();
-				let shallowest_common_folder = document
-					.graphene_document
-					.shallowest_common_folder(document.selected_layers())
-					.expect("While pasting, the selected layers did not exist while attempting to find the appropriate folder path for insertion");
-				responses.push_back(DeselectAllLayers.into());
-				responses.push_back(StartTransaction.into());
-				responses.push_back(
-					PasteIntoFolder {
-						clipboard,
-						folder_path: shallowest_common_folder.to_vec(),
-						insert_index: -1,
-					}
-					.into(),
-				);
-				responses.push_back(CommitTransaction.into());
+				let shallowest_common_folder = self.active_document().map(|document| {
+					document
+						.graphene_document
+						.shallowest_common_folder(document.selected_layers())
+						.expect("While pasting, the selected layers did not exist while attempting to find the appropriate folder path for insertion")
+				});
+
+				if let Some(folder) = shallowest_common_folder {
+					responses.push_back(DeselectAllLayers.into());
+					responses.push_back(StartTransaction.into());
+					responses.push_back(
+						PasteIntoFolder {
+							clipboard,
+							folder_path: folder.to_vec(),
+							insert_index: -1,
+						}
+						.into(),
+					);
+					responses.push_back(CommitTransaction.into());
+				}
 			}
 			PasteIntoFolder {
 				clipboard,
@@ -353,26 +357,27 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 				insert_index,
 			} => {
 				let paste = |entry: &CopyBufferEntry, responses: &mut VecDeque<_>| {
-					log::trace!("Pasting into folder {:?} as index: {}", &path, insert_index);
+					if let Some(document) = self.active_document() {
+						log::trace!("Pasting into folder {:?} as index: {}", &path, insert_index);
+						let destination_path = [path.to_vec(), vec![generate_uuid()]].concat();
 
-					let destination_path = [path.to_vec(), vec![generate_uuid()]].concat();
-
-					responses.push_front(
-						DocumentMessage::UpdateLayerMetadata {
-							layer_path: destination_path.clone(),
-							layer_metadata: entry.layer_metadata,
-						}
-						.into(),
-					);
-					self.active_document().load_layer_resources(responses, &entry.layer.data, destination_path.clone());
-					responses.push_front(
-						DocumentOperation::InsertLayer {
-							layer: entry.layer.clone(),
-							destination_path,
-							insert_index,
-						}
-						.into(),
-					);
+						responses.push_front(
+							DocumentMessage::UpdateLayerMetadata {
+								layer_path: destination_path.clone(),
+								layer_metadata: entry.layer_metadata,
+							}
+							.into(),
+						);
+						document.load_layer_resources(responses, &entry.layer.data, destination_path.clone());
+						responses.push_front(
+							DocumentOperation::InsertLayer {
+								layer: entry.layer.clone(),
+								destination_path,
+								insert_index,
+							}
+							.into(),
+						);
+					}
 				};
 
 				if insert_index == -1 {
@@ -386,55 +391,69 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 				}
 			}
 			PasteSerializedData { data } => {
-				if let Ok(data) = serde_json::from_str::<Vec<CopyBufferEntry>>(&data) {
-					let document = self.active_document();
-					let shallowest_common_folder = document
-						.graphene_document
-						.shallowest_common_folder(document.selected_layers())
-						.expect("While pasting from serialized, the selected layers did not exist while attempting to find the appropriate folder path for insertion");
-					responses.push_back(DeselectAllLayers.into());
-					responses.push_back(StartTransaction.into());
+				if let Some(document) = self.active_document() {
+					if let Ok(data) = serde_json::from_str::<Vec<CopyBufferEntry>>(&data) {
+						let shallowest_common_folder = document
+							.graphene_document
+							.shallowest_common_folder(document.selected_layers())
+							.expect("While pasting from serialized, the selected layers did not exist while attempting to find the appropriate folder path for insertion");
+						responses.push_back(DeselectAllLayers.into());
+						responses.push_back(StartTransaction.into());
 
-					for entry in data.iter().rev() {
-						let destination_path = [shallowest_common_folder.to_vec(), vec![generate_uuid()]].concat();
+						for entry in data.iter().rev() {
+							let destination_path = [shallowest_common_folder.to_vec(), vec![generate_uuid()]].concat();
 
-						responses.push_front(
-							DocumentMessage::UpdateLayerMetadata {
-								layer_path: destination_path.clone(),
-								layer_metadata: entry.layer_metadata,
-							}
-							.into(),
-						);
-						self.active_document().load_layer_resources(responses, &entry.layer.data, destination_path.clone());
-						responses.push_front(
-							DocumentOperation::InsertLayer {
-								layer: entry.layer.clone(),
-								destination_path,
-								insert_index: -1,
+							responses.push_front(
+								DocumentMessage::UpdateLayerMetadata {
+									layer_path: destination_path.clone(),
+									layer_metadata: entry.layer_metadata,
+								}
+								.into(),
+							);
+							document.load_layer_resources(responses, &entry.layer.data, destination_path.clone());
+							responses.push_front(
+								DocumentOperation::InsertLayer {
+									layer: entry.layer.clone(),
+									destination_path,
+									insert_index: -1,
+								}
+								.into(),
+							);
+						}
+
+						responses.push_back(CommitTransaction.into());
+					}
+				}
+			}
+			PrevDocument => {
+				if let Some(active_document_id) = self.active_document_id {
+					let len = self.document_ids.len();
+					let current_index = self.document_index(active_document_id);
+					let prev_index = (current_index + len - 1) % len;
+					let prev_id = self.document_ids[prev_index];
+					responses.push_back(PortfolioMessage::SelectDocument { document_id: prev_id }.into());
+				}
+			}
+			SelectDocument { document_id } => {
+				if let Some(document) = self.active_document() {
+					if !document.is_saved() {
+						// Safe to unwrap since we know that there is an active document
+						responses.push_back(
+							PortfolioMessage::AutoSaveDocument {
+								document_id: self.active_document_id.unwrap(),
 							}
 							.into(),
 						);
 					}
-
-					responses.push_back(CommitTransaction.into());
 				}
-			}
-			PrevDocument => {
-				let len = self.document_ids.len();
-				let current_index = self.document_index(self.active_document_id);
-				let prev_index = (current_index + len - 1) % len;
-				let prev_id = self.document_ids[prev_index];
-				responses.push_back(PortfolioMessage::SelectDocument { document_id: prev_id }.into());
-			}
 
-			SelectDocument { document_id } => {
-				let active_document = self.active_document();
-				if !active_document.is_saved() {
-					responses.push_back(PortfolioMessage::AutoSaveDocument { document_id: self.active_document_id }.into());
+				if self.active_document().is_some() {
+					responses.push_back(BroadcastSignal::ToolAbort.into());
 				}
-				responses.push_back(BroadcastSignal::ToolAbort.into());
+
+				// TODO: Remove this message in favor of having tools have specific data per document instance
 				responses.push_back(SetActiveDocument { document_id }.into());
-
+				responses.push_back(PortfolioMessage::UpdateOpenDocumentsList.into());
 				responses.push_back(FrontendMessage::UpdateActiveDocument { document_id }.into());
 				responses.push_back(RenderDocument.into());
 				responses.push_back(DocumentMessage::DocumentStructureChanged.into());
@@ -444,13 +463,13 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 				responses.push_back(BroadcastSignal::SelectionChanged.into());
 				responses.push_back(BroadcastSignal::DocumentIsDirty.into());
 				responses.push_back(PortfolioMessage::UpdateDocumentWidgets.into());
+				responses.push_back(MovementMessage::TranslateCanvas { delta: (0., 0.).into() }.into());
 			}
-			SetActiveDocument { document_id } => {
-				self.active_document_id = document_id;
-			}
+			SetActiveDocument { document_id } => self.active_document_id = Some(document_id),
 			UpdateDocumentWidgets => {
-				let active_document = self.active_document();
-				active_document.update_document_widgets(responses);
+				if let Some(document) = self.active_document() {
+					document.update_document_widgets(responses);
+				}
 			}
 			UpdateOpenDocumentsList => {
 				// Send the list of document tab names
@@ -472,7 +491,6 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 
 	fn actions(&self) -> ActionList {
 		let mut common = actions!(PortfolioMessageDiscriminant;
-			NewDocument,
 			CloseActiveDocumentWithConfirmation,
 			CloseAllDocuments,
 			NextDocument,
@@ -481,14 +499,17 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 			Paste,
 		);
 
-		if self.active_document().layer_metadata.values().any(|data| data.selected) {
-			let select = actions!(PortfolioMessageDiscriminant;
-				Copy,
-				Cut,
-			);
-			common.extend(select);
+		if let Some(document) = self.active_document() {
+			if document.layer_metadata.values().any(|data| data.selected) {
+				let select = actions!(PortfolioMessageDiscriminant;
+					Copy,
+					Cut,
+				);
+				common.extend(select);
+			}
+			common.extend(document.actions());
 		}
-		common.extend(self.active_document().actions());
+
 		common
 	}
 }

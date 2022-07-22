@@ -45,6 +45,8 @@ impl MessageHandler<OverlaysMessage, (bool, &FontCache, &InputPreprocessorMessag
 	}
 
 	fn actions(&self) -> ActionList {
-		actions!(OverlaysMessageDiscriminant; ClearAllOverlays)
+		actions!(OverlaysMessageDiscriminant;
+			ClearAllOverlays,
+		)
 	}
 }

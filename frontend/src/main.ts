@@ -20,7 +20,7 @@ import App from "@/App.vue";
 			}
 			</style>
 			<h2>This browser is too old</h2>
-			<p>Please upgrade to a modern web browser such as the latest Firefox, Chrome, Edge, or Safari version 15 or later.</p>
+			<p>Please upgrade to a modern web browser such as the latest Firefox, Chrome, Edge, or Safari version 15 or newer.</p>
 			<p>(The <a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/BigInt64Array#browser_compatibility" target="_blank"><code>BigInt64Array</code></a>
 			JavaScript API must be supported by the browser for Graphite to function.)</p>
 			`;

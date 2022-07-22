@@ -114,8 +114,14 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for ShapeTool {
 		use ShapeToolFsmState::*;
 
 		match self.fsm_state {
-			Ready => actions!(ShapeToolMessageDiscriminant; DragStart),
-			Drawing => actions!(ShapeToolMessageDiscriminant; DragStop, Abort, Resize),
+			Ready => actions!(ShapeToolMessageDiscriminant;
+				DragStart,
+			),
+			Drawing => actions!(ShapeToolMessageDiscriminant;
+				DragStop,
+				Abort,
+				Resize,
+			),
 		}
 	}
 }

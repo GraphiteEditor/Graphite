@@ -115,8 +115,16 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for FreehandTool
 		use FreehandToolFsmState::*;
 
 		match self.fsm_state {
-			Ready => actions!(FreehandToolMessageDiscriminant; DragStart, DragStop, Abort),
-			Drawing => actions!(FreehandToolMessageDiscriminant; DragStop, PointerMove, Abort),
+			Ready => actions!(FreehandToolMessageDiscriminant;
+				DragStart,
+				DragStop,
+				Abort,
+			),
+			Drawing => actions!(FreehandToolMessageDiscriminant;
+				DragStop,
+				PointerMove,
+				Abort,
+			),
 		}
 	}
 }

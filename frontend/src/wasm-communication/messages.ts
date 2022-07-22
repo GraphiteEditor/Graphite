@@ -1,9 +1,9 @@
 /* eslint-disable camelcase */
 /* eslint-disable max-classes-per-file */
 
-import { Transform, Type } from "class-transformer";
+import { Transform, Type, plainToClass } from "class-transformer";
 
-import { IconName } from "@/utility-functions/icons";
+import { IconName, IconSize, IconStyle } from "@/utility-functions/icons";
 import type { WasmEditorInstance, WasmRawInstance } from "@/wasm-communication/editor";
 
 export class JsMessage {
@@ -12,13 +12,22 @@ export class JsMessage {
 }
 
 // ============================================================================
-// Add additional classes to replicate Rust's `FrontendMessage`s and data structures below.
+// Add additional classes below to replicate Rust's `FrontendMessage`s and data structures.
 //
 // Remember to add each message to the `messageConstructors` export at the bottom of the file.
 //
 // Read class-transformer docs at https://github.com/typestack/class-transformer#table-of-contents
 // for details about how to transform the JSON from wasm-bindgen into classes.
 // ============================================================================
+
+export class UpdateNodeGraphVisibility extends JsMessage {
+	readonly visible!: boolean;
+}
+
+export class UpdateOpenDocumentsList extends JsMessage {
+	@Type(() => FrontendDocumentDetails)
+	readonly open_documents!: FrontendDocumentDetails[];
+}
 
 // Allows the auto save system to use a string for the id rather than a BigInt.
 // IndexedDb does not allow for BigInts as primary keys.
@@ -40,13 +49,24 @@ export class FrontendDocumentDetails extends DocumentDetails {
 	readonly id!: bigint;
 }
 
-export class UpdateNodeGraphVisibility extends JsMessage {
-	readonly visible!: boolean;
+export class TriggerIndexedDbWriteDocument extends JsMessage {
+	document!: string;
+
+	@Type(() => IndexedDbDocumentDetails)
+	details!: IndexedDbDocumentDetails;
+
+	version!: string;
 }
 
-export class UpdateOpenDocumentsList extends JsMessage {
-	@Type(() => FrontendDocumentDetails)
-	readonly open_documents!: FrontendDocumentDetails[];
+export class IndexedDbDocumentDetails extends DocumentDetails {
+	@Transform(({ value }: { value: bigint }) => value.toString())
+	id!: string;
+}
+
+export class TriggerIndexedDbRemoveDocument extends JsMessage {
+	// Use a string since IndexedDB can not use BigInts for keys
+	@Transform(({ value }: { value: bigint }) => value.toString())
+	document_id!: string;
 }
 
 export class UpdateInputHints extends JsMessage {
@@ -86,7 +106,7 @@ export type HSVA = {
 	a: number;
 };
 
-const To255Scale = Transform(({ value }) => value * 255);
+const To255Scale = Transform(({ value }: { value: number }) => value * 255);
 export class Color {
 	@To255Scale
 	readonly red!: number;
@@ -109,14 +129,6 @@ export class Color {
 	}
 }
 
-export class UpdateWorkingColors extends JsMessage {
-	@Type(() => Color)
-	readonly primary!: Color;
-
-	@Type(() => Color)
-	readonly secondary!: Color;
-}
-
 export class UpdateActiveDocument extends JsMessage {
 	readonly document_id!: bigint;
 }
@@ -124,7 +136,7 @@ export class UpdateActiveDocument extends JsMessage {
 export class DisplayDialogPanic extends JsMessage {
 	readonly panic_info!: string;
 
-	readonly title!: string;
+	readonly header!: string;
 
 	readonly description!: string;
 }
@@ -145,48 +157,46 @@ export class UpdateDocumentArtboards extends JsMessage {
 	readonly svg!: string;
 }
 
-const TupleToVec2 = Transform(({ value }) => ({ x: value[0], y: value[1] }));
+const TupleToVec2 = Transform(({ value }: { value: [number, number] }) => ({ x: value[0], y: value[1] }));
+
+export type XY = { x: number; y: number };
 
 export class UpdateDocumentScrollbars extends JsMessage {
 	@TupleToVec2
-	readonly position!: { x: number; y: number };
+	readonly position!: XY;
 
 	@TupleToVec2
-	readonly size!: { x: number; y: number };
+	readonly size!: XY;
 
 	@TupleToVec2
-	readonly multiplier!: { x: number; y: number };
+	readonly multiplier!: XY;
 }
 
 export class UpdateDocumentRulers extends JsMessage {
 	@TupleToVec2
-	readonly origin!: { x: number; y: number };
+	readonly origin!: XY;
 
 	readonly spacing!: number;
 
 	readonly interval!: number;
 }
 
-export type MouseCursorIcon = "default" | "zoom-in" | "zoom-out" | "grabbing" | "crosshair" | "text" | "ns-resize" | "ew-resize" | "nesw-resize" | "nwse-resize";
-
-const ToCssCursorProperty = Transform(({ value }) => {
-	const cssNames: Record<string, MouseCursorIcon> = {
-		ZoomIn: "zoom-in",
-		ZoomOut: "zoom-out",
-		Grabbing: "grabbing",
-		Crosshair: "crosshair",
-		Text: "text",
-		NSResize: "ns-resize",
-		EWResize: "ew-resize",
-		NESWResize: "nesw-resize",
-		NWSEResize: "nwse-resize",
-	};
-
-	return cssNames[value] || "default";
-});
+const mouseCursorIconCSSNames = {
+	ZoomIn: "zoom-in",
+	ZoomOut: "zoom-out",
+	Grabbing: "grabbing",
+	Crosshair: "crosshair",
+	Text: "text",
+	NSResize: "ns-resize",
+	EWResize: "ew-resize",
+	NESWResize: "nesw-resize",
+	NWSEResize: "nwse-resize",
+} as const;
+export type MouseCursor = keyof typeof mouseCursorIconCSSNames;
+export type MouseCursorIcon = typeof mouseCursorIconCSSNames[MouseCursor];
 
 export class UpdateMouseCursor extends JsMessage {
-	@ToCssCursorProperty
+	@Transform(({ value }: { value: MouseCursor }) => mouseCursorIconCSSNames[value] || "default")
 	readonly cursor!: MouseCursorIcon;
 }
 
@@ -208,8 +218,10 @@ export class TriggerRasterDownload extends JsMessage {
 	readonly mime!: string;
 
 	@TupleToVec2
-	readonly size!: { x: number; y: number };
+	readonly size!: XY;
 }
+
+export class TriggerRefreshBoundsOfViewports extends JsMessage {}
 
 export class DocumentChanged extends JsMessage {}
 
@@ -290,6 +302,7 @@ export class DisplayEditableTextbox extends JsMessage {
 }
 
 export class UpdateImageData extends JsMessage {
+	@Type(() => ImageData)
 	readonly image_data!: ImageData[];
 }
 
@@ -307,7 +320,7 @@ export class LayerPanelEntry {
 
 	layer_type!: LayerType;
 
-	@Transform(({ value }) => new BigUint64Array(value))
+	@Transform(({ value }: { value: bigint[] }) => new BigUint64Array(value))
 	path!: BigUint64Array;
 
 	@Type(() => LayerMetadata)
@@ -332,27 +345,7 @@ export class ImageData {
 	readonly image_data!: Uint8Array;
 }
 
-export class IndexedDbDocumentDetails extends DocumentDetails {
-	@Transform(({ value }: { value: bigint }) => value.toString())
-	id!: string;
-}
-
 export class DisplayDialogDismiss extends JsMessage {}
-
-export class TriggerIndexedDbWriteDocument extends JsMessage {
-	document!: string;
-
-	@Type(() => IndexedDbDocumentDetails)
-	details!: IndexedDbDocumentDetails;
-
-	version!: string;
-}
-
-export class TriggerIndexedDbRemoveDocument extends JsMessage {
-	// Use a string since IndexedDB can not use BigInts for keys
-	@Transform(({ value }: { value: bigint }) => value.toString())
-	document_id!: string;
-}
 
 export class Font {
 	font_family!: string;
@@ -371,15 +364,273 @@ export class TriggerVisitLink extends JsMessage {
 	url!: string;
 }
 
+export class TriggerTextCommit extends JsMessage {}
+
+export class TriggerTextCopy extends JsMessage {
+	readonly copy_text!: string;
+}
+
+export class TriggerAboutGraphiteLocalizedCommitDate extends JsMessage {
+	readonly commit_date!: string;
+}
+
+export class TriggerViewportResize extends JsMessage {}
+
+// WIDGET PROPS
+
+export abstract class WidgetProps {
+	kind!: string;
+}
+
+export class CheckboxInput extends WidgetProps {
+	checked!: boolean;
+
+	icon!: IconName;
+
+	tooltip!: string;
+}
+
+export class ColorInput extends WidgetProps {
+	value!: string | undefined;
+
+	label!: string | undefined;
+
+	noTransparency!: boolean;
+
+	disabled!: boolean;
+
+	tooltip!: string;
+}
+
+export interface MenuListEntryData<Value = string> {
+	value?: Value;
+	label?: string;
+	icon?: IconName;
+	font?: URL;
+	shortcut?: string[];
+	shortcutRequiresLock?: boolean;
+	disabled?: boolean;
+	action?: () => void;
+	children?: SectionsOfMenuListEntries;
+}
+export type MenuListEntry<Value = string> = MenuListEntryData<Value> & { ref?: typeof FloatingMenu | typeof MenuList };
+export type MenuListEntries<Value = string> = MenuListEntry<Value>[];
+export type SectionsOfMenuListEntries<Value = string> = MenuListEntries<Value>[];
+
+export class DropdownInput extends WidgetProps {
+	entries!: SectionsOfMenuListEntries;
+
+	selectedIndex!: number | undefined;
+
+	drawIcon!: boolean;
+
+	interactive!: boolean;
+
+	disabled!: boolean;
+}
+
+export class FontInput extends WidgetProps {
+	fontFamily!: string;
+
+	fontStyle!: string;
+
+	isStyle!: boolean;
+
+	disabled!: boolean;
+}
+
+export class IconButton extends WidgetProps {
+	icon!: IconName;
+
+	size!: IconSize;
+
+	active!: boolean;
+
+	tooltip!: string;
+}
+
+export class IconLabel extends WidgetProps {
+	icon!: IconName;
+
+	iconStyle!: IconStyle | undefined;
+}
+
+export type IncrementBehavior = "Add" | "Multiply" | "Callback" | "None";
+
+export class NumberInput extends WidgetProps {
+	label!: string | undefined;
+
+	value!: number | undefined;
+
+	min!: number | undefined;
+
+	max!: number | undefined;
+
+	isInteger!: boolean;
+
+	displayDecimalPlaces!: number;
+
+	unit!: string;
+
+	unitIsHiddenWhenEditing!: boolean;
+
+	incrementBehavior!: IncrementBehavior;
+
+	incrementFactor!: number;
+
+	disabled!: boolean;
+}
+
+export class OptionalInput extends WidgetProps {
+	checked!: boolean;
+
+	icon!: IconName;
+
+	tooltip!: string;
+}
+
+export class PopoverButton extends WidgetProps {
+	icon!: string | undefined;
+
+	// Body
+	header!: string;
+
+	text!: string;
+}
+
+export interface RadioEntryData {
+	value?: string;
+	label?: string;
+	icon?: IconName;
+	tooltip?: string;
+
+	// Callbacks
+	action?: () => void;
+}
+export type RadioEntries = RadioEntryData[];
+
+export class RadioInput extends WidgetProps {
+	entries!: RadioEntries;
+
+	selectedIndex!: number;
+}
+
+export type SeparatorDirection = "Horizontal" | "Vertical";
+export type SeparatorType = "Related" | "Unrelated" | "Section" | "List";
+
+export class Separator extends WidgetProps {
+	direction!: SeparatorDirection;
+
+	type!: SeparatorType;
+}
+
+export class SwatchPairInput extends WidgetProps {
+	@Type(() => Color)
+	primary!: Color;
+
+	@Type(() => Color)
+	secondary!: Color;
+}
+
+export class TextAreaInput extends WidgetProps {
+	value!: string;
+
+	label!: string | undefined;
+
+	disabled!: boolean;
+}
+
+export class TextButton extends WidgetProps {
+	label!: string;
+
+	emphasized!: boolean;
+
+	minWidth!: number;
+
+	disabled!: boolean;
+}
+
+export class TextInput extends WidgetProps {
+	value!: string;
+
+	label!: string | undefined;
+
+	disabled!: boolean;
+}
+
+export class TextLabel extends WidgetProps {
+	// Body
+	value!: string;
+
+	// Props
+	bold!: boolean;
+
+	italic!: boolean;
+
+	tableAlign!: boolean;
+
+	multiline!: boolean;
+}
+
+// WIDGET
+
+const widgetSubTypes = [
+	{ value: CheckboxInput, name: "CheckboxInput" },
+	{ value: ColorInput, name: "ColorInput" },
+	{ value: DropdownInput, name: "DropdownInput" },
+	{ value: FontInput, name: "FontInput" },
+	{ value: IconButton, name: "IconButton" },
+	{ value: IconLabel, name: "IconLabel" },
+	{ value: NumberInput, name: "NumberInput" },
+	{ value: OptionalInput, name: "OptionalInput" },
+	{ value: PopoverButton, name: "PopoverButton" },
+	{ value: RadioInput, name: "RadioInput" },
+	{ value: Separator, name: "Separator" },
+	{ value: SwatchPairInput, name: "SwatchPairInput" },
+	{ value: TextAreaInput, name: "TextAreaInput" },
+	{ value: TextButton, name: "TextButton" },
+	{ value: TextInput, name: "TextInput" },
+	{ value: TextLabel, name: "TextLabel" },
+];
+export type WidgetPropsSet = InstanceType<typeof widgetSubTypes[number]["value"]>;
+
+export class Widget {
+	constructor(props: WidgetPropsSet, widgetId: bigint) {
+		this.props = props;
+		this.widgetId = widgetId;
+	}
+
+	@Type(() => WidgetProps, { discriminator: { property: "kind", subTypes: widgetSubTypes }, keepDiscriminatorProperty: true })
+	props!: WidgetPropsSet;
+
+	widgetId!: bigint;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function hoistWidgetHolders(widgetHolders: any[]): Widget[] {
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	return widgetHolders.map((widgetHolder: any) => {
+		const kind = Object.keys(widgetHolder.widget)[0];
+		const props = widgetHolder.widget[kind];
+		props.kind = kind;
+
+		const { widgetId } = widgetHolder;
+
+		return plainToClass(Widget, { props, widgetId });
+	});
+}
+
+// WIDGET LAYOUT
+
 export interface WidgetLayout {
-	layout: LayoutGroup[];
 	layout_target: unknown;
+	layout: LayoutGroup[];
 }
 
 export function defaultWidgetLayout(): WidgetLayout {
 	return {
-		layout: [],
 		layout_target: null,
+		layout: [],
 	};
 }
 
@@ -400,107 +651,27 @@ export function isWidgetSection(layoutRow: LayoutGroup): layoutRow is WidgetSect
 	return Boolean((layoutRow as WidgetSection).layout);
 }
 
-export type WidgetKind =
-	| "CheckboxInput"
-	| "ColorInput"
-	| "DropdownInput"
-	| "FontInput"
-	| "IconButton"
-	| "IconLabel"
-	| "NumberInput"
-	| "OptionalInput"
-	| "PopoverButton"
-	| "RadioInput"
-	| "Separator"
-	| "TextAreaInput"
-	| "TextButton"
-	| "TextInput"
-	| "TextLabel";
-
-export interface Widget {
-	kind: WidgetKind;
-	widget_id: bigint;
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	props: any;
-}
-
-export class UpdateDialogDetails extends JsMessage implements WidgetLayout {
-	layout_target!: unknown;
-
-	@Transform(({ value }) => createWidgetLayout(value))
-	layout!: LayoutGroup[];
-}
-
-export class UpdateDocumentModeLayout extends JsMessage implements WidgetLayout {
-	layout_target!: unknown;
-
-	@Transform(({ value }) => createWidgetLayout(value))
-	layout!: LayoutGroup[];
-}
-
-export class UpdateToolOptionsLayout extends JsMessage implements WidgetLayout {
-	layout_target!: unknown;
-
-	@Transform(({ value }) => createWidgetLayout(value))
-	layout!: LayoutGroup[];
-}
-
-export class UpdateDocumentBarLayout extends JsMessage implements WidgetLayout {
-	layout_target!: unknown;
-
-	@Transform(({ value }) => createWidgetLayout(value))
-	layout!: LayoutGroup[];
-}
-
-export class UpdateToolShelfLayout extends JsMessage implements WidgetLayout {
-	layout_target!: unknown;
-
-	@Transform(({ value }) => createWidgetLayout(value))
-	layout!: LayoutGroup[];
-}
-
-export class UpdatePropertyPanelOptionsLayout extends JsMessage implements WidgetLayout {
-	layout_target!: unknown;
-
-	@Transform(({ value }) => createWidgetLayout(value))
-	layout!: LayoutGroup[];
-}
-
-export class UpdatePropertyPanelSectionsLayout extends JsMessage implements WidgetLayout {
-	layout_target!: unknown;
-
-	@Transform(({ value }) => createWidgetLayout(value))
-	layout!: LayoutGroup[];
-}
-
-export class UpdateLayerTreeOptionsLayout extends JsMessage implements WidgetLayout {
-	layout_target!: unknown;
-
-	@Transform(({ value }) => createWidgetLayout(value))
-	layout!: LayoutGroup[];
-}
-
 // Unpacking rust types to more usable type in the frontend
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function createWidgetLayout(widgetLayout: any[]): LayoutGroup[] {
 	return widgetLayout.map((layoutType): LayoutGroup => {
-		if (layoutType.Column) {
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			const columnWidgets = hoistWidgetHolders(layoutType.Column.columnWidgets);
+		if (layoutType.column) {
+			const columnWidgets = hoistWidgetHolders(layoutType.column.columnWidgets);
+
 			const result: WidgetColumn = { columnWidgets };
 			return result;
 		}
 
-		if (layoutType.Row) {
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			const rowWidgets = hoistWidgetHolders(layoutType.Row.rowWidgets);
+		if (layoutType.row) {
+			const rowWidgets = hoistWidgetHolders(layoutType.row.rowWidgets);
+
 			const result: WidgetRow = { rowWidgets };
 			return result;
 		}
 
-		if (layoutType.Section) {
-			const { name } = layoutType.Section;
-			const layout = createWidgetLayout(layoutType.Section.layout);
+		if (layoutType.section) {
+			const { name } = layoutType.section;
+			const layout = createWidgetLayout(layoutType.section.layout);
 
 			const result: WidgetSection = { name, layout };
 			return result;
@@ -509,24 +680,103 @@ function createWidgetLayout(widgetLayout: any[]): LayoutGroup[] {
 		throw new Error("Layout row type does not exist");
 	});
 }
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function hoistWidgetHolders(widgetHolders: any[]): Widget[] {
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	return widgetHolders.map((widgetHolder: any) => {
-		const { widget_id } = widgetHolder;
-		const kind = Object.keys(widgetHolder.widget)[0];
-		const props = widgetHolder.widget[kind];
 
-		return { widget_id, kind, props } as Widget;
-	});
+// WIDGET LAYOUTS
+
+export class UpdateDialogDetails extends JsMessage implements WidgetLayout {
+	layout_target!: unknown;
+
+	// TODO: Replace `any` with correct typing
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	@Transform(({ value }: { value: any }) => createWidgetLayout(value))
+	layout!: LayoutGroup[];
+}
+
+export class UpdateDocumentModeLayout extends JsMessage implements WidgetLayout {
+	layout_target!: unknown;
+
+	// TODO: Replace `any` with correct typing
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	@Transform(({ value }: { value: any }) => createWidgetLayout(value))
+	layout!: LayoutGroup[];
+}
+
+export class UpdateToolOptionsLayout extends JsMessage implements WidgetLayout {
+	layout_target!: unknown;
+
+	// TODO: Replace `any` with correct typing
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	@Transform(({ value }: { value: any }) => createWidgetLayout(value))
+	layout!: LayoutGroup[];
+}
+
+export class UpdateDocumentBarLayout extends JsMessage implements WidgetLayout {
+	layout_target!: unknown;
+
+	// TODO: Replace `any` with correct typing
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	@Transform(({ value }: { value: any }) => createWidgetLayout(value))
+	layout!: LayoutGroup[];
+}
+
+export class UpdateToolShelfLayout extends JsMessage implements WidgetLayout {
+	layout_target!: unknown;
+
+	// TODO: Replace `any` with correct typing
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	@Transform(({ value }: { value: any }) => createWidgetLayout(value))
+	layout!: LayoutGroup[];
+}
+
+export class UpdateWorkingColorsLayout extends JsMessage implements WidgetLayout {
+	layout_target!: unknown;
+
+	// TODO: Replace `any` with correct typing
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	@Transform(({ value }: { value: any }) => createWidgetLayout(value))
+	layout!: LayoutGroup[];
+}
+
+export class UpdatePropertyPanelOptionsLayout extends JsMessage implements WidgetLayout {
+	layout_target!: unknown;
+
+	// TODO: Replace `any` with correct typing
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	@Transform(({ value }: { value: any }) => createWidgetLayout(value))
+	layout!: LayoutGroup[];
+}
+
+export class UpdatePropertyPanelSectionsLayout extends JsMessage implements WidgetLayout {
+	layout_target!: unknown;
+
+	// TODO: Replace `any` with correct typing
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	@Transform(({ value }: { value: any }) => createWidgetLayout(value))
+	layout!: LayoutGroup[];
+}
+
+export class UpdateLayerTreeOptionsLayout extends JsMessage implements WidgetLayout {
+	layout_target!: unknown;
+
+	// TODO: Replace `any` with correct typing
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	@Transform(({ value }: { value: any }) => createWidgetLayout(value))
+	layout!: LayoutGroup[];
 }
 
 export class UpdateMenuBarLayout extends JsMessage {
 	layout_target!: unknown;
 
-	@Transform(({ value }) => createMenuLayout(value))
+	// TODO: Replace `any` with correct typing
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	@Transform(({ value }: { value: any }) => createMenuLayout(value))
 	layout!: MenuColumn[];
 }
+
+export type MenuColumn = {
+	label: string;
+	children: MenuEntry[][];
+};
 
 export type MenuEntry = {
 	shortcut: string[] | undefined;
@@ -534,11 +784,6 @@ export type MenuEntry = {
 	label: string;
 	icon: string | undefined;
 	children: undefined | MenuEntry[][];
-};
-
-export type MenuColumn = {
-	label: string;
-	children: MenuEntry[][];
 };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -555,18 +800,6 @@ function createMenuLayoutRecursive(subLayout: any[][]): MenuEntry[][] {
 		}))
 	);
 }
-
-export class TriggerTextCommit extends JsMessage {}
-
-export class TriggerTextCopy extends JsMessage {
-	readonly copy_text!: string;
-}
-
-export class TriggerAboutGraphiteLocalizedCommitDate extends JsMessage {
-	readonly commit_date!: string;
-}
-
-export class TriggerViewportResize extends JsMessage {}
 
 // `any` is used since the type of the object should be known from the Rust side
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -588,6 +821,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	TriggerIndexedDbWriteDocument,
 	TriggerPaste,
 	TriggerRasterDownload,
+	TriggerRefreshBoundsOfViewports,
 	TriggerTextCommit,
 	TriggerTextCopy,
 	TriggerAboutGraphiteLocalizedCommitDate,
@@ -612,7 +846,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateLayerTreeOptionsLayout,
 	UpdateDocumentModeLayout,
 	UpdateToolOptionsLayout,
-	UpdateWorkingColors,
+	UpdateWorkingColorsLayout,
 	UpdateMenuBarLayout,
 } as const;
 export type JsMessageType = keyof typeof messageMakers;

@@ -1,7 +1,7 @@
 <template>
 	<LayoutRow class="checkbox-input">
 		<input type="checkbox" :id="`checkbox-input-${id}`" :checked="checked" @change="(e) => $emit('update:checked', (e.target as HTMLInputElement).checked)" />
-		<label :for="`checkbox-input-${id}`" :tabindex="disableTabIndex ? -1 : 0" @keydown.enter="(e) => ((e.target as HTMLElement).previousSibling as HTMLInputElement).click()">
+		<label :for="`checkbox-input-${id}`" tabindex="0" @keydown.enter="(e) => ((e.target as HTMLElement).previousSibling as HTMLInputElement).click()" :title="tooltip">
 			<LayoutRow class="checkbox-box">
 				<IconLabel :icon="icon" />
 			</LayoutRow>
@@ -66,6 +66,11 @@ import IconLabel from "@/components/widgets/labels/IconLabel.vue";
 
 export default defineComponent({
 	emits: ["update:checked"],
+	props: {
+		checked: { type: Boolean as PropType<boolean>, default: false },
+		icon: { type: String as PropType<IconName>, default: "Checkmark" },
+		tooltip: { type: String as PropType<string | undefined>, required: false },
+	},
 	data() {
 		return {
 			id: `${Math.random()}`.substring(2),
@@ -75,11 +80,6 @@ export default defineComponent({
 		isChecked() {
 			return this.checked;
 		},
-	},
-	props: {
-		checked: { type: Boolean as PropType<boolean>, default: false },
-		icon: { type: String as PropType<IconName>, default: "Checkmark" },
-		disableTabIndex: { type: Boolean as PropType<boolean>, default: false },
 	},
 	components: {
 		IconLabel,

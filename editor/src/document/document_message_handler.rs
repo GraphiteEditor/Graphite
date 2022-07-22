@@ -552,8 +552,9 @@ impl DocumentMessageHandler {
 					on_update: WidgetCallback::new(|optional_input: &OptionalInput| DocumentMessage::SetSnapping { snap: optional_input.checked }.into()),
 				})),
 				WidgetHolder::new(Widget::PopoverButton(PopoverButton {
-					title: "Snapping".into(),
+					header: "Snapping".into(),
 					text: "The contents of this popover menu are coming soon".into(),
+					..Default::default()
 				})),
 				WidgetHolder::new(Widget::Separator(Separator {
 					separator_type: SeparatorType::Unrelated,
@@ -566,8 +567,9 @@ impl DocumentMessageHandler {
 					on_update: WidgetCallback::new(|_| DialogMessage::RequestComingSoonDialog { issue: Some(318) }.into()),
 				})),
 				WidgetHolder::new(Widget::PopoverButton(PopoverButton {
-					title: "Grid".into(),
+					header: "Grid".into(),
 					text: "The contents of this popover menu are coming soon".into(),
+					..Default::default()
 				})),
 				WidgetHolder::new(Widget::Separator(Separator {
 					separator_type: SeparatorType::Unrelated,
@@ -580,8 +582,9 @@ impl DocumentMessageHandler {
 					on_update: WidgetCallback::new(|optional_input: &OptionalInput| DocumentMessage::SetOverlaysVisibility { visible: optional_input.checked }.into()),
 				})),
 				WidgetHolder::new(Widget::PopoverButton(PopoverButton {
-					title: "Overlays".into(),
+					header: "Overlays".into(),
 					text: "The contents of this popover menu are coming soon".into(),
+					..Default::default()
 				})),
 				WidgetHolder::new(Widget::Separator(Separator {
 					separator_type: SeparatorType::Unrelated,
@@ -614,8 +617,9 @@ impl DocumentMessageHandler {
 					],
 				})),
 				WidgetHolder::new(Widget::PopoverButton(PopoverButton {
-					title: "View Mode".into(),
+					header: "View Mode".into(),
 					text: "The contents of this popover menu are coming soon".into(),
+					..Default::default()
 				})),
 				WidgetHolder::new(Widget::Separator(Separator {
 					separator_type: SeparatorType::Section,

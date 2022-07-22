@@ -35,5 +35,11 @@ impl MessageHandler<GlobalMessage, ()> for GlobalMessageHandler {
 		}
 	}
 
-	advertise_actions!(GlobalMessageDiscriminant; LogMaxLevelDebug, LogMaxLevelInfo, LogMaxLevelTrace, TraceMessageContents, TraceMessageDiscriminants);
+	advertise_actions!(GlobalMessageDiscriminant;
+		LogMaxLevelDebug,
+		LogMaxLevelInfo,
+		LogMaxLevelTrace,
+		TraceMessageContents,
+		TraceMessageDiscriminants,
+	);
 }

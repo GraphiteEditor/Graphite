@@ -116,8 +116,14 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for LineTool {
 		use LineToolFsmState::*;
 
 		match self.fsm_state {
-			Ready => actions!(LineToolMessageDiscriminant; DragStart),
-			Drawing => actions!(LineToolMessageDiscriminant; DragStop, Redraw, Abort),
+			Ready => actions!(LineToolMessageDiscriminant;
+				DragStart,
+			),
+			Drawing => actions!(LineToolMessageDiscriminant;
+				DragStop,
+				Redraw,
+				Abort,
+			),
 		}
 	}
 }

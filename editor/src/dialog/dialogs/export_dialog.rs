@@ -33,6 +33,7 @@ impl PropertyHolder for Export {
 			WidgetHolder::new(Widget::TextInput(TextInput {
 				value: self.file_name.clone(),
 				on_update: WidgetCallback::new(|text_input: &TextInput| ExportDialogUpdate::FileName(text_input.value.clone()).into()),
+				..Default::default()
 			})),
 		];
 
@@ -123,7 +124,7 @@ impl PropertyHolder for Export {
 				emphasized: true,
 				on_update: WidgetCallback::new(|_| {
 					DialogMessage::CloseDialogAndThen {
-						followup: Box::new(ExportDialogUpdate::Submit.into()),
+						followups: vec![ExportDialogUpdate::Submit.into()],
 					}
 					.into()
 				}),

@@ -67,7 +67,10 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for FillTool {
 		}
 	}
 
-	advertise_actions!(FillToolMessageDiscriminant; LeftMouseDown, RightMouseDown);
+	advertise_actions!(FillToolMessageDiscriminant;
+		LeftMouseDown,
+		RightMouseDown,
+	);
 }
 
 impl ToolTransition for FillTool {
