@@ -289,7 +289,7 @@ export default defineComponent({
 		});
 
 		// Initialize certain setup tasks required by the editor backend to be ready for the user now that the frontend is ready
-		this.editor.instance.init_app();
+		this.editor.instance.init_after_frontend_ready();
 	},
 	beforeUnmount() {
 		// Call the destructor for each manager

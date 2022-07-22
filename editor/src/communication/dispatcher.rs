@@ -1,4 +1,5 @@
 use super::broadcast_message_handler::BroadcastMessageHandler;
+use crate::consts::{DEFAULT_FONT_FAMILY, DEFAULT_FONT_STYLE};
 use crate::document::PortfolioMessageHandler;
 use crate::global::GlobalMessageHandler;
 use crate::input::{InputMapperMessageHandler, InputPreprocessorMessageHandler};
@@ -6,6 +7,8 @@ use crate::layout::layout_message_handler::LayoutMessageHandler;
 use crate::message_prelude::*;
 use crate::viewport_tools::tool_message_handler::ToolMessageHandler;
 use crate::workspace::WorkspaceMessageHandler;
+
+use graphene::layers::text_layer::Font;
 
 use std::collections::VecDeque;
 
@@ -85,6 +88,18 @@ impl Dispatcher {
 			match message {
 				#[remain::unsorted]
 				NoOp => {}
+				#[remain::unsorted]
+				Init => {
+					// Display the menu bar at the top of the window
+					let message = MenuBarMessage::SendLayout.into();
+					queue.push_back(message);
+
+					// Load the default font
+					let font = Font::new(DEFAULT_FONT_FAMILY.into(), DEFAULT_FONT_STYLE.into());
+					let message = FrontendMessage::TriggerFontLoad { font, is_default: true }.into();
+					queue.push_back(message);
+				}
+
 				Broadcast(message) => self.message_handlers.broadcast_message_handler.process_action(message, (), &mut queue),
 				Dialog(message) => {
 					self.message_handlers
@@ -92,14 +107,16 @@ impl Dispatcher {
 						.process_action(message, &self.message_handlers.portfolio_message_handler, &mut queue);
 				}
 				Frontend(message) => {
-					// Image and font loading should be immediately handled
+					// Handle these messages immediately by returning early
 					if let FrontendMessage::UpdateImageData { .. } | FrontendMessage::TriggerFontLoad { .. } | FrontendMessage::TriggerRefreshBoundsOfViewports = message {
 						self.responses.push(message);
-						return;
-					}
 
-					// `FrontendMessage`s are saved and will be sent to the frontend after the message queue is done being processed
-					self.responses.push(message);
+						// Return early to avoid running the code after the match block
+						return;
+					} else {
+						// `FrontendMessage`s are saved and will be sent to the frontend after the message queue is done being processed
+						self.responses.push(message);
+					}
 				}
 				Global(message) => {
 					self.message_handlers.global_message_handler.process_action(message, (), &mut queue);
