@@ -658,9 +658,6 @@ pub fn point_t_value(a: &PathSeg, p: &Point) -> Option<f64> {
 }
 
 pub fn intersections(a: &BezPath, b: &BezPath) -> Vec<Intersect> {
-	// log::info!("{:?}", a.to_svg());
-	// log::info!("{:?}", b.to_svg());
-
 	let mut intersections: Vec<Intersect> = Vec::new();
 	// There is some duplicate computation of b_extrema here, but I doubt it's significant
 	a.segments().enumerate().for_each(|(a_index, a_seg)| {
@@ -675,8 +672,6 @@ pub fn intersections(a: &BezPath, b: &BezPath) -> Vec<Intersect> {
 			}
 		})
 	});
-
-	// log::info!("{:?}", intersections);
 
 	intersections
 }

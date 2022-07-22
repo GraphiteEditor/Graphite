@@ -281,42 +281,33 @@ impl PropertyHolder for MenuBarMessageHandler {
 					],
 					vec![
 						MenuEntry {
-							label: "Debug: Set Maximum Log Level".into(),
-							action: MenuEntry::no_action(),
-							children: Some(vec![vec![
-								MenuEntry {
-									label: "Max Level Info (fewest logs)".into(),
-									action: MenuEntry::create_action(|_| GlobalMessage::LogMaxLevelInfo.into()),
-									shortcut: Some(vec![Key::Key1]),
-									..MenuEntry::default()
-								},
-								MenuEntry {
-									label: "Max Level Debug".into(),
-									action: MenuEntry::create_action(|_| GlobalMessage::LogMaxLevelDebug.into()),
-									shortcut: Some(vec![Key::Key2]),
-									..MenuEntry::default()
-								},
-								MenuEntry {
-									label: "Max Level Trace (all logs)".into(),
-									action: MenuEntry::create_action(|_| GlobalMessage::LogMaxLevelTrace.into()),
-									shortcut: Some(vec![Key::Key3]),
-									..MenuEntry::default()
-								},
-							]]),
+							label: "Debug: Print Trace Logs".into(),
+							icon: Some(if let log::LevelFilter::Trace = log::max_level() { "CheckboxChecked" } else { "CheckboxUnchecked" }.into()),
+							shortcut: Some(vec![Key::KeyAlt, Key::KeyT]),
+							action: MenuEntry::create_action(|_| DebugMessage::ToggleTraceLogs.into()),
 							..MenuEntry::default()
 						},
 						MenuEntry {
-							label: "Debug: Configure Message Traces".into(),
+							label: "Debug: Print Messages".into(),
 							action: MenuEntry::no_action(),
 							children: Some(vec![vec![
 								MenuEntry {
-									label: "Trace Message Discriminants".into(),
-									action: MenuEntry::create_action(|_| GlobalMessage::TraceMessageDiscriminants.into()),
+									label: "Off".into(),
+									// icon: Some("Checkmark".into()), // TODO: Find a way to set this icon on the active mode
+									shortcut: Some(vec![Key::KeyAlt, Key::Key0]),
+									action: MenuEntry::create_action(|_| DebugMessage::MessageOff.into()),
 									..MenuEntry::default()
 								},
 								MenuEntry {
-									label: "Trace Full Message Contents".into(),
-									action: MenuEntry::create_action(|_| GlobalMessage::TraceMessageContents.into()),
+									label: "Names Only".into(),
+									shortcut: Some(vec![Key::KeyAlt, Key::Key1]),
+									action: MenuEntry::create_action(|_| DebugMessage::MessageNames.into()),
+									..MenuEntry::default()
+								},
+								MenuEntry {
+									label: "Full Contents".into(),
+									shortcut: Some(vec![Key::KeyAlt, Key::Key2]),
+									action: MenuEntry::create_action(|_| DebugMessage::MessageContents.into()),
 									..MenuEntry::default()
 								},
 							]]),
