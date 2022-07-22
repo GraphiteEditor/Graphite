@@ -21,11 +21,7 @@ export default defineComponent({
 			[[20, 20], null, [10, 90]],
 			[[150, 40], [60, 40], null],
 			[[175, 175], null, null],
-			[
-				[100, 100],
-				[40, 120],
-				[20, 60],
-			],
+			[[100, 100], [40, 120], null],
 		];
 		return {
 			triples,
