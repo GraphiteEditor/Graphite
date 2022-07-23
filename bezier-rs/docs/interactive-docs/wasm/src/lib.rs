@@ -22,9 +22,9 @@ struct Point {
 #[derive(Clone)]
 pub struct WasmBezier(Bezier);
 
-/// Convert a `DVec2` into a `JsValue`.
-fn vec_to_point(p: &DVec2) -> JsValue {
-	JsValue::from_serde(&serde_json::to_string(&Point { x: p.x, y: p.y }).unwrap()).unwrap()
+/// Convert a `DVec2` into a `Point`.
+fn vec_to_point(p: &DVec2) -> Point {
+	Point { x: p.x, y: p.y }
 }
 
 /// Convert a bezier to a list of points.
@@ -83,8 +83,10 @@ impl WasmBezier {
 		self.0.set_handle_end(DVec2::new(x, y));
 	}
 
-	pub fn get_points(&self) -> Vec<JsValue> {
-		self.0.get_points().map(|point| vec_to_point(&point)).collect()
+	/// The wrapped return type is `Vec<Point>`.
+	pub fn get_points(&self) -> JsValue {
+		let points: Vec<Point> = self.0.get_points().map(|point| vec_to_point(&point)).collect();
+		to_js_value(points)
 	}
 
 	pub fn to_svg(&self) -> String {
@@ -95,26 +97,35 @@ impl WasmBezier {
 		self.0.length(None)
 	}
 
+	/// The wrapped return type is `Point`.
 	pub fn evaluate(&self, t: f64) -> JsValue {
-		vec_to_point(&self.0.evaluate(t))
+		let point: Point = vec_to_point(&self.0.evaluate(t));
+		to_js_value(point)
 	}
 
-	pub fn compute_lookup_table(&self, steps: i32) -> Vec<JsValue> {
-		self.0.compute_lookup_table(Some(steps)).iter().map(vec_to_point).collect()
+	/// The wrapped return type is `Vec<Point>`.
+	pub fn compute_lookup_table(&self, steps: i32) -> JsValue {
+		let table_values: Vec<Point> = self.0.compute_lookup_table(Some(steps)).iter().map(vec_to_point).collect();
+		to_js_value(table_values)
 	}
 
 	pub fn derivative(&self) -> Option<WasmBezier> {
 		self.0.derivative().map(WasmBezier)
 	}
 
+	/// The wrapped return type is `Point`.
 	pub fn tangent(&self, t: f64) -> JsValue {
-		vec_to_point(&self.0.tangent(t))
+		let tangent_point: Point = vec_to_point(&self.0.tangent(t));
+		to_js_value(tangent_point)
 	}
 
+	/// The wrapped return type is `Point`.
 	pub fn normal(&self, t: f64) -> JsValue {
-		vec_to_point(&self.0.normal(t))
+		let normal_point: Point = vec_to_point(&self.0.normal(t));
+		to_js_value(normal_point)
 	}
 
+	/// The wrapped return type is `[Vec<Point>; 2]`.
 	pub fn split(&self, t: f64) -> JsValue {
 		let bezier_points: [Vec<Point>; 2] = self.0.split(t).map(bezier_to_points);
 		to_js_value(bezier_points)
@@ -124,12 +135,15 @@ impl WasmBezier {
 		WasmBezier(self.0.trim(t1, t2))
 	}
 
+	/// The wrapped return type is `Vec<Point>`.
 	pub fn project(&self, x: f64, y: f64) -> JsValue {
-		vec_to_point(&self.0.project(DVec2::new(x, y), ProjectionOptions::default()))
+		let projected_point = vec_to_point(&self.0.project(DVec2::new(x, y), ProjectionOptions::default()));
+		to_js_value(projected_point)
 	}
 
+	/// The wrapped return type is `[Vec<f64>; 2]`.
 	pub fn local_extrema(&self) -> JsValue {
-		let local_extrema = self.0.local_extrema();
+		let local_extrema: [Vec<f64>; 2] = self.0.local_extrema();
 		to_js_value(local_extrema)
 	}
 
@@ -137,32 +151,36 @@ impl WasmBezier {
 		WasmBezier(self.0.rotate(angle))
 	}
 
-	pub fn intersect_line_segment(&self, js_points: &JsValue) -> Vec<JsValue> {
+	/// The wrapped return type is `Vec<Point>`.
+	pub fn intersect_line_segment(&self, js_points: &JsValue) -> JsValue {
 		let line: [DVec2; 2] = js_points.into_serde().unwrap();
-		self.0.intersect_line_segment(line).iter().map(|&p| vec_to_point(&p)).collect::<Vec<JsValue>>()
+		let intersection_points: Vec<Point> = self.0.intersect_line_segment(line).iter().map(|&p| vec_to_point(&p)).collect();
+		to_js_value(intersection_points)
 	}
 
+	/// The wrapped return type is `Vec<Vec<Point>>`.
 	pub fn reduce(&self) -> JsValue {
 		let bezier_points: Vec<Vec<Point>> = self.0.reduce(None).into_iter().map(bezier_to_points).collect();
 		to_js_value(bezier_points)
 	}
 
-	pub fn arcs(&self, error: f64, max_iterations: i32, maximize_arcs: bool) -> Vec<JsValue> {
+	/// The wrapped return type is `Vec<CircleSector>`.
+	pub fn arcs(&self, error: f64, max_iterations: i32, maximize_arcs: bool) -> JsValue {
 		let options = ArcsOptions { error, max_iterations, maximize_arcs };
-		self.0
+		let circle_sectors: Vec<CircleSector> = self
+			.0
 			.arcs(options)
 			.iter()
-			.map(|sector| {
-				to_js_value(CircleSector {
-					center: Point {
-						x: sector.center.x,
-						y: sector.center.y,
-					},
-					radius: sector.radius,
-					start_angle: sector.start_angle,
-					end_angle: sector.end_angle,
-				})
+			.map(|sector| CircleSector {
+				center: Point {
+					x: sector.center.x,
+					y: sector.center.y,
+				},
+				radius: sector.radius,
+				start_angle: sector.start_angle,
+				end_angle: sector.end_angle,
 			})
-			.collect::<Vec<JsValue>>()
+			.collect();
+		to_js_value(circle_sectors)
 	}
 }

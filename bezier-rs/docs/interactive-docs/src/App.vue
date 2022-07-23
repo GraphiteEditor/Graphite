@@ -113,10 +113,10 @@ export default defineComponent({
 				{
 					name: "Lookup Table",
 					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: Record<string, number>): void => {
-						const lookupPoints = bezier.compute_lookup_table(options.steps);
-						lookupPoints.forEach((serializedPoint, index) => {
+						const lookupPoints: Point[] = JSON.parse(bezier.compute_lookup_table(options.steps));
+						lookupPoints.forEach((point, index) => {
 							if (index !== 0 && index !== lookupPoints.length - 1) {
-								drawPoint(getContextFromCanvas(canvas), JSON.parse(serializedPoint), 3, COLORS.NON_INTERACTIVE.STROKE_1);
+								drawPoint(getContextFromCanvas(canvas), point, 3, COLORS.NON_INTERACTIVE.STROKE_1);
 							}
 						});
 					},
@@ -140,7 +140,7 @@ export default defineComponent({
 
 						const derivativeBezier = bezier.derivative();
 						if (derivativeBezier) {
-							const points: Point[] = derivativeBezier.get_points().map((p) => JSON.parse(p));
+							const points: Point[] = JSON.parse(derivativeBezier.get_points());
 							if (points.length === 2) {
 								drawLine(context, points[0], points[1], COLORS.NON_INTERACTIVE.STROKE_1);
 							} else {
@@ -285,10 +285,7 @@ export default defineComponent({
 					name: "Rotate",
 					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: Record<string, number>): void => {
 						const context = getContextFromCanvas(canvas);
-						const rotatedBezier = bezier
-							.rotate(options.angle * Math.PI)
-							.get_points()
-							.map((p) => JSON.parse(p));
+						const rotatedBezier = JSON.parse(bezier.rotate(options.angle * Math.PI).get_points());
 						drawBezier(context, rotatedBezier, null, { curveStrokeColor: COLORS.NON_INTERACTIVE.STROKE_1, radius: 3.5 });
 					},
 					template: markRaw(SliderExample),
@@ -315,7 +312,7 @@ export default defineComponent({
 						];
 						const mappedLine = line.map((p) => [p.x, p.y]);
 						drawLine(context, line[0], line[1], COLORS.NON_INTERACTIVE.STROKE_1);
-						const intersections: Point[] = bezier.intersect_line_segment(mappedLine).map((p) => JSON.parse(p));
+						const intersections: Point[] = JSON.parse(bezier.intersect_line_segment(mappedLine));
 						intersections.forEach((p: Point) => {
 							drawPoint(context, p, 3, COLORS.NON_INTERACTIVE.STROKE_2);
 						});
@@ -335,7 +332,7 @@ export default defineComponent({
 					name: "Arcs",
 					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: Record<string, number>): void => {
 						const context = getContextFromCanvas(canvas);
-						const arcs: CircleSector[] = bezier.arcs(options.error, options.max_iterations, options.maximize_arcs === 1).map((sector) => JSON.parse(sector));
+						const arcs: CircleSector[] = JSON.parse(bezier.arcs(options.error, options.max_iterations, options.maximize_arcs === 1));
 						arcs.forEach((circleSector, index) => {
 							drawCircleSector(context, circleSector, `hsl(${40 * index}, 100%, 50%, 75%)`, `hsl(${40 * index}, 100%, 50%, 37.5%)`);
 						});

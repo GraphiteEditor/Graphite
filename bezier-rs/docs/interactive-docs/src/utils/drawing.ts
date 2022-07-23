@@ -88,7 +88,7 @@ export const drawCircleSector = (ctx: CanvasRenderingContext2D, circleSector: Ci
 };
 
 export const drawBezierHelper = (ctx: CanvasRenderingContext2D, bezier: WasmBezierInstance, bezierStyleConfig: Partial<BezierStyleConfig> = {}): void => {
-	const points = bezier.get_points().map((p: string) => JSON.parse(p));
+	const points = JSON.parse(bezier.get_points());
 	drawBezier(ctx, points, null, bezierStyleConfig);
 };
 
