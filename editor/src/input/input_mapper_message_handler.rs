@@ -16,7 +16,7 @@ impl InputMapperMessageHandler {
 		let mut actions = actions
 			.into_iter()
 			.flatten()
-			.filter(|a| !matches!(*a, MessageDiscriminant::Tool(ToolMessageDiscriminant::ActivateTool) | MessageDiscriminant::Global(_)));
+			.filter(|a| !matches!(*a, MessageDiscriminant::Tool(ToolMessageDiscriminant::ActivateTool) | MessageDiscriminant::Debug(_)));
 		self.mapping
 			.key_down
 			.iter()
