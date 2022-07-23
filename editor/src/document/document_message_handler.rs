@@ -1003,7 +1003,12 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 				);
 			}
 			DebugPrintDocument => {
-				log::debug!("{:#?}\n{:#?}", self.graphene_document, self.layer_metadata);
+				let initial_level = log::max_level();
+				log::set_max_level(log::LevelFilter::Trace);
+
+				log::trace!("{:#?}\n{:#?}", self.graphene_document, self.layer_metadata);
+
+				log::set_max_level(initial_level);
 			}
 			DeleteLayer { layer_path } => {
 				responses.push_front(DocumentOperation::DeleteLayer { path: layer_path.clone() }.into());

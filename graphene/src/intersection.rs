@@ -322,7 +322,6 @@ fn path_intersections(a: &SubCurve, b: &SubCurve, intersections: &mut Vec<Inters
 				cross.t_a = a.start_t + cross.t_a * recursion;
 				cross.quality = guess_quality(a.curve, b.curve, &cross);
 
-				// log::debug!("checking: {:?}", cross.quality);
 				if cross.quality <= F64LOOSE {
 					// Invalid intersections should still be rejected
 					// Rejects "valid" intersections on the non-inclusive end of a `PathSeg`
@@ -336,7 +335,7 @@ fn path_intersections(a: &SubCurve, b: &SubCurve, intersections: &mut Vec<Inters
 				// Return the best estimate of intersection regardless of quality
 				// Also provides a base case and prevents infinite recursion
 				if a.available_precision() <= F64PRECISE || b.available_precision() <= F64PRECISE {
-					log::debug!("precision reached");
+					log::trace!("Precision reached");
 					intersections.push(cross);
 					return;
 				}
@@ -344,7 +343,7 @@ fn path_intersections(a: &SubCurve, b: &SubCurve, intersections: &mut Vec<Inters
 			// Alternate base case
 			// Note: may occur for the less forgiving side of a `PathSeg` endpoint intersect
 			if a.available_precision() <= F64PRECISE || b.available_precision() <= F64PRECISE {
-				log::debug!("precision reached without finding intersect");
+				log::trace!("Precision reached without finding intersect");
 				return;
 			}
 		}

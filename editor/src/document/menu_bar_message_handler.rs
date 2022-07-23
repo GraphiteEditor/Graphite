@@ -281,13 +281,6 @@ impl PropertyHolder for MenuBarMessageHandler {
 					],
 					vec![
 						MenuEntry {
-							label: "Debug: Print Trace Logs".into(),
-							icon: Some(if let log::LevelFilter::Trace = log::max_level() { "CheckboxChecked" } else { "CheckboxUnchecked" }.into()),
-							shortcut: Some(vec![Key::KeyAlt, Key::KeyT]),
-							action: MenuEntry::create_action(|_| DebugMessage::ToggleTraceLogs.into()),
-							..MenuEntry::default()
-						},
-						MenuEntry {
 							label: "Debug: Print Messages".into(),
 							action: MenuEntry::no_action(),
 							children: Some(vec![vec![
@@ -299,7 +292,7 @@ impl PropertyHolder for MenuBarMessageHandler {
 									..MenuEntry::default()
 								},
 								MenuEntry {
-									label: "Names Only".into(),
+									label: "Only Names".into(),
 									shortcut: Some(vec![Key::KeyAlt, Key::Key1]),
 									action: MenuEntry::create_action(|_| DebugMessage::MessageNames.into()),
 									..MenuEntry::default()
@@ -311,6 +304,19 @@ impl PropertyHolder for MenuBarMessageHandler {
 									..MenuEntry::default()
 								},
 							]]),
+							..MenuEntry::default()
+						},
+						MenuEntry {
+							label: "Debug: Print Trace Logs".into(),
+							icon: Some(if let log::LevelFilter::Trace = log::max_level() { "CheckboxChecked" } else { "CheckboxUnchecked" }.into()),
+							shortcut: Some(vec![Key::KeyAlt, Key::KeyT]),
+							action: MenuEntry::create_action(|_| DebugMessage::ToggleTraceLogs.into()),
+							..MenuEntry::default()
+						},
+						MenuEntry {
+							label: "Debug: Print Document".into(),
+							shortcut: Some(vec![Key::KeyAlt, Key::KeyP]),
+							action: MenuEntry::create_action(|_| DebugMessage::ToggleTraceLogs.into()),
 							..MenuEntry::default()
 						},
 						MenuEntry {

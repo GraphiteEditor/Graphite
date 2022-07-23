@@ -157,7 +157,7 @@ impl Default for Mapping {
 			entry! {action=DialogMessage::RequestExportDialog, key_down=KeyE, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::SaveDocument, key_down=KeyS, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::SaveDocument, key_down=KeyS, modifiers=[KeyControl, KeyShift]},
-			entry! {action=DocumentMessage::DebugPrintDocument, key_down=Key9},
+			entry! {action=DocumentMessage::DebugPrintDocument, key_down=KeyP, modifiers=[KeyAlt]},
 			entry! {action=DocumentMessage::ZoomCanvasToFitAll, key_down=Key0, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::DuplicateSelectedLayers, key_down=KeyD, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::GroupSelectedLayers, key_down=KeyG, modifiers=[KeyControl]},
