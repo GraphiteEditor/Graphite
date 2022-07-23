@@ -267,6 +267,12 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 					responses.push_back(DocumentMessage::RenderDocument.into());
 				}
 			}
+			Import => {
+				// This portfolio message wraps the frontend message so it can be listed as an action, which isn't possible for frontend messages
+				if self.active_document().is_some() {
+					responses.push_back(FrontendMessage::TriggerImport.into());
+				}
+			}
 			LoadFont { font, is_default } => {
 				if !self.font_cache.loaded_font(&font) {
 					responses.push_front(FrontendMessage::TriggerFontLoad { font, is_default }.into());
@@ -292,7 +298,8 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 				}
 			}
 			OpenDocument => {
-				responses.push_back(FrontendMessage::TriggerFileUpload.into());
+				// This portfolio message wraps the frontend message so it can be listed as an action, which isn't possible for frontend messages
+				responses.push_back(FrontendMessage::TriggerOpenDocument.into());
 			}
 			OpenDocumentFile {
 				document_name,
@@ -493,10 +500,12 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 		let mut common = actions!(PortfolioMessageDiscriminant;
 			CloseActiveDocumentWithConfirmation,
 			CloseAllDocuments,
+			Import,
 			NextDocument,
-			PrevDocument,
-			PasteIntoFolder,
+			OpenDocument,
 			Paste,
+			PasteIntoFolder,
+			PrevDocument,
 		);
 
 		if let Some(document) = self.active_document() {

@@ -145,8 +145,6 @@ impl Default for Mapping {
 			entry! {action=ToolMessage::ResetColors, key_down=KeyX, modifiers=[KeyShift, KeyControl]},
 			entry! {action=ToolMessage::SwapColors, key_down=KeyX, modifiers=[KeyShift]},
 			entry! {action=ToolMessage::SelectRandomPrimaryColor, key_down=KeyC, modifiers=[KeyAlt]},
-			// Editor Actions
-			entry! {action=FrontendMessage::TriggerFileUpload, key_down=KeyO, modifiers=[KeyControl]},
 			// Document actions
 			entry! {action=DocumentMessage::Redo, key_down=KeyZ, modifiers=[KeyControl, KeyShift]},
 			entry! {action=DocumentMessage::Undo, key_down=KeyZ, modifiers=[KeyControl]},
@@ -187,6 +185,8 @@ impl Default for Mapping {
 			entry! {action=MovementMessage::TranslateCanvasByViewportFraction { delta: DVec2::new(0., 1.) }, key_down=KeyPageUp},
 			entry! {action=MovementMessage::TranslateCanvasByViewportFraction { delta: DVec2::new(0., -1.) }, key_down=KeyPageDown},
 			// Portfolio actions
+			entry! {action=PortfolioMessage::OpenDocument, key_down=KeyO, modifiers=[KeyControl]},
+			entry! {action=PortfolioMessage::Import, key_down=KeyI, modifiers=[KeyControl]},
 			entry! {action=DialogMessage::RequestNewDocumentDialog, key_down=KeyN, modifiers=[KeyControl]},
 			entry! {action=PortfolioMessage::NextDocument, key_down=KeyTab, modifiers=[KeyControl]},
 			entry! {action=PortfolioMessage::PrevDocument, key_down=KeyTab, modifiers=[KeyControl, KeyShift]},

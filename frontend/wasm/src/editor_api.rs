@@ -154,8 +154,8 @@ impl JsEditorHandle {
 		self.dispatch(message);
 	}
 
-	pub fn open_file_upload(&self) {
-		let message = FrontendMessage::TriggerFileUpload;
+	pub fn document_open(&self) {
+		let message = PortfolioMessage::OpenDocument;
 		self.dispatch(message);
 	}
 

@@ -45,6 +45,7 @@ pub enum PortfolioMessage {
 		data: Vec<u8>,
 		is_default: bool,
 	},
+	Import,
 	LoadFont {
 		font: Font,
 		is_default: bool,

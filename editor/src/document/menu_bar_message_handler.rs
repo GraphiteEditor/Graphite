@@ -129,6 +129,7 @@ impl PropertyHolder for MenuBarMessageHandler {
 						MenuEntry {
 							label: "Import…".into(),
 							shortcut: Some(vec![Key::KeyControl, Key::KeyI]),
+							action: MenuEntry::create_action(|_| PortfolioMessage::Import.into()),
 							..MenuEntry::default()
 						},
 						MenuEntry {
