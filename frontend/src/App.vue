@@ -207,6 +207,10 @@ img {
 	p {
 		margin-top: 8px;
 	}
+
+	.floating-menu-content h3 ~ p {
+		white-space: pre-wrap;
+	}
 }
 </style>
 
