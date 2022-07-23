@@ -3,7 +3,7 @@ mod lookup;
 mod structs;
 pub use structs::*;
 
-use crate::{Bezier, BezierHandles};
+use crate::Bezier;
 
 use std::ops::{Index, IndexMut};
 
