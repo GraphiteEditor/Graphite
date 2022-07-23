@@ -1,7 +1,8 @@
 use super::broadcast_message_handler::BroadcastMessageHandler;
 use crate::consts::{DEFAULT_FONT_FAMILY, DEFAULT_FONT_STYLE};
+use crate::debug::debug_message::LoggingMessages;
+use crate::debug::DebugMessageHandler;
 use crate::document::PortfolioMessageHandler;
-use crate::global::GlobalMessageHandler;
 use crate::input::{InputMapperMessageHandler, InputPreprocessorMessageHandler};
 use crate::layout::layout_message_handler::LayoutMessageHandler;
 use crate::message_prelude::*;
@@ -23,8 +24,8 @@ pub struct Dispatcher {
 #[derive(Debug, Default)]
 struct DispatcherMessageHandlers {
 	broadcast_message_handler: BroadcastMessageHandler,
+	debug_message_handler: DebugMessageHandler,
 	dialog_message_handler: DialogMessageHandler,
-	global_message_handler: GlobalMessageHandler,
 	input_mapper_message_handler: InputMapperMessageHandler,
 	input_preprocessor_message_handler: InputPreprocessorMessageHandler,
 	layout_message_handler: LayoutMessageHandler,
@@ -54,31 +55,44 @@ impl Dispatcher {
 		Self::default()
 	}
 
+	// If the deepest queues (higher index in queues list) are now empty (after being popped from) then remove them
+	fn cleanup_queues(&mut self, leave_last: bool) {
+		while self.message_queues.last().filter(|queue| queue.is_empty()).is_some() {
+			if leave_last && self.message_queues.len() == 1 {
+				break;
+			}
+			self.message_queues.pop();
+		}
+	}
+
 	#[remain::check]
 	pub fn handle_message<T: Into<Message>>(&mut self, message: T) {
 		use Message::*;
 
-		self.message_queues.push(VecDeque::from_iter([message.into()]));
+		if let Some(first) = self.message_queues.first_mut() {
+			first.push_back(message.into());
+		} else {
+			self.message_queues.push(VecDeque::from_iter([message.into()]));
+		}
 
 		while let Some(message) = self.message_queues.last_mut().and_then(VecDeque::pop_front) {
-			// If the deepest queue is now empty (after being popped from) then remove it
-			if self.message_queues.last().filter(|queue| queue.is_empty()).is_some() {
-				self.message_queues.pop();
-			}
-
 			// Skip processing of this message if it will be processed later (at the end of the shallowest level queue)
 			if SIDE_EFFECT_FREE_MESSAGES.contains(&message.to_discriminant()) {
 				let already_in_queue = self.message_queues.first().filter(|queue| queue.contains(&message)).is_some();
 				if already_in_queue {
+					self.log_deferred_message(&message, &self.message_queues, self.message_handlers.debug_message_handler.logging_messages_mode);
+					self.cleanup_queues(false);
 					continue;
 				} else if self.message_queues.len() > 1 {
+					self.log_deferred_message(&message, &self.message_queues, self.message_handlers.debug_message_handler.logging_messages_mode);
+					self.cleanup_queues(true);
 					self.message_queues[0].push_back(message);
 					continue;
 				}
 			}
 
 			// Print the message at a verbosity level of `log`
-			self.log_message(&message);
+			self.log_message(&message, &self.message_queues, self.message_handlers.debug_message_handler.logging_messages_mode);
 
 			// Create a new queue for the child messages
 			let mut queue = VecDeque::new();
@@ -101,6 +115,9 @@ impl Dispatcher {
 				}
 
 				Broadcast(message) => self.message_handlers.broadcast_message_handler.process_action(message, (), &mut queue),
+				Debug(message) => {
+					self.message_handlers.debug_message_handler.process_action(message, (), &mut queue);
+				}
 				Dialog(message) => {
 					self.message_handlers
 						.dialog_message_handler
@@ -110,6 +127,7 @@ impl Dispatcher {
 					// Handle these messages immediately by returning early
 					if let FrontendMessage::UpdateImageData { .. } | FrontendMessage::TriggerFontLoad { .. } | FrontendMessage::TriggerRefreshBoundsOfViewports = message {
 						self.responses.push(message);
+						self.cleanup_queues(false);
 
 						// Return early to avoid running the code after the match block
 						return;
@@ -117,9 +135,6 @@ impl Dispatcher {
 						// `FrontendMessage`s are saved and will be sent to the frontend after the message queue is done being processed
 						self.responses.push(message);
 					}
-				}
-				Global(message) => {
-					self.message_handlers.global_message_handler.process_action(message, (), &mut queue);
 				}
 				InputMapper(message) => {
 					let actions = self.collect_actions();
@@ -162,6 +177,8 @@ impl Dispatcher {
 			if !queue.is_empty() {
 				self.message_queues.push(queue);
 			}
+
+			self.cleanup_queues(false);
 		}
 	}
 
@@ -171,7 +188,7 @@ impl Dispatcher {
 		list.extend(self.message_handlers.dialog_message_handler.actions());
 		list.extend(self.message_handlers.input_preprocessor_message_handler.actions());
 		list.extend(self.message_handlers.input_mapper_message_handler.actions());
-		list.extend(self.message_handlers.global_message_handler.actions());
+		list.extend(self.message_handlers.debug_message_handler.actions());
 		if self.message_handlers.portfolio_message_handler.active_document().is_some() {
 			list.extend(self.message_handlers.tool_message_handler.actions());
 		}
@@ -179,12 +196,45 @@ impl Dispatcher {
 		list
 	}
 
-	fn log_message(&self, message: &Message) {
-		use Message::*;
+	/// Create the tree structure for logging the messages as a tree
+	fn create_indents(queues: &[VecDeque<Message>]) -> String {
+		String::from_iter(queues.iter().enumerate().skip(1).map(|(index, queue)| {
+			if index == queues.len() - 1 {
+				if queue.is_empty() {
+					"└── "
+				} else {
+					"├── "
+				}
+			} else if queue.is_empty() {
+				"   "
+			} else {
+				"│    "
+			}
+		}))
+	}
 
-		if log::max_level() == log::LevelFilter::Trace && !(matches!(message, InputPreprocessor(_)) || MessageDiscriminant::from(message).local_name().ends_with("PointerMove")) {
-			log::trace!("Message: {:?}", message);
-			// log::trace!("Hints: {:?}", self.input_mapper_message_handler.hints(self.collect_actions()));
+	/// Logs a message that is about to be executed,
+	/// either as a tree with a discriminant or the entire payload (depending on settings)
+	fn log_message(&self, message: &Message, queues: &[VecDeque<Message>], log_tree_contents: LoggingMessages) {
+		if !MessageDiscriminant::from(message).local_name().ends_with("PointerMove") {
+			match log_tree_contents {
+				LoggingMessages::Off => {}
+				LoggingMessages::Names => {
+					log::info!("{}{:?}", Self::create_indents(queues), message.to_discriminant());
+				}
+				LoggingMessages::Contents => {
+					if !(matches!(message, Message::InputPreprocessor(_))) {
+						log::info!("Message: {}{:?}", Self::create_indents(queues), message);
+					}
+				}
+			}
+		}
+	}
+
+	/// Logs into the tree that the message is in the side effect free messages and its execution will be deferred
+	fn log_deferred_message(&self, message: &Message, queues: &[VecDeque<Message>], log_tree_contents: LoggingMessages) {
+		if let LoggingMessages::Names = log_tree_contents {
+			log::info!("{}Deferred \"{:?}\" because it's a SIDE_EFFECT_FREE_MESSAGE", Self::create_indents(queues), message.to_discriminant());
 		}
 	}
 }
