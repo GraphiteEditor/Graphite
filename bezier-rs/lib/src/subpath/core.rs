@@ -1,14 +1,15 @@
 use super::*;
 
+/// Functionality relating to core `SubPath` operations, such as constructors and `iter`.
 impl SubPath {
-	/// Create a new SubPath using a list of ManipulatorGroups.
-	/// A SubPath with less than 2 ManipulatorGroups may not be closed.
+	/// Create a new `SubPath` using a list of [ManipulatorGroup]s.
+	/// A `SubPath` with less than 2 [ManipulatorGroup]s may not be closed.
 	pub fn new(manipulator_groups: Vec<ManipulatorGroup>, closed: bool) -> SubPath {
 		assert!(!closed || manipulator_groups.len() > 1);
 		SubPath { manipulator_groups, closed }
 	}
 
-	/// Create a subpath consisting of 2 manipulator groups from a bezier.
+	/// Create a `SubPath` consisting of 2 manipulator groups from a `Bezier`.
 	pub fn from_bezier(bezier: Bezier) -> Self {
 		SubPath::new(
 			vec![
@@ -27,17 +28,17 @@ impl SubPath {
 		)
 	}
 
-	/// Returns true if and only if the subpath contains at least one manipulator point
+	/// Returns true if and only if the `SubPath` contains at least one [ManipulatorGroup].
 	pub fn is_empty(&self) -> bool {
 		self.manipulator_groups.is_empty()
 	}
 
-	/// Returns the number of ManipulatorGroups contained within the subpath.
+	/// Returns the number of [ManipulatorGroup]s contained within the `SubPath`.
 	pub fn len(&self) -> usize {
 		self.manipulator_groups.len()
 	}
 
-	/// Returns an iterator of the Beziers along the subpath.
+	/// Returns an iterator of the [Bezier]s along the `SubPath`.
 	pub fn iter(&self) -> SubPathIter {
 		SubPathIter { sub_path: self, index: 0 }
 	}
@@ -80,24 +81,7 @@ impl SubPath {
 			.flatten()
 			.map(|handle| format!(r#"<circle cx="{}" cy="{}" {}/>"#, handle.x, handle.y, handle_point_options))
 			.collect();
-		let handle_pieces: Vec<String> = self
-			.iter()
-			.filter_map(|bezier| match bezier.handles {
-				BezierHandles::Linear => None,
-				BezierHandles::Quadratic { handle } => {
-					let handle_line = format!("L {} {}", handle.x, handle.y);
-					Some(format!("M {} {} {} M {} {} {}", bezier.start.x, bezier.start.y, handle_line, bezier.end.x, bezier.end.y, handle_line))
-				}
-				BezierHandles::Cubic { handle_start, handle_end } => {
-					let handle_start_line = format!("L {} {}", handle_start.x, handle_start.y);
-					let handle_end_line = format!("L {} {}", handle_end.x, handle_end.y);
-					Some(format!(
-						"M {} {} {} M {} {} {}",
-						bezier.start.x, bezier.start.y, handle_start_line, bezier.end.x, bezier.end.y, handle_end_line
-					))
-				}
-			})
-			.collect();
+		let handle_pieces: Vec<String> = self.iter().filter_map(|bezier| bezier.svg_handle_line_argument()).collect();
 
 		format!(
 			r#"<path d="{} {}" {}/><path d="{}" {}/>{}{}"#,

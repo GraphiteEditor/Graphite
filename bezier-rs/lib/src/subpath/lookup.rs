@@ -1,7 +1,8 @@
 use super::*;
 
+/// Functionality relating to looking up properties of the `SubPath` or points along the `SubPath`.
 impl SubPath {
-	/// Return the sum of the approximation of the length of each bezier curve along the subpath.
+	/// Return the sum of the approximation of the length of each `Bezier` curve along the `SubPath`.
 	/// - `num_subdivisions` - Number of subdivisions used to approximate the curve. The default value is `1000`.
 	pub fn length(&self, num_subdivisions: Option<i32>) -> f64 {
 		self.iter().fold(0., |accumulator, bezier| accumulator + bezier.length(num_subdivisions))

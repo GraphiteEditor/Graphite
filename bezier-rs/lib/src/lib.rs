@@ -1,10 +1,11 @@
 //! Bezier-rs: A Bezier Math Library for Rust
 
 mod consts;
-pub mod subpath;
+mod subpath;
 mod utils;
 
 use consts::*;
+pub use subpath::*;
 
 use glam::{DMat2, DVec2};
 
@@ -166,7 +167,7 @@ impl Bezier {
 	}
 
 	/// Return the string argument used to create a curve in an SVG `path`, excluding the start point.
-	pub fn svg_curve_argument(&self) -> String {
+	pub(crate) fn svg_curve_argument(&self) -> String {
 		let handle_args = match self.handles {
 			BezierHandles::Linear => "L".to_string(),
 			BezierHandles::Quadratic { handle } => {
@@ -177,6 +178,22 @@ impl Bezier {
 			}
 		};
 		format!("{} {} {}", handle_args, self.end.x, self.end.y)
+	}
+
+	/// Return the string argument used to create the lines connecting handles to endpoints in an SVG `path`
+	pub(crate) fn svg_handle_line_argument(&self) -> Option<String> {
+		match self.handles {
+			BezierHandles::Linear => None,
+			BezierHandles::Quadratic { handle } => {
+				let handle_line = format!("L {} {}", handle.x, handle.y);
+				Some(format!("M {} {} {} M {} {} {}", self.start.x, self.start.y, handle_line, self.end.x, self.end.y, handle_line))
+			}
+			BezierHandles::Cubic { handle_start, handle_end } => {
+				let handle_start_line = format!("L {} {}", handle_start.x, handle_start.y);
+				let handle_end_line = format!("L {} {}", handle_end.x, handle_end.y);
+				Some(format!("M {} {} {} M {} {} {}", self.start.x, self.start.y, handle_start_line, self.end.x, self.end.y, handle_end_line))
+			}
+		}
 	}
 
 	/// Convert `Bezier` to SVG `path`.

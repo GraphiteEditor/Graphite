@@ -7,7 +7,7 @@ use crate::{Bezier, BezierHandles};
 
 use std::ops::{Index, IndexMut};
 
-/// Structure used to represent a path composed of Bezier curves.
+/// Structure used to represent a path composed of [Bezier] curves.
 pub struct SubPath {
 	manipulator_groups: Vec<ManipulatorGroup>,
 	closed: bool,
