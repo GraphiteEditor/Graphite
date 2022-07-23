@@ -629,6 +629,14 @@ impl Bezier {
 		endpoint_normal_angle < SCALABLE_CURVE_MAX_ENDPOINT_NORMAL_ANGLE
 	}
 
+	fn get_extrema_t_list(&self) -> Vec<f64> {
+		let mut extrema = self.local_extrema().into_iter().flatten().collect::<Vec<f64>>();
+		extrema.append(&mut vec![0., 1.]);
+		extrema.dedup();
+		extrema.sort_by(|ex1, ex2| ex1.partial_cmp(ex2).unwrap());
+		extrema
+	}
+
 	/// Split the curve into a number of scalable subcurves. This function may introduce gaps if subsections of the curve are not reducible.
 	/// The function takes the following parameter:
 	/// - `step_size` - Dictates the granularity at which the function searches for reducible subcurves. The default value is `0.01`.
@@ -641,10 +649,7 @@ impl Bezier {
 
 		let step_size = step_size.unwrap_or(DEFAULT_REDUCE_STEP_SIZE);
 
-		let mut extrema: Vec<f64> = self.local_extrema().into_iter().flatten().collect::<Vec<f64>>();
-		extrema.append(&mut vec![0., 1.]);
-		extrema.dedup();
-		extrema.sort_by(|ex1, ex2| ex1.partial_cmp(ex2).unwrap());
+		let extrema: Vec<f64> = self.get_extrema_t_list();
 
 		// Split the curve on the extremas. Simplifies procedure for ensuring each curve can be scaled.
 		let mut subcurves = Vec::new();
@@ -707,20 +712,10 @@ impl Bezier {
 		if maximize_arcs {
 			return self.arcs_helper(0., 1., error, max_iterations);
 		}
-		let mut extrema: Vec<f64> = self.local_extrema().into_iter().flatten().collect::<Vec<f64>>();
-		extrema.append(&mut vec![0., 1.]);
-		extrema.dedup();
-		extrema.sort_by(|ex1, ex2| ex1.partial_cmp(ex2).unwrap());
 
-		let mut t1 = extrema[0];
-		extrema
-			.iter()
-			.skip(1)
-			.flat_map(|&t2| {
-				let arcs = self.arcs_helper(t1, t2, error, max_iterations);
-				t1 = t2;
-				arcs
-			})
+		self.get_extrema_t_list()
+			.windows(2)
+			.flat_map(|t_pair| self.arcs_helper(t_pair[0], t_pair[1], error, max_iterations))
 			.collect::<Vec<CircleArc>>()
 	}
 
@@ -739,11 +734,15 @@ impl Bezier {
 		let mut was_previous_good = false;
 		let mut arcs = Vec::new();
 
-		// Find the arc
-		'iterate_curve: while low < local_high {
-			'find_good_segment: loop {
+		// Outer loop to iterate over the curve
+		while low < local_high {
+			if iterations > max_iterations {
+				break;
+			}
+			// Inner loop to find the next maximal segment of the curve that can be approximated with a circular arc
+			loop {
 				if iterations > max_iterations {
-					break 'iterate_curve;
+					break;
 				}
 				iterations += 1;
 				let p1 = self.evaluate(low);
@@ -758,7 +757,7 @@ impl Bezier {
 					middle = low + (high - low) / 2.;
 					was_previous_good = false;
 
-					break 'find_good_segment;
+					break;
 				}
 
 				let center = utils::compute_circle_center_from_points(p1, p2, p3);
@@ -798,7 +797,7 @@ impl Bezier {
 						arcs.push(new_arc);
 						low = high;
 
-						break 'find_good_segment;
+						break;
 					}
 					// If the approximation is good, expand the segment by half to try finding a larger good approximation
 					previous_high = high;
@@ -816,7 +815,7 @@ impl Bezier {
 					middle = low + (high - low) / 2.;
 					was_previous_good = false;
 
-					break 'find_good_segment;
+					break;
 				} else {
 					// If no good approximation has been seen yet, try again with half the segment
 					previous_high = high;
@@ -825,7 +824,6 @@ impl Bezier {
 					previous_arc = new_arc;
 				}
 			}
-			{}
 		}
 
 		arcs
