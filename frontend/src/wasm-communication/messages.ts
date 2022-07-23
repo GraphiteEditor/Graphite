@@ -206,7 +206,9 @@ export class TriggerFileDownload extends JsMessage {
 	readonly name!: string;
 }
 
-export class TriggerFileUpload extends JsMessage {}
+export class TriggerOpenDocument extends JsMessage {}
+
+export class TriggerImport extends JsMessage {}
 
 export class TriggerPaste extends JsMessage {}
 
@@ -808,23 +810,22 @@ type MessageMaker = typeof JsMessage | JSMessageFactory;
 
 export const messageMakers: Record<string, MessageMaker> = {
 	DisplayDialog,
-	DisplayDialogPanic,
-	UpdateDocumentLayerTreeStructure: newUpdateDocumentLayerTreeStructure,
-	DisplayEditableTextbox,
-	UpdateImageData,
-	DisplayRemoveEditableTextbox,
 	DisplayDialogDismiss,
+	DisplayDialogPanic,
+	DisplayEditableTextbox,
+	DisplayRemoveEditableTextbox,
+	TriggerAboutGraphiteLocalizedCommitDate,
+	TriggerOpenDocument,
 	TriggerFileDownload,
-	TriggerFileUpload,
-	TriggerIndexedDbRemoveDocument,
 	TriggerFontLoad,
+	TriggerImport,
+	TriggerIndexedDbRemoveDocument,
 	TriggerIndexedDbWriteDocument,
 	TriggerPaste,
 	TriggerRasterDownload,
 	TriggerRefreshBoundsOfViewports,
 	TriggerTextCommit,
 	TriggerTextCopy,
-	TriggerAboutGraphiteLocalizedCommitDate,
 	TriggerViewportResize,
 	TriggerVisitLink,
 	UpdateActiveDocument,
@@ -832,21 +833,23 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateDocumentArtboards,
 	UpdateDocumentArtwork,
 	UpdateDocumentBarLayout,
-	UpdateToolShelfLayout,
 	UpdateDocumentLayerDetails,
+	UpdateDocumentLayerTreeStructure: newUpdateDocumentLayerTreeStructure,
+	UpdateDocumentModeLayout,
 	UpdateDocumentOverlays,
 	UpdateDocumentRulers,
 	UpdateDocumentScrollbars,
+	UpdateImageData,
 	UpdateInputHints,
+	UpdateLayerTreeOptionsLayout,
+	UpdateMenuBarLayout,
 	UpdateMouseCursor,
 	UpdateNodeGraphVisibility,
 	UpdateOpenDocumentsList,
 	UpdatePropertyPanelOptionsLayout,
 	UpdatePropertyPanelSectionsLayout,
-	UpdateLayerTreeOptionsLayout,
-	UpdateDocumentModeLayout,
 	UpdateToolOptionsLayout,
+	UpdateToolShelfLayout,
 	UpdateWorkingColorsLayout,
-	UpdateMenuBarLayout,
 } as const;
 export type JsMessageType = keyof typeof messageMakers;

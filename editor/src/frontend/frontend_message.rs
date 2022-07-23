@@ -24,10 +24,11 @@ pub enum FrontendMessage {
 	// Trigger prefix: cause a browser API to do something
 	TriggerAboutGraphiteLocalizedCommitDate { commit_date: String },
 	TriggerFileDownload { document: String, name: String },
-	TriggerFileUpload,
 	TriggerFontLoad { font: Font, is_default: bool },
+	TriggerImport,
 	TriggerIndexedDbRemoveDocument { document_id: u64 },
 	TriggerIndexedDbWriteDocument { document: String, details: FrontendDocumentDetails, version: String },
+	TriggerOpenDocument,
 	TriggerPaste,
 	TriggerRasterDownload { document: String, name: String, mime: String, size: (f64, f64) },
 	TriggerRefreshBoundsOfViewports,

@@ -255,7 +255,7 @@ export default defineComponent({
 			this.editor.instance.new_document_dialog();
 		},
 		openDocument() {
-			this.editor.instance.open_file_upload();
+			this.editor.instance.document_open();
 		},
 	},
 	components: {
