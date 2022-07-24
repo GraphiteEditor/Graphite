@@ -25,13 +25,29 @@ impl Default for ProjectionOptions {
 	}
 }
 
+/// Struct used to represent the different strategies for generating arc approximations.
+#[derive(Copy, Clone)]
+pub enum MaximizeArcs {
+	/// Start with the strategy of maximizing arcs and automatically switch when an erroneous case is encountered.
+	Auto,
+	/// Use the strategy to maximize approximated arcs, despite potentially erroneous arcs.
+	On,
+	/// Use the strategy that prioritizes correctness over maximal arcs.
+	Off,
+}
+
 /// Struct to represent optional parameters that can be passed to the `arcs` function.
 #[derive(Copy, Clone)]
 pub struct ArcsOptions {
-	/// Determines whether the algorithm tries to greedily maximize the approximated arcs or to prioritize correctness by first splitting the curve between its local extremas.
+	/// Determines how the approximated arcs are computed.
 	/// When maximizing the arcs, the algorithm may return incorrect arcs when the curve contains any small loops or segements that look like a very thin "U".
-	/// The default value is `false`.
-	pub maximize_arcs: bool,
+	/// The enum options behave as follows:
+	/// - `Auto`: Maximize arcs until an erroneous approximation is found. Compute the arcs of the rest of the curve by first splitting on extremas to ensure no more erroneous cases are encountered.
+	/// - `On`: Maximize arcs using the original algorithm from the [Approximating a Bezier curve with circular arcs](https://pomax.github.io/bezierinfo/#arcapproximation) section of Pomax's bezier curve primer. Erroneous arcs are possible.
+	/// - `Off`: Prioritize correctness by first spliting the curve by its extremas and determine the arc approximation of each segment instead.
+	///
+	/// The default value is `Auto`.
+	pub maximize_arcs: MaximizeArcs,
 	/// The error used for approximating the arc's fit. The default is `0.5`.
 	pub error: f64,
 	/// The maximum number of segment iterations used as attempts for arc approximations. The default is `100`.
@@ -41,7 +57,7 @@ pub struct ArcsOptions {
 impl Default for ArcsOptions {
 	fn default() -> Self {
 		ArcsOptions {
-			maximize_arcs: false,
+			maximize_arcs: MaximizeArcs::Auto,
 			error: 0.5,
 			max_iterations: 100,
 		}
@@ -49,7 +65,7 @@ impl Default for ArcsOptions {
 }
 
 /// Struct to represent the circular arc approximation used in the `arcs` bezier function.
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq)]
 pub struct CircleArc {
 	// the center point of the circle
 	pub center: DVec2,

@@ -1,4 +1,4 @@
-use bezier_rs::{ArcsOptions, Bezier, ProjectionOptions};
+use bezier_rs::{ArcsOptions, Bezier, MaximizeArcs, ProjectionOptions};
 use glam::DVec2;
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
@@ -15,6 +15,13 @@ struct CircleSector {
 struct Point {
 	x: f64,
 	y: f64,
+}
+
+#[wasm_bindgen]
+pub enum WasmMaximizeArcs {
+	Auto, // 0
+	On,   // 1
+	Off,  // 2
 }
 
 /// Wrapper of the `Bezier` struct to be used in JS.
@@ -35,6 +42,14 @@ fn bezier_to_points(bezier: Bezier) -> Vec<Point> {
 /// Serialize some data and then convert it to a JsValue.
 fn to_js_value<T: Serialize>(data: T) -> JsValue {
 	JsValue::from_serde(&serde_json::to_string(&data).unwrap()).unwrap()
+}
+
+fn convert_wasm_mazimize_arcs(wasm_enum_value: WasmMaximizeArcs) -> MaximizeArcs {
+	match wasm_enum_value {
+		WasmMaximizeArcs::Auto => MaximizeArcs::Auto,
+		WasmMaximizeArcs::On => MaximizeArcs::On,
+		WasmMaximizeArcs::Off => MaximizeArcs::Off,
+	}
 }
 
 #[wasm_bindgen]
@@ -165,7 +180,8 @@ impl WasmBezier {
 	}
 
 	/// The wrapped return type is `Vec<CircleSector>`.
-	pub fn arcs(&self, error: f64, max_iterations: i32, maximize_arcs: bool) -> JsValue {
+	pub fn arcs(&self, error: f64, max_iterations: i32, maximize_arcs: WasmMaximizeArcs) -> JsValue {
+		let maximize_arcs = convert_wasm_mazimize_arcs(maximize_arcs);
 		let options = ArcsOptions { error, max_iterations, maximize_arcs };
 		let circle_sectors: Vec<CircleSector> = self
 			.0

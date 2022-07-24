@@ -8,6 +8,7 @@ use consts::*;
 pub use structs::*;
 
 use glam::{DMat2, DVec2};
+use std::f64::consts::PI;
 
 /// Representation of the handle point(s) in a bezier segment.
 #[derive(Copy, Clone)]
@@ -709,21 +710,42 @@ impl Bezier {
 	/// The algorithm can be customized using the [ArcsOptions] structure.
 	pub fn arcs(&self, arcs_options: ArcsOptions) -> Vec<CircleArc> {
 		let ArcsOptions { maximize_arcs, error, max_iterations } = arcs_options;
-		if maximize_arcs {
-			return self.arcs_helper(0., 1., error, max_iterations);
+		match maximize_arcs {
+			MaximizeArcs::Auto => {
+				let (auto_arcs, final_low_t) = self.arcs_helper(0., 1., error, max_iterations, true);
+				if final_low_t != 1. {
+					[
+						auto_arcs,
+						self.split(final_low_t)[1].arcs(ArcsOptions {
+							maximize_arcs: MaximizeArcs::Off,
+							error,
+							max_iterations,
+						}),
+					]
+					.concat()
+				} else {
+					auto_arcs
+				}
+			}
+			MaximizeArcs::On => self.arcs_helper(0., 1., error, max_iterations, false).0,
+			MaximizeArcs::Off => self
+				.get_extrema_t_list()
+				.windows(2)
+				.flat_map(|t_pair| self.arcs_helper(t_pair[0], t_pair[1], error, max_iterations, false).0)
+				.collect::<Vec<CircleArc>>(),
 		}
-
-		self.get_extrema_t_list()
-			.windows(2)
-			.flat_map(|t_pair| self.arcs_helper(t_pair[0], t_pair[1], error, max_iterations))
-			.collect::<Vec<CircleArc>>()
 	}
 
 	/// Implements an algorithm that approximates a bezier curve with circular arcs.
 	/// This algorithm uses a method akin to binary search to find an arc that approximates a maximal segment of the curve.
 	/// Once a maximal arc has been found for a sub-segment of the curve, the algorithm continues by starting again at the end of the previous approximation.
 	/// More details can be found in the [Approximating a Bezier curve with circular arcs](https://pomax.github.io/bezierinfo/#arcapproximation) section of Pomax's bezier curve primer.
-	fn arcs_helper(&self, local_low: f64, local_high: f64, error: f64, max_iterations: i32) -> Vec<CircleArc> {
+	/// A caveat with this algorithm is that it is possible to find erroneous approximations in cases such as in a very narrow `U`.
+	/// - `stop_when_invalid`: Used to determine whether the algorithm should end early erroneous approximations are encountered.
+	///
+	/// Returns a tuple where the first element is the list of circular arcs and the second is the `t` value where the next segment should start from.
+	/// The second value will be `1.` except for when `stop_when_invalid` is true and an invalid approximation is encountered.
+	fn arcs_helper(&self, local_low: f64, local_high: f64, error: f64, max_iterations: i32, stop_when_invalid: bool) -> (Vec<CircleArc>, f64) {
 		let mut low = local_low;
 		let mut middle = local_low + (local_high - local_low) / 2.;
 		let mut high = local_high;
@@ -792,6 +814,14 @@ impl Bezier {
 
 				// Iterate until we find the largest good approximation such that the next iteration is not a good approximation with an arc
 				if utils::f64_compare(radius, e1.distance(center), error) && utils::f64_compare(radius, e2.distance(center), error) {
+					// Check if the good approximation is actually valid: the sector angle cannot be larger than 180 degrees (aka 2*PI)
+					let mut sector_angle = end_angle - start_angle;
+					if sector_angle < 0. {
+						sector_angle += 2. * PI;
+					}
+					if stop_when_invalid && sector_angle > PI {
+						return (arcs, low);
+					}
 					if high == local_high {
 						// Found the final arc approximation
 						arcs.push(new_arc);
@@ -826,7 +856,7 @@ impl Bezier {
 			}
 		}
 
-		arcs
+		(arcs, low)
 	}
 }
 
@@ -998,5 +1028,26 @@ mod tests {
 		assert_eq!(actual_arcs.len(), 2);
 		assert!(compare_arcs(actual_arcs[0], expected_arcs[0]));
 		assert!(compare_arcs(actual_arcs[1], expected_arcs[1]));
+
+		// Bezier that contains the erroneous case when maximizing arcs
+		let bezier2 = Bezier::from_cubic_coordinates(48., 176., 170., 10., 30., 90., 180., 160.);
+		let auto_arcs = bezier2.arcs(ArcsOptions::default());
+
+		let extrema_arcs = bezier2.arcs(ArcsOptions {
+			maximize_arcs: MaximizeArcs::Off,
+			..ArcsOptions::default()
+		});
+
+		let maximal_arcs = bezier2.arcs(ArcsOptions {
+			maximize_arcs: MaximizeArcs::On,
+			..ArcsOptions::default()
+		});
+
+		// Resulting automatic arcs match the maximal results until the bad arc (in this case, only index 0 should match)
+		assert_eq!(auto_arcs[0], maximal_arcs[0]);
+		// Check that the first result from MaximizeArcs::Auto should not equal the first results from MaximizeArcs::Off
+		assert_ne!(auto_arcs[0], extrema_arcs[0]);
+		// The remaining results (index 2 onwards) should match the results where MaximizeArcs::Off from the next extrema point onwards (after index 2).
+		assert!(auto_arcs.iter().skip(2).zip(extrema_arcs.iter().skip(2)).all(|(arc1, arc2)| compare_arcs(*arc1, *arc2)));
 	}
 }
