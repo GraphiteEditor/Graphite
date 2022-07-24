@@ -243,8 +243,10 @@ impl Fsm for ArtboardToolFsmState {
 							let mouse_position = input.mouse.position;
 							let snapped_mouse_position = tool_data.snap_handler.snap_position(responses, document, mouse_position);
 
-							let [position, size] = movement.new_size(snapped_mouse_position, bounds.transform, from_center, constrain_square);
-							let position = movement.center_position(position, size, from_center);
+							let (mut position, size) = movement.new_size(snapped_mouse_position, bounds.transform, from_center, constrain_square);
+							if from_center {
+								position = movement.center_position(position, size);
+							}
 
 							responses.push_back(
 								ArtboardMessage::ResizeArtboard {

@@ -36,7 +36,7 @@ impl InputMapperMessageHandler {
 impl MessageHandler<InputMapperMessage, (&InputPreprocessorMessageHandler, ActionList)> for InputMapperMessageHandler {
 	fn process_action(&mut self, message: InputMapperMessage, data: (&InputPreprocessorMessageHandler, ActionList), responses: &mut VecDeque<Message>) {
 		let (input, actions) = data;
-		if let Some(message) = self.mapping.match_message(message, &input.keyboard, actions) {
+		if let Some(message) = self.mapping.match_input_message(message, &input.keyboard, actions) {
 			responses.push_back(message);
 		}
 	}

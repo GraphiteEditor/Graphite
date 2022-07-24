@@ -529,7 +529,7 @@ impl Fsm for SelectToolFsmState {
 
 							let snapped_mouse_position = tool_data.snap_handler.snap_position(responses, document, mouse_position);
 
-							let [_position, size] = movement.new_size(snapped_mouse_position, bounds.transform, center, axis_align);
+							let (_, size) = movement.new_size(snapped_mouse_position, bounds.transform, center, axis_align);
 							let delta = movement.bounds_to_scale_transform(center, size);
 
 							let selected = tool_data.layers_dragging.iter().collect::<Vec<_>>();

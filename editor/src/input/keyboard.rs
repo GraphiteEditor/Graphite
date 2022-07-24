@@ -70,6 +70,7 @@ pub enum Key {
 	KeyShift,
 	KeySpace,
 	KeyControl,
+	KeyCommand,
 	KeyDelete,
 	KeyBackspace,
 	KeyAlt,
