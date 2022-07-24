@@ -167,8 +167,8 @@ impl Default for Mapping {
 			entry! {action_dispatch=TransformLayerMessage::BeginScale, key_down=KeyS},
 			// Movement actions
 			// entry_multiplatform! {
-			// 	nonmac! {action_dispatch=MovementMessage::RotateCanvasBegin, key_down=Mmb, modifiers=[KeyControl]}},
-			// 	mac!    {action_dispatch=MovementMessage::RotateCanvasBegin, key_down=Mmb, modifiers=[KeyCommand]}},
+			// 	standard! {action_dispatch=MovementMessage::RotateCanvasBegin, key_down=Mmb, modifiers=[KeyControl]}},
+			// 	mac!      {action_dispatch=MovementMessage::RotateCanvasBegin, key_down=Mmb, modifiers=[KeyCommand]}},
 			// }
 			entry! {action_dispatch=MovementMessage::ZoomCanvasBegin, key_down=Mmb, modifiers=[KeyShift]},
 			entry! {action_dispatch=MovementMessage::TranslateCanvasBegin, key_down=Mmb},
@@ -284,9 +284,12 @@ impl Mapping {
 
 #[derive(PartialEq, Clone, Debug, Default)]
 pub enum KeyboardPlatformLayout {
+	/// Keyboard mapping which is the same on standard and Mac layouts
 	#[default]
 	Agnostic,
-	NonMac,
+	/// Standard keyboard mapping used by Windows and Linux
+	Standard,
+	/// Keyboard mapping used by Macs
 	Mac,
 }
 
@@ -388,8 +391,8 @@ mod input_mapper_macros {
 		// {action_dispatch=$action_dispatch:expr, refresh_on=$refresh_on:tt} => {{
 		// 	entry_raw! {action_dispatch=$action_dispatch, refresh_on=$refresh_on, layout=Agnostic}
 		// }};
-		{$($arg:expr)*} => {{
-			entry! {$($arg)* , layout=Agnostic}
+		{$($arg:tt)*} => {{
+			entry_raw! {$($arg)* , layout=Agnostic}
 		}}
 	}
 
