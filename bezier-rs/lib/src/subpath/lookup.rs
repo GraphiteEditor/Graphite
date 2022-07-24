@@ -1,8 +1,8 @@
 use super::*;
 
-/// Functionality relating to looking up properties of the `SubPath` or points along the `SubPath`.
-impl SubPath {
-	/// Return the sum of the approximation of the length of each `Bezier` curve along the `SubPath`.
+/// Functionality relating to looking up properties of the `Subpath` or points along the `Subpath`.
+impl Subpath {
+	/// Return the sum of the approximation of the length of each `Bezier` curve along the `Subpath`.
 	/// - `num_subdivisions` - Number of subdivisions used to approximate the curve. The default value is `1000`.
 	pub fn length(&self, num_subdivisions: Option<i32>) -> f64 {
 		self.iter().fold(0., |accumulator, bezier| accumulator + bezier.length(num_subdivisions))
@@ -11,7 +11,6 @@ impl SubPath {
 
 #[cfg(test)]
 mod tests {
-
 	use crate::Bezier;
 
 	use super::*;
@@ -31,7 +30,7 @@ mod tests {
 		let bezier2 = Bezier::from_quadratic_dvec2(middle, handle2, end);
 		let bezier3 = Bezier::from_quadratic_dvec2(end, handle3, start);
 
-		let mut subpath = SubPath::new(
+		let mut subpath = Subpath::new(
 			vec![
 				ManipulatorGroup {
 					anchor: start,
@@ -51,11 +50,9 @@ mod tests {
 			],
 			false,
 		);
-
 		assert_eq!(subpath.length(None), bezier1.length(None) + bezier2.length(None));
 
 		subpath.closed = true;
-
 		assert_eq!(subpath.length(None), bezier1.length(None) + bezier2.length(None) + bezier3.length(None));
 	}
 
@@ -72,7 +69,7 @@ mod tests {
 		let bezier2 = Bezier::from_quadratic_dvec2(middle, handle1, end);
 		let bezier3 = Bezier::from_cubic_dvec2(end, handle2, handle3, start);
 
-		let mut subpath = SubPath::new(
+		let mut subpath = Subpath::new(
 			vec![
 				ManipulatorGroup {
 					anchor: start,

@@ -1,20 +1,20 @@
-use bezier_rs::subpath::{ManipulatorGroup, SubPath, ToSVGOptions};
+use bezier_rs::subpath::{ManipulatorGroup, Subpath, ToSVGOptions};
 use glam::DVec2;
 use wasm_bindgen::prelude::*;
 
-/// Wrapper of the `SubPath` struct to be used in JS.
+/// Wrapper of the `Subpath` struct to be used in JS.
 #[wasm_bindgen]
-pub struct WasmSubPath(SubPath);
+pub struct WasmSubpath(Subpath);
 
 const SVG_OPEN_TAG: &str = r#"<svg xmlns="http://www.w3.org/2000/svg" width="200px" height="200px">"#;
 const SVG_CLOSE_TAG: &str = "</svg>";
 
 #[wasm_bindgen]
-impl WasmSubPath {
+impl WasmSubpath {
 	/// Expect js_points to be a list of 3 pairs.
-	pub fn from_triples(js_points: &JsValue, closed: bool) -> WasmSubPath {
+	pub fn from_triples(js_points: &JsValue, closed: bool) -> WasmSubpath {
 		let point_triples: Vec<[Option<DVec2>; 3]> = js_points.into_serde().unwrap();
-		let manip_groups = point_triples
+		let manipulator_groups = point_triples
 			.into_iter()
 			.map(|point_triple| ManipulatorGroup {
 				anchor: point_triple[0].unwrap(),
@@ -22,7 +22,7 @@ impl WasmSubPath {
 				out_handle: point_triple[2],
 			})
 			.collect();
-		WasmSubPath(SubPath::new(manip_groups, closed))
+		WasmSubpath(Subpath::new(manipulator_groups, closed))
 	}
 
 	pub fn set_anchor(&mut self, index: usize, x: f64, y: f64) {

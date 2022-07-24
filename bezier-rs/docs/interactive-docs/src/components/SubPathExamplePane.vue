@@ -3,7 +3,7 @@
 		<h3 class="example-pane-header">{{ name }}</h3>
 		<div class="example-row">
 			<div v-for="(example, index) in examples" :key="index">
-				<SubPathExample :title="example.title" :triples="example.triples" :closed="example.closed" :callback="callback" />
+				<SubpathExample :title="example.title" :triples="example.triples" :closed="example.closed" :callback="callback" />
 			</div>
 		</div>
 	</div>
@@ -12,33 +12,36 @@
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
 
-import { SubPathCallback } from "@/utils/types";
+import { SubpathCallback } from "@/utils/types";
 
-import SubPathExample from "@/components/SubPathExample.vue";
+import SubpathExample from "@/components/SubpathExample.vue";
 
 export default defineComponent({
-	name: "SubPathPane",
-	components: {
-		SubPathExample,
+	props: {
+		name: String,
+		callback: {
+			type: Function as PropType<SubpathCallback>,
+			required: true,
+		},
 	},
 	data() {
 		return {
 			examples: [
 				{
-					title: "Open SubPath",
+					title: "Open Subpath",
 					triples: [
-						[[20, 20], null, [10, 90]],
-						[[150, 40], [60, 40], null],
-						[[175, 175], null, null],
-						[[100, 100], [40, 120], null],
+						[[20, 20], undefined, [10, 90]],
+						[[150, 40], [60, 40], undefined],
+						[[175, 175], undefined, undefined],
+						[[100, 100], [40, 120], undefined],
 					],
 					closed: false,
 				},
 				{
-					title: "Closed SubPath",
+					title: "Closed Subpath",
 					triples: [
-						[[35, 125], null, [40, 40]],
-						[[130, 30], [120, 120], null],
+						[[35, 125], undefined, [40, 40]],
+						[[130, 30], [120, 120], undefined],
 						[
 							[145, 150],
 							[175, 90],
@@ -50,19 +53,15 @@ export default defineComponent({
 			],
 		};
 	},
-	props: {
-		name: String,
-		callback: {
-			type: Function as PropType<SubPathCallback>,
-			required: true,
-		},
+	components: {
+		SubpathExample,
 	},
 });
 </script>
 
 <style scoped>
 .example-row {
-	display: flex; /* or inline-flex */
+	display: flex;
 	flex-direction: row;
 	justify-content: center;
 }

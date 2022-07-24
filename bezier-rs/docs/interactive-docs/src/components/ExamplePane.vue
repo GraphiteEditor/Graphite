@@ -58,10 +58,6 @@ const CurveTypeMapping = {
 };
 
 export default defineComponent({
-	name: "ExamplePane",
-	components: {
-		Example,
-	},
 	props: {
 		name: {
 			type: String as PropType<string>,
@@ -118,12 +114,15 @@ export default defineComponent({
 			});
 		});
 	},
+	components: {
+		Example,
+	},
 });
 </script>
 
 <style>
 .example-row {
-	display: flex; /* or inline-flex */
+	display: flex;
 	flex-direction: row;
 	justify-content: center;
 }

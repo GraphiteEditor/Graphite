@@ -171,10 +171,10 @@ impl Bezier {
 		let handle_args = match self.handles {
 			BezierHandles::Linear => "L".to_string(),
 			BezierHandles::Quadratic { handle } => {
-				format!("Q {} {},", handle.x, handle.y)
+				format!("Q{} {}", handle.x, handle.y)
 			}
 			BezierHandles::Cubic { handle_start, handle_end } => {
-				format!("C {} {}, {} {},", handle_start.x, handle_start.y, handle_end.x, handle_end.y)
+				format!("C{} {} {} {}", handle_start.x, handle_start.y, handle_end.x, handle_end.y)
 			}
 		};
 		format!("{} {} {}", handle_args, self.end.x, self.end.y)
@@ -185,20 +185,20 @@ impl Bezier {
 		match self.handles {
 			BezierHandles::Linear => None,
 			BezierHandles::Quadratic { handle } => {
-				let handle_line = format!("L {} {}", handle.x, handle.y);
-				Some(format!("M {} {} {} M {} {} {}", self.start.x, self.start.y, handle_line, self.end.x, self.end.y, handle_line))
+				let handle_line = format!("L{} {}", handle.x, handle.y);
+				Some(format!("M{} {} {} M{} {} {}", self.start.x, self.start.y, handle_line, self.end.x, self.end.y, handle_line))
 			}
 			BezierHandles::Cubic { handle_start, handle_end } => {
-				let handle_start_line = format!("L {} {}", handle_start.x, handle_start.y);
-				let handle_end_line = format!("L {} {}", handle_end.x, handle_end.y);
-				Some(format!("M {} {} {} M {} {} {}", self.start.x, self.start.y, handle_start_line, self.end.x, self.end.y, handle_end_line))
+				let handle_start_line = format!("L{} {}", handle_start.x, handle_start.y);
+				let handle_end_line = format!("L{} {}", handle_end.x, handle_end.y);
+				Some(format!("M{} {} {} M{} {} {}", self.start.x, self.start.y, handle_start_line, self.end.x, self.end.y, handle_end_line))
 			}
 		}
 	}
 
 	/// Convert `Bezier` to SVG `path`.
 	pub fn to_svg(&self) -> String {
-		format!(r#"<path d="M {} {} {}" stroke="black" fill="transparent"/>"#, self.start.x, self.start.y, self.svg_curve_argument())
+		format!(r#"<path d="M{} {} {}" stroke="black" fill="none"/>"#, self.start.x, self.start.y, self.svg_curve_argument())
 	}
 
 	/// Set the coordinates of the start point.

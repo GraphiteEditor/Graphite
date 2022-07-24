@@ -8,12 +8,12 @@ use crate::Bezier;
 use std::ops::{Index, IndexMut};
 
 /// Structure used to represent a path composed of [Bezier] curves.
-pub struct SubPath {
+pub struct Subpath {
 	manipulator_groups: Vec<ManipulatorGroup>,
 	closed: bool,
 }
 
-impl Index<usize> for SubPath {
+impl Index<usize> for Subpath {
 	type Output = ManipulatorGroup;
 
 	fn index(&self, index: usize) -> &Self::Output {
@@ -22,14 +22,14 @@ impl Index<usize> for SubPath {
 	}
 }
 
-impl IndexMut<usize> for SubPath {
+impl IndexMut<usize> for Subpath {
 	fn index_mut(&mut self, index: usize) -> &mut Self::Output {
 		assert!(index < self.len());
 		&mut self.manipulator_groups[index]
 	}
 }
 
-impl Iterator for SubPathIter<'_> {
+impl Iterator for SubpathIter<'_> {
 	type Item = Bezier;
 
 	fn next(&mut self) -> Option<Self::Item> {

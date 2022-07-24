@@ -15,9 +15,9 @@
 				:customOptions="feature.customOptions"
 			/>
 		</div>
-		<h2>SubPaths</h2>
-		<div v-for="(feature, index) in subPathFeatures" :key="index">
-			<SubPathExamplePane :name="feature.name" :callback="feature.callback" />
+		<h2>Subpaths</h2>
+		<div v-for="(feature, index) in subpathFeatures" :key="index">
+			<SubpathExamplePane :name="feature.name" :callback="feature.callback" />
 		</div>
 	</div>
 </template>
@@ -26,11 +26,11 @@
 import { defineComponent, markRaw } from "vue";
 
 import { drawText, drawPoint, drawBezier, drawLine, getContextFromCanvas, drawBezierHelper, COLORS } from "@/utils/drawing";
-import { BezierCurveType, Point, WasmBezierInstance, WasmSubPathInstance } from "@/utils/types";
+import { BezierCurveType, Point, WasmBezierInstance, WasmSubpathInstance } from "@/utils/types";
 
 import ExamplePane from "@/components/ExamplePane.vue";
 import SliderExample from "@/components/SliderExample.vue";
-import SubPathExamplePane from "@/components/SubPathExamplePane.vue";
+import SubpathExamplePane from "@/components/SubpathExamplePane.vue";
 
 const tSliderOptions = {
 	min: 0,
@@ -43,11 +43,6 @@ const tSliderOptions = {
 const SCALE_UNIT_VECTOR_FACTOR = 50;
 
 export default defineComponent({
-	name: "App",
-	components: {
-		ExamplePane,
-		SubPathExamplePane,
-	},
 	data() {
 		return {
 			bezierFeatures: [
@@ -362,17 +357,21 @@ export default defineComponent({
 					},
 				},
 			],
-			subPathFeatures: [
+			subpathFeatures: [
 				{
 					name: "Constructor",
-					callback: (subPath: WasmSubPathInstance): string => subPath.to_svg(),
+					callback: (subpath: WasmSubpathInstance): string => subpath.to_svg(),
 				},
 				{
 					name: "Length",
-					callback: (subPath: WasmSubPathInstance): string => subPath.length(),
+					callback: (subpath: WasmSubpathInstance): string => subpath.length(),
 				},
 			],
 		};
+	},
+	components: {
+		ExamplePane,
+		SubpathExamplePane,
 	},
 });
 </script>

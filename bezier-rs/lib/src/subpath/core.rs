@@ -1,17 +1,17 @@
 use super::*;
 
-/// Functionality relating to core `SubPath` operations, such as constructors and `iter`.
-impl SubPath {
-	/// Create a new `SubPath` using a list of [ManipulatorGroup]s.
-	/// A `SubPath` with less than 2 [ManipulatorGroup]s may not be closed.
-	pub fn new(manipulator_groups: Vec<ManipulatorGroup>, closed: bool) -> SubPath {
+/// Functionality relating to core `Subpath` operations, such as constructors and `iter`.
+impl Subpath {
+	/// Create a new `Subpath` using a list of [ManipulatorGroup]s.
+	/// A `Subpath` with less than 2 [ManipulatorGroup]s may not be closed.
+	pub fn new(manipulator_groups: Vec<ManipulatorGroup>, closed: bool) -> Subpath {
 		assert!(!closed || manipulator_groups.len() > 1);
-		SubPath { manipulator_groups, closed }
+		Subpath { manipulator_groups, closed }
 	}
 
-	/// Create a `SubPath` consisting of 2 manipulator groups from a `Bezier`.
+	/// Create a `Subpath` consisting of 2 manipulator groups from a `Bezier`.
 	pub fn from_bezier(bezier: Bezier) -> Self {
-		SubPath::new(
+		Subpath::new(
 			vec![
 				ManipulatorGroup {
 					anchor: bezier.start(),
@@ -28,28 +28,28 @@ impl SubPath {
 		)
 	}
 
-	/// Returns true if and only if the `SubPath` contains at least one [ManipulatorGroup].
+	/// Returns true if and only if the `Subpath` contains at least one [ManipulatorGroup].
 	pub fn is_empty(&self) -> bool {
 		self.manipulator_groups.is_empty()
 	}
 
-	/// Returns the number of [ManipulatorGroup]s contained within the `SubPath`.
+	/// Returns the number of [ManipulatorGroup]s contained within the `Subpath`.
 	pub fn len(&self) -> usize {
 		self.manipulator_groups.len()
 	}
 
-	/// Returns an iterator of the [Bezier]s along the `SubPath`.
-	pub fn iter(&self) -> SubPathIter {
-		SubPathIter { sub_path: self, index: 0 }
+	/// Returns an iterator of the [Bezier]s along the `Subpath`.
+	pub fn iter(&self) -> SubpathIter {
+		SubpathIter { sub_path: self, index: 0 }
 	}
 
-	/// Returns an SVG representation of the `SubPath`.
+	/// Returns an SVG representation of the `Subpath`.
 	pub fn to_svg(&self, options: ToSVGOptions) -> String {
 		if self.is_empty() {
 			return String::new();
 		}
 
-		let subpath_options = format!(r#"stroke="{}" stroke-width="{}" fill="transparent""#, options.curve_stroke_color, options.curve_stroke_width);
+		let subpath_options = format!(r#"stroke="{}" stroke-width="{}" fill="none""#, options.curve_stroke_color, options.curve_stroke_width);
 		let anchor_options = format!(
 			r#"r="{}", stroke="{}" stroke-width="{}" fill="{}""#,
 			options.anchor_radius, options.anchor_stroke_color, options.anchor_stroke_width, options.anchor_fill
@@ -58,12 +58,9 @@ impl SubPath {
 			r#"r="{}", stroke="{}" stroke-width="{}" fill="{}""#,
 			options.handle_point_radius, options.handle_point_stroke_color, options.handle_point_stroke_width, options.handle_point_fill
 		);
-		let handle_line_options = format!(
-			r#"stroke="{}" stroke-width="{}" fill="transparent""#,
-			options.handle_line_stroke_color, options.handle_line_stroke_width
-		);
+		let handle_line_options = format!(r#"stroke="{}" stroke-width="{}" fill="none""#, options.handle_line_stroke_color, options.handle_line_stroke_width);
 
-		let curve_start_argument = format!("M {} {}", self[0].anchor.x, self[0].anchor.y);
+		let curve_start_argument = format!("M{} {}", self[0].anchor.x, self[0].anchor.y);
 		let mut curve_arguments: Vec<String> = self.iter().map(|bezier| bezier.svg_curve_argument()).collect();
 		if self.closed {
 			curve_arguments.push(String::from("Z"));
