@@ -19,7 +19,7 @@ pub struct Mapping {
 
 impl Default for Mapping {
 	fn default() -> Self {
-		use input_mapper_macros::{entry, entry_raw, mapping, modifiers};
+		use input_mapper_macros::{entry, entry_multiplatform, entry_raw, mac, mapping, modifiers, standard};
 		use Key::*;
 
 		// WARNING!
@@ -166,10 +166,10 @@ impl Default for Mapping {
 			entry! {action_dispatch=TransformLayerMessage::BeginRotate, key_down=KeyR},
 			entry! {action_dispatch=TransformLayerMessage::BeginScale, key_down=KeyS},
 			// Movement actions
-			// entry_multiplatform! {
-			// 	standard! {action_dispatch=MovementMessage::RotateCanvasBegin, key_down=Mmb, modifiers=[KeyControl]}},
-			// 	mac!      {action_dispatch=MovementMessage::RotateCanvasBegin, key_down=Mmb, modifiers=[KeyCommand]}},
-			// }
+			entry_multiplatform! {
+				standard! {action_dispatch=MovementMessage::RotateCanvasBegin, key_down=Mmb, modifiers=[KeyControl]},
+				mac!      {action_dispatch=MovementMessage::RotateCanvasBegin, key_down=Mmb, modifiers=[KeyCommand]}
+			},
 			entry! {action_dispatch=MovementMessage::ZoomCanvasBegin, key_down=Mmb, modifiers=[KeyShift]},
 			entry! {action_dispatch=MovementMessage::TranslateCanvasBegin, key_down=Mmb},
 			entry! {action_dispatch=MovementMessage::TransformCanvasEnd, key_up=Mmb},
@@ -376,24 +376,24 @@ mod input_mapper_macros {
 	}
 
 	macro_rules! entry {
-		// // Syntax that matches on a KeyDown or KeyUp message input
-		// {action_dispatch=$action_dispatch:expr, key_down=$key:ident modifiers=$modifiers:tt} => {{
-		// 	entry_raw! {action_dispatch=$action_dispatch, key_down=$key_down, modifiers=$modifiers, layout=Agnostic}
-		// }};
-		// {action_dispatch=$action_dispatch:expr, key_up=$key:ident modifiers=$modifiers:tt} => {{
-		// 	entry_raw! {action_dispatch=$action_dispatch, key_up=$key_up, modifiers=$modifiers, layout=Agnostic}
-		// }};
-		// // Syntax that matches on a custom message input
-		// {action_dispatch=$action_dispatch:expr, on_message=$on_message:expr modifiers=$modifiers:tt} => {{
-		// 	entry_raw! {action_dispatch=$action_dispatch, on_message=$on_message, modifiers=$modifiers, layout=Agnostic}
-		// }};
-		// // Syntax that matches on a PointerMove input and also on KeyDown and KeyUp presses for specified refresh keys
-		// {action_dispatch=$action_dispatch:expr, refresh_on=$refresh_on:tt} => {{
-		// 	entry_raw! {action_dispatch=$action_dispatch, refresh_on=$refresh_on, layout=Agnostic}
-		// }};
 		{$($arg:tt)*} => {{
-			entry_raw! {$($arg)* , layout=Agnostic}
-		}}
+            &[entry_raw! {$($arg)* , layout=Agnostic}]
+		}};
+	}
+	macro_rules! entry_multiplatform {
+		{$($arg:expr),*} => {{
+			&[$($arg ),*]
+		}};
+	}
+	macro_rules! mac {
+		{$($arg:tt)*} => {{
+			entry_raw! {$($arg)* , layout=Mac}
+		}};
+	}
+	macro_rules! standard {
+		{$($arg:tt)*} => {{
+			entry_raw! {$($arg)* , layout=Standard}
+		}};
 	}
 
 	macro_rules! mapping {
@@ -405,23 +405,28 @@ mod input_mapper_macros {
 			let mut mouse_scroll: KeyMappingEntries = Default::default();
 			let mut double_click: KeyMappingEntries = Default::default();
 			$(
-				for entry in $entry {
-					let arr = match entry.trigger {
-						InputMapperMessage::KeyDown(key) => &mut key_down[key as usize],
-						InputMapperMessage::KeyUp(key) => &mut key_up[key as usize],
-						InputMapperMessage::MouseScroll => &mut mouse_scroll,
-						InputMapperMessage::PointerMove => &mut pointer_move,
-						InputMapperMessage::DoubleClick => &mut double_click,
-					};
-					arr.push(entry.clone());
-				}
+				for variant in $entry {
+                    for entry in variant.into_iter() {
+                        let arr = match entry.trigger {
+                            InputMapperMessage::KeyDown(key) => &mut key_down[key as usize],
+                            InputMapperMessage::KeyUp(key) => &mut key_up[key as usize],
+                            InputMapperMessage::MouseScroll => &mut mouse_scroll,
+                            InputMapperMessage::PointerMove => &mut pointer_move,
+                            InputMapperMessage::DoubleClick => &mut double_click,
+                        };
+                        arr.push(entry.clone());
+                    }
+                }
 			)*
 			(key_up, key_down, pointer_move, mouse_scroll, double_click)
 		}};
 	}
 
 	pub(crate) use entry;
+	pub(crate) use entry_multiplatform;
 	pub(crate) use entry_raw;
+	pub(crate) use mac;
 	pub(crate) use mapping;
 	pub(crate) use modifiers;
+	pub(crate) use standard;
 }
