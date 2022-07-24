@@ -66,7 +66,10 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for EyedropperTo
 		}
 	}
 
-	advertise_actions!(EyedropperToolMessageDiscriminant; LeftMouseDown, RightMouseDown);
+	advertise_actions!(EyedropperToolMessageDiscriminant;
+		LeftMouseDown,
+		RightMouseDown,
+	);
 }
 
 impl ToolTransition for EyedropperTool {

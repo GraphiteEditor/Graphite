@@ -41,10 +41,10 @@
 						:title="`${listing.entry.name}\n${devMode ? 'Layer Path: ' + listing.entry.path.join(' / ') : ''}`.trim() || null"
 					>
 						<LayoutRow class="layer-type-icon">
-							<IconLabel v-if="listing.entry.layer_type === 'Folder'" :icon="'NodeFolder'" :style="'node'" title="Folder" />
-							<IconLabel v-else-if="listing.entry.layer_type === 'Image'" :icon="'NodeImage'" :style="'node'" title="Image" />
-							<IconLabel v-else-if="listing.entry.layer_type === 'Shape'" :icon="'NodeShape'" :style="'node'" title="Shape" />
-							<IconLabel v-else-if="listing.entry.layer_type === 'Text'" :icon="'NodeText'" :style="'node'" title="Path" />
+							<IconLabel v-if="listing.entry.layer_type === 'Folder'" :icon="'NodeFolder'" :iconStyle="'Node'" title="Folder" />
+							<IconLabel v-else-if="listing.entry.layer_type === 'Image'" :icon="'NodeImage'" :iconStyle="'Node'" title="Image" />
+							<IconLabel v-else-if="listing.entry.layer_type === 'Shape'" :icon="'NodeShape'" :iconStyle="'Node'" title="Shape" />
+							<IconLabel v-else-if="listing.entry.layer_type === 'Text'" :icon="'NodeText'" :iconStyle="'Node'" title="Path" />
 						</LayoutRow>
 						<LayoutRow class="layer-name" @dblclick="() => onEditLayerName(listing)">
 							<input
@@ -261,7 +261,7 @@
 </style>
 
 <script lang="ts">
-import { defineComponent } from "vue";
+import { defineComponent, nextTick } from "vue";
 
 import { defaultWidgetLayout, UpdateDocumentLayerTreeStructure, UpdateDocumentLayerDetails, UpdateLayerTreeOptionsLayout, LayerPanelEntry } from "@/wasm-communication/messages";
 
@@ -313,16 +313,16 @@ export default defineComponent({
 		handleExpandArrowClick(path: BigUint64Array) {
 			this.editor.instance.toggle_layer_expansion(path);
 		},
-		onEditLayerName(listing: LayerListingInfo) {
+		async onEditLayerName(listing: LayerListingInfo) {
 			if (listing.editingName) return;
 
 			this.draggable = false;
 
 			listing.editingName = true;
 			const tree: HTMLElement = (this.$refs.layerTreeList as typeof LayoutCol).$el;
-			this.$nextTick(() => {
-				(tree.querySelector("[data-text-input]:not([disabled])") as HTMLInputElement).select();
-			});
+
+			await nextTick();
+			(tree.querySelector("[data-text-input]:not([disabled])") as HTMLInputElement).select();
 		},
 		onEditLayerNameChange(listing: LayerListingInfo, inputElement: EventTarget | null) {
 			// Eliminate duplicate events
@@ -334,13 +334,13 @@ export default defineComponent({
 			listing.editingName = false;
 			this.editor.instance.set_layer_name(listing.entry.path, name);
 		},
-		onEditLayerNameDeselect(listing: LayerListingInfo) {
+		async onEditLayerNameDeselect(listing: LayerListingInfo) {
 			this.draggable = true;
 
 			listing.editingName = false;
-			this.$nextTick(() => {
-				window.getSelection()?.removeAllRanges();
-			});
+
+			await nextTick();
+			window.getSelection()?.removeAllRanges();
 		},
 		async selectLayer(clickedLayer: LayerPanelEntry, ctrl: boolean, shift: boolean) {
 			this.editor.instance.select_layer(clickedLayer.path, ctrl, shift);

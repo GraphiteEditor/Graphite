@@ -131,8 +131,20 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for PenTool {
 
 	fn actions(&self) -> ActionList {
 		match self.fsm_state {
-			PenToolFsmState::Ready => actions!(PenToolMessageDiscriminant; Undo, DragStart, DragStop, Confirm, Abort),
-			PenToolFsmState::DraggingHandle | PenToolFsmState::PlacingAnchor => actions!(PenToolMessageDiscriminant; DragStart, DragStop, PointerMove, Confirm, Abort),
+			PenToolFsmState::Ready => actions!(PenToolMessageDiscriminant;
+				Undo,
+				DragStart,
+				DragStop,
+				Confirm,
+				Abort,
+			),
+			PenToolFsmState::DraggingHandle | PenToolFsmState::PlacingAnchor => actions!(PenToolMessageDiscriminant;
+				DragStart,
+				DragStop,
+				PointerMove,
+				Confirm,
+				Abort,
+			),
 		}
 	}
 }

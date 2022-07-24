@@ -1,5 +1,5 @@
 use crate::layout::widgets::*;
-use crate::message_prelude::{DialogMessage, DocumentMessage, FrontendMessage, PortfolioMessage};
+use crate::message_prelude::*;
 
 /// A dialog for confirming the closing a document with unsaved changes.
 pub struct CloseDocument {
@@ -18,7 +18,7 @@ impl PropertyHolder for CloseDocument {
 				emphasized: true,
 				on_update: WidgetCallback::new(|_| {
 					DialogMessage::CloseDialogAndThen {
-						followup: Box::new(DocumentMessage::SaveDocument.into()),
+						followups: vec![DocumentMessage::SaveDocument.into()],
 					}
 					.into()
 				}),
@@ -29,7 +29,7 @@ impl PropertyHolder for CloseDocument {
 				min_width: 96,
 				on_update: WidgetCallback::new(move |_| {
 					DialogMessage::CloseDialogAndThen {
-						followup: Box::new(PortfolioMessage::CloseDocument { document_id }.into()),
+						followups: vec![BroadcastSignal::ToolAbort.into(), PortfolioMessage::CloseDocument { document_id }.into()],
 					}
 					.into()
 				}),

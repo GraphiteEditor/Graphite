@@ -175,7 +175,7 @@
 </style>
 
 <script lang="ts">
-import { defineComponent, PropType } from "vue";
+import { defineComponent, nextTick, PropType } from "vue";
 
 import LayoutCol from "@/components/layout/LayoutCol.vue";
 
@@ -319,7 +319,7 @@ export default defineComponent({
 		// To be called by the parent component. Measures the actual width of the floating menu content element and returns it in a promise.
 		async measureAndEmitNaturalWidth(): Promise<void> {
 			// Wait for the changed content which fired the `updated()` Vue event to be put into the DOM
-			await this.$nextTick();
+			await nextTick();
 
 			// Wait until all fonts have been loaded and rendered so measurements of content involving text are accurate
 			// API is experimental but supported in all browsers - https://developer.mozilla.org/en-US/docs/Web/API/FontFaceSet/ready
@@ -329,7 +329,8 @@ export default defineComponent({
 			// Make the component show itself with 0 min-width so it can be measured, and wait until the values have been updated to the DOM
 			this.measuringOngoing = true;
 			this.measuringOngoingGuard = true;
-			await this.$nextTick();
+
+			await nextTick();
 
 			// Only measure if the menu is visible, perhaps because a parent component with a `v-if` condition is false
 			let naturalWidth;
@@ -341,7 +342,7 @@ export default defineComponent({
 
 			// Turn off measuring mode for the component, which triggers another call to the `updated()` Vue event, so we can turn off the protection after that has happened
 			this.measuringOngoing = false;
-			await this.$nextTick();
+			await nextTick();
 			this.measuringOngoingGuard = false;
 
 			// Emit the measured natural width to the parent
@@ -424,7 +425,7 @@ export default defineComponent({
 	},
 	watch: {
 		// Called only when `open` is changed from outside this component (with v-model)
-		open(newState: boolean, oldState: boolean) {
+		async open(newState: boolean, oldState: boolean) {
 			// Switching from closed to open
 			if (newState && !oldState) {
 				// Close floating menu if pointer strays far enough away
@@ -435,15 +436,17 @@ export default defineComponent({
 				window.addEventListener("pointerdown", this.pointerDownHandler);
 				// Cancel the subsequent click event to prevent the floating menu from reopening if the floating menu's button is the click event target
 				window.addEventListener("pointerup", this.pointerUpHandler);
-				// Floating menu min-width resize observer
-				this.$nextTick(() => {
-					const floatingMenuContainer = this.$refs.floatingMenuContainer as HTMLElement;
-					if (!floatingMenuContainer) return;
 
-					// Start a new observation of the now-open floating menu
-					this.containerResizeObserver.disconnect();
-					this.containerResizeObserver.observe(floatingMenuContainer);
-				});
+				// Floating menu min-width resize observer
+
+				await nextTick();
+
+				const floatingMenuContainer = this.$refs.floatingMenuContainer as HTMLElement;
+				if (!floatingMenuContainer) return;
+
+				// Start a new observation of the now-open floating menu
+				this.containerResizeObserver.disconnect();
+				this.containerResizeObserver.observe(floatingMenuContainer);
 			}
 
 			// Switching from open to closed

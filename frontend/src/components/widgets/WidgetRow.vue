@@ -4,35 +4,41 @@
 <template>
 	<div :class="`widget-${direction}`">
 		<template v-for="(component, index) in widgets" :key="index">
-			<CheckboxInput v-if="component.kind === 'CheckboxInput'" v-bind="component.props" @update:checked="(value: boolean) => updateLayout(component.widget_id, value)" />
-			<ColorInput v-if="component.kind === 'ColorInput'" v-bind="component.props" v-model:open="open" @update:value="(value: string) => updateLayout(component.widget_id, value)" />
-			<DropdownInput v-if="component.kind === 'DropdownInput'" v-bind="component.props" v-model:open="open" @update:selectedIndex="(value: number) => updateLayout(component.widget_id, value)" />
-			<FontInput
-				v-if="component.kind === 'FontInput'"
+			<CheckboxInput v-if="component.props.kind === 'CheckboxInput'" v-bind="component.props" @update:checked="(value: boolean) => updateLayout(component.widgetId, value)" />
+			<ColorInput v-if="component.props.kind === 'ColorInput'" v-bind="component.props" v-model:open="open" @update:value="(value: string) => updateLayout(component.widgetId, value)" />
+			<DropdownInput
+				v-if="component.props.kind === 'DropdownInput'"
 				v-bind="component.props"
 				v-model:open="open"
-				@changeFont="(value: { name: string, style: string, file: string }) => updateLayout(component.widget_id, value)"
+				@update:selectedIndex="(value: number) => updateLayout(component.widgetId, value)"
 			/>
-			<IconButton v-if="component.kind === 'IconButton'" v-bind="component.props" :action="() => updateLayout(component.widget_id, null)" />
-			<IconLabel v-if="component.kind === 'IconLabel'" v-bind="component.props" />
-			<NumberInput
-				v-if="component.kind === 'NumberInput'"
+			<FontInput
+				v-if="component.props.kind === 'FontInput'"
 				v-bind="component.props"
-				@update:value="(value: number) => updateLayout(component.widget_id, value)"
-				:incrementCallbackIncrease="() => updateLayout(component.widget_id, 'Increment')"
-				:incrementCallbackDecrease="() => updateLayout(component.widget_id, 'Decrement')"
+				v-model:open="open"
+				@changeFont="(value: { name: string, style: string, file: string }) => updateLayout(component.widgetId, value)"
 			/>
-			<OptionalInput v-if="component.kind === 'OptionalInput'" v-bind="component.props" @update:checked="(value: boolean) => updateLayout(component.widget_id, value)" />
-			<PopoverButton v-if="component.kind === 'PopoverButton'">
-				<h3>{{ component.props.title }}</h3>
+			<IconButton v-if="component.props.kind === 'IconButton'" v-bind="component.props" :action="() => updateLayout(component.widgetId, null)" />
+			<IconLabel v-if="component.props.kind === 'IconLabel'" v-bind="component.props" />
+			<NumberInput
+				v-if="component.props.kind === 'NumberInput'"
+				v-bind="component.props"
+				@update:value="(value: number) => updateLayout(component.widgetId, value)"
+				:incrementCallbackIncrease="() => updateLayout(component.widgetId, 'Increment')"
+				:incrementCallbackDecrease="() => updateLayout(component.widgetId, 'Decrement')"
+			/>
+			<OptionalInput v-if="component.props.kind === 'OptionalInput'" v-bind="component.props" @update:checked="(value: boolean) => updateLayout(component.widgetId, value)" />
+			<PopoverButton v-if="component.props.kind === 'PopoverButton'" v-bind="component.props">
+				<h3>{{ component.props.header }}</h3>
 				<p>{{ component.props.text }}</p>
 			</PopoverButton>
-			<RadioInput v-if="component.kind === 'RadioInput'" v-bind="component.props" @update:selectedIndex="(value: number) => updateLayout(component.widget_id, value)" />
-			<Separator v-if="component.kind === 'Separator'" v-bind="component.props" />
-			<TextAreaInput v-if="component.kind === 'TextAreaInput'" v-bind="component.props" @commitText="(value: string) => updateLayout(component.widget_id, value)" />
-			<TextButton v-if="component.kind === 'TextButton'" v-bind="component.props" :action="() => updateLayout(component.widget_id, null)" />
-			<TextInput v-if="component.kind === 'TextInput'" v-bind="component.props" @commitText="(value: string) => updateLayout(component.widget_id, value)" />
-			<TextLabel v-if="component.kind === 'TextLabel'" v-bind="withoutValue(component.props)">{{ component.props.value }}</TextLabel>
+			<RadioInput v-if="component.props.kind === 'RadioInput'" v-bind="component.props" @update:selectedIndex="(value: number) => updateLayout(component.widgetId, value)" />
+			<Separator v-if="component.props.kind === 'Separator'" v-bind="component.props" />
+			<SwatchPairInput v-if="component.props.kind === 'SwatchPairInput'" v-bind="component.props" />
+			<TextAreaInput v-if="component.props.kind === 'TextAreaInput'" v-bind="component.props" @commitText="(value: string) => updateLayout(component.widgetId, value)" />
+			<TextButton v-if="component.props.kind === 'TextButton'" v-bind="component.props" :action="() => updateLayout(component.widgetId, null)" />
+			<TextInput v-if="component.props.kind === 'TextInput'" v-bind="component.props" @commitText="(value: string) => updateLayout(component.widgetId, value)" />
+			<TextLabel v-if="component.props.kind === 'TextLabel'" v-bind="withoutValue(component.props)">{{ component.props.value }}</TextLabel>
 		</template>
 	</div>
 </template>
@@ -84,6 +90,7 @@ import FontInput from "@/components/widgets/inputs/FontInput.vue";
 import NumberInput from "@/components/widgets/inputs/NumberInput.vue";
 import OptionalInput from "@/components/widgets/inputs/OptionalInput.vue";
 import RadioInput from "@/components/widgets/inputs/RadioInput.vue";
+import SwatchPairInput from "@/components/widgets/inputs/SwatchPairInput.vue";
 import TextAreaInput from "@/components/widgets/inputs/TextAreaInput.vue";
 import TextInput from "@/components/widgets/inputs/TextInput.vue";
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
@@ -123,21 +130,22 @@ export default defineComponent({
 		},
 	},
 	components: {
-		Separator,
-		PopoverButton,
-		TextButton,
 		CheckboxInput,
-		NumberInput,
-		TextInput,
-		IconButton,
-		OptionalInput,
-		RadioInput,
-		DropdownInput,
-		TextLabel,
-		IconLabel,
 		ColorInput,
+		DropdownInput,
 		FontInput,
+		IconButton,
+		IconLabel,
+		NumberInput,
+		OptionalInput,
+		PopoverButton,
+		RadioInput,
+		Separator,
+		SwatchPairInput,
 		TextAreaInput,
+		TextButton,
+		TextInput,
+		TextLabel,
 	},
 });
 </script>

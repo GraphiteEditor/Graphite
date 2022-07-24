@@ -21,7 +21,36 @@
 			</PopoverButton>
 		</LayoutRow>
 		<LayoutCol class="panel-body">
-			<component :is="panelType" />
+			<component :is="panelType" v-if="panelType" />
+			<LayoutCol class="empty-panel" v-else>
+				<LayoutCol class="content">
+					<LayoutRow class="logotype">
+						<IconLabel :icon="'GraphiteLogotypeSolid'" />
+					</LayoutRow>
+					<LayoutRow class="actions">
+						<LayoutCol>
+							<IconButton :action="() => newDocument()" :icon="'File'" :size="24" />
+							<IconButton :action="() => openDocument()" :icon="'Folder'" :size="24" />
+						</LayoutCol>
+						<LayoutCol>
+							<Separator :type="'Related'" />
+							<Separator :type="'Related'" />
+						</LayoutCol>
+						<LayoutCol>
+							<TextLabel>New Document:</TextLabel>
+							<TextLabel>Open Document:</TextLabel>
+						</LayoutCol>
+						<LayoutCol>
+							<Separator :type="'Unrelated'" />
+							<Separator :type="'Unrelated'" />
+						</LayoutCol>
+						<LayoutCol>
+							<UserInputLabel :inputKeys="[['KeyControl', 'KeyN']]" />
+							<UserInputLabel :inputKeys="[['KeyControl', 'KeyO']]" />
+						</LayoutCol>
+					</LayoutRow>
+				</LayoutCol>
+			</LayoutCol>
 		</LayoutCol>
 	</LayoutCol>
 </template>
@@ -141,6 +170,45 @@
 		flex: 1 1 100%;
 		flex-direction: column;
 		min-height: 0;
+
+		.empty-panel {
+			background: var(--color-2-mildblack);
+			margin: 4px;
+			border-radius: 2px;
+			justify-content: center;
+
+			.content {
+				flex: 0 0 auto;
+				align-items: center;
+
+				.logotype {
+					margin-bottom: 40px;
+
+					svg {
+						width: auto;
+						height: 120px;
+					}
+				}
+
+				.actions {
+					> div {
+						gap: 8px;
+
+						> * {
+							height: 24px;
+						}
+
+						.text-label {
+							line-height: 24px;
+						}
+
+						.user-input-label {
+							margin: 0;
+						}
+					}
+				}
+			}
+		}
 	}
 }
 </style>
@@ -156,6 +224,10 @@ import NodeGraph from "@/components/panels/NodeGraph.vue";
 import Properties from "@/components/panels/Properties.vue";
 import IconButton from "@/components/widgets/buttons/IconButton.vue";
 import PopoverButton from "@/components/widgets/buttons/PopoverButton.vue";
+import IconLabel from "@/components/widgets/labels/IconLabel.vue";
+import Separator from "@/components/widgets/labels/Separator.vue";
+import TextLabel from "@/components/widgets/labels/TextLabel.vue";
+import UserInputLabel from "@/components/widgets/labels/UserInputLabel.vue";
 
 const panelComponents = {
 	Document,
@@ -168,18 +240,31 @@ const panelComponents = {
 type PanelTypes = keyof typeof panelComponents;
 
 export default defineComponent({
+	inject: ["editor"],
 	props: {
 		tabMinWidths: { type: Boolean as PropType<boolean>, default: false },
 		tabCloseButtons: { type: Boolean as PropType<boolean>, default: false },
 		tabLabels: { type: Array as PropType<string[]>, required: true },
 		tabActiveIndex: { type: Number as PropType<number>, required: true },
-		panelType: { type: String as PropType<PanelTypes>, required: true },
+		panelType: { type: String as PropType<PanelTypes>, required: false },
 		clickAction: { type: Function as PropType<(index: number) => void>, required: false },
 		closeAction: { type: Function as PropType<(index: number) => void>, required: false },
+	},
+	methods: {
+		newDocument() {
+			this.editor.instance.new_document_dialog();
+		},
+		openDocument() {
+			this.editor.instance.document_open();
+		},
 	},
 	components: {
 		LayoutCol,
 		LayoutRow,
+		IconLabel,
+		TextLabel,
+		UserInputLabel,
+		Separator,
 		...panelComponents,
 	},
 });

@@ -5,7 +5,7 @@
 use crate::helpers::{translate_key, Error};
 use crate::{EDITOR_HAS_CRASHED, EDITOR_INSTANCES, JS_EDITOR_HANDLES};
 
-use editor::consts::{DEFAULT_FONT_FAMILY, DEFAULT_FONT_STYLE, FILE_SAVE_SUFFIX, GRAPHITE_DOCUMENT_VERSION};
+use editor::consts::{FILE_SAVE_SUFFIX, GRAPHITE_DOCUMENT_VERSION};
 use editor::input::input_preprocessor::ModifierKeys;
 use editor::input::mouse::{EditorMouseState, ScrollDelta, ViewportBounds};
 use editor::message_prelude::*;
@@ -26,7 +26,7 @@ pub fn set_random_seed(seed: u64) {
 	editor::communication::set_uuid_seed(seed);
 }
 
-/// Access a handle to WASM memory
+/// Provides a handle to access the raw WASM memory
 #[wasm_bindgen]
 pub fn wasm_memory() -> JsValue {
 	wasm_bindgen::memory()
@@ -105,29 +105,8 @@ impl JsEditorHandle {
 	// the backend from the web frontend.
 	// ========================================================================
 
-	pub fn init_app(&self) {
-		let message = PortfolioMessage::UpdateOpenDocumentsList;
-		self.dispatch(message);
-
-		let message = PortfolioMessage::UpdateDocumentWidgets;
-		self.dispatch(message);
-
-		let message = PropertiesPanelMessage::Init;
-		self.dispatch(message);
-
-		let message = ToolMessage::InitTools;
-		self.dispatch(message);
-
-		// A default font
-		let font = graphene::layers::text_layer::Font::new(DEFAULT_FONT_FAMILY.into(), DEFAULT_FONT_STYLE.into());
-		let message = FrontendMessage::TriggerFontLoad { font, is_default: true };
-		self.dispatch(message);
-
-		let message = MovementMessage::TranslateCanvas { delta: (0., 0.).into() };
-		self.dispatch(message);
-
-		let message = MenuBarMessage::SendLayout;
-		self.dispatch(message);
+	pub fn init_after_frontend_ready(&self) {
+		self.dispatch(Message::Init);
 	}
 
 	/// Displays a dialog with an error message
@@ -167,6 +146,16 @@ impl JsEditorHandle {
 
 	pub fn select_document(&self, document_id: u64) {
 		let message = PortfolioMessage::SelectDocument { document_id };
+		self.dispatch(message);
+	}
+
+	pub fn new_document_dialog(&self) {
+		let message = DialogMessage::RequestNewDocumentDialog;
+		self.dispatch(message);
+	}
+
+	pub fn document_open(&self) {
+		let message = PortfolioMessage::OpenDocument;
 		self.dispatch(message);
 	}
 
@@ -343,18 +332,6 @@ impl JsEditorHandle {
 		self.dispatch(message);
 
 		Ok(())
-	}
-
-	/// Swap primary and secondary color
-	pub fn swap_colors(&self) {
-		let message = ToolMessage::SwapColors;
-		self.dispatch(message);
-	}
-
-	/// Reset primary and secondary colors to their defaults
-	pub fn reset_colors(&self) {
-		let message = ToolMessage::ResetColors;
-		self.dispatch(message);
 	}
 
 	/// Paste layers from a serialized json representation

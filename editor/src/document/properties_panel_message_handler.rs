@@ -2,8 +2,8 @@ use super::utility_types::TargetDocument;
 use crate::document::properties_panel_message::TransformOp;
 use crate::layout::layout_message::LayoutTarget;
 use crate::layout::widgets::{
-	ColorInput, FontInput, IconLabel, Layout, LayoutGroup, NumberInput, PopoverButton, RadioEntryData, RadioInput, Separator, SeparatorDirection, SeparatorType, TextAreaInput, TextInput, TextLabel,
-	Widget, WidgetCallback, WidgetHolder, WidgetLayout,
+	ColorInput, FontInput, IconLabel, IconStyle, Layout, LayoutGroup, NumberInput, PopoverButton, RadioEntryData, RadioInput, Separator, SeparatorDirection, SeparatorType, TextAreaInput, TextInput,
+	TextLabel, Widget, WidgetCallback, WidgetHolder, WidgetLayout,
 };
 use crate::message_prelude::*;
 
@@ -156,6 +156,13 @@ impl<'a> MessageHandler<PropertiesPanelMessage, PropertiesPanelMessageHandlerDat
 				);
 				self.active_selection = None;
 			}
+			Deactivate => responses.push_back(
+				BroadcastMessage::UnsubscribeSignal {
+					on: BroadcastSignal::SelectionChanged,
+					message: Box::new(PropertiesPanelMessage::UpdateSelectedDocumentProperties.into()),
+				}
+				.into(),
+			),
 			Init => responses.push_back(
 				BroadcastMessage::SubscribeSignal {
 					on: BroadcastSignal::SelectionChanged,
@@ -262,7 +269,7 @@ fn register_artboard_layer_properties(layer: &Layer, responses: &mut VecDeque<Me
 		widgets: vec![
 			WidgetHolder::new(Widget::IconLabel(IconLabel {
 				icon: "NodeArtboard".into(),
-				gap_after: true,
+				icon_style: IconStyle::Node,
 			})),
 			WidgetHolder::new(Widget::Separator(Separator {
 				separator_type: SeparatorType::Related,
@@ -279,14 +286,16 @@ fn register_artboard_layer_properties(layer: &Layer, responses: &mut VecDeque<Me
 			WidgetHolder::new(Widget::TextInput(TextInput {
 				value: layer.name.clone().unwrap_or_else(|| "Untitled".to_string()),
 				on_update: WidgetCallback::new(|text_input: &TextInput| PropertiesPanelMessage::ModifyName { name: text_input.value.clone() }.into()),
+				..Default::default()
 			})),
 			WidgetHolder::new(Widget::Separator(Separator {
 				separator_type: SeparatorType::Related,
 				direction: SeparatorDirection::Horizontal,
 			})),
 			WidgetHolder::new(Widget::PopoverButton(PopoverButton {
-				title: "Options Bar".into(),
+				header: "Options Bar".into(),
 				text: "The contents of this popover menu are coming soon".into(),
+				..Default::default()
 			})),
 		],
 	}];
@@ -414,7 +423,8 @@ fn register_artboard_layer_properties(layer: &Layer, responses: &mut VecDeque<Me
 									PropertiesPanelMessage::ModifyFill { fill: Fill::None }.into()
 								}
 							}),
-							can_set_transparent: false,
+							no_transparency: true,
+							..Default::default()
 						})),
 					],
 				},
@@ -444,19 +454,19 @@ fn register_artwork_layer_properties(layer: &Layer, responses: &mut VecDeque<Mes
 			match &layer.data {
 				LayerDataType::Folder(_) => WidgetHolder::new(Widget::IconLabel(IconLabel {
 					icon: "NodeFolder".into(),
-					gap_after: true,
+					icon_style: IconStyle::Node,
 				})),
 				LayerDataType::Shape(_) => WidgetHolder::new(Widget::IconLabel(IconLabel {
 					icon: "NodeShape".into(),
-					gap_after: true,
+					icon_style: IconStyle::Node,
 				})),
 				LayerDataType::Text(_) => WidgetHolder::new(Widget::IconLabel(IconLabel {
 					icon: "NodeText".into(),
-					gap_after: true,
+					icon_style: IconStyle::Node,
 				})),
 				LayerDataType::Image(_) => WidgetHolder::new(Widget::IconLabel(IconLabel {
 					icon: "NodeImage".into(),
-					gap_after: true,
+					icon_style: IconStyle::Node,
 				})),
 			},
 			WidgetHolder::new(Widget::Separator(Separator {
@@ -474,14 +484,16 @@ fn register_artwork_layer_properties(layer: &Layer, responses: &mut VecDeque<Mes
 			WidgetHolder::new(Widget::TextInput(TextInput {
 				value: layer.name.clone().unwrap_or_else(|| "Untitled".to_string()),
 				on_update: WidgetCallback::new(|text_input: &TextInput| PropertiesPanelMessage::ModifyName { name: text_input.value.clone() }.into()),
+				..Default::default()
 			})),
 			WidgetHolder::new(Widget::Separator(Separator {
 				separator_type: SeparatorType::Related,
 				direction: SeparatorDirection::Horizontal,
 			})),
 			WidgetHolder::new(Widget::PopoverButton(PopoverButton {
-				title: "Options Bar".into(),
+				header: "Options Bar".into(),
 				text: "The contents of this popover menu are coming soon".into(),
+				..Default::default()
 			})),
 		],
 	}];
@@ -704,6 +716,7 @@ fn node_section_font(layer: &TextLayer) -> LayoutGroup {
 					WidgetHolder::new(Widget::TextAreaInput(TextAreaInput {
 						value: layer.text.clone(),
 						on_update: WidgetCallback::new(|text_area: &TextAreaInput| PropertiesPanelMessage::ModifyText { new_text: text_area.value.clone() }.into()),
+						..Default::default()
 					})),
 				],
 			},
@@ -729,6 +742,7 @@ fn node_section_font(layer: &TextLayer) -> LayoutGroup {
 							}
 							.into()
 						}),
+						..Default::default()
 					})),
 				],
 			},
@@ -754,6 +768,7 @@ fn node_section_font(layer: &TextLayer) -> LayoutGroup {
 							}
 							.into()
 						}),
+						..Default::default()
 					})),
 				],
 			},
@@ -997,6 +1012,7 @@ fn node_section_stroke(stroke: &Stroke) -> LayoutGroup {
 								.with_dash_lengths(&text_input.value)
 								.map_or(PropertiesPanelMessage::ResendActiveProperties.into(), |stroke| PropertiesPanelMessage::ModifyStroke { stroke }.into())
 						}),
+						..Default::default()
 					})),
 				],
 			},

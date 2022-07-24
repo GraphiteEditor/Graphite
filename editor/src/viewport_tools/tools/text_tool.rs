@@ -96,6 +96,7 @@ impl PropertyHolder for TextTool {
 						})
 						.into()
 					}),
+					..Default::default()
 				})),
 				WidgetHolder::new(Widget::Separator(Separator {
 					direction: SeparatorDirection::Horizontal,
@@ -112,6 +113,7 @@ impl PropertyHolder for TextTool {
 						})
 						.into()
 					}),
+					..Default::default()
 				})),
 				WidgetHolder::new(Widget::Separator(Separator {
 					direction: SeparatorDirection::Horizontal,
@@ -169,8 +171,14 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for TextTool {
 		use TextToolFsmState::*;
 
 		match self.fsm_state {
-			Ready => actions!(TextMessageDiscriminant; Interact),
-			Editing => actions!(TextMessageDiscriminant; Interact, Abort, CommitText),
+			Ready => actions!(TextMessageDiscriminant;
+				Interact,
+			),
+			Editing => actions!(TextMessageDiscriminant;
+				Interact,
+				Abort,
+				CommitText,
+			),
 		}
 	}
 }
