@@ -29,7 +29,7 @@ impl Default for ProjectionOptions {
 #[derive(Copy, Clone)]
 pub enum MaximizeArcs {
 	/// Start with the strategy of maximizing arcs and automatically switch when an erroneous case is encountered.
-	Auto,
+	Automatic,
 	/// Use the strategy to maximize approximated arcs, despite potentially erroneous arcs.
 	On,
 	/// Use the strategy that prioritizes correctness over maximal arcs.
@@ -42,11 +42,11 @@ pub struct ArcsOptions {
 	/// Determines how the approximated arcs are computed.
 	/// When maximizing the arcs, the algorithm may return incorrect arcs when the curve contains any small loops or segements that look like a very thin "U".
 	/// The enum options behave as follows:
-	/// - `Auto`: Maximize arcs until an erroneous approximation is found. Compute the arcs of the rest of the curve by first splitting on extremas to ensure no more erroneous cases are encountered.
+	/// - `Automatic`: Maximize arcs until an erroneous approximation is found. Compute the arcs of the rest of the curve by first splitting on extremas to ensure no more erroneous cases are encountered.
 	/// - `On`: Maximize arcs using the original algorithm from the [Approximating a Bezier curve with circular arcs](https://pomax.github.io/bezierinfo/#arcapproximation) section of Pomax's bezier curve primer. Erroneous arcs are possible.
 	/// - `Off`: Prioritize correctness by first spliting the curve by its extremas and determine the arc approximation of each segment instead.
 	///
-	/// The default value is `Auto`.
+	/// The default value is `Automatic`.
 	pub maximize_arcs: MaximizeArcs,
 	/// The error used for approximating the arc's fit. The default is `0.5`.
 	pub error: f64,
@@ -57,7 +57,7 @@ pub struct ArcsOptions {
 impl Default for ArcsOptions {
 	fn default() -> Self {
 		ArcsOptions {
-			maximize_arcs: MaximizeArcs::Auto,
+			maximize_arcs: MaximizeArcs::Automatic,
 			error: 0.5,
 			max_iterations: 100,
 		}

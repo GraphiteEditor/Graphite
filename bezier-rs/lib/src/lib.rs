@@ -711,7 +711,7 @@ impl Bezier {
 	pub fn arcs(&self, arcs_options: ArcsOptions) -> Vec<CircleArc> {
 		let ArcsOptions { maximize_arcs, error, max_iterations } = arcs_options;
 		match maximize_arcs {
-			MaximizeArcs::Auto => {
+			MaximizeArcs::Automatic => {
 				let (auto_arcs, final_low_t) = self.arcs_helper(0., 1., error, max_iterations, true);
 				if final_low_t != 1. {
 					[
@@ -1045,7 +1045,7 @@ mod tests {
 
 		// Resulting automatic arcs match the maximal results until the bad arc (in this case, only index 0 should match)
 		assert_eq!(auto_arcs[0], maximal_arcs[0]);
-		// Check that the first result from MaximizeArcs::Auto should not equal the first results from MaximizeArcs::Off
+		// Check that the first result from MaximizeArcs::Automatic should not equal the first results from MaximizeArcs::Off
 		assert_ne!(auto_arcs[0], extrema_arcs[0]);
 		// The remaining results (index 2 onwards) should match the results where MaximizeArcs::Off from the next extrema point onwards (after index 2).
 		assert!(auto_arcs.iter().skip(2).zip(extrema_arcs.iter().skip(2)).all(|(arc1, arc2)| compare_arcs(*arc1, *arc2)));

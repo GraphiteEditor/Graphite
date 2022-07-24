@@ -19,9 +19,9 @@ struct Point {
 
 #[wasm_bindgen]
 pub enum WasmMaximizeArcs {
-	Auto, // 0
-	On,   // 1
-	Off,  // 2
+	Automatic, // 0
+	On,        // 1
+	Off,       // 2
 }
 
 /// Wrapper of the `Bezier` struct to be used in JS.
@@ -46,7 +46,7 @@ fn to_js_value<T: Serialize>(data: T) -> JsValue {
 
 fn convert_wasm_mazimize_arcs(wasm_enum_value: WasmMaximizeArcs) -> MaximizeArcs {
 	match wasm_enum_value {
-		WasmMaximizeArcs::Auto => MaximizeArcs::Auto,
+		WasmMaximizeArcs::Automatic => MaximizeArcs::Automatic,
 		WasmMaximizeArcs::On => MaximizeArcs::On,
 		WasmMaximizeArcs::Off => MaximizeArcs::Off,
 	}
