@@ -2,7 +2,7 @@
 name = "graphite-proc-macros"
 publish = false
 version = "0.0.0"
-rust-version = "1.56.0"
+rust-version = "1.62.0"
 authors = ["Graphite Authors <contact@graphite.rs>"]
 edition = "2021"
 readme = "../README.md"
