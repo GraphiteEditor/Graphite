@@ -365,7 +365,7 @@ impl Default for Mapping {
 }
 
 impl Mapping {
-	pub fn match_input_message(&self, message: InputMapperMessage, keys: &KeyStates, actions: ActionList) -> Option<Message> {
+	pub fn match_input_message(&self, message: InputMapperMessage, keyboard_state: &KeyStates, actions: ActionList) -> Option<Message> {
 		let list = match message {
 			InputMapperMessage::KeyDown(key) => &self.key_down[key as usize],
 			InputMapperMessage::KeyUp(key) => &self.key_up[key as usize],
@@ -373,7 +373,7 @@ impl Mapping {
 			InputMapperMessage::MouseScroll => &self.mouse_scroll,
 			InputMapperMessage::PointerMove => &self.pointer_move,
 		};
-		list.match_mapping(keys, actions)
+		list.match_mapping(keyboard_state, actions)
 	}
 }
 
@@ -400,9 +400,12 @@ pub struct MappingEntry {
 pub struct KeyMappingEntries(pub Vec<MappingEntry>);
 
 impl KeyMappingEntries {
-	fn match_mapping(&self, keys: &KeyStates, actions: ActionList) -> Option<Message> {
+	fn match_mapping(&self, keyboard_state: &KeyStates, actions: ActionList) -> Option<Message> {
 		for entry in self.0.iter() {
-			let all_required_modifiers_pressed = ((*keys & entry.modifiers) ^ entry.modifiers).is_empty();
+			// Find which currently pressed keys are also the modifiers in this hotkey entry, then compare those against the required modifiers to see if there are zero missing.
+			let pressed_modifiers = *keyboard_state & entry.modifiers;
+			let all_modifiers_without_pressed_modifiers = entry.modifiers ^ pressed_modifiers;
+			let all_required_modifiers_pressed = all_modifiers_without_pressed_modifiers.is_empty();
 			if all_required_modifiers_pressed && actions.iter().flatten().any(|action| entry.action.to_discriminant() == *action) {
 				return Some(entry.action.clone());
 			}
