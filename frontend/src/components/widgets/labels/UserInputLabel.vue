@@ -1,5 +1,6 @@
 <template>
-	<LayoutRow class="user-input-label">
+	<IconLabel class="user-input-label keyboard-lock-notice" v-if="displayKeyboardLockNotice" :icon="'Info'" :title="keyboardLockInfoMessage" />
+	<LayoutRow class="user-input-label" v-else>
 		<template v-for="(keyGroup, keyGroupIndex) in inputKeys" :key="keyGroupIndex">
 			<span class="group-gap" v-if="keyGroupIndex > 0"></span>
 			<template v-for="(keyInfo, index) in keyTextOrIconList(keyGroup)" :key="index">
@@ -45,15 +46,14 @@
 		font-family: "Inconsolata", monospace;
 		font-weight: 400;
 		text-align: center;
-		color: var(--color-e-nearwhite);
-		border: 1px;
-		box-sizing: border-box;
-		border-style: solid;
-		border-color: var(--color-7-middlegray);
-		border-radius: 4px;
 		height: 16px;
 		// Firefox renders the text 1px lower than Chrome (tested on Windows) with 16px line-height, so moving it up 1 pixel by using 15px makes them agree
 		line-height: 15px;
+		box-sizing: border-box;
+		border: 1px solid;
+		border-radius: 4px;
+		border-color: var(--color-7-middlegray);
+		color: var(--color-e-nearwhite);
 
 		&.width-16 {
 			width: 16px;
@@ -93,6 +93,40 @@
 	.hint-text {
 		margin-left: 4px;
 	}
+
+	.floating-menu-content & {
+		.input-key {
+			border-color: var(--color-4-dimgray);
+			color: var(--color-8-uppergray);
+		}
+
+		.input-key .icon-label svg,
+		&.keyboard-lock-notice.keyboard-lock-notice svg,
+		.input-mouse .bright {
+			fill: var(--color-8-uppergray);
+		}
+
+		.input-mouse .dim {
+			fill: var(--color-4-dimgray);
+		}
+	}
+
+	.floating-menu-content .row:hover & {
+		.input-key {
+			border-color: var(--color-7-middlegray);
+			color: var(--color-9-palegray);
+		}
+
+		.input-key .icon-label svg,
+		&.keyboard-lock-notice.keyboard-lock-notice svg,
+		.input-mouse .bright {
+			fill: var(--color-9-palegray);
+		}
+
+		.input-mouse .dim {
+			fill: var(--color-7-middlegray);
+		}
+	}
 }
 </style>
 
@@ -106,17 +140,24 @@ import LayoutRow from "@/components/layout/LayoutRow.vue";
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
 
 export default defineComponent({
-	components: {
-		IconLabel,
-		LayoutRow,
-	},
+	inject: ["fullscreen"],
 	props: {
 		inputKeys: { type: Array as PropType<HintInfo["key_groups"]>, default: () => [] },
 		inputMouse: { type: String as PropType<HintInfo["mouse"]>, default: null },
+		requiresLock: { type: Boolean as PropType<boolean>, default: false },
 	},
 	computed: {
 		hasSlotContent(): boolean {
 			return Boolean(this.$slots.default);
+		},
+		keyboardLockInfoMessage(): string {
+			const USE_FULLSCREEN = "This hotkey is reserved by the browser, but becomes available in fullscreen mode";
+			const SWITCH_BROWSER = "This hotkey is reserved by the browser, but becomes available in Chrome, Edge, and Opera which support the Keyboard.lock() API";
+
+			return this.fullscreen.keyboardLockApiSupported ? USE_FULLSCREEN : SWITCH_BROWSER;
+		},
+		displayKeyboardLockNotice(): boolean {
+			return this.requiresLock && !this.fullscreen.state.keyboardLocked;
 		},
 	},
 	methods: {
@@ -186,6 +227,10 @@ export default defineComponent({
 		keyboardHintIcon(input: HintInfo["key_groups"][0][0]): IconName {
 			return `Keyboard${input}` as IconName;
 		},
+	},
+	components: {
+		IconLabel,
+		LayoutRow,
 	},
 });
 </script>
