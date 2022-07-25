@@ -11,10 +11,8 @@ impl Subpath {
 
 #[cfg(test)]
 mod tests {
-	use crate::Bezier;
-
 	use super::*;
-
+	use crate::Bezier;
 	use glam::DVec2;
 
 	#[test]
@@ -65,9 +63,9 @@ mod tests {
 		let handle2 = DVec2::new(40., 30.);
 		let handle3 = DVec2::new(10., 10.);
 
-		let bezier1 = Bezier::from_linear_dvec2(start, middle);
-		let bezier2 = Bezier::from_quadratic_dvec2(middle, handle1, end);
-		let bezier3 = Bezier::from_cubic_dvec2(end, handle2, handle3, start);
+		let linear_bezier = Bezier::from_linear_dvec2(start, middle);
+		let quadratic_bezier = Bezier::from_quadratic_dvec2(middle, handle1, end);
+		let cubic_bezier = Bezier::from_cubic_dvec2(end, handle2, handle3, start);
 
 		let mut subpath = Subpath::new(
 			vec![
@@ -89,9 +87,9 @@ mod tests {
 			],
 			false,
 		);
-		assert_eq!(subpath.length(None), bezier1.length(None) + bezier2.length(None));
+		assert_eq!(subpath.length(None), linear_bezier.length(None) + quadratic_bezier.length(None));
 
 		subpath.closed = true;
-		assert_eq!(subpath.length(None), bezier1.length(None) + bezier2.length(None) + bezier3.length(None));
+		assert_eq!(subpath.length(None), linear_bezier.length(None) + quadratic_bezier.length(None) + cubic_bezier.length(None));
 	}
 }

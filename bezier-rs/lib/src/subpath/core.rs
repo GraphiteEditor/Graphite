@@ -1,4 +1,5 @@
 use super::*;
+use crate::consts::*;
 
 /// Functionality relating to core `Subpath` operations, such as constructors and `iter`.
 impl Subpath {
@@ -60,10 +61,10 @@ impl Subpath {
 		);
 		let handle_line_options = format!(r#"stroke="{}" stroke-width="{}" fill="none""#, options.handle_line_stroke_color, options.handle_line_stroke_width);
 
-		let curve_start_argument = format!("M{} {}", self[0].anchor.x, self[0].anchor.y);
+		let curve_start_argument = format!("{SVG_ARG_MOVE}{} {}", self[0].anchor.x, self[0].anchor.y);
 		let mut curve_arguments: Vec<String> = self.iter().map(|bezier| bezier.svg_curve_argument()).collect();
 		if self.closed {
-			curve_arguments.push(String::from("Z"));
+			curve_arguments.push(String::from(SVG_ARG_CLOSED));
 		}
 
 		let anchor_circles = self

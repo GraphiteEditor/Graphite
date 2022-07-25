@@ -32,6 +32,7 @@ impl IndexMut<usize> for Subpath {
 impl Iterator for SubpathIter<'_> {
 	type Item = Bezier;
 
+	// Returns the Bezier representation of each `Subpath` segment, defined between a pair of adjacent manipulator points.
 	fn next(&mut self) -> Option<Self::Item> {
 		if self.index >= self.sub_path.len() - 1 + (self.sub_path.closed as usize) {
 			return None;
@@ -42,15 +43,14 @@ impl Iterator for SubpathIter<'_> {
 
 		let start = self.sub_path[start_index].anchor;
 		let end = self.sub_path[end_index].anchor;
-		let handle1 = self.sub_path[start_index].out_handle;
-		let handle2 = self.sub_path[end_index].in_handle;
+		let out_handle = self.sub_path[start_index].out_handle;
+		let in_handle = self.sub_path[end_index].in_handle;
 
-		if handle1.is_none() && handle2.is_none() {
-			return Some(Bezier::from_linear_dvec2(start, end));
+		if let (Some(handle1), Some(handle2)) = (out_handle, in_handle) {
+			return Some(Bezier::from_cubic_dvec2(start, handle1, handle2, end));
+		} else if let Some(handle) = out_handle.or(in_handle) {
+			return Some(Bezier::from_quadratic_dvec2(start, handle, end));
 		}
-		if handle1.is_none() || handle2.is_none() {
-			return Some(Bezier::from_quadratic_dvec2(start, handle1.or(handle2).unwrap(), end));
-		}
-		Some(Bezier::from_cubic_dvec2(start, handle1.unwrap(), handle2.unwrap(), end))
+		Some(Bezier::from_linear_dvec2(start, end))
 	}
 }
