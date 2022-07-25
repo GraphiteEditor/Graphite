@@ -446,7 +446,7 @@ impl Bezier {
 		bezier_starting_at_t1.split(adjusted_t2)[t2_split_side]
 	}
 
-	/// Returns the t value that corresponds to the closest point on the curve to the provided point.
+	/// Returns the `t` value that corresponds to the closest point on the curve to the provided point.
 	/// Uses a searching algorithm akin to binary search that can be customized using the [ProjectionOptions] structure.
 	pub fn project(&self, point: DVec2, options: ProjectionOptions) -> f64 {
 		let ProjectionOptions {
@@ -604,13 +604,13 @@ impl Bezier {
 
 	/// Implementation of the algorithm to find curve intersections by iterating on bounding boxes.
 	/// `curve1_t_interval` is used to identify the t values of the original `curve1` that the current iteration is representing.
-	/// Note that the `t` interval for only the first curve is needed since we want to return `t` with repsect to it.
-	fn intersection_curves(curve1: &Bezier, curve1_t_interval: [f64; 2], curve2: &Bezier, intersections: &mut Vec<f64>, error: f64) {
+	/// Note that the `t` interval for only the first curve is needed since we want to return `t` with respect to it.
+	fn subcurve_intersection(curve1: &Bezier, original_curve1_t_interval: [f64; 2], curve2: &Bezier, error: f64) -> Vec<f64> {
 		let bounding_box1 = curve1.bounding_box();
 		let bounding_box2 = curve2.bounding_box();
 
 		// Determine the t interval of the original curve for the split curve1
-		let [curve1_start_t, curve1_end_t] = curve1_t_interval;
+		let [curve1_start_t, curve1_end_t] = original_curve1_t_interval;
 		let curve1_mid_t = curve1_start_t + (curve1_end_t - curve1_start_t) / 2.;
 
 		let error_threshold = DVec2::new(error, error);
@@ -620,8 +620,7 @@ impl Bezier {
 			// If bounding boxes are within the error threshold (i.e. are small enough), we have found an intersection
 			if (bounding_box1[1] - bounding_box1[0]).lt(&error_threshold) && (bounding_box2[1] - bounding_box2[0]).lt(&error_threshold) {
 				// Use the middle t value
-				intersections.push(curve1_mid_t);
-				return;
+				return vec![curve1_mid_t];
 			}
 
 			// Split curves in half and repeat with the combinations of the two halves of each curve
@@ -631,17 +630,22 @@ impl Bezier {
 			// Get the new t intervals for
 			let interval_1a = [curve1_start_t, curve1_mid_t];
 			let interval_1b = [curve1_mid_t, curve1_end_t];
-			Bezier::intersection_curves(&split1a, interval_1a, &split2a, intersections, error);
-			Bezier::intersection_curves(&split1a, interval_1a, &split2b, intersections, error);
-			Bezier::intersection_curves(&split1b, interval_1b, &split2a, intersections, error);
-			Bezier::intersection_curves(&split1b, interval_1b, &split2b, intersections, error);
+			[
+				Bezier::subcurve_intersection(&split1a, interval_1a, &split2a, error),
+				Bezier::subcurve_intersection(&split1a, interval_1a, &split2b, error),
+				Bezier::subcurve_intersection(&split1b, interval_1b, &split2a, error),
+				Bezier::subcurve_intersection(&split1b, interval_1b, &split2b, error),
+			]
+			.concat()
+		} else {
+			vec![]
 		}
 	}
 
 	// TODO: Use an `impl Iterator` return type instead of a `Vec`
 	/// Returns a list of `t` values that correspond to intersection points between the current bezier curve and the provided one. The returned `t` values are with respect to the current bezier, not the provided parameter.
 	/// If either curve is linear, then zero intersection points will be returned along colinear segments.
-	/// - `error`: For intersections with non-linear beziers, `error` defines the threshold for bounding boxes to be considered an intersection point.
+	/// - `error` - For intersections with non-linear beziers, `error` defines the threshold for bounding boxes to be considered an intersection point.
 	pub fn intersections(&self, curve: &Bezier, error: Option<f64>) -> Vec<f64> {
 		let error = error.unwrap_or(0.5);
 		if let BezierHandles::Linear {} = curve.handles {
@@ -706,9 +710,7 @@ impl Bezier {
 		}
 
 		// Otherwise, use bounding box to determine intersections
-		let mut intersection_points = Vec::new();
-		Bezier::intersection_curves(self, [0., 1.], curve, &mut intersection_points, error);
-		intersection_points
+		Bezier::subcurve_intersection(self, [0., 1.], curve, error)
 	}
 
 	/// Returns a list of lists of points representing the De Casteljau points for all iterations at the point corresponding to `t` using De Casteljau's algorithm.
@@ -957,12 +959,13 @@ mod tests {
 			.all(|(&a, b)| compare_vector_of_points(a.get_points().collect::<Vec<DVec2>>(), b.to_vec()))
 	}
 
+	// Compare vectors of points with some maximum allowed absolute difference between the values
 	fn compare_vec_of_points(vec1: Vec<DVec2>, vec2: Vec<DVec2>, max_absolute_difference: f64) -> bool {
 		vec1.into_iter().zip(vec2).all(|(p1, p2)| p1.abs_diff_eq(p2, max_absolute_difference))
 	}
 
 	#[test]
-	fn quadratic_from_points() {
+	fn test_quadratic_from_points() {
 		let p1 = DVec2::new(30., 50.);
 		let p2 = DVec2::new(140., 30.);
 		let p3 = DVec2::new(160., 170.);
@@ -978,7 +981,7 @@ mod tests {
 	}
 
 	#[test]
-	fn cubic_through_points() {
+	fn test_cubic_through_points() {
 		let p1 = DVec2::new(30., 30.);
 		let p2 = DVec2::new(60., 140.);
 		let p3 = DVec2::new(160., 160.);
@@ -994,7 +997,7 @@ mod tests {
 	}
 
 	#[test]
-	fn project() {
+	fn test_project() {
 		let project_options = ProjectionOptions::default();
 
 		let bezier1 = Bezier::from_cubic_coordinates(4., 4., 23., 45., 10., 30., 56., 90.);
@@ -1005,7 +1008,7 @@ mod tests {
 		assert!(bezier2.evaluate(bezier2.project(DVec2::new(100., 0.), project_options)) == DVec2::new(0., 0.));
 	}
 	#[test]
-	fn intersect_line_segment_linear() {
+	fn test_intersect_line_segment_linear() {
 		let p1 = DVec2::new(30., 60.);
 		let p2 = DVec2::new(140., 120.);
 
@@ -1023,7 +1026,7 @@ mod tests {
 	}
 
 	#[test]
-	fn intersect_line_segment_quadratic() {
+	fn test_intersect_line_segment_quadratic() {
 		let p1 = DVec2::new(30., 50.);
 		let p2 = DVec2::new(140., 30.);
 		let p3 = DVec2::new(160., 170.);
@@ -1042,7 +1045,7 @@ mod tests {
 	}
 
 	#[test]
-	fn intersect_line_segment_cubic() {
+	fn test_intersect_line_segment_cubic() {
 		let p1 = DVec2::new(30., 30.);
 		let p2 = DVec2::new(60., 140.);
 		let p3 = DVec2::new(150., 30.);
@@ -1063,7 +1066,8 @@ mod tests {
 		assert!(compare_points(bezier.evaluate(intersections2[1]), DVec2::new(85.84, 85.84)));
 	}
 
-	fn intersect_curve() {
+	#[test]
+	fn test_intersect_curve() {
 		let bezier1 = Bezier::from_cubic_coordinates(30., 30., 60., 140., 150., 30., 160., 160.);
 		let bezier2 = Bezier::from_quadratic_coordinates(175., 140., 20., 20., 120., 20.);
 
@@ -1077,7 +1081,7 @@ mod tests {
 	}
 
 	#[test]
-	fn offset() {
+	fn test_offset() {
 		let p1 = DVec2::new(30., 50.);
 		let p2 = DVec2::new(140., 30.);
 		let p3 = DVec2::new(160., 170.);
@@ -1103,7 +1107,7 @@ mod tests {
 	}
 
 	#[test]
-	fn reduce() {
+	fn test_reduce() {
 		let p1 = DVec2::new(0., 0.);
 		let p2 = DVec2::new(50., 50.);
 		let p3 = DVec2::new(0., 0.);

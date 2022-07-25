@@ -146,7 +146,7 @@ pub fn solve_cubic(a: f64, b: f64, c: f64, d: f64) -> Vec<f64> {
 	}
 }
 
-/// Determine if two rectangles have any overlap. The rectangles are represnted by a pair of coordinates that designate the top left and bottom right corners (in a graphical coordinate system).
+/// Determine if two rectangles have any overlap. The rectangles are represented by a pair of coordinates that designate the top left and bottom right corners (in a graphical coordinate system).
 pub fn do_rectangles_overlap(rectangle1: [DVec2; 2], rectangle2: [DVec2; 2]) -> bool {
 	let [bottom_left1, top_right1] = rectangle1;
 	let [bottom_left2, top_right2] = rectangle2;
