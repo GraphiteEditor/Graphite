@@ -280,7 +280,7 @@ impl JsEditorHandle {
 
 	/// A text box was committed
 	pub fn on_change_text(&self, new_text: String) -> Result<(), JsValue> {
-		let message = TextMessage::TextChange { new_text };
+		let message = TextToolMessage::TextChange { new_text };
 		self.dispatch(message);
 
 		Ok(())
@@ -302,7 +302,7 @@ impl JsEditorHandle {
 
 	/// A text box was changed
 	pub fn update_bounds(&self, new_text: String) -> Result<(), JsValue> {
-		let message = TextMessage::UpdateBounds { new_text };
+		let message = TextToolMessage::UpdateBounds { new_text };
 		self.dispatch(message);
 
 		Ok(())

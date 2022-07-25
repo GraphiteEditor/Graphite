@@ -390,7 +390,7 @@ impl Fsm for SelectToolFsmState {
 						match intersect.data {
 							LayerDataType::Text(_) => {
 								responses.push_front(ToolMessage::ActivateTool { tool_type: ToolType::Text }.into());
-								responses.push_back(TextMessage::Interact.into());
+								responses.push_back(TextToolMessage::Interact.into());
 							}
 							LayerDataType::Shape(_) => {
 								responses.push_front(ToolMessage::ActivateTool { tool_type: ToolType::Path }.into());

@@ -54,7 +54,7 @@ pub enum ToolMessage {
 	Shape(ShapeToolMessage),
 	#[remain::unsorted]
 	#[child]
-	Text(TextMessage),
+	Text(TextToolMessage),
 	// #[remain::unsorted]
 	// #[child]
 	// Brush(BrushToolMessage),
