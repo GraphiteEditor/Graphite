@@ -12,14 +12,14 @@ const SHIFT_NUDGE_AMOUNT: f64 = 10.;
 pub struct Mapping {
 	pub key_up: [KeyMappingEntries; NUMBER_OF_KEYS],
 	pub key_down: [KeyMappingEntries; NUMBER_OF_KEYS],
-	pub pointer_move: KeyMappingEntries,
-	pub mouse_scroll: KeyMappingEntries,
 	pub double_click: KeyMappingEntries,
+	pub mouse_scroll: KeyMappingEntries,
+	pub pointer_move: KeyMappingEntries,
 }
 
 impl Default for Mapping {
 	fn default() -> Self {
-		use input_mapper_macros::{entry, entry_multiplatform, entry_raw, mac, mapping, modifiers, standard};
+		use input_mapper_macros::{entry, entry_for_layout, entry_multiplatform, mac, mapping, modifiers, standard};
 		use Key::*;
 
 		// WARNING!
@@ -328,7 +328,7 @@ impl Default for Mapping {
 			entry! {action_dispatch=DebugMessage::MessageNames, key_down=Key1, modifiers=[KeyAlt]},
 			entry! {action_dispatch=DebugMessage::MessageContents, key_down=Key2, modifiers=[KeyAlt]},
 		];
-		let (mut key_up, mut key_down, mut pointer_move, mut mouse_scroll, mut double_click) = mappings;
+		let (mut key_up, mut key_down, mut double_click, mut mouse_scroll, mut pointer_move) = mappings;
 
 		// TODO: Hardcode these 10 lines into 10 lines of declarations, or make this use a macro to do all 10 in one line
 		const NUMBER_KEYS: [Key; 10] = [Key0, Key1, Key2, Key3, Key4, Key5, Key6, Key7, Key8, Key9];
@@ -337,7 +337,7 @@ impl Default for Mapping {
 				0,
 				MappingEntry {
 					action: TransformLayerMessage::TypeDigit { digit: i as u8 }.into(),
-					trigger: InputMapperMessage::KeyDown(*key),
+					input: InputMapperMessage::KeyDown(*key),
 					platform_layout: KeyboardPlatformLayout::Agnostic,
 					modifiers: modifiers! {},
 				},
@@ -350,16 +350,16 @@ impl Default for Mapping {
 				sort(sublist);
 			}
 		}
-		sort(&mut pointer_move);
-		sort(&mut mouse_scroll);
 		sort(&mut double_click);
+		sort(&mut mouse_scroll);
+		sort(&mut pointer_move);
 
 		Self {
 			key_up,
 			key_down,
-			pointer_move,
-			mouse_scroll,
 			double_click,
+			mouse_scroll,
+			pointer_move,
 		}
 	}
 }
@@ -391,7 +391,7 @@ pub enum KeyboardPlatformLayout {
 #[derive(PartialEq, Clone, Debug)]
 pub struct MappingEntry {
 	pub action: Message,
-	pub trigger: InputMapperMessage,
+	pub input: InputMapperMessage,
 	pub modifiers: KeyStates,
 	pub platform_layout: KeyboardPlatformLayout,
 }
@@ -424,14 +424,8 @@ impl KeyMappingEntries {
 	}
 }
 
-impl Default for KeyMappingEntries {
-	fn default() -> Self {
-		Self::new()
-	}
-}
-
 mod input_mapper_macros {
-	/// Constructs a `KeyStates` and sets all the provided `Key`s.
+	/// Constructs a `KeyStates` bit vector and sets the bit flags for all the given modifier `Key`s.
 	macro_rules! modifiers {
 		($($m:ident),*) => {{
 			#[allow(unused_mut)]
@@ -451,34 +445,35 @@ mod input_mapper_macros {
 	/// Each handler adds or removes actions in the form of message discriminants. Here, we tie an input condition (such as a hotkey) to an action's full message.
 	/// When an action is currently available, and the user enters that input, the action's message is dispatched on the message bus.
 	///
-	/// ## Syntax variants:
+	/// # Syntax variants:
+	///
 	/// 1. Syntax that matches on a `KeyDown` message input:
 	///    ```rs
-	///    entry_raw! {action_dispatch: Message, key_down: Key, modifiers?: Key[], layout: KeyboardPlatformLayout}
+	///    entry_for_layout! {action_dispatch: Message, key_down: Key, modifiers?: Key[], layout: KeyboardPlatformLayout}
 	///    ```
 	/// 2. Syntax that matches on a `KeyUp` message input:
 	///    ```rs
-	///    entry_raw! {action_dispatch: Message, key_up: Key, modifiers?: Key[], layout: KeyboardPlatformLayout}
+	///    entry_for_layout! {action_dispatch: Message, key_up: Key, modifiers?: Key[], layout: KeyboardPlatformLayout}
 	///    ```
 	/// 3. Syntax that matches on a `DoubleClick` message input:
 	///    ```rs
-	///    entry_raw! {action_dispatch: Message, double_click, modifiers?: Key[], layout: KeyboardPlatformLayout}
+	///    entry_for_layout! {action_dispatch: Message, double_click, modifiers?: Key[], layout: KeyboardPlatformLayout}
 	///    ```
 	/// 4. Syntax that matches on a `MouseScroll` message input:
 	///    ```rs
-	///    entry_raw! {action_dispatch: Message, mouse_scroll, modifiers?: Key[], layout: KeyboardPlatformLayout}
+	///    entry_for_layout! {action_dispatch: Message, mouse_scroll, modifiers?: Key[], layout: KeyboardPlatformLayout}
 	///    ```
 	/// 5. Syntax that matches on a `PointerMove` message input and also on `KeyDown` and `KeyUp` input messages for specified refresh keys:
 	///    ```rs
-	///    entry_raw! {action_dispatch: Message, pointer_move, refresh_keys: Key[], layout: KeyboardPlatformLayout}
+	///    entry_for_layout! {action_dispatch: Message, pointer_move, refresh_keys: Key[], layout: KeyboardPlatformLayout}
 	///    ```
-	macro_rules! entry_raw {
+	macro_rules! entry_for_layout {
 		// 1. KeyDown input
 		{action_dispatch=$action_dispatch:expr, key_down=$key:ident $(, modifiers=[$($modifier:ident),* $(,)?])?, layout=$layout:ident} => {{
 			&[
 				MappingEntry {
 					action: $action_dispatch.into(),
-					trigger: InputMapperMessage::KeyDown(Key::$key),
+					input: InputMapperMessage::KeyDown(Key::$key),
 					modifiers: modifiers!($($($modifier),*)?),
 					platform_layout: KeyboardPlatformLayout::$layout,
 				},
@@ -490,7 +485,7 @@ mod input_mapper_macros {
 			&[
 				MappingEntry {
 					action: $action_dispatch.into(),
-					trigger: InputMapperMessage::KeyUp(Key::$key),
+					input: InputMapperMessage::KeyUp(Key::$key),
 					modifiers: modifiers!($($($modifier),*)?),
 					platform_layout: KeyboardPlatformLayout::$layout,
 				},
@@ -502,7 +497,7 @@ mod input_mapper_macros {
 			&[
 				MappingEntry {
 					action: $action_dispatch.into(),
-					trigger: InputMapperMessage::DoubleClick,
+					input: InputMapperMessage::DoubleClick,
 					modifiers: modifiers!($($($modifier),*)?),
 					platform_layout: KeyboardPlatformLayout::$layout,
 				},
@@ -514,7 +509,7 @@ mod input_mapper_macros {
 			&[
 				MappingEntry {
 					action: $action_dispatch.into(),
-					trigger: InputMapperMessage::MouseScroll,
+					input: InputMapperMessage::MouseScroll,
 					modifiers: modifiers!($($($modifier),*)?),
 					platform_layout: KeyboardPlatformLayout::$layout,
 				},
@@ -527,7 +522,7 @@ mod input_mapper_macros {
 				// Cause the `action_dispatch` message to be sent when the mouse moves.
 				MappingEntry {
 					action: $action_dispatch.into(),
-					trigger: InputMapperMessage::PointerMove,
+					input: InputMapperMessage::PointerMove,
 					platform_layout: KeyboardPlatformLayout::$layout,
 					modifiers: modifiers!(),
 				},
@@ -541,13 +536,13 @@ mod input_mapper_macros {
 				$(
 				MappingEntry {
 					action: $action_dispatch.into(),
-					trigger: InputMapperMessage::KeyDown(Key::$refresh),
+					input: InputMapperMessage::KeyDown(Key::$refresh),
 					platform_layout: KeyboardPlatformLayout::$layout,
 					modifiers: modifiers!(),
 				},
 				MappingEntry {
 					action: $action_dispatch.into(),
-					trigger: InputMapperMessage::KeyUp(Key::$refresh),
+					input: InputMapperMessage::KeyUp(Key::$refresh),
 					platform_layout: KeyboardPlatformLayout::$layout,
 					modifiers: modifiers!(),
 				},
@@ -557,61 +552,80 @@ mod input_mapper_macros {
 		}};
 	}
 
-	/// Wraps [entry_raw]! and calls it with an `Agnostic` keyboard platform layout to avoid having to specify that.
+	/// Wraps [entry_for_layout]! and calls it with an `Agnostic` keyboard platform layout to avoid having to specify that.
 	macro_rules! entry {
 		{$($arg:tt)*} => {{
-			&[entry_raw! {$($arg)*, layout=Agnostic}]
+			&[entry_for_layout! {$($arg)*, layout=Agnostic}]
 		}};
 	}
-	/// Wraps [entry_raw]! and calls it with a `Mac` keyboard platform layout to avoid having to specify that.
+	/// Wraps [entry_for_layout]! and calls it with a `Mac` keyboard platform layout to avoid having to specify that.
 	macro_rules! mac {
 		{$($arg:tt)*} => {{
-			entry_raw! {$($arg)*, layout=Mac}
+			entry_for_layout! {$($arg)*, layout=Mac}
 		}};
 	}
-	/// Wraps [entry_raw]! and calls it with a `Standard` keyboard platform layout to avoid having to specify that.
+	/// Wraps [entry_for_layout]! and calls it with a `Standard` keyboard platform layout to avoid having to specify that.
 	macro_rules! standard {
 		{$($arg:tt)*} => {{
-			entry_raw! {$($arg)*, layout=Standard}
+			entry_for_layout! {$($arg)*, layout=Standard}
 		}};
 	}
+
 	/// Groups multiple related entries for different platforms.
 	/// When a keyboard shortcut is not platform-agnostic, this should be used to contain a [mac]! and/or [standard]! entry.
+	///
+	/// # Examples
+	///
+	/// ```rs
+	/// entry_multiplatform! {
+	///     standard! {...},
+	///     mac!      {...},
+	/// },
+	/// ```
 	macro_rules! entry_multiplatform {
 		{$($arg:expr),*,} => {{
 			&[$($arg ),*]
 		}};
 	}
 
+	/// Constructs a `KeyMappingEntries` list for each input type and inserts every given entry into the list corresponding to its input type.
+	/// Returns a tuple of `KeyMappingEntries` in the order:
+	/// ```rs
+	/// (key_up, key_down, double_click, mouse_scroll, pointer_move)
+	/// ```
 	macro_rules! mapping {
-		//[$(<action_dispatch=$action_dispatch:expr; message=$key:expr; $(modifiers=[$($m:ident),* $(,)?];)?>)*] => {{
 		[$($entry:expr),* $(,)?] => {{
 			let mut key_up = KeyMappingEntries::key_array();
 			let mut key_down = KeyMappingEntries::key_array();
-			let mut pointer_move: KeyMappingEntries = Default::default();
-			let mut mouse_scroll: KeyMappingEntries = Default::default();
-			let mut double_click: KeyMappingEntries = Default::default();
+			let mut double_click = KeyMappingEntries::new();
+			let mut mouse_scroll = KeyMappingEntries::new();
+			let mut pointer_move = KeyMappingEntries::new();
+
 			$(
-			for variant in $entry {
-				for entry in variant.into_iter() {
-					let arr = match entry.trigger {
+			// Each of the many entry slices, one specified per action
+			for entry_slice in $entry {
+				// Each entry in the slice (usually just one, except when `refresh_keys` adds additional key entries)
+				for entry in entry_slice.into_iter() {
+					let corresponding_list = match entry.input {
 						InputMapperMessage::KeyDown(key) => &mut key_down[key as usize],
 						InputMapperMessage::KeyUp(key) => &mut key_up[key as usize],
+						InputMapperMessage::DoubleClick => &mut double_click,
 						InputMapperMessage::MouseScroll => &mut mouse_scroll,
 						InputMapperMessage::PointerMove => &mut pointer_move,
-						InputMapperMessage::DoubleClick => &mut double_click,
 					};
-					arr.push(entry.clone());
+					// Push each entry to the corresponding `KeyMappingEntries` list for its input type
+					corresponding_list.push(entry.clone());
 				}
 			}
 			)*
-			(key_up, key_down, pointer_move, mouse_scroll, double_click)
+
+			(key_up, key_down, double_click, mouse_scroll, pointer_move)
 		}};
 	}
 
 	pub(crate) use entry;
+	pub(crate) use entry_for_layout;
 	pub(crate) use entry_multiplatform;
-	pub(crate) use entry_raw;
 	pub(crate) use mac;
 	pub(crate) use mapping;
 	pub(crate) use modifiers;
