@@ -605,7 +605,7 @@ impl Bezier {
 	/// Implementation of the algorithm to find curve intersections by iterating on bounding boxes.
 	/// `curve1_t_interval` is used to identify the t values of the original `curve1` that the current iteration is representing.
 	/// Note that the `t` interval for only the first curve is needed since we want to return `t` with respect to it.
-	fn subcurve_intersection(curve1: &Bezier, original_curve1_t_interval: [f64; 2], curve2: &Bezier, error: f64) -> Vec<f64> {
+	fn intersections_between_subcurves(curve1: &Bezier, original_curve1_t_interval: [f64; 2], curve2: &Bezier, error: f64) -> Vec<f64> {
 		let bounding_box1 = curve1.bounding_box();
 		let bounding_box2 = curve2.bounding_box();
 
@@ -631,10 +631,10 @@ impl Bezier {
 			let interval_1a = [curve1_start_t, curve1_mid_t];
 			let interval_1b = [curve1_mid_t, curve1_end_t];
 			[
-				Bezier::subcurve_intersection(&split1a, interval_1a, &split2a, error),
-				Bezier::subcurve_intersection(&split1a, interval_1a, &split2b, error),
-				Bezier::subcurve_intersection(&split1b, interval_1b, &split2a, error),
-				Bezier::subcurve_intersection(&split1b, interval_1b, &split2b, error),
+				Bezier::intersections_between_subcurves(&split1a, interval_1a, &split2a, error),
+				Bezier::intersections_between_subcurves(&split1a, interval_1a, &split2b, error),
+				Bezier::intersections_between_subcurves(&split1b, interval_1b, &split2a, error),
+				Bezier::intersections_between_subcurves(&split1b, interval_1b, &split2b, error),
 			]
 			.concat()
 		} else {
@@ -710,7 +710,7 @@ impl Bezier {
 		}
 
 		// Otherwise, use bounding box to determine intersections
-		Bezier::subcurve_intersection(self, [0., 1.], curve, error)
+		Bezier::intersections_between_subcurves(self, [0., 1.], curve, error)
 	}
 
 	/// Returns a list of lists of points representing the De Casteljau points for all iterations at the point corresponding to `t` using De Casteljau's algorithm.
