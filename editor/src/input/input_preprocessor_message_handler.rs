@@ -70,15 +70,6 @@ impl MessageHandler<InputPreprocessorMessage, ()> for InputPreprocessorMessageHa
 				self.keyboard.unset(key as usize);
 				responses.push_back(InputMapperMessage::KeyUp(key).into());
 			}
-			InputPreprocessorMessage::MouseScroll { editor_mouse_state, modifier_keys } => {
-				self.handle_modifier_keys(modifier_keys, responses);
-
-				let mouse_state = editor_mouse_state.to_mouse_state(&self.viewport_bounds);
-				self.mouse.position = mouse_state.position;
-				self.mouse.scroll_delta = mouse_state.scroll_delta;
-
-				responses.push_back(InputMapperMessage::MouseScroll.into());
-			}
 			InputPreprocessorMessage::PointerDown { editor_mouse_state, modifier_keys } => {
 				self.handle_modifier_keys(modifier_keys, responses);
 
@@ -105,6 +96,15 @@ impl MessageHandler<InputPreprocessorMessage, ()> for InputPreprocessorMessageHa
 				self.mouse.position = mouse_state.position;
 
 				self.translate_mouse_event(mouse_state, false, responses);
+			}
+			InputPreprocessorMessage::WheelScroll { editor_mouse_state, modifier_keys } => {
+				self.handle_modifier_keys(modifier_keys, responses);
+
+				let mouse_state = editor_mouse_state.to_mouse_state(&self.viewport_bounds);
+				self.mouse.position = mouse_state.position;
+				self.mouse.scroll_delta = mouse_state.scroll_delta;
+
+				responses.push_back(InputMapperMessage::WheelScroll.into());
 			}
 		};
 	}

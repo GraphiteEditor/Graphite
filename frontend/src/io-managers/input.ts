@@ -39,7 +39,7 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 		{ target: window, eventName: "pointerup", action: (e: PointerEvent): void => onPointerUp(e) },
 		{ target: window, eventName: "dblclick", action: (e: PointerEvent): void => onDoubleClick(e) },
 		{ target: window, eventName: "mousedown", action: (e: MouseEvent): void => onMouseDown(e) },
-		{ target: window, eventName: "wheel", action: (e: WheelEvent): void => onMouseScroll(e), options: { passive: false } },
+		{ target: window, eventName: "wheel", action: (e: WheelEvent): void => onWheelScroll(e), options: { passive: false } },
 		{ target: window, eventName: "modifyinputfield", action: (e: CustomEvent): void => onModifyInputField(e) },
 		{ target: window.document.body, eventName: "paste", action: (e: ClipboardEvent): void => onPaste(e) },
 		{
@@ -200,7 +200,7 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 		if (e.button === 1) e.preventDefault();
 	}
 
-	function onMouseScroll(e: WheelEvent): void {
+	function onWheelScroll(e: WheelEvent): void {
 		const { target } = e;
 		const isTargetingCanvas = target instanceof Element && target.closest("[data-canvas]");
 
@@ -215,7 +215,7 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 		if (isTargetingCanvas) {
 			e.preventDefault();
 			const modifiers = makeKeyboardModifiersBitfield(e);
-			editor.instance.on_mouse_scroll(e.clientX, e.clientY, e.buttons, e.deltaX, e.deltaY, e.deltaZ, modifiers);
+			editor.instance.on_wheel_scroll(e.clientX, e.clientY, e.buttons, e.deltaX, e.deltaY, e.deltaZ, modifiers);
 		}
 	}
 
