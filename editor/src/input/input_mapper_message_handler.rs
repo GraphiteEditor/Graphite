@@ -1,6 +1,7 @@
 use super::input_mapper::Mapping;
 use super::keyboard::Key;
 use super::InputPreprocessorMessageHandler;
+use crate::document::utility_types::KeyboardPlatformLayout;
 use crate::message_prelude::*;
 
 use std::fmt::Write;
@@ -33,10 +34,11 @@ impl InputMapperMessageHandler {
 	}
 }
 
-impl MessageHandler<InputMapperMessage, (&InputPreprocessorMessageHandler, ActionList)> for InputMapperMessageHandler {
-	fn process_action(&mut self, message: InputMapperMessage, data: (&InputPreprocessorMessageHandler, ActionList), responses: &mut VecDeque<Message>) {
-		let (input, actions) = data;
-		if let Some(message) = self.mapping.match_input_message(message, &input.keyboard, actions) {
+impl MessageHandler<InputMapperMessage, (&InputPreprocessorMessageHandler, KeyboardPlatformLayout, ActionList)> for InputMapperMessageHandler {
+	fn process_action(&mut self, message: InputMapperMessage, data: (&InputPreprocessorMessageHandler, KeyboardPlatformLayout, ActionList), responses: &mut VecDeque<Message>) {
+		let (input, keyboard_platform, actions) = data;
+
+		if let Some(message) = self.mapping.match_input_message(message, &input.keyboard, actions, keyboard_platform) {
 			responses.push_back(message);
 		}
 	}

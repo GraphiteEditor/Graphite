@@ -138,12 +138,16 @@ impl Dispatcher {
 				}
 				InputMapper(message) => {
 					let actions = self.collect_actions();
+					let keyboard_platform = self.message_handlers.portfolio_message_handler.platform.as_keyboard_platform_layout();
+
 					self.message_handlers
 						.input_mapper_message_handler
-						.process_action(message, (&self.message_handlers.input_preprocessor_message_handler, actions), &mut queue);
+						.process_action(message, (&self.message_handlers.input_preprocessor_message_handler, keyboard_platform, actions), &mut queue);
 				}
 				InputPreprocessor(message) => {
-					self.message_handlers.input_preprocessor_message_handler.process_action(message, (), &mut queue);
+					let keyboard_platform = self.message_handlers.portfolio_message_handler.platform.as_keyboard_platform_layout();
+
+					self.message_handlers.input_preprocessor_message_handler.process_action(message, keyboard_platform, &mut queue);
 				}
 				Layout(message) => self.message_handlers.layout_message_handler.process_action(message, (), &mut queue),
 				Portfolio(message) => {

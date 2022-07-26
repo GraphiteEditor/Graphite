@@ -17,23 +17,24 @@ macro_rules! modifiers {
 ///
 /// Syntax:
 /// ```rs
-/// entry_for_layout! {Key; modifiers?: Key[], refresh_keys?: Key[], action_dispatch: Message, layout: KeyboardPlatformLayout}
+/// entry_for_layout! {Key; modifiers?: Key[], refresh_keys?: Key[], action_dispatch: Message, layout: Option<KeyboardPlatformLayout>}
 /// ```
 ///
-/// To avoid having to specify the final `layout` argument, instead use the wrapper macros: [entry], [standard], and [mac].
+/// To avoid having to specify the final `layout` argument, instead use the wrapper macros: [entry]!, [standard]!, and [mac]!.
+/// The former sets the layout to `None` which means the key mapping is layout-agnostic and compatible with all platforms.
 ///
 /// The actions system controls which actions are currently available. Those are provided by the different message handlers based on the current application state and context.
 /// Each handler adds or removes actions in the form of message discriminants. Here, we tie an input condition (such as a hotkey) to an action's full message.
 /// When an action is currently available, and the user enters that input, the action's message is dispatched on the message bus.
 macro_rules! entry_for_layout {
-	{$input:expr; $(modifiers=[$($modifier:ident),*],)? $(refresh_keys=[$($refresh:ident),* $(,)?],)? action_dispatch=$action_dispatch:expr,$(,)? layout=$layout:ident} => {{
+	{$input:expr; $(modifiers=[$($modifier:ident),*],)? $(refresh_keys=[$($refresh:ident),* $(,)?],)? action_dispatch=$action_dispatch:expr,$(,)? layout=$layout:expr} => {{
 		&[
 			// Cause the `action_dispatch` message to be sent when the specified input occurs.
 			MappingEntry {
 				action: $action_dispatch.into(),
 				input: $input,
 				modifiers: modifiers!($($($modifier),*)?),
-				platform_layout: KeyboardPlatformLayout::$layout,
+				platform_layout: $layout,
 			},
 
 			// Also cause the `action_dispatch` message to be sent when any of the specified refresh keys change.
@@ -47,13 +48,13 @@ macro_rules! entry_for_layout {
 				action: $action_dispatch.into(),
 				input: InputMapperMessage::KeyDown(Key::$refresh),
 				modifiers: modifiers!(),
-				platform_layout: KeyboardPlatformLayout::$layout,
+				platform_layout: $layout,
 			},
 			MappingEntry {
 				action: $action_dispatch.into(),
 				input: InputMapperMessage::KeyUp(Key::$refresh),
 				modifiers: modifiers!(),
-				platform_layout: KeyboardPlatformLayout::$layout,
+				platform_layout: $layout,
 			},
 			)*
 			)*
@@ -61,7 +62,7 @@ macro_rules! entry_for_layout {
 	}};
 }
 
-/// Wraps [entry_for_layout]! and calls it with an `Agnostic` keyboard platform `layout` to avoid having to specify that argument.
+/// Wraps [entry_for_layout]! and calls it with an agnostic (`None`) keyboard platform `layout` to avoid having to specify that argument.
 ///
 /// Syntax:
 /// ```rs
@@ -69,7 +70,7 @@ macro_rules! entry_for_layout {
 /// ```
 macro_rules! entry {
 	{$($arg:tt)*} => {{
-		&[entry_for_layout! {$($arg)*, layout=Agnostic}]
+		&[entry_for_layout! {$($arg)*, layout=None}]
 	}};
 }
 
@@ -81,7 +82,7 @@ macro_rules! entry {
 /// ```
 macro_rules! standard {
 	{$($arg:tt)*} => {{
-		entry_for_layout! {$($arg)*, layout=Standard}
+		entry_for_layout! {$($arg)*, layout=Some(KeyboardPlatformLayout::Standard)}
 	}};
 }
 
@@ -93,7 +94,7 @@ macro_rules! standard {
 /// ```
 macro_rules! mac {
 	{$($arg:tt)*} => {{
-		entry_for_layout! {$($arg)*, layout=Mac}
+		entry_for_layout! {$($arg)*, layout=Some(KeyboardPlatformLayout::Mac)}
 	}};
 }
 

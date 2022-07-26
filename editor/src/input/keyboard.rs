@@ -71,6 +71,7 @@ pub enum Key {
 	KeySpace,
 	KeyControl,
 	KeyCommand,
+	KeyMeta,
 	KeyDelete,
 	KeyBackspace,
 	KeyAlt,

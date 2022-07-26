@@ -6,6 +6,7 @@ use crate::helpers::{translate_key, Error};
 use crate::{EDITOR_HAS_CRASHED, EDITOR_INSTANCES, JS_EDITOR_HANDLES};
 
 use editor::consts::{FILE_SAVE_SUFFIX, GRAPHITE_DOCUMENT_VERSION};
+use editor::document::utility_types::Platform;
 use editor::input::input_preprocessor::ModifierKeys;
 use editor::input::mouse::{EditorMouseState, ScrollDelta, ViewportBounds};
 use editor::message_prelude::*;
@@ -105,8 +106,16 @@ impl JsEditorHandle {
 	// the backend from the web frontend.
 	// ========================================================================
 
-	pub fn init_after_frontend_ready(&self) {
+	pub fn init_after_frontend_ready(&self, platform: String) {
+		let platform = match platform.as_str() {
+			"Windows" => Platform::Windows,
+			"Mac" => Platform::Mac,
+			"Linux" => Platform::Linux,
+			_ => Platform::Unknown,
+		};
+
 		self.dispatch(Message::Init);
+		self.dispatch(PortfolioMessage::SetPlatform { platform });
 	}
 
 	/// Displays a dialog with an error message

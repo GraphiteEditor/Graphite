@@ -2,6 +2,7 @@ use super::input_mapper_macros::*;
 use super::keyboard::{Key, KeyStates, NUMBER_OF_KEYS};
 use crate::consts::{BIG_NUDGE_AMOUNT, NUDGE_AMOUNT};
 use crate::document::clipboards::Clipboard;
+use crate::document::utility_types::KeyboardPlatformLayout;
 use crate::message_prelude::*;
 use crate::viewport_tools::tool::ToolType;
 
@@ -337,7 +338,7 @@ impl Default for Mapping {
 				MappingEntry {
 					action: TransformLayerMessage::TypeDigit { digit: i as u8 }.into(),
 					input: InputMapperMessage::KeyDown(*key),
-					platform_layout: KeyboardPlatformLayout::Agnostic,
+					platform_layout: None,
 					modifiers: modifiers! {},
 				},
 			);
@@ -364,7 +365,7 @@ impl Default for Mapping {
 }
 
 impl Mapping {
-	pub fn match_input_message(&self, message: InputMapperMessage, keyboard_state: &KeyStates, actions: ActionList) -> Option<Message> {
+	pub fn match_input_message(&self, message: InputMapperMessage, keyboard_state: &KeyStates, actions: ActionList, keyboard_platform: KeyboardPlatformLayout) -> Option<Message> {
 		let list = match message {
 			InputMapperMessage::KeyDown(key) => &self.key_down[key as usize],
 			InputMapperMessage::KeyUp(key) => &self.key_up[key as usize],
@@ -372,40 +373,47 @@ impl Mapping {
 			InputMapperMessage::WheelScroll => &self.wheel_scroll,
 			InputMapperMessage::PointerMove => &self.pointer_move,
 		};
-		list.match_mapping(keyboard_state, actions)
+		list.match_mapping(keyboard_state, actions, keyboard_platform)
 	}
-}
-
-#[derive(PartialEq, Clone, Debug, Default)]
-pub enum KeyboardPlatformLayout {
-	/// Keyboard mapping which is the same on standard and Mac layouts
-	#[default]
-	Agnostic,
-	/// Standard keyboard mapping used by Windows and Linux
-	Standard,
-	/// Keyboard mapping used by Macs
-	Mac,
 }
 
 #[derive(PartialEq, Clone, Debug)]
 pub struct MappingEntry {
+	/// Serves two purposes:
+	/// - This is the message that gets dispatched when the hotkey is matched
+	/// - This message's discriminant is the action; it must be a currently active action to be considered as a shortcut
 	pub action: Message,
+	/// The user input event from an input device which this input mapping matches on
 	pub input: InputMapperMessage,
+	/// Any additional keys that must be also pressed for this input mapping to match
 	pub modifiers: KeyStates,
-	pub platform_layout: KeyboardPlatformLayout,
+	/// The keyboard platform layout which this mapping is exclusive to, or `None` if it's platform-agnostic
+	pub platform_layout: Option<KeyboardPlatformLayout>,
 }
 
 #[derive(Debug, Clone)]
 pub struct KeyMappingEntries(pub Vec<MappingEntry>);
 
 impl KeyMappingEntries {
-	fn match_mapping(&self, keyboard_state: &KeyStates, actions: ActionList) -> Option<Message> {
+	fn match_mapping(&self, keyboard_state: &KeyStates, actions: ActionList, keyboard_platform: KeyboardPlatformLayout) -> Option<Message> {
 		for entry in self.0.iter() {
-			// Find which currently pressed keys are also the modifiers in this hotkey entry, then compare those against the required modifiers to see if there are zero missing.
+			// Skip this entry if it is platform-specific, and for a layout that does not match the user's keyboard platform layout
+			if let Some(entry_platform_layout) = entry.platform_layout {
+				if entry_platform_layout != keyboard_platform {
+					continue;
+				}
+			}
+
+			// Find which currently pressed keys are also the modifiers in this hotkey entry, then compare those against the required modifiers to see if there are zero missing
 			let pressed_modifiers = *keyboard_state & entry.modifiers;
 			let all_modifiers_without_pressed_modifiers = entry.modifiers ^ pressed_modifiers;
 			let all_required_modifiers_pressed = all_modifiers_without_pressed_modifiers.is_empty();
-			if all_required_modifiers_pressed && actions.iter().flatten().any(|action| entry.action.to_discriminant() == *action) {
+			// Skip this entry if any of the required modifiers are missing
+			if !all_required_modifiers_pressed {
+				continue;
+			}
+
+			if actions.iter().flatten().any(|action| entry.action.to_discriminant() == *action) {
 				return Some(entry.action.clone());
 			}
 		}

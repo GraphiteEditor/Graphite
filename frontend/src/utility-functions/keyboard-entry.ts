@@ -1,5 +1,14 @@
 export function makeKeyboardModifiersBitfield(e: WheelEvent | PointerEvent | KeyboardEvent): number {
-	return Number(e.ctrlKey) | (Number(e.shiftKey) << 1) | (Number(e.altKey) << 2);
+	return (
+		// Shift (all platforms)
+		(Number(e.shiftKey) << 0) |
+		// Alt (all platforms)
+		(Number(e.altKey) << 1) |
+		// Control (all platforms)
+		(Number(e.ctrlKey) << 2) |
+		// Meta (Windows/Linux) or Command (Mac)
+		(Number(e.metaKey) << 3)
+	);
 }
 
 // Necessary because innerText puts an extra newline character at the end when the text is more than one line.
