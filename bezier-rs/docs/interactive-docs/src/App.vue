@@ -285,14 +285,19 @@ export default defineComponent({
 					name: "De Casteljau Points",
 					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: Record<string, number>): void => {
 						const hullPoints: Point[][] = JSON.parse(bezier.de_casteljau_points(options.t));
-						hullPoints.forEach((iteration: Point[], iterationIndex) => {
+						hullPoints.reverse().forEach((iteration: Point[], iterationIndex) => {
+							const colorLight = `hsl(${90 * iterationIndex}, 100%, 50%)`;
+
 							iteration.forEach((point: Point, index) => {
-								drawPoint(getContextFromCanvas(canvas), point, 4, `hsl(${40 * iterationIndex}, 100%, 50%)`);
-								if (index === 0) {
-									return;
+								// Skip the anchor and handle points which are already drawn in black
+								if (iterationIndex !== hullPoints.length - 1) {
+									drawPoint(getContextFromCanvas(canvas), point, 4, colorLight);
 								}
-								const prevPoint: Point = iteration[index - 1];
-								drawLine(getContextFromCanvas(canvas), point, prevPoint, `hsl(${40 * iterationIndex}, 100%, 60%)`);
+
+								if (index !== 0) {
+									const prevPoint: Point = iteration[index - 1];
+									drawLine(getContextFromCanvas(canvas), point, prevPoint, colorLight);
+								}
 							});
 						});
 					},
