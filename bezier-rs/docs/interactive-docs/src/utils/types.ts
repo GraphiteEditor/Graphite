@@ -5,6 +5,9 @@ export type WasmBezierKey = keyof WasmBezierInstance;
 export type WasmBezierConstructorKey = "new_linear" | "new_quadratic" | "new_cubic";
 export type WasmBezierManipulatorKey = "set_start" | "set_handle_start" | "set_handle_end" | "set_end";
 
+export type WasmSubpathInstance = InstanceType<WasmRawInstance["WasmSubpath"]>;
+export type WasmSubpathManipulatorKey = "set_anchor" | "set_in_handle" | "set_out_handle";
+
 export enum BezierCurveType {
 	Linear = "Linear",
 	Quadratic = "Quadratic",
@@ -12,6 +15,7 @@ export enum BezierCurveType {
 }
 
 export type BezierCallback = (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: Record<string, number>, mouseLocation?: Point) => void;
+export type SubpathCallback = (subpath: WasmSubpathInstance) => string;
 
 export type SliderOption = {
 	min: number;
