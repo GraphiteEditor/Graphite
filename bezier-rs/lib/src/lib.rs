@@ -631,6 +631,30 @@ impl Bezier {
 			.collect::<Vec<DVec2>>()
 	}
 
+	/// Returns a list of lists of points representing the De Casteljau points for all iterations at the point corresponding to `t` using De Casteljau's algorithm.
+	/// The `i`th element of the list represents the set of points in the `i`th iteration.
+	/// More information on the algorithm can be found in the [De Casteljau section](https://pomax.github.io/bezierinfo/#decasteljau) in Pomax's primer.
+	pub fn de_casteljau_points(&self, t: f64) -> Vec<Vec<DVec2>> {
+		let bezier_points = match self.handles {
+			BezierHandles::Linear => vec![self.start, self.end],
+			BezierHandles::Quadratic { handle } => vec![self.start, handle, self.end],
+			BezierHandles::Cubic { handle_start, handle_end } => vec![self.start, handle_start, handle_end, self.end],
+		};
+		let mut de_casteljau_points = vec![bezier_points];
+		let mut current_points = de_casteljau_points.last().unwrap();
+
+		// Iterate until one point is left, that point will be equal to `evaluate(t)`
+		while current_points.len() > 1 {
+			// Map from every adjacent pair of points to their respective midpoints, which decrements by 1 the number of points for the next iteration
+			let next_points: Vec<DVec2> = current_points.as_slice().windows(2).map(|pair| DVec2::lerp(pair[0], pair[1], t)).collect();
+			de_casteljau_points.push(next_points);
+
+			current_points = de_casteljau_points.last().unwrap();
+		}
+
+		de_casteljau_points
+	}
+
 	/// Determine if it is possible to scale the given curve, using the following conditions:
 	/// 1. All the handles are located on a single side of the curve.
 	/// 2. The on-curve point for `t = 0.5` must occur roughly in the center of the polygon defined by the curve's endpoint normals.
