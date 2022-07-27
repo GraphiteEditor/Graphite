@@ -2,7 +2,8 @@
 	<div class="App">
 		<h1>Bezier-rs Interactive Documentation</h1>
 		<p>This is the interactive documentation for the <b>bezier-rs</b> library. Click and drag on the endpoints of the example curves to visualize the various Bezier utilities and functions.</p>
-		<div v-for="(feature, index) in features" :key="index">
+		<h2>Beziers</h2>
+		<div v-for="(feature, index) in bezierFeatures" :key="index">
 			<ExamplePane
 				:template="feature.template"
 				:templateOptions="feature.templateOptions"
@@ -14,6 +15,10 @@
 				:customOptions="feature.customOptions"
 			/>
 		</div>
+		<h2>Subpaths</h2>
+		<div v-for="(feature, index) in subpathFeatures" :key="index">
+			<SubpathExamplePane :name="feature.name" :callback="feature.callback" />
+		</div>
 	</div>
 </template>
 
@@ -21,10 +26,11 @@
 import { defineComponent, markRaw } from "vue";
 
 import { drawText, drawPoint, drawBezier, drawLine, getContextFromCanvas, drawBezierHelper, COLORS } from "@/utils/drawing";
-import { BezierCurveType, Point, WasmBezierInstance } from "@/utils/types";
+import { BezierCurveType, Point, WasmBezierInstance, WasmSubpathInstance } from "@/utils/types";
 
 import ExamplePane from "@/components/ExamplePane.vue";
 import SliderExample from "@/components/SliderExample.vue";
+import SubpathExamplePane from "@/components/SubpathExamplePane.vue";
 
 const tSliderOptions = {
 	min: 0,
@@ -37,13 +43,9 @@ const tSliderOptions = {
 const SCALE_UNIT_VECTOR_FACTOR = 50;
 
 export default defineComponent({
-	name: "App",
-	components: {
-		ExamplePane,
-	},
 	data() {
 		return {
-			features: [
+			bezierFeatures: [
 				{
 					name: "Constructor",
 					// eslint-disable-next-line
@@ -355,7 +357,21 @@ export default defineComponent({
 					},
 				},
 			],
+			subpathFeatures: [
+				{
+					name: "Constructor",
+					callback: (subpath: WasmSubpathInstance): string => subpath.to_svg(),
+				},
+				{
+					name: "Length",
+					callback: (subpath: WasmSubpathInstance): string => subpath.length(),
+				},
+			],
 		};
+	},
+	components: {
+		ExamplePane,
+		SubpathExamplePane,
 	},
 });
 </script>

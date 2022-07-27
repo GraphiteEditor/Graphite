@@ -16,10 +16,6 @@ import { BezierCallback, TemplateOption, WasmBezierInstance } from "@/utils/type
 import Example from "@/components/Example.vue";
 
 export default defineComponent({
-	name: "SliderExample",
-	components: {
-		Example,
-	},
 	props: {
 		title: String,
 		bezier: {
@@ -45,6 +41,9 @@ export default defineComponent({
 			sliderData: Object.assign({}, ...sliders.map((s) => ({ [s.variable]: s.default }))),
 			sliderUnits: Object.assign({}, ...sliders.map((s) => ({ [s.variable]: s.unit }))),
 		};
+	},
+	components: {
+		Example,
 	},
 });
 </script>
