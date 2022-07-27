@@ -11,7 +11,7 @@ const SVG_CLOSE_TAG: &str = "</svg>";
 
 #[wasm_bindgen]
 impl WasmSubpath {
-	/// Expect js_points to be a list of 3 pairs.
+	/// Expects js_points to be an unbounded list of triples, where each item is a tuple of floats.
 	pub fn from_triples(js_points: &JsValue, closed: bool) -> WasmSubpath {
 		let point_triples: Vec<[Option<DVec2>; 3]> = js_points.into_serde().unwrap();
 		let manipulator_groups = point_triples

@@ -50,44 +50,37 @@ impl Subpath {
 			return String::new();
 		}
 
-		let subpath_options = format!(r#"stroke="{}" stroke-width="{}" fill="none""#, options.curve_stroke_color, options.curve_stroke_width);
-		let anchor_options = format!(
-			r#"r="{}", stroke="{}" stroke-width="{}" fill="{}""#,
-			options.anchor_radius, options.anchor_stroke_color, options.anchor_stroke_width, options.anchor_fill
-		);
-		let handle_point_options = format!(
-			r#"r="{}", stroke="{}" stroke-width="{}" fill="{}""#,
-			options.handle_point_radius, options.handle_point_stroke_color, options.handle_point_stroke_width, options.handle_point_fill
-		);
-		let handle_line_options = format!(r#"stroke="{}" stroke-width="{}" fill="none""#, options.handle_line_stroke_color, options.handle_line_stroke_width);
-
 		let curve_start_argument = format!("{SVG_ARG_MOVE}{} {}", self[0].anchor.x, self[0].anchor.y);
 		let mut curve_arguments: Vec<String> = self.iter().map(|bezier| bezier.svg_curve_argument()).collect();
 		if self.closed {
 			curve_arguments.push(String::from(SVG_ARG_CLOSED));
 		}
 
+		let anchor_arguments = options.formatted_anchor_arguments();
 		let anchor_circles = self
 			.manipulator_groups
 			.iter()
-			.map(|point| format!(r#"<circle cx="{}" cy="{}" {}/>"#, point.anchor.x, point.anchor.y, anchor_options))
+			.map(|point| format!(r#"<circle cx="{}" cy="{}" {}/>"#, point.anchor.x, point.anchor.y, anchor_arguments))
 			.collect::<Vec<String>>();
+
+		let handle_point_arguments = options.formatted_handle_point_arguments();
 		let handle_circles: Vec<String> = self
 			.manipulator_groups
 			.iter()
 			.flat_map(|group| [group.in_handle, group.out_handle])
 			.flatten()
-			.map(|handle| format!(r#"<circle cx="{}" cy="{}" {}/>"#, handle.x, handle.y, handle_point_options))
+			.map(|handle| format!(r#"<circle cx="{}" cy="{}" {}/>"#, handle.x, handle.y, handle_point_arguments))
 			.collect();
+
 		let handle_pieces: Vec<String> = self.iter().filter_map(|bezier| bezier.svg_handle_line_argument()).collect();
 
 		format!(
 			r#"<path d="{} {}" {}/><path d="{}" {}/>{}{}"#,
 			curve_start_argument,
 			curve_arguments.join(" "),
-			subpath_options,
+			options.formatted_curve_arguments(),
 			handle_pieces.join(" "),
-			handle_line_options,
+			options.formatted_handle_line_arguments(),
 			handle_circles.join(""),
 			anchor_circles.join(""),
 		)

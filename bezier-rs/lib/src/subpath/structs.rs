@@ -43,6 +43,34 @@ pub struct ToSVGOptions {
 	pub handle_point_fill: String,
 }
 
+impl ToSVGOptions {
+	/// Combine and format curve styling options for an SVG path.
+	pub(crate) fn formatted_curve_arguments(&self) -> String {
+		format!(r#"stroke="{}" stroke-width="{}" fill="none""#, self.curve_stroke_color, self.curve_stroke_width)
+	}
+
+	/// Combine and format anchor styling options an SVG circle.
+	pub(crate) fn formatted_anchor_arguments(&self) -> String {
+		format!(
+			r#"r="{}", stroke="{}" stroke-width="{}" fill="{}""#,
+			self.anchor_radius, self.anchor_stroke_color, self.anchor_stroke_width, self.anchor_fill
+		)
+	}
+
+	/// Combine and format handle point styling options for an SVG circle.
+	pub(crate) fn formatted_handle_point_arguments(&self) -> String {
+		format!(
+			r#"r="{}", stroke="{}" stroke-width="{}" fill="{}""#,
+			self.handle_point_radius, self.handle_point_stroke_color, self.handle_point_stroke_width, self.handle_point_fill
+		)
+	}
+
+	/// Combine and format handle line styling options an SVG path.
+	pub(crate) fn formatted_handle_line_arguments(&self) -> String {
+		format!(r#"stroke="{}" stroke-width="{}" fill="none""#, self.handle_line_stroke_color, self.handle_line_stroke_width)
+	}
+}
+
 impl Default for ToSVGOptions {
 	fn default() -> Self {
 		ToSVGOptions {
