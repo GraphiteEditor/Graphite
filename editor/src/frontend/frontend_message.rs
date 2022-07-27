@@ -17,19 +17,21 @@ pub enum FrontendMessage {
 	// Display prefix: make the frontend show something, like a dialog
 	DisplayDialog { icon: String },
 	DisplayDialogDismiss,
-	DisplayDialogPanic { panic_info: String, title: String, description: String },
+	DisplayDialogPanic { panic_info: String, header: String, description: String },
 	DisplayEditableTextbox { text: String, line_width: Option<f64>, font_size: f64, color: Color },
 	DisplayRemoveEditableTextbox,
 
 	// Trigger prefix: cause a browser API to do something
 	TriggerAboutGraphiteLocalizedCommitDate { commit_date: String },
 	TriggerFileDownload { document: String, name: String },
-	TriggerFileUpload,
 	TriggerFontLoad { font: Font, is_default: bool },
+	TriggerImport,
 	TriggerIndexedDbRemoveDocument { document_id: u64 },
 	TriggerIndexedDbWriteDocument { document: String, details: FrontendDocumentDetails, version: String },
+	TriggerOpenDocument,
 	TriggerPaste,
 	TriggerRasterDownload { document: String, name: String, mime: String, size: (f64, f64) },
+	TriggerRefreshBoundsOfViewports,
 	TriggerTextCommit,
 	TriggerTextCopy { copy_text: String },
 	TriggerViewportResize,
@@ -58,5 +60,5 @@ pub enum FrontendMessage {
 	UpdatePropertyPanelSectionsLayout { layout_target: LayoutTarget, layout: SubLayout },
 	UpdateToolOptionsLayout { layout_target: LayoutTarget, layout: SubLayout },
 	UpdateToolShelfLayout { layout_target: LayoutTarget, layout: SubLayout },
-	UpdateWorkingColors { primary: Color, secondary: Color },
+	UpdateWorkingColorsLayout { layout_target: LayoutTarget, layout: SubLayout },
 }

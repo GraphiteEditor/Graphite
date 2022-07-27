@@ -22,14 +22,16 @@ where
 pub enum Message {
 	#[remain::unsorted]
 	NoOp,
+	#[remain::unsorted]
+	Init,
 	#[child]
 	Broadcast(BroadcastMessage),
+	#[child]
+	Debug(DebugMessage),
 	#[child]
 	Dialog(DialogMessage),
 	#[child]
 	Frontend(FrontendMessage),
-	#[child]
-	Global(GlobalMessage),
 	#[child]
 	InputMapper(InputMapperMessage),
 	#[child]

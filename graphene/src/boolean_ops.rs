@@ -176,7 +176,6 @@ impl PathGraph {
 		}
 		new.add_edges_from_path(alpha, Origin::Alpha);
 		new.add_edges_from_path(beta, Origin::Beta);
-		// log::debug!("size: {}, {:?}", new.size(), new);
 		Ok(new)
 	}
 

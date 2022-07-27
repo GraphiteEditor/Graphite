@@ -221,6 +221,7 @@ impl MessageHandler<MovementMessage, (&Document, &InputPreprocessorMessageHandle
 						responses.push_back(SetCanvasZoom { zoom_factor: self.zoom }.into());
 					}
 				}
+
 				self.mouse_position = ipp.mouse.position;
 			}
 			RotateCanvasBegin => {

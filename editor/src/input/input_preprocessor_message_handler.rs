@@ -156,7 +156,7 @@ impl InputPreprocessorMessageHandler {
 	}
 
 	pub fn document_bounds(&self) -> [DVec2; 2] {
-		// ipp bounds are relative to the entire screen
+		// IPP bounds are relative to the entire application
 		[(0., 0.).into(), self.viewport_bounds.bottom_right - self.viewport_bounds.top_left]
 	}
 }

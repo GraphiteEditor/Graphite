@@ -145,8 +145,6 @@ impl Default for Mapping {
 			entry! {action=ToolMessage::ResetColors, key_down=KeyX, modifiers=[KeyShift, KeyControl]},
 			entry! {action=ToolMessage::SwapColors, key_down=KeyX, modifiers=[KeyShift]},
 			entry! {action=ToolMessage::SelectRandomPrimaryColor, key_down=KeyC, modifiers=[KeyAlt]},
-			// Editor Actions
-			entry! {action=FrontendMessage::TriggerFileUpload, key_down=KeyO, modifiers=[KeyControl]},
 			// Document actions
 			entry! {action=DocumentMessage::Redo, key_down=KeyZ, modifiers=[KeyControl, KeyShift]},
 			entry! {action=DocumentMessage::Undo, key_down=KeyZ, modifiers=[KeyControl]},
@@ -157,7 +155,7 @@ impl Default for Mapping {
 			entry! {action=DialogMessage::RequestExportDialog, key_down=KeyE, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::SaveDocument, key_down=KeyS, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::SaveDocument, key_down=KeyS, modifiers=[KeyControl, KeyShift]},
-			entry! {action=DocumentMessage::DebugPrintDocument, key_down=Key9},
+			entry! {action=DocumentMessage::DebugPrintDocument, key_down=KeyP, modifiers=[KeyAlt]},
 			entry! {action=DocumentMessage::ZoomCanvasToFitAll, key_down=Key0, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::DuplicateSelectedLayers, key_down=KeyD, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::GroupSelectedLayers, key_down=KeyG, modifiers=[KeyControl]},
@@ -187,6 +185,8 @@ impl Default for Mapping {
 			entry! {action=MovementMessage::TranslateCanvasByViewportFraction { delta: DVec2::new(0., 1.) }, key_down=KeyPageUp},
 			entry! {action=MovementMessage::TranslateCanvasByViewportFraction { delta: DVec2::new(0., -1.) }, key_down=KeyPageDown},
 			// Portfolio actions
+			entry! {action=PortfolioMessage::OpenDocument, key_down=KeyO, modifiers=[KeyControl]},
+			entry! {action=PortfolioMessage::Import, key_down=KeyI, modifiers=[KeyControl]},
 			entry! {action=DialogMessage::RequestNewDocumentDialog, key_down=KeyN, modifiers=[KeyControl]},
 			entry! {action=PortfolioMessage::NextDocument, key_down=KeyTab, modifiers=[KeyControl]},
 			entry! {action=PortfolioMessage::PrevDocument, key_down=KeyTab, modifiers=[KeyControl, KeyShift]},
@@ -224,10 +224,11 @@ impl Default for Mapping {
 			entry! {action=DocumentMessage::ReorderSelectedLayers { relative_index_offset: 1 }, key_down=KeyRightBracket, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::ReorderSelectedLayers { relative_index_offset: -1 }, key_down=KeyLeftBracket, modifiers=[KeyControl]},
 			entry! {action=DocumentMessage::ReorderSelectedLayers { relative_index_offset: isize::MIN }, key_down=KeyLeftCurlyBracket, modifiers=[KeyControl]}, // TODO: Use KeyLeftBracket with Ctrl+Shift modifiers once input system is fixed
-			// Global Actions
-			entry! {action=GlobalMessage::LogInfo, key_down=Key1},
-			entry! {action=GlobalMessage::LogDebug, key_down=Key2},
-			entry! {action=GlobalMessage::LogTrace, key_down=Key3},
+			// Debug Actions
+			entry! {action=DebugMessage::ToggleTraceLogs, key_down=KeyT, modifiers=[KeyAlt]},
+			entry! {action=DebugMessage::MessageOff, key_down=Key0, modifiers=[KeyAlt]},
+			entry! {action=DebugMessage::MessageNames, key_down=Key1, modifiers=[KeyAlt]},
+			entry! {action=DebugMessage::MessageContents, key_down=Key2, modifiers=[KeyAlt]},
 		];
 		let (mut key_up, mut key_down, mut pointer_move, mut mouse_scroll, mut double_click) = mappings;
 
@@ -266,14 +267,12 @@ impl Default for Mapping {
 
 impl Mapping {
 	pub fn match_message(&self, message: InputMapperMessage, keys: &KeyStates, actions: ActionList) -> Option<Message> {
-		use InputMapperMessage::*;
-
 		let list = match message {
-			KeyDown(key) => &self.key_down[key as usize],
-			KeyUp(key) => &self.key_up[key as usize],
-			DoubleClick => &self.double_click,
-			MouseScroll => &self.mouse_scroll,
-			PointerMove => &self.pointer_move,
+			InputMapperMessage::KeyDown(key) => &self.key_down[key as usize],
+			InputMapperMessage::KeyUp(key) => &self.key_up[key as usize],
+			InputMapperMessage::DoubleClick => &self.double_click,
+			InputMapperMessage::MouseScroll => &self.mouse_scroll,
+			InputMapperMessage::PointerMove => &self.pointer_move,
 		};
 		list.match_mapping(keys, actions)
 	}

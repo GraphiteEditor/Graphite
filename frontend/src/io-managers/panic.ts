@@ -3,7 +3,7 @@ import { DialogState } from "@/state-providers/dialog";
 import { IconName } from "@/utility-functions/icons";
 import { stripIndents } from "@/utility-functions/strip-indents";
 import { Editor } from "@/wasm-communication/editor";
-import { DisplayDialogPanic, WidgetLayout } from "@/wasm-communication/messages";
+import { DisplayDialogPanic, Widget, WidgetLayout } from "@/wasm-communication/messages";
 
 export function createPanicManager(editor: Editor, dialogState: DialogState): void {
 	// Code panic dialog and console error
@@ -17,53 +17,32 @@ export function createPanicManager(editor: Editor, dialogState: DialogState): vo
 		// eslint-disable-next-line no-console
 		console.error(panicDetails);
 
-		const panicDialog = preparePanicDialog(displayDialogPanic.title, displayDialogPanic.description, panicDetails);
+		const panicDialog = preparePanicDialog(displayDialogPanic.header, displayDialogPanic.description, panicDetails);
 		dialogState.createPanicDialog(...panicDialog);
 	});
 }
 
-function preparePanicDialog(title: string, details: string, panicDetails: string): [IconName, WidgetLayout, TextButtonWidget[]] {
+function preparePanicDialog(header: string, details: string, panicDetails: string): [IconName, WidgetLayout, TextButtonWidget[]] {
 	const widgets: WidgetLayout = {
 		layout: [
-			{
-				rowWidgets: [
-					{
-						kind: "TextLabel",
-						props: { value: title, bold: true },
-						// eslint-disable-next-line camelcase
-						widget_id: 0n,
-					},
-				],
-			},
-			{
-				rowWidgets: [
-					{
-						kind: "TextLabel",
-						props: { value: details, multiline: true },
-						// eslint-disable-next-line camelcase
-						widget_id: 0n,
-					},
-				],
-			},
+			{ rowWidgets: [new Widget({ kind: "TextLabel", value: header, bold: true, italic: false, tableAlign: false, multiline: false }, 0n)] },
+			{ rowWidgets: [new Widget({ kind: "TextLabel", value: details, bold: false, italic: false, tableAlign: false, multiline: true }, 1n)] },
 		],
 		// eslint-disable-next-line camelcase
 		layout_target: null,
 	};
 
 	const reloadButton: TextButtonWidget = {
-		kind: "TextButton",
 		callback: async () => window.location.reload(),
-		props: { label: "Reload", emphasized: true, minWidth: 96 },
+		props: { kind: "TextButton", label: "Reload", emphasized: true, minWidth: 96 },
 	};
 	const copyErrorLogButton: TextButtonWidget = {
-		kind: "TextButton",
 		callback: async () => navigator.clipboard.writeText(panicDetails),
-		props: { label: "Copy Error Log", emphasized: false, minWidth: 96 },
+		props: { kind: "TextButton", label: "Copy Error Log", emphasized: false, minWidth: 96 },
 	};
 	const reportOnGithubButton: TextButtonWidget = {
-		kind: "TextButton",
 		callback: async () => window.open(githubUrl(panicDetails), "_blank"),
-		props: { label: "Report Bug", emphasized: false, minWidth: 96 },
+		props: { kind: "TextButton", label: "Report Bug", emphasized: false, minWidth: 96 },
 	};
 	const jsCallbackBasedButtons = [reloadButton, copyErrorLogButton, reportOnGithubButton];
 

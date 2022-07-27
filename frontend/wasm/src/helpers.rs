@@ -8,16 +8,17 @@ use wasm_bindgen::prelude::*;
 
 /// When a panic occurs, notify the user and log the error to the JS console before the backend dies
 pub fn panic_hook(info: &panic::PanicInfo) {
-	let panic_info = info.to_string();
-	let title = "The editor crashed — sorry about that".to_string();
-	let description = "An internal error occurred. Reload the editor to continue. Please report this by filing an issue on GitHub.".to_string();
+	let header = "The editor crashed — sorry about that";
+	let description = "An internal error occurred. Reload the editor to continue. Please report this by filing an issue on GitHub.";
+
 	log::error!("{}", info);
+
 	JS_EDITOR_HANDLES.with(|instances| {
 		instances.borrow_mut().values_mut().for_each(|instance| {
 			instance.send_frontend_message_to_js_rust_proxy(FrontendMessage::DisplayDialogPanic {
-				panic_info: panic_info.clone(),
-				title: title.clone(),
-				description: description.clone(),
+				panic_info: info.to_string(),
+				header: header.to_string(),
+				description: description.to_string(),
 			})
 		})
 	});

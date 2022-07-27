@@ -18,7 +18,7 @@ pub enum DialogMessage {
 	// Messages
 	CloseAllDocumentsWithConfirmation,
 	CloseDialogAndThen {
-		followup: Box<Message>,
+		followups: Vec<Message>,
 	},
 	DisplayDialogError {
 		title: String,

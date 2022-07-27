@@ -73,7 +73,13 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for ArtboardTool
 		}
 	}
 
-	advertise_actions!(ArtboardToolMessageDiscriminant; PointerDown, PointerUp, PointerMove, DeleteSelected, Abort);
+	advertise_actions!(ArtboardToolMessageDiscriminant;
+		PointerDown,
+		PointerUp,
+		PointerMove,
+		DeleteSelected,
+		Abort,
+	);
 }
 
 impl PropertyHolder for ArtboardTool {}

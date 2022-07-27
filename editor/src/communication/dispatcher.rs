@@ -1,11 +1,15 @@
 use super::broadcast_message_handler::BroadcastMessageHandler;
+use crate::consts::{DEFAULT_FONT_FAMILY, DEFAULT_FONT_STYLE};
+use crate::debug::debug_message::LoggingMessages;
+use crate::debug::DebugMessageHandler;
 use crate::document::PortfolioMessageHandler;
-use crate::global::GlobalMessageHandler;
 use crate::input::{InputMapperMessageHandler, InputPreprocessorMessageHandler};
 use crate::layout::layout_message_handler::LayoutMessageHandler;
 use crate::message_prelude::*;
 use crate::viewport_tools::tool_message_handler::ToolMessageHandler;
 use crate::workspace::WorkspaceMessageHandler;
+
+use graphene::layers::text_layer::Font;
 
 use std::collections::VecDeque;
 
@@ -20,8 +24,8 @@ pub struct Dispatcher {
 #[derive(Debug, Default)]
 struct DispatcherMessageHandlers {
 	broadcast_message_handler: BroadcastMessageHandler,
+	debug_message_handler: DebugMessageHandler,
 	dialog_message_handler: DialogMessageHandler,
-	global_message_handler: GlobalMessageHandler,
 	input_mapper_message_handler: InputMapperMessageHandler,
 	input_preprocessor_message_handler: InputPreprocessorMessageHandler,
 	layout_message_handler: LayoutMessageHandler,
@@ -42,8 +46,6 @@ const SIDE_EFFECT_FREE_MESSAGES: &[MessageDiscriminant] = &[
 	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::FolderChanged)),
 	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::DocumentStructureChanged)),
 	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::UpdateDocumentLayerTreeStructure),
-	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::UpdateActiveDocument),
-	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::UpdateOpenDocumentsList),
 	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::TriggerFontLoad),
 	MessageDiscriminant::Broadcast(BroadcastMessageDiscriminant::TriggerSignal(BroadcastSignalDiscriminant::DocumentIsDirty)),
 ];
@@ -53,31 +55,44 @@ impl Dispatcher {
 		Self::default()
 	}
 
+	// If the deepest queues (higher index in queues list) are now empty (after being popped from) then remove them
+	fn cleanup_queues(&mut self, leave_last: bool) {
+		while self.message_queues.last().filter(|queue| queue.is_empty()).is_some() {
+			if leave_last && self.message_queues.len() == 1 {
+				break;
+			}
+			self.message_queues.pop();
+		}
+	}
+
 	#[remain::check]
 	pub fn handle_message<T: Into<Message>>(&mut self, message: T) {
 		use Message::*;
 
-		self.message_queues.push(VecDeque::from_iter([message.into()]));
+		if let Some(first) = self.message_queues.first_mut() {
+			first.push_back(message.into());
+		} else {
+			self.message_queues.push(VecDeque::from_iter([message.into()]));
+		}
 
 		while let Some(message) = self.message_queues.last_mut().and_then(VecDeque::pop_front) {
-			// If the deepest queue is now empty (after being popped from) then remove it
-			if self.message_queues.last().filter(|queue| queue.is_empty()).is_some() {
-				self.message_queues.pop();
-			}
-
 			// Skip processing of this message if it will be processed later (at the end of the shallowest level queue)
 			if SIDE_EFFECT_FREE_MESSAGES.contains(&message.to_discriminant()) {
 				let already_in_queue = self.message_queues.first().filter(|queue| queue.contains(&message)).is_some();
 				if already_in_queue {
+					self.log_deferred_message(&message, &self.message_queues, self.message_handlers.debug_message_handler.logging_messages_mode);
+					self.cleanup_queues(false);
 					continue;
 				} else if self.message_queues.len() > 1 {
+					self.log_deferred_message(&message, &self.message_queues, self.message_handlers.debug_message_handler.logging_messages_mode);
+					self.cleanup_queues(true);
 					self.message_queues[0].push_back(message);
 					continue;
 				}
 			}
 
 			// Print the message at a verbosity level of `log`
-			self.log_message(&message);
+			self.log_message(&message, &self.message_queues, self.message_handlers.debug_message_handler.logging_messages_mode);
 
 			// Create a new queue for the child messages
 			let mut queue = VecDeque::new();
@@ -87,24 +102,39 @@ impl Dispatcher {
 			match message {
 				#[remain::unsorted]
 				NoOp => {}
+				#[remain::unsorted]
+				Init => {
+					// Display the menu bar at the top of the window
+					let message = MenuBarMessage::SendLayout.into();
+					queue.push_back(message);
+
+					// Load the default font
+					let font = Font::new(DEFAULT_FONT_FAMILY.into(), DEFAULT_FONT_STYLE.into());
+					let message = FrontendMessage::TriggerFontLoad { font, is_default: true }.into();
+					queue.push_back(message);
+				}
+
 				Broadcast(message) => self.message_handlers.broadcast_message_handler.process_action(message, (), &mut queue),
+				Debug(message) => {
+					self.message_handlers.debug_message_handler.process_action(message, (), &mut queue);
+				}
 				Dialog(message) => {
 					self.message_handlers
 						.dialog_message_handler
 						.process_action(message, &self.message_handlers.portfolio_message_handler, &mut queue);
 				}
 				Frontend(message) => {
-					// Image and font loading should be immediately handled
-					if let FrontendMessage::UpdateImageData { .. } | FrontendMessage::TriggerFontLoad { .. } = message {
+					// Handle these messages immediately by returning early
+					if let FrontendMessage::UpdateImageData { .. } | FrontendMessage::TriggerFontLoad { .. } | FrontendMessage::TriggerRefreshBoundsOfViewports = message {
 						self.responses.push(message);
-						return;
-					}
+						self.cleanup_queues(false);
 
-					// `FrontendMessage`s are saved and will be sent to the frontend after the message queue is done being processed
-					self.responses.push(message);
-				}
-				Global(message) => {
-					self.message_handlers.global_message_handler.process_action(message, (), &mut queue);
+						// Return early to avoid running the code after the match block
+						return;
+					} else {
+						// `FrontendMessage`s are saved and will be sent to the frontend after the message queue is done being processed
+						self.responses.push(message);
+					}
 				}
 				InputMapper(message) => {
 					let actions = self.collect_actions();
@@ -122,15 +152,19 @@ impl Dispatcher {
 						.process_action(message, &self.message_handlers.input_preprocessor_message_handler, &mut queue);
 				}
 				Tool(message) => {
-					self.message_handlers.tool_message_handler.process_action(
-						message,
-						(
-							self.message_handlers.portfolio_message_handler.active_document(),
-							&self.message_handlers.input_preprocessor_message_handler,
-							self.message_handlers.portfolio_message_handler.font_cache(),
-						),
-						&mut queue,
-					);
+					if let Some(document) = self.message_handlers.portfolio_message_handler.active_document() {
+						self.message_handlers.tool_message_handler.process_action(
+							message,
+							(
+								document,
+								&self.message_handlers.input_preprocessor_message_handler,
+								self.message_handlers.portfolio_message_handler.font_cache(),
+							),
+							&mut queue,
+						);
+					} else {
+						log::warn!("Called ToolMessage without an active document.\nGot {:?}", message);
+					}
 				}
 				Workspace(message) => {
 					self.message_handlers
@@ -143,6 +177,8 @@ impl Dispatcher {
 			if !queue.is_empty() {
 				self.message_queues.push(queue);
 			}
+
+			self.cleanup_queues(false);
 		}
 	}
 
@@ -152,18 +188,53 @@ impl Dispatcher {
 		list.extend(self.message_handlers.dialog_message_handler.actions());
 		list.extend(self.message_handlers.input_preprocessor_message_handler.actions());
 		list.extend(self.message_handlers.input_mapper_message_handler.actions());
-		list.extend(self.message_handlers.global_message_handler.actions());
-		list.extend(self.message_handlers.tool_message_handler.actions());
+		list.extend(self.message_handlers.debug_message_handler.actions());
+		if self.message_handlers.portfolio_message_handler.active_document().is_some() {
+			list.extend(self.message_handlers.tool_message_handler.actions());
+		}
 		list.extend(self.message_handlers.portfolio_message_handler.actions());
 		list
 	}
 
-	fn log_message(&self, message: &Message) {
-		use Message::*;
+	/// Create the tree structure for logging the messages as a tree
+	fn create_indents(queues: &[VecDeque<Message>]) -> String {
+		String::from_iter(queues.iter().enumerate().skip(1).map(|(index, queue)| {
+			if index == queues.len() - 1 {
+				if queue.is_empty() {
+					"└── "
+				} else {
+					"├── "
+				}
+			} else if queue.is_empty() {
+				"   "
+			} else {
+				"│    "
+			}
+		}))
+	}
 
-		if log::max_level() == log::LevelFilter::Trace && !(matches!(message, InputPreprocessor(_)) || MessageDiscriminant::from(message).local_name().ends_with("PointerMove")) {
-			log::trace!("Message: {:?}", message);
-			// log::trace!("Hints: {:?}", self.input_mapper_message_handler.hints(self.collect_actions()));
+	/// Logs a message that is about to be executed,
+	/// either as a tree with a discriminant or the entire payload (depending on settings)
+	fn log_message(&self, message: &Message, queues: &[VecDeque<Message>], log_tree_contents: LoggingMessages) {
+		if !MessageDiscriminant::from(message).local_name().ends_with("PointerMove") {
+			match log_tree_contents {
+				LoggingMessages::Off => {}
+				LoggingMessages::Names => {
+					log::info!("{}{:?}", Self::create_indents(queues), message.to_discriminant());
+				}
+				LoggingMessages::Contents => {
+					if !(matches!(message, Message::InputPreprocessor(_))) {
+						log::info!("Message: {}{:?}", Self::create_indents(queues), message);
+					}
+				}
+			}
+		}
+	}
+
+	/// Logs into the tree that the message is in the side effect free messages and its execution will be deferred
+	fn log_deferred_message(&self, message: &Message, queues: &[VecDeque<Message>], log_tree_contents: LoggingMessages) {
+		if let LoggingMessages::Names = log_tree_contents {
+			log::info!("{}Deferred \"{:?}\" because it's a SIDE_EFFECT_FREE_MESSAGE", Self::create_indents(queues), message.to_discriminant());
 		}
 	}
 }
@@ -192,6 +263,7 @@ mod test {
 		set_uuid_seed(0);
 		let mut editor = Editor::new();
 
+		editor.new_document();
 		editor.select_primary_color(Color::RED);
 		editor.draw_rect(100., 200., 300., 400.);
 		editor.select_primary_color(Color::BLUE);
@@ -211,14 +283,14 @@ mod test {
 		init_logger();
 		let mut editor = create_editor_with_three_layers();
 
-		let document_before_copy = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().graphene_document.clone();
+		let document_before_copy = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap().graphene_document.clone();
 		editor.handle_message(PortfolioMessage::Copy { clipboard: Clipboard::Internal });
 		editor.handle_message(PortfolioMessage::PasteIntoFolder {
 			clipboard: Clipboard::Internal,
 			folder_path: vec![],
 			insert_index: -1,
 		});
-		let document_after_copy = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().graphene_document.clone();
+		let document_after_copy = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap().graphene_document.clone();
 
 		let layers_before_copy = document_before_copy.root.as_folder().unwrap().layers();
 		let layers_after_copy = document_after_copy.root.as_folder().unwrap().layers();
@@ -245,7 +317,7 @@ mod test {
 		init_logger();
 		let mut editor = create_editor_with_three_layers();
 
-		let document_before_copy = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().graphene_document.clone();
+		let document_before_copy = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap().graphene_document.clone();
 		let shape_id = document_before_copy.root.as_folder().unwrap().layer_ids[1];
 
 		editor.handle_message(DocumentMessage::SetSelectedLayers {
@@ -258,7 +330,7 @@ mod test {
 			insert_index: -1,
 		});
 
-		let document_after_copy = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().graphene_document.clone();
+		let document_after_copy = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap().graphene_document.clone();
 
 		let layers_before_copy = document_before_copy.root.as_folder().unwrap().layers();
 		let layers_after_copy = document_after_copy.root.as_folder().unwrap().layers();
@@ -290,7 +362,7 @@ mod test {
 
 		editor.handle_message(DocumentMessage::CreateEmptyFolder { container_path: vec![] });
 
-		let document_before_added_shapes = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().graphene_document.clone();
+		let document_before_added_shapes = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap().graphene_document.clone();
 		let folder_id = document_before_added_shapes.root.as_folder().unwrap().layer_ids[FOLDER_INDEX];
 
 		// TODO: This adding of a Line and Pen should be rewritten using the corresponding functions in EditorTestUtils.
@@ -314,7 +386,7 @@ mod test {
 			replacement_selected_layers: vec![vec![folder_id]],
 		});
 
-		let document_before_copy = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().graphene_document.clone();
+		let document_before_copy = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap().graphene_document.clone();
 
 		editor.handle_message(PortfolioMessage::Copy { clipboard: Clipboard::Internal });
 		editor.handle_message(DocumentMessage::DeleteSelectedLayers);
@@ -329,7 +401,7 @@ mod test {
 			insert_index: -1,
 		});
 
-		let document_after_copy = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().graphene_document.clone();
+		let document_after_copy = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap().graphene_document.clone();
 
 		let layers_before_copy = document_before_copy.root.as_folder().unwrap().layers();
 		let layers_after_copy = document_after_copy.root.as_folder().unwrap().layers();
@@ -380,7 +452,7 @@ mod test {
 		const SHAPE_INDEX: usize = 1;
 		const RECT_INDEX: usize = 0;
 
-		let document_before_copy = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().graphene_document.clone();
+		let document_before_copy = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap().graphene_document.clone();
 		let rect_id = document_before_copy.root.as_folder().unwrap().layer_ids[RECT_INDEX];
 		let ellipse_id = document_before_copy.root.as_folder().unwrap().layer_ids[ELLIPSE_INDEX];
 
@@ -401,7 +473,7 @@ mod test {
 			insert_index: -1,
 		});
 
-		let document_after_copy = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().graphene_document.clone();
+		let document_after_copy = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap().graphene_document.clone();
 
 		let layers_before_copy = document_before_copy.root.as_folder().unwrap().layers();
 		let layers_after_copy = document_after_copy.root.as_folder().unwrap().layers();
@@ -431,7 +503,7 @@ mod test {
 		fn map_to_vec(paths: Vec<&[LayerId]>) -> Vec<Vec<LayerId>> {
 			paths.iter().map(|layer| layer.to_vec()).collect::<Vec<_>>()
 		}
-		let sorted_layers = map_to_vec(editor.dispatcher.message_handlers.portfolio_message_handler.active_document().all_layers_sorted());
+		let sorted_layers = map_to_vec(editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap().all_layers_sorted());
 		println!("Sorted layers: {:?}", sorted_layers);
 
 		let verify_order = |handler: &mut DocumentMessageHandler| {
@@ -447,15 +519,15 @@ mod test {
 		});
 
 		editor.handle_message(DocumentMessage::ReorderSelectedLayers { relative_index_offset: 1 });
-		let (all, non_selected, selected) = verify_order(editor.dispatcher.message_handlers.portfolio_message_handler.active_document_mut());
+		let (all, non_selected, selected) = verify_order(editor.dispatcher.message_handlers.portfolio_message_handler.active_document_mut().unwrap());
 		assert_eq!(all, non_selected.into_iter().chain(selected.into_iter()).collect::<Vec<_>>());
 
 		editor.handle_message(DocumentMessage::ReorderSelectedLayers { relative_index_offset: -1 });
-		let (all, non_selected, selected) = verify_order(editor.dispatcher.message_handlers.portfolio_message_handler.active_document_mut());
+		let (all, non_selected, selected) = verify_order(editor.dispatcher.message_handlers.portfolio_message_handler.active_document_mut().unwrap());
 		assert_eq!(all, selected.into_iter().chain(non_selected.into_iter()).collect::<Vec<_>>());
 
 		editor.handle_message(DocumentMessage::ReorderSelectedLayers { relative_index_offset: isize::MAX });
-		let (all, non_selected, selected) = verify_order(editor.dispatcher.message_handlers.portfolio_message_handler.active_document_mut());
+		let (all, non_selected, selected) = verify_order(editor.dispatcher.message_handlers.portfolio_message_handler.active_document_mut().unwrap());
 		assert_eq!(all, non_selected.into_iter().chain(selected.into_iter()).collect::<Vec<_>>());
 	}
 

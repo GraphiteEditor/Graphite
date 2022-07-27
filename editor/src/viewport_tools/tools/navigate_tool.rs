@@ -75,8 +75,16 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for NavigateTool
 		use NavigateToolFsmState::*;
 
 		match self.fsm_state {
-			Ready => actions!(NavigateToolMessageDiscriminant; TranslateCanvasBegin, RotateCanvasBegin, ZoomCanvasBegin),
-			_ => actions!(NavigateToolMessageDiscriminant; ClickZoom, PointerMove, TransformCanvasEnd),
+			Ready => actions!(NavigateToolMessageDiscriminant;
+				TranslateCanvasBegin,
+				RotateCanvasBegin,
+				ZoomCanvasBegin,
+			),
+			_ => actions!(NavigateToolMessageDiscriminant;
+				ClickZoom,
+				PointerMove,
+				TransformCanvasEnd,
+			),
 		}
 	}
 }

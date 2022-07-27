@@ -40,6 +40,7 @@ pub struct SignalToMessageMap {
 
 pub trait ToolTransition {
 	fn signal_to_message_map(&self) -> SignalToMessageMap;
+
 	fn activate(&self, responses: &mut VecDeque<Message>) {
 		let mut subscribe_message = |broadcast_to_tool_mapping: Option<ToolMessage>, signal: BroadcastSignal| {
 			if let Some(mapping) = broadcast_to_tool_mapping {
@@ -78,6 +79,7 @@ pub trait ToolTransition {
 		unsubscribe_message(signal_to_tool_map.selection_changed, BroadcastSignal::SelectionChanged);
 	}
 }
+
 pub trait ToolMetadata {
 	fn icon_name(&self) -> String;
 	fn tooltip(&self) -> String;
