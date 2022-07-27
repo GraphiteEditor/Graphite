@@ -12,7 +12,7 @@ impl PropertyHolder for CloseAllDocuments {
 				min_width: 96,
 				on_update: WidgetCallback::new(|_| {
 					DialogMessage::CloseDialogAndThen {
-						followup: Box::new(PortfolioMessage::CloseAllDocuments.into()),
+						followups: vec![PortfolioMessage::CloseAllDocuments.into()],
 					}
 					.into()
 				}),

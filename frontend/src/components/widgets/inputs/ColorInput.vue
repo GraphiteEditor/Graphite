@@ -1,6 +1,6 @@
 <template>
-	<LayoutRow class="color-input">
-		<OptionalInput v-if="canSetTransparent" :icon="'CloseX'" :checked="!!value" @update:checked="(val) => updateEnabled(val)"></OptionalInput>
+	<LayoutRow class="color-input" :title="tooltip">
+		<OptionalInput v-if="!noTransparency" :icon="'CloseX'" :checked="Boolean(value)" @update:checked="(val) => updateEnabled(val)"></OptionalInput>
 		<TextInput :value="displayValue" :label="label" :disabled="disabled || !value" @commitText="(value: string) => textInputUpdated(value)" :center="true" />
 		<Separator :type="'Related'" />
 		<LayoutRow class="swatch">
@@ -82,11 +82,15 @@ import Separator from "@/components/widgets/labels/Separator.vue";
 export default defineComponent({
 	emits: ["update:value", "update:open"],
 	props: {
-		value: { type: String as PropType<string | undefined>, required: true },
-		open: { type: Boolean as PropType<boolean>, required: true },
+		value: { type: String as PropType<string | undefined>, required: false },
 		label: { type: String as PropType<string>, required: false },
-		canSetTransparent: { type: Boolean as PropType<boolean>, required: false, default: true },
+		noTransparency: { type: Boolean as PropType<boolean>, default: false },
 		disabled: { type: Boolean as PropType<boolean>, default: false },
+		tooltip: { type: String as PropType<string | undefined>, required: false },
+
+		// Bound through `v-model`
+		// TODO: See if this should be made to follow the pattern of DropdownInput.vue so this could be removed
+		open: { type: Boolean as PropType<boolean>, required: true },
 	},
 	data() {
 		return {

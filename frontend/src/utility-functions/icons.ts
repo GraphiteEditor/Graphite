@@ -1,5 +1,12 @@
 /* eslint-disable import/first */
 
+// Graphics
+import GraphiteLogotypeSolid from "@/../assets/graphics/graphite-logotype-solid.svg";
+
+const GRAPHICS = {
+	GraphiteLogotypeSolid: { component: GraphiteLogotypeSolid, size: null },
+} as const;
+
 // 12px Solid
 import Checkmark from "@/../assets/icon-12px-solid/checkmark.svg";
 import CloseX from "@/../assets/icon-12px-solid/close-x.svg";
@@ -83,6 +90,7 @@ import EyeVisible from "@/../assets/icon-16px-solid/eye-visible.svg";
 import File from "@/../assets/icon-16px-solid/file.svg";
 import FlipHorizontal from "@/../assets/icon-16px-solid/flip-horizontal.svg";
 import FlipVertical from "@/../assets/icon-16px-solid/flip-vertical.svg";
+import Folder from "@/../assets/icon-16px-solid/folder.svg";
 import GraphiteLogo from "@/../assets/icon-16px-solid/graphite-logo.svg";
 import NodeArtboard from "@/../assets/icon-16px-solid/node-artboard.svg";
 import NodeBlur from "@/../assets/icon-16px-solid/node-blur.svg";
@@ -130,6 +138,7 @@ const SOLID_16PX = {
 	File: { component: File, size: 16 },
 	FlipHorizontal: { component: FlipHorizontal, size: 16 },
 	FlipVertical: { component: FlipVertical, size: 16 },
+	Folder: { component: Folder, size: 16 },
 	GraphiteLogo: { component: GraphiteLogo, size: 16 },
 	NodeArtboard: { component: NodeArtboard, size: 16 },
 	NodeBlur: { component: NodeBlur, size: 16 },
@@ -232,6 +241,7 @@ const TWO_TONE_24PX = {
 
 // All icons
 const ICON_LIST = {
+	...GRAPHICS,
 	...SOLID_12PX,
 	...SOLID_16PX,
 	...TWO_TONE_16PX,
@@ -243,8 +253,8 @@ export const icons: IconDefinitionType<typeof ICON_LIST> = ICON_LIST;
 export const iconComponents = Object.fromEntries(Object.entries(icons).map(([name, data]) => [name, data.component]));
 
 export type IconName = keyof typeof icons;
-export type IconSize = 12 | 16 | 24 | 32;
-export type IconStyle = "node" | "";
+export type IconSize = null | 12 | 16 | 24 | 32;
+export type IconStyle = "Normal" | "Node";
 
 // The following helper type declarations allow us to avoid manually maintaining the `IconName` type declaration as a string union paralleling the keys of the
 // icon definitions. It lets TypeScript do that for us. Our goal is to define the big key-value pair of icons by constraining its values, but inferring its keys.

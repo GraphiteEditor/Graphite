@@ -163,7 +163,7 @@
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
 
-import { IconName } from "@/utility-functions/icons";
+import { MenuListEntry, SectionsOfMenuListEntries, MenuListEntryData } from "@/wasm-communication/messages";
 
 import FloatingMenu, { MenuDirection } from "@/components/floating-menus/FloatingMenu.vue";
 import LayoutCol from "@/components/layout/LayoutCol.vue";
@@ -171,23 +171,6 @@ import LayoutRow from "@/components/layout/LayoutRow.vue";
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
 import Separator from "@/components/widgets/labels/Separator.vue";
 import UserInputLabel from "@/components/widgets/labels/UserInputLabel.vue";
-
-export type MenuListEntries<Value = string> = MenuListEntry<Value>[];
-export type SectionsOfMenuListEntries<Value = string> = MenuListEntries<Value>[];
-
-interface MenuListEntryData<Value = string> {
-	value?: Value;
-	label?: string;
-	icon?: IconName;
-	font?: URL;
-	shortcut?: string[];
-	shortcutRequiresLock?: boolean;
-	disabled?: boolean;
-	action?: () => void;
-	children?: SectionsOfMenuListEntries;
-}
-
-export type MenuListEntry<Value = string> = MenuListEntryData<Value> & { ref?: typeof FloatingMenu | typeof MenuList };
 
 const KEYBOARD_LOCK_USE_FULLSCREEN = "This hotkey is reserved by the browser, but becomes available in fullscreen mode";
 const KEYBOARD_LOCK_SWITCH_BROWSER = "This hotkey is reserved by the browser, but becomes available in Chrome, Edge, and Opera which support the Keyboard.lock() API";

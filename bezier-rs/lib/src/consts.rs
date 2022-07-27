@@ -19,3 +19,10 @@ pub const DEFAULT_LUT_STEP_SIZE: i32 = 10;
 pub const DEFAULT_LENGTH_SUBDIVISIONS: i32 = 1000;
 /// Default step size for `reduce` function.
 pub const DEFAULT_REDUCE_STEP_SIZE: f64 = 0.01;
+
+// SVG constants
+pub const SVG_ARG_CUBIC: &str = "C";
+pub const SVG_ARG_LINEAR: &str = "L";
+pub const SVG_ARG_MOVE: &str = "M";
+pub const SVG_ARG_QUADRATIC: &str = "Q";
+pub const SVG_ARG_CLOSED: &str = "Z";

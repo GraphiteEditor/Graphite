@@ -62,8 +62,10 @@ export default defineComponent({
 		LayoutRow,
 	},
 	props: {
-		action: { type: Function as PropType<() => void>, required: false },
 		icon: { type: String as PropType<IconName>, default: "DropdownArrow" },
+
+		// Callbacks
+		action: { type: Function as PropType<() => void>, required: false },
 	},
 	data() {
 		return {

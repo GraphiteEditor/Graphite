@@ -55,6 +55,10 @@ impl LayoutMessageHandler {
 				layout_target,
 				layout: layout.clone().unwrap_widget_layout().layout,
 			},
+			LayoutTarget::WorkingColors => FrontendMessage::UpdateWorkingColorsLayout {
+				layout_target,
+				layout: layout.clone().unwrap_widget_layout().layout,
+			},
 
 			#[remain::unsorted]
 			LayoutTarget::LayoutTargetLength => panic!("`LayoutTargetLength` is not a valid Layout Target and is used for array indexing"),
@@ -168,6 +172,7 @@ impl MessageHandler<LayoutMessage, ()> for LayoutMessageHandler {
 						responses.push_back(callback_message);
 					}
 					Widget::Separator(_) => {}
+					Widget::SwatchPairInput(_) => {}
 					Widget::TextAreaInput(text_area_input) => {
 						let update_value = value.as_str().expect("TextAreaInput update was not of type: string");
 						text_area_input.value = update_value.into();

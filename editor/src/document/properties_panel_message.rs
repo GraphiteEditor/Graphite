@@ -12,6 +12,7 @@ pub enum PropertiesPanelMessage {
 	CheckSelectedWasDeleted { path: Vec<LayerId> },
 	CheckSelectedWasUpdated { path: Vec<LayerId> },
 	ClearSelection,
+	Deactivate,
 	Init,
 	ModifyFill { fill: Fill },
 	ModifyFont { font_family: String, font_style: String, size: f64 },

@@ -18,22 +18,24 @@ export function download(filename: string, fileData: string): void {
 	URL.revokeObjectURL(url);
 }
 
-export async function upload(acceptedEextensions: string): Promise<{ filename: string; content: string }> {
-	return new Promise<{ filename: string; content: string }>((resolve, _) => {
+export async function upload<T extends "text" | "data">(acceptedExtensions: string, textOrData: T): Promise<UploadResult<T>> {
+	return new Promise<UploadResult<T>>((resolve, _) => {
 		const element = document.createElement("input");
 		element.type = "file";
 		element.style.display = "none";
-		element.accept = acceptedEextensions;
+		element.accept = acceptedExtensions;
 
 		element.addEventListener(
 			"change",
 			async () => {
 				if (element.files?.length) {
 					const file = element.files[0];
-					const filename = file.name;
-					const content = await file.text();
 
-					resolve({ filename, content });
+					const filename = file.name;
+					const type = file.type;
+					const content = (textOrData === "text" ? await file.text() : new Uint8Array(await file.arrayBuffer())) as UploadResultType<T>;
+
+					resolve({ filename, type, content });
 				}
 			},
 			{ capture: false, once: true }
@@ -44,3 +46,5 @@ export async function upload(acceptedEextensions: string): Promise<{ filename: s
 		// Once `element` goes out of scope, it has no references so it gets garbage collected along with its event listener, so `removeEventListener` is not needed
 	});
 }
+export type UploadResult<T> = { filename: string; type: string; content: UploadResultType<T> };
+type UploadResultType<T> = T extends "text" ? string : T extends "data" ? Uint8Array : never;

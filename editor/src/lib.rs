@@ -4,10 +4,10 @@ pub mod communication;
 #[macro_use]
 pub mod misc;
 pub mod consts;
+pub mod debug;
 pub mod dialog;
 pub mod document;
 pub mod frontend;
-pub mod global;
 pub mod input;
 pub mod layout;
 pub mod viewport_tools;
@@ -62,6 +62,7 @@ pub mod message_prelude {
 	pub use crate::document::clipboards::Clipboard;
 	pub use crate::LayerId;
 
+	pub use crate::debug::{DebugMessage, DebugMessageDiscriminant};
 	pub use crate::dialog::messages::*;
 	pub use crate::document::{ArtboardMessage, ArtboardMessageDiscriminant};
 	pub use crate::document::{DocumentMessage, DocumentMessageDiscriminant};
@@ -72,7 +73,6 @@ pub mod message_prelude {
 	pub use crate::document::{PropertiesPanelMessage, PropertiesPanelMessageDiscriminant};
 	pub use crate::document::{TransformLayerMessage, TransformLayerMessageDiscriminant};
 	pub use crate::frontend::{FrontendMessage, FrontendMessageDiscriminant};
-	pub use crate::global::{GlobalMessage, GlobalMessageDiscriminant};
 	pub use crate::input::{InputMapperMessage, InputMapperMessageDiscriminant, InputPreprocessorMessage, InputPreprocessorMessageDiscriminant};
 	pub use crate::layout::{LayoutMessage, LayoutMessageDiscriminant};
 	pub use crate::misc::derivable_custom_traits::{ToDiscriminant, TransitiveChild};

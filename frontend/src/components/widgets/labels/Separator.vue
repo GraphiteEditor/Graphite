@@ -75,8 +75,7 @@
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
 
-export type SeparatorDirection = "Horizontal" | "Vertical";
-export type SeparatorType = "Related" | "Unrelated" | "Section" | "List";
+import { SeparatorDirection, SeparatorType } from "@/wasm-communication/messages";
 
 export default defineComponent({
 	props: {

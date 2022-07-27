@@ -129,6 +129,7 @@ impl PropertyHolder for MenuBarMessageHandler {
 						MenuEntry {
 							label: "Import…".into(),
 							shortcut: Some(vec![Key::KeyControl, Key::KeyI]),
+							action: MenuEntry::create_action(|_| PortfolioMessage::Import.into()),
 							..MenuEntry::default()
 						},
 						MenuEntry {
@@ -281,28 +282,42 @@ impl PropertyHolder for MenuBarMessageHandler {
 					],
 					vec![
 						MenuEntry {
-							label: "Debug: Set Log Level".into(),
+							label: "Debug: Print Messages".into(),
 							action: MenuEntry::no_action(),
 							children: Some(vec![vec![
 								MenuEntry {
-									label: "Log Level Info".into(),
-									action: MenuEntry::create_action(|_| GlobalMessage::LogInfo.into()),
-									shortcut: Some(vec![Key::Key1]),
+									label: "Off".into(),
+									// icon: Some("Checkmark".into()), // TODO: Find a way to set this icon on the active mode
+									shortcut: Some(vec![Key::KeyAlt, Key::Key0]),
+									action: MenuEntry::create_action(|_| DebugMessage::MessageOff.into()),
 									..MenuEntry::default()
 								},
 								MenuEntry {
-									label: "Log Level Debug".into(),
-									action: MenuEntry::create_action(|_| GlobalMessage::LogDebug.into()),
-									shortcut: Some(vec![Key::Key2]),
+									label: "Only Names".into(),
+									shortcut: Some(vec![Key::KeyAlt, Key::Key1]),
+									action: MenuEntry::create_action(|_| DebugMessage::MessageNames.into()),
 									..MenuEntry::default()
 								},
 								MenuEntry {
-									label: "Log Level Trace".into(),
-									action: MenuEntry::create_action(|_| GlobalMessage::LogTrace.into()),
-									shortcut: Some(vec![Key::Key3]),
+									label: "Full Contents".into(),
+									shortcut: Some(vec![Key::KeyAlt, Key::Key2]),
+									action: MenuEntry::create_action(|_| DebugMessage::MessageContents.into()),
 									..MenuEntry::default()
 								},
 							]]),
+							..MenuEntry::default()
+						},
+						MenuEntry {
+							label: "Debug: Print Trace Logs".into(),
+							icon: Some(if let log::LevelFilter::Trace = log::max_level() { "CheckboxChecked" } else { "CheckboxUnchecked" }.into()),
+							shortcut: Some(vec![Key::KeyAlt, Key::KeyT]),
+							action: MenuEntry::create_action(|_| DebugMessage::ToggleTraceLogs.into()),
+							..MenuEntry::default()
+						},
+						MenuEntry {
+							label: "Debug: Print Document".into(),
+							shortcut: Some(vec![Key::KeyAlt, Key::KeyP]),
+							action: MenuEntry::create_action(|_| DebugMessage::ToggleTraceLogs.into()),
 							..MenuEntry::default()
 						},
 						MenuEntry {

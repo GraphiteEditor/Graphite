@@ -7,7 +7,7 @@ export const COLORS = {
 	CANVAS: "white",
 	INTERACTIVE: {
 		STROKE_1: "black",
-		STROKE_2: "grey",
+		STROKE_2: "gray",
 		SELECTED: "blue",
 	},
 	NON_INTERACTIVE: {
