@@ -631,9 +631,9 @@ impl Bezier {
 			.collect::<Vec<DVec2>>()
 	}
 
-	/// Returns a list of lists of points representing the de Casteljau points for all iterations at the point corresponding to `t` using de Casteljau's algorithm
-	/// The ith element of the list represents the set of points in the ith iteration
-	/// More information on the algorithm can be found in the [de Casteljau section in Pomax's Bezier Primer](https://pomax.github.io/bezierinfo/#decasteljau)
+	/// Returns a list of lists of points representing the De Casteljau points for all iterations at the point corresponding to `t` using De Casteljau's algorithm.
+	/// The `i`th element of the list represents the set of points in the `i`th iteration.
+	/// More information on the algorithm can be found in the [De Casteljau section](https://pomax.github.io/bezierinfo/#decasteljau) in Pomax's primer.
 	pub fn de_casteljau_points(&self, t: f64) -> Vec<Vec<DVec2>> {
 		let bezier_points = match self.handles {
 			BezierHandles::Linear => vec![self.start, self.end],
@@ -645,7 +645,7 @@ impl Bezier {
 
 		// Iterate until one point is left, that point will be equal to `evaluate(t)`
 		while current_points.len() > 1 {
-			// Map from every adjacent pair of points to their respective midpoints, which decrements by 1 the number of points for next iteration
+			// Map from every adjacent pair of points to their respective midpoints, which decrements by 1 the number of points for the next iteration
 			let next_points: Vec<DVec2> = current_points.as_slice().windows(2).map(|pair| DVec2::lerp(pair[0], pair[1], t)).collect();
 			de_casteljau_points.push(next_points);
 

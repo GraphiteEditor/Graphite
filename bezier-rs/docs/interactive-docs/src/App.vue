@@ -282,7 +282,7 @@ export default defineComponent({
 					},
 				},
 				{
-					name: "de Casteljau Points",
+					name: "De Casteljau Points",
 					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: Record<string, number>): void => {
 						const hullPoints: Point[][] = JSON.parse(bezier.de_casteljau_points(options.t));
 						hullPoints.forEach((iteration: Point[], iterationIndex) => {
