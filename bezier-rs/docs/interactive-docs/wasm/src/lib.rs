@@ -1,4 +1,5 @@
 pub mod subpath;
+mod svg_drawing;
 
 use bezier_rs::{Bezier, ProjectionOptions};
 use glam::DVec2;

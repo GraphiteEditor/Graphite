@@ -22,7 +22,10 @@ export default defineComponent({
 			required: true,
 			mutable: true,
 		},
-		closed: Boolean,
+		closed: {
+			type: Boolean as PropType<boolean>,
+			default: false,
+		},
 		callback: {
 			type: Function as PropType<SubpathCallback>,
 			required: true,

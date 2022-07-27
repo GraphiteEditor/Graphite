@@ -6,7 +6,7 @@ impl Subpath {
 	/// Create a new `Subpath` using a list of [ManipulatorGroup]s.
 	/// A `Subpath` with less than 2 [ManipulatorGroup]s may not be closed.
 	pub fn new(manipulator_groups: Vec<ManipulatorGroup>, closed: bool) -> Subpath {
-		assert!(!closed || manipulator_groups.len() > 1);
+		assert!(!closed || manipulator_groups.len() > 1, "A closed Subpath must contain more than 1 ManipulatorGroup.");
 		Subpath { manipulator_groups, closed }
 	}
 
@@ -29,7 +29,7 @@ impl Subpath {
 		)
 	}
 
-	/// Returns true if and only if the `Subpath` contains at least one [ManipulatorGroup].
+	/// Returns true if the `Subpath` contains no [ManipulatorGroup].
 	pub fn is_empty(&self) -> bool {
 		self.manipulator_groups.is_empty()
 	}

@@ -2,12 +2,11 @@ use bezier_rs::subpath::{ManipulatorGroup, Subpath, ToSVGOptions};
 use glam::DVec2;
 use wasm_bindgen::prelude::*;
 
+use crate::svg_drawing::*;
+
 /// Wrapper of the `Subpath` struct to be used in JS.
 #[wasm_bindgen]
 pub struct WasmSubpath(Subpath);
-
-const SVG_OPEN_TAG: &str = r#"<svg xmlns="http://www.w3.org/2000/svg" width="200px" height="200px">"#;
-const SVG_CLOSE_TAG: &str = "</svg>";
 
 #[wasm_bindgen]
 impl WasmSubpath {
@@ -42,7 +41,7 @@ impl WasmSubpath {
 	}
 
 	pub fn length(&self) -> String {
-		let length_text = format!(r#"<text x="5" y="193" fill="black">Length: {:.2}</text>"#, self.0.length(None));
+		let length_text = draw_text(format!("Length: {:.2}", self.0.length(None)), 5., 193., BLACK);
 		format!("{}{}{}{}", SVG_OPEN_TAG, self.0.to_svg(ToSVGOptions::default()), length_text, SVG_CLOSE_TAG)
 	}
 }
