@@ -682,6 +682,7 @@ impl Bezier {
 		endpoint_normal_angle < SCALABLE_CURVE_MAX_ENDPOINT_NORMAL_ANGLE
 	}
 
+	/// Add the bezier endpoints if not already present, and combine and sort the dimensional extrema.
 	fn get_extrema_t_list(&self) -> Vec<f64> {
 		let mut extrema = self.local_extrema().into_iter().flatten().collect::<Vec<f64>>();
 		extrema.append(&mut vec![0., 1.]);
@@ -759,7 +760,10 @@ impl Bezier {
 	}
 
 	/// Approximate a bezier curve with circular arcs.
-	/// The algorithm can be customized using the [ArcsOptions] structure.
+	/// The algorithm can be customized using the [ArcsOptions] structure by setting the following fields within ArcOptions:
+	/// - maximize_arcs - [MaximizeArcs] - The default value is `Automatic`.,
+	/// - error: f64 - The error used for approximating the arc's fit. The default is `0.5`.
+	/// - max_iterations: i32 - The maximum number of segment iterations used as attempts for arc approximations. The default is `100`.
 	pub fn arcs(&self, arcs_options: ArcsOptions) -> Vec<CircleArc> {
 		let ArcsOptions { maximize_arcs, error, max_iterations } = arcs_options;
 		match maximize_arcs {
@@ -830,7 +834,6 @@ impl Bezier {
 					high = 1.;
 					middle = low + (high - low) / 2.;
 					was_previous_good = false;
-
 					break;
 				}
 
@@ -878,7 +881,6 @@ impl Bezier {
 						// Found the final arc approximation
 						arcs.push(new_arc);
 						low = high;
-
 						break;
 					}
 					// If the approximation is good, expand the segment by half to try finding a larger good approximation
@@ -896,7 +898,6 @@ impl Bezier {
 					high = local_high;
 					middle = low + (high - low) / 2.;
 					was_previous_good = false;
-
 					break;
 				} else {
 					// If no good approximation has been seen yet, try again with half the segment
