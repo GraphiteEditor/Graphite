@@ -773,6 +773,26 @@ impl Bezier {
 		});
 		result
 	}
+
+	/// Return the min and max corners that represent the bounding box of the curve.
+	pub fn bounding_box(&self) -> [DVec2; 2] {
+		// Start by taking min/max of endpoints.
+		let mut endpoints_min = self.start.min(self.end);
+		let mut endpoints_max = self.start.max(self.end);
+
+		// Iterate through extrema points.
+		let extrema = self.local_extrema();
+		for t_values in extrema {
+			for t in t_values {
+				let point = self.evaluate(t);
+				// Update bounding box if new min/max is found.
+				endpoints_min = endpoints_min.min(point);
+				endpoints_max = endpoints_max.max(point);
+			}
+		}
+
+		[endpoints_min, endpoints_max]
+	}
 }
 
 #[cfg(test)]
