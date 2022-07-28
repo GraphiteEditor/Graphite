@@ -1,8 +1,8 @@
 //! Bezier-rs: A Bezier Math Library for Rust
 
 mod consts;
-pub mod subpath;
 mod structs;
+pub mod subpath;
 mod utils;
 
 use consts::*;
@@ -909,8 +909,8 @@ impl Bezier {
 		}
 
 		(arcs, low)
-  }
-  
+	}
+
 	/// Return the min and max corners that represent the bounding box of the curve.
 	pub fn bounding_box(&self) -> [DVec2; 2] {
 		// Start by taking min/max of endpoints.
