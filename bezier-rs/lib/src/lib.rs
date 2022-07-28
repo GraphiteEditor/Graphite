@@ -791,8 +791,8 @@ impl Bezier {
 			}
 		}
 
-        [endpoints_min, endpoints_max]
-    }
+		[endpoints_min, endpoints_max]
+	}
 }
 
 #[cfg(test)]
