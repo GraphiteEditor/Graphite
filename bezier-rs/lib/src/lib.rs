@@ -1,9 +1,11 @@
 //! Bezier-rs: A Bezier Math Library for Rust
 
 mod consts;
+pub mod subpath;
 mod utils;
 
 use consts::*;
+pub use subpath::*;
 
 use glam::{DMat2, DVec2};
 
@@ -164,23 +166,49 @@ impl Bezier {
 		Bezier::from_cubic_dvec2(start, handle_start, handle_end, end)
 	}
 
-	/// Convert to SVG.
-	pub fn to_svg(&self) -> String {
-		// TODO: Allow modifying the viewport, width and height
-		let m_path = format!("M {} {}", self.start.x, self.start.y);
-		let handles_path = match self.handles {
-			BezierHandles::Linear => "L".to_string(),
+	/// Return the string argument used to create a curve in an SVG `path`, excluding the start point.
+	pub(crate) fn svg_curve_argument(&self) -> String {
+		let handle_args = match self.handles {
+			BezierHandles::Linear => SVG_ARG_LINEAR.to_string(),
 			BezierHandles::Quadratic { handle } => {
-				format!("Q {} {},", handle.x, handle.y)
+				format!("{SVG_ARG_QUADRATIC}{} {}", handle.x, handle.y)
 			}
 			BezierHandles::Cubic { handle_start, handle_end } => {
-				format!("C {} {}, {} {},", handle_start.x, handle_start.y, handle_end.x, handle_end.y)
+				format!("{SVG_ARG_CUBIC}{} {} {} {}", handle_start.x, handle_start.y, handle_end.x, handle_end.y)
 			}
 		};
-		let curve_path = format!("{} {} {}", handles_path, self.end.x, self.end.y);
+		format!("{handle_args} {} {}", self.end.x, self.end.y)
+	}
+
+	/// Return the string argument used to create the lines connecting handles to endpoints in an SVG `path`
+	pub(crate) fn svg_handle_line_argument(&self) -> Option<String> {
+		match self.handles {
+			BezierHandles::Linear => None,
+			BezierHandles::Quadratic { handle } => {
+				let handle_line = format!("{SVG_ARG_LINEAR}{} {}", handle.x, handle.y);
+				Some(format!(
+					"{SVG_ARG_MOVE}{} {} {handle_line} {SVG_ARG_MOVE}{} {} {handle_line}",
+					self.start.x, self.start.y, self.end.x, self.end.y
+				))
+			}
+			BezierHandles::Cubic { handle_start, handle_end } => {
+				let handle_start_line = format!("{SVG_ARG_LINEAR}{} {}", handle_start.x, handle_start.y);
+				let handle_end_line = format!("{SVG_ARG_LINEAR}{} {}", handle_end.x, handle_end.y);
+				Some(format!(
+					"{SVG_ARG_MOVE}{} {} {handle_start_line} {SVG_ARG_MOVE}{} {} {handle_end_line}",
+					self.start.x, self.start.y, self.end.x, self.end.y
+				))
+			}
+		}
+	}
+
+	/// Convert `Bezier` to SVG `path`.
+	pub fn to_svg(&self) -> String {
 		format!(
-			r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{} {} {} {}" width="{}px" height="{}px"><path d="{} {} {}" stroke="black" fill="transparent"/></svg>"#,
-			0, 0, 100, 100, 100, 100, "\n", m_path, curve_path
+			r#"<path d="{SVG_ARG_MOVE}{} {} {}" stroke="black" fill="none"/>"#,
+			self.start.x,
+			self.start.y,
+			self.svg_curve_argument()
 		)
 	}
 
@@ -631,6 +659,30 @@ impl Bezier {
 			.collect::<Vec<DVec2>>()
 	}
 
+	/// Returns a list of lists of points representing the De Casteljau points for all iterations at the point corresponding to `t` using De Casteljau's algorithm.
+	/// The `i`th element of the list represents the set of points in the `i`th iteration.
+	/// More information on the algorithm can be found in the [De Casteljau section](https://pomax.github.io/bezierinfo/#decasteljau) in Pomax's primer.
+	pub fn de_casteljau_points(&self, t: f64) -> Vec<Vec<DVec2>> {
+		let bezier_points = match self.handles {
+			BezierHandles::Linear => vec![self.start, self.end],
+			BezierHandles::Quadratic { handle } => vec![self.start, handle, self.end],
+			BezierHandles::Cubic { handle_start, handle_end } => vec![self.start, handle_start, handle_end, self.end],
+		};
+		let mut de_casteljau_points = vec![bezier_points];
+		let mut current_points = de_casteljau_points.last().unwrap();
+
+		// Iterate until one point is left, that point will be equal to `evaluate(t)`
+		while current_points.len() > 1 {
+			// Map from every adjacent pair of points to their respective midpoints, which decrements by 1 the number of points for the next iteration
+			let next_points: Vec<DVec2> = current_points.as_slice().windows(2).map(|pair| DVec2::lerp(pair[0], pair[1], t)).collect();
+			de_casteljau_points.push(next_points);
+
+			current_points = de_casteljau_points.last().unwrap();
+		}
+
+		de_casteljau_points
+	}
+
 	/// Determine if it is possible to scale the given curve, using the following conditions:
 	/// 1. All the handles are located on a single side of the curve.
 	/// 2. The on-curve point for `t = 0.5` must occur roughly in the center of the polygon defined by the curve's endpoint normals.
@@ -720,6 +772,26 @@ impl Bezier {
 			}
 		});
 		result
+	}
+
+	/// Return the min and max corners that represent the bounding box of the curve.
+	pub fn bounding_box(&self) -> [DVec2; 2] {
+		// Start by taking min/max of endpoints.
+		let mut endpoints_min = self.start.min(self.end);
+		let mut endpoints_max = self.start.max(self.end);
+
+		// Iterate through extrema points.
+		let extrema = self.local_extrema();
+		for t_values in extrema {
+			for t in t_values {
+				let point = self.evaluate(t);
+				// Update bounding box if new min/max is found.
+				endpoints_min = endpoints_min.min(point);
+				endpoints_max = endpoints_max.max(point);
+			}
+		}
+
+		[endpoints_min, endpoints_max]
 	}
 
 	// TODO: Use an `impl Iterator` return type instead of a `Vec`

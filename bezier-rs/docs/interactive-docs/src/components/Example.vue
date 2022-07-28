@@ -12,12 +12,6 @@ import BezierDrawing from "@/components/BezierDrawing";
 import { BezierCallback, WasmBezierInstance } from "@/utils/types";
 
 export default defineComponent({
-	name: "ExampleComponent",
-	data() {
-		return {
-			bezierDrawing: new BezierDrawing(this.bezier, this.callback, this.options, this.createThroughPoints),
-		};
-	},
 	props: {
 		title: String,
 		bezier: {
@@ -36,6 +30,11 @@ export default defineComponent({
 			type: Boolean as PropType<boolean>,
 			default: false,
 		},
+	},
+	data() {
+		return {
+			bezierDrawing: new BezierDrawing(this.bezier, this.callback, this.options, this.createThroughPoints),
+		};
 	},
 	mounted() {
 		const drawing = this.$refs.drawing as HTMLElement;

@@ -2,7 +2,8 @@
 	<div class="App">
 		<h1>Bezier-rs Interactive Documentation</h1>
 		<p>This is the interactive documentation for the <b>bezier-rs</b> library. Click and drag on the endpoints of the example curves to visualize the various Bezier utilities and functions.</p>
-		<div v-for="(feature, index) in features" :key="index">
+		<h2>Beziers</h2>
+		<div v-for="(feature, index) in bezierFeatures" :key="index">
 			<ExamplePane
 				:template="feature.template"
 				:templateOptions="feature.templateOptions"
@@ -14,6 +15,10 @@
 				:customOptions="feature.customOptions"
 			/>
 		</div>
+		<h2>Subpaths</h2>
+		<div v-for="(feature, index) in subpathFeatures" :key="index">
+			<SubpathExamplePane :name="feature.name" :callback="feature.callback" />
+		</div>
 	</div>
 </template>
 
@@ -21,10 +26,11 @@
 import { defineComponent, markRaw } from "vue";
 
 import { drawText, drawPoint, drawBezier, drawLine, getContextFromCanvas, drawBezierHelper, COLORS } from "@/utils/drawing";
-import { BezierCurveType, Point, WasmBezierInstance } from "@/utils/types";
+import { BezierCurveType, Point, WasmBezierInstance, WasmSubpathInstance } from "@/utils/types";
 
 import ExamplePane from "@/components/ExamplePane.vue";
 import SliderExample from "@/components/SliderExample.vue";
+import SubpathExamplePane from "@/components/SubpathExamplePane.vue";
 
 const tSliderOptions = {
 	min: 0,
@@ -37,13 +43,9 @@ const tSliderOptions = {
 const SCALE_UNIT_VECTOR_FACTOR = 50;
 
 export default defineComponent({
-	name: "App",
-	components: {
-		ExamplePane,
-	},
 	data() {
 		return {
-			features: [
+			bezierFeatures: [
 				{
 					name: "Constructor",
 					// eslint-disable-next-line
@@ -282,6 +284,29 @@ export default defineComponent({
 					},
 				},
 				{
+					name: "De Casteljau Points",
+					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: Record<string, number>): void => {
+						const hullPoints: Point[][] = JSON.parse(bezier.de_casteljau_points(options.t));
+						hullPoints.reverse().forEach((iteration: Point[], iterationIndex) => {
+							const colorLight = `hsl(${90 * iterationIndex}, 100%, 50%)`;
+
+							iteration.forEach((point: Point, index) => {
+								// Skip the anchor and handle points which are already drawn in black
+								if (iterationIndex !== hullPoints.length - 1) {
+									drawPoint(getContextFromCanvas(canvas), point, 4, colorLight);
+								}
+
+								if (index !== 0) {
+									const prevPoint: Point = iteration[index - 1];
+									drawLine(getContextFromCanvas(canvas), point, prevPoint, colorLight);
+								}
+							});
+						});
+					},
+					template: markRaw(SliderExample),
+					templateOptions: { sliders: [tSliderOptions] },
+				},
+				{
 					name: "Rotate",
 					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: Record<string, number>): void => {
 						const context = getContextFromCanvas(canvas);
@@ -332,6 +357,19 @@ export default defineComponent({
 					},
 				},
 				{
+					name: "Bounding Box",
+					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance): void => {
+						const context = getContextFromCanvas(canvas);
+						const bboxPoints: Point[] = JSON.parse(bezier.bounding_box());
+						const minPoint = bboxPoints[0];
+						const maxPoint = bboxPoints[1];
+						drawLine(context, minPoint, { x: minPoint.x, y: maxPoint.y }, COLORS.NON_INTERACTIVE.STROKE_1);
+						drawLine(context, minPoint, { x: maxPoint.x, y: minPoint.y }, COLORS.NON_INTERACTIVE.STROKE_1);
+						drawLine(context, maxPoint, { x: minPoint.x, y: maxPoint.y }, COLORS.NON_INTERACTIVE.STROKE_1);
+						drawLine(context, maxPoint, { x: maxPoint.x, y: minPoint.y }, COLORS.NON_INTERACTIVE.STROKE_1);
+					},
+				},
+				{
 					name: "Inflections",
 					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance): void => {
 						const context = getContextFromCanvas(canvas);
@@ -344,7 +382,21 @@ export default defineComponent({
 					curveDegrees: new Set([BezierCurveType.Cubic]),
 				},
 			],
+			subpathFeatures: [
+				{
+					name: "Constructor",
+					callback: (subpath: WasmSubpathInstance): string => subpath.to_svg(),
+				},
+				{
+					name: "Length",
+					callback: (subpath: WasmSubpathInstance): string => subpath.length(),
+				},
+			],
 		};
+	},
+	components: {
+		ExamplePane,
+		SubpathExamplePane,
 	},
 });
 </script>
