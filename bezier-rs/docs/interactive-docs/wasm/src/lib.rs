@@ -156,4 +156,9 @@ impl WasmBezier {
 		let bbox_points: [Point; 2] = self.0.bounding_box().map(|p| Point { x: p.x, y: p.y });
 		to_js_value(bbox_points)
 	}
+
+	pub fn inflections(&self) -> JsValue {
+		let inflections = self.0.inflections();
+		to_js_value(inflections)
+	}
 }
