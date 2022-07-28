@@ -416,6 +416,18 @@ export default defineComponent({
 						drawLine(context, maxPoint, { x: maxPoint.x, y: minPoint.y }, COLORS.NON_INTERACTIVE.STROKE_1);
 					},
 				},
+				{
+					name: "Inflections",
+					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance): void => {
+						const context = getContextFromCanvas(canvas);
+						const inflections: number[] = JSON.parse(bezier.inflections());
+						inflections.forEach((t) => {
+							const point = JSON.parse(bezier.evaluate(t));
+							drawPoint(context, point, 4, COLORS.NON_INTERACTIVE.STROKE_1);
+						});
+					},
+					curveDegrees: new Set([BezierCurveType.Cubic]),
+				},
 			],
 			subpathFeatures: [
 				{
