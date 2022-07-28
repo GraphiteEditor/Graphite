@@ -779,6 +779,65 @@ impl Bezier {
 		result
 	}
 
+	/// Return the min and max corners that represent the bounding box of the curve.
+	pub fn bounding_box(&self) -> [DVec2; 2] {
+		// Start by taking min/max of endpoints.
+		let mut endpoints_min = self.start.min(self.end);
+		let mut endpoints_max = self.start.max(self.end);
+
+		// Iterate through extrema points.
+		let extrema = self.local_extrema();
+		for t_values in extrema {
+			for t in t_values {
+				let point = self.evaluate(t);
+				// Update bounding box if new min/max is found.
+				endpoints_min = endpoints_min.min(point);
+				endpoints_max = endpoints_max.max(point);
+			}
+		}
+
+		[endpoints_min, endpoints_max]
+	}
+
+	// TODO: Use an `impl Iterator` return type instead of a `Vec`
+	/// Returns list of `t`-values representing the inflection points of the curve.
+	/// The inflection points are defined to be points at which the second derivative of the curve is equal to zero.
+	pub fn unrestricted_inflections(&self) -> Vec<f64> {
+		match self.handles {
+			// There exists no inflection points for linear and quadratic beziers.
+			BezierHandles::Linear => Vec::new(),
+			BezierHandles::Quadratic { .. } => Vec::new(),
+			BezierHandles::Cubic { .. } => {
+				// Axis align the curve.
+				let translated_bezier = self.translate(-self.start);
+				let angle = translated_bezier.end.angle_between(DVec2::new(1., 0.));
+				let rotated_bezier = translated_bezier.rotate(angle);
+				if let BezierHandles::Cubic { handle_start, handle_end } = rotated_bezier.handles {
+					// These formulas and naming conventions follows https://pomax.github.io/bezierinfo/#inflections
+					let a = handle_end.x * handle_start.y;
+					let b = rotated_bezier.end.x * handle_start.y;
+					let c = handle_start.x * handle_end.y;
+					let d = rotated_bezier.end.x * handle_end.y;
+
+					let x = -3. * a + 2. * b + 3. * c - d;
+					let y = 3. * a - b - 3. * c;
+					let z = c - a;
+
+					let discriminant = y * y - 4. * x * z;
+					utils::solve_quadratic(discriminant, 2. * x, y, z)
+				} else {
+					unreachable!("shouldn't happen")
+				}
+			}
+		}
+	}
+
+	/// Returns list of `t`-values representing the inflection points of the curve.
+	/// The list of `t`-values returned are filtered such that they fall within the range `[0, 1]`.
+	pub fn inflections(&self) -> Vec<f64> {
+		self.unrestricted_inflections().into_iter().filter(|&t| t > 0. && t < 1.).collect::<Vec<f64>>()
+	}
+
 	/// Scale will translate a bezier curve a fixed distance away from its original position, and stretch/compress the transformed curve to match the translation ratio.
 	/// Note that not all bezier curves are possible to scale, so this function asserts that the provided curve is scalable.
 	/// A proof for why this is true can be found in the [Curve offsetting section](https://pomax.github.io/bezierinfo/#offsetting) of Pomax's bezier curve primer.

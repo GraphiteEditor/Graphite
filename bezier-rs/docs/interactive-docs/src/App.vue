@@ -284,6 +284,31 @@ export default defineComponent({
 					},
 				},
 				{
+					name: "Bounding Box",
+					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance): void => {
+						const context = getContextFromCanvas(canvas);
+						const bboxPoints: Point[] = JSON.parse(bezier.bounding_box());
+						const minPoint = bboxPoints[0];
+						const maxPoint = bboxPoints[1];
+						drawLine(context, minPoint, { x: minPoint.x, y: maxPoint.y }, COLORS.NON_INTERACTIVE.STROKE_1);
+						drawLine(context, minPoint, { x: maxPoint.x, y: minPoint.y }, COLORS.NON_INTERACTIVE.STROKE_1);
+						drawLine(context, maxPoint, { x: minPoint.x, y: maxPoint.y }, COLORS.NON_INTERACTIVE.STROKE_1);
+						drawLine(context, maxPoint, { x: maxPoint.x, y: minPoint.y }, COLORS.NON_INTERACTIVE.STROKE_1);
+					},
+				},
+				{
+					name: "Inflections",
+					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance): void => {
+						const context = getContextFromCanvas(canvas);
+						const inflections: number[] = JSON.parse(bezier.inflections());
+						inflections.forEach((t) => {
+							const point = JSON.parse(bezier.evaluate(t));
+							drawPoint(context, point, 4, COLORS.NON_INTERACTIVE.STROKE_1);
+						});
+					},
+					curveDegrees: new Set([BezierCurveType.Cubic]),
+				},
+				{
 					name: "De Casteljau Points",
 					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: Record<string, number>): void => {
 						const hullPoints: Point[][] = JSON.parse(bezier.de_casteljau_points(options.t));
