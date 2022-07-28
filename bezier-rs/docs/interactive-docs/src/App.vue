@@ -361,15 +361,12 @@ export default defineComponent({
 					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance): void => {
 						const context = getContextFromCanvas(canvas);
 						const bboxPoints: Point[] = JSON.parse(bezier.bounding_box());
-						bboxPoints.forEach((point: Point, index) => {
-							if (index === 0) {
-								const prevPoint: Point = bboxPoints[bboxPoints.length - 1];
-								drawLine(context, point, prevPoint, COLORS.NON_INTERACTIVE.STROKE_1);
-							} else {
-								const prevPoint: Point = bboxPoints[index - 1];
-								drawLine(context, point, prevPoint, COLORS.NON_INTERACTIVE.STROKE_1);
-							}
-						});
+						const minPoint = bboxPoints[0];
+						const maxPoint = bboxPoints[1];
+						drawLine(context, minPoint, {x: minPoint.x, y: maxPoint.y}, COLORS.NON_INTERACTIVE.STROKE_1);
+						drawLine(context, minPoint, {x: maxPoint.x, y: minPoint.y}, COLORS.NON_INTERACTIVE.STROKE_1);
+						drawLine(context, maxPoint, {x: minPoint.x, y: maxPoint.y}, COLORS.NON_INTERACTIVE.STROKE_1);
+						drawLine(context, maxPoint, {x: maxPoint.x, y: minPoint.y}, COLORS.NON_INTERACTIVE.STROKE_1);
 					},
 				},
 			],
