@@ -735,8 +735,8 @@ impl Bezier {
 				let translated_bezier = self.translate(-self.start);
 				let angle = translated_bezier.end.angle_between(DVec2::new(1., 0.));
 				let rotated_bezier = translated_bezier.rotate(angle);
-				if let BezierHandles::Cubic {handle_start, handle_end} = rotated_bezier.handles {
-				// This formulas and naming follows https://pomax.github.io/bezierinfo/#inflections
+				if let BezierHandles::Cubic { handle_start, handle_end } = rotated_bezier.handles {
+					// These formulas and naming conventions follows https://pomax.github.io/bezierinfo/#inflections
 					let a = handle_end.x * handle_start.y;
 					let b = rotated_bezier.end.x * handle_start.y;
 					let c = handle_start.x * handle_end.y;
