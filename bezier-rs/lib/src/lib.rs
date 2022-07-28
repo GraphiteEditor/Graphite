@@ -722,9 +722,9 @@ impl Bezier {
 		result
 	}
 
+	// TODO: Use an `impl Iterator` return type instead of a `Vec`
 	/// Returns list of `t`-values representing the inflection points of the curve.
 	/// The inflection points are defined to be points at which the second derivative of the curve is equal to zero.
-	/// The formulas are from  [the inflection section](https://pomax.github.io/bezierinfo/#inflections) of Pomax's bezier curve primer.
 	pub fn unrestricted_inflections(&self) -> Vec<f64> {
 		match self.handles {
 			// There exists no inflection points for linear and quadratic beziers.
@@ -735,24 +735,21 @@ impl Bezier {
 				let translated_bezier = self.translate(-self.start);
 				let angle = translated_bezier.end.angle_between(DVec2::new(1., 0.));
 				let rotated_bezier = translated_bezier.rotate(angle);
-				match rotated_bezier.handles {
-					BezierHandles::Cubic { handle_start, handle_end } => {
-						// This naming follows https://pomax.github.io/bezierinfo/#inflections
-						let a = handle_end.x * handle_start.y;
-						let b = rotated_bezier.end.x * handle_start.y;
-						let c = handle_start.x * handle_end.y;
-						let d = rotated_bezier.end.x * handle_end.y;
+				if let BezierHandles::Cubic {handle_start, handle_end} = rotated_bezier.handles {
+				// This formulas and naming follows https://pomax.github.io/bezierinfo/#inflections
+					let a = handle_end.x * handle_start.y;
+					let b = rotated_bezier.end.x * handle_start.y;
+					let c = handle_start.x * handle_end.y;
+					let d = rotated_bezier.end.x * handle_end.y;
 
-						let x = -3. * a + 2. * b + 3. * c - d;
-						let y = 3. * a - b - 3. * c;
-						let z = c - a;
+					let x = -3. * a + 2. * b + 3. * c - d;
+					let y = 3. * a - b - 3. * c;
+					let z = c - a;
 
-						let discriminant = y * y - 4. * x * z;
-						utils::solve_quadratic(discriminant, 2. * x, y, z)
-					}
-					_ => {
-						unreachable!("shouldn't happen")
-					}
+					let discriminant = y * y - 4. * x * z;
+					utils::solve_quadratic(discriminant, 2. * x, y, z)
+				} else {
+					unreachable!("shouldn't happen")
 				}
 			}
 		}
