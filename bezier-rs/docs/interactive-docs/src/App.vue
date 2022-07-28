@@ -401,8 +401,9 @@ export default defineComponent({
 							[30, 90],
 							[180, 160],
 						],
-        },
-        {
+					},
+				},
+				{
 					name: "Bounding Box",
 					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance): void => {
 						const context = getContextFromCanvas(canvas);
