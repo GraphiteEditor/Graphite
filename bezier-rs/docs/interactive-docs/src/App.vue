@@ -24,6 +24,7 @@
 
 <script lang="ts">
 import { defineComponent, markRaw } from "vue";
+
 import { drawText, drawPoint, drawBezier, drawLine, drawCircleSector, getContextFromCanvas, drawBezierHelper, COLORS } from "@/utils/drawing";
 import { BezierCurveType, CircleSector, Point, WasmBezierInstance, WasmSubpathInstance } from "@/utils/types";
 

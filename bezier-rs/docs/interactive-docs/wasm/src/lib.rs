@@ -201,6 +201,7 @@ impl WasmBezier {
 			})
 			.collect();
 		to_js_value(circle_sectors)
+	}
 
 	pub fn de_casteljau_points(&self, t: f64) -> JsValue {
 		let hull = self
@@ -210,5 +211,5 @@ impl WasmBezier {
 			.map(|level| level.iter().map(|&point| Point { x: point.x, y: point.y }).collect::<Vec<Point>>())
 			.collect::<Vec<Vec<Point>>>();
 		to_js_value(hull)
-  }
+	}
 }
