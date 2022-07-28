@@ -17,7 +17,7 @@ macro_rules! modifiers {
 ///
 /// Syntax:
 /// ```rs
-/// entry_for_layout! {Key; modifiers?: Key[], refresh_keys?: Key[], action_dispatch: Message, layout: Option<KeyboardPlatformLayout>}
+/// entry_for_layout!(Key; modifiers?: Key[], refresh_keys?: Key[], action_dispatch: Message, layout: Option<KeyboardPlatformLayout>)
 /// ```
 ///
 /// To avoid having to specify the final `layout` argument, instead use the wrapper macros: [entry]!, [standard]!, and [mac]!.
@@ -27,7 +27,7 @@ macro_rules! modifiers {
 /// Each handler adds or removes actions in the form of message discriminants. Here, we tie an input condition (such as a hotkey) to an action's full message.
 /// When an action is currently available, and the user enters that input, the action's message is dispatched on the message bus.
 macro_rules! entry_for_layout {
-	{$input:expr; $(modifiers=[$($modifier:ident),*],)? $(refresh_keys=[$($refresh:ident),* $(,)?],)? action_dispatch=$action_dispatch:expr,$(,)? layout=$layout:expr} => {{
+	($input:expr; $(modifiers=[$($modifier:ident),*],)? $(refresh_keys=[$($refresh:ident),* $(,)?],)? action_dispatch=$action_dispatch:expr,$(,)? layout=$layout:expr) => {
 		&[
 			// Cause the `action_dispatch` message to be sent when the specified input occurs.
 			MappingEntry {
@@ -59,43 +59,43 @@ macro_rules! entry_for_layout {
 			)*
 			)*
 		]
-	}};
+	};
 }
 
 /// Wraps [entry_for_layout]! and calls it with an agnostic (`None`) keyboard platform `layout` to avoid having to specify that argument.
 ///
 /// Syntax:
 /// ```rs
-/// entry! {Key; modifiers?: Key[], refresh_keys?: Key[], action_dispatch: Message}
+/// entry!(Key; modifiers?: Key[], refresh_keys?: Key[], action_dispatch: Message)
 /// ```
 macro_rules! entry {
-	{$($arg:tt)*} => {{
-		&[entry_for_layout! {$($arg)*, layout=None}]
-	}};
+	($($arg:tt)*) => {
+		&[entry_for_layout!($($arg)*, layout=None)]
+	};
 }
 
 /// Wraps [entry_for_layout]! and calls it with a `Standard` keyboard platform `layout` to avoid having to specify that argument.
 ///
 /// Syntax:
 /// ```rs
-/// standard! {Key; modifiers?: Key[], refresh_keys?: Key[], action_dispatch: Message}
+/// standard!(Key; modifiers?: Key[], refresh_keys?: Key[], action_dispatch: Message)
 /// ```
 macro_rules! standard {
-	{$($arg:tt)*} => {{
-		entry_for_layout! {$($arg)*, layout=Some(KeyboardPlatformLayout::Standard)}
-	}};
+	($($arg:tt)*) => {
+		entry_for_layout!($($arg)*, layout=Some(KeyboardPlatformLayout::Standard))
+	};
 }
 
 /// Wraps [entry_for_layout]! and calls it with a `Mac` keyboard platform `layout` to avoid having to specify that argument.
 ///
 /// Syntax:
 /// ```rs
-/// mac! {Key; modifiers?: Key[], refresh_keys?: Key[], action_dispatch: Message}
+/// mac_only!(Key; modifiers?: Key[], refresh_keys?: Key[], action_dispatch: Message)
 /// ```
-macro_rules! mac {
-	{$($arg:tt)*} => {{
-		entry_for_layout! {$($arg)*, layout=Some(KeyboardPlatformLayout::Mac)}
-	}};
+macro_rules! mac_only {
+	($($arg:tt)*) => {
+		entry_for_layout!($($arg)*, layout=Some(KeyboardPlatformLayout::Mac))
+	};
 }
 
 /// Groups multiple related entries for different platforms.
@@ -104,15 +104,15 @@ macro_rules! mac {
 /// Syntax:
 ///
 /// ```rs
-/// entry_multiplatform! {
-///     standard! {Key; modifiers?: Key[], refresh_keys?: Key[], action_dispatch: Message},
-///     mac!      {Key; modifiers?: Key[], refresh_keys?: Key[], action_dispatch: Message},
-/// }
+/// entry_multiplatform!(
+///     standard!(Key; modifiers?: Key[], refresh_keys?: Key[], action_dispatch: Message),
+///     mac_only!(Key; modifiers?: Key[], refresh_keys?: Key[], action_dispatch: Message),
+/// )
 /// ```
 macro_rules! entry_multiplatform {
-	{$($arg:expr),*,} => {{
+	{$($arg:expr),*,} => {
 		&[$($arg ),*]
-	}};
+	};
 }
 
 /// Constructs a `KeyMappingEntries` list for each input type and inserts every given entry into the list corresponding to its input type.
@@ -153,7 +153,7 @@ macro_rules! mapping {
 pub(crate) use entry;
 pub(crate) use entry_for_layout;
 pub(crate) use entry_multiplatform;
-pub(crate) use mac;
+pub(crate) use mac_only;
 pub(crate) use mapping;
 pub(crate) use modifiers;
 pub(crate) use standard;
