@@ -1,3 +1,6 @@
+pub mod subpath;
+mod svg_drawing;
+
 use bezier_rs::{ArcsOptions, Bezier, MaximizeArcs, ProjectionOptions};
 use glam::DVec2;
 use serde::{Deserialize, Serialize};
@@ -54,7 +57,7 @@ fn convert_wasm_mazimize_arcs(wasm_enum_value: WasmMaximizeArcs) -> MaximizeArcs
 
 #[wasm_bindgen]
 impl WasmBezier {
-	/// Expect js_points to be a list of 3 pairs.
+	/// Expect js_points to be a list of 2 pairs.
 	pub fn new_linear(js_points: &JsValue) -> WasmBezier {
 		let points: [DVec2; 2] = js_points.into_serde().unwrap();
 		WasmBezier(Bezier::from_linear_dvec2(points[0], points[1]))
@@ -198,5 +201,14 @@ impl WasmBezier {
 			})
 			.collect();
 		to_js_value(circle_sectors)
-	}
+
+	pub fn de_casteljau_points(&self, t: f64) -> JsValue {
+		let hull = self
+			.0
+			.de_casteljau_points(t)
+			.iter()
+			.map(|level| level.iter().map(|&point| Point { x: point.x, y: point.y }).collect::<Vec<Point>>())
+			.collect::<Vec<Vec<Point>>>();
+		to_js_value(hull)
+  }
 }

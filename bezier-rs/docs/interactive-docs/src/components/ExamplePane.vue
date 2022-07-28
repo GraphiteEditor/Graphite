@@ -1,6 +1,6 @@
 <template>
 	<div>
-		<h2 class="example-pane-header">{{ name }}</h2>
+		<h3 class="example-pane-header">{{ name }}</h3>
 		<div class="example-row">
 			<div v-for="(example, index) in exampleData" :key="index">
 				<component :is="template" :templateOptions="example.templateOptions" :title="example.title" :bezier="example.bezier" :callback="callback" :createThroughPoints="createThroughPoints" />
@@ -58,10 +58,6 @@ const CurveTypeMapping = {
 };
 
 export default defineComponent({
-	name: "ExamplePane",
-	components: {
-		Example,
-	},
 	props: {
 		name: {
 			type: String as PropType<string>,
@@ -118,12 +114,15 @@ export default defineComponent({
 			});
 		});
 	},
+	components: {
+		Example,
+	},
 });
 </script>
 
 <style>
 .example-row {
-	display: flex; /* or inline-flex */
+	display: flex;
 	flex-direction: row;
 	justify-content: center;
 }
