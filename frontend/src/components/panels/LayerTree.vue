@@ -53,10 +53,10 @@
 								:value="listing.entry.name"
 								:placeholder="listing.entry.layer_type"
 								:disabled="!listing.editingName"
-								@change="(e) => onEditLayerNameChange(listing, e.target)"
 								@blur="() => onEditLayerNameDeselect(listing)"
+								@keydown.esc="onEditLayerNameDeselect(listing)"
 								@keydown.enter="(e) => onEditLayerNameChange(listing, e.target)"
-								@keydown.escape="onEditLayerNameDeselect(listing)"
+								@change="(e) => onEditLayerNameChange(listing, e.target)"
 							/>
 						</LayoutRow>
 						<div class="thumbnail" v-html="listing.entry.thumbnail"></div>
