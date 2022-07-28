@@ -1,5 +1,6 @@
 use super::layout_message::LayoutTarget;
 use super::widgets::Layout;
+use crate::input::keyboard::Key;
 use crate::layout::widgets::Widget;
 use crate::message_prelude::*;
 
@@ -15,7 +16,7 @@ pub struct LayoutMessageHandler {
 
 impl LayoutMessageHandler {
 	#[remain::check]
-	fn send_layout(&self, layout_target: LayoutTarget, responses: &mut VecDeque<Message>) {
+	fn send_layout(&self, layout_target: LayoutTarget, responses: &mut VecDeque<Message>, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Vec<Vec<Key>>) {
 		let layout = &self.layouts[layout_target as usize];
 		#[remain::sorted]
 		let message = match layout_target {
@@ -37,7 +38,7 @@ impl LayoutMessageHandler {
 			},
 			LayoutTarget::MenuBar => FrontendMessage::UpdateMenuBarLayout {
 				layout_target,
-				layout: layout.clone().unwrap_menu_layout().layout,
+				layout: layout.clone().unwrap_menu_layout(action_input_mapping).layout,
 			},
 			LayoutTarget::PropertiesOptions => FrontendMessage::UpdatePropertyPanelOptionsLayout {
 				layout_target,
@@ -67,19 +68,21 @@ impl LayoutMessageHandler {
 	}
 }
 
-impl MessageHandler<LayoutMessage, ()> for LayoutMessageHandler {
+impl<F: Fn(&MessageDiscriminant) -> Vec<Vec<Key>>> MessageHandler<LayoutMessage, F> for LayoutMessageHandler {
 	#[remain::check]
-	fn process_action(&mut self, action: LayoutMessage, _data: (), responses: &mut std::collections::VecDeque<crate::message_prelude::Message>) {
+	fn process_action(&mut self, action: LayoutMessage, data: F, responses: &mut std::collections::VecDeque<crate::message_prelude::Message>) {
+		let action_input_mapping = data;
+
 		use LayoutMessage::*;
 		#[remain::sorted]
 		match action {
 			RefreshLayout { layout_target } => {
-				self.send_layout(layout_target, responses);
+				self.send_layout(layout_target, responses, &action_input_mapping);
 			}
 			SendLayout { layout, layout_target } => {
 				self.layouts[layout_target as usize] = layout;
 
-				self.send_layout(layout_target, responses);
+				self.send_layout(layout_target, responses, &action_input_mapping);
 			}
 			UpdateLayout { layout_target, widget_id, value } => {
 				let layout = &mut self.layouts[layout_target as usize];

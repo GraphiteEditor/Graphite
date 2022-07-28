@@ -864,6 +864,62 @@ impl DocumentMessageHandler {
 			.into(),
 		);
 	}
+
+	pub fn selected_layers_reorder(&mut self, relative_index_offset: isize, responses: &mut VecDeque<Message>) {
+		self.backup(responses);
+
+		let all_layer_paths = self.all_layers_sorted();
+		let selected_layers = self.selected_layers_sorted();
+
+		let first_or_last_selected_layer = match relative_index_offset.signum() {
+			-1 => selected_layers.first(),
+			1 => selected_layers.last(),
+			_ => panic!("selected_layers_reorder() must be given a non-zero value"),
+		};
+
+		if let Some(pivot_layer) = first_or_last_selected_layer {
+			let sibling_layer_paths: Vec<_> = all_layer_paths
+				.iter()
+				.filter(|layer| {
+					// Check if this is a sibling of the pivot layer
+					// TODO: Break this out into a reusable function `fn are_layers_siblings(layer_a, layer_b) -> bool`
+					let containing_folder_path = &pivot_layer[0..pivot_layer.len() - 1];
+					layer.starts_with(containing_folder_path) && pivot_layer.len() == layer.len()
+				})
+				.collect();
+
+			// TODO: Break this out into a reusable function: `fn layer_index_in_containing_folder(layer_path) -> usize`
+			let pivot_index_among_siblings = sibling_layer_paths.iter().position(|path| *path == pivot_layer);
+
+			if let Some(pivot_index) = pivot_index_among_siblings {
+				let max = sibling_layer_paths.len() as i64 - 1;
+				let insert_index = (pivot_index as i64 + relative_index_offset as i64).clamp(0, max) as usize;
+
+				let existing_layer_to_insert_beside = sibling_layer_paths.get(insert_index);
+
+				// TODO: Break this block out into a call to a message called `MoveSelectedLayersNextToLayer { neighbor_path, above_or_below }`
+				if let Some(neighbor_path) = existing_layer_to_insert_beside {
+					let (neighbor_id, folder_path) = neighbor_path.split_last().expect("Can't move the root folder");
+
+					if let Some(folder) = self.graphene_document.layer(folder_path).ok().and_then(|layer| layer.as_folder().ok()) {
+						let neighbor_layer_index = folder.layer_ids.iter().position(|id| id == neighbor_id).unwrap() as isize;
+
+						// If moving down, insert below this layer. If moving up, insert above this layer.
+						let insert_index = if relative_index_offset < 0 { neighbor_layer_index } else { neighbor_layer_index + 1 };
+
+						responses.push_back(
+							DocumentMessage::MoveSelectedLayersTo {
+								folder_path: folder_path.to_vec(),
+								insert_index,
+								reverse_index: false,
+							}
+							.into(),
+						);
+					}
+				}
+			}
+		}
+	}
 }
 
 impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCache)> for DocumentMessageHandler {
@@ -1318,61 +1374,6 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 					.into(),
 				);
 			}
-			ReorderSelectedLayers { relative_index_offset } => {
-				self.backup(responses);
-
-				let all_layer_paths = self.all_layers_sorted();
-				let selected_layers = self.selected_layers_sorted();
-
-				let first_or_last_selected_layer = match relative_index_offset.signum() {
-					-1 => selected_layers.first(),
-					1 => selected_layers.last(),
-					_ => panic!("ReorderSelectedLayers must be given a non-zero value"),
-				};
-
-				if let Some(pivot_layer) = first_or_last_selected_layer {
-					let sibling_layer_paths: Vec<_> = all_layer_paths
-						.iter()
-						.filter(|layer| {
-							// Check if this is a sibling of the pivot layer
-							// TODO: Break this out into a reusable function `fn are_layers_siblings(layer_a, layer_b) -> bool`
-							let containing_folder_path = &pivot_layer[0..pivot_layer.len() - 1];
-							layer.starts_with(containing_folder_path) && pivot_layer.len() == layer.len()
-						})
-						.collect();
-
-					// TODO: Break this out into a reusable function: `fn layer_index_in_containing_folder(layer_path) -> usize`
-					let pivot_index_among_siblings = sibling_layer_paths.iter().position(|path| *path == pivot_layer);
-
-					if let Some(pivot_index) = pivot_index_among_siblings {
-						let max = sibling_layer_paths.len() as i64 - 1;
-						let insert_index = (pivot_index as i64 + relative_index_offset as i64).clamp(0, max) as usize;
-
-						let existing_layer_to_insert_beside = sibling_layer_paths.get(insert_index);
-
-						// TODO: Break this block out into a call to a message called `MoveSelectedLayersNextToLayer { neighbor_path, above_or_below }`
-						if let Some(neighbor_path) = existing_layer_to_insert_beside {
-							let (neighbor_id, folder_path) = neighbor_path.split_last().expect("Can't move the root folder");
-
-							if let Some(folder) = self.graphene_document.layer(folder_path).ok().and_then(|layer| layer.as_folder().ok()) {
-								let neighbor_layer_index = folder.layer_ids.iter().position(|id| id == neighbor_id).unwrap() as isize;
-
-								// If moving down, insert below this layer. If moving up, insert above this layer.
-								let insert_index = if relative_index_offset < 0 { neighbor_layer_index } else { neighbor_layer_index + 1 };
-
-								responses.push_back(
-									DocumentMessage::MoveSelectedLayersTo {
-										folder_path: folder_path.to_vec(),
-										insert_index,
-										reverse_index: false,
-									}
-									.into(),
-								);
-							}
-						}
-					}
-				}
-			}
 			RollbackTransaction => {
 				self.rollback(responses).unwrap_or_else(|e| log::warn!("{}", e));
 				responses.extend([RenderDocument.into(), DocumentStructureChanged.into()]);
@@ -1398,6 +1399,21 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 			SelectAllLayers => {
 				let all = self.all_layers().map(|path| path.to_vec()).collect();
 				responses.push_front(SetSelectedLayers { replacement_selected_layers: all }.into());
+			}
+			SelectedLayersLower => {
+				self.selected_layers_reorder(-1, responses);
+			}
+			SelectedLayersLowerToBack => {
+				self.selected_layers_reorder(isize::MIN, responses);
+			}
+			SelectedLayersRaise => {
+				self.selected_layers_reorder(1, responses);
+			}
+			SelectedLayersRaiseToFront => {
+				self.selected_layers_reorder(isize::MAX, responses);
+			}
+			SelectedLayersReorder { relative_index_offset } => {
+				self.selected_layers_reorder(relative_index_offset, responses);
 			}
 			SelectLayer { layer_path, ctrl, shift } => {
 				let mut paths = vec![];
@@ -1611,7 +1627,11 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 				DeleteSelectedLayers,
 				DuplicateSelectedLayers,
 				NudgeSelectedLayers,
-				ReorderSelectedLayers,
+				SelectedLayersLower,
+				SelectedLayersLowerToBack,
+				SelectedLayersRaise,
+				SelectedLayersRaiseToFront,
+				SelectedLayersReorder,
 				GroupSelectedLayers,
 				UngroupSelectedLayers,
 			);

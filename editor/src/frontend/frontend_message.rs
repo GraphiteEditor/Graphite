@@ -8,11 +8,11 @@ use crate::Color;
 
 use graphene::layers::text_layer::Font;
 
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
 #[remain::sorted]
 #[impl_message(Message, Frontend)]
-#[derive(PartialEq, Clone, Deserialize, Serialize, Debug)]
+#[derive(PartialEq, Clone, Serialize, Debug)]
 pub enum FrontendMessage {
 	// Display prefix: make the frontend show something, like a dialog
 	DisplayDialog { icon: String },

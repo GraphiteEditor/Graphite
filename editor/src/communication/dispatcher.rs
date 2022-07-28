@@ -149,7 +149,14 @@ impl Dispatcher {
 
 					self.message_handlers.input_preprocessor_message_handler.process_action(message, keyboard_platform, &mut queue);
 				}
-				Layout(message) => self.message_handlers.layout_message_handler.process_action(message, (), &mut queue),
+				Layout(message) => {
+					let action_input_mapping = &|action_to_find: &MessageDiscriminant| {
+						let keyboard_platform = self.message_handlers.portfolio_message_handler.platform.as_keyboard_platform_layout();
+						self.message_handlers.input_mapper_message_handler.action_input_mapping(action_to_find, keyboard_platform)
+					};
+
+					self.message_handlers.layout_message_handler.process_action(message, action_input_mapping, &mut queue);
+				}
 				Portfolio(message) => {
 					self.message_handlers
 						.portfolio_message_handler
@@ -522,15 +529,15 @@ mod test {
 			replacement_selected_layers: sorted_layers[..2].to_vec(),
 		});
 
-		editor.handle_message(DocumentMessage::ReorderSelectedLayers { relative_index_offset: 1 });
+		editor.handle_message(DocumentMessage::SelectedLayersRaise);
 		let (all, non_selected, selected) = verify_order(editor.dispatcher.message_handlers.portfolio_message_handler.active_document_mut().unwrap());
 		assert_eq!(all, non_selected.into_iter().chain(selected.into_iter()).collect::<Vec<_>>());
 
-		editor.handle_message(DocumentMessage::ReorderSelectedLayers { relative_index_offset: -1 });
+		editor.handle_message(DocumentMessage::SelectedLayersLower);
 		let (all, non_selected, selected) = verify_order(editor.dispatcher.message_handlers.portfolio_message_handler.active_document_mut().unwrap());
 		assert_eq!(all, selected.into_iter().chain(non_selected.into_iter()).collect::<Vec<_>>());
 
-		editor.handle_message(DocumentMessage::ReorderSelectedLayers { relative_index_offset: isize::MAX });
+		editor.handle_message(DocumentMessage::SelectedLayersRaiseToFront);
 		let (all, non_selected, selected) = verify_order(editor.dispatcher.message_handlers.portfolio_message_handler.active_document_mut().unwrap());
 		assert_eq!(all, non_selected.into_iter().chain(selected.into_iter()).collect::<Vec<_>>());
 	}

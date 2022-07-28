@@ -1,4 +1,5 @@
 use super::layout_message::LayoutTarget;
+use crate::input::input_mapper::FutureKeyMapping;
 use crate::input::keyboard::Key;
 use crate::message_prelude::*;
 use crate::Color;
@@ -23,7 +24,7 @@ pub trait PropertyHolder {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub enum Layout {
 	WidgetLayout(WidgetLayout),
 	MenuLayout(MenuLayout),
@@ -38,8 +39,12 @@ impl Layout {
 		}
 	}
 
-	pub fn unwrap_menu_layout(self) -> MenuLayout {
-		if let Layout::MenuLayout(menu_layout) = self {
+	pub fn unwrap_menu_layout(self, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Vec<Vec<Key>>) -> MenuLayout {
+		if let Layout::MenuLayout(mut menu_layout) = self {
+			for menu_column in &mut menu_layout.layout {
+				menu_column.children.realize_future_key_mappings(action_input_mapping);
+			}
+
 			menu_layout
 		} else {
 			panic!("Tried to unwrap layout as MenuLayout. Got {:?}", self)
@@ -67,13 +72,34 @@ impl Default for Layout {
 	}
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, PartialEq, Default)]
+pub struct MenuEntryGroups(pub Vec<Vec<MenuEntry>>);
+
+impl MenuEntryGroups {
+	pub fn empty() -> Self {
+		Self(Vec::new())
+	}
+
+	pub fn realize_future_key_mappings(&mut self, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Vec<Vec<Key>>) {
+		let entries = self.0.iter_mut().flatten();
+		for entry in entries {
+			if let Some(future_key_mapping) = &mut entry.shortcut {
+				future_key_mapping.realize(action_input_mapping);
+			}
+
+			// Recursively do this for the children also
+			entry.children.realize_future_key_mappings(action_input_mapping);
+		}
+	}
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
 pub struct MenuEntry {
 	pub label: String,
 	pub icon: Option<String>,
-	pub children: Option<Vec<Vec<MenuEntry>>>,
+	pub children: MenuEntryGroups,
 	pub action: WidgetHolder,
-	pub shortcut: Option<Vec<Key>>,
+	pub shortcut: Option<FutureKeyMapping>,
 }
 
 impl MenuEntry {
@@ -94,19 +120,19 @@ impl Default for MenuEntry {
 			action: MenuEntry::create_action(|_| DialogMessage::RequestComingSoonDialog { issue: None }.into()),
 			label: "".into(),
 			icon: None,
-			children: None,
+			children: MenuEntryGroups::empty(),
 			shortcut: None,
 		}
 	}
 }
 
-#[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Default, Clone, Serialize, PartialEq)]
 pub struct MenuColumn {
 	pub label: String,
-	pub children: Vec<Vec<MenuEntry>>,
+	pub children: MenuEntryGroups,
 }
 
-#[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Default, Clone, Serialize, PartialEq)]
 pub struct MenuLayout {
 	pub layout: Vec<MenuColumn>,
 }
@@ -118,13 +144,13 @@ impl MenuLayout {
 
 	pub fn iter(&self) -> impl Iterator<Item = &WidgetHolder> + '_ {
 		MenuLayoutIter {
-			stack: self.layout.iter().flat_map(|column| column.children.iter()).flat_map(|group| group.iter()).collect(),
+			stack: self.layout.iter().flat_map(|column| column.children.0.iter()).flat_map(|group| group.iter()).collect(),
 		}
 	}
 
 	pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut WidgetHolder> + '_ {
 		MenuLayoutIterMut {
-			stack: self.layout.iter_mut().flat_map(|column| column.children.iter_mut()).flat_map(|group| group.iter_mut()).collect(),
+			stack: self.layout.iter_mut().flat_map(|column| column.children.0.iter_mut()).flat_map(|group| group.iter_mut()).collect(),
 		}
 	}
 }
@@ -140,7 +166,9 @@ impl<'a> Iterator for MenuLayoutIter<'a> {
 	fn next(&mut self) -> Option<Self::Item> {
 		match self.stack.pop() {
 			Some(menu_entry) => {
-				self.stack.extend(menu_entry.children.iter().flat_map(|group| group.iter()).flat_map(|entry| entry.iter()));
+				let more_entries = menu_entry.children.0.iter().flat_map(|entry| entry.iter());
+				self.stack.extend(more_entries);
+
 				Some(&menu_entry.action)
 			}
 			None => None,
@@ -158,7 +186,9 @@ impl<'a> Iterator for MenuLayoutIterMut<'a> {
 	fn next(&mut self) -> Option<Self::Item> {
 		match self.stack.pop() {
 			Some(menu_entry) => {
-				self.stack.extend(menu_entry.children.iter_mut().flat_map(|group| group.iter_mut()).flat_map(|entry| entry.iter_mut()));
+				let more_entries = menu_entry.children.0.iter_mut().flat_map(|entry| entry.iter_mut());
+				self.stack.extend(more_entries);
+
 				Some(&mut menu_entry.action)
 			}
 			None => None,

@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 #[remain::sorted]
 #[impl_message(Message, Layout)]
-#[derive(PartialEq, Clone, Deserialize, Serialize, Debug)]
+#[derive(PartialEq, Clone, Serialize, Debug)]
 pub enum LayoutMessage {
 	RefreshLayout { layout_target: LayoutTarget },
 	SendLayout { layout: Layout, layout_target: LayoutTarget },

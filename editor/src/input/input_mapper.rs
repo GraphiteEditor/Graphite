@@ -7,6 +7,7 @@ use crate::message_prelude::*;
 use crate::viewport_tools::tool::ToolType;
 
 use glam::DVec2;
+use serde::{Serialize, Serializer};
 
 #[derive(Debug, Clone)]
 pub struct Mapping {
@@ -183,10 +184,6 @@ impl Default for Mapping {
 				mac!      {KeyDown(KeyS); modifiers=[KeyCommand], action_dispatch=DocumentMessage::SaveDocument},
 			},
 			entry_multiplatform! {
-				standard! {KeyDown(KeyS); modifiers=[KeyControl, KeyShift], action_dispatch=DocumentMessage::SaveDocument},
-				mac!      {KeyDown(KeyS); modifiers=[KeyCommand, KeyShift], action_dispatch=DocumentMessage::SaveDocument},
-			},
-			entry_multiplatform! {
 				standard! {KeyDown(Key0); modifiers=[KeyControl], action_dispatch=DocumentMessage::ZoomCanvasToFitAll},
 				mac!      {KeyDown(Key0); modifiers=[KeyCommand], action_dispatch=DocumentMessage::ZoomCanvasToFitAll},
 			},
@@ -207,22 +204,30 @@ impl Default for Mapping {
 				mac!      {KeyDown(KeyN); modifiers=[KeyCommand, KeyShift], action_dispatch=DocumentMessage::CreateEmptyFolder { container_path: vec![] }},
 			},
 			entry_multiplatform! {
-				// TODO: Use KeyLeftBracket, the non-shifted version of the key, when the input system can distinguish between the non-shifted and shifted keys (important for other language keyboards)
-				standard! {KeyDown(KeyLeftCurlyBracket); modifiers=[KeyControl, KeyShift], action_dispatch=DocumentMessage::ReorderSelectedLayers { relative_index_offset: isize::MIN }},
-				mac!      {KeyDown(KeyLeftCurlyBracket); modifiers=[KeyCommand, KeyShift], action_dispatch=DocumentMessage::ReorderSelectedLayers { relative_index_offset: isize::MIN }},
+				standard! {KeyDown(KeyLeftBracket); modifiers=[KeyControl, KeyShift], action_dispatch=DocumentMessage::SelectedLayersLowerToBack},
+				mac!      {KeyDown(KeyLeftBracket); modifiers=[KeyCommand, KeyShift], action_dispatch=DocumentMessage::SelectedLayersLowerToBack},
 			},
 			entry_multiplatform! {
-				// TODO: Use KeyRightBracket, the non-shifted version of the key, when the input system can distinguish between the non-shifted and shifted keys (important for other language keyboards)
-				standard! {KeyDown(KeyRightCurlyBracket); modifiers=[KeyControl, KeyShift], action_dispatch=DocumentMessage::ReorderSelectedLayers { relative_index_offset: isize::MAX }},
-				mac!      {KeyDown(KeyRightCurlyBracket); modifiers=[KeyCommand, KeyShift], action_dispatch=DocumentMessage::ReorderSelectedLayers { relative_index_offset: isize::MAX }},
+				// TODO: Delete this in favor of the KeyLeftBracket (non-shifted version of this key) mapping above once the input system can distinguish between the non-shifted and shifted keys (important for other language keyboards)
+				standard! {KeyDown(KeyLeftCurlyBracket); modifiers=[KeyControl, KeyShift], action_dispatch=DocumentMessage::SelectedLayersLowerToBack},
+				mac!      {KeyDown(KeyLeftCurlyBracket); modifiers=[KeyCommand, KeyShift], action_dispatch=DocumentMessage::SelectedLayersLowerToBack},
 			},
 			entry_multiplatform! {
-				standard! {KeyDown(KeyLeftBracket); modifiers=[KeyControl], action_dispatch=DocumentMessage::ReorderSelectedLayers { relative_index_offset: -1 }},
-				mac!      {KeyDown(KeyLeftBracket); modifiers=[KeyCommand], action_dispatch=DocumentMessage::ReorderSelectedLayers { relative_index_offset: -1 }},
+				standard! {KeyDown(KeyRightBracket); modifiers=[KeyControl, KeyShift], action_dispatch=DocumentMessage::SelectedLayersRaiseToFront},
+				mac!      {KeyDown(KeyRightBracket); modifiers=[KeyCommand, KeyShift], action_dispatch=DocumentMessage::SelectedLayersRaiseToFront},
 			},
 			entry_multiplatform! {
-				standard! {KeyDown(KeyRightBracket); modifiers=[KeyControl], action_dispatch=DocumentMessage::ReorderSelectedLayers { relative_index_offset: 1 }},
-				mac!      {KeyDown(KeyRightBracket); modifiers=[KeyCommand], action_dispatch=DocumentMessage::ReorderSelectedLayers { relative_index_offset: 1 }},
+				// TODO: Delete this in favor of the KeyRightBracket (non-shifted version of this key) mapping above once the input system can distinguish between the non-shifted and shifted keys (important for other language keyboards)
+				standard! {KeyDown(KeyRightCurlyBracket); modifiers=[KeyControl, KeyShift], action_dispatch=DocumentMessage::SelectedLayersRaiseToFront},
+				mac!      {KeyDown(KeyRightCurlyBracket); modifiers=[KeyCommand, KeyShift], action_dispatch=DocumentMessage::SelectedLayersRaiseToFront},
+			},
+			entry_multiplatform! {
+				standard! {KeyDown(KeyLeftBracket); modifiers=[KeyControl], action_dispatch=DocumentMessage::SelectedLayersLower},
+				mac!      {KeyDown(KeyLeftBracket); modifiers=[KeyCommand], action_dispatch=DocumentMessage::SelectedLayersLower},
+			},
+			entry_multiplatform! {
+				standard! {KeyDown(KeyRightBracket); modifiers=[KeyControl], action_dispatch=DocumentMessage::SelectedLayersRaise},
+				mac!      {KeyDown(KeyRightBracket); modifiers=[KeyCommand], action_dispatch=DocumentMessage::SelectedLayersRaise},
 			},
 			entry! {KeyDown(KeyArrowUp); modifiers=[KeyShift, KeyArrowLeft], action_dispatch=DocumentMessage::NudgeSelectedLayers { delta_x: -BIG_NUDGE_AMOUNT, delta_y: -BIG_NUDGE_AMOUNT }},
 			entry! {KeyDown(KeyArrowUp); modifiers=[KeyShift, KeyArrowRight], action_dispatch=DocumentMessage::NudgeSelectedLayers { delta_x: BIG_NUDGE_AMOUNT, delta_y: -BIG_NUDGE_AMOUNT }},
@@ -302,12 +307,17 @@ impl Default for Mapping {
 				mac!      {KeyDown(KeyW); modifiers=[KeyCommand], action_dispatch=PortfolioMessage::CloseActiveDocumentWithConfirmation},
 			},
 			entry_multiplatform! {
+				standard! {KeyDown(KeyX); modifiers=[KeyControl], action_dispatch=PortfolioMessage::Cut { clipboard: Clipboard::Device }},
+				mac!      {KeyDown(KeyX); modifiers=[KeyCommand], action_dispatch=PortfolioMessage::Cut { clipboard: Clipboard::Device }},
+			},
+			entry_multiplatform! {
 				standard! {KeyDown(KeyC); modifiers=[KeyControl], action_dispatch=PortfolioMessage::Copy { clipboard: Clipboard::Device }},
 				mac!      {KeyDown(KeyC); modifiers=[KeyCommand], action_dispatch=PortfolioMessage::Copy { clipboard: Clipboard::Device }},
 			},
 			entry_multiplatform! {
-				standard! {KeyDown(KeyX); modifiers=[KeyControl], action_dispatch=PortfolioMessage::Cut { clipboard: Clipboard::Device }},
-				mac!      {KeyDown(KeyX); modifiers=[KeyCommand], action_dispatch=PortfolioMessage::Cut { clipboard: Clipboard::Device }},
+				// This shortcut is intercepted in the frontend; it exists here only as a shortcut mapping source
+				standard! {KeyDown(KeyV); modifiers=[KeyControl], action_dispatch=FrontendMessage::TriggerPaste},
+				mac!      {KeyDown(KeyV); modifiers=[KeyCommand], action_dispatch=FrontendMessage::TriggerPaste},
 			},
 			// DialogMessage
 			entry_multiplatform! {
@@ -431,5 +441,41 @@ impl KeyMappingEntries {
 	fn key_array() -> [Self; NUMBER_OF_KEYS] {
 		const DEFAULT: KeyMappingEntries = KeyMappingEntries::new();
 		[DEFAULT; NUMBER_OF_KEYS]
+	}
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct FutureKeyMapping {
+	action: MessageDiscriminant,
+	pub realized: Option<Vec<Key>>,
+}
+
+impl FutureKeyMapping {
+	pub fn new(action: MessageDiscriminant) -> Self {
+		Self { action, realized: None }
+	}
+
+	pub fn realize(&mut self, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Vec<Vec<Key>>) {
+		// FutureKeyMapping is immutable, so realizing it more than once is not respected
+		if self.realized.is_some() {
+			return;
+		}
+
+		if let Some(keys) = action_input_mapping(&self.action).get_mut(0) {
+			let mut taken_keys = Vec::new();
+			std::mem::swap(keys, &mut taken_keys);
+
+			self.realized = Some(taken_keys);
+		}
+	}
+
+	pub fn iter(&self) -> impl Iterator<Item = Key> + '_ {
+		self.realized.iter().flatten().copied()
+	}
+}
+
+impl Serialize for FutureKeyMapping {
+	fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+		serializer.collect_seq(self.iter())
 	}
 }

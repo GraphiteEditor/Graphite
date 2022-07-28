@@ -111,7 +111,7 @@
 		}
 	}
 
-	.floating-menu-content .row:hover & {
+	.floating-menu-content .row:hover > & {
 		.input-key {
 			border-color: var(--color-7-middlegray);
 			color: var(--color-9-palegray);
@@ -134,10 +134,47 @@
 import { defineComponent, PropType } from "vue";
 
 import { IconName } from "@/utility-functions/icons";
+import { operatingSystem } from "@/utility-functions/platform";
 import { HintInfo, KeysGroup } from "@/wasm-communication/messages";
 
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
+
+// Definitions
+const textMap = {
+	Shift: "Shift",
+	Control: "Ctrl",
+	Alt: "Alt",
+	Delete: "Del",
+	PageUp: "PgUp",
+	PageDown: "PgDn",
+	Equals: "=",
+	Minus: "-",
+	Plus: "+",
+	Escape: "Esc",
+	Comma: ",",
+	Period: ".",
+	LeftBracket: "[",
+	RightBracket: "]",
+	LeftCurlyBracket: "{",
+	RightCurlyBracket: "}",
+};
+const iconsAndWidthsStandard = {
+	ArrowUp: 1,
+	ArrowRight: 1,
+	ArrowDown: 1,
+	ArrowLeft: 1,
+	Backspace: 2,
+	Enter: 2,
+	Tab: 2,
+	Space: 3,
+};
+const iconsAndWidthsMac = {
+	Shift: 2,
+	Control: 2,
+	Option: 2,
+	Command: 2,
+};
 
 export default defineComponent({
 	inject: ["fullscreen"],
@@ -164,60 +201,43 @@ export default defineComponent({
 		keyTextOrIconList(keyGroup: KeysGroup): { text: string | null; icon: IconName | null; width: string }[] {
 			return keyGroup.map((inputKey) => this.keyTextOrIcon(inputKey));
 		},
-		keyTextOrIcon(keyText: string): { text: string | null; icon: IconName | null; width: string } {
-			// Definitions
-			const textMap: Record<string, string> = {
-				Control: "Ctrl",
-				Alt: "Alt",
-				Delete: "Del",
-				PageUp: "PgUp",
-				PageDown: "PgDn",
-				Equals: "=",
-				Minus: "-",
-				Plus: "+",
-				Escape: "Esc",
-				Comma: ",",
-				Period: ".",
-				LeftBracket: "[",
-				RightBracket: "]",
-				LeftCurlyBracket: "{",
-				RightCurlyBracket: "}",
-			};
-			const iconsAndWidths: Record<string, number> = {
-				ArrowUp: 1,
-				ArrowRight: 1,
-				ArrowDown: 1,
-				ArrowLeft: 1,
-				Backspace: 2,
-				Command: 2,
-				Enter: 2,
-				Option: 2,
-				Shift: 2,
-				Tab: 2,
-				Space: 3,
-			};
+		keyTextOrIcon(input: string): { text: string | null; icon: IconName | null; width: string } {
+			let keyText = input;
+			if (operatingSystem() === "Mac") {
+				keyText = keyText.replace("Alt", "Option");
+			}
+
+			const iconsAndWidths = operatingSystem() === "Mac" ? { ...iconsAndWidthsStandard, ...iconsAndWidthsMac } : iconsAndWidthsStandard;
 
 			// Strip off the "Key" prefix
 			const text = keyText.replace(/^(?:Key)?(.*)$/, "$1");
 
 			// If it's an icon, return the icon identifier
-			if (text in iconsAndWidths) {
+			if (Object.keys(iconsAndWidths).includes(text)) {
+				// @ts-expect-error This is safe because of the if block we are in
+				const width = iconsAndWidths[text] * 8 + 8;
 				return {
 					text: null,
 					icon: this.keyboardHintIcon(text),
-					width: `width-${iconsAndWidths[text] * 8 + 8}`,
+					width: `width-${width}`,
 				};
 			}
 
 			// Otherwise, return the text string
 			let result;
-
 			// Letters and numbers
-			if (/^[A-Z0-9]$/.test(text)) result = text;
+			if (/^[A-Z0-9]$/.test(text)) {
+				result = text;
+			}
 			// Abbreviated names
-			else if (text in textMap) result = textMap[text];
+			else if (Object.keys(textMap).includes(text)) {
+				// @ts-expect-error This is safe because of the if block we are in
+				result = textMap[text];
+			}
 			// Other
-			else result = text;
+			else {
+				result = text;
+			}
 
 			return { text: result, icon: null, width: `width-${(result || " ").length * 8 + 8}` };
 		},

@@ -63,6 +63,10 @@
 	.floating-menu-container .floating-menu-content {
 		padding: 4px 0;
 
+		.separator div {
+			background: var(--color-4-dimgray);
+		}
+
 		.scroll-spacer {
 			flex: 0 0 auto;
 		}
@@ -133,7 +137,7 @@
 					background: var(--color-accent);
 				}
 
-				svg {
+				.entry-icon svg {
 					fill: var(--color-f-white);
 				}
 			}

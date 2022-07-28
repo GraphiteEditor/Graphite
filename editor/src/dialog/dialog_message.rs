@@ -1,11 +1,11 @@
-use crate::message_prelude::*;
-use serde::{Deserialize, Serialize};
-
 use super::{ExportDialogUpdate, NewDocumentDialogUpdate};
+use crate::message_prelude::*;
+
+use serde::Serialize;
 
 #[remain::sorted]
 #[impl_message(Message, Dialog)]
-#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
+#[derive(PartialEq, Clone, Debug, Serialize)]
 pub enum DialogMessage {
 	// Sub-messages
 	#[remain::unsorted]

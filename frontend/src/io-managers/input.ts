@@ -2,6 +2,7 @@ import { DialogState } from "@/state-providers/dialog";
 import { FullscreenState } from "@/state-providers/fullscreen";
 import { PortfolioState } from "@/state-providers/portfolio";
 import { makeKeyboardModifiersBitfield, textInputCleanup, getLatinKey } from "@/utility-functions/keyboard-entry";
+import { operatingSystem } from "@/utility-functions/platform";
 import { stripIndents } from "@/utility-functions/strip-indents";
 import { Editor } from "@/wasm-communication/editor";
 import { TriggerPaste } from "@/wasm-communication/messages";
@@ -69,13 +70,15 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 		const key = getLatinKey(e);
 		if (!key) return false;
 
+		// TODO: Switch to a system where everything is sent to the backend, then the input preprocessor makes decisions and kicks some inputs back to the frontend
+		const macLayout = operatingSystem() === "Mac";
+		const ctrlOrCmd = macLayout ? e.metaKey : e.ctrlKey;
+
 		// Don't redirect user input from text entry into HTML elements
-		if (key !== "escape" && !(e.ctrlKey && key === "enter") && targetIsTextField(e.target)) {
-			return false;
-		}
+		if (key !== "escape" && !(ctrlOrCmd && key === "enter") && targetIsTextField(e.target)) return false;
 
 		// Don't redirect paste
-		if (key === "v" && e.ctrlKey) return false;
+		if (key === "v" && ctrlOrCmd) return false;
 
 		// Don't redirect a fullscreen request
 		if (key === "f11" && e.type === "keydown" && !e.repeat) {
@@ -85,13 +88,13 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 		}
 
 		// Don't redirect a reload request
-		if (key === "f5") return false;
+		if (key === "f5" || (ctrlOrCmd && key === "r")) return false;
 
 		// Don't redirect debugging tools
 		if (key === "f12" || key === "f8") return false;
-		if ((e.ctrlKey || e.metaKey) && e.shiftKey && key === "c") return false;
-		if ((e.ctrlKey || e.metaKey) && e.shiftKey && key === "i") return false;
-		if ((e.ctrlKey || e.metaKey) && e.shiftKey && key === "j") return false;
+		if (ctrlOrCmd && e.shiftKey && key === "c") return false;
+		if (ctrlOrCmd && e.shiftKey && key === "i") return false;
+		if (ctrlOrCmd && e.shiftKey && key === "j") return false;
 
 		// Don't redirect tab or enter if not in canvas (to allow navigating elements)
 		if (!canvasFocused && !targetIsTextField(e.target) && ["tab", "enter", " ", "arrowdown", "arrowup", "arrowleft", "arrowright"].includes(key.toLowerCase())) return false;

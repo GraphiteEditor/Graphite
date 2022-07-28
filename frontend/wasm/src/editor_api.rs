@@ -114,8 +114,8 @@ impl JsEditorHandle {
 			_ => Platform::Unknown,
 		};
 
-		self.dispatch(Message::Init);
 		self.dispatch(PortfolioMessage::SetPlatform { platform });
+		self.dispatch(Message::Init);
 	}
 
 	/// Displays a dialog with an error message
