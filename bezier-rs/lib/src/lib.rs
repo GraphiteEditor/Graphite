@@ -1153,6 +1153,7 @@ mod tests {
 		assert!(compare_points(intersections2[1], DVec2::new(85.84, 85.84)));
 	}
 
+	#[test]
 	fn offset() {
 		let p1 = DVec2::new(30., 50.);
 		let p2 = DVec2::new(140., 30.);
