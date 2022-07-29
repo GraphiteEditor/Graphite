@@ -10,7 +10,7 @@ pub use subpath::*;
 use glam::{DMat2, DVec2};
 
 /// Representation of the handle point(s) in a bezier segment.
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq)]
 enum BezierHandles {
 	Linear,
 	/// Handles for a quadratic curve.
@@ -688,6 +688,9 @@ impl Bezier {
 	/// 2. The on-curve point for `t = 0.5` must occur roughly in the center of the polygon defined by the curve's endpoint normals.
 	/// See [the offset section](https://pomax.github.io/bezierinfo/#offsetting) of Pomax's bezier curve primer for more details.
 	fn is_scalable(&self) -> bool {
+		if self.handles == BezierHandles::Linear {
+			return true;
+		}
 		// Verify all the handles are located on a single side of the curve.
 		if let BezierHandles::Cubic { handle_start, handle_end } = self.handles {
 			let angle_1 = (self.end - self.start).angle_between(handle_start - self.start);
@@ -758,6 +761,8 @@ impl Bezier {
 					if f64::abs(t1 - t2) >= step_size {
 						segment = subcurve.trim(t1, t2);
 						result.push(segment);
+					} else {
+						return;
 					}
 					t1 = t2;
 				}
@@ -832,18 +837,72 @@ impl Bezier {
 	pub fn inflections(&self) -> Vec<f64> {
 		self.unrestricted_inflections().into_iter().filter(|&t| t > 0. && t < 1.).collect::<Vec<f64>>()
 	}
+
+	/// Scale will translate a bezier curve a fixed distance away from its original position, and stretch/compress the transformed curve to match the translation ratio.
+	/// Note that not all bezier curves are possible to scale, so this function asserts that the provided curve is scalable.
+	/// A proof for why this is true can be found in the [Curve offsetting section](https://pomax.github.io/bezierinfo/#offsetting) of Pomax's bezier curve primer.
+	/// `scale` takes the parameter `distance`, which is the distance away from the curve that the new one will be scaled to. Positive values will scale the curve in the
+	/// same direction as the endpoint normals, while negative values will scale in the opposite direction.
+	fn scale(&self, distance: f64) -> Bezier {
+		assert!(self.is_scalable(), "The curve provided to scale is not scalable. Reduce the curve first.");
+
+		let normal_start = self.normal(0.);
+		let normal_end = self.normal(1.);
+
+		// If normal unit vectors are equal, then the lines are parallel
+		if normal_start.abs_diff_eq(normal_end, MAX_ABSOLUTE_DIFFERENCE) {
+			return self.translate(distance * normal_start);
+		}
+
+		// Find the intersection point of the endpoint normals
+		let intersection = utils::line_intersection(self.start, normal_start, self.end, normal_end);
+
+		let should_flip_direction = (self.start - intersection).normalize().abs_diff_eq(normal_start, MAX_ABSOLUTE_DIFFERENCE);
+		self.apply_transformation(&|point| {
+			let mut direction_unit_vector = (intersection - point).normalize();
+			if should_flip_direction {
+				direction_unit_vector *= -1.;
+			}
+			point + distance * direction_unit_vector
+		})
+	}
+
+	/// Offset will get all the reduceable subcurves, and for each subcurve, it will scale the subcurve a set distance away from the original curve.
+	/// Note that not all bezier curves are possible to offset, so this function first reduces the curve to scalable segments and then offsets those segments.
+	/// A proof for why this is true can be found in the [Curve offsetting section](https://pomax.github.io/bezierinfo/#offsetting) of Pomax's bezier curve primer.
+	/// Offset takes the following parameter:
+	/// - `distance` - The distance away from the curve that the new one will be offset to. Positive values will offset the curve in the same direction as the endpoint normals,
+	/// while negative values will offset in the opposite direction.
+	pub fn offset(&self, distance: f64) -> Vec<Bezier> {
+		let mut reduced = self.reduce(None);
+		reduced.iter_mut().for_each(|bezier| *bezier = bezier.scale(distance));
+		reduced
+	}
 }
 
 #[cfg(test)]
 mod tests {
 	use super::*;
 	use crate::consts::MAX_ABSOLUTE_DIFFERENCE;
-	use crate::utils;
 
 	use glam::DVec2;
 
+	// Compare points by allowing some maximum absolute difference to account for floating point errors
 	fn compare_points(p1: DVec2, p2: DVec2) -> bool {
-		utils::dvec2_compare(p1, p2, MAX_ABSOLUTE_DIFFERENCE).all()
+		p1.abs_diff_eq(p2, MAX_ABSOLUTE_DIFFERENCE)
+	}
+
+	// Compare vectors of points by allowing some maximum absolute difference to account for floating point errors
+	fn compare_vector_of_points(a: Vec<DVec2>, b: Vec<DVec2>) -> bool {
+		a.len() == b.len() && a.into_iter().zip(b.into_iter()).all(|(p1, p2)| p1.abs_diff_eq(p2, MAX_ABSOLUTE_DIFFERENCE))
+	}
+
+	// Compare vectors of beziers by allowing some maximum absolute difference between points to account for floating point errors
+	fn compare_vector_of_beziers(beziers: Vec<Bezier>, expected_bezier_points: Vec<Vec<DVec2>>) -> bool {
+		beziers
+			.iter()
+			.zip(expected_bezier_points.iter())
+			.all(|(&a, b)| compare_vector_of_points(a.get_points().collect::<Vec<DVec2>>(), b.to_vec()))
 	}
 
 	#[test]
@@ -946,5 +1005,46 @@ mod tests {
 		assert!(intersections2.len() == 2);
 		assert!(compare_points(intersections2[0], p1));
 		assert!(compare_points(intersections2[1], DVec2::new(85.84, 85.84)));
+	}
+
+	#[test]
+	fn offset() {
+		let p1 = DVec2::new(30., 50.);
+		let p2 = DVec2::new(140., 30.);
+		let p3 = DVec2::new(160., 170.);
+		let bezier1 = Bezier::from_quadratic_dvec2(p1, p2, p3);
+		let expected_bezier_points1 = vec![
+			vec![DVec2::new(31.7888, 59.8387), DVec2::new(44.5924, 57.46446), DVec2::new(56.09375, 57.5)],
+			vec![DVec2::new(56.09375, 57.5), DVec2::new(94.94197, 56.5019), DVec2::new(117.6473, 84.5936)],
+			vec![DVec2::new(117.6473, 84.5936), DVec2::new(142.3985, 113.403), DVec2::new(150.1005, 171.4142)],
+		];
+		assert!(compare_vector_of_beziers(bezier1.offset(10.), expected_bezier_points1));
+
+		let p4 = DVec2::new(32., 77.);
+		let p5 = DVec2::new(169., 25.);
+		let p6 = DVec2::new(164., 157.);
+		let bezier2 = Bezier::from_quadratic_dvec2(p4, p5, p6);
+		let expected_bezier_points2 = vec![
+			vec![DVec2::new(42.6458, 105.04758), DVec2::new(75.0218, 91.9939), DVec2::new(98.09357, 92.3043)],
+			vec![DVec2::new(98.09357, 92.3043), DVec2::new(116.5995, 88.5479), DVec2::new(123.9055, 102.0401)],
+			vec![DVec2::new(123.9055, 102.0401), DVec2::new(136.6087, 116.9522), DVec2::new(134.1761, 147.9324)],
+			vec![DVec2::new(134.1761, 147.9324), DVec2::new(134.1812, 151.7987), DVec2::new(134.0215, 155.86445)],
+		];
+		assert!(compare_vector_of_beziers(bezier2.offset(30.), expected_bezier_points2));
+	}
+
+	#[test]
+	fn reduce() {
+		let p1 = DVec2::new(0., 0.);
+		let p2 = DVec2::new(50., 50.);
+		let p3 = DVec2::new(0., 0.);
+		let bezier = Bezier::from_quadratic_dvec2(p1, p2, p3);
+
+		let expected_bezier_points = vec![
+			vec![DVec2::new(0., 0.), DVec2::new(0.5, 0.5), DVec2::new(0.989, 0.989)],
+			vec![DVec2::new(0.989, 0.989), DVec2::new(2.705, 2.705), DVec2::new(4.2975, 4.2975)],
+			vec![DVec2::new(4.2975, 4.2975), DVec2::new(5.6625, 5.6625), DVec2::new(6.9375, 6.9375)],
+		];
+		assert!(compare_vector_of_beziers(bezier.reduce(None), expected_bezier_points));
 	}
 }
