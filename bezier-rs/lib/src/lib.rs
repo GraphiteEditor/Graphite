@@ -733,6 +733,23 @@ impl Bezier {
 		self.intersections_between_subcurves([0., 1.], curve, error)
 	}
 
+	// pub fn intersections_between_vectors_of_curves(curves1: impl Iterator<Item=Bezier>, curves2: impl Iterator<Item=Bezier>, error: f64) -> Vec<f64> {
+	// 	let segment_pairs = curves1.zip(curves2).filter()
+	// }
+
+	// TODO: Use an `impl Iterator` return type instead of a `Vec`
+	/// Returns a list of `t` values that correspond to the self intersection points of the current bezier curve. The returned `t` values are with respect to the current bezier, not the provided parameter.
+	/// - `error` - For intersections with non-linear beziers, `error` defines the threshold for bounding boxes to be considered an intersection point.
+	pub fn self_intersections(&self, error: Option<f64>) -> Vec<f64> {
+		let inflection_points = self.inflections();
+		let mut split_t_value = 0.5;
+		if !inflection_points.is_empty() {
+			split_t_value = inflection_points[0];
+		}
+		let [split_a, split_b] = self.split(split_t_value);
+		split_a.intersections(&split_b, error)
+	}
+
 	/// Returns a list of lists of points representing the De Casteljau points for all iterations at the point corresponding to `t` using De Casteljau's algorithm.
 	/// The `i`th element of the list represents the set of points in the `i`th iteration.
 	/// More information on the algorithm can be found in the [De Casteljau section](https://pomax.github.io/bezierinfo/#decasteljau) in Pomax's primer.
@@ -780,14 +797,15 @@ impl Bezier {
 		endpoint_normal_angle < SCALABLE_CURVE_MAX_ENDPOINT_NORMAL_ANGLE
 	}
 
-	/// Split the curve into a number of scalable subcurves. This function may introduce gaps if subsections of the curve are not reducible.
+	/// Returns a tuple of the scalable subcurves and the corresponding `t` values that were used to split the curve.
+	/// This function may introduce gaps if subsections of the curve are not reducible.
 	/// The function takes the following parameter:
 	/// - `step_size` - Dictates the granularity at which the function searches for reducible subcurves. The default value is `0.01`.
 	///   A small granularity may increase the chance the function does not introduce gaps, but will increase computation time.
-	pub fn reduce(&self, step_size: Option<f64>) -> Vec<Bezier> {
+	fn reduced_curves_and_t_values(&self, step_size: Option<f64>) -> (Vec<Bezier>, Vec<f64>) {
 		// A linear segment is scalable, so return itself
 		if let BezierHandles::Linear = self.handles {
-			return vec![*self];
+			return (vec![*self], vec![]);
 		}
 
 		let step_size = step_size.unwrap_or(DEFAULT_REDUCE_STEP_SIZE);
@@ -850,7 +868,15 @@ impl Bezier {
 				}
 			}
 		});
-		result
+		(result, vec![])
+	}
+
+	/// Split the curve into a number of scalable subcurves. This function may introduce gaps if subsections of the curve are not reducible.
+	/// The function takes the following parameter:
+	/// - `step_size` - Dictates the granularity at which the function searches for reducible subcurves. The default value is `0.01`.
+	///   A small granularity may increase the chance the function does not introduce gaps, but will increase computation time.
+	pub fn reduce(&self, step_size: Option<f64>) -> Vec<Bezier> {
+		self.reduced_curves_and_t_values(step_size).0
 	}
 
 	/// Return the min and max corners that represent the bounding box of the curve.
