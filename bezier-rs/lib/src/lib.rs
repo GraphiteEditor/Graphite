@@ -705,7 +705,7 @@ impl Bezier {
 		}
 
 		// If the self is linear, then use the implementation for intersections with linear lines
-		if let BezierHandles::Linear = self.handles {
+		if self.handles == BezierHandles::Linear {
 			return curve.intersections(self, Some(error));
 		}
 
