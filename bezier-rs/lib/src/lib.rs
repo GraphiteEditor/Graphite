@@ -710,7 +710,7 @@ impl Bezier {
 		}
 
 		// Otherwise, use bounding box to determine intersections
-		Bezier::intersections_between_subcurves(self, [0., 1.], curve, error)
+		self.intersections_between_subcurves([0., 1.], curve, error)
 	}
 
 	/// Returns a list of lists of points representing the De Casteljau points for all iterations at the point corresponding to `t` using De Casteljau's algorithm.
