@@ -603,7 +603,7 @@ impl Bezier {
 	}
 
 	/// Implementation of the algorithm to find curve intersections by iterating on bounding boxes.
-	/// `self_original_t_interval` is used to identify the `t` values of the original parent of `self` that the current iteration is representing.
+	/// - `self_original_t_interval` - Used to identify the `t` values of the original parent of `self` that the current iteration is representing.
 	/// Note that the `t` interval the other curve is not needed since we want to return `t` with respect to it.
 	fn intersections_between_subcurves(&self, self_original_t_interval: [f64; 2], other: &Bezier, error: f64) -> Vec<f64> {
 		let bounding_box1 = self.bounding_box();
