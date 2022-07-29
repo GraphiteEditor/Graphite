@@ -10,7 +10,7 @@ pub use subpath::*;
 use glam::{DMat2, DVec2};
 
 /// Representation of the handle point(s) in a bezier segment.
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq)]
 enum BezierHandles {
 	Linear,
 	/// Handles for a quadratic curve.
@@ -688,7 +688,7 @@ impl Bezier {
 	/// 2. The on-curve point for `t = 0.5` must occur roughly in the center of the polygon defined by the curve's endpoint normals.
 	/// See [the offset section](https://pomax.github.io/bezierinfo/#offsetting) of Pomax's bezier curve primer for more details.
 	fn is_scalable(&self) -> bool {
-		if let BezierHandles::Linear = self.handles {
+		if self.handles == BezierHandles::Linear {
 			return true;
 		}
 		// Verify all the handles are located on a single side of the curve.
@@ -841,17 +841,16 @@ impl Bezier {
 	/// Scale will translate a bezier curve a fixed distance away from its original position, and stretch/compress the transformed curve to match the translation ratio.
 	/// Note that not all bezier curves are possible to scale, so this function asserts that the provided curve is scalable.
 	/// A proof for why this is true can be found in the [Curve offsetting section](https://pomax.github.io/bezierinfo/#offsetting) of Pomax's bezier curve primer.
-	/// `scale` takes the following parameters:
-	/// - `distance` - The distance away from the curve that the new one will be scaled to. Positive values will scale the curve in the same direction as the endpoint normals,
-	/// while negative values will scale in the opposite direction.
+	/// `scale` takes the parameter `distance`, which is the distance away from the curve that the new one will be scaled to. Positive values will scale the curve in the
+	/// same direction as the endpoint normals, while negative values will scale in the opposite direction.
 	fn scale(&self, distance: f64) -> Bezier {
-		assert!(self.is_scalable());
+		assert!(self.is_scalable(), "The curve provided to scale is not scalable. Reduce the curve first.");
 
 		let normal_start = self.normal(0.);
 		let normal_end = self.normal(1.);
 
 		// If normal unit vectors are equal, then the lines are parallel
-		if normal_start == normal_end {
+		if normal_start.abs_diff_eq(normal_end, MAX_ABSOLUTE_DIFFERENCE) {
 			return self.translate(distance * normal_start);
 		}
 
@@ -868,14 +867,16 @@ impl Bezier {
 		})
 	}
 
-	/// Offset will get all the reducable subcurves, and for each subcurve, it will scale the subcurve a set distance away from the original curve.
+	/// Offset will get all the reduceable subcurves, and for each subcurve, it will scale the subcurve a set distance away from the original curve.
 	/// Note that not all bezier curves are possible to offset, so this function first reduces the curve to scalable segments and then offsets those segments.
 	/// A proof for why this is true can be found in the [Curve offsetting section](https://pomax.github.io/bezierinfo/#offsetting) of Pomax's bezier curve primer.
 	/// Offset takes the following parameter:
 	/// - `distance` - The distance away from the curve that the new one will be offset to. Positive values will offset the curve in the same direction as the endpoint normals,
 	/// while negative values will offset in the opposite direction.
 	pub fn offset(&self, distance: f64) -> Vec<Bezier> {
-		self.reduce(None).into_iter().map(|bezier| bezier.scale(distance)).collect()
+		let mut reduced = self.reduce(None);
+		reduced.iter_mut().for_each(|bezier| *bezier = bezier.scale(distance));
+		reduced
 	}
 }
 
@@ -892,8 +893,8 @@ mod tests {
 	}
 
 	// Compare vectors of points by allowing some maximum absolute difference to account for floating point errors
-	fn compare_vector_of_points(vec1: Vec<DVec2>, vec2: Vec<DVec2>) -> bool {
-		vec1.len() == vec2.len() && vec1.into_iter().zip(vec2.into_iter()).all(|(a, b)| a.abs_diff_eq(b, MAX_ABSOLUTE_DIFFERENCE))
+	fn compare_vector_of_points(a: Vec<DVec2>, b: Vec<DVec2>) -> bool {
+		a.len() == b.len() && a.into_iter().zip(b.into_iter()).all(|(p1, p2)| p1.abs_diff_eq(p2, MAX_ABSOLUTE_DIFFERENCE))
 	}
 
 	// Compare vectors of beziers by allowing some maximum absolute difference between points to account for floating point errors

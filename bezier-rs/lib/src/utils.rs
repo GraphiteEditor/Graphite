@@ -149,17 +149,21 @@ pub fn solve_cubic(a: f64, b: f64, c: f64, d: f64) -> Vec<f64> {
 /// Returns the intersection of two lines. The lines are given by a point on the line and its slope (represented by a vector).
 pub fn line_intersection(point1: DVec2, point1_slope_vector: DVec2, point2: DVec2, point2_slope_vector: DVec2) -> DVec2 {
 	assert!(point1_slope_vector.normalize() != point2_slope_vector.normalize());
-	/*
-		*/
+
+	// Find the intersection when the first line is vertical
 	if f64_compare(point1_slope_vector.x, 0., MAX_ABSOLUTE_DIFFERENCE) {
 		let m2 = point2_slope_vector.y / point2_slope_vector.x;
 		let b2 = point2.y - m2 * point2.x;
 		DVec2::new(point1.x, point1.x * m2 + b2)
-	} else if f64_compare(point2_slope_vector.x, 0., MAX_ABSOLUTE_DIFFERENCE) {
+	}
+	// Find the intersection when the second line is vertical
+	else if f64_compare(point2_slope_vector.x, 0., MAX_ABSOLUTE_DIFFERENCE) {
 		let m1 = point1_slope_vector.y / point1_slope_vector.x;
 		let b1 = point1.y - m1 * point1.x;
 		DVec2::new(point2.x, point2.x * m1 + b1)
-	} else {
+	}
+	// Find the intersection where neither line is vertical
+	else {
 		let m1 = point1_slope_vector.y / point1_slope_vector.x;
 		let b1 = point1.y - m1 * point1.x;
 		let m2 = point2_slope_vector.y / point2_slope_vector.x;
