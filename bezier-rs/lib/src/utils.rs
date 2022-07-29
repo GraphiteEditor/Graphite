@@ -251,6 +251,7 @@ mod tests {
 		assert!(roots7 == vec![1.]);
 	}
 
+	#[test]
 	fn test_do_rectangles_overlap() {
 		// Rectangles overlap
 		assert!(do_rectangles_overlap([DVec2::new(0., 0.), DVec2::new(20., 20.)], [DVec2::new(10., 10.), DVec2::new(30., 20.)]));
