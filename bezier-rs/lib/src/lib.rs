@@ -8,6 +8,7 @@ use consts::*;
 pub use subpath::*;
 
 use glam::{DMat2, DVec2};
+use std::fmt::{Debug, Formatter, Result};
 
 /// Representation of the handle point(s) in a bezier segment.
 #[derive(Copy, Clone, PartialEq)]
@@ -52,7 +53,7 @@ impl Default for ProjectionOptions {
 }
 
 /// Representation of a bezier curve with 2D points.
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq)]
 pub struct Bezier {
 	/// Start point of the bezier curve.
 	start: DVec2,
@@ -60,6 +61,12 @@ pub struct Bezier {
 	end: DVec2,
 	/// Handles of the bezier curve.
 	handles: BezierHandles,
+}
+
+impl Debug for Bezier {
+	fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+		write!(f, "{:?}", self.get_points().collect::<Vec<DVec2>>())
+	}
 }
 
 impl Bezier {
@@ -293,6 +300,13 @@ impl Bezier {
 			BezierHandles::Quadratic { handle } => [self.start, handle, self.end, DVec2::ZERO].into_iter().take(3),
 			BezierHandles::Cubic { handle_start, handle_end } => [self.start, handle_start, handle_end, self.end].into_iter().take(4),
 		}
+	}
+
+	pub fn abs_diff_eq(&self, other: &Bezier, max_abs_diff: f64) -> bool {
+		let self_points = self.get_points().collect::<Vec<DVec2>>();
+		let other_points = other.get_points().collect::<Vec<DVec2>>();
+
+		self_points.len() == other_points.len() && self_points.into_iter().zip(other_points.into_iter()).all(|(a, b)| a.abs_diff_eq(b, max_abs_diff))
 	}
 
 	/// Calculate the point on the curve based on the `t`-value provided.
@@ -815,27 +829,27 @@ impl Bezier {
 		extrema.dedup();
 		extrema.sort_by(|ex1, ex2| ex1.partial_cmp(ex2).unwrap());
 
-		// Split the curve on the extremas. Simplifies procedure for ensuring each curve can be scaled.
-		let mut subcurves = Vec::new();
-		let mut t1: f64 = extrema[0];
-		for t2 in extrema.iter().skip(1) {
-			subcurves.push(self.trim(t1, *t2));
-			t1 = *t2;
-		}
-
 		// Split each subcurve such that each resulting segment is scalable.
-		let mut result: Vec<Bezier> = Vec::new();
-		subcurves.iter().for_each(|&subcurve| {
+		let mut result_beziers: Vec<Bezier> = Vec::new();
+		let mut result_t_values: Vec<f64> = vec![extrema[0]];
+
+		extrema.windows(2).for_each(|t_pair| {
+			let t_subcurve_start = t_pair[0];
+			let t_subcurve_end = t_pair[1];
+			let subcurve = self.trim(t_subcurve_start, t_subcurve_end);
 			// Perform no processing on the subcurve if it's already scalable.
 			if subcurve.is_scalable() {
-				result.push(subcurve);
+				result_beziers.push(subcurve);
+				result_t_values.push(t_subcurve_end);
 				return;
 			}
 			// According to <https://pomax.github.io/bezierinfo/#offsetting>, it is generally sufficient to split subcurves with no local extrema at `t = 0.5` to generate two scalable segments.
 			let [first_half, second_half] = subcurve.split(0.5);
 			if first_half.is_scalable() && second_half.is_scalable() {
-				result.push(first_half);
-				result.push(second_half);
+				result_beziers.push(first_half);
+				result_beziers.push(second_half);
+				result_t_values.push(t_subcurve_start + (t_subcurve_end - t_subcurve_start) / 2.);
+				result_t_values.push(t_subcurve_end);
 				return;
 			}
 
@@ -852,7 +866,8 @@ impl Bezier {
 					// Otherwise, add the valid segment from the previous step to the result.
 					if f64::abs(t1 - t2) >= step_size {
 						segment = subcurve.trim(t1, t2);
-						result.push(segment);
+						result_beziers.push(segment);
+						result_t_values.push(t_subcurve_start + t2 * (t_subcurve_end - t_subcurve_start));
 					} else {
 						return;
 					}
@@ -864,11 +879,12 @@ impl Bezier {
 			if t1 < 1. {
 				segment = subcurve.trim(t1, 1.);
 				if segment.is_scalable() {
-					result.push(segment);
+					result_beziers.push(segment);
+					result_t_values.push(t_subcurve_end);
 				}
 			}
 		});
-		(result, vec![])
+		(result_beziers, result_t_values)
 	}
 
 	/// Split the curve into a number of scalable subcurves. This function may introduce gaps if subsections of the curve are not reducible.
@@ -998,7 +1014,7 @@ mod tests {
 	}
 
 	// Compare vectors of beziers by allowing some maximum absolute difference between points to account for floating point errors
-	fn compare_vector_of_beziers(beziers: Vec<Bezier>, expected_bezier_points: Vec<Vec<DVec2>>) -> bool {
+	fn compare_vector_of_beziers(beziers: &Vec<Bezier>, expected_bezier_points: Vec<Vec<DVec2>>) -> bool {
 		beziers
 			.iter()
 			.zip(expected_bezier_points.iter())
@@ -1137,7 +1153,7 @@ mod tests {
 			vec![DVec2::new(56.09375, 57.5), DVec2::new(94.94197, 56.5019), DVec2::new(117.6473, 84.5936)],
 			vec![DVec2::new(117.6473, 84.5936), DVec2::new(142.3985, 113.403), DVec2::new(150.1005, 171.4142)],
 		];
-		assert!(compare_vector_of_beziers(bezier1.offset(10.), expected_bezier_points1));
+		assert!(compare_vector_of_beziers(&bezier1.offset(10.), expected_bezier_points1));
 
 		let p4 = DVec2::new(32., 77.);
 		let p5 = DVec2::new(169., 25.);
@@ -1149,7 +1165,7 @@ mod tests {
 			vec![DVec2::new(123.9055, 102.0401), DVec2::new(136.6087, 116.9522), DVec2::new(134.1761, 147.9324)],
 			vec![DVec2::new(134.1761, 147.9324), DVec2::new(134.1812, 151.7987), DVec2::new(134.0215, 155.86445)],
 		];
-		assert!(compare_vector_of_beziers(bezier2.offset(30.), expected_bezier_points2));
+		assert!(compare_vector_of_beziers(&bezier2.offset(30.), expected_bezier_points2));
 	}
 
 	#[test]
@@ -1164,6 +1180,15 @@ mod tests {
 			vec![DVec2::new(0.989, 0.989), DVec2::new(2.705, 2.705), DVec2::new(4.2975, 4.2975)],
 			vec![DVec2::new(4.2975, 4.2975), DVec2::new(5.6625, 5.6625), DVec2::new(6.9375, 6.9375)],
 		];
-		assert!(compare_vector_of_beziers(bezier.reduce(None), expected_bezier_points));
+		let reduced_curves = bezier.reduce(None);
+		assert!(compare_vector_of_beziers(&reduced_curves, expected_bezier_points));
+
+		// Check that the reduce helper is correct
+		let (helper_curves, helper_t_values) = bezier.reduced_curves_and_t_values(None);
+		assert_eq!(&reduced_curves, &helper_curves);
+		assert!(reduced_curves
+			.iter()
+			.zip(helper_t_values.windows(2))
+			.all(|(curve, t_pair)| curve.abs_diff_eq(&bezier.trim(t_pair[0], t_pair[1]), MAX_ABSOLUTE_DIFFERENCE)))
 	}
 }
