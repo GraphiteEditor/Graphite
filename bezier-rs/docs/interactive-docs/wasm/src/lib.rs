@@ -165,6 +165,16 @@ impl WasmBezier {
 		to_js_value(local_extrema)
 	}
 
+	pub fn bounding_box(&self) -> JsValue {
+		let bbox_points: [Point; 2] = self.0.bounding_box().map(|p| Point { x: p.x, y: p.y });
+		to_js_value(bbox_points)
+	}
+
+	pub fn inflections(&self) -> JsValue {
+		let inflections = self.0.inflections();
+		to_js_value(inflections)
+	}
+
 	pub fn de_casteljau_points(&self, t: f64) -> JsValue {
 		let hull = self
 			.0
@@ -192,6 +202,11 @@ impl WasmBezier {
 		to_js_value(bezier_points)
 	}
 
+	pub fn offset(&self, distance: f64) -> JsValue {
+		let bezier_points: Vec<Vec<Point>> = self.0.offset(distance).into_iter().map(bezier_to_points).collect();
+		to_js_value(bezier_points)
+	}
+
 	/// The wrapped return type is `Vec<CircleSector>`.
 	pub fn arcs(&self, error: f64, max_iterations: i32, maximize_arcs: WasmMaximizeArcs) -> JsValue {
 		let maximize_arcs = convert_wasm_mazimize_arcs(maximize_arcs);
@@ -211,15 +226,5 @@ impl WasmBezier {
 			})
 			.collect();
 		to_js_value(circle_sectors)
-	}
-
-	pub fn bounding_box(&self) -> JsValue {
-		let bbox_points: [Point; 2] = self.0.bounding_box().map(|p| Point { x: p.x, y: p.y });
-		to_js_value(bbox_points)
-	}
-
-	pub fn inflections(&self) -> JsValue {
-		let inflections = self.0.inflections();
-		to_js_value(inflections)
 	}
 }

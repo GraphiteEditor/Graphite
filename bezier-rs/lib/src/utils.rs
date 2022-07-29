@@ -150,15 +150,20 @@ pub fn solve_cubic(a: f64, b: f64, c: f64, d: f64) -> Vec<f64> {
 pub fn line_intersection(point1: DVec2, point1_slope_vector: DVec2, point2: DVec2, point2_slope_vector: DVec2) -> DVec2 {
 	assert!(point1_slope_vector.normalize() != point2_slope_vector.normalize());
 
+	// Find the intersection when the first line is vertical
 	if f64_compare(point1_slope_vector.x, 0., MAX_ABSOLUTE_DIFFERENCE) {
 		let m2 = point2_slope_vector.y / point2_slope_vector.x;
 		let b2 = point2.y - m2 * point2.x;
 		DVec2::new(point1.x, point1.x * m2 + b2)
-	} else if f64_compare(point2_slope_vector.x, 0., MAX_ABSOLUTE_DIFFERENCE) {
+	}
+	// Find the intersection when the second line is vertical
+	else if f64_compare(point2_slope_vector.x, 0., MAX_ABSOLUTE_DIFFERENCE) {
 		let m1 = point1_slope_vector.y / point1_slope_vector.x;
 		let b1 = point1.y - m1 * point1.x;
 		DVec2::new(point2.x, point2.x * m1 + b1)
-	} else {
+	}
+	// Find the intersection where neither line is vertical
+	else {
 		let m1 = point1_slope_vector.y / point1_slope_vector.x;
 		let b1 = point1.y - m1 * point1.x;
 		let m2 = point2_slope_vector.y / point2_slope_vector.x;
@@ -262,6 +267,35 @@ mod tests {
 	}
 
 	#[test]
+	fn test_find_intersection() {
+		// y = 2x + 10
+		// y = 5x + 4
+		// intersect at (2, 14)
+
+		let start1 = DVec2::new(0., 10.);
+		let end1 = DVec2::new(0., 4.);
+		let start_direction1 = DVec2::new(1., 2.);
+		let end_direction1 = DVec2::new(1., 5.);
+		assert!(line_intersection(start1, start_direction1, end1, end_direction1) == DVec2::new(2., 14.));
+
+		// y = x
+		// y = -x + 8
+		// intersect at (4, 4)
+
+		let start2 = DVec2::new(0., 0.);
+		let end2 = DVec2::new(8., 0.);
+		let start_direction2 = DVec2::new(1., 1.);
+		let end_direction2 = DVec2::new(1., -1.);
+		assert!(line_intersection(start2, start_direction2, end2, end_direction2) == DVec2::new(4., 4.));
+	}
+
+	#[test]
+	fn test_are_points_collinear() {
+		assert!(are_points_collinear(DVec2::new(2., 4.), DVec2::new(6., 8.), DVec2::new(4., 6.)));
+		assert!(!are_points_collinear(DVec2::new(1., 4.), DVec2::new(6., 8.), DVec2::new(4., 6.)));
+	}
+
+	#[test]
 	fn test_compute_circle_center_from_points() {
 		// 3/4 of unit circle
 		let center1 = compute_circle_center_from_points(DVec2::new(0., 1.), DVec2::new(-1., 0.), DVec2::new(1., 0.));
@@ -269,11 +303,5 @@ mod tests {
 		// 1/4 of unit circle
 		let center2 = compute_circle_center_from_points(DVec2::new(-1., 0.), DVec2::new(0., 1.), DVec2::new(1., 0.));
 		assert_eq!(center2, DVec2::new(0., 0.));
-	}
-
-	#[test]
-	fn test_are_points_collinear() {
-		assert!(are_points_collinear(DVec2::new(2., 4.), DVec2::new(6., 8.), DVec2::new(4., 6.)));
-		assert!(!are_points_collinear(DVec2::new(1., 4.), DVec2::new(6., 8.), DVec2::new(4., 6.)));
 	}
 }

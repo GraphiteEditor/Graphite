@@ -25,7 +25,7 @@
 <script lang="ts">
 import { defineComponent, markRaw } from "vue";
 
-import { drawText, drawPoint, drawBezier, drawLine, drawCircleSector, getContextFromCanvas, drawBezierHelper, COLORS } from "@/utils/drawing";
+import { drawBezier, drawBezierHelper, drawCircleSector, drawCurve, drawLine, drawPoint, drawText, getContextFromCanvas, COLORS } from "@/utils/drawing";
 import { BezierCurveType, CircleSector, Point, WasmBezierInstance, WasmSubpathInstance } from "@/utils/types";
 
 import ExamplePane from "@/components/ExamplePane.vue";
@@ -194,8 +194,8 @@ export default defineComponent({
 						const normal = JSON.parse(bezier.normal(options.t));
 
 						const normalEnd = {
-							x: intersection.x - normal.x * SCALE_UNIT_VECTOR_FACTOR,
-							y: intersection.y - normal.y * SCALE_UNIT_VECTOR_FACTOR,
+							x: intersection.x + normal.x * SCALE_UNIT_VECTOR_FACTOR,
+							y: intersection.y + normal.y * SCALE_UNIT_VECTOR_FACTOR,
 						};
 
 						drawPoint(context, intersection, 3, COLORS.NON_INTERACTIVE.STROKE_1);
@@ -282,6 +282,31 @@ export default defineComponent({
 							[180, 160],
 						],
 					},
+				},
+				{
+					name: "Bounding Box",
+					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance): void => {
+						const context = getContextFromCanvas(canvas);
+						const bboxPoints: Point[] = JSON.parse(bezier.bounding_box());
+						const minPoint = bboxPoints[0];
+						const maxPoint = bboxPoints[1];
+						drawLine(context, minPoint, { x: minPoint.x, y: maxPoint.y }, COLORS.NON_INTERACTIVE.STROKE_1);
+						drawLine(context, minPoint, { x: maxPoint.x, y: minPoint.y }, COLORS.NON_INTERACTIVE.STROKE_1);
+						drawLine(context, maxPoint, { x: minPoint.x, y: maxPoint.y }, COLORS.NON_INTERACTIVE.STROKE_1);
+						drawLine(context, maxPoint, { x: maxPoint.x, y: minPoint.y }, COLORS.NON_INTERACTIVE.STROKE_1);
+					},
+				},
+				{
+					name: "Inflections",
+					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance): void => {
+						const context = getContextFromCanvas(canvas);
+						const inflections: number[] = JSON.parse(bezier.inflections());
+						inflections.forEach((t) => {
+							const point = JSON.parse(bezier.evaluate(t));
+							drawPoint(context, point, 4, COLORS.NON_INTERACTIVE.STROKE_1);
+						});
+					},
+					curveDegrees: new Set([BezierCurveType.Cubic]),
 				},
 				{
 					name: "De Casteljau Points",
@@ -404,29 +429,32 @@ export default defineComponent({
 					},
 				},
 				{
-					name: "Bounding Box",
-					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance): void => {
+					name: "Offset",
+					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: Record<string, number>): void => {
 						const context = getContextFromCanvas(canvas);
-						const bboxPoints: Point[] = JSON.parse(bezier.bounding_box());
-						const minPoint = bboxPoints[0];
-						const maxPoint = bboxPoints[1];
-						drawLine(context, minPoint, { x: minPoint.x, y: maxPoint.y }, COLORS.NON_INTERACTIVE.STROKE_1);
-						drawLine(context, minPoint, { x: maxPoint.x, y: minPoint.y }, COLORS.NON_INTERACTIVE.STROKE_1);
-						drawLine(context, maxPoint, { x: minPoint.x, y: maxPoint.y }, COLORS.NON_INTERACTIVE.STROKE_1);
-						drawLine(context, maxPoint, { x: maxPoint.x, y: minPoint.y }, COLORS.NON_INTERACTIVE.STROKE_1);
-					},
-				},
-				{
-					name: "Inflections",
-					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance): void => {
-						const context = getContextFromCanvas(canvas);
-						const inflections: number[] = JSON.parse(bezier.inflections());
-						inflections.forEach((t) => {
-							const point = JSON.parse(bezier.evaluate(t));
-							drawPoint(context, point, 4, COLORS.NON_INTERACTIVE.STROKE_1);
+						const curves: Point[][] = JSON.parse(bezier.offset(options.distance));
+						curves.forEach((points, index) => {
+							if (points.length === 2) {
+								drawLine(context, points[0], points[1], `hsl(${40 * index}, 100%, 50%)`);
+							} else {
+								drawCurve(context, points, `hsl(${40 * index}, 100%, 50%)`);
+							}
 						});
+						drawPoint(context, curves[0][0], 4, "hsl(0, 100%, 50%)");
+						drawPoint(context, curves[curves.length - 1][curves[0].length - 1], 4, `hsl(${40 * (curves.length - 1)}, 100%, 50%)`);
 					},
-					curveDegrees: new Set([BezierCurveType.Cubic]),
+					template: markRaw(SliderExample),
+					templateOptions: {
+						sliders: [
+							{
+								variable: "distance",
+								min: -50,
+								max: 50,
+								step: 1,
+								default: 20,
+							},
+						],
+					},
 				},
 			],
 			subpathFeatures: [
