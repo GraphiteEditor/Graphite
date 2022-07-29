@@ -146,6 +146,33 @@ pub fn solve_cubic(a: f64, b: f64, c: f64, d: f64) -> Vec<f64> {
 	}
 }
 
+/// Returns the intersection of two lines. The lines are given by a point on the line and its slope (represented by a vector).
+pub fn line_intersection(point1: DVec2, point1_slope_vector: DVec2, point2: DVec2, point2_slope_vector: DVec2) -> DVec2 {
+	assert!(point1_slope_vector.normalize() != point2_slope_vector.normalize());
+
+	// Find the intersection when the first line is vertical
+	if f64_compare(point1_slope_vector.x, 0., MAX_ABSOLUTE_DIFFERENCE) {
+		let m2 = point2_slope_vector.y / point2_slope_vector.x;
+		let b2 = point2.y - m2 * point2.x;
+		DVec2::new(point1.x, point1.x * m2 + b2)
+	}
+	// Find the intersection when the second line is vertical
+	else if f64_compare(point2_slope_vector.x, 0., MAX_ABSOLUTE_DIFFERENCE) {
+		let m1 = point1_slope_vector.y / point1_slope_vector.x;
+		let b1 = point1.y - m1 * point1.x;
+		DVec2::new(point2.x, point2.x * m1 + b1)
+	}
+	// Find the intersection where neither line is vertical
+	else {
+		let m1 = point1_slope_vector.y / point1_slope_vector.x;
+		let b1 = point1.y - m1 * point1.x;
+		let m2 = point2_slope_vector.y / point2_slope_vector.x;
+		let b2 = point2.y - m2 * point2.x;
+		let intersection_x = (b2 - b1) / (m1 - m2);
+		DVec2::new(intersection_x, intersection_x * m1 + b1)
+	}
+}
+
 /// Compare two `f64` numbers with a provided max absolute value difference.
 pub fn f64_compare(f1: f64, f2: f64, max_abs_diff: f64) -> bool {
 	(f1 - f2).abs() < max_abs_diff
@@ -214,5 +241,28 @@ mod tests {
 		// linear
 		let roots7 = solve_cubic(0., 0., 1., -1.);
 		assert!(roots7 == vec![1.]);
+	}
+
+	#[test]
+	fn test_find_intersection() {
+		// y = 2x + 10
+		// y = 5x + 4
+		// intersect at (2, 14)
+
+		let start1 = DVec2::new(0., 10.);
+		let end1 = DVec2::new(0., 4.);
+		let start_direction1 = DVec2::new(1., 2.);
+		let end_direction1 = DVec2::new(1., 5.);
+		assert!(line_intersection(start1, start_direction1, end1, end_direction1) == DVec2::new(2., 14.));
+
+		// y = x
+		// y = -x + 8
+		// intersect at (4, 4)
+
+		let start2 = DVec2::new(0., 0.);
+		let end2 = DVec2::new(8., 0.);
+		let start_direction2 = DVec2::new(1., 1.);
+		let end_direction2 = DVec2::new(1., -1.);
+		assert!(line_intersection(start2, start_direction2, end2, end_direction2) == DVec2::new(4., 4.));
 	}
 }
