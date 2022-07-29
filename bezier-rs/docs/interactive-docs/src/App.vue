@@ -425,6 +425,30 @@ export default defineComponent({
 					},
 				},
 				{
+					name: "Intersect (Self)",
+					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: Record<string, number>): void => {
+						const context = getContextFromCanvas(canvas);
+						const intersections: Float64Array = bezier.intersect_self(options.error);
+						intersections.forEach((t: number) => {
+							const p = JSON.parse(bezier.evaluate(t));
+							drawPoint(context, p, 3, COLORS.NON_INTERACTIVE.STROKE_2);
+						});
+					},
+					template: markRaw(SliderExample),
+					templateOptions: {
+						sliders: [
+							{
+								variable: "error",
+								min: 0.1,
+								max: 2,
+								step: 0.1,
+								default: 0.5,
+							},
+						],
+					},
+					curveDegrees: new Set([BezierCurveType.Cubic]),
+				},
+				{
 					name: "Reduce",
 					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance): void => {
 						const context = getContextFromCanvas(canvas);

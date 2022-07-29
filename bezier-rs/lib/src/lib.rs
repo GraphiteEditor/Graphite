@@ -747,21 +747,52 @@ impl Bezier {
 		self.intersections_between_subcurves([0., 1.], curve, error)
 	}
 
-	// pub fn intersections_between_vectors_of_curves(curves1: impl Iterator<Item=Bezier>, curves2: impl Iterator<Item=Bezier>, error: f64) -> Vec<f64> {
-	// 	let segment_pairs = curves1.zip(curves2).filter()
-	// }
+	/// Helper function to compute intersections between lists of subcurves.
+	fn intersections_between_vectors_of_curves(subcurves_1: Vec<&(Bezier, [f64; 2])>, subcurves_2: Vec<&(Bezier, [f64; 2])>, error: f64) -> Vec<f64> {
+		// let list_2: Vec<(Bezier, [f64; 2])> = subcurves_2.collect();
+		let segment_pairs = subcurves_1.iter().flat_map(|&(curve_1, curve_1_t_pair)| {
+			subcurves_2.iter().filter_map(move |&(curve_2, curve_2_t_pair)| {
+				if utils::do_rectangles_overlap(curve_1.bounding_box(), curve_2.bounding_box()) {
+					Some((curve_1, curve_1_t_pair, curve_2, curve_2_t_pair))
+				} else {
+					None
+				}
+			})
+		});
+		segment_pairs
+			.flat_map(|(curve1, curve_1_t_pair, curve2, _curve_2_t_pair)| curve1.intersections_between_subcurves(*curve_1_t_pair, curve2, error))
+			.collect::<Vec<f64>>()
+	}
 
 	// TODO: Use an `impl Iterator` return type instead of a `Vec`
-	/// Returns a list of `t` values that correspond to the self intersection points of the current bezier curve. The returned `t` values are with respect to the current bezier, not the provided parameter.
+	/// Returns a list of `t` values that correspond to the self intersection points of the current bezier curve. For each intersection point, the returned `t` value is the smaller of the two that correspond to the point.
 	/// - `error` - For intersections with non-linear beziers, `error` defines the threshold for bounding boxes to be considered an intersection point.
 	pub fn self_intersections(&self, error: Option<f64>) -> Vec<f64> {
-		let inflection_points = self.inflections();
-		let mut split_t_value = 0.5;
-		if !inflection_points.is_empty() {
-			split_t_value = inflection_points[0];
+		if self.handles == BezierHandles::Linear || matches!(self.handles, BezierHandles::Quadratic { .. }) {
+			return vec![];
 		}
-		let [split_a, split_b] = self.split(split_t_value);
-		split_a.intersections(&split_b, error)
+
+		let error = error.unwrap_or(0.5);
+
+		// Get 2 copies of the reduced curves
+		let (self_1, self_1_t_values) = self.reduced_curves_and_t_values(None);
+		let (self_2, self_2_t_values) = (self_1.clone(), self_1_t_values.clone());
+		let num_curves = self_1.len();
+
+		// Create iterators that combine a subcurve with the `t` value pair that it was trimmed with
+		let combined_iterator_1 = self_1.into_iter().zip(self_1_t_values.windows(2).map(|t_pair| [t_pair[0], t_pair[1]]));
+		// Second one needs to be a list because Iterator does not implement copy
+		let combined_list_2: Vec<(Bezier, [f64; 2])> = self_2.into_iter().zip(self_2_t_values.windows(2).map(|t_pair| [t_pair[0], t_pair[1]])).collect();
+
+		// Adjacent reduced curves cannot intersect
+		// So for each curve, look for intersections with every curve that is at least 2 indices away
+		combined_iterator_1
+			.take(num_curves - 2)
+			.enumerate()
+			.flat_map(|(index, (subcurve, t_pair))| {
+				Bezier::intersections_between_vectors_of_curves(vec![&(subcurve, t_pair)], combined_list_2.iter().skip(index + 2).collect::<Vec<&(Bezier, [f64; 2])>>(), error)
+			})
+			.collect()
 	}
 
 	/// Returns a list of lists of points representing the De Casteljau points for all iterations at the point corresponding to `t` using De Casteljau's algorithm.
