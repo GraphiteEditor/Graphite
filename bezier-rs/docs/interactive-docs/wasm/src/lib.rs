@@ -165,18 +165,21 @@ impl WasmBezier {
 		to_js_value(local_extrema)
 	}
 
+	/// The wrapped return type is `[Point; 2]`.
 	pub fn bounding_box(&self) -> JsValue {
 		let bbox_points: [Point; 2] = self.0.bounding_box().map(|p| Point { x: p.x, y: p.y });
 		to_js_value(bbox_points)
 	}
 
+	/// The wrapped return type is `Vec<f64>`.
 	pub fn inflections(&self) -> JsValue {
-		let inflections = self.0.inflections();
+		let inflections: Vec<f64> = self.0.inflections();
 		to_js_value(inflections)
 	}
 
+	/// The wrapped return type is `Vec<Vec<Point>>`.
 	pub fn de_casteljau_points(&self, t: f64) -> JsValue {
-		let hull = self
+		let hull: Vec<Vec<Point>> = self
 			.0
 			.de_casteljau_points(t)
 			.iter()
@@ -202,6 +205,7 @@ impl WasmBezier {
 		to_js_value(bezier_points)
 	}
 
+	/// The wrapped return type is `Vec<Vec<Point>>`.
 	pub fn offset(&self, distance: f64) -> JsValue {
 		let bezier_points: Vec<Vec<Point>> = self.0.offset(distance).into_iter().map(bezier_to_points).collect();
 		to_js_value(bezier_points)
