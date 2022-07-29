@@ -174,8 +174,10 @@ impl WasmBezier {
 		self.intersect(&cubic, Some(error))
 	}
 
-	pub fn intersect_self(&self, error: f64) -> Vec<f64> {
-		self.0.self_intersections(Some(error))
+	/// The wrapped return type is `Vec<[f64; 2]>`.
+	pub fn intersect_self(&self, error: f64) -> JsValue {
+		let points: Vec<[f64; 2]> = self.0.self_intersections(Some(error));
+		to_js_value(points)
 	}
 
 	pub fn reduce(&self) -> JsValue {

@@ -428,9 +428,9 @@ export default defineComponent({
 					name: "Intersect (Self)",
 					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: Record<string, number>): void => {
 						const context = getContextFromCanvas(canvas);
-						const intersections: Float64Array = bezier.intersect_self(options.error);
-						intersections.forEach((t: number) => {
-							const p = JSON.parse(bezier.evaluate(t));
+						const intersections: number[][] = JSON.parse(bezier.intersect_self(options.error));
+						intersections.forEach((tValues: number[]) => {
+							const p = JSON.parse(bezier.evaluate(tValues[0]));
 							drawPoint(context, p, 3, COLORS.NON_INTERACTIVE.STROKE_2);
 						});
 					},
@@ -439,11 +439,19 @@ export default defineComponent({
 						sliders: [
 							{
 								variable: "error",
-								min: 0.1,
-								max: 2,
-								step: 0.1,
+								min: 0.01,
+								max: 1,
+								step: 0.05,
 								default: 0.5,
 							},
+						],
+					},
+					customPoints: {
+						[BezierCurveType.Cubic]: [
+							[160, 180],
+							[170, 10],
+							[30, 90],
+							[180, 140],
 						],
 					},
 					curveDegrees: new Set([BezierCurveType.Cubic]),
