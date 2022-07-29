@@ -603,14 +603,14 @@ impl Bezier {
 	}
 
 	/// Implementation of the algorithm to find curve intersections by iterating on bounding boxes.
-	/// `curve1_t_interval` is used to identify the t values of the original `curve1` that the current iteration is representing.
-	/// Note that the `t` interval for only the first curve is needed since we want to return `t` with respect to it.
-	fn intersections_between_subcurves(curve1: &Bezier, original_curve1_t_interval: [f64; 2], curve2: &Bezier, error: f64) -> Vec<f64> {
-		let bounding_box1 = curve1.bounding_box();
-		let bounding_box2 = curve2.bounding_box();
+	/// `self_original_t_interval` is used to identify the `t` values of the original parent of `self` that the current iteration is representing.
+	/// Note that the `t` interval the other curve is not needed since we want to return `t` with respect to it.
+	fn intersections_between_subcurves(&self, self_original_t_interval: [f64; 2], other: &Bezier, error: f64) -> Vec<f64> {
+		let bounding_box1 = self.bounding_box();
+		let bounding_box2 = other.bounding_box();
 
-		// Determine the t interval of the original curve for the split curve1
-		let [curve1_start_t, curve1_end_t] = original_curve1_t_interval;
+		// Determine the `t` interval of the original curve for the split curve1
+		let [curve1_start_t, curve1_end_t] = self_original_t_interval;
 		let curve1_mid_t = curve1_start_t + (curve1_end_t - curve1_start_t) / 2.;
 
 		let error_threshold = DVec2::new(error, error);
@@ -624,17 +624,17 @@ impl Bezier {
 			}
 
 			// Split curves in half and repeat with the combinations of the two halves of each curve
-			let [split1a, split1b] = curve1.split(0.5);
-			let [split2a, split2b] = curve2.split(0.5);
+			let [split_1_a, split_1_b] = self.split(0.5);
+			let [split_2_a, split_2_b] = other.split(0.5);
 
-			// Get the new t intervals for
-			let interval_1a = [curve1_start_t, curve1_mid_t];
-			let interval_1b = [curve1_mid_t, curve1_end_t];
+			// Get the new `t` intervals for
+			let interval_1_a = [curve1_start_t, curve1_mid_t];
+			let interval_1_b = [curve1_mid_t, curve1_end_t];
 			[
-				Bezier::intersections_between_subcurves(&split1a, interval_1a, &split2a, error),
-				Bezier::intersections_between_subcurves(&split1a, interval_1a, &split2b, error),
-				Bezier::intersections_between_subcurves(&split1b, interval_1b, &split2a, error),
-				Bezier::intersections_between_subcurves(&split1b, interval_1b, &split2b, error),
+				split_1_a.intersections_between_subcurves(interval_1_a, &split_2_a, error),
+				split_1_a.intersections_between_subcurves(interval_1_a, &split_2_b, error),
+				split_1_b.intersections_between_subcurves(interval_1_b, &split_2_a, error),
+				split_1_b.intersections_between_subcurves(interval_1_b, &split_2_b, error),
 			]
 			.concat()
 		} else {
@@ -700,7 +700,7 @@ impl Bezier {
 						&& utils::dvec2_approximately_in_range(self.unrestricted_evaluate(t), min, max, MAX_ABSOLUTE_DIFFERENCE).all()
 				})
 				// Ensure the returned value is within the correct range
-				.map(|t| t.max(0.).min(1.))
+				.map(|t| t.clamp(0., 1.))
 				.collect::<Vec<f64>>();
 		}
 
