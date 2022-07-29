@@ -115,7 +115,7 @@ export default defineComponent({
 				{
 					name: "Lookup Table",
 					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: Record<string, number>): void => {
-						const lookupPoints: string[] = bezier.compute_lookup_table(options.steps);
+						const lookupPoints = bezier.compute_lookup_table(options.steps);
 						lookupPoints.forEach((serializedPoint, index) => {
 							if (index !== 0 && index !== lookupPoints.length - 1) {
 								drawPoint(getContextFromCanvas(canvas), JSON.parse(serializedPoint), 3, COLORS.NON_INTERACTIVE.STROKE_1);
@@ -142,7 +142,7 @@ export default defineComponent({
 
 						const derivativeBezier = bezier.derivative();
 						if (derivativeBezier) {
-							const points: Point[] = derivativeBezier.get_points().map((p: string) => JSON.parse(p));
+							const points: Point[] = derivativeBezier.get_points().map((p) => JSON.parse(p));
 							if (points.length === 2) {
 								drawLine(context, points[0], points[1], COLORS.NON_INTERACTIVE.STROKE_1);
 							} else {
@@ -339,7 +339,7 @@ export default defineComponent({
 						const rotatedBezier = bezier
 							.rotate(options.angle * Math.PI)
 							.get_points()
-							.map((p: string) => JSON.parse(p));
+							.map((p) => JSON.parse(p));
 						drawBezier(context, rotatedBezier, null, { curveStrokeColor: COLORS.NON_INTERACTIVE.STROKE_1, radius: 3.5 });
 					},
 					template: markRaw(SliderExample),

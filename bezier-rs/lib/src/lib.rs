@@ -648,7 +648,7 @@ impl Bezier {
 	/// - `error` - For intersections with non-linear beziers, `error` defines the threshold for bounding boxes to be considered an intersection point.
 	pub fn intersections(&self, curve: &Bezier, error: Option<f64>) -> Vec<f64> {
 		let error = error.unwrap_or(0.5);
-		if let BezierHandles::Linear {} = curve.handles {
+		if curve.handles == BezierHandles::Linear {
 			// Rotate the bezier and the line by the angle that the line makes with the x axis
 			let slope = curve.end - curve.start;
 			let angle = slope.angle_between(DVec2::new(1., 0.));
@@ -693,15 +693,15 @@ impl Bezier {
 			let max = curve.start.max(curve.end);
 
 			return list_intersection_t
-        .into_iter()
-        // Accept the t value if it is approximately in [0, 1] and if the coresponding coordinates are within the range of the linear line
-        .filter(|&t| {
-          utils::f64_approximately_in_range(t, 0., 1., MAX_ABSOLUTE_DIFFERENCE)
-            && utils::dvec2_approximately_in_range(self.unrestricted_evaluate(t), min, max, MAX_ABSOLUTE_DIFFERENCE).all()
-        })
-        // Ensure the returned value is within the correct range
-        .map(|t| t.max(0.).min(1.))
-        .collect::<Vec<f64>>();
+				.into_iter()
+				// Accept the t value if it is approximately in [0, 1] and if the coresponding coordinates are within the range of the linear line
+				.filter(|&t| {
+					utils::f64_approximately_in_range(t, 0., 1., MAX_ABSOLUTE_DIFFERENCE)
+						&& utils::dvec2_approximately_in_range(self.unrestricted_evaluate(t), min, max, MAX_ABSOLUTE_DIFFERENCE).all()
+				})
+				// Ensure the returned value is within the correct range
+				.map(|t| t.max(0.).min(1.))
+				.collect::<Vec<f64>>();
 		}
 
 		// If the self is linear, then use the implementation for intersections with linear lines
