@@ -609,7 +609,7 @@ impl Bezier {
 		let bounding_box1 = self.bounding_box();
 		let bounding_box2 = other.bounding_box();
 
-		// Determine the `t` interval of the original curve for the split curve1
+		// Get the `t` interval of the original parent of `self` and determine the middle `t` value
 		let [curve1_start_t, curve1_end_t] = self_original_t_interval;
 		let curve1_mid_t = curve1_start_t + (curve1_end_t - curve1_start_t) / 2.;
 
@@ -627,7 +627,7 @@ impl Bezier {
 			let [split_1_a, split_1_b] = self.split(0.5);
 			let [split_2_a, split_2_b] = other.split(0.5);
 
-			// Get the new `t` intervals for
+			// Get the new `t` intervals for the split halves of `self`
 			let interval_1_a = [curve1_start_t, curve1_mid_t];
 			let interval_1_b = [curve1_mid_t, curve1_end_t];
 			[
