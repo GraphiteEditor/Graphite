@@ -166,4 +166,8 @@ impl WasmBezier {
 		let bezier_points: Vec<Vec<Point>> = self.0.offset(distance).into_iter().map(bezier_to_points).collect();
 		to_js_value(bezier_points)
 	}
+
+	pub fn curvature(&self, t: f64) -> f64 {
+		self.0.curvature(t)
+	}
 }
