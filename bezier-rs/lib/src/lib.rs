@@ -394,8 +394,8 @@ impl Bezier {
 		self.tangent(t).perp()
 	}
 
-	/// Returns the curvature k of a curve at given t-value along the curve
-	/// 1/k is the radius of a circle whose derivative is equal to the derivative of the curve at that point
+	/// Returns the curvature, a scalar value for the derivative at the given `t`-value along the curve.
+	/// Curvature is 1 over the radius of a circle with an equivalent derivative.
 	pub fn curvature(&self, t: f64) -> f64 {
 		let (d, dd) = match &self.derivative() {
 			Some(first_derivative) => match first_derivative.derivative() {
