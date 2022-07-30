@@ -59,9 +59,9 @@ export const drawText = (ctx: CanvasRenderingContext2D, text: string, x: number,
 	ctx.fillText(text, x, y);
 };
 
-export const drawCurve = (ctx: CanvasRenderingContext2D, points: Point[], strokeColor = COLORS.INTERACTIVE.STROKE_1): void => {
+export const drawCurve = (ctx: CanvasRenderingContext2D, points: Point[], strokeColor = COLORS.INTERACTIVE.STROKE_1, lineWidth = 2): void => {
 	ctx.strokeStyle = strokeColor;
-	ctx.lineWidth = 2;
+	ctx.lineWidth = lineWidth;
 
 	ctx.beginPath();
 	ctx.moveTo(points[0].x, points[0].y);
@@ -70,6 +70,14 @@ export const drawCurve = (ctx: CanvasRenderingContext2D, points: Point[], stroke
 	} else {
 		ctx.bezierCurveTo(points[1].x, points[1].y, points[2].x, points[2].y, points[3].x, points[3].y);
 	}
+	ctx.stroke();
+};
+
+export const drawCircle = (ctx: CanvasRenderingContext2D, point: Point, radius: number, strokeColor = COLORS.INTERACTIVE.STROKE_1): void => {
+	ctx.strokeStyle = strokeColor;
+	ctx.lineWidth = 1;
+	ctx.beginPath();
+	ctx.arc(point.x, point.y, radius, 0, 2 * Math.PI, false);
 	ctx.stroke();
 };
 

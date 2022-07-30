@@ -143,6 +143,10 @@ impl WasmBezier {
 		to_js_value(normal_point)
 	}
 
+	pub fn curvature(&self, t: f64) -> f64 {
+		self.0.curvature(t)
+	}
+
 	/// The wrapped return type is `[Vec<Point>; 2]`.
 	pub fn split(&self, t: f64) -> JsValue {
 		let bezier_points: [Vec<Point>; 2] = self.0.split(t).map(bezier_to_points);
@@ -153,10 +157,8 @@ impl WasmBezier {
 		WasmBezier(self.0.trim(t1, t2))
 	}
 
-	/// The wrapped return type is `Vec<Point>`.
-	pub fn project(&self, x: f64, y: f64) -> JsValue {
-		let projected_point = vec_to_point(&self.0.project(DVec2::new(x, y), ProjectionOptions::default()));
-		to_js_value(projected_point)
+	pub fn project(&self, x: f64, y: f64) -> f64 {
+		self.0.project(DVec2::new(x, y), ProjectionOptions::default())
 	}
 
 	/// The wrapped return type is `[Vec<f64>; 2]`.
@@ -192,11 +194,26 @@ impl WasmBezier {
 		WasmBezier(self.0.rotate(angle))
 	}
 
-	/// The wrapped return type is `Vec<Point>`.
-	pub fn intersect_line_segment(&self, js_points: &JsValue) -> JsValue {
-		let line: [DVec2; 2] = js_points.into_serde().unwrap();
-		let intersection_points: Vec<Point> = self.0.intersect_line_segment(line).iter().map(|&p| vec_to_point(&p)).collect();
-		to_js_value(intersection_points)
+	fn intersect(&self, curve: &Bezier, error: Option<f64>) -> Vec<f64> {
+		self.0.intersections(curve, error)
+	}
+
+	pub fn intersect_line_segment(&self, js_points: &JsValue) -> Vec<f64> {
+		let points: [DVec2; 2] = js_points.into_serde().unwrap();
+		let line = Bezier::from_linear_dvec2(points[0], points[1]);
+		self.intersect(&line, None)
+	}
+
+	pub fn intersect_quadratic_segment(&self, js_points: &JsValue, error: f64) -> Vec<f64> {
+		let points: [DVec2; 3] = js_points.into_serde().unwrap();
+		let quadratic = Bezier::from_quadratic_dvec2(points[0], points[1], points[2]);
+		self.intersect(&quadratic, Some(error))
+	}
+
+	pub fn intersect_cubic_segment(&self, js_points: &JsValue, error: f64) -> Vec<f64> {
+		let points: [DVec2; 4] = js_points.into_serde().unwrap();
+		let cubic = Bezier::from_cubic_dvec2(points[0], points[1], points[2], points[3]);
+		self.intersect(&cubic, Some(error))
 	}
 
 	/// The wrapped return type is `Vec<Vec<Point>>`.
