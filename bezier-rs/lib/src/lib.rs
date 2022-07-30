@@ -394,6 +394,26 @@ impl Bezier {
 		self.tangent(t).perp()
 	}
 
+	/// Returns the curvature, a scalar value for the derivative at the given `t`-value along the curve.
+	/// Curvature is 1 over the radius of a circle with an equivalent derivative.
+	pub fn curvature(&self, t: f64) -> f64 {
+		let (d, dd) = match &self.derivative() {
+			Some(first_derivative) => match first_derivative.derivative() {
+				Some(second_derivative) => (first_derivative.evaluate(t), second_derivative.evaluate(t)),
+				None => (first_derivative.evaluate(t), first_derivative.end - first_derivative.start),
+			},
+			None => (self.end - self.start, DVec2::new(0., 0.)),
+		};
+
+		let numerator = d.x * dd.y - d.y * dd.x;
+		let denominator = (d.x.powf(2.) + d.y.powf(2.)).powf(1.5);
+		if denominator == 0. {
+			0.
+		} else {
+			numerator / denominator
+		}
+	}
+
 	/// Returns the pair of Bezier curves that result from splitting the original curve at the point corresponding to `t`.
 	pub fn split(&self, t: f64) -> [Bezier; 2] {
 		let split_point = self.evaluate(t);
