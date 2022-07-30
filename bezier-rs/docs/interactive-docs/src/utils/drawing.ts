@@ -73,6 +73,14 @@ export const drawCurve = (ctx: CanvasRenderingContext2D, points: Point[], stroke
 	ctx.stroke();
 };
 
+export const drawCircle = (ctx: CanvasRenderingContext2D, point: Point, radius: number, strokeColor = COLORS.INTERACTIVE.STROKE_1): void => {
+	ctx.strokeStyle = strokeColor;
+	ctx.lineWidth = 1;
+	ctx.beginPath();
+	ctx.arc(point.x, point.y, radius, 0, 2 * Math.PI, false);
+	ctx.stroke();
+};
+
 export const drawBezierHelper = (ctx: CanvasRenderingContext2D, bezier: WasmBezierInstance, bezierStyleConfig: Partial<BezierStyleConfig> = {}): void => {
 	const points = bezier.get_points().map((p: string) => JSON.parse(p));
 	drawBezier(ctx, points, null, bezierStyleConfig);

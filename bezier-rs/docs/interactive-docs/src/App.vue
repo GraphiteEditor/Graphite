@@ -25,7 +25,7 @@
 <script lang="ts">
 import { defineComponent, markRaw } from "vue";
 
-import { drawBezier, drawBezierHelper, drawCurve, drawLine, drawPoint, drawText, getContextFromCanvas, COLORS } from "@/utils/drawing";
+import { drawBezier, drawBezierHelper, drawCircle, drawCurve, drawLine, drawPoint, drawText, getContextFromCanvas, COLORS } from "@/utils/drawing";
 import { BezierCurveType, Point, WasmBezierInstance, WasmSubpathInstance } from "@/utils/types";
 
 import ExamplePane from "@/components/ExamplePane.vue";
@@ -202,6 +202,26 @@ export default defineComponent({
 						drawLine(context, intersection, normalEnd, COLORS.NON_INTERACTIVE.STROKE_1);
 						drawPoint(context, normalEnd, 3, COLORS.NON_INTERACTIVE.STROKE_1);
 					},
+					template: markRaw(SliderExample),
+					templateOptions: { sliders: [tSliderOptions] },
+				},
+				{
+					name: "Curvature",
+					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: Record<string, number>): void => {
+						const context = getContextFromCanvas(canvas);
+						const point = JSON.parse(bezier.evaluate(options.t));
+						const normal = JSON.parse(bezier.normal(options.t));
+						const curvature = bezier.curvature(options.t);
+						const radius = 1 / curvature;
+
+						const curvatureCenter = { x: point.x + normal.x * radius, y: point.y + normal.y * radius };
+
+						drawCircle(context, curvatureCenter, Math.abs(radius), COLORS.NON_INTERACTIVE.STROKE_1);
+						drawLine(context, point, curvatureCenter, COLORS.NON_INTERACTIVE.STROKE_1);
+						drawPoint(context, point, 3, COLORS.NON_INTERACTIVE.STROKE_1);
+						drawPoint(context, curvatureCenter, 3, COLORS.NON_INTERACTIVE.STROKE_1);
+					},
+					curveDegrees: new Set([BezierCurveType.Quadratic, BezierCurveType.Cubic]),
 					template: markRaw(SliderExample),
 					templateOptions: { sliders: [tSliderOptions] },
 				},
