@@ -185,18 +185,21 @@ impl Fsm for EllipseToolFsmState {
 			EllipseToolFsmState::Ready => HintData(vec![HintGroup(vec![
 				HintInfo {
 					key_groups: vec![],
+					key_groups_mac: None,
 					mouse: Some(MouseMotion::LmbDrag),
 					label: String::from("Draw Ellipse"),
 					plus: false,
 				},
 				HintInfo {
 					key_groups: vec![KeysGroup(vec![Key::KeyShift])],
+					key_groups_mac: None,
 					mouse: None,
 					label: String::from("Constrain Circular"),
 					plus: true,
 				},
 				HintInfo {
 					key_groups: vec![KeysGroup(vec![Key::KeyAlt])],
+					key_groups_mac: None,
 					mouse: None,
 					label: String::from("From Center"),
 					plus: true,
@@ -205,12 +208,14 @@ impl Fsm for EllipseToolFsmState {
 			EllipseToolFsmState::Drawing => HintData(vec![HintGroup(vec![
 				HintInfo {
 					key_groups: vec![KeysGroup(vec![Key::KeyShift])],
+					key_groups_mac: None,
 					mouse: None,
 					label: String::from("Constrain Circular"),
 					plus: false,
 				},
 				HintInfo {
 					key_groups: vec![KeysGroup(vec![Key::KeyAlt])],
+					key_groups_mac: None,
 					mouse: None,
 					label: String::from("From Center"),
 					plus: false,

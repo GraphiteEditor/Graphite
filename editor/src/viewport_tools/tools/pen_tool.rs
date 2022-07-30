@@ -374,6 +374,7 @@ impl Fsm for PenToolFsmState {
 		let hint_data = match self {
 			PenToolFsmState::Ready => HintData(vec![HintGroup(vec![HintInfo {
 				key_groups: vec![],
+				key_groups_mac: None,
 				mouse: Some(MouseMotion::Lmb),
 				label: String::from("Draw Path"),
 				plus: false,
@@ -381,30 +382,35 @@ impl Fsm for PenToolFsmState {
 			PenToolFsmState::DraggingHandle | PenToolFsmState::PlacingAnchor => HintData(vec![
 				HintGroup(vec![HintInfo {
 					key_groups: vec![],
+					key_groups_mac: None,
 					mouse: Some(MouseMotion::LmbDrag),
 					label: String::from("Add Handle"),
 					plus: false,
 				}]),
 				HintGroup(vec![HintInfo {
 					key_groups: vec![],
+					key_groups_mac: None,
 					mouse: Some(MouseMotion::Lmb),
 					label: String::from("Add Anchor"),
 					plus: false,
 				}]),
 				HintGroup(vec![HintInfo {
 					key_groups: vec![KeysGroup(vec![Key::KeyControl])],
+					key_groups_mac: None,
 					mouse: None,
 					label: String::from("Snap 15°"),
 					plus: false,
 				}]),
 				HintGroup(vec![HintInfo {
 					key_groups: vec![KeysGroup(vec![Key::KeyShift])],
+					key_groups_mac: None,
 					mouse: None,
 					label: String::from("Break Handle"),
 					plus: false,
 				}]),
 				HintGroup(vec![HintInfo {
 					key_groups: vec![KeysGroup(vec![Key::KeyEnter])],
+					key_groups_mac: None,
 					mouse: None,
 					label: String::from("End Path"),
 					plus: false,

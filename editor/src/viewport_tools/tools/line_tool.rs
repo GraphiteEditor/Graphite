@@ -239,24 +239,28 @@ impl Fsm for LineToolFsmState {
 			LineToolFsmState::Ready => HintData(vec![HintGroup(vec![
 				HintInfo {
 					key_groups: vec![],
+					key_groups_mac: None,
 					mouse: Some(MouseMotion::LmbDrag),
 					label: String::from("Draw Line"),
 					plus: false,
 				},
 				HintInfo {
 					key_groups: vec![KeysGroup(vec![Key::KeyShift])],
+					key_groups_mac: None,
 					mouse: None,
 					label: String::from("Snap 15°"),
 					plus: true,
 				},
 				HintInfo {
 					key_groups: vec![KeysGroup(vec![Key::KeyAlt])],
+					key_groups_mac: None,
 					mouse: None,
 					label: String::from("From Center"),
 					plus: true,
 				},
 				HintInfo {
 					key_groups: vec![KeysGroup(vec![Key::KeyControl])],
+					key_groups_mac: None,
 					mouse: None,
 					label: String::from("Lock Angle"),
 					plus: true,
@@ -265,18 +269,21 @@ impl Fsm for LineToolFsmState {
 			LineToolFsmState::Drawing => HintData(vec![HintGroup(vec![
 				HintInfo {
 					key_groups: vec![KeysGroup(vec![Key::KeyShift])],
+					key_groups_mac: None,
 					mouse: None,
 					label: String::from("Snap 15°"),
 					plus: false,
 				},
 				HintInfo {
 					key_groups: vec![KeysGroup(vec![Key::KeyAlt])],
+					key_groups_mac: None,
 					mouse: None,
 					label: String::from("From Center"),
 					plus: false,
 				},
 				HintInfo {
 					key_groups: vec![KeysGroup(vec![Key::KeyControl])],
+					key_groups_mac: None,
 					mouse: None,
 					label: String::from("Lock Angle"),
 					plus: false,

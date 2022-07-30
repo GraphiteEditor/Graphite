@@ -147,12 +147,14 @@ impl Fsm for EyedropperToolFsmState {
 			EyedropperToolFsmState::Ready => HintData(vec![HintGroup(vec![
 				HintInfo {
 					key_groups: vec![],
+					key_groups_mac: None,
 					mouse: Some(MouseMotion::Lmb),
 					label: String::from("Sample to Primary"),
 					plus: false,
 				},
 				HintInfo {
 					key_groups: vec![],
+					key_groups_mac: None,
 					mouse: Some(MouseMotion::Rmb),
 					label: String::from("Sample to Secondary"),
 					plus: false,

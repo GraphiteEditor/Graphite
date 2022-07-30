@@ -306,12 +306,14 @@ impl Fsm for PathToolFsmState {
 				HintGroup(vec![
 					HintInfo {
 						key_groups: vec![],
+						key_groups_mac: None,
 						mouse: Some(MouseMotion::Lmb),
 						label: String::from("Select Point"),
 						plus: false,
 					},
 					HintInfo {
 						key_groups: vec![KeysGroup(vec![Key::KeyShift])],
+						key_groups_mac: None,
 						mouse: None,
 						label: String::from("Grow/Shrink Selection"),
 						plus: true,
@@ -319,6 +321,7 @@ impl Fsm for PathToolFsmState {
 				]),
 				HintGroup(vec![HintInfo {
 					key_groups: vec![],
+					key_groups_mac: None,
 					mouse: Some(MouseMotion::LmbDrag),
 					label: String::from("Drag Selected"),
 					plus: false,
@@ -331,12 +334,14 @@ impl Fsm for PathToolFsmState {
 							KeysGroup(vec![Key::KeyArrowDown]),
 							KeysGroup(vec![Key::KeyArrowLeft]),
 						],
+						key_groups_mac: None,
 						mouse: None,
 						label: String::from("Nudge Selected (coming soon)"),
 						plus: false,
 					},
 					HintInfo {
 						key_groups: vec![KeysGroup(vec![Key::KeyShift])],
+						key_groups_mac: None,
 						mouse: None,
 						label: String::from("Big Increment Nudge"),
 						plus: true,
@@ -345,18 +350,21 @@ impl Fsm for PathToolFsmState {
 				HintGroup(vec![
 					HintInfo {
 						key_groups: vec![KeysGroup(vec![Key::KeyG])],
+						key_groups_mac: None,
 						mouse: None,
 						label: String::from("Grab Selected (coming soon)"),
 						plus: false,
 					},
 					HintInfo {
 						key_groups: vec![KeysGroup(vec![Key::KeyR])],
+						key_groups_mac: None,
 						mouse: None,
 						label: String::from("Rotate Selected (coming soon)"),
 						plus: false,
 					},
 					HintInfo {
 						key_groups: vec![KeysGroup(vec![Key::KeyS])],
+						key_groups_mac: None,
 						mouse: None,
 						label: String::from("Scale Selected (coming soon)"),
 						plus: false,
@@ -366,12 +374,14 @@ impl Fsm for PathToolFsmState {
 			PathToolFsmState::Dragging => HintData(vec![HintGroup(vec![
 				HintInfo {
 					key_groups: vec![KeysGroup(vec![Key::KeyAlt])],
+					key_groups_mac: None,
 					mouse: None,
 					label: String::from("Split/Align Handles (Toggle)"),
 					plus: false,
 				},
 				HintInfo {
 					key_groups: vec![KeysGroup(vec![Key::KeyShift])],
+					key_groups_mac: None,
 					mouse: None,
 					label: String::from("Share Lengths of Aligned Handles"),
 					plus: false,

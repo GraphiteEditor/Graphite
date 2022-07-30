@@ -5,7 +5,7 @@
 				<Separator :type="'Section'" v-if="index !== 0" />
 				<template v-for="hint in hintGroup" :key="hint">
 					<LayoutRow v-if="hint.plus" class="plus">+</LayoutRow>
-					<UserInputLabel :inputMouse="hint.mouse" :inputKeys="hint.key_groups">{{ hint.label }}</UserInputLabel>
+					<UserInputLabel :inputMouse="hint.mouse" :inputKeys="inputKeysForPlatform(hint)">{{ hint.label }}</UserInputLabel>
 				</template>
 			</template>
 		</LayoutRow>
@@ -44,7 +44,8 @@
 <script lang="ts">
 import { defineComponent } from "vue";
 
-import { HintData, UpdateInputHints } from "@/wasm-communication/messages";
+import { operatingSystem } from "@/utility-functions/platform";
+import { HintData, HintInfo, KeysGroup, UpdateInputHints } from "@/wasm-communication/messages";
 
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 import Separator from "@/components/widgets/labels/Separator.vue";
@@ -56,6 +57,12 @@ export default defineComponent({
 		return {
 			hintData: [] as HintData,
 		};
+	},
+	methods: {
+		inputKeysForPlatform(hint: HintInfo): KeysGroup[] {
+			if (operatingSystem() === "Mac" && hint.key_groups_mac) return hint.key_groups_mac;
+			return hint.key_groups;
+		},
 	},
 	mounted() {
 		this.editor.subscriptions.subscribeJsMessage(UpdateInputHints, (updateInputHints) => {

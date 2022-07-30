@@ -146,12 +146,14 @@ impl Fsm for FillToolFsmState {
 			FillToolFsmState::Ready => HintData(vec![HintGroup(vec![
 				HintInfo {
 					key_groups: vec![],
+					key_groups_mac: None,
 					mouse: Some(MouseMotion::Lmb),
 					label: String::from("Fill with Primary"),
 					plus: false,
 				},
 				HintInfo {
 					key_groups: vec![],
+					key_groups_mac: None,
 					mouse: Some(MouseMotion::Rmb),
 					label: String::from("Fill with Secondary"),
 					plus: false,

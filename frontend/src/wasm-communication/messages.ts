@@ -81,6 +81,8 @@ export type HintGroup = HintInfo[];
 export class HintInfo {
 	readonly key_groups!: KeysGroup[];
 
+	readonly key_groups_mac!: KeysGroup[] | null;
+
 	readonly mouse!: MouseMotion | null;
 
 	readonly label!: string;
