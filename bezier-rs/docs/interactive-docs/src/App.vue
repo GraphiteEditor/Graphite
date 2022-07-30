@@ -269,7 +269,8 @@ export default defineComponent({
 					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: Record<string, number>, mouseLocation?: Point): void => {
 						if (mouseLocation != null) {
 							const context = getContextFromCanvas(canvas);
-							const closestPoint = JSON.parse(bezier.project(mouseLocation.x, mouseLocation.y));
+							const t = bezier.project(mouseLocation.x, mouseLocation.y);
+							const closestPoint = JSON.parse(bezier.evaluate(t));
 							drawLine(context, mouseLocation, closestPoint, COLORS.NON_INTERACTIVE.STROKE_1);
 						}
 					},
@@ -376,7 +377,7 @@ export default defineComponent({
 					},
 				},
 				{
-					name: "Intersect Line Segment",
+					name: "Intersect (Line Segment)",
 					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance): void => {
 						const context = getContextFromCanvas(canvas);
 						const line = [
@@ -385,10 +386,42 @@ export default defineComponent({
 						];
 						const mappedLine = line.map((p) => [p.x, p.y]);
 						drawLine(context, line[0], line[1], COLORS.NON_INTERACTIVE.STROKE_1);
-						const intersections: Point[] = bezier.intersect_line_segment(mappedLine).map((p) => JSON.parse(p));
-						intersections.forEach((p: Point) => {
+						const intersections: Float64Array = bezier.intersect_line_segment(mappedLine);
+						intersections.forEach((t: number) => {
+							const p = JSON.parse(bezier.evaluate(t));
 							drawPoint(context, p, 3, COLORS.NON_INTERACTIVE.STROKE_2);
 						});
+					},
+				},
+				{
+					name: "Intersect (Cubic Segment)",
+					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: Record<string, number>): void => {
+						const context = getContextFromCanvas(canvas);
+						const points = [
+							{ x: 40, y: 20 },
+							{ x: 100, y: 40 },
+							{ x: 40, y: 120 },
+							{ x: 175, y: 140 },
+						];
+						const mappedPoints = points.map((p) => [p.x, p.y]);
+						drawCurve(context, points, COLORS.NON_INTERACTIVE.STROKE_1, 1);
+						const intersections: Float64Array = bezier.intersect_cubic_segment(mappedPoints, options.error);
+						intersections.forEach((t: number) => {
+							const p = JSON.parse(bezier.evaluate(t));
+							drawPoint(context, p, 3, COLORS.NON_INTERACTIVE.STROKE_2);
+						});
+					},
+					template: markRaw(SliderExample),
+					templateOptions: {
+						sliders: [
+							{
+								variable: "error",
+								min: 0.1,
+								max: 2,
+								step: 0.1,
+								default: 0.5,
+							},
+						],
 					},
 				},
 				{
