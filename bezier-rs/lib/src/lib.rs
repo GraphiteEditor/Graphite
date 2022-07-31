@@ -1046,7 +1046,7 @@ mod tests {
 	}
 
 	// Compare vectors of beziers by allowing some maximum absolute difference between points to account for floating point errors
-	fn compare_vector_of_beziers(beziers: &Vec<Bezier>, expected_bezier_points: Vec<Vec<DVec2>>) -> bool {
+	fn compare_vector_of_beziers(beziers: &[Bezier], expected_bezier_points: Vec<Vec<DVec2>>) -> bool {
 		beziers
 			.iter()
 			.zip(expected_bezier_points.iter())
