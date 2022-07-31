@@ -685,8 +685,8 @@ impl Bezier {
 
 	// TODO: Use an `impl Iterator` return type instead of a `Vec`
 	/// Returns a list of `t` values that correspond to intersection points between the current bezier curve and the provided one. The returned `t` values are with respect to the current bezier, not the provided parameter.
-	/// If either curve is linear, then zero intersection points will be returned along colinear segments.
-	/// - `error` - For intersections with non-linear beziers, `error` defines the threshold for bounding boxes to be considered an intersection point.
+	/// If the provided curve is linear, then zero intersection points will be returned along colinear segments.
+	/// - `error` - For intersections where the provided bezier is non-linear, `error` defines the threshold for bounding boxes to be considered an intersection point.
 	pub fn intersections(&self, other: &Bezier, error: Option<f64>) -> Vec<f64> {
 		let error = error.unwrap_or(0.5);
 		if other.handles == BezierHandles::Linear {
