@@ -9,6 +9,7 @@ pub use subpath::*;
 
 use glam::{DMat2, DVec2};
 use std::fmt::{Debug, Formatter, Result};
+use std::ops::Range;
 
 /// Representation of the handle point(s) in a bezier segment.
 #[derive(Copy, Clone, PartialEq)]
@@ -641,17 +642,20 @@ impl Bezier {
 	/// Implementation of the algorithm to find curve intersections by iterating on bounding boxes.
 	/// - `self_original_t_interval` - Used to identify the `t` values of the original parent of `self` that the current iteration is representing.
 	/// - `other_original_t_interval` - Used to identify the `t` values of the original parent of `other` that the current iteration is representing.
-	fn intersections_between_subcurves(&self, self_original_t_interval: [f64; 2], other: &Bezier, other_original_t_interval: [f64; 2], error: f64) -> Vec<[f64; 2]> {
+	fn intersections_between_subcurves(&self, self_original_t_interval: Range<f64>, other: &Bezier, other_original_t_interval: Range<f64>, error: f64) -> Vec<[f64; 2]> {
 		let bounding_box1 = self.bounding_box();
 		let bounding_box2 = other.bounding_box();
 
 		// Get the `t` interval of the original parent of `self` and determine the middle `t` value
-		let [curve1_start_t, curve1_end_t] = self_original_t_interval;
-		let curve1_mid_t = curve1_start_t + (curve1_end_t - curve1_start_t) / 2.;
+		let Range { start: self_start_t, end: self_end_t } = self_original_t_interval;
+		let self_mid_t = self_start_t + (self_end_t - self_start_t) / 2.;
 
 		// Get the `t` interval of the original parent of `other` and determine the middle `t` value
-		let [curve2_start_t, curve2_end_t] = other_original_t_interval;
-		let curve2_mid_t = curve2_start_t + (curve2_end_t - curve2_start_t) / 2.;
+		let Range {
+			start: other_start_t,
+			end: other_end_t,
+		} = other_original_t_interval;
+		let other_mid_t = other_start_t + (other_end_t - other_start_t) / 2.;
 
 		let error_threshold = DVec2::new(error, error);
 
@@ -660,23 +664,18 @@ impl Bezier {
 			// If bounding boxes are within the error threshold (i.e. are small enough), we have found an intersection
 			if (bounding_box1[1] - bounding_box1[0]).lt(&error_threshold) && (bounding_box2[1] - bounding_box2[0]).lt(&error_threshold) {
 				// Use the middle t value, return the corresponding `t` value for `self` and `other`
-				return vec![[curve1_mid_t, curve2_mid_t]];
+				return vec![[self_mid_t, other_mid_t]];
 			}
 
 			// Split curves in half and repeat with the combinations of the two halves of each curve
 			let [split_1_a, split_1_b] = self.split(0.5);
 			let [split_2_a, split_2_b] = other.split(0.5);
 
-			// Get the new `t` intervals for the split halves of `self` and `other`
-			let interval_1_a = [curve1_start_t, curve1_mid_t];
-			let interval_1_b = [curve1_mid_t, curve1_end_t];
-			let interval_2_a = [curve2_start_t, curve2_mid_t];
-			let interval_2_b = [curve2_mid_t, curve2_end_t];
 			[
-				split_1_a.intersections_between_subcurves(interval_1_a, &split_2_a, interval_2_a, error),
-				split_1_a.intersections_between_subcurves(interval_1_a, &split_2_b, interval_2_b, error),
-				split_1_b.intersections_between_subcurves(interval_1_b, &split_2_a, interval_2_a, error),
-				split_1_b.intersections_between_subcurves(interval_1_b, &split_2_b, interval_2_b, error),
+				split_1_a.intersections_between_subcurves(self_start_t..self_mid_t, &split_2_a, other_start_t..other_mid_t, error),
+				split_1_a.intersections_between_subcurves(self_start_t..self_mid_t, &split_2_b, other_mid_t..other_end_t, error),
+				split_1_b.intersections_between_subcurves(self_mid_t..self_end_t, &split_2_a, other_start_t..other_mid_t, error),
+				split_1_b.intersections_between_subcurves(self_mid_t..self_end_t, &split_2_b, other_mid_t..other_end_t, error),
 			]
 			.concat()
 		} else {
@@ -688,15 +687,15 @@ impl Bezier {
 	/// Returns a list of `t` values that correspond to intersection points between the current bezier curve and the provided one. The returned `t` values are with respect to the current bezier, not the provided parameter.
 	/// If either curve is linear, then zero intersection points will be returned along colinear segments.
 	/// - `error` - For intersections with non-linear beziers, `error` defines the threshold for bounding boxes to be considered an intersection point.
-	pub fn intersections(&self, curve: &Bezier, error: Option<f64>) -> Vec<f64> {
+	pub fn intersections(&self, other: &Bezier, error: Option<f64>) -> Vec<f64> {
 		let error = error.unwrap_or(0.5);
-		if curve.handles == BezierHandles::Linear {
+		if other.handles == BezierHandles::Linear {
 			// Rotate the bezier and the line by the angle that the line makes with the x axis
-			let slope = curve.end - curve.start;
-			let angle = slope.angle_between(DVec2::new(1., 0.));
+			let line_directional_vector = other.end - other.start;
+			let angle = line_directional_vector.angle_between(DVec2::new(1., 0.));
 			let rotation_matrix = DMat2::from_angle(angle);
 			let rotated_bezier = self.apply_transformation(&|point| rotation_matrix.mul_vec2(point));
-			let rotated_line = [rotation_matrix.mul_vec2(curve.start), rotation_matrix.mul_vec2(curve.end)];
+			let rotated_line = [rotation_matrix.mul_vec2(other.start), rotation_matrix.mul_vec2(other.end)];
 
 			// Translate the bezier such that the line becomes aligned on top of the x-axis
 			let vertical_distance = rotated_line[0].y;
@@ -731,8 +730,8 @@ impl Bezier {
 				}
 			};
 
-			let min = curve.start.min(curve.end);
-			let max = curve.start.max(curve.end);
+			let min = other.start.min(other.end);
+			let max = other.start.max(other.end);
 
 			return list_intersection_t
 				.into_iter()
@@ -746,30 +745,25 @@ impl Bezier {
 				.collect::<Vec<f64>>();
 		}
 
-		// If the self is linear, then use the implementation for intersections with linear lines
-		if self.handles == BezierHandles::Linear {
-			return curve.intersections(self, Some(error));
-		}
-
-		// TODO: Considering using the `intersections_between_vectors_of_curves` helper function here
+		// TODO: Consider using the `intersections_between_vectors_of_curves` helper function here
 		// Otherwise, use bounding box to determine intersections
-		self.intersections_between_subcurves([0., 1.], curve, [0., 1.], error).iter().map(|t_values| t_values[0]).collect()
+		self.intersections_between_subcurves(0. ..1., other, 0. ..1., error).iter().map(|t_values| t_values[0]).collect()
 	}
 
 	/// Helper function to compute intersections between lists of subcurves.
 	/// This function uses the algorithm implemented in `intersections_between_subcurves`.
-	fn intersections_between_vectors_of_curves(subcurves_1: Vec<&(Bezier, [f64; 2])>, subcurves_2: Vec<&(Bezier, [f64; 2])>, error: f64) -> Vec<[f64; 2]> {
-		let segment_pairs = subcurves_1.iter().flat_map(|&(curve_1, curve_1_t_pair)| {
-			subcurves_2.iter().filter_map(move |&(curve_2, curve_2_t_pair)| {
-				if utils::do_rectangles_overlap(curve_1.bounding_box(), curve_2.bounding_box()) {
-					Some((curve_1, curve_1_t_pair, curve_2, curve_2_t_pair))
+	fn intersections_between_vectors_of_curves(subcurves1: &[(Bezier, Range<f64>)], subcurves2: &[(Bezier, Range<f64>)], error: f64) -> Vec<[f64; 2]> {
+		let segment_pairs = subcurves1.iter().flat_map(move |(curve1, curve1_t_pair)| {
+			subcurves2.iter().filter_map(move |(curve2, curve2_t_pair)| {
+				if utils::do_rectangles_overlap(curve1.bounding_box(), curve2.bounding_box()) {
+					Some((curve1, curve1_t_pair, curve2, curve2_t_pair))
 				} else {
 					None
 				}
 			})
 		});
 		segment_pairs
-			.flat_map(|(curve1, &curve_1_t_pair, curve2, &curve_2_t_pair)| curve1.intersections_between_subcurves(curve_1_t_pair, curve2, curve_2_t_pair, error))
+			.flat_map(|(curve1, curve1_t_pair, curve2, curve2_t_pair)| curve1.intersections_between_subcurves(curve1_t_pair.clone(), curve2, curve2_t_pair.clone(), error))
 			.collect::<Vec<[f64; 2]>>()
 	}
 
@@ -784,23 +778,21 @@ impl Bezier {
 		let error = error.unwrap_or(0.5);
 
 		// Get 2 copies of the reduced curves
-		let (self_1, self_1_t_values) = self.reduced_curves_and_t_values(None);
-		let (self_2, self_2_t_values) = (self_1.clone(), self_1_t_values.clone());
-		let num_curves = self_1.len();
+		let (self1, self1_t_values) = self.reduced_curves_and_t_values(None);
+		let (self2, self2_t_values) = (self1.clone(), self1_t_values.clone());
+		let num_curves = self1.len();
 
 		// Create iterators that combine a subcurve with the `t` value pair that it was trimmed with
-		let combined_iterator_1 = self_1.into_iter().zip(self_1_t_values.windows(2).map(|t_pair| [t_pair[0], t_pair[1]]));
+		let combined_iterator1 = self1.into_iter().zip(self1_t_values.windows(2).map(|t_pair| Range { start: t_pair[0], end: t_pair[1] }));
 		// Second one needs to be a list because Iterator does not implement copy
-		let combined_list_2: Vec<(Bezier, [f64; 2])> = self_2.into_iter().zip(self_2_t_values.windows(2).map(|t_pair| [t_pair[0], t_pair[1]])).collect();
+		let combined_list2: Vec<(Bezier, Range<f64>)> = self2.into_iter().zip(self2_t_values.windows(2).map(|t_pair| Range { start: t_pair[0], end: t_pair[1] })).collect();
 
 		// Adjacent reduced curves cannot intersect
 		// So for each curve, look for intersections with every curve that is at least 2 indices away
-		combined_iterator_1
+		combined_iterator1
 			.take(num_curves - 2)
 			.enumerate()
-			.flat_map(|(index, (subcurve, t_pair))| {
-				Bezier::intersections_between_vectors_of_curves(vec![&(subcurve, t_pair)], combined_list_2.iter().skip(index + 2).collect::<Vec<&(Bezier, [f64; 2])>>(), error)
-			})
+			.flat_map(|(index, (subcurve, t_pair))| Bezier::intersections_between_vectors_of_curves(&[(subcurve, t_pair)], &combined_list2[index + 2..], error))
 			.collect()
 	}
 
@@ -859,7 +851,7 @@ impl Bezier {
 	fn reduced_curves_and_t_values(&self, step_size: Option<f64>) -> (Vec<Bezier>, Vec<f64>) {
 		// A linear segment is scalable, so return itself
 		if let BezierHandles::Linear = self.handles {
-			return (vec![*self], vec![]);
+			return (vec![*self], vec![0., 1.]);
 		}
 
 		let step_size = step_size.unwrap_or(DEFAULT_REDUCE_STEP_SIZE);
