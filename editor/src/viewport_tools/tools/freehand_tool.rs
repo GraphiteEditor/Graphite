@@ -60,7 +60,7 @@ impl ToolMetadata for FreehandTool {
 		"VectorFreehandTool".into()
 	}
 	fn tooltip(&self) -> String {
-		"Freehand Tool (N)".into()
+		"Freehand Tool".into()
 	}
 	fn tool_type(&self) -> crate::viewport_tools::tool::ToolType {
 		ToolType::Freehand

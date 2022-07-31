@@ -1,6 +1,8 @@
 use super::tools::*;
 use crate::communication::message_handler::MessageHandler;
 use crate::document::DocumentMessageHandler;
+use crate::input::input_mapper::future_key_mapping::action_shortcut;
+use crate::input::input_mapper::FutureKeyMapping;
 use crate::input::InputPreprocessorMessageHandler;
 use crate::layout::widgets::{IconButton, Layout, LayoutGroup, PropertyHolder, Separator, SeparatorDirection, SeparatorType, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
 use crate::message_prelude::*;
@@ -115,6 +117,7 @@ impl ToolData {
 #[derive(Debug)]
 pub struct ToolBarMetadataGroup {
 	pub tooltip: String,
+	pub tooltip_shortcut: Option<FutureKeyMapping>,
 	pub icon_name: String,
 	pub tool_type: ToolType,
 }
@@ -123,18 +126,24 @@ impl PropertyHolder for ToolData {
 	fn properties(&self) -> Layout {
 		let tool_groups_layout = list_tools_in_groups()
 			.iter()
-			.map(|tool_group| tool_group.iter().map(|tool| ToolBarMetadataGroup {tooltip: tool.tooltip(), icon_name: tool.icon_name(), tool_type: tool.tool_type()}).collect::<Vec<_>>())
+			.map(|tool_group| tool_group.iter().map(|tool| ToolBarMetadataGroup {
+				tooltip: tool.tooltip(),
+				tooltip_shortcut: action_shortcut!(tool_type_to_activate_tool_message(tool.tool_type())),
+				icon_name: tool.icon_name(),
+				tool_type: tool.tool_type(),
+			}).collect::<Vec<_>>())
 			.chain(coming_soon_tools())
 			.flat_map(|group| {
 				let separator = std::iter::once(WidgetHolder::new(Widget::Separator(Separator {
 					direction: SeparatorDirection::Vertical,
 					separator_type: SeparatorType::Section,
 				})));
-				let buttons = group.into_iter().map(|ToolBarMetadataGroup {tooltip, tool_type, icon_name}| {
+				let buttons = group.into_iter().map(|ToolBarMetadataGroup { tooltip, tooltip_shortcut, tool_type, icon_name }| {
 					WidgetHolder::new(Widget::IconButton(IconButton {
 						icon: icon_name,
 						size: 32,
 						tooltip: tooltip.clone(),
+						tooltip_shortcut,
 						active: self.active_tool_type == tool_type,
 						on_update: WidgetCallback::new(move |_| {
 							if !tooltip.contains("Coming Soon") {
@@ -143,7 +152,6 @@ impl PropertyHolder for ToolData {
 								DialogMessage::RequestComingSoonDialog { issue: None }.into()
 							}
 						}),
-						..Default::default()
 					}))
 				});
 				separator.chain(buttons)
@@ -253,68 +261,107 @@ pub fn coming_soon_tools() -> Vec<Vec<ToolBarMetadataGroup>> {
 			tool_type: ToolType::Brush,
 			icon_name: "RasterBrushTool".into(),
 			tooltip: "Coming Soon: Brush Tool (B)".into(),
+			tooltip_shortcut: None,
 		},
 		ToolBarMetadataGroup {
 			tool_type: ToolType::Heal,
 			icon_name: "RasterHealTool".into(),
 			tooltip: "Coming Soon: Heal Tool (J)".into(),
+			tooltip_shortcut: None,
 		},
 		ToolBarMetadataGroup {
 			tool_type: ToolType::Clone,
 			icon_name: "RasterCloneTool".into(),
-			tooltip: "Coming Soon: Clone Tool (C))".into(),
+			tooltip: "Coming Soon: Clone Tool (C)".into(),
+			tooltip_shortcut: None,
 		},
 		ToolBarMetadataGroup {
 			tool_type: ToolType::Patch,
 			icon_name: "RasterPatchTool".into(),
 			tooltip: "Coming Soon: Patch Tool".into(),
+			tooltip_shortcut: None,
 		},
 		ToolBarMetadataGroup {
 			tool_type: ToolType::Detail,
 			icon_name: "RasterDetailTool".into(),
 			tooltip: "Coming Soon: Detail Tool (D)".into(),
+			tooltip_shortcut: None,
 		},
 		ToolBarMetadataGroup {
 			tool_type: ToolType::Relight,
 			icon_name: "RasterRelightTool".into(),
-			tooltip: "Coming Soon: Relight Tool (O".into(),
+			tooltip: "Coming Soon: Relight Tool (O)".into(),
+			tooltip_shortcut: None,
 		},
 	]]
 }
 
-pub fn message_to_tool_type(message: &ToolMessage) -> ToolType {
-	use ToolMessage::*;
-
-	match message {
+pub fn tool_message_to_tool_type(tool_message: &ToolMessage) -> ToolType {
+	match tool_message {
 		// General tool group
-		Select(_) => ToolType::Select,
-		Artboard(_) => ToolType::Artboard,
-		Navigate(_) => ToolType::Navigate,
-		Eyedropper(_) => ToolType::Eyedropper,
-		Fill(_) => ToolType::Fill,
-		Gradient(_) => ToolType::Gradient,
+		ToolMessage::Select(_) => ToolType::Select,
+		ToolMessage::Artboard(_) => ToolType::Artboard,
+		ToolMessage::Navigate(_) => ToolType::Navigate,
+		ToolMessage::Eyedropper(_) => ToolType::Eyedropper,
+		ToolMessage::Fill(_) => ToolType::Fill,
+		ToolMessage::Gradient(_) => ToolType::Gradient,
 
 		// Vector tool group
-		Path(_) => ToolType::Path,
-		Pen(_) => ToolType::Pen,
-		Freehand(_) => ToolType::Freehand,
-		Spline(_) => ToolType::Spline,
-		Line(_) => ToolType::Line,
-		Rectangle(_) => ToolType::Rectangle,
-		Ellipse(_) => ToolType::Ellipse,
-		Shape(_) => ToolType::Shape,
-		Text(_) => ToolType::Text,
+		ToolMessage::Path(_) => ToolType::Path,
+		ToolMessage::Pen(_) => ToolType::Pen,
+		ToolMessage::Freehand(_) => ToolType::Freehand,
+		ToolMessage::Spline(_) => ToolType::Spline,
+		ToolMessage::Line(_) => ToolType::Line,
+		ToolMessage::Rectangle(_) => ToolType::Rectangle,
+		ToolMessage::Ellipse(_) => ToolType::Ellipse,
+		ToolMessage::Shape(_) => ToolType::Shape,
+		ToolMessage::Text(_) => ToolType::Text,
 
 		// Raster tool group
-		// Brush(_) => ToolType::Brush,
-		// Heal(_) => ToolType::Heal,
-		// Clone(_) => ToolType::Clone,
-		// Patch(_) => ToolType::Patch,
-		// Detail(_) => ToolType::Detail,
-		// Relight(_) => ToolType::Relight,
+		// ToolMessage::Brush(_) => ToolType::Brush,
+		// ToolMessage::Heal(_) => ToolType::Heal,
+		// ToolMessage::Clone(_) => ToolType::Clone,
+		// ToolMessage::Patch(_) => ToolType::Patch,
+		// ToolMessage::Detail(_) => ToolType::Detail,
+		// ToolMessage::Relight(_) => ToolType::Relight,
 		_ => panic!(
-			"Conversion from message to tool type impossible because the given ToolMessage does not belong to a tool. Got: {:?}",
-			message
+			"Conversion from ToolMessage to ToolType impossible because the given ToolMessage does not have a matching ToolType. Got: {:?}",
+			tool_message
+		),
+	}
+}
+
+pub fn tool_type_to_activate_tool_message(tool_type: ToolType) -> ToolMessageDiscriminant {
+	match tool_type {
+		// General tool group
+		ToolType::Select => ToolMessageDiscriminant::ActivateToolSelect,
+		ToolType::Artboard => ToolMessageDiscriminant::ActivateToolArtboard,
+		ToolType::Navigate => ToolMessageDiscriminant::ActivateToolNavigate,
+		ToolType::Eyedropper => ToolMessageDiscriminant::ActivateToolEyedropper,
+		ToolType::Fill => ToolMessageDiscriminant::ActivateToolFill,
+		ToolType::Gradient => ToolMessageDiscriminant::ActivateToolGradient,
+
+		// Vector tool group
+		ToolType::Path => ToolMessageDiscriminant::ActivateToolPath,
+		ToolType::Pen => ToolMessageDiscriminant::ActivateToolPen,
+		ToolType::Freehand => ToolMessageDiscriminant::ActivateToolFreehand,
+		ToolType::Spline => ToolMessageDiscriminant::ActivateToolSpline,
+		ToolType::Line => ToolMessageDiscriminant::ActivateToolLine,
+		ToolType::Rectangle => ToolMessageDiscriminant::ActivateToolRectangle,
+		ToolType::Ellipse => ToolMessageDiscriminant::ActivateToolEllipse,
+		ToolType::Shape => ToolMessageDiscriminant::ActivateToolShape,
+		ToolType::Text => ToolMessageDiscriminant::ActivateToolText,
+
+		// Raster tool group
+		// ToolType::Brush => ToolMessageDiscriminant::ActivateToolBrush,
+		// ToolType::Heal => ToolMessageDiscriminant::ActivateToolHeal,
+		// ToolType::Clone => ToolMessageDiscriminant::ActivateToolClone,
+		// ToolType::Patch => ToolMessageDiscriminant::ActivateToolPatch,
+		// ToolType::Detail => ToolMessageDiscriminant::ActivateToolDetail,
+		// ToolType::Relight => ToolMessageDiscriminant::ActivateToolRelight,
+		_ => panic!(
+			"Conversion from ToolType to ToolMessage impossible because the given ToolType does not have a matching ToolMessage. Got: {:?}",
+			tool_type
 		),
 	}
 }

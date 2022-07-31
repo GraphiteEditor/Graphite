@@ -41,7 +41,7 @@ impl ToolMetadata for NavigateTool {
 		"GeneralNavigateTool".into()
 	}
 	fn tooltip(&self) -> String {
-		"Navigate Tool (Z)".into()
+		"Navigate Tool".into()
 	}
 	fn tool_type(&self) -> crate::viewport_tools::tool::ToolType {
 		ToolType::Navigate

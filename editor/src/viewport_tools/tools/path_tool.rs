@@ -50,7 +50,7 @@ impl ToolMetadata for PathTool {
 		"VectorPathTool".into()
 	}
 	fn tooltip(&self) -> String {
-		"Path Tool (A)".into()
+		"Path Tool".into()
 	}
 	fn tool_type(&self) -> crate::viewport_tools::tool::ToolType {
 		ToolType::Path

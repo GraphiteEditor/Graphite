@@ -61,7 +61,7 @@ impl ToolMetadata for LineTool {
 		"VectorLineTool".into()
 	}
 	fn tooltip(&self) -> String {
-		"Line Tool (L)".into()
+		"Line Tool".into()
 	}
 	fn tool_type(&self) -> crate::viewport_tools::tool::ToolType {
 		ToolType::Line

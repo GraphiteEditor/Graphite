@@ -78,7 +78,7 @@ impl ToolMetadata for PenTool {
 		"VectorPenTool".into()
 	}
 	fn tooltip(&self) -> String {
-		"Pen Tool (P)".into()
+		"Pen Tool".into()
 	}
 	fn tool_type(&self) -> crate::viewport_tools::tool::ToolType {
 		ToolType::Pen

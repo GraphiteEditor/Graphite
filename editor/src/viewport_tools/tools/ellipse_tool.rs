@@ -41,7 +41,7 @@ impl ToolMetadata for EllipseTool {
 		"VectorEllipseTool".into()
 	}
 	fn tooltip(&self) -> String {
-		"Ellipse Tool (E)".into()
+		"Ellipse Tool".into()
 	}
 	fn tool_type(&self) -> crate::viewport_tools::tool::ToolType {
 		ToolType::Ellipse

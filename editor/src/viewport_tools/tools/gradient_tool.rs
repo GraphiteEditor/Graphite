@@ -65,7 +65,7 @@ impl ToolMetadata for GradientTool {
 		"GeneralGradientTool".into()
 	}
 	fn tooltip(&self) -> String {
-		"Gradient Tool (H))".into()
+		"Gradient Tool".into()
 	}
 	fn tool_type(&self) -> crate::viewport_tools::tool::ToolType {
 		ToolType::Gradient

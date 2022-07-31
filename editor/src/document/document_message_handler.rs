@@ -7,6 +7,7 @@ use super::{vectorize_layer_metadata, PropertiesPanelMessageHandler};
 use super::{ArtboardMessageHandler, MovementMessageHandler, OverlaysMessageHandler, TransformLayerMessageHandler};
 use crate::consts::{ASYMPTOTIC_EFFECT, DEFAULT_DOCUMENT_NAME, FILE_SAVE_SUFFIX, GRAPHITE_DOCUMENT_VERSION, SCALE_EFFECT, SCROLLBAR_SPACING, VIEWPORT_ZOOM_TO_FIT_PADDING_SCALE_FACTOR};
 use crate::frontend::utility_types::{FileType, FrontendImageData};
+use crate::input::input_mapper::future_key_mapping::action_shortcut;
 use crate::input::InputPreprocessorMessageHandler;
 use crate::layout::layout_message::LayoutTarget;
 use crate::layout::widgets::{
@@ -549,6 +550,7 @@ impl DocumentMessageHandler {
 				icon: "Snapping".into(),
 				tooltip: "Snapping".into(),
 				on_update: WidgetCallback::new(|optional_input: &OptionalInput| DocumentMessage::SetSnapping { snap: optional_input.checked }.into()),
+				..Default::default()
 			})),
 			WidgetHolder::new(Widget::PopoverButton(PopoverButton {
 				header: "Snapping".into(),
@@ -564,6 +566,7 @@ impl DocumentMessageHandler {
 				icon: "Grid".into(),
 				tooltip: "Grid".into(),
 				on_update: WidgetCallback::new(|_| DialogMessage::RequestComingSoonDialog { issue: Some(318) }.into()),
+				..Default::default()
 			})),
 			WidgetHolder::new(Widget::PopoverButton(PopoverButton {
 				header: "Grid".into(),
@@ -579,6 +582,7 @@ impl DocumentMessageHandler {
 				icon: "Overlays".into(),
 				tooltip: "Overlays".into(),
 				on_update: WidgetCallback::new(|optional_input: &OptionalInput| DocumentMessage::SetOverlaysVisibility { visible: optional_input.checked }.into()),
+				..Default::default()
 			})),
 			WidgetHolder::new(Widget::PopoverButton(PopoverButton {
 				header: "Overlays".into(),
@@ -841,14 +845,16 @@ impl DocumentMessageHandler {
 				})),
 				WidgetHolder::new(Widget::IconButton(IconButton {
 					icon: "NodeFolder".into(),
-					tooltip: "New Folder (Ctrl+Shift+N)".into(), // TODO: Customize this tooltip for the Mac version of the keyboard shortcut
+					tooltip: "New Folder".into(),
+					tooltip_shortcut: action_shortcut!(DocumentMessageDiscriminant::CreateEmptyFolder),
 					size: 24,
 					on_update: WidgetCallback::new(|_| DocumentMessage::CreateEmptyFolder { container_path: vec![] }.into()),
 					..Default::default()
 				})),
 				WidgetHolder::new(Widget::IconButton(IconButton {
 					icon: "Trash".into(),
-					tooltip: "Delete Selected (Del)".into(), // TODO: Customize this tooltip for the Mac version of the keyboard shortcut
+					tooltip: "Delete Selected".into(),
+					tooltip_shortcut: action_shortcut!(DocumentMessageDiscriminant::DeleteSelectedLayers),
 					size: 24,
 					on_update: WidgetCallback::new(|_| DocumentMessage::DeleteSelectedLayers.into()),
 					..Default::default()

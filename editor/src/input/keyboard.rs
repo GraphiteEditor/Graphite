@@ -1,7 +1,7 @@
 use crate::message_prelude::*;
 
 use serde::{Deserialize, Serialize};
-use std::fmt::{Display, Formatter};
+use std::fmt::{self, Display, Formatter};
 use std::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign};
 
 // TODO: Increase size of type
@@ -92,6 +92,16 @@ pub enum Key {
 
 	// This has to be the last element in the enum
 	NumKeys,
+}
+
+impl fmt::Display for Key {
+	fn fmt(&self, f: &mut fmt::Formatter) -> std::fmt::Result {
+		let key_name = format!("{:?}", self);
+
+		let name = if &key_name[0..3] == "Key" { key_name.chars().skip(3).collect::<String>() } else { key_name };
+
+		write!(f, "{}", name)
+	}
 }
 
 pub const NUMBER_OF_KEYS: usize = Key::NumKeys as usize;

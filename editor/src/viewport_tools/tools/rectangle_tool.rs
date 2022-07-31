@@ -80,7 +80,7 @@ impl ToolMetadata for RectangleTool {
 		"VectorRectangleTool".into()
 	}
 	fn tooltip(&self) -> String {
-		"Rectangle Tool (M)".into()
+		"Rectangle Tool".into()
 	}
 	fn tool_type(&self) -> crate::viewport_tools::tool::ToolType {
 		ToolType::Rectangle

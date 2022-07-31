@@ -150,12 +150,12 @@ impl Dispatcher {
 					self.message_handlers.input_preprocessor_message_handler.process_action(message, keyboard_platform, &mut queue);
 				}
 				Layout(message) => {
-					let action_input_mapping = &|action_to_find: &MessageDiscriminant| {
-						let keyboard_platform = self.message_handlers.portfolio_message_handler.platform.as_keyboard_platform_layout();
-						self.message_handlers.input_mapper_message_handler.action_input_mapping(action_to_find, keyboard_platform)
-					};
+					let keyboard_platform = self.message_handlers.portfolio_message_handler.platform.as_keyboard_platform_layout();
+					let action_input_mapping = &|action_to_find: &MessageDiscriminant| self.message_handlers.input_mapper_message_handler.action_input_mapping(action_to_find, keyboard_platform);
 
-					self.message_handlers.layout_message_handler.process_action(message, action_input_mapping, &mut queue);
+					self.message_handlers
+						.layout_message_handler
+						.process_action(message, (action_input_mapping, keyboard_platform), &mut queue);
 				}
 				Portfolio(message) => {
 					self.message_handlers

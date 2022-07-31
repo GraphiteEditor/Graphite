@@ -37,7 +37,7 @@ impl ToolMetadata for FillTool {
 		"GeneralFillTool".into()
 	}
 	fn tooltip(&self) -> String {
-		"Fill Tool (F)".into()
+		"Fill Tool".into()
 	}
 	fn tool_type(&self) -> crate::viewport_tools::tool::ToolType {
 		ToolType::Fill

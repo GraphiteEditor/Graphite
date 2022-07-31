@@ -1,4 +1,5 @@
 use super::layout_message::LayoutTarget;
+use crate::document::utility_types::KeyboardPlatformLayout;
 use crate::input::input_mapper::FutureKeyMapping;
 use crate::input::keyboard::Key;
 use crate::message_prelude::*;
@@ -31,15 +32,59 @@ pub enum Layout {
 }
 
 impl Layout {
-	pub fn unwrap_widget_layout(self) -> WidgetLayout {
-		if let Layout::WidgetLayout(widget_layout) = self {
+	pub fn unwrap_widget_layout(self, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Vec<Vec<Key>>, keyboard_platform: KeyboardPlatformLayout) -> WidgetLayout {
+		if let Layout::WidgetLayout(mut widget_layout) = self {
+			// Used multiple times later in this code block to realize the `FutureKeyMapping` for the action and append its shortcut to the tooltip
+			let apply_shortcut_to_tooltip = |tooltip_shortcut: &mut FutureKeyMapping, tooltip: &mut String| {
+				tooltip_shortcut.realize(action_input_mapping);
+				let shortcut_text = tooltip_shortcut.text_shortcut(keyboard_platform);
+
+				if !shortcut_text.is_empty() {
+					if !tooltip.is_empty() {
+						tooltip.push(' ');
+					}
+					tooltip.push('(');
+					tooltip.push_str(&shortcut_text);
+					tooltip.push(')');
+				}
+			};
+
+			// Go through each widget to realize any keyboard shortcut `FutureKeyMapping`s and append the key combination to the tooltip
+			for widget_holder in &mut widget_layout.iter_mut() {
+				// Handle all the widgets that have tooltips
+				let mut tooltip_shortcut = match &mut widget_holder.widget {
+					Widget::CheckboxInput(widget) => Some((&mut widget.tooltip, &mut widget.tooltip_shortcut)),
+					Widget::ColorInput(widget) => Some((&mut widget.tooltip, &mut widget.tooltip_shortcut)),
+					Widget::IconButton(widget) => Some((&mut widget.tooltip, &mut widget.tooltip_shortcut)),
+					Widget::OptionalInput(widget) => Some((&mut widget.tooltip, &mut widget.tooltip_shortcut)),
+					_ => None,
+				};
+				if let Some((tooltip, Some(tooltip_shortcut))) = &mut tooltip_shortcut {
+					apply_shortcut_to_tooltip(tooltip_shortcut, tooltip);
+				}
+
+				// Handle RadioInput separately because its tooltips are children of the widget
+				if let Widget::RadioInput(radio_input) = &mut widget_holder.widget {
+					for radio_entry_data in &mut radio_input.entries {
+						if let RadioEntryData {
+							tooltip,
+							tooltip_shortcut: Some(tooltip_shortcut),
+							..
+						} = radio_entry_data
+						{
+							apply_shortcut_to_tooltip(tooltip_shortcut, tooltip);
+						}
+					}
+				}
+			}
+
 			widget_layout
 		} else {
 			panic!("Tried to unwrap layout as WidgetLayout. Got {:?}", self)
 		}
 	}
 
-	pub fn unwrap_menu_layout(self, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Vec<Vec<Key>>) -> MenuLayout {
+	pub fn unwrap_menu_layout(self, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Vec<Vec<Key>>, _keyboard_platform: KeyboardPlatformLayout) -> MenuLayout {
 		if let Layout::MenuLayout(mut menu_layout) = self {
 			for menu_column in &mut menu_layout.layout {
 				menu_column.children.realize_future_key_mappings(action_input_mapping);
@@ -196,7 +241,7 @@ impl<'a> Iterator for MenuLayoutIterMut<'a> {
 	}
 }
 
-#[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Default, Clone, Serialize, PartialEq)]
 pub struct WidgetLayout {
 	pub layout: SubLayout,
 }
@@ -224,7 +269,7 @@ impl WidgetLayout {
 pub type SubLayout = Vec<LayoutGroup>;
 
 #[remain::sorted]
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub enum LayoutGroup {
 	#[serde(rename = "column")]
 	Column {
@@ -310,7 +355,7 @@ impl<'a> Iterator for WidgetIterMut<'a> {
 	}
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, PartialEq)]
 pub struct WidgetHolder {
 	#[serde(rename = "widgetId")]
 	pub widget_id: u64,
@@ -341,7 +386,7 @@ impl<T> Default for WidgetCallback<T> {
 }
 
 #[remain::sorted]
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub enum Widget {
 	CheckboxInput(CheckboxInput),
 	ColorInput(ColorInput),
@@ -362,7 +407,7 @@ pub enum Widget {
 	TextLabel(TextLabel),
 }
 
-#[derive(Clone, Serialize, Deserialize, Derivative, Default)]
+#[derive(Clone, Serialize, Derivative, Default)]
 #[derivative(Debug, PartialEq)]
 pub struct CheckboxInput {
 	pub checked: bool,
@@ -371,13 +416,15 @@ pub struct CheckboxInput {
 
 	pub tooltip: String,
 
+	pub tooltip_shortcut: Option<FutureKeyMapping>,
+
 	// Callbacks
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
 	pub on_update: WidgetCallback<CheckboxInput>,
 }
 
-#[derive(Clone, Serialize, Deserialize, Derivative)]
+#[derive(Clone, Serialize, Derivative)]
 #[derivative(Debug, PartialEq, Default)]
 pub struct ColorInput {
 	pub value: Option<String>,
@@ -391,6 +438,8 @@ pub struct ColorInput {
 	pub disabled: bool,
 
 	pub tooltip: String,
+
+	pub tooltip_shortcut: Option<FutureKeyMapping>,
 
 	// Callbacks
 	#[serde(skip)]
@@ -465,7 +514,7 @@ pub struct FontInput {
 	pub on_update: WidgetCallback<FontInput>,
 }
 
-#[derive(Clone, Serialize, Deserialize, Derivative, Default)]
+#[derive(Clone, Serialize, Derivative, Default)]
 #[derivative(Debug, PartialEq)]
 pub struct IconButton {
 	pub icon: String,
@@ -475,6 +524,8 @@ pub struct IconButton {
 	pub active: bool,
 
 	pub tooltip: String,
+
+	pub tooltip_shortcut: Option<FutureKeyMapping>,
 
 	// Callbacks
 	#[serde(skip)]
@@ -563,7 +614,7 @@ pub enum NumberInputIncrementBehavior {
 	Callback,
 }
 
-#[derive(Clone, Serialize, Deserialize, Derivative, Default)]
+#[derive(Clone, Serialize, Derivative, Default)]
 #[derivative(Debug, PartialEq)]
 pub struct OptionalInput {
 	pub checked: bool,
@@ -571,6 +622,8 @@ pub struct OptionalInput {
 	pub icon: String,
 
 	pub tooltip: String,
+
+	pub tooltip_shortcut: Option<FutureKeyMapping>,
 
 	// Callbacks
 	#[serde(skip)]
@@ -589,7 +642,7 @@ pub struct PopoverButton {
 	pub text: String,
 }
 
-#[derive(Clone, Serialize, Deserialize, Derivative, Default)]
+#[derive(Clone, Serialize, Derivative, Default)]
 #[derivative(Debug, PartialEq)]
 pub struct RadioInput {
 	pub entries: Vec<RadioEntryData>,
@@ -599,7 +652,7 @@ pub struct RadioInput {
 	pub selected_index: u32,
 }
 
-#[derive(Clone, Serialize, Deserialize, Derivative, Default)]
+#[derive(Clone, Serialize, Derivative, Default)]
 #[derivative(Debug, PartialEq)]
 pub struct RadioEntryData {
 	pub value: String,
@@ -609,6 +662,8 @@ pub struct RadioEntryData {
 	pub icon: String,
 
 	pub tooltip: String,
+
+	pub tooltip_shortcut: Option<FutureKeyMapping>,
 
 	// Callbacks
 	#[serde(skip)]

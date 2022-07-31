@@ -74,7 +74,7 @@ impl ToolMetadata for TextTool {
 		"VectorTextTool".into()
 	}
 	fn tooltip(&self) -> String {
-		"Text Tool (T)".into()
+		"Text Tool".into()
 	}
 	fn tool_type(&self) -> crate::viewport_tools::tool::ToolType {
 		ToolType::Text

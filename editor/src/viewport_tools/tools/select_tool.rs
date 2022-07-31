@@ -63,7 +63,7 @@ impl ToolMetadata for SelectTool {
 		"GeneralSelectTool".into()
 	}
 	fn tooltip(&self) -> String {
-		"Select Tool (V)".into()
+		"Select Tool".into()
 	}
 	fn tool_type(&self) -> crate::viewport_tools::tool::ToolType {
 		ToolType::Select

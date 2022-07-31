@@ -1,5 +1,5 @@
 use super::MenuBarMessage;
-use crate::input::input_mapper::FutureKeyMapping;
+use crate::input::input_mapper::future_key_mapping::action_shortcut;
 use crate::layout::layout_message::LayoutTarget;
 use crate::layout::widgets::*;
 use crate::message_prelude::*;
@@ -23,12 +23,6 @@ impl MessageHandler<MenuBarMessage, ()> for MenuBarMessageHandler {
 	fn actions(&self) -> ActionList {
 		actions!(MenuBarMessageDiscriminant;)
 	}
-}
-
-macro_rules! action_shortcut {
-	($action:expr) => {
-		Some(FutureKeyMapping::new($action.into()))
-	};
 }
 
 impl PropertyHolder for MenuBarMessageHandler {

@@ -4,8 +4,8 @@ use crate::consts::{BIG_NUDGE_AMOUNT, NUDGE_AMOUNT};
 use crate::document::clipboards::Clipboard;
 use crate::document::utility_types::KeyboardPlatformLayout;
 use crate::message_prelude::*;
-use crate::viewport_tools::tool::ToolType;
 
+use core::fmt;
 use glam::DVec2;
 use serde::{Serialize, Serializer};
 
@@ -140,19 +140,19 @@ impl Default for Mapping {
 			entry!(KeyDown(Lmb); action_dispatch=FillToolMessage::LeftMouseDown),
 			entry!(KeyDown(Rmb); action_dispatch=FillToolMessage::RightMouseDown),
 			// ToolMessage
-			entry!(KeyDown(KeyV); action_dispatch=ToolMessage::ActivateTool { tool_type: ToolType::Select }),
-			entry!(KeyDown(KeyZ); action_dispatch=ToolMessage::ActivateTool { tool_type: ToolType::Navigate }),
-			entry!(KeyDown(KeyI); action_dispatch=ToolMessage::ActivateTool { tool_type: ToolType::Eyedropper }),
-			entry!(KeyDown(KeyT); action_dispatch=ToolMessage::ActivateTool { tool_type: ToolType::Text }),
-			entry!(KeyDown(KeyF); action_dispatch=ToolMessage::ActivateTool { tool_type: ToolType::Fill }),
-			entry!(KeyDown(KeyH); action_dispatch=ToolMessage::ActivateTool { tool_type: ToolType::Gradient }),
-			entry!(KeyDown(KeyA); action_dispatch=ToolMessage::ActivateTool { tool_type: ToolType::Path }),
-			entry!(KeyDown(KeyP); action_dispatch=ToolMessage::ActivateTool { tool_type: ToolType::Pen }),
-			entry!(KeyDown(KeyN); action_dispatch=ToolMessage::ActivateTool { tool_type: ToolType::Freehand }),
-			entry!(KeyDown(KeyL); action_dispatch=ToolMessage::ActivateTool { tool_type: ToolType::Line }),
-			entry!(KeyDown(KeyM); action_dispatch=ToolMessage::ActivateTool { tool_type: ToolType::Rectangle }),
-			entry!(KeyDown(KeyE); action_dispatch=ToolMessage::ActivateTool { tool_type: ToolType::Ellipse }),
-			entry!(KeyDown(KeyY); action_dispatch=ToolMessage::ActivateTool { tool_type: ToolType::Shape }),
+			entry!(KeyDown(KeyV); action_dispatch=ToolMessage::ActivateToolSelect),
+			entry!(KeyDown(KeyZ); action_dispatch=ToolMessage::ActivateToolNavigate),
+			entry!(KeyDown(KeyI); action_dispatch=ToolMessage::ActivateToolEyedropper),
+			entry!(KeyDown(KeyT); action_dispatch=ToolMessage::ActivateToolText),
+			entry!(KeyDown(KeyF); action_dispatch=ToolMessage::ActivateToolFill),
+			entry!(KeyDown(KeyH); action_dispatch=ToolMessage::ActivateToolGradient),
+			entry!(KeyDown(KeyA); action_dispatch=ToolMessage::ActivateToolPath),
+			entry!(KeyDown(KeyP); action_dispatch=ToolMessage::ActivateToolPen),
+			entry!(KeyDown(KeyN); action_dispatch=ToolMessage::ActivateToolFreehand),
+			entry!(KeyDown(KeyL); action_dispatch=ToolMessage::ActivateToolLine),
+			entry!(KeyDown(KeyM); action_dispatch=ToolMessage::ActivateToolRectangle),
+			entry!(KeyDown(KeyE); action_dispatch=ToolMessage::ActivateToolEllipse),
+			entry!(KeyDown(KeyY); action_dispatch=ToolMessage::ActivateToolShape),
 			entry_multiplatform!(
 				standard!(KeyDown(KeyX); modifiers=[KeyShift, KeyControl], action_dispatch=ToolMessage::ResetColors),
 				mac_only!(KeyDown(KeyX); modifiers=[KeyShift, KeyCommand], action_dispatch=ToolMessage::ResetColors),
@@ -447,7 +447,7 @@ impl KeyMappingEntries {
 #[derive(Debug, Clone, PartialEq)]
 pub struct FutureKeyMapping {
 	action: MessageDiscriminant,
-	pub realized: Option<Vec<Key>>,
+	realized: Option<Vec<Key>>,
 }
 
 impl FutureKeyMapping {
@@ -472,10 +472,48 @@ impl FutureKeyMapping {
 	pub fn iter(&self) -> impl Iterator<Item = Key> + '_ {
 		self.realized.iter().flatten().copied()
 	}
+
+	pub fn text_shortcut(&self, keyboard_platform: KeyboardPlatformLayout) -> String {
+		let mut joined = self
+			.iter()
+			.map(|key| {
+				let key_string = key.to_string();
+
+				if keyboard_platform == KeyboardPlatformLayout::Mac {
+					match key_string.as_str() {
+						"Command" => "⌘".to_string(),
+						"Control" => "⌃".to_string(),
+						"Alt" => "⌥".to_string(),
+						"Shift" => "⇧".to_string(),
+						_ => key_string + "+",
+					}
+				} else {
+					key_string + "+"
+				}
+			})
+			.collect::<String>();
+
+		// Truncate to cut the joining character off the end if it's present
+		if joined.ends_with('+') {
+			joined.truncate(joined.len() - 1);
+		}
+
+		joined
+	}
 }
 
 impl Serialize for FutureKeyMapping {
 	fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
 		serializer.collect_seq(self.iter())
 	}
+}
+
+pub mod future_key_mapping {
+	macro_rules! action_shortcut {
+		($action:expr) => {
+			Some(crate::input::input_mapper::FutureKeyMapping::new($action.into()))
+		};
+	}
+
+	pub(crate) use action_shortcut;
 }

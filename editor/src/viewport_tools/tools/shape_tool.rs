@@ -59,7 +59,7 @@ impl ToolMetadata for ShapeTool {
 		"VectorShapeTool".into()
 	}
 	fn tooltip(&self) -> String {
-		"Shape Tool (Y)".into()
+		"Shape Tool".into()
 	}
 	fn tool_type(&self) -> crate::viewport_tools::tool::ToolType {
 		ToolType::Shape

@@ -36,7 +36,7 @@ impl ToolMetadata for EyedropperTool {
 		"GeneralEyedropperTool".into()
 	}
 	fn tooltip(&self) -> String {
-		"Eyedropper Tool (I)".into()
+		"Eyedropper Tool".into()
 	}
 	fn tool_type(&self) -> crate::viewport_tools::tool::ToolType {
 		ToolType::Eyedropper
