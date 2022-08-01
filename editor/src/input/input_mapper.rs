@@ -5,7 +5,6 @@ use crate::document::clipboards::Clipboard;
 use crate::document::utility_types::KeyboardPlatformLayout;
 use crate::message_prelude::*;
 
-use core::fmt;
 use glam::DVec2;
 use serde::{Serialize, Serializer};
 
@@ -474,6 +473,8 @@ impl FutureKeyMapping {
 	}
 
 	pub fn text_shortcut(&self, keyboard_platform: KeyboardPlatformLayout) -> String {
+		const JOINER_MARK: &str = "+";
+
 		let mut joined = self
 			.iter()
 			.map(|key| {
@@ -485,17 +486,17 @@ impl FutureKeyMapping {
 						"Control" => "⌃".to_string(),
 						"Alt" => "⌥".to_string(),
 						"Shift" => "⇧".to_string(),
-						_ => key_string + "+",
+						_ => key_string + JOINER_MARK,
 					}
 				} else {
-					key_string + "+"
+					key_string + JOINER_MARK
 				}
 			})
 			.collect::<String>();
 
 		// Truncate to cut the joining character off the end if it's present
-		if joined.ends_with('+') {
-			joined.truncate(joined.len() - 1);
+		if joined.ends_with(JOINER_MARK) {
+			joined.truncate(joined.len() - JOINER_MARK.len());
 		}
 
 		joined

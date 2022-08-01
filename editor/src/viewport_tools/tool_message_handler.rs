@@ -200,7 +200,21 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessorMes
 
 	fn actions(&self) -> ActionList {
 		let mut list = actions!(ToolMessageDiscriminant;
-			ActivateTool,
+			ActivateToolSelect,
+			ActivateToolArtboard,
+			ActivateToolNavigate,
+			ActivateToolEyedropper,
+			ActivateToolText,
+			ActivateToolFill,
+			ActivateToolGradient,
+			ActivateToolPath,
+			ActivateToolPen,
+			ActivateToolFreehand,
+			ActivateToolSpline,
+			ActivateToolLine,
+			ActivateToolRectangle,
+			ActivateToolEllipse,
+			ActivateToolShape,
 			SelectRandomPrimaryColor,
 			ResetColors,
 			SwapColors,
