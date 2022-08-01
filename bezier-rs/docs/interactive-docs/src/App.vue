@@ -2,7 +2,8 @@
 	<div class="App">
 		<h1>Bezier-rs Interactive Documentation</h1>
 		<p>This is the interactive documentation for the <b>bezier-rs</b> library. Click and drag on the endpoints of the example curves to visualize the various Bezier utilities and functions.</p>
-		<div v-for="(feature, index) in features" :key="index">
+		<h2>Beziers</h2>
+		<div v-for="(feature, index) in bezierFeatures" :key="index">
 			<ExamplePane
 				:template="feature.template"
 				:templateOptions="feature.templateOptions"
@@ -14,17 +15,22 @@
 				:customOptions="feature.customOptions"
 			/>
 		</div>
+		<h2>Subpaths</h2>
+		<div v-for="(feature, index) in subpathFeatures" :key="index">
+			<SubpathExamplePane :name="feature.name" :callback="feature.callback" />
+		</div>
 	</div>
 </template>
 
 <script lang="ts">
 import { defineComponent, markRaw } from "vue";
 
-import { drawText, drawPoint, drawBezier, drawLine, getContextFromCanvas, drawBezierHelper, COLORS } from "@/utils/drawing";
-import { BezierCurveType, Point, WasmBezierInstance } from "@/utils/types";
+import { drawBezier, drawBezierHelper, drawCircle, drawCurve, drawLine, drawPoint, drawText, getContextFromCanvas, COLORS } from "@/utils/drawing";
+import { BezierCurveType, Point, WasmBezierInstance, WasmSubpathInstance } from "@/utils/types";
 
 import ExamplePane from "@/components/ExamplePane.vue";
 import SliderExample from "@/components/SliderExample.vue";
+import SubpathExamplePane from "@/components/SubpathExamplePane.vue";
 
 const tSliderOptions = {
 	min: 0,
@@ -37,13 +43,9 @@ const tSliderOptions = {
 const SCALE_UNIT_VECTOR_FACTOR = 50;
 
 export default defineComponent({
-	name: "App",
-	components: {
-		ExamplePane,
-	},
 	data() {
 		return {
-			features: [
+			bezierFeatures: [
 				{
 					name: "Constructor",
 					// eslint-disable-next-line
@@ -192,14 +194,34 @@ export default defineComponent({
 						const normal = JSON.parse(bezier.normal(options.t));
 
 						const normalEnd = {
-							x: intersection.x - normal.x * SCALE_UNIT_VECTOR_FACTOR,
-							y: intersection.y - normal.y * SCALE_UNIT_VECTOR_FACTOR,
+							x: intersection.x + normal.x * SCALE_UNIT_VECTOR_FACTOR,
+							y: intersection.y + normal.y * SCALE_UNIT_VECTOR_FACTOR,
 						};
 
 						drawPoint(context, intersection, 3, COLORS.NON_INTERACTIVE.STROKE_1);
 						drawLine(context, intersection, normalEnd, COLORS.NON_INTERACTIVE.STROKE_1);
 						drawPoint(context, normalEnd, 3, COLORS.NON_INTERACTIVE.STROKE_1);
 					},
+					template: markRaw(SliderExample),
+					templateOptions: { sliders: [tSliderOptions] },
+				},
+				{
+					name: "Curvature",
+					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: Record<string, number>): void => {
+						const context = getContextFromCanvas(canvas);
+						const point = JSON.parse(bezier.evaluate(options.t));
+						const normal = JSON.parse(bezier.normal(options.t));
+						const curvature = bezier.curvature(options.t);
+						const radius = 1 / curvature;
+
+						const curvatureCenter = { x: point.x + normal.x * radius, y: point.y + normal.y * radius };
+
+						drawCircle(context, curvatureCenter, Math.abs(radius), COLORS.NON_INTERACTIVE.STROKE_1);
+						drawLine(context, point, curvatureCenter, COLORS.NON_INTERACTIVE.STROKE_1);
+						drawPoint(context, point, 3, COLORS.NON_INTERACTIVE.STROKE_1);
+						drawPoint(context, curvatureCenter, 3, COLORS.NON_INTERACTIVE.STROKE_1);
+					},
+					curveDegrees: new Set([BezierCurveType.Quadratic, BezierCurveType.Cubic]),
 					template: markRaw(SliderExample),
 					templateOptions: { sliders: [tSliderOptions] },
 				},
@@ -247,7 +269,8 @@ export default defineComponent({
 					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: Record<string, number>, mouseLocation?: Point): void => {
 						if (mouseLocation != null) {
 							const context = getContextFromCanvas(canvas);
-							const closestPoint = JSON.parse(bezier.project(mouseLocation.x, mouseLocation.y));
+							const t = bezier.project(mouseLocation.x, mouseLocation.y);
+							const closestPoint = JSON.parse(bezier.evaluate(t));
 							drawLine(context, mouseLocation, closestPoint, COLORS.NON_INTERACTIVE.STROKE_1);
 						}
 					},
@@ -282,6 +305,54 @@ export default defineComponent({
 					},
 				},
 				{
+					name: "Bounding Box",
+					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance): void => {
+						const context = getContextFromCanvas(canvas);
+						const bboxPoints: Point[] = JSON.parse(bezier.bounding_box());
+						const minPoint = bboxPoints[0];
+						const maxPoint = bboxPoints[1];
+						drawLine(context, minPoint, { x: minPoint.x, y: maxPoint.y }, COLORS.NON_INTERACTIVE.STROKE_1);
+						drawLine(context, minPoint, { x: maxPoint.x, y: minPoint.y }, COLORS.NON_INTERACTIVE.STROKE_1);
+						drawLine(context, maxPoint, { x: minPoint.x, y: maxPoint.y }, COLORS.NON_INTERACTIVE.STROKE_1);
+						drawLine(context, maxPoint, { x: maxPoint.x, y: minPoint.y }, COLORS.NON_INTERACTIVE.STROKE_1);
+					},
+				},
+				{
+					name: "Inflections",
+					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance): void => {
+						const context = getContextFromCanvas(canvas);
+						const inflections: number[] = JSON.parse(bezier.inflections());
+						inflections.forEach((t) => {
+							const point = JSON.parse(bezier.evaluate(t));
+							drawPoint(context, point, 4, COLORS.NON_INTERACTIVE.STROKE_1);
+						});
+					},
+					curveDegrees: new Set([BezierCurveType.Cubic]),
+				},
+				{
+					name: "De Casteljau Points",
+					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: Record<string, number>): void => {
+						const hullPoints: Point[][] = JSON.parse(bezier.de_casteljau_points(options.t));
+						hullPoints.reverse().forEach((iteration: Point[], iterationIndex) => {
+							const colorLight = `hsl(${90 * iterationIndex}, 100%, 50%)`;
+
+							iteration.forEach((point: Point, index) => {
+								// Skip the anchor and handle points which are already drawn in black
+								if (iterationIndex !== hullPoints.length - 1) {
+									drawPoint(getContextFromCanvas(canvas), point, 4, colorLight);
+								}
+
+								if (index !== 0) {
+									const prevPoint: Point = iteration[index - 1];
+									drawLine(getContextFromCanvas(canvas), point, prevPoint, colorLight);
+								}
+							});
+						});
+					},
+					template: markRaw(SliderExample),
+					templateOptions: { sliders: [tSliderOptions] },
+				},
+				{
 					name: "Rotate",
 					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: Record<string, number>): void => {
 						const context = getContextFromCanvas(canvas);
@@ -306,7 +377,7 @@ export default defineComponent({
 					},
 				},
 				{
-					name: "Intersect Line Segment",
+					name: "Intersect (Line Segment)",
 					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance): void => {
 						const context = getContextFromCanvas(canvas);
 						const line = [
@@ -315,11 +386,105 @@ export default defineComponent({
 						];
 						const mappedLine = line.map((p) => [p.x, p.y]);
 						drawLine(context, line[0], line[1], COLORS.NON_INTERACTIVE.STROKE_1);
-						const intersections: Point[] = bezier.intersect_line_segment(mappedLine).map((p) => JSON.parse(p));
-						intersections.forEach((p: Point) => {
+						const intersections: Float64Array = bezier.intersect_line_segment(mappedLine);
+						intersections.forEach((t: number) => {
+							const p = JSON.parse(bezier.evaluate(t));
 							drawPoint(context, p, 3, COLORS.NON_INTERACTIVE.STROKE_2);
 						});
 					},
+				},
+				{
+					name: "Intersect (Quadratic Segment)",
+					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: Record<string, number>): void => {
+						const context = getContextFromCanvas(canvas);
+						const points = [
+							{ x: 20, y: 80 },
+							{ x: 180, y: 10 },
+							{ x: 90, y: 120 },
+						];
+						const mappedPoints = points.map((p) => [p.x, p.y]);
+						drawCurve(context, points, COLORS.NON_INTERACTIVE.STROKE_1, 1);
+						const intersections: Float64Array = bezier.intersect_quadratic_segment(mappedPoints, options.error);
+						intersections.forEach((t: number) => {
+							const p = JSON.parse(bezier.evaluate(t));
+							drawPoint(context, p, 3, COLORS.NON_INTERACTIVE.STROKE_2);
+						});
+					},
+					template: markRaw(SliderExample),
+					templateOptions: {
+						sliders: [
+							{
+								variable: "error",
+								min: 0.1,
+								max: 2,
+								step: 0.1,
+								default: 0.5,
+							},
+						],
+					},
+				},
+				{
+					name: "Intersect (Cubic Segment)",
+					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: Record<string, number>): void => {
+						const context = getContextFromCanvas(canvas);
+						const points = [
+							{ x: 40, y: 20 },
+							{ x: 100, y: 40 },
+							{ x: 40, y: 120 },
+							{ x: 175, y: 140 },
+						];
+						const mappedPoints = points.map((p) => [p.x, p.y]);
+						drawCurve(context, points, COLORS.NON_INTERACTIVE.STROKE_1, 1);
+						const intersections: Float64Array = bezier.intersect_cubic_segment(mappedPoints, options.error);
+						intersections.forEach((t: number) => {
+							const p = JSON.parse(bezier.evaluate(t));
+							drawPoint(context, p, 3, COLORS.NON_INTERACTIVE.STROKE_2);
+						});
+					},
+					template: markRaw(SliderExample),
+					templateOptions: {
+						sliders: [
+							{
+								variable: "error",
+								min: 0.1,
+								max: 2,
+								step: 0.1,
+								default: 0.5,
+							},
+						],
+					},
+				},
+				{
+					name: "Intersect (Self)",
+					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: Record<string, number>): void => {
+						const context = getContextFromCanvas(canvas);
+						const intersections: number[][] = JSON.parse(bezier.intersect_self(options.error));
+						intersections.forEach((tValues: number[]) => {
+							const p = JSON.parse(bezier.evaluate(tValues[0]));
+							drawPoint(context, p, 3, COLORS.NON_INTERACTIVE.STROKE_2);
+						});
+					},
+					template: markRaw(SliderExample),
+					templateOptions: {
+						sliders: [
+							{
+								variable: "error",
+								min: 0.01,
+								max: 1,
+								step: 0.05,
+								default: 0.5,
+							},
+						],
+					},
+					customPoints: {
+						[BezierCurveType.Cubic]: [
+							[160, 180],
+							[170, 10],
+							[30, 90],
+							[180, 140],
+						],
+					},
+					curveDegrees: new Set([BezierCurveType.Cubic]),
 				},
 				{
 					name: "Reduce",
@@ -331,8 +496,50 @@ export default defineComponent({
 						});
 					},
 				},
+				{
+					name: "Offset",
+					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: Record<string, number>): void => {
+						const context = getContextFromCanvas(canvas);
+						const curves: Point[][] = JSON.parse(bezier.offset(options.distance));
+						curves.forEach((points, index) => {
+							if (points.length === 2) {
+								drawLine(context, points[0], points[1], `hsl(${40 * index}, 100%, 50%)`);
+							} else {
+								drawCurve(context, points, `hsl(${40 * index}, 100%, 50%)`);
+							}
+						});
+						drawPoint(context, curves[0][0], 4, "hsl(0, 100%, 50%)");
+						drawPoint(context, curves[curves.length - 1][curves[0].length - 1], 4, `hsl(${40 * (curves.length - 1)}, 100%, 50%)`);
+					},
+					template: markRaw(SliderExample),
+					templateOptions: {
+						sliders: [
+							{
+								variable: "distance",
+								min: -50,
+								max: 50,
+								step: 1,
+								default: 20,
+							},
+						],
+					},
+				},
+			],
+			subpathFeatures: [
+				{
+					name: "Constructor",
+					callback: (subpath: WasmSubpathInstance): string => subpath.to_svg(),
+				},
+				{
+					name: "Length",
+					callback: (subpath: WasmSubpathInstance): string => subpath.length(),
+				},
 			],
 		};
+	},
+	components: {
+		ExamplePane,
+		SubpathExamplePane,
 	},
 });
 </script>

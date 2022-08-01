@@ -146,6 +146,41 @@ pub fn solve_cubic(a: f64, b: f64, c: f64, d: f64) -> Vec<f64> {
 	}
 }
 
+/// Determine if two rectangles have any overlap. The rectangles are represented by a pair of coordinates that designate the top left and bottom right corners (in a graphical coordinate system).
+pub fn do_rectangles_overlap(rectangle1: [DVec2; 2], rectangle2: [DVec2; 2]) -> bool {
+	let [bottom_left1, top_right1] = rectangle1;
+	let [bottom_left2, top_right2] = rectangle2;
+
+	top_right1.x >= bottom_left2.x && top_right2.x >= bottom_left1.x && top_right2.y >= bottom_left1.y && top_right1.y >= bottom_left2.y
+}
+
+/// Returns the intersection of two lines. The lines are given by a point on the line and its slope (represented by a vector).
+pub fn line_intersection(point1: DVec2, point1_slope_vector: DVec2, point2: DVec2, point2_slope_vector: DVec2) -> DVec2 {
+	assert!(point1_slope_vector.normalize() != point2_slope_vector.normalize());
+
+	// Find the intersection when the first line is vertical
+	if f64_compare(point1_slope_vector.x, 0., MAX_ABSOLUTE_DIFFERENCE) {
+		let m2 = point2_slope_vector.y / point2_slope_vector.x;
+		let b2 = point2.y - m2 * point2.x;
+		DVec2::new(point1.x, point1.x * m2 + b2)
+	}
+	// Find the intersection when the second line is vertical
+	else if f64_compare(point2_slope_vector.x, 0., MAX_ABSOLUTE_DIFFERENCE) {
+		let m1 = point1_slope_vector.y / point1_slope_vector.x;
+		let b1 = point1.y - m1 * point1.x;
+		DVec2::new(point2.x, point2.x * m1 + b1)
+	}
+	// Find the intersection where neither line is vertical
+	else {
+		let m1 = point1_slope_vector.y / point1_slope_vector.x;
+		let b1 = point1.y - m1 * point1.x;
+		let m2 = point2_slope_vector.y / point2_slope_vector.x;
+		let b2 = point2.y - m2 * point2.x;
+		let intersection_x = (b2 - b1) / (m1 - m2);
+		DVec2::new(intersection_x, intersection_x * m1 + b1)
+	}
+}
+
 /// Compare two `f64` numbers with a provided max absolute value difference.
 pub fn f64_compare(f1: f64, f2: f64, max_abs_diff: f64) -> bool {
 	(f1 - f2).abs() < max_abs_diff
@@ -214,5 +249,42 @@ mod tests {
 		// linear
 		let roots7 = solve_cubic(0., 0., 1., -1.);
 		assert!(roots7 == vec![1.]);
+	}
+
+	#[test]
+	fn test_do_rectangles_overlap() {
+		// Rectangles overlap
+		assert!(do_rectangles_overlap([DVec2::new(0., 0.), DVec2::new(20., 20.)], [DVec2::new(10., 10.), DVec2::new(30., 20.)]));
+		// Rectangles share a side
+		assert!(do_rectangles_overlap([DVec2::new(0., 0.), DVec2::new(10., 10.)], [DVec2::new(10., 10.), DVec2::new(30., 30.)]));
+		// Rectangle inside the other
+		assert!(do_rectangles_overlap([DVec2::new(0., 0.), DVec2::new(10., 10.)], [DVec2::new(2., 2.), DVec2::new(6., 4.)]));
+		// No overlap, rectangles are beside each other
+		assert!(!do_rectangles_overlap([DVec2::new(0., 0.), DVec2::new(10., 10.)], [DVec2::new(20., 0.), DVec2::new(30., 10.)]));
+		// No overlap, rectangles are above and below each other
+		assert!(!do_rectangles_overlap([DVec2::new(0., 0.), DVec2::new(10., 10.)], [DVec2::new(0., 20.), DVec2::new(20., 30.)]));
+	}
+
+	#[test]
+	fn test_find_intersection() {
+		// y = 2x + 10
+		// y = 5x + 4
+		// intersect at (2, 14)
+
+		let start1 = DVec2::new(0., 10.);
+		let end1 = DVec2::new(0., 4.);
+		let start_direction1 = DVec2::new(1., 2.);
+		let end_direction1 = DVec2::new(1., 5.);
+		assert!(line_intersection(start1, start_direction1, end1, end_direction1) == DVec2::new(2., 14.));
+
+		// y = x
+		// y = -x + 8
+		// intersect at (4, 4)
+
+		let start2 = DVec2::new(0., 0.);
+		let end2 = DVec2::new(8., 0.);
+		let start_direction2 = DVec2::new(1., 1.);
+		let end_direction2 = DVec2::new(1., -1.);
+		assert!(line_intersection(start2, start_direction2, end2, end_direction2) == DVec2::new(4., 4.));
 	}
 }

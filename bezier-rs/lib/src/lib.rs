@@ -1,14 +1,18 @@
 //! Bezier-rs: A Bezier Math Library for Rust
 
 mod consts;
+pub mod subpath;
 mod utils;
 
 use consts::*;
+pub use subpath::*;
 
 use glam::{DMat2, DVec2};
+use std::fmt::{Debug, Formatter, Result};
+use std::ops::Range;
 
 /// Representation of the handle point(s) in a bezier segment.
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq)]
 enum BezierHandles {
 	Linear,
 	/// Handles for a quadratic curve.
@@ -50,7 +54,7 @@ impl Default for ProjectionOptions {
 }
 
 /// Representation of a bezier curve with 2D points.
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq)]
 pub struct Bezier {
 	/// Start point of the bezier curve.
 	start: DVec2,
@@ -58,6 +62,12 @@ pub struct Bezier {
 	end: DVec2,
 	/// Handles of the bezier curve.
 	handles: BezierHandles,
+}
+
+impl Debug for Bezier {
+	fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+		write!(f, "{:?}", self.get_points().collect::<Vec<DVec2>>())
+	}
 }
 
 impl Bezier {
@@ -164,23 +174,49 @@ impl Bezier {
 		Bezier::from_cubic_dvec2(start, handle_start, handle_end, end)
 	}
 
-	/// Convert to SVG.
-	pub fn to_svg(&self) -> String {
-		// TODO: Allow modifying the viewport, width and height
-		let m_path = format!("M {} {}", self.start.x, self.start.y);
-		let handles_path = match self.handles {
-			BezierHandles::Linear => "L".to_string(),
+	/// Return the string argument used to create a curve in an SVG `path`, excluding the start point.
+	pub(crate) fn svg_curve_argument(&self) -> String {
+		let handle_args = match self.handles {
+			BezierHandles::Linear => SVG_ARG_LINEAR.to_string(),
 			BezierHandles::Quadratic { handle } => {
-				format!("Q {} {},", handle.x, handle.y)
+				format!("{SVG_ARG_QUADRATIC}{} {}", handle.x, handle.y)
 			}
 			BezierHandles::Cubic { handle_start, handle_end } => {
-				format!("C {} {}, {} {},", handle_start.x, handle_start.y, handle_end.x, handle_end.y)
+				format!("{SVG_ARG_CUBIC}{} {} {} {}", handle_start.x, handle_start.y, handle_end.x, handle_end.y)
 			}
 		};
-		let curve_path = format!("{} {} {}", handles_path, self.end.x, self.end.y);
+		format!("{handle_args} {} {}", self.end.x, self.end.y)
+	}
+
+	/// Return the string argument used to create the lines connecting handles to endpoints in an SVG `path`
+	pub(crate) fn svg_handle_line_argument(&self) -> Option<String> {
+		match self.handles {
+			BezierHandles::Linear => None,
+			BezierHandles::Quadratic { handle } => {
+				let handle_line = format!("{SVG_ARG_LINEAR}{} {}", handle.x, handle.y);
+				Some(format!(
+					"{SVG_ARG_MOVE}{} {} {handle_line} {SVG_ARG_MOVE}{} {} {handle_line}",
+					self.start.x, self.start.y, self.end.x, self.end.y
+				))
+			}
+			BezierHandles::Cubic { handle_start, handle_end } => {
+				let handle_start_line = format!("{SVG_ARG_LINEAR}{} {}", handle_start.x, handle_start.y);
+				let handle_end_line = format!("{SVG_ARG_LINEAR}{} {}", handle_end.x, handle_end.y);
+				Some(format!(
+					"{SVG_ARG_MOVE}{} {} {handle_start_line} {SVG_ARG_MOVE}{} {} {handle_end_line}",
+					self.start.x, self.start.y, self.end.x, self.end.y
+				))
+			}
+		}
+	}
+
+	/// Convert `Bezier` to SVG `path`.
+	pub fn to_svg(&self) -> String {
 		format!(
-			r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{} {} {} {}" width="{}px" height="{}px"><path d="{} {} {}" stroke="black" fill="transparent"/></svg>"#,
-			0, 0, 100, 100, 100, 100, "\n", m_path, curve_path
+			r#"<path d="{SVG_ARG_MOVE}{} {} {}" stroke="black" fill="none"/>"#,
+			self.start.x,
+			self.start.y,
+			self.svg_curve_argument()
 		)
 	}
 
@@ -265,6 +301,15 @@ impl Bezier {
 			BezierHandles::Quadratic { handle } => [self.start, handle, self.end, DVec2::ZERO].into_iter().take(3),
 			BezierHandles::Cubic { handle_start, handle_end } => [self.start, handle_start, handle_end, self.end].into_iter().take(4),
 		}
+	}
+
+	/// Returns true if the corresponding points of the two `Bezier`s are within the provided absolute value difference from each other.
+	/// The points considered includes the start, end, and any relevant handles.
+	pub fn abs_diff_eq(&self, other: &Bezier, max_abs_diff: f64) -> bool {
+		let self_points = self.get_points().collect::<Vec<DVec2>>();
+		let other_points = other.get_points().collect::<Vec<DVec2>>();
+
+		self_points.len() == other_points.len() && self_points.into_iter().zip(other_points.into_iter()).all(|(a, b)| a.abs_diff_eq(b, max_abs_diff))
 	}
 
 	/// Calculate the point on the curve based on the `t`-value provided.
@@ -366,6 +411,26 @@ impl Bezier {
 		self.tangent(t).perp()
 	}
 
+	/// Returns the curvature, a scalar value for the derivative at the given `t`-value along the curve.
+	/// Curvature is 1 over the radius of a circle with an equivalent derivative.
+	pub fn curvature(&self, t: f64) -> f64 {
+		let (d, dd) = match &self.derivative() {
+			Some(first_derivative) => match first_derivative.derivative() {
+				Some(second_derivative) => (first_derivative.evaluate(t), second_derivative.evaluate(t)),
+				None => (first_derivative.evaluate(t), first_derivative.end - first_derivative.start),
+			},
+			None => (self.end - self.start, DVec2::new(0., 0.)),
+		};
+
+		let numerator = d.x * dd.y - d.y * dd.x;
+		let denominator = (d.x.powf(2.) + d.y.powf(2.)).powf(1.5);
+		if denominator == 0. {
+			0.
+		} else {
+			numerator / denominator
+		}
+	}
+
 	/// Returns the pair of Bezier curves that result from splitting the original curve at the point corresponding to `t`.
 	pub fn split(&self, t: f64) -> [Bezier; 2] {
 		let split_point = self.evaluate(t);
@@ -418,9 +483,9 @@ impl Bezier {
 		bezier_starting_at_t1.split(adjusted_t2)[t2_split_side]
 	}
 
-	/// Returns the closest point on the curve to the provided point.
+	/// Returns the `t` value that corresponds to the closest point on the curve to the provided point.
 	/// Uses a searching algorithm akin to binary search that can be customized using the [ProjectionOptions] structure.
-	pub fn project(&self, point: DVec2, options: ProjectionOptions) -> DVec2 {
+	pub fn project(&self, point: DVec2, options: ProjectionOptions) -> f64 {
 		let ProjectionOptions {
 			lut_size,
 			convergence_epsilon,
@@ -506,7 +571,7 @@ impl Bezier {
 			}
 		}
 
-		self.evaluate(final_t)
+		final_t
 	}
 
 	/// Returns two lists of `t`-values representing the local extrema of the `x` and `y` parametric curves respectively.
@@ -574,61 +639,181 @@ impl Bezier {
 		self.apply_transformation(&|point| point + translation)
 	}
 
+	/// Implementation of the algorithm to find curve intersections by iterating on bounding boxes.
+	/// - `self_original_t_interval` - Used to identify the `t` values of the original parent of `self` that the current iteration is representing.
+	/// - `other_original_t_interval` - Used to identify the `t` values of the original parent of `other` that the current iteration is representing.
+	fn intersections_between_subcurves(&self, self_original_t_interval: Range<f64>, other: &Bezier, other_original_t_interval: Range<f64>, error: f64) -> Vec<[f64; 2]> {
+		let bounding_box1 = self.bounding_box();
+		let bounding_box2 = other.bounding_box();
+
+		// Get the `t` interval of the original parent of `self` and determine the middle `t` value
+		let Range { start: self_start_t, end: self_end_t } = self_original_t_interval;
+		let self_mid_t = (self_start_t + self_end_t) / 2.;
+
+		// Get the `t` interval of the original parent of `other` and determine the middle `t` value
+		let Range {
+			start: other_start_t,
+			end: other_end_t,
+		} = other_original_t_interval;
+		let other_mid_t = (other_start_t + other_end_t) / 2.;
+
+		let error_threshold = DVec2::new(error, error);
+
+		// Check if the bounding boxes overlap
+		if utils::do_rectangles_overlap(bounding_box1, bounding_box2) {
+			// If bounding boxes are within the error threshold (i.e. are small enough), we have found an intersection
+			if (bounding_box1[1] - bounding_box1[0]).lt(&error_threshold) && (bounding_box2[1] - bounding_box2[0]).lt(&error_threshold) {
+				// Use the middle t value, return the corresponding `t` value for `self` and `other`
+				return vec![[self_mid_t, other_mid_t]];
+			}
+
+			// Split curves in half and repeat with the combinations of the two halves of each curve
+			let [split_1_a, split_1_b] = self.split(0.5);
+			let [split_2_a, split_2_b] = other.split(0.5);
+
+			[
+				split_1_a.intersections_between_subcurves(self_start_t..self_mid_t, &split_2_a, other_start_t..other_mid_t, error),
+				split_1_a.intersections_between_subcurves(self_start_t..self_mid_t, &split_2_b, other_mid_t..other_end_t, error),
+				split_1_b.intersections_between_subcurves(self_mid_t..self_end_t, &split_2_a, other_start_t..other_mid_t, error),
+				split_1_b.intersections_between_subcurves(self_mid_t..self_end_t, &split_2_b, other_mid_t..other_end_t, error),
+			]
+			.concat()
+		} else {
+			vec![]
+		}
+	}
+
 	// TODO: Use an `impl Iterator` return type instead of a `Vec`
-	// TODO: Change this to `intersect(&self, other: &Bezier)` to also work on quadratic and cubic segments
-	// TODO: (or keep this and add two more functions that perform the logic, and make the `intersect` function call the correct one)
-	/// Returns a list of points where the provided line segment intersects with the Bezier curve. If the provided segment is colinear with the bezier, zero intersection points will be returned.
-	/// - `line` - A line segment expected to be received in the format of `[start_point, end_point]`.
-	pub fn intersect_line_segment(&self, line: [DVec2; 2]) -> Vec<DVec2> {
-		// Rotate the bezier and the line by the angle that the line makes with the x axis
-		let slope = line[1] - line[0];
-		let angle = slope.angle_between(DVec2::new(1., 0.));
-		let rotation_matrix = DMat2::from_angle(angle);
-		let rotated_bezier = self.apply_transformation(&|point| rotation_matrix.mul_vec2(point));
-		let rotated_line = [rotation_matrix.mul_vec2(line[0]), rotation_matrix.mul_vec2(line[1])];
+	/// Returns a list of `t` values that correspond to intersection points between the current bezier curve and the provided one. The returned `t` values are with respect to the current bezier, not the provided parameter.
+	/// If the provided curve is linear, then zero intersection points will be returned along colinear segments.
+	/// - `error` - For intersections where the provided bezier is non-linear, `error` defines the threshold for bounding boxes to be considered an intersection point.
+	pub fn intersections(&self, other: &Bezier, error: Option<f64>) -> Vec<f64> {
+		let error = error.unwrap_or(0.5);
+		if other.handles == BezierHandles::Linear {
+			// Rotate the bezier and the line by the angle that the line makes with the x axis
+			let line_directional_vector = other.end - other.start;
+			let angle = line_directional_vector.angle_between(DVec2::new(1., 0.));
+			let rotation_matrix = DMat2::from_angle(angle);
+			let rotated_bezier = self.apply_transformation(&|point| rotation_matrix.mul_vec2(point));
+			let rotated_line = [rotation_matrix.mul_vec2(other.start), rotation_matrix.mul_vec2(other.end)];
 
-		// Translate the bezier such that the line becomes aligned on top of the x-axis
-		let vertical_distance = rotated_line[0].y;
-		let translated_bezier = rotated_bezier.translate(DVec2::new(0., -vertical_distance));
+			// Translate the bezier such that the line becomes aligned on top of the x-axis
+			let vertical_distance = rotated_line[0].y;
+			let translated_bezier = rotated_bezier.translate(DVec2::new(0., -vertical_distance));
 
-		// Compute the roots of the resulting bezier curve
-		let list_intersection_t = match translated_bezier.handles {
-			BezierHandles::Linear => {
-				// If the transformed linear bezier is on the x-axis, `a` and `b` will both be zero and `solve_linear` will return no roots
-				let a = translated_bezier.end.y - translated_bezier.start.y;
-				let b = translated_bezier.start.y;
-				utils::solve_linear(a, b)
-			}
-			BezierHandles::Quadratic { handle } => {
-				let a = translated_bezier.start.y - 2. * handle.y + translated_bezier.end.y;
-				let b = 2. * (handle.y - translated_bezier.start.y);
-				let c = translated_bezier.start.y;
+			// Compute the roots of the resulting bezier curve
+			let list_intersection_t = match translated_bezier.handles {
+				BezierHandles::Linear => {
+					// If the transformed linear bezier is on the x-axis, `a` and `b` will both be zero and `solve_linear` will return no roots
+					let a = translated_bezier.end.y - translated_bezier.start.y;
+					let b = translated_bezier.start.y;
+					utils::solve_linear(a, b)
+				}
+				BezierHandles::Quadratic { handle } => {
+					let a = translated_bezier.start.y - 2. * handle.y + translated_bezier.end.y;
+					let b = 2. * (handle.y - translated_bezier.start.y);
+					let c = translated_bezier.start.y;
 
-				let discriminant = b * b - 4. * a * c;
-				let two_times_a = 2. * a;
+					let discriminant = b * b - 4. * a * c;
+					let two_times_a = 2. * a;
 
-				utils::solve_quadratic(discriminant, two_times_a, b, c)
-			}
-			BezierHandles::Cubic { handle_start, handle_end } => {
-				let start_y = translated_bezier.start.y;
-				let a = -start_y + 3. * handle_start.y - 3. * handle_end.y + translated_bezier.end.y;
-				let b = 3. * start_y - 6. * handle_start.y + 3. * handle_end.y;
-				let c = -3. * start_y + 3. * handle_start.y;
-				let d = start_y;
+					utils::solve_quadratic(discriminant, two_times_a, b, c)
+				}
+				BezierHandles::Cubic { handle_start, handle_end } => {
+					let start_y = translated_bezier.start.y;
+					let a = -start_y + 3. * handle_start.y - 3. * handle_end.y + translated_bezier.end.y;
+					let b = 3. * start_y - 6. * handle_start.y + 3. * handle_end.y;
+					let c = -3. * start_y + 3. * handle_start.y;
+					let d = start_y;
 
-				utils::solve_cubic(a, b, c, d)
-			}
+					utils::solve_cubic(a, b, c, d)
+				}
+			};
+
+			let min = other.start.min(other.end);
+			let max = other.start.max(other.end);
+
+			return list_intersection_t
+				.into_iter()
+				// Accept the t value if it is approximately in [0, 1] and if the coresponding coordinates are within the range of the linear line
+				.filter(|&t| {
+					utils::f64_approximately_in_range(t, 0., 1., MAX_ABSOLUTE_DIFFERENCE)
+						&& utils::dvec2_approximately_in_range(self.unrestricted_evaluate(t), min, max, MAX_ABSOLUTE_DIFFERENCE).all()
+				})
+				// Ensure the returned value is within the correct range
+				.map(|t| t.clamp(0., 1.))
+				.collect::<Vec<f64>>();
+		}
+
+		// TODO: Consider using the `intersections_between_vectors_of_curves` helper function here
+		// Otherwise, use bounding box to determine intersections
+		self.intersections_between_subcurves(0. ..1., other, 0. ..1., error).iter().map(|t_values| t_values[0]).collect()
+	}
+
+	/// Helper function to compute intersections between lists of subcurves.
+	/// This function uses the algorithm implemented in `intersections_between_subcurves`.
+	fn intersections_between_vectors_of_curves(subcurves1: &[(Bezier, Range<f64>)], subcurves2: &[(Bezier, Range<f64>)], error: f64) -> Vec<[f64; 2]> {
+		let segment_pairs = subcurves1.iter().flat_map(move |(curve1, curve1_t_pair)| {
+			subcurves2
+				.iter()
+				.filter_map(move |(curve2, curve2_t_pair)| utils::do_rectangles_overlap(curve1.bounding_box(), curve2.bounding_box()).then(|| (curve1, curve1_t_pair, curve2, curve2_t_pair)))
+		});
+		segment_pairs
+			.flat_map(|(curve1, curve1_t_pair, curve2, curve2_t_pair)| curve1.intersections_between_subcurves(curve1_t_pair.clone(), curve2, curve2_t_pair.clone(), error))
+			.collect::<Vec<[f64; 2]>>()
+	}
+
+	// TODO: Use an `impl Iterator` return type instead of a `Vec`
+	/// Returns a list of `t` values that correspond to the self intersection points of the current bezier curve. For each intersection point, the returned `t` value is the smaller of the two that correspond to the point.
+	/// - `error` - For intersections with non-linear beziers, `error` defines the threshold for bounding boxes to be considered an intersection point.
+	pub fn self_intersections(&self, error: Option<f64>) -> Vec<[f64; 2]> {
+		if self.handles == BezierHandles::Linear || matches!(self.handles, BezierHandles::Quadratic { .. }) {
+			return vec![];
+		}
+
+		let error = error.unwrap_or(0.5);
+
+		// Get 2 copies of the reduced curves
+		let (self1, self1_t_values) = self.reduced_curves_and_t_values(None);
+		let (self2, self2_t_values) = (self1.clone(), self1_t_values.clone());
+		let num_curves = self1.len();
+
+		// Create iterators that combine a subcurve with the `t` value pair that it was trimmed with
+		let combined_iterator1 = self1.into_iter().zip(self1_t_values.windows(2).map(|t_pair| Range { start: t_pair[0], end: t_pair[1] }));
+		// Second one needs to be a list because Iterator does not implement copy
+		let combined_list2: Vec<(Bezier, Range<f64>)> = self2.into_iter().zip(self2_t_values.windows(2).map(|t_pair| Range { start: t_pair[0], end: t_pair[1] })).collect();
+
+		// Adjacent reduced curves cannot intersect
+		// So for each curve, look for intersections with every curve that is at least 2 indices away
+		combined_iterator1
+			.take(num_curves - 2)
+			.enumerate()
+			.flat_map(|(index, (subcurve, t_pair))| Bezier::intersections_between_vectors_of_curves(&[(subcurve, t_pair)], &combined_list2[index + 2..], error))
+			.collect()
+	}
+
+	/// Returns a list of lists of points representing the De Casteljau points for all iterations at the point corresponding to `t` using De Casteljau's algorithm.
+	/// The `i`th element of the list represents the set of points in the `i`th iteration.
+	/// More information on the algorithm can be found in the [De Casteljau section](https://pomax.github.io/bezierinfo/#decasteljau) in Pomax's primer.
+	pub fn de_casteljau_points(&self, t: f64) -> Vec<Vec<DVec2>> {
+		let bezier_points = match self.handles {
+			BezierHandles::Linear => vec![self.start, self.end],
+			BezierHandles::Quadratic { handle } => vec![self.start, handle, self.end],
+			BezierHandles::Cubic { handle_start, handle_end } => vec![self.start, handle_start, handle_end, self.end],
 		};
+		let mut de_casteljau_points = vec![bezier_points];
+		let mut current_points = de_casteljau_points.last().unwrap();
 
-		let min = line[0].min(line[1]);
-		let max = line[0].max(line[1]);
+		// Iterate until one point is left, that point will be equal to `evaluate(t)`
+		while current_points.len() > 1 {
+			// Map from every adjacent pair of points to their respective midpoints, which decrements by 1 the number of points for the next iteration
+			let next_points: Vec<DVec2> = current_points.as_slice().windows(2).map(|pair| DVec2::lerp(pair[0], pair[1], t)).collect();
+			de_casteljau_points.push(next_points);
 
-		list_intersection_t
-			.iter()
-			.filter(|&&t| utils::f64_approximately_in_range(t, 0., 1., MAX_ABSOLUTE_DIFFERENCE))
-			.map(|&t| self.unrestricted_evaluate(t))
-			.filter(|&point| utils::dvec2_approximately_in_range(point, min, max, MAX_ABSOLUTE_DIFFERENCE).all())
-			.collect::<Vec<DVec2>>()
+			current_points = de_casteljau_points.last().unwrap();
+		}
+
+		de_casteljau_points
 	}
 
 	/// Determine if it is possible to scale the given curve, using the following conditions:
@@ -636,6 +821,9 @@ impl Bezier {
 	/// 2. The on-curve point for `t = 0.5` must occur roughly in the center of the polygon defined by the curve's endpoint normals.
 	/// See [the offset section](https://pomax.github.io/bezierinfo/#offsetting) of Pomax's bezier curve primer for more details.
 	fn is_scalable(&self) -> bool {
+		if self.handles == BezierHandles::Linear {
+			return true;
+		}
 		// Verify all the handles are located on a single side of the curve.
 		if let BezierHandles::Cubic { handle_start, handle_end } = self.handles {
 			let angle_1 = (self.end - self.start).angle_between(handle_start - self.start);
@@ -651,14 +839,15 @@ impl Bezier {
 		endpoint_normal_angle < SCALABLE_CURVE_MAX_ENDPOINT_NORMAL_ANGLE
 	}
 
-	/// Split the curve into a number of scalable subcurves. This function may introduce gaps if subsections of the curve are not reducible.
+	/// Returns a tuple of the scalable subcurves and the corresponding `t` values that were used to split the curve.
+	/// This function may introduce gaps if subsections of the curve are not reducible.
 	/// The function takes the following parameter:
 	/// - `step_size` - Dictates the granularity at which the function searches for reducible subcurves. The default value is `0.01`.
 	///   A small granularity may increase the chance the function does not introduce gaps, but will increase computation time.
-	pub fn reduce(&self, step_size: Option<f64>) -> Vec<Bezier> {
+	fn reduced_curves_and_t_values(&self, step_size: Option<f64>) -> (Vec<Bezier>, Vec<f64>) {
 		// A linear segment is scalable, so return itself
 		if let BezierHandles::Linear = self.handles {
-			return vec![*self];
+			return (vec![*self], vec![0., 1.]);
 		}
 
 		let step_size = step_size.unwrap_or(DEFAULT_REDUCE_STEP_SIZE);
@@ -668,27 +857,27 @@ impl Bezier {
 		extrema.dedup();
 		extrema.sort_by(|ex1, ex2| ex1.partial_cmp(ex2).unwrap());
 
-		// Split the curve on the extremas. Simplifies procedure for ensuring each curve can be scaled.
-		let mut subcurves = Vec::new();
-		let mut t1: f64 = extrema[0];
-		for t2 in extrema.iter().skip(1) {
-			subcurves.push(self.trim(t1, *t2));
-			t1 = *t2;
-		}
-
 		// Split each subcurve such that each resulting segment is scalable.
-		let mut result: Vec<Bezier> = Vec::new();
-		subcurves.iter().for_each(|&subcurve| {
+		let mut result_beziers: Vec<Bezier> = Vec::new();
+		let mut result_t_values: Vec<f64> = vec![extrema[0]];
+
+		extrema.windows(2).for_each(|t_pair| {
+			let t_subcurve_start = t_pair[0];
+			let t_subcurve_end = t_pair[1];
+			let subcurve = self.trim(t_subcurve_start, t_subcurve_end);
 			// Perform no processing on the subcurve if it's already scalable.
 			if subcurve.is_scalable() {
-				result.push(subcurve);
+				result_beziers.push(subcurve);
+				result_t_values.push(t_subcurve_end);
 				return;
 			}
 			// According to <https://pomax.github.io/bezierinfo/#offsetting>, it is generally sufficient to split subcurves with no local extrema at `t = 0.5` to generate two scalable segments.
 			let [first_half, second_half] = subcurve.split(0.5);
 			if first_half.is_scalable() && second_half.is_scalable() {
-				result.push(first_half);
-				result.push(second_half);
+				result_beziers.push(first_half);
+				result_beziers.push(second_half);
+				result_t_values.push(t_subcurve_start + (t_subcurve_end - t_subcurve_start) / 2.);
+				result_t_values.push(t_subcurve_end);
 				return;
 			}
 
@@ -705,7 +894,10 @@ impl Bezier {
 					// Otherwise, add the valid segment from the previous step to the result.
 					if f64::abs(t1 - t2) >= step_size {
 						segment = subcurve.trim(t1, t2);
-						result.push(segment);
+						result_beziers.push(segment);
+						result_t_values.push(t_subcurve_start + t2 * (t_subcurve_end - t_subcurve_start));
+					} else {
+						return;
 					}
 					t1 = t2;
 				}
@@ -715,11 +907,120 @@ impl Bezier {
 			if t1 < 1. {
 				segment = subcurve.trim(t1, 1.);
 				if segment.is_scalable() {
-					result.push(segment);
+					result_beziers.push(segment);
+					result_t_values.push(t_subcurve_end);
 				}
 			}
 		});
-		result
+		(result_beziers, result_t_values)
+	}
+
+	/// Split the curve into a number of scalable subcurves. This function may introduce gaps if subsections of the curve are not reducible.
+	/// The function takes the following parameter:
+	/// - `step_size` - Dictates the granularity at which the function searches for reducible subcurves. The default value is `0.01`.
+	///   A small granularity may increase the chance the function does not introduce gaps, but will increase computation time.
+	pub fn reduce(&self, step_size: Option<f64>) -> Vec<Bezier> {
+		self.reduced_curves_and_t_values(step_size).0
+	}
+
+	/// Return the min and max corners that represent the bounding box of the curve.
+	pub fn bounding_box(&self) -> [DVec2; 2] {
+		// Start by taking min/max of endpoints.
+		let mut endpoints_min = self.start.min(self.end);
+		let mut endpoints_max = self.start.max(self.end);
+
+		// Iterate through extrema points.
+		let extrema = self.local_extrema();
+		for t_values in extrema {
+			for t in t_values {
+				let point = self.evaluate(t);
+				// Update bounding box if new min/max is found.
+				endpoints_min = endpoints_min.min(point);
+				endpoints_max = endpoints_max.max(point);
+			}
+		}
+
+		[endpoints_min, endpoints_max]
+	}
+
+	// TODO: Use an `impl Iterator` return type instead of a `Vec`
+	/// Returns list of `t`-values representing the inflection points of the curve.
+	/// The inflection points are defined to be points at which the second derivative of the curve is equal to zero.
+	pub fn unrestricted_inflections(&self) -> Vec<f64> {
+		match self.handles {
+			// There exists no inflection points for linear and quadratic beziers.
+			BezierHandles::Linear => Vec::new(),
+			BezierHandles::Quadratic { .. } => Vec::new(),
+			BezierHandles::Cubic { .. } => {
+				// Axis align the curve.
+				let translated_bezier = self.translate(-self.start);
+				let angle = translated_bezier.end.angle_between(DVec2::new(1., 0.));
+				let rotated_bezier = translated_bezier.rotate(angle);
+				if let BezierHandles::Cubic { handle_start, handle_end } = rotated_bezier.handles {
+					// These formulas and naming conventions follows https://pomax.github.io/bezierinfo/#inflections
+					let a = handle_end.x * handle_start.y;
+					let b = rotated_bezier.end.x * handle_start.y;
+					let c = handle_start.x * handle_end.y;
+					let d = rotated_bezier.end.x * handle_end.y;
+
+					let x = -3. * a + 2. * b + 3. * c - d;
+					let y = 3. * a - b - 3. * c;
+					let z = c - a;
+
+					let discriminant = y * y - 4. * x * z;
+					utils::solve_quadratic(discriminant, 2. * x, y, z)
+				} else {
+					unreachable!("shouldn't happen")
+				}
+			}
+		}
+	}
+
+	/// Returns list of `t`-values representing the inflection points of the curve.
+	/// The list of `t`-values returned are filtered such that they fall within the range `[0, 1]`.
+	pub fn inflections(&self) -> Vec<f64> {
+		self.unrestricted_inflections().into_iter().filter(|&t| t > 0. && t < 1.).collect::<Vec<f64>>()
+	}
+
+	/// Scale will translate a bezier curve a fixed distance away from its original position, and stretch/compress the transformed curve to match the translation ratio.
+	/// Note that not all bezier curves are possible to scale, so this function asserts that the provided curve is scalable.
+	/// A proof for why this is true can be found in the [Curve offsetting section](https://pomax.github.io/bezierinfo/#offsetting) of Pomax's bezier curve primer.
+	/// `scale` takes the parameter `distance`, which is the distance away from the curve that the new one will be scaled to. Positive values will scale the curve in the
+	/// same direction as the endpoint normals, while negative values will scale in the opposite direction.
+	fn scale(&self, distance: f64) -> Bezier {
+		assert!(self.is_scalable(), "The curve provided to scale is not scalable. Reduce the curve first.");
+
+		let normal_start = self.normal(0.);
+		let normal_end = self.normal(1.);
+
+		// If normal unit vectors are equal, then the lines are parallel
+		if normal_start.abs_diff_eq(normal_end, MAX_ABSOLUTE_DIFFERENCE) {
+			return self.translate(distance * normal_start);
+		}
+
+		// Find the intersection point of the endpoint normals
+		let intersection = utils::line_intersection(self.start, normal_start, self.end, normal_end);
+
+		let should_flip_direction = (self.start - intersection).normalize().abs_diff_eq(normal_start, MAX_ABSOLUTE_DIFFERENCE);
+		self.apply_transformation(&|point| {
+			let mut direction_unit_vector = (intersection - point).normalize();
+			if should_flip_direction {
+				direction_unit_vector *= -1.;
+			}
+			point + distance * direction_unit_vector
+		})
+	}
+
+	/// Offset will get all the reduceable subcurves, and for each subcurve, it will scale the subcurve a set distance away from the original curve.
+	/// Note that not all bezier curves are possible to offset, so this function first reduces the curve to scalable segments and then offsets those segments.
+	/// A proof for why this is true can be found in the [Curve offsetting section](https://pomax.github.io/bezierinfo/#offsetting) of Pomax's bezier curve primer.
+	/// Offset takes the following parameter:
+	/// - `distance` - The distance away from the curve that the new one will be offset to. Positive values will offset the curve in the same direction as the endpoint normals,
+	/// while negative values will offset in the opposite direction.
+	pub fn offset(&self, distance: f64) -> Vec<Bezier> {
+		let mut reduced = self.reduce(None);
+		reduced.iter_mut().for_each(|bezier| *bezier = bezier.scale(distance));
+		reduced
 	}
 }
 
@@ -727,16 +1028,34 @@ impl Bezier {
 mod tests {
 	use super::*;
 	use crate::consts::MAX_ABSOLUTE_DIFFERENCE;
-	use crate::utils;
 
 	use glam::DVec2;
 
+	// Compare points by allowing some maximum absolute difference to account for floating point errors
 	fn compare_points(p1: DVec2, p2: DVec2) -> bool {
-		utils::dvec2_compare(p1, p2, MAX_ABSOLUTE_DIFFERENCE).all()
+		p1.abs_diff_eq(p2, MAX_ABSOLUTE_DIFFERENCE)
+	}
+
+	// Compare vectors of points by allowing some maximum absolute difference to account for floating point errors
+	fn compare_vector_of_points(a: Vec<DVec2>, b: Vec<DVec2>) -> bool {
+		a.len() == b.len() && a.into_iter().zip(b.into_iter()).all(|(p1, p2)| p1.abs_diff_eq(p2, MAX_ABSOLUTE_DIFFERENCE))
+	}
+
+	// Compare vectors of beziers by allowing some maximum absolute difference between points to account for floating point errors
+	fn compare_vector_of_beziers(beziers: &[Bezier], expected_bezier_points: Vec<Vec<DVec2>>) -> bool {
+		beziers
+			.iter()
+			.zip(expected_bezier_points.iter())
+			.all(|(&a, b)| compare_vector_of_points(a.get_points().collect::<Vec<DVec2>>(), b.to_vec()))
+	}
+
+	// Compare vectors of points with some maximum allowed absolute difference between the values
+	fn compare_vec_of_points(vec1: Vec<DVec2>, vec2: Vec<DVec2>, max_absolute_difference: f64) -> bool {
+		vec1.into_iter().zip(vec2).all(|(p1, p2)| p1.abs_diff_eq(p2, max_absolute_difference))
 	}
 
 	#[test]
-	fn quadratic_from_points() {
+	fn test_quadratic_from_points() {
 		let p1 = DVec2::new(30., 50.);
 		let p2 = DVec2::new(140., 30.);
 		let p3 = DVec2::new(160., 170.);
@@ -752,7 +1071,7 @@ mod tests {
 	}
 
 	#[test]
-	fn cubic_through_points() {
+	fn test_cubic_through_points() {
 		let p1 = DVec2::new(30., 30.);
 		let p2 = DVec2::new(60., 140.);
 		let p3 = DVec2::new(160., 160.);
@@ -768,55 +1087,55 @@ mod tests {
 	}
 
 	#[test]
-	fn project() {
+	fn test_project() {
 		let project_options = ProjectionOptions::default();
 
 		let bezier1 = Bezier::from_cubic_coordinates(4., 4., 23., 45., 10., 30., 56., 90.);
-		assert!(bezier1.project(DVec2::new(100., 100.), project_options) == DVec2::new(56., 90.));
-		assert!(bezier1.project(DVec2::new(0., 0.), project_options) == DVec2::new(4., 4.));
+		assert!(bezier1.evaluate(bezier1.project(DVec2::new(100., 100.), project_options)) == DVec2::new(56., 90.));
+		assert!(bezier1.evaluate(bezier1.project(DVec2::new(0., 0.), project_options)) == DVec2::new(4., 4.));
 
 		let bezier2 = Bezier::from_quadratic_coordinates(0., 0., 0., 100., 100., 100.);
-		assert!(bezier2.project(DVec2::new(100., 0.), project_options) == DVec2::new(0., 0.));
+		assert!(bezier2.evaluate(bezier2.project(DVec2::new(100., 0.), project_options)) == DVec2::new(0., 0.));
 	}
 	#[test]
-	fn intersect_line_segment_linear() {
+	fn test_intersect_line_segment_linear() {
 		let p1 = DVec2::new(30., 60.);
 		let p2 = DVec2::new(140., 120.);
 
 		// Intersection at edge of curve
-		let bezier1 = Bezier::from_linear_dvec2(p1, p2);
-		let line1 = [DVec2::new(20., 60.), DVec2::new(70., 60.)];
-		let intersections1 = bezier1.intersect_line_segment(line1);
+		let bezier = Bezier::from_linear_dvec2(p1, p2);
+		let line1 = Bezier::from_linear_coordinates(20., 60., 70., 60.);
+		let intersections1 = bezier.intersections(&line1, None);
 		assert!(intersections1.len() == 1);
-		assert!(compare_points(intersections1[0], DVec2::new(30., 60.)));
+		assert!(compare_points(bezier.evaluate(intersections1[0]), DVec2::new(30., 60.)));
 
 		// Intersection in the middle of curve
-		let line2 = [DVec2::new(150., 150.), DVec2::new(30., 30.)];
-		let intersections2 = bezier1.intersect_line_segment(line2);
-		assert!(compare_points(intersections2[0], DVec2::new(96., 96.)));
+		let line2 = Bezier::from_linear_coordinates(150., 150., 30., 30.);
+		let intersections2 = bezier.intersections(&line2, None);
+		assert!(compare_points(bezier.evaluate(intersections2[0]), DVec2::new(96., 96.)));
 	}
 
 	#[test]
-	fn intersect_line_segment_quadratic() {
+	fn test_intersect_line_segment_quadratic() {
 		let p1 = DVec2::new(30., 50.);
 		let p2 = DVec2::new(140., 30.);
 		let p3 = DVec2::new(160., 170.);
 
 		// Intersection at edge of curve
-		let bezier1 = Bezier::from_quadratic_dvec2(p1, p2, p3);
-		let line1 = [DVec2::new(20., 50.), DVec2::new(40., 50.)];
-		let intersections1 = bezier1.intersect_line_segment(line1);
+		let bezier = Bezier::from_quadratic_dvec2(p1, p2, p3);
+		let line1 = Bezier::from_linear_coordinates(20., 50., 40., 50.);
+		let intersections1 = bezier.intersections(&line1, None);
 		assert!(intersections1.len() == 1);
-		assert!(compare_points(intersections1[0], p1));
+		assert!(compare_points(bezier.evaluate(intersections1[0]), p1));
 
 		// Intersection in the middle of curve
-		let line2 = [DVec2::new(150., 150.), DVec2::new(30., 30.)];
-		let intersections2 = bezier1.intersect_line_segment(line2);
-		assert!(compare_points(intersections2[0], DVec2::new(47.77355, 47.77354)));
+		let line2 = Bezier::from_linear_coordinates(150., 150., 30., 30.);
+		let intersections2 = bezier.intersections(&line2, None);
+		assert!(compare_points(bezier.evaluate(intersections2[0]), DVec2::new(47.77355, 47.77354)));
 	}
 
 	#[test]
-	fn intersect_line_segment_cubic() {
+	fn test_intersect_line_segment_cubic() {
 		let p1 = DVec2::new(30., 30.);
 		let p2 = DVec2::new(60., 140.);
 		let p3 = DVec2::new(150., 30.);
@@ -824,16 +1143,93 @@ mod tests {
 
 		let bezier = Bezier::from_cubic_dvec2(p1, p2, p3, p4);
 		// Intersection at edge of curve, Discriminant > 0
-		let line1 = [DVec2::new(20., 30.), DVec2::new(40., 30.)];
-		let intersections1 = bezier.intersect_line_segment(line1);
+		let line1 = Bezier::from_linear_coordinates(20., 30., 40., 30.);
+		let intersections1 = bezier.intersections(&line1, None);
 		assert!(intersections1.len() == 1);
-		assert!(compare_points(intersections1[0], p1));
+		assert!(compare_points(bezier.evaluate(intersections1[0]), p1));
 
 		// Intersection at edge and in middle of curve, Discriminant < 0
-		let line2 = [DVec2::new(150., 150.), DVec2::new(30., 30.)];
-		let intersections2 = bezier.intersect_line_segment(line2);
+		let line2 = Bezier::from_linear_coordinates(150., 150., 30., 30.);
+		let intersections2 = bezier.intersections(&line2, None);
 		assert!(intersections2.len() == 2);
-		assert!(compare_points(intersections2[0], p1));
-		assert!(compare_points(intersections2[1], DVec2::new(85.84, 85.84)));
+		assert!(compare_points(bezier.evaluate(intersections2[0]), p1));
+		assert!(compare_points(bezier.evaluate(intersections2[1]), DVec2::new(85.84, 85.84)));
+	}
+
+	#[test]
+	fn test_intersect_curve() {
+		let bezier1 = Bezier::from_cubic_coordinates(30., 30., 60., 140., 150., 30., 160., 160.);
+		let bezier2 = Bezier::from_quadratic_coordinates(175., 140., 20., 20., 120., 20.);
+
+		let intersections = bezier1.intersections(&bezier2, None);
+		let intersections2 = bezier2.intersections(&bezier1, None);
+		assert!(compare_vec_of_points(
+			intersections.iter().map(|&t| bezier1.evaluate(t)).collect(),
+			intersections2.iter().map(|&t| bezier2.evaluate(t)).collect(),
+			2.
+		));
+	}
+
+	#[test]
+	fn test_intersect_with_self() {
+		let bezier = Bezier::from_cubic_coordinates(160., 180., 170., 10., 30., 90., 180., 140.);
+		let intersections = bezier.self_intersections(Some(0.5));
+		assert!(compare_vec_of_points(
+			intersections.iter().map(|&t| bezier.evaluate(t[0])).collect(),
+			intersections.iter().map(|&t| bezier.evaluate(t[1])).collect(),
+			2.
+		));
+		assert!(Bezier::from_linear_coordinates(160., 180., 170., 10.).self_intersections(None).is_empty());
+		assert!(Bezier::from_quadratic_coordinates(160., 180., 170., 10., 30., 90.).self_intersections(None).is_empty());
+	}
+
+	#[test]
+	fn test_offset() {
+		let p1 = DVec2::new(30., 50.);
+		let p2 = DVec2::new(140., 30.);
+		let p3 = DVec2::new(160., 170.);
+		let bezier1 = Bezier::from_quadratic_dvec2(p1, p2, p3);
+		let expected_bezier_points1 = vec![
+			vec![DVec2::new(31.7888, 59.8387), DVec2::new(44.5924, 57.46446), DVec2::new(56.09375, 57.5)],
+			vec![DVec2::new(56.09375, 57.5), DVec2::new(94.94197, 56.5019), DVec2::new(117.6473, 84.5936)],
+			vec![DVec2::new(117.6473, 84.5936), DVec2::new(142.3985, 113.403), DVec2::new(150.1005, 171.4142)],
+		];
+		assert!(compare_vector_of_beziers(&bezier1.offset(10.), expected_bezier_points1));
+
+		let p4 = DVec2::new(32., 77.);
+		let p5 = DVec2::new(169., 25.);
+		let p6 = DVec2::new(164., 157.);
+		let bezier2 = Bezier::from_quadratic_dvec2(p4, p5, p6);
+		let expected_bezier_points2 = vec![
+			vec![DVec2::new(42.6458, 105.04758), DVec2::new(75.0218, 91.9939), DVec2::new(98.09357, 92.3043)],
+			vec![DVec2::new(98.09357, 92.3043), DVec2::new(116.5995, 88.5479), DVec2::new(123.9055, 102.0401)],
+			vec![DVec2::new(123.9055, 102.0401), DVec2::new(136.6087, 116.9522), DVec2::new(134.1761, 147.9324)],
+			vec![DVec2::new(134.1761, 147.9324), DVec2::new(134.1812, 151.7987), DVec2::new(134.0215, 155.86445)],
+		];
+		assert!(compare_vector_of_beziers(&bezier2.offset(30.), expected_bezier_points2));
+	}
+
+	#[test]
+	fn test_reduce() {
+		let p1 = DVec2::new(0., 0.);
+		let p2 = DVec2::new(50., 50.);
+		let p3 = DVec2::new(0., 0.);
+		let bezier = Bezier::from_quadratic_dvec2(p1, p2, p3);
+
+		let expected_bezier_points = vec![
+			vec![DVec2::new(0., 0.), DVec2::new(0.5, 0.5), DVec2::new(0.989, 0.989)],
+			vec![DVec2::new(0.989, 0.989), DVec2::new(2.705, 2.705), DVec2::new(4.2975, 4.2975)],
+			vec![DVec2::new(4.2975, 4.2975), DVec2::new(5.6625, 5.6625), DVec2::new(6.9375, 6.9375)],
+		];
+		let reduced_curves = bezier.reduce(None);
+		assert!(compare_vector_of_beziers(&reduced_curves, expected_bezier_points));
+
+		// Check that the reduce helper is correct
+		let (helper_curves, helper_t_values) = bezier.reduced_curves_and_t_values(None);
+		assert_eq!(&reduced_curves, &helper_curves);
+		assert!(reduced_curves
+			.iter()
+			.zip(helper_t_values.windows(2))
+			.all(|(curve, t_pair)| curve.abs_diff_eq(&bezier.trim(t_pair[0], t_pair[1]), MAX_ABSOLUTE_DIFFERENCE)))
 	}
 }

@@ -1,3 +1,6 @@
+pub mod subpath;
+mod svg_drawing;
+
 use bezier_rs::{Bezier, ProjectionOptions};
 use glam::DVec2;
 use serde::{Deserialize, Serialize};
@@ -31,7 +34,7 @@ fn to_js_value<T: Serialize>(data: T) -> JsValue {
 
 #[wasm_bindgen]
 impl WasmBezier {
-	/// Expect js_points to be a list of 3 pairs.
+	/// Expect js_points to be a list of 2 pairs.
 	pub fn new_linear(js_points: &JsValue) -> WasmBezier {
 		let points: [DVec2; 2] = js_points.into_serde().unwrap();
 		WasmBezier(Bezier::from_linear_dvec2(points[0], points[1]))
@@ -116,8 +119,8 @@ impl WasmBezier {
 		WasmBezier(self.0.trim(t1, t2))
 	}
 
-	pub fn project(&self, x: f64, y: f64) -> JsValue {
-		vec_to_point(&self.0.project(DVec2::new(x, y), ProjectionOptions::default()))
+	pub fn project(&self, x: f64, y: f64) -> f64 {
+		self.0.project(DVec2::new(x, y), ProjectionOptions::default())
 	}
 
 	pub fn local_extrema(&self) -> JsValue {
@@ -125,17 +128,69 @@ impl WasmBezier {
 		to_js_value(local_extrema)
 	}
 
+	pub fn bounding_box(&self) -> JsValue {
+		let bbox_points: [Point; 2] = self.0.bounding_box().map(|p| Point { x: p.x, y: p.y });
+		to_js_value(bbox_points)
+	}
+
+	pub fn inflections(&self) -> JsValue {
+		let inflections = self.0.inflections();
+		to_js_value(inflections)
+	}
+
+	pub fn de_casteljau_points(&self, t: f64) -> JsValue {
+		let hull = self
+			.0
+			.de_casteljau_points(t)
+			.iter()
+			.map(|level| level.iter().map(|&point| Point { x: point.x, y: point.y }).collect::<Vec<Point>>())
+			.collect::<Vec<Vec<Point>>>();
+		to_js_value(hull)
+	}
+
 	pub fn rotate(&self, angle: f64) -> WasmBezier {
 		WasmBezier(self.0.rotate(angle))
 	}
 
-	pub fn intersect_line_segment(&self, js_points: &JsValue) -> Vec<JsValue> {
-		let line: [DVec2; 2] = js_points.into_serde().unwrap();
-		self.0.intersect_line_segment(line).iter().map(|&p| vec_to_point(&p)).collect::<Vec<JsValue>>()
+	fn intersect(&self, curve: &Bezier, error: Option<f64>) -> Vec<f64> {
+		self.0.intersections(curve, error)
+	}
+
+	pub fn intersect_line_segment(&self, js_points: &JsValue) -> Vec<f64> {
+		let points: [DVec2; 2] = js_points.into_serde().unwrap();
+		let line = Bezier::from_linear_dvec2(points[0], points[1]);
+		self.intersect(&line, None)
+	}
+
+	pub fn intersect_quadratic_segment(&self, js_points: &JsValue, error: f64) -> Vec<f64> {
+		let points: [DVec2; 3] = js_points.into_serde().unwrap();
+		let quadratic = Bezier::from_quadratic_dvec2(points[0], points[1], points[2]);
+		self.intersect(&quadratic, Some(error))
+	}
+
+	pub fn intersect_cubic_segment(&self, js_points: &JsValue, error: f64) -> Vec<f64> {
+		let points: [DVec2; 4] = js_points.into_serde().unwrap();
+		let cubic = Bezier::from_cubic_dvec2(points[0], points[1], points[2], points[3]);
+		self.intersect(&cubic, Some(error))
+	}
+
+	/// The wrapped return type is `Vec<[f64; 2]>`.
+	pub fn intersect_self(&self, error: f64) -> JsValue {
+		let points: Vec<[f64; 2]> = self.0.self_intersections(Some(error));
+		to_js_value(points)
 	}
 
 	pub fn reduce(&self) -> JsValue {
 		let bezier_points: Vec<Vec<Point>> = self.0.reduce(None).into_iter().map(bezier_to_points).collect();
 		to_js_value(bezier_points)
+	}
+
+	pub fn offset(&self, distance: f64) -> JsValue {
+		let bezier_points: Vec<Vec<Point>> = self.0.offset(distance).into_iter().map(bezier_to_points).collect();
+		to_js_value(bezier_points)
+	}
+
+	pub fn curvature(&self, t: f64) -> f64 {
+		self.0.curvature(t)
 	}
 }
