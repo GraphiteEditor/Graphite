@@ -12,8 +12,10 @@ pub struct HintGroup(pub Vec<HintInfo>);
 pub struct HintInfo {
 	/// A `KeysGroup` specifies all the keys pressed simultaneously to perform an action (like "Ctrl C" to copy).
 	/// Usually at most one is given, but less commonly, multiple can be used to describe additional hotkeys not used simultaneously (like the four different arrow keys to nudge a layer).
+	#[serde(rename = "keyGroups")]
 	pub key_groups: Vec<KeysGroup>,
-	/// `None` means that `key_groups` should be used for both platforms, `Some` is an override for Mac only
+	/// `None` means that the regular `key_groups` should be used for all platforms, `Some` is an override for a Mac-only input hint.
+	#[serde(rename = "keyGroupsMac")]
 	pub key_groups_mac: Option<Vec<KeysGroup>>,
 	/// An optional `MouseMotion` that can indicate the mouse action, like which mouse button is used and whether a drag occurs.
 	/// No such icon is shown if `None` is given, and it can be combined with `key_groups` if desired.

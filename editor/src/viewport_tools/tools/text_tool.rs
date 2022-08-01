@@ -472,7 +472,7 @@ impl Fsm for TextToolFsmState {
 			TextToolFsmState::Editing => HintData(vec![HintGroup(vec![
 				HintInfo {
 					key_groups: vec![KeysGroup(vec![Key::KeyControl, Key::KeyEnter])],
-					key_groups_mac: Some(vec![KeysGroup(vec![Key::KeyControl, Key::KeyEnter])]),
+					key_groups_mac: Some(vec![KeysGroup(vec![Key::KeyCommand, Key::KeyEnter])]),
 					mouse: None,
 					label: String::from("Commit Edit"),
 					plus: false,

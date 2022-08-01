@@ -2,7 +2,7 @@ import { DialogState } from "@/state-providers/dialog";
 import { FullscreenState } from "@/state-providers/fullscreen";
 import { PortfolioState } from "@/state-providers/portfolio";
 import { makeKeyboardModifiersBitfield, textInputCleanup, getLatinKey } from "@/utility-functions/keyboard-entry";
-import { operatingSystem } from "@/utility-functions/platform";
+import { operatingSystemIsMac } from "@/utility-functions/platform";
 import { stripIndents } from "@/utility-functions/strip-indents";
 import { Editor } from "@/wasm-communication/editor";
 import { TriggerPaste } from "@/wasm-communication/messages";
@@ -71,8 +71,7 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 		if (!key) return false;
 
 		// TODO: Switch to a system where everything is sent to the backend, then the input preprocessor makes decisions and kicks some inputs back to the frontend
-		const macLayout = operatingSystem() === "Mac";
-		const ctrlOrCmd = macLayout ? e.metaKey : e.ctrlKey;
+		const ctrlOrCmd = operatingSystemIsMac() ? e.metaKey : e.ctrlKey;
 
 		// Don't redirect user input from text entry into HTML elements
 		if (key !== "escape" && !(ctrlOrCmd && key === "enter") && targetIsTextField(e.target)) return false;

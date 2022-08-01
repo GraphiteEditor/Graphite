@@ -134,7 +134,7 @@
 import { defineComponent, PropType } from "vue";
 
 import { IconName } from "@/utility-functions/icons";
-import { operatingSystem } from "@/utility-functions/platform";
+import { operatingSystemIsMac } from "@/utility-functions/platform";
 import { HintInfo, KeysGroup } from "@/wasm-communication/messages";
 
 import LayoutRow from "@/components/layout/LayoutRow.vue";
@@ -179,7 +179,7 @@ const iconsAndWidthsMac = {
 export default defineComponent({
 	inject: ["fullscreen"],
 	props: {
-		inputKeys: { type: Array as PropType<HintInfo["key_groups"]>, default: () => [] },
+		inputKeys: { type: Array as PropType<HintInfo["keyGroups"]>, default: () => [] },
 		inputMouse: { type: String as PropType<HintInfo["mouse"]>, default: null },
 		requiresLock: { type: Boolean as PropType<boolean>, default: false },
 	},
@@ -203,11 +203,11 @@ export default defineComponent({
 		},
 		keyTextOrIcon(input: string): { text: string | null; icon: IconName | null; width: string } {
 			let keyText = input;
-			if (operatingSystem() === "Mac") {
+			if (operatingSystemIsMac()) {
 				keyText = keyText.replace("Alt", "Option");
 			}
 
-			const iconsAndWidths = operatingSystem() === "Mac" ? { ...iconsAndWidthsStandard, ...iconsAndWidthsMac } : iconsAndWidthsStandard;
+			const iconsAndWidths = operatingSystemIsMac() ? { ...iconsAndWidthsStandard, ...iconsAndWidthsMac } : iconsAndWidthsStandard;
 
 			// Strip off the "Key" prefix
 			const text = keyText.replace(/^(?:Key)?(.*)$/, "$1");
@@ -244,7 +244,7 @@ export default defineComponent({
 		mouseHintIcon(input: HintInfo["mouse"]): IconName {
 			return `MouseHint${input}` as IconName;
 		},
-		keyboardHintIcon(input: HintInfo["key_groups"][0][0]): IconName {
+		keyboardHintIcon(input: HintInfo["keyGroups"][0][0]): IconName {
 			return `Keyboard${input}` as IconName;
 		},
 	},

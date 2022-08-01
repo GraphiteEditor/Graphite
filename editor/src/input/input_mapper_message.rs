@@ -16,10 +16,7 @@ pub enum InputMapperMessage {
 	KeyUp(Key),
 
 	// Messages
-	#[remain::unsorted]
 	DoubleClick,
-	#[remain::unsorted]
 	PointerMove,
-	#[remain::unsorted]
 	WheelScroll,
 }

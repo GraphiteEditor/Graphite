@@ -216,7 +216,7 @@
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
 
-import { operatingSystem } from "@/utility-functions/platform";
+import { operatingSystemIsMac } from "@/utility-functions/platform";
 
 import LayoutCol from "@/components/layout/LayoutCol.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
@@ -261,7 +261,7 @@ export default defineComponent({
 		},
 		controlOrCommandKey() {
 			// TODO: Remove this by properly feeding these keys from a layout provided by the backend
-			return operatingSystem() === "Mac" ? "KeyCommand" : "KeyControl";
+			return operatingSystemIsMac() ? "KeyCommand" : "KeyControl";
 		},
 	},
 	components: {

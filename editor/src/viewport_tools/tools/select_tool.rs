@@ -800,7 +800,7 @@ impl Fsm for SelectToolFsmState {
 					},
 					HintInfo {
 						key_groups: vec![KeysGroup(vec![Key::KeyControl, Key::KeyD])],
-						key_groups_mac: Some(vec![KeysGroup(vec![Key::KeyControl, Key::KeyD])]),
+						key_groups_mac: Some(vec![KeysGroup(vec![Key::KeyCommand, Key::KeyD])]),
 						mouse: None,
 						label: String::from("Duplicate"),
 						plus: false,

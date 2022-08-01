@@ -79,9 +79,9 @@ export type HintData = HintGroup[];
 export type HintGroup = HintInfo[];
 
 export class HintInfo {
-	readonly key_groups!: KeysGroup[];
+	readonly keyGroups!: KeysGroup[];
 
-	readonly key_groups_mac!: KeysGroup[] | null;
+	readonly keyGroupsMac!: KeysGroup[] | null;
 
 	readonly mouse!: MouseMotion | null;
 

@@ -44,7 +44,7 @@
 <script lang="ts">
 import { defineComponent } from "vue";
 
-import { operatingSystem } from "@/utility-functions/platform";
+import { operatingSystemIsMac } from "@/utility-functions/platform";
 import { HintData, HintInfo, KeysGroup, UpdateInputHints } from "@/wasm-communication/messages";
 
 import LayoutRow from "@/components/layout/LayoutRow.vue";
@@ -60,8 +60,8 @@ export default defineComponent({
 	},
 	methods: {
 		inputKeysForPlatform(hint: HintInfo): KeysGroup[] {
-			if (operatingSystem() === "Mac" && hint.key_groups_mac) return hint.key_groups_mac;
-			return hint.key_groups;
+			if (operatingSystemIsMac() && hint.keyGroupsMac) return hint.keyGroupsMac;
+			return hint.keyGroups;
 		},
 	},
 	mounted() {

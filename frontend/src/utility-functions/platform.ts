@@ -48,3 +48,7 @@ export function operatingSystem(detailed = false): string {
 	const userAgentOS = Object.keys(osTable).find((key) => window.navigator.userAgent.includes(key));
 	return osTable[userAgentOS || "Unknown"];
 }
+
+export function operatingSystemIsMac(): boolean {
+	return operatingSystem() === "Mac";
+}
