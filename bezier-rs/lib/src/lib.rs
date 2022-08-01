@@ -304,7 +304,7 @@ impl Bezier {
 	}
 
 	/// Returns true if the corresponding points of the two `Bezier`s are within the provided absolute value difference from each other.
-	/// The points considered includes the start, end and any relevant handles.
+	/// The points considered includes the start, end, and any relevant handles.
 	pub fn abs_diff_eq(&self, other: &Bezier, max_abs_diff: f64) -> bool {
 		let self_points = self.get_points().collect::<Vec<DVec2>>();
 		let other_points = other.get_points().collect::<Vec<DVec2>>();
@@ -648,14 +648,14 @@ impl Bezier {
 
 		// Get the `t` interval of the original parent of `self` and determine the middle `t` value
 		let Range { start: self_start_t, end: self_end_t } = self_original_t_interval;
-		let self_mid_t = self_start_t + (self_end_t - self_start_t) / 2.;
+		let self_mid_t = (self_start_t + self_end_t) / 2.;
 
 		// Get the `t` interval of the original parent of `other` and determine the middle `t` value
 		let Range {
 			start: other_start_t,
 			end: other_end_t,
 		} = other_original_t_interval;
-		let other_mid_t = other_start_t + (other_end_t - other_start_t) / 2.;
+		let other_mid_t = (other_start_t + other_end_t) / 2.;
 
 		let error_threshold = DVec2::new(error, error);
 
@@ -754,13 +754,9 @@ impl Bezier {
 	/// This function uses the algorithm implemented in `intersections_between_subcurves`.
 	fn intersections_between_vectors_of_curves(subcurves1: &[(Bezier, Range<f64>)], subcurves2: &[(Bezier, Range<f64>)], error: f64) -> Vec<[f64; 2]> {
 		let segment_pairs = subcurves1.iter().flat_map(move |(curve1, curve1_t_pair)| {
-			subcurves2.iter().filter_map(move |(curve2, curve2_t_pair)| {
-				if utils::do_rectangles_overlap(curve1.bounding_box(), curve2.bounding_box()) {
-					Some((curve1, curve1_t_pair, curve2, curve2_t_pair))
-				} else {
-					None
-				}
-			})
+			subcurves2
+				.iter()
+				.filter_map(move |(curve2, curve2_t_pair)| utils::do_rectangles_overlap(curve1.bounding_box(), curve2.bounding_box()).then(|| (curve1, curve1_t_pair, curve2, curve2_t_pair)))
 		});
 		segment_pairs
 			.flat_map(|(curve1, curve1_t_pair, curve2, curve2_t_pair)| curve1.intersections_between_subcurves(curve1_t_pair.clone(), curve2, curve2_t_pair.clone(), error))
