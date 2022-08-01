@@ -917,26 +917,23 @@ impl Bezier {
 		let ArcsOptions { maximize_arcs, error, max_iterations } = arcs_options;
 		match maximize_arcs {
 			MaximizeArcs::Automatic => {
-				let (auto_arcs, final_low_t) = self.arcs_helper(0., 1., error, max_iterations, true);
+				let (auto_arcs, final_low_t) = self.approximate_curve_with_arcs(0., 1., error, max_iterations, true);
+				let arc_approximations = self.split(final_low_t)[1].arcs(ArcsOptions {
+					maximize_arcs: MaximizeArcs::Off,
+					error,
+					max_iterations,
+				});
 				if final_low_t != 1. {
-					[
-						auto_arcs,
-						self.split(final_low_t)[1].arcs(ArcsOptions {
-							maximize_arcs: MaximizeArcs::Off,
-							error,
-							max_iterations,
-						}),
-					]
-					.concat()
+					[auto_arcs, arc_approximations].concat()
 				} else {
 					auto_arcs
 				}
 			}
-			MaximizeArcs::On => self.arcs_helper(0., 1., error, max_iterations, false).0,
+			MaximizeArcs::On => self.approximate_curve_with_arcs(0., 1., error, max_iterations, false).0,
 			MaximizeArcs::Off => self
 				.get_extrema_t_list()
 				.windows(2)
-				.flat_map(|t_pair| self.arcs_helper(t_pair[0], t_pair[1], error, max_iterations, false).0)
+				.flat_map(|t_pair| self.approximate_curve_with_arcs(t_pair[0], t_pair[1], error, max_iterations, false).0)
 				.collect::<Vec<CircleArc>>(),
 		}
 	}
@@ -946,11 +943,11 @@ impl Bezier {
 	/// Once a maximal arc has been found for a sub-segment of the curve, the algorithm continues by starting again at the end of the previous approximation.
 	/// More details can be found in the [Approximating a Bezier curve with circular arcs](https://pomax.github.io/bezierinfo/#arcapproximation) section of Pomax's bezier curve primer.
 	/// A caveat with this algorithm is that it is possible to find erroneous approximations in cases such as in a very narrow `U`.
-	/// - `stop_when_invalid`: Used to determine whether the algorithm should end early erroneous approximations are encountered.
+	/// - `stop_when_invalid`: Used to determine whether the algorithm should terminate early if erroneous approximations are encountered.
 	///
 	/// Returns a tuple where the first element is the list of circular arcs and the second is the `t` value where the next segment should start from.
 	/// The second value will be `1.` except for when `stop_when_invalid` is true and an invalid approximation is encountered.
-	fn arcs_helper(&self, local_low: f64, local_high: f64, error: f64, max_iterations: i32, stop_when_invalid: bool) -> (Vec<CircleArc>, f64) {
+	fn approximate_curve_with_arcs(&self, local_low: f64, local_high: f64, error: f64, max_iterations: i32, stop_when_invalid: bool) -> (Vec<CircleArc>, f64) {
 		let mut low = local_low;
 		let mut middle = local_low + (local_high - local_low) / 2.;
 		let mut high = local_high;
@@ -963,14 +960,8 @@ impl Bezier {
 
 		// Outer loop to iterate over the curve
 		while low < local_high {
-			if iterations > max_iterations {
-				break;
-			}
 			// Inner loop to find the next maximal segment of the curve that can be approximated with a circular arc
-			loop {
-				if iterations > max_iterations {
-					break;
-				}
+			while iterations <= max_iterations {
 				iterations += 1;
 				let p1 = self.evaluate(low);
 				let p2 = self.evaluate(middle);
@@ -1012,13 +1003,13 @@ impl Bezier {
 					end_angle,
 				};
 
-				// Use points in between low, middle and high to evaluate how well the arc approximates the curve
+				// Use points in between low, middle, and high to evaluate how well the arc approximates the curve
 				let e1 = self.evaluate(low + (middle - low) / 2.);
 				let e2 = self.evaluate(middle + (high - middle) / 2.);
 
 				// Iterate until we find the largest good approximation such that the next iteration is not a good approximation with an arc
 				if utils::f64_compare(radius, e1.distance(center), error) && utils::f64_compare(radius, e2.distance(center), error) {
-					// Check if the good approximation is actually valid: the sector angle cannot be larger than 180 degrees (aka 2*PI)
+					// Check if the good approximation is actually valid: the sector angle cannot be larger than 180 degrees (PI radians)
 					let mut sector_angle = end_angle - start_angle;
 					if sector_angle < 0. {
 						sector_angle += 2. * PI;

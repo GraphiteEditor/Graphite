@@ -47,7 +47,7 @@ fn to_js_value<T: Serialize>(data: T) -> JsValue {
 	JsValue::from_serde(&serde_json::to_string(&data).unwrap()).unwrap()
 }
 
-fn convert_wasm_mazimize_arcs(wasm_enum_value: WasmMaximizeArcs) -> MaximizeArcs {
+fn convert_wasm_maximize_arcs(wasm_enum_value: WasmMaximizeArcs) -> MaximizeArcs {
 	match wasm_enum_value {
 		WasmMaximizeArcs::Automatic => MaximizeArcs::Automatic,
 		WasmMaximizeArcs::On => MaximizeArcs::On,
@@ -235,7 +235,7 @@ impl WasmBezier {
 
 	/// The wrapped return type is `Vec<CircleSector>`.
 	pub fn arcs(&self, error: f64, max_iterations: i32, maximize_arcs: WasmMaximizeArcs) -> JsValue {
-		let maximize_arcs = convert_wasm_mazimize_arcs(maximize_arcs);
+		let maximize_arcs = convert_wasm_maximize_arcs(maximize_arcs);
 		let options = ArcsOptions { error, max_iterations, maximize_arcs };
 		let circle_sectors: Vec<CircleSector> = self
 			.0

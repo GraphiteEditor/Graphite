@@ -28,11 +28,11 @@ impl Default for ProjectionOptions {
 /// Struct used to represent the different strategies for generating arc approximations.
 #[derive(Copy, Clone)]
 pub enum MaximizeArcs {
-	/// Start with the strategy of maximizing arcs and automatically switch when an erroneous case is encountered.
+	/// Start with the greedy strategy of maximizing arc approximations and automatically switch to the divide-and-conquer when the greedy approximations no longer fall within the error bound.
 	Automatic,
-	/// Use the strategy to maximize approximated arcs, despite potentially erroneous arcs.
+	/// Use the greedy strategy to maximize approximated arcs, despite potentially erroneous arcs.
 	On,
-	/// Use the strategy that prioritizes correctness over maximal arcs.
+	/// Use the divide-and-conquer strategy that prioritizes correctness over maximal arcs.
 	Off,
 }
 
@@ -67,13 +67,13 @@ impl Default for ArcsOptions {
 /// Struct to represent the circular arc approximation used in the `arcs` bezier function.
 #[derive(Copy, Clone, PartialEq)]
 pub struct CircleArc {
-	// the center point of the circle
+	/// The center point of the circle.
 	pub center: DVec2,
-	// the radius of the circle
+	/// The radius of the circle.
 	pub radius: f64,
-	// the start angle of the circle sector in rad
+	/// The start angle of the circle sector in rad.
 	pub start_angle: f64,
-	// the end angle of the circle sector in rad
+	/// The end angle of the circle sector in rad.
 	pub end_angle: f64,
 }
 
