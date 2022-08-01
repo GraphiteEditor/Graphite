@@ -31,14 +31,18 @@
 					<LayoutRow
 						class="layer"
 						:class="{ selected: listing.entry.layer_metadata.selected }"
-						@click.shift.exact.stop="!listing.editingName && selectLayer(listing.entry, false, true)"
-						@click.shift.ctrl.exact.stop="!listing.editingName && selectLayer(listing.entry, true, true)"
-						@click.ctrl.exact.stop="!listing.editingName && selectLayer(listing.entry, true, false)"
-						@click.exact.stop="!listing.editingName && selectLayer(listing.entry, false, false)"
 						:data-index="index"
-						:draggable="draggable"
-						@dragstart="(e) => draggable && dragStart(e, listing.entry)"
 						:title="`${listing.entry.name}${devMode ? '\nLayer Path: ' + listing.entry.path.join(' / ') : ''}` || null"
+						:draggable="draggable"
+						@dragstart="(e) => draggable && dragStart(e, listing)"
+						@click.exact="(e) => selectLayer(false, false, false, listing, e)"
+						@click.shift.exact="(e) => selectLayer(false, false, true, listing, e)"
+						@click.ctrl.exact="(e) => selectLayer(true, false, false, listing, e)"
+						@click.ctrl.shift.exact="(e) => selectLayer(true, false, true, listing, e)"
+						@click.meta.exact="(e) => selectLayer(false, true, false, listing, e)"
+						@click.meta.shift.exact="(e) => selectLayer(false, true, true, listing, e)"
+						@click.ctrl.meta="(e) => e.stopPropagation()"
+						@click.alt="(e) => e.stopPropagation()"
 					>
 						<LayoutRow class="layer-type-icon">
 							<IconLabel v-if="listing.entry.layer_type === 'Folder'" :icon="'NodeFolder'" :iconStyle="'Node'" title="Folder" />
@@ -263,6 +267,7 @@
 <script lang="ts">
 import { defineComponent, nextTick } from "vue";
 
+import { operatingSystem } from "@/utility-functions/platform";
 import { defaultWidgetLayout, UpdateDocumentLayerTreeStructure, UpdateDocumentLayerDetails, UpdateLayerTreeOptionsLayout, LayerPanelEntry } from "@/wasm-communication/messages";
 
 import LayoutCol from "@/components/layout/LayoutCol.vue";
@@ -342,8 +347,18 @@ export default defineComponent({
 			await nextTick();
 			window.getSelection()?.removeAllRanges();
 		},
-		async selectLayer(clickedLayer: LayerPanelEntry, ctrl: boolean, shift: boolean) {
-			this.editor.instance.select_layer(clickedLayer.path, ctrl, shift);
+		async selectLayer(ctrl: boolean, cmd: boolean, shift: boolean, listing: LayerListingInfo, event: Event) {
+			if (listing.editingName) return;
+
+			const ctrlOrCmd = operatingSystem() === "Mac" ? cmd : ctrl;
+			// Pressing the Ctrl key on a Mac, or the Cmd key on another platform, is a violation of the `.exact` qualifier so we filter it out here
+			const opposite = operatingSystem() === "Mac" ? ctrl : cmd;
+
+			if (!opposite) this.editor.instance.select_layer(listing.entry.path, ctrlOrCmd, shift);
+
+			// We always want to stop propagation so the click event doesn't pass through the layer and cause a deselection by clicking the layer panel background
+			// This is also why we cover the remaining cases not considered by the `.exact` qualifier, in the last two bindings on the layer element, with a `stopPropagation()` call
+			event.stopPropagation();
 		},
 		async deselectAllLayers() {
 			this.editor.instance.deselect_all_layers();
@@ -409,8 +424,9 @@ export default defineComponent({
 
 			return { insertFolder, insertIndex, highlightFolder, markerHeight };
 		},
-		async dragStart(event: DragEvent, layer: LayerPanelEntry) {
-			if (!layer.layer_metadata.selected) this.selectLayer(layer, event.ctrlKey, event.shiftKey);
+		async dragStart(event: DragEvent, listing: LayerListingInfo) {
+			const layer = listing.entry;
+			if (!layer.layer_metadata.selected) this.selectLayer(event.ctrlKey, event.metaKey, event.shiftKey, listing, event);
 
 			// Set style of cursor for drag
 			if (event.dataTransfer) {

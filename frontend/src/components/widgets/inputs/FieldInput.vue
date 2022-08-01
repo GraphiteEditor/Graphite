@@ -29,7 +29,8 @@
 			@focus="() => $emit('textFocused')"
 			@blur="() => $emit('textChanged')"
 			@change="() => $emit('textChanged')"
-			@keydown.ctrl.enter="() => $emit('textChanged')"
+			@keydown.ctrl.enter="() => !macKeyboardLayout && $emit('textChanged')"
+			@keydown.meta.enter="() => macKeyboardLayout && $emit('textChanged')"
 			@keydown.esc="() => $emit('cancelTextChange')"
 		></textarea>
 		<label v-if="label" :for="`field-input-${id}`">{{ label }}</label>
@@ -116,6 +117,8 @@
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
 
+import { operatingSystem } from "@/utility-functions/platform";
+
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 
 export default defineComponent({
@@ -130,6 +133,7 @@ export default defineComponent({
 	data() {
 		return {
 			id: `${Math.random()}`.substring(2),
+			macKeyboardLayout: operatingSystem() === "Mac",
 		};
 	},
 	computed: {
