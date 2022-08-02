@@ -108,8 +108,8 @@ fn main() {
         output: syn::Type::Verbatim(quote! {u32}),
     };
 
-    let pretty = pretty_token_stream::Pretty::new(nodegraph.serialize_gpu("add"));
-    pretty.print();
+    //let pretty = pretty_token_stream::Pretty::new(nodegraph.serialize_gpu("add"));
+    //pretty.print();
     /*
         use dyn_any::{downcast_ref, DynAny, StaticType};
         //let mut mul = mul::MulNode::new();
