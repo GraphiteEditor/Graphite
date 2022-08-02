@@ -1,0 +1,3 @@
+[submodule "node-graph/dyn-any"]
+	path = node-graph/dyn-any
+	url = https://github.com/truedoctor/dyn-any
