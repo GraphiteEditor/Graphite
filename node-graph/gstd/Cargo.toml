@@ -26,7 +26,7 @@ ide_db = { version = "*", package = "ra_ap_ide_db" , optional = true }
 storage-map = { version = "*", optional = true }
 lock_api = { version= "*", optional = true }
 parking_lot = { version = "*", optional = true }
-pretty-token-stream = {path = "../../pretty-token-stream"}
+#pretty-token-stream = {path = "../../pretty-token-stream"}
 syn = {version = "1.0", default-features = false,  features = ["parsing", "printing"]}
 proc-macro2 = {version = "1.0", default-features = false,  features = ["proc-macro"]}
 quote = {version = "1.0", default-features = false }
