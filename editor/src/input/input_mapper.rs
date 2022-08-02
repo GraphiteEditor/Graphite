@@ -457,6 +457,7 @@ impl FutureKeyMapping {
 	pub fn realize(&mut self, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Vec<Vec<Key>>) {
 		// FutureKeyMapping is immutable, so realizing it more than once is not respected
 		if self.realized.is_some() {
+			log::warn!("A `FutureKeyMapping` had `.realize()` called more than once, which is not allowed because it should be treated immutably.");
 			return;
 		}
 

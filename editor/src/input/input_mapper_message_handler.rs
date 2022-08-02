@@ -49,9 +49,22 @@ impl InputMapperMessageHandler {
 		let found_actions = found_actions.filter(|entry| if let Some(layout) = entry.platform_layout { layout == keyboard_platform } else { true });
 
 		// Find the key combinations for all keymaps matching the desired action
+		assert!(std::mem::size_of::<usize>() >= std::mem::size_of::<Key>());
 		found_actions
 			.map(|entry| {
-				let mut keys = entry.modifiers.iter().map(|i| unsafe { std::mem::transmute_copy::<usize, Key>(&i) }).collect::<Vec<_>>();
+				let mut keys = entry
+					.modifiers
+					.iter()
+					.map(|i| {
+						// TODO: Use a safe solution eventually
+						assert!(
+							i < super::keyboard::NUMBER_OF_KEYS,
+							"Attempting to convert a Key with enum index {}, which is larger than the number of Key enums",
+							i
+						);
+						unsafe { std::mem::transmute_copy::<usize, Key>(&i) }
+					})
+					.collect::<Vec<_>>();
 
 				if let InputMapperMessage::KeyDown(key) = entry.input {
 					keys.push(key);

@@ -1407,16 +1407,16 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 				responses.push_front(SetSelectedLayers { replacement_selected_layers: all }.into());
 			}
 			SelectedLayersLower => {
-				self.selected_layers_reorder(-1, responses);
+				responses.push_front(DocumentMessage::SelectedLayersReorder { relative_index_offset: -1 }.into());
 			}
 			SelectedLayersLowerToBack => {
-				self.selected_layers_reorder(isize::MIN, responses);
+				responses.push_front(DocumentMessage::SelectedLayersReorder { relative_index_offset: isize::MIN }.into());
 			}
 			SelectedLayersRaise => {
-				self.selected_layers_reorder(1, responses);
+				responses.push_front(DocumentMessage::SelectedLayersReorder { relative_index_offset: 1 }.into());
 			}
 			SelectedLayersRaiseToFront => {
-				self.selected_layers_reorder(isize::MAX, responses);
+				responses.push_front(DocumentMessage::SelectedLayersReorder { relative_index_offset: isize::MAX }.into());
 			}
 			SelectedLayersReorder { relative_index_offset } => {
 				self.selected_layers_reorder(relative_index_offset, responses);
@@ -1637,7 +1637,6 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 				SelectedLayersLowerToBack,
 				SelectedLayersRaise,
 				SelectedLayersRaiseToFront,
-				SelectedLayersReorder,
 				GroupSelectedLayers,
 				UngroupSelectedLayers,
 			);
