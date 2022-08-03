@@ -33,8 +33,7 @@
 
 					<span class="entry-label" :style="{ fontFamily: `${!entry.font ? 'inherit' : entry.value}` }">{{ entry.label }}</span>
 
-					<IconLabel v-if="entry.shortcutRequiresLock && !fullscreen.state.keyboardLocked" :icon="'Info'" :title="keyboardLockInfoMessage" />
-					<UserInputLabel v-else-if="entry.shortcut?.length" :inputKeys="[entry.shortcut]" />
+					<UserInputLabel v-if="entry.shortcut?.keys.length" :inputKeys="[entry.shortcut.keys]" :requiresLock="entry.shortcutRequiresLock" />
 
 					<div class="submenu-arrow" v-if="entry.children?.length"></div>
 					<div class="no-submenu-arrow" v-else></div>
@@ -63,6 +62,10 @@
 .menu-list {
 	.floating-menu-container .floating-menu-content {
 		padding: 4px 0;
+
+		.separator div {
+			background: var(--color-4-dimgray);
+		}
 
 		.scroll-spacer {
 			flex: 0 0 auto;
@@ -128,27 +131,22 @@
 			&.open,
 			&.active {
 				background: var(--color-6-lowergray);
+				color: var(--color-f-white);
 
 				&.active {
 					background: var(--color-accent);
 				}
 
-				svg {
+				.entry-icon svg {
 					fill: var(--color-f-white);
-				}
-
-				span {
-					color: var(--color-f-white);
 				}
 			}
 
 			&.disabled {
+				color: var(--color-8-uppergray);
+
 				&:hover {
 					background: none;
-				}
-
-				span {
-					color: var(--color-8-uppergray);
 				}
 
 				svg {
@@ -172,11 +170,7 @@ import IconLabel from "@/components/widgets/labels/IconLabel.vue";
 import Separator from "@/components/widgets/labels/Separator.vue";
 import UserInputLabel from "@/components/widgets/labels/UserInputLabel.vue";
 
-const KEYBOARD_LOCK_USE_FULLSCREEN = "This hotkey is reserved by the browser, but becomes available in fullscreen mode";
-const KEYBOARD_LOCK_SWITCH_BROWSER = "This hotkey is reserved by the browser, but becomes available in Chrome, Edge, and Opera which support the Keyboard.lock() API";
-
 const MenuList = defineComponent({
-	inject: ["fullscreen"],
 	emits: ["update:open", "update:activeEntry", "naturalWidth"],
 	props: {
 		entries: { type: Array as PropType<SectionsOfMenuListEntries>, required: true },
@@ -193,7 +187,6 @@ const MenuList = defineComponent({
 	data() {
 		return {
 			isOpen: this.open,
-			keyboardLockInfoMessage: this.fullscreen.keyboardLockApiSupported ? KEYBOARD_LOCK_USE_FULLSCREEN : KEYBOARD_LOCK_SWITCH_BROWSER,
 			highlighted: this.activeEntry as MenuListEntry | undefined,
 			virtualScrollingEntriesStart: 0,
 		};

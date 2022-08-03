@@ -251,6 +251,7 @@ impl Fsm for SplineToolFsmState {
 		let hint_data = match self {
 			SplineToolFsmState::Ready => HintData(vec![HintGroup(vec![HintInfo {
 				key_groups: vec![],
+				key_groups_mac: None,
 				mouse: Some(MouseMotion::Lmb),
 				label: String::from("Draw Spline"),
 				plus: false,
@@ -258,12 +259,14 @@ impl Fsm for SplineToolFsmState {
 			SplineToolFsmState::Drawing => HintData(vec![
 				HintGroup(vec![HintInfo {
 					key_groups: vec![],
+					key_groups_mac: None,
 					mouse: Some(MouseMotion::Lmb),
 					label: String::from("Extend Spline"),
 					plus: false,
 				}]),
 				HintGroup(vec![HintInfo {
 					key_groups: vec![KeysGroup(vec![Key::KeyEnter])],
+					key_groups_mac: None,
 					mouse: None,
 					label: String::from("End Spline"),
 					plus: false,

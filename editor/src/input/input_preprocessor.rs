@@ -13,14 +13,16 @@ bitflags! {
 	#[derive(Default, Serialize, Deserialize)]
 	#[repr(transparent)]
 	pub struct ModifierKeys: u8 {
-		const CONTROL = 0b0000_0001;
-		const SHIFT   = 0b0000_0010;
-		const ALT     = 0b0000_0100;
+		const SHIFT              = 0b0000_0001;
+		const ALT                = 0b0000_0010;
+		const CONTROL            = 0b0000_0100;
+		const META_OR_COMMAND    = 0b0000_1000;
 	}
 }
 
 #[cfg(test)]
 mod test {
+	use crate::document::utility_types::KeyboardPlatformLayout;
 	use crate::input::input_preprocessor::ModifierKeys;
 	use crate::input::keyboard::Key;
 	use crate::input::mouse::EditorMouseState;
@@ -39,7 +41,7 @@ mod test {
 
 		let mut responses = VecDeque::new();
 
-		input_preprocessor.process_action(message, (), &mut responses);
+		input_preprocessor.process_action(message, KeyboardPlatformLayout::Standard, &mut responses);
 
 		assert!(input_preprocessor.keyboard.get(Key::KeyAlt as usize));
 		assert_eq!(responses.pop_front(), Some(InputMapperMessage::KeyDown(Key::KeyAlt).into()));
@@ -55,7 +57,7 @@ mod test {
 
 		let mut responses = VecDeque::new();
 
-		input_preprocessor.process_action(message, (), &mut responses);
+		input_preprocessor.process_action(message, KeyboardPlatformLayout::Standard, &mut responses);
 
 		assert!(input_preprocessor.keyboard.get(Key::KeyControl as usize));
 		assert_eq!(responses.pop_front(), Some(InputMapperMessage::KeyDown(Key::KeyControl).into()));
@@ -71,7 +73,7 @@ mod test {
 
 		let mut responses = VecDeque::new();
 
-		input_preprocessor.process_action(message, (), &mut responses);
+		input_preprocessor.process_action(message, KeyboardPlatformLayout::Standard, &mut responses);
 
 		assert!(input_preprocessor.keyboard.get(Key::KeyShift as usize));
 		assert_eq!(responses.pop_front(), Some(InputMapperMessage::KeyDown(Key::KeyShift).into()));
@@ -88,7 +90,7 @@ mod test {
 
 		let mut responses = VecDeque::new();
 
-		input_preprocessor.process_action(message, (), &mut responses);
+		input_preprocessor.process_action(message, KeyboardPlatformLayout::Standard, &mut responses);
 
 		assert!(!input_preprocessor.keyboard.get(Key::KeyControl as usize));
 		assert_eq!(responses.pop_front(), Some(InputMapperMessage::KeyUp(Key::KeyControl).into()));
@@ -104,7 +106,7 @@ mod test {
 
 		let mut responses = VecDeque::new();
 
-		input_preprocessor.process_action(message, (), &mut responses);
+		input_preprocessor.process_action(message, KeyboardPlatformLayout::Standard, &mut responses);
 
 		assert!(input_preprocessor.keyboard.get(Key::KeyControl as usize));
 		assert!(input_preprocessor.keyboard.get(Key::KeyShift as usize));

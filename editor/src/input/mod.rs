@@ -3,6 +3,7 @@ pub mod input_preprocessor;
 pub mod keyboard;
 pub mod mouse;
 
+mod input_mapper_macros;
 mod input_mapper_message;
 mod input_mapper_message_handler;
 mod input_preprocessor_message;

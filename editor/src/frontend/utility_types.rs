@@ -1,21 +1,21 @@
 use graphene::LayerId;
 use serde::{Deserialize, Serialize};
 
-#[derive(PartialEq, Eq, Clone, Deserialize, Serialize, Debug)]
+#[derive(PartialEq, Eq, Clone, Debug, Serialize, Deserialize)]
 pub struct FrontendDocumentDetails {
 	pub is_saved: bool,
 	pub name: String,
 	pub id: u64,
 }
 
-#[derive(PartialEq, Eq, Clone, Deserialize, Serialize, Debug)]
+#[derive(PartialEq, Eq, Clone, Debug, Serialize, Deserialize)]
 pub struct FrontendImageData {
 	pub path: Vec<LayerId>,
 	pub mime: String,
 	pub image_data: Vec<u8>,
 }
 
-#[derive(Clone, Copy, Debug, Eq, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum MouseCursorIcon {
 	Default,
 	ZoomIn,
@@ -35,7 +35,7 @@ impl Default for MouseCursorIcon {
 	}
 }
 
-#[derive(Clone, Copy, Debug, Eq, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum FileType {
 	Svg,
 	Png,
@@ -58,7 +58,7 @@ impl FileType {
 	}
 }
 
-#[derive(Clone, Copy, Debug, Eq, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum ExportBounds {
 	AllArtwork,
 	Selection,

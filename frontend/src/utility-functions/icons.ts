@@ -21,6 +21,7 @@ import KeyboardArrowRight from "@/../assets/icon-12px-solid/keyboard-arrow-right
 import KeyboardArrowUp from "@/../assets/icon-12px-solid/keyboard-arrow-up.svg";
 import KeyboardBackspace from "@/../assets/icon-12px-solid/keyboard-backspace.svg";
 import KeyboardCommand from "@/../assets/icon-12px-solid/keyboard-command.svg";
+import KeyboardControl from "@/../assets/icon-12px-solid/keyboard-control.svg";
 import KeyboardEnter from "@/../assets/icon-12px-solid/keyboard-enter.svg";
 import KeyboardOption from "@/../assets/icon-12px-solid/keyboard-option.svg";
 import KeyboardShift from "@/../assets/icon-12px-solid/keyboard-shift.svg";
@@ -52,6 +53,7 @@ const SOLID_12PX = {
 	KeyboardArrowUp: { component: KeyboardArrowUp, size: 12 },
 	KeyboardBackspace: { component: KeyboardBackspace, size: 12 },
 	KeyboardCommand: { component: KeyboardCommand, size: 12 },
+	KeyboardControl: { component: KeyboardControl, size: 12 },
 	KeyboardEnter: { component: KeyboardEnter, size: 12 },
 	KeyboardOption: { component: KeyboardOption, size: 12 },
 	KeyboardShift: { component: KeyboardShift, size: 12 },

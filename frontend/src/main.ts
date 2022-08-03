@@ -14,10 +14,8 @@ import App from "@/App.vue";
 		const body = document.body;
 		const message = stripIndents`
 			<style>
-			h2, p, a {
-				text-align: center;
-				color: white;
-			}
+			h2, p, a { text-align: center; color: white; }
+			#app { display: none; }
 			</style>
 			<h2>This browser is too old</h2>
 			<p>Please upgrade to a modern web browser such as the latest Firefox, Chrome, Edge, or Safari version 15 or newer.</p>

@@ -61,3 +61,34 @@ impl DocumentMode {
 		}
 	}
 }
+
+#[derive(PartialEq, Eq, Clone, Copy, Default, Debug, Serialize, Deserialize)]
+pub enum Platform {
+	#[default]
+	Unknown,
+	Windows,
+	Mac,
+	Linux,
+}
+
+impl Platform {
+	pub fn as_keyboard_platform_layout(&self) -> KeyboardPlatformLayout {
+		match self {
+			Platform::Mac => KeyboardPlatformLayout::Mac,
+			Platform::Unknown => {
+				log::warn!("The platform has not been set, remember to send `PortfolioMessage::SetPlatform` during editor initialization.");
+				KeyboardPlatformLayout::Standard
+			}
+			_ => KeyboardPlatformLayout::Standard,
+		}
+	}
+}
+
+#[derive(PartialEq, Eq, Clone, Copy, Default, Debug, Serialize, Deserialize)]
+pub enum KeyboardPlatformLayout {
+	/// Standard keyboard mapping used by Windows and Linux
+	#[default]
+	Standard,
+	/// Keyboard mapping used by Macs where Command is sometimes used in favor of Control
+	Mac,
+}

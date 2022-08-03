@@ -1,5 +1,14 @@
 export function makeKeyboardModifiersBitfield(e: WheelEvent | PointerEvent | KeyboardEvent): number {
-	return Number(e.ctrlKey) | (Number(e.shiftKey) << 1) | (Number(e.altKey) << 2);
+	return (
+		// Shift (all platforms)
+		(Number(e.shiftKey) << 0) |
+		// Alt (all platforms, also called Option on Mac)
+		(Number(e.altKey) << 1) |
+		// Control (all platforms)
+		(Number(e.ctrlKey) << 2) |
+		// Meta (Windows/Linux) or Command (Mac)
+		(Number(e.metaKey) << 3)
+	);
 }
 
 // Necessary because innerText puts an extra newline character at the end when the text is more than one line.
@@ -13,7 +22,7 @@ export function getLatinKey(e: KeyboardEvent): string | null {
 	const key = e.key.toLowerCase();
 	const isPrintable = !ALL_PRINTABLE_KEYS.has(e.key);
 
-	// Control (non-printable) characters are handled normally
+	// Control characters (those which are non-printable) are handled normally
 	if (!isPrintable) return key;
 
 	// These non-Latin characters should fall back to the Latin equivalent at the key location

@@ -176,6 +176,7 @@ dependencies = [
  "graphite-editor",
  "proc-macro2",
  "quote",
+ "serde",
  "syn",
 ]
 

@@ -103,12 +103,16 @@ pub enum DocumentMessage {
 		new_name: String,
 	},
 	RenderDocument,
-	ReorderSelectedLayers {
-		relative_index_offset: isize,
-	},
 	RollbackTransaction,
 	SaveDocument,
 	SelectAllLayers,
+	SelectedLayersLower,
+	SelectedLayersLowerToBack,
+	SelectedLayersRaise,
+	SelectedLayersRaiseToFront,
+	SelectedLayersReorder {
+		relative_index_offset: isize,
+	},
 	SelectLayer {
 		layer_path: Vec<LayerId>,
 		ctrl: bool,

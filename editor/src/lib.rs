@@ -91,7 +91,7 @@ pub mod message_prelude {
 	pub use crate::viewport_tools::tools::select_tool::{SelectToolMessage, SelectToolMessageDiscriminant};
 	pub use crate::viewport_tools::tools::shape_tool::{ShapeToolMessage, ShapeToolMessageDiscriminant};
 	pub use crate::viewport_tools::tools::spline_tool::{SplineToolMessage, SplineToolMessageDiscriminant};
-	pub use crate::viewport_tools::tools::text_tool::{TextMessage, TextMessageDiscriminant};
+	pub use crate::viewport_tools::tools::text_tool::{TextToolMessage, TextToolMessageDiscriminant};
 	pub use crate::workspace::{WorkspaceMessage, WorkspaceMessageDiscriminant};
 	pub use graphite_proc_macros::*;
 

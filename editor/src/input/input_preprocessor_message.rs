@@ -16,8 +16,8 @@ pub enum InputPreprocessorMessage {
 	DoubleClick { editor_mouse_state: EditorMouseState, modifier_keys: ModifierKeys },
 	KeyDown { key: Key, modifier_keys: ModifierKeys },
 	KeyUp { key: Key, modifier_keys: ModifierKeys },
-	MouseScroll { editor_mouse_state: EditorMouseState, modifier_keys: ModifierKeys },
 	PointerDown { editor_mouse_state: EditorMouseState, modifier_keys: ModifierKeys },
 	PointerMove { editor_mouse_state: EditorMouseState, modifier_keys: ModifierKeys },
 	PointerUp { editor_mouse_state: EditorMouseState, modifier_keys: ModifierKeys },
+	WheelScroll { editor_mouse_state: EditorMouseState, modifier_keys: ModifierKeys },
 }

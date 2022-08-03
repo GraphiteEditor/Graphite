@@ -6,6 +6,7 @@ use crate::helpers::{translate_key, Error};
 use crate::{EDITOR_HAS_CRASHED, EDITOR_INSTANCES, JS_EDITOR_HANDLES};
 
 use editor::consts::{FILE_SAVE_SUFFIX, GRAPHITE_DOCUMENT_VERSION};
+use editor::document::utility_types::Platform;
 use editor::input::input_preprocessor::ModifierKeys;
 use editor::input::mouse::{EditorMouseState, ScrollDelta, ViewportBounds};
 use editor::message_prelude::*;
@@ -105,7 +106,15 @@ impl JsEditorHandle {
 	// the backend from the web frontend.
 	// ========================================================================
 
-	pub fn init_after_frontend_ready(&self) {
+	pub fn init_after_frontend_ready(&self, platform: String) {
+		let platform = match platform.as_str() {
+			"Windows" => Platform::Windows,
+			"Mac" => Platform::Mac,
+			"Linux" => Platform::Linux,
+			_ => Platform::Unknown,
+		};
+
+		self.dispatch(PortfolioMessage::SetPlatform { platform });
 		self.dispatch(Message::Init);
 	}
 
@@ -217,13 +226,13 @@ impl JsEditorHandle {
 	}
 
 	/// Mouse scrolling within the screenspace bounds of the viewport
-	pub fn on_mouse_scroll(&self, x: f64, y: f64, mouse_keys: u8, wheel_delta_x: i32, wheel_delta_y: i32, wheel_delta_z: i32, modifiers: u8) {
+	pub fn on_wheel_scroll(&self, x: f64, y: f64, mouse_keys: u8, wheel_delta_x: i32, wheel_delta_y: i32, wheel_delta_z: i32, modifiers: u8) {
 		let mut editor_mouse_state = EditorMouseState::from_keys_and_editor_position(mouse_keys, (x, y).into());
 		editor_mouse_state.scroll_delta = ScrollDelta::new(wheel_delta_x, wheel_delta_y, wheel_delta_z);
 
 		let modifier_keys = ModifierKeys::from_bits(modifiers).expect("Invalid modifier keys");
 
-		let message = InputPreprocessorMessage::MouseScroll { editor_mouse_state, modifier_keys };
+		let message = InputPreprocessorMessage::WheelScroll { editor_mouse_state, modifier_keys };
 		self.dispatch(message);
 	}
 
@@ -280,7 +289,7 @@ impl JsEditorHandle {
 
 	/// A text box was committed
 	pub fn on_change_text(&self, new_text: String) -> Result<(), JsValue> {
-		let message = TextMessage::TextChange { new_text };
+		let message = TextToolMessage::TextChange { new_text };
 		self.dispatch(message);
 
 		Ok(())
@@ -302,7 +311,7 @@ impl JsEditorHandle {
 
 	/// A text box was changed
 	pub fn update_bounds(&self, new_text: String) -> Result<(), JsValue> {
-		let message = TextMessage::UpdateBounds { new_text };
+		let message = TextToolMessage::UpdateBounds { new_text };
 		self.dispatch(message);
 
 		Ok(())

@@ -59,7 +59,7 @@ impl ToolMetadata for ShapeTool {
 		"VectorShapeTool".into()
 	}
 	fn tooltip(&self) -> String {
-		"Shape Tool (Y)".into()
+		"Shape Tool".into()
 	}
 	fn tool_type(&self) -> crate::viewport_tools::tool::ToolType {
 		ToolType::Shape
@@ -228,18 +228,21 @@ impl Fsm for ShapeToolFsmState {
 			ShapeToolFsmState::Ready => HintData(vec![HintGroup(vec![
 				HintInfo {
 					key_groups: vec![],
+					key_groups_mac: None,
 					mouse: Some(MouseMotion::LmbDrag),
 					label: String::from("Draw Shape"),
 					plus: false,
 				},
 				HintInfo {
 					key_groups: vec![KeysGroup(vec![Key::KeyShift])],
+					key_groups_mac: None,
 					mouse: None,
 					label: String::from("Constrain 1:1 Aspect"),
 					plus: true,
 				},
 				HintInfo {
 					key_groups: vec![KeysGroup(vec![Key::KeyAlt])],
+					key_groups_mac: None,
 					mouse: None,
 					label: String::from("From Center"),
 					plus: true,
@@ -248,12 +251,14 @@ impl Fsm for ShapeToolFsmState {
 			ShapeToolFsmState::Drawing => HintData(vec![HintGroup(vec![
 				HintInfo {
 					key_groups: vec![KeysGroup(vec![Key::KeyShift])],
+					key_groups_mac: None,
 					mouse: None,
 					label: String::from("Constrain 1:1 Aspect"),
 					plus: false,
 				},
 				HintInfo {
 					key_groups: vec![KeysGroup(vec![Key::KeyAlt])],
+					key_groups_mac: None,
 					mouse: None,
 					label: String::from("From Center"),
 					plus: false,

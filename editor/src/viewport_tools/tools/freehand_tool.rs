@@ -60,7 +60,7 @@ impl ToolMetadata for FreehandTool {
 		"VectorFreehandTool".into()
 	}
 	fn tooltip(&self) -> String {
-		"Freehand Tool (N)".into()
+		"Freehand Tool".into()
 	}
 	fn tool_type(&self) -> crate::viewport_tools::tool::ToolType {
 		ToolType::Freehand
@@ -222,6 +222,7 @@ impl Fsm for FreehandToolFsmState {
 		let hint_data = match self {
 			FreehandToolFsmState::Ready => HintData(vec![HintGroup(vec![HintInfo {
 				key_groups: vec![],
+				key_groups_mac: None,
 				mouse: Some(MouseMotion::LmbDrag),
 				label: String::from("Draw Polyline"),
 				plus: false,

@@ -42,7 +42,7 @@ impl Default for TextOptions {
 #[remain::sorted]
 #[impl_message(Message, ToolMessage, Text)]
 #[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize)]
-pub enum TextMessage {
+pub enum TextToolMessage {
 	// Standard messages
 	#[remain::unsorted]
 	Abort,
@@ -74,7 +74,7 @@ impl ToolMetadata for TextTool {
 		"VectorTextTool".into()
 	}
 	fn tooltip(&self) -> String {
-		"Text Tool (T)".into()
+		"Text Tool".into()
 	}
 	fn tool_type(&self) -> crate::viewport_tools::tool::ToolType {
 		ToolType::Text
@@ -90,7 +90,7 @@ impl PropertyHolder for TextTool {
 					font_family: self.options.font_name.clone(),
 					font_style: self.options.font_style.clone(),
 					on_update: WidgetCallback::new(|font_input: &FontInput| {
-						TextMessage::UpdateOptions(TextOptionsUpdate::Font {
+						TextToolMessage::UpdateOptions(TextOptionsUpdate::Font {
 							family: font_input.font_family.clone(),
 							style: font_input.font_style.clone(),
 						})
@@ -107,7 +107,7 @@ impl PropertyHolder for TextTool {
 					font_family: self.options.font_name.clone(),
 					font_style: self.options.font_style.clone(),
 					on_update: WidgetCallback::new(|font_input: &FontInput| {
-						TextMessage::UpdateOptions(TextOptionsUpdate::Font {
+						TextToolMessage::UpdateOptions(TextOptionsUpdate::Font {
 							family: font_input.font_family.clone(),
 							style: font_input.font_style.clone(),
 						})
@@ -125,7 +125,7 @@ impl PropertyHolder for TextTool {
 					value: Some(self.options.font_size as f64),
 					is_integer: true,
 					min: Some(1.),
-					on_update: WidgetCallback::new(|number_input: &NumberInput| TextMessage::UpdateOptions(TextOptionsUpdate::FontSize(number_input.value.unwrap() as u32)).into()),
+					on_update: WidgetCallback::new(|number_input: &NumberInput| TextToolMessage::UpdateOptions(TextOptionsUpdate::FontSize(number_input.value.unwrap() as u32)).into()),
 					..NumberInput::default()
 				})),
 			],
@@ -145,7 +145,7 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for TextTool {
 			return;
 		}
 
-		if let ToolMessage::Text(TextMessage::UpdateOptions(action)) = action {
+		if let ToolMessage::Text(TextToolMessage::UpdateOptions(action)) = action {
 			match action {
 				TextOptionsUpdate::Font { family, style } => {
 					self.options.font_name = family;
@@ -171,10 +171,10 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for TextTool {
 		use TextToolFsmState::*;
 
 		match self.fsm_state {
-			Ready => actions!(TextMessageDiscriminant;
+			Ready => actions!(TextToolMessageDiscriminant;
 				Interact,
 			),
-			Editing => actions!(TextMessageDiscriminant;
+			Editing => actions!(TextToolMessageDiscriminant;
 				Interact,
 				Abort,
 				CommitText,
@@ -186,8 +186,8 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for TextTool {
 impl ToolTransition for TextTool {
 	fn signal_to_message_map(&self) -> SignalToMessageMap {
 		SignalToMessageMap {
-			document_dirty: Some(TextMessage::DocumentIsDirty.into()),
-			tool_abort: Some(TextMessage::Abort.into()),
+			document_dirty: Some(TextToolMessage::DocumentIsDirty.into()),
+			tool_abort: Some(TextToolMessage::Abort.into()),
 			selection_changed: None,
 		}
 	}
@@ -275,8 +275,8 @@ impl Fsm for TextToolFsmState {
 		tool_options: &Self::ToolOptions,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
-		use TextMessage::*;
 		use TextToolFsmState::*;
+		use TextToolMessage::*;
 
 		if let ToolMessage::Text(event) = event {
 			match (self, event) {
@@ -456,12 +456,14 @@ impl Fsm for TextToolFsmState {
 			TextToolFsmState::Ready => HintData(vec![HintGroup(vec![
 				HintInfo {
 					key_groups: vec![],
+					key_groups_mac: None,
 					mouse: Some(MouseMotion::Lmb),
 					label: String::from("Add Text"),
 					plus: false,
 				},
 				HintInfo {
 					key_groups: vec![],
+					key_groups_mac: None,
 					mouse: Some(MouseMotion::Lmb),
 					label: String::from("Edit Text"),
 					plus: false,
@@ -470,12 +472,14 @@ impl Fsm for TextToolFsmState {
 			TextToolFsmState::Editing => HintData(vec![HintGroup(vec![
 				HintInfo {
 					key_groups: vec![KeysGroup(vec![Key::KeyControl, Key::KeyEnter])],
+					key_groups_mac: Some(vec![KeysGroup(vec![Key::KeyCommand, Key::KeyEnter])]),
 					mouse: None,
 					label: String::from("Commit Edit"),
 					plus: false,
 				},
 				HintInfo {
 					key_groups: vec![KeysGroup(vec![Key::KeyEscape])],
+					key_groups_mac: None,
 					mouse: None,
 					label: String::from("Discard Edit"),
 					plus: false,

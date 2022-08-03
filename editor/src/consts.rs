@@ -35,6 +35,8 @@ pub const PATH_OUTLINE_WEIGHT: f64 = 2.;
 pub const ROTATE_SNAP_ANGLE: f64 = 15.;
 pub const SCALE_SNAP_INTERVAL: f64 = 0.1;
 pub const SLOWING_DIVISOR: f64 = 10.;
+pub const NUDGE_AMOUNT: f64 = 1.;
+pub const BIG_NUDGE_AMOUNT: f64 = 10.;
 
 // Select tool
 pub const SELECTION_TOLERANCE: f64 = 5.;
