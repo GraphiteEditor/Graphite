@@ -6,7 +6,7 @@ use crate::document::utility_types::KeyboardPlatformLayout;
 use crate::message_prelude::*;
 
 use glam::DVec2;
-use serde::{Serialize, Serializer};
+use serde::{Deserialize, Serialize, Serializer};
 
 #[derive(Debug, Clone)]
 pub struct Mapping {
@@ -443,7 +443,7 @@ impl KeyMappingEntries {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 pub enum ActionKeys {
 	Action(MessageDiscriminant),
 	Keys(Vec<Key>),

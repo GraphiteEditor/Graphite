@@ -26,7 +26,7 @@ pub trait PropertyHolder {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Layout {
 	WidgetLayout(WidgetLayout),
 	MenuLayout(MenuLayout),
@@ -121,7 +121,7 @@ impl Default for Layout {
 	}
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub struct MenuEntryGroups(pub Vec<Vec<MenuEntry>>);
 
 impl MenuEntryGroups {
@@ -143,7 +143,7 @@ impl MenuEntryGroups {
 	}
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct MenuEntry {
 	pub label: String,
 	pub icon: Option<String>,
@@ -176,13 +176,13 @@ impl Default for MenuEntry {
 	}
 }
 
-#[derive(Debug, Default, Clone, Serialize, PartialEq)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq)]
 pub struct MenuColumn {
 	pub label: String,
 	pub children: MenuEntryGroups,
 }
 
-#[derive(Debug, Default, Clone, Serialize, PartialEq)]
+#[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
 pub struct MenuLayout {
 	pub layout: Vec<MenuColumn>,
 }
@@ -246,7 +246,7 @@ impl<'a> Iterator for MenuLayoutIterMut<'a> {
 	}
 }
 
-#[derive(Debug, Default, Clone, Serialize, PartialEq)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq)]
 pub struct WidgetLayout {
 	pub layout: SubLayout,
 }
@@ -274,7 +274,7 @@ impl WidgetLayout {
 pub type SubLayout = Vec<LayoutGroup>;
 
 #[remain::sorted]
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum LayoutGroup {
 	#[serde(rename = "column")]
 	Column {
@@ -360,7 +360,7 @@ impl<'a> Iterator for WidgetIterMut<'a> {
 	}
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct WidgetHolder {
 	#[serde(rename = "widgetId")]
 	pub widget_id: u64,
@@ -391,7 +391,7 @@ impl<T> Default for WidgetCallback<T> {
 }
 
 #[remain::sorted]
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Widget {
 	CheckboxInput(CheckboxInput),
 	ColorInput(ColorInput),
@@ -412,7 +412,7 @@ pub enum Widget {
 	TextLabel(TextLabel),
 }
 
-#[derive(Clone, Serialize, Derivative, Default)]
+#[derive(Clone, Default, Derivative, Serialize, Deserialize)]
 #[derivative(Debug, PartialEq)]
 pub struct CheckboxInput {
 	pub checked: bool,
@@ -429,7 +429,7 @@ pub struct CheckboxInput {
 	pub on_update: WidgetCallback<CheckboxInput>,
 }
 
-#[derive(Clone, Serialize, Derivative)]
+#[derive(Clone, Derivative, Serialize, Deserialize)]
 #[derivative(Debug, PartialEq, Default)]
 pub struct ColorInput {
 	pub value: Option<String>,
@@ -519,7 +519,7 @@ pub struct FontInput {
 	pub on_update: WidgetCallback<FontInput>,
 }
 
-#[derive(Clone, Serialize, Derivative, Default)]
+#[derive(Clone, Default, Derivative, Serialize, Deserialize)]
 #[derivative(Debug, PartialEq)]
 pub struct IconButton {
 	pub icon: String,
@@ -619,7 +619,7 @@ pub enum NumberInputIncrementBehavior {
 	Callback,
 }
 
-#[derive(Clone, Serialize, Derivative, Default)]
+#[derive(Clone, Default, Derivative, Serialize, Deserialize)]
 #[derivative(Debug, PartialEq)]
 pub struct OptionalInput {
 	pub checked: bool,
@@ -647,7 +647,7 @@ pub struct PopoverButton {
 	pub text: String,
 }
 
-#[derive(Clone, Serialize, Derivative, Default)]
+#[derive(Clone, Default, Derivative, Serialize, Deserialize)]
 #[derivative(Debug, PartialEq)]
 pub struct RadioInput {
 	pub entries: Vec<RadioEntryData>,
@@ -657,7 +657,7 @@ pub struct RadioInput {
 	pub selected_index: u32,
 }
 
-#[derive(Clone, Serialize, Derivative, Default)]
+#[derive(Clone, Default, Derivative, Serialize, Deserialize)]
 #[derivative(Debug, PartialEq)]
 pub struct RadioEntryData {
 	pub value: String,

@@ -3,7 +3,7 @@ use crate::message_prelude::*;
 use serde::{Deserialize, Serialize};
 
 #[impl_message(Message, Broadcast)]
-#[derive(PartialEq, Clone, Debug, Serialize)]
+#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub enum BroadcastMessage {
 	SubscribeSignal {
 		on: BroadcastSignal,
