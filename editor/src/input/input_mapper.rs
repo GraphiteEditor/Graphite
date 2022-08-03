@@ -444,76 +444,76 @@ impl KeyMappingEntries {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct FutureKeyMapping {
-	action: MessageDiscriminant,
-	realized: Option<Vec<Key>>,
+pub enum ActionKeys {
+	Action(MessageDiscriminant),
+	Keys(Vec<Key>),
 }
 
-impl FutureKeyMapping {
-	pub fn new(action: MessageDiscriminant) -> Self {
-		Self { action, realized: None }
-	}
+impl ActionKeys {
+	pub fn to_keys(&self, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Vec<Vec<Key>>) -> ActionKeys {
+		match self {
+			ActionKeys::Action(action) => {
+				if let Some(keys) = action_input_mapping(action).get_mut(0) {
+					let mut taken_keys = Vec::new();
+					std::mem::swap(keys, &mut taken_keys);
 
-	pub fn realize(&mut self, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Vec<Vec<Key>>) {
-		// FutureKeyMapping is immutable, so realizing it more than once is not respected
-		if self.realized.is_some() {
-			log::warn!("A `FutureKeyMapping` had `.realize()` called more than once, which is not allowed because it should be treated immutably.");
-			return;
-		}
-
-		if let Some(keys) = action_input_mapping(&self.action).get_mut(0) {
-			let mut taken_keys = Vec::new();
-			std::mem::swap(keys, &mut taken_keys);
-
-			self.realized = Some(taken_keys);
-		}
-	}
-
-	pub fn iter(&self) -> impl Iterator<Item = Key> + '_ {
-		self.realized.iter().flatten().copied()
-	}
-
-	pub fn text_shortcut(&self, keyboard_platform: KeyboardPlatformLayout) -> String {
-		const JOINER_MARK: &str = "+";
-
-		let mut joined = self
-			.iter()
-			.map(|key| {
-				let key_string = key.to_string();
-
-				if keyboard_platform == KeyboardPlatformLayout::Mac {
-					match key_string.as_str() {
-						"Command" => "⌘".to_string(),
-						"Control" => "⌃".to_string(),
-						"Alt" => "⌥".to_string(),
-						"Shift" => "⇧".to_string(),
-						_ => key_string + JOINER_MARK,
-					}
+					ActionKeys::Keys(taken_keys)
 				} else {
-					key_string + JOINER_MARK
+					ActionKeys::Keys(Vec::new())
 				}
-			})
-			.collect::<String>();
-
-		// Truncate to cut the joining character off the end if it's present
-		if joined.ends_with(JOINER_MARK) {
-			joined.truncate(joined.len() - JOINER_MARK.len());
+			}
+			ActionKeys::Keys(keys) => {
+				log::warn!("Calling `.to_keys()` on a `ActionKeys::Keys` is a mistake/bug. Keys are: {:?}.", keys);
+				self.clone()
+			}
 		}
-
-		joined
 	}
 }
 
-impl Serialize for FutureKeyMapping {
+pub fn keys_text_shortcut(keys: &[Key], keyboard_platform: KeyboardPlatformLayout) -> String {
+	const JOINER_MARK: &str = "+";
+
+	let mut joined = keys
+		.iter()
+		.map(|key| {
+			let key_string = key.to_string();
+
+			if keyboard_platform == KeyboardPlatformLayout::Mac {
+				match key_string.as_str() {
+					"Command" => "⌘".to_string(),
+					"Control" => "⌃".to_string(),
+					"Alt" => "⌥".to_string(),
+					"Shift" => "⇧".to_string(),
+					_ => key_string + JOINER_MARK,
+				}
+			} else {
+				key_string + JOINER_MARK
+			}
+		})
+		.collect::<String>();
+
+	// Truncate to cut the joining character off the end if it's present
+	if joined.ends_with(JOINER_MARK) {
+		joined.truncate(joined.len() - JOINER_MARK.len());
+	}
+
+	joined
+}
+
+impl Serialize for ActionKeys {
 	fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-		serializer.collect_seq(self.iter())
+		if let ActionKeys::Keys(keys) = self {
+			serializer.collect_seq(keys.iter())
+		} else {
+			panic!("Unable to serialize a `ActionKeys::Action`, it needs to be converted to a `ActionKeys::Keys` by calling `.to_keys()` before serializing.");
+		}
 	}
 }
 
-pub mod future_key_mapping {
+pub mod action_keys {
 	macro_rules! action_shortcut {
 		($action:expr) => {
-			Some(crate::input::input_mapper::FutureKeyMapping::new($action.into()))
+			Some(crate::input::input_mapper::ActionKeys::Action($action.into()))
 		};
 	}
 

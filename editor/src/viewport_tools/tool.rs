@@ -1,8 +1,8 @@
 use super::tools::*;
 use crate::communication::message_handler::MessageHandler;
 use crate::document::DocumentMessageHandler;
-use crate::input::input_mapper::future_key_mapping::action_shortcut;
-use crate::input::input_mapper::FutureKeyMapping;
+use crate::input::input_mapper::action_keys::action_shortcut;
+use crate::input::input_mapper::ActionKeys;
 use crate::input::InputPreprocessorMessageHandler;
 use crate::layout::widgets::{IconButton, Layout, LayoutGroup, PropertyHolder, Separator, SeparatorDirection, SeparatorType, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
 use crate::message_prelude::*;
@@ -117,7 +117,7 @@ impl ToolData {
 #[derive(Debug)]
 pub struct ToolBarMetadataGroup {
 	pub tooltip: String,
-	pub tooltip_shortcut: Option<FutureKeyMapping>,
+	pub tooltip_shortcut: Option<ActionKeys>,
 	pub icon_name: String,
 	pub tool_type: ToolType,
 }

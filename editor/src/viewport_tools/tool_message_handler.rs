@@ -1,6 +1,6 @@
 use super::tool::{tool_message_to_tool_type, ToolFsmState};
 use crate::document::DocumentMessageHandler;
-use crate::input::input_mapper::future_key_mapping::action_shortcut;
+use crate::input::input_mapper::action_keys::action_shortcut;
 use crate::input::InputPreprocessorMessageHandler;
 use crate::layout::layout_message::LayoutTarget;
 use crate::layout::widgets::PropertyHolder;

@@ -1,6 +1,7 @@
 use super::layout_message::LayoutTarget;
 use crate::document::utility_types::KeyboardPlatformLayout;
-use crate::input::input_mapper::FutureKeyMapping;
+use crate::input::input_mapper::keys_text_shortcut;
+use crate::input::input_mapper::ActionKeys;
 use crate::input::keyboard::Key;
 use crate::message_prelude::*;
 use crate::Color;
@@ -34,22 +35,25 @@ pub enum Layout {
 impl Layout {
 	pub fn unwrap_widget_layout(self, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Vec<Vec<Key>>, keyboard_platform: KeyboardPlatformLayout) -> WidgetLayout {
 		if let Layout::WidgetLayout(mut widget_layout) = self {
-			// Used multiple times later in this code block to realize the `FutureKeyMapping` for the action and append its shortcut to the tooltip
-			let apply_shortcut_to_tooltip = |tooltip_shortcut: &mut FutureKeyMapping, tooltip: &mut String| {
-				tooltip_shortcut.realize(action_input_mapping);
-				let shortcut_text = tooltip_shortcut.text_shortcut(keyboard_platform);
+			// Function used multiple times later in this code block to convert `ActionKeys::Action` to `ActionKeys::Keys` and append its shortcut to the tooltip
+			let apply_shortcut_to_tooltip = |tooltip_shortcut: &mut ActionKeys, tooltip: &mut String| {
+				tooltip_shortcut.to_keys(action_input_mapping);
 
-				if !shortcut_text.is_empty() {
-					if !tooltip.is_empty() {
-						tooltip.push(' ');
+				if let ActionKeys::Keys(keys) = tooltip_shortcut {
+					let shortcut_text = keys_text_shortcut(keys, keyboard_platform);
+
+					if !shortcut_text.is_empty() {
+						if !tooltip.is_empty() {
+							tooltip.push(' ');
+						}
+						tooltip.push('(');
+						tooltip.push_str(&shortcut_text);
+						tooltip.push(')');
 					}
-					tooltip.push('(');
-					tooltip.push_str(&shortcut_text);
-					tooltip.push(')');
 				}
 			};
 
-			// Go through each widget to realize any keyboard shortcut `FutureKeyMapping`s and append the key combination to the tooltip
+			// Go through each widget to convert `ActionKeys::Action` to `ActionKeys::Keys` and append the key combination to the widget tooltip
 			for widget_holder in &mut widget_layout.iter_mut() {
 				// Handle all the widgets that have tooltips
 				let mut tooltip_shortcut = match &mut widget_holder.widget {
@@ -87,7 +91,7 @@ impl Layout {
 	pub fn unwrap_menu_layout(self, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Vec<Vec<Key>>, _keyboard_platform: KeyboardPlatformLayout) -> MenuLayout {
 		if let Layout::MenuLayout(mut menu_layout) = self {
 			for menu_column in &mut menu_layout.layout {
-				menu_column.children.realize_future_key_mappings(action_input_mapping);
+				menu_column.children.fill_in_shortcut_actions_with_keys(action_input_mapping);
 			}
 
 			menu_layout
@@ -125,15 +129,16 @@ impl MenuEntryGroups {
 		Self(Vec::new())
 	}
 
-	pub fn realize_future_key_mappings(&mut self, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Vec<Vec<Key>>) {
+	pub fn fill_in_shortcut_actions_with_keys(&mut self, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Vec<Vec<Key>>) {
 		let entries = self.0.iter_mut().flatten();
+
 		for entry in entries {
-			if let Some(future_key_mapping) = &mut entry.shortcut {
-				future_key_mapping.realize(action_input_mapping);
+			if let Some(action_keys) = &mut entry.shortcut {
+				action_keys.to_keys(action_input_mapping);
 			}
 
 			// Recursively do this for the children also
-			entry.children.realize_future_key_mappings(action_input_mapping);
+			entry.children.fill_in_shortcut_actions_with_keys(action_input_mapping);
 		}
 	}
 }
@@ -144,7 +149,7 @@ pub struct MenuEntry {
 	pub icon: Option<String>,
 	pub children: MenuEntryGroups,
 	pub action: WidgetHolder,
-	pub shortcut: Option<FutureKeyMapping>,
+	pub shortcut: Option<ActionKeys>,
 }
 
 impl MenuEntry {
@@ -416,7 +421,7 @@ pub struct CheckboxInput {
 
 	pub tooltip: String,
 
-	pub tooltip_shortcut: Option<FutureKeyMapping>,
+	pub tooltip_shortcut: Option<ActionKeys>,
 
 	// Callbacks
 	#[serde(skip)]
@@ -439,7 +444,7 @@ pub struct ColorInput {
 
 	pub tooltip: String,
 
-	pub tooltip_shortcut: Option<FutureKeyMapping>,
+	pub tooltip_shortcut: Option<ActionKeys>,
 
 	// Callbacks
 	#[serde(skip)]
@@ -525,7 +530,7 @@ pub struct IconButton {
 
 	pub tooltip: String,
 
-	pub tooltip_shortcut: Option<FutureKeyMapping>,
+	pub tooltip_shortcut: Option<ActionKeys>,
 
 	// Callbacks
 	#[serde(skip)]
@@ -623,7 +628,7 @@ pub struct OptionalInput {
 
 	pub tooltip: String,
 
-	pub tooltip_shortcut: Option<FutureKeyMapping>,
+	pub tooltip_shortcut: Option<ActionKeys>,
 
 	// Callbacks
 	#[serde(skip)]
@@ -663,7 +668,7 @@ pub struct RadioEntryData {
 
 	pub tooltip: String,
 
-	pub tooltip_shortcut: Option<FutureKeyMapping>,
+	pub tooltip_shortcut: Option<ActionKeys>,
 
 	// Callbacks
 	#[serde(skip)]

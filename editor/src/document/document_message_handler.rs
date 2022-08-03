@@ -7,7 +7,7 @@ use super::{vectorize_layer_metadata, PropertiesPanelMessageHandler};
 use super::{ArtboardMessageHandler, MovementMessageHandler, OverlaysMessageHandler, TransformLayerMessageHandler};
 use crate::consts::{ASYMPTOTIC_EFFECT, DEFAULT_DOCUMENT_NAME, FILE_SAVE_SUFFIX, GRAPHITE_DOCUMENT_VERSION, SCALE_EFFECT, SCROLLBAR_SPACING, VIEWPORT_ZOOM_TO_FIT_PADDING_SCALE_FACTOR};
 use crate::frontend::utility_types::{FileType, FrontendImageData};
-use crate::input::input_mapper::future_key_mapping::action_shortcut;
+use crate::input::input_mapper::action_keys::action_shortcut;
 use crate::input::InputPreprocessorMessageHandler;
 use crate::layout::layout_message::LayoutTarget;
 use crate::layout::widgets::{

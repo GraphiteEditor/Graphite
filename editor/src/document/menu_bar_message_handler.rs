@@ -1,5 +1,5 @@
 use super::MenuBarMessage;
-use crate::input::input_mapper::future_key_mapping::action_shortcut;
+use crate::input::input_mapper::action_keys::action_shortcut;
 use crate::layout::layout_message::LayoutTarget;
 use crate::layout::widgets::*;
 use crate::message_prelude::*;
