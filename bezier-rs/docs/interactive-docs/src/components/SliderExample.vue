@@ -2,7 +2,10 @@
 	<div>
 		<Example :title="title" :bezier="bezier" :callback="callback" :options="sliderData" :createThroughPoints="createThroughPoints" />
 		<div v-for="(slider, index) in templateOptions.sliders" :key="index">
-			<div class="slider-label">{{ slider.variable }} = {{ sliderData[slider.variable] }}{{ sliderUnits[slider.variable] }}</div>
+			<div class="slider-label">
+				{{ slider.variable }} = {{ sliderData[slider.variable]
+				}}{{ Array.isArray(sliderUnits[slider.variable]) ? sliderUnits[slider.variable][sliderData[slider.variable]] : sliderUnits[slider.variable] }}
+			</div>
 			<input class="slider" v-model.number="sliderData[slider.variable]" type="range" :step="slider.step" :min="slider.min" :max="slider.max" />
 		</div>
 	</div>

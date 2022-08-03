@@ -511,6 +511,7 @@ export default defineComponent({
 								max: 2,
 								step: 1,
 								default: 0,
+								unit: [": AUTO", ": ON", ": OFF"],
 							},
 							{
 								variable: "error",
