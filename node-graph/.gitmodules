@@ -1,0 +1,3 @@
+[submodule "non-static-any"]
+	path = non-static-any
+	url = git@github.com:TrueDoctor/non-static-any.git
