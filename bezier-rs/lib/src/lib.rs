@@ -1545,6 +1545,22 @@ mod tests {
 	}
 
 	#[test]
+	fn test_rotate() {
+		let bezier = Bezier::from_cubic_coordinates(30., 30., 60., 140., 150., 30., 160., 160.);
+		let rotated_bezier = bezier.rotate(PI / 2.);
+		let expected_bezier = Bezier::from_cubic_coordinates(-30., 30., -140., 60., -30., 150., -160., 160.);
+		assert!(rotated_bezier.abs_diff_eq(&expected_bezier, MAX_ABSOLUTE_DIFFERENCE));
+	}
+
+	#[test]
+	fn test_translate() {
+		let bezier = Bezier::from_cubic_coordinates(30., 30., 60., 140., 150., 30., 160., 160.);
+		let translated_bezier = bezier.translate(DVec2::new(10., -10.));
+		let expected_bezier = Bezier::from_cubic_coordinates(40., 20., 70., 130., 160., 20., 170., 150.);
+		assert!(translated_bezier.abs_diff_eq(&expected_bezier, MAX_ABSOLUTE_DIFFERENCE));
+	}
+
+	#[test]
 	fn test_intersect_line_segment_linear() {
 		let p1 = DVec2::new(30., 60.);
 		let p2 = DVec2::new(140., 120.);
