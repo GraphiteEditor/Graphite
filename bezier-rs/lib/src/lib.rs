@@ -1229,7 +1229,7 @@ mod tests {
 	}
 
 	#[test]
-	fn evaluate() {
+	fn test_evaluate() {
 		let p1 = DVec2::new(3., 5.);
 		let p2 = DVec2::new(14., 3.);
 		let p3 = DVec2::new(19., 14.);
@@ -1243,7 +1243,7 @@ mod tests {
 	}
 
 	#[test]
-	fn compute_lookup_table() {
+	fn test_compute_lookup_table() {
 		let bezier1 = Bezier::from_quadratic_coordinates(10., 10., 30., 30., 50., 10.);
 		let lookup_table1 = bezier1.compute_lookup_table(Some(2));
 		assert_eq!(lookup_table1, vec![bezier1.start(), bezier1.evaluate(0.5), bezier1.end()]);
@@ -1257,7 +1257,7 @@ mod tests {
 	}
 
 	#[test]
-	fn length() {
+	fn test_length() {
 		let p1 = DVec2::new(30., 50.);
 		let p2 = DVec2::new(140., 30.);
 		let p3 = DVec2::new(160., 170.);
@@ -1274,7 +1274,7 @@ mod tests {
 	}
 
 	#[test]
-	fn derivative() {
+	fn test_derivative() {
 		// Test derivatives of each Bezier curve type
 		let p1 = DVec2::new(10., 10.);
 		let p2 = DVec2::new(40., 30.);
@@ -1301,7 +1301,7 @@ mod tests {
 	}
 
 	#[test]
-	fn tangent() {
+	fn test_tangent() {
 		// Test tangents at start and end points of each Bezier curve type
 		let p1 = DVec2::new(10., 10.);
 		let p2 = DVec2::new(40., 30.);
@@ -1323,7 +1323,7 @@ mod tests {
 	}
 
 	#[test]
-	fn normal() {
+	fn test_normal() {
 		// Test normals at start and end points of each Bezier curve type
 		let p1 = DVec2::new(10., 10.);
 		let p2 = DVec2::new(40., 30.);
@@ -1344,8 +1344,10 @@ mod tests {
 		assert_eq!(cubic.normal(1.), DVec2::new(-120., 30.).normalize());
 	}
 
+	// TODO: Test curvature
+
 	#[test]
-	fn split() {
+	fn test_split() {
 		let line = Bezier::from_linear_coordinates(25., 25., 75., 75.);
 		let [part1, part2] = line.split(0.5);
 
@@ -1381,7 +1383,7 @@ mod tests {
 	}
 
 	#[test]
-	fn split_at_anchors() {
+	fn test_split_at_anchors() {
 		let start = DVec2::new(30., 50.);
 		let end = DVec2::new(160., 170.);
 
@@ -1411,7 +1413,7 @@ mod tests {
 	}
 
 	#[test]
-	fn trim() {
+	fn test_trim() {
 		let line = Bezier::from_linear_coordinates(80., 80., 40., 40.);
 		let trimmed1 = line.trim(0.25, 0.75);
 
@@ -1435,7 +1437,7 @@ mod tests {
 	}
 
 	#[test]
-	fn trim_t2_greater_than_t1() {
+	fn test_trim_t2_greater_than_t1() {
 		// Test trimming quadratic curve when t2 > t1
 		let bezier_quadratic = Bezier::from_quadratic_coordinates(30., 50., 140., 30., 160., 170.);
 		let trim1 = bezier_quadratic.trim(0.25, 0.75);
@@ -1462,7 +1464,7 @@ mod tests {
 	}
 
 	#[test]
-	fn extrema_linear() {
+	fn test_extrema_linear() {
 		// Linear bezier cannot have extrema
 		let line = Bezier::from_linear_dvec2(DVec2::new(10., 10.), DVec2::new(50., 50.));
 		let [x_extrema, y_extrema] = line.local_extrema();
@@ -1471,7 +1473,7 @@ mod tests {
 	}
 
 	#[test]
-	fn extrema_quadratic() {
+	fn test_extrema_quadratic() {
 		// Test with no x-extrema, no y-extrema
 		let bezier1 = Bezier::from_quadratic_coordinates(40., 35., 149., 54., 155., 170.);
 		let [x_extrema1, y_extrema1] = bezier1.local_extrema();
@@ -1498,7 +1500,7 @@ mod tests {
 	}
 
 	#[test]
-	fn extrema_cubic() {
+	fn test_extrema_cubic() {
 		// 0 x-extrema, 0 y-extrema
 		let bezier1 = Bezier::from_cubic_coordinates(100., 105., 250., 250., 110., 150., 260., 260.);
 		let [x_extrema1, y_extrema1] = bezier1.local_extrema();
@@ -1628,31 +1630,7 @@ mod tests {
 		assert!(Bezier::from_quadratic_coordinates(160., 180., 170., 10., 30., 90.).self_intersections(None).is_empty());
 	}
 
-	#[test]
-	fn test_offset() {
-		let p1 = DVec2::new(30., 50.);
-		let p2 = DVec2::new(140., 30.);
-		let p3 = DVec2::new(160., 170.);
-		let bezier1 = Bezier::from_quadratic_dvec2(p1, p2, p3);
-		let expected_bezier_points1 = vec![
-			vec![DVec2::new(31.7888, 59.8387), DVec2::new(44.5924, 57.46446), DVec2::new(56.09375, 57.5)],
-			vec![DVec2::new(56.09375, 57.5), DVec2::new(94.94197, 56.5019), DVec2::new(117.6473, 84.5936)],
-			vec![DVec2::new(117.6473, 84.5936), DVec2::new(142.3985, 113.403), DVec2::new(150.1005, 171.4142)],
-		];
-		assert!(compare_vector_of_beziers(&bezier1.offset(10.), expected_bezier_points1));
-
-		let p4 = DVec2::new(32., 77.);
-		let p5 = DVec2::new(169., 25.);
-		let p6 = DVec2::new(164., 157.);
-		let bezier2 = Bezier::from_quadratic_dvec2(p4, p5, p6);
-		let expected_bezier_points2 = vec![
-			vec![DVec2::new(42.6458, 105.04758), DVec2::new(75.0218, 91.9939), DVec2::new(98.09357, 92.3043)],
-			vec![DVec2::new(98.09357, 92.3043), DVec2::new(116.5995, 88.5479), DVec2::new(123.9055, 102.0401)],
-			vec![DVec2::new(123.9055, 102.0401), DVec2::new(136.6087, 116.9522), DVec2::new(134.1761, 147.9324)],
-			vec![DVec2::new(134.1761, 147.9324), DVec2::new(134.1812, 151.7987), DVec2::new(134.0215, 155.86445)],
-		];
-		assert!(compare_vector_of_beziers(&bezier2.offset(30.), expected_bezier_points2));
-	}
+	// TODO: Test de_casteljau_points
 
 	#[test]
 	fn test_reduce() {
@@ -1745,5 +1723,34 @@ mod tests {
 		assert_ne!(auto_arcs[0], extrema_arcs[0]);
 		// The remaining results (index 2 onwards) should match the results where MaximizeArcs::Off from the next extrema point onwards (after index 2).
 		assert!(auto_arcs.iter().skip(2).zip(extrema_arcs.iter().skip(2)).all(|(arc1, arc2)| compare_arcs(*arc1, *arc2)));
+	}
+
+	// TODO: Test bounding box
+	// TODO: Test inflections
+
+	#[test]
+	fn test_offset() {
+		let p1 = DVec2::new(30., 50.);
+		let p2 = DVec2::new(140., 30.);
+		let p3 = DVec2::new(160., 170.);
+		let bezier1 = Bezier::from_quadratic_dvec2(p1, p2, p3);
+		let expected_bezier_points1 = vec![
+			vec![DVec2::new(31.7888, 59.8387), DVec2::new(44.5924, 57.46446), DVec2::new(56.09375, 57.5)],
+			vec![DVec2::new(56.09375, 57.5), DVec2::new(94.94197, 56.5019), DVec2::new(117.6473, 84.5936)],
+			vec![DVec2::new(117.6473, 84.5936), DVec2::new(142.3985, 113.403), DVec2::new(150.1005, 171.4142)],
+		];
+		assert!(compare_vector_of_beziers(&bezier1.offset(10.), expected_bezier_points1));
+
+		let p4 = DVec2::new(32., 77.);
+		let p5 = DVec2::new(169., 25.);
+		let p6 = DVec2::new(164., 157.);
+		let bezier2 = Bezier::from_quadratic_dvec2(p4, p5, p6);
+		let expected_bezier_points2 = vec![
+			vec![DVec2::new(42.6458, 105.04758), DVec2::new(75.0218, 91.9939), DVec2::new(98.09357, 92.3043)],
+			vec![DVec2::new(98.09357, 92.3043), DVec2::new(116.5995, 88.5479), DVec2::new(123.9055, 102.0401)],
+			vec![DVec2::new(123.9055, 102.0401), DVec2::new(136.6087, 116.9522), DVec2::new(134.1761, 147.9324)],
+			vec![DVec2::new(134.1761, 147.9324), DVec2::new(134.1812, 151.7987), DVec2::new(134.0215, 155.86445)],
+		];
+		assert!(compare_vector_of_beziers(&bezier2.offset(30.), expected_bezier_points2));
 	}
 }
