@@ -65,7 +65,7 @@ impl ToolMetadata for GradientTool {
 		"GeneralGradientTool".into()
 	}
 	fn tooltip(&self) -> String {
-		"Gradient Tool (H))".into()
+		"Gradient Tool".into()
 	}
 	fn tool_type(&self) -> crate::viewport_tools::tool::ToolType {
 		ToolType::Gradient
@@ -461,12 +461,14 @@ impl Fsm for GradientToolFsmState {
 			GradientToolFsmState::Ready => HintData(vec![HintGroup(vec![
 				HintInfo {
 					key_groups: vec![],
+					key_groups_mac: None,
 					mouse: Some(MouseMotion::LmbDrag),
 					label: String::from("Draw Gradient"),
 					plus: false,
 				},
 				HintInfo {
 					key_groups: vec![KeysGroup(vec![Key::KeyShift])],
+					key_groups_mac: None,
 					mouse: None,
 					label: String::from("Snap 15°"),
 					plus: true,
@@ -474,6 +476,7 @@ impl Fsm for GradientToolFsmState {
 			])]),
 			GradientToolFsmState::Drawing => HintData(vec![HintGroup(vec![HintInfo {
 				key_groups: vec![KeysGroup(vec![Key::KeyShift])],
+				key_groups_mac: None,
 				mouse: None,
 				label: String::from("Snap 15°"),
 				plus: false,

@@ -1,7 +1,7 @@
 use crate::message_prelude::*;
 
 use serde::{Deserialize, Serialize};
-use std::fmt::{Display, Formatter};
+use std::fmt::{self, Display, Formatter};
 use std::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign};
 
 // TODO: Increase size of type
@@ -21,7 +21,7 @@ pub type KeyStates = BitVector<KEY_MASK_STORAGE_LENGTH>;
 pub enum Key {
 	UnknownKey,
 
-	// MouseKeys
+	// Mouse keys
 	Lmb,
 	Rmb,
 	Mmb,
@@ -70,6 +70,8 @@ pub enum Key {
 	KeyShift,
 	KeySpace,
 	KeyControl,
+	KeyCommand,
+	KeyMeta,
 	KeyDelete,
 	KeyBackspace,
 	KeyAlt,
@@ -90,6 +92,16 @@ pub enum Key {
 
 	// This has to be the last element in the enum
 	NumKeys,
+}
+
+impl fmt::Display for Key {
+	fn fmt(&self, f: &mut fmt::Formatter) -> std::fmt::Result {
+		let key_name = format!("{:?}", self);
+
+		let name = if &key_name[0..3] == "Key" { key_name.chars().skip(3).collect::<String>() } else { key_name };
+
+		write!(f, "{}", name)
+	}
 }
 
 pub const NUMBER_OF_KEYS: usize = Key::NumKeys as usize;
@@ -162,11 +174,38 @@ impl<const LENGTH: usize> BitVector<LENGTH> {
 
 		result
 	}
+
+	pub fn iter(&self) -> impl Iterator<Item = usize> + '_ {
+		BitVectorIter::<LENGTH> { bitvector: self, iter_index: 0 }
+	}
 }
 
 impl<const LENGTH: usize> Default for BitVector<LENGTH> {
 	fn default() -> Self {
 		Self::new()
+	}
+}
+
+struct BitVectorIter<'a, const LENGTH: usize> {
+	bitvector: &'a BitVector<LENGTH>,
+	iter_index: usize,
+}
+
+impl<'a, const LENGTH: usize> Iterator for BitVectorIter<'a, LENGTH> {
+	type Item = usize;
+
+	fn next(&mut self) -> Option<Self::Item> {
+		while self.iter_index < (STORAGE_SIZE_BITS as usize) * LENGTH {
+			let bit_value = self.bitvector.get(self.iter_index);
+
+			self.iter_index += 1;
+
+			if bit_value {
+				return Some(self.iter_index - 1);
+			}
+		}
+
+		None
 	}
 }
 

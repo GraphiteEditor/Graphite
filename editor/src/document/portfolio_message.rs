@@ -1,4 +1,5 @@
 use super::clipboards::Clipboard;
+use super::utility_types::Platform;
 use crate::message_prelude::*;
 
 use graphene::layers::text_layer::Font;
@@ -82,6 +83,9 @@ pub enum PortfolioMessage {
 	},
 	SetActiveDocument {
 		document_id: u64,
+	},
+	SetPlatform {
+		platform: Platform,
 	},
 	UpdateDocumentWidgets,
 	UpdateOpenDocumentsList,

@@ -28,6 +28,7 @@ pub enum ToolMessage {
 	#[remain::unsorted]
 	#[child]
 	Gradient(GradientToolMessage),
+
 	#[remain::unsorted]
 	#[child]
 	Path(PathToolMessage),
@@ -54,7 +55,8 @@ pub enum ToolMessage {
 	Shape(ShapeToolMessage),
 	#[remain::unsorted]
 	#[child]
-	Text(TextMessage),
+	Text(TextToolMessage),
+
 	// #[remain::unsorted]
 	// #[child]
 	// Brush(BrushToolMessage),
@@ -75,6 +77,38 @@ pub enum ToolMessage {
 	// Detail(DetailToolMessage),
 
 	// Messages
+	#[remain::unsorted]
+	ActivateToolSelect,
+	#[remain::unsorted]
+	ActivateToolArtboard,
+	#[remain::unsorted]
+	ActivateToolNavigate,
+	#[remain::unsorted]
+	ActivateToolEyedropper,
+	#[remain::unsorted]
+	ActivateToolText,
+	#[remain::unsorted]
+	ActivateToolFill,
+	#[remain::unsorted]
+	ActivateToolGradient,
+
+	#[remain::unsorted]
+	ActivateToolPath,
+	#[remain::unsorted]
+	ActivateToolPen,
+	#[remain::unsorted]
+	ActivateToolFreehand,
+	#[remain::unsorted]
+	ActivateToolSpline,
+	#[remain::unsorted]
+	ActivateToolLine,
+	#[remain::unsorted]
+	ActivateToolRectangle,
+	#[remain::unsorted]
+	ActivateToolEllipse,
+	#[remain::unsorted]
+	ActivateToolShape,
+
 	ActivateTool {
 		tool_type: ToolType,
 	},

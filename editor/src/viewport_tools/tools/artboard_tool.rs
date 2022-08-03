@@ -243,8 +243,10 @@ impl Fsm for ArtboardToolFsmState {
 							let mouse_position = input.mouse.position;
 							let snapped_mouse_position = tool_data.snap_handler.snap_position(responses, document, mouse_position);
 
-							let [position, size] = movement.new_size(snapped_mouse_position, bounds.transform, from_center, constrain_square);
-							let position = movement.center_position(position, size, from_center);
+							let (mut position, size) = movement.new_size(snapped_mouse_position, bounds.transform, from_center, constrain_square);
+							if from_center {
+								position = movement.center_position(position, size);
+							}
 
 							responses.push_back(
 								ArtboardMessage::ResizeArtboard {
@@ -408,18 +410,21 @@ impl Fsm for ArtboardToolFsmState {
 			ArtboardToolFsmState::Ready => HintData(vec![
 				HintGroup(vec![HintInfo {
 					key_groups: vec![],
+					key_groups_mac: None,
 					mouse: Some(MouseMotion::LmbDrag),
 					label: String::from("Draw Artboard"),
 					plus: false,
 				}]),
 				HintGroup(vec![HintInfo {
 					key_groups: vec![],
+					key_groups_mac: None,
 					mouse: Some(MouseMotion::LmbDrag),
 					label: String::from("Move Artboard"),
 					plus: false,
 				}]),
 				HintGroup(vec![HintInfo {
 					key_groups: vec![KeysGroup(vec![Key::KeyBackspace])],
+					key_groups_mac: None,
 					mouse: None,
 					label: String::from("Delete Artboard"),
 					plus: false,
@@ -427,6 +432,7 @@ impl Fsm for ArtboardToolFsmState {
 			]),
 			ArtboardToolFsmState::Dragging => HintData(vec![HintGroup(vec![HintInfo {
 				key_groups: vec![KeysGroup(vec![Key::KeyShift])],
+				key_groups_mac: None,
 				mouse: None,
 				label: String::from("Constrain to Axis"),
 				plus: false,
@@ -434,12 +440,14 @@ impl Fsm for ArtboardToolFsmState {
 			ArtboardToolFsmState::Drawing | ArtboardToolFsmState::ResizingBounds => HintData(vec![HintGroup(vec![
 				HintInfo {
 					key_groups: vec![KeysGroup(vec![Key::KeyShift])],
+					key_groups_mac: None,
 					mouse: None,
 					label: String::from("Constrain Square"),
 					plus: false,
 				},
 				HintInfo {
 					key_groups: vec![KeysGroup(vec![Key::KeyAlt])],
+					key_groups_mac: None,
 					mouse: None,
 					label: String::from("From Center"),
 					plus: false,

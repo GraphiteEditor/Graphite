@@ -7,6 +7,7 @@ use super::{vectorize_layer_metadata, PropertiesPanelMessageHandler};
 use super::{ArtboardMessageHandler, MovementMessageHandler, OverlaysMessageHandler, TransformLayerMessageHandler};
 use crate::consts::{ASYMPTOTIC_EFFECT, DEFAULT_DOCUMENT_NAME, FILE_SAVE_SUFFIX, GRAPHITE_DOCUMENT_VERSION, SCALE_EFFECT, SCROLLBAR_SPACING, VIEWPORT_ZOOM_TO_FIT_PADDING_SCALE_FACTOR};
 use crate::frontend::utility_types::{FileType, FrontendImageData};
+use crate::input::input_mapper::action_keys::action_shortcut;
 use crate::input::InputPreprocessorMessageHandler;
 use crate::layout::layout_message::LayoutTarget;
 use crate::layout::widgets::{
@@ -549,6 +550,7 @@ impl DocumentMessageHandler {
 				icon: "Snapping".into(),
 				tooltip: "Snapping".into(),
 				on_update: WidgetCallback::new(|optional_input: &OptionalInput| DocumentMessage::SetSnapping { snap: optional_input.checked }.into()),
+				..Default::default()
 			})),
 			WidgetHolder::new(Widget::PopoverButton(PopoverButton {
 				header: "Snapping".into(),
@@ -564,6 +566,7 @@ impl DocumentMessageHandler {
 				icon: "Grid".into(),
 				tooltip: "Grid".into(),
 				on_update: WidgetCallback::new(|_| DialogMessage::RequestComingSoonDialog { issue: Some(318) }.into()),
+				..Default::default()
 			})),
 			WidgetHolder::new(Widget::PopoverButton(PopoverButton {
 				header: "Grid".into(),
@@ -579,6 +582,7 @@ impl DocumentMessageHandler {
 				icon: "Overlays".into(),
 				tooltip: "Overlays".into(),
 				on_update: WidgetCallback::new(|optional_input: &OptionalInput| DocumentMessage::SetOverlaysVisibility { visible: optional_input.checked }.into()),
+				..Default::default()
 			})),
 			WidgetHolder::new(Widget::PopoverButton(PopoverButton {
 				header: "Overlays".into(),
@@ -841,14 +845,16 @@ impl DocumentMessageHandler {
 				})),
 				WidgetHolder::new(Widget::IconButton(IconButton {
 					icon: "NodeFolder".into(),
-					tooltip: "New Folder (Ctrl+Shift+N)".into(), // TODO: Customize this tooltip for the Mac version of the keyboard shortcut
+					tooltip: "New Folder".into(),
+					tooltip_shortcut: action_shortcut!(DocumentMessageDiscriminant::CreateEmptyFolder),
 					size: 24,
 					on_update: WidgetCallback::new(|_| DocumentMessage::CreateEmptyFolder { container_path: vec![] }.into()),
 					..Default::default()
 				})),
 				WidgetHolder::new(Widget::IconButton(IconButton {
 					icon: "Trash".into(),
-					tooltip: "Delete Selected (Del)".into(), // TODO: Customize this tooltip for the Mac version of the keyboard shortcut
+					tooltip: "Delete Selected".into(),
+					tooltip_shortcut: action_shortcut!(DocumentMessageDiscriminant::DeleteSelectedLayers),
 					size: 24,
 					on_update: WidgetCallback::new(|_| DocumentMessage::DeleteSelectedLayers.into()),
 					..Default::default()
@@ -863,6 +869,62 @@ impl DocumentMessageHandler {
 			}
 			.into(),
 		);
+	}
+
+	pub fn selected_layers_reorder(&mut self, relative_index_offset: isize, responses: &mut VecDeque<Message>) {
+		self.backup(responses);
+
+		let all_layer_paths = self.all_layers_sorted();
+		let selected_layers = self.selected_layers_sorted();
+
+		let first_or_last_selected_layer = match relative_index_offset.signum() {
+			-1 => selected_layers.first(),
+			1 => selected_layers.last(),
+			_ => panic!("selected_layers_reorder() must be given a non-zero value"),
+		};
+
+		if let Some(pivot_layer) = first_or_last_selected_layer {
+			let sibling_layer_paths: Vec<_> = all_layer_paths
+				.iter()
+				.filter(|layer| {
+					// Check if this is a sibling of the pivot layer
+					// TODO: Break this out into a reusable function `fn are_layers_siblings(layer_a, layer_b) -> bool`
+					let containing_folder_path = &pivot_layer[0..pivot_layer.len() - 1];
+					layer.starts_with(containing_folder_path) && pivot_layer.len() == layer.len()
+				})
+				.collect();
+
+			// TODO: Break this out into a reusable function: `fn layer_index_in_containing_folder(layer_path) -> usize`
+			let pivot_index_among_siblings = sibling_layer_paths.iter().position(|path| *path == pivot_layer);
+
+			if let Some(pivot_index) = pivot_index_among_siblings {
+				let max = sibling_layer_paths.len() as i64 - 1;
+				let insert_index = (pivot_index as i64 + relative_index_offset as i64).clamp(0, max) as usize;
+
+				let existing_layer_to_insert_beside = sibling_layer_paths.get(insert_index);
+
+				// TODO: Break this block out into a call to a message called `MoveSelectedLayersNextToLayer { neighbor_path, above_or_below }`
+				if let Some(neighbor_path) = existing_layer_to_insert_beside {
+					let (neighbor_id, folder_path) = neighbor_path.split_last().expect("Can't move the root folder");
+
+					if let Some(folder) = self.graphene_document.layer(folder_path).ok().and_then(|layer| layer.as_folder().ok()) {
+						let neighbor_layer_index = folder.layer_ids.iter().position(|id| id == neighbor_id).unwrap() as isize;
+
+						// If moving down, insert below this layer. If moving up, insert above this layer.
+						let insert_index = if relative_index_offset < 0 { neighbor_layer_index } else { neighbor_layer_index + 1 };
+
+						responses.push_back(
+							DocumentMessage::MoveSelectedLayersTo {
+								folder_path: folder_path.to_vec(),
+								insert_index,
+								reverse_index: false,
+							}
+							.into(),
+						);
+					}
+				}
+			}
+		}
 	}
 }
 
@@ -1318,61 +1380,6 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 					.into(),
 				);
 			}
-			ReorderSelectedLayers { relative_index_offset } => {
-				self.backup(responses);
-
-				let all_layer_paths = self.all_layers_sorted();
-				let selected_layers = self.selected_layers_sorted();
-
-				let first_or_last_selected_layer = match relative_index_offset.signum() {
-					-1 => selected_layers.first(),
-					1 => selected_layers.last(),
-					_ => panic!("ReorderSelectedLayers must be given a non-zero value"),
-				};
-
-				if let Some(pivot_layer) = first_or_last_selected_layer {
-					let sibling_layer_paths: Vec<_> = all_layer_paths
-						.iter()
-						.filter(|layer| {
-							// Check if this is a sibling of the pivot layer
-							// TODO: Break this out into a reusable function `fn are_layers_siblings(layer_a, layer_b) -> bool`
-							let containing_folder_path = &pivot_layer[0..pivot_layer.len() - 1];
-							layer.starts_with(containing_folder_path) && pivot_layer.len() == layer.len()
-						})
-						.collect();
-
-					// TODO: Break this out into a reusable function: `fn layer_index_in_containing_folder(layer_path) -> usize`
-					let pivot_index_among_siblings = sibling_layer_paths.iter().position(|path| *path == pivot_layer);
-
-					if let Some(pivot_index) = pivot_index_among_siblings {
-						let max = sibling_layer_paths.len() as i64 - 1;
-						let insert_index = (pivot_index as i64 + relative_index_offset as i64).clamp(0, max) as usize;
-
-						let existing_layer_to_insert_beside = sibling_layer_paths.get(insert_index);
-
-						// TODO: Break this block out into a call to a message called `MoveSelectedLayersNextToLayer { neighbor_path, above_or_below }`
-						if let Some(neighbor_path) = existing_layer_to_insert_beside {
-							let (neighbor_id, folder_path) = neighbor_path.split_last().expect("Can't move the root folder");
-
-							if let Some(folder) = self.graphene_document.layer(folder_path).ok().and_then(|layer| layer.as_folder().ok()) {
-								let neighbor_layer_index = folder.layer_ids.iter().position(|id| id == neighbor_id).unwrap() as isize;
-
-								// If moving down, insert below this layer. If moving up, insert above this layer.
-								let insert_index = if relative_index_offset < 0 { neighbor_layer_index } else { neighbor_layer_index + 1 };
-
-								responses.push_back(
-									DocumentMessage::MoveSelectedLayersTo {
-										folder_path: folder_path.to_vec(),
-										insert_index,
-										reverse_index: false,
-									}
-									.into(),
-								);
-							}
-						}
-					}
-				}
-			}
 			RollbackTransaction => {
 				self.rollback(responses).unwrap_or_else(|e| log::warn!("{}", e));
 				responses.extend([RenderDocument.into(), DocumentStructureChanged.into()]);
@@ -1398,6 +1405,21 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 			SelectAllLayers => {
 				let all = self.all_layers().map(|path| path.to_vec()).collect();
 				responses.push_front(SetSelectedLayers { replacement_selected_layers: all }.into());
+			}
+			SelectedLayersLower => {
+				responses.push_front(DocumentMessage::SelectedLayersReorder { relative_index_offset: -1 }.into());
+			}
+			SelectedLayersLowerToBack => {
+				responses.push_front(DocumentMessage::SelectedLayersReorder { relative_index_offset: isize::MIN }.into());
+			}
+			SelectedLayersRaise => {
+				responses.push_front(DocumentMessage::SelectedLayersReorder { relative_index_offset: 1 }.into());
+			}
+			SelectedLayersRaiseToFront => {
+				responses.push_front(DocumentMessage::SelectedLayersReorder { relative_index_offset: isize::MAX }.into());
+			}
+			SelectedLayersReorder { relative_index_offset } => {
+				self.selected_layers_reorder(relative_index_offset, responses);
 			}
 			SelectLayer { layer_path, ctrl, shift } => {
 				let mut paths = vec![];
@@ -1611,7 +1633,10 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 				DeleteSelectedLayers,
 				DuplicateSelectedLayers,
 				NudgeSelectedLayers,
-				ReorderSelectedLayers,
+				SelectedLayersLower,
+				SelectedLayersLowerToBack,
+				SelectedLayersRaise,
+				SelectedLayersRaiseToFront,
 				GroupSelectedLayers,
 				UngroupSelectedLayers,
 			);

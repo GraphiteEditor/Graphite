@@ -1,5 +1,5 @@
 <template>
-	<LayoutRow class="window-buttons-web" @click="() => handleClick()" :title="fullscreen.state.windowFullscreen ? 'Exit Fullscreen (F11)' : 'Enter Fullscreen (F11)'">
+	<LayoutRow class="window-buttons-web" @click="() => handleClick()" :title="(fullscreen.state.windowFullscreen ? 'Exit' : 'Enter') + ' Fullscreen (F11)'">
 		<TextLabel v-if="requestFullscreenHotkeys" :italic="true">Go fullscreen to access all hotkeys</TextLabel>
 		<IconLabel :icon="fullscreen.state.windowFullscreen ? 'FullscreenExit' : 'FullscreenEnter'" />
 	</LayoutRow>

@@ -61,7 +61,7 @@ impl SelectedEdges {
 	}
 
 	/// Computes the new bounds with the given mouse move and modifier keys
-	pub fn new_size(&self, mouse: DVec2, transform: DAffine2, center: bool, constrain: bool) -> [DVec2; 2] {
+	pub fn new_size(&self, mouse: DVec2, transform: DAffine2, center: bool, constrain: bool) -> (DVec2, DVec2) {
 		let mouse = transform.inverse().transform_point2(mouse);
 
 		let mut min = self.bounds[0];
@@ -72,7 +72,9 @@ impl SelectedEdges {
 			max.y = mouse.y;
 		}
 		if self.left {
-			min.x = mouse.x
+			let delta = min.x - mouse.x;
+			min.x = mouse.x;
+			max.x += delta;
 		} else if self.right {
 			max.x = mouse.x;
 		}
@@ -96,34 +98,38 @@ impl SelectedEdges {
 			}
 		}
 
-		[min, size]
+		(min, size)
 	}
 
 	/// Offsets the transformation pivot in order to scale from the center
 	fn offset_pivot(&self, center: bool, size: DVec2) -> DVec2 {
 		let mut offset = DVec2::ZERO;
 
-		if center && self.right {
+		if !center {
+			return offset;
+		}
+
+		if self.right {
 			offset.x -= size.x / 2.;
 		}
-		if center && self.left {
+		if self.left {
 			offset.x += size.x / 2.;
 		}
-		if center && self.bottom {
+		if self.bottom {
 			offset.y -= size.y / 2.;
 		}
-		if center && self.top {
+		if self.top {
 			offset.y += size.y / 2.;
 		}
 		offset
 	}
 
-	/// Moves the position to account for centring (only necessary with absolute transforms - e.g. with artboards)
-	pub fn center_position(&self, mut position: DVec2, size: DVec2, center: bool) -> DVec2 {
-		if center && self.right {
+	/// Moves the position to account for centering (only necessary with absolute transforms - e.g. with artboards)
+	pub fn center_position(&self, mut position: DVec2, size: DVec2) -> DVec2 {
+		if self.right {
 			position.x -= size.x / 2.;
 		}
-		if center && self.bottom {
+		if self.bottom {
 			position.y -= size.y / 2.;
 		}
 

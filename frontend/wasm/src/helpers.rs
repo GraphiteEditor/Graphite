@@ -122,6 +122,7 @@ pub fn translate_key(name: &str) -> Key {
 		"capslock" => KeyShift,
 		" " => KeySpace,
 		"control" => KeyControl,
+		"command" => KeyCommand,
 		"delete" => KeyDelete,
 		"backspace" => KeyBackspace,
 		"alt" => KeyAlt,

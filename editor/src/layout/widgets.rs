@@ -1,4 +1,7 @@
 use super::layout_message::LayoutTarget;
+use crate::document::utility_types::KeyboardPlatformLayout;
+use crate::input::input_mapper::keys_text_shortcut;
+use crate::input::input_mapper::ActionKeys;
 use crate::input::keyboard::Key;
 use crate::message_prelude::*;
 use crate::Color;
@@ -30,16 +33,67 @@ pub enum Layout {
 }
 
 impl Layout {
-	pub fn unwrap_widget_layout(self) -> WidgetLayout {
-		if let Layout::WidgetLayout(widget_layout) = self {
+	pub fn unwrap_widget_layout(self, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Vec<Vec<Key>>, keyboard_platform: KeyboardPlatformLayout) -> WidgetLayout {
+		if let Layout::WidgetLayout(mut widget_layout) = self {
+			// Function used multiple times later in this code block to convert `ActionKeys::Action` to `ActionKeys::Keys` and append its shortcut to the tooltip
+			let apply_shortcut_to_tooltip = |tooltip_shortcut: &mut ActionKeys, tooltip: &mut String| {
+				tooltip_shortcut.to_keys(action_input_mapping);
+
+				if let ActionKeys::Keys(keys) = tooltip_shortcut {
+					let shortcut_text = keys_text_shortcut(keys, keyboard_platform);
+
+					if !shortcut_text.is_empty() {
+						if !tooltip.is_empty() {
+							tooltip.push(' ');
+						}
+						tooltip.push('(');
+						tooltip.push_str(&shortcut_text);
+						tooltip.push(')');
+					}
+				}
+			};
+
+			// Go through each widget to convert `ActionKeys::Action` to `ActionKeys::Keys` and append the key combination to the widget tooltip
+			for widget_holder in &mut widget_layout.iter_mut() {
+				// Handle all the widgets that have tooltips
+				let mut tooltip_shortcut = match &mut widget_holder.widget {
+					Widget::CheckboxInput(widget) => Some((&mut widget.tooltip, &mut widget.tooltip_shortcut)),
+					Widget::ColorInput(widget) => Some((&mut widget.tooltip, &mut widget.tooltip_shortcut)),
+					Widget::IconButton(widget) => Some((&mut widget.tooltip, &mut widget.tooltip_shortcut)),
+					Widget::OptionalInput(widget) => Some((&mut widget.tooltip, &mut widget.tooltip_shortcut)),
+					_ => None,
+				};
+				if let Some((tooltip, Some(tooltip_shortcut))) = &mut tooltip_shortcut {
+					apply_shortcut_to_tooltip(tooltip_shortcut, tooltip);
+				}
+
+				// Handle RadioInput separately because its tooltips are children of the widget
+				if let Widget::RadioInput(radio_input) = &mut widget_holder.widget {
+					for radio_entry_data in &mut radio_input.entries {
+						if let RadioEntryData {
+							tooltip,
+							tooltip_shortcut: Some(tooltip_shortcut),
+							..
+						} = radio_entry_data
+						{
+							apply_shortcut_to_tooltip(tooltip_shortcut, tooltip);
+						}
+					}
+				}
+			}
+
 			widget_layout
 		} else {
 			panic!("Tried to unwrap layout as WidgetLayout. Got {:?}", self)
 		}
 	}
 
-	pub fn unwrap_menu_layout(self) -> MenuLayout {
-		if let Layout::MenuLayout(menu_layout) = self {
+	pub fn unwrap_menu_layout(self, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Vec<Vec<Key>>, _keyboard_platform: KeyboardPlatformLayout) -> MenuLayout {
+		if let Layout::MenuLayout(mut menu_layout) = self {
+			for menu_column in &mut menu_layout.layout {
+				menu_column.children.fill_in_shortcut_actions_with_keys(action_input_mapping);
+			}
+
 			menu_layout
 		} else {
 			panic!("Tried to unwrap layout as MenuLayout. Got {:?}", self)
@@ -67,13 +121,35 @@ impl Default for Layout {
 	}
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+pub struct MenuEntryGroups(pub Vec<Vec<MenuEntry>>);
+
+impl MenuEntryGroups {
+	pub fn empty() -> Self {
+		Self(Vec::new())
+	}
+
+	pub fn fill_in_shortcut_actions_with_keys(&mut self, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Vec<Vec<Key>>) {
+		let entries = self.0.iter_mut().flatten();
+
+		for entry in entries {
+			if let Some(action_keys) = &mut entry.shortcut {
+				action_keys.to_keys(action_input_mapping);
+			}
+
+			// Recursively do this for the children also
+			entry.children.fill_in_shortcut_actions_with_keys(action_input_mapping);
+		}
+	}
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct MenuEntry {
 	pub label: String,
 	pub icon: Option<String>,
-	pub children: Option<Vec<Vec<MenuEntry>>>,
+	pub children: MenuEntryGroups,
 	pub action: WidgetHolder,
-	pub shortcut: Option<Vec<Key>>,
+	pub shortcut: Option<ActionKeys>,
 }
 
 impl MenuEntry {
@@ -94,7 +170,7 @@ impl Default for MenuEntry {
 			action: MenuEntry::create_action(|_| DialogMessage::RequestComingSoonDialog { issue: None }.into()),
 			label: "".into(),
 			icon: None,
-			children: None,
+			children: MenuEntryGroups::empty(),
 			shortcut: None,
 		}
 	}
@@ -103,10 +179,10 @@ impl Default for MenuEntry {
 #[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq)]
 pub struct MenuColumn {
 	pub label: String,
-	pub children: Vec<Vec<MenuEntry>>,
+	pub children: MenuEntryGroups,
 }
 
-#[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
 pub struct MenuLayout {
 	pub layout: Vec<MenuColumn>,
 }
@@ -118,13 +194,13 @@ impl MenuLayout {
 
 	pub fn iter(&self) -> impl Iterator<Item = &WidgetHolder> + '_ {
 		MenuLayoutIter {
-			stack: self.layout.iter().flat_map(|column| column.children.iter()).flat_map(|group| group.iter()).collect(),
+			stack: self.layout.iter().flat_map(|column| column.children.0.iter()).flat_map(|group| group.iter()).collect(),
 		}
 	}
 
 	pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut WidgetHolder> + '_ {
 		MenuLayoutIterMut {
-			stack: self.layout.iter_mut().flat_map(|column| column.children.iter_mut()).flat_map(|group| group.iter_mut()).collect(),
+			stack: self.layout.iter_mut().flat_map(|column| column.children.0.iter_mut()).flat_map(|group| group.iter_mut()).collect(),
 		}
 	}
 }
@@ -140,7 +216,9 @@ impl<'a> Iterator for MenuLayoutIter<'a> {
 	fn next(&mut self) -> Option<Self::Item> {
 		match self.stack.pop() {
 			Some(menu_entry) => {
-				self.stack.extend(menu_entry.children.iter().flat_map(|group| group.iter()).flat_map(|entry| entry.iter()));
+				let more_entries = menu_entry.children.0.iter().flat_map(|entry| entry.iter());
+				self.stack.extend(more_entries);
+
 				Some(&menu_entry.action)
 			}
 			None => None,
@@ -158,7 +236,9 @@ impl<'a> Iterator for MenuLayoutIterMut<'a> {
 	fn next(&mut self) -> Option<Self::Item> {
 		match self.stack.pop() {
 			Some(menu_entry) => {
-				self.stack.extend(menu_entry.children.iter_mut().flat_map(|group| group.iter_mut()).flat_map(|entry| entry.iter_mut()));
+				let more_entries = menu_entry.children.0.iter_mut().flat_map(|entry| entry.iter_mut());
+				self.stack.extend(more_entries);
+
 				Some(&mut menu_entry.action)
 			}
 			None => None,
@@ -280,7 +360,7 @@ impl<'a> Iterator for WidgetIterMut<'a> {
 	}
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct WidgetHolder {
 	#[serde(rename = "widgetId")]
 	pub widget_id: u64,
@@ -332,7 +412,7 @@ pub enum Widget {
 	TextLabel(TextLabel),
 }
 
-#[derive(Clone, Serialize, Deserialize, Derivative, Default)]
+#[derive(Clone, Default, Derivative, Serialize, Deserialize)]
 #[derivative(Debug, PartialEq)]
 pub struct CheckboxInput {
 	pub checked: bool,
@@ -341,13 +421,16 @@ pub struct CheckboxInput {
 
 	pub tooltip: String,
 
+	#[serde(skip)]
+	pub tooltip_shortcut: Option<ActionKeys>,
+
 	// Callbacks
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
 	pub on_update: WidgetCallback<CheckboxInput>,
 }
 
-#[derive(Clone, Serialize, Deserialize, Derivative)]
+#[derive(Clone, Derivative, Serialize, Deserialize)]
 #[derivative(Debug, PartialEq, Default)]
 pub struct ColorInput {
 	pub value: Option<String>,
@@ -361,6 +444,9 @@ pub struct ColorInput {
 	pub disabled: bool,
 
 	pub tooltip: String,
+
+	#[serde(skip)]
+	pub tooltip_shortcut: Option<ActionKeys>,
 
 	// Callbacks
 	#[serde(skip)]
@@ -435,7 +521,7 @@ pub struct FontInput {
 	pub on_update: WidgetCallback<FontInput>,
 }
 
-#[derive(Clone, Serialize, Deserialize, Derivative, Default)]
+#[derive(Clone, Default, Derivative, Serialize, Deserialize)]
 #[derivative(Debug, PartialEq)]
 pub struct IconButton {
 	pub icon: String,
@@ -445,6 +531,9 @@ pub struct IconButton {
 	pub active: bool,
 
 	pub tooltip: String,
+
+	#[serde(skip)]
+	pub tooltip_shortcut: Option<ActionKeys>,
 
 	// Callbacks
 	#[serde(skip)]
@@ -533,7 +622,7 @@ pub enum NumberInputIncrementBehavior {
 	Callback,
 }
 
-#[derive(Clone, Serialize, Deserialize, Derivative, Default)]
+#[derive(Clone, Default, Derivative, Serialize, Deserialize)]
 #[derivative(Debug, PartialEq)]
 pub struct OptionalInput {
 	pub checked: bool,
@@ -541,6 +630,9 @@ pub struct OptionalInput {
 	pub icon: String,
 
 	pub tooltip: String,
+
+	#[serde(skip)]
+	pub tooltip_shortcut: Option<ActionKeys>,
 
 	// Callbacks
 	#[serde(skip)]
@@ -559,7 +651,7 @@ pub struct PopoverButton {
 	pub text: String,
 }
 
-#[derive(Clone, Serialize, Deserialize, Derivative, Default)]
+#[derive(Clone, Default, Derivative, Serialize, Deserialize)]
 #[derivative(Debug, PartialEq)]
 pub struct RadioInput {
 	pub entries: Vec<RadioEntryData>,
@@ -569,7 +661,7 @@ pub struct RadioInput {
 	pub selected_index: u32,
 }
 
-#[derive(Clone, Serialize, Deserialize, Derivative, Default)]
+#[derive(Clone, Default, Derivative, Serialize, Deserialize)]
 #[derivative(Debug, PartialEq)]
 pub struct RadioEntryData {
 	pub value: String,
@@ -579,6 +671,9 @@ pub struct RadioEntryData {
 	pub icon: String,
 
 	pub tooltip: String,
+
+	#[serde(skip)]
+	pub tooltip_shortcut: Option<ActionKeys>,
 
 	// Callbacks
 	#[serde(skip)]

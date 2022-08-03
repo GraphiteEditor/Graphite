@@ -10,10 +10,19 @@ pub struct HintGroup(pub Vec<HintInfo>);
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HintInfo {
+	/// A `KeysGroup` specifies all the keys pressed simultaneously to perform an action (like "Ctrl C" to copy).
+	/// Usually at most one is given, but less commonly, multiple can be used to describe additional hotkeys not used simultaneously (like the four different arrow keys to nudge a layer).
+	#[serde(rename = "keyGroups")]
 	pub key_groups: Vec<KeysGroup>,
+	/// `None` means that the regular `key_groups` should be used for all platforms, `Some` is an override for a Mac-only input hint.
+	#[serde(rename = "keyGroupsMac")]
+	pub key_groups_mac: Option<Vec<KeysGroup>>,
+	/// An optional `MouseMotion` that can indicate the mouse action, like which mouse button is used and whether a drag occurs.
+	/// No such icon is shown if `None` is given, and it can be combined with `key_groups` if desired.
 	pub mouse: Option<MouseMotion>,
+	/// The text describing what occurs with this input combination.
 	pub label: String,
-	/// Prepend the "+" symbol indicating that this is a refinement upon a previous entry in the group.
+	/// Draws a prepended "+" symbol which indicates that this is a refinement upon a previous hint in the group.
 	pub plus: bool,
 }
 

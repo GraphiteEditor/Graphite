@@ -112,8 +112,16 @@ pub fn derive_discriminant_impl(input_item: TokenStream) -> syn::Result<TokenStr
 			)
 		})
 		.unzip::<_, _, Vec<_>, Vec<_>>();
+	#[cfg(feature = "serde-discriminant")]
+	let serde = quote::quote! {
+		#[derive(serde::Serialize, serde::Deserialize)]
+	};
+
+	#[cfg(not(feature = "serde-discriminant"))]
+	let serde = quote::quote! {};
 
 	let res = quote::quote! {
+		#serde
 		#discriminant
 
 		impl ToDiscriminant for #input_type {

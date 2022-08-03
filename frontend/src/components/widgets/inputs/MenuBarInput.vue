@@ -101,7 +101,7 @@ export default defineComponent({
 						...entry,
 						children: entry.children ? menuEntryToFrontendMenuEntry(entry.children) : undefined,
 						action: (): void => this.editor.instance.update_layout(updateMenuBarLayout.layout_target, entry.action.widgetId, undefined),
-						shortcutRequiresLock: entry.shortcut ? shortcutRequiresLock(entry.shortcut) : undefined,
+						shortcutRequiresLock: entry.shortcut?.keys ? shortcutRequiresLock(entry.shortcut.keys) : undefined,
 					}))
 				);
 
