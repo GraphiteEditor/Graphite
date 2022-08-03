@@ -6,7 +6,7 @@ use crate::document::utility_types::KeyboardPlatformLayout;
 use crate::message_prelude::*;
 
 use glam::DVec2;
-use serde::{Deserialize, Serialize, Serializer};
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone)]
 pub struct Mapping {
@@ -443,28 +443,28 @@ impl KeyMappingEntries {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ActionKeys {
 	Action(MessageDiscriminant),
+	#[serde(rename = "keys")]
 	Keys(Vec<Key>),
 }
 
 impl ActionKeys {
-	pub fn to_keys(&self, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Vec<Vec<Key>>) -> ActionKeys {
+	pub fn to_keys(&mut self, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Vec<Vec<Key>>) {
 		match self {
 			ActionKeys::Action(action) => {
 				if let Some(keys) = action_input_mapping(action).get_mut(0) {
 					let mut taken_keys = Vec::new();
 					std::mem::swap(keys, &mut taken_keys);
 
-					ActionKeys::Keys(taken_keys)
+					*self = ActionKeys::Keys(taken_keys);
 				} else {
-					ActionKeys::Keys(Vec::new())
+					*self = ActionKeys::Keys(Vec::new());
 				}
 			}
 			ActionKeys::Keys(keys) => {
 				log::warn!("Calling `.to_keys()` on a `ActionKeys::Keys` is a mistake/bug. Keys are: {:?}.", keys);
-				self.clone()
 			}
 		}
 	}
@@ -498,16 +498,6 @@ pub fn keys_text_shortcut(keys: &[Key], keyboard_platform: KeyboardPlatformLayou
 	}
 
 	joined
-}
-
-impl Serialize for ActionKeys {
-	fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-		if let ActionKeys::Keys(keys) = self {
-			serializer.collect_seq(keys.iter())
-		} else {
-			panic!("Unable to serialize a `ActionKeys::Action`, it needs to be converted to a `ActionKeys::Keys` by calling `.to_keys()` before serializing.");
-		}
-	}
 }
 
 pub mod action_keys {

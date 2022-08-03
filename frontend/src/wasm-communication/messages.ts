@@ -406,12 +406,14 @@ export class ColorInput extends WidgetProps {
 	tooltip!: string;
 }
 
+export type Keys = { keys: string[] };
+
 export interface MenuListEntryData<Value = string> {
 	value?: Value;
 	label?: string;
 	icon?: IconName;
 	font?: URL;
-	shortcut?: string[];
+	shortcut?: Keys;
 	shortcutRequiresLock?: boolean;
 	disabled?: boolean;
 	action?: () => void;
@@ -783,7 +785,7 @@ export type MenuColumn = {
 };
 
 export type MenuEntry = {
-	shortcut: string[] | undefined;
+	shortcut: Keys | undefined;
 	action: Widget;
 	label: string;
 	icon: string | undefined;

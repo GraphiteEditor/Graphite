@@ -421,6 +421,7 @@ pub struct CheckboxInput {
 
 	pub tooltip: String,
 
+	#[serde(skip)]
 	pub tooltip_shortcut: Option<ActionKeys>,
 
 	// Callbacks
@@ -444,6 +445,7 @@ pub struct ColorInput {
 
 	pub tooltip: String,
 
+	#[serde(skip)]
 	pub tooltip_shortcut: Option<ActionKeys>,
 
 	// Callbacks
@@ -530,6 +532,7 @@ pub struct IconButton {
 
 	pub tooltip: String,
 
+	#[serde(skip)]
 	pub tooltip_shortcut: Option<ActionKeys>,
 
 	// Callbacks
@@ -628,6 +631,7 @@ pub struct OptionalInput {
 
 	pub tooltip: String,
 
+	#[serde(skip)]
 	pub tooltip_shortcut: Option<ActionKeys>,
 
 	// Callbacks
@@ -668,6 +672,7 @@ pub struct RadioEntryData {
 
 	pub tooltip: String,
 
+	#[serde(skip)]
 	pub tooltip_shortcut: Option<ActionKeys>,
 
 	// Callbacks
