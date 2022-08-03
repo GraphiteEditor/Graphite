@@ -181,13 +181,13 @@ impl WasmBezier {
 
 	/// The wrapped return type is `Vec<Vec<Point>>`.
 	pub fn de_casteljau_points(&self, t: f64) -> JsValue {
-		let hull: Vec<Vec<Point>> = self
+		let points: Vec<Vec<Point>> = self
 			.0
 			.de_casteljau_points(t)
 			.iter()
 			.map(|level| level.iter().map(|&point| Point { x: point.x, y: point.y }).collect::<Vec<Point>>())
 			.collect::<Vec<Vec<Point>>>();
-		to_js_value(hull)
+		to_js_value(points)
 	}
 
 	pub fn rotate(&self, angle: f64) -> WasmBezier {
