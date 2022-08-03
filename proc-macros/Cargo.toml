@@ -26,3 +26,6 @@ quote = "1.0.9"
 [dev-dependencies.editor]
 path = "../editor"
 package = "graphite-editor"
+
+[dev-dependencies]
+serde = "1"
