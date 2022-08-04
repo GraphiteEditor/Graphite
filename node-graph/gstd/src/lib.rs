@@ -2,7 +2,7 @@ pub mod value;
 pub use graphene_core::{generic, ops /*, structural*/};
 
 #[cfg(feature = "caching")]
-pub mod caching;
+pub mod cache;
 #[cfg(feature = "memoization")]
 pub mod memo;
 
