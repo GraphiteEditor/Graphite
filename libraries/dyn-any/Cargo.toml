@@ -2,7 +2,7 @@
 name = "dyn-any"
 version = "0.2.1"
 edition = "2021"
-authors = ["Dennis Kobert <dennis@kobert.dev>"]
+authors = ["Graphite Authors <contact@graphite.rs>"]
 
 
 description = "An Any trait that works for arbitrary lifetimes"

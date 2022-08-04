@@ -3,7 +3,7 @@ name = "graphene-core"
 version = "0.1.0"
 edition = "2021"
 description = "API definitions for Graphene"
-authors = ["Dennis Kobert <dennis@kobert.dev>"]
+authors = ["Graphite Authors <contact@graphite.rs>"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -17,5 +17,5 @@ nightly = []
 [dependencies]
 dyn-any = {path = "../../libraries/dyn-any", features = ["derive"], optional = true}
 
-spirv-std = { git =  "https://github.com/EmbarkStudios/rust-gpu",  features = ["glam"] , optional = true}
+spirv-std = { git = "https://github.com/EmbarkStudios/rust-gpu", features = ["glam"] , optional = true}
 async-trait = {version = "0.1", optional = true}
