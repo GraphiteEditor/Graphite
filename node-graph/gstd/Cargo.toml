@@ -18,7 +18,7 @@ default = ["derive", "memoization"]
 [dependencies]
 graphene-core = {path = "../gcore"}
 borrow_stack = {path = "../borrow_stack"}
-dyn-any = {path = "../dyn-any", features = ["derive"]}
+dyn-any = {path = "../../libraries/dyn-any", features = ["derive"]}
 graph-proc-macros = {path = "../proc-macro", optional = true}
 once_cell = {version= "1.10", optional = true}
 ide = { version = "*", package = "ra_ap_ide", optional = true }

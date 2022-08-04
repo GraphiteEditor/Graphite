@@ -1,0 +1,22 @@
+[package]
+name = "dyn-any-derive"
+version = "0.2.0"
+edition = "2021"
+authors = ["Dennis Kobert"]
+
+description = "#[derive(DynAny<'a>)]"
+documentation = "https://docs.rs/dyn-any-derive"
+repository = "https://github.com/TrueDoctor/dyn-any"
+readme = "../README.md"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+proc-macro2 = "1"
+quote = "1"
+proc_macro_roids = "0.7"
+syn = { version = "1", default-features = false, features = ["derive", "parsing", "proc-macro", "printing"] }
+
+[dev-dependencies]
+dyn-any = { path = "..", features = ["derive"] }
