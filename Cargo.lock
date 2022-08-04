@@ -283,14 +283,14 @@ checksum = "9bda8e21c04aca2ae33ffc2fd8c23134f3cac46db123ba97bd9d3f3b8a4a85e1"
 
 [[package]]
 name = "dyn-any"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "dyn-any-derive",
 ]
 
 [[package]]
 name = "dyn-any-derive"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "dyn-any",
  "proc-macro2",
