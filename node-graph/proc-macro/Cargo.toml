@@ -1,7 +1,7 @@
 [package]
 name = "graph-proc-macros"
 version = "0.1.0"
-authors = ["Dennis Kobert <dennis@kobert.dev>"]
+authors = ["Graphite Authors <contact@graphite.rs>"]
 edition = "2021"
 publish = false
 

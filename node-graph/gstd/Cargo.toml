@@ -3,7 +3,7 @@ name = "graphene-std"
 version = "0.1.0"
 edition = "2021"
 description = "Graphene standard library"
-authors = ["Dennis Kobert <dennis@kobert.dev>"]
+authors = ["Graphite Authors <contact@graphite.rs>"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -22,11 +22,11 @@ dyn-any = {path = "../../libraries/dyn-any", features = ["derive"]}
 graph-proc-macros = {path = "../proc-macro", optional = true}
 once_cell = {version= "1.10", optional = true}
 ide = { version = "*", package = "ra_ap_ide", optional = true }
-ide_db = { version = "*", package = "ra_ap_ide_db" , optional = true }
+ide_db = { version = "*", package = "ra_ap_ide_db", optional = true }
 storage-map = { version = "*", optional = true }
 lock_api = { version= "*", optional = true }
 parking_lot = { version = "*", optional = true }
 #pretty-token-stream = {path = "../../pretty-token-stream"}
-syn = {version = "1.0", default-features = false,  features = ["parsing", "printing"]}
-proc-macro2 = {version = "1.0", default-features = false,  features = ["proc-macro"]}
+syn = {version = "1.0", default-features = false, features = ["parsing", "printing"]}
+proc-macro2 = {version = "1.0", default-features = false, features = ["proc-macro"]}
 quote = {version = "1.0", default-features = false }

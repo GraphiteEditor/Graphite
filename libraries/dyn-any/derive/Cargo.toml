@@ -2,7 +2,7 @@
 name = "dyn-any-derive"
 version = "0.2.1"
 edition = "2021"
-authors = ["Dennis Kobert"]
+authors = ["Graphite Authors <contact@graphite.rs>"]
 
 description = "#[derive(DynAny<'a>)]"
 documentation = "https://docs.rs/dyn-any-derive"
