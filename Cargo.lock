@@ -185,6 +185,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "dyn-any",
+ "serde",
  "spirv-std",
 ]
 
