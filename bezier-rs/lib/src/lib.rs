@@ -319,13 +319,13 @@ impl Bezier {
 
 	/// Return a selection of equidistant points on the bezier curve.
 	/// If no value is provided for `steps`, then the function will default `steps` to be 10.
-	pub fn compute_lookup_table(&self, steps: Option<i32>) -> Vec<DVec2> {
+	pub fn compute_lookup_table(&self, steps: Option<usize>) -> Vec<DVec2> {
 		let steps_unwrapped = steps.unwrap_or(DEFAULT_LUT_STEP_SIZE);
 		let ratio: f64 = 1.0 / (steps_unwrapped as f64);
-		let mut steps_array = Vec::with_capacity((steps_unwrapped + 1) as usize);
+		let mut steps_array = Vec::with_capacity(steps_unwrapped + 1);
 
 		for t in 0..steps_unwrapped + 1 {
-			steps_array.push(self.evaluate(f64::from(t) * ratio))
+			steps_array.push(self.evaluate(f64::from(t as i32) * ratio))
 		}
 
 		steps_array
@@ -333,7 +333,7 @@ impl Bezier {
 
 	/// Return an approximation of the length of the bezier curve.
 	/// - `num_subdivisions` - Number of subdivisions used to approximate the curve. The default value is 1000.
-	pub fn length(&self, num_subdivisions: Option<i32>) -> f64 {
+	pub fn length(&self, num_subdivisions: Option<usize>) -> f64 {
 		match self.handles {
 			BezierHandles::Linear => self.start.distance(self.end),
 			_ => {
@@ -479,7 +479,7 @@ impl Bezier {
 
 		// Get the t values to the left and right of the closest result in the lookup table
 		let mut left_t = (0.max(minimum_position - 1) as f64) / lut_size as f64;
-		let mut right_t = (lut_size.min(minimum_position + 1)) as f64 / lut_size as f64;
+		let mut right_t = (lut_size.min((minimum_position + 1) as usize)) as f64 / lut_size as f64;
 
 		// Perform a finer search by finding closest t from 5 points between [left_t, right_t] inclusive
 		// Choose new left_t and right_t for a smaller range around the closest t and repeat the process
@@ -501,7 +501,7 @@ impl Bezier {
 			0.,
 			0.,
 			0.,
-			point.distance(lut[lut_size.min(minimum_position + 1) as usize]),
+			point.distance(lut[lut_size.min((minimum_position + 1) as usize)]),
 		];
 
 		while left_t <= right_t && convergence_count < convergence_limit && iteration_count < iteration_limit {
@@ -840,7 +840,7 @@ impl Bezier {
 
 		let step_size = step_size.unwrap_or(DEFAULT_REDUCE_STEP_SIZE);
 
-		let extrema: Vec<f64> = self.get_extrema_t_list();
+		let extrema = self.get_extrema_t_list();
 
 		// Split each subcurve such that each resulting segment is scalable.
 		let mut result_beziers: Vec<Bezier> = Vec::new();
@@ -910,16 +910,21 @@ impl Bezier {
 
 	/// Approximate a bezier curve with circular arcs.
 	/// The algorithm can be customized using the [ArcsOptions] structure by setting the following fields within ArcOptions:
-	/// - maximize_arcs - [MaximizeArcs] - The default value is `Automatic`.,
+	/// - strategy - [ArcStrategy] - The default value is `Automatic`.,
 	/// - error: f64 - The error used for approximating the arc's fit. The default is `0.5`.
-	/// - max_iterations: i32 - The maximum number of segment iterations used as attempts for arc approximations. The default is `100`.
+	/// - max_iterations: usize - The maximum number of segment iterations used as attempts for arc approximations. The default is `100`.
 	pub fn arcs(&self, arcs_options: ArcsOptions) -> Vec<CircleArc> {
-		let ArcsOptions { maximize_arcs, error, max_iterations } = arcs_options;
+		let ArcsOptions {
+			strategy: maximize_arcs,
+			error,
+			max_iterations,
+		} = arcs_options;
+
 		match maximize_arcs {
-			MaximizeArcs::Automatic => {
+			ArcStrategy::Automatic => {
 				let (auto_arcs, final_low_t) = self.approximate_curve_with_arcs(0., 1., error, max_iterations, true);
 				let arc_approximations = self.split(final_low_t)[1].arcs(ArcsOptions {
-					maximize_arcs: MaximizeArcs::Off,
+					strategy: ArcStrategy::FavorCorrectness,
 					error,
 					max_iterations,
 				});
@@ -929,8 +934,8 @@ impl Bezier {
 					auto_arcs
 				}
 			}
-			MaximizeArcs::On => self.approximate_curve_with_arcs(0., 1., error, max_iterations, false).0,
-			MaximizeArcs::Off => self
+			ArcStrategy::FavorLargerArcs => self.approximate_curve_with_arcs(0., 1., error, max_iterations, false).0,
+			ArcStrategy::FavorCorrectness => self
 				.get_extrema_t_list()
 				.windows(2)
 				.flat_map(|t_pair| self.approximate_curve_with_arcs(t_pair[0], t_pair[1], error, max_iterations, false).0)
@@ -947,7 +952,7 @@ impl Bezier {
 	///
 	/// Returns a tuple where the first element is the list of circular arcs and the second is the `t` value where the next segment should start from.
 	/// The second value will be `1.` except for when `stop_when_invalid` is true and an invalid approximation is encountered.
-	fn approximate_curve_with_arcs(&self, local_low: f64, local_high: f64, error: f64, max_iterations: i32, stop_when_invalid: bool) -> (Vec<CircleArc>, f64) {
+	fn approximate_curve_with_arcs(&self, local_low: f64, local_high: f64, error: f64, max_iterations: usize, stop_when_invalid: bool) -> (Vec<CircleArc>, f64) {
 		let mut low = local_low;
 		let mut middle = local_low + (local_high - local_low) / 2.;
 		let mut high = local_high;
@@ -967,8 +972,9 @@ impl Bezier {
 				let p2 = self.evaluate(middle);
 				let p3 = self.evaluate(high);
 
+				let wrapped_center = utils::compute_circle_center_from_points(p1, p2, p3);
 				// If the segment is linear, move on to next segment
-				if utils::are_points_collinear(p1, p2, p3) {
+				if wrapped_center.is_none() {
 					previous_high = high;
 					low = high;
 					high = 1.;
@@ -977,7 +983,7 @@ impl Bezier {
 					break;
 				}
 
-				let center = utils::compute_circle_center_from_points(p1, p2, p3);
+				let center = wrapped_center.unwrap();
 				let radius = center.distance(p1);
 
 				let angle_p1 = DVec2::new(1., 0.).angle_between(p1 - center);
@@ -1423,12 +1429,12 @@ mod tests {
 		let auto_arcs = bezier2.arcs(ArcsOptions::default());
 
 		let extrema_arcs = bezier2.arcs(ArcsOptions {
-			maximize_arcs: MaximizeArcs::Off,
+			strategy: ArcStrategy::FavorCorrectness,
 			..ArcsOptions::default()
 		});
 
 		let maximal_arcs = bezier2.arcs(ArcsOptions {
-			maximize_arcs: MaximizeArcs::On,
+			strategy: ArcStrategy::FavorLargerArcs,
 			..ArcsOptions::default()
 		});
 

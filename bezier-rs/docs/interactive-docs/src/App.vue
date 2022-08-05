@@ -497,7 +497,7 @@ export default defineComponent({
 					name: "Arcs",
 					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: Record<string, number>): void => {
 						const context = getContextFromCanvas(canvas);
-						const arcs: CircleSector[] = JSON.parse(bezier.arcs(options.error, options.max_iterations, options.maximize_arcs));
+						const arcs: CircleSector[] = JSON.parse(bezier.arcs(options.error, options.max_iterations, options.strategy));
 						arcs.forEach((circleSector, index) => {
 							drawCircleSector(context, circleSector, `hsl(${40 * index}, 100%, 50%, 75%)`, `hsl(${40 * index}, 100%, 50%, 37.5%)`);
 						});
@@ -506,12 +506,12 @@ export default defineComponent({
 					templateOptions: {
 						sliders: [
 							{
-								variable: "maximize_arcs",
+								variable: "strategy",
 								min: 0,
 								max: 2,
 								step: 1,
 								default: 0,
-								unit: [": AUTO", ": ON", ": OFF"],
+								unit: [": Automatic", ": FavorLargerArcs", ": FavorCorrectness"],
 							},
 							{
 								variable: "error",

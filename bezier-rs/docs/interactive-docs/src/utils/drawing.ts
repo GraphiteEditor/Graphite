@@ -86,7 +86,7 @@ export const drawCircleSector = (ctx: CanvasRenderingContext2D, circleSector: Ci
 	ctx.fillStyle = fillColor;
 	ctx.lineWidth = 2;
 
-	const { center, radius, start_angle: startAngle, end_angle: endAngle } = circleSector;
+	const { center, radius, startAngle, endAngle } = circleSector;
 	ctx.beginPath();
 	ctx.moveTo(center.x, center.y);
 	ctx.arc(center.x, center.y, radius, startAngle, endAngle);

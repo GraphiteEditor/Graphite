@@ -188,8 +188,10 @@ pub fn are_points_collinear(p1: DVec2, p2: DVec2, p3: DVec2) -> bool {
 }
 
 /// Compute the center of the circle that passes through all three provided points. The provided points cannot be collinear.
-pub fn compute_circle_center_from_points(p1: DVec2, p2: DVec2, p3: DVec2) -> DVec2 {
-	assert!(!are_points_collinear(p1, p2, p3), "The points provided are collinear.");
+pub fn compute_circle_center_from_points(p1: DVec2, p2: DVec2, p3: DVec2) -> Option<DVec2> {
+	if are_points_collinear(p1, p2, p3) {
+		return None;
+	}
 
 	let midpoint_a = p1.lerp(p2, 0.5);
 	let midpoint_b = p2.lerp(p3, 0.5);
@@ -203,7 +205,7 @@ pub fn compute_circle_center_from_points(p1: DVec2, p2: DVec2, p3: DVec2) -> DVe
 	let intersect_b_c = line_intersection(midpoint_b, tangent_b, midpoint_c, tangent_c);
 	let intersect_c_a = line_intersection(midpoint_c, tangent_c, midpoint_a, tangent_a);
 
-	(intersect_a_b + intersect_b_c + intersect_c_a) / 3.
+	Some((intersect_a_b + intersect_b_c + intersect_c_a) / 3.)
 }
 
 /// Compare two `f64` numbers with a provided max absolute value difference.
@@ -323,9 +325,9 @@ mod tests {
 	fn test_compute_circle_center_from_points() {
 		// 3/4 of unit circle
 		let center1 = compute_circle_center_from_points(DVec2::new(0., 1.), DVec2::new(-1., 0.), DVec2::new(1., 0.));
-		assert_eq!(center1, DVec2::new(0., 0.));
+		assert_eq!(center1.unwrap(), DVec2::new(0., 0.));
 		// 1/4 of unit circle
 		let center2 = compute_circle_center_from_points(DVec2::new(-1., 0.), DVec2::new(0., 1.), DVec2::new(1., 0.));
-		assert_eq!(center2, DVec2::new(0., 0.));
+		assert_eq!(center2.unwrap(), DVec2::new(0., 0.));
 	}
 }

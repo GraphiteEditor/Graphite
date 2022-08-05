@@ -1,7 +1,7 @@
 pub mod subpath;
 mod svg_drawing;
 
-use bezier_rs::{ArcsOptions, Bezier, MaximizeArcs, ProjectionOptions};
+use bezier_rs::{ArcStrategy, ArcsOptions, Bezier, ProjectionOptions};
 use glam::DVec2;
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
@@ -10,7 +10,9 @@ use wasm_bindgen::prelude::*;
 struct CircleSector {
 	center: Point,
 	radius: f64,
+	#[serde(rename = "startAngle")]
 	start_angle: f64,
+	#[serde(rename = "endAngle")]
 	end_angle: f64,
 }
 
@@ -47,11 +49,11 @@ fn to_js_value<T: Serialize>(data: T) -> JsValue {
 	JsValue::from_serde(&serde_json::to_string(&data).unwrap()).unwrap()
 }
 
-fn convert_wasm_maximize_arcs(wasm_enum_value: WasmMaximizeArcs) -> MaximizeArcs {
+fn convert_wasm_maximize_arcs(wasm_enum_value: WasmMaximizeArcs) -> ArcStrategy {
 	match wasm_enum_value {
-		WasmMaximizeArcs::Automatic => MaximizeArcs::Automatic,
-		WasmMaximizeArcs::On => MaximizeArcs::On,
-		WasmMaximizeArcs::Off => MaximizeArcs::Off,
+		WasmMaximizeArcs::Automatic => ArcStrategy::Automatic,
+		WasmMaximizeArcs::On => ArcStrategy::FavorLargerArcs,
+		WasmMaximizeArcs::Off => ArcStrategy::FavorCorrectness,
 	}
 }
 
@@ -122,7 +124,7 @@ impl WasmBezier {
 	}
 
 	/// The wrapped return type is `Vec<Point>`.
-	pub fn compute_lookup_table(&self, steps: i32) -> JsValue {
+	pub fn compute_lookup_table(&self, steps: usize) -> JsValue {
 		let table_values: Vec<Point> = self.0.compute_lookup_table(Some(steps)).iter().map(vec_to_point).collect();
 		to_js_value(table_values)
 	}
@@ -186,7 +188,7 @@ impl WasmBezier {
 			.de_casteljau_points(t)
 			.iter()
 			.map(|level| level.iter().map(|&point| Point { x: point.x, y: point.y }).collect::<Vec<Point>>())
-			.collect::<Vec<Vec<Point>>>();
+			.collect();
 		to_js_value(points)
 	}
 
@@ -234,9 +236,9 @@ impl WasmBezier {
 	}
 
 	/// The wrapped return type is `Vec<CircleSector>`.
-	pub fn arcs(&self, error: f64, max_iterations: i32, maximize_arcs: WasmMaximizeArcs) -> JsValue {
-		let maximize_arcs = convert_wasm_maximize_arcs(maximize_arcs);
-		let options = ArcsOptions { error, max_iterations, maximize_arcs };
+	pub fn arcs(&self, error: f64, max_iterations: usize, maximize_arcs: WasmMaximizeArcs) -> JsValue {
+		let strategy = convert_wasm_maximize_arcs(maximize_arcs);
+		let options = ArcsOptions { error, max_iterations, strategy };
 		let circle_sectors: Vec<CircleSector> = self
 			.0
 			.arcs(options)
