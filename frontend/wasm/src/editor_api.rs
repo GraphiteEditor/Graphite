@@ -5,14 +5,15 @@
 use crate::helpers::{translate_key, Error};
 use crate::{EDITOR_HAS_CRASHED, EDITOR_INSTANCES, JS_EDITOR_HANDLES};
 
+use editor::application::generate_uuid;
+use editor::application::Editor;
 use editor::consts::{FILE_SAVE_SUFFIX, GRAPHITE_DOCUMENT_VERSION};
-use editor::document::utility_types::Platform;
-use editor::input::input_preprocessor::ModifierKeys;
-use editor::input::mouse::{EditorMouseState, ScrollDelta, ViewportBounds};
-use editor::message_prelude::*;
-use editor::Color;
-use editor::Editor;
-use editor::LayerId;
+use editor::messages::input_mapper::utility_types::input_keyboard::ModifierKeys;
+use editor::messages::input_mapper::utility_types::input_mouse::{EditorMouseState, ScrollDelta, ViewportBounds};
+use editor::messages::portfolio::document::utility_types::misc::Platform;
+use editor::messages::prelude::*;
+use graphene::color::Color;
+use graphene::LayerId;
 use graphene::Operation;
 
 use serde::Serialize;
@@ -24,7 +25,7 @@ use wasm_bindgen::prelude::*;
 /// This is necessary because WASM doesn't have a random number generator.
 #[wasm_bindgen]
 pub fn set_random_seed(seed: u64) {
-	editor::communication::set_uuid_seed(seed);
+	editor::application::set_uuid_seed(seed);
 }
 
 /// Provides a handle to access the raw WASM memory

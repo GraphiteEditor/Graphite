@@ -1,5 +1,5 @@
 use super::{
-	constants::{ManipulatorType, SELECTION_THRESHOLD},
+	consts::{ManipulatorType, SELECTION_THRESHOLD},
 	manipulator_point::ManipulatorPoint,
 };
 use glam::{DAffine2, DVec2};
@@ -64,7 +64,7 @@ impl ManipulatorGroup {
 	}
 
 	// TODO Convert into bool in subpath
-	/// Create a [ManipulatorGroup] that represents a close path signal.
+	/// Create a [ManipulatorGroup] that represents a close path command.
 	pub fn closed() -> Self {
 		Self {
 			// An anchor (the first element) being `None` indicates a ClosePath (i.e. a path end command)
