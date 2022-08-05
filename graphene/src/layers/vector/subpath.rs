@@ -1,4 +1,4 @@
-use super::constants::ManipulatorType;
+use super::consts::ManipulatorType;
 use super::manipulator_group::ManipulatorGroup;
 use super::manipulator_point::ManipulatorPoint;
 use crate::layers::id_vec::IdBackedVec;

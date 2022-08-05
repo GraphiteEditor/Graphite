@@ -5,9 +5,9 @@ use crate::consts::*;
 impl Subpath {
 	/// Create a new `Subpath` using a list of [ManipulatorGroup]s.
 	/// A `Subpath` with less than 2 [ManipulatorGroup]s may not be closed.
-	pub fn new(manipulator_groups: Vec<ManipulatorGroup>, closed: bool) -> Subpath {
+	pub fn new(manipulator_groups: Vec<ManipulatorGroup>, closed: bool) -> Self {
 		assert!(!closed || manipulator_groups.len() > 1, "A closed Subpath must contain more than 1 ManipulatorGroup.");
-		Subpath { manipulator_groups, closed }
+		Self { manipulator_groups, closed }
 	}
 
 	/// Create a `Subpath` consisting of 2 manipulator groups from a `Bezier`.

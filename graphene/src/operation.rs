@@ -2,7 +2,7 @@ use crate::boolean_ops::BooleanOperation as BooleanOperationType;
 use crate::layers::blend_mode::BlendMode;
 use crate::layers::layer_info::Layer;
 use crate::layers::style::{self, Stroke};
-use crate::layers::vector::constants::ManipulatorType;
+use crate::layers::vector::consts::ManipulatorType;
 use crate::layers::vector::manipulator_group::ManipulatorGroup;
 use crate::layers::vector::subpath::Subpath;
 use crate::LayerId;
