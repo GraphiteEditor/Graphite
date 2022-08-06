@@ -289,7 +289,7 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 		// In the catch block, explain to the user why the paste failed and how to fix or work around the problem
 		try {
 			// Attempt to check if the clipboard permission is denied, and throw an error if that is the case
-			// In Firefox, the `clipboard-read` permission isn't supported, so attemping to query it throws an error
+			// In Firefox, the `clipboard-read` permission isn't supported, so attempting to query it throws an error
 			// In Safari, the entire Permissions API isn't supported, so the query never occurs and this block is skipped without an error and we assume we might have permission
 			const clipboardRead = "clipboard-read" as PermissionName;
 			const permission = await navigator.permissions?.query({ name: clipboardRead });
