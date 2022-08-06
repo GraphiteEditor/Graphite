@@ -2,7 +2,7 @@
 pub const SVG_OPEN_TAG: &str = r#"<svg xmlns="http://www.w3.org/2000/svg" width="200px" height="200px">"#;
 pub const SVG_CLOSE_TAG: &str = "</svg>";
 
-// Sylistic constants
+// Stylistic constants
 pub const BLACK: &str = "black";
 
 /// Helper function to create an SVG text entitty.
