@@ -4,8 +4,6 @@ use crate::messages::prelude::*;
 
 use graphene::layers::text_layer::Font;
 
-use std::collections::VecDeque;
-
 #[derive(Debug, Default)]
 pub struct Dispatcher {
 	message_queues: Vec<VecDeque<Message>>,

@@ -10,7 +10,6 @@ use graphene::layers::vector::subpath::Subpath;
 use graphene::{LayerId, Operation};
 
 use glam::{DAffine2, DVec2};
-use std::collections::VecDeque;
 
 /// Manages the overlay used by the select tool for outlining selected shapes and when hovering over a non selected shape.
 #[derive(Clone, Debug, Default)]

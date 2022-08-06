@@ -1,8 +1,6 @@
 use super::utility_types::MessageLoggingVerbosity;
 use crate::messages::prelude::*;
 
-use std::collections::VecDeque;
-
 #[derive(Debug, Default)]
 pub struct DebugMessageHandler {
 	pub message_logging_verbosity: MessageLoggingVerbosity,

@@ -29,7 +29,6 @@ use graphene::{DocumentError, DocumentResponse, LayerId, Operation as DocumentOp
 use glam::{DAffine2, DVec2};
 use log::warn;
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet, VecDeque};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct DocumentMessageHandler {

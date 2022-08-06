@@ -9,7 +9,6 @@ use graphene::LayerId;
 
 use glam::DVec2;
 use graphene::layers::text_layer::FontCache;
-use std::collections::{HashMap, VecDeque};
 
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct TransformLayerMessageHandler {

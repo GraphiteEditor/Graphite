@@ -13,7 +13,6 @@ use graphene::layers::vector::subpath::Subpath;
 use graphene::{LayerId, Operation};
 
 use glam::{DAffine2, DVec2};
-use std::collections::{HashMap, VecDeque};
 
 /// [ManipulatorGroupOverlay]s is the collection of overlays that make up an [ManipulatorGroup] visible in the editor.
 type ManipulatorGroupOverlays = [Option<Vec<LayerId>>; 5];

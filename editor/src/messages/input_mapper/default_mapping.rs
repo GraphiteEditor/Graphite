@@ -1,5 +1,4 @@
 use crate::consts::{BIG_NUDGE_AMOUNT, NUDGE_AMOUNT};
-use crate::messages::input_mapper::input_mapper_message::InputMapperMessage;
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, KeyStates};
 use crate::messages::input_mapper::utility_types::macros::*;
 use crate::messages::input_mapper::utility_types::misc::MappingEntry;

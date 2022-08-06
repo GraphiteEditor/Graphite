@@ -10,7 +10,6 @@ use graphene::Operation as DocumentOperation;
 
 use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};
-use std::collections::VecDeque;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct MovementMessageHandler {

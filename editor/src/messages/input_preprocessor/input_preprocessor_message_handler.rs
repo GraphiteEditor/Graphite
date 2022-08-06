@@ -172,11 +172,8 @@ impl InputPreprocessorMessageHandler {
 mod test {
 	use crate::messages::input_mapper::utility_types::input_keyboard::{Key, ModifierKeys};
 	use crate::messages::input_mapper::utility_types::input_mouse::EditorMouseState;
-	use crate::messages::input_mapper::InputMapperMessage;
 	use crate::messages::portfolio::document::utility_types::misc::KeyboardPlatformLayout;
 	use crate::messages::prelude::*;
-
-	use std::collections::VecDeque;
 
 	#[test]
 	fn process_action_mouse_move_handle_modifier_keys() {

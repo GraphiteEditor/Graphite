@@ -1,8 +1,6 @@
 pub use crate::dispatcher::*;
 use crate::messages::prelude::*;
 
-use std::collections::VecDeque;
-
 /// Implements a message handler struct for a separate message struct.
 /// - The first generic argument (`M`) is that message struct type, representing a message enum variant to be matched and handled in `process_message()`.
 /// - The second generic argument (`D`) is the type of data that can be passed along by the caller to `process_message()`.
@@ -43,8 +41,6 @@ pub trait TransitiveChild: Into<Self::Parent> + Into<Self::TopParent> {
 	type TopParent;
 	type Parent;
 }
-
-use std::collections::HashMap;
 
 pub trait Hint {
 	fn hints(&self) -> HashMap<String, String>;

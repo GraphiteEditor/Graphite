@@ -28,6 +28,7 @@
 	// Rust Analyzer config
 	"rust-analyzer.cargo.target": "wasm32-unknown-unknown",
 	"rust-analyzer.checkOnSave.command": "clippy",
+	"rust-analyzer.diagnostics.disabled": ["unresolved-macro-call"], // Remove when https://github.com/rust-lang/rust-analyzer/issues/6835 is fixed
 	// ESLint config
 	"eslint.format.enable": true,
 	"eslint.workingDirectories": [
@@ -46,5 +47,4 @@
 	"html.format.wrapLineLength": 200,
 	"files.eol": "\n",
 	"files.insertFinalNewline": true,
-	"rust-analyzer.procMacro.attributes.enable": true,
 }

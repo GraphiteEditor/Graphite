@@ -1,4 +1,3 @@
-use super::ExportDialogMessage;
 use crate::messages::frontend::utility_types::{ExportBounds, FileType};
 use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, PropertyHolder, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
 use crate::messages::layout::utility_types::misc::LayoutTarget;
@@ -8,8 +7,6 @@ use crate::messages::layout::utility_types::widgets::label_widgets::{Separator, 
 use crate::messages::prelude::*;
 
 use graphene::LayerId;
-
-use std::collections::HashMap;
 
 /// A dialog to allow users to customize their file export.
 #[derive(Debug, Clone, Default)]

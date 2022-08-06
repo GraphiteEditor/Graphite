@@ -14,7 +14,6 @@ use crate::hint::derive_hint_impl;
 use crate::transitive_child::derive_transitive_child_impl;
 
 use proc_macro::TokenStream;
-use syn::parse_macro_input;
 
 /// Derive the `ToDiscriminant` trait and create a `<Type Name>Discriminant` enum
 ///
@@ -269,7 +268,7 @@ pub fn derive_hint(input_item: TokenStream) -> TokenStream {
 #[proc_macro_attribute]
 pub fn edge(attr: TokenStream, item: TokenStream) -> TokenStream {
 	// to make sure that only `#[edge("string")]` is allowed
-	let _verify = parse_macro_input!(attr as AttrInnerSingleString);
+	let _verify = syn::parse_macro_input!(attr as AttrInnerSingleString);
 
 	item
 }

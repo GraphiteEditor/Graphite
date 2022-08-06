@@ -1,12 +1,9 @@
-use super::MenuBarMessage;
 use crate::messages::input_mapper::utility_types::macros::action_keys;
 use crate::messages::layout::utility_types::layout_widget::{Layout, PropertyHolder};
 use crate::messages::layout::utility_types::misc::LayoutTarget;
 use crate::messages::layout::utility_types::widgets::menu_widgets::{MenuColumn, MenuEntry, MenuEntryGroups, MenuLayout};
 use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
 use crate::messages::prelude::*;
-
-use std::collections::VecDeque;
 
 #[derive(Debug, Clone, Default)]
 pub struct MenuBarMessageHandler {}

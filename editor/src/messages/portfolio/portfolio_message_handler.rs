@@ -13,7 +13,6 @@ use graphene::layers::text_layer::{Font, FontCache};
 use graphene::Operation as DocumentOperation;
 
 use log::warn;
-use std::collections::{HashMap, VecDeque};
 
 #[derive(Debug, Clone, Default)]
 pub struct PortfolioMessageHandler {
