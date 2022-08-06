@@ -8,7 +8,6 @@ use crate::messages::prelude::*;
 use graphene::layers::text_layer::Font;
 
 use serde_json::Value;
-use std::collections::VecDeque;
 
 #[derive(Debug, Clone, Default)]
 pub struct LayoutMessageHandler {

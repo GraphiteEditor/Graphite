@@ -14,7 +14,6 @@ use graphene::color::Color;
 use graphene::layers::text_layer::FontCache;
 
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, VecDeque};
 use std::fmt::{self, Debug};
 
 pub type ToolActionHandlerData<'a> = (&'a DocumentMessageHandler, &'a DocumentToolData, &'a InputPreprocessorMessageHandler, &'a FontCache);

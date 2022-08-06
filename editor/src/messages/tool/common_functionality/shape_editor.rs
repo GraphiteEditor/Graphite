@@ -8,7 +8,6 @@ use graphene::{LayerId, Operation};
 
 use glam::DVec2;
 use graphene::document::Document;
-use std::collections::VecDeque;
 
 /// ShapeEditor is the container for all of the layer paths that are represented as [Subpath]s and provides
 /// functionality required to query and create the [Subpath] / [ManipulatorGroup]s / [ManipulatorPoint]s.

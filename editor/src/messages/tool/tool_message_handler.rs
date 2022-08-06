@@ -8,8 +8,6 @@ use crate::messages::tool::utility_types::ToolType;
 use graphene::color::Color;
 use graphene::layers::text_layer::FontCache;
 
-use std::collections::VecDeque;
-
 #[derive(Debug, Default)]
 pub struct ToolMessageHandler {
 	tool_state: ToolFsmState,

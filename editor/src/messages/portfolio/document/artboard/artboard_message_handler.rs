@@ -1,6 +1,6 @@
+use crate::application::generate_uuid;
 use crate::messages::prelude::*;
 
-use crate::application::generate_uuid;
 use graphene::color::Color;
 use graphene::document::Document as GrapheneDocument;
 use graphene::layers::style::{self, Fill, RenderData, ViewMode};
@@ -11,7 +11,6 @@ use graphene::Operation as DocumentOperation;
 
 use glam::DAffine2;
 use serde::{Deserialize, Serialize};
-use std::collections::VecDeque;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ArtboardMessageHandler {

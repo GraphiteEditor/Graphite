@@ -1,7 +1,5 @@
 use crate::messages::prelude::*;
 
-use std::collections::HashMap;
-
 #[derive(Debug, Clone, Default)]
 pub struct BroadcastMessageHandler {
 	listeners: HashMap<BroadcastEvent, Vec<Message>>,

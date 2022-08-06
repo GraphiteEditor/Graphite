@@ -6,12 +6,10 @@ use crate::application::generate_uuid;
 use crate::messages::input_mapper::utility_types::input_keyboard::Key;
 use crate::messages::input_mapper::utility_types::misc::{keys_text_shortcut, ActionKeys};
 use crate::messages::layout::utility_types::misc::LayoutTarget;
-use crate::messages::layout::LayoutMessage;
 use crate::messages::portfolio::document::utility_types::misc::KeyboardPlatformLayout;
 use crate::messages::prelude::*;
 
 use serde::{Deserialize, Serialize};
-use std::collections::VecDeque;
 use std::rc::Rc;
 
 pub trait PropertyHolder {

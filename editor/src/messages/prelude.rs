@@ -1,8 +1,11 @@
+// Root
+pub use crate::utility_traits::{ActionList, AsMessage, MessageHandler, ToDiscriminant, TransitiveChild};
+
 // Message, MessageDiscriminant, MessageHandler
 pub use crate::messages::broadcast::{BroadcastMessage, BroadcastMessageDiscriminant, BroadcastMessageHandler};
 pub use crate::messages::debug::{DebugMessage, DebugMessageDiscriminant, DebugMessageHandler};
-pub use crate::messages::dialog::export_dialog::ExportDialogMessageHandler;
-pub use crate::messages::dialog::new_document_dialog::NewDocumentDialogMessageHandler;
+pub use crate::messages::dialog::export_dialog::{ExportDialogMessage, ExportDialogMessageDiscriminant, ExportDialogMessageHandler};
+pub use crate::messages::dialog::new_document_dialog::{NewDocumentDialogMessage, NewDocumentDialogMessageDiscriminant, NewDocumentDialogMessageHandler};
 pub use crate::messages::dialog::{DialogMessage, DialogMessageDiscriminant, DialogMessageHandler};
 pub use crate::messages::frontend::{FrontendMessage, FrontendMessageDiscriminant};
 pub use crate::messages::input_mapper::{InputMapperMessage, InputMapperMessageDiscriminant, InputMapperMessageHandler};
@@ -20,6 +23,7 @@ pub use crate::messages::tool::{ToolMessage, ToolMessageDiscriminant, ToolMessag
 pub use crate::messages::workspace::{WorkspaceMessage, WorkspaceMessageDiscriminant, WorkspaceMessageHandler};
 
 // Message, MessageDiscriminant
+pub use crate::messages::broadcast::broadcast_event::{BroadcastEvent, BroadcastEventDiscriminant};
 pub use crate::messages::message::{Message, MessageDiscriminant};
 pub use crate::messages::tool::tool_messages::artboard_tool::{ArtboardToolMessage, ArtboardToolMessageDiscriminant};
 pub use crate::messages::tool::tool_messages::ellipse_tool::{EllipseToolMessage, EllipseToolMessageDiscriminant};
@@ -37,10 +41,7 @@ pub use crate::messages::tool::tool_messages::shape_tool::{ShapeToolMessage, Sha
 pub use crate::messages::tool::tool_messages::spline_tool::{SplineToolMessage, SplineToolMessageDiscriminant};
 pub use crate::messages::tool::tool_messages::text_tool::{TextToolMessage, TextToolMessageDiscriminant};
 
-// Other
-pub use crate::messages::broadcast::broadcast_event::{BroadcastEvent, BroadcastEventDiscriminant};
-pub use crate::utility_traits::{ActionList, AsMessage, MessageHandler, ToDiscriminant, TransitiveChild};
-
+// Helper
 pub use graphite_proc_macros::*;
 
-pub use std::collections::VecDeque;
+pub use std::collections::{HashMap, HashSet, VecDeque};
