@@ -44,47 +44,6 @@ impl PropertyHolder for MenuBarMessageHandler {
 							action: MenuEntry::create_action(|_| PortfolioMessage::OpenDocument.into()),
 							..MenuEntry::default()
 						},
-						MenuEntry {
-							label: "Open Recent".into(),
-							shortcut: None,
-							action: MenuEntry::no_action(),
-							icon: None,
-							children: MenuEntryGroups(vec![
-								vec![
-									MenuEntry {
-										label: "Reopen Last Closed".into(),
-										// shortcut: [Key::KeyControl, Key::KeyShift, Key::KeyT],
-										..MenuEntry::default()
-									},
-									MenuEntry {
-										label: "Clear Recently Opened".into(),
-										..MenuEntry::default()
-									},
-								],
-								vec![
-									MenuEntry {
-										label: "Some Recent File.gdd".into(),
-										..MenuEntry::default()
-									},
-									MenuEntry {
-										label: "Another Recent File.gdd".into(),
-										..MenuEntry::default()
-									},
-									MenuEntry {
-										label: "An Older File.gdd".into(),
-										..MenuEntry::default()
-									},
-									MenuEntry {
-										label: "Some Other Older File.gdd".into(),
-										..MenuEntry::default()
-									},
-									MenuEntry {
-										label: "Yet Another Older File.gdd".into(),
-										..MenuEntry::default()
-									},
-								],
-							]),
-						},
 					],
 					vec![
 						MenuEntry {
@@ -100,29 +59,12 @@ impl PropertyHolder for MenuBarMessageHandler {
 							..MenuEntry::default()
 						},
 					],
-					vec![
-						MenuEntry {
-							label: "Save".into(),
-							shortcut: action_keys!(DocumentMessageDiscriminant::SaveDocument),
-							action: MenuEntry::create_action(|_| DocumentMessage::SaveDocument.into()),
-							..MenuEntry::default()
-						},
-						MenuEntry {
-							label: "Save As…".into(),
-							// shortcut: [Key::KeyControl, Key::KeyShift, Key::KeyS],
-							..MenuEntry::default()
-						},
-						MenuEntry {
-							label: "Save All".into(),
-							// shortcut: [Key::KeyControl, Key::KeyAlt, Key::KeyS],
-							..MenuEntry::default()
-						},
-						MenuEntry {
-							label: "Auto-Save".into(),
-							icon: Some("CheckboxChecked".into()),
-							..MenuEntry::default()
-						},
-					],
+					vec![MenuEntry {
+						label: "Save".into(),
+						shortcut: action_keys!(DocumentMessageDiscriminant::SaveDocument),
+						action: MenuEntry::create_action(|_| DocumentMessage::SaveDocument.into()),
+						..MenuEntry::default()
+					}],
 					vec![
 						MenuEntry {
 							label: "Import…".into(),
@@ -137,11 +79,6 @@ impl PropertyHolder for MenuBarMessageHandler {
 							..MenuEntry::default()
 						},
 					],
-					vec![MenuEntry {
-						label: "Quit".into(),
-						// shortcut: [Key::KeyControl, Key::KeyQ],
-						..MenuEntry::default()
-					}],
 				]),
 			},
 			MenuColumn {
@@ -187,20 +124,49 @@ impl PropertyHolder for MenuBarMessageHandler {
 			},
 			MenuColumn {
 				label: "Layer".into(),
-				children: MenuEntryGroups(vec![vec![
-					MenuEntry {
-						label: "Select All".into(),
-						shortcut: action_keys!(DocumentMessageDiscriminant::SelectAllLayers),
-						action: MenuEntry::create_action(|_| DocumentMessage::SelectAllLayers.into()),
+				children: MenuEntryGroups(vec![
+					vec![
+						MenuEntry {
+							label: "Select All".into(),
+							shortcut: action_keys!(DocumentMessageDiscriminant::SelectAllLayers),
+							action: MenuEntry::create_action(|_| DocumentMessage::SelectAllLayers.into()),
+							..MenuEntry::default()
+						},
+						MenuEntry {
+							label: "Deselect All".into(),
+							shortcut: action_keys!(DocumentMessageDiscriminant::DeselectAllLayers),
+							action: MenuEntry::create_action(|_| DocumentMessage::DeselectAllLayers.into()),
+							..MenuEntry::default()
+						},
+					],
+					vec![MenuEntry {
+						label: "Delete Selected".into(),
+						icon: Some("Trash".into()),
+						shortcut: action_keys!(DocumentMessageDiscriminant::DeleteSelectedLayers),
+						action: MenuEntry::create_action(|_| DocumentMessage::DeleteSelectedLayers.into()),
 						..MenuEntry::default()
-					},
-					MenuEntry {
-						label: "Deselect All".into(),
-						shortcut: action_keys!(DocumentMessageDiscriminant::DeselectAllLayers),
-						action: MenuEntry::create_action(|_| DocumentMessage::DeselectAllLayers.into()),
-						..MenuEntry::default()
-					},
-					MenuEntry {
+					}],
+					vec![
+						MenuEntry {
+							label: "Grab Selected".into(),
+							shortcut: action_keys!(TransformLayerMessageDiscriminant::BeginGrab),
+							action: MenuEntry::create_action(|_| TransformLayerMessage::BeginGrab.into()),
+							..MenuEntry::default()
+						},
+						MenuEntry {
+							label: "Rotate Selected".into(),
+							shortcut: action_keys!(TransformLayerMessageDiscriminant::BeginRotate),
+							action: MenuEntry::create_action(|_| TransformLayerMessage::BeginRotate.into()),
+							..MenuEntry::default()
+						},
+						MenuEntry {
+							label: "Scale Selected".into(),
+							shortcut: action_keys!(TransformLayerMessageDiscriminant::BeginScale),
+							action: MenuEntry::create_action(|_| TransformLayerMessage::BeginScale.into()),
+							..MenuEntry::default()
+						},
+					],
+					vec![MenuEntry {
 						label: "Order".into(),
 						action: MenuEntry::no_action(),
 						children: MenuEntryGroups(vec![vec![
@@ -230,23 +196,46 @@ impl PropertyHolder for MenuBarMessageHandler {
 							},
 						]]),
 						..MenuEntry::default()
-					},
-				]]),
+					}],
+				]),
 			},
 			MenuColumn {
 				label: "Document".into(),
 				children: MenuEntryGroups(vec![vec![MenuEntry {
-					label: "Menu entries coming soon".into(),
+					label: "Clear Artboards".into(),
+					action: MenuEntry::create_action(|_| ArtboardMessage::ClearArtboards.into()),
 					..MenuEntry::default()
 				}]]),
 			},
 			MenuColumn {
 				label: "View".into(),
-				children: MenuEntryGroups(vec![vec![MenuEntry {
-					label: "Show/Hide Node Graph (In Development)".into(),
-					action: MenuEntry::create_action(|_| WorkspaceMessage::NodeGraphToggleVisibility.into()),
-					..MenuEntry::default()
-				}]]),
+				children: MenuEntryGroups(vec![
+					vec![
+						MenuEntry {
+							label: "Zoom to Fit".into(),
+							shortcut: action_keys!(DocumentMessageDiscriminant::ZoomCanvasToFitAll),
+							action: MenuEntry::create_action(|_| DocumentMessage::ZoomCanvasToFitAll.into()),
+							..MenuEntry::default()
+						},
+						MenuEntry {
+							label: "Zoom to 100%".into(),
+							shortcut: action_keys!(DocumentMessageDiscriminant::ZoomCanvasTo100Percent),
+							action: MenuEntry::create_action(|_| DocumentMessage::ZoomCanvasTo100Percent.into()),
+							..MenuEntry::default()
+						},
+						MenuEntry {
+							label: "Zoom to 200%".into(),
+							shortcut: action_keys!(DocumentMessageDiscriminant::ZoomCanvasTo200Percent),
+							action: MenuEntry::create_action(|_| DocumentMessage::ZoomCanvasTo200Percent.into()),
+							..MenuEntry::default()
+						},
+					],
+					vec![MenuEntry {
+						label: "Node Graph (In Development)".into(),
+						action: MenuEntry::create_action(|_| WorkspaceMessage::NodeGraphToggleVisibility.into()),
+						..MenuEntry::default()
+					}],
+				]),
 			},
 			MenuColumn {
 				label: "Help".into(),

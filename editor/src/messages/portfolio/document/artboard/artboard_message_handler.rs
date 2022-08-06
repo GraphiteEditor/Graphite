@@ -63,6 +63,11 @@ impl MessageHandler<ArtboardMessage, &FontCache> for ArtboardMessageHandler {
 
 				responses.push_back(DocumentMessage::RenderDocument.into());
 			}
+			ClearArtboards => {
+				for &artboard in self.artboard_ids.iter() {
+					responses.push_front(ArtboardMessage::DeleteArtboard { artboard }.into());
+				}
+			}
 			DeleteArtboard { artboard } => {
 				self.artboard_ids.retain(|&id| id != artboard);
 
