@@ -296,16 +296,16 @@ impl Bezier {
 		// Basis code based off of pseudocode found here: <https://pomax.github.io/bezierinfo/#explanation>.
 
 		let t_squared = t * t;
-		let one_minus_t = 1.0 - t;
+		let one_minus_t = 1. - t;
 		let squared_one_minus_t = one_minus_t * one_minus_t;
 
 		match self.handles {
 			BezierHandles::Linear => self.start.lerp(self.end, t),
-			BezierHandles::Quadratic { handle } => squared_one_minus_t * self.start + 2.0 * one_minus_t * t * handle + t_squared * self.end,
+			BezierHandles::Quadratic { handle } => squared_one_minus_t * self.start + 2. * one_minus_t * t * handle + t_squared * self.end,
 			BezierHandles::Cubic { handle_start, handle_end } => {
 				let t_cubed = t_squared * t;
 				let cubed_one_minus_t = squared_one_minus_t * one_minus_t;
-				cubed_one_minus_t * self.start + 3.0 * squared_one_minus_t * t * handle_start + 3.0 * one_minus_t * t_squared * handle_end + t_cubed * self.end
+				cubed_one_minus_t * self.start + 3. * squared_one_minus_t * t * handle_start + 3. * one_minus_t * t_squared * handle_end + t_cubed * self.end
 			}
 		}
 	}
@@ -313,7 +313,7 @@ impl Bezier {
 	/// Calculate the point on the curve based on the `t`-value provided.
 	/// Expects `t` to be within the inclusive range `[0, 1]`.
 	pub fn evaluate(&self, t: f64) -> DVec2 {
-		assert!((0.0..=1.0).contains(&t));
+		assert!((0.0..=1.).contains(&t));
 		self.unrestricted_evaluate(t)
 	}
 
@@ -321,7 +321,7 @@ impl Bezier {
 	/// If no value is provided for `steps`, then the function will default `steps` to be 10.
 	pub fn compute_lookup_table(&self, steps: Option<usize>) -> Vec<DVec2> {
 		let steps_unwrapped = steps.unwrap_or(DEFAULT_LUT_STEP_SIZE);
-		let ratio: f64 = 1.0 / (steps_unwrapped as f64);
+		let ratio: f64 = 1. / (steps_unwrapped as f64);
 		let mut steps_array = Vec::with_capacity(steps_unwrapped + 1);
 
 		for t in 0..steps_unwrapped + 1 {
@@ -342,7 +342,7 @@ impl Bezier {
 				// We will use an approximate approach where we split the curve into many subdivisions
 				// and calculate the euclidean distance between the two endpoints of the subdivision
 				let lookup_table = self.compute_lookup_table(Some(num_subdivisions.unwrap_or(DEFAULT_LENGTH_SUBDIVISIONS)));
-				let mut approx_curve_length = 0.0;
+				let mut approx_curve_length = 0.;
 				let mut previous_point = lookup_table[0];
 				// Calculate approximate distance between subdivision
 				for current_point in lookup_table.iter().skip(1) {
@@ -478,8 +478,10 @@ impl Bezier {
 		let (minimum_position, minimum_distance) = utils::get_closest_point_in_lut(&lut, point);
 
 		// Get the t values to the left and right of the closest result in the lookup table
-		let mut left_t = (0.max(minimum_position - 1) as f64) / lut_size as f64;
-		let mut right_t = (lut_size.min((minimum_position + 1) as usize)) as f64 / lut_size as f64;
+		let lut_size_f64 = lut_size as f64;
+		let minimum_position_f64 = minimum_position as f64;
+		let mut left_t = (minimum_position_f64 - 1.).max(0.) / lut_size_f64;
+		let mut right_t = (minimum_position_f64 + 1.).min(lut_size_f64) / lut_size_f64;
 
 		// Perform a finer search by finding closest t from 5 points between [left_t, right_t] inclusive
 		// Choose new left_t and right_t for a smaller range around the closest t and repeat the process
@@ -497,16 +499,16 @@ impl Bezier {
 
 		// Store calculated distances to minimize unnecessary recomputations
 		let mut distances: [f64; NUM_DISTANCES] = [
-			point.distance(lut[0.max(minimum_position - 1) as usize]),
+			point.distance(lut[(minimum_position as i64 - 1).max(0) as usize]),
 			0.,
 			0.,
 			0.,
-			point.distance(lut[lut_size.min((minimum_position + 1) as usize)]),
+			point.distance(lut[lut_size.min(minimum_position + 1)]),
 		];
 
 		while left_t <= right_t && convergence_count < convergence_limit && iteration_count < iteration_limit {
 			previous_distance = new_minimum_distance;
-			let step = (right_t - left_t) / ((NUM_DISTANCES - 1) as f64);
+			let step = (right_t - left_t) / (NUM_DISTANCES as f64 - 1.);
 			let mut iterator_t = left_t;
 			let mut target_index = 0;
 			// Iterate through first 4 points and will handle the right most point later
