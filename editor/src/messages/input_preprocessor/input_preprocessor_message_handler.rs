@@ -3,7 +3,6 @@ use crate::messages::input_mapper::utility_types::input_mouse::{MouseKeys, Mouse
 use crate::messages::portfolio::document::utility_types::misc::KeyboardPlatformLayout;
 use crate::messages::prelude::*;
 
-#[doc(inline)]
 pub use graphene::DocumentResponse;
 
 use glam::DVec2;

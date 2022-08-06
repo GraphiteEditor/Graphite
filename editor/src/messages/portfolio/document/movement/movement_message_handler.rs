@@ -267,7 +267,6 @@ impl MessageHandler<MovementMessage, (&Document, &InputPreprocessorMessageHandle
 			TranslateCanvasBegin,
 			RotateCanvasBegin,
 			ZoomCanvasBegin,
-			SetCanvasZoom,
 			SetCanvasRotation,
 			WheelCanvasZoom,
 			IncreaseCanvasZoom,

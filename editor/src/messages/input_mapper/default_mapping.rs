@@ -191,10 +191,6 @@ pub fn default_mapping() -> Mapping {
 			mac_only!(KeyDown(KeyS); modifiers=[KeyCommand], action_dispatch=DocumentMessage::SaveDocument),
 		),
 		entry_multiplatform!(
-			standard!(KeyDown(Key0); modifiers=[KeyControl], action_dispatch=DocumentMessage::ZoomCanvasToFitAll),
-			mac_only!(KeyDown(Key0); modifiers=[KeyCommand], action_dispatch=DocumentMessage::ZoomCanvasToFitAll),
-		),
-		entry_multiplatform!(
 			standard!(KeyDown(KeyD); modifiers=[KeyControl], action_dispatch=DocumentMessage::DuplicateSelectedLayers),
 			mac_only!(KeyDown(KeyD); modifiers=[KeyCommand], action_dispatch=DocumentMessage::DuplicateSelectedLayers),
 		),
@@ -209,6 +205,18 @@ pub fn default_mapping() -> Mapping {
 		entry_multiplatform!(
 			standard!(KeyDown(KeyN); modifiers=[KeyControl, KeyShift], action_dispatch=DocumentMessage::CreateEmptyFolder { container_path: vec![] }),
 			mac_only!(KeyDown(KeyN); modifiers=[KeyCommand, KeyShift], action_dispatch=DocumentMessage::CreateEmptyFolder { container_path: vec![] }),
+		),
+		entry_multiplatform!(
+			standard!(KeyDown(Key0); modifiers=[KeyControl], action_dispatch=DocumentMessage::ZoomCanvasToFitAll),
+			mac_only!(KeyDown(Key0); modifiers=[KeyCommand], action_dispatch=DocumentMessage::ZoomCanvasToFitAll),
+		),
+		entry_multiplatform!(
+			standard!(KeyDown(Key1); modifiers=[KeyControl], action_dispatch=DocumentMessage::ZoomCanvasTo100Percent),
+			mac_only!(KeyDown(Key1); modifiers=[KeyCommand], action_dispatch=DocumentMessage::ZoomCanvasTo100Percent),
+		),
+		entry_multiplatform!(
+			standard!(KeyDown(Key2); modifiers=[KeyControl], action_dispatch=DocumentMessage::ZoomCanvasTo200Percent),
+			mac_only!(KeyDown(Key2); modifiers=[KeyCommand], action_dispatch=DocumentMessage::ZoomCanvasTo200Percent),
 		),
 		entry_multiplatform!(
 			standard!(KeyDown(KeyLeftBracket); modifiers=[KeyControl, KeyShift], action_dispatch=DocumentMessage::SelectedLayersLowerToBack),
@@ -284,14 +292,6 @@ pub fn default_mapping() -> Mapping {
 		entry_multiplatform!(
 			standard!(KeyDown(KeyMinus); modifiers=[KeyControl], action_dispatch=MovementMessage::DecreaseCanvasZoom { center_on_mouse: false }),
 			mac_only!(KeyDown(KeyMinus); modifiers=[KeyCommand], action_dispatch=MovementMessage::DecreaseCanvasZoom { center_on_mouse: false }),
-		),
-		entry_multiplatform!(
-			standard!(KeyDown(Key1); modifiers=[KeyControl], action_dispatch=MovementMessage::SetCanvasZoom { zoom_factor: 1. }),
-			mac_only!(KeyDown(Key1); modifiers=[KeyCommand], action_dispatch=MovementMessage::SetCanvasZoom { zoom_factor: 1. }),
-		),
-		entry_multiplatform!(
-			standard!(KeyDown(Key2); modifiers=[KeyControl], action_dispatch=MovementMessage::SetCanvasZoom { zoom_factor: 2. }),
-			mac_only!(KeyDown(Key2); modifiers=[KeyCommand], action_dispatch=MovementMessage::SetCanvasZoom { zoom_factor: 2. }),
 		),
 		entry!(WheelScroll; modifiers=[KeyControl], action_dispatch=MovementMessage::WheelCanvasZoom),
 		entry!(WheelScroll; modifiers=[KeyShift], action_dispatch=MovementMessage::WheelCanvasTranslate { use_y_as_x: true }),

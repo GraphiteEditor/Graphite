@@ -758,6 +758,12 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 			UpdateLayerMetadata { layer_path, layer_metadata } => {
 				self.layer_metadata.insert(layer_path, layer_metadata);
 			}
+			ZoomCanvasTo100Percent => {
+				responses.push_front(MovementMessage::SetCanvasZoom { zoom_factor: 1. }.into());
+			}
+			ZoomCanvasTo200Percent => {
+				responses.push_front(MovementMessage::SetCanvasZoom { zoom_factor: 2. }.into());
+			}
 			ZoomCanvasToFitAll => {
 				if let Some(bounds) = self.document_bounds(font_cache) {
 					responses.push_back(
@@ -785,6 +791,8 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 			SetSnapping,
 			DebugPrintDocument,
 			ZoomCanvasToFitAll,
+			ZoomCanvasTo100Percent,
+			ZoomCanvasTo200Percent,
 			CreateEmptyFolder,
 		);
 

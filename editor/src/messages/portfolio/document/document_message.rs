@@ -169,6 +169,8 @@ pub enum DocumentMessage {
 		layer_path: Vec<LayerId>,
 		layer_metadata: LayerMetadata,
 	},
+	ZoomCanvasTo100Percent,
+	ZoomCanvasTo200Percent,
 	ZoomCanvasToFitAll,
 }
 
