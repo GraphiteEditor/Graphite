@@ -29,7 +29,7 @@ export function getLatinKey(e: KeyboardEvent): string | null {
 	const LAST_LATIN_UNICODE_CHAR = 0x024f;
 	if (key.length > 1 || key.charCodeAt(0) > LAST_LATIN_UNICODE_CHAR) return keyCodeToKey(e.code);
 
-	// Otherwise, ths is a printable Latin character
+	// Otherwise, this is a printable Latin character
 	return e.key.toLowerCase();
 }
 
