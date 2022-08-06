@@ -51,7 +51,7 @@ fn generate_to_string(parsed: ItemFn, string: String) -> TokenStream {
 	let types = extract_arg_types(fn_args);
 	let types = types.iter().map(|t| t.to_token_stream()).collect::<Vec<_>>();
 	let idents = idents.iter().map(|t| t.to_token_stream()).collect::<Vec<_>>();
-	let const_idents = idents
+	let _const_idents = idents
 		.iter()
 		.map(|t| {
 			let name = t.to_string().to_uppercase();

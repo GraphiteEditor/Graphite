@@ -1,15 +1,15 @@
-use borrow_stack::BorrowStack;
 //#![feature(generic_associated_types)]
-use dyn_any::{DynAny, StaticType};
-use graphene_std::value::{AnyRefNode, AnyValueNode, StorageNode, ValueNode};
-use graphene_std::*;
+// use borrow_stack::BorrowStack;
+// use dyn_any::{DynAny, StaticType};
+// use graphene_std::value::{AnyRefNode, AnyValueNode, StorageNode, ValueNode};
+// use graphene_std::*;
 
 /*fn mul(#[dyn_any(default)] a: f32, b: f32) -> f32 {
 	a * b
 }*/
 
 mod mul {
-	use dyn_any::{downcast_ref, DynAny, StaticType};
+	use dyn_any::downcast_ref;
 	use graphene_std::{DynAnyNode, DynNode, DynamicInput, Node};
 	pub struct MulNodeInput<'n> {
 		pub a: &'n f32,
@@ -28,7 +28,7 @@ mod mul {
 	impl<'n> Node<'n> for MulNodeAnyProxy<'n> {
 		type Output = MulNodeInput<'n>;
 		fn eval(&'n self) -> <Self as graphene_std::Node<'n>>::Output {
-			let a = self.a.unwrap().eval();
+			// let a = self.a.unwrap().eval();
 			let a: &f32 = self.a.map(|v| downcast_ref(v.eval()).unwrap()).unwrap_or(&1.);
 			/*let b: &f32 = self
 				.b
@@ -55,7 +55,7 @@ mod mul {
 	//pub(crate) use new;
 
 	impl<'n> DynamicInput<'n> for MulNodeAnyProxy<'n> {
-		fn set_kwarg_by_name(&mut self, name: &str, value: DynAnyNode<'n>) {
+		fn set_kwarg_by_name(&mut self, _name: &str, _value: DynAnyNode<'n>) {
 			todo!()
 		}
 		fn set_arg_by_index(&mut self, index: usize, value: DynAnyNode<'n>) {
@@ -68,29 +68,29 @@ mod mul {
 		}
 	}
 }
-type SNode<'n> = dyn Node<'n, Output = &'n dyn DynAny<'n>>;
+// type SNode<'n> = dyn Node<'n, Output = &'n dyn DynAny<'n>>;
 
-struct NodeStore<'n>(borrow_stack::FixedSizeStack<'n, Box<SNode<'n>>>);
+// struct NodeStore<'n>(borrow_stack::FixedSizeStack<'n, Box<SNode<'n>>>);
 
-impl<'n> NodeStore<'n> {
-	fn len(&self) -> usize {
-		self.0.len()
-	}
+// impl<'n> NodeStore<'n> {
+// 	fn len(&self) -> usize {
+// 		self.0.len()
+// 	}
 
-	fn push(&'n mut self, f: fn(&'n [Box<SNode>]) -> Box<SNode<'n>>) {
-		unsafe { self.0.push(f(self.0.get())) };
-	}
+// 	fn push(&'n mut self, f: fn(&'n [Box<SNode>]) -> Box<SNode<'n>>) {
+// 		unsafe { self.0.push(f(self.0.get())) };
+// 	}
 
-	/*fn get_index(&'n self, index: usize) -> &'n SNode<'n> {
-		assert!(index < self.0.len());
-		&unsafe { self.0.get()[index] }
-	}*/
-}
+// 	/*fn get_index(&'n self, index: usize) -> &'n SNode<'n> {
+// 		assert!(index < self.0.len());
+// 		&unsafe { self.0.get()[index] }
+// 	}*/
+// }
 
 fn main() {
 	use graphene_std::*;
 	use quote::quote;
-	use syn::parse::Parse;
+	// use syn::parse::Parse;
 	let nodes = vec![
 		NodeKind::Input,
 		NodeKind::Value(syn::parse_quote!(1u32)),
@@ -99,7 +99,7 @@ fn main() {
 
 	//println!("{}", node_graph(1));
 
-	let nodegraph = NodeGraph {
+	let _nodegraph = NodeGraph {
 		nodes,
 		input: syn::Type::Verbatim(quote! {u32}),
 		output: syn::Type::Verbatim(quote! {u32}),

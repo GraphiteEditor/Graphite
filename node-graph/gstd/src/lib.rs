@@ -6,7 +6,7 @@ pub mod memo;
 
 pub use graphene_core::*;
 
-use dyn_any::{downcast_ref, DynAny, StaticType};
+use dyn_any::DynAny;
 pub type DynNode<'n, T> = &'n (dyn Node<'n, Output = T> + 'n);
 pub type DynAnyNode<'n> = &'n (dyn Node<'n, Output = &'n dyn DynAny<'n>> + 'n);
 

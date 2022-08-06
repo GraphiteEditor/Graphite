@@ -11,6 +11,7 @@ use async_trait::async_trait;
 pub mod generic;
 pub mod ops;
 //pub mod structural;
+pub mod raster;
 pub mod value;
 
 pub trait Node<'n> {

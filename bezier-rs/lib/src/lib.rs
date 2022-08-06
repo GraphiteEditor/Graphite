@@ -591,7 +591,7 @@ impl Bezier {
 			.unwrap()
 	}
 
-	/// Returns a Bezier curve that results from applying the tranformation function to each point in the Bezier.
+	/// Returns a Bezier curve that results from applying the transformation function to each point in the Bezier.
 	pub fn apply_transformation(&self, transformation_function: &dyn Fn(DVec2) -> DVec2) -> Bezier {
 		let transformed_start = transformation_function(self.start);
 		let transformed_end = transformation_function(self.end);
@@ -716,7 +716,7 @@ impl Bezier {
 
 			return list_intersection_t
 				.into_iter()
-				// Accept the t value if it is approximately in [0, 1] and if the coresponding coordinates are within the range of the linear line
+				// Accept the t value if it is approximately in [0, 1] and if the corresponding coordinates are within the range of the linear line
 				.filter(|&t| {
 					utils::f64_approximately_in_range(t, 0., 1., MAX_ABSOLUTE_DIFFERENCE)
 						&& utils::dvec2_approximately_in_range(self.unrestricted_evaluate(t), min, max, MAX_ABSOLUTE_DIFFERENCE).all()
