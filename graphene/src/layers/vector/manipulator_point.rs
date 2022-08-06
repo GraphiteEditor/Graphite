@@ -1,4 +1,4 @@
-use super::constants::ManipulatorType;
+use super::consts::ManipulatorType;
 use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};
 

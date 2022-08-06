@@ -1,0 +1,26 @@
+[package]
+name = "graphene-std"
+version = "0.1.0"
+edition = "2021"
+description = "Graphene standard library"
+authors = ["Graphite Authors <contact@graphite.rs>"]
+license = "MIT OR Apache-2.0"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[features]
+derive = ["graph-proc-macros"]
+memoization = ["once_cell"]
+default = ["derive", "memoization"]
+
+
+[dependencies]
+graphene-core = {path = "../gcore"}
+borrow_stack = {path = "../borrow_stack"}
+dyn-any = {path = "../../libraries/dyn-any", features = ["derive"]}
+graph-proc-macros = {path = "../proc-macro", optional = true}
+once_cell = {version= "1.10", optional = true}
+#pretty-token-stream = {path = "../../pretty-token-stream"}
+syn = {version = "1.0", default-features = false, features = ["parsing", "printing"]}
+proc-macro2 = {version = "1.0", default-features = false, features = ["proc-macro"]}
+quote = {version = "1.0", default-features = false }

@@ -1,4 +1,4 @@
-use crate::layers::vector::constants::ManipulatorType;
+use crate::layers::vector::consts::ManipulatorType;
 use crate::layers::vector::manipulator_group::ManipulatorGroup;
 use crate::layers::vector::manipulator_point::ManipulatorPoint;
 use crate::layers::vector::subpath::Subpath;

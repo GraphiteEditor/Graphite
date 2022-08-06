@@ -1,0 +1,18 @@
+[package]
+name = "graph-proc-macros"
+version = "0.1.0"
+authors = ["Graphite Authors <contact@graphite.rs>"]
+edition = "2021"
+publish = false
+license = "MIT OR Apache-2.0"
+
+[lib]
+path = "src/lib.rs"
+proc-macro = true
+
+[dependencies]
+proc-macro2 = "1.0"
+proc_macro_roids = "0.7"
+syn = { version = "1.0", features = ["full"] }
+quote = "1.0"
+graphene-core = {path = "../gcore"}

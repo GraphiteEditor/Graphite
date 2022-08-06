@@ -2,6 +2,7 @@ import { DialogState } from "@/state-providers/dialog";
 import { FullscreenState } from "@/state-providers/fullscreen";
 import { PortfolioState } from "@/state-providers/portfolio";
 import { makeKeyboardModifiersBitfield, textInputCleanup, getLatinKey } from "@/utility-functions/keyboard-entry";
+import { operatingSystemIsMac } from "@/utility-functions/platform";
 import { stripIndents } from "@/utility-functions/strip-indents";
 import { Editor } from "@/wasm-communication/editor";
 import { TriggerPaste } from "@/wasm-communication/messages";
@@ -39,7 +40,7 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 		{ target: window, eventName: "pointerup", action: (e: PointerEvent): void => onPointerUp(e) },
 		{ target: window, eventName: "dblclick", action: (e: PointerEvent): void => onDoubleClick(e) },
 		{ target: window, eventName: "mousedown", action: (e: MouseEvent): void => onMouseDown(e) },
-		{ target: window, eventName: "wheel", action: (e: WheelEvent): void => onMouseScroll(e), options: { passive: false } },
+		{ target: window, eventName: "wheel", action: (e: WheelEvent): void => onWheelScroll(e), options: { passive: false } },
 		{ target: window, eventName: "modifyinputfield", action: (e: CustomEvent): void => onModifyInputField(e) },
 		{ target: window.document.body, eventName: "paste", action: (e: ClipboardEvent): void => onPaste(e) },
 		{
@@ -69,13 +70,14 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 		const key = getLatinKey(e);
 		if (!key) return false;
 
+		// TODO: Switch to a system where everything is sent to the backend, then the input preprocessor makes decisions and kicks some inputs back to the frontend
+		const ctrlOrCmd = operatingSystemIsMac() ? e.metaKey : e.ctrlKey;
+
 		// Don't redirect user input from text entry into HTML elements
-		if (key !== "escape" && !(e.ctrlKey && key === "enter") && targetIsTextField(e.target)) {
-			return false;
-		}
+		if (key !== "escape" && !(ctrlOrCmd && key === "enter") && targetIsTextField(e.target)) return false;
 
 		// Don't redirect paste
-		if (key === "v" && e.ctrlKey) return false;
+		if (key === "v" && ctrlOrCmd) return false;
 
 		// Don't redirect a fullscreen request
 		if (key === "f11" && e.type === "keydown" && !e.repeat) {
@@ -85,13 +87,13 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 		}
 
 		// Don't redirect a reload request
-		if (key === "f5") return false;
+		if (key === "f5" || (ctrlOrCmd && key === "r")) return false;
 
 		// Don't redirect debugging tools
 		if (key === "f12" || key === "f8") return false;
-		if ((e.ctrlKey || e.metaKey) && e.shiftKey && key === "c") return false;
-		if ((e.ctrlKey || e.metaKey) && e.shiftKey && key === "i") return false;
-		if ((e.ctrlKey || e.metaKey) && e.shiftKey && key === "j") return false;
+		if (ctrlOrCmd && e.shiftKey && key === "c") return false;
+		if (ctrlOrCmd && e.shiftKey && key === "i") return false;
+		if (ctrlOrCmd && e.shiftKey && key === "j") return false;
 
 		// Don't redirect tab or enter if not in canvas (to allow navigating elements)
 		if (!canvasFocused && !targetIsTextField(e.target) && ["tab", "enter", " ", "arrowdown", "arrowup", "arrowleft", "arrowright"].includes(key.toLowerCase())) return false;
@@ -200,7 +202,7 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 		if (e.button === 1) e.preventDefault();
 	}
 
-	function onMouseScroll(e: WheelEvent): void {
+	function onWheelScroll(e: WheelEvent): void {
 		const { target } = e;
 		const isTargetingCanvas = target instanceof Element && target.closest("[data-canvas]");
 
@@ -215,7 +217,7 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 		if (isTargetingCanvas) {
 			e.preventDefault();
 			const modifiers = makeKeyboardModifiersBitfield(e);
-			editor.instance.on_mouse_scroll(e.clientX, e.clientY, e.buttons, e.deltaX, e.deltaY, e.deltaZ, modifiers);
+			editor.instance.on_wheel_scroll(e.clientX, e.clientY, e.buttons, e.deltaX, e.deltaY, e.deltaZ, modifiers);
 		}
 	}
 

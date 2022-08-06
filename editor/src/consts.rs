@@ -11,6 +11,8 @@ pub const VIEWPORT_ZOOM_LEVELS: [f64; 74] = [
 	128., 160., 200., 256., 320., 400., 512., 640., 800., 1024., 1280., 1600., 2048., 2560.,
 ];
 
+pub const VIEWPORT_GRID_ROUNDING_BIAS: f64 = 0.002; // Helps push values that end in approximately half, plus or minus some floating point imprecision, towards the same side of the round() function
+
 pub const VIEWPORT_SCROLL_RATE: f64 = 0.6;
 
 pub const VIEWPORT_ROTATE_SNAP_INTERVAL: f64 = 15.;
@@ -35,6 +37,8 @@ pub const PATH_OUTLINE_WEIGHT: f64 = 2.;
 pub const ROTATE_SNAP_ANGLE: f64 = 15.;
 pub const SCALE_SNAP_INTERVAL: f64 = 0.1;
 pub const SLOWING_DIVISOR: f64 = 10.;
+pub const NUDGE_AMOUNT: f64 = 1.;
+pub const BIG_NUDGE_AMOUNT: f64 = 10.;
 
 // Select tool
 pub const SELECTION_TOLERANCE: f64 = 5.;
@@ -70,5 +74,5 @@ pub const DEFAULT_FONT_FAMILY: &str = "Merriweather";
 pub const DEFAULT_FONT_STYLE: &str = "Normal (400)";
 
 // Document
-pub const GRAPHITE_DOCUMENT_VERSION: &str = "0.0.10"; // Remember to save a simple document and replace the test file at: editor\src\communication\graphite-test-document.graphite
+pub const GRAPHITE_DOCUMENT_VERSION: &str = "0.0.10"; // Remember to save a simple document and replace the test file `graphite-test-document.graphite`
 pub const VIEWPORT_ZOOM_TO_FIT_PADDING_SCALE_FACTOR: f32 = 1.05;

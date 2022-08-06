@@ -1,7 +1,7 @@
 use crate::JS_EDITOR_HANDLES;
 
-use editor::input::keyboard::Key;
-use editor::message_prelude::FrontendMessage;
+use editor::messages::input_mapper::utility_types::input_keyboard::Key;
+use editor::messages::prelude::*;
 
 use std::panic;
 use wasm_bindgen::prelude::*;
@@ -122,6 +122,7 @@ pub fn translate_key(name: &str) -> Key {
 		"capslock" => KeyShift,
 		" " => KeySpace,
 		"control" => KeyControl,
+		"command" => KeyCommand,
 		"delete" => KeyDelete,
 		"backspace" => KeyBackspace,
 		"alt" => KeyAlt,

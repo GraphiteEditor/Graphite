@@ -14,7 +14,6 @@ use crate::hint::derive_hint_impl;
 use crate::transitive_child::derive_transitive_child_impl;
 
 use proc_macro::TokenStream;
-use syn::parse_macro_input;
 
 /// Derive the `ToDiscriminant` trait and create a `<Type Name>Discriminant` enum
 ///
@@ -35,7 +34,7 @@ use syn::parse_macro_input;
 /// # Example
 /// ```
 /// # use graphite_proc_macros::ToDiscriminant;
-/// # use editor::misc::derivable_custom_traits::ToDiscriminant;
+/// # use editor::utility_traits::ToDiscriminant;
 /// # use std::ffi::OsString;
 ///
 /// #[derive(ToDiscriminant)]
@@ -80,7 +79,7 @@ pub fn derive_discriminant(input_item: TokenStream) -> TokenStream {
 /// # Example
 /// ```
 /// # use graphite_proc_macros::TransitiveChild;
-/// # use editor::misc::derivable_custom_traits::TransitiveChild;
+/// # use editor::utility_traits::TransitiveChild;
 ///
 /// #[derive(Debug, Eq, PartialEq)]
 /// struct A { u: u8, b: B };
@@ -130,8 +129,8 @@ pub fn derive_transitive_child(input_item: TokenStream) -> TokenStream {
 /// See also [`TransitiveChild`]
 /// ```
 /// # use graphite_proc_macros::{TransitiveChild, AsMessage};
-/// # use editor::misc::derivable_custom_traits::TransitiveChild;
-/// # use editor::message_prelude::*;
+/// # use editor::utility_traits::TransitiveChild;
+/// # use editor::messages::prelude::*;
 ///
 /// #[derive(AsMessage)]
 /// pub enum TopMessage {
@@ -218,7 +217,7 @@ pub fn impl_message(attr: TokenStream, input_item: TokenStream) -> TokenStream {
 /// # Example
 /// ```
 /// # use graphite_proc_macros::Hint;
-/// # use editor::misc::derivable_custom_traits::Hint;
+/// # use editor::utility_traits::Hint;
 ///
 /// #[derive(Hint)]
 /// pub enum StateMachine {
@@ -269,7 +268,7 @@ pub fn derive_hint(input_item: TokenStream) -> TokenStream {
 #[proc_macro_attribute]
 pub fn edge(attr: TokenStream, item: TokenStream) -> TokenStream {
 	// to make sure that only `#[edge("string")]` is allowed
-	let _verify = parse_macro_input!(attr as AttrInnerSingleString);
+	let _verify = syn::parse_macro_input!(attr as AttrInnerSingleString);
 
 	item
 }

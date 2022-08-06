@@ -79,7 +79,7 @@ function formatThirdPartyLicenses(jsLicenses) {
 	if (process.env.NODE_ENV === "production" && process.env.SKIP_CARGO_ABOUT === undefined) {
 		try {
 			rustLicenses = generateRustLicenses();
-		} catch (e) {
+		} catch (err) {
 			// Nothing to show. Error messages were printed above.
 		}
 

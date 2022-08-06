@@ -1,0 +1,22 @@
+[package]
+name = "dyn-any-derive"
+version = "0.2.1"
+edition = "2021"
+authors = ["Graphite Authors <contact@graphite.rs>"]
+
+description = "#[derive(DynAny)]"
+documentation = "https://docs.rs/dyn-any-derive"
+repository = "https://github.com/GraphiteEditor/Graphite"
+license = "MIT OR Apache-2.0"
+readme = "../README.md"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+proc-macro2 = "1"
+quote = "1"
+syn = { version = "1", default-features = false, features = ["derive", "parsing", "proc-macro", "printing"] }
+
+[dev-dependencies]
+dyn-any = { path = "..", features = ["derive"] }

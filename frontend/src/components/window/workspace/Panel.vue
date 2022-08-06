@@ -45,8 +45,8 @@
 							<Separator :type="'Unrelated'" />
 						</LayoutCol>
 						<LayoutCol>
-							<UserInputLabel :inputKeys="[['KeyControl', 'KeyN']]" />
-							<UserInputLabel :inputKeys="[['KeyControl', 'KeyO']]" />
+							<UserInputLabel :inputKeys="[[controlOrCommandKey(), 'KeyN']]" />
+							<UserInputLabel :inputKeys="[[controlOrCommandKey(), 'KeyO']]" />
 						</LayoutCol>
 					</LayoutRow>
 				</LayoutCol>
@@ -216,6 +216,8 @@
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
 
+import { operatingSystemIsMac } from "@/utility-functions/platform";
+
 import LayoutCol from "@/components/layout/LayoutCol.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 import Document from "@/components/panels/Document.vue";
@@ -256,6 +258,10 @@ export default defineComponent({
 		},
 		openDocument() {
 			this.editor.instance.document_open();
+		},
+		controlOrCommandKey() {
+			// TODO: Remove this by properly feeding these keys from a layout provided by the backend
+			return operatingSystemIsMac() ? "KeyCommand" : "KeyControl";
 		},
 	},
 	components: {
