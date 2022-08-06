@@ -909,10 +909,7 @@ impl Bezier {
 	}
 
 	/// Approximate a bezier curve with circular arcs.
-	/// The algorithm can be customized using the [ArcsOptions] structure by setting the following fields within ArcOptions:
-	/// - strategy - [ArcStrategy] - The default value is `Automatic`.,
-	/// - error: f64 - The error used for approximating the arc's fit. The default is `0.5`.
-	/// - max_iterations: usize - The maximum number of segment iterations used as attempts for arc approximations. The default is `100`.
+	/// The algorithm can be customized using the [ArcsOptions] structure.
 	pub fn arcs(&self, arcs_options: ArcsOptions) -> Vec<CircleArc> {
 		let ArcsOptions {
 			strategy: maximize_arcs,
@@ -954,7 +951,7 @@ impl Bezier {
 	/// The second value will be `1.` except for when `stop_when_invalid` is true and an invalid approximation is encountered.
 	fn approximate_curve_with_arcs(&self, local_low: f64, local_high: f64, error: f64, max_iterations: usize, stop_when_invalid: bool) -> (Vec<CircleArc>, f64) {
 		let mut low = local_low;
-		let mut middle = local_low + (local_high - local_low) / 2.;
+		let mut middle = (local_low + local_high) / 2.;
 		let mut high = local_high;
 		let mut previous_high = local_high;
 
@@ -978,7 +975,7 @@ impl Bezier {
 					previous_high = high;
 					low = high;
 					high = 1.;
-					middle = low + (high - low) / 2.;
+					middle = (low + high) / 2.;
 					was_previous_good = false;
 					break;
 				}
@@ -1010,8 +1007,8 @@ impl Bezier {
 				};
 
 				// Use points in between low, middle, and high to evaluate how well the arc approximates the curve
-				let e1 = self.evaluate(low + (middle - low) / 2.);
-				let e2 = self.evaluate(middle + (high - middle) / 2.);
+				let e1 = self.evaluate((low + middle) / 2.);
+				let e2 = self.evaluate((middle + high) / 2.);
 
 				// Iterate until we find the largest good approximation such that the next iteration is not a good approximation with an arc
 				if utils::f64_compare(radius, e1.distance(center), error) && utils::f64_compare(radius, e2.distance(center), error) {
@@ -1032,7 +1029,7 @@ impl Bezier {
 					// If the approximation is good, expand the segment by half to try finding a larger good approximation
 					previous_high = high;
 					high = (high + (high - low) / 2.).min(local_high);
-					middle = low + (high - low) / 2.;
+					middle = (low + high) / 2.;
 					previous_arc = new_arc;
 					was_previous_good = true;
 				} else if was_previous_good {
