@@ -35,16 +35,14 @@ class BezierDrawing {
 		this.callback = callback;
 		this.options = options;
 		this.createThroughPoints = createThroughPoints;
-		this.points = bezier
-			.get_points()
-			.map((p) => JSON.parse(p))
-			.map((p, i, points) => ({
-				x: p.x,
-				y: p.y,
-				r: getPointSizeByIndex(i, points.length),
-				selected: false,
-				manipulator: MANIPULATOR_KEYS_FROM_BEZIER_TYPE[points.length][i],
-			}));
+		const bezierPoints: Point[] = JSON.parse(bezier.get_points());
+		this.points = bezierPoints.map((p, i, points) => ({
+			x: p.x,
+			y: p.y,
+			r: getPointSizeByIndex(i, points.length),
+			selected: false,
+			manipulator: MANIPULATOR_KEYS_FROM_BEZIER_TYPE[points.length][i],
+		}));
 
 		if (this.createThroughPoints && this.points.length === 4) {
 			// Use the first handler as the middle point
@@ -122,7 +120,7 @@ class BezierDrawing {
 
 		// For the create through points cases, we store a bezier where the handle is actually the point that the curve should pass through
 		// This is so that we can re-use the drag and drop logic, while simply drawing the desired bezier instead
-		const actualBezierPointLength = this.bezier.get_points().length;
+		const actualBezierPointLength = JSON.parse(this.bezier.get_points()).length;
 		let pointsToDraw = this.points;
 
 		let styleConfig: Partial<BezierStyleConfig> = {
@@ -130,14 +128,14 @@ class BezierDrawing {
 		};
 		let dragIndex = this.dragIndex;
 		if (this.createThroughPoints) {
-			let serializedPoints;
+			let bezierThroughPoints;
 			const pointList = this.points.map((p) => [p.x, p.y]);
 			if (actualBezierPointLength === 3) {
-				serializedPoints = WasmBezier.quadratic_through_points(pointList, this.options.t);
+				bezierThroughPoints = WasmBezier.quadratic_through_points(pointList, this.options.t);
 			} else {
-				serializedPoints = WasmBezier.cubic_through_points(pointList, this.options.t, this.options["midpoint separation"]);
+				bezierThroughPoints = WasmBezier.cubic_through_points(pointList, this.options.t, this.options["midpoint separation"]);
 			}
-			pointsToDraw = serializedPoints.get_points().map((p) => JSON.parse(p));
+			pointsToDraw = JSON.parse(bezierThroughPoints.get_points());
 			if (this.dragIndex === 1) {
 				// Do not propagate dragIndex when the the non-endpoint is moved
 				dragIndex = null;

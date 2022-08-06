@@ -1,6 +1,6 @@
 use crate::consts::{MAX_ABSOLUTE_DIFFERENCE, STRICT_MAX_ABSOLUTE_DIFFERENCE};
 
-use glam::{BVec2, DVec2};
+use glam::{BVec2, DMat2, DVec2};
 use std::f64::consts::PI;
 
 /// Helper to perform the computation of a and c, where b is the provided point on the curve.
@@ -34,10 +34,10 @@ pub fn compute_abc_for_cubic_through_points(start_point: DVec2, point_on_curve: 
 }
 
 /// Return the index and the value of the closest point in the LUT compared to the provided point.
-pub fn get_closest_point_in_lut(lut: &[DVec2], point: DVec2) -> (i32, f64) {
+pub fn get_closest_point_in_lut(lut: &[DVec2], point: DVec2) -> (usize, f64) {
 	lut.iter()
 		.enumerate()
-		.map(|(i, p)| (i as i32, point.distance_squared(*p)))
+		.map(|(i, p)| (i, point.distance_squared(*p)))
 		.min_by(|x, y| (&(x.1)).partial_cmp(&(y.1)).unwrap())
 		.unwrap()
 }
@@ -181,6 +181,33 @@ pub fn line_intersection(point1: DVec2, point1_slope_vector: DVec2, point2: DVec
 	}
 }
 
+/// Check if 3 points are collinear.
+pub fn are_points_collinear(p1: DVec2, p2: DVec2, p3: DVec2) -> bool {
+	let matrix = DMat2::from_cols(p1 - p2, p2 - p3);
+	f64_compare(matrix.determinant() / 2., 0., MAX_ABSOLUTE_DIFFERENCE)
+}
+
+/// Compute the center of the circle that passes through all three provided points. The provided points cannot be collinear.
+pub fn compute_circle_center_from_points(p1: DVec2, p2: DVec2, p3: DVec2) -> Option<DVec2> {
+	if are_points_collinear(p1, p2, p3) {
+		return None;
+	}
+
+	let midpoint_a = p1.lerp(p2, 0.5);
+	let midpoint_b = p2.lerp(p3, 0.5);
+	let midpoint_c = p3.lerp(p1, 0.5);
+
+	let tangent_a = (p1 - p2).perp();
+	let tangent_b = (p2 - p3).perp();
+	let tangent_c = (p3 - p1).perp();
+
+	let intersect_a_b = line_intersection(midpoint_a, tangent_a, midpoint_b, tangent_b);
+	let intersect_b_c = line_intersection(midpoint_b, tangent_b, midpoint_c, tangent_c);
+	let intersect_c_a = line_intersection(midpoint_c, tangent_c, midpoint_a, tangent_a);
+
+	Some((intersect_a_b + intersect_b_c + intersect_c_a) / 3.)
+}
+
 /// Compare two `f64` numbers with a provided max absolute value difference.
 pub fn f64_compare(f1: f64, f2: f64, max_abs_diff: f64) -> bool {
 	(f1 - f2).abs() < max_abs_diff
@@ -286,5 +313,21 @@ mod tests {
 		let start_direction2 = DVec2::new(1., 1.);
 		let end_direction2 = DVec2::new(1., -1.);
 		assert!(line_intersection(start2, start_direction2, end2, end_direction2) == DVec2::new(4., 4.));
+	}
+
+	#[test]
+	fn test_are_points_collinear() {
+		assert!(are_points_collinear(DVec2::new(2., 4.), DVec2::new(6., 8.), DVec2::new(4., 6.)));
+		assert!(!are_points_collinear(DVec2::new(1., 4.), DVec2::new(6., 8.), DVec2::new(4., 6.)));
+	}
+
+	#[test]
+	fn test_compute_circle_center_from_points() {
+		// 3/4 of unit circle
+		let center1 = compute_circle_center_from_points(DVec2::new(0., 1.), DVec2::new(-1., 0.), DVec2::new(1., 0.));
+		assert_eq!(center1.unwrap(), DVec2::new(0., 0.));
+		// 1/4 of unit circle
+		let center2 = compute_circle_center_from_points(DVec2::new(-1., 0.), DVec2::new(0., 1.), DVec2::new(1., 0.));
+		assert_eq!(center2.unwrap(), DVec2::new(0., 0.));
 	}
 }

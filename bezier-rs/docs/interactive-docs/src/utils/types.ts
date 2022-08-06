@@ -23,7 +23,7 @@ export type SliderOption = {
 	step: number;
 	default: number;
 	variable: string;
-	unit?: string;
+	unit?: string | string[];
 };
 
 export type TemplateOption = {
@@ -45,4 +45,11 @@ export type BezierStyleConfig = {
 	handleLineStrokeColor: string;
 	radius: number;
 	drawHandles: boolean;
+};
+
+export type CircleSector = {
+	center: Point;
+	radius: number;
+	startAngle: number;
+	endAngle: number;
 };

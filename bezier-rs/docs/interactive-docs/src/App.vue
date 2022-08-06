@@ -25,8 +25,8 @@
 <script lang="ts">
 import { defineComponent, markRaw } from "vue";
 
-import { drawBezier, drawBezierHelper, drawCircle, drawCurve, drawLine, drawPoint, drawText, getContextFromCanvas, COLORS } from "@/utils/drawing";
-import { BezierCurveType, Point, WasmBezierInstance, WasmSubpathInstance } from "@/utils/types";
+import { drawBezier, drawBezierHelper, drawCircle, drawCircleSector, drawCurve, drawLine, drawPoint, drawText, getContextFromCanvas, COLORS } from "@/utils/drawing";
+import { BezierCurveType, CircleSector, Point, WasmBezierInstance, WasmSubpathInstance } from "@/utils/types";
 
 import ExamplePane from "@/components/ExamplePane.vue";
 import SliderExample from "@/components/SliderExample.vue";
@@ -115,10 +115,10 @@ export default defineComponent({
 				{
 					name: "Lookup Table",
 					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: Record<string, number>): void => {
-						const lookupPoints = bezier.compute_lookup_table(options.steps);
-						lookupPoints.forEach((serializedPoint, index) => {
+						const lookupPoints: Point[] = JSON.parse(bezier.compute_lookup_table(options.steps));
+						lookupPoints.forEach((point, index) => {
 							if (index !== 0 && index !== lookupPoints.length - 1) {
-								drawPoint(getContextFromCanvas(canvas), JSON.parse(serializedPoint), 3, COLORS.NON_INTERACTIVE.STROKE_1);
+								drawPoint(getContextFromCanvas(canvas), point, 3, COLORS.NON_INTERACTIVE.STROKE_1);
 							}
 						});
 					},
@@ -142,7 +142,7 @@ export default defineComponent({
 
 						const derivativeBezier = bezier.derivative();
 						if (derivativeBezier) {
-							const points: Point[] = derivativeBezier.get_points().map((p) => JSON.parse(p));
+							const points: Point[] = JSON.parse(derivativeBezier.get_points());
 							if (points.length === 2) {
 								drawLine(context, points[0], points[1], COLORS.NON_INTERACTIVE.STROKE_1);
 							} else {
@@ -356,10 +356,7 @@ export default defineComponent({
 					name: "Rotate",
 					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: Record<string, number>): void => {
 						const context = getContextFromCanvas(canvas);
-						const rotatedBezier = bezier
-							.rotate(options.angle * Math.PI)
-							.get_points()
-							.map((p) => JSON.parse(p));
+						const rotatedBezier = JSON.parse(bezier.rotate(options.angle * Math.PI).get_points());
 						drawBezier(context, rotatedBezier, null, { curveStrokeColor: COLORS.NON_INTERACTIVE.STROKE_1, radius: 3.5 });
 					},
 					template: markRaw(SliderExample),
@@ -494,6 +491,57 @@ export default defineComponent({
 						curves.forEach((points, index) => {
 							drawBezier(context, points, null, { curveStrokeColor: `hsl(${40 * index}, 100%, 50%)`, radius: 3.5, drawHandles: false });
 						});
+					},
+				},
+				{
+					name: "Arcs",
+					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: Record<string, number>): void => {
+						const context = getContextFromCanvas(canvas);
+						const arcs: CircleSector[] = JSON.parse(bezier.arcs(options.error, options.max_iterations, options.strategy));
+						arcs.forEach((circleSector, index) => {
+							drawCircleSector(context, circleSector, `hsl(${40 * index}, 100%, 50%, 75%)`, `hsl(${40 * index}, 100%, 50%, 37.5%)`);
+						});
+					},
+					template: markRaw(SliderExample),
+					templateOptions: {
+						sliders: [
+							{
+								variable: "strategy",
+								min: 0,
+								max: 2,
+								step: 1,
+								default: 0,
+								unit: [": Automatic", ": FavorLargerArcs", ": FavorCorrectness"],
+							},
+							{
+								variable: "error",
+								min: 0.05,
+								max: 1,
+								step: 0.05,
+								default: 0.5,
+							},
+							{
+								variable: "max_iterations",
+								min: 50,
+								max: 200,
+								step: 1,
+								default: 100,
+							},
+						],
+					},
+					curveDegrees: new Set([BezierCurveType.Quadratic, BezierCurveType.Cubic]),
+					customPoints: {
+						[BezierCurveType.Quadratic]: [
+							[50, 50],
+							[85, 65],
+							[100, 100],
+						],
+						[BezierCurveType.Cubic]: [
+							[160, 180],
+							[170, 10],
+							[30, 90],
+							[180, 160],
+						],
 					},
 				},
 				{
