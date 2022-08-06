@@ -1,13 +1,16 @@
 //! Bezier-rs: A Bezier Math Library for Rust
 
 mod consts;
+mod structs;
 pub mod subpath;
 mod utils;
 
 use consts::*;
+pub use structs::*;
 pub use subpath::*;
 
 use glam::{DMat2, DVec2};
+use std::f64::consts::PI;
 use std::fmt::{Debug, Formatter, Result};
 use std::ops::Range;
 
@@ -27,30 +30,6 @@ enum BezierHandles {
 		/// Point representing the location of the handle associated to the end point.
 		handle_end: DVec2,
 	},
-}
-
-/// Struct to represent optional parameters that can be passed to the `project` function.
-#[derive(Copy, Clone)]
-pub struct ProjectionOptions {
-	/// Size of the lookup table for the initial passthrough. The default value is 20.
-	pub lut_size: i32,
-	/// Difference used between floating point numbers to be considered as equal. The default value is `0.0001`
-	pub convergence_epsilon: f64,
-	/// Controls the number of iterations needed to consider that minimum distance to have converged. The default value is 3.
-	pub convergence_limit: i32,
-	/// Controls the maximum total number of iterations to be used. The default value is 10.
-	pub iteration_limit: i32,
-}
-
-impl Default for ProjectionOptions {
-	fn default() -> Self {
-		ProjectionOptions {
-			lut_size: 20,
-			convergence_epsilon: 1e-4,
-			convergence_limit: 3,
-			iteration_limit: 10,
-		}
-	}
 }
 
 /// Representation of a bezier curve with 2D points.
@@ -317,16 +296,16 @@ impl Bezier {
 		// Basis code based off of pseudocode found here: <https://pomax.github.io/bezierinfo/#explanation>.
 
 		let t_squared = t * t;
-		let one_minus_t = 1.0 - t;
+		let one_minus_t = 1. - t;
 		let squared_one_minus_t = one_minus_t * one_minus_t;
 
 		match self.handles {
 			BezierHandles::Linear => self.start.lerp(self.end, t),
-			BezierHandles::Quadratic { handle } => squared_one_minus_t * self.start + 2.0 * one_minus_t * t * handle + t_squared * self.end,
+			BezierHandles::Quadratic { handle } => squared_one_minus_t * self.start + 2. * one_minus_t * t * handle + t_squared * self.end,
 			BezierHandles::Cubic { handle_start, handle_end } => {
 				let t_cubed = t_squared * t;
 				let cubed_one_minus_t = squared_one_minus_t * one_minus_t;
-				cubed_one_minus_t * self.start + 3.0 * squared_one_minus_t * t * handle_start + 3.0 * one_minus_t * t_squared * handle_end + t_cubed * self.end
+				cubed_one_minus_t * self.start + 3. * squared_one_minus_t * t * handle_start + 3. * one_minus_t * t_squared * handle_end + t_cubed * self.end
 			}
 		}
 	}
@@ -334,19 +313,19 @@ impl Bezier {
 	/// Calculate the point on the curve based on the `t`-value provided.
 	/// Expects `t` to be within the inclusive range `[0, 1]`.
 	pub fn evaluate(&self, t: f64) -> DVec2 {
-		assert!((0.0..=1.0).contains(&t));
+		assert!((0.0..=1.).contains(&t));
 		self.unrestricted_evaluate(t)
 	}
 
 	/// Return a selection of equidistant points on the bezier curve.
 	/// If no value is provided for `steps`, then the function will default `steps` to be 10.
-	pub fn compute_lookup_table(&self, steps: Option<i32>) -> Vec<DVec2> {
+	pub fn compute_lookup_table(&self, steps: Option<usize>) -> Vec<DVec2> {
 		let steps_unwrapped = steps.unwrap_or(DEFAULT_LUT_STEP_SIZE);
-		let ratio: f64 = 1.0 / (steps_unwrapped as f64);
-		let mut steps_array = Vec::with_capacity((steps_unwrapped + 1) as usize);
+		let ratio: f64 = 1. / (steps_unwrapped as f64);
+		let mut steps_array = Vec::with_capacity(steps_unwrapped + 1);
 
 		for t in 0..steps_unwrapped + 1 {
-			steps_array.push(self.evaluate(f64::from(t) * ratio))
+			steps_array.push(self.evaluate(f64::from(t as i32) * ratio))
 		}
 
 		steps_array
@@ -354,7 +333,7 @@ impl Bezier {
 
 	/// Return an approximation of the length of the bezier curve.
 	/// - `num_subdivisions` - Number of subdivisions used to approximate the curve. The default value is 1000.
-	pub fn length(&self, num_subdivisions: Option<i32>) -> f64 {
+	pub fn length(&self, num_subdivisions: Option<usize>) -> f64 {
 		match self.handles {
 			BezierHandles::Linear => self.start.distance(self.end),
 			_ => {
@@ -363,7 +342,7 @@ impl Bezier {
 				// We will use an approximate approach where we split the curve into many subdivisions
 				// and calculate the euclidean distance between the two endpoints of the subdivision
 				let lookup_table = self.compute_lookup_table(Some(num_subdivisions.unwrap_or(DEFAULT_LENGTH_SUBDIVISIONS)));
-				let mut approx_curve_length = 0.0;
+				let mut approx_curve_length = 0.;
 				let mut previous_point = lookup_table[0];
 				// Calculate approximate distance between subdivision
 				for current_point in lookup_table.iter().skip(1) {
@@ -499,8 +478,10 @@ impl Bezier {
 		let (minimum_position, minimum_distance) = utils::get_closest_point_in_lut(&lut, point);
 
 		// Get the t values to the left and right of the closest result in the lookup table
-		let mut left_t = (0.max(minimum_position - 1) as f64) / lut_size as f64;
-		let mut right_t = (lut_size.min(minimum_position + 1)) as f64 / lut_size as f64;
+		let lut_size_f64 = lut_size as f64;
+		let minimum_position_f64 = minimum_position as f64;
+		let mut left_t = (minimum_position_f64 - 1.).max(0.) / lut_size_f64;
+		let mut right_t = (minimum_position_f64 + 1.).min(lut_size_f64) / lut_size_f64;
 
 		// Perform a finer search by finding closest t from 5 points between [left_t, right_t] inclusive
 		// Choose new left_t and right_t for a smaller range around the closest t and repeat the process
@@ -518,16 +499,16 @@ impl Bezier {
 
 		// Store calculated distances to minimize unnecessary recomputations
 		let mut distances: [f64; NUM_DISTANCES] = [
-			point.distance(lut[0.max(minimum_position - 1) as usize]),
+			point.distance(lut[(minimum_position as i64 - 1).max(0) as usize]),
 			0.,
 			0.,
 			0.,
-			point.distance(lut[lut_size.min(minimum_position + 1) as usize]),
+			point.distance(lut[lut_size.min(minimum_position + 1)]),
 		];
 
 		while left_t <= right_t && convergence_count < convergence_limit && iteration_count < iteration_limit {
 			previous_distance = new_minimum_distance;
-			let step = (right_t - left_t) / ((NUM_DISTANCES - 1) as f64);
+			let step = (right_t - left_t) / (NUM_DISTANCES as f64 - 1.);
 			let mut iterator_t = left_t;
 			let mut target_index = 0;
 			// Iterate through first 4 points and will handle the right most point later
@@ -839,6 +820,15 @@ impl Bezier {
 		endpoint_normal_angle < SCALABLE_CURVE_MAX_ENDPOINT_NORMAL_ANGLE
 	}
 
+	/// Add the bezier endpoints if not already present, and combine and sort the dimensional extrema.
+	fn get_extrema_t_list(&self) -> Vec<f64> {
+		let mut extrema = self.local_extrema().into_iter().flatten().collect::<Vec<f64>>();
+		extrema.append(&mut vec![0., 1.]);
+		extrema.dedup();
+		extrema.sort_by(|ex1, ex2| ex1.partial_cmp(ex2).unwrap());
+		extrema
+	}
+
 	/// Returns a tuple of the scalable subcurves and the corresponding `t` values that were used to split the curve.
 	/// This function may introduce gaps if subsections of the curve are not reducible.
 	/// The function takes the following parameter:
@@ -852,10 +842,7 @@ impl Bezier {
 
 		let step_size = step_size.unwrap_or(DEFAULT_REDUCE_STEP_SIZE);
 
-		let mut extrema: Vec<f64> = self.local_extrema().into_iter().flatten().collect::<Vec<f64>>();
-		extrema.append(&mut vec![0., 1.]);
-		extrema.dedup();
-		extrema.sort_by(|ex1, ex2| ex1.partial_cmp(ex2).unwrap());
+		let extrema = self.get_extrema_t_list();
 
 		// Split each subcurve such that each resulting segment is scalable.
 		let mut result_beziers: Vec<Bezier> = Vec::new();
@@ -921,6 +908,153 @@ impl Bezier {
 	///   A small granularity may increase the chance the function does not introduce gaps, but will increase computation time.
 	pub fn reduce(&self, step_size: Option<f64>) -> Vec<Bezier> {
 		self.reduced_curves_and_t_values(step_size).0
+	}
+
+	/// Approximate a bezier curve with circular arcs.
+	/// The algorithm can be customized using the [ArcsOptions] structure.
+	pub fn arcs(&self, arcs_options: ArcsOptions) -> Vec<CircleArc> {
+		let ArcsOptions {
+			strategy: maximize_arcs,
+			error,
+			max_iterations,
+		} = arcs_options;
+
+		match maximize_arcs {
+			ArcStrategy::Automatic => {
+				let (auto_arcs, final_low_t) = self.approximate_curve_with_arcs(0., 1., error, max_iterations, true);
+				let arc_approximations = self.split(final_low_t)[1].arcs(ArcsOptions {
+					strategy: ArcStrategy::FavorCorrectness,
+					error,
+					max_iterations,
+				});
+				if final_low_t != 1. {
+					[auto_arcs, arc_approximations].concat()
+				} else {
+					auto_arcs
+				}
+			}
+			ArcStrategy::FavorLargerArcs => self.approximate_curve_with_arcs(0., 1., error, max_iterations, false).0,
+			ArcStrategy::FavorCorrectness => self
+				.get_extrema_t_list()
+				.windows(2)
+				.flat_map(|t_pair| self.approximate_curve_with_arcs(t_pair[0], t_pair[1], error, max_iterations, false).0)
+				.collect::<Vec<CircleArc>>(),
+		}
+	}
+
+	/// Implements an algorithm that approximates a bezier curve with circular arcs.
+	/// This algorithm uses a method akin to binary search to find an arc that approximates a maximal segment of the curve.
+	/// Once a maximal arc has been found for a sub-segment of the curve, the algorithm continues by starting again at the end of the previous approximation.
+	/// More details can be found in the [Approximating a Bezier curve with circular arcs](https://pomax.github.io/bezierinfo/#arcapproximation) section of Pomax's bezier curve primer.
+	/// A caveat with this algorithm is that it is possible to find erroneous approximations in cases such as in a very narrow `U`.
+	/// - `stop_when_invalid`: Used to determine whether the algorithm should terminate early if erroneous approximations are encountered.
+	///
+	/// Returns a tuple where the first element is the list of circular arcs and the second is the `t` value where the next segment should start from.
+	/// The second value will be `1.` except for when `stop_when_invalid` is true and an invalid approximation is encountered.
+	fn approximate_curve_with_arcs(&self, local_low: f64, local_high: f64, error: f64, max_iterations: usize, stop_when_invalid: bool) -> (Vec<CircleArc>, f64) {
+		let mut low = local_low;
+		let mut middle = (local_low + local_high) / 2.;
+		let mut high = local_high;
+		let mut previous_high = local_high;
+
+		let mut iterations = 0;
+		let mut previous_arc = CircleArc::default();
+		let mut was_previous_good = false;
+		let mut arcs = Vec::new();
+
+		// Outer loop to iterate over the curve
+		while low < local_high {
+			// Inner loop to find the next maximal segment of the curve that can be approximated with a circular arc
+			while iterations <= max_iterations {
+				iterations += 1;
+				let p1 = self.evaluate(low);
+				let p2 = self.evaluate(middle);
+				let p3 = self.evaluate(high);
+
+				let wrapped_center = utils::compute_circle_center_from_points(p1, p2, p3);
+				// If the segment is linear, move on to next segment
+				if wrapped_center.is_none() {
+					previous_high = high;
+					low = high;
+					high = 1.;
+					middle = (low + high) / 2.;
+					was_previous_good = false;
+					break;
+				}
+
+				let center = wrapped_center.unwrap();
+				let radius = center.distance(p1);
+
+				let angle_p1 = DVec2::new(1., 0.).angle_between(p1 - center);
+				let angle_p2 = DVec2::new(1., 0.).angle_between(p2 - center);
+				let angle_p3 = DVec2::new(1., 0.).angle_between(p3 - center);
+
+				let mut start_angle = angle_p1;
+				let mut end_angle = angle_p3;
+
+				// Adjust start and end angles of the arc to ensure that it travels in the counter-clockwise direction
+				if angle_p1 < angle_p3 {
+					if angle_p2 < angle_p1 || angle_p3 < angle_p2 {
+						std::mem::swap(&mut start_angle, &mut end_angle);
+					}
+				} else if angle_p2 < angle_p1 && angle_p3 < angle_p2 {
+					std::mem::swap(&mut start_angle, &mut end_angle);
+				}
+
+				let new_arc = CircleArc {
+					center,
+					radius,
+					start_angle,
+					end_angle,
+				};
+
+				// Use points in between low, middle, and high to evaluate how well the arc approximates the curve
+				let e1 = self.evaluate((low + middle) / 2.);
+				let e2 = self.evaluate((middle + high) / 2.);
+
+				// Iterate until we find the largest good approximation such that the next iteration is not a good approximation with an arc
+				if utils::f64_compare(radius, e1.distance(center), error) && utils::f64_compare(radius, e2.distance(center), error) {
+					// Check if the good approximation is actually valid: the sector angle cannot be larger than 180 degrees (PI radians)
+					let mut sector_angle = end_angle - start_angle;
+					if sector_angle < 0. {
+						sector_angle += 2. * PI;
+					}
+					if stop_when_invalid && sector_angle > PI {
+						return (arcs, low);
+					}
+					if high == local_high {
+						// Found the final arc approximation
+						arcs.push(new_arc);
+						low = high;
+						break;
+					}
+					// If the approximation is good, expand the segment by half to try finding a larger good approximation
+					previous_high = high;
+					high = (high + (high - low) / 2.).min(local_high);
+					middle = (low + high) / 2.;
+					previous_arc = new_arc;
+					was_previous_good = true;
+				} else if was_previous_good {
+					// If the previous approximation was good and the current one is bad, then we use the previous good approximation
+					arcs.push(previous_arc);
+
+					// Continue searching for approximations for the rest of the curve
+					low = previous_high;
+					high = local_high;
+					middle = low + (high - low) / 2.;
+					was_previous_good = false;
+					break;
+				} else {
+					// If no good approximation has been seen yet, try again with half the segment
+					previous_high = high;
+					high = middle;
+					middle = low + (high - low) / 2.;
+					previous_arc = new_arc;
+				}
+			}
+		}
+
+		(arcs, low)
 	}
 
 	/// Return the min and max corners that represent the bounding box of the curve.
@@ -1049,6 +1183,14 @@ mod tests {
 			.all(|(&a, b)| compare_vector_of_points(a.get_points().collect::<Vec<DVec2>>(), b.to_vec()))
 	}
 
+	// Compare circle arcs by allowing some maximum absolute difference between values to account for floating point errors
+	fn compare_arcs(arc1: CircleArc, arc2: CircleArc) -> bool {
+		compare_points(arc1.center, arc2.center)
+			&& utils::f64_compare(arc1.radius, arc1.radius, MAX_ABSOLUTE_DIFFERENCE)
+			&& utils::f64_compare(arc1.start_angle, arc2.start_angle, MAX_ABSOLUTE_DIFFERENCE)
+			&& utils::f64_compare(arc1.end_angle, arc2.end_angle, MAX_ABSOLUTE_DIFFERENCE)
+	}
+
 	// Compare vectors of points with some maximum allowed absolute difference between the values
 	fn compare_vec_of_points(vec1: Vec<DVec2>, vec2: Vec<DVec2>, max_absolute_difference: f64) -> bool {
 		vec1.into_iter().zip(vec2).all(|(p1, p2)| p1.abs_diff_eq(p2, max_absolute_difference))
@@ -1097,6 +1239,7 @@ mod tests {
 		let bezier2 = Bezier::from_quadratic_coordinates(0., 0., 0., 100., 100., 100.);
 		assert!(bezier2.evaluate(bezier2.project(DVec2::new(100., 0.), project_options)) == DVec2::new(0., 0.));
 	}
+
 	#[test]
 	fn test_intersect_line_segment_linear() {
 		let p1 = DVec2::new(30., 60.);
@@ -1231,5 +1374,74 @@ mod tests {
 			.iter()
 			.zip(helper_t_values.windows(2))
 			.all(|(curve, t_pair)| curve.abs_diff_eq(&bezier.trim(t_pair[0], t_pair[1]), MAX_ABSOLUTE_DIFFERENCE)))
+	}
+
+	#[test]
+	fn test_arcs_linear() {
+		let bezier = Bezier::from_linear_coordinates(30., 60., 140., 120.);
+		let linear_arcs = bezier.arcs(ArcsOptions::default());
+		assert!(linear_arcs.is_empty());
+	}
+
+	#[test]
+	fn test_arcs_quadratic() {
+		let bezier1 = Bezier::from_quadratic_coordinates(30., 30., 50., 50., 100., 100.);
+		assert!(bezier1.arcs(ArcsOptions::default()).is_empty());
+
+		let bezier2 = Bezier::from_quadratic_coordinates(50., 50., 85., 65., 100., 100.);
+		let actual_arcs = bezier2.arcs(ArcsOptions::default());
+		let expected_arc = CircleArc {
+			center: DVec2::new(15., 135.),
+			radius: 91.92388,
+			start_angle: -1.18019,
+			end_angle: -0.39061,
+		};
+		assert_eq!(actual_arcs.len(), 1);
+		assert!(compare_arcs(actual_arcs[0], expected_arc));
+	}
+
+	#[test]
+	fn test_arcs_cubic() {
+		let bezier = Bezier::from_cubic_coordinates(30., 30., 30., 80., 60., 80., 60., 140.);
+		let actual_arcs = bezier.arcs(ArcsOptions::default());
+		let expected_arcs = vec![
+			CircleArc {
+				center: DVec2::new(122.394877, 30.7777189),
+				radius: 92.39815,
+				start_angle: 2.5637146,
+				end_angle: -3.1331755,
+			},
+			CircleArc {
+				center: DVec2::new(-47.54881, 136.169378),
+				radius: 107.61701,
+				start_angle: -0.53556,
+				end_angle: 0.0356025,
+			},
+		];
+
+		assert_eq!(actual_arcs.len(), 2);
+		assert!(compare_arcs(actual_arcs[0], expected_arcs[0]));
+		assert!(compare_arcs(actual_arcs[1], expected_arcs[1]));
+
+		// Bezier that contains the erroneous case when maximizing arcs
+		let bezier2 = Bezier::from_cubic_coordinates(48., 176., 170., 10., 30., 90., 180., 160.);
+		let auto_arcs = bezier2.arcs(ArcsOptions::default());
+
+		let extrema_arcs = bezier2.arcs(ArcsOptions {
+			strategy: ArcStrategy::FavorCorrectness,
+			..ArcsOptions::default()
+		});
+
+		let maximal_arcs = bezier2.arcs(ArcsOptions {
+			strategy: ArcStrategy::FavorLargerArcs,
+			..ArcsOptions::default()
+		});
+
+		// Resulting automatic arcs match the maximal results until the bad arc (in this case, only index 0 should match)
+		assert_eq!(auto_arcs[0], maximal_arcs[0]);
+		// Check that the first result from MaximizeArcs::Automatic should not equal the first results from MaximizeArcs::Off
+		assert_ne!(auto_arcs[0], extrema_arcs[0]);
+		// The remaining results (index 2 onwards) should match the results where MaximizeArcs::Off from the next extrema point onwards (after index 2).
+		assert!(auto_arcs.iter().skip(2).zip(extrema_arcs.iter().skip(2)).all(|(arc1, arc2)| compare_arcs(*arc1, *arc2)));
 	}
 }

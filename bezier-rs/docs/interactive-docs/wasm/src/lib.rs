@@ -1,10 +1,20 @@
 pub mod subpath;
 mod svg_drawing;
 
-use bezier_rs::{Bezier, ProjectionOptions};
+use bezier_rs::{ArcStrategy, ArcsOptions, Bezier, ProjectionOptions};
 use glam::DVec2;
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
+
+#[derive(Serialize, Deserialize)]
+struct CircleSector {
+	center: Point,
+	radius: f64,
+	#[serde(rename = "startAngle")]
+	start_angle: f64,
+	#[serde(rename = "endAngle")]
+	end_angle: f64,
+}
 
 #[derive(Serialize, Deserialize)]
 struct Point {
@@ -12,14 +22,21 @@ struct Point {
 	y: f64,
 }
 
+#[wasm_bindgen]
+pub enum WasmMaximizeArcs {
+	Automatic, // 0
+	On,        // 1
+	Off,       // 2
+}
+
 /// Wrapper of the `Bezier` struct to be used in JS.
 #[wasm_bindgen]
 #[derive(Clone)]
 pub struct WasmBezier(Bezier);
 
-/// Convert a `DVec2` into a `JsValue`.
-fn vec_to_point(p: &DVec2) -> JsValue {
-	JsValue::from_serde(&serde_json::to_string(&Point { x: p.x, y: p.y }).unwrap()).unwrap()
+/// Convert a `DVec2` into a `Point`.
+fn vec_to_point(p: &DVec2) -> Point {
+	Point { x: p.x, y: p.y }
 }
 
 /// Convert a bezier to a list of points.
@@ -30,6 +47,14 @@ fn bezier_to_points(bezier: Bezier) -> Vec<Point> {
 /// Serialize some data and then convert it to a JsValue.
 fn to_js_value<T: Serialize>(data: T) -> JsValue {
 	JsValue::from_serde(&serde_json::to_string(&data).unwrap()).unwrap()
+}
+
+fn convert_wasm_maximize_arcs(wasm_enum_value: WasmMaximizeArcs) -> ArcStrategy {
+	match wasm_enum_value {
+		WasmMaximizeArcs::Automatic => ArcStrategy::Automatic,
+		WasmMaximizeArcs::On => ArcStrategy::FavorLargerArcs,
+		WasmMaximizeArcs::Off => ArcStrategy::FavorCorrectness,
+	}
 }
 
 #[wasm_bindgen]
@@ -78,8 +103,10 @@ impl WasmBezier {
 		self.0.set_handle_end(DVec2::new(x, y));
 	}
 
-	pub fn get_points(&self) -> Vec<JsValue> {
-		self.0.get_points().map(|point| vec_to_point(&point)).collect()
+	/// The wrapped return type is `Vec<Point>`.
+	pub fn get_points(&self) -> JsValue {
+		let points: Vec<Point> = self.0.get_points().map(|point| vec_to_point(&point)).collect();
+		to_js_value(points)
 	}
 
 	pub fn to_svg(&self) -> String {
@@ -90,26 +117,39 @@ impl WasmBezier {
 		self.0.length(None)
 	}
 
+	/// The wrapped return type is `Point`.
 	pub fn evaluate(&self, t: f64) -> JsValue {
-		vec_to_point(&self.0.evaluate(t))
+		let point: Point = vec_to_point(&self.0.evaluate(t));
+		to_js_value(point)
 	}
 
-	pub fn compute_lookup_table(&self, steps: i32) -> Vec<JsValue> {
-		self.0.compute_lookup_table(Some(steps)).iter().map(vec_to_point).collect()
+	/// The wrapped return type is `Vec<Point>`.
+	pub fn compute_lookup_table(&self, steps: usize) -> JsValue {
+		let table_values: Vec<Point> = self.0.compute_lookup_table(Some(steps)).iter().map(vec_to_point).collect();
+		to_js_value(table_values)
 	}
 
 	pub fn derivative(&self) -> Option<WasmBezier> {
 		self.0.derivative().map(WasmBezier)
 	}
 
+	/// The wrapped return type is `Point`.
 	pub fn tangent(&self, t: f64) -> JsValue {
-		vec_to_point(&self.0.tangent(t))
+		let tangent_point: Point = vec_to_point(&self.0.tangent(t));
+		to_js_value(tangent_point)
 	}
 
+	/// The wrapped return type is `Point`.
 	pub fn normal(&self, t: f64) -> JsValue {
-		vec_to_point(&self.0.normal(t))
+		let normal_point: Point = vec_to_point(&self.0.normal(t));
+		to_js_value(normal_point)
 	}
 
+	pub fn curvature(&self, t: f64) -> f64 {
+		self.0.curvature(t)
+	}
+
+	/// The wrapped return type is `[Vec<Point>; 2]`.
 	pub fn split(&self, t: f64) -> JsValue {
 		let bezier_points: [Vec<Point>; 2] = self.0.split(t).map(bezier_to_points);
 		to_js_value(bezier_points)
@@ -123,29 +163,33 @@ impl WasmBezier {
 		self.0.project(DVec2::new(x, y), ProjectionOptions::default())
 	}
 
+	/// The wrapped return type is `[Vec<f64>; 2]`.
 	pub fn local_extrema(&self) -> JsValue {
-		let local_extrema = self.0.local_extrema();
+		let local_extrema: [Vec<f64>; 2] = self.0.local_extrema();
 		to_js_value(local_extrema)
 	}
 
+	/// The wrapped return type is `[Point; 2]`.
 	pub fn bounding_box(&self) -> JsValue {
 		let bbox_points: [Point; 2] = self.0.bounding_box().map(|p| Point { x: p.x, y: p.y });
 		to_js_value(bbox_points)
 	}
 
+	/// The wrapped return type is `Vec<f64>`.
 	pub fn inflections(&self) -> JsValue {
-		let inflections = self.0.inflections();
+		let inflections: Vec<f64> = self.0.inflections();
 		to_js_value(inflections)
 	}
 
+	/// The wrapped return type is `Vec<Vec<Point>>`.
 	pub fn de_casteljau_points(&self, t: f64) -> JsValue {
-		let hull = self
+		let points: Vec<Vec<Point>> = self
 			.0
 			.de_casteljau_points(t)
 			.iter()
 			.map(|level| level.iter().map(|&point| Point { x: point.x, y: point.y }).collect::<Vec<Point>>())
-			.collect::<Vec<Vec<Point>>>();
-		to_js_value(hull)
+			.collect();
+		to_js_value(points)
 	}
 
 	pub fn rotate(&self, angle: f64) -> WasmBezier {
@@ -185,12 +229,30 @@ impl WasmBezier {
 		to_js_value(bezier_points)
 	}
 
+	/// The wrapped return type is `Vec<Vec<Point>>`.
 	pub fn offset(&self, distance: f64) -> JsValue {
 		let bezier_points: Vec<Vec<Point>> = self.0.offset(distance).into_iter().map(bezier_to_points).collect();
 		to_js_value(bezier_points)
 	}
 
-	pub fn curvature(&self, t: f64) -> f64 {
-		self.0.curvature(t)
+	/// The wrapped return type is `Vec<CircleSector>`.
+	pub fn arcs(&self, error: f64, max_iterations: usize, maximize_arcs: WasmMaximizeArcs) -> JsValue {
+		let strategy = convert_wasm_maximize_arcs(maximize_arcs);
+		let options = ArcsOptions { error, max_iterations, strategy };
+		let circle_sectors: Vec<CircleSector> = self
+			.0
+			.arcs(options)
+			.iter()
+			.map(|sector| CircleSector {
+				center: Point {
+					x: sector.center.x,
+					y: sector.center.y,
+				},
+				radius: sector.radius,
+				start_angle: sector.start_angle,
+				end_angle: sector.end_angle,
+			})
+			.collect();
+		to_js_value(circle_sectors)
 	}
 }

@@ -1,3 +1,0 @@
-{
-  "extends": "./bezier-rs/docs/interactive-docs/tsconfig.json"
-}
