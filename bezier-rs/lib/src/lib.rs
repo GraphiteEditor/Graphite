@@ -1170,9 +1170,9 @@ mod tests {
 		p1.abs_diff_eq(p2, MAX_ABSOLUTE_DIFFERENCE)
 	}
 
-	// Compare vectors of points by allowing some maximum absolute difference to account for floating point errors
-	fn compare_vector_of_points(a: Vec<DVec2>, b: Vec<DVec2>) -> bool {
-		a.len() == b.len() && a.into_iter().zip(b.into_iter()).all(|(p1, p2)| p1.abs_diff_eq(p2, MAX_ABSOLUTE_DIFFERENCE))
+	// Compare vecs of points by allowing some maximum absolute difference to account for floating point errors
+	fn compare_vec_of_points(a: Vec<DVec2>, b: Vec<DVec2>, max_absolute_difference: f64) -> bool {
+		a.len() == b.len() && a.into_iter().zip(b.into_iter()).all(|(p1, p2)| p1.abs_diff_eq(p2, max_absolute_difference))
 	}
 
 	// Compare vectors of beziers by allowing some maximum absolute difference between points to account for floating point errors
@@ -1180,7 +1180,7 @@ mod tests {
 		beziers
 			.iter()
 			.zip(expected_bezier_points.iter())
-			.all(|(&a, b)| compare_vector_of_points(a.get_points().collect::<Vec<DVec2>>(), b.to_vec()))
+			.all(|(&a, b)| compare_vec_of_points(a.get_points().collect::<Vec<DVec2>>(), b.to_vec(), MAX_ABSOLUTE_DIFFERENCE))
 	}
 
 	// Compare circle arcs by allowing some maximum absolute difference between values to account for floating point errors
@@ -1189,11 +1189,6 @@ mod tests {
 			&& utils::f64_compare(arc1.radius, arc1.radius, MAX_ABSOLUTE_DIFFERENCE)
 			&& utils::f64_compare(arc1.start_angle, arc2.start_angle, MAX_ABSOLUTE_DIFFERENCE)
 			&& utils::f64_compare(arc1.end_angle, arc2.end_angle, MAX_ABSOLUTE_DIFFERENCE)
-	}
-
-	// Compare vectors of points with some maximum allowed absolute difference between the values
-	fn compare_vec_of_points(vec1: Vec<DVec2>, vec2: Vec<DVec2>, max_absolute_difference: f64) -> bool {
-		vec1.into_iter().zip(vec2).all(|(p1, p2)| p1.abs_diff_eq(p2, max_absolute_difference))
 	}
 
 	#[test]
@@ -1741,8 +1736,28 @@ mod tests {
 		assert!(auto_arcs.iter().skip(2).zip(extrema_arcs.iter().skip(2)).all(|(arc1, arc2)| compare_arcs(*arc1, *arc2)));
 	}
 
-	// TODO: Test bounding box
-	// TODO: Test inflections
+	#[test]
+	fn test_bounding_box() {
+		// Case where the start and end points dictate the bounding box
+		let bezier_simple = Bezier::from_linear_coordinates(0., 0., 10., 10.);
+		assert_eq!(bezier_simple.bounding_box(), [DVec2::new(0., 0.), DVec2::new(10., 10.)]);
+
+		// Case where the curve's extrema dictate the bounding box
+		let bezier_complex = Bezier::from_cubic_coordinates(90., 70., 25., 25., 175., 175., 110., 130.);
+		assert!(compare_vec_of_points(
+			bezier_complex.bounding_box().to_vec(),
+			vec![DVec2::new(73.2774, 61.4755), DVec2::new(126.7226, 138.5245)],
+			1e-3
+		));
+	}
+
+	#[test]
+	fn test_inflections() {
+		let bezier = Bezier::from_cubic_coordinates(30., 30., 30., 150., 150., 30., 150., 150.);
+		let inflections = bezier.inflections();
+		assert_eq!(inflections.len(), 1);
+		assert_eq!(inflections[0], 0.5);
+	}
 
 	#[test]
 	fn test_offset() {
