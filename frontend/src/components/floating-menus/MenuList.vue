@@ -105,7 +105,6 @@
 			}
 
 			.user-input-label {
-				margin: 0;
 				margin-left: 16px;
 			}
 

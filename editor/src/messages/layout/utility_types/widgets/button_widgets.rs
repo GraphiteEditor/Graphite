@@ -41,6 +41,8 @@ pub struct PopoverButton {
 pub struct TextButton {
 	pub label: String,
 
+	pub icon: Option<String>,
+
 	pub emphasized: bool,
 
 	#[serde(rename = "minWidth")]

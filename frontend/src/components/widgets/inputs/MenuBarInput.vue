@@ -72,15 +72,18 @@
 <script lang="ts">
 import { defineComponent } from "vue";
 
+import { operatingSystemIsMac } from "@/utility-functions/platform";
 import { MenuEntry, UpdateMenuBarLayout, MenuListEntry } from "@/wasm-communication/messages";
 
 import MenuList from "@/components/floating-menus/MenuList.vue";
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
 
+// TODO: Apparently, Safari does not support the Keyboard.lock() API but does relax its authority over certain keyboard shortcuts in fullscreen mode, which we should handle correctly
+const controlOrCommand = operatingSystemIsMac() ? "KeyCommand" : "KeyControl";
 const LOCK_REQUIRING_SHORTCUTS = [
-	["KeyControl", "KeyN"],
-	["KeyControl", "KeyShift", "KeyT"],
-	["KeyControl", "KeyW"],
+	[controlOrCommand, "KeyN"],
+	[controlOrCommand, "KeyShift", "KeyT"],
+	[controlOrCommand, "KeyW"],
 ];
 
 type FrontendMenuColumn = {
