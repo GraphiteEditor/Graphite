@@ -23,7 +23,6 @@
 .user-input-label {
 	flex: 0 0 auto;
 	height: 100%;
-	margin: 0 8px;
 	align-items: center;
 	white-space: nowrap;
 
@@ -188,10 +187,15 @@ export default defineComponent({
 			return Boolean(this.$slots.default);
 		},
 		keyboardLockInfoMessage(): string {
-			const USE_FULLSCREEN = "This hotkey is reserved by the browser, but becomes available in fullscreen mode";
-			const SWITCH_BROWSER = "This hotkey is reserved by the browser, but becomes available in Chrome, Edge, and Opera which support the Keyboard.lock() API";
+			const RESERVED = "This hotkey is reserved by the browser. ";
+			const USE_FULLSCREEN = "It is made available in fullscreen mode.";
+			const USE_SECURE_CTX = "It is made available in fullscreen mode when this website is served from a secure context (https or localhost).";
+			const SWITCH_BROWSER = "Use a Chromium-based browser (like Chrome or Edge) in fullscreen mode to directly use the shortcut.";
 
-			return this.fullscreen.keyboardLockApiSupported ? USE_FULLSCREEN : SWITCH_BROWSER;
+			if (this.fullscreen.keyboardLockApiSupported) return `${RESERVED} ${USE_FULLSCREEN}`;
+			if (!("chrome" in window)) return `${RESERVED} ${SWITCH_BROWSER}`;
+			if (!window.isSecureContext) return `${RESERVED} ${USE_SECURE_CTX}`;
+			return RESERVED;
 		},
 		displayKeyboardLockNotice(): boolean {
 			return this.requiresLock && !this.fullscreen.state.keyboardLocked;

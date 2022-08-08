@@ -34,8 +34,12 @@
 			font-weight: 700;
 		}
 
-		.user-input-label + .user-input-label {
-			margin-left: 0;
+		.user-input-label {
+			margin: 0 8px;
+
+			& + .user-input-label {
+				margin-left: 0;
+			}
 		}
 	}
 }

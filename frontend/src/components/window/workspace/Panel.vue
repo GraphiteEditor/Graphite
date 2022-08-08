@@ -28,26 +28,24 @@
 						<IconLabel :icon="'GraphiteLogotypeSolid'" />
 					</LayoutRow>
 					<LayoutRow class="actions">
-						<LayoutCol>
-							<IconButton :action="() => newDocument()" :icon="'File'" :size="24" />
-							<IconButton :action="() => openDocument()" :icon="'Folder'" :size="24" />
-						</LayoutCol>
-						<LayoutCol>
-							<Separator :type="'Related'" />
-							<Separator :type="'Related'" />
-						</LayoutCol>
-						<LayoutCol>
-							<TextLabel>New Document:</TextLabel>
-							<TextLabel>Open Document:</TextLabel>
-						</LayoutCol>
-						<LayoutCol>
-							<Separator :type="'Unrelated'" />
-							<Separator :type="'Unrelated'" />
-						</LayoutCol>
-						<LayoutCol>
-							<UserInputLabel :inputKeys="[[controlOrCommandKey(), 'KeyN']]" />
-							<UserInputLabel :inputKeys="[[controlOrCommandKey(), 'KeyO']]" />
-						</LayoutCol>
+						<table>
+							<tr>
+								<td>
+									<TextButton :label="'New Document:'" :icon="'File'" :action="() => newDocument()" />
+								</td>
+								<td>
+									<UserInputLabel :inputKeys="[[...platformModifiers(true), 'KeyN']]" />
+								</td>
+							</tr>
+							<tr>
+								<td>
+									<TextButton :label="'Open Document:'" :icon="'Folder'" :action="() => openDocument()" />
+								</td>
+								<td>
+									<UserInputLabel :inputKeys="[[...platformModifiers(false), 'KeyO']]" />
+								</td>
+							</tr>
+						</table>
 					</LayoutRow>
 				</LayoutCol>
 			</LayoutCol>
@@ -191,19 +189,16 @@
 				}
 
 				.actions {
-					> div {
-						gap: 8px;
+					table {
+						border-spacing: 8px;
+						margin: -8px;
 
-						> * {
-							height: 24px;
+						td {
+							padding: 0;
 						}
 
-						.text-label {
-							line-height: 24px;
-						}
-
-						.user-input-label {
-							margin: 0;
+						.text-button:not(:hover) {
+							background: none;
 						}
 					}
 				}
@@ -226,18 +221,19 @@ import NodeGraph from "@/components/panels/NodeGraph.vue";
 import Properties from "@/components/panels/Properties.vue";
 import IconButton from "@/components/widgets/buttons/IconButton.vue";
 import PopoverButton from "@/components/widgets/buttons/PopoverButton.vue";
+import TextButton from "@/components/widgets/buttons/TextButton.vue";
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
-import Separator from "@/components/widgets/labels/Separator.vue";
 import TextLabel from "@/components/widgets/labels/TextLabel.vue";
 import UserInputLabel from "@/components/widgets/labels/UserInputLabel.vue";
 
 const panelComponents = {
 	Document,
-	Properties,
+	IconButton,
 	LayerTree,
 	NodeGraph,
-	IconButton,
 	PopoverButton,
+	Properties,
+	TextButton,
 };
 type PanelTypes = keyof typeof panelComponents;
 
@@ -259,9 +255,14 @@ export default defineComponent({
 		openDocument() {
 			this.editor.instance.document_open();
 		},
-		controlOrCommandKey() {
+		platformModifiers(reservedKey: boolean) {
 			// TODO: Remove this by properly feeding these keys from a layout provided by the backend
-			return operatingSystemIsMac() ? "KeyCommand" : "KeyControl";
+
+			if (operatingSystemIsMac()) {
+				return reservedKey ? ["KeyControl", "KeyCommand"] : ["KeyCommand"]; // TODO: Change Mac from Control+Command to Alt+Command when we can read Alt+letter modifiers
+			}
+
+			return reservedKey ? ["KeyControl", "KeyAlt"] : ["KeyControl"];
 		},
 	},
 	components: {
@@ -270,7 +271,6 @@ export default defineComponent({
 		IconLabel,
 		TextLabel,
 		UserInputLabel,
-		Separator,
 		...panelComponents,
 	},
 });

@@ -549,6 +549,8 @@ export class TextAreaInput extends WidgetProps {
 export class TextButton extends WidgetProps {
 	label!: string;
 
+	icon!: string | undefined;
+
 	emphasized!: boolean;
 
 	minWidth!: number;
