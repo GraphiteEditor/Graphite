@@ -1339,7 +1339,33 @@ mod tests {
 		assert_eq!(cubic.normal(1.), DVec2::new(-120., 30.).normalize());
 	}
 
-	// TODO: Test curvature
+	#[test]
+	fn test_curvature() {
+		let p1 = DVec2::new(10., 10.);
+		let p2 = DVec2::new(50., 10.);
+		let p3 = DVec2::new(50., 50.);
+		let p4 = DVec2::new(50., 10.);
+
+		let linear = Bezier::from_linear_dvec2(p1, p2);
+		assert_eq!(linear.curvature(0.), 0.);
+		assert_eq!(linear.curvature(0.5), 0.);
+		assert_eq!(linear.curvature(1.), 0.);
+
+		let quadratic = Bezier::from_quadratic_dvec2(p1, p2, p3);
+		assert_eq!(quadratic.curvature(0.), 0.0125);
+		assert_eq!(quadratic.curvature(0.5), 0.035355339059327376);
+		assert_eq!(quadratic.curvature(1.), 0.0125);
+
+		let cubic = Bezier::from_cubic_dvec2(p1, p2, p3, p4);
+		assert_eq!(cubic.curvature(0.), 0.016666666666666666);
+		assert_eq!(cubic.curvature(0.5), 0.);
+		assert_eq!(cubic.curvature(1.), 0.);
+
+		// The curvature at an inflection point is zero
+		let inflection_curve = Bezier::from_cubic_coordinates(30., 30., 30., 150., 150., 30., 150., 150.);
+		let inflections = inflection_curve.inflections();
+		assert_eq!(inflection_curve.curvature(inflections[0]), 0.);
+	}
 
 	#[test]
 	fn test_split() {
