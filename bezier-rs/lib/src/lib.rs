@@ -1641,7 +1641,20 @@ mod tests {
 		assert!(Bezier::from_quadratic_coordinates(160., 180., 170., 10., 30., 90.).self_intersections(None).is_empty());
 	}
 
-	// TODO: Test de_casteljau_points
+	#[test]
+	fn test_de_casteljau_points() {
+		let bezier = Bezier::from_cubic_coordinates(0., 0., 0., 100., 100., 100., 100., 0.);
+		let de_casteljau_points = bezier.de_casteljau_points(0.5);
+		let expected_de_casteljau_points = vec![
+			vec![DVec2::new(0., 0.), DVec2::new(0., 100.), DVec2::new(100., 100.), DVec2::new(100., 0.)],
+			vec![DVec2::new(0., 50.), DVec2::new(50., 100.), DVec2::new(100., 50.)],
+			vec![DVec2::new(25., 75.), DVec2::new(75., 75.)],
+			vec![DVec2::new(50., 75.)],
+		];
+		assert_eq!(&de_casteljau_points, &expected_de_casteljau_points);
+
+		assert_eq!(expected_de_casteljau_points[3][0], bezier.evaluate(0.5))
+	}
 
 	#[test]
 	fn test_reduce() {
