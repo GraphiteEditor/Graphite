@@ -1,8 +1,10 @@
 pub mod value;
 pub use graphene_core::{generic, ops /*, structural*/};
 
-#[cfg(feature = "memoization")]
-pub mod memo;
+//#[cfg(feature = "memoization")]
+//pub mod memo;
+
+//pub mod raster;
 
 pub use graphene_core::*;
 

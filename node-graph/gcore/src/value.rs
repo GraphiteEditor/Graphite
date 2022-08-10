@@ -5,32 +5,39 @@ use core::sync::atomic::AtomicBool;
 use crate::Node;
 
 pub struct IntNode<const N: u32>;
-impl<'n, const N: u32> Node<'n> for IntNode<N> {
+impl<'n, const N: u32> Node<'n, ()> for IntNode<N> {
 	type Output = u32;
-	fn eval(&self) -> u32 {
+	fn eval(&self, _: ()) -> u32 {
 		N
 	}
 }
 
 #[derive(Default)]
 pub struct ValueNode<T>(pub T);
-impl<'n, T: 'n> Node<'n> for ValueNode<T> {
+impl<'n, T: 'n> Node<'n, ()> for ValueNode<T> {
 	type Output = &'n T;
-	fn eval(&'n self) -> Self::Output {
+	fn eval(&'n self, _: ()) -> Self::Output {
 		&self.0
 	}
 }
+
 impl<T> ValueNode<T> {
 	pub const fn new(value: T) -> ValueNode<T> {
 		ValueNode(value)
 	}
 }
 
+impl<T> From<T> for ValueNode<T> {
+	fn from(value: T) -> Self {
+		ValueNode::new(value)
+	}
+}
+
 #[derive(Default)]
 pub struct DefaultNode<T>(PhantomData<T>);
-impl<'n, T: Default + 'n> Node<'n> for DefaultNode<T> {
+impl<'n, T: Default + 'n> Node<'n, ()> for DefaultNode<T> {
 	type Output = T;
-	fn eval(&self) -> T {
+	fn eval(&self, _: ()) -> T {
 		T::default()
 	}
 }
@@ -38,15 +45,15 @@ impl<'n, T: Default + 'n> Node<'n> for DefaultNode<T> {
 #[repr(C)]
 /// Return the unit value
 pub struct UnitNode;
-impl<'n> Node<'n> for UnitNode {
+impl<'n> Node<'n, ()> for UnitNode {
 	type Output = ();
-	fn eval(&'n self) -> Self::Output {}
+	fn eval(&'n self, _: ()) -> Self::Output {}
 }
 
 pub struct InputNode<T>(MaybeUninit<T>, AtomicBool);
-impl<'n, T: 'n> Node<'n> for InputNode<T> {
+impl<'n, T: 'n> Node<'n, ()> for InputNode<T> {
 	type Output = &'n T;
-	fn eval(&'n self) -> Self::Output {
+	fn eval(&'n self, _: ()) -> Self::Output {
 		if self.1.load(core::sync::atomic::Ordering::SeqCst) {
 			unsafe { self.0.assume_init_ref() }
 		} else {

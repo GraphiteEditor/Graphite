@@ -8,23 +8,23 @@ use alloc::boxed::Box;
 #[cfg(feature = "async")]
 use async_trait::async_trait;
 
-pub mod generic;
-pub mod ops;
+//pub mod generic;
+//pub mod ops;
 //pub mod structural;
 pub mod raster;
 pub mod value;
 
-pub trait Node<'n> {
+pub trait Node<'n, T> {
 	type Output; // TODO: replace with generic associated type
 
-	fn eval(&'n self) -> Self::Output;
+	fn eval(&'n self, input: T) -> Self::Output;
 }
 
-impl<'n, N: Node<'n>> Node<'n> for &'n N {
+impl<'n, N: Node<'n, T>, T> Node<'n, T> for &'n N {
 	type Output = N::Output;
 
-	fn eval(&'n self) -> Self::Output {
-		Node::eval(*self)
+	fn eval(&'n self, input: T) -> Self::Output {
+		Node::eval(*self, input)
 	}
 }
 
@@ -34,29 +34,25 @@ pub trait NodeInput {
 	fn new(input: Self::Nodes) -> Self;
 }
 
-trait FQN {
-	fn fqn(&self) -> &'static str;
-}
-
 trait Input<I> {
 	unsafe fn input(&self, input: I);
 }
 
 #[cfg(feature = "async")]
 #[async_trait]
-pub trait AsyncNode<'n> {
+pub trait AsyncNode<'n, T> {
 	type Output; // TODO: replace with generic associated type
 
-	async fn eval_async(&'n self) -> Self::Output;
+	async fn eval_async(&'n self, input: T) -> Self::Output;
 }
 
 #[cfg(feature = "async")]
 #[async_trait]
-impl<'n, N: Node<'n> + Sync> AsyncNode<'n> for N {
+impl<'n, N: Node<'n, T> + Sync, T: Send + 'n> AsyncNode<'n, T> for N {
 	type Output = N::Output;
 
-	async fn eval_async(&'n self) -> Self::Output {
-		Node::eval(self)
+	async fn eval_async(&'n self, input: T) -> Self::Output {
+		Node::eval(self, input)
 	}
 }
 
