@@ -1,6 +1,6 @@
 use core::marker::PhantomData;
 
-use crate::{value::ValueNode, Node};
+use crate::Node;
 
 use self::color::Color;
 
@@ -34,7 +34,15 @@ impl<'n, T: Clone, N: Node<'n, T, Output = T>> Node<'n, &'n mut T> for MutWrappe
 	}
 }
 
-fn foo() {
-	let map = ForEachNode(MutWrapper(GrayscaleNode, PhantomData), PhantomData);
-	map.eval(&mut [Color::from_rgbaf32(1.0, 0.0, 0.0, 1.0).unwrap()].iter_mut());
+#[cfg(test)]
+mod test {
+	use super::*;
+
+	#[test]
+	fn map_node() {
+		let array = &mut [Color::from_rgbaf32(1.0, 0.0, 0.0, 1.0).unwrap()];
+		let map = ForEachNode(MutWrapper(GrayscaleNode, PhantomData), PhantomData);
+		map.eval(array.iter_mut());
+		assert_eq!(array[0], Color::from_rgbaf32(0.33333334, 0.33333334, 0.33333334, 1.0).unwrap());
+	}
 }

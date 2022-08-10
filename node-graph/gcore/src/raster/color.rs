@@ -1,4 +1,4 @@
-use serde::{Deserialize, Serialize};
+// use serde::{Deserialize, Serialize};
 
 /// Structure that represents a color.
 /// Internally alpha is stored as `f32` that ranges from `0.0` (transparent) to `1.0` (opaque).
