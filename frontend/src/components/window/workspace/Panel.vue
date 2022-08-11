@@ -262,7 +262,7 @@ export default defineComponent({
 
 			const ALT: Key = { key: "Alt", label: "Alt" };
 			const COMMAND: Key = { key: "Command", label: "Command" };
-			const CONTROL: Key = { key: "Control", label: "Control" };
+			const CONTROL: Key = { key: "Control", label: "Ctrl" };
 
 			if (platformIsMac()) return reservedKey ? [ALT, COMMAND] : [COMMAND];
 			return reservedKey ? [CONTROL, ALT] : [CONTROL];
