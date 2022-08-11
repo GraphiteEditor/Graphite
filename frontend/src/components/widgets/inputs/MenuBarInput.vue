@@ -78,14 +78,14 @@ import { MenuEntry, UpdateMenuBarLayout, MenuListEntry, KeyRaw, KeysGroup } from
 import MenuList from "@/components/floating-menus/MenuList.vue";
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
 
-// TODO: Apparently, Safari does not support the Keyboard.lock() API but does relax its authority over certain keyboard shortcuts in fullscreen mode, which we should handle correctly
-const controlOrCommand = platformIsMac() ? "Command" : "Control";
+// TODO: Apparently, Safari does not support the Keyboard.lock() API but does relax its authority over certain keyboard shortcuts in fullscreen mode, which we should take advantage of
+const accelKey = platformIsMac() ? "Command" : "Control";
 const LOCK_REQUIRING_SHORTCUTS: KeyRaw[][] = [
-	[controlOrCommand, "KeyW"],
-	[controlOrCommand, "KeyN"],
-	[controlOrCommand, "Shift", "KeyN"],
-	[controlOrCommand, "KeyT"],
-	[controlOrCommand, "Shift", "KeyT"],
+	[accelKey, "KeyW"],
+	[accelKey, "KeyN"],
+	[accelKey, "Shift", "KeyN"],
+	[accelKey, "KeyT"],
+	[accelKey, "Shift", "KeyT"],
 ];
 
 type FrontendMenuColumn = {
