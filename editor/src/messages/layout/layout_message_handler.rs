@@ -1,5 +1,5 @@
 use super::utility_types::misc::LayoutTarget;
-use crate::messages::input_mapper::utility_types::input_keyboard::Key;
+use crate::messages::input_mapper::utility_types::input_keyboard::KeysGroup;
 use crate::messages::layout::utility_types::layout_widget::Layout;
 use crate::messages::layout::utility_types::layout_widget::Widget;
 use crate::messages::portfolio::document::utility_types::misc::KeyboardPlatformLayout;
@@ -14,7 +14,7 @@ pub struct LayoutMessageHandler {
 	layouts: [Layout; LayoutTarget::LayoutTargetLength as usize],
 }
 
-impl<F: Fn(&MessageDiscriminant) -> Vec<Vec<Key>>> MessageHandler<LayoutMessage, (F, KeyboardPlatformLayout)> for LayoutMessageHandler {
+impl<F: Fn(&MessageDiscriminant) -> Vec<KeysGroup>> MessageHandler<LayoutMessage, (F, KeyboardPlatformLayout)> for LayoutMessageHandler {
 	#[remain::check]
 	fn process_message(&mut self, message: LayoutMessage, data: (F, KeyboardPlatformLayout), responses: &mut std::collections::VecDeque<Message>) {
 		let (action_input_mapping, keyboard_platform) = data;
@@ -156,7 +156,7 @@ impl LayoutMessageHandler {
 		&self,
 		layout_target: LayoutTarget,
 		responses: &mut VecDeque<Message>,
-		action_input_mapping: &impl Fn(&MessageDiscriminant) -> Vec<Vec<Key>>,
+		action_input_mapping: &impl Fn(&MessageDiscriminant) -> Vec<KeysGroup>,
 		keyboard_platform: KeyboardPlatformLayout,
 	) {
 		let layout = &self.layouts[layout_target as usize];
