@@ -1,8 +1,8 @@
 import { DialogState } from "@/state-providers/dialog";
 import { FullscreenState } from "@/state-providers/fullscreen";
 import { PortfolioState } from "@/state-providers/portfolio";
-import { makeKeyboardModifiersBitfield, textInputCleanup, getLatinKey } from "@/utility-functions/keyboard-entry";
-import { operatingSystemIsMac } from "@/utility-functions/platform";
+import { makeKeyboardModifiersBitfield, textInputCleanup, getLocalizedScanCode } from "@/utility-functions/keyboard-entry";
+import { platformIsMac } from "@/utility-functions/platform";
 import { stripIndents } from "@/utility-functions/strip-indents";
 import { Editor } from "@/wasm-communication/editor";
 import { TriggerPaste } from "@/wasm-communication/messages";
@@ -33,8 +33,8 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 		{ target: window, eventName: "beforeunload", action: (e: BeforeUnloadEvent): void => onBeforeUnload(e) },
 		{ target: window.document, eventName: "contextmenu", action: (e: MouseEvent): void => e.preventDefault() },
 		{ target: window.document, eventName: "fullscreenchange", action: (): void => fullscreen.fullscreenModeChanged() },
-		{ target: window, eventName: "keyup", action: (e: KeyboardEvent): void => onKeyUp(e) },
-		{ target: window, eventName: "keydown", action: (e: KeyboardEvent): void => onKeyDown(e) },
+		{ target: window, eventName: "keyup", action: (e: KeyboardEvent): Promise<void> => onKeyUp(e) },
+		{ target: window, eventName: "keydown", action: (e: KeyboardEvent): Promise<void> => onKeyDown(e) },
 		{ target: window, eventName: "pointermove", action: (e: PointerEvent): void => onPointerMove(e) },
 		{ target: window, eventName: "pointerdown", action: (e: PointerEvent): void => onPointerDown(e) },
 		{ target: window, eventName: "pointerup", action: (e: PointerEvent): void => onPointerUp(e) },
@@ -63,66 +63,62 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 
 	// Keyboard events
 
-	function shouldRedirectKeyboardEventToBackend(e: KeyboardEvent): boolean {
+	async function shouldRedirectKeyboardEventToBackend(e: KeyboardEvent): Promise<boolean> {
 		// Don't redirect when a modal is covering the workspace
 		if (dialog.dialogIsVisible()) return false;
 
-		const key = getLatinKey(e);
-		if (!key) return false;
+		const key = await getLocalizedScanCode(e);
 
 		// TODO: Switch to a system where everything is sent to the backend, then the input preprocessor makes decisions and kicks some inputs back to the frontend
-		const ctrlOrCmd = operatingSystemIsMac() ? e.metaKey : e.ctrlKey;
+		const accelKey = platformIsMac() ? e.metaKey : e.ctrlKey;
 
 		// Don't redirect user input from text entry into HTML elements
-		if (key !== "escape" && !(ctrlOrCmd && key === "enter") && targetIsTextField(e.target)) return false;
+		if (targetIsTextField(e.target) && key !== "Escape" && !(key === "Enter" && accelKey)) return false;
 
 		// Don't redirect paste
-		if (key === "v" && ctrlOrCmd) return false;
+		if (key === "KeyV" && accelKey) return false;
 
 		// Don't redirect a fullscreen request
-		if (key === "f11" && e.type === "keydown" && !e.repeat) {
+		if (key === "F11" && e.type === "keydown" && !e.repeat) {
 			e.preventDefault();
 			fullscreen.toggleFullscreen();
 			return false;
 		}
 
 		// Don't redirect a reload request
-		if (key === "f5" || (ctrlOrCmd && key === "r")) return false;
+		if (key === "F5") return false;
+		if (key === "KeyR" && accelKey) return false;
 
 		// Don't redirect debugging tools
-		if (key === "f12" || key === "f8") return false;
-		if (ctrlOrCmd && e.shiftKey && key === "c") return false;
-		if (ctrlOrCmd && e.shiftKey && key === "i") return false;
-		if (ctrlOrCmd && e.shiftKey && key === "j") return false;
+		if (["F12", "F8"].includes(key)) return false;
+		if (["KeyC", "KeyI", "KeyJ"].includes(key) && accelKey && e.shiftKey) return false;
 
 		// Don't redirect tab or enter if not in canvas (to allow navigating elements)
-		if (!canvasFocused && !targetIsTextField(e.target) && ["tab", "enter", " ", "arrowdown", "arrowup", "arrowleft", "arrowright"].includes(key.toLowerCase())) return false;
+		if (!canvasFocused && !targetIsTextField(e.target) && ["Tab", "Enter", "Space", "ArrowDown", "ArrowLeft", "ArrowRight", "ArrowUp"].includes(key)) return false;
 
 		// Redirect to the backend
 		return true;
 	}
 
-	function onKeyDown(e: KeyboardEvent): void {
-		const key = getLatinKey(e);
-		if (!key) return;
+	async function onKeyDown(e: KeyboardEvent): Promise<void> {
+		const key = await getLocalizedScanCode(e);
 
-		if (shouldRedirectKeyboardEventToBackend(e)) {
+		if (await shouldRedirectKeyboardEventToBackend(e)) {
 			e.preventDefault();
 			const modifiers = makeKeyboardModifiersBitfield(e);
 			editor.instance.on_key_down(key, modifiers);
 			return;
 		}
 
-		if (dialog.dialogIsVisible()) {
-			if (key === "escape") dialog.dismissDialog();
+		if (dialog.dialogIsVisible() && key === "Escape") {
+			dialog.dismissDialog();
 		}
 	}
 
-	function onKeyUp(e: KeyboardEvent): void {
-		const key = getLatinKey(e);
-		if (!key) return;
+	async function onKeyUp(e: KeyboardEvent): Promise<void> {
+		const key = await getLocalizedScanCode(e);
 
-		if (shouldRedirectKeyboardEventToBackend(e)) {
+		if (await shouldRedirectKeyboardEventToBackend(e)) {
 			e.preventDefault();
 			const modifiers = makeKeyboardModifiersBitfield(e);
 			editor.instance.on_key_up(key, modifiers);

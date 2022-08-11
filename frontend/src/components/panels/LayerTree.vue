@@ -267,7 +267,7 @@
 <script lang="ts">
 import { defineComponent, nextTick } from "vue";
 
-import { operatingSystemIsMac } from "@/utility-functions/platform";
+import { platformIsMac } from "@/utility-functions/platform";
 import { defaultWidgetLayout, UpdateDocumentLayerTreeStructure, UpdateDocumentLayerDetails, UpdateLayerTreeOptionsLayout, LayerPanelEntry } from "@/wasm-communication/messages";
 
 import LayoutCol from "@/components/layout/LayoutCol.vue";
@@ -350,9 +350,9 @@ export default defineComponent({
 		async selectLayer(ctrl: boolean, cmd: boolean, shift: boolean, listing: LayerListingInfo, event: Event) {
 			if (listing.editingName) return;
 
-			const ctrlOrCmd = operatingSystemIsMac() ? cmd : ctrl;
+			const ctrlOrCmd = platformIsMac() ? cmd : ctrl;
 			// Pressing the Ctrl key on a Mac, or the Cmd key on another platform, is a violation of the `.exact` qualifier so we filter it out here
-			const opposite = operatingSystemIsMac() ? ctrl : cmd;
+			const opposite = platformIsMac() ? ctrl : cmd;
 
 			if (!opposite) this.editor.instance.select_layer(listing.entry.path, ctrlOrCmd, shift);
 

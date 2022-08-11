@@ -34,7 +34,7 @@
 									<TextButton :label="'New Document:'" :icon="'File'" :action="() => newDocument()" />
 								</td>
 								<td>
-									<UserInputLabel :inputKeys="[[...platformModifiers(true), 'KeyN']]" />
+									<UserInputLabel :keysWithLabelsGroups="[[...platformModifiers(true), { key: 'KeyN', label: 'N' }]]" />
 								</td>
 							</tr>
 							<tr>
@@ -42,7 +42,7 @@
 									<TextButton :label="'Open Document:'" :icon="'Folder'" :action="() => openDocument()" />
 								</td>
 								<td>
-									<UserInputLabel :inputKeys="[[...platformModifiers(false), 'KeyO']]" />
+									<UserInputLabel :keysWithLabelsGroups="[[...platformModifiers(false), { key: 'KeyO', label: 'O' }]]" />
 								</td>
 							</tr>
 						</table>
@@ -211,7 +211,9 @@
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
 
-import { operatingSystemIsMac } from "@/utility-functions/platform";
+import { platformIsMac } from "@/utility-functions/platform";
+
+import { KeysGroup, Key } from "@/wasm-communication/messages";
 
 import LayoutCol from "@/components/layout/LayoutCol.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
@@ -255,14 +257,15 @@ export default defineComponent({
 		openDocument() {
 			this.editor.instance.document_open();
 		},
-		platformModifiers(reservedKey: boolean) {
+		platformModifiers(reservedKey: boolean): KeysGroup {
 			// TODO: Remove this by properly feeding these keys from a layout provided by the backend
 
-			if (operatingSystemIsMac()) {
-				return reservedKey ? ["KeyControl", "KeyCommand"] : ["KeyCommand"]; // TODO: Change Mac from Control+Command to Alt+Command when we can read Alt+letter modifiers
-			}
+			const ALT: Key = { key: "Alt", label: "Alt" };
+			const COMMAND: Key = { key: "Command", label: "Command" };
+			const CONTROL: Key = { key: "Control", label: "Control" };
 
-			return reservedKey ? ["KeyControl", "KeyAlt"] : ["KeyControl"];
+			if (platformIsMac()) return reservedKey ? [ALT, COMMAND] : [COMMAND];
+			return reservedKey ? [CONTROL, ALT] : [CONTROL];
 		},
 	},
 	components: {

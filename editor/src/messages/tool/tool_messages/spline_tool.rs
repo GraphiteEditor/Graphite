@@ -267,7 +267,7 @@ impl Fsm for SplineToolFsmState {
 					plus: false,
 				}]),
 				HintGroup(vec![HintInfo {
-					key_groups: vec![KeysGroup(vec![Key::KeyEnter])],
+					key_groups: vec![KeysGroup(vec![Key::Enter])],
 					key_groups_mac: None,
 					mouse: None,
 					label: String::from("End Spline"),

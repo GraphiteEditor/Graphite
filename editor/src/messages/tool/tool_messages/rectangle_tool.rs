@@ -192,14 +192,14 @@ impl Fsm for RectangleToolFsmState {
 					plus: false,
 				},
 				HintInfo {
-					key_groups: vec![KeysGroup(vec![Key::KeyShift])],
+					key_groups: vec![KeysGroup(vec![Key::Shift])],
 					key_groups_mac: None,
 					mouse: None,
 					label: String::from("Constrain Square"),
 					plus: true,
 				},
 				HintInfo {
-					key_groups: vec![KeysGroup(vec![Key::KeyAlt])],
+					key_groups: vec![KeysGroup(vec![Key::Alt])],
 					key_groups_mac: None,
 					mouse: None,
 					label: String::from("From Center"),
@@ -208,14 +208,14 @@ impl Fsm for RectangleToolFsmState {
 			])]),
 			RectangleToolFsmState::Drawing => HintData(vec![HintGroup(vec![
 				HintInfo {
-					key_groups: vec![KeysGroup(vec![Key::KeyShift])],
+					key_groups: vec![KeysGroup(vec![Key::Shift])],
 					key_groups_mac: None,
 					mouse: None,
 					label: String::from("Constrain Square"),
 					plus: false,
 				},
 				HintInfo {
-					key_groups: vec![KeysGroup(vec![Key::KeyAlt])],
+					key_groups: vec![KeysGroup(vec![Key::Alt])],
 					key_groups_mac: None,
 					mouse: None,
 					label: String::from("From Center"),

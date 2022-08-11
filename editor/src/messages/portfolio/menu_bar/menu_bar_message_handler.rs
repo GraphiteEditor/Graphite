@@ -242,6 +242,7 @@ impl PropertyHolder for MenuBarMessageHandler {
 				children: MenuEntryGroups(vec![
 					vec![MenuEntry {
 						label: "About Graphite".into(),
+						icon: Some("GraphiteLogo".into()),
 						action: MenuEntry::create_action(|_| DialogMessage::RequestAboutGraphiteDialog.into()),
 						..MenuEntry::default()
 					}],

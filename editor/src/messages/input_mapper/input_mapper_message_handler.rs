@@ -82,7 +82,7 @@ impl InputMapperMessageHandler {
 
 				keys.sort_by(|a, b| {
 					// Order according to platform guidelines mentioned at https://ux.stackexchange.com/questions/58185/normative-ordering-for-modifier-key-combinations
-					const ORDER: [Key; 4] = [Key::KeyControl, Key::KeyAlt, Key::KeyShift, Key::KeyCommand];
+					const ORDER: [Key; 4] = [Key::Control, Key::Alt, Key::Shift, Key::Command];
 
 					match (ORDER.contains(a), ORDER.contains(b)) {
 						(true, true) => ORDER.iter().position(|key| key == a).unwrap().cmp(&ORDER.iter().position(|key| key == b).unwrap()),

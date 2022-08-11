@@ -72,18 +72,20 @@
 <script lang="ts">
 import { defineComponent } from "vue";
 
-import { operatingSystemIsMac } from "@/utility-functions/platform";
-import { MenuEntry, UpdateMenuBarLayout, MenuListEntry } from "@/wasm-communication/messages";
+import { platformIsMac } from "@/utility-functions/platform";
+import { MenuEntry, UpdateMenuBarLayout, MenuListEntry, KeyRaw, KeysGroup } from "@/wasm-communication/messages";
 
 import MenuList from "@/components/floating-menus/MenuList.vue";
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
 
 // TODO: Apparently, Safari does not support the Keyboard.lock() API but does relax its authority over certain keyboard shortcuts in fullscreen mode, which we should handle correctly
-const controlOrCommand = operatingSystemIsMac() ? "KeyCommand" : "KeyControl";
-const LOCK_REQUIRING_SHORTCUTS = [
-	[controlOrCommand, "KeyN"],
-	[controlOrCommand, "KeyShift", "KeyT"],
+const controlOrCommand = platformIsMac() ? "Command" : "Control";
+const LOCK_REQUIRING_SHORTCUTS: KeyRaw[][] = [
 	[controlOrCommand, "KeyW"],
+	[controlOrCommand, "KeyN"],
+	[controlOrCommand, "Shift", "KeyN"],
+	[controlOrCommand, "KeyT"],
+	[controlOrCommand, "Shift", "KeyT"],
 ];
 
 type FrontendMenuColumn = {
@@ -96,7 +98,13 @@ export default defineComponent({
 	inject: ["editor"],
 	mounted() {
 		this.editor.subscriptions.subscribeJsMessage(UpdateMenuBarLayout, (updateMenuBarLayout) => {
-			const shortcutRequiresLock = (shortcut: string[]): boolean => LOCK_REQUIRING_SHORTCUTS.some((lockKeyCombo) => shortcut.every((shortcutKey, index) => shortcutKey === lockKeyCombo[index]));
+			const arraysEqual = (a: KeyRaw[], b: KeyRaw[]): boolean => a.length === b.length && a.every((aValue, i) => aValue === b[i]);
+			const shortcutRequiresLock = (shortcut: KeysGroup): boolean => {
+				const shortcutKeys = shortcut.map((keyWithLabel) => keyWithLabel.key);
+
+				// If this shortcut matches any of the browser-reserved shortcuts
+				return LOCK_REQUIRING_SHORTCUTS.some((lockKeyCombo) => arraysEqual(shortcutKeys, lockKeyCombo));
+			};
 
 			const menuEntryToFrontendMenuEntry = (subLayout: MenuEntry[][]): FrontendMenuEntry[][] =>
 				subLayout.map((group) =>
@@ -104,7 +112,7 @@ export default defineComponent({
 						...entry,
 						children: entry.children ? menuEntryToFrontendMenuEntry(entry.children) : undefined,
 						action: (): void => this.editor.instance.update_layout(updateMenuBarLayout.layout_target, entry.action.widgetId, undefined),
-						shortcutRequiresLock: entry.shortcut?.keys ? shortcutRequiresLock(entry.shortcut.keys) : undefined,
+						shortcutRequiresLock: entry.shortcut ? shortcutRequiresLock(entry.shortcut.keys) : undefined,
 					}))
 				);
 

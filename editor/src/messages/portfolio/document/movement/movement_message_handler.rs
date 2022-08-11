@@ -164,7 +164,7 @@ impl MessageHandler<MovementMessage, (&Document, &InputPreprocessorMessageHandle
 				responses.push_back(
 					FrontendMessage::UpdateInputHints {
 						hint_data: HintData(vec![HintGroup(vec![HintInfo {
-							key_groups: vec![KeysGroup(vec![Key::KeyControl])],
+							key_groups: vec![KeysGroup(vec![Key::Control])],
 							key_groups_mac: None,
 							mouse: None,
 							label: String::from("Snap 15°"),
@@ -246,7 +246,7 @@ impl MessageHandler<MovementMessage, (&Document, &InputPreprocessorMessageHandle
 				responses.push_back(
 					FrontendMessage::UpdateInputHints {
 						hint_data: HintData(vec![HintGroup(vec![HintInfo {
-							key_groups: vec![KeysGroup(vec![Key::KeyControl])],
+							key_groups: vec![KeysGroup(vec![Key::Control])],
 							key_groups_mac: None,
 							mouse: None,
 							label: String::from("Snap Increments"),
