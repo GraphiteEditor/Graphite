@@ -3,6 +3,7 @@ use crate::messages::prelude::*;
 pub use graphene::DocumentResponse;
 
 use bitflags::bitflags;
+use serde::ser::SerializeStruct;
 use serde::{Deserialize, Serialize};
 use std::fmt::{self, Display, Formatter};
 use std::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign};
@@ -34,18 +35,27 @@ bitflags! {
 	}
 }
 
-// TODO: Consider renaming to `KeyMessage` for consistency with other messages that implement `#[impl_message(..)]`
+// Currently this is mostly based on the JS `KeyboardEvent.code` list: <https://www.w3.org/TR/uievents-code/>
+// But in the future, especially once users can customize keyboard mappings, we should deviate more from this so we have actual symbols
+// like `+` (which doesn't exist because it's the shifted version of `=` on the US keyboard, after which these scan codes are named).
+// We'd ideally like to bind shortcuts to symbols, not scan codes, so the shortcut for "zoom in" is `Ctrl +` which the user can press
+// (although we ignore the shift key, so the user doesn't have to press `Ctrl Shift +` on a US keyboard), even if the keyboard layout
+// is for a different locale where the `+` key is somewhere entirely different, shifted or not. This would then also work for numpad `+`.
 #[impl_message(Message, InputMapperMessage, KeyDown)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize)]
 pub enum Key {
-	UnknownKey,
-
-	// Mouse keys
-	Lmb,
-	Rmb,
-	Mmb,
-
-	// Keyboard keys
+	// Writing system keys
+	Digit0,
+	Digit1,
+	Digit2,
+	Digit3,
+	Digit4,
+	Digit5,
+	Digit6,
+	Digit7,
+	Digit8,
+	Digit9,
+	//
 	KeyA,
 	KeyB,
 	KeyC,
@@ -72,52 +82,192 @@ pub enum Key {
 	KeyX,
 	KeyY,
 	KeyZ,
-	Key0,
-	Key1,
-	Key2,
-	Key3,
-	Key4,
-	Key5,
-	Key6,
-	Key7,
-	Key8,
-	Key9,
-	KeyEnter,
-	KeyEquals,
-	KeyMinus,
-	KeyPlus,
-	KeyShift,
-	KeySpace,
-	KeyControl,
-	KeyCommand,
-	KeyMeta,
-	KeyDelete,
-	KeyBackspace,
-	KeyAlt,
-	KeyEscape,
-	KeyTab,
-	KeyArrowUp,
-	KeyArrowDown,
-	KeyArrowLeft,
-	KeyArrowRight,
-	KeyLeftBracket,
-	KeyRightBracket,
-	KeyLeftCurlyBracket,
-	KeyRightCurlyBracket,
-	KeyPageUp,
-	KeyPageDown,
-	KeyComma,
-	KeyPeriod,
+	//
+	Backquote,
+	Backslash,
+	BracketLeft,
+	BracketRight,
+	Comma,
+	Equal,
+	Minus,
+	Period,
+	Quote,
+	Semicolon,
+	Slash,
+
+	// Functional keys
+	Alt,
+	Meta,
+	Shift,
+	Control,
+	Backspace,
+	CapsLock,
+	ContextMenu,
+	Enter,
+	Space,
+	Tab,
+
+	// Control pad keys
+	Delete,
+	End,
+	Help,
+	Home,
+	Insert,
+	PageDown,
+	PageUp,
+
+	// Arrow pad keys
+	ArrowDown,
+	ArrowLeft,
+	ArrowRight,
+	ArrowUp,
+
+	// Numpad keys
+	// Numpad0,
+	// Numpad1,
+	// Numpad2,
+	// Numpad3,
+	// Numpad4,
+	// Numpad5,
+	// Numpad6,
+	// Numpad7,
+	// Numpad8,
+	// Numpad9,
+	NumLock,
+	NumpadAdd,
+	// NumpadBackspace,
+	// NumpadClear,
+	// NumpadClearEntry,
+	// NumpadComma,
+	// NumpadDecimal,
+	// NumpadDivide,
+	// NumpadEnter,
+	// NumpadEqual,
+	NumpadHash,
+	// NumpadMemoryAdd,
+	// NumpadMemoryClear,
+	// NumpadMemoryRecall,
+	// NumpadMemoryStore,
+	// NumpadMemorySubtract,
+	NumpadMultiply,
+	NumpadParenLeft,
+	NumpadParenRight,
+	// NumpadStar,
+	// NumpadSubtract,
+
+	// Function keys
+	Escape,
+	F1,
+	F2,
+	F3,
+	F4,
+	F5,
+	F6,
+	F7,
+	F8,
+	F9,
+	F10,
+	F11,
+	F12,
+	F13,
+	F14,
+	F15,
+	F16,
+	F17,
+	F18,
+	F19,
+	F20,
+	F21,
+	F22,
+	F23,
+	F24,
+	Fn,
+	FnLock,
+	PrintScreen,
+	ScrollLock,
+	Pause,
+
+	// Unidentified keys
+	Unidentified,
+
+	// Other keys that aren't part of the W3C spec
+	Command,
+	Lmb,
+	Rmb,
+	Mmb,
 
 	// This has to be the last element in the enum
 	NumKeys,
 }
 
+impl Serialize for Key {
+	fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+		let key = format!("{:?}", self);
+		let label = self.to_string();
+
+		let mut state = serializer.serialize_struct("KeyWithLabel", 2)?;
+		state.serialize_field("key", &key)?;
+		state.serialize_field("label", &label)?;
+		state.end()
+	}
+}
+
 impl fmt::Display for Key {
+	// TODO: Relevant key labels should be localized when we get around to implementing localization/internationalization
 	fn fmt(&self, f: &mut fmt::Formatter) -> std::fmt::Result {
 		let key_name = format!("{:?}", self);
 
-		let name = if &key_name[0..3] == "Key" { key_name.chars().skip(3).collect::<String>() } else { key_name };
+		// Writing system keys
+		const DIGIT_PREFIX: &str = "Digit";
+		if key_name.len() == DIGIT_PREFIX.len() + 1 && &key_name[0..DIGIT_PREFIX.len()] == "Digit" {
+			return write!(f, "{}", key_name.chars().skip(DIGIT_PREFIX.len()).collect::<String>());
+		}
+		const KEY_PREFIX: &str = "Key";
+		if key_name.len() == KEY_PREFIX.len() + 1 && &key_name[0..KEY_PREFIX.len()] == "Key" {
+			return write!(f, "{}", key_name.chars().skip(KEY_PREFIX.len()).collect::<String>());
+		}
+
+		let name = match self {
+			// Writing system keys
+			Self::Backquote => "`",
+			Self::Backslash => "\\",
+			Self::BracketLeft => "[",
+			Self::BracketRight => "]",
+			Self::Comma => ",",
+			Self::Equal => "=",
+			Self::Minus => "-",
+			Self::Period => ".",
+			Self::Quote => "'",
+			Self::Semicolon => ";",
+			Self::Slash => "/",
+
+			// Functional keys
+			Self::Control => "Ctrl",
+
+			// Control pad keys
+			Self::Delete => "Del",
+			Self::PageDown => "PgDn",
+			Self::PageUp => "PgUp",
+
+			// Arrow pad keys
+			Self::ArrowDown => "↓",
+			Self::ArrowLeft => "←",
+			Self::ArrowRight => "→",
+			Self::ArrowUp => "↑",
+
+			// Numpad keys
+			Self::NumpadAdd => "Numpad +",
+			Self::NumpadHash => "Numpad #",
+			Self::NumpadMultiply => "Numpad *",
+			Self::NumpadParenLeft => "Numpad (",
+			Self::NumpadParenRight => "Numpad )",
+
+			// Function keys
+			Self::Escape => "Esc",
+			Self::PrintScreen => "PrtScr",
+
+			_ => key_name.as_str(),
+		};
 
 		write!(f, "{}", name)
 	}

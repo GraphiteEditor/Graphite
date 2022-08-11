@@ -1358,6 +1358,7 @@ impl DocumentMessageHandler {
 				size: 24,
 				icon: "ZoomIn".into(),
 				tooltip: "Zoom In".into(),
+				tooltip_shortcut: action_keys!(MovementMessageDiscriminant::IncreaseCanvasZoom),
 				on_update: WidgetCallback::new(|_| MovementMessage::IncreaseCanvasZoom { center_on_mouse: false }.into()),
 				..IconButton::default()
 			})),
@@ -1365,6 +1366,7 @@ impl DocumentMessageHandler {
 				size: 24,
 				icon: "ZoomOut".into(),
 				tooltip: "Zoom Out".into(),
+				tooltip_shortcut: action_keys!(MovementMessageDiscriminant::DecreaseCanvasZoom),
 				on_update: WidgetCallback::new(|_| MovementMessage::DecreaseCanvasZoom { center_on_mouse: false }.into()),
 				..IconButton::default()
 			})),
@@ -1372,6 +1374,7 @@ impl DocumentMessageHandler {
 				size: 24,
 				icon: "ZoomReset".into(),
 				tooltip: "Zoom to 100%".into(),
+				tooltip_shortcut: action_keys!(DocumentMessageDiscriminant::ZoomCanvasTo100Percent),
 				on_update: WidgetCallback::new(|_| MovementMessage::SetCanvasZoom { zoom_factor: 1. }.into()),
 				..IconButton::default()
 			})),

@@ -23,44 +23,44 @@ pub fn default_mapping() -> Mapping {
 		// MovementMessage
 		entry!(
 			PointerMove;
-			refresh_keys=[KeyControl],
-			action_dispatch=MovementMessage::PointerMove { snap_angle: KeyControl, wait_for_snap_angle_release: true, snap_zoom: KeyControl, zoom_from_viewport: None },
+			refresh_keys=[Control],
+			action_dispatch=MovementMessage::PointerMove { snap_angle: Control, wait_for_snap_angle_release: true, snap_zoom: Control, zoom_from_viewport: None },
 		),
 		// NORMAL PRIORITY:
 		//
 		// TransformLayerMessage
-		entry!(KeyDown(KeyEnter); action_dispatch=TransformLayerMessage::ApplyTransformOperation),
+		entry!(KeyDown(Enter); action_dispatch=TransformLayerMessage::ApplyTransformOperation),
 		entry!(KeyDown(Lmb); action_dispatch=TransformLayerMessage::ApplyTransformOperation),
-		entry!(KeyDown(KeyEscape); action_dispatch=TransformLayerMessage::CancelTransformOperation),
+		entry!(KeyDown(Escape); action_dispatch=TransformLayerMessage::CancelTransformOperation),
 		entry!(KeyDown(Rmb); action_dispatch=TransformLayerMessage::CancelTransformOperation),
 		entry!(KeyDown(KeyX); action_dispatch=TransformLayerMessage::ConstrainX),
 		entry!(KeyDown(KeyY); action_dispatch=TransformLayerMessage::ConstrainY),
-		entry!(KeyDown(KeyBackspace); action_dispatch=TransformLayerMessage::TypeBackspace),
-		entry!(KeyDown(KeyMinus); action_dispatch=TransformLayerMessage::TypeNegate),
-		entry!(KeyDown(KeyComma); action_dispatch=TransformLayerMessage::TypeDecimalPoint),
-		entry!(KeyDown(KeyPeriod); action_dispatch=TransformLayerMessage::TypeDecimalPoint),
-		entry!(PointerMove; refresh_keys=[KeyShift, KeyControl], action_dispatch=TransformLayerMessage::PointerMove { slow_key: KeyShift, snap_key: KeyControl }),
+		entry!(KeyDown(Backspace); action_dispatch=TransformLayerMessage::TypeBackspace),
+		entry!(KeyDown(Minus); action_dispatch=TransformLayerMessage::TypeNegate),
+		entry!(KeyDown(Comma); action_dispatch=TransformLayerMessage::TypeDecimalPoint),
+		entry!(KeyDown(Period); action_dispatch=TransformLayerMessage::TypeDecimalPoint),
+		entry!(PointerMove; refresh_keys=[Shift, Control], action_dispatch=TransformLayerMessage::PointerMove { slow_key: Shift, snap_key: Control }),
 		//
 		// SelectToolMessage
-		entry!(PointerMove; refresh_keys=[KeyControl, KeyShift, KeyAlt], action_dispatch=SelectToolMessage::PointerMove { axis_align: KeyShift, snap_angle: KeyControl, center: KeyAlt }),
-		entry!(KeyDown(Lmb); action_dispatch=SelectToolMessage::DragStart { add_to_selection: KeyShift }),
+		entry!(PointerMove; refresh_keys=[Control, Shift, Alt], action_dispatch=SelectToolMessage::PointerMove { axis_align: Shift, snap_angle: Control, center: Alt }),
+		entry!(KeyDown(Lmb); action_dispatch=SelectToolMessage::DragStart { add_to_selection: Shift }),
 		entry!(KeyUp(Lmb); action_dispatch=SelectToolMessage::DragStop),
-		entry!(KeyDown(KeyEnter); action_dispatch=SelectToolMessage::DragStop),
+		entry!(KeyDown(Enter); action_dispatch=SelectToolMessage::DragStop),
 		entry!(DoubleClick; action_dispatch=SelectToolMessage::EditLayer),
 		entry!(KeyDown(Rmb); action_dispatch=SelectToolMessage::Abort),
-		entry!(KeyDown(KeyEscape); action_dispatch=SelectToolMessage::Abort),
+		entry!(KeyDown(Escape); action_dispatch=SelectToolMessage::Abort),
 		//
 		// ArtboardToolMessage
 		entry!(KeyDown(Lmb); action_dispatch=ArtboardToolMessage::PointerDown),
-		entry!(PointerMove; refresh_keys=[KeyShift, KeyAlt], action_dispatch=ArtboardToolMessage::PointerMove { constrain_axis_or_aspect: KeyShift, center: KeyAlt }),
+		entry!(PointerMove; refresh_keys=[Shift, Alt], action_dispatch=ArtboardToolMessage::PointerMove { constrain_axis_or_aspect: Shift, center: Alt }),
 		entry!(KeyUp(Lmb); action_dispatch=ArtboardToolMessage::PointerUp),
-		entry!(KeyDown(KeyDelete); action_dispatch=ArtboardToolMessage::DeleteSelected),
-		entry!(KeyDown(KeyBackspace); action_dispatch=ArtboardToolMessage::DeleteSelected),
+		entry!(KeyDown(Delete); action_dispatch=ArtboardToolMessage::DeleteSelected),
+		entry!(KeyDown(Backspace); action_dispatch=ArtboardToolMessage::DeleteSelected),
 		//
 		// NavigateToolMessage
-		entry!(KeyUp(Lmb); modifiers=[KeyShift], action_dispatch=NavigateToolMessage::ClickZoom { zoom_in: false }),
+		entry!(KeyUp(Lmb); modifiers=[Shift], action_dispatch=NavigateToolMessage::ClickZoom { zoom_in: false }),
 		entry!(KeyUp(Lmb); action_dispatch=NavigateToolMessage::ClickZoom { zoom_in: true }),
-		entry!(PointerMove; refresh_keys=[KeyControl], action_dispatch=NavigateToolMessage::PointerMove { snap_angle: KeyControl, snap_zoom: KeyControl }),
+		entry!(PointerMove; refresh_keys=[Control], action_dispatch=NavigateToolMessage::PointerMove { snap_angle: Control, snap_zoom: Control }),
 		entry!(KeyDown(Mmb); action_dispatch=NavigateToolMessage::TranslateCanvasBegin),
 		entry!(KeyDown(Rmb); action_dispatch=NavigateToolMessage::RotateCanvasBegin),
 		entry!(KeyDown(Lmb); action_dispatch=NavigateToolMessage::ZoomCanvasBegin),
@@ -74,59 +74,59 @@ pub fn default_mapping() -> Mapping {
 		//
 		// TextToolMessage
 		entry!(KeyUp(Lmb); action_dispatch=TextToolMessage::Interact),
-		entry!(KeyDown(KeyEscape); action_dispatch=TextToolMessage::Abort),
+		entry!(KeyDown(Escape); action_dispatch=TextToolMessage::Abort),
 		entry_multiplatform!(
-			standard!(KeyDown(KeyEnter); modifiers=[KeyControl], action_dispatch=TextToolMessage::CommitText),
-			mac_only!(KeyDown(KeyEnter); modifiers=[KeyCommand], action_dispatch=TextToolMessage::CommitText),
+			standard!(KeyDown(Enter); modifiers=[Control], action_dispatch=TextToolMessage::CommitText),
+			mac_only!(KeyDown(Enter); modifiers=[Command], action_dispatch=TextToolMessage::CommitText),
 		),
 		//
 		// GradientToolMessage
 		entry!(KeyDown(Lmb); action_dispatch=GradientToolMessage::PointerDown),
-		entry!(PointerMove; refresh_keys=[KeyShift], action_dispatch=GradientToolMessage::PointerMove { constrain_axis: KeyShift }),
+		entry!(PointerMove; refresh_keys=[Shift], action_dispatch=GradientToolMessage::PointerMove { constrain_axis: Shift }),
 		entry!(KeyUp(Lmb); action_dispatch=GradientToolMessage::PointerUp),
 		//
 		// RectangleToolMessage
 		entry!(KeyDown(Lmb); action_dispatch=RectangleToolMessage::DragStart),
 		entry!(KeyUp(Lmb); action_dispatch=RectangleToolMessage::DragStop),
 		entry!(KeyDown(Rmb); action_dispatch=RectangleToolMessage::Abort),
-		entry!(KeyDown(KeyEscape); action_dispatch=RectangleToolMessage::Abort),
-		entry!(PointerMove; refresh_keys=[KeyAlt, KeyShift], action_dispatch=RectangleToolMessage::Resize { center: KeyAlt, lock_ratio: KeyShift }),
+		entry!(KeyDown(Escape); action_dispatch=RectangleToolMessage::Abort),
+		entry!(PointerMove; refresh_keys=[Alt, Shift], action_dispatch=RectangleToolMessage::Resize { center: Alt, lock_ratio: Shift }),
 		//
 		// EllipseToolMessage
 		entry!(KeyDown(Lmb); action_dispatch=EllipseToolMessage::DragStart),
 		entry!(KeyUp(Lmb); action_dispatch=EllipseToolMessage::DragStop),
 		entry!(KeyDown(Rmb); action_dispatch=EllipseToolMessage::Abort),
-		entry!(KeyDown(KeyEscape); action_dispatch=EllipseToolMessage::Abort),
-		entry!(PointerMove; refresh_keys=[KeyAlt, KeyShift], action_dispatch=EllipseToolMessage::Resize { center: KeyAlt, lock_ratio: KeyShift }),
+		entry!(KeyDown(Escape); action_dispatch=EllipseToolMessage::Abort),
+		entry!(PointerMove; refresh_keys=[Alt, Shift], action_dispatch=EllipseToolMessage::Resize { center: Alt, lock_ratio: Shift }),
 		//
 		// ShapeToolMessage
 		entry!(KeyDown(Lmb); action_dispatch=ShapeToolMessage::DragStart),
 		entry!(KeyUp(Lmb); action_dispatch=ShapeToolMessage::DragStop),
 		entry!(KeyDown(Rmb); action_dispatch=ShapeToolMessage::Abort),
-		entry!(KeyDown(KeyEscape); action_dispatch=ShapeToolMessage::Abort),
-		entry!(PointerMove; refresh_keys=[KeyAlt, KeyShift], action_dispatch=ShapeToolMessage::Resize { center: KeyAlt, lock_ratio: KeyShift }),
+		entry!(KeyDown(Escape); action_dispatch=ShapeToolMessage::Abort),
+		entry!(PointerMove; refresh_keys=[Alt, Shift], action_dispatch=ShapeToolMessage::Resize { center: Alt, lock_ratio: Shift }),
 		//
 		// LineToolMessage
 		entry!(KeyDown(Lmb); action_dispatch=LineToolMessage::DragStart),
 		entry!(KeyUp(Lmb); action_dispatch=LineToolMessage::DragStop),
 		entry!(KeyDown(Rmb); action_dispatch=LineToolMessage::Abort),
-		entry!(KeyDown(KeyEscape); action_dispatch=LineToolMessage::Abort),
-		entry!(PointerMove; refresh_keys=[KeyAlt, KeyShift, KeyControl], action_dispatch=LineToolMessage::Redraw { center: KeyAlt, lock_angle: KeyControl, snap_angle: KeyShift }),
+		entry!(KeyDown(Escape); action_dispatch=LineToolMessage::Abort),
+		entry!(PointerMove; refresh_keys=[Alt, Shift, Control], action_dispatch=LineToolMessage::Redraw { center: Alt, lock_angle: Control, snap_angle: Shift }),
 		//
 		// PathToolMessage
-		entry!(KeyDown(Lmb); action_dispatch=PathToolMessage::DragStart { add_to_selection: KeyShift }),
-		entry!(PointerMove; refresh_keys=[KeyAlt, KeyShift], action_dispatch=PathToolMessage::PointerMove { alt_mirror_angle: KeyAlt, shift_mirror_distance: KeyShift }),
-		entry!(KeyDown(KeyDelete); action_dispatch=PathToolMessage::Delete),
-		entry!(KeyDown(KeyBackspace); action_dispatch=PathToolMessage::Delete),
+		entry!(KeyDown(Lmb); action_dispatch=PathToolMessage::DragStart { add_to_selection: Shift }),
+		entry!(PointerMove; refresh_keys=[Alt, Shift], action_dispatch=PathToolMessage::PointerMove { alt_mirror_angle: Alt, shift_mirror_distance: Shift }),
+		entry!(KeyDown(Delete); action_dispatch=PathToolMessage::Delete),
+		entry!(KeyDown(Backspace); action_dispatch=PathToolMessage::Delete),
 		entry!(KeyUp(Lmb); action_dispatch=PathToolMessage::DragStop),
 		//
 		// PenToolMessage
-		entry!(PointerMove; refresh_keys=[KeyShift, KeyControl], action_dispatch=PenToolMessage::PointerMove { snap_angle: KeyControl, break_handle: KeyShift }),
+		entry!(PointerMove; refresh_keys=[Shift, Control], action_dispatch=PenToolMessage::PointerMove { snap_angle: Control, break_handle: Shift }),
 		entry!(KeyDown(Lmb); action_dispatch=PenToolMessage::DragStart),
 		entry!(KeyUp(Lmb); action_dispatch=PenToolMessage::DragStop),
 		entry!(KeyDown(Rmb); action_dispatch=PenToolMessage::Confirm),
-		entry!(KeyDown(KeyEscape); action_dispatch=PenToolMessage::Confirm),
-		entry!(KeyDown(KeyEnter); action_dispatch=PenToolMessage::Confirm),
+		entry!(KeyDown(Escape); action_dispatch=PenToolMessage::Confirm),
+		entry!(KeyDown(Enter); action_dispatch=PenToolMessage::Confirm),
 		//
 		// FreehandToolMessage
 		entry!(PointerMove; action_dispatch=FreehandToolMessage::PointerMove),
@@ -138,8 +138,8 @@ pub fn default_mapping() -> Mapping {
 		entry!(KeyDown(Lmb); action_dispatch=SplineToolMessage::DragStart),
 		entry!(KeyUp(Lmb); action_dispatch=SplineToolMessage::DragStop),
 		entry!(KeyDown(Rmb); action_dispatch=SplineToolMessage::Confirm),
-		entry!(KeyDown(KeyEscape); action_dispatch=SplineToolMessage::Confirm),
-		entry!(KeyDown(KeyEnter); action_dispatch=SplineToolMessage::Confirm),
+		entry!(KeyDown(Escape); action_dispatch=SplineToolMessage::Confirm),
+		entry!(KeyDown(Enter); action_dispatch=SplineToolMessage::Confirm),
 		//
 		// FillToolMessage
 		entry!(KeyDown(Lmb); action_dispatch=FillToolMessage::LeftMouseDown),
@@ -160,114 +160,104 @@ pub fn default_mapping() -> Mapping {
 		entry!(KeyDown(KeyE); action_dispatch=ToolMessage::ActivateToolEllipse),
 		entry!(KeyDown(KeyY); action_dispatch=ToolMessage::ActivateToolShape),
 		entry_multiplatform!(
-			standard!(KeyDown(KeyX); modifiers=[KeyShift, KeyControl], action_dispatch=ToolMessage::ResetColors),
-			mac_only!(KeyDown(KeyX); modifiers=[KeyShift, KeyCommand], action_dispatch=ToolMessage::ResetColors),
+			standard!(KeyDown(KeyX); modifiers=[Shift, Control], action_dispatch=ToolMessage::ResetColors),
+			mac_only!(KeyDown(KeyX); modifiers=[Shift, Command], action_dispatch=ToolMessage::ResetColors),
 		),
-		entry!(KeyDown(KeyX); modifiers=[KeyShift], action_dispatch=ToolMessage::SwapColors),
-		entry!(KeyDown(KeyC); modifiers=[KeyAlt], action_dispatch=ToolMessage::SelectRandomPrimaryColor),
+		entry!(KeyDown(KeyX); modifiers=[Shift], action_dispatch=ToolMessage::SwapColors),
+		entry!(KeyDown(KeyC); modifiers=[Alt], action_dispatch=ToolMessage::SelectRandomPrimaryColor),
 		//
 		// DocumentMessage
-		entry!(KeyDown(KeyDelete); action_dispatch=DocumentMessage::DeleteSelectedLayers),
-		entry!(KeyDown(KeyBackspace); action_dispatch=DocumentMessage::DeleteSelectedLayers),
-		entry!(KeyDown(KeyP); modifiers=[KeyAlt], action_dispatch=DocumentMessage::DebugPrintDocument),
+		entry!(KeyDown(Delete); action_dispatch=DocumentMessage::DeleteSelectedLayers),
+		entry!(KeyDown(Backspace); action_dispatch=DocumentMessage::DeleteSelectedLayers),
+		entry!(KeyDown(KeyP); modifiers=[Alt], action_dispatch=DocumentMessage::DebugPrintDocument),
 		entry_multiplatform!(
-			standard!(KeyDown(KeyZ); modifiers=[KeyControl, KeyShift], action_dispatch=DocumentMessage::Redo),
-			mac_only!(KeyDown(KeyZ); modifiers=[KeyCommand, KeyShift], action_dispatch=DocumentMessage::Redo),
+			standard!(KeyDown(KeyZ); modifiers=[Control, Shift], action_dispatch=DocumentMessage::Redo),
+			mac_only!(KeyDown(KeyZ); modifiers=[Command, Shift], action_dispatch=DocumentMessage::Redo),
 		),
 		entry_multiplatform!(
-			standard!(KeyDown(KeyZ); modifiers=[KeyControl], action_dispatch=DocumentMessage::Undo),
-			mac_only!(KeyDown(KeyZ); modifiers=[KeyCommand], action_dispatch=DocumentMessage::Undo),
+			standard!(KeyDown(KeyZ); modifiers=[Control], action_dispatch=DocumentMessage::Undo),
+			mac_only!(KeyDown(KeyZ); modifiers=[Command], action_dispatch=DocumentMessage::Undo),
 		),
 		entry_multiplatform!(
-			standard!(KeyDown(KeyA); modifiers=[KeyControl, KeyAlt], action_dispatch=DocumentMessage::DeselectAllLayers),
-			mac_only!(KeyDown(KeyA); modifiers=[KeyCommand, KeyAlt], action_dispatch=DocumentMessage::DeselectAllLayers),
+			standard!(KeyDown(KeyA); modifiers=[Control, Alt], action_dispatch=DocumentMessage::DeselectAllLayers),
+			mac_only!(KeyDown(KeyA); modifiers=[Command, Alt], action_dispatch=DocumentMessage::DeselectAllLayers),
 		),
 		entry_multiplatform!(
-			standard!(KeyDown(KeyA); modifiers=[KeyControl], action_dispatch=DocumentMessage::SelectAllLayers),
-			mac_only!(KeyDown(KeyA); modifiers=[KeyCommand], action_dispatch=DocumentMessage::SelectAllLayers),
+			standard!(KeyDown(KeyA); modifiers=[Control], action_dispatch=DocumentMessage::SelectAllLayers),
+			mac_only!(KeyDown(KeyA); modifiers=[Command], action_dispatch=DocumentMessage::SelectAllLayers),
 		),
 		entry_multiplatform!(
-			standard!(KeyDown(KeyS); modifiers=[KeyControl], action_dispatch=DocumentMessage::SaveDocument),
-			mac_only!(KeyDown(KeyS); modifiers=[KeyCommand], action_dispatch=DocumentMessage::SaveDocument),
+			standard!(KeyDown(KeyS); modifiers=[Control], action_dispatch=DocumentMessage::SaveDocument),
+			mac_only!(KeyDown(KeyS); modifiers=[Command], action_dispatch=DocumentMessage::SaveDocument),
 		),
 		entry_multiplatform!(
-			standard!(KeyDown(KeyD); modifiers=[KeyControl], action_dispatch=DocumentMessage::DuplicateSelectedLayers),
-			mac_only!(KeyDown(KeyD); modifiers=[KeyCommand], action_dispatch=DocumentMessage::DuplicateSelectedLayers),
+			standard!(KeyDown(KeyD); modifiers=[Control], action_dispatch=DocumentMessage::DuplicateSelectedLayers),
+			mac_only!(KeyDown(KeyD); modifiers=[Command], action_dispatch=DocumentMessage::DuplicateSelectedLayers),
 		),
 		entry_multiplatform!(
-			standard!(KeyDown(KeyG); modifiers=[KeyControl], action_dispatch=DocumentMessage::GroupSelectedLayers),
-			mac_only!(KeyDown(KeyG); modifiers=[KeyCommand], action_dispatch=DocumentMessage::GroupSelectedLayers),
+			standard!(KeyDown(KeyG); modifiers=[Control], action_dispatch=DocumentMessage::GroupSelectedLayers),
+			mac_only!(KeyDown(KeyG); modifiers=[Command], action_dispatch=DocumentMessage::GroupSelectedLayers),
 		),
 		entry_multiplatform!(
-			standard!(KeyDown(KeyG); modifiers=[KeyControl, KeyShift], action_dispatch=DocumentMessage::UngroupSelectedLayers),
-			mac_only!(KeyDown(KeyG); modifiers=[KeyCommand, KeyShift], action_dispatch=DocumentMessage::UngroupSelectedLayers),
+			standard!(KeyDown(KeyG); modifiers=[Control, Shift], action_dispatch=DocumentMessage::UngroupSelectedLayers),
+			mac_only!(KeyDown(KeyG); modifiers=[Command, Shift], action_dispatch=DocumentMessage::UngroupSelectedLayers),
 		),
 		entry_multiplatform!(
-			standard!(KeyDown(KeyN); modifiers=[KeyControl, KeyShift], action_dispatch=DocumentMessage::CreateEmptyFolder { container_path: vec![] }),
-			mac_only!(KeyDown(KeyN); modifiers=[KeyCommand, KeyShift], action_dispatch=DocumentMessage::CreateEmptyFolder { container_path: vec![] }),
+			standard!(KeyDown(KeyN); modifiers=[Control, Shift], action_dispatch=DocumentMessage::CreateEmptyFolder { container_path: vec![] }),
+			mac_only!(KeyDown(KeyN); modifiers=[Command, Shift], action_dispatch=DocumentMessage::CreateEmptyFolder { container_path: vec![] }),
 		),
 		entry_multiplatform!(
-			standard!(KeyDown(Key0); modifiers=[KeyControl], action_dispatch=DocumentMessage::ZoomCanvasToFitAll),
-			mac_only!(KeyDown(Key0); modifiers=[KeyCommand], action_dispatch=DocumentMessage::ZoomCanvasToFitAll),
+			standard!(KeyDown(Digit0); modifiers=[Control], action_dispatch=DocumentMessage::ZoomCanvasToFitAll),
+			mac_only!(KeyDown(Digit0); modifiers=[Command], action_dispatch=DocumentMessage::ZoomCanvasToFitAll),
 		),
 		entry_multiplatform!(
-			standard!(KeyDown(Key1); modifiers=[KeyControl], action_dispatch=DocumentMessage::ZoomCanvasTo100Percent),
-			mac_only!(KeyDown(Key1); modifiers=[KeyCommand], action_dispatch=DocumentMessage::ZoomCanvasTo100Percent),
+			standard!(KeyDown(Digit1); modifiers=[Control], action_dispatch=DocumentMessage::ZoomCanvasTo100Percent),
+			mac_only!(KeyDown(Digit1); modifiers=[Command], action_dispatch=DocumentMessage::ZoomCanvasTo100Percent),
 		),
 		entry_multiplatform!(
-			standard!(KeyDown(Key2); modifiers=[KeyControl], action_dispatch=DocumentMessage::ZoomCanvasTo200Percent),
-			mac_only!(KeyDown(Key2); modifiers=[KeyCommand], action_dispatch=DocumentMessage::ZoomCanvasTo200Percent),
+			standard!(KeyDown(Digit2); modifiers=[Control], action_dispatch=DocumentMessage::ZoomCanvasTo200Percent),
+			mac_only!(KeyDown(Digit2); modifiers=[Command], action_dispatch=DocumentMessage::ZoomCanvasTo200Percent),
 		),
 		entry_multiplatform!(
-			standard!(KeyDown(KeyLeftBracket); modifiers=[KeyControl, KeyShift], action_dispatch=DocumentMessage::SelectedLayersLowerToBack),
-			mac_only!(KeyDown(KeyLeftBracket); modifiers=[KeyCommand, KeyShift], action_dispatch=DocumentMessage::SelectedLayersLowerToBack),
+			standard!(KeyDown(BracketLeft); modifiers=[Control, Shift], action_dispatch=DocumentMessage::SelectedLayersLowerToBack),
+			mac_only!(KeyDown(BracketLeft); modifiers=[Command, Shift], action_dispatch=DocumentMessage::SelectedLayersLowerToBack),
 		),
 		entry_multiplatform!(
-			// TODO: Delete this in favor of the KeyLeftBracket (non-shifted version of this key) mapping above once the input system can distinguish between the non-shifted and shifted keys (important for other language keyboards)
-			standard!(KeyDown(KeyLeftCurlyBracket); modifiers=[KeyControl, KeyShift], action_dispatch=DocumentMessage::SelectedLayersLowerToBack),
-			mac_only!(KeyDown(KeyLeftCurlyBracket); modifiers=[KeyCommand, KeyShift], action_dispatch=DocumentMessage::SelectedLayersLowerToBack),
+			standard!(KeyDown(BracketRight); modifiers=[Control, Shift], action_dispatch=DocumentMessage::SelectedLayersRaiseToFront),
+			mac_only!(KeyDown(BracketRight); modifiers=[Command, Shift], action_dispatch=DocumentMessage::SelectedLayersRaiseToFront),
 		),
 		entry_multiplatform!(
-			standard!(KeyDown(KeyRightBracket); modifiers=[KeyControl, KeyShift], action_dispatch=DocumentMessage::SelectedLayersRaiseToFront),
-			mac_only!(KeyDown(KeyRightBracket); modifiers=[KeyCommand, KeyShift], action_dispatch=DocumentMessage::SelectedLayersRaiseToFront),
+			standard!(KeyDown(BracketLeft); modifiers=[Control], action_dispatch=DocumentMessage::SelectedLayersLower),
+			mac_only!(KeyDown(BracketLeft); modifiers=[Command], action_dispatch=DocumentMessage::SelectedLayersLower),
 		),
 		entry_multiplatform!(
-			// TODO: Delete this in favor of the KeyRightBracket (non-shifted version of this key) mapping above once the input system can distinguish between the non-shifted and shifted keys (important for other language keyboards)
-			standard!(KeyDown(KeyRightCurlyBracket); modifiers=[KeyControl, KeyShift], action_dispatch=DocumentMessage::SelectedLayersRaiseToFront),
-			mac_only!(KeyDown(KeyRightCurlyBracket); modifiers=[KeyCommand, KeyShift], action_dispatch=DocumentMessage::SelectedLayersRaiseToFront),
+			standard!(KeyDown(BracketRight); modifiers=[Control], action_dispatch=DocumentMessage::SelectedLayersRaise),
+			mac_only!(KeyDown(BracketRight); modifiers=[Command], action_dispatch=DocumentMessage::SelectedLayersRaise),
 		),
-		entry_multiplatform!(
-			standard!(KeyDown(KeyLeftBracket); modifiers=[KeyControl], action_dispatch=DocumentMessage::SelectedLayersLower),
-			mac_only!(KeyDown(KeyLeftBracket); modifiers=[KeyCommand], action_dispatch=DocumentMessage::SelectedLayersLower),
-		),
-		entry_multiplatform!(
-			standard!(KeyDown(KeyRightBracket); modifiers=[KeyControl], action_dispatch=DocumentMessage::SelectedLayersRaise),
-			mac_only!(KeyDown(KeyRightBracket); modifiers=[KeyCommand], action_dispatch=DocumentMessage::SelectedLayersRaise),
-		),
-		entry!(KeyDown(KeyArrowUp); modifiers=[KeyShift, KeyArrowLeft], action_dispatch=DocumentMessage::NudgeSelectedLayers { delta_x: -BIG_NUDGE_AMOUNT, delta_y: -BIG_NUDGE_AMOUNT }),
-		entry!(KeyDown(KeyArrowUp); modifiers=[KeyShift, KeyArrowRight], action_dispatch=DocumentMessage::NudgeSelectedLayers { delta_x: BIG_NUDGE_AMOUNT, delta_y: -BIG_NUDGE_AMOUNT }),
-		entry!(KeyDown(KeyArrowUp); modifiers=[KeyShift], action_dispatch=DocumentMessage::NudgeSelectedLayers { delta_x: 0., delta_y: -BIG_NUDGE_AMOUNT }),
-		entry!(KeyDown(KeyArrowDown); modifiers=[KeyShift, KeyArrowLeft], action_dispatch=DocumentMessage::NudgeSelectedLayers { delta_x: -BIG_NUDGE_AMOUNT, delta_y: BIG_NUDGE_AMOUNT }),
-		entry!(KeyDown(KeyArrowDown); modifiers=[KeyShift, KeyArrowRight], action_dispatch=DocumentMessage::NudgeSelectedLayers { delta_x: BIG_NUDGE_AMOUNT, delta_y: BIG_NUDGE_AMOUNT }),
-		entry!(KeyDown(KeyArrowDown); modifiers=[KeyShift], action_dispatch=DocumentMessage::NudgeSelectedLayers { delta_x: 0., delta_y: BIG_NUDGE_AMOUNT }),
-		entry!(KeyDown(KeyArrowLeft); modifiers=[KeyShift, KeyArrowUp], action_dispatch=DocumentMessage::NudgeSelectedLayers { delta_x: -BIG_NUDGE_AMOUNT, delta_y: -BIG_NUDGE_AMOUNT }),
-		entry!(KeyDown(KeyArrowLeft); modifiers=[KeyShift, KeyArrowDown], action_dispatch=DocumentMessage::NudgeSelectedLayers { delta_x: -BIG_NUDGE_AMOUNT, delta_y: BIG_NUDGE_AMOUNT }),
-		entry!(KeyDown(KeyArrowLeft); modifiers=[KeyShift], action_dispatch=DocumentMessage::NudgeSelectedLayers { delta_x: -BIG_NUDGE_AMOUNT, delta_y: 0. }),
-		entry!(KeyDown(KeyArrowRight); modifiers=[KeyShift, KeyArrowUp], action_dispatch=DocumentMessage::NudgeSelectedLayers { delta_x: BIG_NUDGE_AMOUNT, delta_y: -BIG_NUDGE_AMOUNT }),
-		entry!(KeyDown(KeyArrowRight); modifiers=[KeyShift, KeyArrowDown], action_dispatch=DocumentMessage::NudgeSelectedLayers { delta_x: BIG_NUDGE_AMOUNT, delta_y: BIG_NUDGE_AMOUNT }),
-		entry!(KeyDown(KeyArrowRight); modifiers=[KeyShift], action_dispatch=DocumentMessage::NudgeSelectedLayers { delta_x: BIG_NUDGE_AMOUNT, delta_y: 0. }),
-		entry!(KeyDown(KeyArrowUp); modifiers=[KeyArrowLeft], action_dispatch=DocumentMessage::NudgeSelectedLayers { delta_x: -NUDGE_AMOUNT, delta_y: -NUDGE_AMOUNT }),
-		entry!(KeyDown(KeyArrowUp); modifiers=[KeyArrowRight], action_dispatch=DocumentMessage::NudgeSelectedLayers { delta_x: NUDGE_AMOUNT, delta_y: -NUDGE_AMOUNT }),
-		entry!(KeyDown(KeyArrowUp); action_dispatch=DocumentMessage::NudgeSelectedLayers { delta_x: 0., delta_y: -NUDGE_AMOUNT }),
-		entry!(KeyDown(KeyArrowDown); modifiers=[KeyArrowLeft], action_dispatch=DocumentMessage::NudgeSelectedLayers { delta_x: -NUDGE_AMOUNT, delta_y: NUDGE_AMOUNT }),
-		entry!(KeyDown(KeyArrowDown); modifiers=[KeyArrowRight], action_dispatch=DocumentMessage::NudgeSelectedLayers { delta_x: NUDGE_AMOUNT, delta_y: NUDGE_AMOUNT }),
-		entry!(KeyDown(KeyArrowDown); action_dispatch=DocumentMessage::NudgeSelectedLayers { delta_x: 0., delta_y: NUDGE_AMOUNT }),
-		entry!(KeyDown(KeyArrowLeft); modifiers=[KeyArrowUp], action_dispatch=DocumentMessage::NudgeSelectedLayers { delta_x: -NUDGE_AMOUNT, delta_y: -NUDGE_AMOUNT }),
-		entry!(KeyDown(KeyArrowLeft); modifiers=[KeyArrowDown], action_dispatch=DocumentMessage::NudgeSelectedLayers { delta_x: -NUDGE_AMOUNT, delta_y: NUDGE_AMOUNT }),
-		entry!(KeyDown(KeyArrowLeft); action_dispatch=DocumentMessage::NudgeSelectedLayers { delta_x: -NUDGE_AMOUNT, delta_y: 0. }),
-		entry!(KeyDown(KeyArrowRight); modifiers=[KeyArrowUp], action_dispatch=DocumentMessage::NudgeSelectedLayers { delta_x: NUDGE_AMOUNT, delta_y: -NUDGE_AMOUNT }),
-		entry!(KeyDown(KeyArrowRight); modifiers=[KeyArrowDown], action_dispatch=DocumentMessage::NudgeSelectedLayers { delta_x: NUDGE_AMOUNT, delta_y: NUDGE_AMOUNT }),
-		entry!(KeyDown(KeyArrowRight); action_dispatch=DocumentMessage::NudgeSelectedLayers { delta_x: NUDGE_AMOUNT, delta_y: 0. }),
+		entry!(KeyDown(ArrowUp); modifiers=[Shift, ArrowLeft], action_dispatch=DocumentMessage::NudgeSelectedLayers { delta_x: -BIG_NUDGE_AMOUNT, delta_y: -BIG_NUDGE_AMOUNT }),
+		entry!(KeyDown(ArrowUp); modifiers=[Shift, ArrowRight], action_dispatch=DocumentMessage::NudgeSelectedLayers { delta_x: BIG_NUDGE_AMOUNT, delta_y: -BIG_NUDGE_AMOUNT }),
+		entry!(KeyDown(ArrowUp); modifiers=[Shift], action_dispatch=DocumentMessage::NudgeSelectedLayers { delta_x: 0., delta_y: -BIG_NUDGE_AMOUNT }),
+		entry!(KeyDown(ArrowDown); modifiers=[Shift, ArrowLeft], action_dispatch=DocumentMessage::NudgeSelectedLayers { delta_x: -BIG_NUDGE_AMOUNT, delta_y: BIG_NUDGE_AMOUNT }),
+		entry!(KeyDown(ArrowDown); modifiers=[Shift, ArrowRight], action_dispatch=DocumentMessage::NudgeSelectedLayers { delta_x: BIG_NUDGE_AMOUNT, delta_y: BIG_NUDGE_AMOUNT }),
+		entry!(KeyDown(ArrowDown); modifiers=[Shift], action_dispatch=DocumentMessage::NudgeSelectedLayers { delta_x: 0., delta_y: BIG_NUDGE_AMOUNT }),
+		entry!(KeyDown(ArrowLeft); modifiers=[Shift, ArrowUp], action_dispatch=DocumentMessage::NudgeSelectedLayers { delta_x: -BIG_NUDGE_AMOUNT, delta_y: -BIG_NUDGE_AMOUNT }),
+		entry!(KeyDown(ArrowLeft); modifiers=[Shift, ArrowDown], action_dispatch=DocumentMessage::NudgeSelectedLayers { delta_x: -BIG_NUDGE_AMOUNT, delta_y: BIG_NUDGE_AMOUNT }),
+		entry!(KeyDown(ArrowLeft); modifiers=[Shift], action_dispatch=DocumentMessage::NudgeSelectedLayers { delta_x: -BIG_NUDGE_AMOUNT, delta_y: 0. }),
+		entry!(KeyDown(ArrowRight); modifiers=[Shift, ArrowUp], action_dispatch=DocumentMessage::NudgeSelectedLayers { delta_x: BIG_NUDGE_AMOUNT, delta_y: -BIG_NUDGE_AMOUNT }),
+		entry!(KeyDown(ArrowRight); modifiers=[Shift, ArrowDown], action_dispatch=DocumentMessage::NudgeSelectedLayers { delta_x: BIG_NUDGE_AMOUNT, delta_y: BIG_NUDGE_AMOUNT }),
+		entry!(KeyDown(ArrowRight); modifiers=[Shift], action_dispatch=DocumentMessage::NudgeSelectedLayers { delta_x: BIG_NUDGE_AMOUNT, delta_y: 0. }),
+		entry!(KeyDown(ArrowUp); modifiers=[ArrowLeft], action_dispatch=DocumentMessage::NudgeSelectedLayers { delta_x: -NUDGE_AMOUNT, delta_y: -NUDGE_AMOUNT }),
+		entry!(KeyDown(ArrowUp); modifiers=[ArrowRight], action_dispatch=DocumentMessage::NudgeSelectedLayers { delta_x: NUDGE_AMOUNT, delta_y: -NUDGE_AMOUNT }),
+		entry!(KeyDown(ArrowUp); action_dispatch=DocumentMessage::NudgeSelectedLayers { delta_x: 0., delta_y: -NUDGE_AMOUNT }),
+		entry!(KeyDown(ArrowDown); modifiers=[ArrowLeft], action_dispatch=DocumentMessage::NudgeSelectedLayers { delta_x: -NUDGE_AMOUNT, delta_y: NUDGE_AMOUNT }),
+		entry!(KeyDown(ArrowDown); modifiers=[ArrowRight], action_dispatch=DocumentMessage::NudgeSelectedLayers { delta_x: NUDGE_AMOUNT, delta_y: NUDGE_AMOUNT }),
+		entry!(KeyDown(ArrowDown); action_dispatch=DocumentMessage::NudgeSelectedLayers { delta_x: 0., delta_y: NUDGE_AMOUNT }),
+		entry!(KeyDown(ArrowLeft); modifiers=[ArrowUp], action_dispatch=DocumentMessage::NudgeSelectedLayers { delta_x: -NUDGE_AMOUNT, delta_y: -NUDGE_AMOUNT }),
+		entry!(KeyDown(ArrowLeft); modifiers=[ArrowDown], action_dispatch=DocumentMessage::NudgeSelectedLayers { delta_x: -NUDGE_AMOUNT, delta_y: NUDGE_AMOUNT }),
+		entry!(KeyDown(ArrowLeft); action_dispatch=DocumentMessage::NudgeSelectedLayers { delta_x: -NUDGE_AMOUNT, delta_y: 0. }),
+		entry!(KeyDown(ArrowRight); modifiers=[ArrowUp], action_dispatch=DocumentMessage::NudgeSelectedLayers { delta_x: NUDGE_AMOUNT, delta_y: -NUDGE_AMOUNT }),
+		entry!(KeyDown(ArrowRight); modifiers=[ArrowDown], action_dispatch=DocumentMessage::NudgeSelectedLayers { delta_x: NUDGE_AMOUNT, delta_y: NUDGE_AMOUNT }),
+		entry!(KeyDown(ArrowRight); action_dispatch=DocumentMessage::NudgeSelectedLayers { delta_x: NUDGE_AMOUNT, delta_y: 0. }),
 		//
 		// TransformLayerMessage
 		entry!(KeyDown(KeyG); action_dispatch=TransformLayerMessage::BeginGrab),
@@ -275,85 +265,85 @@ pub fn default_mapping() -> Mapping {
 		entry!(KeyDown(KeyS); action_dispatch=TransformLayerMessage::BeginScale),
 		//
 		// MovementMessage
-		entry!(KeyDown(Mmb); modifiers=[KeyControl], action_dispatch=MovementMessage::RotateCanvasBegin),
-		entry!(KeyDown(Mmb); modifiers=[KeyShift], action_dispatch=MovementMessage::ZoomCanvasBegin),
+		entry!(KeyDown(Mmb); modifiers=[Control], action_dispatch=MovementMessage::RotateCanvasBegin),
+		entry!(KeyDown(Mmb); modifiers=[Shift], action_dispatch=MovementMessage::ZoomCanvasBegin),
 		entry!(KeyDown(Mmb); action_dispatch=MovementMessage::TranslateCanvasBegin),
 		entry!(KeyUp(Mmb); action_dispatch=MovementMessage::TransformCanvasEnd),
-		entry!(KeyDown(Lmb); modifiers=[KeySpace], action_dispatch=MovementMessage::TranslateCanvasBegin),
-		entry!(KeyUp(Lmb); modifiers=[KeySpace], action_dispatch=MovementMessage::TransformCanvasEnd),
+		entry!(KeyDown(Lmb); modifiers=[Space], action_dispatch=MovementMessage::TranslateCanvasBegin),
+		entry!(KeyUp(Lmb); modifiers=[Space], action_dispatch=MovementMessage::TransformCanvasEnd),
 		entry_multiplatform!(
-			standard!(KeyDown(KeyPlus); modifiers=[KeyControl], action_dispatch=MovementMessage::IncreaseCanvasZoom { center_on_mouse: false }),
-			mac_only!(KeyDown(KeyPlus); modifiers=[KeyCommand], action_dispatch=MovementMessage::IncreaseCanvasZoom { center_on_mouse: false }),
+			standard!(KeyDown(NumpadAdd); modifiers=[Control], action_dispatch=MovementMessage::IncreaseCanvasZoom { center_on_mouse: false }),
+			mac_only!(KeyDown(NumpadAdd); modifiers=[Command], action_dispatch=MovementMessage::IncreaseCanvasZoom { center_on_mouse: false }),
 		),
 		entry_multiplatform!(
-			standard!(KeyDown(KeyEquals); modifiers=[KeyControl], action_dispatch=MovementMessage::IncreaseCanvasZoom { center_on_mouse: false }),
-			mac_only!(KeyDown(KeyEquals); modifiers=[KeyCommand], action_dispatch=MovementMessage::IncreaseCanvasZoom { center_on_mouse: false }),
+			standard!(KeyDown(Equal); modifiers=[Control], action_dispatch=MovementMessage::IncreaseCanvasZoom { center_on_mouse: false }),
+			mac_only!(KeyDown(Equal); modifiers=[Command], action_dispatch=MovementMessage::IncreaseCanvasZoom { center_on_mouse: false }),
 		),
 		entry_multiplatform!(
-			standard!(KeyDown(KeyMinus); modifiers=[KeyControl], action_dispatch=MovementMessage::DecreaseCanvasZoom { center_on_mouse: false }),
-			mac_only!(KeyDown(KeyMinus); modifiers=[KeyCommand], action_dispatch=MovementMessage::DecreaseCanvasZoom { center_on_mouse: false }),
+			standard!(KeyDown(Minus); modifiers=[Control], action_dispatch=MovementMessage::DecreaseCanvasZoom { center_on_mouse: false }),
+			mac_only!(KeyDown(Minus); modifiers=[Command], action_dispatch=MovementMessage::DecreaseCanvasZoom { center_on_mouse: false }),
 		),
-		entry!(WheelScroll; modifiers=[KeyControl], action_dispatch=MovementMessage::WheelCanvasZoom),
-		entry!(WheelScroll; modifiers=[KeyShift], action_dispatch=MovementMessage::WheelCanvasTranslate { use_y_as_x: true }),
+		entry!(WheelScroll; modifiers=[Control], action_dispatch=MovementMessage::WheelCanvasZoom),
+		entry!(WheelScroll; modifiers=[Shift], action_dispatch=MovementMessage::WheelCanvasTranslate { use_y_as_x: true }),
 		entry!(WheelScroll; action_dispatch=MovementMessage::WheelCanvasTranslate { use_y_as_x: false }),
-		entry!(KeyDown(KeyPageUp); modifiers=[KeyShift], action_dispatch=MovementMessage::TranslateCanvasByViewportFraction { delta: DVec2::new(1., 0.) }),
-		entry!(KeyDown(KeyPageDown); modifiers=[KeyShift], action_dispatch=MovementMessage::TranslateCanvasByViewportFraction { delta: DVec2::new(-1., 0.) }),
-		entry!(KeyDown(KeyPageUp); action_dispatch=MovementMessage::TranslateCanvasByViewportFraction { delta: DVec2::new(0., 1.) }),
-		entry!(KeyDown(KeyPageDown); action_dispatch=MovementMessage::TranslateCanvasByViewportFraction { delta: DVec2::new(0., -1.) }),
+		entry!(KeyDown(PageUp); modifiers=[Shift], action_dispatch=MovementMessage::TranslateCanvasByViewportFraction { delta: DVec2::new(1., 0.) }),
+		entry!(KeyDown(PageDown); modifiers=[Shift], action_dispatch=MovementMessage::TranslateCanvasByViewportFraction { delta: DVec2::new(-1., 0.) }),
+		entry!(KeyDown(PageUp); action_dispatch=MovementMessage::TranslateCanvasByViewportFraction { delta: DVec2::new(0., 1.) }),
+		entry!(KeyDown(PageDown); action_dispatch=MovementMessage::TranslateCanvasByViewportFraction { delta: DVec2::new(0., -1.) }),
 		//
 		// PortfolioMessage
 		entry_multiplatform!(
-			standard!(KeyDown(KeyO); modifiers=[KeyControl], action_dispatch=PortfolioMessage::OpenDocument),
-			mac_only!(KeyDown(KeyO); modifiers=[KeyCommand], action_dispatch=PortfolioMessage::OpenDocument),
+			standard!(KeyDown(KeyO); modifiers=[Control], action_dispatch=PortfolioMessage::OpenDocument),
+			mac_only!(KeyDown(KeyO); modifiers=[Command], action_dispatch=PortfolioMessage::OpenDocument),
 		),
 		entry_multiplatform!(
-			standard!(KeyDown(KeyI); modifiers=[KeyControl], action_dispatch=PortfolioMessage::Import),
-			mac_only!(KeyDown(KeyI); modifiers=[KeyCommand], action_dispatch=PortfolioMessage::Import),
+			standard!(KeyDown(KeyI); modifiers=[Control], action_dispatch=PortfolioMessage::Import),
+			mac_only!(KeyDown(KeyI); modifiers=[Command], action_dispatch=PortfolioMessage::Import),
 		),
-		entry!(KeyDown(KeyTab); modifiers=[KeyControl], action_dispatch=PortfolioMessage::NextDocument),
-		entry!(KeyDown(KeyTab); modifiers=[KeyControl, KeyShift], action_dispatch=PortfolioMessage::PrevDocument),
+		entry!(KeyDown(Tab); modifiers=[Control], action_dispatch=PortfolioMessage::NextDocument),
+		entry!(KeyDown(Tab); modifiers=[Control, Shift], action_dispatch=PortfolioMessage::PrevDocument),
 		entry_multiplatform!(
-			standard!(KeyDown(KeyW); modifiers=[KeyControl], action_dispatch=PortfolioMessage::CloseActiveDocumentWithConfirmation),
-			mac_only!(KeyDown(KeyW); modifiers=[KeyCommand], action_dispatch=PortfolioMessage::CloseActiveDocumentWithConfirmation),
-		),
-		entry_multiplatform!(
-			standard!(KeyDown(KeyX); modifiers=[KeyControl], action_dispatch=PortfolioMessage::Cut { clipboard: Clipboard::Device }),
-			mac_only!(KeyDown(KeyX); modifiers=[KeyCommand], action_dispatch=PortfolioMessage::Cut { clipboard: Clipboard::Device }),
+			standard!(KeyDown(KeyW); modifiers=[Control], action_dispatch=PortfolioMessage::CloseActiveDocumentWithConfirmation),
+			mac_only!(KeyDown(KeyW); modifiers=[Command], action_dispatch=PortfolioMessage::CloseActiveDocumentWithConfirmation),
 		),
 		entry_multiplatform!(
-			standard!(KeyDown(KeyC); modifiers=[KeyControl], action_dispatch=PortfolioMessage::Copy { clipboard: Clipboard::Device }),
-			mac_only!(KeyDown(KeyC); modifiers=[KeyCommand], action_dispatch=PortfolioMessage::Copy { clipboard: Clipboard::Device }),
+			standard!(KeyDown(KeyX); modifiers=[Control], action_dispatch=PortfolioMessage::Cut { clipboard: Clipboard::Device }),
+			mac_only!(KeyDown(KeyX); modifiers=[Command], action_dispatch=PortfolioMessage::Cut { clipboard: Clipboard::Device }),
+		),
+		entry_multiplatform!(
+			standard!(KeyDown(KeyC); modifiers=[Control], action_dispatch=PortfolioMessage::Copy { clipboard: Clipboard::Device }),
+			mac_only!(KeyDown(KeyC); modifiers=[Command], action_dispatch=PortfolioMessage::Copy { clipboard: Clipboard::Device }),
 		),
 		entry_multiplatform!(
 			// This shortcut is intercepted in the frontend; it exists here only as a shortcut mapping source
-			standard!(KeyDown(KeyV); modifiers=[KeyControl], action_dispatch=FrontendMessage::TriggerPaste),
-			mac_only!(KeyDown(KeyV); modifiers=[KeyCommand], action_dispatch=FrontendMessage::TriggerPaste),
+			standard!(KeyDown(KeyV); modifiers=[Control], action_dispatch=FrontendMessage::TriggerPaste),
+			mac_only!(KeyDown(KeyV); modifiers=[Command], action_dispatch=FrontendMessage::TriggerPaste),
 		),
 		//
 		// DialogMessage
 		entry_multiplatform!(
-			standard!(KeyDown(KeyN); modifiers=[KeyControl], action_dispatch=DialogMessage::RequestNewDocumentDialog),
-			mac_only!(KeyDown(KeyN); modifiers=[KeyCommand], action_dispatch=DialogMessage::RequestNewDocumentDialog),
+			standard!(KeyDown(KeyN); modifiers=[Control], action_dispatch=DialogMessage::RequestNewDocumentDialog),
+			mac_only!(KeyDown(KeyN); modifiers=[Command], action_dispatch=DialogMessage::RequestNewDocumentDialog),
 		),
 		entry_multiplatform!(
-			standard!(KeyDown(KeyW); modifiers=[KeyControl, KeyAlt], action_dispatch=DialogMessage::CloseAllDocumentsWithConfirmation),
-			mac_only!(KeyDown(KeyW); modifiers=[KeyCommand, KeyAlt], action_dispatch=DialogMessage::CloseAllDocumentsWithConfirmation),
+			standard!(KeyDown(KeyW); modifiers=[Control, Alt], action_dispatch=DialogMessage::CloseAllDocumentsWithConfirmation),
+			mac_only!(KeyDown(KeyW); modifiers=[Command, Alt], action_dispatch=DialogMessage::CloseAllDocumentsWithConfirmation),
 		),
 		entry_multiplatform!(
-			standard!(KeyDown(KeyE); modifiers=[KeyControl], action_dispatch=DialogMessage::RequestExportDialog),
-			mac_only!(KeyDown(KeyE); modifiers=[KeyCommand], action_dispatch=DialogMessage::RequestExportDialog),
+			standard!(KeyDown(KeyE); modifiers=[Control], action_dispatch=DialogMessage::RequestExportDialog),
+			mac_only!(KeyDown(KeyE); modifiers=[Command], action_dispatch=DialogMessage::RequestExportDialog),
 		),
 		//
 		// DebugMessage
-		entry!(KeyDown(KeyT); modifiers=[KeyAlt], action_dispatch=DebugMessage::ToggleTraceLogs),
-		entry!(KeyDown(Key0); modifiers=[KeyAlt], action_dispatch=DebugMessage::MessageOff),
-		entry!(KeyDown(Key1); modifiers=[KeyAlt], action_dispatch=DebugMessage::MessageNames),
-		entry!(KeyDown(Key2); modifiers=[KeyAlt], action_dispatch=DebugMessage::MessageContents),
+		entry!(KeyDown(KeyT); modifiers=[Alt], action_dispatch=DebugMessage::ToggleTraceLogs),
+		entry!(KeyDown(Digit0); modifiers=[Alt], action_dispatch=DebugMessage::MessageOff),
+		entry!(KeyDown(Digit1); modifiers=[Alt], action_dispatch=DebugMessage::MessageNames),
+		entry!(KeyDown(Digit2); modifiers=[Alt], action_dispatch=DebugMessage::MessageContents),
 	];
 	let (mut key_up, mut key_down, mut double_click, mut wheel_scroll, mut pointer_move) = mappings;
 
 	// TODO: Hardcode these 10 lines into 10 lines of declarations, or make this use a macro to do all 10 in one line
-	const NUMBER_KEYS: [Key; 10] = [Key0, Key1, Key2, Key3, Key4, Key5, Key6, Key7, Key8, Key9];
+	const NUMBER_KEYS: [Key; 10] = [Digit0, Digit1, Digit2, Digit3, Digit4, Digit5, Digit6, Digit7, Digit8, Digit9];
 	for (i, key) in NUMBER_KEYS.iter().enumerate() {
 		key_down[*key as usize].0.insert(
 			0,

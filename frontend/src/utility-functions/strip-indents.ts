@@ -2,7 +2,7 @@ export function stripIndents(stringPieces: TemplateStringsArray, ...substitution
 	const interleavedSubstitutions = stringPieces.flatMap((stringPiece, index) => [stringPiece, substitutions[index] !== undefined ? substitutions[index] : ""]);
 	const stringLines = interleavedSubstitutions.join("").split("\n");
 
-	const visibleLineTabPrefixLengths = stringLines.map((line) => (line.match(/\S/) ? (line.match(/^(\t*)/) || [])[1].length : Infinity));
+	const visibleLineTabPrefixLengths = stringLines.map((line) => (/\S/.test(line) ? (line.match(/^(\t*)/) || [])[1].length : Infinity));
 	const commonTabPrefixLength = Math.min(...visibleLineTabPrefixLengths);
 
 	const linesWithoutCommonTabPrefix = stringLines.map((line) => line.substring(commonTabPrefixLength));

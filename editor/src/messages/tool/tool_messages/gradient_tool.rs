@@ -469,7 +469,7 @@ impl Fsm for GradientToolFsmState {
 					plus: false,
 				},
 				HintInfo {
-					key_groups: vec![KeysGroup(vec![Key::KeyShift])],
+					key_groups: vec![KeysGroup(vec![Key::Shift])],
 					key_groups_mac: None,
 					mouse: None,
 					label: String::from("Snap 15°"),
@@ -477,7 +477,7 @@ impl Fsm for GradientToolFsmState {
 				},
 			])]),
 			GradientToolFsmState::Drawing => HintData(vec![HintGroup(vec![HintInfo {
-				key_groups: vec![KeysGroup(vec![Key::KeyShift])],
+				key_groups: vec![KeysGroup(vec![Key::Shift])],
 				key_groups_mac: None,
 				mouse: None,
 				label: String::from("Snap 15°"),

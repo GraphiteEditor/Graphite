@@ -201,7 +201,7 @@ impl Fsm for NavigateToolFsmState {
 						plus: false,
 					},
 					HintInfo {
-						key_groups: vec![KeysGroup(vec![Key::KeyShift])],
+						key_groups: vec![KeysGroup(vec![Key::Shift])],
 						key_groups_mac: None,
 						mouse: None,
 						label: String::from("Zoom Out"),
@@ -217,7 +217,7 @@ impl Fsm for NavigateToolFsmState {
 						plus: false,
 					},
 					HintInfo {
-						key_groups: vec![KeysGroup(vec![Key::KeyControl])],
+						key_groups: vec![KeysGroup(vec![Key::Control])],
 						key_groups_mac: None,
 						mouse: None,
 						label: String::from("Snap Increments"),
@@ -240,7 +240,7 @@ impl Fsm for NavigateToolFsmState {
 						plus: false,
 					},
 					HintInfo {
-						key_groups: vec![KeysGroup(vec![Key::KeyControl])],
+						key_groups: vec![KeysGroup(vec![Key::Control])],
 						key_groups_mac: None,
 						mouse: None,
 						label: String::from("Snap 15°"),
@@ -249,14 +249,14 @@ impl Fsm for NavigateToolFsmState {
 				]),
 			]),
 			NavigateToolFsmState::Tilting => HintData(vec![HintGroup(vec![HintInfo {
-				key_groups: vec![KeysGroup(vec![Key::KeyControl])],
+				key_groups: vec![KeysGroup(vec![Key::Control])],
 				key_groups_mac: None,
 				mouse: None,
 				label: String::from("Snap 15°"),
 				plus: false,
 			}])]),
 			NavigateToolFsmState::Zooming => HintData(vec![HintGroup(vec![HintInfo {
-				key_groups: vec![KeysGroup(vec![Key::KeyControl])],
+				key_groups: vec![KeysGroup(vec![Key::Control])],
 				key_groups_mac: None,
 				mouse: None,
 				label: String::from("Snap Increments"),
