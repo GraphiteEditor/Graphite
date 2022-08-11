@@ -1,3 +1,4 @@
+use super::utility_types::input_keyboard::KeysGroup;
 use super::utility_types::misc::Mapping;
 use crate::messages::input_mapper::utility_types::input_keyboard::{self, Key};
 use crate::messages::portfolio::document::utility_types::misc::KeyboardPlatformLayout;
@@ -43,7 +44,7 @@ impl InputMapperMessageHandler {
 		output.replace("Key", "")
 	}
 
-	pub fn action_input_mapping(&self, action_to_find: &MessageDiscriminant, keyboard_platform: KeyboardPlatformLayout) -> Vec<Vec<Key>> {
+	pub fn action_input_mapping(&self, action_to_find: &MessageDiscriminant, keyboard_platform: KeyboardPlatformLayout) -> Vec<KeysGroup> {
 		let key_up = self.mapping.key_up.iter();
 		let key_down = self.mapping.key_down.iter();
 		let double_click = std::iter::once(&self.mapping.double_click);
@@ -92,7 +93,7 @@ impl InputMapperMessageHandler {
 					}
 				});
 
-				keys
+				KeysGroup(keys)
 			})
 			.collect::<Vec<_>>()
 	}

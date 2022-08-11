@@ -1,3 +1,4 @@
+use crate::messages::portfolio::document::utility_types::misc::KeyboardPlatformLayout;
 use crate::messages::prelude::*;
 
 pub use graphene::DocumentResponse;
@@ -276,8 +277,41 @@ impl fmt::Display for Key {
 pub const NUMBER_OF_KEYS: usize = Key::NumKeys as usize;
 
 /// Only `Key`s that exist on a physical keyboard should be used.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct KeysGroup(pub Vec<Key>);
+
+impl KeysGroup {
+	pub fn keys_text_shortcut(&self, keyboard_platform: KeyboardPlatformLayout) -> String {
+		const JOINER_MARK: &str = "+";
+
+		let mut joined = self
+			.0
+			.iter()
+			.map(|key| {
+				let key_string = key.to_string();
+
+				if keyboard_platform == KeyboardPlatformLayout::Mac {
+					match key_string.as_str() {
+						"Command" => "⌘".to_string(),
+						"Control" => "⌃".to_string(),
+						"Alt" => "⌥".to_string(),
+						"Shift" => "⇧".to_string(),
+						_ => key_string + JOINER_MARK,
+					}
+				} else {
+					key_string + JOINER_MARK
+				}
+			})
+			.collect::<String>();
+
+		// Truncate to cut the joining character off the end if it's present
+		if joined.ends_with(JOINER_MARK) {
+			joined.truncate(joined.len() - JOINER_MARK.len());
+		}
+
+		joined
+	}
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum MouseMotion {
