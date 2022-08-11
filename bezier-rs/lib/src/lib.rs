@@ -1567,6 +1567,16 @@ mod tests {
 
 	#[test]
 	fn test_rotate() {
+		let bezier_linear = Bezier::from_linear_coordinates(30., 60., 140., 120.);
+		let rotated_bezier_linear = bezier_linear.rotate(-PI / 2.);
+		let expected_bezier_linear = Bezier::from_linear_coordinates(60., -30., 120., -140.);
+		assert!(rotated_bezier_linear.abs_diff_eq(&expected_bezier_linear, MAX_ABSOLUTE_DIFFERENCE));
+
+		let bezier_quadratic = Bezier::from_quadratic_coordinates(30., 50., 140., 30., 160., 170.);
+		let rotated_bezier_quadratic = bezier_quadratic.rotate(PI);
+		let expected_bezier_quadratic = Bezier::from_quadratic_coordinates(-30., -50., -140., -30., -160., -170.);
+		assert!(rotated_bezier_quadratic.abs_diff_eq(&expected_bezier_quadratic, MAX_ABSOLUTE_DIFFERENCE));
+
 		let bezier = Bezier::from_cubic_coordinates(30., 30., 60., 140., 150., 30., 160., 160.);
 		let rotated_bezier = bezier.rotate(PI / 2.);
 		let expected_bezier = Bezier::from_cubic_coordinates(-30., 30., -140., 60., -30., 150., -160., 160.);
@@ -1575,6 +1585,16 @@ mod tests {
 
 	#[test]
 	fn test_translate() {
+		let bezier_linear = Bezier::from_linear_coordinates(30., 60., 140., 120.);
+		let rotated_bezier_linear = bezier_linear.translate(DVec2::new(10., 10.));
+		let expected_bezier_linear = Bezier::from_linear_coordinates(40., 70., 150., 130.);
+		assert!(rotated_bezier_linear.abs_diff_eq(&expected_bezier_linear, MAX_ABSOLUTE_DIFFERENCE));
+
+		let bezier_quadratic = Bezier::from_quadratic_coordinates(30., 50., 140., 30., 160., 170.);
+		let rotated_bezier_quadratic = bezier_quadratic.translate(DVec2::new(-10., 10.));
+		let expected_bezier_quadratic = Bezier::from_quadratic_coordinates(20., 60., 130., 40., 150., 180.);
+		assert!(rotated_bezier_quadratic.abs_diff_eq(&expected_bezier_quadratic, MAX_ABSOLUTE_DIFFERENCE));
+
 		let bezier = Bezier::from_cubic_coordinates(30., 30., 60., 140., 150., 30., 160., 160.);
 		let translated_bezier = bezier.translate(DVec2::new(10., -10.));
 		let expected_bezier = Bezier::from_cubic_coordinates(40., 20., 70., 130., 160., 20., 170., 150.);
