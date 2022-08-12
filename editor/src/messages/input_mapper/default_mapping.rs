@@ -20,11 +20,11 @@ pub fn default_mapping() -> Mapping {
 	let mappings = mapping![
 		// HIGHER PRIORITY:
 		//
-		// MovementMessage
+		// NavigationMessage
 		entry!(
 			PointerMove;
 			refresh_keys=[Control],
-			action_dispatch=MovementMessage::PointerMove { snap_angle: Control, wait_for_snap_angle_release: true, snap_zoom: Control, zoom_from_viewport: None },
+			action_dispatch=NavigationMessage::PointerMove { snap_angle: Control, wait_for_snap_angle_release: true, snap_zoom: Control, zoom_from_viewport: None },
 		),
 		// NORMAL PRIORITY:
 		//
@@ -264,32 +264,32 @@ pub fn default_mapping() -> Mapping {
 		entry!(KeyDown(KeyR); action_dispatch=TransformLayerMessage::BeginRotate),
 		entry!(KeyDown(KeyS); action_dispatch=TransformLayerMessage::BeginScale),
 		//
-		// MovementMessage
-		entry!(KeyDown(Mmb); modifiers=[Control], action_dispatch=MovementMessage::RotateCanvasBegin),
-		entry!(KeyDown(Mmb); modifiers=[Shift], action_dispatch=MovementMessage::ZoomCanvasBegin),
-		entry!(KeyDown(Mmb); action_dispatch=MovementMessage::TranslateCanvasBegin),
-		entry!(KeyUp(Mmb); action_dispatch=MovementMessage::TransformCanvasEnd),
-		entry!(KeyDown(Lmb); modifiers=[Space], action_dispatch=MovementMessage::TranslateCanvasBegin),
-		entry!(KeyUp(Lmb); modifiers=[Space], action_dispatch=MovementMessage::TransformCanvasEnd),
+		// NavigationMessage
+		entry!(KeyDown(Mmb); modifiers=[Control], action_dispatch=NavigationMessage::RotateCanvasBegin),
+		entry!(KeyDown(Mmb); modifiers=[Shift], action_dispatch=NavigationMessage::ZoomCanvasBegin),
+		entry!(KeyDown(Mmb); action_dispatch=NavigationMessage::TranslateCanvasBegin),
+		entry!(KeyUp(Mmb); action_dispatch=NavigationMessage::TransformCanvasEnd),
+		entry!(KeyDown(Lmb); modifiers=[Space], action_dispatch=NavigationMessage::TranslateCanvasBegin),
+		entry!(KeyUp(Lmb); modifiers=[Space], action_dispatch=NavigationMessage::TransformCanvasEnd),
 		entry_multiplatform!(
-			standard!(KeyDown(NumpadAdd); modifiers=[Control], action_dispatch=MovementMessage::IncreaseCanvasZoom { center_on_mouse: false }),
-			mac_only!(KeyDown(NumpadAdd); modifiers=[Command], action_dispatch=MovementMessage::IncreaseCanvasZoom { center_on_mouse: false }),
+			standard!(KeyDown(NumpadAdd); modifiers=[Control], action_dispatch=NavigationMessage::IncreaseCanvasZoom { center_on_mouse: false }),
+			mac_only!(KeyDown(NumpadAdd); modifiers=[Command], action_dispatch=NavigationMessage::IncreaseCanvasZoom { center_on_mouse: false }),
 		),
 		entry_multiplatform!(
-			standard!(KeyDown(Equal); modifiers=[Control], action_dispatch=MovementMessage::IncreaseCanvasZoom { center_on_mouse: false }),
-			mac_only!(KeyDown(Equal); modifiers=[Command], action_dispatch=MovementMessage::IncreaseCanvasZoom { center_on_mouse: false }),
+			standard!(KeyDown(Equal); modifiers=[Control], action_dispatch=NavigationMessage::IncreaseCanvasZoom { center_on_mouse: false }),
+			mac_only!(KeyDown(Equal); modifiers=[Command], action_dispatch=NavigationMessage::IncreaseCanvasZoom { center_on_mouse: false }),
 		),
 		entry_multiplatform!(
-			standard!(KeyDown(Minus); modifiers=[Control], action_dispatch=MovementMessage::DecreaseCanvasZoom { center_on_mouse: false }),
-			mac_only!(KeyDown(Minus); modifiers=[Command], action_dispatch=MovementMessage::DecreaseCanvasZoom { center_on_mouse: false }),
+			standard!(KeyDown(Minus); modifiers=[Control], action_dispatch=NavigationMessage::DecreaseCanvasZoom { center_on_mouse: false }),
+			mac_only!(KeyDown(Minus); modifiers=[Command], action_dispatch=NavigationMessage::DecreaseCanvasZoom { center_on_mouse: false }),
 		),
-		entry!(WheelScroll; modifiers=[Control], action_dispatch=MovementMessage::WheelCanvasZoom),
-		entry!(WheelScroll; modifiers=[Shift], action_dispatch=MovementMessage::WheelCanvasTranslate { use_y_as_x: true }),
-		entry!(WheelScroll; action_dispatch=MovementMessage::WheelCanvasTranslate { use_y_as_x: false }),
-		entry!(KeyDown(PageUp); modifiers=[Shift], action_dispatch=MovementMessage::TranslateCanvasByViewportFraction { delta: DVec2::new(1., 0.) }),
-		entry!(KeyDown(PageDown); modifiers=[Shift], action_dispatch=MovementMessage::TranslateCanvasByViewportFraction { delta: DVec2::new(-1., 0.) }),
-		entry!(KeyDown(PageUp); action_dispatch=MovementMessage::TranslateCanvasByViewportFraction { delta: DVec2::new(0., 1.) }),
-		entry!(KeyDown(PageDown); action_dispatch=MovementMessage::TranslateCanvasByViewportFraction { delta: DVec2::new(0., -1.) }),
+		entry!(WheelScroll; modifiers=[Control], action_dispatch=NavigationMessage::WheelCanvasZoom),
+		entry!(WheelScroll; modifiers=[Shift], action_dispatch=NavigationMessage::WheelCanvasTranslate { use_y_as_x: true }),
+		entry!(WheelScroll; action_dispatch=NavigationMessage::WheelCanvasTranslate { use_y_as_x: false }),
+		entry!(KeyDown(PageUp); modifiers=[Shift], action_dispatch=NavigationMessage::TranslateCanvasByViewportFraction { delta: DVec2::new(1., 0.) }),
+		entry!(KeyDown(PageDown); modifiers=[Shift], action_dispatch=NavigationMessage::TranslateCanvasByViewportFraction { delta: DVec2::new(-1., 0.) }),
+		entry!(KeyDown(PageUp); action_dispatch=NavigationMessage::TranslateCanvasByViewportFraction { delta: DVec2::new(0., 1.) }),
+		entry!(KeyDown(PageDown); action_dispatch=NavigationMessage::TranslateCanvasByViewportFraction { delta: DVec2::new(0., -1.) }),
 		//
 		// PortfolioMessage
 		entry_multiplatform!(

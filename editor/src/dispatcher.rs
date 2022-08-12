@@ -543,9 +543,9 @@ mod test {
 		let print_problem_to_terminal_on_failure = |value: &String| {
 			println!();
 			println!("-------------------------------------------------");
-			println!("Failed test due to receiving a DisplayDialogError while loading the Graphite sample file!");
+			println!("Failed test due to receiving a DisplayDialogError while loading the Graphite sample file.");
 			println!("This is most likely caused by forgetting to bump the `GRAPHITE_DOCUMENT_VERSION` in `editor/src/consts.rs`");
-			println!("After bumping this version number, please replace the `graphite-test-document.graphite` with a valid file [saved from the editor].");
+			println!("After bumping this version number, replace `graphite-test-document.graphite` with a valid file by saving a document from the editor.");
 			println!("DisplayDialogError details:");
 			println!();
 			println!("Description: {}", value);

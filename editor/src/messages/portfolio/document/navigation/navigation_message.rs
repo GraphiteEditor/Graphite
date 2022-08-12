@@ -5,9 +5,9 @@ use glam::DVec2;
 use serde::{Deserialize, Serialize};
 
 #[remain::sorted]
-#[impl_message(Message, DocumentMessage, Movement)]
+#[impl_message(Message, DocumentMessage, Navigation)]
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
-pub enum MovementMessage {
+pub enum NavigationMessage {
 	// Messages
 	DecreaseCanvasZoom {
 		center_on_mouse: bool,
