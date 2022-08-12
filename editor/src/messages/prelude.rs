@@ -12,7 +12,7 @@ pub use crate::messages::input_mapper::{InputMapperMessage, InputMapperMessageDi
 pub use crate::messages::input_preprocessor::{InputPreprocessorMessage, InputPreprocessorMessageDiscriminant, InputPreprocessorMessageHandler};
 pub use crate::messages::layout::{LayoutMessage, LayoutMessageDiscriminant, LayoutMessageHandler};
 pub use crate::messages::portfolio::document::artboard::{ArtboardMessage, ArtboardMessageDiscriminant, ArtboardMessageHandler};
-pub use crate::messages::portfolio::document::movement::{MovementMessage, MovementMessageDiscriminant, MovementMessageHandler};
+pub use crate::messages::portfolio::document::navigation::{NavigationMessage, NavigationMessageDiscriminant, NavigationMessageHandler};
 pub use crate::messages::portfolio::document::overlays::{OverlaysMessage, OverlaysMessageDiscriminant, OverlaysMessageHandler};
 pub use crate::messages::portfolio::document::properties_panel::{PropertiesPanelMessage, PropertiesPanelMessageDiscriminant, PropertiesPanelMessageHandler};
 pub use crate::messages::portfolio::document::transform_layer::{TransformLayerMessage, TransformLayerMessageDiscriminant, TransformLayerMessageHandler};

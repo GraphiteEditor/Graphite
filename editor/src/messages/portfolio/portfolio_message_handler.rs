@@ -206,7 +206,7 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 				let document_id = generate_uuid();
 				if self.active_document().is_some() {
 					responses.push_back(BroadcastEvent::ToolAbort.into());
-					responses.push_back(MovementMessage::TranslateCanvas { delta: (0., 0.).into() }.into());
+					responses.push_back(NavigationMessage::TranslateCanvas { delta: (0., 0.).into() }.into());
 				}
 
 				self.load_document(new_document, document_id, responses);
@@ -393,7 +393,7 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 				responses.push_back(BroadcastEvent::SelectionChanged.into());
 				responses.push_back(BroadcastEvent::DocumentIsDirty.into());
 				responses.push_back(PortfolioMessage::UpdateDocumentWidgets.into());
-				responses.push_back(MovementMessage::TranslateCanvas { delta: (0., 0.).into() }.into());
+				responses.push_back(NavigationMessage::TranslateCanvas { delta: (0., 0.).into() }.into());
 			}
 			SetActiveDocument { document_id } => self.active_document_id = Some(document_id),
 			SetPlatform { platform } => self.platform = platform,
@@ -506,7 +506,7 @@ impl PortfolioMessageHandler {
 		responses.push_back(PortfolioMessage::UpdateDocumentWidgets.into());
 		responses.push_back(ToolMessage::InitTools.into());
 		responses.push_back(PropertiesPanelMessage::Init.into());
-		responses.push_back(MovementMessage::TranslateCanvas { delta: (0., 0.).into() }.into());
+		responses.push_back(NavigationMessage::TranslateCanvas { delta: (0., 0.).into() }.into());
 		responses.push_back(DocumentMessage::DocumentStructureChanged.into())
 	}
 

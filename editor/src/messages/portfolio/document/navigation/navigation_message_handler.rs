@@ -12,7 +12,7 @@ use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct MovementMessageHandler {
+pub struct NavigationMessageHandler {
 	pub pan: DVec2,
 	panning: bool,
 	snap_tilt: bool,
@@ -28,7 +28,7 @@ pub struct MovementMessageHandler {
 	mouse_position: ViewportPosition,
 }
 
-impl Default for MovementMessageHandler {
+impl Default for NavigationMessageHandler {
 	fn default() -> Self {
 		Self {
 			pan: DVec2::ZERO,
@@ -48,10 +48,10 @@ impl Default for MovementMessageHandler {
 	}
 }
 
-impl MessageHandler<MovementMessage, (&Document, &InputPreprocessorMessageHandler)> for MovementMessageHandler {
+impl MessageHandler<NavigationMessage, (&Document, &InputPreprocessorMessageHandler)> for NavigationMessageHandler {
 	#[remain::check]
-	fn process_message(&mut self, message: MovementMessage, data: (&Document, &InputPreprocessorMessageHandler), responses: &mut VecDeque<Message>) {
-		use MovementMessage::*;
+	fn process_message(&mut self, message: NavigationMessage, data: (&Document, &InputPreprocessorMessageHandler), responses: &mut VecDeque<Message>) {
+		use NavigationMessage::*;
 
 		let (document, ipp) = data;
 
@@ -263,7 +263,7 @@ impl MessageHandler<MovementMessage, (&Document, &InputPreprocessorMessageHandle
 	}
 
 	fn actions(&self) -> ActionList {
-		let mut common = actions!(MovementMessageDiscriminant;
+		let mut common = actions!(NavigationMessageDiscriminant;
 			TranslateCanvasBegin,
 			RotateCanvasBegin,
 			ZoomCanvasBegin,
@@ -277,7 +277,7 @@ impl MessageHandler<MovementMessage, (&Document, &InputPreprocessorMessageHandle
 		);
 
 		if self.panning || self.tilting || self.zooming {
-			let transforming = actions!(MovementMessageDiscriminant;
+			let transforming = actions!(NavigationMessageDiscriminant;
 				PointerMove,
 				TransformCanvasEnd,
 			);
@@ -287,7 +287,7 @@ impl MessageHandler<MovementMessage, (&Document, &InputPreprocessorMessageHandle
 	}
 }
 
-impl MovementMessageHandler {
+impl NavigationMessageHandler {
 	pub fn snapped_angle(&self) -> f64 {
 		let increment_radians: f64 = VIEWPORT_ROTATE_SNAP_INTERVAL.to_radians();
 		if self.snap_tilt {
@@ -346,6 +346,6 @@ impl MovementMessageHandler {
 		let mouse_fraction = mouse / viewport_bounds;
 		let delta = delta_size * (DVec2::splat(0.5) - mouse_fraction);
 
-		MovementMessage::TranslateCanvas { delta }.into()
+		NavigationMessage::TranslateCanvas { delta }.into()
 	}
 }

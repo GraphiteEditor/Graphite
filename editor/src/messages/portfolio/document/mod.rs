@@ -2,7 +2,7 @@ mod document_message;
 mod document_message_handler;
 
 pub mod artboard;
-pub mod movement;
+pub mod navigation;
 pub mod overlays;
 pub mod properties_panel;
 pub mod transform_layer;
