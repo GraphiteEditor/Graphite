@@ -24,6 +24,8 @@ pub enum Message {
 	#[child]
 	Frontend(FrontendMessage),
 	#[child]
+	Globals(GlobalsMessage),
+	#[child]
 	InputMapper(InputMapperMessage),
 	#[child]
 	InputPreprocessor(InputPreprocessorMessage),

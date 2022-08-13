@@ -17,6 +17,7 @@ struct DispatcherMessageHandlers {
 	broadcast_message_handler: BroadcastMessageHandler,
 	debug_message_handler: DebugMessageHandler,
 	dialog_message_handler: DialogMessageHandler,
+	globals_message_handler: GlobalsMessageHandler,
 	input_mapper_message_handler: InputMapperMessageHandler,
 	input_preprocessor_message_handler: InputPreprocessorMessageHandler,
 	layout_message_handler: LayoutMessageHandler,
@@ -127,26 +128,25 @@ impl Dispatcher {
 						self.responses.push(message);
 					}
 				}
+				Globals(message) => {
+					self.message_handlers.globals_message_handler.process_message(message, (), &mut queue);
+				}
 				InputMapper(message) => {
 					let actions = self.collect_actions();
-					let keyboard_platform = self.message_handlers.portfolio_message_handler.platform.as_keyboard_platform_layout();
 
 					self.message_handlers
 						.input_mapper_message_handler
-						.process_message(message, (&self.message_handlers.input_preprocessor_message_handler, keyboard_platform, actions), &mut queue);
+						.process_message(message, (&self.message_handlers.input_preprocessor_message_handler, actions), &mut queue);
 				}
 				InputPreprocessor(message) => {
-					let keyboard_platform = self.message_handlers.portfolio_message_handler.platform.as_keyboard_platform_layout();
+					let keyboard_platform = GLOBAL_PLATFORM.get().expect("Failed to get GLOBAL_PLATFORM").as_keyboard_platform_layout();
 
 					self.message_handlers.input_preprocessor_message_handler.process_message(message, keyboard_platform, &mut queue);
 				}
 				Layout(message) => {
-					let keyboard_platform = self.message_handlers.portfolio_message_handler.platform.as_keyboard_platform_layout();
-					let action_input_mapping = &|action_to_find: &MessageDiscriminant| self.message_handlers.input_mapper_message_handler.action_input_mapping(action_to_find, keyboard_platform);
+					let action_input_mapping = &|action_to_find: &MessageDiscriminant| self.message_handlers.input_mapper_message_handler.action_input_mapping(action_to_find);
 
-					self.message_handlers
-						.layout_message_handler
-						.process_message(message, (action_input_mapping, keyboard_platform), &mut queue);
+					self.message_handlers.layout_message_handler.process_message(message, action_input_mapping, &mut queue);
 				}
 				Portfolio(message) => {
 					self.message_handlers
@@ -243,7 +243,6 @@ impl Dispatcher {
 
 #[cfg(test)]
 mod test {
-	use crate::application::set_uuid_seed;
 	use crate::application::Editor;
 	use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
 	use crate::messages::prelude::*;
@@ -262,14 +261,17 @@ mod test {
 	/// 2. A blue shape
 	/// 3. A green ellipse
 	fn create_editor_with_three_layers() -> Editor {
-		set_uuid_seed(0);
-		let mut editor = Editor::new();
+		init_logger();
+		let mut editor = Editor::create();
 
 		editor.new_document();
+
 		editor.select_primary_color(Color::RED);
 		editor.draw_rect(100., 200., 300., 400.);
+
 		editor.select_primary_color(Color::BLUE);
 		editor.draw_shape(10., 1200., 1300., 400.);
+
 		editor.select_primary_color(Color::GREEN);
 		editor.draw_ellipse(104., 1200., 1300., 400.);
 
@@ -282,7 +284,6 @@ mod test {
 	/// - paste
 	/// - assert that ellipse was copied
 	fn copy_paste_single_layer() {
-		init_logger();
 		let mut editor = create_editor_with_three_layers();
 
 		let document_before_copy = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap().graphene_document.clone();
@@ -316,7 +317,6 @@ mod test {
 	/// - paste
 	/// - assert that shape was copied
 	fn copy_paste_single_layer_from_middle() {
-		init_logger();
 		let mut editor = create_editor_with_three_layers();
 
 		let document_before_copy = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap().graphene_document.clone();
@@ -351,7 +351,6 @@ mod test {
 
 	#[test]
 	fn copy_paste_folder() {
-		init_logger();
 		let mut editor = create_editor_with_three_layers();
 
 		const FOLDER_INDEX: usize = 3;
@@ -447,7 +446,6 @@ mod test {
 	/// - paste
 	/// - paste
 	fn copy_paste_deleted_layers() {
-		init_logger();
 		let mut editor = create_editor_with_three_layers();
 
 		const ELLIPSE_INDEX: usize = 2;
@@ -499,7 +497,6 @@ mod test {
 	/// - select ellipse and rect
 	/// - move them down and back up again
 	fn move_selection() {
-		init_logger();
 		let mut editor = create_editor_with_three_layers();
 
 		fn map_to_vec(paths: Vec<&[LayerId]>) -> Vec<Vec<LayerId>> {
@@ -555,8 +552,8 @@ mod test {
 		};
 
 		init_logger();
-		set_uuid_seed(0);
-		let mut editor = Editor::new();
+		let mut editor = Editor::create();
+
 		let test_file = include_str!("../graphite-test-document.graphite");
 		let responses = editor.handle_message(PortfolioMessage::OpenDocumentFile {
 			document_name: "Graphite Version Test".into(),

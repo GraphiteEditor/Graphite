@@ -8,6 +8,7 @@ pub use crate::messages::dialog::export_dialog::{ExportDialogMessage, ExportDial
 pub use crate::messages::dialog::new_document_dialog::{NewDocumentDialogMessage, NewDocumentDialogMessageDiscriminant, NewDocumentDialogMessageHandler};
 pub use crate::messages::dialog::{DialogMessage, DialogMessageDiscriminant, DialogMessageHandler};
 pub use crate::messages::frontend::{FrontendMessage, FrontendMessageDiscriminant};
+pub use crate::messages::globals::{GlobalsMessage, GlobalsMessageDiscriminant, GlobalsMessageHandler};
 pub use crate::messages::input_mapper::{InputMapperMessage, InputMapperMessageDiscriminant, InputMapperMessageHandler};
 pub use crate::messages::input_preprocessor::{InputPreprocessorMessage, InputPreprocessorMessageDiscriminant, InputPreprocessorMessageHandler};
 pub use crate::messages::layout::{LayoutMessage, LayoutMessageDiscriminant, LayoutMessageHandler};
@@ -42,6 +43,8 @@ pub use crate::messages::tool::tool_messages::spline_tool::{SplineToolMessage, S
 pub use crate::messages::tool::tool_messages::text_tool::{TextToolMessage, TextToolMessageDiscriminant};
 
 // Helper
+pub use crate::messages::globals::global_variables::*;
+
 pub use graphite_proc_macros::*;
 
 pub use std::collections::{HashMap, HashSet, VecDeque};
