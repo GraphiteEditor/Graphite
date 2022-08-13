@@ -2,52 +2,13 @@ use core::marker::PhantomData;
 
 use crate::Node;
 
-pub struct ComposeNode<'n, Inter, First, Second> {
-	first: &'n First,
-	second: &'n Second,
+pub struct ComposeNode<'n, Input, First: Node<'n, Input>, Second> {
+	first: First,
+	second: Second,
 	_phantom: PhantomData<&'n Input>,
-	_phantom2: PhantomData<Inter>,
 }
 
-impl<'n, Input: 'n, Inter: 'n, First, Second> Node<'n, Input> for ComposeNode<'n, Input, Inter, First, Second>
-where
-	First: Node<'n, Input, Output = Inter>,
-	Second: Node<'n, Inter>, /*+ Node<<First as Node<Input>>::Output<'n>>*/
-{
-	type Output = <Second as Node<'n, Inter>>::Output;
-
-	fn eval(&'n self, input: Input) -> Self::Output {
-		// evaluate the first node with the given input
-		// and then pipe the result from the first computation
-		// into the second node
-		let arg: Inter = self.first.eval(input);
-		self.second.eval(arg)
-	}
-}
-
-impl<'n, Input, Inter, FIRST, SECOND> ComposeNode<'n, Input, Inter, FIRST, SECOND>
-where
-	FIRST: Node<'n, Input>,
-{
-	pub const fn new(first: &'n FIRST, second: &'n SECOND) -> Self {
-		ComposeNode::<'n, Input, Inter, FIRST, SECOND> {
-			first,
-			second,
-			_phantom: PhantomData,
-			_phantom2: PhantomData,
-		}
-	}
-}
-
-#[repr(C)]
-pub struct ComposeNodeOwned<'n, Input, Inter, FIRST, SECOND> {
-	first: FIRST,
-	second: SECOND,
-	_phantom: PhantomData<&'n Input>,
-	_phantom2: PhantomData<Inter>,
-}
-
-impl<'n, Input: 'n, Inter: 'n, First, Second> Node<'n, Input> for ComposeNodeOwned<'n, Input, Inter, First, Second>
+impl<'n, Input, Inter, First, Second> Node<'n, Input> for ComposeNode<'n, Input, First, Second>
 where
 	First: Node<'n, Input, Output = Inter>,
 	Second: Node<'n, Inter>,
@@ -63,33 +24,37 @@ where
 	}
 }
 
-impl<'n, Input, Inter, First: 'n, Second> ComposeNodeOwned<'n, Input, Inter, First, Second>
+impl<'n, Input, First, Second> ComposeNode<'n, Input, First, Second>
 where
-	First: Node<'n, Input, Output = Inter>,
+	First: Node<'n, Input>,
+	Second: Node<'n, First::Output>,
 {
-	#[cfg(feature = "nightly")]
 	pub const fn new(first: First, second: Second) -> Self {
-		ComposeNodeOwned::<'n, Input, Inter, First, Second> {
-			first,
-			second,
-			_phantom: PhantomData,
-			_phantom2: PhantomData,
-		}
-	}
-	#[cfg(not(feature = "nightly"))]
-	pub fn new(first: First, second: Second) -> Self {
-		ComposeNodeOwned::<'n, Input, Inter, First, Second> {
-			first,
-			second,
-			_phantom: PhantomData,
-			_phantom2: PhantomData,
-		}
+		ComposeNode::<'n, Input, First, Second> { first, second, _phantom: PhantomData }
 	}
 }
 
-pub trait After<I>: Sized {
-	fn after<'n, First: Node<'n, I>>(&'n self, first: &'n First) -> ComposeNode<'n, I, <First as Node<'n, I>>::Output, First, Self> {
+pub trait After<Inter>: Sized {
+	fn after<'n, First, Input>(self, first: First) -> ComposeNode<'n, Input, First, Self>
+	where
+		First: Node<'n, Input, Output = Inter>,
+		Self: Node<'n, Inter>,
+	{
 		ComposeNode::new(first, self)
 	}
 }
-impl<Second: for<'n> Node<'n, I>, I> After<I> for Second {}
+impl<'n, Second: Node<'n, I>, I> After<I> for Second {}
+
+pub struct ConsNode<Root>(pub Root);
+
+impl<'n, Root, Input> Node<'n, Input> for ConsNode<Root>
+where
+	Root: Node<'n, ()>,
+{
+	type Output = (Input, <Root as Node<'n, ()>>::Output);
+
+	fn eval(&'n self, input: Input) -> Self::Output {
+		let arg = self.0.eval(());
+		(input, arg)
+	}
+}

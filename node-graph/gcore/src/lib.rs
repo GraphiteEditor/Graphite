@@ -8,10 +8,10 @@ use alloc::boxed::Box;
 #[cfg(feature = "async")]
 use async_trait::async_trait;
 
-//pub mod generic;
-//pub mod ops;
-//pub mod structural;
+pub mod generic;
+pub mod ops;
 pub mod raster;
+pub mod structural;
 pub mod value;
 
 pub trait Node<'n, T> {
@@ -26,12 +26,6 @@ impl<'n, N: Node<'n, T>, T> Node<'n, T> for &'n N {
 	fn eval(&'n self, input: T) -> Self::Output {
 		Node::eval(*self, input)
 	}
-}
-
-pub trait NodeInput {
-	type Nodes;
-
-	fn new(input: Self::Nodes) -> Self;
 }
 
 trait Input<I> {
