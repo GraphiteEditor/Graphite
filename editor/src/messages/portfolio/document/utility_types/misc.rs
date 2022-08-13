@@ -77,7 +77,7 @@ impl Platform {
 		match self {
 			Platform::Mac => KeyboardPlatformLayout::Mac,
 			Platform::Unknown => {
-				log::warn!("The platform has not been set, remember to send `PortfolioMessage::SetPlatform` during editor initialization.");
+				log::warn!("The platform has not been set, remember to send `GlobalsMessage::SetPlatform` during editor initialization.");
 				KeyboardPlatformLayout::Standard
 			}
 			_ => KeyboardPlatformLayout::Standard,

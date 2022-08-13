@@ -6,7 +6,6 @@ use crate::application::generate_uuid;
 use crate::messages::input_mapper::utility_types::input_keyboard::KeysGroup;
 use crate::messages::input_mapper::utility_types::misc::ActionKeys;
 use crate::messages::layout::utility_types::misc::LayoutTarget;
-use crate::messages::portfolio::document::utility_types::misc::KeyboardPlatformLayout;
 use crate::messages::prelude::*;
 
 use serde::{Deserialize, Serialize};
@@ -35,14 +34,14 @@ pub enum Layout {
 }
 
 impl Layout {
-	pub fn unwrap_widget_layout(self, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Vec<KeysGroup>, keyboard_platform: KeyboardPlatformLayout) -> WidgetLayout {
+	pub fn unwrap_widget_layout(self, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Vec<KeysGroup>) -> WidgetLayout {
 		if let Layout::WidgetLayout(mut widget_layout) = self {
 			// Function used multiple times later in this code block to convert `ActionKeys::Action` to `ActionKeys::Keys` and append its shortcut to the tooltip
 			let apply_shortcut_to_tooltip = |tooltip_shortcut: &mut ActionKeys, tooltip: &mut String| {
 				tooltip_shortcut.to_keys(action_input_mapping);
 
 				if let ActionKeys::Keys(keys) = tooltip_shortcut {
-					let shortcut_text = keys.keys_text_shortcut(keyboard_platform);
+					let shortcut_text = keys.to_string();
 
 					if !shortcut_text.is_empty() {
 						if !tooltip.is_empty() {
@@ -90,7 +89,7 @@ impl Layout {
 		}
 	}
 
-	pub fn unwrap_menu_layout(self, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Vec<KeysGroup>, _keyboard_platform: KeyboardPlatformLayout) -> MenuLayout {
+	pub fn unwrap_menu_layout(self, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Vec<KeysGroup>) -> MenuLayout {
 		if let Layout::MenuLayout(mut menu_layout) = self {
 			for menu_column in &mut menu_layout.layout {
 				menu_column.children.fill_in_shortcut_actions_with_keys(action_input_mapping);

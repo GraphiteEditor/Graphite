@@ -1,6 +1,8 @@
+use crate::application::set_uuid_seed;
 use crate::application::Editor;
 use crate::messages::input_mapper::utility_types::input_keyboard::ModifierKeys;
 use crate::messages::input_mapper::utility_types::input_mouse::{EditorMouseState, MouseKeys, ScrollDelta, ViewportPosition};
+use crate::messages::portfolio::document::utility_types::misc::Platform;
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::ToolType;
 
@@ -8,6 +10,8 @@ use graphene::color::Color;
 
 /// A set of utility functions to make the writing of editor test more declarative
 pub trait EditorTestUtils {
+	fn create() -> Editor;
+
 	fn new_document(&mut self);
 
 	fn draw_rect(&mut self, x1: f64, y1: f64, x2: f64, y2: f64);
@@ -26,6 +30,20 @@ pub trait EditorTestUtils {
 }
 
 impl EditorTestUtils for Editor {
+	fn create() -> Editor {
+		set_uuid_seed(0);
+
+		let mut editor = Editor::new();
+
+		// We have to set this directly instead of using `GlobalsMessage::SetPlatform` because race conditions with multiple tests can cause that message handler to set it more than once, which is a failure.
+		// It isn't sufficient to guard the message dispatch here with a check if the once_cell is empty, because that isn't atomic and the time between checking and handling the dispatch can let multiple through.
+		let _ = GLOBAL_PLATFORM.set(Platform::Windows).is_ok();
+
+		editor.handle_message(Message::Init);
+
+		editor
+	}
+
 	fn new_document(&mut self) {
 		self.handle_message(Message::Portfolio(PortfolioMessage::NewDocumentWithName { name: String::from("Test document") }));
 	}

@@ -54,7 +54,7 @@ impl MessageHandler<InputPreprocessorMessage, KeyboardPlatformLayout> for InputP
 				}
 			}
 			InputPreprocessorMessage::DoubleClick { editor_mouse_state, modifier_keys } => {
-				self.handle_modifier_keys(modifier_keys, keyboard_platform, responses);
+				self.update_states_of_modifier_keys(modifier_keys, keyboard_platform, responses);
 
 				let mouse_state = editor_mouse_state.to_mouse_state(&self.viewport_bounds);
 				self.mouse.position = mouse_state.position;
@@ -62,17 +62,17 @@ impl MessageHandler<InputPreprocessorMessage, KeyboardPlatformLayout> for InputP
 				responses.push_back(InputMapperMessage::DoubleClick.into());
 			}
 			InputPreprocessorMessage::KeyDown { key, modifier_keys } => {
-				self.handle_modifier_keys(modifier_keys, keyboard_platform, responses);
+				self.update_states_of_modifier_keys(modifier_keys, keyboard_platform, responses);
 				self.keyboard.set(key as usize);
 				responses.push_back(InputMapperMessage::KeyDown(key).into());
 			}
 			InputPreprocessorMessage::KeyUp { key, modifier_keys } => {
-				self.handle_modifier_keys(modifier_keys, keyboard_platform, responses);
+				self.update_states_of_modifier_keys(modifier_keys, keyboard_platform, responses);
 				self.keyboard.unset(key as usize);
 				responses.push_back(InputMapperMessage::KeyUp(key).into());
 			}
 			InputPreprocessorMessage::PointerDown { editor_mouse_state, modifier_keys } => {
-				self.handle_modifier_keys(modifier_keys, keyboard_platform, responses);
+				self.update_states_of_modifier_keys(modifier_keys, keyboard_platform, responses);
 
 				let mouse_state = editor_mouse_state.to_mouse_state(&self.viewport_bounds);
 				self.mouse.position = mouse_state.position;
@@ -80,7 +80,7 @@ impl MessageHandler<InputPreprocessorMessage, KeyboardPlatformLayout> for InputP
 				self.translate_mouse_event(mouse_state, true, responses);
 			}
 			InputPreprocessorMessage::PointerMove { editor_mouse_state, modifier_keys } => {
-				self.handle_modifier_keys(modifier_keys, keyboard_platform, responses);
+				self.update_states_of_modifier_keys(modifier_keys, keyboard_platform, responses);
 
 				let mouse_state = editor_mouse_state.to_mouse_state(&self.viewport_bounds);
 				self.mouse.position = mouse_state.position;
@@ -91,7 +91,7 @@ impl MessageHandler<InputPreprocessorMessage, KeyboardPlatformLayout> for InputP
 				self.translate_mouse_event(mouse_state, false, responses);
 			}
 			InputPreprocessorMessage::PointerUp { editor_mouse_state, modifier_keys } => {
-				self.handle_modifier_keys(modifier_keys, keyboard_platform, responses);
+				self.update_states_of_modifier_keys(modifier_keys, keyboard_platform, responses);
 
 				let mouse_state = editor_mouse_state.to_mouse_state(&self.viewport_bounds);
 				self.mouse.position = mouse_state.position;
@@ -99,7 +99,7 @@ impl MessageHandler<InputPreprocessorMessage, KeyboardPlatformLayout> for InputP
 				self.translate_mouse_event(mouse_state, false, responses);
 			}
 			InputPreprocessorMessage::WheelScroll { editor_mouse_state, modifier_keys } => {
-				self.handle_modifier_keys(modifier_keys, keyboard_platform, responses);
+				self.update_states_of_modifier_keys(modifier_keys, keyboard_platform, responses);
 
 				let mouse_state = editor_mouse_state.to_mouse_state(&self.viewport_bounds);
 				self.mouse.position = mouse_state.position;
@@ -138,18 +138,30 @@ impl InputPreprocessorMessageHandler {
 		self.mouse = new_state;
 	}
 
-	fn handle_modifier_keys(&mut self, modifier_keys: ModifierKeys, keyboard_platform: KeyboardPlatformLayout, responses: &mut VecDeque<Message>) {
-		self.handle_modifier_key(Key::Shift, modifier_keys.contains(ModifierKeys::SHIFT), responses);
-		self.handle_modifier_key(Key::Alt, modifier_keys.contains(ModifierKeys::ALT), responses);
-		self.handle_modifier_key(Key::Control, modifier_keys.contains(ModifierKeys::CONTROL), responses);
+	fn update_states_of_modifier_keys(&mut self, pressed_modifier_keys: ModifierKeys, keyboard_platform: KeyboardPlatformLayout, responses: &mut VecDeque<Message>) {
+		let is_key_pressed = |key_to_check: ModifierKeys| pressed_modifier_keys.contains(key_to_check);
+
+		// Update the state of the concrete modifier keys based on the source state
+		self.update_modifier_key(Key::Shift, is_key_pressed(ModifierKeys::SHIFT), responses);
+		self.update_modifier_key(Key::Alt, is_key_pressed(ModifierKeys::ALT), responses);
+		self.update_modifier_key(Key::Control, is_key_pressed(ModifierKeys::CONTROL), responses);
+
+		// Update the state of either the concrete Meta or the Command keys based on which one is applicable for this platform
 		let meta_or_command = match keyboard_platform {
 			KeyboardPlatformLayout::Mac => Key::Command,
 			KeyboardPlatformLayout::Standard => Key::Meta,
 		};
-		self.handle_modifier_key(meta_or_command, modifier_keys.contains(ModifierKeys::META_OR_COMMAND), responses);
+		self.update_modifier_key(meta_or_command, is_key_pressed(ModifierKeys::META_OR_COMMAND), responses);
+
+		// Update the state of the virtual Accel key (the primary accelerator key) based on the source state of the Control or Command key, whichever is relevant on this platform
+		let accel_virtual_key_state = match keyboard_platform {
+			KeyboardPlatformLayout::Mac => is_key_pressed(ModifierKeys::META_OR_COMMAND),
+			KeyboardPlatformLayout::Standard => is_key_pressed(ModifierKeys::CONTROL),
+		};
+		self.update_modifier_key(Key::Accel, accel_virtual_key_state, responses);
 	}
 
-	fn handle_modifier_key(&mut self, key: Key, key_is_down: bool, responses: &mut VecDeque<Message>) {
+	fn update_modifier_key(&mut self, key: Key, key_is_down: bool, responses: &mut VecDeque<Message>) {
 		let key_was_down = self.keyboard.get(key as usize);
 
 		if key_was_down && !key_is_down {
