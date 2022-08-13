@@ -323,7 +323,7 @@ impl fmt::Display for KeysGroup {
 			.iter()
 			.map(|key| {
 				let keyboard_layout = GLOBAL_PLATFORM.get().expect("Failed to get GLOBAL_PLATFORM").as_keyboard_platform_layout();
-				let key_is_modifier = *key == Key::Control || *key == Key::Command || *key == Key::Alt || *key == Key::Shift || *key == Key::Meta || *key == Key::Accel;
+				let key_is_modifier = matches!(*key, Key::Control | Key::Command | Key::Alt | Key::Shift | Key::Meta | Key::Accel);
 
 				if keyboard_layout == KeyboardPlatformLayout::Mac && key_is_modifier {
 					key.to_string()
