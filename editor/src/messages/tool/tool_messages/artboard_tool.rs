@@ -424,7 +424,7 @@ impl Fsm for ArtboardToolFsmState {
 					plus: false,
 				}]),
 				HintGroup(vec![HintInfo {
-					key_groups: vec![KeysGroup(vec![Key::KeyBackspace])],
+					key_groups: vec![KeysGroup(vec![Key::Backspace])],
 					key_groups_mac: None,
 					mouse: None,
 					label: String::from("Delete Artboard"),
@@ -432,7 +432,7 @@ impl Fsm for ArtboardToolFsmState {
 				}]),
 			]),
 			ArtboardToolFsmState::Dragging => HintData(vec![HintGroup(vec![HintInfo {
-				key_groups: vec![KeysGroup(vec![Key::KeyShift])],
+				key_groups: vec![KeysGroup(vec![Key::Shift])],
 				key_groups_mac: None,
 				mouse: None,
 				label: String::from("Constrain to Axis"),
@@ -440,14 +440,14 @@ impl Fsm for ArtboardToolFsmState {
 			}])]),
 			ArtboardToolFsmState::Drawing | ArtboardToolFsmState::ResizingBounds => HintData(vec![HintGroup(vec![
 				HintInfo {
-					key_groups: vec![KeysGroup(vec![Key::KeyShift])],
+					key_groups: vec![KeysGroup(vec![Key::Shift])],
 					key_groups_mac: None,
 					mouse: None,
 					label: String::from("Constrain Square"),
 					plus: false,
 				},
 				HintInfo {
-					key_groups: vec![KeysGroup(vec![Key::KeyAlt])],
+					key_groups: vec![KeysGroup(vec![Key::Alt])],
 					key_groups_mac: None,
 					mouse: None,
 					label: String::from("From Center"),

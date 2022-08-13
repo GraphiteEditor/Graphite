@@ -1,4 +1,4 @@
-use crate::messages::input_mapper::utility_types::input_keyboard::Key;
+use crate::messages::input_mapper::utility_types::input_keyboard::KeysGroup;
 use crate::messages::input_mapper::utility_types::misc::ActionKeys;
 use crate::messages::layout::utility_types::layout_widget::WidgetHolder;
 use crate::messages::layout::utility_types::layout_widget::{Widget, WidgetCallback};
@@ -16,7 +16,7 @@ impl MenuEntryGroups {
 		Self(Vec::new())
 	}
 
-	pub fn fill_in_shortcut_actions_with_keys(&mut self, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Vec<Vec<Key>>) {
+	pub fn fill_in_shortcut_actions_with_keys(&mut self, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Vec<KeysGroup>) {
 		let entries = self.0.iter_mut().flatten();
 
 		for entry in entries {

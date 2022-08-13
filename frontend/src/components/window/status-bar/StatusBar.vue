@@ -5,7 +5,7 @@
 				<Separator :type="'Section'" v-if="index !== 0" />
 				<template v-for="hint in hintGroup" :key="hint">
 					<LayoutRow v-if="hint.plus" class="plus">+</LayoutRow>
-					<UserInputLabel :inputMouse="hint.mouse" :inputKeys="inputKeysForPlatform(hint)">{{ hint.label }}</UserInputLabel>
+					<UserInputLabel :mouseMotion="hint.mouse" :keysWithLabelsGroups="inputKeysForPlatform(hint)">{{ hint.label }}</UserInputLabel>
 				</template>
 			</template>
 		</LayoutRow>
@@ -34,8 +34,12 @@
 			font-weight: 700;
 		}
 
-		.user-input-label + .user-input-label {
-			margin-left: 0;
+		.user-input-label {
+			margin: 0 8px;
+
+			& + .user-input-label {
+				margin-left: 0;
+			}
 		}
 	}
 }
@@ -44,7 +48,7 @@
 <script lang="ts">
 import { defineComponent } from "vue";
 
-import { operatingSystemIsMac } from "@/utility-functions/platform";
+import { platformIsMac } from "@/utility-functions/platform";
 import { HintData, HintInfo, KeysGroup, UpdateInputHints } from "@/wasm-communication/messages";
 
 import LayoutRow from "@/components/layout/LayoutRow.vue";
@@ -60,7 +64,7 @@ export default defineComponent({
 	},
 	methods: {
 		inputKeysForPlatform(hint: HintInfo): KeysGroup[] {
-			if (operatingSystemIsMac() && hint.keyGroupsMac) return hint.keyGroupsMac;
+			if (platformIsMac() && hint.keyGroupsMac) return hint.keyGroupsMac;
 			return hint.keyGroups;
 		},
 	},

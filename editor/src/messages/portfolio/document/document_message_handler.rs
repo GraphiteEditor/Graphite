@@ -51,7 +51,7 @@ pub struct DocumentMessageHandler {
 	pub layer_metadata: HashMap<Vec<LayerId>, LayerMetadata>,
 	layer_range_selection_reference: Vec<LayerId>,
 
-	movement_handler: MovementMessageHandler,
+	navigation_handler: NavigationMessageHandler,
 	#[serde(skip)]
 	overlays_message_handler: OverlaysMessageHandler,
 	pub artboard_message_handler: ArtboardMessageHandler,
@@ -79,7 +79,7 @@ impl Default for DocumentMessageHandler {
 			layer_metadata: vec![(vec![], LayerMetadata::new(true))].into_iter().collect(),
 			layer_range_selection_reference: Vec::new(),
 
-			movement_handler: MovementMessageHandler::default(),
+			navigation_handler: NavigationMessageHandler::default(),
 			overlays_message_handler: OverlaysMessageHandler::default(),
 			artboard_message_handler: ArtboardMessageHandler::default(),
 			transform_layer_handler: TransformLayerMessageHandler::default(),
@@ -134,8 +134,8 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 				self.artboard_message_handler.process_message(message, font_cache, responses);
 			}
 			#[remain::unsorted]
-			Movement(message) => {
-				self.movement_handler.process_message(message, (&self.graphene_document, ipp), responses);
+			Navigation(message) => {
+				self.navigation_handler.process_message(message, (&self.graphene_document, ipp), responses);
 			}
 			#[remain::unsorted]
 			Overlays(message) => {
@@ -504,7 +504,7 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 				);
 				responses.push_back(ArtboardMessage::RenderArtboards.into());
 
-				let document_transform_scale = self.movement_handler.snapped_scale();
+				let document_transform_scale = self.navigation_handler.snapped_scale();
 				let scale = 0.5 + ASYMPTOTIC_EFFECT + document_transform_scale * SCALE_EFFECT;
 				let viewport_size = ipp.viewport_bounds.size();
 				let viewport_mid = ipp.viewport_bounds.center();
@@ -759,15 +759,15 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 				self.layer_metadata.insert(layer_path, layer_metadata);
 			}
 			ZoomCanvasTo100Percent => {
-				responses.push_front(MovementMessage::SetCanvasZoom { zoom_factor: 1. }.into());
+				responses.push_front(NavigationMessage::SetCanvasZoom { zoom_factor: 1. }.into());
 			}
 			ZoomCanvasTo200Percent => {
-				responses.push_front(MovementMessage::SetCanvasZoom { zoom_factor: 2. }.into());
+				responses.push_front(NavigationMessage::SetCanvasZoom { zoom_factor: 2. }.into());
 			}
 			ZoomCanvasToFitAll => {
 				if let Some(bounds) = self.document_bounds(font_cache) {
 					responses.push_back(
-						MovementMessage::FitViewportToBounds {
+						NavigationMessage::FitViewportToBounds {
 							bounds,
 							padding_scale_factor: Some(VIEWPORT_ZOOM_TO_FIT_PADDING_SCALE_FACTOR),
 							prevent_zoom_past_100: true,
@@ -810,7 +810,7 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 			);
 			common.extend(select);
 		}
-		common.extend(self.movement_handler.actions());
+		common.extend(self.navigation_handler.actions());
 		common.extend(self.transform_layer_handler.actions());
 		common
 	}
@@ -839,7 +839,7 @@ impl DocumentMessageHandler {
 
 	pub fn with_name(name: String, ipp: &InputPreprocessorMessageHandler) -> Self {
 		let mut document = Self { name, ..Self::default() };
-		let starting_root_transform = document.movement_handler.calculate_offset_transform(ipp.viewport_bounds.size() / 2.);
+		let starting_root_transform = document.navigation_handler.calculate_offset_transform(ipp.viewport_bounds.size() / 2.);
 		document.graphene_document.root.transform = starting_root_transform;
 		document.artboard_message_handler.artboards_graphene_document.root.transform = starting_root_transform;
 		document
@@ -1358,21 +1358,24 @@ impl DocumentMessageHandler {
 				size: 24,
 				icon: "ZoomIn".into(),
 				tooltip: "Zoom In".into(),
-				on_update: WidgetCallback::new(|_| MovementMessage::IncreaseCanvasZoom { center_on_mouse: false }.into()),
+				tooltip_shortcut: action_keys!(NavigationMessageDiscriminant::IncreaseCanvasZoom),
+				on_update: WidgetCallback::new(|_| NavigationMessage::IncreaseCanvasZoom { center_on_mouse: false }.into()),
 				..IconButton::default()
 			})),
 			WidgetHolder::new(Widget::IconButton(IconButton {
 				size: 24,
 				icon: "ZoomOut".into(),
 				tooltip: "Zoom Out".into(),
-				on_update: WidgetCallback::new(|_| MovementMessage::DecreaseCanvasZoom { center_on_mouse: false }.into()),
+				tooltip_shortcut: action_keys!(NavigationMessageDiscriminant::DecreaseCanvasZoom),
+				on_update: WidgetCallback::new(|_| NavigationMessage::DecreaseCanvasZoom { center_on_mouse: false }.into()),
 				..IconButton::default()
 			})),
 			WidgetHolder::new(Widget::IconButton(IconButton {
 				size: 24,
 				icon: "ZoomReset".into(),
 				tooltip: "Zoom to 100%".into(),
-				on_update: WidgetCallback::new(|_| MovementMessage::SetCanvasZoom { zoom_factor: 1. }.into()),
+				tooltip_shortcut: action_keys!(DocumentMessageDiscriminant::ZoomCanvasTo100Percent),
+				on_update: WidgetCallback::new(|_| NavigationMessage::SetCanvasZoom { zoom_factor: 1. }.into()),
 				..IconButton::default()
 			})),
 			WidgetHolder::new(Widget::Separator(Separator {
@@ -1381,22 +1384,22 @@ impl DocumentMessageHandler {
 			})),
 			WidgetHolder::new(Widget::NumberInput(NumberInput {
 				unit: "%".into(),
-				value: Some(self.movement_handler.snapped_scale() * 100.),
+				value: Some(self.navigation_handler.snapped_scale() * 100.),
 				min: Some(0.000001),
 				max: Some(1000000.),
 				on_update: WidgetCallback::new(|number_input: &NumberInput| {
-					MovementMessage::SetCanvasZoom {
+					NavigationMessage::SetCanvasZoom {
 						zoom_factor: number_input.value.unwrap() / 100.,
 					}
 					.into()
 				}),
 				increment_behavior: NumberInputIncrementBehavior::Callback,
-				increment_callback_decrease: WidgetCallback::new(|_| MovementMessage::DecreaseCanvasZoom { center_on_mouse: false }.into()),
-				increment_callback_increase: WidgetCallback::new(|_| MovementMessage::IncreaseCanvasZoom { center_on_mouse: false }.into()),
+				increment_callback_decrease: WidgetCallback::new(|_| NavigationMessage::DecreaseCanvasZoom { center_on_mouse: false }.into()),
+				increment_callback_increase: WidgetCallback::new(|_| NavigationMessage::IncreaseCanvasZoom { center_on_mouse: false }.into()),
 				..NumberInput::default()
 			})),
 		];
-		let rotation_value = self.movement_handler.snapped_angle() / (std::f64::consts::PI / 180.);
+		let rotation_value = self.navigation_handler.snapped_angle() / (std::f64::consts::PI / 180.);
 		if rotation_value.abs() > 0.00001 {
 			widgets.extend([
 				WidgetHolder::new(Widget::Separator(Separator {
@@ -1408,7 +1411,7 @@ impl DocumentMessageHandler {
 					value: Some(rotation_value),
 					increment_factor: 15.,
 					on_update: WidgetCallback::new(|number_input: &NumberInput| {
-						MovementMessage::SetCanvasRotation {
+						NavigationMessage::SetCanvasRotation {
 							angle_radians: number_input.value.unwrap() * (std::f64::consts::PI / 180.),
 						}
 						.into()

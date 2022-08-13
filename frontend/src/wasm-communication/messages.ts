@@ -90,7 +90,12 @@ export class HintInfo {
 	readonly plus!: boolean;
 }
 
-export type KeysGroup = string[]; // Array of Rust enum `Key`
+// Rust enum `Key`
+export type KeyRaw = string;
+// Serde converts a Rust `Key` enum variant into this format (via a custom serializer) with both the `Key` variant name (called `RawKey` in TS) and the localized `label` for the key
+export type Key = { key: KeyRaw; label: string };
+export type KeysGroup = Key[];
+export type ActionKeys = { keys: KeysGroup };
 
 export type MouseMotion = string;
 
@@ -406,14 +411,25 @@ export class ColorInput extends WidgetProps {
 	tooltip!: string;
 }
 
-export type Keys = { keys: string[] };
+export type MenuColumn = {
+	label: string;
+	children: MenuEntry[][];
+};
+
+export type MenuEntry = {
+	shortcut: ActionKeys | undefined;
+	action: Widget;
+	label: string;
+	icon: string | undefined;
+	children: undefined | MenuEntry[][];
+};
 
 export interface MenuListEntryData<Value = string> {
 	value?: Value;
 	label?: string;
 	icon?: IconName;
 	font?: URL;
-	shortcut?: Keys;
+	shortcut?: ActionKeys;
 	shortcutRequiresLock?: boolean;
 	disabled?: boolean;
 	action?: () => void;
@@ -548,6 +564,8 @@ export class TextAreaInput extends WidgetProps {
 
 export class TextButton extends WidgetProps {
 	label!: string;
+
+	icon!: string | undefined;
 
 	emphasized!: boolean;
 
@@ -778,19 +796,6 @@ export class UpdateMenuBarLayout extends JsMessage {
 	@Transform(({ value }: { value: any }) => createMenuLayout(value))
 	layout!: MenuColumn[];
 }
-
-export type MenuColumn = {
-	label: string;
-	children: MenuEntry[][];
-};
-
-export type MenuEntry = {
-	shortcut: Keys | undefined;
-	action: Widget;
-	label: string;
-	icon: string | undefined;
-	children: undefined | MenuEntry[][];
-};
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function createMenuLayout(menuLayout: any[]): MenuColumn[] {

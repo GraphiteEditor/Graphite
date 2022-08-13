@@ -74,5 +74,5 @@ pub const DEFAULT_FONT_FAMILY: &str = "Merriweather";
 pub const DEFAULT_FONT_STYLE: &str = "Normal (400)";
 
 // Document
-pub const GRAPHITE_DOCUMENT_VERSION: &str = "0.0.10"; // Remember to save a simple document and replace the test file `graphite-test-document.graphite`
+pub const GRAPHITE_DOCUMENT_VERSION: &str = "0.0.11"; // Remember to save a simple document and replace the test file `graphite-test-document.graphite`
 pub const VIEWPORT_ZOOM_TO_FIT_PADDING_SCALE_FACTOR: f32 = 1.05;

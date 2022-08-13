@@ -23,7 +23,7 @@ pub enum DocumentMessage {
 	Artboard(ArtboardMessage),
 	#[remain::unsorted]
 	#[child]
-	Movement(MovementMessage),
+	Navigation(NavigationMessage),
 	#[remain::unsorted]
 	#[child]
 	Overlays(OverlaysMessage),

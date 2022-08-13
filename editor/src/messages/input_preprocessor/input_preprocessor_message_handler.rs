@@ -139,12 +139,12 @@ impl InputPreprocessorMessageHandler {
 	}
 
 	fn handle_modifier_keys(&mut self, modifier_keys: ModifierKeys, keyboard_platform: KeyboardPlatformLayout, responses: &mut VecDeque<Message>) {
-		self.handle_modifier_key(Key::KeyShift, modifier_keys.contains(ModifierKeys::SHIFT), responses);
-		self.handle_modifier_key(Key::KeyAlt, modifier_keys.contains(ModifierKeys::ALT), responses);
-		self.handle_modifier_key(Key::KeyControl, modifier_keys.contains(ModifierKeys::CONTROL), responses);
+		self.handle_modifier_key(Key::Shift, modifier_keys.contains(ModifierKeys::SHIFT), responses);
+		self.handle_modifier_key(Key::Alt, modifier_keys.contains(ModifierKeys::ALT), responses);
+		self.handle_modifier_key(Key::Control, modifier_keys.contains(ModifierKeys::CONTROL), responses);
 		let meta_or_command = match keyboard_platform {
-			KeyboardPlatformLayout::Mac => Key::KeyCommand,
-			KeyboardPlatformLayout::Standard => Key::KeyMeta,
+			KeyboardPlatformLayout::Mac => Key::Command,
+			KeyboardPlatformLayout::Standard => Key::Meta,
 		};
 		self.handle_modifier_key(meta_or_command, modifier_keys.contains(ModifierKeys::META_OR_COMMAND), responses);
 	}
@@ -186,8 +186,8 @@ mod test {
 
 		input_preprocessor.process_message(message, KeyboardPlatformLayout::Standard, &mut responses);
 
-		assert!(input_preprocessor.keyboard.get(Key::KeyAlt as usize));
-		assert_eq!(responses.pop_front(), Some(InputMapperMessage::KeyDown(Key::KeyAlt).into()));
+		assert!(input_preprocessor.keyboard.get(Key::Alt as usize));
+		assert_eq!(responses.pop_front(), Some(InputMapperMessage::KeyDown(Key::Alt).into()));
 	}
 
 	#[test]
@@ -202,8 +202,8 @@ mod test {
 
 		input_preprocessor.process_message(message, KeyboardPlatformLayout::Standard, &mut responses);
 
-		assert!(input_preprocessor.keyboard.get(Key::KeyControl as usize));
-		assert_eq!(responses.pop_front(), Some(InputMapperMessage::KeyDown(Key::KeyControl).into()));
+		assert!(input_preprocessor.keyboard.get(Key::Control as usize));
+		assert_eq!(responses.pop_front(), Some(InputMapperMessage::KeyDown(Key::Control).into()));
 	}
 
 	#[test]
@@ -218,14 +218,14 @@ mod test {
 
 		input_preprocessor.process_message(message, KeyboardPlatformLayout::Standard, &mut responses);
 
-		assert!(input_preprocessor.keyboard.get(Key::KeyShift as usize));
-		assert_eq!(responses.pop_front(), Some(InputMapperMessage::KeyDown(Key::KeyShift).into()));
+		assert!(input_preprocessor.keyboard.get(Key::Shift as usize));
+		assert_eq!(responses.pop_front(), Some(InputMapperMessage::KeyDown(Key::Shift).into()));
 	}
 
 	#[test]
 	fn process_action_key_down_handle_modifier_keys() {
 		let mut input_preprocessor = InputPreprocessorMessageHandler::default();
-		input_preprocessor.keyboard.set(Key::KeyControl as usize);
+		input_preprocessor.keyboard.set(Key::Control as usize);
 
 		let key = Key::KeyA;
 		let modifier_keys = ModifierKeys::empty();
@@ -235,8 +235,8 @@ mod test {
 
 		input_preprocessor.process_message(message, KeyboardPlatformLayout::Standard, &mut responses);
 
-		assert!(!input_preprocessor.keyboard.get(Key::KeyControl as usize));
-		assert_eq!(responses.pop_front(), Some(InputMapperMessage::KeyUp(Key::KeyControl).into()));
+		assert!(!input_preprocessor.keyboard.get(Key::Control as usize));
+		assert_eq!(responses.pop_front(), Some(InputMapperMessage::KeyUp(Key::Control).into()));
 	}
 
 	#[test]
@@ -251,9 +251,9 @@ mod test {
 
 		input_preprocessor.process_message(message, KeyboardPlatformLayout::Standard, &mut responses);
 
-		assert!(input_preprocessor.keyboard.get(Key::KeyControl as usize));
-		assert!(input_preprocessor.keyboard.get(Key::KeyShift as usize));
-		assert!(responses.contains(&InputMapperMessage::KeyDown(Key::KeyControl).into()));
-		assert!(responses.contains(&InputMapperMessage::KeyDown(Key::KeyControl).into()));
+		assert!(input_preprocessor.keyboard.get(Key::Control as usize));
+		assert!(input_preprocessor.keyboard.get(Key::Shift as usize));
+		assert!(responses.contains(&InputMapperMessage::KeyDown(Key::Control).into()));
+		assert!(responses.contains(&InputMapperMessage::KeyDown(Key::Control).into()));
 	}
 }

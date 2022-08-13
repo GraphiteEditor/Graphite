@@ -117,7 +117,7 @@
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
 
-import { operatingSystemIsMac } from "@/utility-functions/platform";
+import { platformIsMac } from "@/utility-functions/platform";
 
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 
@@ -133,7 +133,7 @@ export default defineComponent({
 	data() {
 		return {
 			id: `${Math.random()}`.substring(2),
-			macKeyboardLayout: operatingSystemIsMac(),
+			macKeyboardLayout: platformIsMac(),
 		};
 	},
 	computed: {

@@ -1,5 +1,6 @@
+use super::input_keyboard::KeysGroup;
 use crate::messages::input_mapper::default_mapping::default_mapping;
-use crate::messages::input_mapper::utility_types::input_keyboard::{Key, KeyStates, NUMBER_OF_KEYS};
+use crate::messages::input_mapper::utility_types::input_keyboard::{KeyStates, NUMBER_OF_KEYS};
 use crate::messages::portfolio::document::utility_types::misc::KeyboardPlatformLayout;
 use crate::messages::prelude::*;
 
@@ -90,24 +91,24 @@ pub struct MappingEntry {
 	pub platform_layout: Option<KeyboardPlatformLayout>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub enum ActionKeys {
 	Action(MessageDiscriminant),
 	#[serde(rename = "keys")]
-	Keys(Vec<Key>),
+	Keys(KeysGroup),
 }
 
 impl ActionKeys {
-	pub fn to_keys(&mut self, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Vec<Vec<Key>>) {
+	pub fn to_keys(&mut self, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Vec<KeysGroup>) {
 		match self {
 			ActionKeys::Action(action) => {
 				if let Some(keys) = action_input_mapping(action).get_mut(0) {
-					let mut taken_keys = Vec::new();
+					let mut taken_keys = KeysGroup::default();
 					std::mem::swap(keys, &mut taken_keys);
 
 					*self = ActionKeys::Keys(taken_keys);
 				} else {
-					*self = ActionKeys::Keys(Vec::new());
+					*self = ActionKeys::Keys(KeysGroup::default());
 				}
 			}
 			ActionKeys::Keys(keys) => {
@@ -115,34 +116,4 @@ impl ActionKeys {
 			}
 		}
 	}
-}
-
-pub fn keys_text_shortcut(keys: &[Key], keyboard_platform: KeyboardPlatformLayout) -> String {
-	const JOINER_MARK: &str = "+";
-
-	let mut joined = keys
-		.iter()
-		.map(|key| {
-			let key_string = key.to_string();
-
-			if keyboard_platform == KeyboardPlatformLayout::Mac {
-				match key_string.as_str() {
-					"Command" => "⌘".to_string(),
-					"Control" => "⌃".to_string(),
-					"Alt" => "⌥".to_string(),
-					"Shift" => "⇧".to_string(),
-					_ => key_string + JOINER_MARK,
-				}
-			} else {
-				key_string + JOINER_MARK
-			}
-		})
-		.collect::<String>();
-
-	// Truncate to cut the joining character off the end if it's present
-	if joined.ends_with(JOINER_MARK) {
-		joined.truncate(joined.len() - JOINER_MARK.len());
-	}
-
-	joined
 }

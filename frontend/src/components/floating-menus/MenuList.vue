@@ -33,7 +33,7 @@
 
 					<span class="entry-label" :style="{ fontFamily: `${!entry.font ? 'inherit' : entry.value}` }">{{ entry.label }}</span>
 
-					<UserInputLabel v-if="entry.shortcut?.keys.length" :inputKeys="[entry.shortcut.keys]" :requiresLock="entry.shortcutRequiresLock" />
+					<UserInputLabel v-if="entry.shortcut?.keys.length" :keysWithLabelsGroups="[entry.shortcut.keys]" :requiresLock="entry.shortcutRequiresLock" />
 
 					<div class="submenu-arrow" v-if="entry.children?.length"></div>
 					<div class="no-submenu-arrow" v-else></div>
@@ -105,7 +105,6 @@
 			}
 
 			.user-input-label {
-				margin: 0;
 				margin-left: 16px;
 			}
 

@@ -135,14 +135,14 @@ impl Fsm for NavigateToolFsmState {
 
 			match navigate {
 				ClickZoom { zoom_in } => {
-					messages.push_front(MovementMessage::TransformCanvasEnd.into());
+					messages.push_front(NavigationMessage::TransformCanvasEnd.into());
 
 					// Mouse has not moved from pointerdown to pointerup
 					if tool_data.drag_start == input.mouse.position {
 						messages.push_front(if zoom_in {
-							MovementMessage::IncreaseCanvasZoom { center_on_mouse: true }.into()
+							NavigationMessage::IncreaseCanvasZoom { center_on_mouse: true }.into()
 						} else {
-							MovementMessage::DecreaseCanvasZoom { center_on_mouse: true }.into()
+							NavigationMessage::DecreaseCanvasZoom { center_on_mouse: true }.into()
 						});
 					}
 
@@ -150,7 +150,7 @@ impl Fsm for NavigateToolFsmState {
 				}
 				PointerMove { snap_angle, snap_zoom } => {
 					messages.push_front(
-						MovementMessage::PointerMove {
+						NavigationMessage::PointerMove {
 							snap_angle,
 							wait_for_snap_angle_release: false,
 							snap_zoom,
@@ -162,25 +162,25 @@ impl Fsm for NavigateToolFsmState {
 				}
 				TranslateCanvasBegin => {
 					tool_data.drag_start = input.mouse.position;
-					messages.push_front(MovementMessage::TranslateCanvasBegin.into());
+					messages.push_front(NavigationMessage::TranslateCanvasBegin.into());
 					NavigateToolFsmState::Panning
 				}
 				RotateCanvasBegin => {
 					tool_data.drag_start = input.mouse.position;
-					messages.push_front(MovementMessage::RotateCanvasBegin.into());
+					messages.push_front(NavigationMessage::RotateCanvasBegin.into());
 					NavigateToolFsmState::Tilting
 				}
 				ZoomCanvasBegin => {
 					tool_data.drag_start = input.mouse.position;
-					messages.push_front(MovementMessage::ZoomCanvasBegin.into());
+					messages.push_front(NavigationMessage::ZoomCanvasBegin.into());
 					NavigateToolFsmState::Zooming
 				}
 				TransformCanvasEnd => {
-					messages.push_front(MovementMessage::TransformCanvasEnd.into());
+					messages.push_front(NavigationMessage::TransformCanvasEnd.into());
 					NavigateToolFsmState::Ready
 				}
 				Abort => {
-					messages.push_front(MovementMessage::TransformCanvasEnd.into());
+					messages.push_front(NavigationMessage::TransformCanvasEnd.into());
 					NavigateToolFsmState::Ready
 				}
 			}
@@ -201,7 +201,7 @@ impl Fsm for NavigateToolFsmState {
 						plus: false,
 					},
 					HintInfo {
-						key_groups: vec![KeysGroup(vec![Key::KeyShift])],
+						key_groups: vec![KeysGroup(vec![Key::Shift])],
 						key_groups_mac: None,
 						mouse: None,
 						label: String::from("Zoom Out"),
@@ -217,7 +217,7 @@ impl Fsm for NavigateToolFsmState {
 						plus: false,
 					},
 					HintInfo {
-						key_groups: vec![KeysGroup(vec![Key::KeyControl])],
+						key_groups: vec![KeysGroup(vec![Key::Control])],
 						key_groups_mac: None,
 						mouse: None,
 						label: String::from("Snap Increments"),
@@ -240,7 +240,7 @@ impl Fsm for NavigateToolFsmState {
 						plus: false,
 					},
 					HintInfo {
-						key_groups: vec![KeysGroup(vec![Key::KeyControl])],
+						key_groups: vec![KeysGroup(vec![Key::Control])],
 						key_groups_mac: None,
 						mouse: None,
 						label: String::from("Snap 15°"),
@@ -249,14 +249,14 @@ impl Fsm for NavigateToolFsmState {
 				]),
 			]),
 			NavigateToolFsmState::Tilting => HintData(vec![HintGroup(vec![HintInfo {
-				key_groups: vec![KeysGroup(vec![Key::KeyControl])],
+				key_groups: vec![KeysGroup(vec![Key::Control])],
 				key_groups_mac: None,
 				mouse: None,
 				label: String::from("Snap 15°"),
 				plus: false,
 			}])]),
 			NavigateToolFsmState::Zooming => HintData(vec![HintGroup(vec![HintInfo {
-				key_groups: vec![KeysGroup(vec![Key::KeyControl])],
+				key_groups: vec![KeysGroup(vec![Key::Control])],
 				key_groups_mac: None,
 				mouse: None,
 				label: String::from("Snap Increments"),

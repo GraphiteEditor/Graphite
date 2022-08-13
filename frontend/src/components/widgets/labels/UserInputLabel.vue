@@ -1,17 +1,17 @@
 <template>
 	<IconLabel class="user-input-label keyboard-lock-notice" v-if="displayKeyboardLockNotice" :icon="'Info'" :title="keyboardLockInfoMessage" />
 	<LayoutRow class="user-input-label" v-else>
-		<template v-for="(keyGroup, keyGroupIndex) in inputKeys" :key="keyGroupIndex">
-			<span class="group-gap" v-if="keyGroupIndex > 0"></span>
-			<template v-for="(keyInfo, index) in keyTextOrIconList(keyGroup)" :key="index">
+		<template v-for="(keysWithLabels, i) in keysWithLabelsGroups" :key="i">
+			<span class="group-gap" v-if="i > 0"></span>
+			<template v-for="(keyInfo, j) in keyTextOrIconList(keysWithLabels)" :key="j">
 				<span class="input-key" :class="keyInfo.width">
 					<IconLabel v-if="keyInfo.icon" :icon="keyInfo.icon" />
-					<template v-else>{{ keyInfo.text }}</template>
+					<template v-else-if="keyInfo.label !== undefined">{{ keyInfo.label }}</template>
 				</span>
 			</template>
 		</template>
-		<span class="input-mouse" v-if="inputMouse">
-			<IconLabel :icon="mouseHintIcon(inputMouse)" />
+		<span class="input-mouse" v-if="mouseMotion">
+			<IconLabel :icon="mouseHintIcon(mouseMotion)" />
 		</span>
 		<span class="hint-text" v-if="hasSlotContent">
 			<slot></slot>
@@ -23,7 +23,6 @@
 .user-input-label {
 	flex: 0 0 auto;
 	height: 100%;
-	margin: 0 8px;
 	align-items: center;
 	white-space: nowrap;
 
@@ -55,23 +54,23 @@
 		border-color: var(--color-7-middlegray);
 		color: var(--color-e-nearwhite);
 
-		&.width-16 {
+		&.width-1 {
 			width: 16px;
 		}
 
-		&.width-24 {
+		&.width-2 {
 			width: 24px;
 		}
 
-		&.width-32 {
+		&.width-3 {
 			width: 32px;
 		}
 
-		&.width-40 {
+		&.width-4 {
 			width: 40px;
 		}
 
-		&.width-48 {
+		&.width-5 {
 			width: 48px;
 		}
 
@@ -134,32 +133,22 @@
 import { defineComponent, PropType } from "vue";
 
 import { IconName } from "@/utility-functions/icons";
-import { operatingSystemIsMac } from "@/utility-functions/platform";
-import { HintInfo, KeysGroup } from "@/wasm-communication/messages";
+import { platformIsMac } from "@/utility-functions/platform";
+import { KeyRaw, KeysGroup, Key, MouseMotion } from "@/wasm-communication/messages";
 
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
 
-// Definitions
-const textMap = {
-	Shift: "Shift",
-	Control: "Ctrl",
-	Alt: "Alt",
-	Delete: "Del",
-	PageUp: "PgUp",
-	PageDown: "PgDn",
-	Equals: "=",
-	Minus: "-",
-	Plus: "+",
-	Escape: "Esc",
-	Comma: ",",
-	Period: ".",
-	LeftBracket: "[",
-	RightBracket: "]",
-	LeftCurlyBracket: "{",
-	RightCurlyBracket: "}",
+type LabelData = { label?: string; icon?: IconName; width: string };
+
+// Keys that become icons if they are listed here with their units of width
+const ICON_WIDTHS_MAC = {
+	Shift: 2,
+	Control: 2,
+	Option: 2,
+	Command: 2,
 };
-const iconsAndWidthsStandard = {
+const ICON_WIDTHS = {
 	ArrowUp: 1,
 	ArrowRight: 1,
 	ArrowDown: 1,
@@ -168,19 +157,14 @@ const iconsAndWidthsStandard = {
 	Enter: 2,
 	Tab: 2,
 	Space: 3,
-};
-const iconsAndWidthsMac = {
-	Shift: 2,
-	Control: 2,
-	Option: 2,
-	Command: 2,
+	...(platformIsMac() ? ICON_WIDTHS_MAC : {}),
 };
 
 export default defineComponent({
 	inject: ["fullscreen"],
 	props: {
-		inputKeys: { type: Array as PropType<HintInfo["keyGroups"]>, default: () => [] },
-		inputMouse: { type: String as PropType<HintInfo["mouse"]>, default: null },
+		keysWithLabelsGroups: { type: Array as PropType<KeysGroup[]>, default: () => [] },
+		mouseMotion: { type: String as PropType<MouseMotion | null>, default: null },
 		requiresLock: { type: Boolean as PropType<boolean>, default: false },
 	},
 	computed: {
@@ -188,64 +172,73 @@ export default defineComponent({
 			return Boolean(this.$slots.default);
 		},
 		keyboardLockInfoMessage(): string {
-			const USE_FULLSCREEN = "This hotkey is reserved by the browser, but becomes available in fullscreen mode";
-			const SWITCH_BROWSER = "This hotkey is reserved by the browser, but becomes available in Chrome, Edge, and Opera which support the Keyboard.lock() API";
+			const RESERVED = "This hotkey is reserved by the browser. ";
+			const USE_FULLSCREEN = "It is made available in fullscreen mode.";
+			const USE_SECURE_CTX = "It is made available in fullscreen mode when this website is served from a secure context (https or localhost).";
+			const SWITCH_BROWSER = "Use a Chromium-based browser (like Chrome or Edge) in fullscreen mode to directly use the shortcut.";
 
-			return this.fullscreen.keyboardLockApiSupported ? USE_FULLSCREEN : SWITCH_BROWSER;
+			if (this.fullscreen.keyboardLockApiSupported) return `${RESERVED} ${USE_FULLSCREEN}`;
+			if (!("chrome" in window)) return `${RESERVED} ${SWITCH_BROWSER}`;
+			if (!window.isSecureContext) return `${RESERVED} ${USE_SECURE_CTX}`;
+			return RESERVED;
 		},
 		displayKeyboardLockNotice(): boolean {
 			return this.requiresLock && !this.fullscreen.state.keyboardLocked;
 		},
 	},
 	methods: {
-		keyTextOrIconList(keyGroup: KeysGroup): { text: string | null; icon: IconName | null; width: string }[] {
-			return keyGroup.map((inputKey) => this.keyTextOrIcon(inputKey));
+		keyTextOrIconList(keyGroup: KeysGroup): LabelData[] {
+			return keyGroup.map((key) => this.keyTextOrIcon(key));
 		},
-		keyTextOrIcon(input: string): { text: string | null; icon: IconName | null; width: string } {
-			let keyText = input;
-			if (operatingSystemIsMac()) {
-				keyText = keyText.replace("Alt", "Option");
-			}
+		keyTextOrIcon(keyWithLabel: Key): LabelData {
+			// `key` is the name of the `Key` enum in Rust, while `label` is the localized string to display (if it doesn't become an icon)
+			let key = keyWithLabel.key;
+			const label = keyWithLabel.label;
 
-			const iconsAndWidths = operatingSystemIsMac() ? { ...iconsAndWidthsStandard, ...iconsAndWidthsMac } : iconsAndWidthsStandard;
+			// Replace Alt with Option on Mac
+			if (key === "Alt" && platformIsMac()) key = "Option";
 
-			// Strip off the "Key" prefix
-			const text = keyText.replace(/^(?:Key)?(.*)$/, "$1");
+			// Either display an icon...
+			// @ts-expect-error We want undefined if it isn't in the object
+			const iconWidth: number | undefined = ICON_WIDTHS[key];
+			const icon = iconWidth !== undefined && iconWidth > 0 && (this.keyboardHintIcon(key) || false);
+			if (icon) return { icon, width: `width-${iconWidth}` };
 
-			// If it's an icon, return the icon identifier
-			if (Object.keys(iconsAndWidths).includes(text)) {
-				// @ts-expect-error This is safe because of the if block we are in
-				const width = iconsAndWidths[text] * 8 + 8;
-				return {
-					text: null,
-					icon: this.keyboardHintIcon(text),
-					width: `width-${width}`,
-				};
-			}
-
-			// Otherwise, return the text string
-			let result;
-			// Letters and numbers
-			if (/^[A-Z0-9]$/.test(text)) {
-				result = text;
-			}
-			// Abbreviated names
-			else if (Object.keys(textMap).includes(text)) {
-				// @ts-expect-error This is safe because of the if block we are in
-				result = textMap[text];
-			}
-			// Other
-			else {
-				result = text;
-			}
-
-			return { text: result, icon: null, width: `width-${(result || " ").length * 8 + 8}` };
+			// ...or display text
+			return { label, width: `width-${label.length}` };
 		},
-		mouseHintIcon(input: HintInfo["mouse"]): IconName {
+		mouseHintIcon(input: MouseMotion | null): IconName {
 			return `MouseHint${input}` as IconName;
 		},
-		keyboardHintIcon(input: HintInfo["keyGroups"][0][0]): IconName {
-			return `Keyboard${input}` as IconName;
+		keyboardHintIcon(input: KeyRaw): IconName | undefined {
+			switch (input) {
+				case "ArrowDown":
+					return "KeyboardArrowDown";
+				case "ArrowLeft":
+					return "KeyboardArrowLeft";
+				case "ArrowRight":
+					return "KeyboardArrowRight";
+				case "ArrowUp":
+					return "KeyboardArrowUp";
+				case "Backspace":
+					return "KeyboardBackspace";
+				case "Command":
+					return "KeyboardCommand";
+				case "Control":
+					return "KeyboardControl";
+				case "Enter":
+					return "KeyboardEnter";
+				case "Option":
+					return "KeyboardOption";
+				case "Shift":
+					return "KeyboardShift";
+				case "Space":
+					return "KeyboardSpace";
+				case "Tab":
+					return "KeyboardTab";
+				default:
+					return undefined;
+			}
 		},
 	},
 	components: {

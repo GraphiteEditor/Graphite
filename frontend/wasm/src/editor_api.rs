@@ -380,13 +380,13 @@ impl JsEditorHandle {
 
 	/// Translates document (in viewport coords)
 	pub fn translate_canvas(&self, delta_x: f64, delta_y: f64) {
-		let message = MovementMessage::TranslateCanvas { delta: (delta_x, delta_y).into() };
+		let message = NavigationMessage::TranslateCanvas { delta: (delta_x, delta_y).into() };
 		self.dispatch(message);
 	}
 
 	/// Translates document (in viewport coords)
 	pub fn translate_canvas_by_fraction(&self, delta_x: f64, delta_y: f64) {
-		let message = MovementMessage::TranslateCanvasByViewportFraction { delta: (delta_x, delta_y).into() };
+		let message = NavigationMessage::TranslateCanvasByViewportFraction { delta: (delta_x, delta_y).into() };
 		self.dispatch(message);
 	}
 

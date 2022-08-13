@@ -7,6 +7,7 @@ export interface TextButtonWidget {
 	props: {
 		kind: "TextButton";
 		label: string;
+		icon?: string;
 		emphasized?: boolean;
 		minWidth?: number;
 		disabled?: boolean;

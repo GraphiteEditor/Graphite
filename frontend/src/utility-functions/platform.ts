@@ -49,6 +49,6 @@ export function operatingSystem(detailed = false): string {
 	return osTable[userAgentOS || "Unknown"];
 }
 
-export function operatingSystemIsMac(): boolean {
+export function platformIsMac(): boolean {
 	return operatingSystem() === "Mac";
 }
