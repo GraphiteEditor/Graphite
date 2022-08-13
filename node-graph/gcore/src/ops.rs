@@ -1,9 +1,10 @@
+use core::marker::PhantomData;
 use core::ops::Add;
 
 use crate::Node;
 
 pub struct AddNode;
-impl<'n, L: Add<R>, R> Node<'n, (L, R)> for AddNode {
+impl<'n, L: Add<R, Output = O> + 'n, R, O: 'n> Node<'n, (L, R)> for AddNode {
 	type Output = <L as Add<R>>::Output;
 	fn eval(&'n self, input: (L, R)) -> Self::Output {
 		input.0 + input.1
@@ -52,9 +53,27 @@ impl<'n, T, U: 'n> Node<'n, &'n (T, U)> for SndNode {
 	}
 }
 
+/// Destructures a Tuple of two values and returns them in reverse order
+pub struct SwapNode;
+impl<'n, T: 'n, U: 'n> Node<'n, (T, U)> for SwapNode {
+	type Output = (U, T);
+	fn eval(&'n self, input: (T, U)) -> Self::Output {
+		let (a, b) = input;
+		(b, a)
+	}
+}
+
+impl<'n, T, U: 'n> Node<'n, &'n (T, U)> for SwapNode {
+	type Output = (&'n U, &'n T);
+	fn eval(&'n self, input: &'n (T, U)) -> Self::Output {
+		let (a, b) = input;
+		(b, a)
+	}
+}
+
 /// Return a tuple with two instances of the input argument
 pub struct DupNode;
-impl<'n, T: Clone> Node<'n, T> for DupNode {
+impl<'n, T: Clone + 'n> Node<'n, T> for DupNode {
 	type Output = (T, T);
 	fn eval(&'n self, input: T) -> Self::Output {
 		(input.clone(), input) //TODO: use Copy/Clone implementation
@@ -63,10 +82,43 @@ impl<'n, T: Clone> Node<'n, T> for DupNode {
 
 /// Return the Input Argument
 pub struct IdNode;
-impl<'n, T> Node<'n, T> for IdNode {
+impl<'n, T: 'n> Node<'n, T> for IdNode {
 	type Output = T;
 	fn eval(&'n self, input: T) -> Self::Output {
 		input
+	}
+}
+
+pub struct MapResultNode<'n, MN: Node<'n, I>, I, E>(pub MN, pub PhantomData<&'n (I, E)>);
+
+impl<'n, MN: Node<'n, I>, I, E> Node<'n, Result<I, E>> for MapResultNode<'n, MN, I, E> {
+	type Output = Result<MN::Output, E>;
+	fn eval(&'n self, input: Result<I, E>) -> Self::Output {
+		input.map(|x| self.0.eval(x))
+	}
+}
+
+impl<'n, MN: Node<'n, I>, I, E> MapResultNode<'n, MN, I, E> {
+	pub const fn new(mn: MN) -> Self {
+		Self(mn, PhantomData)
+	}
+}
+pub struct FlatMapResultNode<'n, MN: Node<'n, I>, I, E>(pub MN, pub PhantomData<&'n (I, E)>);
+
+impl<'n, MN: Node<'n, I, Output = Result<O, E>>, I, O: 'n, E: 'n> Node<'n, Result<I, E>> for FlatMapResultNode<'n, MN, I, E> {
+	type Output = Result<O, E>;
+	fn eval(&'n self, input: Result<I, E>) -> Self::Output {
+		match input.map(|x| self.0.eval(x)) {
+			Ok(Ok(x)) => Ok(x),
+			Ok(Err(e)) => Err(e),
+			Err(e) => Err(e),
+		}
+	}
+}
+
+impl<'n, MN: Node<'n, I>, I, E> FlatMapResultNode<'n, MN, I, E> {
+	pub const fn new(mn: MN) -> Self {
+		Self(mn, PhantomData)
 	}
 }
 
