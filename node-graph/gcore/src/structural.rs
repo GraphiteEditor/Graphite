@@ -58,3 +58,17 @@ where
 		(input, arg)
 	}
 }
+
+pub struct ConsPassInputNode<Root>(pub Root);
+
+impl<'n, Root, L, R> Node<'n, (L, R)> for ConsPassInputNode<Root>
+where
+	Root: Node<'n, R>,
+{
+	type Output = (L, <Root as Node<'n, R>>::Output);
+
+	fn eval(&'n self, input: (L, R)) -> Self::Output {
+		let arg = self.0.eval(input.1);
+		(input.0, arg)
+	}
+}

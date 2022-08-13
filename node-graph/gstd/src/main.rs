@@ -8,6 +8,7 @@
 	a * b
 }*/
 
+/*
 mod mul {
 	use dyn_any::downcast_ref;
 	use graphene_std::{DynAnyNode, DynNode, DynamicInput, Node};
@@ -69,7 +70,7 @@ mod mul {
 	}
 }
 // type SNode<'n> = dyn Node<'n, Output = &'n dyn DynAny<'n>>;
-
+*/
 // struct NodeStore<'n>(borrow_stack::FixedSizeStack<'n, Box<SNode<'n>>>);
 
 // impl<'n> NodeStore<'n> {

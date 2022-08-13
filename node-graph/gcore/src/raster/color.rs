@@ -134,6 +134,18 @@ impl Color {
 		(self.red, self.green, self.blue, self.alpha)
 	}
 
+	/// Return the all components as a u8 slice, first component is red, followed by green, followed by blue, followed by alpha.
+	///
+	/// # Examples
+	/// ```
+	/// use graphene_core::raster::color::Color;
+	/// let color = Color::from_rgbaf32(0.114, 0.103, 0.98, 0.97).unwrap();
+	/// //TODO: Add test
+	/// ```
+	pub fn to_rgba8(&self) -> [u8; 4] {
+		[(self.red * 255.) as u8, (self.green * 255.) as u8, (self.blue * 255.) as u8, (self.alpha * 255.) as u8]
+	}
+
 	// TODO: Readd formatting
 
 	/// Creates a color from a 8-character RGBA hex string (without a # prefix).
