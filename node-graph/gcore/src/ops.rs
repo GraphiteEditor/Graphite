@@ -26,12 +26,27 @@ impl<'n, T: 'n, U> Node<'n, (T, U)> for FstNode {
 		a
 	}
 }
+impl<'n, T: 'n, U> Node<'n, &'n (T, U)> for FstNode {
+	type Output = &'n T;
+	fn eval(&'n self, input: &'n (T, U)) -> Self::Output {
+		let (a, _) = input;
+		a
+	}
+}
 
 /// Destructures a Tuple of two values and returns the first one
 pub struct SndNode;
 impl<'n, T, U: 'n> Node<'n, (T, U)> for SndNode {
 	type Output = U;
 	fn eval(&'n self, input: (T, U)) -> Self::Output {
+		let (_, b) = input;
+		b
+	}
+}
+
+impl<'n, T, U: 'n> Node<'n, &'n (T, U)> for SndNode {
+	type Output = &'n U;
+	fn eval(&'n self, input: &'n (T, U)) -> Self::Output {
 		let (_, b) = input;
 		b
 	}
@@ -61,10 +76,42 @@ mod test {
 	use crate::{generic::*, structural::*, value::*};
 
 	#[test]
-	pub fn foo() {
-		let value = ComposeNode::new(ValueNode(4u32), IdNode);
-		let value2 = ValueNode(5u32);
+	pub fn dup_node() {
+		let value = ValueNode(4u32);
 		let dup = DupNode.after(value);
+		assert_eq!(dup.eval(()), (&4, &4));
+	}
+	#[test]
+	pub fn id_node() {
+		let value = IdNode.after(ValueNode(4u32));
+		assert_eq!(value.eval(()), &4);
+	}
+	#[test]
+	pub fn clone_node() {
+		let cloned = CloneNode.after(ValueNode(4u32));
+		assert_eq!(cloned.eval(()), 4);
+	}
+	#[test]
+	pub fn fst_node() {
+		let fst = FstNode.after(ValueNode((4u32, "a")).clone());
+		assert_eq!(fst.eval(()), 4);
+	}
+	#[test]
+	pub fn snd_node() {
+		let fst = SndNode.after(ValueNode((4u32, "a")).clone());
+		assert_eq!(fst.eval(()), "a");
+	}
+	#[test]
+	pub fn add_node() {
+		let a = ValueNode(42u32);
+		let b = ValueNode(6u32);
+		let cons_a = ConsNode(a);
+		let sum = AddNode.after(cons_a).after(b);
+
+		assert_eq!(sum.eval(()), 48);
+	}
+	#[test]
+	pub fn foo() {
 		fn int(_: (), state: &u32) -> &u32 {
 			state
 		}
@@ -74,10 +121,6 @@ mod test {
 		let fnn = FnNode::new(&swap);
 		let fns = FnNodeWithState::new(int, 42u32);
 		assert_eq!(fnn.eval((1u32, 2u32)), (2, 1));
-		let _ = fns.eval(());
-		let snd = SndNode.after(dup);
-		assert_eq!(snd.eval(()), &4u32);
-		let sum = AddNode.after(ConsNode(snd)).eval(value2.eval(()));
-		assert_eq!(sum, 9);
+		assert_eq!(fns.eval(()), &42);
 	}
 }

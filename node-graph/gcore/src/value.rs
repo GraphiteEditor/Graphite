@@ -2,6 +2,8 @@ use core::marker::PhantomData;
 use core::mem::MaybeUninit;
 use core::sync::atomic::AtomicBool;
 
+use crate::ops::CloneNode;
+use crate::structural::ComposeNode;
 use crate::Node;
 
 pub struct IntNode<const N: u32>;
@@ -24,6 +26,12 @@ impl<'n, T: 'n> Node<'n, ()> for ValueNode<T> {
 impl<T> ValueNode<T> {
 	pub const fn new(value: T) -> ValueNode<T> {
 		ValueNode(value)
+	}
+}
+
+impl<'n, T: Clone + 'n> ValueNode<T> {
+	pub const fn clone(self) -> ComposeNode<'n, (), ValueNode<T>, CloneNode> {
+		ComposeNode::new(self, CloneNode)
 	}
 }
 
