@@ -1,7 +1,6 @@
 use super::utility_types::input_keyboard::KeysGroup;
 use super::utility_types::misc::Mapping;
 use crate::messages::input_mapper::utility_types::input_keyboard::{self, Key};
-use crate::messages::portfolio::document::utility_types::misc::KeyboardPlatformLayout;
 use crate::messages::prelude::*;
 
 use std::fmt::Write;
@@ -11,11 +10,11 @@ pub struct InputMapperMessageHandler {
 	mapping: Mapping,
 }
 
-impl MessageHandler<InputMapperMessage, (&InputPreprocessorMessageHandler, KeyboardPlatformLayout, ActionList)> for InputMapperMessageHandler {
-	fn process_message(&mut self, message: InputMapperMessage, data: (&InputPreprocessorMessageHandler, KeyboardPlatformLayout, ActionList), responses: &mut VecDeque<Message>) {
-		let (input, keyboard_platform, actions) = data;
+impl MessageHandler<InputMapperMessage, (&InputPreprocessorMessageHandler, ActionList)> for InputMapperMessageHandler {
+	fn process_message(&mut self, message: InputMapperMessage, data: (&InputPreprocessorMessageHandler, ActionList), responses: &mut VecDeque<Message>) {
+		let (input, actions) = data;
 
-		if let Some(message) = self.mapping.match_input_message(message, &input.keyboard, actions, keyboard_platform) {
+		if let Some(message) = self.mapping.match_input_message(message, &input.keyboard, actions) {
 			responses.push_back(message);
 		}
 	}
@@ -44,7 +43,7 @@ impl InputMapperMessageHandler {
 		output.replace("Key", "")
 	}
 
-	pub fn action_input_mapping(&self, action_to_find: &MessageDiscriminant, keyboard_platform: KeyboardPlatformLayout) -> Vec<KeysGroup> {
+	pub fn action_input_mapping(&self, action_to_find: &MessageDiscriminant) -> Vec<KeysGroup> {
 		let key_up = self.mapping.key_up.iter();
 		let key_down = self.mapping.key_down.iter();
 		let double_click = std::iter::once(&self.mapping.double_click);
@@ -56,8 +55,6 @@ impl InputMapperMessageHandler {
 
 		// Filter for the desired message
 		let found_actions = all_mapping_entries.filter(|entry| entry.action.to_discriminant() == *action_to_find);
-		// Filter for a compatible keyboard platform layout
-		let found_actions = found_actions.filter(|entry| if let Some(layout) = entry.platform_layout { layout == keyboard_platform } else { true });
 
 		// Find the key combinations for all keymaps matching the desired action
 		assert!(std::mem::size_of::<usize>() >= std::mem::size_of::<Key>());

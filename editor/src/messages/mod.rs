@@ -4,6 +4,7 @@ pub mod broadcast;
 pub mod debug;
 pub mod dialog;
 pub mod frontend;
+pub mod globals;
 pub mod input_mapper;
 pub mod input_preprocessor;
 pub mod layout;

@@ -1,7 +1,6 @@
-use super::input_keyboard::KeysGroup;
+use super::input_keyboard::{all_required_modifiers_pressed, KeysGroup};
 use crate::messages::input_mapper::default_mapping::default_mapping;
 use crate::messages::input_mapper::utility_types::input_keyboard::{KeyStates, NUMBER_OF_KEYS};
-use crate::messages::portfolio::document::utility_types::misc::KeyboardPlatformLayout;
 use crate::messages::prelude::*;
 
 use serde::{Deserialize, Serialize};
@@ -16,7 +15,7 @@ pub struct Mapping {
 }
 
 impl Mapping {
-	pub fn match_input_message(&self, message: InputMapperMessage, keyboard_state: &KeyStates, actions: ActionList, keyboard_platform: KeyboardPlatformLayout) -> Option<Message> {
+	pub fn match_input_message(&self, message: InputMapperMessage, keyboard_state: &KeyStates, actions: ActionList) -> Option<Message> {
 		let list = match message {
 			InputMapperMessage::KeyDown(key) => &self.key_down[key as usize],
 			InputMapperMessage::KeyUp(key) => &self.key_up[key as usize],
@@ -24,7 +23,7 @@ impl Mapping {
 			InputMapperMessage::WheelScroll => &self.wheel_scroll,
 			InputMapperMessage::PointerMove => &self.pointer_move,
 		};
-		list.match_mapping(keyboard_state, actions, keyboard_platform)
+		list.match_mapping(keyboard_state, actions)
 	}
 }
 
@@ -38,26 +37,15 @@ impl Default for Mapping {
 pub struct KeyMappingEntries(pub Vec<MappingEntry>);
 
 impl KeyMappingEntries {
-	pub fn match_mapping(&self, keyboard_state: &KeyStates, actions: ActionList, keyboard_platform: KeyboardPlatformLayout) -> Option<Message> {
-		for entry in self.0.iter() {
-			// Skip this entry if it is platform-specific, and for a layout that does not match the user's keyboard platform layout
-			if let Some(entry_platform_layout) = entry.platform_layout {
-				if entry_platform_layout != keyboard_platform {
-					continue;
-				}
-			}
-
-			// Find which currently pressed keys are also the modifiers in this hotkey entry, then compare those against the required modifiers to see if there are zero missing
-			let pressed_modifiers = *keyboard_state & entry.modifiers;
-			let all_modifiers_without_pressed_modifiers = entry.modifiers ^ pressed_modifiers;
-			let all_required_modifiers_pressed = all_modifiers_without_pressed_modifiers.is_empty();
+	pub fn match_mapping(&self, keyboard_state: &KeyStates, actions: ActionList) -> Option<Message> {
+		for mapping in self.0.iter() {
 			// Skip this entry if any of the required modifiers are missing
-			if !all_required_modifiers_pressed {
-				continue;
-			}
-
-			if actions.iter().flatten().any(|action| entry.action.to_discriminant() == *action) {
-				return Some(entry.action.clone());
+			if all_required_modifiers_pressed(keyboard_state, &mapping.modifiers) {
+				// Search for the action in the list of available actions to see if it's currently available to activate
+				let matching_action_found = actions.iter().flatten().any(|action| mapping.action.to_discriminant() == *action);
+				if matching_action_found {
+					return Some(mapping.action.clone());
+				}
 			}
 		}
 		None
@@ -87,8 +75,6 @@ pub struct MappingEntry {
 	pub input: InputMapperMessage,
 	/// Any additional keys that must be also pressed for this input mapping to match
 	pub modifiers: KeyStates,
-	/// The keyboard platform layout which this mapping is exclusive to, or `None` if it's platform-agnostic
-	pub platform_layout: Option<KeyboardPlatformLayout>,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]

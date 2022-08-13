@@ -20,6 +20,14 @@ const KEY_MASK_STORAGE_LENGTH: usize = (NUMBER_OF_KEYS + STORAGE_SIZE_BITS - 1) 
 
 pub type KeyStates = BitVector<KEY_MASK_STORAGE_LENGTH>;
 
+pub fn all_required_modifiers_pressed(keyboard_state: &KeyStates, modifiers: &KeyStates) -> bool {
+	// Find which currently pressed keys are also the modifiers in this hotkey entry, then compare those against the required modifiers to see if there are zero missing
+	let pressed_modifiers = *keyboard_state & *modifiers;
+	let all_modifiers_without_pressed_modifiers = *modifiers ^ pressed_modifiers;
+
+	all_modifiers_without_pressed_modifiers.is_empty()
+}
+
 pub enum KeyPosition {
 	Pressed,
 	Released,
@@ -29,10 +37,10 @@ bitflags! {
 	#[derive(Default, Serialize, Deserialize)]
 	#[repr(transparent)]
 	pub struct ModifierKeys: u8 {
-		const SHIFT           = 0b0000_0001;
-		const ALT             = 0b0000_0010;
-		const CONTROL         = 0b0000_0100;
-		const META_OR_COMMAND = 0b0000_1000;
+		const SHIFT           = 0b_0000_0001;
+		const ALT             = 0b_0000_0010;
+		const CONTROL         = 0b_0000_0100;
+		const META_OR_COMMAND = 0b_0000_1000;
 	}
 }
 
@@ -193,6 +201,7 @@ pub enum Key {
 
 	// Other keys that aren't part of the W3C spec
 	Command,
+	Accel,
 	Lmb,
 	Rmb,
 	Mmb,
@@ -228,6 +237,8 @@ impl fmt::Display for Key {
 			return write!(f, "{}", key_name.chars().skip(KEY_PREFIX.len()).collect::<String>());
 		}
 
+		let keyboard_layout = || GLOBAL_PLATFORM.get().expect("Failed to get GLOBAL_PLATFORM").as_keyboard_platform_layout();
+
 		let name = match self {
 			// Writing system keys
 			Self::Backquote => "`",
@@ -243,7 +254,23 @@ impl fmt::Display for Key {
 			Self::Slash => "/",
 
 			// Functional keys
-			Self::Control => "Ctrl",
+			Self::Alt => match keyboard_layout() {
+				KeyboardPlatformLayout::Standard => "Alt",
+				KeyboardPlatformLayout::Mac => "⌥",
+			},
+			Self::Meta => match keyboard_layout() {
+				KeyboardPlatformLayout::Standard => "⊞",
+				KeyboardPlatformLayout::Mac => "⌘",
+			},
+			Self::Shift => match keyboard_layout() {
+				KeyboardPlatformLayout::Standard => "Shift",
+				KeyboardPlatformLayout::Mac => "⇧",
+			},
+			Self::Control => match keyboard_layout() {
+				KeyboardPlatformLayout::Standard => "Ctrl",
+				KeyboardPlatformLayout::Mac => "⌃",
+			},
+			Self::Backspace => "⌫",
 
 			// Control pad keys
 			Self::Delete => "Del",
@@ -267,6 +294,13 @@ impl fmt::Display for Key {
 			Self::Escape => "Esc",
 			Self::PrintScreen => "PrtScr",
 
+			// Other keys that aren't part of the W3C spec
+			Self::Command => "⌘",
+			Self::Accel => match keyboard_layout() {
+				KeyboardPlatformLayout::Standard => "Ctrl",
+				KeyboardPlatformLayout::Mac => "⌘",
+			},
+
 			_ => key_name.as_str(),
 		};
 
@@ -280,36 +314,31 @@ pub const NUMBER_OF_KEYS: usize = Key::NumKeys as usize;
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct KeysGroup(pub Vec<Key>);
 
-impl KeysGroup {
-	pub fn keys_text_shortcut(&self, keyboard_platform: KeyboardPlatformLayout) -> String {
-		const JOINER_MARK: &str = "+";
+impl fmt::Display for KeysGroup {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+		const JOINER_MARK: &str = " ";
 
 		let mut joined = self
 			.0
 			.iter()
 			.map(|key| {
-				let key_string = key.to_string();
+				let keyboard_layout = GLOBAL_PLATFORM.get().expect("Failed to get GLOBAL_PLATFORM").as_keyboard_platform_layout();
+				let key_is_modifier = matches!(*key, Key::Control | Key::Command | Key::Alt | Key::Shift | Key::Meta | Key::Accel);
 
-				if keyboard_platform == KeyboardPlatformLayout::Mac {
-					match key_string.as_str() {
-						"Command" => "⌘".to_string(),
-						"Control" => "⌃".to_string(),
-						"Alt" => "⌥".to_string(),
-						"Shift" => "⇧".to_string(),
-						_ => key_string + JOINER_MARK,
-					}
+				if keyboard_layout == KeyboardPlatformLayout::Mac && key_is_modifier {
+					key.to_string()
 				} else {
-					key_string + JOINER_MARK
+					key.to_string() + JOINER_MARK
 				}
 			})
 			.collect::<String>();
 
-		// Truncate to cut the joining character off the end if it's present
+		// Cut the joining character off the end, if present
 		if joined.ends_with(JOINER_MARK) {
 			joined.truncate(joined.len() - JOINER_MARK.len());
 		}
 
-		joined
+		write!(f, "{}", joined)
 	}
 }
 

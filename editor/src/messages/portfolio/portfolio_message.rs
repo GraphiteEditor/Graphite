@@ -1,5 +1,4 @@
 use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
-use crate::messages::portfolio::document::utility_types::misc::Platform;
 use crate::messages::prelude::*;
 
 use graphene::layers::text_layer::Font;
@@ -83,9 +82,6 @@ pub enum PortfolioMessage {
 	},
 	SetActiveDocument {
 		document_id: u64,
-	},
-	SetPlatform {
-		platform: Platform,
 	},
 	UpdateDocumentWidgets,
 	UpdateOpenDocumentsList,
