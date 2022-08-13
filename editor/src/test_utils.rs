@@ -35,9 +35,10 @@ impl EditorTestUtils for Editor {
 
 		let mut editor = Editor::new();
 
-		if GLOBAL_PLATFORM.get().is_none() {
-			editor.handle_message(GlobalsMessage::SetPlatform { platform: Platform::Windows });
-		}
+		// We have to set this directly instead of using `GlobalsMessage::SetPlatform` because race conditions with multiple tests can cause that message handler to set it more than once, which is a failure.
+		// It isn't sufficient to guard the message dispatch here with a check if the once_cell is empty, because that isn't atomic and the time between checking and handling the dispatch can let multiple through.
+		let _ = GLOBAL_PLATFORM.set(Platform::Windows).is_ok();
+
 		editor.handle_message(Message::Init);
 
 		editor
