@@ -5,7 +5,6 @@ use crate::messages::frontend::utility_types::FrontendDocumentDetails;
 use crate::messages::layout::utility_types::layout_widget::PropertyHolder;
 use crate::messages::layout::utility_types::misc::LayoutTarget;
 use crate::messages::portfolio::document::utility_types::clipboards::{Clipboard, CopyBufferEntry, INTERNAL_CLIPBOARD_COUNT};
-use crate::messages::portfolio::document::utility_types::misc::Platform;
 use crate::messages::prelude::*;
 
 use graphene::layers::layer_info::LayerDataTypeDiscriminant;
@@ -22,7 +21,6 @@ pub struct PortfolioMessageHandler {
 	active_document_id: Option<u64>,
 	copy_buffer: [Vec<CopyBufferEntry>; INTERNAL_CLIPBOARD_COUNT as usize],
 	font_cache: FontCache,
-	pub platform: Platform,
 }
 
 impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for PortfolioMessageHandler {
@@ -396,7 +394,6 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 				responses.push_back(NavigationMessage::TranslateCanvas { delta: (0., 0.).into() }.into());
 			}
 			SetActiveDocument { document_id } => self.active_document_id = Some(document_id),
-			SetPlatform { platform } => self.platform = platform,
 			UpdateDocumentWidgets => {
 				if let Some(document) = self.active_document() {
 					document.update_document_widgets(responses);

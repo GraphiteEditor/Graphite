@@ -215,6 +215,7 @@ dependencies = [
  "graphite-proc-macros",
  "kurbo",
  "log",
+ "once_cell",
  "rand_chacha",
  "remain",
  "serde",

@@ -195,8 +195,11 @@ export default defineComponent({
 			let key = keyWithLabel.key;
 			const label = keyWithLabel.label;
 
-			// Replace Alt with Option on Mac
-			if (key === "Alt" && platformIsMac()) key = "Option";
+			// Replace Alt and Accel keys with their Mac-specific equivalents
+			if (platformIsMac()) {
+				if (key === "Alt") key = "Option";
+				if (key === "Accel") key = "Command";
+			}
 
 			// Either display an icon...
 			// @ts-expect-error We want undefined if it isn't in the object

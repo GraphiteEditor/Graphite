@@ -2,7 +2,6 @@ use super::utility_types::misc::LayoutTarget;
 use crate::messages::input_mapper::utility_types::input_keyboard::KeysGroup;
 use crate::messages::layout::utility_types::layout_widget::Layout;
 use crate::messages::layout::utility_types::layout_widget::Widget;
-use crate::messages::portfolio::document::utility_types::misc::KeyboardPlatformLayout;
 use crate::messages::prelude::*;
 
 use graphene::layers::text_layer::Font;
@@ -14,21 +13,21 @@ pub struct LayoutMessageHandler {
 	layouts: [Layout; LayoutTarget::LayoutTargetLength as usize],
 }
 
-impl<F: Fn(&MessageDiscriminant) -> Vec<KeysGroup>> MessageHandler<LayoutMessage, (F, KeyboardPlatformLayout)> for LayoutMessageHandler {
+impl<F: Fn(&MessageDiscriminant) -> Vec<KeysGroup>> MessageHandler<LayoutMessage, F> for LayoutMessageHandler {
 	#[remain::check]
-	fn process_message(&mut self, message: LayoutMessage, data: (F, KeyboardPlatformLayout), responses: &mut std::collections::VecDeque<Message>) {
-		let (action_input_mapping, keyboard_platform) = data;
+	fn process_message(&mut self, message: LayoutMessage, data: F, responses: &mut std::collections::VecDeque<Message>) {
+		let action_input_mapping = data;
 
 		use LayoutMessage::*;
 		#[remain::sorted]
 		match message {
 			RefreshLayout { layout_target } => {
-				self.send_layout(layout_target, responses, &action_input_mapping, keyboard_platform);
+				self.send_layout(layout_target, responses, &action_input_mapping);
 			}
 			SendLayout { layout, layout_target } => {
 				self.layouts[layout_target as usize] = layout;
 
-				self.send_layout(layout_target, responses, &action_input_mapping, keyboard_platform);
+				self.send_layout(layout_target, responses, &action_input_mapping);
 			}
 			UpdateLayout { layout_target, widget_id, value } => {
 				let layout = &mut self.layouts[layout_target as usize];
@@ -152,55 +151,49 @@ impl<F: Fn(&MessageDiscriminant) -> Vec<KeysGroup>> MessageHandler<LayoutMessage
 
 impl LayoutMessageHandler {
 	#[remain::check]
-	fn send_layout(
-		&self,
-		layout_target: LayoutTarget,
-		responses: &mut VecDeque<Message>,
-		action_input_mapping: &impl Fn(&MessageDiscriminant) -> Vec<KeysGroup>,
-		keyboard_platform: KeyboardPlatformLayout,
-	) {
+	fn send_layout(&self, layout_target: LayoutTarget, responses: &mut VecDeque<Message>, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Vec<KeysGroup>) {
 		let layout = &self.layouts[layout_target as usize];
 		#[remain::sorted]
 		let message = match layout_target {
 			LayoutTarget::DialogDetails => FrontendMessage::UpdateDialogDetails {
 				layout_target,
-				layout: layout.clone().unwrap_widget_layout(action_input_mapping, keyboard_platform).layout,
+				layout: layout.clone().unwrap_widget_layout(action_input_mapping).layout,
 			},
 			LayoutTarget::DocumentBar => FrontendMessage::UpdateDocumentBarLayout {
 				layout_target,
-				layout: layout.clone().unwrap_widget_layout(action_input_mapping, keyboard_platform).layout,
+				layout: layout.clone().unwrap_widget_layout(action_input_mapping).layout,
 			},
 			LayoutTarget::DocumentMode => FrontendMessage::UpdateDocumentModeLayout {
 				layout_target,
-				layout: layout.clone().unwrap_widget_layout(action_input_mapping, keyboard_platform).layout,
+				layout: layout.clone().unwrap_widget_layout(action_input_mapping).layout,
 			},
 			LayoutTarget::LayerTreeOptions => FrontendMessage::UpdateLayerTreeOptionsLayout {
 				layout_target,
-				layout: layout.clone().unwrap_widget_layout(action_input_mapping, keyboard_platform).layout,
+				layout: layout.clone().unwrap_widget_layout(action_input_mapping).layout,
 			},
 			LayoutTarget::MenuBar => FrontendMessage::UpdateMenuBarLayout {
 				layout_target,
-				layout: layout.clone().unwrap_menu_layout(action_input_mapping, keyboard_platform).layout,
+				layout: layout.clone().unwrap_menu_layout(action_input_mapping).layout,
 			},
 			LayoutTarget::PropertiesOptions => FrontendMessage::UpdatePropertyPanelOptionsLayout {
 				layout_target,
-				layout: layout.clone().unwrap_widget_layout(action_input_mapping, keyboard_platform).layout,
+				layout: layout.clone().unwrap_widget_layout(action_input_mapping).layout,
 			},
 			LayoutTarget::PropertiesSections => FrontendMessage::UpdatePropertyPanelSectionsLayout {
 				layout_target,
-				layout: layout.clone().unwrap_widget_layout(action_input_mapping, keyboard_platform).layout,
+				layout: layout.clone().unwrap_widget_layout(action_input_mapping).layout,
 			},
 			LayoutTarget::ToolOptions => FrontendMessage::UpdateToolOptionsLayout {
 				layout_target,
-				layout: layout.clone().unwrap_widget_layout(action_input_mapping, keyboard_platform).layout,
+				layout: layout.clone().unwrap_widget_layout(action_input_mapping).layout,
 			},
 			LayoutTarget::ToolShelf => FrontendMessage::UpdateToolShelfLayout {
 				layout_target,
-				layout: layout.clone().unwrap_widget_layout(action_input_mapping, keyboard_platform).layout,
+				layout: layout.clone().unwrap_widget_layout(action_input_mapping).layout,
 			},
 			LayoutTarget::WorkingColors => FrontendMessage::UpdateWorkingColorsLayout {
 				layout_target,
-				layout: layout.clone().unwrap_widget_layout(action_input_mapping, keyboard_platform).layout,
+				layout: layout.clone().unwrap_widget_layout(action_input_mapping).layout,
 			},
 
 			#[remain::unsorted]

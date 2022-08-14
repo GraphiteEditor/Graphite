@@ -25,6 +25,7 @@ kurbo = { git = "https://github.com/linebender/kurbo.git", features = [
 ] }
 remain = "0.2.2"
 derivative = "2.2.0"
+once_cell = "1.13.0" # Remove when `core::cell::OnceCell` is stabilized (<https://doc.rust-lang.org/core/cell/struct.OnceCell.html>)
 
 [dependencies.graphene]
 path = "../graphene"

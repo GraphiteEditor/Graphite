@@ -66,8 +66,11 @@ impl JsEditorHandle {
 			return;
 		}
 
+		// Get the editor instances, dispatch the message, and store the `FrontendMessage` queue response
 		let frontend_messages = EDITOR_INSTANCES.with(|instances| {
+			// Mutably borrow the editors, and if successful, we can access them in the closure
 			instances.try_borrow_mut().map(|mut editors| {
+				// Get the editor instance for this editor ID, then dispatch the message to the backend, and return its response `FrontendMessage` queue
 				editors
 					.get_mut(&self.editor_id)
 					.expect("EDITOR_INSTANCES does not contain the current editor_id")
@@ -75,9 +78,10 @@ impl JsEditorHandle {
 			})
 		});
 
+		// Process any `FrontendMessage` responses resulting from the backend processing the dispatched message
 		if let Ok(frontend_messages) = frontend_messages {
+			// Send each `FrontendMessage` to the JavaScript frontend
 			for message in frontend_messages.into_iter() {
-				// Send each FrontendMessage to the JavaScript frontend
 				self.send_frontend_message_to_js(message);
 			}
 		}
@@ -115,7 +119,7 @@ impl JsEditorHandle {
 			_ => Platform::Unknown,
 		};
 
-		self.dispatch(PortfolioMessage::SetPlatform { platform });
+		self.dispatch(GlobalsMessage::SetPlatform { platform });
 		self.dispatch(Message::Init);
 	}
 
