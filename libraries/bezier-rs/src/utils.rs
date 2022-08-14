@@ -58,12 +58,12 @@ pub fn solve_linear(a: f64, b: f64) -> Vec<f64> {
 /// Precompute the `discriminant` (`b^2 - 4ac`) and `two_times_a` arguments prior to calling this function for efficiency purposes.
 pub fn solve_quadratic(discriminant: f64, two_times_a: f64, b: f64, c: f64) -> Vec<f64> {
 	let mut roots = Vec::new();
-	if two_times_a.abs() > MAX_ABSOLUTE_DIFFERENCE {
+	if two_times_a != 0. {
 		if discriminant > 0. {
 			let root_discriminant = discriminant.sqrt();
 			roots.push((-b + root_discriminant) / (two_times_a));
 			roots.push((-b - root_discriminant) / (two_times_a));
-		} else if discriminant.abs() < MAX_ABSOLUTE_DIFFERENCE {
+		} else if discriminant == 0. {
 			roots.push(-b / (two_times_a));
 		}
 	} else {

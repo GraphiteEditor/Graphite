@@ -1,14 +1,15 @@
 [package]
 name = "dyn-any"
 version = "0.2.1"
+rust-version = "1.62.0"
 edition = "2021"
 authors = ["Graphite Authors <contact@graphite.rs>"]
-
-
 description = "An Any trait that works for arbitrary lifetimes"
-documentation = "https://docs.rs/dyn-any"
 license = "MIT OR Apache-2.0"
-readme = "README.md"
+readme = "./README.md"
+homepage = "https://graphite.rs/libraries/dyn-any"
+repository = "https://github.com/GraphiteEditor/Graphite/libraries/dyn-any"
+documentation = "https://docs.rs/dyn-any"
 
 [dependencies]
 dyn-any-derive = { path = "derive", version = "0.2.0", optional = true }

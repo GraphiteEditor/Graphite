@@ -14,7 +14,7 @@ license = "Apache-2.0"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-bezier-rs = { path = "../../../lib", package = "bezier-rs" }
+bezier-rs = { path = "../../../../libraries/bezier-rs", package = "bezier-rs" }
 log = "0.4"
 serde = { version = "1.0", features = ["derive"] }
 wasm-bindgen = { version = "0.2.73", features = ["serde-serialize"] }

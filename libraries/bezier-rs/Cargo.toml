@@ -1,0 +1,14 @@
+[package]
+name = "bezier-rs"
+version = "0.1.0"
+rust-version = "1.62.0"
+edition = "2021"
+authors = ["Graphite Authors <contact@graphite.rs>"]
+description = "A wide assortment of useful math functions for Bezier segments and shapes."
+license = "MIT OR Apache-2.0"
+readme = "./README.md"
+homepage = "https://graphite.rs/libraries/bezier-rs"
+repository = "https://github.com/GraphiteEditor/Graphite/libraries/bezier-rs"
+
+[dependencies]
+glam = { version = "0.17", features = ["serde"] }
