@@ -33,7 +33,7 @@
 	"eslint.format.enable": true,
 	"eslint.workingDirectories": [
 		"./frontend",
-		"./bezier-rs/docs/interactive-docs",
+		"./website/other/bezier-rs-demos",
 		"./website",
 	],
 	"eslint.validate": [

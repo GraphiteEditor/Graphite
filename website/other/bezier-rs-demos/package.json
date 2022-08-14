@@ -1,5 +1,5 @@
 {
-	"name": "interactive-docs",
+	"name": "bezier-rs-demos",
 	"version": "0.1.0",
 	"private": true,
 	"scripts": {

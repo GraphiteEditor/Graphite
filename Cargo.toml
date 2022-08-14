@@ -4,12 +4,12 @@ members = [
 	"graphene",
 	"proc-macros",
 	"frontend/wasm",
-	"bezier-rs/lib",
-	"bezier-rs/docs/interactive-docs/wasm",
 	"node-graph/gcore",
 	"node-graph/gstd",
 	"node-graph/borrow_stack",
 	"libraries/dyn-any",
+	"libraries/bezier-rs",
+	"website/other/bezier-rs-demos/wasm",
 ]
 
 [profile.release.package.graphite-wasm]
