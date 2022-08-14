@@ -71,8 +71,7 @@ export async function getLocalizedScanCode(e: KeyboardEvent): Promise<string> {
 	// Use good-enough-for-now heuristics on the writing system keys, which are commonly subject to change by locale
 
 	// Number scan codes
-	const scanCodeDigit = /^Digit[0-9]$/.test(scanCode);
-	if (scanCodeDigit) {
+	if (/^Digit[0-9]$/.test(scanCode)) {
 		// For now it's good enough to treat every digit key, regardless of locale, as just its digit from the standard US layout.
 		// Even on a keyboard like the French AZERTY layout, where numbers are shifted, users still refer to those keys by their numbers.
 		// This unfortunately means that any special symbols under these keys are overridden by their number, making it impossible to access some shortcuts that rely on those special symbols.
@@ -81,20 +80,15 @@ export async function getLocalizedScanCode(e: KeyboardEvent): Promise<string> {
 	}
 
 	// Letter scan codes
-	const scanCodeLetter = scanCode.match(/^Key([A-Z])$/);
-	if (scanCodeLetter) {
-		const scanCodeLetterValue = String(scanCodeLetter[1]);
+	if (/^Key([A-Z])$/.test(scanCode)) {
+		// Get the uppercase letter, with any accents or discritics removed if possible
+		const rawLetter = keyText
+			.normalize("NFD")
+			.replace(/\p{Diacritic}/gu, "")
+			.toUpperCase();
 
-		// If the scan code matches the key letter (ignoring diacritics and case), use that letter directly
-		const letterOfScanCodeMatchesKey =
-			scanCodeLetterValue ===
-			keyText
-				.normalize("NFD")
-				.replace(/\p{Diacritic}/gu, "")
-				.toUpperCase();
-		if (letterOfScanCodeMatchesKey) {
-			return scanCode;
-		}
+		// If the key letter is in the A-Z range, use the key code for that letter
+		if (/^[A-Z]$/.test(rawLetter)) return `Key${rawLetter}`;
 
 		// If the key text isn't one of the named attribute values, that means it must be the literal unicode value which we use directly
 		// It is likely a weird symbol that isn't in the A-Z range even with accents removed.
