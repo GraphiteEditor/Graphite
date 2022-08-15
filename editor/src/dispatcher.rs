@@ -61,11 +61,7 @@ impl Dispatcher {
 	pub fn handle_message<T: Into<Message>>(&mut self, message: T) {
 		use Message::*;
 
-		if let Some(first) = self.message_queues.first_mut() {
-			first.push_back(message.into());
-		} else {
-			self.message_queues.push(VecDeque::from_iter([message.into()]));
-		}
+		self.message_queues.push(VecDeque::from_iter([message.into()]));
 
 		while let Some(message) = self.message_queues.last_mut().and_then(VecDeque::pop_front) {
 			// Skip processing of this message if it will be processed later (at the end of the shallowest level queue)
