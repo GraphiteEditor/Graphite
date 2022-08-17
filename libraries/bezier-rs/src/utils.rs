@@ -58,16 +58,14 @@ pub fn solve_linear(a: f64, b: f64) -> Vec<f64> {
 /// Precompute the `discriminant` (`b^2 - 4ac`) and `two_times_a` arguments prior to calling this function for efficiency purposes.
 pub fn solve_quadratic(discriminant: f64, two_times_a: f64, b: f64, c: f64) -> Vec<f64> {
 	let mut roots = Vec::new();
-	if two_times_a != 0. {
-		if discriminant > 0. {
-			let root_discriminant = discriminant.sqrt();
-			roots.push((-b + root_discriminant) / (two_times_a));
-			roots.push((-b - root_discriminant) / (two_times_a));
-		} else if discriminant == 0. {
-			roots.push(-b / (two_times_a));
-		}
-	} else {
+	if two_times_a.abs() <= STRICT_MAX_ABSOLUTE_DIFFERENCE {
 		roots = solve_linear(b, c);
+	} else if discriminant.abs() <= STRICT_MAX_ABSOLUTE_DIFFERENCE {
+		roots.push(-b / (two_times_a));
+	} else if discriminant > 0. {
+		let root_discriminant = discriminant.sqrt();
+		roots.push((-b + root_discriminant) / (two_times_a));
+		roots.push((-b - root_discriminant) / (two_times_a));
 	}
 	roots
 }
@@ -131,6 +129,7 @@ pub fn solve_cubic(a: f64, b: f64, c: f64, d: f64) -> Vec<f64> {
 		} else {
 			// If a is approximately 0, treat as a quadratic problem
 			let discriminant = c * c - 4. * b * d;
+			println!("{:?}", discriminant);
 			solve_quadratic(discriminant, 2. * b, c, d)
 		}
 	} else {
@@ -271,6 +270,7 @@ mod tests {
 
 		// quadratic
 		let roots6 = solve_cubic(0., 3., 0., -3.);
+		println!("{:?}", roots6);
 		assert!(roots6 == vec![1., -1.]);
 
 		// linear
