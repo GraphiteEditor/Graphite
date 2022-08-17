@@ -1,9 +1,11 @@
+/// Comparison functions used for tests in the bezier module
 use super::{Bezier, CircleArc};
 use crate::consts::MAX_ABSOLUTE_DIFFERENCE;
 use crate::utils::f64_compare;
 
 use glam::DVec2;
 
+// Compare two f64s with some maximum absolute difference to account for floating point errors
 pub fn compare_f64s(f1: f64, f2: f64) -> bool {
 	f64_compare(f1, f2, MAX_ABSOLUTE_DIFFERENCE)
 }
