@@ -3,6 +3,7 @@ use super::*;
 use glam::DMat2;
 use std::f64::consts::PI;
 
+/// Functionality that transform Beziers, such as split, reduce, offset, etc.
 impl Bezier {
 	/// Returns the pair of Bezier curves that result from splitting the original curve at the point corresponding to `t`.
 	pub fn split(&self, t: f64) -> [Bezier; 2] {

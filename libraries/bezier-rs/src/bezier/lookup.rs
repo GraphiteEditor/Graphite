@@ -1,5 +1,6 @@
 use super::*;
 
+/// Functionality relating to looking up properties of the `Bezier` or points along the `Bezier`.
 impl Bezier {
 	/// Calculate the point on the curve based on the `t`-value provided.
 	pub(crate) fn unrestricted_evaluate(&self, t: f64) -> DVec2 {

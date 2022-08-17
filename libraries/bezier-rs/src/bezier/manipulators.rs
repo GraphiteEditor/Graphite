@@ -1,6 +1,6 @@
 use super::*;
 
-/// Implementations for the getters and setters
+/// Functionality for the getters and setters of the various points in a Bezier
 impl Bezier {
 	/// Set the coordinates of the start point.
 	pub fn set_start(&mut self, s: DVec2) {

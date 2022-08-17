@@ -1,5 +1,6 @@
 use super::*;
 
+/// Functionality relating to core `Bezier` operations, such as constructors and `abs_diff_eq`.
 impl Bezier {
 	// TODO: Consider removing this function
 	/// Create a quadratic bezier using the provided coordinates as the start, handle, and end points.

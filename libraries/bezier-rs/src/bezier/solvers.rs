@@ -3,6 +3,7 @@ use super::*;
 use glam::DMat2;
 use std::ops::Range;
 
+/// Functionality that solve for various curve information such as derivative, tangent, intersect, etc.
 impl Bezier {
 	/// Returns a list of lists of points representing the De Casteljau points for all iterations at the point corresponding to `t` using De Casteljau's algorithm.
 	/// The `i`th element of the list represents the set of points in the `i`th iteration.
