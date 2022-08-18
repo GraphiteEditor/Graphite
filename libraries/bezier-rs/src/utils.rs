@@ -129,7 +129,6 @@ pub fn solve_cubic(a: f64, b: f64, c: f64, d: f64) -> Vec<f64> {
 		} else {
 			// If a is approximately 0, treat as a quadratic problem
 			let discriminant = c * c - 4. * b * d;
-			println!("{:?}", discriminant);
 			solve_quadratic(discriminant, 2. * b, c, d)
 		}
 	} else {
@@ -270,7 +269,6 @@ mod tests {
 
 		// quadratic
 		let roots6 = solve_cubic(0., 3., 0., -3.);
-		println!("{:?}", roots6);
 		assert!(roots6 == vec![1., -1.]);
 
 		// linear
