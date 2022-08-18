@@ -455,23 +455,19 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 			}
 			PasteImage { mime, image_data, mouse } => {
 				let path = vec![generate_uuid()];
-				responses.push_front(
-					FrontendMessage::UpdateImageData {
-						image_data: vec![FrontendImageData {
-							path: path.clone(),
-							image_data: image_data.clone(),
-							mime: mime.clone(),
-						}],
-					}
-					.into(),
-				);
 				responses.push_back(
 					DocumentOperation::AddImage {
 						path: path.clone(),
 						transform: DAffine2::ZERO.to_cols_array(),
 						insert_index: -1,
-						mime,
-						image_data,
+						image_data: image_data.clone(),
+						mime: mime.clone(),
+					}
+					.into(),
+				);
+				responses.push_front(
+					FrontendMessage::UpdateImageData {
+						image_data: vec![FrontendImageData { path: path.clone(), image_data, mime }],
 					}
 					.into(),
 				);

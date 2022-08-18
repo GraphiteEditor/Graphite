@@ -46,6 +46,7 @@ pub enum PortfolioMessage {
 		is_default: bool,
 	},
 	Import,
+	LoadDocumentResources,
 	LoadFont {
 		font: Font,
 		is_default: bool,
