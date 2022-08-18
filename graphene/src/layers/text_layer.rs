@@ -70,13 +70,11 @@ impl LayerData for TextLayer {
 
 			let mut path = self.to_subpath(buzz_face);
 
-			let kurbo::Rect { x0, y0, x1, y1 } = path.bounding_box();
-			let bounds = [(x0, y0).into(), (x1, y1).into()];
+			let bounds = path.bounding_box().unwrap_or_default();
 
 			path.apply_affine(transform);
 
-			let kurbo::Rect { x0, y0, x1, y1 } = path.bounding_box();
-			let transformed_bounds = [(x0, y0).into(), (x1, y1).into()];
+			let transformed_bounds = path.bounding_box().unwrap_or_default();
 
 			let _ = write!(
 				svg,

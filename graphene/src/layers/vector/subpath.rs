@@ -334,15 +334,14 @@ impl Subpath {
 		&mut self.0
 	}
 
-	// ** INTERFACE WITH KURBO **
-
-	// TODO Implement our own a local bounding box calculation
 	/// Return the bounding box of the shape
-	pub fn bounding_box(&self) -> Rect {
-		<&Self as Into<BezPath>>::into(self).bounding_box()
+	pub fn bounding_box(&self) -> Option<[DVec2; 2]> {
+		self.bezier_iter()
+			.map(|bezier| bezier.internal.bounding_box())
+			.reduce(|[a_min, a_max], [b_min, b_max]| [a_min.min(b_min), a_max.max(b_max)])
 	}
 
-	/// Use kurbo to convert this shape into an SVG path
+	/// Convert path to svg
 	pub fn to_svg(&mut self) -> String {
 		fn write_positions(result: &mut String, values: [Option<DVec2>; 3]) {
 			use std::fmt::Write;
