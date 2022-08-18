@@ -207,6 +207,7 @@ dependencies = [
 name = "graphite-editor"
 version = "0.0.0"
 dependencies = [
+ "bezier-rs",
  "bitflags",
  "derivative",
  "env_logger",
@@ -230,6 +231,7 @@ name = "graphite-graphene"
 version = "0.0.0"
 dependencies = [
  "base64",
+ "bezier-rs",
  "glam",
  "kurbo",
  "log",

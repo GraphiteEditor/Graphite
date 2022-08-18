@@ -401,6 +401,20 @@ impl Subpath {
 		}
 		result
 	}
+
+	/// Convert to an iter over [`bezier_rs::Bezier`] segements
+	pub fn bezier_iter(&self) -> PathIter {
+		PathIter {
+			path: self.manipulator_groups().enumerate(),
+			last_anchor: None,
+			last_out_handle: None,
+			last_id: None,
+			first_in_handle: None,
+			first_anchor: None,
+			first_id: None,
+			start_new_contour: true,
+		}
+	}
 }
 
 // ** CONVERSIONS **
@@ -428,6 +442,100 @@ impl<'a> TryFrom<&'a Layer> for &'a Subpath {
 			// LayerDataType::Text(text) => Some(Subpath::new(path_to_shape.to_vec(), viewport_transform, true)),
 			_ => Err("Did not find any shape data in the layer"),
 		}
+	}
+}
+
+/// An iterator over [`bezier_rs::Bezier`] segements constructable via [`Subpath::bezier_iter`]
+pub struct PathIter<'a> {
+	path: std::iter::Zip<core::slice::Iter<'a, u64>, core::slice::Iter<'a, ManipulatorGroup>>,
+
+	last_anchor: Option<DVec2>,
+	last_out_handle: Option<DVec2>,
+	last_id: Option<u64>,
+
+	first_in_handle: Option<DVec2>,
+	first_anchor: Option<DVec2>,
+	first_id: Option<u64>,
+
+	start_new_contour: bool,
+}
+
+/// A wrapper around [`bezier_rs::Bezier`] containing also the ids for the [`ManipulatorGroup`]s where the points are from
+pub struct BezierId {
+	/// The internal [`bezier_rs::Bezier`].
+	pub internal: bezier_rs::Bezier,
+	/// The id of the [ManipulatorGroup] of the start point and, if cubic, the start handle.
+	pub start: u64,
+	/// The id of the [ManipulatorGroup] of the end point and, if cubic, the end handle.
+	pub end: u64,
+	/// The id of the [ManipulatorGroup] of the handle on a quadratic (if applicable).
+	pub mid: Option<u64>,
+}
+
+impl BezierId {
+	fn new(internal: bezier_rs::Bezier, start: u64, end: u64, mid: Option<u64>) -> Self {
+		Self { internal, start, end, mid }
+	}
+}
+
+impl<'a> Iterator for PathIter<'a> {
+	type Item = BezierId;
+
+	fn next(&mut self) -> Option<Self::Item> {
+		use bezier_rs::Bezier;
+
+		let mut result = None;
+
+		while result.is_none() {
+			let (&id, manipulator_group) = self.path.next()?;
+
+			let in_handle = manipulator_group.points[ManipulatorType::InHandle].as_ref().map(|point| point.position);
+			let anchor = manipulator_group.points[ManipulatorType::Anchor].as_ref().map(|point| point.position);
+			let out_handle = manipulator_group.points[ManipulatorType::OutHandle].as_ref().map(|point| point.position);
+
+			let mut start_new_contour = false;
+
+			// Move to
+			if anchor.is_some() && self.start_new_contour {
+				// Update the last moveto position
+				(self.first_in_handle, self.first_anchor) = (in_handle, anchor);
+				self.first_id = Some(id);
+			}
+			// Cubic to
+			else if let (Some(p1), Some(p2), Some(p3), Some(p4), Some(last_id)) = (self.last_anchor, self.last_out_handle, in_handle, anchor, self.last_id) {
+				result = Some(BezierId::new(Bezier::from_cubic_dvec2(p1, p2, p3, p4), last_id, id, None));
+			}
+			// Quadratic to
+			else if let (Some(p1), Some(p2), Some(p3), Some(last_id)) = (self.last_anchor, self.last_out_handle.or(in_handle), anchor, self.last_id) {
+				let mid = if self.last_out_handle.is_some() { last_id } else { id };
+				result = Some(BezierId::new(Bezier::from_quadratic_dvec2(p1, p2, p3), last_id, id, Some(mid)));
+			}
+			// Line to
+			else if let (Some(p1), Some(p2), Some(last_id)) = (self.last_anchor, anchor, self.last_id) {
+				result = Some(BezierId::new(Bezier::from_linear_dvec2(p1, p2), last_id, id, None));
+			}
+			// Close path
+			else if in_handle.is_none() && anchor.is_none() {
+				start_new_contour = true;
+				if let (Some(last_id), Some(first_id)) = (self.last_id, self.first_id) {
+					// Complete the last curve
+					if let (Some(p1), Some(p2), Some(p3), Some(p4)) = (self.last_anchor, self.last_out_handle, self.first_in_handle, self.first_anchor) {
+						result = Some(BezierId::new(Bezier::from_cubic_dvec2(p1, p2, p3, p4), last_id, first_id, None));
+					} else if let (Some(p1), Some(p2), Some(p3)) = (self.last_anchor, self.last_out_handle.or(self.first_in_handle), self.first_anchor) {
+						let mid = if self.last_out_handle.is_some() { last_id } else { first_id };
+						result = Some(BezierId::new(Bezier::from_quadratic_dvec2(p1, p2, p3), last_id, first_id, Some(mid)));
+					} else if let (Some(p1), Some(p2)) = (self.last_anchor, self.first_anchor) {
+						result = Some(BezierId::new(Bezier::from_linear_dvec2(p1, p2), last_id, first_id, None));
+					}
+				}
+			}
+
+			self.start_new_contour = start_new_contour;
+			self.last_out_handle = out_handle;
+			self.last_anchor = anchor;
+			self.last_id = Some(id);
+		}
+		result
 	}
 }
 

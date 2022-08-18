@@ -113,7 +113,7 @@ impl<T> IdBackedVec<T> {
 	}
 
 	/// Enumerate the ids and elements in this container `(&ElementId, &T)`
-	pub fn enumerate(&self) -> impl Iterator<Item = (&ElementId, &T)> {
+	pub fn enumerate(&self) -> std::iter::Zip<core::slice::Iter<u64>, core::slice::Iter<T>> {
 		self.element_ids.iter().zip(self.elements.iter())
 	}
 
