@@ -281,7 +281,7 @@ impl Fsm for PathToolFsmState {
 					PathToolFsmState::Ready
 				}
 				(_, PathToolMessage::InsertPoint) => {
-					log::info!("Insert point!");
+					tool_data.shape_editor.split(&document.graphene_document, input.mouse.position, 5., responses);
 
 					self
 				}

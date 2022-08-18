@@ -3,7 +3,7 @@ use crate::messages::prelude::*;
 use graphene::layers::vector::consts::ManipulatorType;
 use graphene::layers::vector::manipulator_group::ManipulatorGroup;
 use graphene::layers::vector::manipulator_point::ManipulatorPoint;
-use graphene::layers::vector::subpath::Subpath;
+use graphene::layers::vector::subpath::{BezierId, Subpath};
 use graphene::{LayerId, Operation};
 
 use glam::DVec2;
@@ -257,6 +257,74 @@ impl ShapeEditor {
 			}
 		}
 		result
+	}
+
+	/// Find the path segement we have clicked upon
+	///
+	/// Returns the [`BezierId`] and t as an f64
+	fn closest_segement(&self, document: &Document, layer_path: &[LayerId], pos: glam::DVec2, tolerance: f64) -> Option<(BezierId, f64)> {
+		let mut closest_distance_squared: f64 = tolerance * tolerance;
+		let mut result: Option<(BezierId, f64)> = None;
+
+		let transform = document.generate_transform_relative_to_viewport(layer_path).ok()?;
+		let layer_pos = transform.inverse().transform_point2(pos);
+		let projection_options = bezier_rs::ProjectionOptions { lut_size: 5, ..Default::default() };
+
+		if let Some(shape) = document.layer(layer_path).ok()?.as_subpath() {
+			for bezierid in shape.bezier_iter() {
+				let bezier = bezierid.internal;
+				let t = bezier.project(layer_pos, projection_options);
+				let layerspace = bezier.evaluate(t);
+				let screenspace = transform.transform_point2(layerspace);
+				let distance = screenspace.distance_squared(pos);
+				log::info!("layerspace {layerspace} layerpos {layer_pos} => screenspace {screenspace} pos screen {pos}");
+				log::info!("Bezier {bezier:?}");
+				if distance < closest_distance_squared {
+					closest_distance_squared = distance;
+					result = Some((bezierid, t));
+				}
+			}
+		}
+		result
+	}
+
+	/// Find the path segement we have clicked upon
+	///
+	/// Returns the [`BezierId`] and t as an f64
+	pub fn split(&self, document: &Document, pos: glam::DVec2, tolerance: f64, responses: &mut VecDeque<Message>) {
+		log::info!("Splitting");
+		for layer_path in &self.selected_layers {
+			if let Some((bezierid, t)) = self.closest_segement(document, layer_path, pos, tolerance) {
+				let [first, second] = bezierid.internal.split(t);
+
+				// Adjust the first manipulator group out handle
+				let out_handle = Operation::SetManipulatorPoints {
+					layer_path: layer_path.clone(),
+					id: bezierid.start,
+					manipulator_type: ManipulatorType::OutHandle,
+					position: first.handle_start().map(|p| p.into()),
+				};
+				responses.push_back(out_handle.into());
+
+				// Insert a new manipulator group between the existing ones
+				let insert = Operation::InsertManipulatorGroup {
+					layer_path: layer_path.clone(),
+					manipulator_group: ManipulatorGroup::new_with_handles(first.end(), first.handle_end(), second.handle_start()),
+					after_id: bezierid.end,
+				};
+				responses.push_back(insert.into());
+
+				// Adjust the last manipulator group in handle
+				let in_handle = Operation::SetManipulatorPoints {
+					layer_path: layer_path.clone(),
+					id: bezierid.end,
+					manipulator_type: ManipulatorType::InHandle,
+					position: second.handle_end().map(|p| p.into()),
+				};
+				responses.push_back(in_handle.into());
+				return;
+			}
+		}
 	}
 
 	fn shape<'a>(&'a self, document: &'a Document, layer_id: &[u64]) -> Option<&'a Subpath> {
