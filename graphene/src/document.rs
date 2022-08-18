@@ -422,6 +422,9 @@ impl Document {
 		}
 		if LayerDataTypeDiscriminant::from(&root.data) == data_type {
 			root.cache_dirty = true;
+			if let LayerDataType::Text(text) = &mut root.data {
+				text.cached_path = None;
+			}
 		}
 
 		root.cache_dirty

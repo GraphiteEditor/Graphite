@@ -186,12 +186,18 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 				if let Some(document) = self.active_document_mut() {
 					document.graphene_document.mark_all_layers_of_type_as_dirty(LayerDataTypeDiscriminant::Text);
 					responses.push_back(DocumentMessage::RenderDocument.into());
+					responses.push_back(BroadcastEvent::DocumentIsDirty.into());
 				}
 			}
 			Import => {
 				// This portfolio message wraps the frontend message so it can be listed as an action, which isn't possible for frontend messages
 				if self.active_document().is_some() {
 					responses.push_back(FrontendMessage::TriggerImport.into());
+				}
+			}
+			LoadDocumentResources => {
+				if let Some(document) = self.active_document_mut() {
+					document.load_layer_resources(responses, &document.graphene_document.root.data, Vec::new());
 				}
 			}
 			LoadFont { font, is_default } => {
@@ -488,8 +494,6 @@ impl PortfolioMessageHandler {
 		);
 		new_document.update_layer_tree_options_bar_widgets(responses, &self.font_cache);
 
-		new_document.load_layer_resources(responses, &new_document.graphene_document.root.data, Vec::new());
-
 		self.documents.insert(document_id, new_document);
 
 		if self.active_document().is_some() {
@@ -500,6 +504,7 @@ impl PortfolioMessageHandler {
 
 		responses.push_back(PortfolioMessage::UpdateOpenDocumentsList.into());
 		responses.push_back(PortfolioMessage::SelectDocument { document_id }.into());
+		responses.push_back(PortfolioMessage::LoadDocumentResources.into());
 		responses.push_back(PortfolioMessage::UpdateDocumentWidgets.into());
 		responses.push_back(ToolMessage::InitTools.into());
 		responses.push_back(PropertiesPanelMessage::Init.into());
