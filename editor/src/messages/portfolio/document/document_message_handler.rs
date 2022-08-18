@@ -465,7 +465,7 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 					}
 					.into(),
 				);
-				responses.push_front(
+				responses.push_back(
 					FrontendMessage::UpdateImageData {
 						image_data: vec![FrontendImageData { path: path.clone(), image_data, mime }],
 					}
