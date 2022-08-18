@@ -270,8 +270,8 @@ impl Fsm for PenToolFsmState {
 									let op = Operation::SetManipulatorHandleMirroring {
 										layer_path: layer_path.clone(),
 										id: first_id,
-										distance: false,
-										angle: false,
+										mirror_distance: false,
+										mirror_angle: false,
 									};
 									responses.push_back(op.into());
 

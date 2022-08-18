@@ -229,8 +229,8 @@ pub enum Operation {
 	SetManipulatorHandleMirroring {
 		layer_path: Vec<LayerId>,
 		id: u64,
-		distance: bool,
-		angle: bool,
+		mirror_distance: bool,
+		mirror_angle: bool,
 	},
 	SetSelectedHandleMirroring {
 		layer_path: Vec<LayerId>,
