@@ -275,10 +275,10 @@ impl ShapeEditor {
 				let bezier = bezierid.internal;
 				let t = bezier.project(layer_pos, projection_options);
 				let layerspace = bezier.evaluate(t);
+
 				let screenspace = transform.transform_point2(layerspace);
 				let distance = screenspace.distance_squared(pos);
-				log::info!("layerspace {layerspace} layerpos {layer_pos} => screenspace {screenspace} pos screen {pos}");
-				log::info!("Bezier {bezier:?}");
+
 				if distance < closest_distance_squared {
 					closest_distance_squared = distance;
 					result = Some((bezierid, t));
@@ -292,7 +292,6 @@ impl ShapeEditor {
 	///
 	/// Returns the [`BezierId`] and t as an f64
 	pub fn split(&self, document: &Document, pos: glam::DVec2, tolerance: f64, responses: &mut VecDeque<Message>) {
-		log::info!("Splitting");
 		for layer_path in &self.selected_layers {
 			if let Some((bezierid, t)) = self.closest_segement(document, layer_path, pos, tolerance) {
 				let [first, second] = bezierid.internal.split(t);

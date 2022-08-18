@@ -1,4 +1,4 @@
-use crate::consts::SELECTION_THRESHOLD;
+use crate::consts::{SELECTION_THRESHOLD, SELECTION_TOLERANCE};
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, KeysGroup, MouseMotion};
 use crate::messages::layout::utility_types::layout_widget::PropertyHolder;
@@ -281,7 +281,7 @@ impl Fsm for PathToolFsmState {
 					PathToolFsmState::Ready
 				}
 				(_, PathToolMessage::InsertPoint) => {
-					tool_data.shape_editor.split(&document.graphene_document, input.mouse.position, 5., responses);
+					tool_data.shape_editor.split(&document.graphene_document, input.mouse.position, SELECTION_TOLERANCE, responses);
 
 					self
 				}
