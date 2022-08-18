@@ -246,8 +246,63 @@ impl Fsm for PenToolFsmState {
 				(PenToolFsmState::DraggingHandle, PenToolMessage::DragStop) => {
 					// Add new point onto path
 					if let Some(layer_path) = &tool_data.path {
-						if let Some(manipulator_group) = get_subpath(layer_path, document).and_then(|subpath| subpath.manipulator_groups().last()) {
-							if let Some(out_handle) = &manipulator_group.points[ManipulatorType::OutHandle] {
+						if let Some(((&last_id, last_manipulator_group), previous)) = get_subpath(layer_path, document).and_then(last_2_manipulator_groups) {
+							let last_anchor = &last_manipulator_group.points[ManipulatorType::Anchor];
+							let last_in = &last_manipulator_group.points[ManipulatorType::InHandle];
+							let first_manipulator = get_subpath(layer_path, document).and_then(|path| path.manipulator_groups().enumerate().next());
+							let first_anchor = first_manipulator.and_then(|(_, group)| group.points[ManipulatorType::Anchor].as_ref());
+							let first_id = first_manipulator.map(|(&id, _)| id);
+
+							if let (Some(last_anchor), Some(last_in), Some(first_anchor), Some(first_id)) = (last_anchor, last_in, first_anchor, first_id) {
+								let transformed_distance_between = transform.transform_point2(last_anchor.position).distance_squared(transform.transform_point2(first_anchor.position));
+
+								if transformed_distance_between < crate::consts::SNAP_POINT_TOLERANCE.powi(2) && previous.is_some() {
+									// Move the in handle of the first point to where the user has placed it
+									let op = Operation::MoveManipulatorPoint {
+										layer_path: layer_path.clone(),
+										id: first_id,
+										manipulator_type: ManipulatorType::InHandle,
+										position: last_in.position.into(),
+									};
+									responses.push_back(op.into());
+
+									// Stop the handles on the first point from mirroring
+									let op = Operation::SetManipulatorHandleMirroring {
+										layer_path: layer_path.clone(),
+										id: first_id,
+										distance: false,
+										angle: false,
+									};
+									responses.push_back(op.into());
+
+									// Remove the node that has just been placed
+									let op = Operation::RemoveManipulatorGroup {
+										layer_path: layer_path.clone(),
+										id: last_id,
+									};
+									responses.push_back(op.into());
+
+									// Push a close path node
+									let manipulator_group = ManipulatorGroup::closed();
+									let op = Operation::PushManipulatorGroup {
+										layer_path: layer_path.clone(),
+										manipulator_group,
+									};
+									responses.push_back(op.into());
+
+									responses.push_back(DocumentMessage::CommitTransaction.into());
+
+									// Clean up overlays
+									for layer_path in document.all_layers() {
+										tool_data.overlay_renderer.clear_subpath_overlays(&document.graphene_document, layer_path.to_vec(), responses);
+									}
+									tool_data.path = None;
+									tool_data.snap_manager.cleanup(responses);
+
+									return PenToolFsmState::Ready;
+								}
+							}
+							if let Some(out_handle) = &last_manipulator_group.points[ManipulatorType::OutHandle] {
 								responses.push_back(add_manipulator_group(&tool_data.path, ManipulatorGroup::new_with_anchor(out_handle.position)));
 							}
 						}
@@ -295,6 +350,13 @@ impl Fsm for PenToolFsmState {
 					if let Some(layer_path) = &tool_data.path {
 						let mouse = tool_data.snap_manager.snap_position(responses, document, input.mouse.position);
 						let mut pos = transform.inverse().transform_point2(mouse);
+
+						// Snap to the first point (to show close path)
+						if let Some(first) = get_subpath(layer_path, document).and_then(|path| path.first_point(ManipulatorType::Anchor)) {
+							if mouse.distance_squared(transform.transform_point2(first.position)) < crate::consts::SNAP_POINT_TOLERANCE.powi(2) {
+								pos = first.position;
+							}
+						}
 
 						if let Some(((&id, _), previous)) = get_subpath(layer_path, document).and_then(last_2_manipulator_groups) {
 							if let Some(relative) = previous.as_ref().and_then(|(_, manipulator_group)| manipulator_group.points[ManipulatorType::Anchor].as_ref()) {

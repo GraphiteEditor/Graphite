@@ -956,6 +956,16 @@ impl Document {
 				self.mark_as_dirty(&layer_path)?;
 				Some([vec![DocumentChanged, LayerChanged { path: layer_path.clone() }], update_thumbnails_upstream(&layer_path)].concat())
 			}
+			Operation::SetManipulatorHandleMirroring { layer_path, id, distance, angle } => {
+				if let Ok(Some(shape)) = self.layer_mut(&layer_path).map(|layer| layer.as_subpath_mut()) {
+					if let Some(manipulator_group) = shape.manipulator_groups_mut().by_id_mut(id) {
+						manipulator_group.editor_state.mirror_distance_between_handles = distance;
+						manipulator_group.editor_state.mirror_angle_between_handles = angle;
+						self.mark_as_dirty(&layer_path)?;
+					}
+				}
+				Some([update_thumbnails_upstream(&layer_path), vec![DocumentChanged, LayerChanged { path: layer_path }]].concat())
+			}
 			Operation::SetSelectedHandleMirroring {
 				layer_path,
 				toggle_distance,

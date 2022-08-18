@@ -226,6 +226,12 @@ pub enum Operation {
 		path: Vec<LayerId>,
 		stroke: Stroke,
 	},
+	SetManipulatorHandleMirroring {
+		layer_path: Vec<LayerId>,
+		id: u64,
+		distance: bool,
+		angle: bool,
+	},
 	SetSelectedHandleMirroring {
 		layer_path: Vec<LayerId>,
 		toggle_distance: bool,
