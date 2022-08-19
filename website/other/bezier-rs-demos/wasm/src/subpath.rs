@@ -1,4 +1,4 @@
-use bezier_rs::subpath::{ManipulatorGroup, Subpath, ToSVGOptions};
+use bezier_rs::{ManipulatorGroup, Subpath, ToSVGOptions};
 use glam::DVec2;
 use wasm_bindgen::prelude::*;
 
