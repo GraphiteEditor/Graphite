@@ -216,6 +216,23 @@ impl Fsm for PenToolFsmState {
 					if let Some((layer, from_start)) = should_extend(document, input.mouse.position, crate::consts::SNAP_POINT_TOLERANCE) {
 						tool_data.path = Some(layer.to_vec());
 						tool_data.from_start = from_start;
+
+						// Stop the handles on the first point from mirroring
+						let mut stop_mirror = || {
+							let subpath = document.graphene_document.layer(layer).ok().and_then(|layer| layer.as_subpath())?;
+							let mut iter = subpath.manipulator_groups().enumerate();
+							let (&id, _) = if from_start { iter.next()? } else { iter.next_back()? };
+							let op = Operation::SetManipulatorHandleMirroring {
+								layer_path: layer.to_vec(),
+								id,
+								mirror_distance: false,
+								mirror_angle: false,
+							};
+							responses.push_back(op.into());
+							Some(())
+						};
+						stop_mirror();
+
 						return PenToolFsmState::DraggingHandle;
 					}
 					responses.push_back(DocumentMessage::DeselectAllLayers.into());
@@ -608,8 +625,8 @@ fn should_extend(document: &DocumentMessageHandler, pos: DVec2, tolerance: f64) 
 		let mut should_extend = || {
 			let viewspace = document.graphene_document.generate_transform_relative_to_viewport(layer_path).ok()?;
 			let subpath = document.graphene_document.layer(layer_path).ok().and_then(|layer| layer.as_subpath())?;
-			let (&_first_id, first) = subpath.manipulator_groups().enumerate().next()?;
-			let (&_last_id, last) = subpath.manipulator_groups().enumerate().next_back()?;
+			let (_first_id, first) = subpath.manipulator_groups().enumerate().next()?;
+			let (_last_id, last) = subpath.manipulator_groups().enumerate().next_back()?;
 			if !last.is_close() {
 				for (group, start) in [(first, true), (last, false)] {
 					if let Some(point) = &group.points[ManipulatorType::Anchor] {
