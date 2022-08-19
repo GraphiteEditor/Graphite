@@ -262,7 +262,7 @@ impl ShapeEditor {
 	/// Find the t along the path segment we have clicked upon
 	///
 	/// Returns a tuple of [`BezierId`] and t as an f64
-	fn closest_segement(&self, document: &Document, layer_path: &[LayerId], pos: glam::DVec2, tolerance: f64) -> Option<(BezierId, f64)> {
+	fn closest_segment(&self, document: &Document, layer_path: &[LayerId], pos: glam::DVec2, tolerance: f64) -> Option<(BezierId, f64)> {
 		let mut closest_distance_squared: f64 = tolerance * tolerance;
 		let mut result: Option<(BezierId, f64)> = None;
 
@@ -291,7 +291,7 @@ impl ShapeEditor {
 	/// Handles the splitting of a curve to insert new points (which can be activated by double clicking on a curve with the path tool).
 	pub fn split(&self, document: &Document, pos: glam::DVec2, tolerance: f64, responses: &mut VecDeque<Message>) {
 		for layer_path in &self.selected_layers {
-			if let Some((bezierid, t)) = self.closest_segement(document, layer_path, pos, tolerance) {
+			if let Some((bezierid, t)) = self.closest_segment(document, layer_path, pos, tolerance) {
 				let [first, second] = bezierid.internal.split(t);
 
 				// Adjust the first manipulator group out handle

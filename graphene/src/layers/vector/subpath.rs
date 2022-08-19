@@ -401,7 +401,7 @@ impl Subpath {
 		result
 	}
 
-	/// Convert to an iter over [`bezier_rs::Bezier`] segements
+	/// Convert to an iter over [`bezier_rs::Bezier`] segments
 	pub fn bezier_iter(&self) -> PathIter {
 		PathIter {
 			path: self.manipulator_groups().enumerate(),
@@ -444,7 +444,7 @@ impl<'a> TryFrom<&'a Layer> for &'a Subpath {
 	}
 }
 
-/// An iterator over [`bezier_rs::Bezier`] segements constructable via [`Subpath::bezier_iter`]
+/// An iterator over [`bezier_rs::Bezier`] segments constructable via [`Subpath::bezier_iter`]
 pub struct PathIter<'a> {
 	path: std::iter::Zip<core::slice::Iter<'a, u64>, core::slice::Iter<'a, ManipulatorGroup>>,
 
