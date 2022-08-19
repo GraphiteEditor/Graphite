@@ -2,30 +2,36 @@ use core::marker::PhantomData;
 use graphene_core::ops::FlatMapResultNode;
 use graphene_core::raster::color::Color;
 use graphene_core::structural::{ComposeNode, ConsNode};
-use graphene_core::{generic::FnNode, ops::MapResultNode, structural::After, value::ValueNode, Node};
+use graphene_core::{
+	generic::FnNode,
+	ops::MapResultNode,
+	structural::{After, AfterRef},
+	value::ValueNode,
+	Node,
+};
 use image::Pixel;
 use std::path::Path;
 
-pub struct MapNode<'n, MN: Node<'n, S>, I: IntoIterator<Item = S>, S>(pub MN, PhantomData<&'n (S, I)>);
+pub struct MapNode<MN: Node<S>, I: IntoIterator<Item = S>, S>(pub MN, PhantomData<(S, I)>);
 
-impl<'n, I: IntoIterator<Item = S>, MN: Node<'n, S>, S> Node<'n, I> for MapNode<'n, MN, I, S> {
+impl<I: IntoIterator<Item = S>, MN: Node<S> + Copy, S> Node<I> for MapNode<MN, I, S> {
 	type Output = Vec<MN::Output>;
-	fn eval(&'n self, input: I) -> Self::Output {
+	fn eval(self, input: I) -> Self::Output {
 		input.into_iter().map(|x| self.0.eval(x)).collect()
 	}
 }
 
-impl<'n, I: IntoIterator<Item = S>, MN: Node<'n, S>, S> MapNode<'n, MN, I, S> {
+impl<I: IntoIterator<Item = S>, MN: Node<S>, S> MapNode<MN, I, S> {
 	pub const fn new(mn: MN) -> Self {
 		MapNode(mn, PhantomData)
 	}
 }
 
-pub struct MapImageNode<'n, MN: Node<'n, Color, Output = Color>>(pub MN, PhantomData<&'n ()>);
+pub struct MapImageNode<MN: Node<Color, Output = Color> + Copy>(pub MN);
 
-impl<'n, MN: Node<'n, Color, Output = Color>> Node<'n, Image> for MapImageNode<'n, MN> {
+impl<'n, MN: Node<Color, Output = Color> + Copy> Node<Image> for &'n MapImageNode<MN> {
 	type Output = Image;
-	fn eval(&'n self, input: Image) -> Self::Output {
+	fn eval(self, input: Image) -> Self::Output {
 		Image {
 			width: input.width,
 			height: input.height,
@@ -34,9 +40,9 @@ impl<'n, MN: Node<'n, Color, Output = Color>> Node<'n, Image> for MapImageNode<'
 	}
 }
 
-impl<'n, MN: Node<'n, Color, Output = Color>> MapImageNode<'n, MN> {
+impl<MN: Node<Color, Output = Color> + Copy> MapImageNode<MN> {
 	pub const fn new(mn: MN) -> Self {
-		MapImageNode(mn, PhantomData)
+		MapImageNode(mn)
 	}
 }
 
@@ -66,20 +72,20 @@ impl FileSystem for StdFs {
 type Reader = Box<dyn std::io::Read>;
 
 pub struct FileNode<P: AsRef<Path>, FS: FileSystem>(PhantomData<(P, FS)>);
-impl<'n, P: AsRef<Path>, FS: FileSystem> Node<'n, (P, FS)> for FileNode<P, FS> {
+impl<P: AsRef<Path>, FS: FileSystem> Node<(P, FS)> for FileNode<P, FS> {
 	type Output = Result<Reader, Error>;
 
-	fn eval(&'n self, input: (P, FS)) -> Self::Output {
+	fn eval(self, input: (P, FS)) -> Self::Output {
 		let (path, fs) = input;
 		fs.open(path)
 	}
 }
 
 pub struct BufferNode;
-impl<'n, Reader: std::io::Read> Node<'n, Reader> for BufferNode {
+impl<Reader: std::io::Read> Node<Reader> for BufferNode {
 	type Output = Result<Vec<u8>, Error>;
 
-	fn eval(&'n self, mut reader: Reader) -> Self::Output {
+	fn eval(self, mut reader: Reader) -> Self::Output {
 		let mut buffer = Vec::new();
 		reader.read_to_end(&mut buffer)?;
 		Ok(buffer)
@@ -109,23 +115,18 @@ impl<'a> IntoIterator for &'a Image {
 	}
 }
 
-pub fn file_node<'n, P: AsRef<Path> + 'n>() -> impl Node<'n, P, Output = Result<Vec<u8>, Error>> {
+pub fn file_node<'n, P: AsRef<Path> + 'n>() -> impl Node<P, Output = Result<Vec<u8>, Error>> {
 	let fs = ValueNode(StdFs).clone();
 	let fs = ConsNode(fs);
-	let file: ComposeNode<P, _, FileNode<P, _>> = FileNode(PhantomData).after(fs);
-	let buffer = FlatMapResultNode::new(BufferNode).after(file);
-	buffer
-}
-type Ret<'n> = impl Node<'n, (), Output = u32>;
+	let file: ComposeNode<_, _, P> = FileNode(PhantomData).after(fs);
 
-pub fn test_node<'n>() -> Ret<'n> {
-	ValueNode(432).clone()
+	FlatMapResultNode::new(BufferNode).after(file)
 }
 
-pub fn image_node<'n, P: AsRef<Path> + 'n>() -> impl Node<'n, P, Output = Result<Image, Error>> {
+pub fn image_node<'n, P: AsRef<Path> + 'n>() -> impl Node<P, Output = Result<Image, Error>> {
 	let file = file_node();
 	let image_loader = FnNode::new(|data: Vec<u8>| image::load_from_memory(&data).map_err(Error::Image).map(|image| image.into_rgba32f()));
-	let image: ComposeNode<'_, P, _, _> = FlatMapResultNode::new(image_loader).after(file);
+	let image: ComposeNode<_, _, P> = FlatMapResultNode::new(image_loader).after(file);
 	let convert_image = FnNode::new(|image: image::ImageBuffer<_, _>| {
 		let data = image
 			.enumerate_pixels()
@@ -140,11 +141,11 @@ pub fn image_node<'n, P: AsRef<Path> + 'n>() -> impl Node<'n, P, Output = Result
 			data,
 		}
 	});
-	let image = MapResultNode::new(convert_image).after(image);
-	image
+
+	MapResultNode::new(convert_image).after(image)
 }
 
-pub fn export_image_node<'n>() -> impl Node<'n, (Image, &'n str), Output = Result<(), Error>> {
+pub fn export_image_node<'n>() -> impl Node<(Image, &'n str), Output = Result<(), Error>> {
 	FnNode::new(|input: (Image, &str)| {
 		let (image, path) = input;
 		let mut new_image = image::ImageBuffer::new(image.width, image.height);
@@ -152,7 +153,7 @@ pub fn export_image_node<'n>() -> impl Node<'n, (Image, &'n str), Output = Resul
 			let color: Color = *color;
 			assert!(x < image.width);
 			assert!(y < image.height);
-			*pixel = image::Rgba([color.r(), color.g(), color.b(), color.a()])
+			*pixel = image::Rgba(color.to_rgba8())
 		}
 		new_image.save(path).map_err(Error::Image)
 	})
@@ -174,24 +175,13 @@ mod test {
 
 	#[test]
 	fn load_image() {
-		/*let image = image_node();
-				let gray = MapImageNode::new(GrayscaleNode);
+		let image = image_node::<&str>();
+		let gray = MapImageNode::new(GrayscaleNode);
 
-				let gray_scale_picture = MapResultNode::new(gray).after(image);
-				let gray_scale_picture = gray_scale_picture.eval("image");
-		*/
-		let test_node = test_node();
-		{
-			let foo = test_node.eval(());
-			std::mem::drop(foo);
-		}
+		let grayscale_picture = MapResultNode::new(&gray).after(image);
 		let export = export_image_node();
 
-		/*let export = FnNode::new(|input: (&str, &str)| {
-		let (input, output) = input;*/
-		//let picture = gray_scale_picture.eval("/home/dennis/screenshot.png").unwrap().clone();
-		//export.eval((picture, "screenshot.png"));
-		/*});
-		export.eval(("screenshot.png", "/home/dennis/screenshot.png"));*/
+		let picture = grayscale_picture.eval("/home/dennis/screenshot.png").expect("failed to load image");
+		export.eval((picture, "/tmp/screenshot.png")).unwrap();
 	}
 }
