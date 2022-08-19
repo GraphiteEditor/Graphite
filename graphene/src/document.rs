@@ -787,6 +787,13 @@ impl Document {
 				}
 				Some([update_thumbnails_upstream(&layer_path), vec![DocumentChanged, LayerChanged { path: layer_path }]].concat())
 			}
+			Operation::PushFrontManipulatorGroup { layer_path, manipulator_group } => {
+				if let Ok(Some(shape)) = self.layer_mut(&layer_path).map(|layer| layer.as_subpath_mut()) {
+					shape.manipulator_groups_mut().push_front(manipulator_group);
+					self.mark_as_dirty(&layer_path)?;
+				}
+				Some([update_thumbnails_upstream(&layer_path), vec![DocumentChanged, LayerChanged { path: layer_path }]].concat())
+			}
 			Operation::RemoveManipulatorGroup { layer_path, id } => {
 				if let Ok(Some(shape)) = self.layer_mut(&layer_path).map(|layer| layer.as_subpath_mut()) {
 					shape.manipulator_groups_mut().remove(id);

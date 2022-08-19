@@ -172,6 +172,10 @@ pub enum Operation {
 		layer_path: Vec<LayerId>,
 		manipulator_group: ManipulatorGroup,
 	},
+	PushFrontManipulatorGroup {
+		layer_path: Vec<LayerId>,
+		manipulator_group: ManipulatorGroup,
+	},
 	RemoveManipulatorGroup {
 		layer_path: Vec<LayerId>,
 		id: u64,
