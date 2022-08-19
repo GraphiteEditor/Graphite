@@ -24,7 +24,7 @@ pub struct ArtboardTool {
 
 #[remain::sorted]
 #[impl_message(Message, ToolMessage, Artboard)]
-#[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize)]
+#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub enum ArtboardToolMessage {
 	// Standard messages
 	#[remain::unsorted]
@@ -34,6 +34,10 @@ pub enum ArtboardToolMessage {
 
 	// Tool-specific messages
 	DeleteSelected,
+	NudgeSelected {
+		delta_x: f64,
+		delta_y: f64,
+	},
 	PointerDown,
 	PointerMove {
 		constrain_axis_or_aspect: Key,
@@ -79,6 +83,7 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for ArtboardTool
 		PointerUp,
 		PointerMove,
 		DeleteSelected,
+		NudgeSelected,
 		Abort,
 	);
 }
@@ -380,6 +385,20 @@ impl Fsm for ArtboardToolFsmState {
 						responses.push_back(ArtboardMessage::DeleteArtboard { artboard }.into());
 						responses.push_back(BroadcastEvent::DocumentIsDirty.into());
 					}
+					ArtboardToolFsmState::Ready
+				}
+				(_, ArtboardToolMessage::NudgeSelected { delta_x, delta_y }) => {
+					if let Some(bounds) = &mut tool_data.bounding_box_overlays {
+						responses.push_back(
+							ArtboardMessage::ResizeArtboard {
+								artboard: tool_data.selected_board.unwrap(),
+								position: (bounds.bounds[0].x + delta_x, bounds.bounds[0].y + delta_y),
+								size: (bounds.bounds[1] - bounds.bounds[0]).round().into(),
+							}
+							.into(),
+						);
+					}
+
 					ArtboardToolFsmState::Ready
 				}
 				(_, ArtboardToolMessage::Abort) => {
