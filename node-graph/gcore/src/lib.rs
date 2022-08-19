@@ -14,18 +14,10 @@ pub mod raster;
 pub mod structural;
 pub mod value;
 
-pub trait Node<'n, T> {
-	type Output; // TODO: replace with generic associated type
+pub trait Node<T> {
+	type Output;
 
-	fn eval(&'n self, input: T) -> Self::Output;
-}
-
-impl<'n, N: Node<'n, T>, T> Node<'n, T> for &'n N {
-	type Output = N::Output;
-
-	fn eval(&'n self, input: T) -> Self::Output {
-		Node::eval(*self, input)
-	}
+	fn eval(self, input: T) -> Self::Output;
 }
 
 trait Input<I> {
@@ -34,21 +26,21 @@ trait Input<I> {
 
 #[cfg(feature = "async")]
 #[async_trait]
-pub trait AsyncNode<'n, T> {
-	type Output; // TODO: replace with generic associated type
+pub trait AsyncNode<T> {
+	type Output;
 
-	async fn eval_async(&'n self, input: T) -> Self::Output;
+	async fn eval_async(self, input: T) -> Self::Output;
 }
 
-#[cfg(feature = "async")]
+/*#[cfg(feature = "async")]
 #[async_trait]
-impl<'n, N: Node<'n, T> + Sync, T: Send + 'n> AsyncNode<'n, T> for N {
+impl<'n, N: Node<T> + Send + Sync + 'n, T: Send + 'n> AsyncNode<T> for N {
 	type Output = N::Output;
 
-	async fn eval_async(&'n self, input: T) -> Self::Output {
+	async fn eval_async(self, input: T) -> Self::Output {
 		Node::eval(self, input)
 	}
-}
+}*/
 
 pub trait Cache {
 	fn clear(&mut self);

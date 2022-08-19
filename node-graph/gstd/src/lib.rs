@@ -1,4 +1,3 @@
-#![feature(type_alias_impl_trait)]
 //pub mod value;
 pub use graphene_core::{generic, ops /*, structural*/};
 
