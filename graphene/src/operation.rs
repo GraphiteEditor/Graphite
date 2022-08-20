@@ -172,6 +172,10 @@ pub enum Operation {
 		layer_path: Vec<LayerId>,
 		manipulator_group: ManipulatorGroup,
 	},
+	PushFrontManipulatorGroup {
+		layer_path: Vec<LayerId>,
+		manipulator_group: ManipulatorGroup,
+	},
 	RemoveManipulatorGroup {
 		layer_path: Vec<LayerId>,
 		id: u64,
@@ -225,6 +229,12 @@ pub enum Operation {
 	SetLayerStroke {
 		path: Vec<LayerId>,
 		stroke: Stroke,
+	},
+	SetManipulatorHandleMirroring {
+		layer_path: Vec<LayerId>,
+		id: u64,
+		mirror_distance: bool,
+		mirror_angle: bool,
 	},
 	SetSelectedHandleMirroring {
 		layer_path: Vec<LayerId>,
