@@ -169,8 +169,9 @@ struct PenToolData {
 	path: Option<Vec<LayerId>>,
 	overlay_renderer: OverlayRenderer,
 	snap_manager: SnapManager,
-	from_start: bool,
 	should_mirror: bool,
+	// Indicates that curve extension is occurring from the first point, rather than (more commonly) the last point
+	from_start: bool,
 }
 
 impl Fsm for PenToolFsmState {
@@ -207,12 +208,14 @@ impl Fsm for PenToolFsmState {
 				(PenToolFsmState::Ready, PenToolMessage::DragStart) => {
 					responses.push_back(DocumentMessage::StartTransaction.into());
 
-					// Initalise snapping
+					// Initialize snapping
 					tool_data.snap_manager.start_snap(document, document.bounding_boxes(None, None, font_cache), true, true);
 					tool_data.snap_manager.add_all_document_handles(document, &[], &[], &[]);
 
+					// Disable this tool's mirroring
 					tool_data.should_mirror = false;
 
+					// Perform extension of an existing path
 					if let Some((layer, from_start)) = should_extend(document, input.mouse.position, crate::consts::SNAP_POINT_TOLERANCE) {
 						tool_data.path = Some(layer.to_vec());
 						tool_data.from_start = from_start;
@@ -220,8 +223,9 @@ impl Fsm for PenToolFsmState {
 						// Stop the handles on the first point from mirroring
 						let mut stop_mirror = || {
 							let subpath = document.graphene_document.layer(layer).ok().and_then(|layer| layer.as_subpath())?;
-							let mut iter = subpath.manipulator_groups().enumerate();
-							let (&id, _) = if from_start { iter.next()? } else { iter.next_back()? };
+							let mut manipulator_groups = subpath.manipulator_groups().enumerate();
+							let (&id, _) = if from_start { manipulator_groups.next()? } else { manipulator_groups.next_back()? };
+
 							let op = Operation::SetManipulatorHandleMirroring {
 								layer_path: layer.to_vec(),
 								id,
@@ -235,13 +239,13 @@ impl Fsm for PenToolFsmState {
 
 						return PenToolFsmState::DraggingHandle;
 					}
+
+					// Deselect layers because we are now creating a new layer
 					responses.push_back(DocumentMessage::DeselectAllLayers.into());
 
 					// Create a new layer
 					tool_data.path = Some(document.get_path_for_new_layer());
 					tool_data.from_start = false;
-
-					let snapped_position = tool_data.snap_manager.snap_position(responses, document, input.mouse.position);
 
 					// Get the position and set properties
 					let transform = tool_data
@@ -249,6 +253,7 @@ impl Fsm for PenToolFsmState {
 						.as_ref()
 						.and_then(|path| document.graphene_document.multiply_transforms(&path[..path.len() - 1]).ok())
 						.unwrap_or_default();
+					let snapped_position = tool_data.snap_manager.snap_position(responses, document, input.mouse.position);
 					let start_position = transform.inverse().transform_point2(snapped_position);
 					tool_data.weight = tool_options.line_weight;
 
@@ -271,6 +276,7 @@ impl Fsm for PenToolFsmState {
 						));
 					}
 
+					// Enter the dragging handle state while the mouse is held down, allowing the user to move the mouse and position the handle
 					PenToolFsmState::DraggingHandle
 				}
 				(PenToolFsmState::PlacingAnchor, PenToolMessage::DragStart) => PenToolFsmState::DraggingHandle,
@@ -280,12 +286,14 @@ impl Fsm for PenToolFsmState {
 						let layer_path = tool_data.path.as_ref()?;
 						let subpath = document.graphene_document.layer(layer_path).ok().and_then(|layer| layer.as_subpath())?;
 
-						// Get manipulator groups
-						let mut iter = subpath.manipulator_groups().enumerate();
-						let (&last_id, last_manipulator_group) = if tool_data.from_start { iter.next()? } else { iter.next_back()? };
-						let previous = if tool_data.from_start { iter.next() } else { iter.next_back() };
-						let mut iter = subpath.manipulator_groups().enumerate();
-						let (&first_id, first_manipulator_group) = if tool_data.from_start { iter.next_back()? } else { iter.next()? };
+						// Get the last manipulator group and the one previous to that
+						let mut manipulator_groups = subpath.manipulator_groups().enumerate();
+						let (&last_id, last_manipulator_group) = if tool_data.from_start { manipulator_groups.next()? } else { manipulator_groups.next_back()? };
+						let previous = if tool_data.from_start { manipulator_groups.next() } else { manipulator_groups.next_back() };
+
+						// Get the first manipulator group
+						let mut manipulator_groups = subpath.manipulator_groups().enumerate();
+						let (&first_id, first_manipulator_group) = if tool_data.from_start { manipulator_groups.next_back()? } else { manipulator_groups.next()? };
 
 						// Get correct handle types
 						let inwards_handle = if tool_data.from_start { ManipulatorType::OutHandle } else { ManipulatorType::InHandle };
@@ -296,10 +304,10 @@ impl Fsm for PenToolFsmState {
 						let first_anchor = first_manipulator_group.points[ManipulatorType::Anchor].as_ref()?;
 						let last_in = last_manipulator_group.points[inwards_handle].as_ref()?;
 
-						let transformed_distance_between = transform.transform_point2(last_anchor.position).distance_squared(transform.transform_point2(first_anchor.position));
-
 						// Close path
-						if transformed_distance_between < crate::consts::SNAP_POINT_TOLERANCE.powi(2) && previous.is_some() {
+						let transformed_distance_between_squared = transform.transform_point2(last_anchor.position).distance_squared(transform.transform_point2(first_anchor.position));
+						let snap_point_tolerance_squared = crate::consts::SNAP_POINT_TOLERANCE.powi(2);
+						if transformed_distance_between_squared < snap_point_tolerance_squared && previous.is_some() {
 							// Move the in handle of the first point to where the user has placed it
 							let op = Operation::MoveManipulatorPoint {
 								layer_path: layer_path.clone(),
@@ -318,7 +326,7 @@ impl Fsm for PenToolFsmState {
 							};
 							responses.push_back(op.into());
 
-							// Remove the node that has just been placed
+							// Remove the point that has just been placed
 							let op = Operation::RemoveManipulatorGroup {
 								layer_path: layer_path.clone(),
 								id: last_id,
@@ -334,9 +342,12 @@ impl Fsm for PenToolFsmState {
 							for layer_path in document.all_layers() {
 								tool_data.overlay_renderer.clear_subpath_overlays(&document.graphene_document, layer_path.to_vec(), responses);
 							}
+
+							// Clean up tool data
 							tool_data.path = None;
 							tool_data.snap_manager.cleanup(responses);
 
+							// Return the new tool state, wrapped in `Some()` because this closure returns an Option used by the `?` operation various times above
 							return Some(PenToolFsmState::Ready);
 						}
 						// Add a new manipulator for the next anchor that we will place
@@ -344,6 +355,7 @@ impl Fsm for PenToolFsmState {
 							responses.push_back(add_manipulator_group(&tool_data.path, tool_data.from_start, ManipulatorGroup::new_with_anchor(out_handle.position)));
 						}
 
+						// Returning `None` means the `unwrap_or` clause below returns the state `PlacingAnchor`
 						None
 					};
 					tool_data.should_mirror = true;
@@ -355,9 +367,9 @@ impl Fsm for PenToolFsmState {
 						let layer_path = tool_data.path.as_ref()?;
 						let subpath = document.graphene_document.layer(layer_path).ok().and_then(|layer| layer.as_subpath())?;
 
-						// Get manipulator groups
-						let mut iter = subpath.manipulator_groups().enumerate();
-						let (&last_id, last_manipulator_group) = if tool_data.from_start { iter.next()? } else { iter.next_back()? };
+						// Get the last manipulator group
+						let mut manipulator_groups = subpath.manipulator_groups().enumerate();
+						let (&last_id, last_manipulator_group) = if tool_data.from_start { manipulator_groups.next()? } else { manipulator_groups.next_back()? };
 
 						// Get correct handle types
 						let inwards_handle = if tool_data.from_start { ManipulatorType::OutHandle } else { ManipulatorType::InHandle };
@@ -381,6 +393,7 @@ impl Fsm for PenToolFsmState {
 
 						// Mirror handle of last segment
 						if !input.keyboard.get(break_handle as usize) && tool_data.should_mirror {
+							// Could also be written as `last_anchor.position * 2 - pos` but this way avoids overflow/underflow better
 							let pos = last_anchor.position - (pos - last_anchor.position);
 
 							let msg = Operation::MoveManipulatorPoint {
@@ -406,12 +419,14 @@ impl Fsm for PenToolFsmState {
 						let layer_path = tool_data.path.as_ref()?;
 						let subpath = document.graphene_document.layer(layer_path).ok().and_then(|layer| layer.as_subpath())?;
 
-						// Get manipulator groups
-						let mut iter = subpath.manipulator_groups().enumerate();
-						let (&last_id, _last_manipulator_group) = if tool_data.from_start { iter.next()? } else { iter.next_back()? };
-						let previous = if tool_data.from_start { iter.next() } else { iter.next_back() };
-						let mut iter = subpath.manipulator_groups().enumerate();
-						let (_first_id, first_manipulator_group) = if tool_data.from_start { iter.next_back()? } else { iter.next()? };
+						// Get the last manipulator group and the one previous to that
+						let mut manipulator_groups = subpath.manipulator_groups().enumerate();
+						let (&last_id, _last_manipulator_group) = if tool_data.from_start { manipulator_groups.next()? } else { manipulator_groups.next_back()? };
+						let previous = if tool_data.from_start { manipulator_groups.next() } else { manipulator_groups.next_back() };
+
+						// Get the first manipulator group
+						let mut manipulator_groups = subpath.manipulator_groups().enumerate();
+						let (_first_id, first_manipulator_group) = if tool_data.from_start { manipulator_groups.next_back()? } else { manipulator_groups.next()? };
 
 						// Get manipulator points
 						let first_anchor = first_manipulator_group.points[ManipulatorType::Anchor].as_ref()?;
@@ -458,15 +473,15 @@ impl Fsm for PenToolFsmState {
 							return None;
 						}
 
-						// Get manipulator groups
-						let mut iter = subpath.manipulator_groups().enumerate();
-						let (&(mut last_id), mut last_manipulator_group) = if tool_data.from_start { iter.next()? } else { iter.next_back()? };
-						let previous = if tool_data.from_start { iter.next() } else { iter.next_back() };
+						// Get the last manipulator group and the one previous to that
+						let mut manipulator_groups = subpath.manipulator_groups().enumerate();
+						let (&(mut last_id), mut last_manipulator_group) = if tool_data.from_start { manipulator_groups.next()? } else { manipulator_groups.next_back()? };
+						let previous = if tool_data.from_start { manipulator_groups.next() } else { manipulator_groups.next_back() };
 
 						// Get correct handle types
 						let outwards_handle = if tool_data.from_start { ManipulatorType::InHandle } else { ManipulatorType::OutHandle };
 
-						// Cleanup if there are two or more manipulators
+						// Clean up if there are two or more manipulators
 						if let Some((&previous_id, previous_manipulator_group)) = previous {
 							// Remove the unplaced anchor if in anchor placing mode
 							if self == PenToolFsmState::PlacingAnchor {
@@ -487,12 +502,12 @@ impl Fsm for PenToolFsmState {
 							responses.push_back(op.into());
 
 							responses.push_back(DocumentMessage::CommitTransaction.into());
-						} else {
-							// Abort if only one manipulator group has been placed
-							return None;
+
+							return Some(());
 						}
 
-						Some(())
+						// Abort if only one manipulator group has been placed
+						None
 					};
 					if commit().is_none() {
 						responses.push_back(DocumentMessage::AbortTransaction.into());
@@ -597,52 +612,51 @@ fn compute_snapped_angle(input: &InputPreprocessorMessageHandler, key: Key, pos:
 }
 
 /// Pushes a [ManipulatorGroup] to the current layer via an [Operation].
-fn add_manipulator_group(layer_path: &Option<Vec<LayerId>>, start: bool, manipulator_group: ManipulatorGroup) -> Message {
-	if let Some(layer_path) = layer_path {
-		if start {
-			Operation::PushFrontManipulatorGroup {
-				layer_path: layer_path.clone(),
-				manipulator_group,
-			}
-			.into()
-		} else {
-			Operation::PushManipulatorGroup {
-				layer_path: layer_path.clone(),
-				manipulator_group,
-			}
-			.into()
+fn add_manipulator_group(layer_path: &Option<Vec<LayerId>>, from_start: bool, manipulator_group: ManipulatorGroup) -> Message {
+	match (layer_path, from_start) {
+		(Some(layer_path), true) => Operation::PushFrontManipulatorGroup {
+			layer_path: layer_path.clone(),
+			manipulator_group,
 		}
-	} else {
-		Message::NoOp
+		.into(),
+		(Some(layer_path), false) => Operation::PushManipulatorGroup {
+			layer_path: layer_path.clone(),
+			manipulator_group,
+		}
+		.into(),
+		(None, _) => Message::NoOp,
 	}
 }
 
-/// Determains if a path should be extended. Returns the path and if it is extending from the start if applicable.
+/// Determines if a path should be extended. Returns the path and if it is extending from the start, if applicable.
 fn should_extend(document: &DocumentMessageHandler, pos: DVec2, tolerance: f64) -> Option<(&[LayerId], bool)> {
 	let mut best = None;
 	let mut best_distance_squared = tolerance * tolerance;
+
 	for layer_path in document.selected_layers() {
-		let mut should_extend = || {
+		(|| {
 			let viewspace = document.graphene_document.generate_transform_relative_to_viewport(layer_path).ok()?;
+
 			let subpath = document.graphene_document.layer(layer_path).ok().and_then(|layer| layer.as_subpath())?;
 			let (_first_id, first) = subpath.manipulator_groups().enumerate().next()?;
 			let (_last_id, last) = subpath.manipulator_groups().enumerate().next_back()?;
+
 			if !last.is_close() {
-				for (group, start) in [(first, true), (last, false)] {
-					if let Some(point) = &group.points[ManipulatorType::Anchor] {
-						let point_pos = viewspace.transform_point2(point.position);
-						log::info!("Point {point_pos} pos {pos}");
-						let distance_squared = point_pos.distance_squared(pos);
+				for (manipulator_group, from_start) in [(first, true), (last, false)] {
+					if let Some(point) = &manipulator_group.points[ManipulatorType::Anchor] {
+						let distance_squared = viewspace.transform_point2(point.position).distance_squared(pos);
+
 						if distance_squared < best_distance_squared {
-							best = Some((layer_path, start));
+							best = Some((layer_path, from_start));
 							best_distance_squared = distance_squared;
 						}
 					}
 				}
 			}
+
 			None::<()>
-		};
-		should_extend();
+		})();
 	}
+
 	best
 }
