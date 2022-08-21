@@ -383,18 +383,21 @@ impl Subpath {
 				} else if last_out_handle.is_some() || first_in_handle.is_some() {
 					result.push('Q');
 					write_positions(&mut result, [last_out_handle, first_in_handle, first_in_anchor]);
-				} else {
-					result.push('Z');
 				}
-			} else if command == 'M' {
-				// Update the last moveto position
+				result.push('Z');
+			}
+			// Update the last moveto position
+			else if command == 'M' {
 				(first_in_handle, first_in_anchor) = (in_handle, anchor);
 				result.push(command);
 				write_positions(&mut result, [None, None, anchor]);
-			} else {
+			}
+			// Write other path commands (line to/quadratic to/cubic to)
+			else {
 				result.push(command);
 				write_positions(&mut result, [last_out_handle, in_handle, anchor]);
 			}
+
 			start_new_contour = command == 'Z';
 			last_out_handle = out_handle;
 		}

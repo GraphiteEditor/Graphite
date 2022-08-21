@@ -34,7 +34,7 @@ impl<T> IdBackedVec<T> {
 		Some(self.next_id)
 	}
 
-	// Push an element to the end of the vector
+	/// Push an element to the end of the vector
 	pub fn push_end(&mut self, element: T) -> Option<ElementId> {
 		self.next_id += 1;
 		self.elements.push(element);
