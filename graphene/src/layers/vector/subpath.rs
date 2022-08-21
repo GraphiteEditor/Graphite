@@ -5,7 +5,7 @@ use crate::layers::id_vec::IdBackedVec;
 use crate::layers::layer_info::{Layer, LayerDataType};
 
 use glam::{DAffine2, DVec2};
-use kurbo::{BezPath, PathEl, Rect, Shape};
+use kurbo::{BezPath, PathEl, Shape};
 use serde::{Deserialize, Serialize};
 
 /// [Subpath] represents a single vector path, containing many [ManipulatorGroups].
@@ -334,14 +334,14 @@ impl Subpath {
 		&mut self.0
 	}
 
-	/// Return the bounding box of the shape
+	/// Return the bounding box of the shape.
 	pub fn bounding_box(&self) -> Option<[DVec2; 2]> {
 		self.bezier_iter()
 			.map(|bezier| bezier.internal.bounding_box())
 			.reduce(|[a_min, a_max], [b_min, b_max]| [a_min.min(b_min), a_max.max(b_max)])
 	}
 
-	/// Convert path to svg
+	/// Generate an SVG `path` elements's `d` attribute: `<path d="...">`.
 	pub fn to_svg(&mut self) -> String {
 		fn write_positions(result: &mut String, values: [Option<DVec2>; 3]) {
 			use std::fmt::Write;
@@ -404,7 +404,7 @@ impl Subpath {
 		result
 	}
 
-	/// Convert to an iter over [`bezier_rs::Bezier`] segments
+	/// Convert to an iter over [`bezier_rs::Bezier`] segments.
 	pub fn bezier_iter(&self) -> PathIter {
 		PathIter {
 			path: self.manipulator_groups().enumerate(),
@@ -447,7 +447,26 @@ impl<'a> TryFrom<&'a Layer> for &'a Subpath {
 	}
 }
 
-/// An iterator over [`bezier_rs::Bezier`] segments constructable via [`Subpath::bezier_iter`]
+/// A wrapper around [`bezier_rs::Bezier`] containing also the IDs for the [`ManipulatorGroup`]s where the points are from.
+pub struct BezierId {
+	/// The internal [`bezier_rs::Bezier`].
+	pub internal: bezier_rs::Bezier,
+	/// The ID of the [ManipulatorGroup] of the start point and, if cubic, the start handle.
+	pub start: u64,
+	/// The ID of the [ManipulatorGroup] of the end point and, if cubic, the end handle.
+	pub end: u64,
+	/// The ID of the [ManipulatorGroup] of the handle on a quadratic (if applicable).
+	pub mid: Option<u64>,
+}
+
+impl BezierId {
+	/// Construct a `BezierId` by encapsulating a [`bezier_rs::Bezier`] and providing the IDs of the [`ManipulatorGroup`]s the constituent points belong to.
+	fn new(internal: bezier_rs::Bezier, start: u64, end: u64, mid: Option<u64>) -> Self {
+		Self { internal, start, end, mid }
+	}
+}
+
+/// An iterator over [`bezier_rs::Bezier`] segments constructable via [`Subpath::bezier_iter`].
 pub struct PathIter<'a> {
 	path: std::iter::Zip<core::slice::Iter<'a, u64>, core::slice::Iter<'a, ManipulatorGroup>>,
 
@@ -460,24 +479,6 @@ pub struct PathIter<'a> {
 	first_id: Option<u64>,
 
 	start_new_contour: bool,
-}
-
-/// A wrapper around [`bezier_rs::Bezier`] containing also the ids for the [`ManipulatorGroup`]s where the points are from
-pub struct BezierId {
-	/// The internal [`bezier_rs::Bezier`].
-	pub internal: bezier_rs::Bezier,
-	/// The id of the [ManipulatorGroup] of the start point and, if cubic, the start handle.
-	pub start: u64,
-	/// The id of the [ManipulatorGroup] of the end point and, if cubic, the end handle.
-	pub end: u64,
-	/// The id of the [ManipulatorGroup] of the handle on a quadratic (if applicable).
-	pub mid: Option<u64>,
-}
-
-impl BezierId {
-	fn new(internal: bezier_rs::Bezier, start: u64, end: u64, mid: Option<u64>) -> Self {
-		Self { internal, start, end, mid }
-	}
 }
 
 impl<'a> Iterator for PathIter<'a> {
