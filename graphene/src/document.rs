@@ -815,6 +815,24 @@ impl Document {
 				}
 				Some([update_thumbnails_upstream(&layer_path), vec![DocumentChanged, LayerChanged { path: layer_path }]].concat())
 			}
+			Operation::SetManipulatorPoints {
+				layer_path,
+				id,
+				manipulator_type,
+				position,
+			} => {
+				if let Ok(Some(shape)) = self.layer_mut(&layer_path).map(|layer| layer.as_subpath_mut()) {
+					if let Some(manipulator_group) = shape.manipulator_groups_mut().by_id_mut(id) {
+						if let Some(position) = position {
+							manipulator_group.set_point_position(manipulator_type as usize, position.into());
+						} else {
+							manipulator_group.points[manipulator_type] = None;
+						}
+						self.mark_as_dirty(&layer_path)?;
+					}
+				}
+				Some([update_thumbnails_upstream(&layer_path), vec![DocumentChanged, LayerChanged { path: layer_path }]].concat())
+			}
 			Operation::RemoveManipulatorPoint {
 				layer_path,
 				id,

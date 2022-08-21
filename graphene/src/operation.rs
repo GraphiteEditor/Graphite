@@ -130,6 +130,12 @@ pub enum Operation {
 		manipulator_type: ManipulatorType,
 		position: (f64, f64),
 	},
+	SetManipulatorPoints {
+		layer_path: Vec<LayerId>,
+		id: u64,
+		manipulator_type: ManipulatorType,
+		position: Option<(f64, f64)>,
+	},
 	RenameLayer {
 		layer_path: Vec<LayerId>,
 		new_name: String,

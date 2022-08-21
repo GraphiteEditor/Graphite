@@ -13,6 +13,7 @@ license = "Apache-2.0"
 [dependencies]
 log = "0.4"
 
+bezier-rs = { path = "../libraries/bezier-rs" }
 kurbo = { git = "https://github.com/linebender/kurbo.git", features = [
 	"serde",
 ] }
