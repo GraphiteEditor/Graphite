@@ -181,7 +181,7 @@ mod test {
 		let grayscale_picture = MapResultNode::new(&gray).after(image);
 		let export = export_image_node();
 
-		let picture = grayscale_picture.eval("/home/dennis/screenshot.png").expect("failed to load image");
-		export.eval((picture, "/tmp/screenshot.png")).unwrap();
+		let picture = grayscale_picture.eval("test-image-1.png").expect("Failed to load image");
+		export.eval((picture, "test-image-1-result.png")).unwrap();
 	}
 }
