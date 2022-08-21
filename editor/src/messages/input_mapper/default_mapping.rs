@@ -139,6 +139,7 @@ pub fn default_mapping() -> Mapping {
 		entry!(KeyDown(Delete); action_dispatch=PathToolMessage::Delete),
 		entry!(KeyDown(Backspace); action_dispatch=PathToolMessage::Delete),
 		entry!(KeyUp(Lmb); action_dispatch=PathToolMessage::DragStop),
+		entry!(DoubleClick; action_dispatch=PathToolMessage::InsertPoint),
 		//
 		// PenToolMessage
 		entry!(PointerMove; refresh_keys=[Shift, Control], action_dispatch=PenToolMessage::PointerMove { snap_angle: Control, break_handle: Shift }),

@@ -29,8 +29,7 @@ impl LayerData for ShapeLayer {
 	fn render(&mut self, svg: &mut String, svg_defs: &mut String, transforms: &mut Vec<DAffine2>, render_data: RenderData) {
 		let mut subpath = self.shape.clone();
 
-		let kurbo::Rect { x0, y0, x1, y1 } = subpath.bounding_box();
-		let layer_bounds = [(x0, y0).into(), (x1, y1).into()];
+		let layer_bounds = subpath.bounding_box().unwrap_or_default();
 
 		let transform = self.transform(transforms, render_data.view_mode);
 		let inverse = transform.inverse();
@@ -40,8 +39,7 @@ impl LayerData for ShapeLayer {
 		}
 		subpath.apply_affine(transform);
 
-		let kurbo::Rect { x0, y0, x1, y1 } = subpath.bounding_box();
-		let transformed_bounds = [(x0, y0).into(), (x1, y1).into()];
+		let transformed_bounds = subpath.bounding_box().unwrap_or_default();
 
 		let _ = writeln!(svg, r#"<g transform="matrix("#);
 		inverse.to_cols_array().iter().enumerate().for_each(|(i, entry)| {
@@ -64,8 +62,7 @@ impl LayerData for ShapeLayer {
 		}
 		subpath.apply_affine(transform);
 
-		let kurbo::Rect { x0, y0, x1, y1 } = subpath.bounding_box();
-		Some([(x0, y0).into(), (x1, y1).into()])
+		subpath.bounding_box()
 	}
 
 	fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, _font_cache: &FontCache) {

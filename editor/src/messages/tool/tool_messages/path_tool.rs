@@ -1,4 +1,4 @@
-use crate::consts::SELECTION_THRESHOLD;
+use crate::consts::{SELECTION_THRESHOLD, SELECTION_TOLERANCE};
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, KeysGroup, MouseMotion};
 use crate::messages::layout::utility_types::layout_widget::PropertyHolder;
@@ -39,6 +39,7 @@ pub enum PathToolMessage {
 		add_to_selection: Key,
 	},
 	DragStop,
+	InsertPoint,
 	PointerMove {
 		alt_mirror_angle: Key,
 		shift_mirror_distance: Key,
@@ -86,10 +87,12 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for PathTool {
 
 		match self.fsm_state {
 			Ready => actions!(PathToolMessageDiscriminant;
+				InsertPoint,
 				DragStart,
 				Delete,
 			),
 			Dragging => actions!(PathToolMessageDiscriminant;
+				InsertPoint,
 				DragStop,
 				PointerMove,
 				Delete,
@@ -144,11 +147,8 @@ impl Fsm for PathToolFsmState {
 		responses: &mut VecDeque<Message>,
 	) -> Self {
 		if let ToolMessage::Path(event) = event {
-			use PathToolFsmState::*;
-			use PathToolMessage::*;
-
 			match (self, event) {
-				(_, SelectionChanged) => {
+				(_, PathToolMessage::SelectionChanged) => {
 					// Set the previously selected layers to invisible
 					for layer_path in document.all_layers() {
 						tool_data.overlay_renderer.layer_overlay_visibility(&document.graphene_document, layer_path.to_vec(), false, responses);
@@ -165,7 +165,7 @@ impl Fsm for PathToolFsmState {
 					// This can happen in any state (which is why we return self)
 					self
 				}
-				(_, DocumentIsDirty) => {
+				(_, PathToolMessage::DocumentIsDirty) => {
 					// When the document has moved / needs to be redraw, re-render the overlays
 					// TODO the overlay system should probably receive this message instead of the tool
 					for layer_path in document.selected_visible_layers() {
@@ -175,7 +175,7 @@ impl Fsm for PathToolFsmState {
 					self
 				}
 				// Mouse down
-				(_, DragStart { add_to_selection }) => {
+				(_, PathToolMessage::DragStart { add_to_selection }) => {
 					let toggle_add_to_selection = input.keyboard.get(add_to_selection as usize);
 
 					// Select the first point within the threshold (in pixels)
@@ -204,7 +204,7 @@ impl Fsm for PathToolFsmState {
 						tool_data.snap_manager.add_all_document_handles(document, &include_handles, &[], &new_selected);
 
 						tool_data.drag_start_pos = input.mouse.position;
-						Dragging
+						PathToolFsmState::Dragging
 					}
 					// We didn't find a point nearby, so consider selecting the nearest shape instead
 					else {
@@ -230,13 +230,13 @@ impl Fsm for PathToolFsmState {
 								responses.push_back(DocumentMessage::DeselectAllLayers.into());
 							}
 						}
-						Ready
+						PathToolFsmState::Ready
 					}
 				}
 				// Dragging
 				(
-					Dragging,
-					PointerMove {
+					PathToolFsmState::Dragging,
+					PathToolMessage::PointerMove {
 						alt_mirror_angle,
 						shift_mirror_distance,
 					},
@@ -262,34 +262,39 @@ impl Fsm for PathToolFsmState {
 					let snapped_position = tool_data.snap_manager.snap_position(responses, document, input.mouse.position);
 					tool_data.shape_editor.move_selected_points(snapped_position - tool_data.drag_start_pos, snapped_position, responses);
 					tool_data.drag_start_pos = snapped_position;
-					Dragging
+					PathToolFsmState::Dragging
 				}
 				// Mouse up
-				(_, DragStop) => {
+				(_, PathToolMessage::DragStop) => {
 					tool_data.snap_manager.cleanup(responses);
-					Ready
+					PathToolFsmState::Ready
 				}
 				// Delete key
-				(_, Delete) => {
+				(_, PathToolMessage::Delete) => {
 					// Delete the selected points and clean up overlays
 					responses.push_back(DocumentMessage::StartTransaction.into());
 					tool_data.shape_editor.delete_selected_points(responses);
-					responses.push_back(SelectionChanged.into());
+					responses.push_back(PathToolMessage::SelectionChanged.into());
 					for layer_path in document.all_layers() {
 						tool_data.overlay_renderer.clear_subpath_overlays(&document.graphene_document, layer_path.to_vec(), responses);
 					}
-					Ready
+					PathToolFsmState::Ready
 				}
-				(_, Abort) => {
+				(_, PathToolMessage::InsertPoint) => {
+					tool_data.shape_editor.split(&document.graphene_document, input.mouse.position, SELECTION_TOLERANCE, responses);
+
+					self
+				}
+				(_, PathToolMessage::Abort) => {
 					// TODO Tell overlay manager to remove the overlays
 					for layer_path in document.all_layers() {
 						tool_data.overlay_renderer.clear_subpath_overlays(&document.graphene_document, layer_path.to_vec(), responses);
 					}
-					Ready
+					PathToolFsmState::Ready
 				}
 				(
 					_,
-					PointerMove {
+					PathToolMessage::PointerMove {
 						alt_mirror_angle: _,
 						shift_mirror_distance: _,
 					},
