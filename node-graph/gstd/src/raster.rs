@@ -2,13 +2,7 @@ use core::marker::PhantomData;
 use graphene_core::ops::FlatMapResultNode;
 use graphene_core::raster::color::Color;
 use graphene_core::structural::{ComposeNode, ConsNode};
-use graphene_core::{
-	generic::FnNode,
-	ops::MapResultNode,
-	structural::{After, AfterRef},
-	value::ValueNode,
-	Node,
-};
+use graphene_core::{generic::FnNode, ops::MapResultNode, structural::After, value::ValueNode, Node};
 use image::Pixel;
 use std::path::Path;
 

@@ -34,7 +34,7 @@ where
 	}
 }
 
-pub struct MutWrapper<N>(pub N);
+/*pub struct MutWrapper<N>(pub N);
 
 impl<'n, T: Clone, N> Node<&'n mut T> for &'n MutWrapper<N>
 where
@@ -44,7 +44,7 @@ where
 	fn eval(self, value: &'n mut T) {
 		*value = (&self.0).eval(value.clone());
 	}
-}
+}*/
 
 #[cfg(test)]
 mod test {
@@ -54,8 +54,8 @@ mod test {
 	fn map_node() {
 		let array = &mut [Color::from_rgbaf32(1.0, 0.0, 0.0, 1.0).unwrap()];
 		(&GrayscaleNode).eval(Color::from_rgbf32_unchecked(1., 0., 0.));
-		let map = ForEachNode(MutWrapper(GrayscaleNode));
+		/*let map = ForEachNode(MutWrapper(GrayscaleNode));
 		(&map).eval(array.iter_mut());
-		assert_eq!(array[0], Color::from_rgbaf32(0.33333334, 0.33333334, 0.33333334, 1.0).unwrap());
+		assert_eq!(array[0], Color::from_rgbaf32(0.33333334, 0.33333334, 0.33333334, 1.0).unwrap());*/
 	}
 }

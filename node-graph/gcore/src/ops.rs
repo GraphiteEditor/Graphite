@@ -11,6 +11,24 @@ impl<'n, L: Add<R, Output = O> + 'n, R, O: 'n> Node<(L, R)> for AddNode {
 		input.0 + input.1
 	}
 }
+impl<'n, L: Add<R, Output = O> + 'n, R, O: 'n> Node<(L, R)> for &'n AddNode {
+	type Output = <L as Add<R>>::Output;
+	fn eval(self, input: (L, R)) -> Self::Output {
+		input.0 + input.1
+	}
+}
+impl<'n, L: Add<R, Output = O> + 'n + Copy, R: Copy, O: 'n> Node<&'n (L, R)> for AddNode {
+	type Output = <L as Add<R>>::Output;
+	fn eval(self, input: &'n (L, R)) -> Self::Output {
+		input.0 + input.1
+	}
+}
+impl<'n, L: Add<R, Output = O> + 'n + Copy, R: Copy, O: 'n> Node<&'n (L, R)> for &'n AddNode {
+	type Output = <L as Add<R>>::Output;
+	fn eval(self, input: &'n (L, R)) -> Self::Output {
+		input.0 + input.1
+	}
+}
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct CloneNode;
@@ -82,7 +100,7 @@ pub struct DupNode;
 impl<'n, T: Clone + 'n> Node<T> for DupNode {
 	type Output = (T, T);
 	fn eval(self, input: T) -> Self::Output {
-		(input.clone(), input) //TODO: use Copy/Clone implementation
+		(input.clone(), input)
 	}
 }
 
@@ -90,6 +108,12 @@ impl<'n, T: Clone + 'n> Node<T> for DupNode {
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct IdNode;
 impl<'n, T: 'n> Node<T> for IdNode {
+	type Output = T;
+	fn eval(self, input: T) -> Self::Output {
+		input
+	}
+}
+impl<'n, T: 'n> Node<T> for &'n IdNode {
 	type Output = T;
 	fn eval(self, input: T) -> Self::Output {
 		input
