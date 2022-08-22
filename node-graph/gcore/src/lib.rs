@@ -3,6 +3,7 @@
 
 #[cfg(feature = "async")]
 extern crate alloc;
+
 #[cfg(feature = "async")]
 use alloc::boxed::Box;
 #[cfg(feature = "async")]
@@ -18,10 +19,33 @@ pub trait Node<T> {
 	type Output;
 
 	fn eval(self, input: T) -> Self::Output;
+	fn input(&self) -> &str {
+		core::any::type_name::<T>()
+	}
+	fn output(&self) -> &str {
+		core::any::type_name::<Self::Output>()
+	}
 }
 
 trait Input<I> {
 	unsafe fn input(&self, input: I);
+}
+
+pub trait RefNode<T> {
+	type Output;
+
+	fn eval_ref(&self, input: T) -> Self::Output;
+}
+
+impl<'n, N: 'n, I> RefNode<I> for &'n N
+where
+	&'n N: Node<I>,
+	Self: 'n,
+{
+	type Output = <&'n N as Node<I>>::Output;
+	fn eval_ref(&self, input: I) -> Self::Output {
+		self.eval(input)
+	}
 }
 
 #[cfg(feature = "async")]
@@ -46,13 +70,23 @@ pub trait Cache {
 	fn clear(&mut self);
 }
 
-#[cfg(not(feature = "gpu"))]
-extern crate alloc;
-#[cfg(not(feature = "gpu"))]
-impl<'n, I, O: 'n> Node<'n, I> for alloc::boxed::Box<dyn Node<'n, I, Output = O>> {
-	type Output = O;
-
-	fn eval(&'n self, input: &'n I) -> Self::Output {
+#[cfg(feature = "async")]
+impl<N, I> Node<I> for Box<N>
+where
+	N: Node<I>,
+{
+	type Output = <N as Node<I>>::Output;
+	fn eval(self, input: I) -> Self::Output {
+		(*self).eval(input)
+	}
+}
+#[cfg(feature = "async")]
+impl<'n, N, I> Node<I> for &'n Box<N>
+where
+	&'n N: Node<I>,
+{
+	type Output = <&'n N as Node<I>>::Output;
+	fn eval(self, input: I) -> Self::Output {
 		self.as_ref().eval(input)
 	}
 }

@@ -15,7 +15,7 @@ default = ["derive", "memoization"]
 
 
 [dependencies]
-graphene-core = {path = "../gcore"}
+graphene-core = {path = "../gcore", features = ["async", "std"]}
 borrow_stack = {path = "../borrow_stack"}
 dyn-any = {path = "../../libraries/dyn-any", features = ["derive"]}
 graph-proc-macros = {path = "../proc-macro", optional = true}

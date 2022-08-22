@@ -1,7 +1,8 @@
 use core::marker::PhantomData;
 
-use crate::Node;
+use crate::{Node, RefNode};
 
+#[derive(Debug)]
 pub struct ComposeNode<First, Second, Input> {
 	first: First,
 	second: Second,
@@ -25,25 +26,40 @@ where
 }
 impl<'n, Input, Inter, First, Second> Node<Input> for &'n ComposeNode<First, Second, Input>
 where
-	First: Node<Input, Output = Inter> + Copy,
-	Second: Node<Inter> + Copy,
+	First: RefNode<Input, Output = Inter> + Copy,
+	Second: RefNode<Inter> + Copy,
 {
-	type Output = Second::Output;
+	type Output = <Second as RefNode<Inter>>::Output;
 
 	fn eval(self, input: Input) -> Self::Output {
 		// evaluate the first node with the given input
 		// and then pipe the result from the first computation
 		// into the second node
-		let arg: Inter = self.first.eval(input);
-		(&self.second).eval(arg)
+		let arg: Inter = (self.first).eval_ref(input);
+		(self.second).eval_ref(arg)
 	}
 }
-
-impl<'n, Input, First: 'n, Second: 'n> ComposeNode<First, Second, Input>
+impl<Input, Inter, First, Second> RefNode<Input> for ComposeNode<First, Second, Input>
 where
-	First: Node<Input>,
-	Second: Node<First::Output>,
+	First: RefNode<Input, Output = Inter> + Copy,
+	Second: RefNode<Inter> + Copy,
 {
+	type Output = <Second as RefNode<Inter>>::Output;
+
+	fn eval_ref(&self, input: Input) -> Self::Output {
+		// evaluate the first node with the given input
+		// and then pipe the result from the first computation
+		// into the second node
+		let arg: Inter = (self.first).eval_ref(input);
+		(self.second).eval_ref(arg)
+	}
+}
+#[cfg(feature = "std")]
+impl<Input: 'static, First: 'static, Second: 'static> dyn_any::StaticType for ComposeNode<First, Second, Input> {
+	type Static = ComposeNode<First, Second, Input>;
+}
+
+impl<'n, Input, First: 'n, Second: 'n> ComposeNode<First, Second, Input> {
 	pub const fn new(first: First, second: Second) -> Self {
 		ComposeNode::<First, Second, Input> { first, second, _phantom: PhantomData }
 	}
@@ -78,6 +94,24 @@ pub trait AfterRef<Inter>: Sized {
 	}
 }
 impl<'n, Second: 'n, I> AfterRef<I> for Second where &'n Second: Node<I> {}
+
+#[cfg(feature = "async")]
+pub trait AfterBox<Inter> {
+	fn after<'n, First: 'n, Input>(self, first: First) -> ComposeNode<First, Self, Input>
+	where
+		First: Node<Input, Output = Inter> + Copy,
+		alloc::boxed::Box<Self>: Node<Inter>,
+		Self: Sized,
+	{
+		ComposeNode::<First, Self, Input> {
+			first,
+			second: self,
+			_phantom: PhantomData,
+		}
+	}
+}
+#[cfg(feature = "async")]
+impl<'n, Second: 'n, I> AfterBox<I> for alloc::boxed::Box<Second> where &'n alloc::boxed::Box<Second>: Node<I> {}
 
 pub struct ConsNode<Root>(pub Root);
 
