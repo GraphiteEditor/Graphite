@@ -7,8 +7,11 @@ use std::{
 
 pub trait BorrowStack<'n> {
 	type Item;
+	/// # Safety
 	unsafe fn push(&'n self, value: Self::Item);
+	/// # Safety
 	unsafe fn pop(&'n self);
+	/// # Safety
 	unsafe fn get(&'n self) -> &'n [Self::Item];
 }
 
@@ -36,6 +39,10 @@ impl<'n, T: Unpin> FixedSizeStack<'n, T> {
 
 	pub fn len(&self) -> usize {
 		self.len.load(Ordering::SeqCst)
+	}
+
+	pub fn is_empty(&self) -> bool {
+		self.len.load(Ordering::SeqCst) == 0
 	}
 }
 

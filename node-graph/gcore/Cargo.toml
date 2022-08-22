@@ -10,7 +10,7 @@ license = "MIT OR Apache-2.0"
 
 [features]
 std = ["dyn-any"]
-default = ["gpu", "async"]
+default = ["async"]
 gpu = ["spirv-std"]
 async = ["async-trait"]
 nightly = []

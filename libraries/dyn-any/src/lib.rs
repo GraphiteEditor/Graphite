@@ -25,6 +25,15 @@ pub fn downcast_ref<'a, V: StaticType>(i: &'a dyn DynAny<'a>) -> Option<&'a V> {
 		None
 	}
 }
+pub fn downcast<'a, V: StaticType>(i: Box<dyn DynAny<'a> + 'a>) -> Option<Box<V>> {
+	if i.type_id() == std::any::TypeId::of::<<V as StaticType>::Static>() {
+		// SAFETY: caller guarantees that T is the correct type
+		let ptr = Box::into_raw(i) as *mut dyn DynAny<'a> as *mut V;
+		Some(unsafe { Box::from_raw(ptr) })
+	} else {
+		None
+	}
+}
 
 pub trait StaticType {
 	type Static: 'static + ?Sized;
@@ -39,8 +48,11 @@ pub trait StaticTypeSized {
 		std::any::TypeId::of::<Self::Static>()
 	}
 }
-impl<'a, T: StaticTypeSized> StaticType for T {
-	type Static = <T as StaticTypeSized>::Static;
+impl<T: StaticType + Sized> StaticTypeSized for T
+where
+	T::Static: Sized,
+{
+	type Static = <T as StaticType>::Static;
 }
 pub trait StaticTypeClone {
 	type Static: 'static + Clone;
@@ -48,41 +60,44 @@ pub trait StaticTypeClone {
 		std::any::TypeId::of::<Self::Static>()
 	}
 }
-impl<'a, T: StaticTypeClone> StaticTypeSized for T {
-	type Static = <T as StaticTypeClone>::Static;
+impl<T: StaticType + Clone> StaticTypeClone for T
+where
+	T::Static: Clone,
+{
+	type Static = <T as StaticType>::Static;
 }
 
 macro_rules! impl_type {
     ($($id:ident$(<$($(($l:lifetime, $s:lifetime)),*|)?$($T:ident),*>)?),*) => {
         $(
-        impl<'a, $($($T: 'a + $crate::StaticTypeSized + Sized,)*)?> $crate::StaticTypeSized for $id $(<$($($l,)*)?$($T, )*>)?{
+        impl< $($($T:  $crate::StaticTypeSized ,)*)?> $crate::StaticType for $id $(<$($($l,)*)?$($T, )*>)?{
             type Static = $id$(<$($($s,)*)?$(<$T as $crate::StaticTypeSized>::Static,)*>)?;
         }
         )*
     };
 }
-impl<'a, T: Clone + StaticTypeClone> StaticTypeClone for std::borrow::Cow<'a, T> {
-	type Static = std::borrow::Cow<'static, <T as StaticTypeSized>::Static>;
+impl<'a, T: StaticTypeClone + Clone> StaticType for std::borrow::Cow<'a, T> {
+	type Static = std::borrow::Cow<'static, T::Static>;
 }
-impl<'a, T: StaticTypeSized> StaticTypeSized for *const [T] {
+impl<T: StaticTypeSized> StaticType for *const [T] {
 	type Static = *const [<T as StaticTypeSized>::Static];
 }
-impl<'a, T: StaticTypeSized> StaticTypeSized for *mut [T] {
+impl<T: StaticTypeSized> StaticType for *mut [T] {
 	type Static = *mut [<T as StaticTypeSized>::Static];
 }
-impl<'a, T: StaticTypeSized> StaticTypeSized for &'a [T] {
+impl<'a, T: StaticTypeSized> StaticType for &'a [T] {
 	type Static = &'static [<T as StaticTypeSized>::Static];
 }
-impl<'a> StaticTypeSized for &'a str {
+impl<'a> StaticType for &'a str {
 	type Static = &'static str;
 }
-impl<'a> StaticTypeSized for () {
+impl StaticType for () {
 	type Static = ();
 }
-impl<'a, T: 'a + StaticTypeClone> StaticTypeClone for &'a T {
-	type Static = &'static <T as StaticTypeClone>::Static;
+impl<'a, T: 'a + StaticType> StaticType for &'a T {
+	type Static = &'static <T as StaticType>::Static;
 }
-impl<'a, T: StaticTypeSized, const N: usize> StaticTypeSized for [T; N] {
+impl<T: StaticTypeSized, const N: usize> StaticType for [T; N] {
 	type Static = [<T as StaticTypeSized>::Static; N];
 }
 
@@ -102,7 +117,7 @@ use std::{
 
 impl_type!(Option<T>,Result<T, E>,Cell<T>,UnsafeCell<T>,RefCell<T>,MaybeUninit<T>,
 		   Vec<T>, String, BTreeMap<K,V>,BTreeSet<V>, LinkedList<T>, VecDeque<T>,
-		   BinaryHeap<T>, ManuallyDrop<T>, PhantomData<T>, PhantomPinned,Empty<T>,
+		   BinaryHeap<T>, Box<T>, ManuallyDrop<T>, PhantomData<T>, PhantomPinned,Empty<T>,
 		   Wrapping<T>, Duration, Once, Mutex<T>, RwLock<T>,  bool, f32, f64, char,
 		   u8, AtomicU8, u16,AtomicU16, u32,AtomicU32, u64,AtomicU64, usize,AtomicUsize,
 		   i8,AtomicI8, i16,AtomicI16, i32,AtomicI32, i64,AtomicI64, isize,AtomicIsize,
@@ -115,7 +130,7 @@ macro_rules! impl_tuple {
         impl_tuple! { @rec $($t)* }
     };
     (@impl $($t:ident)*) => {
-        impl<'dyn_any, $($t: StaticTypeSized,)*> StaticTypeSized for ($($t,)*) {
+        impl< $($t: StaticTypeSized,)*> StaticType for ($($t,)*) {
             type Static = ($(<$t as $crate::StaticTypeSized>::Static,)*);
         }
     };

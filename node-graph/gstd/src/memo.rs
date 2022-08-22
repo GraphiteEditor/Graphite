@@ -1,6 +1,5 @@
 use graphene_core::{Cache, Node};
 use once_cell::sync::OnceCell;
-use std::marker::PhantomData;
 
 /// Caches the output of a given Node and acts as a proxy
 pub struct CacheNode<CachedNode: Node<I>, I> {
