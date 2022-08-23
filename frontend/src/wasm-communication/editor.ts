@@ -19,7 +19,7 @@ export async function initWasm(): Promise<void> {
 
 	// Provide a random starter seed which must occur after initializing the WASM module, since WASM can't generate its own random numbers
 	const randomSeed = BigInt(Math.floor(Math.random() * Number.MAX_SAFE_INTEGER));
-	wasmImport?.set_random_seed(randomSeed);
+	wasmImport?.setRandomSeed(randomSeed);
 }
 
 // Should be called after running `initWasm()` and its promise resolving

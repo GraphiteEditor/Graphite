@@ -105,11 +105,11 @@ export default defineComponent({
 		},
 		primaryColorChanged(color: RGBA) {
 			const newColor = rgbaToDecimalRgba(color);
-			this.editor.instance.update_primary_color(newColor.r, newColor.g, newColor.b, newColor.a);
+			this.editor.instance.updatePrimaryColor(newColor.r, newColor.g, newColor.b, newColor.a);
 		},
 		secondaryColorChanged(color: RGBA) {
 			const newColor = rgbaToDecimalRgba(color);
-			this.editor.instance.update_secondary_color(newColor.r, newColor.g, newColor.b, newColor.a);
+			this.editor.instance.updateSecondaryColor(newColor.r, newColor.g, newColor.b, newColor.a);
 		},
 	},
 });

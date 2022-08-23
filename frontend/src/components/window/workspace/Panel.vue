@@ -252,10 +252,10 @@ export default defineComponent({
 	},
 	methods: {
 		newDocument() {
-			this.editor.instance.new_document_dialog();
+			this.editor.instance.newDocumentDialog();
 		},
 		openDocument() {
-			this.editor.instance.document_open();
+			this.editor.instance.documentOpen();
 		},
 		platformModifiers(reservedKey: boolean): KeysGroup {
 			// TODO: Remove this by properly feeding these keys from a layout provided by the backend

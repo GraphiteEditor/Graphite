@@ -2,7 +2,7 @@
 
 <template>
 	<div class="widget-layout">
-		<component :is="LayoutGroupType(layoutRow)" :widgetData="layoutRow" :layoutTarget="layout.layout_target" v-for="(layoutRow, index) in layout.layout" :key="index" />
+		<component :is="LayoutGroupType(layoutRow)" :widgetData="layoutRow" :layoutTarget="layout.layoutTarget" v-for="(layoutRow, index) in layout.layout" :key="index" />
 	</div>
 </template>
 

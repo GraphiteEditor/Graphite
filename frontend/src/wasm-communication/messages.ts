@@ -1,4 +1,3 @@
-/* eslint-disable camelcase */
 /* eslint-disable max-classes-per-file */
 
 import { Transform, Type, plainToClass } from "class-transformer";
@@ -26,7 +25,7 @@ export class UpdateNodeGraphVisibility extends JsMessage {
 
 export class UpdateOpenDocumentsList extends JsMessage {
 	@Type(() => FrontendDocumentDetails)
-	readonly open_documents!: FrontendDocumentDetails[];
+	readonly openDocuments!: FrontendDocumentDetails[];
 }
 
 // Allows the auto save system to use a string for the id rather than a BigInt.
@@ -36,12 +35,12 @@ export class UpdateOpenDocumentsList extends JsMessage {
 export abstract class DocumentDetails {
 	readonly name!: string;
 
-	readonly is_saved!: boolean;
+	readonly isSaved!: boolean;
 
 	readonly id!: bigint | string;
 
 	get displayName(): string {
-		return `${this.name}${this.is_saved ? "" : "*"}`;
+		return `${this.name}${this.isSaved ? "" : "*"}`;
 	}
 }
 
@@ -66,12 +65,12 @@ export class IndexedDbDocumentDetails extends DocumentDetails {
 export class TriggerIndexedDbRemoveDocument extends JsMessage {
 	// Use a string since IndexedDB can not use BigInts for keys
 	@Transform(({ value }: { value: bigint }) => value.toString())
-	document_id!: string;
+	documentId!: string;
 }
 
 export class UpdateInputHints extends JsMessage {
 	@Type(() => HintInfo)
-	readonly hint_data!: HintData;
+	readonly hintData!: HintData;
 }
 
 export type HintData = HintGroup[];
@@ -137,11 +136,11 @@ export class Color {
 }
 
 export class UpdateActiveDocument extends JsMessage {
-	readonly document_id!: bigint;
+	readonly documentId!: bigint;
 }
 
 export class DisplayDialogPanic extends JsMessage {
-	readonly panic_info!: string;
+	readonly panicInfo!: string;
 
 	readonly header!: string;
 
@@ -245,11 +244,11 @@ interface DataBuffer {
 	length: bigint;
 }
 
-export function newUpdateDocumentLayerTreeStructure(input: { data_buffer: DataBuffer }, wasm: WasmRawInstance): UpdateDocumentLayerTreeStructure {
-	const pointerNum = Number(input.data_buffer.pointer);
-	const lengthNum = Number(input.data_buffer.length);
+export function newUpdateDocumentLayerTreeStructure(input: { dataBuffer: DataBuffer }, wasm: WasmRawInstance): UpdateDocumentLayerTreeStructure {
+	const pointerNum = Number(input.dataBuffer.pointer);
+	const lengthNum = Number(input.dataBuffer.length);
 
-	const wasmMemoryBuffer = wasm.wasm_memory().buffer;
+	const wasmMemoryBuffer = wasm.wasmMemory().buffer;
 
 	// Decode the folder structure encoding
 	const encoding = new DataView(wasmMemoryBuffer, pointerNum, lengthNum);
@@ -302,9 +301,9 @@ export function newUpdateDocumentLayerTreeStructure(input: { data_buffer: DataBu
 export class DisplayEditableTextbox extends JsMessage {
 	readonly text!: string;
 
-	readonly line_width!: undefined | number;
+	readonly lineWidth!: undefined | number;
 
-	readonly font_size!: number;
+	readonly fontSize!: number;
 
 	@Type(() => Color)
 	readonly color!: Color;
@@ -312,7 +311,7 @@ export class DisplayEditableTextbox extends JsMessage {
 
 export class UpdateImageData extends JsMessage {
 	@Type(() => ImageData)
-	readonly image_data!: ImageData[];
+	readonly imageData!: ImageData[];
 }
 
 export class DisplayRemoveEditableTextbox extends JsMessage {}
@@ -327,13 +326,13 @@ export class LayerPanelEntry {
 
 	visible!: boolean;
 
-	layer_type!: LayerType;
+	layerType!: LayerType;
 
 	@Transform(({ value }: { value: bigint[] }) => new BigUint64Array(value))
 	path!: BigUint64Array;
 
 	@Type(() => LayerMetadata)
-	layer_metadata!: LayerMetadata;
+	layerMetadata!: LayerMetadata;
 
 	thumbnail!: string;
 }
@@ -351,22 +350,22 @@ export class ImageData {
 
 	readonly mime!: string;
 
-	readonly image_data!: Uint8Array;
+	readonly imageData!: Uint8Array;
 }
 
 export class DisplayDialogDismiss extends JsMessage {}
 
 export class Font {
-	font_family!: string;
+	fontFamily!: string;
 
-	font_style!: string;
+	fontStyle!: string;
 }
 
 export class TriggerFontLoad extends JsMessage {
 	@Type(() => Font)
 	font!: Font;
 
-	is_default!: boolean;
+	isDefault!: boolean;
 }
 
 export class TriggerVisitLink extends JsMessage {
@@ -376,11 +375,11 @@ export class TriggerVisitLink extends JsMessage {
 export class TriggerTextCommit extends JsMessage {}
 
 export class TriggerTextCopy extends JsMessage {
-	readonly copy_text!: string;
+	readonly copyText!: string;
 }
 
 export class TriggerAboutGraphiteLocalizedCommitDate extends JsMessage {
-	readonly commit_date!: string;
+	readonly commitDate!: string;
 }
 
 export class TriggerViewportResize extends JsMessage {}
@@ -647,13 +646,13 @@ function hoistWidgetHolders(widgetHolders: any[]): Widget[] {
 // WIDGET LAYOUT
 
 export interface WidgetLayout {
-	layout_target: unknown;
+	layoutTarget: unknown;
 	layout: LayoutGroup[];
 }
 
 export function defaultWidgetLayout(): WidgetLayout {
 	return {
-		layout_target: null,
+		layoutTarget: null,
 		layout: [],
 	};
 }
@@ -708,7 +707,7 @@ function createWidgetLayout(widgetLayout: any[]): LayoutGroup[] {
 // WIDGET LAYOUTS
 
 export class UpdateDialogDetails extends JsMessage implements WidgetLayout {
-	layout_target!: unknown;
+	layoutTarget!: unknown;
 
 	// TODO: Replace `any` with correct typing
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -717,7 +716,7 @@ export class UpdateDialogDetails extends JsMessage implements WidgetLayout {
 }
 
 export class UpdateDocumentModeLayout extends JsMessage implements WidgetLayout {
-	layout_target!: unknown;
+	layoutTarget!: unknown;
 
 	// TODO: Replace `any` with correct typing
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -726,7 +725,7 @@ export class UpdateDocumentModeLayout extends JsMessage implements WidgetLayout 
 }
 
 export class UpdateToolOptionsLayout extends JsMessage implements WidgetLayout {
-	layout_target!: unknown;
+	layoutTarget!: unknown;
 
 	// TODO: Replace `any` with correct typing
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -735,7 +734,7 @@ export class UpdateToolOptionsLayout extends JsMessage implements WidgetLayout {
 }
 
 export class UpdateDocumentBarLayout extends JsMessage implements WidgetLayout {
-	layout_target!: unknown;
+	layoutTarget!: unknown;
 
 	// TODO: Replace `any` with correct typing
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -744,7 +743,7 @@ export class UpdateDocumentBarLayout extends JsMessage implements WidgetLayout {
 }
 
 export class UpdateToolShelfLayout extends JsMessage implements WidgetLayout {
-	layout_target!: unknown;
+	layoutTarget!: unknown;
 
 	// TODO: Replace `any` with correct typing
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -753,7 +752,7 @@ export class UpdateToolShelfLayout extends JsMessage implements WidgetLayout {
 }
 
 export class UpdateWorkingColorsLayout extends JsMessage implements WidgetLayout {
-	layout_target!: unknown;
+	layoutTarget!: unknown;
 
 	// TODO: Replace `any` with correct typing
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -762,7 +761,7 @@ export class UpdateWorkingColorsLayout extends JsMessage implements WidgetLayout
 }
 
 export class UpdatePropertyPanelOptionsLayout extends JsMessage implements WidgetLayout {
-	layout_target!: unknown;
+	layoutTarget!: unknown;
 
 	// TODO: Replace `any` with correct typing
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -771,7 +770,7 @@ export class UpdatePropertyPanelOptionsLayout extends JsMessage implements Widge
 }
 
 export class UpdatePropertyPanelSectionsLayout extends JsMessage implements WidgetLayout {
-	layout_target!: unknown;
+	layoutTarget!: unknown;
 
 	// TODO: Replace `any` with correct typing
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -780,7 +779,7 @@ export class UpdatePropertyPanelSectionsLayout extends JsMessage implements Widg
 }
 
 export class UpdateLayerTreeOptionsLayout extends JsMessage implements WidgetLayout {
-	layout_target!: unknown;
+	layoutTarget!: unknown;
 
 	// TODO: Replace `any` with correct typing
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -789,7 +788,7 @@ export class UpdateLayerTreeOptionsLayout extends JsMessage implements WidgetLay
 }
 
 export class UpdateMenuBarLayout extends JsMessage {
-	layout_target!: unknown;
+	layoutTarget!: unknown;
 
 	// TODO: Replace `any` with correct typing
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any

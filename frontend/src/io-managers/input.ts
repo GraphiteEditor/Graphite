@@ -106,7 +106,7 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 		if (await shouldRedirectKeyboardEventToBackend(e)) {
 			e.preventDefault();
 			const modifiers = makeKeyboardModifiersBitfield(e);
-			editor.instance.on_key_down(key, modifiers);
+			editor.instance.onKeyDown(key, modifiers);
 			return;
 		}
 
@@ -121,7 +121,7 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 		if (await shouldRedirectKeyboardEventToBackend(e)) {
 			e.preventDefault();
 			const modifiers = makeKeyboardModifiersBitfield(e);
-			editor.instance.on_key_up(key, modifiers);
+			editor.instance.onKeyUp(key, modifiers);
 		}
 	}
 
@@ -146,7 +146,7 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 		}
 
 		const modifiers = makeKeyboardModifiersBitfield(e);
-		editor.instance.on_mouse_move(e.clientX, e.clientY, e.buttons, modifiers);
+		editor.instance.onMouseMove(e.clientX, e.clientY, e.buttons, modifiers);
 	}
 
 	function onPointerDown(e: PointerEvent): void {
@@ -162,13 +162,13 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 		}
 
 		if (!inTextInput) {
-			if (textInput) editor.instance.on_change_text(textInputCleanup(textInput.innerText));
+			if (textInput) editor.instance.onChangeText(textInputCleanup(textInput.innerText));
 			else viewportPointerInteractionOngoing = isTargetingCanvas instanceof Element;
 		}
 
 		if (viewportPointerInteractionOngoing) {
 			const modifiers = makeKeyboardModifiersBitfield(e);
-			editor.instance.on_mouse_down(e.clientX, e.clientY, e.buttons, modifiers);
+			editor.instance.onMouseDown(e.clientX, e.clientY, e.buttons, modifiers);
 		}
 	}
 
@@ -177,7 +177,7 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 
 		if (!textInput) {
 			const modifiers = makeKeyboardModifiersBitfield(e);
-			editor.instance.on_mouse_up(e.clientX, e.clientY, e.buttons, modifiers);
+			editor.instance.onMouseUp(e.clientX, e.clientY, e.buttons, modifiers);
 		}
 	}
 
@@ -186,7 +186,7 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 
 		if (!textInput) {
 			const modifiers = makeKeyboardModifiersBitfield(e);
-			editor.instance.on_double_click(e.clientX, e.clientY, e.buttons, modifiers);
+			editor.instance.onDoubleClick(e.clientX, e.clientY, e.buttons, modifiers);
 		}
 	}
 
@@ -213,7 +213,7 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 		if (isTargetingCanvas) {
 			e.preventDefault();
 			const modifiers = makeKeyboardModifiersBitfield(e);
-			editor.instance.on_wheel_scroll(e.clientX, e.clientY, e.buttons, e.deltaX, e.deltaY, e.deltaZ, modifiers);
+			editor.instance.onWheelScroll(e.clientX, e.clientY, e.buttons, e.deltaX, e.deltaY, e.deltaZ, modifiers);
 		}
 	}
 
@@ -233,20 +233,20 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 		const flattened = boundsOfViewports.flat();
 		const data = Float64Array.from(flattened);
 
-		if (boundsOfViewports.length > 0) editor.instance.bounds_of_viewports(data);
+		if (boundsOfViewports.length > 0) editor.instance.boundsOfViewports(data);
 	}
 
 	function onBeforeUnload(e: BeforeUnloadEvent): void {
 		const activeDocument = document.state.documents[document.state.activeDocumentIndex];
-		if (!activeDocument.is_saved) editor.instance.trigger_auto_save(activeDocument.id);
+		if (!activeDocument.isSaved) editor.instance.triggerAutoSave(activeDocument.id);
 
 		// Skip the message if the editor crashed, since work is already lost
-		if (editor.instance.has_crashed()) return;
+		if (editor.instance.hasCrashed()) return;
 
 		// Skip the message during development, since it's annoying when testing
 		if (process.env.NODE_ENV === "development") return;
 
-		const allDocumentsSaved = document.state.documents.reduce((acc, doc) => acc && doc.is_saved, true);
+		const allDocumentsSaved = document.state.documents.reduce((acc, doc) => acc && doc.isSaved, true);
 		if (!allDocumentsSaved) {
 			e.returnValue = "Unsaved work will be lost if the web browser tab is closed. Close anyway?";
 			e.preventDefault();
@@ -262,7 +262,7 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 			if (item.type === "text/plain") {
 				item.getAsString((text) => {
 					if (text.startsWith("graphite/layer: ")) {
-						editor.instance.paste_serialized_data(text.substring(16, text.length));
+						editor.instance.pasteSerializedData(text.substring(16, text.length));
 					}
 				});
 			}
@@ -272,7 +272,7 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 				file.arrayBuffer().then((buffer): void => {
 					const u8Array = new Uint8Array(buffer);
 
-					editor.instance.paste_image(file.type, u8Array);
+					editor.instance.pasteImage(file.type, u8Array);
 				});
 			}
 		});
@@ -305,7 +305,7 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 						const text = reader.result as string;
 
 						if (text.startsWith("graphite/layer: ")) {
-							editor.instance.paste_serialized_data(text.substring(16, text.length));
+							editor.instance.pasteSerializedData(text.substring(16, text.length));
 						}
 					};
 					reader.readAsText(blob);
@@ -319,7 +319,7 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 					reader.onload = (): void => {
 						const u8Array = new Uint8Array(reader.result as ArrayBuffer);
 
-						editor.instance.paste_image(imageType, u8Array);
+						editor.instance.pasteImage(imageType, u8Array);
 					};
 					reader.readAsArrayBuffer(blob);
 				}
@@ -343,7 +343,7 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 			};
 			const message = Object.entries(matchMessage).find(([key]) => String(err).includes(key))?.[1] || String(err);
 
-			editor.instance.error_dialog("Cannot access clipboard", message);
+			editor.instance.errorDialog("Cannot access clipboard", message);
 		}
 	});
 

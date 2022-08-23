@@ -48,7 +48,9 @@ impl LayerMetadata {
 pub struct LayerPanelEntry {
 	pub name: String,
 	pub visible: bool,
+	#[serde(rename = "layerType")]
 	pub layer_type: LayerDataTypeDiscriminant,
+	#[serde(rename = "layerMetadata")]
 	pub layer_metadata: LayerMetadata,
 	pub path: Vec<LayerId>,
 	pub thumbnail: String,

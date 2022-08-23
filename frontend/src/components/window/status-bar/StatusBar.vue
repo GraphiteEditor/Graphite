@@ -70,7 +70,7 @@ export default defineComponent({
 	},
 	mounted() {
 		this.editor.subscriptions.subscribeJsMessage(UpdateInputHints, (updateInputHints) => {
-			this.hintData = updateInputHints.hint_data;
+			this.hintData = updateInputHints.hintData;
 		});
 	},
 	components: {

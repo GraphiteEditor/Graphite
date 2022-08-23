@@ -94,7 +94,7 @@ const WidgetSection = defineComponent({
 	}),
 	methods: {
 		updateLayout(widgetId: bigint, value: unknown) {
-			this.editor.instance.update_layout(this.layoutTarget, widgetId, value);
+			this.editor.instance.updateLayout(this.layoutTarget, widgetId, value);
 		},
 		layoutGroupType(layoutGroup: LayoutGroup): unknown {
 			if (isWidgetRow(layoutGroup)) return WidgetRow;

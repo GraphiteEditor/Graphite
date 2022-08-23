@@ -8,8 +8,8 @@
 						:tabCloseButtons="true"
 						:tabMinWidths="true"
 						:tabLabels="portfolio.state.documents.map((doc) => doc.displayName)"
-						:clickAction="(tabIndex) => editor.instance.select_document(portfolio.state.documents[tabIndex].id)"
-						:closeAction="(tabIndex) => editor.instance.close_document_with_confirmation(portfolio.state.documents[tabIndex].id)"
+						:clickAction="(tabIndex) => editor.instance.selectDocument(portfolio.state.documents[tabIndex].id)"
+						:closeAction="(tabIndex) => editor.instance.closeDocumentWithConfirmation(portfolio.state.documents[tabIndex].id)"
 						:tabActiveIndex="portfolio.state.activeDocumentIndex"
 						ref="documentsPanel"
 					/>

@@ -23,16 +23,16 @@
 					<div class="indent" :style="{ marginLeft: layerIndent(listing.entry) }"></div>
 
 					<button
-						v-if="listing.entry.layer_type === 'Folder'"
+						v-if="listing.entry.layerType === 'Folder'"
 						class="expand-arrow"
-						:class="{ expanded: listing.entry.layer_metadata.expanded }"
+						:class="{ expanded: listing.entry.layerMetadata.expanded }"
 						@click.stop="handleExpandArrowClick(listing.entry.path)"
 					></button>
 					<LayoutRow
 						class="layer"
-						:class="{ selected: listing.entry.layer_metadata.selected }"
+						:class="{ selected: listing.entry.layerMetadata.selected }"
 						:data-index="index"
-						:title="`${listing.entry.name}${devMode ? '\nLayer Path: ' + listing.entry.path.join(' / ') : ''}` || null"
+						:title="listing.entry.tooltip"
 						:draggable="draggable"
 						@dragstart="(e) => draggable && dragStart(e, listing)"
 						@click.exact="(e) => selectLayer(false, false, false, listing, e)"
@@ -45,17 +45,17 @@
 						@click.alt="(e) => e.stopPropagation()"
 					>
 						<LayoutRow class="layer-type-icon">
-							<IconLabel v-if="listing.entry.layer_type === 'Folder'" :icon="'NodeFolder'" :iconStyle="'Node'" title="Folder" />
-							<IconLabel v-else-if="listing.entry.layer_type === 'Image'" :icon="'NodeImage'" :iconStyle="'Node'" title="Image" />
-							<IconLabel v-else-if="listing.entry.layer_type === 'Shape'" :icon="'NodeShape'" :iconStyle="'Node'" title="Shape" />
-							<IconLabel v-else-if="listing.entry.layer_type === 'Text'" :icon="'NodeText'" :iconStyle="'Node'" title="Path" />
+							<IconLabel v-if="listing.entry.layerType === 'Folder'" :icon="'NodeFolder'" :iconStyle="'Node'" title="Folder" />
+							<IconLabel v-else-if="listing.entry.layerType === 'Image'" :icon="'NodeImage'" :iconStyle="'Node'" title="Image" />
+							<IconLabel v-else-if="listing.entry.layerType === 'Shape'" :icon="'NodeShape'" :iconStyle="'Node'" title="Shape" />
+							<IconLabel v-else-if="listing.entry.layerType === 'Text'" :icon="'NodeText'" :iconStyle="'Node'" title="Path" />
 						</LayoutRow>
 						<LayoutRow class="layer-name" @dblclick="() => onEditLayerName(listing)">
 							<input
 								data-text-input
 								type="text"
 								:value="listing.entry.name"
-								:placeholder="listing.entry.layer_type"
+								:placeholder="listing.entry.layerType"
 								:disabled="!listing.editingName"
 								@blur="() => onEditLayerNameDeselect(listing)"
 								@keydown.esc="onEditLayerNameDeselect(listing)"
@@ -292,7 +292,6 @@ export default defineComponent({
 			// Layer data
 			layerCache: new Map() as Map<string, LayerPanelEntry>, // TODO: replace with BigUint64Array as index
 			layers: [] as LayerListingInfo[],
-			devMode: process.env.NODE_ENV === "development",
 
 			// Interactive dragging
 			draggable: true,
@@ -313,10 +312,10 @@ export default defineComponent({
 			return `${height}px`;
 		},
 		toggleLayerVisibility(path: BigUint64Array) {
-			this.editor.instance.toggle_layer_visibility(path);
+			this.editor.instance.toggleLayerVisibility(path);
 		},
 		handleExpandArrowClick(path: BigUint64Array) {
-			this.editor.instance.toggle_layer_expansion(path);
+			this.editor.instance.toggleLayerExpansion(path);
 		},
 		async onEditLayerName(listing: LayerListingInfo) {
 			if (listing.editingName) return;
@@ -337,7 +336,7 @@ export default defineComponent({
 
 			const name = (inputElement as HTMLInputElement).value;
 			listing.editingName = false;
-			this.editor.instance.set_layer_name(listing.entry.path, name);
+			this.editor.instance.setLayerName(listing.entry.path, name);
 		},
 		async onEditLayerNameDeselect(listing: LayerListingInfo) {
 			this.draggable = true;
@@ -354,14 +353,14 @@ export default defineComponent({
 			// Pressing the Ctrl key on a Mac, or the Cmd key on another platform, is a violation of the `.exact` qualifier so we filter it out here
 			const opposite = platformIsMac() ? ctrl : cmd;
 
-			if (!opposite) this.editor.instance.select_layer(listing.entry.path, ctrlOrCmd, shift);
+			if (!opposite) this.editor.instance.selectLayer(listing.entry.path, ctrlOrCmd, shift);
 
 			// We always want to stop propagation so the click event doesn't pass through the layer and cause a deselection by clicking the layer panel background
 			// This is also why we cover the remaining cases not considered by the `.exact` qualifier, in the last two bindings on the layer element, with a `stopPropagation()` call
 			event.stopPropagation();
 		},
 		async deselectAllLayers() {
-			this.editor.instance.deselect_all_layers();
+			this.editor.instance.deselectAllLayers();
 		},
 		calculateDragIndex(tree: HTMLElement, clientY: number): DraggingData {
 			const treeChildren = tree.children;
@@ -405,9 +404,9 @@ export default defineComponent({
 				}
 				// Inserting below current row
 				else if (distance > -closest && distance > -RANGE_TO_INSERT_WITHIN_BOTTOM_FOLDER_NOT_ROOT && distance < 0) {
-					insertFolder = layer.layer_type === "Folder" ? layer.path : layer.path.slice(0, layer.path.length - 1);
-					insertIndex = layer.layer_type === "Folder" ? 0 : folderIndex + 1;
-					highlightFolder = layer.layer_type === "Folder";
+					insertFolder = layer.layerType === "Folder" ? layer.path : layer.path.slice(0, layer.path.length - 1);
+					insertIndex = layer.layerType === "Folder" ? 0 : folderIndex + 1;
+					highlightFolder = layer.layerType === "Folder";
 					closest = -distance;
 					markerHeight = index === treeChildren.length - 1 ? rect.bottom - INSERT_MARK_OFFSET : rect.bottom;
 				}
@@ -426,7 +425,7 @@ export default defineComponent({
 		},
 		async dragStart(event: DragEvent, listing: LayerListingInfo) {
 			const layer = listing.entry;
-			if (!layer.layer_metadata.selected) this.selectLayer(event.ctrlKey, event.metaKey, event.shiftKey, listing, event);
+			if (!layer.layerMetadata.selected) this.selectLayer(event.ctrlKey, event.metaKey, event.shiftKey, listing, event);
 
 			// Set style of cursor for drag
 			if (event.dataTransfer) {
@@ -448,7 +447,7 @@ export default defineComponent({
 			if (this.draggingData) {
 				const { insertFolder, insertIndex } = this.draggingData;
 
-				this.editor.instance.move_layer_in_tree(insertFolder, insertIndex);
+				this.editor.instance.moveLayerInTree(insertFolder, insertIndex);
 
 				this.draggingData = undefined;
 			}

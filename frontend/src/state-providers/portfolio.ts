@@ -15,21 +15,21 @@ export function createPortfolioState(editor: Editor) {
 
 	// Set up message subscriptions on creation
 	editor.subscriptions.subscribeJsMessage(UpdateOpenDocumentsList, (updateOpenDocumentList) => {
-		state.documents = updateOpenDocumentList.open_documents;
+		state.documents = updateOpenDocumentList.openDocuments;
 	});
 	editor.subscriptions.subscribeJsMessage(UpdateActiveDocument, (updateActiveDocument) => {
 		// Assume we receive a correct document id
-		const activeId = state.documents.findIndex((doc) => doc.id === updateActiveDocument.document_id);
+		const activeId = state.documents.findIndex((doc) => doc.id === updateActiveDocument.documentId);
 		state.activeDocumentIndex = activeId;
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerOpenDocument, async () => {
-		const extension = editor.instance.file_save_suffix();
+		const extension = editor.instance.fileSaveSuffix();
 		const data = await upload(extension, "text");
-		editor.instance.open_document_file(data.filename, data.content);
+		editor.instance.openDocumentFile(data.filename, data.content);
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerImport, async () => {
 		const data = await upload("image/*", "data");
-		editor.instance.paste_image(data.type, Uint8Array.from(data.content));
+		editor.instance.pasteImage(data.type, Uint8Array.from(data.content));
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerFileDownload, (triggerFileDownload) => {
 		download(triggerFileDownload.name, triggerFileDownload.document);
