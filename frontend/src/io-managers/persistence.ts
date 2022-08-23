@@ -36,7 +36,7 @@ export async function createPersistenceManager(editor: Editor, portfolio: Portfo
 		storeDocumentOrder();
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerIndexedDbRemoveDocument, async (removeAutoSaveDocument) => {
-		removeDocument(removeAutoSaveDocument.document_id);
+		removeDocument(removeAutoSaveDocument.documentId);
 	});
 
 	// Open the IndexedDB database connection and save it to this variable, which is a promise that resolves once the connection is open
@@ -61,7 +61,7 @@ export async function createPersistenceManager(editor: Editor, portfolio: Portfo
 				Error on opening IndexDB:
 				${dbOpenRequest.error}
 				`;
-			editor.instance.error_dialog("Document auto-save doesn't work in this browser", errorText);
+			editor.instance.errorDialog("Document auto-save doesn't work in this browser", errorText);
 		};
 
 		dbOpenRequest.onsuccess = (): void => {
@@ -82,10 +82,10 @@ export async function createPersistenceManager(editor: Editor, portfolio: Portfo
 					.map((id) => previouslySavedDocuments.find((autoSave) => autoSave.details.id === id))
 					.filter((x) => x !== undefined) as TriggerIndexedDbWriteDocument[];
 
-				const currentDocumentVersion = editor.instance.graphite_document_version();
+				const currentDocumentVersion = editor.instance.graphiteDocumentVersion();
 				orderedSavedDocuments.forEach((doc: TriggerIndexedDbWriteDocument) => {
 					if (doc.version === currentDocumentVersion) {
-						editor.instance.open_auto_saved_document(BigInt(doc.details.id), doc.details.name, doc.details.is_saved, doc.document);
+						editor.instance.openAutoSavedDocument(BigInt(doc.details.id), doc.details.name, doc.details.isSaved, doc.document);
 					} else {
 						removeDocument(doc.details.id);
 					}

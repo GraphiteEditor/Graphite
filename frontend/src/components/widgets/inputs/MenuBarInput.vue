@@ -24,7 +24,7 @@
 				:direction="'Bottom'"
 				:minWidth="240"
 				:drawIcon="true"
-				:defaultAction="() => editor.instance.request_coming_soon_dialog()"
+				:defaultAction="() => editor.instance.requestComingSoonDialog()"
 				:ref="(ref: typeof MenuList) => ref && (entry.ref = ref)"
 			/>
 		</div>
@@ -111,7 +111,7 @@ export default defineComponent({
 					group.map((entry) => ({
 						...entry,
 						children: entry.children ? menuEntryToFrontendMenuEntry(entry.children) : undefined,
-						action: (): void => this.editor.instance.update_layout(updateMenuBarLayout.layout_target, entry.action.widgetId, undefined),
+						action: (): void => this.editor.instance.updateLayout(updateMenuBarLayout.layoutTarget, entry.action.widgetId, undefined),
 						shortcutRequiresLock: entry.shortcut ? shortcutRequiresLock(entry.shortcut.keys) : undefined,
 					}))
 				);

@@ -122,7 +122,7 @@ export default defineComponent({
 	},
 	methods: {
 		updateLayout(widgetId: bigint, value: unknown) {
-			this.editor.instance.update_layout(this.layoutTarget, widgetId, value);
+			this.editor.instance.updateLayout(this.layoutTarget, widgetId, value);
 		},
 		withoutValue(props: Record<string, unknown>): Record<string, unknown> {
 			const { value: _, ...rest } = props;

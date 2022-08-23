@@ -63,9 +63,6 @@ pub const SCROLLBAR_SPACING: f64 = 0.1;
 pub const ASYMPTOTIC_EFFECT: f64 = 0.5;
 pub const SCALE_EFFECT: f64 = 0.5;
 
-pub const DEFAULT_DOCUMENT_NAME: &str = "Untitled Document";
-pub const FILE_SAVE_SUFFIX: &str = ".graphite";
-
 // Colors
 pub const COLOR_ACCENT: Color = Color::from_unsafe(0x00 as f32 / 255., 0xA8 as f32 / 255., 0xFF as f32 / 255.);
 
@@ -74,5 +71,8 @@ pub const DEFAULT_FONT_FAMILY: &str = "Merriweather";
 pub const DEFAULT_FONT_STYLE: &str = "Normal (400)";
 
 // Document
-pub const GRAPHITE_DOCUMENT_VERSION: &str = "0.0.11"; // Remember to save a simple document and replace the test file `graphite-test-document.graphite`
+pub const GRAPHITE_DOCUMENT_VERSION: &str = "0.0.12"; // Remember to save a simple document and replace the test file `graphite-test-document.graphite`
+pub const DEFAULT_DOCUMENT_NAME: &str = "Untitled Document";
+pub const FILE_SAVE_SUFFIX: &str = ".graphite";
+
 pub const VIEWPORT_ZOOM_TO_FIT_PADDING_SCALE_FACTOR: f32 = 1.05;

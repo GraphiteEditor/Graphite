@@ -48,12 +48,12 @@ export function createFontsState(editor: Editor) {
 
 	// Subscribe to process backend events
 	editor.subscriptions.subscribeJsMessage(TriggerFontLoad, async (triggerFontLoad) => {
-		const url = await getFontFileUrl(triggerFontLoad.font.font_family, triggerFontLoad.font.font_style);
+		const url = await getFontFileUrl(triggerFontLoad.font.fontFamily, triggerFontLoad.font.fontStyle);
 		if (url) {
 			const response = await (await fetch(url)).arrayBuffer();
-			editor.instance.on_font_load(triggerFontLoad.font.font_family, triggerFontLoad.font.font_style, url, new Uint8Array(response), triggerFontLoad.is_default);
+			editor.instance.onFontLoad(triggerFontLoad.font.fontFamily, triggerFontLoad.font.fontStyle, url, new Uint8Array(response), triggerFontLoad.isDefault);
 		} else {
-			editor.instance.error_dialog("Failed to load font", `The font ${triggerFontLoad.font.font_family} with style ${triggerFontLoad.font.font_style} does not exist`);
+			editor.instance.errorDialog("Failed to load font", `The font ${triggerFontLoad.font.fontFamily} with style ${triggerFontLoad.font.fontStyle} does not exist`);
 		}
 	});
 

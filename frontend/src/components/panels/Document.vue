@@ -256,27 +256,27 @@ export default defineComponent({
 					const buffer = await file.arrayBuffer();
 					const u8Array = new Uint8Array(buffer);
 
-					this.editor.instance.paste_image(file.type, u8Array, e.clientX, e.clientY);
+					this.editor.instance.pasteImage(file.type, u8Array, e.clientX, e.clientY);
 				}
 			});
 		},
 		translateCanvasX(newValue: number) {
 			const delta = newValue - this.scrollbarPos.x;
 			this.scrollbarPos.x = newValue;
-			this.editor.instance.translate_canvas(-delta * this.scrollbarMultiplier.x, 0);
+			this.editor.instance.translateCanvas(-delta * this.scrollbarMultiplier.x, 0);
 		},
 		translateCanvasY(newValue: number) {
 			const delta = newValue - this.scrollbarPos.y;
 			this.scrollbarPos.y = newValue;
-			this.editor.instance.translate_canvas(0, -delta * this.scrollbarMultiplier.y);
+			this.editor.instance.translateCanvas(0, -delta * this.scrollbarMultiplier.y);
 		},
 		pageX(delta: number) {
 			const move = delta < 0 ? 1 : -1;
-			this.editor.instance.translate_canvas_by_fraction(move, 0);
+			this.editor.instance.translateCanvasByFraction(move, 0);
 		},
 		pageY(delta: number) {
 			const move = delta < 0 ? 1 : -1;
-			this.editor.instance.translate_canvas_by_fraction(0, move);
+			this.editor.instance.translateCanvasByFraction(0, move);
 		},
 		canvasPointerDown(e: PointerEvent) {
 			const onEditbox = e.target instanceof HTMLDivElement && e.target.contentEditable;
@@ -341,7 +341,7 @@ export default defineComponent({
 		triggerTextCommit() {
 			if (!this.textInput) return;
 			const textCleaned = textInputCleanup(this.textInput.innerText);
-			this.editor.instance.on_change_text(textCleaned);
+			this.editor.instance.onChangeText(textCleaned);
 		},
 		displayEditableTextbox(displayEditableTextbox: DisplayEditableTextbox) {
 			this.textInput = document.createElement("DIV") as HTMLDivElement;
@@ -350,14 +350,14 @@ export default defineComponent({
 			else this.textInput.textContent = `${displayEditableTextbox.text}\n`;
 
 			this.textInput.contentEditable = "true";
-			this.textInput.style.width = displayEditableTextbox.line_width ? `${displayEditableTextbox.line_width}px` : "max-content";
+			this.textInput.style.width = displayEditableTextbox.lineWidth ? `${displayEditableTextbox.lineWidth}px` : "max-content";
 			this.textInput.style.height = "auto";
-			this.textInput.style.fontSize = `${displayEditableTextbox.font_size}px`;
+			this.textInput.style.fontSize = `${displayEditableTextbox.fontSize}px`;
 			this.textInput.style.color = displayEditableTextbox.color.toRgbaCSS();
 
 			this.textInput.oninput = (): void => {
 				if (!this.textInput) return;
-				this.editor.instance.update_bounds(textInputCleanup(this.textInput.innerText));
+				this.editor.instance.updateBounds(textInputCleanup(this.textInput.innerText));
 			};
 		},
 		displayRemoveEditableTextbox() {

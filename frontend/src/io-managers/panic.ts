@@ -13,7 +13,7 @@ export function createPanicManager(editor: Editor, dialogState: DialogState): vo
 		// eslint-disable-next-line @typescript-eslint/no-explicit-any
 		(Error as any).stackTraceLimit = Infinity;
 		const stackTrace = new Error().stack || "";
-		const panicDetails = `${displayDialogPanic.panic_info}${stackTrace ? `\n\n${stackTrace}` : ""}`;
+		const panicDetails = `${displayDialogPanic.panicInfo}${stackTrace ? `\n\n${stackTrace}` : ""}`;
 
 		// eslint-disable-next-line no-console
 		console.error(panicDetails);
@@ -29,8 +29,7 @@ function preparePanicDialog(header: string, details: string, panicDetails: strin
 			{ rowWidgets: [new Widget({ kind: "TextLabel", value: header, bold: true, italic: false, tableAlign: false, multiline: false }, 0n)] },
 			{ rowWidgets: [new Widget({ kind: "TextLabel", value: details, bold: false, italic: false, tableAlign: false, multiline: true }, 1n)] },
 		],
-		// eslint-disable-next-line camelcase
-		layout_target: null,
+		layoutTarget: null,
 	};
 
 	const reloadButton: TextButtonWidget = {

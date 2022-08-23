@@ -3,7 +3,7 @@ title = "Features and roadmap"
 template = "page.html"
 +++
 
-This page is a work in progress. Below is an incomplete list of planned features in no particular order. Many are long-term aspirations. In the coming days, this will be sequenced into a roadmap and expanded with further details.
+This page is a work in progress. Below is an incomplete list of planned features in no particular order. Many are long-term aspirations. Soon, this will be sequenced into a roadmap and expanded with further details.
 
 Short-term feature development at a more granular level is tracked in the [Task Board](https://github.com/GraphiteEditor/Graphite/projects/1) on GitHub. Check that out to see what's coming down the pipeline during monthly sprints.
 
