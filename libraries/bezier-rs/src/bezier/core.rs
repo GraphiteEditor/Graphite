@@ -1,4 +1,5 @@
 use super::*;
+use crate::ToSVGOptions;
 
 /// Functionality relating to core `Bezier` operations, such as constructors and `abs_diff_eq`.
 impl Bezier {
@@ -142,13 +143,34 @@ impl Bezier {
 		}
 	}
 
-	/// Convert `Bezier` to SVG `path`.
-	pub fn to_svg(&self) -> String {
+	/// Returns an SVG representation of the `Bezier`.
+	pub fn to_svg(&self, options: ToSVGOptions) -> String {
+		let anchor_arguments = options.formatted_anchor_arguments();
+		let anchor_circles = format!(
+			r#"<circle cx="{}" cy="{}" {}/><circle cx="{}" cy="{}" {}/>"#,
+			self.start.x, self.start.y, anchor_arguments, self.end.x, self.end.y, anchor_arguments
+		);
+
+		let handle_point_arguments = options.formatted_handle_point_arguments();
+		let handle_circles = match self.handles {
+			BezierHandles::Linear => None,
+			BezierHandles::Quadratic { handle } => Some(format!(r#"<circle cx="{}" cy="{}" {}/>"#, handle.x, handle.y, handle_point_arguments)),
+			BezierHandles::Cubic { handle_start, handle_end } => Some(format!(
+				r#"<circle cx="{}" cy="{}" {}/><circle cx="{}" cy="{}" {}/>"#,
+				handle_start.x, handle_start.y, handle_point_arguments, handle_end.x, handle_end.y, handle_point_arguments
+			)),
+		};
+
 		format!(
-			r#"<path d="{SVG_ARG_MOVE}{} {} {}" stroke="black" fill="none"/>"#,
+			r#"<path d="{SVG_ARG_MOVE}{} {} {}" {}/><path d="{}" {}/>{}{}"#,
 			self.start.x,
 			self.start.y,
-			self.svg_curve_argument()
+			self.svg_curve_argument(),
+			options.formatted_curve_arguments(),
+			self.svg_handle_line_argument().unwrap_or_else(|| "".to_string()),
+			options.formatted_handle_line_arguments(),
+			anchor_circles,
+			handle_circles.unwrap_or_else(|| "".to_string()),
 		)
 	}
 
