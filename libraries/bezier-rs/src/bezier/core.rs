@@ -147,17 +147,17 @@ impl Bezier {
 	pub fn to_svg(&self, options: ToSVGOptions) -> String {
 		let anchor_arguments = options.formatted_anchor_arguments();
 		let anchor_circles = format!(
-			r#"<circle cx="{}" cy="{}" {}/><circle cx="{}" cy="{}" {}/>"#,
-			self.start.x, self.start.y, anchor_arguments, self.end.x, self.end.y, anchor_arguments
+			r#"<circle cx="{}" cy="{}" {anchor_arguments}/><circle cx="{}" cy="{}" {anchor_arguments}/>"#,
+			self.start.x, self.start.y, self.end.x, self.end.y
 		);
 
 		let handle_point_arguments = options.formatted_handle_point_arguments();
 		let handle_circles = match self.handles {
 			BezierHandles::Linear => None,
-			BezierHandles::Quadratic { handle } => Some(format!(r#"<circle cx="{}" cy="{}" {}/>"#, handle.x, handle.y, handle_point_arguments)),
+			BezierHandles::Quadratic { handle } => Some(format!(r#"<circle cx="{}" cy="{}" {handle_point_arguments}/>"#, handle.x, handle.y)),
 			BezierHandles::Cubic { handle_start, handle_end } => Some(format!(
-				r#"<circle cx="{}" cy="{}" {}/><circle cx="{}" cy="{}" {}/>"#,
-				handle_start.x, handle_start.y, handle_point_arguments, handle_end.x, handle_end.y, handle_point_arguments
+				r#"<circle cx="{}" cy="{}" {handle_point_arguments}/><circle cx="{}" cy="{}" {handle_point_arguments}/>"#,
+				handle_start.x, handle_start.y, handle_end.x, handle_end.y
 			)),
 		};
 

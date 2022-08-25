@@ -107,9 +107,6 @@ impl WasmBezier {
 		to_js_value(points)
 	}
 
-	// pub fn to_svg(&self) -> String {
-	// 	self.0.to_svg()
-	// }
 	pub fn to_svg(&self) -> String {
 		format!("{}{}{}", SVG_OPEN_TAG, self.0.to_svg(ToSVGOptions::default()), SVG_CLOSE_TAG)
 	}
