@@ -61,9 +61,9 @@
 </style>
 
 <script lang="ts">
-import { defineComponent, PropType } from "vue";
+import { defineComponent, type PropType } from "vue";
 
-import { IconName, IconSize } from "@/utility-functions/icons";
+import { type IconName, type IconSize } from "@/utility-functions/icons";
 
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
 

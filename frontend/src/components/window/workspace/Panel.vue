@@ -209,11 +209,11 @@
 </style>
 
 <script lang="ts">
-import { defineComponent, PropType } from "vue";
+import { defineComponent, type PropType } from "vue";
 
 import { platformIsMac } from "@/utility-functions/platform";
 
-import { KeysGroup, Key } from "@/wasm-communication/messages";
+import { type KeysGroup, type Key } from "@/wasm-communication/messages";
 
 import LayoutCol from "@/components/layout/LayoutCol.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
@@ -228,7 +228,7 @@ import IconLabel from "@/components/widgets/labels/IconLabel.vue";
 import TextLabel from "@/components/widgets/labels/TextLabel.vue";
 import UserInputLabel from "@/components/widgets/labels/UserInputLabel.vue";
 
-const panelComponents = {
+const PANEL_COMPONENTS = {
 	Document,
 	IconButton,
 	LayerTree,
@@ -237,7 +237,7 @@ const panelComponents = {
 	Properties,
 	TextButton,
 };
-type PanelTypes = keyof typeof panelComponents;
+type PanelTypes = keyof typeof PANEL_COMPONENTS;
 
 export default defineComponent({
 	inject: ["editor"],
@@ -269,12 +269,12 @@ export default defineComponent({
 		},
 	},
 	components: {
+		IconLabel,
 		LayoutCol,
 		LayoutRow,
-		IconLabel,
 		TextLabel,
 		UserInputLabel,
-		...panelComponents,
+		...PANEL_COMPONENTS,
 	},
 });
 </script>

@@ -73,9 +73,9 @@
 </style>
 
 <script lang="ts">
-import { defineComponent, PropType } from "vue";
+import { defineComponent, type PropType } from "vue";
 
-import { SeparatorDirection, SeparatorType } from "@/wasm-communication/messages";
+import { type SeparatorDirection, type SeparatorType } from "@/wasm-communication/messages";
 
 export default defineComponent({
 	props: {

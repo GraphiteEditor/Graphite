@@ -2,8 +2,16 @@
 import { reactive, readonly } from "vue";
 
 import { download, downloadBlob, upload } from "@/utility-functions/files";
-import { Editor } from "@/wasm-communication/editor";
-import { TriggerFileDownload, TriggerRasterDownload, FrontendDocumentDetails, TriggerOpenDocument, TriggerImport, UpdateActiveDocument, UpdateOpenDocumentsList } from "@/wasm-communication/messages";
+import { type Editor } from "@/wasm-communication/editor";
+import {
+	type FrontendDocumentDetails,
+	TriggerFileDownload,
+	TriggerImport,
+	TriggerOpenDocument,
+	TriggerRasterDownload,
+	UpdateActiveDocument,
+	UpdateOpenDocumentsList,
+} from "@/wasm-communication/messages";
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 export function createPortfolioState(editor: Editor) {

@@ -1,4 +1,4 @@
-import { HSVA, RGBA } from "@/wasm-communication/messages";
+import { type HSVA, type RGBA } from "@/wasm-communication/messages";
 
 export function hsvaToRgba(hsva: HSVA): RGBA {
 	const { h, s, v, a } = hsva;

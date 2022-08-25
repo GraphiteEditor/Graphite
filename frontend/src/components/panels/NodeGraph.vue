@@ -476,9 +476,9 @@ export default defineComponent({
 		this.createWirePath(outputPort2, inputPort2, true, false);
 	},
 	components: {
-		LayoutRow,
-		LayoutCol,
 		IconLabel,
+		LayoutCol,
+		LayoutRow,
 		TextLabel,
 	},
 });

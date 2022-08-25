@@ -75,12 +75,6 @@ const MIN_PANEL_SIZE = 100;
 
 export default defineComponent({
 	inject: ["workspace", "portfolio", "dialog", "editor"],
-	components: {
-		LayoutRow,
-		LayoutCol,
-		Panel,
-		DialogModal,
-	},
 	computed: {
 		activeDocumentIndex() {
 			return this.portfolio.state.activeDocumentIndex;
@@ -141,6 +135,12 @@ export default defineComponent({
 			const newActiveTab = documentsPanel.$el.querySelectorAll("[data-tab-bar] [data-tab]")[newIndex];
 			newActiveTab.scrollIntoView();
 		},
+	},
+	components: {
+		DialogModal,
+		LayoutCol,
+		LayoutRow,
+		Panel,
 	},
 });
 </script>

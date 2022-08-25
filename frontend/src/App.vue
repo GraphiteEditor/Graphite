@@ -224,14 +224,14 @@ import { createInputManager } from "@/io-managers/input";
 import { createLocalizationManager } from "@/io-managers/localization";
 import { createPanicManager } from "@/io-managers/panic";
 import { createPersistenceManager } from "@/io-managers/persistence";
-import { createDialogState, DialogState } from "@/state-providers/dialog";
-import { createFontsState, FontsState } from "@/state-providers/fonts";
-import { createFullscreenState, FullscreenState } from "@/state-providers/fullscreen";
-import { createPanelsState, PanelsState } from "@/state-providers/panels";
-import { createPortfolioState, PortfolioState } from "@/state-providers/portfolio";
-import { createWorkspaceState, WorkspaceState } from "@/state-providers/workspace";
+import { createDialogState, type DialogState } from "@/state-providers/dialog";
+import { createFontsState, type FontsState } from "@/state-providers/fonts";
+import { createFullscreenState, type FullscreenState } from "@/state-providers/fullscreen";
+import { createPanelsState, type PanelsState } from "@/state-providers/panels";
+import { createPortfolioState, type PortfolioState } from "@/state-providers/portfolio";
+import { createWorkspaceState, type WorkspaceState } from "@/state-providers/workspace";
 import { operatingSystem } from "@/utility-functions/platform";
-import { createEditor, Editor } from "@/wasm-communication/editor";
+import { createEditor, type Editor } from "@/wasm-communication/editor";
 
 import MainWindow from "@/components/window/MainWindow.vue";
 

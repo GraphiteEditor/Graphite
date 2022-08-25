@@ -1,6 +1,6 @@
-import { PortfolioState } from "@/state-providers/portfolio";
+import { type PortfolioState } from "@/state-providers/portfolio";
 import { stripIndents } from "@/utility-functions/strip-indents";
-import { Editor } from "@/wasm-communication/editor";
+import { type Editor } from "@/wasm-communication/editor";
 import { TriggerIndexedDbWriteDocument, TriggerIndexedDbRemoveDocument } from "@/wasm-communication/messages";
 
 const GRAPHITE_INDEXED_DB_VERSION = 2;

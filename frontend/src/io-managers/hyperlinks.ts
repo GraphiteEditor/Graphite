@@ -1,4 +1,4 @@
-import { Editor } from "@/wasm-communication/editor";
+import { type Editor } from "@/wasm-communication/editor";
 import { TriggerVisitLink } from "@/wasm-communication/messages";
 
 export function createHyperlinkManager(editor: Editor): void {

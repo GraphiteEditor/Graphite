@@ -225,15 +225,15 @@ import { defineComponent, nextTick } from "vue";
 
 import { textInputCleanup } from "@/utility-functions/keyboard-entry";
 import {
-	UpdateDocumentModeLayout,
-	UpdateToolOptionsLayout,
-	UpdateToolShelfLayout,
-	UpdateWorkingColorsLayout,
 	defaultWidgetLayout,
-	UpdateDocumentBarLayout,
-	DisplayEditableTextbox,
-	MouseCursorIcon,
-	XY,
+	type DisplayEditableTextbox,
+	type MouseCursorIcon,
+	type UpdateDocumentBarLayout,
+	type UpdateDocumentModeLayout,
+	type UpdateToolOptionsLayout,
+	type UpdateToolShelfLayout,
+	type UpdateWorkingColorsLayout,
+	type XY,
 } from "@/wasm-communication/messages";
 
 import LayoutCol from "@/components/layout/LayoutCol.vue";
@@ -437,10 +437,10 @@ export default defineComponent({
 		};
 	},
 	components: {
-		LayoutRow,
-		LayoutCol,
-		PersistentScrollbar,
 		CanvasRuler,
+		LayoutCol,
+		LayoutRow,
+		PersistentScrollbar,
 		WidgetLayout,
 	},
 });

@@ -175,7 +175,7 @@
 </style>
 
 <script lang="ts">
-import { defineComponent, nextTick, PropType } from "vue";
+import { defineComponent, nextTick, type PropType } from "vue";
 
 import LayoutCol from "@/components/layout/LayoutCol.vue";
 

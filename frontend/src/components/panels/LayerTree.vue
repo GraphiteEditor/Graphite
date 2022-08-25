@@ -268,7 +268,7 @@
 import { defineComponent, nextTick } from "vue";
 
 import { platformIsMac } from "@/utility-functions/platform";
-import { defaultWidgetLayout, UpdateDocumentLayerTreeStructure, UpdateDocumentLayerDetails, UpdateLayerTreeOptionsLayout, LayerPanelEntry } from "@/wasm-communication/messages";
+import { type LayerPanelEntry, defaultWidgetLayout, UpdateDocumentLayerDetails, UpdateDocumentLayerTreeStructure, UpdateLayerTreeOptionsLayout } from "@/wasm-communication/messages";
 
 import LayoutCol from "@/components/layout/LayoutCol.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
@@ -507,11 +507,11 @@ export default defineComponent({
 		});
 	},
 	components: {
-		LayoutRow,
-		LayoutCol,
-		WidgetLayout,
 		IconButton,
 		IconLabel,
+		LayoutCol,
+		LayoutRow,
+		WidgetLayout,
 	},
 });
 </script>

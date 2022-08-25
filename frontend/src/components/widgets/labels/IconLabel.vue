@@ -33,9 +33,9 @@
 </style>
 
 <script lang="ts">
-import { defineComponent, PropType } from "vue";
+import { defineComponent, type PropType } from "vue";
 
-import { IconName, IconStyle, icons, iconComponents } from "@/utility-functions/icons";
+import { type IconName, type IconStyle, ICONS, ICON_COMPONENTS } from "@/utility-functions/icons";
 
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 
@@ -46,7 +46,7 @@ export default defineComponent({
 	},
 	computed: {
 		iconSizeClass(): string {
-			return `size-${icons[this.icon].size}`;
+			return `size-${ICONS[this.icon].size}`;
 		},
 		iconStyleClass(): string {
 			if (!this.iconStyle || this.iconStyle === "Normal") return "";
@@ -55,7 +55,7 @@ export default defineComponent({
 	},
 	components: {
 		LayoutRow,
-		...iconComponents,
+		...ICON_COMPONENTS,
 	},
 });
 </script>

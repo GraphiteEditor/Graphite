@@ -66,10 +66,10 @@
 </style>
 
 <script lang="ts">
-import { defineComponent, PropType } from "vue";
+import { defineComponent, type PropType } from "vue";
 
 import { rgbaToDecimalRgba } from "@/utility-functions/color";
-import { type RGBA, Color } from "@/wasm-communication/messages";
+import { type RGBA, type Color } from "@/wasm-communication/messages";
 
 import ColorPicker from "@/components/floating-menus/ColorPicker.vue";
 import FloatingMenu from "@/components/floating-menus/FloatingMenu.vue";
@@ -78,12 +78,6 @@ import LayoutRow from "@/components/layout/LayoutRow.vue";
 
 export default defineComponent({
 	inject: ["editor"],
-	components: {
-		FloatingMenu,
-		ColorPicker,
-		LayoutRow,
-		LayoutCol,
-	},
 	props: {
 		primary: { type: Object as PropType<Color>, required: true },
 		secondary: { type: Object as PropType<Color>, required: true },
@@ -111,6 +105,12 @@ export default defineComponent({
 			const newColor = rgbaToDecimalRgba(color);
 			this.editor.instance.updateSecondaryColor(newColor.r, newColor.g, newColor.b, newColor.a);
 		},
+	},
+	components: {
+		ColorPicker,
+		FloatingMenu,
+		LayoutCol,
+		LayoutRow,
 	},
 });
 </script>

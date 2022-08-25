@@ -77,14 +77,6 @@ import WidgetLayout from "@/components/widgets/WidgetLayout.vue";
 
 export default defineComponent({
 	inject: ["dialog"],
-	components: {
-		LayoutRow,
-		LayoutCol,
-		FloatingMenu,
-		IconLabel,
-		TextButton,
-		WidgetLayout,
-	},
 	methods: {
 		dismiss() {
 			this.dialog.dismissDialog();
@@ -95,6 +87,14 @@ export default defineComponent({
 		const element = this.$el as Element | null;
 		const emphasizedOrFirstButton = (element?.querySelector("[data-emphasized]") as HTMLButtonElement | null) || element?.querySelector("[data-text-button]");
 		emphasizedOrFirstButton?.focus();
+	},
+	components: {
+		FloatingMenu,
+		IconLabel,
+		LayoutCol,
+		LayoutRow,
+		TextButton,
+		WidgetLayout,
 	},
 });
 </script>

@@ -1,9 +1,9 @@
 import { reactive, readonly } from "vue";
 
-import { TextButtonWidget } from "@/components/widgets/buttons/TextButton";
-import { IconName } from "@/utility-functions/icons";
-import { Editor } from "@/wasm-communication/editor";
-import { defaultWidgetLayout, DisplayDialog, DisplayDialogDismiss, UpdateDialogDetails, WidgetLayout } from "@/wasm-communication/messages";
+import { type TextButtonWidget } from "@/components/widgets/buttons/TextButton";
+import { type IconName } from "@/utility-functions/icons";
+import { type Editor } from "@/wasm-communication/editor";
+import { defaultWidgetLayout, DisplayDialog, DisplayDialogDismiss, UpdateDialogDetails, type WidgetLayout } from "@/wasm-communication/messages";
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 export function createDialogState(editor: Editor) {

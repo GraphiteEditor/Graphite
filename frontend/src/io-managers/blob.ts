@@ -1,4 +1,4 @@
-import { Editor } from "@/wasm-communication/editor";
+import { type Editor } from "@/wasm-communication/editor";
 import { UpdateImageData } from "@/wasm-communication/messages";
 
 export function createBlobManager(editor: Editor): void {

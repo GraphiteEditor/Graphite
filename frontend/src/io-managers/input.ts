@@ -1,10 +1,10 @@
-import { DialogState } from "@/state-providers/dialog";
-import { FullscreenState } from "@/state-providers/fullscreen";
-import { PortfolioState } from "@/state-providers/portfolio";
+import { type DialogState } from "@/state-providers/dialog";
+import { type FullscreenState } from "@/state-providers/fullscreen";
+import { type PortfolioState } from "@/state-providers/portfolio";
 import { makeKeyboardModifiersBitfield, textInputCleanup, getLocalizedScanCode } from "@/utility-functions/keyboard-entry";
 import { platformIsMac } from "@/utility-functions/platform";
 import { stripIndents } from "@/utility-functions/strip-indents";
-import { Editor } from "@/wasm-communication/editor";
+import { type Editor } from "@/wasm-communication/editor";
 import { TriggerPaste } from "@/wasm-communication/messages";
 
 type EventName = keyof HTMLElementEventMap | keyof WindowEventHandlersEventMap | "modifyinputfield";

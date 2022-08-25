@@ -2,8 +2,8 @@
 
 import { Transform, Type, plainToClass } from "class-transformer";
 
-import type { IconName, IconSize, IconStyle } from "@/utility-functions/icons";
-import type { WasmEditorInstance, WasmRawInstance } from "@/wasm-communication/editor";
+import { type IconName, type IconSize, type IconStyle } from "@/utility-functions/icons";
+import { type WasmEditorInstance, type WasmRawInstance } from "@/wasm-communication/editor";
 
 import type MenuList from "@/components/floating-menus/MenuList.vue";
 

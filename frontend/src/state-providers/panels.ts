@@ -1,6 +1,6 @@
 import { nextTick, reactive, readonly } from "vue";
 
-import { Editor } from "@/wasm-communication/editor";
+import { type Editor } from "@/wasm-communication/editor";
 import {
 	DisplayEditableTextbox,
 	DisplayRemoveEditableTextbox,

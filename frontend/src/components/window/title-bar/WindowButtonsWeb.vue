@@ -52,8 +52,8 @@ export default defineComponent({
 	},
 	components: {
 		IconLabel,
-		TextLabel,
 		LayoutRow,
+		TextLabel,
 	},
 });
 </script>

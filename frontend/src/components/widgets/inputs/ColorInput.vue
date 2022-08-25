@@ -68,9 +68,9 @@
 </style>
 
 <script lang="ts">
-import { defineComponent, PropType } from "vue";
+import { defineComponent, type PropType } from "vue";
 
-import { RGBA } from "@/wasm-communication/messages";
+import { type RGBA } from "@/wasm-communication/messages";
 
 import ColorPicker from "@/components/floating-menus/ColorPicker.vue";
 import FloatingMenu from "@/components/floating-menus/FloatingMenu.vue";
@@ -159,12 +159,12 @@ export default defineComponent({
 		},
 	},
 	components: {
-		TextInput,
 		ColorPicker,
-		LayoutRow,
 		FloatingMenu,
-		Separator,
+		LayoutRow,
 		OptionalInput,
+		Separator,
+		TextInput,
 	},
 });
 </script>

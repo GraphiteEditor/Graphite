@@ -1,4 +1,4 @@
-import { Editor } from "@/wasm-communication/editor";
+import { type Editor } from "@/wasm-communication/editor";
 import { TriggerAboutGraphiteLocalizedCommitDate } from "@/wasm-communication/messages";
 
 export function createLocalizationManager(editor: Editor): void {

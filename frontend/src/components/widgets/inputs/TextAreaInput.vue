@@ -17,7 +17,7 @@
 <style lang="scss"></style>
 
 <script lang="ts">
-import { defineComponent, PropType } from "vue";
+import { defineComponent, type PropType } from "vue";
 
 import FieldInput from "@/components/widgets/inputs/FieldInput.vue";
 
