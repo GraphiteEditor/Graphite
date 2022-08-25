@@ -1,6 +1,6 @@
 import { reactive, readonly } from "vue";
 
-import { Editor } from "@/wasm-communication/editor";
+import { type Editor } from "@/wasm-communication/editor";
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 export function createFullscreenState(_: Editor) {

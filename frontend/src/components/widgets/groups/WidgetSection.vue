@@ -70,9 +70,9 @@
 </style>
 
 <script lang="ts">
-import { defineComponent, PropType } from "vue";
+import { defineComponent, type PropType } from "vue";
 
-import { isWidgetRow, isWidgetSection, LayoutGroup, WidgetSection as WidgetSectionFromJsMessages } from "@/wasm-communication/messages";
+import { isWidgetRow, isWidgetSection, type LayoutGroup, type WidgetSection as WidgetSectionFromJsMessages } from "@/wasm-communication/messages";
 
 import LayoutCol from "@/components/layout/LayoutCol.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
@@ -106,8 +106,8 @@ const WidgetSection = defineComponent({
 	components: {
 		LayoutCol,
 		LayoutRow,
-		TextLabel,
 		Separator,
+		TextLabel,
 		WidgetRow,
 	},
 });

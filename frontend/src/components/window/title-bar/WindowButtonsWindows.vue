@@ -38,18 +38,18 @@
 </style>
 
 <script lang="ts">
-import { defineComponent, PropType } from "vue";
+import { defineComponent, type PropType } from "vue";
 
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
 
 export default defineComponent({
+	props: {
+		maximized: { type: Boolean as PropType<boolean>, default: false },
+	},
 	components: {
 		IconLabel,
 		LayoutRow,
-	},
-	props: {
-		maximized: { type: Boolean as PropType<boolean>, default: false },
 	},
 });
 </script>

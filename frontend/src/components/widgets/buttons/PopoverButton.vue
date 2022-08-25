@@ -47,20 +47,15 @@
 </style>
 
 <script lang="ts">
-import { defineComponent, PropType } from "vue";
+import { defineComponent, type PropType } from "vue";
 
-import { IconName } from "@/utility-functions/icons";
+import { type IconName } from "@/utility-functions/icons";
 
 import FloatingMenu from "@/components/floating-menus/FloatingMenu.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 import IconButton from "@/components/widgets/buttons/IconButton.vue";
 
 export default defineComponent({
-	components: {
-		FloatingMenu,
-		IconButton,
-		LayoutRow,
-	},
 	props: {
 		icon: { type: String as PropType<IconName>, default: "DropdownArrow" },
 
@@ -78,6 +73,11 @@ export default defineComponent({
 
 			this.action?.();
 		},
+	},
+	components: {
+		FloatingMenu,
+		IconButton,
+		LayoutRow,
 	},
 });
 </script>

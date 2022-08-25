@@ -27,17 +27,17 @@ import Workspace from "@/components/window/workspace/Workspace.vue";
 export type ApplicationPlatform = "Windows" | "Mac" | "Linux" | "Web";
 
 export default defineComponent({
-	components: {
-		LayoutCol,
-		TitleBar,
-		Workspace,
-		StatusBar,
-	},
 	data() {
 		return {
 			platform: "Web" as ApplicationPlatform,
 			maximized: true,
 		};
+	},
+	components: {
+		LayoutCol,
+		StatusBar,
+		TitleBar,
+		Workspace,
 	},
 });
 </script>

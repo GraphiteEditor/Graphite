@@ -43,7 +43,7 @@
 </style>
 
 <script lang="ts">
-import { defineComponent, PropType } from "vue";
+import { defineComponent, type PropType } from "vue";
 
 const RULER_THICKNESS = 16;
 const MAJOR_MARK_THICKNESS = 16;

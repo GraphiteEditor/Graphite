@@ -1,8 +1,9 @@
+import type WasmBindgenPackage from "@/../wasm/pkg";
 import { panicProxy } from "@/utility-functions/panic-proxy";
-import { JsMessageType } from "@/wasm-communication/messages";
-import { createSubscriptionRouter, SubscriptionRouter } from "@/wasm-communication/subscription-router";
+import { type JsMessageType } from "@/wasm-communication/messages";
+import { createSubscriptionRouter, type SubscriptionRouter } from "@/wasm-communication/subscription-router";
 
-export type WasmRawInstance = typeof import("@/../wasm/pkg");
+export type WasmRawInstance = typeof WasmBindgenPackage;
 export type WasmEditorInstance = InstanceType<WasmRawInstance["JsEditorHandle"]>;
 export type Editor = Readonly<ReturnType<typeof createEditor>>;
 

@@ -16,9 +16,9 @@
 </style>
 
 <script lang="ts">
-import { defineComponent, PropType } from "vue";
+import { defineComponent, type PropType } from "vue";
 
-import { isWidgetColumn, isWidgetRow, isWidgetSection, LayoutGroup, WidgetLayout } from "@/wasm-communication/messages";
+import { isWidgetColumn, isWidgetRow, isWidgetSection, type LayoutGroup, type WidgetLayout } from "@/wasm-communication/messages";
 
 import WidgetSection from "@/components/widgets/groups/WidgetSection.vue";
 import WidgetRow from "@/components/widgets/WidgetRow.vue";

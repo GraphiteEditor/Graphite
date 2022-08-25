@@ -46,7 +46,6 @@ import { defaultWidgetLayout, UpdatePropertyPanelOptionsLayout, UpdatePropertyPa
 
 import LayoutCol from "@/components/layout/LayoutCol.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
-
 import WidgetLayout from "@/components/widgets/WidgetLayout.vue";
 
 export default defineComponent({
@@ -67,9 +66,9 @@ export default defineComponent({
 		});
 	},
 	components: {
-		WidgetLayout,
-		LayoutRow,
 		LayoutCol,
+		LayoutRow,
+		WidgetLayout,
 	},
 });
 </script>

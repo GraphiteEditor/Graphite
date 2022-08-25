@@ -251,10 +251,10 @@ const ICON_LIST = {
 } as const;
 
 // Exported icons and types
-export const icons: IconDefinitionType<typeof ICON_LIST> = ICON_LIST;
-export const iconComponents = Object.fromEntries(Object.entries(icons).map(([name, data]) => [name, data.component]));
+export const ICONS: IconDefinitionType<typeof ICON_LIST> = ICON_LIST;
+export const ICON_COMPONENTS = Object.fromEntries(Object.entries(ICONS).map(([name, data]) => [name, data.component]));
 
-export type IconName = keyof typeof icons;
+export type IconName = keyof typeof ICONS;
 export type IconSize = null | 12 | 16 | 24 | 32;
 export type IconStyle = "Normal" | "Node";
 

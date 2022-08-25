@@ -69,13 +69,13 @@
 </style>
 
 <script lang="ts">
-import { defineComponent, nextTick, PropType } from "vue";
+import { defineComponent, nextTick, type PropType } from "vue";
 
-import { MenuListEntry } from "@/wasm-communication/messages";
+import { type MenuListEntry } from "@/wasm-communication/messages";
 
-import FloatingMenu from "@/components/floating-menus/FloatingMenu.vue";
+import type FloatingMenu from "@/components/floating-menus/FloatingMenu.vue";
 import MenuList from "@/components/floating-menus/MenuList.vue";
-import LayoutCol from "@/components/layout/LayoutCol.vue";
+import type LayoutCol from "@/components/layout/LayoutCol.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
 
@@ -175,8 +175,8 @@ export default defineComponent({
 		},
 	},
 	components: {
-		LayoutRow,
 		IconLabel,
+		LayoutRow,
 		MenuList,
 	},
 });

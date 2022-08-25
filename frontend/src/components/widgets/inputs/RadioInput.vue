@@ -62,9 +62,9 @@
 </style>
 
 <script lang="ts">
-import { defineComponent, PropType } from "vue";
+import { defineComponent, type PropType } from "vue";
 
-import { RadioEntries, RadioEntryData } from "@/wasm-communication/messages";
+import { type RadioEntries, type RadioEntryData } from "@/wasm-communication/messages";
 
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
@@ -86,8 +86,8 @@ export default defineComponent({
 	},
 	components: {
 		IconLabel,
-		TextLabel,
 		LayoutRow,
+		TextLabel,
 	},
 });
 </script>

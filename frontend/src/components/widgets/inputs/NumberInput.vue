@@ -85,9 +85,9 @@
 </style>
 
 <script lang="ts">
-import { defineComponent, PropType } from "vue";
+import { defineComponent, type PropType } from "vue";
 
-import { IncrementBehavior } from "@/wasm-communication/messages";
+import { type IncrementBehavior } from "@/wasm-communication/messages";
 
 import FieldInput from "@/components/widgets/inputs/FieldInput.vue";
 

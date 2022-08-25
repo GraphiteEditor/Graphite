@@ -68,7 +68,7 @@
 import { defineComponent } from "vue";
 
 import { platformIsMac } from "@/utility-functions/platform";
-import { MenuBarEntry, UpdateMenuBarLayout, MenuListEntry, KeyRaw, KeysGroup } from "@/wasm-communication/messages";
+import { type KeyRaw, type KeysGroup, type MenuBarEntry, type MenuListEntry, UpdateMenuBarLayout } from "@/wasm-communication/messages";
 
 import MenuList from "@/components/floating-menus/MenuList.vue";
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";

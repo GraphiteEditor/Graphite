@@ -116,11 +116,11 @@
 </style>
 
 <script lang="ts">
-import { defineComponent, PropType } from "vue";
+import { defineComponent, type PropType } from "vue";
 
 import { hsvaToRgba, rgbaToHsva } from "@/utility-functions/color";
 import { clamp } from "@/utility-functions/math";
-import { RGBA } from "@/wasm-communication/messages";
+import { type RGBA } from "@/wasm-communication/messages";
 
 import LayoutCol from "@/components/layout/LayoutCol.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
@@ -298,8 +298,8 @@ export default defineComponent({
 		},
 	},
 	components: {
-		LayoutRow,
 		LayoutCol,
+		LayoutRow,
 	},
 });
 </script>

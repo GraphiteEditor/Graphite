@@ -97,9 +97,9 @@
 </style>
 
 <script lang="ts">
-import { defineComponent, PropType, toRaw } from "vue";
+import { defineComponent, type PropType, toRaw } from "vue";
 
-import { MenuListEntry } from "@/wasm-communication/messages";
+import { type MenuListEntry } from "@/wasm-communication/messages";
 
 import MenuList from "@/components/floating-menus/MenuList.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
@@ -161,8 +161,8 @@ export default defineComponent({
 	},
 	components: {
 		IconLabel,
-		MenuList,
 		LayoutRow,
+		MenuList,
 	},
 });
 </script>

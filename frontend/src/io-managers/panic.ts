@@ -1,10 +1,10 @@
-import { TextButtonWidget } from "@/components/widgets/buttons/TextButton";
-import { DialogState } from "@/state-providers/dialog";
-import { IconName } from "@/utility-functions/icons";
+import { type TextButtonWidget } from "@/components/widgets/buttons/TextButton";
+import { type DialogState } from "@/state-providers/dialog";
+import { type IconName } from "@/utility-functions/icons";
 import { browserVersion, operatingSystem } from "@/utility-functions/platform";
 import { stripIndents } from "@/utility-functions/strip-indents";
-import { Editor } from "@/wasm-communication/editor";
-import { DisplayDialogPanic, Widget, WidgetLayout } from "@/wasm-communication/messages";
+import { type Editor } from "@/wasm-communication/editor";
+import { type WidgetLayout, Widget, DisplayDialogPanic } from "@/wasm-communication/messages";
 
 export function createPanicManager(editor: Editor, dialogState: DialogState): void {
 	// Code panic dialog and console error

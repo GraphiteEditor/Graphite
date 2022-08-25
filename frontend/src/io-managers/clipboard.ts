@@ -1,4 +1,4 @@
-import { Editor } from "@/wasm-communication/editor";
+import { type Editor } from "@/wasm-communication/editor";
 import { TriggerTextCopy } from "@/wasm-communication/messages";
 
 export function createClipboardManager(editor: Editor): void {
