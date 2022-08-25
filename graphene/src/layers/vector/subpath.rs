@@ -148,6 +148,7 @@ impl Subpath {
 		// do row operations to eliminate `a` coefficients
 		c[0] /= -b[0];
 		d[0] /= -b[0];
+		#[allow(clippy::assign_op_pattern)]
 		for i in 1..n {
 			b[i] += c[i - 1];
 			// for some reason the below line makes the borrow checker mad
@@ -160,6 +161,7 @@ impl Subpath {
 		// at this point b[i] == -a[i + 1], a[i] == 0,
 		// do row operations to eliminate 'c' coefficients and solve
 		d[n - 1] *= -1.0;
+		#[allow(clippy::assign_op_pattern)]
 		for i in (0..n - 1).rev() {
 			d[i] = d[i] - (c[i] * d[i + 1]);
 			d[i] *= -1.0; //d[i] /= b[i]

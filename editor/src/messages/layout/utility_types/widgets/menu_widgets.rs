@@ -9,9 +9,9 @@ use serde::{Deserialize, Serialize};
 use super::input_widgets::InvisibleStandinInput;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
-pub struct MenuEntryGroups(pub Vec<Vec<MenuEntry>>);
+pub struct MenuBarEntryChildren(pub Vec<Vec<MenuBarEntry>>);
 
-impl MenuEntryGroups {
+impl MenuBarEntryChildren {
 	pub fn empty() -> Self {
 		Self(Vec::new())
 	}
@@ -31,15 +31,23 @@ impl MenuEntryGroups {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct MenuEntry {
+pub struct MenuBarEntry {
 	pub label: String,
 	pub icon: Option<String>,
-	pub children: MenuEntryGroups,
-	pub action: WidgetHolder,
 	pub shortcut: Option<ActionKeys>,
+	pub action: WidgetHolder,
+	pub children: MenuBarEntryChildren,
 }
 
-impl MenuEntry {
+impl MenuBarEntry {
+	pub fn new_root(label: String, children: MenuBarEntryChildren) -> Self {
+		Self {
+			label,
+			children,
+			..Default::default()
+		}
+	}
+
 	pub fn create_action(callback: impl Fn(&()) -> Message + 'static) -> WidgetHolder {
 		WidgetHolder::new(Widget::InvisibleStandinInput(InvisibleStandinInput {
 			on_update: WidgetCallback::new(callback),
@@ -47,54 +55,46 @@ impl MenuEntry {
 	}
 
 	pub fn no_action() -> WidgetHolder {
-		MenuEntry::create_action(|_| Message::NoOp)
+		MenuBarEntry::create_action(|_| Message::NoOp)
 	}
 }
 
-impl Default for MenuEntry {
+impl Default for MenuBarEntry {
 	fn default() -> Self {
 		Self {
-			action: MenuEntry::create_action(|_| DialogMessage::RequestComingSoonDialog { issue: None }.into()),
 			label: "".into(),
 			icon: None,
-			children: MenuEntryGroups::empty(),
 			shortcut: None,
+			action: MenuBarEntry::no_action(),
+			children: MenuBarEntryChildren::empty(),
 		}
 	}
-}
-
-#[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq)]
-pub struct MenuColumn {
-	pub label: String,
-	pub children: MenuEntryGroups,
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
 pub struct MenuLayout {
-	pub layout: Vec<MenuColumn>,
+	pub layout: Vec<MenuBarEntry>,
 }
 
 impl MenuLayout {
-	pub fn new(layout: Vec<MenuColumn>) -> Self {
+	pub fn new(layout: Vec<MenuBarEntry>) -> Self {
 		Self { layout }
 	}
 
 	pub fn iter(&self) -> impl Iterator<Item = &WidgetHolder> + '_ {
-		MenuLayoutIter {
-			stack: self.layout.iter().flat_map(|column| column.children.0.iter()).flat_map(|group| group.iter()).collect(),
-		}
+		MenuLayoutIter { stack: self.layout.iter().collect() }
 	}
 
 	pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut WidgetHolder> + '_ {
 		MenuLayoutIterMut {
-			stack: self.layout.iter_mut().flat_map(|column| column.children.0.iter_mut()).flat_map(|group| group.iter_mut()).collect(),
+			stack: self.layout.iter_mut().collect(),
 		}
 	}
 }
 
 #[derive(Debug, Default)]
 pub struct MenuLayoutIter<'a> {
-	pub stack: Vec<&'a MenuEntry>,
+	pub stack: Vec<&'a MenuBarEntry>,
 }
 
 impl<'a> Iterator for MenuLayoutIter<'a> {
@@ -114,7 +114,7 @@ impl<'a> Iterator for MenuLayoutIter<'a> {
 }
 
 pub struct MenuLayoutIterMut<'a> {
-	pub stack: Vec<&'a mut MenuEntry>,
+	pub stack: Vec<&'a mut MenuBarEntry>,
 }
 
 impl<'a> Iterator for MenuLayoutIterMut<'a> {

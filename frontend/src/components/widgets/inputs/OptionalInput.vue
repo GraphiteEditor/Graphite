@@ -1,6 +1,6 @@
 <template>
 	<LayoutRow class="optional-input">
-		<CheckboxInput :checked="checked" @input="(e) => $emit('update:checked', (e.target as HTMLInputElement).checked)" :icon="icon" :tooltip="tooltip" />
+		<CheckboxInput :checked="checked" @input="(e: Event) => $emit('update:checked', (e.target as HTMLInputElement).checked)" :icon="icon" :tooltip="tooltip" />
 	</LayoutRow>
 </template>
 

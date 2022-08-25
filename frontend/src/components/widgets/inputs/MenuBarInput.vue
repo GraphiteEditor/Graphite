@@ -1,31 +1,26 @@
 <template>
 	<div class="menu-bar-input" data-menu-bar-input>
-		<div class="entry-container">
-			<button @click="() => visitWebsite('https://graphite.rs')" class="entry">
-				<IconLabel :icon="'GraphiteLogo'" />
-			</button>
-		</div>
 		<div class="entry-container" v-for="(entry, index) in entries" :key="index">
 			<div
-				@click="(e) => onClick(entry, e.target)"
-				tabindex="0"
-				@blur="(e: FocusEvent) => blur(e,entry)"
-				@keydown="entry.ref?.keydown"
+				@click="(e: MouseEvent) => onClick(entry, e.target)"
+				@blur="(e: FocusEvent) => blur(entry, e.target)"
+				@keydown="(e: KeyboardEvent) => entry.ref?.keydown(e, false)"
 				class="entry"
 				:class="{ open: entry.ref?.isOpen }"
+				tabindex="0"
 				data-hover-menu-spawner
 			>
 				<IconLabel v-if="entry.icon" :icon="entry.icon" />
 				<span v-if="entry.label">{{ entry.label }}</span>
 			</div>
 			<MenuList
+				v-if="entry.children && entry.children.length > 0"
 				:open="entry.ref?.open || false"
 				:entries="entry.children || []"
 				:direction="'Bottom'"
 				:minWidth="240"
 				:drawIcon="true"
-				:defaultAction="() => editor.instance.requestComingSoonDialog()"
-				:ref="(ref: typeof MenuList) => ref && (entry.ref = ref)"
+				:ref="(ref: MenuListInstance) => ref && (entry.ref = ref)"
 			/>
 		</div>
 	</div>
@@ -73,10 +68,13 @@
 import { defineComponent } from "vue";
 
 import { platformIsMac } from "@/utility-functions/platform";
-import { MenuEntry, UpdateMenuBarLayout, MenuListEntry, KeyRaw, KeysGroup } from "@/wasm-communication/messages";
+import { MenuBarEntry, UpdateMenuBarLayout, MenuListEntry, KeyRaw, KeysGroup } from "@/wasm-communication/messages";
 
 import MenuList from "@/components/floating-menus/MenuList.vue";
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
+
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+type MenuListInstance = InstanceType<typeof MenuList>;
 
 // TODO: Apparently, Safari does not support the Keyboard.lock() API but does relax its authority over certain keyboard shortcuts in fullscreen mode, which we should take advantage of
 const accelKey = platformIsMac() ? "Command" : "Control";
@@ -87,12 +85,6 @@ const LOCK_REQUIRING_SHORTCUTS: KeyRaw[][] = [
 	[accelKey, "KeyT"],
 	[accelKey, "Shift", "KeyT"],
 ];
-
-type FrontendMenuColumn = {
-	label: string;
-	children: FrontendMenuEntry[][];
-};
-type FrontendMenuEntry = Omit<MenuEntry, "action" | "children"> & { shortcutRequiresLock: boolean | undefined; action: () => void; children: FrontendMenuEntry[][] | undefined };
 
 export default defineComponent({
 	inject: ["editor"],
@@ -106,39 +98,47 @@ export default defineComponent({
 				return LOCK_REQUIRING_SHORTCUTS.some((lockKeyCombo) => arraysEqual(shortcutKeys, lockKeyCombo));
 			};
 
-			const menuEntryToFrontendMenuEntry = (subLayout: MenuEntry[][]): FrontendMenuEntry[][] =>
-				subLayout.map((group) =>
-					group.map((entry) => ({
-						...entry,
-						children: entry.children ? menuEntryToFrontendMenuEntry(entry.children) : undefined,
-						action: (): void => this.editor.instance.updateLayout(updateMenuBarLayout.layoutTarget, entry.action.widgetId, undefined),
-						shortcutRequiresLock: entry.shortcut ? shortcutRequiresLock(entry.shortcut.keys) : undefined,
-					}))
-				);
+			const menuBarEntryToMenuListEntry = (entry: MenuBarEntry): MenuListEntry => ({
+				// From `MenuEntryCommon`
+				...entry,
 
-			this.entries = updateMenuBarLayout.layout.map((column) => ({ ...column, children: menuEntryToFrontendMenuEntry(column.children) }));
+				// Shared names with fields that need to be converted from the type used in `MenuBarEntry` to that of `MenuListEntry`
+				action: (): void => this.editor.instance.updateLayout(updateMenuBarLayout.layoutTarget, entry.action.widgetId, undefined),
+				children: entry.children ? entry.children.map((entries) => entries.map((entry) => menuBarEntryToMenuListEntry(entry))) : undefined,
+
+				// New fields in `MenuListEntry`
+				shortcutRequiresLock: entry.shortcut ? shortcutRequiresLock(entry.shortcut.keys) : undefined,
+				value: undefined,
+				disabled: undefined,
+				font: undefined,
+				ref: undefined,
+			});
+
+			this.entries = updateMenuBarLayout.layout.map(menuBarEntryToMenuListEntry);
 		});
 	},
 	methods: {
-		onClick(menuEntry: MenuListEntry, target: EventTarget | null) {
+		onClick(menuListEntry: MenuListEntry, target: EventTarget | null) {
+			// If there's no menu to open, trigger the action but don't try to open its non-existant children
+			if (!menuListEntry.children || menuListEntry.children.length === 0) {
+				if (menuListEntry.action && !menuListEntry.disabled) menuListEntry.action();
+
+				return;
+			}
+
 			// Focus the target so that keyboard inputs are sent to the dropdown
 			(target as HTMLElement)?.focus();
 
-			if (menuEntry.ref) menuEntry.ref.isOpen = true;
+			if (menuListEntry.ref) menuListEntry.ref.isOpen = true;
 			else throw new Error("The menu bar floating menu has no associated ref");
 		},
-		blur(e: FocusEvent, menuEntry: MenuListEntry) {
-			if ((e.target as HTMLElement).closest("[data-menu-bar-input]") !== this.$el && menuEntry.ref) menuEntry.ref.isOpen = false;
-		},
-		// TODO: Move to backend
-		visitWebsite(url: string) {
-			// This method is required because `window` isn't accessible from the Vue component HTML
-			window.open(url, "_blank");
+		blur(menuListEntry: MenuListEntry, target: EventTarget | null) {
+			if ((target as HTMLElement)?.closest("[data-menu-bar-input]") !== this.$el && menuListEntry.ref) menuListEntry.ref.isOpen = false;
 		},
 	},
 	data() {
 		return {
-			entries: [] as FrontendMenuColumn[],
+			entries: [] as MenuListEntry[],
 			open: false,
 		};
 	},

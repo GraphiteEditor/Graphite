@@ -42,6 +42,7 @@ impl Bezier {
 
 	// TODO: Consider removing this function
 	/// Create a cubic bezier using the provided coordinates as the start, handles, and end points.
+	#[allow(clippy::too_many_arguments)]
 	pub fn from_cubic_coordinates(x1: f64, y1: f64, x2: f64, y2: f64, x3: f64, y3: f64, x4: f64, y4: f64) -> Self {
 		Bezier {
 			start: DVec2::new(x1, y1),

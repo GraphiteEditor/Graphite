@@ -2,8 +2,10 @@
 
 import { Transform, Type, plainToClass } from "class-transformer";
 
-import { IconName, IconSize, IconStyle } from "@/utility-functions/icons";
+import type { IconName, IconSize, IconStyle } from "@/utility-functions/icons";
 import type { WasmEditorInstance, WasmRawInstance } from "@/wasm-communication/editor";
+
+import type MenuList from "@/components/floating-menus/MenuList.vue";
 
 export class JsMessage {
 	// The marker provides a way to check if an object is a sub-class constructor for a jsMessage.
@@ -324,6 +326,8 @@ export class UpdateDocumentLayerDetails extends JsMessage {
 export class LayerPanelEntry {
 	name!: string;
 
+	tooltip!: string;
+
 	visible!: boolean;
 
 	layerType!: LayerType;
@@ -410,36 +414,32 @@ export class ColorInput extends WidgetProps {
 	tooltip!: string;
 }
 
-export type MenuColumn = {
+type MenuEntryCommon = {
 	label: string;
-	children: MenuEntry[][];
-};
-
-export type MenuEntry = {
-	shortcut: ActionKeys | undefined;
-	action: Widget;
-	label: string;
-	icon: string | undefined;
-	children: undefined | MenuEntry[][];
-};
-
-export interface MenuListEntryData<Value = string> {
-	value?: Value;
-	label?: string;
 	icon?: IconName;
-	font?: URL;
 	shortcut?: ActionKeys;
-	shortcutRequiresLock?: boolean;
-	disabled?: boolean;
+};
+
+// The entry in the expanded menu or a sub-menu as received from the Rust backend
+export type MenuBarEntry = MenuEntryCommon & {
+	action: Widget;
+	children?: MenuBarEntry[][];
+};
+
+// An entry in the all-encompassing MenuList component which defines all types of menus ranging from `MenuBarInput` to `DropdownInput` widgets
+export type MenuListEntry = MenuEntryCommon & {
 	action?: () => void;
-	children?: SectionsOfMenuListEntries;
-}
-export type MenuListEntry<Value = string> = MenuListEntryData<Value> & { ref?: typeof FloatingMenu | typeof MenuList };
-export type MenuListEntries<Value = string> = MenuListEntry<Value>[];
-export type SectionsOfMenuListEntries<Value = string> = MenuListEntries<Value>[];
+	children?: MenuListEntry[][];
+
+	shortcutRequiresLock?: boolean;
+	value?: string;
+	disabled?: boolean;
+	font?: URL;
+	ref?: InstanceType<typeof MenuList>;
+};
 
 export class DropdownInput extends WidgetProps {
-	entries!: SectionsOfMenuListEntries;
+	entries!: MenuListEntry[][];
 
 	selectedIndex!: number | undefined;
 
@@ -793,16 +793,19 @@ export class UpdateMenuBarLayout extends JsMessage {
 	// TODO: Replace `any` with correct typing
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	@Transform(({ value }: { value: any }) => createMenuLayout(value))
-	layout!: MenuColumn[];
+	layout!: MenuBarEntry[];
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function createMenuLayout(menuLayout: any[]): MenuColumn[] {
-	return menuLayout.map((column) => ({ ...column, children: createMenuLayoutRecursive(column.children) }));
+function createMenuLayout(menuBarEntry: any[]): MenuBarEntry[] {
+	return menuBarEntry.map((entry) => ({
+		...entry,
+		children: createMenuLayoutRecursive(entry.children),
+	}));
 }
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function createMenuLayoutRecursive(subLayout: any[][]): MenuEntry[][] {
-	return subLayout.map((groups) =>
+function createMenuLayoutRecursive(children: any[][]): MenuBarEntry[][] {
+	return children.map((groups) =>
 		groups.map((entry) => ({
 			...entry,
 			action: hoistWidgetHolders([entry.action])[0],

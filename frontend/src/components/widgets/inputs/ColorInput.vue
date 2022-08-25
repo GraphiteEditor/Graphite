@@ -1,12 +1,12 @@
 <template>
 	<LayoutRow class="color-input" :title="tooltip">
-		<OptionalInput v-if="!noTransparency" :icon="'CloseX'" :checked="Boolean(value)" @update:checked="(val) => updateEnabled(val)"></OptionalInput>
+		<OptionalInput v-if="!noTransparency" :icon="'CloseX'" :checked="Boolean(value)" @update:checked="(state: boolean) => updateEnabled(state)"></OptionalInput>
 		<TextInput :value="displayValue" :label="label" :disabled="disabled || !value" @commitText="(value: string) => textInputUpdated(value)" :center="true" />
 		<Separator :type="'Related'" />
 		<LayoutRow class="swatch">
 			<button class="swatch-button" :class="{ 'disabled-swatch': !value }" :style="`--swatch-color: #${value}`" @click="() => $emit('update:open', true)"></button>
 			<FloatingMenu v-model:open="isOpen" :type="'Popover'" :direction="'Bottom'">
-				<ColorPicker @update:color="(color) => colorPickerUpdated(color)" :color="color" />
+				<ColorPicker @update:color="(color: RGBA) => colorPickerUpdated(color)" :color="color" />
 			</FloatingMenu>
 		</LayoutRow>
 	</LayoutRow>

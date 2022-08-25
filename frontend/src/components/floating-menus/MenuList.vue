@@ -44,8 +44,8 @@
 						:open="entry.ref?.open || false"
 						:direction="'TopRight'"
 						:entries="entry.children"
-						v-bind="{ defaultAction, minWidth, drawIcon, scrollableY }"
-						:ref="(ref: typeof FloatingMenu) => ref && (entry.ref = ref)"
+						v-bind="{ minWidth, drawIcon, scrollableY }"
+						:ref="(ref: MenuListInstance) => ref && (entry.ref = ref)"
 					/>
 				</LayoutRow>
 			</template>
@@ -160,7 +160,7 @@
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
 
-import { MenuListEntry, SectionsOfMenuListEntries, MenuListEntryData } from "@/wasm-communication/messages";
+import type { MenuListEntry } from "@/wasm-communication/messages";
 
 import FloatingMenu, { MenuDirection } from "@/components/floating-menus/FloatingMenu.vue";
 import LayoutCol from "@/components/layout/LayoutCol.vue";
@@ -169,10 +169,13 @@ import IconLabel from "@/components/widgets/labels/IconLabel.vue";
 import Separator from "@/components/widgets/labels/Separator.vue";
 import UserInputLabel from "@/components/widgets/labels/UserInputLabel.vue";
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+type MenuListInstance = InstanceType<typeof MenuList>;
+
 const MenuList = defineComponent({
 	emits: ["update:open", "update:activeEntry", "naturalWidth"],
 	props: {
-		entries: { type: Array as PropType<SectionsOfMenuListEntries>, required: true },
+		entries: { type: Array as PropType<MenuListEntry[][]>, required: true },
 		activeEntry: { type: Object as PropType<MenuListEntry>, required: false },
 		open: { type: Boolean as PropType<boolean>, required: true },
 		direction: { type: String as PropType<MenuDirection>, default: "Bottom" },
@@ -181,7 +184,6 @@ const MenuList = defineComponent({
 		interactive: { type: Boolean as PropType<boolean>, default: false },
 		scrollableY: { type: Boolean as PropType<boolean>, default: false },
 		virtualScrollingEntryHeight: { type: Number as PropType<number>, default: 0 },
-		defaultAction: { type: Function as PropType<() => void>, required: false },
 	},
 	data() {
 		return {
@@ -209,33 +211,32 @@ const MenuList = defineComponent({
 		},
 	},
 	methods: {
-		onEntryClick(menuEntry: MenuListEntry): void {
-			// Call the action, or a default, if either are provided
-			if (menuEntry.action) menuEntry.action();
-			else if (this.defaultAction) this.defaultAction();
+		onEntryClick(menuListEntry: MenuListEntry): void {
+			// Call the action if available
+			if (menuListEntry.action) menuListEntry.action();
 
 			// Emit the clicked entry as the new active entry
-			this.$emit("update:activeEntry", menuEntry);
+			this.$emit("update:activeEntry", menuListEntry);
 
 			// Close the containing menu
-			if (menuEntry.ref) menuEntry.ref.isOpen = false;
+			if (menuListEntry.ref) menuListEntry.ref.isOpen = false;
 			this.$emit("update:open", false);
 			this.isOpen = false; // TODO: This is a hack for MenuBarInput submenus, remove it when we get rid of using `ref`
 		},
-		onEntryPointerEnter(menuEntry: MenuListEntry): void {
-			if (!menuEntry.children?.length) return;
+		onEntryPointerEnter(menuListEntry: MenuListEntry): void {
+			if (!menuListEntry.children?.length) return;
 
-			if (menuEntry.ref) menuEntry.ref.isOpen = true;
+			if (menuListEntry.ref) menuListEntry.ref.isOpen = true;
 			else this.$emit("update:open", true);
 		},
-		onEntryPointerLeave(menuEntry: MenuListEntry): void {
-			if (!menuEntry.children?.length) return;
+		onEntryPointerLeave(menuListEntry: MenuListEntry): void {
+			if (!menuListEntry.children?.length) return;
 
-			if (menuEntry.ref) menuEntry.ref.isOpen = false;
+			if (menuListEntry.ref) menuListEntry.ref.isOpen = false;
 			else this.$emit("update:open", false);
 		},
-		isEntryOpen(menuEntry: MenuListEntry): boolean {
-			if (!menuEntry.children?.length) return false;
+		isEntryOpen(menuListEntry: MenuListEntry): boolean {
+			if (!menuListEntry.children?.length) return false;
 
 			return this.open;
 		},
@@ -249,7 +250,7 @@ const MenuList = defineComponent({
 			const flatEntries = this.entries.flat().filter((entry) => !entry.disabled);
 			const openChild = flatEntries.findIndex((entry) => entry.children?.length && entry.ref?.isOpen);
 
-			const openSubmenu = (highlighted: MenuListEntry<string>): void => {
+			const openSubmenu = (highlighted: MenuListEntry): void => {
 				if (highlighted.ref && highlighted.children?.length) {
 					highlighted.ref.isOpen = true;
 
@@ -316,7 +317,7 @@ const MenuList = defineComponent({
 			// By default, keep the menu stack open
 			return false;
 		},
-		setHighlighted(newHighlight: MenuListEntry<string> | undefined) {
+		setHighlighted(newHighlight: MenuListEntry | undefined) {
 			this.highlighted = newHighlight;
 			// Interactive menus should keep the active entry the same as the highlighted one
 			if (this.interactive && newHighlight?.value !== this.activeEntry?.value) this.$emit("update:activeEntry", newHighlight);
@@ -327,14 +328,6 @@ const MenuList = defineComponent({
 		},
 	},
 	computed: {
-		entriesWithoutRefs(): MenuListEntryData[][] {
-			return this.entries.map((menuListEntries) =>
-				menuListEntries.map((entry) => {
-					const { ref, ...entryWithoutRef } = entry;
-					return entryWithoutRef;
-				})
-			);
-		},
 		virtualScrollingTotalHeight() {
 			return this.entries[0].length * this.virtualScrollingEntryHeight;
 		},

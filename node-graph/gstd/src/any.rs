@@ -91,10 +91,10 @@ impl<'n, N: RefNode<Any<'n>, Output = Any<'n>> + 'n> DynNodeOwned<'n> for N {}
 #[cfg(test)]
 mod test {
 	use super::*;
-	use graphene_core::ops::{AddNode, IdNode};
+	use graphene_core::ops::AddNode;
 	use graphene_core::value::ValueNode;
 	/*#[test]
-	pub fn dyn_input_compositon() {
+	pub fn dyn_input_composition() {
 		use graphene_core::structural::After;
 		use graphene_core::structural::ComposeNode;
 		let id: DynAnyNode<_, u32> = DynAnyNode::new(IdNode);
