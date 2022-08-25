@@ -3,11 +3,11 @@
 		<LayoutRow class="options-bar"></LayoutRow>
 		<LayoutRow
 			class="graph"
-			@wheel="(e) => scroll(e)"
+			@wheel="(e: WheelEvent) => scroll(e)"
 			ref="graph"
-			@pointerdown="(e) => pointerDown(e)"
-			@pointermove="(e) => pointerMove(e)"
-			@pointerup="(e) => pointerUp(e)"
+			@pointerdown="(e: PointerEvent) => pointerDown(e)"
+			@pointermove="(e: PointerEvent) => pointerMove(e)"
+			@pointerup="(e: PointerEvent) => pointerUp(e)"
 			:style="`--grid-spacing: ${gridSpacing}px; --grid-offset-x: ${transform.x * transform.scale}px; --grid-offset-y: ${transform.y * transform.scale}px; --dot-radius: ${dotRadius}px`"
 		>
 			<div

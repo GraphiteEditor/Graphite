@@ -30,18 +30,31 @@ impl<F: Fn(&MessageDiscriminant) -> Vec<KeysGroup>> MessageHandler<LayoutMessage
 				self.send_layout(layout_target, responses, &action_input_mapping);
 			}
 			UpdateLayout { layout_target, widget_id, value } => {
-				let layout = &mut self.layouts[layout_target as usize];
-				let widget_holder = layout.iter_mut().find(|widget| widget.widget_id == widget_id);
-				if widget_holder.is_none() {
-					log::trace!(
-						"Could not find widget_id:{} on layout_target:{:?}. This could be an indication of a problem or just a user clicking off of an actively edited layer",
+				// Look up the layout
+				let layout = if let Some(layout) = self.layouts.get_mut(layout_target as usize) {
+					layout
+				} else {
+					log::warn!(
+						"UpdateLayout was called referencing an invalid layout. `widget_id: {}`, `layout_target: {:?}`",
 						widget_id,
 						layout_target
 					);
 					return;
-				}
+				};
+
+				let widget_holder = if let Some(widget_holder) = layout.iter_mut().find(|widget| widget.widget_id == widget_id) {
+					widget_holder
+				} else {
+					log::warn!(
+						"UpdateLayout was called referencing an invalid widget ID, although the layout target was valid. `widget_id: {}`, `layout_target: {:?}`",
+						widget_id,
+						layout_target
+					);
+					return;
+				};
+
 				#[remain::sorted]
-				match &mut widget_holder.unwrap().widget {
+				match &mut widget_holder.widget {
 					Widget::CheckboxInput(checkbox_input) => {
 						let update_value = value.as_bool().expect("CheckboxInput update was not of type: bool");
 						checkbox_input.checked = update_value;

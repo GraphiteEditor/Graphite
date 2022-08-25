@@ -12,12 +12,7 @@
 				v-model:open="open"
 				@update:selectedIndex="(value: number) => updateLayout(component.widgetId, value)"
 			/>
-			<FontInput
-				v-if="component.props.kind === 'FontInput'"
-				v-bind="component.props"
-				v-model:open="open"
-				@changeFont="(value: { name: string, style: string, file: string }) => updateLayout(component.widgetId, value)"
-			/>
+			<FontInput v-if="component.props.kind === 'FontInput'" v-bind="component.props" v-model:open="open" @changeFont="(value: unknown) => updateLayout(component.widgetId, value)" />
 			<IconButton v-if="component.props.kind === 'IconButton'" v-bind="component.props" :action="() => updateLayout(component.widgetId, null)" />
 			<IconLabel v-if="component.props.kind === 'IconLabel'" v-bind="component.props" />
 			<NumberInput
@@ -29,8 +24,8 @@
 			/>
 			<OptionalInput v-if="component.props.kind === 'OptionalInput'" v-bind="component.props" @update:checked="(value: boolean) => updateLayout(component.widgetId, value)" />
 			<PopoverButton v-if="component.props.kind === 'PopoverButton'" v-bind="component.props">
-				<h3>{{ component.props.header }}</h3>
-				<p>{{ component.props.text }}</p>
+				<h3>{{ (component.props as any).header }}</h3>
+				<p>{{ (component.props as any).text }}</p>
 			</PopoverButton>
 			<RadioInput v-if="component.props.kind === 'RadioInput'" v-bind="component.props" @update:selectedIndex="(value: number) => updateLayout(component.widgetId, value)" />
 			<Separator v-if="component.props.kind === 'Separator'" v-bind="component.props" />
@@ -38,7 +33,7 @@
 			<TextAreaInput v-if="component.props.kind === 'TextAreaInput'" v-bind="component.props" @commitText="(value: string) => updateLayout(component.widgetId, value)" />
 			<TextButton v-if="component.props.kind === 'TextButton'" v-bind="component.props" :action="() => updateLayout(component.widgetId, null)" />
 			<TextInput v-if="component.props.kind === 'TextInput'" v-bind="component.props" @commitText="(value: string) => updateLayout(component.widgetId, value)" />
-			<TextLabel v-if="component.props.kind === 'TextLabel'" v-bind="withoutValue(component.props)">{{ component.props.value }}</TextLabel>
+			<TextLabel v-if="component.props.kind === 'TextLabel'" v-bind="withoutValue(component.props)">{{ (component.props as any).value }}</TextLabel>
 		</template>
 	</div>
 </template>
@@ -124,7 +119,8 @@ export default defineComponent({
 		updateLayout(widgetId: bigint, value: unknown) {
 			this.editor.instance.updateLayout(this.layoutTarget, widgetId, value);
 		},
-		withoutValue(props: Record<string, unknown>): Record<string, unknown> {
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		withoutValue(props: Record<string, any>): Record<string, unknown> {
 			const { value: _, ...rest } = props;
 			return rest;
 		},

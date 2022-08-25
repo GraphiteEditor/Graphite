@@ -98,11 +98,11 @@ License information is required on production builds. Aborting.`);
 	let licenses = (rustLicenses || []).map((rustLicense) => ({
 		licenseName: htmlDecode(rustLicense.licenseName),
 		licenseText: trimBlankLines(htmlDecode(rustLicense.licenseText)),
-		packages: rustLicense.packages.map((package) => ({
-			name: htmlDecode(package.name),
-			version: htmlDecode(package.version),
-			author: htmlDecode(package.author).replace(/\[(.*), \]/, "$1"),
-			repository: htmlDecode(package.repository),
+		packages: rustLicense.packages.map((packageInfo) => ({
+			name: htmlDecode(packageInfo.name),
+			version: htmlDecode(packageInfo.version),
+			author: htmlDecode(packageInfo.author).replace(/\[(.*), \]/, "$1"),
+			repository: htmlDecode(packageInfo.repository),
 		})),
 	}));
 
@@ -119,7 +119,7 @@ License information is required on production builds. Aborting.`);
 
 	// Delete the internal Graphite crates, which are not third-party and belong elsewhere
 	licenses = licenses.filter((license) => {
-		license.packages = license.packages.filter((package) => !(package.repository && package.repository.includes("github.com/GraphiteEditor/Graphite")));
+		license.packages = license.packages.filter((packageInfo) => !(packageInfo.repository && packageInfo.repository.includes("github.com/GraphiteEditor/Graphite")));
 		return license.packages.length > 0;
 	});
 
@@ -151,8 +151,8 @@ License information is required on production builds. Aborting.`);
 
 	licenses.forEach((license) => {
 		let packagesWithSameLicense = "";
-		license.packages.forEach((package) => {
-			const { name, version, author, repository } = package;
+		license.packages.forEach((packageInfo) => {
+			const { name, version, author, repository } = packageInfo;
 			packagesWithSameLicense += `${name} ${version}${author ? ` - ${author}` : ""}${repository ? ` - ${repository}` : ""}\n`;
 		});
 		packagesWithSameLicense = packagesWithSameLicense.trim();

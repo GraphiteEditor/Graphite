@@ -34,6 +34,13 @@ pub enum WasmMaximizeArcs {
 #[derive(Clone)]
 pub struct WasmBezier(Bezier);
 
+impl Drop for WasmBezier {
+	fn drop(&mut self) {
+		// Is it correct to keep this empty?
+		// Consider removing after https://github.com/rustwasm/wasm-bindgen/pull/2984 is merged and released
+	}
+}
+
 /// Convert a `DVec2` into a `Point`.
 fn vec_to_point(p: &DVec2) -> Point {
 	Point { x: p.x, y: p.y }

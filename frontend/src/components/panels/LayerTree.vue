@@ -4,7 +4,7 @@
 			<WidgetLayout :layout="layerTreeOptionsLayout" />
 		</LayoutRow>
 		<LayoutRow class="layer-tree-rows" :scrollableY="true">
-			<LayoutCol class="list" ref="layerTreeList" @click="() => deselectAllLayers()" @dragover="(e) => draggable && updateInsertLine(e)" @dragend="() => draggable && drop()">
+			<LayoutCol class="list" ref="layerTreeList" @click="() => deselectAllLayers()" @dragover="(e: DragEvent) => draggable && updateInsertLine(e)" @dragend="() => draggable && drop()">
 				<LayoutRow
 					class="layer-row"
 					v-for="(listing, index) in layers"
@@ -13,7 +13,7 @@
 				>
 					<LayoutRow class="visibility">
 						<IconButton
-							:action="(e) => (toggleLayerVisibility(listing.entry.path), e?.stopPropagation())"
+							:action="(e: MouseEvent) => (toggleLayerVisibility(listing.entry.path), e?.stopPropagation())"
 							:size="24"
 							:icon="listing.entry.visible ? 'EyeVisible' : 'EyeHidden'"
 							:title="listing.entry.visible ? 'Visible' : 'Hidden'"
@@ -34,15 +34,15 @@
 						:data-index="index"
 						:title="listing.entry.tooltip"
 						:draggable="draggable"
-						@dragstart="(e) => draggable && dragStart(e, listing)"
-						@click.exact="(e) => selectLayer(false, false, false, listing, e)"
-						@click.shift.exact="(e) => selectLayer(false, false, true, listing, e)"
-						@click.ctrl.exact="(e) => selectLayer(true, false, false, listing, e)"
-						@click.ctrl.shift.exact="(e) => selectLayer(true, false, true, listing, e)"
-						@click.meta.exact="(e) => selectLayer(false, true, false, listing, e)"
-						@click.meta.shift.exact="(e) => selectLayer(false, true, true, listing, e)"
-						@click.ctrl.meta="(e) => e.stopPropagation()"
-						@click.alt="(e) => e.stopPropagation()"
+						@dragstart="(e: DragEvent) => draggable && dragStart(e, listing)"
+						@click.exact="(e: MouseEvent) => selectLayer(false, false, false, listing, e)"
+						@click.shift.exact="(e: MouseEvent) => selectLayer(false, false, true, listing, e)"
+						@click.ctrl.exact="(e: MouseEvent) => selectLayer(true, false, false, listing, e)"
+						@click.ctrl.shift.exact="(e: MouseEvent) => selectLayer(true, false, true, listing, e)"
+						@click.meta.exact="(e: MouseEvent) => selectLayer(false, true, false, listing, e)"
+						@click.meta.shift.exact="(e: MouseEvent) => selectLayer(false, true, true, listing, e)"
+						@click.ctrl.meta="(e: MouseEvent) => e.stopPropagation()"
+						@click.alt="(e: MouseEvent) => e.stopPropagation()"
 					>
 						<LayoutRow class="layer-type-icon">
 							<IconLabel v-if="listing.entry.layerType === 'Folder'" :icon="'NodeFolder'" :iconStyle="'Node'" title="Folder" />

@@ -8,23 +8,23 @@
 						:tabCloseButtons="true"
 						:tabMinWidths="true"
 						:tabLabels="portfolio.state.documents.map((doc) => doc.displayName)"
-						:clickAction="(tabIndex) => editor.instance.selectDocument(portfolio.state.documents[tabIndex].id)"
-						:closeAction="(tabIndex) => editor.instance.closeDocumentWithConfirmation(portfolio.state.documents[tabIndex].id)"
+						:clickAction="(tabIndex: number) => editor.instance.selectDocument(portfolio.state.documents[tabIndex].id)"
+						:closeAction="(tabIndex: number) => editor.instance.closeDocumentWithConfirmation(portfolio.state.documents[tabIndex].id)"
 						:tabActiveIndex="portfolio.state.activeDocumentIndex"
 						ref="documentsPanel"
 					/>
 				</LayoutRow>
-				<LayoutRow class="workspace-grid-resize-gutter" @pointerdown="(e) => resizePanel(e)" v-if="nodeGraphVisible"></LayoutRow>
+				<LayoutRow class="workspace-grid-resize-gutter" @pointerdown="(e: PointerEvent) => resizePanel(e)" v-if="nodeGraphVisible"></LayoutRow>
 				<LayoutRow class="workspace-grid-subdivision" v-if="nodeGraphVisible">
 					<Panel :panelType="'NodeGraph'" :tabLabels="['Node Graph']" :tabActiveIndex="0" />
 				</LayoutRow>
 			</LayoutCol>
-			<LayoutCol class="workspace-grid-resize-gutter" @pointerdown="(e) => resizePanel(e)"></LayoutCol>
+			<LayoutCol class="workspace-grid-resize-gutter" @pointerdown="(e: PointerEvent) => resizePanel(e)"></LayoutCol>
 			<LayoutCol class="workspace-grid-subdivision" style="flex-grow: 0.17">
 				<LayoutRow class="workspace-grid-subdivision" style="flex-grow: 402">
 					<Panel :panelType="'Properties'" :tabLabels="['Properties']" :tabActiveIndex="0" />
 				</LayoutRow>
-				<LayoutRow class="workspace-grid-resize-gutter" @pointerdown="(e) => resizePanel(e)"></LayoutRow>
+				<LayoutRow class="workspace-grid-resize-gutter" @pointerdown="(e: PointerEvent) => resizePanel(e)"></LayoutRow>
 				<LayoutRow class="workspace-grid-subdivision" style="flex-grow: 590">
 					<Panel :panelType="'LayerTree'" :tabLabels="['Layer Tree']" :tabActiveIndex="0" />
 				</LayoutRow>

@@ -77,11 +77,11 @@ export default defineComponent({
 		selectedIndex: { type: Number as PropType<number>, required: true },
 	},
 	methods: {
-		handleEntryClick(menuEntry: RadioEntryData) {
-			const index = this.entries.indexOf(menuEntry);
+		handleEntryClick(radioEntryData: RadioEntryData) {
+			const index = this.entries.indexOf(radioEntryData);
 			this.$emit("update:selectedIndex", index);
 
-			menuEntry.action?.();
+			radioEntryData.action?.();
 		},
 	},
 	components: {

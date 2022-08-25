@@ -6,7 +6,7 @@
 			:style="{ minWidth: `${minWidth}px` }"
 			@click="() => !disabled && (open = true)"
 			@blur="(e: FocusEvent) => blur(e)"
-			@keydown="(e) => keydown(e)"
+			@keydown="(e: KeyboardEvent) => keydown(e)"
 			ref="dropdownBox"
 			tabindex="0"
 			data-hover-menu-spawner
@@ -99,7 +99,7 @@
 <script lang="ts">
 import { defineComponent, PropType, toRaw } from "vue";
 
-import { MenuListEntry, SectionsOfMenuListEntries } from "@/wasm-communication/messages";
+import { MenuListEntry } from "@/wasm-communication/messages";
 
 import MenuList from "@/components/floating-menus/MenuList.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
@@ -110,7 +110,7 @@ const DASH_ENTRY = { label: "-" };
 export default defineComponent({
 	emits: ["update:selectedIndex"],
 	props: {
-		entries: { type: Array as PropType<SectionsOfMenuListEntries>, required: true },
+		entries: { type: Array as PropType<MenuListEntry[][]>, required: true },
 		selectedIndex: { type: Number as PropType<number>, required: false }, // When not provided, a dash is displayed
 		drawIcon: { type: Boolean as PropType<boolean>, default: false },
 		interactive: { type: Boolean as PropType<boolean>, default: true },

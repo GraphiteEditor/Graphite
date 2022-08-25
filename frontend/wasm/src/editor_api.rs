@@ -137,6 +137,12 @@ impl JsEditorHandle {
 		EDITOR_HAS_CRASHED.load(Ordering::SeqCst)
 	}
 
+	/// Answer whether or not the editor is in development mode
+	#[wasm_bindgen(js_name = inDevelopmentMode)]
+	pub fn in_development_mode(&self) -> bool {
+		cfg!(debug_assertions)
+	}
+
 	/// Get the constant `FILE_SAVE_SUFFIX`
 	#[wasm_bindgen(js_name = fileSaveSuffix)]
 	pub fn file_save_suffix(&self) -> String {
@@ -215,12 +221,6 @@ impl JsEditorHandle {
 	#[wasm_bindgen(js_name = requestAboutGraphiteDialogWithLocalizedCommitDate)]
 	pub fn request_about_graphite_dialog_with_localized_commit_date(&self, localized_commit_date: String) {
 		let message = DialogMessage::RequestAboutGraphiteDialogWithLocalizedCommitDate { localized_commit_date };
-		self.dispatch(message);
-	}
-
-	#[wasm_bindgen(js_name = requestComingSoonDialog)]
-	pub fn request_coming_soon_dialog(&self, issue: Option<i32>) {
-		let message = DialogMessage::RequestComingSoonDialog { issue };
 		self.dispatch(message);
 	}
 
@@ -468,6 +468,7 @@ impl JsEditorHandle {
 
 impl Drop for JsEditorHandle {
 	fn drop(&mut self) {
+		// Consider removing after https://github.com/rustwasm/wasm-bindgen/pull/2984 is merged and released
 		EDITOR_INSTANCES.with(|instances| instances.borrow_mut().remove(&self.editor_id));
 	}
 }

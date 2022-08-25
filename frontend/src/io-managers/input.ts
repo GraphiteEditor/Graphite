@@ -244,7 +244,7 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 		if (editor.instance.hasCrashed()) return;
 
 		// Skip the message during development, since it's annoying when testing
-		if (process.env.NODE_ENV === "development") return;
+		if (editor.instance.inDevelopmentMode()) return;
 
 		const allDocumentsSaved = document.state.documents.reduce((acc, doc) => acc && doc.isSaved, true);
 		if (!allDocumentsSaved) {

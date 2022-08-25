@@ -47,6 +47,7 @@ impl LayerMetadata {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct LayerPanelEntry {
 	pub name: String,
+	pub tooltip: String,
 	pub visible: bool,
 	#[serde(rename = "layerType")]
 	pub layer_type: LayerDataTypeDiscriminant,
@@ -59,9 +60,16 @@ pub struct LayerPanelEntry {
 impl LayerPanelEntry {
 	pub fn new(layer_metadata: &LayerMetadata, transform: DAffine2, layer: &Layer, path: Vec<LayerId>, font_cache: &FontCache) -> Self {
 		let name = layer.name.clone().unwrap_or_else(|| String::from(""));
+
+		let tooltip = if cfg!(debug_assertions) {
+			let joined = &path.iter().map(|id| id.to_string()).collect::<Vec<_>>().join(" / ");
+			name.clone() + "\nLayer Path: " + joined.as_str()
+		} else {
+			name.clone()
+		};
+
 		let arr = layer.data.bounding_box(transform, font_cache).unwrap_or([DVec2::ZERO, DVec2::ZERO]);
 		let arr = arr.iter().map(|x| (*x).into()).collect::<Vec<(f64, f64)>>();
-
 		let mut thumbnail = String::new();
 		let mut svg_defs = String::new();
 		let render_data = RenderData::new(ViewMode::Normal, font_cache, None, false);
@@ -84,6 +92,7 @@ impl LayerPanelEntry {
 
 		LayerPanelEntry {
 			name,
+			tooltip,
 			visible: layer.visible,
 			layer_type: (&layer.data).into(),
 			layer_metadata: *layer_metadata,
