@@ -4,6 +4,8 @@ pub const SVG_CLOSE_TAG: &str = "</svg>";
 
 // Stylistic constants
 pub const BLACK: &str = "black";
+pub const GRAY: &str = "gray";
+pub const RED: &str = "red";
 
 // Default attributes
 pub const CURVE_ATTRIBUTES: &str = "stroke=\"black\" stroke-width=\"2\" fill=\"none\"";

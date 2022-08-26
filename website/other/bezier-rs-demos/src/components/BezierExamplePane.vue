@@ -3,7 +3,7 @@
 		<h3 class="example-pane-header">{{ name }}</h3>
 		<div class="example-row">
 			<div v-for="(example, index) in examples" :key="index">
-				<BezierExample :title="example.title" :points="example.points" :callback="callback" />
+				<BezierExample v-if="!example.disabled" :title="example.title" :points="example.points" :callback="callback" :sliderOptions="example.sliderOptions" />
 			</div>
 		</div>
 	</div>
@@ -12,7 +12,7 @@
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
 
-import { BezierCallback } from "@/utils/types";
+import { BezierCallback, BezierCurveType, ExampleOptions } from "@/utils/types";
 
 import BezierExample from "@/components/BezierExample.vue";
 
@@ -23,35 +23,47 @@ export default defineComponent({
 			type: Function as PropType<BezierCallback>,
 			required: true,
 		},
+		exampleOptions: {
+			type: Object as PropType<ExampleOptions>,
+			default: () => ({}),
+		},
 	},
 	data() {
+		const exampleDefaults = {
+			[BezierCurveType.Linear]: {
+				points: [
+					[30, 60],
+					[140, 120],
+				],
+			},
+			[BezierCurveType.Quadratic]: {
+				points: [
+					[30, 50],
+					[140, 30],
+					[160, 170],
+				],
+			},
+			[BezierCurveType.Cubic]: {
+				points: [
+					[30, 30],
+					[60, 140],
+					[150, 30],
+					[160, 160],
+				],
+			},
+		};
+
 		return {
-			examples: [
-				{
-					title: "Linear",
-					points: [
-						[30, 60],
-						[140, 120],
-					],
-				},
-				{
-					title: "Quadratic",
-					points: [
-						[30, 50],
-						[140, 30],
-						[160, 170],
-					],
-				},
-				{
-					title: "Quadratic",
-					points: [
-						[30, 30],
-						[60, 140],
-						[150, 30],
-						[160, 160],
-					],
-				},
-			],
+			examples: Object.values(BezierCurveType).map((curveType) => {
+				const givenData = this.exampleOptions[curveType];
+				const defaultData = exampleDefaults[curveType];
+				return {
+					title: curveType,
+					disabled: givenData?.disabled || false,
+					points: givenData?.customPoints || defaultData.points,
+					sliderOptions: givenData?.sliderOptions || [],
+				};
+			}),
 		};
 	},
 	components: {

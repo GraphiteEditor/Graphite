@@ -9,8 +9,7 @@ export const getCurveType = (numPoints: number): BezierCurveType => {
 		case 4:
 			return BezierCurveType.Cubic;
 		default:
-			// Not possible
-			return BezierCurveType.Linear;
+			throw new Error("Invalid number of points for a bezier");
 	}
 };
 
@@ -23,7 +22,6 @@ export const getConstructorKey = (bezierCurveType: BezierCurveType): WasmBezierC
 		case BezierCurveType.Cubic:
 			return "new_cubic";
 		default:
-			// Not possible
-			return "new_linear";
+			throw new Error("Invalid value for a BezierCurveType");
 	}
 };

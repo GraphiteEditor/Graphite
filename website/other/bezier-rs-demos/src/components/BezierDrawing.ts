@@ -1,5 +1,3 @@
-import { WasmBezier } from "@/../wasm/pkg";
-
 import { COLORS, drawBezier, drawPoint, getContextFromCanvas, getPointSizeByIndex } from "@/utils/drawing";
 import { Callback, BezierPoint, BezierStyleConfig, Point, WasmBezierManipulatorKey, WasmBezierInstance } from "@/utils/types";
 
@@ -120,22 +118,13 @@ class BezierDrawing {
 
 		// For the create through points cases, we store a bezier where the handle is actually the point that the curve should pass through
 		// This is so that we can re-use the drag and drop logic, while simply drawing the desired bezier instead
-		const actualBezierPointLength = JSON.parse(this.bezier.get_points()).length;
-		let pointsToDraw = this.points;
+		const pointsToDraw = this.points;
 
 		let styleConfig: Partial<BezierStyleConfig> = {
 			handleLineStrokeColor: COLORS.INTERACTIVE.STROKE_2,
 		};
 		let dragIndex = this.dragIndex;
 		if (this.createThroughPoints) {
-			let bezierThroughPoints;
-			const pointList = this.points.map((p) => [p.x, p.y]);
-			if (actualBezierPointLength === 3) {
-				bezierThroughPoints = WasmBezier.quadratic_through_points(pointList, this.options.t);
-			} else {
-				bezierThroughPoints = WasmBezier.cubic_through_points(pointList, this.options.t, this.options["midpoint separation"]);
-			}
-			pointsToDraw = JSON.parse(bezierThroughPoints.get_points());
 			if (this.dragIndex === 1) {
 				// Do not propagate dragIndex when the the non-endpoint is moved
 				dragIndex = null;
