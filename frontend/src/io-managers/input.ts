@@ -73,7 +73,7 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 		const accelKey = platformIsMac() ? e.metaKey : e.ctrlKey;
 
 		// Don't redirect user input from text entry into HTML elements
-		if (targetIsTextField(e.target) && key !== "Escape" && !(key === "Enter" && accelKey)) return false;
+		if (targetIsTextField(e.target || undefined) && key !== "Escape" && !(key === "Enter" && accelKey)) return false;
 
 		// Don't redirect paste
 		if (key === "KeyV" && accelKey) return false;
@@ -94,7 +94,7 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 		if (["KeyC", "KeyI", "KeyJ"].includes(key) && accelKey && e.shiftKey) return false;
 
 		// Don't redirect tab or enter if not in canvas (to allow navigating elements)
-		if (!canvasFocused && !targetIsTextField(e.target) && ["Tab", "Enter", "Space", "ArrowDown", "ArrowLeft", "ArrowRight", "ArrowUp"].includes(key)) return false;
+		if (!canvasFocused && !targetIsTextField(e.target || undefined) && ["Tab", "Enter", "Space", "ArrowDown", "ArrowLeft", "ArrowRight", "ArrowUp"].includes(key)) return false;
 
 		// Redirect to the backend
 		return true;
@@ -139,7 +139,7 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 		if (!viewportPointerInteractionOngoing && inFloatingMenu) return;
 
 		const { target } = e;
-		const newInCanvas = (target instanceof Element && target.closest("[data-canvas]")) instanceof Element && !targetIsTextField(window.document.activeElement);
+		const newInCanvas = (target instanceof Element && target.closest("[data-canvas]")) instanceof Element && !targetIsTextField(window.document.activeElement || undefined);
 		if (newInCanvas && !canvasFocused) {
 			canvasFocused = true;
 			app?.focus();
@@ -255,7 +255,7 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 
 	function onPaste(e: ClipboardEvent): void {
 		const dataTransfer = e.clipboardData;
-		if (!dataTransfer || targetIsTextField(e.target)) return;
+		if (!dataTransfer || targetIsTextField(e.target || undefined)) return;
 		e.preventDefault();
 
 		Array.from(dataTransfer.items).forEach((item) => {
@@ -358,6 +358,6 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 	return unbindListeners;
 }
 
-function targetIsTextField(target: EventTarget | HTMLElement | null): boolean {
+function targetIsTextField(target: EventTarget | HTMLElement | undefined): boolean {
 	return target instanceof HTMLElement && (target.nodeName === "INPUT" || target.nodeName === "TEXTAREA" || target.isContentEditable);
 }

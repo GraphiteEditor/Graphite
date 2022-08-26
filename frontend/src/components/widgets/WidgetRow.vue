@@ -13,7 +13,7 @@
 				@update:selectedIndex="(value: number) => updateLayout(component.widgetId, value)"
 			/>
 			<FontInput v-if="component.props.kind === 'FontInput'" v-bind="component.props" v-model:open="open" @changeFont="(value: unknown) => updateLayout(component.widgetId, value)" />
-			<IconButton v-if="component.props.kind === 'IconButton'" v-bind="component.props" :action="() => updateLayout(component.widgetId, null)" />
+			<IconButton v-if="component.props.kind === 'IconButton'" v-bind="component.props" :action="() => updateLayout(component.widgetId, undefined)" />
 			<IconLabel v-if="component.props.kind === 'IconLabel'" v-bind="component.props" />
 			<NumberInput
 				v-if="component.props.kind === 'NumberInput'"
@@ -31,7 +31,7 @@
 			<Separator v-if="component.props.kind === 'Separator'" v-bind="component.props" />
 			<SwatchPairInput v-if="component.props.kind === 'SwatchPairInput'" v-bind="component.props" />
 			<TextAreaInput v-if="component.props.kind === 'TextAreaInput'" v-bind="component.props" @commitText="(value: string) => updateLayout(component.widgetId, value)" />
-			<TextButton v-if="component.props.kind === 'TextButton'" v-bind="component.props" :action="() => updateLayout(component.widgetId, null)" />
+			<TextButton v-if="component.props.kind === 'TextButton'" v-bind="component.props" :action="() => updateLayout(component.widgetId, undefined)" />
 			<TextInput v-if="component.props.kind === 'TextInput'" v-bind="component.props" @commitText="(value: string) => updateLayout(component.widgetId, value)" />
 			<TextLabel v-if="component.props.kind === 'TextLabel'" v-bind="withoutValue(component.props)">{{ (component.props as any).value }}</TextLabel>
 		</template>

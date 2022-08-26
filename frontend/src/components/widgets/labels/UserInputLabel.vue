@@ -164,7 +164,7 @@ export default defineComponent({
 	inject: ["fullscreen"],
 	props: {
 		keysWithLabelsGroups: { type: Array as PropType<KeysGroup[]>, default: () => [] },
-		mouseMotion: { type: String as PropType<MouseMotion | null>, default: null },
+		mouseMotion: { type: String as PropType<MouseMotion | undefined>, required: false },
 		requiresLock: { type: Boolean as PropType<boolean>, default: false },
 	},
 	computed: {
@@ -210,7 +210,7 @@ export default defineComponent({
 			// ...or display text
 			return { label, width: `width-${label.length}` };
 		},
-		mouseHintIcon(input: MouseMotion | null): IconName {
+		mouseHintIcon(input?: MouseMotion): IconName {
 			return `MouseHint${input}` as IconName;
 		},
 		keyboardHintIcon(input: KeyRaw): IconName | undefined {

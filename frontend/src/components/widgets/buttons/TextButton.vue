@@ -2,8 +2,8 @@
 	<button
 		class="text-button"
 		:class="{ emphasized, disabled }"
-		:data-emphasized="emphasized || null"
-		:data-disabled="disabled || null"
+		:data-emphasized="emphasized || undefined"
+		:data-disabled="disabled || undefined"
 		data-text-button
 		:style="minWidth > 0 ? `min-width: ${minWidth}px` : ''"
 		@click="(e: MouseEvent) => action(e)"

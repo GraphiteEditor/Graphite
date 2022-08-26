@@ -59,8 +59,8 @@
 								:disabled="!listing.editingName"
 								@blur="() => onEditLayerNameDeselect(listing)"
 								@keydown.esc="onEditLayerNameDeselect(listing)"
-								@keydown.enter="(e) => onEditLayerNameChange(listing, e.target)"
-								@change="(e) => onEditLayerNameChange(listing, e.target)"
+								@keydown.enter="(e) => onEditLayerNameChange(listing, e.target || undefined)"
+								@change="(e) => onEditLayerNameChange(listing, e.target || undefined)"
 							/>
 						</LayoutRow>
 						<div class="thumbnail" v-html="listing.entry.thumbnail"></div>
@@ -328,7 +328,7 @@ export default defineComponent({
 			await nextTick();
 			(tree.querySelector("[data-text-input]:not([disabled])") as HTMLInputElement).select();
 		},
-		onEditLayerNameChange(listing: LayerListingInfo, inputElement: EventTarget | null) {
+		onEditLayerNameChange(listing: LayerListingInfo, inputElement: EventTarget | undefined) {
 			// Eliminate duplicate events
 			if (!listing.editingName) return;
 

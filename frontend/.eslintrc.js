@@ -79,6 +79,7 @@ module.exports = {
 		"@typescript-eslint/consistent-type-assertions": ["error", { assertionStyle: "as", objectLiteralTypeAssertions: "never" }],
 		"@typescript-eslint/consistent-indexed-object-style": ["error", "record"],
 		"@typescript-eslint/consistent-generic-constructors": ["error", "constructor"],
+		"@typescript-eslint/ban-types": ["error", { types: { null: "Use `undefined` instead." } }],
 
 		// Import plugin config (used to intelligently validate module import statements)
 		"import/prefer-default-export": "off",

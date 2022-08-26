@@ -2,8 +2,8 @@
 	<div class="menu-bar-input" data-menu-bar-input>
 		<div class="entry-container" v-for="(entry, index) in entries" :key="index">
 			<div
-				@click="(e: MouseEvent) => onClick(entry, e.target)"
-				@blur="(e: FocusEvent) => blur(entry, e.target)"
+				@click="(e: MouseEvent) => onClick(entry, e.target || undefined)"
+				@blur="(e: FocusEvent) => blur(entry, e.target || undefined)"
 				@keydown="(e: KeyboardEvent) => entry.ref?.keydown(e, false)"
 				class="entry"
 				:class="{ open: entry.ref?.isOpen }"
@@ -118,7 +118,7 @@ export default defineComponent({
 		});
 	},
 	methods: {
-		onClick(menuListEntry: MenuListEntry, target: EventTarget | null) {
+		onClick(menuListEntry: MenuListEntry, target: EventTarget | undefined) {
 			// If there's no menu to open, trigger the action but don't try to open its non-existant children
 			if (!menuListEntry.children || menuListEntry.children.length === 0) {
 				if (menuListEntry.action && !menuListEntry.disabled) menuListEntry.action();
@@ -132,7 +132,7 @@ export default defineComponent({
 			if (menuListEntry.ref) menuListEntry.ref.isOpen = true;
 			else throw new Error("The menu bar floating menu has no associated ref");
 		},
-		blur(menuListEntry: MenuListEntry, target: EventTarget | null) {
+		blur(menuListEntry: MenuListEntry, target: EventTarget | undefined) {
 			if ((target as HTMLElement)?.closest("[data-menu-bar-input]") !== this.$el && menuListEntry.ref) menuListEntry.ref.isOpen = false;
 		},
 	},

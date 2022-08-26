@@ -82,9 +82,9 @@ export type HintGroup = HintInfo[];
 export class HintInfo {
 	readonly keyGroups!: KeysGroup[];
 
-	readonly keyGroupsMac!: KeysGroup[] | null;
+	readonly keyGroupsMac!: KeysGroup[] | undefined;
 
-	readonly mouse!: MouseMotion | null;
+	readonly mouse!: MouseMotion | undefined;
 
 	readonly label!: string;
 
@@ -669,7 +669,7 @@ export type WidgetLayout = {
 
 export function defaultWidgetLayout(): WidgetLayout {
 	return {
-		layoutTarget: null,
+		layoutTarget: undefined,
 		layout: [],
 	};
 }
