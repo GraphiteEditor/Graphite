@@ -241,10 +241,10 @@ export class UpdateDocumentLayerTreeStructure extends JsMessage {
 	}
 }
 
-interface DataBuffer {
+type DataBuffer = {
 	pointer: bigint;
 	length: bigint;
-}
+};
 
 export function newUpdateDocumentLayerTreeStructure(input: { dataBuffer: DataBuffer }, wasm: WasmRawInstance): UpdateDocumentLayerTreeStructure {
 	const pointerNum = Number(input.dataBuffer.pointer);
@@ -519,7 +519,7 @@ export class PopoverButton extends WidgetProps {
 	text!: string;
 }
 
-export interface RadioEntryData {
+export type RadioEntryData = {
 	value?: string;
 	label?: string;
 	icon?: IconName;
@@ -527,7 +527,7 @@ export interface RadioEntryData {
 
 	// Callbacks
 	action?: () => void;
-}
+};
 export type RadioEntries = RadioEntryData[];
 
 export class RadioInput extends WidgetProps {
@@ -572,6 +572,23 @@ export class TextButton extends WidgetProps {
 
 	disabled!: boolean;
 }
+
+export type TextButtonWidget = {
+	tooltip?: string;
+	message?: string | object;
+	callback?: () => void;
+	props: {
+		kind: "TextButton";
+		label: string;
+		icon?: string;
+		emphasized?: boolean;
+		minWidth?: number;
+		disabled?: boolean;
+
+		// Callbacks
+		// `action` is used via `IconButtonWidget.callback`
+	};
+};
 
 export class TextInput extends WidgetProps {
 	value!: string;
@@ -645,10 +662,10 @@ function hoistWidgetHolders(widgetHolders: any[]): Widget[] {
 
 // WIDGET LAYOUT
 
-export interface WidgetLayout {
+export type WidgetLayout = {
 	layoutTarget: unknown;
 	layout: LayoutGroup[];
-}
+};
 
 export function defaultWidgetLayout(): WidgetLayout {
 	return {

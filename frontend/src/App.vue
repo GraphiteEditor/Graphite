@@ -248,6 +248,7 @@ const managerDestructors: {
 // Vue injects don't play well with TypeScript (all injects will show up as `any`) but we can define these types as a solution
 declare module "@vue/runtime-core" {
 	// Systems `provide`d by the root App to be `inject`ed into descendant components and used for reactive bindings
+	// eslint-disable-next-line @typescript-eslint/consistent-type-definitions
 	interface ComponentCustomProperties {
 		// Graphite WASM editor instance
 		editor: Editor;

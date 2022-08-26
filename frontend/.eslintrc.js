@@ -73,8 +73,12 @@ module.exports = {
 		"@typescript-eslint/camelcase": "off",
 		"@typescript-eslint/no-use-before-define": "off",
 		"@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_", ignoreRestSiblings: true }],
-		"@typescript-eslint/explicit-function-return-type": ["error"],
+		"@typescript-eslint/explicit-function-return-type": "error",
 		"@typescript-eslint/consistent-type-imports": "error",
+		"@typescript-eslint/consistent-type-definitions": ["error", "type"],
+		"@typescript-eslint/consistent-type-assertions": ["error", { assertionStyle: "as", objectLiteralTypeAssertions: "never" }],
+		"@typescript-eslint/consistent-indexed-object-style": ["error", "record"],
+		"@typescript-eslint/consistent-generic-constructors": ["error", "constructor"],
 
 		// Import plugin config (used to intelligently validate module import statements)
 		"import/prefer-default-export": "off",
