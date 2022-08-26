@@ -1,7 +1,7 @@
 import { WasmBezier } from "@/../wasm/pkg";
 
 import { COLORS, drawBezier, drawPoint, getContextFromCanvas, getPointSizeByIndex } from "@/utils/drawing";
-import { BezierCallback, BezierPoint, BezierStyleConfig, Point, WasmBezierManipulatorKey, WasmBezierInstance } from "@/utils/types";
+import { Callback, BezierPoint, BezierStyleConfig, Point, WasmBezierManipulatorKey, WasmBezierInstance } from "@/utils/types";
 
 // Offset to increase selectable range, used to make points easier to grab
 const FUDGE_FACTOR = 3;
@@ -24,13 +24,13 @@ class BezierDrawing {
 
 	bezier: WasmBezierInstance;
 
-	callback: BezierCallback;
+	callback: Callback;
 
 	options: Record<string, number>;
 
 	createThroughPoints: boolean;
 
-	constructor(bezier: WasmBezierInstance, callback: BezierCallback, options: Record<string, number>, createThroughPoints = false) {
+	constructor(bezier: WasmBezierInstance, callback: Callback, options: Record<string, number>, createThroughPoints = false) {
 		this.bezier = bezier;
 		this.callback = callback;
 		this.options = options;

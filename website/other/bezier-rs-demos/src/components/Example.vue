@@ -9,7 +9,7 @@
 import { defineComponent, PropType } from "vue";
 
 import BezierDrawing from "@/components/BezierDrawing";
-import { BezierCallback, WasmBezierInstance } from "@/utils/types";
+import { Callback, WasmBezierInstance } from "@/utils/types";
 
 export default defineComponent({
 	props: {
@@ -19,7 +19,7 @@ export default defineComponent({
 			required: true,
 		},
 		callback: {
-			type: Function as PropType<BezierCallback>,
+			type: Function as PropType<Callback>,
 			required: true,
 		},
 		options: {

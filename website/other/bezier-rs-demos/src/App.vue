@@ -4,6 +4,9 @@
 		<p>This is the interactive documentation for the <b>bezier-rs</b> library. Click and drag on the endpoints of the example curves to visualize the various Bezier utilities and functions.</p>
 		<h2>Beziers</h2>
 		<div v-for="(feature, index) in bezierFeatures" :key="index">
+			<BezierExamplePane :name="feature.name" :callback="feature.callback" />
+		</div>
+		<div v-for="(feature, index) in features" :key="index">
 			<ExamplePane
 				:template="feature.template"
 				:templateOptions="feature.templateOptions"
@@ -28,6 +31,7 @@ import { defineComponent, markRaw } from "vue";
 import { drawBezier, drawBezierHelper, drawCircle, drawCircleSector, drawCurve, drawLine, drawPoint, drawText, getContextFromCanvas, COLORS } from "@/utils/drawing";
 import { BezierCurveType, CircleSector, Point, WasmBezierInstance, WasmSubpathInstance } from "@/utils/types";
 
+import BezierExamplePane from "@/components/BezierExamplePane.vue";
 import ExamplePane from "@/components/ExamplePane.vue";
 import SliderExample from "@/components/SliderExample.vue";
 import SubpathExamplePane from "@/components/SubpathExamplePane.vue";
@@ -48,9 +52,10 @@ export default defineComponent({
 			bezierFeatures: [
 				{
 					name: "Constructor",
-					// eslint-disable-next-line
-					callback: (): void => {},
+					callback: (bezier: WasmBezierInstance): string => bezier.to_svg(),
 				},
+			],
+			features: [
 				{
 					name: "Bezier Through Points",
 					// eslint-disable-next-line
@@ -586,6 +591,7 @@ export default defineComponent({
 		};
 	},
 	components: {
+		BezierExamplePane,
 		ExamplePane,
 		SubpathExamplePane,
 	},
