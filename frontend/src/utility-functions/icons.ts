@@ -4,7 +4,7 @@
 import GraphiteLogotypeSolid from "@/../assets/graphics/graphite-logotype-solid.svg";
 
 const GRAPHICS = {
-	GraphiteLogotypeSolid: { component: GraphiteLogotypeSolid, size: null },
+	GraphiteLogotypeSolid: { component: GraphiteLogotypeSolid, size: undefined },
 } as const;
 
 // 12px Solid
@@ -255,7 +255,7 @@ export const ICONS: IconDefinitionType<typeof ICON_LIST> = ICON_LIST;
 export const ICON_COMPONENTS = Object.fromEntries(Object.entries(ICONS).map(([name, data]) => [name, data.component]));
 
 export type IconName = keyof typeof ICONS;
-export type IconSize = null | 12 | 16 | 24 | 32;
+export type IconSize = undefined | 12 | 16 | 24 | 32;
 export type IconStyle = "Normal" | "Node";
 
 // The following helper type declarations allow us to avoid manually maintaining the `IconName` type declaration as a string union paralleling the keys of the

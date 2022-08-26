@@ -8,17 +8,17 @@ export function browserVersion(): string {
 	}
 
 	if (match[1] === "Chrome") {
-		let browser = agent.match(/\bEdg\/(\d+)/);
-		if (browser !== null) return `Edge (Chromium) ${browser[1]}`;
+		let browser = agent.match(/\bEdg\/(\d+)/) || undefined;
+		if (browser !== undefined) return `Edge (Chromium) ${browser[1]}`;
 
-		browser = agent.match(/\bOPR\/(\d+)/);
-		if (browser !== null) return `Opera ${browser[1]}`;
+		browser = agent.match(/\bOPR\/(\d+)/) || undefined;
+		if (browser !== undefined) return `Opera ${browser[1]}`;
 	}
 
 	match = match[2] ? [match[1], match[2]] : [navigator.appName, navigator.appVersion, "-?"];
 
-	const browser = agent.match(/version\/(\d+)/i);
-	if (browser !== null) match.splice(1, 1, browser[1]);
+	const browser = agent.match(/version\/(\d+)/i) || undefined;
+	if (browser !== undefined) match.splice(1, 1, browser[1]);
 
 	return `${match[0]} ${match[1]}`;
 }

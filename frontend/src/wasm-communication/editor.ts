@@ -8,12 +8,12 @@ export type WasmEditorInstance = InstanceType<WasmRawInstance["JsEditorHandle"]>
 export type Editor = Readonly<ReturnType<typeof createEditor>>;
 
 // `wasmImport` starts uninitialized because its initialization needs to occur asynchronously, and thus needs to occur by manually calling and awaiting `initWasm()`
-let wasmImport: WasmRawInstance | null = null;
+let wasmImport: WasmRawInstance | undefined;
 
 // Should be called asynchronously before `createEditor()`
 export async function initWasm(): Promise<void> {
 	// Skip if the WASM module is already initialized
-	if (wasmImport !== null) return;
+	if (wasmImport !== undefined) return;
 
 	// Import the WASM module JS bindings and wrap them in the panic proxy
 	wasmImport = await import("@/../wasm/pkg").then(panicProxy);

@@ -75,7 +75,7 @@ module.exports = {
 };
 
 function formatThirdPartyLicenses(jsLicenses) {
-	let rustLicenses = null;
+	let rustLicenses;
 	if (process.env.NODE_ENV === "production" && process.env.SKIP_CARGO_ABOUT === undefined) {
 		try {
 			rustLicenses = generateRustLicenses();
@@ -83,7 +83,7 @@ function formatThirdPartyLicenses(jsLicenses) {
 			// Nothing to show. Error messages were printed above.
 		}
 
-		if (rustLicenses === null) {
+		if (rustLicenses === undefined) {
 			// This is probably caused by cargo about not being installed
 			console.error(`
 Could not run \`cargo about\`, which is required to generate license information.
@@ -187,13 +187,13 @@ function generateRustLicenses() {
 			// Cargo returns 101 when the subcommand wasn't found
 			console.error("cargo-about failed", status, stderr);
 		}
-		return null;
+		return undefined;
 	}
 
 	// Make sure the output starts as expected, we don't want to eval an error message.
 	if (!stdout.trim().startsWith("GENERATED_BY_CARGO_ABOUT:")) {
 		console.error("Unexpected output from cargo-about", stdout);
-		return null;
+		return undefined;
 	}
 
 	// Security-wise, eval() isn't any worse than require(), but it doesn't need a temporary file.

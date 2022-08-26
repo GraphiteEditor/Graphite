@@ -28,7 +28,7 @@ function preparePanicDialog(header: string, details: string, panicDetails: strin
 			{ rowWidgets: [new Widget({ kind: "TextLabel", value: header, bold: true, italic: false, tableAlign: false, multiline: false }, 0n)] },
 			{ rowWidgets: [new Widget({ kind: "TextLabel", value: details, bold: false, italic: false, tableAlign: false, multiline: true }, 1n)] },
 		],
-		layoutTarget: null,
+		layoutTarget: undefined,
 	};
 
 	const reloadButton: TextButtonWidget = {

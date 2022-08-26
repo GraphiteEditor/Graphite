@@ -24,8 +24,8 @@ function initializeRipples() {
 
 	ripples = Array.from(navButtons).map((button) => ({
 		element: button,
-		animationStartTime: null,
-		animationEndTime: null,
+		animationStartTime: 0,
+		animationEndTime: 0,
 		goingUp: false,
 	}));
 

@@ -84,8 +84,8 @@ export default defineComponent({
 	},
 	mounted() {
 		// Focus the first button in the popup
-		const element = this.$el as Element | null;
-		const emphasizedOrFirstButton = (element?.querySelector("[data-emphasized]") as HTMLButtonElement | null) || element?.querySelector("[data-text-button]");
+		const element = this.$el as Element | undefined;
+		const emphasizedOrFirstButton = (element?.querySelector("[data-emphasized]") || element?.querySelector("[data-text-button]") || undefined) as HTMLButtonElement | undefined;
 		emphasizedOrFirstButton?.focus();
 	},
 	components: {
