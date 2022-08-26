@@ -404,6 +404,12 @@ export default defineComponent({
 		window.dispatchEvent(new Event("resize"));
 	},
 	data() {
+		const scrollbarPos: XY = { x: 0.5, y: 0.5 };
+		const scrollbarSize: XY = { x: 0.5, y: 0.5 };
+		const scrollbarMultiplier: XY = { x: 0, y: 0 };
+
+		const rulerOrigin: XY = { x: 0, y: 0 };
+
 		return {
 			// Interactive text editing
 			textInput: undefined as undefined | HTMLDivElement,
@@ -414,12 +420,12 @@ export default defineComponent({
 			canvasCursor: "default" as MouseCursorIcon,
 
 			// Scrollbars
-			scrollbarPos: { x: 0.5, y: 0.5 } as XY,
-			scrollbarSize: { x: 0.5, y: 0.5 } as XY,
-			scrollbarMultiplier: { x: 0, y: 0 } as XY,
+			scrollbarPos,
+			scrollbarSize,
+			scrollbarMultiplier,
 
 			// Rulers
-			rulerOrigin: { x: 0, y: 0 } as XY,
+			rulerOrigin,
 			rulerSpacing: 100 as number,
 			rulerInterval: 100 as number,
 

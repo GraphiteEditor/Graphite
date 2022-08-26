@@ -57,11 +57,11 @@ export function createFontsState(editor: Editor) {
 		}
 	});
 
-	const fontList: Promise<{ family: string; variants: string[]; files: Map<string, string> }[]> = new Promise((resolve) => {
+	const fontList = new Promise<{ family: string; variants: string[]; files: Map<string, string> }[]>((resolve) => {
 		fetch(fontListAPI)
 			.then((response) => response.json())
 			.then((fontListResponse) => {
-				const fontListData = fontListResponse.items as { family: string; variants: string[]; files: { [name: string]: string } }[];
+				const fontListData = fontListResponse.items as { family: string; variants: string[]; files: Record<string, string> }[];
 				const result = fontListData.map((font) => {
 					const { family } = font;
 					const variants = font.variants.map(formatFontStyleName);

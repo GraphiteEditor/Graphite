@@ -40,7 +40,7 @@ export async function createPersistenceManager(editor: Editor, portfolio: Portfo
 	});
 
 	// Open the IndexedDB database connection and save it to this variable, which is a promise that resolves once the connection is open
-	const databaseConnection: Promise<IDBDatabase> = new Promise((resolve) => {
+	const databaseConnection = new Promise<IDBDatabase>((resolve) => {
 		const dbOpenRequest = indexedDB.open(GRAPHITE_INDEXED_DB_NAME, GRAPHITE_INDEXED_DB_VERSION);
 
 		dbOpenRequest.onupgradeneeded = (): void => {

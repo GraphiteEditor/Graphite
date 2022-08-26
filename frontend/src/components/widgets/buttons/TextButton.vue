@@ -62,6 +62,7 @@
 }
 </style>
 
+
 <script lang="ts">
 import { defineComponent, type PropType } from "vue";
 
@@ -69,6 +70,23 @@ import { type IconName } from "@/utility-functions/icons";
 
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
 import TextLabel from "@/components/widgets/labels/TextLabel.vue";
+
+export type TextButtonWidget = {
+	tooltip?: string;
+	message?: string | object;
+	callback?: () => void;
+	props: {
+		kind: "TextButton";
+		label: string;
+		icon?: string;
+		emphasized?: boolean;
+		minWidth?: number;
+		disabled?: boolean;
+
+		// Callbacks
+		// `action` is used via `IconButtonWidget.callback`
+	};
+};
 
 export default defineComponent({
 	props: {

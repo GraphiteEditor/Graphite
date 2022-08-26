@@ -4,12 +4,10 @@ import { type WasmEditorInstance, type WasmRawInstance } from "@/wasm-communicat
 import { type JsMessageType, messageMakers, type JsMessage } from "@/wasm-communication/messages";
 
 type JsMessageCallback<T extends JsMessage> = (messageData: T) => void;
-type JsMessageCallbackMap = {
-	// Don't know a better way of typing this since it can be any subclass of JsMessage
-	// The functions interacting with this map are strongly typed though around JsMessage
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	[message: string]: JsMessageCallback<any> | undefined;
-};
+// Don't know a better way of typing this since it can be any subclass of JsMessage
+// The functions interacting with this map are strongly typed though around JsMessage
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type JsMessageCallbackMap = Record<string, JsMessageCallback<any> | undefined>;
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 export function createSubscriptionRouter() {
