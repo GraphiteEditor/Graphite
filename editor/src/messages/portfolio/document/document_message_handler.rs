@@ -436,10 +436,10 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 					.into(),
 				);
 			}
-			MoveSelectedManipulatorPoints { layer_path, delta, absolute_position } => {
+			MoveSelectedManipulatorPoints { layer_path, delta } => {
 				self.backup(responses);
 				if let Ok(_layer) = self.graphene_document.layer(&layer_path) {
-					responses.push_back(DocumentOperation::MoveSelectedManipulatorPoints { layer_path, delta, absolute_position }.into());
+					responses.push_back(DocumentOperation::MoveSelectedManipulatorPoints { layer_path, delta }.into());
 				}
 			}
 			NudgeSelectedLayers { delta_x, delta_y } => {

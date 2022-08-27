@@ -1,7 +1,4 @@
-use super::{
-	consts::{ManipulatorType, SELECTION_THRESHOLD},
-	manipulator_point::ManipulatorPoint,
-};
+use super::{consts::ManipulatorType, manipulator_point::ManipulatorPoint};
 use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};
 
@@ -95,22 +92,14 @@ impl ManipulatorGroup {
 	}
 
 	/// Move the selected points by the provided transform.
-	pub fn move_selected_points(&mut self, delta: DVec2, absolute_position: DVec2, viewspace: &DAffine2) {
+	pub fn move_selected_points(&mut self, delta: DVec2) {
 		let mirror_angle = self.editor_state.mirror_angle_between_handles;
 		// Invert distance since we want it to start disabled
 		let mirror_distance = !self.editor_state.mirror_distance_between_handles;
 
-		// TODO Use an ID as opposed to distance, stopgap for now
-		// Transformed into viewspace so SELECTION_THRESHOLD is in pixels
-		let is_drag_target = |point: &mut ManipulatorPoint| -> bool { viewspace.transform_point2(absolute_position).distance(viewspace.transform_point2(point.position)) < SELECTION_THRESHOLD };
-
 		// Move the point absolutely or relatively depending on if the point is under the cursor (the last selected point)
-		let move_point = |point: &mut ManipulatorPoint, delta: DVec2, absolute_position: DVec2| {
-			if is_drag_target(point) {
-				point.position = absolute_position;
-			} else {
-				point.position += delta;
-			}
+		let move_point = |point: &mut ManipulatorPoint, delta: DVec2| {
+			point.position += delta;
 			assert!(point.position.is_finite(), "Point is not finite!")
 		};
 
@@ -139,7 +128,7 @@ impl ManipulatorGroup {
 		// If the anchor is selected, ignore any handle mirroring/dragging and drag all points
 		if self.is_anchor_selected() {
 			for point in self.points_mut() {
-				move_point(point, delta, absolute_position);
+				move_point(point, delta);
 			}
 			return;
 		}
@@ -147,7 +136,7 @@ impl ManipulatorGroup {
 		// If the anchor isn't selected, but both handles are, drag only handles
 		if self.both_handles_selected() {
 			for point in self.selected_handles_mut() {
-				move_point(point, delta, absolute_position);
+				move_point(point, delta);
 			}
 			return;
 		}
@@ -156,7 +145,7 @@ impl ManipulatorGroup {
 		// Drag the single handle
 		let reflect_center = self.points[ManipulatorType::Anchor].as_ref().unwrap().position;
 		let selected_handle = self.selected_handles_mut().next().unwrap();
-		move_point(selected_handle, delta, absolute_position);
+		move_point(selected_handle, delta);
 
 		// Move the opposing handle symmetrically if our mirroring flags allow
 		let selected_handle = &selected_handle.clone();

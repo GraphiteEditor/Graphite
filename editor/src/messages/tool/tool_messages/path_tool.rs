@@ -260,7 +260,7 @@ impl Fsm for PathToolFsmState {
 
 					// Move the selected points by the mouse position
 					let snapped_position = tool_data.snap_manager.snap_position(responses, document, input.mouse.position);
-					tool_data.shape_editor.move_selected_points(snapped_position - tool_data.drag_start_pos, snapped_position, responses);
+					tool_data.shape_editor.move_selected_points(snapped_position - tool_data.drag_start_pos,  responses);
 					tool_data.drag_start_pos = snapped_position;
 					PathToolFsmState::Dragging
 				}
