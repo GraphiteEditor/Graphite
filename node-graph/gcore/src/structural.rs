@@ -64,6 +64,23 @@ impl<'n, Input, First: 'n, Second: 'n> ComposeNode<First, Second, Input> {
 		ComposeNode::<First, Second, Input> { first, second, _phantom: PhantomData }
 	}
 }
+
+pub trait Then<Inter, Input>: Sized {
+	fn then<Second>(self, second: Second) -> ComposeNode<Self, Second, Input>
+	where
+		Self: Node<Input, Output = Inter>,
+		Second: Node<Inter>,
+	{
+		ComposeNode::<Self, Second, Input> {
+			first: self,
+			second,
+			_phantom: PhantomData,
+		}
+	}
+}
+
+impl<First: Node<Input, Output = Inter>, Inter, Input> Then<Inter, Input> for First {}
+
 pub trait After<Inter>: Sized {
 	fn after<First, Input>(self, first: First) -> ComposeNode<First, Self, Input>
 	where
