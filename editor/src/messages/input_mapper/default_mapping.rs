@@ -42,7 +42,7 @@ pub fn default_mapping() -> Mapping {
 		//
 		// SelectToolMessage
 		entry!(PointerMove; refresh_keys=[Control, Shift, Alt], action_dispatch=SelectToolMessage::PointerMove { axis_align: Shift, snap_angle: Control, center: Alt }),
-		entry!(KeyDown(Lmb); action_dispatch=SelectToolMessage::DragStart { add_to_selection: Shift }),
+		entry!(KeyDown(Lmb); action_dispatch=SelectToolMessage::DragStart { add_to_selection: Shift, duplicate: Alt }),
 		entry!(KeyUp(Lmb); action_dispatch=SelectToolMessage::DragStop),
 		entry!(KeyDown(Enter); action_dispatch=SelectToolMessage::DragStop),
 		entry!(DoubleClick; action_dispatch=SelectToolMessage::EditLayer),
