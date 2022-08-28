@@ -81,54 +81,39 @@ pub trait Then<Inter, Input>: Sized {
 
 impl<First: Node<Input, Output = Inter>, Inter, Input> Then<Inter, Input> for First {}
 
-pub trait After<Inter>: Sized {
-	fn after<First, Input>(self, first: First) -> ComposeNode<First, Self, Input>
+pub trait ThenRef<Inter, Input>: Sized {
+	fn after<'n, Second: 'n>(&'n self, second: Second) -> ComposeNode<&'n Self, Second, Input>
 	where
-		First: Node<Input, Output = Inter>,
-		Self: Node<Inter>,
-	{
-		ComposeNode::<First, Self, Input> {
-			first,
-			second: self,
-			_phantom: PhantomData,
-		}
-	}
-}
-impl<Second: Node<I>, I> After<I> for Second {}
-
-pub trait AfterRef<Inter>: Sized {
-	fn after<'n, First: 'n, Input>(&'n self, first: First) -> ComposeNode<First, &'n Self, Input>
-	where
-		First: Node<Input, Output = Inter> + Copy,
-		&'n Self: Node<Inter>,
+		&'n Self: Node<Input, Output = Inter> + Copy,
+		Second: Node<Inter>,
 		Self: 'n,
 	{
-		ComposeNode::<First, &'n Self, Input> {
-			first,
-			second: self,
+		ComposeNode::<&'n Self, Second, Input> {
+			first: self,
+			second,
 			_phantom: PhantomData,
 		}
 	}
 }
-impl<'n, Second: 'n, I> AfterRef<I> for Second where &'n Second: Node<I> {}
+impl<'n, First: 'n, Inter, Input> ThenRef<Inter, Input> for First where &'n First: Node<Input, Output = Inter> {}
 
 #[cfg(feature = "async")]
-pub trait AfterBox<Inter> {
-	fn after<'n, First: 'n, Input>(self, first: First) -> ComposeNode<First, Self, Input>
+pub trait ThenBox<Inter, Input> {
+	fn then<'n, Second: 'n>(self, second: Second) -> ComposeNode<Self, Second, Input>
 	where
-		First: Node<Input, Output = Inter> + Copy,
-		alloc::boxed::Box<Self>: Node<Inter>,
+		alloc::boxed::Box<Self>: Node<Input, Output = Inter>,
+		Second: Node<Inter> + Copy,
 		Self: Sized,
 	{
-		ComposeNode::<First, Self, Input> {
-			first,
-			second: self,
+		ComposeNode::<Self, Second, Input> {
+			first: self,
+			second,
 			_phantom: PhantomData,
 		}
 	}
 }
 #[cfg(feature = "async")]
-impl<'n, Second: 'n, I> AfterBox<I> for alloc::boxed::Box<Second> where &'n alloc::boxed::Box<Second>: Node<I> {}
+impl<'n, First: 'n, Inter, Input> ThenBox<Inter, Input> for alloc::boxed::Box<First> where &'n alloc::boxed::Box<First>: Node<Input, Output = Inter> {}
 
 pub struct ConsNode<Root>(pub Root);
 

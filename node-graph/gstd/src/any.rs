@@ -105,7 +105,7 @@ mod test {
 		let value = value.as_owned();
 
 		/*let computation = ComposeNode::new(value, add);
-		let computation = id.after(add.after(value));
+		let computation = value.then(add).then(id);
 		let result: u32 = *dyn_any::downcast(computation.eval(&())).unwrap();*/
 	}*/
 	#[test]
