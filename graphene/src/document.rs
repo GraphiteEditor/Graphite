@@ -367,7 +367,7 @@ impl Document {
 		Ok(layer.data.bounding_box(layer.transform, font_cache).map(|bounds| (bounds, transform)))
 	}
 
-	/// Compute the centre of transformation in document space
+	/// Compute the centre of transformation multiplied with `Document::multiply_transforms`.
 	pub fn pivot(&self, path: &[LayerId], font_cache: &FontCache) -> Option<DVec2> {
 		let layer = self.layer(path).ok()?;
 		Some(self.multiply_transforms(path).unwrap_or_default().transform_point2(layer.layerspace_pivot(font_cache)))

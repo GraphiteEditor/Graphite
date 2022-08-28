@@ -176,7 +176,8 @@ impl Fsm for ArtboardToolFsmState {
 
 						bounding_box.selected_edges = edges.map(|(top, bottom, left, right)| {
 							let edges = SelectedEdges::new(top, bottom, left, right, bounding_box.bounds);
-							bounding_box.pivot = edges.calculate_pivot();
+							bounding_box.opposite_pivot = edges.calculate_pivot();
+
 							edges
 						});
 
@@ -189,10 +190,16 @@ impl Fsm for ArtboardToolFsmState {
 						let snap_x = selected_edges.2 || selected_edges.3;
 						let snap_y = selected_edges.0 || selected_edges.1;
 
-						tool_data
-							.snap_manager
-							.start_snap(document, document.bounding_boxes(None, Some(tool_data.selected_board.unwrap()), font_cache), snap_x, snap_y);
+						let board = tool_data.selected_board.unwrap();
+						tool_data.snap_manager.start_snap(document, document.bounding_boxes(None, Some(board), font_cache), snap_x, snap_y);
 						tool_data.snap_manager.add_all_document_handles(document, &[], &[], &[]);
+
+						if let Some(bounds) = &mut tool_data.bounding_box_overlays {
+							let pivot = document.artboard_message_handler.artboards_graphene_document.pivot(&[board], font_cache).unwrap_or_default();
+							let root = document.graphene_document.root.transform;
+							let pivot = root.inverse().transform_point2(pivot);
+							bounds.centre_of_transformation = pivot;
+						}
 
 						ArtboardToolFsmState::ResizingBounds
 					} else {
@@ -249,11 +256,7 @@ impl Fsm for ArtboardToolFsmState {
 							let mouse_position = input.mouse.position;
 							let snapped_mouse_position = tool_data.snap_manager.snap_position(responses, document, mouse_position);
 
-							let (mut position, size) = movement.new_size(snapped_mouse_position, bounds.transform, from_center, constrain_square);
-							if from_center {
-								position = movement.center_position(position, size);
-							}
-
+							let (position, size) = movement.new_size(snapped_mouse_position, bounds.transform, from_center, bounds.centre_of_transformation, constrain_square);
 							responses.push_back(
 								ArtboardMessage::ResizeArtboard {
 									artboard: tool_data.selected_board.unwrap(),

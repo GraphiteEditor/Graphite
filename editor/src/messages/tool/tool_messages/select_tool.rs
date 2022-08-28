@@ -415,7 +415,7 @@ impl Fsm for SelectToolFsmState {
 
 						bounding_box.selected_edges = edges.map(|(top, bottom, left, right)| {
 							let edges = SelectedEdges::new(top, bottom, left, right, bounding_box.bounds);
-							bounding_box.pivot = edges.calculate_pivot();
+							bounding_box.opposite_pivot = edges.calculate_pivot();
 							edges
 						});
 
@@ -449,13 +449,21 @@ impl Fsm for SelectToolFsmState {
 
 						tool_data.layers_dragging = selected;
 
+						if let Some(bounds) = &mut tool_data.bounding_box_overlays {
+							let document = &document.graphene_document;
+
+							let selected = &tool_data.layers_dragging.iter().collect::<Vec<_>>();
+							let mut selected = Selected::new(&mut bounds.original_transforms, &mut bounds.centre_of_transformation, selected, responses, document);
+							bounds.centre_of_transformation = selected.mean_average_of_pivots(font_cache);
+						}
+
 						ResizingBounds
 					} else if rotating_bounds {
 						if let Some(bounds) = &mut tool_data.bounding_box_overlays {
 							let selected = selected.iter().collect::<Vec<_>>();
-							let mut selected = Selected::new(&mut bounds.original_transforms, &mut bounds.pivot, &selected, responses, &document.graphene_document);
+							let mut selected = Selected::new(&mut bounds.original_transforms, &mut bounds.centre_of_transformation, &selected, responses, &document.graphene_document);
 
-							*selected.pivot = selected.mean_average_of_pivots(font_cache);
+							bounds.centre_of_transformation = selected.mean_average_of_pivots(font_cache);
 						}
 
 						tool_data.layers_dragging = selected;
@@ -532,11 +540,12 @@ impl Fsm for SelectToolFsmState {
 
 							let snapped_mouse_position = tool_data.snap_manager.snap_position(responses, document, mouse_position);
 
-							let (_, size) = movement.new_size(snapped_mouse_position, bounds.transform, center, axis_align);
-							let delta = movement.bounds_to_scale_transform(center, size);
+							let (_, size) = movement.new_size(snapped_mouse_position, bounds.transform, center, bounds.centre_of_transformation, axis_align);
+							let delta = movement.bounds_to_scale_transform(size);
 
-							let selected = tool_data.layers_dragging.iter().collect::<Vec<_>>();
-							let mut selected = Selected::new(&mut bounds.original_transforms, &mut bounds.pivot, &selected, responses, &document.graphene_document);
+							let selected = &tool_data.layers_dragging.iter().collect::<Vec<_>>();
+							let pivot = if center { &mut bounds.centre_of_transformation } else { &mut bounds.opposite_pivot };
+							let mut selected = Selected::new(&mut bounds.original_transforms, pivot, selected, responses, &document.graphene_document);
 
 							selected.update_transforms(delta);
 						}
@@ -546,8 +555,8 @@ impl Fsm for SelectToolFsmState {
 				(RotatingBounds, PointerMove { snap_angle, .. }) => {
 					if let Some(bounds) = &mut tool_data.bounding_box_overlays {
 						let angle = {
-							let start_offset = tool_data.drag_start - bounds.pivot;
-							let end_offset = input.mouse.position - bounds.pivot;
+							let start_offset = tool_data.drag_start - bounds.centre_of_transformation;
+							let end_offset = input.mouse.position - bounds.centre_of_transformation;
 
 							start_offset.angle_between(end_offset)
 						};
@@ -562,7 +571,7 @@ impl Fsm for SelectToolFsmState {
 						let delta = DAffine2::from_angle(snapped_angle);
 
 						let selected = tool_data.layers_dragging.iter().collect::<Vec<_>>();
-						let mut selected = Selected::new(&mut bounds.original_transforms, &mut bounds.pivot, &selected, responses, &document.graphene_document);
+						let mut selected = Selected::new(&mut bounds.original_transforms, &mut bounds.centre_of_transformation, &selected, responses, &document.graphene_document);
 
 						selected.update_transforms(delta);
 					}
@@ -661,7 +670,7 @@ impl Fsm for SelectToolFsmState {
 						let selected = tool_data.layers_dragging.iter().collect::<Vec<_>>();
 						let mut selected = Selected::new(
 							&mut bounding_box_overlays.original_transforms,
-							&mut bounding_box_overlays.pivot,
+							&mut bounding_box_overlays.opposite_pivot,
 							&selected,
 							responses,
 							&document.graphene_document,
