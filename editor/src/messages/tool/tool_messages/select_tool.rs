@@ -455,7 +455,7 @@ impl Fsm for SelectToolFsmState {
 							let selected = selected.iter().collect::<Vec<_>>();
 							let mut selected = Selected::new(&mut bounds.original_transforms, &mut bounds.pivot, &selected, responses, &document.graphene_document);
 
-							*selected.pivot = selected.calculate_pivot(font_cache);
+							*selected.pivot = selected.mean_average_of_pivots(font_cache);
 						}
 
 						tool_data.layers_dragging = selected;

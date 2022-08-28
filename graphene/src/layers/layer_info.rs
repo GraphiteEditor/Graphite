@@ -192,6 +192,9 @@ pub struct Layer {
 	/// A transformation applied to the layer (translation, rotation, scaling, and shear).
 	#[serde(with = "DAffine2Ref")]
 	pub transform: glam::DAffine2,
+	/// The centre of transformations like rotation or scaling with the shift key.
+	/// This is in local space (so the layer's transform should be applied).
+	pub pivot: DVec2,
 	/// The cached SVG thumbnail view of the layer.
 	#[serde(skip)]
 	pub thumbnail_cache: String,
@@ -217,6 +220,7 @@ impl Layer {
 			name: None,
 			data,
 			transform: glam::DAffine2::from_cols_array(&transform),
+			pivot: DVec2::splat(0.5),
 			cache: String::new(),
 			thumbnail_cache: String::new(),
 			svg_defs_cache: String::new(),
@@ -363,6 +367,11 @@ impl Layer {
 		self.transform * scale
 	}
 
+	pub fn layerspace_pivot(&self, font_cache: &FontCache) -> DVec2 {
+		let [min, max] = self.aabb_for_transform(DAffine2::IDENTITY, font_cache).unwrap_or([DVec2::ZERO, DVec2::ONE]);
+		self.pivot * (max - min) + min
+	}
+
 	/// Get a mutable reference to the Folder wrapped by the layer.
 	/// This operation will fail if the [Layer type](Layer::data) is not `LayerDataType::Folder`.
 	pub fn as_folder_mut(&mut self) -> Result<&mut FolderLayer, DocumentError> {
@@ -462,6 +471,7 @@ impl Clone for Layer {
 			name: self.name.clone(),
 			data: self.data.clone(),
 			transform: self.transform,
+			pivot: self.pivot,
 			cache: String::new(),
 			thumbnail_cache: String::new(),
 			svg_defs_cache: String::new(),
