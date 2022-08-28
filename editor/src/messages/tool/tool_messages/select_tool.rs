@@ -515,9 +515,9 @@ impl Fsm for SelectToolFsmState {
 						.collect();
 
 					if input.keyboard.get(duplicate as usize) && tool_data.not_duplicated_layers.is_none() {
-						tool_data.duplicate(document, responses);
+						tool_data.start_duplicates(document, responses);
 					} else if !input.keyboard.get(duplicate as usize) && tool_data.not_duplicated_layers.is_some() {
-						tool_data.undo_duplicate(responses);
+						tool_data.remove_duplicates(responses);
 					}
 
 					let closest_move = tool_data.snap_manager.snap_layers(responses, document, snap, mouse_delta);
@@ -858,7 +858,7 @@ impl Fsm for SelectToolFsmState {
 
 impl SelectToolData {
 	/// Duplicates the currently dragging layers. Called when alt is pressed and the layers have not yet been duplicated.
-	fn duplicate(&mut self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
+	fn start_duplicates(&mut self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
 		responses.push_back(DocumentMessage::DeselectAllLayers.into());
 
 		self.not_duplicated_layers = Some(self.layers_dragging.clone());
@@ -905,8 +905,8 @@ impl SelectToolData {
 		}
 	}
 
-	/// Removes the duplicated. Called when alt is released and the layers have been duplicated.
-	fn undo_duplicate(&mut self, responses: &mut VecDeque<Message>) {
+	/// Removes the duplicated layers. Called when alt is released and the layers have been duplicated.
+	fn remove_duplicates(&mut self, responses: &mut VecDeque<Message>) {
 		let origionals = match self.not_duplicated_layers.take() {
 			Some(x) => x,
 			None => return,
