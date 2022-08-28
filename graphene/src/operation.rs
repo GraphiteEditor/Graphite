@@ -122,7 +122,6 @@ pub enum Operation {
 	MoveSelectedManipulatorPoints {
 		layer_path: Vec<LayerId>,
 		delta: (f64, f64),
-		absolute_position: (f64, f64),
 	},
 	MoveManipulatorPoint {
 		layer_path: Vec<LayerId>,
