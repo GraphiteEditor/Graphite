@@ -1,3 +1,4 @@
+use crate::application::generate_uuid;
 use crate::consts::{ROTATE_SNAP_ANGLE, SELECTION_TOLERANCE};
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, KeysGroup, MouseMotion};
@@ -58,6 +59,7 @@ pub enum SelectToolMessage {
 		axis_align: Key,
 		snap_angle: Key,
 		center: Key,
+		duplicate: Key,
 	},
 }
 
@@ -317,7 +319,8 @@ impl Default for SelectToolFsmState {
 struct SelectToolData {
 	drag_start: ViewportPosition,
 	drag_current: ViewportPosition,
-	layers_dragging: Vec<Vec<LayerId>>, // Paths and offsets
+	layers_dragging: Vec<Vec<LayerId>>,
+	not_duplicated_layers: Option<Vec<Vec<LayerId>>>,
 	drag_box_overlay_layer: Option<Vec<LayerId>>,
 	path_outlines: PathOutline,
 	bounding_box_overlays: Option<BoundingBoxOverlays>,
@@ -471,6 +474,7 @@ impl Fsm for SelectToolFsmState {
 						RotatingBounds
 					} else if intersection.last().map(|last| selected.contains(last)).unwrap_or(false) {
 						responses.push_back(DocumentMessage::StartTransaction.into());
+
 						tool_data.layers_dragging = selected;
 
 						tool_data
@@ -499,10 +503,11 @@ impl Fsm for SelectToolFsmState {
 							DrawingBox
 						}
 					};
+					tool_data.not_duplicated_layers = None;
 
 					state
 				}
-				(Dragging, PointerMove { axis_align, .. }) => {
+				(Dragging, PointerMove { axis_align, duplicate, .. }) => {
 					// TODO: This is a cheat. Break out the relevant functionality from the handler above and call it from there and here.
 					responses.push_front(SelectToolMessage::DocumentIsDirty.into());
 
@@ -516,6 +521,12 @@ impl Fsm for SelectToolFsmState {
 						.filter_map(|path| document.graphene_document.viewport_bounding_box(path, font_cache).ok()?)
 						.flat_map(snapping::expand_bounds)
 						.collect();
+
+					if input.keyboard.get(duplicate as usize) && tool_data.not_duplicated_layers.is_none() {
+						tool_data.start_duplicates(document, responses);
+					} else if !input.keyboard.get(duplicate as usize) && tool_data.not_duplicated_layers.is_some() {
+						tool_data.stop_duplicates(responses);
+					}
 
 					let closest_move = tool_data.snap_manager.snap_layers(responses, document, snap, mouse_delta);
 					// TODO: Cache the result of `shallowest_unique_layers` to avoid this heavy computation every frame of movement, see https://github.com/GraphiteEditor/Graphite/pull/481
@@ -851,5 +862,91 @@ impl Fsm for SelectToolFsmState {
 
 	fn update_cursor(&self, responses: &mut VecDeque<Message>) {
 		responses.push_back(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default }.into());
+	}
+}
+
+impl SelectToolData {
+	/// Duplicates the currently dragging layers. Called when alt is pressed and the layers have not yet been duplicated.
+	fn start_duplicates(&mut self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
+		responses.push_back(DocumentMessage::DeselectAllLayers.into());
+
+		self.not_duplicated_layers = Some(self.layers_dragging.clone());
+
+		// Duplicate each previously selected layer and select the new ones.
+		for layer_path in Document::shallowest_unique_layers(self.layers_dragging.iter_mut()) {
+			// Moves the origional back to its starting position.
+			responses.push_front(
+				Operation::TransformLayerInViewport {
+					path: layer_path.clone(),
+					transform: DAffine2::from_translation(self.drag_start - self.drag_current).to_cols_array(),
+				}
+				.into(),
+			);
+
+			// Copy the layers.
+			// Not using the Copy message allows us to retrieve the ids of the new layers to initalise the drag.
+			let layer = match document.graphene_document.layer(layer_path) {
+				Ok(layer) => layer.clone(),
+				Err(e) => {
+					log::warn!("Could not access selected layer {:?}: {:?}", layer_path, e);
+					continue;
+				}
+			};
+			let layer_metadata = *document.layer_metadata(layer_path);
+			*layer_path.last_mut().unwrap() = generate_uuid();
+
+			responses.push_back(
+				Operation::InsertLayer {
+					layer,
+					destination_path: layer_path.clone(),
+					insert_index: -1,
+				}
+				.into(),
+			);
+
+			responses.push_back(
+				DocumentMessage::UpdateLayerMetadata {
+					layer_path: layer_path.clone(),
+					layer_metadata,
+				}
+				.into(),
+			);
+		}
+	}
+
+	/// Removes the duplicated layers. Called when alt is released and the layers have been duplicated.
+	fn stop_duplicates(&mut self, responses: &mut VecDeque<Message>) {
+		let origionals = match self.not_duplicated_layers.take() {
+			Some(x) => x,
+			None => return,
+		};
+
+		responses.push_back(DocumentMessage::DeselectAllLayers.into());
+
+		// Delete the duplicated layers
+		for layer_path in Document::shallowest_unique_layers(self.layers_dragging.iter()) {
+			responses.push_back(Operation::DeleteLayer { path: layer_path.clone() }.into());
+		}
+
+		// Move the origional to under the mouse
+		for layer_path in Document::shallowest_unique_layers(origionals.iter()) {
+			responses.push_front(
+				Operation::TransformLayerInViewport {
+					path: layer_path.clone(),
+					transform: DAffine2::from_translation(self.drag_current - self.drag_start).to_cols_array(),
+				}
+				.into(),
+			);
+		}
+
+		// Select the origionals
+		responses.push_back(
+			DocumentMessage::SetSelectedLayers {
+				replacement_selected_layers: origionals.clone(),
+			}
+			.into(),
+		);
+
+		self.layers_dragging = origionals;
 	}
 }
