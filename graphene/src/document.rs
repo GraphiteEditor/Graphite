@@ -971,14 +971,13 @@ impl Document {
 				}
 				Some(responses)
 			}
-			Operation::MoveSelectedManipulatorPoints { layer_path, delta, absolute_position } => {
+			Operation::MoveSelectedManipulatorPoints { layer_path, delta } => {
 				if let Ok(viewspace) = self.generate_transform_relative_to_viewport(&layer_path) {
 					let objectspace = &viewspace.inverse();
 					let delta = objectspace.transform_vector2(DVec2::new(delta.0, delta.1));
-					let absolute_position = objectspace.transform_point2(DVec2::new(absolute_position.0, absolute_position.1));
 					let layer = self.layer_mut(&layer_path)?;
 					if let Some(shape) = layer.as_subpath_mut() {
-						shape.move_selected(delta, absolute_position, &viewspace);
+						shape.move_selected(delta);
 					}
 				}
 				self.mark_as_dirty(&layer_path)?;

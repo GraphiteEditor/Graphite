@@ -100,8 +100,10 @@ impl ShapeEditor {
 				);
 				// Snap the selected point to the cursor
 				if let Ok(viewspace) = document.generate_transform_relative_to_viewport(shape_layer_path) {
-					self.move_selected_points(mouse_position - viewspace.transform_point2(point_position), mouse_position, responses)
+					self.move_selected_points(mouse_position - viewspace.transform_point2(point_position), responses)
 				}
+
+				return Some(points);
 			} else {
 				responses.push_back(
 					Operation::DeselectManipulatorPoints {
@@ -110,10 +112,10 @@ impl ShapeEditor {
 					}
 					.into(),
 				);
-				points.retain(|x| *x != (shape_layer_path, manipulator_group_id, ManipulatorType::from_index(manipulator_point_index)))
-			}
+				points.retain(|x| *x != (shape_layer_path, manipulator_group_id, ManipulatorType::from_index(manipulator_point_index)));
 
-			return Some(points);
+				return None;
+			}
 		}
 
 		// Deselect all points if no nearby point
@@ -169,13 +171,12 @@ impl ShapeEditor {
 	}
 
 	/// Move the selected points by dragging the mouse.
-	pub fn move_selected_points(&self, delta: DVec2, absolute_position: DVec2, responses: &mut VecDeque<Message>) {
+	pub fn move_selected_points(&self, delta: DVec2, responses: &mut VecDeque<Message>) {
 		for layer_path in &self.selected_layers {
 			responses.push_back(
 				DocumentMessage::MoveSelectedManipulatorPoints {
 					layer_path: layer_path.clone(),
 					delta: (delta.x, delta.y),
-					absolute_position: (absolute_position.x, absolute_position.y),
 				}
 				.into(),
 			);

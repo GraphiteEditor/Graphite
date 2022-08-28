@@ -86,7 +86,6 @@ pub enum DocumentMessage {
 	MoveSelectedManipulatorPoints {
 		layer_path: Vec<LayerId>,
 		delta: (f64, f64),
-		absolute_position: (f64, f64),
 	},
 	NudgeSelectedLayers {
 		delta_x: f64,
