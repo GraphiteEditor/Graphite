@@ -61,6 +61,11 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 					return;
 				}
 
+				// Don't allow grab with no selected layers
+				if selected_layers.len() == 0 {
+					return;
+				}
+
 				begin_operation(self.transform_operation, &mut self.typing, &mut self.mouse_position, &mut self.start_mouse);
 
 				self.transform_operation = TransformOperation::Grabbing(Default::default());
@@ -72,6 +77,11 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 					return;
 				}
 
+				// Don't allow rotate with no selected layers
+				if selected_layers.len() == 0 {
+					return;
+				}
+
 				begin_operation(self.transform_operation, &mut self.typing, &mut self.mouse_position, &mut self.start_mouse);
 
 				self.transform_operation = TransformOperation::Rotating(Default::default());
@@ -80,6 +90,11 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 			}
 			BeginScale => {
 				if let TransformOperation::Scaling(_) = self.transform_operation {
+					return;
+				}
+
+				// Don't allow scale with no selected layers
+				if selected_layers.len() == 0 {
 					return;
 				}
 

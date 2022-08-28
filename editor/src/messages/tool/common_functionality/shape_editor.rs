@@ -102,6 +102,8 @@ impl ShapeEditor {
 				if let Ok(viewspace) = document.generate_transform_relative_to_viewport(shape_layer_path) {
 					self.move_selected_points(mouse_position - viewspace.transform_point2(point_position), responses)
 				}
+
+				return Some(points);
 			} else {
 				responses.push_back(
 					Operation::DeselectManipulatorPoints {
@@ -110,10 +112,10 @@ impl ShapeEditor {
 					}
 					.into(),
 				);
-				points.retain(|x| *x != (shape_layer_path, manipulator_group_id, ManipulatorType::from_index(manipulator_point_index)))
-			}
+				points.retain(|x| *x != (shape_layer_path, manipulator_group_id, ManipulatorType::from_index(manipulator_point_index)));
 
-			return Some(points);
+				return None;
+			}
 		}
 
 		// Deselect all points if no nearby point
