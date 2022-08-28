@@ -167,27 +167,27 @@ mod test {
 	#[test]
 	pub fn dup_node() {
 		let value = ValueNode(4u32);
-		let dup = DupNode.after(value);
+		let dup = value.then(DupNode);
 		assert_eq!(dup.eval(()), (4, 4));
 	}
 	#[test]
 	pub fn id_node() {
-		let value = IdNode.after(ValueNode(4u32));
+		let value = ValueNode(4u32).then(IdNode);
 		assert_eq!(value.eval(()), 4);
 	}
 	#[test]
 	pub fn clone_node() {
-		let cloned = CloneNode.after(&ValueNode(4u32));
+		let cloned = (&ValueNode(4u32)).then(CloneNode);
 		assert_eq!(cloned.eval(()), 4);
 	}
 	#[test]
 	pub fn fst_node() {
-		let fst = FstNode.after(ValueNode((4u32, "a")));
+		let fst = ValueNode((4u32, "a")).then(FstNode);
 		assert_eq!(fst.eval(()), 4);
 	}
 	#[test]
 	pub fn snd_node() {
-		let fst = SndNode.after(ValueNode((4u32, "a")));
+		let fst = ValueNode((4u32, "a")).then(SndNode);
 		assert_eq!(fst.eval(()), "a");
 	}
 	#[test]
@@ -195,7 +195,8 @@ mod test {
 		let a = ValueNode(42u32);
 		let b = ValueNode(6u32);
 		let cons_a = ConsNode(a);
-		let sum = AddNode.after(cons_a).after(b);
+
+		let sum = b.then(cons_a).then(AddNode);
 
 		assert_eq!(sum.eval(()), 48);
 	}
