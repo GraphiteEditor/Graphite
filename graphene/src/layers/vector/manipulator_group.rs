@@ -1,4 +1,6 @@
-use super::{consts::ManipulatorType, manipulator_point::ManipulatorPoint};
+use super::consts::ManipulatorType;
+use super::manipulator_point::ManipulatorPoint;
+
 use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};
 
