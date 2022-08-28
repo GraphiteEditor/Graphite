@@ -2,7 +2,7 @@ use core::marker::PhantomData;
 use graphene_core::ops::FlatMapResultNode;
 use graphene_core::raster::color::Color;
 use graphene_core::structural::{ComposeNode, ConsNode};
-use graphene_core::{generic::FnNode, ops::MapResultNode, structural::After, value::ValueNode, Node};
+use graphene_core::{generic::FnNode, ops::MapResultNode, structural::Then, value::ValueNode, Node};
 use image::Pixel;
 use std::path::Path;
 
@@ -112,15 +112,15 @@ impl<'a> IntoIterator for &'a Image {
 pub fn file_node<'n, P: AsRef<Path> + 'n>() -> impl Node<P, Output = Result<Vec<u8>, Error>> {
 	let fs = ValueNode(StdFs).clone();
 	let fs = ConsNode(fs);
-	let file: ComposeNode<_, _, P> = FileNode(PhantomData).after(fs);
+	let file: ComposeNode<_, _, P> = fs.then(FileNode(PhantomData));
 
-	FlatMapResultNode::new(BufferNode).after(file)
+	file.then(FlatMapResultNode::new(BufferNode))
 }
 
 pub fn image_node<'n, P: AsRef<Path> + 'n>() -> impl Node<P, Output = Result<Image, Error>> {
 	let file = file_node();
 	let image_loader = FnNode::new(|data: Vec<u8>| image::load_from_memory(&data).map_err(Error::Image).map(|image| image.into_rgba32f()));
-	let image: ComposeNode<_, _, P> = FlatMapResultNode::new(image_loader).after(file);
+	let image: ComposeNode<_, _, P> = file.then(FlatMapResultNode::new(image_loader));
 	let convert_image = FnNode::new(|image: image::ImageBuffer<_, _>| {
 		let data = image
 			.enumerate_pixels()
@@ -136,7 +136,7 @@ pub fn image_node<'n, P: AsRef<Path> + 'n>() -> impl Node<P, Output = Result<Ima
 		}
 	});
 
-	MapResultNode::new(convert_image).after(image)
+	image.then(MapResultNode::new(convert_image))
 }
 
 pub fn export_image_node<'n>() -> impl Node<(Image, &'n str), Output = Result<(), Error>> {
@@ -172,7 +172,7 @@ mod test {
 		let image = image_node::<&str>();
 		let gray = MapImageNode::new(GrayscaleNode);
 
-		let grayscale_picture = MapResultNode::new(&gray).after(image);
+		let grayscale_picture = image.then(MapResultNode::new(&gray));
 		let export = export_image_node();
 
 		let picture = grayscale_picture.eval("test-image-1.png").expect("Failed to load image");
