@@ -644,7 +644,7 @@ impl Fsm for SelectToolFsmState {
 
 					// Dragging the pivot overrules the other operations
 					if tool_data.pivot.is_over(input.mouse.position) {
-						cursor = MouseCursorIcon::Default;
+						cursor = MouseCursorIcon::Move;
 					}
 
 					// Generate the select outline (but not if the user is going to use the bound overlays)

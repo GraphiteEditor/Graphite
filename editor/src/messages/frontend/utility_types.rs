@@ -25,6 +25,7 @@ pub enum MouseCursorIcon {
 	Grabbing,
 	Crosshair,
 	Text,
+	Move,
 	NSResize,
 	EWResize,
 	NESWResize,
