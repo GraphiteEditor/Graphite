@@ -4,6 +4,7 @@ use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, KeysGroup, MouseMotion};
 use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
 use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, PropertyHolder, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
+use crate::messages::layout::utility_types::misc::LayoutTarget;
 use crate::messages::layout::utility_types::widgets::assist_widgets::{PivotAssist, PivotPosition};
 use crate::messages::layout::utility_types::widgets::button_widgets::{IconButton, PopoverButton};
 use crate::messages::layout::utility_types::widgets::label_widgets::{Separator, SeparatorDirection, SeparatorType};
@@ -11,6 +12,7 @@ use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, 
 use crate::messages::portfolio::document::utility_types::transformation::Selected;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::path_outline::*;
+use crate::messages::tool::common_functionality::pivot::Pivot;
 use crate::messages::tool::common_functionality::snapping::{self, SnapManager};
 use crate::messages::tool::common_functionality::transformation_cage::*;
 use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
@@ -34,7 +36,7 @@ pub struct SelectTool {
 
 #[remain::sorted]
 #[impl_message(Message, ToolMessage, Select)]
-#[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize)]
+#[derive(PartialEq, Eq, Clone, Debug, Serialize, Deserialize)]
 pub enum SelectToolMessage {
 	// Standard messages
 	#[remain::unsorted]
@@ -61,6 +63,9 @@ pub enum SelectToolMessage {
 		snap_angle: Key,
 		center: Key,
 		duplicate: Key,
+	},
+	SetPivot {
+		position: PivotPosition,
 	},
 }
 
@@ -252,12 +257,8 @@ impl PropertyHolder for SelectTool {
 				})),
 				// We'd like this widget to hide and show itself whenever the transformation cage is active or inactive (i.e. when no layers are selected)
 				WidgetHolder::new(Widget::PivotAssist(PivotAssist {
-					position: PivotPosition::Center,
-					on_update: WidgetCallback::new(|pivot_assist: &PivotAssist| {
-						// TODO: Make this actually do something
-						log::debug!("Changed pivot to {:?}", pivot_assist.position);
-						Message::NoOp
-					}),
+					position: self.tool_data.pivot.to_pivot_position(),
+					on_update: WidgetCallback::new(|pivot_assist: &PivotAssist| SelectToolMessage::SetPivot { position: pivot_assist.position }.into()),
 				})),
 			],
 		}]))
@@ -277,6 +278,12 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for SelectTool {
 		}
 
 		let new_state = self.fsm_state.transition(message, &mut self.tool_data, tool_data, &(), responses);
+
+		if self.tool_data.pivot.should_refresh_pivot_position() {
+			// Notify the frontend about the updated pivot position (a bit ugly to do it here not in the fsm but that doesn't have SelectTool)
+			self.register_properties(responses, LayoutTarget::ToolOptions);
+			log::info!("Updating pivot");
+		}
 
 		if self.fsm_state != new_state {
 			self.fsm_state = new_state;
@@ -340,6 +347,7 @@ struct SelectToolData {
 	bounding_box_overlays: Option<BoundingBoxOverlays>,
 	snap_manager: SnapManager,
 	cursor: MouseCursorIcon,
+	pivot: Pivot,
 }
 
 impl SelectToolData {
@@ -393,6 +401,7 @@ impl Fsm for SelectToolFsmState {
 
 					tool_data.path_outlines.update_selected(document.selected_visible_layers(), document, responses, font_cache);
 					tool_data.path_outlines.intersect_test_hovered(input, document, responses, font_cache);
+					tool_data.pivot.update_pivot(document, font_cache, responses);
 
 					self
 				}
@@ -684,6 +693,7 @@ impl Fsm for SelectToolFsmState {
 					responses.push_back(DocumentMessage::Undo.into());
 
 					tool_data.path_outlines.clear_selected(responses);
+					tool_data.pivot.clear_overlays(responses);
 
 					Ready
 				}
@@ -708,6 +718,7 @@ impl Fsm for SelectToolFsmState {
 
 					tool_data.path_outlines.clear_hovered(responses);
 					tool_data.path_outlines.clear_selected(responses);
+					tool_data.pivot.clear_overlays(responses);
 
 					tool_data.snap_manager.cleanup(responses);
 					Ready
@@ -724,6 +735,12 @@ impl Fsm for SelectToolFsmState {
 				}
 				(_, FlipVertical) => {
 					responses.push_back(DocumentMessage::FlipSelectedLayers { flip_axis: FlipAxis::Y }.into());
+
+					self
+				}
+				(_, SetPivot { position }) => {
+					let pos: Option<DVec2> = position.into();
+					tool_data.pivot.set_normalised_position(pos.unwrap(), document, font_cache, responses);
 
 					self
 				}

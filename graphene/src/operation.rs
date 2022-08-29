@@ -56,6 +56,10 @@ pub enum Operation {
 		blob_url: String,
 		dimensions: (f64, f64),
 	},
+	SetPivot {
+		layer_path: Vec<LayerId>,
+		pivot: (f64, f64),
+	},
 	SetTextEditability {
 		path: Vec<LayerId>,
 		editable: bool,
