@@ -1,5 +1,6 @@
 use super::*;
 use crate::ToSVGOptions;
+use std::fmt::Write;
 
 /// Functionality relating to core `Bezier` operations, such as constructors and `abs_diff_eq`.
 impl Bezier {
@@ -144,34 +145,35 @@ impl Bezier {
 	}
 
 	/// Returns an SVG representation of the `Bezier`.
-	pub fn to_svg(&self, options: ToSVGOptions) -> String {
-		let anchor_arguments = options.formatted_anchor_arguments();
-		let anchor_circles = format!(
-			r#"<circle cx="{}" cy="{}" {anchor_arguments}/><circle cx="{}" cy="{}" {anchor_arguments}/>"#,
-			self.start.x, self.start.y, self.end.x, self.end.y
-		);
-
-		let handle_point_arguments = options.formatted_handle_point_arguments();
-		let handle_circles = match self.handles {
-			BezierHandles::Linear => None,
-			BezierHandles::Quadratic { handle } => Some(format!(r#"<circle cx="{}" cy="{}" {handle_point_arguments}/>"#, handle.x, handle.y)),
-			BezierHandles::Cubic { handle_start, handle_end } => Some(format!(
-				r#"<circle cx="{}" cy="{}" {handle_point_arguments}/><circle cx="{}" cy="{}" {handle_point_arguments}/>"#,
-				handle_start.x, handle_start.y, handle_end.x, handle_end.y
-			)),
-		};
-
-		format!(
-			r#"<path d="{SVG_ARG_MOVE}{} {} {}" {}/><path d="{}" {}/>{}{}"#,
+	pub fn to_svg(&self, svg: &mut String, options: ToSVGOptions) {
+		let _ = write!(
+			svg,
+			r#"<path d="{SVG_ARG_MOVE}{} {} {}" {}/><path d="{}" {}/>"#,
 			self.start.x,
 			self.start.y,
 			self.svg_curve_argument(),
 			options.formatted_curve_arguments(),
 			self.svg_handle_line_argument().unwrap_or_else(|| "".to_string()),
-			options.formatted_handle_line_arguments(),
-			anchor_circles,
-			handle_circles.unwrap_or_else(|| "".to_string()),
-		)
+			options.formatted_handle_line_arguments()
+		);
+
+		let anchor_arguments = options.formatted_anchor_arguments();
+		let _ = write!(
+			svg,
+			r#"<circle cx="{}" cy="{}" {anchor_arguments}/><circle cx="{}" cy="{}" {anchor_arguments}/>"#,
+			self.start.x, self.start.y, self.end.x, self.end.y
+		);
+
+		let handle_point_arguments = options.formatted_handle_point_arguments();
+		if let BezierHandles::Quadratic { handle } = self.handles {
+			let _ = write!(svg, r#"<circle cx="{}" cy="{}" {handle_point_arguments}/>"#, handle.x, handle.y);
+		} else if let BezierHandles::Cubic { handle_start, handle_end } = self.handles {
+			let _ = write!(
+				svg,
+				r#"<circle cx="{}" cy="{}" {handle_point_arguments}/><circle cx="{}" cy="{}" {handle_point_arguments}/>"#,
+				handle_start.x, handle_start.y, handle_end.x, handle_end.y
+			);
+		};
 	}
 
 	/// Returns true if the corresponding points of the two `Bezier`s are within the provided absolute value difference from each other.

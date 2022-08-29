@@ -108,7 +108,9 @@ impl WasmBezier {
 	}
 
 	pub fn to_svg(&self) -> String {
-		format!("{}{}{}", SVG_OPEN_TAG, self.0.to_svg(ToSVGOptions::default()), SVG_CLOSE_TAG)
+		let mut bezier = String::new();
+		self.0.to_svg(&mut bezier, ToSVGOptions::default());
+		format!("{}{}{}", SVG_OPEN_TAG, bezier, SVG_CLOSE_TAG)
 	}
 
 	pub fn length(&self) -> f64 {
