@@ -642,7 +642,7 @@ impl Fsm for SelectToolFsmState {
 				}
 				(Ready, PointerMove { .. }) => {
 					let mut cursor = tool_data.bounding_box_overlays.as_ref().map_or(MouseCursorIcon::Default, |bounds| bounds.get_cursor(input, true));
-					
+
 					// Dragging the pivot overrules the other operations
 					if tool_data.pivot.is_over(input.mouse.position) {
 						cursor = MouseCursorIcon::Default;
