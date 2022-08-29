@@ -23,6 +23,7 @@
 				:incrementCallbackDecrease="() => updateLayout(component.widgetId, 'Decrement')"
 			/>
 			<OptionalInput v-if="component.props.kind === 'OptionalInput'" v-bind="component.props" @update:checked="(value: boolean) => updateLayout(component.widgetId, value)" />
+			<PivotAssist v-if="component.props.kind === 'PivotAssist'" v-bind="component.props" @update:position="(value: string) => updateLayout(component.widgetId, value)" />
 			<PopoverButton v-if="component.props.kind === 'PopoverButton'" v-bind="component.props">
 				<h3>{{ (component.props as any).header }}</h3>
 				<p>{{ (component.props as any).text }}</p>
@@ -75,6 +76,7 @@ import { defineComponent, type PropType } from "vue";
 
 import { isWidgetColumn, isWidgetRow, type WidgetColumn, type WidgetRow } from "@/wasm-communication/messages";
 
+import PivotAssist from "@/components/widgets/assists/PivotAssist.vue";
 import IconButton from "@/components/widgets/buttons/IconButton.vue";
 import PopoverButton from "@/components/widgets/buttons/PopoverButton.vue";
 import TextButton from "@/components/widgets/buttons/TextButton.vue";
@@ -134,6 +136,7 @@ export default defineComponent({
 		IconLabel,
 		NumberInput,
 		OptionalInput,
+		PivotAssist,
 		PopoverButton,
 		RadioInput,
 		Separator,

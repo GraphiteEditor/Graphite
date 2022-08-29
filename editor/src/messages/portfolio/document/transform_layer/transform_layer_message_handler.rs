@@ -62,7 +62,7 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 				}
 
 				// Don't allow grab with no selected layers
-				if selected_layers.len() == 0 {
+				if selected_layers.is_empty() {
 					return;
 				}
 
@@ -78,7 +78,7 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 				}
 
 				// Don't allow rotate with no selected layers
-				if selected_layers.len() == 0 {
+				if selected_layers.is_empty() {
 					return;
 				}
 
@@ -94,7 +94,7 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 				}
 
 				// Don't allow scale with no selected layers
-				if selected_layers.len() == 0 {
+				if selected_layers.is_empty() {
 					return;
 				}
 

@@ -125,6 +125,12 @@ impl<F: Fn(&MessageDiscriminant) -> Vec<KeysGroup>> MessageHandler<LayoutMessage
 						let callback_message = (optional_input.on_update.callback)(optional_input);
 						responses.push_back(callback_message);
 					}
+					Widget::PivotAssist(pivot_assist) => {
+						let update_value = value.as_str().expect("RadioInput update was not of type: u64");
+						pivot_assist.position = update_value.into();
+						let callback_message = (pivot_assist.on_update.callback)(pivot_assist);
+						responses.push_back(callback_message);
+					}
 					Widget::PopoverButton(_) => {}
 					Widget::RadioInput(radio_input) => {
 						let update_value = value.as_u64().expect("RadioInput update was not of type: u64");
