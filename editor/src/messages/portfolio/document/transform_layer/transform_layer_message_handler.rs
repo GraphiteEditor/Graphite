@@ -39,7 +39,7 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 				selected.revert_operation();
 				typing.clear();
 			} else {
-				*selected.pivot = selected.calculate_pivot(font_cache);
+				*selected.pivot = selected.mean_average_of_pivots(font_cache);
 			}
 
 			*mouse_position = ipp.mouse.position;
@@ -137,7 +137,7 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 							self.transform_operation.apply_transform_operation(&mut selected, self.snap);
 						}
 						TransformOperation::Rotating(rotation) => {
-							let selected_pivot = selected.calculate_pivot(font_cache);
+							let selected_pivot = selected.mean_average_of_pivots(font_cache);
 							let angle = {
 								let start_offset = self.mouse_position - selected_pivot;
 								let end_offset = ipp.mouse.position - selected_pivot;

@@ -367,6 +367,12 @@ impl Document {
 		Ok(layer.data.bounding_box(layer.transform, font_cache).map(|bounds| (bounds, transform)))
 	}
 
+	/// Compute the center of transformation multiplied with `Document::multiply_transforms`.
+	pub fn pivot(&self, path: &[LayerId], font_cache: &FontCache) -> Option<DVec2> {
+		let layer = self.layer(path).ok()?;
+		Some(self.multiply_transforms(path).unwrap_or_default().transform_point2(layer.layerspace_pivot(font_cache)))
+	}
+
 	pub fn visible_layers_bounding_box(&self, font_cache: &FontCache) -> Option<[DVec2; 2]> {
 		let mut paths = vec![];
 		self.visible_layers(&mut vec![], &mut paths).ok()?;
