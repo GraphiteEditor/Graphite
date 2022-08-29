@@ -222,7 +222,7 @@ impl<'a> Selected<'a> {
 		xy_summation / self.selected.len() as f64
 	}
 
-	pub fn centre_of_aabb(&mut self, font_cache: &FontCache) -> DVec2 {
+	pub fn center_of_aabb(&mut self, font_cache: &FontCache) -> DVec2 {
 		let [min, max] = self
 			.selected
 			.iter()

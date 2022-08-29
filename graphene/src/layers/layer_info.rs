@@ -192,7 +192,7 @@ pub struct Layer {
 	/// A transformation applied to the layer (translation, rotation, scaling, and shear).
 	#[serde(with = "DAffine2Ref")]
 	pub transform: glam::DAffine2,
-	/// The centre of transformations like rotation or scaling with the shift key.
+	/// The center of transformations like rotation or scaling with the shift key.
 	/// This is in local space (so the layer's transform should be applied).
 	pub pivot: DVec2,
 	/// The cached SVG thumbnail view of the layer.

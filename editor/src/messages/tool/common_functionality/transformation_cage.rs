@@ -63,7 +63,7 @@ impl SelectedEdges {
 	}
 
 	/// Computes the new bounds with the given mouse move and modifier keys
-	pub fn new_size(&self, mouse: DVec2, transform: DAffine2, center: bool, centre_around: DVec2, constrain: bool) -> (DVec2, DVec2) {
+	pub fn new_size(&self, mouse: DVec2, transform: DAffine2, center: bool, center_around: DVec2, constrain: bool) -> (DVec2, DVec2) {
 		let mouse = transform.inverse().transform_point2(mouse);
 
 		let mut min = self.bounds[0];
@@ -82,18 +82,18 @@ impl SelectedEdges {
 		let mut pivot = self.pivot_from_bounds(min, max);
 		if center {
 			if self.top {
-				max.y = centre_around.y * 2. - min.y;
-				pivot.y = centre_around.y;
+				max.y = center_around.y * 2. - min.y;
+				pivot.y = center_around.y;
 			} else if self.bottom {
-				min.y = centre_around.y * 2. - max.y;
-				pivot.y = centre_around.y;
+				min.y = center_around.y * 2. - max.y;
+				pivot.y = center_around.y;
 			}
 			if self.left {
-				max.x = centre_around.x * 2. - min.x;
-				pivot.x = centre_around.x;
+				max.x = center_around.x * 2. - min.x;
+				pivot.x = center_around.x;
 			} else if self.right {
-				min.x = centre_around.x * 2. - max.x;
-				pivot.x = centre_around.x;
+				min.x = center_around.x * 2. - max.x;
+				pivot.x = center_around.x;
 			}
 		}
 
@@ -191,7 +191,7 @@ pub struct BoundingBoxOverlays {
 	pub selected_edges: Option<SelectedEdges>,
 	pub original_transforms: OriginalTransforms,
 	pub opposite_pivot: DVec2,
-	pub centre_of_transformation: DVec2,
+	pub center_of_transformation: DVec2,
 }
 
 impl BoundingBoxOverlays {

@@ -456,17 +456,17 @@ impl Fsm for SelectToolFsmState {
 							let document = &document.graphene_document;
 
 							let selected = &tool_data.layers_dragging.iter().collect::<Vec<_>>();
-							let mut selected = Selected::new(&mut bounds.original_transforms, &mut bounds.centre_of_transformation, selected, responses, document);
-							bounds.centre_of_transformation = selected.mean_average_of_pivots(font_cache);
+							let mut selected = Selected::new(&mut bounds.original_transforms, &mut bounds.center_of_transformation, selected, responses, document);
+							bounds.center_of_transformation = selected.mean_average_of_pivots(font_cache);
 						}
 
 						ResizingBounds
 					} else if rotating_bounds {
 						if let Some(bounds) = &mut tool_data.bounding_box_overlays {
 							let selected = selected.iter().collect::<Vec<_>>();
-							let mut selected = Selected::new(&mut bounds.original_transforms, &mut bounds.centre_of_transformation, &selected, responses, &document.graphene_document);
+							let mut selected = Selected::new(&mut bounds.original_transforms, &mut bounds.center_of_transformation, &selected, responses, &document.graphene_document);
 
-							bounds.centre_of_transformation = selected.mean_average_of_pivots(font_cache);
+							bounds.center_of_transformation = selected.mean_average_of_pivots(font_cache);
 						}
 
 						tool_data.layers_dragging = selected;
@@ -551,11 +551,11 @@ impl Fsm for SelectToolFsmState {
 
 							let snapped_mouse_position = tool_data.snap_manager.snap_position(responses, document, mouse_position);
 
-							let (_, size) = movement.new_size(snapped_mouse_position, bounds.transform, center, bounds.centre_of_transformation, axis_align);
+							let (_, size) = movement.new_size(snapped_mouse_position, bounds.transform, center, bounds.center_of_transformation, axis_align);
 							let delta = movement.bounds_to_scale_transform(size);
 
 							let selected = &tool_data.layers_dragging.iter().collect::<Vec<_>>();
-							let pivot = if center { &mut bounds.centre_of_transformation } else { &mut bounds.opposite_pivot };
+							let pivot = if center { &mut bounds.center_of_transformation } else { &mut bounds.opposite_pivot };
 							let mut selected = Selected::new(&mut bounds.original_transforms, pivot, selected, responses, &document.graphene_document);
 
 							selected.update_transforms(delta);
@@ -566,8 +566,8 @@ impl Fsm for SelectToolFsmState {
 				(RotatingBounds, PointerMove { snap_angle, .. }) => {
 					if let Some(bounds) = &mut tool_data.bounding_box_overlays {
 						let angle = {
-							let start_offset = tool_data.drag_start - bounds.centre_of_transformation;
-							let end_offset = input.mouse.position - bounds.centre_of_transformation;
+							let start_offset = tool_data.drag_start - bounds.center_of_transformation;
+							let end_offset = input.mouse.position - bounds.center_of_transformation;
 
 							start_offset.angle_between(end_offset)
 						};
@@ -582,7 +582,7 @@ impl Fsm for SelectToolFsmState {
 						let delta = DAffine2::from_angle(snapped_angle);
 
 						let selected = tool_data.layers_dragging.iter().collect::<Vec<_>>();
-						let mut selected = Selected::new(&mut bounds.original_transforms, &mut bounds.centre_of_transformation, &selected, responses, &document.graphene_document);
+						let mut selected = Selected::new(&mut bounds.original_transforms, &mut bounds.center_of_transformation, &selected, responses, &document.graphene_document);
 
 						selected.update_transforms(delta);
 					}
@@ -874,7 +874,7 @@ impl SelectToolData {
 
 		// Duplicate each previously selected layer and select the new ones.
 		for layer_path in Document::shallowest_unique_layers(self.layers_dragging.iter_mut()) {
-			// Moves the origional back to its starting position.
+			// Moves the original back to its starting position.
 			responses.push_front(
 				Operation::TransformLayerInViewport {
 					path: layer_path.clone(),
@@ -884,7 +884,7 @@ impl SelectToolData {
 			);
 
 			// Copy the layers.
-			// Not using the Copy message allows us to retrieve the ids of the new layers to initalise the drag.
+			// Not using the Copy message allows us to retrieve the ids of the new layers to initialize the drag.
 			let layer = match document.graphene_document.layer(layer_path) {
 				Ok(layer) => layer.clone(),
 				Err(e) => {
@@ -916,7 +916,7 @@ impl SelectToolData {
 
 	/// Removes the duplicated layers. Called when alt is released and the layers have been duplicated.
 	fn stop_duplicates(&mut self, responses: &mut VecDeque<Message>) {
-		let origionals = match self.not_duplicated_layers.take() {
+		let originals = match self.not_duplicated_layers.take() {
 			Some(x) => x,
 			None => return,
 		};
@@ -928,8 +928,8 @@ impl SelectToolData {
 			responses.push_back(Operation::DeleteLayer { path: layer_path.clone() }.into());
 		}
 
-		// Move the origional to under the mouse
-		for layer_path in Document::shallowest_unique_layers(origionals.iter()) {
+		// Move the original to under the mouse
+		for layer_path in Document::shallowest_unique_layers(originals.iter()) {
 			responses.push_front(
 				Operation::TransformLayerInViewport {
 					path: layer_path.clone(),
@@ -939,14 +939,14 @@ impl SelectToolData {
 			);
 		}
 
-		// Select the origionals
+		// Select the originals
 		responses.push_back(
 			DocumentMessage::SetSelectedLayers {
-				replacement_selected_layers: origionals.clone(),
+				replacement_selected_layers: originals.clone(),
 			}
 			.into(),
 		);
 
-		self.layers_dragging = origionals;
+		self.layers_dragging = originals;
 	}
 }

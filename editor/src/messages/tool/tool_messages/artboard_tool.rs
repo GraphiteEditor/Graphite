@@ -198,7 +198,7 @@ impl Fsm for ArtboardToolFsmState {
 							let pivot = document.artboard_message_handler.artboards_graphene_document.pivot(&[board], font_cache).unwrap_or_default();
 							let root = document.graphene_document.root.transform;
 							let pivot = root.inverse().transform_point2(pivot);
-							bounds.centre_of_transformation = pivot;
+							bounds.center_of_transformation = pivot;
 						}
 
 						ArtboardToolFsmState::ResizingBounds
@@ -256,7 +256,7 @@ impl Fsm for ArtboardToolFsmState {
 							let mouse_position = input.mouse.position;
 							let snapped_mouse_position = tool_data.snap_manager.snap_position(responses, document, mouse_position);
 
-							let (position, size) = movement.new_size(snapped_mouse_position, bounds.transform, from_center, bounds.centre_of_transformation, constrain_square);
+							let (position, size) = movement.new_size(snapped_mouse_position, bounds.transform, from_center, bounds.center_of_transformation, constrain_square);
 							responses.push_back(
 								ArtboardMessage::ResizeArtboard {
 									artboard: tool_data.selected_board.unwrap(),
