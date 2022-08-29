@@ -641,7 +641,12 @@ impl Fsm for SelectToolFsmState {
 					DrawingBox
 				}
 				(Ready, PointerMove { .. }) => {
-					let cursor = tool_data.bounding_box_overlays.as_ref().map_or(MouseCursorIcon::Default, |bounds| bounds.get_cursor(input, true));
+					let mut cursor = tool_data.bounding_box_overlays.as_ref().map_or(MouseCursorIcon::Default, |bounds| bounds.get_cursor(input, true));
+					
+					// Dragging the pivot overrules the other operations
+					if tool_data.pivot.is_over(input.mouse.position) {
+						cursor = MouseCursorIcon::Default;
+					}
 
 					// Generate the select outline (but not if the user is going to use the bound overlays)
 					if cursor == MouseCursorIcon::Default {

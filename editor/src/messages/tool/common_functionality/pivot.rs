@@ -1,5 +1,7 @@
+//! Handler for the pivot visible on the selected layers whilst in the select tool which controls the centre of rotation
+
 use crate::application::generate_uuid;
-use crate::consts::COLOR_ACCENT;
+use crate::consts::{COLOR_ACCENT, PIVOT_SIZE, PIVOT_WIDTH};
 use crate::messages::layout::utility_types::widgets::assist_widgets::PivotPosition;
 use crate::messages::prelude::*;
 
@@ -8,9 +10,6 @@ use graphene::{layers::text_layer::FontCache, LayerId};
 
 use glam::{DAffine2, DVec2};
 use std::collections::VecDeque;
-
-const PIVOT_WIDTH: f64 = 10.;
-const PIVOT_SIZE: f64 = 40.;
 
 #[derive(Clone, Debug)]
 pub struct Pivot {
@@ -128,6 +127,7 @@ impl Pivot {
 		self.redraw_pivot(responses);
 	}
 
+	/// Has the pivot widget changed (so we should refresh the tool bar at the top of the canvas).
 	pub fn should_refresh_pivot_position(&mut self) -> bool {
 		let new = self.to_pivot_position();
 		let should_refresh = new != self.old_pivot_position;
@@ -139,6 +139,7 @@ impl Pivot {
 		self.normalized_pivot.into()
 	}
 
+	/// Sets the viewport position of the pivot for all selected layers.
 	pub fn set_viewport_position(&self, position: DVec2, document: &DocumentMessageHandler, font_cache: &FontCache, responses: &mut VecDeque<Message>) {
 		for layer_path in document.selected_visible_layers() {
 			if let Ok(layer) = document.graphene_document.layer(layer_path) {
@@ -150,10 +151,12 @@ impl Pivot {
 		}
 	}
 
+	/// Set the pivot using the normalised transform that is set above.
 	pub fn set_normalised_position(&self, position: DVec2, document: &DocumentMessageHandler, font_cache: &FontCache, responses: &mut VecDeque<Message>) {
 		self.set_viewport_position(self.transform_from_normalized.transform_point2(position), document, font_cache, responses);
 	}
 
+	/// Is the mosue over the pivot?
 	pub fn is_over(&self, mouse: DVec2) -> bool {
 		self.pivot.filter(|&pivot| mouse.distance_squared(pivot) < (PIVOT_SIZE / 2.).powi(2)).is_some()
 	}
