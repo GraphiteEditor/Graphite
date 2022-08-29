@@ -9,6 +9,9 @@ use graphene::{layers::text_layer::FontCache, LayerId};
 use glam::{DAffine2, DVec2};
 use std::collections::VecDeque;
 
+const PIVOT_WIDTH: f64 = 10.;
+const PIVOT_SIZE: f64 = 40.;
+
 #[derive(Clone, Debug)]
 pub struct Pivot {
 	/// Pivot between (0,0) and (1,1)
@@ -95,9 +98,6 @@ impl Pivot {
 			}
 		};
 
-		const PIVOT_WIDTH: f64 = 10.;
-		const PIVOT_SIZE: f64 = 40.;
-
 		let layer_paths = [vec![generate_uuid()], vec![generate_uuid()]];
 		for index in 0..=1 {
 			responses.push_back(
@@ -152,5 +152,9 @@ impl Pivot {
 
 	pub fn set_normalised_position(&self, position: DVec2, document: &DocumentMessageHandler, font_cache: &FontCache, responses: &mut VecDeque<Message>) {
 		self.set_viewport_position(self.transform_from_normalized.transform_point2(position), document, font_cache, responses);
+	}
+
+	pub fn is_over(&self, mouse: DVec2) -> bool {
+		self.pivot.filter(|&pivot| mouse.distance_squared(pivot) < (PIVOT_SIZE / 2.).powi(2)).is_some()
 	}
 }

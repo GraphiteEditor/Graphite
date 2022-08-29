@@ -328,6 +328,7 @@ enum SelectToolFsmState {
 	DrawingBox,
 	ResizingBounds,
 	RotatingBounds,
+	DraggingPivot,
 }
 
 impl Default for SelectToolFsmState {
@@ -464,7 +465,12 @@ impl Fsm for SelectToolFsmState {
 					// If the user clicks on a layer that is in their current selection, go into the dragging mode.
 					// If the user clicks on new shape, make that layer their new selection.
 					// Otherwise enter the box select mode
-					let state = if let Some(selected_edges) = dragging_bounds {
+					let state = if tool_data.pivot.is_over(input.mouse.position) {
+						tool_data.snap_manager.start_snap(document, document.bounding_boxes(None, None, font_cache), true, true);
+						tool_data.snap_manager.add_all_document_handles(document, &[], &[], &[]);
+
+						DraggingPivot
+					} else if let Some(selected_edges) = dragging_bounds {
 						let snap_x = selected_edges.2 || selected_edges.3;
 						let snap_y = selected_edges.0 || selected_edges.1;
 
@@ -612,6 +618,13 @@ impl Fsm for SelectToolFsmState {
 
 					RotatingBounds
 				}
+				(DraggingPivot, PointerMove { .. }) => {
+					let mouse_position = input.mouse.position;
+					let snapped_mouse_position = tool_data.snap_manager.snap_position(responses, document, mouse_position);
+					tool_data.pivot.set_viewport_position(snapped_mouse_position, document, font_cache, responses);
+
+					DraggingPivot
+				}
 				(DrawingBox, PointerMove { .. }) => {
 					tool_data.drag_current = input.mouse.position;
 
@@ -666,6 +679,11 @@ impl Fsm for SelectToolFsmState {
 					if let Some(bounds) = &mut tool_data.bounding_box_overlays {
 						bounds.original_transforms.clear();
 					}
+
+					Ready
+				}
+				(DraggingPivot, DragStop) => {
+					tool_data.snap_manager.cleanup(responses);
 
 					Ready
 				}
@@ -886,6 +904,7 @@ impl Fsm for SelectToolFsmState {
 				label: String::from("Snap 15°"),
 				plus: false,
 			}])]),
+			SelectToolFsmState::DraggingPivot => HintData(vec![]),
 		};
 
 		responses.push_back(FrontendMessage::UpdateInputHints { hint_data }.into());
