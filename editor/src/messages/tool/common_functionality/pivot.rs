@@ -1,7 +1,7 @@
 //! Handler for the pivot visible on the selected layers whilst in the select tool which controls the centre of rotation
 
 use crate::application::generate_uuid;
-use crate::consts::{COLOR_ACCENT, PIVOT_SIZE, PIVOT_WIDTH};
+use crate::consts::{COLOR_ACCENT, PIVOT_INNER, PIVOT_OUTER};
 use crate::messages::layout::utility_types::widgets::assist_widgets::PivotPosition;
 use crate::messages::prelude::*;
 
@@ -20,7 +20,7 @@ pub struct Pivot {
 	/// The viewspace pivot position (if applicable)
 	pivot: Option<DVec2>,
 	/// A reference to the previous overlays so we can destroy them
-	pivot_overlay_lines: Option<[Vec<LayerId>; 2]>,
+	pivot_overlay_circles: Option<[Vec<LayerId>; 2]>,
 	/// The old pivot position in the gui, used to reduce refreshes of the document bar
 	old_pivot_position: PivotPosition,
 }
@@ -31,7 +31,7 @@ impl Default for Pivot {
 			normalized_pivot: DVec2::splat(0.5),
 			transform_from_normalized: Default::default(),
 			pivot: Default::default(),
-			pivot_overlay_lines: Default::default(),
+			pivot_overlay_circles: Default::default(),
 			old_pivot_position: PivotPosition::Center,
 		}
 	}
@@ -81,7 +81,7 @@ impl Pivot {
 	}
 
 	pub fn clear_overlays(&mut self, responses: &mut VecDeque<Message>) {
-		if let Some(overlays) = self.pivot_overlay_lines.take() {
+		if let Some(overlays) = self.pivot_overlay_circles.take() {
 			for path in overlays {
 				responses.push_back(DocumentMessage::Overlays(Operation::DeleteLayer { path }.into()).into());
 			}
@@ -98,28 +98,42 @@ impl Pivot {
 		};
 
 		let layer_paths = [vec![generate_uuid()], vec![generate_uuid()]];
-		for index in 0..=1 {
-			responses.push_back(
-				DocumentMessage::Overlays(
-					Operation::AddLine {
-						path: layer_paths[index].clone(),
-						transform: DAffine2::IDENTITY.to_cols_array(),
-						style: graphene::layers::style::PathStyle::new(Some(graphene::layers::style::Stroke::new(COLOR_ACCENT, PIVOT_WIDTH)), graphene::layers::style::Fill::None),
-						insert_index: -1,
-					}
-					.into(),
-				)
+		responses.push_back(
+			DocumentMessage::Overlays(
+				Operation::AddEllipse {
+					path: layer_paths[0].clone(),
+					transform: DAffine2::IDENTITY.to_cols_array(),
+					style: graphene::layers::style::PathStyle::new(
+						Some(graphene::layers::style::Stroke::new(COLOR_ACCENT, 1.)),
+						graphene::layers::style::Fill::Solid(graphene::color::Color::WHITE),
+					),
+					insert_index: -1,
+				}
 				.into(),
-			);
-		}
-		self.pivot_overlay_lines = Some(layer_paths.clone());
-		let [vertical, horizontal] = layer_paths;
+			)
+			.into(),
+		);
+		responses.push_back(
+			DocumentMessage::Overlays(
+				Operation::AddEllipse {
+					path: layer_paths[1].clone(),
+					transform: DAffine2::IDENTITY.to_cols_array(),
+					style: graphene::layers::style::PathStyle::new(None, graphene::layers::style::Fill::Solid(COLOR_ACCENT)),
+					insert_index: -1,
+				}
+				.into(),
+			)
+			.into(),
+		);
 
-		let transform = DAffine2::from_scale_angle_translation(DVec2::new(PIVOT_SIZE, 1.), std::f64::consts::FRAC_PI_2, pivot - DVec2::new(0., PIVOT_SIZE / 2.)).to_cols_array();
-		responses.push_back(DocumentMessage::Overlays(Operation::TransformLayerInViewport { path: vertical, transform }.into()).into());
+		self.pivot_overlay_circles = Some(layer_paths.clone());
+		let [outer, inner] = layer_paths;
 
-		let transform = DAffine2::from_scale_angle_translation(DVec2::new(PIVOT_SIZE, 1.), 0., pivot - DVec2::new(PIVOT_SIZE / 2., 0.)).to_cols_array();
-		responses.push_back(DocumentMessage::Overlays(Operation::TransformLayerInViewport { path: horizontal, transform }.into()).into());
+		let transform = DAffine2::from_scale_angle_translation(DVec2::splat(PIVOT_OUTER), 0., pivot - DVec2::splat(PIVOT_OUTER / 2.)).to_cols_array();
+		responses.push_back(DocumentMessage::Overlays(Operation::TransformLayerInViewport { path: outer, transform }.into()).into());
+
+		let transform = DAffine2::from_scale_angle_translation(DVec2::splat(PIVOT_INNER), 0., pivot - DVec2::splat(PIVOT_INNER / 2.)).to_cols_array();
+		responses.push_back(DocumentMessage::Overlays(Operation::TransformLayerInViewport { path: inner, transform }.into()).into());
 	}
 
 	pub fn update_pivot(&mut self, document: &DocumentMessageHandler, font_cache: &FontCache, responses: &mut VecDeque<Message>) {
@@ -158,6 +172,6 @@ impl Pivot {
 
 	/// Is the mosue over the pivot?
 	pub fn is_over(&self, mouse: DVec2) -> bool {
-		self.pivot.filter(|&pivot| mouse.distance_squared(pivot) < (PIVOT_SIZE / 2.).powi(2)).is_some()
+		self.pivot.filter(|&pivot| mouse.distance_squared(pivot) < (PIVOT_OUTER / 2.).powi(2)).is_some()
 	}
 }
