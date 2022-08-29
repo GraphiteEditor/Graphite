@@ -216,25 +216,24 @@ impl<'a> Selected<'a> {
 		}
 	}
 
-	pub fn calculate_pivot(&mut self, font_cache: &FontCache) -> DVec2 {
-		let xy_summation = self
-			.selected
-			.iter()
-			.map(|path| {
-				let multiplied_transform = self.document.multiply_transforms(path).unwrap();
-
-				let bounds = self
-					.document
-					.layer(path)
-					.unwrap()
-					.aabb_for_transform(multiplied_transform, font_cache)
-					.unwrap_or([multiplied_transform.translation; 2]);
-
-				(bounds[0] + bounds[1]) / 2.
-			})
-			.fold(DVec2::ZERO, |summation, next| summation + next);
+	pub fn mean_average_of_pivots(&mut self, font_cache: &FontCache) -> DVec2 {
+		let xy_summation = self.selected.iter().filter_map(|path| self.document.pivot(path, font_cache)).reduce(|a, b| a + b).unwrap_or_default();
 
 		xy_summation / self.selected.len() as f64
+	}
+
+	pub fn center_of_aabb(&mut self, font_cache: &FontCache) -> DVec2 {
+		let [min, max] = self
+			.selected
+			.iter()
+			.filter_map(|path| {
+				let multiplied_transform = self.document.multiply_transforms(path).unwrap();
+
+				self.document.layer(path).unwrap().aabb_for_transform(multiplied_transform, font_cache)
+			})
+			.reduce(|a, b| [a[0].min(b[0]), a[1].max(b[1])])
+			.unwrap_or_default();
+		(min + max) / 2.
 	}
 
 	pub fn update_transforms(&mut self, delta: DAffine2) {

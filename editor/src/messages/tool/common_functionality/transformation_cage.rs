@@ -39,9 +39,10 @@ impl SelectedEdges {
 
 	/// Calculate the pivot for the operation (the opposite point to the edge dragged)
 	pub fn calculate_pivot(&self) -> DVec2 {
-		let min = self.bounds[0];
-		let max = self.bounds[1];
+		self.pivot_from_bounds(self.bounds[0], self.bounds[1])
+	}
 
+	fn pivot_from_bounds(&self, min: DVec2, max: DVec2) -> DVec2 {
 		let x = if self.left {
 			max.x
 		} else if self.right {
@@ -62,7 +63,7 @@ impl SelectedEdges {
 	}
 
 	/// Computes the new bounds with the given mouse move and modifier keys
-	pub fn new_size(&self, mouse: DVec2, transform: DAffine2, center: bool, constrain: bool) -> (DVec2, DVec2) {
+	pub fn new_size(&self, mouse: DVec2, transform: DAffine2, center: bool, center_around: DVec2, constrain: bool) -> (DVec2, DVec2) {
 		let mouse = transform.inverse().transform_point2(mouse);
 
 		let mut min = self.bounds[0];
@@ -73,73 +74,49 @@ impl SelectedEdges {
 			max.y = mouse.y;
 		}
 		if self.left {
-			let delta = min.x - mouse.x;
 			min.x = mouse.x;
-			max.x += delta;
 		} else if self.right {
 			max.x = mouse.x;
 		}
 
-		let mut size = max - min;
+		let mut pivot = self.pivot_from_bounds(min, max);
+		if center {
+			if self.top {
+				max.y = center_around.y * 2. - min.y;
+				pivot.y = center_around.y;
+			} else if self.bottom {
+				min.y = center_around.y * 2. - max.y;
+				pivot.y = center_around.y;
+			}
+			if self.left {
+				max.x = center_around.x * 2. - min.x;
+				pivot.x = center_around.x;
+			} else if self.right {
+				min.x = center_around.x * 2. - max.x;
+				pivot.x = center_around.x;
+			}
+		}
+
 		if constrain {
-			size = match ((self.top || self.bottom), (self.left || self.right)) {
+			let size = max - min;
+			let min_pivot = (pivot - min) / size;
+			let new_size = match ((self.top || self.bottom), (self.left || self.right)) {
 				(true, true) => DVec2::new(size.x, size.x / self.aspect_ratio).abs().max(DVec2::new(size.y * self.aspect_ratio, size.y).abs()) * size.signum(),
 				(true, false) => DVec2::new(size.y * self.aspect_ratio, size.y),
 				(false, true) => DVec2::new(size.x, size.x / self.aspect_ratio),
 				_ => size,
 			};
-		}
-		if center {
-			if self.left || self.right {
-				size.x *= 2.;
-			}
-
-			if self.bottom || self.top {
-				size.y *= 2.;
-			}
+			let delta_size = new_size - size;
+			min = min - delta_size * min_pivot;
+			max = min + new_size;
 		}
 
-		(min, size)
-	}
-
-	/// Offsets the transformation pivot in order to scale from the center
-	fn offset_pivot(&self, center: bool, size: DVec2) -> DVec2 {
-		let mut offset = DVec2::ZERO;
-
-		if !center {
-			return offset;
-		}
-
-		if self.right {
-			offset.x -= size.x / 2.;
-		}
-		if self.left {
-			offset.x += size.x / 2.;
-		}
-		if self.bottom {
-			offset.y -= size.y / 2.;
-		}
-		if self.top {
-			offset.y += size.y / 2.;
-		}
-		offset
-	}
-
-	/// Moves the position to account for centering (only necessary with absolute transforms - e.g. with artboards)
-	pub fn center_position(&self, mut position: DVec2, size: DVec2) -> DVec2 {
-		if self.right {
-			position.x -= size.x / 2.;
-		}
-		if self.bottom {
-			position.y -= size.y / 2.;
-		}
-
-		position
+		(min, max - min)
 	}
 
 	/// Calculates the required scaling to resize the bounding box
-	pub fn bounds_to_scale_transform(&self, center: bool, size: DVec2) -> DAffine2 {
-		DAffine2::from_translation(self.offset_pivot(center, size)) * DAffine2::from_scale(size / (self.bounds[1] - self.bounds[0]))
+	pub fn bounds_to_scale_transform(&self, size: DVec2) -> DAffine2 {
+		DAffine2::from_scale(size / (self.bounds[1] - self.bounds[0]))
 	}
 }
 
@@ -213,7 +190,8 @@ pub struct BoundingBoxOverlays {
 	pub transform: DAffine2,
 	pub selected_edges: Option<SelectedEdges>,
 	pub original_transforms: OriginalTransforms,
-	pub pivot: DVec2,
+	pub opposite_pivot: DVec2,
+	pub center_of_transformation: DVec2,
 }
 
 impl BoundingBoxOverlays {
