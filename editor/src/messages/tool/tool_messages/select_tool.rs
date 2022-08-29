@@ -4,6 +4,7 @@ use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, KeysGroup, MouseMotion};
 use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
 use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, PropertyHolder, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
+use crate::messages::layout::utility_types::widgets::assist_widgets::{PivotAssist, PivotPosition};
 use crate::messages::layout::utility_types::widgets::button_widgets::{IconButton, PopoverButton};
 use crate::messages::layout::utility_types::widgets::label_widgets::{Separator, SeparatorDirection, SeparatorType};
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis};
@@ -244,6 +245,19 @@ impl PropertyHolder for SelectTool {
 					header: "Boolean".into(),
 					text: "The contents of this popover menu are coming soon".into(),
 					..Default::default()
+				})),
+				WidgetHolder::new(Widget::Separator(Separator {
+					direction: SeparatorDirection::Horizontal,
+					separator_type: SeparatorType::Section,
+				})),
+				// We'd like this widget to hide and show itself whenever the transformation cage is active or inactive (i.e. when no layers are selected)
+				WidgetHolder::new(Widget::PivotAssist(PivotAssist {
+					position: PivotPosition::Center,
+					on_update: WidgetCallback::new(|pivot_assist: &PivotAssist| {
+						// TODO: Make this actually do something
+						log::debug!("Changed pivot to {:?}", pivot_assist.position);
+						Message::NoOp
+					}),
 				})),
 			],
 		}]))

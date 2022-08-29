@@ -1,3 +1,4 @@
+use super::widgets::assist_widgets::*;
 use super::widgets::button_widgets::*;
 use super::widgets::input_widgets::*;
 use super::widgets::label_widgets::*;
@@ -278,6 +279,7 @@ pub enum Widget {
 	InvisibleStandinInput(InvisibleStandinInput),
 	NumberInput(NumberInput),
 	OptionalInput(OptionalInput),
+	PivotAssist(PivotAssist),
 	PopoverButton(PopoverButton),
 	RadioInput(RadioInput),
 	Separator(Separator),

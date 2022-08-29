@@ -107,7 +107,7 @@ impl SelectedEdges {
 				_ => size,
 			};
 			let delta_size = new_size - size;
-			min = min - delta_size * min_pivot;
+			min -= delta_size * min_pivot;
 			max = min + new_size;
 		}
 

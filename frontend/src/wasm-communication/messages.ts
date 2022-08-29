@@ -612,6 +612,12 @@ export class TextLabel extends WidgetProps {
 	multiline!: boolean;
 }
 
+export type PivotPosition = "None" | "TopLeft" | "TopCenter" | "TopRight" | "CenterLeft" | "Center" | "CenterRight" | "BottomLeft" | "BottomCenter" | "BottomRight";
+
+export class PivotAssist extends WidgetProps {
+	position!: PivotPosition;
+}
+
 // WIDGET
 
 const widgetSubTypes = [
@@ -631,6 +637,7 @@ const widgetSubTypes = [
 	{ value: TextButton, name: "TextButton" },
 	{ value: TextInput, name: "TextInput" },
 	{ value: TextLabel, name: "TextLabel" },
+	{ value: PivotAssist, name: "PivotAssist" },
 ];
 export type WidgetPropsSet = InstanceType<typeof widgetSubTypes[number]["value"]>;
 
