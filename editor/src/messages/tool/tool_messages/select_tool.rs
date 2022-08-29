@@ -282,7 +282,6 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for SelectTool {
 		if self.tool_data.pivot.should_refresh_pivot_position() {
 			// Notify the frontend about the updated pivot position (a bit ugly to do it here not in the fsm but that doesn't have SelectTool)
 			self.register_properties(responses, LayoutTarget::ToolOptions);
-			log::info!("Updating pivot");
 		}
 
 		if self.fsm_state != new_state {

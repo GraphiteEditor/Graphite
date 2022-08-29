@@ -43,7 +43,7 @@ impl Pivot {
 		let [min, max] = layer.aabb_for_transform(DAffine2::IDENTITY, font_cache).unwrap_or([DVec2::ZERO, DVec2::ONE]);
 		let bounds_transform = DAffine2::from_translation(min) * DAffine2::from_scale(max - min);
 		let layer_transform = document.graphene_document.multiply_transforms(layer_path).unwrap_or(DAffine2::IDENTITY);
-		bounds_transform * layer_transform
+		layer_transform * bounds_transform
 	}
 
 	/// Recomputes the pivot position and transform
