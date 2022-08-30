@@ -1,6 +1,7 @@
 use super::utility_types::TransformOp;
 use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
 use crate::messages::layout::utility_types::misc::LayoutTarget;
+use crate::messages::layout::utility_types::widgets::assist_widgets::PivotAssist;
 use crate::messages::layout::utility_types::widgets::button_widgets::PopoverButton;
 use crate::messages::layout::utility_types::widgets::input_widgets::{ColorInput, FontInput, NumberInput, RadioEntryData, RadioInput, TextAreaInput, TextInput};
 use crate::messages::layout::utility_types::widgets::label_widgets::{IconLabel, IconStyle, Separator, SeparatorDirection, SeparatorType, TextLabel};
@@ -318,6 +319,14 @@ fn node_section_transform(layer: &Layer, font_cache: &FontCache) -> LayoutGroup 
 					WidgetHolder::new(Widget::TextLabel(TextLabel {
 						value: "Location".into(),
 						..TextLabel::default()
+					})),
+					WidgetHolder::new(Widget::Separator(Separator {
+						separator_type: SeparatorType::Related,
+						direction: SeparatorDirection::Horizontal,
+					})),
+					WidgetHolder::new(Widget::PivotAssist(PivotAssist {
+						position: layer.pivot.into(),
+						on_update: WidgetCallback::new(|pivot_assist: &PivotAssist| PropertiesPanelMessage::SetPivot { new_position: pivot_assist.position }.into()),
 					})),
 					WidgetHolder::new(Widget::Separator(Separator {
 						separator_type: SeparatorType::Unrelated,
