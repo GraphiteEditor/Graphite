@@ -109,7 +109,13 @@ impl WasmBezier {
 
 	pub fn to_svg(&self) -> String {
 		let mut bezier = String::new();
-		self.0.to_svg(&mut bezier, ToSVGOptions::default());
+		self.0.to_svg(
+			&mut bezier,
+			CURVE_ATTRIBUTES.to_string(),
+			ANCHOR_ATTRIBUTES.to_string(),
+			HANDLE_ATTRIBUTES.to_string(),
+			HANDLE_LINE_ATTRIBUTES.to_string(),
+		);
 		format!("{}{}{}", SVG_OPEN_TAG, bezier, SVG_CLOSE_TAG)
 	}
 
