@@ -382,6 +382,10 @@ impl Fsm for SelectToolFsmState {
 							let mut bounding_box_overlays = paths.unwrap_or_else(|| BoundingBoxOverlays::new(responses));
 
 							bounding_box_overlays.bounds = bounds;
+
+							let path = document.selected_layers().last().unwrap();
+							bounding_box_overlays.origin = document.graphene_document.generate_transform_relative_to_viewport(path).unwrap().translation;
+
 							bounding_box_overlays.transform = DAffine2::IDENTITY;
 
 							bounding_box_overlays.transform(responses);

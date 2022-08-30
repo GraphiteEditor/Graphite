@@ -10,6 +10,7 @@ use graphene::LayerId;
 use graphene::Operation;
 
 use glam::{DAffine2, DVec2};
+use std::f64::consts::PI;
 
 /// Contains the edges that are being dragged along with the original bounds.
 #[derive(Clone, Debug, Default)]
@@ -157,6 +158,20 @@ fn add_transform_handles(responses: &mut VecDeque<Message>) -> [Vec<LayerId>; 8]
 	transform_handle_paths
 }
 
+pub fn add_origin_handle(responses: &mut VecDeque<Message>) -> Vec<LayerId> {
+	let path = vec![generate_uuid()];
+
+	let operation = Operation::AddRect {
+		path: path.clone(),
+		transform: DAffine2::ZERO.to_cols_array(),
+		style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 2.0)), Fill::solid(Color::WHITE)),
+		insert_index: -1,
+	};
+	responses.push_back(DocumentMessage::Overlays(operation.into()).into());
+
+	path
+}
+
 /// Converts a bounding box to a rounded transform (with translation and scale)
 pub fn transform_from_box(pos1: DVec2, pos2: DVec2, transform: DAffine2) -> DAffine2 {
 	let inverse = transform.inverse();
@@ -186,6 +201,8 @@ pub fn axis_align_drag(axis_align: bool, position: DVec2, start: DVec2) -> DVec2
 pub struct BoundingBoxOverlays {
 	pub bounding_box: Vec<LayerId>,
 	pub transform_handles: [Vec<LayerId>; 8],
+	pub origin_handle: Vec<LayerId>,
+	pub origin: DVec2,
 	pub bounds: [DVec2; 2],
 	pub transform: DAffine2,
 	pub selected_edges: Option<SelectedEdges>,
@@ -200,6 +217,7 @@ impl BoundingBoxOverlays {
 		Self {
 			bounding_box: add_bounding_box(responses),
 			transform_handles: add_transform_handles(responses),
+			origin_handle: add_origin_handle(responses),
 			..Default::default()
 		}
 	}
@@ -236,6 +254,13 @@ impl BoundingBoxOverlays {
 			let path = path.clone();
 			responses.push_back(DocumentMessage::Overlays(Operation::SetLayerTransformInViewport { path, transform }.into()).into());
 		}
+
+		let translation = self.origin;
+		let scale = DVec2::splat(MANIPULATOR_GROUP_MARKER_SIZE);
+
+		let transform = DAffine2::from_scale_angle_translation(scale, PI / 4.0, translation).to_cols_array();
+		let path = self.origin_handle.clone();
+		responses.push_back(DocumentMessage::Overlays(Operation::SetLayerTransformInViewport { path: path, transform: (transform) }.into()).into());
 	}
 
 	/// Check if the user has selected the edge for dragging (returns which edge in order top, bottom, left, right)
@@ -301,6 +326,7 @@ impl BoundingBoxOverlays {
 	/// Removes the overlays
 	pub fn delete(self, responses: &mut VecDeque<Message>) {
 		responses.push_back(DocumentMessage::Overlays(Operation::DeleteLayer { path: self.bounding_box }.into()).into());
+		responses.push_back(DocumentMessage::Overlays(Operation::DeleteLayer { path: self.origin_handle }.into()).into());
 		responses.extend(
 			self.transform_handles
 				.iter()
