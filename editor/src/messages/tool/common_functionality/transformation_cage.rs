@@ -81,19 +81,33 @@ impl SelectedEdges {
 
 		let mut pivot = self.pivot_from_bounds(min, max);
 		if center {
+			// The below ratio is: `dragging edge / being centred`.
+			// The `is_finite()` checks are in case the user is dragging the edge where the pivot is located (in which case the centering mode is ignored).
 			if self.top {
-				max.y = center_around.y * 2. - min.y;
-				pivot.y = center_around.y;
+				let ratio = (center_around.y - min.y) / (center_around.y - self.bounds[0].y);
+				if ratio.is_finite() {
+					max.y = center_around.y + ratio * (self.bounds[1].y - center_around.y);
+					pivot.y = center_around.y;
+				}
 			} else if self.bottom {
-				min.y = center_around.y * 2. - max.y;
-				pivot.y = center_around.y;
+				let ratio = (max.y - center_around.y) / (self.bounds[1].y - center_around.y);
+				if ratio.is_finite() {
+					min.y = center_around.y - ratio * (center_around.y - self.bounds[0].y);
+					pivot.y = center_around.y;
+				}
 			}
 			if self.left {
-				max.x = center_around.x * 2. - min.x;
-				pivot.x = center_around.x;
+				let ratio = (center_around.x - min.x) / (center_around.x - self.bounds[0].x);
+				if ratio.is_finite() {
+					max.x = center_around.x + ratio * (self.bounds[1].x - center_around.x);
+					pivot.x = center_around.x;
+				}
 			} else if self.right {
-				min.x = center_around.x * 2. - max.x;
-				pivot.x = center_around.x;
+				let ratio = (max.x - center_around.x) / (self.bounds[1].x - center_around.x);
+				if ratio.is_finite() {
+					min.x = center_around.x - ratio * (center_around.x - self.bounds[0].x);
+					pivot.x = center_around.x;
+				}
 			}
 		}
 
@@ -115,8 +129,16 @@ impl SelectedEdges {
 	}
 
 	/// Calculates the required scaling to resize the bounding box
-	pub fn bounds_to_scale_transform(&self, size: DVec2) -> DAffine2 {
-		DAffine2::from_scale(size / (self.bounds[1] - self.bounds[0]))
+	pub fn bounds_to_scale_transform(&self, position: DVec2, size: DVec2) -> (DAffine2, DVec2) {
+		let enlargement_factor = size / (self.bounds[1] - self.bounds[0]);
+		let mut pivot = (self.bounds[0] * enlargement_factor - position) / (enlargement_factor - DVec2::splat(1.));
+		if pivot.x.is_nan() {
+			pivot.x = 0.;
+		}
+		if pivot.y.is_nan() {
+			pivot.y = 0.;
+		}
+		(DAffine2::from_scale(enlargement_factor), pivot)
 	}
 }
 

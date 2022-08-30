@@ -101,6 +101,13 @@ impl<'a> MessageHandler<PropertiesPanelMessage, PropertiesPanelMessageHandlerDat
 				let (path, _) = self.active_selection.clone().expect("Received update for properties panel with no active layer");
 				responses.push_back(Operation::SetTextContent { path, new_text }.into())
 			}
+			SetPivot { new_position } => {
+				let (layer_path, _) = self.active_selection.clone().expect("Received update for properties panel with no active layer");
+				let position: Option<glam::DVec2> = new_position.into();
+				let pivot = position.unwrap().into();
+
+				responses.push_back(Operation::SetPivot { layer_path, pivot }.into());
+			}
 			CheckSelectedWasUpdated { path } => {
 				if self.matches_selected(&path) {
 					responses.push_back(PropertiesPanelMessage::ResendActiveProperties.into())

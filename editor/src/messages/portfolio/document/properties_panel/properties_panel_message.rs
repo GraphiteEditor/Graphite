@@ -1,4 +1,5 @@
 use super::utility_types::TransformOp;
+use crate::messages::layout::utility_types::widgets::assist_widgets::PivotPosition;
 use crate::messages::portfolio::document::utility_types::misc::TargetDocument;
 use crate::messages::prelude::*;
 
@@ -25,5 +26,6 @@ pub enum PropertiesPanelMessage {
 	ModifyTransform { value: f64, transform_op: TransformOp },
 	ResendActiveProperties,
 	SetActiveLayers { paths: Vec<Vec<LayerId>>, document: TargetDocument },
+	SetPivot { new_position: PivotPosition },
 	UpdateSelectedDocumentProperties,
 }
