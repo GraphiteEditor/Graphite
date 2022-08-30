@@ -80,6 +80,7 @@ pub fn register_artboard_layer_properties(layer: &Layer, responses: &mut VecDequ
 		} else {
 			panic!("Artboard must have a solid fill")
 		};
+		let pivot = layer.transform.transform_vector2(layer.layerspace_pivot(font_cache));
 
 		vec![LayoutGroup::Section {
 			name: "Artboard".into(),
@@ -95,12 +96,12 @@ pub fn register_artboard_layer_properties(layer: &Layer, responses: &mut VecDequ
 							direction: SeparatorDirection::Horizontal,
 						})),
 						WidgetHolder::new(Widget::NumberInput(NumberInput {
-							value: Some(layer.transform.x()),
+							value: Some(layer.transform.x() + pivot.x),
 							label: "X".into(),
 							unit: " px".into(),
-							on_update: WidgetCallback::new(|number_input: &NumberInput| {
+							on_update: WidgetCallback::new(move |number_input: &NumberInput| {
 								PropertiesPanelMessage::ModifyTransform {
-									value: number_input.value.unwrap(),
+									value: number_input.value.unwrap() - pivot.x,
 									transform_op: TransformOp::X,
 								}
 								.into()
@@ -112,12 +113,12 @@ pub fn register_artboard_layer_properties(layer: &Layer, responses: &mut VecDequ
 							direction: SeparatorDirection::Horizontal,
 						})),
 						WidgetHolder::new(Widget::NumberInput(NumberInput {
-							value: Some(layer.transform.y()),
+							value: Some(layer.transform.y() + pivot.y),
 							label: "Y".into(),
 							unit: " px".into(),
-							on_update: WidgetCallback::new(|number_input: &NumberInput| {
+							on_update: WidgetCallback::new(move |number_input: &NumberInput| {
 								PropertiesPanelMessage::ModifyTransform {
-									value: number_input.value.unwrap(),
+									value: number_input.value.unwrap() - pivot.y,
 									transform_op: TransformOp::Y,
 								}
 								.into()
@@ -308,6 +309,7 @@ pub fn register_artwork_layer_properties(layer: &Layer, responses: &mut VecDeque
 }
 
 fn node_section_transform(layer: &Layer, font_cache: &FontCache) -> LayoutGroup {
+	let pivot = layer.transform.transform_vector2(layer.layerspace_pivot(font_cache));
 	LayoutGroup::Section {
 		name: "Transform".into(),
 		layout: vec![
@@ -322,12 +324,12 @@ fn node_section_transform(layer: &Layer, font_cache: &FontCache) -> LayoutGroup 
 						direction: SeparatorDirection::Horizontal,
 					})),
 					WidgetHolder::new(Widget::NumberInput(NumberInput {
-						value: Some(layer.transform.x()),
+						value: Some(layer.transform.x() + pivot.x),
 						label: "X".into(),
 						unit: " px".into(),
-						on_update: WidgetCallback::new(|number_input: &NumberInput| {
+						on_update: WidgetCallback::new(move |number_input: &NumberInput| {
 							PropertiesPanelMessage::ModifyTransform {
-								value: number_input.value.unwrap(),
+								value: number_input.value.unwrap() - pivot.x,
 								transform_op: TransformOp::X,
 							}
 							.into()
@@ -339,12 +341,12 @@ fn node_section_transform(layer: &Layer, font_cache: &FontCache) -> LayoutGroup 
 						direction: SeparatorDirection::Horizontal,
 					})),
 					WidgetHolder::new(Widget::NumberInput(NumberInput {
-						value: Some(layer.transform.y()),
+						value: Some(layer.transform.y() + pivot.y),
 						label: "Y".into(),
 						unit: " px".into(),
-						on_update: WidgetCallback::new(|number_input: &NumberInput| {
+						on_update: WidgetCallback::new(move |number_input: &NumberInput| {
 							PropertiesPanelMessage::ModifyTransform {
-								value: number_input.value.unwrap(),
+								value: number_input.value.unwrap() - pivot.y,
 								transform_op: TransformOp::Y,
 							}
 							.into()
