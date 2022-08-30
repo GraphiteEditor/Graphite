@@ -81,8 +81,8 @@ impl SelectedEdges {
 
 		let mut pivot = self.pivot_from_bounds(min, max);
 		if center {
-			// Radio below is of (dragging edge / being centred)
-			// The is finite checks are in case the user is dragging the edge with the pivot on (in which case the centre is ignored).
+			// The below ratio is: `dragging edge / being centred`.
+			// The `is_finite()` checks are in case the user is dragging the edge where the pivot is located (in which case the centering mode is ignored).
 			if self.top {
 				let ratio = (center_around.y - min.y) / (center_around.y - self.bounds[0].y);
 				if ratio.is_finite() {
