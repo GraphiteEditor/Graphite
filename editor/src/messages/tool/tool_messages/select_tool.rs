@@ -579,12 +579,11 @@ impl Fsm for SelectToolFsmState {
 
 							let snapped_mouse_position = tool_data.snap_manager.snap_position(responses, document, mouse_position);
 
-							let (_, size) = movement.new_size(snapped_mouse_position, bounds.transform, center, bounds.center_of_transformation, axis_align);
-							let delta = movement.bounds_to_scale_transform(size);
+							let (position, size) = movement.new_size(snapped_mouse_position, bounds.transform, center, bounds.center_of_transformation, axis_align);
+							let (delta, mut pivot) = movement.bounds_to_scale_transform(position, size);
 
 							let selected = &tool_data.layers_dragging.iter().collect::<Vec<_>>();
-							let pivot = if center { &mut bounds.center_of_transformation } else { &mut bounds.opposite_pivot };
-							let mut selected = Selected::new(&mut bounds.original_transforms, pivot, selected, responses, &document.graphene_document);
+							let mut selected = Selected::new(&mut bounds.original_transforms, &mut pivot, selected, responses, &document.graphene_document);
 
 							selected.update_transforms(delta);
 						}
