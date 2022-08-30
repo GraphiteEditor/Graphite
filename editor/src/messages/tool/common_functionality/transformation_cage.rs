@@ -81,19 +81,33 @@ impl SelectedEdges {
 
 		let mut pivot = self.pivot_from_bounds(min, max);
 		if center {
+			// Radio below is of (dragging edge / being centred)
+			// The is finite checks are in case the user is dragging the edge with the pivot on (in which case the centre is ignored).
 			if self.top {
-				max.y = center_around.y + ((center_around.y - min.y) / (center_around.y - self.bounds[0].y)) * (self.bounds[1].y - center_around.y);
-				pivot.y = center_around.y;
+				let ratio = (center_around.y - min.y) / (center_around.y - self.bounds[0].y);
+				if ratio.is_finite() {
+					max.y = center_around.y + ratio * (self.bounds[1].y - center_around.y);
+					pivot.y = center_around.y;
+				}
 			} else if self.bottom {
-				min.y = center_around.y - ((max.y - center_around.y) / (self.bounds[1].y - center_around.y)) * (center_around.y - self.bounds[0].y);
-				pivot.y = center_around.y;
+				let ratio = (max.y - center_around.y) / (self.bounds[1].y - center_around.y);
+				if ratio.is_finite() {
+					min.y = center_around.y - ratio * (center_around.y - self.bounds[0].y);
+					pivot.y = center_around.y;
+				}
 			}
 			if self.left {
-				max.x = center_around.x + ((center_around.x - min.x) / (center_around.x - self.bounds[0].x)) * (self.bounds[1].x - center_around.x);
-				pivot.x = center_around.x;
+				let ratio = (center_around.x - min.x) / (center_around.x - self.bounds[0].x);
+				if ratio.is_finite() {
+					max.x = center_around.x + ratio * (self.bounds[1].x - center_around.x);
+					pivot.x = center_around.x;
+				}
 			} else if self.right {
-				min.x = center_around.x - ((max.x - center_around.x) / (self.bounds[1].x - center_around.x)) * (center_around.x - self.bounds[0].x);
-				pivot.x = center_around.x;
+				let ratio = (max.x - center_around.x) / (self.bounds[1].x - center_around.x);
+				if ratio.is_finite() {
+					min.x = center_around.x - ratio * (center_around.x - self.bounds[0].x);
+					pivot.x = center_around.x;
+				}
 			}
 		}
 
