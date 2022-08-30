@@ -82,17 +82,17 @@ impl SelectedEdges {
 		let mut pivot = self.pivot_from_bounds(min, max);
 		if center {
 			if self.top {
-				max.y = center_around.y * 2. - min.y;
+				max.y = center_around.y + ((center_around.y - min.y) / (center_around.y - self.bounds[0].y)) * (self.bounds[1].y - center_around.y);
 				pivot.y = center_around.y;
 			} else if self.bottom {
-				min.y = center_around.y * 2. - max.y;
+				min.y = center_around.y - ((max.y - center_around.y) / (self.bounds[1].y - center_around.y)) * (center_around.y - self.bounds[0].y);
 				pivot.y = center_around.y;
 			}
 			if self.left {
-				max.x = center_around.x * 2. - min.x;
+				max.x = center_around.x + ((center_around.x - min.x) / (center_around.x - self.bounds[0].x)) * (self.bounds[1].x - center_around.x);
 				pivot.x = center_around.x;
 			} else if self.right {
-				min.x = center_around.x * 2. - max.x;
+				min.x = center_around.x - ((max.x - center_around.x) / (self.bounds[1].x - center_around.x)) * (center_around.x - self.bounds[0].x);
 				pivot.x = center_around.x;
 			}
 		}
