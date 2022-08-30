@@ -762,7 +762,7 @@ impl Fsm for SelectToolFsmState {
 				}
 				(_, SetPivot { position }) => {
 					let pos: Option<DVec2> = position.into();
-					tool_data.pivot.set_normalised_position(pos.unwrap(), document, font_cache, responses);
+					tool_data.pivot.set_normalized_position(pos.unwrap(), document, font_cache, responses);
 
 					self
 				}

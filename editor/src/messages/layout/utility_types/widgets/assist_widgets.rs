@@ -67,7 +67,7 @@ impl From<PivotPosition> for Option<DVec2> {
 
 impl From<DVec2> for PivotPosition {
 	fn from(input: DVec2) -> Self {
-		const TOLERANCE: f64 = 1e-5f64;
+		const TOLERANCE: f64 = 1e-5_f64;
 		if input.y.abs() < TOLERANCE {
 			if input.x.abs() < TOLERANCE {
 				return PivotPosition::TopLeft;

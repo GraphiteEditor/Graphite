@@ -1,12 +1,13 @@
-//! Handler for the pivot visible on the selected layers whilst in the select tool which controls the centre of rotation
+//! Handler for the pivot overlay visible on the selected layer(s) whilst using the Select tool which controls the center of rotation/scale and origin of the layer.
 
 use crate::application::generate_uuid;
-use crate::consts::{COLOR_ACCENT, PIVOT_INNER, PIVOT_OUTER};
+use crate::consts::{COLOR_ACCENT, PIVOT_INNER, PIVOT_OUTER, PIVOT_OUTER_OUTLINE_THICKNESS};
 use crate::messages::layout::utility_types::widgets::assist_widgets::PivotPosition;
 use crate::messages::prelude::*;
 
-use graphene::Operation;
-use graphene::{layers::text_layer::FontCache, LayerId};
+use graphene::layers::style;
+use graphene::layers::text_layer::FontCache;
+use graphene::{LayerId, Operation};
 
 use glam::{DAffine2, DVec2};
 use std::collections::VecDeque;
@@ -21,7 +22,7 @@ pub struct Pivot {
 	pivot: Option<DVec2>,
 	/// A reference to the previous overlays so we can destroy them
 	pivot_overlay_circles: Option<[Vec<LayerId>; 2]>,
-	/// The old pivot position in the gui, used to reduce refreshes of the document bar
+	/// The old pivot position in the GUI, used to reduce refreshes of the document bar
 	old_pivot_position: PivotPosition,
 }
 
@@ -38,7 +39,7 @@ impl Default for Pivot {
 }
 
 impl Pivot {
-	/// Calculate the transform to get from normalized pivot to viewspace
+	/// Calculates the transform that gets from normalized pivot to viewspace.
 	fn get_layer_pivot_transform(layer_path: &[LayerId], layer: &graphene::layers::layer_info::Layer, document: &DocumentMessageHandler, font_cache: &FontCache) -> DAffine2 {
 		let [min, max] = layer.aabb_for_transform(DAffine2::IDENTITY, font_cache).unwrap_or([DVec2::ZERO, DVec2::ONE]);
 		let bounds_transform = DAffine2::from_translation(min) * DAffine2::from_scale(max - min);
@@ -46,13 +47,14 @@ impl Pivot {
 		layer_transform * bounds_transform
 	}
 
-	/// Recomputes the pivot position and transform
+	/// Recomputes the pivot position and transform.
 	fn recalculate_pivot(&mut self, document: &DocumentMessageHandler, font_cache: &FontCache) {
 		let mut layers = document.selected_visible_layers();
 		if let Some(first) = layers.next() {
-			let len = layers.count() + 1;
+			let selected_layers_count = layers.count() + 1;
+
 			// If just one layer is selected we can use its inner transform
-			if len == 1 {
+			if selected_layers_count == 1 {
 				if let Ok(layer) = document.graphene_document.layer(first) {
 					self.normalized_pivot = layer.pivot;
 					self.transform_from_normalized = Self::get_layer_pivot_transform(first, layer, document, font_cache);
@@ -66,7 +68,7 @@ impl Pivot {
 					.reduce(|a, b| a + b)
 					.unwrap_or_default();
 
-				let pivot = xy_summation / len as f64;
+				let pivot = xy_summation / selected_layers_count as f64;
 				self.pivot = Some(pivot);
 				let [min, max] = document.selected_visible_layers_bounding_box(font_cache).unwrap_or([DVec2::ZERO, DVec2::ONE]);
 				self.normalized_pivot = (pivot - min) / (max - min);
@@ -90,11 +92,10 @@ impl Pivot {
 
 	fn redraw_pivot(&mut self, responses: &mut VecDeque<Message>) {
 		self.clear_overlays(responses);
+
 		let pivot = match self.pivot {
 			Some(pivot) => pivot,
-			None => {
-				return;
-			}
+			None => return,
 		};
 
 		let layer_paths = [vec![generate_uuid()], vec![generate_uuid()]];
@@ -103,10 +104,7 @@ impl Pivot {
 				Operation::AddEllipse {
 					path: layer_paths[0].clone(),
 					transform: DAffine2::IDENTITY.to_cols_array(),
-					style: graphene::layers::style::PathStyle::new(
-						Some(graphene::layers::style::Stroke::new(COLOR_ACCENT, 1.)),
-						graphene::layers::style::Fill::Solid(graphene::color::Color::WHITE),
-					),
+					style: style::PathStyle::new(Some(style::Stroke::new(COLOR_ACCENT, PIVOT_OUTER_OUTLINE_THICKNESS)), style::Fill::Solid(graphene::color::Color::WHITE)),
 					insert_index: -1,
 				}
 				.into(),
@@ -118,7 +116,7 @@ impl Pivot {
 				Operation::AddEllipse {
 					path: layer_paths[1].clone(),
 					transform: DAffine2::IDENTITY.to_cols_array(),
-					style: graphene::layers::style::PathStyle::new(None, graphene::layers::style::Fill::Solid(COLOR_ACCENT)),
+					style: style::PathStyle::new(None, style::Fill::Solid(COLOR_ACCENT)),
 					insert_index: -1,
 				}
 				.into(),
@@ -129,7 +127,8 @@ impl Pivot {
 		self.pivot_overlay_circles = Some(layer_paths.clone());
 		let [outer, inner] = layer_paths;
 
-		let transform = DAffine2::from_scale_angle_translation(DVec2::splat(PIVOT_OUTER), 0., pivot - DVec2::splat(PIVOT_OUTER / 2.)).to_cols_array();
+		let pivot_diameter_without_outline = PIVOT_OUTER - PIVOT_OUTER_OUTLINE_THICKNESS;
+		let transform = DAffine2::from_scale_angle_translation(DVec2::splat(pivot_diameter_without_outline), 0., pivot - DVec2::splat(pivot_diameter_without_outline / 2.)).to_cols_array();
 		responses.push_back(DocumentMessage::Overlays(Operation::TransformLayerInViewport { path: outer, transform }.into()).into());
 
 		let transform = DAffine2::from_scale_angle_translation(DVec2::splat(PIVOT_INNER), 0., pivot - DVec2::splat(PIVOT_INNER / 2.)).to_cols_array();
@@ -141,7 +140,7 @@ impl Pivot {
 		self.redraw_pivot(responses);
 	}
 
-	/// Has the pivot widget changed (so we should refresh the tool bar at the top of the canvas).
+	/// Answers if the pivot widget has changed (so we should refresh the tool bar at the top of the canvas).
 	pub fn should_refresh_pivot_position(&mut self) -> bool {
 		let new = self.to_pivot_position();
 		let should_refresh = new != self.old_pivot_position;
@@ -165,12 +164,12 @@ impl Pivot {
 		}
 	}
 
-	/// Set the pivot using the normalised transform that is set above.
-	pub fn set_normalised_position(&self, position: DVec2, document: &DocumentMessageHandler, font_cache: &FontCache, responses: &mut VecDeque<Message>) {
+	/// Set the pivot using the normalized transform that is set above.
+	pub fn set_normalized_position(&self, position: DVec2, document: &DocumentMessageHandler, font_cache: &FontCache, responses: &mut VecDeque<Message>) {
 		self.set_viewport_position(self.transform_from_normalized.transform_point2(position), document, font_cache, responses);
 	}
 
-	/// Is the mosue over the pivot?
+	/// Answers if the pointer is currently positioned over the pivot.
 	pub fn is_over(&self, mouse: DVec2) -> bool {
 		self.pivot.filter(|&pivot| mouse.distance_squared(pivot) < (PIVOT_OUTER / 2.).powi(2)).is_some()
 	}

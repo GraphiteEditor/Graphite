@@ -43,7 +43,8 @@ pub const BIG_NUDGE_AMOUNT: f64 = 10.;
 // Select tool
 pub const SELECTION_TOLERANCE: f64 = 5.;
 pub const SELECTION_DRAG_ANGLE: f64 = 90.;
-pub const PIVOT_OUTER: f64 = 8.;
+pub const PIVOT_OUTER_OUTLINE_THICKNESS: f64 = 1.;
+pub const PIVOT_OUTER: f64 = 9.;
 pub const PIVOT_INNER: f64 = 3.;
 
 // Transformation cage
