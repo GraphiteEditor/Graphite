@@ -51,6 +51,7 @@ impl Pivot {
 	fn recalculate_pivot(&mut self, document: &DocumentMessageHandler, font_cache: &FontCache) {
 		let mut layers = document.selected_visible_layers();
 		if let Some(first) = layers.next() {
+			// Add one because the first item is consumed above.
 			let selected_layers_count = layers.count() + 1;
 
 			// If just one layer is selected we can use its inner transform
