@@ -760,7 +760,12 @@ impl Document {
 				self.mark_as_dirty(&path)?;
 				Some([vec![DocumentChanged, LayerChanged { path: path.clone() }], update_thumbnails_upstream(&path)].concat())
 			}
-
+			Operation::SetPivot { layer_path, pivot } => {
+				let layer = self.layer_mut(&layer_path).expect("Setting pivot for invalid layer");
+				layer.pivot = pivot.into();
+				self.mark_as_dirty(&layer_path)?;
+				Some([vec![DocumentChanged, LayerChanged { path: layer_path.clone() }], update_thumbnails_upstream(&layer_path)].concat())
+			}
 			Operation::SetLayerTransformInViewport { path, transform } => {
 				let transform = DAffine2::from_cols_array(&transform);
 				self.set_transform_relative_to_viewport(&path, transform)?;

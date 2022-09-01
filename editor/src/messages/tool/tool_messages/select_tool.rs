@@ -4,6 +4,7 @@ use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, KeysGroup, MouseMotion};
 use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
 use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, PropertyHolder, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
+use crate::messages::layout::utility_types::misc::LayoutTarget;
 use crate::messages::layout::utility_types::widgets::assist_widgets::{PivotAssist, PivotPosition};
 use crate::messages::layout::utility_types::widgets::button_widgets::{IconButton, PopoverButton};
 use crate::messages::layout::utility_types::widgets::label_widgets::{Separator, SeparatorDirection, SeparatorType};
@@ -11,6 +12,7 @@ use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, 
 use crate::messages::portfolio::document::utility_types::transformation::Selected;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::path_outline::*;
+use crate::messages::tool::common_functionality::pivot::Pivot;
 use crate::messages::tool::common_functionality::snapping::{self, SnapManager};
 use crate::messages::tool::common_functionality::transformation_cage::*;
 use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
@@ -34,7 +36,7 @@ pub struct SelectTool {
 
 #[remain::sorted]
 #[impl_message(Message, ToolMessage, Select)]
-#[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize)]
+#[derive(PartialEq, Eq, Clone, Debug, Serialize, Deserialize)]
 pub enum SelectToolMessage {
 	// Standard messages
 	#[remain::unsorted]
@@ -61,6 +63,9 @@ pub enum SelectToolMessage {
 		snap_angle: Key,
 		center: Key,
 		duplicate: Key,
+	},
+	SetPivot {
+		position: PivotPosition,
 	},
 }
 
@@ -252,12 +257,8 @@ impl PropertyHolder for SelectTool {
 				})),
 				// We'd like this widget to hide and show itself whenever the transformation cage is active or inactive (i.e. when no layers are selected)
 				WidgetHolder::new(Widget::PivotAssist(PivotAssist {
-					position: PivotPosition::Center,
-					on_update: WidgetCallback::new(|pivot_assist: &PivotAssist| {
-						// TODO: Make this actually do something
-						log::debug!("Changed pivot to {:?}", pivot_assist.position);
-						Message::NoOp
-					}),
+					position: self.tool_data.pivot.to_pivot_position(),
+					on_update: WidgetCallback::new(|pivot_assist: &PivotAssist| SelectToolMessage::SetPivot { position: pivot_assist.position }.into()),
 				})),
 			],
 		}]))
@@ -277,6 +278,11 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for SelectTool {
 		}
 
 		let new_state = self.fsm_state.transition(message, &mut self.tool_data, tool_data, &(), responses);
+
+		if self.tool_data.pivot.should_refresh_pivot_position() {
+			// Notify the frontend about the updated pivot position (a bit ugly to do it here not in the fsm but that doesn't have SelectTool)
+			self.register_properties(responses, LayoutTarget::ToolOptions);
+		}
 
 		if self.fsm_state != new_state {
 			self.fsm_state = new_state;
@@ -321,6 +327,7 @@ enum SelectToolFsmState {
 	DrawingBox,
 	ResizingBounds,
 	RotatingBounds,
+	DraggingPivot,
 }
 
 impl Default for SelectToolFsmState {
@@ -340,6 +347,7 @@ struct SelectToolData {
 	bounding_box_overlays: Option<BoundingBoxOverlays>,
 	snap_manager: SnapManager,
 	cursor: MouseCursorIcon,
+	pivot: Pivot,
 }
 
 impl SelectToolData {
@@ -393,6 +401,7 @@ impl Fsm for SelectToolFsmState {
 
 					tool_data.path_outlines.update_selected(document.selected_visible_layers(), document, responses, font_cache);
 					tool_data.path_outlines.intersect_test_hovered(input, document, responses, font_cache);
+					tool_data.pivot.update_pivot(document, font_cache, responses);
 
 					self
 				}
@@ -455,7 +464,12 @@ impl Fsm for SelectToolFsmState {
 					// If the user clicks on a layer that is in their current selection, go into the dragging mode.
 					// If the user clicks on new shape, make that layer their new selection.
 					// Otherwise enter the box select mode
-					let state = if let Some(selected_edges) = dragging_bounds {
+					let state = if tool_data.pivot.is_over(input.mouse.position) {
+						tool_data.snap_manager.start_snap(document, document.bounding_boxes(None, None, font_cache), true, true);
+						tool_data.snap_manager.add_all_document_handles(document, &[], &[], &[]);
+
+						DraggingPivot
+					} else if let Some(selected_edges) = dragging_bounds {
 						let snap_x = selected_edges.2 || selected_edges.3;
 						let snap_y = selected_edges.0 || selected_edges.1;
 
@@ -565,12 +579,11 @@ impl Fsm for SelectToolFsmState {
 
 							let snapped_mouse_position = tool_data.snap_manager.snap_position(responses, document, mouse_position);
 
-							let (_, size) = movement.new_size(snapped_mouse_position, bounds.transform, center, bounds.center_of_transformation, axis_align);
-							let delta = movement.bounds_to_scale_transform(size);
+							let (position, size) = movement.new_size(snapped_mouse_position, bounds.transform, center, bounds.center_of_transformation, axis_align);
+							let (delta, mut pivot) = movement.bounds_to_scale_transform(position, size);
 
 							let selected = &tool_data.layers_dragging.iter().collect::<Vec<_>>();
-							let pivot = if center { &mut bounds.center_of_transformation } else { &mut bounds.opposite_pivot };
-							let mut selected = Selected::new(&mut bounds.original_transforms, pivot, selected, responses, &document.graphene_document);
+							let mut selected = Selected::new(&mut bounds.original_transforms, &mut pivot, selected, responses, &document.graphene_document);
 
 							selected.update_transforms(delta);
 						}
@@ -603,6 +616,13 @@ impl Fsm for SelectToolFsmState {
 
 					RotatingBounds
 				}
+				(DraggingPivot, PointerMove { .. }) => {
+					let mouse_position = input.mouse.position;
+					let snapped_mouse_position = tool_data.snap_manager.snap_position(responses, document, mouse_position);
+					tool_data.pivot.set_viewport_position(snapped_mouse_position, document, font_cache, responses);
+
+					DraggingPivot
+				}
 				(DrawingBox, PointerMove { .. }) => {
 					tool_data.drag_current = input.mouse.position;
 
@@ -619,7 +639,12 @@ impl Fsm for SelectToolFsmState {
 					DrawingBox
 				}
 				(Ready, PointerMove { .. }) => {
-					let cursor = tool_data.bounding_box_overlays.as_ref().map_or(MouseCursorIcon::Default, |bounds| bounds.get_cursor(input, true));
+					let mut cursor = tool_data.bounding_box_overlays.as_ref().map_or(MouseCursorIcon::Default, |bounds| bounds.get_cursor(input, true));
+
+					// Dragging the pivot overrules the other operations
+					if tool_data.pivot.is_over(input.mouse.position) {
+						cursor = MouseCursorIcon::Move;
+					}
 
 					// Generate the select outline (but not if the user is going to use the bound overlays)
 					if cursor == MouseCursorIcon::Default {
@@ -660,6 +685,11 @@ impl Fsm for SelectToolFsmState {
 
 					Ready
 				}
+				(DraggingPivot, DragStop) => {
+					tool_data.snap_manager.cleanup(responses);
+
+					Ready
+				}
 				(DrawingBox, DragStop) => {
 					let quad = tool_data.selection_quad();
 					responses.push_front(
@@ -684,6 +714,7 @@ impl Fsm for SelectToolFsmState {
 					responses.push_back(DocumentMessage::Undo.into());
 
 					tool_data.path_outlines.clear_selected(responses);
+					tool_data.pivot.clear_overlays(responses);
 
 					Ready
 				}
@@ -708,6 +739,7 @@ impl Fsm for SelectToolFsmState {
 
 					tool_data.path_outlines.clear_hovered(responses);
 					tool_data.path_outlines.clear_selected(responses);
+					tool_data.pivot.clear_overlays(responses);
 
 					tool_data.snap_manager.cleanup(responses);
 					Ready
@@ -724,6 +756,12 @@ impl Fsm for SelectToolFsmState {
 				}
 				(_, FlipVertical) => {
 					responses.push_back(DocumentMessage::FlipSelectedLayers { flip_axis: FlipAxis::Y }.into());
+
+					self
+				}
+				(_, SetPivot { position }) => {
+					let pos: Option<DVec2> = position.into();
+					tool_data.pivot.set_normalized_position(pos.unwrap(), document, font_cache, responses);
 
 					self
 				}
@@ -869,6 +907,7 @@ impl Fsm for SelectToolFsmState {
 				label: String::from("Snap 15°"),
 				plus: false,
 			}])]),
+			SelectToolFsmState::DraggingPivot => HintData(vec![]),
 		};
 
 		responses.push_back(FrontendMessage::UpdateInputHints { hint_data }.into());

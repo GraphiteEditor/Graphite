@@ -195,6 +195,7 @@ const mouseCursorIconCSSNames = {
 	Grabbing: "grabbing",
 	Crosshair: "crosshair",
 	Text: "text",
+	Move: "move",
 	NSResize: "ns-resize",
 	EWResize: "ew-resize",
 	NESWResize: "nesw-resize",
