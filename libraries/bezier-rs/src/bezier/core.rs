@@ -1,4 +1,5 @@
 use super::*;
+use std::fmt::Write;
 
 /// Functionality relating to core `Bezier` operations, such as constructors and `abs_diff_eq`.
 impl Bezier {
@@ -142,14 +143,44 @@ impl Bezier {
 		}
 	}
 
-	/// Convert `Bezier` to SVG `path`.
-	pub fn to_svg(&self) -> String {
-		format!(
-			r#"<path d="{SVG_ARG_MOVE}{} {} {}" stroke="black" fill="none"/>"#,
-			self.start.x,
-			self.start.y,
-			self.svg_curve_argument()
-		)
+	/// Appends to the `svg` mutable string with an SVG shape representation of the curve.
+	pub fn curve_to_svg(&self, svg: &mut String, attributes: String) {
+		let _ = write!(svg, r#"<path d="{SVG_ARG_MOVE}{} {} {}" {}/>"#, self.start.x, self.start.y, self.svg_curve_argument(), attributes);
+	}
+
+	/// Appends to the `svg` mutable string with an SVG shape representation of the handle lines.
+	pub fn handle_lines_to_svg(&self, svg: &mut String, attributes: String) {
+		let _ = write!(svg, r#"<path d="{}" {}/>"#, self.svg_handle_line_argument().unwrap_or_else(|| "".to_string()), attributes);
+	}
+
+	/// Appends to the `svg` mutable string with an SVG shape representation of the anchors.
+	pub fn anchors_to_svg(&self, svg: &mut String, attributes: String) {
+		let _ = write!(
+			svg,
+			r#"<circle cx="{}" cy="{}" {attributes}/><circle cx="{}" cy="{}" {attributes}/>"#,
+			self.start.x, self.start.y, self.end.x, self.end.y
+		);
+	}
+
+	/// Appends to the `svg` mutable string with an SVG shape representation of the handles.
+	pub fn handles_to_svg(&self, svg: &mut String, attributes: String) {
+		if let BezierHandles::Quadratic { handle } = self.handles {
+			let _ = write!(svg, r#"<circle cx="{}" cy="{}" {attributes}/>"#, handle.x, handle.y);
+		} else if let BezierHandles::Cubic { handle_start, handle_end } = self.handles {
+			let _ = write!(
+				svg,
+				r#"<circle cx="{}" cy="{}" {attributes}/><circle cx="{}" cy="{}" {attributes}/>"#,
+				handle_start.x, handle_start.y, handle_end.x, handle_end.y
+			);
+		};
+	}
+
+	/// Appends to the `svg` mutable string with an SVG shape representation that includes the curve, the handle lines, the anchors, and the handles.
+	pub fn to_svg(&self, svg: &mut String, curve_attributes: String, anchor_attributes: String, handle_attributes: String, handle_line_attributes: String) {
+		self.curve_to_svg(svg, curve_attributes);
+		self.handle_lines_to_svg(svg, handle_line_attributes);
+		self.anchors_to_svg(svg, anchor_attributes);
+		self.handles_to_svg(svg, handle_attributes);
 	}
 
 	/// Returns true if the corresponding points of the two `Bezier`s are within the provided absolute value difference from each other.

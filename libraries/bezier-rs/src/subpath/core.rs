@@ -1,5 +1,6 @@
 use super::*;
 use crate::consts::*;
+use crate::ToSVGOptions;
 
 /// Functionality relating to core `Subpath` operations, such as constructors and `iter`.
 impl Subpath {
