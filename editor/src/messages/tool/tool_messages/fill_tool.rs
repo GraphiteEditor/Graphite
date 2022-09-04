@@ -7,10 +7,10 @@ use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, ToolActionHan
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 
 use graphene::intersection::Quad;
+use graphene::layers::style::Fill;
 use graphene::Operation;
 
 use glam::DVec2;
-use graphene::layers::style::Fill;
 use serde::{Deserialize, Serialize};
 
 #[derive(Default)]
