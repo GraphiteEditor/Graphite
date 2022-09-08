@@ -98,7 +98,7 @@ impl JsEditorHandle {
 		let js_return_value = self.frontend_message_handler_callback.call2(&JsValue::null(), &JsValue::from(message_type), &message_data);
 
 		if let Err(error) = js_return_value {
-			log::error!(
+			error!(
 				"While handling FrontendMessage \"{:?}\", JavaScript threw an error: {:?}",
 				message.to_discriminant().local_name(),
 				error,
@@ -295,7 +295,7 @@ impl JsEditorHandle {
 		let key = translate_key(&name);
 		let modifier_keys = ModifierKeys::from_bits(modifiers).expect("Invalid modifier keys");
 
-		log::trace!("Key down {:?}, name: {}, modifiers: {:?}", key, name, modifiers);
+		trace!("Key down {:?}, name: {}, modifiers: {:?}", key, name, modifiers);
 
 		let message = InputPreprocessorMessage::KeyDown { key, modifier_keys };
 		self.dispatch(message);
@@ -307,7 +307,7 @@ impl JsEditorHandle {
 		let key = translate_key(&name);
 		let modifier_keys = ModifierKeys::from_bits(modifiers).expect("Invalid modifier keys");
 
-		log::trace!("Key up {:?}, name: {}, modifiers: {:?}", key, name, modifier_keys);
+		trace!("Key up {:?}, name: {}, modifiers: {:?}", key, name, modifier_keys);
 
 		let message = InputPreprocessorMessage::KeyUp { key, modifier_keys };
 		self.dispatch(message);

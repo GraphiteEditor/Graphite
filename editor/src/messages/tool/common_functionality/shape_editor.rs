@@ -45,7 +45,7 @@ impl ShapeEditor {
 		}
 
 		if let Some((shape_layer_path, manipulator_group_id, manipulator_point_index)) = self.find_nearest_point_indices(document, mouse_position, select_threshold) {
-			log::trace!("Selecting... manipulator group ID: {}, manipulator point index: {}", manipulator_group_id, manipulator_point_index);
+			trace!("Selecting... manipulator group ID: {}, manipulator point index: {}", manipulator_group_id, manipulator_point_index);
 
 			// If the point we're selecting has already been selected
 			// we can assume this point exists.. since we did just click on it hence the unwrap
@@ -225,7 +225,7 @@ impl ShapeEditor {
 			if let Some((manipulator_id, manipulator_point_index, distance_squared)) = self.closest_point_in_layer(document, layer, mouse_position) {
 				// Choose the first point under the threshold
 				if distance_squared < select_threshold_squared {
-					log::trace!("Selecting... manipulator ID: {}, manipulator point index: {}", manipulator_id, manipulator_point_index);
+					trace!("Selecting... manipulator ID: {}, manipulator point index: {}", manipulator_id, manipulator_point_index);
 					return Some((layer, manipulator_id, manipulator_point_index));
 				}
 			}

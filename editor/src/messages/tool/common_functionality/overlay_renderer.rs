@@ -42,16 +42,16 @@ impl OverlayRenderer {
 
 			if let Some(shape) = layer.as_subpath() {
 				let outline_cache = self.shape_overlay_cache.get(layer_id);
-				log::trace!("Overlay: Outline cache {:?}", &outline_cache);
+				trace!("Overlay: Outline cache {:?}", &outline_cache);
 
 				// Create an outline if we do not have a cached one
 				if outline_cache == None {
 					let outline_path = self.create_shape_outline_overlay(shape.clone(), responses);
 					self.shape_overlay_cache.insert(*layer_id, outline_path.clone());
 					Self::place_outline_overlays(outline_path.clone(), &transform, responses);
-					log::trace!("Overlay: Creating new outline {:?}", &outline_path);
+					trace!("Overlay: Creating new outline {:?}", &outline_path);
 				} else if let Some(outline_path) = outline_cache {
-					log::trace!("Overlay: Updating overlays for {:?} owning layer: {:?}", outline_path, layer_id);
+					trace!("Overlay: Updating overlays for {:?} owning layer: {:?}", outline_path, layer_id);
 					Self::modify_outline_overlays(outline_path.clone(), shape.clone(), responses);
 					Self::place_outline_overlays(outline_path.clone(), &transform, responses);
 				}
@@ -62,7 +62,7 @@ impl OverlayRenderer {
 
 					// If cached update placement and style
 					if let Some(manipulator_group_overlays) = manipulator_group_cache {
-						log::trace!("Overlay: Updating detail overlays for {:?}", manipulator_group_overlays);
+						trace!("Overlay: Updating detail overlays for {:?}", manipulator_group_overlays);
 						Self::place_manipulator_group_overlays(manipulator_group, manipulator_group_overlays, &transform, responses);
 						Self::style_overlays(manipulator_group, manipulator_group_overlays, responses);
 					} else {
@@ -251,7 +251,7 @@ impl OverlayRenderer {
 	/// Removes the manipulator overlays from the overlay document.
 	fn remove_manipulator_group_overlays(overlay_paths: &ManipulatorGroupOverlays, responses: &mut VecDeque<Message>) {
 		overlay_paths.iter().flatten().for_each(|layer_id| {
-			log::trace!("Overlay: Sending delete message for: {:?}", layer_id);
+			trace!("Overlay: Sending delete message for: {:?}", layer_id);
 			responses.push_back(DocumentMessage::Overlays(Operation::DeleteLayer { path: layer_id.clone() }.into()).into());
 		});
 	}
