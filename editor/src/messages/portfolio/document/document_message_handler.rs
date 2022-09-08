@@ -27,7 +27,6 @@ use graphene::layers::vector::subpath::Subpath;
 use graphene::{DocumentError, DocumentResponse, LayerId, Operation as DocumentOperation};
 
 use glam::{DAffine2, DVec2};
-use log::warn;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -108,7 +107,7 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 							DocumentResponse::LayerChanged { path } => responses.push_back(LayerChanged { affected_layer_path: path.clone() }.into()),
 							DocumentResponse::CreatedLayer { path } => {
 								if self.layer_metadata.contains_key(path) {
-									log::warn!("CreatedLayer overrides existing layer metadata.");
+									warn!("CreatedLayer overrides existing layer metadata.");
 								}
 								self.layer_metadata.insert(path.clone(), LayerMetadata::new(false));
 
@@ -126,7 +125,7 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 						responses.push_back(BroadcastEvent::DocumentIsDirty.into());
 					}
 				}
-				Err(e) => log::error!("DocumentError: {:?}", e),
+				Err(e) => error!("DocumentError: {:?}", e),
 				Ok(_) => (),
 			},
 			#[remain::unsorted]
@@ -162,7 +161,7 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 
 			// Messages
 			AbortTransaction => {
-				self.undo(responses).unwrap_or_else(|e| log::warn!("{}", e));
+				self.undo(responses).unwrap_or_else(|e| warn!("{}", e));
 				responses.extend([RenderDocument.into(), DocumentStructureChanged.into()]);
 			}
 			AddSelectedLayers { additional_layers } => {
@@ -243,7 +242,7 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 				let initial_level = log::max_level();
 				log::set_max_level(log::LevelFilter::Trace);
 
-				log::trace!("{:#?}\n{:#?}", self.graphene_document, self.layer_metadata);
+				trace!("{:#?}\n{:#?}", self.graphene_document, self.layer_metadata);
 
 				log::set_max_level(initial_level);
 			}
@@ -291,8 +290,8 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 					responses.push_front(DocumentMessage::DirtyRenderDocument.into());
 				}
 			}
-			DocumentHistoryBackward => self.undo(responses).unwrap_or_else(|e| log::warn!("{}", e)),
-			DocumentHistoryForward => self.redo(responses).unwrap_or_else(|e| log::warn!("{}", e)),
+			DocumentHistoryBackward => self.undo(responses).unwrap_or_else(|e| warn!("{}", e)),
+			DocumentHistoryForward => self.redo(responses).unwrap_or_else(|e| warn!("{}", e)),
 			DocumentStructureChanged => {
 				let data_buffer: RawBuffer = self.serialize_root().into();
 				responses.push_back(FrontendMessage::UpdateDocumentLayerTreeStructure { data_buffer }.into())
@@ -537,7 +536,7 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 				);
 			}
 			RollbackTransaction => {
-				self.rollback(responses).unwrap_or_else(|e| log::warn!("{}", e));
+				self.rollback(responses).unwrap_or_else(|e| warn!("{}", e));
 				responses.extend([RenderDocument.into(), DocumentStructureChanged.into()]);
 			}
 			SaveDocument => {
@@ -867,7 +866,7 @@ impl DocumentMessageHandler {
 			let data = self.layer_panel_entry(path.to_vec(), font_cache).ok()?;
 			(!path.is_empty()).then(|| FrontendMessage::UpdateDocumentLayerDetails { data }.into())
 		} else {
-			log::warn!("Tried to select non existing layer {:?}", path);
+			warn!("Tried to select non existing layer {:?}", path);
 			None
 		}
 	}

@@ -20,7 +20,7 @@ impl MessageHandler<OverlaysMessage, (bool, &FontCache, &InputPreprocessorMessag
 			#[remain::unsorted]
 			DispatchOperation(operation) => match self.overlays_graphene_document.handle_operation(*operation, font_cache) {
 				Ok(_) => responses.push_back(OverlaysMessage::Rerender.into()),
-				Err(e) => log::error!("OverlaysError: {:?}", e),
+				Err(e) => error!("OverlaysError: {:?}", e),
 			},
 
 			// Messages

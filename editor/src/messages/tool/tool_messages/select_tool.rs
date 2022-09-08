@@ -941,7 +941,7 @@ impl SelectToolData {
 			let layer = match document.graphene_document.layer(layer_path) {
 				Ok(layer) => layer.clone(),
 				Err(e) => {
-					log::warn!("Could not access selected layer {:?}: {:?}", layer_path, e);
+					warn!("Could not access selected layer {:?}: {:?}", layer_path, e);
 					continue;
 				}
 			};

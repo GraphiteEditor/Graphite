@@ -161,7 +161,7 @@ impl Dispatcher {
 							&mut queue,
 						);
 					} else {
-						log::warn!("Called ToolMessage without an active document.\nGot {:?}", message);
+						warn!("Called ToolMessage without an active document.\nGot {:?}", message);
 					}
 				}
 				Workspace(message) => {
@@ -218,11 +218,11 @@ impl Dispatcher {
 			match message_logging_verbosity {
 				MessageLoggingVerbosity::Off => {}
 				MessageLoggingVerbosity::Names => {
-					log::info!("{}{:?}", Self::create_indents(queues), message.to_discriminant());
+					info!("{}{:?}", Self::create_indents(queues), message.to_discriminant());
 				}
 				MessageLoggingVerbosity::Contents => {
 					if !(matches!(message, Message::InputPreprocessor(_))) {
-						log::info!("Message: {}{:?}", Self::create_indents(queues), message);
+						info!("Message: {}{:?}", Self::create_indents(queues), message);
 					}
 				}
 			}
@@ -232,7 +232,7 @@ impl Dispatcher {
 	/// Logs into the tree that the message is in the side effect free messages and its execution will be deferred
 	fn log_deferred_message(&self, message: &Message, queues: &[VecDeque<Message>], message_logging_verbosity: MessageLoggingVerbosity) {
 		if let MessageLoggingVerbosity::Names = message_logging_verbosity {
-			log::info!("{}Deferred \"{:?}\" because it's a SIDE_EFFECT_FREE_MESSAGE", Self::create_indents(queues), message.to_discriminant());
+			info!("{}Deferred \"{:?}\" because it's a SIDE_EFFECT_FREE_MESSAGE", Self::create_indents(queues), message.to_discriminant());
 		}
 	}
 }

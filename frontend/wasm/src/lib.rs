@@ -1,5 +1,9 @@
 #![doc = include_str!("../README.md")]
 
+// `macro_use` puts the log macros (`error!`, `warn!`, `debug!`, `info!` and `trace!`) in scope for the crate
+#[macro_use]
+extern crate log;
+
 pub mod editor_api;
 pub mod helpers;
 

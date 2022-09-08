@@ -203,7 +203,7 @@ impl<'a> Selected<'a> {
 				if let Ok(layer) = document.layer(path) {
 					original_transforms.insert(path.to_vec(), layer.transform);
 				} else {
-					log::warn!("Didn't find a layer for {:?}", path);
+					warn!("Didn't find a layer for {:?}", path);
 				}
 			}
 		}

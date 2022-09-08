@@ -1,3 +1,7 @@
+// `macro_use` puts the log macros (`error!`, `warn!`, `debug!`, `info!` and `trace!`) in scope for the crate
+#[macro_use]
+extern crate log;
+
 pub mod boolean_ops;
 /// Contains the [Color](color::Color) type.
 pub mod color;
