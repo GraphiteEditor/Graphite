@@ -40,7 +40,7 @@ impl MessageHandler<ArtboardMessage, &FontCache> for ArtboardMessageHandler {
 					}
 				}
 				Ok(None) => {}
-				Err(e) => log::error!("Artboard Error: {:?}", e),
+				Err(e) => error!("Artboard Error: {:?}", e),
 			},
 
 			// Messages

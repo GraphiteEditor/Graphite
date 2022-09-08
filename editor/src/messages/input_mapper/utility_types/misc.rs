@@ -98,7 +98,7 @@ impl ActionKeys {
 				}
 			}
 			ActionKeys::Keys(keys) => {
-				log::warn!("Calling `.to_keys()` on a `ActionKeys::Keys` is a mistake/bug. Keys are: {:?}.", keys);
+				warn!("Calling `.to_keys()` on a `ActionKeys::Keys` is a mistake/bug. Keys are: {:?}.", keys);
 			}
 		}
 	}

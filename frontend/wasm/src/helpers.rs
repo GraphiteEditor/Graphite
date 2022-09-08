@@ -11,7 +11,7 @@ pub fn panic_hook(info: &panic::PanicInfo) {
 	let header = "The editor crashed — sorry about that";
 	let description = "An internal error occurred. Reload the editor to continue. Please report this by filing an issue on GitHub.";
 
-	log::error!("{}", info);
+	error!("{}", info);
 
 	JS_EDITOR_HANDLES.with(|instances| {
 		instances.borrow_mut().values_mut().for_each(|instance| {
@@ -74,7 +74,7 @@ impl log::Log for WasmLog {
 pub fn translate_key(name: &str) -> Key {
 	use Key::*;
 
-	log::trace!("Key event received: {}", name);
+	trace!("Key event received: {}", name);
 
 	match name {
 		// Writing system keys

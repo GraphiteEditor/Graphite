@@ -11,8 +11,6 @@ use graphene::layers::layer_info::LayerDataTypeDiscriminant;
 use graphene::layers::text_layer::{Font, FontCache};
 use graphene::Operation as DocumentOperation;
 
-use log::warn;
-
 #[derive(Debug, Clone, Default)]
 pub struct PortfolioMessageHandler {
 	menu_bar_message_handler: MenuBarMessageHandler,
@@ -292,7 +290,7 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 			} => {
 				let paste = |entry: &CopyBufferEntry, responses: &mut VecDeque<_>| {
 					if let Some(document) = self.active_document() {
-						log::trace!("Pasting into folder {:?} as index: {}", &path, insert_index);
+						trace!("Pasting into folder {:?} as index: {}", &path, insert_index);
 						let destination_path = [path.to_vec(), vec![generate_uuid()]].concat();
 
 						responses.push_front(

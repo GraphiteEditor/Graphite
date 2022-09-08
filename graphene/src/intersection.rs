@@ -335,7 +335,7 @@ fn path_intersections(a: &SubCurve, b: &SubCurve, intersections: &mut Vec<Inters
 				// Return the best estimate of intersection regardless of quality
 				// Also provides a base case and prevents infinite recursion
 				if a.available_precision() <= F64PRECISE || b.available_precision() <= F64PRECISE {
-					log::trace!("Precision reached");
+					trace!("Precision reached");
 					intersections.push(cross);
 					return;
 				}
@@ -343,7 +343,7 @@ fn path_intersections(a: &SubCurve, b: &SubCurve, intersections: &mut Vec<Inters
 			// Alternate base case
 			// Note: may occur for the less forgiving side of a `PathSeg` endpoint intersect
 			if a.available_precision() <= F64PRECISE || b.available_precision() <= F64PRECISE {
-				log::trace!("Precision reached without finding intersect");
+				trace!("Precision reached without finding intersect");
 				return;
 			}
 		}
