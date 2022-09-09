@@ -964,7 +964,12 @@ impl DAffine2Utils for DAffine2 {
 	}
 
 	fn update_scale_x(self, new_width: f64) -> Self {
-		self * DAffine2::from_scale((new_width / self.scale_x(), 1.).into())
+		let scale_x = self.scale_x();
+		if scale_x != 0. {
+			self * DAffine2::from_scale((new_width / scale_x, 1.).into())
+		} else {
+			self
+		}
 	}
 
 	fn scale_y(&self) -> f64 {
@@ -972,7 +977,12 @@ impl DAffine2Utils for DAffine2 {
 	}
 
 	fn update_scale_y(self, new_height: f64) -> Self {
-		self * DAffine2::from_scale((1., new_height / self.scale_y()).into())
+		let scale_y = self.scale_y();
+		if scale_y != 0. {
+			self * DAffine2::from_scale((1., new_height / scale_y).into())
+		} else {
+			self
+		}
 	}
 
 	fn x(&self) -> f64 {
