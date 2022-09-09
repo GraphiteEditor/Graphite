@@ -158,9 +158,12 @@ impl Pivot {
 		for layer_path in document.selected_visible_layers() {
 			if let Ok(layer) = document.graphene_document.layer(layer_path) {
 				let transform = Self::get_layer_pivot_transform(layer_path, layer, document, font_cache);
-				let pivot = transform.inverse().transform_point2(position).into();
-				let layer_path = layer_path.to_owned();
-				responses.push_back(Operation::SetPivot { layer_path, pivot }.into());
+				let pivot = transform.inverse().transform_point2(position);
+				// Only update the pivot when computed position is finite. Infinite can happen when scale is 0.
+				if pivot.is_finite() {
+					let layer_path = layer_path.to_owned();
+					responses.push_back(Operation::SetPivot { layer_path, pivot: pivot.into() }.into());
+				}
 			}
 		}
 	}
