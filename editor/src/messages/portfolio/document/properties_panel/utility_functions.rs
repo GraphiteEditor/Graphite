@@ -994,8 +994,15 @@ impl DAffine2Utils for DAffine2 {
 	}
 
 	fn rotation(&self) -> f64 {
-		let cos = self.matrix2.col(0).x / self.scale_x();
-		let sin = self.matrix2.col(0).y / self.scale_x();
+		let cos;
+		let sin;
+		if self.scale_x() != 0. {
+			cos = self.matrix2.col(0).x / self.scale_x();
+			sin = self.matrix2.col(0).y / self.scale_x();
+		} else {
+			sin = -self.matrix2.col(1).x / self.scale_y();
+			cos = self.matrix2.col(1).y / self.scale_y();
+		}
 		sin.atan2(cos)
 	}
 
