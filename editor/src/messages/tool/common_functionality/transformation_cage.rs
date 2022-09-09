@@ -137,7 +137,6 @@ impl SelectedEdges {
 		if enlargement_factor.y.is_nan() {
 			enlargement_factor.y = 0.;
 		}
-		log::info!("enlargement factor {:?}, -> {:?}", enlargement_factor, DAffine2::from_scale(enlargement_factor));
 		let mut pivot = (self.bounds[0] * enlargement_factor - position) / (enlargement_factor - DVec2::splat(1.));
 		if pivot.x.is_nan() {
 			pivot.x = 0.;
