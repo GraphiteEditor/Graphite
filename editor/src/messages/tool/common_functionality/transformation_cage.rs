@@ -130,7 +130,14 @@ impl SelectedEdges {
 
 	/// Calculates the required scaling to resize the bounding box
 	pub fn bounds_to_scale_transform(&self, position: DVec2, size: DVec2) -> (DAffine2, DVec2) {
-		let enlargement_factor = size / (self.bounds[1] - self.bounds[0]);
+		let mut enlargement_factor = size / (self.bounds[1] - self.bounds[0]);
+		if enlargement_factor.x.is_nan() {
+			enlargement_factor.x = 0.;
+		}
+		if enlargement_factor.y.is_nan() {
+			enlargement_factor.y = 0.;
+		}
+		log::info!("enlargement factor {:?}, -> {:?}", enlargement_factor, DAffine2::from_scale(enlargement_factor));
 		let mut pivot = (self.bounds[0] * enlargement_factor - position) / (enlargement_factor - DVec2::splat(1.));
 		if pivot.x.is_nan() {
 			pivot.x = 0.;
