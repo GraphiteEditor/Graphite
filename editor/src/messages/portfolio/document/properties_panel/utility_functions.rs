@@ -1004,16 +1004,19 @@ impl DAffine2Utils for DAffine2 {
 	}
 
 	fn rotation(&self) -> f64 {
-		let cos;
-		let sin;
 		if self.scale_x() != 0. {
-			cos = self.matrix2.col(0).x / self.scale_x();
-			sin = self.matrix2.col(0).y / self.scale_x();
+			let cos = self.matrix2.col(0).x / self.scale_x();
+			let sin = self.matrix2.col(0).y / self.scale_x();
+			sin.atan2(cos)
+		} else if self.scale_y() != 0. {
+			let sin = -self.matrix2.col(1).x / self.scale_y();
+			let cos = self.matrix2.col(1).y / self.scale_y();
+			sin.atan2(cos)
 		} else {
-			sin = -self.matrix2.col(1).x / self.scale_y();
-			cos = self.matrix2.col(1).y / self.scale_y();
+			// Rotation information does not exists anymore in the matrix
+			// return 0 for user experience.
+			0.
 		}
-		sin.atan2(cos)
 	}
 
 	fn update_rotation(self, new_rotation: f64) -> Self {
