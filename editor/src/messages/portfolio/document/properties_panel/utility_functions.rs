@@ -964,7 +964,12 @@ impl DAffine2Utils for DAffine2 {
 	}
 
 	fn update_scale_x(self, new_width: f64) -> Self {
-		self * DAffine2::from_scale((new_width / self.scale_x(), 1.).into())
+		let scale_x = self.scale_x();
+		if scale_x != 0. {
+			self * DAffine2::from_scale((new_width / scale_x, 1.).into())
+		} else {
+			self
+		}
 	}
 
 	fn scale_y(&self) -> f64 {
@@ -972,7 +977,12 @@ impl DAffine2Utils for DAffine2 {
 	}
 
 	fn update_scale_y(self, new_height: f64) -> Self {
-		self * DAffine2::from_scale((1., new_height / self.scale_y()).into())
+		let scale_y = self.scale_y();
+		if scale_y != 0. {
+			self * DAffine2::from_scale((1., new_height / scale_y).into())
+		} else {
+			self
+		}
 	}
 
 	fn x(&self) -> f64 {
@@ -994,9 +1004,19 @@ impl DAffine2Utils for DAffine2 {
 	}
 
 	fn rotation(&self) -> f64 {
-		let cos = self.matrix2.col(0).x / self.scale_x();
-		let sin = self.matrix2.col(0).y / self.scale_x();
-		sin.atan2(cos)
+		if self.scale_x() != 0. {
+			let cos = self.matrix2.col(0).x / self.scale_x();
+			let sin = self.matrix2.col(0).y / self.scale_x();
+			sin.atan2(cos)
+		} else if self.scale_y() != 0. {
+			let sin = -self.matrix2.col(1).x / self.scale_y();
+			let cos = self.matrix2.col(1).y / self.scale_y();
+			sin.atan2(cos)
+		} else {
+			// Rotation information does not exists anymore in the matrix
+			// return 0 for user experience.
+			0.
+		}
 	}
 
 	fn update_rotation(self, new_rotation: f64) -> Self {
