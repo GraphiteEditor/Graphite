@@ -183,9 +183,10 @@ export default defineComponent({
 			if (typeof this.min === "number" && !Number.isNaN(this.min) && cleaned !== undefined) cleaned = Math.max(cleaned, this.min);
 			if (typeof this.max === "number" && !Number.isNaN(this.max) && cleaned !== undefined) cleaned = Math.min(cleaned, this.max);
 
-			if (newValue !== undefined) this.$emit("update:value", cleaned);
+			// Required as the call to update:value can, not change the value
+			this.text = this.displayText(this.value);
 
-			this.text = this.displayText(cleaned);
+			if (newValue !== undefined) this.$emit("update:value", cleaned);
 		},
 		displayText(value: number | undefined): string {
 			if (value === undefined) return "-";
