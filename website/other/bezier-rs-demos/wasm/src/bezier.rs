@@ -27,6 +27,8 @@ pub enum WasmMaximizeArcs {
 	Off,       // 2
 }
 
+const SCALE_UNIT_VECTOR_FACTOR: f64 = 50.;
+
 /// Wrapper of the `Bezier` struct to be used in JS.
 #[wasm_bindgen]
 #[derive(Clone)]
@@ -127,7 +129,7 @@ impl WasmBezier {
 		to_js_value(points)
 	}
 
-	pub fn to_svg(&self) -> String {
+	fn get_bezier_path(&self) -> String {
 		let mut bezier = String::new();
 		self.0.to_svg(
 			&mut bezier,
@@ -136,33 +138,77 @@ impl WasmBezier {
 			HANDLE_ATTRIBUTES.to_string(),
 			HANDLE_LINE_ATTRIBUTES.to_string(),
 		);
-		wrap_svg_tag(bezier)
+		bezier
 	}
 
-	pub fn length(&self) -> f64 {
-		self.0.length(None)
+	pub fn to_svg(&self) -> String {
+		wrap_svg_tag(self.get_bezier_path())
+	}
+
+	pub fn length(&self) -> String {
+		let bezier = self.get_bezier_path();
+		wrap_svg_tag(format!("{bezier}{}", draw_text(format!("Length: {:.2}", self.0.length(None)), 5., 193., BLACK)))
 	}
 
 	/// The wrapped return type is `Point`.
-	pub fn evaluate(&self, t: f64) -> JsValue {
+	pub fn evaluate_value(&self, t: f64) -> JsValue {
 		let point: Point = vec_to_point(&self.0.evaluate(t));
 		to_js_value(point)
 	}
 
-	/// The wrapped return type is `Vec<Point>`.
-	pub fn compute_lookup_table(&self, steps: usize) -> JsValue {
-		let table_values: Vec<Point> = self.0.compute_lookup_table(Some(steps)).iter().map(vec_to_point).collect();
-		to_js_value(table_values)
+	pub fn evaluate(&self, t: f64) -> String {
+		let bezier = self.get_bezier_path();
+		let point = &self.0.evaluate(t);
+		let content = format!("{bezier}{}", draw_circle(point.x, point.y, 4., RED, 1.5, WHITE));
+		wrap_svg_tag(content)
 	}
 
-	pub fn derivative(&self) -> Option<WasmBezier> {
-		self.0.derivative().map(WasmBezier)
+	/// The wrapped return type is `Vec<Point>`.
+	pub fn compute_lookup_table(&self, steps: usize) -> String {
+		let bezier = self.get_bezier_path();
+		let table_values: Vec<Point> = self.0.compute_lookup_table(Some(steps)).iter().map(vec_to_point).collect();
+		let circles: String = table_values
+			.iter()
+			.map(|point| draw_circle(point.x, point.y, 3., RED, 1.5, WHITE))
+			.fold("".to_string(), |acc, circle| acc + &circle);
+		let content = format!("{bezier}{circles}");
+		wrap_svg_tag(content)
+	}
+
+	pub fn derivative(&self) -> String {
+		let bezier = self.get_bezier_path();
+		let derivative = self.0.derivative();
+		if derivative.is_none() {
+			return bezier;
+		}
+
+		let mut derivative_svg_path = String::new();
+		derivative.unwrap().to_svg(
+			&mut derivative_svg_path,
+			CURVE_ATTRIBUTES.to_string().replace(BLACK, RED),
+			ANCHOR_ATTRIBUTES.to_string().replace(BLACK, RED),
+			HANDLE_ATTRIBUTES.to_string().replace(GRAY, RED),
+			HANDLE_LINE_ATTRIBUTES.to_string().replace(GRAY, RED),
+		);
+		let content = format!("{bezier}{derivative_svg_path}");
+		wrap_svg_tag(content)
 	}
 
 	/// The wrapped return type is `Point`.
-	pub fn tangent(&self, t: f64) -> JsValue {
-		let tangent_point: Point = vec_to_point(&self.0.tangent(t));
-		to_js_value(tangent_point)
+	pub fn tangent(&self, t: f64) -> String {
+		let bezier = self.get_bezier_path();
+
+		let tangent_point = self.0.tangent(t);
+		let intersection_point = self.0.evaluate(t);
+		let tangent_end = intersection_point + tangent_point * SCALE_UNIT_VECTOR_FACTOR;
+
+		let content = format!(
+			"{bezier}{}{}{}",
+			draw_circle(intersection_point.x, intersection_point.y, 3., RED, 1., WHITE),
+			draw_line(intersection_point.x, intersection_point.y, tangent_end.x, tangent_end.y, RED, 1.),
+			draw_circle(tangent_end.x, tangent_end.y, 3., RED, 1., WHITE),
+		);
+		wrap_svg_tag(content)
 	}
 
 	/// The wrapped return type is `Point`.

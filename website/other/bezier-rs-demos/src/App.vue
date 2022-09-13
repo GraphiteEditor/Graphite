@@ -108,102 +108,111 @@ export default defineComponent({
 						},
 					},
 				},
-			],
-			features: [
 				{
 					name: "Length",
-					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance): void => {
-						drawText(getContextFromCanvas(canvas), `Length: ${bezier.length().toFixed(2)}`, 5, canvas.height - 7);
-					},
+					callback: (bezier: WasmBezierInstance, _: Record<string, number>): string => bezier.length(),
 				},
 				{
 					name: "Evaluate",
-					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: Record<string, number>): void => {
-						const point = JSON.parse(bezier.evaluate(options.t));
-						drawPoint(getContextFromCanvas(canvas), point, 4, COLORS.NON_INTERACTIVE.STROKE_1);
+					callback: (bezier: WasmBezierInstance, options: Record<string, number>): string => bezier.evaluate(options.t),
+					exampleOptions: {
+						[BezierCurveType.Linear]: {
+							sliderOptions: [tSliderOptions],
+						},
+						[BezierCurveType.Quadratic]: {
+							sliderOptions: [tSliderOptions],
+						},
+						[BezierCurveType.Cubic]: {
+							sliderOptions: [tSliderOptions],
+						},
 					},
-					template: markRaw(SliderExample),
-					templateOptions: { sliders: [tSliderOptions] },
 				},
 				{
 					name: "Lookup Table",
-					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: Record<string, number>): void => {
-						const lookupPoints: Point[] = JSON.parse(bezier.compute_lookup_table(options.steps));
-						lookupPoints.forEach((point, index) => {
-							if (index !== 0 && index !== lookupPoints.length - 1) {
-								drawPoint(getContextFromCanvas(canvas), point, 3, COLORS.NON_INTERACTIVE.STROKE_1);
-							}
-						});
-					},
-					template: markRaw(SliderExample),
-					templateOptions: {
-						sliders: [
-							{
-								min: 2,
-								max: 15,
-								step: 1,
-								default: 5,
-								variable: "steps",
-							},
-						],
+					callback: (bezier: WasmBezierInstance, options: Record<string, number>): string => bezier.compute_lookup_table(options.steps),
+					exampleOptions: {
+						[BezierCurveType.Linear]: {
+							sliderOptions: [
+								{
+									min: 2,
+									max: 15,
+									step: 1,
+									default: 5,
+									variable: "steps",
+								},
+							],
+						},
+						[BezierCurveType.Quadratic]: {
+							sliderOptions: [
+								{
+									min: 2,
+									max: 15,
+									step: 1,
+									default: 5,
+									variable: "steps",
+								},
+							],
+						},
+						[BezierCurveType.Cubic]: {
+							sliderOptions: [
+								{
+									min: 2,
+									max: 15,
+									step: 1,
+									default: 5,
+									variable: "steps",
+								},
+							],
+						},
 					},
 				},
 				{
 					name: "Derivative",
-					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance): void => {
-						const context = getContextFromCanvas(canvas);
-
-						const derivativeBezier = bezier.derivative();
-						if (derivativeBezier) {
-							const points: Point[] = JSON.parse(derivativeBezier.get_points());
-							if (points.length === 2) {
-								drawLine(context, points[0], points[1], COLORS.NON_INTERACTIVE.STROKE_1);
-							} else {
-								drawBezier(context, points, null, { curveStrokeColor: COLORS.NON_INTERACTIVE.STROKE_1, radius: 3.5 });
-							}
-						}
-					},
-					curveDegrees: new Set([BezierCurveType.Quadratic, BezierCurveType.Cubic]),
-					customPoints: {
-						[BezierCurveType.Quadratic]: [
-							[30, 40],
-							[110, 50],
-							[120, 130],
-						],
-						[BezierCurveType.Cubic]: [
-							[50, 50],
-							[60, 100],
-							[100, 140],
-							[140, 150],
-						],
+					callback: (bezier: WasmBezierInstance, _: Record<string, number>): string => bezier.derivative(),
+					exampleOptions: {
+						[BezierCurveType.Linear]: {
+							disabled: true,
+						},
+						[BezierCurveType.Quadratic]: {
+							customPoints: [
+								[30, 40],
+								[110, 50],
+								[120, 130],
+							],
+						},
+						[BezierCurveType.Cubic]: {
+							customPoints: [
+								[50, 50],
+								[60, 100],
+								[100, 140],
+								[140, 150],
+							],
+						},
 					},
 				},
 				{
 					name: "Tangent",
-					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: Record<string, number>): void => {
-						const context = getContextFromCanvas(canvas);
-
-						const intersection = JSON.parse(bezier.evaluate(options.t));
-						const tangent = JSON.parse(bezier.tangent(options.t));
-
-						const tangentEnd = {
-							x: intersection.x + tangent.x * SCALE_UNIT_VECTOR_FACTOR,
-							y: intersection.y + tangent.y * SCALE_UNIT_VECTOR_FACTOR,
-						};
-
-						drawPoint(context, intersection, 3, COLORS.NON_INTERACTIVE.STROKE_1);
-						drawLine(context, intersection, tangentEnd, COLORS.NON_INTERACTIVE.STROKE_1);
-						drawPoint(context, tangentEnd, 3, COLORS.NON_INTERACTIVE.STROKE_1);
+					callback: (bezier: WasmBezierInstance, options: Record<string, number>): string => bezier.tangent(options.t),
+					exampleOptions: {
+						[BezierCurveType.Linear]: {
+							sliderOptions: [tSliderOptions],
+						},
+						[BezierCurveType.Quadratic]: {
+							sliderOptions: [tSliderOptions],
+						},
+						[BezierCurveType.Cubic]: {
+							sliderOptions: [tSliderOptions],
+						},
 					},
-					template: markRaw(SliderExample),
-					templateOptions: { sliders: [tSliderOptions] },
 				},
+			],
+			features: [
 				{
 					name: "Normal",
 					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: Record<string, number>): void => {
 						const context = getContextFromCanvas(canvas);
 
-						const intersection = JSON.parse(bezier.evaluate(options.t));
+						const intersection = JSON.parse(bezier.evaluate_value(options.t));
 						const normal = JSON.parse(bezier.normal(options.t));
 
 						const normalEnd = {
@@ -222,7 +231,7 @@ export default defineComponent({
 					name: "Curvature",
 					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: Record<string, number>): void => {
 						const context = getContextFromCanvas(canvas);
-						const point = JSON.parse(bezier.evaluate(options.t));
+						const point = JSON.parse(bezier.evaluate_value(options.t));
 						const normal = JSON.parse(bezier.normal(options.t));
 						const curvature = bezier.curvature(options.t);
 						const radius = 1 / curvature;
@@ -283,7 +292,7 @@ export default defineComponent({
 						if (mouseLocation != null) {
 							const context = getContextFromCanvas(canvas);
 							const t = bezier.project(mouseLocation.x, mouseLocation.y);
-							const closestPoint = JSON.parse(bezier.evaluate(t));
+							const closestPoint = JSON.parse(bezier.evaluate_value(t));
 							drawLine(context, mouseLocation, closestPoint, COLORS.NON_INTERACTIVE.STROKE_1);
 						}
 					},
@@ -296,7 +305,7 @@ export default defineComponent({
 						const extrema: number[][] = JSON.parse(bezier.local_extrema());
 						extrema.forEach((tValues, index) => {
 							tValues.forEach((t) => {
-								const point: Point = JSON.parse(bezier.evaluate(t));
+								const point: Point = JSON.parse(bezier.evaluate_value(t));
 								drawPoint(context, point, 4, dimensionColors[index]);
 							});
 						});
@@ -336,7 +345,7 @@ export default defineComponent({
 						const context = getContextFromCanvas(canvas);
 						const inflections: number[] = JSON.parse(bezier.inflections());
 						inflections.forEach((t) => {
-							const point = JSON.parse(bezier.evaluate(t));
+							const point = JSON.parse(bezier.evaluate_value(t));
 							drawPoint(context, point, 4, COLORS.NON_INTERACTIVE.STROKE_1);
 						});
 					},
@@ -398,7 +407,7 @@ export default defineComponent({
 						drawLine(context, line[0], line[1], COLORS.NON_INTERACTIVE.STROKE_1);
 						const intersections: Float64Array = bezier.intersect_line_segment(mappedLine);
 						intersections.forEach((t: number) => {
-							const p = JSON.parse(bezier.evaluate(t));
+							const p = JSON.parse(bezier.evaluate_value(t));
 							drawPoint(context, p, 3, COLORS.NON_INTERACTIVE.STROKE_2);
 						});
 					},
@@ -416,7 +425,7 @@ export default defineComponent({
 						drawCurve(context, points, COLORS.NON_INTERACTIVE.STROKE_1, 1);
 						const intersections: Float64Array = bezier.intersect_quadratic_segment(mappedPoints, options.error);
 						intersections.forEach((t: number) => {
-							const p = JSON.parse(bezier.evaluate(t));
+							const p = JSON.parse(bezier.evaluate_value(t));
 							drawPoint(context, p, 3, COLORS.NON_INTERACTIVE.STROKE_2);
 						});
 					},
@@ -447,7 +456,7 @@ export default defineComponent({
 						drawCurve(context, points, COLORS.NON_INTERACTIVE.STROKE_1, 1);
 						const intersections: Float64Array = bezier.intersect_cubic_segment(mappedPoints, options.error);
 						intersections.forEach((t: number) => {
-							const p = JSON.parse(bezier.evaluate(t));
+							const p = JSON.parse(bezier.evaluate_value(t));
 							drawPoint(context, p, 3, COLORS.NON_INTERACTIVE.STROKE_2);
 						});
 					},
@@ -470,7 +479,7 @@ export default defineComponent({
 						const context = getContextFromCanvas(canvas);
 						const intersections: number[][] = JSON.parse(bezier.intersect_self(options.error));
 						intersections.forEach((tValues: number[]) => {
-							const p = JSON.parse(bezier.evaluate(tValues[0]));
+							const p = JSON.parse(bezier.evaluate_value(tValues[0]));
 							drawPoint(context, p, 3, COLORS.NON_INTERACTIVE.STROKE_2);
 						});
 					},
