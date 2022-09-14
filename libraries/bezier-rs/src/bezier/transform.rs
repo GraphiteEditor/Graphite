@@ -1,3 +1,5 @@
+use crate::utils::f64_compare;
+
 use super::*;
 
 use glam::DMat2;
@@ -41,12 +43,20 @@ impl Bezier {
 
 	/// Returns the Bezier curve representing the sub-curve starting at the point corresponding to `t1` and ending at the point corresponding to `t2`.
 	pub fn trim(&self, t1: f64, t2: f64) -> Bezier {
+		if f64_compare(t1, t2, MAX_ABSOLUTE_DIFFERENCE) {
+			let point = self.evaluate(t1);
+			return match self.handles {
+				BezierHandles::Linear => Bezier::from_linear_dvec2(point, point),
+				BezierHandles::Quadratic { handle: _ } => Bezier::from_quadratic_dvec2(point, point, point),
+				BezierHandles::Cubic { handle_start: _, handle_end: _ } => Bezier::from_cubic_dvec2(point, point, point, point),
+			};
+		}
 		// Depending on the order of `t1` and `t2`, determine which half of the split we need to keep
 		let t1_split_side = if t1 <= t2 { 1 } else { 0 };
 		let t2_split_side = if t1 <= t2 { 0 } else { 1 };
 		let bezier_starting_at_t1 = self.split(t1)[t1_split_side];
 		// Adjust the ratio `t2` to its corresponding value on the new curve that was split on `t1`
-		let adjusted_t2 = if t1 < t2 || (t1 == t2 && t1 == 0.) {
+		let adjusted_t2 = if t1 < t2 || t1 == 0. {
 			// Case where we took the split from t1 to the end
 			// Also cover the `t1` == t2 case where there would otherwise be a divide by 0
 			(t2 - t1) / (1. - t1)
