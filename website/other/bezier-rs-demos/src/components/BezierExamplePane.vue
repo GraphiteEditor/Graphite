@@ -12,7 +12,7 @@
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
 
-import { BezierCallback, BezierCurveType, ExampleOptions } from "@/utils/types";
+import { BezierCallback, BezierCurveType, ExampleOptions, SliderOption } from "@/utils/types";
 
 import BezierExample from "@/components/BezierExample.vue";
 
@@ -53,15 +53,18 @@ export default defineComponent({
 			},
 		};
 
+		// Use quadratic slider options as a default if sliders are not provided for the other curve types.
+		const defaultSliderOptions: SliderOption[] = this.exampleOptions[BezierCurveType.Quadratic]?.sliderOptions || [];
+
 		return {
-			examples: Object.values(BezierCurveType).map((curveType) => {
+			examples: Object.values(BezierCurveType).map((curveType: BezierCurveType) => {
 				const givenData = this.exampleOptions[curveType];
 				const defaultData = exampleDefaults[curveType];
 				return {
 					title: curveType,
 					disabled: givenData?.disabled || false,
 					points: givenData?.customPoints || defaultData.points,
-					sliderOptions: givenData?.sliderOptions || [],
+					sliderOptions: givenData?.sliderOptions || defaultSliderOptions,
 				};
 			}),
 		};

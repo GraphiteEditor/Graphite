@@ -27,7 +27,7 @@
 import { defineComponent, markRaw } from "vue";
 
 import { WasmBezier } from "@/../wasm/pkg";
-import { drawBezier, drawBezierHelper, drawCircle, drawCircleSector, drawCurve, drawLine, drawPoint, drawText, getContextFromCanvas, COLORS } from "@/utils/drawing";
+import { drawBezier, drawCircle, drawCircleSector, drawCurve, drawLine, drawPoint, drawText, getContextFromCanvas, COLORS } from "@/utils/drawing";
 import { BezierCurveType, CircleSector, Point, WasmBezierInstance, WasmSubpathInstance } from "@/utils/types";
 
 import BezierExamplePane from "@/components/BezierExamplePane.vue";
@@ -116,13 +116,7 @@ export default defineComponent({
 					name: "Evaluate",
 					callback: (bezier: WasmBezierInstance, options: Record<string, number>): string => bezier.evaluate(options.t),
 					exampleOptions: {
-						[BezierCurveType.Linear]: {
-							sliderOptions: [tSliderOptions],
-						},
 						[BezierCurveType.Quadratic]: {
-							sliderOptions: [tSliderOptions],
-						},
-						[BezierCurveType.Cubic]: {
 							sliderOptions: [tSliderOptions],
 						},
 					},
@@ -131,29 +125,7 @@ export default defineComponent({
 					name: "Lookup Table",
 					callback: (bezier: WasmBezierInstance, options: Record<string, number>): string => bezier.compute_lookup_table(options.steps),
 					exampleOptions: {
-						[BezierCurveType.Linear]: {
-							sliderOptions: [
-								{
-									min: 2,
-									max: 15,
-									step: 1,
-									default: 5,
-									variable: "steps",
-								},
-							],
-						},
 						[BezierCurveType.Quadratic]: {
-							sliderOptions: [
-								{
-									min: 2,
-									max: 15,
-									step: 1,
-									default: 5,
-									variable: "steps",
-								},
-							],
-						},
-						[BezierCurveType.Cubic]: {
 							sliderOptions: [
 								{
 									min: 2,
@@ -194,14 +166,41 @@ export default defineComponent({
 					name: "Tangent",
 					callback: (bezier: WasmBezierInstance, options: Record<string, number>): string => bezier.tangent(options.t),
 					exampleOptions: {
-						[BezierCurveType.Linear]: {
-							sliderOptions: [tSliderOptions],
-						},
 						[BezierCurveType.Quadratic]: {
 							sliderOptions: [tSliderOptions],
 						},
-						[BezierCurveType.Cubic]: {
+					},
+				},
+				{
+					name: "Split",
+					callback: (bezier: WasmBezierInstance, options: Record<string, number>): string => bezier.split(options.t),
+					exampleOptions: {
+						[BezierCurveType.Quadratic]: {
 							sliderOptions: [tSliderOptions],
+						},
+					},
+				},
+				{
+					name: "Trim",
+					callback: (bezier: WasmBezierInstance, options: Record<string, number>): string => bezier.trim(options.t1, options.t2),
+					exampleOptions: {
+						[BezierCurveType.Quadratic]: {
+							sliderOptions: [
+								{
+									variable: "t1",
+									min: 0,
+									max: 1,
+									step: 0.01,
+									default: 0.25,
+								},
+								{
+									variable: "t2",
+									min: 0,
+									max: 1,
+									step: 0.01,
+									default: 0.75,
+								},
+							],
 						},
 					},
 				},
@@ -246,45 +245,6 @@ export default defineComponent({
 					curveDegrees: new Set([BezierCurveType.Quadratic, BezierCurveType.Cubic]),
 					template: markRaw(SliderExample),
 					templateOptions: { sliders: [tSliderOptions] },
-				},
-				{
-					name: "Split",
-					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: Record<string, number>): void => {
-						const context = getContextFromCanvas(canvas);
-						const bezierPairPoints = JSON.parse(bezier.split(options.t));
-
-						drawBezier(context, bezierPairPoints[0], null, { curveStrokeColor: COLORS.NON_INTERACTIVE.STROKE_2, radius: 3.5 });
-						drawBezier(context, bezierPairPoints[1], null, { curveStrokeColor: COLORS.NON_INTERACTIVE.STROKE_1, radius: 3.5 });
-					},
-					template: markRaw(SliderExample),
-					templateOptions: { sliders: [tSliderOptions] },
-				},
-				{
-					name: "Trim",
-					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: Record<string, number>): void => {
-						const context = getContextFromCanvas(canvas);
-						const trimmedBezier = bezier.trim(options.t1, options.t2);
-						drawBezierHelper(context, trimmedBezier, { curveStrokeColor: COLORS.NON_INTERACTIVE.STROKE_1, radius: 3.5 });
-					},
-					template: markRaw(SliderExample),
-					templateOptions: {
-						sliders: [
-							{
-								variable: "t1",
-								min: 0,
-								max: 1,
-								step: 0.01,
-								default: 0.25,
-							},
-							{
-								variable: "t2",
-								min: 0,
-								max: 1,
-								step: 0.01,
-								default: 0.75,
-							},
-						],
-					},
 				},
 				{
 					name: "Project",

@@ -7,6 +7,7 @@ pub const BLACK: &str = "black";
 pub const WHITE: &str = "white";
 pub const GRAY: &str = "gray";
 pub const RED: &str = "red";
+pub const ORANGE: &str = "orange";
 
 // Default attributes
 pub const CURVE_ATTRIBUTES: &str = "stroke=\"black\" stroke-width=\"2\" fill=\"none\"";

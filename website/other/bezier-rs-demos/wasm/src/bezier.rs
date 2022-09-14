@@ -163,7 +163,6 @@ impl WasmBezier {
 		wrap_svg_tag(content)
 	}
 
-	/// The wrapped return type is `Vec<Point>`.
 	pub fn compute_lookup_table(&self, steps: usize) -> String {
 		let bezier = self.get_bezier_path();
 		let table_values: Vec<Point> = self.0.compute_lookup_table(Some(steps)).iter().map(vec_to_point).collect();
@@ -221,14 +220,52 @@ impl WasmBezier {
 		self.0.curvature(t)
 	}
 
-	/// The wrapped return type is `[Vec<Point>; 2]`.
-	pub fn split(&self, t: f64) -> JsValue {
-		let bezier_points: [Vec<Point>; 2] = self.0.split(t).map(bezier_to_points);
-		to_js_value(bezier_points)
+	pub fn split(&self, t: f64) -> String {
+		let beziers: [Bezier; 2] = self.0.split(t);
+
+		let mut original_bezier_svg = String::new();
+		self.0.to_svg(
+			&mut original_bezier_svg,
+			CURVE_ATTRIBUTES.to_string().replace(BLACK, WHITE),
+			ANCHOR_ATTRIBUTES.to_string().replace(BLACK, WHITE),
+			HANDLE_ATTRIBUTES.to_string(),
+			HANDLE_LINE_ATTRIBUTES.to_string(),
+		);
+
+		let mut bezier_svg_1 = String::new();
+		beziers[0].to_svg(
+			&mut bezier_svg_1,
+			CURVE_ATTRIBUTES.to_string().replace(BLACK, ORANGE),
+			ANCHOR_ATTRIBUTES.to_string().replace(BLACK, ORANGE),
+			HANDLE_ATTRIBUTES.to_string().replace(GRAY, ORANGE),
+			HANDLE_LINE_ATTRIBUTES.to_string().replace(GRAY, ORANGE),
+		);
+
+		let mut bezier_svg_2 = String::new();
+		beziers[1].to_svg(
+			&mut bezier_svg_2,
+			CURVE_ATTRIBUTES.to_string().replace(BLACK, RED),
+			ANCHOR_ATTRIBUTES.to_string().replace(BLACK, RED),
+			HANDLE_ATTRIBUTES.to_string().replace(GRAY, RED),
+			HANDLE_LINE_ATTRIBUTES.to_string().replace(GRAY, RED),
+		);
+
+		wrap_svg_tag(format!("{original_bezier_svg}{bezier_svg_1}{bezier_svg_2}"))
 	}
 
-	pub fn trim(&self, t1: f64, t2: f64) -> WasmBezier {
-		WasmBezier(self.0.trim(t1, t2))
+	pub fn trim(&self, t1: f64, t2: f64) -> String {
+		let trimmed_bezier = self.0.trim(t1, t2);
+
+		let mut trimmed_bezier_svg = String::new();
+		trimmed_bezier.to_svg(
+			&mut trimmed_bezier_svg,
+			CURVE_ATTRIBUTES.to_string().replace(BLACK, RED),
+			ANCHOR_ATTRIBUTES.to_string().replace(BLACK, RED),
+			HANDLE_ATTRIBUTES.to_string().replace(GRAY, RED),
+			HANDLE_LINE_ATTRIBUTES.to_string().replace(GRAY, RED),
+		);
+
+		wrap_svg_tag(format!("{}{trimmed_bezier_svg}", self.get_bezier_path()))
 	}
 
 	pub fn project(&self, x: f64, y: f64) -> f64 {
