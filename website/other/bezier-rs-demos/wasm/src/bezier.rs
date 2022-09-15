@@ -210,14 +210,38 @@ impl WasmBezier {
 		wrap_svg_tag(content)
 	}
 
-	/// The wrapped return type is `Point`.
-	pub fn normal(&self, t: f64) -> JsValue {
-		let normal_point: Point = vec_to_point(&self.0.normal(t));
-		to_js_value(normal_point)
+	pub fn normal(&self, t: f64) -> String {
+		let bezier = self.get_bezier_path();
+
+		let normal_point = self.0.normal(t);
+		let intersection_point = self.0.evaluate(t);
+		let normal_end = intersection_point + normal_point * SCALE_UNIT_VECTOR_FACTOR;
+
+		let content = format!(
+			"{bezier}{}{}{}",
+			draw_line(intersection_point.x, intersection_point.y, normal_end.x, normal_end.y, RED, 1.),
+			draw_circle(intersection_point.x, intersection_point.y, 3., RED, 1., WHITE),
+			draw_circle(normal_end.x, normal_end.y, 3., RED, 1., WHITE),
+		);
+		wrap_svg_tag(content)
 	}
 
-	pub fn curvature(&self, t: f64) -> f64 {
-		self.0.curvature(t)
+	pub fn curvature(&self, t: f64) -> String {
+		let bezier = self.get_bezier_path();
+		let radius = 1. / self.0.curvature(t);
+		let normal_point = self.0.normal(t);
+		let intersection_point = self.0.evaluate(t);
+
+		let curvature_center = intersection_point + normal_point * radius;
+
+		let content = format!(
+			"{bezier}{}{}{}{}",
+			draw_circle(curvature_center.x, curvature_center.y, radius.abs(), RED, 1., NONE),
+			draw_line(intersection_point.x, intersection_point.y, curvature_center.x, curvature_center.y, RED, 1.),
+			draw_circle(intersection_point.x, intersection_point.y, 3., RED, 1., WHITE),
+			draw_circle(curvature_center.x, curvature_center.y, 3., RED, 1., WHITE),
+		);
+		wrap_svg_tag(content)
 	}
 
 	pub fn split(&self, t: f64) -> String {

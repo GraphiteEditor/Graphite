@@ -27,7 +27,7 @@
 import { defineComponent, markRaw } from "vue";
 
 import { WasmBezier } from "@/../wasm/pkg";
-import { drawBezier, drawCircle, drawCircleSector, drawCurve, drawLine, drawPoint, drawText, getContextFromCanvas, COLORS } from "@/utils/drawing";
+import { drawBezier, drawCircleSector, drawCurve, drawLine, drawPoint, drawText, getContextFromCanvas, COLORS } from "@/utils/drawing";
 import { BezierCurveType, CircleSector, Point, WasmBezierInstance, WasmSubpathInstance } from "@/utils/types";
 
 import BezierExamplePane from "@/components/BezierExamplePane.vue";
@@ -42,8 +42,6 @@ const tSliderOptions = {
 	default: 0.5,
 	variable: "t",
 };
-
-const SCALE_UNIT_VECTOR_FACTOR = 50;
 
 export default defineComponent({
 	data() {
@@ -171,6 +169,28 @@ export default defineComponent({
 						},
 					},
 				},
+
+				{
+					name: "Normal",
+					callback: (bezier: WasmBezierInstance, options: Record<string, number>): string => bezier.normal(options.t),
+					exampleOptions: {
+						[BezierCurveType.Quadratic]: {
+							sliderOptions: [tSliderOptions],
+						},
+					},
+				},
+				{
+					name: "Curvature",
+					callback: (bezier: WasmBezierInstance, options: Record<string, number>): string => bezier.curvature(options.t),
+					exampleOptions: {
+						[BezierCurveType.Linear]: {
+							disabled: true,
+						},
+						[BezierCurveType.Quadratic]: {
+							sliderOptions: [tSliderOptions],
+						},
+					},
+				},
 				{
 					name: "Split",
 					callback: (bezier: WasmBezierInstance, options: Record<string, number>): string => bezier.split(options.t),
@@ -206,46 +226,6 @@ export default defineComponent({
 				},
 			],
 			features: [
-				{
-					name: "Normal",
-					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: Record<string, number>): void => {
-						const context = getContextFromCanvas(canvas);
-
-						const intersection = JSON.parse(bezier.evaluate_value(options.t));
-						const normal = JSON.parse(bezier.normal(options.t));
-
-						const normalEnd = {
-							x: intersection.x + normal.x * SCALE_UNIT_VECTOR_FACTOR,
-							y: intersection.y + normal.y * SCALE_UNIT_VECTOR_FACTOR,
-						};
-
-						drawPoint(context, intersection, 3, COLORS.NON_INTERACTIVE.STROKE_1);
-						drawLine(context, intersection, normalEnd, COLORS.NON_INTERACTIVE.STROKE_1);
-						drawPoint(context, normalEnd, 3, COLORS.NON_INTERACTIVE.STROKE_1);
-					},
-					template: markRaw(SliderExample),
-					templateOptions: { sliders: [tSliderOptions] },
-				},
-				{
-					name: "Curvature",
-					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: Record<string, number>): void => {
-						const context = getContextFromCanvas(canvas);
-						const point = JSON.parse(bezier.evaluate_value(options.t));
-						const normal = JSON.parse(bezier.normal(options.t));
-						const curvature = bezier.curvature(options.t);
-						const radius = 1 / curvature;
-
-						const curvatureCenter = { x: point.x + normal.x * radius, y: point.y + normal.y * radius };
-
-						drawCircle(context, curvatureCenter, Math.abs(radius), COLORS.NON_INTERACTIVE.STROKE_1);
-						drawLine(context, point, curvatureCenter, COLORS.NON_INTERACTIVE.STROKE_1);
-						drawPoint(context, point, 3, COLORS.NON_INTERACTIVE.STROKE_1);
-						drawPoint(context, curvatureCenter, 3, COLORS.NON_INTERACTIVE.STROKE_1);
-					},
-					curveDegrees: new Set([BezierCurveType.Quadratic, BezierCurveType.Cubic]),
-					template: markRaw(SliderExample),
-					templateOptions: { sliders: [tSliderOptions] },
-				},
 				{
 					name: "Project",
 					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: Record<string, number>, mouseLocation?: Point): void => {
