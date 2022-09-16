@@ -7,9 +7,7 @@ It's great to hear you are interested in contributing to Graphite! We want to ma
 
 ## Building and running the codebase.
 
-Graphite is built with Rust and web technologies. Download and install the latest LTS version of [Node.js](https://nodejs.org/) and stable release of [Rust](https://www.rust-lang.org/), as well as [Git](https://git-scm.com/).
-
-On Windows, Rust requires the MSVC toolchain properly configured with the Visual Studio Build Tools installed on your machine including the "Desktop development with C++" workload. **If you are having issues building,** you might have skipped this step or you may have outdated Node.js or Rust versions (compare `node --version` and `rustc --version` against the versions listed in the links above, use `rustup update` to upgrade Rust).
+Graphite is built with Rust and web technologies. Install the latest LTS version of [Node.js](https://nodejs.org/) and stable release of [Rust](https://www.rust-lang.org/), as well as [Git](https://git-scm.com/).
 
 Clone the project:
 ```
@@ -22,7 +20,7 @@ cd frontend
 npm install
 ```
 
-You only need to explicitly install Node.js dependencies. Rust's cargo dependencies will be installed automatically on your first build. One dependency in the build chain, `wasm-pack`, will be installed automatically on your system when the Node.js packages are installing. If you prefer to install this manually, you can get it from the [wasm-pack website](https://rustwasm.github.io/wasm-pack/), then install your npm dependencies with `npm install --no-optional`.
+You only need to explicitly install Node.js dependencies. Rust's cargo dependencies will be installed automatically on your first build. One dependency in the build chain, `wasm-pack`, will be installed automatically on your system when the Node.js packages are installing. (If you prefer to install this manually, get it from the [wasm-pack website](https://rustwasm.github.io/wasm-pack/), then install your npm dependencies with `npm install --no-optional` instead.)
 
 To run the project while developing:
 ```
@@ -47,7 +45,7 @@ Join the [project's Discord server](https://discord.graphite.rs) then hop on the
 
 ## Docs.
 
-We have some documentation [here](https://github.com/GraphiteEditor/Graphite/blob/master/docs/README.md). However it could use some improvements and currently isn't a substitute for mentorship described in the section above. If you also want to dig into the code and solidify your understanding by writing documentation, that would be equally valuable to the project!
+Look for `README.md` files within select folders of the codebase and read the code comments at the top of some Rust files. As many folders are missing docs, this currently isn't a substitute for mentorship described in the section above. If you also want to dig into the code and solidify your understanding by writing documentation, that would be equally valuable to the project!
 
 ## Codebase overview.
 
@@ -81,22 +79,42 @@ Because this is cumbersome, we have a proc macro `#[child]` that automatically i
 
 </details>
 
+## Debugging
+
+Use the browser console (<kbd>F12</kbd>) to check for warnings and errors. Use the Rust macro `debug!("A debug message")` to print to the browser console. These statements should be for temporary debugging. Remove them before committing to master. Print-based debugging is necessary because breakpoints are not supported in WebAssembly.
+
+Additional print statements are available that *should* be committed.
+
+- `error!()` is for descriptive user-facing error messages
+- `warn!()` is for non-critical problems that may indicate a bug somewhere
+- `trace!()` is for verbose logs of ordinary internal activity, hidden by default
+
+To show trace logs, activate *Help* > *Debug: Print Trace Logs*.
+
+To also view logs of the messages dispatched by the message bus system, activate *Help* > *Debug: Print Messages* > *Only Names*. Or use *Full Contents* for more verbose insight with the actual data being passed.
+
 ## Contributing guide.
 
 ### Code style
 
 The Graphite project highly values code quality and accessibility to new contributors. Therefore, please make an effort to make your code readable and well-documented.
 
-**Naming:** Please use descriptive variable/function/symbol names and keep abbreviations to a minimum. Prefer to spell out full words most of the time, so `gen_doc_fmt` should be written out as `generate_document_format` instead. This avoids the mental burden of expanding abbreviations into semantic meaning. Monitors are wide enough to display long variable/function names, so descriptive is better than cryptic.
+- **Naming:**  
+  Please use descriptive variable/function/symbol names and keep abbreviations to a minimum. Prefer to spell out full words most of the time, so `gen_doc_fmt` should be written out as `generate_document_format` instead. This avoids the mental burden of expanding abbreviations into semantic meaning. Monitors are wide enough to display long variable/function names, so descriptive is better than cryptic. To streamline code review, it's recommended that you set up a spellcheck plugin in your editor. This project uses American English spelling conventions.
 
-**Imports:** At the top of Rust files, please follow the convention of separating imports into three blocks, in this order:
-1. Local (`use super::` and `use crate::`)
-2. First-party crates (e.g. `use graphene::`)
-3. Third-party libraries (e.g. `use std::` or `use serde::`)
+- **Linting:**  
+  Please ensure Clippy is enabled. This should be set up automatically in VS Code. Try to avoid committing code with lint warnings.
 
-Combine related imports with common paths at the same depth. For example, the lines `use crate::A::B::C;`, `use crate::A::B::C::Foo;`, and `use crate::A::B::C::Bar;` should be combined into `use crate::A::B::C::{self, Foo, Bar};`. But do not combine imports at mixed path depths. For example, `use crate::A::{B::C::Foo, X::Hello};` should be split into two separate import lines. In simpler terms, avoid putting a `::` inside `{}`.
+- **Imports:**  
+  At the top of Rust files, please follow the convention of separating imports into three blocks, in this order:
+  1. Local (`use super::` and `use crate::`)
+  2. First-party crates (e.g. `use graphene::`)
+  3. Third-party libraries (e.g. `use std::` or `use serde::`)
 
-**Tests:** It's great if you can write tests for your code, especially if it's a tricky stand-alone function. However at the moment, we are prioritizing rapid iteration and will usually accept code without associated unit tests. That stance will change in the near future as we begin focusing more on stability than iteration speed.
+  Combine related imports with common paths at the same depth. For example, the lines `use crate::A::B::C;`, `use crate::A::B::C::Foo;`, and `use crate::A::B::C::Bar;` should be combined into `use crate::A::B::C::{self, Foo, Bar};`. But do not combine imports at mixed path depths. For example, `use crate::A::{B::C::Foo, X::Hello};` should be split into two separate import lines. In simpler terms, avoid putting a `::` inside `{}`.
+
+- **Tests:**  
+  It's great if you can write tests for your code, especially if it's a tricky stand-alone function. However at the moment, we are prioritizing rapid iteration and will usually accept code without associated unit tests. That stance will change in the near future as we begin focusing more on stability than iteration speed.
 
 Additional best practices will be added here soon. Please ask @Keavon in the mean time.
 

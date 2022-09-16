@@ -1,15 +1,15 @@
 # Graphite project documentation
 
-WARNING: A lot of the information in these documents are out of date.
+WARNING: A lot of the information in these documents is out of date.
 
 ## [Graphite editor manual](editor/README.md)
 
-Click above for the Graphite editor manual. This will evolve into the official manual for the Graphite editor. It contains documentation for each feature of Graphite focused on both usage instructions and technical details.
+This will evolve into the official manual for the Graphite editor. It contains documentation for each feature of Graphite focused on both usage instructions and technical details.
 
 ## [Graphite codebase docs](codebase/README.md)
 
-Click above for the Graphite codebase docs. This is meant as a good starting point for new developers to jump into the Graphite codebase. It aims to explain the architecture, code structure, and other useful details.
+This is meant as a good starting point for new developers to jump into the Graphite codebase. It aims to explain the architecture, code structure, and other useful details.
 
 ## [Graphite design notes](design/README.md)
 
-Click above for the Graphite design notes. This is a collection of notes and ideas pertaining to the user experience, workflow, and UI design of Graphite. It should aim to be mostly up-to-date and reflect the current state of understanding of the design for relatively finalized features, but in-progress feature designs may contain ideas, concepts, and proposals.
+This is a collection of notes and ideas pertaining to the user experience, workflow, and UI design of Graphite. It should aim to be mostly up-to-date and reflect the current state of understanding of the design for relatively finalized features, but in-progress feature designs may contain ideas, concepts, and proposals.
