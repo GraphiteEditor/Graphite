@@ -292,8 +292,13 @@ impl WasmBezier {
 		wrap_svg_tag(format!("{}{trimmed_bezier_svg}", self.get_bezier_path()))
 	}
 
-	pub fn project(&self, x: f64, y: f64) -> f64 {
-		self.0.project(DVec2::new(x, y), ProjectionOptions::default())
+	pub fn project(&self, x: f64, y: f64) -> String {
+		let projected_t_value = self.0.project(DVec2::new(x, y), ProjectionOptions::default());
+		let projected_point = self.0.evaluate(projected_t_value);
+
+		let bezier = self.get_bezier_path();
+		let content = format!("{bezier}{}", draw_line(projected_point.x, projected_point.y, x, y, RED, 1.),);
+		wrap_svg_tag(content)
 	}
 
 	/// The wrapped return type is `[Vec<f64>; 2]`.

@@ -3,7 +3,14 @@
 		<h3 class="example-pane-header">{{ name }}</h3>
 		<div class="example-row">
 			<div v-for="(example, index) in examples" :key="index">
-				<BezierExample v-if="!example.disabled" :title="example.title" :points="example.points" :callback="callback" :sliderOptions="example.sliderOptions" />
+				<BezierExample
+					v-if="!example.disabled"
+					:title="example.title"
+					:points="example.points"
+					:callback="callback"
+					:sliderOptions="example.sliderOptions"
+					:triggerOnMouseMove="triggerOnMouseMove"
+				/>
 			</div>
 		</div>
 	</div>
@@ -26,6 +33,10 @@ export default defineComponent({
 		exampleOptions: {
 			type: Object as PropType<ExampleOptions>,
 			default: () => ({}),
+		},
+		triggerOnMouseMove: {
+			type: Boolean,
+			default: false,
 		},
 	},
 	data() {

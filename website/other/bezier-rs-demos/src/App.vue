@@ -4,7 +4,7 @@
 		<p>This is the interactive documentation for the <b>bezier-rs</b> library. Click and drag on the endpoints of the example curves to visualize the various Bezier utilities and functions.</p>
 		<h2>Beziers</h2>
 		<div v-for="(feature, index) in bezierFeatures" :key="index">
-			<BezierExamplePane :name="feature.name" :callback="feature.callback" :exampleOptions="feature.exampleOptions" />
+			<BezierExamplePane :name="feature.name" :callback="feature.callback" :exampleOptions="feature.exampleOptions" :triggerOnMouseMove="feature.triggerOnMouseMove" />
 		</div>
 		<div v-for="(feature, index) in features" :key="index">
 			<ExamplePane
@@ -224,19 +224,14 @@ export default defineComponent({
 						},
 					},
 				},
-			],
-			features: [
 				{
 					name: "Project",
-					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: Record<string, number>, mouseLocation?: Point): void => {
-						if (mouseLocation != null) {
-							const context = getContextFromCanvas(canvas);
-							const t = bezier.project(mouseLocation.x, mouseLocation.y);
-							const closestPoint = JSON.parse(bezier.evaluate_value(t));
-							drawLine(context, mouseLocation, closestPoint, COLORS.NON_INTERACTIVE.STROKE_1);
-						}
-					},
+					callback: (bezier: WasmBezierInstance, _: Record<string, number>, mouseLocation: Point): string =>
+						mouseLocation ? bezier.project(mouseLocation.x, mouseLocation.y) : bezier.to_svg(),
+					triggerOnMouseMove: true,
 				},
+			],
+			features: [
 				{
 					name: "Local Extrema",
 					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance): void => {
