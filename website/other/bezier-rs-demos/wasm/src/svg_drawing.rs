@@ -8,6 +8,7 @@ pub const WHITE: &str = "white";
 pub const GRAY: &str = "gray";
 pub const RED: &str = "red";
 pub const ORANGE: &str = "orange";
+pub const GREEN: &str = "green";
 pub const NONE: &str = "none";
 
 // Default attributes

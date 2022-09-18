@@ -27,7 +27,7 @@
 import { defineComponent, markRaw } from "vue";
 
 import { WasmBezier } from "@/../wasm/pkg";
-import { drawBezier, drawCircleSector, drawCurve, drawLine, drawPoint, drawText, getContextFromCanvas, COLORS } from "@/utils/drawing";
+import { drawBezier, drawCircleSector, drawCurve, drawLine, drawPoint, getContextFromCanvas, COLORS } from "@/utils/drawing";
 import { BezierCurveType, CircleSector, Point, WasmBezierInstance, WasmSubpathInstance } from "@/utils/types";
 
 import BezierExamplePane from "@/components/BezierExamplePane.vue";
@@ -230,62 +230,45 @@ export default defineComponent({
 						mouseLocation ? bezier.project(mouseLocation.x, mouseLocation.y) : bezier.to_svg(),
 					triggerOnMouseMove: true,
 				},
-			],
-			features: [
 				{
 					name: "Local Extrema",
-					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance): void => {
-						const context = getContextFromCanvas(canvas);
-						const dimensionColors = ["red", "green"];
-						const extrema: number[][] = JSON.parse(bezier.local_extrema());
-						extrema.forEach((tValues, index) => {
-							tValues.forEach((t) => {
-								const point: Point = JSON.parse(bezier.evaluate_value(t));
-								drawPoint(context, point, 4, dimensionColors[index]);
-							});
-						});
-						drawText(getContextFromCanvas(canvas), "X extrema", 5, canvas.height - 20, dimensionColors[0]);
-						drawText(getContextFromCanvas(canvas), "Y extrema", 5, canvas.height - 5, dimensionColors[1]);
-					},
-					customPoints: {
-						[BezierCurveType.Quadratic]: [
-							[40, 40],
-							[160, 30],
-							[110, 150],
-						],
-						[BezierCurveType.Cubic]: [
-							[160, 180],
-							[170, 10],
-							[30, 90],
-							[180, 160],
-						],
+					callback: (bezier: WasmBezierInstance, _: Record<string, number>): string => bezier.local_extrema(),
+					exampleOptions: {
+						[BezierCurveType.Quadratic]: {
+							customPoints: [
+								[40, 40],
+								[160, 30],
+								[110, 150],
+							],
+						},
+						[BezierCurveType.Cubic]: {
+							customPoints: [
+								[160, 180],
+								[170, 10],
+								[30, 90],
+								[180, 160],
+							],
+						},
 					},
 				},
 				{
 					name: "Bounding Box",
-					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance): void => {
-						const context = getContextFromCanvas(canvas);
-						const bboxPoints: Point[] = JSON.parse(bezier.bounding_box());
-						const minPoint = bboxPoints[0];
-						const maxPoint = bboxPoints[1];
-						drawLine(context, minPoint, { x: minPoint.x, y: maxPoint.y }, COLORS.NON_INTERACTIVE.STROKE_1);
-						drawLine(context, minPoint, { x: maxPoint.x, y: minPoint.y }, COLORS.NON_INTERACTIVE.STROKE_1);
-						drawLine(context, maxPoint, { x: minPoint.x, y: maxPoint.y }, COLORS.NON_INTERACTIVE.STROKE_1);
-						drawLine(context, maxPoint, { x: maxPoint.x, y: minPoint.y }, COLORS.NON_INTERACTIVE.STROKE_1);
-					},
+					callback: (bezier: WasmBezierInstance, _: Record<string, number>): string => bezier.bounding_box(),
 				},
 				{
 					name: "Inflections",
-					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance): void => {
-						const context = getContextFromCanvas(canvas);
-						const inflections: number[] = JSON.parse(bezier.inflections());
-						inflections.forEach((t) => {
-							const point = JSON.parse(bezier.evaluate_value(t));
-							drawPoint(context, point, 4, COLORS.NON_INTERACTIVE.STROKE_1);
-						});
+					callback: (bezier: WasmBezierInstance, _: Record<string, number>): string => bezier.inflections(),
+					exampleOptions: {
+						[BezierCurveType.Linear]: {
+							disabled: true,
+						},
+						[BezierCurveType.Quadratic]: {
+							disabled: true,
+						},
 					},
-					curveDegrees: new Set([BezierCurveType.Cubic]),
 				},
+			],
+			features: [
 				{
 					name: "De Casteljau Points",
 					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: Record<string, number>): void => {

@@ -301,22 +301,56 @@ impl WasmBezier {
 		wrap_svg_tag(content)
 	}
 
-	/// The wrapped return type is `[Vec<f64>; 2]`.
-	pub fn local_extrema(&self) -> JsValue {
+	pub fn local_extrema(&self) -> String {
 		let local_extrema: [Vec<f64>; 2] = self.0.local_extrema();
-		to_js_value(local_extrema)
+
+		let bezier = self.get_bezier_path();
+		let circles: String = local_extrema
+			.iter()
+			.zip([RED, GREEN])
+			.flat_map(|(t_value_list, color)| {
+				t_value_list.iter().map(|&t_value| {
+					let point = self.0.evaluate(t_value);
+					draw_circle(point.x, point.y, 3., color, 1.5, WHITE)
+				})
+			})
+			.fold("".to_string(), |acc, circle| acc + &circle);
+
+		let content = format!(
+			"{bezier}{circles}{}{}",
+			draw_text("X extrema".to_string(), 5., 173., RED),
+			draw_text("Y extrema".to_string(), 5., 193., GREEN),
+		);
+		wrap_svg_tag(content)
 	}
 
-	/// The wrapped return type is `[Point; 2]`.
-	pub fn bounding_box(&self) -> JsValue {
-		let bbox_points: [Point; 2] = self.0.bounding_box().map(|p| Point { x: p.x, y: p.y });
-		to_js_value(bbox_points)
+	pub fn bounding_box(&self) -> String {
+		let [bbox_min_corner, bbox_max_corner] = self.0.bounding_box();
+
+		let bezier = self.get_bezier_path();
+		let content = format!(
+			"{bezier}<rect x={} y ={} width=\"{}\" height=\"{}\" style=\"fill:{NONE};stroke:{RED};stroke-width:1\" />",
+			bbox_min_corner.x,
+			bbox_min_corner.y,
+			bbox_max_corner.x - bbox_min_corner.x,
+			bbox_max_corner.y - bbox_min_corner.y,
+		);
+		wrap_svg_tag(content)
 	}
 
-	/// The wrapped return type is `Vec<f64>`.
-	pub fn inflections(&self) -> JsValue {
+	pub fn inflections(&self) -> String {
 		let inflections: Vec<f64> = self.0.inflections();
-		to_js_value(inflections)
+
+		let bezier = self.get_bezier_path();
+		let circles: String = inflections
+			.iter()
+			.map(|&t_value| {
+				let point = self.0.evaluate(t_value);
+				draw_circle(point.x, point.y, 3., RED, 1.5, WHITE)
+			})
+			.fold("".to_string(), |acc, circle| acc + &circle);
+		let content = format!("{bezier}{circles}");
+		wrap_svg_tag(content)
 	}
 
 	/// The wrapped return type is `Vec<Vec<Point>>`.
