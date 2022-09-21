@@ -147,7 +147,7 @@ impl WasmBezier {
 
 	pub fn length(&self) -> String {
 		let bezier = self.get_bezier_path();
-		wrap_svg_tag(format!("{bezier}{}", draw_text(format!("Length: {:.2}", self.0.length(None)), 5., 193., BLACK)))
+		wrap_svg_tag(format!("{bezier}{}", draw_text(format!("Length: {:.2}", self.0.length(None)), TEXT_OFFSET_X, TEXT_OFFSET_Y, BLACK)))
 	}
 
 	/// The wrapped return type is `Point`.
@@ -318,8 +318,8 @@ impl WasmBezier {
 
 		let content = format!(
 			"{bezier}{circles}{}{}",
-			draw_text("X extrema".to_string(), 5., 173., RED),
-			draw_text("Y extrema".to_string(), 5., 193., GREEN),
+			draw_text("X extrema".to_string(), TEXT_OFFSET_X, TEXT_OFFSET_Y - 20., RED),
+			draw_text("Y extrema".to_string(), TEXT_OFFSET_X, TEXT_OFFSET_Y, GREEN),
 		);
 		wrap_svg_tag(content)
 	}

@@ -17,6 +17,10 @@ pub const HANDLE_LINE_ATTRIBUTES: &str = "stroke=\"gray\" stroke-width=\"1\" fil
 pub const ANCHOR_ATTRIBUTES: &str = "r=\"4\" stroke=\"black\" stroke-width=\"2\" fill=\"white\"";
 pub const HANDLE_ATTRIBUTES: &str = "r=\"3\" stroke=\"gray\" stroke-width=\"1.5\" fill=\"white\"";
 
+// Text constants
+pub const TEXT_OFFSET_X: f64 = 5.;
+pub const TEXT_OFFSET_Y: f64 = 193.;
+
 /// Helper function to create an SVG text entity.
 pub fn draw_text(text: String, x_pos: f64, y_pos: f64, fill: &str) -> String {
 	format!(r#"<text x="{x_pos}" y="{y_pos}" fill="{fill}">{text}</text>"#)
