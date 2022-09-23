@@ -13,6 +13,7 @@ pub struct FrontendDocumentDetails {
 pub struct FrontendImageData {
 	pub path: Vec<LayerId>,
 	pub mime: String,
+	#[serde(rename = "imageData")]
 	pub image_data: Vec<u8>,
 }
 
