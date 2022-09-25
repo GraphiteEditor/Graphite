@@ -29,7 +29,7 @@ npm start
 
 This spins up the dev server at <http://localhost:8080> with a file watcher that performs hot reloading of the web page. You should be able to start the server, edit and save web and Rust code, and rarely have to kill the server (by hitting <kbd>Ctrl</kbd><kbd>C</kbd> twice). You sometimes may need to reload the web page if the hot reloading didn't behave perfectly.
 
-While developing Rust code, `cargo check` and `cargo clippy` may be run from the root directory. You can also use `npm run lint`/`npm run lint-no-fix` to solve web code formatting and `cargo fmt` for Rust code formatting. If you don't use VS Code and its format-on-save feature, please remember or format before committing or consider [setting up a `pre-commit` hook](https://githooks.com/) to do that automatically.
+While developing Rust code, `cargo check` and `cargo clippy` may be run from the root directory. You can also use `npm run lint`/`npm run lint-no-fix` to solve web code formatting and `cargo fmt` for Rust code formatting. If you don't use VS Code and its format-on-save feature, please remember to format before committing or consider [setting up a `pre-commit` hook](https://githooks.com/) to do that automatically.
 
 We provide default configurations for VS Code users. When you open the project, watch for a prompt to install the project's suggested extensions. They will provide helpful web and Rust tooling. If you use a different IDE, you won't get default configurations for the project out of the box, so please remember to format your code and check CI for errors.
 
