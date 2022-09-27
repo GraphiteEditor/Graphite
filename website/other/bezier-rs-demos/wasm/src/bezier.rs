@@ -1,5 +1,5 @@
 use crate::svg_drawing::*;
-use bezier_rs::{ArcStrategy, ArcsOptions, Bezier, ProjectionOptions, ToSVGOptions};
+use bezier_rs::{ArcStrategy, ArcsOptions, Bezier, ProjectionOptions};
 use glam::DVec2;
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
@@ -55,6 +55,10 @@ fn convert_wasm_maximize_arcs(wasm_enum_value: WasmMaximizeArcs) -> ArcStrategy 
 	}
 }
 
+fn wrap_svg_tag(contents: String) -> String {
+	format!("{}{}{}", SVG_OPEN_TAG, contents, SVG_CLOSE_TAG)
+}
+
 #[wasm_bindgen]
 impl WasmBezier {
 	/// Expect js_points to be a list of 2 pairs.
@@ -75,14 +79,30 @@ impl WasmBezier {
 		WasmBezier(Bezier::from_cubic_dvec2(points[0], points[1], points[2], points[3]))
 	}
 
-	pub fn quadratic_through_points(js_points: &JsValue, t: f64) -> WasmBezier {
-		let points: [DVec2; 3] = js_points.into_serde().unwrap();
-		WasmBezier(Bezier::quadratic_through_points(points[0], points[1], points[2], Some(t)))
+	fn draw_bezier_through_points(bezier: Bezier, through_point: DVec2) -> String {
+		let mut bezier_string = String::new();
+		bezier.to_svg(
+			&mut bezier_string,
+			CURVE_ATTRIBUTES.to_string(),
+			ANCHOR_ATTRIBUTES.to_string(),
+			HANDLE_ATTRIBUTES.to_string().replace(GRAY, RED),
+			HANDLE_LINE_ATTRIBUTES.to_string().replace(GRAY, RED),
+		);
+		let through_point_circle = format!(r#"<circle cx="{}" cy="{}" {}/>"#, through_point.x, through_point.y, ANCHOR_ATTRIBUTES.to_string());
+
+		wrap_svg_tag(format!("{bezier_string}{through_point_circle}"))
 	}
 
-	pub fn cubic_through_points(js_points: &JsValue, t: f64, midpoint_separation: f64) -> WasmBezier {
+	pub fn quadratic_through_points(js_points: &JsValue, t: f64) -> String {
 		let points: [DVec2; 3] = js_points.into_serde().unwrap();
-		WasmBezier(Bezier::cubic_through_points(points[0], points[1], points[2], Some(t), Some(midpoint_separation)))
+		let bezier = Bezier::quadratic_through_points(points[0], points[1], points[2], Some(t));
+		WasmBezier::draw_bezier_through_points(bezier, points[1])
+	}
+
+	pub fn cubic_through_points(js_points: &JsValue, t: f64, midpoint_separation: f64) -> String {
+		let points: [DVec2; 3] = js_points.into_serde().unwrap();
+		let bezier = Bezier::cubic_through_points(points[0], points[1], points[2], Some(t), Some(midpoint_separation));
+		WasmBezier::draw_bezier_through_points(bezier, points[1])
 	}
 
 	pub fn set_start(&mut self, x: f64, y: f64) {
@@ -116,7 +136,7 @@ impl WasmBezier {
 			HANDLE_ATTRIBUTES.to_string(),
 			HANDLE_LINE_ATTRIBUTES.to_string(),
 		);
-		format!("{}{}{}", SVG_OPEN_TAG, bezier, SVG_CLOSE_TAG)
+		wrap_svg_tag(bezier)
 	}
 
 	pub fn length(&self) -> f64 {
