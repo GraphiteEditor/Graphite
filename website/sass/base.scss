@@ -169,6 +169,10 @@ ol + p {
 	margin-top: 0;
 }
 
+li + li {
+	margin-top: 0.5em;
+}
+
 code {
 	background: var(--color-fog);
 	padding: 0 4px;
