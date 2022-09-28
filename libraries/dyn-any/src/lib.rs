@@ -142,3 +142,9 @@ macro_rules! impl_tuple {
 impl_tuple! {
 	A B C D E F G H I J K L
 }
+
+#[test]
+fn simple_downcast() {
+	let x = Box::new(3_u32) as Box<dyn DynAny>;
+	assert_eq!(*downcast::<u32>(x).unwrap(), 3_u32);
+}

@@ -30,6 +30,52 @@ impl<'n, L: Add<R, Output = O> + 'n + Copy, R: Copy, O: 'n> Node<&'n (L, R)> for
 	}
 }
 
+// Unfortunatly we can't impl the AddNode as we get
+// `upstream crates may add a new impl of trait `core::ops::Add` for type `alloc::boxed::Box<(dyn dyn_any::DynAny<'_> + 'static)>` in future versions`
+pub struct DynamicAddNode;
+
+// Alias for a dynamic type
+pub type Dynamic<'a> = alloc::boxed::Box<dyn dyn_any::DynAny<'a> + 'a>;
+
+/// Resolves the dynamic types for a dynamic node.
+///
+/// Macro uses format `BaseNode => (arg1: u32) (arg1: i32)`
+macro_rules! resolve_dynamic_types {
+	($node:ident => $(($($arg:ident : $t:ty),*))*) => {
+		$(
+			// Check for each possible set of arguments if their types match the arguments given
+			if $(core::any::TypeId::of::<$t>() == $arg.type_id())&&* {
+				// Cast the arguments and then call the inner node
+				alloc::boxed::Box::new($node.eval(($(*dyn_any::downcast::<$t>($arg).unwrap()),*)) ) as Dynamic
+			}
+		)else*
+		else{
+			panic!("Unhandled type"); // TODO: Exit neatly (although this should probably not happen)
+		}
+	};
+}
+
+impl<'n> Node<(Dynamic<'n>, Dynamic<'n>)> for DynamicAddNode {
+	type Output = Dynamic<'n>;
+	fn eval(self, (left, right): (Dynamic, Dynamic)) -> Self::Output {
+		resolve_dynamic_types! { AddNode =>
+		(left: usize, right: usize)
+		(left: u8, right: u8)
+		(left: u16, right: u16)
+		(left: u32, right: u32)
+		(left: u64, right: u64)
+		(left: u128, right: u128)
+		(left: isize, right: isize)
+		(left: i8, right: i8)
+		(left: i16, right: i16)
+		(left: i32, right: i32)
+		(left: i64, right: i64)
+		(left: i128, right: i128)
+		(left: f32, right: f32)
+		(left: f64, right: f64) }
+	}
+}
+
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct CloneNode;
 impl<'n, O: Clone> Node<&'n O> for CloneNode {
