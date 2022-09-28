@@ -1,6 +1,5 @@
-use crate::utils::f64_compare;
-
 use super::*;
+use crate::utils::f64_compare;
 
 use glam::DMat2;
 use std::f64::consts::PI;
