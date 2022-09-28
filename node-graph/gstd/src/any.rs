@@ -57,6 +57,33 @@ where
 		self
 	}
 }
+/// If we store a `Box<dyn RefNode>` in the stack then the origional DynAnyNode is dropped (because it is not stored by reference)
+/// This trait is implemented directly by `DynAnyNode` so this means the borrow stack will hold by value
+pub trait DynAnyNodeTrait<'n> {
+	fn eval_ref_dispatch(&'n self, input: Any<'n>) -> Any<'n>;
+}
+impl<'n, I: StaticType, O: 'n + StaticType, Node: RefNode<I, Output = O> + Copy + 'n> DynAnyNodeTrait<'n> for DynAnyNode<'n, Node, I> {
+	fn eval_ref_dispatch(&'n self, input: Any<'n>) -> Any<'n> {
+		self.eval_ref(input)
+	}
+}
+
+use graphene_core::ops::Dynamic;
+pub struct BoxedComposition<'a, Second> {
+	pub first: Box<dyn Node<(), Output = Dynamic<'a>>>,
+	pub second: Second,
+}
+
+// I can't see to get this to work
+// We can't use the existing thing in any as it breaks lifetimes
+// impl<'a, Second: Node<Dynamic<'a>>> Node<()> for BoxedComposition<'a, Second> {
+// 	type Output = <Second as Node<Dynamic<'a>>>::Output;
+// 	fn eval(self, input: ()) -> Self::Output {
+// 		let x = RefNode::eval_ref(self.first.as_ref(), input);
+// 		let arg: Dynamic<'a> = x.eval_ref(input);
+// 		(self.second).eval(arg)
+// 	}
+// }
 
 /*impl<'n: 'static, I: StaticType, N, O: 'n + StaticType> DynAnyNode<'n, N, I>
 where
@@ -131,6 +158,9 @@ mod test {
 	pub fn dyn_input_storage_composition() {
 		let mut vec: Vec<&(dyn RefNode<Any, Output = Any>)> = vec![];
 		//let id: DynAnyNode<_, u32> = DynAnyNode::new(IdNode);
+
+		// If we put this until the push in a new scope then it failes to compile due to lifetime errors which I'm struggling to fix.
+
 		let value: &DynAnyNode<&ValueNode<(u32, u32)>, ()> = &DynAnyNode(&ValueNode((3u32, 4u32)), PhantomData);
 		let add: &DynAnyNode<&AddNode, &(u32, u32)> = &DynAnyNode(&AddNode, PhantomData);
 
@@ -138,6 +168,7 @@ mod test {
 		let add_ref = (&add).into_ref();
 		vec.push(value_ref);
 		vec.push(add_ref);
+
 		//vec.push(add.as_owned());
 		//vec.push(id.as_owned());
 		//let vec = vec.leak();

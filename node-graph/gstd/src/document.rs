@@ -37,9 +37,9 @@ fn merge_ids(a: u64, b: u64) -> u64 {
 
 #[derive(Debug, PartialEq)]
 pub struct DocumentNode {
-	name: String,
-	inputs: Vec<NodeInput>,
-	implementation: DocumentNodeImplementation,
+	pub name: String,
+	pub inputs: Vec<NodeInput>,
+	pub implementation: DocumentNodeImplementation,
 }
 
 impl DocumentNode {
@@ -114,9 +114,9 @@ pub enum DocumentNodeImplementation {
 
 #[derive(Debug, Default, PartialEq)]
 pub struct NodeNetwork {
-	inputs: Vec<NodeId>,
-	output: NodeId,
-	nodes: HashMap<NodeId, DocumentNode>,
+	pub inputs: Vec<NodeId>,
+	pub output: NodeId,
+	pub nodes: HashMap<NodeId, DocumentNode>,
 }
 pub type Value = Box<dyn ValueTrait>;
 pub trait ValueTrait: DynAny<'static> + std::fmt::Debug {}
@@ -177,9 +177,9 @@ impl PartialEq for ConstructionArgs {
 
 #[derive(Debug, Default, PartialEq)]
 pub struct ProtoNode {
-	construction_args: ConstructionArgs,
-	input: ProtoNodeInput,
-	name: String,
+	pub construction_args: ConstructionArgs,
+	pub input: ProtoNodeInput,
+	pub name: String,
 }
 
 #[derive(Debug, Default, PartialEq, Eq)]
