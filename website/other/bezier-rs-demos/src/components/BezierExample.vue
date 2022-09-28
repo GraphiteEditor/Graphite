@@ -41,6 +41,10 @@ export default defineComponent({
 			type: Object as PropType<Array<SliderOption>>,
 			default: () => ({}),
 		},
+		triggerOnMouseMove: {
+			type: Boolean,
+			default: false,
+		},
 	},
 	data() {
 		const curveType = getCurveType(this.points.length);
@@ -81,6 +85,8 @@ export default defineComponent({
 				this.bezier[this.manipulatorKeys[this.activeIndex]](mx, my);
 				this.mutablePoints[this.activeIndex] = [mx, my];
 				this.bezierSVG = this.callback(this.bezier, this.sliderData);
+			} else if (this.triggerOnMouseMove) {
+				this.bezierSVG = this.callback(this.bezier, this.sliderData, { x: mx, y: my });
 			}
 		},
 		getSliderValue: (sliderValue: number, sliderUnit?: string | string[]) => (Array.isArray(sliderUnit) ? sliderUnit[sliderValue] : sliderUnit),

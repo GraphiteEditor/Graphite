@@ -1,4 +1,4 @@
-import { BezierStyleConfig, CircleSector, Point, WasmBezierInstance } from "@/utils/types";
+import { BezierStyleConfig, CircleSector, Point } from "@/utils/types";
 
 const HANDLE_RADIUS_FACTOR = 2 / 3;
 const DEFAULT_ENDPOINT_RADIUS = 5;
@@ -93,11 +93,6 @@ export const drawCircleSector = (ctx: CanvasRenderingContext2D, circleSector: Ci
 	ctx.lineTo(center.x, center.y);
 	ctx.closePath();
 	ctx.fill();
-};
-
-export const drawBezierHelper = (ctx: CanvasRenderingContext2D, bezier: WasmBezierInstance, bezierStyleConfig: Partial<BezierStyleConfig> = {}): void => {
-	const points = JSON.parse(bezier.get_points());
-	drawBezier(ctx, points, null, bezierStyleConfig);
 };
 
 export const drawBezier = (ctx: CanvasRenderingContext2D, points: Point[], dragIndex: number | null = null, bezierStyleConfig: Partial<BezierStyleConfig> = {}): void => {
