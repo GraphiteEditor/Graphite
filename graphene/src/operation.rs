@@ -36,20 +36,25 @@ pub enum Operation {
 	},
 	AddText {
 		path: Vec<LayerId>,
-		transform: [f64; 6],
 		insert_index: isize,
-		text: String,
+		transform: [f64; 6],
 		style: style::PathStyle,
+		text: String,
 		size: f64,
 		font_name: String,
 		font_style: String,
 	},
 	AddImage {
 		path: Vec<LayerId>,
-		transform: [f64; 6],
 		insert_index: isize,
+		transform: [f64; 6],
 		mime: String,
 		image_data: Vec<u8>,
+	},
+	AddAiArtistFrame {
+		path: Vec<LayerId>,
+		insert_index: isize,
+		transform: [f64; 6],
 	},
 	SetImageBlobUrl {
 		path: Vec<LayerId>,
@@ -70,32 +75,32 @@ pub enum Operation {
 	},
 	AddPolyline {
 		path: Vec<LayerId>,
-		transform: [f64; 6],
 		insert_index: isize,
-		points: Vec<(f64, f64)>,
+		transform: [f64; 6],
 		style: style::PathStyle,
+		points: Vec<(f64, f64)>,
 	},
 	AddSpline {
 		path: Vec<LayerId>,
-		transform: [f64; 6],
 		insert_index: isize,
-		points: Vec<(f64, f64)>,
+		transform: [f64; 6],
 		style: style::PathStyle,
+		points: Vec<(f64, f64)>,
 	},
 	AddNgon {
 		path: Vec<LayerId>,
 		insert_index: isize,
 		transform: [f64; 6],
-		sides: u32,
 		style: style::PathStyle,
+		sides: u32,
 	},
 	AddShape {
 		path: Vec<LayerId>,
-		transform: [f64; 6],
 		insert_index: isize,
+		transform: [f64; 6],
+		style: style::PathStyle,
 		// TODO This will become a compound path once we support them.
 		subpath: Subpath,
-		style: style::PathStyle,
 	},
 	BooleanOperation {
 		operation: BooleanOperationType,
@@ -120,8 +125,8 @@ pub enum Operation {
 	ModifyFont {
 		path: Vec<LayerId>,
 		font_family: String,
-		font_style: String,
 		size: f64,
+		font_style: String,
 	},
 	MoveSelectedManipulatorPoints {
 		layer_path: Vec<LayerId>,

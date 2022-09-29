@@ -1,3 +1,4 @@
+use super::ai_artist_layer::AiArtistLayer;
 use super::blend_mode::BlendMode;
 use super::folder_layer::FolderLayer;
 use super::image_layer::ImageLayer;
@@ -26,6 +27,8 @@ pub enum LayerDataType {
 	Text(TextLayer),
 	/// A layer that wraps an [ImageLayer] struct.
 	Image(ImageLayer),
+	/// A layer that wraps an [ImageLayer] struct.
+	AiArtist(AiArtistLayer),
 }
 
 impl LayerDataType {
@@ -35,6 +38,7 @@ impl LayerDataType {
 			LayerDataType::Folder(f) => f,
 			LayerDataType::Text(t) => t,
 			LayerDataType::Image(i) => i,
+			LayerDataType::AiArtist(a) => a,
 		}
 	}
 
@@ -44,6 +48,7 @@ impl LayerDataType {
 			LayerDataType::Folder(f) => f,
 			LayerDataType::Text(t) => t,
 			LayerDataType::Image(i) => i,
+			LayerDataType::AiArtist(a) => a,
 		}
 	}
 }
@@ -54,6 +59,7 @@ pub enum LayerDataTypeDiscriminant {
 	Shape,
 	Text,
 	Image,
+	AiArtist,
 }
 
 impl fmt::Display for LayerDataTypeDiscriminant {
@@ -63,6 +69,7 @@ impl fmt::Display for LayerDataTypeDiscriminant {
 			LayerDataTypeDiscriminant::Shape => "Shape",
 			LayerDataTypeDiscriminant::Text => "Text",
 			LayerDataTypeDiscriminant::Image => "Image",
+			LayerDataTypeDiscriminant::AiArtist => "AI Artist",
 		};
 
 		formatter.write_str(name)
@@ -78,6 +85,7 @@ impl From<&LayerDataType> for LayerDataTypeDiscriminant {
 			Shape(_) => LayerDataTypeDiscriminant::Shape,
 			Text(_) => LayerDataTypeDiscriminant::Text,
 			Image(_) => LayerDataTypeDiscriminant::Image,
+			AiArtist(_) => LayerDataTypeDiscriminant::AiArtist,
 		}
 	}
 }

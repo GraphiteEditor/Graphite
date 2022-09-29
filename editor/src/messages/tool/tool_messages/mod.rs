@@ -1,3 +1,4 @@
+pub mod ai_artist_tool;
 pub mod artboard_tool;
 pub mod ellipse_tool;
 pub mod eyedropper_tool;

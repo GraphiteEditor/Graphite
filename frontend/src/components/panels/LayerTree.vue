@@ -49,6 +49,7 @@
 							<IconLabel v-else-if="listing.entry.layerType === 'Image'" :icon="'NodeImage'" :iconStyle="'Node'" title="Image" />
 							<IconLabel v-else-if="listing.entry.layerType === 'Shape'" :icon="'NodeShape'" :iconStyle="'Node'" title="Shape" />
 							<IconLabel v-else-if="listing.entry.layerType === 'Text'" :icon="'NodeText'" :iconStyle="'Node'" title="Path" />
+							<IconLabel v-else-if="listing.entry.layerType === 'AiArtist'" :icon="'NodeAiArtist'" :iconStyle="'Node'" title="AI Artist" />
 						</LayoutRow>
 						<LayoutRow class="layer-name" @dblclick="() => onEditLayerName(listing)">
 							<input

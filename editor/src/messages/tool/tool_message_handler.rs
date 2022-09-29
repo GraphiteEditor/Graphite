@@ -52,6 +52,9 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessorMes
 			#[remain::unsorted]
 			ToolMessage::ActivateToolShape => responses.push_front(ToolMessage::ActivateTool { tool_type: ToolType::Shape }.into()),
 
+			#[remain::unsorted]
+			ToolMessage::ActivateToolAiArtist => responses.push_front(ToolMessage::ActivateTool { tool_type: ToolType::AiArtist }.into()),
+
 			ToolMessage::ActivateTool { tool_type } => {
 				let tool_data = &mut self.tool_state.tool_data;
 				let document_data = &self.tool_state.document_tool_data;
@@ -200,6 +203,7 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessorMes
 			ActivateToolText,
 			ActivateToolFill,
 			ActivateToolGradient,
+
 			ActivateToolPath,
 			ActivateToolPen,
 			ActivateToolFreehand,
@@ -208,6 +212,9 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessorMes
 			ActivateToolRectangle,
 			ActivateToolEllipse,
 			ActivateToolShape,
+
+			ActivateToolAiArtist,
+
 			SelectRandomPrimaryColor,
 			ResetColors,
 			SwapColors,

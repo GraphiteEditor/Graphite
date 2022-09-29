@@ -2,7 +2,7 @@ use super::utility_types::TransformOp;
 use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
 use crate::messages::layout::utility_types::misc::LayoutTarget;
 use crate::messages::layout::utility_types::widgets::assist_widgets::PivotAssist;
-use crate::messages::layout::utility_types::widgets::button_widgets::PopoverButton;
+use crate::messages::layout::utility_types::widgets::button_widgets::{PopoverButton, TextButton};
 use crate::messages::layout::utility_types::widgets::input_widgets::{ColorInput, FontInput, NumberInput, RadioEntryData, RadioInput, TextAreaInput, TextInput};
 use crate::messages::layout::utility_types::widgets::label_widgets::{IconLabel, IconStyle, Separator, SeparatorDirection, SeparatorType, TextLabel};
 use crate::messages::prelude::*;
@@ -239,6 +239,10 @@ pub fn register_artwork_layer_properties(layer: &Layer, responses: &mut VecDeque
 					icon: "NodeImage".into(),
 					icon_style: IconStyle::Node,
 				})),
+				LayerDataType::AiArtist(_) => WidgetHolder::new(Widget::IconLabel(IconLabel {
+					icon: "NodeAiArtist".into(),
+					icon_style: IconStyle::Node,
+				})),
 			},
 			WidgetHolder::new(Widget::Separator(Separator {
 				separator_type: SeparatorType::Related,
@@ -288,8 +292,11 @@ pub fn register_artwork_layer_properties(layer: &Layer, responses: &mut VecDeque
 		LayerDataType::Image(_) => {
 			vec![node_section_transform(layer, font_cache)]
 		}
-		_ => {
-			vec![]
+		LayerDataType::AiArtist(_) => {
+			vec![node_section_transform(layer, font_cache), node_section_ai_artist()]
+		}
+		LayerDataType::Folder(_) => {
+			vec![node_section_transform(layer, font_cache)]
 		}
 	};
 
@@ -474,6 +481,32 @@ fn node_section_transform(layer: &Layer, font_cache: &FontCache) -> LayoutGroup 
 				],
 			},
 		],
+	}
+}
+
+fn node_section_ai_artist() -> LayoutGroup {
+	LayoutGroup::Section {
+		name: "AI Artist".into(),
+		layout: vec![LayoutGroup::Row {
+			widgets: vec![
+				WidgetHolder::new(Widget::TextLabel(TextLabel {
+					value: "Generate Artwork".into(),
+					..Default::default()
+				})),
+				WidgetHolder::new(Widget::Separator(Separator {
+					separator_type: SeparatorType::Unrelated,
+					direction: SeparatorDirection::Horizontal,
+				})),
+				WidgetHolder::new(Widget::TextButton(TextButton {
+					label: "Compute".into(),
+					on_update: WidgetCallback::new(|_| {
+						log::debug!("Computing artwork");
+						Message::NoOp
+					}),
+					..Default::default()
+				})),
+			],
+		}],
 	}
 }
 

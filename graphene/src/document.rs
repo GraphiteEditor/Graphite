@@ -1,5 +1,6 @@
 use crate::boolean_ops::composite_boolean_operation;
 use crate::intersection::Quad;
+use crate::layers::ai_artist_layer::AiArtistLayer;
 use crate::layers::folder_layer::FolderLayer;
 use crate::layers::image_layer::ImageLayer;
 use crate::layers::layer_info::{Layer, LayerData, LayerDataType, LayerDataTypeDiscriminant};
@@ -553,6 +554,13 @@ impl Document {
 				mime,
 			} => {
 				let layer = Layer::new(LayerDataType::Image(ImageLayer::new(mime, image_data)), transform);
+
+				self.set_layer(&path, layer, insert_index)?;
+
+				Some([vec![DocumentChanged, CreatedLayer { path: path.clone() }], update_thumbnails_upstream(&path)].concat())
+			}
+			Operation::AddAiArtistFrame { path, insert_index, transform } => {
+				let layer = Layer::new(LayerDataType::AiArtist(AiArtistLayer::new()), transform);
 
 				self.set_layer(&path, layer, insert_index)?;
 

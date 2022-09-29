@@ -6,6 +6,7 @@
 //! * [Shape layers](shape_layer::ShapeLayer), which contain generic SVG [`<path>`](https://developer.mozilla.org/en-US/docs/Web/SVG/Element/path)s
 //! * [Text layers](text_layer::TextLayer), which contain a description of laid out text
 //! * [Image layers](image_layer::ImageLayer), which contain a bitmap image
+//! * [AI Artist layers](ai_artist_layer::AiArtistLayer), which contain a bitmap image
 //!
 //! Refer to the module-level documentation for detailed information on each layer.
 //!
@@ -14,6 +15,8 @@
 //! When different layers overlap, they are blended together according to the [BlendMode](blend_mode::BlendMode)
 //! using the CSS [`mix-blend-mode`](https://developer.mozilla.org/en-US/docs/Web/CSS/mix-blend-mode) property and the layer opacity.
 
+/// Contains the [AiArtistLayer](ai_artist_layer::AiArtistLayer) type that contains a bitmap image.
+pub mod ai_artist_layer;
 /// Different ways of combining overlapping SVG elements.
 pub mod blend_mode;
 /// Contains the [FolderLayer](folder_layer::FolderLayer) type that encapsulates other layers, including more folders.

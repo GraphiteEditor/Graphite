@@ -265,6 +265,7 @@ pub enum ToolType {
 	Patch,
 	Detail,
 	Relight,
+	AiArtist,
 }
 
 /// List of all the tools in their conventional ordering and grouping.
@@ -290,6 +291,10 @@ pub fn list_tools_in_groups() -> Vec<Vec<Box<Tool>>> {
 			Box::new(ellipse_tool::EllipseTool::default()),
 			Box::new(shape_tool::ShapeTool::default()),
 			Box::new(text_tool::TextTool::default()),
+		],
+		vec![
+			// Raster tool group
+			Box::new(ai_artist_tool::AiArtistTool::default()),
 		],
 	]
 }
@@ -363,6 +368,7 @@ pub fn tool_message_to_tool_type(tool_message: &ToolMessage) -> ToolType {
 		// ToolMessage::Patch(_) => ToolType::Patch,
 		// ToolMessage::Detail(_) => ToolType::Detail,
 		// ToolMessage::Relight(_) => ToolType::Relight,
+		ToolMessage::AiArtist(_) => ToolType::AiArtist,
 		_ => panic!(
 			"Conversion from ToolMessage to ToolType impossible because the given ToolMessage does not have a matching ToolType. Got: {:?}",
 			tool_message
@@ -398,6 +404,7 @@ pub fn tool_type_to_activate_tool_message(tool_type: ToolType) -> ToolMessageDis
 		// ToolType::Patch => ToolMessageDiscriminant::ActivateToolPatch,
 		// ToolType::Detail => ToolMessageDiscriminant::ActivateToolDetail,
 		// ToolType::Relight => ToolMessageDiscriminant::ActivateToolRelight,
+		ToolType::AiArtist => ToolMessageDiscriminant::ActivateToolAiArtist,
 		_ => panic!(
 			"Conversion from ToolType to ToolMessage impossible because the given ToolType does not have a matching ToolMessage. Got: {:?}",
 			tool_type

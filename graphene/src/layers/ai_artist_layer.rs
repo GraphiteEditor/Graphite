@@ -9,20 +9,13 @@ use kurbo::{Affine, BezPath, Shape as KurboShape};
 use serde::{Deserialize, Serialize};
 use std::fmt::Write;
 
-mod base64_serde;
-
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
-pub struct ImageLayer {
-	pub mime: String,
-	#[serde(serialize_with = "base64_serde::as_base64", deserialize_with = "base64_serde::from_base64")]
-	pub image_data: Vec<u8>,
-	#[serde(skip)]
-	pub blob_url: Option<String>,
+pub struct AiArtistLayer {
 	#[serde(skip)]
 	pub dimensions: DVec2,
 }
 
-impl LayerData for ImageLayer {
+impl LayerData for AiArtistLayer {
 	fn render(&mut self, svg: &mut String, _svg_defs: &mut String, transforms: &mut Vec<DAffine2>, render_data: RenderData) {
 		let transform = self.transform(transforms, render_data.view_mode);
 		let inverse = transform.inverse();
@@ -49,11 +42,12 @@ impl LayerData for ImageLayer {
 			r#"<image width="{}" height="{}" transform="matrix({})" href=""#,
 			self.dimensions.x, self.dimensions.y, svg_transform,
 		);
-		if render_data.embed_images {
-			let _ = write!(svg, "data:{};base64,{}", self.mime, base64::encode(&self.image_data));
-		} else {
-			let _ = write!(svg, "{}", self.blob_url.as_ref().unwrap_or(&String::new()));
-		}
+
+		let _ = write!(
+			svg,
+			"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAAXNSR0IArs4c6QAAAA1JREFUGFdjYLtZ/h8ABJUCVn7cQO8AAAAASUVORK5CYII="
+		);
+
 		let _ = svg.write_str(r#""/>"#);
 		let _ = svg.write_str("</g>");
 	}
@@ -77,16 +71,10 @@ impl LayerData for ImageLayer {
 	}
 }
 
-impl ImageLayer {
-	pub fn new(mime: String, image_data: Vec<u8>) -> Self {
-		let blob_url = None;
+impl AiArtistLayer {
+	pub fn new() -> Self {
 		let dimensions = DVec2::ONE;
-		Self {
-			mime,
-			image_data,
-			blob_url,
-			dimensions,
-		}
+		Self { dimensions }
 	}
 
 	pub fn transform(&self, transforms: &[DAffine2], mode: ViewMode) -> DAffine2 {
