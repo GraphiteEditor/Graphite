@@ -267,6 +267,27 @@ export default defineComponent({
 						},
 					},
 				},
+				{
+					name: "Reduce",
+					callback: (bezier: WasmBezierInstance): string => bezier.reduce(),
+				},
+				{
+					name: "Offset",
+					callback: (bezier: WasmBezierInstance, options: Record<string, number>): string => bezier.offset(options.distance),
+					exampleOptions: {
+						[BezierCurveType.Quadratic]: {
+							sliderOptions: [
+								{
+									variable: "distance",
+									min: -50,
+									max: 50,
+									step: 1,
+									default: 20,
+								},
+							],
+						},
+					},
+				},
 			],
 			features: [
 				{
@@ -424,16 +445,6 @@ export default defineComponent({
 					curveDegrees: new Set([BezierCurveType.Cubic]),
 				},
 				{
-					name: "Reduce",
-					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance): void => {
-						const context = getContextFromCanvas(canvas);
-						const curves: Point[][] = JSON.parse(bezier.reduce());
-						curves.forEach((points, index) => {
-							drawBezier(context, points, null, { curveStrokeColor: `hsl(${40 * index}, 100%, 50%)`, radius: 3.5, drawHandles: false });
-						});
-					},
-				},
-				{
 					name: "Arcs",
 					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: Record<string, number>): void => {
 						const context = getContextFromCanvas(canvas);
@@ -481,34 +492,6 @@ export default defineComponent({
 							[170, 10],
 							[30, 90],
 							[180, 160],
-						],
-					},
-				},
-				{
-					name: "Offset",
-					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: Record<string, number>): void => {
-						const context = getContextFromCanvas(canvas);
-						const curves: Point[][] = JSON.parse(bezier.offset(options.distance));
-						curves.forEach((points, index) => {
-							if (points.length === 2) {
-								drawLine(context, points[0], points[1], `hsl(${40 * index}, 100%, 50%)`);
-							} else {
-								drawCurve(context, points, `hsl(${40 * index}, 100%, 50%)`);
-							}
-						});
-						drawPoint(context, curves[0][0], 4, "hsl(0, 100%, 50%)");
-						drawPoint(context, curves[curves.length - 1][curves[0].length - 1], 4, `hsl(${40 * (curves.length - 1)}, 100%, 50%)`);
-					},
-					template: markRaw(SliderExample),
-					templateOptions: {
-						sliders: [
-							{
-								variable: "distance",
-								min: -50,
-								max: 50,
-								step: 1,
-								default: 20,
-							},
 						],
 					},
 				},

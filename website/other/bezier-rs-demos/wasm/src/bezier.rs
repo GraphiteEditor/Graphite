@@ -396,15 +396,48 @@ impl WasmBezier {
 		to_js_value(points)
 	}
 
-	pub fn reduce(&self) -> JsValue {
-		let bezier_points: Vec<Vec<Point>> = self.0.reduce(None).into_iter().map(bezier_to_points).collect();
-		to_js_value(bezier_points)
+	pub fn reduce(&self) -> String {
+		let original_curve_svg = self.get_bezier_path();
+		let bezier_curves_svg: String = self
+			.0
+			.reduce(None)
+			.iter()
+			.enumerate()
+			.map(|(idx, bezier_curve)| {
+				let mut curve_svg = String::new();
+				bezier_curve.to_svg(
+					&mut curve_svg,
+					CURVE_ATTRIBUTES.to_string().replace(BLACK, &format!("hsl({}, 100%, 50%)", (40 * idx))),
+					String::new(),
+					String::new(),
+					String::new(),
+				);
+				curve_svg
+			})
+			.fold(original_curve_svg, |acc, item| format!("{acc}{item}"));
+		wrap_svg_tag(bezier_curves_svg)
 	}
 
-	/// The wrapped return type is `Vec<Vec<Point>>`.
-	pub fn offset(&self, distance: f64) -> JsValue {
-		let bezier_points: Vec<Vec<Point>> = self.0.offset(distance).into_iter().map(bezier_to_points).collect();
-		to_js_value(bezier_points)
+	pub fn offset(&self, distance: f64) -> String {
+		let original_curve_svg = self.get_bezier_path();
+		let bezier_curves_svg = self
+			.0
+			.offset(distance)
+			.iter()
+			.enumerate()
+			.map(|(idx, bezier_curve)| {
+				let mut curve_svg = String::new();
+				bezier_curve.to_svg(
+					&mut curve_svg,
+					CURVE_ATTRIBUTES.to_string().replace(BLACK, &format!("hsl({}, 100%, 50%)", (40 * idx))),
+					String::new(),
+					String::new(),
+					String::new(),
+				);
+				curve_svg
+			})
+			.fold(original_curve_svg, |acc, item| format!("{acc}{item}"));
+		wrap_svg_tag(bezier_curves_svg)
 	}
 
 	/// The wrapped return type is `Vec<CircleSector>`.
