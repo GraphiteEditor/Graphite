@@ -1,3 +1,155 @@
+use std::collections::HashMap;
+use std::fmt::Display;
+
+type NodeId = u64;
+
+fn gen_node_id() -> NodeId {
+	todo!()
+}
+
+#[derive(Debug, Clone)]
+pub struct DocumentNode {
+	name: String,
+	id: NodeId,
+	inputs: Vec<NodeInput>,
+	implementation: DocumentNodeImplementation,
+}
+
+#[derive(Debug, Clone)]
+pub enum NodeInput {
+	Node(NodeId),
+	Value(InputWidget),
+}
+
+#[derive(Debug, Clone)]
+pub struct InputWidget;
+
+impl Display for InputWidget {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		write!(f, "InputWidget")
+	}
+}
+
+#[derive(Debug, Clone)]
+pub enum DocumentNodeImplementation {
+	Network(NodeNetwork),
+	ProtoNode(ProtoNode),
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct NodeNetwork {
+	inputs: Vec<NodeId>,
+	output: NodeId,
+	edges: Vec<Connection>,
+	nodes: HashMap<NodeId, DocumentNode>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Connection {
+	from: NodeId,
+	to: NodeId,
+}
+
+#[derive(Debug, Clone)]
+pub struct ProtoNode {
+	name: String,
+}
+
+impl NodeInput {
+	fn map_ids(&mut self, f: impl Fn(NodeId) -> NodeId) {
+		match self {
+			NodeInput::Node(id) => *self = NodeInput::Node(f(*id)),
+			NodeInput::Value(_) => (),
+		}
+	}
+}
+
+impl ProtoNode {
+	pub fn id() -> Self {
+		Self { name: "id".into() }
+	}
+	pub fn new(name: String) -> Self {
+		Self { name }
+	}
+}
+
+impl NodeNetwork {
+	pub fn map_ids(&mut self, f: impl Fn(NodeId) -> NodeId + Copy) {
+		self.inputs.iter_mut().for_each(|id| *id = f(*id));
+		self.edges.iter_mut().for_each(|conn| *conn = Connection { from: f(conn.from), to: f(conn.to) });
+		self.nodes = self
+			.nodes
+			.iter()
+			.map(|(id, node)| {
+				let mut node = node.clone();
+				node.inputs.iter_mut().for_each(|input| input.map_ids(f));
+				(f(*id), node)
+			})
+			.collect();
+	}
+
+	/// Recursively dissolve non primitive document nodes and return a single flattened network of nodes.
+	pub fn flatten(&self, node: NodeId, network: &mut NodeNetwork, nodes: &mut HashMap<NodeId, DocumentNode>) {
+		let (id, mut node) = nodes.remove_entry(&node).unwrap();
+
+		match node.implementation {
+			DocumentNodeImplementation::Network(mut inner_network) => {
+				// Connect all network inputs to either the parent network nodes, or newly created value nodes.
+				inner_network.map_ids(|_| gen_node_id());
+				network.edges.extend(inner_network.edges);
+				for (document_input, network_input) in node.inputs.iter().zip(network.inputs.clone().iter()) {
+					match document_input {
+						NodeInput::Node(node) => network.edges.push(Connection { from: *node, to: *network_input }),
+						NodeInput::Value(widget) => {
+							let new_id = gen_node_id();
+							let value_node = DocumentNode {
+								name: "value".into(),
+								id: new_id,
+								inputs: Vec::new(),
+								implementation: DocumentNodeImplementation::ProtoNode(ProtoNode::new(format!("{}-{}", node.name, widget))),
+							};
+							nodes.insert(new_id, value_node);
+
+							network.edges.push(Connection { from: new_id, to: *network_input });
+						}
+					}
+				}
+				// Copy nodes from the inner network into the parent network
+				for node_id in inner_network.nodes.keys().cloned().collect::<Vec<_>>() {
+					let (_old_id, mut node) = inner_network.nodes.remove_entry(&node_id).unwrap();
+					node.inputs = network
+						.edges
+						.iter()
+						.filter(|Connection { to, .. }| *to == node_id)
+						.map(|Connection { from, .. }| NodeInput::Node(*from))
+						.collect();
+					assert_eq!(node.inputs.len(), 1);
+					nodes.insert(node.id, node);
+				}
+				node.implementation = DocumentNodeImplementation::ProtoNode(ProtoNode::id());
+			}
+			DocumentNodeImplementation::ProtoNode(proto_node) => {
+				node.implementation = DocumentNodeImplementation::ProtoNode(proto_node);
+			}
+		}
+		nodes.insert(id, node);
+	}
+}
+
+struct Map<I, O>(core::marker::PhantomData<(I, O)>);
+
+impl<O> Display for Map<(), O> {
+	fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
+		write!(f, "Map")
+	}
+}
+
+impl Display for Map<i32, String> {
+	fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
+		write!(f, "Map<String>")
+	}
+}
+
 /*
 use core::marker::PhantomData;
 
