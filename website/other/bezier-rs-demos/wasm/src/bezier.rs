@@ -397,6 +397,7 @@ impl WasmBezier {
 	}
 
 	pub fn reduce(&self) -> String {
+		let empty_string = String::new();
 		let original_curve_svg = self.get_bezier_path();
 		let bezier_curves_svg: String = self
 			.0
@@ -408,9 +409,9 @@ impl WasmBezier {
 				bezier_curve.to_svg(
 					&mut curve_svg,
 					CURVE_ATTRIBUTES.to_string().replace(BLACK, &format!("hsl({}, 100%, 50%)", (40 * idx))),
-					String::new(),
-					String::new(),
-					String::new(),
+					empty_string.clone(),
+					empty_string.clone(),
+					empty_string.clone(),
 				);
 				curve_svg
 			})
@@ -419,6 +420,7 @@ impl WasmBezier {
 	}
 
 	pub fn offset(&self, distance: f64) -> String {
+		let empty_string = String::new();
 		let original_curve_svg = self.get_bezier_path();
 		let bezier_curves_svg = self
 			.0
@@ -430,9 +432,9 @@ impl WasmBezier {
 				bezier_curve.to_svg(
 					&mut curve_svg,
 					CURVE_ATTRIBUTES.to_string().replace(BLACK, &format!("hsl({}, 100%, 50%)", (40 * idx))),
-					String::new(),
-					String::new(),
-					String::new(),
+					empty_string.clone(),
+					empty_string.clone(),
+					empty_string.clone(),
 				);
 				curve_svg
 			})
