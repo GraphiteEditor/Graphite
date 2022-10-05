@@ -2,6 +2,7 @@ use crate::svg_drawing::*;
 use bezier_rs::{ArcStrategy, ArcsOptions, Bezier, ProjectionOptions};
 use glam::DVec2;
 use serde::{Deserialize, Serialize};
+use std::fmt::Write;
 use wasm_bindgen::prelude::*;
 
 #[derive(Serialize, Deserialize)]
@@ -440,6 +441,25 @@ impl WasmBezier {
 			})
 			.fold(original_curve_svg, |acc, item| format!("{acc}{item}"));
 		wrap_svg_tag(bezier_curves_svg)
+	}
+
+	pub fn outline(&self, distance: f64) -> String {
+		let outline_beziers = self.0.outline(distance);
+		if outline_beziers.is_empty() {
+			return String::new();
+		}
+
+		let start_point = outline_beziers.first().unwrap().start();
+		let mut outline_svg = format!("<path d=\"M {} {}", start_point.x, start_point.y);
+
+		outline_beziers.iter().for_each(|bezier| {
+			let _ = write!(outline_svg, " {}", bezier.svg_curve_argument());
+		});
+
+		let _ = write!(outline_svg, " Z\" {}/>", CURVE_ATTRIBUTES.to_string().replace(BLACK, RED));
+		let bezier_svg = self.get_bezier_path();
+
+		wrap_svg_tag(format!("{bezier_svg}{outline_svg}"))
 	}
 
 	/// The wrapped return type is `Vec<CircleSector>`.

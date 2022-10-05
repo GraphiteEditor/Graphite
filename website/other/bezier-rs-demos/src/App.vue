@@ -274,6 +274,10 @@ export default defineComponent({
 				{
 					name: "Offset",
 					callback: (bezier: WasmBezierInstance, options: Record<string, number>): string => bezier.offset(options.distance),
+				},
+				{
+					name: "Outline",
+					callback: (bezier: WasmBezierInstance, options: Record<string, number>): string => bezier.outline(options.distance),
 					exampleOptions: {
 						[BezierCurveType.Quadratic]: {
 							sliderOptions: [

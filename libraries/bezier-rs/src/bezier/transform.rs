@@ -40,8 +40,18 @@ impl Bezier {
 		}
 	}
 
+	/// Returns a reversed version of the Bezier curve.
+	pub fn reverse(&self) -> Bezier {
+		match self.handles {
+			BezierHandles::Linear => Bezier::from_linear_dvec2(self.end, self.start),
+			BezierHandles::Quadratic { handle } => Bezier::from_quadratic_dvec2(self.end, handle, self.start),
+			BezierHandles::Cubic { handle_start, handle_end } => Bezier::from_cubic_dvec2(self.end, handle_end, handle_start, self.start),
+		}
+	}
+
 	/// Returns the Bezier curve representing the sub-curve starting at the point corresponding to `t1` and ending at the point corresponding to `t2`.
 	pub fn trim(&self, t1: f64, t2: f64) -> Bezier {
+		// If t1 is equal to t2, return a bezier comprised entirely of the same point
 		if f64_compare(t1, t2, MAX_ABSOLUTE_DIFFERENCE) {
 			let point = self.evaluate(t1);
 			return match self.handles {
@@ -63,7 +73,11 @@ impl Bezier {
 			// Case where we took the split from the beginning to `t1`
 			t2 / t1
 		};
-		bezier_starting_at_t1.split(adjusted_t2)[t2_split_side]
+		let result = bezier_starting_at_t1.split(adjusted_t2)[t2_split_side];
+		if t2 < t1 {
+			return result.reverse();
+		}
+		result
 	}
 
 	/// Returns a Bezier curve that results from applying the transformation function to each point in the Bezier.
@@ -241,12 +255,31 @@ impl Bezier {
 	/// Note that not all bezier curves are possible to offset, so this function first reduces the curve to scalable segments and then offsets those segments.
 	/// A proof for why this is true can be found in the [Curve offsetting section](https://pomax.github.io/bezierinfo/#offsetting) of Pomax's bezier curve primer.
 	/// Offset takes the following parameter:
-	/// - `distance` - The distance away from the curve that the new one will be offset to. Positive values will offset the curve in the same direction as the endpoint normals,
+	/// - `distance` - The offset's distance from the curve. Positive values will offset the curve in the same direction as the endpoint normals,
 	/// while negative values will offset in the opposite direction.
 	pub fn offset(&self, distance: f64) -> Vec<Bezier> {
 		let mut reduced = self.reduce(None);
 		reduced.iter_mut().for_each(|bezier| *bezier = bezier.scale(distance));
 		reduced
+	}
+
+	/// Outline will return a vector of Beziers that creates an outline around the curve at the designated distance away from the curve.
+	/// It makes use of the `offset` function, thus restrictions applicable to `offset` are relevant to this function as well.
+	/// The 'caps', the linear segments at opposite ends of the outline, intersect the original curve at the midpoint of the cap.
+	///
+	/// Outline takes the following parameter:
+	/// - `distance` - The outline's distance from the curve.
+	pub fn outline(&self, distance: f64) -> Vec<Bezier> {
+		let first_segment = self.offset(distance);
+		let third_segment = self.reverse().offset(distance);
+
+		if first_segment.is_empty() || third_segment.is_empty() {
+			return vec![];
+		}
+
+		let second_segment = Bezier::from_linear_dvec2(first_segment.last().unwrap().end, third_segment.first().unwrap().start);
+		let fourth_segment = Bezier::from_linear_dvec2(third_segment.last().unwrap().end, first_segment.first().unwrap().start);
+		[first_segment, vec![second_segment], third_segment, vec![fourth_segment]].concat()
 	}
 
 	/// Approximate a bezier curve with circular arcs.
@@ -497,13 +530,13 @@ mod tests {
 		// Test trimming quadratic curve when t2 > t1
 		let bezier_quadratic = Bezier::from_quadratic_coordinates(30., 50., 140., 30., 160., 170.);
 		let trim1 = bezier_quadratic.trim(0.25, 0.75);
-		let trim2 = bezier_quadratic.trim(0.75, 0.25);
+		let trim2 = bezier_quadratic.trim(0.75, 0.25).reverse();
 		assert!(trim1.abs_diff_eq(&trim2, MAX_ABSOLUTE_DIFFERENCE));
 
 		// Test trimming cubic curve when t2 > t1
 		let bezier_cubic = Bezier::from_cubic_coordinates(30., 30., 60., 140., 150., 30., 160., 160.);
 		let trim3 = bezier_cubic.trim(0.25, 0.75);
-		let trim4 = bezier_cubic.trim(0.75, 0.25);
+		let trim4 = bezier_cubic.trim(0.75, 0.25).reverse();
 		assert!(trim3.abs_diff_eq(&trim4, MAX_ABSOLUTE_DIFFERENCE));
 	}
 
@@ -591,6 +624,28 @@ mod tests {
 			vec![DVec2::new(134.1761, 147.9324), DVec2::new(134.1812, 151.7987), DVec2::new(134.0215, 155.86445)],
 		];
 		assert!(compare_vector_of_beziers(&bezier2.offset(30.), expected_bezier_points2));
+	}
+
+	#[test]
+	fn test_outline() {
+		let p1 = DVec2::new(30., 50.);
+		let p2 = DVec2::new(140., 30.);
+		let line = Bezier::from_linear_dvec2(p1, p2);
+		let outline = line.outline(10.);
+
+		assert_eq!(outline.len(), 4);
+
+		// Assert the first length-wise piece of the outline is 10 units from the line
+		assert!(f64_compare(outline[0].evaluate(0.25).distance(line.evaluate(0.25)), 10., MAX_ABSOLUTE_DIFFERENCE)); // f64
+
+		// Assert the first cap touches the line end point at the halfway point
+		assert!(outline[1].evaluate(0.5).abs_diff_eq(line.end(), MAX_ABSOLUTE_DIFFERENCE));
+
+		// Assert the second length-wise piece of the outline is 10 units from the line
+		assert!(f64_compare(outline[2].evaluate(0.25).distance(line.evaluate(0.75)), 10., MAX_ABSOLUTE_DIFFERENCE)); // f64
+
+		// Assert the second cap touches the line start point at the halfway point
+		assert!(outline[3].evaluate(0.5).abs_diff_eq(line.start(), MAX_ABSOLUTE_DIFFERENCE));
 	}
 
 	#[test]
