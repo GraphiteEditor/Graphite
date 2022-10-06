@@ -251,6 +251,43 @@ impl Bezier {
 		})
 	}
 
+	// Version of the [scale] function that
+	pub fn graduated_scale(&self, start_distance: f64, end_distance: f64) -> Bezier {
+		assert!(self.is_scalable(), "The curve provided to scale is not scalable. Reduce the curve first.");
+
+		let normal_start = self.normal(0.);
+		let normal_end = self.normal(1.);
+
+		// If normal unit vectors are equal, then the lines are parallel
+		if normal_start.abs_diff_eq(normal_end, MAX_ABSOLUTE_DIFFERENCE) {
+			return self.translate(start_distance * normal_start);
+		}
+
+		// Find the intersection point of the endpoint normals
+		let intersection = utils::line_intersection(self.start, normal_start, self.end, normal_end);
+		let should_flip_direction = (self.start - intersection).normalize().abs_diff_eq(normal_start, MAX_ABSOLUTE_DIFFERENCE);
+
+		let transformed_start = utils::scale_point_from_intersection(self.start, intersection, should_flip_direction, start_distance);
+		let transformed_end = utils::scale_point_from_intersection(self.end, intersection, should_flip_direction, end_distance);
+
+		match self.handles {
+			BezierHandles::Linear => Bezier::from_linear_dvec2(transformed_start, transformed_end),
+			BezierHandles::Quadratic { handle } => {
+				let handle_scale_distance = (start_distance + end_distance) / 2.;
+				let transformed_handle = utils::scale_point_from_intersection(handle, intersection, should_flip_direction, handle_scale_distance);
+				Bezier::from_quadratic_dvec2(transformed_start, transformed_handle, transformed_end)
+			}
+			BezierHandles::Cubic { handle_start, handle_end } => {
+				let handle_start_scale_distance = (start_distance * 2. + end_distance) / 3.;
+				let transformed_handle_start = utils::scale_point_from_intersection(handle_start, intersection, should_flip_direction, handle_start_scale_distance);
+
+				let handle_end_scale_distance = (start_distance + end_distance * 2.) / 3.;
+				let transformed_handle_end = utils::scale_point_from_intersection(handle_end, intersection, should_flip_direction, handle_end_scale_distance);
+				Bezier::from_cubic_dvec2(transformed_start, transformed_handle_start, transformed_handle_end, transformed_end)
+			}
+		}
+	}
+
 	/// Offset will get all the reduceable subcurves, and for each subcurve, it will scale the subcurve a set distance away from the original curve.
 	/// Note that not all bezier curves are possible to offset, so this function first reduces the curve to scalable segments and then offsets those segments.
 	/// A proof for why this is true can be found in the [Curve offsetting section](https://pomax.github.io/bezierinfo/#offsetting) of Pomax's bezier curve primer.
@@ -263,6 +300,22 @@ impl Bezier {
 		reduced
 	}
 
+	pub fn graduated_offset(&self, start_distance: f64, end_distance: f64) -> Vec<Bezier> {
+		let reduced = self.reduce(None);
+		let mut next_start_distance = start_distance;
+		let distance_difference = end_distance - start_distance;
+		let total_length = self.length(None);
+
+		let mut result = vec![];
+		reduced.iter().for_each(|bezier| {
+			let current_length = bezier.length(None);
+			let next_end_distance = next_start_distance + (current_length / total_length) * distance_difference;
+			result.push(bezier.graduated_scale(next_start_distance, next_end_distance));
+			next_start_distance = next_end_distance;
+		});
+		result
+	}
+
 	/// Outline will return a vector of Beziers that creates an outline around the curve at the designated distance away from the curve.
 	/// It makes use of the `offset` function, thus restrictions applicable to `offset` are relevant to this function as well.
 	/// The 'caps', the linear segments at opposite ends of the outline, intersect the original curve at the midpoint of the cap.
@@ -272,6 +325,19 @@ impl Bezier {
 	pub fn outline(&self, distance: f64) -> Vec<Bezier> {
 		let first_segment = self.offset(distance);
 		let third_segment = self.reverse().offset(distance);
+
+		if first_segment.is_empty() || third_segment.is_empty() {
+			return vec![];
+		}
+
+		let second_segment = Bezier::from_linear_dvec2(first_segment.last().unwrap().end, third_segment.first().unwrap().start);
+		let fourth_segment = Bezier::from_linear_dvec2(third_segment.last().unwrap().end, first_segment.first().unwrap().start);
+		[first_segment, vec![second_segment], third_segment, vec![fourth_segment]].concat()
+	}
+
+	pub fn graduated_outline(&self, start_distance: f64, end_distance: f64) -> Vec<Bezier> {
+		let first_segment = self.graduated_offset(start_distance, end_distance);
+		let third_segment = self.reverse().graduated_offset(end_distance, start_distance);
 
 		if first_segment.is_empty() || third_segment.is_empty() {
 			return vec![];
@@ -646,6 +712,12 @@ mod tests {
 
 		// Assert the second cap touches the line start point at the halfway point
 		assert!(outline[3].evaluate(0.5).abs_diff_eq(line.start(), MAX_ABSOLUTE_DIFFERENCE));
+	}
+
+	#[test]
+	fn test_graduated_scale() {
+		let bezier = Bezier::from_linear_coordinates(30., 60., 140., 120.);
+		bezier.graduated_scale(10., 20.);
 	}
 
 	#[test]

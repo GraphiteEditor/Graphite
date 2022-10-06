@@ -462,6 +462,25 @@ impl WasmBezier {
 		wrap_svg_tag(format!("{bezier_svg}{outline_svg}"))
 	}
 
+	pub fn graduated_outline(&self, start_distance: f64, end_distance: f64) -> String {
+		let outline_beziers = self.0.graduated_outline(start_distance, end_distance);
+		if outline_beziers.is_empty() {
+			return String::new();
+		}
+
+		let start_point = outline_beziers.first().unwrap().start();
+		let mut outline_svg = format!("<path d=\"M {} {}", start_point.x, start_point.y);
+
+		outline_beziers.iter().for_each(|bezier| {
+			let _ = write!(outline_svg, " {}", bezier.svg_curve_argument());
+		});
+
+		let _ = write!(outline_svg, " Z\" {}/>", CURVE_ATTRIBUTES.to_string().replace(BLACK, RED));
+		let bezier_svg = self.get_bezier_path();
+
+		wrap_svg_tag(format!("{bezier_svg}{outline_svg}"))
+	}
+
 	/// The wrapped return type is `Vec<CircleSector>`.
 	pub fn arcs(&self, error: f64, max_iterations: usize, maximize_arcs: WasmMaximizeArcs) -> JsValue {
 		let strategy = convert_wasm_maximize_arcs(maximize_arcs);

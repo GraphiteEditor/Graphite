@@ -283,7 +283,31 @@ export default defineComponent({
 							sliderOptions: [
 								{
 									variable: "distance",
-									min: -50,
+									min: 0,
+									max: 50,
+									step: 1,
+									default: 20,
+								},
+							],
+						},
+					},
+				},
+				{
+					name: "Graduated Outline",
+					callback: (bezier: WasmBezierInstance, options: Record<string, number>): string => bezier.graduated_outline(options.start_distance, options.end_distance),
+					exampleOptions: {
+						[BezierCurveType.Quadratic]: {
+							sliderOptions: [
+								{
+									variable: "start_distance",
+									min: 0,
+									max: 50,
+									step: 1,
+									default: 20,
+								},
+								{
+									variable: "end_distance",
+									min: 0,
 									max: 50,
 									step: 1,
 									default: 20,
