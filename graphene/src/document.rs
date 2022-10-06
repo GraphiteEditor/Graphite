@@ -53,6 +53,20 @@ impl Document {
 		svg_defs
 	}
 
+	/// Wrapper around render, that returns the whole document as a Response.
+	pub fn render_layer(&mut self, layer_path: Vec<LayerId>, render_data: RenderData) -> String {
+		let layer = self.layer_mut(layer_path.as_slice()).unwrap();
+
+		let mut svg_defs = String::from("<defs>");
+
+		layer.render(&mut vec![], &mut svg_defs, render_data);
+
+		svg_defs.push_str("</defs>");
+
+		svg_defs.push_str(&layer.cache);
+		svg_defs
+	}
+
 	pub fn current_state_identifier(&self) -> u64 {
 		self.state_identifier.finish()
 	}

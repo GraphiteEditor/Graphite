@@ -12,6 +12,7 @@ use graphene::color::Color;
 use graphene::layers::layer_info::{Layer, LayerDataType, LayerDataTypeDiscriminant};
 use graphene::layers::style::{Fill, Gradient, GradientType, LineCap, LineJoin, Stroke};
 use graphene::layers::text_layer::{FontCache, TextLayer};
+use graphene::LayerId;
 
 use std::f64::consts::PI;
 use std::rc::Rc;
@@ -219,7 +220,7 @@ pub fn register_artboard_layer_properties(layer: &Layer, responses: &mut VecDequ
 	);
 }
 
-pub fn register_artwork_layer_properties(layer: &Layer, responses: &mut VecDeque<Message>, font_cache: &FontCache) {
+pub fn register_artwork_layer_properties(layer_path: &Vec<LayerId>, layer: &Layer, responses: &mut VecDeque<Message>, font_cache: &FontCache) {
 	let options_bar = vec![LayoutGroup::Row {
 		widgets: vec![
 			match &layer.data {
@@ -293,7 +294,7 @@ pub fn register_artwork_layer_properties(layer: &Layer, responses: &mut VecDeque
 			vec![node_section_transform(layer, font_cache)]
 		}
 		LayerDataType::AiArtist(_) => {
-			vec![node_section_transform(layer, font_cache), node_section_ai_artist()]
+			vec![node_section_transform(layer, font_cache), node_section_ai_artist(layer_path)]
 		}
 		LayerDataType::Folder(_) => {
 			vec![node_section_transform(layer, font_cache)]
@@ -484,7 +485,7 @@ fn node_section_transform(layer: &Layer, font_cache: &FontCache) -> LayoutGroup 
 	}
 }
 
-fn node_section_ai_artist() -> LayoutGroup {
+fn node_section_ai_artist(layer_path: &Vec<LayerId>) -> LayoutGroup {
 	LayoutGroup::Section {
 		name: "AI Artist".into(),
 		layout: vec![LayoutGroup::Row {
@@ -501,7 +502,7 @@ fn node_section_ai_artist() -> LayoutGroup {
 					label: "Compute".into(),
 					on_update: WidgetCallback::new(|_| {
 						log::debug!("Computing artwork");
-						Message::NoOp
+						DocumentMessage::ExportDocumentStackArea { layer_path: layer_path.clone() }.into()
 					}),
 					..Default::default()
 				})),

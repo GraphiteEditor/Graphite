@@ -8,7 +8,6 @@ use graphene::layers::blend_mode::BlendMode;
 use graphene::layers::style::ViewMode;
 use graphene::LayerId;
 use graphene::Operation as DocumentOperation;
-
 use serde::{Deserialize, Serialize};
 
 #[remain::sorted]
@@ -67,6 +66,9 @@ pub enum DocumentMessage {
 		file_type: FileType,
 		scale_factor: f64,
 		bounds: ExportBounds,
+	},
+	ExportDocumentStackArea {
+		layer_path: Vec<LayerId>,
 	},
 	FlipSelectedLayers {
 		flip_axis: FlipAxis,

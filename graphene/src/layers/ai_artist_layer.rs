@@ -90,6 +90,12 @@ impl AiArtistLayer {
 	}
 }
 
+impl Default for AiArtistLayer {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 fn glam_to_kurbo(transform: DAffine2) -> Affine {
 	Affine::new(transform.to_cols_array())
 }

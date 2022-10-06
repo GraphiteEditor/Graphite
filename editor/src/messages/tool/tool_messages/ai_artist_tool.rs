@@ -7,7 +7,6 @@ use crate::messages::tool::common_functionality::resize::Resize;
 use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 
-use graphene::layers::style;
 use graphene::Operation;
 
 use glam::DAffine2;
@@ -121,7 +120,7 @@ impl Fsm for AiArtistToolFsmState {
 		self,
 		event: ToolMessage,
 		tool_data: &mut Self::ToolData,
-		(document, global_tool_data, input, font_cache): ToolActionHandlerData,
+		(document, _global_tool_data, input, font_cache): ToolActionHandlerData,
 		_tool_options: &Self::ToolOptions,
 		responses: &mut VecDeque<Message>,
 	) -> Self {

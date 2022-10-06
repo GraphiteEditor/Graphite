@@ -348,6 +348,27 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 					responses.push_back(FrontendMessage::TriggerRasterDownload { svg: document, name, mime, size }.into());
 				}
 			}
+			ExportDocumentStackArea { layer_path } => {
+				let layer = self.graphene_document.layer(layer_path.as_slice()).unwrap();
+
+				// Calculate the bounding box of the region to be exported
+				let bbox = layer.aabb(font_cache).unwrap_or_default();
+				let size = bbox[1] - bbox[0];
+
+				let render_data = RenderData::new(ViewMode::Normal, font_cache, None, true);
+				let rendered = self.graphene_document.render_layer(layer_path, render_data);
+				let document = format!(
+					r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{} {} {} {}" width="{}px" height="{}">{}{}</svg>"#,
+					bbox[0].x, bbox[0].y, size.x, size.y, size.x, size.y, "\n", rendered
+				);
+
+				GrapheneDocument::mark_children_as_dirty(&mut self.graphene_document.root);
+
+				let name = "Test Download".to_string();
+				let mime = "image/png".to_string();
+				let size = size.into();
+				responses.push_back(FrontendMessage::TriggerRasterDownload { document, name, mime, size }.into());
+			}
 			FlipSelectedLayers { flip_axis } => {
 				self.backup(responses);
 				let scale = match flip_axis {
