@@ -177,10 +177,18 @@ impl Bezier {
 
 	/// Appends to the `svg` mutable string with an SVG shape representation that includes the curve, the handle lines, the anchors, and the handles.
 	pub fn to_svg(&self, svg: &mut String, curve_attributes: String, anchor_attributes: String, handle_attributes: String, handle_line_attributes: String) {
-		self.curve_to_svg(svg, curve_attributes);
-		self.handle_lines_to_svg(svg, handle_line_attributes);
-		self.anchors_to_svg(svg, anchor_attributes);
-		self.handles_to_svg(svg, handle_attributes);
+		if !curve_attributes.is_empty() {
+			self.curve_to_svg(svg, curve_attributes);
+		}
+		if !handle_line_attributes.is_empty() {
+			self.handle_lines_to_svg(svg, handle_line_attributes);
+		}
+		if !anchor_attributes.is_empty() {
+			self.anchors_to_svg(svg, anchor_attributes);
+		}
+		if !handle_attributes.is_empty() {
+			self.handles_to_svg(svg, handle_attributes);
+		}
 	}
 
 	/// Returns true if the corresponding points of the two `Bezier`s are within the provided absolute value difference from each other.
