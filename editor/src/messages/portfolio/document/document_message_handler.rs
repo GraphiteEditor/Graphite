@@ -390,7 +390,7 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 				let name = "Test Download".to_string();
 				let mime = "image/png".to_string();
 				let size = size.into();
-				responses.push_back(FrontendMessage::TriggerRasterDownload { document, name, mime, size }.into());
+				responses.push_back(FrontendMessage::TriggerRasterDownload { svg: document, name, mime, size }.into());
 			}
 			FlipSelectedLayers { flip_axis } => {
 				self.backup(responses);
