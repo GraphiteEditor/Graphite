@@ -68,6 +68,7 @@ pub enum FrontendMessage {
 		mime: String,
 		size: (f64, f64),
 	},
+	TriggerRasterizeToBlob
 	TriggerRefreshBoundsOfViewports,
 	TriggerTextCommit,
 	TriggerTextCopy {
