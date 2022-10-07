@@ -67,9 +67,7 @@ pub enum DocumentMessage {
 		scale_factor: f64,
 		bounds: ExportBounds,
 	},
-	ExportDocumentStackArea {
-		layer_path: Vec<LayerId>,
-	},
+	ExportDocumentStackArea,
 	FlipSelectedLayers {
 		flip_axis: FlipAxis,
 	},

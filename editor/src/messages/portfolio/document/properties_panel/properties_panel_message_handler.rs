@@ -137,7 +137,7 @@ impl<'a> MessageHandler<PropertiesPanelMessage, PropertiesPanelMessageHandlerDat
 					let layer = get_document(target_document).layer(&path).unwrap();
 					match target_document {
 						TargetDocument::Artboard => register_artboard_layer_properties(layer, responses, font_cache),
-						TargetDocument::Artwork => register_artwork_layer_properties(&path, layer, responses, font_cache),
+						TargetDocument::Artwork => register_artwork_layer_properties(layer, responses, font_cache),
 					}
 				}
 			}

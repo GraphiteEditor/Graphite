@@ -43,28 +43,42 @@ impl Default for Document {
 impl Document {
 	/// Wrapper around render, that returns the whole document as a Response.
 	pub fn render_root(&mut self, render_data: RenderData) -> String {
+		// Render and append to the defs section
 		let mut svg_defs = String::from("<defs>");
-
 		self.root.render(&mut vec![], &mut svg_defs, render_data);
-
 		svg_defs.push_str("</defs>");
 
+		// Append the cached rendered SVG
 		svg_defs.push_str(&self.root.cache);
+
 		svg_defs
 	}
 
-	/// Wrapper around render, that returns the whole document as a Response.
-	pub fn render_layer(&mut self, layer_path: Vec<LayerId>, render_data: RenderData) -> String {
-		let layer = self.layer_mut(layer_path.as_slice()).unwrap();
+	/// Renders everything below the given layer contained within its parent folder.
+	pub fn render_layers_below(&mut self, below_layer_path: &[LayerId], render_data: RenderData) -> Option<String> {
+		// Split the path into the layer ID and its parent folder
+		let (layer_id_to_render_below, parent_folder_path) = below_layer_path.split_last()?;
 
-		let mut svg_defs = String::from("<defs>");
+		// Note: it is bad practice to directly clone and modify the Graphene document structure, this is a temporary hack until this whole system is replaced by the node graph
+		let mut temp_subset_folder = self.layer_mut(parent_folder_path).ok()?.clone();
+		if let LayerDataType::Folder(ref mut folder) = temp_subset_folder.data {
+			// Remove the upper layers to leave behind the lower subset for rendering
+			let count_of_layers_below = folder.layer_ids.iter().position(|id| id == layer_id_to_render_below).unwrap();
+			folder.layer_ids.truncate(count_of_layers_below);
+			folder.layers.truncate(count_of_layers_below);
 
-		layer.render(&mut vec![], &mut svg_defs, render_data);
+			// Render and append to the defs section
+			let mut svg_defs = String::from("<defs>");
+			temp_subset_folder.render(&mut vec![], &mut svg_defs, render_data);
+			svg_defs.push_str("</defs>");
 
-		svg_defs.push_str("</defs>");
+			// Append the cached rendered SVG
+			svg_defs.push_str(&temp_subset_folder.cache);
 
-		svg_defs.push_str(&layer.cache);
-		svg_defs
+			Some(svg_defs)
+		} else {
+			None
+		}
 	}
 
 	pub fn current_state_identifier(&self) -> u64 {
