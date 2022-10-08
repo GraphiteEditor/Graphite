@@ -91,7 +91,7 @@ impl MessageHandler<DialogMessage, &PortfolioMessageHandler> for DialogMessageHa
 			DialogMessage::RequestNewDocumentDialog => {
 				self.new_document_dialog = NewDocumentDialogMessageHandler {
 					name: portfolio.generate_new_document_name(),
-					infinite: true,
+					infinite: false,
 					dimensions: glam::UVec2::new(1920, 1080),
 				};
 				self.new_document_dialog.register_properties(responses, LayoutTarget::DialogDetails);
