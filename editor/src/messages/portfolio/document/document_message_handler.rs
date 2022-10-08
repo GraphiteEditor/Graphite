@@ -314,7 +314,7 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 				self.graphene_document.root.transform = DAffine2::IDENTITY;
 				GrapheneDocument::mark_children_as_dirty(&mut self.graphene_document.root);
 
-				// Calculates the bounding box of the region to be exported
+				// Calculate the bounding box of the region to be exported
 				use crate::messages::frontend::utility_types::ExportBounds;
 				let bbox = match bounds {
 					ExportBounds::AllArtwork => self.all_layer_bounds(font_cache),
@@ -345,7 +345,7 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 				} else {
 					let mime = file_type.to_mime().to_string();
 					let size = (size * scale_factor).into();
-					responses.push_back(FrontendMessage::TriggerRasterDownload { document, name, mime, size }.into());
+					responses.push_back(FrontendMessage::TriggerRasterDownload { svg: document, name, mime, size }.into());
 				}
 			}
 			FlipSelectedLayers { flip_axis } => {

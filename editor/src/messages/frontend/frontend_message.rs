@@ -63,7 +63,7 @@ pub enum FrontendMessage {
 	TriggerOpenDocument,
 	TriggerPaste,
 	TriggerRasterDownload {
-		document: String,
+		svg: String,
 		name: String,
 		mime: String,
 		size: (f64, f64),

@@ -1,21 +1,25 @@
-export function downloadBlob(url: string, filename: string): void {
+export function downloadFileURL(filename: string, url: string): void {
 	const element = document.createElement("a");
 
 	element.href = url;
 	element.setAttribute("download", filename);
-	element.style.display = "none";
 
 	element.click();
 }
 
-export function download(filename: string, fileData: string): void {
-	const type = filename.endsWith(".svg") ? "image/svg+xml;charset=utf-8" : "text/plain;charset=utf-8";
-	const blob = new Blob([fileData], { type });
+export function downloadFileBlob(filename: string, blob: Blob): void {
 	const url = URL.createObjectURL(blob);
 
-	downloadBlob(url, filename);
+	downloadFileURL(filename, url);
 
 	URL.revokeObjectURL(url);
+}
+
+export function downloadFileText(filename: string, text: string): void {
+	const type = filename.endsWith(".svg") ? "image/svg+xml;charset=utf-8" : "text/plain;charset=utf-8";
+
+	const blob = new Blob([text], { type });
+	downloadFileBlob(filename, blob);
 }
 
 export async function upload<T extends "text" | "data">(acceptedExtensions: string, textOrData: T): Promise<UploadResult<T>> {

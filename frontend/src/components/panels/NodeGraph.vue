@@ -42,7 +42,7 @@
 								<div></div>
 							</div>
 						</div>
-						<IconLabel :icon="'NodeImage'" :iconStyle="'Node'" />
+						<IconLabel :icon="'NodeMask'" :iconStyle="'Node'" />
 						<TextLabel>Mask</TextLabel>
 					</div>
 					<div class="arguments">
