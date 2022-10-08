@@ -1,7 +1,8 @@
 /* eslint-disable max-classes-per-file */
 import { reactive, readonly } from "vue";
 
-import { download, downloadBlob, upload } from "@/utility-functions/files";
+import { downloadFileText, downloadFileBlob, upload } from "@/utility-functions/files";
+import { rasterizeSVG } from "@/utility-functions/rasterization";
 import { type Editor } from "@/wasm-communication/editor";
 import {
 	type FrontendDocumentDetails,
@@ -40,40 +41,19 @@ export function createPortfolioState(editor: Editor) {
 		editor.instance.pasteImage(data.type, Uint8Array.from(data.content));
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerFileDownload, (triggerFileDownload) => {
-		download(triggerFileDownload.name, triggerFileDownload.document);
+		downloadFileText(triggerFileDownload.name, triggerFileDownload.document);
 	});
-	editor.subscriptions.subscribeJsMessage(TriggerRasterDownload, (triggerRasterDownload) => {
-		// A canvas to render our svg to in order to get a raster image
-		// https://stackoverflow.com/questions/3975499/convert-svg-to-image-jpeg-png-etc-in-the-browser
-		const canvas = document.createElement("canvas");
-		canvas.width = triggerRasterDownload.size.x;
-		canvas.height = triggerRasterDownload.size.y;
-		const context = canvas.getContext("2d");
-		if (!context) return;
+	editor.subscriptions.subscribeJsMessage(TriggerRasterDownload, async (triggerRasterDownload) => {
+		const { svg, name, mime, size } = triggerRasterDownload;
 
-		// Fill the canvas with white if jpeg (does not support transparency and defaults to black)
-		if (triggerRasterDownload.mime.endsWith("jpeg")) {
-			context.fillStyle = "white";
-			context.fillRect(0, 0, triggerRasterDownload.size.x, triggerRasterDownload.size.y);
-		}
+		// Fill the canvas with white if it'll be a JPEG (which does not support transparency and defaults to black)
+		const backgroundColor = mime.endsWith("jpeg") ? "white" : undefined;
 
-		// Create a blob url for our svg
-		const img = new Image();
-		const svgBlob = new Blob([triggerRasterDownload.document], { type: "image/svg+xml;charset=utf-8" });
-		const url = URL.createObjectURL(svgBlob);
-		img.onload = (): void => {
-			// Draw our svg to the canvas
-			context?.drawImage(img, 0, 0, triggerRasterDownload.size.x, triggerRasterDownload.size.y);
+		// Rasterize the SVG to an image file
+		const blob = await rasterizeSVG(svg, size.x, size.y, mime, backgroundColor);
 
-			// Convert the canvas to an image of the correct mime
-			const imgURI = canvas.toDataURL(triggerRasterDownload.mime);
-			// Download our canvas
-			downloadBlob(imgURI, triggerRasterDownload.name);
-
-			// Cleanup resources
-			URL.revokeObjectURL(url);
-		};
-		img.src = url;
+		// Have the browser download the file to the user's disk
+		downloadFileBlob(name, blob);
 	});
 
 	return {
