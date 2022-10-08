@@ -9,11 +9,8 @@ use kurbo::{Affine, BezPath, Shape as KurboShape};
 use serde::{Deserialize, Serialize};
 use std::fmt::Write;
 
-#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
-pub struct AiArtistLayer {
-	#[serde(skip)]
-	pub dimensions: DVec2,
-}
+#[derive(Default, Debug, Clone, Eq, PartialEq, Deserialize, Serialize)]
+pub struct AiArtistLayer {}
 
 impl LayerData for AiArtistLayer {
 	fn render(&mut self, svg: &mut String, _svg_defs: &mut String, transforms: &mut Vec<DAffine2>, render_data: RenderData) {
@@ -37,11 +34,7 @@ impl LayerData for AiArtistLayer {
 			.enumerate()
 			.map(|(i, entry)| entry.to_string() + if i == 5 { "" } else { "," })
 			.collect::<String>();
-		let _ = write!(
-			svg,
-			r#"<image width="{}" height="{}" transform="matrix({})" href=""#,
-			self.dimensions.x, self.dimensions.y, svg_transform,
-		);
+		let _ = write!(svg, r#"<image width="1" height="1" transform="matrix({})" href=""#, svg_transform,);
 
 		let _ = write!(
 			svg,
@@ -72,11 +65,6 @@ impl LayerData for AiArtistLayer {
 }
 
 impl AiArtistLayer {
-	pub fn new() -> Self {
-		let dimensions = DVec2::ONE;
-		Self { dimensions }
-	}
-
 	pub fn transform(&self, transforms: &[DAffine2], mode: ViewMode) -> DAffine2 {
 		let start = match mode {
 			ViewMode::Outline => 0,
@@ -86,13 +74,7 @@ impl AiArtistLayer {
 	}
 
 	fn bounds(&self) -> BezPath {
-		kurbo::Rect::from_origin_size(kurbo::Point::ZERO, kurbo::Size::new(self.dimensions.x, self.dimensions.y)).to_path(0.)
-	}
-}
-
-impl Default for AiArtistLayer {
-	fn default() -> Self {
-		Self::new()
+		kurbo::Rect::from_origin_size(kurbo::Point::ZERO, kurbo::Size::new(1., 1.)).to_path(0.)
 	}
 }
 

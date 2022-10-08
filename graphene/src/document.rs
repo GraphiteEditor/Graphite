@@ -588,7 +588,7 @@ impl Document {
 				Some([vec![DocumentChanged, CreatedLayer { path: path.clone() }], update_thumbnails_upstream(&path)].concat())
 			}
 			Operation::AddAiArtistFrame { path, insert_index, transform } => {
-				let layer = Layer::new(LayerDataType::AiArtist(AiArtistLayer::new()), transform);
+				let layer = Layer::new(LayerDataType::AiArtist(AiArtistLayer::default()), transform);
 
 				self.set_layer(&path, layer, insert_index)?;
 
