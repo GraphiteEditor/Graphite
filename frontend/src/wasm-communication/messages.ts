@@ -222,7 +222,7 @@ export class TriggerImport extends JsMessage {}
 export class TriggerPaste extends JsMessage {}
 
 export class TriggerRasterDownload extends JsMessage {
-	readonly document!: string;
+	readonly svg!: string;
 
 	readonly name!: string;
 
