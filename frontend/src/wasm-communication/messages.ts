@@ -232,6 +232,13 @@ export class TriggerRasterDownload extends JsMessage {
 	readonly size!: XY;
 }
 
+export class TriggerRasterizeToBlob extends JsMessage {
+	readonly svg!: string;
+
+	@TupleToVec2
+	readonly size!: XY;
+}
+
 export class TriggerRefreshBoundsOfViewports extends JsMessage {}
 
 export class DocumentChanged extends JsMessage {}
@@ -859,6 +866,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	TriggerIndexedDbWriteDocument,
 	TriggerPaste,
 	TriggerRasterDownload,
+	TriggerRasterizeToBlob,
 	TriggerRefreshBoundsOfViewports,
 	TriggerTextCommit,
 	TriggerTextCopy,

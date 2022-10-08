@@ -387,10 +387,7 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 				self.graphene_document.root.transform = old_transform;
 				GrapheneDocument::mark_children_as_dirty(&mut self.graphene_document.root);
 
-				let name = "Test Download".to_string();
-				let mime = "image/png".to_string();
-				let size = size.into();
-				responses.push_back(FrontendMessage::TriggerRasterDownload { svg: document, name, mime, size }.into());
+				responses.push_back(FrontendMessage::TriggerRasterizeToBlob { svg: document, size: size.into() }.into());
 			}
 			FlipSelectedLayers { flip_axis } => {
 				self.backup(responses);

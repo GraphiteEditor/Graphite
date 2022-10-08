@@ -10,6 +10,7 @@ import {
 	TriggerImport,
 	TriggerOpenDocument,
 	TriggerRasterDownload,
+	TriggerRasterizeToBlob,
 	UpdateActiveDocument,
 	UpdateOpenDocumentsList,
 } from "@/wasm-communication/messages";
@@ -54,6 +55,15 @@ export function createPortfolioState(editor: Editor) {
 
 		// Have the browser download the file to the user's disk
 		downloadFileBlob(name, blob);
+	});
+	editor.subscriptions.subscribeJsMessage(TriggerRasterizeToBlob, async (triggerRasterizeToBlob) => {
+		const { svg, size } = triggerRasterizeToBlob;
+
+		// Rasterize the SVG to an image file
+		const blob = await rasterizeSVG(svg, size.x, size.y, "image/png");
+
+		// Have the browser download the file to the user's disk
+		downloadFileBlob("name", blob);
 	});
 
 	return {
