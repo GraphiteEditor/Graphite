@@ -288,9 +288,9 @@ export default defineComponent({
 						},
 					},
 				},
-                {
+				{
 					name: "Rotate",
-                    callback: (bezier: WasmBezierInstance, options: Record<string, number>): string => bezier.offset(options.distance),
+					callback: (bezier: WasmBezierInstance, options: Record<string, number>): string => bezier.rotate(options.angle),
 					exampleOptions: {
 						[BezierCurveType.Quadratic]: {
 							sliderOptions: [

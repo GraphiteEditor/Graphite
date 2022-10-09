@@ -371,7 +371,7 @@ impl WasmBezier {
 		let mut rotated_bezier_svg = String::new();
 		rotated_bezier.to_svg(
 			&mut rotated_bezier_svg,
-			CURVE_ATTRIBUTES.to_string().replace(BLACK, &format!("hsl({}, 100%, 50%)", (40 * idx))),
+			CURVE_ATTRIBUTES.to_string().replace(BLACK,RED),
 			empty_string.clone(),
 			empty_string.clone(),
 			empty_string.clone(),
