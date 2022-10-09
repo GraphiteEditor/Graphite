@@ -303,7 +303,7 @@ export default defineComponent({
 									min: 0,
 									max: 50,
 									step: 1,
-									default: 20,
+									default: 5,
 								},
 								{
 									variable: "end_distance",

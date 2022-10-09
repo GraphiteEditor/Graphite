@@ -226,21 +226,15 @@ pub fn dvec2_approximately_in_range(point: DVec2, min: DVec2, max: DVec2, max_ab
 	(point.cmpge(min) & point.cmple(max)) | dvec2_compare(point, min, max_abs_diff) | dvec2_compare(point, max, max_abs_diff)
 }
 
-pub fn scale_point_from_intersection(point: DVec2, intersection: DVec2, should_flip_direction: bool, distance: f64) -> DVec2 {
-	let mut direction_unit_vector = (intersection - point).normalize();
-	if should_flip_direction {
-		direction_unit_vector *= -1.;
-	}
-	point + distance * direction_unit_vector
+// Scale a point by a given distance using the provided directional unit vector.
+pub fn scale_point_from_direction_vector(point: DVec2, direction_unit_vector: DVec2, should_flip_direction: bool, distance: f64) -> DVec2 {
+	let should_reverse_factor = if should_flip_direction { -1. } else { 1. };
+	point + distance * direction_unit_vector * should_reverse_factor
 }
 
-pub fn map_to_new_numeric_range(num: f64, old_start: f64, old_end: f64, new_start: f64, new_end: f64) -> f64 {
-	let old_range = old_end - old_start;
-	let new_range = new_end - new_start;
-
-	let distance_to_num_from_old_start = num - old_start;
-
-	new_start + distance_to_num_from_old_start / old_range * new_range
+// Scale a point by a given distance with respect to the provided origin.
+pub fn scale_point_from_origin(point: DVec2, origin: DVec2, should_flip_direction: bool, distance: f64) -> DVec2 {
+	scale_point_from_direction_vector(point, (origin - point).normalize(), should_flip_direction, distance)
 }
 
 #[cfg(test)]

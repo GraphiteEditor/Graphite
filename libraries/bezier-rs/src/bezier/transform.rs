@@ -260,29 +260,50 @@ impl Bezier {
 
 		// If normal unit vectors are equal, then the lines are parallel
 		if normal_start.abs_diff_eq(normal_end, MAX_ABSOLUTE_DIFFERENCE) {
-			return self.translate(start_distance * normal_start);
+			let transformed_start = utils::scale_point_from_direction_vector(self.start, self.normal(0.), false, start_distance);
+			let transformed_end = utils::scale_point_from_direction_vector(self.end, self.normal(1.), false, end_distance);
+
+			return match self.handles {
+				BezierHandles::Linear => Bezier::from_linear_dvec2(transformed_start, transformed_end),
+				BezierHandles::Quadratic { handle } => {
+					let handle_closest_t = self.project(handle, ProjectionOptions::default());
+					// TODO: Change this to scale with percentage along line, not t_value
+					let transformed_handle = utils::scale_point_from_direction_vector(handle, self.normal(handle_closest_t), false, handle_closest_t);
+					Bezier::from_quadratic_dvec2(transformed_start, transformed_handle, transformed_end)
+				}
+				BezierHandles::Cubic { handle_start, handle_end } => {
+					let handle_start_closest_t = self.project(handle_start, ProjectionOptions::default());
+					// TODO: Change this to scale with percentage along line, not t_value
+					let transformed_handle_start = utils::scale_point_from_direction_vector(handle_start, self.normal(handle_start_closest_t), false, handle_start_closest_t);
+
+					let handle_end_closest_t = self.project(handle_start, ProjectionOptions::default());
+					// TODO: Change this to scale with percentage along line, not t_value
+					let transformed_handle_end = utils::scale_point_from_direction_vector(handle_end, self.normal(handle_end_closest_t), false, handle_end_closest_t);
+					Bezier::from_cubic_dvec2(transformed_start, transformed_handle_start, transformed_handle_end, transformed_end)
+				}
+			};
 		}
 
 		// Find the intersection point of the endpoint normals
 		let intersection = utils::line_intersection(self.start, normal_start, self.end, normal_end);
 		let should_flip_direction = (self.start - intersection).normalize().abs_diff_eq(normal_start, MAX_ABSOLUTE_DIFFERENCE);
 
-		let transformed_start = utils::scale_point_from_intersection(self.start, intersection, should_flip_direction, start_distance);
-		let transformed_end = utils::scale_point_from_intersection(self.end, intersection, should_flip_direction, end_distance);
+		let transformed_start = utils::scale_point_from_origin(self.start, intersection, should_flip_direction, start_distance);
+		let transformed_end = utils::scale_point_from_origin(self.end, intersection, should_flip_direction, end_distance);
 
 		match self.handles {
 			BezierHandles::Linear => Bezier::from_linear_dvec2(transformed_start, transformed_end),
 			BezierHandles::Quadratic { handle } => {
 				let handle_scale_distance = (start_distance + end_distance) / 2.;
-				let transformed_handle = utils::scale_point_from_intersection(handle, intersection, should_flip_direction, handle_scale_distance);
+				let transformed_handle = utils::scale_point_from_origin(handle, intersection, should_flip_direction, handle_scale_distance);
 				Bezier::from_quadratic_dvec2(transformed_start, transformed_handle, transformed_end)
 			}
 			BezierHandles::Cubic { handle_start, handle_end } => {
 				let handle_start_scale_distance = (start_distance * 2. + end_distance) / 3.;
-				let transformed_handle_start = utils::scale_point_from_intersection(handle_start, intersection, should_flip_direction, handle_start_scale_distance);
+				let transformed_handle_start = utils::scale_point_from_origin(handle_start, intersection, should_flip_direction, handle_start_scale_distance);
 
 				let handle_end_scale_distance = (start_distance + end_distance * 2.) / 3.;
-				let transformed_handle_end = utils::scale_point_from_intersection(handle_end, intersection, should_flip_direction, handle_end_scale_distance);
+				let transformed_handle_end = utils::scale_point_from_origin(handle_end, intersection, should_flip_direction, handle_end_scale_distance);
 				Bezier::from_cubic_dvec2(transformed_start, transformed_handle_start, transformed_handle_end, transformed_end)
 			}
 		}
