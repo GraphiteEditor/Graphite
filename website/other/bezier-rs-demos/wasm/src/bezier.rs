@@ -2,7 +2,6 @@ use crate::svg_drawing::*;
 use bezier_rs::{ArcStrategy, ArcsOptions, Bezier, ProjectionOptions};
 use glam::DVec2;
 use serde::{Deserialize, Serialize};
-use std::fmt::Write;
 use wasm_bindgen::prelude::*;
 
 #[derive(Serialize, Deserialize)]
@@ -449,14 +448,7 @@ impl WasmBezier {
 			return String::new();
 		}
 
-		let start_point = outline_beziers.first().unwrap().start();
-		let mut outline_svg = format!("<path d=\"M {} {}", start_point.x, start_point.y);
-
-		outline_beziers.iter().for_each(|bezier| {
-			let _ = write!(outline_svg, " {}", bezier.svg_curve_argument());
-		});
-
-		let _ = write!(outline_svg, " Z\" {}/>", CURVE_ATTRIBUTES.to_string().replace(BLACK, RED));
+		let outline_svg = draw_beziers(outline_beziers, CURVE_ATTRIBUTES.to_string().replace(BLACK, RED));
 		let bezier_svg = self.get_bezier_path();
 
 		wrap_svg_tag(format!("{bezier_svg}{outline_svg}"))
@@ -468,14 +460,19 @@ impl WasmBezier {
 			return String::new();
 		}
 
-		let start_point = outline_beziers.first().unwrap().start();
-		let mut outline_svg = format!("<path d=\"M {} {}", start_point.x, start_point.y);
+		let outline_svg = draw_beziers(outline_beziers, CURVE_ATTRIBUTES.to_string().replace(BLACK, RED));
+		let bezier_svg = self.get_bezier_path();
 
-		outline_beziers.iter().for_each(|bezier| {
-			let _ = write!(outline_svg, " {}", bezier.svg_curve_argument());
-		});
+		wrap_svg_tag(format!("{bezier_svg}{outline_svg}"))
+	}
 
-		let _ = write!(outline_svg, " Z\" {}/>", CURVE_ATTRIBUTES.to_string().replace(BLACK, RED));
+	pub fn skewed_outline(&self, distance1: f64, distance2: f64, distance3: f64, distance4: f64) -> String {
+		let outline_beziers = self.0.skewed_outline(distance1, distance2, distance3, distance4);
+		if outline_beziers.is_empty() {
+			return String::new();
+		}
+
+		let outline_svg = draw_beziers(outline_beziers, CURVE_ATTRIBUTES.to_string().replace(BLACK, RED));
 		let bezier_svg = self.get_bezier_path();
 
 		wrap_svg_tag(format!("{bezier_svg}{outline_svg}"))

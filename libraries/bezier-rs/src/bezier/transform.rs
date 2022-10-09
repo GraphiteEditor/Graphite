@@ -251,12 +251,15 @@ impl Bezier {
 		})
 	}
 
-	// Version of the [scale] function that
+	/// Version of the [scale] function which scales the curve such that the start of the scaled curve is `start_distance` from the original curve, while the end of
+	/// of the scaled curve is `end_distance` from the original curve. The curve transitions from `start_distance` to `end_distance` gradually, proportional to the 
+	/// distance along the equation (`t`-value) of the curve.
 	pub fn graduated_scale(&self, start_distance: f64, end_distance: f64) -> Bezier {
 		assert!(self.is_scalable(), "The curve provided to scale is not scalable. Reduce the curve first.");
 
 		let normal_start = self.normal(0.);
 		let normal_end = self.normal(1.);
+		
 
 		// If normal unit vectors are equal, then the lines are parallel
 		if normal_start.abs_diff_eq(normal_end, MAX_ABSOLUTE_DIFFERENCE) {
@@ -267,17 +270,17 @@ impl Bezier {
 				BezierHandles::Linear => Bezier::from_linear_dvec2(transformed_start, transformed_end),
 				BezierHandles::Quadratic { handle } => {
 					let handle_closest_t = self.project(handle, ProjectionOptions::default());
-					// TODO: Change this to scale with percentage along line, not t_value
-					let transformed_handle = utils::scale_point_from_direction_vector(handle, self.normal(handle_closest_t), false, handle_closest_t);
+					let handle_scale_distance = (1.-handle_closest_t) * start_distance + handle_closest_t * end_distance;
+					let transformed_handle = utils::scale_point_from_direction_vector(handle, self.normal(handle_closest_t), false, handle_scale_distance);
 					Bezier::from_quadratic_dvec2(transformed_start, transformed_handle, transformed_end)
 				}
 				BezierHandles::Cubic { handle_start, handle_end } => {
 					let handle_start_closest_t = self.project(handle_start, ProjectionOptions::default());
-					// TODO: Change this to scale with percentage along line, not t_value
-					let transformed_handle_start = utils::scale_point_from_direction_vector(handle_start, self.normal(handle_start_closest_t), false, handle_start_closest_t);
+					let handle_start_scale_distance = (1.-handle_start_closest_t) * start_distance + handle_start_closest_t * end_distance;
+					let transformed_handle_start = utils::scale_point_from_direction_vector(handle_start, self.normal(handle_start_closest_t), false, handle_start_scale_distance);
 
 					let handle_end_closest_t = self.project(handle_start, ProjectionOptions::default());
-					// TODO: Change this to scale with percentage along line, not t_value
+					let handle_end_scale_distance = (1.-handle_end_closest_t) * start_distance + handle_end_closest_t * end_distance;
 					let transformed_handle_end = utils::scale_point_from_direction_vector(handle_end, self.normal(handle_end_closest_t), false, handle_end_closest_t);
 					Bezier::from_cubic_dvec2(transformed_start, transformed_handle_start, transformed_handle_end, transformed_end)
 				}
@@ -357,8 +360,12 @@ impl Bezier {
 	}
 
 	pub fn graduated_outline(&self, start_distance: f64, end_distance: f64) -> Vec<Bezier> {
-		let first_segment = self.graduated_offset(start_distance, end_distance);
-		let third_segment = self.reverse().graduated_offset(end_distance, start_distance);
+		self.skewed_outline(start_distance, end_distance, end_distance, start_distance)
+	}
+
+	pub fn skewed_outline(&self, distance1: f64, distance2: f64, distance3: f64, distance4: f64) -> Vec<Bezier> {
+		let first_segment = self.graduated_offset(distance1, distance2);
+		let third_segment = self.reverse().graduated_offset(distance3, distance4);
 
 		if first_segment.is_empty() || third_segment.is_empty() {
 			return vec![];
@@ -739,6 +746,19 @@ mod tests {
 	fn test_graduated_scale() {
 		let bezier = Bezier::from_linear_coordinates(30., 60., 140., 120.);
 		bezier.graduated_scale(10., 20.);
+	}
+
+	#[test]
+	fn test_graduated_scale_quadratic() {
+		let bezier = Bezier::from_quadratic_coordinates(30., 50., 82., 98., 160., 170.,);
+		let scaled_bezier = bezier.graduated_scale(30., 30.);
+
+		dbg!(scaled_bezier);
+
+		// Assert the scaled bezier is 30 units from the line
+		assert!(f64_compare(scaled_bezier.evaluate(0.).distance(bezier.evaluate(0.)), 30., MAX_ABSOLUTE_DIFFERENCE));
+		assert!(f64_compare(scaled_bezier.evaluate(1.).distance(bezier.evaluate(1.)), 30., MAX_ABSOLUTE_DIFFERENCE));
+		assert!(f64_compare(scaled_bezier.evaluate(0.5).distance(bezier.evaluate(0.5)), 30., MAX_ABSOLUTE_DIFFERENCE));
 	}
 
 	#[test]

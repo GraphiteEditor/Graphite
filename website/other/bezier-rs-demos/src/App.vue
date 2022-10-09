@@ -303,14 +303,58 @@ export default defineComponent({
 									min: 0,
 									max: 50,
 									step: 1,
-									default: 5,
+									default: 30,
 								},
 								{
 									variable: "end_distance",
 									min: 0,
 									max: 50,
 									step: 1,
+									default: 30,
+								},
+							],
+							customPoints: [
+								[30, 50],
+								[83, 99],
+								[160, 170],
+							],
+						},
+					},
+				},
+				{
+					name: "Skewed Outline",
+					callback: (bezier: WasmBezierInstance, options: Record<string, number>): string =>
+						bezier.skewed_outline(options.distance1, options.distance2, options.distance3, options.distance4),
+					exampleOptions: {
+						[BezierCurveType.Quadratic]: {
+							sliderOptions: [
+								{
+									variable: "distance1",
+									min: 0,
+									max: 50,
+									step: 1,
 									default: 20,
+								},
+								{
+									variable: "distance2",
+									min: 0,
+									max: 50,
+									step: 1,
+									default: 10,
+								},
+								{
+									variable: "distance3",
+									min: 0,
+									max: 50,
+									step: 1,
+									default: 30,
+								},
+								{
+									variable: "distance4",
+									min: 0,
+									max: 50,
+									step: 1,
+									default: 5,
 								},
 							],
 						},
