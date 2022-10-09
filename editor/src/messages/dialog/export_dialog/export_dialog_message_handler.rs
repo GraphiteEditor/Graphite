@@ -26,7 +26,12 @@ impl MessageHandler<ExportDialogMessage, ()> for ExportDialogMessageHandler {
 			ExportDialogMessage::FileName(name) => self.file_name = name,
 			ExportDialogMessage::FileType(export_type) => self.file_type = export_type,
 			ExportDialogMessage::ScaleFactor(x) => self.scale_factor = x,
-			ExportDialogMessage::ExportBounds(export_area) => self.bounds = export_area,
+			ExportDialogMessage::ExportBounds(export_area) => {
+				self.bounds = export_area;
+				if matches!(export_area, ExportBounds::Artboard(_)) {
+					self.background = Background::Artboard;
+				}
+			}
 			ExportDialogMessage::Background(export_background) => self.background = export_background,
 
 			ExportDialogMessage::Submit => responses.push_front(
