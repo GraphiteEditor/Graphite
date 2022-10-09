@@ -164,10 +164,10 @@ impl PropertyHolder for ExportDialogMessageHandler {
 		];
 
 		let background_options = vec![
+			(Background::Transparent, "Transparent", self.file_type == FileType::Jpg),
 			(Background::White, "White", false),
 			(Background::Black, "Black", false),
 			(Background::Artboard, "Artboard", self.bounds == ExportBounds::AllArtwork || self.bounds == ExportBounds::Selection),
-			(Background::Transparent, "Transparent", self.file_type == FileType::Jpg),
 		];
 		let index = background_options.iter().position(|(val, _, _)| val == &self.background).unwrap();
 		let entries = vec![background_options
