@@ -1,4 +1,4 @@
-use crate::messages::frontend::utility_types::{ExportBounds, FileType};
+use crate::messages::frontend::utility_types::{Background, ExportBounds, FileType};
 use crate::messages::prelude::*;
 
 use serde::{Deserialize, Serialize};
@@ -10,6 +10,7 @@ pub enum ExportDialogMessage {
 	FileType(FileType),
 	ScaleFactor(f64),
 	ExportBounds(ExportBounds),
+	Background(Background),
 
 	Submit,
 }

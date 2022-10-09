@@ -1,4 +1,4 @@
-use crate::messages::frontend::utility_types::{ExportBounds, FileType};
+use crate::messages::frontend::utility_types::{Background, ExportBounds, FileType};
 use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, PropertyHolder, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
 use crate::messages::layout::utility_types::misc::LayoutTarget;
 use crate::messages::layout::utility_types::widgets::button_widgets::TextButton;
@@ -16,6 +16,7 @@ pub struct ExportDialogMessageHandler {
 	pub scale_factor: f64,
 	pub bounds: ExportBounds,
 	pub artboards: HashMap<LayerId, String>,
+	pub background: Background,
 	pub has_selection: bool,
 }
 
@@ -26,6 +27,7 @@ impl MessageHandler<ExportDialogMessage, ()> for ExportDialogMessageHandler {
 			ExportDialogMessage::FileType(export_type) => self.file_type = export_type,
 			ExportDialogMessage::ScaleFactor(x) => self.scale_factor = x,
 			ExportDialogMessage::ExportBounds(export_area) => self.bounds = export_area,
+			ExportDialogMessage::Background(export_background) => self.background = export_background,
 
 			ExportDialogMessage::Submit => responses.push_front(
 				DocumentMessage::ExportDocument {
@@ -143,6 +145,40 @@ impl PropertyHolder for ExportDialogMessageHandler {
 			})),
 		];
 
+		let background_options = vec![
+			(Background::ArtboardBackground, "Artboard", false),
+			(Background::White, "White", false),
+			(Background::Black, "Black", false),
+			(Background::Transparent, "Transparent", self.file_type == FileType::Jpg),
+		];
+		let index = background_options.iter().position(|(val, _, _)| val == &self.background).unwrap();
+		let entries = vec![background_options
+			.into_iter()
+			.map(|(val, name, disabled)| DropdownEntryData {
+				label: name.into(),
+				on_update: WidgetCallback::new(move |_| ExportDialogMessage::Background(val).into()),
+				disabled,
+				..Default::default()
+			})
+			.collect()];
+
+		let background = vec![
+			WidgetHolder::new(Widget::TextLabel(TextLabel {
+				value: "Background".into(),
+				table_align: true,
+				..Default::default()
+			})),
+			WidgetHolder::new(Widget::Separator(Separator {
+				separator_type: SeparatorType::Unrelated,
+				direction: SeparatorDirection::Horizontal,
+			})),
+			WidgetHolder::new(Widget::DropdownInput(DropdownInput {
+				selected_index: Some(index as u32),
+				entries,
+				..Default::default()
+			})),
+		];
+
 		let button_widgets = vec![
 			WidgetHolder::new(Widget::TextButton(TextButton {
 				label: "Export".to_string(),
@@ -176,6 +212,7 @@ impl PropertyHolder for ExportDialogMessageHandler {
 			LayoutGroup::Row { widgets: export_type },
 			LayoutGroup::Row { widgets: resolution },
 			LayoutGroup::Row { widgets: export_area },
+			LayoutGroup::Row { widgets: background },
 			LayoutGroup::Row { widgets: button_widgets },
 		]))
 	}

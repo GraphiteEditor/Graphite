@@ -58,3 +58,12 @@ pub enum ExportBounds {
 	Selection,
 	Artboard(LayerId),
 }
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub enum Background {
+	#[default]
+	ArtboardBackground,
+	White,
+	Black,
+	Transparent,
+}
