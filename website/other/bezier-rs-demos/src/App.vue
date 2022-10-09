@@ -274,6 +274,19 @@ export default defineComponent({
 				{
 					name: "Offset",
 					callback: (bezier: WasmBezierInstance, options: Record<string, number>): string => bezier.offset(options.distance),
+					exampleOptions: {
+						[BezierCurveType.Quadratic]: {
+							sliderOptions: [
+								{
+									variable: "distance",
+									min: -50,
+									max: 50,
+									step: 1,
+									default: 20,
+								},
+							],
+						},
+					},
 				},
 				{
 					name: "Outline",
@@ -312,11 +325,6 @@ export default defineComponent({
 									step: 1,
 									default: 30,
 								},
-							],
-							customPoints: [
-								[30, 50],
-								[83, 99],
-								[160, 170],
 							],
 						},
 					},
