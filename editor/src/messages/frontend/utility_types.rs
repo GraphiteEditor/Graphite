@@ -62,8 +62,8 @@ pub enum ExportBounds {
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 pub enum Background {
 	#[default]
-	Artboard,
 	White,
 	Black,
+	Artboard,
 	Transparent,
 }
