@@ -354,9 +354,9 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 						size.x,
 						size.y,
 						match background {
-							Background::White => "white".to_string(),
-							Background::Black => "black".to_string(),
-							Background::Artboard => artboard_background.unwrap_or_else(|| "white".to_string()),
+							Background::Artboard => format!("#{}", artboard_background.unwrap_or_else(|| "white".into())),
+							Background::White => "white".into(),
+							Background::Black => "black".into(),
 							_ => unreachable!(),
 						}
 					)
