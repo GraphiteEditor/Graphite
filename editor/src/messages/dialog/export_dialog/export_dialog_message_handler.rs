@@ -146,7 +146,7 @@ impl PropertyHolder for ExportDialogMessageHandler {
 		];
 
 		let background_options = vec![
-			(Background::ArtboardBackground, "Artboard", false),
+			(Background::Artboard, "Artboard", false),
 			(Background::White, "White", false),
 			(Background::Black, "Black", false),
 			(Background::Transparent, "Transparent", self.file_type == FileType::Jpg),
