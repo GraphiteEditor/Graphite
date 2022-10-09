@@ -288,6 +288,24 @@ export default defineComponent({
 						},
 					},
 				},
+                {
+					name: "Rotate",
+                    callback: (bezier: WasmBezierInstance, options: Record<string, number>): string => bezier.offset(options.distance),
+					exampleOptions: {
+						[BezierCurveType.Quadratic]: {
+							sliderOptions: [
+								{
+									variable: "angle",
+									min: 0,
+									max: 2,
+									step: 1 / 50,
+									default: 0.12,
+									unit: "π",
+								},
+							],
+						},
+					},
+				},
 			],
 			features: [
 				{
@@ -312,27 +330,6 @@ export default defineComponent({
 					},
 					template: markRaw(SliderExample),
 					templateOptions: { sliders: [tSliderOptions] },
-				},
-				{
-					name: "Rotate",
-					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: Record<string, number>): void => {
-						const context = getContextFromCanvas(canvas);
-						const rotatedBezier = JSON.parse(bezier.rotate(options.angle * Math.PI).get_points());
-						drawBezier(context, rotatedBezier, null, { curveStrokeColor: COLORS.NON_INTERACTIVE.STROKE_1, radius: 3.5 });
-					},
-					template: markRaw(SliderExample),
-					templateOptions: {
-						sliders: [
-							{
-								variable: "angle",
-								min: 0,
-								max: 2,
-								step: 1 / 50,
-								default: 0.12,
-								unit: "π",
-							},
-						],
-					},
 				},
 				{
 					name: "Intersect (Line Segment)",

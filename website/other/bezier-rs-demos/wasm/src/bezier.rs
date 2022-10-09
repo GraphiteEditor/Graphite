@@ -364,8 +364,19 @@ impl WasmBezier {
 		to_js_value(points)
 	}
 
-	pub fn rotate(&self, angle: f64) -> WasmBezier {
-		WasmBezier(self.0.rotate(angle))
+	pub fn rotate(&self, angle: f64) -> String {
+		let original_bezier_svg = self.get_bezier_path();
+		let rotated_bezier = self.0.rotate(angle);
+		let empty_string = String::new();
+		let mut rotated_bezier_svg = String::new();
+		rotated_bezier.to_svg(
+			&mut rotated_bezier_svg,
+			CURVE_ATTRIBUTES.to_string().replace(BLACK, &format!("hsl({}, 100%, 50%)", (40 * idx))),
+			empty_string.clone(),
+			empty_string.clone(),
+			empty_string.clone(),
+		);
+		wrap_svg_tag(format!("{original_bezier_svg}{rotated_bezier_svg}"))
 	}
 
 	fn intersect(&self, curve: &Bezier, error: Option<f64>) -> Vec<f64> {
