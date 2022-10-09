@@ -1,4 +1,4 @@
-use crate::messages::frontend::utility_types::{ExportBounds, FileType};
+use crate::messages::frontend::utility_types::{Background, ExportBounds, FileType};
 use crate::messages::portfolio::document::utility_types::layer_panel::LayerMetadata;
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis};
 use crate::messages::prelude::*;
@@ -67,6 +67,7 @@ pub enum DocumentMessage {
 		file_type: FileType,
 		scale_factor: f64,
 		bounds: ExportBounds,
+		background: Background,
 	},
 	FlipSelectedLayers {
 		flip_axis: FlipAxis,

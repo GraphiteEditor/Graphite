@@ -1,7 +1,7 @@
 use super::utility_types::error::EditorError;
 use crate::application::generate_uuid;
 use crate::consts::{ASYMPTOTIC_EFFECT, DEFAULT_DOCUMENT_NAME, FILE_SAVE_SUFFIX, GRAPHITE_DOCUMENT_VERSION, SCALE_EFFECT, SCROLLBAR_SPACING, VIEWPORT_ZOOM_TO_FIT_PADDING_SCALE_FACTOR};
-use crate::messages::frontend::utility_types::{FileType, FrontendImageData};
+use crate::messages::frontend::utility_types::{Background, FileType, FrontendImageData};
 use crate::messages::input_mapper::utility_types::macros::action_keys;
 use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
 use crate::messages::layout::utility_types::misc::LayoutTarget;
@@ -307,6 +307,7 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 				file_type,
 				scale_factor,
 				bounds,
+				background,
 			} => {
 				// Allows the user's transform to be restored
 				let old_transform = self.graphene_document.root.transform;
@@ -332,9 +333,38 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 
 				let render_data = RenderData::new(ViewMode::Normal, font_cache, None, true);
 				let rendered = self.graphene_document.render_root(render_data);
+
+				let artboard_background = if let ExportBounds::Artboard(id) = bounds {
+					self.artboard_message_handler
+						.artboards_graphene_document
+						.layer(&[id])
+						.ok()
+						.and_then(|layer| layer.style().map(|style| style.fill().color().rgb_hex()).ok())
+				} else {
+					None
+				};
+
+				let background = if background == Background::Transparent {
+					String::new()
+				} else {
+					format!(
+						r#"<rect x="{}" y="{}" width="{}" height="{}" fill="{}"/>"#,
+						bbox[0].x,
+						bbox[0].y,
+						size.x,
+						size.y,
+						match background {
+							Background::White => "white".to_string(),
+							Background::Black => "black".to_string(),
+							Background::Artboard => artboard_background.unwrap_or_else(|| "white".to_string()),
+							_ => unreachable!(),
+						}
+					)
+				};
+
 				let document = format!(
-					r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{} {} {} {}" width="{}px" height="{}">{}{}</svg>"#,
-					bbox[0].x, bbox[0].y, size.x, size.y, size.x, size.y, "\n", rendered
+					r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{} {} {} {}" width="{}px" height="{}">{}{}{}</svg>"#,
+					bbox[0].x, bbox[0].y, size.x, size.y, size.x, size.y, "\n", background, rendered
 				);
 
 				self.graphene_document.root.transform = old_transform;

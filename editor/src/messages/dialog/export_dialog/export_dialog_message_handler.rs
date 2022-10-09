@@ -35,6 +35,7 @@ impl MessageHandler<ExportDialogMessage, ()> for ExportDialogMessageHandler {
 					file_type: self.file_type,
 					scale_factor: self.scale_factor,
 					bounds: self.bounds,
+					background: self.background,
 				}
 				.into(),
 			),
