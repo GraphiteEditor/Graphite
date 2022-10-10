@@ -26,7 +26,7 @@ impl MessageHandler<ExportDialogMessage, ()> for ExportDialogMessageHandler {
 			ExportDialogMessage::FileName(name) => self.file_name = name,
 			ExportDialogMessage::FileType(export_type) => {
 				self.file_type = export_type;
-				if matches!(export_type, FileType::Jpg) && matches!(self.background, Background::Transparent) {
+				if matches!(export_type, FileType::Jpg) && self.background == Background::Transparent {
 					self.background = Background::White
 				}
 			}
@@ -35,7 +35,7 @@ impl MessageHandler<ExportDialogMessage, ()> for ExportDialogMessageHandler {
 				self.bounds = export_area;
 				if matches!(export_area, ExportBounds::Artboard(_)) {
 					self.background = Background::Artboard;
-				} else if matches!(self.background, Background::Artboard) {
+				} else if self.background == Background::Artboard {
 					match self.file_type {
 						FileType::Svg | FileType::Png => self.background = Background::Transparent,
 						FileType::Jpg => {
