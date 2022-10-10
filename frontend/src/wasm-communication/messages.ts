@@ -237,6 +237,8 @@ export class TriggerRasterizeToBlob extends JsMessage {
 
 	@TupleToVec2
 	readonly size!: XY;
+
+	readonly layerPath!: BigUint64Array;
 }
 
 export class TriggerRefreshBoundsOfViewports extends JsMessage {}

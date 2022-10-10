@@ -790,9 +790,19 @@ impl Document {
 				Some([vec![DocumentChanged], update_thumbnails_upstream(&path)].concat())
 			}
 			Operation::SetImageBlobUrl { path, blob_url, dimensions } => {
-				let image = self.layer_mut(&path).expect("Blob url for invalid layer").as_image_mut().unwrap();
-				image.blob_url = Some(blob_url);
-				image.dimensions = dimensions.into();
+				let layer = self.layer_mut(&path).expect("Blob url for invalid layer");
+				match &mut layer.data {
+					LayerDataType::Image(image) => {
+						image.blob_url = Some(blob_url);
+						image.dimensions = dimensions.into();
+					}
+					LayerDataType::AiArtist(ai_artist) => {
+						ai_artist.blob_url = Some(blob_url);
+						ai_artist.dimensions = dimensions.into();
+					}
+					_ => panic!("Incorrectly trying to set the image blob URL for a layer that is not an Image or AiArtist layer type"),
+				}
+
 				self.mark_as_dirty(&path)?;
 				Some([vec![DocumentChanged, LayerChanged { path: path.clone() }], update_thumbnails_upstream(&path)].concat())
 			}

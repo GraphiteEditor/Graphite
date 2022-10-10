@@ -369,7 +369,7 @@ impl Layer {
 				let dimensions = b - a;
 				DAffine2::from_scale(dimensions)
 			}
-			_ => DAffine2::IDENTITY,
+			None => DAffine2::IDENTITY,
 		};
 
 		self.transform * scale

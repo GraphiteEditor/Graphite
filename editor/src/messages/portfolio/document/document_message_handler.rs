@@ -387,7 +387,14 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 				self.graphene_document.root.transform = old_transform;
 				GrapheneDocument::mark_children_as_dirty(&mut self.graphene_document.root);
 
-				responses.push_back(FrontendMessage::TriggerRasterizeToBlob { svg: document, size: size.into() }.into());
+				responses.push_back(
+					FrontendMessage::TriggerRasterizeToBlob {
+						svg: document,
+						size: size.into(),
+						layer_path: layer_path.into(),
+					}
+					.into(),
+				);
 			}
 			FlipSelectedLayers { flip_axis } => {
 				self.backup(responses);

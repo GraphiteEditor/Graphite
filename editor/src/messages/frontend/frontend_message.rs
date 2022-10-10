@@ -8,6 +8,7 @@ use crate::messages::tool::utility_types::HintData;
 
 use graphene::color::Color;
 use graphene::layers::text_layer::Font;
+use graphene::LayerId;
 
 use serde::{Deserialize, Serialize};
 
@@ -71,6 +72,8 @@ pub enum FrontendMessage {
 	TriggerRasterizeToBlob {
 		svg: String,
 		size: (f64, f64),
+		#[serde(rename = "layerPath")]
+		layer_path: Vec<LayerId>,
 	},
 	TriggerRefreshBoundsOfViewports,
 	TriggerTextCommit,

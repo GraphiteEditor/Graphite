@@ -9,13 +9,21 @@ use kurbo::{Affine, BezPath, Shape as KurboShape};
 use serde::{Deserialize, Serialize};
 use std::fmt::Write;
 
-#[derive(Default, Debug, Clone, Eq, PartialEq, Deserialize, Serialize)]
-pub struct AiArtistLayer {}
+#[derive(Default, Debug, Clone, PartialEq, Deserialize, Serialize)]
+pub struct AiArtistLayer {
+	#[serde(skip)]
+	pub blob_url: Option<String>,
+	#[serde(skip)]
+	pub dimensions: DVec2,
+}
 
 impl LayerData for AiArtistLayer {
 	fn render(&mut self, svg: &mut String, _svg_defs: &mut String, transforms: &mut Vec<DAffine2>, render_data: RenderData) {
 		let transform = self.transform(transforms, render_data.view_mode);
 		let inverse = transform.inverse();
+
+		let matrix_values = transform.matrix2.to_cols_array();
+		let (width, height) = (matrix_values[0], matrix_values[3]);
 
 		if !inverse.is_finite() {
 			let _ = write!(svg, "<!-- SVG shape has an invalid transform -->");
@@ -28,20 +36,20 @@ impl LayerData for AiArtistLayer {
 		});
 		let _ = svg.write_str(r#")">"#);
 
-		let svg_transform = transform
-			.to_cols_array()
-			.iter()
-			.enumerate()
-			.map(|(i, entry)| entry.to_string() + if i == 5 { "" } else { "," })
-			.collect::<String>();
-		let _ = write!(svg, r#"<image width="1" height="1" transform="matrix({})" href=""#, svg_transform,);
+		if let Some(blob_url) = &self.blob_url {
+			let _ = write!(
+				svg,
+				r#"<image width="{}" height="{}" transform="matrix(1,0,0,1,{},{})" href="{}"/>"#,
+				width, height, transform.translation.x, transform.translation.y, blob_url
+			);
+		} else {
+			let _ = write!(
+				svg,
+				r#"<rect width="{}" height="{}" transform="matrix(1,0,0,1,{},{})" fill="none" stroke="var(--color-data-raster)" stroke-width="3" stroke-dasharray="8"/>"#,
+				width, height, transform.translation.x, transform.translation.y
+			);
+		}
 
-		let _ = write!(
-			svg,
-			"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAAXNSR0IArs4c6QAAAA1JREFUGFdjYLtZ/h8ABJUCVn7cQO8AAAAASUVORK5CYII="
-		);
-
-		let _ = svg.write_str(r#""/>"#);
 		let _ = svg.write_str("</g>");
 	}
 

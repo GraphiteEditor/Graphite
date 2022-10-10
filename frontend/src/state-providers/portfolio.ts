@@ -13,6 +13,7 @@ import {
 	TriggerRasterizeToBlob,
 	UpdateActiveDocument,
 	UpdateOpenDocumentsList,
+	UpdateImageData,
 } from "@/wasm-communication/messages";
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
@@ -57,13 +58,28 @@ export function createPortfolioState(editor: Editor) {
 		downloadFileBlob(name, blob);
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerRasterizeToBlob, async (triggerRasterizeToBlob) => {
-		const { svg, size } = triggerRasterizeToBlob;
+		const { svg, size, layerPath } = triggerRasterizeToBlob;
 
 		// Rasterize the SVG to an image file
 		const blob = await rasterizeSVG(svg, size.x, size.y, "image/png");
 
-		// Have the browser download the file to the user's disk
-		downloadFileBlob("name", blob);
+		// TODO: Call `URL.revokeObjectURL` at the appropriate time to avoid a memory leak
+		const blobURL = URL.createObjectURL(blob);
+
+		editor.instance.setImageBlobUrl(layerPath, blobURL, size.x, size.y);
+	});
+	editor.subscriptions.subscribeJsMessage(UpdateImageData, (updateImageData) => {
+		updateImageData.imageData.forEach(async (element) => {
+			const buffer = new Uint8Array(element.imageData.values()).buffer;
+			const blob = new Blob([buffer], { type: element.mime });
+
+			// TODO: Call `URL.revokeObjectURL` at the appropriate time to avoid a memory leak
+			const blobURL = URL.createObjectURL(blob);
+
+			const image = await createImageBitmap(blob);
+
+			editor.instance.setImageBlobUrl(element.path, blobURL, image.width, image.height);
+		});
 	});
 
 	return {
