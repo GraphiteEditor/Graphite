@@ -106,7 +106,7 @@ pub trait LayerData {
 	///
 	/// // Render the shape without any transforms, in normal view mode
 	/// # let font_cache = Default::default();
-	/// let render_data = RenderData::new(ViewMode::Normal, &font_cache, None, false);
+	/// let render_data = RenderData::new(ViewMode::Normal, &font_cache, None);
 	/// shape.render(&mut svg, &mut String::new(), &mut vec![], render_data);
 	///
 	/// assert_eq!(
