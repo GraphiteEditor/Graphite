@@ -232,13 +232,15 @@ export class TriggerRasterDownload extends JsMessage {
 	readonly size!: XY;
 }
 
-export class TriggerRasterizeToBlob extends JsMessage {
+export class TriggerAiArtistRasterizeAndGenerateImg2Img extends JsMessage {
 	readonly svg!: string;
 
 	@TupleToVec2
 	readonly size!: XY;
 
 	readonly layerPath!: BigUint64Array;
+
+	readonly prompt!: string;
 }
 
 export class TriggerRefreshBoundsOfViewports extends JsMessage {}
@@ -357,7 +359,24 @@ export class LayerMetadata {
 	selected!: boolean;
 }
 
-export type LayerType = "Folder" | "Image" | "Shape" | "Text";
+export type LayerType = "AiArtist" | "Folder" | "Image" | "Shape" | "Text";
+
+export type LayerTypeData = {
+	name: string;
+	icon: IconName;
+};
+
+export function layerTypeData(layerType: LayerType): LayerTypeData | undefined {
+	const entries: Record<string, LayerTypeData> = {
+		AiArtist: { name: "AI Artist", icon: "NodeAiArtist" },
+		Folder: { name: "Folder", icon: "NodeFolder" },
+		Image: { name: "Image", icon: "NodeImage" },
+		Shape: { name: "Shape", icon: "NodeShape" },
+		Text: { name: "Text", icon: "NodeText" },
+	};
+
+	return entries[layerType];
+}
 
 export class ImageData {
 	readonly path!: BigUint64Array;
@@ -868,7 +887,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	TriggerIndexedDbWriteDocument,
 	TriggerPaste,
 	TriggerRasterDownload,
-	TriggerRasterizeToBlob,
+	TriggerAiArtistRasterizeAndGenerateImg2Img,
 	TriggerRefreshBoundsOfViewports,
 	TriggerTextCommit,
 	TriggerTextCopy,

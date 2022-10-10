@@ -10,7 +10,7 @@ import {
 	TriggerImport,
 	TriggerOpenDocument,
 	TriggerRasterDownload,
-	TriggerRasterizeToBlob,
+	TriggerAiArtistRasterizeAndGenerateImg2Img,
 	UpdateActiveDocument,
 	UpdateOpenDocumentsList,
 	UpdateImageData,
@@ -57,8 +57,8 @@ export function createPortfolioState(editor: Editor) {
 		// Have the browser download the file to the user's disk
 		downloadFileBlob(name, blob);
 	});
-	editor.subscriptions.subscribeJsMessage(TriggerRasterizeToBlob, async (triggerRasterizeToBlob) => {
-		const { svg, size, layerPath } = triggerRasterizeToBlob;
+	editor.subscriptions.subscribeJsMessage(TriggerAiArtistRasterizeAndGenerateImg2Img, async (triggerAiArtistRasterizeAndGenerateImg2Img) => {
+		const { svg, size, layerPath, prompt } = triggerAiArtistRasterizeAndGenerateImg2Img;
 
 		// Rasterize the SVG to an image file
 		const blob = await rasterizeSVG(svg, size.x, size.y, "image/png");
@@ -67,6 +67,8 @@ export function createPortfolioState(editor: Editor) {
 		const blobURL = URL.createObjectURL(blob);
 
 		editor.instance.setImageBlobUrl(layerPath, blobURL, size.x, size.y);
+
+		callStableDiffusion(prompt, blob, layerPath, editor);
 	});
 	editor.subscriptions.subscribeJsMessage(UpdateImageData, (updateImageData) => {
 		updateImageData.imageData.forEach(async (element) => {
@@ -87,3 +89,116 @@ export function createPortfolioState(editor: Editor) {
 	};
 }
 export type PortfolioState = ReturnType<typeof createPortfolioState>;
+
+async function callStableDiffusion(prompt: string, _blob: Blob, layerPath: BigUint64Array, editor: Editor): Promise<void> {
+	const samples = 30;
+	const width = 512;
+	const height = 512;
+
+	const final = txt2img(prompt, samples, width, height);
+
+	const interval = setInterval(async () => {
+		const blob = await pollImage();
+
+		const blobURL = URL.createObjectURL(blob);
+		editor.instance.setImageBlobUrl(layerPath, blobURL, width, height);
+	}, 1000);
+
+	const blob = await final;
+
+	clearInterval(interval);
+
+	const blobURL = URL.createObjectURL(blob);
+	editor.instance.setImageBlobUrl(layerPath, blobURL, width, height);
+}
+
+async function txt2img(prompt: string, samples: number, width: number, height: number): Promise<Blob> {
+	// Highly unstable API
+	const result = await fetch("http://192.168.1.10:7860/api/predict/", {
+		headers: {
+			accept: "*/*",
+			"accept-language": "en-US,en;q=0.9",
+			"content-type": "application/json",
+		},
+		referrer: "http://192.168.1.10:7860/",
+		referrerPolicy: "strict-origin-when-cross-origin",
+		body: `{
+			"fn_index":12,
+			"data":[
+				"${prompt}",
+				"",
+				"None",
+				"None",
+				${samples},
+				"Euler a",
+				false,
+				false,
+				1,
+				1,
+				7,
+				-1,
+				-1,
+				0,
+				0,
+				0,
+				false,
+				${width},
+				${height},
+				false,
+				false,
+				0.7,
+				"None",
+				false,
+				false,
+				null,
+				"",
+				"Seed",
+				"",
+				"Steps",
+				"",
+				true,
+				false,
+				null,
+				"",
+				""
+			],
+			"session_hash":"0000000000"
+		}`,
+		method: "POST",
+		mode: "cors",
+		credentials: "omit",
+	});
+	const json = await result.json();
+	const base64 = json.data[0]?.[0] as string; // Highly unstable API
+
+	if (typeof base64 !== "string" || !base64.startsWith("data:image/png;base64,")) return Promise.reject();
+
+	return (await fetch(base64)).blob();
+}
+
+async function pollImage(): Promise<Blob> {
+	// Highly unstable API
+	const result = await fetch("http://192.168.1.10:7860/api/predict/", {
+		headers: {
+			accept: "*/*",
+			"accept-language": "en-US,en;q=0.9",
+			"content-type": "application/json",
+		},
+		referrer: "http://192.168.1.10:7860/",
+		referrerPolicy: "strict-origin-when-cross-origin",
+		body: `{
+			"fn_index":2,
+			"data":[],
+			"session_hash":"0000000000"
+		}`,
+		method: "POST",
+		mode: "cors",
+		credentials: "omit",
+	});
+	const json = await result.json();
+	const base64 = json.data[2]; // Highly unstable API
+
+	if (typeof base64 !== "string" || !base64.startsWith("data:image/png;base64,")) return Promise.reject();
+
+	return (await fetch(base64)).blob();
+}

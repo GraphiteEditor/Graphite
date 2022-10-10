@@ -9,6 +9,7 @@ use crate::messages::prelude::*;
 
 use glam::{DAffine2, DVec2};
 use graphene::color::Color;
+use graphene::layers::ai_artist_layer::AiArtistLayer;
 use graphene::layers::layer_info::{Layer, LayerDataType, LayerDataTypeDiscriminant};
 use graphene::layers::style::{Fill, Gradient, GradientType, LineCap, LineJoin, Stroke};
 use graphene::layers::text_layer::{FontCache, TextLayer};
@@ -292,8 +293,8 @@ pub fn register_artwork_layer_properties(layer: &Layer, responses: &mut VecDeque
 		LayerDataType::Image(_) => {
 			vec![node_section_transform(layer, font_cache)]
 		}
-		LayerDataType::AiArtist(_) => {
-			vec![node_section_transform(layer, font_cache), node_section_ai_artist()]
+		LayerDataType::AiArtist(ai_artist) => {
+			vec![node_section_transform(layer, font_cache), node_section_ai_artist(ai_artist)]
 		}
 		LayerDataType::Folder(_) => {
 			vec![node_section_transform(layer, font_cache)]
@@ -484,26 +485,67 @@ fn node_section_transform(layer: &Layer, font_cache: &FontCache) -> LayoutGroup 
 	}
 }
 
-fn node_section_ai_artist() -> LayoutGroup {
+fn node_section_ai_artist(layer: &AiArtistLayer) -> LayoutGroup {
 	LayoutGroup::Section {
 		name: "AI Artist".into(),
-		layout: vec![LayoutGroup::Row {
-			widgets: vec![
-				WidgetHolder::new(Widget::TextLabel(TextLabel {
-					value: "Generate Artwork".into(),
-					..Default::default()
-				})),
-				WidgetHolder::new(Widget::Separator(Separator {
-					separator_type: SeparatorType::Unrelated,
-					direction: SeparatorDirection::Horizontal,
-				})),
-				WidgetHolder::new(Widget::TextButton(TextButton {
-					label: "Compute".into(),
-					on_update: WidgetCallback::new(|_| DocumentMessage::ExportDocumentStackArea.into()),
-					..Default::default()
-				})),
-			],
-		}],
+		layout: vec![
+			LayoutGroup::Row {
+				widgets: vec![
+					WidgetHolder::new(Widget::TextLabel(TextLabel {
+						value: "Generate".into(),
+						..Default::default()
+					})),
+					WidgetHolder::new(Widget::Separator(Separator {
+						separator_type: SeparatorType::Unrelated,
+						direction: SeparatorDirection::Horizontal,
+					})),
+					WidgetHolder::new(Widget::TextButton(TextButton {
+						label: "Text to Image".into(),
+						on_update: WidgetCallback::new(|_| DocumentMessage::AiArtistGenerateImg2Img.into()),
+						..Default::default()
+					})),
+				],
+			},
+			LayoutGroup::Row {
+				widgets: vec![
+					WidgetHolder::new(Widget::TextLabel(TextLabel {
+						value: "Reset".into(),
+						..Default::default()
+					})),
+					WidgetHolder::new(Widget::Separator(Separator {
+						separator_type: SeparatorType::Unrelated,
+						direction: SeparatorDirection::Horizontal,
+					})),
+					WidgetHolder::new(Widget::TextButton(TextButton {
+						label: "Clear Generated Image".into(),
+						on_update: WidgetCallback::new(|_| DocumentMessage::AiArtistClear.into()),
+						..Default::default()
+					})),
+				],
+			},
+			LayoutGroup::Row {
+				widgets: vec![
+					WidgetHolder::new(Widget::TextLabel(TextLabel {
+						value: "Prompt".into(),
+						..Default::default()
+					})),
+					WidgetHolder::new(Widget::Separator(Separator {
+						separator_type: SeparatorType::Unrelated,
+						direction: SeparatorDirection::Horizontal,
+					})),
+					WidgetHolder::new(Widget::TextAreaInput(TextAreaInput {
+						value: layer.prompt.clone(),
+						on_update: WidgetCallback::new(move |text_area_input: &TextAreaInput| {
+							PropertiesPanelMessage::SetAiArtistPrompt {
+								prompt: text_area_input.value.clone(),
+							}
+							.into()
+						}),
+						..Default::default()
+					})),
+				],
+			},
+		],
 	}
 }
 

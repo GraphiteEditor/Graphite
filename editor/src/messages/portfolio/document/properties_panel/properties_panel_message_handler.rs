@@ -148,6 +148,10 @@ impl<'a> MessageHandler<PropertiesPanelMessage, PropertiesPanelMessageHandlerDat
 				}
 				.into(),
 			),
+			SetAiArtistPrompt { prompt } => {
+				let (path, _) = self.active_selection.clone().expect("Received update for properties panel with no active layer");
+				responses.push_back(Operation::SetAiArtistPrompt { path, prompt }.into());
+			}
 		}
 	}
 

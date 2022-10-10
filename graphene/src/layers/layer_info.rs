@@ -455,6 +455,24 @@ impl Layer {
 		}
 	}
 
+	/// Get a mutable reference to the AiArtist element wrapped by the layer.
+	/// This operation will fail if the [Layer type](Layer::data) is not `LayerDataType::AiArtist`.
+	pub fn as_ai_artist_mut(&mut self) -> Result<&mut AiArtistLayer, DocumentError> {
+		match &mut self.data {
+			LayerDataType::AiArtist(ai_artist) => Ok(ai_artist),
+			_ => Err(DocumentError::NotAnAiArtist),
+		}
+	}
+
+	/// Get a reference to the AiArtist element wrapped by the layer.
+	/// This operation will fail if the [Layer type](Layer::data) is not `LayerDataType::AiArtist`.
+	pub fn as_ai_artist(&self) -> Result<&AiArtistLayer, DocumentError> {
+		match &self.data {
+			LayerDataType::AiArtist(ai_artist) => Ok(ai_artist),
+			_ => Err(DocumentError::NotAnAiArtist),
+		}
+	}
+
 	pub fn style(&self) -> Result<&PathStyle, DocumentError> {
 		match &self.data {
 			LayerDataType::Shape(s) => Ok(&s.style),

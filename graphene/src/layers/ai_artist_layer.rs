@@ -9,12 +9,23 @@ use kurbo::{Affine, BezPath, Shape as KurboShape};
 use serde::{Deserialize, Serialize};
 use std::fmt::Write;
 
-#[derive(Default, Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct AiArtistLayer {
+	pub prompt: String,
 	#[serde(skip)]
 	pub blob_url: Option<String>,
 	#[serde(skip)]
 	pub dimensions: DVec2,
+}
+
+impl Default for AiArtistLayer {
+	fn default() -> Self {
+		Self {
+			prompt: "Graphite rocks!".into(),
+			blob_url: None,
+			dimensions: Default::default(),
+		}
+	}
 }
 
 impl LayerData for AiArtistLayer {
@@ -40,13 +51,20 @@ impl LayerData for AiArtistLayer {
 			let _ = write!(
 				svg,
 				r#"<image width="{}" height="{}" transform="matrix(1,0,0,1,{},{})" href="{}"/>"#,
-				width, height, transform.translation.x, transform.translation.y, blob_url
+				width.abs(),
+				height.abs(),
+				if width >= 0. { transform.translation.x } else { transform.translation.x + width },
+				if height >= 0. { transform.translation.y } else { transform.translation.y + height },
+				blob_url
 			);
 		} else {
 			let _ = write!(
 				svg,
 				r#"<rect width="{}" height="{}" transform="matrix(1,0,0,1,{},{})" fill="none" stroke="var(--color-data-raster)" stroke-width="3" stroke-dasharray="8"/>"#,
-				width, height, transform.translation.x, transform.translation.y
+				width.abs(),
+				height.abs(),
+				if width >= 0. { transform.translation.x } else { transform.translation.x + width },
+				if height >= 0. { transform.translation.y } else { transform.translation.y + height },
 			);
 		}
 

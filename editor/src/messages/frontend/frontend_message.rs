@@ -42,6 +42,13 @@ pub enum FrontendMessage {
 		#[serde(rename = "commitDate")]
 		commit_date: String,
 	},
+	TriggerAiArtistRasterizeAndGenerateImg2Img {
+		svg: String,
+		size: (f64, f64),
+		#[serde(rename = "layerPath")]
+		layer_path: Vec<LayerId>,
+		prompt: String,
+	},
 	TriggerFileDownload {
 		document: String,
 		name: String,
@@ -68,12 +75,6 @@ pub enum FrontendMessage {
 		name: String,
 		mime: String,
 		size: (f64, f64),
-	},
-	TriggerRasterizeToBlob {
-		svg: String,
-		size: (f64, f64),
-		#[serde(rename = "layerPath")]
-		layer_path: Vec<LayerId>,
 	},
 	TriggerRefreshBoundsOfViewports,
 	TriggerTextCommit,

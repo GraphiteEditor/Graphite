@@ -175,6 +175,79 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 
 				self.update_layer_tree_options_bar_widgets(responses, font_cache);
 			}
+			AiArtistClear => {
+				let selected_layers = self.layer_metadata.iter().filter_map(|(layer_path, data)| data.selected.then_some(layer_path));
+				let mut selected_ai_artist_layers = selected_layers.filter(|path| {
+					self.graphene_document
+						.layer(path.as_slice())
+						.ok()
+						.and_then(|layer| matches!(layer.data, LayerDataType::AiArtist(_)).then_some(()))
+						.is_some()
+				});
+
+				// Get what is hopefully the only selected AI Artist layer
+				let layer_path = selected_ai_artist_layers.next();
+				// Abort if we didn't have any AI Artist layer, or if there are additional ones also selected
+				if layer_path.is_none() || selected_ai_artist_layers.next().is_some() {
+					return;
+				}
+				let layer_path = layer_path.unwrap().as_slice();
+
+				responses.push_back(DocumentOperation::ClearAiArtist { path: layer_path.into() }.into());
+			}
+			AiArtistGenerateImg2Img => {
+				let selected_layers = self.layer_metadata.iter().filter_map(|(layer_path, data)| data.selected.then_some(layer_path));
+				let mut selected_ai_artist_layers = selected_layers.filter(|path| {
+					self.graphene_document
+						.layer(path.as_slice())
+						.ok()
+						.and_then(|layer| matches!(layer.data, LayerDataType::AiArtist(_)).then_some(()))
+						.is_some()
+				});
+
+				// Get what is hopefully the only selected AI Artist layer
+				let layer_path = selected_ai_artist_layers.next();
+				// Abort if we didn't have any AI Artist layer, or if there are additional ones also selected
+				if layer_path.is_none() || selected_ai_artist_layers.next().is_some() {
+					return;
+				}
+				let layer_path = layer_path.unwrap().as_slice();
+
+				// Allows the user's transform to be restored
+				let old_transform = self.graphene_document.root.transform;
+				// Reset the root's transform (required to avoid any rotation by the user)
+				self.graphene_document.root.transform = DAffine2::IDENTITY;
+				GrapheneDocument::mark_children_as_dirty(&mut self.graphene_document.root);
+
+				let layer = self.graphene_document.layer(layer_path).unwrap();
+
+				// Prepare the AI Artist properties
+				let ai_artist_prompt = layer.as_ai_artist().unwrap().prompt.clone();
+
+				// Calculate the bounding box of the region to be exported
+				let bbox = layer.aabb(font_cache).unwrap_or_default();
+				let size = bbox[1] - bbox[0];
+
+				let render_data = RenderData::new(ViewMode::Normal, font_cache, None, true);
+				let rendered = self.graphene_document.render_layers_below(layer_path, render_data).unwrap();
+				let document = format!(
+					r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{} {} {} {}" width="{}px" height="{}">{}{}</svg>"#,
+					bbox[0].x, bbox[0].y, size.x, size.y, size.x, size.y, "\n", rendered
+				);
+
+				self.graphene_document.root.transform = old_transform;
+				GrapheneDocument::mark_children_as_dirty(&mut self.graphene_document.root);
+
+				responses.push_back(
+					FrontendMessage::TriggerAiArtistRasterizeAndGenerateImg2Img {
+						svg: document,
+						size: size.into(),
+						layer_path: layer_path.into(),
+						prompt: ai_artist_prompt,
+					}
+					.into(),
+				);
+			}
 			AlignSelectedLayers { axis, aggregate } => {
 				self.backup(responses);
 				let (paths, boxes): (Vec<_>, Vec<_>) = self
@@ -347,54 +420,6 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 					let size = (size * scale_factor).into();
 					responses.push_back(FrontendMessage::TriggerRasterDownload { svg: document, name, mime, size }.into());
 				}
-			}
-			ExportDocumentStackArea => {
-				let selected_layers = self.layer_metadata.iter().filter_map(|(layer_path, data)| data.selected.then(|| layer_path));
-				let mut selected_ai_artist_layers = selected_layers.filter(|path| {
-					self.graphene_document
-						.layer(path.as_slice())
-						.ok()
-						.and_then(|layer| matches!(layer.data, LayerDataType::AiArtist(_)).then_some(()))
-						.is_some()
-				});
-
-				// Get what is hopefully the only selected AI Artist layer
-				let layer_path = selected_ai_artist_layers.next();
-				// Abort if we didn't have any AI Artist layer, or if there are additional ones also selected
-				if layer_path.is_none() || selected_ai_artist_layers.next().is_some() {
-					return;
-				}
-				let layer_path = layer_path.unwrap().as_slice();
-
-				// Allows the user's transform to be restored
-				let old_transform = self.graphene_document.root.transform;
-				// Reset the root's transform (required to avoid any rotation by the user)
-				self.graphene_document.root.transform = DAffine2::IDENTITY;
-				GrapheneDocument::mark_children_as_dirty(&mut self.graphene_document.root);
-
-				// Calculate the bounding box of the region to be exported
-				let layer = self.graphene_document.layer(layer_path).unwrap();
-				let bbox = layer.aabb(font_cache).unwrap_or_default();
-				let size = bbox[1] - bbox[0];
-
-				let render_data = RenderData::new(ViewMode::Normal, font_cache, None, true);
-				let rendered = self.graphene_document.render_layers_below(layer_path, render_data).unwrap();
-				let document = format!(
-					r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{} {} {} {}" width="{}px" height="{}">{}{}</svg>"#,
-					bbox[0].x, bbox[0].y, size.x, size.y, size.x, size.y, "\n", rendered
-				);
-
-				self.graphene_document.root.transform = old_transform;
-				GrapheneDocument::mark_children_as_dirty(&mut self.graphene_document.root);
-
-				responses.push_back(
-					FrontendMessage::TriggerRasterizeToBlob {
-						svg: document,
-						size: size.into(),
-						layer_path: layer_path.into(),
-					}
-					.into(),
-				);
 			}
 			FlipSelectedLayers { flip_axis } => {
 				self.backup(responses);

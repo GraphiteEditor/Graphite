@@ -156,6 +156,9 @@ pub enum Operation {
 	CreateFolder {
 		path: Vec<LayerId>,
 	},
+	ClearAiArtist {
+		path: Vec<LayerId>,
+	},
 	TransformLayer {
 		path: Vec<LayerId>,
 		transform: [f64; 6],
@@ -163,6 +166,10 @@ pub enum Operation {
 	TransformLayerInViewport {
 		path: Vec<LayerId>,
 		transform: [f64; 6],
+	},
+	SetAiArtistPrompt {
+		path: Vec<LayerId>,
+		prompt: String,
 	},
 	SetLayerTransformInViewport {
 		path: Vec<LayerId>,

@@ -26,6 +26,7 @@ pub enum PropertiesPanelMessage {
 	ModifyTransform { value: f64, transform_op: TransformOp },
 	ResendActiveProperties,
 	SetActiveLayers { paths: Vec<Vec<LayerId>>, document: TargetDocument },
+	SetAiArtistPrompt { prompt: String },
 	SetPivot { new_position: PivotPosition },
 	UpdateSelectedDocumentProperties,
 }

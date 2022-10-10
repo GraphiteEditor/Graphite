@@ -806,6 +806,26 @@ impl Document {
 				self.mark_as_dirty(&path)?;
 				Some([vec![DocumentChanged, LayerChanged { path: path.clone() }], update_thumbnails_upstream(&path)].concat())
 			}
+			Operation::ClearAiArtist { path } => {
+				let layer = self.layer_mut(&path).expect("Setting AI Artist prompt for invalid layer");
+				if let LayerDataType::AiArtist(ai_artist) = &mut layer.data {
+					ai_artist.blob_url = None;
+				} else {
+					panic!("Incorrectly trying to clear the blob URL for a layer that is not an AiArtist layer type");
+				}
+				self.mark_as_dirty(&path)?;
+				Some([vec![DocumentChanged, LayerChanged { path: path.clone() }], update_thumbnails_upstream(&path)].concat())
+			}
+			Operation::SetAiArtistPrompt { path, prompt } => {
+				let layer = self.layer_mut(&path).expect("Setting AI Artist prompt for invalid layer");
+				if let LayerDataType::AiArtist(ai_artist) = &mut layer.data {
+					ai_artist.prompt = prompt;
+				} else {
+					panic!("Incorrectly trying to set the prompt for a layer that is not an AiArtist layer type");
+				}
+				self.mark_as_dirty(&path)?;
+				Some(vec![LayerChanged { path }])
+			}
 			Operation::SetPivot { layer_path, pivot } => {
 				let layer = self.layer_mut(&layer_path).expect("Setting pivot for invalid layer");
 				layer.pivot = pivot.into();

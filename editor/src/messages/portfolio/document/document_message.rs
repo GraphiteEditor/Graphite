@@ -38,6 +38,8 @@ pub enum DocumentMessage {
 	AddSelectedLayers {
 		additional_layers: Vec<Vec<LayerId>>,
 	},
+	AiArtistClear,
+	AiArtistGenerateImg2Img,
 	AlignSelectedLayers {
 		axis: AlignAxis,
 		aggregate: AlignAggregate,
@@ -67,7 +69,6 @@ pub enum DocumentMessage {
 		scale_factor: f64,
 		bounds: ExportBounds,
 	},
-	ExportDocumentStackArea,
 	FlipSelectedLayers {
 		flip_axis: FlipAxis,
 	},
