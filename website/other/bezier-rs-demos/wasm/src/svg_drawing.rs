@@ -1,5 +1,5 @@
-use std::fmt::Write;
 use bezier_rs::Bezier;
+use std::fmt::Write;
 
 // SVG drawing constants
 pub const SVG_OPEN_TAG: &str = r#"<svg xmlns="http://www.w3.org/2000/svg" width="200px" height="200px">"#;
@@ -40,7 +40,7 @@ pub fn draw_line(start_x: f64, start_y: f64, end_x: f64, end_y: f64, stroke: &st
 }
 
 /// Helper function to draw a list of beziers.
-pub fn draw_beziers(beziers: Vec<Bezier>, options: String) -> String  {
+pub fn draw_beziers(beziers: Vec<Bezier>, options: String) -> String {
 	let start_point = beziers.first().unwrap().start();
 	let mut svg = format!("<path d=\"M {} {}", start_point.x, start_point.y);
 
