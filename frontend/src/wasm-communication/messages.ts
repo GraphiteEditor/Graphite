@@ -232,6 +232,16 @@ export class TriggerRasterDownload extends JsMessage {
 	readonly size!: XY;
 }
 
+export class TriggerAiArtistGenerateTxt2Img extends JsMessage {
+	readonly layerPath!: BigUint64Array;
+
+	readonly prompt!: string;
+
+	readonly samples!: number;
+
+	readonly cfgScale!: number;
+}
+
 export class TriggerAiArtistRasterizeAndGenerateImg2Img extends JsMessage {
 	readonly svg!: string;
 
@@ -241,6 +251,12 @@ export class TriggerAiArtistRasterizeAndGenerateImg2Img extends JsMessage {
 	readonly layerPath!: BigUint64Array;
 
 	readonly prompt!: string;
+
+	readonly samples!: number;
+
+	readonly cfgScale!: number;
+
+	readonly denoisingStrength!: number;
 }
 
 export class TriggerRefreshBoundsOfViewports extends JsMessage {}
@@ -887,6 +903,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	TriggerIndexedDbWriteDocument,
 	TriggerPaste,
 	TriggerRasterDownload,
+	TriggerAiArtistGenerateTxt2Img,
 	TriggerAiArtistRasterizeAndGenerateImg2Img,
 	TriggerRefreshBoundsOfViewports,
 	TriggerTextCommit,

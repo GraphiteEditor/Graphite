@@ -12,6 +12,9 @@ use std::fmt::Write;
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct AiArtistLayer {
 	pub prompt: String,
+	pub samples: u32,
+	pub cfg_scale: f64,
+	pub denoising_strength: f64,
 	#[serde(skip)]
 	pub blob_url: Option<String>,
 	#[serde(skip)]
@@ -22,6 +25,9 @@ impl Default for AiArtistLayer {
 	fn default() -> Self {
 		Self {
 			prompt: "Graphite rocks!".into(),
+			samples: 32,
+			cfg_scale: 8.,
+			denoising_strength: 0.33,
 			blob_url: None,
 			dimensions: Default::default(),
 		}

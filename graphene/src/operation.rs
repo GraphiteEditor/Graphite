@@ -171,6 +171,18 @@ pub enum Operation {
 		path: Vec<LayerId>,
 		prompt: String,
 	},
+	SetAiArtistCfgScale {
+		path: Vec<LayerId>,
+		cfg_scale: f64,
+	},
+	SetAiArtistSamples {
+		path: Vec<LayerId>,
+		samples: u32,
+	},
+	SetAiArtistDenoisingStrength {
+		path: Vec<LayerId>,
+		denoising_strength: f64,
+	},
 	SetLayerTransformInViewport {
 		path: Vec<LayerId>,
 		transform: [f64; 6],

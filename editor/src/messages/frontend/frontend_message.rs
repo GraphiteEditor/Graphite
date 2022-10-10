@@ -42,12 +42,25 @@ pub enum FrontendMessage {
 		#[serde(rename = "commitDate")]
 		commit_date: String,
 	},
+	TriggerAiArtistGenerateTxt2Img {
+		#[serde(rename = "layerPath")]
+		layer_path: Vec<LayerId>,
+		prompt: String,
+		samples: u32,
+		#[serde(rename = "cfgScale")]
+		cfg_scale: f64,
+	},
 	TriggerAiArtistRasterizeAndGenerateImg2Img {
 		svg: String,
 		size: (f64, f64),
 		#[serde(rename = "layerPath")]
 		layer_path: Vec<LayerId>,
 		prompt: String,
+		samples: u32,
+		#[serde(rename = "cfgScale")]
+		cfg_scale: f64,
+		#[serde(rename = "denoisingStrength")]
+		denoising_strength: f64,
 	},
 	TriggerFileDownload {
 		document: String,

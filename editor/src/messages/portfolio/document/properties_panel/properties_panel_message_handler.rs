@@ -152,6 +152,18 @@ impl<'a> MessageHandler<PropertiesPanelMessage, PropertiesPanelMessageHandlerDat
 				let (path, _) = self.active_selection.clone().expect("Received update for properties panel with no active layer");
 				responses.push_back(Operation::SetAiArtistPrompt { path, prompt }.into());
 			}
+			SetAiArtistDenoisingStrength { denoising_strength } => {
+				let (path, _) = self.active_selection.clone().expect("Received update for properties panel with no active layer");
+				responses.push_back(Operation::SetAiArtistDenoisingStrength { path, denoising_strength }.into());
+			}
+			SetAiArtistSamples { samples } => {
+				let (path, _) = self.active_selection.clone().expect("Received update for properties panel with no active layer");
+				responses.push_back(Operation::SetAiArtistSamples { path, samples }.into());
+			}
+			SetAiArtistCfgScale { cfg_scale } => {
+				let (path, _) = self.active_selection.clone().expect("Received update for properties panel with no active layer");
+				responses.push_back(Operation::SetAiArtistCfgScale { path, cfg_scale }.into());
+			}
 		}
 	}
 

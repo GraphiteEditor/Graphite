@@ -222,7 +222,10 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 				let layer = self.graphene_document.layer(layer_path).unwrap();
 
 				// Prepare the AI Artist properties
-				let ai_artist_prompt = layer.as_ai_artist().unwrap().prompt.clone();
+				let prompt = layer.as_ai_artist().unwrap().prompt.clone();
+				let samples = layer.as_ai_artist().unwrap().samples;
+				let cfg_scale = layer.as_ai_artist().unwrap().cfg_scale;
+				let denoising_strength = layer.as_ai_artist().unwrap().denoising_strength;
 
 				// Calculate the bounding box of the region to be exported
 				let bbox = layer.aabb(font_cache).unwrap_or_default();
@@ -243,7 +246,45 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 						svg: document,
 						size: size.into(),
 						layer_path: layer_path.into(),
-						prompt: ai_artist_prompt,
+						prompt,
+						samples,
+						cfg_scale,
+						denoising_strength,
+					}
+					.into(),
+				);
+			}
+			AiArtistGenerateTxt2Img => {
+				let selected_layers = self.layer_metadata.iter().filter_map(|(layer_path, data)| data.selected.then_some(layer_path));
+				let mut selected_ai_artist_layers = selected_layers.filter(|path| {
+					self.graphene_document
+						.layer(path.as_slice())
+						.ok()
+						.and_then(|layer| matches!(layer.data, LayerDataType::AiArtist(_)).then_some(()))
+						.is_some()
+				});
+
+				// Get what is hopefully the only selected AI Artist layer
+				let layer_path = selected_ai_artist_layers.next();
+				// Abort if we didn't have any AI Artist layer, or if there are additional ones also selected
+				if layer_path.is_none() || selected_ai_artist_layers.next().is_some() {
+					return;
+				}
+				let layer_path = layer_path.unwrap().as_slice();
+
+				let layer = self.graphene_document.layer(layer_path).unwrap();
+
+				// Prepare the AI Artist properties
+				let prompt = layer.as_ai_artist().unwrap().prompt.clone();
+				let cfg_scale = layer.as_ai_artist().unwrap().cfg_scale;
+				let samples = layer.as_ai_artist().unwrap().samples;
+
+				responses.push_back(
+					FrontendMessage::TriggerAiArtistGenerateTxt2Img {
+						layer_path: layer_path.into(),
+						prompt,
+						samples,
+						cfg_scale,
 					}
 					.into(),
 				);

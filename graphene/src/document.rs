@@ -826,6 +826,36 @@ impl Document {
 				self.mark_as_dirty(&path)?;
 				Some(vec![LayerChanged { path }])
 			}
+			Operation::SetAiArtistCfgScale { path, cfg_scale } => {
+				let layer = self.layer_mut(&path).expect("Setting AI Artist prompt for invalid layer");
+				if let LayerDataType::AiArtist(ai_artist) = &mut layer.data {
+					ai_artist.cfg_scale = cfg_scale;
+				} else {
+					panic!("Incorrectly trying to set the CFG scale for a layer that is not an AiArtist layer type");
+				}
+				self.mark_as_dirty(&path)?;
+				Some(vec![LayerChanged { path }])
+			}
+			Operation::SetAiArtistDenoisingStrength { path, denoising_strength } => {
+				let layer = self.layer_mut(&path).expect("Setting AI Artist prompt for invalid layer");
+				if let LayerDataType::AiArtist(ai_artist) = &mut layer.data {
+					ai_artist.denoising_strength = denoising_strength;
+				} else {
+					panic!("Incorrectly trying to set the denoising strength for a layer that is not an AiArtist layer type");
+				}
+				self.mark_as_dirty(&path)?;
+				Some(vec![LayerChanged { path }])
+			}
+			Operation::SetAiArtistSamples { path, samples } => {
+				let layer = self.layer_mut(&path).expect("Setting AI Artist prompt for invalid layer");
+				if let LayerDataType::AiArtist(ai_artist) = &mut layer.data {
+					ai_artist.samples = samples;
+				} else {
+					panic!("Incorrectly trying to set the samples for a layer that is not an AiArtist layer type");
+				}
+				self.mark_as_dirty(&path)?;
+				Some(vec![LayerChanged { path }])
+			}
 			Operation::SetPivot { layer_path, pivot } => {
 				let layer = self.layer_mut(&layer_path).expect("Setting pivot for invalid layer");
 				layer.pivot = pivot.into();

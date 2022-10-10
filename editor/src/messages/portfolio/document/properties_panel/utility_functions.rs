@@ -7,13 +7,13 @@ use crate::messages::layout::utility_types::widgets::input_widgets::{ColorInput,
 use crate::messages::layout::utility_types::widgets::label_widgets::{IconLabel, IconStyle, Separator, SeparatorDirection, SeparatorType, TextLabel};
 use crate::messages::prelude::*;
 
-use glam::{DAffine2, DVec2};
 use graphene::color::Color;
 use graphene::layers::ai_artist_layer::AiArtistLayer;
 use graphene::layers::layer_info::{Layer, LayerDataType, LayerDataTypeDiscriminant};
 use graphene::layers::style::{Fill, Gradient, GradientType, LineCap, LineJoin, Stroke};
 use graphene::layers::text_layer::{FontCache, TextLayer};
 
+use glam::{DAffine2, DVec2};
 use std::f64::consts::PI;
 use std::rc::Rc;
 
@@ -500,7 +500,16 @@ fn node_section_ai_artist(layer: &AiArtistLayer) -> LayoutGroup {
 						direction: SeparatorDirection::Horizontal,
 					})),
 					WidgetHolder::new(Widget::TextButton(TextButton {
-						label: "Text to Image".into(),
+						label: "txt2img".into(),
+						on_update: WidgetCallback::new(|_| DocumentMessage::AiArtistGenerateTxt2Img.into()),
+						..Default::default()
+					})),
+					WidgetHolder::new(Widget::Separator(Separator {
+						separator_type: SeparatorType::Related,
+						direction: SeparatorDirection::Horizontal,
+					})),
+					WidgetHolder::new(Widget::TextButton(TextButton {
+						label: "img2img".into(),
 						on_update: WidgetCallback::new(|_| DocumentMessage::AiArtistGenerateImg2Img.into()),
 						..Default::default()
 					})),
@@ -509,7 +518,7 @@ fn node_section_ai_artist(layer: &AiArtistLayer) -> LayoutGroup {
 			LayoutGroup::Row {
 				widgets: vec![
 					WidgetHolder::new(Widget::TextLabel(TextLabel {
-						value: "Reset".into(),
+						value: "Reset Image".into(),
 						..Default::default()
 					})),
 					WidgetHolder::new(Widget::Separator(Separator {
@@ -517,7 +526,7 @@ fn node_section_ai_artist(layer: &AiArtistLayer) -> LayoutGroup {
 						direction: SeparatorDirection::Horizontal,
 					})),
 					WidgetHolder::new(Widget::TextButton(TextButton {
-						label: "Clear Generated Image".into(),
+						label: "Clear".into(),
 						on_update: WidgetCallback::new(|_| DocumentMessage::AiArtistClear.into()),
 						..Default::default()
 					})),
@@ -538,6 +547,72 @@ fn node_section_ai_artist(layer: &AiArtistLayer) -> LayoutGroup {
 						on_update: WidgetCallback::new(move |text_area_input: &TextAreaInput| {
 							PropertiesPanelMessage::SetAiArtistPrompt {
 								prompt: text_area_input.value.clone(),
+							}
+							.into()
+						}),
+						..Default::default()
+					})),
+				],
+			},
+			LayoutGroup::Row {
+				widgets: vec![
+					WidgetHolder::new(Widget::TextLabel(TextLabel {
+						value: "Samples".into(),
+						..Default::default()
+					})),
+					WidgetHolder::new(Widget::Separator(Separator {
+						separator_type: SeparatorType::Unrelated,
+						direction: SeparatorDirection::Horizontal,
+					})),
+					WidgetHolder::new(Widget::NumberInput(NumberInput {
+						value: Some(layer.samples.into()),
+						on_update: WidgetCallback::new(move |number_input: &NumberInput| {
+							PropertiesPanelMessage::SetAiArtistSamples {
+								samples: number_input.value.unwrap().round() as u32,
+							}
+							.into()
+						}),
+						..Default::default()
+					})),
+				],
+			},
+			LayoutGroup::Row {
+				widgets: vec![
+					WidgetHolder::new(Widget::TextLabel(TextLabel {
+						value: "Txt Creativity".into(),
+						..Default::default()
+					})),
+					WidgetHolder::new(Widget::Separator(Separator {
+						separator_type: SeparatorType::Unrelated,
+						direction: SeparatorDirection::Horizontal,
+					})),
+					WidgetHolder::new(Widget::NumberInput(NumberInput {
+						value: Some(layer.cfg_scale),
+						on_update: WidgetCallback::new(move |number_input: &NumberInput| {
+							PropertiesPanelMessage::SetAiArtistCfgScale {
+								cfg_scale: number_input.value.unwrap(),
+							}
+							.into()
+						}),
+						..Default::default()
+					})),
+				],
+			},
+			LayoutGroup::Row {
+				widgets: vec![
+					WidgetHolder::new(Widget::TextLabel(TextLabel {
+						value: "Img Creativity".into(),
+						..Default::default()
+					})),
+					WidgetHolder::new(Widget::Separator(Separator {
+						separator_type: SeparatorType::Unrelated,
+						direction: SeparatorDirection::Horizontal,
+					})),
+					WidgetHolder::new(Widget::NumberInput(NumberInput {
+						value: Some(layer.denoising_strength),
+						on_update: WidgetCallback::new(move |number_input: &NumberInput| {
+							PropertiesPanelMessage::SetAiArtistDenoisingStrength {
+								denoising_strength: number_input.value.unwrap(),
 							}
 							.into()
 						}),
