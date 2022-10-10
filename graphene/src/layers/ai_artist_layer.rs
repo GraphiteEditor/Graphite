@@ -56,7 +56,7 @@ impl LayerData for AiArtistLayer {
 		if let Some(blob_url) = &self.blob_url {
 			let _ = write!(
 				svg,
-				r#"<image width="{}" height="{}" transform="matrix(1,0,0,1,{},{})" href="{}"/>"#,
+				r#"<image width="{}" height="{}" transform="matrix(1,0,0,1,{},{})" preserveAspectRatio="none" href="{}"/>"#,
 				width.abs(),
 				height.abs(),
 				if width >= 0. { transform.translation.x } else { transform.translation.x + width },
