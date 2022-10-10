@@ -60,3 +60,23 @@ export function blobToBase64(blob: Blob): Promise<string> {
 		reader.readAsDataURL(blob);
 	});
 }
+
+export async function replaceBlobURLsWithBase64(svg: string): Promise<string> {
+	const splitByBlobs = svg.split(/(?<=")(blob:.*?)(?=")/);
+	const onlyBlobs = splitByBlobs.filter((_, i) => i % 2 === 1);
+
+	const onlyBlobsConverted = onlyBlobs.map(async (blobURL) => {
+		const data = await fetch(blobURL);
+		const dataBlob = await data.blob();
+		return blobToBase64(dataBlob);
+	});
+	const base64Images = await Promise.all(onlyBlobsConverted);
+
+	const substituted = splitByBlobs.map((segment, i) => {
+		if (i % 2 === 0) return segment;
+
+		const blobsIndex = Math.floor(i / 2);
+		return base64Images[blobsIndex];
+	});
+	return substituted.join("");
+}

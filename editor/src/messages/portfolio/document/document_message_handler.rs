@@ -231,7 +231,7 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 				let bbox = layer.aabb(font_cache).unwrap_or_default();
 				let size = bbox[1] - bbox[0];
 
-				let render_data = RenderData::new(ViewMode::Normal, font_cache, None, true);
+				let render_data = RenderData::new(ViewMode::Normal, font_cache, None);
 				let rendered = self.graphene_document.render_layers_below(layer_path, render_data).unwrap();
 				let document = format!(
 					r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{} {} {} {}" width="{}px" height="{}">{}{}</svg>"#,
@@ -444,7 +444,7 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 					false => file_name + file_suffix,
 				};
 
-				let render_data = RenderData::new(self.view_mode, font_cache, None, true);
+				let render_data = RenderData::new(self.view_mode, font_cache, None);
 				let rendered = self.graphene_document.render_root(render_data);
 				let document = format!(
 					r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{} {} {} {}" width="{}px" height="{}">{}{}</svg>"#,
@@ -604,7 +604,7 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 			}
 			RenameLayer { layer_path, new_name } => responses.push_back(DocumentOperation::RenameLayer { layer_path, new_name }.into()),
 			RenderDocument => {
-				let render_data = RenderData::new(self.view_mode, font_cache, Some(ipp.document_bounds()), false);
+				let render_data = RenderData::new(self.view_mode, font_cache, Some(ipp.document_bounds()));
 				responses.push_back(
 					FrontendMessage::UpdateDocumentArtwork {
 						svg: self.graphene_document.render_root(render_data),

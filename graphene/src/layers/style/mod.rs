@@ -43,16 +43,14 @@ pub struct RenderData<'a> {
 	pub view_mode: ViewMode,
 	pub font_cache: &'a FontCache,
 	pub culling_bounds: Option<[DVec2; 2]>,
-	pub embed_images: bool,
 }
 
 impl<'a> RenderData<'a> {
-	pub fn new(view_mode: ViewMode, font_cache: &'a FontCache, culling_bounds: Option<[DVec2; 2]>, embed_images: bool) -> Self {
+	pub fn new(view_mode: ViewMode, font_cache: &'a FontCache, culling_bounds: Option<[DVec2; 2]>) -> Self {
 		Self {
 			view_mode,
 			font_cache,
 			culling_bounds,
-			embed_images,
 		}
 	}
 }

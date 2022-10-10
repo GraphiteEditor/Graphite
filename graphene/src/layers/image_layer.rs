@@ -46,15 +46,12 @@ impl LayerData for ImageLayer {
 			.collect::<String>();
 		let _ = write!(
 			svg,
-			r#"<image width="{}" height="{}" transform="matrix({})" href=""#,
-			self.dimensions.x, self.dimensions.y, svg_transform,
+			r#"<image width="{}" height="{}" transform="matrix({})" href="{}"/>"#,
+			self.dimensions.x,
+			self.dimensions.y,
+			svg_transform,
+			self.blob_url.as_ref().unwrap_or(&String::new())
 		);
-		if render_data.embed_images {
-			let _ = write!(svg, "data:{};base64,{}", self.mime, base64::encode(&self.image_data));
-		} else {
-			let _ = write!(svg, "{}", self.blob_url.as_ref().unwrap_or(&String::new()));
-		}
-		let _ = svg.write_str(r#""/>"#);
 		let _ = svg.write_str("</g>");
 	}
 
