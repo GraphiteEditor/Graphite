@@ -251,15 +251,14 @@ impl Bezier {
 		})
 	}
 
-	/// Version of the [scale] function which scales the curve such that the start of the scaled curve is `start_distance` from the original curve, while the end of
-	/// of the scaled curve is `end_distance` from the original curve. The curve transitions from `start_distance` to `end_distance` gradually, proportional to the 
+	/// Version of the `scale` function which scales the curve such that the start of the scaled curve is `start_distance` from the original curve, while the end of
+	/// of the scaled curve is `end_distance` from the original curve. The curve transitions from `start_distance` to `end_distance` gradually, proportional to the
 	/// distance along the equation (`t`-value) of the curve.
 	pub fn graduated_scale(&self, start_distance: f64, end_distance: f64) -> Bezier {
 		assert!(self.is_scalable(), "The curve provided to scale is not scalable. Reduce the curve first.");
 
 		let normal_start = self.normal(0.);
 		let normal_end = self.normal(1.);
-		
 
 		// If normal unit vectors are equal, then the lines are parallel
 		if normal_start.abs_diff_eq(normal_end, MAX_ABSOLUTE_DIFFERENCE) {
@@ -270,18 +269,18 @@ impl Bezier {
 				BezierHandles::Linear => Bezier::from_linear_dvec2(transformed_start, transformed_end),
 				BezierHandles::Quadratic { handle } => {
 					let handle_closest_t = self.project(handle, ProjectionOptions::default());
-					let handle_scale_distance = (1.-handle_closest_t) * start_distance + handle_closest_t * end_distance;
+					let handle_scale_distance = (1. - handle_closest_t) * start_distance + handle_closest_t * end_distance;
 					let transformed_handle = utils::scale_point_from_direction_vector(handle, self.normal(handle_closest_t), false, handle_scale_distance);
 					Bezier::from_quadratic_dvec2(transformed_start, transformed_handle, transformed_end)
 				}
 				BezierHandles::Cubic { handle_start, handle_end } => {
 					let handle_start_closest_t = self.project(handle_start, ProjectionOptions::default());
-					let handle_start_scale_distance = (1.-handle_start_closest_t) * start_distance + handle_start_closest_t * end_distance;
+					let handle_start_scale_distance = (1. - handle_start_closest_t) * start_distance + handle_start_closest_t * end_distance;
 					let transformed_handle_start = utils::scale_point_from_direction_vector(handle_start, self.normal(handle_start_closest_t), false, handle_start_scale_distance);
 
 					let handle_end_closest_t = self.project(handle_start, ProjectionOptions::default());
-					let handle_end_scale_distance = (1.-handle_end_closest_t) * start_distance + handle_end_closest_t * end_distance;
-					let transformed_handle_end = utils::scale_point_from_direction_vector(handle_end, self.normal(handle_end_closest_t), false, handle_end_closest_t);
+					let handle_end_scale_distance = (1. - handle_end_closest_t) * start_distance + handle_end_closest_t * end_distance;
+					let transformed_handle_end = utils::scale_point_from_direction_vector(handle_end, self.normal(handle_end_closest_t), false, handle_end_scale_distance);
 					Bezier::from_cubic_dvec2(transformed_start, transformed_handle_start, transformed_handle_end, transformed_end)
 				}
 			};
@@ -324,6 +323,9 @@ impl Bezier {
 		reduced
 	}
 
+	/// Version of the `offset` function which scales the offset such that the start of the osset is `start_distance` from the original curve, while the end of
+	/// of the offset is `end_distance` from the original curve. The curve transitions from `start_distance` to `end_distance` gradually, proportional to the
+	/// distance along the equation (`t`-value) of the curve.
 	pub fn graduated_offset(&self, start_distance: f64, end_distance: f64) -> Vec<Bezier> {
 		let reduced = self.reduce(None);
 		let mut next_start_distance = start_distance;
@@ -359,10 +361,13 @@ impl Bezier {
 		[first_segment, vec![second_segment], third_segment, vec![fourth_segment]].concat()
 	}
 
+	/// Version of the `outline` function which draws theh outline at the specified distances away from the curve.
+	/// The outline begins `start_distance` away, and gradually move to being `end_distance` away.
 	pub fn graduated_outline(&self, start_distance: f64, end_distance: f64) -> Vec<Bezier> {
 		self.skewed_outline(start_distance, end_distance, end_distance, start_distance)
 	}
 
+	/// Version of the `graduated_outline` function that allows for the 4 corners of the outline to be different distances away from the curve.
 	pub fn skewed_outline(&self, distance1: f64, distance2: f64, distance3: f64, distance4: f64) -> Vec<Bezier> {
 		let first_segment = self.graduated_offset(distance1, distance2);
 		let third_segment = self.reverse().graduated_offset(distance3, distance4);
@@ -750,7 +755,7 @@ mod tests {
 
 	#[test]
 	fn test_graduated_scale_quadratic() {
-		let bezier = Bezier::from_quadratic_coordinates(30., 50., 82., 98., 160., 170.,);
+		let bezier = Bezier::from_quadratic_coordinates(30., 50., 82., 98., 160., 170.);
 		let scaled_bezier = bezier.graduated_scale(30., 30.);
 
 		dbg!(scaled_bezier);
