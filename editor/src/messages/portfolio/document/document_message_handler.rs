@@ -330,7 +330,7 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 					false => file_name + file_suffix,
 				};
 
-				let render_data = RenderData::new(self.view_mode, font_cache, None, true);
+				let render_data = RenderData::new(ViewMode::Normal, font_cache, None, true);
 				let rendered = self.graphene_document.render_root(render_data);
 				let document = format!(
 					r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{} {} {} {}" width="{}px" height="{}">{}{}</svg>"#,
