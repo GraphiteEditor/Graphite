@@ -306,31 +306,17 @@ export default defineComponent({
 						},
 					},
 				},
-			],
-			features: [
 				{
 					name: "De Casteljau Points",
-					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: Record<string, number>): void => {
-						const hullPoints: Point[][] = JSON.parse(bezier.de_casteljau_points(options.t));
-						hullPoints.reverse().forEach((iteration: Point[], iterationIndex) => {
-							const colorLight = `hsl(${90 * iterationIndex}, 100%, 50%)`;
-
-							iteration.forEach((point: Point, index) => {
-								// Skip the anchor and handle points which are already drawn in black
-								if (iterationIndex !== hullPoints.length - 1) {
-									drawPoint(getContextFromCanvas(canvas), point, 4, colorLight);
-								}
-
-								if (index !== 0) {
-									const prevPoint: Point = iteration[index - 1];
-									drawLine(getContextFromCanvas(canvas), point, prevPoint, colorLight);
-								}
-							});
-						});
+					callback: (canvas: WasmBezierInstance, options: Record<string, number>): string => bezier.de_casteljau_points(options.t),
+					exampleOptions: {
+						[BezierCurveType.Quadratic]: {
+							sliderOptions: [tSliderOptions],
+						},
 					},
-					template: markRaw(SliderExample),
-					templateOptions: { sliders: [tSliderOptions] },
 				},
+			],
+			features: [
 				{
 					name: "Intersect (Line Segment)",
 					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance): void => {

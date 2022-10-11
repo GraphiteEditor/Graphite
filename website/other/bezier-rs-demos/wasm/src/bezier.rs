@@ -353,15 +353,29 @@ impl WasmBezier {
 		wrap_svg_tag(content)
 	}
 
-	/// The wrapped return type is `Vec<Vec<Point>>`.
-	pub fn de_casteljau_points(&self, t: f64) -> JsValue {
-		let points: Vec<Vec<Point>> = self
-			.0
-			.de_casteljau_points(t)
-			.iter()
-			.map(|level| level.iter().map(|&point| Point { x: point.x, y: point.y }).collect::<Vec<Point>>())
-			.collect();
-		to_js_value(points)
+	pub fn de_casteljau_points(&self, t: f64) -> String {
+        let points: Vec<Vec<DVec2>>= self.0.de_casteljau_points(t);
+
+        let bezier_svg = self.get_bezier_path();
+
+        let casteljau_svg: String = points.reverse().enumerate().map(|(idx, points: Vec<DVec2>)| => {
+            const colorLight = `hsl(${90 * idx}, 100%, 50%)`;
+            points.enumerate().map(|(index, point: Point)| => {
+                // Skip the anchor and handle points which are already drawn in black
+                format!("{}{}", 
+                    if (idx !== points.len() - 1) {
+                        draw_circle(point.X, point.Y, 3. colorLight, 1.5, WHITE)
+                    } else { String::new() }
+                    ,
+                    if (index !== 0) {
+                        const prevPoint: DVec2 = points[index - 1];
+                        draw_line(prevPoint.X, prevPoint.Y, point.X, point.Y, colorLight, 1.5)
+                    } else { String::new() }
+                )
+            }).fold("".to_string(), |acc, point_svg| acc + &point_svg);
+        }).fold("".to_string(), |acc, points_svg| acc + &points_svg);
+		let content = format!("{bezier_svg}{casteljau_svg}");
+		wrap_svg_tag(content)
 	}
 
 	pub fn rotate(&self, angle: f64) -> String {
