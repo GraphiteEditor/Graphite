@@ -1,8 +1,10 @@
 import { blobToBase64 } from "@/utility-functions/files";
 import type { Editor } from "@/wasm-communication/editor";
+import type { XY } from "@/wasm-communication/messages";
 
 export async function callAIArtist(
 	prompt: string,
+	resolution: XY,
 	samples: number,
 	cfgScale: number,
 	denoisingStrength: number | undefined,
@@ -10,8 +12,8 @@ export async function callAIArtist(
 	layerPath: BigUint64Array,
 	editor: Editor
 ): Promise<void> {
-	const width = 512;
-	const height = 512;
+	const width = resolution.x;
+	const height = resolution.y;
 
 	let final;
 	if (image === undefined || denoisingStrength === undefined) final = txt2img(prompt, samples, cfgScale, width, height);

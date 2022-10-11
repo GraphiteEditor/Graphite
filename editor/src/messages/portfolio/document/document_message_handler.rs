@@ -9,6 +9,7 @@ use crate::messages::layout::utility_types::misc::LayoutTarget;
 use crate::messages::layout::utility_types::widgets::button_widgets::{IconButton, PopoverButton};
 use crate::messages::layout::utility_types::widgets::input_widgets::{DropdownEntryData, DropdownInput, NumberInput, NumberInputIncrementBehavior, OptionalInput, RadioEntryData, RadioInput};
 use crate::messages::layout::utility_types::widgets::label_widgets::{Separator, SeparatorDirection, SeparatorType};
+use crate::messages::portfolio::document::properties_panel::utility_functions::pick_layer_safe_resolution;
 use crate::messages::portfolio::document::properties_panel::utility_types::PropertiesPanelMessageHandlerData;
 use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
 use crate::messages::portfolio::document::utility_types::layer_panel::{LayerMetadata, LayerPanelEntry, RawBuffer};
@@ -196,120 +197,10 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 
 				responses.push_back(DocumentOperation::ClearAiArtist { path: layer_path.into() }.into());
 			}
-			AiArtistGenerateImg2Img => {
-				// TODO: Find a way to avoid all the duplicated code used also by `ExportDocument`
-
-				// PART 1 (IDENTICAL)
-
-				let old_artwork_transform = self.graphene_document.root.transform;
-				self.graphene_document.root.transform = DAffine2::IDENTITY;
-				GrapheneDocument::mark_children_as_dirty(&mut self.graphene_document.root);
-
-				let old_artboard_transform = self.artboard_message_handler.artboards_graphene_document.root.transform;
-				self.artboard_message_handler.artboards_graphene_document.root.transform = DAffine2::IDENTITY;
-				GrapheneDocument::mark_children_as_dirty(&mut self.artboard_message_handler.artboards_graphene_document.root);
-
-				// PART 2 (DIFFERENT - ONLY IN THIS ONE)
-
-				let selected_layers = self.layer_metadata.iter().filter_map(|(layer_path, data)| data.selected.then_some(layer_path));
-				let mut selected_ai_artist_layers = selected_layers.filter(|path| {
-					self.graphene_document
-						.layer(path.as_slice())
-						.ok()
-						.and_then(|layer| matches!(layer.data, LayerDataType::AiArtist(_)).then_some(()))
-						.is_some()
-				});
-
-				// Get what is hopefully the only selected AI Artist layer
-				let layer_path = selected_ai_artist_layers.next();
-				// Abort if we didn't have any AI Artist layer, or if there are additional ones also selected
-				if layer_path.is_none() || selected_ai_artist_layers.next().is_some() {
-					return;
+			AiArtistGenerate => {
+				if let Some(message) = self.call_ai_artist(font_cache) {
+					responses.push_back(message);
 				}
-				let layer_path = layer_path.unwrap().as_slice();
-				let layer = self.graphene_document.layer(layer_path).unwrap();
-
-				// Prepare the AI Artist properties
-				let prompt = layer.as_ai_artist().unwrap().prompt.clone();
-				let samples = layer.as_ai_artist().unwrap().samples;
-				let cfg_scale = layer.as_ai_artist().unwrap().cfg_scale;
-				let denoising_strength = layer.as_ai_artist().unwrap().denoising_strength;
-
-				// PART 3 (DIFFERENT)
-
-				// Calculate the bounding box of the region to be exported
-				let bbox = layer.aabb(font_cache).unwrap_or_default();
-				let size = bbox[1] - bbox[0];
-
-				// PART 4 (CONDITIONALLY IDENTICAL)
-
-				let render_data = RenderData::new(ViewMode::Normal, font_cache, None);
-
-				let artwork = self.graphene_document.render_layers_below(layer_path, render_data).unwrap();
-				let artboards = self.artboard_message_handler.artboards_graphene_document.render_root(render_data);
-				let outside_artboards = format!(r#"<rect x="{}" y="{}" width="100%" height="100%" fill="black" />"#, bbox[0].x, bbox[0].y);
-				let document = format!(
-					r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{} {} {} {}" width="{}" height="{}">{}{}{}{}</svg>"#,
-					bbox[0].x, bbox[0].y, size.x, size.y, size.x, size.y, "\n", outside_artboards, artboards, artwork
-				);
-
-				// PART 5 (IDENTICAL)
-
-				self.graphene_document.root.transform = old_artwork_transform;
-				GrapheneDocument::mark_children_as_dirty(&mut self.graphene_document.root);
-
-				self.artboard_message_handler.artboards_graphene_document.root.transform = old_artboard_transform;
-				GrapheneDocument::mark_children_as_dirty(&mut self.artboard_message_handler.artboards_graphene_document.root);
-
-				// PART 6 (DIFFERENT)
-
-				responses.push_back(
-					FrontendMessage::TriggerAiArtistRasterizeAndGenerateImg2Img {
-						svg: document,
-						size: size.into(),
-						layer_path: layer_path.into(),
-						prompt,
-						samples,
-						cfg_scale,
-						denoising_strength,
-					}
-					.into(),
-				);
-			}
-			AiArtistGenerateTxt2Img => {
-				let selected_layers = self.layer_metadata.iter().filter_map(|(layer_path, data)| data.selected.then_some(layer_path));
-				let mut selected_ai_artist_layers = selected_layers.filter(|path| {
-					self.graphene_document
-						.layer(path.as_slice())
-						.ok()
-						.and_then(|layer| matches!(layer.data, LayerDataType::AiArtist(_)).then_some(()))
-						.is_some()
-				});
-
-				// Get what is hopefully the only selected AI Artist layer
-				let layer_path = selected_ai_artist_layers.next();
-				// Abort if we didn't have any AI Artist layer, or if there are additional ones also selected
-				if layer_path.is_none() || selected_ai_artist_layers.next().is_some() {
-					return;
-				}
-				let layer_path = layer_path.unwrap().as_slice();
-
-				let layer = self.graphene_document.layer(layer_path).unwrap();
-
-				// Prepare the AI Artist properties
-				let prompt = layer.as_ai_artist().unwrap().prompt.clone();
-				let cfg_scale = layer.as_ai_artist().unwrap().cfg_scale;
-				let samples = layer.as_ai_artist().unwrap().samples;
-
-				responses.push_back(
-					FrontendMessage::TriggerAiArtistGenerateTxt2Img {
-						layer_path: layer_path.into(),
-						prompt,
-						samples,
-						cfg_scale,
-					}
-					.into(),
-				);
 			}
 			AlignSelectedLayers { axis, aggregate } => {
 				self.backup(responses);
@@ -444,7 +335,7 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 				scale_factor,
 				bounds,
 			} => {
-				// TODO: Find a way to avoid all the duplicated code used also by `AiArtistGenerateImg2Img`
+				// TODO: Find a way to avoid all the duplicated code used also by `ai_artist_img2img`
 
 				// PART 1 (IDENTICAL)
 
@@ -969,6 +860,105 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 }
 
 impl DocumentMessageHandler {
+	pub fn call_ai_artist(&mut self, font_cache: &FontCache) -> Option<Message> {
+		// TODO: Find a way to avoid all the duplicated code used also by `ExportDocument`
+
+		// PART 1 (IDENTICAL)
+
+		let old_artwork_transform = self.graphene_document.root.transform;
+		self.graphene_document.root.transform = DAffine2::IDENTITY;
+		GrapheneDocument::mark_children_as_dirty(&mut self.graphene_document.root);
+
+		let old_artboard_transform = self.artboard_message_handler.artboards_graphene_document.root.transform;
+		self.artboard_message_handler.artboards_graphene_document.root.transform = DAffine2::IDENTITY;
+		GrapheneDocument::mark_children_as_dirty(&mut self.artboard_message_handler.artboards_graphene_document.root);
+
+		// PART 2 (DIFFERENT - ONLY IN THIS ONE)
+
+		let selected_layers = self.layer_metadata.iter().filter_map(|(layer_path, data)| data.selected.then_some(layer_path));
+		let mut selected_ai_artist_layers = selected_layers.filter(|path| {
+			self.graphene_document
+				.layer(path.as_slice())
+				.ok()
+				.and_then(|layer| matches!(layer.data, LayerDataType::AiArtist(_)).then_some(()))
+				.is_some()
+		});
+
+		// Get what is hopefully the only selected AI Artist layer
+		let layer_path = selected_ai_artist_layers.next();
+		// Abort if we didn't have any AI Artist layer, or if there are additional ones also selected
+		if layer_path.is_none() || selected_ai_artist_layers.next().is_some() {
+			return None;
+		}
+		let layer_path = layer_path.unwrap().as_slice();
+
+		let layer = self.graphene_document.layer(layer_path).unwrap();
+
+		// Prepare the AI Artist properties
+		let prompt = layer.as_ai_artist().unwrap().prompt.clone();
+		let resolution = pick_layer_safe_resolution(layer, font_cache);
+		let samples = layer.as_ai_artist().unwrap().samples;
+		let cfg_scale = layer.as_ai_artist().unwrap().cfg_scale;
+		let use_img2img = layer.as_ai_artist().unwrap().use_img2img;
+		let denoising_strength = layer.as_ai_artist().unwrap().denoising_strength;
+
+		let result = if use_img2img {
+			// PART 3 (DIFFERENT)
+
+			// Calculate the bounding box of the region to be exported
+			let bbox = layer.aabb(font_cache).unwrap_or_default();
+			let size = bbox[1] - bbox[0];
+
+			// PART 4 (CONDITIONALLY IDENTICAL)
+
+			let render_data = RenderData::new(ViewMode::Normal, font_cache, None);
+
+			let artwork = self.graphene_document.render_layers_below(layer_path, render_data).unwrap();
+			let artboards = self.artboard_message_handler.artboards_graphene_document.render_root(render_data);
+			let outside_artboards = format!(r#"<rect x="{}" y="{}" width="100%" height="100%" fill="black" />"#, bbox[0].x, bbox[0].y);
+			let document = format!(
+				r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{} {} {} {}" width="{}" height="{}">{}{}{}{}</svg>"#,
+				bbox[0].x, bbox[0].y, size.x, size.y, size.x, size.y, "\n", outside_artboards, artboards, artwork
+			);
+
+			// PART 6 (DIFFERENT)
+			Some(
+				FrontendMessage::TriggerAiArtistRasterizeAndGenerateImg2Img {
+					svg: document,
+					rasterize_size: size.into(),
+					layer_path: layer_path.into(),
+					prompt,
+					resolution,
+					samples,
+					cfg_scale,
+					denoising_strength,
+				}
+				.into(),
+			)
+		} else {
+			Some(
+				FrontendMessage::TriggerAiArtistGenerateTxt2Img {
+					layer_path: layer_path.into(),
+					prompt,
+					resolution,
+					samples,
+					cfg_scale,
+				}
+				.into(),
+			)
+		};
+
+		// PART 5 (IDENTICAL)
+
+		self.graphene_document.root.transform = old_artwork_transform;
+		GrapheneDocument::mark_children_as_dirty(&mut self.graphene_document.root);
+
+		self.artboard_message_handler.artboards_graphene_document.root.transform = old_artboard_transform;
+		GrapheneDocument::mark_children_as_dirty(&mut self.artboard_message_handler.artboards_graphene_document.root);
+
+		result
+	}
+
 	pub fn serialize_document(&self) -> String {
 		let val = serde_json::to_string(self);
 		// We fully expect the serialization to succeed

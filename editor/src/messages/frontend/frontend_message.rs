@@ -46,16 +46,19 @@ pub enum FrontendMessage {
 		#[serde(rename = "layerPath")]
 		layer_path: Vec<LayerId>,
 		prompt: String,
+		resolution: (u64, u64),
 		samples: u32,
 		#[serde(rename = "cfgScale")]
 		cfg_scale: f64,
 	},
 	TriggerAiArtistRasterizeAndGenerateImg2Img {
 		svg: String,
-		size: (f64, f64),
+		#[serde(rename = "rasterizeSize")]
+		rasterize_size: (f64, f64),
 		#[serde(rename = "layerPath")]
 		layer_path: Vec<LayerId>,
 		prompt: String,
+		resolution: (u64, u64),
 		samples: u32,
 		#[serde(rename = "cfgScale")]
 		cfg_scale: f64,

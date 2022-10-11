@@ -6,7 +6,7 @@ use graphene::color::Color;
 use derivative::*;
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Default, Derivative, Serialize, Deserialize)]
+#[derive(Clone, Derivative, Serialize, Deserialize)]
 #[derivative(Debug, PartialEq)]
 pub struct CheckboxInput {
 	pub checked: bool,
@@ -22,6 +22,18 @@ pub struct CheckboxInput {
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
 	pub on_update: WidgetCallback<CheckboxInput>,
+}
+
+impl Default for CheckboxInput {
+	fn default() -> Self {
+		Self {
+			checked: false,
+			icon: "Checkmark".into(),
+			tooltip: Default::default(),
+			tooltip_shortcut: Default::default(),
+			on_update: Default::default(),
+		}
+	}
 }
 
 #[derive(Clone, Derivative, Serialize, Deserialize)]

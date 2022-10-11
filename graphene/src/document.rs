@@ -856,6 +856,16 @@ impl Document {
 				self.mark_as_dirty(&path)?;
 				Some(vec![LayerChanged { path }])
 			}
+			Operation::SetAiArtistUseImg2Img { path, use_img2img } => {
+				let layer = self.layer_mut(&path).expect("Setting AI Artist prompt for invalid layer");
+				if let LayerDataType::AiArtist(ai_artist) = &mut layer.data {
+					ai_artist.use_img2img = use_img2img;
+				} else {
+					panic!("Incorrectly trying to set the img2img status for a layer that is not an AiArtist layer type");
+				}
+				self.mark_as_dirty(&path)?;
+				Some(vec![LayerChanged { path }])
+			}
 			Operation::SetPivot { layer_path, pivot } => {
 				let layer = self.layer_mut(&layer_path).expect("Setting pivot for invalid layer");
 				layer.pivot = pivot.into();

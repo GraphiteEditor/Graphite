@@ -3,7 +3,7 @@ use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup,
 use crate::messages::layout::utility_types::misc::LayoutTarget;
 use crate::messages::layout::utility_types::widgets::assist_widgets::PivotAssist;
 use crate::messages::layout::utility_types::widgets::button_widgets::{PopoverButton, TextButton};
-use crate::messages::layout::utility_types::widgets::input_widgets::{ColorInput, FontInput, NumberInput, RadioEntryData, RadioInput, TextAreaInput, TextInput};
+use crate::messages::layout::utility_types::widgets::input_widgets::{CheckboxInput, ColorInput, FontInput, NumberInput, RadioEntryData, RadioInput, TextAreaInput, TextInput};
 use crate::messages::layout::utility_types::widgets::label_widgets::{IconLabel, IconStyle, Separator, SeparatorDirection, SeparatorType, TextLabel};
 use crate::messages::prelude::*;
 
@@ -294,7 +294,7 @@ pub fn register_artwork_layer_properties(layer: &Layer, responses: &mut VecDeque
 			vec![node_section_transform(layer, font_cache)]
 		}
 		LayerDataType::AiArtist(ai_artist) => {
-			vec![node_section_transform(layer, font_cache), node_section_ai_artist(ai_artist)]
+			vec![node_section_transform(layer, font_cache), node_section_ai_artist(ai_artist, layer, font_cache)]
 		}
 		LayerDataType::Folder(_) => {
 			vec![node_section_transform(layer, font_cache)]
@@ -485,14 +485,14 @@ fn node_section_transform(layer: &Layer, font_cache: &FontCache) -> LayoutGroup 
 	}
 }
 
-fn node_section_ai_artist(layer: &AiArtistLayer) -> LayoutGroup {
+fn node_section_ai_artist(ai_artist_layer: &AiArtistLayer, layer: &Layer, font_cache: &FontCache) -> LayoutGroup {
 	LayoutGroup::Section {
 		name: "AI Artist".into(),
 		layout: vec![
 			LayoutGroup::Row {
 				widgets: vec![
 					WidgetHolder::new(Widget::TextLabel(TextLabel {
-						value: "Generate".into(),
+						value: "Image".into(),
 						..Default::default()
 					})),
 					WidgetHolder::new(Widget::Separator(Separator {
@@ -500,29 +500,12 @@ fn node_section_ai_artist(layer: &AiArtistLayer) -> LayoutGroup {
 						direction: SeparatorDirection::Horizontal,
 					})),
 					WidgetHolder::new(Widget::TextButton(TextButton {
-						label: "txt2img".into(),
-						on_update: WidgetCallback::new(|_| DocumentMessage::AiArtistGenerateTxt2Img.into()),
+						label: "Generate".into(),
+						on_update: WidgetCallback::new(|_| DocumentMessage::AiArtistGenerate.into()),
 						..Default::default()
 					})),
 					WidgetHolder::new(Widget::Separator(Separator {
 						separator_type: SeparatorType::Related,
-						direction: SeparatorDirection::Horizontal,
-					})),
-					WidgetHolder::new(Widget::TextButton(TextButton {
-						label: "img2img".into(),
-						on_update: WidgetCallback::new(|_| DocumentMessage::AiArtistGenerateImg2Img.into()),
-						..Default::default()
-					})),
-				],
-			},
-			LayoutGroup::Row {
-				widgets: vec![
-					WidgetHolder::new(Widget::TextLabel(TextLabel {
-						value: "Reset Image".into(),
-						..Default::default()
-					})),
-					WidgetHolder::new(Widget::Separator(Separator {
-						separator_type: SeparatorType::Unrelated,
 						direction: SeparatorDirection::Horizontal,
 					})),
 					WidgetHolder::new(Widget::TextButton(TextButton {
@@ -535,29 +518,7 @@ fn node_section_ai_artist(layer: &AiArtistLayer) -> LayoutGroup {
 			LayoutGroup::Row {
 				widgets: vec![
 					WidgetHolder::new(Widget::TextLabel(TextLabel {
-						value: "Prompt".into(),
-						..Default::default()
-					})),
-					WidgetHolder::new(Widget::Separator(Separator {
-						separator_type: SeparatorType::Unrelated,
-						direction: SeparatorDirection::Horizontal,
-					})),
-					WidgetHolder::new(Widget::TextAreaInput(TextAreaInput {
-						value: layer.prompt.clone(),
-						on_update: WidgetCallback::new(move |text_area_input: &TextAreaInput| {
-							PropertiesPanelMessage::SetAiArtistPrompt {
-								prompt: text_area_input.value.clone(),
-							}
-							.into()
-						}),
-						..Default::default()
-					})),
-				],
-			},
-			LayoutGroup::Row {
-				widgets: vec![
-					WidgetHolder::new(Widget::TextLabel(TextLabel {
-						value: "Samples".into(),
+						value: "Sample Steps".into(),
 						..Default::default()
 					})),
 					WidgetHolder::new(Widget::Separator(Separator {
@@ -565,7 +526,7 @@ fn node_section_ai_artist(layer: &AiArtistLayer) -> LayoutGroup {
 						direction: SeparatorDirection::Horizontal,
 					})),
 					WidgetHolder::new(Widget::NumberInput(NumberInput {
-						value: Some(layer.samples.into()),
+						value: Some(ai_artist_layer.samples.into()),
 						on_update: WidgetCallback::new(move |number_input: &NumberInput| {
 							PropertiesPanelMessage::SetAiArtistSamples {
 								samples: number_input.value.unwrap().round() as u32,
@@ -579,7 +540,48 @@ fn node_section_ai_artist(layer: &AiArtistLayer) -> LayoutGroup {
 			LayoutGroup::Row {
 				widgets: vec![
 					WidgetHolder::new(Widget::TextLabel(TextLabel {
-						value: "Txt Creativity".into(),
+						value: "Resolution".into(),
+						..Default::default()
+					})),
+					WidgetHolder::new(Widget::Separator(Separator {
+						separator_type: SeparatorType::Unrelated,
+						direction: SeparatorDirection::Horizontal,
+					})),
+					WidgetHolder::new(Widget::TextLabel(TextLabel {
+						value: {
+							let (width, height) = pick_layer_safe_resolution(layer, font_cache);
+							format!("{} W x {} H", width, height)
+						},
+						..Default::default()
+					})),
+				],
+			},
+			LayoutGroup::Row {
+				widgets: vec![
+					WidgetHolder::new(Widget::TextLabel(TextLabel {
+						value: "Text Prompt".into(),
+						..Default::default()
+					})),
+					WidgetHolder::new(Widget::Separator(Separator {
+						separator_type: SeparatorType::Unrelated,
+						direction: SeparatorDirection::Horizontal,
+					})),
+					WidgetHolder::new(Widget::TextAreaInput(TextAreaInput {
+						value: ai_artist_layer.prompt.clone(),
+						on_update: WidgetCallback::new(move |text_area_input: &TextAreaInput| {
+							PropertiesPanelMessage::SetAiArtistPrompt {
+								prompt: text_area_input.value.clone(),
+							}
+							.into()
+						}),
+						..Default::default()
+					})),
+				],
+			},
+			LayoutGroup::Row {
+				widgets: vec![
+					WidgetHolder::new(Widget::TextLabel(TextLabel {
+						value: "Text Creativity".into(),
 						..Default::default()
 					})),
 					WidgetHolder::new(Widget::Separator(Separator {
@@ -587,7 +589,7 @@ fn node_section_ai_artist(layer: &AiArtistLayer) -> LayoutGroup {
 						direction: SeparatorDirection::Horizontal,
 					})),
 					WidgetHolder::new(Widget::NumberInput(NumberInput {
-						value: Some(layer.cfg_scale),
+						value: Some(ai_artist_layer.cfg_scale),
 						on_update: WidgetCallback::new(move |number_input: &NumberInput| {
 							PropertiesPanelMessage::SetAiArtistCfgScale {
 								cfg_scale: number_input.value.unwrap(),
@@ -601,7 +603,24 @@ fn node_section_ai_artist(layer: &AiArtistLayer) -> LayoutGroup {
 			LayoutGroup::Row {
 				widgets: vec![
 					WidgetHolder::new(Widget::TextLabel(TextLabel {
-						value: "Img Creativity".into(),
+						value: "Image Prompt".into(),
+						..Default::default()
+					})),
+					WidgetHolder::new(Widget::Separator(Separator {
+						separator_type: SeparatorType::Unrelated,
+						direction: SeparatorDirection::Horizontal,
+					})),
+					WidgetHolder::new(Widget::CheckboxInput(CheckboxInput {
+						checked: ai_artist_layer.use_img2img,
+						on_update: WidgetCallback::new(move |checkbox_input: &CheckboxInput| PropertiesPanelMessage::SetAiArtistUseImg2Img { use_img2img: checkbox_input.checked }.into()),
+						..Default::default()
+					})),
+				],
+			},
+			LayoutGroup::Row {
+				widgets: vec![
+					WidgetHolder::new(Widget::TextLabel(TextLabel {
+						value: "Image Creativity".into(),
 						..Default::default()
 					})),
 					WidgetHolder::new(Widget::Separator(Separator {
@@ -609,7 +628,8 @@ fn node_section_ai_artist(layer: &AiArtistLayer) -> LayoutGroup {
 						direction: SeparatorDirection::Horizontal,
 					})),
 					WidgetHolder::new(Widget::NumberInput(NumberInput {
-						value: Some(layer.denoising_strength),
+						value: Some(ai_artist_layer.denoising_strength),
+						disabled: !ai_artist_layer.use_img2img,
 						on_update: WidgetCallback::new(move |number_input: &NumberInput| {
 							PropertiesPanelMessage::SetAiArtistDenoisingStrength {
 								denoising_strength: number_input.value.unwrap(),
@@ -1176,5 +1196,31 @@ impl DAffine2Utils for DAffine2 {
 		let angle_translation_adjustment = angle_translation_offset(new_rotation) - angle_translation_offset(self.rotation());
 
 		DAffine2::from_scale_angle_translation((width, height).into(), new_rotation, self.translation + angle_translation_adjustment)
+	}
+}
+
+pub fn pick_layer_safe_resolution(layer: &Layer, font_cache: &FontCache) -> (u64, u64) {
+	let layer_bounds = layer.bounding_transform(font_cache);
+	let layer_bounds_size = (layer_bounds.transform_vector2((1., 0.).into()).length(), layer_bounds.transform_vector2((0., 1.).into()).length());
+
+	pick_safe_resolution(layer_bounds_size)
+}
+
+pub fn pick_safe_resolution((width, height): (f64, f64)) -> (u64, u64) {
+	// const MAX_RESOLUTION: u64 = 1024 * 1024;
+	const MAX_RESOLUTION: u64 = 960 * 960;
+
+	let mut scale_factor = 1.;
+
+	let round_to_increment = |size: f64| (size / 64.).round() as u64 * 64;
+
+	loop {
+		let possible_solution = (round_to_increment(width * scale_factor), round_to_increment(height * scale_factor));
+
+		if possible_solution.0 * possible_solution.1 <= MAX_RESOLUTION {
+			return possible_solution;
+		}
+
+		scale_factor -= 0.1;
 	}
 }

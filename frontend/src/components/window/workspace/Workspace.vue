@@ -20,7 +20,7 @@
 				</LayoutRow>
 			</LayoutCol>
 			<LayoutCol class="workspace-grid-resize-gutter" @pointerdown="(e: PointerEvent) => resizePanel(e)"></LayoutCol>
-			<LayoutCol class="workspace-grid-subdivision" style="flex-grow: 0.17">
+			<LayoutCol class="workspace-grid-subdivision" style="flex-grow: 0.2">
 				<LayoutRow class="workspace-grid-subdivision" style="flex-grow: 402">
 					<Panel :panelType="'Properties'" :tabLabels="['Properties']" :tabActiveIndex="0" />
 				</LayoutRow>

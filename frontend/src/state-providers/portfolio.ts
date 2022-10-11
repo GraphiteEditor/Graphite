@@ -60,22 +60,22 @@ export function createPortfolioState(editor: Editor) {
 		downloadFileBlob(name, blob);
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerAiArtistGenerateTxt2Img, async (triggerAiArtistGenerateTxt2Img) => {
-		const { layerPath, prompt, samples, cfgScale } = triggerAiArtistGenerateTxt2Img;
+		const { layerPath, prompt, resolution, samples, cfgScale } = triggerAiArtistGenerateTxt2Img;
 
-		callAIArtist(prompt, samples, cfgScale, undefined, undefined, layerPath, editor);
+		callAIArtist(prompt, resolution, samples, cfgScale, undefined, undefined, layerPath, editor);
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerAiArtistRasterizeAndGenerateImg2Img, async (triggerAiArtistRasterizeAndGenerateImg2Img) => {
-		const { svg, size, layerPath, prompt, samples, cfgScale, denoisingStrength } = triggerAiArtistRasterizeAndGenerateImg2Img;
+		const { svg, rasterizeSize, layerPath, prompt, resolution, samples, cfgScale, denoisingStrength } = triggerAiArtistRasterizeAndGenerateImg2Img;
 
 		// Rasterize the SVG to an image file
-		const blob = await rasterizeSVG(svg, size.x, size.y, "image/png");
+		const blob = await rasterizeSVG(svg, rasterizeSize.x, rasterizeSize.y, "image/png");
 
 		// TODO: Call `URL.revokeObjectURL` at the appropriate time to avoid a memory leak
 		const blobURL = URL.createObjectURL(blob);
 
-		editor.instance.setImageBlobUrl(layerPath, blobURL, size.x, size.y);
+		editor.instance.setImageBlobUrl(layerPath, blobURL, rasterizeSize.x, rasterizeSize.y);
 
-		callAIArtist(prompt, samples, cfgScale, denoisingStrength, blob, layerPath, editor);
+		callAIArtist(prompt, resolution, samples, cfgScale, denoisingStrength, blob, layerPath, editor);
 	});
 	editor.subscriptions.subscribeJsMessage(UpdateImageData, (updateImageData) => {
 		updateImageData.imageData.forEach(async (element) => {

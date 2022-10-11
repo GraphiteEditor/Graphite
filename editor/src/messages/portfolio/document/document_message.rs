@@ -39,8 +39,7 @@ pub enum DocumentMessage {
 		additional_layers: Vec<Vec<LayerId>>,
 	},
 	AiArtistClear,
-	AiArtistGenerateImg2Img,
-	AiArtistGenerateTxt2Img,
+	AiArtistGenerate,
 	AlignSelectedLayers {
 		axis: AlignAxis,
 		aggregate: AlignAggregate,

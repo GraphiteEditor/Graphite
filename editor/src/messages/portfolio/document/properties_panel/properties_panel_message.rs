@@ -30,6 +30,7 @@ pub enum PropertiesPanelMessage {
 	SetAiArtistDenoisingStrength { denoising_strength: f64 },
 	SetAiArtistPrompt { prompt: String },
 	SetAiArtistSamples { samples: u32 },
+	SetAiArtistUseImg2Img { use_img2img: bool },
 	SetPivot { new_position: PivotPosition },
 	UpdateSelectedDocumentProperties,
 }

@@ -164,6 +164,10 @@ impl<'a> MessageHandler<PropertiesPanelMessage, PropertiesPanelMessageHandlerDat
 				let (path, _) = self.active_selection.clone().expect("Received update for properties panel with no active layer");
 				responses.push_back(Operation::SetAiArtistCfgScale { path, cfg_scale }.into());
 			}
+			SetAiArtistUseImg2Img { use_img2img } => {
+				let (path, _) = self.active_selection.clone().expect("Received update for properties panel with no active layer");
+				responses.push_back(Operation::SetAiArtistUseImg2Img { path, use_img2img }.into());
+			}
 		}
 	}
 

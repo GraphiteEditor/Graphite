@@ -183,6 +183,10 @@ pub enum Operation {
 		path: Vec<LayerId>,
 		denoising_strength: f64,
 	},
+	SetAiArtistUseImg2Img {
+		path: Vec<LayerId>,
+		use_img2img: bool,
+	},
 	SetLayerTransformInViewport {
 		path: Vec<LayerId>,
 		transform: [f64; 6],

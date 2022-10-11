@@ -166,6 +166,7 @@ export class UpdateDocumentArtboards extends JsMessage {
 }
 
 const TupleToVec2 = Transform(({ value }: { value: [number, number] }) => ({ x: value[0], y: value[1] }));
+const BigIntTupleToVec2 = Transform(({ value }: { value: [bigint, bigint] }) => ({ x: Number(value[0]), y: Number(value[1]) }));
 
 export type XY = { x: number; y: number };
 
@@ -237,6 +238,9 @@ export class TriggerAiArtistGenerateTxt2Img extends JsMessage {
 
 	readonly prompt!: string;
 
+	@BigIntTupleToVec2
+	readonly resolution!: XY;
+
 	readonly samples!: number;
 
 	readonly cfgScale!: number;
@@ -246,11 +250,14 @@ export class TriggerAiArtistRasterizeAndGenerateImg2Img extends JsMessage {
 	readonly svg!: string;
 
 	@TupleToVec2
-	readonly size!: XY;
+	readonly rasterizeSize!: XY;
 
 	readonly layerPath!: BigUint64Array;
 
 	readonly prompt!: string;
+
+	@BigIntTupleToVec2
+	readonly resolution!: XY;
 
 	readonly samples!: number;
 

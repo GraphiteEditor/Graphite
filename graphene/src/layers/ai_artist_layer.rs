@@ -14,6 +14,7 @@ pub struct AiArtistLayer {
 	pub prompt: String,
 	pub samples: u32,
 	pub cfg_scale: f64,
+	pub use_img2img: bool,
 	pub denoising_strength: f64,
 	#[serde(skip)]
 	pub blob_url: Option<String>,
@@ -27,6 +28,7 @@ impl Default for AiArtistLayer {
 			prompt: "Graphite rocks!".into(),
 			samples: 32,
 			cfg_scale: 8.,
+			use_img2img: true,
 			denoising_strength: 0.33,
 			blob_url: None,
 			dimensions: Default::default(),
