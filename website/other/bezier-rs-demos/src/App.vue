@@ -27,7 +27,7 @@
 import { defineComponent, markRaw } from "vue";
 
 import { WasmBezier } from "@/../wasm/pkg";
-import { drawBezier, drawCircleSector, drawCurve, drawLine, drawPoint, getContextFromCanvas, COLORS } from "@/utils/drawing";
+import { drawCircleSector, drawCurve, drawLine, drawPoint, getContextFromCanvas, COLORS } from "@/utils/drawing";
 import { BezierCurveType, CircleSector, Point, WasmBezierInstance, WasmSubpathInstance } from "@/utils/types";
 
 import BezierExamplePane from "@/components/BezierExamplePane.vue";
