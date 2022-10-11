@@ -46,6 +46,8 @@ pub enum FrontendMessage {
 		#[serde(rename = "layerPath")]
 		layer_path: Vec<LayerId>,
 		prompt: String,
+		#[serde(rename = "negativePrompt")]
+		negative_prompt: String,
 		resolution: (u64, u64),
 		samples: u32,
 		#[serde(rename = "cfgScale")]
@@ -58,6 +60,8 @@ pub enum FrontendMessage {
 		#[serde(rename = "layerPath")]
 		layer_path: Vec<LayerId>,
 		prompt: String,
+		#[serde(rename = "negativePrompt")]
+		negative_prompt: String,
 		resolution: (u64, u64),
 		samples: u32,
 		#[serde(rename = "cfgScale")]

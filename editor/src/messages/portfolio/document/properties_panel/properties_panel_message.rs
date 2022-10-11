@@ -28,6 +28,7 @@ pub enum PropertiesPanelMessage {
 	SetActiveLayers { paths: Vec<Vec<LayerId>>, document: TargetDocument },
 	SetAiArtistCfgScale { cfg_scale: f64 },
 	SetAiArtistDenoisingStrength { denoising_strength: f64 },
+	SetAiArtistNegativePrompt { negative_prompt: String },
 	SetAiArtistPrompt { prompt: String },
 	SetAiArtistSamples { samples: u32 },
 	SetAiArtistUseImg2Img { use_img2img: bool },

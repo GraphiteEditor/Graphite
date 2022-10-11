@@ -238,6 +238,8 @@ export class TriggerAiArtistGenerateTxt2Img extends JsMessage {
 
 	readonly prompt!: string;
 
+	readonly negativePrompt!: string;
+
 	@BigIntTupleToVec2
 	readonly resolution!: XY;
 
@@ -255,6 +257,8 @@ export class TriggerAiArtistRasterizeAndGenerateImg2Img extends JsMessage {
 	readonly layerPath!: BigUint64Array;
 
 	readonly prompt!: string;
+
+	readonly negativePrompt!: string;
 
 	@BigIntTupleToVec2
 	readonly resolution!: XY;

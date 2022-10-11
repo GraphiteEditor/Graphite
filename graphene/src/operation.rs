@@ -174,6 +174,10 @@ pub enum Operation {
 		path: Vec<LayerId>,
 		transform: [f64; 6],
 	},
+	SetAiArtistNegativePrompt {
+		path: Vec<LayerId>,
+		negative_prompt: String,
+	},
 	SetAiArtistPrompt {
 		path: Vec<LayerId>,
 		prompt: String,

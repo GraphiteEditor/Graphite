@@ -17,6 +17,7 @@ pub struct AiArtistLayer {
 	#[serde(skip)]
 	pub terminated: bool,
 	pub prompt: String,
+	pub negative_prompt: String,
 	pub samples: u32,
 	pub cfg_scale: f64,
 	pub use_img2img: bool,
@@ -33,6 +34,7 @@ impl Default for AiArtistLayer {
 			percent_complete: 0.,
 			terminated: false,
 			prompt: "".into(),
+			negative_prompt: "".into(),
 			samples: 32,
 			cfg_scale: 12.,
 			use_img2img: true,

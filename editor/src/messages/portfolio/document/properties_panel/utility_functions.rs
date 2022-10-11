@@ -601,50 +601,6 @@ fn node_section_ai_artist(ai_artist_layer: &AiArtistLayer, layer: &Layer, font_c
 			LayoutGroup::Row {
 				widgets: vec![
 					WidgetHolder::new(Widget::TextLabel(TextLabel {
-						value: "Text Prompt".into(),
-						..Default::default()
-					})),
-					WidgetHolder::new(Widget::Separator(Separator {
-						separator_type: SeparatorType::Unrelated,
-						direction: SeparatorDirection::Horizontal,
-					})),
-					WidgetHolder::new(Widget::TextAreaInput(TextAreaInput {
-						value: ai_artist_layer.prompt.clone(),
-						on_update: WidgetCallback::new(move |text_area_input: &TextAreaInput| {
-							PropertiesPanelMessage::SetAiArtistPrompt {
-								prompt: text_area_input.value.clone(),
-							}
-							.into()
-						}),
-						..Default::default()
-					})),
-				],
-			},
-			LayoutGroup::Row {
-				widgets: vec![
-					WidgetHolder::new(Widget::TextLabel(TextLabel {
-						value: "Text Creativity".into(),
-						..Default::default()
-					})),
-					WidgetHolder::new(Widget::Separator(Separator {
-						separator_type: SeparatorType::Unrelated,
-						direction: SeparatorDirection::Horizontal,
-					})),
-					WidgetHolder::new(Widget::NumberInput(NumberInput {
-						value: Some(ai_artist_layer.cfg_scale),
-						on_update: WidgetCallback::new(move |number_input: &NumberInput| {
-							PropertiesPanelMessage::SetAiArtistCfgScale {
-								cfg_scale: number_input.value.unwrap(),
-							}
-							.into()
-						}),
-						..Default::default()
-					})),
-				],
-			},
-			LayoutGroup::Row {
-				widgets: vec![
-					WidgetHolder::new(Widget::TextLabel(TextLabel {
 						value: "Image Prompt".into(),
 						..Default::default()
 					})),
@@ -675,6 +631,72 @@ fn node_section_ai_artist(ai_artist_layer: &AiArtistLayer, layer: &Layer, font_c
 						on_update: WidgetCallback::new(move |number_input: &NumberInput| {
 							PropertiesPanelMessage::SetAiArtistDenoisingStrength {
 								denoising_strength: number_input.value.unwrap(),
+							}
+							.into()
+						}),
+						..Default::default()
+					})),
+				],
+			},
+			LayoutGroup::Row {
+				widgets: vec![
+					WidgetHolder::new(Widget::TextLabel(TextLabel {
+						value: "Text Prompt".into(),
+						..Default::default()
+					})),
+					WidgetHolder::new(Widget::Separator(Separator {
+						separator_type: SeparatorType::Unrelated,
+						direction: SeparatorDirection::Horizontal,
+					})),
+					WidgetHolder::new(Widget::TextAreaInput(TextAreaInput {
+						value: ai_artist_layer.prompt.clone(),
+						on_update: WidgetCallback::new(move |text_area_input: &TextAreaInput| {
+							PropertiesPanelMessage::SetAiArtistPrompt {
+								prompt: text_area_input.value.clone(),
+							}
+							.into()
+						}),
+						..Default::default()
+					})),
+				],
+			},
+			LayoutGroup::Row {
+				widgets: vec![
+					WidgetHolder::new(Widget::TextLabel(TextLabel {
+						value: "Neg. Prompt".into(),
+						..Default::default()
+					})),
+					WidgetHolder::new(Widget::Separator(Separator {
+						separator_type: SeparatorType::Unrelated,
+						direction: SeparatorDirection::Horizontal,
+					})),
+					WidgetHolder::new(Widget::TextAreaInput(TextAreaInput {
+						value: ai_artist_layer.negative_prompt.clone(),
+						on_update: WidgetCallback::new(move |text_area_input: &TextAreaInput| {
+							PropertiesPanelMessage::SetAiArtistNegativePrompt {
+								negative_prompt: text_area_input.value.clone(),
+							}
+							.into()
+						}),
+						..Default::default()
+					})),
+				],
+			},
+			LayoutGroup::Row {
+				widgets: vec![
+					WidgetHolder::new(Widget::TextLabel(TextLabel {
+						value: "Text Creativity".into(),
+						..Default::default()
+					})),
+					WidgetHolder::new(Widget::Separator(Separator {
+						separator_type: SeparatorType::Unrelated,
+						direction: SeparatorDirection::Horizontal,
+					})),
+					WidgetHolder::new(Widget::NumberInput(NumberInput {
+						value: Some(ai_artist_layer.cfg_scale),
+						on_update: WidgetCallback::new(move |number_input: &NumberInput| {
+							PropertiesPanelMessage::SetAiArtistCfgScale {
+								cfg_scale: number_input.value.unwrap(),
 							}
 							.into()
 						}),

@@ -898,14 +898,16 @@ impl DocumentMessageHandler {
 		let layer_path = layer_path.unwrap().as_slice();
 
 		let layer = self.graphene_document.layer(layer_path).unwrap();
+		let ai_artist_layer = layer.as_ai_artist().unwrap();
 
 		// Prepare the AI Artist properties
-		let prompt = layer.as_ai_artist().unwrap().prompt.clone();
+		let prompt = ai_artist_layer.prompt.clone();
+		let negative_prompt = ai_artist_layer.negative_prompt.clone();
 		let resolution = pick_layer_safe_resolution(layer, font_cache);
-		let samples = layer.as_ai_artist().unwrap().samples;
-		let cfg_scale = layer.as_ai_artist().unwrap().cfg_scale;
-		let use_img2img = layer.as_ai_artist().unwrap().use_img2img;
-		let denoising_strength = layer.as_ai_artist().unwrap().denoising_strength;
+		let samples = ai_artist_layer.samples;
+		let cfg_scale = ai_artist_layer.cfg_scale;
+		let use_img2img = ai_artist_layer.use_img2img;
+		let denoising_strength = ai_artist_layer.denoising_strength;
 
 		// PART 3 (DIFFERENT)
 
@@ -935,6 +937,7 @@ impl DocumentMessageHandler {
 						rasterize_size: size.into(),
 						layer_path: layer_path.into(),
 						prompt,
+						negative_prompt,
 						resolution,
 						samples,
 						cfg_scale,
@@ -947,6 +950,7 @@ impl DocumentMessageHandler {
 				FrontendMessage::TriggerAiArtistGenerateTxt2Img {
 					layer_path: layer_path.into(),
 					prompt,
+					negative_prompt,
 					resolution,
 					samples,
 					cfg_scale,
