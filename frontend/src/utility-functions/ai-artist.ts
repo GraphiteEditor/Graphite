@@ -22,6 +22,7 @@ export async function callAIArtist(
 	prompt: string,
 	negativePrompt: string,
 	resolution: XY,
+	seed: number,
 	samples: number,
 	cfgScale: number,
 	denoisingStrength: number | undefined,
@@ -38,9 +39,9 @@ export async function callAIArtist(
 	// Initiate a request to the computation server
 	const [width, height] = [resolution.x, resolution.y];
 	if (image === undefined || denoisingStrength === undefined) {
-		mainRequest = txt2img(prompt, negativePrompt, samples, cfgScale, width, height);
+		mainRequest = txt2img(prompt, negativePrompt, seed, samples, cfgScale, width, height);
 	} else {
-		mainRequest = img2img(image, prompt, negativePrompt, samples, cfgScale, denoisingStrength, width, height);
+		mainRequest = img2img(image, prompt, negativePrompt, seed, samples, cfgScale, denoisingStrength, width, height);
 	}
 	pollingRetries = 0;
 
@@ -114,7 +115,7 @@ async function pollImage(): Promise<[Blob, number]> {
 	return [blob, percentComplete];
 }
 
-async function txt2img(prompt: string, negativePrompt: string, samples: number, cfgScale: number, width: number, height: number): Promise<Blob> {
+async function txt2img(prompt: string, negativePrompt: string, seed: number, samples: number, cfgScale: number, width: number, height: number): Promise<Blob> {
 	// Highly unstable API
 	const result = await fetch("http://192.168.1.10:7860/api/predict/", {
 		signal: mainRequestController.signal,
@@ -139,7 +140,7 @@ async function txt2img(prompt: string, negativePrompt: string, samples: number, 
 				1,
 				1,
 				${cfgScale},
-				-1,
+				${seed},
 				-1,
 				0,
 				0,
@@ -179,7 +180,7 @@ async function txt2img(prompt: string, negativePrompt: string, samples: number, 
 	return (await fetch(base64)).blob();
 }
 
-async function img2img(image: Blob, prompt: string, negativePrompt: string, samples: number, cfgScale: number, denoisingStrength: number, width: number, height: number): Promise<Blob> {
+async function img2img(image: Blob, prompt: string, negativePrompt: string, seed: number, samples: number, cfgScale: number, denoisingStrength: number, width: number, height: number): Promise<Blob> {
 	const sourceImageBase64 = await blobToBase64(image);
 
 	const result = await fetch("http://192.168.1.10:7860/api/predict/", {
@@ -214,7 +215,7 @@ async function img2img(image: Blob, prompt: string, negativePrompt: string, samp
 				1,
 				${cfgScale},
 				${denoisingStrength},
-				-1,
+				${seed},
 				-1,
 				0,
 				0,

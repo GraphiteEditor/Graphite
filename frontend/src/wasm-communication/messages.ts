@@ -243,6 +243,8 @@ export class TriggerAiArtistGenerateTxt2Img extends JsMessage {
 	@BigIntTupleToVec2
 	readonly resolution!: XY;
 
+	readonly seed!: number;
+
 	readonly samples!: number;
 
 	readonly cfgScale!: number;
@@ -262,6 +264,8 @@ export class TriggerAiArtistRasterizeAndGenerateImg2Img extends JsMessage {
 
 	@BigIntTupleToVec2
 	readonly resolution!: XY;
+
+	readonly seed!: number;
 
 	readonly samples!: number;
 

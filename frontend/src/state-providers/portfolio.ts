@@ -61,12 +61,12 @@ export function createPortfolioState(editor: Editor) {
 		downloadFileBlob(name, blob);
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerAiArtistGenerateTxt2Img, async (triggerAiArtistGenerateTxt2Img) => {
-		const { layerPath, prompt, negativePrompt, resolution, samples, cfgScale } = triggerAiArtistGenerateTxt2Img;
+		const { layerPath, prompt, negativePrompt, resolution, seed, samples, cfgScale } = triggerAiArtistGenerateTxt2Img;
 
-		callAIArtist(prompt, negativePrompt, resolution, samples, cfgScale, undefined, undefined, layerPath, editor);
+		callAIArtist(prompt, negativePrompt, resolution, seed, samples, cfgScale, undefined, undefined, layerPath, editor);
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerAiArtistRasterizeAndGenerateImg2Img, async (triggerAiArtistRasterizeAndGenerateImg2Img) => {
-		const { svg, rasterizeSize, layerPath, prompt, negativePrompt, resolution, samples, cfgScale, denoisingStrength } = triggerAiArtistRasterizeAndGenerateImg2Img;
+		const { svg, rasterizeSize, layerPath, prompt, negativePrompt, resolution, seed, samples, cfgScale, denoisingStrength } = triggerAiArtistRasterizeAndGenerateImg2Img;
 
 		// Rasterize the SVG to an image file
 		const blob = await rasterizeSVG(svg, rasterizeSize.x, rasterizeSize.y, "image/png");
@@ -76,7 +76,7 @@ export function createPortfolioState(editor: Editor) {
 
 		editor.instance.setImageBlobUrl(layerPath, blobURL, rasterizeSize.x, rasterizeSize.y);
 
-		callAIArtist(prompt, negativePrompt, resolution, samples, cfgScale, denoisingStrength, blob, layerPath, editor);
+		callAIArtist(prompt, negativePrompt, resolution, seed, samples, cfgScale, denoisingStrength, blob, layerPath, editor);
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerAiArtistTerminate, async (triggerAiArtistTerminate) => {
 		terminateAIArtist(triggerAiArtistTerminate.layerPath, editor);

@@ -2,7 +2,7 @@ use super::utility_types::TransformOp;
 use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
 use crate::messages::layout::utility_types::misc::LayoutTarget;
 use crate::messages::layout::utility_types::widgets::assist_widgets::PivotAssist;
-use crate::messages::layout::utility_types::widgets::button_widgets::{PopoverButton, TextButton};
+use crate::messages::layout::utility_types::widgets::button_widgets::{IconButton, PopoverButton, TextButton};
 use crate::messages::layout::utility_types::widgets::input_widgets::{CheckboxInput, ColorInput, FontInput, NumberInput, RadioEntryData, RadioInput, TextAreaInput, TextInput};
 use crate::messages::layout::utility_types::widgets::label_widgets::{IconLabel, IconStyle, Separator, SeparatorDirection, SeparatorType, TextLabel};
 use crate::messages::prelude::*;
@@ -490,6 +490,51 @@ fn node_section_ai_artist(ai_artist_layer: &AiArtistLayer, layer: &Layer, font_c
 		name: "AI Artist".into(),
 		layout: vec![
 			LayoutGroup::Row {
+				widgets: vec![
+					WidgetHolder::new(Widget::TextLabel(TextLabel {
+						value: "Resolution".into(),
+						..Default::default()
+					})),
+					WidgetHolder::new(Widget::Separator(Separator {
+						separator_type: SeparatorType::Unrelated,
+						direction: SeparatorDirection::Horizontal,
+					})),
+					WidgetHolder::new(Widget::TextLabel(TextLabel {
+						value: {
+							let (width, height) = pick_layer_safe_resolution(layer, font_cache);
+							format!("{} W x {} H", width, height)
+						},
+						bold: true,
+						..Default::default()
+					})),
+				],
+			},
+			LayoutGroup::Row {
+				widgets: vec![
+					WidgetHolder::new(Widget::TextLabel(TextLabel {
+						value: "Progress".into(),
+						..Default::default()
+					})),
+					WidgetHolder::new(Widget::Separator(Separator {
+						separator_type: SeparatorType::Unrelated,
+						direction: SeparatorDirection::Horizontal,
+					})),
+					WidgetHolder::new(Widget::TextLabel(TextLabel {
+						value: if ai_artist_layer.blob_url == None {
+							"Ready".into()
+						} else if ai_artist_layer.percent_complete == 100. {
+							"Done".into()
+						} else if ai_artist_layer.terminated {
+							format!("{:.0}% (Terminated)", ai_artist_layer.percent_complete)
+						} else {
+							format!("{:.0}%", ai_artist_layer.percent_complete)
+						},
+						bold: true,
+						..Default::default()
+					})),
+				],
+			},
+			LayoutGroup::Row {
 				widgets: [
 					vec![
 						WidgetHolder::new(Widget::TextLabel(TextLabel {
@@ -534,44 +579,32 @@ fn node_section_ai_artist(ai_artist_layer: &AiArtistLayer, layer: &Layer, font_c
 			LayoutGroup::Row {
 				widgets: vec![
 					WidgetHolder::new(Widget::TextLabel(TextLabel {
-						value: "Progress".into(),
+						value: "Seed".into(),
 						..Default::default()
 					})),
 					WidgetHolder::new(Widget::Separator(Separator {
 						separator_type: SeparatorType::Unrelated,
 						direction: SeparatorDirection::Horizontal,
 					})),
-					WidgetHolder::new(Widget::TextLabel(TextLabel {
-						value: if ai_artist_layer.blob_url == None {
-							"Ready".into()
-						} else if ai_artist_layer.percent_complete == 100. {
-							"Done".into()
-						} else if ai_artist_layer.terminated {
-							format!("{:.0}% (Terminated)", ai_artist_layer.percent_complete)
-						} else {
-							format!("{:.0}%", ai_artist_layer.percent_complete)
-						},
-						bold: true,
-						..Default::default()
-					})),
-				],
-			},
-			LayoutGroup::Row {
-				widgets: vec![
-					WidgetHolder::new(Widget::TextLabel(TextLabel {
-						value: "Resolution".into(),
+					WidgetHolder::new(Widget::IconButton(IconButton {
+						size: 24,
+						icon: "Swap".into(),
+						on_update: WidgetCallback::new(|_| PropertiesPanelMessage::SetAiArtistSeedRandomize.into()),
 						..Default::default()
 					})),
 					WidgetHolder::new(Widget::Separator(Separator {
-						separator_type: SeparatorType::Unrelated,
+						separator_type: SeparatorType::Related,
 						direction: SeparatorDirection::Horizontal,
 					})),
-					WidgetHolder::new(Widget::TextLabel(TextLabel {
-						value: {
-							let (width, height) = pick_layer_safe_resolution(layer, font_cache);
-							format!("{} W x {} H", width, height)
-						},
-						bold: true,
+					WidgetHolder::new(Widget::NumberInput(NumberInput {
+						value: Some(ai_artist_layer.seed as f64),
+						min: Some(-1.),
+						on_update: WidgetCallback::new(move |number_input: &NumberInput| {
+							PropertiesPanelMessage::SetAiArtistSeed {
+								seed: number_input.value.unwrap().round() as u64,
+							}
+							.into()
+						}),
 						..Default::default()
 					})),
 				],

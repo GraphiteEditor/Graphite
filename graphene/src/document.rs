@@ -895,6 +895,16 @@ impl Document {
 				self.mark_as_dirty(&path)?;
 				Some(vec![LayerChanged { path }])
 			}
+			Operation::SetAiArtistSeed { path, seed } => {
+				let layer = self.layer_mut(&path).expect("Setting AI Artist prompt for invalid layer");
+				if let LayerDataType::AiArtist(ai_artist) = &mut layer.data {
+					ai_artist.seed = seed;
+				} else {
+					panic!("Incorrectly trying to set the seed for a layer that is not an AiArtist layer type");
+				}
+				self.mark_as_dirty(&path)?;
+				Some(vec![LayerChanged { path }])
+			}
 			Operation::SetAiArtistUseImg2Img { path, use_img2img } => {
 				let layer = self.layer_mut(&path).expect("Setting AI Artist prompt for invalid layer");
 				if let LayerDataType::AiArtist(ai_artist) = &mut layer.data {

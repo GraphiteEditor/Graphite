@@ -49,6 +49,7 @@ pub enum FrontendMessage {
 		#[serde(rename = "negativePrompt")]
 		negative_prompt: String,
 		resolution: (u64, u64),
+		seed: u64,
 		samples: u32,
 		#[serde(rename = "cfgScale")]
 		cfg_scale: f64,
@@ -63,6 +64,7 @@ pub enum FrontendMessage {
 		#[serde(rename = "negativePrompt")]
 		negative_prompt: String,
 		resolution: (u64, u64),
+		seed: u64,
 		samples: u32,
 		#[serde(rename = "cfgScale")]
 		cfg_scale: f64,

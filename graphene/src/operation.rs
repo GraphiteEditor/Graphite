@@ -190,6 +190,10 @@ pub enum Operation {
 		path: Vec<LayerId>,
 		samples: u32,
 	},
+	SetAiArtistSeed {
+		path: Vec<LayerId>,
+		seed: u64,
+	},
 	SetAiArtistDenoisingStrength {
 		path: Vec<LayerId>,
 		denoising_strength: f64,

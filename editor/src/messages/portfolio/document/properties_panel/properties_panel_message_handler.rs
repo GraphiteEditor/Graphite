@@ -1,5 +1,6 @@
 use super::utility_functions::{register_artboard_layer_properties, register_artwork_layer_properties};
 use super::utility_types::PropertiesPanelMessageHandlerData;
+use crate::application::generate_uuid;
 use crate::messages::layout::utility_types::layout_widget::{Layout, WidgetLayout};
 use crate::messages::layout::utility_types::misc::LayoutTarget;
 use crate::messages::portfolio::document::properties_panel::utility_functions::apply_transform_operation;
@@ -163,6 +164,15 @@ impl<'a> MessageHandler<PropertiesPanelMessage, PropertiesPanelMessageHandlerDat
 			SetAiArtistSamples { samples } => {
 				let (path, _) = self.active_selection.clone().expect("Received update for properties panel with no active layer");
 				responses.push_back(Operation::SetAiArtistSamples { path, samples }.into());
+			}
+			SetAiArtistSeed { seed } => {
+				let (path, _) = self.active_selection.clone().expect("Received update for properties panel with no active layer");
+				responses.push_back(Operation::SetAiArtistSeed { path, seed }.into());
+			}
+			SetAiArtistSeedRandomize => {
+				let (path, _) = self.active_selection.clone().expect("Received update for properties panel with no active layer");
+				let seed = generate_uuid();
+				responses.push_back(Operation::SetAiArtistSeed { path, seed }.into());
 			}
 			SetAiArtistCfgScale { cfg_scale } => {
 				let (path, _) = self.active_selection.clone().expect("Received update for properties panel with no active layer");

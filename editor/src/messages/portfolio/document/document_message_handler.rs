@@ -904,6 +904,7 @@ impl DocumentMessageHandler {
 		let prompt = ai_artist_layer.prompt.clone();
 		let negative_prompt = ai_artist_layer.negative_prompt.clone();
 		let resolution = pick_layer_safe_resolution(layer, font_cache);
+		let seed = ai_artist_layer.seed;
 		let samples = ai_artist_layer.samples;
 		let cfg_scale = ai_artist_layer.cfg_scale;
 		let use_img2img = ai_artist_layer.use_img2img;
@@ -939,6 +940,7 @@ impl DocumentMessageHandler {
 						prompt,
 						negative_prompt,
 						resolution,
+						seed,
 						samples,
 						cfg_scale,
 						denoising_strength,
@@ -952,6 +954,7 @@ impl DocumentMessageHandler {
 					prompt,
 					negative_prompt,
 					resolution,
+					seed,
 					samples,
 					cfg_scale,
 				}
