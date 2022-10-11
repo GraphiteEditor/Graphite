@@ -11,6 +11,11 @@ use std::fmt::Write;
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct AiArtistLayer {
+	/// 0 is not started, 100 is complete.
+	#[serde(skip)]
+	pub percent_complete: f64,
+	#[serde(skip)]
+	pub terminated: bool,
 	pub prompt: String,
 	pub samples: u32,
 	pub cfg_scale: f64,
@@ -25,11 +30,13 @@ pub struct AiArtistLayer {
 impl Default for AiArtistLayer {
 	fn default() -> Self {
 		Self {
-			prompt: "Graphite rocks!".into(),
+			percent_complete: 0.,
+			terminated: false,
+			prompt: "".into(),
 			samples: 32,
-			cfg_scale: 8.,
+			cfg_scale: 12.,
 			use_img2img: true,
-			denoising_strength: 0.33,
+			denoising_strength: 0.5,
 			blob_url: None,
 			dimensions: Default::default(),
 		}

@@ -40,6 +40,7 @@ pub enum DocumentMessage {
 	},
 	AiArtistClear,
 	AiArtistGenerate,
+	AiArtistTerminate,
 	AlignSelectedLayers {
 		axis: AlignAxis,
 		aggregate: AlignAggregate,

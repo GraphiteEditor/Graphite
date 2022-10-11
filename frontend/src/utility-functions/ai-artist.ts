@@ -2,6 +2,22 @@ import { blobToBase64 } from "@/utility-functions/files";
 import type { Editor } from "@/wasm-communication/editor";
 import type { XY } from "@/wasm-communication/messages";
 
+const MAX_POLLING_RETRIES = 10;
+
+let mainRequest: Promise<Blob> | undefined;
+let pollingRetries = 0;
+let interval: NodeJS.Timer | undefined;
+let mainRequestController = new AbortController();
+let pollingRequestController = new AbortController();
+
+export async function terminateAIArtist(layerPath: BigUint64Array, editor: Editor): Promise<void> {
+	await terminate();
+
+	abortAndResetPolling();
+
+	editor.instance.setAIArtistTerminated(layerPath);
+}
+
 export async function callAIArtist(
 	prompt: string,
 	resolution: XY,
@@ -12,31 +28,64 @@ export async function callAIArtist(
 	layerPath: BigUint64Array,
 	editor: Editor
 ): Promise<void> {
-	const width = resolution.x;
-	const height = resolution.y;
+	// Ignore a request to generate a new image while another is already being generated
+	if (mainRequest) return;
 
-	let final;
-	if (image === undefined || denoisingStrength === undefined) final = txt2img(prompt, samples, cfgScale, width, height);
-	else final = img2img(image, prompt, samples, cfgScale, denoisingStrength, width, height);
+	// Immediately set the progress to 0% so the backend knows to update its layout
+	editor.instance.setAIArtistPercentComplete(layerPath, 0);
 
-	const interval = setInterval(async () => {
-		const blob = await pollImage();
+	// Initiate a request to the computation server
+	const [width, height] = [resolution.x, resolution.y];
+	if (image === undefined || denoisingStrength === undefined) {
+		mainRequest = txt2img(prompt, samples, cfgScale, width, height);
+	} else {
+		mainRequest = img2img(image, prompt, samples, cfgScale, denoisingStrength, width, height);
+	}
+	pollingRetries = 0;
 
-		const blobURL = URL.createObjectURL(blob);
-		editor.instance.setImageBlobUrl(layerPath, blobURL, width, height);
+	// Begin polling every second for updates to the in-progress image generation
+	interval = setInterval(async () => {
+		try {
+			const [blob, percentComplete] = await pollImage();
+
+			const blobURL = URL.createObjectURL(blob);
+			editor.instance.setImageBlobUrl(layerPath, blobURL, width, height);
+			editor.instance.setAIArtistPercentComplete(layerPath, percentComplete);
+		} catch {
+			pollingRetries += 1;
+
+			if (pollingRetries > MAX_POLLING_RETRIES) abortAndReset();
+		}
 	}, 1000);
 
-	const blob = await final;
-
-	clearInterval(interval);
+	// Wait for the final image to be returned by the initial request containing either the full image or the last frame if it was terminated by the user
+	const blob = await mainRequest;
 
 	const blobURL = URL.createObjectURL(blob);
 	editor.instance.setImageBlobUrl(layerPath, blobURL, width, height);
+	editor.instance.setAIArtistPercentComplete(layerPath, 100);
+	abortAndReset();
 }
 
-async function pollImage(): Promise<Blob> {
+function abortAndReset(): void {
+	mainRequestController.abort();
+	mainRequestController = new AbortController();
+	mainRequest = undefined;
+
+	abortAndResetPolling();
+}
+
+function abortAndResetPolling(): void {
+	pollingRequestController.abort();
+	pollingRequestController = new AbortController();
+	clearInterval(interval);
+	pollingRetries = 0;
+}
+
+async function pollImage(): Promise<[Blob, number]> {
 	// Highly unstable API
 	const result = await fetch("http://192.168.1.10:7860/api/predict/", {
+		signal: pollingRequestController.signal,
 		headers: {
 			accept: "*/*",
 			"accept-language": "en-US,en;q=0.9",
@@ -54,16 +103,20 @@ async function pollImage(): Promise<Blob> {
 		credentials: "omit",
 	});
 	const json = await result.json();
+	const percentComplete = Number(json.data[0].match(/(?<="width:).*?(?=%")/)[0]); // Highly unstable API
 	const base64 = json.data[2]; // Highly unstable API
 
 	if (typeof base64 !== "string" || !base64.startsWith("data:image/png;base64,")) return Promise.reject();
 
-	return (await fetch(base64)).blob();
+	const blob = await (await fetch(base64)).blob();
+
+	return [blob, percentComplete];
 }
 
 async function txt2img(prompt: string, samples: number, cfgScale: number, width: number, height: number): Promise<Blob> {
 	// Highly unstable API
 	const result = await fetch("http://192.168.1.10:7860/api/predict/", {
+		signal: mainRequestController.signal,
 		headers: {
 			accept: "*/*",
 			"accept-language": "en-US,en;q=0.9",
@@ -129,6 +182,7 @@ async function img2img(image: Blob, prompt: string, samples: number, cfgScale: n
 	const sourceImageBase64 = await blobToBase64(image);
 
 	const result = await fetch("http://192.168.1.10:7860/api/predict/", {
+		signal: mainRequestController.signal,
 		headers: {
 			accept: "*/*",
 			"accept-language": "en-US,en;q=0.9",
@@ -222,4 +276,24 @@ async function img2img(image: Blob, prompt: string, samples: number, cfgScale: n
 	if (typeof base64 !== "string" || !base64.startsWith("data:image/png;base64,")) return Promise.reject();
 
 	return (await fetch(base64)).blob();
+}
+
+async function terminate(): Promise<void> {
+	await fetch("http://192.168.1.10:7860/api/predict/", {
+		headers: {
+			accept: "*/*",
+			"accept-language": "en-US,en;q=0.9",
+			"content-type": "application/json",
+		},
+		referrer: "http://192.168.1.10:7860/",
+		referrerPolicy: "strict-origin-when-cross-origin",
+		body: `{
+			"fn_index":1,
+			"data":[],
+			"session_hash":"0000000000"
+		}`,
+		method: "POST",
+		mode: "cors",
+		credentials: "omit",
+	});
 }

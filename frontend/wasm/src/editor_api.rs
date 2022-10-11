@@ -435,6 +435,20 @@ impl JsEditorHandle {
 		self.dispatch(message);
 	}
 
+	/// Sends an updated progress percentage of the AI Artist layer currently being generated
+	#[wasm_bindgen(js_name = setAIArtistPercentComplete)]
+	pub fn set_ai_artist_percent_complete(&self, path: Vec<LayerId>, percent: f64) {
+		let message = Operation::SetAiArtistPercentComplete { path, percent };
+		self.dispatch(message);
+	}
+
+	/// Notifies the AI Artist layer that its generation has been successfully terminated at the request of the user
+	#[wasm_bindgen(js_name = setAIArtistTerminated)]
+	pub fn set_ai_artist_terminated(&self, path: Vec<LayerId>) {
+		let message = Operation::SetAiArtistTerminated { path };
+		self.dispatch(message);
+	}
+
 	/// Pastes an image
 	#[wasm_bindgen(js_name = pasteImage)]
 	pub fn paste_image(&self, mime: String, image_data: Vec<u8>, mouse_x: Option<f64>, mouse_y: Option<f64>) {

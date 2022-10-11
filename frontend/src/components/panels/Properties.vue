@@ -35,10 +35,6 @@
 		.widget-section + .widget-section {
 			margin-top: 1px;
 		}
-
-		.widget-row button {
-			flex-grow: 1;
-		}
 	}
 }
 </style>

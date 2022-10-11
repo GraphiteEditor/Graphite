@@ -266,6 +266,10 @@ export class TriggerAiArtistRasterizeAndGenerateImg2Img extends JsMessage {
 	readonly denoisingStrength!: number;
 }
 
+export class TriggerAiArtistTerminate extends JsMessage {
+	readonly layerPath!: BigUint64Array;
+}
+
 export class TriggerRefreshBoundsOfViewports extends JsMessage {}
 
 export class DocumentChanged extends JsMessage {}
@@ -912,6 +916,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	TriggerRasterDownload,
 	TriggerAiArtistGenerateTxt2Img,
 	TriggerAiArtistRasterizeAndGenerateImg2Img,
+	TriggerAiArtistTerminate,
 	TriggerRefreshBoundsOfViewports,
 	TriggerTextCommit,
 	TriggerTextCopy,

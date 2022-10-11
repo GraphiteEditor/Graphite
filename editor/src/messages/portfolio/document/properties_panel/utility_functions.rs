@@ -490,27 +490,88 @@ fn node_section_ai_artist(ai_artist_layer: &AiArtistLayer, layer: &Layer, font_c
 		name: "AI Artist".into(),
 		layout: vec![
 			LayoutGroup::Row {
+				widgets: [
+					vec![
+						WidgetHolder::new(Widget::TextLabel(TextLabel {
+							value: "Image".into(),
+							..Default::default()
+						})),
+						WidgetHolder::new(Widget::Separator(Separator {
+							separator_type: SeparatorType::Unrelated,
+							direction: SeparatorDirection::Horizontal,
+						})),
+					],
+					{
+						if ai_artist_layer.blob_url != None && ai_artist_layer.percent_complete < 100. && !ai_artist_layer.terminated {
+							vec![WidgetHolder::new(Widget::TextButton(TextButton {
+								label: "Terminate".into(),
+								on_update: WidgetCallback::new(|_| DocumentMessage::AiArtistTerminate.into()),
+								..Default::default()
+							}))]
+						} else {
+							vec![
+								WidgetHolder::new(Widget::TextButton(TextButton {
+									label: "Generate".into(),
+									on_update: WidgetCallback::new(|_| DocumentMessage::AiArtistGenerate.into()),
+									..Default::default()
+								})),
+								WidgetHolder::new(Widget::Separator(Separator {
+									separator_type: SeparatorType::Related,
+									direction: SeparatorDirection::Horizontal,
+								})),
+								WidgetHolder::new(Widget::TextButton(TextButton {
+									label: "Clear".into(),
+									disabled: ai_artist_layer.blob_url == None,
+									on_update: WidgetCallback::new(|_| DocumentMessage::AiArtistClear.into()),
+									..Default::default()
+								})),
+							]
+						}
+					},
+				]
+				.concat(),
+			},
+			LayoutGroup::Row {
 				widgets: vec![
 					WidgetHolder::new(Widget::TextLabel(TextLabel {
-						value: "Image".into(),
+						value: "Progress".into(),
 						..Default::default()
 					})),
 					WidgetHolder::new(Widget::Separator(Separator {
 						separator_type: SeparatorType::Unrelated,
 						direction: SeparatorDirection::Horizontal,
 					})),
-					WidgetHolder::new(Widget::TextButton(TextButton {
-						label: "Generate".into(),
-						on_update: WidgetCallback::new(|_| DocumentMessage::AiArtistGenerate.into()),
+					WidgetHolder::new(Widget::TextLabel(TextLabel {
+						value: if ai_artist_layer.blob_url == None {
+							"Ready".into()
+						} else if ai_artist_layer.percent_complete == 100. {
+							"Done".into()
+						} else if ai_artist_layer.terminated {
+							format!("{:.0}% (Terminated)", ai_artist_layer.percent_complete)
+						} else {
+							format!("{:.0}%", ai_artist_layer.percent_complete)
+						},
+						bold: true,
+						..Default::default()
+					})),
+				],
+			},
+			LayoutGroup::Row {
+				widgets: vec![
+					WidgetHolder::new(Widget::TextLabel(TextLabel {
+						value: "Resolution".into(),
 						..Default::default()
 					})),
 					WidgetHolder::new(Widget::Separator(Separator {
-						separator_type: SeparatorType::Related,
+						separator_type: SeparatorType::Unrelated,
 						direction: SeparatorDirection::Horizontal,
 					})),
-					WidgetHolder::new(Widget::TextButton(TextButton {
-						label: "Clear".into(),
-						on_update: WidgetCallback::new(|_| DocumentMessage::AiArtistClear.into()),
+					WidgetHolder::new(Widget::TextLabel(TextLabel {
+						value: {
+							let (width, height) = pick_layer_safe_resolution(layer, font_cache);
+							format!("{} W x {} H", width, height)
+						},
+						bold: true,
 						..Default::default()
 					})),
 				],
@@ -533,25 +594,6 @@ fn node_section_ai_artist(ai_artist_layer: &AiArtistLayer, layer: &Layer, font_c
 							}
 							.into()
 						}),
-						..Default::default()
-					})),
-				],
-			},
-			LayoutGroup::Row {
-				widgets: vec![
-					WidgetHolder::new(Widget::TextLabel(TextLabel {
-						value: "Resolution".into(),
-						..Default::default()
-					})),
-					WidgetHolder::new(Widget::Separator(Separator {
-						separator_type: SeparatorType::Unrelated,
-						direction: SeparatorDirection::Horizontal,
-					})),
-					WidgetHolder::new(Widget::TextLabel(TextLabel {
-						value: {
-							let (width, height) = pick_layer_safe_resolution(layer, font_cache);
-							format!("{} W x {} H", width, height)
-						},
 						..Default::default()
 					})),
 				],

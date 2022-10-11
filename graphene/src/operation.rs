@@ -56,6 +56,13 @@ pub enum Operation {
 		insert_index: isize,
 		transform: [f64; 6],
 	},
+	SetAiArtistPercentComplete {
+		path: Vec<LayerId>,
+		percent: f64,
+	},
+	SetAiArtistTerminated {
+		path: Vec<LayerId>,
+	},
 	SetImageBlobUrl {
 		path: Vec<LayerId>,
 		blob_url: String,

@@ -65,6 +65,10 @@ pub enum FrontendMessage {
 		#[serde(rename = "denoisingStrength")]
 		denoising_strength: f64,
 	},
+	TriggerAiArtistTerminate {
+		#[serde(rename = "layerPath")]
+		layer_path: Vec<LayerId>,
+	},
 	TriggerFileDownload {
 		document: String,
 		name: String,

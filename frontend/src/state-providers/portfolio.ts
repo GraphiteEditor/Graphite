@@ -1,7 +1,7 @@
 /* eslint-disable max-classes-per-file */
 import { reactive, readonly } from "vue";
 
-import { callAIArtist } from "@/utility-functions/ai-artist";
+import { callAIArtist, terminateAIArtist } from "@/utility-functions/ai-artist";
 import { downloadFileText, downloadFileBlob, upload } from "@/utility-functions/files";
 import { rasterizeSVG } from "@/utility-functions/rasterization";
 import { type Editor } from "@/wasm-communication/editor";
@@ -12,6 +12,7 @@ import {
 	TriggerOpenDocument,
 	TriggerRasterDownload,
 	TriggerAiArtistRasterizeAndGenerateImg2Img,
+	TriggerAiArtistTerminate,
 	TriggerAiArtistGenerateTxt2Img,
 	UpdateActiveDocument,
 	UpdateOpenDocumentsList,
@@ -76,6 +77,9 @@ export function createPortfolioState(editor: Editor) {
 		editor.instance.setImageBlobUrl(layerPath, blobURL, rasterizeSize.x, rasterizeSize.y);
 
 		callAIArtist(prompt, resolution, samples, cfgScale, denoisingStrength, blob, layerPath, editor);
+	});
+	editor.subscriptions.subscribeJsMessage(TriggerAiArtistTerminate, async (triggerAiArtistTerminate) => {
+		terminateAIArtist(triggerAiArtistTerminate.layerPath, editor);
 	});
 	editor.subscriptions.subscribeJsMessage(UpdateImageData, (updateImageData) => {
 		updateImageData.imageData.forEach(async (element) => {

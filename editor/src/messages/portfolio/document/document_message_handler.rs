@@ -198,7 +198,12 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 				responses.push_back(DocumentOperation::ClearAiArtist { path: layer_path.into() }.into());
 			}
 			AiArtistGenerate => {
-				if let Some(message) = self.call_ai_artist(font_cache) {
+				if let Some(message) = self.call_ai_artist(false, font_cache) {
+					responses.push_back(message);
+				}
+			}
+			AiArtistTerminate => {
+				if let Some(message) = self.call_ai_artist(true, font_cache) {
 					responses.push_back(message);
 				}
 			}
@@ -860,7 +865,7 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 }
 
 impl DocumentMessageHandler {
-	pub fn call_ai_artist(&mut self, font_cache: &FontCache) -> Option<Message> {
+	pub fn call_ai_artist(&mut self, terminate: bool, font_cache: &FontCache) -> Option<Message> {
 		// TODO: Find a way to avoid all the duplicated code used also by `ExportDocument`
 
 		// PART 1 (IDENTICAL)
@@ -902,41 +907,43 @@ impl DocumentMessageHandler {
 		let use_img2img = layer.as_ai_artist().unwrap().use_img2img;
 		let denoising_strength = layer.as_ai_artist().unwrap().denoising_strength;
 
-		let result = if use_img2img {
-			// PART 3 (DIFFERENT)
+		// PART 3 (DIFFERENT)
 
-			// Calculate the bounding box of the region to be exported
-			let bbox = layer.aabb(font_cache).unwrap_or_default();
-			let size = bbox[1] - bbox[0];
+		let result = match (terminate, use_img2img) {
+			(true, _) => Some(FrontendMessage::TriggerAiArtistTerminate { layer_path: layer_path.into() }.into()),
+			(_, true) => {
+				// Calculate the bounding box of the region to be exported
+				let bbox = layer.aabb(font_cache).unwrap_or_default();
+				let size = bbox[1] - bbox[0];
 
-			// PART 4 (CONDITIONALLY IDENTICAL)
+				// PART 4 (CONDITIONALLY IDENTICAL)
 
-			let render_data = RenderData::new(ViewMode::Normal, font_cache, None);
+				let render_data = RenderData::new(ViewMode::Normal, font_cache, None);
 
-			let artwork = self.graphene_document.render_layers_below(layer_path, render_data).unwrap();
-			let artboards = self.artboard_message_handler.artboards_graphene_document.render_root(render_data);
-			let outside_artboards = format!(r#"<rect x="{}" y="{}" width="100%" height="100%" fill="black" />"#, bbox[0].x, bbox[0].y);
-			let document = format!(
-				r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{} {} {} {}" width="{}" height="{}">{}{}{}{}</svg>"#,
-				bbox[0].x, bbox[0].y, size.x, size.y, size.x, size.y, "\n", outside_artboards, artboards, artwork
-			);
+				let artwork = self.graphene_document.render_layers_below(layer_path, render_data).unwrap();
+				let artboards = self.artboard_message_handler.artboards_graphene_document.render_root(render_data);
+				let outside_artboards = format!(r#"<rect x="{}" y="{}" width="100%" height="100%" fill="black" />"#, bbox[0].x, bbox[0].y);
+				let document = format!(
+					r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{} {} {} {}" width="{}" height="{}">{}{}{}{}</svg>"#,
+					bbox[0].x, bbox[0].y, size.x, size.y, size.x, size.y, "\n", outside_artboards, artboards, artwork
+				);
 
-			// PART 6 (DIFFERENT)
-			Some(
-				FrontendMessage::TriggerAiArtistRasterizeAndGenerateImg2Img {
-					svg: document,
-					rasterize_size: size.into(),
-					layer_path: layer_path.into(),
-					prompt,
-					resolution,
-					samples,
-					cfg_scale,
-					denoising_strength,
-				}
-				.into(),
-			)
-		} else {
-			Some(
+				// PART 6 (DIFFERENT)
+				Some(
+					FrontendMessage::TriggerAiArtistRasterizeAndGenerateImg2Img {
+						svg: document,
+						rasterize_size: size.into(),
+						layer_path: layer_path.into(),
+						prompt,
+						resolution,
+						samples,
+						cfg_scale,
+						denoising_strength,
+					}
+					.into(),
+				)
+			}
+			(_, false) => Some(
 				FrontendMessage::TriggerAiArtistGenerateTxt2Img {
 					layer_path: layer_path.into(),
 					prompt,
@@ -945,7 +952,7 @@ impl DocumentMessageHandler {
 					cfg_scale,
 				}
 				.into(),
-			)
+			),
 		};
 
 		// PART 5 (IDENTICAL)
