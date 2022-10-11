@@ -26,6 +26,8 @@ export async function callAIArtist(
 	samples: number,
 	cfgScale: number,
 	denoisingStrength: number | undefined,
+	restoreFaces: boolean,
+	tiling: boolean,
 	image: Blob | undefined,
 	layerPath: BigUint64Array,
 	editor: Editor
@@ -39,9 +41,9 @@ export async function callAIArtist(
 	// Initiate a request to the computation server
 	const [width, height] = [resolution.x, resolution.y];
 	if (image === undefined || denoisingStrength === undefined) {
-		mainRequest = txt2img(prompt, negativePrompt, seed, samples, cfgScale, width, height);
+		mainRequest = txt2img(prompt, negativePrompt, seed, samples, cfgScale, restoreFaces, tiling, width, height);
 	} else {
-		mainRequest = img2img(image, prompt, negativePrompt, seed, samples, cfgScale, denoisingStrength, width, height);
+		mainRequest = img2img(image, prompt, negativePrompt, seed, samples, cfgScale, denoisingStrength, restoreFaces, tiling, width, height);
 	}
 	pollingRetries = 0;
 
@@ -115,7 +117,7 @@ async function pollImage(): Promise<[Blob, number]> {
 	return [blob, percentComplete];
 }
 
-async function txt2img(prompt: string, negativePrompt: string, seed: number, samples: number, cfgScale: number, width: number, height: number): Promise<Blob> {
+async function txt2img(prompt: string, negativePrompt: string, seed: number, samples: number, cfgScale: number, restoreFaces: boolean, tiling: boolean, width: number, height: number): Promise<Blob> {
 	// Highly unstable API
 	const result = await fetch("http://192.168.1.10:7860/api/predict/", {
 		signal: mainRequestController.signal,
@@ -135,8 +137,8 @@ async function txt2img(prompt: string, negativePrompt: string, seed: number, sam
 				"None",
 				${samples},
 				"Euler a",
-				false,
-				false,
+				${restoreFaces},
+				${tiling},
 				1,
 				1,
 				${cfgScale},
@@ -180,7 +182,19 @@ async function txt2img(prompt: string, negativePrompt: string, seed: number, sam
 	return (await fetch(base64)).blob();
 }
 
-async function img2img(image: Blob, prompt: string, negativePrompt: string, seed: number, samples: number, cfgScale: number, denoisingStrength: number, width: number, height: number): Promise<Blob> {
+async function img2img(
+	image: Blob,
+	prompt: string,
+	negativePrompt: string,
+	seed: number,
+	samples: number,
+	cfgScale: number,
+	denoisingStrength: number,
+	restoreFaces: boolean,
+	tiling: boolean,
+	width: number,
+	height: number
+): Promise<Blob> {
 	const sourceImageBase64 = await blobToBase64(image);
 
 	const result = await fetch("http://192.168.1.10:7860/api/predict/", {
@@ -209,8 +223,8 @@ async function img2img(image: Blob, prompt: string, negativePrompt: string, seed
 				"Euler a",
 				4,
 				"fill",
-				false,
-				false,
+				${restoreFaces},
+				${tiling},
 				1,
 				1,
 				${cfgScale},

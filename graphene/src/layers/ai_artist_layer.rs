@@ -27,6 +27,8 @@ pub struct AiArtistLayer {
 	pub blob_url: Option<String>,
 	#[serde(skip)]
 	pub dimensions: DVec2,
+	pub restore_faces: bool,
+	pub tiling: bool,
 }
 
 impl Default for AiArtistLayer {
@@ -43,6 +45,8 @@ impl Default for AiArtistLayer {
 			denoising_strength: 0.5,
 			blob_url: None,
 			dimensions: Default::default(),
+			restore_faces: false,
+			tiling: false,
 		}
 	}
 }

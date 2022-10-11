@@ -248,6 +248,10 @@ export class TriggerAiArtistGenerateTxt2Img extends JsMessage {
 	readonly samples!: number;
 
 	readonly cfgScale!: number;
+
+	readonly restoreFaces!: boolean;
+
+	readonly tiling!: boolean;
 }
 
 export class TriggerAiArtistRasterizeAndGenerateImg2Img extends JsMessage {
@@ -272,6 +276,10 @@ export class TriggerAiArtistRasterizeAndGenerateImg2Img extends JsMessage {
 	readonly cfgScale!: number;
 
 	readonly denoisingStrength!: number;
+
+	readonly restoreFaces!: boolean;
+
+	readonly tiling!: boolean;
 }
 
 export class TriggerAiArtistTerminate extends JsMessage {

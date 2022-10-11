@@ -909,6 +909,8 @@ impl DocumentMessageHandler {
 		let cfg_scale = ai_artist_layer.cfg_scale;
 		let use_img2img = ai_artist_layer.use_img2img;
 		let denoising_strength = ai_artist_layer.denoising_strength;
+		let restore_faces = ai_artist_layer.restore_faces;
+		let tiling = ai_artist_layer.tiling;
 
 		// PART 3 (DIFFERENT)
 
@@ -944,6 +946,8 @@ impl DocumentMessageHandler {
 						samples,
 						cfg_scale,
 						denoising_strength,
+						restore_faces,
+						tiling,
 					}
 					.into(),
 				)
@@ -957,6 +961,8 @@ impl DocumentMessageHandler {
 					seed,
 					samples,
 					cfg_scale,
+					restore_faces,
+					tiling,
 				}
 				.into(),
 			),

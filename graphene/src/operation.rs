@@ -202,6 +202,14 @@ pub enum Operation {
 		path: Vec<LayerId>,
 		use_img2img: bool,
 	},
+	SetAiArtistRestoreFaces {
+		path: Vec<LayerId>,
+		restore_faces: bool,
+	},
+	SetAiArtistTiling {
+		path: Vec<LayerId>,
+		tiling: bool,
+	},
 	SetLayerTransformInViewport {
 		path: Vec<LayerId>,
 		transform: [f64; 6],

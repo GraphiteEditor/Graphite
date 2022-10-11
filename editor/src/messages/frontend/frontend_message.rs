@@ -53,6 +53,9 @@ pub enum FrontendMessage {
 		samples: u32,
 		#[serde(rename = "cfgScale")]
 		cfg_scale: f64,
+		#[serde(rename = "restoreFaces")]
+		restore_faces: bool,
+		tiling: bool,
 	},
 	TriggerAiArtistRasterizeAndGenerateImg2Img {
 		svg: String,
@@ -70,6 +73,9 @@ pub enum FrontendMessage {
 		cfg_scale: f64,
 		#[serde(rename = "denoisingStrength")]
 		denoising_strength: f64,
+		#[serde(rename = "restoreFaces")]
+		restore_faces: bool,
+		tiling: bool,
 	},
 	TriggerAiArtistTerminate {
 		#[serde(rename = "layerPath")]

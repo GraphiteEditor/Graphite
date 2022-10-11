@@ -743,6 +743,45 @@ fn node_section_ai_artist(ai_artist_layer: &AiArtistLayer, layer: &Layer, font_c
 					})),
 				],
 			},
+			LayoutGroup::Row {
+				widgets: vec![
+					WidgetHolder::new(Widget::TextLabel(TextLabel {
+						value: "Fix Faces".into(),
+						..Default::default()
+					})),
+					WidgetHolder::new(Widget::Separator(Separator {
+						separator_type: SeparatorType::Unrelated,
+						direction: SeparatorDirection::Horizontal,
+					})),
+					WidgetHolder::new(Widget::CheckboxInput(CheckboxInput {
+						checked: ai_artist_layer.restore_faces,
+						on_update: WidgetCallback::new(move |checkbox_input: &CheckboxInput| {
+							PropertiesPanelMessage::SetAiArtistRestoreFaces {
+								restore_faces: checkbox_input.checked,
+							}
+							.into()
+						}),
+						..Default::default()
+					})),
+				],
+			},
+			LayoutGroup::Row {
+				widgets: vec![
+					WidgetHolder::new(Widget::TextLabel(TextLabel {
+						value: "Tiling".into(),
+						..Default::default()
+					})),
+					WidgetHolder::new(Widget::Separator(Separator {
+						separator_type: SeparatorType::Unrelated,
+						direction: SeparatorDirection::Horizontal,
+					})),
+					WidgetHolder::new(Widget::CheckboxInput(CheckboxInput {
+						checked: ai_artist_layer.tiling,
+						on_update: WidgetCallback::new(move |checkbox_input: &CheckboxInput| PropertiesPanelMessage::SetAiArtistTiling { tiling: checkbox_input.checked }.into()),
+						..Default::default()
+					})),
+				],
+			},
 		],
 	}
 }

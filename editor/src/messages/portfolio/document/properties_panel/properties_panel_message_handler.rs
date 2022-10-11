@@ -182,6 +182,14 @@ impl<'a> MessageHandler<PropertiesPanelMessage, PropertiesPanelMessageHandlerDat
 				let (path, _) = self.active_selection.clone().expect("Received update for properties panel with no active layer");
 				responses.push_back(Operation::SetAiArtistUseImg2Img { path, use_img2img }.into());
 			}
+			SetAiArtistRestoreFaces { restore_faces } => {
+				let (path, _) = self.active_selection.clone().expect("Received update for properties panel with no active layer");
+				responses.push_back(Operation::SetAiArtistRestoreFaces { path, restore_faces }.into());
+			}
+			SetAiArtistTiling { tiling } => {
+				let (path, _) = self.active_selection.clone().expect("Received update for properties panel with no active layer");
+				responses.push_back(Operation::SetAiArtistTiling { path, tiling }.into());
+			}
 		}
 	}
 
