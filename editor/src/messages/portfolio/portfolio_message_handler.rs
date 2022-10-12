@@ -10,7 +10,7 @@ use crate::messages::portfolio::utility_types::AiArtistServerStatus;
 use crate::messages::prelude::*;
 
 use graphene::layers::layer_info::LayerDataTypeDiscriminant;
-use graphene::layers::text_layer::{Font, FontCache};
+use graphene::layers::text_layer::Font;
 use graphene::Operation as DocumentOperation;
 
 #[derive(Debug, Clone, Default)]
@@ -23,9 +23,9 @@ pub struct PortfolioMessageHandler {
 	pub persistent_data: PersistentData,
 }
 
-impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for PortfolioMessageHandler {
+impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &PreferencesMessageHandler)> for PortfolioMessageHandler {
 	#[remain::check]
-	fn process_message(&mut self, message: PortfolioMessage, ipp: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
+	fn process_message(&mut self, message: PortfolioMessage, (ipp, preferences): (&InputPreprocessorMessageHandler, &PreferencesMessageHandler), responses: &mut VecDeque<Message>) {
 		use DocumentMessage::*;
 		use PortfolioMessage::*;
 
@@ -35,7 +35,7 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 			#[remain::unsorted]
 			Document(message) => {
 				if let Some(document) = self.active_document_id.and_then(|id| self.documents.get_mut(&id)) {
-					document.process_message(message, (ipp, &self.persistent_data), responses)
+					document.process_message(message, (ipp, &self.persistent_data, preferences), responses)
 				}
 			}
 			#[remain::unsorted]
@@ -46,15 +46,11 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 				self.persistent_data.ai_artist_server_status = AiArtistServerStatus::Checking;
 				responses.push_back(
 					FrontendMessage::TriggerAiArtistCheckServerStatus {
-						hostname: self.persistent_data.ai_artist_server_hostname.clone(),
+						hostname: preferences.ai_artist_server_hostname.clone(),
 					}
 					.into(),
 				);
 				responses.push_back(PropertiesPanelMessage::ResendActiveProperties.into());
-			}
-			AiArtistSetServerHostname { hostname } => {
-				self.persistent_data.ai_artist_server_hostname = hostname;
-				responses.push_back(PortfolioMessage::AiArtistCheckServerStatus.into());
 			}
 			AiArtistSetServerStatus { status } => {
 				self.persistent_data.ai_artist_server_status = status;
@@ -537,9 +533,5 @@ impl PortfolioMessageHandler {
 
 	fn document_index(&self, document_id: u64) -> usize {
 		self.document_ids.iter().position(|id| id == &document_id).expect("Active document is missing from document ids")
-	}
-
-	pub fn font_cache(&self) -> &FontCache {
-		&self.persistent_data.font_cache
 	}
 }

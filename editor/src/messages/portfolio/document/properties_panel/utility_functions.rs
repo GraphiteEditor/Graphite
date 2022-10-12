@@ -507,7 +507,7 @@ fn node_section_ai_artist(ai_artist_layer: &AiArtistLayer, layer: &Layer, persis
 					})),
 					WidgetHolder::new(Widget::IconButton(IconButton {
 						size: 24,
-						icon: "VerticalEllipsis".into(),
+						icon: "Settings".into(),
 						on_update: WidgetCallback::new(|_| DialogMessage::RequestPreferencesDialog.into()),
 						..Default::default()
 					})),

@@ -1,7 +1,7 @@
 import { type PortfolioState } from "@/state-providers/portfolio";
 import { stripIndents } from "@/utility-functions/strip-indents";
 import { type Editor } from "@/wasm-communication/editor";
-import { TriggerIndexedDbWriteDocument, TriggerIndexedDbRemoveDocument, TriggerRevokeBlobUrl } from "@/wasm-communication/messages";
+import { TriggerIndexedDbWriteDocument, TriggerIndexedDbRemoveDocument } from "@/wasm-communication/messages";
 
 const GRAPHITE_INDEXED_DB_VERSION = 2;
 const GRAPHITE_INDEXED_DB_NAME = "graphite-indexed-db";
@@ -37,9 +37,6 @@ export async function createPersistenceManager(editor: Editor, portfolio: Portfo
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerIndexedDbRemoveDocument, async (removeAutoSaveDocument) => {
 		removeDocument(removeAutoSaveDocument.documentId);
-	});
-	editor.subscriptions.subscribeJsMessage(TriggerRevokeBlobUrl, async (triggerRevokeBlobUrl) => {
-		URL.revokeObjectURL(triggerRevokeBlobUrl.url);
 	});
 
 	// Open the IndexedDB database connection and save it to this variable, which is a promise that resolves once the connection is open

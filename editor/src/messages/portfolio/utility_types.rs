@@ -6,7 +6,6 @@ use serde::{Deserialize, Serialize};
 pub struct PersistentData {
 	pub font_cache: FontCache,
 	pub ai_artist_server_status: AiArtistServerStatus,
-	pub ai_artist_server_hostname: String,
 }
 
 impl Default for PersistentData {
@@ -14,7 +13,6 @@ impl Default for PersistentData {
 		Self {
 			font_cache: Default::default(),
 			ai_artist_server_status: AiArtistServerStatus::Unknown,
-			ai_artist_server_hostname: "http://192.168.1.10:7860/".into(),
 		}
 	}
 }

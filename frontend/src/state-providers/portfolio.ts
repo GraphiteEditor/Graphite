@@ -18,6 +18,7 @@ import {
 	UpdateActiveDocument,
 	UpdateOpenDocumentsList,
 	UpdateImageData,
+	TriggerRevokeBlobUrl,
 } from "@/wasm-communication/messages";
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
@@ -78,7 +79,6 @@ export function createPortfolioState(editor: Editor) {
 		// Rasterize the SVG to an image file
 		const blob = await rasterizeSVG(svg, rasterizeSize.x, rasterizeSize.y, "image/png");
 
-		// TODO: Call `URL.revokeObjectURL` at the appropriate time to avoid a memory leak
 		const blobURL = URL.createObjectURL(blob);
 
 		editor.instance.setImageBlobUrl(layerPath, blobURL, rasterizeSize.x, rasterizeSize.y);
@@ -95,13 +95,15 @@ export function createPortfolioState(editor: Editor) {
 			const buffer = new Uint8Array(element.imageData.values()).buffer;
 			const blob = new Blob([buffer], { type: element.mime });
 
-			// TODO: Call `URL.revokeObjectURL` at the appropriate time to avoid a memory leak
 			const blobURL = URL.createObjectURL(blob);
 
 			const image = await createImageBitmap(blob);
 
 			editor.instance.setImageBlobUrl(element.path, blobURL, image.width, image.height);
 		});
+	});
+	editor.subscriptions.subscribeJsMessage(TriggerRevokeBlobUrl, async (triggerRevokeBlobUrl) => {
+		URL.revokeObjectURL(triggerRevokeBlobUrl.url);
 	});
 
 	return {

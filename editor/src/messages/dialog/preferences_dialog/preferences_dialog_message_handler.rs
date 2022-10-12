@@ -1,4 +1,4 @@
-use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, PropertyHolder, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
+use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
 use crate::messages::layout::utility_types::misc::LayoutTarget;
 use crate::messages::layout::utility_types::widgets::button_widgets::TextButton;
 use crate::messages::layout::utility_types::widgets::input_widgets::TextInput;
@@ -7,34 +7,41 @@ use crate::messages::prelude::*;
 
 /// A dialog to allow users to customize Graphite editor options
 #[derive(Debug, Clone, Default)]
-pub struct PreferencesDialogMessageHandler {
-	pub ai_artist_hostname: String,
-}
+pub struct PreferencesDialogMessageHandler {}
 
-impl MessageHandler<PreferencesDialogMessage, ()> for PreferencesDialogMessageHandler {
-	fn process_message(&mut self, message: PreferencesDialogMessage, _data: (), responses: &mut VecDeque<Message>) {
+impl MessageHandler<PreferencesDialogMessage, &PreferencesMessageHandler> for PreferencesDialogMessageHandler {
+	fn process_message(&mut self, message: PreferencesDialogMessage, preferences: &PreferencesMessageHandler, responses: &mut VecDeque<Message>) {
 		match message {
-			PreferencesDialogMessage::AiArtistHostname(hostname) => self.ai_artist_hostname = hostname,
-
-			PreferencesDialogMessage::Confirm => responses.push_front(
-				PortfolioMessage::AiArtistSetServerHostname {
-					hostname: self.ai_artist_hostname.clone(),
-				}
-				.into(),
-			),
+			PreferencesDialogMessage::Confirm => {}
 		}
 
-		self.register_properties(responses, LayoutTarget::DialogDetails);
+		self.register_properties(responses, LayoutTarget::DialogDetails, preferences);
 	}
 
 	advertise_actions! {PreferencesDialogUpdate;}
 }
 
-impl PropertyHolder for PreferencesDialogMessageHandler {
-	fn properties(&self) -> Layout {
-		let ai_artist_hostname = vec![
+impl PreferencesDialogMessageHandler {
+	pub fn register_properties(&self, responses: &mut VecDeque<Message>, layout_target: LayoutTarget, preferences: &PreferencesMessageHandler) {
+		responses.push_back(
+			LayoutMessage::SendLayout {
+				layout: self.properties(preferences),
+				layout_target,
+			}
+			.into(),
+		)
+	}
+
+	fn properties(&self, preferences: &PreferencesMessageHandler) -> Layout {
+		let ai_artist_section_title = vec![WidgetHolder::new(Widget::TextLabel(TextLabel {
+			value: "AI Artist layers".into(),
+			italic: true,
+			..Default::default()
+		}))];
+
+		let ai_artist_section_hostname = vec![
 			WidgetHolder::new(Widget::TextLabel(TextLabel {
-				value: "AI Artist Hostname".into(),
+				value: "Server Hostname".into(),
 				table_align: true,
 				..Default::default()
 			})),
@@ -43,9 +50,9 @@ impl PropertyHolder for PreferencesDialogMessageHandler {
 				direction: SeparatorDirection::Horizontal,
 			})),
 			WidgetHolder::new(Widget::TextInput(TextInput {
-				value: self.ai_artist_hostname.clone(),
+				value: preferences.ai_artist_server_hostname.clone(),
 				min_width: 200,
-				on_update: WidgetCallback::new(|text_input: &TextInput| PreferencesDialogMessage::AiArtistHostname(text_input.value.clone()).into()),
+				on_update: WidgetCallback::new(|text_input: &TextInput| PreferencesMessage::AiArtistServerHostname { hostname: text_input.value.clone() }.into()),
 				..Default::default()
 			})),
 		];
@@ -66,12 +73,13 @@ impl PropertyHolder for PreferencesDialogMessageHandler {
 		Layout::WidgetLayout(WidgetLayout::new(vec![
 			LayoutGroup::Row {
 				widgets: vec![WidgetHolder::new(Widget::TextLabel(TextLabel {
-					value: "Graphite Preferences".to_string(),
+					value: "Editor Preferences".to_string(),
 					bold: true,
 					..Default::default()
 				}))],
 			},
-			LayoutGroup::Row { widgets: ai_artist_hostname },
+			LayoutGroup::Row { widgets: ai_artist_section_title },
+			LayoutGroup::Row { widgets: ai_artist_section_hostname },
 			LayoutGroup::Row { widgets: button_widgets },
 		]))
 	}

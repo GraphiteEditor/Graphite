@@ -50,10 +50,8 @@ impl Default for NavigationMessageHandler {
 
 impl MessageHandler<NavigationMessage, (&Document, &InputPreprocessorMessageHandler)> for NavigationMessageHandler {
 	#[remain::check]
-	fn process_message(&mut self, message: NavigationMessage, data: (&Document, &InputPreprocessorMessageHandler), responses: &mut VecDeque<Message>) {
+	fn process_message(&mut self, message: NavigationMessage, (document, ipp): (&Document, &InputPreprocessorMessageHandler), responses: &mut VecDeque<Message>) {
 		use NavigationMessage::*;
-
-		let (document, ipp) = data;
 
 		#[remain::sorted]
 		match message {

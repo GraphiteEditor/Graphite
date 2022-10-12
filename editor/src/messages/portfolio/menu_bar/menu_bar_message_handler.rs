@@ -84,6 +84,13 @@ impl PropertyHolder for MenuBarMessageHandler {
 							..MenuBarEntry::default()
 						},
 					],
+					vec![MenuBarEntry {
+						label: "Preferences…".into(),
+						icon: Some("Settings".into()),
+						shortcut: action_keys!(DialogMessageDiscriminant::RequestPreferencesDialog),
+						action: MenuBarEntry::create_action(|_| DialogMessage::RequestPreferencesDialog.into()),
+						..MenuBarEntry::default()
+					}],
 				]),
 			),
 			MenuBarEntry::new_root(

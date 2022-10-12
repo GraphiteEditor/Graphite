@@ -12,6 +12,7 @@ let pollingRetries = 0;
 let interval: NodeJS.Timer | undefined;
 let mainRequestController = new AbortController();
 let pollingRequestController = new AbortController();
+let timeoutRequestController = new AbortController();
 
 function hostInfo(hostname: string): { hostname: string; endpoint: string } {
 	const cleanedHostname = hostname.endsWith("/") ? hostname : `${hostname}/`;
@@ -355,7 +356,8 @@ async function terminate(hostname: string): Promise<void> {
 }
 
 async function checkServerStatus(hostname: string): Promise<boolean> {
-	const timeoutRequestController = new AbortController();
+	timeoutRequestController.abort();
+	timeoutRequestController = new AbortController();
 
 	const timeout = setTimeout(() => timeoutRequestController.abort(), SERVER_STATUS_CHECK_TIMEOUT);
 

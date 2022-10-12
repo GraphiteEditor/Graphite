@@ -22,6 +22,7 @@ struct DispatcherMessageHandlers {
 	input_preprocessor_message_handler: InputPreprocessorMessageHandler,
 	layout_message_handler: LayoutMessageHandler,
 	portfolio_message_handler: PortfolioMessageHandler,
+	preferences_message_handler: PreferencesMessageHandler,
 	tool_message_handler: ToolMessageHandler,
 	workspace_message_handler: WorkspaceMessageHandler,
 }
@@ -107,9 +108,11 @@ impl Dispatcher {
 					self.message_handlers.debug_message_handler.process_message(message, (), &mut queue);
 				}
 				Dialog(message) => {
-					self.message_handlers
-						.dialog_message_handler
-						.process_message(message, &self.message_handlers.portfolio_message_handler, &mut queue);
+					self.message_handlers.dialog_message_handler.process_message(
+						message,
+						(&self.message_handlers.portfolio_message_handler, &self.message_handlers.preferences_message_handler),
+						&mut queue,
+					);
 				}
 				Frontend(message) => {
 					// Handle these messages immediately by returning early
@@ -145,9 +148,14 @@ impl Dispatcher {
 					self.message_handlers.layout_message_handler.process_message(message, action_input_mapping, &mut queue);
 				}
 				Portfolio(message) => {
-					self.message_handlers
-						.portfolio_message_handler
-						.process_message(message, &self.message_handlers.input_preprocessor_message_handler, &mut queue);
+					self.message_handlers.portfolio_message_handler.process_message(
+						message,
+						(&self.message_handlers.input_preprocessor_message_handler, &self.message_handlers.preferences_message_handler),
+						&mut queue,
+					);
+				}
+				Preferences(message) => {
+					self.message_handlers.preferences_message_handler.process_message(message, (), &mut queue);
 				}
 				Tool(message) => {
 					if let Some(document) = self.message_handlers.portfolio_message_handler.active_document() {
@@ -156,7 +164,7 @@ impl Dispatcher {
 							(
 								document,
 								&self.message_handlers.input_preprocessor_message_handler,
-								self.message_handlers.portfolio_message_handler.font_cache(),
+								&self.message_handlers.portfolio_message_handler.persistent_data,
 							),
 							&mut queue,
 						);

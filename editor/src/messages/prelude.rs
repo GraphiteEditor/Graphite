@@ -21,6 +21,7 @@ pub use crate::messages::portfolio::document::transform_layer::{TransformLayerMe
 pub use crate::messages::portfolio::document::{DocumentMessage, DocumentMessageDiscriminant, DocumentMessageHandler};
 pub use crate::messages::portfolio::menu_bar::{MenuBarMessage, MenuBarMessageDiscriminant, MenuBarMessageHandler};
 pub use crate::messages::portfolio::{PortfolioMessage, PortfolioMessageDiscriminant, PortfolioMessageHandler};
+pub use crate::messages::preferences::{PreferencesMessage, PreferencesMessageDiscriminant, PreferencesMessageHandler};
 pub use crate::messages::tool::{ToolMessage, ToolMessageDiscriminant, ToolMessageHandler};
 pub use crate::messages::workspace::{WorkspaceMessage, WorkspaceMessageDiscriminant, WorkspaceMessageHandler};
 

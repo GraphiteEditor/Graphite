@@ -89,9 +89,14 @@ impl Default for DocumentMessageHandler {
 	}
 }
 
-impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &PersistentData)> for DocumentMessageHandler {
+impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &PersistentData, &PreferencesMessageHandler)> for DocumentMessageHandler {
 	#[remain::check]
-	fn process_message(&mut self, message: DocumentMessage, (ipp, persistent_data): (&InputPreprocessorMessageHandler, &PersistentData), responses: &mut VecDeque<Message>) {
+	fn process_message(
+		&mut self,
+		message: DocumentMessage,
+		(ipp, persistent_data, preferences): (&InputPreprocessorMessageHandler, &PersistentData, &PreferencesMessageHandler),
+		responses: &mut VecDeque<Message>,
+	) {
 		use DocumentMessage::*;
 
 		#[remain::sorted]
@@ -202,12 +207,12 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &Persist
 				responses.push_back(DocumentOperation::ClearAiArtist { path: layer_path.into() }.into());
 			}
 			AiArtistGenerate => {
-				if let Some(message) = self.call_ai_artist(false, persistent_data) {
+				if let Some(message) = self.call_ai_artist(false, preferences, persistent_data) {
 					responses.push_back(message);
 				}
 			}
 			AiArtistTerminate => {
-				if let Some(message) = self.call_ai_artist(true, persistent_data) {
+				if let Some(message) = self.call_ai_artist(true, preferences, persistent_data) {
 					responses.push_back(message);
 				}
 			}
@@ -884,7 +889,7 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &Persist
 }
 
 impl DocumentMessageHandler {
-	pub fn call_ai_artist(&mut self, terminate: bool, persistent_data: &PersistentData) -> Option<Message> {
+	pub fn call_ai_artist(&mut self, terminate: bool, preferences: &PreferencesMessageHandler, persistent_data: &PersistentData) -> Option<Message> {
 		// TODO: Find a way to avoid all the duplicated code used also by `ExportDocument`
 
 		// PART 1 (IDENTICAL)
@@ -937,7 +942,7 @@ impl DocumentMessageHandler {
 			(true, _) => Some(
 				FrontendMessage::TriggerAiArtistTerminate {
 					layer_path: layer_path.into(),
-					hostname: persistent_data.ai_artist_server_hostname.clone(),
+					hostname: preferences.ai_artist_server_hostname.clone(),
 				}
 				.into(),
 			),
@@ -965,7 +970,7 @@ impl DocumentMessageHandler {
 						svg: document,
 						rasterize_size: size.into(),
 						layer_path: layer_path.into(),
-						hostname: persistent_data.ai_artist_server_hostname.clone(),
+						hostname: preferences.ai_artist_server_hostname.clone(),
 						prompt,
 						negative_prompt,
 						resolution,
@@ -982,7 +987,7 @@ impl DocumentMessageHandler {
 			(_, false) => Some(
 				FrontendMessage::TriggerAiArtistGenerateTxt2Img {
 					layer_path: layer_path.into(),
-					hostname: persistent_data.ai_artist_server_hostname.clone(),
+					hostname: preferences.ai_artist_server_hostname.clone(),
 					prompt,
 					negative_prompt,
 					resolution,

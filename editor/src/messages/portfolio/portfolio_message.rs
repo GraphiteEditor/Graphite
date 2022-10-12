@@ -21,9 +21,6 @@ pub enum PortfolioMessage {
 
 	// Messages
 	AiArtistCheckServerStatus,
-	AiArtistSetServerHostname {
-		hostname: String,
-	},
 	AiArtistSetServerStatus {
 		status: AiArtistServerStatus,
 	},
