@@ -1,3 +1,4 @@
+import { escapeJSON } from "@/utility-functions/escape";
 import { blobToBase64 } from "@/utility-functions/files";
 import { stripIndents } from "@/utility-functions/strip-indents";
 import type { Editor } from "@/wasm-communication/editor";
@@ -163,8 +164,8 @@ async function txt2img(
 			{
 				"fn_index":12,
 				"data":[
-					"${prompt}",
-					"${negativePrompt}",
+					"${escapeJSON(prompt)}",
+					"${escapeJSON(negativePrompt)}",
 					"None",
 					"None",
 					${samples},
@@ -246,8 +247,8 @@ async function img2img(
 				"fn_index":31,
 				"data":[
 					0,
-					"${prompt}",
-					"${negativePrompt}",
+					"${escapeJSON(prompt)}",
+					"${escapeJSON(negativePrompt)}",
 					"None",
 					"None",
 					"${sourceImageBase64}",
