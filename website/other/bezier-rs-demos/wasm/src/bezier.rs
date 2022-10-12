@@ -354,26 +354,41 @@ impl WasmBezier {
 	}
 
 	pub fn de_casteljau_points(&self, t: f64) -> String {
-        let points: Vec<Vec<DVec2>>= self.0.de_casteljau_points(t);
+		let mut points: Vec<Vec<DVec2>> = self.0.de_casteljau_points(t);
 
-        let bezier_svg = self.get_bezier_path();
+		let bezier_svg = self.get_bezier_path();
 
-        let casteljau_svg: String = points.reverse().enumerate().map(|(idx, points: Vec<DVec2>)| => {
-            const colorLight = `hsl(${90 * idx}, 100%, 50%)`;
-            points.enumerate().map(|(index, point: Point)| => {
-                // Skip the anchor and handle points which are already drawn in black
-                format!("{}{}", 
-                    if (idx !== points.len() - 1) {
-                        draw_circle(point.X, point.Y, 3. colorLight, 1.5, WHITE)
-                    } else { String::new() }
-                    ,
-                    if (index !== 0) {
-                        const prevPoint: DVec2 = points[index - 1];
-                        draw_line(prevPoint.X, prevPoint.Y, point.X, point.Y, colorLight, 1.5)
-                    } else { String::new() }
-                )
-            }).fold("".to_string(), |acc, point_svg| acc + &point_svg);
-        }).fold("".to_string(), |acc, points_svg| acc + &points_svg);
+		points.reverse();
+
+		let casteljau_svg = points
+			.iter()
+			.enumerate()
+			.map(|(idx, points)| {
+				let color_light = format!("hsl({}, 100%, 50%)", 90 * idx);
+				let points_and_handle_lines = points
+					.iter()
+					.enumerate()
+					.map(|(index, point)| {
+						// Skip the anchor and handle points which are already drawn in black
+						format!(
+							"{}{}",
+							if idx != (points.len() - 1) {
+								draw_circle(point.x, point.y, 3., &color_light, 1.5, WHITE)
+							} else {
+								String::new()
+							},
+							if index != 0 {
+								let prev_point = points[index - 1];
+								draw_line(prev_point.x, prev_point.y, point.x, point.y, &color_light, 1.5)
+							} else {
+								String::new()
+							}
+						)
+					})
+					.fold("".to_string(), |acc, point_svg| acc + &point_svg);
+				points_and_handle_lines
+			})
+			.fold("".to_string(), |acc, points_svg| acc + &points_svg);
 		let content = format!("{bezier_svg}{casteljau_svg}");
 		wrap_svg_tag(content)
 	}
@@ -385,7 +400,7 @@ impl WasmBezier {
 		let mut rotated_bezier_svg = String::new();
 		rotated_bezier.to_svg(
 			&mut rotated_bezier_svg,
-			CURVE_ATTRIBUTES.to_string().replace(BLACK,RED),
+			CURVE_ATTRIBUTES.to_string().replace(BLACK, RED),
 			empty_string.clone(),
 			empty_string.clone(),
 			empty_string.clone(),

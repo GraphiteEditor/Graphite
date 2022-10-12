@@ -308,7 +308,7 @@ export default defineComponent({
 				},
 				{
 					name: "De Casteljau Points",
-					callback: (canvas: WasmBezierInstance, options: Record<string, number>): string => bezier.de_casteljau_points(options.t),
+					callback: (bezier: WasmBezierInstance, options: Record<string, number>): string => bezier.de_casteljau_points(options.t),
 					exampleOptions: {
 						[BezierCurveType.Quadratic]: {
 							sliderOptions: [tSliderOptions],
