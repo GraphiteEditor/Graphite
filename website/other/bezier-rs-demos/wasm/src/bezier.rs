@@ -380,10 +380,9 @@ impl WasmBezier {
 		wrap_svg_tag(content)
 	}
 
-	// TODO: add support for rotating around point
-	pub fn rotate(&self, angle: f64) -> String {
+	pub fn rotate(&self, angle: f64, pivot_x: f64, pivot_y: f64) -> String {
 		let original_bezier_svg = self.get_bezier_path();
-		let rotated_bezier = self.0.rotate(angle);
+		let rotated_bezier = self.0.rotate_about_point(angle, DVec2::new(pivot_x, pivot_y));
 		let empty_string = String::new();
 		let mut rotated_bezier_svg = String::new();
 		rotated_bezier.to_svg(
