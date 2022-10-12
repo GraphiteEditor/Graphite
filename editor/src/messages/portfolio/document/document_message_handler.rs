@@ -374,7 +374,8 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &Persist
 
 				let artwork = self.graphene_document.render_root(render_data);
 				let artboards = self.artboard_message_handler.artboards_graphene_document.render_root(render_data);
-				let outside_artboards = format!(r#"<rect x="{}" y="{}" width="100%" height="100%" fill="black" />"#, bbox[0].x, bbox[0].y);
+				let outside_artboards_color = if self.artboard_message_handler.artboard_ids.is_empty() { "#ffffff" } else { "#000000" };
+				let outside_artboards = format!(r#"<rect x="{}" y="{}" width="100%" height="100%" fill="{}" />"#, bbox[0].x, bbox[0].y, outside_artboards_color);
 				let document = format!(
 					r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{} {} {} {}" width="{}" height="{}">{}{}{}{}</svg>"#,
 					bbox[0].x, bbox[0].y, size.x, size.y, size.x, size.y, "\n", outside_artboards, artboards, artwork
@@ -936,7 +937,8 @@ impl DocumentMessageHandler {
 
 				let artwork = self.graphene_document.render_layers_below(layer_path, render_data).unwrap();
 				let artboards = self.artboard_message_handler.artboards_graphene_document.render_root(render_data);
-				let outside_artboards = format!(r#"<rect x="{}" y="{}" width="100%" height="100%" fill="black" />"#, bbox[0].x, bbox[0].y);
+				let outside_artboards_color = if self.artboard_message_handler.artboard_ids.is_empty() { "#ffffff" } else { "#000000" };
+				let outside_artboards = format!(r#"<rect x="{}" y="{}" width="100%" height="100%" fill="{}" />"#, bbox[0].x, bbox[0].y, outside_artboards_color);
 				let document = format!(
 					r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{} {} {} {}" width="{}" height="{}">{}{}{}{}</svg>"#,
 					bbox[0].x, bbox[0].y, size.x, size.y, size.x, size.y, "\n", outside_artboards, artboards, artwork
