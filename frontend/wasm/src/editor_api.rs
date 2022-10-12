@@ -10,7 +10,7 @@ use editor::application::Editor;
 use editor::consts::{FILE_SAVE_SUFFIX, GRAPHITE_DOCUMENT_VERSION};
 use editor::messages::input_mapper::utility_types::input_keyboard::ModifierKeys;
 use editor::messages::input_mapper::utility_types::input_mouse::{EditorMouseState, ScrollDelta, ViewportBounds};
-use editor::messages::portfolio::document::utility_types::misc::Platform;
+use editor::messages::portfolio::utility_types::{AiArtistServerStatus, Platform};
 use editor::messages::prelude::*;
 use graphene::color::Color;
 use graphene::LayerId;
@@ -446,6 +446,22 @@ impl JsEditorHandle {
 	#[wasm_bindgen(js_name = setAIArtistTerminated)]
 	pub fn set_ai_artist_terminated(&self, path: Vec<LayerId>) {
 		let message = Operation::SetAiArtistTerminated { path };
+		self.dispatch(message);
+	}
+
+	/// Notifies the editor that the AI Artist server is available or unavailable
+	#[wasm_bindgen(js_name = setAiArtistServerStatus)]
+	pub fn set_ai_artist_server_status(&self, available: bool) {
+		let message: Message = match available {
+			true => PortfolioMessage::AiArtistSetServerStatus {
+				status: AiArtistServerStatus::Connected,
+			}
+			.into(),
+			false => PortfolioMessage::AiArtistSetServerStatus {
+				status: AiArtistServerStatus::Unavailable,
+			}
+			.into(),
+		};
 		self.dispatch(message);
 	}
 

@@ -9,17 +9,17 @@ use crate::messages::layout::utility_types::misc::LayoutTarget;
 use crate::messages::layout::utility_types::widgets::button_widgets::{IconButton, PopoverButton};
 use crate::messages::layout::utility_types::widgets::input_widgets::{DropdownEntryData, DropdownInput, NumberInput, NumberInputIncrementBehavior, OptionalInput, RadioEntryData, RadioInput};
 use crate::messages::layout::utility_types::widgets::label_widgets::{Separator, SeparatorDirection, SeparatorType};
-use crate::messages::portfolio::document::properties_panel::utility_functions::pick_layer_safe_resolution;
 use crate::messages::portfolio::document::properties_panel::utility_types::PropertiesPanelMessageHandlerData;
 use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
 use crate::messages::portfolio::document::utility_types::layer_panel::{LayerMetadata, LayerPanelEntry, RawBuffer};
 use crate::messages::portfolio::document::utility_types::misc::DocumentMode;
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, DocumentSave, FlipAxis};
 use crate::messages::portfolio::document::utility_types::vectorize_layer_metadata;
+use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::*;
 
 use graphene::color::Color;
-use graphene::document::Document as GrapheneDocument;
+use graphene::document::{pick_layer_safe_ai_artist_resolution, Document as GrapheneDocument};
 use graphene::layers::blend_mode::BlendMode;
 use graphene::layers::folder_layer::FolderLayer;
 use graphene::layers::layer_info::{LayerDataType, LayerDataTypeDiscriminant};
@@ -89,16 +89,16 @@ impl Default for DocumentMessageHandler {
 	}
 }
 
-impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCache)> for DocumentMessageHandler {
+impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &PersistentData)> for DocumentMessageHandler {
 	#[remain::check]
-	fn process_message(&mut self, message: DocumentMessage, (ipp, font_cache): (&InputPreprocessorMessageHandler, &FontCache), responses: &mut VecDeque<Message>) {
+	fn process_message(&mut self, message: DocumentMessage, (ipp, persistent_data): (&InputPreprocessorMessageHandler, &PersistentData), responses: &mut VecDeque<Message>) {
 		use DocumentMessage::*;
 
 		#[remain::sorted]
 		match message {
 			// Sub-messages
 			#[remain::unsorted]
-			DispatchOperation(op) => match self.graphene_document.handle_operation(*op, font_cache) {
+			DispatchOperation(op) => match self.graphene_document.handle_operation(*op, &persistent_data.font_cache) {
 				Ok(Some(document_responses)) => {
 					for response in document_responses {
 						match &response {
@@ -132,7 +132,7 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 			},
 			#[remain::unsorted]
 			Artboard(message) => {
-				self.artboard_message_handler.process_message(message, font_cache, responses);
+				self.artboard_message_handler.process_message(message, &persistent_data.font_cache, responses);
 			}
 			#[remain::unsorted]
 			Navigation(message) => {
@@ -140,25 +140,23 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 			}
 			#[remain::unsorted]
 			Overlays(message) => {
-				self.overlays_message_handler.process_message(message, (self.overlays_visible, font_cache, ipp), responses);
+				self.overlays_message_handler
+					.process_message(message, (self.overlays_visible, &persistent_data.font_cache, ipp), responses);
 			}
 			#[remain::unsorted]
 			TransformLayer(message) => {
 				self.transform_layer_handler
-					.process_message(message, (&mut self.layer_metadata, &mut self.graphene_document, ipp, font_cache), responses);
+					.process_message(message, (&mut self.layer_metadata, &mut self.graphene_document, ipp, &persistent_data.font_cache), responses);
 			}
 			#[remain::unsorted]
 			PropertiesPanel(message) => {
-				self.properties_panel_message_handler.process_message(
-					message,
-					PropertiesPanelMessageHandlerData {
-						artwork_document: &self.graphene_document,
-						artboard_document: &self.artboard_message_handler.artboards_graphene_document,
-						selected_layers: &mut self.layer_metadata.iter().filter_map(|(path, data)| data.selected.then_some(path.as_slice())),
-						font_cache,
-					},
-					responses,
-				);
+				let properties_panel_message_handler_data = PropertiesPanelMessageHandlerData {
+					artwork_document: &self.graphene_document,
+					artboard_document: &self.artboard_message_handler.artboards_graphene_document,
+					selected_layers: &mut self.layer_metadata.iter().filter_map(|(path, data)| data.selected.then_some(path.as_slice())),
+				};
+				self.properties_panel_message_handler
+					.process_message(message, (persistent_data, properties_panel_message_handler_data), responses);
 			}
 
 			// Messages
@@ -168,14 +166,14 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 			}
 			AddSelectedLayers { additional_layers } => {
 				for layer_path in &additional_layers {
-					responses.extend(self.select_layer(layer_path, font_cache));
+					responses.extend(self.select_layer(layer_path, &persistent_data.font_cache));
 				}
 
 				// TODO: Correctly update layer panel in clear_selection instead of here
 				responses.push_back(FolderChanged { affected_folder_path: vec![] }.into());
 				responses.push_back(BroadcastEvent::SelectionChanged.into());
 
-				self.update_layer_tree_options_bar_widgets(responses, font_cache);
+				self.update_layer_tree_options_bar_widgets(responses, &persistent_data.font_cache);
 			}
 			AiArtistClear => {
 				let selected_layers = self.layer_metadata.iter().filter_map(|(layer_path, data)| data.selected.then_some(layer_path));
@@ -198,12 +196,12 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 				responses.push_back(DocumentOperation::ClearAiArtist { path: layer_path.into() }.into());
 			}
 			AiArtistGenerate => {
-				if let Some(message) = self.call_ai_artist(false, font_cache) {
+				if let Some(message) = self.call_ai_artist(false, persistent_data) {
 					responses.push_back(message);
 				}
 			}
 			AiArtistTerminate => {
-				if let Some(message) = self.call_ai_artist(true, font_cache) {
+				if let Some(message) = self.call_ai_artist(true, persistent_data) {
 					responses.push_back(message);
 				}
 			}
@@ -211,7 +209,7 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 				self.backup(responses);
 				let (paths, boxes): (Vec<_>, Vec<_>) = self
 					.selected_layers()
-					.filter_map(|path| self.graphene_document.viewport_bounding_box(path, font_cache).ok()?.map(|b| (path, b)))
+					.filter_map(|path| self.graphene_document.viewport_bounding_box(path, &persistent_data.font_cache).ok()?.map(|b| (path, b)))
 					.unzip();
 
 				let axis = match axis {
@@ -219,7 +217,7 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 					AlignAxis::Y => DVec2::Y,
 				};
 				let lerp = |bbox: &[DVec2; 2]| bbox[0].lerp(bbox[1], 0.5);
-				if let Some(combined_box) = self.graphene_document.combined_viewport_bounding_box(self.selected_layers(), font_cache) {
+				if let Some(combined_box) = self.graphene_document.combined_viewport_bounding_box(self.selected_layers(), &persistent_data.font_cache) {
 					let aggregated = match aggregate {
 						AlignAggregate::Min => combined_box[0],
 						AlignAggregate::Max => combined_box[1],
@@ -358,16 +356,21 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 
 				// Calculate the bounding box of the region to be exported
 				let bbox = match bounds {
-					ExportBounds::AllArtwork => self.all_layer_bounds(font_cache),
-					ExportBounds::Selection => self.selected_visible_layers_bounding_box(font_cache),
-					ExportBounds::Artboard(id) => self.artboard_message_handler.artboards_graphene_document.layer(&[id]).ok().and_then(|layer| layer.aabb(font_cache)),
+					ExportBounds::AllArtwork => self.all_layer_bounds(&persistent_data.font_cache),
+					ExportBounds::Selection => self.selected_visible_layers_bounding_box(&persistent_data.font_cache),
+					ExportBounds::Artboard(id) => self
+						.artboard_message_handler
+						.artboards_graphene_document
+						.layer(&[id])
+						.ok()
+						.and_then(|layer| layer.aabb(&persistent_data.font_cache)),
 				}
 				.unwrap_or_default();
 				let size = bbox[1] - bbox[0];
 
 				// PART 4 (CONDITIONALLY IDENTICAL)
 
-				let render_data = RenderData::new(ViewMode::Normal, font_cache, None);
+				let render_data = RenderData::new(ViewMode::Normal, &persistent_data.font_cache, None);
 
 				let artwork = self.graphene_document.render_root(render_data);
 				let artboards = self.artboard_message_handler.artboards_graphene_document.render_root(render_data);
@@ -407,7 +410,7 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 					FlipAxis::X => DVec2::new(-1., 1.),
 					FlipAxis::Y => DVec2::new(1., -1.),
 				};
-				if let Some([min, max]) = self.graphene_document.combined_viewport_bounding_box(self.selected_layers(), font_cache) {
+				if let Some([min, max]) = self.graphene_document.combined_viewport_bounding_box(self.selected_layers(), &persistent_data.font_cache) {
 					let center = (max + min) / 2.;
 					let bbox_trans = DAffine2::from_translation(-center);
 					for path in self.selected_layers() {
@@ -457,11 +460,11 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 				);
 			}
 			LayerChanged { affected_layer_path } => {
-				if let Ok(layer_entry) = self.layer_panel_entry(affected_layer_path.clone(), font_cache) {
+				if let Ok(layer_entry) = self.layer_panel_entry(affected_layer_path.clone(), &persistent_data.font_cache) {
 					responses.push_back(FrontendMessage::UpdateDocumentLayerDetails { data: layer_entry }.into());
 				}
 				responses.push_back(PropertiesPanelMessage::CheckSelectedWasUpdated { path: affected_layer_path }.into());
-				self.update_layer_tree_options_bar_widgets(responses, font_cache);
+				self.update_layer_tree_options_bar_widgets(responses, &persistent_data.font_cache);
 			}
 			MoveSelectedLayersTo {
 				folder_path,
@@ -543,7 +546,7 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 			}
 			RenameLayer { layer_path, new_name } => responses.push_back(DocumentOperation::RenameLayer { layer_path, new_name }.into()),
 			RenderDocument => {
-				let render_data = RenderData::new(self.view_mode, font_cache, Some(ipp.document_bounds()));
+				let render_data = RenderData::new(self.view_mode, &persistent_data.font_cache, Some(ipp.document_bounds()));
 				responses.push_back(
 					FrontendMessage::UpdateDocumentArtwork {
 						svg: self.graphene_document.render_root(render_data),
@@ -556,7 +559,7 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 				let scale = 0.5 + ASYMPTOTIC_EFFECT + document_transform_scale * SCALE_EFFECT;
 				let viewport_size = ipp.viewport_bounds.size();
 				let viewport_mid = ipp.viewport_bounds.center();
-				let [bounds1, bounds2] = self.document_bounds(font_cache).unwrap_or([viewport_mid; 2]);
+				let [bounds1, bounds2] = self.document_bounds(&persistent_data.font_cache).unwrap_or([viewport_mid; 2]);
 				let bounds1 = bounds1.min(viewport_mid) - viewport_size * scale;
 				let bounds2 = bounds2.max(viewport_mid) + viewport_size * scale;
 				let bounds_length = (bounds2 - bounds1) * (1. + SCROLLBAR_SPACING);
@@ -684,7 +687,7 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 				responses.push_back(LayerChanged { affected_layer_path: layer_path }.into())
 			}
 			SetLayerName { layer_path, name } => {
-				if let Some(layer) = self.layer_panel_entry_from_path(&layer_path, font_cache) {
+				if let Some(layer) = self.layer_panel_entry_from_path(&layer_path, &persistent_data.font_cache) {
 					// Only save the history state if the name actually changed to something different
 					if layer.name != name {
 						self.backup(responses);
@@ -813,7 +816,7 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 				responses.push_front(NavigationMessage::SetCanvasZoom { zoom_factor: 2. }.into());
 			}
 			ZoomCanvasToFitAll => {
-				if let Some(bounds) = self.document_bounds(font_cache) {
+				if let Some(bounds) = self.document_bounds(&persistent_data.font_cache) {
 					responses.push_back(
 						NavigationMessage::FitViewportToBounds {
 							bounds,
@@ -865,7 +868,7 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 }
 
 impl DocumentMessageHandler {
-	pub fn call_ai_artist(&mut self, terminate: bool, font_cache: &FontCache) -> Option<Message> {
+	pub fn call_ai_artist(&mut self, terminate: bool, persistent_data: &PersistentData) -> Option<Message> {
 		// TODO: Find a way to avoid all the duplicated code used also by `ExportDocument`
 
 		// PART 1 (IDENTICAL)
@@ -903,7 +906,7 @@ impl DocumentMessageHandler {
 		// Prepare the AI Artist properties
 		let prompt = ai_artist_layer.prompt.clone();
 		let negative_prompt = ai_artist_layer.negative_prompt.clone();
-		let resolution = pick_layer_safe_resolution(layer, font_cache);
+		let resolution = pick_layer_safe_ai_artist_resolution(layer, &persistent_data.font_cache);
 		let seed = ai_artist_layer.seed;
 		let samples = ai_artist_layer.samples;
 		let cfg_scale = ai_artist_layer.cfg_scale;
@@ -915,15 +918,21 @@ impl DocumentMessageHandler {
 		// PART 3 (DIFFERENT)
 
 		let result = match (terminate, use_img2img) {
-			(true, _) => Some(FrontendMessage::TriggerAiArtistTerminate { layer_path: layer_path.into() }.into()),
+			(true, _) => Some(
+				FrontendMessage::TriggerAiArtistTerminate {
+					layer_path: layer_path.into(),
+					hostname: persistent_data.ai_artist_server_hostname.clone(),
+				}
+				.into(),
+			),
 			(_, true) => {
 				// Calculate the bounding box of the region to be exported
-				let bbox = layer.aabb(font_cache).unwrap_or_default();
+				let bbox = layer.aabb(&persistent_data.font_cache).unwrap_or_default();
 				let size = bbox[1] - bbox[0];
 
 				// PART 4 (CONDITIONALLY IDENTICAL)
 
-				let render_data = RenderData::new(ViewMode::Normal, font_cache, None);
+				let render_data = RenderData::new(ViewMode::Normal, &persistent_data.font_cache, None);
 
 				let artwork = self.graphene_document.render_layers_below(layer_path, render_data).unwrap();
 				let artboards = self.artboard_message_handler.artboards_graphene_document.render_root(render_data);
@@ -939,6 +948,7 @@ impl DocumentMessageHandler {
 						svg: document,
 						rasterize_size: size.into(),
 						layer_path: layer_path.into(),
+						hostname: persistent_data.ai_artist_server_hostname.clone(),
 						prompt,
 						negative_prompt,
 						resolution,
@@ -955,6 +965,7 @@ impl DocumentMessageHandler {
 			(_, false) => Some(
 				FrontendMessage::TriggerAiArtistGenerateTxt2Img {
 					layer_path: layer_path.into(),
+					hostname: persistent_data.ai_artist_server_hostname.clone(),
 					prompt,
 					negative_prompt,
 					resolution,
@@ -1189,7 +1200,7 @@ impl DocumentMessageHandler {
 		// Compute the indices for each layer to be able to sort them
 		let mut layers_with_indices: Vec<(&[LayerId], Vec<usize>)> = paths
 			// 'path.len() > 0' filters out root layer since it has no indices
-			.filter_map(|path| (!path.is_empty()).then(|| path))
+			.filter_map(|path| (!path.is_empty()).then_some(path))
 			.filter_map(|path| {
 				// TODO: `indices_for_path` can return an error. We currently skip these layers and log a warning. Once this problem is solved this code can be simplified.
 				match self.graphene_document.indices_for_path(path) {

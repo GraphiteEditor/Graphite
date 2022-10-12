@@ -1,3 +1,4 @@
+use super::utility_types::AiArtistServerStatus;
 use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
 use crate::messages::prelude::*;
 
@@ -19,6 +20,13 @@ pub enum PortfolioMessage {
 	MenuBar(MenuBarMessage),
 
 	// Messages
+	AiArtistCheckServerStatus,
+	AiArtistSetServerHostname {
+		hostname: String,
+	},
+	AiArtistSetServerStatus {
+		status: AiArtistServerStatus,
+	},
 	AutoSaveActiveDocument,
 	AutoSaveDocument {
 		document_id: u64,

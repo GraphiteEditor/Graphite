@@ -233,8 +233,14 @@ export class TriggerRasterDownload extends JsMessage {
 	readonly size!: XY;
 }
 
+export class TriggerAiArtistCheckServerStatus extends JsMessage {
+	readonly hostname!: string;
+}
+
 export class TriggerAiArtistGenerateTxt2Img extends JsMessage {
 	readonly layerPath!: BigUint64Array;
+
+	readonly hostname!: string;
 
 	readonly prompt!: string;
 
@@ -262,6 +268,8 @@ export class TriggerAiArtistRasterizeAndGenerateImg2Img extends JsMessage {
 
 	readonly layerPath!: BigUint64Array;
 
+	readonly hostname!: string;
+
 	readonly prompt!: string;
 
 	readonly negativePrompt!: string;
@@ -284,6 +292,8 @@ export class TriggerAiArtistRasterizeAndGenerateImg2Img extends JsMessage {
 
 export class TriggerAiArtistTerminate extends JsMessage {
 	readonly layerPath!: BigUint64Array;
+
+	readonly hostname!: string;
 }
 
 export class TriggerRefreshBoundsOfViewports extends JsMessage {}
@@ -668,6 +678,8 @@ export class TextInput extends WidgetProps {
 	label!: string | undefined;
 
 	disabled!: boolean;
+
+	minWidth!: number;
 }
 
 export class TextLabel extends WidgetProps {
@@ -930,6 +942,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	TriggerIndexedDbWriteDocument,
 	TriggerPaste,
 	TriggerRasterDownload,
+	TriggerAiArtistCheckServerStatus,
 	TriggerAiArtistGenerateTxt2Img,
 	TriggerAiArtistRasterizeAndGenerateImg2Img,
 	TriggerAiArtistTerminate,

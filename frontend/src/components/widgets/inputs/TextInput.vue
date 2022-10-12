@@ -5,6 +5,7 @@
 		:label="label"
 		:spellcheck="true"
 		:disabled="disabled"
+		:style="minWidth > 0 ? `min-width: ${minWidth}px` : ''"
 		@textFocused="() => onTextFocused()"
 		@textChanged="() => onTextChanged()"
 		@cancelTextChange="() => onCancelTextChange()"
@@ -31,6 +32,7 @@ export default defineComponent({
 		value: { type: String as PropType<string>, required: true },
 		label: { type: String as PropType<string>, required: false },
 		disabled: { type: Boolean as PropType<boolean>, default: false },
+		minWidth: { type: Number as PropType<number>, default: 0 },
 	},
 	data() {
 		return {

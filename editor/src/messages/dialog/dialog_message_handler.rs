@@ -7,6 +7,7 @@ use crate::messages::prelude::*;
 pub struct DialogMessageHandler {
 	export_dialog: ExportDialogMessageHandler,
 	new_document_dialog: NewDocumentDialogMessageHandler,
+	preferences_dialog: PreferencesDialogMessageHandler,
 }
 
 impl MessageHandler<DialogMessage, &PortfolioMessageHandler> for DialogMessageHandler {
@@ -18,6 +19,8 @@ impl MessageHandler<DialogMessage, &PortfolioMessageHandler> for DialogMessageHa
 			DialogMessage::ExportDialog(message) => self.export_dialog.process_message(message, (), responses),
 			#[remain::unsorted]
 			DialogMessage::NewDocumentDialog(message) => self.new_document_dialog.process_message(message, (), responses),
+			#[remain::unsorted]
+			DialogMessage::PreferencesDialog(message) => self.preferences_dialog.process_message(message, (), responses),
 
 			DialogMessage::CloseAllDocumentsWithConfirmation => {
 				let dialog = simple_dialogs::CloseAllDocumentsDialog;
@@ -96,6 +99,13 @@ impl MessageHandler<DialogMessage, &PortfolioMessageHandler> for DialogMessageHa
 				};
 				self.new_document_dialog.register_properties(responses, LayoutTarget::DialogDetails);
 				responses.push_back(FrontendMessage::DisplayDialog { icon: "File".to_string() }.into());
+			}
+			DialogMessage::RequestPreferencesDialog => {
+				self.preferences_dialog = PreferencesDialogMessageHandler {
+					ai_artist_hostname: portfolio.persistent_data.ai_artist_server_hostname.clone(),
+				};
+				self.preferences_dialog.register_properties(responses, LayoutTarget::DialogDetails);
+				responses.push_back(FrontendMessage::DisplayDialog { icon: "VerticalEllipsis".to_string() }.into());
 			}
 		}
 	}

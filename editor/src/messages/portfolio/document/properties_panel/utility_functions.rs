@@ -5,9 +5,11 @@ use crate::messages::layout::utility_types::widgets::assist_widgets::PivotAssist
 use crate::messages::layout::utility_types::widgets::button_widgets::{IconButton, PopoverButton, TextButton};
 use crate::messages::layout::utility_types::widgets::input_widgets::{CheckboxInput, ColorInput, FontInput, NumberInput, RadioEntryData, RadioInput, TextAreaInput, TextInput};
 use crate::messages::layout::utility_types::widgets::label_widgets::{IconLabel, IconStyle, Separator, SeparatorDirection, SeparatorType, TextLabel};
+use crate::messages::portfolio::utility_types::{AiArtistServerStatus, PersistentData};
 use crate::messages::prelude::*;
 
 use graphene::color::Color;
+use graphene::document::pick_layer_safe_ai_artist_resolution;
 use graphene::layers::ai_artist_layer::AiArtistLayer;
 use graphene::layers::layer_info::{Layer, LayerDataType, LayerDataTypeDiscriminant};
 use graphene::layers::style::{Fill, Gradient, GradientType, LineCap, LineJoin, Stroke};
@@ -35,7 +37,7 @@ pub fn apply_transform_operation(layer: &Layer, transform_op: TransformOp, value
 	transformation(layer.transform, value / scale).to_cols_array()
 }
 
-pub fn register_artboard_layer_properties(layer: &Layer, responses: &mut VecDeque<Message>, font_cache: &FontCache) {
+pub fn register_artboard_layer_properties(layer: &Layer, responses: &mut VecDeque<Message>, persistent_data: &PersistentData) {
 	let options_bar = vec![LayoutGroup::Row {
 		widgets: vec![
 			WidgetHolder::new(Widget::IconLabel(IconLabel {
@@ -82,7 +84,7 @@ pub fn register_artboard_layer_properties(layer: &Layer, responses: &mut VecDequ
 		} else {
 			panic!("Artboard must have a solid fill")
 		};
-		let pivot = layer.transform.transform_vector2(layer.layerspace_pivot(font_cache));
+		let pivot = layer.transform.transform_vector2(layer.layerspace_pivot(&persistent_data.font_cache));
 
 		vec![LayoutGroup::Section {
 			name: "Artboard".into(),
@@ -140,7 +142,7 @@ pub fn register_artboard_layer_properties(layer: &Layer, responses: &mut VecDequ
 							direction: SeparatorDirection::Horizontal,
 						})),
 						WidgetHolder::new(Widget::NumberInput(NumberInput {
-							value: Some(layer.bounding_transform(font_cache).scale_x()),
+							value: Some(layer.bounding_transform(&persistent_data.font_cache).scale_x()),
 							label: "W".into(),
 							unit: " px".into(),
 							on_update: WidgetCallback::new(|number_input: &NumberInput| {
@@ -157,7 +159,7 @@ pub fn register_artboard_layer_properties(layer: &Layer, responses: &mut VecDequ
 							direction: SeparatorDirection::Horizontal,
 						})),
 						WidgetHolder::new(Widget::NumberInput(NumberInput {
-							value: Some(layer.bounding_transform(font_cache).scale_y()),
+							value: Some(layer.bounding_transform(&persistent_data.font_cache).scale_y()),
 							label: "H".into(),
 							unit: " px".into(),
 							on_update: WidgetCallback::new(|number_input: &NumberInput| {
@@ -220,7 +222,7 @@ pub fn register_artboard_layer_properties(layer: &Layer, responses: &mut VecDequ
 	);
 }
 
-pub fn register_artwork_layer_properties(layer: &Layer, responses: &mut VecDeque<Message>, font_cache: &FontCache) {
+pub fn register_artwork_layer_properties(layer: &Layer, responses: &mut VecDeque<Message>, persistent_data: &PersistentData) {
 	let options_bar = vec![LayoutGroup::Row {
 		widgets: vec![
 			match &layer.data {
@@ -277,27 +279,31 @@ pub fn register_artwork_layer_properties(layer: &Layer, responses: &mut VecDeque
 	let properties_body = match &layer.data {
 		LayerDataType::Shape(shape) => {
 			if let Some(fill_layout) = node_section_fill(shape.style.fill()) {
-				vec![node_section_transform(layer, font_cache), fill_layout, node_section_stroke(&shape.style.stroke().unwrap_or_default())]
+				vec![
+					node_section_transform(layer, persistent_data),
+					fill_layout,
+					node_section_stroke(&shape.style.stroke().unwrap_or_default()),
+				]
 			} else {
-				vec![node_section_transform(layer, font_cache), node_section_stroke(&shape.style.stroke().unwrap_or_default())]
+				vec![node_section_transform(layer, persistent_data), node_section_stroke(&shape.style.stroke().unwrap_or_default())]
 			}
 		}
 		LayerDataType::Text(text) => {
 			vec![
-				node_section_transform(layer, font_cache),
+				node_section_transform(layer, persistent_data),
 				node_section_font(text),
 				node_section_fill(text.path_style.fill()).expect("Text should have fill"),
 				node_section_stroke(&text.path_style.stroke().unwrap_or_default()),
 			]
 		}
 		LayerDataType::Image(_) => {
-			vec![node_section_transform(layer, font_cache)]
+			vec![node_section_transform(layer, persistent_data)]
 		}
 		LayerDataType::AiArtist(ai_artist) => {
-			vec![node_section_transform(layer, font_cache), node_section_ai_artist(ai_artist, layer, font_cache)]
+			vec![node_section_transform(layer, persistent_data), node_section_ai_artist(ai_artist, layer, persistent_data, responses)]
 		}
 		LayerDataType::Folder(_) => {
-			vec![node_section_transform(layer, font_cache)]
+			vec![node_section_transform(layer, persistent_data)]
 		}
 	};
 
@@ -317,8 +323,8 @@ pub fn register_artwork_layer_properties(layer: &Layer, responses: &mut VecDeque
 	);
 }
 
-fn node_section_transform(layer: &Layer, font_cache: &FontCache) -> LayoutGroup {
-	let pivot = layer.transform.transform_vector2(layer.layerspace_pivot(font_cache));
+fn node_section_transform(layer: &Layer, persistent_data: &PersistentData) -> LayoutGroup {
+	let pivot = layer.transform.transform_vector2(layer.layerspace_pivot(&persistent_data.font_cache));
 	LayoutGroup::Section {
 		name: "Transform".into(),
 		layout: vec![
@@ -450,7 +456,7 @@ fn node_section_transform(layer: &Layer, font_cache: &FontCache) -> LayoutGroup 
 						direction: SeparatorDirection::Horizontal,
 					})),
 					WidgetHolder::new(Widget::NumberInput(NumberInput {
-						value: Some(layer.bounding_transform(font_cache).scale_x()),
+						value: Some(layer.bounding_transform(&persistent_data.font_cache).scale_x()),
 						label: "W".into(),
 						unit: " px".into(),
 						on_update: WidgetCallback::new(|number_input: &NumberInput| {
@@ -467,7 +473,7 @@ fn node_section_transform(layer: &Layer, font_cache: &FontCache) -> LayoutGroup 
 						direction: SeparatorDirection::Horizontal,
 					})),
 					WidgetHolder::new(Widget::NumberInput(NumberInput {
-						value: Some(layer.bounding_transform(font_cache).scale_y()),
+						value: Some(layer.bounding_transform(&persistent_data.font_cache).scale_y()),
 						label: "H".into(),
 						unit: " px".into(),
 						on_update: WidgetCallback::new(|number_input: &NumberInput| {
@@ -485,10 +491,47 @@ fn node_section_transform(layer: &Layer, font_cache: &FontCache) -> LayoutGroup 
 	}
 }
 
-fn node_section_ai_artist(ai_artist_layer: &AiArtistLayer, layer: &Layer, font_cache: &FontCache) -> LayoutGroup {
+fn node_section_ai_artist(ai_artist_layer: &AiArtistLayer, layer: &Layer, persistent_data: &PersistentData, responses: &mut VecDeque<Message>) -> LayoutGroup {
 	LayoutGroup::Section {
 		name: "AI Artist".into(),
 		layout: vec![
+			LayoutGroup::Row {
+				widgets: vec![
+					WidgetHolder::new(Widget::TextLabel(TextLabel {
+						value: "Server".into(),
+						..Default::default()
+					})),
+					WidgetHolder::new(Widget::Separator(Separator {
+						separator_type: SeparatorType::Unrelated,
+						direction: SeparatorDirection::Horizontal,
+					})),
+					WidgetHolder::new(Widget::IconButton(IconButton {
+						size: 24,
+						icon: "VerticalEllipsis".into(),
+						on_update: WidgetCallback::new(|_| DialogMessage::RequestPreferencesDialog.into()),
+						..Default::default()
+					})),
+					WidgetHolder::new(Widget::Separator(Separator {
+						separator_type: SeparatorType::Related,
+						direction: SeparatorDirection::Horizontal,
+					})),
+					WidgetHolder::new(Widget::TextLabel(TextLabel {
+						value: {
+							match &persistent_data.ai_artist_server_status {
+								AiArtistServerStatus::Unknown => {
+									responses.push_back(PortfolioMessage::AiArtistCheckServerStatus.into());
+									"Checking...".into()
+								}
+								AiArtistServerStatus::Checking => "Checking...".into(),
+								AiArtistServerStatus::Unavailable => "Unavailable".into(),
+								AiArtistServerStatus::Connected => "Connected".into(),
+							}
+						},
+						bold: true,
+						..Default::default()
+					})),
+				],
+			},
 			LayoutGroup::Row {
 				widgets: vec![
 					WidgetHolder::new(Widget::TextLabel(TextLabel {
@@ -499,9 +542,19 @@ fn node_section_ai_artist(ai_artist_layer: &AiArtistLayer, layer: &Layer, font_c
 						separator_type: SeparatorType::Unrelated,
 						direction: SeparatorDirection::Horizontal,
 					})),
+					WidgetHolder::new(Widget::IconButton(IconButton {
+						size: 24,
+						icon: "FullscreenEnter".into(),
+						on_update: WidgetCallback::new(|_| PropertiesPanelMessage::SetAiArtistScaleFromResolution.into()),
+						..Default::default()
+					})),
+					WidgetHolder::new(Widget::Separator(Separator {
+						separator_type: SeparatorType::Related,
+						direction: SeparatorDirection::Horizontal,
+					})),
 					WidgetHolder::new(Widget::TextLabel(TextLabel {
 						value: {
-							let (width, height) = pick_layer_safe_resolution(layer, font_cache);
+							let (width, height) = pick_layer_safe_ai_artist_resolution(layer, &persistent_data.font_cache);
 							format!("{} W x {} H", width, height)
 						},
 						bold: true,
@@ -1338,31 +1391,5 @@ impl DAffine2Utils for DAffine2 {
 		let angle_translation_adjustment = angle_translation_offset(new_rotation) - angle_translation_offset(self.rotation());
 
 		DAffine2::from_scale_angle_translation((width, height).into(), new_rotation, self.translation + angle_translation_adjustment)
-	}
-}
-
-pub fn pick_layer_safe_resolution(layer: &Layer, font_cache: &FontCache) -> (u64, u64) {
-	let layer_bounds = layer.bounding_transform(font_cache);
-	let layer_bounds_size = (layer_bounds.transform_vector2((1., 0.).into()).length(), layer_bounds.transform_vector2((0., 1.).into()).length());
-
-	pick_safe_resolution(layer_bounds_size)
-}
-
-pub fn pick_safe_resolution((width, height): (f64, f64)) -> (u64, u64) {
-	// const MAX_RESOLUTION: u64 = 1024 * 1024;
-	const MAX_RESOLUTION: u64 = 960 * 960;
-
-	let mut scale_factor = 1.;
-
-	let round_to_increment = |size: f64| (size / 64.).round() as u64 * 64;
-
-	loop {
-		let possible_solution = (round_to_increment(width * scale_factor), round_to_increment(height * scale_factor));
-
-		if possible_solution.0 * possible_solution.1 <= MAX_RESOLUTION {
-			return possible_solution;
-		}
-
-		scale_factor -= 0.1;
 	}
 }

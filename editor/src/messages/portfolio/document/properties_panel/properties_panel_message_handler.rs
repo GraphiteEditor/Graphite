@@ -5,6 +5,7 @@ use crate::messages::layout::utility_types::layout_widget::{Layout, WidgetLayout
 use crate::messages::layout::utility_types::misc::LayoutTarget;
 use crate::messages::portfolio::document::properties_panel::utility_functions::apply_transform_operation;
 use crate::messages::portfolio::document::utility_types::misc::TargetDocument;
+use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::*;
 
 use graphene::{LayerId, Operation};
@@ -16,14 +17,13 @@ pub struct PropertiesPanelMessageHandler {
 	active_selection: Option<(Vec<LayerId>, TargetDocument)>,
 }
 
-impl<'a> MessageHandler<PropertiesPanelMessage, PropertiesPanelMessageHandlerData<'a>> for PropertiesPanelMessageHandler {
+impl<'a> MessageHandler<PropertiesPanelMessage, (&PersistentData, PropertiesPanelMessageHandlerData<'a>)> for PropertiesPanelMessageHandler {
 	#[remain::check]
-	fn process_message(&mut self, message: PropertiesPanelMessage, data: PropertiesPanelMessageHandlerData, responses: &mut VecDeque<Message>) {
+	fn process_message(&mut self, message: PropertiesPanelMessage, (persistent_data, data): (&PersistentData, PropertiesPanelMessageHandlerData), responses: &mut VecDeque<Message>) {
 		let PropertiesPanelMessageHandlerData {
 			artwork_document,
 			artboard_document,
 			selected_layers,
-			font_cache,
 		} = data;
 		let get_document = |document_selector: TargetDocument| match document_selector {
 			TargetDocument::Artboard => artboard_document,
@@ -82,7 +82,7 @@ impl<'a> MessageHandler<PropertiesPanelMessage, PropertiesPanelMessageHandlerDat
 				let (path, target_document) = self.active_selection.as_ref().expect("Received update for properties panel with no active layer");
 				let layer = get_document(*target_document).layer(path).unwrap();
 
-				let transform = apply_transform_operation(layer, transform_op, value, font_cache);
+				let transform = apply_transform_operation(layer, transform_op, value, &persistent_data.font_cache);
 
 				responses.push_back(self.create_document_operation(Operation::SetLayerTransform { path: path.clone(), transform }));
 			}
@@ -137,8 +137,8 @@ impl<'a> MessageHandler<PropertiesPanelMessage, PropertiesPanelMessageHandlerDat
 				if let Some((path, target_document)) = self.active_selection.clone() {
 					let layer = get_document(target_document).layer(&path).unwrap();
 					match target_document {
-						TargetDocument::Artboard => register_artboard_layer_properties(layer, responses, font_cache),
-						TargetDocument::Artwork => register_artwork_layer_properties(layer, responses, font_cache),
+						TargetDocument::Artboard => register_artboard_layer_properties(layer, responses, persistent_data),
+						TargetDocument::Artwork => register_artwork_layer_properties(layer, responses, persistent_data),
 					}
 				}
 			}
@@ -164,6 +164,11 @@ impl<'a> MessageHandler<PropertiesPanelMessage, PropertiesPanelMessageHandlerDat
 			SetAiArtistSamples { samples } => {
 				let (path, _) = self.active_selection.clone().expect("Received update for properties panel with no active layer");
 				responses.push_back(Operation::SetAiArtistSamples { path, samples }.into());
+			}
+			SetAiArtistScaleFromResolution => {
+				let (path, _) = self.active_selection.clone().expect("Received update for properties panel with no active layer");
+
+				responses.push_back(Operation::SetAiArtistScaleFromResolution { path }.into());
 			}
 			SetAiArtistSeed { seed } => {
 				let (path, _) = self.active_selection.clone().expect("Received update for properties panel with no active layer");

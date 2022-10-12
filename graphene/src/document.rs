@@ -807,7 +807,7 @@ impl Document {
 				Some([vec![DocumentChanged, LayerChanged { path: path.clone() }], update_thumbnails_upstream(&path)].concat())
 			}
 			Operation::SetAiArtistPercentComplete { path, percent } => {
-				let layer = self.layer_mut(&path).expect("Setting AI Artist prompt for invalid layer");
+				let layer = self.layer_mut(&path).expect("Setting AI Artist percent complete for invalid layer");
 				if let LayerDataType::AiArtist(ai_artist) = &mut layer.data {
 					// A new generation was started when progress is set to 0 so we can clear the terminated state
 					if percent == 0. {
@@ -824,7 +824,7 @@ impl Document {
 				Some([vec![DocumentChanged, LayerChanged { path: path.clone() }], update_thumbnails_upstream(&path)].concat())
 			}
 			Operation::SetAiArtistTerminated { path } => {
-				let layer = self.layer_mut(&path).expect("Setting AI Artist prompt for invalid layer");
+				let layer = self.layer_mut(&path).expect("Terminating AI Artist for invalid layer");
 				if let LayerDataType::AiArtist(ai_artist) = &mut layer.data {
 					ai_artist.terminated = true;
 				} else {
@@ -834,7 +834,7 @@ impl Document {
 				Some([vec![DocumentChanged, LayerChanged { path: path.clone() }], update_thumbnails_upstream(&path)].concat())
 			}
 			Operation::ClearAiArtist { path } => {
-				let layer = self.layer_mut(&path).expect("Setting AI Artist prompt for invalid layer");
+				let layer = self.layer_mut(&path).expect("Clearing AI Artist image for invalid layer");
 				if let LayerDataType::AiArtist(ai_artist) = &mut layer.data {
 					ai_artist.blob_url = None;
 					ai_artist.percent_complete = 0.;
@@ -846,7 +846,7 @@ impl Document {
 				Some([vec![DocumentChanged, LayerChanged { path: path.clone() }], update_thumbnails_upstream(&path)].concat())
 			}
 			Operation::SetAiArtistNegativePrompt { path, negative_prompt } => {
-				let layer = self.layer_mut(&path).expect("Setting AI Artist prompt for invalid layer");
+				let layer = self.layer_mut(&path).expect("Setting AI Artist negative prompt for invalid layer");
 				if let LayerDataType::AiArtist(ai_artist) = &mut layer.data {
 					ai_artist.negative_prompt = negative_prompt;
 				} else {
@@ -866,7 +866,7 @@ impl Document {
 				Some(vec![LayerChanged { path }])
 			}
 			Operation::SetAiArtistCfgScale { path, cfg_scale } => {
-				let layer = self.layer_mut(&path).expect("Setting AI Artist prompt for invalid layer");
+				let layer = self.layer_mut(&path).expect("Setting AI Artist CFG scale for invalid layer");
 				if let LayerDataType::AiArtist(ai_artist) = &mut layer.data {
 					ai_artist.cfg_scale = cfg_scale;
 				} else {
@@ -876,7 +876,7 @@ impl Document {
 				Some(vec![LayerChanged { path }])
 			}
 			Operation::SetAiArtistDenoisingStrength { path, denoising_strength } => {
-				let layer = self.layer_mut(&path).expect("Setting AI Artist prompt for invalid layer");
+				let layer = self.layer_mut(&path).expect("Setting AI Artist denoising strength for invalid layer");
 				if let LayerDataType::AiArtist(ai_artist) = &mut layer.data {
 					ai_artist.denoising_strength = denoising_strength;
 				} else {
@@ -886,7 +886,7 @@ impl Document {
 				Some(vec![LayerChanged { path }])
 			}
 			Operation::SetAiArtistSamples { path, samples } => {
-				let layer = self.layer_mut(&path).expect("Setting AI Artist prompt for invalid layer");
+				let layer = self.layer_mut(&path).expect("Setting AI Artist samples for invalid layer");
 				if let LayerDataType::AiArtist(ai_artist) = &mut layer.data {
 					ai_artist.samples = samples;
 				} else {
@@ -895,8 +895,26 @@ impl Document {
 				self.mark_as_dirty(&path)?;
 				Some(vec![LayerChanged { path }])
 			}
+			Operation::SetAiArtistScaleFromResolution { path } => {
+				let layer = self.layer_mut(&path).expect("Setting AI Artist scale from resolution for invalid layer");
+
+				let (width, height) = pick_layer_safe_ai_artist_resolution(layer, font_cache);
+
+				let current_width = layer.transform.transform_vector2((1., 0.).into()).length();
+				let current_height = layer.transform.transform_vector2((0., 1.).into()).length();
+
+				let scale_x_by = width as f64 / current_width;
+				let scale_y_by = height as f64 / current_height;
+				let scale_by_vector = DVec2::new(scale_x_by, scale_y_by);
+				let scale_by_matrix = DAffine2::from_scale_angle_translation(scale_by_vector, 0., (0., 0.).into());
+
+				layer.transform = layer.transform * scale_by_matrix;
+
+				self.mark_as_dirty(&path)?;
+				Some([update_thumbnails_upstream(&path), vec![DocumentChanged, LayerChanged { path }]].concat())
+			}
 			Operation::SetAiArtistSeed { path, seed } => {
-				let layer = self.layer_mut(&path).expect("Setting AI Artist prompt for invalid layer");
+				let layer = self.layer_mut(&path).expect("Setting AI Artist seed for invalid layer");
 				if let LayerDataType::AiArtist(ai_artist) = &mut layer.data {
 					ai_artist.seed = seed;
 				} else {
@@ -906,7 +924,7 @@ impl Document {
 				Some(vec![LayerChanged { path }])
 			}
 			Operation::SetAiArtistUseImg2Img { path, use_img2img } => {
-				let layer = self.layer_mut(&path).expect("Setting AI Artist prompt for invalid layer");
+				let layer = self.layer_mut(&path).expect("Calling AI Artist img2img for invalid layer");
 				if let LayerDataType::AiArtist(ai_artist) = &mut layer.data {
 					ai_artist.use_img2img = use_img2img;
 				} else {
@@ -916,7 +934,7 @@ impl Document {
 				Some(vec![LayerChanged { path }])
 			}
 			Operation::SetAiArtistRestoreFaces { path, restore_faces } => {
-				let layer = self.layer_mut(&path).expect("Setting AI Artist prompt for invalid layer");
+				let layer = self.layer_mut(&path).expect("Setting AI Artist restore faces for invalid layer");
 				if let LayerDataType::AiArtist(ai_artist) = &mut layer.data {
 					ai_artist.restore_faces = restore_faces;
 				} else {
@@ -926,7 +944,7 @@ impl Document {
 				Some(vec![LayerChanged { path }])
 			}
 			Operation::SetAiArtistTiling { path, tiling } => {
-				let layer = self.layer_mut(&path).expect("Setting AI Artist prompt for invalid layer");
+				let layer = self.layer_mut(&path).expect("Setting AI Artist tiling for invalid layer");
 				if let LayerDataType::AiArtist(ai_artist) = &mut layer.data {
 					ai_artist.tiling = tiling;
 				} else {
@@ -1215,4 +1233,30 @@ fn update_thumbnails_upstream(path: &[LayerId]) -> Vec<DocumentResponse> {
 		responses.push(DocumentResponse::LayerChanged { path: path[0..(length - i)].to_vec() });
 	}
 	responses
+}
+
+pub fn pick_layer_safe_ai_artist_resolution(layer: &Layer, font_cache: &FontCache) -> (u64, u64) {
+	let layer_bounds = layer.bounding_transform(font_cache);
+	let layer_bounds_size = (layer_bounds.transform_vector2((1., 0.).into()).length(), layer_bounds.transform_vector2((0., 1.).into()).length());
+
+	pick_safe_ai_artist_resolution(layer_bounds_size)
+}
+
+pub fn pick_safe_ai_artist_resolution((width, height): (f64, f64)) -> (u64, u64) {
+	// const MAX_RESOLUTION: u64 = 1024 * 1024;
+	const MAX_RESOLUTION: u64 = 960 * 960;
+
+	let mut scale_factor = 1.;
+
+	let round_to_increment = |size: f64| (size / 64.).round() as u64 * 64;
+
+	loop {
+		let possible_solution = (round_to_increment(width * scale_factor), round_to_increment(height * scale_factor));
+
+		if possible_solution.0 * possible_solution.1 <= MAX_RESOLUTION {
+			return possible_solution;
+		}
+
+		scale_factor -= 0.1;
+	}
 }

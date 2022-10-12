@@ -190,6 +190,9 @@ pub enum Operation {
 		path: Vec<LayerId>,
 		samples: u32,
 	},
+	SetAiArtistScaleFromResolution {
+		path: Vec<LayerId>,
+	},
 	SetAiArtistSeed {
 		path: Vec<LayerId>,
 		seed: u64,

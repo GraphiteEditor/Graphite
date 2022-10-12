@@ -1,7 +1,7 @@
 /* eslint-disable max-classes-per-file */
 import { reactive, readonly } from "vue";
 
-import { callAIArtist, terminateAIArtist } from "@/utility-functions/ai-artist";
+import { callAIArtist, checkAIArtist, terminateAIArtist } from "@/utility-functions/ai-artist";
 import { downloadFileText, downloadFileBlob, upload } from "@/utility-functions/files";
 import { rasterizeSVG } from "@/utility-functions/rasterization";
 import { type Editor } from "@/wasm-communication/editor";
@@ -13,6 +13,7 @@ import {
 	TriggerRasterDownload,
 	TriggerAiArtistRasterizeAndGenerateImg2Img,
 	TriggerAiArtistTerminate,
+	TriggerAiArtistCheckServerStatus,
 	TriggerAiArtistGenerateTxt2Img,
 	UpdateActiveDocument,
 	UpdateOpenDocumentsList,
@@ -60,13 +61,19 @@ export function createPortfolioState(editor: Editor) {
 		// Have the browser download the file to the user's disk
 		downloadFileBlob(name, blob);
 	});
-	editor.subscriptions.subscribeJsMessage(TriggerAiArtistGenerateTxt2Img, async (triggerAiArtistGenerateTxt2Img) => {
-		const { layerPath, prompt, negativePrompt, resolution, seed, samples, cfgScale, restoreFaces, tiling } = triggerAiArtistGenerateTxt2Img;
+	editor.subscriptions.subscribeJsMessage(TriggerAiArtistCheckServerStatus, async (triggerAiArtistCheckServerStatus) => {
+		const { hostname } = triggerAiArtistCheckServerStatus;
 
-		callAIArtist(prompt, negativePrompt, resolution, seed, samples, cfgScale, undefined, restoreFaces, tiling, undefined, layerPath, editor);
+		checkAIArtist(hostname, editor);
+	});
+	editor.subscriptions.subscribeJsMessage(TriggerAiArtistGenerateTxt2Img, async (triggerAiArtistGenerateTxt2Img) => {
+		const { layerPath, hostname, prompt, negativePrompt, resolution, seed, samples, cfgScale, restoreFaces, tiling } = triggerAiArtistGenerateTxt2Img;
+
+		callAIArtist(hostname, prompt, negativePrompt, resolution, seed, samples, cfgScale, undefined, restoreFaces, tiling, undefined, layerPath, editor);
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerAiArtistRasterizeAndGenerateImg2Img, async (triggerAiArtistRasterizeAndGenerateImg2Img) => {
-		const { svg, rasterizeSize, layerPath, prompt, negativePrompt, resolution, seed, samples, cfgScale, denoisingStrength, restoreFaces, tiling } = triggerAiArtistRasterizeAndGenerateImg2Img;
+		const { svg, rasterizeSize, layerPath, hostname, prompt, negativePrompt, resolution, seed, samples, cfgScale, denoisingStrength, restoreFaces, tiling } =
+			triggerAiArtistRasterizeAndGenerateImg2Img;
 
 		// Rasterize the SVG to an image file
 		const blob = await rasterizeSVG(svg, rasterizeSize.x, rasterizeSize.y, "image/png");
@@ -76,10 +83,12 @@ export function createPortfolioState(editor: Editor) {
 
 		editor.instance.setImageBlobUrl(layerPath, blobURL, rasterizeSize.x, rasterizeSize.y);
 
-		callAIArtist(prompt, negativePrompt, resolution, seed, samples, cfgScale, denoisingStrength, restoreFaces, tiling, blob, layerPath, editor);
+		callAIArtist(hostname, prompt, negativePrompt, resolution, seed, samples, cfgScale, denoisingStrength, restoreFaces, tiling, blob, layerPath, editor);
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerAiArtistTerminate, async (triggerAiArtistTerminate) => {
-		terminateAIArtist(triggerAiArtistTerminate.layerPath, editor);
+		const { layerPath, hostname } = triggerAiArtistTerminate;
+
+		terminateAIArtist(hostname, layerPath, editor);
 	});
 	editor.subscriptions.subscribeJsMessage(UpdateImageData, (updateImageData) => {
 		updateImageData.imageData.forEach(async (element) => {

@@ -42,9 +42,13 @@ pub enum FrontendMessage {
 		#[serde(rename = "commitDate")]
 		commit_date: String,
 	},
+	TriggerAiArtistCheckServerStatus {
+		hostname: String,
+	},
 	TriggerAiArtistGenerateTxt2Img {
 		#[serde(rename = "layerPath")]
 		layer_path: Vec<LayerId>,
+		hostname: String,
 		prompt: String,
 		#[serde(rename = "negativePrompt")]
 		negative_prompt: String,
@@ -63,6 +67,7 @@ pub enum FrontendMessage {
 		rasterize_size: (f64, f64),
 		#[serde(rename = "layerPath")]
 		layer_path: Vec<LayerId>,
+		hostname: String,
 		prompt: String,
 		#[serde(rename = "negativePrompt")]
 		negative_prompt: String,
@@ -80,6 +85,7 @@ pub enum FrontendMessage {
 	TriggerAiArtistTerminate {
 		#[serde(rename = "layerPath")]
 		layer_path: Vec<LayerId>,
+		hostname: String,
 	},
 	TriggerFileDownload {
 		document: String,

@@ -1,4 +1,4 @@
-use crate::messages::portfolio::document::utility_types::misc::KeyboardPlatformLayout;
+use crate::messages::portfolio::utility_types::KeyboardPlatformLayout;
 use crate::messages::prelude::*;
 
 pub use graphene::DocumentResponse;

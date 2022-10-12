@@ -1,3 +1,4 @@
+use super::utility_types::PersistentData;
 use crate::application::generate_uuid;
 use crate::consts::{DEFAULT_DOCUMENT_NAME, GRAPHITE_DOCUMENT_VERSION};
 use crate::messages::dialog::simple_dialogs;
@@ -5,6 +6,7 @@ use crate::messages::frontend::utility_types::FrontendDocumentDetails;
 use crate::messages::layout::utility_types::layout_widget::PropertyHolder;
 use crate::messages::layout::utility_types::misc::LayoutTarget;
 use crate::messages::portfolio::document::utility_types::clipboards::{Clipboard, CopyBufferEntry, INTERNAL_CLIPBOARD_COUNT};
+use crate::messages::portfolio::utility_types::AiArtistServerStatus;
 use crate::messages::prelude::*;
 
 use graphene::layers::layer_info::LayerDataTypeDiscriminant;
@@ -18,7 +20,7 @@ pub struct PortfolioMessageHandler {
 	document_ids: Vec<u64>,
 	active_document_id: Option<u64>,
 	copy_buffer: [Vec<CopyBufferEntry>; INTERNAL_CLIPBOARD_COUNT as usize],
-	font_cache: FontCache,
+	pub persistent_data: PersistentData,
 }
 
 impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for PortfolioMessageHandler {
@@ -33,13 +35,31 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 			#[remain::unsorted]
 			Document(message) => {
 				if let Some(document) = self.active_document_id.and_then(|id| self.documents.get_mut(&id)) {
-					document.process_message(message, (ipp, &self.font_cache), responses)
+					document.process_message(message, (ipp, &self.persistent_data), responses)
 				}
 			}
 			#[remain::unsorted]
 			MenuBar(message) => self.menu_bar_message_handler.process_message(message, (), responses),
 
 			// Messages
+			AiArtistCheckServerStatus => {
+				self.persistent_data.ai_artist_server_status = AiArtistServerStatus::Checking;
+				responses.push_back(
+					FrontendMessage::TriggerAiArtistCheckServerStatus {
+						hostname: self.persistent_data.ai_artist_server_hostname.clone(),
+					}
+					.into(),
+				);
+				responses.push_back(PropertiesPanelMessage::ResendActiveProperties.into());
+			}
+			AiArtistSetServerHostname { hostname } => {
+				self.persistent_data.ai_artist_server_hostname = hostname;
+				responses.push_back(PortfolioMessage::AiArtistCheckServerStatus.into());
+			}
+			AiArtistSetServerStatus { status } => {
+				self.persistent_data.ai_artist_server_status = status;
+				responses.push_back(PropertiesPanelMessage::ResendActiveProperties.into());
+			}
 			AutoSaveActiveDocument => {
 				if let Some(document_id) = self.active_document_id {
 					responses.push_back(PortfolioMessage::AutoSaveDocument { document_id }.into());
@@ -179,7 +199,7 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 				data,
 				is_default,
 			} => {
-				self.font_cache.insert(Font::new(font_family, font_style), preview_url, data, is_default);
+				self.persistent_data.font_cache.insert(Font::new(font_family, font_style), preview_url, data, is_default);
 
 				if let Some(document) = self.active_document_mut() {
 					document.graphene_document.mark_all_layers_of_type_as_dirty(LayerDataTypeDiscriminant::Text);
@@ -199,7 +219,7 @@ impl MessageHandler<PortfolioMessage, &InputPreprocessorMessageHandler> for Port
 				}
 			}
 			LoadFont { font, is_default } => {
-				if !self.font_cache.loaded_font(&font) {
+				if !self.persistent_data.font_cache.loaded_font(&font) {
 					responses.push_front(FrontendMessage::TriggerFontLoad { font, is_default }.into());
 				}
 			}
@@ -486,11 +506,11 @@ impl PortfolioMessageHandler {
 			new_document
 				.layer_metadata
 				.keys()
-				.filter_map(|path| new_document.layer_panel_entry_from_path(path, &self.font_cache))
+				.filter_map(|path| new_document.layer_panel_entry_from_path(path, &self.persistent_data.font_cache))
 				.map(|entry| FrontendMessage::UpdateDocumentLayerDetails { data: entry }.into())
 				.collect::<Vec<_>>(),
 		);
-		new_document.update_layer_tree_options_bar_widgets(responses, &self.font_cache);
+		new_document.update_layer_tree_options_bar_widgets(responses, &self.persistent_data.font_cache);
 
 		self.documents.insert(document_id, new_document);
 
@@ -520,6 +540,6 @@ impl PortfolioMessageHandler {
 	}
 
 	pub fn font_cache(&self) -> &FontCache {
-		&self.font_cache
+		&self.persistent_data.font_cache
 	}
 }
