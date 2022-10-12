@@ -31,7 +31,7 @@
 						<table>
 							<tr>
 								<td>
-									<TextButton :label="'New Document:'" :icon="'File'" :action="() => newDocument()" />
+									<TextButton :label="'New Document'" :icon="'File'" :action="() => newDocument()" />
 								</td>
 								<td>
 									<UserInputLabel :keysWithLabelsGroups="[[...platformModifiers(true), { key: 'KeyN', label: 'N' }]]" />
@@ -39,7 +39,7 @@
 							</tr>
 							<tr>
 								<td>
-									<TextButton :label="'Open Document:'" :icon="'Folder'" :action="() => openDocument()" />
+									<TextButton :label="'Open Document'" :icon="'Folder'" :action="() => openDocument()" />
 								</td>
 								<td>
 									<UserInputLabel :keysWithLabelsGroups="[[...platformModifiers(false), { key: 'KeyO', label: 'O' }]]" />
