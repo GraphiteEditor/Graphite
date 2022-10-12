@@ -63,8 +63,10 @@ pub enum Operation {
 	SetAiArtistTerminated {
 		path: Vec<LayerId>,
 	},
+	/// Sets a blob URL as the image source for an Image or AiArtist layer type.
+	/// **Be sure to call `FrontendMessage::TriggerRevokeBlobUrl` together with this.**
 	SetImageBlobUrl {
-		path: Vec<LayerId>,
+		layer_path: Vec<LayerId>,
 		blob_url: String,
 		dimensions: (f64, f64),
 	},
@@ -163,6 +165,8 @@ pub enum Operation {
 	CreateFolder {
 		path: Vec<LayerId>,
 	},
+	/// Clears the image to leave the AI Artist layer un-rendered.
+	/// **Be sure to call `FrontendMessage::TriggerRevokeBlobUrl` together with this.**
 	ClearAiArtist {
 		path: Vec<LayerId>,
 	},

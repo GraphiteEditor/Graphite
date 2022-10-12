@@ -193,6 +193,12 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &Persist
 				}
 				let layer_path = layer_path.unwrap().as_slice();
 
+				let layer = self.graphene_document.layer(layer_path).expect("Clearing AI Artist image for invalid layer");
+				let previous_blob_url = &layer.as_ai_artist().unwrap().blob_url;
+
+				if let Some(url) = previous_blob_url {
+					responses.push_back(FrontendMessage::TriggerRevokeBlobUrl { url: url.clone() }.into());
+				}
 				responses.push_back(DocumentOperation::ClearAiArtist { path: layer_path.into() }.into());
 			}
 			AiArtistGenerate => {
@@ -681,6 +687,15 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &Persist
 				for path in self.layer_metadata.iter().filter_map(|(path, data)| data.selected.then(|| path.clone())) {
 					responses.push_back(DocumentOperation::SetLayerBlendMode { path, blend_mode }.into());
 				}
+			}
+			SetImageBlobUrl { layer_path, blob_url, dimensions } => {
+				let layer = self.graphene_document.layer(&layer_path).expect("Clearing AI Artist image for invalid layer");
+				let previous_blob_url = &layer.as_ai_artist().unwrap().blob_url;
+
+				if let Some(url) = previous_blob_url {
+					responses.push_back(FrontendMessage::TriggerRevokeBlobUrl { url: url.clone() }.into());
+				}
+				responses.push_back(DocumentOperation::SetImageBlobUrl { layer_path, blob_url, dimensions }.into());
 			}
 			SetLayerExpansion { layer_path, set_expanded } => {
 				self.layer_metadata_mut(&layer_path).expanded = set_expanded;

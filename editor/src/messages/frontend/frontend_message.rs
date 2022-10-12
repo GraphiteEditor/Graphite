@@ -115,6 +115,9 @@ pub enum FrontendMessage {
 		size: (f64, f64),
 	},
 	TriggerRefreshBoundsOfViewports,
+	TriggerRevokeBlobUrl {
+		url: String,
+	},
 	TriggerTextCommit,
 	TriggerTextCopy {
 		#[serde(rename = "copyText")]

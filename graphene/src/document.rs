@@ -789,8 +789,8 @@ impl Document {
 				self.mark_as_dirty(&path)?;
 				Some([vec![DocumentChanged], update_thumbnails_upstream(&path)].concat())
 			}
-			Operation::SetImageBlobUrl { path, blob_url, dimensions } => {
-				let layer = self.layer_mut(&path).expect("Blob url for invalid layer");
+			Operation::SetImageBlobUrl { layer_path, blob_url, dimensions } => {
+				let layer = self.layer_mut(&layer_path).expect("Blob url for invalid layer");
 				match &mut layer.data {
 					LayerDataType::Image(image) => {
 						image.blob_url = Some(blob_url);
@@ -803,8 +803,8 @@ impl Document {
 					_ => panic!("Incorrectly trying to set the image blob URL for a layer that is not an Image or AiArtist layer type"),
 				}
 
-				self.mark_as_dirty(&path)?;
-				Some([vec![DocumentChanged, LayerChanged { path: path.clone() }], update_thumbnails_upstream(&path)].concat())
+				self.mark_as_dirty(&layer_path)?;
+				Some([vec![DocumentChanged, LayerChanged { path: layer_path.clone() }], update_thumbnails_upstream(&layer_path)].concat())
 			}
 			Operation::SetAiArtistPercentComplete { path, percent } => {
 				let layer = self.layer_mut(&path).expect("Setting AI Artist percent complete for invalid layer");

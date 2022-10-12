@@ -298,6 +298,10 @@ export class TriggerAiArtistTerminate extends JsMessage {
 
 export class TriggerRefreshBoundsOfViewports extends JsMessage {}
 
+export class TriggerRevokeBlobUrl extends JsMessage {
+	readonly url!: string;
+}
+
 export class DocumentChanged extends JsMessage {}
 
 export class UpdateDocumentLayerTreeStructure extends JsMessage {
@@ -947,6 +951,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	TriggerAiArtistRasterizeAndGenerateImg2Img,
 	TriggerAiArtistTerminate,
 	TriggerRefreshBoundsOfViewports,
+	TriggerRevokeBlobUrl,
 	TriggerTextCommit,
 	TriggerTextCopy,
 	TriggerViewportResize,

@@ -23,6 +23,7 @@ pub struct AiArtistLayer {
 	pub cfg_scale: f64,
 	pub use_img2img: bool,
 	pub denoising_strength: f64,
+	// TODO: Have the browser dispose of this blob URL when this is dropped (like when the layer is deleted)
 	#[serde(skip)]
 	pub blob_url: Option<String>,
 	#[serde(skip)]
