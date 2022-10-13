@@ -236,7 +236,7 @@ impl Fsm for ArtboardToolFsmState {
 								ArtboardMessage::AddArtboard {
 									id: Some(id),
 									position: (0., 0.),
-									size: (0., 0.),
+									size: (1., 1.),
 								}
 								.into(),
 							);
