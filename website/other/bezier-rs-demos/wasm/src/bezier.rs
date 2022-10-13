@@ -39,11 +39,6 @@ fn vec_to_point(p: &DVec2) -> Point {
 	Point { x: p.x, y: p.y }
 }
 
-/// Convert a bezier to a list of points.
-fn bezier_to_points(bezier: Bezier) -> Vec<Point> {
-	bezier.get_points().map(|point| Point { x: point.x, y: point.y }).collect()
-}
-
 /// Serialize some data and then convert it to a JsValue.
 fn to_js_value<T: Serialize>(data: T) -> JsValue {
 	JsValue::from_serde(&serde_json::to_string(&data).unwrap()).unwrap()
@@ -354,11 +349,9 @@ impl WasmBezier {
 	}
 
 	pub fn de_casteljau_points(&self, t: f64) -> String {
-		let mut points: Vec<Vec<DVec2>> = self.0.de_casteljau_points(t);
+		let points: Vec<Vec<DVec2>> = self.0.de_casteljau_points(t);
 
 		let bezier_svg = self.get_bezier_path();
-
-		points.reverse();
 
 		let casteljau_svg = points
 			.iter()
@@ -369,14 +362,9 @@ impl WasmBezier {
 					.iter()
 					.enumerate()
 					.map(|(index, point)| {
-						// Skip the anchor and handle points which are already drawn in black
 						format!(
 							"{}{}",
-							if idx != (points.len() - 1) {
-								draw_circle(point.x, point.y, 3., &color_light, 1.5, WHITE)
-							} else {
-								String::new()
-							},
+							draw_circle(point.x, point.y, 3., &color_light, 1.5, WHITE),
 							if index != 0 {
 								let prev_point = points[index - 1];
 								draw_line(prev_point.x, prev_point.y, point.x, point.y, &color_light, 1.5)
@@ -393,6 +381,7 @@ impl WasmBezier {
 		wrap_svg_tag(content)
 	}
 
+	// TODO: add support for rotating around point
 	pub fn rotate(&self, angle: f64) -> String {
 		let original_bezier_svg = self.get_bezier_path();
 		let rotated_bezier = self.0.rotate(angle);
