@@ -115,49 +115,24 @@ pub trait ThenBox<Inter, Input> {
 #[cfg(feature = "async")]
 impl<'n, First: 'n, Inter, Input> ThenBox<Inter, Input> for alloc::boxed::Box<First> where &'n alloc::boxed::Box<First>: Node<Input, Output = Inter> {}
 
-pub struct ConsNode<Root>(pub Root);
+pub struct ConsNode<Root, T: From<()>>(pub Root, pub PhantomData<T>);
 
-impl<Root, Input> Node<Input> for ConsNode<Root>
+impl<Root, Input, T: From<()>> Node<Input> for ConsNode<Root, T>
 where
-	Root: Node<()>,
+	Root: Node<T>,
 {
-	type Output = (Input, <Root as Node<()>>::Output);
+	type Output = (Input, <Root as Node<T>>::Output);
 
 	fn eval(self, input: Input) -> Self::Output {
-		let arg = self.0.eval(());
+		let arg = self.0.eval(().into());
 		(input, arg)
 	}
 }
-impl<'n, Root: Node<()> + Copy, Input> Node<Input> for &'n ConsNode<Root> {
+impl<'n, Root: Node<T> + Copy, T: From<()>, Input> Node<Input> for &'n ConsNode<Root, T> {
 	type Output = (Input, Root::Output);
 
 	fn eval(self, input: Input) -> Self::Output {
-		let arg = (&self.0).eval(());
+		let arg = self.0.eval(().into());
 		(input, arg)
-	}
-}
-
-pub struct ConsPassInputNode<Root>(pub Root);
-
-impl<Root, L, R> Node<(L, R)> for ConsPassInputNode<Root>
-where
-	Root: Node<R>,
-{
-	type Output = (L, <Root as Node<R>>::Output);
-
-	fn eval(self, input: (L, R)) -> Self::Output {
-		let arg = self.0.eval(input.1);
-		(input.0, arg)
-	}
-}
-impl<'n, Root, L, R> Node<(L, R)> for &'n ConsPassInputNode<Root>
-where
-	&'n Root: Node<R>,
-{
-	type Output = (L, <&'n Root as Node<R>>::Output);
-
-	fn eval(self, input: (L, R)) -> Self::Output {
-		let arg = (&self.0).eval(input.1);
-		(input.0, arg)
 	}
 }
