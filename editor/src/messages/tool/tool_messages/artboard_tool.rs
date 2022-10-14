@@ -117,7 +117,7 @@ impl Default for ArtboardToolFsmState {
 #[derive(Clone, Debug, Default)]
 struct ArtboardToolData {
 	bounding_box_overlays: Option<BoundingBoxOverlays>,
-	selected_board: Option<LayerId>,
+	selected_artboard: Option<LayerId>,
 	snap_manager: SnapManager,
 	cursor: MouseCursorIcon,
 	drag_start: DVec2,
@@ -140,7 +140,10 @@ impl Fsm for ArtboardToolFsmState {
 			match (self, event) {
 				(ArtboardToolFsmState::Ready | ArtboardToolFsmState::ResizingBounds | ArtboardToolFsmState::Dragging, ArtboardToolMessage::DocumentIsDirty) => {
 					match (
-						tool_data.selected_board.map(|path| document.artboard_bounding_box_and_transform(&[path], font_cache)).unwrap_or(None),
+						tool_data
+							.selected_artboard
+							.map(|path| document.artboard_bounding_box_and_transform(&[path], font_cache))
+							.unwrap_or(None),
 						tool_data.bounding_box_overlays.take(),
 					) {
 						(None, Some(bounding_box_overlays)) => bounding_box_overlays.delete(responses),
@@ -157,7 +160,7 @@ impl Fsm for ArtboardToolFsmState {
 							responses.push_back(OverlaysMessage::Rerender.into());
 							responses.push_back(
 								PropertiesPanelMessage::SetActiveLayers {
-									paths: vec![vec![tool_data.selected_board.unwrap()]],
+									paths: vec![vec![tool_data.selected_artboard.unwrap()]],
 									document: TargetDocument::Artboard,
 								}
 								.into(),
@@ -190,12 +193,12 @@ impl Fsm for ArtboardToolFsmState {
 						let snap_x = selected_edges.2 || selected_edges.3;
 						let snap_y = selected_edges.0 || selected_edges.1;
 
-						let board = tool_data.selected_board.unwrap();
-						tool_data.snap_manager.start_snap(document, document.bounding_boxes(None, Some(board), font_cache), snap_x, snap_y);
+						let artboard = tool_data.selected_artboard.unwrap();
+						tool_data.snap_manager.start_snap(document, document.bounding_boxes(None, Some(artboard), font_cache), snap_x, snap_y);
 						tool_data.snap_manager.add_all_document_handles(document, &[], &[], &[]);
 
 						if let Some(bounds) = &mut tool_data.bounding_box_overlays {
-							let pivot = document.artboard_message_handler.artboards_graphene_document.pivot(&[board], font_cache).unwrap_or_default();
+							let pivot = document.artboard_message_handler.artboards_graphene_document.pivot(&[artboard], font_cache).unwrap_or_default();
 							let root = document.graphene_document.root.transform;
 							let pivot = root.inverse().transform_point2(pivot);
 							bounds.center_of_transformation = pivot;
@@ -209,7 +212,7 @@ impl Fsm for ArtboardToolFsmState {
 
 						responses.push_back(BroadcastEvent::DocumentIsDirty.into());
 						if let Some(intersection) = intersection.last() {
-							tool_data.selected_board = Some(intersection[0]);
+							tool_data.selected_artboard = Some(intersection[0]);
 
 							tool_data
 								.snap_manager
@@ -226,7 +229,7 @@ impl Fsm for ArtboardToolFsmState {
 
 							ArtboardToolFsmState::Dragging
 						} else {
-							tool_data.selected_board = None;
+							tool_data.selected_artboard = None;
 
 							responses.push_back(PropertiesPanelMessage::ClearSelection.into());
 
@@ -246,7 +249,7 @@ impl Fsm for ArtboardToolFsmState {
 							let (position, size) = movement.new_size(snapped_mouse_position, bounds.transform, from_center, bounds.center_of_transformation, constrain_square);
 							responses.push_back(
 								ArtboardMessage::ResizeArtboard {
-									artboard: tool_data.selected_board.unwrap(),
+									artboard: tool_data.selected_artboard.unwrap(),
 									position: position.round().into(),
 									size: size.round().into(),
 								}
@@ -274,7 +277,7 @@ impl Fsm for ArtboardToolFsmState {
 
 						responses.push_back(
 							ArtboardMessage::ResizeArtboard {
-								artboard: tool_data.selected_board.unwrap(),
+								artboard: tool_data.selected_artboard.unwrap(),
 								position: position.round().into(),
 								size: size.round().into(),
 							}
@@ -308,10 +311,10 @@ impl Fsm for ArtboardToolFsmState {
 					let start = root_transform.transform_point2(start);
 					let size = root_transform.transform_vector2(size);
 
-					if let Some(board) = tool_data.selected_board {
+					if let Some(artboard) = tool_data.selected_artboard {
 						responses.push_back(
 							ArtboardMessage::ResizeArtboard {
-								artboard: board,
+								artboard,
 								position: start.round().into(),
 								size: size.round().into(),
 							}
@@ -319,7 +322,7 @@ impl Fsm for ArtboardToolFsmState {
 						);
 					} else {
 						let id = generate_uuid();
-						tool_data.selected_board = Some(id);
+						tool_data.selected_artboard = Some(id);
 
 						tool_data.snap_manager.start_snap(document, document.bounding_boxes(None, Some(id), font_cache), true, true);
 						tool_data.snap_manager.add_all_document_handles(document, &[], &[], &[]);
@@ -338,7 +341,7 @@ impl Fsm for ArtboardToolFsmState {
 					// This might result in a few more calls but it is not reliant on the order of messages
 					responses.push_back(
 						PropertiesPanelMessage::SetActiveLayers {
-							paths: vec![vec![tool_data.selected_board.unwrap()]],
+							paths: vec![vec![tool_data.selected_artboard.unwrap()]],
 							document: TargetDocument::Artboard,
 						}
 						.into(),
@@ -388,7 +391,7 @@ impl Fsm for ArtboardToolFsmState {
 					ArtboardToolFsmState::Ready
 				}
 				(_, ArtboardToolMessage::DeleteSelected) => {
-					if let Some(artboard) = tool_data.selected_board.take() {
+					if let Some(artboard) = tool_data.selected_artboard.take() {
 						responses.push_back(ArtboardMessage::DeleteArtboard { artboard }.into());
 						responses.push_back(BroadcastEvent::DocumentIsDirty.into());
 					}
@@ -398,7 +401,7 @@ impl Fsm for ArtboardToolFsmState {
 					if let Some(bounds) = &mut tool_data.bounding_box_overlays {
 						responses.push_back(
 							ArtboardMessage::ResizeArtboard {
-								artboard: tool_data.selected_board.unwrap(),
+								artboard: tool_data.selected_artboard.unwrap(),
 								position: (bounds.bounds[0].x + delta_x, bounds.bounds[0].y + delta_y),
 								size: (bounds.bounds[1] - bounds.bounds[0]).round().into(),
 							}
