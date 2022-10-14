@@ -15,7 +15,7 @@ pub struct AiArtistLayer {
 	#[serde(skip)]
 	pub percent_complete: f64,
 	#[serde(skip)]
-	pub terminated: bool,
+	pub generating: bool,
 	pub prompt: String,
 	pub negative_prompt: String,
 	pub seed: u64,
@@ -36,7 +36,7 @@ impl Default for AiArtistLayer {
 	fn default() -> Self {
 		Self {
 			percent_complete: 0.,
-			terminated: false,
+			generating: false,
 			prompt: "".into(),
 			negative_prompt: "".into(),
 			seed: 0,

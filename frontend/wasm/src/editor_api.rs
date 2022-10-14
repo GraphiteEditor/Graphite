@@ -168,6 +168,13 @@ impl JsEditorHandle {
 		}
 	}
 
+	#[wasm_bindgen(js_name = loadPreferences)]
+	pub fn load_preferences(&self, preferences: String) {
+		let message = PreferencesMessage::Load { preferences };
+
+		self.dispatch(message);
+	}
+
 	#[wasm_bindgen(js_name = selectDocument)]
 	pub fn select_document(&self, document_id: u64) {
 		let message = PortfolioMessage::SelectDocument { document_id };
@@ -435,17 +442,10 @@ impl JsEditorHandle {
 		self.dispatch(message);
 	}
 
-	/// Sends an updated progress percentage of the AI Artist layer currently being generated
-	#[wasm_bindgen(js_name = setAIArtistPercentComplete)]
-	pub fn set_ai_artist_percent_complete(&self, path: Vec<LayerId>, percent: f64) {
-		let message = Operation::SetAiArtistPercentComplete { path, percent };
-		self.dispatch(message);
-	}
-
-	/// Notifies the AI Artist layer that its generation has been successfully terminated at the request of the user
-	#[wasm_bindgen(js_name = setAIArtistTerminated)]
-	pub fn set_ai_artist_terminated(&self, path: Vec<LayerId>) {
-		let message = Operation::SetAiArtistTerminated { path };
+	/// Notifies the AI Artist layer of a new percentage of completion and whether or not it's currently generating
+	#[wasm_bindgen(js_name = setAIArtistGeneratingStatus)]
+	pub fn set_ai_artist_generating_status(&self, path: Vec<LayerId>, percent: Option<f64>, generating: bool) {
+		let message = Operation::SetAiArtistGeneratingStatus { path, percent, generating };
 		self.dispatch(message);
 	}
 

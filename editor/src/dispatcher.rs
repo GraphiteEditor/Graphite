@@ -93,14 +93,16 @@ impl Dispatcher {
 				NoOp => {}
 				#[remain::unsorted]
 				Init => {
+					// Load persistent data from the browser database
+					queue.push_back(FrontendMessage::TriggerLoadAutoSaveDocuments.into());
+					queue.push_back(FrontendMessage::TriggerLoadPreferences.into());
+
 					// Display the menu bar at the top of the window
-					let message = MenuBarMessage::SendLayout.into();
-					queue.push_back(message);
+					queue.push_back(MenuBarMessage::SendLayout.into());
 
 					// Load the default font
 					let font = Font::new(DEFAULT_FONT_FAMILY.into(), DEFAULT_FONT_STYLE.into());
-					let message = FrontendMessage::TriggerFontLoad { font, is_default: true }.into();
-					queue.push_back(message);
+					queue.push_back(FrontendMessage::TriggerFontLoad { font, is_default: true }.into());
 				}
 
 				Broadcast(message) => self.message_handlers.broadcast_message_handler.process_message(message, (), &mut queue),

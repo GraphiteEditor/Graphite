@@ -49,6 +49,8 @@ pub enum FrontendMessage {
 		#[serde(rename = "layerPath")]
 		layer_path: Vec<LayerId>,
 		hostname: String,
+		#[serde(rename = "refreshFrequency")]
+		refresh_frequency: f64,
 		prompt: String,
 		#[serde(rename = "negativePrompt")]
 		negative_prompt: String,
@@ -68,6 +70,8 @@ pub enum FrontendMessage {
 		#[serde(rename = "layerPath")]
 		layer_path: Vec<LayerId>,
 		hostname: String,
+		#[serde(rename = "refreshFrequency")]
+		refresh_frequency: f64,
 		prompt: String,
 		#[serde(rename = "negativePrompt")]
 		negative_prompt: String,
@@ -106,6 +110,8 @@ pub enum FrontendMessage {
 		details: FrontendDocumentDetails,
 		version: String,
 	},
+	TriggerLoadAutoSaveDocuments,
+	TriggerLoadPreferences,
 	TriggerOpenDocument,
 	TriggerPaste,
 	TriggerRasterDownload {
@@ -117,6 +123,9 @@ pub enum FrontendMessage {
 	TriggerRefreshBoundsOfViewports,
 	TriggerRevokeBlobUrl {
 		url: String,
+	},
+	TriggerSavePreferences {
+		preferences: PreferencesMessageHandler,
 	},
 	TriggerTextCommit,
 	TriggerTextCopy {

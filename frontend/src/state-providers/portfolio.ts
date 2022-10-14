@@ -68,12 +68,12 @@ export function createPortfolioState(editor: Editor) {
 		checkAIArtist(hostname, editor);
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerAiArtistGenerateTxt2Img, async (triggerAiArtistGenerateTxt2Img) => {
-		const { layerPath, hostname, prompt, negativePrompt, resolution, seed, samples, cfgScale, restoreFaces, tiling } = triggerAiArtistGenerateTxt2Img;
+		const { layerPath, hostname, refreshFrequency, prompt, negativePrompt, resolution, seed, samples, cfgScale, restoreFaces, tiling } = triggerAiArtistGenerateTxt2Img;
 
-		callAIArtist(hostname, prompt, negativePrompt, resolution, seed, samples, cfgScale, undefined, restoreFaces, tiling, undefined, layerPath, editor);
+		callAIArtist(hostname, refreshFrequency, prompt, negativePrompt, resolution, seed, samples, cfgScale, undefined, restoreFaces, tiling, undefined, layerPath, editor);
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerAiArtistRasterizeAndGenerateImg2Img, async (triggerAiArtistRasterizeAndGenerateImg2Img) => {
-		const { svg, rasterizeSize, layerPath, hostname, prompt, negativePrompt, resolution, seed, samples, cfgScale, denoisingStrength, restoreFaces, tiling } =
+		const { svg, rasterizeSize, layerPath, hostname, refreshFrequency, prompt, negativePrompt, resolution, seed, samples, cfgScale, denoisingStrength, restoreFaces, tiling } =
 			triggerAiArtistRasterizeAndGenerateImg2Img;
 
 		// Rasterize the SVG to an image file
@@ -83,7 +83,7 @@ export function createPortfolioState(editor: Editor) {
 
 		editor.instance.setImageBlobUrl(layerPath, blobURL, rasterizeSize.x, rasterizeSize.y);
 
-		callAIArtist(hostname, prompt, negativePrompt, resolution, seed, samples, cfgScale, denoisingStrength, restoreFaces, tiling, blob, layerPath, editor);
+		callAIArtist(hostname, refreshFrequency, prompt, negativePrompt, resolution, seed, samples, cfgScale, denoisingStrength, restoreFaces, tiling, blob, layerPath, editor);
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerAiArtistTerminate, async (triggerAiArtistTerminate) => {
 		const { layerPath, hostname } = triggerAiArtistTerminate;

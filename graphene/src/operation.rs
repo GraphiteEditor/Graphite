@@ -56,12 +56,10 @@ pub enum Operation {
 		insert_index: isize,
 		transform: [f64; 6],
 	},
-	SetAiArtistPercentComplete {
+	SetAiArtistGeneratingStatus {
 		path: Vec<LayerId>,
-		percent: f64,
-	},
-	SetAiArtistTerminated {
-		path: Vec<LayerId>,
+		percent: Option<f64>,
+		generating: bool,
 	},
 	/// Sets a blob URL as the image source for an Image or AiArtist layer type.
 	/// **Be sure to call `FrontendMessage::TriggerRevokeBlobUrl` together with this.**

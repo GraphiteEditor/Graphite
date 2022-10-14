@@ -25,8 +25,8 @@ export function createPanicManager(editor: Editor, dialogState: DialogState): vo
 function preparePanicDialog(header: string, details: string, panicDetails: string): [IconName, WidgetLayout, TextButtonWidget[]] {
 	const widgets: WidgetLayout = {
 		layout: [
-			{ rowWidgets: [new Widget({ kind: "TextLabel", value: header, bold: true, italic: false, tableAlign: false, multiline: false }, 0n)] },
-			{ rowWidgets: [new Widget({ kind: "TextLabel", value: details, bold: false, italic: false, tableAlign: false, multiline: true }, 1n)] },
+			{ rowWidgets: [new Widget({ kind: "TextLabel", value: header, bold: true, italic: false, tableAlign: false, minWidth: 0, multiline: false }, 0n)] },
+			{ rowWidgets: [new Widget({ kind: "TextLabel", value: details, bold: false, italic: false, tableAlign: false, minWidth: 0, multiline: true }, 1n)] },
 		],
 		layoutTarget: undefined,
 	};

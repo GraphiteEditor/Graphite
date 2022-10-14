@@ -49,6 +49,9 @@ pub struct TextLabel {
 
 	pub multiline: bool,
 
+	#[serde(rename = "minWidth")]
+	pub min_width: u32,
+
 	// Body
 	pub value: String,
 }

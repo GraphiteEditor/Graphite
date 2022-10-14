@@ -544,7 +544,7 @@ fn node_section_ai_artist(ai_artist_layer: &AiArtistLayer, layer: &Layer, persis
 					})),
 					WidgetHolder::new(Widget::IconButton(IconButton {
 						size: 24,
-						icon: "FullscreenEnter".into(),
+						icon: "Rescale".into(),
 						on_update: WidgetCallback::new(|_| PropertiesPanelMessage::SetAiArtistScaleFromResolution.into()),
 						..Default::default()
 					})),
@@ -573,14 +573,14 @@ fn node_section_ai_artist(ai_artist_layer: &AiArtistLayer, layer: &Layer, persis
 						direction: SeparatorDirection::Horizontal,
 					})),
 					WidgetHolder::new(Widget::TextLabel(TextLabel {
-						value: if ai_artist_layer.blob_url == None {
+						value: if ai_artist_layer.generating {
+							format!("{:.0}%", ai_artist_layer.percent_complete)
+						} else if ai_artist_layer.percent_complete == 0. {
 							"Ready".into()
 						} else if ai_artist_layer.percent_complete == 100. {
 							"Done".into()
-						} else if ai_artist_layer.terminated {
-							format!("{:.0}% (Terminated)", ai_artist_layer.percent_complete)
 						} else {
-							format!("{:.0}%", ai_artist_layer.percent_complete)
+							format!("{:.0}% (Terminated)", ai_artist_layer.percent_complete)
 						},
 						bold: true,
 						..Default::default()
@@ -600,7 +600,7 @@ fn node_section_ai_artist(ai_artist_layer: &AiArtistLayer, layer: &Layer, persis
 						})),
 					],
 					{
-						if ai_artist_layer.blob_url != None && ai_artist_layer.percent_complete < 100. && !ai_artist_layer.terminated {
+						if ai_artist_layer.generating {
 							vec![WidgetHolder::new(Widget::TextButton(TextButton {
 								label: "Terminate".into(),
 								on_update: WidgetCallback::new(|_| DocumentMessage::AiArtistTerminate.into()),

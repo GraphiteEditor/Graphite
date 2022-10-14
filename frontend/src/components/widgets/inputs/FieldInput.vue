@@ -55,6 +55,7 @@
 		padding: 3px 0;
 		overflow: hidden;
 		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 
 	&:not(.disabled) label {

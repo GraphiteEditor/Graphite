@@ -302,7 +302,7 @@ impl Fsm for TextToolFsmState {
 					{
 						if state == TextToolFsmState::Editing {
 							responses.push_back(
-								DocumentMessage::SetTexboxEditability {
+								DocumentMessage::SetTextboxEditability {
 									path: tool_data.path.clone(),
 									editable: false,
 								}
@@ -313,7 +313,7 @@ impl Fsm for TextToolFsmState {
 						tool_data.path = l.clone();
 
 						responses.push_back(
-							DocumentMessage::SetTexboxEditability {
+							DocumentMessage::SetTextboxEditability {
 								path: tool_data.path.clone(),
 								editable: true,
 							}
@@ -358,7 +358,7 @@ impl Fsm for TextToolFsmState {
 						);
 
 						responses.push_back(
-							DocumentMessage::SetTexboxEditability {
+							DocumentMessage::SetTextboxEditability {
 								path: tool_data.path.clone(),
 								editable: true,
 							}
@@ -376,7 +376,7 @@ impl Fsm for TextToolFsmState {
 					} else {
 						// Removing old text as editable
 						responses.push_back(
-							DocumentMessage::SetTexboxEditability {
+							DocumentMessage::SetTextboxEditability {
 								path: tool_data.path.clone(),
 								editable: false,
 							}
@@ -393,7 +393,7 @@ impl Fsm for TextToolFsmState {
 				(state, Abort) => {
 					if state == TextToolFsmState::Editing {
 						responses.push_back(
-							DocumentMessage::SetTexboxEditability {
+							DocumentMessage::SetTextboxEditability {
 								path: tool_data.path.clone(),
 								editable: false,
 							}
@@ -420,7 +420,7 @@ impl Fsm for TextToolFsmState {
 					);
 
 					responses.push_back(
-						DocumentMessage::SetTexboxEditability {
+						DocumentMessage::SetTextboxEditability {
 							path: tool_data.path.clone(),
 							editable: false,
 						}

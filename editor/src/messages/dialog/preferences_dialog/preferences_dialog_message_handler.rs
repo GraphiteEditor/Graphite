@@ -1,7 +1,7 @@
 use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
 use crate::messages::layout::utility_types::misc::LayoutTarget;
 use crate::messages::layout::utility_types::widgets::button_widgets::TextButton;
-use crate::messages::layout::utility_types::widgets::input_widgets::TextInput;
+use crate::messages::layout::utility_types::widgets::input_widgets::{NumberInput, TextInput};
 use crate::messages::layout::utility_types::widgets::label_widgets::{Separator, SeparatorDirection, SeparatorType, TextLabel};
 use crate::messages::prelude::*;
 
@@ -33,13 +33,13 @@ impl PreferencesDialogMessageHandler {
 	}
 
 	fn properties(&self, preferences: &PreferencesMessageHandler) -> Layout {
-		let ai_artist_section_title = vec![WidgetHolder::new(Widget::TextLabel(TextLabel {
-			value: "AI Artist layers".into(),
-			italic: true,
-			..Default::default()
-		}))];
-
-		let ai_artist_section_hostname = vec![
+		let ai_artist_server_hostname = vec![
+			WidgetHolder::new(Widget::TextLabel(TextLabel {
+				value: "AI Artist".into(),
+				min_width: 60,
+				italic: true,
+				..Default::default()
+			})),
 			WidgetHolder::new(Widget::TextLabel(TextLabel {
 				value: "Server Hostname".into(),
 				table_align: true,
@@ -57,18 +57,47 @@ impl PreferencesDialogMessageHandler {
 			})),
 		];
 
-		let button_widgets = vec![WidgetHolder::new(Widget::TextButton(TextButton {
-			label: "Ok".to_string(),
-			min_width: 96,
-			emphasized: true,
-			on_update: WidgetCallback::new(|_| {
-				DialogMessage::CloseDialogAndThen {
-					followups: vec![PreferencesDialogMessage::Confirm.into()],
-				}
-				.into()
-			}),
-			..Default::default()
-		}))];
+		let ai_artist_refresh_frequency = vec![
+			WidgetHolder::new(Widget::TextLabel(TextLabel { min_width: 60, ..Default::default() })),
+			WidgetHolder::new(Widget::TextLabel(TextLabel {
+				value: "Refresh Frequency".into(),
+				table_align: true,
+				..Default::default()
+			})),
+			WidgetHolder::new(Widget::Separator(Separator {
+				separator_type: SeparatorType::Unrelated,
+				direction: SeparatorDirection::Horizontal,
+			})),
+			WidgetHolder::new(Widget::NumberInput(NumberInput {
+				unit: " seconds".into(),
+				value: Some(preferences.ai_artist_refresh_frequency),
+				min: Some(0.),
+				min_width: 200,
+				on_update: WidgetCallback::new(|number_input: &NumberInput| PreferencesMessage::AiArtistRefreshFrequency { seconds: number_input.value.unwrap() }.into()),
+				..Default::default()
+			})),
+		];
+
+		let button_widgets = vec![
+			WidgetHolder::new(Widget::TextButton(TextButton {
+				label: "Ok".to_string(),
+				min_width: 96,
+				emphasized: true,
+				on_update: WidgetCallback::new(|_| {
+					DialogMessage::CloseDialogAndThen {
+						followups: vec![PreferencesDialogMessage::Confirm.into()],
+					}
+					.into()
+				}),
+				..Default::default()
+			})),
+			WidgetHolder::new(Widget::TextButton(TextButton {
+				label: "Reset to Defaults".to_string(),
+				min_width: 96,
+				on_update: WidgetCallback::new(|_| PreferencesMessage::ResetToDefaults.into()),
+				..Default::default()
+			})),
+		];
 
 		Layout::WidgetLayout(WidgetLayout::new(vec![
 			LayoutGroup::Row {
@@ -78,8 +107,8 @@ impl PreferencesDialogMessageHandler {
 					..Default::default()
 				}))],
 			},
-			LayoutGroup::Row { widgets: ai_artist_section_title },
-			LayoutGroup::Row { widgets: ai_artist_section_hostname },
+			LayoutGroup::Row { widgets: ai_artist_server_hostname },
+			LayoutGroup::Row { widgets: ai_artist_refresh_frequency },
 			LayoutGroup::Row { widgets: button_widgets },
 		]))
 	}

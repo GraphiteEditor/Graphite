@@ -216,6 +216,10 @@ export class TriggerFileDownload extends JsMessage {
 	readonly name!: string;
 }
 
+export class TriggerLoadAutoSaveDocuments extends JsMessage {}
+
+export class TriggerLoadPreferences extends JsMessage {}
+
 export class TriggerOpenDocument extends JsMessage {}
 
 export class TriggerImport extends JsMessage {}
@@ -241,6 +245,8 @@ export class TriggerAiArtistGenerateTxt2Img extends JsMessage {
 	readonly layerPath!: BigUint64Array;
 
 	readonly hostname!: string;
+
+	readonly refreshFrequency!: number;
 
 	readonly prompt!: string;
 
@@ -269,6 +275,8 @@ export class TriggerAiArtistRasterizeAndGenerateImg2Img extends JsMessage {
 	readonly layerPath!: BigUint64Array;
 
 	readonly hostname!: string;
+
+	readonly refreshFrequency!: number;
 
 	readonly prompt!: string;
 
@@ -300,6 +308,10 @@ export class TriggerRefreshBoundsOfViewports extends JsMessage {}
 
 export class TriggerRevokeBlobUrl extends JsMessage {
 	readonly url!: string;
+}
+
+export class TriggerSavePreferences extends JsMessage {
+	readonly preferences!: Record<string, unknown>;
 }
 
 export class DocumentChanged extends JsMessage {}
@@ -586,6 +598,8 @@ export class NumberInput extends WidgetProps {
 	incrementFactor!: number;
 
 	disabled!: boolean;
+
+	minWidth!: number;
 }
 
 export class OptionalInput extends WidgetProps {
@@ -696,6 +710,8 @@ export class TextLabel extends WidgetProps {
 	italic!: boolean;
 
 	tableAlign!: boolean;
+
+	minWidth!: number;
 
 	multiline!: boolean;
 }
@@ -938,20 +954,23 @@ export const messageMakers: Record<string, MessageMaker> = {
 	DisplayEditableTextbox,
 	DisplayRemoveEditableTextbox,
 	TriggerAboutGraphiteLocalizedCommitDate,
-	TriggerOpenDocument,
+	TriggerAiArtistCheckServerStatus,
+	TriggerAiArtistGenerateTxt2Img,
+	TriggerAiArtistRasterizeAndGenerateImg2Img,
+	TriggerAiArtistTerminate,
 	TriggerFileDownload,
 	TriggerFontLoad,
 	TriggerImport,
 	TriggerIndexedDbRemoveDocument,
 	TriggerIndexedDbWriteDocument,
+	TriggerLoadAutoSaveDocuments,
+	TriggerLoadPreferences,
+	TriggerOpenDocument,
 	TriggerPaste,
 	TriggerRasterDownload,
-	TriggerAiArtistCheckServerStatus,
-	TriggerAiArtistGenerateTxt2Img,
-	TriggerAiArtistRasterizeAndGenerateImg2Img,
-	TriggerAiArtistTerminate,
 	TriggerRefreshBoundsOfViewports,
 	TriggerRevokeBlobUrl,
+	TriggerSavePreferences,
 	TriggerTextCommit,
 	TriggerTextCopy,
 	TriggerViewportResize,

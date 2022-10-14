@@ -15,10 +15,8 @@ let pollingRequestController = new AbortController();
 let timeoutRequestController = new AbortController();
 
 function hostInfo(hostname: string): { hostname: string; endpoint: string } {
-	const cleanedHostname = hostname.endsWith("/") ? hostname : `${hostname}/`;
-
-	const endpoint = `${cleanedHostname}api/predict/`;
-	return { hostname: cleanedHostname, endpoint };
+	const endpoint = `${hostname}api/predict/`;
+	return { hostname, endpoint };
 }
 
 export async function terminateAIArtist(hostname: string, layerPath: BigUint64Array, editor: Editor): Promise<void> {
@@ -26,7 +24,7 @@ export async function terminateAIArtist(hostname: string, layerPath: BigUint64Ar
 
 	abortAndResetPolling();
 
-	editor.instance.setAIArtistTerminated(layerPath);
+	editor.instance.setAIArtistGeneratingStatus(layerPath, undefined, false);
 }
 
 export async function checkAIArtist(hostname: string, editor: Editor): Promise<void> {
@@ -36,6 +34,7 @@ export async function checkAIArtist(hostname: string, editor: Editor): Promise<v
 
 export async function callAIArtist(
 	hostname: string,
+	refreshFrequency: number,
 	prompt: string,
 	negativePrompt: string,
 	resolution: XY,
@@ -53,7 +52,7 @@ export async function callAIArtist(
 	if (mainRequest) return;
 
 	// Immediately set the progress to 0% so the backend knows to update its layout
-	editor.instance.setAIArtistPercentComplete(layerPath, 0);
+	editor.instance.setAIArtistGeneratingStatus(layerPath, 0, true);
 
 	// Initiate a request to the computation server
 	const [width, height] = [resolution.x, resolution.y];
@@ -62,29 +61,33 @@ export async function callAIArtist(
 	} else {
 		mainRequest = img2img(hostname, image, prompt, negativePrompt, seed, samples, cfgScale, denoisingStrength, restoreFaces, tiling, width, height);
 	}
-	pollingRetries = 0;
 
 	// Begin polling every second for updates to the in-progress image generation
-	interval = setInterval(async () => {
-		try {
-			const [blob, percentComplete] = await pollImage(hostname);
+	if (refreshFrequency > 0) {
+		pollingRetries = 0;
 
-			const blobURL = URL.createObjectURL(blob);
-			editor.instance.setImageBlobUrl(layerPath, blobURL, width, height);
-			editor.instance.setAIArtistPercentComplete(layerPath, percentComplete);
-		} catch {
-			pollingRetries += 1;
+		const timeInterval = Math.max(refreshFrequency * 1000, 500);
+		interval = setInterval(async () => {
+			try {
+				const [blob, percentComplete] = await pollImage(hostname);
 
-			if (pollingRetries > MAX_POLLING_RETRIES) abortAndReset();
-		}
-	}, 1000);
+				const blobURL = URL.createObjectURL(blob);
+				editor.instance.setImageBlobUrl(layerPath, blobURL, width, height);
+				editor.instance.setAIArtistGeneratingStatus(layerPath, percentComplete, true);
+			} catch {
+				pollingRetries += 1;
+
+				if (pollingRetries > MAX_POLLING_RETRIES) abortAndReset();
+			}
+		}, timeInterval);
+	}
 
 	// Wait for the final image to be returned by the initial request containing either the full image or the last frame if it was terminated by the user
 	const blob = await mainRequest;
 
 	const blobURL = URL.createObjectURL(blob);
 	editor.instance.setImageBlobUrl(layerPath, blobURL, width, height);
-	editor.instance.setAIArtistPercentComplete(layerPath, 100);
+	editor.instance.setAIArtistGeneratingStatus(layerPath, 100, false);
 	abortAndReset();
 }
 

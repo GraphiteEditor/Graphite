@@ -441,6 +441,7 @@ impl Document {
 		Ok(())
 	}
 
+	/// For the purposes of rendering, this invalidates the render cache for the layer so it must be re-rendered next time.
 	pub fn mark_as_dirty(&mut self, path: &[LayerId]) -> Result<(), DocumentError> {
 		self.mark_upstream_as_dirty(path)?;
 		Ok(())
@@ -806,39 +807,24 @@ impl Document {
 				self.mark_as_dirty(&layer_path)?;
 				Some([vec![DocumentChanged, LayerChanged { path: layer_path.clone() }], update_thumbnails_upstream(&layer_path)].concat())
 			}
-			Operation::SetAiArtistPercentComplete { path, percent } => {
-				let layer = self.layer_mut(&path).expect("Setting AI Artist percent complete for invalid layer");
+			Operation::SetAiArtistGeneratingStatus { path, percent, generating } => {
+				let layer = self.layer_mut(&path).expect("Generating AI Artist for invalid layer");
 				if let LayerDataType::AiArtist(ai_artist) = &mut layer.data {
-					// A new generation was started when progress is set to 0 so we can clear the terminated state
-					if percent == 0. {
-						ai_artist.terminated = false;
+					if let Some(percentage) = percent {
+						ai_artist.percent_complete = percentage;
 					}
-
-					if !(percent == 100. && ai_artist.terminated) {
-						ai_artist.percent_complete = percent;
-					}
+					ai_artist.generating = generating;
 				} else {
-					panic!("Incorrectly trying to set the percentage of completion for a layer that is not an AiArtist layer type");
+					panic!("Incorrectly trying to set the generating status for a layer that is not an AiArtist layer type");
 				}
-				self.mark_as_dirty(&path)?;
-				Some([vec![DocumentChanged, LayerChanged { path: path.clone() }], update_thumbnails_upstream(&path)].concat())
-			}
-			Operation::SetAiArtistTerminated { path } => {
-				let layer = self.layer_mut(&path).expect("Terminating AI Artist for invalid layer");
-				if let LayerDataType::AiArtist(ai_artist) = &mut layer.data {
-					ai_artist.terminated = true;
-				} else {
-					panic!("Incorrectly trying to set the terminated status for a layer that is not an AiArtist layer type");
-				}
-				self.mark_as_dirty(&path)?;
-				Some([vec![DocumentChanged, LayerChanged { path: path.clone() }], update_thumbnails_upstream(&path)].concat())
+				Some(vec![LayerChanged { path: path.clone() }])
 			}
 			Operation::ClearAiArtist { path } => {
 				let layer = self.layer_mut(&path).expect("Clearing AI Artist image for invalid layer");
 				if let LayerDataType::AiArtist(ai_artist) = &mut layer.data {
 					ai_artist.blob_url = None;
 					ai_artist.percent_complete = 0.;
-					ai_artist.terminated = false;
+					ai_artist.generating = false;
 				} else {
 					panic!("Incorrectly trying to clear the blob URL for a layer that is not an AiArtist layer type");
 				}

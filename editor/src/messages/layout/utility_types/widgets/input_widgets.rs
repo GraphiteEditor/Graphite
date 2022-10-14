@@ -171,6 +171,9 @@ pub struct NumberInput {
 
 	pub disabled: bool,
 
+	#[serde(rename = "minWidth")]
+	pub min_width: u32,
+
 	// Callbacks
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]

@@ -208,6 +208,38 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &Persist
 			}
 			AiArtistGenerate => {
 				if let Some(message) = self.call_ai_artist(false, preferences, persistent_data) {
+					// TODO: Eventually remove this after a message system ordering architectural change
+					// This block is a workaround for the fact that, when `ai-artist.ts` calls...
+					// `editor.instance.setAIArtistGeneratingStatus(layerPath, 0, true);`
+					// ...execution transfers from the Rust part of the call stack into the JS part of the call stack (before the Rust message queue is empty,
+					// and there is a Properties panel refresh queued next). Then the JS calls that line shown above and enters the Rust part of the callstack
+					// again, so it's gone through JS (user initiation) -> Rust (process the button press) -> JS (beginning server request) -> Rust (set
+					// progress percentage to 0). As that call stack returns back from the Rust and back from the JS, it returns to the Rust and finishes
+					// processing the queue. That's where it then processes the Properties panel refresh that sent the "Ready" or "Done" state that existed
+					// before pressing the Generate button causing it to show "0%". So "Ready" or "Done" immediately overwrites the "0%". This block below,
+					// therefore, adds a redundant call to set it to 0% progress so the message execution order ends with this as the final percentage shown
+					// to the user.
+					{
+						let selected_layers = self.layer_metadata.iter().filter_map(|(layer_path, data)| data.selected.then_some(layer_path));
+						let mut selected_ai_artist_layers = selected_layers.filter(|path| {
+							self.graphene_document
+								.layer(path.as_slice())
+								.ok()
+								.and_then(|layer| matches!(layer.data, LayerDataType::AiArtist(_)).then_some(()))
+								.is_some()
+						});
+						let layer_path = selected_ai_artist_layers.next();
+
+						responses.push_back(
+							DocumentOperation::SetAiArtistGeneratingStatus {
+								path: layer_path.unwrap().clone(),
+								percent: Some(0.),
+								generating: true,
+							}
+							.into(),
+						);
+					}
+
 					responses.push_back(message);
 				}
 			}
@@ -694,7 +726,7 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &Persist
 				}
 			}
 			SetImageBlobUrl { layer_path, blob_url, dimensions } => {
-				let layer = self.graphene_document.layer(&layer_path).expect("Clearing AI Artist image for invalid layer");
+				let layer = self.graphene_document.layer(&layer_path).expect("Setting blob URL for invalid layer");
 				let previous_blob_url = &layer.as_ai_artist().unwrap().blob_url;
 
 				if let Some(url) = previous_blob_url {
@@ -741,7 +773,7 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &Persist
 			SetSnapping { snap } => {
 				self.snapping_enabled = snap;
 			}
-			SetTexboxEditability { path, editable } => {
+			SetTextboxEditability { path, editable } => {
 				let text = self.graphene_document.layer(&path).unwrap().as_text().unwrap();
 				responses.push_back(DocumentOperation::SetTextEditability { path, editable }.into());
 				if editable {
@@ -971,6 +1003,7 @@ impl DocumentMessageHandler {
 						rasterize_size: size.into(),
 						layer_path: layer_path.into(),
 						hostname: preferences.ai_artist_server_hostname.clone(),
+						refresh_frequency: preferences.ai_artist_refresh_frequency,
 						prompt,
 						negative_prompt,
 						resolution,
@@ -988,6 +1021,7 @@ impl DocumentMessageHandler {
 				FrontendMessage::TriggerAiArtistGenerateTxt2Img {
 					layer_path: layer_path.into(),
 					hostname: preferences.ai_artist_server_hostname.clone(),
+					refresh_frequency: preferences.ai_artist_refresh_frequency,
 					prompt,
 					negative_prompt,
 					resolution,
