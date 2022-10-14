@@ -226,20 +226,7 @@ impl Fsm for ArtboardToolFsmState {
 
 							ArtboardToolFsmState::Dragging
 						} else {
-							let id = generate_uuid();
-							tool_data.selected_board = Some(id);
-
-							tool_data.snap_manager.start_snap(document, document.bounding_boxes(None, Some(id), font_cache), true, true);
-							tool_data.snap_manager.add_all_document_handles(document, &[], &[], &[]);
-
-							responses.push_back(
-								ArtboardMessage::AddArtboard {
-									id: Some(id),
-									position: (0., 0.),
-									size: (1., 1.),
-								}
-								.into(),
-							);
+							tool_data.selected_board = None;
 
 							responses.push_back(PropertiesPanelMessage::ClearSelection.into());
 
@@ -321,14 +308,31 @@ impl Fsm for ArtboardToolFsmState {
 					let start = root_transform.transform_point2(start);
 					let size = root_transform.transform_vector2(size);
 
-					responses.push_back(
-						ArtboardMessage::ResizeArtboard {
-							artboard: tool_data.selected_board.unwrap(),
-							position: start.round().into(),
-							size: size.round().into(),
-						}
-						.into(),
-					);
+					if let Some(board) = tool_data.selected_board {
+						responses.push_back(
+							ArtboardMessage::ResizeArtboard {
+								artboard: board,
+								position: start.round().into(),
+								size: size.round().into(),
+							}
+							.into(),
+						);
+					} else {
+						let id = generate_uuid();
+						tool_data.selected_board = Some(id);
+
+						tool_data.snap_manager.start_snap(document, document.bounding_boxes(None, Some(id), font_cache), true, true);
+						tool_data.snap_manager.add_all_document_handles(document, &[], &[], &[]);
+
+						responses.push_back(
+							ArtboardMessage::AddArtboard {
+								id: Some(id),
+								position: start.round().into(),
+								size: (1., 1.),
+							}
+							.into(),
+						);
+					}
 
 					// Have to put message here instead of when Artboard is created
 					// This might result in a few more calls but it is not reliant on the order of messages
