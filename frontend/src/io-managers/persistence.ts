@@ -13,8 +13,7 @@ const GRAPHITE_INDEXEDDB_STORES = [GRAPHITE_AUTO_SAVE_STORE, GRAPHITE_EDITOR_PRE
 
 const GRAPHITE_AUTO_SAVE_ORDER_KEY = "auto-save-documents-order";
 
-// eslint-disable-next-line @typescript-eslint/explicit-function-return-type
-export async function createPersistenceManager(editor: Editor, portfolio: PortfolioState): Promise<() => void> {
+export function createPersistenceManager(editor: Editor, portfolio: PortfolioState): () => void {
 	async function initialize(): Promise<IDBDatabase> {
 		// Open the IndexedDB database connection and save it to this variable, which is a promise that resolves once the connection is open
 		return new Promise<IDBDatabase>((resolve) => {
@@ -133,7 +132,7 @@ export async function createPersistenceManager(editor: Editor, portfolio: Portfo
 		await removeDocument(removeAutoSaveDocument.documentId, await databaseConnection);
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerLoadAutoSaveDocuments, async () => {
-		await loadAutoSaveDocuments(databaseConnection);
+		await loadAutoSaveDocuments(await databaseConnection);
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerSavePreferences, async (preferences) => {
 		Object.entries(preferences.preferences).forEach(async ([key, value]) => {
@@ -144,13 +143,13 @@ export async function createPersistenceManager(editor: Editor, portfolio: Portfo
 		});
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerLoadPreferences, async () => {
-		await loadPreferences(databaseConnection);
+		await loadPreferences(await databaseConnection);
 	});
 
-	const databaseConnection = await initialize();
+	const databaseConnection = initialize();
 
 	// Destructor
-	return async () => {
-		(await databaseConnection).close();
+	return () => {
+		databaseConnection.then((connection) => connection.close());
 	};
 }
