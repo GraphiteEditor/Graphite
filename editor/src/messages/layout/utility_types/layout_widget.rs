@@ -63,7 +63,20 @@ impl Layout {
 					Widget::ColorInput(widget) => Some((&mut widget.tooltip, &mut widget.tooltip_shortcut)),
 					Widget::IconButton(widget) => Some((&mut widget.tooltip, &mut widget.tooltip_shortcut)),
 					Widget::OptionalInput(widget) => Some((&mut widget.tooltip, &mut widget.tooltip_shortcut)),
-					_ => None,
+					Widget::DropdownInput(widget) => Some((&mut widget.tooltip, &mut widget.tooltip_shortcut)),
+					Widget::FontInput(widget) => Some((&mut widget.tooltip, &mut widget.tooltip_shortcut)),
+					Widget::NumberInput(widget) => Some((&mut widget.tooltip, &mut widget.tooltip_shortcut)),
+					Widget::PopoverButton(widget) => Some((&mut widget.tooltip, &mut widget.tooltip_shortcut)),
+					Widget::TextButton(widget) => Some((&mut widget.tooltip, &mut widget.tooltip_shortcut)),
+					Widget::IconLabel(_)
+					| Widget::InvisibleStandinInput(_)
+					| Widget::PivotAssist(_)
+					| Widget::RadioInput(_)
+					| Widget::Separator(_)
+					| Widget::SwatchPairInput(_)
+					| Widget::TextAreaInput(_)
+					| Widget::TextInput(_)
+					| Widget::TextLabel(_) => None,
 				};
 				if let Some((tooltip, Some(tooltip_shortcut))) = &mut tooltip_shortcut {
 					apply_shortcut_to_tooltip(tooltip_shortcut, tooltip);

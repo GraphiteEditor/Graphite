@@ -6,6 +6,7 @@
 		:spellcheck="false"
 		:disabled="disabled"
 		:style="minWidth > 0 ? `min-width: ${minWidth}px` : ''"
+		:tooltip="tooltip"
 		@textFocused="() => onTextFocused()"
 		@textChanged="() => onTextChanged()"
 		@cancelTextChange="() => onCancelTextChange()"
@@ -109,6 +110,7 @@ export default defineComponent({
 		incrementFactor: { type: Number as PropType<number>, default: 1 },
 		disabled: { type: Boolean as PropType<boolean>, default: false },
 		minWidth: { type: Number as PropType<number>, default: 0 },
+		tooltip: { type: String as PropType<string | undefined>, required: false },
 
 		// Callbacks
 		incrementCallbackIncrease: { type: Function as PropType<() => void>, required: false },

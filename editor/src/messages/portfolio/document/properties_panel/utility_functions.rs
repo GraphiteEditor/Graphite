@@ -42,6 +42,7 @@ pub fn register_artboard_layer_properties(layer: &Layer, responses: &mut VecDequ
 		widgets: vec![
 			WidgetHolder::new(Widget::IconLabel(IconLabel {
 				icon: "NodeArtboard".into(),
+				tooltip: "Artboard".into(),
 				icon_style: IconStyle::Node,
 			})),
 			WidgetHolder::new(Widget::Separator(Separator {
@@ -229,22 +230,27 @@ pub fn register_artwork_layer_properties(layer: &Layer, responses: &mut VecDeque
 				LayerDataType::Folder(_) => WidgetHolder::new(Widget::IconLabel(IconLabel {
 					icon: "NodeFolder".into(),
 					icon_style: IconStyle::Node,
+					tooltip: "Folder".into(),
 				})),
 				LayerDataType::Shape(_) => WidgetHolder::new(Widget::IconLabel(IconLabel {
 					icon: "NodeShape".into(),
 					icon_style: IconStyle::Node,
+					tooltip: "Shape".into(),
 				})),
 				LayerDataType::Text(_) => WidgetHolder::new(Widget::IconLabel(IconLabel {
 					icon: "NodeText".into(),
 					icon_style: IconStyle::Node,
+					tooltip: "Text".into(),
 				})),
 				LayerDataType::Image(_) => WidgetHolder::new(Widget::IconLabel(IconLabel {
 					icon: "NodeImage".into(),
 					icon_style: IconStyle::Node,
+					tooltip: "Image".into(),
 				})),
 				LayerDataType::AiArtist(_) => WidgetHolder::new(Widget::IconLabel(IconLabel {
 					icon: "NodeAiArtist".into(),
 					icon_style: IconStyle::Node,
+					tooltip: "AI Artist".into(),
 				})),
 			},
 			WidgetHolder::new(Widget::Separator(Separator {
@@ -496,102 +502,86 @@ fn node_section_ai_artist(ai_artist_layer: &AiArtistLayer, layer: &Layer, persis
 		name: "AI Artist".into(),
 		layout: vec![
 			LayoutGroup::Row {
-				widgets: vec![
-					WidgetHolder::new(Widget::TextLabel(TextLabel {
-						value: "Server".into(),
-						..Default::default()
-					})),
-					WidgetHolder::new(Widget::Separator(Separator {
-						separator_type: SeparatorType::Unrelated,
-						direction: SeparatorDirection::Horizontal,
-					})),
-					WidgetHolder::new(Widget::IconButton(IconButton {
-						size: 24,
-						icon: "Settings".into(),
-						on_update: WidgetCallback::new(|_| DialogMessage::RequestPreferencesDialog.into()),
-						..Default::default()
-					})),
-					WidgetHolder::new(Widget::Separator(Separator {
-						separator_type: SeparatorType::Related,
-						direction: SeparatorDirection::Horizontal,
-					})),
-					WidgetHolder::new(Widget::TextLabel(TextLabel {
-						value: {
-							match &persistent_data.ai_artist_server_status {
-								AiArtistServerStatus::Unknown => {
-									responses.push_back(PortfolioMessage::AiArtistCheckServerStatus.into());
-									"Checking...".into()
+				widgets: {
+					let tooltip = "Connection status to the server that computes generated images".to_string();
+
+					vec![
+						WidgetHolder::new(Widget::TextLabel(TextLabel {
+							value: "Server".into(),
+							tooltip: tooltip.clone(),
+							..Default::default()
+						})),
+						WidgetHolder::new(Widget::Separator(Separator {
+							separator_type: SeparatorType::Unrelated,
+							direction: SeparatorDirection::Horizontal,
+						})),
+						WidgetHolder::new(Widget::IconButton(IconButton {
+							size: 24,
+							icon: "Settings".into(),
+							tooltip: "Preferences: AI Artist".into(),
+							on_update: WidgetCallback::new(|_| DialogMessage::RequestPreferencesDialog.into()),
+							..Default::default()
+						})),
+						WidgetHolder::new(Widget::Separator(Separator {
+							separator_type: SeparatorType::Related,
+							direction: SeparatorDirection::Horizontal,
+						})),
+						WidgetHolder::new(Widget::TextLabel(TextLabel {
+							value: {
+								match &persistent_data.ai_artist_server_status {
+									AiArtistServerStatus::Unknown => {
+										responses.push_back(PortfolioMessage::AiArtistCheckServerStatus.into());
+										"Checking...".into()
+									}
+									AiArtistServerStatus::Checking => "Checking...".into(),
+									AiArtistServerStatus::Unavailable => "Unavailable".into(),
+									AiArtistServerStatus::Connected => "Connected".into(),
 								}
-								AiArtistServerStatus::Checking => "Checking...".into(),
-								AiArtistServerStatus::Unavailable => "Unavailable".into(),
-								AiArtistServerStatus::Connected => "Connected".into(),
-							}
-						},
-						bold: true,
-						..Default::default()
-					})),
-				],
+							},
+							bold: true,
+							tooltip,
+							..Default::default()
+						})),
+					]
+				},
 			},
 			LayoutGroup::Row {
-				widgets: vec![
-					WidgetHolder::new(Widget::TextLabel(TextLabel {
-						value: "Resolution".into(),
-						..Default::default()
-					})),
-					WidgetHolder::new(Widget::Separator(Separator {
-						separator_type: SeparatorType::Unrelated,
-						direction: SeparatorDirection::Horizontal,
-					})),
-					WidgetHolder::new(Widget::IconButton(IconButton {
-						size: 24,
-						icon: "Rescale".into(),
-						on_update: WidgetCallback::new(|_| PropertiesPanelMessage::SetAiArtistScaleFromResolution.into()),
-						..Default::default()
-					})),
-					WidgetHolder::new(Widget::Separator(Separator {
-						separator_type: SeparatorType::Related,
-						direction: SeparatorDirection::Horizontal,
-					})),
-					WidgetHolder::new(Widget::TextLabel(TextLabel {
-						value: {
-							let (width, height) = pick_layer_safe_ai_artist_resolution(layer, &persistent_data.font_cache);
-							format!("{} W x {} H", width, height)
-						},
-						bold: true,
-						..Default::default()
-					})),
-				],
-			},
-			LayoutGroup::Row {
-				widgets: vec![
-					WidgetHolder::new(Widget::TextLabel(TextLabel {
-						value: "Progress".into(),
-						..Default::default()
-					})),
-					WidgetHolder::new(Widget::Separator(Separator {
-						separator_type: SeparatorType::Unrelated,
-						direction: SeparatorDirection::Horizontal,
-					})),
-					WidgetHolder::new(Widget::TextLabel(TextLabel {
-						value: if ai_artist_layer.generating {
-							format!("{:.0}%", ai_artist_layer.percent_complete)
-						} else if ai_artist_layer.percent_complete == 0. {
-							"Ready".into()
-						} else if ai_artist_layer.percent_complete == 100. {
-							"Done".into()
-						} else {
-							format!("{:.0}% (Terminated)", ai_artist_layer.percent_complete)
-						},
-						bold: true,
-						..Default::default()
-					})),
-				],
+				widgets: {
+					let tooltip = "When generating, the percentage represents how many sampling steps have so far been processed out of the target number".to_string();
+
+					vec![
+						WidgetHolder::new(Widget::TextLabel(TextLabel {
+							value: "Progress".into(),
+							tooltip: tooltip.clone(),
+							..Default::default()
+						})),
+						WidgetHolder::new(Widget::Separator(Separator {
+							separator_type: SeparatorType::Unrelated,
+							direction: SeparatorDirection::Horizontal,
+						})),
+						WidgetHolder::new(Widget::TextLabel(TextLabel {
+							value: if ai_artist_layer.generating {
+								format!("{:.0}%", ai_artist_layer.percent_complete)
+							} else if ai_artist_layer.percent_complete == 0. {
+								"Ready".into()
+							} else if ai_artist_layer.percent_complete == 100. {
+								"Done".into()
+							} else {
+								format!("{:.0}% (Terminated)", ai_artist_layer.percent_complete)
+							},
+							bold: true,
+							tooltip,
+							..Default::default()
+						})),
+					]
+				},
 			},
 			LayoutGroup::Row {
 				widgets: [
 					vec![
 						WidgetHolder::new(Widget::TextLabel(TextLabel {
 							value: "Image".into(),
+							tooltip: "Buttons that control the image generation process".into(),
 							..Default::default()
 						})),
 						WidgetHolder::new(Widget::Separator(Separator {
@@ -603,6 +593,7 @@ fn node_section_ai_artist(ai_artist_layer: &AiArtistLayer, layer: &Layer, persis
 						if ai_artist_layer.generating {
 							vec![WidgetHolder::new(Widget::TextButton(TextButton {
 								label: "Terminate".into(),
+								tooltip: "Cancel in-progress image generation and keep the latest progress".into(),
 								on_update: WidgetCallback::new(|_| DocumentMessage::AiArtistTerminate.into()),
 								..Default::default()
 							}))]
@@ -610,6 +601,7 @@ fn node_section_ai_artist(ai_artist_layer: &AiArtistLayer, layer: &Layer, persis
 							vec![
 								WidgetHolder::new(Widget::TextButton(TextButton {
 									label: "Generate".into(),
+									tooltip: "Fill layer frame by generating a new image".into(),
 									on_update: WidgetCallback::new(|_| DocumentMessage::AiArtistGenerate.into()),
 									..Default::default()
 								})),
@@ -619,6 +611,7 @@ fn node_section_ai_artist(ai_artist_layer: &AiArtistLayer, layer: &Layer, persis
 								})),
 								WidgetHolder::new(Widget::TextButton(TextButton {
 									label: "Clear".into(),
+									tooltip: "Remove generated image from the layer frame".into(),
 									disabled: ai_artist_layer.blob_url == None,
 									on_update: WidgetCallback::new(|_| DocumentMessage::AiArtistClear.into()),
 									..Default::default()
@@ -630,132 +623,215 @@ fn node_section_ai_artist(ai_artist_layer: &AiArtistLayer, layer: &Layer, persis
 				.concat(),
 			},
 			LayoutGroup::Row {
-				widgets: vec![
-					WidgetHolder::new(Widget::TextLabel(TextLabel {
-						value: "Seed".into(),
-						..Default::default()
-					})),
-					WidgetHolder::new(Widget::Separator(Separator {
-						separator_type: SeparatorType::Unrelated,
-						direction: SeparatorDirection::Horizontal,
-					})),
-					WidgetHolder::new(Widget::IconButton(IconButton {
-						size: 24,
-						icon: "Swap".into(),
-						on_update: WidgetCallback::new(|_| PropertiesPanelMessage::SetAiArtistSeedRandomize.into()),
-						..Default::default()
-					})),
-					WidgetHolder::new(Widget::Separator(Separator {
-						separator_type: SeparatorType::Related,
-						direction: SeparatorDirection::Horizontal,
-					})),
-					WidgetHolder::new(Widget::NumberInput(NumberInput {
-						value: Some(ai_artist_layer.seed as f64),
-						min: Some(-1.),
-						on_update: WidgetCallback::new(move |number_input: &NumberInput| {
-							PropertiesPanelMessage::SetAiArtistSeed {
-								seed: number_input.value.unwrap().round() as u64,
-							}
-							.into()
-						}),
-						..Default::default()
-					})),
-				],
+				widgets: {
+					let tooltip = "
+					Width and height of the image that will be generated. Larger resolutions take longer to compute.\n\
+					\n\
+					512x512 yields optimal results because the AI is trained to understand that scale best. Larger sizes may tend to integrate the prompt's subject more than once. Small sizes are often incoherent. Put the layer in a folder and resize that to keep resolution unchanged.\n\
+					\n\
+					Dimensions must be a multiple of 64, so these are set by rounding the layer dimensions. A resolution exceeding 1 megapixel is reduced below that limit because larger sizes may exceed available GPU memory on the server.
+					".trim().to_string();
+
+					vec![
+						WidgetHolder::new(Widget::TextLabel(TextLabel {
+							value: "Resolution".into(),
+							tooltip: tooltip.clone(),
+							..Default::default()
+						})),
+						WidgetHolder::new(Widget::Separator(Separator {
+							separator_type: SeparatorType::Unrelated,
+							direction: SeparatorDirection::Horizontal,
+						})),
+						WidgetHolder::new(Widget::IconButton(IconButton {
+							size: 24,
+							icon: "Rescale".into(),
+							tooltip: "Set the layer scale to this resolution".into(),
+							on_update: WidgetCallback::new(|_| PropertiesPanelMessage::SetAiArtistScaleFromResolution.into()),
+							..Default::default()
+						})),
+						WidgetHolder::new(Widget::Separator(Separator {
+							separator_type: SeparatorType::Related,
+							direction: SeparatorDirection::Horizontal,
+						})),
+						WidgetHolder::new(Widget::TextLabel(TextLabel {
+							value: {
+								let (width, height) = pick_layer_safe_ai_artist_resolution(layer, &persistent_data.font_cache);
+								format!("{} W x {} H", width, height)
+							},
+							tooltip,
+							bold: true,
+							..Default::default()
+						})),
+					]
+				},
 			},
 			LayoutGroup::Row {
-				widgets: vec![
-					WidgetHolder::new(Widget::TextLabel(TextLabel {
-						value: "Sample Steps".into(),
-						..Default::default()
-					})),
-					WidgetHolder::new(Widget::Separator(Separator {
-						separator_type: SeparatorType::Unrelated,
-						direction: SeparatorDirection::Horizontal,
-					})),
-					WidgetHolder::new(Widget::NumberInput(NumberInput {
-						value: Some(ai_artist_layer.samples.into()),
-						min: Some(0.),
-						max: Some(150.),
-						on_update: WidgetCallback::new(move |number_input: &NumberInput| {
-							PropertiesPanelMessage::SetAiArtistSamples {
-								samples: number_input.value.unwrap().round() as u32,
-							}
-							.into()
-						}),
-						..Default::default()
-					})),
-				],
+				widgets: {
+					let tooltip = "Seed determines the random outcome, enabling limitless unique variations".to_string();
+
+					vec![
+						WidgetHolder::new(Widget::TextLabel(TextLabel {
+							value: "Seed".into(),
+							tooltip: tooltip.clone(),
+							..Default::default()
+						})),
+						WidgetHolder::new(Widget::Separator(Separator {
+							separator_type: SeparatorType::Unrelated,
+							direction: SeparatorDirection::Horizontal,
+						})),
+						WidgetHolder::new(Widget::IconButton(IconButton {
+							size: 24,
+							icon: "Swap".into(),
+							tooltip: "Set a new random seed".into(),
+							on_update: WidgetCallback::new(|_| PropertiesPanelMessage::SetAiArtistSeedRandomize.into()),
+							..Default::default()
+						})),
+						WidgetHolder::new(Widget::Separator(Separator {
+							separator_type: SeparatorType::Related,
+							direction: SeparatorDirection::Horizontal,
+						})),
+						WidgetHolder::new(Widget::NumberInput(NumberInput {
+							value: Some(ai_artist_layer.seed as f64),
+							min: Some(-1.),
+							tooltip,
+							on_update: WidgetCallback::new(move |number_input: &NumberInput| {
+								PropertiesPanelMessage::SetAiArtistSeed {
+									seed: number_input.value.unwrap().round() as u64,
+								}
+								.into()
+							}),
+							..Default::default()
+						})),
+					]
+				},
 			},
 			LayoutGroup::Row {
-				widgets: vec![
-					WidgetHolder::new(Widget::TextLabel(TextLabel {
-						value: "Use Base Image".into(),
-						..Default::default()
-					})),
-					WidgetHolder::new(Widget::Separator(Separator {
-						separator_type: SeparatorType::Unrelated,
-						direction: SeparatorDirection::Horizontal,
-					})),
-					WidgetHolder::new(Widget::CheckboxInput(CheckboxInput {
-						checked: ai_artist_layer.use_img2img,
-						on_update: WidgetCallback::new(move |checkbox_input: &CheckboxInput| PropertiesPanelMessage::SetAiArtistUseImg2Img { use_img2img: checkbox_input.checked }.into()),
-						..Default::default()
-					})),
-				],
+				widgets: {
+					let tooltip = "Number of iterations to improve the image generation quality, with diminishing returns around 40".to_string();
+					vec![
+						WidgetHolder::new(Widget::TextLabel(TextLabel {
+							value: "Sampling Steps".into(),
+							tooltip: tooltip.clone(),
+							..Default::default()
+						})),
+						WidgetHolder::new(Widget::Separator(Separator {
+							separator_type: SeparatorType::Unrelated,
+							direction: SeparatorDirection::Horizontal,
+						})),
+						WidgetHolder::new(Widget::NumberInput(NumberInput {
+							value: Some(ai_artist_layer.samples.into()),
+							min: Some(0.),
+							max: Some(150.),
+							tooltip,
+							on_update: WidgetCallback::new(move |number_input: &NumberInput| {
+								PropertiesPanelMessage::SetAiArtistSamples {
+									samples: number_input.value.unwrap().round() as u32,
+								}
+								.into()
+							}),
+							..Default::default()
+						})),
+					]
+				},
 			},
 			LayoutGroup::Row {
-				widgets: vec![
-					WidgetHolder::new(Widget::TextLabel(TextLabel {
-						value: "Image Creativity".into(),
-						..Default::default()
-					})),
-					WidgetHolder::new(Widget::Separator(Separator {
-						separator_type: SeparatorType::Unrelated,
-						direction: SeparatorDirection::Horizontal,
-					})),
-					WidgetHolder::new(Widget::NumberInput(NumberInput {
-						value: Some(ai_artist_layer.denoising_strength),
-						min: Some(0.),
-						max: Some(1.),
-						disabled: !ai_artist_layer.use_img2img,
-						on_update: WidgetCallback::new(move |number_input: &NumberInput| {
-							PropertiesPanelMessage::SetAiArtistDenoisingStrength {
-								denoising_strength: number_input.value.unwrap(),
-							}
-							.into()
-						}),
-						..Default::default()
-					})),
-				],
+				widgets: {
+					let tooltip = "Generate an image based upon the artwork beneath this frame in the containing folder".to_string();
+
+					vec![
+						WidgetHolder::new(Widget::TextLabel(TextLabel {
+							value: "Use Base Image".into(),
+							tooltip: tooltip.clone(),
+							..Default::default()
+						})),
+						WidgetHolder::new(Widget::Separator(Separator {
+							separator_type: SeparatorType::Unrelated,
+							direction: SeparatorDirection::Horizontal,
+						})),
+						WidgetHolder::new(Widget::CheckboxInput(CheckboxInput {
+							checked: ai_artist_layer.use_img2img,
+							tooltip,
+							on_update: WidgetCallback::new(move |checkbox_input: &CheckboxInput| PropertiesPanelMessage::SetAiArtistUseImg2Img { use_img2img: checkbox_input.checked }.into()),
+							..Default::default()
+						})),
+					]
+				},
 			},
 			LayoutGroup::Row {
-				widgets: vec![
-					WidgetHolder::new(Widget::TextLabel(TextLabel {
-						value: "Text Creativity".into(),
-						..Default::default()
-					})),
-					WidgetHolder::new(Widget::Separator(Separator {
-						separator_type: SeparatorType::Unrelated,
-						direction: SeparatorDirection::Horizontal,
-					})),
-					WidgetHolder::new(Widget::NumberInput(NumberInput {
-						value: Some(ai_artist_layer.cfg_scale),
-						min: Some(0.),
-						max: Some(30.),
-						on_update: WidgetCallback::new(move |number_input: &NumberInput| {
-							PropertiesPanelMessage::SetAiArtistCfgScale {
-								cfg_scale: number_input.value.unwrap(),
-							}
-							.into()
-						}),
-						..Default::default()
-					})),
-				],
+				widgets: {
+					let tooltip = "Strength of the artistic liberties allowing changes from the base image. The image is unaltered at 0 and completely different at 1.".to_string();
+					vec![
+						WidgetHolder::new(Widget::TextLabel(TextLabel {
+							value: "Image Creativity".into(),
+							tooltip: tooltip.clone(),
+							..Default::default()
+						})),
+						WidgetHolder::new(Widget::Separator(Separator {
+							separator_type: SeparatorType::Unrelated,
+							direction: SeparatorDirection::Horizontal,
+						})),
+						WidgetHolder::new(Widget::NumberInput(NumberInput {
+							value: Some(ai_artist_layer.denoising_strength),
+							min: Some(0.),
+							max: Some(1.),
+							disabled: !ai_artist_layer.use_img2img,
+							tooltip,
+							on_update: WidgetCallback::new(move |number_input: &NumberInput| {
+								PropertiesPanelMessage::SetAiArtistDenoisingStrength {
+									denoising_strength: number_input.value.unwrap(),
+								}
+								.into()
+							}),
+							..Default::default()
+						})),
+					]
+				},
+			},
+			LayoutGroup::Row {
+				widgets: {
+					let tooltip =
+						"Amplification of the text prompt's influence over the outcome. Lower values are more creative and exploratory. Higher values are more literal and uninspired.".to_string();
+
+					vec![
+						WidgetHolder::new(Widget::TextLabel(TextLabel {
+							value: "Text Rigidness".into(),
+							tooltip: tooltip.to_string(),
+							..Default::default()
+						})),
+						WidgetHolder::new(Widget::Separator(Separator {
+							separator_type: SeparatorType::Unrelated,
+							direction: SeparatorDirection::Horizontal,
+						})),
+						WidgetHolder::new(Widget::NumberInput(NumberInput {
+							value: Some(ai_artist_layer.cfg_scale),
+							min: Some(0.),
+							max: Some(30.),
+							tooltip,
+							on_update: WidgetCallback::new(move |number_input: &NumberInput| {
+								PropertiesPanelMessage::SetAiArtistCfgScale {
+									cfg_scale: number_input.value.unwrap(),
+								}
+								.into()
+							}),
+							..Default::default()
+						})),
+					]
+				},
 			},
 			LayoutGroup::Row {
 				widgets: vec![
 					WidgetHolder::new(Widget::TextLabel(TextLabel {
 						value: "Text Prompt".into(),
+						tooltip: "
+						Description of the desired image subject and style.\n\
+						\n\
+						Include an artist name like \"Rembrandt\" or art medium like \"watercolor\" or \"photography\" to influence the look. List multiple to meld styles.\n\
+						\n\
+						To boost the importance of a word or phrase, wrap it in quotes ending with a colon and a multiplier, for example:\n\
+						\"(colorless:0.7) green (ideas sleep:1.3) furiously\"
+						"
+						.trim()
+						.into(),
 						..Default::default()
 					})),
 					WidgetHolder::new(Widget::Separator(Separator {
@@ -778,6 +854,7 @@ fn node_section_ai_artist(ai_artist_layer: &AiArtistLayer, layer: &Layer, persis
 				widgets: vec![
 					WidgetHolder::new(Widget::TextLabel(TextLabel {
 						value: "Neg. Prompt".into(),
+						tooltip: "A negative text prompt can be used to list things like objects or colors to avoid".into(),
 						..Default::default()
 					})),
 					WidgetHolder::new(Widget::Separator(Separator {
@@ -797,43 +874,55 @@ fn node_section_ai_artist(ai_artist_layer: &AiArtistLayer, layer: &Layer, persis
 				],
 			},
 			LayoutGroup::Row {
-				widgets: vec![
-					WidgetHolder::new(Widget::TextLabel(TextLabel {
-						value: "Fix Faces".into(),
-						..Default::default()
-					})),
-					WidgetHolder::new(Widget::Separator(Separator {
-						separator_type: SeparatorType::Unrelated,
-						direction: SeparatorDirection::Horizontal,
-					})),
-					WidgetHolder::new(Widget::CheckboxInput(CheckboxInput {
-						checked: ai_artist_layer.restore_faces,
-						on_update: WidgetCallback::new(move |checkbox_input: &CheckboxInput| {
-							PropertiesPanelMessage::SetAiArtistRestoreFaces {
-								restore_faces: checkbox_input.checked,
-							}
-							.into()
-						}),
-						..Default::default()
-					})),
-				],
+				widgets: {
+					let tooltip = "Postprocess human (or human-like) faces to look subtly less distorted".to_string();
+
+					vec![
+						WidgetHolder::new(Widget::TextLabel(TextLabel {
+							value: "Fix Faces".into(),
+							tooltip: tooltip.clone(),
+							..Default::default()
+						})),
+						WidgetHolder::new(Widget::Separator(Separator {
+							separator_type: SeparatorType::Unrelated,
+							direction: SeparatorDirection::Horizontal,
+						})),
+						WidgetHolder::new(Widget::CheckboxInput(CheckboxInput {
+							checked: ai_artist_layer.restore_faces,
+							tooltip,
+							on_update: WidgetCallback::new(move |checkbox_input: &CheckboxInput| {
+								PropertiesPanelMessage::SetAiArtistRestoreFaces {
+									restore_faces: checkbox_input.checked,
+								}
+								.into()
+							}),
+							..Default::default()
+						})),
+					]
+				},
 			},
 			LayoutGroup::Row {
-				widgets: vec![
-					WidgetHolder::new(Widget::TextLabel(TextLabel {
-						value: "Tiling".into(),
-						..Default::default()
-					})),
-					WidgetHolder::new(Widget::Separator(Separator {
-						separator_type: SeparatorType::Unrelated,
-						direction: SeparatorDirection::Horizontal,
-					})),
-					WidgetHolder::new(Widget::CheckboxInput(CheckboxInput {
-						checked: ai_artist_layer.tiling,
-						on_update: WidgetCallback::new(move |checkbox_input: &CheckboxInput| PropertiesPanelMessage::SetAiArtistTiling { tiling: checkbox_input.checked }.into()),
-						..Default::default()
-					})),
-				],
+				widgets: {
+					let tooltip = "Generate the image so its edges loop seamlessly to make repeatable patterns or textures".to_string();
+
+					vec![
+						WidgetHolder::new(Widget::TextLabel(TextLabel {
+							value: "Tiling".into(),
+							tooltip: tooltip.clone(),
+							..Default::default()
+						})),
+						WidgetHolder::new(Widget::Separator(Separator {
+							separator_type: SeparatorType::Unrelated,
+							direction: SeparatorDirection::Horizontal,
+						})),
+						WidgetHolder::new(Widget::CheckboxInput(CheckboxInput {
+							checked: ai_artist_layer.tiling,
+							tooltip,
+							on_update: WidgetCallback::new(move |checkbox_input: &CheckboxInput| PropertiesPanelMessage::SetAiArtistTiling { tiling: checkbox_input.checked }.into()),
+							..Default::default()
+						})),
+					]
+				},
 			},
 		],
 	}

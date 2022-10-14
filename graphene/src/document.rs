@@ -1229,8 +1229,7 @@ pub fn pick_layer_safe_ai_artist_resolution(layer: &Layer, font_cache: &FontCach
 }
 
 pub fn pick_safe_ai_artist_resolution((width, height): (f64, f64)) -> (u64, u64) {
-	// const MAX_RESOLUTION: u64 = 1024 * 1024;
-	const MAX_RESOLUTION: u64 = 960 * 960;
+	const MAX_RESOLUTION: u64 = 1000 * 1000;
 
 	let mut scale_factor = 1.;
 

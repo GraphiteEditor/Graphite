@@ -5,6 +5,7 @@
 		:data-emphasized="emphasized || undefined"
 		:data-disabled="disabled || undefined"
 		data-text-button
+		:title="tooltip"
 		:style="minWidth > 0 ? `min-width: ${minWidth}px` : ''"
 		@click="(e: MouseEvent) => action(e)"
 	>
@@ -71,23 +72,6 @@ import { type IconName } from "@/utility-functions/icons";
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
 import TextLabel from "@/components/widgets/labels/TextLabel.vue";
 
-export type TextButtonWidget = {
-	tooltip?: string;
-	message?: string | object;
-	callback?: () => void;
-	props: {
-		kind: "TextButton";
-		label: string;
-		icon?: string;
-		emphasized?: boolean;
-		minWidth?: number;
-		disabled?: boolean;
-
-		// Callbacks
-		// `action` is used via `IconButtonWidget.callback`
-	};
-};
-
 export default defineComponent({
 	props: {
 		label: { type: String as PropType<string>, required: true },
@@ -95,6 +79,7 @@ export default defineComponent({
 		emphasized: { type: Boolean as PropType<boolean>, default: false },
 		minWidth: { type: Number as PropType<number>, default: 0 },
 		disabled: { type: Boolean as PropType<boolean>, default: false },
+		tooltip: { type: String as PropType<string | undefined>, required: false },
 
 		// Callbacks
 		action: { type: Function as PropType<(e: MouseEvent) => void>, required: true },

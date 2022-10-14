@@ -407,7 +407,8 @@ export class UpdateDocumentLayerDetails extends JsMessage {
 export class LayerPanelEntry {
 	name!: string;
 
-	tooltip!: string;
+	@Transform(({ value }: { value: string }) => (value.length > 0 ? value : undefined))
+	tooltip!: string | undefined;
 
 	visible!: boolean;
 
@@ -497,7 +498,8 @@ export class CheckboxInput extends WidgetProps {
 
 	icon!: IconName;
 
-	tooltip!: string;
+	@Transform(({ value }: { value: string }) => (value.length > 0 ? value : undefined))
+	tooltip!: string | undefined;
 }
 
 export class ColorInput extends WidgetProps {
@@ -509,7 +511,8 @@ export class ColorInput extends WidgetProps {
 
 	disabled!: boolean;
 
-	tooltip!: string;
+	@Transform(({ value }: { value: string }) => (value.length > 0 ? value : undefined))
+	tooltip!: string | undefined;
 }
 
 type MenuEntryCommon = {
@@ -532,6 +535,7 @@ export type MenuListEntry = MenuEntryCommon & {
 	shortcutRequiresLock?: boolean;
 	value?: string;
 	disabled?: boolean;
+	tooltip?: string;
 	font?: URL;
 	ref?: InstanceType<typeof MenuList>;
 };
@@ -546,6 +550,9 @@ export class DropdownInput extends WidgetProps {
 	interactive!: boolean;
 
 	disabled!: boolean;
+
+	@Transform(({ value }: { value: string }) => (value.length > 0 ? value : undefined))
+	tooltip!: string | undefined;
 }
 
 export class FontInput extends WidgetProps {
@@ -556,6 +563,9 @@ export class FontInput extends WidgetProps {
 	isStyle!: boolean;
 
 	disabled!: boolean;
+
+	@Transform(({ value }: { value: string }) => (value.length > 0 ? value : undefined))
+	tooltip!: string | undefined;
 }
 
 export class IconButton extends WidgetProps {
@@ -565,13 +575,17 @@ export class IconButton extends WidgetProps {
 
 	active!: boolean;
 
-	tooltip!: string;
+	@Transform(({ value }: { value: string }) => (value.length > 0 ? value : undefined))
+	tooltip!: string | undefined;
 }
 
 export class IconLabel extends WidgetProps {
 	icon!: IconName;
 
 	iconStyle!: IconStyle | undefined;
+
+	@Transform(({ value }: { value: string }) => (value.length > 0 ? value : undefined))
+	tooltip!: string | undefined;
 }
 
 export type IncrementBehavior = "Add" | "Multiply" | "Callback" | "None";
@@ -600,6 +614,9 @@ export class NumberInput extends WidgetProps {
 	disabled!: boolean;
 
 	minWidth!: number;
+
+	@Transform(({ value }: { value: string }) => (value.length > 0 ? value : undefined))
+	tooltip!: string | undefined;
 }
 
 export class OptionalInput extends WidgetProps {
@@ -607,7 +624,8 @@ export class OptionalInput extends WidgetProps {
 
 	icon!: IconName;
 
-	tooltip!: string;
+	@Transform(({ value }: { value: string }) => (value.length > 0 ? value : undefined))
+	tooltip!: string | undefined;
 }
 
 export class PopoverButton extends WidgetProps {
@@ -617,6 +635,9 @@ export class PopoverButton extends WidgetProps {
 	header!: string;
 
 	text!: string;
+
+	@Transform(({ value }: { value: string }) => (value.length > 0 ? value : undefined))
+	tooltip!: string | undefined;
 }
 
 export type RadioEntryData = {
@@ -659,6 +680,9 @@ export class TextAreaInput extends WidgetProps {
 	label!: string | undefined;
 
 	disabled!: boolean;
+
+	@Transform(({ value }: { value: string }) => (value.length > 0 ? value : undefined))
+	tooltip!: string | undefined;
 }
 
 export class TextButton extends WidgetProps {
@@ -671,6 +695,9 @@ export class TextButton extends WidgetProps {
 	minWidth!: number;
 
 	disabled!: boolean;
+
+	@Transform(({ value }: { value: string }) => (value.length > 0 ? value : undefined))
+	tooltip!: string | undefined;
 }
 
 export type TextButtonWidget = {
@@ -684,6 +711,7 @@ export type TextButtonWidget = {
 		emphasized?: boolean;
 		minWidth?: number;
 		disabled?: boolean;
+		tooltip?: string;
 
 		// Callbacks
 		// `action` is used via `IconButtonWidget.callback`
@@ -698,6 +726,9 @@ export class TextInput extends WidgetProps {
 	disabled!: boolean;
 
 	minWidth!: number;
+
+	@Transform(({ value }: { value: string }) => (value.length > 0 ? value : undefined))
+	tooltip!: string | undefined;
 }
 
 export class TextLabel extends WidgetProps {
@@ -714,6 +745,9 @@ export class TextLabel extends WidgetProps {
 	minWidth!: number;
 
 	multiline!: boolean;
+
+	@Transform(({ value }: { value: string }) => (value.length > 0 ? value : undefined))
+	tooltip!: string | undefined;
 }
 
 export type PivotPosition = "None" | "TopLeft" | "TopCenter" | "TopRight" | "CenterLeft" | "Center" | "CenterRight" | "BottomLeft" | "BottomCenter" | "BottomRight";

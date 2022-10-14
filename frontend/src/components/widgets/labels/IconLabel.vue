@@ -1,5 +1,5 @@
 <template>
-	<LayoutRow :class="['icon-label', iconSizeClass, iconStyleClass]">
+	<LayoutRow :class="['icon-label', iconSizeClass, iconStyleClass]" :title="tooltip">
 		<component :is="icon" />
 	</LayoutRow>
 </template>
@@ -43,6 +43,7 @@ export default defineComponent({
 	props: {
 		icon: { type: String as PropType<IconName>, required: true },
 		iconStyle: { type: String as PropType<IconStyle | undefined>, required: false },
+		tooltip: { type: String as PropType<string | undefined>, required: false },
 	},
 	computed: {
 		iconSizeClass(): string {

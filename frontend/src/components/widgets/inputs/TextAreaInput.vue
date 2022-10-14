@@ -3,10 +3,11 @@
 		:textarea="true"
 		class="text-area-input"
 		:class="{ 'has-label': label }"
-		v-model:value="inputValue"
 		:label="label"
 		:spellcheck="true"
 		:disabled="disabled"
+		:tooltip="tooltip"
+		v-model:value="inputValue"
 		@textFocused="() => onTextFocused()"
 		@textChanged="() => onTextChanged()"
 		@cancelTextChange="() => onCancelTextChange()"
@@ -27,6 +28,7 @@ export default defineComponent({
 		value: { type: String as PropType<string>, required: true },
 		label: { type: String as PropType<string>, required: false },
 		disabled: { type: Boolean as PropType<boolean>, default: false },
+		tooltip: { type: String as PropType<string | undefined>, required: false },
 	},
 	data() {
 		return {

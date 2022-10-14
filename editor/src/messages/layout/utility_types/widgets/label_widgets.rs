@@ -5,6 +5,8 @@ use serde::{Deserialize, Serialize};
 pub struct IconLabel {
 	pub icon: String,
 
+	pub tooltip: String,
+
 	#[serde(rename = "iconStyle")]
 	pub icon_style: IconStyle,
 }
@@ -51,6 +53,8 @@ pub struct TextLabel {
 
 	#[serde(rename = "minWidth")]
 	pub min_width: u32,
+
+	pub tooltip: String,
 
 	// Body
 	pub value: String,

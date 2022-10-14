@@ -5,6 +5,7 @@
 		:label="label"
 		:spellcheck="true"
 		:disabled="disabled"
+		:tooltip="tooltip"
 		:style="minWidth > 0 ? `min-width: ${minWidth}px` : ''"
 		@textFocused="() => onTextFocused()"
 		@textChanged="() => onTextChanged()"
@@ -33,6 +34,7 @@ export default defineComponent({
 		label: { type: String as PropType<string>, required: false },
 		disabled: { type: Boolean as PropType<boolean>, default: false },
 		minWidth: { type: Number as PropType<number>, default: 0 },
+		tooltip: { type: String as PropType<string | undefined>, required: false },
 	},
 	data() {
 		return {
