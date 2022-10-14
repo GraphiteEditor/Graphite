@@ -542,6 +542,17 @@ fn node_section_ai_artist(ai_artist_layer: &AiArtistLayer, layer: &Layer, persis
 							tooltip,
 							..Default::default()
 						})),
+						WidgetHolder::new(Widget::Separator(Separator {
+							separator_type: SeparatorType::Related,
+							direction: SeparatorDirection::Horizontal,
+						})),
+						WidgetHolder::new(Widget::IconButton(IconButton {
+							size: 24,
+							icon: "Refresh".into(),
+							tooltip: "Refresh connection status".into(),
+							on_update: WidgetCallback::new(|_| PortfolioMessage::AiArtistCheckServerStatus.into()),
+							..Default::default()
+						})),
 					]
 				},
 			},

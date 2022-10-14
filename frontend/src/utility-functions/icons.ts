@@ -110,6 +110,7 @@ import NodeShape from "@/../assets/icon-16px-solid/node-shape.svg";
 import NodeText from "@/../assets/icon-16px-solid/node-text.svg";
 import NodeTransform from "@/../assets/icon-16px-solid/node-transform.svg";
 import Paste from "@/../assets/icon-16px-solid/paste.svg";
+import Refresh from "@/../assets/icon-16px-solid/refresh.svg";
 import Rescale from "@/../assets/icon-16px-solid/rescale.svg";
 import Settings from "@/../assets/icon-16px-solid/settings.svg";
 import Trash from "@/../assets/icon-16px-solid/trash.svg";
@@ -161,6 +162,7 @@ const SOLID_16PX = {
 	NodeText: { component: NodeText, size: 16 },
 	NodeTransform: { component: NodeTransform, size: 16 },
 	Paste: { component: Paste, size: 16 },
+	Refresh: { component: Refresh, size: 16 },
 	Rescale: { component: Rescale, size: 16 },
 	Settings: { component: Settings, size: 16 },
 	Trash: { component: Trash, size: 16 },
