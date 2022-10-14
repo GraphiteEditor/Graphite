@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::fmt::Display;
 use std::sync::Mutex;
 
+use dyn_any::{DynAny, StaticType};
 use rand_chacha::{
 	rand_core::{RngCore, SeedableRng},
 	ChaCha20Rng,
@@ -19,7 +20,7 @@ pub fn generate_uuid() -> u64 {
 }
 
 fn gen_node_id() -> NodeId {
-	static mut NODE_ID: NodeId = 0;
+	static mut NODE_ID: NodeId = 3;
 	unsafe {
 		NODE_ID += 1;
 		NODE_ID
@@ -34,52 +35,115 @@ fn merge_ids(a: u64, b: u64) -> u64 {
 	hasher.finish()
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, PartialEq)]
 pub struct DocumentNode {
 	name: String,
 	inputs: Vec<NodeInput>,
 	implementation: DocumentNodeImplementation,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum NodeInput {
-	Node(NodeId),
-	Value(InputWidget),
-	Network,
-}
+impl DocumentNode {
+	pub fn populate_first_network_input(&mut self, node: NodeId, offset: usize) {
+		let input = self
+			.inputs
+			.iter()
+			.enumerate()
+			.filter(|(_, input)| matches!(input, NodeInput::Network))
+			.nth(offset)
+			.expect("no network input");
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct InputWidget;
-
-impl Display for InputWidget {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		write!(f, "InputWidget")
+		let index = input.0;
+		self.inputs[index] = NodeInput::Node(node);
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug)]
+pub enum NodeInput {
+	Node(NodeId),
+	Value(Value),
+	Network,
+}
+
+impl PartialEq for NodeInput {
+	fn eq(&self, other: &Self) -> bool {
+		match (&self, &other) {
+			(Self::Node(n1), Self::Node(n2)) => n1 == n2,
+			(Self::Value(v1), Self::Value(v2)) => v1 == v2,
+			_ => core::mem::discriminant(self) == core::mem::discriminant(other),
+		}
+	}
+}
+
+#[derive(Debug, PartialEq)]
 pub enum DocumentNodeImplementation {
 	Network(NodeNetwork),
 	ProtoNode(ProtoNode),
 }
 
-#[derive(Debug, Default, Clone, PartialEq, Eq)]
+#[derive(Debug, Default, PartialEq)]
 pub struct NodeNetwork {
 	inputs: Vec<NodeId>,
 	output: NodeId,
 	nodes: HashMap<NodeId, DocumentNode>,
 }
+pub type Value = Box<dyn ValueTrait>;
+pub trait ValueTrait: DynAny<'static> + std::fmt::Debug {}
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub trait IntoValue: Sized + ValueTrait + 'static {
+	fn into_any(self) -> Value {
+		Box::new(self)
+	}
+}
+impl<T: 'static + StaticType + std::fmt::Debug> ValueTrait for T {}
+impl<T: 'static + ValueTrait> IntoValue for T {}
+
+#[repr(C)]
+struct Vtable {
+	destructor: unsafe fn(*mut ()),
+	size: usize,
+	align: usize,
+}
+
+#[repr(C)]
+struct TraitObject {
+	self_ptr: *mut u8,
+	vtable: &'static Vtable,
+}
+
+impl PartialEq for Box<dyn ValueTrait> {
+	fn eq(&self, other: &Self) -> bool {
+		if self.type_id() != other.type_id() {
+			return false;
+		}
+		let self_trait_object = unsafe { std::mem::transmute::<&dyn ValueTrait, TraitObject>(self.as_ref()) };
+		let other_trait_object = unsafe { std::mem::transmute::<&dyn ValueTrait, TraitObject>(other.as_ref()) };
+		let size = self_trait_object.vtable.size;
+		let self_mem = unsafe { std::slice::from_raw_parts(self_trait_object.self_ptr, size) };
+		let other_mem = unsafe { std::slice::from_raw_parts(other_trait_object.self_ptr, size) };
+		self_mem == other_mem
+	}
+}
+
+#[derive(Debug, Default)]
 pub enum ConstructionArgs {
 	#[default]
 	None,
 	Unresolved,
-	Value,
+	Value(Value),
 	Nodes(Vec<NodeId>),
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+impl PartialEq for ConstructionArgs {
+	fn eq(&self, other: &Self) -> bool {
+		match (&self, &other) {
+			(Self::Nodes(n1), Self::Nodes(n2)) => n1 == n2,
+			(Self::Value(v1), Self::Value(v2)) => v1 == v2,
+			_ => core::mem::discriminant(self) == core::mem::discriminant(other),
+		}
+	}
+}
+
+#[derive(Debug, Default, PartialEq)]
 pub struct ProtoNode {
 	construction_args: ConstructionArgs,
 	input: Option<NodeId>,
@@ -88,9 +152,8 @@ pub struct ProtoNode {
 
 impl NodeInput {
 	fn map_ids(&mut self, f: impl Fn(NodeId) -> NodeId) {
-		match self {
-			NodeInput::Node(id) => *self = NodeInput::Node(f(*id)),
-			_ => (),
+		if let NodeInput::Node(id) = self {
+			*self = NodeInput::Node(f(*id))
 		}
 	}
 }
@@ -116,23 +179,23 @@ impl NodeNetwork {
 	pub fn map_ids(&mut self, f: impl Fn(NodeId) -> NodeId + Copy) {
 		self.inputs.iter_mut().for_each(|id| *id = f(*id));
 		self.output = f(self.output);
-		self.nodes = self
-			.nodes
-			.iter()
-			.map(|(id, node)| {
-				let mut node = node.clone();
+		let mut empty = HashMap::new();
+		std::mem::swap(&mut self.nodes, &mut empty);
+		self.nodes = empty
+			.into_iter()
+			.map(|(id, mut node)| {
 				node.inputs.iter_mut().for_each(|input| input.map_ids(f));
-				(f(*id), node)
+				(f(id), node)
 			})
 			.collect();
 	}
 
 	pub fn flatten(&mut self, node: NodeId) {
-		self.flatten_with_map_fn(node, merge_ids)
+		self.flatten_with_fns(node, merge_ids, generate_uuid)
 	}
 
 	/// Recursively dissolve non primitive document nodes and return a single flattened network of nodes.
-	pub fn flatten_with_map_fn(&mut self, node: NodeId, map_ids: impl Fn(NodeId, NodeId) -> NodeId + Copy) {
+	pub fn flatten_with_fns(&mut self, node: NodeId, map_ids: impl Fn(NodeId, NodeId) -> NodeId + Copy, gen_id: impl Fn() -> NodeId + Copy) {
 		let (id, mut node) = self.nodes.remove_entry(&node).expect("The node which was supposed to be flattened does not exist in the network");
 
 		match node.implementation {
@@ -143,31 +206,35 @@ impl NodeNetwork {
 				// Copy nodes from the inner network into the parent network
 				self.nodes.extend(inner_network.nodes);
 
-				for (document_input, network_input) in node.inputs.iter().zip(self.inputs.clone().iter()) {
+				let mut network_offsets = HashMap::new();
+				for (document_input, network_input) in node.inputs.into_iter().zip(inner_network.inputs.iter()) {
+					let offset = network_offsets.entry(network_input).or_insert(0);
 					match document_input {
 						NodeInput::Node(node) => {
 							let network_input = self.nodes.get_mut(network_input).unwrap();
-							network_input.inputs.insert(0, NodeInput::Node(*node));
+							network_input.populate_first_network_input(node, *offset);
 						}
-						NodeInput::Value(widget) => {
-							let new_id = gen_node_id();
+						NodeInput::Value(value) => {
+							let new_id = map_ids(id, gen_id());
 							let value_node = DocumentNode {
 								name: "value".into(),
 								inputs: Vec::new(),
-								implementation: DocumentNodeImplementation::ProtoNode(ProtoNode::value(format!("{}-{}", node.name, widget), ConstructionArgs::Value)),
+								implementation: DocumentNodeImplementation::ProtoNode(ProtoNode::value(format!("{}-{:?}", node.name, value), ConstructionArgs::Value(value))),
 							};
 							assert!(!self.nodes.contains_key(&new_id));
 							self.nodes.insert(new_id, value_node);
 							let network_input = self.nodes.get_mut(network_input).unwrap();
-							network_input.inputs.push(NodeInput::Node(new_id));
+							network_input.populate_first_network_input(new_id, *offset);
 						}
-						NodeInput::Network => todo!(),
+						NodeInput::Network => {
+							*network_offsets.get_mut(network_input).unwrap() += 1;
+						}
 					}
 				}
 				node.implementation = DocumentNodeImplementation::ProtoNode(ProtoNode::id(inner_network.output));
-				self.inputs = vec![inner_network.output];
+				node.inputs = vec![NodeInput::Node(inner_network.output)];
 				for node_id in new_nodes {
-					self.flatten_with_map_fn(node_id, map_ids);
+					self.flatten_with_fns(node_id, map_ids, gen_id);
 				}
 			}
 			DocumentNodeImplementation::ProtoNode(proto_node) => {
@@ -198,47 +265,22 @@ mod test {
 	use super::*;
 
 	#[test]
-	fn map_ids() {
-		let mut network = add_network();
-		network.map_ids(|id| id + 1);
-		let maped_add = NodeNetwork {
-			inputs: vec![1],
-			output: 2,
-			nodes: [
-				(
-					1,
-					DocumentNode {
-						name: "cons".into(),
-						inputs: vec![NodeInput::Value(InputWidget)],
-						implementation: DocumentNodeImplementation::ProtoNode(ProtoNode::value("cons".into(), ConstructionArgs::Unresolved)),
-					},
-				),
-				(
-					2,
-					DocumentNode {
-						name: "add".into(),
-						inputs: vec![NodeInput::Node(1)],
-						implementation: DocumentNodeImplementation::ProtoNode(ProtoNode::value("add".into(), ConstructionArgs::Unresolved)),
-					},
-				),
-			]
-			.iter()
-			.cloned()
-			.collect(),
-		};
-		assert_eq!(network, maped_add);
+	fn test_any_src() {
+		assert!(2_u32.into_any() == 2_u32.into_any());
+		assert!(2_u32.into_any() != 3_u32.into_any());
+		assert!(2_u32.into_any() != 3_i32.into_any());
 	}
 
 	fn add_network() -> NodeNetwork {
 		NodeNetwork {
-			inputs: vec![0],
+			inputs: vec![0, 0],
 			output: 1,
 			nodes: [
 				(
 					0,
 					DocumentNode {
 						name: "cons".into(),
-						inputs: vec![NodeInput::Value(InputWidget)],
+						inputs: vec![NodeInput::Network, NodeInput::Network],
 						implementation: DocumentNodeImplementation::ProtoNode(ProtoNode::value("cons".into(), ConstructionArgs::Unresolved)),
 					},
 				),
@@ -251,11 +293,42 @@ mod test {
 					},
 				),
 			]
-			.iter()
-			.cloned()
+			.into_iter()
 			.collect(),
 		}
 	}
+
+	#[test]
+	fn map_ids() {
+		let mut network = add_network();
+		network.map_ids(|id| id + 1);
+		let maped_add = NodeNetwork {
+			inputs: vec![1, 1],
+			output: 2,
+			nodes: [
+				(
+					1,
+					DocumentNode {
+						name: "cons".into(),
+						inputs: vec![NodeInput::Network, NodeInput::Network],
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNode::value("cons".into(), ConstructionArgs::Unresolved)),
+					},
+				),
+				(
+					2,
+					DocumentNode {
+						name: "add".into(),
+						inputs: vec![NodeInput::Node(1)],
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNode::value("add".into(), ConstructionArgs::Unresolved)),
+					},
+				),
+			]
+			.into_iter()
+			.collect(),
+		};
+		assert_eq!(network, maped_add);
+	}
+
 	#[test]
 	fn flatten_add() {
 		let mut network = NodeNetwork {
@@ -265,15 +338,14 @@ mod test {
 				1,
 				DocumentNode {
 					name: "Inc".into(),
-					inputs: vec![],
+					inputs: vec![NodeInput::Network, NodeInput::Value(2_u32.into_any())],
 					implementation: DocumentNodeImplementation::Network(add_network()),
 				},
 			)]
-			.iter()
-			.cloned()
+			.into_iter()
 			.collect(),
 		};
-		network.flatten_with_map_fn(1, |self_id, inner_id| self_id * 10 + inner_id);
+		network.flatten_with_fns(1, |self_id, inner_id| self_id * 10 + inner_id, gen_node_id);
 		let flat_network = NodeNetwork {
 			inputs: vec![10],
 			output: 1,
@@ -295,11 +367,11 @@ mod test {
 					},
 				),
 				(
-					12,
+					14,
 					DocumentNode {
 						name: "value".into(),
 						inputs: vec![],
-						implementation: DocumentNodeImplementation::ProtoNode(ProtoNode::value("value".into(), ConstructionArgs::Value)),
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNode::value("value".into(), ConstructionArgs::Value(2_u32.into_any()))),
 					},
 				),
 				(
@@ -311,8 +383,7 @@ mod test {
 					},
 				),
 			]
-			.iter()
-			.cloned()
+			.into_iter()
 			.collect(),
 		};
 		// for debuging purposes
