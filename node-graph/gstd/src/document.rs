@@ -55,6 +55,38 @@ impl DocumentNode {
 		let index = input.0;
 		self.inputs[index] = NodeInput::Node(node);
 	}
+
+	fn resolve_proto_nodes(&mut self) {
+		let first = self.inputs.remove(0);
+		if let DocumentNodeImplementation::ProtoNode(proto) = &mut self.implementation {
+			match first {
+				NodeInput::Value(value) => {
+					proto.input = ProtoNodeInput::None;
+					proto.construction_args = ConstructionArgs::Value(value);
+					assert_eq!(self.inputs.len(), 0);
+					return;
+				}
+				NodeInput::Node(id) => proto.input = ProtoNodeInput::Node(id),
+				NodeInput::Network => proto.input = ProtoNodeInput::Network,
+			}
+			assert!(!self.inputs.iter().any(|input| matches!(input, NodeInput::Network)), "recived non resolved parameter");
+			assert!(!self.inputs.iter().any(|input| matches!(input, NodeInput::Value(_))), "recieved value as parameter");
+
+			let nodes: Vec<_> = self
+				.inputs
+				.iter()
+				.filter_map(|input| match input {
+					NodeInput::Node(id) => Some(*id),
+					_ => None,
+				})
+				.collect();
+			match nodes {
+				vec if vec.is_empty() => proto.construction_args = ConstructionArgs::None,
+				vec => proto.construction_args = ConstructionArgs::Nodes(vec),
+			}
+			self.inputs = vec![];
+		}
+	}
 }
 
 #[derive(Debug)]
@@ -126,8 +158,8 @@ impl PartialEq for Box<dyn ValueTrait> {
 
 #[derive(Debug, Default)]
 pub enum ConstructionArgs {
-	#[default]
 	None,
+	#[default]
 	Unresolved,
 	Value(Value),
 	Nodes(Vec<NodeId>),
@@ -146,8 +178,16 @@ impl PartialEq for ConstructionArgs {
 #[derive(Debug, Default, PartialEq)]
 pub struct ProtoNode {
 	construction_args: ConstructionArgs,
-	input: Option<NodeId>,
+	input: ProtoNodeInput,
 	name: String,
+}
+
+#[derive(Debug, Default, PartialEq, Eq)]
+pub enum ProtoNodeInput {
+	None,
+	#[default]
+	Network,
+	Node(NodeId),
 }
 
 impl NodeInput {
@@ -159,12 +199,14 @@ impl NodeInput {
 }
 
 impl ProtoNode {
-	pub fn id(id: NodeId) -> Self {
+	pub fn id() -> Self {
 		Self {
 			name: "id".into(),
-			input: Some(id),
 			..Default::default()
 		}
+	}
+	pub fn unresolved(name: String) -> Self {
+		Self { name, ..Default::default() }
 	}
 	pub fn value(name: String, value: ConstructionArgs) -> Self {
 		Self {
@@ -215,11 +257,12 @@ impl NodeNetwork {
 							network_input.populate_first_network_input(node, *offset);
 						}
 						NodeInput::Value(value) => {
+							let name = format!("Value: {:?}", value);
 							let new_id = map_ids(id, gen_id());
 							let value_node = DocumentNode {
-								name: "value".into(),
-								inputs: Vec::new(),
-								implementation: DocumentNodeImplementation::ProtoNode(ProtoNode::value(format!("{}-{:?}", node.name, value), ConstructionArgs::Value(value))),
+								name: name.clone(),
+								inputs: vec![NodeInput::Value(value)],
+								implementation: DocumentNodeImplementation::ProtoNode(ProtoNode::unresolved("value".into())),
 							};
 							assert!(!self.nodes.contains_key(&new_id));
 							self.nodes.insert(new_id, value_node);
@@ -228,10 +271,13 @@ impl NodeNetwork {
 						}
 						NodeInput::Network => {
 							*network_offsets.get_mut(network_input).unwrap() += 1;
+							if let Some(index) = self.inputs.iter().position(|i| *i == id) {
+								self.inputs[index] = *network_input;
+							}
 						}
 					}
 				}
-				node.implementation = DocumentNodeImplementation::ProtoNode(ProtoNode::id(inner_network.output));
+				node.implementation = DocumentNodeImplementation::ProtoNode(ProtoNode::id());
 				node.inputs = vec![NodeInput::Node(inner_network.output)];
 				for node_id in new_nodes {
 					self.flatten_with_fns(node_id, map_ids, gen_id);
@@ -243,6 +289,12 @@ impl NodeNetwork {
 		}
 		assert!(!self.nodes.contains_key(&id), "Trying to insert a node into the network caused an id conflict");
 		self.nodes.insert(id, node);
+	}
+
+	pub fn resolve_proto_nodes(&mut self) {
+		for node in self.nodes.values_mut() {
+			node.resolve_proto_nodes();
+		}
 	}
 }
 
@@ -281,7 +333,7 @@ mod test {
 					DocumentNode {
 						name: "cons".into(),
 						inputs: vec![NodeInput::Network, NodeInput::Network],
-						implementation: DocumentNodeImplementation::ProtoNode(ProtoNode::value("cons".into(), ConstructionArgs::Unresolved)),
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNode::unresolved("cons".into())),
 					},
 				),
 				(
@@ -289,7 +341,7 @@ mod test {
 					DocumentNode {
 						name: "add".into(),
 						inputs: vec![NodeInput::Node(0)],
-						implementation: DocumentNodeImplementation::ProtoNode(ProtoNode::value("add".into(), ConstructionArgs::Unresolved)),
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNode::unresolved("add".into())),
 					},
 				),
 			]
@@ -346,7 +398,102 @@ mod test {
 			.collect(),
 		};
 		network.flatten_with_fns(1, |self_id, inner_id| self_id * 10 + inner_id, gen_node_id);
-		let flat_network = NodeNetwork {
+		let flat_network = flat_network();
+
+		println!("{:#?}", network);
+		println!("{:#?}", flat_network);
+		assert_eq!(flat_network, network);
+	}
+
+	#[test]
+	fn resolve_proto_node_add() {
+		let mut d_node = DocumentNode {
+			name: "cons".into(),
+			inputs: vec![NodeInput::Network, NodeInput::Node(0)],
+			implementation: DocumentNodeImplementation::ProtoNode(ProtoNode::value("cons".into(), ConstructionArgs::Unresolved)),
+		};
+
+		d_node.resolve_proto_nodes();
+		let reference = DocumentNode {
+			name: "cons".into(),
+			inputs: vec![],
+			implementation: DocumentNodeImplementation::ProtoNode(ProtoNode {
+				name: "cons".into(),
+				input: ProtoNodeInput::Network,
+				construction_args: ConstructionArgs::Nodes(vec![0]),
+			}),
+		};
+		assert_eq!(d_node, reference);
+	}
+
+	#[test]
+	fn resolve_flatten_add() {
+		let construction_network = NodeNetwork {
+			inputs: vec![10],
+			output: 1,
+			nodes: [
+				(
+					1,
+					DocumentNode {
+						name: "Inc".into(),
+						inputs: vec![],
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNode {
+							name: "id".into(),
+							input: ProtoNodeInput::Node(11),
+							construction_args: ConstructionArgs::None,
+						}),
+					},
+				),
+				(
+					10,
+					DocumentNode {
+						name: "cons".into(),
+						inputs: vec![],
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNode {
+							name: "cons".into(),
+							input: ProtoNodeInput::Network,
+							construction_args: ConstructionArgs::Nodes(vec![14]),
+						}),
+					},
+				),
+				(
+					11,
+					DocumentNode {
+						name: "add".into(),
+						inputs: vec![],
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNode {
+							name: "add".into(),
+							input: ProtoNodeInput::Node(10),
+							construction_args: ConstructionArgs::None,
+						}),
+					},
+				),
+				(
+					14,
+					DocumentNode {
+						name: "Value: 2".into(),
+						inputs: vec![],
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNode {
+							name: "value".into(),
+							input: ProtoNodeInput::None,
+							construction_args: ConstructionArgs::Value(2_u32.into_any()),
+						}),
+					},
+				),
+			]
+			.into_iter()
+			.collect(),
+		};
+		let mut resolved_network = flat_network();
+		resolved_network.resolve_proto_nodes();
+
+		println!("{:#?}", resolved_network);
+		println!("{:#?}", construction_network);
+		assert_eq!(resolved_network, construction_network);
+	}
+
+	fn flat_network() -> NodeNetwork {
+		NodeNetwork {
 			inputs: vec![10],
 			output: 1,
 			nodes: [
@@ -355,23 +502,23 @@ mod test {
 					DocumentNode {
 						name: "Inc".into(),
 						inputs: vec![NodeInput::Node(11)],
-						implementation: DocumentNodeImplementation::ProtoNode(ProtoNode::id(11)),
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNode::id()),
 					},
 				),
 				(
 					10,
 					DocumentNode {
 						name: "cons".into(),
-						inputs: vec![NodeInput::Network],
-						implementation: DocumentNodeImplementation::ProtoNode(ProtoNode::value("cons".into(), ConstructionArgs::Nodes(vec![]))),
+						inputs: vec![NodeInput::Network, NodeInput::Node(14)],
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNode::unresolved("cons".into())),
 					},
 				),
 				(
 					14,
 					DocumentNode {
-						name: "value".into(),
-						inputs: vec![],
-						implementation: DocumentNodeImplementation::ProtoNode(ProtoNode::value("value".into(), ConstructionArgs::Value(2_u32.into_any()))),
+						name: "Value: 2".into(),
+						inputs: vec![NodeInput::Value(2_u32.into_any())],
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNode::unresolved("value".into())),
 					},
 				),
 				(
@@ -379,15 +526,12 @@ mod test {
 					DocumentNode {
 						name: "add".into(),
 						inputs: vec![NodeInput::Node(10)],
-						implementation: DocumentNodeImplementation::ProtoNode(ProtoNode::value("add".into(), ConstructionArgs::None)),
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNode::unresolved("add".into())),
 					},
 				),
 			]
 			.into_iter()
 			.collect(),
-		};
-		// for debuging purposes
-		println!("{:#?}", network);
-		assert_eq!(flat_network, network);
+		}
 	}
 }
