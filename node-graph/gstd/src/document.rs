@@ -126,7 +126,7 @@ pub trait IntoValue: Sized + ValueTrait + 'static {
 		Box::new(self)
 	}
 }
-impl<T: 'static + StaticType + std::fmt::Debug> ValueTrait for T {}
+impl<T: 'static + StaticType + std::fmt::Debug + PartialEq> ValueTrait for T {}
 impl<T: 'static + ValueTrait> IntoValue for T {}
 
 #[repr(C)]
