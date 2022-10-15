@@ -240,7 +240,7 @@ mod test {
 	pub fn add_node() {
 		let a = ValueNode(42u32);
 		let b = ValueNode(6u32);
-		let cons_a = ConsNode(a);
+		let cons_a = ConsNode(a, PhantomData);
 
 		let sum = b.then(cons_a).then(AddNode);
 

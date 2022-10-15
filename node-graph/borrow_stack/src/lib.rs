@@ -8,11 +8,11 @@ use std::{
 pub trait BorrowStack<'n> {
 	type Item;
 	/// # Safety
-	unsafe fn push(&'n self, value: Self::Item);
+	unsafe fn push(&self, value: Self::Item);
 	/// # Safety
-	unsafe fn pop(&'n self);
+	unsafe fn pop(&self);
 	/// # Safety
-	unsafe fn get(&'n self) -> &'n [Self::Item];
+	unsafe fn get(&self) -> &'n [Self::Item];
 }
 
 #[derive(Debug)]
@@ -23,7 +23,7 @@ pub struct FixedSizeStack<'n, T> {
 	_phantom: PhantomData<&'n ()>,
 }
 
-impl<'n, T: Unpin> FixedSizeStack<'n, T> {
+impl<'n, T: Unpin + 'n> FixedSizeStack<'n, T> {
 	pub fn new(capacity: usize) -> Self {
 		let layout = std::alloc::Layout::array::<MaybeUninit<T>>(capacity).unwrap();
 		let array = unsafe { std::alloc::alloc(layout) };
@@ -44,12 +44,15 @@ impl<'n, T: Unpin> FixedSizeStack<'n, T> {
 	pub fn is_empty(&self) -> bool {
 		self.len.load(Ordering::SeqCst) == 0
 	}
+	pub fn push_fn(&self, f: impl FnOnce(&'n [T]) -> T) {
+		unsafe { self.push(f(self.get())) }
+	}
 }
 
 impl<'n, T> BorrowStack<'n> for FixedSizeStack<'n, T> {
 	type Item = T;
 
-	unsafe fn push(&'n self, value: Self::Item) {
+	unsafe fn push(&self, value: Self::Item) {
 		let len = self.len.load(Ordering::SeqCst);
 		assert!(len < self.capacity);
 		let ptr = self.data[len].as_ptr();
@@ -57,13 +60,13 @@ impl<'n, T> BorrowStack<'n> for FixedSizeStack<'n, T> {
 		self.len.fetch_add(1, Ordering::SeqCst);
 	}
 
-	unsafe fn pop(&'n self) {
+	unsafe fn pop(&self) {
 		let ptr = self.data[self.len.load(Ordering::SeqCst)].as_ptr();
-		Box::from_raw(ptr as *mut T);
+		let _ = Box::from_raw(ptr as *mut T);
 		self.len.fetch_sub(1, Ordering::SeqCst);
 	}
 
-	unsafe fn get(&'n self) -> &'n [Self::Item] {
+	unsafe fn get(&self) -> &'n [Self::Item] {
 		std::slice::from_raw_parts(self.data.as_ptr() as *const T, self.len.load(Ordering::SeqCst))
 	}
 }

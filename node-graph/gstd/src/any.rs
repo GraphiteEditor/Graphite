@@ -6,7 +6,7 @@ fn fmt_error<I>() -> String {
 	format!("DynAnyNode: input is not of correct type, expected {}", std::any::type_name::<I>())
 }
 
-pub struct DynAnyNode<'n, N: RefNode<I>, I>(pub N, pub PhantomData<&'n I>);
+pub struct DynAnyNode<N, I: StaticType, O: StaticType, ORef: StaticType>(pub N, PhantomData<(I, O, ORef)>);
 /*impl<'n, I: StaticType, N: RefNode<'n, &'n I, Output = O> + 'n, O: 'n + StaticType> Node<&'n dyn DynAny<'n>> for DynAnyNode<'n, N, I> {
 	type Output = Box<dyn dyn_any::DynAny<'n> + 'n>;
 	fn eval(self, input: &'n dyn DynAny<'n>) -> Self::Output {
@@ -29,22 +29,42 @@ impl<'n, I: StaticType, N: RefNode<'n, I, Output = O> + 'n, O: 'n + StaticType> 
 		Box::new(self.0.eval_ref(*input))
 	}
 }*/
-impl<'n, I: StaticType, N: RefNode<I, Output = O> + Copy + 'n, O: 'n + StaticType> Node<Any<'n>> for &'n DynAnyNode<'n, N, I> {
+impl<'n, I: StaticType, N: 'n, O: 'n + StaticType, ORef: 'n + StaticType> Node<Any<'n>> for DynAnyNode<N, I, O, ORef>
+where
+	N: Node<I, Output = O>,
+{
 	type Output = Any<'n>;
 	fn eval(self, input: Any<'n>) -> Self::Output {
 		let input: Box<I> = dyn_any::downcast(input).unwrap_or_else(|| panic!("{}", fmt_error::<I>()));
-		Box::new(self.0.eval_ref(*input))
+		Box::new(self.0.eval(*input))
+	}
+}
+impl<'n, I: StaticType, N: 'n, O: 'n + StaticType, ORef: 'n + StaticType> Node<Any<'n>> for &'n DynAnyNode<N, I, O, ORef>
+where
+	&'n N: Node<I, Output = ORef>,
+{
+	type Output = Any<'n>;
+	fn eval(self, input: Any<'n>) -> Self::Output {
+		let input: Box<I> = dyn_any::downcast(input).unwrap_or_else(|| panic!("{}", fmt_error::<I>()));
+		Box::new((&self.0).eval_ref(*input))
+	}
+}
+pub struct TypeErasedNode<'n>(pub Box<dyn AsBoxNode<'n, Any<'n>, Output = Any<'n>>>);
+impl<'n> Node<Any<'n>> for &'n TypeErasedNode<'n> {
+	type Output = Any<'n>;
+	fn eval(self, input: Any<'n>) -> Self::Output {
+		self.0.eval_box(input)
 	}
 }
 
-impl<'n, I: StaticType, N: RefNode<I, Output = O> + 'n + Copy, O: 'n + StaticType> DynAnyNode<'n, N, I>
+impl<'n, I: StaticType + 'n, N: 'n, O: 'n + StaticType, ORef: 'n + StaticType> DynAnyNode<N, I, O, ORef>
 where
-	N::Output: StaticType,
+	&'n N: Node<I, Output = ORef>,
 {
 	pub fn new(n: N) -> Self {
 		DynAnyNode(n, PhantomData)
 	}
-	pub fn into_erased(&'n self) -> impl RefNode<Any<'n>, Output = Any<'n>> {
+	pub fn into_impl(&'n self) -> impl RefNode<Any<'n>, Output = Any<'n>> {
 		self
 	}
 	/*pub fn as_ref(&'n self) -> &'n AnyNode<'n> {
@@ -53,22 +73,61 @@ where
 	pub fn into_ref_box(self) -> Box<dyn RefNode<Box<(dyn DynAny<'n> + 'n)>, Output = Box<(dyn DynAny<'n> + 'n)>> + 'n> {
 		Box::new(self)
 	}*/
-	pub fn into_ref(self: &'n &'n Self) -> &'n (dyn RefNode<Any<'n>, Output = Any<'n>> + 'n) {
+	pub fn as_ref(self: &'n &'n Self) -> &'n (dyn RefNode<Any<'n>, Output = Any<'n>> + 'n) {
 		self
 	}
+	pub fn into_box<'a: 'n>(self) -> TypeErasedNode<'n>
+	where
+		Self: 'a,
+		N: Node<I, Output = O>,
+	{
+		TypeErasedNode(Box::new(self))
+	}
 }
+
+pub struct DowncastNode<N, I: StaticType>(pub N, PhantomData<I>);
+impl<N: Copy + Clone, I: StaticType> Clone for DowncastNode<N, I> {
+	fn clone(&self) -> Self {
+		Self(self.0, self.1)
+	}
+}
+impl<N: Copy + Clone, I: StaticType> Copy for DowncastNode<N, I> {}
+
+impl<'n, N, O: 'n + StaticType> Node<Any<'n>> for DowncastNode<N, O>
+where
+	N: Node<Any<'n>, Output = Any<'n>>,
+{
+	type Output = O;
+	fn eval(self, input: Any<'n>) -> Self::Output {
+		let output = self.0.eval(input);
+		*dyn_any::downcast(output).unwrap_or_else(|| panic!("DowncastNode: {}", fmt_error::<O>()))
+	}
+}
+impl<'n, N, I: StaticType> DowncastNode<N, I>
+where
+	N: Node<Any<'n>>,
+{
+	pub fn new(n: N) -> Self {
+		DowncastNode(n, PhantomData)
+	}
+}
+
+/*
 /// If we store a `Box<dyn RefNode>` in the stack then the origional DynAnyNode is dropped (because it is not stored by reference)
 /// This trait is implemented directly by `DynAnyNode` so this means the borrow stack will hold by value
 pub trait DynAnyNodeTrait<'n> {
 	fn eval_ref_dispatch(&'n self, input: Any<'n>) -> Any<'n>;
 }
-impl<'n, I: StaticType, O: 'n + StaticType, Node: RefNode<I, Output = O> + Copy + 'n> DynAnyNodeTrait<'n> for DynAnyNode<'n, Node, I> {
+impl<'n, I: StaticType, O: 'n + StaticType, Node: 'n> DynAnyNodeTrait<'n> for DynAnyNode<Node, I, O>
+where
+	&'n Node: RefNode<I>,
+{
 	fn eval_ref_dispatch(&'n self, input: Any<'n>) -> Any<'n> {
 		self.eval_ref(input)
 	}
-}
+}*/
 
-use graphene_core::ops::Dynamic;
+use graphene_core::{ops::Dynamic, AsBoxNode};
 pub struct BoxedComposition<'a, Second> {
 	pub first: Box<dyn Node<(), Output = Dynamic<'a>>>,
 	pub second: Second,
@@ -138,9 +197,9 @@ mod test {
 	#[test]
 	#[should_panic]
 	pub fn dyn_input_invalid_eval_panic() {
-		static ADD: &DynAnyNode<&AddNode, (u32, u32)> = &DynAnyNode(&AddNode, PhantomData);
+		static ADD: &DynAnyNode<AddNode, (u32, u32), u32, u32> = &DynAnyNode(AddNode, PhantomData);
 
-		let add = ADD.into_ref();
+		let add = ADD.as_ref();
 		add.eval_ref(Box::new(&("32", 32u32)));
 	}
 	/*#[test]
@@ -161,11 +220,11 @@ mod test {
 
 		// If we put this until the push in a new scope then it failes to compile due to lifetime errors which I'm struggling to fix.
 
-		let value: &DynAnyNode<&ValueNode<(u32, u32)>, ()> = &DynAnyNode(&ValueNode((3u32, 4u32)), PhantomData);
-		let add: &DynAnyNode<&AddNode, &(u32, u32)> = &DynAnyNode(&AddNode, PhantomData);
+		let value: &DynAnyNode<ValueNode<(u32, u32)>, (), &(u32, u32), _> = &DynAnyNode(ValueNode((3u32, 4u32)), PhantomData);
+		let add: &DynAnyNode<AddNode, &(u32, u32), u32, _> = &DynAnyNode(AddNode, PhantomData);
 
-		let value_ref = (&value).into_ref();
-		let add_ref = (&add).into_ref();
+		let value_ref = value.as_ref();
+		let add_ref = add.as_ref();
 		vec.push(value_ref);
 		vec.push(add_ref);
 
