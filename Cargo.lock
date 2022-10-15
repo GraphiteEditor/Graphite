@@ -373,6 +373,7 @@ dependencies = [
  "once_cell",
  "proc-macro2",
  "quote",
+ "rand_chacha",
  "syn",
 ]
 
