@@ -63,7 +63,7 @@ pub enum Operation {
 	},
 	/// Sets a blob URL as the image source for an Image or AiArtist layer type.
 	/// **Be sure to call `FrontendMessage::TriggerRevokeBlobUrl` together with this.**
-	SetImageBlobUrl {
+	SetLayerBlobUrl {
 		layer_path: Vec<LayerId>,
 		blob_url: String,
 		dimensions: (f64, f64),

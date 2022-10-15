@@ -14,12 +14,17 @@ pub enum PortfolioMessage {
 	// Sub-messages
 	#[remain::unsorted]
 	#[child]
-	Document(DocumentMessage),
+	MenuBar(MenuBarMessage),
 	#[remain::unsorted]
 	#[child]
-	MenuBar(MenuBarMessage),
+	Document(DocumentMessage),
 
 	// Messages
+	#[remain::unsorted]
+	DocumentPassMessage {
+		document_id: u64,
+		message: DocumentMessage,
+	},
 	AiArtistCheckServerStatus,
 	AiArtistSetServerStatus {
 		status: AiArtistServerStatus,
@@ -88,6 +93,18 @@ pub enum PortfolioMessage {
 	},
 	SetActiveDocument {
 		document_id: u64,
+	},
+	SetAiArtistBlobUrl {
+		document_id: u64,
+		layer_path: Vec<LayerId>,
+		blob_url: String,
+		dimensions: (f64, f64),
+	},
+	SetAiArtistGeneratingStatus {
+		document_id: u64,
+		path: Vec<LayerId>,
+		percent: Option<f64>,
+		generating: bool,
 	},
 	UpdateDocumentWidgets,
 	UpdateOpenDocumentsList,

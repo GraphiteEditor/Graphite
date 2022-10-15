@@ -19,12 +19,12 @@ function hostInfo(hostname: string): { hostname: string; endpoint: string } {
 	return { hostname, endpoint };
 }
 
-export async function terminateAIArtist(hostname: string, layerPath: BigUint64Array, editor: Editor): Promise<void> {
+export async function terminateAIArtist(hostname: string, documentId: bigint, layerPath: BigUint64Array, editor: Editor): Promise<void> {
 	await terminate(hostname);
 
 	abortAndResetPolling();
 
-	editor.instance.setAIArtistGeneratingStatus(layerPath, undefined, false);
+	editor.instance.setAIArtistGeneratingStatus(documentId, layerPath, undefined, false);
 }
 
 export async function checkAIArtist(hostname: string, editor: Editor): Promise<void> {
@@ -45,6 +45,7 @@ export async function callAIArtist(
 	restoreFaces: boolean,
 	tiling: boolean,
 	image: Blob | undefined,
+	documentId: bigint,
 	layerPath: BigUint64Array,
 	editor: Editor
 ): Promise<void> {
@@ -52,7 +53,7 @@ export async function callAIArtist(
 	if (mainRequest) return;
 
 	// Immediately set the progress to 0% so the backend knows to update its layout
-	editor.instance.setAIArtistGeneratingStatus(layerPath, 0, true);
+	editor.instance.setAIArtistGeneratingStatus(documentId, layerPath, 0, true);
 
 	// Initiate a request to the computation server
 	const [width, height] = [resolution.x, resolution.y];
@@ -72,8 +73,8 @@ export async function callAIArtist(
 				const [blob, percentComplete] = await pollImage(hostname);
 
 				const blobURL = URL.createObjectURL(blob);
-				editor.instance.setImageBlobUrl(layerPath, blobURL, width, height);
-				editor.instance.setAIArtistGeneratingStatus(layerPath, percentComplete, true);
+				editor.instance.setAIArtistBlobURL(documentId, layerPath, blobURL, width, height);
+				editor.instance.setAIArtistGeneratingStatus(documentId, layerPath, percentComplete, true);
 			} catch {
 				pollingRetries += 1;
 
@@ -86,8 +87,8 @@ export async function callAIArtist(
 	const blob = await mainRequest;
 
 	const blobURL = URL.createObjectURL(blob);
-	editor.instance.setImageBlobUrl(layerPath, blobURL, width, height);
-	editor.instance.setAIArtistGeneratingStatus(layerPath, 100, false);
+	editor.instance.setAIArtistBlobURL(documentId, layerPath, blobURL, width, height);
+	editor.instance.setAIArtistGeneratingStatus(documentId, layerPath, 100, false);
 	abortAndReset();
 }
 

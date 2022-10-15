@@ -790,7 +790,7 @@ impl Document {
 				self.mark_as_dirty(&path)?;
 				Some([vec![DocumentChanged], update_thumbnails_upstream(&path)].concat())
 			}
-			Operation::SetImageBlobUrl { layer_path, blob_url, dimensions } => {
+			Operation::SetLayerBlobUrl { layer_path, blob_url, dimensions } => {
 				let layer = self.layer_mut(&layer_path).expect("Blob url for invalid layer");
 				match &mut layer.data {
 					LayerDataType::Image(image) => {

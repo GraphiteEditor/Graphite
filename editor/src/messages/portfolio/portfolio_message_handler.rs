@@ -33,15 +33,23 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 		match message {
 			// Sub-messages
 			#[remain::unsorted]
+			MenuBar(message) => self.menu_bar_message_handler.process_message(message, (), responses),
+			#[remain::unsorted]
 			Document(message) => {
-				if let Some(document) = self.active_document_id.and_then(|id| self.documents.get_mut(&id)) {
-					document.process_message(message, (ipp, &self.persistent_data, preferences), responses)
+				if let Some(document_id) = self.active_document_id {
+					if let Some(document) = self.documents.get_mut(&document_id) {
+						document.process_message(message, (document_id, ipp, &self.persistent_data, preferences), responses)
+					}
 				}
 			}
-			#[remain::unsorted]
-			MenuBar(message) => self.menu_bar_message_handler.process_message(message, (), responses),
 
 			// Messages
+			#[remain::unsorted]
+			DocumentPassMessage { document_id, message } => {
+				if let Some(document) = self.documents.get_mut(&document_id) {
+					document.process_message(message, (document_id, ipp, &self.persistent_data, preferences), responses)
+				}
+			}
 			AiArtistCheckServerStatus => {
 				self.persistent_data.ai_artist_server_status = AiArtistServerStatus::Checking;
 				responses.push_back(
@@ -414,6 +422,34 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 				responses.push_back(NavigationMessage::TranslateCanvas { delta: (0., 0.).into() }.into());
 			}
 			SetActiveDocument { document_id } => self.active_document_id = Some(document_id),
+			SetAiArtistBlobUrl {
+				document_id,
+				layer_path,
+				blob_url,
+				dimensions,
+			} => {
+				if let Some(document) = self.documents.get_mut(&document_id) {
+					if let Ok(layer) = document.graphene_document.layer(&layer_path) {
+						let previous_blob_url = &layer.as_ai_artist().unwrap().blob_url;
+
+						if let Some(url) = previous_blob_url {
+							responses.push_back(FrontendMessage::TriggerRevokeBlobUrl { url: url.clone() }.into());
+						}
+
+						let message = DocumentOperation::SetLayerBlobUrl { layer_path, blob_url, dimensions }.into();
+						responses.push_back(PortfolioMessage::DocumentPassMessage { document_id, message }.into());
+					}
+				}
+			}
+			SetAiArtistGeneratingStatus {
+				document_id,
+				path,
+				percent,
+				generating,
+			} => {
+				let message = DocumentOperation::SetAiArtistGeneratingStatus { path, percent, generating }.into();
+				responses.push_back(PortfolioMessage::DocumentPassMessage { document_id, message }.into());
+			}
 			UpdateDocumentWidgets => {
 				if let Some(document) = self.active_document() {
 					document.update_document_widgets(responses);

@@ -242,6 +242,8 @@ export class TriggerAiArtistCheckServerStatus extends JsMessage {
 }
 
 export class TriggerAiArtistGenerateTxt2Img extends JsMessage {
+	readonly documentId!: bigint;
+
 	readonly layerPath!: BigUint64Array;
 
 	readonly hostname!: string;
@@ -272,6 +274,8 @@ export class TriggerAiArtistRasterizeAndGenerateImg2Img extends JsMessage {
 	@TupleToVec2
 	readonly rasterizeSize!: XY;
 
+	readonly documentId!: bigint;
+
 	readonly layerPath!: BigUint64Array;
 
 	readonly hostname!: string;
@@ -299,6 +303,8 @@ export class TriggerAiArtistRasterizeAndGenerateImg2Img extends JsMessage {
 }
 
 export class TriggerAiArtistTerminate extends JsMessage {
+	readonly documentId!: bigint;
+
 	readonly layerPath!: BigUint64Array;
 
 	readonly hostname!: string;

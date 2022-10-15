@@ -68,12 +68,12 @@ export function createPortfolioState(editor: Editor) {
 		checkAIArtist(hostname, editor);
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerAiArtistGenerateTxt2Img, async (triggerAiArtistGenerateTxt2Img) => {
-		const { layerPath, hostname, refreshFrequency, prompt, negativePrompt, resolution, seed, samples, cfgScale, restoreFaces, tiling } = triggerAiArtistGenerateTxt2Img;
+		const { documentId, layerPath, hostname, refreshFrequency, prompt, negativePrompt, resolution, seed, samples, cfgScale, restoreFaces, tiling } = triggerAiArtistGenerateTxt2Img;
 
-		callAIArtist(hostname, refreshFrequency, prompt, negativePrompt, resolution, seed, samples, cfgScale, undefined, restoreFaces, tiling, undefined, layerPath, editor);
+		callAIArtist(hostname, refreshFrequency, prompt, negativePrompt, resolution, seed, samples, cfgScale, undefined, restoreFaces, tiling, undefined, documentId, layerPath, editor);
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerAiArtistRasterizeAndGenerateImg2Img, async (triggerAiArtistRasterizeAndGenerateImg2Img) => {
-		const { svg, rasterizeSize, layerPath, hostname, refreshFrequency, prompt, negativePrompt, resolution, seed, samples, cfgScale, denoisingStrength, restoreFaces, tiling } =
+		const { svg, rasterizeSize, documentId, layerPath, hostname, refreshFrequency, prompt, negativePrompt, resolution, seed, samples, cfgScale, denoisingStrength, restoreFaces, tiling } =
 			triggerAiArtistRasterizeAndGenerateImg2Img;
 
 		// Rasterize the SVG to an image file
@@ -81,14 +81,14 @@ export function createPortfolioState(editor: Editor) {
 
 		const blobURL = URL.createObjectURL(blob);
 
-		editor.instance.setImageBlobUrl(layerPath, blobURL, rasterizeSize.x, rasterizeSize.y);
+		editor.instance.setAIArtistBlobURL(documentId, layerPath, blobURL, rasterizeSize.x, rasterizeSize.y);
 
-		callAIArtist(hostname, refreshFrequency, prompt, negativePrompt, resolution, seed, samples, cfgScale, denoisingStrength, restoreFaces, tiling, blob, layerPath, editor);
+		callAIArtist(hostname, refreshFrequency, prompt, negativePrompt, resolution, seed, samples, cfgScale, denoisingStrength, restoreFaces, tiling, blob, documentId, layerPath, editor);
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerAiArtistTerminate, async (triggerAiArtistTerminate) => {
-		const { layerPath, hostname } = triggerAiArtistTerminate;
+		const { documentId, layerPath, hostname } = triggerAiArtistTerminate;
 
-		terminateAIArtist(hostname, layerPath, editor);
+		terminateAIArtist(hostname, documentId, layerPath, editor);
 	});
 	editor.subscriptions.subscribeJsMessage(UpdateImageData, (updateImageData) => {
 		updateImageData.imageData.forEach(async (element) => {
@@ -99,7 +99,7 @@ export function createPortfolioState(editor: Editor) {
 
 			const image = await createImageBitmap(blob);
 
-			editor.instance.setImageBlobUrl(element.path, blobURL, image.width, image.height);
+			editor.instance.setImageBlobURL(element.path, blobURL, image.width, image.height);
 		});
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerRevokeBlobUrl, async (triggerRevokeBlobUrl) => {

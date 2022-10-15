@@ -46,6 +46,8 @@ pub enum FrontendMessage {
 		hostname: String,
 	},
 	TriggerAiArtistGenerateTxt2Img {
+		#[serde(rename = "documentId")]
+		document_id: u64,
 		#[serde(rename = "layerPath")]
 		layer_path: Vec<LayerId>,
 		hostname: String,
@@ -67,6 +69,8 @@ pub enum FrontendMessage {
 		svg: String,
 		#[serde(rename = "rasterizeSize")]
 		rasterize_size: (f64, f64),
+		#[serde(rename = "documentId")]
+		document_id: u64,
 		#[serde(rename = "layerPath")]
 		layer_path: Vec<LayerId>,
 		hostname: String,
@@ -87,6 +91,8 @@ pub enum FrontendMessage {
 		tiling: bool,
 	},
 	TriggerAiArtistTerminate {
+		#[serde(rename = "documentId")]
+		document_id: u64,
 		#[serde(rename = "layerPath")]
 		layer_path: Vec<LayerId>,
 		hostname: String,

@@ -89,12 +89,12 @@ impl Default for DocumentMessageHandler {
 	}
 }
 
-impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &PersistentData, &PreferencesMessageHandler)> for DocumentMessageHandler {
+impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &PersistentData, &PreferencesMessageHandler)> for DocumentMessageHandler {
 	#[remain::check]
 	fn process_message(
 		&mut self,
 		message: DocumentMessage,
-		(ipp, persistent_data, preferences): (&InputPreprocessorMessageHandler, &PersistentData, &PreferencesMessageHandler),
+		(document_id, ipp, persistent_data, preferences): (u64, &InputPreprocessorMessageHandler, &PersistentData, &PreferencesMessageHandler),
 		responses: &mut VecDeque<Message>,
 	) {
 		use DocumentMessage::*;
@@ -207,7 +207,7 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &Persist
 				responses.push_back(DocumentOperation::ClearAiArtist { path: layer_path.into() }.into());
 			}
 			AiArtistGenerate => {
-				if let Some(message) = self.call_ai_artist(false, preferences, persistent_data) {
+				if let Some(message) = self.call_ai_artist(false, document_id, preferences, persistent_data) {
 					// TODO: Eventually remove this after a message system ordering architectural change
 					// This block is a workaround for the fact that, when `ai-artist.ts` calls...
 					// `editor.instance.setAIArtistGeneratingStatus(layerPath, 0, true);`
@@ -244,7 +244,7 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &Persist
 				}
 			}
 			AiArtistTerminate => {
-				if let Some(message) = self.call_ai_artist(true, preferences, persistent_data) {
+				if let Some(message) = self.call_ai_artist(true, document_id, preferences, persistent_data) {
 					responses.push_back(message);
 				}
 			}
@@ -732,7 +732,7 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &Persist
 				if let Some(url) = previous_blob_url {
 					responses.push_back(FrontendMessage::TriggerRevokeBlobUrl { url: url.clone() }.into());
 				}
-				responses.push_back(DocumentOperation::SetImageBlobUrl { layer_path, blob_url, dimensions }.into());
+				responses.push_back(DocumentOperation::SetLayerBlobUrl { layer_path, blob_url, dimensions }.into());
 			}
 			SetLayerExpansion { layer_path, set_expanded } => {
 				self.layer_metadata_mut(&layer_path).expanded = set_expanded;
@@ -921,7 +921,7 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &Persist
 }
 
 impl DocumentMessageHandler {
-	pub fn call_ai_artist(&mut self, terminate: bool, preferences: &PreferencesMessageHandler, persistent_data: &PersistentData) -> Option<Message> {
+	pub fn call_ai_artist(&mut self, terminate: bool, document_id: u64, preferences: &PreferencesMessageHandler, persistent_data: &PersistentData) -> Option<Message> {
 		// TODO: Find a way to avoid all the duplicated code used also by `ExportDocument`
 
 		// PART 1 (IDENTICAL)
@@ -973,6 +973,7 @@ impl DocumentMessageHandler {
 		let result = match (terminate, use_img2img) {
 			(true, _) => Some(
 				FrontendMessage::TriggerAiArtistTerminate {
+					document_id,
 					layer_path: layer_path.into(),
 					hostname: preferences.ai_artist_server_hostname.clone(),
 				}
@@ -1001,6 +1002,7 @@ impl DocumentMessageHandler {
 					FrontendMessage::TriggerAiArtistRasterizeAndGenerateImg2Img {
 						svg: document,
 						rasterize_size: size.into(),
+						document_id,
 						layer_path: layer_path.into(),
 						hostname: preferences.ai_artist_server_hostname.clone(),
 						refresh_frequency: preferences.ai_artist_refresh_frequency,
@@ -1019,6 +1021,7 @@ impl DocumentMessageHandler {
 			}
 			(_, false) => Some(
 				FrontendMessage::TriggerAiArtistGenerateTxt2Img {
+					document_id,
 					layer_path: layer_path.into(),
 					hostname: preferences.ai_artist_server_hostname.clone(),
 					refresh_frequency: preferences.ai_artist_refresh_frequency,
