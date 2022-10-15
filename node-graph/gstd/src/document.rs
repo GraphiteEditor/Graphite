@@ -198,6 +198,15 @@ impl NodeInput {
 	}
 }
 
+impl ProtoNodeInput {
+	pub fn unwrap_node(self) -> NodeId {
+		match self {
+			ProtoNodeInput::Node(id) => id,
+			_ => panic!("tried to unwrap id from non node input"),
+		}
+	}
+}
+
 impl ProtoNode {
 	pub fn id() -> Self {
 		Self {

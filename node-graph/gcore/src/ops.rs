@@ -1,7 +1,7 @@
 use core::marker::PhantomData;
 use core::ops::Add;
 
-use crate::Node;
+use crate::{Node, RefNode};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct AddNode;
@@ -153,15 +153,21 @@ impl<'n, T: Clone + 'n> Node<T> for DupNode {
 /// Return the Input Argument
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct IdNode;
-impl<'n, T: 'n> Node<T> for IdNode {
+impl<T> Node<T> for IdNode {
 	type Output = T;
 	fn eval(self, input: T) -> Self::Output {
 		input
 	}
 }
-impl<'n, T: 'n> Node<T> for &'n IdNode {
+impl<'n, T> Node<T> for &'n IdNode {
 	type Output = T;
 	fn eval(self, input: T) -> Self::Output {
+		input
+	}
+}
+impl<T> RefNode<T> for IdNode {
+	type Output = T;
+	fn eval_ref(&self, input: T) -> Self::Output {
 		input
 	}
 }
@@ -177,7 +183,7 @@ impl<MN: Node<I>, I, E> Node<Result<I, E>> for MapResultNode<MN, I, E> {
 impl<'n, MN: Node<I> + Copy, I, E> Node<Result<I, E>> for &'n MapResultNode<MN, I, E> {
 	type Output = Result<MN::Output, E>;
 	fn eval(self, input: Result<I, E>) -> Self::Output {
-		input.map(|x| (&self.0).eval(x))
+		input.map(|x| self.0.eval(x))
 	}
 }
 

@@ -5,25 +5,24 @@ use std::{
 	sync::atomic::{AtomicUsize, Ordering},
 };
 
-pub trait BorrowStack<'n> {
+pub trait BorrowStack {
 	type Item;
 	/// # Safety
 	unsafe fn push(&self, value: Self::Item);
 	/// # Safety
 	unsafe fn pop(&self);
 	/// # Safety
-	unsafe fn get(&self) -> &'n [Self::Item];
+	unsafe fn get(&self) -> &'static [Self::Item];
 }
 
 #[derive(Debug)]
-pub struct FixedSizeStack<'n, T> {
+pub struct FixedSizeStack<T: dyn_any::StaticTypeSized> {
 	data: Pin<Box<[MaybeUninit<T>]>>,
 	capacity: usize,
 	len: AtomicUsize,
-	_phantom: PhantomData<&'n ()>,
 }
 
-impl<'n, T: Unpin + 'n> FixedSizeStack<'n, T> {
+impl<'n, T: Unpin + 'n + dyn_any::StaticTypeSized> FixedSizeStack<T> {
 	pub fn new(capacity: usize) -> Self {
 		let layout = std::alloc::Layout::array::<MaybeUninit<T>>(capacity).unwrap();
 		let array = unsafe { std::alloc::alloc(layout) };
@@ -33,7 +32,6 @@ impl<'n, T: Unpin + 'n> FixedSizeStack<'n, T> {
 			data: array,
 			capacity,
 			len: AtomicUsize::new(0),
-			_phantom: PhantomData,
 		}
 	}
 
@@ -44,19 +42,19 @@ impl<'n, T: Unpin + 'n> FixedSizeStack<'n, T> {
 	pub fn is_empty(&self) -> bool {
 		self.len.load(Ordering::SeqCst) == 0
 	}
-	pub fn push_fn(&self, f: impl FnOnce(&'n [T]) -> T) {
-		unsafe { self.push(f(self.get())) }
+	pub fn push_fn(&self, f: impl FnOnce(&'static [T::Static]) -> T) {
+		unsafe { self.push(std::mem::transmute_copy(&f(self.get()))) }
 	}
 }
 
-impl<'n, T> BorrowStack<'n> for FixedSizeStack<'n, T> {
-	type Item = T;
+impl<'n, T: 'n + dyn_any::StaticTypeSized> BorrowStack for FixedSizeStack<T> {
+	type Item = T::Static;
 
 	unsafe fn push(&self, value: Self::Item) {
 		let len = self.len.load(Ordering::SeqCst);
 		assert!(len < self.capacity);
 		let ptr = self.data[len].as_ptr();
-		(ptr as *mut T).write(value);
+		(ptr as *mut T::Static).write(value);
 		self.len.fetch_add(1, Ordering::SeqCst);
 	}
 
@@ -66,8 +64,8 @@ impl<'n, T> BorrowStack<'n> for FixedSizeStack<'n, T> {
 		self.len.fetch_sub(1, Ordering::SeqCst);
 	}
 
-	unsafe fn get(&self) -> &'n [Self::Item] {
-		std::slice::from_raw_parts(self.data.as_ptr() as *const T, self.len.load(Ordering::SeqCst))
+	unsafe fn get(&self) -> &'static [Self::Item] {
+		std::slice::from_raw_parts(self.data.as_ptr() as *const T::Static, self.len.load(Ordering::SeqCst))
 	}
 }
 
