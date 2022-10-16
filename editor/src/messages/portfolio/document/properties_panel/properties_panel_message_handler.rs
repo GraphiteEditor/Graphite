@@ -179,6 +179,12 @@ impl<'a> MessageHandler<PropertiesPanelMessage, (&PersistentData, PropertiesPane
 				let seed = generate_uuid();
 				responses.push_back(Operation::SetAiArtistSeed { path, seed }.into());
 			}
+			SetAiArtistSeedRandomizeAndGenerate => {
+				let (path, _) = self.active_selection.clone().expect("Received update for properties panel with no active layer");
+				let seed = generate_uuid();
+				responses.push_back(Operation::SetAiArtistSeed { path, seed }.into());
+				responses.push_back(DocumentMessage::AiArtistGenerate.into());
+			}
 			SetAiArtistCfgScale { cfg_scale } => {
 				let (path, _) = self.active_selection.clone().expect("Received update for properties panel with no active layer");
 				responses.push_back(Operation::SetAiArtistCfgScale { path, cfg_scale }.into());

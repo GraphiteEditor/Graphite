@@ -35,6 +35,7 @@ pub enum PropertiesPanelMessage {
 	SetAiArtistScaleFromResolution,
 	SetAiArtistSeed { seed: u64 },
 	SetAiArtistSeedRandomize,
+	SetAiArtistSeedRandomizeAndGenerate,
 	SetAiArtistTiling { tiling: bool },
 	SetAiArtistUseImg2Img { use_img2img: bool },
 	SetPivot { new_position: PivotPosition },
