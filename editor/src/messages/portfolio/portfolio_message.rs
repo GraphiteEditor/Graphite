@@ -26,6 +26,23 @@ pub enum PortfolioMessage {
 		message: DocumentMessage,
 	},
 	AiArtistCheckServerStatus,
+	AiArtistSetBlobUrl {
+		document_id: u64,
+		layer_path: Vec<LayerId>,
+		blob_url: String,
+		resolution: (f64, f64),
+	},
+	AiArtistSetGeneratingStatus {
+		document_id: u64,
+		path: Vec<LayerId>,
+		percent: Option<f64>,
+		generating: bool,
+	},
+	AiArtistSetImageData {
+		document_id: u64,
+		layer_path: Vec<LayerId>,
+		image_data: Vec<u8>,
+	},
 	AiArtistSetServerStatus {
 		status: AiArtistServerStatus,
 	},
@@ -93,23 +110,6 @@ pub enum PortfolioMessage {
 	},
 	SetActiveDocument {
 		document_id: u64,
-	},
-	SetAiArtistBlobUrl {
-		document_id: u64,
-		layer_path: Vec<LayerId>,
-		blob_url: String,
-		resolution: (f64, f64),
-	},
-	SetAiArtistGeneratingStatus {
-		document_id: u64,
-		path: Vec<LayerId>,
-		percent: Option<f64>,
-		generating: bool,
-	},
-	SetAiArtistImageData {
-		document_id: u64,
-		layer_path: Vec<LayerId>,
-		image_data: Vec<u8>,
 	},
 	UpdateDocumentWidgets,
 	UpdateOpenDocumentsList,

@@ -56,17 +56,65 @@ pub enum Operation {
 		insert_index: isize,
 		transform: [f64; 6],
 	},
-	SetAiArtistGeneratingStatus {
-		path: Vec<LayerId>,
-		percent: Option<f64>,
-		generating: bool,
-	},
 	/// Sets a blob URL as the image source for an Image or AiArtist layer type.
 	/// **Be sure to call `FrontendMessage::TriggerRevokeBlobUrl` together with this.**
 	SetLayerBlobUrl {
 		layer_path: Vec<LayerId>,
 		blob_url: String,
 		resolution: (f64, f64),
+	},
+	/// Clears the image to leave the AI Artist layer un-rendered.
+	/// **Be sure to call `FrontendMessage::TriggerRevokeBlobUrl` together with this.**
+	AiArtistClear {
+		path: Vec<LayerId>,
+	},
+	AiArtistSetGeneratingStatus {
+		path: Vec<LayerId>,
+		percent: Option<f64>,
+		generating: bool,
+	},
+	AiArtistSetImageData {
+		layer_path: Vec<LayerId>,
+		image_data: Vec<u8>,
+	},
+	AiArtistSetNegativePrompt {
+		path: Vec<LayerId>,
+		negative_prompt: String,
+	},
+	AiArtistSetPrompt {
+		path: Vec<LayerId>,
+		prompt: String,
+	},
+	AiArtistSetCfgScale {
+		path: Vec<LayerId>,
+		cfg_scale: f64,
+	},
+	AiArtistSetSamples {
+		path: Vec<LayerId>,
+		samples: u32,
+	},
+	AiArtistSetScaleFromResolution {
+		path: Vec<LayerId>,
+	},
+	AiArtistSetSeed {
+		path: Vec<LayerId>,
+		seed: u64,
+	},
+	AiArtistSetDenoisingStrength {
+		path: Vec<LayerId>,
+		denoising_strength: f64,
+	},
+	AiArtistSetUseImg2Img {
+		path: Vec<LayerId>,
+		use_img2img: bool,
+	},
+	AiArtistSetRestoreFaces {
+		path: Vec<LayerId>,
+		restore_faces: bool,
+	},
+	AiArtistSetTiling {
+		path: Vec<LayerId>,
+		tiling: bool,
 	},
 	SetPivot {
 		layer_path: Vec<LayerId>,
@@ -163,11 +211,6 @@ pub enum Operation {
 	CreateFolder {
 		path: Vec<LayerId>,
 	},
-	/// Clears the image to leave the AI Artist layer un-rendered.
-	/// **Be sure to call `FrontendMessage::TriggerRevokeBlobUrl` together with this.**
-	ClearAiArtist {
-		path: Vec<LayerId>,
-	},
 	TransformLayer {
 		path: Vec<LayerId>,
 		transform: [f64; 6],
@@ -175,49 +218,6 @@ pub enum Operation {
 	TransformLayerInViewport {
 		path: Vec<LayerId>,
 		transform: [f64; 6],
-	},
-	SetAiArtistImageData {
-		layer_path: Vec<LayerId>,
-		image_data: Vec<u8>,
-	},
-	SetAiArtistNegativePrompt {
-		path: Vec<LayerId>,
-		negative_prompt: String,
-	},
-	SetAiArtistPrompt {
-		path: Vec<LayerId>,
-		prompt: String,
-	},
-	SetAiArtistCfgScale {
-		path: Vec<LayerId>,
-		cfg_scale: f64,
-	},
-	SetAiArtistSamples {
-		path: Vec<LayerId>,
-		samples: u32,
-	},
-	SetAiArtistScaleFromResolution {
-		path: Vec<LayerId>,
-	},
-	SetAiArtistSeed {
-		path: Vec<LayerId>,
-		seed: u64,
-	},
-	SetAiArtistDenoisingStrength {
-		path: Vec<LayerId>,
-		denoising_strength: f64,
-	},
-	SetAiArtistUseImg2Img {
-		path: Vec<LayerId>,
-		use_img2img: bool,
-	},
-	SetAiArtistRestoreFaces {
-		path: Vec<LayerId>,
-		restore_faces: bool,
-	},
-	SetAiArtistTiling {
-		path: Vec<LayerId>,
-		tiling: bool,
 	},
 	SetLayerTransformInViewport {
 		path: Vec<LayerId>,

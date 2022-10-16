@@ -204,7 +204,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				if let Some(url) = previous_blob_url {
 					responses.push_back(FrontendMessage::TriggerRevokeBlobUrl { url: url.clone() }.into());
 				}
-				responses.push_back(DocumentOperation::ClearAiArtist { path: layer_path.into() }.into());
+				responses.push_back(DocumentOperation::AiArtistClear { path: layer_path.into() }.into());
 			}
 			AiArtistGenerate => {
 				if let Some(message) = self.call_ai_artist(false, document_id, preferences, persistent_data) {
@@ -231,7 +231,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 						let layer_path = selected_ai_artist_layers.next();
 
 						responses.push_back(
-							DocumentOperation::SetAiArtistGeneratingStatus {
+							DocumentOperation::AiArtistSetGeneratingStatus {
 								path: layer_path.unwrap().clone(),
 								percent: Some(0.),
 								generating: true,
@@ -1006,9 +1006,9 @@ impl DocumentMessageHandler {
 
 				// PART 6 (DIFFERENT)
 				Some(
-					FrontendMessage::TriggerAiArtistRasterizeAndGenerateImg2Img {
-						svg: document,
-						rasterize_size: size.into(),
+					FrontendMessage::TriggerAiArtist {
+						svg: Some(document),
+						rasterize_size: Some(size.into()),
 						document_id,
 						layer_path: layer_path.into(),
 						hostname: preferences.ai_artist_server_hostname.clone(),
@@ -1019,7 +1019,7 @@ impl DocumentMessageHandler {
 						seed,
 						samples,
 						cfg_scale,
-						denoising_strength,
+						denoising_strength: Some(denoising_strength),
 						restore_faces,
 						tiling,
 					}
@@ -1027,7 +1027,9 @@ impl DocumentMessageHandler {
 				)
 			}
 			(_, false) => Some(
-				FrontendMessage::TriggerAiArtistGenerateTxt2Img {
+				FrontendMessage::TriggerAiArtist {
+					svg: None,
+					rasterize_size: None,
 					document_id,
 					layer_path: layer_path.into(),
 					hostname: preferences.ai_artist_server_hostname.clone(),
@@ -1038,6 +1040,7 @@ impl DocumentMessageHandler {
 					seed,
 					samples,
 					cfg_scale,
+					denoising_strength: None,
 					restore_faces,
 					tiling,
 				}

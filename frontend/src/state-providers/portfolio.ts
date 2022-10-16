@@ -11,10 +11,9 @@ import {
 	TriggerImport,
 	TriggerOpenDocument,
 	TriggerRasterDownload,
-	TriggerAiArtistRasterizeAndGenerateImg2Img,
+	TriggerAiArtist,
 	TriggerAiArtistTerminate,
 	TriggerAiArtistCheckServerStatus,
-	TriggerAiArtistGenerateTxt2Img,
 	UpdateActiveDocument,
 	UpdateOpenDocumentsList,
 	UpdateImageData,
@@ -67,23 +66,22 @@ export function createPortfolioState(editor: Editor) {
 
 		checkAIArtist(hostname, editor);
 	});
-	editor.subscriptions.subscribeJsMessage(TriggerAiArtistGenerateTxt2Img, async (triggerAiArtistGenerateTxt2Img) => {
-		const { documentId, layerPath, hostname, refreshFrequency, prompt, negativePrompt, resolution, seed, samples, cfgScale, restoreFaces, tiling } = triggerAiArtistGenerateTxt2Img;
-
-		callAIArtist(hostname, refreshFrequency, prompt, negativePrompt, resolution, seed, samples, cfgScale, undefined, restoreFaces, tiling, undefined, documentId, layerPath, editor);
-	});
-	editor.subscriptions.subscribeJsMessage(TriggerAiArtistRasterizeAndGenerateImg2Img, async (triggerAiArtistRasterizeAndGenerateImg2Img) => {
+	editor.subscriptions.subscribeJsMessage(TriggerAiArtist, async (triggerAiArtist) => {
 		const { svg, rasterizeSize, documentId, layerPath, hostname, refreshFrequency, prompt, negativePrompt, resolution, seed, samples, cfgScale, denoisingStrength, restoreFaces, tiling } =
-			triggerAiArtistRasterizeAndGenerateImg2Img;
+			triggerAiArtist;
 
-		// Rasterize the SVG to an image file
-		const blob = await rasterizeSVG(svg, rasterizeSize.x, rasterizeSize.y, "image/png");
+		// Handle img2img mode
+		let image: Blob | undefined;
+		if (denoisingStrength !== undefined && svg !== undefined && rasterizeSize !== undefined) {
+			// Rasterize the SVG to an image file
+			image = await rasterizeSVG(svg, rasterizeSize.x, rasterizeSize.y, "image/png");
 
-		const blobURL = URL.createObjectURL(blob);
+			const blobURL = URL.createObjectURL(image);
 
-		editor.instance.setAIArtistBlobURL(documentId, layerPath, blobURL, rasterizeSize.x, rasterizeSize.y);
+			editor.instance.setAIArtistBlobURL(documentId, layerPath, blobURL, rasterizeSize.x, rasterizeSize.y);
+		}
 
-		callAIArtist(hostname, refreshFrequency, prompt, negativePrompt, resolution, seed, samples, cfgScale, denoisingStrength, restoreFaces, tiling, blob, documentId, layerPath, editor);
+		callAIArtist(hostname, refreshFrequency, prompt, negativePrompt, resolution, seed, samples, cfgScale, denoisingStrength, restoreFaces, tiling, image, documentId, layerPath, editor);
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerAiArtistTerminate, async (triggerAiArtistTerminate) => {
 		const { documentId, layerPath, hostname } = triggerAiArtistTerminate;

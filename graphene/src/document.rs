@@ -807,7 +807,7 @@ impl Document {
 				self.mark_as_dirty(&layer_path)?;
 				Some([vec![DocumentChanged, LayerChanged { path: layer_path.clone() }], update_thumbnails_upstream(&layer_path)].concat())
 			}
-			Operation::SetAiArtistImageData { layer_path, image_data } => {
+			Operation::AiArtistSetImageData { layer_path, image_data } => {
 				let layer = self.layer_mut(&layer_path).expect("Setting AI Artist image data for invalid layer");
 				if let LayerDataType::AiArtist(ai_artist) = &mut layer.data {
 					ai_artist.image_data = Some(ImageData { image_data });
@@ -816,7 +816,7 @@ impl Document {
 				}
 				Some(vec![LayerChanged { path: layer_path.clone() }])
 			}
-			Operation::SetAiArtistGeneratingStatus { path, percent, generating } => {
+			Operation::AiArtistSetGeneratingStatus { path, percent, generating } => {
 				let layer = self.layer_mut(&path).expect("Generating AI Artist for invalid layer");
 				if let LayerDataType::AiArtist(ai_artist) = &mut layer.data {
 					if let Some(percentage) = percent {
@@ -833,7 +833,7 @@ impl Document {
 				}
 				Some(vec![LayerChanged { path: path.clone() }])
 			}
-			Operation::ClearAiArtist { path } => {
+			Operation::AiArtistClear { path } => {
 				let layer = self.layer_mut(&path).expect("Clearing AI Artist image for invalid layer");
 				if let LayerDataType::AiArtist(ai_artist) = &mut layer.data {
 					ai_artist.image_data = None;
@@ -846,7 +846,7 @@ impl Document {
 				self.mark_as_dirty(&path)?;
 				Some([vec![DocumentChanged, LayerChanged { path: path.clone() }], update_thumbnails_upstream(&path)].concat())
 			}
-			Operation::SetAiArtistNegativePrompt { path, negative_prompt } => {
+			Operation::AiArtistSetNegativePrompt { path, negative_prompt } => {
 				let layer = self.layer_mut(&path).expect("Setting AI Artist negative prompt for invalid layer");
 				if let LayerDataType::AiArtist(ai_artist) = &mut layer.data {
 					ai_artist.negative_prompt = negative_prompt;
@@ -856,7 +856,7 @@ impl Document {
 				self.mark_as_dirty(&path)?;
 				Some(vec![LayerChanged { path }])
 			}
-			Operation::SetAiArtistPrompt { path, prompt } => {
+			Operation::AiArtistSetPrompt { path, prompt } => {
 				let layer = self.layer_mut(&path).expect("Setting AI Artist prompt for invalid layer");
 				if let LayerDataType::AiArtist(ai_artist) = &mut layer.data {
 					ai_artist.prompt = prompt;
@@ -866,7 +866,7 @@ impl Document {
 				self.mark_as_dirty(&path)?;
 				Some(vec![LayerChanged { path }])
 			}
-			Operation::SetAiArtistCfgScale { path, cfg_scale } => {
+			Operation::AiArtistSetCfgScale { path, cfg_scale } => {
 				let layer = self.layer_mut(&path).expect("Setting AI Artist CFG scale for invalid layer");
 				if let LayerDataType::AiArtist(ai_artist) = &mut layer.data {
 					ai_artist.cfg_scale = cfg_scale;
@@ -876,7 +876,7 @@ impl Document {
 				self.mark_as_dirty(&path)?;
 				Some(vec![LayerChanged { path }])
 			}
-			Operation::SetAiArtistDenoisingStrength { path, denoising_strength } => {
+			Operation::AiArtistSetDenoisingStrength { path, denoising_strength } => {
 				let layer = self.layer_mut(&path).expect("Setting AI Artist denoising strength for invalid layer");
 				if let LayerDataType::AiArtist(ai_artist) = &mut layer.data {
 					ai_artist.denoising_strength = denoising_strength;
@@ -886,7 +886,7 @@ impl Document {
 				self.mark_as_dirty(&path)?;
 				Some(vec![LayerChanged { path }])
 			}
-			Operation::SetAiArtistSamples { path, samples } => {
+			Operation::AiArtistSetSamples { path, samples } => {
 				let layer = self.layer_mut(&path).expect("Setting AI Artist samples for invalid layer");
 				if let LayerDataType::AiArtist(ai_artist) = &mut layer.data {
 					ai_artist.samples = samples;
@@ -896,7 +896,7 @@ impl Document {
 				self.mark_as_dirty(&path)?;
 				Some(vec![LayerChanged { path }])
 			}
-			Operation::SetAiArtistScaleFromResolution { path } => {
+			Operation::AiArtistSetScaleFromResolution { path } => {
 				let layer = self.layer_mut(&path).expect("Setting AI Artist scale from resolution for invalid layer");
 
 				let (width, height) = pick_layer_safe_ai_artist_resolution(layer, font_cache);
@@ -914,7 +914,7 @@ impl Document {
 				self.mark_as_dirty(&path)?;
 				Some([update_thumbnails_upstream(&path), vec![DocumentChanged, LayerChanged { path }]].concat())
 			}
-			Operation::SetAiArtistSeed { path, seed } => {
+			Operation::AiArtistSetSeed { path, seed } => {
 				let layer = self.layer_mut(&path).expect("Setting AI Artist seed for invalid layer");
 				if let LayerDataType::AiArtist(ai_artist) = &mut layer.data {
 					ai_artist.seed = seed;
@@ -924,7 +924,7 @@ impl Document {
 				self.mark_as_dirty(&path)?;
 				Some(vec![LayerChanged { path }])
 			}
-			Operation::SetAiArtistUseImg2Img { path, use_img2img } => {
+			Operation::AiArtistSetUseImg2Img { path, use_img2img } => {
 				let layer = self.layer_mut(&path).expect("Calling AI Artist img2img for invalid layer");
 				if let LayerDataType::AiArtist(ai_artist) = &mut layer.data {
 					ai_artist.use_img2img = use_img2img;
@@ -934,7 +934,7 @@ impl Document {
 				self.mark_as_dirty(&path)?;
 				Some(vec![LayerChanged { path }])
 			}
-			Operation::SetAiArtistRestoreFaces { path, restore_faces } => {
+			Operation::AiArtistSetRestoreFaces { path, restore_faces } => {
 				let layer = self.layer_mut(&path).expect("Setting AI Artist restore faces for invalid layer");
 				if let LayerDataType::AiArtist(ai_artist) = &mut layer.data {
 					ai_artist.restore_faces = restore_faces;
@@ -944,7 +944,7 @@ impl Document {
 				self.mark_as_dirty(&path)?;
 				Some(vec![LayerChanged { path }])
 			}
-			Operation::SetAiArtistTiling { path, tiling } => {
+			Operation::AiArtistSetTiling { path, tiling } => {
 				let layer = self.layer_mut(&path).expect("Setting AI Artist tiling for invalid layer");
 				if let LayerDataType::AiArtist(ai_artist) = &mut layer.data {
 					ai_artist.tiling = tiling;

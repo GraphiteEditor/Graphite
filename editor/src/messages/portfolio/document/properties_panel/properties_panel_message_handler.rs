@@ -151,55 +151,55 @@ impl<'a> MessageHandler<PropertiesPanelMessage, (&PersistentData, PropertiesPane
 			),
 			SetAiArtistPrompt { prompt } => {
 				let (path, _) = self.active_selection.clone().expect("Received update for properties panel with no active layer");
-				responses.push_back(Operation::SetAiArtistPrompt { path, prompt }.into());
+				responses.push_back(Operation::AiArtistSetPrompt { path, prompt }.into());
 			}
 			SetAiArtistNegativePrompt { negative_prompt } => {
 				let (path, _) = self.active_selection.clone().expect("Received update for properties panel with no active layer");
-				responses.push_back(Operation::SetAiArtistNegativePrompt { path, negative_prompt }.into());
+				responses.push_back(Operation::AiArtistSetNegativePrompt { path, negative_prompt }.into());
 			}
 			SetAiArtistDenoisingStrength { denoising_strength } => {
 				let (path, _) = self.active_selection.clone().expect("Received update for properties panel with no active layer");
-				responses.push_back(Operation::SetAiArtistDenoisingStrength { path, denoising_strength }.into());
+				responses.push_back(Operation::AiArtistSetDenoisingStrength { path, denoising_strength }.into());
 			}
 			SetAiArtistSamples { samples } => {
 				let (path, _) = self.active_selection.clone().expect("Received update for properties panel with no active layer");
-				responses.push_back(Operation::SetAiArtistSamples { path, samples }.into());
+				responses.push_back(Operation::AiArtistSetSamples { path, samples }.into());
 			}
 			SetAiArtistScaleFromResolution => {
 				let (path, _) = self.active_selection.clone().expect("Received update for properties panel with no active layer");
 
-				responses.push_back(Operation::SetAiArtistScaleFromResolution { path }.into());
+				responses.push_back(Operation::AiArtistSetScaleFromResolution { path }.into());
 			}
 			SetAiArtistSeed { seed } => {
 				let (path, _) = self.active_selection.clone().expect("Received update for properties panel with no active layer");
-				responses.push_back(Operation::SetAiArtistSeed { path, seed }.into());
+				responses.push_back(Operation::AiArtistSetSeed { path, seed }.into());
 			}
 			SetAiArtistSeedRandomize => {
 				let (path, _) = self.active_selection.clone().expect("Received update for properties panel with no active layer");
 				let seed = generate_uuid();
-				responses.push_back(Operation::SetAiArtistSeed { path, seed }.into());
+				responses.push_back(Operation::AiArtistSetSeed { path, seed }.into());
 			}
 			SetAiArtistSeedRandomizeAndGenerate => {
 				let (path, _) = self.active_selection.clone().expect("Received update for properties panel with no active layer");
 				let seed = generate_uuid();
-				responses.push_back(Operation::SetAiArtistSeed { path, seed }.into());
+				responses.push_back(Operation::AiArtistSetSeed { path, seed }.into());
 				responses.push_back(DocumentMessage::AiArtistGenerate.into());
 			}
 			SetAiArtistCfgScale { cfg_scale } => {
 				let (path, _) = self.active_selection.clone().expect("Received update for properties panel with no active layer");
-				responses.push_back(Operation::SetAiArtistCfgScale { path, cfg_scale }.into());
+				responses.push_back(Operation::AiArtistSetCfgScale { path, cfg_scale }.into());
 			}
 			SetAiArtistUseImg2Img { use_img2img } => {
 				let (path, _) = self.active_selection.clone().expect("Received update for properties panel with no active layer");
-				responses.push_back(Operation::SetAiArtistUseImg2Img { path, use_img2img }.into());
+				responses.push_back(Operation::AiArtistSetUseImg2Img { path, use_img2img }.into());
 			}
 			SetAiArtistRestoreFaces { restore_faces } => {
 				let (path, _) = self.active_selection.clone().expect("Received update for properties panel with no active layer");
-				responses.push_back(Operation::SetAiArtistRestoreFaces { path, restore_faces }.into());
+				responses.push_back(Operation::AiArtistSetRestoreFaces { path, restore_faces }.into());
 			}
 			SetAiArtistTiling { tiling } => {
 				let (path, _) = self.active_selection.clone().expect("Received update for properties panel with no active layer");
-				responses.push_back(Operation::SetAiArtistTiling { path, tiling }.into());
+				responses.push_back(Operation::AiArtistSetTiling { path, tiling }.into());
 			}
 		}
 	}

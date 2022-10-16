@@ -165,8 +165,8 @@ export class UpdateDocumentArtboards extends JsMessage {
 	readonly svg!: string;
 }
 
-const TupleToVec2 = Transform(({ value }: { value: [number, number] }) => ({ x: value[0], y: value[1] }));
-const BigIntTupleToNumberTuple = Transform(({ value }: { value: [bigint, bigint] }) => [Number(value[0]), Number(value[1])]);
+const TupleToVec2 = Transform(({ value }: { value: [number, number] | undefined }) => (value === undefined ? undefined : { x: value[0], y: value[1] }));
+const BigIntTupleToNumberTuple = Transform(({ value }: { value: [bigint, bigint] | undefined }) => (value === undefined ? undefined : [Number(value[0]), Number(value[1])]));
 
 export type XY = { x: number; y: number };
 
@@ -241,38 +241,11 @@ export class TriggerAiArtistCheckServerStatus extends JsMessage {
 	readonly hostname!: string;
 }
 
-export class TriggerAiArtistGenerateTxt2Img extends JsMessage {
-	readonly documentId!: bigint;
-
-	readonly layerPath!: BigUint64Array;
-
-	readonly hostname!: string;
-
-	readonly refreshFrequency!: number;
-
-	readonly prompt!: string;
-
-	readonly negativePrompt!: string;
-
-	@BigIntTupleToNumberTuple
-	readonly resolution!: [number, number];
-
-	readonly seed!: number;
-
-	readonly samples!: number;
-
-	readonly cfgScale!: number;
-
-	readonly restoreFaces!: boolean;
-
-	readonly tiling!: boolean;
-}
-
-export class TriggerAiArtistRasterizeAndGenerateImg2Img extends JsMessage {
-	readonly svg!: string;
+export class TriggerAiArtist extends JsMessage {
+	readonly svg!: string | undefined;
 
 	@TupleToVec2
-	readonly rasterizeSize!: XY;
+	readonly rasterizeSize!: XY | undefined;
 
 	readonly documentId!: bigint;
 
@@ -295,7 +268,7 @@ export class TriggerAiArtistRasterizeAndGenerateImg2Img extends JsMessage {
 
 	readonly cfgScale!: number;
 
-	readonly denoisingStrength!: number;
+	readonly denoisingStrength!: number | undefined;
 
 	readonly restoreFaces!: boolean;
 
@@ -995,8 +968,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	DisplayRemoveEditableTextbox,
 	TriggerAboutGraphiteLocalizedCommitDate,
 	TriggerAiArtistCheckServerStatus,
-	TriggerAiArtistGenerateTxt2Img,
-	TriggerAiArtistRasterizeAndGenerateImg2Img,
+	TriggerAiArtist,
 	TriggerAiArtistTerminate,
 	TriggerFileDownload,
 	TriggerFontLoad,
