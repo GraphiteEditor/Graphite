@@ -1,6 +1,6 @@
 use crate::boolean_ops::composite_boolean_operation;
 use crate::intersection::Quad;
-use crate::layers::ai_artist_layer::AiArtistLayer;
+use crate::layers::ai_artist_layer::{AiArtistLayer, ImageData};
 use crate::layers::folder_layer::FolderLayer;
 use crate::layers::image_layer::ImageLayer;
 use crate::layers::layer_info::{Layer, LayerData, LayerDataType, LayerDataTypeDiscriminant};
@@ -790,16 +790,16 @@ impl Document {
 				self.mark_as_dirty(&path)?;
 				Some([vec![DocumentChanged], update_thumbnails_upstream(&path)].concat())
 			}
-			Operation::SetLayerBlobUrl { layer_path, blob_url, dimensions } => {
+			Operation::SetLayerBlobUrl { layer_path, blob_url, resolution } => {
 				let layer = self.layer_mut(&layer_path).expect("Blob url for invalid layer");
 				match &mut layer.data {
 					LayerDataType::Image(image) => {
 						image.blob_url = Some(blob_url);
-						image.dimensions = dimensions.into();
+						image.dimensions = resolution.into();
 					}
 					LayerDataType::AiArtist(ai_artist) => {
 						ai_artist.blob_url = Some(blob_url);
-						ai_artist.dimensions = dimensions.into();
+						ai_artist.dimensions = resolution.into();
 					}
 					_ => panic!("Incorrectly trying to set the image blob URL for a layer that is not an Image or AiArtist layer type"),
 				}
@@ -807,12 +807,26 @@ impl Document {
 				self.mark_as_dirty(&layer_path)?;
 				Some([vec![DocumentChanged, LayerChanged { path: layer_path.clone() }], update_thumbnails_upstream(&layer_path)].concat())
 			}
+			Operation::SetAiArtistImageData { layer_path, image_data } => {
+				let layer = self.layer_mut(&layer_path).expect("Setting AI Artist image data for invalid layer");
+				if let LayerDataType::AiArtist(ai_artist) = &mut layer.data {
+					ai_artist.image_data = Some(ImageData { image_data });
+				} else {
+					panic!("Incorrectly trying to set image data for a layer that is not an AiArtist layer type");
+				}
+				Some(vec![LayerChanged { path: layer_path.clone() }])
+			}
 			Operation::SetAiArtistGeneratingStatus { path, percent, generating } => {
 				let layer = self.layer_mut(&path).expect("Generating AI Artist for invalid layer");
 				if let LayerDataType::AiArtist(ai_artist) = &mut layer.data {
 					if let Some(percentage) = percent {
-						ai_artist.percent_complete = percentage;
+						ai_artist.set_percent_complete(percentage);
 					}
+
+					if generating {
+						ai_artist.image_data = None;
+					}
+
 					ai_artist.generating = generating;
 				} else {
 					panic!("Incorrectly trying to set the generating status for a layer that is not an AiArtist layer type");
@@ -822,8 +836,9 @@ impl Document {
 			Operation::ClearAiArtist { path } => {
 				let layer = self.layer_mut(&path).expect("Clearing AI Artist image for invalid layer");
 				if let LayerDataType::AiArtist(ai_artist) = &mut layer.data {
+					ai_artist.image_data = None;
 					ai_artist.blob_url = None;
-					ai_artist.percent_complete = 0.;
+					ai_artist.set_percent_complete(0.);
 					ai_artist.generating = false;
 				} else {
 					panic!("Incorrectly trying to clear the blob URL for a layer that is not an AiArtist layer type");

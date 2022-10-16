@@ -1,3 +1,4 @@
+use super::base64_serde;
 use super::layer_info::LayerData;
 use super::style::{RenderData, ViewMode};
 use crate::intersection::{intersect_quad_bez_path, Quad};
@@ -8,8 +9,6 @@ use glam::{DAffine2, DMat2, DVec2};
 use kurbo::{Affine, BezPath, Shape as KurboShape};
 use serde::{Deserialize, Serialize};
 use std::fmt::Write;
-
-mod base64_serde;
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct ImageLayer {
@@ -77,13 +76,11 @@ impl LayerData for ImageLayer {
 
 impl ImageLayer {
 	pub fn new(mime: String, image_data: Vec<u8>) -> Self {
-		let blob_url = None;
-		let dimensions = DVec2::ONE;
 		Self {
 			mime,
 			image_data,
-			blob_url,
-			dimensions,
+			blob_url: None,
+			dimensions: DVec2::ONE,
 		}
 	}
 

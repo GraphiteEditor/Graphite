@@ -66,7 +66,7 @@ pub enum Operation {
 	SetLayerBlobUrl {
 		layer_path: Vec<LayerId>,
 		blob_url: String,
-		dimensions: (f64, f64),
+		resolution: (f64, f64),
 	},
 	SetPivot {
 		layer_path: Vec<LayerId>,
@@ -175,6 +175,10 @@ pub enum Operation {
 	TransformLayerInViewport {
 		path: Vec<LayerId>,
 		transform: [f64; 6],
+	},
+	SetAiArtistImageData {
+		layer_path: Vec<LayerId>,
+		image_data: Vec<u8>,
 	},
 	SetAiArtistNegativePrompt {
 		path: Vec<LayerId>,

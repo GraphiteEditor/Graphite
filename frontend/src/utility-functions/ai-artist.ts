@@ -2,7 +2,6 @@ import { escapeJSON } from "@/utility-functions/escape";
 import { blobToBase64 } from "@/utility-functions/files";
 import { stripIndents } from "@/utility-functions/strip-indents";
 import type { Editor } from "@/wasm-communication/editor";
-import type { XY } from "@/wasm-communication/messages";
 
 const MAX_POLLING_RETRIES = 10;
 const SERVER_STATUS_CHECK_TIMEOUT = 5000;
@@ -10,6 +9,7 @@ const SERVER_STATUS_CHECK_TIMEOUT = 5000;
 let mainRequest: Promise<Blob> | undefined;
 let pollingRetries = 0;
 let interval: NodeJS.Timer | undefined;
+let terminated = false;
 let mainRequestController = new AbortController();
 let pollingRequestController = new AbortController();
 let timeoutRequestController = new AbortController();
@@ -22,6 +22,7 @@ function hostInfo(hostname: string): { hostname: string; endpoint: string } {
 export async function terminateAIArtist(hostname: string, documentId: bigint, layerPath: BigUint64Array, editor: Editor): Promise<void> {
 	await terminate(hostname);
 
+	terminated = true;
 	abortAndResetPolling();
 
 	editor.instance.setAIArtistGeneratingStatus(documentId, layerPath, undefined, false);
@@ -37,7 +38,7 @@ export async function callAIArtist(
 	refreshFrequency: number,
 	prompt: string,
 	negativePrompt: string,
-	resolution: XY,
+	resolution: [number, number],
 	seed: number,
 	samples: number,
 	cfgScale: number,
@@ -52,15 +53,16 @@ export async function callAIArtist(
 	// Ignore a request to generate a new image while another is already being generated
 	if (mainRequest) return;
 
+	terminated = false;
+
 	// Immediately set the progress to 0% so the backend knows to update its layout
 	editor.instance.setAIArtistGeneratingStatus(documentId, layerPath, 0, true);
 
 	// Initiate a request to the computation server
-	const [width, height] = [resolution.x, resolution.y];
 	if (image === undefined || denoisingStrength === undefined) {
-		mainRequest = txt2img(hostname, prompt, negativePrompt, seed, samples, cfgScale, restoreFaces, tiling, width, height);
+		mainRequest = txt2img(hostname, prompt, negativePrompt, seed, samples, cfgScale, restoreFaces, tiling, resolution);
 	} else {
-		mainRequest = img2img(hostname, image, prompt, negativePrompt, seed, samples, cfgScale, denoisingStrength, restoreFaces, tiling, width, height);
+		mainRequest = img2img(hostname, image, prompt, negativePrompt, seed, samples, cfgScale, denoisingStrength, restoreFaces, tiling, resolution);
 	}
 
 	// Begin polling every second for updates to the in-progress image generation
@@ -73,7 +75,7 @@ export async function callAIArtist(
 				const [blob, percentComplete] = await pollImage(hostname);
 
 				const blobURL = URL.createObjectURL(blob);
-				editor.instance.setAIArtistBlobURL(documentId, layerPath, blobURL, width, height);
+				editor.instance.setAIArtistBlobURL(documentId, layerPath, blobURL, resolution[0], resolution[1]);
 				editor.instance.setAIArtistGeneratingStatus(documentId, layerPath, percentComplete, true);
 			} catch {
 				pollingRetries += 1;
@@ -87,8 +89,14 @@ export async function callAIArtist(
 	const blob = await mainRequest;
 
 	const blobURL = URL.createObjectURL(blob);
-	editor.instance.setAIArtistBlobURL(documentId, layerPath, blobURL, width, height);
-	editor.instance.setAIArtistGeneratingStatus(documentId, layerPath, 100, false);
+	editor.instance.setAIArtistBlobURL(documentId, layerPath, blobURL, resolution[0], resolution[1]);
+
+	const percent = terminated ? undefined : 100;
+	editor.instance.setAIArtistGeneratingStatus(documentId, layerPath, percent, false);
+
+	const u8Array = new Uint8Array(await blob.arrayBuffer());
+	editor.instance.setAIArtistImageData(documentId, layerPath, u8Array);
+
 	abortAndReset();
 }
 
@@ -150,8 +158,7 @@ async function txt2img(
 	cfgScale: number,
 	restoreFaces: boolean,
 	tiling: boolean,
-	width: number,
-	height: number
+	[width, height]: [number, number]
 ): Promise<Blob> {
 	const server = hostInfo(hostname);
 
@@ -231,8 +238,7 @@ async function img2img(
 	denoisingStrength: number,
 	restoreFaces: boolean,
 	tiling: boolean,
-	width: number,
-	height: number
+	[width, height]: [number, number]
 ): Promise<Blob> {
 	const sourceImageBase64 = await blobToBase64(image);
 

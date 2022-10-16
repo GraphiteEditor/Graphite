@@ -1,3 +1,4 @@
+use super::base64_serde;
 use super::layer_info::LayerData;
 use super::style::{RenderData, ViewMode};
 use crate::intersection::{intersect_quad_bez_path, Quad};
@@ -11,43 +12,58 @@ use std::fmt::Write;
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct AiArtistLayer {
-	/// 0 is not started, 100 is complete.
-	#[serde(skip)]
-	pub percent_complete: f64,
-	#[serde(skip)]
-	pub generating: bool,
-	pub prompt: String,
-	pub negative_prompt: String,
+	// User-configurable layer parameters
 	pub seed: u64,
 	pub samples: u32,
-	pub cfg_scale: f64,
 	pub use_img2img: bool,
 	pub denoising_strength: f64,
+	pub cfg_scale: f64,
+	pub prompt: String,
+	pub negative_prompt: String,
+	pub restore_faces: bool,
+	pub tiling: bool,
+
+	// Image stored in layer after generation completes
+	pub image_data: Option<ImageData>,
+	pub mime: String,
+	percent_complete: f64,
+
 	// TODO: Have the browser dispose of this blob URL when this is dropped (like when the layer is deleted)
 	#[serde(skip)]
 	pub blob_url: Option<String>,
+	/// 0 is not started, 100 is complete.
+	#[serde(skip)]
+	pub generating: bool,
 	#[serde(skip)]
 	pub dimensions: DVec2,
-	pub restore_faces: bool,
-	pub tiling: bool,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Deserialize, Serialize)]
+pub struct ImageData {
+	#[serde(serialize_with = "base64_serde::as_base64", deserialize_with = "base64_serde::from_base64")]
+	pub image_data: Vec<u8>,
 }
 
 impl Default for AiArtistLayer {
 	fn default() -> Self {
 		Self {
-			percent_complete: 0.,
-			generating: false,
-			prompt: "".into(),
-			negative_prompt: "".into(),
 			seed: 0,
 			samples: 30,
-			cfg_scale: 10.,
 			use_img2img: false,
 			denoising_strength: 0.66,
-			blob_url: None,
-			dimensions: Default::default(),
+			cfg_scale: 10.,
+			prompt: "".into(),
+			negative_prompt: "".into(),
 			restore_faces: false,
 			tiling: false,
+
+			image_data: None,
+			mime: "image/png".into(),
+
+			blob_url: None,
+			percent_complete: 0.,
+			generating: false,
+			dimensions: Default::default(),
 		}
 	}
 }
@@ -115,6 +131,18 @@ impl LayerData for AiArtistLayer {
 }
 
 impl AiArtistLayer {
+	pub fn set_percent_complete(&mut self, percent: f64) {
+		self.percent_complete = percent;
+	}
+
+	pub fn percent_complete(&self) -> f64 {
+		if self.image_data.is_some() {
+			self.percent_complete
+		} else {
+			0.
+		}
+	}
+
 	pub fn transform(&self, transforms: &[DAffine2], mode: ViewMode) -> DAffine2 {
 		let start = match mode {
 			ViewMode::Outline => 0,

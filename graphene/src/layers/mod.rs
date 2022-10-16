@@ -17,6 +17,7 @@
 
 /// Contains the [AiArtistLayer](ai_artist_layer::AiArtistLayer) type that contains a bitmap image.
 pub mod ai_artist_layer;
+pub mod base64_serde;
 /// Different ways of combining overlapping SVG elements.
 pub mod blend_mode;
 /// Contains the [FolderLayer](folder_layer::FolderLayer) type that encapsulates other layers, including more folders.

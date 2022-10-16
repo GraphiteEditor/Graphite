@@ -1,6 +1,6 @@
 use crate::application::generate_uuid;
 use crate::consts::{ROTATE_SNAP_ANGLE, SELECTION_TOLERANCE};
-use crate::messages::frontend::utility_types::MouseCursorIcon;
+use crate::messages::frontend::utility_types::{FrontendImageData, MouseCursorIcon};
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, KeysGroup, MouseMotion};
 use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
 use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, PropertyHolder, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
@@ -550,12 +550,6 @@ impl Fsm for SelectToolFsmState {
 						.flat_map(snapping::expand_bounds)
 						.collect();
 
-					if input.keyboard.get(duplicate as usize) && tool_data.not_duplicated_layers.is_none() {
-						tool_data.start_duplicates(document, responses);
-					} else if !input.keyboard.get(duplicate as usize) && tool_data.not_duplicated_layers.is_some() {
-						tool_data.stop_duplicates(responses);
-					}
-
 					let closest_move = tool_data.snap_manager.snap_layers(responses, document, snap, mouse_delta);
 					// TODO: Cache the result of `shallowest_unique_layers` to avoid this heavy computation every frame of movement, see https://github.com/GraphiteEditor/Graphite/pull/481
 					for path in Document::shallowest_unique_layers(tool_data.layers_dragging.iter()) {
@@ -568,6 +562,13 @@ impl Fsm for SelectToolFsmState {
 						);
 					}
 					tool_data.drag_current = mouse_position + closest_move;
+
+					if input.keyboard.get(duplicate as usize) && tool_data.not_duplicated_layers.is_none() {
+						tool_data.start_duplicates(document, responses);
+					} else if !input.keyboard.get(duplicate as usize) && tool_data.not_duplicated_layers.is_some() {
+						tool_data.stop_duplicates(responses);
+					}
+
 					Dragging
 				}
 				(ResizingBounds, PointerMove { axis_align, center, .. }) => {
@@ -919,7 +920,7 @@ impl Fsm for SelectToolFsmState {
 }
 
 impl SelectToolData {
-	/// Duplicates the currently dragging layers. Called when alt is pressed and the layers have not yet been duplicated.
+	/// Duplicates the currently dragging layers. Called when Alt is pressed and the layers have not yet been duplicated.
 	fn start_duplicates(&mut self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
 		responses.push_back(DocumentMessage::DeselectAllLayers.into());
 
@@ -938,15 +939,30 @@ impl SelectToolData {
 
 			// Copy the layers.
 			// Not using the Copy message allows us to retrieve the ids of the new layers to initialize the drag.
-			let layer = match document.graphene_document.layer(layer_path) {
+			let mut layer = match document.graphene_document.layer(layer_path) {
 				Ok(layer) => layer.clone(),
 				Err(e) => {
 					warn!("Could not access selected layer {:?}: {:?}", layer_path, e);
 					continue;
 				}
 			};
+
 			let layer_metadata = *document.layer_metadata(layer_path);
 			*layer_path.last_mut().unwrap() = generate_uuid();
+
+			let image_data = if let LayerDataType::AiArtist(ai_artist) = &mut layer.data {
+				ai_artist.blob_url = None;
+
+				ai_artist.image_data.as_ref().map(|data| {
+					vec![FrontendImageData {
+						path: layer_path.clone(),
+						image_data: data.image_data.clone(),
+						mime: ai_artist.mime.clone(),
+					}]
+				})
+			} else {
+				None
+			};
 
 			responses.push_back(
 				Operation::InsertLayer {
@@ -964,10 +980,14 @@ impl SelectToolData {
 				}
 				.into(),
 			);
+
+			if let Some(image_data) = image_data {
+				responses.push_back(FrontendMessage::UpdateImageData { image_data }.into());
+			}
 		}
 	}
 
-	/// Removes the duplicated layers. Called when alt is released and the layers have been duplicated.
+	/// Removes the duplicated layers. Called when Alt is released and the layers have been duplicated.
 	fn stop_duplicates(&mut self, responses: &mut VecDeque<Message>) {
 		let originals = match self.not_duplicated_layers.take() {
 			Some(x) => x,

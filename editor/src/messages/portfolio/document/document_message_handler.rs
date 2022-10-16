@@ -725,14 +725,21 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 					responses.push_back(DocumentOperation::SetLayerBlendMode { path, blend_mode }.into());
 				}
 			}
-			SetImageBlobUrl { layer_path, blob_url, dimensions } => {
+			SetImageBlobUrl { layer_path, blob_url, resolution } => {
 				let layer = self.graphene_document.layer(&layer_path).expect("Setting blob URL for invalid layer");
-				let previous_blob_url = &layer.as_ai_artist().unwrap().blob_url;
 
-				if let Some(url) = previous_blob_url {
-					responses.push_back(FrontendMessage::TriggerRevokeBlobUrl { url: url.clone() }.into());
+				// Revoke the old blob URL
+				match &layer.data {
+					LayerDataType::AiArtist(ai_artist) => {
+						if let Some(url) = &ai_artist.blob_url {
+							responses.push_back(FrontendMessage::TriggerRevokeBlobUrl { url: url.clone() }.into());
+						}
+					}
+					LayerDataType::Image(_) => {}
+					other => panic!("Setting blob URL for invalid layer type, which must be an `AiArtist` or `Image`. Found: `{:?}`", other),
 				}
-				responses.push_back(DocumentOperation::SetLayerBlobUrl { layer_path, blob_url, dimensions }.into());
+
+				responses.push_back(DocumentOperation::SetLayerBlobUrl { layer_path, blob_url, resolution }.into());
 			}
 			SetLayerExpansion { layer_path, set_expanded } => {
 				self.layer_metadata_mut(&layer_path).expanded = set_expanded;
@@ -1471,21 +1478,30 @@ impl DocumentMessageHandler {
 	pub fn load_layer_resources(&self, responses: &mut VecDeque<Message>, root: &LayerDataType, mut path: Vec<LayerId>) {
 		fn walk_layers(data: &LayerDataType, path: &mut Vec<LayerId>, image_data: &mut Vec<FrontendImageData>, fonts: &mut HashSet<Font>) {
 			match data {
-				LayerDataType::Folder(f) => {
-					for (id, layer) in f.layer_ids.iter().zip(f.layers().iter()) {
+				LayerDataType::Folder(folder) => {
+					for (id, layer) in folder.layer_ids.iter().zip(folder.layers().iter()) {
 						path.push(*id);
 						walk_layers(&layer.data, path, image_data, fonts);
 						path.pop();
 					}
 				}
-				LayerDataType::Text(txt) => {
-					fonts.insert(txt.font.clone());
+				LayerDataType::Text(text) => {
+					fonts.insert(text.font.clone());
 				}
-				LayerDataType::Image(img) => image_data.push(FrontendImageData {
+				LayerDataType::Image(image) => image_data.push(FrontendImageData {
 					path: path.clone(),
-					image_data: img.image_data.clone(),
-					mime: img.mime.clone(),
+					image_data: image.image_data.clone(),
+					mime: image.mime.clone(),
 				}),
+				LayerDataType::AiArtist(ai_artist) => {
+					if let Some(data) = &ai_artist.image_data {
+						image_data.push(FrontendImageData {
+							path: path.clone(),
+							image_data: data.image_data.clone(),
+							mime: ai_artist.mime.clone(),
+						});
+					}
+				}
 				_ => {}
 			}
 		}

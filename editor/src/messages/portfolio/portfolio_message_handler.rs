@@ -26,16 +26,13 @@ pub struct PortfolioMessageHandler {
 impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &PreferencesMessageHandler)> for PortfolioMessageHandler {
 	#[remain::check]
 	fn process_message(&mut self, message: PortfolioMessage, (ipp, preferences): (&InputPreprocessorMessageHandler, &PreferencesMessageHandler), responses: &mut VecDeque<Message>) {
-		use DocumentMessage::*;
-		use PortfolioMessage::*;
-
 		#[remain::sorted]
 		match message {
 			// Sub-messages
 			#[remain::unsorted]
-			MenuBar(message) => self.menu_bar_message_handler.process_message(message, (), responses),
+			PortfolioMessage::MenuBar(message) => self.menu_bar_message_handler.process_message(message, (), responses),
 			#[remain::unsorted]
-			Document(message) => {
+			PortfolioMessage::Document(message) => {
 				if let Some(document_id) = self.active_document_id {
 					if let Some(document) = self.documents.get_mut(&document_id) {
 						document.process_message(message, (document_id, ipp, &self.persistent_data, preferences), responses)
@@ -45,12 +42,12 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 
 			// Messages
 			#[remain::unsorted]
-			DocumentPassMessage { document_id, message } => {
+			PortfolioMessage::DocumentPassMessage { document_id, message } => {
 				if let Some(document) = self.documents.get_mut(&document_id) {
 					document.process_message(message, (document_id, ipp, &self.persistent_data, preferences), responses)
 				}
 			}
-			AiArtistCheckServerStatus => {
+			PortfolioMessage::AiArtistCheckServerStatus => {
 				self.persistent_data.ai_artist_server_status = AiArtistServerStatus::Checking;
 				responses.push_back(
 					FrontendMessage::TriggerAiArtistCheckServerStatus {
@@ -60,16 +57,16 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 				);
 				responses.push_back(PropertiesPanelMessage::ResendActiveProperties.into());
 			}
-			AiArtistSetServerStatus { status } => {
+			PortfolioMessage::AiArtistSetServerStatus { status } => {
 				self.persistent_data.ai_artist_server_status = status;
 				responses.push_back(PropertiesPanelMessage::ResendActiveProperties.into());
 			}
-			AutoSaveActiveDocument => {
+			PortfolioMessage::AutoSaveActiveDocument => {
 				if let Some(document_id) = self.active_document_id {
 					responses.push_back(PortfolioMessage::AutoSaveDocument { document_id }.into());
 				}
 			}
-			AutoSaveDocument { document_id } => {
+			PortfolioMessage::AutoSaveDocument { document_id } => {
 				let document = self.documents.get(&document_id).unwrap();
 				responses.push_back(
 					FrontendMessage::TriggerIndexedDbWriteDocument {
@@ -84,12 +81,12 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 					.into(),
 				)
 			}
-			CloseActiveDocumentWithConfirmation => {
+			PortfolioMessage::CloseActiveDocumentWithConfirmation => {
 				if let Some(document_id) = self.active_document_id {
 					responses.push_back(PortfolioMessage::CloseDocumentWithConfirmation { document_id }.into());
 				}
 			}
-			CloseAllDocuments => {
+			PortfolioMessage::CloseAllDocuments => {
 				if self.active_document_id.is_some() {
 					responses.push_back(PropertiesPanelMessage::Deactivate.into());
 					responses.push_back(BroadcastEvent::ToolAbort.into());
@@ -103,7 +100,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 				responses.push_back(PortfolioMessage::DestroyAllDocuments.into());
 				responses.push_back(PortfolioMessage::UpdateOpenDocumentsList.into());
 			}
-			CloseDocument { document_id } => {
+			PortfolioMessage::CloseDocument { document_id } => {
 				let document_index = self.document_index(document_id);
 				self.documents.remove(&document_id);
 				self.document_ids.remove(document_index);
@@ -131,9 +128,9 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 				}
 
 				// Send the new list of document tab names
-				responses.push_back(UpdateOpenDocumentsList.into());
+				responses.push_back(PortfolioMessage::UpdateOpenDocumentsList.into());
 				responses.push_back(FrontendMessage::TriggerIndexedDbRemoveDocument { document_id }.into());
-				responses.push_back(RenderDocument.into());
+				responses.push_back(DocumentMessage::RenderDocument.into());
 				responses.push_back(DocumentMessage::DocumentStructureChanged.into());
 				if let Some(document) = self.active_document() {
 					for layer in document.layer_metadata.keys() {
@@ -141,7 +138,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 					}
 				}
 			}
-			CloseDocumentWithConfirmation { document_id } => {
+			PortfolioMessage::CloseDocumentWithConfirmation { document_id } => {
 				let target_document = self.documents.get(&document_id).unwrap();
 				if target_document.is_saved() {
 					responses.push_back(BroadcastEvent::ToolAbort.into());
@@ -158,7 +155,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 					responses.push_back(PortfolioMessage::SelectDocument { document_id }.into());
 				}
 			}
-			Copy { clipboard } => {
+			PortfolioMessage::Copy { clipboard } => {
 				// We can't use `self.active_document()` because it counts as an immutable borrow of the entirety of `self`
 				if let Some(active_document) = self.active_document_id.and_then(|id| self.documents.get(&id)) {
 					let copy_val = |buffer: &mut Vec<CopyBufferEntry>| {
@@ -186,17 +183,17 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 					}
 				}
 			}
-			Cut { clipboard } => {
-				responses.push_back(Copy { clipboard }.into());
-				responses.push_back(DeleteSelectedLayers.into());
+			PortfolioMessage::Cut { clipboard } => {
+				responses.push_back(PortfolioMessage::Copy { clipboard }.into());
+				responses.push_back(DocumentMessage::DeleteSelectedLayers.into());
 			}
-			DestroyAllDocuments => {
+			PortfolioMessage::DestroyAllDocuments => {
 				// Empty the list of internal document data
 				self.documents.clear();
 				self.document_ids.clear();
 				self.active_document_id = None;
 			}
-			FontLoaded {
+			PortfolioMessage::FontLoaded {
 				font_family,
 				font_style,
 				preview_url,
@@ -211,23 +208,23 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 					responses.push_back(BroadcastEvent::DocumentIsDirty.into());
 				}
 			}
-			Import => {
+			PortfolioMessage::Import => {
 				// This portfolio message wraps the frontend message so it can be listed as an action, which isn't possible for frontend messages
 				if self.active_document().is_some() {
 					responses.push_back(FrontendMessage::TriggerImport.into());
 				}
 			}
-			LoadDocumentResources => {
+			PortfolioMessage::LoadDocumentResources => {
 				if let Some(document) = self.active_document_mut() {
 					document.load_layer_resources(responses, &document.graphene_document.root.data, Vec::new());
 				}
 			}
-			LoadFont { font, is_default } => {
+			PortfolioMessage::LoadFont { font, is_default } => {
 				if !self.persistent_data.font_cache.loaded_font(&font) {
 					responses.push_front(FrontendMessage::TriggerFontLoad { font, is_default }.into());
 				}
 			}
-			NewDocumentWithName { name } => {
+			PortfolioMessage::NewDocumentWithName { name } => {
 				let new_document = DocumentMessageHandler::with_name(name, ipp);
 				let document_id = generate_uuid();
 				if self.active_document().is_some() {
@@ -237,7 +234,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 
 				self.load_document(new_document, document_id, responses);
 			}
-			NextDocument => {
+			PortfolioMessage::NextDocument => {
 				if let Some(active_document_id) = self.active_document_id {
 					let current_index = self.document_index(active_document_id);
 					let next_index = (current_index + 1) % self.document_ids.len();
@@ -246,11 +243,11 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 					responses.push_back(PortfolioMessage::SelectDocument { document_id: next_id }.into());
 				}
 			}
-			OpenDocument => {
+			PortfolioMessage::OpenDocument => {
 				// This portfolio message wraps the frontend message so it can be listed as an action, which isn't possible for frontend messages
 				responses.push_back(FrontendMessage::TriggerOpenDocument.into());
 			}
-			OpenDocumentFile {
+			PortfolioMessage::OpenDocumentFile {
 				document_name,
 				document_serialized_content,
 			} => {
@@ -264,7 +261,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 					.into(),
 				);
 			}
-			OpenDocumentFileWithId {
+			PortfolioMessage::OpenDocumentFileWithId {
 				document_id,
 				document_name,
 				document_is_saved,
@@ -285,7 +282,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 					),
 				}
 			}
-			Paste { clipboard } => {
+			PortfolioMessage::Paste { clipboard } => {
 				let shallowest_common_folder = self.active_document().map(|document| {
 					document
 						.graphene_document
@@ -294,20 +291,20 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 				});
 
 				if let Some(folder) = shallowest_common_folder {
-					responses.push_back(DeselectAllLayers.into());
-					responses.push_back(StartTransaction.into());
+					responses.push_back(DocumentMessage::DeselectAllLayers.into());
+					responses.push_back(DocumentMessage::StartTransaction.into());
 					responses.push_back(
-						PasteIntoFolder {
+						PortfolioMessage::PasteIntoFolder {
 							clipboard,
 							folder_path: folder.to_vec(),
 							insert_index: -1,
 						}
 						.into(),
 					);
-					responses.push_back(CommitTransaction.into());
+					responses.push_back(DocumentMessage::CommitTransaction.into());
 				}
 			}
-			PasteIntoFolder {
+			PortfolioMessage::PasteIntoFolder {
 				clipboard,
 				folder_path: path,
 				insert_index,
@@ -346,15 +343,15 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 					}
 				}
 			}
-			PasteSerializedData { data } => {
+			PortfolioMessage::PasteSerializedData { data } => {
 				if let Some(document) = self.active_document() {
 					if let Ok(data) = serde_json::from_str::<Vec<CopyBufferEntry>>(&data) {
 						let shallowest_common_folder = document
 							.graphene_document
 							.shallowest_common_folder(document.selected_layers())
 							.expect("While pasting from serialized, the selected layers did not exist while attempting to find the appropriate folder path for insertion");
-						responses.push_back(DeselectAllLayers.into());
-						responses.push_back(StartTransaction.into());
+						responses.push_back(DocumentMessage::DeselectAllLayers.into());
+						responses.push_back(DocumentMessage::StartTransaction.into());
 
 						for entry in data.iter().rev() {
 							let destination_path = [shallowest_common_folder.to_vec(), vec![generate_uuid()]].concat();
@@ -377,11 +374,11 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 							);
 						}
 
-						responses.push_back(CommitTransaction.into());
+						responses.push_back(DocumentMessage::CommitTransaction.into());
 					}
 				}
 			}
-			PrevDocument => {
+			PortfolioMessage::PrevDocument => {
 				if let Some(active_document_id) = self.active_document_id {
 					let len = self.document_ids.len();
 					let current_index = self.document_index(active_document_id);
@@ -390,7 +387,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 					responses.push_back(PortfolioMessage::SelectDocument { document_id: prev_id }.into());
 				}
 			}
-			SelectDocument { document_id } => {
+			PortfolioMessage::SelectDocument { document_id } => {
 				if let Some(document) = self.active_document() {
 					if !document.is_saved() {
 						// Safe to unwrap since we know that there is an active document
@@ -408,10 +405,10 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 				}
 
 				// TODO: Remove this message in favor of having tools have specific data per document instance
-				responses.push_back(SetActiveDocument { document_id }.into());
+				responses.push_back(PortfolioMessage::SetActiveDocument { document_id }.into());
 				responses.push_back(PortfolioMessage::UpdateOpenDocumentsList.into());
 				responses.push_back(FrontendMessage::UpdateActiveDocument { document_id }.into());
-				responses.push_back(RenderDocument.into());
+				responses.push_back(DocumentMessage::RenderDocument.into());
 				responses.push_back(DocumentMessage::DocumentStructureChanged.into());
 				for layer in self.documents.get(&document_id).unwrap().layer_metadata.keys() {
 					responses.push_back(DocumentMessage::LayerChanged { affected_layer_path: layer.clone() }.into());
@@ -421,12 +418,12 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 				responses.push_back(PortfolioMessage::UpdateDocumentWidgets.into());
 				responses.push_back(NavigationMessage::TranslateCanvas { delta: (0., 0.).into() }.into());
 			}
-			SetActiveDocument { document_id } => self.active_document_id = Some(document_id),
-			SetAiArtistBlobUrl {
+			PortfolioMessage::SetActiveDocument { document_id } => self.active_document_id = Some(document_id),
+			PortfolioMessage::SetAiArtistBlobUrl {
 				document_id,
 				layer_path,
 				blob_url,
-				dimensions,
+				resolution,
 			} => {
 				if let Some(document) = self.documents.get_mut(&document_id) {
 					if let Ok(layer) = document.graphene_document.layer(&layer_path) {
@@ -436,12 +433,12 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 							responses.push_back(FrontendMessage::TriggerRevokeBlobUrl { url: url.clone() }.into());
 						}
 
-						let message = DocumentOperation::SetLayerBlobUrl { layer_path, blob_url, dimensions }.into();
+						let message = DocumentOperation::SetLayerBlobUrl { layer_path, blob_url, resolution }.into();
 						responses.push_back(PortfolioMessage::DocumentPassMessage { document_id, message }.into());
 					}
 				}
 			}
-			SetAiArtistGeneratingStatus {
+			PortfolioMessage::SetAiArtistGeneratingStatus {
 				document_id,
 				path,
 				percent,
@@ -450,12 +447,16 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 				let message = DocumentOperation::SetAiArtistGeneratingStatus { path, percent, generating }.into();
 				responses.push_back(PortfolioMessage::DocumentPassMessage { document_id, message }.into());
 			}
-			UpdateDocumentWidgets => {
+			PortfolioMessage::SetAiArtistImageData { document_id, layer_path, image_data } => {
+				let message = DocumentOperation::SetAiArtistImageData { layer_path, image_data }.into();
+				responses.push_back(PortfolioMessage::DocumentPassMessage { document_id, message }.into());
+			}
+			PortfolioMessage::UpdateDocumentWidgets => {
 				if let Some(document) = self.active_document() {
 					document.update_document_widgets(responses);
 				}
 			}
-			UpdateOpenDocumentsList => {
+			PortfolioMessage::UpdateOpenDocumentsList => {
 				// Send the list of document tab names
 				let open_documents = self
 					.document_ids

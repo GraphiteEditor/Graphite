@@ -572,13 +572,13 @@ fn node_section_ai_artist(ai_artist_layer: &AiArtistLayer, layer: &Layer, persis
 						})),
 						WidgetHolder::new(Widget::TextLabel(TextLabel {
 							value: if ai_artist_layer.generating {
-								format!("{:.0}%", ai_artist_layer.percent_complete)
-							} else if ai_artist_layer.percent_complete == 0. {
+								format!("{:.0}%", ai_artist_layer.percent_complete())
+							} else if ai_artist_layer.percent_complete() == 0. {
 								"Ready".into()
-							} else if ai_artist_layer.percent_complete == 100. {
+							} else if ai_artist_layer.percent_complete() == 100. {
 								"Done".into()
 							} else {
-								format!("{:.0}% (Terminated)", ai_artist_layer.percent_complete)
+								format!("{:.0}% (Terminated)", ai_artist_layer.percent_complete())
 							},
 							bold: true,
 							tooltip,
@@ -890,7 +890,7 @@ fn node_section_ai_artist(ai_artist_layer: &AiArtistLayer, layer: &Layer, persis
 
 					vec![
 						WidgetHolder::new(Widget::TextLabel(TextLabel {
-							value: "Fix Faces".into(),
+							value: "Improve Faces".into(),
 							tooltip: tooltip.clone(),
 							..Default::default()
 						})),
