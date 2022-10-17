@@ -241,19 +241,36 @@ export class TriggerAiArtistCheckServerStatus extends JsMessage {
 	readonly hostname!: string;
 }
 
-export class TriggerAiArtist extends JsMessage {
-	readonly svg!: string | undefined;
+export class TriggerAiArtistGenerate extends JsMessage {
+	@Type(() => AiArtistGenerationParameters)
+	readonly parameters!: AiArtistGenerationParameters;
 
-	@TupleToVec2
-	readonly rasterizeSize!: XY | undefined;
-
-	readonly documentId!: bigint;
-
-	readonly layerPath!: BigUint64Array;
+	@Type(() => AiArtistBaseImage)
+	readonly baseImage!: AiArtistBaseImage | undefined;
 
 	readonly hostname!: string;
 
 	readonly refreshFrequency!: number;
+
+	readonly documentId!: bigint;
+
+	readonly layerPath!: BigUint64Array;
+}
+
+export class AiArtistBaseImage {
+	readonly svg!: string;
+
+	readonly size!: [number, number];
+}
+
+export class AiArtistGenerationParameters {
+	readonly seed!: number;
+
+	readonly samples!: number;
+
+	readonly denoisingStrength!: number | undefined;
+
+	readonly cfgScale!: number;
 
 	readonly prompt!: string;
 
@@ -261,14 +278,6 @@ export class TriggerAiArtist extends JsMessage {
 
 	@BigIntTupleToNumberTuple
 	readonly resolution!: [number, number];
-
-	readonly seed!: number;
-
-	readonly samples!: number;
-
-	readonly cfgScale!: number;
-
-	readonly denoisingStrength!: number | undefined;
 
 	readonly restoreFaces!: boolean;
 
@@ -372,8 +381,8 @@ export class DisplayEditableTextbox extends JsMessage {
 }
 
 export class UpdateImageData extends JsMessage {
-	@Type(() => ImageData)
-	readonly imageData!: ImageData[];
+	@Type(() => AiArtistImageData)
+	readonly imageData!: AiArtistImageData[];
 }
 
 export class DisplayRemoveEditableTextbox extends JsMessage {}
@@ -427,7 +436,7 @@ export function layerTypeData(layerType: LayerType): LayerTypeData | undefined {
 	return entries[layerType];
 }
 
-export class ImageData {
+export class AiArtistImageData {
 	readonly path!: BigUint64Array;
 
 	readonly mime!: string;
@@ -968,7 +977,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	DisplayRemoveEditableTextbox,
 	TriggerAboutGraphiteLocalizedCommitDate,
 	TriggerAiArtistCheckServerStatus,
-	TriggerAiArtist,
+	TriggerAiArtistGenerate,
 	TriggerAiArtistTerminate,
 	TriggerFileDownload,
 	TriggerFontLoad,

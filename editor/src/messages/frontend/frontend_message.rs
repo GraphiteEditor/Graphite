@@ -7,6 +7,7 @@ use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::HintData;
 
 use graphene::color::Color;
+use graphene::layers::ai_artist_layer::{AiArtistBaseImage, AiArtistGenerationParameters};
 use graphene::layers::text_layer::Font;
 use graphene::LayerId;
 
@@ -42,33 +43,20 @@ pub enum FrontendMessage {
 		#[serde(rename = "commitDate")]
 		commit_date: String,
 	},
-	TriggerAiArtist {
-		svg: Option<String>,
-		#[serde(rename = "rasterizeSize")]
-		rasterize_size: Option<(f64, f64)>,
+	TriggerAiArtistCheckServerStatus {
+		hostname: String,
+	},
+	TriggerAiArtistGenerate {
+		parameters: AiArtistGenerationParameters,
+		#[serde(rename = "baseImage")]
+		base_image: Option<AiArtistBaseImage>,
+		hostname: String,
+		#[serde(rename = "refreshFrequency")]
+		refresh_frequency: f64,
 		#[serde(rename = "documentId")]
 		document_id: u64,
 		#[serde(rename = "layerPath")]
 		layer_path: Vec<LayerId>,
-		hostname: String,
-		#[serde(rename = "refreshFrequency")]
-		refresh_frequency: f64,
-		prompt: String,
-		#[serde(rename = "negativePrompt")]
-		negative_prompt: String,
-		resolution: (u64, u64),
-		seed: u64,
-		samples: u32,
-		#[serde(rename = "cfgScale")]
-		cfg_scale: f64,
-		#[serde(rename = "denoisingStrength")]
-		denoising_strength: Option<f64>,
-		#[serde(rename = "restoreFaces")]
-		restore_faces: bool,
-		tiling: bool,
-	},
-	TriggerAiArtistCheckServerStatus {
-		hostname: String,
 	},
 	TriggerAiArtistTerminate {
 		#[serde(rename = "documentId")]

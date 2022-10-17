@@ -20,7 +20,7 @@ use crate::messages::prelude::*;
 
 use graphene::color::Color;
 use graphene::document::{pick_layer_safe_ai_artist_resolution, Document as GrapheneDocument};
-use graphene::layers::ai_artist_layer::AiArtistStatus;
+use graphene::layers::ai_artist_layer::{AiArtistBaseImage, AiArtistGenerationParameters, AiArtistStatus};
 use graphene::layers::blend_mode::BlendMode;
 use graphene::layers::folder_layer::FolderLayer;
 use graphene::layers::layer_info::{LayerDataType, LayerDataTypeDiscriminant};
@@ -1007,43 +1007,45 @@ impl DocumentMessageHandler {
 
 				// PART 6 (DIFFERENT)
 				Some(
-					FrontendMessage::TriggerAiArtist {
-						svg: Some(document),
-						rasterize_size: Some(size.into()),
+					FrontendMessage::TriggerAiArtistGenerate {
+						base_image: Some(AiArtistBaseImage { svg: document, size }),
 						document_id,
 						layer_path: layer_path.into(),
 						hostname: preferences.ai_artist_server_hostname.clone(),
 						refresh_frequency: preferences.ai_artist_refresh_frequency,
+						parameters: AiArtistGenerationParameters {
+							prompt,
+							negative_prompt,
+							resolution,
+							seed,
+							samples,
+							cfg_scale,
+							denoising_strength: Some(denoising_strength),
+							restore_faces,
+							tiling,
+						},
+					}
+					.into(),
+				)
+			}
+			(_, false) => Some(
+				FrontendMessage::TriggerAiArtistGenerate {
+					base_image: None,
+					document_id,
+					layer_path: layer_path.into(),
+					hostname: preferences.ai_artist_server_hostname.clone(),
+					refresh_frequency: preferences.ai_artist_refresh_frequency,
+					parameters: AiArtistGenerationParameters {
 						prompt,
 						negative_prompt,
 						resolution,
 						seed,
 						samples,
 						cfg_scale,
-						denoising_strength: Some(denoising_strength),
+						denoising_strength: None,
 						restore_faces,
 						tiling,
-					}
-					.into(),
-				)
-			}
-			(_, false) => Some(
-				FrontendMessage::TriggerAiArtist {
-					svg: None,
-					rasterize_size: None,
-					document_id,
-					layer_path: layer_path.into(),
-					hostname: preferences.ai_artist_server_hostname.clone(),
-					refresh_frequency: preferences.ai_artist_refresh_frequency,
-					prompt,
-					negative_prompt,
-					resolution,
-					seed,
-					samples,
-					cfg_scale,
-					denoising_strength: None,
-					restore_faces,
-					tiling,
+					},
 				}
 				.into(),
 			),

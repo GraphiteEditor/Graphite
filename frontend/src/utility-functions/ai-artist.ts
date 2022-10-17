@@ -3,11 +3,12 @@ import { blobToBase64 } from "@/utility-functions/files";
 import { type RequestResult, requestWithUploadDownloadProgress } from "@/utility-functions/network";
 import { stripIndents } from "@/utility-functions/strip-indents";
 import { type Editor } from "@/wasm-communication/editor";
+import { type AiArtistGenerationParameters } from "@/wasm-communication/messages";
 
 type UploadedAndResult = {
 	uploaded: Promise<void>;
 	result: Promise<RequestResult>;
-	xhr: XMLHttpRequest | undefined;
+	xhr?: XMLHttpRequest;
 };
 
 const MAX_POLLING_RETRIES = 4;
@@ -21,18 +22,10 @@ let pollingAbortController = new AbortController();
 let statusAbortController = new AbortController();
 
 export async function aiArtistGenerate(
+	parameters: AiArtistGenerationParameters,
+	image: Blob | undefined,
 	hostname: string,
 	refreshFrequency: number,
-	prompt: string,
-	negativePrompt: string,
-	resolution: [number, number],
-	seed: number,
-	samples: number,
-	cfgScale: number,
-	denoisingStrength: number | undefined,
-	restoreFaces: boolean,
-	tiling: boolean,
-	image: Blob | undefined,
 	documentId: bigint,
 	layerPath: BigUint64Array,
 	editor: Editor
@@ -49,7 +42,7 @@ export async function aiArtistGenerate(
 	const discloseUploadingProgress = (progress: number): void => {
 		editor.instance.setAIArtistGeneratingStatus(documentId, layerPath, progress * 100, "Uploading");
 	};
-	const { uploaded, result, xhr } = await generate(discloseUploadingProgress, hostname, image, prompt, negativePrompt, seed, samples, cfgScale, denoisingStrength, restoreFaces, tiling, resolution);
+	const { uploaded, result, xhr } = await generate(discloseUploadingProgress, hostname, image, parameters);
 	generatingAbortRequest = xhr;
 
 	try {
@@ -60,7 +53,7 @@ export async function aiArtistGenerate(
 		// Begin polling every second for updates to the in-progress image generation
 		if (refreshFrequency > 0) {
 			const interval = Math.max(refreshFrequency * 1000, 500);
-			scheduleNextPollingUpdate(interval, Date.now(), 0, editor, hostname, documentId, layerPath, resolution);
+			scheduleNextPollingUpdate(interval, Date.now(), 0, editor, hostname, documentId, layerPath, parameters.resolution);
 		}
 
 		// Wait for the final image to be returned by the initial request containing either the full image or the last frame if it was terminated by the user
@@ -81,7 +74,7 @@ export async function aiArtistGenerate(
 
 		// Send the backend a blob URL for the final image
 		const blobURL = URL.createObjectURL(blob);
-		editor.instance.setAIArtistBlobURL(documentId, layerPath, blobURL, resolution[0], resolution[1]);
+		editor.instance.setAIArtistBlobURL(documentId, layerPath, blobURL, parameters.resolution[0], parameters.resolution[1]);
 
 		// Send the backend the blob data to be stored persistently in the layer
 		const u8Array = new Uint8Array(await blob.arrayBuffer());
@@ -210,46 +203,33 @@ async function pollImage(hostname: string): Promise<[Blob, number]> {
 	return [blob, percentComplete];
 }
 
-async function generate(
-	discloseUploadingProgress: (progress: number) => void,
-	hostname: string,
-	image: Blob | undefined,
-	prompt: string,
-	negativePrompt: string,
-	seed: number,
-	samples: number,
-	cfgScale: number,
-	denoisingStrength: number | undefined,
-	restoreFaces: boolean,
-	tiling: boolean,
-	[width, height]: [number, number]
-): Promise<UploadedAndResult> {
+async function generate(discloseUploadingProgress: (progress: number) => void, hostname: string, image: Blob | undefined, parameters: AiArtistGenerationParameters): Promise<UploadedAndResult> {
 	let body;
-	if (image === undefined || denoisingStrength === undefined) {
+	if (image === undefined || parameters.denoisingStrength === undefined) {
 		// Highly unstable API
 		body = stripIndents`
 		{
 			"fn_index":12,
 			"data":[
-				"${escapeJSON(prompt)}",
-				"${escapeJSON(negativePrompt)}",
+				"${escapeJSON(parameters.prompt)}",
+				"${escapeJSON(parameters.negativePrompt)}",
 				"None",
 				"None",
-				${samples},
+				${parameters.samples},
 				"Euler a",
-				${restoreFaces},
-				${tiling},
+				${parameters.restoreFaces},
+				${parameters.tiling},
 				1,
 				1,
-				${cfgScale},
-				${seed},
+				${parameters.cfgScale},
+				${parameters.seed},
 				-1,
 				0,
 				0,
 				0,
 				false,
-				${height},
-				${width},
+				${parameters.resolution[1]},
+				${parameters.resolution[0]},
 				false,
 				false,
 				0.7,
@@ -279,8 +259,8 @@ async function generate(
 			"fn_index":31,
 			"data":[
 				0,
-				"${escapeJSON(prompt)}",
-				"${escapeJSON(negativePrompt)}",
+				"${escapeJSON(parameters.prompt)}",
+				"${escapeJSON(parameters.negativePrompt)}",
 				"None",
 				"None",
 				"${sourceImageBase64}",
@@ -288,24 +268,24 @@ async function generate(
 				null,
 				null,
 				"Draw mask",
-				${samples},
+				${parameters.samples},
 				"Euler a",
 				4,
 				"fill",
-				${restoreFaces},
-				${tiling},
+				${parameters.restoreFaces},
+				${parameters.tiling},
 				1,
 				1,
-				${cfgScale},
-				${denoisingStrength},
-				${seed},
+				${parameters.cfgScale},
+				${parameters.denoisingStrength},
+				${parameters.seed},
 				-1,
 				0,
 				0,
 				0,
 				false,
-				${height},
-				${width},
+				${parameters.resolution[1]},
+				${parameters.resolution[0]},
 				"Just resize",
 				false,
 				32,

@@ -24,7 +24,7 @@ pub struct AiArtistLayer {
 	pub tiling: bool,
 
 	// Image stored in layer after generation completes
-	pub image_data: Option<ImageData>,
+	pub image_data: Option<AiArtistImageData>,
 	pub mime: String,
 	/// 0 is not started, 100 is complete.
 	pub percent_complete: f64,
@@ -50,9 +50,32 @@ pub enum AiArtistStatus {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Deserialize, Serialize)]
-pub struct ImageData {
+pub struct AiArtistImageData {
 	#[serde(serialize_with = "base64_serde::as_base64", deserialize_with = "base64_serde::from_base64")]
 	pub image_data: Vec<u8>,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+pub struct AiArtistBaseImage {
+	pub svg: String,
+	pub size: DVec2,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+pub struct AiArtistGenerationParameters {
+	pub seed: u64,
+	pub samples: u32,
+	#[serde(rename = "denoisingStrength")]
+	pub denoising_strength: Option<f64>,
+	#[serde(rename = "cfgScale")]
+	pub cfg_scale: f64,
+	pub prompt: String,
+	#[serde(rename = "negativePrompt")]
+	pub negative_prompt: String,
+	pub resolution: (u64, u64),
+	#[serde(rename = "restoreFaces")]
+	pub restore_faces: bool,
+	pub tiling: bool,
 }
 
 impl Default for AiArtistLayer {

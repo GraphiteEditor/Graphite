@@ -11,7 +11,7 @@ import {
 	TriggerImport,
 	TriggerOpenDocument,
 	TriggerRasterDownload,
-	TriggerAiArtist,
+	TriggerAiArtistGenerate,
 	TriggerAiArtistTerminate,
 	TriggerAiArtistCheckServerStatus,
 	UpdateActiveDocument,
@@ -66,22 +66,21 @@ export function createPortfolioState(editor: Editor) {
 
 		aiArtistCheckConnection(hostname, editor);
 	});
-	editor.subscriptions.subscribeJsMessage(TriggerAiArtist, async (triggerAiArtist) => {
-		const { svg, rasterizeSize, documentId, layerPath, hostname, refreshFrequency, prompt, negativePrompt, resolution, seed, samples, cfgScale, denoisingStrength, restoreFaces, tiling } =
-			triggerAiArtist;
+	editor.subscriptions.subscribeJsMessage(TriggerAiArtistGenerate, async (triggerAiArtistGenerate) => {
+		const { documentId, layerPath, hostname, refreshFrequency, baseImage, parameters } = triggerAiArtistGenerate;
 
 		// Handle img2img mode
 		let image: Blob | undefined;
-		if (denoisingStrength !== undefined && svg !== undefined && rasterizeSize !== undefined) {
+		if (parameters.denoisingStrength !== undefined && baseImage !== undefined) {
 			// Rasterize the SVG to an image file
-			image = await rasterizeSVG(svg, rasterizeSize.x, rasterizeSize.y, "image/png");
+			image = await rasterizeSVG(baseImage.svg, baseImage.size[0], baseImage.size[1], "image/png");
 
 			const blobURL = URL.createObjectURL(image);
 
-			editor.instance.setAIArtistBlobURL(documentId, layerPath, blobURL, rasterizeSize.x, rasterizeSize.y);
+			editor.instance.setAIArtistBlobURL(documentId, layerPath, blobURL, baseImage.size[0], baseImage.size[1]);
 		}
 
-		aiArtistGenerate(hostname, refreshFrequency, prompt, negativePrompt, resolution, seed, samples, cfgScale, denoisingStrength, restoreFaces, tiling, image, documentId, layerPath, editor);
+		aiArtistGenerate(parameters, image, hostname, refreshFrequency, documentId, layerPath, editor);
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerAiArtistTerminate, async (triggerAiArtistTerminate) => {
 		const { documentId, layerPath, hostname } = triggerAiArtistTerminate;

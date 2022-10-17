@@ -1,6 +1,6 @@
 use crate::boolean_ops::composite_boolean_operation;
 use crate::intersection::Quad;
-use crate::layers::ai_artist_layer::{AiArtistLayer, AiArtistStatus, ImageData};
+use crate::layers::ai_artist_layer::{AiArtistImageData, AiArtistLayer, AiArtistStatus};
 use crate::layers::folder_layer::FolderLayer;
 use crate::layers::image_layer::ImageLayer;
 use crate::layers::layer_info::{Layer, LayerData, LayerDataType, LayerDataTypeDiscriminant};
@@ -810,7 +810,7 @@ impl Document {
 			Operation::AiArtistSetImageData { layer_path, image_data } => {
 				let layer = self.layer_mut(&layer_path).expect("Setting AI Artist image data for invalid layer");
 				if let LayerDataType::AiArtist(ai_artist) = &mut layer.data {
-					ai_artist.image_data = Some(ImageData { image_data });
+					ai_artist.image_data = Some(AiArtistImageData { image_data });
 				} else {
 					panic!("Incorrectly trying to set image data for a layer that is not an AiArtist layer type");
 				}
