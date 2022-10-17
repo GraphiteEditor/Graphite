@@ -24,6 +24,10 @@ impl MessageHandler<PreferencesMessage, ()> for PreferencesMessageHandler {
 			PreferencesMessage::Load { preferences } => {
 				if let Ok(deserialized_preferences) = serde_json::from_str::<PreferencesMessageHandler>(&preferences) {
 					*self = deserialized_preferences;
+
+					if self.ai_artist_server_hostname != Self::default().ai_artist_server_hostname {
+						responses.push_back(PortfolioMessage::AiArtistCheckServerStatus.into());
+					}
 				}
 			}
 			PreferencesMessage::ResetToDefaults => {
