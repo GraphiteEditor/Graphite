@@ -165,6 +165,7 @@ impl Dispatcher {
 							message,
 							(
 								document,
+								self.message_handlers.portfolio_message_handler.active_document_id().unwrap(),
 								&self.message_handlers.input_preprocessor_message_handler,
 								&self.message_handlers.portfolio_message_handler.persistent_data,
 							),

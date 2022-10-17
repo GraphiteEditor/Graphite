@@ -241,9 +241,9 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 					responses.push_back(FrontendMessage::TriggerImport.into());
 				}
 			}
-			PortfolioMessage::LoadDocumentResources => {
-				if let Some(document) = self.active_document_mut() {
-					document.load_layer_resources(responses, &document.graphene_document.root.data, Vec::new());
+			PortfolioMessage::LoadDocumentResources { document_id } => {
+				if let Some(document) = self.document_mut(document_id) {
+					document.load_layer_resources(responses, &document.graphene_document.root.data, Vec::new(), document_id);
 				}
 			}
 			PortfolioMessage::LoadFont { font, is_default } => {
@@ -309,6 +309,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 					),
 				}
 			}
+			// TODO: Paste message is unused, delete it?
 			PortfolioMessage::Paste { clipboard } => {
 				let shallowest_common_folder = self.active_document().map(|document| {
 					document
@@ -348,7 +349,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 							}
 							.into(),
 						);
-						document.load_layer_resources(responses, &entry.layer.data, destination_path.clone());
+						document.load_layer_resources(responses, &entry.layer.data, destination_path.clone(), self.active_document_id.unwrap());
 						responses.push_front(
 							DocumentOperation::InsertLayer {
 								layer: entry.layer.clone(),
@@ -390,7 +391,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 								}
 								.into(),
 							);
-							document.load_layer_resources(responses, &entry.layer.data, destination_path.clone());
+							document.load_layer_resources(responses, &entry.layer.data, destination_path.clone(), self.active_document_id.unwrap());
 							responses.push_front(
 								DocumentOperation::InsertLayer {
 									layer: entry.layer.clone(),
@@ -446,6 +447,15 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 				responses.push_back(NavigationMessage::TranslateCanvas { delta: (0., 0.).into() }.into());
 			}
 			PortfolioMessage::SetActiveDocument { document_id } => self.active_document_id = Some(document_id),
+			PortfolioMessage::SetImageBlobUrl {
+				document_id,
+				layer_path,
+				blob_url,
+				resolution,
+			} => {
+				let message = DocumentMessage::SetImageBlobUrl { layer_path, blob_url, resolution };
+				responses.push_back(PortfolioMessage::DocumentPassMessage { document_id, message }.into());
+			}
 			PortfolioMessage::UpdateDocumentWidgets => {
 				if let Some(document) = self.active_document() {
 					document.update_document_widgets(responses);
@@ -497,12 +507,24 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 }
 
 impl PortfolioMessageHandler {
+	pub fn document(&self, document_id: u64) -> Option<&DocumentMessageHandler> {
+		self.documents.get(&document_id)
+	}
+
+	pub fn document_mut(&mut self, document_id: u64) -> Option<&mut DocumentMessageHandler> {
+		self.documents.get_mut(&document_id)
+	}
+
 	pub fn active_document(&self) -> Option<&DocumentMessageHandler> {
 		self.active_document_id.and_then(|id| self.documents.get(&id))
 	}
 
 	pub fn active_document_mut(&mut self) -> Option<&mut DocumentMessageHandler> {
 		self.active_document_id.and_then(|id| self.documents.get_mut(&id))
+	}
+
+	pub fn active_document_id(&self) -> Option<u64> {
+		self.active_document_id
 	}
 
 	pub fn generate_new_document_name(&self) -> String {
@@ -550,12 +572,12 @@ impl PortfolioMessageHandler {
 
 		responses.push_back(PortfolioMessage::UpdateOpenDocumentsList.into());
 		responses.push_back(PortfolioMessage::SelectDocument { document_id }.into());
-		responses.push_back(PortfolioMessage::LoadDocumentResources.into());
+		responses.push_back(PortfolioMessage::LoadDocumentResources { document_id }.into());
 		responses.push_back(PortfolioMessage::UpdateDocumentWidgets.into());
 		responses.push_back(ToolMessage::InitTools.into());
 		responses.push_back(PropertiesPanelMessage::Init.into());
 		responses.push_back(NavigationMessage::TranslateCanvas { delta: (0., 0.).into() }.into());
-		responses.push_back(DocumentMessage::DocumentStructureChanged.into())
+		responses.push_back(DocumentMessage::DocumentStructureChanged.into());
 	}
 
 	/// Returns an iterator over the open documents in order.

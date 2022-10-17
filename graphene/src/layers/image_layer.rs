@@ -10,7 +10,7 @@ use kurbo::{Affine, BezPath, Shape as KurboShape};
 use serde::{Deserialize, Serialize};
 use std::fmt::Write;
 
-#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, PartialEq, Deserialize, Serialize)]
 pub struct ImageLayer {
 	pub mime: String,
 	#[serde(serialize_with = "base64_serde::as_base64", deserialize_with = "base64_serde::from_base64")]
@@ -94,6 +94,17 @@ impl ImageLayer {
 
 	fn bounds(&self) -> BezPath {
 		kurbo::Rect::from_origin_size(kurbo::Point::ZERO, kurbo::Size::new(self.dimensions.x, self.dimensions.y)).to_path(0.)
+	}
+}
+
+impl std::fmt::Debug for ImageLayer {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.debug_struct("ImageLayer")
+			.field("mime", &self.mime)
+			.field("image_data", &"...")
+			.field("blob_url", &self.blob_url)
+			.field("dimensions", &self.dimensions)
+			.finish()
 	}
 }
 

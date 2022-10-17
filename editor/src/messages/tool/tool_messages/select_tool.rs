@@ -374,7 +374,7 @@ impl Fsm for SelectToolFsmState {
 		self,
 		event: ToolMessage,
 		tool_data: &mut Self::ToolData,
-		(document, _global_tool_data, input, font_cache): ToolActionHandlerData,
+		(document, document_id, _global_tool_data, input, font_cache): ToolActionHandlerData,
 		_tool_options: &Self::ToolOptions,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
@@ -564,7 +564,7 @@ impl Fsm for SelectToolFsmState {
 					tool_data.drag_current = mouse_position + closest_move;
 
 					if input.keyboard.get(duplicate as usize) && tool_data.not_duplicated_layers.is_none() {
-						tool_data.start_duplicates(document, responses);
+						tool_data.start_duplicates(document, document_id, responses);
 					} else if !input.keyboard.get(duplicate as usize) && tool_data.not_duplicated_layers.is_some() {
 						tool_data.stop_duplicates(responses);
 					}
@@ -921,7 +921,7 @@ impl Fsm for SelectToolFsmState {
 
 impl SelectToolData {
 	/// Duplicates the currently dragging layers. Called when Alt is pressed and the layers have not yet been duplicated.
-	fn start_duplicates(&mut self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
+	fn start_duplicates(&mut self, document: &DocumentMessageHandler, document_id: u64, responses: &mut VecDeque<Message>) {
 		responses.push_back(DocumentMessage::DeselectAllLayers.into());
 
 		self.not_duplicated_layers = Some(self.layers_dragging.clone());
@@ -982,7 +982,7 @@ impl SelectToolData {
 			);
 
 			if let Some(image_data) = image_data {
-				responses.push_back(FrontendMessage::UpdateImageData { image_data }.into());
+				responses.push_back(FrontendMessage::UpdateImageData { image_data, document_id }.into());
 			}
 		}
 	}

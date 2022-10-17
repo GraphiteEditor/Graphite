@@ -535,6 +535,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				);
 				responses.push_back(
 					FrontendMessage::UpdateImageData {
+						document_id,
 						image_data: vec![FrontendImageData { path: path.clone(), image_data, mime }],
 					}
 					.into(),
@@ -1422,7 +1423,7 @@ impl DocumentMessageHandler {
 	}
 
 	/// Loads layer resources such as creating the blob URLs for the images and loading all of the fonts in the document
-	pub fn load_layer_resources(&self, responses: &mut VecDeque<Message>, root: &LayerDataType, mut path: Vec<LayerId>) {
+	pub fn load_layer_resources(&self, responses: &mut VecDeque<Message>, root: &LayerDataType, mut path: Vec<LayerId>, document_id: u64) {
 		fn walk_layers(data: &LayerDataType, path: &mut Vec<LayerId>, image_data: &mut Vec<FrontendImageData>, fonts: &mut HashSet<Font>) {
 			match data {
 				LayerDataType::Folder(folder) => {
@@ -1457,7 +1458,7 @@ impl DocumentMessageHandler {
 		let mut fonts = HashSet::new();
 		walk_layers(root, &mut path, &mut image_data, &mut fonts);
 		if !image_data.is_empty() {
-			responses.push_front(FrontendMessage::UpdateImageData { image_data }.into());
+			responses.push_front(FrontendMessage::UpdateImageData { document_id, image_data }.into());
 		}
 		for font in fonts {
 			responses.push_front(FrontendMessage::TriggerFontLoad { font, is_default: false }.into());

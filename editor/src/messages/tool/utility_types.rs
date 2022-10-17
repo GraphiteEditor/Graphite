@@ -16,7 +16,7 @@ use graphene::layers::text_layer::FontCache;
 use serde::{Deserialize, Serialize};
 use std::fmt::{self, Debug};
 
-pub type ToolActionHandlerData<'a> = (&'a DocumentMessageHandler, &'a DocumentToolData, &'a InputPreprocessorMessageHandler, &'a FontCache);
+pub type ToolActionHandlerData<'a> = (&'a DocumentMessageHandler, u64, &'a DocumentToolData, &'a InputPreprocessorMessageHandler, &'a FontCache);
 
 pub trait ToolCommon: for<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> + PropertyHolder + ToolTransition + ToolMetadata {}
 impl<T> ToolCommon for T where T: for<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> + PropertyHolder + ToolTransition + ToolMetadata {}

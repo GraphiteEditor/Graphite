@@ -73,7 +73,9 @@ pub enum PortfolioMessage {
 		is_default: bool,
 	},
 	Import,
-	LoadDocumentResources,
+	LoadDocumentResources {
+		document_id: u64,
+	},
 	LoadFont {
 		font: Font,
 		is_default: bool,
@@ -93,6 +95,7 @@ pub enum PortfolioMessage {
 		document_is_saved: bool,
 		document_serialized_content: String,
 	},
+	// TODO: Paste message is unused, delete it?
 	Paste {
 		clipboard: Clipboard,
 	},
@@ -110,6 +113,12 @@ pub enum PortfolioMessage {
 	},
 	SetActiveDocument {
 		document_id: u64,
+	},
+	SetImageBlobUrl {
+		document_id: u64,
+		layer_path: Vec<LayerId>,
+		blob_url: String,
+		resolution: (f64, f64),
 	},
 	UpdateDocumentWidgets,
 	UpdateOpenDocumentsList,

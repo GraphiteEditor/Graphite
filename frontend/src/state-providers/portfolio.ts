@@ -96,7 +96,7 @@ export function createPortfolioState(editor: Editor) {
 
 			const image = await createImageBitmap(blob);
 
-			editor.instance.setImageBlobURL(element.path, blobURL, image.width, image.height);
+			editor.instance.setImageBlobURL(updateImageData.documentId, element.path, blobURL, image.width, image.height);
 		});
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerRevokeBlobUrl, async (triggerRevokeBlobUrl) => {

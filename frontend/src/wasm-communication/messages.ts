@@ -383,6 +383,8 @@ export class DisplayEditableTextbox extends JsMessage {
 }
 
 export class UpdateImageData extends JsMessage {
+	readonly documentId!: bigint;
+
 	@Type(() => AiArtistImageData)
 	readonly imageData!: AiArtistImageData[];
 }

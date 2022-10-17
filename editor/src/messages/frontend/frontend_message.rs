@@ -158,6 +158,8 @@ pub enum FrontendMessage {
 		multiplier: (f64, f64),
 	},
 	UpdateImageData {
+		#[serde(rename = "documentId")]
+		document_id: u64,
 		#[serde(rename = "imageData")]
 		image_data: Vec<FrontendImageData>,
 	},

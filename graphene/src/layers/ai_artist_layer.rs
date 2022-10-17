@@ -10,7 +10,7 @@ use kurbo::{Affine, BezPath, Shape as KurboShape};
 use serde::{Deserialize, Serialize};
 use std::fmt::Write;
 
-#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, PartialEq, Deserialize, Serialize)]
 pub struct AiArtistLayer {
 	// User-configurable layer parameters
 	pub seed: u64,
@@ -261,4 +261,26 @@ impl AiArtistLayer {
 
 fn glam_to_kurbo(transform: DAffine2) -> Affine {
 	Affine::new(transform.to_cols_array())
+}
+
+impl std::fmt::Debug for AiArtistLayer {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.debug_struct("AiArtistLayer")
+			.field("seed", &self.seed)
+			.field("samples", &self.samples)
+			.field("use_img2img", &self.use_img2img)
+			.field("denoising_strength", &self.denoising_strength)
+			.field("cfg_scale", &self.cfg_scale)
+			.field("prompt", &self.prompt)
+			.field("negative_prompt", &self.negative_prompt)
+			.field("restore_faces", &self.restore_faces)
+			.field("tiling", &self.tiling)
+			.field("image_data", &self.image_data.as_ref().map(|_| "..."))
+			.field("mime", &self.mime)
+			.field("percent_complete", &self.percent_complete)
+			.field("blob_url", &self.blob_url)
+			.field("status", &self.status)
+			.field("dimensions", &self.dimensions)
+			.finish()
+	}
 }
