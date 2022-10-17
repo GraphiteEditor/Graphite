@@ -20,6 +20,7 @@ use crate::messages::prelude::*;
 
 use graphene::color::Color;
 use graphene::document::{pick_layer_safe_ai_artist_resolution, Document as GrapheneDocument};
+use graphene::layers::ai_artist_layer::AiArtistStatus;
 use graphene::layers::blend_mode::BlendMode;
 use graphene::layers::folder_layer::FolderLayer;
 use graphene::layers::layer_info::{LayerDataType, LayerDataTypeDiscriminant};
@@ -234,7 +235,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 							DocumentOperation::AiArtistSetGeneratingStatus {
 								path: layer_path.unwrap().clone(),
 								percent: Some(0.),
-								generating: true,
+								status: AiArtistStatus::Beginning,
 							}
 							.into(),
 						);

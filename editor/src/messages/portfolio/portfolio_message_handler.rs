@@ -76,13 +76,8 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 					}
 				}
 			}
-			PortfolioMessage::AiArtistSetGeneratingStatus {
-				document_id,
-				path,
-				percent,
-				generating,
-			} => {
-				let message = DocumentOperation::AiArtistSetGeneratingStatus { path, percent, generating }.into();
+			PortfolioMessage::AiArtistSetGeneratingStatus { document_id, path, percent, status } => {
+				let message = DocumentOperation::AiArtistSetGeneratingStatus { path, percent, status }.into();
 				responses.push_back(PortfolioMessage::DocumentPassMessage { document_id, message }.into());
 			}
 			PortfolioMessage::AiArtistSetImageData { document_id, layer_path, image_data } => {

@@ -1,7 +1,7 @@
 /* eslint-disable max-classes-per-file */
 import { reactive, readonly } from "vue";
 
-import { callAIArtist, checkAIArtist, terminateAIArtist } from "@/utility-functions/ai-artist";
+import { aiArtistGenerate, aiArtistCheckConnection, aiArtistTerminate } from "@/utility-functions/ai-artist";
 import { downloadFileText, downloadFileBlob, upload } from "@/utility-functions/files";
 import { rasterizeSVG } from "@/utility-functions/rasterization";
 import { type Editor } from "@/wasm-communication/editor";
@@ -64,7 +64,7 @@ export function createPortfolioState(editor: Editor) {
 	editor.subscriptions.subscribeJsMessage(TriggerAiArtistCheckServerStatus, async (triggerAiArtistCheckServerStatus) => {
 		const { hostname } = triggerAiArtistCheckServerStatus;
 
-		checkAIArtist(hostname, editor);
+		aiArtistCheckConnection(hostname, editor);
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerAiArtist, async (triggerAiArtist) => {
 		const { svg, rasterizeSize, documentId, layerPath, hostname, refreshFrequency, prompt, negativePrompt, resolution, seed, samples, cfgScale, denoisingStrength, restoreFaces, tiling } =
@@ -81,12 +81,12 @@ export function createPortfolioState(editor: Editor) {
 			editor.instance.setAIArtistBlobURL(documentId, layerPath, blobURL, rasterizeSize.x, rasterizeSize.y);
 		}
 
-		callAIArtist(hostname, refreshFrequency, prompt, negativePrompt, resolution, seed, samples, cfgScale, denoisingStrength, restoreFaces, tiling, image, documentId, layerPath, editor);
+		aiArtistGenerate(hostname, refreshFrequency, prompt, negativePrompt, resolution, seed, samples, cfgScale, denoisingStrength, restoreFaces, tiling, image, documentId, layerPath, editor);
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerAiArtistTerminate, async (triggerAiArtistTerminate) => {
 		const { documentId, layerPath, hostname } = triggerAiArtistTerminate;
 
-		terminateAIArtist(hostname, documentId, layerPath, editor);
+		aiArtistTerminate(hostname, documentId, layerPath, editor);
 	});
 	editor.subscriptions.subscribeJsMessage(UpdateImageData, (updateImageData) => {
 		updateImageData.imageData.forEach(async (element) => {

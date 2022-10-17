@@ -1,6 +1,6 @@
 use crate::boolean_ops::composite_boolean_operation;
 use crate::intersection::Quad;
-use crate::layers::ai_artist_layer::{AiArtistLayer, ImageData};
+use crate::layers::ai_artist_layer::{AiArtistLayer, AiArtistStatus, ImageData};
 use crate::layers::folder_layer::FolderLayer;
 use crate::layers::image_layer::ImageLayer;
 use crate::layers::layer_info::{Layer, LayerData, LayerDataType, LayerDataTypeDiscriminant};
@@ -816,18 +816,18 @@ impl Document {
 				}
 				Some(vec![LayerChanged { path: layer_path.clone() }])
 			}
-			Operation::AiArtistSetGeneratingStatus { path, percent, generating } => {
+			Operation::AiArtistSetGeneratingStatus { path, percent, status } => {
 				let layer = self.layer_mut(&path).expect("Generating AI Artist for invalid layer");
 				if let LayerDataType::AiArtist(ai_artist) = &mut layer.data {
 					if let Some(percentage) = percent {
-						ai_artist.set_percent_complete(percentage);
+						ai_artist.percent_complete = percentage;
 					}
 
-					if generating {
+					if status == AiArtistStatus::Generating {
 						ai_artist.image_data = None;
 					}
 
-					ai_artist.generating = generating;
+					ai_artist.status = status;
 				} else {
 					panic!("Incorrectly trying to set the generating status for a layer that is not an AiArtist layer type");
 				}
@@ -838,8 +838,8 @@ impl Document {
 				if let LayerDataType::AiArtist(ai_artist) = &mut layer.data {
 					ai_artist.image_data = None;
 					ai_artist.blob_url = None;
-					ai_artist.set_percent_complete(0.);
-					ai_artist.generating = false;
+					ai_artist.status = AiArtistStatus::Idle;
+					ai_artist.percent_complete = 0.;
 				} else {
 					panic!("Incorrectly trying to clear the blob URL for a layer that is not an AiArtist layer type");
 				}

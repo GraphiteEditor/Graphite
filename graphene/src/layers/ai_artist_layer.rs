@@ -26,16 +26,27 @@ pub struct AiArtistLayer {
 	// Image stored in layer after generation completes
 	pub image_data: Option<ImageData>,
 	pub mime: String,
-	percent_complete: f64,
+	/// 0 is not started, 100 is complete.
+	pub percent_complete: f64,
 
 	// TODO: Have the browser dispose of this blob URL when this is dropped (like when the layer is deleted)
 	#[serde(skip)]
 	pub blob_url: Option<String>,
-	/// 0 is not started, 100 is complete.
 	#[serde(skip)]
-	pub generating: bool,
+	pub status: AiArtistStatus,
 	#[serde(skip)]
 	pub dimensions: DVec2,
+}
+
+#[derive(Default, Debug, Clone, PartialEq, Deserialize, Serialize)]
+pub enum AiArtistStatus {
+	#[default]
+	Idle,
+	Beginning,
+	Uploading(f64),
+	Generating,
+	Terminating,
+	Terminated,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Deserialize, Serialize)]
@@ -62,7 +73,7 @@ impl Default for AiArtistLayer {
 
 			blob_url: None,
 			percent_complete: 0.,
-			generating: false,
+			status: Default::default(),
 			dimensions: Default::default(),
 		}
 	}
@@ -131,18 +142,6 @@ impl LayerData for AiArtistLayer {
 }
 
 impl AiArtistLayer {
-	pub fn set_percent_complete(&mut self, percent: f64) {
-		self.percent_complete = percent;
-	}
-
-	pub fn percent_complete(&self) -> f64 {
-		if self.image_data.is_some() {
-			self.percent_complete
-		} else {
-			0.
-		}
-	}
-
 	pub fn transform(&self, transforms: &[DAffine2], mode: ViewMode) -> DAffine2 {
 		let start = match mode {
 			ViewMode::Outline => 0,

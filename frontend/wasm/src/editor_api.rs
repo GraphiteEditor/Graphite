@@ -13,6 +13,7 @@ use editor::messages::input_mapper::utility_types::input_mouse::{EditorMouseStat
 use editor::messages::portfolio::utility_types::{AiArtistServerStatus, Platform};
 use editor::messages::prelude::*;
 use graphene::color::Color;
+use graphene::layers::ai_artist_layer::AiArtistStatus;
 use graphene::LayerId;
 
 use serde::Serialize;
@@ -463,13 +464,20 @@ impl JsEditorHandle {
 
 	/// Notifies the AI Artist layer of a new percentage of completion and whether or not it's currently generating
 	#[wasm_bindgen(js_name = setAIArtistGeneratingStatus)]
-	pub fn set_ai_artist_generating_status(&self, document_id: u64, path: Vec<LayerId>, percent: Option<f64>, generating: bool) {
-		let message = PortfolioMessage::AiArtistSetGeneratingStatus {
-			document_id,
-			path,
-			percent,
-			generating,
+	pub fn set_ai_artist_generating_status(&self, document_id: u64, path: Vec<LayerId>, percent: Option<f64>, status: String) {
+		let status = match status.as_str() {
+			"Idle" => AiArtistStatus::Idle,
+			"Beginning" => AiArtistStatus::Beginning,
+			"Uploading" => AiArtistStatus::Uploading(percent.expect("Percent needs to be supplied to set AiArtistStatus::Uploading")),
+			"Generating" => AiArtistStatus::Generating,
+			"Terminating" => AiArtistStatus::Terminating,
+			"Terminated" => AiArtistStatus::Terminated,
+			_ => panic!("Invalid string from JS for AiArtistStatus, received: {}", status),
 		};
+
+		let percent = if matches!(status, AiArtistStatus::Uploading(_)) { None } else { percent };
+
+		let message = PortfolioMessage::AiArtistSetGeneratingStatus { document_id, path, percent, status };
 		self.dispatch(message);
 	}
 

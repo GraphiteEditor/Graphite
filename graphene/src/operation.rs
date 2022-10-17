@@ -1,4 +1,5 @@
 use crate::boolean_ops::BooleanOperation as BooleanOperationType;
+use crate::layers::ai_artist_layer::AiArtistStatus;
 use crate::layers::blend_mode::BlendMode;
 use crate::layers::layer_info::Layer;
 use crate::layers::style::{self, Stroke};
@@ -71,7 +72,7 @@ pub enum Operation {
 	AiArtistSetGeneratingStatus {
 		path: Vec<LayerId>,
 		percent: Option<f64>,
-		generating: bool,
+		status: AiArtistStatus,
 	},
 	AiArtistSetImageData {
 		layer_path: Vec<LayerId>,

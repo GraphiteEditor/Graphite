@@ -10,7 +10,7 @@ use crate::messages::prelude::*;
 
 use graphene::color::Color;
 use graphene::document::pick_layer_safe_ai_artist_resolution;
-use graphene::layers::ai_artist_layer::AiArtistLayer;
+use graphene::layers::ai_artist_layer::{AiArtistLayer, AiArtistStatus};
 use graphene::layers::layer_info::{Layer, LayerDataType, LayerDataTypeDiscriminant};
 use graphene::layers::style::{Fill, Gradient, GradientType, LineCap, LineJoin, Stroke};
 use graphene::layers::text_layer::{FontCache, TextLayer};
@@ -571,14 +571,28 @@ fn node_section_ai_artist(ai_artist_layer: &AiArtistLayer, layer: &Layer, persis
 							direction: SeparatorDirection::Horizontal,
 						})),
 						WidgetHolder::new(Widget::TextLabel(TextLabel {
-							value: if ai_artist_layer.generating {
-								format!("{:.0}%", ai_artist_layer.percent_complete())
-							} else if ai_artist_layer.percent_complete() == 0. {
-								"Ready".into()
-							} else if ai_artist_layer.percent_complete() == 100. {
-								"Done".into()
-							} else {
-								format!("{:.0}% (Terminated)", ai_artist_layer.percent_complete())
+							value: {
+								// Since we don't serialize the status, we need to derive from other state whether the Idle state is actually supposed to be the Terminated state
+								let mut interpreted_status = ai_artist_layer.status.clone();
+								if ai_artist_layer.status == AiArtistStatus::Idle
+									&& ai_artist_layer.blob_url.is_some()
+									&& ai_artist_layer.percent_complete > 0.
+									&& ai_artist_layer.percent_complete < 100.
+								{
+									interpreted_status = AiArtistStatus::Terminated;
+								}
+
+								match interpreted_status {
+									AiArtistStatus::Idle => match ai_artist_layer.blob_url {
+										Some(_) => "Done".into(),
+										None => "Ready".into(),
+									},
+									AiArtistStatus::Beginning => "Beginning...".into(),
+									AiArtistStatus::Uploading(percent) => format!("Uploading Base Image: {:.0}%", percent),
+									AiArtistStatus::Generating => format!("Generating: {:.0}%", ai_artist_layer.percent_complete),
+									AiArtistStatus::Terminating => "Terminating...".into(),
+									AiArtistStatus::Terminated => format!("{:.0}% (Terminated)", ai_artist_layer.percent_complete),
+								}
 							},
 							bold: true,
 							tooltip,
@@ -601,15 +615,26 @@ fn node_section_ai_artist(ai_artist_layer: &AiArtistLayer, layer: &Layer, persis
 						})),
 					],
 					{
-						if ai_artist_layer.generating {
-							vec![WidgetHolder::new(Widget::TextButton(TextButton {
+						match ai_artist_layer.status {
+							AiArtistStatus::Beginning | AiArtistStatus::Uploading(_) => vec![WidgetHolder::new(Widget::TextButton(TextButton {
+								label: "Beginning...".into(),
+								tooltip: "Sending image generation request to the server".into(),
+								disabled: true,
+								..Default::default()
+							}))],
+							AiArtistStatus::Generating => vec![WidgetHolder::new(Widget::TextButton(TextButton {
 								label: "Terminate".into(),
 								tooltip: "Cancel in-progress image generation and keep the latest progress".into(),
 								on_update: WidgetCallback::new(|_| DocumentMessage::AiArtistTerminate.into()),
 								..Default::default()
-							}))]
-						} else {
-							vec![
+							}))],
+							AiArtistStatus::Terminating => vec![WidgetHolder::new(Widget::TextButton(TextButton {
+								label: "Terminating...".into(),
+								tooltip: "Waiting on the final image generated after termination".into(),
+								disabled: true,
+								..Default::default()
+							}))],
+							AiArtistStatus::Idle | AiArtistStatus::Terminated => vec![
 								WidgetHolder::new(Widget::IconButton(IconButton {
 									size: 24,
 									icon: "ViewModePixels".into(),
@@ -638,7 +663,7 @@ fn node_section_ai_artist(ai_artist_layer: &AiArtistLayer, layer: &Layer, persis
 									on_update: WidgetCallback::new(|_| DocumentMessage::AiArtistClear.into()),
 									..Default::default()
 								})),
-							]
+							],
 						}
 					},
 				]

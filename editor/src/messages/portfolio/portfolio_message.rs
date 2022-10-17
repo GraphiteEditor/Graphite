@@ -2,7 +2,7 @@ use super::utility_types::AiArtistServerStatus;
 use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
 use crate::messages::prelude::*;
 
-use graphene::layers::text_layer::Font;
+use graphene::layers::{ai_artist_layer::AiArtistStatus, text_layer::Font};
 use graphene::LayerId;
 
 use serde::{Deserialize, Serialize};
@@ -36,7 +36,7 @@ pub enum PortfolioMessage {
 		document_id: u64,
 		path: Vec<LayerId>,
 		percent: Option<f64>,
-		generating: bool,
+		status: AiArtistStatus,
 	},
 	AiArtistSetImageData {
 		document_id: u64,
