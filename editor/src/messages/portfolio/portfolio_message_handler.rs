@@ -453,7 +453,12 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 				blob_url,
 				resolution,
 			} => {
-				let message = DocumentMessage::SetImageBlobUrl { layer_path, blob_url, resolution };
+				let message = DocumentMessage::SetImageBlobUrl {
+					layer_path,
+					blob_url,
+					resolution,
+					document_id,
+				};
 				responses.push_back(PortfolioMessage::DocumentPassMessage { document_id, message }.into());
 			}
 			PortfolioMessage::UpdateDocumentWidgets => {

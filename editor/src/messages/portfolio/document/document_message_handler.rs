@@ -695,7 +695,12 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 					responses.push_back(DocumentOperation::SetLayerBlendMode { path: path.to_vec(), blend_mode }.into());
 				}
 			}
-			SetImageBlobUrl { layer_path, blob_url, resolution } => {
+			SetImageBlobUrl {
+				layer_path,
+				blob_url,
+				resolution,
+				document_id,
+			} => {
 				let layer = self.graphene_document.layer(&layer_path).expect("Setting blob URL for invalid layer");
 
 				// Revoke the old blob URL
@@ -709,7 +714,13 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 					other => panic!("Setting blob URL for invalid layer type, which must be an `AiArtist` or `Image`. Found: `{:?}`", other),
 				}
 
-				responses.push_back(DocumentOperation::SetLayerBlobUrl { layer_path, blob_url, resolution }.into());
+				responses.push_back(
+					PortfolioMessage::DocumentPassMessage {
+						document_id,
+						message: DocumentOperation::SetLayerBlobUrl { layer_path, blob_url, resolution }.into(),
+					}
+					.into(),
+				);
 			}
 			SetLayerExpansion { layer_path, set_expanded } => {
 				self.layer_metadata_mut(&layer_path).expanded = set_expanded;

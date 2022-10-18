@@ -126,6 +126,7 @@ pub enum DocumentMessage {
 		layer_path: Vec<LayerId>,
 		blob_url: String,
 		resolution: (f64, f64),
+		document_id: u64,
 	},
 	SetLayerExpansion {
 		layer_path: Vec<LayerId>,
