@@ -32,7 +32,7 @@ pub enum PropertiesPanelMessage {
 	SetAiArtistNegativePrompt { negative_prompt: String },
 	SetAiArtistPrompt { prompt: String },
 	SetAiArtistRestoreFaces { restore_faces: bool },
-	SetAiArtistSamples { samples: u32 }, // TODO: Change to u64 for consistency
+	SetAiArtistSamples { samples: u32 },
 	SetAiArtistSamplingMethod { method: AiArtistSamplingMethod },
 	SetAiArtistScaleFromResolution,
 	SetAiArtistSeed { seed: u64 },

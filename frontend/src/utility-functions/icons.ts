@@ -110,8 +110,11 @@ import NodeShape from "@/../assets/icon-16px-solid/node-shape.svg";
 import NodeText from "@/../assets/icon-16px-solid/node-text.svg";
 import NodeTransform from "@/../assets/icon-16px-solid/node-transform.svg";
 import Paste from "@/../assets/icon-16px-solid/paste.svg";
-import Refresh from "@/../assets/icon-16px-solid/refresh.svg";
+import Random from "@/../assets/icon-16px-solid/random.svg";
+import Regenerate from "@/../assets/icon-16px-solid/regenerate.svg";
+import Reload from "@/../assets/icon-16px-solid/reload.svg";
 import Rescale from "@/../assets/icon-16px-solid/rescale.svg";
+import Reset from "@/../assets/icon-16px-solid/reset.svg";
 import Settings from "@/../assets/icon-16px-solid/settings.svg";
 import Trash from "@/../assets/icon-16px-solid/trash.svg";
 import ViewModeNormal from "@/../assets/icon-16px-solid/view-mode-normal.svg";
@@ -162,8 +165,11 @@ const SOLID_16PX = {
 	NodeText: { component: NodeText, size: 16 },
 	NodeTransform: { component: NodeTransform, size: 16 },
 	Paste: { component: Paste, size: 16 },
-	Refresh: { component: Refresh, size: 16 },
+	Random: { component: Random, size: 16 },
+	Regenerate: { component: Regenerate, size: 16 },
+	Reload: { component: Reload, size: 16 },
 	Rescale: { component: Rescale, size: 16 },
+	Reset: { component: Reset, size: 16 },
 	Settings: { component: Settings, size: 16 },
 	Trash: { component: Trash, size: 16 },
 	ViewModeNormal: { component: ViewModeNormal, size: 16 },

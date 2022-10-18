@@ -550,7 +550,7 @@ fn node_section_ai_artist(ai_artist_layer: &AiArtistLayer, layer: &Layer, persis
 						})),
 						WidgetHolder::new(Widget::IconButton(IconButton {
 							size: 24,
-							icon: "Refresh".into(),
+							icon: "Reload".into(),
 							tooltip: "Refresh connection status".into(),
 							on_update: WidgetCallback::new(|_| PortfolioMessage::AiArtistCheckServerStatus.into()),
 							..Default::default()
@@ -639,8 +639,8 @@ fn node_section_ai_artist(ai_artist_layer: &AiArtistLayer, layer: &Layer, persis
 							AiArtistStatus::Idle | AiArtistStatus::Terminated => vec![
 								WidgetHolder::new(Widget::IconButton(IconButton {
 									size: 24,
-									icon: "ViewModePixels".into(),
-									tooltip: "Generate with a new random seed".into(),
+									icon: "Random".into(),
+									tooltip: "Generate with a random seed".into(),
 									on_update: WidgetCallback::new(|_| PropertiesPanelMessage::SetAiArtistSeedRandomizeAndGenerate.into()),
 									..Default::default()
 								})),
@@ -687,7 +687,7 @@ fn node_section_ai_artist(ai_artist_layer: &AiArtistLayer, layer: &Layer, persis
 						})),
 						WidgetHolder::new(Widget::IconButton(IconButton {
 							size: 24,
-							icon: "Swap".into(),
+							icon: "Regenerate".into(),
 							tooltip: "Set a new random seed".into(),
 							on_update: WidgetCallback::new(|_| PropertiesPanelMessage::SetAiArtistSeedRandomize.into()),
 							..Default::default()
@@ -706,6 +706,49 @@ fn node_section_ai_artist(ai_artist_layer: &AiArtistLayer, layer: &Layer, persis
 								}
 								.into()
 							}),
+							..Default::default()
+						})),
+					]
+				},
+			},
+			LayoutGroup::Row {
+				widgets: {
+					let tooltip = "
+					Width and height of the image that will be generated. Larger resolutions take longer to compute.\n\
+					\n\
+					512x512 yields optimal results because the AI is trained to understand that scale best. Larger sizes may tend to integrate the prompt's subject more than once. Small sizes are often incoherent. Put the layer in a folder and resize that to keep resolution unchanged.\n\
+					\n\
+					Dimensions must be a multiple of 64, so these are set by rounding the layer dimensions. A resolution exceeding 1 megapixel is reduced below that limit because larger sizes may exceed available GPU memory on the server.
+					".trim().to_string();
+
+					vec![
+						WidgetHolder::new(Widget::TextLabel(TextLabel {
+							value: "Resolution".into(),
+							tooltip: tooltip.clone(),
+							..Default::default()
+						})),
+						WidgetHolder::new(Widget::Separator(Separator {
+							separator_type: SeparatorType::Unrelated,
+							direction: SeparatorDirection::Horizontal,
+						})),
+						WidgetHolder::new(Widget::IconButton(IconButton {
+							size: 24,
+							icon: "Rescale".into(),
+							tooltip: "Set the layer scale to this resolution".into(),
+							on_update: WidgetCallback::new(|_| PropertiesPanelMessage::SetAiArtistScaleFromResolution.into()),
+							..Default::default()
+						})),
+						WidgetHolder::new(Widget::Separator(Separator {
+							separator_type: SeparatorType::Related,
+							direction: SeparatorDirection::Horizontal,
+						})),
+						WidgetHolder::new(Widget::TextLabel(TextLabel {
+							value: {
+								let (width, height) = pick_layer_safe_ai_artist_resolution(layer, &persistent_data.font_cache);
+								format!("{} W x {} H", width, height)
+							},
+							tooltip,
+							bold: true,
 							..Default::default()
 						})),
 					]
@@ -775,49 +818,6 @@ fn node_section_ai_artist(ai_artist_layer: &AiArtistLayer, layer: &Layer, persis
 							entries,
 							selected_index: Some(ai_artist_layer.sampling_method as u32),
 							tooltip,
-							..Default::default()
-						})),
-					]
-				},
-			},
-			LayoutGroup::Row {
-				widgets: {
-					let tooltip = "
-					Width and height of the image that will be generated. Larger resolutions take longer to compute.\n\
-					\n\
-					512x512 yields optimal results because the AI is trained to understand that scale best. Larger sizes may tend to integrate the prompt's subject more than once. Small sizes are often incoherent. Put the layer in a folder and resize that to keep resolution unchanged.\n\
-					\n\
-					Dimensions must be a multiple of 64, so these are set by rounding the layer dimensions. A resolution exceeding 1 megapixel is reduced below that limit because larger sizes may exceed available GPU memory on the server.
-					".trim().to_string();
-
-					vec![
-						WidgetHolder::new(Widget::TextLabel(TextLabel {
-							value: "Resolution".into(),
-							tooltip: tooltip.clone(),
-							..Default::default()
-						})),
-						WidgetHolder::new(Widget::Separator(Separator {
-							separator_type: SeparatorType::Unrelated,
-							direction: SeparatorDirection::Horizontal,
-						})),
-						WidgetHolder::new(Widget::IconButton(IconButton {
-							size: 24,
-							icon: "Rescale".into(),
-							tooltip: "Set the layer scale to this resolution".into(),
-							on_update: WidgetCallback::new(|_| PropertiesPanelMessage::SetAiArtistScaleFromResolution.into()),
-							..Default::default()
-						})),
-						WidgetHolder::new(Widget::Separator(Separator {
-							separator_type: SeparatorType::Related,
-							direction: SeparatorDirection::Horizontal,
-						})),
-						WidgetHolder::new(Widget::TextLabel(TextLabel {
-							value: {
-								let (width, height) = pick_layer_safe_ai_artist_resolution(layer, &persistent_data.font_cache);
-								format!("{} W x {} H", width, height)
-							},
-							tooltip,
-							bold: true,
 							..Default::default()
 						})),
 					]
