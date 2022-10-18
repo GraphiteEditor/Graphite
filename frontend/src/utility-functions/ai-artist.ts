@@ -5,12 +5,6 @@ import { stripIndents } from "@/utility-functions/strip-indents";
 import { type Editor } from "@/wasm-communication/editor";
 import { type AiArtistGenerationParameters } from "@/wasm-communication/messages";
 
-type UploadedAndResult = {
-	uploaded: Promise<void>;
-	result: Promise<RequestResult>;
-	xhr?: XMLHttpRequest;
-};
-
 const MAX_POLLING_RETRIES = 4;
 const SERVER_STATUS_CHECK_TIMEOUT = 5000;
 
@@ -20,6 +14,8 @@ let terminated = false;
 let generatingAbortRequest: XMLHttpRequest | undefined;
 let pollingAbortController = new AbortController();
 let statusAbortController = new AbortController();
+
+// PUBLICLY CALLABLE FUNCTIONS
 
 export async function aiArtistGenerate(
 	parameters: AiArtistGenerationParameters,
@@ -63,7 +59,8 @@ export async function aiArtistGenerate(
 		}
 
 		// Extract the final image from the response and convert it to a data blob
-		const base64 = JSON.parse(body)?.data[0]?.[0] as string | undefined; // Highly unstable API
+		// Highly unstable API
+		const base64 = JSON.parse(body)?.data[0]?.[0] as string | undefined;
 		if (typeof base64 !== "string" || !base64.startsWith("data:image/png;base64,")) throw new Error("Could not read final image result from server response");
 		const blob = await (await fetch(base64)).blob();
 
@@ -112,10 +109,20 @@ export async function aiArtistCheckConnection(hostname: string, editor: Editor):
 	editor.instance.setAiArtistServerStatus(serverReached);
 }
 
-function hostInfo(hostname: string): { hostname: string; endpoint: string } {
-	const endpoint = `${hostname}api/predict/`;
-	return { hostname, endpoint };
+// ABORTING AND RESETTING HELPERS
+
+function abortAndResetGenerating(): void {
+	generatingAbortRequest?.abort();
+	generatingAbortRequest = undefined;
 }
+
+function abortAndResetPolling(): void {
+	pollingAbortController.abort();
+	pollingAbortController = new AbortController();
+	clearTimeout(timer);
+}
+
+// POLLING IMPLEMENTATION DETAILS
 
 function scheduleNextPollingUpdate(
 	interval: number,
@@ -158,22 +165,18 @@ function scheduleNextPollingUpdate(
 	}, timeFromNow);
 }
 
-function abortAndResetGenerating(): void {
-	generatingAbortRequest?.abort();
-	generatingAbortRequest = undefined;
-}
+// API COMMUNICATION FUNCTIONS
+// These are highly unstable APIs that will need to be updated very frequently, so we currently assume usage of this exact commit from the server:
+// https://github.com/AUTOMATIC1111/stable-diffusion-webui/commit/7d6042b908c064774ee10961309d396eabdc6c4a
 
-function abortAndResetPolling(): void {
-	pollingAbortController.abort();
-	pollingAbortController = new AbortController();
-	clearTimeout(timer);
+function endpoint(hostname: string): string {
+	// Highly unstable API
+	return `${hostname}api/predict/`;
 }
 
 async function pollImage(hostname: string): Promise<[Blob, number]> {
-	const server = hostInfo(hostname);
-
 	// Highly unstable API
-	const result = await fetch(server.endpoint, {
+	const result = await fetch(endpoint(hostname), {
 		signal: pollingAbortController.signal,
 		headers: {
 			accept: "*/*",
@@ -184,7 +187,7 @@ async function pollImage(hostname: string): Promise<[Blob, number]> {
 		referrerPolicy: "strict-origin-when-cross-origin",
 		body: stripIndents`
 			{
-				"fn_index":2,
+				"fn_index":3,
 				"data":[],
 				"session_hash":"0000000000"
 			}`,
@@ -193,8 +196,10 @@ async function pollImage(hostname: string): Promise<[Blob, number]> {
 		credentials: "omit",
 	});
 	const json = await result.json();
-	const percentComplete = Number(json.data[0].match(/(?<="width:).*?(?=%")/)[0]); // Highly unstable API
-	const base64 = json.data[2]; // Highly unstable API
+	// Highly unstable API
+	const percentComplete = Number(json.data[0].match(/(?<="width:).*?(?=%")/)[0]);
+	// Highly unstable API
+	const base64 = json.data[2];
 
 	if (typeof base64 !== "string" || !base64.startsWith("data:image/png;base64,")) return Promise.reject();
 
@@ -203,13 +208,22 @@ async function pollImage(hostname: string): Promise<[Blob, number]> {
 	return [blob, percentComplete];
 }
 
-async function generate(discloseUploadingProgress: (progress: number) => void, hostname: string, image: Blob | undefined, parameters: AiArtistGenerationParameters): Promise<UploadedAndResult> {
+async function generate(
+	discloseUploadingProgress: (progress: number) => void,
+	hostname: string,
+	image: Blob | undefined,
+	parameters: AiArtistGenerationParameters
+): Promise<{
+	uploaded: Promise<void>;
+	result: Promise<RequestResult>;
+	xhr?: XMLHttpRequest;
+}> {
 	let body;
 	if (image === undefined || parameters.denoisingStrength === undefined) {
 		// Highly unstable API
 		body = stripIndents`
 		{
-			"fn_index":12,
+			"fn_index":13,
 			"data":[
 				"${escapeJSON(parameters.prompt)}",
 				"${escapeJSON(parameters.negativePrompt)}",
@@ -231,8 +245,9 @@ async function generate(discloseUploadingProgress: (progress: number) => void, h
 				${parameters.resolution[1]},
 				${parameters.resolution[0]},
 				false,
-				false,
 				0.7,
+				0,
+				0,
 				"None",
 				false,
 				false,
@@ -240,12 +255,12 @@ async function generate(discloseUploadingProgress: (progress: number) => void, h
 				"",
 				"Seed",
 				"",
-				"Steps",
+				"Nothing",
 				"",
 				true,
 				false,
+				false,
 				null,
-				"",
 				""
 			],
 			"session_hash":"0000000000"
@@ -256,7 +271,7 @@ async function generate(discloseUploadingProgress: (progress: number) => void, h
 		// Highly unstable API
 		body = stripIndents`
 		{
-			"fn_index":31,
+			"fn_index":33,
 			"data":[
 				0,
 				"${escapeJSON(parameters.prompt)}",
@@ -294,14 +309,19 @@ async function generate(discloseUploadingProgress: (progress: number) => void, h
 				"",
 				"None",
 				"",
+				true,
+				true,
 				"",
-				1,
+				"",
+				true,
 				50,
+				true,
+				1,
 				0,
 				false,
 				4,
 				1,
-				"<p style=\\"margin-bottom:0.75em\\">Recommended settings: Sampling Steps: 80-100, Sampler: Euler a, Denoising strength: 0.8</p>",
+				"",
 				128,
 				8,
 				["left","right","up","down"],
@@ -315,14 +335,15 @@ async function generate(discloseUploadingProgress: (progress: number) => void, h
 				false,
 				null,
 				"",
-				"<p style=\\"margin-bottom:0.75em\\">Will upscale the image to twice the dimensions; use width and height sliders to set tile size</p>",
+				"",
 				64,
 				"None",
 				"Seed",
 				"",
-				"Steps",
+				"Nothing",
 				"",
 				true,
+				false,
 				false,
 				null,
 				"",
@@ -341,7 +362,6 @@ async function generate(discloseUploadingProgress: (progress: number) => void, h
 	});
 
 	// Fire off the request and, once the outbound request upload is complete, resolve the promise we defined above
-	const server = hostInfo(hostname);
 	const uploadProgress = (progress: number): void => {
 		if (progress < 1) {
 			discloseUploadingProgress(progress);
@@ -349,7 +369,7 @@ async function generate(discloseUploadingProgress: (progress: number) => void, h
 			uploadedResolve();
 		}
 	};
-	const [result, xhr] = requestWithUploadDownloadProgress(server.endpoint, "POST", body, uploadProgress, abortAndResetPolling);
+	const [result, xhr] = requestWithUploadDownloadProgress(endpoint(hostname), "POST", body, uploadProgress, abortAndResetPolling);
 	result.catch(() => uploadedReject());
 
 	// Return the promise that resolves when the request upload is complete, the promise that resolves when the response download is complete, and the XHR so it can be aborted
@@ -357,16 +377,14 @@ async function generate(discloseUploadingProgress: (progress: number) => void, h
 }
 
 async function terminate(hostname: string): Promise<void> {
-	const server = hostInfo(hostname);
-
 	const body = stripIndents`
 		{
-			"fn_index":1,
+			"fn_index":2,
 			"data":[],
 			"session_hash":"0000000000"
 		}`;
 
-	await fetch(server.endpoint, {
+	await fetch(endpoint(hostname), {
 		headers: {
 			accept: "*/*",
 			"accept-language": "en-US,en;q=0.9",
@@ -387,17 +405,15 @@ async function checkConnection(hostname: string): Promise<boolean> {
 
 	const timeout = setTimeout(() => statusAbortController.abort(), SERVER_STATUS_CHECK_TIMEOUT);
 
-	const server = hostInfo(hostname);
-
 	const body = stripIndents`
 		{
-			"fn_index":54,
+			"fn_index":100,
 			"data":[],
 			"session_hash":"0000000000"
 		}`;
 
 	try {
-		await fetch(server.endpoint, {
+		await fetch(endpoint(hostname), {
 			signal: statusAbortController.signal,
 			headers: {
 				accept: "*/*",
