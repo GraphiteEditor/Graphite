@@ -182,22 +182,14 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				self.update_layer_tree_options_bar_widgets(responses, &persistent_data.font_cache);
 			}
 			AiArtistClear => {
-				let selected_layers = self.layer_metadata.iter().filter_map(|(layer_path, data)| data.selected.then_some(layer_path));
-				let mut selected_ai_artist_layers = selected_layers.filter(|path| {
-					self.graphene_document
-						.layer(path.as_slice())
-						.ok()
-						.and_then(|layer| matches!(layer.data, LayerDataType::AiArtist(_)).then_some(()))
-						.is_some()
-				});
-
+				let mut selected_ai_artist_layers = self.selected_layers_with_type(LayerDataTypeDiscriminant::AiArtist);
 				// Get what is hopefully the only selected AI Artist layer
 				let layer_path = selected_ai_artist_layers.next();
 				// Abort if we didn't have any AI Artist layer, or if there are additional ones also selected
 				if layer_path.is_none() || selected_ai_artist_layers.next().is_some() {
 					return;
 				}
-				let layer_path = layer_path.unwrap().as_slice();
+				let layer_path = layer_path.unwrap();
 
 				let layer = self.graphene_document.layer(layer_path).expect("Clearing AI Artist image for invalid layer");
 				let previous_blob_url = &layer.as_ai_artist().unwrap().blob_url;
@@ -1090,6 +1082,15 @@ impl DocumentMessageHandler {
 
 	pub fn selected_layers(&self) -> impl Iterator<Item = &[LayerId]> {
 		self.layer_metadata.iter().filter_map(|(path, data)| data.selected.then_some(path.as_slice()))
+	}
+
+	pub fn selected_layers_with_type(&self, discriminant: LayerDataTypeDiscriminant) -> impl Iterator<Item = &[LayerId]> {
+		self.selected_layers().filter(move |path| {
+			self.graphene_document
+				.layer(path)
+				.map(|layer| LayerDataTypeDiscriminant::from(&layer.data) == discriminant)
+				.unwrap_or(false)
+		})
 	}
 
 	pub fn non_selected_layers(&self) -> impl Iterator<Item = &[LayerId]> {
