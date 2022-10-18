@@ -908,16 +908,18 @@ impl DocumentMessageHandler {
 		self.artboard_message_handler.artboards_graphene_document.root.transform = DAffine2::IDENTITY;
 		GrapheneDocument::mark_children_as_dirty(&mut self.artboard_message_handler.artboards_graphene_document.root);
 
-		let mut selected_ai_artist_layers = self.selected_layers_with_type(LayerDataTypeDiscriminant::AiArtist);
-		// Get what is hopefully the only selected AI Artist layer
-		let layer_path = selected_ai_artist_layers.next();
-		// Abort if we didn't have any AI Artist layer, or if there are additional ones also selected
-		if layer_path.is_none() || selected_ai_artist_layers.next().is_some() {
-			return None;
-		}
-		let layer_path = layer_path.unwrap();
+		let layer_path = {
+			let mut selected_ai_artist_layers = self.selected_layers_with_type(LayerDataTypeDiscriminant::AiArtist);
 
-		let layer = self.graphene_document.layer(layer_path).unwrap();
+			// Get what is hopefully the only selected AI Artist layer
+			match selected_ai_artist_layers.next() {
+				// Continue only if there are no additional Ai artist layers also selected
+				Some(layer_path) if selected_ai_artist_layers.next().is_none() => layer_path.to_owned(),
+				_ => return None,
+			}
+		};
+
+		let layer = self.graphene_document.layer(&layer_path).unwrap();
 		let ai_artist_layer = layer.as_ai_artist().unwrap();
 
 		// Prepare the AI Artist properties
@@ -936,7 +938,7 @@ impl DocumentMessageHandler {
 		let generate_message = |base_image, denoising_strength| FrontendMessage::TriggerAiArtistGenerate {
 			base_image,
 			document_id,
-			layer_path: layer_path.into(),
+			layer_path: layer_path.clone(),
 			hostname: preferences.ai_artist_server_hostname.clone(),
 			refresh_frequency: preferences.ai_artist_refresh_frequency,
 			parameters: AiArtistGenerationParameters {
@@ -957,7 +959,7 @@ impl DocumentMessageHandler {
 			(true, _) => Some(
 				FrontendMessage::TriggerAiArtistTerminate {
 					document_id,
-					layer_path: layer_path.into(),
+					layer_path: layer_path.clone(),
 					hostname: preferences.ai_artist_server_hostname.clone(),
 				}
 				.into(),
@@ -969,7 +971,7 @@ impl DocumentMessageHandler {
 
 				let render_data = RenderData::new(ViewMode::Normal, &persistent_data.font_cache, None);
 
-				let artwork = self.graphene_document.render_layers_below(layer_path, render_data).unwrap();
+				let artwork = self.graphene_document.render_layers_below(&layer_path, render_data).unwrap();
 				let artboards = self.artboard_message_handler.artboards_graphene_document.render_root(render_data);
 				let outside_artboards_color = if self.artboard_message_handler.artboard_ids.is_empty() { "#ffffff" } else { "#000000" };
 				let outside_artboards = format!(r#"<rect x="{}" y="{}" width="100%" height="100%" fill="{}" />"#, bbox[0].x, bbox[0].y, outside_artboards_color);
