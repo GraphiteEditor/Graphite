@@ -202,7 +202,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 			AiArtistGenerate => {
 				if let Some(message) = self.call_ai_artist(false, document_id, preferences, persistent_data) {
 					// TODO: Eventually remove this after a message system ordering architectural change
-					// This block is a workaround for the fact that, when `ai-artist.ts` calls...
+					// This message is a workaround for the fact that, when `ai-artist.ts` calls...
 					// `editor.instance.setAIArtistGeneratingStatus(layerPath, 0, true);`
 					// ...execution transfers from the Rust part of the call stack into the JS part of the call stack (before the Rust message queue is empty,
 					// and there is a Properties panel refresh queued next). Then the JS calls that line shown above and enters the Rust part of the callstack
@@ -212,26 +212,14 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 					// before pressing the Generate button causing it to show "0%". So "Ready" or "Done" immediately overwrites the "0%". This block below,
 					// therefore, adds a redundant call to set it to 0% progress so the message execution order ends with this as the final percentage shown
 					// to the user.
-					{
-						let selected_layers = self.layer_metadata.iter().filter_map(|(layer_path, data)| data.selected.then_some(layer_path));
-						let mut selected_ai_artist_layers = selected_layers.filter(|path| {
-							self.graphene_document
-								.layer(path.as_slice())
-								.ok()
-								.and_then(|layer| matches!(layer.data, LayerDataType::AiArtist(_)).then_some(()))
-								.is_some()
-						});
-						let layer_path = selected_ai_artist_layers.next();
-
-						responses.push_back(
-							DocumentOperation::AiArtistSetGeneratingStatus {
-								path: layer_path.unwrap().clone(),
-								percent: Some(0.),
-								status: AiArtistStatus::Beginning,
-							}
-							.into(),
-						);
-					}
+					responses.push_back(
+						DocumentOperation::AiArtistSetGeneratingStatus {
+							path: self.selected_layers_with_type(LayerDataTypeDiscriminant::AiArtist).next().unwrap().to_vec(),
+							percent: Some(0.),
+							status: AiArtistStatus::Beginning,
+						}
+						.into(),
+					);
 
 					responses.push_back(message);
 				}
@@ -702,8 +690,8 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 			}
 			SetBlendModeForSelectedLayers { blend_mode } => {
 				self.backup(responses);
-				for path in self.layer_metadata.iter().filter_map(|(path, data)| data.selected.then(|| path.clone())) {
-					responses.push_back(DocumentOperation::SetLayerBlendMode { path, blend_mode }.into());
+				for path in self.selected_layers() {
+					responses.push_back(DocumentOperation::SetLayerBlendMode { path: path.to_vec(), blend_mode }.into());
 				}
 			}
 			SetImageBlobUrl { layer_path, blob_url, resolution } => {
@@ -920,22 +908,14 @@ impl DocumentMessageHandler {
 		self.artboard_message_handler.artboards_graphene_document.root.transform = DAffine2::IDENTITY;
 		GrapheneDocument::mark_children_as_dirty(&mut self.artboard_message_handler.artboards_graphene_document.root);
 
-		let selected_layers = self.layer_metadata.iter().filter_map(|(layer_path, data)| data.selected.then_some(layer_path));
-		let mut selected_ai_artist_layers = selected_layers.filter(|path| {
-			self.graphene_document
-				.layer(path.as_slice())
-				.ok()
-				.and_then(|layer| matches!(layer.data, LayerDataType::AiArtist(_)).then_some(()))
-				.is_some()
-		});
-
+		let mut selected_ai_artist_layers = self.selected_layers_with_type(LayerDataTypeDiscriminant::AiArtist);
 		// Get what is hopefully the only selected AI Artist layer
 		let layer_path = selected_ai_artist_layers.next();
 		// Abort if we didn't have any AI Artist layer, or if there are additional ones also selected
 		if layer_path.is_none() || selected_ai_artist_layers.next().is_some() {
 			return None;
 		}
-		let layer_path = layer_path.unwrap().as_slice();
+		let layer_path = layer_path.unwrap();
 
 		let layer = self.graphene_document.layer(layer_path).unwrap();
 		let ai_artist_layer = layer.as_ai_artist().unwrap();
