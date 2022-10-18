@@ -24,15 +24,13 @@ pub enum DocumentResponse {
 }
 
 impl fmt::Display for DocumentResponse {
-	fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-		let name = match self {
-			DocumentResponse::DocumentChanged { .. } => "DocumentChanged",
-			DocumentResponse::FolderChanged { .. } => "FolderChanged",
-			DocumentResponse::CreatedLayer { .. } => "CreatedLayer",
-			DocumentResponse::LayerChanged { .. } => "LayerChanged",
-			DocumentResponse::DeletedLayer { .. } => "DeleteLayer",
-		};
-
-		formatter.write_str(name)
+	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+		match self {
+			DocumentResponse::DocumentChanged { .. } => write!(f, "DocumentChanged"),
+			DocumentResponse::FolderChanged { .. } => write!(f, "FolderChanged"),
+			DocumentResponse::CreatedLayer { .. } => write!(f, "CreatedLayer"),
+			DocumentResponse::LayerChanged { .. } => write!(f, "LayerChanged"),
+			DocumentResponse::DeletedLayer { .. } => write!(f, "DeleteLayer"),
+		}
 	}
 }

@@ -202,11 +202,11 @@ pub enum LineCap {
 
 impl Display for LineCap {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		f.write_str(match &self {
-			LineCap::Butt => "butt",
-			LineCap::Round => "round",
-			LineCap::Square => "square",
-		})
+		match self {
+			LineCap::Butt => write!(f, "butt"),
+			LineCap::Round => write!(f, "round"),
+			LineCap::Square => write!(f, "square"),
+		}
 	}
 }
 
@@ -220,11 +220,11 @@ pub enum LineJoin {
 
 impl Display for LineJoin {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		f.write_str(match &self {
-			LineJoin::Bevel => "bevel",
-			LineJoin::Miter => "miter",
-			LineJoin::Round => "round",
-		})
+		match self {
+			LineJoin::Bevel => write!(f, "bevel"),
+			LineJoin::Miter => write!(f, "miter"),
+			LineJoin::Round => write!(f, "round"),
+		}
 	}
 }
 

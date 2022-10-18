@@ -3,6 +3,7 @@ use crate::messages::layout::utility_types::widgets::assist_widgets::PivotPositi
 use crate::messages::portfolio::document::utility_types::misc::TargetDocument;
 use crate::messages::prelude::*;
 
+use graphene::layers::ai_artist_layer::AiArtistSamplingMethod;
 use graphene::layers::style::{Fill, Stroke};
 use graphene::LayerId;
 
@@ -32,6 +33,7 @@ pub enum PropertiesPanelMessage {
 	SetAiArtistPrompt { prompt: String },
 	SetAiArtistRestoreFaces { restore_faces: bool },
 	SetAiArtistSamples { samples: u32 }, // TODO: Change to u64 for consistency
+	SetAiArtistSamplingMethod { method: AiArtistSamplingMethod },
 	SetAiArtistScaleFromResolution,
 	SetAiArtistSeed { seed: u64 },
 	SetAiArtistSeedRandomize,

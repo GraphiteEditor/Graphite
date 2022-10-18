@@ -268,6 +268,8 @@ export class AiArtistGenerationParameters {
 
 	readonly samples!: number;
 
+	readonly samplingMethod!: string;
+
 	readonly denoisingStrength!: number | undefined;
 
 	readonly cfgScale!: number;

@@ -1,5 +1,5 @@
 use crate::boolean_ops::BooleanOperation as BooleanOperationType;
-use crate::layers::ai_artist_layer::AiArtistStatus;
+use crate::layers::ai_artist_layer::{AiArtistSamplingMethod, AiArtistStatus};
 use crate::layers::blend_mode::BlendMode;
 use crate::layers::layer_info::Layer;
 use crate::layers::style::{self, Stroke};
@@ -93,6 +93,10 @@ pub enum Operation {
 	AiArtistSetSamples {
 		path: Vec<LayerId>,
 		samples: u32,
+	},
+	SetAiArtistSamplingMethod {
+		path: Vec<LayerId>,
+		method: AiArtistSamplingMethod,
 	},
 	AiArtistSetScaleFromResolution {
 		path: Vec<LayerId>,

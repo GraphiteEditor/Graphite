@@ -44,12 +44,11 @@ pub enum DocumentMode {
 
 impl fmt::Display for DocumentMode {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		let text = match self {
-			DocumentMode::DesignMode => "Design Mode".to_string(),
-			DocumentMode::SelectMode => "Select Mode".to_string(),
-			DocumentMode::GuideMode => "Guide Mode".to_string(),
-		};
-		write!(f, "{}", text)
+		match self {
+			DocumentMode::DesignMode => write!(f, "Design Mode"),
+			DocumentMode::SelectMode => write!(f, "Select Mode"),
+			DocumentMode::GuideMode => write!(f, "Guide Mode"),
+		}
 	}
 }
 

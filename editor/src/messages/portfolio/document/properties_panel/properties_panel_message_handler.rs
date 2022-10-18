@@ -165,6 +165,10 @@ impl<'a> MessageHandler<PropertiesPanelMessage, (&PersistentData, PropertiesPane
 				let (path, _) = self.active_selection.clone().expect("Received update for properties panel with no active layer");
 				responses.push_back(Operation::AiArtistSetSamples { path, samples }.into());
 			}
+			SetAiArtistSamplingMethod { method } => {
+				let (path, _) = self.active_selection.clone().expect("Received update for properties panel with no active layer");
+				responses.push_back(Operation::SetAiArtistSamplingMethod { path, method }.into());
+			}
 			SetAiArtistScaleFromResolution => {
 				let (path, _) = self.active_selection.clone().expect("Received update for properties panel with no active layer");
 

@@ -63,16 +63,14 @@ pub enum LayerDataTypeDiscriminant {
 }
 
 impl fmt::Display for LayerDataTypeDiscriminant {
-	fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-		let name = match self {
-			LayerDataTypeDiscriminant::Folder => "Folder",
-			LayerDataTypeDiscriminant::Shape => "Shape",
-			LayerDataTypeDiscriminant::Text => "Text",
-			LayerDataTypeDiscriminant::Image => "Image",
-			LayerDataTypeDiscriminant::AiArtist => "AI Artist",
-		};
-
-		formatter.write_str(name)
+	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+		match self {
+			LayerDataTypeDiscriminant::Folder => write!(f, "Folder"),
+			LayerDataTypeDiscriminant::Shape => write!(f, "Shape"),
+			LayerDataTypeDiscriminant::Text => write!(f, "Text"),
+			LayerDataTypeDiscriminant::Image => write!(f, "Image"),
+			LayerDataTypeDiscriminant::AiArtist => write!(f, "AI Artist"),
+		}
 	}
 }
 

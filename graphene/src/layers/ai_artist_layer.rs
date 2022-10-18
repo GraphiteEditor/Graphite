@@ -15,6 +15,7 @@ pub struct AiArtistLayer {
 	// User-configurable layer parameters
 	pub seed: u64,
 	pub samples: u32,
+	pub sampling_method: AiArtistSamplingMethod,
 	pub use_img2img: bool,
 	pub denoising_strength: f64,
 	pub cfg_scale: f64,
@@ -61,10 +62,89 @@ pub struct AiArtistBaseImage {
 	pub size: DVec2,
 }
 
+#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Deserialize, Serialize)]
+pub enum AiArtistSamplingMethod {
+	#[default]
+	EulerA,
+	Euler,
+	LMS,
+	Heun,
+	DPM2,
+	DPM2A,
+	DPMFast,
+	DPMAdaptive,
+	LMSKarras,
+	DPM2Karras,
+	DPM2AKarras,
+	DDIM,
+	PLMS,
+}
+
+impl AiArtistSamplingMethod {
+	pub fn api_value(&self) -> &str {
+		match self {
+			AiArtistSamplingMethod::EulerA => "Euler a",
+			AiArtistSamplingMethod::Euler => "Euler",
+			AiArtistSamplingMethod::LMS => "LMS",
+			AiArtistSamplingMethod::Heun => "Heun",
+			AiArtistSamplingMethod::DPM2 => "DPM2",
+			AiArtistSamplingMethod::DPM2A => "DPM2 a",
+			AiArtistSamplingMethod::DPMFast => "DPM fast",
+			AiArtistSamplingMethod::DPMAdaptive => "DPM adaptive",
+			AiArtistSamplingMethod::LMSKarras => "LMS Karras",
+			AiArtistSamplingMethod::DPM2Karras => "DPM2 Karras",
+			AiArtistSamplingMethod::DPM2AKarras => "DPM2 a Karras",
+			AiArtistSamplingMethod::DDIM => "DDIM",
+			AiArtistSamplingMethod::PLMS => "PLMS",
+		}
+	}
+
+	pub fn list() -> [AiArtistSamplingMethod; 13] {
+		[
+			AiArtistSamplingMethod::EulerA,
+			AiArtistSamplingMethod::Euler,
+			AiArtistSamplingMethod::LMS,
+			AiArtistSamplingMethod::Heun,
+			AiArtistSamplingMethod::DPM2,
+			AiArtistSamplingMethod::DPM2A,
+			AiArtistSamplingMethod::DPMFast,
+			AiArtistSamplingMethod::DPMAdaptive,
+			AiArtistSamplingMethod::LMSKarras,
+			AiArtistSamplingMethod::DPM2Karras,
+			AiArtistSamplingMethod::DPM2AKarras,
+			AiArtistSamplingMethod::DDIM,
+			AiArtistSamplingMethod::PLMS,
+		]
+	}
+}
+
+impl std::fmt::Display for AiArtistSamplingMethod {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self {
+			AiArtistSamplingMethod::EulerA => write!(f, "Euler A (Recommended)"),
+			AiArtistSamplingMethod::Euler => write!(f, "Euler"),
+			AiArtistSamplingMethod::LMS => write!(f, "LMS"),
+			AiArtistSamplingMethod::Heun => write!(f, "Heun"),
+			AiArtistSamplingMethod::DPM2 => write!(f, "DPM2"),
+			AiArtistSamplingMethod::DPM2A => write!(f, "DPM2 A"),
+			AiArtistSamplingMethod::DPMFast => write!(f, "DPM Fast"),
+			AiArtistSamplingMethod::DPMAdaptive => write!(f, "DPM Adaptive"),
+			AiArtistSamplingMethod::LMSKarras => write!(f, "LMS Karras"),
+			AiArtistSamplingMethod::DPM2Karras => write!(f, "DPM2 Karras"),
+			AiArtistSamplingMethod::DPM2AKarras => write!(f, "DPM2 A Karras"),
+			AiArtistSamplingMethod::DDIM => write!(f, "DDIM"),
+			AiArtistSamplingMethod::PLMS => write!(f, "PLMS"),
+		}
+	}
+}
+
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct AiArtistGenerationParameters {
 	pub seed: u64,
 	pub samples: u32,
+	/// Use `AiArtistSamplingMethod::api_value()` to generate this string
+	#[serde(rename = "samplingMethod")]
+	pub sampling_method: String,
 	#[serde(rename = "denoisingStrength")]
 	pub denoising_strength: Option<f64>,
 	#[serde(rename = "cfgScale")]
@@ -83,6 +163,7 @@ impl Default for AiArtistLayer {
 		Self {
 			seed: 0,
 			samples: 30,
+			sampling_method: Default::default(),
 			use_img2img: false,
 			denoising_strength: 0.66,
 			cfg_scale: 10.,

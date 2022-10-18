@@ -896,6 +896,16 @@ impl Document {
 				self.mark_as_dirty(&path)?;
 				Some(vec![LayerChanged { path }])
 			}
+			Operation::SetAiArtistSamplingMethod { path, method } => {
+				let layer = self.layer_mut(&path).expect("Setting AI Artist sampling method for invalid layer");
+				if let LayerDataType::AiArtist(ai_artist) = &mut layer.data {
+					ai_artist.sampling_method = method;
+				} else {
+					panic!("Incorrectly trying to set the sampling method for a layer that is not an AiArtist layer type");
+				}
+				self.mark_as_dirty(&path)?;
+				Some(vec![LayerChanged { path }])
+			}
 			Operation::AiArtistSetScaleFromResolution { path } => {
 				let layer = self.layer_mut(&path).expect("Setting AI Artist scale from resolution for invalid layer");
 

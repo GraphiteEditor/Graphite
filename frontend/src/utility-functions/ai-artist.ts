@@ -7,6 +7,7 @@ import { type AiArtistGenerationParameters } from "@/wasm-communication/messages
 
 const MAX_POLLING_RETRIES = 4;
 const SERVER_STATUS_CHECK_TIMEOUT = 5000;
+const SAMPLING_MODES_POLLING_UNSUPPORTED = ["DPM fast", "DPM adaptive"];
 
 let timer: NodeJS.Timeout | undefined;
 let terminated = false;
@@ -46,8 +47,9 @@ export async function aiArtistGenerate(
 		await uploaded;
 		editor.instance.setAIArtistGeneratingStatus(documentId, layerPath, 0, "Generating");
 
-		// Begin polling every second for updates to the in-progress image generation
-		if (refreshFrequency > 0) {
+		// Begin polling for updates to the in-progress image generation at the specified interval
+		// Don't poll if the chosen interval is 0, or if the chosen sampling method does not support polling
+		if (refreshFrequency > 0 && !SAMPLING_MODES_POLLING_UNSUPPORTED.includes(parameters.samplingMethod)) {
 			const interval = Math.max(refreshFrequency * 1000, 500);
 			scheduleNextPollingUpdate(interval, Date.now(), 0, editor, hostname, documentId, layerPath, parameters.resolution);
 		}
@@ -197,7 +199,7 @@ async function pollImage(hostname: string): Promise<[Blob, number]> {
 	});
 	const json = await result.json();
 	// Highly unstable API
-	const percentComplete = Number(json.data[0].match(/(?<="width:).*?(?=%")/)[0]);
+	const percentComplete = Math.abs(Number(json.data[0].match(/(?<="width:).*?(?=%")/)[0])); // The API sometimes returns negative values presumably due to a bug
 	// Highly unstable API
 	const base64 = json.data[2];
 
@@ -230,7 +232,7 @@ async function generate(
 				"None",
 				"None",
 				${parameters.samples},
-				"Euler a",
+				"${parameters.samplingMethod}",
 				${parameters.restoreFaces},
 				${parameters.tiling},
 				1,
@@ -284,7 +286,7 @@ async function generate(
 				null,
 				"Draw mask",
 				${parameters.samples},
-				"Euler a",
+				"${parameters.samplingMethod}",
 				4,
 				"fill",
 				${parameters.restoreFaces},

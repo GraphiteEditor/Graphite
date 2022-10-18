@@ -3,14 +3,16 @@ use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup,
 use crate::messages::layout::utility_types::misc::LayoutTarget;
 use crate::messages::layout::utility_types::widgets::assist_widgets::PivotAssist;
 use crate::messages::layout::utility_types::widgets::button_widgets::{IconButton, PopoverButton, TextButton};
-use crate::messages::layout::utility_types::widgets::input_widgets::{CheckboxInput, ColorInput, FontInput, NumberInput, RadioEntryData, RadioInput, TextAreaInput, TextInput};
+use crate::messages::layout::utility_types::widgets::input_widgets::{
+	CheckboxInput, ColorInput, DropdownEntryData, DropdownInput, FontInput, NumberInput, RadioEntryData, RadioInput, TextAreaInput, TextInput,
+};
 use crate::messages::layout::utility_types::widgets::label_widgets::{IconLabel, IconStyle, Separator, SeparatorDirection, SeparatorType, TextLabel};
 use crate::messages::portfolio::utility_types::{AiArtistServerStatus, PersistentData};
 use crate::messages::prelude::*;
 
 use graphene::color::Color;
 use graphene::document::pick_layer_safe_ai_artist_resolution;
-use graphene::layers::ai_artist_layer::{AiArtistLayer, AiArtistStatus};
+use graphene::layers::ai_artist_layer::{AiArtistLayer, AiArtistSamplingMethod, AiArtistStatus};
 use graphene::layers::layer_info::{Layer, LayerDataType, LayerDataTypeDiscriminant};
 use graphene::layers::style::{Fill, Gradient, GradientType, LineCap, LineJoin, Stroke};
 use graphene::layers::text_layer::{FontCache, TextLayer};
@@ -733,6 +735,46 @@ fn node_section_ai_artist(ai_artist_layer: &AiArtistLayer, layer: &Layer, persis
 								}
 								.into()
 							}),
+							..Default::default()
+						})),
+					]
+				},
+			},
+			LayoutGroup::Row {
+				widgets: {
+					let tooltip = "
+						Algorithm used to generate the image during each sampling step.\n\
+						\n\
+						'DPM Fast' and 'DPM Adaptive' do not support live refreshing updates.
+						"
+					.trim()
+					.to_string();
+
+					let sampling_methods = AiArtistSamplingMethod::list();
+					let mut entries = Vec::with_capacity(sampling_methods.len());
+					for method in sampling_methods {
+						entries.push(DropdownEntryData {
+							label: method.to_string(),
+							on_update: WidgetCallback::new(move |_| PropertiesPanelMessage::SetAiArtistSamplingMethod { method }.into()),
+							..DropdownEntryData::default()
+						});
+					}
+					let entries = vec![entries];
+
+					vec![
+						WidgetHolder::new(Widget::TextLabel(TextLabel {
+							value: "Sampling Method".into(),
+							tooltip: tooltip.clone(),
+							..Default::default()
+						})),
+						WidgetHolder::new(Widget::Separator(Separator {
+							separator_type: SeparatorType::Unrelated,
+							direction: SeparatorDirection::Horizontal,
+						})),
+						WidgetHolder::new(Widget::DropdownInput(DropdownInput {
+							entries,
+							selected_index: Some(ai_artist_layer.sampling_method as u32),
+							tooltip,
 							..Default::default()
 						})),
 					]

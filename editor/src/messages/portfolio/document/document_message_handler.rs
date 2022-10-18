@@ -384,8 +384,6 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 			} => {
 				// TODO: Find a way to avoid all the duplicated code used also by `ai_artist_img2img`
 
-				// PART 1 (IDENTICAL)
-
 				let old_artwork_transform = self.graphene_document.root.transform;
 				self.graphene_document.root.transform = DAffine2::IDENTITY;
 				GrapheneDocument::mark_children_as_dirty(&mut self.graphene_document.root);
@@ -393,10 +391,6 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				let old_artboard_transform = self.artboard_message_handler.artboards_graphene_document.root.transform;
 				self.artboard_message_handler.artboards_graphene_document.root.transform = DAffine2::IDENTITY;
 				GrapheneDocument::mark_children_as_dirty(&mut self.artboard_message_handler.artboards_graphene_document.root);
-
-				// PART 2 (DIFFERENT - ONLY IN OTHER ONE)
-
-				// PART 3 (DIFFERENT)
 
 				// Calculate the bounding box of the region to be exported
 				let bbox = match bounds {
@@ -412,8 +406,6 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				.unwrap_or_default();
 				let size = bbox[1] - bbox[0];
 
-				// PART 4 (CONDITIONALLY IDENTICAL)
-
 				let render_data = RenderData::new(ViewMode::Normal, &persistent_data.font_cache, None);
 
 				let artwork = self.graphene_document.render_root(render_data);
@@ -425,15 +417,11 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 					bbox[0].x, bbox[0].y, size.x, size.y, size.x, size.y, "\n", outside_artboards, artboards, artwork
 				);
 
-				// PART 5 (IDENTICAL)
-
 				self.graphene_document.root.transform = old_artwork_transform;
 				GrapheneDocument::mark_children_as_dirty(&mut self.graphene_document.root);
 
 				self.artboard_message_handler.artboards_graphene_document.root.transform = old_artboard_transform;
 				GrapheneDocument::mark_children_as_dirty(&mut self.artboard_message_handler.artboards_graphene_document.root);
-
-				// PART 6 (DIFFERENT)
 
 				let file_suffix = &format!(".{file_type:?}").to_lowercase();
 				let name = match file_name.ends_with(FILE_SAVE_SUFFIX) {
@@ -932,8 +920,6 @@ impl DocumentMessageHandler {
 	pub fn call_ai_artist(&mut self, terminate: bool, document_id: u64, preferences: &PreferencesMessageHandler, persistent_data: &PersistentData) -> Option<Message> {
 		// TODO: Find a way to avoid all the duplicated code used also by `ExportDocument`
 
-		// PART 1 (IDENTICAL)
-
 		let old_artwork_transform = self.graphene_document.root.transform;
 		self.graphene_document.root.transform = DAffine2::IDENTITY;
 		GrapheneDocument::mark_children_as_dirty(&mut self.graphene_document.root);
@@ -941,8 +927,6 @@ impl DocumentMessageHandler {
 		let old_artboard_transform = self.artboard_message_handler.artboards_graphene_document.root.transform;
 		self.artboard_message_handler.artboards_graphene_document.root.transform = DAffine2::IDENTITY;
 		GrapheneDocument::mark_children_as_dirty(&mut self.artboard_message_handler.artboards_graphene_document.root);
-
-		// PART 2 (DIFFERENT - ONLY IN THIS ONE)
 
 		let selected_layers = self.layer_metadata.iter().filter_map(|(layer_path, data)| data.selected.then_some(layer_path));
 		let mut selected_ai_artist_layers = selected_layers.filter(|path| {
@@ -970,13 +954,32 @@ impl DocumentMessageHandler {
 		let resolution = pick_layer_safe_ai_artist_resolution(layer, &persistent_data.font_cache);
 		let seed = ai_artist_layer.seed;
 		let samples = ai_artist_layer.samples;
+		let sampling_method = ai_artist_layer.sampling_method.api_value().to_string();
 		let cfg_scale = ai_artist_layer.cfg_scale;
 		let use_img2img = ai_artist_layer.use_img2img;
 		let denoising_strength = ai_artist_layer.denoising_strength;
 		let restore_faces = ai_artist_layer.restore_faces;
 		let tiling = ai_artist_layer.tiling;
 
-		// PART 3 (DIFFERENT)
+		let generate_message = |base_image, denoising_strength| FrontendMessage::TriggerAiArtistGenerate {
+			base_image,
+			document_id,
+			layer_path: layer_path.into(),
+			hostname: preferences.ai_artist_server_hostname.clone(),
+			refresh_frequency: preferences.ai_artist_refresh_frequency,
+			parameters: AiArtistGenerationParameters {
+				prompt,
+				negative_prompt,
+				resolution,
+				seed,
+				samples,
+				sampling_method,
+				cfg_scale,
+				denoising_strength,
+				restore_faces,
+				tiling,
+			},
+		};
 
 		let result = match (terminate, use_img2img) {
 			(true, _) => Some(
@@ -992,8 +995,6 @@ impl DocumentMessageHandler {
 				let bbox = layer.aabb(&persistent_data.font_cache).unwrap_or_default();
 				let size = bbox[1] - bbox[0];
 
-				// PART 4 (CONDITIONALLY IDENTICAL)
-
 				let render_data = RenderData::new(ViewMode::Normal, &persistent_data.font_cache, None);
 
 				let artwork = self.graphene_document.render_layers_below(layer_path, render_data).unwrap();
@@ -1005,53 +1006,10 @@ impl DocumentMessageHandler {
 					bbox[0].x, bbox[0].y, size.x, size.y, size.x, size.y, "\n", outside_artboards, artboards, artwork
 				);
 
-				// PART 6 (DIFFERENT)
-				Some(
-					FrontendMessage::TriggerAiArtistGenerate {
-						base_image: Some(AiArtistBaseImage { svg: document, size }),
-						document_id,
-						layer_path: layer_path.into(),
-						hostname: preferences.ai_artist_server_hostname.clone(),
-						refresh_frequency: preferences.ai_artist_refresh_frequency,
-						parameters: AiArtistGenerationParameters {
-							prompt,
-							negative_prompt,
-							resolution,
-							seed,
-							samples,
-							cfg_scale,
-							denoising_strength: Some(denoising_strength),
-							restore_faces,
-							tiling,
-						},
-					}
-					.into(),
-				)
+				Some(generate_message(Some(AiArtistBaseImage { svg: document, size }), Some(denoising_strength)).into())
 			}
-			(_, false) => Some(
-				FrontendMessage::TriggerAiArtistGenerate {
-					base_image: None,
-					document_id,
-					layer_path: layer_path.into(),
-					hostname: preferences.ai_artist_server_hostname.clone(),
-					refresh_frequency: preferences.ai_artist_refresh_frequency,
-					parameters: AiArtistGenerationParameters {
-						prompt,
-						negative_prompt,
-						resolution,
-						seed,
-						samples,
-						cfg_scale,
-						denoising_strength: None,
-						restore_faces,
-						tiling,
-					},
-				}
-				.into(),
-			),
+			(_, false) => Some(generate_message(None, None).into()),
 		};
-
-		// PART 5 (IDENTICAL)
 
 		self.graphene_document.root.transform = old_artwork_transform;
 		GrapheneDocument::mark_children_as_dirty(&mut self.graphene_document.root);
