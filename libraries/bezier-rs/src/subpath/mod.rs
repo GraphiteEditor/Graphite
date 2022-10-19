@@ -1,5 +1,6 @@
 mod core;
 mod lookup;
+mod solvers;
 mod structs;
 pub use structs::*;
 
