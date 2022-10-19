@@ -1,6 +1,6 @@
 <template>
 	<LayoutRow class="font-input">
-		<LayoutRow class="dropdown-box" :class="{ disabled }" :style="{ minWidth: `${minWidth}px` }" tabindex="0" @click="toggleOpen" @keydown="keydown" data-hover-menu-spawner>
+		<LayoutRow class="dropdown-box" :class="{ disabled }" :style="{ minWidth: `${minWidth}px` }" :title="tooltip" tabindex="0" @click="toggleOpen" @keydown="keydown" data-hover-menu-spawner>
 			<span>{{ activeEntry?.value || "" }}</span>
 			<IconLabel class="dropdown-arrow" :icon="'DropdownArrow'" />
 		</LayoutRow>
@@ -87,6 +87,7 @@ export default defineComponent({
 		fontStyle: { type: String as PropType<string>, required: true },
 		isStyle: { type: Boolean as PropType<boolean>, default: false },
 		disabled: { type: Boolean as PropType<boolean>, default: false },
+		tooltip: { type: String as PropType<string | undefined>, required: false },
 	},
 	data() {
 		return {

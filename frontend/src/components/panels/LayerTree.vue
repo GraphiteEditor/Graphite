@@ -45,17 +45,14 @@
 						@click.alt="(e: MouseEvent) => e.stopPropagation()"
 					>
 						<LayoutRow class="layer-type-icon">
-							<IconLabel v-if="listing.entry.layerType === 'Folder'" :icon="'NodeFolder'" :iconStyle="'Node'" title="Folder" />
-							<IconLabel v-else-if="listing.entry.layerType === 'Image'" :icon="'NodeImage'" :iconStyle="'Node'" title="Image" />
-							<IconLabel v-else-if="listing.entry.layerType === 'Shape'" :icon="'NodeShape'" :iconStyle="'Node'" title="Shape" />
-							<IconLabel v-else-if="listing.entry.layerType === 'Text'" :icon="'NodeText'" :iconStyle="'Node'" title="Path" />
+							<IconLabel :icon="layerTypeData(listing.entry.layerType).icon" :title="layerTypeData(listing.entry.layerType).name" />
 						</LayoutRow>
 						<LayoutRow class="layer-name" @dblclick="() => onEditLayerName(listing)">
 							<input
 								data-text-input
 								type="text"
 								:value="listing.entry.name"
-								:placeholder="listing.entry.layerType"
+								:placeholder="layerTypeData(listing.entry.layerType).name"
 								:disabled="!listing.editingName"
 								@blur="() => onEditLayerNameDeselect(listing)"
 								@keydown.esc="onEditLayerNameDeselect(listing)"
@@ -268,7 +265,16 @@
 import { defineComponent, nextTick } from "vue";
 
 import { platformIsMac } from "@/utility-functions/platform";
-import { type LayerPanelEntry, defaultWidgetLayout, UpdateDocumentLayerDetails, UpdateDocumentLayerTreeStructure, UpdateLayerTreeOptionsLayout } from "@/wasm-communication/messages";
+import {
+	type LayerType,
+	type LayerTypeData,
+	type LayerPanelEntry,
+	defaultWidgetLayout,
+	UpdateDocumentLayerDetails,
+	UpdateDocumentLayerTreeStructure,
+	UpdateLayerTreeOptionsLayout,
+	layerTypeData,
+} from "@/wasm-communication/messages";
 
 import LayoutCol from "@/components/layout/LayoutCol.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
@@ -483,6 +489,9 @@ export default defineComponent({
 			};
 
 			recurse(updateDocumentLayerTreeStructure, this.layers, this.layerCache);
+		},
+		layerTypeData(layerType: LayerType): LayerTypeData {
+			return layerTypeData(layerType) || { name: "Error", icon: "NodeText" };
 		},
 	},
 	mounted() {

@@ -126,7 +126,7 @@ impl Fsm for NavigateToolFsmState {
 		self,
 		message: ToolMessage,
 		tool_data: &mut Self::ToolData,
-		(_document, _global_tool_data, input, _font_cache): ToolActionHandlerData,
+		(_document, _document_id, _global_tool_data, input, _font_cache): ToolActionHandlerData,
 		_tool_options: &Self::ToolOptions,
 		messages: &mut VecDeque<Message>,
 	) -> Self {

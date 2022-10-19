@@ -10,6 +10,7 @@
 			v-model="inputValue"
 			:spellcheck="spellcheck"
 			:disabled="disabled"
+			:title="tooltip"
 			@focus="() => $emit('textFocused')"
 			@blur="() => $emit('textChanged')"
 			@change="() => $emit('textChanged')"
@@ -26,6 +27,7 @@
 			v-model="inputValue"
 			:spellcheck="spellcheck"
 			:disabled="disabled"
+			:title="tooltip"
 			@focus="() => $emit('textFocused')"
 			@blur="() => $emit('textChanged')"
 			@change="() => $emit('textChanged')"
@@ -55,6 +57,7 @@
 		padding: 3px 0;
 		overflow: hidden;
 		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 
 	&:not(.disabled) label {
@@ -129,6 +132,7 @@ export default defineComponent({
 		spellcheck: { type: Boolean as PropType<boolean>, default: false },
 		disabled: { type: Boolean as PropType<boolean>, default: false },
 		textarea: { type: Boolean as PropType<boolean>, default: false },
+		tooltip: { type: String as PropType<string | undefined>, required: false },
 	},
 	data() {
 		return {

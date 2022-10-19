@@ -3,15 +3,16 @@
 		<LayoutRow class="tab-bar" data-tab-bar :class="{ 'min-widths': tabMinWidths }">
 			<LayoutRow class="tab-group" :scrollableX="true">
 				<LayoutRow
-					class="tab"
-					:class="{ active: tabIndex === tabActiveIndex }"
-					data-tab
 					v-for="(tabLabel, tabIndex) in tabLabels"
 					:key="tabIndex"
+					class="tab"
+					:class="{ active: tabIndex === tabActiveIndex }"
+					:title="tabLabel.tooltip || null"
 					@click="(e: MouseEvent) => (e?.stopPropagation(), clickAction?.(tabIndex))"
 					@click.middle="(e: MouseEvent) => (e?.stopPropagation(), closeAction?.(tabIndex))"
+					data-tab
 				>
-					<span>{{ tabLabel }}</span>
+					<span>{{ tabLabel.name }}</span>
 					<IconButton :action="(e: MouseEvent) => (e?.stopPropagation(), closeAction?.(tabIndex))" :icon="'CloseX'" :size="16" v-if="tabCloseButtons" />
 				</LayoutRow>
 			</LayoutRow>
@@ -31,7 +32,7 @@
 						<table>
 							<tr>
 								<td>
-									<TextButton :label="'New Document:'" :icon="'File'" :action="() => newDocument()" />
+									<TextButton :label="'New Document'" :icon="'File'" :action="() => newDocument()" />
 								</td>
 								<td>
 									<UserInputLabel :keysWithLabelsGroups="[[...platformModifiers(true), { key: 'KeyN', label: 'N' }]]" />
@@ -39,7 +40,7 @@
 							</tr>
 							<tr>
 								<td>
-									<TextButton :label="'Open Document:'" :icon="'Folder'" :action="() => openDocument()" />
+									<TextButton :label="'Open Document'" :icon="'Folder'" :action="() => openDocument()" />
 								</td>
 								<td>
 									<UserInputLabel :keysWithLabelsGroups="[[...platformModifiers(false), { key: 'KeyO', label: 'O' }]]" />
@@ -244,7 +245,7 @@ export default defineComponent({
 	props: {
 		tabMinWidths: { type: Boolean as PropType<boolean>, default: false },
 		tabCloseButtons: { type: Boolean as PropType<boolean>, default: false },
-		tabLabels: { type: Array as PropType<string[]>, required: true },
+		tabLabels: { type: Array as PropType<{ name: string; tooltip?: string }[]>, required: true },
 		tabActiveIndex: { type: Number as PropType<number>, required: true },
 		panelType: { type: String as PropType<PanelTypes>, required: false },
 		clickAction: { type: Function as PropType<(index: number) => void>, required: false },

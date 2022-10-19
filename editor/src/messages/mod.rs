@@ -10,6 +10,7 @@ pub mod input_preprocessor;
 pub mod layout;
 pub mod message;
 pub mod portfolio;
+pub mod preferences;
 pub mod prelude;
 pub mod tool;
 pub mod workspace;

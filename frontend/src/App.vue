@@ -217,7 +217,6 @@ img {
 <script lang="ts">
 import { defineComponent } from "vue";
 
-import { createBlobManager } from "@/io-managers/blob";
 import { createClipboardManager } from "@/io-managers/clipboard";
 import { createHyperlinkManager } from "@/io-managers/hyperlinks";
 import { createInputManager } from "@/io-managers/input";
@@ -236,7 +235,6 @@ import { createEditor, type Editor } from "@/wasm-communication/editor";
 import MainWindow from "@/components/window/MainWindow.vue";
 
 const managerDestructors: {
-	createBlobManager?: () => void;
 	createClipboardManager?: () => void;
 	createHyperlinkManager?: () => void;
 	createInputManager?: () => void;
@@ -285,7 +283,6 @@ export default defineComponent({
 	async mounted() {
 		// Initialize managers, which are isolated systems that subscribe to backend messages to link them to browser API functionality (like JS events, IndexedDB, etc.)
 		Object.assign(managerDestructors, {
-			createBlobManager: createBlobManager(this.editor),
 			createClipboardManager: createClipboardManager(this.editor),
 			createHyperlinkManager: createHyperlinkManager(this.editor),
 			createInputManager: createInputManager(this.editor, this.$el.parentElement, this.dialog, this.portfolio, this.fullscreen),

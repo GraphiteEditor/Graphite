@@ -2,7 +2,7 @@ use crate::application::set_uuid_seed;
 use crate::application::Editor;
 use crate::messages::input_mapper::utility_types::input_keyboard::ModifierKeys;
 use crate::messages::input_mapper::utility_types::input_mouse::{EditorMouseState, MouseKeys, ScrollDelta, ViewportPosition};
-use crate::messages::portfolio::document::utility_types::misc::Platform;
+use crate::messages::portfolio::utility_types::Platform;
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::ToolType;
 
