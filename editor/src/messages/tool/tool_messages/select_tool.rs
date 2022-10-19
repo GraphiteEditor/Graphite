@@ -966,7 +966,7 @@ impl SelectToolData {
 
 			responses.push_back(
 				Operation::InsertLayer {
-					layer,
+					layer: Box::new(layer),
 					destination_path: layer_path.clone(),
 					insert_index: -1,
 				}

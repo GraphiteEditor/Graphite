@@ -1,4 +1,5 @@
 use super::utility_types::error::EditorError;
+use super::utility_types::misc::DocumentRenderMode;
 use crate::application::generate_uuid;
 use crate::consts::{ASYMPTOTIC_EFFECT, DEFAULT_DOCUMENT_NAME, FILE_SAVE_SUFFIX, GRAPHITE_DOCUMENT_VERSION, SCALE_EFFECT, SCROLLBAR_SPACING, VIEWPORT_ZOOM_TO_FIT_PADDING_SCALE_FACTOR};
 use crate::messages::frontend::utility_types::ExportBounds;
@@ -200,7 +201,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				responses.push_back(DocumentOperation::AiArtistClear { path: layer_path.into() }.into());
 			}
 			AiArtistGenerate => {
-				if let Some(message) = self.call_ai_artist(false, document_id, preferences, persistent_data) {
+				if let Some(message) = self.call_ai_artist(document_id, preferences, persistent_data) {
 					// TODO: Eventually remove this after a message system ordering architectural change
 					// This message is a workaround for the fact that, when `ai-artist.ts` calls...
 					// `editor.instance.setAIArtistGeneratingStatus(layerPath, 0, true);`
@@ -225,8 +226,21 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				}
 			}
 			AiArtistTerminate => {
-				if let Some(message) = self.call_ai_artist(true, document_id, preferences, persistent_data) {
-					responses.push_back(message);
+				let hostname = preferences.ai_artist_server_hostname.clone();
+
+				let layer_path = {
+					let mut selected_ai_artist_layers = self.selected_layers_with_type(LayerDataTypeDiscriminant::AiArtist);
+
+					// Get what is hopefully the only selected AI Artist layer
+					match selected_ai_artist_layers.next() {
+						// Continue only if there are no additional Ai artist layers also selected
+						Some(layer_path) if selected_ai_artist_layers.next().is_none() => Some(layer_path.to_owned()),
+						_ => None,
+					}
+				};
+
+				if let Some(layer_path) = layer_path {
+					responses.push_back(FrontendMessage::TriggerAiArtistTerminate { document_id, layer_path, hostname }.into());
 				}
 			}
 			AlignSelectedLayers { axis, aggregate } => {
@@ -362,18 +376,8 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				scale_factor,
 				bounds,
 			} => {
-				// TODO: Find a way to avoid all the duplicated code used also by `ai_artist_img2img`
-
-				let old_artwork_transform = self.graphene_document.root.transform;
-				self.graphene_document.root.transform = DAffine2::IDENTITY;
-				GrapheneDocument::mark_children_as_dirty(&mut self.graphene_document.root);
-
-				let old_artboard_transform = self.artboard_message_handler.artboards_graphene_document.root.transform;
-				self.artboard_message_handler.artboards_graphene_document.root.transform = DAffine2::IDENTITY;
-				GrapheneDocument::mark_children_as_dirty(&mut self.artboard_message_handler.artboards_graphene_document.root);
-
 				// Calculate the bounding box of the region to be exported
-				let bbox = match bounds {
+				let bounds = match bounds {
 					ExportBounds::AllArtwork => self.all_layer_bounds(&persistent_data.font_cache),
 					ExportBounds::Selection => self.selected_visible_layers_bounding_box(&persistent_data.font_cache),
 					ExportBounds::Artboard(id) => self
@@ -384,24 +388,9 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 						.and_then(|layer| layer.aabb(&persistent_data.font_cache)),
 				}
 				.unwrap_or_default();
-				let size = bbox[1] - bbox[0];
+				let size = bounds[1] - bounds[0];
 
-				let render_data = RenderData::new(ViewMode::Normal, &persistent_data.font_cache, None);
-
-				let artwork = self.graphene_document.render_root(render_data);
-				let artboards = self.artboard_message_handler.artboards_graphene_document.render_root(render_data);
-				let outside_artboards_color = if self.artboard_message_handler.artboard_ids.is_empty() { "#ffffff" } else { "#000000" };
-				let outside_artboards = format!(r#"<rect x="{}" y="{}" width="100%" height="100%" fill="{}" />"#, bbox[0].x, bbox[0].y, outside_artboards_color);
-				let document = format!(
-					r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{} {} {} {}" width="{}" height="{}">{}{}{}{}</svg>"#,
-					bbox[0].x, bbox[0].y, size.x, size.y, size.x, size.y, "\n", outside_artboards, artboards, artwork
-				);
-
-				self.graphene_document.root.transform = old_artwork_transform;
-				GrapheneDocument::mark_children_as_dirty(&mut self.graphene_document.root);
-
-				self.artboard_message_handler.artboards_graphene_document.root.transform = old_artboard_transform;
-				GrapheneDocument::mark_children_as_dirty(&mut self.artboard_message_handler.artboards_graphene_document.root);
+				let document = self.render_document(bounds, persistent_data, DocumentRenderMode::Root);
 
 				let file_suffix = &format!(".{file_type:?}").to_lowercase();
 				let name = match file_name.ends_with(FILE_SAVE_SUFFIX) {
@@ -909,17 +898,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 }
 
 impl DocumentMessageHandler {
-	pub fn call_ai_artist(&mut self, terminate: bool, document_id: u64, preferences: &PreferencesMessageHandler, persistent_data: &PersistentData) -> Option<Message> {
-		// TODO: Find a way to avoid all the duplicated code used also by `ExportDocument`
-
-		let old_artwork_transform = self.graphene_document.root.transform;
-		self.graphene_document.root.transform = DAffine2::IDENTITY;
-		GrapheneDocument::mark_children_as_dirty(&mut self.graphene_document.root);
-
-		let old_artboard_transform = self.artboard_message_handler.artboards_graphene_document.root.transform;
-		self.artboard_message_handler.artboards_graphene_document.root.transform = DAffine2::IDENTITY;
-		GrapheneDocument::mark_children_as_dirty(&mut self.artboard_message_handler.artboards_graphene_document.root);
-
+	pub fn call_ai_artist(&mut self, document_id: u64, preferences: &PreferencesMessageHandler, persistent_data: &PersistentData) -> Option<Message> {
 		let layer_path = {
 			let mut selected_ai_artist_layers = self.selected_layers_with_type(LayerDataTypeDiscriminant::AiArtist);
 
@@ -931,71 +910,77 @@ impl DocumentMessageHandler {
 			}
 		};
 
+		// Prepare the AI Artist parameters and base image
+
 		let layer = self.graphene_document.layer(&layer_path).unwrap();
 		let ai_artist_layer = layer.as_ai_artist().unwrap();
 
-		// Prepare the AI Artist properties
-		let prompt = ai_artist_layer.prompt.clone();
-		let negative_prompt = ai_artist_layer.negative_prompt.clone();
-		let resolution = pick_layer_safe_ai_artist_resolution(layer, &persistent_data.font_cache);
-		let seed = ai_artist_layer.seed;
-		let samples = ai_artist_layer.samples;
-		let sampling_method = ai_artist_layer.sampling_method.api_value().to_string();
-		let cfg_scale = ai_artist_layer.cfg_scale;
-		let use_img2img = ai_artist_layer.use_img2img;
-		let denoising_strength = ai_artist_layer.denoising_strength;
-		let restore_faces = ai_artist_layer.restore_faces;
-		let tiling = ai_artist_layer.tiling;
+		let parameters = AiArtistGenerationParameters {
+			seed: ai_artist_layer.seed,
+			samples: ai_artist_layer.samples,
+			sampling_method: ai_artist_layer.sampling_method.api_value().to_string(),
+			denoising_strength: ai_artist_layer.use_img2img.then_some(ai_artist_layer.denoising_strength),
+			cfg_scale: ai_artist_layer.cfg_scale,
+			prompt: ai_artist_layer.prompt.clone(),
+			negative_prompt: ai_artist_layer.negative_prompt.clone(),
+			resolution: pick_layer_safe_ai_artist_resolution(layer, &persistent_data.font_cache),
+			restore_faces: ai_artist_layer.restore_faces,
+			tiling: ai_artist_layer.tiling,
+		};
+		let base_image = if ai_artist_layer.use_img2img {
+			// Calculate the bounding box of the region to be exported
+			let bounds = layer.aabb(&persistent_data.font_cache).unwrap_or_default();
+			let size = bounds[1] - bounds[0];
 
-		let generate_message = |base_image, denoising_strength| FrontendMessage::TriggerAiArtistGenerate {
-			base_image,
-			document_id,
-			layer_path: layer_path.clone(),
-			hostname: preferences.ai_artist_server_hostname.clone(),
-			refresh_frequency: preferences.ai_artist_refresh_frequency,
-			parameters: AiArtistGenerationParameters {
-				prompt,
-				negative_prompt,
-				resolution,
-				seed,
-				samples,
-				sampling_method,
-				cfg_scale,
-				denoising_strength,
-				restore_faces,
-				tiling,
-			},
+			let svg = self.render_document(bounds, persistent_data, DocumentRenderMode::OnlyBelowLayerInFolder(&layer_path));
+
+			Some(AiArtistBaseImage { svg, size })
+		} else {
+			None
 		};
 
-		let result = match (terminate, use_img2img) {
-			(true, _) => Some(
-				FrontendMessage::TriggerAiArtistTerminate {
-					document_id,
-					layer_path: layer_path.clone(),
-					hostname: preferences.ai_artist_server_hostname.clone(),
-				}
-				.into(),
-			),
-			(_, true) => {
-				// Calculate the bounding box of the region to be exported
-				let bbox = layer.aabb(&persistent_data.font_cache).unwrap_or_default();
-				let size = bbox[1] - bbox[0];
-
-				let render_data = RenderData::new(ViewMode::Normal, &persistent_data.font_cache, None);
-
-				let artwork = self.graphene_document.render_layers_below(&layer_path, render_data).unwrap();
-				let artboards = self.artboard_message_handler.artboards_graphene_document.render_root(render_data);
-				let outside_artboards_color = if self.artboard_message_handler.artboard_ids.is_empty() { "#ffffff" } else { "#000000" };
-				let outside_artboards = format!(r#"<rect x="{}" y="{}" width="100%" height="100%" fill="{}" />"#, bbox[0].x, bbox[0].y, outside_artboards_color);
-				let document = format!(
-					r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{} {} {} {}" width="{}" height="{}">{}{}{}{}</svg>"#,
-					bbox[0].x, bbox[0].y, size.x, size.y, size.x, size.y, "\n", outside_artboards, artboards, artwork
-				);
-
-				Some(generate_message(Some(AiArtistBaseImage { svg: document, size }), Some(denoising_strength)).into())
+		Some(
+			FrontendMessage::TriggerAiArtistGenerate {
+				parameters,
+				base_image,
+				hostname: preferences.ai_artist_server_hostname.clone(),
+				refresh_frequency: preferences.ai_artist_refresh_frequency,
+				document_id,
+				layer_path,
 			}
-			(_, false) => Some(generate_message(None, None).into()),
+			.into(),
+		)
+	}
+
+	pub fn render_document(&mut self, bounds: [DVec2; 2], persistent_data: &PersistentData, render_mode: DocumentRenderMode) -> String {
+		// Remove the artwork and artboard pan/tilt/zoom to render it without the user's viewport navigation, and save it to be restored at the end
+
+		let old_artwork_transform = self.graphene_document.root.transform;
+		self.graphene_document.root.transform = DAffine2::IDENTITY;
+		GrapheneDocument::mark_children_as_dirty(&mut self.graphene_document.root);
+
+		let old_artboard_transform = self.artboard_message_handler.artboards_graphene_document.root.transform;
+		self.artboard_message_handler.artboards_graphene_document.root.transform = DAffine2::IDENTITY;
+		GrapheneDocument::mark_children_as_dirty(&mut self.artboard_message_handler.artboards_graphene_document.root);
+
+		// Render the document SVG code
+
+		let size = bounds[1] - bounds[0];
+		let render_data = RenderData::new(ViewMode::Normal, &persistent_data.font_cache, None);
+
+		let artwork = match render_mode {
+			DocumentRenderMode::Root => self.graphene_document.render_root(render_data),
+			DocumentRenderMode::OnlyBelowLayerInFolder(below_layer_path) => self.graphene_document.render_layers_below(below_layer_path, render_data).unwrap(),
 		};
+		let artboards = self.artboard_message_handler.artboards_graphene_document.render_root(render_data);
+		let outside_artboards_color = if self.artboard_message_handler.artboard_ids.is_empty() { "#ffffff" } else { "#000000" };
+		let outside_artboards = format!(r#"<rect x="{}" y="{}" width="100%" height="100%" fill="{}" />"#, bounds[0].x, bounds[0].y, outside_artboards_color);
+		let svg = format!(
+			r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{} {} {} {}" width="{}" height="{}">{}{}{}{}</svg>"#,
+			bounds[0].x, bounds[0].y, size.x, size.y, size.x, size.y, "\n", outside_artboards, artboards, artwork
+		);
+
+		// Transform the artwork and artboard back to their original scales
 
 		self.graphene_document.root.transform = old_artwork_transform;
 		GrapheneDocument::mark_children_as_dirty(&mut self.graphene_document.root);
@@ -1003,7 +988,7 @@ impl DocumentMessageHandler {
 		self.artboard_message_handler.artboards_graphene_document.root.transform = old_artboard_transform;
 		GrapheneDocument::mark_children_as_dirty(&mut self.artboard_message_handler.artboards_graphene_document.root);
 
-		result
+		svg
 	}
 
 	pub fn serialize_document(&self) -> String {
@@ -1296,7 +1281,7 @@ impl DocumentMessageHandler {
 			Some((document, layer_metadata)) => {
 				// Update the currently displayed layer on the Properties panel if the selection changes after an undo action
 				// Also appropriately update the Properties panel if an undo action results in a layer being deleted
-				let prev_selected_paths: Vec<Vec<LayerId>> = layer_metadata.iter().filter_map(|(layer_id, metadata)| metadata.selected.then(|| layer_id.clone())).collect();
+				let prev_selected_paths: Vec<Vec<LayerId>> = layer_metadata.iter().filter_map(|(layer_id, metadata)| metadata.selected.then_some(layer_id.clone())).collect();
 
 				if prev_selected_paths != selected_paths {
 					responses.push_back(BroadcastEvent::SelectionChanged.into());
@@ -1326,7 +1311,7 @@ impl DocumentMessageHandler {
 			Some((document, layer_metadata)) => {
 				// Update currently displayed layer on property panel if selection changes after redo action
 				// Also appropriately update property panel if redo action results in a layer being added
-				let next_selected_paths: Vec<Vec<LayerId>> = layer_metadata.iter().filter_map(|(layer_id, metadata)| metadata.selected.then(|| layer_id.clone())).collect();
+				let next_selected_paths: Vec<Vec<LayerId>> = layer_metadata.iter().filter_map(|(layer_id, metadata)| metadata.selected.then_some(layer_id.clone())).collect();
 
 				if next_selected_paths != selected_paths {
 					responses.push_back(BroadcastEvent::SelectionChanged.into());

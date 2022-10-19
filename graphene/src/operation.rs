@@ -209,7 +209,7 @@ pub enum Operation {
 		new_name: String,
 	},
 	InsertLayer {
-		layer: Layer,
+		layer: Box<Layer>,
 		destination_path: Vec<LayerId>,
 		insert_index: isize,
 	},

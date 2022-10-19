@@ -352,7 +352,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 						document.load_layer_resources(responses, &entry.layer.data, destination_path.clone(), self.active_document_id.unwrap());
 						responses.push_front(
 							DocumentOperation::InsertLayer {
-								layer: entry.layer.clone(),
+								layer: Box::new(entry.layer.clone()),
 								destination_path,
 								insert_index,
 							}
@@ -394,7 +394,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 							document.load_layer_resources(responses, &entry.layer.data, destination_path.clone(), self.active_document_id.unwrap());
 							responses.push_front(
 								DocumentOperation::InsertLayer {
-									layer: entry.layer.clone(),
+									layer: Box::new(entry.layer.clone()),
 									destination_path,
 									insert_index: -1,
 								}
