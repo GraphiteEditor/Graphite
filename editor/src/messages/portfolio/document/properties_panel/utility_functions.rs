@@ -6,7 +6,7 @@ use crate::messages::layout::utility_types::widgets::button_widgets::{IconButton
 use crate::messages::layout::utility_types::widgets::input_widgets::{
 	CheckboxInput, ColorInput, DropdownEntryData, DropdownInput, FontInput, NumberInput, RadioEntryData, RadioInput, TextAreaInput, TextInput,
 };
-use crate::messages::layout::utility_types::widgets::label_widgets::{IconLabel, IconStyle, Separator, SeparatorDirection, SeparatorType, TextLabel};
+use crate::messages::layout::utility_types::widgets::label_widgets::{IconLabel, Separator, SeparatorDirection, SeparatorType, TextLabel};
 use crate::messages::portfolio::utility_types::{AiArtistServerStatus, PersistentData};
 use crate::messages::prelude::*;
 
@@ -45,7 +45,6 @@ pub fn register_artboard_layer_properties(layer: &Layer, responses: &mut VecDequ
 			WidgetHolder::new(Widget::IconLabel(IconLabel {
 				icon: "NodeArtboard".into(),
 				tooltip: "Artboard".into(),
-				icon_style: IconStyle::Node,
 			})),
 			WidgetHolder::new(Widget::Separator(Separator {
 				separator_type: SeparatorType::Related,
@@ -231,27 +230,22 @@ pub fn register_artwork_layer_properties(layer: &Layer, responses: &mut VecDeque
 			match &layer.data {
 				LayerDataType::Folder(_) => WidgetHolder::new(Widget::IconLabel(IconLabel {
 					icon: "NodeFolder".into(),
-					icon_style: IconStyle::Node,
 					tooltip: "Folder".into(),
 				})),
 				LayerDataType::Shape(_) => WidgetHolder::new(Widget::IconLabel(IconLabel {
 					icon: "NodeShape".into(),
-					icon_style: IconStyle::Node,
 					tooltip: "Shape".into(),
 				})),
 				LayerDataType::Text(_) => WidgetHolder::new(Widget::IconLabel(IconLabel {
 					icon: "NodeText".into(),
-					icon_style: IconStyle::Node,
 					tooltip: "Text".into(),
 				})),
 				LayerDataType::Image(_) => WidgetHolder::new(Widget::IconLabel(IconLabel {
 					icon: "NodeImage".into(),
-					icon_style: IconStyle::Node,
 					tooltip: "Image".into(),
 				})),
 				LayerDataType::AiArtist(_) => WidgetHolder::new(Widget::IconLabel(IconLabel {
 					icon: "NodeAiArtist".into(),
-					icon_style: IconStyle::Node,
 					tooltip: "AI Artist".into(),
 				})),
 			},

@@ -2,7 +2,7 @@
 
 import { Transform, Type, plainToClass } from "class-transformer";
 
-import { type IconName, type IconSize, type IconStyle } from "@/utility-functions/icons";
+import { type IconName, type IconSize } from "@/utility-functions/icons";
 import { type WasmEditorInstance, type WasmRawInstance } from "@/wasm-communication/editor";
 
 import type MenuList from "@/components/floating-menus/MenuList.vue";
@@ -573,8 +573,6 @@ export class IconButton extends WidgetProps {
 
 export class IconLabel extends WidgetProps {
 	icon!: IconName;
-
-	iconStyle!: IconStyle | undefined;
 
 	@Transform(({ value }: { value: string }) => (value.length > 0 ? value : undefined))
 	tooltip!: string | undefined;

@@ -6,16 +6,6 @@ pub struct IconLabel {
 	pub icon: String,
 
 	pub tooltip: String,
-
-	#[serde(rename = "iconStyle")]
-	pub icon_style: IconStyle,
-}
-
-#[derive(Clone, Serialize, Deserialize, Derivative, Debug, Default, PartialEq, Eq)]
-pub enum IconStyle {
-	#[default]
-	Normal,
-	Node,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

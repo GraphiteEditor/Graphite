@@ -45,7 +45,7 @@
 						@click.alt="(e: MouseEvent) => e.stopPropagation()"
 					>
 						<LayoutRow class="layer-type-icon">
-							<IconLabel :iconStyle="'Node'" :icon="layerTypeData(listing.entry.layerType).icon" :title="layerTypeData(listing.entry.layerType).name" />
+							<IconLabel :icon="layerTypeData(listing.entry.layerType).icon" :title="layerTypeData(listing.entry.layerType).name" />
 						</LayoutRow>
 						<LayoutRow class="layer-name" @dblclick="() => onEditLayerName(listing)">
 							<input
