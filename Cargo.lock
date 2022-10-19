@@ -341,6 +341,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "graph-craft"
+version = "0.1.0"
+dependencies = [
+ "borrow_stack",
+ "dyn-any",
+ "graphene-core",
+ "graphene-std",
+ "num-traits",
+]
+
+[[package]]
 name = "graph-proc-macros"
 version = "0.1.0"
 dependencies = [
@@ -373,6 +384,7 @@ dependencies = [
  "once_cell",
  "proc-macro2",
  "quote",
+ "rand_chacha",
  "syn",
 ]
 
