@@ -28,7 +28,7 @@
 								<div></div>
 							</div>
 						</div>
-						<IconLabel :icon="'NodeImage'" :iconStyle="'Node'" />
+						<IconLabel :icon="'NodeImage'" />
 						<TextLabel>Image</TextLabel>
 					</div>
 				</div>
@@ -42,7 +42,7 @@
 								<div></div>
 							</div>
 						</div>
-						<IconLabel :icon="'NodeMask'" :iconStyle="'Node'" />
+						<IconLabel :icon="'NodeMask'" />
 						<TextLabel>Mask</TextLabel>
 					</div>
 					<div class="arguments">
@@ -69,7 +69,7 @@
 								<div></div>
 							</div>
 						</div>
-						<IconLabel :icon="'NodeTransform'" :iconStyle="'Node'" />
+						<IconLabel :icon="'NodeTransform'" />
 						<TextLabel>Transform</TextLabel>
 					</div>
 				</div>
@@ -83,7 +83,7 @@
 								<div></div>
 							</div>
 						</div>
-						<IconLabel :icon="'NodeMotionBlur'" :iconStyle="'Node'" />
+						<IconLabel :icon="'NodeMotionBlur'" />
 						<TextLabel>Motion Blur</TextLabel>
 					</div>
 					<div class="arguments">
@@ -110,7 +110,7 @@
 								<div></div>
 							</div>
 						</div>
-						<IconLabel :icon="'NodeShape'" :iconStyle="'Node'" />
+						<IconLabel :icon="'NodeShape'" />
 						<TextLabel>Shape</TextLabel>
 					</div>
 				</div>
@@ -124,7 +124,7 @@
 								<div></div>
 							</div>
 						</div>
-						<IconLabel :icon="'NodeBrushwork'" :iconStyle="'Node'" />
+						<IconLabel :icon="'NodeBrushwork'" />
 						<TextLabel>Brushwork</TextLabel>
 					</div>
 				</div>
@@ -138,7 +138,7 @@
 								<div></div>
 							</div>
 						</div>
-						<IconLabel :icon="'NodeBlur'" :iconStyle="'Node'" />
+						<IconLabel :icon="'NodeBlur'" />
 						<TextLabel>Blur</TextLabel>
 					</div>
 				</div>
@@ -152,7 +152,7 @@
 								<div></div>
 							</div>
 						</div>
-						<IconLabel :icon="'NodeGradient'" :iconStyle="'Node'" />
+						<IconLabel :icon="'NodeGradient'" />
 						<TextLabel>Gradient</TextLabel>
 					</div>
 				</div>

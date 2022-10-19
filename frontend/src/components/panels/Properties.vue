@@ -21,12 +21,6 @@
 	.options-bar {
 		height: 32px;
 		flex: 0 0 auto;
-
-		.widget-row > .icon-label:first-of-type {
-			border-radius: 2px;
-			background: var(--color-node-background);
-			fill: var(--color-node-icon);
-		}
 	}
 
 	.sections {

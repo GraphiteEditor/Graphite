@@ -1,5 +1,5 @@
 <template>
-	<span class="text-label" :class="{ bold, italic, multiline, 'table-align': tableAlign }">
+	<span class="text-label" :class="{ bold, italic, multiline, 'table-align': tableAlign }" :style="minWidth > 0 ? `min-width: ${minWidth}px` : ''" :title="tooltip">
 		<slot></slot>
 	</span>
 </template>
@@ -37,7 +37,9 @@ export default defineComponent({
 		bold: { type: Boolean as PropType<boolean>, default: false },
 		italic: { type: Boolean as PropType<boolean>, default: false },
 		tableAlign: { type: Boolean as PropType<boolean>, default: false },
+		minWidth: { type: Number as PropType<number>, default: 0 },
 		multiline: { type: Boolean as PropType<boolean>, default: false },
+		tooltip: { type: String as PropType<string | undefined>, required: false },
 	},
 });
 </script>

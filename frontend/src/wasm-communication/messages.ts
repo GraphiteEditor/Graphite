@@ -2,7 +2,7 @@
 
 import { Transform, Type, plainToClass } from "class-transformer";
 
-import { type IconName, type IconSize, type IconStyle } from "@/utility-functions/icons";
+import { type IconName, type IconSize } from "@/utility-functions/icons";
 import { type WasmEditorInstance, type WasmRawInstance } from "@/wasm-communication/editor";
 
 import type MenuList from "@/components/floating-menus/MenuList.vue";
@@ -165,7 +165,8 @@ export class UpdateDocumentArtboards extends JsMessage {
 	readonly svg!: string;
 }
 
-const TupleToVec2 = Transform(({ value }: { value: [number, number] }) => ({ x: value[0], y: value[1] }));
+const TupleToVec2 = Transform(({ value }: { value: [number, number] | undefined }) => (value === undefined ? undefined : { x: value[0], y: value[1] }));
+const BigIntTupleToNumberTuple = Transform(({ value }: { value: [bigint, bigint] | undefined }) => (value === undefined ? undefined : [Number(value[0]), Number(value[1])]));
 
 export type XY = { x: number; y: number };
 
@@ -215,6 +216,10 @@ export class TriggerFileDownload extends JsMessage {
 	readonly name!: string;
 }
 
+export class TriggerLoadAutoSaveDocuments extends JsMessage {}
+
+export class TriggerLoadPreferences extends JsMessage {}
+
 export class TriggerOpenDocument extends JsMessage {}
 
 export class TriggerImport extends JsMessage {}
@@ -232,7 +237,72 @@ export class TriggerRasterDownload extends JsMessage {
 	readonly size!: XY;
 }
 
+export class TriggerImaginateCheckServerStatus extends JsMessage {
+	readonly hostname!: string;
+}
+
+export class TriggerImaginateGenerate extends JsMessage {
+	@Type(() => ImaginateGenerationParameters)
+	readonly parameters!: ImaginateGenerationParameters;
+
+	@Type(() => ImaginateBaseImage)
+	readonly baseImage!: ImaginateBaseImage | undefined;
+
+	readonly hostname!: string;
+
+	readonly refreshFrequency!: number;
+
+	readonly documentId!: bigint;
+
+	readonly layerPath!: BigUint64Array;
+}
+
+export class ImaginateBaseImage {
+	readonly svg!: string;
+
+	readonly size!: [number, number];
+}
+
+export class ImaginateGenerationParameters {
+	readonly seed!: number;
+
+	readonly samples!: number;
+
+	readonly samplingMethod!: string;
+
+	readonly denoisingStrength!: number | undefined;
+
+	readonly cfgScale!: number;
+
+	readonly prompt!: string;
+
+	readonly negativePrompt!: string;
+
+	@BigIntTupleToNumberTuple
+	readonly resolution!: [number, number];
+
+	readonly restoreFaces!: boolean;
+
+	readonly tiling!: boolean;
+}
+
+export class TriggerImaginateTerminate extends JsMessage {
+	readonly documentId!: bigint;
+
+	readonly layerPath!: BigUint64Array;
+
+	readonly hostname!: string;
+}
+
 export class TriggerRefreshBoundsOfViewports extends JsMessage {}
+
+export class TriggerRevokeBlobUrl extends JsMessage {
+	readonly url!: string;
+}
+
+export class TriggerSavePreferences extends JsMessage {
+	readonly preferences!: Record<string, unknown>;
+}
 
 export class DocumentChanged extends JsMessage {}
 
@@ -313,8 +383,10 @@ export class DisplayEditableTextbox extends JsMessage {
 }
 
 export class UpdateImageData extends JsMessage {
-	@Type(() => ImageData)
-	readonly imageData!: ImageData[];
+	readonly documentId!: bigint;
+
+	@Type(() => ImaginateImageData)
+	readonly imageData!: ImaginateImageData[];
 }
 
 export class DisplayRemoveEditableTextbox extends JsMessage {}
@@ -327,7 +399,8 @@ export class UpdateDocumentLayerDetails extends JsMessage {
 export class LayerPanelEntry {
 	name!: string;
 
-	tooltip!: string;
+	@Transform(({ value }: { value: string }) => (value.length > 0 ? value : undefined))
+	tooltip!: string | undefined;
 
 	visible!: boolean;
 
@@ -348,9 +421,26 @@ export class LayerMetadata {
 	selected!: boolean;
 }
 
-export type LayerType = "Folder" | "Image" | "Shape" | "Text";
+export type LayerType = "Imaginate" | "Folder" | "Image" | "Shape" | "Text";
 
-export class ImageData {
+export type LayerTypeData = {
+	name: string;
+	icon: IconName;
+};
+
+export function layerTypeData(layerType: LayerType): LayerTypeData | undefined {
+	const entries: Record<string, LayerTypeData> = {
+		Imaginate: { name: "Imaginate", icon: "NodeImaginate" },
+		Folder: { name: "Folder", icon: "NodeFolder" },
+		Image: { name: "Image", icon: "NodeImage" },
+		Shape: { name: "Shape", icon: "NodeShape" },
+		Text: { name: "Text", icon: "NodeText" },
+	};
+
+	return entries[layerType];
+}
+
+export class ImaginateImageData {
 	readonly path!: BigUint64Array;
 
 	readonly mime!: string;
@@ -400,7 +490,8 @@ export class CheckboxInput extends WidgetProps {
 
 	icon!: IconName;
 
-	tooltip!: string;
+	@Transform(({ value }: { value: string }) => (value.length > 0 ? value : undefined))
+	tooltip!: string | undefined;
 }
 
 export class ColorInput extends WidgetProps {
@@ -412,7 +503,8 @@ export class ColorInput extends WidgetProps {
 
 	disabled!: boolean;
 
-	tooltip!: string;
+	@Transform(({ value }: { value: string }) => (value.length > 0 ? value : undefined))
+	tooltip!: string | undefined;
 }
 
 type MenuEntryCommon = {
@@ -435,6 +527,7 @@ export type MenuListEntry = MenuEntryCommon & {
 	shortcutRequiresLock?: boolean;
 	value?: string;
 	disabled?: boolean;
+	tooltip?: string;
 	font?: URL;
 	ref?: InstanceType<typeof MenuList>;
 };
@@ -449,6 +542,9 @@ export class DropdownInput extends WidgetProps {
 	interactive!: boolean;
 
 	disabled!: boolean;
+
+	@Transform(({ value }: { value: string }) => (value.length > 0 ? value : undefined))
+	tooltip!: string | undefined;
 }
 
 export class FontInput extends WidgetProps {
@@ -459,6 +555,9 @@ export class FontInput extends WidgetProps {
 	isStyle!: boolean;
 
 	disabled!: boolean;
+
+	@Transform(({ value }: { value: string }) => (value.length > 0 ? value : undefined))
+	tooltip!: string | undefined;
 }
 
 export class IconButton extends WidgetProps {
@@ -468,13 +567,15 @@ export class IconButton extends WidgetProps {
 
 	active!: boolean;
 
-	tooltip!: string;
+	@Transform(({ value }: { value: string }) => (value.length > 0 ? value : undefined))
+	tooltip!: string | undefined;
 }
 
 export class IconLabel extends WidgetProps {
 	icon!: IconName;
 
-	iconStyle!: IconStyle | undefined;
+	@Transform(({ value }: { value: string }) => (value.length > 0 ? value : undefined))
+	tooltip!: string | undefined;
 }
 
 export type IncrementBehavior = "Add" | "Multiply" | "Callback" | "None";
@@ -501,6 +602,11 @@ export class NumberInput extends WidgetProps {
 	incrementFactor!: number;
 
 	disabled!: boolean;
+
+	minWidth!: number;
+
+	@Transform(({ value }: { value: string }) => (value.length > 0 ? value : undefined))
+	tooltip!: string | undefined;
 }
 
 export class OptionalInput extends WidgetProps {
@@ -508,7 +614,8 @@ export class OptionalInput extends WidgetProps {
 
 	icon!: IconName;
 
-	tooltip!: string;
+	@Transform(({ value }: { value: string }) => (value.length > 0 ? value : undefined))
+	tooltip!: string | undefined;
 }
 
 export class PopoverButton extends WidgetProps {
@@ -518,6 +625,9 @@ export class PopoverButton extends WidgetProps {
 	header!: string;
 
 	text!: string;
+
+	@Transform(({ value }: { value: string }) => (value.length > 0 ? value : undefined))
+	tooltip!: string | undefined;
 }
 
 export type RadioEntryData = {
@@ -560,6 +670,9 @@ export class TextAreaInput extends WidgetProps {
 	label!: string | undefined;
 
 	disabled!: boolean;
+
+	@Transform(({ value }: { value: string }) => (value.length > 0 ? value : undefined))
+	tooltip!: string | undefined;
 }
 
 export class TextButton extends WidgetProps {
@@ -572,6 +685,9 @@ export class TextButton extends WidgetProps {
 	minWidth!: number;
 
 	disabled!: boolean;
+
+	@Transform(({ value }: { value: string }) => (value.length > 0 ? value : undefined))
+	tooltip!: string | undefined;
 }
 
 export type TextButtonWidget = {
@@ -585,6 +701,7 @@ export type TextButtonWidget = {
 		emphasized?: boolean;
 		minWidth?: number;
 		disabled?: boolean;
+		tooltip?: string;
 
 		// Callbacks
 		// `action` is used via `IconButtonWidget.callback`
@@ -597,6 +714,11 @@ export class TextInput extends WidgetProps {
 	label!: string | undefined;
 
 	disabled!: boolean;
+
+	minWidth!: number;
+
+	@Transform(({ value }: { value: string }) => (value.length > 0 ? value : undefined))
+	tooltip!: string | undefined;
 }
 
 export class TextLabel extends WidgetProps {
@@ -610,7 +732,12 @@ export class TextLabel extends WidgetProps {
 
 	tableAlign!: boolean;
 
+	minWidth!: number;
+
 	multiline!: boolean;
+
+	@Transform(({ value }: { value: string }) => (value.length > 0 ? value : undefined))
+	tooltip!: string | undefined;
 }
 
 export type PivotPosition = "None" | "TopLeft" | "TopCenter" | "TopRight" | "CenterLeft" | "Center" | "CenterRight" | "BottomLeft" | "BottomCenter" | "BottomRight";
@@ -851,15 +978,22 @@ export const messageMakers: Record<string, MessageMaker> = {
 	DisplayEditableTextbox,
 	DisplayRemoveEditableTextbox,
 	TriggerAboutGraphiteLocalizedCommitDate,
-	TriggerOpenDocument,
+	TriggerImaginateCheckServerStatus,
+	TriggerImaginateGenerate,
+	TriggerImaginateTerminate,
 	TriggerFileDownload,
 	TriggerFontLoad,
 	TriggerImport,
 	TriggerIndexedDbRemoveDocument,
 	TriggerIndexedDbWriteDocument,
+	TriggerLoadAutoSaveDocuments,
+	TriggerLoadPreferences,
+	TriggerOpenDocument,
 	TriggerPaste,
 	TriggerRasterDownload,
 	TriggerRefreshBoundsOfViewports,
+	TriggerRevokeBlobUrl,
+	TriggerSavePreferences,
 	TriggerTextCommit,
 	TriggerTextCopy,
 	TriggerViewportResize,

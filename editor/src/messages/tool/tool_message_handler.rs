@@ -2,21 +2,25 @@ use super::utility_types::{tool_message_to_tool_type, ToolFsmState};
 use crate::application::generate_uuid;
 use crate::messages::layout::utility_types::layout_widget::PropertyHolder;
 use crate::messages::layout::utility_types::misc::LayoutTarget;
+use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::ToolType;
 
 use graphene::color::Color;
-use graphene::layers::text_layer::FontCache;
 
 #[derive(Debug, Default)]
 pub struct ToolMessageHandler {
 	tool_state: ToolFsmState,
 }
 
-impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessorMessageHandler, &FontCache)> for ToolMessageHandler {
+impl MessageHandler<ToolMessage, (&DocumentMessageHandler, u64, &InputPreprocessorMessageHandler, &PersistentData)> for ToolMessageHandler {
 	#[remain::check]
-	fn process_message(&mut self, message: ToolMessage, data: (&DocumentMessageHandler, &InputPreprocessorMessageHandler, &FontCache), responses: &mut VecDeque<Message>) {
-		let (document, input, font_cache) = data;
+	fn process_message(
+		&mut self,
+		message: ToolMessage,
+		(document, document_id, input, persistent_data): (&DocumentMessageHandler, u64, &InputPreprocessorMessageHandler, &PersistentData),
+		responses: &mut VecDeque<Message>,
+	) {
 		#[remain::sorted]
 		match message {
 			// Messages
@@ -52,6 +56,9 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessorMes
 			#[remain::unsorted]
 			ToolMessage::ActivateToolShape => responses.push_front(ToolMessage::ActivateTool { tool_type: ToolType::Shape }.into()),
 
+			#[remain::unsorted]
+			ToolMessage::ActivateToolImaginate => responses.push_front(ToolMessage::ActivateTool { tool_type: ToolType::Imaginate }.into()),
+
 			ToolMessage::ActivateTool { tool_type } => {
 				let tool_data = &mut self.tool_state.tool_data;
 				let document_data = &self.tool_state.document_tool_data;
@@ -66,12 +73,12 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessorMes
 				let mut send_abort_to_tool = |tool_type, update_hints_and_cursor: bool| {
 					if let Some(tool) = tool_data.tools.get_mut(&tool_type) {
 						if let Some(tool_abort_message) = tool.event_to_message_map().tool_abort {
-							tool.process_message(tool_abort_message, (document, document_data, input, font_cache), responses);
+							tool.process_message(tool_abort_message, (document, document_id, document_data, input, &persistent_data.font_cache), responses);
 						}
 
 						if update_hints_and_cursor {
-							tool.process_message(ToolMessage::UpdateHints, (document, document_data, input, font_cache), responses);
-							tool.process_message(ToolMessage::UpdateCursor, (document, document_data, input, font_cache), responses);
+							tool.process_message(ToolMessage::UpdateHints, (document, document_id, document_data, input, &persistent_data.font_cache), responses);
+							tool.process_message(ToolMessage::UpdateCursor, (document, document_id, document_data, input, &persistent_data.font_cache), responses);
 						}
 					}
 				};
@@ -126,10 +133,10 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessorMes
 				// Set initial hints and cursor
 				tool_data
 					.active_tool_mut()
-					.process_message(ToolMessage::UpdateHints, (document, document_data, input, font_cache), responses);
+					.process_message(ToolMessage::UpdateHints, (document, document_id, document_data, input, &persistent_data.font_cache), responses);
 				tool_data
 					.active_tool_mut()
-					.process_message(ToolMessage::UpdateCursor, (document, document_data, input, font_cache), responses);
+					.process_message(ToolMessage::UpdateCursor, (document, document_id, document_data, input, &persistent_data.font_cache), responses);
 			}
 			ToolMessage::ResetColors => {
 				let document_data = &mut self.tool_state.document_tool_data;
@@ -184,7 +191,7 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessorMes
 
 				if let Some(tool) = tool_data.tools.get_mut(&tool_type) {
 					if tool_type == tool_data.active_tool_type {
-						tool.process_message(tool_message, (document, document_data, input, font_cache), responses);
+						tool.process_message(tool_message, (document, document_id, document_data, input, &persistent_data.font_cache), responses);
 					}
 				}
 			}
@@ -200,6 +207,7 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessorMes
 			ActivateToolText,
 			ActivateToolFill,
 			ActivateToolGradient,
+
 			ActivateToolPath,
 			ActivateToolPen,
 			ActivateToolFreehand,
@@ -208,6 +216,9 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, &InputPreprocessorMes
 			ActivateToolRectangle,
 			ActivateToolEllipse,
 			ActivateToolShape,
+
+			ActivateToolImaginate,
+
 			SelectRandomPrimaryColor,
 			ResetColors,
 			SwapColors,

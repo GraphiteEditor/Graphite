@@ -6,6 +6,7 @@ pub use crate::messages::broadcast::{BroadcastMessage, BroadcastMessageDiscrimin
 pub use crate::messages::debug::{DebugMessage, DebugMessageDiscriminant, DebugMessageHandler};
 pub use crate::messages::dialog::export_dialog::{ExportDialogMessage, ExportDialogMessageDiscriminant, ExportDialogMessageHandler};
 pub use crate::messages::dialog::new_document_dialog::{NewDocumentDialogMessage, NewDocumentDialogMessageDiscriminant, NewDocumentDialogMessageHandler};
+pub use crate::messages::dialog::preferences_dialog::{PreferencesDialogMessage, PreferencesDialogMessageDiscriminant, PreferencesDialogMessageHandler};
 pub use crate::messages::dialog::{DialogMessage, DialogMessageDiscriminant, DialogMessageHandler};
 pub use crate::messages::frontend::{FrontendMessage, FrontendMessageDiscriminant};
 pub use crate::messages::globals::{GlobalsMessage, GlobalsMessageDiscriminant, GlobalsMessageHandler};
@@ -20,6 +21,7 @@ pub use crate::messages::portfolio::document::transform_layer::{TransformLayerMe
 pub use crate::messages::portfolio::document::{DocumentMessage, DocumentMessageDiscriminant, DocumentMessageHandler};
 pub use crate::messages::portfolio::menu_bar::{MenuBarMessage, MenuBarMessageDiscriminant, MenuBarMessageHandler};
 pub use crate::messages::portfolio::{PortfolioMessage, PortfolioMessageDiscriminant, PortfolioMessageHandler};
+pub use crate::messages::preferences::{PreferencesMessage, PreferencesMessageDiscriminant, PreferencesMessageHandler};
 pub use crate::messages::tool::{ToolMessage, ToolMessageDiscriminant, ToolMessageHandler};
 pub use crate::messages::workspace::{WorkspaceMessage, WorkspaceMessageDiscriminant, WorkspaceMessageHandler};
 
@@ -32,6 +34,7 @@ pub use crate::messages::tool::tool_messages::eyedropper_tool::{EyedropperToolMe
 pub use crate::messages::tool::tool_messages::fill_tool::{FillToolMessage, FillToolMessageDiscriminant};
 pub use crate::messages::tool::tool_messages::freehand_tool::{FreehandToolMessage, FreehandToolMessageDiscriminant};
 pub use crate::messages::tool::tool_messages::gradient_tool::{GradientToolMessage, GradientToolMessageDiscriminant};
+pub use crate::messages::tool::tool_messages::imaginate_tool::{ImaginateToolMessage, ImaginateToolMessageDiscriminant};
 pub use crate::messages::tool::tool_messages::line_tool::{LineToolMessage, LineToolMessageDiscriminant};
 pub use crate::messages::tool::tool_messages::navigate_tool::{NavigateToolMessage, NavigateToolMessageDiscriminant};
 pub use crate::messages::tool::tool_messages::path_tool::{PathToolMessage, PathToolMessageDiscriminant};

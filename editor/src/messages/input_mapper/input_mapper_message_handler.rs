@@ -11,9 +11,7 @@ pub struct InputMapperMessageHandler {
 }
 
 impl MessageHandler<InputMapperMessage, (&InputPreprocessorMessageHandler, ActionList)> for InputMapperMessageHandler {
-	fn process_message(&mut self, message: InputMapperMessage, data: (&InputPreprocessorMessageHandler, ActionList), responses: &mut VecDeque<Message>) {
-		let (input, actions) = data;
-
+	fn process_message(&mut self, message: InputMapperMessage, (input, actions): (&InputPreprocessorMessageHandler, ActionList), responses: &mut VecDeque<Message>) {
 		if let Some(message) = self.mapping.match_input_message(message, &input.keyboard, actions) {
 			responses.push_back(message);
 		}

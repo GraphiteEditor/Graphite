@@ -1,5 +1,7 @@
+import { replaceBlobURLsWithBase64 } from "@/utility-functions/files";
+
 // Rasterize the string of an SVG document at a given width and height and turn it into the blob data of an image file matching the given MIME type
-export function rasterizeSVG(svg: string, width: number, height: number, mime: string, backgroundColor?: string): Promise<Blob> {
+export async function rasterizeSVG(svg: string, width: number, height: number, mime: string, backgroundColor?: string): Promise<Blob> {
 	let promiseResolve: (value: Blob | PromiseLike<Blob>) => void | undefined;
 	let promiseReject: () => void | undefined;
 	const promise = new Promise<Blob>((resolve, reject) => {
@@ -21,9 +23,12 @@ export function rasterizeSVG(svg: string, width: number, height: number, mime: s
 		context.fillRect(0, 0, width, height);
 	}
 
+	// This SVG rasterization scheme has the limitation that it cannot access blob URLs, so they must be inlined to base64 URLs
+	const svgWithBase64Images = await replaceBlobURLsWithBase64(svg);
+
 	// Create a blob URL for our SVG
 	const image = new Image();
-	const svgBlob = new Blob([svg], { type: "image/svg+xml;charset=utf-8" });
+	const svgBlob = new Blob([svgWithBase64Images], { type: "image/svg+xml;charset=utf-8" });
 	const url = URL.createObjectURL(svgBlob);
 	image.onload = (): void => {
 		// Draw our SVG to the canvas

@@ -1,4 +1,4 @@
-use crate::messages::portfolio::document::utility_types::misc::Platform;
+use crate::messages::portfolio::utility_types::Platform;
 use crate::messages::prelude::*;
 
 use serde::{Deserialize, Serialize};

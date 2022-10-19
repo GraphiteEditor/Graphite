@@ -75,6 +75,9 @@ pub enum ToolMessage {
 	// #[remain::unsorted]
 	// #[child]
 	// Detail(DetailToolMessage),
+	#[remain::unsorted]
+	#[child]
+	Imaginate(ImaginateToolMessage),
 
 	// Messages
 	#[remain::unsorted]
@@ -108,6 +111,9 @@ pub enum ToolMessage {
 	ActivateToolEllipse,
 	#[remain::unsorted]
 	ActivateToolShape,
+
+	#[remain::unsorted]
+	ActivateToolImaginate,
 
 	ActivateTool {
 		tool_type: ToolType,

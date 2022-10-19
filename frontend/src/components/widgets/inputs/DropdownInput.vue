@@ -4,6 +4,7 @@
 			class="dropdown-box"
 			:class="{ disabled, open }"
 			:style="{ minWidth: `${minWidth}px` }"
+			:title="tooltip"
 			@click="() => !disabled && (open = true)"
 			@blur="(e: FocusEvent) => blur(e)"
 			@keydown="(e: KeyboardEvent) => keydown(e)"
@@ -115,6 +116,7 @@ export default defineComponent({
 		drawIcon: { type: Boolean as PropType<boolean>, default: false },
 		interactive: { type: Boolean as PropType<boolean>, default: true },
 		disabled: { type: Boolean as PropType<boolean>, default: false },
+		tooltip: { type: String as PropType<string | undefined>, required: false },
 	},
 	data() {
 		return {

@@ -61,9 +61,13 @@
 	.body {
 		margin: 0 4px;
 
-		.text-label {
+		.text-label:first-of-type {
 			flex: 0 0 30%;
 			text-align: right;
+		}
+
+		.text-button {
+			flex-grow: 1;
 		}
 	}
 }

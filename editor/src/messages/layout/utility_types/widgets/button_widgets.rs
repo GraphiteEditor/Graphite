@@ -33,6 +33,11 @@ pub struct PopoverButton {
 	pub header: String,
 
 	pub text: String,
+
+	pub tooltip: String,
+
+	#[serde(skip)]
+	pub tooltip_shortcut: Option<ActionKeys>,
 }
 
 #[derive(Clone, Serialize, Deserialize, Derivative, Default)]
@@ -49,6 +54,11 @@ pub struct TextButton {
 	pub min_width: u32,
 
 	pub disabled: bool,
+
+	pub tooltip: String,
+
+	#[serde(skip)]
+	pub tooltip_shortcut: Option<ActionKeys>,
 
 	// Callbacks
 	#[serde(skip)]

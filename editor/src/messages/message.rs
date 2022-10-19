@@ -34,6 +34,8 @@ pub enum Message {
 	#[child]
 	Portfolio(PortfolioMessage),
 	#[child]
+	Preferences(PreferencesMessage),
+	#[child]
 	Tool(ToolMessage),
 	#[child]
 	Workspace(WorkspaceMessage),

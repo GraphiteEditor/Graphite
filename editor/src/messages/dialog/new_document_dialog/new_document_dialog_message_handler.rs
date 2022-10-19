@@ -83,7 +83,6 @@ impl PropertyHolder for NewDocumentDialogMessageHandler {
 			})),
 			WidgetHolder::new(Widget::CheckboxInput(CheckboxInput {
 				checked: self.infinite,
-				icon: "Checkmark".to_string(),
 				on_update: WidgetCallback::new(|checkbox_input: &CheckboxInput| NewDocumentDialogMessage::Infinite(checkbox_input.checked).into()),
 				..Default::default()
 			})),

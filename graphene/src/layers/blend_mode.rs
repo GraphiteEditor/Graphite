@@ -41,30 +41,29 @@ pub enum BlendMode {
 
 impl fmt::Display for BlendMode {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		let text = match self {
-			BlendMode::Normal => "Normal".to_string(),
+		match self {
+			BlendMode::Normal => write!(f, "Normal"),
 
-			BlendMode::Multiply => "Multiply".to_string(),
-			BlendMode::Darken => "Darken".to_string(),
-			BlendMode::ColorBurn => "Color Burn".to_string(),
+			BlendMode::Multiply => write!(f, "Multiply"),
+			BlendMode::Darken => write!(f, "Darken"),
+			BlendMode::ColorBurn => write!(f, "Color Burn"),
 
-			BlendMode::Screen => "Screen".to_string(),
-			BlendMode::Lighten => "Lighten".to_string(),
-			BlendMode::ColorDodge => "Color Dodge".to_string(),
+			BlendMode::Screen => write!(f, "Screen"),
+			BlendMode::Lighten => write!(f, "Lighten"),
+			BlendMode::ColorDodge => write!(f, "Color Dodge"),
 
-			BlendMode::Overlay => "Overlay".to_string(),
-			BlendMode::SoftLight => "Soft Light".to_string(),
-			BlendMode::HardLight => "Hard Light".to_string(),
+			BlendMode::Overlay => write!(f, "Overlay"),
+			BlendMode::SoftLight => write!(f, "Soft Light"),
+			BlendMode::HardLight => write!(f, "Hard Light"),
 
-			BlendMode::Difference => "Difference".to_string(),
-			BlendMode::Exclusion => "Exclusion".to_string(),
+			BlendMode::Difference => write!(f, "Difference"),
+			BlendMode::Exclusion => write!(f, "Exclusion"),
 
-			BlendMode::Hue => "Hue".to_string(),
-			BlendMode::Saturation => "Saturation".to_string(),
-			BlendMode::Color => "Color".to_string(),
-			BlendMode::Luminosity => "Luminosity".to_string(),
-		};
-		write!(f, "{}", text)
+			BlendMode::Hue => write!(f, "Hue"),
+			BlendMode::Saturation => write!(f, "Saturation"),
+			BlendMode::Color => write!(f, "Color"),
+			BlendMode::Luminosity => write!(f, "Luminosity"),
+		}
 	}
 }
 

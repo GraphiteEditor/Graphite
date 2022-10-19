@@ -9,7 +9,19 @@ import { initWasm } from "@/wasm-communication/editor";
 
 import App from "@/App.vue";
 
+// Browser app entry point
 (async (): Promise<void> => {
+	// Confirm the browser is compatible before initializing the application
+	if (!checkBrowserCompatibility()) return;
+
+	// Initialize the WASM module for the editor backend
+	await initWasm();
+
+	// Initialize the Vue application
+	createApp(App).mount("#app");
+})();
+
+function checkBrowserCompatibility(): boolean {
 	if (!("BigUint64Array" in window)) {
 		const body = document.body;
 		const message = stripIndents`
@@ -23,12 +35,9 @@ import App from "@/App.vue";
 			JavaScript API must be supported by the browser for Graphite to function.)</p>
 			`;
 		body.innerHTML = message + body.innerHTML;
-		return;
+
+		return false;
 	}
 
-	// Initialize the WASM module for the editor backend
-	await initWasm();
-
-	// Initialize the Vue application
-	createApp(App).mount("#app");
-})();
+	return true;
+}
