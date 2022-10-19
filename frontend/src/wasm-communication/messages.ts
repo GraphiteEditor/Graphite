@@ -237,16 +237,16 @@ export class TriggerRasterDownload extends JsMessage {
 	readonly size!: XY;
 }
 
-export class TriggerAiArtistCheckServerStatus extends JsMessage {
+export class TriggerImaginateCheckServerStatus extends JsMessage {
 	readonly hostname!: string;
 }
 
-export class TriggerAiArtistGenerate extends JsMessage {
-	@Type(() => AiArtistGenerationParameters)
-	readonly parameters!: AiArtistGenerationParameters;
+export class TriggerImaginateGenerate extends JsMessage {
+	@Type(() => ImaginateGenerationParameters)
+	readonly parameters!: ImaginateGenerationParameters;
 
-	@Type(() => AiArtistBaseImage)
-	readonly baseImage!: AiArtistBaseImage | undefined;
+	@Type(() => ImaginateBaseImage)
+	readonly baseImage!: ImaginateBaseImage | undefined;
 
 	readonly hostname!: string;
 
@@ -257,13 +257,13 @@ export class TriggerAiArtistGenerate extends JsMessage {
 	readonly layerPath!: BigUint64Array;
 }
 
-export class AiArtistBaseImage {
+export class ImaginateBaseImage {
 	readonly svg!: string;
 
 	readonly size!: [number, number];
 }
 
-export class AiArtistGenerationParameters {
+export class ImaginateGenerationParameters {
 	readonly seed!: number;
 
 	readonly samples!: number;
@@ -286,7 +286,7 @@ export class AiArtistGenerationParameters {
 	readonly tiling!: boolean;
 }
 
-export class TriggerAiArtistTerminate extends JsMessage {
+export class TriggerImaginateTerminate extends JsMessage {
 	readonly documentId!: bigint;
 
 	readonly layerPath!: BigUint64Array;
@@ -385,8 +385,8 @@ export class DisplayEditableTextbox extends JsMessage {
 export class UpdateImageData extends JsMessage {
 	readonly documentId!: bigint;
 
-	@Type(() => AiArtistImageData)
-	readonly imageData!: AiArtistImageData[];
+	@Type(() => ImaginateImageData)
+	readonly imageData!: ImaginateImageData[];
 }
 
 export class DisplayRemoveEditableTextbox extends JsMessage {}
@@ -421,7 +421,7 @@ export class LayerMetadata {
 	selected!: boolean;
 }
 
-export type LayerType = "AiArtist" | "Folder" | "Image" | "Shape" | "Text";
+export type LayerType = "Imaginate" | "Folder" | "Image" | "Shape" | "Text";
 
 export type LayerTypeData = {
 	name: string;
@@ -430,7 +430,7 @@ export type LayerTypeData = {
 
 export function layerTypeData(layerType: LayerType): LayerTypeData | undefined {
 	const entries: Record<string, LayerTypeData> = {
-		AiArtist: { name: "AI Artist", icon: "NodeAiArtist" },
+		Imaginate: { name: "Imaginate", icon: "NodeImaginate" },
 		Folder: { name: "Folder", icon: "NodeFolder" },
 		Image: { name: "Image", icon: "NodeImage" },
 		Shape: { name: "Shape", icon: "NodeShape" },
@@ -440,7 +440,7 @@ export function layerTypeData(layerType: LayerType): LayerTypeData | undefined {
 	return entries[layerType];
 }
 
-export class AiArtistImageData {
+export class ImaginateImageData {
 	readonly path!: BigUint64Array;
 
 	readonly mime!: string;
@@ -978,9 +978,9 @@ export const messageMakers: Record<string, MessageMaker> = {
 	DisplayEditableTextbox,
 	DisplayRemoveEditableTextbox,
 	TriggerAboutGraphiteLocalizedCommitDate,
-	TriggerAiArtistCheckServerStatus,
-	TriggerAiArtistGenerate,
-	TriggerAiArtistTerminate,
+	TriggerImaginateCheckServerStatus,
+	TriggerImaginateGenerate,
+	TriggerImaginateTerminate,
 	TriggerFileDownload,
 	TriggerFontLoad,
 	TriggerImport,

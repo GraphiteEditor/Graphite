@@ -112,12 +112,12 @@ pub fn default_mapping() -> Mapping {
 		entry!(KeyDown(Escape); action_dispatch=RectangleToolMessage::Abort),
 		entry!(PointerMove; refresh_keys=[Alt, Shift], action_dispatch=RectangleToolMessage::Resize { center: Alt, lock_ratio: Shift }),
 		//
-		// AiArtistToolMessage
-		entry!(KeyDown(Lmb); action_dispatch=AiArtistToolMessage::DragStart),
-		entry!(KeyUp(Lmb); action_dispatch=AiArtistToolMessage::DragStop),
-		entry!(KeyDown(Rmb); action_dispatch=AiArtistToolMessage::Abort),
-		entry!(KeyDown(Escape); action_dispatch=AiArtistToolMessage::Abort),
-		entry!(PointerMove; refresh_keys=[Alt, Shift], action_dispatch=AiArtistToolMessage::Resize { center: Alt, lock_ratio: Shift }),
+		// ImaginateToolMessage
+		entry!(KeyDown(Lmb); action_dispatch=ImaginateToolMessage::DragStart),
+		entry!(KeyUp(Lmb); action_dispatch=ImaginateToolMessage::DragStop),
+		entry!(KeyDown(Rmb); action_dispatch=ImaginateToolMessage::Abort),
+		entry!(KeyDown(Escape); action_dispatch=ImaginateToolMessage::Abort),
+		entry!(PointerMove; refresh_keys=[Alt, Shift], action_dispatch=ImaginateToolMessage::Resize { center: Alt, lock_ratio: Shift }),
 		//
 		// EllipseToolMessage
 		entry!(KeyDown(Lmb); action_dispatch=EllipseToolMessage::DragStart),

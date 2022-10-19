@@ -1,8 +1,8 @@
 use crate::boolean_ops::composite_boolean_operation;
 use crate::intersection::Quad;
-use crate::layers::ai_artist_layer::{AiArtistImageData, AiArtistLayer, AiArtistStatus};
 use crate::layers::folder_layer::FolderLayer;
 use crate::layers::image_layer::ImageLayer;
+use crate::layers::imaginate_layer::{ImaginateImageData, ImaginateLayer, ImaginateStatus};
 use crate::layers::layer_info::{Layer, LayerData, LayerDataType, LayerDataTypeDiscriminant};
 use crate::layers::shape_layer::ShapeLayer;
 use crate::layers::style::RenderData;
@@ -588,8 +588,8 @@ impl Document {
 
 				Some([vec![DocumentChanged, CreatedLayer { path: path.clone() }], update_thumbnails_upstream(&path)].concat())
 			}
-			Operation::AddAiArtistFrame { path, insert_index, transform } => {
-				let layer = Layer::new(LayerDataType::AiArtist(AiArtistLayer::default()), transform);
+			Operation::AddImaginateFrame { path, insert_index, transform } => {
+				let layer = Layer::new(LayerDataType::Imaginate(ImaginateLayer::default()), transform);
 
 				self.set_layer(&path, layer, insert_index)?;
 
@@ -797,119 +797,119 @@ impl Document {
 						image.blob_url = Some(blob_url);
 						image.dimensions = resolution.into();
 					}
-					LayerDataType::AiArtist(ai_artist) => {
-						ai_artist.blob_url = Some(blob_url);
-						ai_artist.dimensions = resolution.into();
+					LayerDataType::Imaginate(imaginate) => {
+						imaginate.blob_url = Some(blob_url);
+						imaginate.dimensions = resolution.into();
 					}
-					_ => panic!("Incorrectly trying to set the image blob URL for a layer that is not an Image or AiArtist layer type"),
+					_ => panic!("Incorrectly trying to set the image blob URL for a layer that is not an Image or Imaginate layer type"),
 				}
 
 				self.mark_as_dirty(&layer_path)?;
 				Some([vec![DocumentChanged, LayerChanged { path: layer_path.clone() }], update_thumbnails_upstream(&layer_path)].concat())
 			}
-			Operation::AiArtistSetImageData { layer_path, image_data } => {
-				let layer = self.layer_mut(&layer_path).expect("Setting AI Artist image data for invalid layer");
-				if let LayerDataType::AiArtist(ai_artist) = &mut layer.data {
-					ai_artist.image_data = Some(AiArtistImageData { image_data });
+			Operation::ImaginateSetImageData { layer_path, image_data } => {
+				let layer = self.layer_mut(&layer_path).expect("Setting Imaginate image data for invalid layer");
+				if let LayerDataType::Imaginate(imaginate) = &mut layer.data {
+					imaginate.image_data = Some(ImaginateImageData { image_data });
 				} else {
-					panic!("Incorrectly trying to set image data for a layer that is not an AiArtist layer type");
+					panic!("Incorrectly trying to set image data for a layer that is not an Imaginate layer type");
 				}
 				Some(vec![LayerChanged { path: layer_path.clone() }])
 			}
-			Operation::AiArtistSetGeneratingStatus { path, percent, status } => {
-				let layer = self.layer_mut(&path).expect("Generating AI Artist for invalid layer");
-				if let LayerDataType::AiArtist(ai_artist) = &mut layer.data {
+			Operation::ImaginateSetGeneratingStatus { path, percent, status } => {
+				let layer = self.layer_mut(&path).expect("Generating Imaginate for invalid layer");
+				if let LayerDataType::Imaginate(imaginate) = &mut layer.data {
 					if let Some(percentage) = percent {
-						ai_artist.percent_complete = percentage;
+						imaginate.percent_complete = percentage;
 					}
 
-					if status == AiArtistStatus::Generating {
-						ai_artist.image_data = None;
+					if status == ImaginateStatus::Generating {
+						imaginate.image_data = None;
 					}
 
-					ai_artist.status = status;
+					imaginate.status = status;
 				} else {
-					panic!("Incorrectly trying to set the generating status for a layer that is not an AiArtist layer type");
+					panic!("Incorrectly trying to set the generating status for a layer that is not an Imaginate layer type");
 				}
 				Some(vec![LayerChanged { path: path.clone() }])
 			}
-			Operation::AiArtistClear { path } => {
-				let layer = self.layer_mut(&path).expect("Clearing AI Artist image for invalid layer");
-				if let LayerDataType::AiArtist(ai_artist) = &mut layer.data {
-					ai_artist.image_data = None;
-					ai_artist.blob_url = None;
-					ai_artist.status = AiArtistStatus::Idle;
-					ai_artist.percent_complete = 0.;
+			Operation::ImaginateClear { path } => {
+				let layer = self.layer_mut(&path).expect("Clearing Imaginate image for invalid layer");
+				if let LayerDataType::Imaginate(imaginate) = &mut layer.data {
+					imaginate.image_data = None;
+					imaginate.blob_url = None;
+					imaginate.status = ImaginateStatus::Idle;
+					imaginate.percent_complete = 0.;
 				} else {
-					panic!("Incorrectly trying to clear the blob URL for a layer that is not an AiArtist layer type");
+					panic!("Incorrectly trying to clear the blob URL for a layer that is not an Imaginate layer type");
 				}
 				self.mark_as_dirty(&path)?;
 				Some([vec![DocumentChanged, LayerChanged { path: path.clone() }], update_thumbnails_upstream(&path)].concat())
 			}
-			Operation::AiArtistSetNegativePrompt { path, negative_prompt } => {
-				let layer = self.layer_mut(&path).expect("Setting AI Artist negative prompt for invalid layer");
-				if let LayerDataType::AiArtist(ai_artist) = &mut layer.data {
-					ai_artist.negative_prompt = negative_prompt;
+			Operation::ImaginateSetNegativePrompt { path, negative_prompt } => {
+				let layer = self.layer_mut(&path).expect("Setting Imaginate negative prompt for invalid layer");
+				if let LayerDataType::Imaginate(imaginate) = &mut layer.data {
+					imaginate.negative_prompt = negative_prompt;
 				} else {
-					panic!("Incorrectly trying to set the negative prompt for a layer that is not an AiArtist layer type");
+					panic!("Incorrectly trying to set the negative prompt for a layer that is not an Imaginate layer type");
 				}
 				self.mark_as_dirty(&path)?;
 				Some(vec![LayerChanged { path }])
 			}
-			Operation::AiArtistSetPrompt { path, prompt } => {
-				let layer = self.layer_mut(&path).expect("Setting AI Artist prompt for invalid layer");
-				if let LayerDataType::AiArtist(ai_artist) = &mut layer.data {
-					ai_artist.prompt = prompt;
+			Operation::ImaginateSetPrompt { path, prompt } => {
+				let layer = self.layer_mut(&path).expect("Setting Imaginate prompt for invalid layer");
+				if let LayerDataType::Imaginate(imaginate) = &mut layer.data {
+					imaginate.prompt = prompt;
 				} else {
-					panic!("Incorrectly trying to set the prompt for a layer that is not an AiArtist layer type");
+					panic!("Incorrectly trying to set the prompt for a layer that is not an Imaginate layer type");
 				}
 				self.mark_as_dirty(&path)?;
 				Some(vec![LayerChanged { path }])
 			}
-			Operation::AiArtistSetCfgScale { path, cfg_scale } => {
-				let layer = self.layer_mut(&path).expect("Setting AI Artist CFG scale for invalid layer");
-				if let LayerDataType::AiArtist(ai_artist) = &mut layer.data {
-					ai_artist.cfg_scale = cfg_scale;
+			Operation::ImaginateSetCfgScale { path, cfg_scale } => {
+				let layer = self.layer_mut(&path).expect("Setting Imaginate CFG scale for invalid layer");
+				if let LayerDataType::Imaginate(imaginate) = &mut layer.data {
+					imaginate.cfg_scale = cfg_scale;
 				} else {
-					panic!("Incorrectly trying to set the CFG scale for a layer that is not an AiArtist layer type");
+					panic!("Incorrectly trying to set the CFG scale for a layer that is not an Imaginate layer type");
 				}
 				self.mark_as_dirty(&path)?;
 				Some(vec![LayerChanged { path }])
 			}
-			Operation::AiArtistSetDenoisingStrength { path, denoising_strength } => {
-				let layer = self.layer_mut(&path).expect("Setting AI Artist denoising strength for invalid layer");
-				if let LayerDataType::AiArtist(ai_artist) = &mut layer.data {
-					ai_artist.denoising_strength = denoising_strength;
+			Operation::ImaginateSetDenoisingStrength { path, denoising_strength } => {
+				let layer = self.layer_mut(&path).expect("Setting Imaginate denoising strength for invalid layer");
+				if let LayerDataType::Imaginate(imaginate) = &mut layer.data {
+					imaginate.denoising_strength = denoising_strength;
 				} else {
-					panic!("Incorrectly trying to set the denoising strength for a layer that is not an AiArtist layer type");
+					panic!("Incorrectly trying to set the denoising strength for a layer that is not an Imaginate layer type");
 				}
 				self.mark_as_dirty(&path)?;
 				Some(vec![LayerChanged { path }])
 			}
-			Operation::AiArtistSetSamples { path, samples } => {
-				let layer = self.layer_mut(&path).expect("Setting AI Artist samples for invalid layer");
-				if let LayerDataType::AiArtist(ai_artist) = &mut layer.data {
-					ai_artist.samples = samples;
+			Operation::ImaginateSetSamples { path, samples } => {
+				let layer = self.layer_mut(&path).expect("Setting Imaginate samples for invalid layer");
+				if let LayerDataType::Imaginate(imaginate) = &mut layer.data {
+					imaginate.samples = samples;
 				} else {
-					panic!("Incorrectly trying to set the samples for a layer that is not an AiArtist layer type");
+					panic!("Incorrectly trying to set the samples for a layer that is not an Imaginate layer type");
 				}
 				self.mark_as_dirty(&path)?;
 				Some(vec![LayerChanged { path }])
 			}
-			Operation::SetAiArtistSamplingMethod { path, method } => {
-				let layer = self.layer_mut(&path).expect("Setting AI Artist sampling method for invalid layer");
-				if let LayerDataType::AiArtist(ai_artist) = &mut layer.data {
-					ai_artist.sampling_method = method;
+			Operation::SetImaginateSamplingMethod { path, method } => {
+				let layer = self.layer_mut(&path).expect("Setting Imaginate sampling method for invalid layer");
+				if let LayerDataType::Imaginate(imaginate) = &mut layer.data {
+					imaginate.sampling_method = method;
 				} else {
-					panic!("Incorrectly trying to set the sampling method for a layer that is not an AiArtist layer type");
+					panic!("Incorrectly trying to set the sampling method for a layer that is not an Imaginate layer type");
 				}
 				self.mark_as_dirty(&path)?;
 				Some(vec![LayerChanged { path }])
 			}
-			Operation::AiArtistSetScaleFromResolution { path } => {
-				let layer = self.layer_mut(&path).expect("Setting AI Artist scale from resolution for invalid layer");
+			Operation::ImaginateSetScaleFromResolution { path } => {
+				let layer = self.layer_mut(&path).expect("Setting Imaginate scale from resolution for invalid layer");
 
-				let (width, height) = pick_layer_safe_ai_artist_resolution(layer, font_cache);
+				let (width, height) = pick_layer_safe_imaginate_resolution(layer, font_cache);
 
 				let current_width = layer.transform.transform_vector2((1., 0.).into()).length();
 				let current_height = layer.transform.transform_vector2((0., 1.).into()).length();
@@ -924,42 +924,42 @@ impl Document {
 				self.mark_as_dirty(&path)?;
 				Some([update_thumbnails_upstream(&path), vec![DocumentChanged, LayerChanged { path }]].concat())
 			}
-			Operation::AiArtistSetSeed { path, seed } => {
-				let layer = self.layer_mut(&path).expect("Setting AI Artist seed for invalid layer");
-				if let LayerDataType::AiArtist(ai_artist) = &mut layer.data {
-					ai_artist.seed = seed;
+			Operation::ImaginateSetSeed { path, seed } => {
+				let layer = self.layer_mut(&path).expect("Setting Imaginate seed for invalid layer");
+				if let LayerDataType::Imaginate(imaginate) = &mut layer.data {
+					imaginate.seed = seed;
 				} else {
-					panic!("Incorrectly trying to set the seed for a layer that is not an AiArtist layer type");
+					panic!("Incorrectly trying to set the seed for a layer that is not an Imaginate layer type");
 				}
 				self.mark_as_dirty(&path)?;
 				Some(vec![LayerChanged { path }])
 			}
-			Operation::AiArtistSetUseImg2Img { path, use_img2img } => {
-				let layer = self.layer_mut(&path).expect("Calling AI Artist img2img for invalid layer");
-				if let LayerDataType::AiArtist(ai_artist) = &mut layer.data {
-					ai_artist.use_img2img = use_img2img;
+			Operation::ImaginateSetUseImg2Img { path, use_img2img } => {
+				let layer = self.layer_mut(&path).expect("Calling Imaginate img2img for invalid layer");
+				if let LayerDataType::Imaginate(imaginate) = &mut layer.data {
+					imaginate.use_img2img = use_img2img;
 				} else {
-					panic!("Incorrectly trying to set the img2img status for a layer that is not an AiArtist layer type");
+					panic!("Incorrectly trying to set the img2img status for a layer that is not an Imaginate layer type");
 				}
 				self.mark_as_dirty(&path)?;
 				Some(vec![LayerChanged { path }])
 			}
-			Operation::AiArtistSetRestoreFaces { path, restore_faces } => {
-				let layer = self.layer_mut(&path).expect("Setting AI Artist restore faces for invalid layer");
-				if let LayerDataType::AiArtist(ai_artist) = &mut layer.data {
-					ai_artist.restore_faces = restore_faces;
+			Operation::ImaginateSetRestoreFaces { path, restore_faces } => {
+				let layer = self.layer_mut(&path).expect("Setting Imaginate restore faces for invalid layer");
+				if let LayerDataType::Imaginate(imaginate) = &mut layer.data {
+					imaginate.restore_faces = restore_faces;
 				} else {
-					panic!("Incorrectly trying to set the restore faces status for a layer that is not an AiArtist layer type");
+					panic!("Incorrectly trying to set the restore faces status for a layer that is not an Imaginate layer type");
 				}
 				self.mark_as_dirty(&path)?;
 				Some(vec![LayerChanged { path }])
 			}
-			Operation::AiArtistSetTiling { path, tiling } => {
-				let layer = self.layer_mut(&path).expect("Setting AI Artist tiling for invalid layer");
-				if let LayerDataType::AiArtist(ai_artist) = &mut layer.data {
-					ai_artist.tiling = tiling;
+			Operation::ImaginateSetTiling { path, tiling } => {
+				let layer = self.layer_mut(&path).expect("Setting Imaginate tiling for invalid layer");
+				if let LayerDataType::Imaginate(imaginate) = &mut layer.data {
+					imaginate.tiling = tiling;
 				} else {
-					panic!("Incorrectly trying to set the tiling status for a layer that is not an AiArtist layer type");
+					panic!("Incorrectly trying to set the tiling status for a layer that is not an Imaginate layer type");
 				}
 				self.mark_as_dirty(&path)?;
 				Some(vec![LayerChanged { path }])
@@ -1246,14 +1246,14 @@ fn update_thumbnails_upstream(path: &[LayerId]) -> Vec<DocumentResponse> {
 	responses
 }
 
-pub fn pick_layer_safe_ai_artist_resolution(layer: &Layer, font_cache: &FontCache) -> (u64, u64) {
+pub fn pick_layer_safe_imaginate_resolution(layer: &Layer, font_cache: &FontCache) -> (u64, u64) {
 	let layer_bounds = layer.bounding_transform(font_cache);
 	let layer_bounds_size = (layer_bounds.transform_vector2((1., 0.).into()).length(), layer_bounds.transform_vector2((0., 1.).into()).length());
 
-	pick_safe_ai_artist_resolution(layer_bounds_size)
+	pick_safe_imaginate_resolution(layer_bounds_size)
 }
 
-pub fn pick_safe_ai_artist_resolution((width, height): (f64, f64)) -> (u64, u64) {
+pub fn pick_safe_imaginate_resolution((width, height): (f64, f64)) -> (u64, u64) {
 	const MAX_RESOLUTION: u64 = 1000 * 1000;
 
 	let mut scale_factor = 1.;

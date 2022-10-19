@@ -5,20 +5,20 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug)]
 pub struct PersistentData {
 	pub font_cache: FontCache,
-	pub ai_artist_server_status: AiArtistServerStatus,
+	pub imaginate_server_status: ImaginateServerStatus,
 }
 
 impl Default for PersistentData {
 	fn default() -> Self {
 		Self {
 			font_cache: Default::default(),
-			ai_artist_server_status: AiArtistServerStatus::Unknown,
+			imaginate_server_status: ImaginateServerStatus::Unknown,
 		}
 	}
 }
 
 #[derive(PartialEq, Eq, Clone, Copy, Default, Debug, Serialize, Deserialize)]
-pub enum AiArtistServerStatus {
+pub enum ImaginateServerStatus {
 	#[default]
 	Unknown,
 	Checking,

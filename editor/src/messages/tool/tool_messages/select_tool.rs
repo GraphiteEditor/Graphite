@@ -950,14 +950,14 @@ impl SelectToolData {
 			let layer_metadata = *document.layer_metadata(layer_path);
 			*layer_path.last_mut().unwrap() = generate_uuid();
 
-			let image_data = if let LayerDataType::AiArtist(ai_artist) = &mut layer.data {
-				ai_artist.blob_url = None;
+			let image_data = if let LayerDataType::Imaginate(imaginate) = &mut layer.data {
+				imaginate.blob_url = None;
 
-				ai_artist.image_data.as_ref().map(|data| {
+				imaginate.image_data.as_ref().map(|data| {
 					vec![FrontendImageData {
 						path: layer_path.clone(),
 						image_data: data.image_data.clone(),
-						mime: ai_artist.mime.clone(),
+						mime: imaginate.mime.clone(),
 					}]
 				})
 			} else {

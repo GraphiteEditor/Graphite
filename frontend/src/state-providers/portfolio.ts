@@ -1,8 +1,8 @@
 /* eslint-disable max-classes-per-file */
 import { reactive, readonly } from "vue";
 
-import { aiArtistGenerate, aiArtistCheckConnection, aiArtistTerminate } from "@/utility-functions/ai-artist";
 import { downloadFileText, downloadFileBlob, upload } from "@/utility-functions/files";
+import { imaginateGenerate, imaginateCheckConnection, imaginateTerminate } from "@/utility-functions/imaginate";
 import { rasterizeSVG } from "@/utility-functions/rasterization";
 import { type Editor } from "@/wasm-communication/editor";
 import {
@@ -11,9 +11,9 @@ import {
 	TriggerImport,
 	TriggerOpenDocument,
 	TriggerRasterDownload,
-	TriggerAiArtistGenerate,
-	TriggerAiArtistTerminate,
-	TriggerAiArtistCheckServerStatus,
+	TriggerImaginateGenerate,
+	TriggerImaginateTerminate,
+	TriggerImaginateCheckServerStatus,
 	UpdateActiveDocument,
 	UpdateOpenDocumentsList,
 	UpdateImageData,
@@ -61,13 +61,13 @@ export function createPortfolioState(editor: Editor) {
 		// Have the browser download the file to the user's disk
 		downloadFileBlob(name, blob);
 	});
-	editor.subscriptions.subscribeJsMessage(TriggerAiArtistCheckServerStatus, async (triggerAiArtistCheckServerStatus) => {
-		const { hostname } = triggerAiArtistCheckServerStatus;
+	editor.subscriptions.subscribeJsMessage(TriggerImaginateCheckServerStatus, async (triggerImaginateCheckServerStatus) => {
+		const { hostname } = triggerImaginateCheckServerStatus;
 
-		aiArtistCheckConnection(hostname, editor);
+		imaginateCheckConnection(hostname, editor);
 	});
-	editor.subscriptions.subscribeJsMessage(TriggerAiArtistGenerate, async (triggerAiArtistGenerate) => {
-		const { documentId, layerPath, hostname, refreshFrequency, baseImage, parameters } = triggerAiArtistGenerate;
+	editor.subscriptions.subscribeJsMessage(TriggerImaginateGenerate, async (triggerImaginateGenerate) => {
+		const { documentId, layerPath, hostname, refreshFrequency, baseImage, parameters } = triggerImaginateGenerate;
 
 		// Handle img2img mode
 		let image: Blob | undefined;
@@ -77,15 +77,15 @@ export function createPortfolioState(editor: Editor) {
 
 			const blobURL = URL.createObjectURL(image);
 
-			editor.instance.setAIArtistBlobURL(documentId, layerPath, blobURL, baseImage.size[0], baseImage.size[1]);
+			editor.instance.setImaginateBlobURL(documentId, layerPath, blobURL, baseImage.size[0], baseImage.size[1]);
 		}
 
-		aiArtistGenerate(parameters, image, hostname, refreshFrequency, documentId, layerPath, editor);
+		imaginateGenerate(parameters, image, hostname, refreshFrequency, documentId, layerPath, editor);
 	});
-	editor.subscriptions.subscribeJsMessage(TriggerAiArtistTerminate, async (triggerAiArtistTerminate) => {
-		const { documentId, layerPath, hostname } = triggerAiArtistTerminate;
+	editor.subscriptions.subscribeJsMessage(TriggerImaginateTerminate, async (triggerImaginateTerminate) => {
+		const { documentId, layerPath, hostname } = triggerImaginateTerminate;
 
-		aiArtistTerminate(hostname, documentId, layerPath, editor);
+		imaginateTerminate(hostname, documentId, layerPath, editor);
 	});
 	editor.subscriptions.subscribeJsMessage(UpdateImageData, (updateImageData) => {
 		updateImageData.imageData.forEach(async (element) => {

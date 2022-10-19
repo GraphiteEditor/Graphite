@@ -3,7 +3,7 @@ use crate::messages::layout::utility_types::widgets::assist_widgets::PivotPositi
 use crate::messages::portfolio::document::utility_types::misc::TargetDocument;
 use crate::messages::prelude::*;
 
-use graphene::layers::ai_artist_layer::AiArtistSamplingMethod;
+use graphene::layers::imaginate_layer::ImaginateSamplingMethod;
 use graphene::layers::style::{Fill, Stroke};
 use graphene::LayerId;
 
@@ -27,19 +27,19 @@ pub enum PropertiesPanelMessage {
 	ModifyTransform { value: f64, transform_op: TransformOp },
 	ResendActiveProperties,
 	SetActiveLayers { paths: Vec<Vec<LayerId>>, document: TargetDocument },
-	SetAiArtistCfgScale { cfg_scale: f64 },
-	SetAiArtistDenoisingStrength { denoising_strength: f64 },
-	SetAiArtistNegativePrompt { negative_prompt: String },
-	SetAiArtistPrompt { prompt: String },
-	SetAiArtistRestoreFaces { restore_faces: bool },
-	SetAiArtistSamples { samples: u32 },
-	SetAiArtistSamplingMethod { method: AiArtistSamplingMethod },
-	SetAiArtistScaleFromResolution,
-	SetAiArtistSeed { seed: u64 },
-	SetAiArtistSeedRandomize,
-	SetAiArtistSeedRandomizeAndGenerate,
-	SetAiArtistTiling { tiling: bool },
-	SetAiArtistUseImg2Img { use_img2img: bool },
+	SetImaginateCfgScale { cfg_scale: f64 },
+	SetImaginateDenoisingStrength { denoising_strength: f64 },
+	SetImaginateNegativePrompt { negative_prompt: String },
+	SetImaginatePrompt { prompt: String },
+	SetImaginateRestoreFaces { restore_faces: bool },
+	SetImaginateSamples { samples: u32 },
+	SetImaginateSamplingMethod { method: ImaginateSamplingMethod },
+	SetImaginateScaleFromResolution,
+	SetImaginateSeed { seed: u64 },
+	SetImaginateSeedRandomize,
+	SetImaginateSeedRandomizeAndGenerate,
+	SetImaginateTiling { tiling: bool },
+	SetImaginateUseImg2Img { use_img2img: bool },
 	SetPivot { new_position: PivotPosition },
 	UpdateSelectedDocumentProperties,
 }

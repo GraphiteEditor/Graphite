@@ -13,15 +13,15 @@ use glam::DAffine2;
 use serde::{Deserialize, Serialize};
 
 #[derive(Default)]
-pub struct AiArtistTool {
-	fsm_state: AiArtistToolFsmState,
-	tool_data: AiArtistToolData,
+pub struct ImaginateTool {
+	fsm_state: ImaginateToolFsmState,
+	tool_data: ImaginateToolData,
 }
 
 #[remain::sorted]
-#[impl_message(Message, ToolMessage, AiArtist)]
+#[impl_message(Message, ToolMessage, Imaginate)]
 #[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize)]
-pub enum AiArtistToolMessage {
+pub enum ImaginateToolMessage {
 	// Standard messages
 	#[remain::unsorted]
 	Abort,
@@ -35,9 +35,9 @@ pub enum AiArtistToolMessage {
 	},
 }
 
-impl PropertyHolder for AiArtistTool {}
+impl PropertyHolder for ImaginateTool {}
 
-impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for AiArtistTool {
+impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for ImaginateTool {
 	fn process_message(&mut self, message: ToolMessage, tool_data: ToolActionHandlerData<'a>, responses: &mut VecDeque<Message>) {
 		if message == ToolMessage::UpdateHints {
 			self.fsm_state.update_hints(responses);
@@ -59,13 +59,13 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for AiArtistTool
 	}
 
 	fn actions(&self) -> ActionList {
-		use AiArtistToolFsmState::*;
+		use ImaginateToolFsmState::*;
 
 		match self.fsm_state {
-			Ready => actions!(AiArtistToolMessageDiscriminant;
+			Ready => actions!(ImaginateToolMessageDiscriminant;
 				DragStart,
 			),
-			Drawing => actions!(AiArtistToolMessageDiscriminant;
+			Drawing => actions!(ImaginateToolMessageDiscriminant;
 				DragStop,
 				Abort,
 				Resize,
@@ -74,46 +74,46 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for AiArtistTool
 	}
 }
 
-impl ToolMetadata for AiArtistTool {
+impl ToolMetadata for ImaginateTool {
 	fn icon_name(&self) -> String {
-		"RasterAiArtistTool".into()
+		"RasterImaginateTool".into()
 	}
 	fn tooltip(&self) -> String {
-		"AI Artist Tool".into()
+		"Imaginate Tool".into()
 	}
 	fn tool_type(&self) -> crate::messages::tool::utility_types::ToolType {
-		ToolType::AiArtist
+		ToolType::Imaginate
 	}
 }
 
-impl ToolTransition for AiArtistTool {
+impl ToolTransition for ImaginateTool {
 	fn event_to_message_map(&self) -> EventToMessageMap {
 		EventToMessageMap {
 			document_dirty: None,
-			tool_abort: Some(AiArtistToolMessage::Abort.into()),
+			tool_abort: Some(ImaginateToolMessage::Abort.into()),
 			selection_changed: None,
 		}
 	}
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum AiArtistToolFsmState {
+enum ImaginateToolFsmState {
 	Ready,
 	Drawing,
 }
 
-impl Default for AiArtistToolFsmState {
+impl Default for ImaginateToolFsmState {
 	fn default() -> Self {
-		AiArtistToolFsmState::Ready
+		ImaginateToolFsmState::Ready
 	}
 }
 #[derive(Clone, Debug, Default)]
-struct AiArtistToolData {
+struct ImaginateToolData {
 	data: Resize,
 }
 
-impl Fsm for AiArtistToolFsmState {
-	type ToolData = AiArtistToolData;
+impl Fsm for ImaginateToolFsmState {
+	type ToolData = ImaginateToolData;
 	type ToolOptions = ();
 
 	fn transition(
@@ -124,12 +124,12 @@ impl Fsm for AiArtistToolFsmState {
 		_tool_options: &Self::ToolOptions,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
-		use AiArtistToolFsmState::*;
-		use AiArtistToolMessage::*;
+		use ImaginateToolFsmState::*;
+		use ImaginateToolMessage::*;
 
 		let mut shape_data = &mut tool_data.data;
 
-		if let ToolMessage::AiArtist(event) = event {
+		if let ToolMessage::Imaginate(event) = event {
 			match (self, event) {
 				(Ready, DragStart) => {
 					shape_data.start(responses, document, input.mouse.position, font_cache);
@@ -138,7 +138,7 @@ impl Fsm for AiArtistToolFsmState {
 					responses.push_back(DocumentMessage::DeselectAllLayers.into());
 
 					responses.push_back(
-						Operation::AddAiArtistFrame {
+						Operation::AddImaginateFrame {
 							path: shape_data.path.clone().unwrap(),
 							insert_index: -1,
 							transform: DAffine2::ZERO.to_cols_array(),
@@ -181,7 +181,7 @@ impl Fsm for AiArtistToolFsmState {
 
 	fn update_hints(&self, responses: &mut VecDeque<Message>) {
 		let hint_data = match self {
-			AiArtistToolFsmState::Ready => HintData(vec![HintGroup(vec![
+			ImaginateToolFsmState::Ready => HintData(vec![HintGroup(vec![
 				HintInfo {
 					key_groups: vec![],
 					key_groups_mac: None,
@@ -204,7 +204,7 @@ impl Fsm for AiArtistToolFsmState {
 					plus: true,
 				},
 			])]),
-			AiArtistToolFsmState::Drawing => HintData(vec![HintGroup(vec![
+			ImaginateToolFsmState::Drawing => HintData(vec![HintGroup(vec![
 				HintInfo {
 					key_groups: vec![KeysGroup(vec![Key::Shift])],
 					key_groups_mac: None,

@@ -8,6 +8,6 @@ pub enum PreferencesMessage {
 	Load { preferences: String },
 	ResetToDefaults,
 
-	AiArtistRefreshFrequency { seconds: f64 },
-	AiArtistServerHostname { hostname: String },
+	ImaginateRefreshFrequency { seconds: f64 },
+	ImaginateServerHostname { hostname: String },
 }

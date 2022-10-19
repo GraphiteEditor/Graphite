@@ -6,7 +6,7 @@ use crate::messages::frontend::utility_types::FrontendDocumentDetails;
 use crate::messages::layout::utility_types::layout_widget::PropertyHolder;
 use crate::messages::layout::utility_types::misc::LayoutTarget;
 use crate::messages::portfolio::document::utility_types::clipboards::{Clipboard, CopyBufferEntry, INTERNAL_CLIPBOARD_COUNT};
-use crate::messages::portfolio::utility_types::AiArtistServerStatus;
+use crate::messages::portfolio::utility_types::ImaginateServerStatus;
 use crate::messages::prelude::*;
 
 use graphene::layers::layer_info::LayerDataTypeDiscriminant;
@@ -46,47 +46,6 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 				if let Some(document) = self.documents.get_mut(&document_id) {
 					document.process_message(message, (document_id, ipp, &self.persistent_data, preferences), responses)
 				}
-			}
-			PortfolioMessage::AiArtistCheckServerStatus => {
-				self.persistent_data.ai_artist_server_status = AiArtistServerStatus::Checking;
-				responses.push_back(
-					FrontendMessage::TriggerAiArtistCheckServerStatus {
-						hostname: preferences.ai_artist_server_hostname.clone(),
-					}
-					.into(),
-				);
-				responses.push_back(PropertiesPanelMessage::ResendActiveProperties.into());
-			}
-			PortfolioMessage::AiArtistSetBlobUrl {
-				document_id,
-				layer_path,
-				blob_url,
-				resolution,
-			} => {
-				if let Some(document) = self.documents.get_mut(&document_id) {
-					if let Ok(layer) = document.graphene_document.layer(&layer_path) {
-						let previous_blob_url = &layer.as_ai_artist().unwrap().blob_url;
-
-						if let Some(url) = previous_blob_url {
-							responses.push_back(FrontendMessage::TriggerRevokeBlobUrl { url: url.clone() }.into());
-						}
-
-						let message = DocumentOperation::SetLayerBlobUrl { layer_path, blob_url, resolution }.into();
-						responses.push_back(PortfolioMessage::DocumentPassMessage { document_id, message }.into());
-					}
-				}
-			}
-			PortfolioMessage::AiArtistSetGeneratingStatus { document_id, path, percent, status } => {
-				let message = DocumentOperation::AiArtistSetGeneratingStatus { path, percent, status }.into();
-				responses.push_back(PortfolioMessage::DocumentPassMessage { document_id, message }.into());
-			}
-			PortfolioMessage::AiArtistSetImageData { document_id, layer_path, image_data } => {
-				let message = DocumentOperation::AiArtistSetImageData { layer_path, image_data }.into();
-				responses.push_back(PortfolioMessage::DocumentPassMessage { document_id, message }.into());
-			}
-			PortfolioMessage::AiArtistSetServerStatus { status } => {
-				self.persistent_data.ai_artist_server_status = status;
-				responses.push_back(PropertiesPanelMessage::ResendActiveProperties.into());
 			}
 			PortfolioMessage::AutoSaveActiveDocument => {
 				if let Some(document_id) = self.active_document_id {
@@ -234,6 +193,47 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 					responses.push_back(DocumentMessage::RenderDocument.into());
 					responses.push_back(BroadcastEvent::DocumentIsDirty.into());
 				}
+			}
+			PortfolioMessage::ImaginateCheckServerStatus => {
+				self.persistent_data.imaginate_server_status = ImaginateServerStatus::Checking;
+				responses.push_back(
+					FrontendMessage::TriggerImaginateCheckServerStatus {
+						hostname: preferences.imaginate_server_hostname.clone(),
+					}
+					.into(),
+				);
+				responses.push_back(PropertiesPanelMessage::ResendActiveProperties.into());
+			}
+			PortfolioMessage::ImaginateSetBlobUrl {
+				document_id,
+				layer_path,
+				blob_url,
+				resolution,
+			} => {
+				if let Some(document) = self.documents.get_mut(&document_id) {
+					if let Ok(layer) = document.graphene_document.layer(&layer_path) {
+						let previous_blob_url = &layer.as_imaginate().unwrap().blob_url;
+
+						if let Some(url) = previous_blob_url {
+							responses.push_back(FrontendMessage::TriggerRevokeBlobUrl { url: url.clone() }.into());
+						}
+
+						let message = DocumentOperation::SetLayerBlobUrl { layer_path, blob_url, resolution }.into();
+						responses.push_back(PortfolioMessage::DocumentPassMessage { document_id, message }.into());
+					}
+				}
+			}
+			PortfolioMessage::ImaginateSetGeneratingStatus { document_id, path, percent, status } => {
+				let message = DocumentOperation::ImaginateSetGeneratingStatus { path, percent, status }.into();
+				responses.push_back(PortfolioMessage::DocumentPassMessage { document_id, message }.into());
+			}
+			PortfolioMessage::ImaginateSetImageData { document_id, layer_path, image_data } => {
+				let message = DocumentOperation::ImaginateSetImageData { layer_path, image_data }.into();
+				responses.push_back(PortfolioMessage::DocumentPassMessage { document_id, message }.into());
+			}
+			PortfolioMessage::ImaginateSetServerStatus { status } => {
+				self.persistent_data.imaginate_server_status = status;
+				responses.push_back(PropertiesPanelMessage::ResendActiveProperties.into());
 			}
 			PortfolioMessage::Import => {
 				// This portfolio message wraps the frontend message so it can be listed as an action, which isn't possible for frontend messages

@@ -12,7 +12,7 @@ pub enum DocumentError {
 	NotAShape,
 	NotText,
 	NotAnImage,
-	NotAnAiArtist,
+	NotAnImaginate,
 	InvalidFile(String),
 }
 

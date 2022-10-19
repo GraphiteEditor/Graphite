@@ -20,10 +20,10 @@ use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::*;
 
 use graphene::color::Color;
-use graphene::document::{pick_layer_safe_ai_artist_resolution, Document as GrapheneDocument};
-use graphene::layers::ai_artist_layer::{AiArtistBaseImage, AiArtistGenerationParameters, AiArtistStatus};
+use graphene::document::{pick_layer_safe_imaginate_resolution, Document as GrapheneDocument};
 use graphene::layers::blend_mode::BlendMode;
 use graphene::layers::folder_layer::FolderLayer;
+use graphene::layers::imaginate_layer::{ImaginateBaseImage, ImaginateGenerationParameters, ImaginateStatus};
 use graphene::layers::layer_info::{LayerDataType, LayerDataTypeDiscriminant};
 use graphene::layers::style::{Fill, RenderData, ViewMode};
 use graphene::layers::text_layer::{Font, FontCache};
@@ -181,67 +181,6 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				responses.push_back(BroadcastEvent::SelectionChanged.into());
 
 				self.update_layer_tree_options_bar_widgets(responses, &persistent_data.font_cache);
-			}
-			AiArtistClear => {
-				let mut selected_ai_artist_layers = self.selected_layers_with_type(LayerDataTypeDiscriminant::AiArtist);
-				// Get what is hopefully the only selected AI Artist layer
-				let layer_path = selected_ai_artist_layers.next();
-				// Abort if we didn't have any AI Artist layer, or if there are additional ones also selected
-				if layer_path.is_none() || selected_ai_artist_layers.next().is_some() {
-					return;
-				}
-				let layer_path = layer_path.unwrap();
-
-				let layer = self.graphene_document.layer(layer_path).expect("Clearing AI Artist image for invalid layer");
-				let previous_blob_url = &layer.as_ai_artist().unwrap().blob_url;
-
-				if let Some(url) = previous_blob_url {
-					responses.push_back(FrontendMessage::TriggerRevokeBlobUrl { url: url.clone() }.into());
-				}
-				responses.push_back(DocumentOperation::AiArtistClear { path: layer_path.into() }.into());
-			}
-			AiArtistGenerate => {
-				if let Some(message) = self.call_ai_artist(document_id, preferences, persistent_data) {
-					// TODO: Eventually remove this after a message system ordering architectural change
-					// This message is a workaround for the fact that, when `ai-artist.ts` calls...
-					// `editor.instance.setAIArtistGeneratingStatus(layerPath, 0, true);`
-					// ...execution transfers from the Rust part of the call stack into the JS part of the call stack (before the Rust message queue is empty,
-					// and there is a Properties panel refresh queued next). Then the JS calls that line shown above and enters the Rust part of the callstack
-					// again, so it's gone through JS (user initiation) -> Rust (process the button press) -> JS (beginning server request) -> Rust (set
-					// progress percentage to 0). As that call stack returns back from the Rust and back from the JS, it returns to the Rust and finishes
-					// processing the queue. That's where it then processes the Properties panel refresh that sent the "Ready" or "Done" state that existed
-					// before pressing the Generate button causing it to show "0%". So "Ready" or "Done" immediately overwrites the "0%". This block below,
-					// therefore, adds a redundant call to set it to 0% progress so the message execution order ends with this as the final percentage shown
-					// to the user.
-					responses.push_back(
-						DocumentOperation::AiArtistSetGeneratingStatus {
-							path: self.selected_layers_with_type(LayerDataTypeDiscriminant::AiArtist).next().unwrap().to_vec(),
-							percent: Some(0.),
-							status: AiArtistStatus::Beginning,
-						}
-						.into(),
-					);
-
-					responses.push_back(message);
-				}
-			}
-			AiArtistTerminate => {
-				let hostname = preferences.ai_artist_server_hostname.clone();
-
-				let layer_path = {
-					let mut selected_ai_artist_layers = self.selected_layers_with_type(LayerDataTypeDiscriminant::AiArtist);
-
-					// Get what is hopefully the only selected AI Artist layer
-					match selected_ai_artist_layers.next() {
-						// Continue only if there are no additional Ai artist layers also selected
-						Some(layer_path) if selected_ai_artist_layers.next().is_none() => Some(layer_path.to_owned()),
-						_ => None,
-					}
-				};
-
-				if let Some(layer_path) = layer_path {
-					responses.push_back(FrontendMessage::TriggerAiArtistTerminate { document_id, layer_path, hostname }.into());
-				}
 			}
 			AlignSelectedLayers { axis, aggregate } => {
 				self.backup(responses);
@@ -460,6 +399,67 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 					}
 					.into(),
 				);
+			}
+			ImaginateClear => {
+				let mut selected_imaginate_layers = self.selected_layers_with_type(LayerDataTypeDiscriminant::Imaginate);
+				// Get what is hopefully the only selected Imaginate layer
+				let layer_path = selected_imaginate_layers.next();
+				// Abort if we didn't have any Imaginate layer, or if there are additional ones also selected
+				if layer_path.is_none() || selected_imaginate_layers.next().is_some() {
+					return;
+				}
+				let layer_path = layer_path.unwrap();
+
+				let layer = self.graphene_document.layer(layer_path).expect("Clearing Imaginate image for invalid layer");
+				let previous_blob_url = &layer.as_imaginate().unwrap().blob_url;
+
+				if let Some(url) = previous_blob_url {
+					responses.push_back(FrontendMessage::TriggerRevokeBlobUrl { url: url.clone() }.into());
+				}
+				responses.push_back(DocumentOperation::ImaginateClear { path: layer_path.into() }.into());
+			}
+			ImaginateGenerate => {
+				if let Some(message) = self.call_imaginate(document_id, preferences, persistent_data) {
+					// TODO: Eventually remove this after a message system ordering architectural change
+					// This message is a workaround for the fact that, when `imaginate.ts` calls...
+					// `editor.instance.setImaginateGeneratingStatus(layerPath, 0, true);`
+					// ...execution transfers from the Rust part of the call stack into the JS part of the call stack (before the Rust message queue is empty,
+					// and there is a Properties panel refresh queued next). Then the JS calls that line shown above and enters the Rust part of the callstack
+					// again, so it's gone through JS (user initiation) -> Rust (process the button press) -> JS (beginning server request) -> Rust (set
+					// progress percentage to 0). As that call stack returns back from the Rust and back from the JS, it returns to the Rust and finishes
+					// processing the queue. That's where it then processes the Properties panel refresh that sent the "Ready" or "Done" state that existed
+					// before pressing the Generate button causing it to show "0%". So "Ready" or "Done" immediately overwrites the "0%". This block below,
+					// therefore, adds a redundant call to set it to 0% progress so the message execution order ends with this as the final percentage shown
+					// to the user.
+					responses.push_back(
+						DocumentOperation::ImaginateSetGeneratingStatus {
+							path: self.selected_layers_with_type(LayerDataTypeDiscriminant::Imaginate).next().unwrap().to_vec(),
+							percent: Some(0.),
+							status: ImaginateStatus::Beginning,
+						}
+						.into(),
+					);
+
+					responses.push_back(message);
+				}
+			}
+			ImaginateTerminate => {
+				let hostname = preferences.imaginate_server_hostname.clone();
+
+				let layer_path = {
+					let mut selected_imaginate_layers = self.selected_layers_with_type(LayerDataTypeDiscriminant::Imaginate);
+
+					// Get what is hopefully the only selected Imaginate layer
+					match selected_imaginate_layers.next() {
+						// Continue only if there are no additional Imaginate layers also selected
+						Some(layer_path) if selected_imaginate_layers.next().is_none() => Some(layer_path.to_owned()),
+						_ => None,
+					}
+				};
+
+				if let Some(layer_path) = layer_path {
+					responses.push_back(FrontendMessage::TriggerImaginateTerminate { document_id, layer_path, hostname }.into());
+				}
 			}
 			LayerChanged { affected_layer_path } => {
 				if let Ok(layer_entry) = self.layer_panel_entry(affected_layer_path.clone(), &persistent_data.font_cache) {
@@ -694,13 +694,13 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 
 				// Revoke the old blob URL
 				match &layer.data {
-					LayerDataType::AiArtist(ai_artist) => {
-						if let Some(url) = &ai_artist.blob_url {
+					LayerDataType::Imaginate(imaginate) => {
+						if let Some(url) = &imaginate.blob_url {
 							responses.push_back(FrontendMessage::TriggerRevokeBlobUrl { url: url.clone() }.into());
 						}
 					}
 					LayerDataType::Image(_) => {}
-					other => panic!("Setting blob URL for invalid layer type, which must be an `AiArtist` or `Image`. Found: `{:?}`", other),
+					other => panic!("Setting blob URL for invalid layer type, which must be an `Imaginate` or `Image`. Found: `{:?}`", other),
 				}
 
 				responses.push_back(
@@ -898,53 +898,53 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 }
 
 impl DocumentMessageHandler {
-	pub fn call_ai_artist(&mut self, document_id: u64, preferences: &PreferencesMessageHandler, persistent_data: &PersistentData) -> Option<Message> {
+	pub fn call_imaginate(&mut self, document_id: u64, preferences: &PreferencesMessageHandler, persistent_data: &PersistentData) -> Option<Message> {
 		let layer_path = {
-			let mut selected_ai_artist_layers = self.selected_layers_with_type(LayerDataTypeDiscriminant::AiArtist);
+			let mut selected_imaginate_layers = self.selected_layers_with_type(LayerDataTypeDiscriminant::Imaginate);
 
-			// Get what is hopefully the only selected AI Artist layer
-			match selected_ai_artist_layers.next() {
-				// Continue only if there are no additional Ai artist layers also selected
-				Some(layer_path) if selected_ai_artist_layers.next().is_none() => layer_path.to_owned(),
+			// Get what is hopefully the only selected Imaginate layer
+			match selected_imaginate_layers.next() {
+				// Continue only if there are no additional Imaginate layers also selected
+				Some(layer_path) if selected_imaginate_layers.next().is_none() => layer_path.to_owned(),
 				_ => return None,
 			}
 		};
 
-		// Prepare the AI Artist parameters and base image
+		// Prepare the Imaginate parameters and base image
 
 		let layer = self.graphene_document.layer(&layer_path).unwrap();
-		let ai_artist_layer = layer.as_ai_artist().unwrap();
+		let imaginate_layer = layer.as_imaginate().unwrap();
 
-		let parameters = AiArtistGenerationParameters {
-			seed: ai_artist_layer.seed,
-			samples: ai_artist_layer.samples,
-			sampling_method: ai_artist_layer.sampling_method.api_value().to_string(),
-			denoising_strength: ai_artist_layer.use_img2img.then_some(ai_artist_layer.denoising_strength),
-			cfg_scale: ai_artist_layer.cfg_scale,
-			prompt: ai_artist_layer.prompt.clone(),
-			negative_prompt: ai_artist_layer.negative_prompt.clone(),
-			resolution: pick_layer_safe_ai_artist_resolution(layer, &persistent_data.font_cache),
-			restore_faces: ai_artist_layer.restore_faces,
-			tiling: ai_artist_layer.tiling,
+		let parameters = ImaginateGenerationParameters {
+			seed: imaginate_layer.seed,
+			samples: imaginate_layer.samples,
+			sampling_method: imaginate_layer.sampling_method.api_value().to_string(),
+			denoising_strength: imaginate_layer.use_img2img.then_some(imaginate_layer.denoising_strength),
+			cfg_scale: imaginate_layer.cfg_scale,
+			prompt: imaginate_layer.prompt.clone(),
+			negative_prompt: imaginate_layer.negative_prompt.clone(),
+			resolution: pick_layer_safe_imaginate_resolution(layer, &persistent_data.font_cache),
+			restore_faces: imaginate_layer.restore_faces,
+			tiling: imaginate_layer.tiling,
 		};
-		let base_image = if ai_artist_layer.use_img2img {
+		let base_image = if imaginate_layer.use_img2img {
 			// Calculate the bounding box of the region to be exported
 			let bounds = layer.aabb(&persistent_data.font_cache).unwrap_or_default();
 			let size = bounds[1] - bounds[0];
 
 			let svg = self.render_document(bounds, persistent_data, DocumentRenderMode::OnlyBelowLayerInFolder(&layer_path));
 
-			Some(AiArtistBaseImage { svg, size })
+			Some(ImaginateBaseImage { svg, size })
 		} else {
 			None
 		};
 
 		Some(
-			FrontendMessage::TriggerAiArtistGenerate {
+			FrontendMessage::TriggerImaginateGenerate {
 				parameters,
 				base_image,
-				hostname: preferences.ai_artist_server_hostname.clone(),
-				refresh_frequency: preferences.ai_artist_refresh_frequency,
+				hostname: preferences.imaginate_server_hostname.clone(),
+				refresh_frequency: preferences.imaginate_refresh_frequency,
 				document_id,
 				layer_path,
 			}
@@ -1437,12 +1437,12 @@ impl DocumentMessageHandler {
 					image_data: image.image_data.clone(),
 					mime: image.mime.clone(),
 				}),
-				LayerDataType::AiArtist(ai_artist) => {
-					if let Some(data) = &ai_artist.image_data {
+				LayerDataType::Imaginate(imaginate) => {
+					if let Some(data) = &imaginate.image_data {
 						image_data.push(FrontendImageData {
 							path: path.clone(),
 							image_data: data.image_data.clone(),
-							mime: ai_artist.mime.clone(),
+							mime: imaginate.mime.clone(),
 						});
 					}
 				}

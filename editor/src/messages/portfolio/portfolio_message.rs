@@ -1,8 +1,8 @@
-use super::utility_types::AiArtistServerStatus;
+use super::utility_types::ImaginateServerStatus;
 use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
 use crate::messages::prelude::*;
 
-use graphene::layers::{ai_artist_layer::AiArtistStatus, text_layer::Font};
+use graphene::layers::{imaginate_layer::ImaginateStatus, text_layer::Font};
 use graphene::LayerId;
 
 use serde::{Deserialize, Serialize};
@@ -24,27 +24,6 @@ pub enum PortfolioMessage {
 	DocumentPassMessage {
 		document_id: u64,
 		message: DocumentMessage,
-	},
-	AiArtistCheckServerStatus,
-	AiArtistSetBlobUrl {
-		document_id: u64,
-		layer_path: Vec<LayerId>,
-		blob_url: String,
-		resolution: (f64, f64),
-	},
-	AiArtistSetGeneratingStatus {
-		document_id: u64,
-		path: Vec<LayerId>,
-		percent: Option<f64>,
-		status: AiArtistStatus,
-	},
-	AiArtistSetImageData {
-		document_id: u64,
-		layer_path: Vec<LayerId>,
-		image_data: Vec<u8>,
-	},
-	AiArtistSetServerStatus {
-		status: AiArtistServerStatus,
 	},
 	AutoSaveActiveDocument,
 	AutoSaveDocument {
@@ -71,6 +50,27 @@ pub enum PortfolioMessage {
 		preview_url: String,
 		data: Vec<u8>,
 		is_default: bool,
+	},
+	ImaginateCheckServerStatus,
+	ImaginateSetBlobUrl {
+		document_id: u64,
+		layer_path: Vec<LayerId>,
+		blob_url: String,
+		resolution: (f64, f64),
+	},
+	ImaginateSetGeneratingStatus {
+		document_id: u64,
+		path: Vec<LayerId>,
+		percent: Option<f64>,
+		status: ImaginateStatus,
+	},
+	ImaginateSetImageData {
+		document_id: u64,
+		layer_path: Vec<LayerId>,
+		image_data: Vec<u8>,
+	},
+	ImaginateSetServerStatus {
+		status: ImaginateServerStatus,
 	},
 	Import,
 	LoadDocumentResources {

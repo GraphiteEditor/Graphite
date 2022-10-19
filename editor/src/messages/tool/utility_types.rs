@@ -277,7 +277,7 @@ pub enum ToolType {
 	Patch,
 	Detail,
 	Relight,
-	AiArtist,
+	Imaginate,
 }
 
 enum ToolAvailability {
@@ -311,7 +311,7 @@ fn list_tools_in_groups() -> Vec<Vec<ToolAvailability>> {
 		],
 		vec![
 			// Raster tool group
-			ToolAvailability::Available(Box::new(ai_artist_tool::AiArtistTool::default())),
+			ToolAvailability::Available(Box::new(imaginate_tool::ImaginateTool::default())),
 			ToolAvailability::ComingSoon(ToolEntry {
 				tool_type: ToolType::Brush,
 				icon_name: "RasterBrushTool".into(),
@@ -380,7 +380,7 @@ pub fn tool_message_to_tool_type(tool_message: &ToolMessage) -> ToolType {
 		// ToolMessage::Patch(_) => ToolType::Patch,
 		// ToolMessage::Detail(_) => ToolType::Detail,
 		// ToolMessage::Relight(_) => ToolType::Relight,
-		ToolMessage::AiArtist(_) => ToolType::AiArtist,
+		ToolMessage::Imaginate(_) => ToolType::Imaginate,
 		_ => panic!(
 			"Conversion from ToolMessage to ToolType impossible because the given ToolMessage does not have a matching ToolType. Got: {:?}",
 			tool_message
@@ -416,7 +416,7 @@ pub fn tool_type_to_activate_tool_message(tool_type: ToolType) -> ToolMessageDis
 		// ToolType::Patch => ToolMessageDiscriminant::ActivateToolPatch,
 		// ToolType::Detail => ToolMessageDiscriminant::ActivateToolDetail,
 		// ToolType::Relight => ToolMessageDiscriminant::ActivateToolRelight,
-		ToolType::AiArtist => ToolMessageDiscriminant::ActivateToolAiArtist,
+		ToolType::Imaginate => ToolMessageDiscriminant::ActivateToolImaginate,
 		_ => panic!(
 			"Conversion from ToolType to ToolMessage impossible because the given ToolType does not have a matching ToolMessage. Got: {:?}",
 			tool_type

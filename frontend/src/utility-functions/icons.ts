@@ -94,7 +94,6 @@ import FlipHorizontal from "@/../assets/icon-16px-solid/flip-horizontal.svg";
 import FlipVertical from "@/../assets/icon-16px-solid/flip-vertical.svg";
 import Folder from "@/../assets/icon-16px-solid/folder.svg";
 import GraphiteLogo from "@/../assets/icon-16px-solid/graphite-logo.svg";
-import NodeAiArtist from "@/../assets/icon-16px-solid/node-ai-artist.svg";
 import NodeArtboard from "@/../assets/icon-16px-solid/node-artboard.svg";
 import NodeBlur from "@/../assets/icon-16px-solid/node-blur.svg";
 import NodeBrushwork from "@/../assets/icon-16px-solid/node-brushwork.svg";
@@ -102,6 +101,7 @@ import NodeColorCorrection from "@/../assets/icon-16px-solid/node-color-correcti
 import NodeFolder from "@/../assets/icon-16px-solid/node-folder.svg";
 import NodeGradient from "@/../assets/icon-16px-solid/node-gradient.svg";
 import NodeImage from "@/../assets/icon-16px-solid/node-image.svg";
+import NodeImaginate from "@/../assets/icon-16px-solid/node-imaginate.svg";
 import NodeMagicWand from "@/../assets/icon-16px-solid/node-magic-wand.svg";
 import NodeMask from "@/../assets/icon-16px-solid/node-mask.svg";
 import NodeMotionBlur from "@/../assets/icon-16px-solid/node-motion-blur.svg";
@@ -149,7 +149,7 @@ const SOLID_16PX = {
 	FlipVertical: { component: FlipVertical, size: 16 },
 	Folder: { component: Folder, size: 16 },
 	GraphiteLogo: { component: GraphiteLogo, size: 16 },
-	NodeAiArtist: { component: NodeAiArtist, size: 16 },
+	NodeImaginate: { component: NodeImaginate, size: 16 },
 	NodeArtboard: { component: NodeArtboard, size: 16 },
 	NodeBlur: { component: NodeBlur, size: 16 },
 	NodeBrushwork: { component: NodeBrushwork, size: 16 },
@@ -215,11 +215,11 @@ import GeneralFillTool from "@/../assets/icon-24px-two-tone/general-fill-tool.sv
 import GeneralGradientTool from "@/../assets/icon-24px-two-tone/general-gradient-tool.svg";
 import GeneralNavigateTool from "@/../assets/icon-24px-two-tone/general-navigate-tool.svg";
 import GeneralSelectTool from "@/../assets/icon-24px-two-tone/general-select-tool.svg";
-import RasterAiArtistTool from "@/../assets/icon-24px-two-tone/raster-ai-artist-tool.svg";
 import RasterBrushTool from "@/../assets/icon-24px-two-tone/raster-brush-tool.svg";
 import RasterCloneTool from "@/../assets/icon-24px-two-tone/raster-clone-tool.svg";
 import RasterDetailTool from "@/../assets/icon-24px-two-tone/raster-detail-tool.svg";
 import RasterHealTool from "@/../assets/icon-24px-two-tone/raster-heal-tool.svg";
+import RasterImaginateTool from "@/../assets/icon-24px-two-tone/raster-imaginate-tool.svg";
 import RasterPatchTool from "@/../assets/icon-24px-two-tone/raster-patch-tool.svg";
 import RasterRelightTool from "@/../assets/icon-24px-two-tone/raster-relight-tool.svg";
 import VectorEllipseTool from "@/../assets/icon-24px-two-tone/vector-ellipse-tool.svg";
@@ -239,7 +239,7 @@ const TWO_TONE_24PX = {
 	GeneralGradientTool: { component: GeneralGradientTool, size: 24 },
 	GeneralNavigateTool: { component: GeneralNavigateTool, size: 24 },
 	GeneralSelectTool: { component: GeneralSelectTool, size: 24 },
-	RasterAiArtistTool: { component: RasterAiArtistTool, size: 24 },
+	RasterImaginateTool: { component: RasterImaginateTool, size: 24 },
 	RasterBrushTool: { component: RasterBrushTool, size: 24 },
 	RasterCloneTool: { component: RasterCloneTool, size: 24 },
 	RasterDetailTool: { component: RasterDetailTool, size: 24 },

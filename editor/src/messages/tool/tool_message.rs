@@ -77,7 +77,7 @@ pub enum ToolMessage {
 	// Detail(DetailToolMessage),
 	#[remain::unsorted]
 	#[child]
-	AiArtist(AiArtistToolMessage),
+	Imaginate(ImaginateToolMessage),
 
 	// Messages
 	#[remain::unsorted]
@@ -113,7 +113,7 @@ pub enum ToolMessage {
 	ActivateToolShape,
 
 	#[remain::unsorted]
-	ActivateToolAiArtist,
+	ActivateToolImaginate,
 
 	ActivateTool {
 		tool_type: ToolType,

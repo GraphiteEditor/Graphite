@@ -1,7 +1,7 @@
-use super::ai_artist_layer::AiArtistLayer;
 use super::blend_mode::BlendMode;
 use super::folder_layer::FolderLayer;
 use super::image_layer::ImageLayer;
+use super::imaginate_layer::ImaginateLayer;
 use super::shape_layer::ShapeLayer;
 use super::style::{PathStyle, RenderData};
 use super::text_layer::TextLayer;
@@ -28,7 +28,7 @@ pub enum LayerDataType {
 	/// A layer that wraps an [ImageLayer] struct.
 	Image(ImageLayer),
 	/// A layer that wraps an [ImageLayer] struct.
-	AiArtist(AiArtistLayer),
+	Imaginate(ImaginateLayer),
 }
 
 impl LayerDataType {
@@ -38,7 +38,7 @@ impl LayerDataType {
 			LayerDataType::Folder(f) => f,
 			LayerDataType::Text(t) => t,
 			LayerDataType::Image(i) => i,
-			LayerDataType::AiArtist(a) => a,
+			LayerDataType::Imaginate(a) => a,
 		}
 	}
 
@@ -48,7 +48,7 @@ impl LayerDataType {
 			LayerDataType::Folder(f) => f,
 			LayerDataType::Text(t) => t,
 			LayerDataType::Image(i) => i,
-			LayerDataType::AiArtist(a) => a,
+			LayerDataType::Imaginate(a) => a,
 		}
 	}
 }
@@ -59,7 +59,7 @@ pub enum LayerDataTypeDiscriminant {
 	Shape,
 	Text,
 	Image,
-	AiArtist,
+	Imaginate,
 }
 
 impl fmt::Display for LayerDataTypeDiscriminant {
@@ -69,7 +69,7 @@ impl fmt::Display for LayerDataTypeDiscriminant {
 			LayerDataTypeDiscriminant::Shape => write!(f, "Shape"),
 			LayerDataTypeDiscriminant::Text => write!(f, "Text"),
 			LayerDataTypeDiscriminant::Image => write!(f, "Image"),
-			LayerDataTypeDiscriminant::AiArtist => write!(f, "AI Artist"),
+			LayerDataTypeDiscriminant::Imaginate => write!(f, "Imaginate"),
 		}
 	}
 }
@@ -83,7 +83,7 @@ impl From<&LayerDataType> for LayerDataTypeDiscriminant {
 			Shape(_) => LayerDataTypeDiscriminant::Shape,
 			Text(_) => LayerDataTypeDiscriminant::Text,
 			Image(_) => LayerDataTypeDiscriminant::Image,
-			AiArtist(_) => LayerDataTypeDiscriminant::AiArtist,
+			Imaginate(_) => LayerDataTypeDiscriminant::Imaginate,
 		}
 	}
 }
@@ -453,21 +453,21 @@ impl Layer {
 		}
 	}
 
-	/// Get a mutable reference to the AiArtist element wrapped by the layer.
-	/// This operation will fail if the [Layer type](Layer::data) is not `LayerDataType::AiArtist`.
-	pub fn as_ai_artist_mut(&mut self) -> Result<&mut AiArtistLayer, DocumentError> {
+	/// Get a mutable reference to the Imaginate element wrapped by the layer.
+	/// This operation will fail if the [Layer type](Layer::data) is not `LayerDataType::Imaginate`.
+	pub fn as_imaginate_mut(&mut self) -> Result<&mut ImaginateLayer, DocumentError> {
 		match &mut self.data {
-			LayerDataType::AiArtist(ai_artist) => Ok(ai_artist),
-			_ => Err(DocumentError::NotAnAiArtist),
+			LayerDataType::Imaginate(imaginate) => Ok(imaginate),
+			_ => Err(DocumentError::NotAnImaginate),
 		}
 	}
 
-	/// Get a reference to the AiArtist element wrapped by the layer.
-	/// This operation will fail if the [Layer type](Layer::data) is not `LayerDataType::AiArtist`.
-	pub fn as_ai_artist(&self) -> Result<&AiArtistLayer, DocumentError> {
+	/// Get a reference to the Imaginate element wrapped by the layer.
+	/// This operation will fail if the [Layer type](Layer::data) is not `LayerDataType::Imaginate`.
+	pub fn as_imaginate(&self) -> Result<&ImaginateLayer, DocumentError> {
 		match &self.data {
-			LayerDataType::AiArtist(ai_artist) => Ok(ai_artist),
-			_ => Err(DocumentError::NotAnAiArtist),
+			LayerDataType::Imaginate(imaginate) => Ok(imaginate),
+			_ => Err(DocumentError::NotAnImaginate),
 		}
 	}
 

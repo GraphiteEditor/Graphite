@@ -7,12 +7,12 @@ use crate::messages::layout::utility_types::widgets::input_widgets::{
 	CheckboxInput, ColorInput, DropdownEntryData, DropdownInput, FontInput, NumberInput, RadioEntryData, RadioInput, TextAreaInput, TextInput,
 };
 use crate::messages::layout::utility_types::widgets::label_widgets::{IconLabel, Separator, SeparatorDirection, SeparatorType, TextLabel};
-use crate::messages::portfolio::utility_types::{AiArtistServerStatus, PersistentData};
+use crate::messages::portfolio::utility_types::{ImaginateServerStatus, PersistentData};
 use crate::messages::prelude::*;
 
 use graphene::color::Color;
-use graphene::document::pick_layer_safe_ai_artist_resolution;
-use graphene::layers::ai_artist_layer::{AiArtistLayer, AiArtistSamplingMethod, AiArtistStatus};
+use graphene::document::pick_layer_safe_imaginate_resolution;
+use graphene::layers::imaginate_layer::{ImaginateLayer, ImaginateSamplingMethod, ImaginateStatus};
 use graphene::layers::layer_info::{Layer, LayerDataType, LayerDataTypeDiscriminant};
 use graphene::layers::style::{Fill, Gradient, GradientType, LineCap, LineJoin, Stroke};
 use graphene::layers::text_layer::{FontCache, TextLayer};
@@ -244,9 +244,9 @@ pub fn register_artwork_layer_properties(layer: &Layer, responses: &mut VecDeque
 					icon: "NodeImage".into(),
 					tooltip: "Image".into(),
 				})),
-				LayerDataType::AiArtist(_) => WidgetHolder::new(Widget::IconLabel(IconLabel {
-					icon: "NodeAiArtist".into(),
-					tooltip: "AI Artist".into(),
+				LayerDataType::Imaginate(_) => WidgetHolder::new(Widget::IconLabel(IconLabel {
+					icon: "NodeImaginate".into(),
+					tooltip: "Imaginate".into(),
 				})),
 			},
 			WidgetHolder::new(Widget::Separator(Separator {
@@ -301,8 +301,8 @@ pub fn register_artwork_layer_properties(layer: &Layer, responses: &mut VecDeque
 		LayerDataType::Image(_) => {
 			vec![node_section_transform(layer, persistent_data)]
 		}
-		LayerDataType::AiArtist(ai_artist) => {
-			vec![node_section_transform(layer, persistent_data), node_section_ai_artist(ai_artist, layer, persistent_data, responses)]
+		LayerDataType::Imaginate(imaginate) => {
+			vec![node_section_transform(layer, persistent_data), node_section_imaginate(imaginate, layer, persistent_data, responses)]
 		}
 		LayerDataType::Folder(_) => {
 			vec![node_section_transform(layer, persistent_data)]
@@ -493,9 +493,9 @@ fn node_section_transform(layer: &Layer, persistent_data: &PersistentData) -> La
 	}
 }
 
-fn node_section_ai_artist(ai_artist_layer: &AiArtistLayer, layer: &Layer, persistent_data: &PersistentData, responses: &mut VecDeque<Message>) -> LayoutGroup {
+fn node_section_imaginate(imaginate_layer: &ImaginateLayer, layer: &Layer, persistent_data: &PersistentData, responses: &mut VecDeque<Message>) -> LayoutGroup {
 	LayoutGroup::Section {
-		name: "AI Artist".into(),
+		name: "Imaginate".into(),
 		layout: vec![
 			LayoutGroup::Row {
 				widgets: {
@@ -514,7 +514,7 @@ fn node_section_ai_artist(ai_artist_layer: &AiArtistLayer, layer: &Layer, persis
 						WidgetHolder::new(Widget::IconButton(IconButton {
 							size: 24,
 							icon: "Settings".into(),
-							tooltip: "Preferences: AI Artist".into(),
+							tooltip: "Preferences: Imaginate".into(),
 							on_update: WidgetCallback::new(|_| DialogMessage::RequestPreferencesDialog.into()),
 							..Default::default()
 						})),
@@ -524,14 +524,14 @@ fn node_section_ai_artist(ai_artist_layer: &AiArtistLayer, layer: &Layer, persis
 						})),
 						WidgetHolder::new(Widget::TextLabel(TextLabel {
 							value: {
-								match &persistent_data.ai_artist_server_status {
-									AiArtistServerStatus::Unknown => {
-										responses.push_back(PortfolioMessage::AiArtistCheckServerStatus.into());
+								match &persistent_data.imaginate_server_status {
+									ImaginateServerStatus::Unknown => {
+										responses.push_back(PortfolioMessage::ImaginateCheckServerStatus.into());
 										"Checking...".into()
 									}
-									AiArtistServerStatus::Checking => "Checking...".into(),
-									AiArtistServerStatus::Unavailable => "Unavailable".into(),
-									AiArtistServerStatus::Connected => "Connected".into(),
+									ImaginateServerStatus::Checking => "Checking...".into(),
+									ImaginateServerStatus::Unavailable => "Unavailable".into(),
+									ImaginateServerStatus::Connected => "Connected".into(),
 								}
 							},
 							bold: true,
@@ -546,7 +546,7 @@ fn node_section_ai_artist(ai_artist_layer: &AiArtistLayer, layer: &Layer, persis
 							size: 24,
 							icon: "Reload".into(),
 							tooltip: "Refresh connection status".into(),
-							on_update: WidgetCallback::new(|_| PortfolioMessage::AiArtistCheckServerStatus.into()),
+							on_update: WidgetCallback::new(|_| PortfolioMessage::ImaginateCheckServerStatus.into()),
 							..Default::default()
 						})),
 					]
@@ -569,25 +569,25 @@ fn node_section_ai_artist(ai_artist_layer: &AiArtistLayer, layer: &Layer, persis
 						WidgetHolder::new(Widget::TextLabel(TextLabel {
 							value: {
 								// Since we don't serialize the status, we need to derive from other state whether the Idle state is actually supposed to be the Terminated state
-								let mut interpreted_status = ai_artist_layer.status.clone();
-								if ai_artist_layer.status == AiArtistStatus::Idle
-									&& ai_artist_layer.blob_url.is_some()
-									&& ai_artist_layer.percent_complete > 0.
-									&& ai_artist_layer.percent_complete < 100.
+								let mut interpreted_status = imaginate_layer.status.clone();
+								if imaginate_layer.status == ImaginateStatus::Idle
+									&& imaginate_layer.blob_url.is_some()
+									&& imaginate_layer.percent_complete > 0.
+									&& imaginate_layer.percent_complete < 100.
 								{
-									interpreted_status = AiArtistStatus::Terminated;
+									interpreted_status = ImaginateStatus::Terminated;
 								}
 
 								match interpreted_status {
-									AiArtistStatus::Idle => match ai_artist_layer.blob_url {
+									ImaginateStatus::Idle => match imaginate_layer.blob_url {
 										Some(_) => "Done".into(),
 										None => "Ready".into(),
 									},
-									AiArtistStatus::Beginning => "Beginning...".into(),
-									AiArtistStatus::Uploading(percent) => format!("Uploading Base Image: {:.0}%", percent),
-									AiArtistStatus::Generating => format!("Generating: {:.0}%", ai_artist_layer.percent_complete),
-									AiArtistStatus::Terminating => "Terminating...".into(),
-									AiArtistStatus::Terminated => format!("{:.0}% (Terminated)", ai_artist_layer.percent_complete),
+									ImaginateStatus::Beginning => "Beginning...".into(),
+									ImaginateStatus::Uploading(percent) => format!("Uploading Base Image: {:.0}%", percent),
+									ImaginateStatus::Generating => format!("Generating: {:.0}%", imaginate_layer.percent_complete),
+									ImaginateStatus::Terminating => "Terminating...".into(),
+									ImaginateStatus::Terminated => format!("{:.0}% (Terminated)", imaginate_layer.percent_complete),
 								}
 							},
 							bold: true,
@@ -611,31 +611,31 @@ fn node_section_ai_artist(ai_artist_layer: &AiArtistLayer, layer: &Layer, persis
 						})),
 					],
 					{
-						match ai_artist_layer.status {
-							AiArtistStatus::Beginning | AiArtistStatus::Uploading(_) => vec![WidgetHolder::new(Widget::TextButton(TextButton {
+						match imaginate_layer.status {
+							ImaginateStatus::Beginning | ImaginateStatus::Uploading(_) => vec![WidgetHolder::new(Widget::TextButton(TextButton {
 								label: "Beginning...".into(),
 								tooltip: "Sending image generation request to the server".into(),
 								disabled: true,
 								..Default::default()
 							}))],
-							AiArtistStatus::Generating => vec![WidgetHolder::new(Widget::TextButton(TextButton {
+							ImaginateStatus::Generating => vec![WidgetHolder::new(Widget::TextButton(TextButton {
 								label: "Terminate".into(),
 								tooltip: "Cancel in-progress image generation and keep the latest progress".into(),
-								on_update: WidgetCallback::new(|_| DocumentMessage::AiArtistTerminate.into()),
+								on_update: WidgetCallback::new(|_| DocumentMessage::ImaginateTerminate.into()),
 								..Default::default()
 							}))],
-							AiArtistStatus::Terminating => vec![WidgetHolder::new(Widget::TextButton(TextButton {
+							ImaginateStatus::Terminating => vec![WidgetHolder::new(Widget::TextButton(TextButton {
 								label: "Terminating...".into(),
 								tooltip: "Waiting on the final image generated after termination".into(),
 								disabled: true,
 								..Default::default()
 							}))],
-							AiArtistStatus::Idle | AiArtistStatus::Terminated => vec![
+							ImaginateStatus::Idle | ImaginateStatus::Terminated => vec![
 								WidgetHolder::new(Widget::IconButton(IconButton {
 									size: 24,
 									icon: "Random".into(),
 									tooltip: "Generate with a random seed".into(),
-									on_update: WidgetCallback::new(|_| PropertiesPanelMessage::SetAiArtistSeedRandomizeAndGenerate.into()),
+									on_update: WidgetCallback::new(|_| PropertiesPanelMessage::SetImaginateSeedRandomizeAndGenerate.into()),
 									..Default::default()
 								})),
 								WidgetHolder::new(Widget::Separator(Separator {
@@ -645,7 +645,7 @@ fn node_section_ai_artist(ai_artist_layer: &AiArtistLayer, layer: &Layer, persis
 								WidgetHolder::new(Widget::TextButton(TextButton {
 									label: "Generate".into(),
 									tooltip: "Fill layer frame by generating a new image".into(),
-									on_update: WidgetCallback::new(|_| DocumentMessage::AiArtistGenerate.into()),
+									on_update: WidgetCallback::new(|_| DocumentMessage::ImaginateGenerate.into()),
 									..Default::default()
 								})),
 								WidgetHolder::new(Widget::Separator(Separator {
@@ -655,8 +655,8 @@ fn node_section_ai_artist(ai_artist_layer: &AiArtistLayer, layer: &Layer, persis
 								WidgetHolder::new(Widget::TextButton(TextButton {
 									label: "Clear".into(),
 									tooltip: "Remove generated image from the layer frame".into(),
-									disabled: ai_artist_layer.blob_url == None,
-									on_update: WidgetCallback::new(|_| DocumentMessage::AiArtistClear.into()),
+									disabled: imaginate_layer.blob_url == None,
+									on_update: WidgetCallback::new(|_| DocumentMessage::ImaginateClear.into()),
 									..Default::default()
 								})),
 							],
@@ -683,7 +683,7 @@ fn node_section_ai_artist(ai_artist_layer: &AiArtistLayer, layer: &Layer, persis
 							size: 24,
 							icon: "Regenerate".into(),
 							tooltip: "Set a new random seed".into(),
-							on_update: WidgetCallback::new(|_| PropertiesPanelMessage::SetAiArtistSeedRandomize.into()),
+							on_update: WidgetCallback::new(|_| PropertiesPanelMessage::SetImaginateSeedRandomize.into()),
 							..Default::default()
 						})),
 						WidgetHolder::new(Widget::Separator(Separator {
@@ -691,11 +691,11 @@ fn node_section_ai_artist(ai_artist_layer: &AiArtistLayer, layer: &Layer, persis
 							direction: SeparatorDirection::Horizontal,
 						})),
 						WidgetHolder::new(Widget::NumberInput(NumberInput {
-							value: Some(ai_artist_layer.seed as f64),
+							value: Some(imaginate_layer.seed as f64),
 							min: Some(-1.),
 							tooltip,
 							on_update: WidgetCallback::new(move |number_input: &NumberInput| {
-								PropertiesPanelMessage::SetAiArtistSeed {
+								PropertiesPanelMessage::SetImaginateSeed {
 									seed: number_input.value.unwrap().round() as u64,
 								}
 								.into()
@@ -729,7 +729,7 @@ fn node_section_ai_artist(ai_artist_layer: &AiArtistLayer, layer: &Layer, persis
 							size: 24,
 							icon: "Rescale".into(),
 							tooltip: "Set the layer scale to this resolution".into(),
-							on_update: WidgetCallback::new(|_| PropertiesPanelMessage::SetAiArtistScaleFromResolution.into()),
+							on_update: WidgetCallback::new(|_| PropertiesPanelMessage::SetImaginateScaleFromResolution.into()),
 							..Default::default()
 						})),
 						WidgetHolder::new(Widget::Separator(Separator {
@@ -738,7 +738,7 @@ fn node_section_ai_artist(ai_artist_layer: &AiArtistLayer, layer: &Layer, persis
 						})),
 						WidgetHolder::new(Widget::TextLabel(TextLabel {
 							value: {
-								let (width, height) = pick_layer_safe_ai_artist_resolution(layer, &persistent_data.font_cache);
+								let (width, height) = pick_layer_safe_imaginate_resolution(layer, &persistent_data.font_cache);
 								format!("{} W x {} H", width, height)
 							},
 							tooltip,
@@ -762,12 +762,12 @@ fn node_section_ai_artist(ai_artist_layer: &AiArtistLayer, layer: &Layer, persis
 							direction: SeparatorDirection::Horizontal,
 						})),
 						WidgetHolder::new(Widget::NumberInput(NumberInput {
-							value: Some(ai_artist_layer.samples.into()),
+							value: Some(imaginate_layer.samples.into()),
 							min: Some(0.),
 							max: Some(150.),
 							tooltip,
 							on_update: WidgetCallback::new(move |number_input: &NumberInput| {
-								PropertiesPanelMessage::SetAiArtistSamples {
+								PropertiesPanelMessage::SetImaginateSamples {
 									samples: number_input.value.unwrap().round() as u32,
 								}
 								.into()
@@ -787,12 +787,12 @@ fn node_section_ai_artist(ai_artist_layer: &AiArtistLayer, layer: &Layer, persis
 					.trim()
 					.to_string();
 
-					let sampling_methods = AiArtistSamplingMethod::list();
+					let sampling_methods = ImaginateSamplingMethod::list();
 					let mut entries = Vec::with_capacity(sampling_methods.len());
 					for method in sampling_methods {
 						entries.push(DropdownEntryData {
 							label: method.to_string(),
-							on_update: WidgetCallback::new(move |_| PropertiesPanelMessage::SetAiArtistSamplingMethod { method }.into()),
+							on_update: WidgetCallback::new(move |_| PropertiesPanelMessage::SetImaginateSamplingMethod { method }.into()),
 							..DropdownEntryData::default()
 						});
 					}
@@ -810,7 +810,7 @@ fn node_section_ai_artist(ai_artist_layer: &AiArtistLayer, layer: &Layer, persis
 						})),
 						WidgetHolder::new(Widget::DropdownInput(DropdownInput {
 							entries,
-							selected_index: Some(ai_artist_layer.sampling_method as u32),
+							selected_index: Some(imaginate_layer.sampling_method as u32),
 							tooltip,
 							..Default::default()
 						})),
@@ -832,9 +832,9 @@ fn node_section_ai_artist(ai_artist_layer: &AiArtistLayer, layer: &Layer, persis
 							direction: SeparatorDirection::Horizontal,
 						})),
 						WidgetHolder::new(Widget::CheckboxInput(CheckboxInput {
-							checked: ai_artist_layer.use_img2img,
+							checked: imaginate_layer.use_img2img,
 							tooltip,
-							on_update: WidgetCallback::new(move |checkbox_input: &CheckboxInput| PropertiesPanelMessage::SetAiArtistUseImg2Img { use_img2img: checkbox_input.checked }.into()),
+							on_update: WidgetCallback::new(move |checkbox_input: &CheckboxInput| PropertiesPanelMessage::SetImaginateUseImg2Img { use_img2img: checkbox_input.checked }.into()),
 							..Default::default()
 						})),
 					]
@@ -854,13 +854,13 @@ fn node_section_ai_artist(ai_artist_layer: &AiArtistLayer, layer: &Layer, persis
 							direction: SeparatorDirection::Horizontal,
 						})),
 						WidgetHolder::new(Widget::NumberInput(NumberInput {
-							value: Some(ai_artist_layer.denoising_strength),
+							value: Some(imaginate_layer.denoising_strength),
 							min: Some(0.),
 							max: Some(1.),
-							disabled: !ai_artist_layer.use_img2img,
+							disabled: !imaginate_layer.use_img2img,
 							tooltip,
 							on_update: WidgetCallback::new(move |number_input: &NumberInput| {
-								PropertiesPanelMessage::SetAiArtistDenoisingStrength {
+								PropertiesPanelMessage::SetImaginateDenoisingStrength {
 									denoising_strength: number_input.value.unwrap(),
 								}
 								.into()
@@ -886,12 +886,12 @@ fn node_section_ai_artist(ai_artist_layer: &AiArtistLayer, layer: &Layer, persis
 							direction: SeparatorDirection::Horizontal,
 						})),
 						WidgetHolder::new(Widget::NumberInput(NumberInput {
-							value: Some(ai_artist_layer.cfg_scale),
+							value: Some(imaginate_layer.cfg_scale),
 							min: Some(0.),
 							max: Some(30.),
 							tooltip,
 							on_update: WidgetCallback::new(move |number_input: &NumberInput| {
-								PropertiesPanelMessage::SetAiArtistCfgScale {
+								PropertiesPanelMessage::SetImaginateCfgScale {
 									cfg_scale: number_input.value.unwrap(),
 								}
 								.into()
@@ -922,9 +922,9 @@ fn node_section_ai_artist(ai_artist_layer: &AiArtistLayer, layer: &Layer, persis
 						direction: SeparatorDirection::Horizontal,
 					})),
 					WidgetHolder::new(Widget::TextAreaInput(TextAreaInput {
-						value: ai_artist_layer.prompt.clone(),
+						value: imaginate_layer.prompt.clone(),
 						on_update: WidgetCallback::new(move |text_area_input: &TextAreaInput| {
-							PropertiesPanelMessage::SetAiArtistPrompt {
+							PropertiesPanelMessage::SetImaginatePrompt {
 								prompt: text_area_input.value.clone(),
 							}
 							.into()
@@ -945,9 +945,9 @@ fn node_section_ai_artist(ai_artist_layer: &AiArtistLayer, layer: &Layer, persis
 						direction: SeparatorDirection::Horizontal,
 					})),
 					WidgetHolder::new(Widget::TextAreaInput(TextAreaInput {
-						value: ai_artist_layer.negative_prompt.clone(),
+						value: imaginate_layer.negative_prompt.clone(),
 						on_update: WidgetCallback::new(move |text_area_input: &TextAreaInput| {
-							PropertiesPanelMessage::SetAiArtistNegativePrompt {
+							PropertiesPanelMessage::SetImaginateNegativePrompt {
 								negative_prompt: text_area_input.value.clone(),
 							}
 							.into()
@@ -971,10 +971,10 @@ fn node_section_ai_artist(ai_artist_layer: &AiArtistLayer, layer: &Layer, persis
 							direction: SeparatorDirection::Horizontal,
 						})),
 						WidgetHolder::new(Widget::CheckboxInput(CheckboxInput {
-							checked: ai_artist_layer.restore_faces,
+							checked: imaginate_layer.restore_faces,
 							tooltip,
 							on_update: WidgetCallback::new(move |checkbox_input: &CheckboxInput| {
-								PropertiesPanelMessage::SetAiArtistRestoreFaces {
+								PropertiesPanelMessage::SetImaginateRestoreFaces {
 									restore_faces: checkbox_input.checked,
 								}
 								.into()
@@ -999,9 +999,9 @@ fn node_section_ai_artist(ai_artist_layer: &AiArtistLayer, layer: &Layer, persis
 							direction: SeparatorDirection::Horizontal,
 						})),
 						WidgetHolder::new(Widget::CheckboxInput(CheckboxInput {
-							checked: ai_artist_layer.tiling,
+							checked: imaginate_layer.tiling,
 							tooltip,
-							on_update: WidgetCallback::new(move |checkbox_input: &CheckboxInput| PropertiesPanelMessage::SetAiArtistTiling { tiling: checkbox_input.checked }.into()),
+							on_update: WidgetCallback::new(move |checkbox_input: &CheckboxInput| PropertiesPanelMessage::SetImaginateTiling { tiling: checkbox_input.checked }.into()),
 							..Default::default()
 						})),
 					]

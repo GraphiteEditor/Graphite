@@ -1,6 +1,6 @@
 use crate::boolean_ops::BooleanOperation as BooleanOperationType;
-use crate::layers::ai_artist_layer::{AiArtistSamplingMethod, AiArtistStatus};
 use crate::layers::blend_mode::BlendMode;
+use crate::layers::imaginate_layer::{ImaginateSamplingMethod, ImaginateStatus};
 use crate::layers::layer_info::Layer;
 use crate::layers::style::{self, Stroke};
 use crate::layers::vector::consts::ManipulatorType;
@@ -52,72 +52,72 @@ pub enum Operation {
 		mime: String,
 		image_data: Vec<u8>,
 	},
-	AddAiArtistFrame {
+	AddImaginateFrame {
 		path: Vec<LayerId>,
 		insert_index: isize,
 		transform: [f64; 6],
 	},
-	/// Sets a blob URL as the image source for an Image or AiArtist layer type.
+	/// Sets a blob URL as the image source for an Image or Imaginate layer type.
 	/// **Be sure to call `FrontendMessage::TriggerRevokeBlobUrl` together with this.**
 	SetLayerBlobUrl {
 		layer_path: Vec<LayerId>,
 		blob_url: String,
 		resolution: (f64, f64),
 	},
-	/// Clears the image to leave the AI Artist layer un-rendered.
+	/// Clears the image to leave the Imaginate layer un-rendered.
 	/// **Be sure to call `FrontendMessage::TriggerRevokeBlobUrl` together with this.**
-	AiArtistClear {
+	ImaginateClear {
 		path: Vec<LayerId>,
 	},
-	AiArtistSetGeneratingStatus {
+	ImaginateSetGeneratingStatus {
 		path: Vec<LayerId>,
 		percent: Option<f64>,
-		status: AiArtistStatus,
+		status: ImaginateStatus,
 	},
-	AiArtistSetImageData {
+	ImaginateSetImageData {
 		layer_path: Vec<LayerId>,
 		image_data: Vec<u8>,
 	},
-	AiArtistSetNegativePrompt {
+	ImaginateSetNegativePrompt {
 		path: Vec<LayerId>,
 		negative_prompt: String,
 	},
-	AiArtistSetPrompt {
+	ImaginateSetPrompt {
 		path: Vec<LayerId>,
 		prompt: String,
 	},
-	AiArtistSetCfgScale {
+	ImaginateSetCfgScale {
 		path: Vec<LayerId>,
 		cfg_scale: f64,
 	},
-	AiArtistSetSamples {
+	ImaginateSetSamples {
 		path: Vec<LayerId>,
 		samples: u32,
 	},
-	SetAiArtistSamplingMethod {
+	SetImaginateSamplingMethod {
 		path: Vec<LayerId>,
-		method: AiArtistSamplingMethod,
+		method: ImaginateSamplingMethod,
 	},
-	AiArtistSetScaleFromResolution {
+	ImaginateSetScaleFromResolution {
 		path: Vec<LayerId>,
 	},
-	AiArtistSetSeed {
+	ImaginateSetSeed {
 		path: Vec<LayerId>,
 		seed: u64,
 	},
-	AiArtistSetDenoisingStrength {
+	ImaginateSetDenoisingStrength {
 		path: Vec<LayerId>,
 		denoising_strength: f64,
 	},
-	AiArtistSetUseImg2Img {
+	ImaginateSetUseImg2Img {
 		path: Vec<LayerId>,
 		use_img2img: bool,
 	},
-	AiArtistSetRestoreFaces {
+	ImaginateSetRestoreFaces {
 		path: Vec<LayerId>,
 		restore_faces: bool,
 	},
-	AiArtistSetTiling {
+	ImaginateSetTiling {
 		path: Vec<LayerId>,
 		tiling: bool,
 	},

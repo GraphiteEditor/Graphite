@@ -38,9 +38,6 @@ pub enum DocumentMessage {
 	AddSelectedLayers {
 		additional_layers: Vec<Vec<LayerId>>,
 	},
-	AiArtistClear,
-	AiArtistGenerate,
-	AiArtistTerminate,
 	AlignSelectedLayers {
 		axis: AlignAxis,
 		aggregate: AlignAggregate,
@@ -77,6 +74,9 @@ pub enum DocumentMessage {
 		affected_folder_path: Vec<LayerId>,
 	},
 	GroupSelectedLayers,
+	ImaginateClear,
+	ImaginateGenerate,
+	ImaginateTerminate,
 	LayerChanged {
 		affected_layer_path: Vec<LayerId>,
 	},

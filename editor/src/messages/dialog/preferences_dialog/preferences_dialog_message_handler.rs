@@ -33,9 +33,9 @@ impl PreferencesDialogMessageHandler {
 	}
 
 	fn properties(&self, preferences: &PreferencesMessageHandler) -> Layout {
-		let ai_artist_server_hostname = vec![
+		let imaginate_server_hostname = vec![
 			WidgetHolder::new(Widget::TextLabel(TextLabel {
-				value: "AI Artist".into(),
+				value: "Imaginate".into(),
 				min_width: 60,
 				italic: true,
 				..Default::default()
@@ -50,14 +50,14 @@ impl PreferencesDialogMessageHandler {
 				direction: SeparatorDirection::Horizontal,
 			})),
 			WidgetHolder::new(Widget::TextInput(TextInput {
-				value: preferences.ai_artist_server_hostname.clone(),
+				value: preferences.imaginate_server_hostname.clone(),
 				min_width: 200,
-				on_update: WidgetCallback::new(|text_input: &TextInput| PreferencesMessage::AiArtistServerHostname { hostname: text_input.value.clone() }.into()),
+				on_update: WidgetCallback::new(|text_input: &TextInput| PreferencesMessage::ImaginateServerHostname { hostname: text_input.value.clone() }.into()),
 				..Default::default()
 			})),
 		];
 
-		let ai_artist_refresh_frequency = vec![
+		let imaginate_refresh_frequency = vec![
 			WidgetHolder::new(Widget::TextLabel(TextLabel { min_width: 60, ..Default::default() })),
 			WidgetHolder::new(Widget::TextLabel(TextLabel {
 				value: "Refresh Frequency".into(),
@@ -70,10 +70,10 @@ impl PreferencesDialogMessageHandler {
 			})),
 			WidgetHolder::new(Widget::NumberInput(NumberInput {
 				unit: " seconds".into(),
-				value: Some(preferences.ai_artist_refresh_frequency),
+				value: Some(preferences.imaginate_refresh_frequency),
 				min: Some(0.),
 				min_width: 200,
-				on_update: WidgetCallback::new(|number_input: &NumberInput| PreferencesMessage::AiArtistRefreshFrequency { seconds: number_input.value.unwrap() }.into()),
+				on_update: WidgetCallback::new(|number_input: &NumberInput| PreferencesMessage::ImaginateRefreshFrequency { seconds: number_input.value.unwrap() }.into()),
 				..Default::default()
 			})),
 		];
@@ -107,8 +107,8 @@ impl PreferencesDialogMessageHandler {
 					..Default::default()
 				}))],
 			},
-			LayoutGroup::Row { widgets: ai_artist_server_hostname },
-			LayoutGroup::Row { widgets: ai_artist_refresh_frequency },
+			LayoutGroup::Row { widgets: imaginate_server_hostname },
+			LayoutGroup::Row { widgets: imaginate_refresh_frequency },
 			LayoutGroup::Row { widgets: button_widgets },
 		]))
 	}

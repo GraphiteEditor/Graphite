@@ -3,7 +3,7 @@ import { blobToBase64 } from "@/utility-functions/files";
 import { type RequestResult, requestWithUploadDownloadProgress } from "@/utility-functions/network";
 import { stripIndents } from "@/utility-functions/strip-indents";
 import { type Editor } from "@/wasm-communication/editor";
-import { type AiArtistGenerationParameters } from "@/wasm-communication/messages";
+import { type ImaginateGenerationParameters } from "@/wasm-communication/messages";
 
 const MAX_POLLING_RETRIES = 4;
 const SERVER_STATUS_CHECK_TIMEOUT = 5000;
@@ -18,8 +18,8 @@ let statusAbortController = new AbortController();
 
 // PUBLICLY CALLABLE FUNCTIONS
 
-export async function aiArtistGenerate(
-	parameters: AiArtistGenerationParameters,
+export async function imaginateGenerate(
+	parameters: ImaginateGenerationParameters,
 	image: Blob | undefined,
 	hostname: string,
 	refreshFrequency: number,
@@ -33,11 +33,11 @@ export async function aiArtistGenerate(
 	terminated = false;
 
 	// Immediately set the progress to 0% so the backend knows to update its layout
-	editor.instance.setAIArtistGeneratingStatus(documentId, layerPath, 0, "Beginning");
+	editor.instance.setImaginateGeneratingStatus(documentId, layerPath, 0, "Beginning");
 
 	// Initiate a request to the computation server
 	const discloseUploadingProgress = (progress: number): void => {
-		editor.instance.setAIArtistGeneratingStatus(documentId, layerPath, progress * 100, "Uploading");
+		editor.instance.setImaginateGeneratingStatus(documentId, layerPath, progress * 100, "Uploading");
 	};
 	const { uploaded, result, xhr } = await generate(discloseUploadingProgress, hostname, image, parameters);
 	generatingAbortRequest = xhr;
@@ -45,7 +45,7 @@ export async function aiArtistGenerate(
 	try {
 		// Wait until the request is fully uploaded, which could be slow if the img2img source is large and the user is on a slow connection
 		await uploaded;
-		editor.instance.setAIArtistGeneratingStatus(documentId, layerPath, 0, "Generating");
+		editor.instance.setImaginateGeneratingStatus(documentId, layerPath, 0, "Generating");
 
 		// Begin polling for updates to the in-progress image generation at the specified interval
 		// Don't poll if the chosen interval is 0, or if the chosen sampling method does not support polling
@@ -69,46 +69,46 @@ export async function aiArtistGenerate(
 		// Send the backend an updated status
 		const percent = terminated ? undefined : 100;
 		const newStatus = terminated ? "Terminated" : "Idle";
-		editor.instance.setAIArtistGeneratingStatus(documentId, layerPath, percent, newStatus);
+		editor.instance.setImaginateGeneratingStatus(documentId, layerPath, percent, newStatus);
 
 		// Send the backend a blob URL for the final image
 		const blobURL = URL.createObjectURL(blob);
-		editor.instance.setAIArtistBlobURL(documentId, layerPath, blobURL, parameters.resolution[0], parameters.resolution[1]);
+		editor.instance.setImaginateBlobURL(documentId, layerPath, blobURL, parameters.resolution[0], parameters.resolution[1]);
 
 		// Send the backend the blob data to be stored persistently in the layer
 		const u8Array = new Uint8Array(await blob.arrayBuffer());
-		editor.instance.setAIArtistImageData(documentId, layerPath, u8Array);
+		editor.instance.setImaginateImageData(documentId, layerPath, u8Array);
 	} catch {
-		editor.instance.setAIArtistGeneratingStatus(documentId, layerPath, undefined, "Terminated");
+		editor.instance.setImaginateGeneratingStatus(documentId, layerPath, undefined, "Terminated");
 
-		await aiArtistCheckConnection(hostname, editor);
+		await imaginateCheckConnection(hostname, editor);
 	}
 
 	abortAndResetGenerating();
 	abortAndResetPolling();
 }
 
-export async function aiArtistTerminate(hostname: string, documentId: bigint, layerPath: BigUint64Array, editor: Editor): Promise<void> {
+export async function imaginateTerminate(hostname: string, documentId: bigint, layerPath: BigUint64Array, editor: Editor): Promise<void> {
 	terminated = true;
 	abortAndResetPolling();
 
 	try {
 		await terminate(hostname);
 
-		editor.instance.setAIArtistGeneratingStatus(documentId, layerPath, undefined, "Terminating");
+		editor.instance.setImaginateGeneratingStatus(documentId, layerPath, undefined, "Terminating");
 	} catch {
 		abortAndResetGenerating();
 		abortAndResetPolling();
 
-		editor.instance.setAIArtistGeneratingStatus(documentId, layerPath, undefined, "Terminated");
+		editor.instance.setImaginateGeneratingStatus(documentId, layerPath, undefined, "Terminated");
 
-		await aiArtistCheckConnection(hostname, editor);
+		await imaginateCheckConnection(hostname, editor);
 	}
 }
 
-export async function aiArtistCheckConnection(hostname: string, editor: Editor): Promise<void> {
+export async function imaginateCheckConnection(hostname: string, editor: Editor): Promise<void> {
 	const serverReached = await checkConnection(hostname);
-	editor.instance.setAiArtistServerStatus(serverReached);
+	editor.instance.setImaginateServerStatus(serverReached);
 }
 
 // ABORTING AND RESETTING HELPERS
@@ -148,8 +148,8 @@ function scheduleNextPollingUpdate(
 			if (terminated) return;
 
 			const blobURL = URL.createObjectURL(blob);
-			editor.instance.setAIArtistBlobURL(documentId, layerPath, blobURL, resolution[0], resolution[1]);
-			editor.instance.setAIArtistGeneratingStatus(documentId, layerPath, percentComplete, "Generating");
+			editor.instance.setImaginateBlobURL(documentId, layerPath, blobURL, resolution[0], resolution[1]);
+			editor.instance.setImaginateGeneratingStatus(documentId, layerPath, percentComplete, "Generating");
 
 			scheduleNextPollingUpdate(interval, nextTimeoutBegan, 0, editor, hostname, documentId, layerPath, resolution);
 		} catch {
@@ -159,7 +159,7 @@ function scheduleNextPollingUpdate(
 				abortAndResetGenerating();
 				abortAndResetPolling();
 
-				await aiArtistCheckConnection(hostname, editor);
+				await imaginateCheckConnection(hostname, editor);
 			} else {
 				scheduleNextPollingUpdate(interval, nextTimeoutBegan, pollingRetries + 1, editor, hostname, documentId, layerPath, resolution);
 			}
@@ -214,7 +214,7 @@ async function generate(
 	discloseUploadingProgress: (progress: number) => void,
 	hostname: string,
 	image: Blob | undefined,
-	parameters: AiArtistGenerationParameters
+	parameters: ImaginateGenerationParameters
 ): Promise<{
 	uploaded: Promise<void>;
 	result: Promise<RequestResult>;

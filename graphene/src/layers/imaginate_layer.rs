@@ -11,11 +11,11 @@ use serde::{Deserialize, Serialize};
 use std::fmt::Write;
 
 #[derive(Clone, PartialEq, Deserialize, Serialize)]
-pub struct AiArtistLayer {
+pub struct ImaginateLayer {
 	// User-configurable layer parameters
 	pub seed: u64,
 	pub samples: u32,
-	pub sampling_method: AiArtistSamplingMethod,
+	pub sampling_method: ImaginateSamplingMethod,
 	pub use_img2img: bool,
 	pub denoising_strength: f64,
 	pub cfg_scale: f64,
@@ -25,7 +25,7 @@ pub struct AiArtistLayer {
 	pub tiling: bool,
 
 	// Image stored in layer after generation completes
-	pub image_data: Option<AiArtistImageData>,
+	pub image_data: Option<ImaginateImageData>,
 	pub mime: String,
 	/// 0 is not started, 100 is complete.
 	pub percent_complete: f64,
@@ -34,13 +34,13 @@ pub struct AiArtistLayer {
 	#[serde(skip)]
 	pub blob_url: Option<String>,
 	#[serde(skip)]
-	pub status: AiArtistStatus,
+	pub status: ImaginateStatus,
 	#[serde(skip)]
 	pub dimensions: DVec2,
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Deserialize, Serialize)]
-pub enum AiArtistStatus {
+pub enum ImaginateStatus {
 	#[default]
 	Idle,
 	Beginning,
@@ -51,19 +51,19 @@ pub enum AiArtistStatus {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Deserialize, Serialize)]
-pub struct AiArtistImageData {
+pub struct ImaginateImageData {
 	#[serde(serialize_with = "base64_serde::as_base64", deserialize_with = "base64_serde::from_base64")]
 	pub image_data: Vec<u8>,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
-pub struct AiArtistBaseImage {
+pub struct ImaginateBaseImage {
 	pub svg: String,
 	pub size: DVec2,
 }
 
 #[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Deserialize, Serialize)]
-pub enum AiArtistSamplingMethod {
+pub enum ImaginateSamplingMethod {
 	#[default]
 	EulerA,
 	Euler,
@@ -80,69 +80,69 @@ pub enum AiArtistSamplingMethod {
 	PLMS,
 }
 
-impl AiArtistSamplingMethod {
+impl ImaginateSamplingMethod {
 	pub fn api_value(&self) -> &str {
 		match self {
-			AiArtistSamplingMethod::EulerA => "Euler a",
-			AiArtistSamplingMethod::Euler => "Euler",
-			AiArtistSamplingMethod::LMS => "LMS",
-			AiArtistSamplingMethod::Heun => "Heun",
-			AiArtistSamplingMethod::DPM2 => "DPM2",
-			AiArtistSamplingMethod::DPM2A => "DPM2 a",
-			AiArtistSamplingMethod::DPMFast => "DPM fast",
-			AiArtistSamplingMethod::DPMAdaptive => "DPM adaptive",
-			AiArtistSamplingMethod::LMSKarras => "LMS Karras",
-			AiArtistSamplingMethod::DPM2Karras => "DPM2 Karras",
-			AiArtistSamplingMethod::DPM2AKarras => "DPM2 a Karras",
-			AiArtistSamplingMethod::DDIM => "DDIM",
-			AiArtistSamplingMethod::PLMS => "PLMS",
+			ImaginateSamplingMethod::EulerA => "Euler a",
+			ImaginateSamplingMethod::Euler => "Euler",
+			ImaginateSamplingMethod::LMS => "LMS",
+			ImaginateSamplingMethod::Heun => "Heun",
+			ImaginateSamplingMethod::DPM2 => "DPM2",
+			ImaginateSamplingMethod::DPM2A => "DPM2 a",
+			ImaginateSamplingMethod::DPMFast => "DPM fast",
+			ImaginateSamplingMethod::DPMAdaptive => "DPM adaptive",
+			ImaginateSamplingMethod::LMSKarras => "LMS Karras",
+			ImaginateSamplingMethod::DPM2Karras => "DPM2 Karras",
+			ImaginateSamplingMethod::DPM2AKarras => "DPM2 a Karras",
+			ImaginateSamplingMethod::DDIM => "DDIM",
+			ImaginateSamplingMethod::PLMS => "PLMS",
 		}
 	}
 
-	pub fn list() -> [AiArtistSamplingMethod; 13] {
+	pub fn list() -> [ImaginateSamplingMethod; 13] {
 		[
-			AiArtistSamplingMethod::EulerA,
-			AiArtistSamplingMethod::Euler,
-			AiArtistSamplingMethod::LMS,
-			AiArtistSamplingMethod::Heun,
-			AiArtistSamplingMethod::DPM2,
-			AiArtistSamplingMethod::DPM2A,
-			AiArtistSamplingMethod::DPMFast,
-			AiArtistSamplingMethod::DPMAdaptive,
-			AiArtistSamplingMethod::LMSKarras,
-			AiArtistSamplingMethod::DPM2Karras,
-			AiArtistSamplingMethod::DPM2AKarras,
-			AiArtistSamplingMethod::DDIM,
-			AiArtistSamplingMethod::PLMS,
+			ImaginateSamplingMethod::EulerA,
+			ImaginateSamplingMethod::Euler,
+			ImaginateSamplingMethod::LMS,
+			ImaginateSamplingMethod::Heun,
+			ImaginateSamplingMethod::DPM2,
+			ImaginateSamplingMethod::DPM2A,
+			ImaginateSamplingMethod::DPMFast,
+			ImaginateSamplingMethod::DPMAdaptive,
+			ImaginateSamplingMethod::LMSKarras,
+			ImaginateSamplingMethod::DPM2Karras,
+			ImaginateSamplingMethod::DPM2AKarras,
+			ImaginateSamplingMethod::DDIM,
+			ImaginateSamplingMethod::PLMS,
 		]
 	}
 }
 
-impl std::fmt::Display for AiArtistSamplingMethod {
+impl std::fmt::Display for ImaginateSamplingMethod {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
-			AiArtistSamplingMethod::EulerA => write!(f, "Euler A (Recommended)"),
-			AiArtistSamplingMethod::Euler => write!(f, "Euler"),
-			AiArtistSamplingMethod::LMS => write!(f, "LMS"),
-			AiArtistSamplingMethod::Heun => write!(f, "Heun"),
-			AiArtistSamplingMethod::DPM2 => write!(f, "DPM2"),
-			AiArtistSamplingMethod::DPM2A => write!(f, "DPM2 A"),
-			AiArtistSamplingMethod::DPMFast => write!(f, "DPM Fast"),
-			AiArtistSamplingMethod::DPMAdaptive => write!(f, "DPM Adaptive"),
-			AiArtistSamplingMethod::LMSKarras => write!(f, "LMS Karras"),
-			AiArtistSamplingMethod::DPM2Karras => write!(f, "DPM2 Karras"),
-			AiArtistSamplingMethod::DPM2AKarras => write!(f, "DPM2 A Karras"),
-			AiArtistSamplingMethod::DDIM => write!(f, "DDIM"),
-			AiArtistSamplingMethod::PLMS => write!(f, "PLMS"),
+			ImaginateSamplingMethod::EulerA => write!(f, "Euler A (Recommended)"),
+			ImaginateSamplingMethod::Euler => write!(f, "Euler"),
+			ImaginateSamplingMethod::LMS => write!(f, "LMS"),
+			ImaginateSamplingMethod::Heun => write!(f, "Heun"),
+			ImaginateSamplingMethod::DPM2 => write!(f, "DPM2"),
+			ImaginateSamplingMethod::DPM2A => write!(f, "DPM2 A"),
+			ImaginateSamplingMethod::DPMFast => write!(f, "DPM Fast"),
+			ImaginateSamplingMethod::DPMAdaptive => write!(f, "DPM Adaptive"),
+			ImaginateSamplingMethod::LMSKarras => write!(f, "LMS Karras"),
+			ImaginateSamplingMethod::DPM2Karras => write!(f, "DPM2 Karras"),
+			ImaginateSamplingMethod::DPM2AKarras => write!(f, "DPM2 A Karras"),
+			ImaginateSamplingMethod::DDIM => write!(f, "DDIM"),
+			ImaginateSamplingMethod::PLMS => write!(f, "PLMS"),
 		}
 	}
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
-pub struct AiArtistGenerationParameters {
+pub struct ImaginateGenerationParameters {
 	pub seed: u64,
 	pub samples: u32,
-	/// Use `AiArtistSamplingMethod::api_value()` to generate this string
+	/// Use `ImaginateSamplingMethod::api_value()` to generate this string
 	#[serde(rename = "samplingMethod")]
 	pub sampling_method: String,
 	#[serde(rename = "denoisingStrength")]
@@ -158,7 +158,7 @@ pub struct AiArtistGenerationParameters {
 	pub tiling: bool,
 }
 
-impl Default for AiArtistLayer {
+impl Default for ImaginateLayer {
 	fn default() -> Self {
 		Self {
 			seed: 0,
@@ -183,7 +183,7 @@ impl Default for AiArtistLayer {
 	}
 }
 
-impl LayerData for AiArtistLayer {
+impl LayerData for ImaginateLayer {
 	fn render(&mut self, svg: &mut String, _svg_defs: &mut String, transforms: &mut Vec<DAffine2>, render_data: RenderData) {
 		let transform = self.transform(transforms, render_data.view_mode);
 		let inverse = transform.inverse();
@@ -245,7 +245,7 @@ impl LayerData for AiArtistLayer {
 	}
 }
 
-impl AiArtistLayer {
+impl ImaginateLayer {
 	pub fn transform(&self, transforms: &[DAffine2], mode: ViewMode) -> DAffine2 {
 		let start = match mode {
 			ViewMode::Outline => 0,
@@ -263,9 +263,9 @@ fn glam_to_kurbo(transform: DAffine2) -> Affine {
 	Affine::new(transform.to_cols_array())
 }
 
-impl std::fmt::Debug for AiArtistLayer {
+impl std::fmt::Debug for ImaginateLayer {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		f.debug_struct("AiArtistLayer")
+		f.debug_struct("ImaginateLayer")
 			.field("seed", &self.seed)
 			.field("samples", &self.samples)
 			.field("use_img2img", &self.use_img2img)
