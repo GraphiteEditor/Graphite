@@ -38,16 +38,19 @@
 		display: flex;
 
 		.floating-menu-content {
-			background: rgba(var(--color-2-mildblack-rgb), 0.95);
-			box-shadow: rgba(var(--color-0-black-rgb), 50%) 0 2px 4px;
-			border-radius: var(--floating-menu-content-border-radius);
 			color: var(--color-e-nearwhite);
 			font-size: inherit;
-			padding: 8px;
 			z-index: 0;
 			// Draw over the application without being clipped by the containing panel's `overflow: hidden`
 			position: fixed;
 		}
+	}
+
+	&:not(.cursor) .floating-menu-container .floating-menu-content {
+		background: rgba(var(--color-2-mildblack-rgb), 0.95);
+		box-shadow: rgba(var(--color-0-black-rgb), 50%) 0 2px 4px;
+		border-radius: var(--floating-menu-content-border-radius);
+		padding: 8px;
 	}
 
 	&.dropdown {
@@ -180,7 +183,7 @@ import { defineComponent, nextTick, type PropType } from "vue";
 import LayoutCol from "@/components/layout/LayoutCol.vue";
 
 export type MenuDirection = "Top" | "Bottom" | "Left" | "Right" | "TopLeft" | "TopRight" | "BottomLeft" | "BottomRight" | "Center";
-export type MenuType = "Popover" | "Dropdown" | "Dialog";
+export type MenuType = "Popover" | "Dropdown" | "Dialog" | "Cursor";
 
 const POINTER_STRAY_DISTANCE = 100;
 
@@ -235,6 +238,8 @@ export default defineComponent({
 			this.minWidthParentWidth = entries[0].contentRect.width;
 		},
 		positionAndStyleFloatingMenu() {
+			if (this.type === "Cursor") return;
+
 			const workspace = document.querySelector("[data-workspace]");
 			const floatingMenuContainer = this.$refs.floatingMenuContainer as HTMLElement;
 			const floatingMenuContentComponent = this.$refs.floatingMenuContent as typeof LayoutCol;

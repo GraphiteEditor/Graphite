@@ -21,6 +21,7 @@ pub struct FrontendImageData {
 pub enum MouseCursorIcon {
 	#[default]
 	Default,
+	None,
 	ZoomIn,
 	ZoomOut,
 	Grabbing,

@@ -1,12 +1,10 @@
 import { replaceBlobURLsWithBase64 } from "@/utility-functions/files";
 
 // Rasterize the string of an SVG document at a given width and height and turn it into the blob data of an image file matching the given MIME type
-export async function rasterizeSVG(svg: string, width: number, height: number, mime: string, backgroundColor?: string): Promise<Blob> {
-	let promiseResolve: (value: Blob | PromiseLike<Blob>) => void | undefined;
-	let promiseReject: () => void | undefined;
-	const promise = new Promise<Blob>((resolve, reject) => {
+export async function rasterizeSVGCanvas(svg: string, width: number, height: number, backgroundColor?: string): Promise<HTMLCanvasElement> {
+	let promiseResolve: (value: HTMLCanvasElement | PromiseLike<HTMLCanvasElement>) => void | undefined;
+	const promise = new Promise<HTMLCanvasElement>((resolve) => {
 		promiseResolve = resolve;
-		promiseReject = reject;
 	});
 
 	// A canvas to render our svg to in order to get a raster image
@@ -14,8 +12,8 @@ export async function rasterizeSVG(svg: string, width: number, height: number, m
 	const canvas = document.createElement("canvas");
 	canvas.width = width;
 	canvas.height = height;
-	const context = canvas.getContext("2d");
-	if (!context) return Promise.reject();
+	const context = canvas.getContext("2d", { willReadFrequently: true });
+	if (!context) throw new Error("Can't create 2D context from canvas during SVG rasterization");
 
 	// Apply a background fill color if one is given
 	if (backgroundColor) {
@@ -37,13 +35,28 @@ export async function rasterizeSVG(svg: string, width: number, height: number, m
 		// Clean up the SVG blob URL (once the URL is revoked, the SVG blob data itself is garbage collected after `svgBlob` goes out of scope)
 		URL.revokeObjectURL(url);
 
+		promiseResolve(canvas);
+	};
+	image.src = url;
+
+	return promise;
+}
+
+export async function rasterizeSVG(svg: string, width: number, height: number, mime: string, backgroundColor?: string): Promise<Blob> {
+	let promiseResolve: (value: Blob | PromiseLike<Blob>) => void | undefined;
+	let promiseReject: () => void | undefined;
+	const promise = new Promise<Blob>((resolve, reject) => {
+		promiseResolve = resolve;
+		promiseReject = reject;
+	});
+
+	rasterizeSVGCanvas(svg, width, height, backgroundColor).then((canvas) => {
 		// Convert the canvas to an image of the correct MIME type
 		canvas.toBlob((blob) => {
 			if (blob !== null) promiseResolve(blob);
 			else promiseReject();
 		}, mime);
-	};
-	image.src = url;
+	});
 
 	return promise;
 }

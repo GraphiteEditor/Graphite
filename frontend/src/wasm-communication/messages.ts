@@ -166,7 +166,7 @@ export class UpdateDocumentArtboards extends JsMessage {
 }
 
 const TupleToVec2 = Transform(({ value }: { value: [number, number] | undefined }) => (value === undefined ? undefined : { x: value[0], y: value[1] }));
-const BigIntTupleToNumberTuple = Transform(({ value }: { value: [bigint, bigint] | undefined }) => (value === undefined ? undefined : [Number(value[0]), Number(value[1])]));
+const BigIntTupleToVec2 = Transform(({ value }: { value: [bigint, bigint] | undefined }) => (value === undefined ? undefined : { x: Number(value[0]), y: Number(value[1]) }));
 
 export type XY = { x: number; y: number };
 
@@ -190,7 +190,21 @@ export class UpdateDocumentRulers extends JsMessage {
 	readonly interval!: number;
 }
 
+export class UpdateEyedropperSamplingState extends JsMessage {
+	@TupleToVec2
+	readonly mousePosition!: XY | undefined;
+
+	readonly primaryColor!: string;
+
+	readonly secondaryColor!: "primary" | "secondary" | "";
+
+	readonly samplingPrimaryOrSecondary!: string;
+
+	readonly setColorChoice!: boolean;
+}
+
 const mouseCursorIconCSSNames = {
+	None: "none",
 	ZoomIn: "zoom-in",
 	ZoomOut: "zoom-out",
 	Grabbing: "grabbing",
@@ -278,8 +292,8 @@ export class ImaginateGenerationParameters {
 
 	readonly negativePrompt!: string;
 
-	@BigIntTupleToNumberTuple
-	readonly resolution!: [number, number];
+	@BigIntTupleToVec2
+	readonly resolution!: XY;
 
 	readonly restoreFaces!: boolean;
 
@@ -1008,6 +1022,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateDocumentModeLayout,
 	UpdateDocumentOverlays,
 	UpdateDocumentRulers,
+	UpdateEyedropperSamplingState,
 	UpdateDocumentScrollbars,
 	UpdateImageData,
 	UpdateInputHints,
