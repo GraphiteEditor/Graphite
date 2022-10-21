@@ -29,25 +29,39 @@
 		border-left-color: var(--ring-color-primary);
 		border-bottom-color: var(--ring-color-secondary);
 		border-right-color: var(--ring-color-secondary);
-		box-shadow: 0 0 8px rgba(0, 0, 0, 0.25);
+
+		&::after {
+			content: "";
+			position: absolute;
+			width: 100%;
+			height: 100%;
+			top: -9px;
+			left: -9px;
+			padding: 8px;
+			border-radius: 50%;
+			border: 1px solid rgba(255, 255, 255, 0.25);
+			box-shadow: 0 0 8px rgba(0, 0, 0, 0.25);
+		}
 
 		.canvas-container {
 			transform: rotate(-45deg);
 
 			canvas {
+				display: block;
 				width: 110px;
 				height: 110px;
 				border-radius: 50%;
 				image-rendering: pixelated;
+				border: 1px solid rgba(255, 255, 255, 0.25);
 			}
 
 			&::after {
 				content: "";
 				position: absolute;
-				top: 0;
-				left: 0;
-				width: 100%;
-				height: 100%;
+				top: 1px;
+				left: 1px;
+				width: calc(100% - 2px);
+				height: calc(100% - 2px);
 				border-radius: 50%;
 				box-shadow: inset 0 0 8px rgba(0, 0, 0, 0.25);
 			}
