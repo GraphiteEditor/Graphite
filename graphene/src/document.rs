@@ -872,13 +872,7 @@ impl Document {
 				Some([vec![DocumentChanged], update_thumbnails_upstream(&path)].concat())
 			}
 			Operation::SetLayerTransform { path, transform } => {
-				let mut transform = DAffine2::from_cols_array(&transform);
-				if transform.x_axis[0] == 0. {
-					transform.x_axis[0] = -1.
-				}
-				if transform.y_axis[1] == 0. {
-					transform.y_axis[1] = -1.
-				}
+				let transform = DAffine2::from_cols_array(&transform);
 				let layer = self.layer_mut(&path)?;
 				layer.transform = transform;
 				self.mark_as_dirty(&path)?;
