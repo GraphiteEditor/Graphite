@@ -38,19 +38,16 @@
 		display: flex;
 
 		.floating-menu-content {
+			background: rgba(var(--color-2-mildblack-rgb), 0.95);
+			box-shadow: rgba(var(--color-0-black-rgb), 50%) 0 2px 4px;
+			border-radius: var(--floating-menu-content-border-radius);
 			color: var(--color-e-nearwhite);
 			font-size: inherit;
+			padding: 8px;
 			z-index: 0;
 			// Draw over the application without being clipped by the containing panel's `overflow: hidden`
 			position: fixed;
 		}
-	}
-
-	&:not(.cursor) .floating-menu-container .floating-menu-content {
-		background: rgba(var(--color-2-mildblack-rgb), 0.95);
-		box-shadow: rgba(var(--color-0-black-rgb), 50%) 0 2px 4px;
-		border-radius: var(--floating-menu-content-border-radius);
-		padding: 8px;
 	}
 
 	&.dropdown {
@@ -111,6 +108,13 @@
 	&.popover {
 		--floating-menu-content-offset: 10px;
 		--floating-menu-content-border-radius: 4px;
+	}
+
+	&.cursor .floating-menu-container .floating-menu-content {
+		background: none;
+		box-shadow: none;
+		border-radius: 0;
+		padding: 0;
 	}
 
 	&.center {

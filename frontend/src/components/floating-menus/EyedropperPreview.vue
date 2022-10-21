@@ -6,8 +6,8 @@
 		:style="{ '--ring-color-primary': primaryColor, '--ring-color-secondary': secondaryColor, '--ring-color-choice': colorChoice }"
 	>
 		<div class="ring">
-			<div class="zoomed-preview-container" :class="samplingPrimaryOrSecondary">
-				<canvas class="zoomed-preview" ref="zoomPreviewCanvas"></canvas>
+			<div class="canvas-container" :class="samplingPrimaryOrSecondary">
+				<canvas ref="zoomPreviewCanvas"></canvas>
 				<div class="pixel-outline"></div>
 			</div>
 		</div>
@@ -30,7 +30,7 @@
 		border-bottom-color: var(--ring-color-secondary);
 		border-right-color: var(--ring-color-secondary);
 
-		.zoomed-preview-container {
+		.canvas-container {
 			transform: rotate(-45deg);
 
 			&.primary::before,
@@ -60,11 +60,22 @@
 				border-right-color: var(--ring-color-secondary);
 			}
 
-			.zoomed-preview {
+			canvas {
 				border-radius: 50%;
 				width: 110px;
 				height: 110px;
 				image-rendering: pixelated;
+			}
+
+			&::after {
+				content: "";
+				position: absolute;
+				top: 0;
+				left: 0;
+				width: 100%;
+				height: 100%;
+				border-radius: 50%;
+				box-shadow: inset 0 0 8px rgba(0, 0, 0, 0.25);
 			}
 
 			.pixel-outline {
@@ -76,7 +87,7 @@
 				margin-top: calc(-1px * (var(--outline-width) / 2));
 				width: calc(10px - (var(--outline-width) * 1px));
 				height: calc(10px - var(--outline-width) * 1px);
-				border: calc(var(--outline-width) * 1px) solid black;
+				border: calc(var(--outline-width) * 1px) solid var(--color-0-black);
 			}
 		}
 	}
