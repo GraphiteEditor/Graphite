@@ -63,7 +63,7 @@ impl PropertyHolder for ExportDialogMessageHandler {
 			})),
 		];
 
-		let entries = [(FileType::Svg, "SVG"), (FileType::Png, "PNG"), (FileType::Jpg, "JPG")]
+		let entries = [(FileType::Png, "PNG"), (FileType::Jpg, "JPG"), (FileType::Svg, "SVG")]
 			.into_iter()
 			.map(|(val, name)| RadioEntryData {
 				label: name.into(),

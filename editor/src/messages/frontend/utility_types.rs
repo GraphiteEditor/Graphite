@@ -37,17 +37,17 @@ pub enum MouseCursorIcon {
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 pub enum FileType {
 	#[default]
-	Svg,
 	Png,
 	Jpg,
+	Svg,
 }
 
 impl FileType {
 	pub fn to_mime(self) -> &'static str {
 		match self {
-			FileType::Svg => "image/svg+xml",
 			FileType::Png => "image/png",
 			FileType::Jpg => "image/jpeg",
+			FileType::Svg => "image/svg+xml",
 		}
 	}
 }
