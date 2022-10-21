@@ -70,6 +70,7 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for EyedropperTo
 		PointerMove,
 		RightPointerDown,
 		RightPointerUp,
+		Abort,
 	);
 }
 
@@ -144,8 +145,8 @@ impl Fsm for EyedropperToolFsmState {
 
 					Ready
 				}
-				// Ready -> Ready
-				(Ready, Abort) => {
+				// Any -> Ready
+				(_, Abort) => {
 					disable_cursor_preview(responses);
 
 					Ready

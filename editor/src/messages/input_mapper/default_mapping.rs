@@ -97,6 +97,7 @@ pub fn default_mapping() -> Mapping {
 		entry!(KeyDown(Rmb); action_dispatch=EyedropperToolMessage::RightPointerDown),
 		entry!(KeyUp(Lmb); action_dispatch=EyedropperToolMessage::LeftPointerUp),
 		entry!(KeyUp(Rmb); action_dispatch=EyedropperToolMessage::RightPointerUp),
+		entry!(KeyDown(Escape); action_dispatch=EyedropperToolMessage::Abort),
 		//
 		// TextToolMessage
 		entry!(KeyUp(Lmb); action_dispatch=TextToolMessage::Interact),
