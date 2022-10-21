@@ -14,6 +14,7 @@ import {
 	UpdateDocumentOverlays,
 	UpdateDocumentRulers,
 	UpdateDocumentScrollbars,
+	UpdateEyedropperSamplingState,
 	UpdateMouseCursor,
 	UpdateToolOptionsLayout,
 	UpdateToolShelfLayout,
@@ -47,6 +48,16 @@ export function createPanelsState(editor: Editor) {
 		editor.subscriptions.subscribeJsMessage(UpdateDocumentArtboards, async (updateDocumentArtboards) => {
 			await nextTick();
 			state.documentPanel.updateDocumentArtboards(updateDocumentArtboards.svg);
+		});
+		editor.subscriptions.subscribeJsMessage(UpdateEyedropperSamplingState, async (updateEyedropperSamplingState) => {
+			await nextTick();
+			const { mousePosition, primaryColor, secondaryColor, setColorChoice } = updateEyedropperSamplingState;
+			const rgb = (await state.documentPanel.updateEyedropperSamplingState(mousePosition, primaryColor, secondaryColor)) as [number, number, number] | undefined;
+
+			if (setColorChoice && rgb) {
+				if (setColorChoice === "Primary") editor.instance.updatePrimaryColor(...rgb, 1);
+				if (setColorChoice === "Secondary") editor.instance.updateSecondaryColor(...rgb, 1);
+			}
 		});
 
 		// Update scrollbars and rulers

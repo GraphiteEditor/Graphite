@@ -3,6 +3,7 @@ import { blobToBase64 } from "@/utility-functions/files";
 import { type RequestResult, requestWithUploadDownloadProgress } from "@/utility-functions/network";
 import { stripIndents } from "@/utility-functions/strip-indents";
 import { type Editor } from "@/wasm-communication/editor";
+import type { XY } from "@/wasm-communication/messages";
 import { type ImaginateGenerationParameters } from "@/wasm-communication/messages";
 
 const MAX_POLLING_RETRIES = 4;
@@ -73,7 +74,7 @@ export async function imaginateGenerate(
 
 		// Send the backend a blob URL for the final image
 		const blobURL = URL.createObjectURL(blob);
-		editor.instance.setImaginateBlobURL(documentId, layerPath, blobURL, parameters.resolution[0], parameters.resolution[1]);
+		editor.instance.setImaginateBlobURL(documentId, layerPath, blobURL, parameters.resolution.x, parameters.resolution.y);
 
 		// Send the backend the blob data to be stored persistently in the layer
 		const u8Array = new Uint8Array(await blob.arrayBuffer());
@@ -134,7 +135,7 @@ function scheduleNextPollingUpdate(
 	hostname: string,
 	documentId: bigint,
 	layerPath: BigUint64Array,
-	resolution: [number, number]
+	resolution: XY
 ): void {
 	// Pick a future time that keeps to the user-requested interval if possible, but on slower connections will go as fast as possible without overlapping itself
 	const nextPollTimeGoal = timeoutBegan + interval;
@@ -148,7 +149,7 @@ function scheduleNextPollingUpdate(
 			if (terminated) return;
 
 			const blobURL = URL.createObjectURL(blob);
-			editor.instance.setImaginateBlobURL(documentId, layerPath, blobURL, resolution[0], resolution[1]);
+			editor.instance.setImaginateBlobURL(documentId, layerPath, blobURL, resolution.x, resolution.y);
 			editor.instance.setImaginateGeneratingStatus(documentId, layerPath, percentComplete, "Generating");
 
 			scheduleNextPollingUpdate(interval, nextTimeoutBegan, 0, editor, hostname, documentId, layerPath, resolution);
@@ -244,8 +245,8 @@ async function generate(
 				0,
 				0,
 				false,
-				${parameters.resolution[1]},
-				${parameters.resolution[0]},
+				${parameters.resolution.y},
+				${parameters.resolution.x},
 				false,
 				0.7,
 				0,
@@ -301,8 +302,8 @@ async function generate(
 				0,
 				0,
 				false,
-				${parameters.resolution[1]},
-				${parameters.resolution[0]},
+				${parameters.resolution.y},
+				${parameters.resolution.x},
 				"Just resize",
 				false,
 				32,

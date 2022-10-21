@@ -78,6 +78,8 @@ impl DocumentToolData {
 			}
 			.into(),
 		);
+
+		responses.push_back(EyedropperToolMessage::PointerMove.into());
 	}
 }
 

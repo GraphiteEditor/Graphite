@@ -69,7 +69,7 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, u64, &InputPreprocess
 					return;
 				}
 
-				// Send the Abort state transition to the tool
+				// Send the old and new tools a transition to their FSM Abort states
 				let mut send_abort_to_tool = |tool_type, update_hints_and_cursor: bool| {
 					if let Some(tool) = tool_data.tools.get_mut(&tool_type) {
 						if let Some(tool_abort_message) = tool.event_to_message_map().tool_abort {
@@ -82,8 +82,6 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, u64, &InputPreprocess
 						}
 					}
 				};
-
-				// Send the old and new tools a transition to their FSM Abort states
 				send_abort_to_tool(tool_type, true);
 				send_abort_to_tool(old_tool, false);
 

@@ -157,6 +157,16 @@ pub enum FrontendMessage {
 		size: (f64, f64),
 		multiplier: (f64, f64),
 	},
+	UpdateEyedropperSamplingState {
+		#[serde(rename = "mousePosition")]
+		mouse_position: Option<(f64, f64)>,
+		#[serde(rename = "primaryColor")]
+		primary_color: String,
+		#[serde(rename = "secondaryColor")]
+		secondary_color: String,
+		#[serde(rename = "setColorChoice")]
+		set_color_choice: Option<String>,
+	},
 	UpdateImageData {
 		#[serde(rename = "documentId")]
 		document_id: u64,

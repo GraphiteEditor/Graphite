@@ -92,8 +92,12 @@ pub fn default_mapping() -> Mapping {
 		entry!(KeyUp(Mmb); action_dispatch=NavigateToolMessage::TransformCanvasEnd),
 		//
 		// EyedropperToolMessage
-		entry!(KeyDown(Lmb); action_dispatch=EyedropperToolMessage::LeftMouseDown),
-		entry!(KeyDown(Rmb); action_dispatch=EyedropperToolMessage::RightMouseDown),
+		entry!(PointerMove; action_dispatch=EyedropperToolMessage::PointerMove),
+		entry!(KeyDown(Lmb); action_dispatch=EyedropperToolMessage::LeftPointerDown),
+		entry!(KeyDown(Rmb); action_dispatch=EyedropperToolMessage::RightPointerDown),
+		entry!(KeyUp(Lmb); action_dispatch=EyedropperToolMessage::LeftPointerUp),
+		entry!(KeyUp(Rmb); action_dispatch=EyedropperToolMessage::RightPointerUp),
+		entry!(KeyDown(Escape); action_dispatch=EyedropperToolMessage::Abort),
 		//
 		// TextToolMessage
 		entry!(KeyUp(Lmb); action_dispatch=TextToolMessage::Interact),
@@ -170,8 +174,8 @@ pub fn default_mapping() -> Mapping {
 		entry!(KeyDown(Enter); action_dispatch=SplineToolMessage::Confirm),
 		//
 		// FillToolMessage
-		entry!(KeyDown(Lmb); action_dispatch=FillToolMessage::LeftMouseDown),
-		entry!(KeyDown(Rmb); action_dispatch=FillToolMessage::RightMouseDown),
+		entry!(KeyDown(Lmb); action_dispatch=FillToolMessage::LeftPointerDown),
+		entry!(KeyDown(Rmb); action_dispatch=FillToolMessage::RightPointerDown),
 		//
 		// ToolMessage
 		entry!(KeyDown(KeyV); action_dispatch=ToolMessage::ActivateToolSelect),
