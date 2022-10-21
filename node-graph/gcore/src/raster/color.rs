@@ -1,3 +1,4 @@
+use dyn_any::{DynAny, StaticType};
 use serde::{Deserialize, Serialize};
 
 /// Structure that represents a color.
@@ -5,7 +6,7 @@ use serde::{Deserialize, Serialize};
 /// The other components (RGB) are stored as `f32` that range from `0.0` up to `f32::MAX`,
 /// the values encode the brightness of each channel proportional to the light intensity in cd/m² (nits) in HDR, and `0.0` (black) to `1.0` (white) in SDR color.
 #[repr(C)]
-#[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize, DynAny)]
 pub struct Color {
 	red: f32,
 	green: f32,

@@ -12,3 +12,4 @@ graphene-std = { path = "../gstd" }
 dyn-any = { path = "../../libraries/dyn-any" }
 num-traits = "0.2"
 borrow_stack = { path = "../borrow_stack" }
+dyn-clone = "1.0"

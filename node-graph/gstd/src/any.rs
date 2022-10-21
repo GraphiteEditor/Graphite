@@ -144,6 +144,36 @@ where
 	}
 }
 
+/// Boxes the input and downcasts the output.
+/// Wraps around a node taking Box<dyn DynAny> and returning Box<dyn DynAny>
+pub struct DowncastBothNode<N, I: StaticType, O: StaticType>(pub N, pub PhantomData<(I, O)>);
+impl<N: Copy + Clone, I: StaticType, O: StaticType> Clone for DowncastBothNode<N, I, O> {
+	fn clone(&self) -> Self {
+		Self(self.0, self.1)
+	}
+}
+impl<N: Copy + Clone, I: StaticType, O: StaticType> Copy for DowncastBothNode<N, I, O> {}
+
+impl<'n, N, I: 'n + StaticType, O: 'n + StaticType> Node<I> for DowncastBothNode<N, I, O>
+where
+	N: Node<Any<'n>, Output = Any<'n>>,
+{
+	type Output = O;
+	fn eval(self, input: I) -> Self::Output {
+		let input = Box::new(input) as Box<dyn DynAny>;
+		let output = self.0.eval(input);
+		*dyn_any::downcast(output).unwrap_or_else(|| panic!("DowncastBothNode Output: {}", fmt_error::<O>()))
+	}
+}
+impl<'n, N, I: StaticType, O: StaticType> DowncastBothNode<N, I, O>
+where
+	N: Node<Any<'n>>,
+{
+	pub fn new(n: N) -> Self {
+		DowncastBothNode(n, PhantomData)
+	}
+}
+
 /*
 /// If we store a `Box<dyn RefNode>` in the stack then the origional DynAnyNode is dropped (because it is not stored by reference)
 /// This trait is implemented directly by `DynAnyNode` so this means the borrow stack will hold by value
