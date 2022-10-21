@@ -118,36 +118,36 @@ impl Fsm for EyedropperToolFsmState {
 			match (self, event) {
 				// Ready -> Sampling
 				(Ready, mouse_down) | (Ready, mouse_down) if mouse_down == LeftPointerDown || mouse_down == RightPointerDown => {
-					let (sampling_primary_or_secondary, state) = if mouse_down == LeftPointerDown {
-						("primary".to_string(), SamplingPrimary)
-					} else {
-						("secondary".to_string(), SamplingSecondary)
-					};
+					update_cursor_preview(responses, input, global_tool_data, None);
 
-					update_cursor_preview(responses, input, global_tool_data, sampling_primary_or_secondary, false);
-					state
+					if mouse_down == LeftPointerDown {
+						SamplingPrimary
+					} else {
+						SamplingSecondary
+					}
 				}
 				// Sampling -> Sampling
 				(SamplingPrimary, PointerMove) | (SamplingSecondary, PointerMove) => {
 					if input.viewport_bounds.in_bounds(input.mouse.position) {
-						let sampling_primary_or_secondary = if self == SamplingPrimary { "primary".to_string() } else { "secondary".to_string() };
-						update_cursor_preview(responses, input, global_tool_data, sampling_primary_or_secondary, false);
+						update_cursor_preview(responses, input, global_tool_data, None);
 					} else {
 						disable_cursor_preview(responses);
 					}
+
 					self
 				}
 				// Sampling -> Ready
 				(SamplingPrimary, mouse_up) | (SamplingSecondary, mouse_up) if mouse_up == LeftPointerUp || mouse_up == RightPointerUp => {
-					let sampling_primary_or_secondary = if self == SamplingPrimary { "primary".to_string() } else { "secondary".to_string() };
-					update_cursor_preview(responses, input, global_tool_data, sampling_primary_or_secondary, true);
-
+					let set_color_choice = if self == SamplingPrimary { "Primary".to_string() } else { "Secondary".to_string() };
+					update_cursor_preview(responses, input, global_tool_data, Some(set_color_choice));
 					disable_cursor_preview(responses);
+
 					Ready
 				}
 				// Ready -> Ready
 				(Ready, Abort) => {
 					disable_cursor_preview(responses);
+
 					Ready
 				}
 				// Ready -> Ready
@@ -199,26 +199,18 @@ fn disable_cursor_preview(responses: &mut VecDeque<Message>) {
 			mouse_position: None,
 			primary_color: "".into(),
 			secondary_color: "".into(),
-			sampling_primary_or_secondary: "".into(),
-			set_color_choice: false,
+			set_color_choice: None,
 		}
 		.into(),
 	);
 }
 
-fn update_cursor_preview(
-	responses: &mut VecDeque<Message>,
-	input: &InputPreprocessorMessageHandler,
-	global_tool_data: &DocumentToolData,
-	sampling_primary_or_secondary: String,
-	set_color_choice: bool,
-) {
+fn update_cursor_preview(responses: &mut VecDeque<Message>, input: &InputPreprocessorMessageHandler, global_tool_data: &DocumentToolData, set_color_choice: Option<String>) {
 	responses.push_back(
 		FrontendMessage::UpdateEyedropperSamplingState {
 			mouse_position: Some(input.mouse.position.into()),
 			primary_color: "#".to_string() + global_tool_data.primary_color.rgb_hex().as_str(),
 			secondary_color: "#".to_string() + global_tool_data.secondary_color.rgb_hex().as_str(),
-			sampling_primary_or_secondary,
 			set_color_choice,
 		}
 		.into(),

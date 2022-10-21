@@ -196,11 +196,9 @@ export class UpdateEyedropperSamplingState extends JsMessage {
 
 	readonly primaryColor!: string;
 
-	readonly secondaryColor!: "primary" | "secondary" | "";
+	readonly secondaryColor!: string;
 
-	readonly samplingPrimaryOrSecondary!: string;
-
-	readonly setColorChoice!: boolean;
+	readonly setColorChoice!: "Primary" | "Secondary" | undefined;
 }
 
 const mouseCursorIconCSSNames = {

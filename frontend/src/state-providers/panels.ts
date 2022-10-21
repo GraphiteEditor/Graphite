@@ -51,12 +51,12 @@ export function createPanelsState(editor: Editor) {
 		});
 		editor.subscriptions.subscribeJsMessage(UpdateEyedropperSamplingState, async (updateEyedropperSamplingState) => {
 			await nextTick();
-			const { mousePosition, primaryColor, secondaryColor, samplingPrimaryOrSecondary, setColorChoice } = updateEyedropperSamplingState;
-			const rgb = (await state.documentPanel.updateEyedropperSamplingState(mousePosition, primaryColor, secondaryColor, samplingPrimaryOrSecondary)) as [number, number, number] | undefined;
+			const { mousePosition, primaryColor, secondaryColor, setColorChoice } = updateEyedropperSamplingState;
+			const rgb = (await state.documentPanel.updateEyedropperSamplingState(mousePosition, primaryColor, secondaryColor)) as [number, number, number] | undefined;
 
 			if (setColorChoice && rgb) {
-				if (samplingPrimaryOrSecondary === "primary") editor.instance.updatePrimaryColor(...rgb, 1);
-				if (samplingPrimaryOrSecondary === "secondary") editor.instance.updateSecondaryColor(...rgb, 1);
+				if (setColorChoice === "Primary") editor.instance.updatePrimaryColor(...rgb, 1);
+				if (setColorChoice === "Secondary") editor.instance.updateSecondaryColor(...rgb, 1);
 			}
 		});
 

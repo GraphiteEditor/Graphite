@@ -6,7 +6,7 @@
 		:style="{ '--ring-color-primary': primaryColor, '--ring-color-secondary': secondaryColor, '--ring-color-choice': colorChoice }"
 	>
 		<div class="ring">
-			<div class="canvas-container" :class="samplingPrimaryOrSecondary">
+			<div class="canvas-container">
 				<canvas ref="zoomPreviewCanvas"></canvas>
 				<div class="pixel-outline"></div>
 			</div>
@@ -29,41 +29,15 @@
 		border-left-color: var(--ring-color-primary);
 		border-bottom-color: var(--ring-color-secondary);
 		border-right-color: var(--ring-color-secondary);
+		box-shadow: 0 0 8px rgba(0, 0, 0, 0.25);
 
 		.canvas-container {
 			transform: rotate(-45deg);
 
-			&.primary::before,
-			&.secondary::before {
-				content: "";
-				width: 100%;
-				height: 100%;
-				padding: 16px;
-				margin: calc(-16px - 8px - 8px);
-				transform: rotate(45deg);
-				position: absolute;
-				border: 16px solid;
-				border-radius: 50%;
-			}
-
-			&.primary::before {
-				border-top-color: var(--ring-color-primary);
-				border-left-color: var(--ring-color-primary);
-				border-bottom-color: transparent;
-				border-right-color: transparent;
-			}
-
-			&.secondary::before {
-				border-top-color: transparent;
-				border-left-color: transparent;
-				border-bottom-color: var(--ring-color-secondary);
-				border-right-color: var(--ring-color-secondary);
-			}
-
 			canvas {
-				border-radius: 50%;
 				width: 110px;
 				height: 110px;
+				border-radius: 50%;
 				image-rendering: pixelated;
 			}
 
@@ -114,7 +88,6 @@ export default defineComponent({
 		colorChoice: { type: String as PropType<string>, required: true },
 		primaryColor: { type: String as PropType<string>, required: true },
 		secondaryColor: { type: String as PropType<string>, required: true },
-		samplingPrimaryOrSecondary: { type: String as PropType<"primary" | "secondary" | "">, default: "" },
 	},
 	mounted() {
 		this.displayImageDataPreview(this.imageData);

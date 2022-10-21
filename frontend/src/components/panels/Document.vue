@@ -34,7 +34,6 @@
 							:colorChoice="cursorEyedropperPreviewColorChoice"
 							:primaryColor="cursorEyedropperPreviewColorPrimary"
 							:secondaryColor="cursorEyedropperPreviewColorSecondary"
-							:samplingPrimaryOrSecondary="cursorEyedropperPreviewSamplingPrimaryOrSecondary"
 							:imageData="cursorEyedropperPreviewImageData"
 							:style="{ left: cursorLeft + 'px', top: cursorTop + 'px' }"
 						/>
@@ -291,7 +290,6 @@ export default defineComponent({
 			cursorEyedropperPreviewColorChoice: "",
 			cursorEyedropperPreviewColorPrimary: "",
 			cursorEyedropperPreviewColorSecondary: "",
-			cursorEyedropperPreviewSamplingPrimaryOrSecondary: "" as "primary" | "secondary" | "",
 
 			// Layouts
 			documentModeLayout: defaultWidgetLayout(),
@@ -387,12 +385,7 @@ export default defineComponent({
 			this.artboardSvg = svg;
 			this.rasterizedCanvas = undefined;
 		},
-		async updateEyedropperSamplingState(
-			mousePosition: XY | undefined,
-			colorPrimary: string,
-			colorSecondary: string,
-			samplingPrimaryOrSecondary: "primary" | "secondary" | ""
-		): Promise<[number, number, number] | undefined> {
+		async updateEyedropperSamplingState(mousePosition: XY | undefined, colorPrimary: string, colorSecondary: string): Promise<[number, number, number] | undefined> {
 			if (mousePosition === undefined) {
 				this.cursorEyedropper = false;
 				return undefined;
@@ -439,7 +432,6 @@ export default defineComponent({
 				ZOOM_WINDOW_DIMENSIONS
 			);
 			this.cursorEyedropperPreviewImageData = previewRegion;
-			if (samplingPrimaryOrSecondary) this.cursorEyedropperPreviewSamplingPrimaryOrSecondary = samplingPrimaryOrSecondary;
 
 			return rgb;
 		},

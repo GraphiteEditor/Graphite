@@ -164,10 +164,8 @@ pub enum FrontendMessage {
 		primary_color: String,
 		#[serde(rename = "secondaryColor")]
 		secondary_color: String,
-		#[serde(rename = "samplingPrimaryOrSecondary")]
-		sampling_primary_or_secondary: String,
 		#[serde(rename = "setColorChoice")]
-		set_color_choice: bool,
+		set_color_choice: Option<String>,
 	},
 	UpdateImageData {
 		#[serde(rename = "documentId")]
