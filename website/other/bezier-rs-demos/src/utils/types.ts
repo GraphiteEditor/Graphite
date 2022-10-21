@@ -16,7 +16,7 @@ export enum BezierCurveType {
 
 export type Callback = (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: Record<string, number>, mouseLocation?: Point) => void;
 export type BezierCallback = (bezier: WasmBezierInstance, options: Record<string, number>, mouseLocation?: Point) => string;
-export type SubpathCallback = (subpath: WasmSubpathInstance) => string;
+export type SubpathCallback = (subpath: WasmSubpathInstance, options: Record<string, number>, mouseLocation?: Point) => string;
 
 export type ExampleOptions = {
 	[key in BezierCurveType]: {

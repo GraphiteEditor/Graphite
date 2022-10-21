@@ -232,12 +232,25 @@ impl Bezier {
 			let line_directional_vector = other.end - other.start;
 			let angle = line_directional_vector.angle_between(DVec2::new(1., 0.));
 			let rotation_matrix = DMat2::from_angle(angle);
+
+			println!("dir vect: {}, angle :: {}", line_directional_vector, angle * 180. / std::f64::consts::PI);
 			let rotated_bezier = self.apply_transformation(&|point| rotation_matrix.mul_vec2(point));
 			let rotated_line = [rotation_matrix.mul_vec2(other.start), rotation_matrix.mul_vec2(other.end)];
+			println!("rotated line vect: {:#?}", rotated_line);
 
 			// Translate the bezier such that the line becomes aligned on top of the x-axis
 			let vertical_distance = rotated_line[0].y;
 			let translated_bezier = rotated_bezier.translate(DVec2::new(0., -vertical_distance));
+
+			let mut svg = String::new();
+			translated_bezier.translate(DVec2::new(200., 50.)).to_svg(
+				&mut svg,
+				"stroke=\"black\" stroke-width=\"1\"".to_string(),
+				"stroke=\"black\" radius=\"3\"".to_string(),
+				"stroke=\"black\" radius=\"3\"".to_string(),
+				"stroke=\"black\" stroke-width=\"1\"".to_string(),
+			);
+			println!("{}", svg);
 
 			// Compute the roots of the resulting bezier curve
 			let list_intersection_t = match translated_bezier.handles {
@@ -611,6 +624,36 @@ mod tests {
 		assert!(intersections2.len() == 2);
 		assert!(compare_points(bezier.evaluate(intersections2[0]), p1));
 		assert!(compare_points(bezier.evaluate(intersections2[1]), DVec2::new(85.84, 85.84)));
+	}
+
+	#[test]
+	fn test_intersect_curve_cubic_subpath_segment() {
+		// M31 94 C40 40 107 107 106 106
+
+		// rotated curve :: "M-88.38834764831844 -44.5477272147525 C-56.568542494923804 -0.000000000000010658141036401503 -151.32085117392117 -0.000000000000014210854715202004 -149.9066376115481 0"
+
+		// rotated line :: M-88.38834764831844 -44.5477272147525 L-56.568542494923804 -0.000000000000010658141036401503 M-149.9066376115481 0 L-151.32085117392117 -0.000000000000014210854715202004
+
+		/* <path d="M11.611652351681556 5.4522727852475015 C43.431457505076196 49.999999999999986 -51.32085117392117 49.999999999999986 -49.90663761154809 50" stroke="black" stroke-width="1"/>
+		<path d="M11.611652351681556 5.4522727852475015 L43.431457505076196 49.999999999999986 M-49.90663761154809 50 L-51.32085117392117 49.999999999999986" stroke="black" stroke-width="1"/>
+		<circle cx="11.611652351681556" cy="5.4522727852475015" stroke="black" radius="3"/>
+		<circle cx="-49.90663761154809" cy="50" stroke="black" radius="3"/>
+		<circle cx="43.431457505076196" cy="49.999999999999986" stroke="black" radius="3"/>
+		<circle cx="-51.32085117392117" cy="49.999999999999986" stroke="black" radius="3"/> */
+
+		/* <path d="M111.61165235168156 5.4522727852475015 C143.4314575050762 49.999999999999986 48.67914882607883 49.999999999999986 50.09336238845191 50" stroke="black" stroke-width="1"/> */
+
+		let p1 = DVec2::new(31., 94.);
+		let p2 = DVec2::new(40., 40.);
+		let p3 = DVec2::new(107., 107.);
+		let p4 = DVec2::new(106., 106.);
+		let bezier = Bezier::from_cubic_dvec2(p1, p2, p3, p4);
+
+		let line = Bezier::from_linear_coordinates(20., 20., 150., 150.);
+
+		let intersections1 = bezier.intersections(&line, None);
+		println!("<<<<<< {:?}", intersections1);
+		println!("<<<<<< {:?} << {:?}", bezier.evaluate(intersections1[0]), p1);
 	}
 
 	#[test]

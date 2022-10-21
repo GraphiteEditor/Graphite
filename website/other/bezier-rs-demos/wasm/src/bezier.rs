@@ -52,10 +52,6 @@ fn convert_wasm_maximize_arcs(wasm_enum_value: WasmMaximizeArcs) -> ArcStrategy 
 	}
 }
 
-fn wrap_svg_tag(contents: String) -> String {
-	format!("{}{}{}", SVG_OPEN_TAG, contents, SVG_CLOSE_TAG)
-}
-
 #[wasm_bindgen]
 impl WasmBezier {
 	/// Expect js_points to be a list of 2 pairs.

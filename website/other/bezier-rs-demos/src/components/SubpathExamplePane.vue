@@ -3,7 +3,7 @@
 		<h3 class="example-pane-header">{{ name }}</h3>
 		<div class="example-row">
 			<div v-for="(example, index) in examples" :key="index">
-				<SubpathExample :title="example.title" :triples="example.triples" :closed="example.closed" :callback="callback" />
+				<SubpathExample :title="example.title" :triples="example.triples" :closed="example.closed" :callback="callback" :sliderOptions="sliderOptions" />
 			</div>
 		</div>
 	</div>
@@ -12,7 +12,7 @@
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
 
-import { SubpathCallback } from "@/utils/types";
+import { SubpathCallback, SliderOption } from "@/utils/types";
 
 import SubpathExample from "@/components/SubpathExample.vue";
 
@@ -22,6 +22,10 @@ export default defineComponent({
 		callback: {
 			type: Function as PropType<SubpathCallback>,
 			required: true,
+		},
+		sliderOptions: {
+			type: Array as PropType<Array<SliderOption>>,
+			default: () => [],
 		},
 	},
 	data() {
