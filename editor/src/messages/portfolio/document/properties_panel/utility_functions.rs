@@ -910,8 +910,8 @@ fn node_section_imaginate(imaginate_layer: &ImaginateLayer, layer: &Layer, persi
 						\n\
 						Include an artist name like \"Rembrandt\" or art medium like \"watercolor\" or \"photography\" to influence the look. List multiple to meld styles.\n\
 						\n\
-						To boost the importance of a word or phrase, wrap it in quotes ending with a colon and a multiplier, for example:\n\
-						\"(colorless:0.7) green (ideas sleep:1.3) furiously\"
+						To boost (or lessen) the importance of a word or phrase, wrap it in quotes ending with a colon and a multiplier, for example:\n\
+						\"Colorless green ideas (sleep:1.3) furiously\"
 						"
 						.trim()
 						.into(),
