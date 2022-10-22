@@ -315,6 +315,8 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				scale_factor,
 				bounds,
 			} => {
+				let old_transforms = self.remove_document_transform();
+
 				// Calculate the bounding box of the region to be exported
 				let bounds = match bounds {
 					ExportBounds::AllArtwork => self.all_layer_bounds(&persistent_data.font_cache),
@@ -331,6 +333,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				let transform = DAffine2::from_scale_angle_translation(1. / size, 0., -bounds[0]);
 
 				let document = self.render_document(size, transform, persistent_data, DocumentRenderMode::Root);
+				self.restore_document_transform(old_transforms);
 
 				let file_suffix = &format!(".{file_type:?}").to_lowercase();
 				let name = match file_name.ends_with(FILE_SAVE_SUFFIX) {
@@ -933,7 +936,9 @@ impl DocumentMessageHandler {
 			// Calculate the size of the region to be exported
 			let size = transform.transform_point2(DVec2::ONE) - transform.transform_point2(DVec2::ZERO);
 
+			let old_transforms = self.remove_document_transform();
 			let svg = self.render_document(size, transform.inverse(), persistent_data, DocumentRenderMode::OnlyBelowLayerInFolder(&layer_path));
+			self.restore_document_transform(old_transforms);
 
 			Some(ImaginateBaseImage { svg, size })
 		} else {
@@ -953,10 +958,8 @@ impl DocumentMessageHandler {
 		)
 	}
 
-	pub fn render_document(&mut self, size: DVec2, transform: DAffine2, persistent_data: &PersistentData, render_mode: DocumentRenderMode) -> String {
-		// Remove the artwork and artboard pan/tilt/zoom to render it without the user's viewport navigation, and save it to be restored at the end
-		info!("Transform {transform}");
-
+	/// Remove the artwork and artboard pan/tilt/zoom to render it without the user's viewport navigation, and save it to be restored at the end
+	fn remove_document_transform(&mut self) -> [DAffine2; 2] {
 		let old_artwork_transform = self.graphene_document.root.transform;
 		self.graphene_document.root.transform = DAffine2::IDENTITY;
 		GrapheneDocument::mark_children_as_dirty(&mut self.graphene_document.root);
@@ -965,6 +968,19 @@ impl DocumentMessageHandler {
 		self.artboard_message_handler.artboards_graphene_document.root.transform = DAffine2::IDENTITY;
 		GrapheneDocument::mark_children_as_dirty(&mut self.artboard_message_handler.artboards_graphene_document.root);
 
+		[old_artwork_transform, old_artboard_transform]
+	}
+
+	/// Transform the artwork and artboard back to their original scales
+	fn restore_document_transform(&mut self, [old_artwork_transform, old_artboard_transform]: [DAffine2; 2]) {
+		self.graphene_document.root.transform = old_artwork_transform;
+		GrapheneDocument::mark_children_as_dirty(&mut self.graphene_document.root);
+
+		self.artboard_message_handler.artboards_graphene_document.root.transform = old_artboard_transform;
+		GrapheneDocument::mark_children_as_dirty(&mut self.artboard_message_handler.artboards_graphene_document.root);
+	}
+
+	pub fn render_document(&mut self, size: DVec2, transform: DAffine2, persistent_data: &PersistentData, render_mode: DocumentRenderMode) -> String {
 		// Render the document SVG code
 
 		let render_data = RenderData::new(ViewMode::Normal, &persistent_data.font_cache, None);
@@ -985,14 +1001,6 @@ impl DocumentMessageHandler {
 			r#"<svg xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none" viewBox="0 0 1 1" width="{}" height="{}">{}{}<g transform="matrix({})">{}{}</g></svg>"#,
 			size.x, size.y, "\n", outside_artboards, matrix, artboards, artwork
 		);
-
-		// Transform the artwork and artboard back to their original scales
-
-		self.graphene_document.root.transform = old_artwork_transform;
-		GrapheneDocument::mark_children_as_dirty(&mut self.graphene_document.root);
-
-		self.artboard_message_handler.artboards_graphene_document.root.transform = old_artboard_transform;
-		GrapheneDocument::mark_children_as_dirty(&mut self.artboard_message_handler.artboards_graphene_document.root);
 
 		svg
 	}
