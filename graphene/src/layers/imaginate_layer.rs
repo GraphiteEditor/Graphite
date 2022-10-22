@@ -188,8 +188,7 @@ impl LayerData for ImaginateLayer {
 		let transform = self.transform(transforms, render_data.view_mode);
 		let inverse = transform.inverse();
 
-		let matrix_values = transform.matrix2.to_cols_array();
-		let (width, height) = (matrix_values[0], matrix_values[3]);
+		let (width, height) = (transform.transform_vector2(DVec2::new(1., 0.)).length(), transform.transform_vector2(DVec2::new(0., 1.)).length());
 
 		if !inverse.is_finite() {
 			let _ = write!(svg, "<!-- SVG shape has an invalid transform -->");
@@ -205,25 +204,29 @@ impl LayerData for ImaginateLayer {
 		if let Some(blob_url) = &self.blob_url {
 			let _ = write!(
 				svg,
-				r#"<image width="{}" height="{}" transform="matrix(1,0,0,1,{},{})" preserveAspectRatio="none" href="{}"/>"#,
+				r#"<image width="{}" height="{}" preserveAspectRatio="none" href="{}" transform="matrix("#,
 				width.abs(),
 				height.abs(),
-				if width >= 0. { transform.translation.x } else { transform.translation.x + width },
-				if height >= 0. { transform.translation.y } else { transform.translation.y + height },
 				blob_url
 			);
 		} else {
 			let _ = write!(
 				svg,
-				r#"<rect width="{}" height="{}" transform="matrix(1,0,0,1,{},{})" fill="none" stroke="var(--color-data-raster)" stroke-width="3" stroke-dasharray="8"/>"#,
+				r#"<rect width="{}" height="{}" fill="none" stroke="var(--color-data-raster)" stroke-width="3" stroke-dasharray="8" transform="matrix("#,
 				width.abs(),
 				height.abs(),
-				if width >= 0. { transform.translation.x } else { transform.translation.x + width },
-				if height >= 0. { transform.translation.y } else { transform.translation.y + height },
 			);
 		}
 
-		let _ = svg.write_str("</g>");
+		(transform * DAffine2::from_scale((width, height).into()).inverse())
+			.to_cols_array()
+			.iter()
+			.enumerate()
+			.for_each(|(i, entry)| {
+				let _ = svg.write_str(&(entry.to_string() + if i == 5 { "" } else { "," }));
+			});
+
+		let _ = svg.write_str(r#")" /> </g>"#);
 	}
 
 	fn bounding_box(&self, transform: glam::DAffine2, _font_cache: &FontCache) -> Option<[DVec2; 2]> {
