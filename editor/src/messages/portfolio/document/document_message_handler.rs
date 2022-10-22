@@ -330,7 +330,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				}
 				.unwrap_or_default();
 				let size = bounds[1] - bounds[0];
-				let transform = DAffine2::from_scale_angle_translation(1. / size, 0., -bounds[0]);
+				let transform = (DAffine2::from_translation(bounds[0]) * DAffine2::from_scale(size)).inverse();
 
 				let document = self.render_document(size, transform, persistent_data, DocumentRenderMode::Root);
 				self.restore_document_transform(old_transforms);
