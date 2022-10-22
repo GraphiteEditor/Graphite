@@ -73,7 +73,7 @@ import { defineComponent, type PropType } from "vue";
 import { type RGBA } from "@/wasm-communication/messages";
 
 import ColorPicker from "@/components/floating-menus/ColorPicker.vue";
-import FloatingMenu from "@/components/floating-menus/FloatingMenu.vue";
+import FloatingMenu from "@/components/layout/FloatingMenu.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 import OptionalInput from "@/components/widgets/inputs/OptionalInput.vue";
 import TextInput from "@/components/widgets/inputs/TextInput.vue";

@@ -72,7 +72,7 @@ import { rgbaToDecimalRgba } from "@/utility-functions/color";
 import { type RGBA, type Color } from "@/wasm-communication/messages";
 
 import ColorPicker from "@/components/floating-menus/ColorPicker.vue";
-import FloatingMenu from "@/components/floating-menus/FloatingMenu.vue";
+import FloatingMenu from "@/components/layout/FloatingMenu.vue";
 import LayoutCol from "@/components/layout/LayoutCol.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 

@@ -68,7 +68,7 @@
 <script lang="ts">
 import { defineComponent } from "vue";
 
-import FloatingMenu from "@/components/floating-menus/FloatingMenu.vue";
+import FloatingMenu from "@/components/layout/FloatingMenu.vue";
 import LayoutCol from "@/components/layout/LayoutCol.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 import TextButton from "@/components/widgets/buttons/TextButton.vue";

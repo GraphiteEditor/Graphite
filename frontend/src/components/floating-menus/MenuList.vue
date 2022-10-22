@@ -163,7 +163,7 @@ import { defineComponent, type PropType } from "vue";
 
 import { type MenuListEntry } from "@/wasm-communication/messages";
 
-import FloatingMenu, { type MenuDirection } from "@/components/floating-menus/FloatingMenu.vue";
+import FloatingMenu, { type MenuDirection } from "@/components/layout/FloatingMenu.vue";
 import LayoutCol from "@/components/layout/LayoutCol.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
