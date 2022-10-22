@@ -142,6 +142,8 @@ pub fn register_artboard_layer_properties(layer: &Layer, responses: &mut VecDequ
 							value: Some(layer.bounding_transform(font_cache).scale_x()),
 							label: "W".into(),
 							unit: " px".into(),
+							is_integer: true,
+							min: Some(1.),
 							on_update: WidgetCallback::new(|number_input: &NumberInput| {
 								PropertiesPanelMessage::ModifyTransform {
 									value: number_input.value.unwrap(),
@@ -159,6 +161,8 @@ pub fn register_artboard_layer_properties(layer: &Layer, responses: &mut VecDequ
 							value: Some(layer.bounding_transform(font_cache).scale_y()),
 							label: "H".into(),
 							unit: " px".into(),
+							is_integer: true,
+							min: Some(1.),
 							on_update: WidgetCallback::new(|number_input: &NumberInput| {
 								PropertiesPanelMessage::ModifyTransform {
 									value: number_input.value.unwrap(),
