@@ -328,8 +328,9 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				}
 				.unwrap_or_default();
 				let size = bounds[1] - bounds[0];
+				let transform = DAffine2::from_scale_angle_translation(1. / size, 0., -bounds[0]);
 
-				let document = self.render_document(bounds, persistent_data, DocumentRenderMode::Root);
+				let document = self.render_document(size, transform, persistent_data, DocumentRenderMode::Root);
 
 				let file_suffix = &format!(".{file_type:?}").to_lowercase();
 				let name = match file_name.ends_with(FILE_SAVE_SUFFIX) {
@@ -912,6 +913,7 @@ impl DocumentMessageHandler {
 
 		// Prepare the Imaginate parameters and base image
 
+		let transform = self.graphene_document.root.transform.inverse() * self.graphene_document.multiply_transforms(&layer_path).unwrap();
 		let layer = self.graphene_document.layer(&layer_path).unwrap();
 		let imaginate_layer = layer.as_imaginate().unwrap();
 
@@ -928,11 +930,11 @@ impl DocumentMessageHandler {
 			tiling: imaginate_layer.tiling,
 		};
 		let base_image = if imaginate_layer.use_img2img {
-			// Calculate the bounding box of the region to be exported
-			let bounds = layer.aabb(&persistent_data.font_cache).unwrap_or_default();
-			let size = bounds[1] - bounds[0];
+			// Calculate the size of the region to be exported
+			let [top_left, bottom_right] = [transform.transform_point2(DVec2::ZERO), transform.transform_point2(DVec2::ONE)];
+			let size = bottom_right - top_left;
 
-			let svg = self.render_document(bounds, persistent_data, DocumentRenderMode::OnlyBelowLayerInFolder(&layer_path));
+			let svg = self.render_document(size, transform.inverse(), persistent_data, DocumentRenderMode::OnlyBelowLayerInFolder(&layer_path));
 
 			Some(ImaginateBaseImage { svg, size })
 		} else {
@@ -952,8 +954,9 @@ impl DocumentMessageHandler {
 		)
 	}
 
-	pub fn render_document(&mut self, bounds: [DVec2; 2], persistent_data: &PersistentData, render_mode: DocumentRenderMode) -> String {
+	pub fn render_document(&mut self, size: DVec2, transform: DAffine2, persistent_data: &PersistentData, render_mode: DocumentRenderMode) -> String {
 		// Remove the artwork and artboard pan/tilt/zoom to render it without the user's viewport navigation, and save it to be restored at the end
+		info!("Transform {transform}");
 
 		let old_artwork_transform = self.graphene_document.root.transform;
 		self.graphene_document.root.transform = DAffine2::IDENTITY;
@@ -965,7 +968,6 @@ impl DocumentMessageHandler {
 
 		// Render the document SVG code
 
-		let size = bounds[1] - bounds[0];
 		let render_data = RenderData::new(ViewMode::Normal, &persistent_data.font_cache, None);
 
 		let artwork = match render_mode {
@@ -974,10 +976,15 @@ impl DocumentMessageHandler {
 		};
 		let artboards = self.artboard_message_handler.artboards_graphene_document.render_root(render_data);
 		let outside_artboards_color = if self.artboard_message_handler.artboard_ids.is_empty() { "#ffffff" } else { "#000000" };
-		let outside_artboards = format!(r#"<rect x="{}" y="{}" width="100%" height="100%" fill="{}" />"#, bounds[0].x, bounds[0].y, outside_artboards_color);
+		let outside_artboards = format!(r#"<rect x="0" y="0" width="100%" height="100%" fill="{}" />"#, outside_artboards_color);
+		let matrix = transform
+			.to_cols_array()
+			.iter()
+			.enumerate()
+			.fold(String::new(), |accum, (i, entry)| accum + &(entry.to_string() + if i == 5 { "" } else { "," }));
 		let svg = format!(
-			r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{} {} {} {}" width="{}" height="{}">{}{}{}{}</svg>"#,
-			bounds[0].x, bounds[0].y, size.x, size.y, size.x, size.y, "\n", outside_artboards, artboards, artwork
+			r#"<svg xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none" viewBox="0 0 1 1" width="{}" height="{}">{}{}<g transform="matrix({})">{}{}</g></svg>"#,
+			size.x, size.y, "\n", outside_artboards, matrix, artboards, artwork
 		);
 
 		// Transform the artwork and artboard back to their original scales
