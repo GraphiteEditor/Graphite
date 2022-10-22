@@ -931,8 +931,7 @@ impl DocumentMessageHandler {
 		};
 		let base_image = if imaginate_layer.use_img2img {
 			// Calculate the size of the region to be exported
-			let [top_left, bottom_right] = [transform.transform_point2(DVec2::ZERO), transform.transform_point2(DVec2::ONE)];
-			let size = bottom_right - top_left;
+			let size = transform.transform_point2(DVec2::ONE) - transform.transform_point2(DVec2::ZERO);
 
 			let svg = self.render_document(size, transform.inverse(), persistent_data, DocumentRenderMode::OnlyBelowLayerInFolder(&layer_path));
 
