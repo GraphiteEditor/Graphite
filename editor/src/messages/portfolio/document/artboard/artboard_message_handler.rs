@@ -85,7 +85,7 @@ impl MessageHandler<ArtboardMessage, &FontCache> for ArtboardMessageHandler {
 						.into(),
 					)
 				} else {
-					let render_data = RenderData::new(ViewMode::Normal, font_cache, None, false);
+					let render_data = RenderData::new(ViewMode::Normal, font_cache, None);
 					responses.push_back(
 						FrontendMessage::UpdateDocumentArtboards {
 							svg: self.artboards_graphene_document.render_root(render_data),

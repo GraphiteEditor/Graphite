@@ -7,7 +7,7 @@ fn main() {
 	let try_git_command = |args: &[&str]| -> Option<String> {
 		let git_output = Command::new("git").args(args).output().ok()?;
 		let maybe_empty = String::from_utf8(git_output.stdout).ok()?;
-		let command_result = (!maybe_empty.is_empty()).then(|| maybe_empty)?;
+		let command_result = (!maybe_empty.is_empty()).then_some(maybe_empty)?;
 		Some(command_result)
 	};
 	// Execute a Git command for its output. Return "unknown" if it fails for any of the possible reasons.

@@ -1,3 +1,4 @@
+use super::base64_serde;
 use super::layer_info::LayerData;
 use super::style::{RenderData, ViewMode};
 use crate::intersection::{intersect_quad_bez_path, Quad};
@@ -9,17 +10,12 @@ use kurbo::{Affine, BezPath, Shape as KurboShape};
 use serde::{Deserialize, Serialize};
 use std::fmt::Write;
 
-mod base64_serde;
-
-fn glam_to_kurbo(transform: DAffine2) -> Affine {
-	Affine::new(transform.to_cols_array())
-}
-
-#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, PartialEq, Deserialize, Serialize)]
 pub struct ImageLayer {
 	pub mime: String,
 	#[serde(serialize_with = "base64_serde::as_base64", deserialize_with = "base64_serde::from_base64")]
 	pub image_data: Vec<u8>,
+	// TODO: Have the browser dispose of this blob URL when this is dropped (like when the layer is deleted)
 	#[serde(skip)]
 	pub blob_url: Option<String>,
 	#[serde(skip)]
@@ -50,15 +46,12 @@ impl LayerData for ImageLayer {
 			.collect::<String>();
 		let _ = write!(
 			svg,
-			r#"<image width="{}" height="{}" transform="matrix({})" href=""#,
-			self.dimensions.x, self.dimensions.y, svg_transform,
+			r#"<image width="{}" height="{}" transform="matrix({})" href="{}"/>"#,
+			self.dimensions.x,
+			self.dimensions.y,
+			svg_transform,
+			self.blob_url.as_ref().unwrap_or(&String::new())
 		);
-		if render_data.embed_images {
-			let _ = write!(svg, "data:{};base64,{}", self.mime, base64::encode(&self.image_data));
-		} else {
-			let _ = write!(svg, "{}", self.blob_url.as_ref().unwrap_or(&String::new()));
-		}
-		let _ = svg.write_str(r#""/>"#);
 		let _ = svg.write_str("</g>");
 	}
 
@@ -83,13 +76,11 @@ impl LayerData for ImageLayer {
 
 impl ImageLayer {
 	pub fn new(mime: String, image_data: Vec<u8>) -> Self {
-		let blob_url = None;
-		let dimensions = DVec2::ONE;
 		Self {
 			mime,
 			image_data,
-			blob_url,
-			dimensions,
+			blob_url: None,
+			dimensions: DVec2::ONE,
 		}
 	}
 
@@ -104,4 +95,19 @@ impl ImageLayer {
 	fn bounds(&self) -> BezPath {
 		kurbo::Rect::from_origin_size(kurbo::Point::ZERO, kurbo::Size::new(self.dimensions.x, self.dimensions.y)).to_path(0.)
 	}
+}
+
+impl std::fmt::Debug for ImageLayer {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.debug_struct("ImageLayer")
+			.field("mime", &self.mime)
+			.field("image_data", &"...")
+			.field("blob_url", &self.blob_url)
+			.field("dimensions", &self.dimensions)
+			.finish()
+	}
+}
+
+fn glam_to_kurbo(transform: DAffine2) -> Affine {
+	Affine::new(transform.to_cols_array())
 }

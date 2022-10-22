@@ -2,17 +2,22 @@ use super::utility_types::TransformOp;
 use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
 use crate::messages::layout::utility_types::misc::LayoutTarget;
 use crate::messages::layout::utility_types::widgets::assist_widgets::PivotAssist;
-use crate::messages::layout::utility_types::widgets::button_widgets::PopoverButton;
-use crate::messages::layout::utility_types::widgets::input_widgets::{ColorInput, FontInput, NumberInput, RadioEntryData, RadioInput, TextAreaInput, TextInput};
-use crate::messages::layout::utility_types::widgets::label_widgets::{IconLabel, IconStyle, Separator, SeparatorDirection, SeparatorType, TextLabel};
+use crate::messages::layout::utility_types::widgets::button_widgets::{IconButton, PopoverButton, TextButton};
+use crate::messages::layout::utility_types::widgets::input_widgets::{
+	CheckboxInput, ColorInput, DropdownEntryData, DropdownInput, FontInput, NumberInput, RadioEntryData, RadioInput, TextAreaInput, TextInput,
+};
+use crate::messages::layout::utility_types::widgets::label_widgets::{IconLabel, Separator, SeparatorDirection, SeparatorType, TextLabel};
+use crate::messages::portfolio::utility_types::{ImaginateServerStatus, PersistentData};
 use crate::messages::prelude::*;
 
-use glam::{DAffine2, DVec2};
 use graphene::color::Color;
+use graphene::document::pick_layer_safe_imaginate_resolution;
+use graphene::layers::imaginate_layer::{ImaginateLayer, ImaginateSamplingMethod, ImaginateStatus};
 use graphene::layers::layer_info::{Layer, LayerDataType, LayerDataTypeDiscriminant};
 use graphene::layers::style::{Fill, Gradient, GradientType, LineCap, LineJoin, Stroke};
 use graphene::layers::text_layer::{FontCache, TextLayer};
 
+use glam::{DAffine2, DVec2};
 use std::f64::consts::PI;
 use std::rc::Rc;
 
@@ -34,12 +39,12 @@ pub fn apply_transform_operation(layer: &Layer, transform_op: TransformOp, value
 	transformation(layer.transform, value / scale).to_cols_array()
 }
 
-pub fn register_artboard_layer_properties(layer: &Layer, responses: &mut VecDeque<Message>, font_cache: &FontCache) {
+pub fn register_artboard_layer_properties(layer: &Layer, responses: &mut VecDeque<Message>, persistent_data: &PersistentData) {
 	let options_bar = vec![LayoutGroup::Row {
 		widgets: vec![
 			WidgetHolder::new(Widget::IconLabel(IconLabel {
 				icon: "NodeArtboard".into(),
-				icon_style: IconStyle::Node,
+				tooltip: "Artboard".into(),
 			})),
 			WidgetHolder::new(Widget::Separator(Separator {
 				separator_type: SeparatorType::Related,
@@ -81,7 +86,7 @@ pub fn register_artboard_layer_properties(layer: &Layer, responses: &mut VecDequ
 		} else {
 			panic!("Artboard must have a solid fill")
 		};
-		let pivot = layer.transform.transform_vector2(layer.layerspace_pivot(font_cache));
+		let pivot = layer.transform.transform_vector2(layer.layerspace_pivot(&persistent_data.font_cache));
 
 		vec![LayoutGroup::Section {
 			name: "Artboard".into(),
@@ -139,7 +144,7 @@ pub fn register_artboard_layer_properties(layer: &Layer, responses: &mut VecDequ
 							direction: SeparatorDirection::Horizontal,
 						})),
 						WidgetHolder::new(Widget::NumberInput(NumberInput {
-							value: Some(layer.bounding_transform(font_cache).scale_x()),
+							value: Some(layer.bounding_transform(&persistent_data.font_cache).scale_x()),
 							label: "W".into(),
 							unit: " px".into(),
 							is_integer: true,
@@ -158,7 +163,7 @@ pub fn register_artboard_layer_properties(layer: &Layer, responses: &mut VecDequ
 							direction: SeparatorDirection::Horizontal,
 						})),
 						WidgetHolder::new(Widget::NumberInput(NumberInput {
-							value: Some(layer.bounding_transform(font_cache).scale_y()),
+							value: Some(layer.bounding_transform(&persistent_data.font_cache).scale_y()),
 							label: "H".into(),
 							unit: " px".into(),
 							is_integer: true,
@@ -223,25 +228,29 @@ pub fn register_artboard_layer_properties(layer: &Layer, responses: &mut VecDequ
 	);
 }
 
-pub fn register_artwork_layer_properties(layer: &Layer, responses: &mut VecDeque<Message>, font_cache: &FontCache) {
+pub fn register_artwork_layer_properties(layer: &Layer, responses: &mut VecDeque<Message>, persistent_data: &PersistentData) {
 	let options_bar = vec![LayoutGroup::Row {
 		widgets: vec![
 			match &layer.data {
 				LayerDataType::Folder(_) => WidgetHolder::new(Widget::IconLabel(IconLabel {
 					icon: "NodeFolder".into(),
-					icon_style: IconStyle::Node,
+					tooltip: "Folder".into(),
 				})),
 				LayerDataType::Shape(_) => WidgetHolder::new(Widget::IconLabel(IconLabel {
 					icon: "NodeShape".into(),
-					icon_style: IconStyle::Node,
+					tooltip: "Shape".into(),
 				})),
 				LayerDataType::Text(_) => WidgetHolder::new(Widget::IconLabel(IconLabel {
 					icon: "NodeText".into(),
-					icon_style: IconStyle::Node,
+					tooltip: "Text".into(),
 				})),
 				LayerDataType::Image(_) => WidgetHolder::new(Widget::IconLabel(IconLabel {
 					icon: "NodeImage".into(),
-					icon_style: IconStyle::Node,
+					tooltip: "Image".into(),
+				})),
+				LayerDataType::Imaginate(_) => WidgetHolder::new(Widget::IconLabel(IconLabel {
+					icon: "NodeImaginate".into(),
+					tooltip: "Imaginate".into(),
 				})),
 			},
 			WidgetHolder::new(Widget::Separator(Separator {
@@ -276,24 +285,31 @@ pub fn register_artwork_layer_properties(layer: &Layer, responses: &mut VecDeque
 	let properties_body = match &layer.data {
 		LayerDataType::Shape(shape) => {
 			if let Some(fill_layout) = node_section_fill(shape.style.fill()) {
-				vec![node_section_transform(layer, font_cache), fill_layout, node_section_stroke(&shape.style.stroke().unwrap_or_default())]
+				vec![
+					node_section_transform(layer, persistent_data),
+					fill_layout,
+					node_section_stroke(&shape.style.stroke().unwrap_or_default()),
+				]
 			} else {
-				vec![node_section_transform(layer, font_cache), node_section_stroke(&shape.style.stroke().unwrap_or_default())]
+				vec![node_section_transform(layer, persistent_data), node_section_stroke(&shape.style.stroke().unwrap_or_default())]
 			}
 		}
 		LayerDataType::Text(text) => {
 			vec![
-				node_section_transform(layer, font_cache),
+				node_section_transform(layer, persistent_data),
 				node_section_font(text),
 				node_section_fill(text.path_style.fill()).expect("Text should have fill"),
 				node_section_stroke(&text.path_style.stroke().unwrap_or_default()),
 			]
 		}
 		LayerDataType::Image(_) => {
-			vec![node_section_transform(layer, font_cache)]
+			vec![node_section_transform(layer, persistent_data)]
 		}
-		_ => {
-			vec![]
+		LayerDataType::Imaginate(imaginate) => {
+			vec![node_section_transform(layer, persistent_data), node_section_imaginate(imaginate, layer, persistent_data, responses)]
+		}
+		LayerDataType::Folder(_) => {
+			vec![node_section_transform(layer, persistent_data)]
 		}
 	};
 
@@ -313,8 +329,8 @@ pub fn register_artwork_layer_properties(layer: &Layer, responses: &mut VecDeque
 	);
 }
 
-fn node_section_transform(layer: &Layer, font_cache: &FontCache) -> LayoutGroup {
-	let pivot = layer.transform.transform_vector2(layer.layerspace_pivot(font_cache));
+fn node_section_transform(layer: &Layer, persistent_data: &PersistentData) -> LayoutGroup {
+	let pivot = layer.transform.transform_vector2(layer.layerspace_pivot(&persistent_data.font_cache));
 	LayoutGroup::Section {
 		name: "Transform".into(),
 		layout: vec![
@@ -446,7 +462,7 @@ fn node_section_transform(layer: &Layer, font_cache: &FontCache) -> LayoutGroup 
 						direction: SeparatorDirection::Horizontal,
 					})),
 					WidgetHolder::new(Widget::NumberInput(NumberInput {
-						value: Some(layer.bounding_transform(font_cache).scale_x()),
+						value: Some(layer.bounding_transform(&persistent_data.font_cache).scale_x()),
 						label: "W".into(),
 						unit: " px".into(),
 						on_update: WidgetCallback::new(|number_input: &NumberInput| {
@@ -463,7 +479,7 @@ fn node_section_transform(layer: &Layer, font_cache: &FontCache) -> LayoutGroup 
 						direction: SeparatorDirection::Horizontal,
 					})),
 					WidgetHolder::new(Widget::NumberInput(NumberInput {
-						value: Some(layer.bounding_transform(font_cache).scale_y()),
+						value: Some(layer.bounding_transform(&persistent_data.font_cache).scale_y()),
 						label: "H".into(),
 						unit: " px".into(),
 						on_update: WidgetCallback::new(|number_input: &NumberInput| {
@@ -476,6 +492,524 @@ fn node_section_transform(layer: &Layer, font_cache: &FontCache) -> LayoutGroup 
 						..NumberInput::default()
 					})),
 				],
+			},
+		],
+	}
+}
+
+fn node_section_imaginate(imaginate_layer: &ImaginateLayer, layer: &Layer, persistent_data: &PersistentData, responses: &mut VecDeque<Message>) -> LayoutGroup {
+	LayoutGroup::Section {
+		name: "Imaginate".into(),
+		layout: vec![
+			LayoutGroup::Row {
+				widgets: {
+					let tooltip = "Connection status to the server that computes generated images".to_string();
+
+					vec![
+						WidgetHolder::new(Widget::TextLabel(TextLabel {
+							value: "Server".into(),
+							tooltip: tooltip.clone(),
+							..Default::default()
+						})),
+						WidgetHolder::new(Widget::Separator(Separator {
+							separator_type: SeparatorType::Unrelated,
+							direction: SeparatorDirection::Horizontal,
+						})),
+						WidgetHolder::new(Widget::IconButton(IconButton {
+							size: 24,
+							icon: "Settings".into(),
+							tooltip: "Preferences: Imaginate".into(),
+							on_update: WidgetCallback::new(|_| DialogMessage::RequestPreferencesDialog.into()),
+							..Default::default()
+						})),
+						WidgetHolder::new(Widget::Separator(Separator {
+							separator_type: SeparatorType::Related,
+							direction: SeparatorDirection::Horizontal,
+						})),
+						WidgetHolder::new(Widget::TextLabel(TextLabel {
+							value: {
+								match &persistent_data.imaginate_server_status {
+									ImaginateServerStatus::Unknown => {
+										responses.push_back(PortfolioMessage::ImaginateCheckServerStatus.into());
+										"Checking...".into()
+									}
+									ImaginateServerStatus::Checking => "Checking...".into(),
+									ImaginateServerStatus::Unavailable => "Unavailable".into(),
+									ImaginateServerStatus::Connected => "Connected".into(),
+								}
+							},
+							bold: true,
+							tooltip,
+							..Default::default()
+						})),
+						WidgetHolder::new(Widget::Separator(Separator {
+							separator_type: SeparatorType::Related,
+							direction: SeparatorDirection::Horizontal,
+						})),
+						WidgetHolder::new(Widget::IconButton(IconButton {
+							size: 24,
+							icon: "Reload".into(),
+							tooltip: "Refresh connection status".into(),
+							on_update: WidgetCallback::new(|_| PortfolioMessage::ImaginateCheckServerStatus.into()),
+							..Default::default()
+						})),
+					]
+				},
+			},
+			LayoutGroup::Row {
+				widgets: {
+					let tooltip = "When generating, the percentage represents how many sampling steps have so far been processed out of the target number".to_string();
+
+					vec![
+						WidgetHolder::new(Widget::TextLabel(TextLabel {
+							value: "Progress".into(),
+							tooltip: tooltip.clone(),
+							..Default::default()
+						})),
+						WidgetHolder::new(Widget::Separator(Separator {
+							separator_type: SeparatorType::Unrelated,
+							direction: SeparatorDirection::Horizontal,
+						})),
+						WidgetHolder::new(Widget::TextLabel(TextLabel {
+							value: {
+								// Since we don't serialize the status, we need to derive from other state whether the Idle state is actually supposed to be the Terminated state
+								let mut interpreted_status = imaginate_layer.status.clone();
+								if imaginate_layer.status == ImaginateStatus::Idle
+									&& imaginate_layer.blob_url.is_some()
+									&& imaginate_layer.percent_complete > 0.
+									&& imaginate_layer.percent_complete < 100.
+								{
+									interpreted_status = ImaginateStatus::Terminated;
+								}
+
+								match interpreted_status {
+									ImaginateStatus::Idle => match imaginate_layer.blob_url {
+										Some(_) => "Done".into(),
+										None => "Ready".into(),
+									},
+									ImaginateStatus::Beginning => "Beginning...".into(),
+									ImaginateStatus::Uploading(percent) => format!("Uploading Base Image: {:.0}%", percent),
+									ImaginateStatus::Generating => format!("Generating: {:.0}%", imaginate_layer.percent_complete),
+									ImaginateStatus::Terminating => "Terminating...".into(),
+									ImaginateStatus::Terminated => format!("{:.0}% (Terminated)", imaginate_layer.percent_complete),
+								}
+							},
+							bold: true,
+							tooltip,
+							..Default::default()
+						})),
+					]
+				},
+			},
+			LayoutGroup::Row {
+				widgets: [
+					vec![
+						WidgetHolder::new(Widget::TextLabel(TextLabel {
+							value: "Image".into(),
+							tooltip: "Buttons that control the image generation process".into(),
+							..Default::default()
+						})),
+						WidgetHolder::new(Widget::Separator(Separator {
+							separator_type: SeparatorType::Unrelated,
+							direction: SeparatorDirection::Horizontal,
+						})),
+					],
+					{
+						match imaginate_layer.status {
+							ImaginateStatus::Beginning | ImaginateStatus::Uploading(_) => vec![WidgetHolder::new(Widget::TextButton(TextButton {
+								label: "Beginning...".into(),
+								tooltip: "Sending image generation request to the server".into(),
+								disabled: true,
+								..Default::default()
+							}))],
+							ImaginateStatus::Generating => vec![WidgetHolder::new(Widget::TextButton(TextButton {
+								label: "Terminate".into(),
+								tooltip: "Cancel in-progress image generation and keep the latest progress".into(),
+								on_update: WidgetCallback::new(|_| DocumentMessage::ImaginateTerminate.into()),
+								..Default::default()
+							}))],
+							ImaginateStatus::Terminating => vec![WidgetHolder::new(Widget::TextButton(TextButton {
+								label: "Terminating...".into(),
+								tooltip: "Waiting on the final image generated after termination".into(),
+								disabled: true,
+								..Default::default()
+							}))],
+							ImaginateStatus::Idle | ImaginateStatus::Terminated => vec![
+								WidgetHolder::new(Widget::IconButton(IconButton {
+									size: 24,
+									icon: "Random".into(),
+									tooltip: "Generate with a random seed".into(),
+									on_update: WidgetCallback::new(|_| PropertiesPanelMessage::SetImaginateSeedRandomizeAndGenerate.into()),
+									..Default::default()
+								})),
+								WidgetHolder::new(Widget::Separator(Separator {
+									separator_type: SeparatorType::Related,
+									direction: SeparatorDirection::Horizontal,
+								})),
+								WidgetHolder::new(Widget::TextButton(TextButton {
+									label: "Generate".into(),
+									tooltip: "Fill layer frame by generating a new image".into(),
+									on_update: WidgetCallback::new(|_| DocumentMessage::ImaginateGenerate.into()),
+									..Default::default()
+								})),
+								WidgetHolder::new(Widget::Separator(Separator {
+									separator_type: SeparatorType::Related,
+									direction: SeparatorDirection::Horizontal,
+								})),
+								WidgetHolder::new(Widget::TextButton(TextButton {
+									label: "Clear".into(),
+									tooltip: "Remove generated image from the layer frame".into(),
+									disabled: imaginate_layer.blob_url == None,
+									on_update: WidgetCallback::new(|_| DocumentMessage::ImaginateClear.into()),
+									..Default::default()
+								})),
+							],
+						}
+					},
+				]
+				.concat(),
+			},
+			LayoutGroup::Row {
+				widgets: {
+					let tooltip = "Seed determines the random outcome, enabling limitless unique variations".to_string();
+
+					vec![
+						WidgetHolder::new(Widget::TextLabel(TextLabel {
+							value: "Seed".into(),
+							tooltip: tooltip.clone(),
+							..Default::default()
+						})),
+						WidgetHolder::new(Widget::Separator(Separator {
+							separator_type: SeparatorType::Unrelated,
+							direction: SeparatorDirection::Horizontal,
+						})),
+						WidgetHolder::new(Widget::IconButton(IconButton {
+							size: 24,
+							icon: "Regenerate".into(),
+							tooltip: "Set a new random seed".into(),
+							on_update: WidgetCallback::new(|_| PropertiesPanelMessage::SetImaginateSeedRandomize.into()),
+							..Default::default()
+						})),
+						WidgetHolder::new(Widget::Separator(Separator {
+							separator_type: SeparatorType::Related,
+							direction: SeparatorDirection::Horizontal,
+						})),
+						WidgetHolder::new(Widget::NumberInput(NumberInput {
+							value: Some(imaginate_layer.seed as f64),
+							min: Some(-1.),
+							tooltip,
+							on_update: WidgetCallback::new(move |number_input: &NumberInput| {
+								PropertiesPanelMessage::SetImaginateSeed {
+									seed: number_input.value.unwrap().round() as u64,
+								}
+								.into()
+							}),
+							..Default::default()
+						})),
+					]
+				},
+			},
+			LayoutGroup::Row {
+				widgets: {
+					let tooltip = "
+					Width and height of the image that will be generated. Larger resolutions take longer to compute.\n\
+					\n\
+					512x512 yields optimal results because the AI is trained to understand that scale best. Larger sizes may tend to integrate the prompt's subject more than once. Small sizes are often incoherent. Put the layer in a folder and resize that to keep resolution unchanged.\n\
+					\n\
+					Dimensions must be a multiple of 64, so these are set by rounding the layer dimensions. A resolution exceeding 1 megapixel is reduced below that limit because larger sizes may exceed available GPU memory on the server.
+					".trim().to_string();
+
+					vec![
+						WidgetHolder::new(Widget::TextLabel(TextLabel {
+							value: "Resolution".into(),
+							tooltip: tooltip.clone(),
+							..Default::default()
+						})),
+						WidgetHolder::new(Widget::Separator(Separator {
+							separator_type: SeparatorType::Unrelated,
+							direction: SeparatorDirection::Horizontal,
+						})),
+						WidgetHolder::new(Widget::IconButton(IconButton {
+							size: 24,
+							icon: "Rescale".into(),
+							tooltip: "Set the layer scale to this resolution".into(),
+							on_update: WidgetCallback::new(|_| PropertiesPanelMessage::SetImaginateScaleFromResolution.into()),
+							..Default::default()
+						})),
+						WidgetHolder::new(Widget::Separator(Separator {
+							separator_type: SeparatorType::Related,
+							direction: SeparatorDirection::Horizontal,
+						})),
+						WidgetHolder::new(Widget::TextLabel(TextLabel {
+							value: {
+								let (width, height) = pick_layer_safe_imaginate_resolution(layer, &persistent_data.font_cache);
+								format!("{} W x {} H", width, height)
+							},
+							tooltip,
+							bold: true,
+							..Default::default()
+						})),
+					]
+				},
+			},
+			LayoutGroup::Row {
+				widgets: {
+					let tooltip = "Number of iterations to improve the image generation quality, with diminishing returns around 40".to_string();
+					vec![
+						WidgetHolder::new(Widget::TextLabel(TextLabel {
+							value: "Sampling Steps".into(),
+							tooltip: tooltip.clone(),
+							..Default::default()
+						})),
+						WidgetHolder::new(Widget::Separator(Separator {
+							separator_type: SeparatorType::Unrelated,
+							direction: SeparatorDirection::Horizontal,
+						})),
+						WidgetHolder::new(Widget::NumberInput(NumberInput {
+							value: Some(imaginate_layer.samples.into()),
+							min: Some(0.),
+							max: Some(150.),
+							tooltip,
+							on_update: WidgetCallback::new(move |number_input: &NumberInput| {
+								PropertiesPanelMessage::SetImaginateSamples {
+									samples: number_input.value.unwrap().round() as u32,
+								}
+								.into()
+							}),
+							..Default::default()
+						})),
+					]
+				},
+			},
+			LayoutGroup::Row {
+				widgets: {
+					let tooltip = "
+						Algorithm used to generate the image during each sampling step.\n\
+						\n\
+						'DPM Fast' and 'DPM Adaptive' do not support live refreshing updates.
+						"
+					.trim()
+					.to_string();
+
+					let sampling_methods = ImaginateSamplingMethod::list();
+					let mut entries = Vec::with_capacity(sampling_methods.len());
+					for method in sampling_methods {
+						entries.push(DropdownEntryData {
+							label: method.to_string(),
+							on_update: WidgetCallback::new(move |_| PropertiesPanelMessage::SetImaginateSamplingMethod { method }.into()),
+							..DropdownEntryData::default()
+						});
+					}
+					let entries = vec![entries];
+
+					vec![
+						WidgetHolder::new(Widget::TextLabel(TextLabel {
+							value: "Sampling Method".into(),
+							tooltip: tooltip.clone(),
+							..Default::default()
+						})),
+						WidgetHolder::new(Widget::Separator(Separator {
+							separator_type: SeparatorType::Unrelated,
+							direction: SeparatorDirection::Horizontal,
+						})),
+						WidgetHolder::new(Widget::DropdownInput(DropdownInput {
+							entries,
+							selected_index: Some(imaginate_layer.sampling_method as u32),
+							tooltip,
+							..Default::default()
+						})),
+					]
+				},
+			},
+			LayoutGroup::Row {
+				widgets: {
+					let tooltip = "Generate an image based upon the artwork beneath this frame in the containing folder".to_string();
+
+					vec![
+						WidgetHolder::new(Widget::TextLabel(TextLabel {
+							value: "Use Base Image".into(),
+							tooltip: tooltip.clone(),
+							..Default::default()
+						})),
+						WidgetHolder::new(Widget::Separator(Separator {
+							separator_type: SeparatorType::Unrelated,
+							direction: SeparatorDirection::Horizontal,
+						})),
+						WidgetHolder::new(Widget::CheckboxInput(CheckboxInput {
+							checked: imaginate_layer.use_img2img,
+							tooltip,
+							on_update: WidgetCallback::new(move |checkbox_input: &CheckboxInput| PropertiesPanelMessage::SetImaginateUseImg2Img { use_img2img: checkbox_input.checked }.into()),
+							..Default::default()
+						})),
+					]
+				},
+			},
+			LayoutGroup::Row {
+				widgets: {
+					let tooltip = "Strength of the artistic liberties allowing changes from the base image. The image is unaltered at 0 and completely different at 1.".to_string();
+					vec![
+						WidgetHolder::new(Widget::TextLabel(TextLabel {
+							value: "Image Creativity".into(),
+							tooltip: tooltip.clone(),
+							..Default::default()
+						})),
+						WidgetHolder::new(Widget::Separator(Separator {
+							separator_type: SeparatorType::Unrelated,
+							direction: SeparatorDirection::Horizontal,
+						})),
+						WidgetHolder::new(Widget::NumberInput(NumberInput {
+							value: Some(imaginate_layer.denoising_strength),
+							min: Some(0.),
+							max: Some(1.),
+							disabled: !imaginate_layer.use_img2img,
+							tooltip,
+							on_update: WidgetCallback::new(move |number_input: &NumberInput| {
+								PropertiesPanelMessage::SetImaginateDenoisingStrength {
+									denoising_strength: number_input.value.unwrap(),
+								}
+								.into()
+							}),
+							..Default::default()
+						})),
+					]
+				},
+			},
+			LayoutGroup::Row {
+				widgets: {
+					let tooltip =
+						"Amplification of the text prompt's influence over the outcome. Lower values are more creative and exploratory. Higher values are more literal and uninspired.".to_string();
+
+					vec![
+						WidgetHolder::new(Widget::TextLabel(TextLabel {
+							value: "Text Rigidness".into(),
+							tooltip: tooltip.to_string(),
+							..Default::default()
+						})),
+						WidgetHolder::new(Widget::Separator(Separator {
+							separator_type: SeparatorType::Unrelated,
+							direction: SeparatorDirection::Horizontal,
+						})),
+						WidgetHolder::new(Widget::NumberInput(NumberInput {
+							value: Some(imaginate_layer.cfg_scale),
+							min: Some(0.),
+							max: Some(30.),
+							tooltip,
+							on_update: WidgetCallback::new(move |number_input: &NumberInput| {
+								PropertiesPanelMessage::SetImaginateCfgScale {
+									cfg_scale: number_input.value.unwrap(),
+								}
+								.into()
+							}),
+							..Default::default()
+						})),
+					]
+				},
+			},
+			LayoutGroup::Row {
+				widgets: vec![
+					WidgetHolder::new(Widget::TextLabel(TextLabel {
+						value: "Text Prompt".into(),
+						tooltip: "
+						Description of the desired image subject and style.\n\
+						\n\
+						Include an artist name like \"Rembrandt\" or art medium like \"watercolor\" or \"photography\" to influence the look. List multiple to meld styles.\n\
+						\n\
+						To boost (or lessen) the importance of a word or phrase, wrap it in quotes ending with a colon and a multiplier, for example:\n\
+						\"Colorless green ideas (sleep:1.3) furiously\"
+						"
+						.trim()
+						.into(),
+						..Default::default()
+					})),
+					WidgetHolder::new(Widget::Separator(Separator {
+						separator_type: SeparatorType::Unrelated,
+						direction: SeparatorDirection::Horizontal,
+					})),
+					WidgetHolder::new(Widget::TextAreaInput(TextAreaInput {
+						value: imaginate_layer.prompt.clone(),
+						on_update: WidgetCallback::new(move |text_area_input: &TextAreaInput| {
+							PropertiesPanelMessage::SetImaginatePrompt {
+								prompt: text_area_input.value.clone(),
+							}
+							.into()
+						}),
+						..Default::default()
+					})),
+				],
+			},
+			LayoutGroup::Row {
+				widgets: vec![
+					WidgetHolder::new(Widget::TextLabel(TextLabel {
+						value: "Neg. Prompt".into(),
+						tooltip: "A negative text prompt can be used to list things like objects or colors to avoid".into(),
+						..Default::default()
+					})),
+					WidgetHolder::new(Widget::Separator(Separator {
+						separator_type: SeparatorType::Unrelated,
+						direction: SeparatorDirection::Horizontal,
+					})),
+					WidgetHolder::new(Widget::TextAreaInput(TextAreaInput {
+						value: imaginate_layer.negative_prompt.clone(),
+						on_update: WidgetCallback::new(move |text_area_input: &TextAreaInput| {
+							PropertiesPanelMessage::SetImaginateNegativePrompt {
+								negative_prompt: text_area_input.value.clone(),
+							}
+							.into()
+						}),
+						..Default::default()
+					})),
+				],
+			},
+			LayoutGroup::Row {
+				widgets: {
+					let tooltip = "Postprocess human (or human-like) faces to look subtly less distorted".to_string();
+
+					vec![
+						WidgetHolder::new(Widget::TextLabel(TextLabel {
+							value: "Improve Faces".into(),
+							tooltip: tooltip.clone(),
+							..Default::default()
+						})),
+						WidgetHolder::new(Widget::Separator(Separator {
+							separator_type: SeparatorType::Unrelated,
+							direction: SeparatorDirection::Horizontal,
+						})),
+						WidgetHolder::new(Widget::CheckboxInput(CheckboxInput {
+							checked: imaginate_layer.restore_faces,
+							tooltip,
+							on_update: WidgetCallback::new(move |checkbox_input: &CheckboxInput| {
+								PropertiesPanelMessage::SetImaginateRestoreFaces {
+									restore_faces: checkbox_input.checked,
+								}
+								.into()
+							}),
+							..Default::default()
+						})),
+					]
+				},
+			},
+			LayoutGroup::Row {
+				widgets: {
+					let tooltip = "Generate the image so its edges loop seamlessly to make repeatable patterns or textures".to_string();
+
+					vec![
+						WidgetHolder::new(Widget::TextLabel(TextLabel {
+							value: "Tiling".into(),
+							tooltip: tooltip.clone(),
+							..Default::default()
+						})),
+						WidgetHolder::new(Widget::Separator(Separator {
+							separator_type: SeparatorType::Unrelated,
+							direction: SeparatorDirection::Horizontal,
+						})),
+						WidgetHolder::new(Widget::CheckboxInput(CheckboxInput {
+							checked: imaginate_layer.tiling,
+							tooltip,
+							on_update: WidgetCallback::new(move |checkbox_input: &CheckboxInput| PropertiesPanelMessage::SetImaginateTiling { tiling: checkbox_input.checked }.into()),
+							..Default::default()
+						})),
+					]
+				},
 			},
 		],
 	}

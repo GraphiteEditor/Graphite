@@ -28,8 +28,8 @@ pub enum FillToolMessage {
 	Abort,
 
 	// Tool-specific messages
-	LeftMouseDown,
-	RightMouseDown,
+	LeftPointerDown,
+	RightPointerDown,
 }
 
 impl ToolMetadata for FillTool {
@@ -68,8 +68,8 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for FillTool {
 	}
 
 	advertise_actions!(FillToolMessageDiscriminant;
-		LeftMouseDown,
-		RightMouseDown,
+		LeftPointerDown,
+		RightPointerDown,
 	);
 }
 
@@ -105,7 +105,7 @@ impl Fsm for FillToolFsmState {
 		self,
 		event: ToolMessage,
 		_tool_data: &mut Self::ToolData,
-		(document, global_tool_data, input, font_cache): ToolActionHandlerData,
+		(document, _document_id, global_tool_data, input, font_cache): ToolActionHandlerData,
 		_tool_options: &Self::ToolOptions,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
@@ -114,15 +114,15 @@ impl Fsm for FillToolFsmState {
 
 		if let ToolMessage::Fill(event) = event {
 			match (self, event) {
-				(Ready, lmb_or_rmb) if lmb_or_rmb == LeftMouseDown || lmb_or_rmb == RightMouseDown => {
+				(Ready, lmb_or_rmb) if lmb_or_rmb == LeftPointerDown || lmb_or_rmb == RightPointerDown => {
 					let mouse_pos = input.mouse.position;
 					let tolerance = DVec2::splat(SELECTION_TOLERANCE);
 					let quad = Quad::from_box([mouse_pos - tolerance, mouse_pos + tolerance]);
 
 					if let Some(path) = document.graphene_document.intersects_quad_root(quad, font_cache).last() {
 						let color = match lmb_or_rmb {
-							LeftMouseDown => global_tool_data.primary_color,
-							RightMouseDown => global_tool_data.secondary_color,
+							LeftPointerDown => global_tool_data.primary_color,
+							RightPointerDown => global_tool_data.secondary_color,
 							Abort => unreachable!(),
 						};
 						let fill = Fill::Solid(color);

@@ -22,6 +22,7 @@ struct DispatcherMessageHandlers {
 	input_preprocessor_message_handler: InputPreprocessorMessageHandler,
 	layout_message_handler: LayoutMessageHandler,
 	portfolio_message_handler: PortfolioMessageHandler,
+	preferences_message_handler: PreferencesMessageHandler,
 	tool_message_handler: ToolMessageHandler,
 	workspace_message_handler: WorkspaceMessageHandler,
 }
@@ -92,14 +93,16 @@ impl Dispatcher {
 				NoOp => {}
 				#[remain::unsorted]
 				Init => {
+					// Load persistent data from the browser database
+					queue.push_back(FrontendMessage::TriggerLoadAutoSaveDocuments.into());
+					queue.push_back(FrontendMessage::TriggerLoadPreferences.into());
+
 					// Display the menu bar at the top of the window
-					let message = MenuBarMessage::SendLayout.into();
-					queue.push_back(message);
+					queue.push_back(MenuBarMessage::SendLayout.into());
 
 					// Load the default font
 					let font = Font::new(DEFAULT_FONT_FAMILY.into(), DEFAULT_FONT_STYLE.into());
-					let message = FrontendMessage::TriggerFontLoad { font, is_default: true }.into();
-					queue.push_back(message);
+					queue.push_back(FrontendMessage::TriggerFontLoad { font, is_default: true }.into());
 				}
 
 				Broadcast(message) => self.message_handlers.broadcast_message_handler.process_message(message, (), &mut queue),
@@ -107,9 +110,11 @@ impl Dispatcher {
 					self.message_handlers.debug_message_handler.process_message(message, (), &mut queue);
 				}
 				Dialog(message) => {
-					self.message_handlers
-						.dialog_message_handler
-						.process_message(message, &self.message_handlers.portfolio_message_handler, &mut queue);
+					self.message_handlers.dialog_message_handler.process_message(
+						message,
+						(&self.message_handlers.portfolio_message_handler, &self.message_handlers.preferences_message_handler),
+						&mut queue,
+					);
 				}
 				Frontend(message) => {
 					// Handle these messages immediately by returning early
@@ -145,9 +150,14 @@ impl Dispatcher {
 					self.message_handlers.layout_message_handler.process_message(message, action_input_mapping, &mut queue);
 				}
 				Portfolio(message) => {
-					self.message_handlers
-						.portfolio_message_handler
-						.process_message(message, &self.message_handlers.input_preprocessor_message_handler, &mut queue);
+					self.message_handlers.portfolio_message_handler.process_message(
+						message,
+						(&self.message_handlers.input_preprocessor_message_handler, &self.message_handlers.preferences_message_handler),
+						&mut queue,
+					);
+				}
+				Preferences(message) => {
+					self.message_handlers.preferences_message_handler.process_message(message, (), &mut queue);
 				}
 				Tool(message) => {
 					if let Some(document) = self.message_handlers.portfolio_message_handler.active_document() {
@@ -155,8 +165,9 @@ impl Dispatcher {
 							message,
 							(
 								document,
+								self.message_handlers.portfolio_message_handler.active_document_id().unwrap(),
 								&self.message_handlers.input_preprocessor_message_handler,
-								self.message_handlers.portfolio_message_handler.font_cache(),
+								&self.message_handlers.portfolio_message_handler.persistent_data,
 							),
 							&mut queue,
 						);

@@ -22,6 +22,7 @@
 					class="row"
 					:class="{ open: isEntryOpen(entry), active: entry.label === highlighted?.label, disabled: entry.disabled }"
 					:style="{ height: virtualScrollingEntryHeight || '20px' }"
+					:title="tooltip"
 					@click="() => !entry.disabled && onEntryClick(entry)"
 					@pointerenter="() => !entry.disabled && onEntryPointerEnter(entry)"
 					@pointerleave="() => !entry.disabled && onEntryPointerLeave(entry)"
@@ -184,6 +185,7 @@ const MenuList = defineComponent({
 		interactive: { type: Boolean as PropType<boolean>, default: false },
 		scrollableY: { type: Boolean as PropType<boolean>, default: false },
 		virtualScrollingEntryHeight: { type: Number as PropType<number>, default: 0 },
+		tooltip: { type: String as PropType<string | undefined>, required: false },
 	},
 	data() {
 		return {

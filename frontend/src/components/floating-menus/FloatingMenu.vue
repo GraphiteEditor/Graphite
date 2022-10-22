@@ -110,6 +110,13 @@
 		--floating-menu-content-border-radius: 4px;
 	}
 
+	&.cursor .floating-menu-container .floating-menu-content {
+		background: none;
+		box-shadow: none;
+		border-radius: 0;
+		padding: 0;
+	}
+
 	&.center {
 		justify-content: center;
 		align-items: center;
@@ -180,7 +187,7 @@ import { defineComponent, nextTick, type PropType } from "vue";
 import LayoutCol from "@/components/layout/LayoutCol.vue";
 
 export type MenuDirection = "Top" | "Bottom" | "Left" | "Right" | "TopLeft" | "TopRight" | "BottomLeft" | "BottomRight" | "Center";
-export type MenuType = "Popover" | "Dropdown" | "Dialog";
+export type MenuType = "Popover" | "Dropdown" | "Dialog" | "Cursor";
 
 const POINTER_STRAY_DISTANCE = 100;
 
@@ -235,6 +242,8 @@ export default defineComponent({
 			this.minWidthParentWidth = entries[0].contentRect.width;
 		},
 		positionAndStyleFloatingMenu() {
+			if (this.type === "Cursor") return;
+
 			const workspace = document.querySelector("[data-workspace]");
 			const floatingMenuContainer = this.$refs.floatingMenuContainer as HTMLElement;
 			const floatingMenuContentComponent = this.$refs.floatingMenuContent as typeof LayoutCol;

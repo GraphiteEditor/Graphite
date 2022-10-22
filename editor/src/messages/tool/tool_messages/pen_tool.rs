@@ -182,7 +182,7 @@ impl Fsm for PenToolFsmState {
 		self,
 		event: ToolMessage,
 		tool_data: &mut Self::ToolData,
-		(document, global_tool_data, input, font_cache): ToolActionHandlerData,
+		(document, _document_id, global_tool_data, input, font_cache): ToolActionHandlerData,
 		tool_options: &Self::ToolOptions,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
