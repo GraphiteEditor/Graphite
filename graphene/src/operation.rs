@@ -57,6 +57,11 @@ pub enum Operation {
 		insert_index: isize,
 		transform: [f64; 6],
 	},
+	AddNodeGraphFrame {
+		path: Vec<LayerId>,
+		insert_index: isize,
+		transform: [f64; 6],
+	},
 	/// Sets a blob URL as the image source for an Image or Imaginate layer type.
 	/// **Be sure to call `FrontendMessage::TriggerRevokeBlobUrl` together with this.**
 	SetLayerBlobUrl {

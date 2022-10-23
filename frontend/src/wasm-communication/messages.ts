@@ -488,7 +488,7 @@ export class LayerMetadata {
 	selected!: boolean;
 }
 
-export type LayerType = "Imaginate" | "Folder" | "Image" | "Shape" | "Text";
+export type LayerType = "Imaginate" | "NodeGraphFrame" | "Folder" | "Image" | "Shape" | "Text";
 
 export type LayerTypeData = {
 	name: string;
@@ -498,6 +498,7 @@ export type LayerTypeData = {
 export function layerTypeData(layerType: LayerType): LayerTypeData | undefined {
 	const entries: Record<string, LayerTypeData> = {
 		Imaginate: { name: "Imaginate", icon: "NodeImaginate" },
+		NodeGraphFrame: { name: "Node Graph Frame", icon: "NodeImaginate" },
 		Folder: { name: "Folder", icon: "NodeFolder" },
 		Image: { name: "Image", icon: "NodeImage" },
 		Shape: { name: "Shape", icon: "NodeShape" },

@@ -4,6 +4,7 @@ use crate::layers::folder_layer::FolderLayer;
 use crate::layers::image_layer::ImageLayer;
 use crate::layers::imaginate_layer::{ImaginateImageData, ImaginateLayer, ImaginateStatus};
 use crate::layers::layer_info::{Layer, LayerData, LayerDataType, LayerDataTypeDiscriminant};
+use crate::layers::nodegraph_layer::NodeGraphFrameLayer;
 use crate::layers::shape_layer::ShapeLayer;
 use crate::layers::style::RenderData;
 use crate::layers::text_layer::{Font, FontCache, TextLayer};
@@ -590,6 +591,13 @@ impl Document {
 			}
 			Operation::AddImaginateFrame { path, insert_index, transform } => {
 				let layer = Layer::new(LayerDataType::Imaginate(ImaginateLayer::default()), transform);
+
+				self.set_layer(&path, layer, insert_index)?;
+
+				Some([vec![DocumentChanged, CreatedLayer { path: path.clone() }], update_thumbnails_upstream(&path)].concat())
+			}
+			Operation::AddNodeGraphFrame { path, insert_index, transform } => {
+				let layer = Layer::new(LayerDataType::NodeGraphFrame(NodeGraphFrameLayer::default()), transform);
 
 				self.set_layer(&path, layer, insert_index)?;
 
