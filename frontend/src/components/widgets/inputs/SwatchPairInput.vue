@@ -3,13 +3,13 @@
 		<LayoutRow class="secondary swatch">
 			<button @click="() => clickSecondarySwatch()" :style="`--swatch-color: ${secondary.toRgbaCSS()}`" data-hover-menu-spawner></button>
 			<FloatingMenu :type="'Popover'" :direction="'Right'" v-model:open="secondaryOpen">
-				<ColorPicker @update:color="(color: RGBA) => secondaryColorChanged(color)" :color="secondary.toRgba()" />
+				<ColorPicker @update:color="(color: Color) => secondaryColorChanged(color)" :color="secondary" />
 			</FloatingMenu>
 		</LayoutRow>
 		<LayoutRow class="primary swatch">
 			<button @click="() => clickPrimarySwatch()" :style="`--swatch-color: ${primary.toRgbaCSS()}`" data-hover-menu-spawner></button>
 			<FloatingMenu :type="'Popover'" :direction="'Right'" v-model:open="primaryOpen">
-				<ColorPicker @update:color="(color: RGBA) => primaryColorChanged(color)" :color="primary.toRgba()" />
+				<ColorPicker @update:color="(color: Color) => primaryColorChanged(color)" :color="primary" />
 			</FloatingMenu>
 		</LayoutRow>
 	</LayoutCol>
@@ -68,8 +68,7 @@
 <script lang="ts">
 import { defineComponent, type PropType } from "vue";
 
-import { rgbaToDecimalRgba } from "@/utility-functions/color";
-import { type RGBA, type Color } from "@/wasm-communication/messages";
+import { type Color } from "@/wasm-communication/messages";
 
 import ColorPicker from "@/components/floating-menus/ColorPicker.vue";
 import FloatingMenu from "@/components/layout/FloatingMenu.vue";
@@ -97,13 +96,11 @@ export default defineComponent({
 			this.primaryOpen = false;
 			this.secondaryOpen = true;
 		},
-		primaryColorChanged(color: RGBA) {
-			const newColor = rgbaToDecimalRgba(color);
-			this.editor.instance.updatePrimaryColor(newColor.r, newColor.g, newColor.b, newColor.a);
+		primaryColorChanged(color: Color) {
+			this.editor.instance.updatePrimaryColor(color.red, color.green, color.blue, color.alpha);
 		},
-		secondaryColorChanged(color: RGBA) {
-			const newColor = rgbaToDecimalRgba(color);
-			this.editor.instance.updateSecondaryColor(newColor.r, newColor.g, newColor.b, newColor.a);
+		secondaryColorChanged(color: Color) {
+			this.editor.instance.updateSecondaryColor(color.red, color.green, color.blue, color.alpha);
 		},
 	},
 	components: {

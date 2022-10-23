@@ -1,6 +1,6 @@
 <template>
 	<FloatingMenu :open="true" class="dialog-modal" :type="'Dialog'" :direction="'Center'" data-dialog-modal>
-		<LayoutRow ref="main">
+		<LayoutRow>
 			<LayoutCol class="icon-column">
 				<!-- `dialog.state.icon` class exists to provide special sizing in CSS to specific icons -->
 				<IconLabel :icon="dialog.state.icon" :class="dialog.state.icon.toLowerCase()" />
