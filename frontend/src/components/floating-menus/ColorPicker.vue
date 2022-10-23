@@ -1,15 +1,17 @@
 <template>
-	<LayoutRow class="color-picker">
-		<LayoutCol class="saturation-value-picker" :style="{ '--saturation-value-picker-hue': hueColorCSS }" @pointerdown="(e: PointerEvent) => beginDrag(e)" data-saturation-value-picker>
-			<div class="selection-circle" :style="{ top: `${(1 - value) * 100}%`, left: `${saturation * 100}%` }"></div>
-		</LayoutCol>
-		<LayoutCol class="hue-picker" @pointerdown="(e: PointerEvent) => beginDrag(e)" data-hue-picker>
-			<div class="selection-pincers" :style="{ top: `${(1 - hue) * 100}%` }"></div>
-		</LayoutCol>
-		<LayoutCol class="opacity-picker" :style="{ '--opacity-picker-color': color.toRgbCSS() }" @pointerdown="(e: PointerEvent) => beginDrag(e)" data-opacity-picker>
-			<div class="selection-pincers" :style="{ top: `${(1 - opacity) * 100}%` }"></div>
-		</LayoutCol>
-	</LayoutRow>
+	<FloatingMenu :open="open" @update:open="(isOpen) => emitOpenState(isOpen)" :direction="direction" :type="'Popover'">
+		<LayoutRow class="color-picker">
+			<LayoutCol class="saturation-value-picker" :style="{ '--saturation-value-picker-hue': hueColorCSS }" @pointerdown="(e: PointerEvent) => beginDrag(e)" data-saturation-value-picker>
+				<div class="selection-circle" :style="{ top: `${(1 - value) * 100}%`, left: `${saturation * 100}%` }"></div>
+			</LayoutCol>
+			<LayoutCol class="hue-picker" @pointerdown="(e: PointerEvent) => beginDrag(e)" data-hue-picker>
+				<div class="selection-pincers" :style="{ top: `${(1 - hue) * 100}%` }"></div>
+			</LayoutCol>
+			<LayoutCol class="opacity-picker" :style="{ '--opacity-picker-color': color.toRgbCSS() }" @pointerdown="(e: PointerEvent) => beginDrag(e)" data-opacity-picker>
+				<div class="selection-pincers" :style="{ top: `${(1 - opacity) * 100}%` }"></div>
+			</LayoutCol>
+		</LayoutRow>
+	</FloatingMenu>
 </template>
 
 <style lang="scss">
@@ -118,13 +120,16 @@ import { defineComponent, type PropType } from "vue";
 import { clamp } from "@/utility-functions/math";
 import { Color } from "@/wasm-communication/messages";
 
+import FloatingMenu, { type MenuDirection } from "@/components/layout/FloatingMenu.vue";
 import LayoutCol from "@/components/layout/LayoutCol.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 
 export default defineComponent({
-	emits: ["update:color"],
+	emits: ["update:color", "update:open"],
 	props: {
 		color: { type: Object as PropType<Color>, required: true },
+		open: { type: Boolean as PropType<boolean>, required: true },
+		direction: { type: String as PropType<MenuDirection>, default: "Bottom" },
 	},
 	data() {
 		const hsva = this.color.toHSVA();
@@ -175,6 +180,9 @@ export default defineComponent({
 		onPointerUp() {
 			this.removeEvents();
 		},
+		emitOpenState(isOpen: boolean) {
+			this.$emit("update:open", isOpen);
+		},
 		addEvents() {
 			document.addEventListener("pointermove", this.onPointerMove);
 			document.addEventListener("pointerup", this.onPointerUp);
@@ -188,6 +196,7 @@ export default defineComponent({
 		this.removeEvents();
 	},
 	components: {
+		FloatingMenu,
 		LayoutCol,
 		LayoutRow,
 	},

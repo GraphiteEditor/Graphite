@@ -5,9 +5,7 @@
 		<Separator :type="'Related'" />
 		<LayoutRow class="swatch">
 			<button class="swatch-button" :class="{ 'disabled-swatch': !value }" :style="`--swatch-color: #${value}`" @click="() => $emit('update:open', true)"></button>
-			<FloatingMenu v-model:open="isOpen" :type="'Popover'" :direction="'Bottom'">
-				<ColorPicker @update:color="(color: Color) => colorPickerUpdated(color)" :color="color" />
-			</FloatingMenu>
+			<ColorPicker v-model:open="isOpen" :color="color" @update:color="(color: Color) => colorPickerUpdated(color)" :direction="'Bottom'" />
 		</LayoutRow>
 	</LayoutRow>
 </template>
@@ -73,7 +71,6 @@ import { defineComponent, type PropType } from "vue";
 import { Color } from "@/wasm-communication/messages";
 
 import ColorPicker from "@/components/floating-menus/ColorPicker.vue";
-import FloatingMenu from "@/components/layout/FloatingMenu.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 import OptionalInput from "@/components/widgets/inputs/OptionalInput.vue";
 import TextInput from "@/components/widgets/inputs/TextInput.vue";
@@ -163,7 +160,6 @@ export default defineComponent({
 	},
 	components: {
 		ColorPicker,
-		FloatingMenu,
 		LayoutRow,
 		OptionalInput,
 		Separator,

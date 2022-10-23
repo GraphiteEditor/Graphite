@@ -2,15 +2,11 @@
 	<LayoutCol class="swatch-pair">
 		<LayoutRow class="secondary swatch">
 			<button @click="() => clickSecondarySwatch()" :style="`--swatch-color: ${secondary.toRgbaCSS()}`" data-hover-menu-spawner></button>
-			<FloatingMenu :type="'Popover'" :direction="'Right'" v-model:open="secondaryOpen">
-				<ColorPicker @update:color="(color: Color) => secondaryColorChanged(color)" :color="secondary" />
-			</FloatingMenu>
+			<ColorPicker v-model:open="secondaryOpen" :color="secondary" @update:color="(color: Color) => secondaryColorChanged(color)" :direction="'Right'" />
 		</LayoutRow>
 		<LayoutRow class="primary swatch">
 			<button @click="() => clickPrimarySwatch()" :style="`--swatch-color: ${primary.toRgbaCSS()}`" data-hover-menu-spawner></button>
-			<FloatingMenu :type="'Popover'" :direction="'Right'" v-model:open="primaryOpen">
-				<ColorPicker @update:color="(color: Color) => primaryColorChanged(color)" :color="primary" />
-			</FloatingMenu>
+			<ColorPicker v-model:open="primaryOpen" :color="primary" @update:color="(color: Color) => primaryColorChanged(color)" :direction="'Right'" />
 		</LayoutRow>
 	</LayoutCol>
 </template>
@@ -71,7 +67,6 @@ import { defineComponent, type PropType } from "vue";
 import { type Color } from "@/wasm-communication/messages";
 
 import ColorPicker from "@/components/floating-menus/ColorPicker.vue";
-import FloatingMenu from "@/components/layout/FloatingMenu.vue";
 import LayoutCol from "@/components/layout/LayoutCol.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 
@@ -105,7 +100,6 @@ export default defineComponent({
 	},
 	components: {
 		ColorPicker,
-		FloatingMenu,
 		LayoutCol,
 		LayoutRow,
 	},
