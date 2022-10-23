@@ -603,6 +603,15 @@ impl Document {
 
 				Some([vec![DocumentChanged, CreatedLayer { path: path.clone() }], update_thumbnails_upstream(&path)].concat())
 			}
+			Operation::SetNodeGraphFrameImageData { layer_path, image_data } => {
+				let layer = self.layer_mut(&layer_path).expect("Setting NodeGraphFrame image data for invalid layer");
+				if let LayerDataType::NodeGraphFrame(node_graph_frame) = &mut layer.data {
+					node_graph_frame.image_data = Some(image_data);
+				} else {
+					panic!("Incorrectly trying to set image data for a layer that is not an NodeGraphFrame layer type");
+				}
+				Some(vec![LayerChanged { path: layer_path.clone() }])
+			}
 			Operation::SetTextEditability { path, editable } => {
 				self.layer_mut(&path)?.as_text_mut()?.editable = editable;
 				self.mark_as_dirty(&path)?;
@@ -805,11 +814,15 @@ impl Document {
 						image.blob_url = Some(blob_url);
 						image.dimensions = resolution.into();
 					}
+					LayerDataType::NodeGraphFrame(node_graph_frame) => {
+						node_graph_frame.blob_url = Some(blob_url);
+						node_graph_frame.dimensions = resolution.into();
+					}
 					LayerDataType::Imaginate(imaginate) => {
 						imaginate.blob_url = Some(blob_url);
 						imaginate.dimensions = resolution.into();
 					}
-					_ => panic!("Incorrectly trying to set the image blob URL for a layer that is not an Image or Imaginate layer type"),
+					_ => panic!("Incorrectly trying to set the image blob URL for a layer that is not an Image, NodeGraphFrame or Imaginate layer type"),
 				}
 
 				self.mark_as_dirty(&layer_path)?;
@@ -841,15 +854,20 @@ impl Document {
 				}
 				Some(vec![LayerChanged { path: path.clone() }])
 			}
-			Operation::ImaginateClear { path } => {
+			Operation::ClearBlobURL { path } => {
 				let layer = self.layer_mut(&path).expect("Clearing Imaginate image for invalid layer");
-				if let LayerDataType::Imaginate(imaginate) = &mut layer.data {
-					imaginate.image_data = None;
-					imaginate.blob_url = None;
-					imaginate.status = ImaginateStatus::Idle;
-					imaginate.percent_complete = 0.;
-				} else {
-					panic!("Incorrectly trying to clear the blob URL for a layer that is not an Imaginate layer type");
+				match &mut layer.data {
+					LayerDataType::Imaginate(imaginate) => {
+						imaginate.image_data = None;
+						imaginate.blob_url = None;
+						imaginate.status = ImaginateStatus::Idle;
+						imaginate.percent_complete = 0.;
+					}
+					LayerDataType::NodeGraphFrame(node_graph) => {
+						node_graph.image_data = None;
+						node_graph.blob_url = None;
+					}
+					e => panic!("Incorrectly trying to clear the blob URL for layer of type {}", LayerDataTypeDiscriminant::from(&*e)),
 				}
 				self.mark_as_dirty(&path)?;
 				Some([vec![DocumentChanged, LayerChanged { path: path.clone() }], update_thumbnails_upstream(&path)].concat())

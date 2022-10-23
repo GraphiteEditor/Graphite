@@ -410,6 +410,7 @@ dependencies = [
  "glam",
  "graphite-graphene",
  "graphite-proc-macros",
+ "image",
  "kurbo",
  "log",
  "once_cell",

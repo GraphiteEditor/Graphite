@@ -375,6 +375,30 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				let affected_layer_path = affected_folder_path;
 				responses.extend([LayerChanged { affected_layer_path }.into(), DocumentStructureChanged.into()]);
 			}
+			FrameClear => {
+				let mut selected_frame_layers = self
+					.selected_layers_with_type(LayerDataTypeDiscriminant::Imaginate)
+					.chain(self.selected_layers_with_type(LayerDataTypeDiscriminant::NodeGraphFrame));
+				// Get what is hopefully the only selected Imaginate layer
+				let layer_path = selected_frame_layers.next();
+				// Abort if we didn't have any Imaginate layer, or if there are additional ones also selected
+				if layer_path.is_none() || selected_frame_layers.next().is_some() {
+					return;
+				}
+				let layer_path = layer_path.unwrap();
+
+				let layer = self.graphene_document.layer(layer_path).expect("Clearing Imaginate/NodeGraphFrame image for invalid layer");
+				let previous_blob_url = match &layer.data {
+					LayerDataType::Imaginate(imaginate) => &imaginate.blob_url,
+					LayerDataType::NodeGraphFrame(node_graph_frame) => &node_graph_frame.blob_url,
+					x => panic!("Cannot find blob url for layer type {}", LayerDataTypeDiscriminant::from(x)),
+				};
+
+				if let Some(url) = previous_blob_url {
+					responses.push_back(FrontendMessage::TriggerRevokeBlobUrl { url: url.clone() }.into());
+				}
+				responses.push_back(DocumentOperation::ClearBlobURL { path: layer_path.into() }.into());
+			}
 			GroupSelectedLayers => {
 				let mut new_folder_path = self.graphene_document.shallowest_common_folder(self.selected_layers()).unwrap_or(&[]).to_vec();
 
@@ -403,24 +427,6 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 					}
 					.into(),
 				);
-			}
-			ImaginateClear => {
-				let mut selected_imaginate_layers = self.selected_layers_with_type(LayerDataTypeDiscriminant::Imaginate);
-				// Get what is hopefully the only selected Imaginate layer
-				let layer_path = selected_imaginate_layers.next();
-				// Abort if we didn't have any Imaginate layer, or if there are additional ones also selected
-				if layer_path.is_none() || selected_imaginate_layers.next().is_some() {
-					return;
-				}
-				let layer_path = layer_path.unwrap();
-
-				let layer = self.graphene_document.layer(layer_path).expect("Clearing Imaginate image for invalid layer");
-				let previous_blob_url = &layer.as_imaginate().unwrap().blob_url;
-
-				if let Some(url) = previous_blob_url {
-					responses.push_back(FrontendMessage::TriggerRevokeBlobUrl { url: url.clone() }.into());
-				}
-				responses.push_back(DocumentOperation::ImaginateClear { path: layer_path.into() }.into());
 			}
 			ImaginateGenerate => {
 				if let Some(message) = self.call_imaginate(document_id, preferences, persistent_data) {
@@ -501,6 +507,11 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				self.backup(responses);
 				if let Ok(_layer) = self.graphene_document.layer(&layer_path) {
 					responses.push_back(DocumentOperation::MoveSelectedManipulatorPoints { layer_path, delta }.into());
+				}
+			}
+			NodeGraphFrameGenerate => {
+				if let Some(message) = self.call_node_graph_frame(document_id, preferences, persistent_data) {
+					responses.push_back(message);
 				}
 			}
 			NudgeSelectedLayers { delta_x, delta_y } => {
@@ -703,8 +714,16 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 							responses.push_back(FrontendMessage::TriggerRevokeBlobUrl { url: url.clone() }.into());
 						}
 					}
+					LayerDataType::NodeGraphFrame(node_graph_frame) => {
+						if let Some(url) = &node_graph_frame.blob_url {
+							responses.push_back(FrontendMessage::TriggerRevokeBlobUrl { url: url.clone() }.into());
+						}
+					}
 					LayerDataType::Image(_) => {}
-					other => panic!("Setting blob URL for invalid layer type, which must be an `Imaginate` or `Image`. Found: `{:?}`", other),
+					other => panic!(
+						"Setting blob URL for invalid layer type, which must be an `Imaginate`, `NodeGraphFrame` or `Image`. Found: `{:?}`",
+						other
+					),
 				}
 
 				responses.push_back(
@@ -934,7 +953,7 @@ impl DocumentMessageHandler {
 		};
 		let base_image = if imaginate_layer.use_img2img {
 			// Calculate the size of the region to be exported
-			let size = transform.transform_point2(DVec2::ONE) - transform.transform_point2(DVec2::ZERO);
+			let size = DVec2::new(transform.transform_vector2(DVec2::new(1., 0.)).length(), transform.transform_vector2(DVec2::new(0., 1.)).length());
 
 			let old_transforms = self.remove_document_transform();
 			let svg = self.render_document(size, transform.inverse(), persistent_data, DocumentRenderMode::OnlyBelowLayerInFolder(&layer_path));
@@ -956,6 +975,32 @@ impl DocumentMessageHandler {
 			}
 			.into(),
 		)
+	}
+
+	pub fn call_node_graph_frame(&mut self, document_id: u64, _preferences: &PreferencesMessageHandler, persistent_data: &PersistentData) -> Option<Message> {
+		let layer_path = {
+			let mut selected_nodegraph_layers = self.selected_layers_with_type(LayerDataTypeDiscriminant::NodeGraphFrame);
+
+			// Get what is hopefully the only selected nodegraph layer
+			match selected_nodegraph_layers.next() {
+				// Continue only if there are no additional nodegraph layers also selected
+				Some(layer_path) if selected_nodegraph_layers.next().is_none() => layer_path.to_owned(),
+				_ => return None,
+			}
+		};
+
+		// Prepare the Imaginate parameters and base image
+
+		// Calculate the size of the region to be exported
+
+		let old_transforms = self.remove_document_transform();
+		let transform = self.graphene_document.multiply_transforms(&layer_path).unwrap();
+		let size = DVec2::new(transform.transform_vector2(DVec2::new(1., 0.)).length(), transform.transform_vector2(DVec2::new(0., 1.)).length());
+
+		let svg = self.render_document(size, transform.inverse(), persistent_data, DocumentRenderMode::OnlyBelowLayerInFolder(&layer_path));
+		self.restore_document_transform(old_transforms);
+
+		Some(FrontendMessage::TriggerNodeGraphFrameGenerate { document_id, layer_path, svg, size }.into())
 	}
 
 	/// Remove the artwork and artboard pan/tilt/zoom to render it without the user's viewport navigation, and save it to be restored at the end
@@ -1457,6 +1502,15 @@ impl DocumentMessageHandler {
 							path: path.clone(),
 							image_data: data.image_data.clone(),
 							mime: imaginate.mime.clone(),
+						});
+					}
+				}
+				LayerDataType::NodeGraphFrame(node_graph_frame) => {
+					if let Some(data) = &node_graph_frame.image_data {
+						image_data.push(FrontendImageData {
+							path: path.clone(),
+							image_data: data.clone(),
+							mime: node_graph_frame.mime.clone(),
 						});
 					}
 				}

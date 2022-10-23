@@ -14,6 +14,7 @@ import {
 	TriggerImaginateGenerate,
 	TriggerImaginateTerminate,
 	TriggerImaginateCheckServerStatus,
+	TriggerNodeGraphFrameGenerate,
 	UpdateActiveDocument,
 	UpdateOpenDocumentsList,
 	UpdateImageData,
@@ -99,6 +100,14 @@ export function createPortfolioState(editor: Editor) {
 
 			editor.instance.setImageBlobURL(updateImageData.documentId, element.path, blobURL, image.naturalWidth, image.naturalHeight);
 		});
+	});
+	editor.subscriptions.subscribeJsMessage(TriggerNodeGraphFrameGenerate, async (triggerNodeGraphFrameGenerate) => {
+		const { documentId, layerPath, svg, size } = triggerNodeGraphFrameGenerate;
+
+		// Rasterize the SVG to an image file
+		const image = new Uint8Array(await (await rasterizeSVG(svg, size[0], size[1], "image/png")).arrayBuffer());
+
+		editor.instance.processNodeGraphFrame(documentId, layerPath, image, "image/png");
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerRevokeBlobUrl, async (triggerRevokeBlobUrl) => {
 		URL.revokeObjectURL(triggerRevokeBlobUrl.url);

@@ -86,6 +86,14 @@ pub enum FrontendMessage {
 	},
 	TriggerLoadAutoSaveDocuments,
 	TriggerLoadPreferences,
+	TriggerNodeGraphFrameGenerate {
+		#[serde(rename = "documentId")]
+		document_id: u64,
+		#[serde(rename = "layerPath")]
+		layer_path: Vec<LayerId>,
+		svg: String,
+		size: glam::DVec2,
+	},
 	TriggerOpenDocument,
 	TriggerPaste,
 	TriggerRasterDownload {

@@ -2,7 +2,7 @@ use super::utility_types::PersistentData;
 use crate::application::generate_uuid;
 use crate::consts::{DEFAULT_DOCUMENT_NAME, GRAPHITE_DOCUMENT_VERSION};
 use crate::messages::dialog::simple_dialogs;
-use crate::messages::frontend::utility_types::FrontendDocumentDetails;
+use crate::messages::frontend::utility_types::{FrontendDocumentDetails, FrontendImageData};
 use crate::messages::layout::utility_types::layout_widget::PropertyHolder;
 use crate::messages::layout::utility_types::misc::LayoutTarget;
 use crate::messages::portfolio::document::utility_types::clipboards::{Clipboard, CopyBufferEntry, INTERNAL_CLIPBOARD_COUNT};
@@ -413,6 +413,55 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 					let prev_index = (current_index + len - 1) % len;
 					let prev_id = self.document_ids[prev_index];
 					responses.push_back(PortfolioMessage::SelectDocument { document_id: prev_id }.into());
+				}
+			}
+			PortfolioMessage::ProcessNodeGraphFrame {
+				document_id,
+				layer_path,
+				image_data,
+				mime,
+			} => {
+				fn read_image(image_data: Vec<u8>) -> Result<Vec<u8>, String> {
+					use image::io::Reader as ImageReader;
+					use std::io::Cursor;
+
+					let reader = ImageReader::new(Cursor::new(image_data)).with_guessed_format().map_err(|e| e.to_string())?;
+					let decoded = reader.decode().map_err(|e| e.to_string())?;
+
+					// TODO: Insert proper node graph execution logic here
+
+					let output = decoded.brighten(40);
+
+					let mut bytes: Vec<u8> = Vec::new();
+					output.write_to(&mut Cursor::new(&mut bytes), image::ImageOutputFormat::Png).map_err(|e| e.to_string())?;
+
+					Ok(bytes)
+				}
+
+				match read_image(image_data) {
+					Ok(image_data) => {
+						responses.push_back(
+							DocumentOperation::SetNodeGraphFrameImageData {
+								layer_path: layer_path.clone(),
+								image_data: image_data.clone(),
+							}
+							.into(),
+						);
+						responses.push_back(
+							FrontendMessage::UpdateImageData {
+								document_id,
+								image_data: vec![FrontendImageData { path: layer_path, image_data, mime }],
+							}
+							.into(),
+						);
+					}
+					Err(description) => responses.push_back(
+						DialogMessage::DisplayDialogError {
+							title: "Failed to update image".to_string(),
+							description,
+						}
+						.into(),
+					),
 				}
 			}
 			PortfolioMessage::SelectDocument { document_id } => {

@@ -19,6 +19,8 @@ pub struct NodeGraphFrameLayer {
 	pub blob_url: Option<String>,
 	#[serde(skip)]
 	pub dimensions: DVec2,
+	#[serde(skip)]
+	pub image_data: Option<Vec<u8>>,
 }
 
 impl LayerData for NodeGraphFrameLayer {
@@ -39,32 +41,31 @@ impl LayerData for NodeGraphFrameLayer {
 		});
 		let _ = svg.write_str(r#")">"#);
 
-		if let Some(blob_url) = &self.blob_url {
-			let _ = write!(
-				svg,
-				r#"<image width="{}" height="{}" preserveAspectRatio="none" href="{}" transform="matrix("#,
-				width.abs(),
-				height.abs(),
-				blob_url
-			);
-		} else {
-			let _ = write!(
-				svg,
-				r#"<rect width="{}" height="{}" fill="none" stroke="var(--color-data-vector)" stroke-width="3" stroke-dasharray="8" transform="matrix("#,
-				width.abs(),
-				height.abs(),
-			);
-		}
-
-		(transform * DAffine2::from_scale((width, height).into()).inverse())
+		let matrix = (transform * DAffine2::from_scale((width, height).into()).inverse())
 			.to_cols_array()
 			.iter()
 			.enumerate()
-			.for_each(|(i, entry)| {
-				let _ = svg.write_str(&(entry.to_string() + if i == 5 { "" } else { "," }));
-			});
+			.fold(String::new(), |val, (i, entry)| val + &(entry.to_string() + if i == 5 { "" } else { "," }));
 
-		let _ = svg.write_str(r#")" /> </g>"#);
+		if let Some(blob_url) = &self.blob_url {
+			let _ = write!(
+				svg,
+				r#"<image width="{}" height="{}" preserveAspectRatio="none" href="{}" transform="matrix({})" />"#,
+				width.abs(),
+				height.abs(),
+				blob_url,
+				matrix
+			);
+		}
+		let _ = write!(
+			svg,
+			r#"<rect width="{}" height="{}" fill="none" stroke="var(--color-data-vector)" stroke-width="3" stroke-dasharray="8" transform="matrix({})" />"#,
+			width.abs(),
+			height.abs(),
+			matrix,
+		);
+
+		let _ = svg.write_str(r#"</g>"#);
 	}
 
 	fn bounding_box(&self, transform: glam::DAffine2, _font_cache: &FontCache) -> Option<[DVec2; 2]> {

@@ -668,7 +668,7 @@ fn node_section_imaginate(imaginate_layer: &ImaginateLayer, layer: &Layer, persi
 									label: "Clear".into(),
 									tooltip: "Remove generated image from the layer frame".into(),
 									disabled: imaginate_layer.blob_url == None,
-									on_update: WidgetCallback::new(|_| DocumentMessage::ImaginateClear.into()),
+									on_update: WidgetCallback::new(|_| DocumentMessage::FrameClear.into()),
 									..Default::default()
 								})),
 							],
@@ -1025,11 +1025,17 @@ fn node_section_imaginate(imaginate_layer: &ImaginateLayer, layer: &Layer, persi
 
 fn node_section_node_graph_frame(node_graph_frame: &NodeGraphFrameLayer) -> LayoutGroup {
 	LayoutGroup::Section {
-		name: "Node Graph Frame Layer".into(),
+		name: "Node Graph Frame".into(),
 		layout: vec![
 			LayoutGroup::Row {
 				widgets: vec![WidgetHolder::new(Widget::TextLabel(TextLabel {
-					value: "Temporary node graph frame layer that applies a greyscale to the layers below it.".into(),
+					value: "Temporary layer that applies a brighten to the layers below it.".into(),
+					..TextLabel::default()
+				}))],
+			},
+			LayoutGroup::Row {
+				widgets: vec![WidgetHolder::new(Widget::TextLabel(TextLabel {
+					value: "Should eventually be powered by the node graph".into(),
 					..TextLabel::default()
 				}))],
 			},
@@ -1038,7 +1044,7 @@ fn node_section_node_graph_frame(node_graph_frame: &NodeGraphFrameLayer) -> Layo
 					WidgetHolder::new(Widget::TextButton(TextButton {
 						label: "Generate".into(),
 						tooltip: "Fill layer frame by generating a new image".into(),
-						on_update: WidgetCallback::new(|_| DocumentMessage::ImaginateGenerate.into()),
+						on_update: WidgetCallback::new(|_| DocumentMessage::NodeGraphFrameGenerate.into()),
 						..Default::default()
 					})),
 					WidgetHolder::new(Widget::Separator(Separator {
@@ -1049,7 +1055,7 @@ fn node_section_node_graph_frame(node_graph_frame: &NodeGraphFrameLayer) -> Layo
 						label: "Clear".into(),
 						tooltip: "Remove generated image from the layer frame".into(),
 						disabled: node_graph_frame.blob_url.is_none(),
-						on_update: WidgetCallback::new(|_| DocumentMessage::ImaginateClear.into()),
+						on_update: WidgetCallback::new(|_| DocumentMessage::FrameClear.into()),
 						..Default::default()
 					})),
 				],

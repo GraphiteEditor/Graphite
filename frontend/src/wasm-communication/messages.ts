@@ -361,6 +361,16 @@ export class TriggerImaginateTerminate extends JsMessage {
 	readonly hostname!: string;
 }
 
+export class TriggerNodeGraphFrameGenerate extends JsMessage {
+	readonly documentId!: bigint;
+
+	readonly layerPath!: BigUint64Array;
+
+	readonly svg!: string;
+
+	readonly size!: [number, number];
+}
+
 export class TriggerRefreshBoundsOfViewports extends JsMessage {}
 
 export class TriggerRevokeBlobUrl extends JsMessage {
@@ -1049,6 +1059,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	TriggerImaginateCheckServerStatus,
 	TriggerImaginateGenerate,
 	TriggerImaginateTerminate,
+	TriggerNodeGraphFrameGenerate,
 	TriggerFileDownload,
 	TriggerFontLoad,
 	TriggerImport,

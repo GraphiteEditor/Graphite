@@ -108,6 +108,12 @@ pub enum PortfolioMessage {
 		data: String,
 	},
 	PrevDocument,
+	ProcessNodeGraphFrame {
+		document_id: u64,
+		layer_path: Vec<LayerId>,
+		image_data: Vec<u8>,
+		mime: String,
+	},
 	SelectDocument {
 		document_id: u64,
 	},
