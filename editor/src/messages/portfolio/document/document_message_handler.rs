@@ -990,7 +990,7 @@ impl DocumentMessageHandler {
 			DocumentRenderMode::OnlyBelowLayerInFolder(below_layer_path) => self.graphene_document.render_layers_below(below_layer_path, render_data).unwrap(),
 		};
 		let artboards = self.artboard_message_handler.artboards_graphene_document.render_root(render_data);
-		let outside_artboards_color = if self.artboard_message_handler.artboard_ids.is_empty() { "#ffffff" } else { "#000000" };
+		let outside_artboards_color = if self.artboard_message_handler.artboard_ids.is_empty() { "#ffffff" } else { "#222222" };
 		let outside_artboards = format!(r#"<rect x="0" y="0" width="100%" height="100%" fill="{}" />"#, outside_artboards_color);
 		let matrix = transform
 			.to_cols_array()
