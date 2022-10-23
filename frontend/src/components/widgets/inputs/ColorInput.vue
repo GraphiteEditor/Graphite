@@ -96,6 +96,7 @@ export default defineComponent({
 	},
 	computed: {
 		color(): Color {
+			// TODO: Validate length of value, and allow shorthand versions like single-digit or three-digit hex codes
 			if (!this.value) return new Color(0, 0, 0, 1);
 
 			const r = parseInt(this.value.slice(0, 2), 16) / 255;
