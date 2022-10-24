@@ -21,7 +21,6 @@ pub struct IdBackedVec<T> {
 	/// The IDs of the [Elements] contained within this
 	element_ids: Vec<ElementId>,
 	/// The ID that will be assigned to the next element that is added to this
-	#[serde(skip)]
 	next_id: ElementId,
 }
 
