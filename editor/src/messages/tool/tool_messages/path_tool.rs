@@ -281,7 +281,11 @@ impl Fsm for PathToolFsmState {
 					PathToolFsmState::Ready
 				}
 				(_, PathToolMessage::InsertPoint) => {
-					tool_data.shape_editor.split(&document.graphene_document, input.mouse.position, SELECTION_TOLERANCE, responses);
+					// First we try and flip the sharpness (if they have clicked on an anchor)
+					if !tool_data.shape_editor.flip_sharp(&document.graphene_document, input.mouse.position, SELECTION_TOLERANCE, responses) {
+						// If not, then we try and split the path that may have been clicked upon
+						tool_data.shape_editor.split(&document.graphene_document, input.mouse.position, SELECTION_TOLERANCE, responses);
+					}
 
 					self
 				}
