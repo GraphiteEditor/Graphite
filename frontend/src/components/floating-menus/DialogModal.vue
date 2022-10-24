@@ -1,6 +1,6 @@
 <template>
 	<FloatingMenu :open="true" class="dialog-modal" :type="'Dialog'" :direction="'Center'" data-dialog-modal>
-		<LayoutRow ref="main">
+		<LayoutRow>
 			<LayoutCol class="icon-column">
 				<!-- `dialog.state.icon` class exists to provide special sizing in CSS to specific icons -->
 				<IconLabel :icon="dialog.state.icon" :class="dialog.state.icon.toLowerCase()" />
@@ -68,7 +68,7 @@
 <script lang="ts">
 import { defineComponent } from "vue";
 
-import FloatingMenu from "@/components/floating-menus/FloatingMenu.vue";
+import FloatingMenu from "@/components/layout/FloatingMenu.vue";
 import LayoutCol from "@/components/layout/LayoutCol.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 import TextButton from "@/components/widgets/buttons/TextButton.vue";

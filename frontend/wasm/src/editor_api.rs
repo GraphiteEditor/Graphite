@@ -353,7 +353,7 @@ impl JsEditorHandle {
 		Ok(())
 	}
 
-	/// Update primary color
+	/// Update primary color with values on a scale from 0 to 1.
 	#[wasm_bindgen(js_name = updatePrimaryColor)]
 	pub fn update_primary_color(&self, red: f32, green: f32, blue: f32, alpha: f32) -> Result<(), JsValue> {
 		let primary_color = match Color::from_rgbaf32(red, green, blue, alpha) {
@@ -367,7 +367,7 @@ impl JsEditorHandle {
 		Ok(())
 	}
 
-	/// Update secondary color
+	/// Update secondary color with values on a scale from 0 to 1.
 	#[wasm_bindgen(js_name = updateSecondaryColor)]
 	pub fn update_secondary_color(&self, red: f32, green: f32, blue: f32, alpha: f32) -> Result<(), JsValue> {
 		let secondary_color = match Color::from_rgbaf32(red, green, blue, alpha) {
