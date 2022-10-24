@@ -96,7 +96,8 @@ impl ManipulatorGroup {
 	/// Move the selected points by the provided transform.
 	pub fn move_selected_points(&mut self, delta: DVec2) {
 		let mirror_angle = self.editor_state.mirror_angle_between_handles;
-		let mirror_distance = self.editor_state.mirror_distance_between_handles;
+		// Invert distance since we want it to start disabled
+		let mirror_distance = !self.editor_state.mirror_distance_between_handles;
 
 		// Move the point absolutely or relatively depending on if the point is under the cursor (the last selected point)
 		let move_point = |point: &mut ManipulatorPoint, delta: DVec2| {
@@ -298,7 +299,7 @@ impl Default for ManipulatorGroupEditorState {
 	fn default() -> Self {
 		Self {
 			mirror_angle_between_handles: true,
-			mirror_distance_between_handles: false,
+			mirror_distance_between_handles: true,
 		}
 	}
 }
