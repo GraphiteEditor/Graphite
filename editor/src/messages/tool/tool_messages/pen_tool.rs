@@ -328,6 +328,11 @@ impl Fsm for PenToolFsmState {
 								};
 								responses.push_back(op.into());
 
+								// The overlay system cannot detect deleted points so we must just delete all the overlays
+								for layer_path in document.all_layers() {
+									tool_data.overlay_renderer.clear_subpath_overlays(&document.graphene_document, layer_path.to_vec(), responses);
+								}
+
 								tool_data.should_mirror = false;
 							}
 						}
