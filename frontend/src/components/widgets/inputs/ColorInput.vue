@@ -5,9 +5,7 @@
 		<Separator :type="'Related'" />
 		<LayoutRow class="swatch">
 			<button class="swatch-button" :class="{ 'disabled-swatch': !value }" :style="`--swatch-color: #${value}`" @click="() => $emit('update:open', true)"></button>
-			<FloatingMenu v-model:open="isOpen" :type="'Popover'" :direction="'Bottom'">
-				<ColorPicker @update:color="(color: RGBA) => colorPickerUpdated(color)" :color="color" />
-			</FloatingMenu>
+			<ColorPicker v-model:open="isOpen" :color="color" @update:color="(color: Color) => colorPickerUpdated(color)" :direction="'Bottom'" />
 		</LayoutRow>
 	</LayoutRow>
 </template>
@@ -70,10 +68,9 @@
 <script lang="ts">
 import { defineComponent, type PropType } from "vue";
 
-import { type RGBA } from "@/wasm-communication/messages";
+import { Color } from "@/wasm-communication/messages";
 
 import ColorPicker from "@/components/floating-menus/ColorPicker.vue";
-import FloatingMenu from "@/components/floating-menus/FloatingMenu.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 import OptionalInput from "@/components/widgets/inputs/OptionalInput.vue";
 import TextInput from "@/components/widgets/inputs/TextInput.vue";
@@ -98,16 +95,18 @@ export default defineComponent({
 		};
 	},
 	computed: {
-		color() {
-			if (!this.value) return { r: 0, g: 0, b: 0, a: 1 };
+		color(): Color {
+			// TODO: Validate length of value, and allow shorthand versions like single-digit or three-digit hex codes
+			if (!this.value) return new Color(0, 0, 0, 1);
 
-			const r = parseInt(this.value.slice(0, 2), 16);
-			const g = parseInt(this.value.slice(2, 4), 16);
-			const b = parseInt(this.value.slice(4, 6), 16);
-			const a = parseInt(this.value.slice(6, 8), 16);
-			return { r, g, b, a: a / 255 };
+			const r = parseInt(this.value.slice(0, 2), 16) / 255;
+			const g = parseInt(this.value.slice(2, 4), 16) / 255;
+			const b = parseInt(this.value.slice(4, 6), 16) / 255;
+			const a = parseInt(this.value.slice(6, 8), 16) / 255;
+
+			return new Color(r, g, b, a);
 		},
-		displayValue() {
+		displayValue(): string {
 			if (!this.value) return "";
 
 			const value = this.value.toLowerCase();
@@ -125,10 +124,12 @@ export default defineComponent({
 		},
 	},
 	methods: {
-		colorPickerUpdated(color: RGBA) {
-			const twoDigitHex = (value: number): string => value.toString(16).padStart(2, "0");
-			const alphaU8Scale = Math.floor(color.a * 255);
-			const newValue = `${twoDigitHex(color.r)}${twoDigitHex(color.g)}${twoDigitHex(color.b)}${twoDigitHex(alphaU8Scale)}`;
+		colorPickerUpdated(color: Color) {
+			const twoDigitHex = (value: number): string =>
+				Math.floor(value * 255)
+					.toString(16)
+					.padStart(2, "0");
+			const newValue = `${twoDigitHex(color.red)}${twoDigitHex(color.green)}${twoDigitHex(color.blue)}${twoDigitHex(color.alpha)}`;
 			this.$emit("update:value", newValue);
 		},
 		textInputUpdated(newValue: string) {
@@ -160,7 +161,6 @@ export default defineComponent({
 	},
 	components: {
 		ColorPicker,
-		FloatingMenu,
 		LayoutRow,
 		OptionalInput,
 		Separator,

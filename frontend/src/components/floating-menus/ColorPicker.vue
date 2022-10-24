@@ -1,30 +1,29 @@
 <template>
-	<LayoutRow class="color-picker">
-		<LayoutCol class="saturation-picker" ref="saturationPicker" @pointerdown="(e: PointerEvent) => onPointerDown(e)">
-			<div ref="saturationCursor" class="selection-circle"></div>
-		</LayoutCol>
-		<LayoutCol class="hue-picker" ref="huePicker" @pointerdown="(e: PointerEvent) => onPointerDown(e)">
-			<div ref="hueCursor" class="selection-pincers"></div>
-		</LayoutCol>
-		<LayoutCol class="opacity-picker" ref="opacityPicker" @pointerdown="(e: PointerEvent) => onPointerDown(e)">
-			<div ref="opacityCursor" class="selection-pincers"></div>
-		</LayoutCol>
-	</LayoutRow>
+	<FloatingMenu :open="open" @update:open="(isOpen) => emitOpenState(isOpen)" :direction="direction" :type="'Popover'">
+		<LayoutRow class="color-picker">
+			<LayoutCol class="saturation-value-picker" :style="{ '--saturation-value-picker-hue': hueColorCSS }" @pointerdown="(e: PointerEvent) => beginDrag(e)" data-saturation-value-picker>
+				<div class="selection-circle" :style="{ top: `${(1 - value) * 100}%`, left: `${saturation * 100}%` }"></div>
+			</LayoutCol>
+			<LayoutCol class="hue-picker" @pointerdown="(e: PointerEvent) => beginDrag(e)" data-hue-picker>
+				<div class="selection-pincers" :style="{ top: `${(1 - hue) * 100}%` }"></div>
+			</LayoutCol>
+			<LayoutCol class="opacity-picker" :style="{ '--opacity-picker-color': color.toRgbCSS() }" @pointerdown="(e: PointerEvent) => beginDrag(e)" data-opacity-picker>
+				<div class="selection-pincers" :style="{ top: `${(1 - opacity) * 100}%` }"></div>
+			</LayoutCol>
+		</LayoutRow>
+	</FloatingMenu>
 </template>
 
 <style lang="scss">
 .color-picker {
-	--saturation-picker-hue: #ff0000;
-	--opacity-picker-color: #ff0000;
-
-	.saturation-picker {
+	.saturation-value-picker {
 		width: 256px;
 		background-blend-mode: multiply;
-		background: linear-gradient(to bottom, #ffffff, #000000), linear-gradient(to right, #ffffff, var(--saturation-picker-hue));
+		background: linear-gradient(to bottom, #ffffff, #000000), linear-gradient(to right, #ffffff, var(--saturation-value-picker-hue));
 		position: relative;
 	}
 
-	.saturation-picker,
+	.saturation-value-picker,
 	.hue-picker,
 	.opacity-picker {
 		height: 256px;
@@ -118,39 +117,72 @@
 <script lang="ts">
 import { defineComponent, type PropType } from "vue";
 
-import { hsvaToRgba, rgbaToHsva } from "@/utility-functions/color";
 import { clamp } from "@/utility-functions/math";
-import { type RGBA } from "@/wasm-communication/messages";
+import { Color } from "@/wasm-communication/messages";
 
+import FloatingMenu, { type MenuDirection } from "@/components/layout/FloatingMenu.vue";
 import LayoutCol from "@/components/layout/LayoutCol.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 
-type ColorPickerState = "Idle" | "MoveHue" | "MoveOpacity" | "MoveSaturation";
-
-// TODO: Clean up the fundamental code design in this file to simplify it and use better practices.
-// TODO: Such as removing the `picker*` data variables and reducing the number of functions which call each other in weird, non-obvious ways.
-
 export default defineComponent({
-	emits: ["update:color"],
+	emits: ["update:color", "update:open"],
 	props: {
-		color: { type: Object as PropType<RGBA>, required: true },
+		color: { type: Object as PropType<Color>, required: true },
+		open: { type: Boolean as PropType<boolean>, required: true },
+		direction: { type: String as PropType<MenuDirection>, default: "Bottom" },
 	},
 	data() {
+		const hsva = this.color.toHSVA();
+
 		return {
-			state: "Idle" as ColorPickerState,
-			pickerHSVA: { h: 0, s: 0, v: 0, a: 1 },
-			pickerHueRect: { width: 0, height: 0, top: 0, left: 0 },
-			pickerOpacityRect: { width: 0, height: 0, top: 0, left: 0 },
-			pickerSaturationRect: { width: 0, height: 0, top: 0, left: 0 },
+			draggingPickerTrack: undefined as HTMLElement | undefined,
+			hue: hsva.h,
+			saturation: hsva.s,
+			value: hsva.v,
+			opacity: hsva.a,
 		};
 	},
-	mounted() {
-		this.$watch("color", this.updateColor, { immediate: true });
-	},
-	unmounted() {
-		this.removeEvents();
+	computed: {
+		hueColorCSS() {
+			return new Color({ h: this.hue, s: 1, v: 1, a: 1 }).toRgbCSS();
+		},
 	},
 	methods: {
+		beginDrag(e: PointerEvent) {
+			const target = (e.target || undefined) as HTMLElement | undefined;
+			this.draggingPickerTrack = target?.closest("[data-saturation-value-picker], [data-hue-picker], [data-opacity-picker]") || undefined;
+
+			this.addEvents();
+			this.onPointerMove(e);
+		},
+		onPointerMove(e: PointerEvent) {
+			if (this.draggingPickerTrack?.hasAttribute("data-saturation-value-picker")) {
+				const rectangle = this.draggingPickerTrack.getBoundingClientRect();
+
+				this.saturation = clamp((e.clientX - rectangle.left) / rectangle.width, 0, 1);
+				this.value = clamp(1 - (e.clientY - rectangle.top) / rectangle.height, 0, 1);
+			} else if (this.draggingPickerTrack?.hasAttribute("data-hue-picker")) {
+				const rectangle = this.draggingPickerTrack.getBoundingClientRect();
+
+				this.hue = clamp(1 - (e.clientY - rectangle.top) / rectangle.height, 0, 1);
+			} else if (this.draggingPickerTrack?.hasAttribute("data-opacity-picker")) {
+				const rectangle = this.draggingPickerTrack.getBoundingClientRect();
+
+				this.opacity = clamp(1 - (e.clientY - rectangle.top) / rectangle.height, 0, 1);
+			}
+
+			// Just in case the mouseup event is lost
+			if (e.buttons === 0) this.removeEvents();
+
+			// The `color` prop's watcher calls `this.updateColor()`
+			this.$emit("update:color", new Color({ h: this.hue, s: this.saturation, v: this.value, a: this.opacity }));
+		},
+		onPointerUp() {
+			this.removeEvents();
+		},
+		emitOpenState(isOpen: boolean) {
+			this.$emit("update:open", isOpen);
+		},
 		addEvents() {
 			document.addEventListener("pointermove", this.onPointerMove);
 			document.addEventListener("pointerup", this.onPointerUp);
@@ -159,145 +191,12 @@ export default defineComponent({
 			document.removeEventListener("pointermove", this.onPointerMove);
 			document.removeEventListener("pointerup", this.onPointerUp);
 		},
-		onPointerDown(e: PointerEvent) {
-			const saturationPicker = this.$refs.saturationPicker as typeof LayoutCol;
-			const saturationPickerElement = saturationPicker?.$el as HTMLElement | undefined;
-
-			const huePicker = this.$refs.huePicker as typeof LayoutCol;
-			const huePickerElement = huePicker?.$el as HTMLElement | undefined;
-
-			const opacityPicker = this.$refs.opacityPicker as typeof LayoutCol;
-			const opacityPickerElement = opacityPicker?.$el as HTMLElement | undefined;
-
-			if (!(e.currentTarget instanceof HTMLElement) || !saturationPickerElement || !huePickerElement || !opacityPickerElement) return;
-
-			if (saturationPickerElement.contains(e.currentTarget)) {
-				this.state = "MoveSaturation";
-			} else if (huePickerElement.contains(e.currentTarget)) {
-				this.state = "MoveHue";
-			} else if (opacityPickerElement.contains(e.currentTarget)) {
-				this.state = "MoveOpacity";
-			} else {
-				this.state = "Idle";
-			}
-
-			if (this.state === "Idle") return;
-
-			this.addEvents();
-			this.updateRects();
-			this.onPointerMove(e);
-		},
-		onPointerMove(e: PointerEvent) {
-			switch (this.state) {
-				case "MoveHue":
-					this.setHueCursorPosition(e.clientY - this.pickerHueRect.top);
-					break;
-				case "MoveOpacity":
-					this.setOpacityCursorPosition(e.clientY - this.pickerOpacityRect.top);
-					break;
-				case "MoveSaturation":
-					this.setSaturationCursorPosition(e.clientX - this.pickerSaturationRect.left, e.clientY - this.pickerSaturationRect.top);
-					break;
-				default:
-					return;
-			}
-
-			this.updateHue();
-
-			// The `color` prop's watcher calls `this.updateColor()`
-			this.$emit("update:color", hsvaToRgba(this.pickerHSVA));
-		},
-		onPointerUp() {
-			if (this.state === "Idle") return;
-
-			this.state = "Idle";
-
-			this.removeEvents();
-		},
-		updateRects() {
-			const saturationPicker = this.$refs.saturationPicker as typeof LayoutCol;
-			const saturationPickerElement = saturationPicker?.$el as HTMLElement | undefined;
-
-			const huePicker = this.$refs.huePicker as typeof LayoutCol;
-			const huePickerElement = huePicker?.$el as HTMLElement | undefined;
-
-			const opacityPicker = this.$refs.opacityPicker as typeof LayoutCol;
-			const opacityPickerElement = opacityPicker?.$el as HTMLElement | undefined;
-
-			if (!saturationPickerElement || !huePickerElement || !opacityPickerElement) return;
-
-			// Saturation
-			const saturation = saturationPickerElement.getBoundingClientRect();
-
-			this.pickerSaturationRect.width = saturation.width;
-			this.pickerSaturationRect.height = saturation.height;
-			this.pickerSaturationRect.left = saturation.left;
-			this.pickerSaturationRect.top = saturation.top;
-
-			// Hue
-			const hue = huePickerElement.getBoundingClientRect();
-
-			this.pickerHueRect.width = hue.width;
-			this.pickerHueRect.height = hue.height;
-			this.pickerHueRect.left = hue.left;
-			this.pickerHueRect.top = hue.top;
-
-			// Opacity
-			const opacity = opacityPickerElement.getBoundingClientRect();
-
-			this.pickerOpacityRect.width = opacity.width;
-			this.pickerOpacityRect.height = opacity.height;
-			this.pickerOpacityRect.left = opacity.left;
-			this.pickerOpacityRect.top = opacity.top;
-		},
-		setSaturationCursorPosition(x: number, y: number) {
-			const saturationPositionX = clamp(x, 0, this.pickerSaturationRect.width);
-			const saturationPositionY = clamp(y, 0, this.pickerSaturationRect.height);
-
-			const saturationCursor = this.$refs.saturationCursor as HTMLElement;
-			saturationCursor.style.transform = `translate(${saturationPositionX}px, ${saturationPositionY}px)`;
-
-			this.pickerHSVA.s = saturationPositionX / this.pickerSaturationRect.width;
-			this.pickerHSVA.v = (1 - saturationPositionY / this.pickerSaturationRect.height) * 255;
-		},
-		setHueCursorPosition(y: number) {
-			const huePosition = clamp(y, 0, this.pickerHueRect.height);
-
-			const hueCursor = this.$refs.hueCursor as HTMLElement;
-			hueCursor.style.transform = `translateY(${huePosition}px)`;
-
-			this.pickerHSVA.h = clamp(1 - huePosition / this.pickerHueRect.height);
-		},
-		setOpacityCursorPosition(y: number) {
-			const opacityPosition = clamp(y, 0, this.pickerOpacityRect.height);
-
-			const opacityCursor = this.$refs.opacityCursor as HTMLElement;
-			opacityCursor.style.transform = `translateY(${opacityPosition}px)`;
-
-			this.pickerHSVA.a = clamp(1 - opacityPosition / this.pickerOpacityRect.height);
-		},
-		updateHue() {
-			const hsva = hsvaToRgba({ h: this.pickerHSVA.h, s: 1, v: 255, a: 1 });
-			const rgba = hsvaToRgba(this.pickerHSVA);
-
-			this.$el.style.setProperty("--saturation-picker-hue", `rgb(${hsva.r}, ${hsva.g}, ${hsva.b})`);
-			this.$el.style.setProperty("--opacity-picker-color", `rgb(${rgba.r}, ${rgba.g}, ${rgba.b})`);
-		},
-		updateColor() {
-			if (this.state !== "Idle") return;
-
-			this.pickerHSVA = rgbaToHsva(this.color);
-
-			this.updateRects();
-
-			this.setSaturationCursorPosition(this.pickerHSVA.s * this.pickerSaturationRect.width, (1 - this.pickerHSVA.v / 255) * this.pickerSaturationRect.height);
-			this.setOpacityCursorPosition((1 - this.pickerHSVA.a) * this.pickerOpacityRect.height);
-			this.setHueCursorPosition((1 - this.pickerHSVA.h) * this.pickerHueRect.height);
-
-			this.updateHue();
-		},
+	},
+	unmounted() {
+		this.removeEvents();
 	},
 	components: {
+		FloatingMenu,
 		LayoutCol,
 		LayoutRow,
 	},

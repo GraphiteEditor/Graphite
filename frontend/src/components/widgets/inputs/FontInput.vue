@@ -73,8 +73,8 @@ import { defineComponent, nextTick, type PropType } from "vue";
 
 import { type MenuListEntry } from "@/wasm-communication/messages";
 
-import type FloatingMenu from "@/components/floating-menus/FloatingMenu.vue";
 import MenuList from "@/components/floating-menus/MenuList.vue";
+import type FloatingMenu from "@/components/layout/FloatingMenu.vue";
 import type LayoutCol from "@/components/layout/LayoutCol.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";

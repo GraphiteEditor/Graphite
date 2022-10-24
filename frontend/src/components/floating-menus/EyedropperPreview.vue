@@ -85,7 +85,7 @@
 <script lang="ts">
 import { defineComponent, type PropType } from "vue";
 
-import FloatingMenu from "@/components/floating-menus/FloatingMenu.vue";
+import FloatingMenu from "@/components/layout/FloatingMenu.vue";
 
 // Should be equal to the width and height of the canvas in the CSS above
 const ZOOM_WINDOW_DIMENSIONS_EXPANDED = 110;

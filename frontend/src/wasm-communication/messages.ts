@@ -100,13 +100,6 @@ export type ActionKeys = { keys: KeysGroup };
 
 export type MouseMotion = string;
 
-export type RGBA = {
-	r: number;
-	g: number;
-	b: number;
-	a: number;
-};
-
 export type HSVA = {
 	h: number;
 	s: number;
@@ -114,26 +107,88 @@ export type HSVA = {
 	a: number;
 };
 
-const To255Scale = Transform(({ value }: { value: number }) => value * 255);
+// All channels range from 0 to 1
 export class Color {
-	@To255Scale
+	constructor();
+
+	constructor(hsva: HSVA);
+
+	constructor(red: number, green: number, blue: number, alpha: number);
+
+	constructor(hsvaOrRed?: HSVA | number, green?: number, blue?: number, alpha?: number) {
+		// Empty constructor
+		if (hsvaOrRed === undefined) {
+			this.red = 0;
+			this.green = 0;
+			this.blue = 0;
+			this.alpha = 0;
+		}
+		// HSVA constructor
+		else if (typeof hsvaOrRed !== "number" && green === undefined && blue === undefined && alpha === undefined) {
+			const { h, s, v } = hsvaOrRed;
+			const convert = (n: number): number => {
+				const k = (n + h * 6) % 6;
+				return v - v * s * Math.max(Math.min(...[k, 4 - k, 1]), 0);
+			};
+
+			this.red = convert(5);
+			this.green = convert(3);
+			this.blue = convert(1);
+			this.alpha = hsvaOrRed.a;
+		}
+		// RGBA constructor
+		else if (typeof hsvaOrRed === "number" && typeof green === "number" && typeof blue === "number" && typeof alpha === "number") {
+			this.red = hsvaOrRed;
+			this.green = green;
+			this.blue = blue;
+			this.alpha = alpha;
+		}
+	}
+
 	readonly red!: number;
 
-	@To255Scale
 	readonly green!: number;
 
-	@To255Scale
 	readonly blue!: number;
 
 	readonly alpha!: number;
 
-	toRgba(): RGBA {
-		return { r: this.red, g: this.green, b: this.blue, a: this.alpha };
+	toRgbCSS(): string {
+		return `rgb(${this.red * 255}, ${this.green * 255}, ${this.blue * 255})`;
 	}
 
 	toRgbaCSS(): string {
-		const { r, g, b, a } = this.toRgba();
-		return `rgba(${r}, ${g}, ${b}, ${a})`;
+		return `rgba(${this.red * 255}, ${this.green * 255}, ${this.blue * 255}, ${this.alpha})`;
+	}
+
+	toHSVA(): HSVA {
+		const { red: r, green: g, blue: b, alpha: a } = this;
+
+		const max = Math.max(r, g, b);
+		const min = Math.min(r, g, b);
+
+		const d = max - min;
+		const s = max === 0 ? 0 : d / max;
+		const v = max;
+
+		let h = 0;
+		if (max !== min) {
+			switch (max) {
+				case r:
+					h = (g - b) / d + (g < b ? 6 : 0);
+					break;
+				case g:
+					h = (b - r) / d + 2;
+					break;
+				case b:
+					h = (r - g) / d + 4;
+					break;
+				default:
+			}
+			h /= 6;
+		}
+
+		return { h, s, v, a };
 	}
 }
 
