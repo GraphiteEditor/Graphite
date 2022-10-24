@@ -255,7 +255,10 @@ impl Fsm for PathToolFsmState {
 					let shift_pressed = input.keyboard.get(shift_mirror_distance as usize);
 					if shift_pressed != tool_data.shift_debounce {
 						tool_data.shift_debounce = shift_pressed;
-						tool_data.shape_editor.toggle_handle_mirroring_on_selected(false, true, responses);
+						// Only on shift down
+						if shift_pressed {
+							tool_data.shape_editor.toggle_handle_mirroring_on_selected(false, true, responses);
+						}
 					}
 
 					// Move the selected points by the mouse position
@@ -392,7 +395,7 @@ impl Fsm for PathToolFsmState {
 					key_groups: vec![KeysGroup(vec![Key::Shift])],
 					key_groups_mac: None,
 					mouse: None,
-					label: String::from("Share Lengths of Aligned Handles"),
+					label: String::from("Share Lengths of Aligned Handles (Toggle)"),
 					plus: false,
 				},
 			])]),
