@@ -279,7 +279,62 @@ impl Fsm for PenToolFsmState {
 					// Enter the dragging handle state while the mouse is held down, allowing the user to move the mouse and position the handle
 					PenToolFsmState::DraggingHandle
 				}
-				(PenToolFsmState::PlacingAnchor, PenToolMessage::DragStart) => PenToolFsmState::DraggingHandle,
+				(PenToolFsmState::PlacingAnchor, PenToolMessage::DragStart) => {
+					// If you place the anchor on top of the previous anchor then you break the mirror
+					let mut check_break = || {
+						// Get subpath
+						let layer_path = tool_data.path.as_ref()?;
+						let subpath = document.graphene_document.layer(layer_path).ok().and_then(|layer| layer.as_subpath())?;
+
+						// Get the last manipulator group and the one previous to that
+						let mut manipulator_groups = subpath.manipulator_groups().enumerate();
+						let (&last_id, last_manipulator_group) = if tool_data.from_start { manipulator_groups.next()? } else { manipulator_groups.next_back()? };
+						let previous = if tool_data.from_start { manipulator_groups.next() } else { manipulator_groups.next_back() };
+
+						// Get correct handle types
+						let outwards_handle = if tool_data.from_start { ManipulatorType::InHandle } else { ManipulatorType::OutHandle };
+
+						// Get manipulator points
+						let last_anchor = last_manipulator_group.points[ManipulatorType::Anchor].as_ref()?;
+
+						if let Some((previous_id, previous_anchor)) = previous
+							.as_ref()
+							.and_then(|(&id, manipulator_group)| manipulator_group.points[ManipulatorType::Anchor].as_ref().map(|x| (id, x)))
+						{
+							// Break the control
+							if transform.transform_point2(last_anchor.position).distance_squared(transform.transform_point2(previous_anchor.position)) < crate::consts::SNAP_POINT_TOLERANCE.powi(2) {
+								// Remove the point that has just been placed
+								let op = Operation::RemoveManipulatorGroup {
+									layer_path: layer_path.clone(),
+									id: last_id,
+								};
+								responses.push_back(op.into());
+
+								// Move the in handle of the previous anchor to on top of the previous position
+								let op = Operation::MoveManipulatorPoint {
+									layer_path: layer_path.clone(),
+									id: previous_id,
+									manipulator_type: outwards_handle,
+									position: previous_anchor.position.into(),
+								};
+								responses.push_back(op.into());
+
+								// Stop the handles on the last point from mirroring
+								let op = Operation::SetManipulatorHandleMirroring {
+									layer_path: layer_path.clone(),
+									id: previous_id,
+									mirror_distance: false,
+									mirror_angle: false,
+								};
+								responses.push_back(op.into());
+
+								tool_data.should_mirror = false;
+							}
+						}
+						None
+					};
+					check_break().unwrap_or(PenToolFsmState::DraggingHandle)
+				}
 				(PenToolFsmState::DraggingHandle, PenToolMessage::DragStop) => {
 					let mut process = || {
 						// Get subpath
@@ -391,8 +446,9 @@ impl Fsm for PenToolFsmState {
 						};
 						responses.push_back(msg.into());
 
+						let should_mirror = !input.keyboard.get(break_handle as usize) && tool_data.should_mirror;
 						// Mirror handle of last segment
-						if !input.keyboard.get(break_handle as usize) && tool_data.should_mirror {
+						if should_mirror {
 							// Could also be written as `last_anchor.position * 2 - pos` but this way avoids overflow/underflow better
 							let pos = last_anchor.position - (pos - last_anchor.position);
 
@@ -404,6 +460,15 @@ impl Fsm for PenToolFsmState {
 							};
 							responses.push_back(msg.into());
 						}
+
+						// Update the mirror status of the currently modifying point
+						let op = Operation::SetManipulatorHandleMirroring {
+							layer_path: layer_path.clone(),
+							id: last_id,
+							mirror_distance: should_mirror,
+							mirror_angle: should_mirror,
+						};
+						responses.push_back(op.into());
 
 						Some(())
 					};
@@ -440,7 +505,12 @@ impl Fsm for PenToolFsmState {
 						}
 
 						if let Some(relative) = previous.as_ref().and_then(|(_, manipulator_group)| manipulator_group.points[ManipulatorType::Anchor].as_ref()) {
-							pos = compute_snapped_angle(input, snap_angle, pos, relative.position);
+							// Snap to the previously placed point (to show break control)
+							if mouse.distance_squared(transform.transform_point2(relative.position)) < crate::consts::SNAP_POINT_TOLERANCE.powi(2) {
+								pos = relative.position;
+							} else {
+								pos = compute_snapped_angle(input, snap_angle, pos, relative.position);
+							}
 						}
 
 						for manipulator_type in [ManipulatorType::Anchor, ManipulatorType::InHandle, ManipulatorType::OutHandle] {
