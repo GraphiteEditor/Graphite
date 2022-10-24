@@ -1,5 +1,5 @@
 use crate::messages::frontend::utility_types::MouseCursorIcon;
-use crate::messages::input_mapper::utility_types::input_keyboard::MouseMotion;
+use crate::messages::input_mapper::utility_types::input_keyboard::{Key, KeysGroup, MouseMotion};
 use crate::messages::layout::utility_types::layout_widget::PropertyHolder;
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::{DocumentToolData, EventToMessageMap, Fsm, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
@@ -177,8 +177,13 @@ impl Fsm for EyedropperToolFsmState {
 					plus: false,
 				},
 			])]),
-			EyedropperToolFsmState::SamplingPrimary => HintData(vec![]),
-			EyedropperToolFsmState::SamplingSecondary => HintData(vec![]),
+			EyedropperToolFsmState::SamplingPrimary | EyedropperToolFsmState::SamplingSecondary => HintData(vec![HintGroup(vec![HintInfo {
+				key_groups: vec![KeysGroup(vec![Key::Escape])],
+				key_groups_mac: None,
+				mouse: None,
+				label: String::from("Cancel"),
+				plus: false,
+			}])]),
 		};
 
 		responses.push_back(FrontendMessage::UpdateInputHints { hint_data }.into());
