@@ -4,7 +4,7 @@
 			<WidgetLayout :layout="layerTreeOptionsLayout" />
 		</LayoutRow>
 		<LayoutRow class="layer-tree-rows" :scrollableY="true">
-			<LayoutCol class="list" ref="layerTreeList" @click="() => deselectAllLayers()" @dragover="(e: DragEvent) => draggable && updateInsertLine(e)" @dragend="() => draggable && drop()">
+			<LayoutCol class="list" ref="list" @click="() => deselectAllLayers()" @dragover="(e: DragEvent) => draggable && updateInsertLine(e)" @dragend="() => draggable && drop()">
 				<LayoutRow
 					class="layer-row"
 					v-for="(listing, index) in layers"
@@ -13,7 +13,7 @@
 				>
 					<LayoutRow class="visibility">
 						<IconButton
-							:action="(e: MouseEvent) => (toggleLayerVisibility(listing.entry.path), e?.stopPropagation())"
+							:action="(e?: MouseEvent) => (toggleLayerVisibility(listing.entry.path), e?.stopPropagation())"
 							:size="24"
 							:icon="listing.entry.visible ? 'EyeVisible' : 'EyeHidden'"
 							:title="listing.entry.visible ? 'Visible' : 'Hidden'"
@@ -326,13 +326,14 @@ export default defineComponent({
 		async onEditLayerName(listing: LayerListingInfo) {
 			if (listing.editingName) return;
 
+			listing.editingName = true;
 			this.draggable = false;
 
-			listing.editingName = true;
-			const tree: HTMLElement = (this.$refs.layerTreeList as typeof LayoutCol).$el;
-
 			await nextTick();
-			(tree.querySelector("[data-text-input]:not([disabled])") as HTMLInputElement).select();
+
+			const tree: HTMLDivElement | undefined = (this.$refs.list as typeof LayoutCol | undefined)?.$el;
+			const textInput: HTMLInputElement | undefined = tree?.querySelector("[data-text-input]:not([disabled])") || undefined;
+			if (textInput) textInput.select();
 		},
 		onEditLayerNameChange(listing: LayerListingInfo, inputElement: EventTarget | undefined) {
 			// Eliminate duplicate events
@@ -368,7 +369,7 @@ export default defineComponent({
 		async deselectAllLayers() {
 			this.editor.instance.deselectAllLayers();
 		},
-		calculateDragIndex(tree: HTMLElement, clientY: number): DraggingData {
+		calculateDragIndex(tree: HTMLDivElement, clientY: number): DraggingData {
 			const treeChildren = tree.children;
 			const treeOffset = tree.getBoundingClientRect().top;
 
@@ -438,16 +439,16 @@ export default defineComponent({
 				event.dataTransfer.dropEffect = "move";
 				event.dataTransfer.effectAllowed = "move";
 			}
-			const tree = (this.$refs.layerTreeList as typeof LayoutCol).$el;
 
-			this.draggingData = this.calculateDragIndex(tree, event.clientY);
+			const tree: HTMLDivElement | undefined = (this.$refs.list as typeof LayoutCol | undefined)?.$el;
+			if (tree) this.draggingData = this.calculateDragIndex(tree, event.clientY);
 		},
 		updateInsertLine(event: DragEvent) {
 			// Stop the drag from being shown as cancelled
 			event.preventDefault();
 
-			const tree: HTMLElement = (this.$refs.layerTreeList as typeof LayoutCol).$el;
-			this.draggingData = this.calculateDragIndex(tree, event.clientY);
+			const tree: HTMLDivElement | undefined = (this.$refs.list as typeof LayoutCol | undefined)?.$el;
+			if (tree) this.draggingData = this.calculateDragIndex(tree, event.clientY);
 		},
 		async drop() {
 			if (this.draggingData) {

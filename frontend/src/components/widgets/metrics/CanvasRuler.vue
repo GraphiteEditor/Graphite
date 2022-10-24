@@ -1,5 +1,5 @@
 <template>
-	<div class="canvas-ruler" :class="direction.toLowerCase()" ref="rulerRef">
+	<div class="canvas-ruler" :class="direction.toLowerCase()" ref="canvasRuler">
 		<svg :style="svgBounds">
 			<path :d="svgPath" />
 			<text v-for="(svgText, index) in svgTexts" :key="index" :transform="svgText.transform">{{ svgText.text }}</text>
@@ -122,9 +122,9 @@ export default defineComponent({
 	},
 	methods: {
 		resize() {
-			if (!this.$refs.rulerRef) return;
+			const rulerElement = this.$refs.canvasRuler as HTMLDivElement | undefined;
+			if (!rulerElement) return;
 
-			const rulerElement = this.$refs.rulerRef as HTMLElement;
 			const isVertical = this.direction === "Vertical";
 
 			const newLength = isVertical ? rulerElement.clientHeight : rulerElement.clientWidth;

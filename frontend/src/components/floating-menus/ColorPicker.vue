@@ -135,7 +135,7 @@ export default defineComponent({
 		const hsva = this.color.toHSVA();
 
 		return {
-			draggingPickerTrack: undefined as HTMLElement | undefined,
+			draggingPickerTrack: undefined as HTMLDivElement | undefined,
 			hue: hsva.h,
 			saturation: hsva.s,
 			value: hsva.v,
@@ -149,7 +149,7 @@ export default defineComponent({
 	},
 	methods: {
 		beginDrag(e: PointerEvent) {
-			const target = (e.target || undefined) as HTMLElement | undefined;
+			const target = (e.target || undefined) as HTMLDivElement | undefined;
 			this.draggingPickerTrack = target?.closest("[data-saturation-value-picker], [data-hue-picker], [data-opacity-picker]") || undefined;
 
 			this.addEvents();

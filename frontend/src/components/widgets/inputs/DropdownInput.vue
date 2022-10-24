@@ -6,9 +6,8 @@
 			:style="{ minWidth: `${minWidth}px` }"
 			:title="tooltip"
 			@click="() => !disabled && (open = true)"
-			@blur="(e: FocusEvent) => blur(e)"
+			@blur="(e: FocusEvent) => blur(e.target || undefined)"
 			@keydown="(e: KeyboardEvent) => keydown(e)"
-			ref="dropdownBox"
 			tabindex="0"
 			data-hover-menu-spawner
 		>
@@ -155,10 +154,12 @@ export default defineComponent({
 			return DASH_ENTRY;
 		},
 		keydown(e: KeyboardEvent) {
-			(this.$refs.menuList as typeof MenuList).keydown(e, false);
+			(this.$refs.menuList as typeof MenuList | undefined)?.keydown(e, false);
 		},
-		blur(e: FocusEvent) {
-			if ((e.target as HTMLElement).closest("[data-dropdown-input]") !== this.$el) this.open = false;
+		blur(target: EventTarget | undefined) {
+			const blurTarget = (target as HTMLDivElement | undefined)?.closest("[data-dropdown-input]");
+			const self: HTMLDivElement | undefined = this.$el;
+			if (blurTarget !== self) this.open = false;
 		},
 	},
 	components: {

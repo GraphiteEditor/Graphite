@@ -20,7 +20,7 @@
 				:direction="'Bottom'"
 				:minWidth="240"
 				:drawIcon="true"
-				:ref="(ref: MenuListInstance) => ref && (entry.ref = ref)"
+				:ref="(ref: MenuListInstance): void => ref && (entry.ref = ref) && undefined"
 			/>
 		</div>
 	</div>
@@ -127,13 +127,15 @@ export default defineComponent({
 			}
 
 			// Focus the target so that keyboard inputs are sent to the dropdown
-			(target as HTMLElement)?.focus();
+			(target as HTMLDivElement)?.focus();
 
 			if (menuListEntry.ref) menuListEntry.ref.isOpen = true;
 			else throw new Error("The menu bar floating menu has no associated ref");
 		},
 		blur(menuListEntry: MenuListEntry, target: EventTarget | undefined) {
-			if ((target as HTMLElement)?.closest("[data-menu-bar-input]") !== this.$el && menuListEntry.ref) menuListEntry.ref.isOpen = false;
+			const blurTarget = (target as HTMLDivElement | undefined)?.closest("[data-menu-bar-input]");
+			const self: HTMLDivElement | undefined = this.$el;
+			if (blurTarget !== self && menuListEntry.ref) menuListEntry.ref.isOpen = false;
 		},
 	},
 	data() {

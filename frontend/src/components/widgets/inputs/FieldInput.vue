@@ -140,6 +140,28 @@ export default defineComponent({
 			macKeyboardLayout: platformIsMac(),
 		};
 	},
+	methods: {
+		// Select (highlight) all the text. For technical reasons, it is necessary to pass the current text.
+		selectAllText(currentText: string) {
+			const inputElement = this.$refs.input as HTMLInputElement | HTMLTextAreaElement | undefined;
+			if (!inputElement) return;
+
+			// Setting the value directly is required to make `inputElement.select()` work
+			inputElement.value = currentText;
+
+			inputElement.select();
+		},
+		unFocus() {
+			(this.$refs.input as HTMLInputElement | HTMLTextAreaElement | undefined)?.blur();
+		},
+		getInputElementValue(): string | undefined {
+			return (this.$refs.input as HTMLInputElement | HTMLTextAreaElement | undefined)?.value;
+		},
+		setInputElementValue(value: string) {
+			const inputElement = this.$refs.input as HTMLInputElement | HTMLTextAreaElement | undefined;
+			if (inputElement) inputElement.value = value;
+		},
+	},
 	computed: {
 		inputValue: {
 			get() {

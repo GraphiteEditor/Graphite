@@ -1,7 +1,7 @@
 <template>
 	<LayoutRow class="checkbox-input">
 		<input type="checkbox" :id="`checkbox-input-${id}`" :checked="checked" @change="(e) => $emit('update:checked', (e.target as HTMLInputElement).checked)" />
-		<label :for="`checkbox-input-${id}`" tabindex="0" @keydown.enter="(e) => ((e.target as HTMLElement).previousSibling as HTMLInputElement).click()" :title="tooltip">
+		<label :for="`checkbox-input-${id}`" tabindex="0" @keydown.enter="(e) => ((e.target as HTMLLabelElement).previousSibling as HTMLInputElement).click()" :title="tooltip">
 			<LayoutRow class="checkbox-box">
 				<IconLabel :icon="icon" />
 			</LayoutRow>

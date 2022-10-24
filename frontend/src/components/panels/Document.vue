@@ -341,10 +341,8 @@ export default defineComponent({
 		},
 		canvasPointerDown(e: PointerEvent) {
 			const onEditbox = e.target instanceof HTMLDivElement && e.target.contentEditable;
-			if (!onEditbox) {
-				const canvas = this.$refs.canvas as HTMLElement;
-				canvas.setPointerCapture(e.pointerId);
-			}
+
+			if (!onEditbox) (this.$refs.canvas as HTMLDivElement | undefined)?.setPointerCapture(e.pointerId);
 		},
 		// Update rendered SVGs
 		async updateDocumentArtwork(svg: string) {
@@ -354,7 +352,9 @@ export default defineComponent({
 			await nextTick();
 
 			if (this.textInput) {
-				const canvas = this.$refs.canvas as HTMLElement;
+				const canvas = this.$refs.canvas as HTMLDivElement | undefined;
+				if (!canvas) return;
+
 				const foreignObject = canvas.getElementsByTagName("foreignObject")[0] as SVGForeignObjectElement;
 				if (foreignObject.children.length > 0) return;
 
@@ -496,17 +496,15 @@ export default defineComponent({
 		// Resize elements to render the new viewport size
 		viewportResize() {
 			// Resize the canvas
-			const canvas = this.$refs.canvas as HTMLElement;
-			const width = Math.ceil(parseFloat(getComputedStyle(canvas).width));
-			const height = Math.ceil(parseFloat(getComputedStyle(canvas).height));
-			this.canvasSvgWidth = width;
-			this.canvasSvgHeight = height;
+			const canvas = this.$refs.canvas as HTMLDivElement | undefined;
+			if (!canvas) return;
+
+			this.canvasSvgWidth = Math.ceil(parseFloat(getComputedStyle(canvas).width));
+			this.canvasSvgHeight = Math.ceil(parseFloat(getComputedStyle(canvas).height));
 
 			// Resize the rulers
-			const rulerHorizontal = this.$refs.rulerHorizontal as typeof CanvasRuler;
-			const rulerVertical = this.$refs.rulerVertical as typeof CanvasRuler;
-			rulerHorizontal?.resize();
-			rulerVertical?.resize();
+			(this.$refs.rulerHorizontal as typeof CanvasRuler | undefined)?.resize();
+			(this.$refs.rulerVertical as typeof CanvasRuler | undefined)?.resize();
 		},
 		canvasDimensionCSS(dimension: number | undefined): string {
 			// Temporary placeholder until the first actual value is populated

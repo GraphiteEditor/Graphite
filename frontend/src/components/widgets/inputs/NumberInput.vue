@@ -130,15 +130,12 @@ export default defineComponent({
 
 			this.editing = true;
 
-			const inputElement = (this.$refs.fieldInput as typeof FieldInput).$refs.input as HTMLInputElement;
-			// Setting the value directly is required to make `inputElement.select()` work
-			inputElement.value = this.text;
-			inputElement.select();
+			(this.$refs.fieldInput as typeof FieldInput | undefined)?.selectAllText(this.text);
 		},
 		// Called only when `value` is changed from the <input> element via user input and committed, either with the
-		// enter key (via the `change` event) or when the <input> element is defocused (with the `blur` event binding)
+		// enter key (via the `change` event) or when the <input> element is unfocused (with the `blur` event binding)
 		onTextChanged() {
-			// The `inputElement.blur()` call at the bottom of this function causes itself to be run again, so this check skips a second run
+			// The `unFocus()` call at the bottom of this function and in `onCancelTextChange()` causes this function to be run again, so this check skips a second run
 			if (!this.editing) return;
 
 			const parsed = parseFloat(this.text);
@@ -148,16 +145,14 @@ export default defineComponent({
 
 			this.editing = false;
 
-			const inputElement = (this.$refs.fieldInput as typeof FieldInput)?.$refs?.input as HTMLInputElement | undefined;
-			inputElement?.blur();
+			(this.$refs.fieldInput as typeof FieldInput | undefined)?.unFocus();
 		},
 		onCancelTextChange() {
 			this.updateValue(undefined);
 
 			this.editing = false;
 
-			const inputElement = (this.$refs.fieldInput as typeof FieldInput).$refs.input as HTMLInputElement;
-			inputElement.blur();
+			(this.$refs.fieldInput as typeof FieldInput | undefined)?.unFocus();
 		},
 		onIncrement(direction: IncrementDirection) {
 			if (this.value === undefined) return;
