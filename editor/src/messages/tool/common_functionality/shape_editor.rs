@@ -361,7 +361,7 @@ impl ShapeEditor {
 
 				// To find the length of the new tangent we just take the distance to the anchor and divide by 3 (pretty arbitrary)
 				let length_previous = previous_position.map(|point| (point.position - anchor_position).length() / 3.);
-				let length_next = next_position.map(|point| (point.position - anchor_position) / 3.);
+				let length_next = next_position.map(|point| (point.position - anchor_position).length() / 3.);
 
 				// Use the position relative to the anchor
 				let relative_previous_normalised = previous_position.map(|point| (point.position - anchor_position).normalize());
