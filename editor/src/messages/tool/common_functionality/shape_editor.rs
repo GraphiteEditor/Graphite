@@ -31,7 +31,7 @@ pub struct ShapeEditor {
 // TODO Consider keeping a list of selected manipulators to minimize traversals of the layers
 impl ShapeEditor {
 	/// Select the first point within the selection threshold.
-	/// Returns the points if found, None otherwise.
+	/// Returns a tuple of the points if found and the offset, or None otherwise.
 	pub fn select_point(
 		&self,
 		document: &Document,
@@ -39,7 +39,7 @@ impl ShapeEditor {
 		select_threshold: f64,
 		add_to_selection: bool,
 		responses: &mut VecDeque<Message>,
-	) -> Option<Vec<(&[LayerId], u64, ManipulatorType)>> {
+	) -> Option<(Vec<(&[LayerId], u64, ManipulatorType)>, DVec2)> {
 		if self.selected_layers.is_empty() {
 			return None;
 		}
@@ -98,12 +98,15 @@ impl ShapeEditor {
 					}
 					.into(),
 				);
-				// Snap the selected point to the cursor
-				if let Ok(viewspace) = document.generate_transform_relative_to_viewport(shape_layer_path) {
-					self.move_selected_points(mouse_position - viewspace.transform_point2(point_position), responses)
-				}
 
-				return Some(points);
+				// Offset to snap the selected point to the cursor
+				let offset = if let Ok(viewspace) = document.generate_transform_relative_to_viewport(shape_layer_path) {
+					mouse_position - viewspace.transform_point2(point_position)
+				} else {
+					DVec2::ZERO
+				};
+
+				return Some((points, offset));
 			} else {
 				responses.push_back(
 					Operation::DeselectManipulatorPoints {
