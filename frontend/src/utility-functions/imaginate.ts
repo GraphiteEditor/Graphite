@@ -73,8 +73,7 @@ export async function imaginateGenerate(
 		editor.instance.setImaginateGeneratingStatus(documentId, layerPath, percent, newStatus);
 
 		// Send the backend a blob URL for the final image
-		const blobURL = URL.createObjectURL(blob);
-		editor.instance.setImaginateBlobURL(documentId, layerPath, blobURL, parameters.resolution.x, parameters.resolution.y);
+		preloadAndSetImaginateBlobURL(editor, blob, documentId, layerPath, parameters.resolution.x, parameters.resolution.y);
 
 		// Send the backend the blob data to be stored persistently in the layer
 		const u8Array = new Uint8Array(await blob.arrayBuffer());
@@ -110,6 +109,17 @@ export async function imaginateTerminate(hostname: string, documentId: bigint, l
 export async function imaginateCheckConnection(hostname: string, editor: Editor): Promise<void> {
 	const serverReached = await checkConnection(hostname);
 	editor.instance.setImaginateServerStatus(serverReached);
+}
+
+export async function preloadAndSetImaginateBlobURL(editor: Editor, blob: Blob, documentId: bigint, layerPath: BigUint64Array, width: number, height: number): Promise<void> {
+	const blobURL = URL.createObjectURL(blob);
+
+	// Pre-decode the image so it is ready to be drawn instantly once it's placed into the viewport SVG
+	const image = new Image();
+	image.src = blobURL;
+	await image.decode();
+
+	editor.instance.setImaginateBlobURL(documentId, layerPath, blobURL, width, height);
 }
 
 // ABORTING AND RESETTING HELPERS
@@ -148,8 +158,7 @@ function scheduleNextPollingUpdate(
 			const [blob, percentComplete] = await pollImage(hostname);
 			if (terminated) return;
 
-			const blobURL = URL.createObjectURL(blob);
-			editor.instance.setImaginateBlobURL(documentId, layerPath, blobURL, resolution.x, resolution.y);
+			preloadAndSetImaginateBlobURL(editor, blob, documentId, layerPath, resolution.x, resolution.y);
 			editor.instance.setImaginateGeneratingStatus(documentId, layerPath, percentComplete, "Generating");
 
 			scheduleNextPollingUpdate(interval, nextTimeoutBegan, 0, editor, hostname, documentId, layerPath, resolution);
