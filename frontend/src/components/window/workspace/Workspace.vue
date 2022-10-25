@@ -7,7 +7,7 @@
 						:panelType="portfolio.state.documents.length > 0 ? 'Document' : undefined"
 						:tabCloseButtons="true"
 						:tabMinWidths="true"
-						:tabLabels="portfolio.state.documents.map((doc) => ({ name: doc.displayName, tooltip: `Document ID ${doc.id}` }))"
+						:tabLabels="documentTabLabels"
 						:clickAction="(tabIndex: number) => editor.instance.selectDocument(portfolio.state.documents[tabIndex].id)"
 						:closeAction="(tabIndex: number) => editor.instance.closeDocumentWithConfirmation(portfolio.state.documents[tabIndex].id)"
 						:tabActiveIndex="portfolio.state.activeDocumentIndex"
@@ -81,6 +81,16 @@ export default defineComponent({
 		},
 		nodeGraphVisible() {
 			return this.workspace.state.nodeGraphVisible;
+		},
+		documentTabLabels() {
+			return this.portfolio.state.documents.map((doc) => {
+				const name = doc.displayName;
+
+				if (!this.editor.instance.inDevelopmentMode()) return { name };
+
+				const tooltip = `Document ID ${doc.id}`;
+				return { name, tooltip };
+			});
 		},
 	},
 	methods: {

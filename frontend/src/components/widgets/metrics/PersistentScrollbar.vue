@@ -162,15 +162,15 @@ export default defineComponent({
 	methods: {
 		trackLength(): number | undefined {
 			const track = this.$refs.scrollTrack as HTMLDivElement | undefined;
-			if (!track) return undefined;
+			if (track) return this.direction === "Vertical" ? track.clientHeight - this.handleLength : track.clientWidth;
 
-			return this.direction === "Vertical" ? track.clientHeight - this.handleLength : track.clientWidth;
+			return undefined;
 		},
 		trackOffset(): number | undefined {
 			const track = this.$refs.scrollTrack as HTMLDivElement | undefined;
-			if (!track) return undefined;
+			if (track) return this.direction === "Vertical" ? track.getBoundingClientRect().top : track.getBoundingClientRect().left;
 
-			return this.direction === "Vertical" ? track.getBoundingClientRect().top : track.getBoundingClientRect().left;
+			return undefined;
 		},
 		clampHandlePosition(newPos: number) {
 			const clampedPosition = Math.min(Math.max(newPos, 0), 1);

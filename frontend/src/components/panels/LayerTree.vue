@@ -56,8 +56,8 @@
 								:disabled="!listing.editingName"
 								@blur="() => onEditLayerNameDeselect(listing)"
 								@keydown.esc="onEditLayerNameDeselect(listing)"
-								@keydown.enter="(e) => onEditLayerNameChange(listing, e.target || undefined)"
-								@change="(e) => onEditLayerNameChange(listing, e.target || undefined)"
+								@keydown.enter="(e) => onEditLayerNameChange(listing, e)"
+								@change="(e) => onEditLayerNameChange(listing, e)"
 							/>
 						</LayoutRow>
 						<div class="thumbnail" v-html="listing.entry.thumbnail"></div>
@@ -333,17 +333,17 @@ export default defineComponent({
 
 			const tree: HTMLDivElement | undefined = (this.$refs.list as typeof LayoutCol | undefined)?.$el;
 			const textInput: HTMLInputElement | undefined = tree?.querySelector("[data-text-input]:not([disabled])") || undefined;
-			if (textInput) textInput.select();
+			textInput?.select();
 		},
-		onEditLayerNameChange(listing: LayerListingInfo, inputElement: EventTarget | undefined) {
+		onEditLayerNameChange(listing: LayerListingInfo, e: Event) {
 			// Eliminate duplicate events
 			if (!listing.editingName) return;
 
 			this.draggable = true;
 
-			const name = (inputElement as HTMLInputElement).value;
+			const name = (e.target as HTMLInputElement | undefined)?.value;
 			listing.editingName = false;
-			this.editor.instance.setLayerName(listing.entry.path, name);
+			if (name) this.editor.instance.setLayerName(listing.entry.path, name);
 		},
 		async onEditLayerNameDeselect(listing: LayerListingInfo) {
 			this.draggable = true;

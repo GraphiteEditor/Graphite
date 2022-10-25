@@ -1,7 +1,7 @@
 <template>
 	<LayoutRow class="checkbox-input">
 		<input type="checkbox" :id="`checkbox-input-${id}`" :checked="checked" @change="(e) => $emit('update:checked', (e.target as HTMLInputElement).checked)" />
-		<label :for="`checkbox-input-${id}`" tabindex="0" @keydown.enter="(e) => ((e.target as HTMLLabelElement).previousSibling as HTMLInputElement).click()" :title="tooltip">
+		<label :for="`checkbox-input-${id}`" tabindex="0" @keydown.enter="(e) => toggleCheckboxFromLabel(e)" :title="tooltip">
 			<LayoutRow class="checkbox-box">
 				<IconLabel :icon="icon" />
 			</LayoutRow>
@@ -79,6 +79,11 @@ export default defineComponent({
 	methods: {
 		isChecked() {
 			return this.checked;
+		},
+		toggleCheckboxFromLabel(e: KeyboardEvent) {
+			const target = (e.target || undefined) as HTMLLabelElement | undefined;
+			const previousSibling = (target?.previousSibling || undefined) as HTMLInputElement | undefined;
+			previousSibling?.click();
 		},
 	},
 	components: {

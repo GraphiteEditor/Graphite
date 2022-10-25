@@ -359,7 +359,7 @@ export default defineComponent({
 			}
 		},
 		pointerMoveHandler(e: PointerEvent) {
-			const target = e.target as Element | undefined;
+			const target = e.target as HTMLElement | undefined;
 			const pointerOverFloatingMenuKeepOpen = target?.closest("[data-hover-menu-keep-open]") as HTMLElement | undefined;
 			const pointerOverFloatingMenuSpawner = target?.closest("[data-hover-menu-spawner]") as HTMLElement | undefined;
 			const floatingMenu: HTMLDivElement | undefined = this.$el;

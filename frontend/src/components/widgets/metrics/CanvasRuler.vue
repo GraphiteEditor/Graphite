@@ -122,12 +122,12 @@ export default defineComponent({
 	},
 	methods: {
 		resize() {
-			const rulerElement = this.$refs.canvasRuler as HTMLDivElement | undefined;
-			if (!rulerElement) return;
+			const canvasRuler = this.$refs.canvasRuler as HTMLDivElement | undefined;
+			if (!canvasRuler) return;
 
 			const isVertical = this.direction === "Vertical";
 
-			const newLength = isVertical ? rulerElement.clientHeight : rulerElement.clientWidth;
+			const newLength = isVertical ? canvasRuler.clientHeight : canvasRuler.clientWidth;
 			const roundedUp = (Math.floor(newLength / this.majorMarkSpacing) + 1) * this.majorMarkSpacing;
 
 			if (roundedUp !== this.rulerLength) {

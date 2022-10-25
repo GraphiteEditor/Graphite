@@ -274,8 +274,8 @@ export default defineComponent({
 			const panel: HTMLDivElement | undefined = this.$el;
 			if (!panel) return;
 
-			const newActiveTab = panel.querySelectorAll("[data-tab]")[newIndex];
-			newActiveTab.scrollIntoView();
+			const newActiveTab = panel.querySelectorAll("[data-tab]")[newIndex] as HTMLDivElement | undefined;
+			newActiveTab?.scrollIntoView();
 		},
 	},
 	components: {

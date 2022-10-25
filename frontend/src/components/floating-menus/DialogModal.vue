@@ -68,8 +68,6 @@
 <script lang="ts">
 import { defineComponent } from "vue";
 
-import type { TextButtonWidget } from "@/wasm-communication/messages";
-
 import FloatingMenu from "@/components/layout/FloatingMenu.vue";
 import LayoutCol from "@/components/layout/LayoutCol.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";

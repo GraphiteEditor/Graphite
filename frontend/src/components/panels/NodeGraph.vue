@@ -447,6 +447,7 @@ export default defineComponent({
 			} else {
 				this.panning = true;
 			}
+
 			const graphDiv: HTMLDivElement | undefined = (this.$refs.graph as typeof LayoutCol | undefined)?.$el;
 			graphDiv?.setPointerCapture(e.pointerId);
 		},
@@ -472,13 +473,13 @@ export default defineComponent({
 		},
 	},
 	mounted() {
-		const outputPort1 = document.querySelectorAll(`[data-port="${"output"}"]`)[4] as HTMLDivElement;
-		const inputPort1 = document.querySelectorAll(`[data-port="${"input"}"]`)[1] as HTMLDivElement;
-		this.createWirePath(outputPort1, inputPort1, true, true);
+		const outputPort1 = document.querySelectorAll(`[data-port="${"output"}"]`)[4] as HTMLDivElement | undefined;
+		const inputPort1 = document.querySelectorAll(`[data-port="${"input"}"]`)[1] as HTMLDivElement | undefined;
+		if (outputPort1 && inputPort1) this.createWirePath(outputPort1, inputPort1, true, true);
 
-		const outputPort2 = document.querySelectorAll(`[data-port="${"output"}"]`)[6] as HTMLDivElement;
-		const inputPort2 = document.querySelectorAll(`[data-port="${"input"}"]`)[3] as HTMLDivElement;
-		this.createWirePath(outputPort2, inputPort2, true, false);
+		const outputPort2 = document.querySelectorAll(`[data-port="${"output"}"]`)[6] as HTMLDivElement | undefined;
+		const inputPort2 = document.querySelectorAll(`[data-port="${"input"}"]`)[3] as HTMLDivElement | undefined;
+		if (outputPort2 && inputPort2) this.createWirePath(outputPort2, inputPort2, true, false);
 	},
 	components: {
 		IconLabel,

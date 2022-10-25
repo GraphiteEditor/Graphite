@@ -74,7 +74,6 @@ import { defineComponent, nextTick, type PropType } from "vue";
 import { type MenuListEntry } from "@/wasm-communication/messages";
 
 import MenuList from "@/components/floating-menus/MenuList.vue";
-import type FloatingMenu from "@/components/layout/FloatingMenu.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
 
@@ -104,9 +103,6 @@ export default defineComponent({
 		this.highlighted = this.activeEntry;
 	},
 	methods: {
-		floatingMenu(): typeof FloatingMenu | undefined {
-			return this.$refs.floatingMenu as typeof FloatingMenu | undefined;
-		},
 		async setOpen(): Promise<void> {
 			this.open = true;
 

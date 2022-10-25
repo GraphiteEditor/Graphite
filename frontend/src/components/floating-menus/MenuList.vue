@@ -46,7 +46,7 @@
 						:direction="'TopRight'"
 						:entries="entry.children"
 						v-bind="{ minWidth, drawIcon, scrollableY }"
-						:ref="(ref: MenuListInstance) => ref && (entry.ref = ref)"
+						:ref="(ref: MenuListInstance): void => (ref && (entry.ref = ref), undefined)"
 					/>
 				</LayoutRow>
 			</template>
@@ -327,7 +327,7 @@ const MenuList = defineComponent({
 		},
 		onScroll(e: Event) {
 			if (!this.virtualScrollingEntryHeight) return;
-			this.virtualScrollingEntriesStart = (e.target as HTMLDivElement)?.scrollTop || 0;
+			this.virtualScrollingEntriesStart = (e.target as HTMLElement)?.scrollTop || 0;
 		},
 	},
 	computed: {

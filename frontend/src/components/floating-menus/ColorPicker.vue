@@ -149,7 +149,7 @@ export default defineComponent({
 	},
 	methods: {
 		beginDrag(e: PointerEvent) {
-			const target = (e.target || undefined) as HTMLDivElement | undefined;
+			const target = (e.target || undefined) as HTMLElement | undefined;
 			this.draggingPickerTrack = target?.closest("[data-saturation-value-picker], [data-hue-picker], [data-opacity-picker]") || undefined;
 
 			this.addEvents();
