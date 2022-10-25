@@ -21,10 +21,10 @@
 				<div class="node" style="--offset-left: 3; --offset-top: 2; --data-color: var(--color-data-raster); --data-color-dim: var(--color-data-raster-dim)">
 					<div class="primary">
 						<div class="ports">
-							<!-- <div class="input port" data-datatype="raster">
+							<!-- <div class="input port" data-port="input" data-datatype="raster">
 							<div></div>
 						</div> -->
-							<div class="output port" data-datatype="raster">
+							<div class="output port" data-port="output" data-datatype="raster">
 								<div></div>
 							</div>
 						</div>
@@ -35,10 +35,10 @@
 				<div class="node" style="--offset-left: 9; --offset-top: 2; --data-color: var(--color-data-raster); --data-color-dim: var(--color-data-raster-dim)">
 					<div class="primary">
 						<div class="ports">
-							<div class="input port" data-datatype="raster">
+							<div class="input port" data-port="input" data-datatype="raster">
 								<div></div>
 							</div>
-							<div class="output port" data-datatype="raster">
+							<div class="output port" data-port="output" data-datatype="raster">
 								<div></div>
 							</div>
 						</div>
@@ -48,10 +48,10 @@
 					<div class="arguments">
 						<div class="argument">
 							<div class="ports">
-								<div class="input port" data-datatype="raster" style="--data-color: var(--color-data-raster); --data-color-dim: var(--color-data-vector-dim)">
+								<div class="input port" data-port="input" data-datatype="raster" style="--data-color: var(--color-data-raster); --data-color-dim: var(--color-data-vector-dim)">
 									<div></div>
 								</div>
-								<!-- <div class="output port" data-datatype="raster">
+								<!-- <div class="output port" data-port="output" data-datatype="raster">
 								<div></div>
 							</div> -->
 							</div>
@@ -62,10 +62,10 @@
 				<div class="node" style="--offset-left: 15; --offset-top: 2; --data-color: var(--color-data-raster); --data-color-dim: var(--color-data-raster-dim)">
 					<div class="primary">
 						<div class="ports">
-							<!-- <div class="input port" data-datatype="raster">
+							<!-- <div class="input port" data-port="input" data-datatype="raster">
 							<div></div>
 						</div> -->
-							<div class="output port" data-datatype="raster">
+							<div class="output port" data-port="output" data-datatype="raster">
 								<div></div>
 							</div>
 						</div>
@@ -76,10 +76,10 @@
 				<div class="node" style="--offset-left: 21; --offset-top: 2; --data-color: var(--color-data-raster); --data-color-dim: var(--color-data-raster-dim)">
 					<div class="primary">
 						<div class="ports">
-							<div class="input port" data-datatype="raster">
+							<div class="input port" data-port="input" data-datatype="raster">
 								<div></div>
 							</div>
-							<div class="output port" data-datatype="raster">
+							<div class="output port" data-port="output" data-datatype="raster">
 								<div></div>
 							</div>
 						</div>
@@ -89,10 +89,10 @@
 					<div class="arguments">
 						<div class="argument">
 							<div class="ports">
-								<div class="input port" data-datatype="raster">
+								<div class="input port" data-port="input" data-datatype="raster">
 									<div></div>
 								</div>
-								<!-- <div class="output port" data-datatype="raster">
+								<!-- <div class="output port" data-port="output" data-datatype="raster">
 								<div></div>
 							</div> -->
 							</div>
@@ -103,10 +103,10 @@
 				<div class="node" style="--offset-left: 2; --offset-top: 5; --data-color: var(--color-data-vector); --data-color-dim: var(--color-data-vector-dim)">
 					<div class="primary">
 						<div class="ports">
-							<!-- <div class="input port" data-datatype="vector">
+							<!-- <div class="input port" data-port="input" data-datatype="vector">
 							<div></div>
 						</div> -->
-							<div class="output port" data-datatype="vector">
+							<div class="output port" data-port="output" data-datatype="vector">
 								<div></div>
 							</div>
 						</div>
@@ -117,10 +117,10 @@
 				<div class="node" style="--offset-left: 6; --offset-top: 7; --data-color: var(--color-data-raster); --data-color-dim: var(--color-data-raster-dim)">
 					<div class="primary">
 						<div class="ports">
-							<!-- <div class="input port" data-datatype="raster">
+							<!-- <div class="input port" data-port="input" data-datatype="raster">
 							<div></div>
 						</div> -->
-							<div class="output port" data-datatype="raster">
+							<div class="output port" data-port="output" data-datatype="raster">
 								<div></div>
 							</div>
 						</div>
@@ -131,10 +131,10 @@
 				<div class="node" style="--offset-left: 12; --offset-top: 7; --data-color: var(--color-data-raster); --data-color-dim: var(--color-data-raster-dim)">
 					<div class="primary">
 						<div class="ports">
-							<!-- <div class="input port" data-datatype="raster">
+							<!-- <div class="input port" data-port="input" data-datatype="raster">
 							<div></div>
 						</div> -->
-							<div class="output port" data-datatype="raster">
+							<div class="output port" data-port="output" data-datatype="raster">
 								<div></div>
 							</div>
 						</div>
@@ -145,10 +145,10 @@
 				<div class="node" style="--offset-left: 12; --offset-top: 9; --data-color: var(--color-data-raster); --data-color-dim: var(--color-data-raster-dim)">
 					<div class="primary">
 						<div class="ports">
-							<!-- <div class="input port" data-datatype="raster">
+							<!-- <div class="input port" data-port="input" data-datatype="raster">
 							<div></div>
 						</div> -->
-							<div class="output port" data-datatype="raster">
+							<div class="output port" data-port="output" data-datatype="raster">
 								<div></div>
 							</div>
 						</div>
@@ -355,7 +355,7 @@ export default defineComponent({
 		return {
 			transform: { scale: 1, x: 0, y: 0 },
 			panning: false,
-			drawing: undefined as { port: HTMLElement; output: boolean; path: SVGElement } | undefined,
+			drawing: undefined as { port: HTMLDivElement; output: boolean; path: SVGElement } | undefined,
 		};
 	},
 	computed: {
@@ -375,7 +375,8 @@ export default defineComponent({
 	},
 	methods: {
 		buildWirePathString(outputBounds: DOMRect, inputBounds: DOMRect, verticalOut: boolean, verticalIn: boolean): string {
-			const containerBounds = (this.$refs.nodesContainer as HTMLElement).getBoundingClientRect();
+			const containerBounds = (this.$refs.nodesContainer as HTMLDivElement | undefined)?.getBoundingClientRect();
+			if (!containerBounds) return "[error]";
 
 			const outX = verticalOut ? outputBounds.x + outputBounds.width / 2 : outputBounds.x + outputBounds.width - 1;
 			const outY = verticalOut ? outputBounds.y + 1 : outputBounds.y + outputBounds.height / 2;
@@ -402,14 +403,14 @@ export default defineComponent({
 				verticalIn ? inConnectorX : inConnectorX - horizontalCurve
 			},${verticalIn ? inConnectorY + verticalCurve : inConnectorY} ${inConnectorX},${inConnectorY}`;
 		},
-		createWirePath(outputPort: HTMLElement, inputPort: HTMLElement, verticalOut: boolean, verticalIn: boolean): SVGPathElement {
+		createWirePath(outputPort: HTMLDivElement, inputPort: HTMLDivElement, verticalOut: boolean, verticalIn: boolean): SVGPathElement {
 			const pathString = this.buildWirePathString(outputPort.getBoundingClientRect(), inputPort.getBoundingClientRect(), verticalOut, verticalIn);
 			const dataType = outputPort.dataset.datatype;
 
 			const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
 			path.setAttribute("d", pathString);
-			path.setAttribute("style", `--data-color:  var(--color-data-${dataType}); --data-color-dim: var(--color-data-${dataType}-dim)`);
-			(this.$refs.wiresContainer as HTMLElement).appendChild(path);
+			path.setAttribute("style", `--data-color: var(--color-data-${dataType}); --data-color-dim: var(--color-data-${dataType}-dim)`);
+			(this.$refs.wiresContainer as SVGSVGElement | undefined)?.appendChild(path);
 
 			return path;
 		},
@@ -418,7 +419,9 @@ export default defineComponent({
 			let zoomFactor = 1 + Math.abs(scroll) * WHEEL_RATE;
 			if (scroll > 0) zoomFactor = 1 / zoomFactor;
 
-			const { x, y, width, height } = ((this.$refs.graph as typeof LayoutCol).$el as HTMLElement).getBoundingClientRect();
+			const graphDiv: HTMLDivElement | undefined = (this.$refs.graph as typeof LayoutCol | undefined)?.$el;
+			if (!graphDiv) return;
+			const { x, y, width, height } = graphDiv.getBoundingClientRect();
 
 			this.transform.scale *= zoomFactor;
 
@@ -435,7 +438,7 @@ export default defineComponent({
 			this.transform.y -= (deltaY / this.transform.scale) * zoomFactor;
 		},
 		pointerDown(e: PointerEvent) {
-			const port = (e.target as HTMLElement).closest(".port") as HTMLElement;
+			const port = (e.target as HTMLDivElement).closest("[data-port]") as HTMLDivElement;
 
 			if (port) {
 				const output = port.classList.contains("output");
@@ -444,7 +447,9 @@ export default defineComponent({
 			} else {
 				this.panning = true;
 			}
-			((this.$refs.graph as typeof LayoutCol).$el as HTMLElement).setPointerCapture(e.pointerId);
+
+			const graphDiv: HTMLDivElement | undefined = (this.$refs.graph as typeof LayoutCol | undefined)?.$el;
+			graphDiv?.setPointerCapture(e.pointerId);
 		},
 		pointerMove(e: PointerEvent) {
 			if (this.panning) {
@@ -461,19 +466,20 @@ export default defineComponent({
 			}
 		},
 		pointerUp(e: PointerEvent) {
-			((this.$refs.graph as typeof LayoutCol).$el as HTMLElement).releasePointerCapture(e.pointerId);
+			const graph: HTMLDivElement | undefined = (this.$refs.graph as typeof LayoutCol | undefined)?.$el;
+			graph?.releasePointerCapture(e.pointerId);
 			this.panning = false;
 			this.drawing = undefined;
 		},
 	},
 	mounted() {
-		const outputPort1 = document.querySelectorAll(".output.port")[4] as HTMLElement;
-		const inputPort1 = document.querySelectorAll(".input.port")[1] as HTMLElement;
-		this.createWirePath(outputPort1, inputPort1, true, true);
+		const outputPort1 = document.querySelectorAll(`[data-port="${"output"}"]`)[4] as HTMLDivElement | undefined;
+		const inputPort1 = document.querySelectorAll(`[data-port="${"input"}"]`)[1] as HTMLDivElement | undefined;
+		if (outputPort1 && inputPort1) this.createWirePath(outputPort1, inputPort1, true, true);
 
-		const outputPort2 = document.querySelectorAll(".output.port")[6] as HTMLElement;
-		const inputPort2 = document.querySelectorAll(".input.port")[3] as HTMLElement;
-		this.createWirePath(outputPort2, inputPort2, true, false);
+		const outputPort2 = document.querySelectorAll(`[data-port="${"output"}"]`)[6] as HTMLDivElement | undefined;
+		const inputPort2 = document.querySelectorAll(`[data-port="${"input"}"]`)[3] as HTMLDivElement | undefined;
+		if (outputPort2 && inputPort2) this.createWirePath(outputPort2, inputPort2, true, false);
 	},
 	components: {
 		IconLabel,

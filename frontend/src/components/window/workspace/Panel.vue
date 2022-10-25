@@ -1,6 +1,6 @@
 <template>
 	<LayoutCol class="panel">
-		<LayoutRow class="tab-bar" data-tab-bar :class="{ 'min-widths': tabMinWidths }">
+		<LayoutRow class="tab-bar" :class="{ 'min-widths': tabMinWidths }">
 			<LayoutRow class="tab-group" :scrollableX="true">
 				<LayoutRow
 					v-for="(tabLabel, tabIndex) in tabLabels"
@@ -13,7 +13,7 @@
 					data-tab
 				>
 					<span>{{ tabLabel.name }}</span>
-					<IconButton :action="(e: MouseEvent) => (e?.stopPropagation(), closeAction?.(tabIndex))" :icon="'CloseX'" :size="16" v-if="tabCloseButtons" />
+					<IconButton :action="(e?: MouseEvent) => (e?.stopPropagation(), closeAction?.(tabIndex))" :icon="'CloseX'" :size="16" v-if="tabCloseButtons" />
 				</LayoutRow>
 			</LayoutRow>
 			<PopoverButton :icon="'VerticalEllipsis'">
@@ -210,7 +210,7 @@
 </style>
 
 <script lang="ts">
-import { defineComponent, type PropType } from "vue";
+import { defineComponent, nextTick, type PropType } from "vue";
 
 import { platformIsMac } from "@/utility-functions/platform";
 
@@ -267,6 +267,15 @@ export default defineComponent({
 
 			if (platformIsMac()) return reservedKey ? [ALT, COMMAND] : [COMMAND];
 			return reservedKey ? [CONTROL, ALT] : [CONTROL];
+		},
+		async scrollTabIntoView(newIndex: number) {
+			await nextTick();
+
+			const panel: HTMLDivElement | undefined = this.$el;
+			if (!panel) return;
+
+			const newActiveTab = panel.querySelectorAll("[data-tab]")[newIndex] as HTMLDivElement | undefined;
+			newActiveTab?.scrollIntoView();
 		},
 	},
 	components: {

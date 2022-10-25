@@ -135,7 +135,7 @@ export default defineComponent({
 		const hsva = this.color.toHSVA();
 
 		return {
-			draggingPickerTrack: undefined as HTMLElement | undefined,
+			draggingPickerTrack: undefined as HTMLDivElement | undefined,
 			hue: hsva.h,
 			saturation: hsva.s,
 			value: hsva.v,
