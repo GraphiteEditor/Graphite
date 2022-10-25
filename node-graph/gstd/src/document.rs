@@ -3,6 +3,7 @@ use std::fmt::Display;
 use std::sync::Mutex;
 
 use dyn_any::{DynAny, StaticType};
+use dyn_clone::DynClone;
 use rand_chacha::{
 	rand_core::{RngCore, SeedableRng},
 	ChaCha20Rng,
@@ -119,14 +120,14 @@ pub struct NodeNetwork {
 	pub nodes: HashMap<NodeId, DocumentNode>,
 }
 pub type Value = Box<dyn ValueTrait>;
-pub trait ValueTrait: DynAny<'static> + std::fmt::Debug {}
+pub trait ValueTrait: DynAny<'static> + std::fmt::Debug + DynClone {}
 
 pub trait IntoValue: Sized + ValueTrait + 'static {
 	fn into_any(self) -> Value {
 		Box::new(self)
 	}
 }
-impl<T: 'static + StaticType + std::fmt::Debug + PartialEq> ValueTrait for T {}
+impl<T: 'static + StaticType + std::fmt::Debug + PartialEq + Clone> ValueTrait for T {}
 impl<T: 'static + ValueTrait> IntoValue for T {}
 
 #[repr(C)]
@@ -156,6 +157,20 @@ impl PartialEq for Box<dyn ValueTrait> {
 	}
 }
 
+impl Clone for Value {
+	fn clone(&self) -> Self {
+		let self_trait_object = unsafe { std::mem::transmute::<&dyn ValueTrait, TraitObject>(self.as_ref()) };
+		let size = self_trait_object.vtable.size;
+		let self_mem = unsafe { std::slice::from_raw_parts(self_trait_object.self_ptr, size) }.to_owned();
+		let ptr = Vec::leak(self_mem);
+		unsafe {
+			std::mem::transmute(TraitObject {
+				self_ptr: ptr as *mut [u8] as *mut u8,
+				vtable: self_trait_object.vtable,
+			})
+		}
+	}
+}
 #[derive(Debug, Default)]
 pub enum ConstructionArgs {
 	None,

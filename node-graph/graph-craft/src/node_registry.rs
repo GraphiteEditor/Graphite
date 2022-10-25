@@ -1,6 +1,8 @@
 use std::marker::PhantomData;
 
 use borrow_stack::FixedSizeStack;
+use dyn_clone::DynClone;
+use graphene_core::generic::FnNode;
 use graphene_core::ops::{AddNode, IdNode};
 use graphene_core::structural::{ConsNode, Then};
 use graphene_core::{AsRefNode, Node};
@@ -12,40 +14,6 @@ use graphene_std::{
 struct NodeIdentifier {
 	name: &'static str,
 	types: &'static [&'static str],
-}
-
-const fn annotate<'n, 's: 'n, F>(f: F) -> F
-where
-	F: Fn(ProtoNode, FixedSizeStack<TypeErasedNode<'n>>),
-{
-	f
-}
-
-use borrow_stack::BorrowStack;
-unsafe fn foo<'n>(proto_node: ProtoNode, stack: &'n FixedSizeStack<TypeErasedNode<'n>>) {
-	let node_id = proto_node.input.unwrap_node() as usize;
-	let nodes = stack.get();
-	let pre_node = nodes.get(node_id).unwrap();
-	let downcast: DowncastNode<_, &u32> = DowncastNode::new(pre_node);
-	let dynanynode: DynAnyNode<ConsNode<_, Any<'_>>, u32, _, _> = DynAnyNode::new(ConsNode(downcast, PhantomData));
-	stack.push(dynanynode.into_box());
-}
-fn borrow_stack() {
-	let stack = borrow_stack::FixedSizeStack::new(256);
-	unsafe {
-		{
-			let proto_node = ProtoNode::id();
-			foo(proto_node, &stack);
-			let proto_node = ProtoNode::id();
-			let stack = &stack;
-			let node_id = proto_node.input.unwrap_node() as usize;
-			let nodes = stack.get();
-			let pre_node = nodes.get(node_id).unwrap();
-			let downcast: DowncastNode<&TypeErasedNode, &u32> = DowncastNode::new(pre_node);
-			let dynanynode: DynAnyNode<ConsNode<_, Any<'_>>, u32, _, _> = DynAnyNode::new(ConsNode(downcast, PhantomData));
-			stack.push(dynanynode.into_box());
-		}
-	};
 }
 
 static NODE_REGISTRY: &[(NodeIdentifier, fn(ProtoNode, &FixedSizeStack<TypeErasedNode<'static>>))] = &[
@@ -77,7 +45,7 @@ static NODE_REGISTRY: &[(NodeIdentifier, fn(ProtoNode, &FixedSizeStack<TypeErase
 			})
 		},
 	),
-	/*(
+	(
 		NodeIdentifier {
 			name: "graphene_core::structural::ConsNode",
 			types: &["&TypeErasedNode", "&u32", "u32"],
@@ -87,11 +55,11 @@ static NODE_REGISTRY: &[(NodeIdentifier, fn(ProtoNode, &FixedSizeStack<TypeErase
 			stack.push_fn(move |nodes| {
 				let pre_node = nodes.get(node_id).unwrap();
 				let downcast: DowncastNode<_, &u32> = DowncastNode::new(pre_node);
-				let dynanynode: DynAnyNode<ConsNode<_, Any<'_>>, u32, _, _> = DynAnyNode::new(ConsNode(downcast, PhantomData));
+				let dynanynode: DynAnyNode<_, u32, _, _> = DynAnyNode::new(ConsNode(downcast, PhantomData));
 				dynanynode.into_box()
 			})
 		},
-	),*/
+	),
 	(
 		NodeIdentifier {
 			name: "graphene_core::any::DowncastNode",
@@ -102,6 +70,22 @@ static NODE_REGISTRY: &[(NodeIdentifier, fn(ProtoNode, &FixedSizeStack<TypeErase
 				let pre_node = nodes.get(proto_node.input.unwrap_node() as usize).unwrap();
 				let node = pre_node.then(graphene_core::ops::IdNode);
 				node.into_type_erased()
+			})
+		},
+	),
+	(
+		NodeIdentifier {
+			name: "graphene_core::value::ValueNode",
+			types: &["Any<'n>"],
+		},
+		|proto_node, stack| {
+			stack.push_fn(|nodes| {
+				if let ConstructionArgs::Value(value) = proto_node.construction_args {
+					let node = FnNode::new(move |_| value.clone() as Any<'static>);
+					node.into_type_erased()
+				} else {
+					unreachable!()
+				}
 			})
 		},
 	),

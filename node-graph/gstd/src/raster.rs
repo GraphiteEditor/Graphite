@@ -111,8 +111,8 @@ impl<'a> IntoIterator for &'a Image {
 
 pub fn file_node<'n, P: AsRef<Path> + 'n>() -> impl Node<P, Output = Result<Vec<u8>, Error>> {
 	let fs = ValueNode(StdFs).clone();
-	let fs = ConsNode(fs, PhantomData);
-	let file: ComposeNode<_, _, P> = fs.then(FileNode(PhantomData));
+	let fs = ConsNode::new(fs);
+	let file = fs.then(FileNode(PhantomData));
 
 	file.then(FlatMapResultNode::new(BufferNode))
 }
