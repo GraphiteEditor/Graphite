@@ -3,18 +3,19 @@ import { stripIndents } from "@/utility-functions/strip-indents";
 import { type Editor } from "@/wasm-communication/editor";
 import { TriggerIndexedDbWriteDocument, TriggerIndexedDbRemoveDocument, TriggerSavePreferences, TriggerLoadAutoSaveDocuments, TriggerLoadPreferences } from "@/wasm-communication/messages";
 
-const GRAPHITE_INDEXED_DB_VERSION = 2;
-const GRAPHITE_INDEXED_DB_NAME = "graphite-indexed-db";
+const GRAPHITE_INDEXED_DB_NAME = "graphite";
+// Increment this whenever the format changes at all
+const GRAPHITE_INDEXED_DB_VERSION = 1;
 
-const GRAPHITE_AUTO_SAVE_DOCUMENTS_STORE = { name: "auto-save-documents", keyPath: "details.id" };
-const GRAPHITE_AUTO_SAVE_DOCUMENT_LIST_STORE = { name: "auto-save-document-list", keyPath: "key" };
 const GRAPHITE_EDITOR_PREFERENCES_STORE = { name: "editor-preferences", keyPath: "key" };
+const GRAPHITE_AUTO_SAVE_DOCUMENT_LIST_STORE = { name: "auto-save-document-list", keyPath: "key" };
+const GRAPHITE_AUTO_SAVE_DOCUMENTS_STORE = { name: "auto-save-documents", keyPath: "details.id" };
 
-const GRAPHITE_INDEXEDDB_STORES = [GRAPHITE_AUTO_SAVE_DOCUMENTS_STORE, GRAPHITE_AUTO_SAVE_DOCUMENT_LIST_STORE, GRAPHITE_EDITOR_PREFERENCES_STORE];
-
-const GRAPHITE_AUTO_SAVE_ORDER_KEY = "auto-save-documents-order";
+const GRAPHITE_INDEXEDDB_STORES = [GRAPHITE_EDITOR_PREFERENCES_STORE, GRAPHITE_AUTO_SAVE_DOCUMENT_LIST_STORE, GRAPHITE_AUTO_SAVE_DOCUMENTS_STORE];
 
 export function createPersistenceManager(editor: Editor, portfolio: PortfolioState): () => void {
+	// INITIALIZE
+
 	async function initialize(): Promise<IDBDatabase> {
 		// Open the IndexedDB database connection and save it to this variable, which is a promise that resolves once the connection is open
 		return new Promise<IDBDatabase>((resolve) => {
@@ -28,15 +29,17 @@ export function createPersistenceManager(editor: Editor, portfolio: PortfolioSta
 				GRAPHITE_INDEXEDDB_STORES.forEach((store) => {
 					if (db.objectStoreNames.contains(store.name)) db.deleteObjectStore(store.name);
 
-					db.createObjectStore(store.name, { keyPath: store.keyPath });
+					const options = store.keyPath ? [{ keyPath: store.keyPath }] : [];
+
+					db.createObjectStore(store.name, ...options);
 				});
 			};
 
 			// Handle some other error by presenting it to the user
 			dbOpenRequest.onerror = (): void => {
 				const errorText = stripIndents`
-				Documents won't be saved across reloads and later visits.
-				This may be caused by Firefox's private browsing mode.
+				Documents and preferences won't be saved across reloads and later visits.
+				This may be caused by the browser's private browsing mode.
 				
 				Error on opening IndexDB:
 				${dbOpenRequest.error}
@@ -51,18 +54,44 @@ export function createPersistenceManager(editor: Editor, portfolio: PortfolioSta
 		});
 	}
 
-	function storeDocumentOrder(): void {
-		// Make sure to store as string since JSON does not play nice with BigInt
-		const documentOrder = portfolio.state.documents.map((doc) => doc.id.toString());
-		window.localStorage.setItem(GRAPHITE_AUTO_SAVE_ORDER_KEY, JSON.stringify(documentOrder));
+	function storeDocumentOrder(db: IDBDatabase): void {
+		const documentOrder = portfolio.state.documents.map((doc) => String(doc.id));
+
+		const storedObject = { key: "key", value: documentOrder };
+
+		const transaction = db.transaction(GRAPHITE_AUTO_SAVE_DOCUMENT_LIST_STORE.name, "readwrite");
+		transaction.objectStore(GRAPHITE_AUTO_SAVE_DOCUMENT_LIST_STORE.name).put(storedObject);
+	}
+
+	async function loadDocumentOrder(db: IDBDatabase): Promise<string[]> {
+		// Open auto-save documents
+		const transaction = db.transaction(GRAPHITE_AUTO_SAVE_DOCUMENT_LIST_STORE.name, "readonly");
+		const request = transaction.objectStore(GRAPHITE_AUTO_SAVE_DOCUMENT_LIST_STORE.name).getAll();
+
+		// Await the database request data
+		await new Promise<void>((resolve): void => {
+			request.onsuccess = (): void => resolve();
+		});
+
+		const results: { key: string; value: string[] }[] = request.result;
+		const documentOrder = results[0]?.value || [];
+
+		return documentOrder;
 	}
 
 	// AUTO SAVE DOCUMENTS
 
+	async function storeDocument(db: IDBDatabase, autoSaveDocument: TriggerIndexedDbWriteDocument): Promise<void> {
+		const transaction = (await databaseConnection).transaction(GRAPHITE_AUTO_SAVE_DOCUMENTS_STORE.name, "readwrite");
+		transaction.objectStore(GRAPHITE_AUTO_SAVE_DOCUMENTS_STORE.name).put(autoSaveDocument);
+
+		storeDocumentOrder(await databaseConnection);
+	}
+
 	async function removeDocument(id: string, db: IDBDatabase): Promise<void> {
 		const transaction = db.transaction(GRAPHITE_AUTO_SAVE_DOCUMENTS_STORE.name, "readwrite");
 		transaction.objectStore(GRAPHITE_AUTO_SAVE_DOCUMENTS_STORE.name).delete(id);
-		storeDocumentOrder();
+		storeDocumentOrder(db);
 	}
 
 	async function loadDocuments(db: IDBDatabase): Promise<void> {
@@ -77,7 +106,7 @@ export function createPersistenceManager(editor: Editor, portfolio: PortfolioSta
 
 		const previouslySavedDocuments: TriggerIndexedDbWriteDocument[] = request.result;
 
-		const documentOrder: string[] = JSON.parse(window.localStorage.getItem(GRAPHITE_AUTO_SAVE_ORDER_KEY) || "[]");
+		const documentOrder = await loadDocumentOrder(db);
 		const orderedSavedDocuments = documentOrder
 			.map((id) => previouslySavedDocuments.find((autoSave) => autoSave.details.id === id))
 			.filter((x) => x !== undefined) as TriggerIndexedDbWriteDocument[];
@@ -127,10 +156,7 @@ export function createPersistenceManager(editor: Editor, portfolio: PortfolioSta
 
 	// Subscribe to process backend events
 	editor.subscriptions.subscribeJsMessage(TriggerIndexedDbWriteDocument, async (autoSaveDocument) => {
-		const transaction = (await databaseConnection).transaction(GRAPHITE_AUTO_SAVE_DOCUMENTS_STORE.name, "readwrite");
-		transaction.objectStore(GRAPHITE_AUTO_SAVE_DOCUMENTS_STORE.name).put(autoSaveDocument);
-
-		storeDocumentOrder();
+		await storeDocument(await databaseConnection, autoSaveDocument);
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerIndexedDbRemoveDocument, async (removeAutoSaveDocument) => {
 		await removeDocument(removeAutoSaveDocument.documentId, await databaseConnection);
