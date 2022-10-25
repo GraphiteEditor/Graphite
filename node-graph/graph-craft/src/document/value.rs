@@ -2,11 +2,11 @@ use dyn_any::StaticType;
 
 use dyn_clone::DynClone;
 
-use dyn_any::DynAny;
+use dyn_any::{DynAny, Upcast};
 
 pub type Value = Box<dyn ValueTrait>;
 
-pub trait ValueTrait: DynAny<'static> + std::fmt::Debug + DynClone {}
+pub trait ValueTrait: DynAny<'static> + Upcast<dyn DynAny<'static>> + std::fmt::Debug + DynClone {}
 
 pub trait IntoValue: Sized + ValueTrait + 'static {
 	fn into_any(self) -> Value {
@@ -14,7 +14,7 @@ pub trait IntoValue: Sized + ValueTrait + 'static {
 	}
 }
 
-impl<T: 'static + StaticType + std::fmt::Debug + PartialEq + Clone> ValueTrait for T {}
+impl<T: 'static + StaticType + Upcast<dyn DynAny<'static>> + std::fmt::Debug + PartialEq + Clone> ValueTrait for T {}
 
 impl<T: 'static + ValueTrait> IntoValue for T {}
 
