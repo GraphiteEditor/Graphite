@@ -109,15 +109,16 @@ export function createPersistenceManager(editor: Editor, portfolio: PortfolioSta
 		const documentOrder = await loadDocumentOrder(db);
 		const orderedSavedDocuments = documentOrder
 			.map((id) => previouslySavedDocuments.find((autoSave) => autoSave.details.id === id))
-			.filter((x) => x !== undefined) as TriggerIndexedDbWriteDocument[];
+			.filter((document): document is TriggerIndexedDbWriteDocument => document !== undefined);
 
 		const currentDocumentVersion = editor.instance.graphiteDocumentVersion();
 		orderedSavedDocuments.forEach(async (doc: TriggerIndexedDbWriteDocument) => {
-			if (doc.version === currentDocumentVersion) {
-				editor.instance.openAutoSavedDocument(BigInt(doc.details.id), doc.details.name, doc.details.isSaved, doc.document);
-			} else {
+			if (doc.version !== currentDocumentVersion) {
 				await removeDocument(doc.details.id, db);
+				return;
 			}
+
+			editor.instance.openAutoSavedDocument(BigInt(doc.details.id), doc.details.name, doc.details.isSaved, doc.document);
 		});
 	}
 
@@ -155,6 +156,12 @@ export function createPersistenceManager(editor: Editor, portfolio: PortfolioSta
 	// FRONTEND MESSAGE SUBSCRIPTIONS
 
 	// Subscribe to process backend events
+	editor.subscriptions.subscribeJsMessage(TriggerSavePreferences, async (preferences) => {
+		await savePreferences(preferences.preferences, await databaseConnection);
+	});
+	editor.subscriptions.subscribeJsMessage(TriggerLoadPreferences, async () => {
+		await loadPreferences(await databaseConnection);
+	});
 	editor.subscriptions.subscribeJsMessage(TriggerIndexedDbWriteDocument, async (autoSaveDocument) => {
 		await storeDocument(await databaseConnection, autoSaveDocument);
 	});
@@ -163,12 +170,6 @@ export function createPersistenceManager(editor: Editor, portfolio: PortfolioSta
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerLoadAutoSaveDocuments, async () => {
 		await loadDocuments(await databaseConnection);
-	});
-	editor.subscriptions.subscribeJsMessage(TriggerSavePreferences, async (preferences) => {
-		await savePreferences(preferences.preferences, await databaseConnection);
-	});
-	editor.subscriptions.subscribeJsMessage(TriggerLoadPreferences, async () => {
-		await loadPreferences(await databaseConnection);
 	});
 
 	const databaseConnection = initialize();

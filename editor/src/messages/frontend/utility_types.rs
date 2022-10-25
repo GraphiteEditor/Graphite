@@ -3,6 +3,8 @@ use serde::{Deserialize, Serialize};
 
 #[derive(PartialEq, Eq, Clone, Debug, Serialize, Deserialize)]
 pub struct FrontendDocumentDetails {
+	#[serde(rename = "isAutoSaved")]
+	pub is_auto_saved: bool,
 	#[serde(rename = "isSaved")]
 	pub is_saved: bool,
 	pub name: String,
