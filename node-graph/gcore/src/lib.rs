@@ -59,7 +59,7 @@ where
 
 impl<'n, N: 'n, I> AsRefNode<'n, I> for N
 where
-	&'n N: Node<I, Output = N::Output>,
+	&'n N: Node<I>,
 	N: Node<I>,
 	Self: 'n,
 {
