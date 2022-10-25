@@ -6,10 +6,11 @@ import { TriggerIndexedDbWriteDocument, TriggerIndexedDbRemoveDocument, TriggerS
 const GRAPHITE_INDEXED_DB_VERSION = 2;
 const GRAPHITE_INDEXED_DB_NAME = "graphite-indexed-db";
 
-const GRAPHITE_AUTO_SAVE_STORE = { name: "auto-save-documents", keyPath: "details.id" };
+const GRAPHITE_AUTO_SAVE_DOCUMENTS_STORE = { name: "auto-save-documents", keyPath: "details.id" };
+const GRAPHITE_AUTO_SAVE_DOCUMENT_LIST_STORE = { name: "auto-save-document-list", keyPath: "key" };
 const GRAPHITE_EDITOR_PREFERENCES_STORE = { name: "editor-preferences", keyPath: "key" };
 
-const GRAPHITE_INDEXEDDB_STORES = [GRAPHITE_AUTO_SAVE_STORE, GRAPHITE_EDITOR_PREFERENCES_STORE];
+const GRAPHITE_INDEXEDDB_STORES = [GRAPHITE_AUTO_SAVE_DOCUMENTS_STORE, GRAPHITE_AUTO_SAVE_DOCUMENT_LIST_STORE, GRAPHITE_EDITOR_PREFERENCES_STORE];
 
 const GRAPHITE_AUTO_SAVE_ORDER_KEY = "auto-save-documents-order";
 
@@ -56,21 +57,23 @@ export function createPersistenceManager(editor: Editor, portfolio: PortfolioSta
 		window.localStorage.setItem(GRAPHITE_AUTO_SAVE_ORDER_KEY, JSON.stringify(documentOrder));
 	}
 
+	// AUTO SAVE DOCUMENTS
+
 	async function removeDocument(id: string, db: IDBDatabase): Promise<void> {
-		const transaction = db.transaction(GRAPHITE_AUTO_SAVE_STORE.name, "readwrite");
-		transaction.objectStore(GRAPHITE_AUTO_SAVE_STORE.name).delete(id);
+		const transaction = db.transaction(GRAPHITE_AUTO_SAVE_DOCUMENTS_STORE.name, "readwrite");
+		transaction.objectStore(GRAPHITE_AUTO_SAVE_DOCUMENTS_STORE.name).delete(id);
 		storeDocumentOrder();
 	}
 
-	async function loadAutoSaveDocuments(db: IDBDatabase): Promise<void> {
+	async function loadDocuments(db: IDBDatabase): Promise<void> {
 		let promiseResolve: (value: void | PromiseLike<void>) => void;
 		const promise = new Promise<void>((resolve): void => {
 			promiseResolve = resolve;
 		});
 
 		// Open auto-save documents
-		const transaction = db.transaction(GRAPHITE_AUTO_SAVE_STORE.name, "readonly");
-		const request = transaction.objectStore(GRAPHITE_AUTO_SAVE_STORE.name).getAll();
+		const transaction = db.transaction(GRAPHITE_AUTO_SAVE_DOCUMENTS_STORE.name, "readonly");
+		const request = transaction.objectStore(GRAPHITE_AUTO_SAVE_DOCUMENTS_STORE.name).getAll();
 
 		request.onsuccess = (): void => {
 			const previouslySavedDocuments: TriggerIndexedDbWriteDocument[] = request.result;
@@ -93,6 +96,17 @@ export function createPersistenceManager(editor: Editor, portfolio: PortfolioSta
 		};
 
 		await promise;
+	}
+
+	// PREFERENCES
+
+	async function savePreferences(preferences: TriggerSavePreferences["preferences"], db: IDBDatabase): Promise<void> {
+		Object.entries(preferences).forEach(async ([key, value]) => {
+			const storedObject = { key, value };
+
+			const transaction = db.transaction(GRAPHITE_EDITOR_PREFERENCES_STORE.name, "readwrite");
+			transaction.objectStore(GRAPHITE_EDITOR_PREFERENCES_STORE.name).put(storedObject);
+		});
 	}
 
 	async function loadPreferences(db: IDBDatabase): Promise<void> {
@@ -121,10 +135,12 @@ export function createPersistenceManager(editor: Editor, portfolio: PortfolioSta
 		await promise;
 	}
 
+	// FRONTEND MESSAGE SUBSCRIPTIONS
+
 	// Subscribe to process backend events
 	editor.subscriptions.subscribeJsMessage(TriggerIndexedDbWriteDocument, async (autoSaveDocument) => {
-		const transaction = (await databaseConnection).transaction(GRAPHITE_AUTO_SAVE_STORE.name, "readwrite");
-		transaction.objectStore(GRAPHITE_AUTO_SAVE_STORE.name).put(autoSaveDocument);
+		const transaction = (await databaseConnection).transaction(GRAPHITE_AUTO_SAVE_DOCUMENTS_STORE.name, "readwrite");
+		transaction.objectStore(GRAPHITE_AUTO_SAVE_DOCUMENTS_STORE.name).put(autoSaveDocument);
 
 		storeDocumentOrder();
 	});
@@ -132,15 +148,10 @@ export function createPersistenceManager(editor: Editor, portfolio: PortfolioSta
 		await removeDocument(removeAutoSaveDocument.documentId, await databaseConnection);
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerLoadAutoSaveDocuments, async () => {
-		await loadAutoSaveDocuments(await databaseConnection);
+		await loadDocuments(await databaseConnection);
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerSavePreferences, async (preferences) => {
-		Object.entries(preferences.preferences).forEach(async ([key, value]) => {
-			const storedObject = { key, value };
-
-			const transaction = (await databaseConnection).transaction(GRAPHITE_EDITOR_PREFERENCES_STORE.name, "readwrite");
-			transaction.objectStore(GRAPHITE_EDITOR_PREFERENCES_STORE.name).put(storedObject);
-		});
+		await savePreferences(preferences.preferences, await databaseConnection);
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerLoadPreferences, async () => {
 		await loadPreferences(await databaseConnection);
