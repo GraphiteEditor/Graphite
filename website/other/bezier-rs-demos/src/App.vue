@@ -43,6 +43,14 @@ const tSliderOptions = {
 	variable: "t",
 };
 
+const tErrorOptions = {
+	variable: "error",
+	min: 0.1,
+	max: 2,
+	step: 0.1,
+	default: 0.5,
+};
+
 export default defineComponent({
 	data() {
 		return {
@@ -292,35 +300,25 @@ export default defineComponent({
 					name: "Intersect (Line Segment)",
 					callback: (bezier: WasmBezierInstance): string => {
 						const line = [
-							{ x: 150, y: 150 },
-							{ x: 20, y: 20 },
+							[150, 150],
+							[20, 20],
 						];
-						const mappedLine = line.map((p) => [p.x, p.y]);
-						return bezier.intersect_line_segment(mappedLine);
+						return bezier.intersect_line_segment(line);
 					},
 				},
 				{
 					name: "Intersect (Quadratic)",
 					callback: (bezier: WasmBezierInstance, options: Record<string, number>): string => {
 						const quadratic = [
-							{ x: 20, y: 80 },
-							{ x: 180, y: 10 },
-							{ x: 90, y: 120 },
+							[20, 80],
+							[180, 10],
+							[90, 120],
 						];
-						const mappedQuadratic = quadratic.map((p) => [p.x, p.y]);
-						return bezier.intersect_quadratic_segment(mappedQuadratic, options.error);
+						return bezier.intersect_quadratic_segment(quadratic, options.error);
 					},
 					exampleOptions: {
 						[BezierCurveType.Quadratic]: {
-							sliderOptions: [
-								{
-									variable: "error",
-									min: 0.1,
-									max: 2,
-									step: 0.1,
-									default: 0.5,
-								},
-							],
+							sliderOptions: [tErrorOptions],
 						},
 					},
 				},
@@ -328,25 +326,16 @@ export default defineComponent({
 					name: "Intersect (Cubic)",
 					callback: (bezier: WasmBezierInstance, options: Record<string, number>): string => {
 						const cubic = [
-							{ x: 40, y: 20 },
-							{ x: 100, y: 40 },
-							{ x: 40, y: 120 },
-							{ x: 175, y: 140 },
+							[40, 20],
+							[100, 40],
+							[40, 120],
+							[175, 140],
 						];
-						const mappedCubic = cubic.map((p) => [p.x, p.y]);
-						return bezier.intersect_cubic_segment(mappedCubic, options.error);
+						return bezier.intersect_cubic_segment(cubic, options.error);
 					},
 					exampleOptions: {
 						[BezierCurveType.Quadratic]: {
-							sliderOptions: [
-								{
-									variable: "error",
-									min: 0.1,
-									max: 2,
-									step: 0.1,
-									default: 0.5,
-								},
-							],
+							sliderOptions: [tErrorOptions],
 						},
 					},
 				},
@@ -355,15 +344,7 @@ export default defineComponent({
 					callback: (bezier: WasmBezierInstance, options: Record<string, number>): string => bezier.intersect_self(options.error),
 					exampleOptions: {
 						[BezierCurveType.Quadratic]: {
-							sliderOptions: [
-								{
-									variable: "error",
-									min: 0.1,
-									max: 2,
-									step: 0.1,
-									default: 0.5,
-								},
-							],
+							sliderOptions: [tErrorOptions],
 						},
 						[BezierCurveType.Cubic]: {
 							customPoints: [
