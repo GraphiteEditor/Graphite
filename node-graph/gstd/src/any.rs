@@ -189,7 +189,7 @@ where
 	}
 }*/
 
-use graphene_core::{ops::Dynamic, AsRefNode};
+use graphene_core::{ops::dynamic::Dynamic, AsRefNode};
 pub struct BoxedComposition<'a, Second> {
 	pub first: Box<dyn Node<(), Output = Dynamic<'a>>>,
 	pub second: Second,

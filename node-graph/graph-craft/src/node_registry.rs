@@ -1,29 +1,39 @@
 use std::marker::PhantomData;
 
 use borrow_stack::FixedSizeStack;
-use dyn_clone::DynClone;
 use graphene_core::generic::FnNode;
 use graphene_core::ops::{AddNode, IdNode};
 use graphene_core::raster::color::Color;
 use graphene_core::structural::{ConsNode, Then};
 use graphene_core::{AsRefNode, Node};
 use graphene_std::any::DowncastBothNode;
+use graphene_std::any::{Any, DowncastNode, DynAnyNode, IntoTypeErasedNode, TypeErasedNode};
 use graphene_std::raster::Image;
-use graphene_std::{
-	any::{Any, DowncastNode, DynAnyNode, IntoTypeErasedNode, TypeErasedNode},
-	document::{ConstructionArgs, ProtoNode, ProtoNodeInput},
-};
 
-struct NodeIdentifier {
-	name: &'static str,
-	types: &'static [&'static str],
-}
+use crate::proto::Type;
+use crate::proto::{ConstructionArgs, NodeIdentifier, ProtoNode, ProtoNodeInput, Type::Concrete};
 
-static NODE_REGISTRY: &[(NodeIdentifier, fn(ProtoNode, &FixedSizeStack<TypeErasedNode<'static>>))] = &[
+type NodeConstructor = fn(ProtoNode, &FixedSizeStack<TypeErasedNode<'static>>);
+
+//TODO: turn into hasmap
+static NODE_REGISTRY: &[(NodeIdentifier<'static>, NodeConstructor)] = &[
 	(
 		NodeIdentifier {
 			name: "graphene_core::ops::IdNode",
-			types: &["Any<'n>"],
+			types: &[Concrete("Any<'_>")],
+		},
+		|proto_node, stack| {
+			stack.push_fn(|nodes| {
+				let pre_node = nodes.get(proto_node.input.unwrap_node() as usize).unwrap();
+				let node = pre_node.then(graphene_core::ops::IdNode);
+				node.into_type_erased()
+			})
+		},
+	),
+	(
+		NodeIdentifier {
+			name: "graphene_core::ops::IdNode",
+			types: &[Type::Generic],
 		},
 		|proto_node, stack| {
 			stack.push_fn(|nodes| {
@@ -36,7 +46,7 @@ static NODE_REGISTRY: &[(NodeIdentifier, fn(ProtoNode, &FixedSizeStack<TypeErase
 	(
 		NodeIdentifier {
 			name: "graphene_core::ops::AddNode",
-			types: &["u32", "u32"],
+			types: &[Concrete("u32"), Concrete("u32")],
 		},
 		|proto_node, stack| {
 			stack.push_fn(|nodes| {
@@ -50,8 +60,93 @@ static NODE_REGISTRY: &[(NodeIdentifier, fn(ProtoNode, &FixedSizeStack<TypeErase
 	),
 	(
 		NodeIdentifier {
+			name: "graphene_core::ops::AddNode",
+			types: &[Concrete("&u32"), Concrete("&u32")],
+		},
+		|proto_node, stack| {
+			stack.push_fn(|nodes| {
+				let pre_node = nodes.get(proto_node.input.unwrap_node() as usize).unwrap();
+				let node: DynAnyNode<AddNode, (&u32, &u32), _, _> = DynAnyNode::new(graphene_core::ops::AddNode);
+				let node = (pre_node).then(node);
+
+				node.into_type_erased()
+			})
+		},
+	),
+	(
+		NodeIdentifier {
+			name: "graphene_core::ops::AddNode",
+			types: &[Concrete("&u32"), Concrete("u32")],
+		},
+		|proto_node, stack| {
+			stack.push_fn(|nodes| {
+				let pre_node = nodes.get(proto_node.input.unwrap_node() as usize).unwrap();
+				let node: DynAnyNode<AddNode, (&u32, u32), _, _> = DynAnyNode::new(graphene_core::ops::AddNode);
+				let node = (pre_node).then(node);
+
+				node.into_type_erased()
+			})
+		},
+	),
+	(
+		NodeIdentifier {
 			name: "graphene_core::structural::ConsNode",
-			types: &["&TypeErasedNode", "&u32", "u32"],
+			types: &[Concrete("&u32"), Concrete("u32")],
+		},
+		|proto_node, stack| {
+			if let ConstructionArgs::Nodes(cons_node_arg) = proto_node.construction_args {
+				stack.push_fn(move |nodes| {
+					let cons_node_arg = nodes.get(cons_node_arg[0] as usize).unwrap();
+
+					let cons_node = ConsNode::new(DowncastNode::<_, &u32>::new(cons_node_arg));
+					let node: DynAnyNode<_, u32, _, _> = DynAnyNode::new(cons_node);
+					let node = match proto_node.input {
+						ProtoNodeInput::Network => node.into_type_erased(),
+						ProtoNodeInput::Node(node_id) => {
+							let pre_node = nodes.get(node_id as usize).unwrap();
+							(pre_node).then(node).into_type_erased()
+						}
+						ProtoNodeInput::None => unreachable!(),
+					};
+					node
+				})
+			} else {
+				unimplemented!()
+			}
+		},
+	),
+	(
+		NodeIdentifier {
+			name: "graphene_core::structural::ConsNode",
+			types: &[Concrete("u32"), Concrete("u32")],
+		},
+		|proto_node, stack| {
+			if let ConstructionArgs::Nodes(cons_node_arg) = proto_node.construction_args {
+				stack.push_fn(move |nodes| {
+					let cons_node_arg = nodes.get(cons_node_arg[0] as usize).unwrap();
+
+					let cons_node = ConsNode::new(DowncastNode::<_, u32>::new(cons_node_arg));
+					let node: DynAnyNode<_, u32, _, _> = DynAnyNode::new(cons_node);
+					let node = match proto_node.input {
+						ProtoNodeInput::Network => node.into_type_erased(),
+						ProtoNodeInput::Node(node_id) => {
+							let pre_node = nodes.get(node_id as usize).unwrap();
+							(pre_node).then(node).into_type_erased()
+						}
+						ProtoNodeInput::None => unreachable!(),
+					};
+					node
+				})
+			} else {
+				unimplemented!()
+			}
+		},
+	),
+	// TODO: create macro to impl for all types
+	(
+		NodeIdentifier {
+			name: "graphene_core::structural::ConsNode",
+			types: &[Concrete("&u32"), Concrete("&u32")],
 		},
 		|proto_node, stack| {
 			let node_id = proto_node.input.unwrap_node() as usize;
@@ -60,8 +155,8 @@ static NODE_REGISTRY: &[(NodeIdentifier, fn(ProtoNode, &FixedSizeStack<TypeErase
 					let pre_node = nodes.get(node_id).unwrap();
 					let cons_node_arg = nodes.get(cons_node_arg[0] as usize).unwrap();
 
-					let cons_node = ConsNode::new(DowncastNode::<_, u32>::new(cons_node_arg));
-					let node: DynAnyNode<_, u32, _, _> = DynAnyNode::new(cons_node);
+					let cons_node = ConsNode::new(DowncastNode::<_, &u32>::new(cons_node_arg));
+					let node: DynAnyNode<_, &u32, _, _> = DynAnyNode::new(cons_node);
 					let node = (pre_node).then(node);
 					node.into_type_erased()
 				})
@@ -73,7 +168,7 @@ static NODE_REGISTRY: &[(NodeIdentifier, fn(ProtoNode, &FixedSizeStack<TypeErase
 	(
 		NodeIdentifier {
 			name: "graphene_core::any::DowncastNode",
-			types: &["&TypeErasedNode", "&u32"],
+			types: &[Concrete("&u32")],
 		},
 		|proto_node, stack| {
 			stack.push_fn(|nodes| {
@@ -86,7 +181,23 @@ static NODE_REGISTRY: &[(NodeIdentifier, fn(ProtoNode, &FixedSizeStack<TypeErase
 	(
 		NodeIdentifier {
 			name: "graphene_core::value::ValueNode",
-			types: &["Any<'n>"],
+			types: &[Concrete("Any<'_>")],
+		},
+		|proto_node, stack| {
+			stack.push_fn(|_nodes| {
+				if let ConstructionArgs::Value(value) = proto_node.construction_args {
+					let node = FnNode::new(move |_| value.clone() as Any<'static>);
+					node.into_type_erased()
+				} else {
+					unreachable!()
+				}
+			})
+		},
+	),
+	(
+		NodeIdentifier {
+			name: "graphene_core::value::ValueNode",
+			types: &[Type::Generic],
 		},
 		|proto_node, stack| {
 			stack.push_fn(|_nodes| {
@@ -102,7 +213,7 @@ static NODE_REGISTRY: &[(NodeIdentifier, fn(ProtoNode, &FixedSizeStack<TypeErase
 	(
 		NodeIdentifier {
 			name: "graphene_core::raster::GrayscaleNode",
-			types: &["Color"],
+			types: &[],
 		},
 		|proto_node, stack| {
 			stack.push_fn(|nodes| {
@@ -120,7 +231,7 @@ static NODE_REGISTRY: &[(NodeIdentifier, fn(ProtoNode, &FixedSizeStack<TypeErase
 	(
 		NodeIdentifier {
 			name: "graphene_std::raster::MapImageNode",
-			types: &["Image"],
+			types: &[],
 		},
 		|proto_node, stack| {
 			let node_id = proto_node.input.unwrap_node() as usize;
@@ -143,8 +254,8 @@ static NODE_REGISTRY: &[(NodeIdentifier, fn(ProtoNode, &FixedSizeStack<TypeErase
 	),
 	(
 		NodeIdentifier {
-			name: "graphene_std::raster::image_node",
-			types: &["&str"],
+			name: "graphene_std::raster::ImageNode",
+			types: &[Concrete("&str")],
 		},
 		|_proto_node, stack| {
 			stack.push_fn(|_nodes| {
@@ -156,8 +267,8 @@ static NODE_REGISTRY: &[(NodeIdentifier, fn(ProtoNode, &FixedSizeStack<TypeErase
 	),
 	(
 		NodeIdentifier {
-			name: "graphene_std::raster::export_image_node",
-			types: &["Image", "&str"],
+			name: "graphene_std::raster::ExportImageNode",
+			types: &[Concrete("&str")],
 		},
 		|proto_node, stack| {
 			stack.push_fn(|nodes| {
@@ -173,7 +284,7 @@ static NODE_REGISTRY: &[(NodeIdentifier, fn(ProtoNode, &FixedSizeStack<TypeErase
 	(
 		NodeIdentifier {
 			name: "graphene_core::structural::ConsNode",
-			types: &["Image", "&str"],
+			types: &[Concrete("Image"), Concrete("&str")],
 		},
 		|proto_node, stack| {
 			let node_id = proto_node.input.unwrap_node() as usize;
@@ -194,6 +305,14 @@ static NODE_REGISTRY: &[(NodeIdentifier, fn(ProtoNode, &FixedSizeStack<TypeErase
 	),
 ];
 
+pub fn push_node(proto_node: ProtoNode, stack: &FixedSizeStack<TypeErasedNode<'static>>) {
+	if let Some((_id, f)) = NODE_REGISTRY.iter().find(|(id, _)| *id == proto_node.identifier) {
+		f(proto_node, stack);
+	} else {
+		panic!("NodeImplementation: {:?} not found in Registry", proto_node.identifier);
+	}
+}
+
 #[cfg(test)]
 mod protograph_testing {
 	use borrow_stack::BorrowStack;
@@ -208,25 +327,25 @@ mod protograph_testing {
 	#[test]
 	fn add_values() {
 		let stack = FixedSizeStack::new(256);
-		let val_1_protonode = ProtoNode::value("name".to_string(), ConstructionArgs::Value(Box::new(2u32)));
-		simple_lookup("ValueNode").1(val_1_protonode, &stack);
+		let val_1_protonode = ProtoNode::value(ConstructionArgs::Value(Box::new(2u32)));
+		push_node(val_1_protonode, &stack);
 
-		let val_2_protonode = ProtoNode::value("name".to_string(), ConstructionArgs::Value(Box::new(40u32)));
-		simple_lookup("ValueNode").1(val_2_protonode, &stack);
+		let val_2_protonode = ProtoNode::value(ConstructionArgs::Value(Box::new(40u32)));
+		push_node(val_2_protonode, &stack);
 
 		let cons_protonode = ProtoNode {
 			construction_args: ConstructionArgs::Nodes(vec![1]),
 			input: ProtoNodeInput::Node(0),
-			name: "todo!()".to_string(),
+			identifier: NodeIdentifier::new("graphene_core::structural::ConsNode", &[Concrete("u32"), Concrete("u32")]),
 		};
-		simple_lookup("ConsNode").1(cons_protonode, &stack);
+		push_node(cons_protonode, &stack);
 
 		let add_protonode = ProtoNode {
-			construction_args: ConstructionArgs::None,
+			construction_args: ConstructionArgs::Nodes(vec![]),
 			input: ProtoNodeInput::Node(2),
-			name: "todo!()".to_string(),
+			identifier: NodeIdentifier::new("graphene_core::ops::AddNode", &[Concrete("u32"), Concrete("u32")]),
 		};
-		simple_lookup("AddNode").1(add_protonode, &stack);
+		push_node(add_protonode, &stack);
 
 		let result = unsafe { stack.get()[3].eval(Box::new(())) };
 		let val = *dyn_any::downcast::<u32>(result).unwrap();
@@ -236,15 +355,15 @@ mod protograph_testing {
 	#[test]
 	fn greyscale_colour() {
 		let stack = FixedSizeStack::new(256);
-		let val_protonode = ProtoNode::value("name".to_string(), ConstructionArgs::Value(Box::new(Color::from_rgb8(10, 20, 30))));
-		simple_lookup("ValueNode").1(val_protonode, &stack);
+		let val_protonode = ProtoNode::value(ConstructionArgs::Value(Box::new(Color::from_rgb8(10, 20, 30))));
+		push_node(val_protonode, &stack);
 
 		let greyscale_protonode = ProtoNode {
-			construction_args: ConstructionArgs::None,
+			construction_args: ConstructionArgs::Nodes(vec![]),
 			input: ProtoNodeInput::Node(0),
-			name: "todo!()".to_string(),
+			identifier: NodeIdentifier::new("graphene_core::raster::GrayscaleNode", &[]),
 		};
-		simple_lookup("GrayscaleNode").1(greyscale_protonode, &stack);
+		push_node(greyscale_protonode, &stack);
 
 		let result = unsafe { stack.get()[1].eval(Box::new(())) };
 		let val = *dyn_any::downcast::<Color>(result).unwrap();
@@ -255,11 +374,11 @@ mod protograph_testing {
 	fn load_image() {
 		let stack = FixedSizeStack::new(256);
 		let image_protonode = ProtoNode {
-			construction_args: ConstructionArgs::None,
+			construction_args: ConstructionArgs::Nodes(vec![]),
 			input: ProtoNodeInput::None,
-			name: "todo!()".to_string(),
+			identifier: NodeIdentifier::new("graphene_std::raster::ImageNode", &[Concrete("&str")]),
 		};
-		simple_lookup("image_node").1(image_protonode, &stack);
+		push_node(image_protonode, &stack);
 
 		let result = unsafe { stack.get()[0].eval(Box::new("../gstd/test-image-1.png")) };
 		let image = *dyn_any::downcast::<Image>(result).unwrap();
@@ -270,25 +389,25 @@ mod protograph_testing {
 	fn greyscale_map_image() {
 		let stack = FixedSizeStack::new(256);
 		let image_protonode = ProtoNode {
-			construction_args: ConstructionArgs::None,
+			construction_args: ConstructionArgs::Nodes(vec![]),
 			input: ProtoNodeInput::None,
-			name: "todo!()".to_string(),
+			identifier: NodeIdentifier::new("graphene_std::raster::ImageNode", &[Concrete("&str")]),
 		};
-		simple_lookup("image_node").1(image_protonode, &stack);
+		push_node(image_protonode, &stack);
 
 		let greyscale_protonode = ProtoNode {
-			construction_args: ConstructionArgs::None,
+			construction_args: ConstructionArgs::Nodes(vec![]),
 			input: ProtoNodeInput::None,
-			name: "todo!()".to_string(),
+			identifier: NodeIdentifier::new("graphene_core::raster::GrayscaleNode", &[]),
 		};
-		simple_lookup("GrayscaleNode").1(greyscale_protonode, &stack);
+		push_node(greyscale_protonode, &stack);
 
 		let image_map_protonode = ProtoNode {
 			construction_args: ConstructionArgs::Nodes(vec![1]),
 			input: ProtoNodeInput::Node(0),
-			name: "todo!()".to_string(),
+			identifier: NodeIdentifier::new("graphene_std::raster::MapImageNode", &[]),
 		};
-		simple_lookup("MapImageNode").1(image_map_protonode, &stack);
+		push_node(image_map_protonode, &stack);
 
 		let result = unsafe { stack.get()[2].eval(Box::new("../gstd/test-image-1.png")) };
 		let image = *dyn_any::downcast::<Image>(result).unwrap();

@@ -359,6 +359,7 @@ dependencies = [
  "graphene-core",
  "graphene-std",
  "num-traits",
+ "rand_chacha",
 ]
 
 [[package]]
@@ -395,7 +396,6 @@ dependencies = [
  "once_cell",
  "proc-macro2",
  "quote",
- "rand_chacha",
  "syn",
 ]
 

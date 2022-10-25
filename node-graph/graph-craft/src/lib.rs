@@ -1,6 +1,9 @@
 #![feature(trait_upcasting)]
 pub mod node_registry;
 
+pub mod document;
+pub mod proto;
+
 #[cfg(test)]
 mod tests {
 
@@ -9,7 +12,9 @@ mod tests {
 	use graphene_core::value::ValueNode;
 	use graphene_core::{structural::*, RefNode};
 
+	use crate::document::value::IntoValue;
 	use borrow_stack::BorrowStack;
+	use borrow_stack::FixedSizeStack;
 	use dyn_any::{downcast, IntoDynAny};
 	use graphene_std::any::{Any, DowncastNode, DynAnyNode, TypeErasedNode};
 	use graphene_std::ops::AddNode;
@@ -27,7 +32,6 @@ mod tests {
 			let dynanynode: DynAnyNode<ConsNode<_, Any<'_>>, u32, _, _> = DynAnyNode::new(ConsNode(downcast, PhantomData));
 			dynanynode.into_box()
 		});
-		/*
 		stack.push_fn(|_| {
 			let dynanynode: DynAnyNode<_, (u32, &u32), _, _> = DynAnyNode::new(AddNode);
 			dynanynode.into_box()
@@ -35,79 +39,81 @@ mod tests {
 		stack.push_fn(|nodes| {
 			let compose_node = nodes[1].after(&nodes[2]);
 			TypeErasedNode(Box::new(compose_node))
-		});}*/
+		});
 
 		let result = unsafe { &stack.get()[0] }.eval_ref(().into_dyn());
 		assert_eq!(*downcast::<&u32>(result).unwrap(), &2_u32);
 		let result = unsafe { &stack.get()[1] }.eval_ref(4_u32.into_dyn());
 		assert_eq!(*downcast::<(u32, &u32)>(result).unwrap(), (4_u32, &2_u32));
-		/*
 		let result = unsafe { &stack.get()[1] }.eval_ref(4_u32.into_dyn());
 		let add = unsafe { &stack.get()[2] }.eval_ref(result);
 		assert_eq!(*downcast::<u32>(add).unwrap(), 6_u32);
 		let add = unsafe { &stack.get()[3] }.eval_ref(4_u32.into_dyn());
-		assert_eq!(*downcast::<u32>(add).unwrap(), 6_u32);*/
+		assert_eq!(*downcast::<u32>(add).unwrap(), 6_u32);
 	}
 
 	#[test]
-	fn craft_from_flattened() {
-		use graphene_std::document::*;
-		// This is input and evaluated
-		let construction_network = NodeNetwork {
-			inputs: vec![10],
-			output: 1,
-			nodes: [
-				(
-					1,
-					DocumentNode {
-						name: "Inc".into(),
-						inputs: vec![],
-						implementation: DocumentNodeImplementation::ProtoNode(ProtoNode {
-							name: "id".into(),
-							input: ProtoNodeInput::Node(11),
-							construction_args: ConstructionArgs::None,
-						}),
-					},
-				),
-				(
-					10,
-					DocumentNode {
-						name: "cons".into(),
-						inputs: vec![],
-						implementation: DocumentNodeImplementation::ProtoNode(ProtoNode {
+	fn execute_add() {
+		use crate::document::*;
+		use crate::node_registry::push_node;
+		use crate::proto::*;
+		use graphene_core::Node;
+
+		fn add_network() -> NodeNetwork {
+			NodeNetwork {
+				inputs: vec![0, 0],
+				output: 1,
+				nodes: [
+					(
+						0,
+						DocumentNode {
 							name: "cons".into(),
-							input: ProtoNodeInput::Network,
-							construction_args: ConstructionArgs::Nodes(vec![14]),
-						}),
-					},
-				),
-				(
-					11,
-					DocumentNode {
-						name: "add".into(),
-						inputs: vec![],
-						implementation: DocumentNodeImplementation::ProtoNode(ProtoNode {
+							inputs: vec![NodeInput::Network, NodeInput::Network],
+							implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::structural::ConsNode", &[Type::Concrete("u32"), Type::Concrete("u32")])),
+						},
+					),
+					(
+						1,
+						DocumentNode {
 							name: "add".into(),
-							input: ProtoNodeInput::Node(10),
-							construction_args: ConstructionArgs::None,
-						}),
-					},
-				),
-				(
-					14,
-					DocumentNode {
-						name: "Value: 2".into(),
-						inputs: vec![],
-						implementation: DocumentNodeImplementation::ProtoNode(ProtoNode {
-							name: "value".into(),
-							input: ProtoNodeInput::None,
-							construction_args: ConstructionArgs::Value(2_u32.into_any()),
-						}),
-					},
-				),
-			]
+							inputs: vec![NodeInput::Node(0)],
+							implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::AddNode", &[Type::Concrete("u32"), Type::Concrete("u32")])),
+						},
+					),
+				]
+				.into_iter()
+				.collect(),
+			}
+		}
+
+		let mut network = NodeNetwork {
+			inputs: vec![0],
+			output: 0,
+			nodes: [(
+				0,
+				DocumentNode {
+					name: "Inc".into(),
+					inputs: vec![NodeInput::Network, NodeInput::Value(1_u32.into_any())],
+					implementation: DocumentNodeImplementation::Network(add_network()),
+				},
+			)]
 			.into_iter()
 			.collect(),
 		};
+
+		let stack = FixedSizeStack::new(256);
+		println!("flattening");
+		network.flatten(0);
+		//println!("flat_network: {:#?}", network);
+		let mut proto_network = network.into_proto_network();
+		proto_network.reorder_ids();
+		//println!("reordered_ides: {:#?}", proto_network);
+		for (_id, node) in proto_network.nodes {
+			push_node(node, &stack);
+		}
+
+		let result = unsafe { stack.get().last().unwrap().eval(32_u32.into_dyn()) };
+		let val = *dyn_any::downcast::<u32>(result).unwrap();
+		assert_eq!(val, 33_u32);
 	}
 }
