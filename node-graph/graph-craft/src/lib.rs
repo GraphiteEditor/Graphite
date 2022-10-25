@@ -1,4 +1,3 @@
-#![feature(trait_upcasting)]
 pub mod node_registry;
 
 pub mod document;
