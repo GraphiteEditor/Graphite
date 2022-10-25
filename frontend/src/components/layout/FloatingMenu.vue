@@ -1,6 +1,6 @@
 <template>
-	<div class="floating-menu" :class="[direction.toLowerCase(), type.toLowerCase()]" ref="floatingMenu">
-		<div class="tail" v-if="open && type === 'Popover'" ref="tail"></div>
+	<div class="floating-menu" :class="[direction.toLowerCase(), type.toLowerCase()]">
+		<div class="tail" :style="tailStyle" v-if="displayTail"></div>
 		<div class="floating-menu-container" v-if="open || measuringOngoing" ref="floatingMenuContainer">
 			<LayoutCol class="floating-menu-content" :style="{ minWidth: minWidthStyleValue }" :scrollableY="scrollableY" ref="floatingMenuContent" data-floating-menu-content>
 				<slot></slot>
@@ -203,6 +203,8 @@ export default defineComponent({
 		escapeCloses: { type: Boolean as PropType<boolean>, default: true },
 	},
 	data() {
+		const tailStyle: { top?: string; bottom?: string; left?: string; right?: string } = {};
+
 		// The resize observer is attached to the floating menu container, which is the zero-height div of the width of the parent element's floating menu spawner.
 		// Since CSS doesn't let us make the floating menu (with `position: fixed`) have a 100% width of this container, we need to use JS to observe its size and
 		// tell the floating menu content to use it as a min-width so the floating menu is at least the width of the parent element's floating menu spawner.
@@ -216,6 +218,7 @@ export default defineComponent({
 			measuringOngoing: false,
 			measuringOngoingGuard: false,
 			minWidthParentWidth: 0,
+			tailStyle,
 			containerResizeObserver,
 			pointerStillDown: false,
 			workspaceBounds: new DOMRect(),
@@ -227,6 +230,9 @@ export default defineComponent({
 		minWidthStyleValue() {
 			if (this.measuringOngoing) return "0";
 			return `${Math.max(this.minWidth, this.minWidthParentWidth)}px`;
+		},
+		displayTail() {
+			return this.open && this.type === "Popover";
 		},
 	},
 	// Gets the client bounds of the elements and apply relevant styles to them
@@ -245,15 +251,15 @@ export default defineComponent({
 			if (this.type === "Cursor") return;
 
 			const workspace = document.querySelector("[data-workspace]");
-			const floatingMenuContainer = this.$refs.floatingMenuContainer as HTMLElement;
-			const floatingMenuContentComponent = this.$refs.floatingMenuContent as typeof LayoutCol;
-			const floatingMenuContent: HTMLElement | undefined = floatingMenuContentComponent?.$el;
-			const floatingMenu = this.$refs.floatingMenu as HTMLElement;
+			const floatingMenu: HTMLDivElement | undefined = this.$el;
+			const floatingMenuContainer = this.$refs.floatingMenuContainer as HTMLDivElement | undefined;
+			const floatingMenuContent: HTMLDivElement | undefined = (this.$refs.floatingMenuContent as typeof LayoutCol | undefined)?.$el;
 
-			if (!workspace || !floatingMenuContainer || !floatingMenuContentComponent || !floatingMenuContent || !floatingMenu) return;
+			if (!workspace || !floatingMenu || !floatingMenuContainer || !floatingMenuContent) return;
 
 			this.workspaceBounds = workspace.getBoundingClientRect();
 			this.floatingMenuBounds = floatingMenu.getBoundingClientRect();
+			const floatingMenuContainerBounds = floatingMenuContainer.getBoundingClientRect();
 			this.floatingMenuContentBounds = floatingMenuContent.getBoundingClientRect();
 
 			const inParentFloatingMenu = Boolean(floatingMenuContainer.closest("[data-floating-menu-content]"));
@@ -267,13 +273,10 @@ export default defineComponent({
 				if (this.direction === "Left") floatingMenuContent.style.right = `${tailOffset + this.floatingMenuBounds.right}px`;
 
 				// Required to correctly position tail when scrolled (it has a `position: fixed` to prevent clipping)
-				const tail = this.$refs.tail as HTMLElement;
-				if (tail) {
-					if (this.direction === "Bottom") tail.style.top = `${this.floatingMenuBounds.top}px`;
-					if (this.direction === "Top") tail.style.bottom = `${this.floatingMenuBounds.bottom}px`;
-					if (this.direction === "Right") tail.style.left = `${this.floatingMenuBounds.left}px`;
-					if (this.direction === "Left") tail.style.right = `${this.floatingMenuBounds.right}px`;
-				}
+				if (this.direction === "Bottom") this.tailStyle = { top: `${this.floatingMenuBounds.top}px` };
+				if (this.direction === "Top") this.tailStyle = { bottom: `${this.floatingMenuBounds.bottom}px` };
+				if (this.direction === "Right") this.tailStyle = { left: `${this.floatingMenuBounds.left}px` };
+				if (this.direction === "Left") this.tailStyle = { right: `${this.floatingMenuBounds.right}px` };
 			}
 
 			type Edge = "Top" | "Bottom" | "Left" | "Right";
@@ -285,11 +288,11 @@ export default defineComponent({
 
 				if (this.floatingMenuContentBounds.left - this.windowEdgeMargin <= this.workspaceBounds.left) {
 					floatingMenuContent.style.left = `${this.windowEdgeMargin}px`;
-					if (this.workspaceBounds.left + floatingMenuContainer.getBoundingClientRect().left === 12) zeroedBorderHorizontal = "Left";
+					if (this.workspaceBounds.left + floatingMenuContainerBounds.left === 12) zeroedBorderHorizontal = "Left";
 				}
 				if (this.floatingMenuContentBounds.right + this.windowEdgeMargin >= this.workspaceBounds.right) {
 					floatingMenuContent.style.right = `${this.windowEdgeMargin}px`;
-					if (this.workspaceBounds.right - floatingMenuContainer.getBoundingClientRect().right === 12) zeroedBorderHorizontal = "Right";
+					if (this.workspaceBounds.right - floatingMenuContainerBounds.right === 12) zeroedBorderHorizontal = "Right";
 				}
 			}
 			if (this.direction === "Left" || this.direction === "Right") {
@@ -297,11 +300,11 @@ export default defineComponent({
 
 				if (this.floatingMenuContentBounds.top - this.windowEdgeMargin <= this.workspaceBounds.top) {
 					floatingMenuContent.style.top = `${this.windowEdgeMargin}px`;
-					if (this.workspaceBounds.top + floatingMenuContainer.getBoundingClientRect().top === 12) zeroedBorderVertical = "Top";
+					if (this.workspaceBounds.top + floatingMenuContainerBounds.top === 12) zeroedBorderVertical = "Top";
 				}
 				if (this.floatingMenuContentBounds.bottom + this.windowEdgeMargin >= this.workspaceBounds.bottom) {
 					floatingMenuContent.style.bottom = `${this.windowEdgeMargin}px`;
-					if (this.workspaceBounds.bottom - floatingMenuContainer.getBoundingClientRect().bottom === 12) zeroedBorderVertical = "Bottom";
+					if (this.workspaceBounds.bottom - floatingMenuContainerBounds.bottom === 12) zeroedBorderVertical = "Bottom";
 				}
 			}
 
@@ -338,16 +341,12 @@ export default defineComponent({
 			// Make the component show itself with 0 min-width so it can be measured, and wait until the values have been updated to the DOM
 			this.measuringOngoing = true;
 			this.measuringOngoingGuard = true;
-
 			await nextTick();
 
-			// Only measure if the menu is visible, perhaps because a parent component with a `v-if` condition is false
-			let naturalWidth;
-			if (this.$refs.floatingMenuContent) {
-				// Measure the width of the floating menu content element
-				const floatingMenuContent: HTMLElement = (this.$refs.floatingMenuContent as typeof LayoutCol).$el;
-				naturalWidth = floatingMenuContent?.clientWidth;
-			}
+			// Measure the width of the floating menu content element, if it's currently visible
+			// The result will be `undefined` if the menu is invisible, perhaps because an ancestor component is hidden with a falsy `v-if` condition
+			const floatingMenuContent: HTMLDivElement | undefined = (this.$refs.floatingMenuContent as typeof LayoutCol | undefined)?.$el;
+			const naturalWidth = floatingMenuContent?.clientWidth;
 
 			// Turn off measuring mode for the component, which triggers another call to the `updated()` Vue event, so we can turn off the protection after that has happened
 			this.measuringOngoing = false;
@@ -363,7 +362,8 @@ export default defineComponent({
 			const target = e.target as HTMLElement | undefined;
 			const pointerOverFloatingMenuKeepOpen = target?.closest("[data-hover-menu-keep-open]") as HTMLElement | undefined;
 			const pointerOverFloatingMenuSpawner = target?.closest("[data-hover-menu-spawner]") as HTMLElement | undefined;
-			const pointerOverOwnFloatingMenuSpawner = pointerOverFloatingMenuSpawner?.parentElement?.contains(this.$refs.floatingMenu as HTMLElement);
+			const floatingMenu: HTMLDivElement | undefined = this.$el;
+			const pointerOverOwnFloatingMenuSpawner = floatingMenu && pointerOverFloatingMenuSpawner?.parentElement?.contains(floatingMenu);
 
 			// Swap this open floating menu with the one created by the floating menu spawner being hovered over
 			if (pointerOverFloatingMenuSpawner && !pointerOverOwnFloatingMenuSpawner) {
@@ -418,10 +418,13 @@ export default defineComponent({
 		},
 		isPointerEventOutsideFloatingMenu(e: PointerEvent, extraDistanceAllowed = 0): boolean {
 			// Considers all child menus as well as the top-level one.
-			const allContainedFloatingMenus = [...this.$el.querySelectorAll("[data-floating-menu-content]")];
+			const floatingMenu: HTMLDivElement | undefined = this.$el;
+			if (!floatingMenu) return true;
+
+			const allContainedFloatingMenus = [...floatingMenu.querySelectorAll("[data-floating-menu-content]")];
 			return !allContainedFloatingMenus.find((element) => !this.isPointerEventOutsideMenuElement(e, element, extraDistanceAllowed));
 		},
-		isPointerEventOutsideMenuElement(e: PointerEvent, element: HTMLElement, extraDistanceAllowed = 0): boolean {
+		isPointerEventOutsideMenuElement(e: PointerEvent, element: Element, extraDistanceAllowed = 0): boolean {
 			const floatingMenuBounds = element.getBoundingClientRect();
 
 			if (floatingMenuBounds.left - e.clientX >= extraDistanceAllowed) return true;
@@ -450,7 +453,7 @@ export default defineComponent({
 
 				await nextTick();
 
-				const floatingMenuContainer = this.$refs.floatingMenuContainer as HTMLElement;
+				const floatingMenuContainer = this.$refs.floatingMenuContainer as HTMLDivElement | undefined;
 				if (!floatingMenuContainer) return;
 
 				// Start a new observation of the now-open floating menu

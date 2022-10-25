@@ -764,7 +764,7 @@ export type TextButtonWidget = {
 	props: {
 		kind: "TextButton";
 		label: string;
-		icon?: string;
+		icon?: IconName;
 		emphasized?: boolean;
 		minWidth?: number;
 		disabled?: boolean;

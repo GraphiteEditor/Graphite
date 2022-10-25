@@ -50,25 +50,25 @@ export default defineComponent({
 			this.editing = true;
 		},
 		// Called only when `value` is changed from the <textarea> element via user input and committed, either
-		// via the `change` event or when the <input> element is defocused (with the `blur` event binding)
+		// via the `change` event or when the <input> element is unfocused (with the `blur` event binding)
 		onTextChanged() {
-			// The `inputElement.blur()` call in `onCancelTextChange()` causes itself to be run again, so this if statement skips a second run
+			// The `unFocus()` call in `onCancelTextChange()` causes itself to be run again, so this if statement skips a second run
 			if (!this.editing) return;
 
 			this.onCancelTextChange();
 
 			// TODO: Find a less hacky way to do this
-			const inputElement = (this.$refs.fieldInput as typeof FieldInput).$refs.input as HTMLTextAreaElement;
-			this.$emit("commitText", inputElement.value);
+			const inputElement = this.$refs.fieldInput as typeof FieldInput | undefined;
+			if (!inputElement) return;
+			this.$emit("commitText", inputElement.getInputElementValue());
 
 			// Required if value is not changed by the parent component upon update:value event
-			inputElement.value = this.value;
+			inputElement.setInputElementValue(this.value);
 		},
 		onCancelTextChange() {
 			this.editing = false;
 
-			const inputElement = (this.$refs.fieldInput as typeof FieldInput).$refs.input as HTMLTextAreaElement;
-			inputElement.blur();
+			(this.$refs.fieldInput as typeof FieldInput | undefined)?.unFocus();
 		},
 	},
 	components: { FieldInput },

@@ -7,11 +7,11 @@
 						:panelType="portfolio.state.documents.length > 0 ? 'Document' : undefined"
 						:tabCloseButtons="true"
 						:tabMinWidths="true"
-						:tabLabels="portfolio.state.documents.map((doc) => ({ name: doc.displayName, tooltip: doc.id }))"
+						:tabLabels="documentTabLabels"
 						:clickAction="(tabIndex: number) => editor.instance.selectDocument(portfolio.state.documents[tabIndex].id)"
 						:closeAction="(tabIndex: number) => editor.instance.closeDocumentWithConfirmation(portfolio.state.documents[tabIndex].id)"
 						:tabActiveIndex="portfolio.state.activeDocumentIndex"
-						ref="documentsPanel"
+						ref="documentPanel"
 					/>
 				</LayoutRow>
 				<LayoutRow class="workspace-grid-resize-gutter" @pointerdown="(e: PointerEvent) => resizePanel(e)" v-if="nodeGraphVisible"></LayoutRow>
@@ -64,7 +64,7 @@
 </style>
 
 <script lang="ts">
-import { defineComponent, nextTick } from "vue";
+import { defineComponent } from "vue";
 
 import DialogModal from "@/components/floating-menus/DialogModal.vue";
 import LayoutCol from "@/components/layout/LayoutCol.vue";
@@ -82,12 +82,22 @@ export default defineComponent({
 		nodeGraphVisible() {
 			return this.workspace.state.nodeGraphVisible;
 		},
+		documentTabLabels() {
+			return this.portfolio.state.documents.map((doc) => {
+				const name = doc.displayName;
+
+				if (!this.editor.instance.inDevelopmentMode()) return { name };
+
+				const tooltip = `Document ID ${doc.id}`;
+				return { name, tooltip };
+			});
+		},
 	},
 	methods: {
 		resizePanel(event: PointerEvent) {
-			const gutter = event.target as HTMLElement;
-			const nextSibling = gutter.nextElementSibling as HTMLElement;
-			const previousSibling = gutter.previousElementSibling as HTMLElement;
+			const gutter = event.target as HTMLDivElement;
+			const nextSibling = gutter.nextElementSibling as HTMLDivElement;
+			const previousSibling = gutter.previousElementSibling as HTMLDivElement;
 
 			// Are we resizing horizontally?
 			const horizontal = gutter.classList.contains("layout-col");
@@ -129,11 +139,7 @@ export default defineComponent({
 	},
 	watch: {
 		async activeDocumentIndex(newIndex: number) {
-			await nextTick();
-
-			const documentsPanel = this.$refs.documentsPanel as typeof Panel;
-			const newActiveTab = documentsPanel.$el.querySelectorAll("[data-tab-bar] [data-tab]")[newIndex];
-			newActiveTab.scrollIntoView();
+			(this.$refs.documentPanel as typeof Panel | undefined)?.scrollTabIntoView(newIndex);
 		},
 	},
 	components: {

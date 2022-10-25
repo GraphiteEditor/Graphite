@@ -46,7 +46,7 @@
 						:direction="'TopRight'"
 						:entries="entry.children"
 						v-bind="{ minWidth, drawIcon, scrollableY }"
-						:ref="(ref: MenuListInstance) => ref && (entry.ref = ref)"
+						:ref="(ref: MenuListInstance): void => (ref && (entry.ref = ref), undefined)"
 					/>
 				</LayoutRow>
 			</template>
@@ -204,15 +204,17 @@ const MenuList = defineComponent({
 			this.$emit("update:open", newIsOpen);
 		},
 		entries() {
-			const floatingMenu = this.$refs.floatingMenu as typeof FloatingMenu;
-			floatingMenu.measureAndEmitNaturalWidth();
+			(this.$refs.floatingMenu as typeof FloatingMenu | undefined)?.measureAndEmitNaturalWidth();
 		},
 		drawIcon() {
-			const floatingMenu = this.$refs.floatingMenu as typeof FloatingMenu;
-			floatingMenu.measureAndEmitNaturalWidth();
+			(this.$refs.floatingMenu as typeof FloatingMenu | undefined)?.measureAndEmitNaturalWidth();
 		},
 	},
 	methods: {
+		scrollViewTo(distanceDown: number): void {
+			const scroller: HTMLDivElement | undefined = (this.$refs.scroller as typeof LayoutCol | undefined)?.$el;
+			scroller?.scrollTo(0, distanceDown);
+		},
 		onEntryClick(menuListEntry: MenuListEntry): void {
 			// Call the action if available
 			if (menuListEntry.action) menuListEntry.action();
@@ -242,7 +244,6 @@ const MenuList = defineComponent({
 
 			return this.open;
 		},
-
 		/// Handles keyboard navigation for the menu. Returns if the entire menu stack should be dismissed
 		keydown(e: KeyboardEvent, submenu: boolean): boolean {
 			// Interactive menus should keep the active entry the same as the highlighted one

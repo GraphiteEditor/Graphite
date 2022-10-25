@@ -113,7 +113,9 @@ export default defineComponent({
 	},
 	methods: {
 		displayImageDataPreview(imageData: ImageData | undefined) {
-			const canvas = this.$refs.zoomPreviewCanvas as HTMLCanvasElement;
+			const canvas = this.$refs.zoomPreviewCanvas as HTMLCanvasElement | undefined;
+			if (!canvas) return;
+
 			canvas.width = ZOOM_WINDOW_DIMENSIONS;
 			canvas.height = ZOOM_WINDOW_DIMENSIONS;
 			const context = canvas.getContext("2d");
