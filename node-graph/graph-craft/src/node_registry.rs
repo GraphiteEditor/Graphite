@@ -13,6 +13,8 @@ use graphene_std::raster::Image;
 use crate::proto::Type;
 use crate::proto::{ConstructionArgs, NodeIdentifier, ProtoNode, ProtoNodeInput, Type::Concrete};
 
+use dyn_any::Upcast;
+
 type NodeConstructor = fn(ProtoNode, &FixedSizeStack<TypeErasedNode<'static>>);
 
 //TODO: turn into hasmap
@@ -186,7 +188,8 @@ static NODE_REGISTRY: &[(NodeIdentifier<'static>, NodeConstructor)] = &[
 		|proto_node, stack| {
 			stack.push_fn(|_nodes| {
 				if let ConstructionArgs::Value(value) = proto_node.construction_args {
-					let node = FnNode::new(move |_| value.clone() as Any<'static>);
+					let node = FnNode::new(move |_| value.clone().up_box() as Any<'static>);
+
 					node.into_type_erased()
 				} else {
 					unreachable!()
@@ -202,7 +205,7 @@ static NODE_REGISTRY: &[(NodeIdentifier<'static>, NodeConstructor)] = &[
 		|proto_node, stack| {
 			stack.push_fn(|_nodes| {
 				if let ConstructionArgs::Value(value) = proto_node.construction_args {
-					let node = FnNode::new(move |_| value.clone() as Any<'static>);
+					let node = FnNode::new(move |_| value.clone().up_box() as Any<'static>);
 					node.into_type_erased()
 				} else {
 					unreachable!()
