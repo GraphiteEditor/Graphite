@@ -48,7 +48,7 @@ where
 	}
 }
 
-pub trait AsBoxNode<'n, T>
+pub trait AsRefNode<'n, T>
 where
 	&'n Self: Node<T>,
 	Self: 'n,
@@ -57,7 +57,7 @@ where
 	fn eval_box(&'n self, input: T) -> <Self>::Output;
 }
 
-impl<'n, N: 'n, I> AsBoxNode<'n, I> for N
+impl<'n, N: 'n, I> AsRefNode<'n, I> for N
 where
 	&'n N: Node<I, Output = N::Output>,
 	N: Node<I>,
@@ -69,7 +69,7 @@ where
 	}
 }
 
-impl<'n, T> Node<T> for &'n (dyn AsBoxNode<'n, T, Output = T> + 'n) {
+impl<'n, T> Node<T> for &'n (dyn AsRefNode<'n, T, Output = T> + 'n) {
 	type Output = T;
 	fn eval(self, input: T) -> Self::Output {
 		self.eval_box(input)

@@ -1,6 +1,6 @@
 use core::marker::PhantomData;
 
-use crate::{Node, RefNode};
+use crate::{AsRefNode, Node, RefNode};
 
 #[derive(Debug)]
 pub struct ComposeNode<First, Second, Input> {
@@ -26,17 +26,19 @@ where
 }
 impl<'n, Input, Inter, First, Second> Node<Input> for &'n ComposeNode<First, Second, Input>
 where
-	First: RefNode<Input, Output = Inter> + Copy,
-	Second: RefNode<Inter> + Copy,
+	First: AsRefNode<'n, Input, Output = Inter>,
+	Second: AsRefNode<'n, Inter>,
+	&'n First: Node<Input, Output = Inter>,
+	&'n Second: Node<Inter>,
 {
-	type Output = <Second as RefNode<Inter>>::Output;
+	type Output = <Second as AsRefNode<'n, Inter>>::Output;
 
 	fn eval(self, input: Input) -> Self::Output {
 		// evaluate the first node with the given input
 		// and then pipe the result from the first computation
 		// into the second node
-		let arg: Inter = (self.first).eval_ref(input);
-		(self.second).eval_ref(arg)
+		let arg: Inter = (self.first).eval_box(input);
+		(self.second).eval_box(arg)
 	}
 }
 impl<Input, Inter, First, Second> RefNode<Input> for ComposeNode<First, Second, Input>
@@ -134,5 +136,10 @@ impl<'n, Root: Node<T> + Copy, T: From<()>, Input> Node<Input> for &'n ConsNode<
 	fn eval(self, input: Input) -> Self::Output {
 		let arg = self.0.eval(().into());
 		(input, arg)
+	}
+}
+impl<Root, T: From<()>> ConsNode<Root, T> {
+	pub fn new(root: Root) -> Self {
+		ConsNode(root, PhantomData)
 	}
 }

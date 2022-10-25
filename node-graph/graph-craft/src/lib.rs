@@ -1,3 +1,5 @@
+pub mod node_registry;
+
 #[cfg(test)]
 mod tests {
 
@@ -7,7 +9,7 @@ mod tests {
 	use graphene_core::{structural::*, RefNode};
 
 	use borrow_stack::BorrowStack;
-	use dyn_any::{downcast, DynAny, IntoDynAny};
+	use dyn_any::{downcast, IntoDynAny};
 	use graphene_std::any::{Any, DowncastNode, DynAnyNode, TypeErasedNode};
 	use graphene_std::ops::AddNode;
 
@@ -19,7 +21,8 @@ mod tests {
 			stack.push(dynanynode.into_box());
 		}
 		stack.push_fn(|nodes| {
-			let downcast: DowncastNode<_, &u32> = DowncastNode::new(&nodes[0]);
+			let pre_node = nodes.get(0).unwrap();
+			let downcast: DowncastNode<&TypeErasedNode, &u32> = DowncastNode::new(pre_node);
 			let dynanynode: DynAnyNode<ConsNode<_, Any<'_>>, u32, _, _> = DynAnyNode::new(ConsNode(downcast, PhantomData));
 			dynanynode.into_box()
 		});
@@ -39,17 +42,6 @@ mod tests {
 		assert_eq!(*downcast::<u32>(add).unwrap(), 6_u32);
 		let add = unsafe { &stack.get()[3] }.eval_ref(4_u32.into_dyn());
 		assert_eq!(*downcast::<u32>(add).unwrap(), 6_u32);
-
-		/*
-		for i in 0..3 {
-			println!("node_id: {}", i);
-			let value = unsafe { &stack.get()[i] };
-			input = value.eval_ref(input);
-		}*/
-
-		//assert_eq!(*dyn_any::downcast::<u32>(result).unwrap(), 4)
-
-		//assert_eq!(4, *dyn_any::downcast::<u32>(DynamicAddNode.eval((Box::new(2_u32) as Dynamic, Box::new(2_u32) as Dynamic))).unwrap());
 	}
 
 	#[test]
