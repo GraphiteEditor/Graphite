@@ -66,36 +66,30 @@ export function createPersistenceManager(editor: Editor, portfolio: PortfolioSta
 	}
 
 	async function loadDocuments(db: IDBDatabase): Promise<void> {
-		let promiseResolve: (value: void | PromiseLike<void>) => void;
-		const promise = new Promise<void>((resolve): void => {
-			promiseResolve = resolve;
-		});
-
 		// Open auto-save documents
 		const transaction = db.transaction(GRAPHITE_AUTO_SAVE_DOCUMENTS_STORE.name, "readonly");
 		const request = transaction.objectStore(GRAPHITE_AUTO_SAVE_DOCUMENTS_STORE.name).getAll();
 
-		request.onsuccess = (): void => {
-			const previouslySavedDocuments: TriggerIndexedDbWriteDocument[] = request.result;
+		// Await the database request data
+		await new Promise<void>((resolve): void => {
+			request.onsuccess = (): void => resolve();
+		});
 
-			const documentOrder: string[] = JSON.parse(window.localStorage.getItem(GRAPHITE_AUTO_SAVE_ORDER_KEY) || "[]");
-			const orderedSavedDocuments = documentOrder
-				.map((id) => previouslySavedDocuments.find((autoSave) => autoSave.details.id === id))
-				.filter((x) => x !== undefined) as TriggerIndexedDbWriteDocument[];
+		const previouslySavedDocuments: TriggerIndexedDbWriteDocument[] = request.result;
 
-			const currentDocumentVersion = editor.instance.graphiteDocumentVersion();
-			orderedSavedDocuments.forEach(async (doc: TriggerIndexedDbWriteDocument) => {
-				if (doc.version === currentDocumentVersion) {
-					editor.instance.openAutoSavedDocument(BigInt(doc.details.id), doc.details.name, doc.details.isSaved, doc.document);
-				} else {
-					await removeDocument(doc.details.id, db);
-				}
-			});
+		const documentOrder: string[] = JSON.parse(window.localStorage.getItem(GRAPHITE_AUTO_SAVE_ORDER_KEY) || "[]");
+		const orderedSavedDocuments = documentOrder
+			.map((id) => previouslySavedDocuments.find((autoSave) => autoSave.details.id === id))
+			.filter((x) => x !== undefined) as TriggerIndexedDbWriteDocument[];
 
-			promiseResolve();
-		};
-
-		await promise;
+		const currentDocumentVersion = editor.instance.graphiteDocumentVersion();
+		orderedSavedDocuments.forEach(async (doc: TriggerIndexedDbWriteDocument) => {
+			if (doc.version === currentDocumentVersion) {
+				editor.instance.openAutoSavedDocument(BigInt(doc.details.id), doc.details.name, doc.details.isSaved, doc.document);
+			} else {
+				await removeDocument(doc.details.id, db);
+			}
+		});
 	}
 
 	// PREFERENCES
@@ -110,29 +104,23 @@ export function createPersistenceManager(editor: Editor, portfolio: PortfolioSta
 	}
 
 	async function loadPreferences(db: IDBDatabase): Promise<void> {
-		let promiseResolve: (value: void | PromiseLike<void>) => void;
-		const promise = new Promise<void>((resolve): void => {
-			promiseResolve = resolve;
-		});
-
 		// Open auto-save documents
 		const transaction = db.transaction(GRAPHITE_EDITOR_PREFERENCES_STORE.name, "readonly");
 		const request = transaction.objectStore(GRAPHITE_EDITOR_PREFERENCES_STORE.name).getAll();
 
-		request.onsuccess = (): void => {
-			const preferenceEntries: { key: string; value: unknown }[] = request.result;
+		// Await the database request data
+		await new Promise<void>((resolve): void => {
+			request.onsuccess = (): void => resolve();
+		});
 
-			const preferences: Record<string, unknown> = {};
-			preferenceEntries.forEach(({ key, value }) => {
-				preferences[key] = value;
-			});
+		const preferenceEntries: { key: string; value: unknown }[] = request.result;
 
-			editor.instance.loadPreferences(JSON.stringify(preferences));
+		const preferences: Record<string, unknown> = {};
+		preferenceEntries.forEach(({ key, value }) => {
+			preferences[key] = value;
+		});
 
-			promiseResolve();
-		};
-
-		await promise;
+		editor.instance.loadPreferences(JSON.stringify(preferences));
 	}
 
 	// FRONTEND MESSAGE SUBSCRIPTIONS
