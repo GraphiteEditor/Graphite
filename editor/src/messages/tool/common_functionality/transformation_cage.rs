@@ -279,6 +279,8 @@ impl BoundingBoxOverlays {
 			let mut bottom = (max.y - cursor.y).abs() < select_threshold;
 			let mut left = (cursor.x - min.x).abs() < select_threshold;
 			let mut right = (max.x - cursor.x).abs() < select_threshold;
+
+			// Prioritise single axis transformations on very small bounds
 			if cursor.y - min.y + max.y - cursor.y < select_threshold * 2. && (left || right) {
 				top = false;
 				bottom = false;
@@ -286,6 +288,16 @@ impl BoundingBoxOverlays {
 			if cursor.x - min.x + max.x - cursor.x < select_threshold * 2. && (top || bottom) {
 				left = false;
 				right = false;
+			}
+
+			// On bounds with no width/height, disallow transformation in the relevant axis
+			if (max.x - min.x) < f64::EPSILON * 1000. {
+				left = false;
+				right = false;
+			}
+			if (max.y - min.y) < f64::EPSILON * 1000. {
+				top = false;
+				bottom = false;
 			}
 
 			if top || bottom || left || right {
