@@ -359,22 +359,25 @@ export default defineComponent({
 			}
 		},
 		pointerMoveHandler(e: PointerEvent) {
+			// This element and the element being hovered over
+			const self = this.$el as HTMLDivElement | undefined;
 			const target = e.target as HTMLElement | undefined;
-			const pointerOverFloatingMenuKeepOpen = target?.closest("[data-hover-menu-keep-open]") as HTMLElement | undefined;
-			const pointerOverFloatingMenuSpawner = target?.closest("[data-hover-menu-spawner]") as HTMLElement | undefined;
-			const floatingMenu: HTMLDivElement | undefined = this.$el;
-			const pointerOverOwnFloatingMenuSpawner = floatingMenu && pointerOverFloatingMenuSpawner?.parentElement?.contains(floatingMenu);
 
-			// Swap this open floating menu with the one created by the floating menu spawner being hovered over
-			if (pointerOverFloatingMenuSpawner && !pointerOverOwnFloatingMenuSpawner) {
-				this.$emit("update:open", false);
-				pointerOverFloatingMenuSpawner.click();
-			}
+			// Get the spawner element (that which is clicked to spawn this floating menu)
+			// Assumes the spawner is a sibling of this FloatingMenu component
+			const ownSpawner: HTMLElement | undefined = self?.parentElement?.querySelector(":scope > [data-floating-menu-spawner]") || undefined;
+			// Get the spawner element containing whatever element the user is hovering over now, if there is one
+			const targetSpawner: HTMLElement | undefined = target?.closest("[data-floating-menu-spawner]") || undefined;
 
-			// Close the floating menu if the pointer has strayed far enough from its bounds
-			if (this.isPointerEventOutsideFloatingMenu(e, POINTER_STRAY_DISTANCE) && !pointerOverOwnFloatingMenuSpawner && !pointerOverFloatingMenuKeepOpen) {
-				// TODO: Extend this rectangle bounds check to all `data-hover-menu-keep-open` element bounds up the DOM tree since currently
-				// submenus disappear with zero stray distance if the cursor is further than the stray distance from only the top-level menu
+			// Hover transfer
+			// Transfer from this open floating menu to a sibling floating menu if the pointer hovers to a valid neighboring floating menu spawner
+			this.hoverTransfer(self, ownSpawner, targetSpawner);
+
+			// Pointer stray
+			// Close the floating menu if the pointer has strayed far enough from its bounds (and it's not hovering over its own spawner)
+			if (ownSpawner !== targetSpawner && this.isPointerEventOutsideFloatingMenu(e, POINTER_STRAY_DISTANCE)) {
+				// TODO: Extend this rectangle bounds check to all submenu bounds up the DOM tree since currently submenus disappear
+				// TODO: with zero stray distance if the cursor is further than the stray distance from only the top-level menu
 				this.$emit("update:open", false);
 			}
 
@@ -383,6 +386,72 @@ export default defineComponent({
 			if (!this.open && !eventIncludesLmb) {
 				this.pointerStillDown = false;
 				window.removeEventListener("pointerup", this.pointerUpHandler);
+			}
+		},
+		hoverTransfer(self: HTMLDivElement | undefined, ownSpawner: HTMLElement | undefined, targetSpawner: HTMLElement | undefined): void {
+			// Algorithm pseudo-code to detect and transfer to hover-transferrable floating menu spawners
+			// Accompanying diagram: <https://files.keavon.com/-/SpringgreenKnownXantus/capture.png>
+			//
+			// Check our own parent for descendant spawners
+			// Filter out ourself and our children
+			// Filter out all with a different distance than our own distance from the currently-being-checked parent
+			// How many left?
+			//     None -> go up a level and repeat
+			//     Some -> is one of them the target?
+			//         Yes -> click it and terminate
+			//         No -> do nothing and terminate
+
+			// Helper function that gets used below
+			const getDepthFromAncestor = (item: Element, ancestor: Element): number | undefined => {
+				let depth = 1;
+
+				let parent = item.parentElement || undefined;
+				while (parent) {
+					if (parent === ancestor) return depth;
+
+					parent = parent.parentElement || undefined;
+					depth += 1;
+				}
+
+				return undefined;
+			};
+
+			// A list of all the descendant spawners: the spawner for this floating menu plus any spawners belonging to widgets inside this floating menu
+			const ownDescendantMenuSpawners = Array.from(self?.parentElement?.querySelectorAll("[data-floating-menu-spawner]") || []);
+
+			// Start with the parent of the spawner for this floating menu and keep widening the search for any other valid spawners that are hover-transferrable
+			let currentAncestor = (targetSpawner && ownSpawner?.parentElement) || undefined;
+			while (currentAncestor) {
+				const ownSpawnerDepthFromCurrentAncestor = ownSpawner && getDepthFromAncestor(ownSpawner, currentAncestor);
+				const currentAncestor2 = currentAncestor; // This duplicate variable avoids an ESLint warning
+
+				// Get the list of descendant spawners and filter out invalid possibilities for spawners that are hover-transferrable
+				const listOfDescendantSpawners = Array.from(currentAncestor?.querySelectorAll("[data-floating-menu-spawner]") || []);
+				const filteredListOfDescendantSpawners = listOfDescendantSpawners.filter((item: Element): boolean => {
+					// Filter away ourself and our descendants
+					const notOurself = !ownDescendantMenuSpawners.includes(item);
+					// And filter away unequal depths from the current ancestor
+					const notUnequalDepths = notOurself && getDepthFromAncestor(item, currentAncestor2) === ownSpawnerDepthFromCurrentAncestor;
+					// And filter away elements that explicitly disable hover transfer
+					return notUnequalDepths && !(item as HTMLElement).getAttribute?.("data-floating-menu-spawner")?.includes("no-hover-transfer");
+				});
+
+				// If none were found, widen the search by a level and keep trying (or stop looping if the root was reached)
+				if (filteredListOfDescendantSpawners.length === 0) {
+					currentAncestor = currentAncestor?.parentElement || undefined;
+				}
+				// Stop after the first non-empty set was found
+				else {
+					const foundTarget = filteredListOfDescendantSpawners.find((item: Element): boolean => item === targetSpawner);
+					// If the currently hovered spawner is one of the found valid hover-transferrable spawners, swap to it by clicking on it
+					if (foundTarget) {
+						this.$emit("update:open", false);
+						(foundTarget as HTMLElement).click();
+					}
+
+					// In either case, we are done searching
+					break;
+				}
 			}
 		},
 		keyDownHandler(e: KeyboardEvent) {

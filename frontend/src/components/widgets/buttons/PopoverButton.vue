@@ -1,6 +1,6 @@
 <template>
 	<LayoutRow class="popover-button">
-		<IconButton :action="() => onClick()" :icon="icon" :size="16" data-hover-menu-spawner :tooltip="tooltip" />
+		<IconButton :action="() => onClick()" :icon="icon" :size="16" data-floating-menu-spawner :tooltip="tooltip" />
 		<FloatingMenu v-model:open="open" :type="'Popover'" :direction="'Bottom'">
 			<slot></slot>
 		</FloatingMenu>
