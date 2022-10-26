@@ -1,14 +1,25 @@
 <template>
-	<FloatingMenu :open="open" @update:open="(isOpen) => emitOpenState(isOpen)" :direction="direction" :type="'Popover'">
-		<LayoutRow class="color-picker">
-			<LayoutCol class="saturation-value-picker" :style="{ '--saturation-value-picker-hue': hueColorCSS }" @pointerdown="(e: PointerEvent) => beginDrag(e)" data-saturation-value-picker>
+	<FloatingMenu class="color-picker" :open="open" @update:open="(isOpen) => emitOpenState(isOpen)" :direction="direction" :type="'Popover'">
+		<LayoutRow>
+			<LayoutCol class="saturation-value-picker" @pointerdown="(e: PointerEvent) => beginDrag(e)" :style="{ '--hue-color': opaqueHueColorCSS }" data-saturation-value-picker>
 				<div class="selection-circle" :style="{ top: `${(1 - value) * 100}%`, left: `${saturation * 100}%` }"></div>
 			</LayoutCol>
 			<LayoutCol class="hue-picker" @pointerdown="(e: PointerEvent) => beginDrag(e)" data-hue-picker>
 				<div class="selection-pincers" :style="{ top: `${(1 - hue) * 100}%` }"></div>
 			</LayoutCol>
-			<LayoutCol class="opacity-picker" :style="{ '--opacity-picker-color': color.toRgbCSS() }" @pointerdown="(e: PointerEvent) => beginDrag(e)" data-opacity-picker>
+			<LayoutCol class="opacity-picker" @pointerdown="(e: PointerEvent) => beginDrag(e)" :style="{ '--new-color': color.toRgbCSS() }" data-opacity-picker>
 				<div class="selection-pincers" :style="{ top: `${(1 - opacity) * 100}%` }"></div>
+			</LayoutCol>
+			<LayoutCol class="details">
+				<LayoutRow class="choice-preview">
+					<LayoutCol class="new-color" :style="{ '--new-color': color.toRgbCSS() }">
+						<TextLabel>New</TextLabel>
+					</LayoutCol>
+					<LayoutCol class="initial-color" :style="{ '--initial-color': initialColor.toRgbaCSS() }">
+						<TextLabel>Initial</TextLabel>
+					</LayoutCol>
+				</LayoutRow>
+				<DropdownInput :entries="colorSpaceChoices" :selectedIndex="0" :disabled="true" :tooltip="'Color spaces and HDR (coming soon)'" />
 			</LayoutCol>
 		</LayoutRow>
 	</FloatingMenu>
@@ -19,7 +30,7 @@
 	.saturation-value-picker {
 		width: 256px;
 		background-blend-mode: multiply;
-		background: linear-gradient(to bottom, #ffffff, #000000), linear-gradient(to right, #ffffff, var(--saturation-value-picker-hue));
+		background: linear-gradient(to bottom, #ffffff, #000000), linear-gradient(to right, #ffffff, var(--hue-color));
 		position: relative;
 	}
 
@@ -45,7 +56,7 @@
 	}
 
 	.opacity-picker {
-		background: linear-gradient(to bottom, var(--opacity-picker-color), transparent);
+		background: linear-gradient(to bottom, var(--new-color), transparent);
 
 		&::before {
 			content: "";
@@ -109,6 +120,45 @@
 			border-color: transparent #000000 transparent transparent;
 		}
 	}
+
+	.details {
+		margin-left: 16px;
+		gap: 8px;
+
+		.choice-preview {
+			flex: 0 0 auto;
+			width: 208px;
+			height: 32px;
+			border-radius: 2px;
+			border: 1px solid var(--color-0-black);
+			box-sizing: border-box;
+			overflow: hidden;
+
+			.new-color {
+				background: linear-gradient(var(--new-color), var(--new-color)), var(--transparent-checkered-background);
+			}
+
+			.initial-color {
+				background: linear-gradient(var(--initial-color), var(--initial-color)), var(--transparent-checkered-background);
+
+				.text-label {
+					text-align: right;
+				}
+			}
+
+			.new-color,
+			.initial-color {
+				width: 50%;
+				height: 100%;
+				background-size: var(--transparent-checkered-background-size);
+				background-position: var(--transparent-checkered-background-position);
+
+				.text-label {
+					margin: 2px 8px;
+				}
+			}
+		}
+	}
 }
 </style>
 
@@ -121,6 +171,10 @@ import { Color } from "@/wasm-communication/messages";
 import FloatingMenu, { type MenuDirection } from "@/components/layout/FloatingMenu.vue";
 import LayoutCol from "@/components/layout/LayoutCol.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
+import DropdownInput from "@/components/widgets/inputs/DropdownInput.vue";
+import TextLabel from "@/components/widgets/labels/TextLabel.vue";
+
+const COLOR_SPACE_CHOICES = [[{ label: "sRGB" }]];
 
 export default defineComponent({
 	emits: ["update:color", "update:open"],
@@ -133,16 +187,23 @@ export default defineComponent({
 		const hsva = this.color.toHSVA();
 
 		return {
+			initialColor: this.color,
 			draggingPickerTrack: undefined as HTMLDivElement | undefined,
 			hue: hsva.h,
 			saturation: hsva.s,
 			value: hsva.v,
 			opacity: hsva.a,
+			colorSpaceChoices: COLOR_SPACE_CHOICES,
 		};
 	},
 	computed: {
-		hueColorCSS() {
+		opaqueHueColorCSS(): string {
 			return new Color({ h: this.hue, s: 1, v: 1, a: 1 }).toRgbCSS();
+		},
+	},
+	watch: {
+		open(state) {
+			if (state) this.initialColor = this.color;
 		},
 	},
 	methods: {
@@ -197,6 +258,8 @@ export default defineComponent({
 		FloatingMenu,
 		LayoutCol,
 		LayoutRow,
+		TextLabel,
+		DropdownInput,
 	},
 });
 </script>

@@ -30,18 +30,10 @@
 			outline: none;
 			border: none;
 			border-radius: 2px;
-			background: var(--transparent-checkered-background);
+			background: linear-gradient(var(--swatch-color), var(--swatch-color)), var(--transparent-checkered-background);
 			background-size: var(--transparent-checkered-background-size);
 			background-position: var(--transparent-checkered-background-position);
 			overflow: hidden;
-
-			&::before {
-				content: "";
-				display: block;
-				width: 100%;
-				height: 100%;
-				background: var(--swatch-color);
-			}
 
 			&.disabled-swatch::after {
 				content: "";
