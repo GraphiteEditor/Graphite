@@ -22,7 +22,7 @@
 				<div class="selection-pincers" :style="{ top: `${(1 - opacity) * 100}%` }"></div>
 			</LayoutCol>
 			<LayoutCol class="details">
-				<LayoutRow class="choice-preview">
+				<LayoutRow class="choice-preview" @click="() => swapColorWithInitial()">
 					<LayoutCol class="new-color">
 						<TextLabel>New</TextLabel>
 					</LayoutCol>
@@ -220,6 +220,14 @@ export default defineComponent({
 		open(state) {
 			if (state) this.initialColor = this.color;
 		},
+		color(newColor) {
+			const hsva = newColor.toHSVA();
+
+			this.hue = hsva.h;
+			this.saturation = hsva.s;
+			this.value = hsva.v;
+			this.opacity = hsva.a;
+		},
 	},
 	methods: {
 		beginDrag(e: PointerEvent) {
@@ -264,6 +272,13 @@ export default defineComponent({
 		removeEvents() {
 			document.removeEventListener("pointermove", this.onPointerMove);
 			document.removeEventListener("pointerup", this.onPointerUp);
+		},
+		swapColorWithInitial() {
+			const initial = this.initialColor;
+			this.initialColor = this.color;
+
+			// The `color` prop's watcher calls `this.updateColor()`
+			this.$emit("update:color", initial);
 		},
 	},
 	unmounted() {

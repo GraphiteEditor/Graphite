@@ -23,7 +23,7 @@
 		margin: 0 2px;
 		position: relative;
 
-		button {
+		> button {
 			--swatch-color: #ffffff;
 			width: 100%;
 			height: 100%;
