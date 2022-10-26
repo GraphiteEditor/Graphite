@@ -119,15 +119,3 @@ export default defineComponent({
 	},
 });
 </script>
-
-<style>
-.example-row {
-	display: flex;
-	flex-direction: row;
-	justify-content: center;
-}
-
-.example-pane-header {
-	margin-bottom: 0;
-}
-</style>

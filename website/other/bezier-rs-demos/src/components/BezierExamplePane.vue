@@ -1,6 +1,13 @@
 <template>
-	<div>
+	<div class="example-pane-container">
 		<h3 class="example-pane-header">{{ name }}</h3>
+		<div v-if="euclideanParameterizationEnabled" class="euclidean-switch">
+			<label class="switch-label">Euclidean Parameterization:</label>
+			<label class="switch">
+				<input v-model.number="isEuclidean" type="checkbox" />
+				<span class="switch-slider"></span>
+			</label>
+		</div>
 		<div class="example-row">
 			<div v-for="(example, index) in examples" :key="index">
 				<BezierExample
@@ -10,6 +17,7 @@
 					:callback="callback"
 					:sliderOptions="example.sliderOptions"
 					:triggerOnMouseMove="triggerOnMouseMove"
+					:isEuclidean="isEuclidean"
 				/>
 			</div>
 		</div>
@@ -35,6 +43,10 @@ export default defineComponent({
 			default: () => ({}),
 		},
 		triggerOnMouseMove: {
+			type: Boolean,
+			default: false,
+		},
+		euclideanParameterizationEnabled: {
 			type: Boolean,
 			default: false,
 		},
@@ -78,6 +90,7 @@ export default defineComponent({
 					sliderOptions: givenData?.sliderOptions || defaultSliderOptions,
 				};
 			}),
+			isEuclidean: false,
 		};
 	},
 	components: {
@@ -85,15 +98,3 @@ export default defineComponent({
 	},
 });
 </script>
-
-<style scoped>
-.example-row {
-	display: flex;
-	flex-direction: row;
-	justify-content: center;
-}
-
-.example-pane-header {
-	margin-bottom: 0;
-}
-</style>

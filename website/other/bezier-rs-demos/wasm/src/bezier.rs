@@ -151,9 +151,13 @@ impl WasmBezier {
 		to_js_value(point)
 	}
 
-	pub fn evaluate(&self, t: f64) -> String {
+	pub fn evaluate(&self, t: f64, is_euclidean: bool) -> String {
 		let bezier = self.get_bezier_path();
-		let point = &self.0.evaluate(ComputeType::Parametric { t });
+		let point = if is_euclidean {
+			self.0.evaluate(ComputeType::Euclidean { d: t, error: 0.0001 })
+		} else {
+			self.0.evaluate(ComputeType::Parametric { t })
+		};
 		let content = format!("{bezier}{}", draw_circle(point.x, point.y, 4., RED, 1.5, WHITE));
 		wrap_svg_tag(content)
 	}

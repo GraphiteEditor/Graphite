@@ -4,7 +4,13 @@
 		<p>This is the interactive documentation for the <b>bezier-rs</b> library. Click and drag on the endpoints of the example curves to visualize the various Bezier utilities and functions.</p>
 		<h2>Beziers</h2>
 		<div v-for="(feature, index) in bezierFeatures" :key="index">
-			<BezierExamplePane :name="feature.name" :callback="feature.callback" :exampleOptions="feature.exampleOptions" :triggerOnMouseMove="feature.triggerOnMouseMove" />
+			<BezierExamplePane
+				:name="feature.name"
+				:callback="feature.callback"
+				:exampleOptions="feature.exampleOptions"
+				:triggerOnMouseMove="feature.triggerOnMouseMove"
+				:euclideanParameterizationEnabled="feature.euclideanParameterizationEnabled"
+			/>
 		</div>
 		<div v-for="(feature, index) in features" :key="index">
 			<ExamplePane
@@ -27,6 +33,7 @@
 import { defineComponent, markRaw } from "vue";
 
 import { WasmBezier } from "@/../wasm/pkg";
+import "@/styles.css";
 import { drawBezier, drawCircleSector, drawCurve, drawLine, drawPoint, getContextFromCanvas, COLORS } from "@/utils/drawing";
 import { BezierCurveType, CircleSector, Point, WasmBezierInstance, WasmSubpathInstance } from "@/utils/types";
 
@@ -112,12 +119,13 @@ export default defineComponent({
 				},
 				{
 					name: "Evaluate",
-					callback: (bezier: WasmBezierInstance, options: Record<string, number>): string => bezier.evaluate(options.t),
+					callback: (bezier: WasmBezierInstance, options: Record<string, number>, _: Point, isEuclidean: boolean): string => bezier.evaluate(options.computeArgument, isEuclidean),
 					exampleOptions: {
 						[BezierCurveType.Quadratic]: {
-							sliderOptions: [tSliderOptions],
+							sliderOptions: [{ ...tSliderOptions, variable: "computeArgument" }],
 						},
 					},
+					euclideanParameterizationEnabled: true,
 				},
 				{
 					name: "Lookup Table",

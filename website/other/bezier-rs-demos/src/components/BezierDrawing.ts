@@ -53,7 +53,6 @@ class BezierDrawing {
 		}
 		this.canvas = canvas;
 
-		this.canvas.style.border = "solid 1px black";
 		this.canvas.width = 200;
 		this.canvas.height = 200;
 

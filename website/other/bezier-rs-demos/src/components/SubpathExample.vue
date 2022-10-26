@@ -69,11 +69,3 @@ export default defineComponent({
 	},
 });
 </script>
-
-<style scoped>
-.example-figure {
-	border: solid 1px black;
-	width: 200px;
-	height: 200px;
-}
-</style>

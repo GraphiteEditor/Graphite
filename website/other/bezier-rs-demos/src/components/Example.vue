@@ -51,13 +51,3 @@ export default defineComponent({
 	},
 });
 </script>
-
-<style scoped>
-.example-header {
-	margin-bottom: 0;
-}
-
-.example-figure {
-	margin-top: 0.5em;
-}
-</style>

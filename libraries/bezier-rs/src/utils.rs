@@ -6,7 +6,7 @@ use std::f64::consts::PI;
 #[derive(Copy, Clone, PartialEq)]
 pub enum ComputeType {
 	Parametric { t: f64 },
-	Euclidean { d: f64 },
+	Euclidean { d: f64, error: f64 },
 }
 
 /// Helper to perform the computation of a and c, where b is the provided point on the curve.

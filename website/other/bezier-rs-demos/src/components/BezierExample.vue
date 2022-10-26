@@ -45,6 +45,10 @@ export default defineComponent({
 			type: Boolean,
 			default: false,
 		},
+		isEuclidean: {
+			type: Boolean,
+			default: false,
+		},
 	},
 	data() {
 		const curveType = getCurveType(this.points.length);
@@ -55,7 +59,7 @@ export default defineComponent({
 
 		return {
 			bezier,
-			bezierSVG: this.callback(bezier, sliderData),
+			bezierSVG: this.callback(bezier, sliderData, undefined, true),
 			manipulatorKeys,
 			activeIndex: undefined as number | undefined,
 			mutablePoints: JSON.parse(JSON.stringify(this.points)),
@@ -84,9 +88,9 @@ export default defineComponent({
 			if (this.activeIndex !== undefined) {
 				this.bezier[this.manipulatorKeys[this.activeIndex]](mx, my);
 				this.mutablePoints[this.activeIndex] = [mx, my];
-				this.bezierSVG = this.callback(this.bezier, this.sliderData);
+				this.bezierSVG = this.callback(this.bezier, this.sliderData, undefined, this.isEuclidean);
 			} else if (this.triggerOnMouseMove) {
-				this.bezierSVG = this.callback(this.bezier, this.sliderData, { x: mx, y: my });
+				this.bezierSVG = this.callback(this.bezier, this.sliderData, { x: mx, y: my }, this.isEuclidean);
 			}
 		},
 		getSliderValue: (sliderValue: number, sliderUnit?: string | string[]) => (Array.isArray(sliderUnit) ? sliderUnit[sliderValue] : sliderUnit),
@@ -94,18 +98,15 @@ export default defineComponent({
 	watch: {
 		sliderData: {
 			handler() {
-				this.bezierSVG = this.callback(this.bezier, this.sliderData);
+				this.bezierSVG = this.callback(this.bezier, this.sliderData, undefined, this.isEuclidean);
 			},
 			deep: true,
+		},
+		isEuclidean: {
+			handler() {
+				this.bezierSVG = this.callback(this.bezier, this.sliderData, undefined, this.isEuclidean);
+			},
 		},
 	},
 });
 </script>
-
-<style scoped>
-.example-figure {
-	border: solid 1px black;
-	width: 200px;
-	height: 200px;
-}
-</style>

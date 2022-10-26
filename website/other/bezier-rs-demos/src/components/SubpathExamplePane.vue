@@ -67,6 +67,7 @@ export default defineComponent({
 }
 
 .example-pane-header {
+	margin-top: 2em;
 	margin-bottom: 0;
 }
 </style>

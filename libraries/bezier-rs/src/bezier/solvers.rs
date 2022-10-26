@@ -277,7 +277,7 @@ impl Bezier {
 				// Accept the t value if it is approximately in [0, 1] and if the corresponding coordinates are within the range of the linear line
 				.filter(|&t| {
 					utils::f64_approximately_in_range(t, 0., 1., MAX_ABSOLUTE_DIFFERENCE)
-						&& utils::dvec2_approximately_in_range(self.unrestricted_evaluate(t), min, max, MAX_ABSOLUTE_DIFFERENCE).all()
+						&& utils::dvec2_approximately_in_range(self.unrestricted_parametric_evaluate(t), min, max, MAX_ABSOLUTE_DIFFERENCE).all()
 				})
 				// Ensure the returned value is within the correct range
 				.map(|t| t.clamp(0., 1.))
