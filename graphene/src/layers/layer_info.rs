@@ -374,7 +374,16 @@ impl Layer {
 	}
 
 	pub fn layerspace_pivot(&self, font_cache: &FontCache) -> DVec2 {
-		let [min, max] = self.aabb_for_transform(DAffine2::IDENTITY, font_cache).unwrap_or([DVec2::ZERO, DVec2::ONE]);
+		let [mut min, max] = self.aabb_for_transform(DAffine2::IDENTITY, font_cache).unwrap_or([DVec2::ZERO, DVec2::ONE]);
+
+		// If the layer bounds are 0 in either axis then set them to one (to avoid div 0)
+		if (max.x - min.x) < f64::EPSILON * 1000. {
+			min.x = max.x - 1.;
+		}
+		if (max.y - min.y) < f64::EPSILON * 1000. {
+			min.y = max.y - 1.;
+		}
+
 		self.pivot * (max - min) + min
 	}
 
