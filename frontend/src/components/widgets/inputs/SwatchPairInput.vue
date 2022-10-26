@@ -34,10 +34,9 @@
 			padding: 0;
 			box-sizing: border-box;
 			outline: none;
-			background: linear-gradient(45deg, #cccccc 25%, transparent 25%, transparent 75%, #cccccc 75%), linear-gradient(45deg, #cccccc 25%, transparent 25%, transparent 75%, #cccccc 75%),
-				linear-gradient(#ffffff, #ffffff);
-			background-size: 16px 16px;
-			background-position: 0 0, 8px 8px;
+			background: var(--transparent-checkered-background);
+			background-size: var(--transparent-checkered-background-size);
+			background-position: var(--transparent-checkered-background-position);
 			overflow: hidden;
 
 			&::before {

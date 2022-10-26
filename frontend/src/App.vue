@@ -67,6 +67,11 @@
 	--color-data-unused1-rgb: 214, 83, 110;
 	--color-data-unused2: #70a898;
 	--color-data-unused2-rgb: 112, 168, 152;
+
+	--transparent-checkered-background: linear-gradient(45deg, #cccccc 25%, transparent 25%, transparent 75%, #cccccc 75%),
+		linear-gradient(45deg, #cccccc 25%, transparent 25%, transparent 75%, #cccccc 75%), linear-gradient(#ffffff, #ffffff);
+	--transparent-checkered-background-size: 16px 16px;
+	--transparent-checkered-background-position: 0 0, 8px 8px;
 }
 
 html,
