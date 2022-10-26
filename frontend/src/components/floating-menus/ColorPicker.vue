@@ -1,21 +1,32 @@
 <template>
 	<FloatingMenu class="color-picker" :open="open" @update:open="(isOpen) => emitOpenState(isOpen)" :direction="direction" :type="'Popover'">
-		<LayoutRow>
-			<LayoutCol class="saturation-value-picker" @pointerdown="(e: PointerEvent) => beginDrag(e)" :style="{ '--hue-color': opaqueHueColorCSS }" data-saturation-value-picker>
+		<LayoutRow
+			:style="{
+				'--new-color': color.toRgbaCSS(),
+				'--new-color-contrasting': color.contrastingColor(),
+				'--initial-color': initialColor.toRgbaCSS(),
+				'--initial-color-contrasting': initialColor.contrastingColor(),
+				'--hue-color': opaqueHueColor.toRgbCSS(),
+				'--hue-color-contrasting': opaqueHueColor.contrastingColor(),
+				'--opaque-color': color.toRgbaCSS(),
+				'--opaque-color-contrasting': color.opaque().contrastingColor(),
+			}"
+		>
+			<LayoutCol class="saturation-value-picker" @pointerdown="(e: PointerEvent) => beginDrag(e)" data-saturation-value-picker>
 				<div class="selection-circle" :style="{ top: `${(1 - value) * 100}%`, left: `${saturation * 100}%` }"></div>
 			</LayoutCol>
 			<LayoutCol class="hue-picker" @pointerdown="(e: PointerEvent) => beginDrag(e)" data-hue-picker>
 				<div class="selection-pincers" :style="{ top: `${(1 - hue) * 100}%` }"></div>
 			</LayoutCol>
-			<LayoutCol class="opacity-picker" @pointerdown="(e: PointerEvent) => beginDrag(e)" :style="{ '--new-color': color.toRgbCSS() }" data-opacity-picker>
+			<LayoutCol class="opacity-picker" @pointerdown="(e: PointerEvent) => beginDrag(e)" data-opacity-picker>
 				<div class="selection-pincers" :style="{ top: `${(1 - opacity) * 100}%` }"></div>
 			</LayoutCol>
 			<LayoutCol class="details">
 				<LayoutRow class="choice-preview">
-					<LayoutCol class="new-color" :style="{ '--new-color': color.toRgbCSS() }">
+					<LayoutCol class="new-color">
 						<TextLabel>New</TextLabel>
 					</LayoutCol>
-					<LayoutCol class="initial-color" :style="{ '--initial-color': initialColor.toRgbaCSS() }">
+					<LayoutCol class="initial-color">
 						<TextLabel>Initial</TextLabel>
 					</LayoutCol>
 				</LayoutRow>
@@ -53,10 +64,11 @@
 		background-blend-mode: screen;
 		background: linear-gradient(to top, #ff0000ff 16.666%, #ff000000 33.333%, #ff000000 66.666%, #ff0000ff 83.333%),
 			linear-gradient(to top, #00ff0000 0%, #00ff00ff 16.666%, #00ff00ff 50%, #00ff0000 66.666%), linear-gradient(to top, #0000ff00 33.333%, #0000ffff 50%, #0000ffff 83.333%, #0000ff00 100%);
+		--selection-pincers-color: var(--hue-color-contrasting);
 	}
 
 	.opacity-picker {
-		background: linear-gradient(to bottom, var(--new-color), transparent);
+		background: linear-gradient(to bottom, var(--opaque-color), transparent);
 
 		&::before {
 			content: "";
@@ -68,6 +80,7 @@
 			background-size: var(--transparent-checkered-background-size);
 			background-position: var(--transparent-checkered-background-position);
 		}
+		--selection-pincers-color: var(--new-color-contrasting);
 	}
 
 	.selection-circle {
@@ -87,9 +100,8 @@
 			width: 12px;
 			height: 12px;
 			border-radius: 50%;
-			border: 2px solid white;
+			border: 2px solid var(--opaque-color-contrasting);
 			box-sizing: border-box;
-			mix-blend-mode: difference;
 		}
 	}
 
@@ -107,7 +119,7 @@
 			left: 0;
 			border-style: solid;
 			border-width: 4px 0 4px 4px;
-			border-color: transparent transparent transparent #000000;
+			border-color: transparent transparent transparent var(--selection-pincers-color);
 		}
 
 		&::after {
@@ -117,7 +129,7 @@
 			right: 0;
 			border-style: solid;
 			border-width: 4px 4px 4px 0;
-			border-color: transparent #000000 transparent transparent;
+			border-color: transparent var(--selection-pincers-color) transparent transparent;
 		}
 	}
 
@@ -136,6 +148,11 @@
 
 			.new-color {
 				background: linear-gradient(var(--new-color), var(--new-color)), var(--transparent-checkered-background);
+
+				.text-label {
+					margin: 2px 8px;
+					color: var(--new-color-contrasting);
+				}
 			}
 
 			.initial-color {
@@ -143,6 +160,8 @@
 
 				.text-label {
 					text-align: right;
+					margin: 2px 8px;
+					color: var(--initial-color-contrasting);
 				}
 			}
 
@@ -152,10 +171,6 @@
 				height: 100%;
 				background-size: var(--transparent-checkered-background-size);
 				background-position: var(--transparent-checkered-background-position);
-
-				.text-label {
-					margin: 2px 8px;
-				}
 			}
 		}
 	}
@@ -197,8 +212,8 @@ export default defineComponent({
 		};
 	},
 	computed: {
-		opaqueHueColorCSS(): string {
-			return new Color({ h: this.hue, s: 1, v: 1, a: 1 }).toRgbCSS();
+		opaqueHueColor(): Color {
+			return new Color({ h: this.hue, s: 1, v: 1, a: 1 });
 		},
 	},
 	watch: {

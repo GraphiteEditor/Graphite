@@ -190,6 +190,27 @@ export class Color {
 
 		return { h, s, v, a };
 	}
+
+	opaque(): Color {
+		return new Color(this.red, this.green, this.blue, 1);
+	}
+
+	contrastingColor(): "black" | "white" {
+		// Convert alpha into white
+		const r = this.red * this.alpha + (1 - this.alpha);
+		const g = this.green * this.alpha + (1 - this.alpha);
+		const b = this.blue * this.alpha + (1 - this.alpha);
+
+		// https://stackoverflow.com/a/3943023/775283
+
+		const linearR = r <= 0.04045 ? r / 12.92 : ((r + 0.055) / 1.055) ** 2.4;
+		const linearG = g <= 0.04045 ? g / 12.92 : ((g + 0.055) / 1.055) ** 2.4;
+		const linearB = b <= 0.04045 ? b / 12.92 : ((b + 0.055) / 1.055) ** 2.4;
+
+		const linear = linearR * 0.2126 + linearG * 0.7152 + linearB * 0.0722;
+
+		return linear > Math.sqrt(1.05 * 0.05) - 0.05 ? "black" : "white";
+	}
 }
 
 export class UpdateActiveDocument extends JsMessage {
