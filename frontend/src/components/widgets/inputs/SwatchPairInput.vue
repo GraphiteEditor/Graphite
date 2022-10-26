@@ -1,11 +1,11 @@
 <template>
 	<LayoutCol class="swatch-pair">
 		<LayoutRow class="secondary swatch">
-			<button @click="() => clickSecondarySwatch()" :style="`--swatch-color: ${secondary.toRgbaCSS()}`" data-hover-menu-spawner></button>
+			<button @click="() => clickSecondarySwatch()" :style="`--swatch-color: ${secondary.toRgbaCSS()}`" data-floating-menu-spawner="no-hover-transfer"></button>
 			<ColorPicker v-model:open="secondaryOpen" :color="secondary" @update:color="(color: Color) => secondaryColorChanged(color)" :direction="'Right'" />
 		</LayoutRow>
 		<LayoutRow class="primary swatch">
-			<button @click="() => clickPrimarySwatch()" :style="`--swatch-color: ${primary.toRgbaCSS()}`" data-hover-menu-spawner></button>
+			<button @click="() => clickPrimarySwatch()" :style="`--swatch-color: ${primary.toRgbaCSS()}`" data-floating-menu-spawner="no-hover-transfer"></button>
 			<ColorPicker v-model:open="primaryOpen" :color="primary" @update:color="(color: Color) => primaryColorChanged(color)" :direction="'Right'" />
 		</LayoutRow>
 	</LayoutCol>
