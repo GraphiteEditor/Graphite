@@ -314,10 +314,10 @@ impl BoundingBoxOverlays {
 	pub fn get_cursor(&self, input: &InputPreprocessorMessageHandler, rotate: bool) -> MouseCursorIcon {
 		if let Some(directions) = self.check_selected_edges(input.mouse.position) {
 			match directions {
-				(true, false, false, false) | (false, true, false, false) => MouseCursorIcon::NSResize,
-				(false, false, true, false) | (false, false, false, true) => MouseCursorIcon::EWResize,
-				(true, false, true, false) | (false, true, false, true) => MouseCursorIcon::NWSEResize,
-				(true, false, false, true) | (false, true, true, false) => MouseCursorIcon::NESWResize,
+				(true, _, false, false) | (_, true, false, false) => MouseCursorIcon::NSResize,
+				(false, false, true, _) | (false, false, _, true) => MouseCursorIcon::EWResize,
+				(true, _, true, _) | (_, true, _, true) => MouseCursorIcon::NWSEResize,
+				(true, _, _, true) | (_, true, true, _) => MouseCursorIcon::NESWResize,
 				_ => MouseCursorIcon::Default,
 			}
 		} else if rotate && self.check_rotate(input.mouse.position) {
