@@ -1,3 +1,4 @@
+import { wipeDatabase } from "@/io-managers/persistence";
 import { type DialogState } from "@/state-providers/dialog";
 import { type IconName } from "@/utility-functions/icons";
 import { browserVersion, operatingSystem } from "@/utility-functions/platform";
@@ -43,7 +44,14 @@ function preparePanicDialog(header: string, details: string, panicDetails: strin
 		callback: async () => window.open(githubUrl(panicDetails), "_blank"),
 		props: { kind: "TextButton", label: "Report Bug", emphasized: false, minWidth: 96 },
 	};
-	const jsCallbackBasedButtons = [reloadButton, copyErrorLogButton, reportOnGithubButton];
+	const clearPersistedDataButton: TextButtonWidget = {
+		callback: async () => {
+			await wipeDatabase();
+			window.location.reload();
+		},
+		props: { kind: "TextButton", label: "Clear Saved Data", emphasized: false, minWidth: 96 },
+	};
+	const jsCallbackBasedButtons = [reloadButton, copyErrorLogButton, reportOnGithubButton, clearPersistedDataButton];
 
 	return ["Warning", widgets, jsCallbackBasedButtons];
 }

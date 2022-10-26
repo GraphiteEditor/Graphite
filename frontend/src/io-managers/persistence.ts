@@ -13,6 +13,8 @@ const GRAPHITE_AUTO_SAVE_DOCUMENTS_STORE = { name: "auto-save-documents", keyPat
 
 const GRAPHITE_INDEXEDDB_STORES = [GRAPHITE_EDITOR_PREFERENCES_STORE, GRAPHITE_AUTO_SAVE_DOCUMENT_LIST_STORE, GRAPHITE_AUTO_SAVE_DOCUMENTS_STORE];
 
+let closeConnection: (() => Promise<void>) | undefined;
+
 export function createPersistenceManager(editor: Editor, portfolio: PortfolioState): () => void {
 	// INITIALIZE
 
@@ -53,6 +55,12 @@ export function createPersistenceManager(editor: Editor, portfolio: PortfolioSta
 			};
 		});
 	}
+
+	async function closeDatabaseConnection(): Promise<void> {
+		const connection = await databaseConnection;
+		connection.close();
+	}
+	closeConnection = closeDatabaseConnection;
 
 	function storeDocumentOrder(db: IDBDatabase): void {
 		const documentOrder = portfolio.state.documents.map((doc) => String(doc.id));
@@ -176,6 +184,16 @@ export function createPersistenceManager(editor: Editor, portfolio: PortfolioSta
 
 	// Destructor
 	return () => {
-		databaseConnection.then((connection) => connection.close());
+		closeConnection?.();
 	};
+}
+
+export async function wipeDatabase(): Promise<void> {
+	await new Promise<void>((resolve, reject) => {
+		closeConnection?.();
+		const dbDeletion = indexedDB.deleteDatabase(GRAPHITE_INDEXED_DB_NAME);
+
+		dbDeletion.onsuccess = (): void => resolve();
+		dbDeletion.onerror = (): void => reject();
+	});
 }

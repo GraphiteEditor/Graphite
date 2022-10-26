@@ -238,7 +238,7 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 
 	function onBeforeUnload(e: BeforeUnloadEvent): void {
 		const activeDocument = document.state.documents[document.state.activeDocumentIndex];
-		if (!activeDocument.isAutoSaved) editor.instance.triggerAutoSave(activeDocument.id);
+		if (activeDocument && !activeDocument.isAutoSaved) editor.instance.triggerAutoSave(activeDocument.id);
 
 		// Skip the message if the editor crashed, since work is already lost
 		if (editor.instance.hasCrashed()) return;
