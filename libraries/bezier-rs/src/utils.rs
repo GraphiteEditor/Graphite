@@ -3,6 +3,12 @@ use crate::consts::{MAX_ABSOLUTE_DIFFERENCE, STRICT_MAX_ABSOLUTE_DIFFERENCE};
 use glam::{BVec2, DMat2, DVec2};
 use std::f64::consts::PI;
 
+#[derive(Copy, Clone, PartialEq)]
+pub enum ComputeType {
+	Parametric { t: f64 },
+	Euclidean { d: f64 },
+}
+
 /// Helper to perform the computation of a and c, where b is the provided point on the curve.
 /// Given the correct power of `t` and `(1-t)`, the computation is the same for quadratic and cubic cases.
 /// Relevant derivation and the definitions of a, b, and c can be found in [the projection identity section](https://pomax.github.io/bezierinfo/#abc) of Pomax's bezier curve primer.

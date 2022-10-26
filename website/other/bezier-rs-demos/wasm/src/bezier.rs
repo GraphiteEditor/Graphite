@@ -1,5 +1,5 @@
 use crate::svg_drawing::*;
-use bezier_rs::{ArcStrategy, ArcsOptions, Bezier, ProjectionOptions};
+use bezier_rs::{ArcStrategy, ArcsOptions, Bezier, ComputeType, ProjectionOptions};
 use glam::DVec2;
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
@@ -37,11 +37,6 @@ pub struct WasmBezier(Bezier);
 /// Convert a `DVec2` into a `Point`.
 fn vec_to_point(p: &DVec2) -> Point {
 	Point { x: p.x, y: p.y }
-}
-
-/// Convert a bezier to a list of points.
-fn bezier_to_points(bezier: Bezier) -> Vec<Point> {
-	bezier.get_points().map(|point| Point { x: point.x, y: point.y }).collect()
 }
 
 /// Serialize some data and then convert it to a JsValue.
@@ -152,13 +147,13 @@ impl WasmBezier {
 
 	/// The wrapped return type is `Point`.
 	pub fn evaluate_value(&self, t: f64) -> JsValue {
-		let point: Point = vec_to_point(&self.0.evaluate(t));
+		let point: Point = vec_to_point(&self.0.evaluate(ComputeType::Parametric { t }));
 		to_js_value(point)
 	}
 
 	pub fn evaluate(&self, t: f64) -> String {
 		let bezier = self.get_bezier_path();
-		let point = &self.0.evaluate(t);
+		let point = &self.0.evaluate(ComputeType::Parametric { t });
 		let content = format!("{bezier}{}", draw_circle(point.x, point.y, 4., RED, 1.5, WHITE));
 		wrap_svg_tag(content)
 	}
@@ -198,7 +193,7 @@ impl WasmBezier {
 		let bezier = self.get_bezier_path();
 
 		let tangent_point = self.0.tangent(t);
-		let intersection_point = self.0.evaluate(t);
+		let intersection_point = self.0.evaluate(ComputeType::Parametric { t });
 		let tangent_end = intersection_point + tangent_point * SCALE_UNIT_VECTOR_FACTOR;
 
 		let content = format!(
@@ -214,7 +209,7 @@ impl WasmBezier {
 		let bezier = self.get_bezier_path();
 
 		let normal_point = self.0.normal(t);
-		let intersection_point = self.0.evaluate(t);
+		let intersection_point = self.0.evaluate(ComputeType::Parametric { t });
 		let normal_end = intersection_point + normal_point * SCALE_UNIT_VECTOR_FACTOR;
 
 		let content = format!(
@@ -230,7 +225,7 @@ impl WasmBezier {
 		let bezier = self.get_bezier_path();
 		let radius = 1. / self.0.curvature(t);
 		let normal_point = self.0.normal(t);
-		let intersection_point = self.0.evaluate(t);
+		let intersection_point = self.0.evaluate(ComputeType::Parametric { t });
 
 		let curvature_center = intersection_point + normal_point * radius;
 
@@ -294,7 +289,7 @@ impl WasmBezier {
 
 	pub fn project(&self, x: f64, y: f64) -> String {
 		let projected_t_value = self.0.project(DVec2::new(x, y), ProjectionOptions::default());
-		let projected_point = self.0.evaluate(projected_t_value);
+		let projected_point = self.0.evaluate(ComputeType::Parametric { t: projected_t_value });
 
 		let bezier = self.get_bezier_path();
 		let content = format!("{bezier}{}", draw_line(projected_point.x, projected_point.y, x, y, RED, 1.),);
@@ -310,7 +305,7 @@ impl WasmBezier {
 			.zip([RED, GREEN])
 			.flat_map(|(t_value_list, color)| {
 				t_value_list.iter().map(|&t_value| {
-					let point = self.0.evaluate(t_value);
+					let point = self.0.evaluate(ComputeType::Parametric { t: t_value });
 					draw_circle(point.x, point.y, 3., color, 1.5, WHITE)
 				})
 			})
@@ -345,7 +340,7 @@ impl WasmBezier {
 		let circles: String = inflections
 			.iter()
 			.map(|&t_value| {
-				let point = self.0.evaluate(t_value);
+				let point = self.0.evaluate(ComputeType::Parametric { t: t_value });
 				draw_circle(point.x, point.y, 3., RED, 1.5, WHITE)
 			})
 			.fold("".to_string(), |acc, circle| acc + &circle);

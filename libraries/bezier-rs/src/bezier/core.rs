@@ -203,6 +203,8 @@ impl Bezier {
 
 #[cfg(test)]
 mod tests {
+	use crate::utils::ComputeType;
+
 	use super::compare::compare_points;
 	use super::*;
 
@@ -213,13 +215,13 @@ mod tests {
 		let p3 = DVec2::new(160., 170.);
 
 		let bezier1 = Bezier::quadratic_through_points(p1, p2, p3, None);
-		assert!(compare_points(bezier1.evaluate(0.5), p2));
+		assert!(compare_points(bezier1.evaluate(ComputeType::Parametric { t: 0.5 }), p2));
 
 		let bezier2 = Bezier::quadratic_through_points(p1, p2, p3, Some(0.8));
-		assert!(compare_points(bezier2.evaluate(0.8), p2));
+		assert!(compare_points(bezier2.evaluate(ComputeType::Parametric { t: 0.8 }), p2));
 
 		let bezier3 = Bezier::quadratic_through_points(p1, p2, p3, Some(0.));
-		assert!(compare_points(bezier3.evaluate(0.), p2));
+		assert!(compare_points(bezier3.evaluate(ComputeType::Parametric { t: 0. }), p2));
 	}
 
 	#[test]
@@ -229,12 +231,12 @@ mod tests {
 		let p3 = DVec2::new(160., 160.);
 
 		let bezier1 = Bezier::cubic_through_points(p1, p2, p3, Some(0.3), Some(10.));
-		assert!(compare_points(bezier1.evaluate(0.3), p2));
+		assert!(compare_points(bezier1.evaluate(ComputeType::Parametric { t: 0.3 }), p2));
 
 		let bezier2 = Bezier::cubic_through_points(p1, p2, p3, Some(0.8), Some(91.7));
-		assert!(compare_points(bezier2.evaluate(0.8), p2));
+		assert!(compare_points(bezier2.evaluate(ComputeType::Parametric { t: 0.8 }), p2));
 
 		let bezier3 = Bezier::cubic_through_points(p1, p2, p3, Some(0.), Some(91.7));
-		assert!(compare_points(bezier3.evaluate(0.), p2));
+		assert!(compare_points(bezier3.evaluate(ComputeType::Parametric { t: 0. }), p2));
 	}
 }
