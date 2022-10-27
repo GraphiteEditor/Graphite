@@ -44,7 +44,7 @@
 					<LayoutRow>
 						<template v-for="([channel, strength], index) in Object.entries(colorFromHSV.toRgb255() || { r: undefined, g: undefined, b: undefined })" :key="channel">
 							<Separator :type="'Related'" v-if="index > 0" />
-							<NumberInput :value="strength" @update:value="(value: number) => setColorRGB(channel as keyof RGB, value)" :min="0" :max="255" :centered="true" />
+							<NumberInput :value="strength" @update:value="(value: number) => setColorRGB(channel as keyof RGB, value)" :min="0" :max="255" :centered="true" :minWidth="56" />
 						</template>
 					</LayoutRow>
 				</LayoutRow>
@@ -66,6 +66,7 @@
 								:max="channel === 'h' ? 360 : 100"
 								:unit="channel === 'h' ? '°' : '%'"
 								:centered="true"
+								:minWidth="56"
 							/>
 						</template>
 					</LayoutRow>
@@ -87,6 +88,8 @@
 						<div data-pure-tile="blue" style="--pure-color: #0000ff; --pure-color-gray: #1c1c1c"></div>
 						<div data-pure-tile="magenta" style="--pure-color: #ff00ff; --pure-color-gray: #696969"></div>
 					</button>
+					<Separator :type="'Related'" />
+					<IconButton :icon="'Eyedropper'" :size="24" :action="() => activateEyedropperSample()" :tooltip="'Sample a pixel color from the document'" />
 				</LayoutRow>
 			</LayoutCol>
 		</LayoutRow>
@@ -193,10 +196,16 @@
 	.details {
 		margin-left: 16px;
 		gap: 8px;
+		width: 208px;
 
 		> .layout-row {
 			height: 24px;
 			flex: 0 0 auto;
+
+			> .text-label {
+				width: 24px;
+				flex: 0 0 auto;
+			}
 
 			&.leftover-space {
 				flex: 1 1 100%;
@@ -306,6 +315,7 @@ import { Color } from "@/wasm-communication/messages";
 import FloatingMenu, { type MenuDirection } from "@/components/layout/FloatingMenu.vue";
 import LayoutCol from "@/components/layout/LayoutCol.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
+import IconButton from "@/components/widgets/buttons/IconButton.vue";
 import DropdownInput from "@/components/widgets/inputs/DropdownInput.vue";
 import NumberInput from "@/components/widgets/inputs/NumberInput.vue";
 import TextInput from "@/components/widgets/inputs/TextInput.vue";
@@ -502,19 +512,24 @@ export default defineComponent({
 			this.initialOpacity = opacity;
 			this.initialIsNone = isNone;
 		},
+		activateEyedropperSample() {
+			// TODO: Implement this
+			alert("Coming soon");
+		},
 	},
 	unmounted() {
 		this.removeEvents();
 	},
 	components: {
+		DropdownInput,
 		FloatingMenu,
+		IconButton,
 		LayoutCol,
 		LayoutRow,
-		TextLabel,
-		DropdownInput,
 		NumberInput,
-		TextInput,
 		Separator,
+		TextInput,
+		TextLabel,
 	},
 });
 </script>

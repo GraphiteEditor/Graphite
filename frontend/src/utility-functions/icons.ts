@@ -89,6 +89,7 @@ import CheckboxUnchecked from "@/../assets/icon-16px-solid/checkbox-unchecked.sv
 import Copy from "@/../assets/icon-16px-solid/copy.svg";
 import EyeHidden from "@/../assets/icon-16px-solid/eye-hidden.svg";
 import EyeVisible from "@/../assets/icon-16px-solid/eye-visible.svg";
+import Eyedropper from "@/../assets/icon-16px-solid/eyedropper.svg";
 import File from "@/../assets/icon-16px-solid/file.svg";
 import FlipHorizontal from "@/../assets/icon-16px-solid/flip-horizontal.svg";
 import FlipVertical from "@/../assets/icon-16px-solid/flip-vertical.svg";
@@ -142,6 +143,7 @@ const SOLID_16PX = {
 	CheckboxChecked: { component: CheckboxChecked, size: 16 },
 	CheckboxUnchecked: { component: CheckboxUnchecked, size: 16 },
 	Copy: { component: Copy, size: 16 },
+	Eyedropper: { component: Eyedropper, size: 16 },
 	EyeHidden: { component: EyeHidden, size: 16 },
 	EyeVisible: { component: EyeVisible, size: 16 },
 	File: { component: File, size: 16 },
@@ -149,7 +151,6 @@ const SOLID_16PX = {
 	FlipVertical: { component: FlipVertical, size: 16 },
 	Folder: { component: Folder, size: 16 },
 	GraphiteLogo: { component: GraphiteLogo, size: 16 },
-	NodeImaginate: { component: NodeImaginate, size: 16 },
 	NodeArtboard: { component: NodeArtboard, size: 16 },
 	NodeBlur: { component: NodeBlur, size: 16 },
 	NodeBrushwork: { component: NodeBrushwork, size: 16 },
@@ -157,6 +158,7 @@ const SOLID_16PX = {
 	NodeFolder: { component: NodeFolder, size: 16 },
 	NodeGradient: { component: NodeGradient, size: 16 },
 	NodeImage: { component: NodeImage, size: 16 },
+	NodeImaginate: { component: NodeImaginate, size: 16 },
 	NodeMagicWand: { component: NodeMagicWand, size: 16 },
 	NodeMask: { component: NodeMask, size: 16 },
 	NodeMotionBlur: { component: NodeMotionBlur, size: 16 },
