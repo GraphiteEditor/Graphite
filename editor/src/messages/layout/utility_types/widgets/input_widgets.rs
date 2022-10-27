@@ -39,13 +39,12 @@ impl Default for CheckboxInput {
 #[derive(Clone, Derivative, Serialize, Deserialize)]
 #[derivative(Debug, PartialEq, Default)]
 pub struct ColorInput {
-	pub value: Option<String>,
+	pub value: Option<Color>,
 
-	pub label: Option<String>,
-
+	// TODO: Add allow_none
 	#[serde(rename = "noTransparency")]
 	#[derivative(Default(value = "true"))]
-	pub no_transparency: bool,
+	pub no_transparency: bool, // TODO: Rename allow_transparency (and invert usages)
 
 	pub disabled: bool,
 

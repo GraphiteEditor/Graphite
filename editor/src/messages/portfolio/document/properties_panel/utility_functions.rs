@@ -10,7 +10,6 @@ use crate::messages::layout::utility_types::widgets::label_widgets::{IconLabel, 
 use crate::messages::portfolio::utility_types::{ImaginateServerStatus, PersistentData};
 use crate::messages::prelude::*;
 
-use graphene::color::Color;
 use graphene::document::pick_layer_safe_imaginate_resolution;
 use graphene::layers::imaginate_layer::{ImaginateLayer, ImaginateSamplingMethod, ImaginateStatus};
 use graphene::layers::layer_info::{Layer, LayerDataType, LayerDataTypeDiscriminant};
@@ -190,18 +189,10 @@ pub fn register_artboard_layer_properties(layer: &Layer, responses: &mut VecDequ
 							direction: SeparatorDirection::Horizontal,
 						})),
 						WidgetHolder::new(Widget::ColorInput(ColorInput {
-							value: Some(color.rgba_hex()),
+							value: Some(*color),
 							on_update: WidgetCallback::new(|text_input: &ColorInput| {
-								if let Some(value) = &text_input.value {
-									if let Some(color) = Color::from_rgba_str(value).or_else(|| Color::from_rgb_str(value)) {
-										let new_fill = Fill::Solid(color);
-										PropertiesPanelMessage::ModifyFill { fill: new_fill }.into()
-									} else {
-										PropertiesPanelMessage::ResendActiveProperties.into()
-									}
-								} else {
-									PropertiesPanelMessage::ModifyFill { fill: Fill::None }.into()
-								}
+								let fill = if let Some(value) = text_input.value { Fill::Solid(value) } else { Fill::None };
+								PropertiesPanelMessage::ModifyFill { fill }.into()
 							}),
 							no_transparency: true,
 							..Default::default()
@@ -1186,21 +1177,11 @@ fn node_gradient_color(gradient: &Gradient, percent_label: &'static str, positio
 				direction: SeparatorDirection::Horizontal,
 			})),
 			WidgetHolder::new(Widget::ColorInput(ColorInput {
-				value: gradient_clone.positions[position].1.map(|color| color.rgba_hex()),
+				value: gradient_clone.positions[position].1,
 				on_update: WidgetCallback::new(move |text_input: &ColorInput| {
-					if let Some(value) = &text_input.value {
-						if let Some(color) = Color::from_rgba_str(value).or_else(|| Color::from_rgb_str(value)) {
-							let mut new_gradient = (*gradient_clone).clone();
-							new_gradient.positions[position].1 = Some(color);
-							send_fill_message(new_gradient)
-						} else {
-							PropertiesPanelMessage::ResendActiveProperties.into()
-						}
-					} else {
-						let mut new_gradient = (*gradient_clone).clone();
-						new_gradient.positions[position].1 = None;
-						send_fill_message(new_gradient)
-					}
+					let mut new_gradient = (*gradient_clone).clone();
+					new_gradient.positions[position].1 = text_input.value;
+					send_fill_message(new_gradient)
 				}),
 				..ColorInput::default()
 			})),
@@ -1223,18 +1204,10 @@ fn node_section_fill(fill: &Fill) -> Option<LayoutGroup> {
 						direction: SeparatorDirection::Horizontal,
 					})),
 					WidgetHolder::new(Widget::ColorInput(ColorInput {
-						value: if let Fill::Solid(color) = fill { Some(color.rgba_hex()) } else { None },
+						value: if let Fill::Solid(color) = fill { Some(*color) } else { None },
 						on_update: WidgetCallback::new(|text_input: &ColorInput| {
-							if let Some(value) = &text_input.value {
-								if let Some(color) = Color::from_rgba_str(value).or_else(|| Color::from_rgb_str(value)) {
-									let new_fill = Fill::Solid(color);
-									PropertiesPanelMessage::ModifyFill { fill: new_fill }.into()
-								} else {
-									PropertiesPanelMessage::ResendActiveProperties.into()
-								}
-							} else {
-								PropertiesPanelMessage::ModifyFill { fill: Fill::None }.into()
-							}
+							let fill = if let Some(value) = text_input.value { Fill::Solid(value) } else { Fill::None };
+							PropertiesPanelMessage::ModifyFill { fill }.into()
 						}),
 						..ColorInput::default()
 					})),
@@ -1276,7 +1249,7 @@ fn node_section_stroke(stroke: &Stroke) -> LayoutGroup {
 						direction: SeparatorDirection::Horizontal,
 					})),
 					WidgetHolder::new(Widget::ColorInput(ColorInput {
-						value: stroke.color().map(|color| color.rgba_hex()),
+						value: stroke.color(),
 						on_update: WidgetCallback::new(move |text_input: &ColorInput| {
 							internal_stroke1
 								.clone()

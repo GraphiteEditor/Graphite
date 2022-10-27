@@ -195,8 +195,8 @@
 
 	.details {
 		margin-left: 16px;
-		gap: 8px;
 		width: 208px;
+		gap: 8px;
 
 		> .layout-row {
 			height: 24px;
@@ -225,6 +225,7 @@
 				background: linear-gradient(var(--new-color), var(--new-color)), var(--transparent-checkered-background);
 
 				.text-label {
+					text-align: left;
 					margin: 2px 8px;
 					color: var(--new-color-contrasting);
 				}
@@ -248,7 +249,16 @@
 				background-position: var(--transparent-checkered-background-position);
 
 				&.none {
-					background: var(--color-none-slash);
+					background: var(--color-none);
+					background-repeat: var(--color-none-repeat);
+					background-position: var(--color-none-position);
+					background-size: var(--color-none-size-32px);
+					background-image: var(--color-none-image-32px);
+
+					.text-label {
+						// Many stacked white shadows helps to increase the opacity and approximate shadow spread which does not exist for text shadows
+						text-shadow: 0 0 4px white, 0 0 4px white, 0 0 4px white, 0 0 4px white, 0 0 4px white, 0 0 4px white, 0 0 4px white, 0 0 4px white, 0 0 4px white, 0 0 4px white;
+					}
 				}
 			}
 		}
@@ -262,7 +272,11 @@
 			height: 24px;
 
 			&.none {
-				background: var(--color-none-slash);
+				background: var(--color-none);
+				background-repeat: var(--color-none-repeat);
+				background-position: var(--color-none-position);
+				background-size: var(--color-none-size-24px);
+				background-image: var(--color-none-image-24px);
 
 				&,
 				& ~ .black,
@@ -293,12 +307,10 @@
 					// We don't use the CSS `filter: grayscale(1);` property because it produces overly dark tones for bright colors with a noticeable jump on hover.
 					background: var(--pure-color-gray);
 				}
-			}
 
-			&:hover.pure div,
-			&:hover ~ .pure div,
-			& + .separator:hover ~ .pure div {
-				background: var(--pure-color);
+				&:hover div {
+					background: var(--pure-color);
+				}
 			}
 		}
 	}

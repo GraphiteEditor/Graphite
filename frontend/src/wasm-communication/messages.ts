@@ -702,9 +702,10 @@ export class CheckboxInput extends WidgetProps {
 }
 
 export class ColorInput extends WidgetProps {
-	value!: string | undefined;
-
-	label!: string | undefined;
+	@Transform(({ value }: { value: { red: number; green: number; blue: number; alpha: number } | undefined }) =>
+		value === undefined ? new Color("none") : new Color(value.red, value.green, value.blue, value.alpha)
+	)
+	value!: Color;
 
 	noTransparency!: boolean;
 

@@ -68,16 +68,15 @@
 	--color-data-unused2: #70a898;
 	--color-data-unused2-rgb: 112, 168, 152;
 
-	--color-none-slash-thickness: 10%;
-	--color-none-slash: linear-gradient(
-		to bottom right,
-		white,
-		white calc(50% - var(--color-none-slash-thickness) / 2),
-		red calc(50% - var(--color-none-slash-thickness) / 2),
-		red calc(50% + var(--color-none-slash-thickness) / 2),
-		white calc(50% + var(--color-none-slash-thickness) / 2),
-		white
-	);
+	--color-none: white;
+	--color-none-repeat: no-repeat;
+	--color-none-position: center center;
+	// 24px tall, 48px wide
+	--color-none-size-24px: 60px 24px;
+	--color-none-image-24px: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 24"><line stroke="red" stroke-width="4px" x1="0" y1="27" x2="60" y2="-3" /></svg>');
+	// 32px tall, 64px wide
+	--color-none-size-32px: 80px 32px;
+	--color-none-image-32px: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 32"><line stroke="red" stroke-width="4px" x1="0" y1="36" x2="80" y2="-4" /></svg>');
 
 	--transparent-checkered-background: linear-gradient(45deg, #cccccc 25%, transparent 25%, transparent 75%, #cccccc 75%),
 		linear-gradient(45deg, #cccccc 25%, transparent 25%, transparent 75%, #cccccc 75%), linear-gradient(#ffffff, #ffffff);
