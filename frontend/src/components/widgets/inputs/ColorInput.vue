@@ -1,6 +1,8 @@
 <template>
 	<LayoutRow class="color-input" :title="tooltip">
-		<button :class="{ none: value.none }" :style="{ '--color': value.toHexOptionalAlpha() }" @click="() => $emit('update:open', true)"></button>
+		<button :class="{ none: value.none }" :style="{ '--color': value.toHexOptionalAlpha() }" @click="() => $emit('update:open', true)">
+			<TextLabel :bold="true" class="chip" v-if="chip">{{ chip }}</TextLabel>
+		</button>
 		<ColorPicker v-model:open="isOpen" :color="value" @update:color="(color: Color) => colorPickerUpdated(color)" :allowNone="true" />
 	</LayoutRow>
 </template>
@@ -44,6 +46,20 @@
 			background-size: var(--color-none-size-24px);
 			background-image: var(--color-none-image-24px);
 		}
+
+		.chip {
+			position: absolute;
+			bottom: -1px;
+			right: 0;
+			height: 13px;
+			line-height: 13px;
+			background: var(--color-f-white);
+			color: var(--color-2-mildblack);
+			border-radius: 4px 0 0 0;
+			padding: 0 4px;
+			font-size: 10px;
+			box-shadow: 0 0 2px var(--color-3-darkgray);
+		}
 	}
 
 	> .floating-menu {
@@ -60,6 +76,7 @@ import { Color } from "@/wasm-communication/messages";
 
 import ColorPicker from "@/components/floating-menus/ColorPicker.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
+import TextLabel from "@/components/widgets/labels/TextLabel.vue";
 
 export default defineComponent({
 	emits: ["update:value", "update:open"],
@@ -92,9 +109,15 @@ export default defineComponent({
 			this.$emit("update:value", color);
 		},
 	},
+	computed: {
+		chip() {
+			return undefined;
+		},
+	},
 	components: {
 		ColorPicker,
 		LayoutRow,
+		TextLabel,
 	},
 });
 </script>
