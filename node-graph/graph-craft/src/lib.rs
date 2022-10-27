@@ -6,6 +6,8 @@ pub mod node_registry;
 pub mod document;
 pub mod proto;
 
+pub mod executor;
+
 #[cfg(test)]
 mod tests {
 
@@ -15,7 +17,6 @@ mod tests {
 	use graphene_core::{structural::*, RefNode};
 
 	use borrow_stack::BorrowStack;
-	use borrow_stack::FixedSizeStack;
 	use dyn_any::{downcast, IntoDynAny};
 	use graphene_std::any::{Any, DowncastNode, DynAnyNode, TypeErasedNode};
 	use graphene_std::ops::AddNode;
@@ -56,9 +57,7 @@ mod tests {
 	#[test]
 	fn execute_add() {
 		use crate::document::*;
-		use crate::node_registry::push_node;
 		use crate::proto::*;
-		use graphene_core::Node;
 
 		fn add_network() -> NodeNetwork {
 			NodeNetwork {
@@ -95,7 +94,7 @@ mod tests {
 			}
 		}
 
-		let mut network = NodeNetwork {
+		let network = NodeNetwork {
 			inputs: vec![0],
 			output: 0,
 			nodes: [(
@@ -117,18 +116,14 @@ mod tests {
 			.collect(),
 		};
 
-		let stack = FixedSizeStack::new(256);
-		println!("flattening");
-		network.flatten(0);
-		//println!("flat_network: {:#?}", network);
-		let mut proto_network = network.into_proto_network();
-		proto_network.reorder_ids();
-		//println!("reordered_ides: {:#?}", proto_network);
-		for (_id, node) in proto_network.nodes {
-			push_node(node, &stack);
-		}
+		use crate::executor::{Compiler, DynamicExecutor, Executor};
 
-		let result = unsafe { stack.get().last().unwrap().eval(32_u32.into_dyn()) };
+		let compiler = Compiler {};
+		let protograph = compiler.compile(network);
+
+		let exec = DynamicExecutor::new(protograph);
+
+		let result = exec.execute(32_u32.into_dyn()).unwrap();
 		let val = *dyn_any::downcast::<u32>(result).unwrap();
 		assert_eq!(val, 33_u32);
 	}
