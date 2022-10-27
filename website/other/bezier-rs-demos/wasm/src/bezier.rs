@@ -2,6 +2,7 @@ use crate::svg_drawing::*;
 use bezier_rs::{ArcStrategy, ArcsOptions, Bezier, ProjectionOptions};
 use glam::DVec2;
 use serde::{Deserialize, Serialize};
+use std::f64::consts::PI;
 use wasm_bindgen::prelude::*;
 
 #[derive(Serialize, Deserialize)]
@@ -474,30 +475,38 @@ impl WasmBezier {
 	/// The wrapped return type is `Vec<CircleSector>`.
 	pub fn arcs(&self, error: f64, max_iterations: usize, maximize_arcs: WasmMaximizeArcs) -> String {
 		let original_curve_svg = self.get_bezier_path();
-        
-        // Get sectors
-        let strategy = convert_wasm_maximize_arcs(maximize_arcs);
+
+		// Get sectors
+		let strategy = convert_wasm_maximize_arcs(maximize_arcs);
 		let options = ArcsOptions { error, max_iterations, strategy };
 		let arcs_svg = self
 			.0
 			.arcs(options)
 			.iter()
-            .enumerate()
+			.enumerate()
 			.map(|(idx, sector)| {
-                draw_sector(
-                    sector.center.x, 
-                    sector.center.y, 
-                    sector.radius, 
-                    sector.start_angle, 
-                    sector.end_angle
-                    format!("hsl({}, 100%, 50%, 75%)", (40 * idx)),
-                    1,
-                    format!("hsl({}, 100%, 50%, 37.5%)", (40 * idx))
-                )
+				draw_sector(
+					sector.center.x,
+					sector.center.y,
+					sector.radius,
+					-sector.start_angle,
+					-sector.end_angle,
+					format!("hsl({}, 100%, 50%, 75%)", (40 * idx)).as_str(),
+					1.,
+					format!("hsl({}, 100%, 50%, 37.5%)", (40 * idx)).as_str(),
+				)
 			})
 			.fold(original_curve_svg, |acc, item| format!("{acc}{item}"));
-			.collect();
-        
-        wrap_svg_tag(arcs_svg)
+		// let arcs_svg = draw_sector(
+		// 	50.,
+		// 	50.,
+		// 	100.,
+		// 	0.,
+		// 	PI / 2.,
+		// 	format!("hsl({}, 100%, 50%, 75%)", (40. * 0.)).as_str(),
+		// 	1.,
+		// 	format!("hsl({}, 100%, 50%, 37.5%)", (40. * 0.)).as_str(),
+		// );
+		wrap_svg_tag(arcs_svg)
 	}
 }

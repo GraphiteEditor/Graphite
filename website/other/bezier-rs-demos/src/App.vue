@@ -27,8 +27,8 @@
 import { defineComponent, markRaw } from "vue";
 
 import { WasmBezier } from "@/../wasm/pkg";
-import { drawCircleSector, drawCurve, drawLine, drawPoint, getContextFromCanvas, COLORS } from "@/utils/drawing";
-import { BezierCurveType, CircleSector, Point, WasmBezierInstance, WasmSubpathInstance } from "@/utils/types";
+import { drawCurve, drawLine, drawPoint, getContextFromCanvas, COLORS } from "@/utils/drawing";
+import { BezierCurveType, Point, WasmBezierInstance, WasmSubpathInstance } from "@/utils/types";
 
 import BezierExamplePane from "@/components/BezierExamplePane.vue";
 import ExamplePane from "@/components/ExamplePane.vue";
@@ -315,49 +315,73 @@ export default defineComponent({
 						},
 					},
 				},
-                {
+				{
 					name: "Arcs",
 					callback: (bezier: WasmBezierInstance, options: Record<string, number>): string => bezier.arcs(options.error, options.max_iterations, options.strategy),
-                    exampleOptions: {
+					exampleOptions: {
 						[BezierCurveType.Quadratic]: {
+							customPoints: [
+								[50, 50],
+								[85, 65],
+								[100, 100],
+							],
 							sliderOptions: [
-                                {
-                                    variable: "strategy",
-                                    min: 0,
-                                    max: 2,
-                                    step: 1,
-                                    default: 0,
-                                    unit: [": Automatic", ": FavorLargerArcs", ": FavorCorrectness"],
-                                },
-                                {
-                                    variable: "error",
-                                    min: 0.05,
-                                    max: 1,
-                                    step: 0.05,
-                                    default: 0.5,
-                                },
-                                {
-                                    variable: "max_iterations",
-                                    min: 50,
-                                    max: 200,
-                                    step: 1,
-                                    default: 100,
-                                },
-                            ],
+								{
+									variable: "strategy",
+									min: 0,
+									max: 2,
+									step: 1,
+									default: 0,
+									unit: [": Automatic", ": FavorLargerArcs", ": FavorCorrectness"],
+								},
+								{
+									variable: "error",
+									min: 0.05,
+									max: 1,
+									step: 0.05,
+									default: 0.5,
+								},
+								{
+									variable: "max_iterations",
+									min: 50,
+									max: 200,
+									step: 1,
+									default: 100,
+								},
+							],
 						},
-					},
-					customPoints: {
-						[BezierCurveType.Quadratic]: [
-							[50, 50],
-							[85, 65],
-							[100, 100],
-						],
-						[BezierCurveType.Cubic]: [
-							[160, 180],
-							[170, 10],
-							[30, 90],
-							[180, 160],
-						],
+						[BezierCurveType.Cubic]: {
+							customPoints: [
+								[160, 180],
+								[170, 10],
+								[30, 90],
+								[180, 160],
+							],
+							sliderOptions: [
+								{
+									variable: "strategy",
+									min: 0,
+									max: 2,
+									step: 1,
+									default: 0,
+									unit: [": Automatic", ": FavorLargerArcs", ": FavorCorrectness"],
+								},
+								{
+									variable: "error",
+									min: 0.05,
+									max: 1,
+									step: 0.05,
+									default: 0.5,
+								},
+								{
+									variable: "max_iterations",
+									min: 50,
+									max: 200,
+									step: 1,
+									default: 100,
+								},
+							],
+						},
 					},
 				},
 			],
