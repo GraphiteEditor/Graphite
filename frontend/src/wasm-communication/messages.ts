@@ -110,20 +110,29 @@ export type RGB = { r: number; g: number; b: number };
 export class Color {
 	constructor();
 
+	constructor(none: "none");
+
 	constructor(hsva: HSVA);
 
 	constructor(red: number, green: number, blue: number, alpha: number);
 
-	constructor(firstArg?: HSVA | number, green?: number, blue?: number, alpha?: number) {
+	constructor(firstArg?: "none" | HSVA | number, green?: number, blue?: number, alpha?: number) {
 		// Empty constructor
 		if (firstArg === undefined) {
 			this.red = 0;
 			this.green = 0;
 			this.blue = 0;
 			this.alpha = 0;
+			this.none = false;
+		} else if (firstArg === "none") {
+			this.red = 0;
+			this.green = 0;
+			this.blue = 0;
+			this.alpha = 0;
+			this.none = true;
 		}
 		// HSVA constructor
-		else if (typeof firstArg !== "number" && green === undefined && blue === undefined && alpha === undefined) {
+		else if (typeof firstArg === "object" && green === undefined && blue === undefined && alpha === undefined) {
 			const { h, s, v } = firstArg;
 			const convert = (n: number): number => {
 				const k = (n + h * 6) % 6;
@@ -134,6 +143,7 @@ export class Color {
 			this.green = convert(3);
 			this.blue = convert(1);
 			this.alpha = firstArg.a;
+			this.none = false;
 		}
 		// RGBA constructor
 		else if (typeof firstArg === "number" && typeof green === "number" && typeof blue === "number" && typeof alpha === "number") {
@@ -141,6 +151,7 @@ export class Color {
 			this.green = green;
 			this.blue = blue;
 			this.alpha = alpha;
+			this.none = false;
 		}
 	}
 
@@ -151,6 +162,8 @@ export class Color {
 	readonly blue!: number;
 
 	readonly alpha!: number;
+
+	readonly none!: boolean;
 
 	static fromCSS(colorCode: string): Color | undefined {
 		const canvas = document.createElement("canvas");
@@ -178,7 +191,9 @@ export class Color {
 		return new Color(r / 255, g / 255, b / 255, a / 255);
 	}
 
-	toHexNoAlpha(): string {
+	toHexNoAlpha(): string | undefined {
+		if (this.none) return undefined;
+
 		const r = Math.round(this.red * 255)
 			.toString(16)
 			.padStart(2, "0");
@@ -192,7 +207,9 @@ export class Color {
 		return `#${r}${g}${b}`;
 	}
 
-	toHexOptionalAlpha(): string {
+	toHexOptionalAlpha(): string | undefined {
+		if (this.none) return undefined;
+
 		const hex = this.toHexNoAlpha();
 		const a = Math.round(this.alpha * 255)
 			.toString(16)
@@ -201,7 +218,9 @@ export class Color {
 		return a === "ff" ? hex : `${hex}${a}`;
 	}
 
-	toRgb255(): RGB {
+	toRgb255(): RGB | undefined {
+		if (this.none) return undefined;
+
 		return {
 			r: Math.round(this.red * 255),
 			g: Math.round(this.green * 255),
@@ -209,7 +228,9 @@ export class Color {
 		};
 	}
 
-	toRgba255(): RGBA {
+	toRgba255(): RGBA | undefined {
+		if (this.none) return undefined;
+
 		return {
 			r: Math.round(this.red * 255),
 			g: Math.round(this.green * 255),
@@ -218,22 +239,30 @@ export class Color {
 		};
 	}
 
-	toRgbCSS(): string {
+	toRgbCSS(): string | undefined {
 		const rgba = this.toRgba255();
+		if (!rgba) return undefined;
+
 		return `rgb(${rgba.r}, ${rgba.g}, ${rgba.b})`;
 	}
 
-	toRgbaCSS(): string {
+	toRgbaCSS(): string | undefined {
 		const rgba = this.toRgba255();
+		if (!rgba) return undefined;
+
 		return `rgba(${rgba.r}, ${rgba.g}, ${rgba.b}, ${rgba.a})`;
 	}
 
-	toHSV(): HSV {
+	toHSV(): HSV | undefined {
 		const hsva = this.toHSVA();
+		if (!hsva) return undefined;
+
 		return { h: hsva.h, s: hsva.s, v: hsva.v };
 	}
 
-	toHSVA(): HSVA {
+	toHSVA(): HSVA | undefined {
+		if (this.none) return undefined;
+
 		const { red: r, green: g, blue: b, alpha: a } = this;
 
 		const max = Math.max(r, g, b);
@@ -263,21 +292,29 @@ export class Color {
 		return { h, s, v, a };
 	}
 
-	toHsvDegreesAndPercent(): HSV {
+	toHsvDegreesAndPercent(): HSV | undefined {
 		const hsva = this.toHSVA();
+		if (!hsva) return undefined;
+
 		return { h: hsva.h * 360, s: hsva.s * 100, v: hsva.v * 100 };
 	}
 
-	toHsvaDegreesAndPercent(): HSVA {
+	toHsvaDegreesAndPercent(): HSVA | undefined {
 		const hsva = this.toHSVA();
+		if (!hsva) return undefined;
+
 		return { h: hsva.h * 360, s: hsva.s * 100, v: hsva.v * 100, a: hsva.a * 100 };
 	}
 
-	opaque(): Color {
+	opaque(): Color | undefined {
+		if (this.none) return undefined;
+
 		return new Color(this.red, this.green, this.blue, 1);
 	}
 
 	contrastingColor(): "black" | "white" {
+		if (this.none) return "white";
+
 		// Convert alpha into white
 		const r = this.red * this.alpha + (1 - this.alpha);
 		const g = this.green * this.alpha + (1 - this.alpha);

@@ -68,6 +68,17 @@
 	--color-data-unused2: #70a898;
 	--color-data-unused2-rgb: 112, 168, 152;
 
+	--color-none-slash-thickness: 10%;
+	--color-none-slash: linear-gradient(
+		to bottom right,
+		white,
+		white calc(50% - var(--color-none-slash-thickness) / 2),
+		red calc(50% - var(--color-none-slash-thickness) / 2),
+		red calc(50% + var(--color-none-slash-thickness) / 2),
+		white calc(50% + var(--color-none-slash-thickness) / 2),
+		white
+	);
+
 	--transparent-checkered-background: linear-gradient(45deg, #cccccc 25%, transparent 25%, transparent 75%, #cccccc 75%),
 		linear-gradient(45deg, #cccccc 25%, transparent 25%, transparent 75%, #cccccc 75%), linear-gradient(#ffffff, #ffffff);
 	--transparent-checkered-background-size: 16px 16px;

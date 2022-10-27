@@ -1,11 +1,11 @@
 <template>
 	<LayoutRow class="color-input" :title="tooltip">
-		<OptionalInput v-if="!noTransparency" :icon="'CloseX'" :checked="Boolean(value)" @update:checked="(state: boolean) => updateEnabled(state)"></OptionalInput>
+		<!-- <OptionalInput v-if="!noTransparency" :icon="'CloseX'" :checked="Boolean(value)" @update:checked="(state: boolean) => updateEnabled(state)"></OptionalInput>
 		<TextInput :label="label" :disabled="disabled || !value" :value="displayValue" @commitText="(value: string) => textInputUpdated(value)" :center="true" />
-		<Separator :type="'Related'" />
+		<Separator :type="'Related'" /> -->
 		<LayoutRow class="swatch">
 			<button class="swatch-button" :class="{ 'disabled-swatch': !value }" :style="`--swatch-color: #${value}`" @click="() => $emit('update:open', true)"></button>
-			<ColorPicker v-model:open="isOpen" :color="color" @update:color="(color: Color) => colorPickerUpdated(color)" :direction="'Bottom'" />
+			<ColorPicker v-model:open="isOpen" :color="color" @update:color="(color: Color) => colorPickerUpdated(color)" :allowNone="true" :direction="'Bottom'" />
 		</LayoutRow>
 	</LayoutRow>
 </template>
@@ -63,16 +63,16 @@ import { Color } from "@/wasm-communication/messages";
 
 import ColorPicker from "@/components/floating-menus/ColorPicker.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
-import OptionalInput from "@/components/widgets/inputs/OptionalInput.vue";
-import TextInput from "@/components/widgets/inputs/TextInput.vue";
-import Separator from "@/components/widgets/labels/Separator.vue";
+// import OptionalInput from "@/components/widgets/inputs/OptionalInput.vue";
+// import TextInput from "@/components/widgets/inputs/TextInput.vue";
+// import Separator from "@/components/widgets/labels/Separator.vue";
 
 export default defineComponent({
 	emits: ["update:value", "update:open"],
 	props: {
 		value: { type: String as PropType<string | undefined>, required: false },
-		label: { type: String as PropType<string>, required: false },
-		noTransparency: { type: Boolean as PropType<boolean>, default: false },
+		label: { type: String as PropType<string>, required: false }, // TODO: Delete
+		noTransparency: { type: Boolean as PropType<boolean>, default: false }, // TODO: Rename to allowTransparency, also implement allowNone
 		disabled: { type: Boolean as PropType<boolean>, default: false },
 		tooltip: { type: String as PropType<string | undefined>, required: false },
 
@@ -153,9 +153,9 @@ export default defineComponent({
 	components: {
 		ColorPicker,
 		LayoutRow,
-		OptionalInput,
-		Separator,
-		TextInput,
+		// OptionalInput,
+		// Separator,
+		// TextInput,
 	},
 });
 </script>

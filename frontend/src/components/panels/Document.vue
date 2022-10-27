@@ -466,7 +466,7 @@ export default defineComponent({
 			this.textInput.style.width = displayEditableTextbox.lineWidth ? `${displayEditableTextbox.lineWidth}px` : "max-content";
 			this.textInput.style.height = "auto";
 			this.textInput.style.fontSize = `${displayEditableTextbox.fontSize}px`;
-			this.textInput.style.color = displayEditableTextbox.color.toRgbaCSS();
+			this.textInput.style.color = displayEditableTextbox.color.toRgbaCSS() || "transparent";
 
 			this.textInput.oninput = (): void => {
 				if (!this.textInput) return;
