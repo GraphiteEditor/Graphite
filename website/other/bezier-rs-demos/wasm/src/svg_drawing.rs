@@ -35,3 +35,22 @@ pub fn draw_circle(x_pos: f64, y_pos: f64, radius: f64, stroke: &str, stroke_wid
 pub fn draw_line(start_x: f64, start_y: f64, end_x: f64, end_y: f64, stroke: &str, stroke_width: f64) -> String {
 	format!(r#"<line x1="{start_x}" y1="{start_y}" x2="{end_x}" y2="{end_y}" stroke="{stroke}" stroke-width="{stroke_width}"/>"#)
 }
+
+// Helper function to convert polar to cartesian coordinates
+fn polar_to_cartesian(center_x: f64, center_y: f64, radius: f64, angle_in_rad: f64) -> [f64; 2] {
+  let x = centerX + radius * angle_in_rad.cos();
+  let y = centerY + radius * angle_in_rad.sin();
+  [x, y]
+}
+
+// Helper function to create an SVG drawing of a sector
+pub fn draw_sector(center_x: f64, center_y: f64, radius: f64, start_angle: f64, end_angle: f64, stroke: &str, stroke_width: f64, fill: &str) -> String {
+    let arc_sweep = if endAngle - startAngle <= 180 {"0"} else {"1"};
+    let [start_x, start_y] = polar_to_cartesian(center_x, center_y, radius, start_angle);
+    let [end_x, end_y] = polar_to_cartesian(center_x, center_y, radius, end_angle);
+    // draw sector with fill color
+    let sector_svg = format!(r#"<path d="M {start_x} {start_y} A {center_x} {center_y} 0 0 {arc_sweep} {end_x} {end_y} L {center_x} {center_y} L {start_x} {start_y} Z"  stroke="none" fill="{fill}"/>"#);
+    // draw arc with stroke color
+    let arc_svg = format!(r#"<path d="M {start_x} {start_y} A {center_x} {center_y} 0 0 {arc_sweep} {end_x} {end_y}" stroke="{stroke}" stroke-width="{stroke_width}""#);
+    format!("{sector_svg}{arc_svg}")
+}

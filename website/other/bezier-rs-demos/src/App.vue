@@ -315,6 +315,52 @@ export default defineComponent({
 						},
 					},
 				},
+                {
+					name: "Arcs",
+					callback: (bezier: WasmBezierInstance, options: Record<string, number>): string => bezier.arcs()
+					},
+					template: markRaw(SliderExample),
+					templateOptions: {
+						sliders: [
+							{
+								variable: "strategy",
+								min: 0,
+								max: 2,
+								step: 1,
+								default: 0,
+								unit: [": Automatic", ": FavorLargerArcs", ": FavorCorrectness"],
+							},
+							{
+								variable: "error",
+								min: 0.05,
+								max: 1,
+								step: 0.05,
+								default: 0.5,
+							},
+							{
+								variable: "max_iterations",
+								min: 50,
+								max: 200,
+								step: 1,
+								default: 100,
+							},
+						],
+					},
+					curveDegrees: new Set([BezierCurveType.Quadratic, BezierCurveType.Cubic]),
+					customPoints: {
+						[BezierCurveType.Quadratic]: [
+							[50, 50],
+							[85, 65],
+							[100, 100],
+						],
+						[BezierCurveType.Cubic]: [
+							[160, 180],
+							[170, 10],
+							[30, 90],
+							[180, 160],
+						],
+					},
+				},
 			],
 			features: [
 				{
@@ -426,57 +472,6 @@ export default defineComponent({
 						],
 					},
 					curveDegrees: new Set([BezierCurveType.Cubic]),
-				},
-				{
-					name: "Arcs",
-					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: Record<string, number>): void => {
-						const context = getContextFromCanvas(canvas);
-						const arcs: CircleSector[] = JSON.parse(bezier.arcs(options.error, options.max_iterations, options.strategy));
-						arcs.forEach((circleSector, index) => {
-							drawCircleSector(context, circleSector, `hsl(${40 * index}, 100%, 50%, 75%)`, `hsl(${40 * index}, 100%, 50%, 37.5%)`);
-						});
-					},
-					template: markRaw(SliderExample),
-					templateOptions: {
-						sliders: [
-							{
-								variable: "strategy",
-								min: 0,
-								max: 2,
-								step: 1,
-								default: 0,
-								unit: [": Automatic", ": FavorLargerArcs", ": FavorCorrectness"],
-							},
-							{
-								variable: "error",
-								min: 0.05,
-								max: 1,
-								step: 0.05,
-								default: 0.5,
-							},
-							{
-								variable: "max_iterations",
-								min: 50,
-								max: 200,
-								step: 1,
-								default: 100,
-							},
-						],
-					},
-					curveDegrees: new Set([BezierCurveType.Quadratic, BezierCurveType.Cubic]),
-					customPoints: {
-						[BezierCurveType.Quadratic]: [
-							[50, 50],
-							[85, 65],
-							[100, 100],
-						],
-						[BezierCurveType.Cubic]: [
-							[160, 180],
-							[170, 10],
-							[30, 90],
-							[180, 160],
-						],
-					},
 				},
 			],
 			subpathFeatures: [
