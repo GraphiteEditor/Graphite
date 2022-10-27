@@ -2,14 +2,14 @@
 	<FloatingMenu class="color-picker" :open="open" @update:open="(isOpen) => emitOpenState(isOpen)" :direction="direction" :type="'Popover'">
 		<LayoutRow
 			:style="{
-				'--new-color': color.toRgbaCSS(),
-				'--new-color-contrasting': color.contrastingColor(),
-				'--initial-color': initialColor.toRgbaCSS(),
+				'--new-color': colorFromHSV.toHexOptionalAlpha(),
+				'--new-color-contrasting': colorFromHSV.contrastingColor(),
+				'--initial-color': initialColor.toHexOptionalAlpha(),
 				'--initial-color-contrasting': initialColor.contrastingColor(),
 				'--hue-color': opaqueHueColor.toRgbCSS(),
 				'--hue-color-contrasting': opaqueHueColor.contrastingColor(),
-				'--opaque-color': color.toRgbaCSS(),
-				'--opaque-color-contrasting': color.opaque().contrastingColor(),
+				'--opaque-color': colorFromHSV.opaque().toHexNoAlpha(),
+				'--opaque-color-contrasting': colorFromHSV.opaque().contrastingColor(),
 			}"
 		>
 			<LayoutCol class="saturation-value-picker" @pointerdown="(e: PointerEvent) => beginDrag(e)" data-saturation-value-picker>
@@ -30,7 +30,43 @@
 						<TextLabel>Initial</TextLabel>
 					</LayoutCol>
 				</LayoutRow>
-				<DropdownInput :entries="colorSpaceChoices" :selectedIndex="0" :disabled="true" :tooltip="'Color spaces and HDR (coming soon)'" />
+				<DropdownInput :entries="colorSpaceChoices" :selectedIndex="0" :disabled="true" :tooltip="'Color Space and HDR (coming soon)'" />
+				<LayoutRow>
+					<TextLabel>Hex</TextLabel>
+					<Separator />
+					<LayoutRow>
+						<TextInput :value="colorFromHSV.toHexOptionalAlpha()" @commitText="(value: string) => setColorCode(value)" :centered="true" />
+					</LayoutRow>
+				</LayoutRow>
+				<LayoutRow>
+					<TextLabel>RGB</TextLabel>
+					<Separator />
+					<LayoutRow>
+						<template v-for="([channel, strength], index) in Object.entries(colorFromHSV.toRgb255())" :key="channel">
+							<Separator :type="'Related'" v-if="index > 0" />
+							<NumberInput :value="strength" @update:value="(value: number) => setColorRGB(channel as keyof RGB, value)" :min="0" :max="255" :centered="true" />
+						</template>
+					</LayoutRow>
+				</LayoutRow>
+				<LayoutRow>
+					<TextLabel>HSV</TextLabel>
+					<Separator />
+					<LayoutRow>
+						<template v-for="([channel, strength], index) in Object.entries({ h: hue * 360, s: saturation * 100, v: value * 100 })" :key="channel">
+							<Separator :type="'Related'" v-if="index > 0" />
+							<NumberInput
+								:value="strength"
+								@update:value="(value: number) => setColorHSV(channel as keyof HSV, value)"
+								:min="0"
+								:max="channel === 'h' ? 360 : 100"
+								:unit="channel === 'h' ? '°' : '%'"
+								:centered="true"
+							/>
+						</template>
+					</LayoutRow>
+				</LayoutRow>
+				<NumberInput :label="'Opacity'" :value="opacity * 100" @update:value="(value: number) => setColorOpacityPercent(value)" :min="0" :max="100" :unit="'%'" />
+				<LayoutRow class="leftover-space"></LayoutRow>
 			</LayoutCol>
 		</LayoutRow>
 	</FloatingMenu>
@@ -173,6 +209,15 @@
 				background-position: var(--transparent-checkered-background-position);
 			}
 		}
+
+		> .layout-row {
+			height: 24px;
+			flex: 0 0 auto;
+
+			&.leftover-space {
+				flex: 1 1 100%;
+			}
+		}
 	}
 }
 </style>
@@ -181,12 +226,16 @@
 import { defineComponent, type PropType } from "vue";
 
 import { clamp } from "@/utility-functions/math";
+import type { HSV, RGB } from "@/wasm-communication/messages";
 import { Color } from "@/wasm-communication/messages";
 
 import FloatingMenu, { type MenuDirection } from "@/components/layout/FloatingMenu.vue";
 import LayoutCol from "@/components/layout/LayoutCol.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 import DropdownInput from "@/components/widgets/inputs/DropdownInput.vue";
+import NumberInput from "@/components/widgets/inputs/NumberInput.vue";
+import TextInput from "@/components/widgets/inputs/TextInput.vue";
+import Separator from "@/components/widgets/labels/Separator.vue";
 import TextLabel from "@/components/widgets/labels/TextLabel.vue";
 
 const COLOR_SPACE_CHOICES = [[{ label: "sRGB" }]];
@@ -202,12 +251,15 @@ export default defineComponent({
 		const hsva = this.color.toHSVA();
 
 		return {
-			initialColor: this.color,
-			draggingPickerTrack: undefined as HTMLDivElement | undefined,
 			hue: hsva.h,
 			saturation: hsva.s,
 			value: hsva.v,
 			opacity: hsva.a,
+			initialHue: hsva.h,
+			initialSaturation: hsva.s,
+			initialValue: hsva.v,
+			initialOpacity: hsva.a,
+			draggingPickerTrack: undefined as HTMLDivElement | undefined,
 			colorSpaceChoices: COLOR_SPACE_CHOICES,
 		};
 	},
@@ -215,16 +267,29 @@ export default defineComponent({
 		opaqueHueColor(): Color {
 			return new Color({ h: this.hue, s: 1, v: 1, a: 1 });
 		},
+		colorFromHSV(): Color {
+			return new Color({ h: this.hue, s: this.saturation, v: this.value, a: this.opacity });
+		},
+		initialColor(): Color {
+			return new Color({ h: this.initialHue, s: this.initialSaturation, v: this.initialValue, a: this.initialOpacity });
+		},
 	},
 	watch: {
+		// Called only when `open` is changed from outside this component (with v-model)
 		open(state) {
-			if (state) this.initialColor = this.color;
+			if (state) {
+				this.initialHue = this.hue;
+				this.initialSaturation = this.saturation;
+				this.initialValue = this.value;
+				this.initialOpacity = this.opacity;
+			}
 		},
+		// Called only when `color` is changed from outside this component (with v-model)
 		color(newColor) {
 			const hsva = newColor.toHSVA();
 
-			this.hue = hsva.h;
-			this.saturation = hsva.s;
+			if (hsva.h !== 0 && hsva.s !== 0 && hsva.v !== 0) this.hue = hsva.h;
+			if (hsva.v !== 0) this.saturation = hsva.s;
 			this.value = hsva.v;
 			this.opacity = hsva.a;
 		},
@@ -256,8 +321,8 @@ export default defineComponent({
 			// Just in case the mouseup event is lost
 			if (e.buttons === 0) this.removeEvents();
 
-			// The `color` prop's watcher calls `this.updateColor()`
-			this.$emit("update:color", new Color({ h: this.hue, s: this.saturation, v: this.value, a: this.opacity }));
+			const newColor = new Color({ h: this.hue, s: this.saturation, v: this.value, a: this.opacity });
+			this.setColor(newColor);
 		},
 		onPointerUp() {
 			this.removeEvents();
@@ -273,12 +338,45 @@ export default defineComponent({
 			document.removeEventListener("pointermove", this.onPointerMove);
 			document.removeEventListener("pointerup", this.onPointerUp);
 		},
+		setColor(newColor: Color) {
+			this.$emit("update:color", newColor);
+		},
 		swapColorWithInitial() {
 			const initial = this.initialColor;
-			this.initialColor = this.color;
 
-			// The `color` prop's watcher calls `this.updateColor()`
-			this.$emit("update:color", initial);
+			const tempHue = this.hue;
+			const tempSaturation = this.saturation;
+			const tempValue = this.value;
+			const tempOpacity = this.opacity;
+
+			this.hue = this.initialHue;
+			this.saturation = this.initialSaturation;
+			this.value = this.initialValue;
+			this.opacity = this.initialOpacity;
+
+			this.initialHue = tempHue;
+			this.initialSaturation = tempSaturation;
+			this.initialValue = tempValue;
+			this.initialOpacity = tempOpacity;
+
+			this.setColor(initial);
+		},
+		setColorCode(colorCode: string) {
+			const newColor = Color.fromCSS(colorCode);
+			if (newColor) this.setColor(newColor);
+		},
+		setColorRGB(channel: keyof RGB, strength: number) {
+			if (channel === "r") this.setColor(new Color(strength / 255, this.colorFromHSV.green, this.colorFromHSV.blue, this.colorFromHSV.alpha));
+			else if (channel === "g") this.setColor(new Color(this.colorFromHSV.red, strength / 255, this.colorFromHSV.blue, this.colorFromHSV.alpha));
+			else if (channel === "b") this.setColor(new Color(this.colorFromHSV.red, this.colorFromHSV.green, strength / 255, this.colorFromHSV.alpha));
+		},
+		setColorHSV(channel: keyof HSV, strength: number) {
+			if (channel === "h") this.setColor(new Color({ h: strength / 360, s: this.saturation, v: this.value, a: this.opacity }));
+			if (channel === "s") this.setColor(new Color({ h: this.hue, s: strength / 100, v: this.value, a: this.opacity }));
+			if (channel === "v") this.setColor(new Color({ h: this.hue, s: this.saturation, v: strength / 100, a: this.opacity }));
+		},
+		setColorOpacityPercent(opacity: number) {
+			this.setColor(new Color({ h: this.hue, s: this.saturation, v: this.value, a: opacity / 100 }));
 		},
 	},
 	unmounted() {
@@ -290,6 +388,9 @@ export default defineComponent({
 		LayoutRow,
 		TextLabel,
 		DropdownInput,
+		NumberInput,
+		TextInput,
+		Separator,
 	},
 });
 </script>

@@ -1,7 +1,7 @@
 <template>
 	<LayoutRow class="color-input" :title="tooltip">
 		<OptionalInput v-if="!noTransparency" :icon="'CloseX'" :checked="Boolean(value)" @update:checked="(state: boolean) => updateEnabled(state)"></OptionalInput>
-		<TextInput :value="displayValue" :label="label" :disabled="disabled || !value" @commitText="(value: string) => textInputUpdated(value)" :center="true" />
+		<TextInput :label="label" :disabled="disabled || !value" :value="displayValue" @commitText="(value: string) => textInputUpdated(value)" :center="true" />
 		<Separator :type="'Related'" />
 		<LayoutRow class="swatch">
 			<button class="swatch-button" :class="{ 'disabled-swatch': !value }" :style="`--swatch-color: #${value}`" @click="() => $emit('update:open', true)"></button>
