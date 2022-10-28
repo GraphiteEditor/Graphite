@@ -48,7 +48,7 @@
 					</LayoutRow>
 				</LayoutRow>
 				<LayoutRow>
-					<TextLabel>RGB</TextLabel>
+					<TextLabel :tooltip="'Red/Green/Blue channels of the color, integers 0–255'">RGB</TextLabel>
 					<Separator />
 					<LayoutRow>
 						<template v-for="([channel, strength], index) in Object.entries(newColor.toRgb255() || { r: undefined, g: undefined, b: undefined })" :key="channel">
@@ -60,13 +60,15 @@
 								:max="255"
 								:centered="true"
 								:minWidth="56"
-								:tooltip="`${{ r: 'Red', g: 'Green', b: 'Blue' }[channel]} channel, integer values 0–255`"
+								:tooltip="`${{ r: 'Red', g: 'Green', b: 'Blue' }[channel]} channel, integers 0–255`"
 							/>
 						</template>
 					</LayoutRow>
 				</LayoutRow>
 				<LayoutRow>
-					<TextLabel>HSV</TextLabel>
+					<TextLabel :tooltip="'Hue/Saturation/Value, also known as Hue/Saturation/Brightness (HSB).\nNot to be confused with Hue/Saturation/Lightness (HSL), a different color model.'"
+						>HSV</TextLabel
+					>
 					<Separator />
 					<LayoutRow>
 						<template
@@ -84,27 +86,41 @@
 								:unit="channel === 'h' ? '°' : '%'"
 								:centered="true"
 								:minWidth="56"
-								:tooltip="`${{ h: 'Hue', s: 'Saturation', v: 'Value (brightness)' }[channel]} channel, decimal values ${channel === 'h' ? '0–360' : '0–100'}`"
+								:tooltip="
+									{
+										h: 'Hue component, the &quot;color&quot; along the rainbow',
+										s: 'Saturation component, the &quot;colorfulness&quot; from gray to vivid',
+										v: 'Value (or Brightness), the distance away from being darkened to black',
+									}[channel]
+								"
 							/>
 						</template>
 					</LayoutRow>
 				</LayoutRow>
-				<NumberInput :label="'Opacity'" :value="!isNone ? opacity * 100 : undefined" @update:value="(value: number) => setColorOpacityPercent(value)" :min="0" :max="100" :unit="'%'" />
+				<NumberInput
+					:label="'Opacity'"
+					:value="!isNone ? opacity * 100 : undefined"
+					@update:value="(value: number) => setColorOpacityPercent(value)"
+					:min="0"
+					:max="100"
+					:unit="'%'"
+					:tooltip="`Scale from transparent (0%) to opaque (100%) for the color's alpha channel`"
+				/>
 				<LayoutRow class="leftover-space"></LayoutRow>
 				<LayoutRow>
-					<button class="preset-color none" @click="() => setColorPreset('none')" v-if="allowNone"></button>
+					<button class="preset-color none" @click="() => setColorPreset('none')" v-if="allowNone" title="Set none"></button>
 					<Separator :type="'Related'" v-if="allowNone" />
-					<button class="preset-color black" @click="() => setColorPreset('black')"></button>
+					<button class="preset-color black" @click="() => setColorPreset('black')" title="Set black"></button>
 					<Separator :type="'Related'" />
-					<button class="preset-color white" @click="() => setColorPreset('white')"></button>
+					<button class="preset-color white" @click="() => setColorPreset('white')" title="Set white"></button>
 					<Separator :type="'Related'" />
 					<button class="preset-color pure" @click="(e: MouseEvent) => setColorPresetSubtile(e)">
-						<div data-pure-tile="red" style="--pure-color: #ff0000; --pure-color-gray: #4c4c4c"></div>
-						<div data-pure-tile="yellow" style="--pure-color: #ffff00; --pure-color-gray: #e3e3e3"></div>
-						<div data-pure-tile="green" style="--pure-color: #00ff00; --pure-color-gray: #969696"></div>
-						<div data-pure-tile="cyan" style="--pure-color: #00ffff; --pure-color-gray: #b2b2b2"></div>
-						<div data-pure-tile="blue" style="--pure-color: #0000ff; --pure-color-gray: #1c1c1c"></div>
-						<div data-pure-tile="magenta" style="--pure-color: #ff00ff; --pure-color-gray: #696969"></div>
+						<div data-pure-tile="red" style="--pure-color: #ff0000; --pure-color-gray: #4c4c4c" title="Set red"></div>
+						<div data-pure-tile="yellow" style="--pure-color: #ffff00; --pure-color-gray: #e3e3e3" title="Set yellow"></div>
+						<div data-pure-tile="green" style="--pure-color: #00ff00; --pure-color-gray: #969696" title="Set green"></div>
+						<div data-pure-tile="cyan" style="--pure-color: #00ffff; --pure-color-gray: #b2b2b2" title="Set cyan"></div>
+						<div data-pure-tile="blue" style="--pure-color: #0000ff; --pure-color-gray: #1c1c1c" title="Set blue"></div>
+						<div data-pure-tile="magenta" style="--pure-color: #ff00ff; --pure-color-gray: #696969" title="Set magenta"></div>
 					</button>
 					<Separator :type="'Related'" />
 					<IconButton :icon="'Eyedropper'" :size="24" :action="() => activateEyedropperSample()" :tooltip="'Sample a pixel color from the document'" />

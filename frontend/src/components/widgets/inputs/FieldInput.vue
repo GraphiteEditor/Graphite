@@ -1,6 +1,6 @@
 <!-- This is a base component, extended by others like NumberInput and TextInput. It should not be used directly. -->
 <template>
-	<LayoutRow class="field-input" :class="{ disabled }">
+	<LayoutRow class="field-input" :class="{ disabled }" :title="tooltip">
 		<input
 			v-if="!textarea"
 			:class="{ 'has-label': label }"
@@ -10,7 +10,6 @@
 			v-model="inputValue"
 			:spellcheck="spellcheck"
 			:disabled="disabled"
-			:title="tooltip"
 			@focus="() => $emit('textFocused')"
 			@blur="() => $emit('textChanged')"
 			@change="() => $emit('textChanged')"
@@ -27,7 +26,6 @@
 			v-model="inputValue"
 			:spellcheck="spellcheck"
 			:disabled="disabled"
-			:title="tooltip"
 			@focus="() => $emit('textFocused')"
 			@blur="() => $emit('textChanged')"
 			@change="() => $emit('textChanged')"
