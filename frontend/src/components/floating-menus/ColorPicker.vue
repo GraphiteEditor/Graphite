@@ -1,5 +1,5 @@
 <template>
-	<FloatingMenu class="color-picker" :open="open" @update:open="(isOpen) => emitOpenState(isOpen)" :direction="direction" :type="'Popover'">
+	<FloatingMenu class="color-picker" :open="open" @update:open="(isOpen) => emitOpenState(isOpen)" :strayCloses="strayCloses" :direction="direction" :type="'Popover'">
 		<LayoutRow
 			:style="{
 				'--new-color': newColor.toHexOptionalAlpha(),
@@ -12,13 +12,13 @@
 				'--opaque-color-contrasting': (newColor.opaque() || black).contrastingColor(),
 			}"
 		>
-			<LayoutCol class="saturation-value-picker" @pointerdown="(e: PointerEvent) => beginDrag(e)" data-saturation-value-picker>
+			<LayoutCol class="saturation-value-picker" @pointerdown="(e: PointerEvent) => onPointerDown(e)" data-saturation-value-picker>
 				<div class="selection-circle" :style="{ top: `${(1 - value) * 100}%`, left: `${saturation * 100}%` }" v-if="!isNone"></div>
 			</LayoutCol>
-			<LayoutCol class="hue-picker" @pointerdown="(e: PointerEvent) => beginDrag(e)" data-hue-picker>
+			<LayoutCol class="hue-picker" @pointerdown="(e: PointerEvent) => onPointerDown(e)" data-hue-picker>
 				<div class="selection-pincers" :style="{ top: `${(1 - hue) * 100}%` }" v-if="!isNone"></div>
 			</LayoutCol>
-			<LayoutCol class="opacity-picker" @pointerdown="(e: PointerEvent) => beginDrag(e)" data-opacity-picker>
+			<LayoutCol class="opacity-picker" @pointerdown="(e: PointerEvent) => onPointerDown(e)" data-opacity-picker>
 				<div class="selection-pincers" :style="{ top: `${(1 - opacity) * 100}%` }" v-if="!isNone"></div>
 			</LayoutCol>
 			<LayoutCol class="details">
@@ -411,6 +411,7 @@ export default defineComponent({
 			initialIsNone: hsvaOrNone === undefined,
 			draggingPickerTrack: undefined as HTMLDivElement | undefined,
 			colorSpaceChoices: COLOR_SPACE_CHOICES,
+			strayCloses: true,
 		};
 	},
 	computed: {
@@ -459,31 +460,35 @@ export default defineComponent({
 		},
 	},
 	methods: {
-		beginDrag(e: PointerEvent) {
+		onPointerDown(e: PointerEvent) {
 			const target = (e.target || undefined) as HTMLElement | undefined;
 			this.draggingPickerTrack = target?.closest("[data-saturation-value-picker], [data-hue-picker], [data-opacity-picker]") || undefined;
 
 			this.addEvents();
+
 			this.onPointerMove(e);
 		},
 		onPointerMove(e: PointerEvent) {
+			// Just in case the mouseup event is lost
+			if (e.buttons === 0) this.removeEvents();
+
 			if (this.draggingPickerTrack?.hasAttribute("data-saturation-value-picker")) {
 				const rectangle = this.draggingPickerTrack.getBoundingClientRect();
 
 				this.saturation = clamp((e.clientX - rectangle.left) / rectangle.width, 0, 1);
 				this.value = clamp(1 - (e.clientY - rectangle.top) / rectangle.height, 0, 1);
+				this.strayCloses = false;
 			} else if (this.draggingPickerTrack?.hasAttribute("data-hue-picker")) {
 				const rectangle = this.draggingPickerTrack.getBoundingClientRect();
 
 				this.hue = clamp(1 - (e.clientY - rectangle.top) / rectangle.height, 0, 1);
+				this.strayCloses = false;
 			} else if (this.draggingPickerTrack?.hasAttribute("data-opacity-picker")) {
 				const rectangle = this.draggingPickerTrack.getBoundingClientRect();
 
 				this.opacity = clamp(1 - (e.clientY - rectangle.top) / rectangle.height, 0, 1);
+				this.strayCloses = false;
 			}
-
-			// Just in case the mouseup event is lost
-			if (e.buttons === 0) this.removeEvents();
 
 			const color = new Color({ h: this.hue, s: this.saturation, v: this.value, a: this.opacity });
 			this.setColor(color);
@@ -491,16 +496,19 @@ export default defineComponent({
 		onPointerUp() {
 			this.removeEvents();
 		},
-		emitOpenState(isOpen: boolean) {
-			this.$emit("update:open", isOpen);
-		},
 		addEvents() {
 			document.addEventListener("pointermove", this.onPointerMove);
 			document.addEventListener("pointerup", this.onPointerUp);
 		},
 		removeEvents() {
+			this.draggingPickerTrack = undefined;
+			this.strayCloses = true;
+
 			document.removeEventListener("pointermove", this.onPointerMove);
 			document.removeEventListener("pointerup", this.onPointerUp);
+		},
+		emitOpenState(isOpen: boolean) {
+			this.$emit("update:open", isOpen);
 		},
 		setColor(color?: Color) {
 			const colorToEmit = color || new Color({ h: this.hue, s: this.saturation, v: this.value, a: this.opacity });
