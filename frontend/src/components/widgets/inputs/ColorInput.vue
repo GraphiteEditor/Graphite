@@ -1,6 +1,6 @@
 <template>
 	<LayoutRow class="color-input" :title="tooltip">
-		<button :class="{ none: value.none }" :style="{ '--color': value.toHexOptionalAlpha() }" @click="() => $emit('update:open', true)">
+		<button :class="{ none: value.none }" :style="{ '--color': value.toHexOptionalAlpha() }" @click="() => $emit('update:open', true)" data-floating-menu-spawner>
 			<TextLabel :bold="true" class="chip" v-if="chip">{{ chip }}</TextLabel>
 		</button>
 		<ColorPicker v-model:open="isOpen" :color="value" @update:color="(color: Color) => colorPickerUpdated(color)" :allowNone="true" />

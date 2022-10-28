@@ -1,5 +1,11 @@
 <template>
-	<div class="layout-col" :class="{ 'scrollable-x': scrollableX, 'scrollable-y': scrollableY }" :data-scrollable-x="scrollableX || undefined" :data-scrollable-y="scrollableY || undefined">
+	<div
+		class="layout-col"
+		:class="{ 'scrollable-x': scrollableX, 'scrollable-y': scrollableY }"
+		:data-scrollable-x="scrollableX || undefined"
+		:data-scrollable-y="scrollableY || undefined"
+		:title="tooltip"
+	>
 		<slot></slot>
 	</div>
 </template>
@@ -25,6 +31,7 @@ export default defineComponent({
 	props: {
 		scrollableX: { type: Boolean as PropType<boolean>, default: false },
 		scrollableY: { type: Boolean as PropType<boolean>, default: false },
+		tooltip: { type: String as PropType<string | undefined>, required: false },
 	},
 });
 </script>

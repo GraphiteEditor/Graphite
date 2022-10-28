@@ -2,14 +2,14 @@
 	<FloatingMenu class="color-picker" :open="open" @update:open="(isOpen) => emitOpenState(isOpen)" :direction="direction" :type="'Popover'">
 		<LayoutRow
 			:style="{
-				'--new-color': colorFromHSV.toHexOptionalAlpha(),
-				'--new-color-contrasting': colorFromHSV.contrastingColor(),
+				'--new-color': newColor.toHexOptionalAlpha(),
+				'--new-color-contrasting': newColor.contrastingColor(),
 				'--initial-color': initialColor.toHexOptionalAlpha(),
 				'--initial-color-contrasting': initialColor.contrastingColor(),
 				'--hue-color': opaqueHueColor.toRgbCSS(),
 				'--hue-color-contrasting': opaqueHueColor.contrastingColor(),
-				'--opaque-color': (colorFromHSV.opaque() || black).toHexNoAlpha(),
-				'--opaque-color-contrasting': (colorFromHSV.opaque() || black).contrastingColor(),
+				'--opaque-color': (newColor.opaque() || black).toHexNoAlpha(),
+				'--opaque-color-contrasting': (newColor.opaque() || black).contrastingColor(),
 			}"
 		>
 			<LayoutCol class="saturation-value-picker" @pointerdown="(e: PointerEvent) => beginDrag(e)" data-saturation-value-picker>
@@ -22,7 +22,11 @@
 				<div class="selection-pincers" :style="{ top: `${(1 - opacity) * 100}%` }" v-if="!isNone"></div>
 			</LayoutCol>
 			<LayoutCol class="details">
-				<LayoutRow class="choice-preview" @click="() => swapColorWithInitial()">
+				<LayoutRow
+					class="choice-preview"
+					@click="() => swapNewWithInitial()"
+					:tooltip="'Comparison views of the present color choice (left) and the color before any change (right). Click to swap sides.'"
+				>
 					<LayoutCol class="new-color" :class="{ none: isNone }">
 						<TextLabel>New</TextLabel>
 					</LayoutCol>
@@ -32,19 +36,32 @@
 				</LayoutRow>
 				<DropdownInput :entries="colorSpaceChoices" :selectedIndex="0" :disabled="true" :tooltip="'Color Space and HDR (coming soon)'" />
 				<LayoutRow>
-					<TextLabel>Hex</TextLabel>
+					<TextLabel :tooltip="'Color code in hexadecimal format'">Hex</TextLabel>
 					<Separator />
 					<LayoutRow>
-						<TextInput :value="colorFromHSV.toHexOptionalAlpha() || '-'" @commitText="(value: string) => setColorCode(value)" :centered="true" />
+						<TextInput
+							:value="newColor.toHexOptionalAlpha() || '-'"
+							@commitText="(value: string) => setColorCode(value)"
+							:centered="true"
+							:tooltip="'Color code in hexadecimal format. 6 digits if opaque, 8 with opacity.\nAccepts input of CSS color values including named colors.'"
+						/>
 					</LayoutRow>
 				</LayoutRow>
 				<LayoutRow>
 					<TextLabel>RGB</TextLabel>
 					<Separator />
 					<LayoutRow>
-						<template v-for="([channel, strength], index) in Object.entries(colorFromHSV.toRgb255() || { r: undefined, g: undefined, b: undefined })" :key="channel">
+						<template v-for="([channel, strength], index) in Object.entries(newColor.toRgb255() || { r: undefined, g: undefined, b: undefined })" :key="channel">
 							<Separator :type="'Related'" v-if="index > 0" />
-							<NumberInput :value="strength" @update:value="(value: number) => setColorRGB(channel as keyof RGB, value)" :min="0" :max="255" :centered="true" :minWidth="56" />
+							<NumberInput
+								:value="strength"
+								@update:value="(value: number) => setColorRGB(channel as keyof RGB, value)"
+								:min="0"
+								:max="255"
+								:centered="true"
+								:minWidth="56"
+								:tooltip="`${{ r: 'Red', g: 'Green', b: 'Blue' }[channel]} channel, integer values 0–255`"
+							/>
 						</template>
 					</LayoutRow>
 				</LayoutRow>
@@ -67,6 +84,7 @@
 								:unit="channel === 'h' ? '°' : '%'"
 								:centered="true"
 								:minWidth="56"
+								:tooltip="`${{ h: 'Hue', s: 'Saturation', v: 'Value (brightness)' }[channel]} channel, decimal values ${channel === 'h' ? '0–360' : '0–100'}`"
 							/>
 						</template>
 					</LayoutRow>
@@ -383,10 +401,12 @@ export default defineComponent({
 		opaqueHueColor(): Color {
 			return new Color({ h: this.hue, s: 1, v: 1, a: 1 });
 		},
-		colorFromHSV(): Color {
+		newColor(): Color {
+			if (this.isNone) return new Color("none");
 			return new Color({ h: this.hue, s: this.saturation, v: this.value, a: this.opacity });
 		},
 		initialColor(): Color {
+			if (this.initialIsNone) return new Color("none");
 			return new Color({ h: this.initialHue, s: this.initialSaturation, v: this.initialValue, a: this.initialOpacity });
 		},
 		black(): Color {
@@ -399,17 +419,26 @@ export default defineComponent({
 			if (isOpen) this.setInitialHsvAndOpacity(this.hue, this.saturation, this.value, this.opacity, this.isNone);
 		},
 		// Called only when `color` is changed from outside this component (with v-model)
-		color(newColor: Color) {
-			const hsva = newColor.toHSVA();
+		color(color: Color) {
+			const hsva = color.toHSVA();
 
 			if (hsva !== undefined) {
-				if (hsva.h !== 0 && hsva.s !== 0 && hsva.v !== 0) this.hue = hsva.h;
+				// Update the hue, but only if it is necessary so we don't:
+				// - ...jump the user's hue from 360° (top) to the equivalent 0° (bottom)
+				// - ...reset the hue to 0° if the color is fully desaturated, where all hues are equivalent
+				// - ...reset the hue to 0° if the color's value is black, where all hues are equivalent
+				if (!(hsva.h === 0 && this.hue === 1) && hsva.s > 0 && hsva.v > 0) this.hue = hsva.h;
+				// Update the saturation, but only if it is necessary so we don't:
+				// - ...reset the saturation to the left is the color's value is black along the bottom edge, where all saturations are equivalent
 				if (hsva.v !== 0) this.saturation = hsva.s;
+				// Update the value
 				this.value = hsva.v;
+				// Update the opacity
 				this.opacity = hsva.a;
+				// Update the status of this not being a color
 				this.isNone = false;
 			} else {
-				this.setNewHsvAndOpacity(0, 0, 0, 0, true);
+				this.setNewHsvAndOpacity(0, 0, 0, 1, true);
 			}
 		},
 	},
@@ -440,8 +469,8 @@ export default defineComponent({
 			// Just in case the mouseup event is lost
 			if (e.buttons === 0) this.removeEvents();
 
-			const newColor = new Color({ h: this.hue, s: this.saturation, v: this.value, a: this.opacity });
-			this.setColor(newColor);
+			const color = new Color({ h: this.hue, s: this.saturation, v: this.value, a: this.opacity });
+			this.setColor(color);
 		},
 		onPointerUp() {
 			this.removeEvents();
@@ -457,10 +486,11 @@ export default defineComponent({
 			document.removeEventListener("pointermove", this.onPointerMove);
 			document.removeEventListener("pointerup", this.onPointerUp);
 		},
-		setColor(newColor: Color) {
-			this.$emit("update:color", newColor);
+		setColor(color?: Color) {
+			const colorToEmit = color || new Color({ h: this.hue, s: this.saturation, v: this.value, a: this.opacity });
+			this.$emit("update:color", colorToEmit);
 		},
-		swapColorWithInitial() {
+		swapNewWithInitial() {
 			const initial = this.initialColor;
 
 			const tempHue = this.hue;
@@ -475,21 +505,24 @@ export default defineComponent({
 			this.setColor(initial);
 		},
 		setColorCode(colorCode: string) {
-			const newColor = Color.fromCSS(colorCode);
-			if (newColor) this.setColor(newColor);
+			const color = Color.fromCSS(colorCode);
+			if (color) this.setColor(color);
 		},
 		setColorRGB(channel: keyof RGB, strength: number) {
-			if (channel === "r") this.setColor(new Color(strength / 255, this.colorFromHSV.green, this.colorFromHSV.blue, this.colorFromHSV.alpha));
-			else if (channel === "g") this.setColor(new Color(this.colorFromHSV.red, strength / 255, this.colorFromHSV.blue, this.colorFromHSV.alpha));
-			else if (channel === "b") this.setColor(new Color(this.colorFromHSV.red, this.colorFromHSV.green, strength / 255, this.colorFromHSV.alpha));
+			if (channel === "r") this.setColor(new Color(strength / 255, this.newColor.green, this.newColor.blue, this.newColor.alpha));
+			else if (channel === "g") this.setColor(new Color(this.newColor.red, strength / 255, this.newColor.blue, this.newColor.alpha));
+			else if (channel === "b") this.setColor(new Color(this.newColor.red, this.newColor.green, strength / 255, this.newColor.alpha));
 		},
 		setColorHSV(channel: keyof HSV, strength: number) {
-			if (channel === "h") this.setColor(new Color({ h: strength / 360, s: this.saturation, v: this.value, a: this.opacity }));
-			if (channel === "s") this.setColor(new Color({ h: this.hue, s: strength / 100, v: this.value, a: this.opacity }));
-			if (channel === "v") this.setColor(new Color({ h: this.hue, s: this.saturation, v: strength / 100, a: this.opacity }));
+			if (channel === "h") this.hue = strength / 360;
+			else if (channel === "s") this.saturation = strength / 100;
+			else if (channel === "v") this.value = strength / 100;
+
+			this.setColor();
 		},
 		setColorOpacityPercent(opacity: number) {
-			this.setColor(new Color({ h: this.hue, s: this.saturation, v: this.value, a: opacity / 100 }));
+			this.opacity = opacity / 100;
+			this.setColor();
 		},
 		setColorPresetSubtile(e: MouseEvent) {
 			const clickedTile = e.target as HTMLDivElement | undefined;
@@ -499,7 +532,7 @@ export default defineComponent({
 		},
 		setColorPreset(preset: PresetColors) {
 			if (preset === "none") {
-				this.setNewHsvAndOpacity(0, 0, 0, 0, true);
+				this.setNewHsvAndOpacity(0, 0, 0, 1, true);
 				this.setColor(new Color("none"));
 				return;
 			}

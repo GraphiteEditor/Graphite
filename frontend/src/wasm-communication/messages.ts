@@ -122,13 +122,13 @@ export class Color {
 			this.red = 0;
 			this.green = 0;
 			this.blue = 0;
-			this.alpha = 0;
+			this.alpha = 1;
 			this.none = false;
 		} else if (firstArg === "none") {
 			this.red = 0;
 			this.green = 0;
 			this.blue = 0;
-			this.alpha = 0;
+			this.alpha = 1;
 			this.none = true;
 		}
 		// HSVA constructor
@@ -166,6 +166,13 @@ export class Color {
 	readonly none!: boolean;
 
 	static fromCSS(colorCode: string): Color | undefined {
+		// Allow single-digit hex value inputs
+		let colorValue = colorCode.trim();
+		if (colorValue.length === 2 && colorValue.charAt(0) === "#" && /[0-9a-f]/i.test(colorValue.charAt(1))) {
+			const digit = colorValue.charAt(1);
+			colorValue = `#${digit}${digit}${digit}`;
+		}
+
 		const canvas = document.createElement("canvas");
 		canvas.width = 1;
 		canvas.height = 1;
@@ -175,15 +182,19 @@ export class Color {
 		context.clearRect(0, 0, 1, 1);
 
 		context.fillStyle = "black";
-		context.fillStyle = colorCode;
+		context.fillStyle = colorValue;
 		const comparisonA = context.fillStyle;
 
 		context.fillStyle = "white";
-		context.fillStyle = colorCode;
+		context.fillStyle = colorValue;
 		const comparisonB = context.fillStyle;
 
 		// Invalid color
-		if (comparisonA !== comparisonB) return undefined;
+		if (comparisonA !== comparisonB) {
+			// If this color code didn't start with a #, add it and try again
+			if (colorValue.trim().charAt(0) !== "#") return Color.fromCSS(`#${colorValue.trim()}`);
+			return undefined;
+		}
 
 		context.fillRect(0, 0, 1, 1);
 
@@ -313,7 +324,7 @@ export class Color {
 	}
 
 	contrastingColor(): "black" | "white" {
-		if (this.none) return "white";
+		if (this.none) return "black";
 
 		// Convert alpha into white
 		const r = this.red * this.alpha + (1 - this.alpha);
