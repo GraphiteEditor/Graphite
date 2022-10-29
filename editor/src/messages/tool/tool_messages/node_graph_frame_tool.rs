@@ -76,7 +76,7 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for NodeGraphFra
 
 impl ToolMetadata for NodeGraphFrameTool {
 	fn icon_name(&self) -> String {
-		"RasterImaginateTool".into()
+		"RasterNodesTool".into()
 	}
 	fn tooltip(&self) -> String {
 		"Node Graph Frame Tool".into()

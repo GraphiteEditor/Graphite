@@ -659,7 +659,7 @@ export type LayerTypeData = {
 export function layerTypeData(layerType: LayerType): LayerTypeData | undefined {
 	const entries: Record<string, LayerTypeData> = {
 		Imaginate: { name: "Imaginate", icon: "NodeImaginate" },
-		NodeGraphFrame: { name: "Node Graph Frame", icon: "NodeImaginate" },
+		NodeGraphFrame: { name: "Node Graph Frame", icon: "NodeNodes" },
 		Folder: { name: "Folder", icon: "NodeFolder" },
 		Image: { name: "Image", icon: "NodeImage" },
 		Shape: { name: "Shape", icon: "NodeShape" },

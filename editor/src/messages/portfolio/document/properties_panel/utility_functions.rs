@@ -245,7 +245,7 @@ pub fn register_artwork_layer_properties(layer: &Layer, responses: &mut VecDeque
 					tooltip: "Imaginate".into(),
 				})),
 				LayerDataType::NodeGraphFrame(_) => WidgetHolder::new(Widget::IconLabel(IconLabel {
-					icon: "NodeImaginate".into(),
+					icon: "NodeNodes".into(),
 					tooltip: "Node Graph Frame".into(),
 				})),
 			},
