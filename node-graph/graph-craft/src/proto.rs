@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::collections::HashSet;
 
 use crate::document::value;
 use crate::document::NodeId;
@@ -110,7 +109,22 @@ impl ProtoNode {
 }
 
 impl ProtoNetwork {
-	fn reverse_edges(&self) -> HashMap<NodeId, Vec<NodeId>> {
+	pub fn collect_outwards_edges(&self) -> HashMap<NodeId, Vec<NodeId>> {
+		let mut edges: HashMap<NodeId, Vec<NodeId>> = HashMap::new();
+		for (id, node) in &self.nodes {
+			if let ProtoNodeInput::Node(ref_id) = &node.input {
+				edges.entry(*ref_id).or_default().push(*id)
+			}
+			if let ConstructionArgs::Nodes(ref_nodes) = &node.construction_args {
+				for ref_id in ref_nodes {
+					edges.entry(*ref_id).or_default().push(*id)
+				}
+			}
+		}
+		edges
+	}
+
+	pub fn collect_inwards_edges(&self) -> HashMap<NodeId, Vec<NodeId>> {
 		let mut edges: HashMap<NodeId, Vec<NodeId>> = HashMap::new();
 		for (id, node) in &self.nodes {
 			if let ProtoNodeInput::Node(ref_id) = &node.input {
@@ -125,38 +139,28 @@ impl ProtoNetwork {
 		edges
 	}
 
+	// Based on https://en.wikipedia.org/wiki/Topological_sorting#Kahn's_algorithm
 	pub fn topological_sort(&self) -> Vec<NodeId> {
-		let mut visited = HashSet::new();
-		let mut stack = Vec::new();
 		let mut sorted = Vec::new();
-		let graph = self.reverse_edges();
-		// TODO: remove
-		println!("{:#?}", graph);
+		let outwards_edges = self.collect_outwards_edges();
+		let mut inwards_edges = self.collect_inwards_edges();
+		let mut no_incoming_edges: Vec<_> = self.nodes.iter().map(|entry| entry.0).filter(|id| !inwards_edges.contains_key(id)).collect();
 
-		for (id, _) in &self.nodes {
-			if !visited.contains(id) {
-				stack.push(*id);
+		assert_ne!(no_incoming_edges.len(), 0, "Acyclic graphs must have at least one node with no incoming edge");
 
-				while let Some(id) = stack.pop() {
-					//TODO remove
-					println!("{:?}", stack);
-					if !visited.contains(&id) {
-						visited.insert(id);
-						if let Some(refs) = graph.get(&id) {
-							for ref_id in refs {
-								if !visited.contains(ref_id) {
-									stack.push(id);
-									stack.push(*ref_id);
-									break;
-								}
-							}
-						}
-						sorted.push(id);
+		while let Some(node_id) = no_incoming_edges.pop() {
+			sorted.push(node_id);
+
+			if let Some(outwards_edges) = outwards_edges.get(&node_id) {
+				for &ref_id in outwards_edges {
+					let dependencies = inwards_edges.get_mut(&ref_id).unwrap();
+					dependencies.retain(|&id| id != node_id);
+					if dependencies.is_empty() {
+						no_incoming_edges.push(ref_id)
 					}
 				}
 			}
 		}
-		sorted.reverse();
 		sorted
 	}
 
