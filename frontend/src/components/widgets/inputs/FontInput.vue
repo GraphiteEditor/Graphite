@@ -1,6 +1,6 @@
 <template>
 	<LayoutRow class="font-input">
-		<LayoutRow class="dropdown-box" :class="{ disabled }" :style="{ minWidth: `${minWidth}px` }" :title="tooltip" tabindex="0" @click="toggleOpen" @keydown="keydown" data-hover-menu-spawner>
+		<LayoutRow class="dropdown-box" :class="{ disabled }" :style="{ minWidth: `${minWidth}px` }" :title="tooltip" tabindex="0" @click="toggleOpen" @keydown="keydown" data-floating-menu-spawner>
 			<span>{{ activeEntry?.value || "" }}</span>
 			<IconLabel class="dropdown-arrow" :icon="'DropdownArrow'" />
 		</LayoutRow>

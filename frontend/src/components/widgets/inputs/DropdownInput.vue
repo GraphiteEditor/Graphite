@@ -9,7 +9,7 @@
 			@blur="(e: FocusEvent) => unFocusDropdownBox(e)"
 			@keydown="(e: KeyboardEvent) => keydown(e)"
 			tabindex="0"
-			data-hover-menu-spawner
+			data-floating-menu-spawner
 		>
 			<IconLabel class="dropdown-icon" :icon="activeEntry.icon" v-if="activeEntry.icon" />
 			<span>{{ activeEntry.label }}</span>

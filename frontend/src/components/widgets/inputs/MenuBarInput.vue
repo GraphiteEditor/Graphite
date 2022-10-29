@@ -8,7 +8,7 @@
 				class="entry"
 				:class="{ open: entry.ref?.isOpen }"
 				tabindex="0"
-				data-hover-menu-spawner
+				data-floating-menu-spawner
 			>
 				<IconLabel v-if="entry.icon" :icon="entry.icon" />
 				<span v-if="entry.label">{{ entry.label }}</span>

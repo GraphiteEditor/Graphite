@@ -100,32 +100,40 @@ export type ActionKeys = { keys: KeysGroup };
 
 export type MouseMotion = string;
 
-export type HSVA = {
-	h: number;
-	s: number;
-	v: number;
-	a: number;
-};
+// Channels can have any range (0-1, 0-255, 0-100, 0-360) in the context they are being used in, these are just containers for the numbers
+export type HSVA = { h: number; s: number; v: number; a: number };
+export type HSV = { h: number; s: number; v: number };
+export type RGBA = { r: number; g: number; b: number; a: number };
+export type RGB = { r: number; g: number; b: number };
 
 // All channels range from 0 to 1
 export class Color {
 	constructor();
 
+	constructor(none: "none");
+
 	constructor(hsva: HSVA);
 
 	constructor(red: number, green: number, blue: number, alpha: number);
 
-	constructor(hsvaOrRed?: HSVA | number, green?: number, blue?: number, alpha?: number) {
+	constructor(firstArg?: "none" | HSVA | number, green?: number, blue?: number, alpha?: number) {
 		// Empty constructor
-		if (hsvaOrRed === undefined) {
+		if (firstArg === undefined) {
 			this.red = 0;
 			this.green = 0;
 			this.blue = 0;
-			this.alpha = 0;
+			this.alpha = 1;
+			this.none = false;
+		} else if (firstArg === "none") {
+			this.red = 0;
+			this.green = 0;
+			this.blue = 0;
+			this.alpha = 1;
+			this.none = true;
 		}
 		// HSVA constructor
-		else if (typeof hsvaOrRed !== "number" && green === undefined && blue === undefined && alpha === undefined) {
-			const { h, s, v } = hsvaOrRed;
+		else if (typeof firstArg === "object" && green === undefined && blue === undefined && alpha === undefined) {
+			const { h, s, v } = firstArg;
 			const convert = (n: number): number => {
 				const k = (n + h * 6) % 6;
 				return v - v * s * Math.max(Math.min(...[k, 4 - k, 1]), 0);
@@ -134,14 +142,16 @@ export class Color {
 			this.red = convert(5);
 			this.green = convert(3);
 			this.blue = convert(1);
-			this.alpha = hsvaOrRed.a;
+			this.alpha = firstArg.a;
+			this.none = false;
 		}
 		// RGBA constructor
-		else if (typeof hsvaOrRed === "number" && typeof green === "number" && typeof blue === "number" && typeof alpha === "number") {
-			this.red = hsvaOrRed;
+		else if (typeof firstArg === "number" && typeof green === "number" && typeof blue === "number" && typeof alpha === "number") {
+			this.red = firstArg;
 			this.green = green;
 			this.blue = blue;
 			this.alpha = alpha;
+			this.none = false;
 		}
 	}
 
@@ -153,15 +163,117 @@ export class Color {
 
 	readonly alpha!: number;
 
-	toRgbCSS(): string {
-		return `rgb(${this.red * 255}, ${this.green * 255}, ${this.blue * 255})`;
+	readonly none!: boolean;
+
+	static fromCSS(colorCode: string): Color | undefined {
+		// Allow single-digit hex value inputs
+		let colorValue = colorCode.trim();
+		if (colorValue.length === 2 && colorValue.charAt(0) === "#" && /[0-9a-f]/i.test(colorValue.charAt(1))) {
+			const digit = colorValue.charAt(1);
+			colorValue = `#${digit}${digit}${digit}`;
+		}
+
+		const canvas = document.createElement("canvas");
+		canvas.width = 1;
+		canvas.height = 1;
+		const context = canvas.getContext("2d");
+		if (!context) return undefined;
+
+		context.clearRect(0, 0, 1, 1);
+
+		context.fillStyle = "black";
+		context.fillStyle = colorValue;
+		const comparisonA = context.fillStyle;
+
+		context.fillStyle = "white";
+		context.fillStyle = colorValue;
+		const comparisonB = context.fillStyle;
+
+		// Invalid color
+		if (comparisonA !== comparisonB) {
+			// If this color code didn't start with a #, add it and try again
+			if (colorValue.trim().charAt(0) !== "#") return Color.fromCSS(`#${colorValue.trim()}`);
+			return undefined;
+		}
+
+		context.fillRect(0, 0, 1, 1);
+
+		const [r, g, b, a] = [...context.getImageData(0, 0, 1, 1).data];
+		return new Color(r / 255, g / 255, b / 255, a / 255);
 	}
 
-	toRgbaCSS(): string {
-		return `rgba(${this.red * 255}, ${this.green * 255}, ${this.blue * 255}, ${this.alpha})`;
+	toHexNoAlpha(): string | undefined {
+		if (this.none) return undefined;
+
+		const r = Math.round(this.red * 255)
+			.toString(16)
+			.padStart(2, "0");
+		const g = Math.round(this.green * 255)
+			.toString(16)
+			.padStart(2, "0");
+		const b = Math.round(this.blue * 255)
+			.toString(16)
+			.padStart(2, "0");
+
+		return `#${r}${g}${b}`;
 	}
 
-	toHSVA(): HSVA {
+	toHexOptionalAlpha(): string | undefined {
+		if (this.none) return undefined;
+
+		const hex = this.toHexNoAlpha();
+		const a = Math.round(this.alpha * 255)
+			.toString(16)
+			.padStart(2, "0");
+
+		return a === "ff" ? hex : `${hex}${a}`;
+	}
+
+	toRgb255(): RGB | undefined {
+		if (this.none) return undefined;
+
+		return {
+			r: Math.round(this.red * 255),
+			g: Math.round(this.green * 255),
+			b: Math.round(this.blue * 255),
+		};
+	}
+
+	toRgba255(): RGBA | undefined {
+		if (this.none) return undefined;
+
+		return {
+			r: Math.round(this.red * 255),
+			g: Math.round(this.green * 255),
+			b: Math.round(this.blue * 255),
+			a: Math.round(this.alpha * 255),
+		};
+	}
+
+	toRgbCSS(): string | undefined {
+		const rgba = this.toRgba255();
+		if (!rgba) return undefined;
+
+		return `rgb(${rgba.r}, ${rgba.g}, ${rgba.b})`;
+	}
+
+	toRgbaCSS(): string | undefined {
+		const rgba = this.toRgba255();
+		if (!rgba) return undefined;
+
+		return `rgba(${rgba.r}, ${rgba.g}, ${rgba.b}, ${rgba.a})`;
+	}
+
+	toHSV(): HSV | undefined {
+		const hsva = this.toHSVA();
+		if (!hsva) return undefined;
+
+		return { h: hsva.h, s: hsva.s, v: hsva.v };
+	}
+
+	toHSVA(): HSVA | undefined {
+		if (this.none) return undefined;
+
 		const { red: r, green: g, blue: b, alpha: a } = this;
 
 		const max = Math.max(r, g, b);
@@ -189,6 +301,45 @@ export class Color {
 		}
 
 		return { h, s, v, a };
+	}
+
+	toHsvDegreesAndPercent(): HSV | undefined {
+		const hsva = this.toHSVA();
+		if (!hsva) return undefined;
+
+		return { h: hsva.h * 360, s: hsva.s * 100, v: hsva.v * 100 };
+	}
+
+	toHsvaDegreesAndPercent(): HSVA | undefined {
+		const hsva = this.toHSVA();
+		if (!hsva) return undefined;
+
+		return { h: hsva.h * 360, s: hsva.s * 100, v: hsva.v * 100, a: hsva.a * 100 };
+	}
+
+	opaque(): Color | undefined {
+		if (this.none) return undefined;
+
+		return new Color(this.red, this.green, this.blue, 1);
+	}
+
+	contrastingColor(): "black" | "white" {
+		if (this.none) return "black";
+
+		// Convert alpha into white
+		const r = this.red * this.alpha + (1 - this.alpha);
+		const g = this.green * this.alpha + (1 - this.alpha);
+		const b = this.blue * this.alpha + (1 - this.alpha);
+
+		// https://stackoverflow.com/a/3943023/775283
+
+		const linearR = r <= 0.04045 ? r / 12.92 : ((r + 0.055) / 1.055) ** 2.4;
+		const linearG = g <= 0.04045 ? g / 12.92 : ((g + 0.055) / 1.055) ** 2.4;
+		const linearB = b <= 0.04045 ? b / 12.92 : ((b + 0.055) / 1.055) ** 2.4;
+
+		const linear = linearR * 0.2126 + linearG * 0.7152 + linearB * 0.0722;
+
+		return linear > Math.sqrt(1.05 * 0.05) - 0.05 ? "black" : "white";
 	}
 }
 
@@ -573,9 +724,10 @@ export class CheckboxInput extends WidgetProps {
 }
 
 export class ColorInput extends WidgetProps {
-	value!: string | undefined;
-
-	label!: string | undefined;
+	@Transform(({ value }: { value: { red: number; green: number; blue: number; alpha: number } | undefined }) =>
+		value === undefined ? new Color("none") : new Color(value.red, value.green, value.blue, value.alpha)
+	)
+	value!: Color;
 
 	noTransparency!: boolean;
 
