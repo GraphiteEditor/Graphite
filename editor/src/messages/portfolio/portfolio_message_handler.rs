@@ -9,9 +9,9 @@ use crate::messages::portfolio::document::utility_types::clipboards::{Clipboard,
 use crate::messages::portfolio::utility_types::ImaginateServerStatus;
 use crate::messages::prelude::*;
 
-use graphene::layers::layer_info::LayerDataTypeDiscriminant;
+use graphene::layers::layer_info::{LayerDataType, LayerDataTypeDiscriminant};
 use graphene::layers::text_layer::Font;
-use graphene::Operation as DocumentOperation;
+use graphene::{LayerId, Operation as DocumentOperation};
 
 #[derive(Debug, Clone, Default)]
 pub struct PortfolioMessageHandler {
@@ -419,26 +419,53 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 				document_id,
 				layer_path,
 				image_data,
-				mime,
+				size,
 			} => {
-				fn read_image(image_data: Vec<u8>) -> Result<Vec<u8>, String> {
-					use image::io::Reader as ImageReader;
+				fn read_image(document: Option<&DocumentMessageHandler>, layer_path: &[LayerId], image_data: Vec<u8>, (width, height): (u32, u32)) -> Result<Vec<u8>, String> {
+					use graphene_std::raster::Image;
+					use image::{ImageBuffer, Rgba};
 					use std::io::Cursor;
 
-					let reader = ImageReader::new(Cursor::new(image_data)).with_guessed_format().map_err(|e| e.to_string())?;
-					let decoded = reader.decode().map_err(|e| e.to_string())?;
+					let data = image_data.chunks_exact(4).map(|v| graphene_core::raster::color::Color::from_rgba8(v[0], v[1], v[2], v[3])).collect();
+					let image = graphene_std::raster::Image { width, height, data };
 
-					// TODO: Insert proper node graph execution logic here
+					let document = document.ok_or_else(|| "Invalid document".to_string())?;
+					let layer = document.graphene_document.layer(layer_path).map_err(|e| format!("No layer: {e:?}"))?;
+					let node_graph_frame = match &layer.data {
+						LayerDataType::NodeGraphFrame(frame) => Ok(frame),
+						_ => Err("Invalid layer type".to_string()),
+					}?;
 
-					let output = decoded.brighten(40);
+					// Execute the node graph
+
+					let mut network = node_graph_frame.network.clone();
+
+					let stack = borrow_stack::FixedSizeStack::new(256);
+					network.flatten(0);
+
+					let mut proto_network = network.into_proto_network();
+					proto_network.reorder_ids();
+
+					for (_id, node) in proto_network.nodes {
+						graph_craft::node_registry::push_node(node, &stack);
+					}
+
+					use borrow_stack::BorrowStack;
+					use dyn_any::IntoDynAny;
+					use graphene_core::Node;
+					let result = unsafe { stack.get().last().unwrap().eval(image.into_dyn()) };
+					let result = *dyn_any::downcast::<Image>(result).unwrap();
 
 					let mut bytes: Vec<u8> = Vec::new();
+					let [result_width, result_height] = [result.width, result.height];
+					let result: Vec<_> = result.data.into_iter().flat_map(|colour| colour.to_rgba8()).collect();
+					let output: ImageBuffer<Rgba<u8>, _> = image::ImageBuffer::from_raw(result_width, result_height, result).ok_or_else(|| "Invalid image size".to_string())?;
 					output.write_to(&mut Cursor::new(&mut bytes), image::ImageOutputFormat::Png).map_err(|e| e.to_string())?;
 
 					Ok(bytes)
 				}
 
-				match read_image(image_data) {
+				match read_image(self.documents.get(&document_id), &layer_path, image_data, size) {
 					Ok(image_data) => {
 						responses.push_back(
 							DocumentOperation::SetNodeGraphFrameImageData {
@@ -447,6 +474,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 							}
 							.into(),
 						);
+						let mime = "image/png".to_string();
 						responses.push_back(
 							FrontendMessage::UpdateImageData {
 								document_id,

@@ -237,18 +237,18 @@ static NODE_REGISTRY: &[(NodeIdentifier<'static>, NodeConstructor)] = &[
 			types: &[],
 		},
 		|proto_node, stack| {
-			let node_id = proto_node.input.unwrap_node() as usize;
 			if let ConstructionArgs::Nodes(operation_node_id) = proto_node.construction_args {
 				stack.push_fn(move |nodes| {
-					let pre_node = nodes.get(node_id).unwrap();
-
 					let operation_node = nodes.get(operation_node_id[0] as usize).unwrap();
 					let operation_node: DowncastBothNode<_, Color, Color> = DowncastBothNode::new(operation_node);
 					let map_node = DynAnyNode::new(graphene_std::raster::MapImageNode::new(operation_node));
 
-					let node = (pre_node).then(map_node);
-
-					node.into_type_erased()
+					if let ProtoNodeInput::Node(node_id) = proto_node.input {
+						let pre_node = nodes.get(node_id as usize).unwrap();
+						(pre_node).then(map_node).into_type_erased()
+					} else {
+						map_node.into_type_erased()
+					}
 				})
 			} else {
 				unimplemented!()

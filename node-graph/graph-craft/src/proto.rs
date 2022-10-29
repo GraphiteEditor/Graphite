@@ -4,13 +4,13 @@ use std::collections::HashSet;
 use crate::document::value;
 use crate::document::NodeId;
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct NodeIdentifier<'a> {
 	pub name: &'a str,
 	pub types: &'a [Type<'a>],
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Type<'a> {
 	Generic,
 	Concrete(&'a str),

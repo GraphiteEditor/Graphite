@@ -11,6 +11,9 @@ repository = "https://github.com/GraphiteEditor/Graphite"
 license = "Apache-2.0"
 
 [dependencies]
+graph-craft = { path = "../node-graph/graph-craft" }
+image = { version = "0.24", default-features = false }
+
 log = "0.4"
 
 bezier-rs = { path = "../libraries/bezier-rs" }

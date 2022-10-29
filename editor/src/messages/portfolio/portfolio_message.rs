@@ -112,7 +112,7 @@ pub enum PortfolioMessage {
 		document_id: u64,
 		layer_path: Vec<LayerId>,
 		image_data: Vec<u8>,
-		mime: String,
+		size: (u32, u32),
 	},
 	SelectDocument {
 		document_id: u64,

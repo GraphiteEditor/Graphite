@@ -3,7 +3,7 @@ import { reactive, readonly } from "vue";
 
 import { downloadFileText, downloadFileBlob, upload } from "@/utility-functions/files";
 import { imaginateGenerate, imaginateCheckConnection, imaginateTerminate, preloadAndSetImaginateBlobURL } from "@/utility-functions/imaginate";
-import { rasterizeSVG } from "@/utility-functions/rasterization";
+import { rasterizeSVG, rasterizeSVGCanvas } from "@/utility-functions/rasterization";
 import { type Editor } from "@/wasm-communication/editor";
 import {
 	type FrontendDocumentDetails,
@@ -105,9 +105,9 @@ export function createPortfolioState(editor: Editor) {
 		const { documentId, layerPath, svg, size } = triggerNodeGraphFrameGenerate;
 
 		// Rasterize the SVG to an image file
-		const image = new Uint8Array(await (await rasterizeSVG(svg, size[0], size[1], "image/png")).arrayBuffer());
+		const imageData = (await rasterizeSVGCanvas(svg, size[0], size[1])).getContext("2d")?.getImageData(0, 0, size[0], size[1]);
 
-		editor.instance.processNodeGraphFrame(documentId, layerPath, image, "image/png");
+		if (imageData) editor.instance.processNodeGraphFrame(documentId, layerPath, new Uint8Array(imageData.data), imageData.width, imageData.height);
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerRevokeBlobUrl, async (triggerRevokeBlobUrl) => {
 		URL.revokeObjectURL(triggerRevokeBlobUrl.url);

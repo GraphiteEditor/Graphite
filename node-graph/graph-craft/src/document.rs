@@ -30,7 +30,7 @@ fn merge_ids(a: u64, b: u64) -> u64 {
 
 type Fqn = NodeIdentifier<'static>;
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct DocumentNode {
 	pub name: String,
 	pub inputs: Vec<NodeInput>,
@@ -82,7 +82,7 @@ impl DocumentNode {
 	}
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum NodeInput {
 	Node(NodeId),
 	Value(value::Value),
@@ -107,13 +107,13 @@ impl PartialEq for NodeInput {
 	}
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum DocumentNodeImplementation {
 	Network(NodeNetwork),
 	Unresolved(Fqn),
 }
 
-#[derive(Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct NodeNetwork {
 	pub inputs: Vec<NodeId>,
 	pub output: NodeId,

@@ -9,10 +9,14 @@ use kurbo::{Affine, BezPath, Shape as KurboShape};
 use serde::{Deserialize, Serialize};
 use std::fmt::Write;
 
-#[derive(Clone, Debug, Default, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct NodeGraphFrameLayer {
 	// Image stored in layer after generation completes
 	pub mime: String,
+
+	/// The document node network that this layer contains
+	#[serde(skip)]
+	pub network: graph_craft::document::NodeNetwork,
 
 	// TODO: Have the browser dispose of this blob URL when this is dropped (like when the layer is deleted)
 	#[serde(skip)]
@@ -103,4 +107,41 @@ impl NodeGraphFrameLayer {
 
 fn glam_to_kurbo(transform: DAffine2) -> Affine {
 	Affine::new(transform.to_cols_array())
+}
+
+impl Default for NodeGraphFrameLayer {
+	fn default() -> Self {
+		use graph_craft::document::*;
+		use graph_craft::proto::NodeIdentifier;
+		Self {
+			mime: String::new(),
+			network: NodeNetwork {
+				inputs: vec![1],
+				output: 1,
+				nodes: [
+					(
+						0,
+						DocumentNode {
+							name: "grayscale".into(),
+							inputs: vec![NodeInput::Network],
+							implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::raster::GrayscaleNode", &[])),
+						},
+					),
+					(
+						1,
+						DocumentNode {
+							name: "map image".into(),
+							inputs: vec![NodeInput::Network, NodeInput::Node(0)],
+							implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_std::raster::MapImageNode", &[])),
+						},
+					),
+				]
+				.into_iter()
+				.collect(),
+			},
+			blob_url: None,
+			dimensions: DVec2::ZERO,
+			image_data: None,
+		}
+	}
 }
