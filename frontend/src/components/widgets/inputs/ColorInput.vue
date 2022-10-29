@@ -1,66 +1,70 @@
 <template>
 	<LayoutRow class="color-input" :title="tooltip">
-		<OptionalInput v-if="!noTransparency" :icon="'CloseX'" :checked="Boolean(value)" @update:checked="(state: boolean) => updateEnabled(state)"></OptionalInput>
-		<TextInput :value="displayValue" :label="label" :disabled="disabled || !value" @commitText="(value: string) => textInputUpdated(value)" :center="true" />
-		<Separator :type="'Related'" />
-		<LayoutRow class="swatch">
-			<button class="swatch-button" :class="{ 'disabled-swatch': !value }" :style="`--swatch-color: #${value}`" @click="() => $emit('update:open', true)"></button>
-			<ColorPicker v-model:open="isOpen" :color="color" @update:color="(color: Color) => colorPickerUpdated(color)" :direction="'Bottom'" />
-		</LayoutRow>
+		<button :class="{ none: value.none }" :style="{ '--color': value.toHexOptionalAlpha() }" @click="() => $emit('update:open', true)" data-floating-menu-spawner>
+			<TextLabel :bold="true" class="chip" v-if="chip">{{ chip }}</TextLabel>
+		</button>
+		<ColorPicker v-model:open="isOpen" :color="value" @update:color="(color: Color) => colorPickerUpdated(color)" :allowNone="true" />
 	</LayoutRow>
 </template>
 
 <style lang="scss">
 .color-input {
-	.text-input input {
-		text-align: center;
+	box-sizing: border-box;
+	position: relative;
+	border: 1px solid var(--color-7-middlegray);
+	border-radius: 2px;
+	padding: 1px;
+
+	> button {
+		position: relative;
+		overflow: hidden;
+		outline: none;
+		border: none;
+		padding: 0;
+		margin: 0;
+		width: 100%;
+		height: 100%;
+		border-radius: 1px;
+
+		&::before {
+			content: "";
+			position: absolute;
+			width: 100%;
+			height: 100%;
+			padding: 2px;
+			top: -2px;
+			left: -2px;
+			background: linear-gradient(var(--color), var(--color)), var(--transparent-checkered-background);
+			background-size: var(--transparent-checkered-background-size);
+			background-position: var(--transparent-checkered-background-position);
+		}
+
+		&.none {
+			background: var(--color-none);
+			background-repeat: var(--color-none-repeat);
+			background-position: var(--color-none-position);
+			background-size: var(--color-none-size-24px);
+			background-image: var(--color-none-image-24px);
+		}
+
+		.chip {
+			position: absolute;
+			bottom: -1px;
+			right: 0;
+			height: 13px;
+			line-height: 13px;
+			background: var(--color-f-white);
+			color: var(--color-2-mildblack);
+			border-radius: 4px 0 0 0;
+			padding: 0 4px;
+			font-size: 10px;
+			box-shadow: 0 0 2px var(--color-3-darkgray);
+		}
 	}
 
-	.swatch {
-		flex: 0 0 auto;
-		position: relative;
-
-		.swatch-button {
-			--swatch-color: #ffffff;
-			height: 24px;
-			width: 24px;
-			bottom: 0;
-			left: 50%;
-			padding: 0;
-			outline: none;
-			border: none;
-			border-radius: 2px;
-			background: linear-gradient(45deg, #cccccc 25%, transparent 25%, transparent 75%, #cccccc 75%), linear-gradient(45deg, #cccccc 25%, transparent 25%, transparent 75%, #cccccc 75%),
-				linear-gradient(#ffffff, #ffffff);
-			background-size: 16px 16px;
-			background-position: 0 0, 8px 8px;
-			overflow: hidden;
-
-			&::before {
-				content: "";
-				display: block;
-				width: 100%;
-				height: 100%;
-				background: var(--swatch-color);
-			}
-
-			&.disabled-swatch::after {
-				content: "";
-				position: absolute;
-				border-top: 4px solid red;
-				width: 33px;
-				left: 22px;
-				top: -4px;
-				transform: rotate(135deg);
-				transform-origin: 0% 100%;
-			}
-		}
-
-		.floating-menu {
-			margin-top: 24px;
-			left: 50%;
-			bottom: 0;
-		}
+	> .floating-menu {
+		left: 50%;
+		bottom: 0;
 	}
 }
 </style>
@@ -72,16 +76,13 @@ import { Color } from "@/wasm-communication/messages";
 
 import ColorPicker from "@/components/floating-menus/ColorPicker.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
-import OptionalInput from "@/components/widgets/inputs/OptionalInput.vue";
-import TextInput from "@/components/widgets/inputs/TextInput.vue";
-import Separator from "@/components/widgets/labels/Separator.vue";
+import TextLabel from "@/components/widgets/labels/TextLabel.vue";
 
 export default defineComponent({
 	emits: ["update:value", "update:open"],
 	props: {
-		value: { type: String as PropType<string | undefined>, required: false },
-		label: { type: String as PropType<string>, required: false },
-		noTransparency: { type: Boolean as PropType<boolean>, default: false },
+		value: { type: Color as PropType<Color>, required: true },
+		noTransparency: { type: Boolean as PropType<boolean>, default: false }, // TODO: Rename to allowTransparency, also implement allowNone
 		disabled: { type: Boolean as PropType<boolean>, default: false },
 		tooltip: { type: String as PropType<string | undefined>, required: false },
 
@@ -94,26 +95,6 @@ export default defineComponent({
 			isOpen: false,
 		};
 	},
-	computed: {
-		color(): Color {
-			// TODO: Validate length of value, and allow shorthand versions like single-digit or three-digit hex codes
-			if (!this.value) return new Color(0, 0, 0, 1);
-
-			const r = parseInt(this.value.slice(0, 2), 16) / 255;
-			const g = parseInt(this.value.slice(2, 4), 16) / 255;
-			const b = parseInt(this.value.slice(4, 6), 16) / 255;
-			const a = parseInt(this.value.slice(6, 8), 16) / 255;
-
-			return new Color(r, g, b, a);
-		},
-		displayValue(): string {
-			if (!this.value) return "";
-
-			const value = this.value.toLowerCase();
-			const shortenedIfOpaque = value.slice(-2) === "ff" ? value.slice(0, 6) : value;
-			return `#${shortenedIfOpaque}`;
-		},
-	},
 	watch: {
 		// Called only when `open` is changed from outside this component (with v-model)
 		open(newOpen: boolean) {
@@ -125,46 +106,18 @@ export default defineComponent({
 	},
 	methods: {
 		colorPickerUpdated(color: Color) {
-			const twoDigitHex = (value: number): string =>
-				Math.floor(value * 255)
-					.toString(16)
-					.padStart(2, "0");
-			const newValue = `${twoDigitHex(color.red)}${twoDigitHex(color.green)}${twoDigitHex(color.blue)}${twoDigitHex(color.alpha)}`;
-			this.$emit("update:value", newValue);
+			this.$emit("update:value", color);
 		},
-		textInputUpdated(newValue: string) {
-			const sanitizedMatch = newValue.match(/^\s*#?([0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{3})\s*$/);
-			if (!sanitizedMatch) return;
-
-			let sanitized;
-			const match = sanitizedMatch[1];
-			if (match.length === 3) {
-				sanitized = match
-					.split("")
-					.map((byte) => `${byte}${byte}`)
-					.concat("ff")
-					.join("");
-			} else if (match.length === 6) {
-				sanitized = `${match}ff`;
-			} else if (match.length === 8) {
-				sanitized = match;
-			} else {
-				return;
-			}
-
-			this.$emit("update:value", sanitized);
-		},
-		updateEnabled(value: boolean) {
-			if (value) this.$emit("update:value", "000000");
-			else this.$emit("update:value", undefined);
+	},
+	computed: {
+		chip() {
+			return undefined;
 		},
 	},
 	components: {
 		ColorPicker,
 		LayoutRow,
-		OptionalInput,
-		Separator,
-		TextInput,
+		TextLabel,
 	},
 });
 </script>

@@ -300,16 +300,10 @@ impl Stroke {
 		}
 	}
 
-	pub fn with_color(mut self, color: &Option<String>) -> Option<Self> {
-		if let Some(color) = color {
-			Color::from_rgba_str(color).or_else(|| Color::from_rgb_str(color)).map(|color| {
-				self.color = Some(color);
-				self
-			})
-		} else {
-			self.color = None;
-			Some(self)
-		}
+	pub fn with_color(mut self, color: &Option<Color>) -> Option<Self> {
+		self.color = *color;
+
+		Some(self)
 	}
 
 	pub fn with_weight(mut self, weight: f64) -> Self {

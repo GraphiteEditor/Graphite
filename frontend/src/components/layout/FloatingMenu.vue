@@ -1,7 +1,7 @@
 <template>
 	<div class="floating-menu" :class="[direction.toLowerCase(), type.toLowerCase()]">
-		<div class="tail" :style="tailStyle" v-if="displayTail"></div>
-		<div class="floating-menu-container" v-if="open || measuringOngoing" ref="floatingMenuContainer">
+		<div class="tail" v-if="displayTail" ref="tail"></div>
+		<div class="floating-menu-container" v-if="displayContainer" ref="floatingMenuContainer">
 			<LayoutCol class="floating-menu-content" :style="{ minWidth: minWidthStyleValue }" :scrollableY="scrollableY" ref="floatingMenuContent" data-floating-menu-content>
 				<slot></slot>
 			</LayoutCol>
@@ -201,10 +201,9 @@ export default defineComponent({
 		scrollableY: { type: Boolean as PropType<boolean>, default: false },
 		minWidth: { type: Number as PropType<number>, default: 0 },
 		escapeCloses: { type: Boolean as PropType<boolean>, default: true },
+		strayCloses: { type: Boolean as PropType<boolean>, default: true },
 	},
 	data() {
-		const tailStyle: { top?: string; bottom?: string; left?: string; right?: string } = {};
-
 		// The resize observer is attached to the floating menu container, which is the zero-height div of the width of the parent element's floating menu spawner.
 		// Since CSS doesn't let us make the floating menu (with `position: fixed`) have a 100% width of this container, we need to use JS to observe its size and
 		// tell the floating menu content to use it as a min-width so the floating menu is at least the width of the parent element's floating menu spawner.
@@ -218,7 +217,6 @@ export default defineComponent({
 			measuringOngoing: false,
 			measuringOngoingGuard: false,
 			minWidthParentWidth: 0,
-			tailStyle,
 			containerResizeObserver,
 			pointerStillDown: false,
 			workspaceBounds: new DOMRect(),
@@ -233,6 +231,9 @@ export default defineComponent({
 		},
 		displayTail() {
 			return this.open && this.type === "Popover";
+		},
+		displayContainer() {
+			return this.open || this.measuringOngoing;
 		},
 	},
 	// Gets the client bounds of the elements and apply relevant styles to them
@@ -273,10 +274,12 @@ export default defineComponent({
 				if (this.direction === "Left") floatingMenuContent.style.right = `${tailOffset + this.floatingMenuBounds.right}px`;
 
 				// Required to correctly position tail when scrolled (it has a `position: fixed` to prevent clipping)
-				if (this.direction === "Bottom") this.tailStyle = { top: `${this.floatingMenuBounds.top}px` };
-				if (this.direction === "Top") this.tailStyle = { bottom: `${this.floatingMenuBounds.bottom}px` };
-				if (this.direction === "Right") this.tailStyle = { left: `${this.floatingMenuBounds.left}px` };
-				if (this.direction === "Left") this.tailStyle = { right: `${this.floatingMenuBounds.right}px` };
+				// We use a ref here, instead of a `:style` binding, because that causes the `updated()` hook to call the function we're in recursively forever
+				const tail = this.$refs.tail as HTMLElement;
+				if (tail && this.direction === "Bottom") tail.style.top = `${this.floatingMenuBounds.top}px`;
+				if (tail && this.direction === "Top") tail.style.bottom = `${this.floatingMenuBounds.bottom}px`;
+				if (tail && this.direction === "Right") tail.style.left = `${this.floatingMenuBounds.left}px`;
+				if (tail && this.direction === "Left") tail.style.right = `${this.floatingMenuBounds.right}px`;
 			}
 
 			type Edge = "Top" | "Bottom" | "Left" | "Right";
@@ -369,13 +372,14 @@ export default defineComponent({
 			// Get the spawner element containing whatever element the user is hovering over now, if there is one
 			const targetSpawner: HTMLElement | undefined = target?.closest("[data-floating-menu-spawner]") || undefined;
 
-			// Hover transfer
+			// HOVER TRANSFER
 			// Transfer from this open floating menu to a sibling floating menu if the pointer hovers to a valid neighboring floating menu spawner
 			this.hoverTransfer(self, ownSpawner, targetSpawner);
 
-			// Pointer stray
+			// POINTER STRAY
 			// Close the floating menu if the pointer has strayed far enough from its bounds (and it's not hovering over its own spawner)
-			if (ownSpawner !== targetSpawner && this.isPointerEventOutsideFloatingMenu(e, POINTER_STRAY_DISTANCE)) {
+			const notHoveringOverOwnSpawner = ownSpawner !== targetSpawner;
+			if (this.strayCloses && notHoveringOverOwnSpawner && this.isPointerEventOutsideFloatingMenu(e, POINTER_STRAY_DISTANCE)) {
 				// TODO: Extend this rectangle bounds check to all submenu bounds up the DOM tree since currently submenus disappear
 				// TODO: with zero stray distance if the cursor is further than the stray distance from only the top-level menu
 				this.$emit("update:open", false);
@@ -486,11 +490,11 @@ export default defineComponent({
 			window.removeEventListener("click", this.clickHandlerCapture, true);
 		},
 		isPointerEventOutsideFloatingMenu(e: PointerEvent, extraDistanceAllowed = 0): boolean {
-			// Considers all child menus as well as the top-level one.
+			// Consider all child menus as well as the top-level one
 			const floatingMenu: HTMLDivElement | undefined = this.$el;
 			if (!floatingMenu) return true;
-
 			const allContainedFloatingMenus = [...floatingMenu.querySelectorAll("[data-floating-menu-content]")];
+
 			return !allContainedFloatingMenus.find((element) => !this.isPointerEventOutsideMenuElement(e, element, extraDistanceAllowed));
 		},
 		isPointerEventOutsideMenuElement(e: PointerEvent, element: Element, extraDistanceAllowed = 0): boolean {

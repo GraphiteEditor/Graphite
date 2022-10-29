@@ -1,6 +1,7 @@
 <template>
 	<FieldInput
 		class="text-input"
+		:class="{ centered }"
 		v-model:value="text"
 		:label="label"
 		:spellcheck="true"
@@ -19,6 +20,12 @@
 	input {
 		text-align: left;
 	}
+
+	&.centered {
+		input {
+			text-align: center;
+		}
+	}
 }
 </style>
 
@@ -33,6 +40,7 @@ export default defineComponent({
 		value: { type: String as PropType<string>, required: true },
 		label: { type: String as PropType<string>, required: false },
 		disabled: { type: Boolean as PropType<boolean>, default: false },
+		centered: { type: Boolean as PropType<boolean>, default: false },
 		minWidth: { type: Number as PropType<number>, default: 0 },
 		tooltip: { type: String as PropType<string | undefined>, required: false },
 	},
