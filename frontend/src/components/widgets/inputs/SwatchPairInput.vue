@@ -23,7 +23,7 @@
 		margin: 0 2px;
 		position: relative;
 
-		button {
+		> button {
 			--swatch-color: #ffffff;
 			width: 100%;
 			height: 100%;
@@ -34,19 +34,10 @@
 			padding: 0;
 			box-sizing: border-box;
 			outline: none;
-			background: linear-gradient(45deg, #cccccc 25%, transparent 25%, transparent 75%, #cccccc 75%), linear-gradient(45deg, #cccccc 25%, transparent 25%, transparent 75%, #cccccc 75%),
-				linear-gradient(#ffffff, #ffffff);
-			background-size: 16px 16px;
-			background-position: 0 0, 8px 8px;
+			background: linear-gradient(var(--swatch-color), var(--swatch-color)), var(--transparent-checkered-background);
+			background-size: var(--transparent-checkered-background-size);
+			background-position: var(--transparent-checkered-background-position);
 			overflow: hidden;
-
-			&::before {
-				content: "";
-				display: block;
-				width: 100%;
-				height: 100%;
-				background: var(--swatch-color);
-			}
 		}
 
 		.floating-menu {

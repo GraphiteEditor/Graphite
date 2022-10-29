@@ -353,6 +353,15 @@ impl JsEditorHandle {
 		Ok(())
 	}
 
+	/// Begin sampling a pixel color from the document by entering eyedropper sampling mode
+	#[wasm_bindgen(js_name = eyedropperSampleForColorPicker)]
+	pub fn eyedropper_sample_for_color_picker(&self) -> Result<(), JsValue> {
+		let message = DialogMessage::RequestComingSoonDialog { issue: Some(832) };
+		self.dispatch(message);
+
+		Ok(())
+	}
+
 	/// Update primary color with values on a scale from 0 to 1.
 	#[wasm_bindgen(js_name = updatePrimaryColor)]
 	pub fn update_primary_color(&self, red: f32, green: f32, blue: f32, alpha: f32) -> Result<(), JsValue> {

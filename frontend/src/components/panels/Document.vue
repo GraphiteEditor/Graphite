@@ -457,7 +457,7 @@ export default defineComponent({
 			this.editor.instance.onChangeText(textCleaned);
 		},
 		displayEditableTextbox(displayEditableTextbox: DisplayEditableTextbox) {
-			this.textInput = document.createElement("DIV") as HTMLDivElement;
+			this.textInput = document.createElement("div") as HTMLDivElement;
 
 			if (displayEditableTextbox.text === "") this.textInput.textContent = "";
 			else this.textInput.textContent = `${displayEditableTextbox.text}\n`;
@@ -466,7 +466,7 @@ export default defineComponent({
 			this.textInput.style.width = displayEditableTextbox.lineWidth ? `${displayEditableTextbox.lineWidth}px` : "max-content";
 			this.textInput.style.height = "auto";
 			this.textInput.style.fontSize = `${displayEditableTextbox.fontSize}px`;
-			this.textInput.style.color = displayEditableTextbox.color.toRgbaCSS();
+			this.textInput.style.color = displayEditableTextbox.color.toHexOptionalAlpha() || "transparent";
 
 			this.textInput.oninput = (): void => {
 				if (!this.textInput) return;

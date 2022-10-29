@@ -5,7 +5,7 @@
 	<div :class="`widget-${direction}`">
 		<template v-for="(component, index) in widgets" :key="index">
 			<CheckboxInput v-if="component.props.kind === 'CheckboxInput'" v-bind="component.props" @update:checked="(value: boolean) => updateLayout(component.widgetId, value)" />
-			<ColorInput v-if="component.props.kind === 'ColorInput'" v-bind="component.props" v-model:open="open" @update:value="(value: string) => updateLayout(component.widgetId, value)" />
+			<ColorInput v-if="component.props.kind === 'ColorInput'" v-bind="component.props" v-model:open="open" @update:value="(value: unknown) => updateLayout(component.widgetId, value)" />
 			<DropdownInput
 				v-if="component.props.kind === 'DropdownInput'"
 				v-bind="component.props"
