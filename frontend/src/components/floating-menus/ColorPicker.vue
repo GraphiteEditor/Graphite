@@ -385,6 +385,7 @@ const PURE_COLORS: Record<PresetColors, [number, number, number]> = {
 const COLOR_SPACE_CHOICES = [[{ label: "sRGB" }]];
 
 export default defineComponent({
+	inject: ["editor"],
 	emits: ["update:color", "update:open"],
 	props: {
 		color: { type: Object as PropType<Color>, required: true },
@@ -581,9 +582,19 @@ export default defineComponent({
 			this.initialOpacity = opacity;
 			this.initialIsNone = isNone;
 		},
-		activateEyedropperSample() {
-			// TODO: Implement this
-			alert("Coming soon");
+		async activateEyedropperSample() {
+			// TODO: Replace this temporary solution that only works in Chromium-based browsers with the custom color sampler used by the Eyedropper tool
+			if (!(window as any).EyeDropper) {
+				this.editor.instance.eyedropperSampleForColorPicker();
+				return;
+			}
+
+			try {
+				const result = await new (window as any).EyeDropper().open();
+				this.setColorCode(result.sRGBHex);
+			} catch {
+				// Do nothing
+			}
 		},
 	},
 	unmounted() {

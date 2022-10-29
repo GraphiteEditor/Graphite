@@ -294,6 +294,8 @@ pub struct TextInput {
 
 	pub tooltip: String,
 
+	pub centered: bool,
+
 	#[serde(rename = "minWidth")]
 	pub min_width: u32,
 

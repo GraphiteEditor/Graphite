@@ -1297,6 +1297,7 @@ fn node_section_stroke(stroke: &Stroke) -> LayoutGroup {
 					})),
 					WidgetHolder::new(Widget::TextInput(TextInput {
 						value: stroke.dash_lengths(),
+						centered: true,
 						on_update: WidgetCallback::new(move |text_input: &TextInput| {
 							internal_stroke3
 								.clone()
