@@ -458,9 +458,12 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 
 					let mut bytes: Vec<u8> = Vec::new();
 					let [result_width, result_height] = [result.width, result.height];
-					let result: Vec<_> = result.data.into_iter().flat_map(|colour| colour.to_rgba8()).collect();
-					let output: ImageBuffer<Rgba<u8>, _> = image::ImageBuffer::from_raw(result_width, result_height, result).ok_or_else(|| "Invalid image size".to_string())?;
-					output.write_to(&mut Cursor::new(&mut bytes), image::ImageOutputFormat::Png).map_err(|e| e.to_string())?;
+					let size_estimate = (result_width * result_height * 4) as usize;
+
+					let mut result_bytes = Vec::with_capacity(size_estimate);
+					result_bytes.extend(result.data.into_iter().flat_map(|colour| colour.to_rgba8()));
+					let output: ImageBuffer<Rgba<u8>, _> = image::ImageBuffer::from_raw(result_width, result_height, result_bytes).ok_or_else(|| "Invalid image size".to_string())?;
+					output.write_to(&mut Cursor::new(&mut bytes), image::ImageOutputFormat::Bmp).map_err(|e| e.to_string())?;
 
 					Ok(bytes)
 				}
@@ -474,7 +477,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 							}
 							.into(),
 						);
-						let mime = "image/png".to_string();
+						let mime = "image/bmp".to_string();
 						responses.push_back(
 							FrontendMessage::UpdateImageData {
 								document_id,

@@ -9,6 +9,20 @@ export type Editor = Readonly<ReturnType<typeof createEditor>>;
 
 // `wasmImport` starts uninitialized because its initialization needs to occur asynchronously, and thus needs to occur by manually calling and awaiting `initWasm()`
 let wasmImport: WasmRawInstance | undefined;
+let editorInstance: WasmEditorInstance | undefined;
+
+export async function updateImage(path: BigUint64Array, mime: string, imageData: Uint8Array, documentId: bigint): Promise<void> {
+	const blob = new Blob([imageData], { type: mime });
+
+	const blobURL = URL.createObjectURL(blob);
+
+	// Pre-decode the image so it is ready to be drawn instantly once it's placed into the viewport SVG
+	const image = new Image();
+	image.src = blobURL;
+	await image.decode();
+
+	editorInstance?.setImageBlobURL(documentId, path, blobURL, image.naturalWidth, image.naturalHeight);
+}
 
 // Should be called asynchronously before `createEditor()`
 export async function initWasm(): Promise<void> {
@@ -36,6 +50,7 @@ export function createEditor() {
 		// We pass along the first two arguments then add our own `raw` and `instance` context for the last two arguments
 		subscriptions.handleJsMessage(messageType, messageData, raw, instance);
 	});
+	editorInstance = instance;
 
 	// Subscriptions: Allows subscribing to messages in JS that are sent from the WASM backend
 	const subscriptions: SubscriptionRouter = createSubscriptionRouter();

@@ -28,6 +28,13 @@ pub fn set_random_seed(seed: u64) {
 	editor::application::set_uuid_seed(seed);
 }
 
+/// We directly interface with the updateImage js function for massivly increased performance over serializing and deserializing.
+/// This avoids creating a json with a list millions of numbers long.
+#[wasm_bindgen(module = "@/wasm-communication/editor")]
+extern "C" {
+	fn updateImage(path: Vec<u64>, mime: String, imageData: Vec<u8>, document_id: u64);
+}
+
 /// Provides a handle to access the raw WASM memory
 #[wasm_bindgen(js_name = wasmMemory)]
 pub fn wasm_memory() -> JsValue {
@@ -90,6 +97,14 @@ impl JsEditorHandle {
 
 	// Sends a FrontendMessage to JavaScript
 	fn send_frontend_message_to_js(&self, message: FrontendMessage) {
+		// Special case for update image data to avoid serialization times.
+		if let FrontendMessage::UpdateImageData { document_id, image_data } = message {
+			for image in image_data {
+				updateImage(image.path, image.mime, image.image_data, document_id);
+			}
+			return;
+		}
+
 		let message_type = message.to_discriminant().local_name();
 
 		let serializer = serde_wasm_bindgen::Serializer::new().serialize_large_number_types_as_bigints(true);
