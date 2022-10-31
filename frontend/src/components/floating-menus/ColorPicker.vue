@@ -584,12 +584,14 @@ export default defineComponent({
 		},
 		async activateEyedropperSample() {
 			// TODO: Replace this temporary solution that only works in Chromium-based browsers with the custom color sampler used by the Eyedropper tool
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
 			if (!(window as any).EyeDropper) {
 				this.editor.instance.eyedropperSampleForColorPicker();
 				return;
 			}
 
 			try {
+				// eslint-disable-next-line @typescript-eslint/no-explicit-any
 				const result = await new (window as any).EyeDropper().open();
 				this.setColorCode(result.sRGBHex);
 			} catch {

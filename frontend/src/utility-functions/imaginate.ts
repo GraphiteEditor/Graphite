@@ -1,14 +1,14 @@
-import { escapeJSON } from "@/utility-functions/escape";
+/* eslint-disable camelcase */
+
+// import { escapeJSON } from "@/utility-functions/escape";
 import { blobToBase64 } from "@/utility-functions/files";
 import { type RequestResult, requestWithUploadDownloadProgress } from "@/utility-functions/network";
-import { stripIndents } from "@/utility-functions/strip-indents";
 import { type Editor } from "@/wasm-communication/editor";
 import type { XY } from "@/wasm-communication/messages";
 import { type ImaginateGenerationParameters } from "@/wasm-communication/messages";
 
 const MAX_POLLING_RETRIES = 4;
 const SERVER_STATUS_CHECK_TIMEOUT = 5000;
-const SAMPLING_MODES_POLLING_UNSUPPORTED = ["DPM fast", "DPM adaptive"];
 
 let timer: NodeJS.Timeout | undefined;
 let terminated = false;
@@ -50,7 +50,7 @@ export async function imaginateGenerate(
 
 		// Begin polling for updates to the in-progress image generation at the specified interval
 		// Don't poll if the chosen interval is 0, or if the chosen sampling method does not support polling
-		if (refreshFrequency > 0 && !SAMPLING_MODES_POLLING_UNSUPPORTED.includes(parameters.samplingMethod)) {
+		if (refreshFrequency > 0) {
 			const interval = Math.max(refreshFrequency * 1000, 500);
 			scheduleNextPollingUpdate(interval, Date.now(), 0, editor, hostname, documentId, layerPath, parameters.resolution);
 		}
@@ -62,8 +62,7 @@ export async function imaginateGenerate(
 		}
 
 		// Extract the final image from the response and convert it to a data blob
-		// Highly unstable API
-		const base64 = JSON.parse(body)?.data[0]?.[0] as string | undefined;
+		const base64 = JSON.parse(body)?.images?.[0] as string | undefined;
 		if (typeof base64 !== "string" || !base64.startsWith("data:image/png;base64,")) throw new Error("Could not read final image result from server response");
 		const blob = await (await fetch(base64)).blob();
 
@@ -156,9 +155,11 @@ function scheduleNextPollingUpdate(
 
 		try {
 			const [blob, percentComplete] = await pollImage(hostname);
+
+			// After waiting for the polling result back from the server, if during that intervening time the user has terminated the generation, exit so we don't overwrite that terminated status
 			if (terminated) return;
 
-			preloadAndSetImaginateBlobURL(editor, blob, documentId, layerPath, resolution.x, resolution.y);
+			if (blob) preloadAndSetImaginateBlobURL(editor, blob, documentId, layerPath, resolution.x, resolution.y);
 			editor.instance.setImaginateGeneratingStatus(documentId, layerPath, percentComplete, "Generating");
 
 			scheduleNextPollingUpdate(interval, nextTimeoutBegan, 0, editor, hostname, documentId, layerPath, resolution);
@@ -178,46 +179,25 @@ function scheduleNextPollingUpdate(
 }
 
 // API COMMUNICATION FUNCTIONS
-// These are highly unstable APIs that will need to be updated very frequently, so we currently assume usage of this exact commit from the server:
-// https://github.com/AUTOMATIC1111/stable-diffusion-webui/commit/7d6042b908c064774ee10961309d396eabdc6c4a
 
-function endpoint(hostname: string): string {
-	// Highly unstable API
-	return `${hostname}api/predict/`;
-}
+async function pollImage(hostname: string): Promise<[Blob | undefined, number]> {
+	// Fetch the percent progress and in-progress image from the API
+	const result = await fetch(`${hostname}sdapi/v1/progress`, { signal: pollingAbortController.signal, method: "GET" });
+	const { current_image, progress } = await result.json();
+	const progressPercent = progress * 100;
 
-async function pollImage(hostname: string): Promise<[Blob, number]> {
-	// Highly unstable API
-	const result = await fetch(endpoint(hostname), {
-		signal: pollingAbortController.signal,
-		headers: {
-			accept: "*/*",
-			"accept-language": "en-US,en;q=0.9",
-			"content-type": "application/json",
-		},
-		referrer: hostname,
-		referrerPolicy: "strict-origin-when-cross-origin",
-		body: stripIndents`
-			{
-				"fn_index":3,
-				"data":[],
-				"session_hash":"0000000000"
-			}`,
-		method: "POST",
-		mode: "cors",
-		credentials: "omit",
-	});
-	const json = await result.json();
-	// Highly unstable API
-	const percentComplete = Math.abs(Number(json.data[0].match(/(?<="width:).*?(?=%")/)[0])); // The API sometimes returns negative values presumably due to a bug
-	// Highly unstable API
-	const base64 = json.data[2];
+	// The image is not ready yet (because it's only had a few samples since beginning)
+	if (current_image === null) {
+		return [undefined, progressPercent];
+	}
+	// Something's wrong and the image wasn't provided as expected
+	if (typeof current_image !== "string" || !current_image.startsWith("data:image/png;base64,")) {
+		return Promise.reject();
+	}
 
-	if (typeof base64 !== "string" || !base64.startsWith("data:image/png;base64,")) return Promise.reject();
-
-	const blob = await (await fetch(base64)).blob();
-
-	return [blob, percentComplete];
+	// The image was provided so we turn it into a data blob
+	const blob = await (await fetch(current_image)).blob();
+	return [blob, progressPercent];
 }
 
 async function generate(
@@ -231,138 +211,84 @@ async function generate(
 	xhr?: XMLHttpRequest;
 }> {
 	let body;
+	let endpoint;
 	if (image === undefined || parameters.denoisingStrength === undefined) {
-		// Highly unstable API
-		body = stripIndents`
-		{
-			"fn_index":13,
-			"data":[
-				"${escapeJSON(parameters.prompt)}",
-				"${escapeJSON(parameters.negativePrompt)}",
-				"None",
-				"None",
-				${parameters.samples},
-				"${parameters.samplingMethod}",
-				${parameters.restoreFaces},
-				${parameters.tiling},
-				1,
-				1,
-				${parameters.cfgScale},
-				${parameters.seed},
-				-1,
-				0,
-				0,
-				0,
-				false,
-				${parameters.resolution.y},
-				${parameters.resolution.x},
-				false,
-				0.7,
-				0,
-				0,
-				"None",
-				false,
-				false,
-				null,
-				"",
-				"Seed",
-				"",
-				"Nothing",
-				"",
-				true,
-				false,
-				false,
-				null,
-				""
-			],
-			"session_hash":"0000000000"
-		}`;
+		endpoint = `${hostname}sdapi/v1/txt2img`;
+
+		// TODO: Temporarily set `show_progress_every_n_steps`
+		body = {
+			// enable_hr: false,
+			// denoising_strength: 0,
+			// firstphase_width: 0,
+			// firstphase_height: 0,
+			prompt: parameters.prompt, // TODO: Escape?
+			styles: [], // TODO: Remove?
+			seed: Number(parameters.seed), // TODO: Validate
+			// subseed: -1,
+			// subseed_strength: 0,
+			// seed_resize_from_h: -1,
+			// seed_resize_from_w: -1,
+			// batch_size: 1,
+			// n_iter: 1,
+			steps: parameters.samples,
+			cfg_scale: parameters.cfgScale,
+			width: parameters.resolution.x,
+			height: parameters.resolution.y,
+			restore_faces: parameters.restoreFaces,
+			tiling: parameters.tiling,
+			negative_prompt: parameters.negativePrompt, // TODO: Escape?
+			eta: 0, // TODO: Remove?
+			// s_churn: 0,
+			s_tmax: 0, // TODO: Remove?
+			// s_tmin: 0,
+			// s_noise: 1,
+			override_settings: {
+				show_progress_every_n_steps: 1,
+			},
+			sampler_index: parameters.samplingMethod, // sampler_index: "Euler", // TODO: Validate
+		};
 	} else {
 		const sourceImageBase64 = await blobToBase64(image);
 
-		// Highly unstable API
-		body = stripIndents`
-		{
-			"fn_index":33,
-			"data":[
-				0,
-				"${escapeJSON(parameters.prompt)}",
-				"${escapeJSON(parameters.negativePrompt)}",
-				"None",
-				"None",
-				"${sourceImageBase64}",
-				null,
-				null,
-				null,
-				"Draw mask",
-				${parameters.samples},
-				"${parameters.samplingMethod}",
-				4,
-				"fill",
-				${parameters.restoreFaces},
-				${parameters.tiling},
-				1,
-				1,
-				${parameters.cfgScale},
-				${parameters.denoisingStrength},
-				${parameters.seed},
-				-1,
-				0,
-				0,
-				0,
-				false,
-				${parameters.resolution.y},
-				${parameters.resolution.x},
-				"Just resize",
-				false,
-				32,
-				"Inpaint masked",
-				"",
-				"",
-				"None",
-				"",
-				true,
-				true,
-				"",
-				"",
-				true,
-				50,
-				true,
-				1,
-				0,
-				false,
-				4,
-				1,
-				"",
-				128,
-				8,
-				["left","right","up","down"],
-				1,
-				0.05,
-				128,
-				4,
-				"fill",
-				["left","right","up","down"],
-				false,
-				false,
-				null,
-				"",
-				"",
-				64,
-				"None",
-				"Seed",
-				"",
-				"Nothing",
-				"",
-				true,
-				false,
-				false,
-				null,
-				"",
-				""
-			],
-			"session_hash":"0000000000"
-		}`;
+		endpoint = `${hostname}sdapi/v1/img2img`;
+
+		body = {
+			init_images: [sourceImageBase64],
+			// resize_mode: 0,
+			denoising_strength: parameters.denoisingStrength,
+			mask: "", // TODO: Remove?
+			// mask_blur: 4,
+			// inpainting_fill: 0,
+			// inpaint_full_res: true,
+			// inpaint_full_res_padding: 0,
+			// inpainting_mask_invert: 0,
+			prompt: parameters.prompt, // TODO: Escape?
+			styles: [], // TODO: Remove?
+			seed: Number(parameters.seed), // TODO: Validate
+			// subseed: -1,
+			// subseed_strength: 0,
+			// seed_resize_from_h: -1,
+			// seed_resize_from_w: -1,
+			// batch_size: 1,
+			// n_iter: 1,
+			steps: parameters.samples,
+			cfg_scale: parameters.cfgScale,
+			width: parameters.resolution.x,
+			height: parameters.resolution.y,
+			restore_faces: parameters.restoreFaces,
+			tiling: parameters.tiling,
+			negative_prompt: parameters.negativePrompt, // TODO: Escape?
+			eta: 0, // TODO: Remove?
+			// s_churn: 0,
+			s_tmax: 0, // TODO: Remove?
+			// s_tmin: 0,
+			// s_noise: 1,
+			override_settings: {
+				show_progress_every_n_steps: 5,
+			},
+			sampler_index: parameters.samplingMethod, // sampler_index: "Euler", // TODO: Validate
+			// include_init_images: false, // TODO: Set to true?
+		};
 	}
 
 	// Prepare a promise that will resolve after the outbound request upload is complete
@@ -381,7 +307,7 @@ async function generate(
 			uploadedResolve();
 		}
 	};
-	const [result, xhr] = requestWithUploadDownloadProgress(endpoint(hostname), "POST", body, uploadProgress, abortAndResetPolling);
+	const [result, xhr] = requestWithUploadDownloadProgress(endpoint, "POST", JSON.stringify(body), uploadProgress, abortAndResetPolling);
 	result.catch(() => uploadedReject());
 
 	// Return the promise that resolves when the request upload is complete, the promise that resolves when the response download is complete, and the XHR so it can be aborted
@@ -389,26 +315,7 @@ async function generate(
 }
 
 async function terminate(hostname: string): Promise<void> {
-	const body = stripIndents`
-		{
-			"fn_index":2,
-			"data":[],
-			"session_hash":"0000000000"
-		}`;
-
-	await fetch(endpoint(hostname), {
-		headers: {
-			accept: "*/*",
-			"accept-language": "en-US,en;q=0.9",
-			"content-type": "application/json",
-		},
-		referrer: hostname,
-		referrerPolicy: "strict-origin-when-cross-origin",
-		body,
-		method: "POST",
-		mode: "cors",
-		credentials: "omit",
-	});
+	await fetch(`${hostname}sdapi/v1/interrupt`, { method: "POST" });
 }
 
 async function checkConnection(hostname: string): Promise<boolean> {
@@ -417,33 +324,20 @@ async function checkConnection(hostname: string): Promise<boolean> {
 
 	const timeout = setTimeout(() => statusAbortController.abort(), SERVER_STATUS_CHECK_TIMEOUT);
 
-	const body = stripIndents`
-		{
-			"fn_index":100,
-			"data":[],
-			"session_hash":"0000000000"
-		}`;
-
 	try {
-		await fetch(endpoint(hostname), {
-			signal: statusAbortController.signal,
-			headers: {
-				accept: "*/*",
-				"accept-language": "en-US,en;q=0.9",
-				"content-type": "application/json",
-			},
-			referrer: hostname,
-			referrerPolicy: "strict-origin-when-cross-origin",
-			body,
-			method: "POST",
-			mode: "cors",
-			credentials: "omit",
-		});
+		// Intentionally misuse this API endpoint by sending a "HEAD" instead of "POST" request, for which we expect a 405 error response
+		const { status } = await fetch(`${hostname}sdapi/v1/txt2img/`, { signal: statusAbortController.signal, method: "HEAD" });
 
-		clearTimeout(timeout);
-
-		return true;
-	} catch (_) {
-		return false;
+		// This error means the server has indeed responded and the endpoint exists (otherwise it would be 404)
+		if (status === 405) {
+			clearTimeout(timeout);
+			return true;
+		}
+	} catch {
+		// Unfortunately even this catch block doesn't prevent the browser console from reporting the network error.
+		// There is apparently no workaround besides clearing the whole console, but that would hide other potentially useful warnings.
+		// We'd ideally like to have a proper endpoint for verifying server connectivity.
 	}
+
+	return false;
 }

@@ -745,7 +745,7 @@ fn node_section_imaginate(imaginate_layer: &ImaginateLayer, layer: &Layer, persi
 			},
 			LayoutGroup::Row {
 				widgets: {
-					let tooltip = "Number of iterations to improve the image generation quality, with diminishing returns around 40".to_string();
+					let tooltip = "Number of iterations to improve the image generation quality, with diminishing returns around 40 when using the Euler A sampling method".to_string();
 					vec![
 						WidgetHolder::new(Widget::TextLabel(TextLabel {
 							value: "Sampling Steps".into(),
@@ -774,13 +774,7 @@ fn node_section_imaginate(imaginate_layer: &ImaginateLayer, layer: &Layer, persi
 			},
 			LayoutGroup::Row {
 				widgets: {
-					let tooltip = "
-						Algorithm used to generate the image during each sampling step.\n\
-						\n\
-						'DPM Fast' and 'DPM Adaptive' do not support live refreshing updates.
-						"
-					.trim()
-					.to_string();
+					let tooltip = "Algorithm used to generate the image during each sampling step".to_string();
 
 					let sampling_methods = ImaginateSamplingMethod::list();
 					let mut entries = Vec::with_capacity(sampling_methods.len());
