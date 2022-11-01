@@ -1,14 +1,15 @@
+use crate::proto::{ConstructionArgs, NodeIdentifier, ProtoNetwork, ProtoNode, ProtoNodeInput, Type};
 use std::collections::HashMap;
-use std::fmt::Display;
 use std::sync::Mutex;
 
-use dyn_any::{DynAny, StaticType};
+pub mod value;
+
 use rand_chacha::{
 	rand_core::{RngCore, SeedableRng},
 	ChaCha20Rng,
 };
 
-type NodeId = u64;
+pub type NodeId = u64;
 static RNG: Mutex<Option<ChaCha20Rng>> = Mutex::new(None);
 
 pub fn generate_uuid() -> u64 {
@@ -19,14 +20,6 @@ pub fn generate_uuid() -> u64 {
 	lock.as_mut().map(ChaCha20Rng::next_u64).unwrap()
 }
 
-fn gen_node_id() -> NodeId {
-	static mut NODE_ID: NodeId = 3;
-	unsafe {
-		NODE_ID += 1;
-		NODE_ID
-	}
-}
-
 fn merge_ids(a: u64, b: u64) -> u64 {
 	use std::hash::{Hash, Hasher};
 	let mut hasher = std::collections::hash_map::DefaultHasher::new();
@@ -34,6 +27,8 @@ fn merge_ids(a: u64, b: u64) -> u64 {
 	b.hash(&mut hasher);
 	hasher.finish()
 }
+
+type Fqn = NodeIdentifier<'static>;
 
 #[derive(Debug, PartialEq)]
 pub struct DocumentNode {
@@ -56,35 +51,33 @@ impl DocumentNode {
 		self.inputs[index] = NodeInput::Node(node);
 	}
 
-	fn resolve_proto_nodes(&mut self) {
+	fn resolve_proto_node(mut self) -> ProtoNode {
 		let first = self.inputs.remove(0);
-		if let DocumentNodeImplementation::ProtoNode(proto) = &mut self.implementation {
-			match first {
+		if let DocumentNodeImplementation::Unresolved(fqn) = self.implementation {
+			let (input, mut args) = match first {
 				NodeInput::Value(value) => {
-					proto.input = ProtoNodeInput::None;
-					proto.construction_args = ConstructionArgs::Value(value);
 					assert_eq!(self.inputs.len(), 0);
-					return;
+					(ProtoNodeInput::None, ConstructionArgs::Value(value))
 				}
-				NodeInput::Node(id) => proto.input = ProtoNodeInput::Node(id),
-				NodeInput::Network => proto.input = ProtoNodeInput::Network,
-			}
-			assert!(!self.inputs.iter().any(|input| matches!(input, NodeInput::Network)), "recived non resolved parameter");
+				NodeInput::Node(id) => (ProtoNodeInput::Node(id), ConstructionArgs::Nodes(vec![])),
+				NodeInput::Network => (ProtoNodeInput::Network, ConstructionArgs::Nodes(vec![])),
+			};
+			assert!(!self.inputs.iter().any(|input| matches!(input, NodeInput::Network)), "recieved non resolved parameter");
 			assert!(!self.inputs.iter().any(|input| matches!(input, NodeInput::Value(_))), "recieved value as parameter");
 
-			let nodes: Vec<_> = self
-				.inputs
-				.iter()
-				.filter_map(|input| match input {
-					NodeInput::Node(id) => Some(*id),
-					_ => None,
-				})
-				.collect();
-			match nodes {
-				vec if vec.is_empty() => proto.construction_args = ConstructionArgs::None,
-				vec => proto.construction_args = ConstructionArgs::Nodes(vec),
+			if let ConstructionArgs::Nodes(nodes) = &mut args {
+				nodes.extend(self.inputs.iter().map(|input| match input {
+					NodeInput::Node(id) => *id,
+					_ => unreachable!(),
+				}));
 			}
-			self.inputs = vec![];
+			ProtoNode {
+				identifier: fqn,
+				input,
+				construction_args: args,
+			}
+		} else {
+			unreachable!("tried to resolve not flattened node on resolved node");
 		}
 	}
 }
@@ -92,8 +85,16 @@ impl DocumentNode {
 #[derive(Debug)]
 pub enum NodeInput {
 	Node(NodeId),
-	Value(Value),
+	Value(value::Value),
 	Network,
+}
+
+impl NodeInput {
+	fn map_ids(&mut self, f: impl Fn(NodeId) -> NodeId) {
+		if let NodeInput::Node(id) = self {
+			*self = NodeInput::Node(f(*id))
+		}
+	}
 }
 
 impl PartialEq for NodeInput {
@@ -109,7 +110,7 @@ impl PartialEq for NodeInput {
 #[derive(Debug, PartialEq)]
 pub enum DocumentNodeImplementation {
 	Network(NodeNetwork),
-	ProtoNode(ProtoNode),
+	Unresolved(Fqn),
 }
 
 #[derive(Debug, Default, PartialEq)]
@@ -117,104 +118,6 @@ pub struct NodeNetwork {
 	pub inputs: Vec<NodeId>,
 	pub output: NodeId,
 	pub nodes: HashMap<NodeId, DocumentNode>,
-}
-pub type Value = Box<dyn ValueTrait>;
-pub trait ValueTrait: DynAny<'static> + std::fmt::Debug {}
-
-pub trait IntoValue: Sized + ValueTrait + 'static {
-	fn into_any(self) -> Value {
-		Box::new(self)
-	}
-}
-impl<T: 'static + StaticType + std::fmt::Debug + PartialEq> ValueTrait for T {}
-impl<T: 'static + ValueTrait> IntoValue for T {}
-
-#[repr(C)]
-struct Vtable {
-	destructor: unsafe fn(*mut ()),
-	size: usize,
-	align: usize,
-}
-
-#[repr(C)]
-struct TraitObject {
-	self_ptr: *mut u8,
-	vtable: &'static Vtable,
-}
-
-impl PartialEq for Box<dyn ValueTrait> {
-	fn eq(&self, other: &Self) -> bool {
-		if self.type_id() != other.type_id() {
-			return false;
-		}
-		let self_trait_object = unsafe { std::mem::transmute::<&dyn ValueTrait, TraitObject>(self.as_ref()) };
-		let other_trait_object = unsafe { std::mem::transmute::<&dyn ValueTrait, TraitObject>(other.as_ref()) };
-		let size = self_trait_object.vtable.size;
-		let self_mem = unsafe { std::slice::from_raw_parts(self_trait_object.self_ptr, size) };
-		let other_mem = unsafe { std::slice::from_raw_parts(other_trait_object.self_ptr, size) };
-		self_mem == other_mem
-	}
-}
-
-#[derive(Debug, Default)]
-pub enum ConstructionArgs {
-	None,
-	#[default]
-	Unresolved,
-	Value(Value),
-	Nodes(Vec<NodeId>),
-}
-
-impl PartialEq for ConstructionArgs {
-	fn eq(&self, other: &Self) -> bool {
-		match (&self, &other) {
-			(Self::Nodes(n1), Self::Nodes(n2)) => n1 == n2,
-			(Self::Value(v1), Self::Value(v2)) => v1 == v2,
-			_ => core::mem::discriminant(self) == core::mem::discriminant(other),
-		}
-	}
-}
-
-#[derive(Debug, Default, PartialEq)]
-pub struct ProtoNode {
-	pub construction_args: ConstructionArgs,
-	pub input: ProtoNodeInput,
-	pub name: String,
-}
-
-#[derive(Debug, Default, PartialEq, Eq)]
-pub enum ProtoNodeInput {
-	None,
-	#[default]
-	Network,
-	Node(NodeId),
-}
-
-impl NodeInput {
-	fn map_ids(&mut self, f: impl Fn(NodeId) -> NodeId) {
-		if let NodeInput::Node(id) = self {
-			*self = NodeInput::Node(f(*id))
-		}
-	}
-}
-
-impl ProtoNode {
-	pub fn id() -> Self {
-		Self {
-			name: "id".into(),
-			..Default::default()
-		}
-	}
-	pub fn unresolved(name: String) -> Self {
-		Self { name, ..Default::default() }
-	}
-	pub fn value(name: String, value: ConstructionArgs) -> Self {
-		Self {
-			name,
-			construction_args: value,
-			..Default::default()
-		}
-	}
 }
 
 impl NodeNetwork {
@@ -262,7 +165,7 @@ impl NodeNetwork {
 							let value_node = DocumentNode {
 								name: name.clone(),
 								inputs: vec![NodeInput::Value(value)],
-								implementation: DocumentNodeImplementation::ProtoNode(ProtoNode::unresolved("value".into())),
+								implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::value::ValueNode", &[Type::Generic])),
 							};
 							assert!(!self.nodes.contains_key(&new_id));
 							self.nodes.insert(new_id, value_node);
@@ -277,50 +180,41 @@ impl NodeNetwork {
 						}
 					}
 				}
-				node.implementation = DocumentNodeImplementation::ProtoNode(ProtoNode::id());
+				node.implementation = DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode", &[Type::Generic]));
 				node.inputs = vec![NodeInput::Node(inner_network.output)];
 				for node_id in new_nodes {
 					self.flatten_with_fns(node_id, map_ids, gen_id);
 				}
 			}
-			DocumentNodeImplementation::ProtoNode(proto_node) => {
-				node.implementation = DocumentNodeImplementation::ProtoNode(proto_node);
-			}
+			DocumentNodeImplementation::Unresolved(_) => (),
 		}
 		assert!(!self.nodes.contains_key(&id), "Trying to insert a node into the network caused an id conflict");
 		self.nodes.insert(id, node);
 	}
 
-	pub fn resolve_proto_nodes(&mut self) {
-		for node in self.nodes.values_mut() {
-			node.resolve_proto_nodes();
+	pub fn into_proto_network(self) -> ProtoNetwork {
+		let mut nodes: Vec<_> = self.nodes.into_iter().map(|(id, node)| (id, node.resolve_proto_node())).collect();
+		nodes.sort_unstable_by_key(|(i, _)| *i);
+		ProtoNetwork {
+			inputs: self.inputs,
+			output: self.output,
+			nodes,
 		}
-	}
-}
-
-struct Map<I, O>(core::marker::PhantomData<(I, O)>);
-
-impl<O> Display for Map<(), O> {
-	fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
-		write!(f, "Map")
-	}
-}
-
-impl Display for Map<i32, String> {
-	fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
-		write!(f, "Map<String>")
 	}
 }
 
 #[cfg(test)]
 mod test {
 	use super::*;
+	use crate::proto::{ConstructionArgs, NodeIdentifier, ProtoNetwork, ProtoNode, ProtoNodeInput};
+	use value::IntoValue;
 
-	#[test]
-	fn test_any_src() {
-		assert!(2_u32.into_any() == 2_u32.into_any());
-		assert!(2_u32.into_any() != 3_u32.into_any());
-		assert!(2_u32.into_any() != 3_i32.into_any());
+	fn gen_node_id() -> NodeId {
+		static mut NODE_ID: NodeId = 3;
+		unsafe {
+			NODE_ID += 1;
+			NODE_ID
+		}
 	}
 
 	fn add_network() -> NodeNetwork {
@@ -333,7 +227,7 @@ mod test {
 					DocumentNode {
 						name: "cons".into(),
 						inputs: vec![NodeInput::Network, NodeInput::Network],
-						implementation: DocumentNodeImplementation::ProtoNode(ProtoNode::unresolved("cons".into())),
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::structural::ConsNode", &[Type::Generic, Type::Generic])),
 					},
 				),
 				(
@@ -341,7 +235,7 @@ mod test {
 					DocumentNode {
 						name: "add".into(),
 						inputs: vec![NodeInput::Node(0)],
-						implementation: DocumentNodeImplementation::ProtoNode(ProtoNode::unresolved("add".into())),
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::AddNode", &[Type::Generic, Type::Generic])),
 					},
 				),
 			]
@@ -363,7 +257,7 @@ mod test {
 					DocumentNode {
 						name: "cons".into(),
 						inputs: vec![NodeInput::Network, NodeInput::Network],
-						implementation: DocumentNodeImplementation::ProtoNode(ProtoNode::value("cons".into(), ConstructionArgs::Unresolved)),
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::structural::ConsNode", &[Type::Generic, Type::Generic])),
 					},
 				),
 				(
@@ -371,7 +265,7 @@ mod test {
 					DocumentNode {
 						name: "add".into(),
 						inputs: vec![NodeInput::Node(1)],
-						implementation: DocumentNodeImplementation::ProtoNode(ProtoNode::value("add".into(), ConstructionArgs::Unresolved)),
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::AddNode", &[Type::Generic, Type::Generic])),
 					},
 				),
 			]
@@ -407,85 +301,58 @@ mod test {
 
 	#[test]
 	fn resolve_proto_node_add() {
-		let mut d_node = DocumentNode {
+		let document_node = DocumentNode {
 			name: "cons".into(),
 			inputs: vec![NodeInput::Network, NodeInput::Node(0)],
-			implementation: DocumentNodeImplementation::ProtoNode(ProtoNode::value("cons".into(), ConstructionArgs::Unresolved)),
+			implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::structural::ConsNode", &[Type::Generic, Type::Generic])),
 		};
 
-		d_node.resolve_proto_nodes();
-		let reference = DocumentNode {
-			name: "cons".into(),
-			inputs: vec![],
-			implementation: DocumentNodeImplementation::ProtoNode(ProtoNode {
-				name: "cons".into(),
-				input: ProtoNodeInput::Network,
-				construction_args: ConstructionArgs::Nodes(vec![0]),
-			}),
+		let proto_node = document_node.resolve_proto_node();
+		let reference = ProtoNode {
+			identifier: NodeIdentifier::new("graphene_core::structural::ConsNode", &[Type::Generic, Type::Generic]),
+			input: ProtoNodeInput::Network,
+			construction_args: ConstructionArgs::Nodes(vec![0]),
 		};
-		assert_eq!(d_node, reference);
+		assert_eq!(proto_node, reference);
 	}
 
 	#[test]
-	fn resolve_flatten_add() {
-		let construction_network = NodeNetwork {
+	fn resolve_flatten_add_as_proto_network() {
+		let construction_network = ProtoNetwork {
 			inputs: vec![10],
 			output: 1,
 			nodes: [
 				(
 					1,
-					DocumentNode {
-						name: "Inc".into(),
-						inputs: vec![],
-						implementation: DocumentNodeImplementation::ProtoNode(ProtoNode {
-							name: "id".into(),
-							input: ProtoNodeInput::Node(11),
-							construction_args: ConstructionArgs::None,
-						}),
+					ProtoNode {
+						identifier: NodeIdentifier::new("graphene_core::ops::IdNode", &[Type::Generic]),
+						input: ProtoNodeInput::Node(11),
+						construction_args: ConstructionArgs::Nodes(vec![]),
 					},
 				),
 				(
 					10,
-					DocumentNode {
-						name: "cons".into(),
-						inputs: vec![],
-						implementation: DocumentNodeImplementation::ProtoNode(ProtoNode {
-							name: "cons".into(),
-							input: ProtoNodeInput::Network,
-							construction_args: ConstructionArgs::Nodes(vec![14]),
-						}),
+					ProtoNode {
+						identifier: NodeIdentifier::new("graphene_core::structural::ConsNode", &[Type::Generic, Type::Generic]),
+						input: ProtoNodeInput::Network,
+						construction_args: ConstructionArgs::Nodes(vec![14]),
 					},
 				),
 				(
 					11,
-					DocumentNode {
-						name: "add".into(),
-						inputs: vec![],
-						implementation: DocumentNodeImplementation::ProtoNode(ProtoNode {
-							name: "add".into(),
-							input: ProtoNodeInput::Node(10),
-							construction_args: ConstructionArgs::None,
-						}),
+					ProtoNode {
+						identifier: NodeIdentifier::new("graphene_core::ops::AddNode", &[Type::Generic, Type::Generic]),
+						input: ProtoNodeInput::Node(10),
+						construction_args: ConstructionArgs::Nodes(vec![]),
 					},
 				),
-				(
-					14,
-					DocumentNode {
-						name: "Value: 2".into(),
-						inputs: vec![],
-						implementation: DocumentNodeImplementation::ProtoNode(ProtoNode {
-							name: "value".into(),
-							input: ProtoNodeInput::None,
-							construction_args: ConstructionArgs::Value(2_u32.into_any()),
-						}),
-					},
-				),
+				(14, ProtoNode::value(ConstructionArgs::Value(2_u32.into_any()))),
 			]
 			.into_iter()
 			.collect(),
 		};
-		let mut resolved_network = flat_network();
-		resolved_network.resolve_proto_nodes();
+		let network = flat_network();
+		let resolved_network = network.into_proto_network();
 
 		println!("{:#?}", resolved_network);
 		println!("{:#?}", construction_network);
@@ -502,7 +369,7 @@ mod test {
 					DocumentNode {
 						name: "Inc".into(),
 						inputs: vec![NodeInput::Node(11)],
-						implementation: DocumentNodeImplementation::ProtoNode(ProtoNode::id()),
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode", &[Type::Generic])),
 					},
 				),
 				(
@@ -510,7 +377,7 @@ mod test {
 					DocumentNode {
 						name: "cons".into(),
 						inputs: vec![NodeInput::Network, NodeInput::Node(14)],
-						implementation: DocumentNodeImplementation::ProtoNode(ProtoNode::unresolved("cons".into())),
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::structural::ConsNode", &[Type::Generic, Type::Generic])),
 					},
 				),
 				(
@@ -518,7 +385,7 @@ mod test {
 					DocumentNode {
 						name: "Value: 2".into(),
 						inputs: vec![NodeInput::Value(2_u32.into_any())],
-						implementation: DocumentNodeImplementation::ProtoNode(ProtoNode::unresolved("value".into())),
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::value::ValueNode", &[Type::Generic])),
 					},
 				),
 				(
@@ -526,7 +393,7 @@ mod test {
 					DocumentNode {
 						name: "add".into(),
 						inputs: vec![NodeInput::Node(10)],
-						implementation: DocumentNodeImplementation::ProtoNode(ProtoNode::unresolved("add".into())),
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::AddNode", &[Type::Generic, Type::Generic])),
 					},
 				),
 			]

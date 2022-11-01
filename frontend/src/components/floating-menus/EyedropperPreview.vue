@@ -35,12 +35,11 @@
 			position: absolute;
 			width: 100%;
 			height: 100%;
-			top: -9px;
-			left: -9px;
+			top: -8px;
+			left: -8px;
 			padding: 8px;
 			border-radius: 50%;
-			border: 1px solid rgba(255, 255, 255, 0.25);
-			box-shadow: 0 0 8px rgba(0, 0, 0, 0.25);
+			box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.5), 0 0 8px rgba(0, 0, 0, 0.25);
 		}
 
 		.canvas-container {
@@ -52,18 +51,17 @@
 				height: 110px;
 				border-radius: 50%;
 				image-rendering: pixelated;
-				border: 1px solid rgba(255, 255, 255, 0.25);
 			}
 
 			&::after {
 				content: "";
 				position: absolute;
-				top: 1px;
-				left: 1px;
-				width: calc(100% - 2px);
-				height: calc(100% - 2px);
+				top: 0;
+				left: 0;
+				width: 100%;
+				height: 100%;
 				border-radius: 50%;
-				box-shadow: inset 0 0 8px rgba(0, 0, 0, 0.25);
+				box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.5), inset 0 0 8px rgba(0, 0, 0, 0.25);
 			}
 
 			.pixel-outline {
@@ -113,7 +111,9 @@ export default defineComponent({
 	},
 	methods: {
 		displayImageDataPreview(imageData: ImageData | undefined) {
-			const canvas = this.$refs.zoomPreviewCanvas as HTMLCanvasElement;
+			const canvas = this.$refs.zoomPreviewCanvas as HTMLCanvasElement | undefined;
+			if (!canvas) return;
+
 			canvas.width = ZOOM_WINDOW_DIMENSIONS;
 			canvas.height = ZOOM_WINDOW_DIMENSIONS;
 			const context = canvas.getContext("2d");

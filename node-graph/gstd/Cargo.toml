@@ -25,4 +25,4 @@ syn = {version = "1.0", default-features = false, features = ["parsing", "printi
 proc-macro2 = {version = "1.0", default-features = false, features = ["proc-macro"]}
 quote = {version = "1.0", default-features = false }
 image = "*"
-rand_chacha = "0.3.1"
+dyn-clone = "1.0"

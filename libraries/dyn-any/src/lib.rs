@@ -5,7 +5,48 @@
 #[cfg_attr(feature = "unstable-docs", doc(cfg(feature = "derive")))]
 pub use dyn_any_derive::DynAny;
 
+/// Implement this trait for your `dyn Trait` types for all `T: Trait`
+pub trait UpcastFrom<T: ?Sized> {
+	fn up_from(value: &T) -> &Self;
+	fn up_from_mut(value: &mut T) -> &mut Self;
+	fn up_from_box(value: Box<T>) -> Box<Self>;
+}
+
+/// Use this trait to perform your upcasts on dyn traits. Make sure to require it in the supertrait!
+pub trait Upcast<U: ?Sized> {
+	fn up(&self) -> &U;
+	fn up_mut(&mut self) -> &mut U;
+	fn up_box(self: Box<Self>) -> Box<U>;
+}
+
+impl<T: ?Sized, U: ?Sized> Upcast<U> for T
+where
+	U: UpcastFrom<T>,
+{
+	fn up(&self) -> &U {
+		U::up_from(self)
+	}
+	fn up_mut(&mut self) -> &mut U {
+		U::up_from_mut(self)
+	}
+	fn up_box(self: Box<Self>) -> Box<U> {
+		U::up_from_box(self)
+	}
+}
+
 use std::any::TypeId;
+
+impl<'a, T: DynAny<'a> + 'a> UpcastFrom<T> for dyn DynAny<'a> + 'a {
+	fn up_from(value: &T) -> &(dyn DynAny<'a> + 'a) {
+		value
+	}
+	fn up_from_mut(value: &mut T) -> &mut (dyn DynAny<'a> + 'a) {
+		value
+	}
+	fn up_from_box(value: Box<T>) -> Box<Self> {
+		value
+	}
+}
 
 pub trait DynAny<'a> {
 	fn type_id(&self) -> TypeId;

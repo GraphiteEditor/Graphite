@@ -2,7 +2,7 @@
 import { reactive, readonly } from "vue";
 
 import { downloadFileText, downloadFileBlob, upload } from "@/utility-functions/files";
-import { imaginateGenerate, imaginateCheckConnection, imaginateTerminate } from "@/utility-functions/imaginate";
+import { imaginateGenerate, imaginateCheckConnection, imaginateTerminate, preloadAndSetImaginateBlobURL } from "@/utility-functions/imaginate";
 import { rasterizeSVG } from "@/utility-functions/rasterization";
 import { type Editor } from "@/wasm-communication/editor";
 import {
@@ -75,9 +75,7 @@ export function createPortfolioState(editor: Editor) {
 			// Rasterize the SVG to an image file
 			image = await rasterizeSVG(baseImage.svg, baseImage.size[0], baseImage.size[1], "image/png");
 
-			const blobURL = URL.createObjectURL(image);
-
-			editor.instance.setImaginateBlobURL(documentId, layerPath, blobURL, baseImage.size[0], baseImage.size[1]);
+			preloadAndSetImaginateBlobURL(editor, image, documentId, layerPath, baseImage.size[0], baseImage.size[1]);
 		}
 
 		imaginateGenerate(parameters, image, hostname, refreshFrequency, documentId, layerPath, editor);
@@ -94,9 +92,12 @@ export function createPortfolioState(editor: Editor) {
 
 			const blobURL = URL.createObjectURL(blob);
 
-			const image = await createImageBitmap(blob);
+			// Pre-decode the image so it is ready to be drawn instantly once it's placed into the viewport SVG
+			const image = new Image();
+			image.src = blobURL;
+			await image.decode();
 
-			editor.instance.setImageBlobURL(updateImageData.documentId, element.path, blobURL, image.width, image.height);
+			editor.instance.setImageBlobURL(updateImageData.documentId, element.path, blobURL, image.naturalWidth, image.naturalHeight);
 		});
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerRevokeBlobUrl, async (triggerRevokeBlobUrl) => {
