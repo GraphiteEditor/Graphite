@@ -10,6 +10,7 @@ use crate::messages::layout::utility_types::widgets::label_widgets::{IconLabel, 
 use crate::messages::portfolio::utility_types::{ImaginateServerStatus, PersistentData};
 use crate::messages::prelude::*;
 
+use graphene::color::Color;
 use graphene::document::pick_layer_safe_imaginate_resolution;
 use graphene::layers::imaginate_layer::{ImaginateLayer, ImaginateSamplingMethod, ImaginateStatus};
 use graphene::layers::layer_info::{Layer, LayerDataType, LayerDataTypeDiscriminant};
@@ -1163,13 +1164,14 @@ fn node_gradient_type(gradient: &Gradient) -> LayoutGroup {
 	}
 }
 
-fn node_gradient_color(gradient: &Gradient, percent_label: &'static str, position: usize) -> LayoutGroup {
+fn node_gradient_color(gradient: &Gradient, position: usize) -> LayoutGroup {
 	let gradient_clone = Rc::new(gradient.clone());
+	let gradeint_2 = gradient_clone.clone();
 	let send_fill_message = move |new_gradient: Gradient| PropertiesPanelMessage::ModifyFill { fill: Fill::Gradient(new_gradient) }.into();
 	LayoutGroup::Row {
 		widgets: vec![
 			WidgetHolder::new(Widget::TextLabel(TextLabel {
-				value: format!("Gradient: {}", percent_label),
+				value: format!("Gradient: {:.0}%", gradient_clone.positions[position].0 * 100.),
 				..TextLabel::default()
 			})),
 			WidgetHolder::new(Widget::Separator(Separator {
@@ -1184,6 +1186,19 @@ fn node_gradient_color(gradient: &Gradient, percent_label: &'static str, positio
 					send_fill_message(new_gradient)
 				}),
 				..ColorInput::default()
+			})),
+			WidgetHolder::new(Widget::Separator(Separator {
+				separator_type: SeparatorType::Related,
+				direction: SeparatorDirection::Horizontal,
+			})),
+			WidgetHolder::new(Widget::IconButton(IconButton {
+				icon: "CloseX".to_string(),
+				on_update: WidgetCallback::new(move |_| {
+					let mut new_gradient = (*gradeint_2).clone();
+					new_gradient.positions.remove(position);
+					send_fill_message(new_gradient)
+				}),
+				..Default::default()
 			})),
 		],
 	}
@@ -1216,7 +1231,44 @@ fn node_section_fill(fill: &Fill) -> Option<LayoutGroup> {
 		}),
 		Fill::Gradient(gradient) => Some(LayoutGroup::Section {
 			name: "Fill".into(),
-			layout: vec![node_gradient_type(gradient), node_gradient_color(gradient, "0%", 0), node_gradient_color(gradient, "100%", 1)],
+			layout: {
+				let gradient_clone = gradient.clone();
+				let mut layout = vec![node_gradient_type(gradient)];
+				layout.extend((0..gradient.positions.len()).map(|pos| node_gradient_color(gradient, pos)));
+
+				layout.push(LayoutGroup::Row {
+					widgets: vec![WidgetHolder::new(Widget::TextButton(TextButton {
+						label: "Add step".to_string(),
+						on_update: WidgetCallback::new(move |_| {
+							let mut gradient = gradient_clone.clone();
+
+							// Insert step at start or end if missing
+							if !gradient.positions.iter().any(|(pos, _)| pos.abs() < f64::EPSILON * 1000.) {
+								gradient.positions.push((0., Some(gradient.positions.first().and_then(|x| x.1).unwrap_or_default())))
+							} else if !gradient.positions.iter().any(|(pos, _)| (1. - pos).abs() < f64::EPSILON * 1000.) {
+								gradient.positions.push((1., Some(gradient.positions.last().and_then(|x| x.1).unwrap_or_default())))
+							} else {
+								// Insert step in largest gap
+								let diff_points = |index: usize, v: &(f64, Option<Color>)| gradient.positions.get(index + 1).map(|v| v.0).unwrap_or(1.) - v.0;
+								let largest_gap =
+									|(a_i, a): &(usize, &(f64, Option<Color>)), (b_i, b): &(usize, &(f64, Option<Color>))| diff_points(*a_i, a).partial_cmp(&diff_points(*b_i, b)).unwrap();
+								let get_color = |col: &Option<Color>, next_index: usize| match (*col, gradient.positions.get(next_index).and_then(|x| x.1)) {
+									(Some(a), Some(b)) => Color::from_rgbaf32((a.r() + b.r()) / 2., (a.g() + b.g()) / 2., (a.b() + b.b()) / 2., ((a.a() + b.a()) / 2.).clamp(0., 1.)),
+									(Some(v), _) | (_, Some(v)) => Some(v),
+									_ => Some(Color::WHITE),
+								};
+								let get_pos = |pos: &f64, next_index: usize| (pos + gradient.positions.get(next_index).map(|v| v.0).unwrap_or(1.)) / 2.;
+								let (index, (pos, col)) = gradient.positions.iter().enumerate().max_by(largest_gap).unwrap();
+								gradient.positions.push((get_pos(pos, index + 1), get_color(col, index + 1)))
+							}
+							gradient.positions.sort_unstable_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+							PropertiesPanelMessage::ModifyFill { fill: Fill::Gradient(gradient) }.into()
+						}),
+						..TextButton::default()
+					}))],
+				});
+				layout
+			},
 		}),
 	}
 }
