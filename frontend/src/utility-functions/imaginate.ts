@@ -325,18 +325,16 @@ async function checkConnection(hostname: string): Promise<boolean> {
 	const timeout = setTimeout(() => statusAbortController.abort(), SERVER_STATUS_CHECK_TIMEOUT);
 
 	try {
-		// Intentionally misuse this API endpoint by sending a "HEAD" instead of "POST" request, for which we expect a 405 error response
-		const { status } = await fetch(`${hostname}sdapi/v1/txt2img/`, { signal: statusAbortController.signal, method: "HEAD" });
+		// Intentionally misuse this API endpoint by using it just to check for a code 200 response, regardless of what the result is
+		const { status } = await fetch(`${hostname}sdapi/v1/progress/?skip_current_image=true`, { signal: statusAbortController.signal, method: "GET", mode: "cors" });
 
-		// This error means the server has indeed responded and the endpoint exists (otherwise it would be 404)
-		if (status === 405) {
+		// This code means the server has indeed responded and the endpoint exists (otherwise it would be 404)
+		if (status === 200) {
 			clearTimeout(timeout);
 			return true;
 		}
 	} catch {
-		// Unfortunately even this catch block doesn't prevent the browser console from reporting the network error.
-		// There is apparently no workaround besides clearing the whole console, but that would hide other potentially useful warnings.
-		// We'd ideally like to have a proper endpoint for verifying server connectivity.
+		// Do nothing here
 	}
 
 	return false;
