@@ -92,6 +92,7 @@ pub enum PortfolioMessage {
 	OpenDocumentFileWithId {
 		document_id: u64,
 		document_name: String,
+		document_is_auto_saved: bool,
 		document_is_saved: bool,
 		document_serialized_content: String,
 	},
