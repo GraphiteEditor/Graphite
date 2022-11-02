@@ -392,7 +392,18 @@ impl WasmBezier {
 			empty_string.clone(),
 			empty_string.clone(),
 		);
-		wrap_svg_tag(format!("{original_bezier_svg}{rotated_bezier_svg}"))
+		let pivot = draw_circle(pivot_x, pivot_y, 3., ORANGE, 1.5, WHITE);
+		let original_dashed_line = format!(
+			r#"<line x1="{pivot_x}" y1="{pivot_y}" x2="{}" y2="{}" stroke="{ORANGE}" stroke-dasharray="10,10" stroke-width="1.5"/>"#,
+			self.0.start().x,
+			self.0.start().y
+		);
+		let rotated_dashed_line = format!(
+			r#"<line x1="{pivot_x}" y1="{pivot_y}" x2="{}" y2="{}" stroke="{ORANGE}" stroke-dasharray="10,10" stroke-width="1.5"/>"#,
+			rotated_bezier.start().x,
+			rotated_bezier.start().y
+		);
+		wrap_svg_tag(format!("{original_bezier_svg}{rotated_bezier_svg}{pivot}{original_dashed_line}{rotated_dashed_line}"))
 	}
 
 	fn intersect(&self, curve: &Bezier, error: Option<f64>) -> Vec<f64> {
