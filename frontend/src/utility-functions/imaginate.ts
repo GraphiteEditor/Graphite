@@ -182,7 +182,7 @@ function scheduleNextPollingUpdate(
 
 async function pollImage(hostname: string): Promise<[Blob | undefined, number]> {
 	// Fetch the percent progress and in-progress image from the API
-	const result = await fetch(`${hostname}sdapi/v1/progress`, { signal: pollingAbortController.signal, method: "GET" });
+	const result = await fetch(`${hostname}sdapi/v1/progress`, { signal: pollingAbortController.signal, method: "GET", mode: "cors" });
 	const { current_image, progress } = await result.json();
 	const progressPercent = progress * 100;
 
@@ -315,7 +315,7 @@ async function generate(
 }
 
 async function terminate(hostname: string): Promise<void> {
-	await fetch(`${hostname}sdapi/v1/interrupt`, { method: "POST" });
+	await fetch(`${hostname}sdapi/v1/interrupt`, { method: "POST", mode: "cors" });
 }
 
 async function checkConnection(hostname: string): Promise<boolean> {
