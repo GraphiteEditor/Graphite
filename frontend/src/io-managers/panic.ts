@@ -1,4 +1,4 @@
-import { wipeDatabase } from "@/io-managers/persistence";
+import { wipeDocuments } from "@/io-managers/persistence";
 import { type DialogState } from "@/state-providers/dialog";
 import { type IconName } from "@/utility-functions/icons";
 import { browserVersion, operatingSystem } from "@/utility-functions/platform";
@@ -46,7 +46,7 @@ function preparePanicDialog(header: string, details: string, panicDetails: strin
 	};
 	const clearPersistedDataButton: TextButtonWidget = {
 		callback: async () => {
-			await wipeDatabase();
+			await wipeDocuments();
 			window.location.reload();
 		},
 		props: { kind: "TextButton", label: "Clear Saved Data", emphasized: false, minWidth: 96 },
