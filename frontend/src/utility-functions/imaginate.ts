@@ -9,6 +9,7 @@ import { type ImaginateGenerationParameters } from "@/wasm-communication/message
 
 const MAX_POLLING_RETRIES = 4;
 const SERVER_STATUS_CHECK_TIMEOUT = 5000;
+const PROGRESS_EVERY_N_STEPS = 5;
 
 let timer: NodeJS.Timeout | undefined;
 let terminated = false;
@@ -62,8 +63,9 @@ export async function imaginateGenerate(
 		}
 
 		// Extract the final image from the response and convert it to a data blob
-		const base64 = JSON.parse(body)?.images?.[0] as string | undefined;
-		if (typeof base64 !== "string" || !base64.startsWith("data:image/png;base64,")) throw new Error("Could not read final image result from server response");
+		const base64Data = JSON.parse(body)?.images?.[0] as string | undefined;
+		const base64 = typeof base64Data === "string" && base64Data.length > 0 ? `data:image/png;base64,${base64Data}` : undefined;
+		if (!base64) throw new Error("Could not read final image result from server response");
 		const blob = await (await fetch(base64)).blob();
 
 		// Send the backend an updated status
@@ -182,21 +184,26 @@ function scheduleNextPollingUpdate(
 
 async function pollImage(hostname: string): Promise<[Blob | undefined, number]> {
 	// Fetch the percent progress and in-progress image from the API
-	const result = await fetch(`${hostname}sdapi/v1/progress`, { signal: pollingAbortController.signal, method: "GET", mode: "cors" });
+	const result = await fetch(`${hostname}sdapi/v1/progress`, { signal: pollingAbortController.signal, method: "GET" });
 	const { current_image, progress } = await result.json();
-	const progressPercent = progress * 100;
 
-	// The image is not ready yet (because it's only had a few samples since beginning)
-	if (current_image === null) {
-		return [undefined, progressPercent];
-	}
-	// Something's wrong and the image wasn't provided as expected
-	if (typeof current_image !== "string" || !current_image.startsWith("data:image/png;base64,")) {
+	// Convert to a usable format
+	const progressPercent = progress * 100;
+	const base64 = typeof current_image === "string" && current_image.length > 0 ? `data:image/png;base64,${current_image}` : undefined;
+
+	// Deal with a missing image
+	if (!base64) {
+		// The image is not ready yet (because it's only had a few samples since generation began), but we do have a progress percentage
+		if (!Number.isNaN(progressPercent) && progressPercent >= 0 && progressPercent <= 100) {
+			return [undefined, progressPercent];
+		}
+
+		// Something else is wrong and the image wasn't provided as expected
 		return Promise.reject();
 	}
 
 	// The image was provided so we turn it into a data blob
-	const blob = await (await fetch(current_image)).blob();
+	const blob = await (await fetch(base64)).blob();
 	return [blob, progressPercent];
 }
 
@@ -215,15 +222,14 @@ async function generate(
 	if (image === undefined || parameters.denoisingStrength === undefined) {
 		endpoint = `${hostname}sdapi/v1/txt2img`;
 
-		// TODO: Temporarily set `show_progress_every_n_steps`
 		body = {
 			// enable_hr: false,
 			// denoising_strength: 0,
 			// firstphase_width: 0,
 			// firstphase_height: 0,
-			prompt: parameters.prompt, // TODO: Escape?
-			styles: [], // TODO: Remove?
-			seed: Number(parameters.seed), // TODO: Validate
+			prompt: parameters.prompt,
+			// styles: [],
+			seed: Number(parameters.seed),
 			// subseed: -1,
 			// subseed_strength: 0,
 			// seed_resize_from_h: -1,
@@ -236,16 +242,16 @@ async function generate(
 			height: parameters.resolution.y,
 			restore_faces: parameters.restoreFaces,
 			tiling: parameters.tiling,
-			negative_prompt: parameters.negativePrompt, // TODO: Escape?
-			eta: 0, // TODO: Remove?
+			negative_prompt: parameters.negativePrompt,
+			// eta: 0,
 			// s_churn: 0,
-			s_tmax: 0, // TODO: Remove?
+			// s_tmax: 0,
 			// s_tmin: 0,
 			// s_noise: 1,
 			override_settings: {
-				show_progress_every_n_steps: 1,
+				show_progress_every_n_steps: PROGRESS_EVERY_N_STEPS,
 			},
-			sampler_index: parameters.samplingMethod, // sampler_index: "Euler", // TODO: Validate
+			sampler_index: parameters.samplingMethod,
 		};
 	} else {
 		const sourceImageBase64 = await blobToBase64(image);
@@ -256,15 +262,15 @@ async function generate(
 			init_images: [sourceImageBase64],
 			// resize_mode: 0,
 			denoising_strength: parameters.denoisingStrength,
-			mask: "", // TODO: Remove?
+			// mask: "",
 			// mask_blur: 4,
 			// inpainting_fill: 0,
 			// inpaint_full_res: true,
 			// inpaint_full_res_padding: 0,
 			// inpainting_mask_invert: 0,
-			prompt: parameters.prompt, // TODO: Escape?
-			styles: [], // TODO: Remove?
-			seed: Number(parameters.seed), // TODO: Validate
+			prompt: parameters.prompt,
+			// styles: [],
+			seed: Number(parameters.seed),
 			// subseed: -1,
 			// subseed_strength: 0,
 			// seed_resize_from_h: -1,
@@ -277,17 +283,17 @@ async function generate(
 			height: parameters.resolution.y,
 			restore_faces: parameters.restoreFaces,
 			tiling: parameters.tiling,
-			negative_prompt: parameters.negativePrompt, // TODO: Escape?
-			eta: 0, // TODO: Remove?
+			negative_prompt: parameters.negativePrompt,
+			// eta: 0,
 			// s_churn: 0,
-			s_tmax: 0, // TODO: Remove?
+			// s_tmax: 0,
 			// s_tmin: 0,
 			// s_noise: 1,
 			override_settings: {
-				show_progress_every_n_steps: 5,
+				show_progress_every_n_steps: PROGRESS_EVERY_N_STEPS,
 			},
-			sampler_index: parameters.samplingMethod, // sampler_index: "Euler", // TODO: Validate
-			// include_init_images: false, // TODO: Set to true?
+			sampler_index: parameters.samplingMethod,
+			// include_init_images: false,
 		};
 	}
 
@@ -315,7 +321,7 @@ async function generate(
 }
 
 async function terminate(hostname: string): Promise<void> {
-	await fetch(`${hostname}sdapi/v1/interrupt`, { method: "POST", mode: "cors" });
+	await fetch(`${hostname}sdapi/v1/interrupt`, { method: "POST" });
 }
 
 async function checkConnection(hostname: string): Promise<boolean> {
@@ -326,7 +332,7 @@ async function checkConnection(hostname: string): Promise<boolean> {
 
 	try {
 		// Intentionally misuse this API endpoint by using it just to check for a code 200 response, regardless of what the result is
-		const { status } = await fetch(`${hostname}sdapi/v1/progress/?skip_current_image=true`, { signal: statusAbortController.signal, method: "GET", mode: "cors" });
+		const { status } = await fetch(`${hostname}sdapi/v1/progress?skip_current_image=true`, { signal: statusAbortController.signal, method: "GET" });
 
 		// This code means the server has indeed responded and the endpoint exists (otherwise it would be 404)
 		if (status === 200) {

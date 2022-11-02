@@ -615,7 +615,7 @@ fn node_section_imaginate(imaginate_layer: &ImaginateLayer, layer: &Layer, persi
 							}))],
 							ImaginateStatus::Generating => vec![WidgetHolder::new(Widget::TextButton(TextButton {
 								label: "Terminate".into(),
-								tooltip: "Cancel in-progress image generation and keep the latest progress".into(),
+								tooltip: "Cancel the in-progress image generation and keep the latest progress".into(),
 								on_update: WidgetCallback::new(|_| DocumentMessage::ImaginateTerminate.into()),
 								..Default::default()
 							}))],
