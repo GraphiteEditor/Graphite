@@ -303,7 +303,7 @@ export default defineComponent({
 			createInputManager: createInputManager(this.editor, this.$el.parentElement, this.dialog, this.portfolio, this.fullscreen),
 			createLocalizationManager: createLocalizationManager(this.editor),
 			createPanicManager: createPanicManager(this.editor, this.dialog),
-			createPersistenceManager: await createPersistenceManager(this.editor, this.portfolio),
+			createPersistenceManager: createPersistenceManager(this.editor, this.portfolio),
 		});
 
 		// Initialize certain setup tasks required by the editor backend to be ready for the user now that the frontend is ready
