@@ -277,7 +277,7 @@ impl ShapeEditor {
 		for bezier_id in document.layer(layer_path).ok()?.as_subpath()?.bezier_iter() {
 			let bezier = bezier_id.internal;
 			let t = bezier.project(layer_pos, projection_options);
-			let layerspace = bezier.evaluate(t);
+			let layerspace = bezier.evaluate(bezier_rs::ComputeType::Parametric { t });
 
 			let screenspace = transform.transform_point2(layerspace);
 			let distance_squared = screenspace.distance_squared(position);
