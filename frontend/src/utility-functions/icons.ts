@@ -8,6 +8,7 @@ const GRAPHICS = {
 } as const;
 
 // 12px Solid
+import Add from "@/../assets/icon-12px-solid/add.svg";
 import Checkmark from "@/../assets/icon-12px-solid/checkmark.svg";
 import CloseX from "@/../assets/icon-12px-solid/close-x.svg";
 import DropdownArrow from "@/../assets/icon-12px-solid/dropdown-arrow.svg";
@@ -40,6 +41,7 @@ import WindowButtonWinMinimize from "@/../assets/icon-12px-solid/window-button-w
 import WindowButtonWinRestoreDown from "@/../assets/icon-12px-solid/window-button-win-restore-down.svg";
 
 const SOLID_12PX = {
+	Add: { component: Add, size: 12 },
 	Checkmark: { component: Checkmark, size: 12 },
 	CloseX: { component: CloseX, size: 12 },
 	DropdownArrow: { component: DropdownArrow, size: 12 },
