@@ -30,6 +30,7 @@ import KeyboardSpace from "@/../assets/icon-12px-solid/keyboard-space.svg";
 import KeyboardTab from "@/../assets/icon-12px-solid/keyboard-tab.svg";
 import Link from "@/../assets/icon-12px-solid/link.svg";
 import Overlays from "@/../assets/icon-12px-solid/overlays.svg";
+import Remove from "@/../assets/icon-12px-solid/remove.svg";
 import ResetColors from "@/../assets/icon-12px-solid/reset-colors.svg";
 import Snapping from "@/../assets/icon-12px-solid/snapping.svg";
 import Swap from "@/../assets/icon-12px-solid/swap.svg";
@@ -63,6 +64,7 @@ const SOLID_12PX = {
 	KeyboardTab: { component: KeyboardTab, size: 12 },
 	Link: { component: Link, size: 12 },
 	Overlays: { component: Overlays, size: 12 },
+	Remove: { component: Remove, size: 12 },
 	ResetColors: { component: ResetColors, size: 12 },
 	Snapping: { component: Snapping, size: 12 },
 	Swap: { component: Swap, size: 12 },
