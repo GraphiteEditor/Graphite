@@ -325,15 +325,13 @@ impl SelectedGradient {
 				let new_pos = ((self.gradient.end - self.gradient.start).angle_between(mouse - self.gradient.start)).cos() * self.gradient.start.distance(mouse)
 					/ self.gradient.start.distance(self.gradient.end);
 
-				// Should not swap with other points or go off end (similar to inkscape)
-				let mut clamped = new_pos.clamp(0., 1.);
-				if let Some((min, _)) = self.gradient.positions.get(s - 1) {
-					clamped = min.max(clamped);
-				}
-				if let Some((max, _)) = self.gradient.positions.get(s + 1) {
-					clamped = max.min(clamped);
-				}
+				// Should not go off end but can swap (like inscape)
+				let clamped = new_pos.clamp(0., 1.);
 				self.gradient.positions[s].0 = clamped;
+				let new_pos = self.gradient.positions[s];
+
+				self.gradient.positions.sort_unstable_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+				self.dragging = GradientDragTarget::Step(self.gradient.positions.iter().position(|x| *x == new_pos).unwrap());
 			}
 		}
 
