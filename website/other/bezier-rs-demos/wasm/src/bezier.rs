@@ -497,16 +497,6 @@ impl WasmBezier {
 				)
 			})
 			.fold(original_curve_svg, |acc, item| format!("{acc}{item}"));
-		// let arcs_svg = draw_sector(
-		// 	50.,
-		// 	50.,
-		// 	100.,
-		// 	0.,
-		// 	PI / 2.,
-		// 	format!("hsl({}, 100%, 50%, 75%)", (40. * 0.)).as_str(),
-		// 	1.,
-		// 	format!("hsl({}, 100%, 50%, 37.5%)", (40. * 0.)).as_str(),
-		// );
 		wrap_svg_tag(arcs_svg)
 	}
 }
