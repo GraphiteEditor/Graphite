@@ -1,14 +1,14 @@
 <template>
 	<div class="pivot-assist">
-		<button @click="setPosition('TopLeft')" class="row-1 col-1" :class="{ active: position === 'TopLeft' }"></button>
-		<button @click="setPosition('TopCenter')" class="row-1 col-2" :class="{ active: position === 'TopCenter' }"><div></div></button>
-		<button @click="setPosition('TopRight')" class="row-1 col-3" :class="{ active: position === 'TopRight' }"><div></div></button>
-		<button @click="setPosition('CenterLeft')" class="row-2 col-1" :class="{ active: position === 'CenterLeft' }"><div></div></button>
-		<button @click="setPosition('Center')" class="row-2 col-2" :class="{ active: position === 'Center' }"><div></div></button>
-		<button @click="setPosition('CenterRight')" class="row-2 col-3" :class="{ active: position === 'CenterRight' }"><div></div></button>
-		<button @click="setPosition('BottomLeft')" class="row-3 col-1" :class="{ active: position === 'BottomLeft' }"><div></div></button>
-		<button @click="setPosition('BottomCenter')" class="row-3 col-2" :class="{ active: position === 'BottomCenter' }"><div></div></button>
-		<button @click="setPosition('BottomRight')" class="row-3 col-3" :class="{ active: position === 'BottomRight' }"><div></div></button>
+		<button @click="setPosition('TopLeft')" class="row-1 col-1" :class="{ active: position === 'TopLeft' }" tabindex="-1"><div></div></button>
+		<button @click="setPosition('TopCenter')" class="row-1 col-2" :class="{ active: position === 'TopCenter' }" tabindex="-1"><div></div></button>
+		<button @click="setPosition('TopRight')" class="row-1 col-3" :class="{ active: position === 'TopRight' }" tabindex="-1"><div></div></button>
+		<button @click="setPosition('CenterLeft')" class="row-2 col-1" :class="{ active: position === 'CenterLeft' }" tabindex="-1"><div></div></button>
+		<button @click="setPosition('Center')" class="row-2 col-2" :class="{ active: position === 'Center' }" tabindex="-1"><div></div></button>
+		<button @click="setPosition('CenterRight')" class="row-2 col-3" :class="{ active: position === 'CenterRight' }" tabindex="-1"><div></div></button>
+		<button @click="setPosition('BottomLeft')" class="row-3 col-1" :class="{ active: position === 'BottomLeft' }" tabindex="-1"><div></div></button>
+		<button @click="setPosition('BottomCenter')" class="row-3 col-2" :class="{ active: position === 'BottomCenter' }" tabindex="-1"><div></div></button>
+		<button @click="setPosition('BottomRight')" class="row-3 col-3" :class="{ active: position === 'BottomRight' }" tabindex="-1"><div></div></button>
 	</div>
 </template>
 
@@ -25,9 +25,8 @@
 		height: 5px;
 		margin: 0;
 		padding: 0;
-		outline: none;
-		background: none;
-		border: 1px solid var(--color-7-middlegray);
+		background: var(--color-1-nearblack);
+		border: 1px solid var(--color-5-dullgray);
 
 		&:hover {
 			border-color: transparent;
@@ -36,7 +35,7 @@
 
 		&.active {
 			border-color: transparent;
-			background: var(--color-f-white);
+			background: var(--color-e-nearwhite);
 		}
 
 		&.col-1::before,
@@ -45,7 +44,7 @@
 			pointer-events: none;
 			width: 2px;
 			height: 0;
-			border-top: 1px solid var(--color-7-middlegray);
+			border-top: 1px solid var(--color-5-dullgray);
 			position: absolute;
 			top: 1px;
 			right: -3px;
@@ -57,7 +56,7 @@
 			pointer-events: none;
 			width: 0;
 			height: 2px;
-			border-left: 1px solid var(--color-7-middlegray);
+			border-left: 1px solid var(--color-5-dullgray);
 			position: absolute;
 			bottom: -3px;
 			right: 1px;

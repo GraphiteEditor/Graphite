@@ -1,6 +1,13 @@
 <template>
 	<LayoutRow class="radio-input">
-		<button :class="{ active: index === selectedIndex }" v-for="(entry, index) in entries" :key="index" @click="() => handleEntryClick(entry)" :title="entry.tooltip">
+		<button
+			:class="{ active: index === selectedIndex }"
+			v-for="(entry, index) in entries"
+			:key="index"
+			@click="() => handleEntryClick(entry)"
+			:title="entry.tooltip"
+			:tabindex="index === selectedIndex ? -1 : 0"
+		>
 			<IconLabel v-if="entry.icon" :icon="entry.icon" />
 			<TextLabel v-if="entry.label">{{ entry.label }}</TextLabel>
 		</button>
@@ -14,7 +21,6 @@
 		fill: var(--color-e-nearwhite);
 		height: 24px;
 		padding: 0 4px;
-		outline: none;
 		border: none;
 		display: flex;
 		align-items: center;
@@ -29,11 +35,11 @@
 		}
 
 		&.active {
-			background: var(--color-accent);
-			color: var(--color-f-white);
+			background: var(--color-e-nearwhite);
+			color: var(--color-2-mildblack);
 
 			svg {
-				fill: var(--color-f-white);
+				fill: var(--color-2-mildblack);
 			}
 		}
 

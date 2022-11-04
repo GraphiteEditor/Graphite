@@ -8,6 +8,7 @@
 		:title="tooltip"
 		:style="minWidth > 0 ? `min-width: ${minWidth}px` : ''"
 		@click="(e: MouseEvent) => action(e)"
+		:tabindex="disabled ? -1 : 0"
 	>
 		<IconLabel v-if="icon" :icon="icon" />
 		<TextLabel>{{ label }}</TextLabel>
@@ -23,7 +24,6 @@
 	height: 24px;
 	padding: 0 8px;
 	box-sizing: border-box;
-	outline: none;
 	border: none;
 	border-radius: 2px;
 	background: var(--color-5-dullgray);
@@ -34,22 +34,22 @@
 		color: var(--color-f-white);
 	}
 
-	&.emphasized {
-		background: var(--color-accent);
-		color: var(--color-f-white);
-
-		&:hover {
-			background: var(--color-accent-hover);
-		}
-
-		&.disabled {
-			background: var(--color-accent-disabled);
-		}
-	}
-
 	&.disabled {
 		background: var(--color-4-dimgray);
 		color: var(--color-8-uppergray);
+	}
+
+	&.emphasized {
+		background: var(--color-e-nearwhite);
+		color: var(--color-2-mildblack);
+
+		&:hover {
+			background: var(--color-f-white);
+		}
+
+		&.disabled {
+			background: var(--color-8-uppergray);
+		}
 	}
 
 	& + .text-button {

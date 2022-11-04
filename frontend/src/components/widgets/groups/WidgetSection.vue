@@ -1,7 +1,7 @@
 <!-- TODO: Implement collapsable sections with properties system -->
 <template>
 	<LayoutCol class="widget-section">
-		<button class="header" @click.stop="() => (expanded = !expanded)">
+		<button class="header" @click.stop="() => (expanded = !expanded)" tabindex="0">
 			<div class="expand-arrow" :class="{ expanded }"></div>
 			<Separator :type="'Related'" />
 			<TextLabel :bold="true">{{ widgetData.name }}</TextLabel>

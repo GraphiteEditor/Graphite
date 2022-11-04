@@ -43,11 +43,7 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 		{ target: window, eventName: "wheel", action: (e: WheelEvent): void => onWheelScroll(e), options: { passive: false } },
 		{ target: window, eventName: "modifyinputfield", action: (e: CustomEvent): void => onModifyInputField(e) },
 		{ target: window.document.body, eventName: "paste", action: (e: ClipboardEvent): void => onPaste(e) },
-		{
-			target: app as EventListenerTarget,
-			eventName: "blur",
-			action: (): void => blurApp(),
-		},
+		{ target: app as EventListenerTarget, eventName: "blur", action: (): void => blurApp() },
 	];
 
 	// Event bindings

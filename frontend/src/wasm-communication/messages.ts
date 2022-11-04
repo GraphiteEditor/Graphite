@@ -708,6 +708,8 @@ export abstract class WidgetProps {
 export class CheckboxInput extends WidgetProps {
 	checked!: boolean;
 
+	disabled!: boolean;
+
 	icon!: IconName;
 
 	@Transform(({ value }: { value: string }) => (value.length > 0 ? value : undefined))
@@ -832,6 +834,8 @@ export class NumberInput extends WidgetProps {
 
 export class OptionalInput extends WidgetProps {
 	checked!: boolean;
+
+	disabled!: boolean;
 
 	icon!: IconName;
 

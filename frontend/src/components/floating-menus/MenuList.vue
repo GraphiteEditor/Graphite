@@ -127,17 +127,21 @@
 			}
 
 			&:hover,
-			&.open,
-			&.active {
+			&.open {
 				background: var(--color-6-lowergray);
 				color: var(--color-f-white);
 
-				&.active {
-					background: var(--color-accent);
-				}
-
 				.entry-icon svg {
 					fill: var(--color-f-white);
+				}
+			}
+
+			&.active {
+				background: var(--color-e-nearwhite);
+				color: var(--color-2-mildblack);
+
+				.entry-icon svg {
+					fill: var(--color-2-mildblack);
 				}
 			}
 
