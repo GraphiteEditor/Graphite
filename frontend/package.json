@@ -18,6 +18,7 @@
 	"homepage": "https://graphite.rs",
 	"dependencies": {
 		"class-transformer": "^0.5.0",
+		"idb-keyval": "^6.2.0",
 		"reflect-metadata": "^0.1.13",
 		"vue": "^3.2.26"
 	},

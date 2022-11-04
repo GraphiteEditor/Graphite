@@ -1,99 +1,100 @@
+import { createStore, del, get, set, update } from "idb-keyval";
+
 import { type PortfolioState } from "@/state-providers/portfolio";
-import { stripIndents } from "@/utility-functions/strip-indents";
 import { type Editor } from "@/wasm-communication/editor";
-import { TriggerIndexedDbWriteDocument, TriggerIndexedDbRemoveDocument } from "@/wasm-communication/messages";
+import { TriggerIndexedDbWriteDocument, TriggerIndexedDbRemoveDocument, TriggerSavePreferences, TriggerLoadAutoSaveDocuments, TriggerLoadPreferences } from "@/wasm-communication/messages";
 
-const GRAPHITE_INDEXED_DB_VERSION = 2;
-const GRAPHITE_INDEXED_DB_NAME = "graphite-indexed-db";
-const GRAPHITE_AUTO_SAVE_STORE = "auto-save-documents";
-const GRAPHITE_AUTO_SAVE_ORDER_KEY = "auto-save-documents-order";
+const graphiteStore = createStore("graphite", "store");
 
-// eslint-disable-next-line @typescript-eslint/explicit-function-return-type
-export async function createPersistenceManager(editor: Editor, portfolio: PortfolioState): Promise<() => void> {
-	function storeDocumentOrder(): void {
-		// Make sure to store as string since JSON does not play nice with BigInt
-		const documentOrder = portfolio.state.documents.map((doc) => doc.id.toString());
-		window.localStorage.setItem(GRAPHITE_AUTO_SAVE_ORDER_KEY, JSON.stringify(documentOrder));
+export function createPersistenceManager(editor: Editor, portfolio: PortfolioState): void {
+	// DOCUMENTS
+
+	async function storeDocumentOrder(): Promise<void> {
+		const documentOrder = portfolio.state.documents.map((doc) => String(doc.id));
+
+		await set("documents_tab_order", documentOrder, graphiteStore);
+	}
+
+	async function storeDocument(autoSaveDocument: TriggerIndexedDbWriteDocument): Promise<void> {
+		await update<Record<string, TriggerIndexedDbWriteDocument>>(
+			"documents",
+			(old) => {
+				const documents = old || {};
+				documents[autoSaveDocument.details.id] = autoSaveDocument;
+				return documents;
+			},
+			graphiteStore
+		);
+
+		await storeDocumentOrder();
 	}
 
 	async function removeDocument(id: string): Promise<void> {
-		const db = await databaseConnection;
-		const transaction = db.transaction(GRAPHITE_AUTO_SAVE_STORE, "readwrite");
-		transaction.objectStore(GRAPHITE_AUTO_SAVE_STORE).delete(id);
-		storeDocumentOrder();
+		await update<Record<string, TriggerIndexedDbWriteDocument>>(
+			"documents",
+			(old) => {
+				const documents = old || {};
+				delete documents[id];
+				return documents;
+			},
+			graphiteStore
+		);
+
+		await storeDocumentOrder();
 	}
 
-	async function closeDatabaseConnection(): Promise<void> {
-		const db = await databaseConnection;
-		db.close();
-	}
+	async function loadDocuments(): Promise<void> {
+		const previouslySavedDocuments = await get<Record<string, TriggerIndexedDbWriteDocument>>("documents", graphiteStore);
+		const documentOrder = await get<string[]>("documents_tab_order", graphiteStore);
+		if (!previouslySavedDocuments || !documentOrder) return;
 
-	// Subscribe to process backend events
-	editor.subscriptions.subscribeJsMessage(TriggerIndexedDbWriteDocument, async (autoSaveDocument) => {
-		const db = await databaseConnection;
-		const transaction = db.transaction(GRAPHITE_AUTO_SAVE_STORE, "readwrite");
-		transaction.objectStore(GRAPHITE_AUTO_SAVE_STORE).put(autoSaveDocument);
-		storeDocumentOrder();
-	});
-	editor.subscriptions.subscribeJsMessage(TriggerIndexedDbRemoveDocument, async (removeAutoSaveDocument) => {
-		removeDocument(removeAutoSaveDocument.documentId);
-	});
+		const orderedSavedDocuments = documentOrder.flatMap((id) => (previouslySavedDocuments[id] ? [previouslySavedDocuments[id]] : []));
 
-	// Open the IndexedDB database connection and save it to this variable, which is a promise that resolves once the connection is open
-	const databaseConnection = new Promise<IDBDatabase>((resolve) => {
-		const dbOpenRequest = indexedDB.open(GRAPHITE_INDEXED_DB_NAME, GRAPHITE_INDEXED_DB_VERSION);
-
-		dbOpenRequest.onupgradeneeded = (): void => {
-			const db = dbOpenRequest.result;
-			// Wipes out all auto-save data on upgrade
-			if (db.objectStoreNames.contains(GRAPHITE_AUTO_SAVE_STORE)) {
-				db.deleteObjectStore(GRAPHITE_AUTO_SAVE_STORE);
+		const currentDocumentVersion = editor.instance.graphiteDocumentVersion();
+		orderedSavedDocuments?.forEach(async (doc: TriggerIndexedDbWriteDocument) => {
+			if (doc.version !== currentDocumentVersion) {
+				await removeDocument(doc.details.id);
+				return;
 			}
 
-			db.createObjectStore(GRAPHITE_AUTO_SAVE_STORE, { keyPath: "details.id" });
-		};
-
-		dbOpenRequest.onerror = (): void => {
-			const errorText = stripIndents`
-				Documents won't be saved across reloads and later visits.
-				This may be caused by Firefox's private browsing mode.
-				
-				Error on opening IndexDB:
-				${dbOpenRequest.error}
-				`;
-			editor.instance.errorDialog("Document auto-save doesn't work in this browser", errorText);
-		};
-
-		dbOpenRequest.onsuccess = (): void => {
-			resolve(dbOpenRequest.result);
-		};
-	});
-
-	databaseConnection.then(async (db) => {
-		// Open auto-save documents
-		const transaction = db.transaction(GRAPHITE_AUTO_SAVE_STORE, "readonly");
-		const request = transaction.objectStore(GRAPHITE_AUTO_SAVE_STORE).getAll();
-		await new Promise((resolve): void => {
-			request.onsuccess = (): void => {
-				const previouslySavedDocuments: TriggerIndexedDbWriteDocument[] = request.result;
-
-				const documentOrder: string[] = JSON.parse(window.localStorage.getItem(GRAPHITE_AUTO_SAVE_ORDER_KEY) || "[]");
-				const orderedSavedDocuments = documentOrder
-					.map((id) => previouslySavedDocuments.find((autoSave) => autoSave.details.id === id))
-					.filter((x) => x !== undefined) as TriggerIndexedDbWriteDocument[];
-
-				const currentDocumentVersion = editor.instance.graphiteDocumentVersion();
-				orderedSavedDocuments.forEach((doc: TriggerIndexedDbWriteDocument) => {
-					if (doc.version === currentDocumentVersion) {
-						editor.instance.openAutoSavedDocument(BigInt(doc.details.id), doc.details.name, doc.details.isSaved, doc.document);
-					} else {
-						removeDocument(doc.details.id);
-					}
-				});
-				resolve(undefined);
-			};
+			editor.instance.openAutoSavedDocument(BigInt(doc.details.id), doc.details.name, doc.details.isSaved, doc.document);
 		});
-	});
+	}
 
-	return closeDatabaseConnection;
+	// PREFERENCES
+
+	async function savePreferences(preferences: TriggerSavePreferences["preferences"]): Promise<void> {
+		await set("preferences", preferences, graphiteStore);
+	}
+
+	async function loadPreferences(): Promise<void> {
+		const preferences = await get<Record<string, unknown>>("preferences", graphiteStore);
+		if (!preferences) return;
+
+		editor.instance.loadPreferences(JSON.stringify(preferences));
+	}
+
+	// FRONTEND MESSAGE SUBSCRIPTIONS
+
+	// Subscribe to process backend events
+	editor.subscriptions.subscribeJsMessage(TriggerSavePreferences, async (preferences) => {
+		await savePreferences(preferences.preferences);
+	});
+	editor.subscriptions.subscribeJsMessage(TriggerLoadPreferences, async () => {
+		await loadPreferences();
+	});
+	editor.subscriptions.subscribeJsMessage(TriggerIndexedDbWriteDocument, async (autoSaveDocument) => {
+		await storeDocument(autoSaveDocument);
+	});
+	editor.subscriptions.subscribeJsMessage(TriggerIndexedDbRemoveDocument, async (removeAutoSaveDocument) => {
+		await removeDocument(removeAutoSaveDocument.documentId);
+	});
+	editor.subscriptions.subscribeJsMessage(TriggerLoadAutoSaveDocuments, async () => {
+		await loadDocuments();
+	});
+}
+
+export async function wipeDocuments(): Promise<void> {
+	await del("documents_tab_order", graphiteStore);
+	await del("documents", graphiteStore);
 }

@@ -1,0 +1,16 @@
+[package]
+name = "graph-craft"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+graphene-core = { path = "../gcore", features = ["async", "std"] }
+graphene-std = { path = "../gstd" }
+dyn-any = { path = "../../libraries/dyn-any" }
+num-traits = "0.2"
+borrow_stack = { path = "../borrow_stack" }
+dyn-clone = "1.0"
+rand_chacha = "0.3.1"

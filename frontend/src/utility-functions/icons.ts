@@ -89,6 +89,7 @@ import CheckboxUnchecked from "@/../assets/icon-16px-solid/checkbox-unchecked.sv
 import Copy from "@/../assets/icon-16px-solid/copy.svg";
 import EyeHidden from "@/../assets/icon-16px-solid/eye-hidden.svg";
 import EyeVisible from "@/../assets/icon-16px-solid/eye-visible.svg";
+import Eyedropper from "@/../assets/icon-16px-solid/eyedropper.svg";
 import File from "@/../assets/icon-16px-solid/file.svg";
 import FlipHorizontal from "@/../assets/icon-16px-solid/flip-horizontal.svg";
 import FlipVertical from "@/../assets/icon-16px-solid/flip-vertical.svg";
@@ -101,6 +102,7 @@ import NodeColorCorrection from "@/../assets/icon-16px-solid/node-color-correcti
 import NodeFolder from "@/../assets/icon-16px-solid/node-folder.svg";
 import NodeGradient from "@/../assets/icon-16px-solid/node-gradient.svg";
 import NodeImage from "@/../assets/icon-16px-solid/node-image.svg";
+import NodeImaginate from "@/../assets/icon-16px-solid/node-imaginate.svg";
 import NodeMagicWand from "@/../assets/icon-16px-solid/node-magic-wand.svg";
 import NodeMask from "@/../assets/icon-16px-solid/node-mask.svg";
 import NodeMotionBlur from "@/../assets/icon-16px-solid/node-motion-blur.svg";
@@ -109,6 +111,12 @@ import NodeShape from "@/../assets/icon-16px-solid/node-shape.svg";
 import NodeText from "@/../assets/icon-16px-solid/node-text.svg";
 import NodeTransform from "@/../assets/icon-16px-solid/node-transform.svg";
 import Paste from "@/../assets/icon-16px-solid/paste.svg";
+import Random from "@/../assets/icon-16px-solid/random.svg";
+import Regenerate from "@/../assets/icon-16px-solid/regenerate.svg";
+import Reload from "@/../assets/icon-16px-solid/reload.svg";
+import Rescale from "@/../assets/icon-16px-solid/rescale.svg";
+import Reset from "@/../assets/icon-16px-solid/reset.svg";
+import Settings from "@/../assets/icon-16px-solid/settings.svg";
 import Trash from "@/../assets/icon-16px-solid/trash.svg";
 import ViewModeNormal from "@/../assets/icon-16px-solid/view-mode-normal.svg";
 import ViewModeOutline from "@/../assets/icon-16px-solid/view-mode-outline.svg";
@@ -135,6 +143,7 @@ const SOLID_16PX = {
 	CheckboxChecked: { component: CheckboxChecked, size: 16 },
 	CheckboxUnchecked: { component: CheckboxUnchecked, size: 16 },
 	Copy: { component: Copy, size: 16 },
+	Eyedropper: { component: Eyedropper, size: 16 },
 	EyeHidden: { component: EyeHidden, size: 16 },
 	EyeVisible: { component: EyeVisible, size: 16 },
 	File: { component: File, size: 16 },
@@ -149,6 +158,7 @@ const SOLID_16PX = {
 	NodeFolder: { component: NodeFolder, size: 16 },
 	NodeGradient: { component: NodeGradient, size: 16 },
 	NodeImage: { component: NodeImage, size: 16 },
+	NodeImaginate: { component: NodeImaginate, size: 16 },
 	NodeMagicWand: { component: NodeMagicWand, size: 16 },
 	NodeMask: { component: NodeMask, size: 16 },
 	NodeMotionBlur: { component: NodeMotionBlur, size: 16 },
@@ -157,6 +167,12 @@ const SOLID_16PX = {
 	NodeText: { component: NodeText, size: 16 },
 	NodeTransform: { component: NodeTransform, size: 16 },
 	Paste: { component: Paste, size: 16 },
+	Random: { component: Random, size: 16 },
+	Regenerate: { component: Regenerate, size: 16 },
+	Reload: { component: Reload, size: 16 },
+	Rescale: { component: Rescale, size: 16 },
+	Reset: { component: Reset, size: 16 },
+	Settings: { component: Settings, size: 16 },
 	Trash: { component: Trash, size: 16 },
 	ViewModeNormal: { component: ViewModeNormal, size: 16 },
 	ViewModeOutline: { component: ViewModeOutline, size: 16 },
@@ -205,6 +221,7 @@ import RasterBrushTool from "@/../assets/icon-24px-two-tone/raster-brush-tool.sv
 import RasterCloneTool from "@/../assets/icon-24px-two-tone/raster-clone-tool.svg";
 import RasterDetailTool from "@/../assets/icon-24px-two-tone/raster-detail-tool.svg";
 import RasterHealTool from "@/../assets/icon-24px-two-tone/raster-heal-tool.svg";
+import RasterImaginateTool from "@/../assets/icon-24px-two-tone/raster-imaginate-tool.svg";
 import RasterPatchTool from "@/../assets/icon-24px-two-tone/raster-patch-tool.svg";
 import RasterRelightTool from "@/../assets/icon-24px-two-tone/raster-relight-tool.svg";
 import VectorEllipseTool from "@/../assets/icon-24px-two-tone/vector-ellipse-tool.svg";
@@ -220,10 +237,11 @@ import VectorTextTool from "@/../assets/icon-24px-two-tone/vector-text-tool.svg"
 const TWO_TONE_24PX = {
 	GeneralArtboardTool: { component: GeneralArtboardTool, size: 24 },
 	GeneralEyedropperTool: { component: GeneralEyedropperTool, size: 24 },
-	GeneralNavigateTool: { component: GeneralNavigateTool, size: 24 },
-	GeneralSelectTool: { component: GeneralSelectTool, size: 24 },
 	GeneralFillTool: { component: GeneralFillTool, size: 24 },
 	GeneralGradientTool: { component: GeneralGradientTool, size: 24 },
+	GeneralNavigateTool: { component: GeneralNavigateTool, size: 24 },
+	GeneralSelectTool: { component: GeneralSelectTool, size: 24 },
+	RasterImaginateTool: { component: RasterImaginateTool, size: 24 },
 	RasterBrushTool: { component: RasterBrushTool, size: 24 },
 	RasterCloneTool: { component: RasterCloneTool, size: 24 },
 	RasterDetailTool: { component: RasterDetailTool, size: 24 },
@@ -256,7 +274,6 @@ export const ICON_COMPONENTS = Object.fromEntries(Object.entries(ICONS).map(([na
 
 export type IconName = keyof typeof ICONS;
 export type IconSize = undefined | 12 | 16 | 24 | 32;
-export type IconStyle = "Normal" | "Node";
 
 // The following helper type declarations allow us to avoid manually maintaining the `IconName` type declaration as a string union paralleling the keys of the
 // icon definitions. It lets TypeScript do that for us. Our goal is to define the big key-value pair of icons by constraining its values, but inferring its keys.

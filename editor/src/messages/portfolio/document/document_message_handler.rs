@@ -1,6 +1,8 @@
 use super::utility_types::error::EditorError;
+use super::utility_types::misc::DocumentRenderMode;
 use crate::application::generate_uuid;
 use crate::consts::{ASYMPTOTIC_EFFECT, DEFAULT_DOCUMENT_NAME, FILE_SAVE_SUFFIX, GRAPHITE_DOCUMENT_VERSION, SCALE_EFFECT, SCROLLBAR_SPACING, VIEWPORT_ZOOM_TO_FIT_PADDING_SCALE_FACTOR};
+use crate::messages::frontend::utility_types::ExportBounds;
 use crate::messages::frontend::utility_types::{FileType, FrontendImageData};
 use crate::messages::input_mapper::utility_types::macros::action_keys;
 use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
@@ -14,12 +16,14 @@ use crate::messages::portfolio::document::utility_types::layer_panel::{LayerMeta
 use crate::messages::portfolio::document::utility_types::misc::DocumentMode;
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, DocumentSave, FlipAxis};
 use crate::messages::portfolio::document::utility_types::vectorize_layer_metadata;
+use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::*;
 
 use graphene::color::Color;
-use graphene::document::Document as GrapheneDocument;
+use graphene::document::{pick_layer_safe_imaginate_resolution, Document as GrapheneDocument};
 use graphene::layers::blend_mode::BlendMode;
 use graphene::layers::folder_layer::FolderLayer;
+use graphene::layers::imaginate_layer::{ImaginateBaseImage, ImaginateGenerationParameters, ImaginateStatus};
 use graphene::layers::layer_info::{LayerDataType, LayerDataTypeDiscriminant};
 use graphene::layers::style::{Fill, RenderData, ViewMode};
 use graphene::layers::text_layer::{Font, FontCache};
@@ -33,6 +37,7 @@ use serde::{Deserialize, Serialize};
 pub struct DocumentMessageHandler {
 	pub graphene_document: GrapheneDocument,
 	pub saved_document_identifier: u64,
+	pub auto_saved_document_identifier: u64,
 	pub name: String,
 	pub version: String,
 
@@ -64,6 +69,7 @@ impl Default for DocumentMessageHandler {
 		Self {
 			graphene_document: GrapheneDocument::default(),
 			saved_document_identifier: 0,
+			auto_saved_document_identifier: 0,
 			name: String::from("Untitled Document"),
 			version: GRAPHITE_DOCUMENT_VERSION.to_string(),
 
@@ -87,16 +93,21 @@ impl Default for DocumentMessageHandler {
 	}
 }
 
-impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCache)> for DocumentMessageHandler {
+impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &PersistentData, &PreferencesMessageHandler)> for DocumentMessageHandler {
 	#[remain::check]
-	fn process_message(&mut self, message: DocumentMessage, (ipp, font_cache): (&InputPreprocessorMessageHandler, &FontCache), responses: &mut VecDeque<Message>) {
+	fn process_message(
+		&mut self,
+		message: DocumentMessage,
+		(document_id, ipp, persistent_data, preferences): (u64, &InputPreprocessorMessageHandler, &PersistentData, &PreferencesMessageHandler),
+		responses: &mut VecDeque<Message>,
+	) {
 		use DocumentMessage::*;
 
 		#[remain::sorted]
 		match message {
 			// Sub-messages
 			#[remain::unsorted]
-			DispatchOperation(op) => match self.graphene_document.handle_operation(*op, font_cache) {
+			DispatchOperation(op) => match self.graphene_document.handle_operation(*op, &persistent_data.font_cache) {
 				Ok(Some(document_responses)) => {
 					for response in document_responses {
 						match &response {
@@ -130,7 +141,7 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 			},
 			#[remain::unsorted]
 			Artboard(message) => {
-				self.artboard_message_handler.process_message(message, font_cache, responses);
+				self.artboard_message_handler.process_message(message, &persistent_data.font_cache, responses);
 			}
 			#[remain::unsorted]
 			Navigation(message) => {
@@ -138,25 +149,23 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 			}
 			#[remain::unsorted]
 			Overlays(message) => {
-				self.overlays_message_handler.process_message(message, (self.overlays_visible, font_cache, ipp), responses);
+				self.overlays_message_handler
+					.process_message(message, (self.overlays_visible, &persistent_data.font_cache, ipp), responses);
 			}
 			#[remain::unsorted]
 			TransformLayer(message) => {
 				self.transform_layer_handler
-					.process_message(message, (&mut self.layer_metadata, &mut self.graphene_document, ipp, font_cache), responses);
+					.process_message(message, (&mut self.layer_metadata, &mut self.graphene_document, ipp, &persistent_data.font_cache), responses);
 			}
 			#[remain::unsorted]
 			PropertiesPanel(message) => {
-				self.properties_panel_message_handler.process_message(
-					message,
-					PropertiesPanelMessageHandlerData {
-						artwork_document: &self.graphene_document,
-						artboard_document: &self.artboard_message_handler.artboards_graphene_document,
-						selected_layers: &mut self.layer_metadata.iter().filter_map(|(path, data)| data.selected.then(|| path.as_slice())),
-						font_cache,
-					},
-					responses,
-				);
+				let properties_panel_message_handler_data = PropertiesPanelMessageHandlerData {
+					artwork_document: &self.graphene_document,
+					artboard_document: &self.artboard_message_handler.artboards_graphene_document,
+					selected_layers: &mut self.layer_metadata.iter().filter_map(|(path, data)| data.selected.then_some(path.as_slice())),
+				};
+				self.properties_panel_message_handler
+					.process_message(message, (persistent_data, properties_panel_message_handler_data), responses);
 			}
 
 			// Messages
@@ -166,20 +175,20 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 			}
 			AddSelectedLayers { additional_layers } => {
 				for layer_path in &additional_layers {
-					responses.extend(self.select_layer(layer_path, font_cache));
+					responses.extend(self.select_layer(layer_path, &persistent_data.font_cache));
 				}
 
 				// TODO: Correctly update layer panel in clear_selection instead of here
 				responses.push_back(FolderChanged { affected_folder_path: vec![] }.into());
 				responses.push_back(BroadcastEvent::SelectionChanged.into());
 
-				self.update_layer_tree_options_bar_widgets(responses, font_cache);
+				self.update_layer_tree_options_bar_widgets(responses, &persistent_data.font_cache);
 			}
 			AlignSelectedLayers { axis, aggregate } => {
 				self.backup(responses);
 				let (paths, boxes): (Vec<_>, Vec<_>) = self
 					.selected_layers()
-					.filter_map(|path| self.graphene_document.viewport_bounding_box(path, font_cache).ok()?.map(|b| (path, b)))
+					.filter_map(|path| self.graphene_document.viewport_bounding_box(path, &persistent_data.font_cache).ok()?.map(|b| (path, b)))
 					.unzip();
 
 				let axis = match axis {
@@ -187,7 +196,7 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 					AlignAxis::Y => DVec2::Y,
 				};
 				let lerp = |bbox: &[DVec2; 2]| bbox[0].lerp(bbox[1], 0.5);
-				if let Some(combined_box) = self.graphene_document.combined_viewport_bounding_box(self.selected_layers(), font_cache) {
+				if let Some(combined_box) = self.graphene_document.combined_viewport_bounding_box(self.selected_layers(), &persistent_data.font_cache) {
 					let aggregated = match aggregate {
 						AlignAggregate::Min => combined_box[0],
 						AlignAggregate::Max => combined_box[1],
@@ -308,37 +317,31 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 				scale_factor,
 				bounds,
 			} => {
-				// Allows the user's transform to be restored
-				let old_transform = self.graphene_document.root.transform;
-				// Reset the root's transform (required to avoid any rotation by the user)
-				self.graphene_document.root.transform = DAffine2::IDENTITY;
-				GrapheneDocument::mark_children_as_dirty(&mut self.graphene_document.root);
+				let old_transforms = self.remove_document_transform();
 
 				// Calculate the bounding box of the region to be exported
-				use crate::messages::frontend::utility_types::ExportBounds;
-				let bbox = match bounds {
-					ExportBounds::AllArtwork => self.all_layer_bounds(font_cache),
-					ExportBounds::Selection => self.selected_visible_layers_bounding_box(font_cache),
-					ExportBounds::Artboard(id) => self.artboard_message_handler.artboards_graphene_document.layer(&[id]).ok().and_then(|layer| layer.aabb(font_cache)),
+				let bounds = match bounds {
+					ExportBounds::AllArtwork => self.all_layer_bounds(&persistent_data.font_cache),
+					ExportBounds::Selection => self.selected_visible_layers_bounding_box(&persistent_data.font_cache),
+					ExportBounds::Artboard(id) => self
+						.artboard_message_handler
+						.artboards_graphene_document
+						.layer(&[id])
+						.ok()
+						.and_then(|layer| layer.aabb(&persistent_data.font_cache)),
 				}
 				.unwrap_or_default();
-				let size = bbox[1] - bbox[0];
+				let size = bounds[1] - bounds[0];
+				let transform = (DAffine2::from_translation(bounds[0]) * DAffine2::from_scale(size)).inverse();
+
+				let document = self.render_document(size, transform, persistent_data, DocumentRenderMode::Root);
+				self.restore_document_transform(old_transforms);
 
 				let file_suffix = &format!(".{file_type:?}").to_lowercase();
 				let name = match file_name.ends_with(FILE_SAVE_SUFFIX) {
 					true => file_name.replace(FILE_SAVE_SUFFIX, file_suffix),
 					false => file_name + file_suffix,
 				};
-
-				let render_data = RenderData::new(self.view_mode, font_cache, None, true);
-				let rendered = self.graphene_document.render_root(render_data);
-				let document = format!(
-					r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{} {} {} {}" width="{}px" height="{}">{}{}</svg>"#,
-					bbox[0].x, bbox[0].y, size.x, size.y, size.x, size.y, "\n", rendered
-				);
-
-				self.graphene_document.root.transform = old_transform;
-				GrapheneDocument::mark_children_as_dirty(&mut self.graphene_document.root);
 
 				if file_type == FileType::Svg {
 					responses.push_back(FrontendMessage::TriggerFileDownload { document, name }.into());
@@ -354,7 +357,7 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 					FlipAxis::X => DVec2::new(-1., 1.),
 					FlipAxis::Y => DVec2::new(1., -1.),
 				};
-				if let Some([min, max]) = self.graphene_document.combined_viewport_bounding_box(self.selected_layers(), font_cache) {
+				if let Some([min, max]) = self.graphene_document.combined_viewport_bounding_box(self.selected_layers(), &persistent_data.font_cache) {
 					let center = (max + min) / 2.;
 					let bbox_trans = DAffine2::from_translation(-center);
 					for path in self.selected_layers() {
@@ -403,12 +406,73 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 					.into(),
 				);
 			}
+			ImaginateClear => {
+				let mut selected_imaginate_layers = self.selected_layers_with_type(LayerDataTypeDiscriminant::Imaginate);
+				// Get what is hopefully the only selected Imaginate layer
+				let layer_path = selected_imaginate_layers.next();
+				// Abort if we didn't have any Imaginate layer, or if there are additional ones also selected
+				if layer_path.is_none() || selected_imaginate_layers.next().is_some() {
+					return;
+				}
+				let layer_path = layer_path.unwrap();
+
+				let layer = self.graphene_document.layer(layer_path).expect("Clearing Imaginate image for invalid layer");
+				let previous_blob_url = &layer.as_imaginate().unwrap().blob_url;
+
+				if let Some(url) = previous_blob_url {
+					responses.push_back(FrontendMessage::TriggerRevokeBlobUrl { url: url.clone() }.into());
+				}
+				responses.push_back(DocumentOperation::ImaginateClear { path: layer_path.into() }.into());
+			}
+			ImaginateGenerate => {
+				if let Some(message) = self.call_imaginate(document_id, preferences, persistent_data) {
+					// TODO: Eventually remove this after a message system ordering architectural change
+					// This message is a workaround for the fact that, when `imaginate.ts` calls...
+					// `editor.instance.setImaginateGeneratingStatus(layerPath, 0, true);`
+					// ...execution transfers from the Rust part of the call stack into the JS part of the call stack (before the Rust message queue is empty,
+					// and there is a Properties panel refresh queued next). Then the JS calls that line shown above and enters the Rust part of the callstack
+					// again, so it's gone through JS (user initiation) -> Rust (process the button press) -> JS (beginning server request) -> Rust (set
+					// progress percentage to 0). As that call stack returns back from the Rust and back from the JS, it returns to the Rust and finishes
+					// processing the queue. That's where it then processes the Properties panel refresh that sent the "Ready" or "Done" state that existed
+					// before pressing the Generate button causing it to show "0%". So "Ready" or "Done" immediately overwrites the "0%". This block below,
+					// therefore, adds a redundant call to set it to 0% progress so the message execution order ends with this as the final percentage shown
+					// to the user.
+					responses.push_back(
+						DocumentOperation::ImaginateSetGeneratingStatus {
+							path: self.selected_layers_with_type(LayerDataTypeDiscriminant::Imaginate).next().unwrap().to_vec(),
+							percent: Some(0.),
+							status: ImaginateStatus::Beginning,
+						}
+						.into(),
+					);
+
+					responses.push_back(message);
+				}
+			}
+			ImaginateTerminate => {
+				let hostname = preferences.imaginate_server_hostname.clone();
+
+				let layer_path = {
+					let mut selected_imaginate_layers = self.selected_layers_with_type(LayerDataTypeDiscriminant::Imaginate);
+
+					// Get what is hopefully the only selected Imaginate layer
+					match selected_imaginate_layers.next() {
+						// Continue only if there are no additional Imaginate layers also selected
+						Some(layer_path) if selected_imaginate_layers.next().is_none() => Some(layer_path.to_owned()),
+						_ => None,
+					}
+				};
+
+				if let Some(layer_path) = layer_path {
+					responses.push_back(FrontendMessage::TriggerImaginateTerminate { document_id, layer_path, hostname }.into());
+				}
+			}
 			LayerChanged { affected_layer_path } => {
-				if let Ok(layer_entry) = self.layer_panel_entry(affected_layer_path.clone(), font_cache) {
+				if let Ok(layer_entry) = self.layer_panel_entry(affected_layer_path.clone(), &persistent_data.font_cache) {
 					responses.push_back(FrontendMessage::UpdateDocumentLayerDetails { data: layer_entry }.into());
 				}
 				responses.push_back(PropertiesPanelMessage::CheckSelectedWasUpdated { path: affected_layer_path }.into());
-				self.update_layer_tree_options_bar_widgets(responses, font_cache);
+				self.update_layer_tree_options_bar_widgets(responses, &persistent_data.font_cache);
 			}
 			MoveSelectedLayersTo {
 				folder_path,
@@ -466,6 +530,7 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 				);
 				responses.push_back(
 					FrontendMessage::UpdateImageData {
+						document_id,
 						image_data: vec![FrontendImageData { path: path.clone(), image_data, mime }],
 					}
 					.into(),
@@ -490,7 +555,7 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 			}
 			RenameLayer { layer_path, new_name } => responses.push_back(DocumentOperation::RenameLayer { layer_path, new_name }.into()),
 			RenderDocument => {
-				let render_data = RenderData::new(self.view_mode, font_cache, Some(ipp.document_bounds()), false);
+				let render_data = RenderData::new(self.view_mode, &persistent_data.font_cache, Some(ipp.document_bounds()));
 				responses.push_back(
 					FrontendMessage::UpdateDocumentArtwork {
 						svg: self.graphene_document.render_root(render_data),
@@ -503,7 +568,7 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 				let scale = 0.5 + ASYMPTOTIC_EFFECT + document_transform_scale * SCALE_EFFECT;
 				let viewport_size = ipp.viewport_bounds.size();
 				let viewport_mid = ipp.viewport_bounds.center();
-				let [bounds1, bounds2] = self.document_bounds(font_cache).unwrap_or([viewport_mid; 2]);
+				let [bounds1, bounds2] = self.document_bounds(&persistent_data.font_cache).unwrap_or([viewport_mid; 2]);
 				let bounds1 = bounds1.min(viewport_mid) - viewport_size * scale;
 				let bounds2 = bounds2.max(viewport_mid) + viewport_size * scale;
 				let bounds_length = (bounds2 - bounds1) * (1. + SCROLLBAR_SPACING);
@@ -621,9 +686,36 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 			}
 			SetBlendModeForSelectedLayers { blend_mode } => {
 				self.backup(responses);
-				for path in self.layer_metadata.iter().filter_map(|(path, data)| data.selected.then(|| path.clone())) {
-					responses.push_back(DocumentOperation::SetLayerBlendMode { path, blend_mode }.into());
+				for path in self.selected_layers() {
+					responses.push_back(DocumentOperation::SetLayerBlendMode { path: path.to_vec(), blend_mode }.into());
 				}
+			}
+			SetImageBlobUrl {
+				layer_path,
+				blob_url,
+				resolution,
+				document_id,
+			} => {
+				let layer = self.graphene_document.layer(&layer_path).expect("Setting blob URL for invalid layer");
+
+				// Revoke the old blob URL
+				match &layer.data {
+					LayerDataType::Imaginate(imaginate) => {
+						if let Some(url) = &imaginate.blob_url {
+							responses.push_back(FrontendMessage::TriggerRevokeBlobUrl { url: url.clone() }.into());
+						}
+					}
+					LayerDataType::Image(_) => {}
+					other => panic!("Setting blob URL for invalid layer type, which must be an `Imaginate` or `Image`. Found: `{:?}`", other),
+				}
+
+				responses.push_back(
+					PortfolioMessage::DocumentPassMessage {
+						document_id,
+						message: DocumentOperation::SetLayerBlobUrl { layer_path, blob_url, resolution }.into(),
+					}
+					.into(),
+				);
 			}
 			SetLayerExpansion { layer_path, set_expanded } => {
 				self.layer_metadata_mut(&layer_path).expanded = set_expanded;
@@ -631,7 +723,7 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 				responses.push_back(LayerChanged { affected_layer_path: layer_path }.into())
 			}
 			SetLayerName { layer_path, name } => {
-				if let Some(layer) = self.layer_panel_entry_from_path(&layer_path, font_cache) {
+				if let Some(layer) = self.layer_panel_entry_from_path(&layer_path, &persistent_data.font_cache) {
 					// Only save the history state if the name actually changed to something different
 					if layer.name != name {
 						self.backup(responses);
@@ -664,7 +756,7 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 			SetSnapping { snap } => {
 				self.snapping_enabled = snap;
 			}
-			SetTexboxEditability { path, editable } => {
+			SetTextboxEditability { path, editable } => {
 				let text = self.graphene_document.layer(&path).unwrap().as_text().unwrap();
 				responses.push_back(DocumentOperation::SetTextEditability { path, editable }.into());
 				if editable {
@@ -760,7 +852,7 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 				responses.push_front(NavigationMessage::SetCanvasZoom { zoom_factor: 2. }.into());
 			}
 			ZoomCanvasToFitAll => {
-				if let Some(bounds) = self.document_bounds(font_cache) {
+				if let Some(bounds) = self.document_bounds(&persistent_data.font_cache) {
 					responses.push_back(
 						NavigationMessage::FitViewportToBounds {
 							bounds,
@@ -812,6 +904,109 @@ impl MessageHandler<DocumentMessage, (&InputPreprocessorMessageHandler, &FontCac
 }
 
 impl DocumentMessageHandler {
+	pub fn call_imaginate(&mut self, document_id: u64, preferences: &PreferencesMessageHandler, persistent_data: &PersistentData) -> Option<Message> {
+		let layer_path = {
+			let mut selected_imaginate_layers = self.selected_layers_with_type(LayerDataTypeDiscriminant::Imaginate);
+
+			// Get what is hopefully the only selected Imaginate layer
+			match selected_imaginate_layers.next() {
+				// Continue only if there are no additional Imaginate layers also selected
+				Some(layer_path) if selected_imaginate_layers.next().is_none() => layer_path.to_owned(),
+				_ => return None,
+			}
+		};
+
+		// Prepare the Imaginate parameters and base image
+
+		let transform = self.graphene_document.root.transform.inverse() * self.graphene_document.multiply_transforms(&layer_path).unwrap();
+		let layer = self.graphene_document.layer(&layer_path).unwrap();
+		let imaginate_layer = layer.as_imaginate().unwrap();
+
+		let parameters = ImaginateGenerationParameters {
+			seed: imaginate_layer.seed,
+			samples: imaginate_layer.samples,
+			sampling_method: imaginate_layer.sampling_method.api_value().to_string(),
+			denoising_strength: imaginate_layer.use_img2img.then_some(imaginate_layer.denoising_strength),
+			cfg_scale: imaginate_layer.cfg_scale,
+			prompt: imaginate_layer.prompt.clone(),
+			negative_prompt: imaginate_layer.negative_prompt.clone(),
+			resolution: pick_layer_safe_imaginate_resolution(layer, &persistent_data.font_cache),
+			restore_faces: imaginate_layer.restore_faces,
+			tiling: imaginate_layer.tiling,
+		};
+		let base_image = if imaginate_layer.use_img2img {
+			// Calculate the size of the region to be exported
+			let size = transform.transform_point2(DVec2::ONE) - transform.transform_point2(DVec2::ZERO);
+
+			let old_transforms = self.remove_document_transform();
+			let svg = self.render_document(size, transform.inverse(), persistent_data, DocumentRenderMode::OnlyBelowLayerInFolder(&layer_path));
+			self.restore_document_transform(old_transforms);
+
+			Some(ImaginateBaseImage { svg, size })
+		} else {
+			None
+		};
+
+		Some(
+			FrontendMessage::TriggerImaginateGenerate {
+				parameters,
+				base_image,
+				hostname: preferences.imaginate_server_hostname.clone(),
+				refresh_frequency: preferences.imaginate_refresh_frequency,
+				document_id,
+				layer_path,
+			}
+			.into(),
+		)
+	}
+
+	/// Remove the artwork and artboard pan/tilt/zoom to render it without the user's viewport navigation, and save it to be restored at the end
+	fn remove_document_transform(&mut self) -> [DAffine2; 2] {
+		let old_artwork_transform = self.graphene_document.root.transform;
+		self.graphene_document.root.transform = DAffine2::IDENTITY;
+		GrapheneDocument::mark_children_as_dirty(&mut self.graphene_document.root);
+
+		let old_artboard_transform = self.artboard_message_handler.artboards_graphene_document.root.transform;
+		self.artboard_message_handler.artboards_graphene_document.root.transform = DAffine2::IDENTITY;
+		GrapheneDocument::mark_children_as_dirty(&mut self.artboard_message_handler.artboards_graphene_document.root);
+
+		[old_artwork_transform, old_artboard_transform]
+	}
+
+	/// Transform the artwork and artboard back to their original scales
+	fn restore_document_transform(&mut self, [old_artwork_transform, old_artboard_transform]: [DAffine2; 2]) {
+		self.graphene_document.root.transform = old_artwork_transform;
+		GrapheneDocument::mark_children_as_dirty(&mut self.graphene_document.root);
+
+		self.artboard_message_handler.artboards_graphene_document.root.transform = old_artboard_transform;
+		GrapheneDocument::mark_children_as_dirty(&mut self.artboard_message_handler.artboards_graphene_document.root);
+	}
+
+	pub fn render_document(&mut self, size: DVec2, transform: DAffine2, persistent_data: &PersistentData, render_mode: DocumentRenderMode) -> String {
+		// Render the document SVG code
+
+		let render_data = RenderData::new(ViewMode::Normal, &persistent_data.font_cache, None);
+
+		let artwork = match render_mode {
+			DocumentRenderMode::Root => self.graphene_document.render_root(render_data),
+			DocumentRenderMode::OnlyBelowLayerInFolder(below_layer_path) => self.graphene_document.render_layers_below(below_layer_path, render_data).unwrap(),
+		};
+		let artboards = self.artboard_message_handler.artboards_graphene_document.render_root(render_data);
+		let outside_artboards_color = if self.artboard_message_handler.artboard_ids.is_empty() { "#ffffff" } else { "#222222" };
+		let outside_artboards = format!(r#"<rect x="0" y="0" width="100%" height="100%" fill="{}" />"#, outside_artboards_color);
+		let matrix = transform
+			.to_cols_array()
+			.iter()
+			.enumerate()
+			.fold(String::new(), |accum, (i, entry)| accum + &(entry.to_string() + if i == 5 { "" } else { "," }));
+		let svg = format!(
+			r#"<svg xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none" viewBox="0 0 1 1" width="{}" height="{}">{}{}<g transform="matrix({})">{}{}</g></svg>"#,
+			size.x, size.y, "\n", outside_artboards, matrix, artboards, artwork
+		);
+
+		svg
+	}
+
 	pub fn serialize_document(&self) -> String {
 		let val = serde_json::to_string(self);
 		// We fully expect the serialization to succeed
@@ -881,11 +1076,20 @@ impl DocumentMessageHandler {
 	}
 
 	pub fn selected_layers(&self) -> impl Iterator<Item = &[LayerId]> {
-		self.layer_metadata.iter().filter_map(|(path, data)| data.selected.then(|| path.as_slice()))
+		self.layer_metadata.iter().filter_map(|(path, data)| data.selected.then_some(path.as_slice()))
+	}
+
+	pub fn selected_layers_with_type(&self, discriminant: LayerDataTypeDiscriminant) -> impl Iterator<Item = &[LayerId]> {
+		self.selected_layers().filter(move |path| {
+			self.graphene_document
+				.layer(path)
+				.map(|layer| LayerDataTypeDiscriminant::from(&layer.data) == discriminant)
+				.unwrap_or(false)
+		})
 	}
 
 	pub fn non_selected_layers(&self) -> impl Iterator<Item = &[LayerId]> {
-		self.layer_metadata.iter().filter_map(|(path, data)| (!data.selected).then(|| path.as_slice()))
+		self.layer_metadata.iter().filter_map(|(path, data)| (!data.selected).then_some(path.as_slice()))
 	}
 
 	pub fn selected_layers_without_children(&self) -> Vec<&[LayerId]> {
@@ -1014,7 +1218,7 @@ impl DocumentMessageHandler {
 
 	/// Returns an unsorted list of all layer paths including folders at all levels, except the document's top-level root folder itself
 	pub fn all_layers(&self) -> impl Iterator<Item = &[LayerId]> {
-		self.layer_metadata.keys().filter_map(|path| (!path.is_empty()).then(|| path.as_slice()))
+		self.layer_metadata.keys().filter_map(|path| (!path.is_empty()).then_some(path.as_slice()))
 	}
 
 	/// Returns the paths to all layers in order
@@ -1022,7 +1226,7 @@ impl DocumentMessageHandler {
 		// Compute the indices for each layer to be able to sort them
 		let mut layers_with_indices: Vec<(&[LayerId], Vec<usize>)> = paths
 			// 'path.len() > 0' filters out root layer since it has no indices
-			.filter_map(|path| (!path.is_empty()).then(|| path))
+			.filter_map(|path| (!path.is_empty()).then_some(path))
 			.filter_map(|path| {
 				// TODO: `indices_for_path` can return an error. We currently skip these layers and log a warning. Once this problem is solved this code can be simplified.
 				match self.graphene_document.indices_for_path(path) {
@@ -1093,7 +1297,7 @@ impl DocumentMessageHandler {
 			Some((document, layer_metadata)) => {
 				// Update the currently displayed layer on the Properties panel if the selection changes after an undo action
 				// Also appropriately update the Properties panel if an undo action results in a layer being deleted
-				let prev_selected_paths: Vec<Vec<LayerId>> = layer_metadata.iter().filter_map(|(layer_id, metadata)| metadata.selected.then(|| layer_id.clone())).collect();
+				let prev_selected_paths: Vec<Vec<LayerId>> = layer_metadata.iter().filter_map(|(layer_id, metadata)| metadata.selected.then_some(layer_id.clone())).collect();
 
 				if prev_selected_paths != selected_paths {
 					responses.push_back(BroadcastEvent::SelectionChanged.into());
@@ -1123,7 +1327,7 @@ impl DocumentMessageHandler {
 			Some((document, layer_metadata)) => {
 				// Update currently displayed layer on property panel if selection changes after redo action
 				// Also appropriately update property panel if redo action results in a layer being added
-				let next_selected_paths: Vec<Vec<LayerId>> = layer_metadata.iter().filter_map(|(layer_id, metadata)| metadata.selected.then(|| layer_id.clone())).collect();
+				let next_selected_paths: Vec<Vec<LayerId>> = layer_metadata.iter().filter_map(|(layer_id, metadata)| metadata.selected.then_some(layer_id.clone())).collect();
 
 				if next_selected_paths != selected_paths {
 					responses.push_back(BroadcastEvent::SelectionChanged.into());
@@ -1152,8 +1356,20 @@ impl DocumentMessageHandler {
 			.unwrap_or(0)
 	}
 
+	pub fn is_auto_saved(&self) -> bool {
+		self.current_identifier() == self.auto_saved_document_identifier
+	}
+
 	pub fn is_saved(&self) -> bool {
 		self.current_identifier() == self.saved_document_identifier
+	}
+
+	pub fn set_auto_save_state(&mut self, is_saved: bool) {
+		if is_saved {
+			self.auto_saved_document_identifier = self.current_identifier();
+		} else {
+			self.auto_saved_document_identifier = generate_uuid();
+		}
 	}
 
 	pub fn set_save_state(&mut self, is_saved: bool) {
@@ -1231,24 +1447,33 @@ impl DocumentMessageHandler {
 	}
 
 	/// Loads layer resources such as creating the blob URLs for the images and loading all of the fonts in the document
-	pub fn load_layer_resources(&self, responses: &mut VecDeque<Message>, root: &LayerDataType, mut path: Vec<LayerId>) {
+	pub fn load_layer_resources(&self, responses: &mut VecDeque<Message>, root: &LayerDataType, mut path: Vec<LayerId>, document_id: u64) {
 		fn walk_layers(data: &LayerDataType, path: &mut Vec<LayerId>, image_data: &mut Vec<FrontendImageData>, fonts: &mut HashSet<Font>) {
 			match data {
-				LayerDataType::Folder(f) => {
-					for (id, layer) in f.layer_ids.iter().zip(f.layers().iter()) {
+				LayerDataType::Folder(folder) => {
+					for (id, layer) in folder.layer_ids.iter().zip(folder.layers().iter()) {
 						path.push(*id);
 						walk_layers(&layer.data, path, image_data, fonts);
 						path.pop();
 					}
 				}
-				LayerDataType::Text(txt) => {
-					fonts.insert(txt.font.clone());
+				LayerDataType::Text(text) => {
+					fonts.insert(text.font.clone());
 				}
-				LayerDataType::Image(img) => image_data.push(FrontendImageData {
+				LayerDataType::Image(image) => image_data.push(FrontendImageData {
 					path: path.clone(),
-					image_data: img.image_data.clone(),
-					mime: img.mime.clone(),
+					image_data: image.image_data.clone(),
+					mime: image.mime.clone(),
 				}),
+				LayerDataType::Imaginate(imaginate) => {
+					if let Some(data) = &imaginate.image_data {
+						image_data.push(FrontendImageData {
+							path: path.clone(),
+							image_data: data.image_data.clone(),
+							mime: imaginate.mime.clone(),
+						});
+					}
+				}
 				_ => {}
 			}
 		}
@@ -1257,7 +1482,7 @@ impl DocumentMessageHandler {
 		let mut fonts = HashSet::new();
 		walk_layers(root, &mut path, &mut image_data, &mut fonts);
 		if !image_data.is_empty() {
-			responses.push_front(FrontendMessage::UpdateImageData { image_data }.into());
+			responses.push_front(FrontendMessage::UpdateImageData { document_id, image_data }.into());
 		}
 		for font in fonts {
 			responses.push_front(FrontendMessage::TriggerFontLoad { font, is_default: false }.into());

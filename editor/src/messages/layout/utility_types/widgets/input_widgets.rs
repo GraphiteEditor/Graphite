@@ -6,7 +6,7 @@ use graphene::color::Color;
 use derivative::*;
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Default, Derivative, Serialize, Deserialize)]
+#[derive(Clone, Derivative, Serialize, Deserialize)]
 #[derivative(Debug, PartialEq)]
 pub struct CheckboxInput {
 	pub checked: bool,
@@ -24,16 +24,27 @@ pub struct CheckboxInput {
 	pub on_update: WidgetCallback<CheckboxInput>,
 }
 
+impl Default for CheckboxInput {
+	fn default() -> Self {
+		Self {
+			checked: false,
+			icon: "Checkmark".into(),
+			tooltip: Default::default(),
+			tooltip_shortcut: Default::default(),
+			on_update: Default::default(),
+		}
+	}
+}
+
 #[derive(Clone, Derivative, Serialize, Deserialize)]
 #[derivative(Debug, PartialEq, Default)]
 pub struct ColorInput {
-	pub value: Option<String>,
+	pub value: Option<Color>,
 
-	pub label: Option<String>,
-
+	// TODO: Add allow_none
 	#[serde(rename = "noTransparency")]
 	#[derivative(Default(value = "true"))]
-	pub no_transparency: bool,
+	pub no_transparency: bool, // TODO: Rename allow_transparency (and invert usages)
 
 	pub disabled: bool,
 
@@ -64,6 +75,11 @@ pub struct DropdownInput {
 	pub interactive: bool,
 
 	pub disabled: bool,
+
+	pub tooltip: String,
+
+	#[serde(skip)]
+	pub tooltip_shortcut: Option<ActionKeys>,
 	//
 	// Callbacks
 	// `on_update` exists on the `DropdownEntryData`, not this parent `DropdownInput`
@@ -108,6 +124,11 @@ pub struct FontInput {
 	pub is_style_picker: bool,
 
 	pub disabled: bool,
+
+	pub tooltip: String,
+
+	#[serde(skip)]
+	pub tooltip_shortcut: Option<ActionKeys>,
 
 	// Callbacks
 	#[serde(skip)]
@@ -159,11 +180,15 @@ pub struct NumberInput {
 
 	pub disabled: bool,
 
-	// Callbacks
-	#[serde(skip)]
-	#[derivative(Debug = "ignore", PartialEq = "ignore")]
-	pub on_update: WidgetCallback<NumberInput>,
+	#[serde(rename = "minWidth")]
+	pub min_width: u32,
 
+	pub tooltip: String,
+
+	#[serde(skip)]
+	pub tooltip_shortcut: Option<ActionKeys>,
+
+	// Callbacks
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
 	pub increment_callback_increase: WidgetCallback<NumberInput>,
@@ -171,6 +196,10 @@ pub struct NumberInput {
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
 	pub increment_callback_decrease: WidgetCallback<NumberInput>,
+
+	#[serde(skip)]
+	#[derivative(Debug = "ignore", PartialEq = "ignore")]
+	pub on_update: WidgetCallback<NumberInput>,
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug, Default, PartialEq, Eq)]
@@ -246,6 +275,8 @@ pub struct TextAreaInput {
 
 	pub disabled: bool,
 
+	pub tooltip: String,
+
 	// Callbacks
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
@@ -260,6 +291,13 @@ pub struct TextInput {
 	pub label: Option<String>,
 
 	pub disabled: bool,
+
+	pub tooltip: String,
+
+	pub centered: bool,
+
+	#[serde(rename = "minWidth")]
+	pub min_width: u32,
 
 	// Callbacks
 	#[serde(skip)]

@@ -1,6 +1,6 @@
 <template>
 	<LayoutRow class="popover-button">
-		<IconButton :action="() => onClick()" :icon="icon" :size="16" data-hover-menu-spawner />
+		<IconButton :action="() => onClick()" :icon="icon" :size="16" data-floating-menu-spawner :tooltip="tooltip" />
 		<FloatingMenu v-model:open="open" :type="'Popover'" :direction="'Bottom'">
 			<slot></slot>
 		</FloatingMenu>
@@ -51,13 +51,14 @@ import { defineComponent, type PropType } from "vue";
 
 import { type IconName } from "@/utility-functions/icons";
 
-import FloatingMenu from "@/components/floating-menus/FloatingMenu.vue";
+import FloatingMenu from "@/components/layout/FloatingMenu.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 import IconButton from "@/components/widgets/buttons/IconButton.vue";
 
 export default defineComponent({
 	props: {
 		icon: { type: String as PropType<IconName>, default: "DropdownArrow" },
+		tooltip: { type: String as PropType<string | undefined>, required: false },
 
 		// Callbacks
 		action: { type: Function as PropType<() => void>, required: false },

@@ -4,12 +4,12 @@
 			class="dropdown-box"
 			:class="{ disabled, open }"
 			:style="{ minWidth: `${minWidth}px` }"
+			:title="tooltip"
 			@click="() => !disabled && (open = true)"
-			@blur="(e: FocusEvent) => blur(e)"
+			@blur="(e: FocusEvent) => unFocusDropdownBox(e)"
 			@keydown="(e: KeyboardEvent) => keydown(e)"
-			ref="dropdownBox"
 			tabindex="0"
-			data-hover-menu-spawner
+			data-floating-menu-spawner
 		>
 			<IconLabel class="dropdown-icon" :icon="activeEntry.icon" v-if="activeEntry.icon" />
 			<span>{{ activeEntry.label }}</span>
@@ -115,6 +115,7 @@ export default defineComponent({
 		drawIcon: { type: Boolean as PropType<boolean>, default: false },
 		interactive: { type: Boolean as PropType<boolean>, default: true },
 		disabled: { type: Boolean as PropType<boolean>, default: false },
+		tooltip: { type: String as PropType<string | undefined>, required: false },
 	},
 	data() {
 		return {
@@ -153,10 +154,12 @@ export default defineComponent({
 			return DASH_ENTRY;
 		},
 		keydown(e: KeyboardEvent) {
-			(this.$refs.menuList as typeof MenuList).keydown(e, false);
+			(this.$refs.menuList as typeof MenuList | undefined)?.keydown(e, false);
 		},
-		blur(e: FocusEvent) {
-			if ((e.target as HTMLElement).closest("[data-dropdown-input]") !== this.$el) this.open = false;
+		unFocusDropdownBox(e: FocusEvent) {
+			const blurTarget = (e.target as HTMLDivElement | undefined)?.closest("[data-dropdown-input]");
+			const self: HTMLDivElement | undefined = this.$el;
+			if (blurTarget !== self) this.open = false;
 		},
 	},
 	components: {

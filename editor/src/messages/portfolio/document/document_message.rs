@@ -8,7 +8,6 @@ use graphene::layers::blend_mode::BlendMode;
 use graphene::layers::style::ViewMode;
 use graphene::LayerId;
 use graphene::Operation as DocumentOperation;
-
 use serde::{Deserialize, Serialize};
 
 #[remain::sorted]
@@ -75,6 +74,9 @@ pub enum DocumentMessage {
 		affected_folder_path: Vec<LayerId>,
 	},
 	GroupSelectedLayers,
+	ImaginateClear,
+	ImaginateGenerate,
+	ImaginateTerminate,
 	LayerChanged {
 		affected_layer_path: Vec<LayerId>,
 	},
@@ -120,6 +122,12 @@ pub enum DocumentMessage {
 	SetBlendModeForSelectedLayers {
 		blend_mode: BlendMode,
 	},
+	SetImageBlobUrl {
+		layer_path: Vec<LayerId>,
+		blob_url: String,
+		resolution: (f64, f64),
+		document_id: u64,
+	},
 	SetLayerExpansion {
 		layer_path: Vec<LayerId>,
 		set_expanded: bool,
@@ -140,7 +148,7 @@ pub enum DocumentMessage {
 	SetSnapping {
 		snap: bool,
 	},
-	SetTexboxEditability {
+	SetTextboxEditability {
 		path: Vec<LayerId>,
 		editable: bool,
 	},

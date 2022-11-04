@@ -67,6 +67,21 @@
 	--color-data-unused1-rgb: 214, 83, 110;
 	--color-data-unused2: #70a898;
 	--color-data-unused2-rgb: 112, 168, 152;
+
+	--color-none: white;
+	--color-none-repeat: no-repeat;
+	--color-none-position: center center;
+	// 24px tall, 48px wide
+	--color-none-size-24px: 60px 24px;
+	--color-none-image-24px: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 24"><line stroke="red" stroke-width="4px" x1="0" y1="27" x2="60" y2="-3" /></svg>');
+	// 32px tall, 64px wide
+	--color-none-size-32px: 80px 32px;
+	--color-none-image-32px: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 32"><line stroke="red" stroke-width="4px" x1="0" y1="36" x2="80" y2="-4" /></svg>');
+
+	--transparent-checkered-background: linear-gradient(45deg, #cccccc 25%, transparent 25%, transparent 75%, #cccccc 75%),
+		linear-gradient(45deg, #cccccc 25%, transparent 25%, transparent 75%, #cccccc 75%), linear-gradient(#ffffff, #ffffff);
+	--transparent-checkered-background-size: 16px 16px;
+	--transparent-checkered-background-position: 0 0, 8px 8px;
 }
 
 html,
@@ -217,7 +232,6 @@ img {
 <script lang="ts">
 import { defineComponent } from "vue";
 
-import { createBlobManager } from "@/io-managers/blob";
 import { createClipboardManager } from "@/io-managers/clipboard";
 import { createHyperlinkManager } from "@/io-managers/hyperlinks";
 import { createInputManager } from "@/io-managers/input";
@@ -236,7 +250,6 @@ import { createEditor, type Editor } from "@/wasm-communication/editor";
 import MainWindow from "@/components/window/MainWindow.vue";
 
 const managerDestructors: {
-	createBlobManager?: () => void;
 	createClipboardManager?: () => void;
 	createHyperlinkManager?: () => void;
 	createInputManager?: () => void;
@@ -285,13 +298,12 @@ export default defineComponent({
 	async mounted() {
 		// Initialize managers, which are isolated systems that subscribe to backend messages to link them to browser API functionality (like JS events, IndexedDB, etc.)
 		Object.assign(managerDestructors, {
-			createBlobManager: createBlobManager(this.editor),
 			createClipboardManager: createClipboardManager(this.editor),
 			createHyperlinkManager: createHyperlinkManager(this.editor),
 			createInputManager: createInputManager(this.editor, this.$el.parentElement, this.dialog, this.portfolio, this.fullscreen),
 			createLocalizationManager: createLocalizationManager(this.editor),
 			createPanicManager: createPanicManager(this.editor, this.dialog),
-			createPersistenceManager: await createPersistenceManager(this.editor, this.portfolio),
+			createPersistenceManager: createPersistenceManager(this.editor, this.portfolio),
 		});
 
 		// Initialize certain setup tasks required by the editor backend to be ready for the user now that the frontend is ready

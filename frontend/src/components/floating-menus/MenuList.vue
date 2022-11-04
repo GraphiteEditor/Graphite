@@ -8,7 +8,6 @@
 		:escapeCloses="false"
 		v-bind="{ direction, scrollableY: scrollableY && virtualScrollingEntryHeight === 0, minWidth }"
 		ref="floatingMenu"
-		data-hover-menu-keep-open
 	>
 		<!-- If we put the scrollableY on the layoutcol for non-font dropdowns then for some reason it always creates a tiny scrollbar.
 		However when we are using the virtual scrolling then we need the layoutcol to be scrolling so we can bind the events without using $refs. -->
@@ -22,6 +21,7 @@
 					class="row"
 					:class="{ open: isEntryOpen(entry), active: entry.label === highlighted?.label, disabled: entry.disabled }"
 					:style="{ height: virtualScrollingEntryHeight || '20px' }"
+					:title="tooltip"
 					@click="() => !entry.disabled && onEntryClick(entry)"
 					@pointerenter="() => !entry.disabled && onEntryPointerEnter(entry)"
 					@pointerleave="() => !entry.disabled && onEntryPointerLeave(entry)"
@@ -45,7 +45,7 @@
 						:direction="'TopRight'"
 						:entries="entry.children"
 						v-bind="{ minWidth, drawIcon, scrollableY }"
-						:ref="(ref: MenuListInstance) => ref && (entry.ref = ref)"
+						:ref="(ref: MenuListInstance): void => (ref && (entry.ref = ref), undefined)"
 					/>
 				</LayoutRow>
 			</template>
@@ -162,7 +162,7 @@ import { defineComponent, type PropType } from "vue";
 
 import { type MenuListEntry } from "@/wasm-communication/messages";
 
-import FloatingMenu, { type MenuDirection } from "@/components/floating-menus/FloatingMenu.vue";
+import FloatingMenu, { type MenuDirection } from "@/components/layout/FloatingMenu.vue";
 import LayoutCol from "@/components/layout/LayoutCol.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
@@ -184,6 +184,7 @@ const MenuList = defineComponent({
 		interactive: { type: Boolean as PropType<boolean>, default: false },
 		scrollableY: { type: Boolean as PropType<boolean>, default: false },
 		virtualScrollingEntryHeight: { type: Number as PropType<number>, default: 0 },
+		tooltip: { type: String as PropType<string | undefined>, required: false },
 	},
 	data() {
 		return {
@@ -202,15 +203,17 @@ const MenuList = defineComponent({
 			this.$emit("update:open", newIsOpen);
 		},
 		entries() {
-			const floatingMenu = this.$refs.floatingMenu as typeof FloatingMenu;
-			floatingMenu.measureAndEmitNaturalWidth();
+			(this.$refs.floatingMenu as typeof FloatingMenu | undefined)?.measureAndEmitNaturalWidth();
 		},
 		drawIcon() {
-			const floatingMenu = this.$refs.floatingMenu as typeof FloatingMenu;
-			floatingMenu.measureAndEmitNaturalWidth();
+			(this.$refs.floatingMenu as typeof FloatingMenu | undefined)?.measureAndEmitNaturalWidth();
 		},
 	},
 	methods: {
+		scrollViewTo(distanceDown: number): void {
+			const scroller: HTMLDivElement | undefined = (this.$refs.scroller as typeof LayoutCol | undefined)?.$el;
+			scroller?.scrollTo(0, distanceDown);
+		},
 		onEntryClick(menuListEntry: MenuListEntry): void {
 			// Call the action if available
 			if (menuListEntry.action) menuListEntry.action();
@@ -240,7 +243,6 @@ const MenuList = defineComponent({
 
 			return this.open;
 		},
-
 		/// Handles keyboard navigation for the menu. Returns if the entire menu stack should be dismissed
 		keydown(e: KeyboardEvent, submenu: boolean): boolean {
 			// Interactive menus should keep the active entry the same as the highlighted one

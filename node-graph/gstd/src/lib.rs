@@ -8,8 +8,6 @@ pub mod raster;
 
 pub mod any;
 
-pub mod document;
-
 pub use graphene_core::*;
 
 use quote::quote;
