@@ -23,6 +23,7 @@ impl Bezier {
 		}
 	}
 
+	/// Calculate the point along the curve that is `d` percent away from the start.
 	pub(crate) fn unrestricted_euclidean_evaluate(&self, d: f64, error: f64) -> DVec2 {
 		if let BezierHandles::Linear = self.handles {
 			return self.unrestricted_parametric_evaluate(d);
