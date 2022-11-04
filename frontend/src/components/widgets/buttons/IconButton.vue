@@ -1,5 +1,5 @@
 <template>
-	<button :class="['icon-button', `size-${size}`, active && 'active']" @click="(e: MouseEvent) => action(e)" :title="tooltip">
+	<button :class="['icon-button', `size-${size}`, active && 'active']" @click="(e: MouseEvent) => action(e)" :title="tooltip" :tabindex="active ? -1 : 0">
 		<IconLabel :icon="icon" />
 	</button>
 </template>
@@ -11,7 +11,6 @@
 	align-items: center;
 	flex: 0 0 auto;
 	padding: 0;
-	outline: none;
 	border: none;
 	border-radius: 2px;
 	background: none;
@@ -26,7 +25,11 @@
 	}
 
 	&.active {
-		background: var(--color-accent);
+		background: var(--color-e-nearwhite);
+
+		svg {
+			fill: var(--color-2-mildblack);
+		}
 	}
 
 	&:hover:not(.active) {

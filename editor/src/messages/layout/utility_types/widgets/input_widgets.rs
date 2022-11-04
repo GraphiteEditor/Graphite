@@ -11,6 +11,8 @@ use serde::{Deserialize, Serialize};
 pub struct CheckboxInput {
 	pub checked: bool,
 
+	pub disabled: bool,
+
 	pub icon: String,
 
 	pub tooltip: String,
@@ -28,6 +30,7 @@ impl Default for CheckboxInput {
 	fn default() -> Self {
 		Self {
 			checked: false,
+			disabled: false,
 			icon: "Checkmark".into(),
 			tooltip: Default::default(),
 			tooltip_shortcut: Default::default(),
@@ -214,6 +217,8 @@ pub enum NumberInputIncrementBehavior {
 #[derivative(Debug, PartialEq)]
 pub struct OptionalInput {
 	pub checked: bool,
+
+	pub disabled: bool,
 
 	pub icon: String,
 

@@ -8,7 +8,7 @@
 			@click="() => !disabled && (open = true)"
 			@blur="(e: FocusEvent) => unFocusDropdownBox(e)"
 			@keydown="(e: KeyboardEvent) => keydown(e)"
-			tabindex="0"
+			:tabindex="disabled ? -1 : 0"
 			data-floating-menu-spawner
 		>
 			<IconLabel class="dropdown-icon" :icon="activeEntry.icon" v-if="activeEntry.icon" />

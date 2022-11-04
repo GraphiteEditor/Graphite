@@ -27,6 +27,7 @@
 						class="expand-arrow"
 						:class="{ expanded: listing.entry.layerMetadata.expanded }"
 						@click.stop="handleExpandArrowClick(listing.entry.path)"
+						tabindex="0"
 					></button>
 					<LayoutRow
 						class="layer"
@@ -128,7 +129,6 @@
 				width: 16px;
 				height: 100%;
 				padding: 0;
-				outline: none;
 				border: none;
 				position: relative;
 				background: none;
@@ -193,7 +193,7 @@
 						color: inherit;
 						background: none;
 						border: none;
-						outline: none;
+						outline: none; // Ok for input element
 						margin: 0;
 						padding: 0;
 						text-overflow: ellipsis;
@@ -243,7 +243,7 @@
 			}
 
 			&.insert-folder .layer {
-				outline: 3px solid var(--color-accent-hover);
+				outline: 3px solid var(--color-e-nearwhite);
 				outline-offset: -3px;
 			}
 		}
@@ -252,7 +252,7 @@
 			position: absolute;
 			// `left` is applied dynamically
 			right: 0;
-			background: var(--color-accent-hover);
+			background: var(--color-e-nearwhite);
 			margin-top: -2px;
 			height: 5px;
 			z-index: 1;

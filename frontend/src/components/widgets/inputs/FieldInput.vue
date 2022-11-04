@@ -71,10 +71,15 @@
 		line-height: 18px;
 		margin: 0 8px;
 		padding: 3px 0;
-		outline: none;
+		outline: none; // Ok for input/textarea element
 		border: none;
 		background: none;
 		color: var(--color-e-nearwhite);
+		caret-color: var(--color-e-nearwhite);
+
+		&::selection {
+			background: var(--color-5-dullgray);
+		}
 	}
 
 	input {
