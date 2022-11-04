@@ -1,6 +1,6 @@
 <!-- This is a base component, extended by others like NumberInput and TextInput. It should not be used directly. -->
 <template>
-	<LayoutRow class="field-input" :class="{ disabled }" :title="tooltip">
+	<LayoutRow class="field-input" :class="{ disabled, 'sharp-right-corners': sharpRightCorners }" :title="tooltip">
 		<input
 			v-if="!textarea"
 			:class="{ 'has-label': label }"
@@ -136,6 +136,7 @@ export default defineComponent({
 		disabled: { type: Boolean as PropType<boolean>, default: false },
 		textarea: { type: Boolean as PropType<boolean>, default: false },
 		tooltip: { type: String as PropType<string | undefined>, required: false },
+		sharpRightCorners: { type: Boolean as PropType<boolean>, default: false },
 	},
 	data() {
 		return {

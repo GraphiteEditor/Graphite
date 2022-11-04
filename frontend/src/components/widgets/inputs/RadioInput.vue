@@ -1,12 +1,13 @@
 <template>
-	<LayoutRow class="radio-input">
+	<LayoutRow class="radio-input" :class="{ disabled }">
 		<button
-			:class="{ active: index === selectedIndex }"
+			:class="{ active: index === selectedIndex, disabled, 'sharp-right-corners': index === entries.length - 1 && sharpRightCorners }"
 			v-for="(entry, index) in entries"
 			:key="index"
 			@click="() => handleEntryClick(entry)"
 			:title="entry.tooltip"
 			:tabindex="index === selectedIndex ? -1 : 0"
+			:disabled="disabled"
 		>
 			<IconLabel v-if="entry.icon" :icon="entry.icon" />
 			<TextLabel v-if="entry.label">{{ entry.label }}</TextLabel>
@@ -40,6 +41,24 @@
 
 			svg {
 				fill: var(--color-2-mildblack);
+			}
+		}
+
+		&.disabled {
+			background: var(--color-4-dimgray);
+			color: var(--color-8-uppergray);
+
+			svg {
+				fill: var(--color-8-uppergray);
+			}
+
+			&.active {
+				background: var(--color-8-uppergray);
+				color: var(--color-2-mildblack);
+
+				svg {
+					fill: var(--color-2-mildblack);
+				}
 			}
 		}
 
@@ -80,7 +99,9 @@ export default defineComponent({
 	emits: ["update:selectedIndex"],
 	props: {
 		entries: { type: Array as PropType<RadioEntries>, required: true },
+		disabled: { type: Boolean as PropType<boolean>, default: false },
 		selectedIndex: { type: Number as PropType<number>, required: true },
+		sharpRightCorners: { type: Boolean as PropType<boolean>, default: false },
 	},
 	methods: {
 		handleEntryClick(radioEntryData: RadioEntryData) {

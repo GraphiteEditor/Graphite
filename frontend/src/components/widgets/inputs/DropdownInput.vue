@@ -2,7 +2,7 @@
 	<LayoutRow class="dropdown-input" data-dropdown-input>
 		<LayoutRow
 			class="dropdown-box"
-			:class="{ disabled, open }"
+			:class="{ disabled, open, 'sharp-right-corners': sharpRightCorners }"
 			:style="{ minWidth: `${minWidth}px` }"
 			:title="tooltip"
 			@click="() => !disabled && (open = true)"
@@ -116,6 +116,7 @@ export default defineComponent({
 		interactive: { type: Boolean as PropType<boolean>, default: true },
 		disabled: { type: Boolean as PropType<boolean>, default: false },
 		tooltip: { type: String as PropType<string | undefined>, required: false },
+		sharpRightCorners: { type: Boolean as PropType<boolean>, default: false },
 	},
 	data() {
 		return {

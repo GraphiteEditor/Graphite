@@ -99,6 +99,11 @@ img {
 	display: block;
 }
 
+.sharp-right-corners.sharp-right-corners.sharp-right-corners.sharp-right-corners {
+	border-top-right-radius: 0;
+	border-bottom-right-radius: 0;
+}
+
 .layout-row,
 .layout-col {
 	.scrollable-x,

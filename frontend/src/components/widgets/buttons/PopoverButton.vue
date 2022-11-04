@@ -1,6 +1,6 @@
 <template>
 	<LayoutRow class="popover-button">
-		<IconButton :class="{ open }" :action="() => onClick()" :icon="icon" :size="16" data-floating-menu-spawner :tooltip="tooltip" />
+		<IconButton :class="{ open }" :disabled="disabled" :action="() => onClick()" :icon="icon" :size="16" data-floating-menu-spawner :tooltip="tooltip" />
 		<FloatingMenu v-model:open="open" :type="'Popover'" :direction="'Bottom'">
 			<slot></slot>
 		</FloatingMenu>
@@ -33,6 +33,11 @@
 			background: var(--color-6-lowergray);
 			fill: var(--color-f-white);
 		}
+
+		&.disabled {
+			background: var(--color-2-mildblack);
+			fill: var(--color-8-uppergray);
+		}
 	}
 
 	// TODO: Refactor this and other complicated cases dealing with joined widget margins and border-radius by adding a single standard set of classes: joined-first, joined-inner, and joined-last
@@ -59,6 +64,7 @@ export default defineComponent({
 	props: {
 		icon: { type: String as PropType<IconName>, default: "DropdownArrow" },
 		tooltip: { type: String as PropType<string | undefined>, required: false },
+		disabled: { type: Boolean as PropType<boolean>, default: false },
 
 		// Callbacks
 		action: { type: Function as PropType<() => void>, required: false },

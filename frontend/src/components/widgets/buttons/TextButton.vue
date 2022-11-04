@@ -1,7 +1,7 @@
 <template>
 	<button
 		class="text-button"
-		:class="{ emphasized, disabled }"
+		:class="{ emphasized, disabled, 'sharp-right-corners': sharpRightCorners }"
 		:data-emphasized="emphasized || undefined"
 		:data-disabled="disabled || undefined"
 		data-text-button
@@ -80,6 +80,7 @@ export default defineComponent({
 		minWidth: { type: Number as PropType<number>, default: 0 },
 		disabled: { type: Boolean as PropType<boolean>, default: false },
 		tooltip: { type: String as PropType<string | undefined>, required: false },
+		sharpRightCorners: { type: Boolean as PropType<boolean>, default: false },
 
 		// Callbacks
 		action: { type: Function as PropType<(e: MouseEvent) => void>, required: true },
