@@ -1564,6 +1564,7 @@ impl DocumentMessageHandler {
 						..RadioEntryData::default()
 					},
 				],
+				..Default::default()
 			})),
 			WidgetHolder::new(Widget::PopoverButton(PopoverButton {
 				header: "View Mode".into(),

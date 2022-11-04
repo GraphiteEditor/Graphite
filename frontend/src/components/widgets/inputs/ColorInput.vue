@@ -1,6 +1,12 @@
 <template>
-	<LayoutRow class="color-input" :title="tooltip">
-		<button :class="{ none: value.none }" :style="{ '--chosen-color': value.toHexOptionalAlpha() }" @click="() => $emit('update:open', true)" tabindex="0" data-floating-menu-spawner>
+	<LayoutRow class="color-input" :class="{ 'sharp-right-corners': sharpRightCorners }" :title="tooltip">
+		<button
+			:class="{ none: value.none, 'sharp-right-corners': sharpRightCorners }"
+			:style="{ '--chosen-color': value.toHexOptionalAlpha() }"
+			@click="() => $emit('update:open', true)"
+			tabindex="0"
+			data-floating-menu-spawner
+		>
 			<TextLabel :bold="true" class="chip" v-if="chip">{{ chip }}</TextLabel>
 		</button>
 		<ColorPicker v-model:open="isOpen" :color="value" @update:color="(color: Color) => colorPickerUpdated(color)" :allowNone="true" />
@@ -86,8 +92,9 @@ export default defineComponent({
 	props: {
 		value: { type: Color as PropType<Color>, required: true },
 		noTransparency: { type: Boolean as PropType<boolean>, default: false }, // TODO: Rename to allowTransparency, also implement allowNone
-		disabled: { type: Boolean as PropType<boolean>, default: false },
+		disabled: { type: Boolean as PropType<boolean>, default: false }, // TODO: Design and implement
 		tooltip: { type: String as PropType<string | undefined>, required: false },
+		sharpRightCorners: { type: Boolean as PropType<boolean>, default: false },
 
 		// Bound through `v-model`
 		// TODO: See if this should be made to follow the pattern of DropdownInput.vue so this could be removed

@@ -44,6 +44,7 @@ pub fn register_artboard_layer_properties(layer: &Layer, responses: &mut VecDequ
 			WidgetHolder::new(Widget::IconLabel(IconLabel {
 				icon: "NodeArtboard".into(),
 				tooltip: "Artboard".into(),
+				..Default::default()
 			})),
 			WidgetHolder::new(Widget::Separator(Separator {
 				separator_type: SeparatorType::Related,
@@ -226,22 +227,27 @@ pub fn register_artwork_layer_properties(layer: &Layer, responses: &mut VecDeque
 				LayerDataType::Folder(_) => WidgetHolder::new(Widget::IconLabel(IconLabel {
 					icon: "NodeFolder".into(),
 					tooltip: "Folder".into(),
+					..Default::default()
 				})),
 				LayerDataType::Shape(_) => WidgetHolder::new(Widget::IconLabel(IconLabel {
 					icon: "NodeShape".into(),
 					tooltip: "Shape".into(),
+					..Default::default()
 				})),
 				LayerDataType::Text(_) => WidgetHolder::new(Widget::IconLabel(IconLabel {
 					icon: "NodeText".into(),
 					tooltip: "Text".into(),
+					..Default::default()
 				})),
 				LayerDataType::Image(_) => WidgetHolder::new(Widget::IconLabel(IconLabel {
 					icon: "NodeImage".into(),
 					tooltip: "Image".into(),
+					..Default::default()
 				})),
 				LayerDataType::Imaginate(_) => WidgetHolder::new(Widget::IconLabel(IconLabel {
 					icon: "NodeImaginate".into(),
 					tooltip: "Imaginate".into(),
+					..Default::default()
 				})),
 			},
 			WidgetHolder::new(Widget::Separator(Separator {
@@ -338,6 +344,7 @@ fn node_section_transform(layer: &Layer, persistent_data: &PersistentData) -> La
 					WidgetHolder::new(Widget::PivotAssist(PivotAssist {
 						position: layer.pivot.into(),
 						on_update: WidgetCallback::new(|pivot_assist: &PivotAssist| PropertiesPanelMessage::SetPivot { new_position: pivot_assist.position }.into()),
+						..Default::default()
 					})),
 					WidgetHolder::new(Widget::Separator(Separator {
 						separator_type: SeparatorType::Unrelated,
@@ -1152,6 +1159,7 @@ fn node_gradient_type(gradient: &Gradient) -> LayoutGroup {
 						..RadioEntryData::default()
 					},
 				],
+				..Default::default()
 			})),
 		],
 	}
@@ -1371,6 +1379,7 @@ fn node_section_stroke(stroke: &Stroke) -> LayoutGroup {
 								..RadioEntryData::default()
 							},
 						],
+						..Default::default()
 					})),
 				],
 			},
@@ -1418,6 +1427,7 @@ fn node_section_stroke(stroke: &Stroke) -> LayoutGroup {
 								..RadioEntryData::default()
 							},
 						],
+						..Default::default()
 					})),
 				],
 			},

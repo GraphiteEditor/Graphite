@@ -788,6 +788,8 @@ export class IconButton extends WidgetProps {
 
 	size!: IconSize;
 
+	disabled!: boolean;
+
 	active!: boolean;
 
 	@Transform(({ value }: { value: string }) => (value.length > 0 ? value : undefined))
@@ -796,6 +798,8 @@ export class IconButton extends WidgetProps {
 
 export class IconLabel extends WidgetProps {
 	icon!: IconName;
+
+	disabled!: boolean;
 
 	@Transform(({ value }: { value: string }) => (value.length > 0 ? value : undefined))
 	tooltip!: string | undefined;
@@ -846,6 +850,8 @@ export class OptionalInput extends WidgetProps {
 export class PopoverButton extends WidgetProps {
 	icon!: string | undefined;
 
+	disabled!: boolean;
+
 	// Body
 	header!: string;
 
@@ -868,6 +874,8 @@ export type RadioEntries = RadioEntryData[];
 
 export class RadioInput extends WidgetProps {
 	entries!: RadioEntries;
+
+	disabled!: boolean;
 
 	selectedIndex!: number;
 }
@@ -951,6 +959,8 @@ export class TextLabel extends WidgetProps {
 	value!: string;
 
 	// Props
+	disabled!: boolean;
+
 	bold!: boolean;
 
 	italic!: boolean;
@@ -969,6 +979,8 @@ export type PivotPosition = "None" | "TopLeft" | "TopCenter" | "TopRight" | "Cen
 
 export class PivotAssist extends WidgetProps {
 	position!: PivotPosition;
+
+	disabled!: boolean;
 }
 
 // WIDGET

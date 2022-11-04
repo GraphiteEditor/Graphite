@@ -1,5 +1,5 @@
 <template>
-	<span class="text-label" :class="{ bold, italic, multiline, 'table-align': tableAlign }" :style="minWidth > 0 ? `min-width: ${minWidth}px` : ''" :title="tooltip">
+	<span class="text-label" :class="{ disabled, bold, italic, multiline, 'table-align': tableAlign }" :style="minWidth > 0 ? `min-width: ${minWidth}px` : ''" :title="tooltip">
 		<slot></slot>
 	</span>
 </template>
@@ -8,6 +8,10 @@
 .text-label {
 	line-height: 18px;
 	white-space: nowrap;
+
+	&.disabled {
+		color: var(--color-8-uppergray);
+	}
 
 	&.bold {
 		font-weight: 700;
@@ -34,6 +38,7 @@ import { defineComponent, type PropType } from "vue";
 
 export default defineComponent({
 	props: {
+		disabled: { type: Boolean as PropType<boolean>, default: false },
 		bold: { type: Boolean as PropType<boolean>, default: false },
 		italic: { type: Boolean as PropType<boolean>, default: false },
 		tableAlign: { type: Boolean as PropType<boolean>, default: false },
