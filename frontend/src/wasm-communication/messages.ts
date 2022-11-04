@@ -37,6 +37,8 @@ export class UpdateOpenDocumentsList extends JsMessage {
 export abstract class DocumentDetails {
 	readonly name!: string;
 
+	readonly isAutoSaved!: boolean;
+
 	readonly isSaved!: boolean;
 
 	readonly id!: bigint | string;
@@ -50,6 +52,11 @@ export class FrontendDocumentDetails extends DocumentDetails {
 	readonly id!: bigint;
 }
 
+export class IndexedDbDocumentDetails extends DocumentDetails {
+	@Transform(({ value }: { value: bigint }) => value.toString())
+	id!: string;
+}
+
 export class TriggerIndexedDbWriteDocument extends JsMessage {
 	document!: string;
 
@@ -57,11 +64,6 @@ export class TriggerIndexedDbWriteDocument extends JsMessage {
 	details!: IndexedDbDocumentDetails;
 
 	version!: string;
-}
-
-export class IndexedDbDocumentDetails extends DocumentDetails {
-	@Transform(({ value }: { value: bigint }) => value.toString())
-	id!: string;
 }
 
 export class TriggerIndexedDbRemoveDocument extends JsMessage {
