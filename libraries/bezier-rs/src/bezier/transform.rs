@@ -323,9 +323,9 @@ impl Bezier {
 		reduced
 	}
 
-	/// Version of the `offset` function which scales the offset such that the start of the osset is `start_distance` from the original curve, while the end of
+	/// Version of the `offset` function which scales the offset such that the start of the offset is `start_distance` from the original curve, while the end of
 	/// of the offset is `end_distance` from the original curve. The curve transitions from `start_distance` to `end_distance` gradually, proportional to the
-	/// distance along the equation (`t`-value) of the curve.
+	/// distance along the equation (`t`-value) of the curve. Similarily to the `offset` function, the returned result is an approximation.
 	pub fn graduated_offset(&self, start_distance: f64, end_distance: f64) -> Vec<Bezier> {
 		let reduced = self.reduce(None);
 		let mut next_start_distance = start_distance;
@@ -361,7 +361,7 @@ impl Bezier {
 		[first_segment, vec![second_segment], third_segment, vec![fourth_segment]].concat()
 	}
 
-	/// Version of the `outline` function which draws theh outline at the specified distances away from the curve.
+	/// Version of the `outline` function which draws the outline at the specified distances away from the curve.
 	/// The outline begins `start_distance` away, and gradually move to being `end_distance` away.
 	pub fn graduated_outline(&self, start_distance: f64, end_distance: f64) -> Vec<Bezier> {
 		self.skewed_outline(start_distance, end_distance, end_distance, start_distance)
