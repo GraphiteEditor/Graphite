@@ -6,7 +6,7 @@
 		:label="label"
 		:spellcheck="false"
 		:disabled="disabled"
-		:style="{ 'min-width': minWidth > 0 ? `${minWidth}px` : undefined, '--travel-factor': rangeSliderValueBeforeMousedown / (sliderMinValue + sliderMaxValue) }"
+		:style="{ 'min-width': minWidth > 0 ? `${minWidth}px` : undefined, '--travel-factor': rangeSliderValueAsRendered / (sliderMinValue + sliderMaxValue) }"
 		:tooltip="tooltip"
 		:sharpRightCorners="sharpRightCorners"
 		@textFocused="() => onTextFocused()"
@@ -293,14 +293,17 @@ export default defineComponent({
 		return {
 			text: this.displayText(this.value),
 			editing: false,
-			rangeSliderValue: this.value !== undefined ? this.value : 0,
-			rangeSliderValueBeforeMousedown: this.value !== undefined ? this.value : 0, // TODO: rename now that it's also after mousedown
 			// "default": nothing is happening (default/reset state)
 			// "mousedown": the user has pressed down the mouse but might now drag, or release,
 			// so we show the fake slider at the old position in place of the real one which is still being dragged while hidden
 			// "dragging": the user is dragging the slider around so we don't show the fake slider anymore
 			fakeSliderThumbTravel: 0,
 			fakeSliderState: "default" as "default" | "mousedown" | "dragging",
+			// Bound to stay in sync with the actual input range slider element
+			rangeSliderValue: this.value !== undefined ? this.value : 0,
+			// Value used to render the position of the fake slider when applicable, and length of the progress colored region to the slider's left.
+			// This is the same as `rangeSliderValue` except in the "mousedown" state, when it has the previous location before the user's mousedown.
+			rangeSliderValueAsRendered: this.value !== undefined ? this.value : 0,
 		};
 	},
 	computed: {
@@ -330,11 +333,11 @@ export default defineComponent({
 			const exponent = 10 ** 4;
 			const roundedValue = Math.round(this.rangeSliderValue * exponent) / exponent;
 
-			this.rangeSliderValueBeforeMousedown = roundedValue;
+			this.rangeSliderValueAsRendered = roundedValue;
 			this.updateValue(roundedValue);
 		},
 		async sliderPointerDown() {
-			this.rangeSliderValueBeforeMousedown = this.rangeSliderValue;
+			this.rangeSliderValueAsRendered = this.rangeSliderValue;
 		},
 		sliderPointerUp() {
 			// User clicked but didn't drag, so we focus the text input element
@@ -343,7 +346,7 @@ export default defineComponent({
 				const inputElement = fieldInput?.$el.querySelector("[data-input-element]") as HTMLInputElement | undefined;
 				if (!inputElement) return;
 
-				this.rangeSliderValue = this.rangeSliderValueBeforeMousedown;
+				this.rangeSliderValue = this.rangeSliderValueAsRendered;
 				inputElement.focus();
 			}
 
@@ -438,7 +441,7 @@ export default defineComponent({
 			}
 
 			this.rangeSliderValue = newValue;
-			this.rangeSliderValueBeforeMousedown = newValue;
+			this.rangeSliderValueAsRendered = newValue;
 
 			// The simple `clamp()` function can't be used here since `undefined` values need to be boundless
 			let sanitized = newValue;
