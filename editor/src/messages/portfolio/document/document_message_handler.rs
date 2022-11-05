@@ -37,6 +37,7 @@ use serde::{Deserialize, Serialize};
 pub struct DocumentMessageHandler {
 	pub graphene_document: GrapheneDocument,
 	pub saved_document_identifier: u64,
+	pub auto_saved_document_identifier: u64,
 	pub name: String,
 	pub version: String,
 
@@ -68,6 +69,7 @@ impl Default for DocumentMessageHandler {
 		Self {
 			graphene_document: GrapheneDocument::default(),
 			saved_document_identifier: 0,
+			auto_saved_document_identifier: 0,
 			name: String::from("Untitled Document"),
 			version: GRAPHITE_DOCUMENT_VERSION.to_string(),
 
@@ -1354,8 +1356,20 @@ impl DocumentMessageHandler {
 			.unwrap_or(0)
 	}
 
+	pub fn is_auto_saved(&self) -> bool {
+		self.current_identifier() == self.auto_saved_document_identifier
+	}
+
 	pub fn is_saved(&self) -> bool {
 		self.current_identifier() == self.saved_document_identifier
+	}
+
+	pub fn set_auto_save_state(&mut self, is_saved: bool) {
+		if is_saved {
+			self.auto_saved_document_identifier = self.current_identifier();
+		} else {
+			self.auto_saved_document_identifier = generate_uuid();
+		}
 	}
 
 	pub fn set_save_state(&mut self, is_saved: bool) {
@@ -1550,6 +1564,7 @@ impl DocumentMessageHandler {
 						..RadioEntryData::default()
 					},
 				],
+				..Default::default()
 			})),
 			WidgetHolder::new(Widget::PopoverButton(PopoverButton {
 				header: "View Mode".into(),

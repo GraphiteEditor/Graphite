@@ -129,6 +129,7 @@ impl PropertyHolder for GradientTool {
 						..RadioEntryData::default()
 					},
 				],
+				..Default::default()
 			}))],
 		}]))
 	}

@@ -51,7 +51,7 @@
 		box-sizing: border-box;
 		border: 1px solid;
 		border-radius: 4px;
-		border-color: var(--color-7-middlegray);
+		border-color: var(--color-5-dullgray);
 		color: var(--color-e-nearwhite);
 
 		&.width-1 {
@@ -85,7 +85,7 @@
 		}
 
 		.dim {
-			fill: var(--color-7-middlegray);
+			fill: var(--color-8-uppergray);
 		}
 	}
 
@@ -93,9 +93,9 @@
 		margin-left: 4px;
 	}
 
-	.floating-menu-content & {
+	.floating-menu-content .row > & {
 		.input-key {
-			border-color: var(--color-4-dimgray);
+			border-color: var(--color-3-darkgray);
 			color: var(--color-8-uppergray);
 		}
 
@@ -106,20 +106,13 @@
 		}
 
 		.input-mouse .dim {
-			fill: var(--color-4-dimgray);
+			fill: var(--color-3-darkgray);
 		}
 	}
 
 	.floating-menu-content .row:hover > & {
 		.input-key {
 			border-color: var(--color-7-middlegray);
-			color: var(--color-9-palegray);
-		}
-
-		.input-key .icon-label svg,
-		&.keyboard-lock-notice.keyboard-lock-notice svg,
-		.input-mouse .bright {
-			fill: var(--color-9-palegray);
 		}
 
 		.input-mouse .dim {

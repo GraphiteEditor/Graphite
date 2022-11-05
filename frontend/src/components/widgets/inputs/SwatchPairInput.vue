@@ -1,20 +1,18 @@
 <template>
 	<LayoutCol class="swatch-pair">
-		<LayoutRow class="secondary swatch">
-			<button @click="() => clickSecondarySwatch()" :style="`--swatch-color: ${secondary.toRgbaCSS()}`" data-floating-menu-spawner="no-hover-transfer"></button>
-			<ColorPicker v-model:open="secondaryOpen" :color="secondary" @update:color="(color: Color) => secondaryColorChanged(color)" :direction="'Right'" />
-		</LayoutRow>
 		<LayoutRow class="primary swatch">
-			<button @click="() => clickPrimarySwatch()" :style="`--swatch-color: ${primary.toRgbaCSS()}`" data-floating-menu-spawner="no-hover-transfer"></button>
+			<button @click="() => clickPrimarySwatch()" :style="`--swatch-color: ${primary.toRgbaCSS()}`" data-floating-menu-spawner="no-hover-transfer" tabindex="0"></button>
 			<ColorPicker v-model:open="primaryOpen" :color="primary" @update:color="(color: Color) => primaryColorChanged(color)" :direction="'Right'" />
+		</LayoutRow>
+		<LayoutRow class="secondary swatch">
+			<button @click="() => clickSecondarySwatch()" :style="`--swatch-color: ${secondary.toRgbaCSS()}`" data-floating-menu-spawner="no-hover-transfer" tabindex="0"></button>
+			<ColorPicker v-model:open="secondaryOpen" :color="secondary" @update:color="(color: Color) => secondaryColorChanged(color)" :direction="'Right'" />
 		</LayoutRow>
 	</LayoutCol>
 </template>
 
 <style lang="scss">
 .swatch-pair {
-	// Reversed order of elements paired with `column-reverse` allows primary to overlap secondary without relying on `z-index`
-	flex-direction: column-reverse;
 	flex: 0 0 auto;
 
 	.swatch {
@@ -28,15 +26,14 @@
 			width: 100%;
 			height: 100%;
 			border-radius: 50%;
-			border: 2px var(--color-7-middlegray) solid;
+			border: 2px var(--color-5-dullgray) solid;
 			box-shadow: 0 0 0 2px var(--color-3-darkgray);
 			margin: 0;
 			padding: 0;
 			box-sizing: border-box;
-			outline: none;
-			background: linear-gradient(var(--swatch-color), var(--swatch-color)), var(--transparent-checkered-background);
-			background-size: var(--transparent-checkered-background-size);
-			background-position: var(--transparent-checkered-background-position);
+			background: linear-gradient(var(--swatch-color), var(--swatch-color)), var(--color-transparent-checkered-background);
+			background-size: var(--color-transparent-checkered-background-size);
+			background-position: var(--color-transparent-checkered-background-position);
 			overflow: hidden;
 		}
 
@@ -47,6 +44,7 @@
 
 		&.primary {
 			margin-bottom: -8px;
+			z-index: 1;
 		}
 	}
 }

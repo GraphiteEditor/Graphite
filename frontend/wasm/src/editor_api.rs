@@ -207,6 +207,7 @@ impl JsEditorHandle {
 		let message = PortfolioMessage::OpenDocumentFileWithId {
 			document_id,
 			document_name,
+			document_is_auto_saved: true,
 			document_is_saved,
 			document_serialized_content,
 		};

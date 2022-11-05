@@ -19,8 +19,43 @@
 
 <body>
 	<noscript>JavaScript is required</noscript>
-	<!-- tabindex is used to allow the app to have focus while inside of it -->
 	<div data-app id="app" tabindex="0"></div>
+	<script>
+	// Confirm the browser is compatible before initializing the application
+
+	// Display an error if the browser is incompatible with a required API
+	// This is run outside the JS code bundle in case unsupported features cause a syntax error when parsing the bundle, preventing the any bundle code from running
+	let error;
+	if (!("BigUint64Array" in window)) {
+		error = `
+<style>
+h2, p, a { text-align: center; color: white; }
+#app { display: none; }
+</style>
+<h2>This browser is too old to run Graphite</h2>
+<p>Please upgrade to a modern web browser such as the latest Firefox, Chrome, Edge, or Safari version 15 or newer.</p>
+<p>(The <a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/BigInt64Array#browser_compatibility" target="_blank"><code>BigInt64Array</code></a>
+JavaScript API must be supported by the browser for Graphite to function.)</p>
+		`.trim();
+	}
+	if (error) {
+		document.body.innerHTML = error + document.body.innerHTML;
+		delete window.graphiteAppInit;
+	} else {
+		const retry = () => {
+			if (window.graphiteAppInit) {
+				const init = window.graphiteAppInit;
+				delete window.graphiteAppInit;
+				init();
+			}
+			else {
+				setTimeout(retry, 0);
+			}
+		};
+		retry();
+	}
+
+	</script>
 </body>
 
 </html>
