@@ -320,24 +320,35 @@ export default defineComponent({
 	},
 	methods: {
 		sliderInput() {
-			if (this.fakeSliderState === "default") {
-				this.fakeSliderState = "mousedown";
+			// Keep 4 digits after the decimal point
+			const ROUNDING_EXPONENT = 4;
+			const ROUNDING_MAGNITUDE = 10 ** ROUNDING_EXPONENT;
+			const roundedValue = Math.round(this.rangeSliderValue * ROUNDING_MAGNITUDE) / ROUNDING_MAGNITUDE;
+
+			// Exit if this is an extraneous event invocation that occurred after mouseup, which happens in Firefox
+			if (this.value !== undefined && Math.abs(this.value - roundedValue) < 1 / ROUNDING_MAGNITUDE) {
 				return;
 			}
 
+			// The first event upon mousedown means we transition to a "mousedown" state
+			if (this.fakeSliderState === "default") {
+				this.fakeSliderState = "mousedown";
+
+				// Exit early because we don't want to keep the value set by where on the track the user pressed
+				return;
+			}
+
+			// The second event upon mousedown that occurs by moving left or right means the user has committed to dragging the slider
 			if (this.fakeSliderState === "mousedown") {
 				this.fakeSliderState = "dragging";
 			}
 
-			// Leaves 4 digits after the decimal point
-			const exponent = 10 ** 4;
-			const roundedValue = Math.round(this.rangeSliderValue * exponent) / exponent;
-
+			// If we're in a dragging state, we want to use the new slider value
 			this.rangeSliderValueAsRendered = roundedValue;
 			this.updateValue(roundedValue);
 		},
 		async sliderPointerDown() {
-			this.rangeSliderValueAsRendered = this.rangeSliderValue;
+			this.rangeSliderValueAsRendered = this.value || 0;
 		},
 		sliderPointerUp() {
 			// User clicked but didn't drag, so we focus the text input element
@@ -346,7 +357,10 @@ export default defineComponent({
 				const inputElement = fieldInput?.$el.querySelector("[data-input-element]") as HTMLInputElement | undefined;
 				if (!inputElement) return;
 
+				// Set the slider position back to the original position to undo the user moving it
 				this.rangeSliderValue = this.rangeSliderValueAsRendered;
+
+				// Begin editing the number text field
 				inputElement.focus();
 			}
 
