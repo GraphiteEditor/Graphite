@@ -1,6 +1,17 @@
+<!-- TODO: Combine this widget into the DropdownInput widget -->
+
 <template>
 	<LayoutRow class="font-input">
-		<LayoutRow class="dropdown-box" :class="{ disabled }" :style="{ minWidth: `${minWidth}px` }" :title="tooltip" tabindex="0" @click="toggleOpen" @keydown="keydown" data-floating-menu-spawner>
+		<LayoutRow
+			class="dropdown-box"
+			:class="{ disabled, 'sharp-right-corners': sharpRightCorners }"
+			:style="{ minWidth: `${minWidth}px` }"
+			:title="tooltip"
+			:tabindex="disabled ? -1 : 0"
+			@click="toggleOpen"
+			@keydown="keydown"
+			data-floating-menu-spawner
+		>
 			<span>{{ activeEntry?.value || "" }}</span>
 			<IconLabel class="dropdown-arrow" :icon="'DropdownArrow'" />
 		</LayoutRow>
@@ -86,6 +97,7 @@ export default defineComponent({
 		isStyle: { type: Boolean as PropType<boolean>, default: false },
 		disabled: { type: Boolean as PropType<boolean>, default: false },
 		tooltip: { type: String as PropType<string | undefined>, required: false },
+		sharpRightCorners: { type: Boolean as PropType<boolean>, default: false },
 	},
 	data() {
 		return {

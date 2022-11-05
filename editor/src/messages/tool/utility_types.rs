@@ -183,9 +183,10 @@ impl PropertyHolder for ToolData {
 					WidgetHolder::new(Widget::IconButton(IconButton {
 						icon: icon_name,
 						size: 32,
+						disabled: false,
+						active: self.active_tool_type == tool_type,
 						tooltip: tooltip.clone(),
 						tooltip_shortcut,
-						active: self.active_tool_type == tool_type,
 						on_update: WidgetCallback::new(move |_| {
 							if !tooltip.contains("Coming Soon") {
 								ToolMessage::ActivateTool { tool_type }.into()

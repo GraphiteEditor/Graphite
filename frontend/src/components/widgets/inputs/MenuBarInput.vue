@@ -8,7 +8,7 @@
 				class="entry"
 				:class="{ open: entry.ref?.isOpen }"
 				tabindex="0"
-				data-floating-menu-spawner
+				:data-floating-menu-spawner="entry.children && entry.children.length > 0 ? '' : 'no-hover-transfer'"
 			>
 				<IconLabel v-if="entry.icon" :icon="entry.icon" />
 				<span v-if="entry.label">{{ entry.label }}</span>

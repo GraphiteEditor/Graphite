@@ -108,13 +108,13 @@
 				/>
 				<LayoutRow class="leftover-space"></LayoutRow>
 				<LayoutRow>
-					<button class="preset-color none" @click="() => setColorPreset('none')" v-if="allowNone" title="Set none"></button>
+					<button class="preset-color none" @click="() => setColorPreset('none')" v-if="allowNone" title="Set none" tabindex="0"></button>
 					<Separator :type="'Related'" v-if="allowNone" />
-					<button class="preset-color black" @click="() => setColorPreset('black')" title="Set black"></button>
+					<button class="preset-color black" @click="() => setColorPreset('black')" title="Set black" tabindex="0"></button>
 					<Separator :type="'Related'" />
-					<button class="preset-color white" @click="() => setColorPreset('white')" title="Set white"></button>
+					<button class="preset-color white" @click="() => setColorPreset('white')" title="Set white" tabindex="0"></button>
 					<Separator :type="'Related'" />
-					<button class="preset-color pure" @click="(e: MouseEvent) => setColorPresetSubtile(e)">
+					<button class="preset-color pure" @click="(e: MouseEvent) => setColorPresetSubtile(e)" tabindex="-1">
 						<div data-pure-tile="red" style="--pure-color: #ff0000; --pure-color-gray: #4c4c4c" title="Set red"></div>
 						<div data-pure-tile="yellow" style="--pure-color: #ffff00; --pure-color-gray: #e3e3e3" title="Set yellow"></div>
 						<div data-pure-tile="green" style="--pure-color: #00ff00; --pure-color-gray: #969696" title="Set green"></div>
@@ -170,9 +170,9 @@
 			height: 100%;
 			z-index: -1;
 			position: relative;
-			background: var(--transparent-checkered-background);
-			background-size: var(--transparent-checkered-background-size);
-			background-position: var(--transparent-checkered-background-position);
+			background: var(--color-transparent-checkered-background);
+			background-size: var(--color-transparent-checkered-background-size);
+			background-position: var(--color-transparent-checkered-background-position);
 		}
 		--selection-pincers-color: var(--new-color-contrasting);
 	}
@@ -256,7 +256,7 @@
 			overflow: hidden;
 
 			.new-color {
-				background: linear-gradient(var(--new-color), var(--new-color)), var(--transparent-checkered-background);
+				background: linear-gradient(var(--new-color), var(--new-color)), var(--color-transparent-checkered-background);
 
 				.text-label {
 					text-align: left;
@@ -266,7 +266,7 @@
 			}
 
 			.initial-color {
-				background: linear-gradient(var(--initial-color), var(--initial-color)), var(--transparent-checkered-background);
+				background: linear-gradient(var(--initial-color), var(--initial-color)), var(--color-transparent-checkered-background);
 
 				.text-label {
 					text-align: right;
@@ -279,8 +279,8 @@
 			.initial-color {
 				width: 50%;
 				height: 100%;
-				background-size: var(--transparent-checkered-background-size);
-				background-position: var(--transparent-checkered-background-position);
+				background-size: var(--color-transparent-checkered-background-size);
+				background-position: var(--color-transparent-checkered-background-position);
 
 				&.none {
 					background: var(--color-none);
@@ -299,7 +299,6 @@
 
 		.preset-color {
 			border: none;
-			outline: none;
 			padding: 0;
 			border-radius: 2px;
 			width: calc(48px + (48px + 4px) / 2);
@@ -342,7 +341,8 @@
 					background: var(--pure-color-gray);
 				}
 
-				&:hover div {
+				&:hover div,
+				&:focus div {
 					background: var(--pure-color);
 				}
 			}
@@ -584,12 +584,14 @@ export default defineComponent({
 		},
 		async activateEyedropperSample() {
 			// TODO: Replace this temporary solution that only works in Chromium-based browsers with the custom color sampler used by the Eyedropper tool
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
 			if (!(window as any).EyeDropper) {
 				this.editor.instance.eyedropperSampleForColorPicker();
 				return;
 			}
 
 			try {
+				// eslint-disable-next-line @typescript-eslint/no-explicit-any
 				const result = await new (window as any).EyeDropper().open();
 				this.setColorCode(result.sRGBHex);
 			} catch {

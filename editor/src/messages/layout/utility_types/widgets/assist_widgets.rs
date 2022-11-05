@@ -9,6 +9,8 @@ use serde::{Deserialize, Serialize};
 pub struct PivotAssist {
 	pub position: PivotPosition,
 
+	pub disabled: bool,
+
 	// Callbacks
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]

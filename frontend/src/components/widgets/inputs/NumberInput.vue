@@ -7,13 +7,14 @@
 		:disabled="disabled"
 		:style="minWidth > 0 ? `min-width: ${minWidth}px` : ''"
 		:tooltip="tooltip"
+		:sharpRightCorners="sharpRightCorners"
 		@textFocused="() => onTextFocused()"
 		@textChanged="() => onTextChanged()"
 		@cancelTextChange="() => onCancelTextChange()"
 		ref="fieldInput"
 	>
-		<button v-if="value !== undefined" class="arrow left" @click="() => onIncrement('Decrease')"></button>
-		<button v-if="value !== undefined" class="arrow right" @click="() => onIncrement('Increase')"></button>
+		<button v-if="value !== undefined" class="arrow left" @click="() => onIncrement('Decrease')" tabindex="-1"></button>
+		<button v-if="value !== undefined" class="arrow right" @click="() => onIncrement('Increase')" tabindex="-1"></button>
 	</FieldInput>
 </template>
 
@@ -31,7 +32,6 @@
 		position: absolute;
 		top: 0;
 		padding: 9px 0;
-		outline: none;
 		border: none;
 		background: rgba(var(--color-1-nearblack-rgb), 0.75);
 
@@ -111,6 +111,7 @@ export default defineComponent({
 		disabled: { type: Boolean as PropType<boolean>, default: false },
 		minWidth: { type: Number as PropType<number>, default: 0 },
 		tooltip: { type: String as PropType<string | undefined>, required: false },
+		sharpRightCorners: { type: Boolean as PropType<boolean>, default: false },
 
 		// Callbacks
 		incrementCallbackIncrease: { type: Function as PropType<() => void>, required: false },

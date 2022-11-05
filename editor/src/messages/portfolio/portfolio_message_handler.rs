@@ -49,6 +49,9 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 			}
 			PortfolioMessage::AutoSaveActiveDocument => {
 				if let Some(document_id) = self.active_document_id {
+					if let Some(document) = self.active_document_mut() {
+						document.set_auto_save_state(true);
+					}
 					responses.push_back(PortfolioMessage::AutoSaveDocument { document_id }.into());
 				}
 			}
@@ -58,6 +61,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 					FrontendMessage::TriggerIndexedDbWriteDocument {
 						document: document.serialize_document(),
 						details: FrontendDocumentDetails {
+							is_auto_saved: document.is_auto_saved(),
 							is_saved: document.is_saved(),
 							id: document_id,
 							name: document.name.clone(),
@@ -93,24 +97,15 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 
 				if self.document_ids.is_empty() {
 					self.active_document_id = None;
-				} else if Some(document_id) == self.active_document_id {
-					if document_index == self.document_ids.len() {
+				} else if self.active_document_id.is_some() {
+					let document_id = if document_index == self.document_ids.len() {
 						// If we closed the last document take the one previous (same as last)
-						responses.push_back(
-							PortfolioMessage::SelectDocument {
-								document_id: *self.document_ids.last().unwrap(),
-							}
-							.into(),
-						);
+						*self.document_ids.last().unwrap()
 					} else {
 						// Move to the next tab
-						responses.push_back(
-							PortfolioMessage::SelectDocument {
-								document_id: self.document_ids[document_index],
-							}
-							.into(),
-						);
-					}
+						self.document_ids[document_index]
+					};
+					responses.push_back(PortfolioMessage::SelectDocument { document_id }.into());
 				}
 
 				// Send the new list of document tab names
@@ -282,6 +277,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 					PortfolioMessage::OpenDocumentFileWithId {
 						document_id: generate_uuid(),
 						document_name,
+						document_is_auto_saved: false,
 						document_is_saved: true,
 						document_serialized_content,
 					}
@@ -291,12 +287,14 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 			PortfolioMessage::OpenDocumentFileWithId {
 				document_id,
 				document_name,
+				document_is_auto_saved,
 				document_is_saved,
 				document_serialized_content,
 			} => {
 				let document = DocumentMessageHandler::with_name_and_content(document_name, document_serialized_content);
 				match document {
 					Ok(mut document) => {
+						document.set_auto_save_state(document_is_auto_saved);
 						document.set_save_state(document_is_saved);
 						self.load_document(document, document_id, responses);
 					}
@@ -497,10 +495,10 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 			}
 			PortfolioMessage::SelectDocument { document_id } => {
 				if let Some(document) = self.active_document() {
-					if !document.is_saved() {
-						// Safe to unwrap since we know that there is an active document
+					if !document.is_auto_saved() {
 						responses.push_back(
 							PortfolioMessage::AutoSaveDocument {
+								// Safe to unwrap since we know that there is an active document
 								document_id: self.active_document_id.unwrap(),
 							}
 							.into(),
@@ -552,10 +550,11 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 					.document_ids
 					.iter()
 					.filter_map(|id| {
-						self.documents.get(id).map(|doc| FrontendDocumentDetails {
-							is_saved: doc.is_saved(),
+						self.documents.get(id).map(|document| FrontendDocumentDetails {
+							is_auto_saved: document.is_auto_saved(),
+							is_saved: document.is_saved(),
 							id: *id,
-							name: doc.name.clone(),
+							name: document.name.clone(),
 						})
 					})
 					.collect::<Vec<_>>();

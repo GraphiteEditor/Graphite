@@ -105,20 +105,22 @@
 					}
 				}
 
-				.color-solid {
-					fill: var(--color-f-white);
-				}
+				.icon-button:not(.active) {
+					.color-solid {
+						fill: var(--color-f-white);
+					}
 
-				.color-general {
-					fill: var(--color-data-general);
-				}
+					.color-general {
+						fill: var(--color-data-general);
+					}
 
-				.color-vector {
-					fill: var(--color-data-vector);
-				}
+					.color-vector {
+						fill: var(--color-data-vector);
+					}
 
-				.color-raster {
-					fill: var(--color-data-raster);
+					.color-raster {
+						fill: var(--color-data-raster);
+					}
 				}
 			}
 
@@ -190,6 +192,7 @@
 						pointer-events: auto;
 					}
 				}
+
 				foreignObject {
 					width: 10000px;
 					height: 10000px;
@@ -207,12 +210,12 @@
 						// Workaround to force Chrome to display the flashing text entry cursor when text is empty
 						padding-left: 1px;
 						margin-left: -1px;
-					}
 
-					div:focus {
-						border: none;
-						outline: none;
-						margin: -1px;
+						&:focus {
+							border: none;
+							outline: none; // Ok for contenteditable element
+							margin: -1px;
+						}
 					}
 				}
 			}

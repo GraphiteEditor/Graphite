@@ -8,6 +8,7 @@
 		:disabled="disabled"
 		:tooltip="tooltip"
 		:style="minWidth > 0 ? `min-width: ${minWidth}px` : ''"
+		:sharpRightCorners="sharpRightCorners"
 		@textFocused="() => onTextFocused()"
 		@textChanged="() => onTextChanged()"
 		@cancelTextChange="() => onCancelTextChange()"
@@ -43,6 +44,7 @@ export default defineComponent({
 		centered: { type: Boolean as PropType<boolean>, default: false },
 		minWidth: { type: Number as PropType<number>, default: 0 },
 		tooltip: { type: String as PropType<string | undefined>, required: false },
+		sharpRightCorners: { type: Boolean as PropType<boolean>, default: false },
 	},
 	data() {
 		return {

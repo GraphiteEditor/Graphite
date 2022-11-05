@@ -11,6 +11,8 @@ use serde::{Deserialize, Serialize};
 pub struct CheckboxInput {
 	pub checked: bool,
 
+	pub disabled: bool,
+
 	pub icon: String,
 
 	pub tooltip: String,
@@ -28,6 +30,7 @@ impl Default for CheckboxInput {
 	fn default() -> Self {
 		Self {
 			checked: false,
+			disabled: false,
 			icon: "Checkmark".into(),
 			tooltip: Default::default(),
 			tooltip_shortcut: Default::default(),
@@ -215,6 +218,8 @@ pub enum NumberInputIncrementBehavior {
 pub struct OptionalInput {
 	pub checked: bool,
 
+	pub disabled: bool,
+
 	pub icon: String,
 
 	pub tooltip: String,
@@ -232,6 +237,8 @@ pub struct OptionalInput {
 #[derivative(Debug, PartialEq)]
 pub struct RadioInput {
 	pub entries: Vec<RadioEntryData>,
+
+	pub disabled: bool,
 
 	// This uses `u32` instead of `usize` since it will be serialized as a normal JS number (replace this with `usize` after switching to a Rust-based GUI)
 	#[serde(rename = "selectedIndex")]

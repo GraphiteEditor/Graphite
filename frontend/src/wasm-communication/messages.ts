@@ -37,6 +37,8 @@ export class UpdateOpenDocumentsList extends JsMessage {
 export abstract class DocumentDetails {
 	readonly name!: string;
 
+	readonly isAutoSaved!: boolean;
+
 	readonly isSaved!: boolean;
 
 	readonly id!: bigint | string;
@@ -50,6 +52,11 @@ export class FrontendDocumentDetails extends DocumentDetails {
 	readonly id!: bigint;
 }
 
+export class IndexedDbDocumentDetails extends DocumentDetails {
+	@Transform(({ value }: { value: bigint }) => value.toString())
+	id!: string;
+}
+
 export class TriggerIndexedDbWriteDocument extends JsMessage {
 	document!: string;
 
@@ -57,11 +64,6 @@ export class TriggerIndexedDbWriteDocument extends JsMessage {
 	details!: IndexedDbDocumentDetails;
 
 	version!: string;
-}
-
-export class IndexedDbDocumentDetails extends DocumentDetails {
-	@Transform(({ value }: { value: bigint }) => value.toString())
-	id!: string;
 }
 
 export class TriggerIndexedDbRemoveDocument extends JsMessage {
@@ -717,6 +719,8 @@ export abstract class WidgetProps {
 export class CheckboxInput extends WidgetProps {
 	checked!: boolean;
 
+	disabled!: boolean;
+
 	icon!: IconName;
 
 	@Transform(({ value }: { value: string }) => (value.length > 0 ? value : undefined))
@@ -795,6 +799,8 @@ export class IconButton extends WidgetProps {
 
 	size!: IconSize;
 
+	disabled!: boolean;
+
 	active!: boolean;
 
 	@Transform(({ value }: { value: string }) => (value.length > 0 ? value : undefined))
@@ -803,6 +809,8 @@ export class IconButton extends WidgetProps {
 
 export class IconLabel extends WidgetProps {
 	icon!: IconName;
+
+	disabled!: boolean;
 
 	@Transform(({ value }: { value: string }) => (value.length > 0 ? value : undefined))
 	tooltip!: string | undefined;
@@ -842,6 +850,8 @@ export class NumberInput extends WidgetProps {
 export class OptionalInput extends WidgetProps {
 	checked!: boolean;
 
+	disabled!: boolean;
+
 	icon!: IconName;
 
 	@Transform(({ value }: { value: string }) => (value.length > 0 ? value : undefined))
@@ -850,6 +860,8 @@ export class OptionalInput extends WidgetProps {
 
 export class PopoverButton extends WidgetProps {
 	icon!: string | undefined;
+
+	disabled!: boolean;
 
 	// Body
 	header!: string;
@@ -873,6 +885,8 @@ export type RadioEntries = RadioEntryData[];
 
 export class RadioInput extends WidgetProps {
 	entries!: RadioEntries;
+
+	disabled!: boolean;
 
 	selectedIndex!: number;
 }
@@ -956,6 +970,8 @@ export class TextLabel extends WidgetProps {
 	value!: string;
 
 	// Props
+	disabled!: boolean;
+
 	bold!: boolean;
 
 	italic!: boolean;
@@ -974,6 +990,8 @@ export type PivotPosition = "None" | "TopLeft" | "TopCenter" | "TopRight" | "Cen
 
 export class PivotAssist extends WidgetProps {
 	position!: PivotPosition;
+
+	disabled!: boolean;
 }
 
 // WIDGET
