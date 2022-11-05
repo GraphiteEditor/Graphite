@@ -25,14 +25,11 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 			NodeGraphMessage::AddLink { from, to, to_index } => {
 				if let Some(network) = self.get_active_network(document) {
 					if let Some(to) = network.nodes.get_mut(&to) {
+						// Extend number of inputs if not already large enough
+						if to_index >= to.inputs.len() {
+							to.inputs.extend(((to.inputs.len() - 1)..to_index).map(|_| NodeInput::Network));
+						}
 						to.inputs[to_index] = NodeInput::Node(from);
-					}
-				}
-			}
-			NodeGraphMessage::AddValue { node, input_index, value } => {
-				if let Some(network) = self.get_active_network(document) {
-					if let Some(node) = network.nodes.get_mut(&node) {
-						node.inputs[input_index] = NodeInput::Value(value);
 					}
 				}
 			}
@@ -70,6 +67,17 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 					info!("Opening node graph with nodes {:?}", network.nodes);
 					for (_id, _node) in &network.nodes {
 						// TODO: Populate initial frontend with nodes.
+					}
+				}
+			}
+			NodeGraphMessage::SetInputValue { node, input_index, value } => {
+				if let Some(network) = self.get_active_network(document) {
+					if let Some(node) = network.nodes.get_mut(&node) {
+						// Extend number of inputs if not already large enough
+						if input_index >= node.inputs.len() {
+							node.inputs.extend(((node.inputs.len() - 1)..input_index).map(|_| NodeInput::Network));
+						}
+						node.inputs[input_index] = NodeInput::Value(value);
 					}
 				}
 			}

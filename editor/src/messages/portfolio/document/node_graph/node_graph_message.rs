@@ -12,11 +12,6 @@ pub enum NodeGraphMessage {
 		to: NodeId,
 		to_index: usize,
 	},
-	AddValue {
-		node: NodeId,
-		input_index: usize,
-		value: TaggedValue,
-	},
 	CloseNodeGraph,
 	CreateNode {
 		// Having the caller generate the id means that we don't have to return it. This can be a random u64.
@@ -31,5 +26,10 @@ pub enum NodeGraphMessage {
 	},
 	OpenNodeGraph {
 		layer_path: Vec<graphene::LayerId>,
+	},
+	SetInputValue {
+		node: NodeId,
+		input_index: usize,
+		value: TaggedValue,
 	},
 }
