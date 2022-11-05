@@ -275,10 +275,9 @@ pub fn register_artwork_layer_properties(layer: &Layer, responses: &mut VecDeque
 		],
 	}];
 
-	let bounding_box = layer.data.bounding_box(DAffine2::IDENTITY, &persistent_data.font_cache);
 	let properties_body = match &layer.data {
 		LayerDataType::Shape(shape) => {
-			if let Some(fill_layout) = node_section_fill(shape.style.fill(), bounding_box) {
+			if let Some(fill_layout) = node_section_fill(shape.style.fill()) {
 				vec![
 					node_section_transform(layer, persistent_data),
 					fill_layout,
@@ -292,7 +291,7 @@ pub fn register_artwork_layer_properties(layer: &Layer, responses: &mut VecDeque
 			vec![
 				node_section_transform(layer, persistent_data),
 				node_section_font(text),
-				node_section_fill(text.path_style.fill(), bounding_box).expect("Text should have fill"),
+				node_section_fill(text.path_style.fill()).expect("Text should have fill"),
 				node_section_stroke(&text.path_style.stroke().unwrap_or_default()),
 			]
 		}
@@ -1250,14 +1249,14 @@ fn node_gradient_color(gradient: &Gradient, position: usize) -> LayoutGroup {
 	LayoutGroup::Row { widgets }
 }
 
-fn node_section_fill(fill: &Fill, layer_bounds: Option<[DVec2; 2]>) -> Option<LayoutGroup> {
+fn node_section_fill(fill: &Fill) -> Option<LayoutGroup> {
 	let initial_color = if let Fill::Solid(color) = fill { *color } else { Color::BLACK };
 
 	match fill {
 		Fill::Solid(_) | Fill::None => Some(LayoutGroup::Section {
 			name: "Fill".into(),
-			layout: {
-				let mut result = vec![LayoutGroup::Row {
+			layout: vec![
+				LayoutGroup::Row {
 					widgets: vec![
 						WidgetHolder::new(Widget::TextLabel(TextLabel {
 							value: "Color".into(),
@@ -1276,50 +1275,42 @@ fn node_section_fill(fill: &Fill, layer_bounds: Option<[DVec2; 2]>) -> Option<La
 							..ColorInput::default()
 						})),
 					],
-				}];
-				if let Some(bounds) = layer_bounds {
-					result.push(LayoutGroup::Row {
-						widgets: vec![
-							WidgetHolder::new(Widget::TextLabel(TextLabel {
-								value: "".into(),
-								..TextLabel::default()
-							})),
-							WidgetHolder::new(Widget::Separator(Separator {
-								separator_type: SeparatorType::Unrelated,
-								direction: SeparatorDirection::Horizontal,
-							})),
-							WidgetHolder::new(Widget::TextButton(TextButton {
-								label: "Use Gradient".into(),
-								tooltip: "Change this fill from a solid color to a gradient".into(),
-								on_update: WidgetCallback::new(move |_: &TextButton| {
-									// TODO: Fix bounds calculation for shapes with a 1x1 scale (text, Pen tool shape, other non-primitives)
-									let center_y = (bounds[0].y + bounds[1].y) / 2.;
-									let left_bound = (bounds[0].x, center_y);
-									let right_bound = (bounds[1].x, center_y);
+				},
+				LayoutGroup::Row {
+					widgets: vec![
+						WidgetHolder::new(Widget::TextLabel(TextLabel {
+							value: "".into(),
+							..TextLabel::default()
+						})),
+						WidgetHolder::new(Widget::Separator(Separator {
+							separator_type: SeparatorType::Unrelated,
+							direction: SeparatorDirection::Horizontal,
+						})),
+						WidgetHolder::new(Widget::TextButton(TextButton {
+							label: "Use Gradient".into(),
+							tooltip: "Change this fill from a solid color to a gradient".into(),
+							on_update: WidgetCallback::new(move |_: &TextButton| {
+								let (r, g, b, _) = initial_color.components();
+								let opposite_color = Color::from_rgbaf32(1. - r, 1. - g, 1. - b, 1.).unwrap();
 
-									let (r, g, b, _) = initial_color.components();
-									let opposite_color = Color::from_rgbaf32(1. - r, 1. - g, 1. - b, 1.).unwrap();
-
-									PropertiesPanelMessage::ModifyFill {
-										fill: Fill::Gradient(Gradient::new(
-											left_bound.into(),
-											initial_color,
-											right_bound.into(),
-											opposite_color,
-											DAffine2::IDENTITY,
-											generate_uuid(),
-											GradientType::Linear,
-										)),
-									}
-									.into()
-								}),
-								..TextButton::default()
-							})),
-						],
-					});
-				}
-				result
-			},
+								PropertiesPanelMessage::ModifyFill {
+									fill: Fill::Gradient(Gradient::new(
+										DVec2::new(0., 0.5),
+										initial_color,
+										DVec2::new(1., 0.5),
+										opposite_color,
+										DAffine2::IDENTITY,
+										generate_uuid(),
+										GradientType::Linear,
+									)),
+								}
+								.into()
+							}),
+							..TextButton::default()
+						})),
+					],
+				},
+			],
 		}),
 		Fill::Gradient(gradient) => Some(LayoutGroup::Section {
 			name: "Fill".into(),
