@@ -1,3 +1,4 @@
+use super::base64_serde;
 use super::layer_info::LayerData;
 use super::style::{RenderData, ViewMode};
 use crate::intersection::{intersect_quad_bez_path, Quad};
@@ -22,8 +23,13 @@ pub struct NodeGraphFrameLayer {
 	pub blob_url: Option<String>,
 	#[serde(skip)]
 	pub dimensions: DVec2,
-	#[serde(skip)]
-	pub image_data: Option<Vec<u8>>,
+	pub image_data: Option<ImageData>,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Deserialize, Serialize)]
+pub struct ImageData {
+	#[serde(serialize_with = "base64_serde::as_base64", deserialize_with = "base64_serde::from_base64")]
+	pub image_data: Vec<u8>,
 }
 
 impl LayerData for NodeGraphFrameLayer {

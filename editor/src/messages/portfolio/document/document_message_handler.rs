@@ -1523,7 +1523,7 @@ impl DocumentMessageHandler {
 					if let Some(data) = &node_graph_frame.image_data {
 						image_data.push(FrontendImageData {
 							path: path.clone(),
-							image_data: data.clone(),
+							image_data: data.image_data.clone(),
 							mime: node_graph_frame.mime.clone(),
 						});
 					}

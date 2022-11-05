@@ -606,7 +606,7 @@ impl Document {
 			Operation::SetNodeGraphFrameImageData { layer_path, image_data } => {
 				let layer = self.layer_mut(&layer_path).expect("Setting NodeGraphFrame image data for invalid layer");
 				if let LayerDataType::NodeGraphFrame(node_graph_frame) = &mut layer.data {
-					node_graph_frame.image_data = Some(image_data);
+					node_graph_frame.image_data = Some(crate::layers::nodegraph_layer::ImageData { image_data });
 				} else {
 					panic!("Incorrectly trying to set image data for a layer that is not an NodeGraphFrame layer type");
 				}
