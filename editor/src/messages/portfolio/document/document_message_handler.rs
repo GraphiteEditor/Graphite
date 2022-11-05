@@ -381,9 +381,9 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				let mut selected_frame_layers = self
 					.selected_layers_with_type(LayerDataTypeDiscriminant::Imaginate)
 					.chain(self.selected_layers_with_type(LayerDataTypeDiscriminant::NodeGraphFrame));
-				// Get what is hopefully the only selected Imaginate layer
+				// Get what is hopefully the only selected Imaginate/NodeGraphFrame layer
 				let layer_path = selected_frame_layers.next();
-				// Abort if we didn't have any Imaginate layer, or if there are additional ones also selected
+				// Abort if we didn't have any Imaginate/NodeGraphFrame layer, or if there are additional ones also selected
 				if layer_path.is_none() || selected_frame_layers.next().is_some() {
 					return;
 				}
@@ -991,7 +991,7 @@ impl DocumentMessageHandler {
 			}
 		};
 
-		// Prepare the Imaginate parameters and base image
+		// Prepare the node graph base image base image
 
 		// Calculate the size of the region to be exported
 
