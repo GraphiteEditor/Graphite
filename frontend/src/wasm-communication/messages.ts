@@ -514,6 +514,16 @@ export class TriggerImaginateTerminate extends JsMessage {
 	readonly hostname!: string;
 }
 
+export class TriggerNodeGraphFrameGenerate extends JsMessage {
+	readonly documentId!: bigint;
+
+	readonly layerPath!: BigUint64Array;
+
+	readonly svg!: string;
+
+	readonly size!: [number, number];
+}
+
 export class TriggerRefreshBoundsOfViewports extends JsMessage {}
 
 export class TriggerRevokeBlobUrl extends JsMessage {
@@ -641,7 +651,7 @@ export class LayerMetadata {
 	selected!: boolean;
 }
 
-export type LayerType = "Imaginate" | "Folder" | "Image" | "Shape" | "Text";
+export type LayerType = "Imaginate" | "NodeGraphFrame" | "Folder" | "Image" | "Shape" | "Text";
 
 export type LayerTypeData = {
 	name: string;
@@ -651,6 +661,7 @@ export type LayerTypeData = {
 export function layerTypeData(layerType: LayerType): LayerTypeData | undefined {
 	const entries: Record<string, LayerTypeData> = {
 		Imaginate: { name: "Imaginate", icon: "NodeImaginate" },
+		NodeGraphFrame: { name: "Node Graph Frame", icon: "NodeNodes" },
 		Folder: { name: "Folder", icon: "NodeFolder" },
 		Image: { name: "Image", icon: "NodeImage" },
 		Shape: { name: "Shape", icon: "NodeShape" },
@@ -1218,6 +1229,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	TriggerImaginateCheckServerStatus,
 	TriggerImaginateGenerate,
 	TriggerImaginateTerminate,
+	TriggerNodeGraphFrameGenerate,
 	TriggerFileDownload,
 	TriggerFontLoad,
 	TriggerImport,
