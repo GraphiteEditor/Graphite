@@ -123,6 +123,13 @@ pub fn default_mapping() -> Mapping {
 		entry!(KeyDown(Escape); action_dispatch=ImaginateToolMessage::Abort),
 		entry!(PointerMove; refresh_keys=[Alt, Shift], action_dispatch=ImaginateToolMessage::Resize { center: Alt, lock_ratio: Shift }),
 		//
+		// NodeGraphFrameToolMessage
+		entry!(KeyDown(Lmb); action_dispatch=NodeGraphFrameToolMessage::DragStart),
+		entry!(KeyUp(Lmb); action_dispatch=NodeGraphFrameToolMessage::DragStop),
+		entry!(KeyDown(Rmb); action_dispatch=NodeGraphFrameToolMessage::Abort),
+		entry!(KeyDown(Escape); action_dispatch=NodeGraphFrameToolMessage::Abort),
+		entry!(PointerMove; refresh_keys=[Alt, Shift], action_dispatch=NodeGraphFrameToolMessage::Resize { center: Alt, lock_ratio: Shift }),
+		//
 		// EllipseToolMessage
 		entry!(KeyDown(Lmb); action_dispatch=EllipseToolMessage::DragStart),
 		entry!(KeyUp(Lmb); action_dispatch=EllipseToolMessage::DragStop),

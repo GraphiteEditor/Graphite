@@ -112,6 +112,7 @@ import NodeImaginate from "@/../assets/icon-16px-solid/node-imaginate.svg";
 import NodeMagicWand from "@/../assets/icon-16px-solid/node-magic-wand.svg";
 import NodeMask from "@/../assets/icon-16px-solid/node-mask.svg";
 import NodeMotionBlur from "@/../assets/icon-16px-solid/node-motion-blur.svg";
+import NodeNodes from "@/../assets/icon-16px-solid/node-nodes.svg";
 import NodeOutput from "@/../assets/icon-16px-solid/node-output.svg";
 import NodeShape from "@/../assets/icon-16px-solid/node-shape.svg";
 import NodeText from "@/../assets/icon-16px-solid/node-text.svg";
@@ -168,6 +169,7 @@ const SOLID_16PX = {
 	NodeMagicWand: { component: NodeMagicWand, size: 16 },
 	NodeMask: { component: NodeMask, size: 16 },
 	NodeMotionBlur: { component: NodeMotionBlur, size: 16 },
+	NodeNodes: { component: NodeNodes, size: 16 },
 	NodeOutput: { component: NodeOutput, size: 16 },
 	NodeShape: { component: NodeShape, size: 16 },
 	NodeText: { component: NodeText, size: 16 },
@@ -228,6 +230,7 @@ import RasterCloneTool from "@/../assets/icon-24px-two-tone/raster-clone-tool.sv
 import RasterDetailTool from "@/../assets/icon-24px-two-tone/raster-detail-tool.svg";
 import RasterHealTool from "@/../assets/icon-24px-two-tone/raster-heal-tool.svg";
 import RasterImaginateTool from "@/../assets/icon-24px-two-tone/raster-imaginate-tool.svg";
+import RasterNodesTool from "@/../assets/icon-24px-two-tone/raster-nodes-tool.svg";
 import RasterPatchTool from "@/../assets/icon-24px-two-tone/raster-patch-tool.svg";
 import RasterRelightTool from "@/../assets/icon-24px-two-tone/raster-relight-tool.svg";
 import VectorEllipseTool from "@/../assets/icon-24px-two-tone/vector-ellipse-tool.svg";
@@ -248,6 +251,7 @@ const TWO_TONE_24PX = {
 	GeneralNavigateTool: { component: GeneralNavigateTool, size: 24 },
 	GeneralSelectTool: { component: GeneralSelectTool, size: 24 },
 	RasterImaginateTool: { component: RasterImaginateTool, size: 24 },
+	RasterNodesTool: { component: RasterNodesTool, size: 24 },
 	RasterBrushTool: { component: RasterBrushTool, size: 24 },
 	RasterCloneTool: { component: RasterCloneTool, size: 24 },
 	RasterDetailTool: { component: RasterDetailTool, size: 24 },

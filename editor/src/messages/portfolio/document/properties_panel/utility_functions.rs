@@ -14,7 +14,8 @@ use crate::messages::prelude::*;
 use graphene::color::Color;
 use graphene::document::pick_layer_safe_imaginate_resolution;
 use graphene::layers::imaginate_layer::{ImaginateLayer, ImaginateSamplingMethod, ImaginateStatus};
-use graphene::layers::layer_info::{Layer, LayerData, LayerDataType, LayerDataTypeDiscriminant};
+use graphene::layers::layer_info::{Layer, LayerDataType, LayerDataTypeDiscriminant};
+use graphene::layers::nodegraph_layer::NodeGraphFrameLayer;
 use graphene::layers::style::{Fill, Gradient, GradientType, LineCap, LineJoin, Stroke};
 use graphene::layers::text_layer::{FontCache, TextLayer};
 
@@ -251,6 +252,11 @@ pub fn register_artwork_layer_properties(layer: &Layer, responses: &mut VecDeque
 					tooltip: "Imaginate".into(),
 					..Default::default()
 				})),
+				LayerDataType::NodeGraphFrame(_) => WidgetHolder::new(Widget::IconLabel(IconLabel {
+					icon: "NodeNodes".into(),
+					tooltip: "Node Graph Frame".into(),
+					..Default::default()
+				})),
 			},
 			WidgetHolder::new(Widget::Separator(Separator {
 				separator_type: SeparatorType::Related,
@@ -306,6 +312,9 @@ pub fn register_artwork_layer_properties(layer: &Layer, responses: &mut VecDeque
 		}
 		LayerDataType::Imaginate(imaginate) => {
 			vec![node_section_transform(layer, persistent_data), node_section_imaginate(imaginate, layer, persistent_data, responses)]
+		}
+		LayerDataType::NodeGraphFrame(node_graph_frame) => {
+			vec![node_section_transform(layer, persistent_data), node_section_node_graph_frame(node_graph_frame)]
 		}
 		LayerDataType::Folder(_) => {
 			vec![node_section_transform(layer, persistent_data)]
@@ -659,8 +668,8 @@ fn node_section_imaginate(imaginate_layer: &ImaginateLayer, layer: &Layer, persi
 								WidgetHolder::new(Widget::TextButton(TextButton {
 									label: "Clear".into(),
 									tooltip: "Remove generated image from the layer frame".into(),
-									disabled: imaginate_layer.blob_url == None,
-									on_update: WidgetCallback::new(|_| DocumentMessage::ImaginateClear.into()),
+									disabled: imaginate_layer.blob_url.is_none(),
+									on_update: WidgetCallback::new(|_| DocumentMessage::FrameClear.into()),
 									..Default::default()
 								})),
 							],
@@ -1004,6 +1013,55 @@ fn node_section_imaginate(imaginate_layer: &ImaginateLayer, layer: &Layer, persi
 						})),
 					]
 				},
+			},
+		],
+	}
+}
+
+fn node_section_node_graph_frame(node_graph_frame: &NodeGraphFrameLayer) -> LayoutGroup {
+	LayoutGroup::Section {
+		name: "Node Graph Frame".into(),
+		layout: vec![
+			LayoutGroup::Row {
+				widgets: vec![WidgetHolder::new(Widget::TextLabel(TextLabel {
+					value: "Temporary layer that applies a greyscale to the layers below it.".into(),
+					..TextLabel::default()
+				}))],
+			},
+			LayoutGroup::Row {
+				widgets: vec![WidgetHolder::new(Widget::TextLabel(TextLabel {
+					value: "Powered by the node graph :)".into(),
+					..TextLabel::default()
+				}))],
+			},
+			LayoutGroup::Row {
+				widgets: vec![WidgetHolder::new(Widget::TextButton(TextButton {
+					label: "Open Node Graph UI (todo)".into(),
+					tooltip: "Open the node graph associated with this layer".into(),
+					on_update: WidgetCallback::new(|_| DialogMessage::RequestComingSoonDialog { issue: Some(800) }.into()),
+					..Default::default()
+				}))],
+			},
+			LayoutGroup::Row {
+				widgets: vec![
+					WidgetHolder::new(Widget::TextButton(TextButton {
+						label: "Generate".into(),
+						tooltip: "Fill layer frame by generating a new image".into(),
+						on_update: WidgetCallback::new(|_| DocumentMessage::NodeGraphFrameGenerate.into()),
+						..Default::default()
+					})),
+					WidgetHolder::new(Widget::Separator(Separator {
+						separator_type: SeparatorType::Related,
+						direction: SeparatorDirection::Horizontal,
+					})),
+					WidgetHolder::new(Widget::TextButton(TextButton {
+						label: "Clear".into(),
+						tooltip: "Remove generated image from the layer frame".into(),
+						disabled: node_graph_frame.blob_url.is_none(),
+						on_update: WidgetCallback::new(|_| DocumentMessage::FrameClear.into()),
+						..Default::default()
+					})),
+				],
 			},
 		],
 	}
@@ -1425,7 +1483,7 @@ fn node_section_stroke(stroke: &Stroke) -> LayoutGroup {
 						direction: SeparatorDirection::Horizontal,
 					})),
 					WidgetHolder::new(Widget::NumberInput(NumberInput {
-						value: Some(stroke.weight() as f64),
+						value: Some(stroke.weight()),
 						is_integer: false,
 						min: Some(0.),
 						unit: " px".into(),
@@ -1473,7 +1531,7 @@ fn node_section_stroke(stroke: &Stroke) -> LayoutGroup {
 						direction: SeparatorDirection::Horizontal,
 					})),
 					WidgetHolder::new(Widget::NumberInput(NumberInput {
-						value: Some(stroke.dash_offset() as f64),
+						value: Some(stroke.dash_offset()),
 						is_integer: true,
 						min: Some(0.),
 						unit: " px".into(),
