@@ -223,7 +223,7 @@ pub fn register_artboard_layer_properties(layer: &Layer, responses: &mut VecDequ
 	);
 }
 
-pub fn register_artwork_layer_properties(layer: &Layer, responses: &mut VecDeque<Message>, persistent_data: &PersistentData) {
+pub fn register_artwork_layer_properties(layer_path: Vec<graphene::LayerId>, layer: &Layer, responses: &mut VecDeque<Message>, persistent_data: &PersistentData) {
 	let options_bar = vec![LayoutGroup::Row {
 		widgets: vec![
 			match &layer.data {
@@ -314,7 +314,7 @@ pub fn register_artwork_layer_properties(layer: &Layer, responses: &mut VecDeque
 			vec![node_section_transform(layer, persistent_data), node_section_imaginate(imaginate, layer, persistent_data, responses)]
 		}
 		LayerDataType::NodeGraphFrame(node_graph_frame) => {
-			vec![node_section_transform(layer, persistent_data), node_section_node_graph_frame(node_graph_frame)]
+			vec![node_section_transform(layer, persistent_data), node_section_node_graph_frame(layer_path, node_graph_frame)]
 		}
 		LayerDataType::Folder(_) => {
 			vec![node_section_transform(layer, persistent_data)]
@@ -1045,7 +1045,7 @@ fn node_section_imaginate(imaginate_layer: &ImaginateLayer, layer: &Layer, persi
 	}
 }
 
-fn node_section_node_graph_frame(node_graph_frame: &NodeGraphFrameLayer) -> LayoutGroup {
+fn node_section_node_graph_frame(layer_path: Vec<graphene::LayerId>, node_graph_frame: &NodeGraphFrameLayer) -> LayoutGroup {
 	LayoutGroup::Section {
 		name: "Node Graph Frame".into(),
 		layout: vec![
@@ -1065,7 +1065,10 @@ fn node_section_node_graph_frame(node_graph_frame: &NodeGraphFrameLayer) -> Layo
 				widgets: vec![WidgetHolder::new(Widget::TextButton(TextButton {
 					label: "Open Node Graph UI (coming soon)".into(),
 					tooltip: "Open the node graph associated with this layer".into(),
-					on_update: WidgetCallback::new(|_| DialogMessage::RequestComingSoonDialog { issue: Some(800) }.into()),
+					on_update: WidgetCallback::new(move |_| {
+						let layer_path = layer_path.clone();
+						NodeGraphMessage::OpenNodeGraph { layer_path }.into()
+					}),
 					..Default::default()
 				}))],
 			},
