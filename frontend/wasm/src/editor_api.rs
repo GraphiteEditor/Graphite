@@ -28,7 +28,7 @@ pub fn set_random_seed(seed: u64) {
 	editor::application::set_uuid_seed(seed);
 }
 
-/// We directly interface with the updateImage js function for massivly increased performance over serializing and deserializing.
+/// We directly interface with the updateImage JS function for massively increased performance over serializing and deserializing.
 /// This avoids creating a json with a list millions of numbers long.
 #[wasm_bindgen(module = "@/wasm-communication/editor")]
 extern "C" {

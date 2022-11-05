@@ -30,6 +30,7 @@ export async function initWasm(): Promise<void> {
 	if (wasmImport !== undefined) return;
 
 	// Import the WASM module JS bindings and wrap them in the panic proxy
+	// eslint-disable-next-line import/no-cycle
 	wasmImport = await import("@/../wasm/pkg").then(panicProxy);
 
 	// Provide a random starter seed which must occur after initializing the WASM module, since WASM can't generate its own random numbers
