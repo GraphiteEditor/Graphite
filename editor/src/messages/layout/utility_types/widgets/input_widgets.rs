@@ -153,8 +153,18 @@ pub struct InvisibleStandinInput {
 #[derive(Clone, Serialize, Deserialize, Derivative)]
 #[derivative(Debug, PartialEq, Default)]
 pub struct NumberInput {
+	// Label
 	pub label: String,
 
+	pub tooltip: String,
+
+	#[serde(skip)]
+	pub tooltip_shortcut: Option<ActionKeys>,
+
+	// Disabled
+	pub disabled: bool,
+
+	// Value
 	pub value: Option<f64>,
 
 	pub min: Option<f64>,
@@ -164,6 +174,7 @@ pub struct NumberInput {
 	#[serde(rename = "isInteger")]
 	pub is_integer: bool,
 
+	// Number presentation
 	#[serde(rename = "displayDecimalPlaces")]
 	#[derivative(Default(value = "3"))]
 	pub display_decimal_places: u32,
@@ -174,22 +185,18 @@ pub struct NumberInput {
 	#[derivative(Default(value = "true"))]
 	pub unit_is_hidden_when_editing: bool,
 
+	// Mode behavior
+	pub mode: NumberInputMode,
+
 	#[serde(rename = "incrementBehavior")]
 	pub increment_behavior: NumberInputIncrementBehavior,
 
-	#[serde(rename = "incrementFactor")]
 	#[derivative(Default(value = "1."))]
-	pub increment_factor: f64,
+	pub step: f64,
 
-	pub disabled: bool,
-
+	// Styling
 	#[serde(rename = "minWidth")]
 	pub min_width: u32,
-
-	pub tooltip: String,
-
-	#[serde(skip)]
-	pub tooltip_shortcut: Option<ActionKeys>,
 
 	// Callbacks
 	#[serde(skip)]
@@ -211,6 +218,13 @@ pub enum NumberInputIncrementBehavior {
 	Add,
 	Multiply,
 	Callback,
+}
+
+#[derive(Clone, Serialize, Deserialize, Debug, Default, PartialEq, Eq)]
+pub enum NumberInputMode {
+	#[default]
+	Increment,
+	Range,
 }
 
 #[derive(Clone, Default, Derivative, Serialize, Deserialize)]

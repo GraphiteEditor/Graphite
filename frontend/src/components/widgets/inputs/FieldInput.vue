@@ -3,6 +3,7 @@
 	<LayoutRow class="field-input" :class="{ disabled, 'sharp-right-corners': sharpRightCorners }" :title="tooltip">
 		<input
 			v-if="!textarea"
+			class="input"
 			:class="{ 'has-label': label }"
 			:id="`field-input-${id}`"
 			ref="input"
@@ -15,6 +16,7 @@
 			@change="() => $emit('textChanged')"
 			@keydown.enter="() => $emit('textChanged')"
 			@keydown.esc="() => $emit('cancelTextChange')"
+			data-input-element
 		/>
 		<textarea
 			v-else
@@ -49,10 +51,11 @@
 	flex-direction: row-reverse;
 
 	label {
-		flex: 1 1 100%;
+		flex: 0 0 auto;
 		line-height: 18px;
 		margin-left: 8px;
 		padding: 3px 0;
+		padding-right: 4px;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
