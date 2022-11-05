@@ -384,6 +384,9 @@ impl Fsm for GradientToolFsmState {
 					}
 
 					for path in document.selected_visible_layers() {
+						if !document.graphene_document.multiply_transforms(path).unwrap().inverse().is_finite() {
+							continue;
+						}
 						let layer = document.graphene_document.layer(path).unwrap();
 
 						if let Ok(Fill::Gradient(gradient)) = layer.style().map(|style| style.fill()) {
