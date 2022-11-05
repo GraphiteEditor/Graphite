@@ -65,6 +65,21 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 
 				if let Some(network) = self.get_active_network(document) {
 					info!("Opening node graph with nodes {:?}", network.nodes);
+
+					// List of links in format (link_start, link_end, link_end_input_index)
+					let links = network
+						.nodes
+						.iter()
+						.flat_map(|(link_end, node)| node.inputs.iter().enumerate().map(move |(index, input)| (input, link_end, index)))
+						.filter_map(|(input, link_end, link_end_index)| {
+							if let NodeInput::Node(link_start) = input {
+								Some((*link_start, *link_end, link_end_index))
+							} else {
+								None
+							}
+						})
+						.collect::<Vec<_>>();
+
 					for (_id, _node) in &network.nodes {
 						// TODO: Populate initial frontend with nodes.
 					}
