@@ -28,9 +28,8 @@ fn merge_ids(a: u64, b: u64) -> u64 {
 	hasher.finish()
 }
 
-type Fqn = NodeIdentifier<'static>;
-
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct DocumentNode {
 	pub name: String,
 	pub inputs: Vec<NodeInput>,
@@ -55,9 +54,9 @@ impl DocumentNode {
 		let first = self.inputs.remove(0);
 		if let DocumentNodeImplementation::Unresolved(fqn) = self.implementation {
 			let (input, mut args) = match first {
-				NodeInput::Value(value) => {
+				NodeInput::Value(tagged_value) => {
 					assert_eq!(self.inputs.len(), 0);
-					(ProtoNodeInput::None, ConstructionArgs::Value(value))
+					(ProtoNodeInput::None, ConstructionArgs::Value(tagged_value.to_value()))
 				}
 				NodeInput::Node(id) => (ProtoNodeInput::Node(id), ConstructionArgs::Nodes(vec![])),
 				NodeInput::Network => (ProtoNodeInput::Network, ConstructionArgs::Nodes(vec![])),
@@ -83,9 +82,10 @@ impl DocumentNode {
 }
 
 #[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum NodeInput {
 	Node(NodeId),
-	Value(value::Value),
+	Value(value::TaggedValue),
 	Network,
 }
 
@@ -108,12 +108,14 @@ impl PartialEq for NodeInput {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum DocumentNodeImplementation {
 	Network(NodeNetwork),
-	Unresolved(Fqn),
+	Unresolved(NodeIdentifier),
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct NodeNetwork {
 	pub inputs: Vec<NodeId>,
 	pub output: NodeId,
@@ -160,7 +162,7 @@ impl NodeNetwork {
 							network_input.populate_first_network_input(node, *offset);
 						}
 						NodeInput::Value(value) => {
-							let name = format!("Value: {:?}", value);
+							let name = format!("Value: {:?}", value.clone().to_value());
 							let new_id = map_ids(id, gen_id());
 							let value_node = DocumentNode {
 								name: name.clone(),
@@ -284,7 +286,7 @@ mod test {
 				1,
 				DocumentNode {
 					name: "Inc".into(),
-					inputs: vec![NodeInput::Network, NodeInput::Value(2_u32.into_any())],
+					inputs: vec![NodeInput::Network, NodeInput::Value(value::TaggedValue::U32(2))],
 					implementation: DocumentNodeImplementation::Network(add_network()),
 				},
 			)]
@@ -384,7 +386,7 @@ mod test {
 					14,
 					DocumentNode {
 						name: "Value: 2".into(),
-						inputs: vec![NodeInput::Value(2_u32.into_any())],
+						inputs: vec![NodeInput::Value(value::TaggedValue::U32(2))],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::value::ValueNode", &[Type::Generic])),
 					},
 				),

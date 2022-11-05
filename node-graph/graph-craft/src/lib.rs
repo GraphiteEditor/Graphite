@@ -11,7 +11,6 @@ mod tests {
 	use graphene_core::value::ValueNode;
 	use graphene_core::{structural::*, RefNode};
 
-	use crate::document::value::IntoValue;
 	use borrow_stack::BorrowStack;
 	use borrow_stack::FixedSizeStack;
 	use dyn_any::{downcast, IntoDynAny};
@@ -68,7 +67,10 @@ mod tests {
 						DocumentNode {
 							name: "cons".into(),
 							inputs: vec![NodeInput::Network, NodeInput::Network],
-							implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::structural::ConsNode", &[Type::Concrete("u32"), Type::Concrete("u32")])),
+							implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new(
+								"graphene_core::structural::ConsNode",
+								&[Type::Concrete(std::borrow::Cow::Borrowed("u32")), Type::Concrete(std::borrow::Cow::Borrowed("u32"))],
+							)),
 						},
 					),
 					(
@@ -76,7 +78,10 @@ mod tests {
 						DocumentNode {
 							name: "add".into(),
 							inputs: vec![NodeInput::Node(0)],
-							implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::AddNode", &[Type::Concrete("u32"), Type::Concrete("u32")])),
+							implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new(
+								"graphene_core::ops::AddNode",
+								&[Type::Concrete(std::borrow::Cow::Borrowed("u32")), Type::Concrete(std::borrow::Cow::Borrowed("u32"))],
+							)),
 						},
 					),
 				]
@@ -92,7 +97,7 @@ mod tests {
 				0,
 				DocumentNode {
 					name: "Inc".into(),
-					inputs: vec![NodeInput::Network, NodeInput::Value(1_u32.into_any())],
+					inputs: vec![NodeInput::Network, NodeInput::Value(value::TaggedValue::U32(1))],
 					implementation: DocumentNodeImplementation::Network(add_network()),
 				},
 			)]

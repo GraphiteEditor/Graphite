@@ -15,7 +15,6 @@ pub struct NodeGraphFrameLayer {
 	pub mime: String,
 
 	/// The document node network that this layer contains
-	#[serde(skip)]
 	pub network: graph_craft::document::NodeNetwork,
 
 	// TODO: Have the browser dispose of this blob URL when this is dropped (like when the layer is deleted)

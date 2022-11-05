@@ -4,31 +4,46 @@ use crate::document::value;
 use crate::document::NodeId;
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct NodeIdentifier<'a> {
-	pub name: &'a str,
-	pub types: &'a [Type<'a>],
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct NodeIdentifier {
+	pub name: std::borrow::Cow<'static, str>,
+	pub types: std::borrow::Cow<'static, [Type]>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum Type<'a> {
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum Type {
 	Generic,
-	Concrete(&'a str),
+	Concrete(std::borrow::Cow<'static, str>),
 }
 
-impl<'a> From<&'a str> for Type<'a> {
-	fn from(s: &'a str) -> Self {
-		Type::Concrete(s)
-	}
-}
-impl<'a> From<&'a str> for NodeIdentifier<'a> {
-	fn from(s: &'a str) -> Self {
-		NodeIdentifier { name: s, types: &[] }
+impl From<&'static str> for Type {
+	fn from(s: &'static str) -> Self {
+		Type::Concrete(std::borrow::Cow::Borrowed(s))
 	}
 }
 
-impl<'a> NodeIdentifier<'a> {
-	pub fn new(name: &'a str, types: &'a [Type<'a>]) -> Self {
-		NodeIdentifier { name, types }
+impl Type {
+	pub const fn from_str(concrete: &'static str) -> Self {
+		Type::Concrete(std::borrow::Cow::Borrowed(concrete))
+	}
+}
+
+impl From<&'static str> for NodeIdentifier {
+	fn from(s: &'static str) -> Self {
+		NodeIdentifier {
+			name: std::borrow::Cow::Borrowed(s),
+			types: std::borrow::Cow::Borrowed(&[]),
+		}
+	}
+}
+
+impl NodeIdentifier {
+	pub const fn new(name: &'static str, types: &'static [Type]) -> Self {
+		NodeIdentifier {
+			name: std::borrow::Cow::Borrowed(name),
+			types: std::borrow::Cow::Borrowed(types),
+		}
 	}
 }
 
@@ -59,7 +74,7 @@ impl PartialEq for ConstructionArgs {
 pub struct ProtoNode {
 	pub construction_args: ConstructionArgs,
 	pub input: ProtoNodeInput,
-	pub identifier: NodeIdentifier<'static>,
+	pub identifier: NodeIdentifier,
 }
 
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -82,10 +97,7 @@ impl ProtoNodeInput {
 impl ProtoNode {
 	pub fn value(value: ConstructionArgs) -> Self {
 		Self {
-			identifier: NodeIdentifier {
-				name: "graphene_core::value::ValueNode",
-				types: &[Type::Generic],
-			},
+			identifier: NodeIdentifier::new("graphene_core::value::ValueNode", &[Type::Generic]),
 			construction_args: value,
 			input: ProtoNodeInput::None,
 		}
