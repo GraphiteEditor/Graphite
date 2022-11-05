@@ -8,6 +8,7 @@ const GRAPHICS = {
 } as const;
 
 // 12px Solid
+import Add from "@/../assets/icon-12px-solid/add.svg";
 import Checkmark from "@/../assets/icon-12px-solid/checkmark.svg";
 import CloseX from "@/../assets/icon-12px-solid/close-x.svg";
 import DropdownArrow from "@/../assets/icon-12px-solid/dropdown-arrow.svg";
@@ -30,6 +31,7 @@ import KeyboardSpace from "@/../assets/icon-12px-solid/keyboard-space.svg";
 import KeyboardTab from "@/../assets/icon-12px-solid/keyboard-tab.svg";
 import Link from "@/../assets/icon-12px-solid/link.svg";
 import Overlays from "@/../assets/icon-12px-solid/overlays.svg";
+import Remove from "@/../assets/icon-12px-solid/remove.svg";
 import ResetColors from "@/../assets/icon-12px-solid/reset-colors.svg";
 import Snapping from "@/../assets/icon-12px-solid/snapping.svg";
 import Swap from "@/../assets/icon-12px-solid/swap.svg";
@@ -41,6 +43,7 @@ import WindowButtonWinMinimize from "@/../assets/icon-12px-solid/window-button-w
 import WindowButtonWinRestoreDown from "@/../assets/icon-12px-solid/window-button-win-restore-down.svg";
 
 const SOLID_12PX = {
+	Add: { component: Add, size: 12 },
 	Checkmark: { component: Checkmark, size: 12 },
 	CloseX: { component: CloseX, size: 12 },
 	DropdownArrow: { component: DropdownArrow, size: 12 },
@@ -63,6 +66,7 @@ const SOLID_12PX = {
 	KeyboardTab: { component: KeyboardTab, size: 12 },
 	Link: { component: Link, size: 12 },
 	Overlays: { component: Overlays, size: 12 },
+	Remove: { component: Remove, size: 12 },
 	ResetColors: { component: ResetColors, size: 12 },
 	Snapping: { component: Snapping, size: 12 },
 	Swap: { component: Swap, size: 12 },

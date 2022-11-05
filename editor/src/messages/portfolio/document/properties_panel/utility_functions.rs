@@ -1,4 +1,5 @@
 use super::utility_types::TransformOp;
+use crate::application::generate_uuid;
 use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
 use crate::messages::layout::utility_types::misc::LayoutTarget;
 use crate::messages::layout::utility_types::widgets::assist_widgets::PivotAssist;
@@ -10,9 +11,10 @@ use crate::messages::layout::utility_types::widgets::label_widgets::{IconLabel, 
 use crate::messages::portfolio::utility_types::{ImaginateServerStatus, PersistentData};
 use crate::messages::prelude::*;
 
+use graphene::color::Color;
 use graphene::document::pick_layer_safe_imaginate_resolution;
 use graphene::layers::imaginate_layer::{ImaginateLayer, ImaginateSamplingMethod, ImaginateStatus};
-use graphene::layers::layer_info::{Layer, LayerDataType, LayerDataTypeDiscriminant};
+use graphene::layers::layer_info::{Layer, LayerData, LayerDataType, LayerDataTypeDiscriminant};
 use graphene::layers::style::{Fill, Gradient, GradientType, LineCap, LineJoin, Stroke};
 use graphene::layers::text_layer::{FontCache, TextLayer};
 
@@ -1137,7 +1139,7 @@ fn node_gradient_type(gradient: &Gradient) -> LayoutGroup {
 					RadioEntryData {
 						value: "linear".into(),
 						label: "Linear".into(),
-						tooltip: "Linear Gradient".into(),
+						tooltip: "Linear gradient changes colors from one side to the other along a line".into(),
 						on_update: WidgetCallback::new(move |_| {
 							PropertiesPanelMessage::ModifyFill {
 								fill: Fill::Gradient(cloned_gradient_linear.clone()),
@@ -1149,7 +1151,7 @@ fn node_gradient_type(gradient: &Gradient) -> LayoutGroup {
 					RadioEntryData {
 						value: "radial".into(),
 						label: "Radial".into(),
-						tooltip: "Radial Gradient".into(),
+						tooltip: "Radial gradient changes colors from the inside to the outside of a circular area".into(),
 						on_update: WidgetCallback::new(move |_| {
 							PropertiesPanelMessage::ModifyFill {
 								fill: Fill::Gradient(cloned_gradient_radial.clone()),
@@ -1165,60 +1167,210 @@ fn node_gradient_type(gradient: &Gradient) -> LayoutGroup {
 	}
 }
 
-fn node_gradient_color(gradient: &Gradient, percent_label: &'static str, position: usize) -> LayoutGroup {
+fn node_gradient_color(gradient: &Gradient, position: usize) -> LayoutGroup {
 	let gradient_clone = Rc::new(gradient.clone());
+	let gradient_2 = gradient_clone.clone();
+	let gradient_3 = gradient_clone.clone();
 	let send_fill_message = move |new_gradient: Gradient| PropertiesPanelMessage::ModifyFill { fill: Fill::Gradient(new_gradient) }.into();
-	LayoutGroup::Row {
-		widgets: vec![
-			WidgetHolder::new(Widget::TextLabel(TextLabel {
-				value: format!("Gradient: {}", percent_label),
-				..TextLabel::default()
-			})),
-			WidgetHolder::new(Widget::Separator(Separator {
-				separator_type: SeparatorType::Unrelated,
-				direction: SeparatorDirection::Horizontal,
-			})),
-			WidgetHolder::new(Widget::ColorInput(ColorInput {
-				value: gradient_clone.positions[position].1,
-				on_update: WidgetCallback::new(move |text_input: &ColorInput| {
-					let mut new_gradient = (*gradient_clone).clone();
-					new_gradient.positions[position].1 = text_input.value;
-					send_fill_message(new_gradient)
-				}),
-				..ColorInput::default()
-			})),
-		],
+
+	let value = format!("Gradient: {:.0}%", gradient_clone.positions[position].0 * 100.);
+	let mut widgets = vec![WidgetHolder::new(Widget::TextLabel(TextLabel {
+		value,
+		tooltip: "Adjustable by dragging the gradient stops in the viewport with the Gradient tool active".into(),
+		..TextLabel::default()
+	}))];
+	widgets.push(WidgetHolder::new(Widget::Separator(Separator {
+		separator_type: SeparatorType::Unrelated,
+		direction: SeparatorDirection::Horizontal,
+	})));
+	widgets.push(WidgetHolder::new(Widget::ColorInput(ColorInput {
+		value: gradient_clone.positions[position].1,
+		on_update: WidgetCallback::new(move |text_input: &ColorInput| {
+			let mut new_gradient = (*gradient_clone).clone();
+			new_gradient.positions[position].1 = text_input.value;
+			send_fill_message(new_gradient)
+		}),
+		..ColorInput::default()
+	})));
+
+	let mut skip_separator = false;
+	// Remove button
+	if gradient.positions.len() != position + 1 && position != 0 {
+		let on_update = WidgetCallback::new(move |_| {
+			let mut new_gradient = (*gradient_3).clone();
+			new_gradient.positions.remove(position);
+			send_fill_message(new_gradient)
+		});
+
+		skip_separator = true;
+		widgets.push(WidgetHolder::new(Widget::Separator(Separator {
+			separator_type: SeparatorType::Related,
+			direction: SeparatorDirection::Horizontal,
+		})));
+		widgets.push(WidgetHolder::new(Widget::IconButton(IconButton {
+			icon: "Remove".to_string(),
+			tooltip: "Remove this gradient stop".to_string(),
+			size: 16,
+			on_update,
+			..Default::default()
+		})));
 	}
+	// Add button
+	if gradient.positions.len() != position + 1 {
+		let on_update = WidgetCallback::new(move |_| {
+			let mut gradient = (*gradient_2).clone();
+
+			let get_color = |index: usize| match (gradient.positions[index].1, gradient.positions.get(index + 1).and_then(|x| x.1)) {
+				(Some(a), Some(b)) => Color::from_rgbaf32((a.r() + b.r()) / 2., (a.g() + b.g()) / 2., (a.b() + b.b()) / 2., ((a.a() + b.a()) / 2.).clamp(0., 1.)),
+				(Some(v), _) | (_, Some(v)) => Some(v),
+				_ => Some(Color::WHITE),
+			};
+			let get_pos = |index: usize| (gradient.positions[index].0 + gradient.positions.get(index + 1).map(|v| v.0).unwrap_or(1.)) / 2.;
+
+			gradient.positions.push((get_pos(position), get_color(position)));
+
+			gradient.positions.sort_unstable_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+
+			send_fill_message(gradient)
+		});
+
+		if !skip_separator {
+			widgets.push(WidgetHolder::new(Widget::Separator(Separator {
+				separator_type: SeparatorType::Related,
+				direction: SeparatorDirection::Horizontal,
+			})));
+		}
+		widgets.push(WidgetHolder::new(Widget::IconButton(IconButton {
+			icon: "Add".to_string(),
+			tooltip: "Add a gradient stop after this".to_string(),
+			size: 16,
+			on_update,
+			..Default::default()
+		})));
+	}
+	LayoutGroup::Row { widgets }
 }
 
 fn node_section_fill(fill: &Fill) -> Option<LayoutGroup> {
+	let initial_color = if let Fill::Solid(color) = fill { *color } else { Color::BLACK };
+
 	match fill {
 		Fill::Solid(_) | Fill::None => Some(LayoutGroup::Section {
 			name: "Fill".into(),
-			layout: vec![LayoutGroup::Row {
-				widgets: vec![
-					WidgetHolder::new(Widget::TextLabel(TextLabel {
-						value: "Color".into(),
-						..TextLabel::default()
-					})),
-					WidgetHolder::new(Widget::Separator(Separator {
-						separator_type: SeparatorType::Unrelated,
-						direction: SeparatorDirection::Horizontal,
-					})),
-					WidgetHolder::new(Widget::ColorInput(ColorInput {
-						value: if let Fill::Solid(color) = fill { Some(*color) } else { None },
-						on_update: WidgetCallback::new(|text_input: &ColorInput| {
-							let fill = if let Some(value) = text_input.value { Fill::Solid(value) } else { Fill::None };
-							PropertiesPanelMessage::ModifyFill { fill }.into()
-						}),
-						..ColorInput::default()
-					})),
-				],
-			}],
+			layout: vec![
+				LayoutGroup::Row {
+					widgets: vec![
+						WidgetHolder::new(Widget::TextLabel(TextLabel {
+							value: "Color".into(),
+							..TextLabel::default()
+						})),
+						WidgetHolder::new(Widget::Separator(Separator {
+							separator_type: SeparatorType::Unrelated,
+							direction: SeparatorDirection::Horizontal,
+						})),
+						WidgetHolder::new(Widget::ColorInput(ColorInput {
+							value: if let Fill::Solid(color) = fill { Some(*color) } else { None },
+							on_update: WidgetCallback::new(|text_input: &ColorInput| {
+								let fill = if let Some(value) = text_input.value { Fill::Solid(value) } else { Fill::None };
+								PropertiesPanelMessage::ModifyFill { fill }.into()
+							}),
+							..ColorInput::default()
+						})),
+					],
+				},
+				LayoutGroup::Row {
+					widgets: vec![
+						WidgetHolder::new(Widget::TextLabel(TextLabel {
+							value: "".into(),
+							..TextLabel::default()
+						})),
+						WidgetHolder::new(Widget::Separator(Separator {
+							separator_type: SeparatorType::Unrelated,
+							direction: SeparatorDirection::Horizontal,
+						})),
+						WidgetHolder::new(Widget::TextButton(TextButton {
+							label: "Use Gradient".into(),
+							tooltip: "Change this fill from a solid color to a gradient".into(),
+							on_update: WidgetCallback::new(move |_: &TextButton| {
+								let (r, g, b, _) = initial_color.components();
+								let opposite_color = Color::from_rgbaf32(1. - r, 1. - g, 1. - b, 1.).unwrap();
+
+								PropertiesPanelMessage::ModifyFill {
+									fill: Fill::Gradient(Gradient::new(
+										DVec2::new(0., 0.5),
+										initial_color,
+										DVec2::new(1., 0.5),
+										opposite_color,
+										DAffine2::IDENTITY,
+										generate_uuid(),
+										GradientType::Linear,
+									)),
+								}
+								.into()
+							}),
+							..TextButton::default()
+						})),
+					],
+				},
+			],
 		}),
 		Fill::Gradient(gradient) => Some(LayoutGroup::Section {
 			name: "Fill".into(),
-			layout: vec![node_gradient_type(gradient), node_gradient_color(gradient, "0%", 0), node_gradient_color(gradient, "100%", 1)],
+			layout: {
+				let cloned_gradient = gradient.clone();
+				let first_color = gradient.positions.get(0).unwrap_or(&(0., None)).1;
+
+				let mut layout = vec![node_gradient_type(gradient)];
+				layout.extend((0..gradient.positions.len()).map(|pos| node_gradient_color(gradient, pos)));
+				layout.push(LayoutGroup::Row {
+					widgets: vec![
+						WidgetHolder::new(Widget::TextLabel(TextLabel {
+							value: "".into(),
+							..TextLabel::default()
+						})),
+						WidgetHolder::new(Widget::Separator(Separator {
+							separator_type: SeparatorType::Unrelated,
+							direction: SeparatorDirection::Horizontal,
+						})),
+						WidgetHolder::new(Widget::TextButton(TextButton {
+							label: "Invert".into(),
+							icon: Some("Swap".into()),
+							tooltip: "Reverse the order of each color stop".into(),
+							on_update: WidgetCallback::new(move |_: &TextButton| {
+								let mut new_gradient = cloned_gradient.clone();
+								new_gradient.positions = new_gradient.positions.iter().map(|(distance, color)| (1. - distance, *color)).collect();
+								new_gradient.positions.reverse();
+								PropertiesPanelMessage::ModifyFill { fill: Fill::Gradient(new_gradient) }.into()
+							}),
+							..TextButton::default()
+						})),
+					],
+				});
+				layout.push(LayoutGroup::Row {
+					widgets: vec![
+						WidgetHolder::new(Widget::TextLabel(TextLabel {
+							value: "".into(),
+							..TextLabel::default()
+						})),
+						WidgetHolder::new(Widget::Separator(Separator {
+							separator_type: SeparatorType::Unrelated,
+							direction: SeparatorDirection::Horizontal,
+						})),
+						WidgetHolder::new(Widget::TextButton(TextButton {
+							label: "Use Solid Color".into(),
+							tooltip: "Change this fill from a gradient to a solid color, keeping the 0% stop color".into(),
+							on_update: WidgetCallback::new(move |_: &TextButton| {
+								PropertiesPanelMessage::ModifyFill {
+									fill: Fill::Solid(first_color.unwrap_or_default()),
+								}
+								.into()
+							}),
+							..TextButton::default()
+						})),
+					],
+				});
+				layout
+			},
 		}),
 	}
 }
