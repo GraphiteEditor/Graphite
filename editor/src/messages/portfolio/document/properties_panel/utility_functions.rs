@@ -255,6 +255,7 @@ pub fn register_artwork_layer_properties(layer: &Layer, responses: &mut VecDeque
 				LayerDataType::NodeGraphFrame(_) => WidgetHolder::new(Widget::IconLabel(IconLabel {
 					icon: "NodeNodes".into(),
 					tooltip: "Node Graph Frame".into(),
+					..Default::default()
 				})),
 			},
 			WidgetHolder::new(Widget::Separator(Separator {
@@ -667,7 +668,7 @@ fn node_section_imaginate(imaginate_layer: &ImaginateLayer, layer: &Layer, persi
 								WidgetHolder::new(Widget::TextButton(TextButton {
 									label: "Clear".into(),
 									tooltip: "Remove generated image from the layer frame".into(),
-									disabled: imaginate_layer.blob_url == None,
+									disabled: imaginate_layer.blob_url.is_none(),
 									on_update: WidgetCallback::new(|_| DocumentMessage::FrameClear.into()),
 									..Default::default()
 								})),
@@ -1482,7 +1483,7 @@ fn node_section_stroke(stroke: &Stroke) -> LayoutGroup {
 						direction: SeparatorDirection::Horizontal,
 					})),
 					WidgetHolder::new(Widget::NumberInput(NumberInput {
-						value: Some(stroke.weight() as f64),
+						value: Some(stroke.weight()),
 						is_integer: false,
 						min: Some(0.),
 						unit: " px".into(),
@@ -1530,7 +1531,7 @@ fn node_section_stroke(stroke: &Stroke) -> LayoutGroup {
 						direction: SeparatorDirection::Horizontal,
 					})),
 					WidgetHolder::new(Widget::NumberInput(NumberInput {
-						value: Some(stroke.dash_offset() as f64),
+						value: Some(stroke.dash_offset()),
 						is_integer: true,
 						min: Some(0.),
 						unit: " px".into(),
