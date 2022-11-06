@@ -51,6 +51,7 @@
 		margin: -4px 0;
 
 		.details.text-label {
+			-webkit-user-select: text; // Required as of Safari 15.0 (Graphite's minimum version) through the latest release
 			user-select: text;
 			white-space: pre-wrap;
 			max-width: 400px;
