@@ -59,6 +59,7 @@
 		.arrow {
 			position: absolute;
 			top: 0;
+			margin: 0;
 			padding: 9px 0;
 			border: none;
 			background: rgba(var(--color-1-nearblack-rgb), 0.75);

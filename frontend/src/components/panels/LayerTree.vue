@@ -125,10 +125,11 @@
 			}
 
 			.expand-arrow {
+				padding: 0;
+				margin: 0;
 				margin-left: -16px;
 				width: 16px;
 				height: 100%;
-				padding: 0;
 				border: none;
 				position: relative;
 				background: none;

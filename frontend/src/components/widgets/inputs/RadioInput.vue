@@ -21,6 +21,7 @@
 		background: var(--color-5-dullgray);
 		fill: var(--color-e-nearwhite);
 		height: 24px;
+		margin: 0;
 		padding: 0 4px;
 		border: none;
 		display: flex;
