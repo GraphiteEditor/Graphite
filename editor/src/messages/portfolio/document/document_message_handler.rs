@@ -8,7 +8,9 @@ use crate::messages::input_mapper::utility_types::macros::action_keys;
 use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
 use crate::messages::layout::utility_types::misc::LayoutTarget;
 use crate::messages::layout::utility_types::widgets::button_widgets::{IconButton, PopoverButton};
-use crate::messages::layout::utility_types::widgets::input_widgets::{DropdownEntryData, DropdownInput, NumberInput, NumberInputIncrementBehavior, OptionalInput, RadioEntryData, RadioInput};
+use crate::messages::layout::utility_types::widgets::input_widgets::{
+	DropdownEntryData, DropdownInput, NumberInput, NumberInputIncrementBehavior, NumberInputMode, OptionalInput, RadioEntryData, RadioInput,
+};
 use crate::messages::layout::utility_types::widgets::label_widgets::{Separator, SeparatorDirection, SeparatorType};
 use crate::messages::portfolio::document::properties_panel::utility_types::PropertiesPanelMessageHandlerData;
 use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
@@ -1684,7 +1686,7 @@ impl DocumentMessageHandler {
 				WidgetHolder::new(Widget::NumberInput(NumberInput {
 					unit: "°".into(),
 					value: Some(rotation_value),
-					increment_factor: 15.,
+					step: 15.,
 					on_update: WidgetCallback::new(|number_input: &NumberInput| {
 						NavigationMessage::SetCanvasRotation {
 							angle_radians: number_input.value.unwrap() * (std::f64::consts::PI / 180.),
@@ -1834,6 +1836,7 @@ impl DocumentMessageHandler {
 					value: opacity.map(|opacity| opacity * 100.),
 					min: Some(0.),
 					max: Some(100.),
+					mode: NumberInputMode::Range,
 					on_update: WidgetCallback::new(|number_input: &NumberInput| {
 						if let Some(value) = number_input.value {
 							DocumentMessage::SetOpacityForSelectedLayers { opacity: value / 100. }.into()
