@@ -125,10 +125,11 @@
 			}
 
 			.expand-arrow {
+				padding: 0;
+				margin: 0;
 				margin-left: -16px;
 				width: 16px;
 				height: 100%;
-				padding: 0;
 				border: none;
 				position: relative;
 				background: none;
@@ -204,6 +205,7 @@
 						width: 100%;
 
 						&:disabled {
+							-webkit-user-select: none; // Required as of Safari 15.0 (Graphite's minimum version) through the latest release
 							user-select: none;
 							// Workaround for `user-select: none` not working on <input> elements
 							pointer-events: none;

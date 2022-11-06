@@ -20,6 +20,7 @@
 		border-style: solid;
 		width: 0;
 		height: 0;
+		margin: 0;
 		padding: 0;
 	}
 

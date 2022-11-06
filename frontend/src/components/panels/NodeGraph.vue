@@ -8,7 +8,12 @@
 			@pointerdown="(e: PointerEvent) => pointerDown(e)"
 			@pointermove="(e: PointerEvent) => pointerMove(e)"
 			@pointerup="(e: PointerEvent) => pointerUp(e)"
-			:style="`--grid-spacing: ${gridSpacing}px; --grid-offset-x: ${transform.x * transform.scale}px; --grid-offset-y: ${transform.y * transform.scale}px; --dot-radius: ${dotRadius}px`"
+			:style="{
+				'--grid-spacing': `${gridSpacing}px`,
+				'--grid-offset-x': `${transform.x * transform.scale}px`,
+				'--grid-offset-y': `${transform.y * transform.scale}px`,
+				'--dot-radius': `${dotRadius}px`,
+			}"
 		>
 			<div
 				class="nodes"

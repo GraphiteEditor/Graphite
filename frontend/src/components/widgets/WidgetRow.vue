@@ -39,8 +39,8 @@
 			<OptionalInput v-if="component.props.kind === 'OptionalInput'" v-bind="component.props" @update:checked="(value: boolean) => updateLayout(component.widgetId, value)" />
 			<PivotAssist v-if="component.props.kind === 'PivotAssist'" v-bind="component.props" @update:position="(value: string) => updateLayout(component.widgetId, value)" />
 			<PopoverButton v-if="component.props.kind === 'PopoverButton'" v-bind="component.props">
-				<h3>{{ (component.props as any).header }}</h3>
-				<p>{{ (component.props as any).text }}</p>
+				<TextLabel :bold="true">{{ (component.props as any).header }}</TextLabel>
+				<TextLabel :multiline="true">{{ (component.props as any).text }}</TextLabel>
 			</PopoverButton>
 			<RadioInput
 				v-if="component.props.kind === 'RadioInput'"

@@ -300,6 +300,7 @@
 
 		.preset-color {
 			border: none;
+			margin: 0;
 			padding: 0;
 			border-radius: 2px;
 			width: calc(48px + (48px + 4px) / 2);

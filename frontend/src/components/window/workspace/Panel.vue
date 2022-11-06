@@ -12,13 +12,13 @@
 					@click.middle="(e: MouseEvent) => (e?.stopPropagation(), closeAction?.(tabIndex))"
 					data-tab
 				>
-					<span>{{ tabLabel.name }}</span>
+					<TextLabel>{{ tabLabel.name }}</TextLabel>
 					<IconButton :action="(e?: MouseEvent) => (e?.stopPropagation(), closeAction?.(tabIndex))" :icon="'CloseX'" :size="16" v-if="tabCloseButtons" />
 				</LayoutRow>
 			</LayoutRow>
 			<PopoverButton :icon="'VerticalEllipsis'">
-				<h3>Panel Options</h3>
-				<p>The contents of this popover menu are coming soon</p>
+				<TextLabel :bold="true">Panel Options</TextLabel>
+				<TextLabel :multiline="true">The contents of this popover menu are coming soon</TextLabel>
 			</PopoverButton>
 		</LayoutRow>
 		<LayoutCol class="panel-body">

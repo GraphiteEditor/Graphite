@@ -11,7 +11,7 @@
 				:data-floating-menu-spawner="entry.children && entry.children.length > 0 ? '' : 'no-hover-transfer'"
 			>
 				<IconLabel v-if="entry.icon" :icon="entry.icon" />
-				<span v-if="entry.label">{{ entry.label }}</span>
+				<TextLabel v-if="entry.label">{{ entry.label }}</TextLabel>
 			</div>
 			<MenuList
 				v-if="entry.children && entry.children.length > 0"
@@ -72,6 +72,7 @@ import { type KeyRaw, type KeysGroup, type MenuBarEntry, type MenuListEntry, Upd
 
 import MenuList from "@/components/floating-menus/MenuList.vue";
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
+import TextLabel from "@/components/widgets/labels/TextLabel.vue";
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 type MenuListInstance = InstanceType<typeof MenuList>;
@@ -147,6 +148,7 @@ export default defineComponent({
 	components: {
 		IconLabel,
 		MenuList,
+		TextLabel,
 	},
 });
 </script>

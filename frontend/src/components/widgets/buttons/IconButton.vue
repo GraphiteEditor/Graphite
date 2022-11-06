@@ -1,6 +1,7 @@
 <template>
 	<button
-		:class="['icon-button', `size-${size}`, { disabled, active, 'sharp-right-corners': sharpRightCorners }]"
+		class="icon-button"
+		:class="[`size-${size}`, { disabled, active, 'sharp-right-corners': sharpRightCorners }]"
 		@click="(e: MouseEvent) => action(e)"
 		:disabled="disabled"
 		:title="tooltip"
@@ -16,6 +17,7 @@
 	justify-content: center;
 	align-items: center;
 	flex: 0 0 auto;
+	margin: 0;
 	padding: 0;
 	border: none;
 	border-radius: 2px;
