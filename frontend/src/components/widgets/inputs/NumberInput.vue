@@ -6,7 +6,7 @@
 		:label="label"
 		:spellcheck="false"
 		:disabled="disabled"
-		:style="{ 'min-width': minWidth > 0 ? `${minWidth}px` : undefined, '--travel-factor': rangeSliderValueAsRendered / (sliderMinValue + sliderMaxValue) }"
+		:style="{ 'min-width': minWidth > 0 ? `${minWidth}px` : undefined, '--progress-factor': rangeSliderValueAsRendered / (sliderMinValue + sliderMaxValue) }"
 		:tooltip="tooltip"
 		:sharpRightCorners="sharpRightCorners"
 		@textFocused="() => onTextFocused()"
@@ -17,20 +17,21 @@
 		<button v-if="value !== undefined && mode === 'Increment' && incrementBehavior !== 'None'" class="arrow left" @click="() => onIncrement('Decrease')" tabindex="-1"></button>
 		<button v-if="value !== undefined && mode === 'Increment' && incrementBehavior !== 'None'" class="arrow right" @click="() => onIncrement('Increase')" tabindex="-1"></button>
 		<input
-			v-if="mode === 'Range' && value !== undefined"
 			type="range"
 			class="slider"
-			:class="{ hidden: fakeSliderState === 'mousedown' }"
+			:class="{ hidden: rangeSliderClickDragState === 'mousedown' }"
+			v-if="mode === 'Range' && value !== undefined"
 			v-model="rangeSliderValue"
 			:min="sliderMinValue"
 			:max="sliderMaxValue"
 			:step="sliderStepValue"
 			:disabled="disabled"
+			@input="() => sliderInput()"
 			@pointerdown="() => sliderPointerDown()"
 			@pointerup="() => sliderPointerUp()"
-			@input="() => sliderInput()"
+			tabindex="-1"
 		/>
-		<div v-if="value !== undefined && fakeSliderState === 'mousedown'" class="fake-slider-thumb"></div>
+		<div v-if="value !== undefined && rangeSliderClickDragState === 'mousedown'" class="fake-slider-thumb"></div>
 		<div v-if="value !== undefined" class="slider-progress"></div>
 	</FieldInput>
 </template>
@@ -43,12 +44,12 @@
 			margin-left: 16px;
 		}
 
-		input:not(:focus).has-label {
+		input[type="text"]:not(:focus).has-label {
 			margin-right: 16px;
 		}
 
-		// Hide the increment arrows when focused, disabled, or not hovered
-		input:focus ~ .arrow,
+		// Hide the increment arrows when entering text, disabled, or not hovered
+		input[type="text"]:focus ~ .arrow,
 		&.disabled .arrow,
 		&:not(:hover) .arrow {
 			display: none;
@@ -111,14 +112,14 @@
 	&.range {
 		position: relative;
 
-		.input,
+		input[type="text"],
 		label {
 			z-index: 1;
 		}
 
-		.input:focus ~ .slider,
-		.input:focus ~ .fake-slider-thumb,
-		.input:focus ~ .slider-progress {
+		input[type="text"]:focus ~ .slider,
+		input[type="text"]:focus ~ .fake-slider-thumb,
+		input[type="text"]:focus ~ .slider-progress {
 			display: none;
 		}
 
@@ -136,7 +137,7 @@
 			cursor: default;
 			// Except when disabled, the range slider goes above the label and input so it's interactable.
 			// Then we use the blend mode to make it appear behind which works since the text is almost white and background almost black.
-			// When disabled, the blend mode trick doesn't work with the grayer colors, but we don't need it to be interactable so it can actually go behind.
+			// When disabled, the blend mode trick doesn't work with the grayer colors. But we don't need it to be interactable, so it can actually go behind properly.
 			z-index: 2;
 			mix-blend-mode: screen;
 
@@ -168,7 +169,6 @@
 			}
 
 			// Firefox
-			// TODO: Fix Firefox not working
 			&::-moz-range-thumb {
 				border: none;
 				border-radius: 2px;
@@ -194,7 +194,7 @@
 		// That's because the range input element moves to the pressed location immediately upon mousedown, but we don't want to show that yet.
 		// Instead, we want to wait until the user does something:
 		// Releasing the mouse means we reset the slider to its previous location, thus canceling the slider move. In that case, we focus the text entry.
-		// Moving the mouse means we have begun dragging, so then we hide this fake one and continue showing the actual drag of the real slider.
+		// Moving the mouse left/right means we have begun dragging, so then we hide this fake one and continue showing the actual drag of the real slider.
 		.fake-slider-thumb {
 			position: absolute;
 			left: 2px;
@@ -210,7 +210,7 @@
 				position: absolute;
 				border-radius: 2px;
 				margin-left: -2px;
-				left: calc(var(--travel-factor) * 100%);
+				left: calc(var(--progress-factor) * 100%);
 				width: 4px;
 				height: 24px;
 				background: #5b5b5b; // Becomes var(--color-6-lowergray) with screen blend mode over var(--color-1-nearblack) background
@@ -230,7 +230,7 @@
 				position: absolute;
 				top: 0;
 				left: 0;
-				width: calc(var(--travel-factor) * 100% - 2px);
+				width: calc(var(--progress-factor) * 100% - 2px);
 				height: 100%;
 				background: var(--color-2-mildblack);
 				border-radius: 1px 0 0 1px;
@@ -293,17 +293,15 @@ export default defineComponent({
 		return {
 			text: this.displayText(this.value),
 			editing: false,
-			// "default": nothing is happening (default/reset state)
-			// "mousedown": the user has pressed down the mouse but might now drag, or release,
-			// so we show the fake slider at the old position in place of the real one which is still being dragged while hidden
-			// "dragging": the user is dragging the slider around so we don't show the fake slider anymore
-			fakeSliderThumbTravel: 0,
-			fakeSliderState: "default" as "default" | "mousedown" | "dragging",
-			// Bound to stay in sync with the actual input range slider element
+			// Stays in sync with a binding to the actual input range slider element.
 			rangeSliderValue: this.value !== undefined ? this.value : 0,
 			// Value used to render the position of the fake slider when applicable, and length of the progress colored region to the slider's left.
 			// This is the same as `rangeSliderValue` except in the "mousedown" state, when it has the previous location before the user's mousedown.
 			rangeSliderValueAsRendered: this.value !== undefined ? this.value : 0,
+			// "default": no interaction is happening.
+			// "mousedown": the user has pressed down the mouse and might next decide to either drag left/right or release without dragging.
+			// "dragging": the user is dragging the slider left/right.
+			rangeSliderClickDragState: "default" as "default" | "mousedown" | "dragging",
 		};
 	},
 	computed: {
@@ -320,7 +318,7 @@ export default defineComponent({
 	},
 	methods: {
 		sliderInput() {
-			// Keep 4 digits after the decimal point
+			// Keep only 4 digits after the decimal point
 			const ROUNDING_EXPONENT = 4;
 			const ROUNDING_MAGNITUDE = 10 ** ROUNDING_EXPONENT;
 			const roundedValue = Math.round(this.rangeSliderValue * ROUNDING_MAGNITUDE) / ROUNDING_MAGNITUDE;
@@ -331,28 +329,32 @@ export default defineComponent({
 			}
 
 			// The first event upon mousedown means we transition to a "mousedown" state
-			if (this.fakeSliderState === "default") {
-				this.fakeSliderState = "mousedown";
+			if (this.rangeSliderClickDragState === "default") {
+				this.rangeSliderClickDragState = "mousedown";
 
-				// Exit early because we don't want to keep the value set by where on the track the user pressed
+				// Exit early because we don't want to use the value set by where on the track the user pressed
 				return;
 			}
 
 			// The second event upon mousedown that occurs by moving left or right means the user has committed to dragging the slider
-			if (this.fakeSliderState === "mousedown") {
-				this.fakeSliderState = "dragging";
+			if (this.rangeSliderClickDragState === "mousedown") {
+				this.rangeSliderClickDragState = "dragging";
 			}
 
 			// If we're in a dragging state, we want to use the new slider value
 			this.rangeSliderValueAsRendered = roundedValue;
 			this.updateValue(roundedValue);
 		},
-		async sliderPointerDown() {
+		sliderPointerDown() {
+			// We want to render the fake slider thumb at the old position, which is still the number held by `value`
 			this.rangeSliderValueAsRendered = this.value || 0;
+
+			// Because an `input` event is fired right before or after this (depending on browser), that first
+			// invocation will transition the state machine to `mousedown`. That's why we don't do it here.
 		},
 		sliderPointerUp() {
 			// User clicked but didn't drag, so we focus the text input element
-			if (this.fakeSliderState === "mousedown") {
+			if (this.rangeSliderClickDragState === "mousedown") {
 				const fieldInput = this.$refs.fieldInput as typeof FieldInput | undefined;
 				const inputElement = fieldInput?.$el.querySelector("[data-input-element]") as HTMLInputElement | undefined;
 				if (!inputElement) return;
@@ -364,7 +366,8 @@ export default defineComponent({
 				inputElement.focus();
 			}
 
-			this.fakeSliderState = "default";
+			// Releasing the mouse means we can reset the state machine
+			this.rangeSliderClickDragState = "default";
 		},
 		onTextFocused() {
 			if (this.value === undefined) this.text = "";
@@ -449,11 +452,13 @@ export default defineComponent({
 	watch: {
 		// Called only when `value` is changed from outside this component (with v-model)
 		value(newValue: number | undefined) {
+			// Draw a dash if the value is undefined
 			if (newValue === undefined) {
 				this.text = "-";
 				return;
 			}
 
+			// Update the range slider with the new value
 			this.rangeSliderValue = newValue;
 			this.rangeSliderValueAsRendered = newValue;
 
