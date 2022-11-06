@@ -17,8 +17,8 @@
 				</LayoutRow>
 			</LayoutRow>
 			<PopoverButton :icon="'VerticalEllipsis'">
-				<h3>Panel Options</h3>
-				<p>The contents of this popover menu are coming soon</p>
+				<TextLabel :bold="true">Panel Options</TextLabel>
+				<TextLabel :multiline="true">The contents of this popover menu are coming soon</TextLabel>
 			</PopoverButton>
 		</LayoutRow>
 		<LayoutCol class="panel-body">

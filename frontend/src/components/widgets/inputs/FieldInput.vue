@@ -87,7 +87,7 @@
 				& {
 					// Setting an alpha value opts out of Safari's "fancy" (but not visible on dark backgrounds) selection highlight rendering
 					// https://stackoverflow.com/a/71753552/775283
-					background-color: rgba(var(--color-5-dullgray-rgb), 0.99);
+					background-color: rgba(var(--color-5-dullgray-rgb), calc(254 / 255));
 				}
 			}
 		}
