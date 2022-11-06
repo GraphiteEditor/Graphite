@@ -12,7 +12,7 @@
 					@click.middle="(e: MouseEvent) => (e?.stopPropagation(), closeAction?.(tabIndex))"
 					data-tab
 				>
-					<span>{{ tabLabel.name }}</span>
+					<TextLabel>{{ tabLabel.name }}</TextLabel>
 					<IconButton :action="(e?: MouseEvent) => (e?.stopPropagation(), closeAction?.(tabIndex))" :icon="'CloseX'" :size="16" v-if="tabCloseButtons" />
 				</LayoutRow>
 			</LayoutRow>

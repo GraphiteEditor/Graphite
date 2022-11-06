@@ -1,5 +1,5 @@
 <template>
-	<span class="text-label" :class="{ disabled, bold, italic, multiline, 'table-align': tableAlign }" :style="minWidth > 0 ? `min-width: ${minWidth}px` : ''" :title="tooltip">
+	<span class="text-label" :class="{ disabled, bold, italic, multiline, 'table-align': tableAlign }" :style="{ 'min-width': minWidth > 0 ? `${minWidth}px` : undefined }" :title="tooltip">
 		<slot></slot>
 	</span>
 </template>
@@ -8,6 +8,8 @@
 .text-label {
 	line-height: 18px;
 	white-space: nowrap;
+	// Force Safari to not draw a text cursor, even though this element has `user-select: none`
+	cursor: default;
 
 	&.disabled {
 		color: var(--color-8-uppergray);

@@ -6,7 +6,7 @@
 		:data-disabled="disabled || undefined"
 		data-text-button
 		:title="tooltip"
-		:style="minWidth > 0 ? `min-width: ${minWidth}px` : ''"
+		:style="{ 'min-width': minWidth > 0 ? `${minWidth}px` : undefined }"
 		@click="(e: MouseEvent) => action(e)"
 		:tabindex="disabled ? -1 : 0"
 	>

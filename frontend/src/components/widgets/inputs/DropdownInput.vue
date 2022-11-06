@@ -12,7 +12,7 @@
 			data-floating-menu-spawner
 		>
 			<IconLabel class="dropdown-icon" :icon="activeEntry.icon" v-if="activeEntry.icon" />
-			<span>{{ activeEntry.label }}</span>
+			<TextLabel class="dropdown-label">{{ activeEntry.label }}</TextLabel>
 			<IconLabel class="dropdown-arrow" :icon="'DropdownArrow'" />
 		</LayoutRow>
 		<MenuList
@@ -40,19 +40,19 @@
 		height: 24px;
 		border-radius: 2px;
 
-		.dropdown-icon {
-			margin: 4px;
-			flex: 0 0 auto;
-		}
-
-		span {
+		.dropdown-label {
 			margin: 0;
 			margin-left: 8px;
 			flex: 1 1 100%;
 		}
 
-		.dropdown-icon + span {
-			margin-left: 0;
+		.dropdown-icon {
+			margin: 4px;
+			flex: 0 0 auto;
+
+			& + .dropdown-label {
+				margin-left: 0;
+			}
 		}
 
 		.dropdown-arrow {
@@ -104,6 +104,7 @@ import { type MenuListEntry } from "@/wasm-communication/messages";
 import MenuList from "@/components/floating-menus/MenuList.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
+import TextLabel from "@/components/widgets/labels/TextLabel.vue";
 
 const DASH_ENTRY = { label: "-" };
 
@@ -167,6 +168,7 @@ export default defineComponent({
 		IconLabel,
 		LayoutRow,
 		MenuList,
+		TextLabel,
 	},
 });
 </script>
