@@ -410,6 +410,7 @@ export class UpdateEyedropperSamplingState extends JsMessage {
 }
 
 const mouseCursorIconCSSNames = {
+	Default: "default",
 	None: "none",
 	ZoomIn: "zoom-in",
 	ZoomOut: "zoom-out",
@@ -421,12 +422,13 @@ const mouseCursorIconCSSNames = {
 	EWResize: "ew-resize",
 	NESWResize: "nesw-resize",
 	NWSEResize: "nwse-resize",
+	Rotate: "custom-rotate",
 } as const;
 export type MouseCursor = keyof typeof mouseCursorIconCSSNames;
 export type MouseCursorIcon = typeof mouseCursorIconCSSNames[MouseCursor];
 
 export class UpdateMouseCursor extends JsMessage {
-	@Transform(({ value }: { value: MouseCursor }) => mouseCursorIconCSSNames[value] || "default")
+	@Transform(({ value }: { value: MouseCursor }) => mouseCursorIconCSSNames[value] || "alias")
 	readonly cursor!: MouseCursorIcon;
 }
 

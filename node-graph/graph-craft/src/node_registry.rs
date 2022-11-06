@@ -314,17 +314,17 @@ mod protograph_testing {
 	}
 
 	#[test]
-	fn greyscale_colour() {
+	fn grayscale_color() {
 		let stack = FixedSizeStack::new(256);
 		let val_protonode = ProtoNode::value(ConstructionArgs::Value(Box::new(Color::from_rgb8(10, 20, 30))));
 		push_node(val_protonode, &stack);
 
-		let greyscale_protonode = ProtoNode {
+		let grayscale_protonode = ProtoNode {
 			construction_args: ConstructionArgs::Nodes(vec![]),
 			input: ProtoNodeInput::Node(0),
 			identifier: NodeIdentifier::new("graphene_core::raster::GrayscaleNode", &[]),
 		};
-		push_node(greyscale_protonode, &stack);
+		push_node(grayscale_protonode, &stack);
 
 		let result = unsafe { stack.get()[1].eval(Box::new(())) };
 		let val = *dyn_any::downcast::<Color>(result).unwrap();
@@ -347,7 +347,7 @@ mod protograph_testing {
 	}
 
 	#[test]
-	fn greyscale_map_image() {
+	fn grayscale_map_image() {
 		let stack = FixedSizeStack::new(256);
 		let image_protonode = ProtoNode {
 			construction_args: ConstructionArgs::Nodes(vec![]),
@@ -356,12 +356,12 @@ mod protograph_testing {
 		};
 		push_node(image_protonode, &stack);
 
-		let greyscale_protonode = ProtoNode {
+		let grayscale_protonode = ProtoNode {
 			construction_args: ConstructionArgs::Nodes(vec![]),
 			input: ProtoNodeInput::None,
 			identifier: NodeIdentifier::new("graphene_core::raster::GrayscaleNode", &[]),
 		};
-		push_node(greyscale_protonode, &stack);
+		push_node(grayscale_protonode, &stack);
 
 		let image_map_protonode = ProtoNode {
 			construction_args: ConstructionArgs::Nodes(vec![1]),
