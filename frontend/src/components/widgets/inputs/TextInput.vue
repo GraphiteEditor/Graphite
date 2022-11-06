@@ -23,7 +23,7 @@
 	}
 
 	&.centered {
-		input {
+		input:not(:focus) {
 			text-align: center;
 		}
 	}
@@ -38,12 +38,19 @@ import FieldInput from "@/components/widgets/inputs/FieldInput.vue";
 export default defineComponent({
 	emits: ["update:value", "commitText"],
 	props: {
-		value: { type: String as PropType<string>, required: true },
+		// Label
 		label: { type: String as PropType<string>, required: false },
+		tooltip: { type: String as PropType<string | undefined>, required: false },
+
+		// Disabled
 		disabled: { type: Boolean as PropType<boolean>, default: false },
+
+		// Value
+		value: { type: String as PropType<string>, required: true },
+
+		// Styling
 		centered: { type: Boolean as PropType<boolean>, default: false },
 		minWidth: { type: Number as PropType<number>, default: 0 },
-		tooltip: { type: String as PropType<string | undefined>, required: false },
 		sharpRightCorners: { type: Boolean as PropType<boolean>, default: false },
 	},
 	data() {

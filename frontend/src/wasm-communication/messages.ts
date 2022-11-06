@@ -816,10 +816,22 @@ export class IconLabel extends WidgetProps {
 	tooltip!: string | undefined;
 }
 
-export type IncrementBehavior = "Add" | "Multiply" | "Callback" | "None";
+export type NumberInputIncrementBehavior = "Add" | "Multiply" | "Callback" | "None";
+export type NumberInputMode = "Increment" | "Range";
 
 export class NumberInput extends WidgetProps {
+	// Label
+
 	label!: string | undefined;
+
+	@Transform(({ value }: { value: string }) => (value.length > 0 ? value : undefined))
+	tooltip!: string | undefined;
+
+	// Disabled
+
+	disabled!: boolean;
+
+	// Value
 
 	value!: number | undefined;
 
@@ -829,22 +841,29 @@ export class NumberInput extends WidgetProps {
 
 	isInteger!: boolean;
 
+	// Number presentation
+
 	displayDecimalPlaces!: number;
 
 	unit!: string;
 
 	unitIsHiddenWhenEditing!: boolean;
 
-	incrementBehavior!: IncrementBehavior;
+	// Mode behavior
 
-	incrementFactor!: number;
+	mode!: NumberInputMode;
 
-	disabled!: boolean;
+	incrementBehavior!: NumberInputIncrementBehavior;
+
+	step!: number;
+
+	rangeMin!: number | undefined;
+
+	rangeMax!: number | undefined;
+
+	// Styling
 
 	minWidth!: number;
-
-	@Transform(({ value }: { value: string }) => (value.length > 0 ? value : undefined))
-	tooltip!: string | undefined;
 }
 
 export class OptionalInput extends WidgetProps {
