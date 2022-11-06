@@ -5,7 +5,7 @@ use crate::messages::layout::utility_types::misc::LayoutTarget;
 use crate::messages::layout::utility_types::widgets::assist_widgets::PivotAssist;
 use crate::messages::layout::utility_types::widgets::button_widgets::{IconButton, PopoverButton, TextButton};
 use crate::messages::layout::utility_types::widgets::input_widgets::{
-	CheckboxInput, ColorInput, DropdownEntryData, DropdownInput, FontInput, NumberInput, RadioEntryData, RadioInput, TextAreaInput, TextInput,
+	CheckboxInput, ColorInput, DropdownEntryData, DropdownInput, FontInput, NumberInput, NumberInputMode, RadioEntryData, RadioInput, TextAreaInput, TextInput,
 };
 use crate::messages::layout::utility_types::widgets::label_widgets::{IconLabel, Separator, SeparatorDirection, SeparatorType, TextLabel};
 use crate::messages::portfolio::utility_types::{ImaginateServerStatus, PersistentData};
@@ -405,8 +405,10 @@ fn node_section_transform(layer: &Layer, persistent_data: &PersistentData) -> La
 					})),
 					WidgetHolder::new(Widget::NumberInput(NumberInput {
 						value: Some(layer.transform.rotation() * 180. / PI),
-						label: "".into(),
 						unit: "°".into(),
+						mode: NumberInputMode::Range,
+						range_min: Some(-180.),
+						range_max: Some(180.),
 						on_update: WidgetCallback::new(|number_input: &NumberInput| {
 							PropertiesPanelMessage::ModifyTransform {
 								value: number_input.value.unwrap() / 180. * PI,
@@ -776,6 +778,10 @@ fn node_section_imaginate(imaginate_layer: &ImaginateLayer, layer: &Layer, persi
 						})),
 						WidgetHolder::new(Widget::NumberInput(NumberInput {
 							value: Some(imaginate_layer.samples.into()),
+							mode: NumberInputMode::Range,
+							range_min: Some(0.),
+							range_max: Some(150.),
+							is_integer: true,
 							min: Some(0.),
 							max: Some(150.),
 							tooltip,
@@ -862,8 +868,12 @@ fn node_section_imaginate(imaginate_layer: &ImaginateLayer, layer: &Layer, persi
 						})),
 						WidgetHolder::new(Widget::NumberInput(NumberInput {
 							value: Some(imaginate_layer.denoising_strength),
+							mode: NumberInputMode::Range,
+							range_min: Some(0.),
+							range_max: Some(1.),
 							min: Some(0.),
 							max: Some(1.),
+							display_decimal_places: 2,
 							disabled: !imaginate_layer.use_img2img,
 							tooltip,
 							on_update: WidgetCallback::new(move |number_input: &NumberInput| {
@@ -894,6 +904,9 @@ fn node_section_imaginate(imaginate_layer: &ImaginateLayer, layer: &Layer, persi
 						})),
 						WidgetHolder::new(Widget::NumberInput(NumberInput {
 							value: Some(imaginate_layer.cfg_scale),
+							mode: NumberInputMode::Range,
+							range_min: Some(0.),
+							range_max: Some(30.),
 							min: Some(0.),
 							max: Some(30.),
 							tooltip,

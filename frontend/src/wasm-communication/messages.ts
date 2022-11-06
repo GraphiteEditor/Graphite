@@ -857,6 +857,10 @@ export class NumberInput extends WidgetProps {
 
 	step!: number;
 
+	rangeMin!: number | undefined;
+
+	rangeMax!: number | undefined;
+
 	// Styling
 
 	minWidth!: number;

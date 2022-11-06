@@ -23,7 +23,7 @@
 	}
 
 	&.centered {
-		input {
+		input:not(:focus) {
 			text-align: center;
 		}
 	}

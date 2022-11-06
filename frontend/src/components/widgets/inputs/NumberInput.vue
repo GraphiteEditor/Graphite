@@ -6,7 +6,7 @@
 		:label="label"
 		:spellcheck="false"
 		:disabled="disabled"
-		:style="{ 'min-width': minWidth > 0 ? `${minWidth}px` : undefined, '--progress-factor': rangeSliderValueAsRendered / (sliderMinValue + sliderMaxValue) }"
+		:style="{ 'min-width': minWidth > 0 ? `${minWidth}px` : undefined, '--progress-factor': (rangeSliderValueAsRendered - rangeMin) / (rangeMax - rangeMin) }"
 		:tooltip="tooltip"
 		:sharpRightCorners="sharpRightCorners"
 		@textFocused="() => onTextFocused()"
@@ -22,8 +22,8 @@
 			:class="{ hidden: rangeSliderClickDragState === 'mousedown' }"
 			v-if="mode === 'Range' && value !== undefined"
 			v-model="rangeSliderValue"
-			:min="sliderMinValue"
-			:max="sliderMaxValue"
+			:min="rangeMin"
+			:max="rangeMax"
 			:step="sliderStepValue"
 			:disabled="disabled"
 			@input="() => sliderInput()"
@@ -280,6 +280,10 @@ export default defineComponent({
 		// "None": the increment arrows are not shown.
 		// "Callback": the functions `incrementCallbackIncrease` and `incrementCallbackDecrease` call custom behavior.
 		incrementBehavior: { type: String as PropType<NumberInputIncrementBehavior>, default: "Add" },
+		// `rangeMin` and `rangeMax` are only applicable with a `mode` of "Range".
+		// They set the lower and upper values of the slider to drag between.
+		rangeMin: { type: Number as PropType<number>, default: 0 },
+		rangeMax: { type: Number as PropType<number>, default: 1 },
 
 		// Styling
 		minWidth: { type: Number as PropType<number>, default: 0 },
@@ -305,12 +309,6 @@ export default defineComponent({
 		};
 	},
 	computed: {
-		sliderMinValue() {
-			return this.min === undefined ? 0 : this.min;
-		},
-		sliderMaxValue() {
-			return this.max === undefined ? 100 : this.max;
-		},
 		sliderStepValue() {
 			const step = this.step === undefined ? 1 : this.step;
 			return this.isInteger ? step : "any";

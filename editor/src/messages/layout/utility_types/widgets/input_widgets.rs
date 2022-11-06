@@ -194,6 +194,12 @@ pub struct NumberInput {
 	#[derivative(Default(value = "1."))]
 	pub step: f64,
 
+	#[serde(rename = "rangeMin")]
+	pub range_min: Option<f64>,
+
+	#[serde(rename = "rangeMax")]
+	pub range_max: Option<f64>,
+
 	// Styling
 	#[serde(rename = "minWidth")]
 	pub min_width: u32,
