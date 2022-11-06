@@ -7,7 +7,7 @@
 		:spellcheck="true"
 		:disabled="disabled"
 		:tooltip="tooltip"
-		:style="minWidth > 0 ? `min-width: ${minWidth}px` : ''"
+		:style="{ 'min-width': minWidth > 0 ? `${minWidth}px` : undefined }"
 		:sharpRightCorners="sharpRightCorners"
 		@textFocused="() => onTextFocused()"
 		@textChanged="() => onTextChanged()"

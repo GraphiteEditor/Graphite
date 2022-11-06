@@ -12,7 +12,7 @@
 			@keydown="keydown"
 			data-floating-menu-spawner
 		>
-			<span>{{ activeEntry?.value || "" }}</span>
+			<TextLabel class="dropdown-label">{{ activeEntry?.value || "" }}</TextLabel>
 			<IconLabel class="dropdown-arrow" :icon="'DropdownArrow'" />
 		</LayoutRow>
 		<MenuList
@@ -39,7 +39,7 @@
 		height: 24px;
 		border-radius: 2px;
 
-		span {
+		.dropdown-label {
 			margin: 0;
 			margin-left: 8px;
 			flex: 1 1 100%;
@@ -87,6 +87,7 @@ import { type MenuListEntry } from "@/wasm-communication/messages";
 import MenuList from "@/components/floating-menus/MenuList.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
+import TextLabel from "@/components/widgets/labels/TextLabel.vue";
 
 export default defineComponent({
 	inject: ["fonts"],
@@ -186,6 +187,7 @@ export default defineComponent({
 		IconLabel,
 		LayoutRow,
 		MenuList,
+		TextLabel,
 	},
 });
 </script>

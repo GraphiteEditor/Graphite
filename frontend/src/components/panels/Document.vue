@@ -199,8 +199,8 @@
 					overflow: visible;
 
 					div {
-						background: none;
 						cursor: text;
+						background: none;
 						border: none;
 						margin: 0;
 						padding: 0;

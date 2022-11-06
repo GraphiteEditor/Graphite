@@ -6,7 +6,7 @@
 		:data-disabled="disabled || undefined"
 		data-text-button
 		:title="tooltip"
-		:style="minWidth > 0 ? `min-width: ${minWidth}px` : ''"
+		:style="{ 'min-width': minWidth > 0 ? `${minWidth}px` : undefined }"
 		@click="(e: MouseEvent) => action(e)"
 		:tabindex="disabled ? -1 : 0"
 	>
@@ -22,6 +22,7 @@
 	align-items: center;
 	flex: 0 0 auto;
 	height: 24px;
+	margin: 0;
 	padding: 0 8px;
 	box-sizing: border-box;
 	border: none;

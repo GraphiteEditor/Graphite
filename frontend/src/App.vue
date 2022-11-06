@@ -78,8 +78,9 @@ body,
 	margin: 0;
 	height: 100%;
 	background: var(--color-2-mildblack);
-	user-select: none;
 	overscroll-behavior: none;
+	-webkit-user-select: none; // Required as of Safari 15.0 (Graphite's minimum version) through the latest release
+	user-select: none;
 }
 
 html,
@@ -221,27 +222,6 @@ img {
 	// Variant: dark outline over light colors
 	&.checked {
 		outline: 1px dashed var(--color-2-mildblack);
-	}
-}
-
-// For placeholder messages (remove eventually)
-.floating-menu {
-	h1,
-	h2,
-	h3,
-	h4,
-	h5,
-	h6,
-	p {
-		margin: 0;
-	}
-
-	p {
-		margin-top: 8px;
-	}
-
-	.floating-menu-content h3 ~ p {
-		white-space: pre-wrap;
 	}
 }
 </style>
