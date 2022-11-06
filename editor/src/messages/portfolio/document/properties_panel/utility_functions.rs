@@ -1037,19 +1037,19 @@ fn node_section_node_graph_frame(node_graph_frame: &NodeGraphFrameLayer) -> Layo
 		layout: vec![
 			LayoutGroup::Row {
 				widgets: vec![WidgetHolder::new(Widget::TextLabel(TextLabel {
-					value: "Temporary layer that applies a greyscale to the layers below it.".into(),
+					value: "Temporary layer that applies a grayscale to the layers below it.".into(),
 					..TextLabel::default()
 				}))],
 			},
 			LayoutGroup::Row {
 				widgets: vec![WidgetHolder::new(Widget::TextLabel(TextLabel {
-					value: "Powered by the node graph :)".into(),
+					value: "Powered by the node graph! :)".into(),
 					..TextLabel::default()
 				}))],
 			},
 			LayoutGroup::Row {
 				widgets: vec![WidgetHolder::new(Widget::TextButton(TextButton {
-					label: "Open Node Graph UI (todo)".into(),
+					label: "Open Node Graph UI (coming soon)".into(),
 					tooltip: "Open the node graph associated with this layer".into(),
 					on_update: WidgetCallback::new(|_| DialogMessage::RequestComingSoonDialog { issue: Some(800) }.into()),
 					..Default::default()
