@@ -129,6 +129,7 @@ impl PropertyHolder for GradientTool {
 						..RadioEntryData::default()
 					},
 				],
+				..Default::default()
 			}))],
 		}]))
 	}
@@ -161,6 +162,7 @@ fn gradient_space_transform(path: &[LayerId], layer: &Layer, document: &Document
 pub struct GradientOverlay {
 	pub handles: [Vec<LayerId>; 2],
 	pub line: Vec<LayerId>,
+	pub steps: Vec<Vec<LayerId>>,
 	path: Vec<LayerId>,
 	transform: DAffine2,
 	gradient: Gradient,
@@ -204,22 +206,35 @@ impl GradientOverlay {
 		path
 	}
 
-	pub fn new(fill: &Gradient, dragging_start: Option<bool>, path: &[LayerId], layer: &Layer, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>, font_cache: &FontCache) -> Self {
+	pub fn new(
+		fill: &Gradient,
+		dragging: Option<GradientDragTarget>,
+		path: &[LayerId],
+		layer: &Layer,
+		document: &DocumentMessageHandler,
+		responses: &mut VecDeque<Message>,
+		font_cache: &FontCache,
+	) -> Self {
 		let transform = gradient_space_transform(path, layer, document, font_cache);
-		let Gradient { start, end, .. } = fill;
+		let Gradient { start, end, positions, .. } = fill;
 		let [start, end] = [transform.transform_point2(*start), transform.transform_point2(*end)];
 
 		let line = Self::generate_overlay_line(start, end, responses);
 		let handles = [
-			Self::generate_overlay_handle(start, responses, dragging_start == Some(true)),
-			Self::generate_overlay_handle(end, responses, dragging_start == Some(false)),
+			Self::generate_overlay_handle(start, responses, dragging == Some(GradientDragTarget::Start)),
+			Self::generate_overlay_handle(end, responses, dragging == Some(GradientDragTarget::End)),
 		];
+
+		let not_at_end = |(_, x): &(_, f64)| x.abs() > f64::EPSILON * 1000. && (1. - x).abs() > f64::EPSILON * 1000.;
+		let create_step = |(index, pos)| Self::generate_overlay_handle(start.lerp(end, pos), responses, dragging == Some(GradientDragTarget::Step(index)));
+		let steps = positions.iter().map(|(pos, _)| *pos).enumerate().filter(not_at_end).map(create_step).collect();
 
 		let path = path.to_vec();
 		let gradient = fill.clone();
 
 		Self {
 			handles,
+			steps,
 			line,
 			path,
 			transform,
@@ -232,6 +247,9 @@ impl GradientOverlay {
 		let [start, end] = self.handles;
 		responses.push_back(DocumentMessage::Overlays(Operation::DeleteLayer { path: start }.into()).into());
 		responses.push_back(DocumentMessage::Overlays(Operation::DeleteLayer { path: end }.into()).into());
+		for step in self.steps {
+			responses.push_back(DocumentMessage::Overlays(Operation::DeleteLayer { path: step }.into()).into());
+		}
 	}
 
 	pub fn evaluate_gradient_start(&self) -> DVec2 {
@@ -243,13 +261,21 @@ impl GradientOverlay {
 	}
 }
 
+#[derive(PartialEq, Eq, Clone, Copy, Debug, Default)]
+pub enum GradientDragTarget {
+	Start,
+	#[default]
+	End,
+	Step(usize),
+}
+
 /// Contains information about the selected gradient handle
 #[derive(Clone, Debug, Default)]
 struct SelectedGradient {
 	path: Vec<LayerId>,
 	transform: DAffine2,
 	gradient: Gradient,
-	dragging_start: bool,
+	dragging: GradientDragTarget,
 }
 
 impl SelectedGradient {
@@ -259,7 +285,7 @@ impl SelectedGradient {
 			path: path.to_vec(),
 			transform,
 			gradient,
-			dragging_start: false,
+			dragging: GradientDragTarget::End,
 		}
 	}
 
@@ -271,8 +297,8 @@ impl SelectedGradient {
 	pub fn update_gradient(&mut self, mut mouse: DVec2, responses: &mut VecDeque<Message>, snap_rotate: bool, gradient_type: GradientType) {
 		self.gradient.gradient_type = gradient_type;
 
-		if snap_rotate {
-			let point = if self.dragging_start {
+		if snap_rotate && matches!(self.dragging, GradientDragTarget::End | GradientDragTarget::Start) {
+			let point = if self.dragging == GradientDragTarget::Start {
 				self.transform.transform_point2(self.gradient.end)
 			} else {
 				self.transform.transform_point2(self.gradient.start)
@@ -292,10 +318,22 @@ impl SelectedGradient {
 
 		mouse = self.transform.inverse().transform_point2(mouse);
 
-		if self.dragging_start {
-			self.gradient.start = mouse;
-		} else {
-			self.gradient.end = mouse;
+		match self.dragging {
+			GradientDragTarget::Start => self.gradient.start = mouse,
+			GradientDragTarget::End => self.gradient.end = mouse,
+			GradientDragTarget::Step(s) => {
+				// Calculate the new position by finding the closest point on the line
+				let new_pos = ((self.gradient.end - self.gradient.start).angle_between(mouse - self.gradient.start)).cos() * self.gradient.start.distance(mouse)
+					/ self.gradient.start.distance(self.gradient.end);
+
+				// Should not go off end but can swap (like inscape)
+				let clamped = new_pos.clamp(0., 1.);
+				self.gradient.positions[s].0 = clamped;
+				let new_pos = self.gradient.positions[s];
+
+				self.gradient.positions.sort_unstable_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+				self.dragging = GradientDragTarget::Step(self.gradient.positions.iter().position(|x| *x == new_pos).unwrap());
+			}
 		}
 
 		self.gradient.transform = self.transform;
@@ -347,16 +385,17 @@ impl Fsm for GradientToolFsmState {
 					}
 
 					for path in document.selected_visible_layers() {
+						if !document.graphene_document.multiply_transforms(path).unwrap().inverse().is_finite() {
+							continue;
+						}
 						let layer = document.graphene_document.layer(path).unwrap();
 
 						if let Ok(Fill::Gradient(gradient)) = layer.style().map(|style| style.fill()) {
-							let dragging_start = tool_data
+							let dragging = tool_data
 								.selected_gradient
 								.as_ref()
-								.and_then(|selected| if selected.path == path { Some(selected.dragging_start) } else { None });
-							tool_data
-								.gradient_overlays
-								.push(GradientOverlay::new(gradient, dragging_start, path, layer, document, responses, font_cache))
+								.and_then(|selected| if selected.path == path { Some(selected.dragging) } else { None });
+							tool_data.gradient_overlays.push(GradientOverlay::new(gradient, dragging, path, layer, document, responses, font_cache))
 						}
 					}
 
@@ -370,25 +409,35 @@ impl Fsm for GradientToolFsmState {
 
 					let mut dragging = false;
 					for overlay in &tool_data.gradient_overlays {
-						if overlay.evaluate_gradient_start().distance_squared(mouse) < tolerance {
-							dragging = true;
-							start_snap(&mut tool_data.snap_manager, document, font_cache);
-							tool_data.selected_gradient = Some(SelectedGradient {
-								path: overlay.path.clone(),
-								transform: overlay.transform,
-								gradient: overlay.gradient.clone(),
-								dragging_start: true,
-							})
+						// Check for dragging step
+						for (index, (pos, _)) in overlay.gradient.positions.iter().enumerate() {
+							let pos = overlay.transform.transform_point2(overlay.gradient.start.lerp(overlay.gradient.end, *pos));
+							if pos.distance_squared(mouse) < tolerance {
+								dragging = true;
+								tool_data.selected_gradient = Some(SelectedGradient {
+									path: overlay.path.clone(),
+									transform: overlay.transform,
+									gradient: overlay.gradient.clone(),
+									dragging: GradientDragTarget::Step(index),
+								})
+							}
 						}
-						if overlay.evaluate_gradient_end().distance_squared(mouse) < tolerance {
-							dragging = true;
-							start_snap(&mut tool_data.snap_manager, document, font_cache);
-							tool_data.selected_gradient = Some(SelectedGradient {
-								path: overlay.path.clone(),
-								transform: overlay.transform,
-								gradient: overlay.gradient.clone(),
-								dragging_start: false,
-							})
+
+						// Check dragging start or end handle
+						for (pos, dragging_target) in [
+							(overlay.evaluate_gradient_start(), GradientDragTarget::Start),
+							(overlay.evaluate_gradient_end(), GradientDragTarget::End),
+						] {
+							if pos.distance_squared(mouse) < tolerance {
+								dragging = true;
+								start_snap(&mut tool_data.snap_manager, document, font_cache);
+								tool_data.selected_gradient = Some(SelectedGradient {
+									path: overlay.path.clone(),
+									transform: overlay.transform,
+									gradient: overlay.gradient.clone(),
+									dragging: dragging_target,
+								})
+							}
 						}
 					}
 					if dragging {

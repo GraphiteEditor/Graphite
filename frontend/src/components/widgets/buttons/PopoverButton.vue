@@ -1,6 +1,6 @@
 <template>
 	<LayoutRow class="popover-button">
-		<IconButton :action="() => onClick()" :icon="icon" :size="16" data-floating-menu-spawner :tooltip="tooltip" />
+		<IconButton :class="{ open }" :disabled="disabled" :action="() => onClick()" :icon="icon" :size="16" data-floating-menu-spawner :tooltip="tooltip" />
 		<FloatingMenu v-model:open="open" :type="'Popover'" :direction="'Bottom'">
 			<slot></slot>
 		</FloatingMenu>
@@ -23,15 +23,20 @@
 		width: 100%;
 		height: 100%;
 		padding: 0;
-		outline: none;
 		border: none;
 		border-radius: 2px;
 		background: var(--color-1-nearblack);
 		fill: var(--color-e-nearwhite);
 
-		&:hover {
+		&:hover,
+		&.open {
 			background: var(--color-6-lowergray);
 			fill: var(--color-f-white);
+		}
+
+		&.disabled {
+			background: var(--color-2-mildblack);
+			fill: var(--color-8-uppergray);
 		}
 	}
 
@@ -59,6 +64,7 @@ export default defineComponent({
 	props: {
 		icon: { type: String as PropType<IconName>, default: "DropdownArrow" },
 		tooltip: { type: String as PropType<string | undefined>, required: false },
+		disabled: { type: Boolean as PropType<boolean>, default: false },
 
 		// Callbacks
 		action: { type: Function as PropType<() => void>, required: false },

@@ -1,3 +1,6 @@
+use bezier_rs::Bezier;
+use std::fmt::Write;
+
 // SVG drawing constants
 pub const SVG_OPEN_TAG: &str = r#"<svg xmlns="http://www.w3.org/2000/svg" width="200px" height="200px">"#;
 pub const SVG_CLOSE_TAG: &str = "</svg>";
@@ -8,6 +11,7 @@ pub const WHITE: &str = "white";
 pub const GRAY: &str = "gray";
 pub const RED: &str = "red";
 pub const ORANGE: &str = "orange";
+pub const PINK: &str = "pink";
 pub const GREEN: &str = "green";
 pub const NONE: &str = "none";
 
@@ -34,4 +38,35 @@ pub fn draw_circle(x_pos: f64, y_pos: f64, radius: f64, stroke: &str, stroke_wid
 /// Helper function to create an SVG circle entity.
 pub fn draw_line(start_x: f64, start_y: f64, end_x: f64, end_y: f64, stroke: &str, stroke_width: f64) -> String {
 	format!(r#"<line x1="{start_x}" y1="{start_y}" x2="{end_x}" y2="{end_y}" stroke="{stroke}" stroke-width="{stroke_width}"/>"#)
+}
+
+/// Helper function to draw a list of beziers.
+pub fn draw_beziers(beziers: Vec<Bezier>, options: String) -> String {
+	let start_point = beziers.first().unwrap().start();
+	let mut svg = format!("<path d=\"M {} {}", start_point.x, start_point.y);
+
+	beziers.iter().for_each(|bezier| {
+		let _ = write!(svg, " {}", bezier.svg_curve_argument());
+	});
+
+	let _ = write!(svg, " Z\" {}/>", options);
+	svg
+}
+
+// Helper function to convert polar to cartesian coordinates
+fn polar_to_cartesian(center_x: f64, center_y: f64, radius: f64, angle_in_rad: f64) -> [f64; 2] {
+	let x = center_x + radius * angle_in_rad.cos();
+	let y = center_y + radius * -angle_in_rad.sin();
+	[x, y]
+}
+
+// Helper function to create an SVG drawing of a sector
+pub fn draw_sector(center_x: f64, center_y: f64, radius: f64, start_angle: f64, end_angle: f64, stroke: &str, stroke_width: f64, fill: &str) -> String {
+	let [start_x, start_y] = polar_to_cartesian(center_x, center_y, radius, start_angle);
+	let [end_x, end_y] = polar_to_cartesian(center_x, center_y, radius, end_angle);
+	// draw sector with fill color
+	let sector_svg = format!(r#"<path d="M {start_x} {start_y} A {radius} {radius} 0 0 1 {end_x} {end_y} L {center_x} {center_y} L {start_x} {start_y} Z"  stroke="none" fill="{fill}" />"#);
+	// draw arc with stroke color
+	let arc_svg = format!(r#"<path d="M {start_x} {start_y} A {radius} {radius} 0 0 1 {end_x} {end_y}" stroke="{stroke}" stroke-width="{stroke_width}" fill="none"/>"#);
+	format!("{sector_svg}{arc_svg}")
 }

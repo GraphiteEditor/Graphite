@@ -40,8 +40,18 @@ impl Bezier {
 		}
 	}
 
+	/// Returns a reversed version of the Bezier curve.
+	pub fn reverse(&self) -> Bezier {
+		match self.handles {
+			BezierHandles::Linear => Bezier::from_linear_dvec2(self.end, self.start),
+			BezierHandles::Quadratic { handle } => Bezier::from_quadratic_dvec2(self.end, handle, self.start),
+			BezierHandles::Cubic { handle_start, handle_end } => Bezier::from_cubic_dvec2(self.end, handle_end, handle_start, self.start),
+		}
+	}
+
 	/// Returns the Bezier curve representing the sub-curve starting at the point corresponding to `t1` and ending at the point corresponding to `t2`.
 	pub fn trim(&self, t1: f64, t2: f64) -> Bezier {
+		// If t1 is equal to t2, return a bezier comprised entirely of the same point
 		if f64_compare(t1, t2, MAX_ABSOLUTE_DIFFERENCE) {
 			let point = self.evaluate(ComputeType::Parametric { t: t1 });
 			return match self.handles {
@@ -63,7 +73,11 @@ impl Bezier {
 			// Case where we took the split from the beginning to `t1`
 			t2 / t1
 		};
-		bezier_starting_at_t1.split(adjusted_t2)[t2_split_side]
+		let result = bezier_starting_at_t1.split(adjusted_t2)[t2_split_side];
+		if t2 < t1 {
+			return result.reverse();
+		}
+		result
 	}
 
 	/// Returns a Bezier curve that results from applying the transformation function to each point in the Bezier.
@@ -88,6 +102,12 @@ impl Bezier {
 	pub fn rotate(&self, angle: f64) -> Bezier {
 		let rotation_matrix = DMat2::from_angle(angle);
 		self.apply_transformation(&|point| rotation_matrix.mul_vec2(point))
+	}
+
+	/// Returns a Bezier curve that results from rotating the curve around the provided point by the given angle (in radians).
+	pub fn rotate_about_point(&self, angle: f64, pivot: DVec2) -> Bezier {
+		let rotation_matrix = DMat2::from_angle(angle);
+		self.apply_transformation(&|point| rotation_matrix.mul_vec2(point - pivot) + pivot)
 	}
 
 	/// Returns a Bezier curve that results from translating the curve by the given `DVec2`.
@@ -237,16 +257,134 @@ impl Bezier {
 		})
 	}
 
+	/// Version of the `scale` function which scales the curve such that the start of the scaled curve is `start_distance` from the original curve, while the end of
+	/// of the scaled curve is `end_distance` from the original curve. The curve transitions from `start_distance` to `end_distance` gradually, proportional to the
+	/// distance along the equation (`t`-value) of the curve.
+	pub fn graduated_scale(&self, start_distance: f64, end_distance: f64) -> Bezier {
+		assert!(self.is_scalable(), "The curve provided to scale is not scalable. Reduce the curve first.");
+
+		let normal_start = self.normal(0.);
+		let normal_end = self.normal(1.);
+
+		// If normal unit vectors are equal, then the lines are parallel
+		if normal_start.abs_diff_eq(normal_end, MAX_ABSOLUTE_DIFFERENCE) {
+			let transformed_start = utils::scale_point_from_direction_vector(self.start, self.normal(0.), false, start_distance);
+			let transformed_end = utils::scale_point_from_direction_vector(self.end, self.normal(1.), false, end_distance);
+
+			return match self.handles {
+				BezierHandles::Linear => Bezier::from_linear_dvec2(transformed_start, transformed_end),
+				BezierHandles::Quadratic { handle } => {
+					let handle_closest_t = self.project(handle, ProjectionOptions::default());
+					let handle_scale_distance = (1. - handle_closest_t) * start_distance + handle_closest_t * end_distance;
+					let transformed_handle = utils::scale_point_from_direction_vector(handle, self.normal(handle_closest_t), false, handle_scale_distance);
+					Bezier::from_quadratic_dvec2(transformed_start, transformed_handle, transformed_end)
+				}
+				BezierHandles::Cubic { handle_start, handle_end } => {
+					let handle_start_closest_t = self.project(handle_start, ProjectionOptions::default());
+					let handle_start_scale_distance = (1. - handle_start_closest_t) * start_distance + handle_start_closest_t * end_distance;
+					let transformed_handle_start = utils::scale_point_from_direction_vector(handle_start, self.normal(handle_start_closest_t), false, handle_start_scale_distance);
+
+					let handle_end_closest_t = self.project(handle_start, ProjectionOptions::default());
+					let handle_end_scale_distance = (1. - handle_end_closest_t) * start_distance + handle_end_closest_t * end_distance;
+					let transformed_handle_end = utils::scale_point_from_direction_vector(handle_end, self.normal(handle_end_closest_t), false, handle_end_scale_distance);
+					Bezier::from_cubic_dvec2(transformed_start, transformed_handle_start, transformed_handle_end, transformed_end)
+				}
+			};
+		}
+
+		// Find the intersection point of the endpoint normals
+		let intersection = utils::line_intersection(self.start, normal_start, self.end, normal_end);
+		let should_flip_direction = (self.start - intersection).normalize().abs_diff_eq(normal_start, MAX_ABSOLUTE_DIFFERENCE);
+
+		let transformed_start = utils::scale_point_from_origin(self.start, intersection, should_flip_direction, start_distance);
+		let transformed_end = utils::scale_point_from_origin(self.end, intersection, should_flip_direction, end_distance);
+
+		match self.handles {
+			BezierHandles::Linear => Bezier::from_linear_dvec2(transformed_start, transformed_end),
+			BezierHandles::Quadratic { handle } => {
+				let handle_scale_distance = (start_distance + end_distance) / 2.;
+				let transformed_handle = utils::scale_point_from_origin(handle, intersection, should_flip_direction, handle_scale_distance);
+				Bezier::from_quadratic_dvec2(transformed_start, transformed_handle, transformed_end)
+			}
+			BezierHandles::Cubic { handle_start, handle_end } => {
+				let handle_start_scale_distance = (start_distance * 2. + end_distance) / 3.;
+				let transformed_handle_start = utils::scale_point_from_origin(handle_start, intersection, should_flip_direction, handle_start_scale_distance);
+
+				let handle_end_scale_distance = (start_distance + end_distance * 2.) / 3.;
+				let transformed_handle_end = utils::scale_point_from_origin(handle_end, intersection, should_flip_direction, handle_end_scale_distance);
+				Bezier::from_cubic_dvec2(transformed_start, transformed_handle_start, transformed_handle_end, transformed_end)
+			}
+		}
+	}
+
 	/// Offset will get all the reduceable subcurves, and for each subcurve, it will scale the subcurve a set distance away from the original curve.
 	/// Note that not all bezier curves are possible to offset, so this function first reduces the curve to scalable segments and then offsets those segments.
 	/// A proof for why this is true can be found in the [Curve offsetting section](https://pomax.github.io/bezierinfo/#offsetting) of Pomax's bezier curve primer.
 	/// Offset takes the following parameter:
-	/// - `distance` - The distance away from the curve that the new one will be offset to. Positive values will offset the curve in the same direction as the endpoint normals,
+	/// - `distance` - The offset's distance from the curve. Positive values will offset the curve in the same direction as the endpoint normals,
 	/// while negative values will offset in the opposite direction.
 	pub fn offset(&self, distance: f64) -> Vec<Bezier> {
 		let mut reduced = self.reduce(None);
 		reduced.iter_mut().for_each(|bezier| *bezier = bezier.scale(distance));
 		reduced
+	}
+
+	/// Version of the `offset` function which scales the offset such that the start of the offset is `start_distance` from the original curve, while the end of
+	/// of the offset is `end_distance` from the original curve. The curve transitions from `start_distance` to `end_distance` gradually, proportional to the
+	/// distance along the equation (`t`-value) of the curve. Similarily to the `offset` function, the returned result is an approximation.
+	pub fn graduated_offset(&self, start_distance: f64, end_distance: f64) -> Vec<Bezier> {
+		let reduced = self.reduce(None);
+		let mut next_start_distance = start_distance;
+		let distance_difference = end_distance - start_distance;
+		let total_length = self.length(None);
+
+		let mut result = vec![];
+		reduced.iter().for_each(|bezier| {
+			let current_length = bezier.length(None);
+			let next_end_distance = next_start_distance + (current_length / total_length) * distance_difference;
+			result.push(bezier.graduated_scale(next_start_distance, next_end_distance));
+			next_start_distance = next_end_distance;
+		});
+		result
+	}
+
+	/// Outline will return a vector of Beziers that creates an outline around the curve at the designated distance away from the curve.
+	/// It makes use of the `offset` function, thus restrictions applicable to `offset` are relevant to this function as well.
+	/// The 'caps', the linear segments at opposite ends of the outline, intersect the original curve at the midpoint of the cap.
+	///
+	/// Outline takes the following parameter:
+	/// - `distance` - The outline's distance from the curve.
+	pub fn outline(&self, distance: f64) -> Vec<Bezier> {
+		let first_segment = self.offset(distance);
+		let third_segment = self.reverse().offset(distance);
+
+		if first_segment.is_empty() || third_segment.is_empty() {
+			return vec![];
+		}
+
+		let second_segment = Bezier::from_linear_dvec2(first_segment.last().unwrap().end, third_segment.first().unwrap().start);
+		let fourth_segment = Bezier::from_linear_dvec2(third_segment.last().unwrap().end, first_segment.first().unwrap().start);
+		[first_segment, vec![second_segment], third_segment, vec![fourth_segment]].concat()
+	}
+
+	/// Version of the `outline` function which draws the outline at the specified distances away from the curve.
+	/// The outline begins `start_distance` away, and gradually move to being `end_distance` away.
+	pub fn graduated_outline(&self, start_distance: f64, end_distance: f64) -> Vec<Bezier> {
+		self.skewed_outline(start_distance, end_distance, end_distance, start_distance)
+	}
+
+	/// Version of the `graduated_outline` function that allows for the 4 corners of the outline to be different distances away from the curve.
+	pub fn skewed_outline(&self, distance1: f64, distance2: f64, distance3: f64, distance4: f64) -> Vec<Bezier> {
+		let first_segment = self.graduated_offset(distance1, distance2);
+		let third_segment = self.reverse().graduated_offset(distance3, distance4);
+
+		if first_segment.is_empty() || third_segment.is_empty() {
+			return vec![];
+		}
+
+		let second_segment = Bezier::from_linear_dvec2(first_segment.last().unwrap().end, third_segment.first().unwrap().start);
+		let fourth_segment = Bezier::from_linear_dvec2(third_segment.last().unwrap().end, first_segment.first().unwrap().start);
+		[first_segment, vec![second_segment], third_segment, vec![fourth_segment]].concat()
 	}
 
 	/// Approximate a bezier curve with circular arcs.
@@ -499,13 +637,13 @@ mod tests {
 		// Test trimming quadratic curve when t2 > t1
 		let bezier_quadratic = Bezier::from_quadratic_coordinates(30., 50., 140., 30., 160., 170.);
 		let trim1 = bezier_quadratic.trim(0.25, 0.75);
-		let trim2 = bezier_quadratic.trim(0.75, 0.25);
+		let trim2 = bezier_quadratic.trim(0.75, 0.25).reverse();
 		assert!(trim1.abs_diff_eq(&trim2, MAX_ABSOLUTE_DIFFERENCE));
 
 		// Test trimming cubic curve when t2 > t1
 		let bezier_cubic = Bezier::from_cubic_coordinates(30., 30., 60., 140., 150., 30., 160., 160.);
 		let trim3 = bezier_cubic.trim(0.25, 0.75);
-		let trim4 = bezier_cubic.trim(0.75, 0.25);
+		let trim4 = bezier_cubic.trim(0.75, 0.25).reverse();
 		assert!(trim3.abs_diff_eq(&trim4, MAX_ABSOLUTE_DIFFERENCE));
 	}
 
@@ -593,6 +731,47 @@ mod tests {
 			vec![DVec2::new(134.1761, 147.9324), DVec2::new(134.1812, 151.7987), DVec2::new(134.0215, 155.86445)],
 		];
 		assert!(compare_vector_of_beziers(&bezier2.offset(30.), expected_bezier_points2));
+	}
+
+	#[test]
+	fn test_outline() {
+		let p1 = DVec2::new(30., 50.);
+		let p2 = DVec2::new(140., 30.);
+		let line = Bezier::from_linear_dvec2(p1, p2);
+		let outline = line.outline(10.);
+
+		assert_eq!(outline.len(), 4);
+
+		// Assert the first length-wise piece of the outline is 10 units from the line
+		assert!(f64_compare(outline[0].evaluate(0.25).distance(line.evaluate(0.25)), 10., MAX_ABSOLUTE_DIFFERENCE)); // f64
+
+		// Assert the first cap touches the line end point at the halfway point
+		assert!(outline[1].evaluate(0.5).abs_diff_eq(line.end(), MAX_ABSOLUTE_DIFFERENCE));
+
+		// Assert the second length-wise piece of the outline is 10 units from the line
+		assert!(f64_compare(outline[2].evaluate(0.25).distance(line.evaluate(0.75)), 10., MAX_ABSOLUTE_DIFFERENCE)); // f64
+
+		// Assert the second cap touches the line start point at the halfway point
+		assert!(outline[3].evaluate(0.5).abs_diff_eq(line.start(), MAX_ABSOLUTE_DIFFERENCE));
+	}
+
+	#[test]
+	fn test_graduated_scale() {
+		let bezier = Bezier::from_linear_coordinates(30., 60., 140., 120.);
+		bezier.graduated_scale(10., 20.);
+	}
+
+	#[test]
+	fn test_graduated_scale_quadratic() {
+		let bezier = Bezier::from_quadratic_coordinates(30., 50., 82., 98., 160., 170.);
+		let scaled_bezier = bezier.graduated_scale(30., 30.);
+
+		dbg!(scaled_bezier);
+
+		// Assert the scaled bezier is 30 units from the line
+		assert!(f64_compare(scaled_bezier.evaluate(0.).distance(bezier.evaluate(0.)), 30., MAX_ABSOLUTE_DIFFERENCE));
+		assert!(f64_compare(scaled_bezier.evaluate(1.).distance(bezier.evaluate(1.)), 30., MAX_ABSOLUTE_DIFFERENCE));
+		assert!(f64_compare(scaled_bezier.evaluate(0.5).distance(bezier.evaluate(0.5)), 30., MAX_ABSOLUTE_DIFFERENCE));
 	}
 
 	#[test]

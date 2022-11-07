@@ -31,7 +31,7 @@
 
 					<link v-if="entry.font" rel="stylesheet" :href="entry.font?.toString()" />
 
-					<span class="entry-label" :style="{ fontFamily: `${!entry.font ? 'inherit' : entry.value}` }">{{ entry.label }}</span>
+					<TextLabel class="entry-label" :style="{ fontFamily: `${!entry.font ? 'inherit' : entry.value}` }">{{ entry.label }}</TextLabel>
 
 					<UserInputLabel v-if="entry.shortcut?.keys.length" :keysWithLabelsGroups="[entry.shortcut.keys]" :requiresLock="entry.shortcutRequiresLock" />
 
@@ -127,17 +127,21 @@
 			}
 
 			&:hover,
-			&.open,
-			&.active {
+			&.open {
 				background: var(--color-6-lowergray);
 				color: var(--color-f-white);
 
-				&.active {
-					background: var(--color-accent);
-				}
-
 				.entry-icon svg {
 					fill: var(--color-f-white);
+				}
+			}
+
+			&.active {
+				background: var(--color-e-nearwhite);
+				color: var(--color-2-mildblack);
+
+				.entry-icon svg {
+					fill: var(--color-2-mildblack);
 				}
 			}
 
@@ -167,6 +171,7 @@ import LayoutCol from "@/components/layout/LayoutCol.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
 import Separator from "@/components/widgets/labels/Separator.vue";
+import TextLabel from "@/components/widgets/labels/TextLabel.vue";
 import UserInputLabel from "@/components/widgets/labels/UserInputLabel.vue";
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -346,6 +351,7 @@ const MenuList = defineComponent({
 		LayoutCol,
 		LayoutRow,
 		Separator,
+		TextLabel,
 		UserInputLabel,
 	},
 });

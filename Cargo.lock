@@ -360,6 +360,7 @@ dependencies = [
  "graphene-std",
  "num-traits",
  "rand_chacha",
+ "serde",
 ]
 
 [[package]]
@@ -405,11 +406,17 @@ version = "0.0.0"
 dependencies = [
  "bezier-rs",
  "bitflags",
+ "borrow_stack",
  "derivative",
+ "dyn-any",
  "env_logger",
  "glam",
+ "graph-craft",
+ "graphene-core",
+ "graphene-std",
  "graphite-graphene",
  "graphite-proc-macros",
+ "image",
  "kurbo",
  "log",
  "once_cell",
@@ -429,6 +436,8 @@ dependencies = [
  "base64",
  "bezier-rs",
  "glam",
+ "graph-craft",
+ "image",
  "kurbo",
  "log",
  "rustybuzz",

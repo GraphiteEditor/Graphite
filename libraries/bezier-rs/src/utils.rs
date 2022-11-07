@@ -232,6 +232,17 @@ pub fn dvec2_approximately_in_range(point: DVec2, min: DVec2, max: DVec2, max_ab
 	(point.cmpge(min) & point.cmple(max)) | dvec2_compare(point, min, max_abs_diff) | dvec2_compare(point, max, max_abs_diff)
 }
 
+/// Calculate a new position for a point given its original position, a unit vector in the desired direction, and a distance to move it by.
+pub fn scale_point_from_direction_vector(point: DVec2, direction_unit_vector: DVec2, should_flip_direction: bool, distance: f64) -> DVec2 {
+	let should_reverse_factor = if should_flip_direction { -1. } else { 1. };
+	point + distance * direction_unit_vector * should_reverse_factor
+}
+
+/// Scale a point by a given distance with respect to the provided origin.
+pub fn scale_point_from_origin(point: DVec2, origin: DVec2, should_flip_direction: bool, distance: f64) -> DVec2 {
+	scale_point_from_direction_vector(point, (origin - point).normalize(), should_flip_direction, distance)
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;

@@ -11,6 +11,8 @@ pub struct IconButton {
 
 	pub size: u32, // TODO: Convert to an `IconSize` enum
 
+	pub disabled: bool,
+
 	pub active: bool,
 
 	pub tooltip: String,
@@ -29,9 +31,12 @@ pub struct IconButton {
 pub struct PopoverButton {
 	pub icon: Option<String>,
 
-	// Body
+	pub disabled: bool,
+
+	// Placeholder popover content heading
 	pub header: String,
 
+	// Placeholder popover content paragraph
 	pub text: String,
 
 	pub tooltip: String,

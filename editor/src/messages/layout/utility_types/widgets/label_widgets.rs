@@ -5,6 +5,8 @@ use serde::{Deserialize, Serialize};
 pub struct IconLabel {
 	pub icon: String,
 
+	pub disabled: bool,
+
 	pub tooltip: String,
 }
 
@@ -32,6 +34,8 @@ pub enum SeparatorType {
 
 #[derive(Clone, Serialize, Deserialize, Derivative, Debug, PartialEq, Eq, Default)]
 pub struct TextLabel {
+	pub disabled: bool,
+
 	pub bold: bool,
 
 	pub italic: bool,

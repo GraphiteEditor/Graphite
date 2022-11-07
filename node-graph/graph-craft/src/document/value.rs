@@ -4,6 +4,26 @@ use dyn_clone::DynClone;
 
 use dyn_any::{DynAny, Upcast};
 
+/// A type that is known, allowing serialization (serde::Deserialize is not object safe)
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum TaggedValue {
+	String(String),
+	U32(u32),
+	//Image(graphene_std::raster::Image),
+	Color(graphene_core::raster::color::Color),
+}
+
+impl TaggedValue {
+	pub fn to_value(self) -> Value {
+		match self {
+			TaggedValue::String(x) => Box::new(x),
+			TaggedValue::U32(x) => Box::new(x),
+			TaggedValue::Color(x) => Box::new(x),
+		}
+	}
+}
+
 pub type Value = Box<dyn ValueTrait>;
 
 pub trait ValueTrait: DynAny<'static> + Upcast<dyn DynAny<'static>> + std::fmt::Debug + DynClone {}

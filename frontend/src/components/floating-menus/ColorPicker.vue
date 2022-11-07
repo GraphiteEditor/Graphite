@@ -18,8 +18,8 @@
 			<LayoutCol class="hue-picker" @pointerdown="(e: PointerEvent) => onPointerDown(e)" data-hue-picker>
 				<div class="selection-pincers" :style="{ top: `${(1 - hue) * 100}%` }" v-if="!isNone"></div>
 			</LayoutCol>
-			<LayoutCol class="opacity-picker" @pointerdown="(e: PointerEvent) => onPointerDown(e)" data-opacity-picker>
-				<div class="selection-pincers" :style="{ top: `${(1 - opacity) * 100}%` }" v-if="!isNone"></div>
+			<LayoutCol class="alpha-picker" @pointerdown="(e: PointerEvent) => onPointerDown(e)" data-alpha-picker>
+				<div class="selection-pincers" :style="{ top: `${(1 - alpha) * 100}%` }" v-if="!isNone"></div>
 			</LayoutCol>
 			<LayoutCol class="details">
 				<LayoutRow
@@ -43,7 +43,7 @@
 							:value="newColor.toHexOptionalAlpha() || '-'"
 							@commitText="(value: string) => setColorCode(value)"
 							:centered="true"
-							:tooltip="'Color code in hexadecimal format. 6 digits if opaque, 8 with opacity.\nAccepts input of CSS color values including named colors.'"
+							:tooltip="'Color code in hexadecimal format. 6 digits if opaque, 8 with alpha.\nAccepts input of CSS color values including named colors.'"
 						/>
 					</LayoutRow>
 				</LayoutRow>
@@ -98,23 +98,24 @@
 					</LayoutRow>
 				</LayoutRow>
 				<NumberInput
-					:label="'Opacity'"
-					:value="!isNone ? opacity * 100 : undefined"
-					@update:value="(value: number) => setColorOpacityPercent(value)"
+					:label="'Alpha'"
+					:value="!isNone ? alpha * 100 : undefined"
+					@update:value="(value: number) => setColorAlphaPercent(value)"
 					:min="0"
 					:max="100"
 					:unit="'%'"
+					:mode="'Range'"
 					:tooltip="`Scale from transparent (0%) to opaque (100%) for the color's alpha channel`"
 				/>
 				<LayoutRow class="leftover-space"></LayoutRow>
 				<LayoutRow>
-					<button class="preset-color none" @click="() => setColorPreset('none')" v-if="allowNone" title="Set none"></button>
+					<button class="preset-color none" @click="() => setColorPreset('none')" v-if="allowNone" title="Set none" tabindex="0"></button>
 					<Separator :type="'Related'" v-if="allowNone" />
-					<button class="preset-color black" @click="() => setColorPreset('black')" title="Set black"></button>
+					<button class="preset-color black" @click="() => setColorPreset('black')" title="Set black" tabindex="0"></button>
 					<Separator :type="'Related'" />
-					<button class="preset-color white" @click="() => setColorPreset('white')" title="Set white"></button>
+					<button class="preset-color white" @click="() => setColorPreset('white')" title="Set white" tabindex="0"></button>
 					<Separator :type="'Related'" />
-					<button class="preset-color pure" @click="(e: MouseEvent) => setColorPresetSubtile(e)">
+					<button class="preset-color pure" @click="(e: MouseEvent) => setColorPresetSubtile(e)" tabindex="-1">
 						<div data-pure-tile="red" style="--pure-color: #ff0000; --pure-color-gray: #4c4c4c" title="Set red"></div>
 						<div data-pure-tile="yellow" style="--pure-color: #ffff00; --pure-color-gray: #e3e3e3" title="Set yellow"></div>
 						<div data-pure-tile="green" style="--pure-color: #00ff00; --pure-color-gray: #969696" title="Set green"></div>
@@ -141,14 +142,14 @@
 
 	.saturation-value-picker,
 	.hue-picker,
-	.opacity-picker {
+	.alpha-picker {
 		height: 256px;
 		position: relative;
 		overflow: hidden;
 	}
 
 	.hue-picker,
-	.opacity-picker {
+	.alpha-picker {
 		width: 24px;
 		margin-left: 8px;
 		position: relative;
@@ -161,7 +162,7 @@
 		--selection-pincers-color: var(--hue-color-contrasting);
 	}
 
-	.opacity-picker {
+	.alpha-picker {
 		background: linear-gradient(to bottom, var(--opaque-color), transparent);
 
 		&::before {
@@ -170,9 +171,9 @@
 			height: 100%;
 			z-index: -1;
 			position: relative;
-			background: var(--transparent-checkered-background);
-			background-size: var(--transparent-checkered-background-size);
-			background-position: var(--transparent-checkered-background-position);
+			background: var(--color-transparent-checkered-background);
+			background-size: var(--color-transparent-checkered-background-size);
+			background-position: var(--color-transparent-checkered-background-position);
 		}
 		--selection-pincers-color: var(--new-color-contrasting);
 	}
@@ -256,7 +257,7 @@
 			overflow: hidden;
 
 			.new-color {
-				background: linear-gradient(var(--new-color), var(--new-color)), var(--transparent-checkered-background);
+				background: linear-gradient(var(--new-color), var(--new-color)), var(--color-transparent-checkered-background);
 
 				.text-label {
 					text-align: left;
@@ -266,7 +267,7 @@
 			}
 
 			.initial-color {
-				background: linear-gradient(var(--initial-color), var(--initial-color)), var(--transparent-checkered-background);
+				background: linear-gradient(var(--initial-color), var(--initial-color)), var(--color-transparent-checkered-background);
 
 				.text-label {
 					text-align: right;
@@ -279,8 +280,8 @@
 			.initial-color {
 				width: 50%;
 				height: 100%;
-				background-size: var(--transparent-checkered-background-size);
-				background-position: var(--transparent-checkered-background-position);
+				background-size: var(--color-transparent-checkered-background-size);
+				background-position: var(--color-transparent-checkered-background-position);
 
 				&.none {
 					background: var(--color-none);
@@ -299,7 +300,7 @@
 
 		.preset-color {
 			border: none;
-			outline: none;
+			margin: 0;
 			padding: 0;
 			border-radius: 2px;
 			width: calc(48px + (48px + 4px) / 2);
@@ -342,7 +343,8 @@
 					background: var(--pure-color-gray);
 				}
 
-				&:hover div {
+				&:hover div,
+				&:focus div {
 					background: var(--pure-color);
 				}
 			}
@@ -403,12 +405,12 @@ export default defineComponent({
 			hue: hsva.h,
 			saturation: hsva.s,
 			value: hsva.v,
-			opacity: hsva.a,
+			alpha: hsva.a,
 			isNone: hsvaOrNone === undefined,
 			initialHue: hsva.h,
 			initialSaturation: hsva.s,
 			initialValue: hsva.v,
-			initialOpacity: hsva.a,
+			initialAlpha: hsva.a,
 			initialIsNone: hsvaOrNone === undefined,
 			draggingPickerTrack: undefined as HTMLDivElement | undefined,
 			colorSpaceChoices: COLOR_SPACE_CHOICES,
@@ -421,11 +423,11 @@ export default defineComponent({
 		},
 		newColor(): Color {
 			if (this.isNone) return new Color("none");
-			return new Color({ h: this.hue, s: this.saturation, v: this.value, a: this.opacity });
+			return new Color({ h: this.hue, s: this.saturation, v: this.value, a: this.alpha });
 		},
 		initialColor(): Color {
 			if (this.initialIsNone) return new Color("none");
-			return new Color({ h: this.initialHue, s: this.initialSaturation, v: this.initialValue, a: this.initialOpacity });
+			return new Color({ h: this.initialHue, s: this.initialSaturation, v: this.initialValue, a: this.initialAlpha });
 		},
 		black(): Color {
 			return new Color(0, 0, 0, 1);
@@ -434,7 +436,7 @@ export default defineComponent({
 	watch: {
 		// Called only when `open` is changed from outside this component (with v-model)
 		open(isOpen: boolean) {
-			if (isOpen) this.setInitialHsvAndOpacity(this.hue, this.saturation, this.value, this.opacity, this.isNone);
+			if (isOpen) this.setInitialHSVA(this.hue, this.saturation, this.value, this.alpha, this.isNone);
 		},
 		// Called only when `color` is changed from outside this component (with v-model)
 		color(color: Color) {
@@ -451,19 +453,19 @@ export default defineComponent({
 				if (hsva.v !== 0) this.saturation = hsva.s;
 				// Update the value
 				this.value = hsva.v;
-				// Update the opacity
-				this.opacity = hsva.a;
+				// Update the alpha
+				this.alpha = hsva.a;
 				// Update the status of this not being a color
 				this.isNone = false;
 			} else {
-				this.setNewHsvAndOpacity(0, 0, 0, 1, true);
+				this.setNewHSVA(0, 0, 0, 1, true);
 			}
 		},
 	},
 	methods: {
 		onPointerDown(e: PointerEvent) {
 			const target = (e.target || undefined) as HTMLElement | undefined;
-			this.draggingPickerTrack = target?.closest("[data-saturation-value-picker], [data-hue-picker], [data-opacity-picker]") || undefined;
+			this.draggingPickerTrack = target?.closest("[data-saturation-value-picker], [data-hue-picker], [data-alpha-picker]") || undefined;
 
 			this.addEvents();
 
@@ -484,14 +486,14 @@ export default defineComponent({
 
 				this.hue = clamp(1 - (e.clientY - rectangle.top) / rectangle.height, 0, 1);
 				this.strayCloses = false;
-			} else if (this.draggingPickerTrack?.hasAttribute("data-opacity-picker")) {
+			} else if (this.draggingPickerTrack?.hasAttribute("data-alpha-picker")) {
 				const rectangle = this.draggingPickerTrack.getBoundingClientRect();
 
-				this.opacity = clamp(1 - (e.clientY - rectangle.top) / rectangle.height, 0, 1);
+				this.alpha = clamp(1 - (e.clientY - rectangle.top) / rectangle.height, 0, 1);
 				this.strayCloses = false;
 			}
 
-			const color = new Color({ h: this.hue, s: this.saturation, v: this.value, a: this.opacity });
+			const color = new Color({ h: this.hue, s: this.saturation, v: this.value, a: this.alpha });
 			this.setColor(color);
 		},
 		onPointerUp() {
@@ -512,7 +514,7 @@ export default defineComponent({
 			this.$emit("update:open", isOpen);
 		},
 		setColor(color?: Color) {
-			const colorToEmit = color || new Color({ h: this.hue, s: this.saturation, v: this.value, a: this.opacity });
+			const colorToEmit = color || new Color({ h: this.hue, s: this.saturation, v: this.value, a: this.alpha });
 			this.$emit("update:color", colorToEmit);
 		},
 		swapNewWithInitial() {
@@ -521,11 +523,11 @@ export default defineComponent({
 			const tempHue = this.hue;
 			const tempSaturation = this.saturation;
 			const tempValue = this.value;
-			const tempOpacity = this.opacity;
+			const tempAlpha = this.alpha;
 			const tempIsNone = this.isNone;
 
-			this.setNewHsvAndOpacity(this.initialHue, this.initialSaturation, this.initialValue, this.initialOpacity, this.initialIsNone);
-			this.setInitialHsvAndOpacity(tempHue, tempSaturation, tempValue, tempOpacity, tempIsNone);
+			this.setNewHSVA(this.initialHue, this.initialSaturation, this.initialValue, this.initialAlpha, this.initialIsNone);
+			this.setInitialHSVA(tempHue, tempSaturation, tempValue, tempAlpha, tempIsNone);
 
 			this.setColor(initial);
 		},
@@ -545,8 +547,8 @@ export default defineComponent({
 
 			this.setColor();
 		},
-		setColorOpacityPercent(opacity: number) {
-			this.opacity = opacity / 100;
+		setColorAlphaPercent(alpha: number) {
+			this.alpha = alpha / 100;
 			this.setColor();
 		},
 		setColorPresetSubtile(e: MouseEvent) {
@@ -557,7 +559,7 @@ export default defineComponent({
 		},
 		setColorPreset(preset: PresetColors) {
 			if (preset === "none") {
-				this.setNewHsvAndOpacity(0, 0, 0, 1, true);
+				this.setNewHSVA(0, 0, 0, 1, true);
 				this.setColor(new Color("none"));
 				return;
 			}
@@ -565,21 +567,21 @@ export default defineComponent({
 			const presetColor = new Color(...PURE_COLORS[preset], 1);
 			const hsva = presetColor.toHSVA() || { h: 0, s: 0, v: 0, a: 0 };
 
-			this.setNewHsvAndOpacity(hsva.h, hsva.s, hsva.v, hsva.a, false);
+			this.setNewHSVA(hsva.h, hsva.s, hsva.v, hsva.a, false);
 			this.setColor(presetColor);
 		},
-		setNewHsvAndOpacity(hue: number, saturation: number, value: number, opacity: number, isNone: boolean) {
+		setNewHSVA(hue: number, saturation: number, value: number, alpha: number, isNone: boolean) {
 			this.hue = hue;
 			this.saturation = saturation;
 			this.value = value;
-			this.opacity = opacity;
+			this.alpha = alpha;
 			this.isNone = isNone;
 		},
-		setInitialHsvAndOpacity(hue: number, saturation: number, value: number, opacity: number, isNone: boolean) {
+		setInitialHSVA(hue: number, saturation: number, value: number, alpha: number, isNone: boolean) {
 			this.initialHue = hue;
 			this.initialSaturation = saturation;
 			this.initialValue = value;
-			this.initialOpacity = opacity;
+			this.initialAlpha = alpha;
 			this.initialIsNone = isNone;
 		},
 		async activateEyedropperSample() {

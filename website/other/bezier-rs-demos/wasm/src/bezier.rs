@@ -352,47 +352,181 @@ impl WasmBezier {
 		wrap_svg_tag(content)
 	}
 
-	/// The wrapped return type is `Vec<Vec<Point>>`.
-	pub fn de_casteljau_points(&self, t: f64) -> JsValue {
-		let points: Vec<Vec<Point>> = self
-			.0
-			.de_casteljau_points(t)
+	pub fn de_casteljau_points(&self, t: f64) -> String {
+		let points: Vec<Vec<DVec2>> = self.0.de_casteljau_points(t);
+
+		let bezier_svg = self.get_bezier_path();
+
+		let casteljau_svg = points
 			.iter()
-			.map(|level| level.iter().map(|&point| Point { x: point.x, y: point.y }).collect::<Vec<Point>>())
-			.collect();
-		to_js_value(points)
+			.enumerate()
+			.map(|(index, points)| {
+				let color_light = format!("hsl({}, 100%, 50%)", 90 * index);
+				let points_and_handle_lines = points
+					.iter()
+					.enumerate()
+					.map(|(index, point)| {
+						let circle = draw_circle(point.x, point.y, 3., &color_light, 1.5, WHITE);
+						if index != 0 {
+							let prev_point = points[index - 1];
+							let line = draw_line(prev_point.x, prev_point.y, point.x, point.y, &color_light, 1.5);
+
+							circle + line.as_str()
+						} else {
+							circle
+						}
+					})
+					.fold("".to_string(), |acc, point_svg| acc + &point_svg);
+				points_and_handle_lines
+			})
+			.fold("".to_string(), |acc, points_svg| acc + &points_svg);
+		let content = format!("{bezier_svg}{casteljau_svg}");
+		wrap_svg_tag(content)
 	}
 
-	pub fn rotate(&self, angle: f64) -> WasmBezier {
-		WasmBezier(self.0.rotate(angle))
+	pub fn rotate(&self, angle: f64, pivot_x: f64, pivot_y: f64) -> String {
+		let original_bezier_svg = self.get_bezier_path();
+		let rotated_bezier = self.0.rotate_about_point(angle, DVec2::new(pivot_x, pivot_y));
+		let empty_string = String::new();
+		let mut rotated_bezier_svg = String::new();
+		rotated_bezier.to_svg(
+			&mut rotated_bezier_svg,
+			CURVE_ATTRIBUTES.to_string().replace(BLACK, RED),
+			empty_string.clone(),
+			empty_string.clone(),
+			empty_string,
+		);
+		let pivot = draw_circle(pivot_x, pivot_y, 3., GRAY, 1.5, WHITE);
+
+		// Line between pivot and start point on curve
+		let original_dashed_line_start = format!(
+			r#"<line x1="{pivot_x}" y1="{pivot_y}" x2="{}" y2="{}" stroke="{ORANGE}" stroke-dasharray="0, 4" stroke-width="2" stroke-linecap="round"/>"#,
+			self.0.start().x,
+			self.0.start().y
+		);
+		let rotated_dashed_line_start = format!(
+			r#"<line x1="{pivot_x}" y1="{pivot_y}" x2="{}" y2="{}" stroke="{ORANGE}" stroke-dasharray="0, 4" stroke-width="2" stroke-linecap="round"/>"#,
+			rotated_bezier.start().x,
+			rotated_bezier.start().y
+		);
+
+		// Line between pivot and end point on curve
+		let original_dashed_line_end = format!(
+			r#"<line x1="{pivot_x}" y1="{pivot_y}" x2="{}" y2="{}" stroke="{PINK}" stroke-dasharray="0, 4" stroke-width="2" stroke-linecap="round"/>"#,
+			self.0.end().x,
+			self.0.end().y
+		);
+		let rotated_dashed_line_end = format!(
+			r#"<line x1="{pivot_x}" y1="{pivot_y}" x2="{}" y2="{}" stroke="{PINK}" stroke-dasharray="0, 4" stroke-width="2" stroke-linecap="round"/>"#,
+			rotated_bezier.end().x,
+			rotated_bezier.end().y
+		);
+
+		wrap_svg_tag(format!(
+			"{original_bezier_svg}{rotated_bezier_svg}{pivot}{original_dashed_line_start}{rotated_dashed_line_start}{original_dashed_line_end}{rotated_dashed_line_end}"
+		))
 	}
 
 	fn intersect(&self, curve: &Bezier, error: Option<f64>) -> Vec<f64> {
 		self.0.intersections(curve, error)
 	}
 
-	pub fn intersect_line_segment(&self, js_points: &JsValue) -> Vec<f64> {
+	pub fn intersect_line_segment(&self, js_points: &JsValue) -> String {
 		let points: [DVec2; 2] = js_points.into_serde().unwrap();
 		let line = Bezier::from_linear_dvec2(points[0], points[1]);
-		self.intersect(&line, None)
+
+		let bezier_curve_svg = self.get_bezier_path();
+
+		let empty_string = String::new();
+		let mut line_svg = String::new();
+		line.to_svg(
+			&mut line_svg,
+			CURVE_ATTRIBUTES.to_string().replace(BLACK, RED),
+			empty_string.clone(),
+			empty_string.clone(),
+			empty_string,
+		);
+
+		let intersections_svg = self
+			.intersect(&line, None)
+			.iter()
+			.map(|intersection_t| {
+				let point = &self.0.evaluate(ComputeType::Parametric { t: *intersection_t });
+				draw_circle(point.x, point.y, 4., RED, 1.5, WHITE)
+			})
+			.fold(String::new(), |acc, item| format!("{acc}{item}"));
+		wrap_svg_tag(format!("{bezier_curve_svg}{line_svg}{intersections_svg}"))
 	}
 
-	pub fn intersect_quadratic_segment(&self, js_points: &JsValue, error: f64) -> Vec<f64> {
+	pub fn intersect_quadratic_segment(&self, js_points: &JsValue, error: f64) -> String {
 		let points: [DVec2; 3] = js_points.into_serde().unwrap();
 		let quadratic = Bezier::from_quadratic_dvec2(points[0], points[1], points[2]);
-		self.intersect(&quadratic, Some(error))
+
+		let bezier_curve_svg = self.get_bezier_path();
+
+		let empty_string = String::new();
+		let mut quadratic_svg = String::new();
+		quadratic.to_svg(
+			&mut quadratic_svg,
+			CURVE_ATTRIBUTES.to_string().replace(BLACK, RED),
+			empty_string.clone(),
+			empty_string.clone(),
+			empty_string,
+		);
+
+		let intersections_svg = self
+			.intersect(&quadratic, Some(error))
+			.iter()
+			.map(|intersection_t| {
+				let point = &self.0.evaluate(ComputeType::Parametric { t: *intersection_t });
+				draw_circle(point.x, point.y, 4., RED, 1.5, WHITE)
+			})
+			.fold(String::new(), |acc, item| format!("{acc}{item}"));
+		wrap_svg_tag(format!("{bezier_curve_svg}{quadratic_svg}{intersections_svg}"))
 	}
 
-	pub fn intersect_cubic_segment(&self, js_points: &JsValue, error: f64) -> Vec<f64> {
+	pub fn intersect_cubic_segment(&self, js_points: &JsValue, error: f64) -> String {
 		let points: [DVec2; 4] = js_points.into_serde().unwrap();
 		let cubic = Bezier::from_cubic_dvec2(points[0], points[1], points[2], points[3]);
-		self.intersect(&cubic, Some(error))
+
+		let bezier_curve_svg = self.get_bezier_path();
+
+		let empty_string = String::new();
+		let mut cubic_svg = String::new();
+		cubic.to_svg(
+			&mut cubic_svg,
+			CURVE_ATTRIBUTES.to_string().replace(BLACK, RED),
+			empty_string.clone(),
+			empty_string.clone(),
+			empty_string,
+		);
+
+		let intersections_svg = self
+			.intersect(&cubic, Some(error))
+			.iter()
+			.map(|intersection_t| {
+				let point = &self.0.evaluate(ComputeType::Parametric { t: *intersection_t });
+				draw_circle(point.x, point.y, 4., RED, 1.5, WHITE)
+			})
+			.fold(String::new(), |acc, item| format!("{acc}{item}"));
+
+		wrap_svg_tag(format!("{bezier_curve_svg}{cubic_svg}{intersections_svg}"))
 	}
 
 	/// The wrapped return type is `Vec<[f64; 2]>`.
-	pub fn intersect_self(&self, error: f64) -> JsValue {
-		let points: Vec<[f64; 2]> = self.0.self_intersections(Some(error));
-		to_js_value(points)
+	pub fn intersect_self(&self, error: f64) -> String {
+		let bezier_curve_svg = self.get_bezier_path();
+		let intersect_self_svg = self
+			.0
+			.self_intersections(Some(error))
+			.iter()
+			.map(|intersection_t| {
+				let point = &self.0.evaluate(ComputeType::Parametric { t: intersection_t[0] });
+				draw_circle(point.x, point.y, 4., RED, 1.5, WHITE)
+			})
+			.fold(bezier_curve_svg, |acc, item| format!("{acc}{item}"));
+
+		wrap_svg_tag(intersect_self_svg)
 	}
 
 	pub fn reduce(&self) -> String {
@@ -403,11 +537,11 @@ impl WasmBezier {
 			.reduce(None)
 			.iter()
 			.enumerate()
-			.map(|(idx, bezier_curve)| {
+			.map(|(index, bezier_curve)| {
 				let mut curve_svg = String::new();
 				bezier_curve.to_svg(
 					&mut curve_svg,
-					CURVE_ATTRIBUTES.to_string().replace(BLACK, &format!("hsl({}, 100%, 50%)", (40 * idx))),
+					CURVE_ATTRIBUTES.to_string().replace(BLACK, &format!("hsl({}, 100%, 50%)", (40 * index))),
 					empty_string.clone(),
 					empty_string.clone(),
 					empty_string.clone(),
@@ -426,11 +560,11 @@ impl WasmBezier {
 			.offset(distance)
 			.iter()
 			.enumerate()
-			.map(|(idx, bezier_curve)| {
+			.map(|(index, bezier_curve)| {
 				let mut curve_svg = String::new();
 				bezier_curve.to_svg(
 					&mut curve_svg,
-					CURVE_ATTRIBUTES.to_string().replace(BLACK, &format!("hsl({}, 100%, 50%)", (40 * idx))),
+					CURVE_ATTRIBUTES.to_string().replace(BLACK, &format!("hsl({}, 100%, 50%)", (40 * index))),
 					empty_string.clone(),
 					empty_string.clone(),
 					empty_string.clone(),
@@ -441,24 +575,67 @@ impl WasmBezier {
 		wrap_svg_tag(bezier_curves_svg)
 	}
 
+	pub fn outline(&self, distance: f64) -> String {
+		let outline_beziers = self.0.outline(distance);
+		if outline_beziers.is_empty() {
+			return String::new();
+		}
+
+		let outline_svg = draw_beziers(outline_beziers, CURVE_ATTRIBUTES.to_string().replace(BLACK, RED));
+		let bezier_svg = self.get_bezier_path();
+
+		wrap_svg_tag(format!("{bezier_svg}{outline_svg}"))
+	}
+
+	pub fn graduated_outline(&self, start_distance: f64, end_distance: f64) -> String {
+		let outline_beziers = self.0.graduated_outline(start_distance, end_distance);
+		if outline_beziers.is_empty() {
+			return String::new();
+		}
+
+		let outline_svg = draw_beziers(outline_beziers, CURVE_ATTRIBUTES.to_string().replace(BLACK, RED));
+		let bezier_svg = self.get_bezier_path();
+
+		wrap_svg_tag(format!("{bezier_svg}{outline_svg}"))
+	}
+
+	pub fn skewed_outline(&self, distance1: f64, distance2: f64, distance3: f64, distance4: f64) -> String {
+		let outline_beziers = self.0.skewed_outline(distance1, distance2, distance3, distance4);
+		if outline_beziers.is_empty() {
+			return String::new();
+		}
+
+		let outline_svg = draw_beziers(outline_beziers, CURVE_ATTRIBUTES.to_string().replace(BLACK, RED));
+		let bezier_svg = self.get_bezier_path();
+
+		wrap_svg_tag(format!("{bezier_svg}{outline_svg}"))
+	}
+
 	/// The wrapped return type is `Vec<CircleSector>`.
-	pub fn arcs(&self, error: f64, max_iterations: usize, maximize_arcs: WasmMaximizeArcs) -> JsValue {
+	pub fn arcs(&self, error: f64, max_iterations: usize, maximize_arcs: WasmMaximizeArcs) -> String {
+		let original_curve_svg = self.get_bezier_path();
+
+		// Get sectors
 		let strategy = convert_wasm_maximize_arcs(maximize_arcs);
 		let options = ArcsOptions { error, max_iterations, strategy };
-		let circle_sectors: Vec<CircleSector> = self
+		let arcs_svg = self
 			.0
 			.arcs(options)
 			.iter()
-			.map(|sector| CircleSector {
-				center: Point {
-					x: sector.center.x,
-					y: sector.center.y,
-				},
-				radius: sector.radius,
-				start_angle: sector.start_angle,
-				end_angle: sector.end_angle,
+			.enumerate()
+			.map(|(idx, sector)| {
+				draw_sector(
+					sector.center.x,
+					sector.center.y,
+					sector.radius,
+					-sector.start_angle,
+					-sector.end_angle,
+					format!("hsl({}, 100%, 50%, 75%)", (40 * idx)).as_str(),
+					1.,
+					format!("hsl({}, 100%, 50%, 37.5%)", (40 * idx)).as_str(),
+				)
 			})
-			.collect();
-		to_js_value(circle_sectors)
+			.fold(original_curve_svg, |acc, item| format!("{acc}{item}"));
+		wrap_svg_tag(arcs_svg)
 	}
 }
