@@ -16,7 +16,7 @@ use graphene::layers::text_layer::FontCache;
 use serde::{Deserialize, Serialize};
 use std::fmt::{self, Debug};
 
-pub type ToolActionHandlerData<'a> = (&'a DocumentMessageHandler, &'a DocumentToolData, &'a InputPreprocessorMessageHandler, &'a FontCache);
+pub type ToolActionHandlerData<'a> = (&'a DocumentMessageHandler, u64, &'a DocumentToolData, &'a InputPreprocessorMessageHandler, &'a FontCache);
 
 pub trait ToolCommon: for<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> + PropertyHolder + ToolTransition + ToolMetadata {}
 impl<T> ToolCommon for T where T: for<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> + PropertyHolder + ToolTransition + ToolMetadata {}
@@ -78,6 +78,8 @@ impl DocumentToolData {
 			}
 			.into(),
 		);
+
+		responses.push_back(EyedropperToolMessage::PointerMove.into());
 	}
 }
 
@@ -161,13 +163,17 @@ impl PropertyHolder for ToolData {
 	fn properties(&self) -> Layout {
 		let tool_groups_layout = list_tools_in_groups()
 			.iter()
-			.map(|tool_group| tool_group.iter().map(|tool| ToolEntry {
-				tooltip: tool.tooltip(),
-				tooltip_shortcut: action_keys!(tool_type_to_activate_tool_message(tool.tool_type())),
-				icon_name: tool.icon_name(),
-				tool_type: tool.tool_type(),
+			.map(|tool_group| tool_group.iter().map(|tool_availability| {
+				match tool_availability {
+					ToolAvailability::Available(tool) => ToolEntry {
+						tooltip: tool.tooltip(),
+						tooltip_shortcut: action_keys!(tool_type_to_activate_tool_message(tool.tool_type())),
+						icon_name: tool.icon_name(),
+						tool_type: tool.tool_type(),
+					},
+					ToolAvailability::ComingSoon(tool) => tool.clone(),
+				}
 			}).collect::<Vec<_>>())
-			.chain(coming_soon_tools())
 			.flat_map(|group| {
 				let separator = std::iter::once(WidgetHolder::new(Widget::Separator(Separator {
 					direction: SeparatorDirection::Vertical,
@@ -177,9 +183,10 @@ impl PropertyHolder for ToolData {
 					WidgetHolder::new(Widget::IconButton(IconButton {
 						icon: icon_name,
 						size: 32,
+						disabled: false,
+						active: self.active_tool_type == tool_type,
 						tooltip: tooltip.clone(),
 						tooltip_shortcut,
-						active: self.active_tool_type == tool_type,
 						on_update: WidgetCallback::new(move |_| {
 							if !tooltip.contains("Coming Soon") {
 								ToolMessage::ActivateTool { tool_type }.into()
@@ -189,6 +196,7 @@ impl PropertyHolder for ToolData {
 						}),
 					}))
 				});
+
 				separator.chain(buttons)
 			})
 			// Skip the initial separator
@@ -201,7 +209,7 @@ impl PropertyHolder for ToolData {
 	}
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ToolEntry {
 	pub tooltip: String,
 	pub tooltip_shortcut: Option<ActionKeys>,
@@ -220,7 +228,14 @@ impl Default for ToolFsmState {
 		ToolFsmState {
 			tool_data: ToolData {
 				active_tool_type: ToolType::Select,
-				tools: list_tools_in_groups().into_iter().flatten().map(|tool| (tool.tool_type(), tool)).collect(),
+				tools: list_tools_in_groups()
+					.into_iter()
+					.flatten()
+					.filter_map(|tool| match tool {
+						ToolAvailability::Available(tool) => Some((tool.tool_type(), tool)),
+						ToolAvailability::ComingSoon(_) => None,
+					})
+					.collect(),
 			},
 			document_tool_data: DocumentToolData {
 				primary_color: Color::BLACK,
@@ -265,74 +280,81 @@ pub enum ToolType {
 	Patch,
 	Detail,
 	Relight,
+	Imaginate,
+	NodeGraphFrame,
+}
+
+enum ToolAvailability {
+	Available(Box<Tool>),
+	ComingSoon(ToolEntry),
 }
 
 /// List of all the tools in their conventional ordering and grouping.
-pub fn list_tools_in_groups() -> Vec<Vec<Box<Tool>>> {
+fn list_tools_in_groups() -> Vec<Vec<ToolAvailability>> {
 	vec![
 		vec![
 			// General tool group
-			Box::new(select_tool::SelectTool::default()),
-			Box::new(artboard_tool::ArtboardTool::default()),
-			Box::new(navigate_tool::NavigateTool::default()),
-			Box::new(eyedropper_tool::EyedropperTool::default()),
-			Box::new(fill_tool::FillTool::default()),
-			Box::new(gradient_tool::GradientTool::default()),
+			ToolAvailability::Available(Box::<select_tool::SelectTool>::default()),
+			ToolAvailability::Available(Box::<artboard_tool::ArtboardTool>::default()),
+			ToolAvailability::Available(Box::<navigate_tool::NavigateTool>::default()),
+			ToolAvailability::Available(Box::<eyedropper_tool::EyedropperTool>::default()),
+			ToolAvailability::Available(Box::<fill_tool::FillTool>::default()),
+			ToolAvailability::Available(Box::<gradient_tool::GradientTool>::default()),
 		],
 		vec![
 			// Vector tool group
-			Box::new(path_tool::PathTool::default()),
-			Box::new(pen_tool::PenTool::default()),
-			Box::new(freehand_tool::FreehandTool::default()),
-			Box::new(spline_tool::SplineTool::default()),
-			Box::new(line_tool::LineTool::default()),
-			Box::new(rectangle_tool::RectangleTool::default()),
-			Box::new(ellipse_tool::EllipseTool::default()),
-			Box::new(shape_tool::ShapeTool::default()),
-			Box::new(text_tool::TextTool::default()),
+			ToolAvailability::Available(Box::<path_tool::PathTool>::default()),
+			ToolAvailability::Available(Box::<pen_tool::PenTool>::default()),
+			ToolAvailability::Available(Box::<freehand_tool::FreehandTool>::default()),
+			ToolAvailability::Available(Box::<spline_tool::SplineTool>::default()),
+			ToolAvailability::Available(Box::<line_tool::LineTool>::default()),
+			ToolAvailability::Available(Box::<rectangle_tool::RectangleTool>::default()),
+			ToolAvailability::Available(Box::<ellipse_tool::EllipseTool>::default()),
+			ToolAvailability::Available(Box::<shape_tool::ShapeTool>::default()),
+			ToolAvailability::Available(Box::<text_tool::TextTool>::default()),
+		],
+		vec![
+			// Raster tool group
+			ToolAvailability::Available(Box::<imaginate_tool::ImaginateTool>::default()),
+			ToolAvailability::Available(Box::<node_graph_frame_tool::NodeGraphFrameTool>::default()),
+			ToolAvailability::ComingSoon(ToolEntry {
+				tool_type: ToolType::Brush,
+				icon_name: "RasterBrushTool".into(),
+				tooltip: "Coming Soon: Brush Tool (B)".into(),
+				tooltip_shortcut: None,
+			}),
+			ToolAvailability::ComingSoon(ToolEntry {
+				tool_type: ToolType::Heal,
+				icon_name: "RasterHealTool".into(),
+				tooltip: "Coming Soon: Heal Tool (J)".into(),
+				tooltip_shortcut: None,
+			}),
+			ToolAvailability::ComingSoon(ToolEntry {
+				tool_type: ToolType::Clone,
+				icon_name: "RasterCloneTool".into(),
+				tooltip: "Coming Soon: Clone Tool (C)".into(),
+				tooltip_shortcut: None,
+			}),
+			ToolAvailability::ComingSoon(ToolEntry {
+				tool_type: ToolType::Patch,
+				icon_name: "RasterPatchTool".into(),
+				tooltip: "Coming Soon: Patch Tool".into(),
+				tooltip_shortcut: None,
+			}),
+			ToolAvailability::ComingSoon(ToolEntry {
+				tool_type: ToolType::Detail,
+				icon_name: "RasterDetailTool".into(),
+				tooltip: "Coming Soon: Detail Tool (D)".into(),
+				tooltip_shortcut: None,
+			}),
+			ToolAvailability::ComingSoon(ToolEntry {
+				tool_type: ToolType::Relight,
+				icon_name: "RasterRelightTool".into(),
+				tooltip: "Coming Soon: Relight Tool (O)".into(),
+				tooltip_shortcut: None,
+			}),
 		],
 	]
-}
-
-pub fn coming_soon_tools() -> Vec<Vec<ToolEntry>> {
-	vec![vec![
-		ToolEntry {
-			tool_type: ToolType::Brush,
-			icon_name: "RasterBrushTool".into(),
-			tooltip: "Coming Soon: Brush Tool (B)".into(),
-			tooltip_shortcut: None,
-		},
-		ToolEntry {
-			tool_type: ToolType::Heal,
-			icon_name: "RasterHealTool".into(),
-			tooltip: "Coming Soon: Heal Tool (J)".into(),
-			tooltip_shortcut: None,
-		},
-		ToolEntry {
-			tool_type: ToolType::Clone,
-			icon_name: "RasterCloneTool".into(),
-			tooltip: "Coming Soon: Clone Tool (C)".into(),
-			tooltip_shortcut: None,
-		},
-		ToolEntry {
-			tool_type: ToolType::Patch,
-			icon_name: "RasterPatchTool".into(),
-			tooltip: "Coming Soon: Patch Tool".into(),
-			tooltip_shortcut: None,
-		},
-		ToolEntry {
-			tool_type: ToolType::Detail,
-			icon_name: "RasterDetailTool".into(),
-			tooltip: "Coming Soon: Detail Tool (D)".into(),
-			tooltip_shortcut: None,
-		},
-		ToolEntry {
-			tool_type: ToolType::Relight,
-			icon_name: "RasterRelightTool".into(),
-			tooltip: "Coming Soon: Relight Tool (O)".into(),
-			tooltip_shortcut: None,
-		},
-	]]
 }
 
 pub fn tool_message_to_tool_type(tool_message: &ToolMessage) -> ToolType {
@@ -363,6 +385,8 @@ pub fn tool_message_to_tool_type(tool_message: &ToolMessage) -> ToolType {
 		// ToolMessage::Patch(_) => ToolType::Patch,
 		// ToolMessage::Detail(_) => ToolType::Detail,
 		// ToolMessage::Relight(_) => ToolType::Relight,
+		ToolMessage::Imaginate(_) => ToolType::Imaginate,
+		ToolMessage::NodeGraphFrame(_) => ToolType::NodeGraphFrame,
 		_ => panic!(
 			"Conversion from ToolMessage to ToolType impossible because the given ToolMessage does not have a matching ToolType. Got: {:?}",
 			tool_message
@@ -398,6 +422,8 @@ pub fn tool_type_to_activate_tool_message(tool_type: ToolType) -> ToolMessageDis
 		// ToolType::Patch => ToolMessageDiscriminant::ActivateToolPatch,
 		// ToolType::Detail => ToolMessageDiscriminant::ActivateToolDetail,
 		// ToolType::Relight => ToolMessageDiscriminant::ActivateToolRelight,
+		ToolType::Imaginate => ToolMessageDiscriminant::ActivateToolImaginate,
+		ToolType::NodeGraphFrame => ToolMessageDiscriminant::ActivateToolNodeGraphFrame,
 		_ => panic!(
 			"Conversion from ToolType to ToolMessage impossible because the given ToolType does not have a matching ToolMessage. Got: {:?}",
 			tool_type

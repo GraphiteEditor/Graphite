@@ -1,3 +1,4 @@
+import { wipeDocuments } from "@/io-managers/persistence";
 import { type DialogState } from "@/state-providers/dialog";
 import { type IconName } from "@/utility-functions/icons";
 import { browserVersion, operatingSystem } from "@/utility-functions/platform";
@@ -25,8 +26,8 @@ export function createPanicManager(editor: Editor, dialogState: DialogState): vo
 function preparePanicDialog(header: string, details: string, panicDetails: string): [IconName, WidgetLayout, TextButtonWidget[]] {
 	const widgets: WidgetLayout = {
 		layout: [
-			{ rowWidgets: [new Widget({ kind: "TextLabel", value: header, bold: true, italic: false, tableAlign: false, multiline: false }, 0n)] },
-			{ rowWidgets: [new Widget({ kind: "TextLabel", value: details, bold: false, italic: false, tableAlign: false, multiline: true }, 1n)] },
+			{ rowWidgets: [new Widget({ kind: "TextLabel", value: header, disabled: false, bold: true, italic: false, tableAlign: false, minWidth: 0, multiline: false, tooltip: "" }, 0n)] },
+			{ rowWidgets: [new Widget({ kind: "TextLabel", value: details, disabled: false, bold: false, italic: false, tableAlign: false, minWidth: 0, multiline: true, tooltip: "" }, 1n)] },
 		],
 		layoutTarget: undefined,
 	};
@@ -43,7 +44,14 @@ function preparePanicDialog(header: string, details: string, panicDetails: strin
 		callback: async () => window.open(githubUrl(panicDetails), "_blank"),
 		props: { kind: "TextButton", label: "Report Bug", emphasized: false, minWidth: 96 },
 	};
-	const jsCallbackBasedButtons = [reloadButton, copyErrorLogButton, reportOnGithubButton];
+	const clearPersistedDataButton: TextButtonWidget = {
+		callback: async () => {
+			await wipeDocuments();
+			window.location.reload();
+		},
+		props: { kind: "TextButton", label: "Clear Saved Data", emphasized: false, minWidth: 96 },
+	};
+	const jsCallbackBasedButtons = [reloadButton, copyErrorLogButton, reportOnGithubButton, clearPersistedDataButton];
 
 	return ["Warning", widgets, jsCallbackBasedButtons];
 }

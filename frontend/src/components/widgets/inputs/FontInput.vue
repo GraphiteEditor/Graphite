@@ -1,11 +1,21 @@
+<!-- TODO: Combine this widget into the DropdownInput widget -->
+
 <template>
 	<LayoutRow class="font-input">
-		<LayoutRow class="dropdown-box" :class="{ disabled }" :style="{ minWidth: `${minWidth}px` }" tabindex="0" @click="toggleOpen" @keydown="keydown" data-hover-menu-spawner>
-			<span>{{ activeEntry?.value || "" }}</span>
+		<LayoutRow
+			class="dropdown-box"
+			:class="{ disabled, 'sharp-right-corners': sharpRightCorners }"
+			:style="{ minWidth: `${minWidth}px` }"
+			:title="tooltip"
+			:tabindex="disabled ? -1 : 0"
+			@click="toggleOpen"
+			@keydown="keydown"
+			data-floating-menu-spawner
+		>
+			<TextLabel class="dropdown-label">{{ activeEntry?.value || "" }}</TextLabel>
 			<IconLabel class="dropdown-arrow" :icon="'DropdownArrow'" />
 		</LayoutRow>
 		<MenuList
-			ref="menulist"
 			v-model:activeEntry="activeEntry"
 			v-model:open="open"
 			:entries="[entries]"
@@ -13,6 +23,7 @@
 			:virtualScrollingEntryHeight="isStyle ? 0 : 20"
 			:scrollableY="true"
 			@naturalWidth="(newNaturalWidth: number) => (isStyle && (minWidth = newNaturalWidth))"
+			ref="menuList"
 		></MenuList>
 	</LayoutRow>
 </template>
@@ -28,7 +39,7 @@
 		height: 24px;
 		border-radius: 2px;
 
-		span {
+		.dropdown-label {
 			margin: 0;
 			margin-left: 8px;
 			flex: 1 1 100%;
@@ -73,11 +84,10 @@ import { defineComponent, nextTick, type PropType } from "vue";
 
 import { type MenuListEntry } from "@/wasm-communication/messages";
 
-import type FloatingMenu from "@/components/floating-menus/FloatingMenu.vue";
 import MenuList from "@/components/floating-menus/MenuList.vue";
-import type LayoutCol from "@/components/layout/LayoutCol.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
+import TextLabel from "@/components/widgets/labels/TextLabel.vue";
 
 export default defineComponent({
 	inject: ["fonts"],
@@ -87,6 +97,8 @@ export default defineComponent({
 		fontStyle: { type: String as PropType<string>, required: true },
 		isStyle: { type: Boolean as PropType<boolean>, default: false },
 		disabled: { type: Boolean as PropType<boolean>, default: false },
+		tooltip: { type: String as PropType<string | undefined>, required: false },
+		sharpRightCorners: { type: Boolean as PropType<boolean>, default: false },
 	},
 	data() {
 		return {
@@ -104,29 +116,26 @@ export default defineComponent({
 		this.highlighted = this.activeEntry;
 	},
 	methods: {
-		floatingMenu() {
-			return this.$refs.floatingMenu as typeof FloatingMenu;
-		},
-		scroller() {
-			return ((this.$refs.menulist as typeof MenuList).$refs.scroller as typeof LayoutCol)?.$el as HTMLElement;
-		},
-		async setOpen() {
+		async setOpen(): Promise<void> {
 			this.open = true;
 
-			// Scroll to the active entry (the scroller div does not yet exist so we must wait for vue to render)
+			// Scroll to the active entry (the scroller div does not yet exist so we must wait for Vue to render)
 			await nextTick();
+
 			if (this.activeEntry) {
 				const index = this.entries.indexOf(this.activeEntry);
-				this.scroller()?.scrollTo(0, Math.max(0, index * 20 - 190));
+				(this.$refs.menuList as typeof MenuList | undefined)?.scrollViewTo(0, Math.max(0, index * 20 - 190));
 			}
 		},
-		toggleOpen() {
-			if (this.disabled) return;
-			this.open = !this.open;
-			if (this.open) this.setOpen();
+		toggleOpen(): void {
+			if (!this.disabled) {
+				this.open = !this.open;
+
+				if (this.open) this.setOpen();
+			}
 		},
-		keydown(e: KeyboardEvent) {
-			(this.$refs.menulist as typeof MenuList).keydown(e, false);
+		keydown(e: KeyboardEvent): void {
+			(this.$refs.menuList as typeof MenuList | undefined)?.keydown(e, false);
 		},
 		async selectFont(newName: string): Promise<void> {
 			let fontFamily;
@@ -178,6 +187,7 @@ export default defineComponent({
 		IconLabel,
 		LayoutRow,
 		MenuList,
+		TextLabel,
 	},
 });
 </script>

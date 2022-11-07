@@ -41,7 +41,15 @@ impl Default for Pivot {
 impl Pivot {
 	/// Calculates the transform that gets from normalized pivot to viewspace.
 	fn get_layer_pivot_transform(layer_path: &[LayerId], layer: &graphene::layers::layer_info::Layer, document: &DocumentMessageHandler, font_cache: &FontCache) -> DAffine2 {
-		let [min, max] = layer.aabb_for_transform(DAffine2::IDENTITY, font_cache).unwrap_or([DVec2::ZERO, DVec2::ONE]);
+		let [mut min, max] = layer.aabb_for_transform(DAffine2::IDENTITY, font_cache).unwrap_or([DVec2::ZERO, DVec2::ONE]);
+
+		// If the layer bounds are 0 in either axis then set them to one (to avoid div 0)
+		if (max.x - min.x) < f64::EPSILON * 1000. {
+			min.x = max.x - 1.;
+		}
+		if (max.y - min.y) < f64::EPSILON * 1000. {
+			min.y = max.y - 1.;
+		}
 		let bounds_transform = DAffine2::from_translation(min) * DAffine2::from_scale(max - min);
 		let layer_transform = document.graphene_document.multiply_transforms(layer_path).unwrap_or(DAffine2::IDENTITY);
 		layer_transform * bounds_transform

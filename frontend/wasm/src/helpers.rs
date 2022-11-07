@@ -9,7 +9,12 @@ use wasm_bindgen::prelude::*;
 /// When a panic occurs, notify the user and log the error to the JS console before the backend dies
 pub fn panic_hook(info: &panic::PanicInfo) {
 	let header = "The editor crashed — sorry about that";
-	let description = "An internal error occurred. Reload the editor to continue. Please report this by filing an issue on GitHub.";
+	let description = "
+	An internal error occurred. Please report this by filing an issue on GitHub.\n\
+	\n\
+	Reload the editor to continue. If this happens immediately on repeated reloads, clear saved data.
+	"
+	.trim();
 
 	error!("{}", info);
 

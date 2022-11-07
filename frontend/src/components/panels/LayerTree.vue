@@ -4,7 +4,7 @@
 			<WidgetLayout :layout="layerTreeOptionsLayout" />
 		</LayoutRow>
 		<LayoutRow class="layer-tree-rows" :scrollableY="true">
-			<LayoutCol class="list" ref="layerTreeList" @click="() => deselectAllLayers()" @dragover="(e: DragEvent) => draggable && updateInsertLine(e)" @dragend="() => draggable && drop()">
+			<LayoutCol class="list" ref="list" @click="() => deselectAllLayers()" @dragover="(e: DragEvent) => draggable && updateInsertLine(e)" @dragend="() => draggable && drop()">
 				<LayoutRow
 					class="layer-row"
 					v-for="(listing, index) in layers"
@@ -13,7 +13,7 @@
 				>
 					<LayoutRow class="visibility">
 						<IconButton
-							:action="(e: MouseEvent) => (toggleLayerVisibility(listing.entry.path), e?.stopPropagation())"
+							:action="(e?: MouseEvent) => (toggleLayerVisibility(listing.entry.path), e?.stopPropagation())"
 							:size="24"
 							:icon="listing.entry.visible ? 'EyeVisible' : 'EyeHidden'"
 							:title="listing.entry.visible ? 'Visible' : 'Hidden'"
@@ -27,6 +27,7 @@
 						class="expand-arrow"
 						:class="{ expanded: listing.entry.layerMetadata.expanded }"
 						@click.stop="handleExpandArrowClick(listing.entry.path)"
+						tabindex="0"
 					></button>
 					<LayoutRow
 						class="layer"
@@ -45,22 +46,19 @@
 						@click.alt="(e: MouseEvent) => e.stopPropagation()"
 					>
 						<LayoutRow class="layer-type-icon">
-							<IconLabel v-if="listing.entry.layerType === 'Folder'" :icon="'NodeFolder'" :iconStyle="'Node'" title="Folder" />
-							<IconLabel v-else-if="listing.entry.layerType === 'Image'" :icon="'NodeImage'" :iconStyle="'Node'" title="Image" />
-							<IconLabel v-else-if="listing.entry.layerType === 'Shape'" :icon="'NodeShape'" :iconStyle="'Node'" title="Shape" />
-							<IconLabel v-else-if="listing.entry.layerType === 'Text'" :icon="'NodeText'" :iconStyle="'Node'" title="Path" />
+							<IconLabel :icon="layerTypeData(listing.entry.layerType).icon" :title="layerTypeData(listing.entry.layerType).name" />
 						</LayoutRow>
 						<LayoutRow class="layer-name" @dblclick="() => onEditLayerName(listing)">
 							<input
 								data-text-input
 								type="text"
 								:value="listing.entry.name"
-								:placeholder="listing.entry.layerType"
+								:placeholder="layerTypeData(listing.entry.layerType).name"
 								:disabled="!listing.editingName"
 								@blur="() => onEditLayerNameDeselect(listing)"
 								@keydown.esc="onEditLayerNameDeselect(listing)"
-								@keydown.enter="(e) => onEditLayerNameChange(listing, e.target || undefined)"
-								@change="(e) => onEditLayerNameChange(listing, e.target || undefined)"
+								@keydown.enter="(e) => onEditLayerNameChange(listing, e)"
+								@change="(e) => onEditLayerNameChange(listing, e)"
 							/>
 						</LayoutRow>
 						<div class="thumbnail" v-html="listing.entry.thumbnail"></div>
@@ -127,11 +125,11 @@
 			}
 
 			.expand-arrow {
+				padding: 0;
+				margin: 0;
 				margin-left: -16px;
 				width: 16px;
 				height: 100%;
-				padding: 0;
-				outline: none;
 				border: none;
 				position: relative;
 				background: none;
@@ -196,7 +194,7 @@
 						color: inherit;
 						background: none;
 						border: none;
-						outline: none;
+						outline: none; // Ok for input element
 						margin: 0;
 						padding: 0;
 						text-overflow: ellipsis;
@@ -207,6 +205,7 @@
 						width: 100%;
 
 						&:disabled {
+							-webkit-user-select: none; // Required as of Safari 15.0 (Graphite's minimum version) through the latest release
 							user-select: none;
 							// Workaround for `user-select: none` not working on <input> elements
 							pointer-events: none;
@@ -246,7 +245,7 @@
 			}
 
 			&.insert-folder .layer {
-				outline: 3px solid var(--color-accent-hover);
+				outline: 3px solid var(--color-e-nearwhite);
 				outline-offset: -3px;
 			}
 		}
@@ -255,7 +254,7 @@
 			position: absolute;
 			// `left` is applied dynamically
 			right: 0;
-			background: var(--color-accent-hover);
+			background: var(--color-e-nearwhite);
 			margin-top: -2px;
 			height: 5px;
 			z-index: 1;
@@ -268,7 +267,16 @@
 import { defineComponent, nextTick } from "vue";
 
 import { platformIsMac } from "@/utility-functions/platform";
-import { type LayerPanelEntry, defaultWidgetLayout, UpdateDocumentLayerDetails, UpdateDocumentLayerTreeStructure, UpdateLayerTreeOptionsLayout } from "@/wasm-communication/messages";
+import {
+	type LayerType,
+	type LayerTypeData,
+	type LayerPanelEntry,
+	defaultWidgetLayout,
+	UpdateDocumentLayerDetails,
+	UpdateDocumentLayerTreeStructure,
+	UpdateLayerTreeOptionsLayout,
+	layerTypeData,
+} from "@/wasm-communication/messages";
 
 import LayoutCol from "@/components/layout/LayoutCol.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
@@ -320,23 +328,24 @@ export default defineComponent({
 		async onEditLayerName(listing: LayerListingInfo) {
 			if (listing.editingName) return;
 
+			listing.editingName = true;
 			this.draggable = false;
 
-			listing.editingName = true;
-			const tree: HTMLElement = (this.$refs.layerTreeList as typeof LayoutCol).$el;
-
 			await nextTick();
-			(tree.querySelector("[data-text-input]:not([disabled])") as HTMLInputElement).select();
+
+			const tree: HTMLDivElement | undefined = (this.$refs.list as typeof LayoutCol | undefined)?.$el;
+			const textInput: HTMLInputElement | undefined = tree?.querySelector("[data-text-input]:not([disabled])") || undefined;
+			textInput?.select();
 		},
-		onEditLayerNameChange(listing: LayerListingInfo, inputElement: EventTarget | undefined) {
+		onEditLayerNameChange(listing: LayerListingInfo, e: Event) {
 			// Eliminate duplicate events
 			if (!listing.editingName) return;
 
 			this.draggable = true;
 
-			const name = (inputElement as HTMLInputElement).value;
+			const name = (e.target as HTMLInputElement | undefined)?.value;
 			listing.editingName = false;
-			this.editor.instance.setLayerName(listing.entry.path, name);
+			if (name) this.editor.instance.setLayerName(listing.entry.path, name);
 		},
 		async onEditLayerNameDeselect(listing: LayerListingInfo) {
 			this.draggable = true;
@@ -362,7 +371,7 @@ export default defineComponent({
 		async deselectAllLayers() {
 			this.editor.instance.deselectAllLayers();
 		},
-		calculateDragIndex(tree: HTMLElement, clientY: number): DraggingData {
+		calculateDragIndex(tree: HTMLDivElement, clientY: number): DraggingData {
 			const treeChildren = tree.children;
 			const treeOffset = tree.getBoundingClientRect().top;
 
@@ -432,16 +441,16 @@ export default defineComponent({
 				event.dataTransfer.dropEffect = "move";
 				event.dataTransfer.effectAllowed = "move";
 			}
-			const tree = (this.$refs.layerTreeList as typeof LayoutCol).$el;
 
-			this.draggingData = this.calculateDragIndex(tree, event.clientY);
+			const tree: HTMLDivElement | undefined = (this.$refs.list as typeof LayoutCol | undefined)?.$el;
+			if (tree) this.draggingData = this.calculateDragIndex(tree, event.clientY);
 		},
 		updateInsertLine(event: DragEvent) {
 			// Stop the drag from being shown as cancelled
 			event.preventDefault();
 
-			const tree: HTMLElement = (this.$refs.layerTreeList as typeof LayoutCol).$el;
-			this.draggingData = this.calculateDragIndex(tree, event.clientY);
+			const tree: HTMLDivElement | undefined = (this.$refs.list as typeof LayoutCol | undefined)?.$el;
+			if (tree) this.draggingData = this.calculateDragIndex(tree, event.clientY);
 		},
 		async drop() {
 			if (this.draggingData) {
@@ -483,6 +492,9 @@ export default defineComponent({
 			};
 
 			recurse(updateDocumentLayerTreeStructure, this.layers, this.layerCache);
+		},
+		layerTypeData(layerType: LayerType): LayerTypeData {
+			return layerTypeData(layerType) || { name: "Error", icon: "NodeText" };
 		},
 	},
 	mounted() {

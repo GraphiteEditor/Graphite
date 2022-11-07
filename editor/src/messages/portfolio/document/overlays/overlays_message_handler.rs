@@ -31,7 +31,7 @@ impl MessageHandler<OverlaysMessage, (bool, &FontCache, &InputPreprocessorMessag
 				responses.push_back(
 					FrontendMessage::UpdateDocumentOverlays {
 						svg: if overlays_visible {
-							let render_data = RenderData::new(ViewMode::Normal, font_cache, Some(ipp.document_bounds()), false);
+							let render_data = RenderData::new(ViewMode::Normal, font_cache, Some(ipp.document_bounds()));
 							self.overlays_graphene_document.render_root(render_data)
 						} else {
 							String::from("")

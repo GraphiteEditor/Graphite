@@ -1,10 +1,10 @@
 <template>
 	<div class="persistent-scrollbar" :class="direction.toLowerCase()">
-		<button class="arrow decrease" @pointerdown="() => changePosition(-50)"></button>
+		<button class="arrow decrease" @pointerdown="() => changePosition(-50)" tabindex="-1"></button>
 		<div class="scroll-track" ref="scrollTrack" @pointerdown="(e) => grabArea(e)">
-			<div class="scroll-thumb" @pointerdown="(e) => grabHandle(e)" :class="{ dragging }" ref="handle" :style="[thumbStart, thumbEnd, sides]"></div>
+			<div class="scroll-thumb" @pointerdown="(e) => grabHandle(e)" :class="{ dragging }" :style="[thumbStart, thumbEnd, sides]"></div>
 		</div>
-		<button class="arrow increase" @click="() => changePosition(50)"></button>
+		<button class="arrow increase" @click="() => changePosition(50)" tabindex="-1"></button>
 	</div>
 </template>
 
@@ -16,11 +16,11 @@
 	.arrow {
 		flex: 0 0 auto;
 		background: none;
-		outline: none;
 		border: none;
 		border-style: solid;
 		width: 0;
 		height: 0;
+		margin: 0;
 		padding: 0;
 	}
 
@@ -160,21 +160,29 @@ export default defineComponent({
 		window.removeEventListener("pointermove", this.pointerMove);
 	},
 	methods: {
-		trackLength(): number {
-			const track = this.$refs.scrollTrack as HTMLElement;
-			return this.direction === "Vertical" ? track.clientHeight - this.handleLength : track.clientWidth;
+		trackLength(): number | undefined {
+			const track = this.$refs.scrollTrack as HTMLDivElement | undefined;
+			if (track) return this.direction === "Vertical" ? track.clientHeight - this.handleLength : track.clientWidth;
+
+			return undefined;
 		},
-		trackOffset(): number {
-			const track = this.$refs.scrollTrack as HTMLElement;
-			return this.direction === "Vertical" ? track.getBoundingClientRect().top : track.getBoundingClientRect().left;
+		trackOffset(): number | undefined {
+			const track = this.$refs.scrollTrack as HTMLDivElement | undefined;
+			if (track) return this.direction === "Vertical" ? track.getBoundingClientRect().top : track.getBoundingClientRect().left;
+
+			return undefined;
 		},
 		clampHandlePosition(newPos: number) {
 			const clampedPosition = Math.min(Math.max(newPos, 0), 1);
 			this.$emit("update:handlePosition", clampedPosition);
 		},
 		updateHandlePosition(e: PointerEvent) {
+			const trackLength = this.trackLength();
+			if (trackLength === undefined) return;
+
 			const position = pointerPosition(this.direction, e);
-			this.clampHandlePosition(this.handlePosition + (position - this.pointerPos) / (this.trackLength() * (1 - this.handleLength)));
+
+			this.clampHandlePosition(this.handlePosition + (position - this.pointerPos) / (trackLength * (1 - this.handleLength)));
 			this.pointerPos = position;
 		},
 		grabHandle(e: PointerEvent) {
@@ -185,8 +193,12 @@ export default defineComponent({
 		},
 		grabArea(e: PointerEvent) {
 			if (!this.dragging) {
+				const trackLength = this.trackLength();
+				const trackOffset = this.trackOffset();
+				if (trackLength === undefined || trackOffset === undefined) return;
+
+				const oldPointer = handleToTrack(this.handleLength, this.handlePosition) * trackLength + trackOffset;
 				const pointerPos = pointerPosition(this.direction, e);
-				const oldPointer = handleToTrack(this.handleLength, this.handlePosition) * this.trackLength() + this.trackOffset();
 				this.$emit("pressTrack", pointerPos - oldPointer);
 			}
 		},
@@ -197,7 +209,10 @@ export default defineComponent({
 			if (this.dragging) this.updateHandlePosition(e);
 		},
 		changePosition(difference: number) {
-			this.clampHandlePosition(this.handlePosition + difference / this.trackLength());
+			const trackLength = this.trackLength();
+			if (trackLength === undefined) return;
+
+			this.clampHandlePosition(this.handlePosition + difference / trackLength);
 		},
 	},
 });

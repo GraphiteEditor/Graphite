@@ -92,8 +92,12 @@ pub fn default_mapping() -> Mapping {
 		entry!(KeyUp(Mmb); action_dispatch=NavigateToolMessage::TransformCanvasEnd),
 		//
 		// EyedropperToolMessage
-		entry!(KeyDown(Lmb); action_dispatch=EyedropperToolMessage::LeftMouseDown),
-		entry!(KeyDown(Rmb); action_dispatch=EyedropperToolMessage::RightMouseDown),
+		entry!(PointerMove; action_dispatch=EyedropperToolMessage::PointerMove),
+		entry!(KeyDown(Lmb); action_dispatch=EyedropperToolMessage::LeftPointerDown),
+		entry!(KeyDown(Rmb); action_dispatch=EyedropperToolMessage::RightPointerDown),
+		entry!(KeyUp(Lmb); action_dispatch=EyedropperToolMessage::LeftPointerUp),
+		entry!(KeyUp(Rmb); action_dispatch=EyedropperToolMessage::RightPointerUp),
+		entry!(KeyDown(Escape); action_dispatch=EyedropperToolMessage::Abort),
 		//
 		// TextToolMessage
 		entry!(KeyUp(Lmb); action_dispatch=TextToolMessage::Interact),
@@ -111,6 +115,20 @@ pub fn default_mapping() -> Mapping {
 		entry!(KeyDown(Rmb); action_dispatch=RectangleToolMessage::Abort),
 		entry!(KeyDown(Escape); action_dispatch=RectangleToolMessage::Abort),
 		entry!(PointerMove; refresh_keys=[Alt, Shift], action_dispatch=RectangleToolMessage::Resize { center: Alt, lock_ratio: Shift }),
+		//
+		// ImaginateToolMessage
+		entry!(KeyDown(Lmb); action_dispatch=ImaginateToolMessage::DragStart),
+		entry!(KeyUp(Lmb); action_dispatch=ImaginateToolMessage::DragStop),
+		entry!(KeyDown(Rmb); action_dispatch=ImaginateToolMessage::Abort),
+		entry!(KeyDown(Escape); action_dispatch=ImaginateToolMessage::Abort),
+		entry!(PointerMove; refresh_keys=[Alt, Shift], action_dispatch=ImaginateToolMessage::Resize { center: Alt, lock_ratio: Shift }),
+		//
+		// NodeGraphFrameToolMessage
+		entry!(KeyDown(Lmb); action_dispatch=NodeGraphFrameToolMessage::DragStart),
+		entry!(KeyUp(Lmb); action_dispatch=NodeGraphFrameToolMessage::DragStop),
+		entry!(KeyDown(Rmb); action_dispatch=NodeGraphFrameToolMessage::Abort),
+		entry!(KeyDown(Escape); action_dispatch=NodeGraphFrameToolMessage::Abort),
+		entry!(PointerMove; refresh_keys=[Alt, Shift], action_dispatch=NodeGraphFrameToolMessage::Resize { center: Alt, lock_ratio: Shift }),
 		//
 		// EllipseToolMessage
 		entry!(KeyDown(Lmb); action_dispatch=EllipseToolMessage::DragStart),
@@ -163,8 +181,8 @@ pub fn default_mapping() -> Mapping {
 		entry!(KeyDown(Enter); action_dispatch=SplineToolMessage::Confirm),
 		//
 		// FillToolMessage
-		entry!(KeyDown(Lmb); action_dispatch=FillToolMessage::LeftMouseDown),
-		entry!(KeyDown(Rmb); action_dispatch=FillToolMessage::RightMouseDown),
+		entry!(KeyDown(Lmb); action_dispatch=FillToolMessage::LeftPointerDown),
+		entry!(KeyDown(Rmb); action_dispatch=FillToolMessage::RightPointerDown),
 		//
 		// ToolMessage
 		entry!(KeyDown(KeyV); action_dispatch=ToolMessage::ActivateToolSelect),
@@ -190,7 +208,7 @@ pub fn default_mapping() -> Mapping {
 		entry!(KeyDown(KeyP); modifiers=[Alt], action_dispatch=DocumentMessage::DebugPrintDocument),
 		entry!(KeyDown(KeyZ); modifiers=[Accel, Shift], action_dispatch=DocumentMessage::Redo),
 		entry!(KeyDown(KeyZ); modifiers=[Accel], action_dispatch=DocumentMessage::Undo),
-		entry!(KeyDown(KeyA); modifiers=[Accel, Alt], action_dispatch=DocumentMessage::DeselectAllLayers),
+		entry!(KeyDown(KeyA); modifiers=[Accel, Shift], action_dispatch=DocumentMessage::DeselectAllLayers),
 		entry!(KeyDown(KeyA); modifiers=[Accel], action_dispatch=DocumentMessage::SelectAllLayers),
 		entry!(KeyDown(KeyS); modifiers=[Accel], action_dispatch=DocumentMessage::SaveDocument),
 		entry!(KeyDown(KeyD); modifiers=[Accel], action_dispatch=DocumentMessage::DuplicateSelectedLayers),
@@ -263,9 +281,10 @@ pub fn default_mapping() -> Mapping {
 		entry!(KeyDown(KeyV); modifiers=[Accel], action_dispatch=FrontendMessage::TriggerPaste),
 		//
 		// DialogMessage
-		entry!(KeyDown(KeyN); modifiers=[Accel], action_dispatch=DialogMessage::RequestNewDocumentDialog),
 		entry!(KeyDown(KeyW); modifiers=[Accel, Alt], action_dispatch=DialogMessage::CloseAllDocumentsWithConfirmation),
 		entry!(KeyDown(KeyE); modifiers=[Accel], action_dispatch=DialogMessage::RequestExportDialog),
+		entry!(KeyDown(KeyN); modifiers=[Accel], action_dispatch=DialogMessage::RequestNewDocumentDialog),
+		entry!(KeyDown(Comma); modifiers=[Accel], action_dispatch=DialogMessage::RequestPreferencesDialog),
 		//
 		// DebugMessage
 		entry!(KeyDown(KeyT); modifiers=[Alt], action_dispatch=DebugMessage::ToggleTraceLogs),

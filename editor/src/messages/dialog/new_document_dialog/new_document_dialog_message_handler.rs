@@ -83,7 +83,6 @@ impl PropertyHolder for NewDocumentDialogMessageHandler {
 			})),
 			WidgetHolder::new(Widget::CheckboxInput(CheckboxInput {
 				checked: self.infinite,
-				icon: "Checkmark".to_string(),
 				on_update: WidgetCallback::new(|checkbox_input: &CheckboxInput| NewDocumentDialogMessage::Infinite(checkbox_input.checked).into()),
 				..Default::default()
 			})),
@@ -100,12 +99,13 @@ impl PropertyHolder for NewDocumentDialogMessageHandler {
 				direction: SeparatorDirection::Horizontal,
 			})),
 			WidgetHolder::new(Widget::NumberInput(NumberInput {
-				value: Some(self.dimensions.x as f64),
 				label: "W".into(),
 				unit: " px".into(),
-				disabled: self.infinite,
-				is_integer: true,
+				value: Some(self.dimensions.x as f64),
 				min: Some(0.),
+				is_integer: true,
+				disabled: self.infinite,
+				min_width: 100,
 				on_update: WidgetCallback::new(|number_input: &NumberInput| NewDocumentDialogMessage::DimensionsX(number_input.value.unwrap()).into()),
 				..NumberInput::default()
 			})),
@@ -114,12 +114,13 @@ impl PropertyHolder for NewDocumentDialogMessageHandler {
 				direction: SeparatorDirection::Horizontal,
 			})),
 			WidgetHolder::new(Widget::NumberInput(NumberInput {
-				value: Some(self.dimensions.y as f64),
 				label: "H".into(),
 				unit: " px".into(),
-				disabled: self.infinite,
-				is_integer: true,
+				value: Some(self.dimensions.y as f64),
 				min: Some(0.),
+				is_integer: true,
+				disabled: self.infinite,
+				min_width: 100,
 				on_update: WidgetCallback::new(|number_input: &NumberInput| NewDocumentDialogMessage::DimensionsY(number_input.value.unwrap()).into()),
 				..NumberInput::default()
 			})),

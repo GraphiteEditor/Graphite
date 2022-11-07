@@ -1,15 +1,10 @@
-use crate::consts::SELECTION_TOLERANCE;
 use crate::messages::frontend::utility_types::MouseCursorIcon;
-use crate::messages::input_mapper::utility_types::input_keyboard::MouseMotion;
+use crate::messages::input_mapper::utility_types::input_keyboard::{Key, KeysGroup, MouseMotion};
 use crate::messages::layout::utility_types::layout_widget::PropertyHolder;
 use crate::messages::prelude::*;
-use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
+use crate::messages::tool::utility_types::{DocumentToolData, EventToMessageMap, Fsm, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 
-use graphene::intersection::Quad;
-use graphene::layers::layer_info::LayerDataType;
-
-use glam::DVec2;
 use serde::{Deserialize, Serialize};
 
 #[derive(Default)]
@@ -27,8 +22,11 @@ pub enum EyedropperToolMessage {
 	Abort,
 
 	// Tool-specific messages
-	LeftMouseDown,
-	RightMouseDown,
+	LeftPointerDown,
+	LeftPointerUp,
+	PointerMove,
+	RightPointerDown,
+	RightPointerUp,
 }
 
 impl ToolMetadata for EyedropperTool {
@@ -67,8 +65,12 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for EyedropperTo
 	}
 
 	advertise_actions!(EyedropperToolMessageDiscriminant;
-		LeftMouseDown,
-		RightMouseDown,
+		LeftPointerDown,
+		LeftPointerUp,
+		PointerMove,
+		RightPointerDown,
+		RightPointerUp,
+		Abort,
 	);
 }
 
@@ -85,6 +87,8 @@ impl ToolTransition for EyedropperTool {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum EyedropperToolFsmState {
 	Ready,
+	SamplingPrimary,
+	SamplingSecondary,
 }
 
 impl Default for EyedropperToolFsmState {
@@ -104,7 +108,7 @@ impl Fsm for EyedropperToolFsmState {
 		self,
 		event: ToolMessage,
 		_tool_data: &mut Self::ToolData,
-		(document, _global_tool_data, input, font_cache): ToolActionHandlerData,
+		(_document, _document_id, global_tool_data, input, _font_cache): ToolActionHandlerData,
 		_tool_options: &Self::ToolOptions,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
@@ -113,28 +117,41 @@ impl Fsm for EyedropperToolFsmState {
 
 		if let ToolMessage::Eyedropper(event) = event {
 			match (self, event) {
-				(Ready, lmb_or_rmb) if lmb_or_rmb == LeftMouseDown || lmb_or_rmb == RightMouseDown => {
-					let mouse_pos = input.mouse.position;
-					let tolerance = DVec2::splat(SELECTION_TOLERANCE);
-					let quad = Quad::from_box([mouse_pos - tolerance, mouse_pos + tolerance]);
+				// Ready -> Sampling
+				(Ready, mouse_down) | (Ready, mouse_down) if mouse_down == LeftPointerDown || mouse_down == RightPointerDown => {
+					update_cursor_preview(responses, input, global_tool_data, None);
 
-					// TODO: Destroy this pyramid
-					if let Some(path) = document.graphene_document.intersects_quad_root(quad, font_cache).last() {
-						if let Ok(layer) = document.graphene_document.layer(path) {
-							if let LayerDataType::Shape(shape) = &layer.data {
-								if shape.style.fill().is_some() {
-									match lmb_or_rmb {
-										EyedropperToolMessage::LeftMouseDown => responses.push_back(ToolMessage::SelectPrimaryColor { color: shape.style.fill().color() }.into()),
-										EyedropperToolMessage::RightMouseDown => responses.push_back(ToolMessage::SelectSecondaryColor { color: shape.style.fill().color() }.into()),
-										_ => {}
-									}
-								}
-							}
-						}
+					if mouse_down == LeftPointerDown {
+						SamplingPrimary
+					} else {
+						SamplingSecondary
 					}
+				}
+				// Sampling -> Sampling
+				(SamplingPrimary, PointerMove) | (SamplingSecondary, PointerMove) => {
+					if input.viewport_bounds.in_bounds(input.mouse.position) {
+						update_cursor_preview(responses, input, global_tool_data, None);
+					} else {
+						disable_cursor_preview(responses);
+					}
+
+					self
+				}
+				// Sampling -> Ready
+				(SamplingPrimary, mouse_up) | (SamplingSecondary, mouse_up) if mouse_up == LeftPointerUp || mouse_up == RightPointerUp => {
+					let set_color_choice = if self == SamplingPrimary { "Primary".to_string() } else { "Secondary".to_string() };
+					update_cursor_preview(responses, input, global_tool_data, Some(set_color_choice));
+					disable_cursor_preview(responses);
 
 					Ready
 				}
+				// Any -> Ready
+				(_, Abort) => {
+					disable_cursor_preview(responses);
+
+					Ready
+				}
+				// Ready -> Ready
 				_ => self,
 			}
 		} else {
@@ -160,12 +177,48 @@ impl Fsm for EyedropperToolFsmState {
 					plus: false,
 				},
 			])]),
+			EyedropperToolFsmState::SamplingPrimary | EyedropperToolFsmState::SamplingSecondary => HintData(vec![HintGroup(vec![HintInfo {
+				key_groups: vec![KeysGroup(vec![Key::Escape])],
+				key_groups_mac: None,
+				mouse: None,
+				label: String::from("Cancel"),
+				plus: false,
+			}])]),
 		};
 
 		responses.push_back(FrontendMessage::UpdateInputHints { hint_data }.into());
 	}
 
 	fn update_cursor(&self, responses: &mut VecDeque<Message>) {
-		responses.push_back(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default }.into());
+		let cursor = match *self {
+			EyedropperToolFsmState::Ready => MouseCursorIcon::Default,
+			EyedropperToolFsmState::SamplingPrimary | EyedropperToolFsmState::SamplingSecondary => MouseCursorIcon::None,
+		};
+
+		responses.push_back(FrontendMessage::UpdateMouseCursor { cursor }.into());
 	}
+}
+
+fn disable_cursor_preview(responses: &mut VecDeque<Message>) {
+	responses.push_back(
+		FrontendMessage::UpdateEyedropperSamplingState {
+			mouse_position: None,
+			primary_color: "".into(),
+			secondary_color: "".into(),
+			set_color_choice: None,
+		}
+		.into(),
+	);
+}
+
+fn update_cursor_preview(responses: &mut VecDeque<Message>, input: &InputPreprocessorMessageHandler, global_tool_data: &DocumentToolData, set_color_choice: Option<String>) {
+	responses.push_back(
+		FrontendMessage::UpdateEyedropperSamplingState {
+			mouse_position: Some(input.mouse.position.into()),
+			primary_color: "#".to_string() + global_tool_data.primary_color.rgb_hex().as_str(),
+			secondary_color: "#".to_string() + global_tool_data.secondary_color.rgb_hex().as_str(),
+			set_color_choice,
+		}
+		.into(),
+	);
 }

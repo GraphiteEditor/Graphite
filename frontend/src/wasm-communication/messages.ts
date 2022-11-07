@@ -2,7 +2,7 @@
 
 import { Transform, Type, plainToClass } from "class-transformer";
 
-import { type IconName, type IconSize, type IconStyle } from "@/utility-functions/icons";
+import { type IconName, type IconSize } from "@/utility-functions/icons";
 import { type WasmEditorInstance, type WasmRawInstance } from "@/wasm-communication/editor";
 
 import type MenuList from "@/components/floating-menus/MenuList.vue";
@@ -37,6 +37,8 @@ export class UpdateOpenDocumentsList extends JsMessage {
 export abstract class DocumentDetails {
 	readonly name!: string;
 
+	readonly isAutoSaved!: boolean;
+
 	readonly isSaved!: boolean;
 
 	readonly id!: bigint | string;
@@ -50,6 +52,11 @@ export class FrontendDocumentDetails extends DocumentDetails {
 	readonly id!: bigint;
 }
 
+export class IndexedDbDocumentDetails extends DocumentDetails {
+	@Transform(({ value }: { value: bigint }) => value.toString())
+	id!: string;
+}
+
 export class TriggerIndexedDbWriteDocument extends JsMessage {
 	document!: string;
 
@@ -57,11 +64,6 @@ export class TriggerIndexedDbWriteDocument extends JsMessage {
 	details!: IndexedDbDocumentDetails;
 
 	version!: string;
-}
-
-export class IndexedDbDocumentDetails extends DocumentDetails {
-	@Transform(({ value }: { value: bigint }) => value.toString())
-	id!: string;
 }
 
 export class TriggerIndexedDbRemoveDocument extends JsMessage {
@@ -100,40 +102,246 @@ export type ActionKeys = { keys: KeysGroup };
 
 export type MouseMotion = string;
 
-export type RGBA = {
-	r: number;
-	g: number;
-	b: number;
-	a: number;
-};
+// Channels can have any range (0-1, 0-255, 0-100, 0-360) in the context they are being used in, these are just containers for the numbers
+export type HSVA = { h: number; s: number; v: number; a: number };
+export type HSV = { h: number; s: number; v: number };
+export type RGBA = { r: number; g: number; b: number; a: number };
+export type RGB = { r: number; g: number; b: number };
 
-export type HSVA = {
-	h: number;
-	s: number;
-	v: number;
-	a: number;
-};
-
-const To255Scale = Transform(({ value }: { value: number }) => value * 255);
+// All channels range from 0 to 1
 export class Color {
-	@To255Scale
+	constructor();
+
+	constructor(none: "none");
+
+	constructor(hsva: HSVA);
+
+	constructor(red: number, green: number, blue: number, alpha: number);
+
+	constructor(firstArg?: "none" | HSVA | number, green?: number, blue?: number, alpha?: number) {
+		// Empty constructor
+		if (firstArg === undefined) {
+			this.red = 0;
+			this.green = 0;
+			this.blue = 0;
+			this.alpha = 1;
+			this.none = false;
+		} else if (firstArg === "none") {
+			this.red = 0;
+			this.green = 0;
+			this.blue = 0;
+			this.alpha = 1;
+			this.none = true;
+		}
+		// HSVA constructor
+		else if (typeof firstArg === "object" && green === undefined && blue === undefined && alpha === undefined) {
+			const { h, s, v } = firstArg;
+			const convert = (n: number): number => {
+				const k = (n + h * 6) % 6;
+				return v - v * s * Math.max(Math.min(...[k, 4 - k, 1]), 0);
+			};
+
+			this.red = convert(5);
+			this.green = convert(3);
+			this.blue = convert(1);
+			this.alpha = firstArg.a;
+			this.none = false;
+		}
+		// RGBA constructor
+		else if (typeof firstArg === "number" && typeof green === "number" && typeof blue === "number" && typeof alpha === "number") {
+			this.red = firstArg;
+			this.green = green;
+			this.blue = blue;
+			this.alpha = alpha;
+			this.none = false;
+		}
+	}
+
 	readonly red!: number;
 
-	@To255Scale
 	readonly green!: number;
 
-	@To255Scale
 	readonly blue!: number;
 
 	readonly alpha!: number;
 
-	toRgba(): RGBA {
-		return { r: this.red, g: this.green, b: this.blue, a: this.alpha };
+	readonly none!: boolean;
+
+	static fromCSS(colorCode: string): Color | undefined {
+		// Allow single-digit hex value inputs
+		let colorValue = colorCode.trim();
+		if (colorValue.length === 2 && colorValue.charAt(0) === "#" && /[0-9a-f]/i.test(colorValue.charAt(1))) {
+			const digit = colorValue.charAt(1);
+			colorValue = `#${digit}${digit}${digit}`;
+		}
+
+		const canvas = document.createElement("canvas");
+		canvas.width = 1;
+		canvas.height = 1;
+		const context = canvas.getContext("2d");
+		if (!context) return undefined;
+
+		context.clearRect(0, 0, 1, 1);
+
+		context.fillStyle = "black";
+		context.fillStyle = colorValue;
+		const comparisonA = context.fillStyle;
+
+		context.fillStyle = "white";
+		context.fillStyle = colorValue;
+		const comparisonB = context.fillStyle;
+
+		// Invalid color
+		if (comparisonA !== comparisonB) {
+			// If this color code didn't start with a #, add it and try again
+			if (colorValue.trim().charAt(0) !== "#") return Color.fromCSS(`#${colorValue.trim()}`);
+			return undefined;
+		}
+
+		context.fillRect(0, 0, 1, 1);
+
+		const [r, g, b, a] = [...context.getImageData(0, 0, 1, 1).data];
+		return new Color(r / 255, g / 255, b / 255, a / 255);
 	}
 
-	toRgbaCSS(): string {
-		const { r, g, b, a } = this.toRgba();
-		return `rgba(${r}, ${g}, ${b}, ${a})`;
+	toHexNoAlpha(): string | undefined {
+		if (this.none) return undefined;
+
+		const r = Math.round(this.red * 255)
+			.toString(16)
+			.padStart(2, "0");
+		const g = Math.round(this.green * 255)
+			.toString(16)
+			.padStart(2, "0");
+		const b = Math.round(this.blue * 255)
+			.toString(16)
+			.padStart(2, "0");
+
+		return `#${r}${g}${b}`;
+	}
+
+	toHexOptionalAlpha(): string | undefined {
+		if (this.none) return undefined;
+
+		const hex = this.toHexNoAlpha();
+		const a = Math.round(this.alpha * 255)
+			.toString(16)
+			.padStart(2, "0");
+
+		return a === "ff" ? hex : `${hex}${a}`;
+	}
+
+	toRgb255(): RGB | undefined {
+		if (this.none) return undefined;
+
+		return {
+			r: Math.round(this.red * 255),
+			g: Math.round(this.green * 255),
+			b: Math.round(this.blue * 255),
+		};
+	}
+
+	toRgba255(): RGBA | undefined {
+		if (this.none) return undefined;
+
+		return {
+			r: Math.round(this.red * 255),
+			g: Math.round(this.green * 255),
+			b: Math.round(this.blue * 255),
+			a: Math.round(this.alpha * 255),
+		};
+	}
+
+	toRgbCSS(): string | undefined {
+		const rgba = this.toRgba255();
+		if (!rgba) return undefined;
+
+		return `rgb(${rgba.r}, ${rgba.g}, ${rgba.b})`;
+	}
+
+	toRgbaCSS(): string | undefined {
+		const rgba = this.toRgba255();
+		if (!rgba) return undefined;
+
+		return `rgba(${rgba.r}, ${rgba.g}, ${rgba.b}, ${rgba.a})`;
+	}
+
+	toHSV(): HSV | undefined {
+		const hsva = this.toHSVA();
+		if (!hsva) return undefined;
+
+		return { h: hsva.h, s: hsva.s, v: hsva.v };
+	}
+
+	toHSVA(): HSVA | undefined {
+		if (this.none) return undefined;
+
+		const { red: r, green: g, blue: b, alpha: a } = this;
+
+		const max = Math.max(r, g, b);
+		const min = Math.min(r, g, b);
+
+		const d = max - min;
+		const s = max === 0 ? 0 : d / max;
+		const v = max;
+
+		let h = 0;
+		if (max !== min) {
+			switch (max) {
+				case r:
+					h = (g - b) / d + (g < b ? 6 : 0);
+					break;
+				case g:
+					h = (b - r) / d + 2;
+					break;
+				case b:
+					h = (r - g) / d + 4;
+					break;
+				default:
+			}
+			h /= 6;
+		}
+
+		return { h, s, v, a };
+	}
+
+	toHsvDegreesAndPercent(): HSV | undefined {
+		const hsva = this.toHSVA();
+		if (!hsva) return undefined;
+
+		return { h: hsva.h * 360, s: hsva.s * 100, v: hsva.v * 100 };
+	}
+
+	toHsvaDegreesAndPercent(): HSVA | undefined {
+		const hsva = this.toHSVA();
+		if (!hsva) return undefined;
+
+		return { h: hsva.h * 360, s: hsva.s * 100, v: hsva.v * 100, a: hsva.a * 100 };
+	}
+
+	opaque(): Color | undefined {
+		if (this.none) return undefined;
+
+		return new Color(this.red, this.green, this.blue, 1);
+	}
+
+	contrastingColor(): "black" | "white" {
+		if (this.none) return "black";
+
+		// Convert alpha into white
+		const r = this.red * this.alpha + (1 - this.alpha);
+		const g = this.green * this.alpha + (1 - this.alpha);
+		const b = this.blue * this.alpha + (1 - this.alpha);
+
+		// https://stackoverflow.com/a/3943023/775283
+
+		const linearR = r <= 0.04045 ? r / 12.92 : ((r + 0.055) / 1.055) ** 2.4;
+		const linearG = g <= 0.04045 ? g / 12.92 : ((g + 0.055) / 1.055) ** 2.4;
+		const linearB = b <= 0.04045 ? b / 12.92 : ((b + 0.055) / 1.055) ** 2.4;
+
+		const linear = linearR * 0.2126 + linearG * 0.7152 + linearB * 0.0722;
+
+		return linear > Math.sqrt(1.05 * 0.05) - 0.05 ? "black" : "white";
 	}
 }
 
@@ -165,7 +373,8 @@ export class UpdateDocumentArtboards extends JsMessage {
 	readonly svg!: string;
 }
 
-const TupleToVec2 = Transform(({ value }: { value: [number, number] }) => ({ x: value[0], y: value[1] }));
+const TupleToVec2 = Transform(({ value }: { value: [number, number] | undefined }) => (value === undefined ? undefined : { x: value[0], y: value[1] }));
+const BigIntTupleToVec2 = Transform(({ value }: { value: [bigint, bigint] | undefined }) => (value === undefined ? undefined : { x: Number(value[0]), y: Number(value[1]) }));
 
 export type XY = { x: number; y: number };
 
@@ -189,7 +398,20 @@ export class UpdateDocumentRulers extends JsMessage {
 	readonly interval!: number;
 }
 
+export class UpdateEyedropperSamplingState extends JsMessage {
+	@TupleToVec2
+	readonly mousePosition!: XY | undefined;
+
+	readonly primaryColor!: string;
+
+	readonly secondaryColor!: string;
+
+	readonly setColorChoice!: "Primary" | "Secondary" | undefined;
+}
+
 const mouseCursorIconCSSNames = {
+	Default: "default",
+	None: "none",
 	ZoomIn: "zoom-in",
 	ZoomOut: "zoom-out",
 	Grabbing: "grabbing",
@@ -200,12 +422,13 @@ const mouseCursorIconCSSNames = {
 	EWResize: "ew-resize",
 	NESWResize: "nesw-resize",
 	NWSEResize: "nwse-resize",
+	Rotate: "custom-rotate",
 } as const;
 export type MouseCursor = keyof typeof mouseCursorIconCSSNames;
 export type MouseCursorIcon = typeof mouseCursorIconCSSNames[MouseCursor];
 
 export class UpdateMouseCursor extends JsMessage {
-	@Transform(({ value }: { value: MouseCursor }) => mouseCursorIconCSSNames[value] || "default")
+	@Transform(({ value }: { value: MouseCursor }) => mouseCursorIconCSSNames[value] || "alias")
 	readonly cursor!: MouseCursorIcon;
 }
 
@@ -214,6 +437,10 @@ export class TriggerFileDownload extends JsMessage {
 
 	readonly name!: string;
 }
+
+export class TriggerLoadAutoSaveDocuments extends JsMessage {}
+
+export class TriggerLoadPreferences extends JsMessage {}
 
 export class TriggerOpenDocument extends JsMessage {}
 
@@ -232,7 +459,82 @@ export class TriggerRasterDownload extends JsMessage {
 	readonly size!: XY;
 }
 
+export class TriggerImaginateCheckServerStatus extends JsMessage {
+	readonly hostname!: string;
+}
+
+export class TriggerImaginateGenerate extends JsMessage {
+	@Type(() => ImaginateGenerationParameters)
+	readonly parameters!: ImaginateGenerationParameters;
+
+	@Type(() => ImaginateBaseImage)
+	readonly baseImage!: ImaginateBaseImage | undefined;
+
+	readonly hostname!: string;
+
+	readonly refreshFrequency!: number;
+
+	readonly documentId!: bigint;
+
+	readonly layerPath!: BigUint64Array;
+}
+
+export class ImaginateBaseImage {
+	readonly svg!: string;
+
+	readonly size!: [number, number];
+}
+
+export class ImaginateGenerationParameters {
+	readonly seed!: number;
+
+	readonly samples!: number;
+
+	readonly samplingMethod!: string;
+
+	readonly denoisingStrength!: number | undefined;
+
+	readonly cfgScale!: number;
+
+	readonly prompt!: string;
+
+	readonly negativePrompt!: string;
+
+	@BigIntTupleToVec2
+	readonly resolution!: XY;
+
+	readonly restoreFaces!: boolean;
+
+	readonly tiling!: boolean;
+}
+
+export class TriggerImaginateTerminate extends JsMessage {
+	readonly documentId!: bigint;
+
+	readonly layerPath!: BigUint64Array;
+
+	readonly hostname!: string;
+}
+
+export class TriggerNodeGraphFrameGenerate extends JsMessage {
+	readonly documentId!: bigint;
+
+	readonly layerPath!: BigUint64Array;
+
+	readonly svg!: string;
+
+	readonly size!: [number, number];
+}
+
 export class TriggerRefreshBoundsOfViewports extends JsMessage {}
+
+export class TriggerRevokeBlobUrl extends JsMessage {
+	readonly url!: string;
+}
+
+export class TriggerSavePreferences extends JsMessage {
+	readonly preferences!: Record<string, unknown>;
+}
 
 export class DocumentChanged extends JsMessage {}
 
@@ -313,8 +615,10 @@ export class DisplayEditableTextbox extends JsMessage {
 }
 
 export class UpdateImageData extends JsMessage {
-	@Type(() => ImageData)
-	readonly imageData!: ImageData[];
+	readonly documentId!: bigint;
+
+	@Type(() => ImaginateImageData)
+	readonly imageData!: ImaginateImageData[];
 }
 
 export class DisplayRemoveEditableTextbox extends JsMessage {}
@@ -327,7 +631,8 @@ export class UpdateDocumentLayerDetails extends JsMessage {
 export class LayerPanelEntry {
 	name!: string;
 
-	tooltip!: string;
+	@Transform(({ value }: { value: string }) => (value.length > 0 ? value : undefined))
+	tooltip!: string | undefined;
 
 	visible!: boolean;
 
@@ -348,9 +653,27 @@ export class LayerMetadata {
 	selected!: boolean;
 }
 
-export type LayerType = "Folder" | "Image" | "Shape" | "Text";
+export type LayerType = "Imaginate" | "NodeGraphFrame" | "Folder" | "Image" | "Shape" | "Text";
 
-export class ImageData {
+export type LayerTypeData = {
+	name: string;
+	icon: IconName;
+};
+
+export function layerTypeData(layerType: LayerType): LayerTypeData | undefined {
+	const entries: Record<string, LayerTypeData> = {
+		Imaginate: { name: "Imaginate", icon: "NodeImaginate" },
+		NodeGraphFrame: { name: "Node Graph Frame", icon: "NodeNodes" },
+		Folder: { name: "Folder", icon: "NodeFolder" },
+		Image: { name: "Image", icon: "NodeImage" },
+		Shape: { name: "Shape", icon: "NodeShape" },
+		Text: { name: "Text", icon: "NodeText" },
+	};
+
+	return entries[layerType];
+}
+
+export class ImaginateImageData {
 	readonly path!: BigUint64Array;
 
 	readonly mime!: string;
@@ -398,21 +721,26 @@ export abstract class WidgetProps {
 export class CheckboxInput extends WidgetProps {
 	checked!: boolean;
 
+	disabled!: boolean;
+
 	icon!: IconName;
 
-	tooltip!: string;
+	@Transform(({ value }: { value: string }) => (value.length > 0 ? value : undefined))
+	tooltip!: string | undefined;
 }
 
 export class ColorInput extends WidgetProps {
-	value!: string | undefined;
-
-	label!: string | undefined;
+	@Transform(({ value }: { value: { red: number; green: number; blue: number; alpha: number } | undefined }) =>
+		value === undefined ? new Color("none") : new Color(value.red, value.green, value.blue, value.alpha)
+	)
+	value!: Color;
 
 	noTransparency!: boolean;
 
 	disabled!: boolean;
 
-	tooltip!: string;
+	@Transform(({ value }: { value: string }) => (value.length > 0 ? value : undefined))
+	tooltip!: string | undefined;
 }
 
 type MenuEntryCommon = {
@@ -435,6 +763,7 @@ export type MenuListEntry = MenuEntryCommon & {
 	shortcutRequiresLock?: boolean;
 	value?: string;
 	disabled?: boolean;
+	tooltip?: string;
 	font?: URL;
 	ref?: InstanceType<typeof MenuList>;
 };
@@ -449,6 +778,9 @@ export class DropdownInput extends WidgetProps {
 	interactive!: boolean;
 
 	disabled!: boolean;
+
+	@Transform(({ value }: { value: string }) => (value.length > 0 ? value : undefined))
+	tooltip!: string | undefined;
 }
 
 export class FontInput extends WidgetProps {
@@ -459,6 +791,9 @@ export class FontInput extends WidgetProps {
 	isStyle!: boolean;
 
 	disabled!: boolean;
+
+	@Transform(({ value }: { value: string }) => (value.length > 0 ? value : undefined))
+	tooltip!: string | undefined;
 }
 
 export class IconButton extends WidgetProps {
@@ -466,21 +801,39 @@ export class IconButton extends WidgetProps {
 
 	size!: IconSize;
 
+	disabled!: boolean;
+
 	active!: boolean;
 
-	tooltip!: string;
+	@Transform(({ value }: { value: string }) => (value.length > 0 ? value : undefined))
+	tooltip!: string | undefined;
 }
 
 export class IconLabel extends WidgetProps {
 	icon!: IconName;
 
-	iconStyle!: IconStyle | undefined;
+	disabled!: boolean;
+
+	@Transform(({ value }: { value: string }) => (value.length > 0 ? value : undefined))
+	tooltip!: string | undefined;
 }
 
-export type IncrementBehavior = "Add" | "Multiply" | "Callback" | "None";
+export type NumberInputIncrementBehavior = "Add" | "Multiply" | "Callback" | "None";
+export type NumberInputMode = "Increment" | "Range";
 
 export class NumberInput extends WidgetProps {
+	// Label
+
 	label!: string | undefined;
+
+	@Transform(({ value }: { value: string }) => (value.length > 0 ? value : undefined))
+	tooltip!: string | undefined;
+
+	// Disabled
+
+	disabled!: boolean;
+
+	// Value
 
 	value!: number | undefined;
 
@@ -490,34 +843,54 @@ export class NumberInput extends WidgetProps {
 
 	isInteger!: boolean;
 
+	// Number presentation
+
 	displayDecimalPlaces!: number;
 
 	unit!: string;
 
 	unitIsHiddenWhenEditing!: boolean;
 
-	incrementBehavior!: IncrementBehavior;
+	// Mode behavior
 
-	incrementFactor!: number;
+	mode!: NumberInputMode;
 
-	disabled!: boolean;
+	incrementBehavior!: NumberInputIncrementBehavior;
+
+	step!: number;
+
+	rangeMin!: number | undefined;
+
+	rangeMax!: number | undefined;
+
+	// Styling
+
+	minWidth!: number;
 }
 
 export class OptionalInput extends WidgetProps {
 	checked!: boolean;
 
+	disabled!: boolean;
+
 	icon!: IconName;
 
-	tooltip!: string;
+	@Transform(({ value }: { value: string }) => (value.length > 0 ? value : undefined))
+	tooltip!: string | undefined;
 }
 
 export class PopoverButton extends WidgetProps {
 	icon!: string | undefined;
 
+	disabled!: boolean;
+
 	// Body
 	header!: string;
 
 	text!: string;
+
+	@Transform(({ value }: { value: string }) => (value.length > 0 ? value : undefined))
+	tooltip!: string | undefined;
 }
 
 export type RadioEntryData = {
@@ -533,6 +906,8 @@ export type RadioEntries = RadioEntryData[];
 
 export class RadioInput extends WidgetProps {
 	entries!: RadioEntries;
+
+	disabled!: boolean;
 
 	selectedIndex!: number;
 }
@@ -560,6 +935,9 @@ export class TextAreaInput extends WidgetProps {
 	label!: string | undefined;
 
 	disabled!: boolean;
+
+	@Transform(({ value }: { value: string }) => (value.length > 0 ? value : undefined))
+	tooltip!: string | undefined;
 }
 
 export class TextButton extends WidgetProps {
@@ -572,6 +950,9 @@ export class TextButton extends WidgetProps {
 	minWidth!: number;
 
 	disabled!: boolean;
+
+	@Transform(({ value }: { value: string }) => (value.length > 0 ? value : undefined))
+	tooltip!: string | undefined;
 }
 
 export type TextButtonWidget = {
@@ -581,10 +962,11 @@ export type TextButtonWidget = {
 	props: {
 		kind: "TextButton";
 		label: string;
-		icon?: string;
+		icon?: IconName;
 		emphasized?: boolean;
 		minWidth?: number;
 		disabled?: boolean;
+		tooltip?: string;
 
 		// Callbacks
 		// `action` is used via `IconButtonWidget.callback`
@@ -597,6 +979,11 @@ export class TextInput extends WidgetProps {
 	label!: string | undefined;
 
 	disabled!: boolean;
+
+	minWidth!: number;
+
+	@Transform(({ value }: { value: string }) => (value.length > 0 ? value : undefined))
+	tooltip!: string | undefined;
 }
 
 export class TextLabel extends WidgetProps {
@@ -604,19 +991,28 @@ export class TextLabel extends WidgetProps {
 	value!: string;
 
 	// Props
+	disabled!: boolean;
+
 	bold!: boolean;
 
 	italic!: boolean;
 
 	tableAlign!: boolean;
 
+	minWidth!: number;
+
 	multiline!: boolean;
+
+	@Transform(({ value }: { value: string }) => (value.length > 0 ? value : undefined))
+	tooltip!: string | undefined;
 }
 
 export type PivotPosition = "None" | "TopLeft" | "TopCenter" | "TopRight" | "CenterLeft" | "Center" | "CenterRight" | "BottomLeft" | "BottomCenter" | "BottomRight";
 
 export class PivotAssist extends WidgetProps {
 	position!: PivotPosition;
+
+	disabled!: boolean;
 }
 
 // WIDGET
@@ -851,15 +1247,23 @@ export const messageMakers: Record<string, MessageMaker> = {
 	DisplayEditableTextbox,
 	DisplayRemoveEditableTextbox,
 	TriggerAboutGraphiteLocalizedCommitDate,
-	TriggerOpenDocument,
+	TriggerImaginateCheckServerStatus,
+	TriggerImaginateGenerate,
+	TriggerImaginateTerminate,
+	TriggerNodeGraphFrameGenerate,
 	TriggerFileDownload,
 	TriggerFontLoad,
 	TriggerImport,
 	TriggerIndexedDbRemoveDocument,
 	TriggerIndexedDbWriteDocument,
+	TriggerLoadAutoSaveDocuments,
+	TriggerLoadPreferences,
+	TriggerOpenDocument,
 	TriggerPaste,
 	TriggerRasterDownload,
 	TriggerRefreshBoundsOfViewports,
+	TriggerRevokeBlobUrl,
+	TriggerSavePreferences,
 	TriggerTextCommit,
 	TriggerTextCopy,
 	TriggerViewportResize,
@@ -874,6 +1278,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateDocumentModeLayout,
 	UpdateDocumentOverlays,
 	UpdateDocumentRulers,
+	UpdateEyedropperSamplingState,
 	UpdateDocumentScrollbars,
 	UpdateImageData,
 	UpdateInputHints,

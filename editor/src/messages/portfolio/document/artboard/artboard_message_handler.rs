@@ -85,7 +85,7 @@ impl MessageHandler<ArtboardMessage, &FontCache> for ArtboardMessageHandler {
 						.into(),
 					)
 				} else {
-					let render_data = RenderData::new(ViewMode::Normal, font_cache, None, false);
+					let render_data = RenderData::new(ViewMode::Normal, font_cache, None);
 					responses.push_back(
 						FrontendMessage::UpdateDocumentArtboards {
 							svg: self.artboards_graphene_document.render_root(render_data),
@@ -94,7 +94,14 @@ impl MessageHandler<ArtboardMessage, &FontCache> for ArtboardMessageHandler {
 					);
 				}
 			}
-			ResizeArtboard { artboard, position, size } => {
+			ResizeArtboard { artboard, position, mut size } => {
+				if size.0.abs() == 0. {
+					size.0 = size.0.signum();
+				}
+				if size.1.abs() == 0. {
+					size.1 = size.1.signum();
+				}
+
 				responses.push_back(
 					ArtboardMessage::DispatchOperation(Box::new(DocumentOperation::SetLayerTransform {
 						path: vec![artboard],

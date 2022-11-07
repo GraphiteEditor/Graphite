@@ -1,4 +1,5 @@
 use core::marker::PhantomData;
+use dyn_any::{DynAny, StaticType};
 use graphene_core::ops::FlatMapResultNode;
 use graphene_core::raster::color::Color;
 use graphene_core::structural::{ComposeNode, ConsNode};
@@ -23,6 +24,17 @@ impl<I: IntoIterator<Item = S>, MN: Node<S>, S> MapNode<MN, I, S> {
 
 pub struct MapImageNode<MN: Node<Color, Output = Color> + Copy>(pub MN);
 
+impl<MN: Node<Color, Output = Color> + Copy> Node<Image> for MapImageNode<MN> {
+	type Output = Image;
+	fn eval(self, input: Image) -> Self::Output {
+		Image {
+			width: input.width,
+			height: input.height,
+			data: input.data.iter().map(|x| self.0.eval(*x)).collect(),
+		}
+	}
+}
+
 impl<'n, MN: Node<Color, Output = Color> + Copy> Node<Image> for &'n MapImageNode<MN> {
 	type Output = Image;
 	fn eval(self, input: Image) -> Self::Output {
@@ -40,7 +52,7 @@ impl<MN: Node<Color, Output = Color> + Copy> MapImageNode<MN> {
 	}
 }
 
-#[derive(Debug)]
+#[derive(Debug, DynAny)]
 pub enum Error {
 	IO(std::io::Error),
 	Image(image::ImageError),
@@ -86,7 +98,7 @@ impl<Reader: std::io::Read> Node<Reader> for BufferNode {
 	}
 }
 
-#[derive(Clone)]
+#[derive(Clone, DynAny)]
 pub struct Image {
 	pub width: u32,
 	pub height: u32,
@@ -111,8 +123,8 @@ impl<'a> IntoIterator for &'a Image {
 
 pub fn file_node<'n, P: AsRef<Path> + 'n>() -> impl Node<P, Output = Result<Vec<u8>, Error>> {
 	let fs = ValueNode(StdFs).clone();
-	let fs = ConsNode(fs);
-	let file: ComposeNode<_, _, P> = fs.then(FileNode(PhantomData));
+	let fs = ConsNode::new(fs);
+	let file = fs.then(FileNode(PhantomData));
 
 	file.then(FlatMapResultNode::new(BufferNode))
 }

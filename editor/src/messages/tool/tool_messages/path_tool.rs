@@ -142,7 +142,7 @@ impl Fsm for PathToolFsmState {
 		self,
 		event: ToolMessage,
 		tool_data: &mut Self::ToolData,
-		(document, _global_tool_data, input, font_cache): ToolActionHandlerData,
+		(document, _document_id, _global_tool_data, input, font_cache): ToolActionHandlerData,
 		_tool_options: &Self::ToolOptions,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
@@ -179,9 +179,10 @@ impl Fsm for PathToolFsmState {
 					let toggle_add_to_selection = input.keyboard.get(add_to_selection as usize);
 
 					// Select the first point within the threshold (in pixels)
-					if let Some(mut new_selected) = tool_data
-						.shape_editor
-						.select_point(&document.graphene_document, input.mouse.position, SELECTION_THRESHOLD, toggle_add_to_selection, responses)
+					if let Some((mut new_selected, offset)) =
+						tool_data
+							.shape_editor
+							.select_point(&document.graphene_document, input.mouse.position, SELECTION_THRESHOLD, toggle_add_to_selection, responses)
 					{
 						responses.push_back(DocumentMessage::StartTransaction.into());
 
@@ -203,7 +204,7 @@ impl Fsm for PathToolFsmState {
 						let include_handles = tool_data.shape_editor.selected_layers_ref();
 						tool_data.snap_manager.add_all_document_handles(document, &include_handles, &[], &new_selected);
 
-						tool_data.drag_start_pos = input.mouse.position;
+						tool_data.drag_start_pos = input.mouse.position - offset;
 						PathToolFsmState::Dragging
 					}
 					// We didn't find a point nearby, so consider selecting the nearest shape instead
@@ -281,7 +282,11 @@ impl Fsm for PathToolFsmState {
 					PathToolFsmState::Ready
 				}
 				(_, PathToolMessage::InsertPoint) => {
-					tool_data.shape_editor.split(&document.graphene_document, input.mouse.position, SELECTION_TOLERANCE, responses);
+					// First we try and flip the sharpness (if they have clicked on an anchor)
+					if !tool_data.shape_editor.flip_sharp(&document.graphene_document, input.mouse.position, SELECTION_TOLERANCE, responses) {
+						// If not, then we try and split the path that may have been clicked upon
+						tool_data.shape_editor.split(&document.graphene_document, input.mouse.position, SELECTION_TOLERANCE, responses);
+					}
 
 					self
 				}

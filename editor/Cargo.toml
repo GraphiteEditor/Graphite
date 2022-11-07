@@ -28,6 +28,14 @@ remain = "0.2.2"
 derivative = "2.2.0"
 once_cell = "1.13.0" # Remove when `core::cell::OnceCell` is stabilized (<https://doc.rust-lang.org/core/cell/struct.OnceCell.html>)
 
+# Node graph
+image = { version = "0.24", default-features = false, features = ["bmp"] }
+graph-craft = { path = "../node-graph/graph-craft" }
+borrow_stack = { path = "../node-graph/borrow_stack" }
+dyn-any = { path = "../libraries/dyn-any" }
+graphene-core = { path = "../node-graph/gcore" }
+graphene-std = { path = "../node-graph/gstd" }
+
 [dependencies.graphene]
 path = "../graphene"
 package = "graphite-graphene"

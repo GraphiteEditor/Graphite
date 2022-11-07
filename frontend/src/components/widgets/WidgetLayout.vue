@@ -2,7 +2,7 @@
 
 <template>
 	<div class="widget-layout">
-		<component :is="LayoutGroupType(layoutRow)" :widgetData="layoutRow" :layoutTarget="layout.layoutTarget" v-for="(layoutRow, index) in layout.layout" :key="index" />
+		<component :is="layoutGroupType(layoutRow)" :widgetData="layoutRow" :layoutTarget="layout.layoutTarget" v-for="(layoutRow, index) in layout.layout" :key="index" />
 	</div>
 </template>
 
@@ -28,7 +28,7 @@ export default defineComponent({
 		layout: { type: Object as PropType<WidgetLayout>, required: true },
 	},
 	methods: {
-		LayoutGroupType(layoutRow: LayoutGroup): unknown {
+		layoutGroupType(layoutRow: LayoutGroup): unknown {
 			if (isWidgetColumn(layoutRow)) return WidgetRow;
 			if (isWidgetRow(layoutRow)) return WidgetRow;
 			if (isWidgetSection(layoutRow)) return WidgetSection;
@@ -36,10 +36,6 @@ export default defineComponent({
 			throw new Error("Layout row type does not exist");
 		},
 	},
-	data: () => ({
-		isWidgetRow,
-		isWidgetSection,
-	}),
 	components: {
 		WidgetRow,
 		WidgetSection,

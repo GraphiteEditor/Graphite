@@ -401,28 +401,102 @@ impl WasmBezier {
 		self.0.intersections(curve, error)
 	}
 
-	pub fn intersect_line_segment(&self, js_points: &JsValue) -> Vec<f64> {
+	pub fn intersect_line_segment(&self, js_points: &JsValue) -> String {
 		let points: [DVec2; 2] = js_points.into_serde().unwrap();
 		let line = Bezier::from_linear_dvec2(points[0], points[1]);
-		self.intersect(&line, None)
+
+		let bezier_curve_svg = self.get_bezier_path();
+
+		let empty_string = String::new();
+		let mut line_svg = String::new();
+		line.to_svg(
+			&mut line_svg,
+			CURVE_ATTRIBUTES.to_string().replace(BLACK, RED),
+			empty_string.clone(),
+			empty_string.clone(),
+			empty_string,
+		);
+
+		let intersections_svg = self
+			.intersect(&line, None)
+			.iter()
+			.map(|intersection_t| {
+				let point = &self.0.evaluate(*intersection_t);
+				draw_circle(point.x, point.y, 4., RED, 1.5, WHITE)
+			})
+			.fold(String::new(), |acc, item| format!("{acc}{item}"));
+		wrap_svg_tag(format!("{bezier_curve_svg}{line_svg}{intersections_svg}"))
 	}
 
-	pub fn intersect_quadratic_segment(&self, js_points: &JsValue, error: f64) -> Vec<f64> {
+	pub fn intersect_quadratic_segment(&self, js_points: &JsValue, error: f64) -> String {
 		let points: [DVec2; 3] = js_points.into_serde().unwrap();
 		let quadratic = Bezier::from_quadratic_dvec2(points[0], points[1], points[2]);
-		self.intersect(&quadratic, Some(error))
+
+		let bezier_curve_svg = self.get_bezier_path();
+
+		let empty_string = String::new();
+		let mut quadratic_svg = String::new();
+		quadratic.to_svg(
+			&mut quadratic_svg,
+			CURVE_ATTRIBUTES.to_string().replace(BLACK, RED),
+			empty_string.clone(),
+			empty_string.clone(),
+			empty_string,
+		);
+
+		let intersections_svg = self
+			.intersect(&quadratic, Some(error))
+			.iter()
+			.map(|intersection_t| {
+				let point = &self.0.evaluate(*intersection_t);
+				draw_circle(point.x, point.y, 4., RED, 1.5, WHITE)
+			})
+			.fold(String::new(), |acc, item| format!("{acc}{item}"));
+		wrap_svg_tag(format!("{bezier_curve_svg}{quadratic_svg}{intersections_svg}"))
 	}
 
-	pub fn intersect_cubic_segment(&self, js_points: &JsValue, error: f64) -> Vec<f64> {
+	pub fn intersect_cubic_segment(&self, js_points: &JsValue, error: f64) -> String {
 		let points: [DVec2; 4] = js_points.into_serde().unwrap();
 		let cubic = Bezier::from_cubic_dvec2(points[0], points[1], points[2], points[3]);
-		self.intersect(&cubic, Some(error))
+
+		let bezier_curve_svg = self.get_bezier_path();
+
+		let empty_string = String::new();
+		let mut cubic_svg = String::new();
+		cubic.to_svg(
+			&mut cubic_svg,
+			CURVE_ATTRIBUTES.to_string().replace(BLACK, RED),
+			empty_string.clone(),
+			empty_string.clone(),
+			empty_string,
+		);
+
+		let intersections_svg = self
+			.intersect(&cubic, Some(error))
+			.iter()
+			.map(|intersection_t| {
+				let point = &self.0.evaluate(*intersection_t);
+				draw_circle(point.x, point.y, 4., RED, 1.5, WHITE)
+			})
+			.fold(String::new(), |acc, item| format!("{acc}{item}"));
+
+		wrap_svg_tag(format!("{bezier_curve_svg}{cubic_svg}{intersections_svg}"))
 	}
 
 	/// The wrapped return type is `Vec<[f64; 2]>`.
-	pub fn intersect_self(&self, error: f64) -> JsValue {
-		let points: Vec<[f64; 2]> = self.0.self_intersections(Some(error));
-		to_js_value(points)
+	pub fn intersect_self(&self, error: f64) -> String {
+		let bezier_curve_svg = self.get_bezier_path();
+		let intersect_self_svg = self
+			.0
+			.self_intersections(Some(error))
+			.iter()
+			.map(|intersection_t| {
+				let point = &self.0.evaluate(intersection_t[0]);
+				draw_circle(point.x, point.y, 4., RED, 1.5, WHITE)
+			})
+			.fold(bezier_curve_svg, |acc, item| format!("{acc}{item}"));
+
+		wrap_svg_tag(intersect_self_svg)
 	}
 
 	pub fn reduce(&self) -> String {

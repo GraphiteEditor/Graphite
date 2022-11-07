@@ -1,5 +1,6 @@
 use crate::boolean_ops::BooleanOperation as BooleanOperationType;
 use crate::layers::blend_mode::BlendMode;
+use crate::layers::imaginate_layer::{ImaginateSamplingMethod, ImaginateStatus};
 use crate::layers::layer_info::Layer;
 use crate::layers::style::{self, Stroke};
 use crate::layers::vector::consts::ManipulatorType;
@@ -36,25 +37,98 @@ pub enum Operation {
 	},
 	AddText {
 		path: Vec<LayerId>,
-		transform: [f64; 6],
 		insert_index: isize,
-		text: String,
+		transform: [f64; 6],
 		style: style::PathStyle,
+		text: String,
 		size: f64,
 		font_name: String,
 		font_style: String,
 	},
 	AddImage {
 		path: Vec<LayerId>,
-		transform: [f64; 6],
 		insert_index: isize,
+		transform: [f64; 6],
 		mime: String,
 		image_data: Vec<u8>,
 	},
-	SetImageBlobUrl {
+	AddImaginateFrame {
 		path: Vec<LayerId>,
+		insert_index: isize,
+		transform: [f64; 6],
+	},
+	AddNodeGraphFrame {
+		path: Vec<LayerId>,
+		insert_index: isize,
+		transform: [f64; 6],
+	},
+	SetNodeGraphFrameImageData {
+		layer_path: Vec<LayerId>,
+		image_data: Vec<u8>,
+	},
+	/// Sets a blob URL as the image source for an Image or Imaginate layer type.
+	/// **Be sure to call `FrontendMessage::TriggerRevokeBlobUrl` together with this.**
+	SetLayerBlobUrl {
+		layer_path: Vec<LayerId>,
 		blob_url: String,
-		dimensions: (f64, f64),
+		resolution: (f64, f64),
+	},
+	/// Clears the image to leave the layer un-rendered.
+	/// **Be sure to call `FrontendMessage::TriggerRevokeBlobUrl` together with this.**
+	ClearBlobURL {
+		path: Vec<LayerId>,
+	},
+	ImaginateSetGeneratingStatus {
+		path: Vec<LayerId>,
+		percent: Option<f64>,
+		status: ImaginateStatus,
+	},
+	ImaginateSetImageData {
+		layer_path: Vec<LayerId>,
+		image_data: Vec<u8>,
+	},
+	ImaginateSetNegativePrompt {
+		path: Vec<LayerId>,
+		negative_prompt: String,
+	},
+	ImaginateSetPrompt {
+		path: Vec<LayerId>,
+		prompt: String,
+	},
+	ImaginateSetCfgScale {
+		path: Vec<LayerId>,
+		cfg_scale: f64,
+	},
+	ImaginateSetSamples {
+		path: Vec<LayerId>,
+		samples: u32,
+	},
+	SetImaginateSamplingMethod {
+		path: Vec<LayerId>,
+		method: ImaginateSamplingMethod,
+	},
+	ImaginateSetScaleFromResolution {
+		path: Vec<LayerId>,
+	},
+	ImaginateSetSeed {
+		path: Vec<LayerId>,
+		seed: u64,
+	},
+	ImaginateSetDenoisingStrength {
+		path: Vec<LayerId>,
+		denoising_strength: f64,
+	},
+	ImaginateSetUseImg2Img {
+		path: Vec<LayerId>,
+		use_img2img: bool,
+	},
+	ImaginateSetRestoreFaces {
+		path: Vec<LayerId>,
+		restore_faces: bool,
+	},
+	ImaginateSetTiling {
+		path: Vec<LayerId>,
+		tiling: bool,
 	},
 	SetPivot {
 		layer_path: Vec<LayerId>,
@@ -70,32 +144,32 @@ pub enum Operation {
 	},
 	AddPolyline {
 		path: Vec<LayerId>,
-		transform: [f64; 6],
 		insert_index: isize,
-		points: Vec<(f64, f64)>,
+		transform: [f64; 6],
 		style: style::PathStyle,
+		points: Vec<(f64, f64)>,
 	},
 	AddSpline {
 		path: Vec<LayerId>,
-		transform: [f64; 6],
 		insert_index: isize,
-		points: Vec<(f64, f64)>,
+		transform: [f64; 6],
 		style: style::PathStyle,
+		points: Vec<(f64, f64)>,
 	},
 	AddNgon {
 		path: Vec<LayerId>,
 		insert_index: isize,
 		transform: [f64; 6],
-		sides: u32,
 		style: style::PathStyle,
+		sides: u32,
 	},
 	AddShape {
 		path: Vec<LayerId>,
-		transform: [f64; 6],
 		insert_index: isize,
+		transform: [f64; 6],
+		style: style::PathStyle,
 		// TODO This will become a compound path once we support them.
 		subpath: Subpath,
-		style: style::PathStyle,
 	},
 	BooleanOperation {
 		operation: BooleanOperationType,
@@ -120,8 +194,8 @@ pub enum Operation {
 	ModifyFont {
 		path: Vec<LayerId>,
 		font_family: String,
-		font_style: String,
 		size: f64,
+		font_style: String,
 	},
 	MoveSelectedManipulatorPoints {
 		layer_path: Vec<LayerId>,
@@ -144,7 +218,7 @@ pub enum Operation {
 		new_name: String,
 	},
 	InsertLayer {
-		layer: Layer,
+		layer: Box<Layer>,
 		destination_path: Vec<LayerId>,
 		insert_index: isize,
 	},

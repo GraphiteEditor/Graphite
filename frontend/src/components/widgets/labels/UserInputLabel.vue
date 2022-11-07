@@ -2,20 +2,20 @@
 	<IconLabel class="user-input-label keyboard-lock-notice" v-if="displayKeyboardLockNotice" :icon="'Info'" :title="keyboardLockInfoMessage" />
 	<LayoutRow class="user-input-label" v-else>
 		<template v-for="(keysWithLabels, i) in keysWithLabelsGroups" :key="i">
-			<span class="group-gap" v-if="i > 0"></span>
+			<Separator :type="'Related'" v-if="i > 0"></Separator>
 			<template v-for="(keyInfo, j) in keyTextOrIconList(keysWithLabels)" :key="j">
-				<span class="input-key" :class="keyInfo.width">
+				<div class="input-key" :class="keyInfo.width">
 					<IconLabel v-if="keyInfo.icon" :icon="keyInfo.icon" />
-					<template v-else-if="keyInfo.label !== undefined">{{ keyInfo.label }}</template>
-				</span>
+					<TextLabel v-else-if="keyInfo.label !== undefined">{{ keyInfo.label }}</TextLabel>
+				</div>
 			</template>
 		</template>
-		<span class="input-mouse" v-if="mouseMotion">
+		<div class="input-mouse" v-if="mouseMotion">
 			<IconLabel :icon="mouseHintIcon(mouseMotion)" />
-		</span>
-		<span class="hint-text" v-if="hasSlotContent">
+		</div>
+		<div class="hint-text" v-if="hasSlotContent">
 			<slot></slot>
-		</span>
+		</div>
 	</LayoutRow>
 </template>
 
@@ -25,10 +25,6 @@
 	height: 100%;
 	align-items: center;
 	white-space: nowrap;
-
-	.group-gap {
-		width: 4px;
-	}
 
 	.input-key,
 	.input-mouse {
@@ -46,13 +42,17 @@
 		font-weight: 400;
 		text-align: center;
 		height: 16px;
-		// Firefox renders the text 1px lower than Chrome (tested on Windows) with 16px line-height, so moving it up 1 pixel by using 15px makes them agree
-		line-height: 15px;
 		box-sizing: border-box;
 		border: 1px solid;
 		border-radius: 4px;
-		border-color: var(--color-7-middlegray);
+		border-color: var(--color-5-dullgray);
 		color: var(--color-e-nearwhite);
+
+		.text-label {
+			// Firefox renders the text 1px lower than Chrome (tested on Windows) with 16px line-height,
+			// so moving it up 1 pixel by using 15px makes them agree.
+			line-height: 15px;
+		}
 
 		&.width-1 {
 			width: 16px;
@@ -85,7 +85,7 @@
 		}
 
 		.dim {
-			fill: var(--color-7-middlegray);
+			fill: var(--color-8-uppergray);
 		}
 	}
 
@@ -93,9 +93,9 @@
 		margin-left: 4px;
 	}
 
-	.floating-menu-content & {
+	.floating-menu-content .row > & {
 		.input-key {
-			border-color: var(--color-4-dimgray);
+			border-color: var(--color-3-darkgray);
 			color: var(--color-8-uppergray);
 		}
 
@@ -106,20 +106,13 @@
 		}
 
 		.input-mouse .dim {
-			fill: var(--color-4-dimgray);
+			fill: var(--color-3-darkgray);
 		}
 	}
 
 	.floating-menu-content .row:hover > & {
 		.input-key {
 			border-color: var(--color-7-middlegray);
-			color: var(--color-9-palegray);
-		}
-
-		.input-key .icon-label svg,
-		&.keyboard-lock-notice.keyboard-lock-notice svg,
-		.input-mouse .bright {
-			fill: var(--color-9-palegray);
 		}
 
 		.input-mouse .dim {
@@ -138,6 +131,8 @@ import { type KeyRaw, type KeysGroup, type Key, type MouseMotion } from "@/wasm-
 
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
+import Separator from "@/components/widgets/labels/Separator.vue";
+import TextLabel from "@/components/widgets/labels/TextLabel.vue";
 
 type LabelData = { label?: string; icon?: IconName; width: string };
 
@@ -247,6 +242,8 @@ export default defineComponent({
 	components: {
 		IconLabel,
 		LayoutRow,
+		Separator,
+		TextLabel,
 	},
 });
 </script>

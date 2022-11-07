@@ -1,5 +1,12 @@
 <template>
-	<button :class="['icon-button', `size-${size}`, active && 'active']" @click="(e: MouseEvent) => action(e)" :title="tooltip">
+	<button
+		class="icon-button"
+		:class="[`size-${size}`, { disabled, active, 'sharp-right-corners': sharpRightCorners }]"
+		@click="(e: MouseEvent) => action(e)"
+		:disabled="disabled"
+		:title="tooltip"
+		:tabindex="active ? -1 : 0"
+	>
 		<IconLabel :icon="icon" />
 	</button>
 </template>
@@ -10,8 +17,8 @@
 	justify-content: center;
 	align-items: center;
 	flex: 0 0 auto;
+	margin: 0;
 	padding: 0;
-	outline: none;
 	border: none;
 	border-radius: 2px;
 	background: none;
@@ -25,16 +32,28 @@
 		margin-left: 0;
 	}
 
-	&.active {
-		background: var(--color-accent);
-	}
-
-	&:hover:not(.active) {
+	&:hover {
 		background: var(--color-6-lowergray);
 		color: var(--color-f-white);
 
 		svg {
 			fill: var(--color-f-white);
+		}
+	}
+
+	&.disabled {
+		background: none;
+
+		svg {
+			fill: var(--color-8-uppergray);
+		}
+	}
+
+	&.active {
+		background: var(--color-e-nearwhite);
+
+		svg {
+			fill: var(--color-2-mildblack);
 		}
 	}
 
@@ -71,8 +90,10 @@ export default defineComponent({
 	props: {
 		icon: { type: String as PropType<IconName>, required: true },
 		size: { type: Number as PropType<IconSize>, required: true },
+		disabled: { type: Boolean as PropType<boolean>, default: false },
 		active: { type: Boolean as PropType<boolean>, default: false },
 		tooltip: { type: String as PropType<string | undefined>, required: false },
+		sharpRightCorners: { type: Boolean as PropType<boolean>, default: false },
 
 		// Callbacks
 		action: { type: Function as PropType<(e?: MouseEvent) => void>, required: true },

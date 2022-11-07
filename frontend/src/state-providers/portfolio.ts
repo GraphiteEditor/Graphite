@@ -2,7 +2,8 @@
 import { reactive, readonly } from "vue";
 
 import { downloadFileText, downloadFileBlob, upload } from "@/utility-functions/files";
-import { rasterizeSVG } from "@/utility-functions/rasterization";
+import { imaginateGenerate, imaginateCheckConnection, imaginateTerminate, preloadAndSetImaginateBlobURL } from "@/utility-functions/imaginate";
+import { rasterizeSVG, rasterizeSVGCanvas } from "@/utility-functions/rasterization";
 import { type Editor } from "@/wasm-communication/editor";
 import {
 	type FrontendDocumentDetails,
@@ -10,8 +11,14 @@ import {
 	TriggerImport,
 	TriggerOpenDocument,
 	TriggerRasterDownload,
+	TriggerImaginateGenerate,
+	TriggerImaginateTerminate,
+	TriggerImaginateCheckServerStatus,
+	TriggerNodeGraphFrameGenerate,
 	UpdateActiveDocument,
 	UpdateOpenDocumentsList,
+	UpdateImageData,
+	TriggerRevokeBlobUrl,
 } from "@/wasm-communication/messages";
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
@@ -54,6 +61,56 @@ export function createPortfolioState(editor: Editor) {
 
 		// Have the browser download the file to the user's disk
 		downloadFileBlob(name, blob);
+	});
+	editor.subscriptions.subscribeJsMessage(TriggerImaginateCheckServerStatus, async (triggerImaginateCheckServerStatus) => {
+		const { hostname } = triggerImaginateCheckServerStatus;
+
+		imaginateCheckConnection(hostname, editor);
+	});
+	editor.subscriptions.subscribeJsMessage(TriggerImaginateGenerate, async (triggerImaginateGenerate) => {
+		const { documentId, layerPath, hostname, refreshFrequency, baseImage, parameters } = triggerImaginateGenerate;
+
+		// Handle img2img mode
+		let image: Blob | undefined;
+		if (parameters.denoisingStrength !== undefined && baseImage !== undefined) {
+			// Rasterize the SVG to an image file
+			image = await rasterizeSVG(baseImage.svg, baseImage.size[0], baseImage.size[1], "image/png");
+
+			preloadAndSetImaginateBlobURL(editor, image, documentId, layerPath, baseImage.size[0], baseImage.size[1]);
+		}
+
+		imaginateGenerate(parameters, image, hostname, refreshFrequency, documentId, layerPath, editor);
+	});
+	editor.subscriptions.subscribeJsMessage(TriggerImaginateTerminate, async (triggerImaginateTerminate) => {
+		const { documentId, layerPath, hostname } = triggerImaginateTerminate;
+
+		imaginateTerminate(hostname, documentId, layerPath, editor);
+	});
+	editor.subscriptions.subscribeJsMessage(UpdateImageData, (updateImageData) => {
+		updateImageData.imageData.forEach(async (element) => {
+			const buffer = new Uint8Array(element.imageData.values()).buffer;
+			const blob = new Blob([buffer], { type: element.mime });
+
+			const blobURL = URL.createObjectURL(blob);
+
+			// Pre-decode the image so it is ready to be drawn instantly once it's placed into the viewport SVG
+			const image = new Image();
+			image.src = blobURL;
+			await image.decode();
+
+			editor.instance.setImageBlobURL(updateImageData.documentId, element.path, blobURL, image.naturalWidth, image.naturalHeight);
+		});
+	});
+	editor.subscriptions.subscribeJsMessage(TriggerNodeGraphFrameGenerate, async (triggerNodeGraphFrameGenerate) => {
+		const { documentId, layerPath, svg, size } = triggerNodeGraphFrameGenerate;
+
+		// Rasterize the SVG to an image file
+		const imageData = (await rasterizeSVGCanvas(svg, size[0], size[1])).getContext("2d")?.getImageData(0, 0, size[0], size[1]);
+
+		if (imageData) editor.instance.processNodeGraphFrame(documentId, layerPath, new Uint8Array(imageData.data), imageData.width, imageData.height);
+	});
+	editor.subscriptions.subscribeJsMessage(TriggerRevokeBlobUrl, async (triggerRevokeBlobUrl) => {
+		URL.revokeObjectURL(triggerRevokeBlobUrl.url);
 	});
 
 	return {

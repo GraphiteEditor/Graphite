@@ -100,6 +100,9 @@ checksum = "bef38d45163c2f1dde094a7dfd33ccf595c92905c8f8f4fdc18d06fb1037718a"
 [[package]]
 name = "borrow_stack"
 version = "0.1.0"
+dependencies = [
+ "dyn-any",
+]
 
 [[package]]
 name = "bumpalo"
@@ -233,6 +236,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "dyn-clone"
+version = "1.0.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4f94fa09c2aeea5b8839e414b7b841bf429fd25b9c522116ac97ee87856d88b2"
+
+[[package]]
 name = "either"
 version = "1.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -341,6 +350,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "graph-craft"
+version = "0.1.0"
+dependencies = [
+ "borrow_stack",
+ "dyn-any",
+ "dyn-clone",
+ "graphene-core",
+ "graphene-std",
+ "num-traits",
+ "rand_chacha",
+ "serde",
+]
+
+[[package]]
 name = "graph-proc-macros"
 version = "0.1.0"
 dependencies = [
@@ -367,6 +390,7 @@ version = "0.1.0"
 dependencies = [
  "borrow_stack",
  "dyn-any",
+ "dyn-clone",
  "graph-proc-macros",
  "graphene-core",
  "image",
@@ -382,11 +406,17 @@ version = "0.0.0"
 dependencies = [
  "bezier-rs",
  "bitflags",
+ "borrow_stack",
  "derivative",
+ "dyn-any",
  "env_logger",
  "glam",
+ "graph-craft",
+ "graphene-core",
+ "graphene-std",
  "graphite-graphene",
  "graphite-proc-macros",
+ "image",
  "kurbo",
  "log",
  "once_cell",
@@ -406,6 +436,8 @@ dependencies = [
  "base64",
  "bezier-rs",
  "glam",
+ "graph-craft",
+ "image",
  "kurbo",
  "log",
  "rustybuzz",

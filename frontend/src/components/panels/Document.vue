@@ -28,25 +28,25 @@
 					<LayoutCol class="bar-area">
 						<CanvasRuler :origin="rulerOrigin.y" :majorMarkSpacing="rulerSpacing" :numberInterval="rulerInterval" :direction="'Vertical'" ref="rulerVertical" />
 					</LayoutCol>
-					<LayoutCol class="canvas-area">
-						<div
-							class="canvas"
-							:style="{ cursor: canvasCursor }"
-							@pointerdown="(e: PointerEvent) => canvasPointerDown(e)"
-							@dragover="(e) => e.preventDefault()"
-							@drop="(e) => pasteFile(e)"
-							ref="canvas"
-							data-canvas
-						>
-							<svg class="artboards" v-html="artboardSvg" :style="{ width: canvasSvgWidth, height: canvasSvgHeight }"></svg>
+					<LayoutCol class="canvas-area" :style="{ cursor: canvasCursor }">
+						<EyedropperPreview
+							v-if="cursorEyedropper"
+							:colorChoice="cursorEyedropperPreviewColorChoice"
+							:primaryColor="cursorEyedropperPreviewColorPrimary"
+							:secondaryColor="cursorEyedropperPreviewColorSecondary"
+							:imageData="cursorEyedropperPreviewImageData"
+							:style="{ left: cursorLeft + 'px', top: cursorTop + 'px' }"
+						/>
+						<div class="canvas" @pointerdown="(e: PointerEvent) => canvasPointerDown(e)" @dragover="(e) => e.preventDefault()" @drop="(e) => pasteFile(e)" ref="canvasDiv" data-canvas>
+							<svg class="artboards" v-html="artboardSvg" :style="{ width: canvasWidthCSS, height: canvasHeightCSS }"></svg>
 							<svg
 								class="artwork"
 								xmlns="http://www.w3.org/2000/svg"
 								xmlns:xlink="http://www.w3.org/1999/xlink"
 								v-html="artworkSvg"
-								:style="{ width: canvasSvgWidth, height: canvasSvgHeight }"
+								:style="{ width: canvasWidthCSS, height: canvasHeightCSS }"
 							></svg>
-							<svg class="overlays" v-html="overlaysSvg" :style="{ width: canvasSvgWidth, height: canvasSvgHeight }"></svg>
+							<svg class="overlays" v-html="overlaysSvg" :style="{ width: canvasWidthCSS, height: canvasHeightCSS }"></svg>
 						</div>
 					</LayoutCol>
 					<LayoutCol class="bar-area">
@@ -105,20 +105,22 @@
 					}
 				}
 
-				.color-solid {
-					fill: var(--color-f-white);
-				}
+				.icon-button:not(.active) {
+					.color-solid {
+						fill: var(--color-f-white);
+					}
 
-				.color-general {
-					fill: var(--color-data-general);
-				}
+					.color-general {
+						fill: var(--color-data-general);
+					}
 
-				.color-vector {
-					fill: var(--color-data-vector);
-				}
+					.color-vector {
+						fill: var(--color-data-vector);
+					}
 
-				.color-raster {
-					fill: var(--color-data-raster);
+					.color-raster {
+						fill: var(--color-data-raster);
+					}
 				}
 			}
 
@@ -149,6 +151,7 @@
 
 			.canvas-area {
 				flex: 1 1 100%;
+				position: relative;
 			}
 
 			.bar-area {
@@ -189,14 +192,15 @@
 						pointer-events: auto;
 					}
 				}
+
 				foreignObject {
 					width: 10000px;
 					height: 10000px;
 					overflow: visible;
 
 					div {
-						background: none;
 						cursor: text;
+						background: none;
 						border: none;
 						margin: 0;
 						padding: 0;
@@ -206,12 +210,12 @@
 						// Workaround to force Chrome to display the flashing text entry cursor when text is empty
 						padding-left: 1px;
 						margin-left: -1px;
-					}
 
-					div:focus {
-						border: none;
-						outline: none;
-						margin: -1px;
+						&:focus {
+							border: none;
+							outline: none; // Ok for contenteditable element
+							margin: -1px;
+						}
 					}
 				}
 			}
@@ -224,6 +228,7 @@
 import { defineComponent, nextTick } from "vue";
 
 import { textInputCleanup } from "@/utility-functions/keyboard-entry";
+import { rasterizeSVGCanvas } from "@/utility-functions/rasterization";
 import {
 	defaultWidgetLayout,
 	type DisplayEditableTextbox,
@@ -236,6 +241,7 @@ import {
 	type XY,
 } from "@/wasm-communication/messages";
 
+import EyedropperPreview, { ZOOM_WINDOW_DIMENSIONS } from "@/components/floating-menus/EyedropperPreview.vue";
 import LayoutCol from "@/components/layout/LayoutCol.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 import CanvasRuler from "@/components/widgets/metrics/CanvasRuler.vue";
@@ -244,6 +250,64 @@ import WidgetLayout from "@/components/widgets/WidgetLayout.vue";
 
 export default defineComponent({
 	inject: ["editor", "panels"],
+	data() {
+		const scrollbarPos: XY = { x: 0.5, y: 0.5 };
+		const scrollbarSize: XY = { x: 0.5, y: 0.5 };
+		const scrollbarMultiplier: XY = { x: 0, y: 0 };
+
+		const rulerOrigin: XY = { x: 0, y: 0 };
+
+		return {
+			// Interactive text editing
+			textInput: undefined as undefined | HTMLDivElement,
+
+			// CSS properties
+			canvasSvgWidth: undefined as number | undefined,
+			canvasSvgHeight: undefined as number | undefined,
+			canvasCursor: "default",
+
+			// Scrollbars
+			scrollbarPos,
+			scrollbarSize,
+			scrollbarMultiplier,
+
+			// Rulers
+			rulerOrigin,
+			rulerSpacing: 100 as number,
+			rulerInterval: 100 as number,
+
+			// Rendered SVG viewport data
+			artworkSvg: "" as string,
+			artboardSvg: "" as string,
+			overlaysSvg: "" as string,
+
+			// Rasterized SVG viewport data, or none if it's not up-to-date
+			rasterizedCanvas: undefined as HTMLCanvasElement | undefined,
+			rasterizedContext: undefined as CanvasRenderingContext2D | undefined,
+
+			// Cursor position for cursor floating menus like the Eyedropper tool zoom
+			cursorLeft: 0,
+			cursorTop: 0,
+			cursorEyedropper: false,
+			cursorEyedropperPreviewImageData: undefined as ImageData | undefined,
+			cursorEyedropperPreviewColorChoice: "",
+			cursorEyedropperPreviewColorPrimary: "",
+			cursorEyedropperPreviewColorSecondary: "",
+
+			// Layouts
+			documentModeLayout: defaultWidgetLayout(),
+			toolOptionsLayout: defaultWidgetLayout(),
+			documentBarLayout: defaultWidgetLayout(),
+			toolShelfLayout: defaultWidgetLayout(),
+			workingColorsLayout: defaultWidgetLayout(),
+		};
+	},
+	mounted() {
+		this.panels.registerPanel("Document", this);
+
+		// Once this component is mounted, we want to resend the document bounds to the backend via the resize event handler which does that
+		window.dispatchEvent(new Event("resize"));
+	},
 	methods: {
 		pasteFile(e: DragEvent) {
 			const { dataTransfer } = e;
@@ -280,20 +344,21 @@ export default defineComponent({
 		},
 		canvasPointerDown(e: PointerEvent) {
 			const onEditbox = e.target instanceof HTMLDivElement && e.target.contentEditable;
-			if (!onEditbox) {
-				const canvas = this.$refs.canvas as HTMLElement;
-				canvas.setPointerCapture(e.pointerId);
-			}
+
+			if (!onEditbox) (this.$refs.canvasDiv as HTMLDivElement | undefined)?.setPointerCapture(e.pointerId);
 		},
 		// Update rendered SVGs
 		async updateDocumentArtwork(svg: string) {
 			this.artworkSvg = svg;
+			this.rasterizedCanvas = undefined;
 
 			await nextTick();
 
 			if (this.textInput) {
-				const canvas = this.$refs.canvas as HTMLElement;
-				const foreignObject = canvas.getElementsByTagName("foreignObject")[0] as SVGForeignObjectElement;
+				const canvasDiv = this.$refs.canvasDiv as HTMLDivElement | undefined;
+				if (!canvasDiv) return;
+
+				const foreignObject = canvasDiv.getElementsByTagName("foreignObject")[0] as SVGForeignObjectElement;
 				if (foreignObject.children.length > 0) return;
 
 				const addedInput = foreignObject.appendChild(this.textInput);
@@ -321,6 +386,57 @@ export default defineComponent({
 		},
 		updateDocumentArtboards(svg: string) {
 			this.artboardSvg = svg;
+			this.rasterizedCanvas = undefined;
+		},
+		async updateEyedropperSamplingState(mousePosition: XY | undefined, colorPrimary: string, colorSecondary: string): Promise<[number, number, number] | undefined> {
+			if (mousePosition === undefined) {
+				this.cursorEyedropper = false;
+				return undefined;
+			}
+			this.cursorEyedropper = true;
+
+			if (this.canvasSvgWidth === undefined || this.canvasSvgHeight === undefined) return undefined;
+
+			this.cursorLeft = mousePosition.x;
+			this.cursorTop = mousePosition.y;
+
+			// This works nearly perfectly, but sometimes at odd DPI scale factors like 1.25, the anti-aliasing color can yield slightly incorrect colors (potential room for future improvement)
+			const dpiFactor = window.devicePixelRatio;
+			const [width, height] = [this.canvasSvgWidth, this.canvasSvgHeight];
+
+			const outsideArtboardsColor = getComputedStyle(document.documentElement).getPropertyValue("--color-2-mildblack");
+			const outsideArtboards = `<rect x="0" y="0" width="100%" height="100%" fill="${outsideArtboardsColor}" />`;
+			const artboards = this.artboardSvg;
+			const artwork = this.artworkSvg;
+			const svg = `
+				<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">${outsideArtboards}${artboards}${artwork}</svg>
+				`.trim();
+
+			if (!this.rasterizedCanvas) {
+				this.rasterizedCanvas = await rasterizeSVGCanvas(svg, width * dpiFactor, height * dpiFactor, "image/png");
+				this.rasterizedContext = this.rasterizedCanvas.getContext("2d") || undefined;
+			}
+			if (!this.rasterizedContext) return undefined;
+
+			const rgbToHex = (r: number, g: number, b: number): string => `#${[r, g, b].map((x) => x.toString(16).padStart(2, "0")).join("")}`;
+
+			const pixel = this.rasterizedContext.getImageData(mousePosition.x * dpiFactor, mousePosition.y * dpiFactor, 1, 1).data;
+			const hex = rgbToHex(pixel[0], pixel[1], pixel[2]);
+			const rgb: [number, number, number] = [pixel[0] / 255, pixel[1] / 255, pixel[2] / 255];
+
+			this.cursorEyedropperPreviewColorChoice = hex;
+			this.cursorEyedropperPreviewColorPrimary = colorPrimary;
+			this.cursorEyedropperPreviewColorSecondary = colorSecondary;
+
+			const previewRegion = this.rasterizedContext.getImageData(
+				mousePosition.x * dpiFactor - (ZOOM_WINDOW_DIMENSIONS - 1) / 2,
+				mousePosition.y * dpiFactor - (ZOOM_WINDOW_DIMENSIONS - 1) / 2,
+				ZOOM_WINDOW_DIMENSIONS,
+				ZOOM_WINDOW_DIMENSIONS
+			);
+			this.cursorEyedropperPreviewImageData = previewRegion;
+
+			return rgb;
 		},
 		// Update scrollbars and rulers
 		updateDocumentScrollbars(position: XY, size: XY, multiplier: XY) {
@@ -335,7 +451,30 @@ export default defineComponent({
 		},
 		// Update mouse cursor icon
 		updateMouseCursor(cursor: MouseCursorIcon) {
-			this.canvasCursor = cursor;
+			let cursorString: string = cursor;
+
+			// This isn't very clean but it's good enough for now until we need more icons, then we can build something more robust (consider blob URLs)
+			if (cursor === "custom-rotate") {
+				const svg = `
+					<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" width="20" height="20">
+						<path transform="translate(2 2)" fill="black" stroke="black" stroke-width="2px" d="
+						M8,15.2C4,15.2,0.8,12,0.8,8C0.8,4,4,0.8,8,0.8c2,0,3.9,0.8,5.3,2.3l-1,1C11.2,2.9,9.6,2.2,8,2.2C4.8,2.2,2.2,4.8,2.2,8s2.6,5.8,5.8,5.8s5.8-2.6,5.8-5.8h1.4C15.2,12,12,15.2,8,15.2z
+						" />
+						<polygon transform="translate(2 2)" fill="black" stroke="black" stroke-width="2px" points="12.6,0 15.5,5 9.7,5" />
+						<path transform="translate(2 2)" fill="white" d="
+						M8,15.2C4,15.2,0.8,12,0.8,8C0.8,4,4,0.8,8,0.8c2,0,3.9,0.8,5.3,2.3l-1,1C11.2,2.9,9.6,2.2,8,2.2C4.8,2.2,2.2,4.8,2.2,8s2.6,5.8,5.8,5.8s5.8-2.6,5.8-5.8h1.4C15.2,12,12,15.2,8,15.2z
+						" />
+						<polygon transform="translate(2 2)" fill="white" points="12.6,0 15.5,5 9.7,5" />
+					</svg>
+					`
+					.split("\n")
+					.map((line) => line.trim())
+					.join("");
+
+				cursorString = `url('data:image/svg+xml;utf8,${svg}') 8 8, alias`;
+			}
+
+			this.canvasCursor = cursorString;
 		},
 		// Text entry
 		triggerTextCommit() {
@@ -344,7 +483,7 @@ export default defineComponent({
 			this.editor.instance.onChangeText(textCleaned);
 		},
 		displayEditableTextbox(displayEditableTextbox: DisplayEditableTextbox) {
-			this.textInput = document.createElement("DIV") as HTMLDivElement;
+			this.textInput = document.createElement("div") as HTMLDivElement;
 
 			if (displayEditableTextbox.text === "") this.textInput.textContent = "";
 			else this.textInput.textContent = `${displayEditableTextbox.text}\n`;
@@ -353,7 +492,7 @@ export default defineComponent({
 			this.textInput.style.width = displayEditableTextbox.lineWidth ? `${displayEditableTextbox.lineWidth}px` : "max-content";
 			this.textInput.style.height = "auto";
 			this.textInput.style.fontSize = `${displayEditableTextbox.fontSize}px`;
-			this.textInput.style.color = displayEditableTextbox.color.toRgbaCSS();
+			this.textInput.style.color = displayEditableTextbox.color.toHexOptionalAlpha() || "transparent";
 
 			this.textInput.oninput = (): void => {
 				if (!this.textInput) return;
@@ -383,64 +522,32 @@ export default defineComponent({
 		// Resize elements to render the new viewport size
 		viewportResize() {
 			// Resize the canvas
-			// Width and height are rounded up to the nearest even number because resizing is centered, and dividing an odd number by 2 for centering causes antialiasing
-			const canvas = this.$refs.canvas as HTMLElement;
-			const width = Math.ceil(parseFloat(getComputedStyle(canvas).width));
-			const height = Math.ceil(parseFloat(getComputedStyle(canvas).height));
-			this.canvasSvgWidth = `${width % 2 === 1 ? width + 1 : width}px`;
-			this.canvasSvgHeight = `${height % 2 === 1 ? height + 1 : height}px`;
+			const canvasDiv = this.$refs.canvasDiv as HTMLDivElement | undefined;
+			if (!canvasDiv) return;
+
+			this.canvasSvgWidth = Math.ceil(parseFloat(getComputedStyle(canvasDiv).width));
+			this.canvasSvgHeight = Math.ceil(parseFloat(getComputedStyle(canvasDiv).height));
 
 			// Resize the rulers
-			const rulerHorizontal = this.$refs.rulerHorizontal as typeof CanvasRuler;
-			const rulerVertical = this.$refs.rulerVertical as typeof CanvasRuler;
-			rulerHorizontal?.resize();
-			rulerVertical?.resize();
+			(this.$refs.rulerHorizontal as typeof CanvasRuler | undefined)?.resize();
+			(this.$refs.rulerVertical as typeof CanvasRuler | undefined)?.resize();
+		},
+		canvasDimensionCSS(dimension: number | undefined): string {
+			// Temporary placeholder until the first actual value is populated
+			// This at least gets close to the correct value but an actual number is required to prevent CSS from causing non-integer sizing making the SVG render with anti-aliasing
+			if (dimension === undefined) return "100%";
+
+			// Dimension is rounded up to the nearest even number because resizing is centered, and dividing an odd number by 2 for centering causes antialiasing
+			return `${dimension % 2 === 1 ? dimension + 1 : dimension}px`;
 		},
 	},
-	mounted() {
-		this.panels.registerPanel("Document", this);
-
-		// Once this component is mounted, we want to resend the document bounds to the backend via the resize event handler which does that
-		window.dispatchEvent(new Event("resize"));
-	},
-	data() {
-		const scrollbarPos: XY = { x: 0.5, y: 0.5 };
-		const scrollbarSize: XY = { x: 0.5, y: 0.5 };
-		const scrollbarMultiplier: XY = { x: 0, y: 0 };
-
-		const rulerOrigin: XY = { x: 0, y: 0 };
-
-		return {
-			// Interactive text editing
-			textInput: undefined as undefined | HTMLDivElement,
-
-			// CSS properties
-			canvasSvgWidth: "100%" as string,
-			canvasSvgHeight: "100%" as string,
-			canvasCursor: "default" as MouseCursorIcon,
-
-			// Scrollbars
-			scrollbarPos,
-			scrollbarSize,
-			scrollbarMultiplier,
-
-			// Rulers
-			rulerOrigin,
-			rulerSpacing: 100 as number,
-			rulerInterval: 100 as number,
-
-			// Rendered SVG viewport data
-			artworkSvg: "" as string,
-			artboardSvg: "" as string,
-			overlaysSvg: "" as string,
-
-			// Layouts
-			documentModeLayout: defaultWidgetLayout(),
-			toolOptionsLayout: defaultWidgetLayout(),
-			documentBarLayout: defaultWidgetLayout(),
-			toolShelfLayout: defaultWidgetLayout(),
-			workingColorsLayout: defaultWidgetLayout(),
-		};
+	computed: {
+		canvasWidthCSS(): string {
+			return this.canvasDimensionCSS(this.canvasSvgWidth);
+		},
+		canvasHeightCSS(): string {
+			return this.canvasDimensionCSS(this.canvasSvgHeight);
+		},
 	},
 	components: {
 		CanvasRuler,
@@ -448,6 +555,7 @@ export default defineComponent({
 		LayoutRow,
 		PersistentScrollbar,
 		WidgetLayout,
+		EyedropperPreview,
 	},
 });
 </script>
