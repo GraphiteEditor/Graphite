@@ -27,6 +27,8 @@ pub mod image_layer;
 pub mod imaginate_layer;
 /// Contains the base [Layer](layer_info::Layer) type, an abstraction over the different types of layers.
 pub mod layer_info;
+/// Contains the [NodegraphLayer](nodegraph_layer::NodegraphLayer) type that contains a node graph.
+pub mod nodegraph_layer;
 /// Contains the [ShapeLayer](shape_layer::ShapeLayer) type, a generic SVG element defined using Bezier paths.
 pub mod shape_layer;
 pub mod style;

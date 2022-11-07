@@ -73,8 +73,8 @@ pub enum DocumentMessage {
 	FolderChanged {
 		affected_folder_path: Vec<LayerId>,
 	},
+	FrameClear,
 	GroupSelectedLayers,
-	ImaginateClear,
 	ImaginateGenerate,
 	ImaginateTerminate,
 	LayerChanged {
@@ -89,6 +89,7 @@ pub enum DocumentMessage {
 		layer_path: Vec<LayerId>,
 		delta: (f64, f64),
 	},
+	NodeGraphFrameGenerate,
 	NudgeSelectedLayers {
 		delta_x: f64,
 		delta_y: f64,

@@ -2,6 +2,7 @@ use super::blend_mode::BlendMode;
 use super::folder_layer::FolderLayer;
 use super::image_layer::ImageLayer;
 use super::imaginate_layer::ImaginateLayer;
+use super::nodegraph_layer::NodeGraphFrameLayer;
 use super::shape_layer::ShapeLayer;
 use super::style::{PathStyle, RenderData};
 use super::text_layer::TextLayer;
@@ -27,8 +28,10 @@ pub enum LayerDataType {
 	Text(TextLayer),
 	/// A layer that wraps an [ImageLayer] struct.
 	Image(ImageLayer),
-	/// A layer that wraps an [ImageLayer] struct.
+	/// A layer that wraps an [ImaginateLayer] struct.
 	Imaginate(ImaginateLayer),
+	/// A layer that wraps an [NodeGraphFrameLayer] struct.
+	NodeGraphFrame(NodeGraphFrameLayer),
 }
 
 impl LayerDataType {
@@ -39,6 +42,7 @@ impl LayerDataType {
 			LayerDataType::Text(t) => t,
 			LayerDataType::Image(i) => i,
 			LayerDataType::Imaginate(a) => a,
+			LayerDataType::NodeGraphFrame(n) => n,
 		}
 	}
 
@@ -49,6 +53,7 @@ impl LayerDataType {
 			LayerDataType::Text(t) => t,
 			LayerDataType::Image(i) => i,
 			LayerDataType::Imaginate(a) => a,
+			LayerDataType::NodeGraphFrame(n) => n,
 		}
 	}
 }
@@ -60,6 +65,7 @@ pub enum LayerDataTypeDiscriminant {
 	Text,
 	Image,
 	Imaginate,
+	NodeGraphFrame,
 }
 
 impl fmt::Display for LayerDataTypeDiscriminant {
@@ -70,6 +76,7 @@ impl fmt::Display for LayerDataTypeDiscriminant {
 			LayerDataTypeDiscriminant::Text => write!(f, "Text"),
 			LayerDataTypeDiscriminant::Image => write!(f, "Image"),
 			LayerDataTypeDiscriminant::Imaginate => write!(f, "Imaginate"),
+			LayerDataTypeDiscriminant::NodeGraphFrame => write!(f, "NodeGraphFrame"),
 		}
 	}
 }
@@ -84,6 +91,7 @@ impl From<&LayerDataType> for LayerDataTypeDiscriminant {
 			Text(_) => LayerDataTypeDiscriminant::Text,
 			Image(_) => LayerDataTypeDiscriminant::Image,
 			Imaginate(_) => LayerDataTypeDiscriminant::Imaginate,
+			NodeGraphFrame(_) => LayerDataTypeDiscriminant::NodeGraphFrame,
 		}
 	}
 }

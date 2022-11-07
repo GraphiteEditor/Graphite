@@ -410,6 +410,7 @@ export class UpdateEyedropperSamplingState extends JsMessage {
 }
 
 const mouseCursorIconCSSNames = {
+	Default: "default",
 	None: "none",
 	ZoomIn: "zoom-in",
 	ZoomOut: "zoom-out",
@@ -421,12 +422,13 @@ const mouseCursorIconCSSNames = {
 	EWResize: "ew-resize",
 	NESWResize: "nesw-resize",
 	NWSEResize: "nwse-resize",
+	Rotate: "custom-rotate",
 } as const;
 export type MouseCursor = keyof typeof mouseCursorIconCSSNames;
 export type MouseCursorIcon = typeof mouseCursorIconCSSNames[MouseCursor];
 
 export class UpdateMouseCursor extends JsMessage {
-	@Transform(({ value }: { value: MouseCursor }) => mouseCursorIconCSSNames[value] || "default")
+	@Transform(({ value }: { value: MouseCursor }) => mouseCursorIconCSSNames[value] || "alias")
 	readonly cursor!: MouseCursorIcon;
 }
 
@@ -512,6 +514,16 @@ export class TriggerImaginateTerminate extends JsMessage {
 	readonly layerPath!: BigUint64Array;
 
 	readonly hostname!: string;
+}
+
+export class TriggerNodeGraphFrameGenerate extends JsMessage {
+	readonly documentId!: bigint;
+
+	readonly layerPath!: BigUint64Array;
+
+	readonly svg!: string;
+
+	readonly size!: [number, number];
 }
 
 export class TriggerRefreshBoundsOfViewports extends JsMessage {}
@@ -641,7 +653,7 @@ export class LayerMetadata {
 	selected!: boolean;
 }
 
-export type LayerType = "Imaginate" | "Folder" | "Image" | "Shape" | "Text";
+export type LayerType = "Imaginate" | "NodeGraphFrame" | "Folder" | "Image" | "Shape" | "Text";
 
 export type LayerTypeData = {
 	name: string;
@@ -651,6 +663,7 @@ export type LayerTypeData = {
 export function layerTypeData(layerType: LayerType): LayerTypeData | undefined {
 	const entries: Record<string, LayerTypeData> = {
 		Imaginate: { name: "Imaginate", icon: "NodeImaginate" },
+		NodeGraphFrame: { name: "Node Graph Frame", icon: "NodeNodes" },
 		Folder: { name: "Folder", icon: "NodeFolder" },
 		Image: { name: "Image", icon: "NodeImage" },
 		Shape: { name: "Shape", icon: "NodeShape" },
@@ -707,6 +720,8 @@ export abstract class WidgetProps {
 
 export class CheckboxInput extends WidgetProps {
 	checked!: boolean;
+
+	disabled!: boolean;
 
 	icon!: IconName;
 
@@ -786,6 +801,8 @@ export class IconButton extends WidgetProps {
 
 	size!: IconSize;
 
+	disabled!: boolean;
+
 	active!: boolean;
 
 	@Transform(({ value }: { value: string }) => (value.length > 0 ? value : undefined))
@@ -795,14 +812,28 @@ export class IconButton extends WidgetProps {
 export class IconLabel extends WidgetProps {
 	icon!: IconName;
 
+	disabled!: boolean;
+
 	@Transform(({ value }: { value: string }) => (value.length > 0 ? value : undefined))
 	tooltip!: string | undefined;
 }
 
-export type IncrementBehavior = "Add" | "Multiply" | "Callback" | "None";
+export type NumberInputIncrementBehavior = "Add" | "Multiply" | "Callback" | "None";
+export type NumberInputMode = "Increment" | "Range";
 
 export class NumberInput extends WidgetProps {
+	// Label
+
 	label!: string | undefined;
+
+	@Transform(({ value }: { value: string }) => (value.length > 0 ? value : undefined))
+	tooltip!: string | undefined;
+
+	// Disabled
+
+	disabled!: boolean;
+
+	// Value
 
 	value!: number | undefined;
 
@@ -812,26 +843,35 @@ export class NumberInput extends WidgetProps {
 
 	isInteger!: boolean;
 
+	// Number presentation
+
 	displayDecimalPlaces!: number;
 
 	unit!: string;
 
 	unitIsHiddenWhenEditing!: boolean;
 
-	incrementBehavior!: IncrementBehavior;
+	// Mode behavior
 
-	incrementFactor!: number;
+	mode!: NumberInputMode;
 
-	disabled!: boolean;
+	incrementBehavior!: NumberInputIncrementBehavior;
+
+	step!: number;
+
+	rangeMin!: number | undefined;
+
+	rangeMax!: number | undefined;
+
+	// Styling
 
 	minWidth!: number;
-
-	@Transform(({ value }: { value: string }) => (value.length > 0 ? value : undefined))
-	tooltip!: string | undefined;
 }
 
 export class OptionalInput extends WidgetProps {
 	checked!: boolean;
+
+	disabled!: boolean;
 
 	icon!: IconName;
 
@@ -841,6 +881,8 @@ export class OptionalInput extends WidgetProps {
 
 export class PopoverButton extends WidgetProps {
 	icon!: string | undefined;
+
+	disabled!: boolean;
 
 	// Body
 	header!: string;
@@ -864,6 +906,8 @@ export type RadioEntries = RadioEntryData[];
 
 export class RadioInput extends WidgetProps {
 	entries!: RadioEntries;
+
+	disabled!: boolean;
 
 	selectedIndex!: number;
 }
@@ -947,6 +991,8 @@ export class TextLabel extends WidgetProps {
 	value!: string;
 
 	// Props
+	disabled!: boolean;
+
 	bold!: boolean;
 
 	italic!: boolean;
@@ -965,6 +1011,8 @@ export type PivotPosition = "None" | "TopLeft" | "TopCenter" | "TopRight" | "Cen
 
 export class PivotAssist extends WidgetProps {
 	position!: PivotPosition;
+
+	disabled!: boolean;
 }
 
 // WIDGET
@@ -1202,6 +1250,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	TriggerImaginateCheckServerStatus,
 	TriggerImaginateGenerate,
 	TriggerImaginateTerminate,
+	TriggerNodeGraphFrameGenerate,
 	TriggerFileDownload,
 	TriggerFontLoad,
 	TriggerImport,

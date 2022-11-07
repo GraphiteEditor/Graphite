@@ -1,6 +1,6 @@
 <template>
 	<LayoutRow class="window-title">
-		<span>{{ text }}</span>
+		<TextLabel>{{ text }}</TextLabel>
 	</LayoutRow>
 </template>
 
@@ -17,11 +17,15 @@
 import { defineComponent, type PropType } from "vue";
 
 import LayoutRow from "@/components/layout/LayoutRow.vue";
+import TextLabel from "@/components/widgets/labels/TextLabel.vue";
 
 export default defineComponent({
 	props: {
 		text: { type: String as PropType<string>, required: true },
 	},
-	components: { LayoutRow },
+	components: {
+		LayoutRow,
+		TextLabel,
+	},
 });
 </script>

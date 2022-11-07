@@ -183,9 +183,10 @@ impl PropertyHolder for ToolData {
 					WidgetHolder::new(Widget::IconButton(IconButton {
 						icon: icon_name,
 						size: 32,
+						disabled: false,
+						active: self.active_tool_type == tool_type,
 						tooltip: tooltip.clone(),
 						tooltip_shortcut,
-						active: self.active_tool_type == tool_type,
 						on_update: WidgetCallback::new(move |_| {
 							if !tooltip.contains("Coming Soon") {
 								ToolMessage::ActivateTool { tool_type }.into()
@@ -280,6 +281,7 @@ pub enum ToolType {
 	Detail,
 	Relight,
 	Imaginate,
+	NodeGraphFrame,
 }
 
 enum ToolAvailability {
@@ -292,28 +294,29 @@ fn list_tools_in_groups() -> Vec<Vec<ToolAvailability>> {
 	vec![
 		vec![
 			// General tool group
-			ToolAvailability::Available(Box::new(select_tool::SelectTool::default())),
-			ToolAvailability::Available(Box::new(artboard_tool::ArtboardTool::default())),
-			ToolAvailability::Available(Box::new(navigate_tool::NavigateTool::default())),
-			ToolAvailability::Available(Box::new(eyedropper_tool::EyedropperTool::default())),
-			ToolAvailability::Available(Box::new(fill_tool::FillTool::default())),
-			ToolAvailability::Available(Box::new(gradient_tool::GradientTool::default())),
+			ToolAvailability::Available(Box::<select_tool::SelectTool>::default()),
+			ToolAvailability::Available(Box::<artboard_tool::ArtboardTool>::default()),
+			ToolAvailability::Available(Box::<navigate_tool::NavigateTool>::default()),
+			ToolAvailability::Available(Box::<eyedropper_tool::EyedropperTool>::default()),
+			ToolAvailability::Available(Box::<fill_tool::FillTool>::default()),
+			ToolAvailability::Available(Box::<gradient_tool::GradientTool>::default()),
 		],
 		vec![
 			// Vector tool group
-			ToolAvailability::Available(Box::new(path_tool::PathTool::default())),
-			ToolAvailability::Available(Box::new(pen_tool::PenTool::default())),
-			ToolAvailability::Available(Box::new(freehand_tool::FreehandTool::default())),
-			ToolAvailability::Available(Box::new(spline_tool::SplineTool::default())),
-			ToolAvailability::Available(Box::new(line_tool::LineTool::default())),
-			ToolAvailability::Available(Box::new(rectangle_tool::RectangleTool::default())),
-			ToolAvailability::Available(Box::new(ellipse_tool::EllipseTool::default())),
-			ToolAvailability::Available(Box::new(shape_tool::ShapeTool::default())),
-			ToolAvailability::Available(Box::new(text_tool::TextTool::default())),
+			ToolAvailability::Available(Box::<path_tool::PathTool>::default()),
+			ToolAvailability::Available(Box::<pen_tool::PenTool>::default()),
+			ToolAvailability::Available(Box::<freehand_tool::FreehandTool>::default()),
+			ToolAvailability::Available(Box::<spline_tool::SplineTool>::default()),
+			ToolAvailability::Available(Box::<line_tool::LineTool>::default()),
+			ToolAvailability::Available(Box::<rectangle_tool::RectangleTool>::default()),
+			ToolAvailability::Available(Box::<ellipse_tool::EllipseTool>::default()),
+			ToolAvailability::Available(Box::<shape_tool::ShapeTool>::default()),
+			ToolAvailability::Available(Box::<text_tool::TextTool>::default()),
 		],
 		vec![
 			// Raster tool group
-			ToolAvailability::Available(Box::new(imaginate_tool::ImaginateTool::default())),
+			ToolAvailability::Available(Box::<imaginate_tool::ImaginateTool>::default()),
+			ToolAvailability::Available(Box::<node_graph_frame_tool::NodeGraphFrameTool>::default()),
 			ToolAvailability::ComingSoon(ToolEntry {
 				tool_type: ToolType::Brush,
 				icon_name: "RasterBrushTool".into(),
@@ -383,6 +386,7 @@ pub fn tool_message_to_tool_type(tool_message: &ToolMessage) -> ToolType {
 		// ToolMessage::Detail(_) => ToolType::Detail,
 		// ToolMessage::Relight(_) => ToolType::Relight,
 		ToolMessage::Imaginate(_) => ToolType::Imaginate,
+		ToolMessage::NodeGraphFrame(_) => ToolType::NodeGraphFrame,
 		_ => panic!(
 			"Conversion from ToolMessage to ToolType impossible because the given ToolMessage does not have a matching ToolType. Got: {:?}",
 			tool_message
@@ -419,6 +423,7 @@ pub fn tool_type_to_activate_tool_message(tool_type: ToolType) -> ToolMessageDis
 		// ToolType::Detail => ToolMessageDiscriminant::ActivateToolDetail,
 		// ToolType::Relight => ToolMessageDiscriminant::ActivateToolRelight,
 		ToolType::Imaginate => ToolMessageDiscriminant::ActivateToolImaginate,
+		ToolType::NodeGraphFrame => ToolMessageDiscriminant::ActivateToolNodeGraphFrame,
 		_ => panic!(
 			"Conversion from ToolType to ToolMessage impossible because the given ToolType does not have a matching ToolMessage. Got: {:?}",
 			tool_type

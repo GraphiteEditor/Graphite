@@ -333,7 +333,7 @@ impl BoundingBoxOverlays {
 				_ => MouseCursorIcon::Default,
 			}
 		} else if rotate && self.check_rotate(input.mouse.position) {
-			MouseCursorIcon::Grabbing
+			MouseCursorIcon::Rotate
 		} else {
 			MouseCursorIcon::Default
 		}

@@ -1,7 +1,18 @@
+<!-- TODO: Combine this widget into the DropdownInput widget -->
+
 <template>
 	<LayoutRow class="font-input">
-		<LayoutRow class="dropdown-box" :class="{ disabled }" :style="{ minWidth: `${minWidth}px` }" :title="tooltip" tabindex="0" @click="toggleOpen" @keydown="keydown" data-floating-menu-spawner>
-			<span>{{ activeEntry?.value || "" }}</span>
+		<LayoutRow
+			class="dropdown-box"
+			:class="{ disabled, 'sharp-right-corners': sharpRightCorners }"
+			:style="{ minWidth: `${minWidth}px` }"
+			:title="tooltip"
+			:tabindex="disabled ? -1 : 0"
+			@click="toggleOpen"
+			@keydown="keydown"
+			data-floating-menu-spawner
+		>
+			<TextLabel class="dropdown-label">{{ activeEntry?.value || "" }}</TextLabel>
 			<IconLabel class="dropdown-arrow" :icon="'DropdownArrow'" />
 		</LayoutRow>
 		<MenuList
@@ -28,7 +39,7 @@
 		height: 24px;
 		border-radius: 2px;
 
-		span {
+		.dropdown-label {
 			margin: 0;
 			margin-left: 8px;
 			flex: 1 1 100%;
@@ -76,6 +87,7 @@ import { type MenuListEntry } from "@/wasm-communication/messages";
 import MenuList from "@/components/floating-menus/MenuList.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
+import TextLabel from "@/components/widgets/labels/TextLabel.vue";
 
 export default defineComponent({
 	inject: ["fonts"],
@@ -86,6 +98,7 @@ export default defineComponent({
 		isStyle: { type: Boolean as PropType<boolean>, default: false },
 		disabled: { type: Boolean as PropType<boolean>, default: false },
 		tooltip: { type: String as PropType<string | undefined>, required: false },
+		sharpRightCorners: { type: Boolean as PropType<boolean>, default: false },
 	},
 	data() {
 		return {
@@ -174,6 +187,7 @@ export default defineComponent({
 		IconLabel,
 		LayoutRow,
 		MenuList,
+		TextLabel,
 	},
 });
 </script>

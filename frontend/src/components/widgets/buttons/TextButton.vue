@@ -1,13 +1,14 @@
 <template>
 	<button
 		class="text-button"
-		:class="{ emphasized, disabled }"
+		:class="{ emphasized, disabled, 'sharp-right-corners': sharpRightCorners }"
 		:data-emphasized="emphasized || undefined"
 		:data-disabled="disabled || undefined"
 		data-text-button
 		:title="tooltip"
-		:style="minWidth > 0 ? `min-width: ${minWidth}px` : ''"
+		:style="{ 'min-width': minWidth > 0 ? `${minWidth}px` : undefined }"
 		@click="(e: MouseEvent) => action(e)"
+		:tabindex="disabled ? -1 : 0"
 	>
 		<IconLabel v-if="icon" :icon="icon" />
 		<TextLabel>{{ label }}</TextLabel>
@@ -21,9 +22,9 @@
 	align-items: center;
 	flex: 0 0 auto;
 	height: 24px;
+	margin: 0;
 	padding: 0 8px;
 	box-sizing: border-box;
-	outline: none;
 	border: none;
 	border-radius: 2px;
 	background: var(--color-5-dullgray);
@@ -34,22 +35,22 @@
 		color: var(--color-f-white);
 	}
 
-	&.emphasized {
-		background: var(--color-accent);
-		color: var(--color-f-white);
-
-		&:hover {
-			background: var(--color-accent-hover);
-		}
-
-		&.disabled {
-			background: var(--color-accent-disabled);
-		}
-	}
-
 	&.disabled {
 		background: var(--color-4-dimgray);
 		color: var(--color-8-uppergray);
+	}
+
+	&.emphasized {
+		background: var(--color-e-nearwhite);
+		color: var(--color-2-mildblack);
+
+		&:hover {
+			background: var(--color-f-white);
+		}
+
+		&.disabled {
+			background: var(--color-8-uppergray);
+		}
 	}
 
 	& + .text-button {
@@ -80,6 +81,7 @@ export default defineComponent({
 		minWidth: { type: Number as PropType<number>, default: 0 },
 		disabled: { type: Boolean as PropType<boolean>, default: false },
 		tooltip: { type: String as PropType<string | undefined>, required: false },
+		sharpRightCorners: { type: Boolean as PropType<boolean>, default: false },
 
 		// Callbacks
 		action: { type: Function as PropType<(e: MouseEvent) => void>, required: true },

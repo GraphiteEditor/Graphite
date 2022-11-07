@@ -39,18 +39,6 @@
 	--color-f-white: #fff;
 	--color-f-white-rgb: 255, 255, 255;
 
-	--color-accent: #3194d6;
-	--color-accent-rgb: 49, 148, 214;
-	--color-accent-hover: #49a5e2;
-	--color-accent-hover-rgb: 73, 165, 226;
-	--color-accent-disabled: #416277;
-	--color-accent-disabled-rgb: 65, 98, 119;
-
-	--color-node-background: #f1decd;
-	--color-node-background-rgb: 241, 222, 205;
-	--color-node-icon: #473a3a;
-	--color-node-icon-rgb: 71, 58, 58;
-
 	--color-data-general: #c5c5c5;
 	--color-data-general-rgb: 197, 197, 197;
 	--color-data-vector: #65bbe5;
@@ -78,10 +66,10 @@
 	--color-none-size-32px: 80px 32px;
 	--color-none-image-32px: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 32"><line stroke="red" stroke-width="4px" x1="0" y1="36" x2="80" y2="-4" /></svg>');
 
-	--transparent-checkered-background: linear-gradient(45deg, #cccccc 25%, transparent 25%, transparent 75%, #cccccc 75%),
+	--color-transparent-checkered-background: linear-gradient(45deg, #cccccc 25%, transparent 25%, transparent 75%, #cccccc 75%),
 		linear-gradient(45deg, #cccccc 25%, transparent 25%, transparent 75%, #cccccc 75%), linear-gradient(#ffffff, #ffffff);
-	--transparent-checkered-background-size: 16px 16px;
-	--transparent-checkered-background-position: 0 0, 8px 8px;
+	--color-transparent-checkered-background-size: 16px 16px;
+	--color-transparent-checkered-background-position: 0 0, 8px 8px;
 }
 
 html,
@@ -90,9 +78,9 @@ body,
 	margin: 0;
 	height: 100%;
 	background: var(--color-2-mildblack);
-	user-select: none;
 	overscroll-behavior: none;
-	outline: none;
+	-webkit-user-select: none; // Required as of Safari 15.0 (Graphite's minimum version) through the latest release
+	user-select: none;
 }
 
 html,
@@ -107,13 +95,14 @@ button {
 	color: var(--color-e-nearwhite);
 }
 
-::selection {
-	background: var(--color-accent);
-}
-
 svg,
 img {
 	display: block;
+}
+
+.sharp-right-corners.sharp-right-corners.sharp-right-corners.sharp-right-corners {
+	border-top-right-radius: 0;
+	border-bottom-right-radius: 0;
 }
 
 .layout-row,
@@ -190,41 +179,49 @@ img {
 	}
 }
 
-.icon-button,
-.text-button,
-.popover-button,
-.checkbox-input label,
-.color-input .swatch .swatch-button,
+// List of all elements that should show an outline when focused by tabbing or by clicking the element
 .dropdown-input .dropdown-box,
-.font-input .dropdown-box,
-.radio-input button,
-.menu-list,
-.menu-bar-input .entry {
-	&:focus-visible,
-	&.dropdown-box:focus {
-		outline: 1px dashed var(--color-accent);
+.font-input .dropdown-box {
+	&:focus {
+		outline: 1px dashed var(--color-e-nearwhite);
 		outline-offset: -1px;
 	}
 }
 
-// For placeholder messages (remove eventually)
-.floating-menu {
-	h1,
-	h2,
-	h3,
-	h4,
-	h5,
-	h6,
-	p {
-		margin: 0;
+// List of all elements that should show an outline when focused by tabbing, but not by clicking the element
+.icon-button,
+.text-button,
+.popover-button,
+.color-input > button,
+.color-picker .preset-color,
+.swatch-pair .swatch > button,
+.radio-input button,
+.menu-list,
+.menu-bar-input .entry,
+.layer-tree .expand-arrow,
+.widget-section .header {
+	&:focus-visible {
+		outline: 1px dashed var(--color-e-nearwhite);
+		outline-offset: -1px;
 	}
 
-	p {
-		margin-top: 8px;
+	// Variant: dark outline over light colors
+	&.preset-color.white,
+	&.text-button.emphasized {
+		&:focus-visible {
+			outline: 1px dashed var(--color-2-mildblack);
+		}
 	}
+}
 
-	.floating-menu-content h3 ~ p {
-		white-space: pre-wrap;
+// Checkbox needs to apply the focus outline to its sibling label
+.checkbox-input input:focus-visible + label {
+	outline: 1px dashed var(--color-e-nearwhite);
+	outline-offset: -1px;
+
+	// Variant: dark outline over light colors
+	&.checked {
+		outline: 1px dashed var(--color-2-mildblack);
 	}
 }
 </style>

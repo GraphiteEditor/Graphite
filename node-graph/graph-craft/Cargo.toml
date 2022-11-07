@@ -14,3 +14,8 @@ num-traits = "0.2"
 borrow_stack = { path = "../borrow_stack" }
 dyn-clone = "1.0"
 rand_chacha = "0.3.1"
+
+[dependencies.serde]
+version = "1.0"
+optional = true
+features = ["derive"]
