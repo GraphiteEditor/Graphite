@@ -2,16 +2,16 @@ use super::utility_types::PersistentData;
 use crate::application::generate_uuid;
 use crate::consts::{DEFAULT_DOCUMENT_NAME, GRAPHITE_DOCUMENT_VERSION};
 use crate::messages::dialog::simple_dialogs;
-use crate::messages::frontend::utility_types::FrontendDocumentDetails;
+use crate::messages::frontend::utility_types::{FrontendDocumentDetails, FrontendImageData};
 use crate::messages::layout::utility_types::layout_widget::PropertyHolder;
 use crate::messages::layout::utility_types::misc::LayoutTarget;
 use crate::messages::portfolio::document::utility_types::clipboards::{Clipboard, CopyBufferEntry, INTERNAL_CLIPBOARD_COUNT};
 use crate::messages::portfolio::utility_types::ImaginateServerStatus;
 use crate::messages::prelude::*;
 
-use graphene::layers::layer_info::LayerDataTypeDiscriminant;
+use graphene::layers::layer_info::{LayerDataType, LayerDataTypeDiscriminant};
 use graphene::layers::text_layer::Font;
-use graphene::Operation as DocumentOperation;
+use graphene::{LayerId, Operation as DocumentOperation};
 
 #[derive(Debug, Clone, Default)]
 pub struct PortfolioMessageHandler {
@@ -411,6 +411,86 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 					let prev_index = (current_index + len - 1) % len;
 					let prev_id = self.document_ids[prev_index];
 					responses.push_back(PortfolioMessage::SelectDocument { document_id: prev_id }.into());
+				}
+			}
+			PortfolioMessage::ProcessNodeGraphFrame {
+				document_id,
+				layer_path,
+				image_data,
+				size,
+			} => {
+				fn read_image(document: Option<&DocumentMessageHandler>, layer_path: &[LayerId], image_data: Vec<u8>, (width, height): (u32, u32)) -> Result<Vec<u8>, String> {
+					use graphene_std::raster::Image;
+					use image::{ImageBuffer, Rgba};
+					use std::io::Cursor;
+
+					let data = image_data.chunks_exact(4).map(|v| graphene_core::raster::color::Color::from_rgba8(v[0], v[1], v[2], v[3])).collect();
+					let image = graphene_std::raster::Image { width, height, data };
+
+					let document = document.ok_or_else(|| "Invalid document".to_string())?;
+					let layer = document.graphene_document.layer(layer_path).map_err(|e| format!("No layer: {e:?}"))?;
+					let node_graph_frame = match &layer.data {
+						LayerDataType::NodeGraphFrame(frame) => Ok(frame),
+						_ => Err("Invalid layer type".to_string()),
+					}?;
+
+					// Execute the node graph
+
+					let mut network = node_graph_frame.network.clone();
+
+					let stack = borrow_stack::FixedSizeStack::new(256);
+					network.flatten(0);
+
+					let mut proto_network = network.into_proto_network();
+					proto_network.reorder_ids();
+
+					for (_id, node) in proto_network.nodes {
+						graph_craft::node_registry::push_node(node, &stack);
+					}
+
+					use borrow_stack::BorrowStack;
+					use dyn_any::IntoDynAny;
+					use graphene_core::Node;
+					let result = unsafe { stack.get().last().unwrap().eval(image.into_dyn()) };
+					let result = *dyn_any::downcast::<Image>(result).unwrap();
+
+					let mut bytes: Vec<u8> = Vec::new();
+					let [result_width, result_height] = [result.width, result.height];
+					let size_estimate = (result_width * result_height * 4) as usize;
+
+					let mut result_bytes = Vec::with_capacity(size_estimate);
+					result_bytes.extend(result.data.into_iter().flat_map(|colour| colour.to_rgba8()));
+					let output: ImageBuffer<Rgba<u8>, _> = image::ImageBuffer::from_raw(result_width, result_height, result_bytes).ok_or_else(|| "Invalid image size".to_string())?;
+					output.write_to(&mut Cursor::new(&mut bytes), image::ImageOutputFormat::Bmp).map_err(|e| e.to_string())?;
+
+					Ok(bytes)
+				}
+
+				match read_image(self.documents.get(&document_id), &layer_path, image_data, size) {
+					Ok(image_data) => {
+						responses.push_back(
+							DocumentOperation::SetNodeGraphFrameImageData {
+								layer_path: layer_path.clone(),
+								image_data: image_data.clone(),
+							}
+							.into(),
+						);
+						let mime = "image/bmp".to_string();
+						responses.push_back(
+							FrontendMessage::UpdateImageData {
+								document_id,
+								image_data: vec![FrontendImageData { path: layer_path, image_data, mime }],
+							}
+							.into(),
+						);
+					}
+					Err(description) => responses.push_back(
+						DialogMessage::DisplayDialogError {
+							title: "Failed to update image".to_string(),
+							description,
+						}
+						.into(),
+					),
 				}
 			}
 			PortfolioMessage::SelectDocument { document_id } => {

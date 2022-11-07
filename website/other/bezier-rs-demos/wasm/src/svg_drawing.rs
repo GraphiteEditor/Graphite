@@ -11,6 +11,7 @@ pub const WHITE: &str = "white";
 pub const GRAY: &str = "gray";
 pub const RED: &str = "red";
 pub const ORANGE: &str = "orange";
+pub const PINK: &str = "pink";
 pub const GREEN: &str = "green";
 pub const NONE: &str = "none";
 
@@ -50,4 +51,22 @@ pub fn draw_beziers(beziers: Vec<Bezier>, options: String) -> String {
 
 	let _ = write!(svg, " Z\" {}/>", options);
 	svg
+}
+
+// Helper function to convert polar to cartesian coordinates
+fn polar_to_cartesian(center_x: f64, center_y: f64, radius: f64, angle_in_rad: f64) -> [f64; 2] {
+	let x = center_x + radius * angle_in_rad.cos();
+	let y = center_y + radius * -angle_in_rad.sin();
+	[x, y]
+}
+
+// Helper function to create an SVG drawing of a sector
+pub fn draw_sector(center_x: f64, center_y: f64, radius: f64, start_angle: f64, end_angle: f64, stroke: &str, stroke_width: f64, fill: &str) -> String {
+	let [start_x, start_y] = polar_to_cartesian(center_x, center_y, radius, start_angle);
+	let [end_x, end_y] = polar_to_cartesian(center_x, center_y, radius, end_angle);
+	// draw sector with fill color
+	let sector_svg = format!(r#"<path d="M {start_x} {start_y} A {radius} {radius} 0 0 1 {end_x} {end_y} L {center_x} {center_y} L {start_x} {start_y} Z"  stroke="none" fill="{fill}" />"#);
+	// draw arc with stroke color
+	let arc_svg = format!(r#"<path d="M {start_x} {start_y} A {radius} {radius} 0 0 1 {end_x} {end_y}" stroke="{stroke}" stroke-width="{stroke_width}" fill="none"/>"#);
+	format!("{sector_svg}{arc_svg}")
 }

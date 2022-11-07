@@ -1,12 +1,12 @@
 <!-- This is a base component, extended by others like NumberInput and TextInput. It should not be used directly. -->
 <template>
-	<LayoutRow class="field-input" :class="{ disabled }" :title="tooltip">
+	<LayoutRow class="field-input" :class="{ disabled, 'sharp-right-corners': sharpRightCorners }" :title="tooltip">
 		<input
+			type="text"
 			v-if="!textarea"
 			:class="{ 'has-label': label }"
 			:id="`field-input-${id}`"
 			ref="input"
-			type="text"
 			v-model="inputValue"
 			:spellcheck="spellcheck"
 			:disabled="disabled"
@@ -15,6 +15,7 @@
 			@change="() => $emit('textChanged')"
 			@keydown.enter="() => $emit('textChanged')"
 			@keydown.esc="() => $emit('cancelTextChange')"
+			data-input-element
 		/>
 		<textarea
 			v-else
@@ -49,10 +50,11 @@
 	flex-direction: row-reverse;
 
 	label {
-		flex: 1 1 100%;
+		flex: 0 0 auto;
 		line-height: 18px;
-		margin-left: 8px;
 		padding: 3px 0;
+		padding-right: 4px;
+		margin-left: 8px;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
@@ -71,10 +73,24 @@
 		line-height: 18px;
 		margin: 0 8px;
 		padding: 3px 0;
-		outline: none;
+		outline: none; // Ok for input/textarea element
 		border: none;
 		background: none;
 		color: var(--color-e-nearwhite);
+		caret-color: var(--color-e-nearwhite);
+
+		&::selection {
+			background-color: var(--color-5-dullgray);
+
+			// Target only Safari
+			@supports (background: -webkit-named-image(i)) {
+				& {
+					// Setting an alpha value opts out of Safari's "fancy" (but not visible on dark backgrounds) selection highlight rendering
+					// https://stackoverflow.com/a/71753552/775283
+					background-color: rgba(var(--color-5-dullgray-rgb), calc(254 / 255));
+				}
+			}
+		}
 	}
 
 	input {
@@ -131,6 +147,7 @@ export default defineComponent({
 		disabled: { type: Boolean as PropType<boolean>, default: false },
 		textarea: { type: Boolean as PropType<boolean>, default: false },
 		tooltip: { type: String as PropType<string | undefined>, required: false },
+		sharpRightCorners: { type: Boolean as PropType<boolean>, default: false },
 	},
 	data() {
 		return {

@@ -57,6 +57,15 @@ pub enum Operation {
 		insert_index: isize,
 		transform: [f64; 6],
 	},
+	AddNodeGraphFrame {
+		path: Vec<LayerId>,
+		insert_index: isize,
+		transform: [f64; 6],
+	},
+	SetNodeGraphFrameImageData {
+		layer_path: Vec<LayerId>,
+		image_data: Vec<u8>,
+	},
 	/// Sets a blob URL as the image source for an Image or Imaginate layer type.
 	/// **Be sure to call `FrontendMessage::TriggerRevokeBlobUrl` together with this.**
 	SetLayerBlobUrl {
@@ -64,9 +73,9 @@ pub enum Operation {
 		blob_url: String,
 		resolution: (f64, f64),
 	},
-	/// Clears the image to leave the Imaginate layer un-rendered.
+	/// Clears the image to leave the layer un-rendered.
 	/// **Be sure to call `FrontendMessage::TriggerRevokeBlobUrl` together with this.**
-	ImaginateClear {
+	ClearBlobURL {
 		path: Vec<LayerId>,
 	},
 	ImaginateSetGeneratingStatus {

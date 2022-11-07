@@ -259,6 +259,7 @@ impl PropertyHolder for SelectTool {
 				WidgetHolder::new(Widget::PivotAssist(PivotAssist {
 					position: self.tool_data.pivot.to_pivot_position(),
 					on_update: WidgetCallback::new(|pivot_assist: &PivotAssist| SelectToolMessage::SetPivot { position: pivot_assist.position }.into()),
+					..Default::default()
 				})),
 			],
 		}]))

@@ -27,6 +27,7 @@
 						class="expand-arrow"
 						:class="{ expanded: listing.entry.layerMetadata.expanded }"
 						@click.stop="handleExpandArrowClick(listing.entry.path)"
+						tabindex="0"
 					></button>
 					<LayoutRow
 						class="layer"
@@ -124,11 +125,11 @@
 			}
 
 			.expand-arrow {
+				padding: 0;
+				margin: 0;
 				margin-left: -16px;
 				width: 16px;
 				height: 100%;
-				padding: 0;
-				outline: none;
 				border: none;
 				position: relative;
 				background: none;
@@ -193,7 +194,7 @@
 						color: inherit;
 						background: none;
 						border: none;
-						outline: none;
+						outline: none; // Ok for input element
 						margin: 0;
 						padding: 0;
 						text-overflow: ellipsis;
@@ -204,6 +205,7 @@
 						width: 100%;
 
 						&:disabled {
+							-webkit-user-select: none; // Required as of Safari 15.0 (Graphite's minimum version) through the latest release
 							user-select: none;
 							// Workaround for `user-select: none` not working on <input> elements
 							pointer-events: none;
@@ -243,7 +245,7 @@
 			}
 
 			&.insert-folder .layer {
-				outline: 3px solid var(--color-accent-hover);
+				outline: 3px solid var(--color-e-nearwhite);
 				outline-offset: -3px;
 			}
 		}
@@ -252,7 +254,7 @@
 			position: absolute;
 			// `left` is applied dynamically
 			right: 0;
-			background: var(--color-accent-hover);
+			background: var(--color-e-nearwhite);
 			margin-top: -2px;
 			height: 5px;
 			z-index: 1;

@@ -34,6 +34,7 @@ pub enum MouseCursorIcon {
 	EWResize,
 	NESWResize,
 	NWSEResize,
+	Rotate,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]

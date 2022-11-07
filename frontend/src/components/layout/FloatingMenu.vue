@@ -513,6 +513,8 @@ export default defineComponent({
 		async open(newState: boolean, oldState: boolean) {
 			// Switching from closed to open
 			if (newState && !oldState) {
+				// TODO: Close any other floating menus that may already be open, which can happen using tab navigation and Enter/Space Bar to open
+
 				// Close floating menu if pointer strays far enough away
 				window.addEventListener("pointermove", this.pointerMoveHandler);
 				// Close floating menu if esc is pressed

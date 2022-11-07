@@ -1,10 +1,10 @@
 <template>
 	<div class="persistent-scrollbar" :class="direction.toLowerCase()">
-		<button class="arrow decrease" @pointerdown="() => changePosition(-50)"></button>
+		<button class="arrow decrease" @pointerdown="() => changePosition(-50)" tabindex="-1"></button>
 		<div class="scroll-track" ref="scrollTrack" @pointerdown="(e) => grabArea(e)">
 			<div class="scroll-thumb" @pointerdown="(e) => grabHandle(e)" :class="{ dragging }" :style="[thumbStart, thumbEnd, sides]"></div>
 		</div>
-		<button class="arrow increase" @click="() => changePosition(50)"></button>
+		<button class="arrow increase" @click="() => changePosition(50)" tabindex="-1"></button>
 	</div>
 </template>
 
@@ -16,11 +16,11 @@
 	.arrow {
 		flex: 0 0 auto;
 		background: none;
-		outline: none;
 		border: none;
 		border-style: solid;
 		width: 0;
 		height: 0;
+		margin: 0;
 		padding: 0;
 	}
 

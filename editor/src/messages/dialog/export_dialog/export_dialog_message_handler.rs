@@ -85,6 +85,7 @@ impl PropertyHolder for ExportDialogMessageHandler {
 			WidgetHolder::new(Widget::RadioInput(RadioInput {
 				selected_index: self.file_type as u32,
 				entries,
+				..Default::default()
 			})),
 		];
 

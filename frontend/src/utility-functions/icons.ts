@@ -8,9 +8,11 @@ const GRAPHICS = {
 } as const;
 
 // 12px Solid
+import Add from "@/../assets/icon-12px-solid/add.svg";
 import Checkmark from "@/../assets/icon-12px-solid/checkmark.svg";
 import CloseX from "@/../assets/icon-12px-solid/close-x.svg";
 import DropdownArrow from "@/../assets/icon-12px-solid/dropdown-arrow.svg";
+import Empty12px from "@/../assets/icon-12px-solid/empty-12px.svg";
 import FullscreenEnter from "@/../assets/icon-12px-solid/fullscreen-enter.svg";
 import FullscreenExit from "@/../assets/icon-12px-solid/fullscreen-exit.svg";
 import Grid from "@/../assets/icon-12px-solid/grid.svg";
@@ -29,6 +31,7 @@ import KeyboardSpace from "@/../assets/icon-12px-solid/keyboard-space.svg";
 import KeyboardTab from "@/../assets/icon-12px-solid/keyboard-tab.svg";
 import Link from "@/../assets/icon-12px-solid/link.svg";
 import Overlays from "@/../assets/icon-12px-solid/overlays.svg";
+import Remove from "@/../assets/icon-12px-solid/remove.svg";
 import ResetColors from "@/../assets/icon-12px-solid/reset-colors.svg";
 import Snapping from "@/../assets/icon-12px-solid/snapping.svg";
 import Swap from "@/../assets/icon-12px-solid/swap.svg";
@@ -40,9 +43,11 @@ import WindowButtonWinMinimize from "@/../assets/icon-12px-solid/window-button-w
 import WindowButtonWinRestoreDown from "@/../assets/icon-12px-solid/window-button-win-restore-down.svg";
 
 const SOLID_12PX = {
+	Add: { component: Add, size: 12 },
 	Checkmark: { component: Checkmark, size: 12 },
 	CloseX: { component: CloseX, size: 12 },
 	DropdownArrow: { component: DropdownArrow, size: 12 },
+	Empty12px: { component: Empty12px, size: 12 },
 	FullscreenEnter: { component: FullscreenEnter, size: 12 },
 	FullscreenExit: { component: FullscreenExit, size: 12 },
 	Grid: { component: Grid, size: 12 },
@@ -61,6 +66,7 @@ const SOLID_12PX = {
 	KeyboardTab: { component: KeyboardTab, size: 12 },
 	Link: { component: Link, size: 12 },
 	Overlays: { component: Overlays, size: 12 },
+	Remove: { component: Remove, size: 12 },
 	ResetColors: { component: ResetColors, size: 12 },
 	Snapping: { component: Snapping, size: 12 },
 	Swap: { component: Swap, size: 12 },
@@ -106,6 +112,7 @@ import NodeImaginate from "@/../assets/icon-16px-solid/node-imaginate.svg";
 import NodeMagicWand from "@/../assets/icon-16px-solid/node-magic-wand.svg";
 import NodeMask from "@/../assets/icon-16px-solid/node-mask.svg";
 import NodeMotionBlur from "@/../assets/icon-16px-solid/node-motion-blur.svg";
+import NodeNodes from "@/../assets/icon-16px-solid/node-nodes.svg";
 import NodeOutput from "@/../assets/icon-16px-solid/node-output.svg";
 import NodeShape from "@/../assets/icon-16px-solid/node-shape.svg";
 import NodeText from "@/../assets/icon-16px-solid/node-text.svg";
@@ -162,6 +169,7 @@ const SOLID_16PX = {
 	NodeMagicWand: { component: NodeMagicWand, size: 16 },
 	NodeMask: { component: NodeMask, size: 16 },
 	NodeMotionBlur: { component: NodeMotionBlur, size: 16 },
+	NodeNodes: { component: NodeNodes, size: 16 },
 	NodeOutput: { component: NodeOutput, size: 16 },
 	NodeShape: { component: NodeShape, size: 16 },
 	NodeText: { component: NodeText, size: 16 },
@@ -222,6 +230,7 @@ import RasterCloneTool from "@/../assets/icon-24px-two-tone/raster-clone-tool.sv
 import RasterDetailTool from "@/../assets/icon-24px-two-tone/raster-detail-tool.svg";
 import RasterHealTool from "@/../assets/icon-24px-two-tone/raster-heal-tool.svg";
 import RasterImaginateTool from "@/../assets/icon-24px-two-tone/raster-imaginate-tool.svg";
+import RasterNodesTool from "@/../assets/icon-24px-two-tone/raster-nodes-tool.svg";
 import RasterPatchTool from "@/../assets/icon-24px-two-tone/raster-patch-tool.svg";
 import RasterRelightTool from "@/../assets/icon-24px-two-tone/raster-relight-tool.svg";
 import VectorEllipseTool from "@/../assets/icon-24px-two-tone/vector-ellipse-tool.svg";
@@ -242,6 +251,7 @@ const TWO_TONE_24PX = {
 	GeneralNavigateTool: { component: GeneralNavigateTool, size: 24 },
 	GeneralSelectTool: { component: GeneralSelectTool, size: 24 },
 	RasterImaginateTool: { component: RasterImaginateTool, size: 24 },
+	RasterNodesTool: { component: RasterNodesTool, size: 24 },
 	RasterBrushTool: { component: RasterBrushTool, size: 24 },
 	RasterCloneTool: { component: RasterCloneTool, size: 24 },
 	RasterDetailTool: { component: RasterDetailTool, size: 24 },

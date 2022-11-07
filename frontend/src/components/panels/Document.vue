@@ -105,20 +105,22 @@
 					}
 				}
 
-				.color-solid {
-					fill: var(--color-f-white);
-				}
+				.icon-button:not(.active) {
+					.color-solid {
+						fill: var(--color-f-white);
+					}
 
-				.color-general {
-					fill: var(--color-data-general);
-				}
+					.color-general {
+						fill: var(--color-data-general);
+					}
 
-				.color-vector {
-					fill: var(--color-data-vector);
-				}
+					.color-vector {
+						fill: var(--color-data-vector);
+					}
 
-				.color-raster {
-					fill: var(--color-data-raster);
+					.color-raster {
+						fill: var(--color-data-raster);
+					}
 				}
 			}
 
@@ -190,14 +192,15 @@
 						pointer-events: auto;
 					}
 				}
+
 				foreignObject {
 					width: 10000px;
 					height: 10000px;
 					overflow: visible;
 
 					div {
-						background: none;
 						cursor: text;
+						background: none;
 						border: none;
 						margin: 0;
 						padding: 0;
@@ -207,12 +210,12 @@
 						// Workaround to force Chrome to display the flashing text entry cursor when text is empty
 						padding-left: 1px;
 						margin-left: -1px;
-					}
 
-					div:focus {
-						border: none;
-						outline: none;
-						margin: -1px;
+						&:focus {
+							border: none;
+							outline: none; // Ok for contenteditable element
+							margin: -1px;
+						}
 					}
 				}
 			}
@@ -261,7 +264,7 @@ export default defineComponent({
 			// CSS properties
 			canvasSvgWidth: undefined as number | undefined,
 			canvasSvgHeight: undefined as number | undefined,
-			canvasCursor: "default" as MouseCursorIcon,
+			canvasCursor: "default",
 
 			// Scrollbars
 			scrollbarPos,
@@ -448,7 +451,30 @@ export default defineComponent({
 		},
 		// Update mouse cursor icon
 		updateMouseCursor(cursor: MouseCursorIcon) {
-			this.canvasCursor = cursor;
+			let cursorString: string = cursor;
+
+			// This isn't very clean but it's good enough for now until we need more icons, then we can build something more robust (consider blob URLs)
+			if (cursor === "custom-rotate") {
+				const svg = `
+					<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" width="20" height="20">
+						<path transform="translate(2 2)" fill="black" stroke="black" stroke-width="2px" d="
+						M8,15.2C4,15.2,0.8,12,0.8,8C0.8,4,4,0.8,8,0.8c2,0,3.9,0.8,5.3,2.3l-1,1C11.2,2.9,9.6,2.2,8,2.2C4.8,2.2,2.2,4.8,2.2,8s2.6,5.8,5.8,5.8s5.8-2.6,5.8-5.8h1.4C15.2,12,12,15.2,8,15.2z
+						" />
+						<polygon transform="translate(2 2)" fill="black" stroke="black" stroke-width="2px" points="12.6,0 15.5,5 9.7,5" />
+						<path transform="translate(2 2)" fill="white" d="
+						M8,15.2C4,15.2,0.8,12,0.8,8C0.8,4,4,0.8,8,0.8c2,0,3.9,0.8,5.3,2.3l-1,1C11.2,2.9,9.6,2.2,8,2.2C4.8,2.2,2.2,4.8,2.2,8s2.6,5.8,5.8,5.8s5.8-2.6,5.8-5.8h1.4C15.2,12,12,15.2,8,15.2z
+						" />
+						<polygon transform="translate(2 2)" fill="white" points="12.6,0 15.5,5 9.7,5" />
+					</svg>
+					`
+					.split("\n")
+					.map((line) => line.trim())
+					.join("");
+
+				cursorString = `url('data:image/svg+xml;utf8,${svg}') 8 8, alias`;
+			}
+
+			this.canvasCursor = cursorString;
 		},
 		// Text entry
 		triggerTextCommit() {
