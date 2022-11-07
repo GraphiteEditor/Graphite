@@ -394,12 +394,12 @@ impl WasmBezier {
 		);
 		let pivot = draw_circle(pivot_x, pivot_y, 3., ORANGE, 1.5, WHITE);
 		let original_dashed_line = format!(
-			r#"<line x1="{pivot_x}" y1="{pivot_y}" x2="{}" y2="{}" stroke="{ORANGE}" stroke-dasharray="10,10" stroke-width="1.5"/>"#,
+			r#"<line x1="{pivot_x}" y1="{pivot_y}" x2="{}" y2="{}" stroke="{ORANGE}" stroke-dasharray="0, 4" stroke-width="2" stroke-linecap="round"/>"#,
 			self.0.start().x,
 			self.0.start().y
 		);
 		let rotated_dashed_line = format!(
-			r#"<line x1="{pivot_x}" y1="{pivot_y}" x2="{}" y2="{}" stroke="{ORANGE}" stroke-dasharray="10,10" stroke-width="1.5"/>"#,
+			r#"<line x1="{pivot_x}" y1="{pivot_y}" x2="{}" y2="{}" stroke="{ORANGE}" stroke-dasharray="0, 4" stroke-width="2" stroke-linecap="round"/>"#,
 			rotated_bezier.start().x,
 			rotated_bezier.start().y
 		);
