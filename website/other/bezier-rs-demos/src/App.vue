@@ -27,7 +27,7 @@
 import { defineComponent, markRaw } from "vue";
 
 import { WasmBezier } from "@/../wasm/pkg";
-import { drawBezier, drawCircleSector, drawLine, drawPoint, getContextFromCanvas, COLORS } from "@/utils/drawing";
+import { drawCircleSector, getContextFromCanvas } from "@/utils/drawing";
 import { BezierCurveType, CircleSector, Point, WasmBezierInstance, WasmSubpathInstance } from "@/utils/types";
 
 import BezierExamplePane from "@/components/BezierExamplePane.vue";
@@ -356,52 +356,35 @@ export default defineComponent({
 						},
 					},
 				},
-			],
-			features: [
-				{
-					name: "De Casteljau Points",
-					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: Record<string, number>): void => {
-						const hullPoints: Point[][] = JSON.parse(bezier.de_casteljau_points(options.t));
-						hullPoints.reverse().forEach((iteration: Point[], iterationIndex) => {
-							const colorLight = `hsl(${90 * iterationIndex}, 100%, 50%)`;
-
-							iteration.forEach((point: Point, index) => {
-								// Skip the anchor and handle points which are already drawn in black
-								if (iterationIndex !== hullPoints.length - 1) {
-									drawPoint(getContextFromCanvas(canvas), point, 4, colorLight);
-								}
-
-								if (index !== 0) {
-									const prevPoint: Point = iteration[index - 1];
-									drawLine(getContextFromCanvas(canvas), point, prevPoint, colorLight);
-								}
-							});
-						});
-					},
-					template: markRaw(SliderExample),
-					templateOptions: { sliders: [tSliderOptions] },
-				},
 				{
 					name: "Rotate",
-					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: Record<string, number>): void => {
-						const context = getContextFromCanvas(canvas);
-						const rotatedBezier = JSON.parse(bezier.rotate(options.angle * Math.PI).get_points());
-						drawBezier(context, rotatedBezier, null, { curveStrokeColor: COLORS.NON_INTERACTIVE.STROKE_1, radius: 3.5 });
-					},
-					template: markRaw(SliderExample),
-					templateOptions: {
-						sliders: [
-							{
-								variable: "angle",
-								min: 0,
-								max: 2,
-								step: 1 / 50,
-								default: 0.12,
-								unit: "π",
-							},
-						],
+					callback: (bezier: WasmBezierInstance, options: Record<string, number>): string => bezier.rotate(options.angle * Math.PI),
+					exampleOptions: {
+						[BezierCurveType.Quadratic]: {
+							sliderOptions: [
+								{
+									variable: "angle",
+									min: 0,
+									max: 2,
+									step: 1 / 50,
+									default: 0.12,
+									unit: "π",
+								},
+							],
+						},
 					},
 				},
+				{
+					name: "De Casteljau Points",
+					callback: (bezier: WasmBezierInstance, options: Record<string, number>): string => bezier.de_casteljau_points(options.t),
+					exampleOptions: {
+						[BezierCurveType.Quadratic]: {
+							sliderOptions: [tSliderOptions],
+						},
+					},
+				},
+			],
+			features: [
 				{
 					name: "Arcs",
 					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: Record<string, number>): void => {

@@ -39,11 +39,6 @@ fn vec_to_point(p: &DVec2) -> Point {
 	Point { x: p.x, y: p.y }
 }
 
-/// Convert a bezier to a list of points.
-fn bezier_to_points(bezier: Bezier) -> Vec<Point> {
-	bezier.get_points().map(|point| Point { x: point.x, y: point.y }).collect()
-}
-
 /// Serialize some data and then convert it to a JsValue.
 fn to_js_value<T: Serialize>(data: T) -> JsValue {
 	JsValue::from_serde(&serde_json::to_string(&data).unwrap()).unwrap()
@@ -353,19 +348,52 @@ impl WasmBezier {
 		wrap_svg_tag(content)
 	}
 
-	/// The wrapped return type is `Vec<Vec<Point>>`.
-	pub fn de_casteljau_points(&self, t: f64) -> JsValue {
-		let points: Vec<Vec<Point>> = self
-			.0
-			.de_casteljau_points(t)
+	pub fn de_casteljau_points(&self, t: f64) -> String {
+		let points: Vec<Vec<DVec2>> = self.0.de_casteljau_points(t);
+
+		let bezier_svg = self.get_bezier_path();
+
+		let casteljau_svg = points
 			.iter()
-			.map(|level| level.iter().map(|&point| Point { x: point.x, y: point.y }).collect::<Vec<Point>>())
-			.collect();
-		to_js_value(points)
+			.enumerate()
+			.map(|(index, points)| {
+				let color_light = format!("hsl({}, 100%, 50%)", 90 * index);
+				let points_and_handle_lines = points
+					.iter()
+					.enumerate()
+					.map(|(index, point)| {
+						let circle = draw_circle(point.x, point.y, 3., &color_light, 1.5, WHITE);
+						if index != 0 {
+							let prev_point = points[index - 1];
+							let line = draw_line(prev_point.x, prev_point.y, point.x, point.y, &color_light, 1.5);
+
+							circle + line.as_str()
+						} else {
+							circle
+						}
+					})
+					.fold("".to_string(), |acc, point_svg| acc + &point_svg);
+				points_and_handle_lines
+			})
+			.fold("".to_string(), |acc, points_svg| acc + &points_svg);
+		let content = format!("{bezier_svg}{casteljau_svg}");
+		wrap_svg_tag(content)
 	}
 
-	pub fn rotate(&self, angle: f64) -> WasmBezier {
-		WasmBezier(self.0.rotate(angle))
+	// TODO: add support for rotating around point
+	pub fn rotate(&self, angle: f64) -> String {
+		let original_bezier_svg = self.get_bezier_path();
+		let rotated_bezier = self.0.rotate(angle);
+		let empty_string = String::new();
+		let mut rotated_bezier_svg = String::new();
+		rotated_bezier.to_svg(
+			&mut rotated_bezier_svg,
+			CURVE_ATTRIBUTES.to_string().replace(BLACK, RED),
+			empty_string.clone(),
+			empty_string.clone(),
+			empty_string.clone(),
+		);
+		wrap_svg_tag(format!("{original_bezier_svg}{rotated_bezier_svg}"))
 	}
 
 	fn intersect(&self, curve: &Bezier, error: Option<f64>) -> Vec<f64> {
@@ -478,11 +506,11 @@ impl WasmBezier {
 			.reduce(None)
 			.iter()
 			.enumerate()
-			.map(|(idx, bezier_curve)| {
+			.map(|(index, bezier_curve)| {
 				let mut curve_svg = String::new();
 				bezier_curve.to_svg(
 					&mut curve_svg,
-					CURVE_ATTRIBUTES.to_string().replace(BLACK, &format!("hsl({}, 100%, 50%)", (40 * idx))),
+					CURVE_ATTRIBUTES.to_string().replace(BLACK, &format!("hsl({}, 100%, 50%)", (40 * index))),
 					empty_string.clone(),
 					empty_string.clone(),
 					empty_string.clone(),
@@ -501,11 +529,11 @@ impl WasmBezier {
 			.offset(distance)
 			.iter()
 			.enumerate()
-			.map(|(idx, bezier_curve)| {
+			.map(|(index, bezier_curve)| {
 				let mut curve_svg = String::new();
 				bezier_curve.to_svg(
 					&mut curve_svg,
-					CURVE_ATTRIBUTES.to_string().replace(BLACK, &format!("hsl({}, 100%, 50%)", (40 * idx))),
+					CURVE_ATTRIBUTES.to_string().replace(BLACK, &format!("hsl({}, 100%, 50%)", (40 * index))),
 					empty_string.clone(),
 					empty_string.clone(),
 					empty_string.clone(),
