@@ -6,7 +6,8 @@
 		<div v-for="(feature, index) in bezierFeatures" :key="index">
 			<BezierExamplePane :name="feature.name" :callback="feature.callback" :exampleOptions="feature.exampleOptions" :triggerOnMouseMove="feature.triggerOnMouseMove" />
 		</div>
-		<div v-for="(feature, index) in features" :key="index">
+		<!-- TODO: Remove the below and all associated canvas-related code, then rename `bezierFeatures` to `features` -->
+		<div v-for="(feature, index) in ([] as any)" :key="index">
 			<ExamplePane
 				:template="feature.template"
 				:templateOptions="feature.templateOptions"
@@ -27,7 +28,7 @@
 import { defineComponent } from "vue";
 
 import { WasmBezier } from "@/../wasm/pkg";
-import { BezierCurveType, Point, WasmBezierInstance, WasmSubpathInstance } from "@/utils/types";
+import { BezierCurveType, ExampleOptions, Point, WasmBezierInstance, WasmSubpathInstance } from "@/utils/types";
 
 import BezierExamplePane from "@/components/BezierExamplePane.vue";
 import ExamplePane from "@/components/ExamplePane.vue";
@@ -297,71 +298,54 @@ export default defineComponent({
 				{
 					name: "Arcs",
 					callback: (bezier: WasmBezierInstance, options: Record<string, number>): string => bezier.arcs(options.error, options.max_iterations, options.strategy),
-					exampleOptions: {
-						[BezierCurveType.Quadratic]: {
-							customPoints: [
-								[50, 50],
-								[85, 65],
-								[100, 100],
-							],
-							sliderOptions: [
-								{
-									variable: "strategy",
-									min: 0,
-									max: 2,
-									step: 1,
-									default: 0,
-									unit: [": Automatic", ": FavorLargerArcs", ": FavorCorrectness"],
-								},
-								{
-									variable: "error",
-									min: 0.05,
-									max: 1,
-									step: 0.05,
-									default: 0.5,
-								},
-								{
-									variable: "max_iterations",
-									min: 50,
-									max: 200,
-									step: 1,
-									default: 100,
-								},
-							],
-						},
-						[BezierCurveType.Cubic]: {
-							customPoints: [
-								[160, 180],
-								[170, 10],
-								[30, 90],
-								[180, 160],
-							],
-							sliderOptions: [
-								{
-									variable: "strategy",
-									min: 0,
-									max: 2,
-									step: 1,
-									default: 0,
-									unit: [": Automatic", ": FavorLargerArcs", ": FavorCorrectness"],
-								},
-								{
-									variable: "error",
-									min: 0.05,
-									max: 1,
-									step: 0.05,
-									default: 0.5,
-								},
-								{
-									variable: "max_iterations",
-									min: 50,
-									max: 200,
-									step: 1,
-									default: 100,
-								},
-							],
-						},
-					},
+					exampleOptions: ((): Omit<ExampleOptions, "Linear"> => {
+						const sliderOptions = [
+							{
+								variable: "strategy",
+								min: 0,
+								max: 2,
+								step: 1,
+								default: 0,
+								unit: [": Automatic", ": FavorLargerArcs", ": FavorCorrectness"],
+							},
+							{
+								variable: "error",
+								min: 0.05,
+								max: 1,
+								step: 0.05,
+								default: 0.5,
+							},
+							{
+								variable: "max_iterations",
+								min: 50,
+								max: 200,
+								step: 1,
+								default: 100,
+							},
+						];
+
+						return {
+							[BezierCurveType.Quadratic]: {
+								customPoints: [
+									[50, 50],
+									[85, 65],
+									[100, 100],
+								],
+								sliderOptions,
+								disabled: false,
+							},
+							[BezierCurveType.Cubic]: {
+								customPoints: [
+									[160, 180],
+									[170, 10],
+									[30, 90],
+									[180, 160],
+								],
+								sliderOptions,
+								disabled: false,
+							},
+						};
+					})(),
 				},
 				{
 					name: "Intersect (Line Segment)",
