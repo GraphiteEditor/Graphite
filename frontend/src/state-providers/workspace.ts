@@ -11,12 +11,11 @@ export function createWorkspaceState(editor: Editor) {
 	});
 
 	// Set up message subscriptions on creation
-	editor.subscriptions.subscribeJsMessage(UpdateNodeGraphVisibility, (updateNodeGraphVisibility) => {
+	editor.subscriptions.subscribeJsMessage(UpdateNodeGraphVisibility, async (updateNodeGraphVisibility) => {
 		state.nodeGraphVisible = updateNodeGraphVisibility.visible;
 		// Update the viewport bounds
-		nextTick().then(() => {
-			window.dispatchEvent(new Event("resize"));
-		});
+		await nextTick();
+		window.dispatchEvent(new Event("resize"));
 	});
 
 	return {
