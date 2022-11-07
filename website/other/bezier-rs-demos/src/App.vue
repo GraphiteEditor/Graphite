@@ -6,7 +6,8 @@
 		<div v-for="(feature, index) in bezierFeatures" :key="index">
 			<BezierExamplePane :name="feature.name" :callback="feature.callback" :exampleOptions="feature.exampleOptions" :triggerOnMouseMove="feature.triggerOnMouseMove" />
 		</div>
-		<div v-for="(feature, index) in features" :key="index">
+		<!-- TODO: Remove the below and all associated canvas-related code, then rename `bezierFeatures` to `features` -->
+		<div v-for="(feature, index) in ([] as any)" :key="index">
 			<ExamplePane
 				:template="feature.template"
 				:templateOptions="feature.templateOptions"
@@ -24,15 +25,13 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, markRaw } from "vue";
+import { defineComponent } from "vue";
 
 import { WasmBezier } from "@/../wasm/pkg";
-import { drawCircleSector, getContextFromCanvas } from "@/utils/drawing";
-import { BezierCurveType, CircleSector, Point, WasmBezierInstance, WasmSubpathInstance } from "@/utils/types";
+import { BezierCurveType, ExampleOptions, Point, WasmBezierInstance, WasmSubpathInstance } from "@/utils/types";
 
 import BezierExamplePane from "@/components/BezierExamplePane.vue";
 import ExamplePane from "@/components/ExamplePane.vue";
-import SliderExample from "@/components/SliderExample.vue";
 import SubpathExamplePane from "@/components/SubpathExamplePane.vue";
 
 const tSliderOptions = {
@@ -297,6 +296,58 @@ export default defineComponent({
 					},
 				},
 				{
+					name: "Arcs",
+					callback: (bezier: WasmBezierInstance, options: Record<string, number>): string => bezier.arcs(options.error, options.max_iterations, options.strategy),
+					exampleOptions: ((): Omit<ExampleOptions, "Linear"> => {
+						const sliderOptions = [
+							{
+								variable: "strategy",
+								min: 0,
+								max: 2,
+								step: 1,
+								default: 0,
+								unit: [": Automatic", ": FavorLargerArcs", ": FavorCorrectness"],
+							},
+							{
+								variable: "error",
+								min: 0.05,
+								max: 1,
+								step: 0.05,
+								default: 0.5,
+							},
+							{
+								variable: "max_iterations",
+								min: 50,
+								max: 200,
+								step: 1,
+								default: 100,
+							},
+						];
+
+						return {
+							[BezierCurveType.Quadratic]: {
+								customPoints: [
+									[50, 50],
+									[85, 65],
+									[100, 100],
+								],
+								sliderOptions,
+								disabled: false,
+							},
+							[BezierCurveType.Cubic]: {
+								customPoints: [
+									[160, 180],
+									[170, 10],
+									[30, 90],
+									[180, 160],
+								],
+								sliderOptions,
+								disabled: false,
+							},
+						};
+					})(),
+				},
+				{
 					name: "Intersect (Line Segment)",
 					callback: (bezier: WasmBezierInstance): string => {
 						const line = [
@@ -381,59 +432,6 @@ export default defineComponent({
 						[BezierCurveType.Quadratic]: {
 							sliderOptions: [tSliderOptions],
 						},
-					},
-				},
-			],
-			features: [
-				{
-					name: "Arcs",
-					callback: (canvas: HTMLCanvasElement, bezier: WasmBezierInstance, options: Record<string, number>): void => {
-						const context = getContextFromCanvas(canvas);
-						const arcs: CircleSector[] = JSON.parse(bezier.arcs(options.error, options.max_iterations, options.strategy));
-						arcs.forEach((circleSector, index) => {
-							drawCircleSector(context, circleSector, `hsl(${40 * index}, 100%, 50%, 75%)`, `hsl(${40 * index}, 100%, 50%, 37.5%)`);
-						});
-					},
-					template: markRaw(SliderExample),
-					templateOptions: {
-						sliders: [
-							{
-								variable: "strategy",
-								min: 0,
-								max: 2,
-								step: 1,
-								default: 0,
-								unit: [": Automatic", ": FavorLargerArcs", ": FavorCorrectness"],
-							},
-							{
-								variable: "error",
-								min: 0.05,
-								max: 1,
-								step: 0.05,
-								default: 0.5,
-							},
-							{
-								variable: "max_iterations",
-								min: 50,
-								max: 200,
-								step: 1,
-								default: 100,
-							},
-						],
-					},
-					curveDegrees: new Set([BezierCurveType.Quadratic, BezierCurveType.Cubic]),
-					customPoints: {
-						[BezierCurveType.Quadratic]: [
-							[50, 50],
-							[85, 65],
-							[100, 100],
-						],
-						[BezierCurveType.Cubic]: [
-							[160, 180],
-							[170, 10],
-							[30, 90],
-							[180, 160],
-						],
 					},
 				},
 			],
