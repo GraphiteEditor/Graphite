@@ -90,6 +90,12 @@ impl Bezier {
 		self.apply_transformation(&|point| rotation_matrix.mul_vec2(point))
 	}
 
+	/// Returns a Bezier curve that results from rotating the curve around the provided point by the given angle (in radians).
+	pub fn rotate_about_point(&self, angle: f64, pivot: DVec2) -> Bezier {
+		let rotation_matrix = DMat2::from_angle(angle);
+		self.apply_transformation(&|point| rotation_matrix.mul_vec2(point - pivot) + pivot)
+	}
+
 	/// Returns a Bezier curve that results from translating the curve by the given `DVec2`.
 	pub fn translate(&self, translation: DVec2) -> Bezier {
 		self.apply_transformation(&|point| point + translation)

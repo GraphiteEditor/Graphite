@@ -380,10 +380,9 @@ impl WasmBezier {
 		wrap_svg_tag(content)
 	}
 
-	// TODO: add support for rotating around point
-	pub fn rotate(&self, angle: f64) -> String {
+	pub fn rotate(&self, angle: f64, pivot_x: f64, pivot_y: f64) -> String {
 		let original_bezier_svg = self.get_bezier_path();
-		let rotated_bezier = self.0.rotate(angle);
+		let rotated_bezier = self.0.rotate_about_point(angle, DVec2::new(pivot_x, pivot_y));
 		let empty_string = String::new();
 		let mut rotated_bezier_svg = String::new();
 		rotated_bezier.to_svg(
@@ -391,9 +390,37 @@ impl WasmBezier {
 			CURVE_ATTRIBUTES.to_string().replace(BLACK, RED),
 			empty_string.clone(),
 			empty_string.clone(),
-			empty_string.clone(),
+			empty_string,
 		);
-		wrap_svg_tag(format!("{original_bezier_svg}{rotated_bezier_svg}"))
+		let pivot = draw_circle(pivot_x, pivot_y, 3., GRAY, 1.5, WHITE);
+
+		// Line between pivot and start point on curve
+		let original_dashed_line_start = format!(
+			r#"<line x1="{pivot_x}" y1="{pivot_y}" x2="{}" y2="{}" stroke="{ORANGE}" stroke-dasharray="0, 4" stroke-width="2" stroke-linecap="round"/>"#,
+			self.0.start().x,
+			self.0.start().y
+		);
+		let rotated_dashed_line_start = format!(
+			r#"<line x1="{pivot_x}" y1="{pivot_y}" x2="{}" y2="{}" stroke="{ORANGE}" stroke-dasharray="0, 4" stroke-width="2" stroke-linecap="round"/>"#,
+			rotated_bezier.start().x,
+			rotated_bezier.start().y
+		);
+
+		// Line between pivot and end point on curve
+		let original_dashed_line_end = format!(
+			r#"<line x1="{pivot_x}" y1="{pivot_y}" x2="{}" y2="{}" stroke="{PINK}" stroke-dasharray="0, 4" stroke-width="2" stroke-linecap="round"/>"#,
+			self.0.end().x,
+			self.0.end().y
+		);
+		let rotated_dashed_line_end = format!(
+			r#"<line x1="{pivot_x}" y1="{pivot_y}" x2="{}" y2="{}" stroke="{PINK}" stroke-dasharray="0, 4" stroke-width="2" stroke-linecap="round"/>"#,
+			rotated_bezier.end().x,
+			rotated_bezier.end().y
+		);
+
+		wrap_svg_tag(format!(
+			"{original_bezier_svg}{rotated_bezier_svg}{pivot}{original_dashed_line_start}{rotated_dashed_line_start}{original_dashed_line_end}{rotated_dashed_line_end}"
+		))
 	}
 
 	fn intersect(&self, curve: &Bezier, error: Option<f64>) -> Vec<f64> {
