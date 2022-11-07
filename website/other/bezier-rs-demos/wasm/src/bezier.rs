@@ -571,6 +571,42 @@ impl WasmBezier {
 		wrap_svg_tag(bezier_curves_svg)
 	}
 
+	pub fn outline(&self, distance: f64) -> String {
+		let outline_beziers = self.0.outline(distance);
+		if outline_beziers.is_empty() {
+			return String::new();
+		}
+
+		let outline_svg = draw_beziers(outline_beziers, CURVE_ATTRIBUTES.to_string().replace(BLACK, RED));
+		let bezier_svg = self.get_bezier_path();
+
+		wrap_svg_tag(format!("{bezier_svg}{outline_svg}"))
+	}
+
+	pub fn graduated_outline(&self, start_distance: f64, end_distance: f64) -> String {
+		let outline_beziers = self.0.graduated_outline(start_distance, end_distance);
+		if outline_beziers.is_empty() {
+			return String::new();
+		}
+
+		let outline_svg = draw_beziers(outline_beziers, CURVE_ATTRIBUTES.to_string().replace(BLACK, RED));
+		let bezier_svg = self.get_bezier_path();
+
+		wrap_svg_tag(format!("{bezier_svg}{outline_svg}"))
+	}
+
+	pub fn skewed_outline(&self, distance1: f64, distance2: f64, distance3: f64, distance4: f64) -> String {
+		let outline_beziers = self.0.skewed_outline(distance1, distance2, distance3, distance4);
+		if outline_beziers.is_empty() {
+			return String::new();
+		}
+
+		let outline_svg = draw_beziers(outline_beziers, CURVE_ATTRIBUTES.to_string().replace(BLACK, RED));
+		let bezier_svg = self.get_bezier_path();
+
+		wrap_svg_tag(format!("{bezier_svg}{outline_svg}"))
+	}
+
 	/// The wrapped return type is `Vec<CircleSector>`.
 	pub fn arcs(&self, error: f64, max_iterations: usize, maximize_arcs: WasmMaximizeArcs) -> String {
 		let original_curve_svg = self.get_bezier_path();

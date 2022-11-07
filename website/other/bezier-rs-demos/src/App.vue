@@ -296,6 +296,86 @@ export default defineComponent({
 					},
 				},
 				{
+					name: "Outline",
+					callback: (bezier: WasmBezierInstance, options: Record<string, number>): string => bezier.outline(options.distance),
+					exampleOptions: {
+						[BezierCurveType.Quadratic]: {
+							sliderOptions: [
+								{
+									variable: "distance",
+									min: 0,
+									max: 50,
+									step: 1,
+									default: 20,
+								},
+							],
+						},
+					},
+				},
+				{
+					name: "Graduated Outline",
+					callback: (bezier: WasmBezierInstance, options: Record<string, number>): string => bezier.graduated_outline(options.start_distance, options.end_distance),
+					exampleOptions: {
+						[BezierCurveType.Quadratic]: {
+							sliderOptions: [
+								{
+									variable: "start_distance",
+									min: 0,
+									max: 50,
+									step: 1,
+									default: 30,
+								},
+								{
+									variable: "end_distance",
+									min: 0,
+									max: 50,
+									step: 1,
+									default: 30,
+								},
+							],
+						},
+					},
+				},
+				{
+					name: "Skewed Outline",
+					callback: (bezier: WasmBezierInstance, options: Record<string, number>): string =>
+						bezier.skewed_outline(options.distance1, options.distance2, options.distance3, options.distance4),
+					exampleOptions: {
+						[BezierCurveType.Quadratic]: {
+							sliderOptions: [
+								{
+									variable: "distance1",
+									min: 0,
+									max: 50,
+									step: 1,
+									default: 20,
+								},
+								{
+									variable: "distance2",
+									min: 0,
+									max: 50,
+									step: 1,
+									default: 10,
+								},
+								{
+									variable: "distance3",
+									min: 0,
+									max: 50,
+									step: 1,
+									default: 30,
+								},
+								{
+									variable: "distance4",
+									min: 0,
+									max: 50,
+									step: 1,
+									default: 5,
+								},
+							],
+						},
+					},
+				},
+				{
 					name: "Arcs",
 					callback: (bezier: WasmBezierInstance, options: Record<string, number>): string => bezier.arcs(options.error, options.max_iterations, options.strategy),
 					exampleOptions: ((): Omit<ExampleOptions, "Linear"> => {
