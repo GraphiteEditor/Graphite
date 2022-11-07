@@ -855,7 +855,14 @@ fn node_section_imaginate(imaginate_layer: &ImaginateLayer, layer: &Layer, persi
 			},
 			LayoutGroup::Row {
 				widgets: {
-					let tooltip = "Strength of the artistic liberties allowing changes from the base image. The image is unaltered at 0 and completely different at 1.".to_string();
+					let tooltip = "
+					Strength of the artistic liberties allowing changes from the base image. The image is unchanged at 0 and completely different at 1.\n\
+					\n\
+					This parameter is otherwise known as denoising strength.
+					"
+					.trim()
+					.to_string();
+
 					vec![
 						WidgetHolder::new(Widget::TextLabel(TextLabel {
 							value: "Image Creativity".into(),
@@ -889,12 +896,19 @@ fn node_section_imaginate(imaginate_layer: &ImaginateLayer, layer: &Layer, persi
 			},
 			LayoutGroup::Row {
 				widgets: {
-					let tooltip =
-						"Amplification of the text prompt's influence over the outcome. Lower values are more creative and exploratory. Higher values are more literal and uninspired.".to_string();
+					let tooltip = "
+					Amplification of the text prompt's influence over the outcome. At 0, the prompt is entirely ignored.\n\
+					\n\
+					Lower values are more creative and exploratory. Higher values are more literal and uninspired, but may be lower quality.\n\
+					\n\
+					This parameter is otherwise known as CFG (classifier-free guidance) scale.
+					"
+					.trim()
+					.to_string();
 
 					vec![
 						WidgetHolder::new(Widget::TextLabel(TextLabel {
-							value: "Text Rigidness".into(),
+							value: "Text Literalness".into(),
 							tooltip: tooltip.to_string(),
 							..Default::default()
 						})),
