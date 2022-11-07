@@ -545,23 +545,30 @@ impl WasmBezier {
 	}
 
 	/// The wrapped return type is `Vec<CircleSector>`.
-	pub fn arcs(&self, error: f64, max_iterations: usize, maximize_arcs: WasmMaximizeArcs) -> JsValue {
+	pub fn arcs(&self, error: f64, max_iterations: usize, maximize_arcs: WasmMaximizeArcs) -> String {
+		let original_curve_svg = self.get_bezier_path();
+
+		// Get sectors
 		let strategy = convert_wasm_maximize_arcs(maximize_arcs);
 		let options = ArcsOptions { error, max_iterations, strategy };
-		let circle_sectors: Vec<CircleSector> = self
+		let arcs_svg = self
 			.0
 			.arcs(options)
 			.iter()
-			.map(|sector| CircleSector {
-				center: Point {
-					x: sector.center.x,
-					y: sector.center.y,
-				},
-				radius: sector.radius,
-				start_angle: sector.start_angle,
-				end_angle: sector.end_angle,
+			.enumerate()
+			.map(|(idx, sector)| {
+				draw_sector(
+					sector.center.x,
+					sector.center.y,
+					sector.radius,
+					-sector.start_angle,
+					-sector.end_angle,
+					format!("hsl({}, 100%, 50%, 75%)", (40 * idx)).as_str(),
+					1.,
+					format!("hsl({}, 100%, 50%, 37.5%)", (40 * idx)).as_str(),
+				)
 			})
-			.collect();
-		to_js_value(circle_sectors)
+			.fold(original_curve_svg, |acc, item| format!("{acc}{item}"));
+		wrap_svg_tag(arcs_svg)
 	}
 }
