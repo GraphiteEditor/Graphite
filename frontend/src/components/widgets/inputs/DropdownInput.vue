@@ -2,17 +2,17 @@
 	<LayoutRow class="dropdown-input" data-dropdown-input>
 		<LayoutRow
 			class="dropdown-box"
-			:class="{ disabled, open }"
+			:class="{ disabled, open, 'sharp-right-corners': sharpRightCorners }"
 			:style="{ minWidth: `${minWidth}px` }"
+			:title="tooltip"
 			@click="() => !disabled && (open = true)"
-			@blur="(e: FocusEvent) => blur(e)"
+			@blur="(e: FocusEvent) => unFocusDropdownBox(e)"
 			@keydown="(e: KeyboardEvent) => keydown(e)"
-			ref="dropdownBox"
-			tabindex="0"
-			data-hover-menu-spawner
+			:tabindex="disabled ? -1 : 0"
+			data-floating-menu-spawner
 		>
 			<IconLabel class="dropdown-icon" :icon="activeEntry.icon" v-if="activeEntry.icon" />
-			<span>{{ activeEntry.label }}</span>
+			<TextLabel class="dropdown-label">{{ activeEntry.label }}</TextLabel>
 			<IconLabel class="dropdown-arrow" :icon="'DropdownArrow'" />
 		</LayoutRow>
 		<MenuList
@@ -40,19 +40,19 @@
 		height: 24px;
 		border-radius: 2px;
 
-		.dropdown-icon {
-			margin: 4px;
-			flex: 0 0 auto;
-		}
-
-		span {
+		.dropdown-label {
 			margin: 0;
 			margin-left: 8px;
 			flex: 1 1 100%;
 		}
 
-		.dropdown-icon + span {
-			margin-left: 0;
+		.dropdown-icon {
+			margin: 4px;
+			flex: 0 0 auto;
+
+			& + .dropdown-label {
+				margin-left: 0;
+			}
 		}
 
 		.dropdown-arrow {
@@ -104,6 +104,7 @@ import { type MenuListEntry } from "@/wasm-communication/messages";
 import MenuList from "@/components/floating-menus/MenuList.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
+import TextLabel from "@/components/widgets/labels/TextLabel.vue";
 
 const DASH_ENTRY = { label: "-" };
 
@@ -115,6 +116,8 @@ export default defineComponent({
 		drawIcon: { type: Boolean as PropType<boolean>, default: false },
 		interactive: { type: Boolean as PropType<boolean>, default: true },
 		disabled: { type: Boolean as PropType<boolean>, default: false },
+		tooltip: { type: String as PropType<string | undefined>, required: false },
+		sharpRightCorners: { type: Boolean as PropType<boolean>, default: false },
 	},
 	data() {
 		return {
@@ -153,16 +156,19 @@ export default defineComponent({
 			return DASH_ENTRY;
 		},
 		keydown(e: KeyboardEvent) {
-			(this.$refs.menuList as typeof MenuList).keydown(e, false);
+			(this.$refs.menuList as typeof MenuList | undefined)?.keydown(e, false);
 		},
-		blur(e: FocusEvent) {
-			if ((e.target as HTMLElement).closest("[data-dropdown-input]") !== this.$el) this.open = false;
+		unFocusDropdownBox(e: FocusEvent) {
+			const blurTarget = (e.target as HTMLDivElement | undefined)?.closest("[data-dropdown-input]");
+			const self: HTMLDivElement | undefined = this.$el;
+			if (blurTarget !== self) this.open = false;
 		},
 	},
 	components: {
 		IconLabel,
 		LayoutRow,
 		MenuList,
+		TextLabel,
 	},
 });
 </script>

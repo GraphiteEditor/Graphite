@@ -27,6 +27,10 @@ impl ViewportBounds {
 	pub fn center(&self) -> DVec2 {
 		self.bottom_right.lerp(self.top_left, 0.5)
 	}
+
+	pub fn in_bounds(&self, position: ViewportPosition) -> bool {
+		position.x >= 0. && position.y >= 0. && position.x <= self.bottom_right.x && position.y <= self.bottom_right.y
+	}
 }
 
 #[derive(Debug, Copy, Clone, Default, Eq, PartialEq, Hash, Serialize, Deserialize)]

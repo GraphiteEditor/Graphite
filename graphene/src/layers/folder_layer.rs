@@ -18,7 +18,7 @@ pub struct FolderLayer {
 	/// The IDs of the [Layer]s contained within the Folder
 	pub layer_ids: Vec<LayerId>,
 	/// The [Layer]s contained in the folder
-	layers: Vec<Layer>,
+	pub layers: Vec<Layer>,
 }
 
 impl LayerData for FolderLayer {

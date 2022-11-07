@@ -31,7 +31,7 @@ pub struct ShapeEditor {
 // TODO Consider keeping a list of selected manipulators to minimize traversals of the layers
 impl ShapeEditor {
 	/// Select the first point within the selection threshold.
-	/// Returns the points if found, None otherwise.
+	/// Returns a tuple of the points if found and the offset, or None otherwise.
 	pub fn select_point(
 		&self,
 		document: &Document,
@@ -39,7 +39,7 @@ impl ShapeEditor {
 		select_threshold: f64,
 		add_to_selection: bool,
 		responses: &mut VecDeque<Message>,
-	) -> Option<Vec<(&[LayerId], u64, ManipulatorType)>> {
+	) -> Option<(Vec<(&[LayerId], u64, ManipulatorType)>, DVec2)> {
 		if self.selected_layers.is_empty() {
 			return None;
 		}
@@ -98,12 +98,15 @@ impl ShapeEditor {
 					}
 					.into(),
 				);
-				// Snap the selected point to the cursor
-				if let Ok(viewspace) = document.generate_transform_relative_to_viewport(shape_layer_path) {
-					self.move_selected_points(mouse_position - viewspace.transform_point2(point_position), responses)
-				}
 
-				return Some(points);
+				// Offset to snap the selected point to the cursor
+				let offset = if let Ok(viewspace) = document.generate_transform_relative_to_viewport(shape_layer_path) {
+					mouse_position - viewspace.transform_point2(point_position)
+				} else {
+					DVec2::ZERO
+				};
+
+				return Some((points, offset));
 			} else {
 				responses.push_back(
 					Operation::DeselectManipulatorPoints {
@@ -321,6 +324,113 @@ impl ShapeEditor {
 				return;
 			}
 		}
+	}
+
+	/// Handles the flipping between sharp corner and smooth (which can be activated by double clicking on an anchor with the Path tool).
+	pub fn flip_sharp(&self, document: &Document, position: glam::DVec2, tolerance: f64, responses: &mut VecDeque<Message>) -> bool {
+		let mut process_layer = |layer_path| {
+			let manipulator_groups = document.layer(layer_path).ok()?.as_subpath()?.manipulator_groups();
+
+			let transform_to_screenspace = document.generate_transform_relative_to_viewport(layer_path).ok()?;
+			let mut result = None;
+			let mut closest_distance_squared = tolerance * tolerance;
+
+			// Find the closest anchor point on the current layer
+			for (index, (&bezier_id, group)) in manipulator_groups.enumerate().enumerate() {
+				if let Some(anchor) = &group.points[ManipulatorType::Anchor as usize] {
+					let screenspace = transform_to_screenspace.transform_point2(anchor.position);
+					let distance_squared = screenspace.distance_squared(position);
+
+					if distance_squared < closest_distance_squared {
+						closest_distance_squared = distance_squared;
+						result = Some((anchor.position, index, bezier_id, group));
+					}
+				}
+			}
+			let (anchor_position, index, bezier_id, group) = result?;
+
+			// Check by comparing the handle positions to the anchor if this maniuplator group is a point
+			let already_sharp = match &group.points {
+				[_, Some(in_handle), Some(out_handle)] => anchor_position.abs_diff_eq(in_handle.position, f64::EPSILON * 100.) && anchor_position.abs_diff_eq(out_handle.position, f64::EPSILON * 100.),
+				[_, Some(handle), None] | [_, None, Some(handle)] => anchor_position.abs_diff_eq(handle.position, f64::EPSILON * 100.),
+				[_, None, None] => true,
+			};
+
+			let (in_handle, out_handle) = if already_sharp {
+				// Grab the next and previous manipulator groups by simply looking at the next / previous index
+				// TODO: Wrapping around on a closed path
+				let previous_position = index.checked_sub(1).and_then(|index| manipulator_groups.by_index(index)).and_then(|group| group.points[0].as_ref());
+				let next_position = manipulator_groups.by_index(index + 1).and_then(|group| group.points[0].as_ref());
+
+				// To find the length of the new tangent we just take the distance to the anchor and divide by 3 (pretty arbitrary)
+				let length_previous = previous_position.map(|point| (point.position - anchor_position).length() / 3.);
+				let length_next = next_position.map(|point| (point.position - anchor_position).length() / 3.);
+
+				// Use the position relative to the anchor
+				let relative_previous_normalised = previous_position.map(|point| (point.position - anchor_position).normalize());
+				let relative_next_normalised = next_position.map(|point| (point.position - anchor_position).normalize());
+
+				// The direction of the handles is either the perpendicular vector to the sum of the anchors' positions or just the anchor's position (if only one)
+				let handle_direction = match (relative_previous_normalised, relative_next_normalised) {
+					(Some(previous), Some(next)) => DVec2::new(previous.y + next.y, -(previous.x + next.x)),
+					(None, Some(val)) => -val,
+					(Some(val), None) => val,
+					(None, None) => return None,
+				};
+
+				// Mirror the angle but not the distance
+				responses.push_back(
+					Operation::SetManipulatorHandleMirroring {
+						layer_path: layer_path.to_vec(),
+						id: bezier_id,
+						mirror_distance: false,
+						mirror_angle: true,
+					}
+					.into(),
+				);
+
+				let mut handle_vector = handle_direction.normalize();
+
+				// Flip the vector if it is not facing towards the same direction as the anchor
+				if relative_previous_normalised.filter(|pos| pos.dot(handle_vector) < 0.).is_some() || relative_next_normalised.filter(|pos| pos.dot(handle_vector) > 0.).is_some() {
+					handle_vector = -handle_vector;
+				}
+
+				(
+					length_previous.map(|length| anchor_position + handle_vector * length),
+					length_next.map(|length| anchor_position - handle_vector * length),
+				)
+			} else {
+				(Some(anchor_position), Some(anchor_position))
+			};
+
+			// Push both in and out handles into the correct position
+			if let Some(in_handle) = in_handle {
+				let in_handle = Operation::SetManipulatorPoints {
+					layer_path: layer_path.to_vec(),
+					id: bezier_id,
+					manipulator_type: ManipulatorType::InHandle,
+					position: Some(in_handle.into()),
+				};
+				responses.push_back(in_handle.into());
+			}
+			if let Some(out_handle) = out_handle {
+				let out_handle = Operation::SetManipulatorPoints {
+					layer_path: layer_path.to_vec(),
+					id: bezier_id,
+					manipulator_type: ManipulatorType::OutHandle,
+					position: Some(out_handle.into()),
+				};
+				responses.push_back(out_handle.into());
+			}
+			Some(true)
+		};
+		for layer_path in &self.selected_layers {
+			if let Some(result) = process_layer(layer_path) {
+				return result;
+			}
+		}
+		false
 	}
 
 	fn shape<'a>(&'a self, document: &'a Document, layer_id: &[u64]) -> Option<&'a Subpath> {

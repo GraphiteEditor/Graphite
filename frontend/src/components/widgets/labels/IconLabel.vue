@@ -1,5 +1,5 @@
 <template>
-	<LayoutRow :class="['icon-label', iconSizeClass, iconStyleClass]">
+	<LayoutRow :class="['icon-label', iconSizeClass, { disabled }]" :title="tooltip">
 		<component :is="icon" />
 	</LayoutRow>
 </template>
@@ -8,6 +8,10 @@
 .icon-label {
 	flex: 0 0 auto;
 	fill: var(--color-e-nearwhite);
+
+	&.disabled {
+		fill: var(--color-8-uppergray);
+	}
 
 	&.size-12 {
 		width: 12px;
@@ -23,34 +27,25 @@
 		width: 24px;
 		height: 24px;
 	}
-
-	&.node-style {
-		border-radius: 2px;
-		background: var(--color-node-background);
-		fill: var(--color-node-icon);
-	}
 }
 </style>
 
 <script lang="ts">
 import { defineComponent, type PropType } from "vue";
 
-import { type IconName, type IconStyle, ICONS, ICON_COMPONENTS } from "@/utility-functions/icons";
+import { type IconName, ICONS, ICON_COMPONENTS } from "@/utility-functions/icons";
 
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 
 export default defineComponent({
 	props: {
 		icon: { type: String as PropType<IconName>, required: true },
-		iconStyle: { type: String as PropType<IconStyle | undefined>, required: false },
+		disabled: { type: Boolean as PropType<boolean>, default: false },
+		tooltip: { type: String as PropType<string | undefined>, required: false },
 	},
 	computed: {
 		iconSizeClass(): string {
 			return `size-${ICONS[this.icon].size}`;
-		},
-		iconStyleClass(): string {
-			if (!this.iconStyle || this.iconStyle === "Normal") return "";
-			return `${this.iconStyle.toLowerCase()}-style`;
 		},
 	},
 	components: {

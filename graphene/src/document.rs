@@ -2,7 +2,9 @@ use crate::boolean_ops::composite_boolean_operation;
 use crate::intersection::Quad;
 use crate::layers::folder_layer::FolderLayer;
 use crate::layers::image_layer::ImageLayer;
+use crate::layers::imaginate_layer::{ImaginateImageData, ImaginateLayer, ImaginateStatus};
 use crate::layers::layer_info::{Layer, LayerData, LayerDataType, LayerDataTypeDiscriminant};
+use crate::layers::nodegraph_layer::NodeGraphFrameLayer;
 use crate::layers::shape_layer::ShapeLayer;
 use crate::layers::style::RenderData;
 use crate::layers::text_layer::{Font, FontCache, TextLayer};
@@ -42,14 +44,42 @@ impl Default for Document {
 impl Document {
 	/// Wrapper around render, that returns the whole document as a Response.
 	pub fn render_root(&mut self, render_data: RenderData) -> String {
+		// Render and append to the defs section
 		let mut svg_defs = String::from("<defs>");
-
 		self.root.render(&mut vec![], &mut svg_defs, render_data);
-
 		svg_defs.push_str("</defs>");
 
+		// Append the cached rendered SVG
 		svg_defs.push_str(&self.root.cache);
+
 		svg_defs
+	}
+
+	/// Renders everything below the given layer contained within its parent folder.
+	pub fn render_layers_below(&mut self, below_layer_path: &[LayerId], render_data: RenderData) -> Option<String> {
+		// Split the path into the layer ID and its parent folder
+		let (layer_id_to_render_below, parent_folder_path) = below_layer_path.split_last()?;
+
+		// Note: it is bad practice to directly clone and modify the Graphene document structure, this is a temporary hack until this whole system is replaced by the node graph
+		let mut temp_subset_folder = self.layer_mut(parent_folder_path).ok()?.clone();
+		if let LayerDataType::Folder(ref mut folder) = temp_subset_folder.data {
+			// Remove the upper layers to leave behind the lower subset for rendering
+			let count_of_layers_below = folder.layer_ids.iter().position(|id| id == layer_id_to_render_below).unwrap();
+			folder.layer_ids.truncate(count_of_layers_below);
+			folder.layers.truncate(count_of_layers_below);
+
+			// Render and append to the defs section
+			let mut svg_defs = String::from("<defs>");
+			temp_subset_folder.render(&mut vec![], &mut svg_defs, render_data);
+			svg_defs.push_str("</defs>");
+
+			// Append the cached rendered SVG
+			svg_defs.push_str(&temp_subset_folder.cache);
+
+			Some(svg_defs)
+		} else {
+			None
+		}
 	}
 
 	pub fn current_state_identifier(&self) -> u64 {
@@ -412,6 +442,7 @@ impl Document {
 		Ok(())
 	}
 
+	/// For the purposes of rendering, this invalidates the render cache for the layer so it must be re-rendered next time.
 	pub fn mark_as_dirty(&mut self, path: &[LayerId]) -> Result<(), DocumentError> {
 		self.mark_upstream_as_dirty(path)?;
 		Ok(())
@@ -558,6 +589,29 @@ impl Document {
 
 				Some([vec![DocumentChanged, CreatedLayer { path: path.clone() }], update_thumbnails_upstream(&path)].concat())
 			}
+			Operation::AddImaginateFrame { path, insert_index, transform } => {
+				let layer = Layer::new(LayerDataType::Imaginate(ImaginateLayer::default()), transform);
+
+				self.set_layer(&path, layer, insert_index)?;
+
+				Some([vec![DocumentChanged, CreatedLayer { path: path.clone() }], update_thumbnails_upstream(&path)].concat())
+			}
+			Operation::AddNodeGraphFrame { path, insert_index, transform } => {
+				let layer = Layer::new(LayerDataType::NodeGraphFrame(NodeGraphFrameLayer::default()), transform);
+
+				self.set_layer(&path, layer, insert_index)?;
+
+				Some([vec![DocumentChanged, CreatedLayer { path: path.clone() }], update_thumbnails_upstream(&path)].concat())
+			}
+			Operation::SetNodeGraphFrameImageData { layer_path, image_data } => {
+				let layer = self.layer_mut(&layer_path).expect("Setting NodeGraphFrame image data for invalid layer");
+				if let LayerDataType::NodeGraphFrame(node_graph_frame) = &mut layer.data {
+					node_graph_frame.image_data = Some(crate::layers::nodegraph_layer::ImageData { image_data });
+				} else {
+					panic!("Incorrectly trying to set image data for a layer that is not an NodeGraphFrame layer type");
+				}
+				Some(vec![LayerChanged { path: layer_path.clone() }])
+			}
 			Operation::SetTextEditability { path, editable } => {
 				self.layer_mut(&path)?.as_text_mut()?.editable = editable;
 				self.mark_as_dirty(&path)?;
@@ -673,7 +727,7 @@ impl Document {
 			} => {
 				let (folder_path, layer_id) = split_path(&destination_path)?;
 				let folder = self.folder_mut(folder_path)?;
-				folder.add_layer(layer, Some(layer_id), insert_index).ok_or(DocumentError::IndexOutOfBounds)?;
+				folder.add_layer(*layer, Some(layer_id), insert_index).ok_or(DocumentError::IndexOutOfBounds)?;
 				self.mark_as_dirty(&destination_path)?;
 
 				fn aggregate_insertions(folder: &FolderLayer, path: &mut Vec<LayerId>, responses: &mut Vec<DocumentResponse>) {
@@ -753,12 +807,188 @@ impl Document {
 				self.mark_as_dirty(&path)?;
 				Some([vec![DocumentChanged], update_thumbnails_upstream(&path)].concat())
 			}
-			Operation::SetImageBlobUrl { path, blob_url, dimensions } => {
-				let image = self.layer_mut(&path).expect("Blob url for invalid layer").as_image_mut().unwrap();
-				image.blob_url = Some(blob_url);
-				image.dimensions = dimensions.into();
+			Operation::SetLayerBlobUrl { layer_path, blob_url, resolution } => {
+				let layer = self.layer_mut(&layer_path).unwrap_or_else(|_| panic!("Blob url for invalid layer with path '{:?}'", layer_path));
+				match &mut layer.data {
+					LayerDataType::Image(image) => {
+						image.blob_url = Some(blob_url);
+						image.dimensions = resolution.into();
+					}
+					LayerDataType::NodeGraphFrame(node_graph_frame) => {
+						node_graph_frame.blob_url = Some(blob_url);
+						node_graph_frame.dimensions = resolution.into();
+					}
+					LayerDataType::Imaginate(imaginate) => {
+						imaginate.blob_url = Some(blob_url);
+						imaginate.dimensions = resolution.into();
+					}
+					_ => panic!("Incorrectly trying to set the image blob URL for a layer that is not an Image, NodeGraphFrame or Imaginate layer type"),
+				}
+
+				self.mark_as_dirty(&layer_path)?;
+				Some([vec![DocumentChanged, LayerChanged { path: layer_path.clone() }], update_thumbnails_upstream(&layer_path)].concat())
+			}
+			Operation::ImaginateSetImageData { layer_path, image_data } => {
+				let layer = self.layer_mut(&layer_path).expect("Setting Imaginate image data for invalid layer");
+				if let LayerDataType::Imaginate(imaginate) = &mut layer.data {
+					imaginate.image_data = Some(ImaginateImageData { image_data });
+				} else {
+					panic!("Incorrectly trying to set image data for a layer that is not an Imaginate layer type");
+				}
+				Some(vec![LayerChanged { path: layer_path.clone() }])
+			}
+			Operation::ImaginateSetGeneratingStatus { path, percent, status } => {
+				let layer = self.layer_mut(&path).expect("Generating Imaginate for invalid layer");
+				if let LayerDataType::Imaginate(imaginate) = &mut layer.data {
+					if let Some(percentage) = percent {
+						imaginate.percent_complete = percentage;
+					}
+
+					if status == ImaginateStatus::Generating {
+						imaginate.image_data = None;
+					}
+
+					imaginate.status = status;
+				} else {
+					panic!("Incorrectly trying to set the generating status for a layer that is not an Imaginate layer type");
+				}
+				Some(vec![LayerChanged { path: path.clone() }])
+			}
+			Operation::ClearBlobURL { path } => {
+				let layer = self.layer_mut(&path).expect("Clearing Imaginate image for invalid layer");
+				match &mut layer.data {
+					LayerDataType::Imaginate(imaginate) => {
+						imaginate.image_data = None;
+						imaginate.blob_url = None;
+						imaginate.status = ImaginateStatus::Idle;
+						imaginate.percent_complete = 0.;
+					}
+					LayerDataType::NodeGraphFrame(node_graph) => {
+						node_graph.image_data = None;
+						node_graph.blob_url = None;
+					}
+					e => panic!("Incorrectly trying to clear the blob URL for layer of type {}", LayerDataTypeDiscriminant::from(&*e)),
+				}
 				self.mark_as_dirty(&path)?;
 				Some([vec![DocumentChanged, LayerChanged { path: path.clone() }], update_thumbnails_upstream(&path)].concat())
+			}
+			Operation::ImaginateSetNegativePrompt { path, negative_prompt } => {
+				let layer = self.layer_mut(&path).expect("Setting Imaginate negative prompt for invalid layer");
+				if let LayerDataType::Imaginate(imaginate) = &mut layer.data {
+					imaginate.negative_prompt = negative_prompt;
+				} else {
+					panic!("Incorrectly trying to set the negative prompt for a layer that is not an Imaginate layer type");
+				}
+				self.mark_as_dirty(&path)?;
+				Some(vec![LayerChanged { path }])
+			}
+			Operation::ImaginateSetPrompt { path, prompt } => {
+				let layer = self.layer_mut(&path).expect("Setting Imaginate prompt for invalid layer");
+				if let LayerDataType::Imaginate(imaginate) = &mut layer.data {
+					imaginate.prompt = prompt;
+				} else {
+					panic!("Incorrectly trying to set the prompt for a layer that is not an Imaginate layer type");
+				}
+				self.mark_as_dirty(&path)?;
+				Some(vec![LayerChanged { path }])
+			}
+			Operation::ImaginateSetCfgScale { path, cfg_scale } => {
+				let layer = self.layer_mut(&path).expect("Setting Imaginate CFG scale for invalid layer");
+				if let LayerDataType::Imaginate(imaginate) = &mut layer.data {
+					imaginate.cfg_scale = cfg_scale;
+				} else {
+					panic!("Incorrectly trying to set the CFG scale for a layer that is not an Imaginate layer type");
+				}
+				self.mark_as_dirty(&path)?;
+				Some(vec![LayerChanged { path }])
+			}
+			Operation::ImaginateSetDenoisingStrength { path, denoising_strength } => {
+				let layer = self.layer_mut(&path).expect("Setting Imaginate denoising strength for invalid layer");
+				if let LayerDataType::Imaginate(imaginate) = &mut layer.data {
+					imaginate.denoising_strength = denoising_strength;
+				} else {
+					panic!("Incorrectly trying to set the denoising strength for a layer that is not an Imaginate layer type");
+				}
+				self.mark_as_dirty(&path)?;
+				Some(vec![LayerChanged { path }])
+			}
+			Operation::ImaginateSetSamples { path, samples } => {
+				let layer = self.layer_mut(&path).expect("Setting Imaginate samples for invalid layer");
+				if let LayerDataType::Imaginate(imaginate) = &mut layer.data {
+					imaginate.samples = samples;
+				} else {
+					panic!("Incorrectly trying to set the samples for a layer that is not an Imaginate layer type");
+				}
+				self.mark_as_dirty(&path)?;
+				Some(vec![LayerChanged { path }])
+			}
+			Operation::SetImaginateSamplingMethod { path, method } => {
+				let layer = self.layer_mut(&path).expect("Setting Imaginate sampling method for invalid layer");
+				if let LayerDataType::Imaginate(imaginate) = &mut layer.data {
+					imaginate.sampling_method = method;
+				} else {
+					panic!("Incorrectly trying to set the sampling method for a layer that is not an Imaginate layer type");
+				}
+				self.mark_as_dirty(&path)?;
+				Some(vec![LayerChanged { path }])
+			}
+			Operation::ImaginateSetScaleFromResolution { path } => {
+				let layer = self.layer_mut(&path).expect("Setting Imaginate scale from resolution for invalid layer");
+
+				let (width, height) = pick_layer_safe_imaginate_resolution(layer, font_cache);
+
+				let current_width = layer.transform.transform_vector2((1., 0.).into()).length();
+				let current_height = layer.transform.transform_vector2((0., 1.).into()).length();
+
+				let scale_x_by = width as f64 / current_width;
+				let scale_y_by = height as f64 / current_height;
+				let scale_by_vector = DVec2::new(scale_x_by, scale_y_by);
+				let scale_by_matrix = DAffine2::from_scale_angle_translation(scale_by_vector, 0., (0., 0.).into());
+
+				layer.transform = layer.transform * scale_by_matrix;
+
+				self.mark_as_dirty(&path)?;
+				Some([update_thumbnails_upstream(&path), vec![DocumentChanged, LayerChanged { path }]].concat())
+			}
+			Operation::ImaginateSetSeed { path, seed } => {
+				let layer = self.layer_mut(&path).expect("Setting Imaginate seed for invalid layer");
+				if let LayerDataType::Imaginate(imaginate) = &mut layer.data {
+					imaginate.seed = seed;
+				} else {
+					panic!("Incorrectly trying to set the seed for a layer that is not an Imaginate layer type");
+				}
+				self.mark_as_dirty(&path)?;
+				Some(vec![LayerChanged { path }])
+			}
+			Operation::ImaginateSetUseImg2Img { path, use_img2img } => {
+				let layer = self.layer_mut(&path).expect("Calling Imaginate img2img for invalid layer");
+				if let LayerDataType::Imaginate(imaginate) = &mut layer.data {
+					imaginate.use_img2img = use_img2img;
+				} else {
+					panic!("Incorrectly trying to set the img2img status for a layer that is not an Imaginate layer type");
+				}
+				self.mark_as_dirty(&path)?;
+				Some(vec![LayerChanged { path }])
+			}
+			Operation::ImaginateSetRestoreFaces { path, restore_faces } => {
+				let layer = self.layer_mut(&path).expect("Setting Imaginate restore faces for invalid layer");
+				if let LayerDataType::Imaginate(imaginate) = &mut layer.data {
+					imaginate.restore_faces = restore_faces;
+				} else {
+					panic!("Incorrectly trying to set the restore faces status for a layer that is not an Imaginate layer type");
+				}
+				self.mark_as_dirty(&path)?;
+				Some(vec![LayerChanged { path }])
+			}
+			Operation::ImaginateSetTiling { path, tiling } => {
+				let layer = self.layer_mut(&path).expect("Setting Imaginate tiling for invalid layer");
+				if let LayerDataType::Imaginate(imaginate) = &mut layer.data {
+					imaginate.tiling = tiling;
+				} else {
+					panic!("Incorrectly trying to set the tiling status for a layer that is not an Imaginate layer type");
+				}
+				self.mark_as_dirty(&path)?;
+				Some(vec![LayerChanged { path }])
 			}
 			Operation::SetPivot { layer_path, pivot } => {
 				let layer = self.layer_mut(&layer_path).expect("Setting pivot for invalid layer");
@@ -1040,4 +1270,29 @@ fn update_thumbnails_upstream(path: &[LayerId]) -> Vec<DocumentResponse> {
 		responses.push(DocumentResponse::LayerChanged { path: path[0..(length - i)].to_vec() });
 	}
 	responses
+}
+
+pub fn pick_layer_safe_imaginate_resolution(layer: &Layer, font_cache: &FontCache) -> (u64, u64) {
+	let layer_bounds = layer.bounding_transform(font_cache);
+	let layer_bounds_size = (layer_bounds.transform_vector2((1., 0.).into()).length(), layer_bounds.transform_vector2((0., 1.).into()).length());
+
+	pick_safe_imaginate_resolution(layer_bounds_size)
+}
+
+pub fn pick_safe_imaginate_resolution((width, height): (f64, f64)) -> (u64, u64) {
+	const MAX_RESOLUTION: u64 = 1000 * 1000;
+
+	let mut scale_factor = 1.;
+
+	let round_to_increment = |size: f64| (size / 64.).round() as u64 * 64;
+
+	loop {
+		let possible_solution = (round_to_increment(width * scale_factor), round_to_increment(height * scale_factor));
+
+		if possible_solution.0 * possible_solution.1 <= MAX_RESOLUTION {
+			return possible_solution;
+		}
+
+		scale_factor -= 0.1;
+	}
 }

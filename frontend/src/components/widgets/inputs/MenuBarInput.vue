@@ -2,16 +2,16 @@
 	<div class="menu-bar-input" data-menu-bar-input>
 		<div class="entry-container" v-for="(entry, index) in entries" :key="index">
 			<div
-				@click="(e: MouseEvent) => onClick(entry, e.target || undefined)"
-				@blur="(e: FocusEvent) => blur(entry, e.target || undefined)"
+				@click="(e: MouseEvent) => clickEntry(entry, e)"
+				@blur="(e: FocusEvent) => unFocusEntry(entry, e)"
 				@keydown="(e: KeyboardEvent) => entry.ref?.keydown(e, false)"
 				class="entry"
 				:class="{ open: entry.ref?.isOpen }"
 				tabindex="0"
-				data-hover-menu-spawner
+				:data-floating-menu-spawner="entry.children && entry.children.length > 0 ? '' : 'no-hover-transfer'"
 			>
 				<IconLabel v-if="entry.icon" :icon="entry.icon" />
-				<span v-if="entry.label">{{ entry.label }}</span>
+				<TextLabel v-if="entry.label">{{ entry.label }}</TextLabel>
 			</div>
 			<MenuList
 				v-if="entry.children && entry.children.length > 0"
@@ -20,7 +20,7 @@
 				:direction="'Bottom'"
 				:minWidth="240"
 				:drawIcon="true"
-				:ref="(ref: MenuListInstance) => ref && (entry.ref = ref)"
+				:ref="(ref: MenuListInstance): void => (ref && (entry.ref = ref), undefined)"
 			/>
 		</div>
 	</div>
@@ -72,6 +72,7 @@ import { type KeyRaw, type KeysGroup, type MenuBarEntry, type MenuListEntry, Upd
 
 import MenuList from "@/components/floating-menus/MenuList.vue";
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
+import TextLabel from "@/components/widgets/labels/TextLabel.vue";
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 type MenuListInstance = InstanceType<typeof MenuList>;
@@ -118,7 +119,7 @@ export default defineComponent({
 		});
 	},
 	methods: {
-		onClick(menuListEntry: MenuListEntry, target: EventTarget | undefined) {
+		clickEntry(menuListEntry: MenuListEntry, e: MouseEvent) {
 			// If there's no menu to open, trigger the action but don't try to open its non-existant children
 			if (!menuListEntry.children || menuListEntry.children.length === 0) {
 				if (menuListEntry.action && !menuListEntry.disabled) menuListEntry.action();
@@ -127,13 +128,15 @@ export default defineComponent({
 			}
 
 			// Focus the target so that keyboard inputs are sent to the dropdown
-			(target as HTMLElement)?.focus();
+			(e.target as HTMLElement | undefined)?.focus();
 
 			if (menuListEntry.ref) menuListEntry.ref.isOpen = true;
 			else throw new Error("The menu bar floating menu has no associated ref");
 		},
-		blur(menuListEntry: MenuListEntry, target: EventTarget | undefined) {
-			if ((target as HTMLElement)?.closest("[data-menu-bar-input]") !== this.$el && menuListEntry.ref) menuListEntry.ref.isOpen = false;
+		unFocusEntry(menuListEntry: MenuListEntry, e: FocusEvent) {
+			const blurTarget = (e.target as HTMLElement | undefined)?.closest("[data-menu-bar-input]");
+			const self: HTMLDivElement | undefined = this.$el;
+			if (blurTarget !== self && menuListEntry.ref) menuListEntry.ref.isOpen = false;
 		},
 	},
 	data() {
@@ -145,6 +148,7 @@ export default defineComponent({
 	components: {
 		IconLabel,
 		MenuList,
+		TextLabel,
 	},
 });
 </script>

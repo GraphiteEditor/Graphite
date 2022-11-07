@@ -8,9 +8,11 @@ const GRAPHICS = {
 } as const;
 
 // 12px Solid
+import Add from "@/../assets/icon-12px-solid/add.svg";
 import Checkmark from "@/../assets/icon-12px-solid/checkmark.svg";
 import CloseX from "@/../assets/icon-12px-solid/close-x.svg";
 import DropdownArrow from "@/../assets/icon-12px-solid/dropdown-arrow.svg";
+import Empty12px from "@/../assets/icon-12px-solid/empty-12px.svg";
 import FullscreenEnter from "@/../assets/icon-12px-solid/fullscreen-enter.svg";
 import FullscreenExit from "@/../assets/icon-12px-solid/fullscreen-exit.svg";
 import Grid from "@/../assets/icon-12px-solid/grid.svg";
@@ -29,6 +31,7 @@ import KeyboardSpace from "@/../assets/icon-12px-solid/keyboard-space.svg";
 import KeyboardTab from "@/../assets/icon-12px-solid/keyboard-tab.svg";
 import Link from "@/../assets/icon-12px-solid/link.svg";
 import Overlays from "@/../assets/icon-12px-solid/overlays.svg";
+import Remove from "@/../assets/icon-12px-solid/remove.svg";
 import ResetColors from "@/../assets/icon-12px-solid/reset-colors.svg";
 import Snapping from "@/../assets/icon-12px-solid/snapping.svg";
 import Swap from "@/../assets/icon-12px-solid/swap.svg";
@@ -40,9 +43,11 @@ import WindowButtonWinMinimize from "@/../assets/icon-12px-solid/window-button-w
 import WindowButtonWinRestoreDown from "@/../assets/icon-12px-solid/window-button-win-restore-down.svg";
 
 const SOLID_12PX = {
+	Add: { component: Add, size: 12 },
 	Checkmark: { component: Checkmark, size: 12 },
 	CloseX: { component: CloseX, size: 12 },
 	DropdownArrow: { component: DropdownArrow, size: 12 },
+	Empty12px: { component: Empty12px, size: 12 },
 	FullscreenEnter: { component: FullscreenEnter, size: 12 },
 	FullscreenExit: { component: FullscreenExit, size: 12 },
 	Grid: { component: Grid, size: 12 },
@@ -61,6 +66,7 @@ const SOLID_12PX = {
 	KeyboardTab: { component: KeyboardTab, size: 12 },
 	Link: { component: Link, size: 12 },
 	Overlays: { component: Overlays, size: 12 },
+	Remove: { component: Remove, size: 12 },
 	ResetColors: { component: ResetColors, size: 12 },
 	Snapping: { component: Snapping, size: 12 },
 	Swap: { component: Swap, size: 12 },
@@ -89,6 +95,7 @@ import CheckboxUnchecked from "@/../assets/icon-16px-solid/checkbox-unchecked.sv
 import Copy from "@/../assets/icon-16px-solid/copy.svg";
 import EyeHidden from "@/../assets/icon-16px-solid/eye-hidden.svg";
 import EyeVisible from "@/../assets/icon-16px-solid/eye-visible.svg";
+import Eyedropper from "@/../assets/icon-16px-solid/eyedropper.svg";
 import File from "@/../assets/icon-16px-solid/file.svg";
 import FlipHorizontal from "@/../assets/icon-16px-solid/flip-horizontal.svg";
 import FlipVertical from "@/../assets/icon-16px-solid/flip-vertical.svg";
@@ -101,14 +108,22 @@ import NodeColorCorrection from "@/../assets/icon-16px-solid/node-color-correcti
 import NodeFolder from "@/../assets/icon-16px-solid/node-folder.svg";
 import NodeGradient from "@/../assets/icon-16px-solid/node-gradient.svg";
 import NodeImage from "@/../assets/icon-16px-solid/node-image.svg";
+import NodeImaginate from "@/../assets/icon-16px-solid/node-imaginate.svg";
 import NodeMagicWand from "@/../assets/icon-16px-solid/node-magic-wand.svg";
 import NodeMask from "@/../assets/icon-16px-solid/node-mask.svg";
 import NodeMotionBlur from "@/../assets/icon-16px-solid/node-motion-blur.svg";
+import NodeNodes from "@/../assets/icon-16px-solid/node-nodes.svg";
 import NodeOutput from "@/../assets/icon-16px-solid/node-output.svg";
 import NodeShape from "@/../assets/icon-16px-solid/node-shape.svg";
 import NodeText from "@/../assets/icon-16px-solid/node-text.svg";
 import NodeTransform from "@/../assets/icon-16px-solid/node-transform.svg";
 import Paste from "@/../assets/icon-16px-solid/paste.svg";
+import Random from "@/../assets/icon-16px-solid/random.svg";
+import Regenerate from "@/../assets/icon-16px-solid/regenerate.svg";
+import Reload from "@/../assets/icon-16px-solid/reload.svg";
+import Rescale from "@/../assets/icon-16px-solid/rescale.svg";
+import Reset from "@/../assets/icon-16px-solid/reset.svg";
+import Settings from "@/../assets/icon-16px-solid/settings.svg";
 import Trash from "@/../assets/icon-16px-solid/trash.svg";
 import ViewModeNormal from "@/../assets/icon-16px-solid/view-mode-normal.svg";
 import ViewModeOutline from "@/../assets/icon-16px-solid/view-mode-outline.svg";
@@ -135,6 +150,7 @@ const SOLID_16PX = {
 	CheckboxChecked: { component: CheckboxChecked, size: 16 },
 	CheckboxUnchecked: { component: CheckboxUnchecked, size: 16 },
 	Copy: { component: Copy, size: 16 },
+	Eyedropper: { component: Eyedropper, size: 16 },
 	EyeHidden: { component: EyeHidden, size: 16 },
 	EyeVisible: { component: EyeVisible, size: 16 },
 	File: { component: File, size: 16 },
@@ -149,14 +165,22 @@ const SOLID_16PX = {
 	NodeFolder: { component: NodeFolder, size: 16 },
 	NodeGradient: { component: NodeGradient, size: 16 },
 	NodeImage: { component: NodeImage, size: 16 },
+	NodeImaginate: { component: NodeImaginate, size: 16 },
 	NodeMagicWand: { component: NodeMagicWand, size: 16 },
 	NodeMask: { component: NodeMask, size: 16 },
 	NodeMotionBlur: { component: NodeMotionBlur, size: 16 },
+	NodeNodes: { component: NodeNodes, size: 16 },
 	NodeOutput: { component: NodeOutput, size: 16 },
 	NodeShape: { component: NodeShape, size: 16 },
 	NodeText: { component: NodeText, size: 16 },
 	NodeTransform: { component: NodeTransform, size: 16 },
 	Paste: { component: Paste, size: 16 },
+	Random: { component: Random, size: 16 },
+	Regenerate: { component: Regenerate, size: 16 },
+	Reload: { component: Reload, size: 16 },
+	Rescale: { component: Rescale, size: 16 },
+	Reset: { component: Reset, size: 16 },
+	Settings: { component: Settings, size: 16 },
 	Trash: { component: Trash, size: 16 },
 	ViewModeNormal: { component: ViewModeNormal, size: 16 },
 	ViewModeOutline: { component: ViewModeOutline, size: 16 },
@@ -205,6 +229,8 @@ import RasterBrushTool from "@/../assets/icon-24px-two-tone/raster-brush-tool.sv
 import RasterCloneTool from "@/../assets/icon-24px-two-tone/raster-clone-tool.svg";
 import RasterDetailTool from "@/../assets/icon-24px-two-tone/raster-detail-tool.svg";
 import RasterHealTool from "@/../assets/icon-24px-two-tone/raster-heal-tool.svg";
+import RasterImaginateTool from "@/../assets/icon-24px-two-tone/raster-imaginate-tool.svg";
+import RasterNodesTool from "@/../assets/icon-24px-two-tone/raster-nodes-tool.svg";
 import RasterPatchTool from "@/../assets/icon-24px-two-tone/raster-patch-tool.svg";
 import RasterRelightTool from "@/../assets/icon-24px-two-tone/raster-relight-tool.svg";
 import VectorEllipseTool from "@/../assets/icon-24px-two-tone/vector-ellipse-tool.svg";
@@ -220,10 +246,12 @@ import VectorTextTool from "@/../assets/icon-24px-two-tone/vector-text-tool.svg"
 const TWO_TONE_24PX = {
 	GeneralArtboardTool: { component: GeneralArtboardTool, size: 24 },
 	GeneralEyedropperTool: { component: GeneralEyedropperTool, size: 24 },
-	GeneralNavigateTool: { component: GeneralNavigateTool, size: 24 },
-	GeneralSelectTool: { component: GeneralSelectTool, size: 24 },
 	GeneralFillTool: { component: GeneralFillTool, size: 24 },
 	GeneralGradientTool: { component: GeneralGradientTool, size: 24 },
+	GeneralNavigateTool: { component: GeneralNavigateTool, size: 24 },
+	GeneralSelectTool: { component: GeneralSelectTool, size: 24 },
+	RasterImaginateTool: { component: RasterImaginateTool, size: 24 },
+	RasterNodesTool: { component: RasterNodesTool, size: 24 },
 	RasterBrushTool: { component: RasterBrushTool, size: 24 },
 	RasterCloneTool: { component: RasterCloneTool, size: 24 },
 	RasterDetailTool: { component: RasterDetailTool, size: 24 },
@@ -256,7 +284,6 @@ export const ICON_COMPONENTS = Object.fromEntries(Object.entries(ICONS).map(([na
 
 export type IconName = keyof typeof ICONS;
 export type IconSize = undefined | 12 | 16 | 24 | 32;
-export type IconStyle = "Normal" | "Node";
 
 // The following helper type declarations allow us to avoid manually maintaining the `IconName` type declaration as a string union paralleling the keys of the
 // icon definitions. It lets TypeScript do that for us. Our goal is to define the big key-value pair of icons by constraining its values, but inferring its keys.

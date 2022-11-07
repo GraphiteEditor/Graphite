@@ -1,7 +1,7 @@
 <template>
-	<div class="floating-menu" :class="[direction.toLowerCase(), type.toLowerCase()]" ref="floatingMenu">
-		<div class="tail" v-if="open && type === 'Popover'" ref="tail"></div>
-		<div class="floating-menu-container" v-if="open || measuringOngoing" ref="floatingMenuContainer">
+	<div class="floating-menu" :class="[direction.toLowerCase(), type.toLowerCase()]">
+		<div class="tail" v-if="displayTail" ref="tail"></div>
+		<div class="floating-menu-container" v-if="displayContainer" ref="floatingMenuContainer">
 			<LayoutCol class="floating-menu-content" :style="{ minWidth: minWidthStyleValue }" :scrollableY="scrollableY" ref="floatingMenuContent" data-floating-menu-content>
 				<slot></slot>
 			</LayoutCol>
@@ -110,6 +110,13 @@
 		--floating-menu-content-border-radius: 4px;
 	}
 
+	&.cursor .floating-menu-container .floating-menu-content {
+		background: none;
+		box-shadow: none;
+		border-radius: 0;
+		padding: 0;
+	}
+
 	&.center {
 		justify-content: center;
 		align-items: center;
@@ -180,7 +187,7 @@ import { defineComponent, nextTick, type PropType } from "vue";
 import LayoutCol from "@/components/layout/LayoutCol.vue";
 
 export type MenuDirection = "Top" | "Bottom" | "Left" | "Right" | "TopLeft" | "TopRight" | "BottomLeft" | "BottomRight" | "Center";
-export type MenuType = "Popover" | "Dropdown" | "Dialog";
+export type MenuType = "Popover" | "Dropdown" | "Dialog" | "Cursor";
 
 const POINTER_STRAY_DISTANCE = 100;
 
@@ -194,6 +201,7 @@ export default defineComponent({
 		scrollableY: { type: Boolean as PropType<boolean>, default: false },
 		minWidth: { type: Number as PropType<number>, default: 0 },
 		escapeCloses: { type: Boolean as PropType<boolean>, default: true },
+		strayCloses: { type: Boolean as PropType<boolean>, default: true },
 	},
 	data() {
 		// The resize observer is attached to the floating menu container, which is the zero-height div of the width of the parent element's floating menu spawner.
@@ -221,6 +229,12 @@ export default defineComponent({
 			if (this.measuringOngoing) return "0";
 			return `${Math.max(this.minWidth, this.minWidthParentWidth)}px`;
 		},
+		displayTail() {
+			return this.open && this.type === "Popover";
+		},
+		displayContainer() {
+			return this.open || this.measuringOngoing;
+		},
 	},
 	// Gets the client bounds of the elements and apply relevant styles to them
 	// TODO: Use the Vue :style attribute more whilst not causing recursive updates
@@ -235,16 +249,18 @@ export default defineComponent({
 			this.minWidthParentWidth = entries[0].contentRect.width;
 		},
 		positionAndStyleFloatingMenu() {
-			const workspace = document.querySelector("[data-workspace]");
-			const floatingMenuContainer = this.$refs.floatingMenuContainer as HTMLElement;
-			const floatingMenuContentComponent = this.$refs.floatingMenuContent as typeof LayoutCol;
-			const floatingMenuContent: HTMLElement | undefined = floatingMenuContentComponent?.$el;
-			const floatingMenu = this.$refs.floatingMenu as HTMLElement;
+			if (this.type === "Cursor") return;
 
-			if (!workspace || !floatingMenuContainer || !floatingMenuContentComponent || !floatingMenuContent || !floatingMenu) return;
+			const workspace = document.querySelector("[data-workspace]");
+			const floatingMenu: HTMLDivElement | undefined = this.$el;
+			const floatingMenuContainer = this.$refs.floatingMenuContainer as HTMLDivElement | undefined;
+			const floatingMenuContent: HTMLDivElement | undefined = (this.$refs.floatingMenuContent as typeof LayoutCol | undefined)?.$el;
+
+			if (!workspace || !floatingMenu || !floatingMenuContainer || !floatingMenuContent) return;
 
 			this.workspaceBounds = workspace.getBoundingClientRect();
 			this.floatingMenuBounds = floatingMenu.getBoundingClientRect();
+			const floatingMenuContainerBounds = floatingMenuContainer.getBoundingClientRect();
 			this.floatingMenuContentBounds = floatingMenuContent.getBoundingClientRect();
 
 			const inParentFloatingMenu = Boolean(floatingMenuContainer.closest("[data-floating-menu-content]"));
@@ -258,13 +274,12 @@ export default defineComponent({
 				if (this.direction === "Left") floatingMenuContent.style.right = `${tailOffset + this.floatingMenuBounds.right}px`;
 
 				// Required to correctly position tail when scrolled (it has a `position: fixed` to prevent clipping)
+				// We use a ref here, instead of a `:style` binding, because that causes the `updated()` hook to call the function we're in recursively forever
 				const tail = this.$refs.tail as HTMLElement;
-				if (tail) {
-					if (this.direction === "Bottom") tail.style.top = `${this.floatingMenuBounds.top}px`;
-					if (this.direction === "Top") tail.style.bottom = `${this.floatingMenuBounds.bottom}px`;
-					if (this.direction === "Right") tail.style.left = `${this.floatingMenuBounds.left}px`;
-					if (this.direction === "Left") tail.style.right = `${this.floatingMenuBounds.right}px`;
-				}
+				if (tail && this.direction === "Bottom") tail.style.top = `${this.floatingMenuBounds.top}px`;
+				if (tail && this.direction === "Top") tail.style.bottom = `${this.floatingMenuBounds.bottom}px`;
+				if (tail && this.direction === "Right") tail.style.left = `${this.floatingMenuBounds.left}px`;
+				if (tail && this.direction === "Left") tail.style.right = `${this.floatingMenuBounds.right}px`;
 			}
 
 			type Edge = "Top" | "Bottom" | "Left" | "Right";
@@ -276,11 +291,11 @@ export default defineComponent({
 
 				if (this.floatingMenuContentBounds.left - this.windowEdgeMargin <= this.workspaceBounds.left) {
 					floatingMenuContent.style.left = `${this.windowEdgeMargin}px`;
-					if (this.workspaceBounds.left + floatingMenuContainer.getBoundingClientRect().left === 12) zeroedBorderHorizontal = "Left";
+					if (this.workspaceBounds.left + floatingMenuContainerBounds.left === 12) zeroedBorderHorizontal = "Left";
 				}
 				if (this.floatingMenuContentBounds.right + this.windowEdgeMargin >= this.workspaceBounds.right) {
 					floatingMenuContent.style.right = `${this.windowEdgeMargin}px`;
-					if (this.workspaceBounds.right - floatingMenuContainer.getBoundingClientRect().right === 12) zeroedBorderHorizontal = "Right";
+					if (this.workspaceBounds.right - floatingMenuContainerBounds.right === 12) zeroedBorderHorizontal = "Right";
 				}
 			}
 			if (this.direction === "Left" || this.direction === "Right") {
@@ -288,11 +303,11 @@ export default defineComponent({
 
 				if (this.floatingMenuContentBounds.top - this.windowEdgeMargin <= this.workspaceBounds.top) {
 					floatingMenuContent.style.top = `${this.windowEdgeMargin}px`;
-					if (this.workspaceBounds.top + floatingMenuContainer.getBoundingClientRect().top === 12) zeroedBorderVertical = "Top";
+					if (this.workspaceBounds.top + floatingMenuContainerBounds.top === 12) zeroedBorderVertical = "Top";
 				}
 				if (this.floatingMenuContentBounds.bottom + this.windowEdgeMargin >= this.workspaceBounds.bottom) {
 					floatingMenuContent.style.bottom = `${this.windowEdgeMargin}px`;
-					if (this.workspaceBounds.bottom - floatingMenuContainer.getBoundingClientRect().bottom === 12) zeroedBorderVertical = "Bottom";
+					if (this.workspaceBounds.bottom - floatingMenuContainerBounds.bottom === 12) zeroedBorderVertical = "Bottom";
 				}
 			}
 
@@ -329,16 +344,12 @@ export default defineComponent({
 			// Make the component show itself with 0 min-width so it can be measured, and wait until the values have been updated to the DOM
 			this.measuringOngoing = true;
 			this.measuringOngoingGuard = true;
-
 			await nextTick();
 
-			// Only measure if the menu is visible, perhaps because a parent component with a `v-if` condition is false
-			let naturalWidth;
-			if (this.$refs.floatingMenuContent) {
-				// Measure the width of the floating menu content element
-				const floatingMenuContent: HTMLElement = (this.$refs.floatingMenuContent as typeof LayoutCol).$el;
-				naturalWidth = floatingMenuContent?.clientWidth;
-			}
+			// Measure the width of the floating menu content element, if it's currently visible
+			// The result will be `undefined` if the menu is invisible, perhaps because an ancestor component is hidden with a falsy `v-if` condition
+			const floatingMenuContent: HTMLDivElement | undefined = (this.$refs.floatingMenuContent as typeof LayoutCol | undefined)?.$el;
+			const naturalWidth = floatingMenuContent?.clientWidth;
 
 			// Turn off measuring mode for the component, which triggers another call to the `updated()` Vue event, so we can turn off the protection after that has happened
 			this.measuringOngoing = false;
@@ -351,21 +362,26 @@ export default defineComponent({
 			}
 		},
 		pointerMoveHandler(e: PointerEvent) {
+			// This element and the element being hovered over
+			const self = this.$el as HTMLDivElement | undefined;
 			const target = e.target as HTMLElement | undefined;
-			const pointerOverFloatingMenuKeepOpen = target?.closest("[data-hover-menu-keep-open]") as HTMLElement | undefined;
-			const pointerOverFloatingMenuSpawner = target?.closest("[data-hover-menu-spawner]") as HTMLElement | undefined;
-			const pointerOverOwnFloatingMenuSpawner = pointerOverFloatingMenuSpawner?.parentElement?.contains(this.$refs.floatingMenu as HTMLElement);
 
-			// Swap this open floating menu with the one created by the floating menu spawner being hovered over
-			if (pointerOverFloatingMenuSpawner && !pointerOverOwnFloatingMenuSpawner) {
-				this.$emit("update:open", false);
-				pointerOverFloatingMenuSpawner.click();
-			}
+			// Get the spawner element (that which is clicked to spawn this floating menu)
+			// Assumes the spawner is a sibling of this FloatingMenu component
+			const ownSpawner: HTMLElement | undefined = self?.parentElement?.querySelector(":scope > [data-floating-menu-spawner]") || undefined;
+			// Get the spawner element containing whatever element the user is hovering over now, if there is one
+			const targetSpawner: HTMLElement | undefined = target?.closest("[data-floating-menu-spawner]") || undefined;
 
-			// Close the floating menu if the pointer has strayed far enough from its bounds
-			if (this.isPointerEventOutsideFloatingMenu(e, POINTER_STRAY_DISTANCE) && !pointerOverOwnFloatingMenuSpawner && !pointerOverFloatingMenuKeepOpen) {
-				// TODO: Extend this rectangle bounds check to all `data-hover-menu-keep-open` element bounds up the DOM tree since currently
-				// submenus disappear with zero stray distance if the cursor is further than the stray distance from only the top-level menu
+			// HOVER TRANSFER
+			// Transfer from this open floating menu to a sibling floating menu if the pointer hovers to a valid neighboring floating menu spawner
+			this.hoverTransfer(self, ownSpawner, targetSpawner);
+
+			// POINTER STRAY
+			// Close the floating menu if the pointer has strayed far enough from its bounds (and it's not hovering over its own spawner)
+			const notHoveringOverOwnSpawner = ownSpawner !== targetSpawner;
+			if (this.strayCloses && notHoveringOverOwnSpawner && this.isPointerEventOutsideFloatingMenu(e, POINTER_STRAY_DISTANCE)) {
+				// TODO: Extend this rectangle bounds check to all submenu bounds up the DOM tree since currently submenus disappear
+				// TODO: with zero stray distance if the cursor is further than the stray distance from only the top-level menu
 				this.$emit("update:open", false);
 			}
 
@@ -374,6 +390,72 @@ export default defineComponent({
 			if (!this.open && !eventIncludesLmb) {
 				this.pointerStillDown = false;
 				window.removeEventListener("pointerup", this.pointerUpHandler);
+			}
+		},
+		hoverTransfer(self: HTMLDivElement | undefined, ownSpawner: HTMLElement | undefined, targetSpawner: HTMLElement | undefined): void {
+			// Algorithm pseudo-code to detect and transfer to hover-transferrable floating menu spawners
+			// Accompanying diagram: <https://files.keavon.com/-/SpringgreenKnownXantus/capture.png>
+			//
+			// Check our own parent for descendant spawners
+			// Filter out ourself and our children
+			// Filter out all with a different distance than our own distance from the currently-being-checked parent
+			// How many left?
+			//     None -> go up a level and repeat
+			//     Some -> is one of them the target?
+			//         Yes -> click it and terminate
+			//         No -> do nothing and terminate
+
+			// Helper function that gets used below
+			const getDepthFromAncestor = (item: Element, ancestor: Element): number | undefined => {
+				let depth = 1;
+
+				let parent = item.parentElement || undefined;
+				while (parent) {
+					if (parent === ancestor) return depth;
+
+					parent = parent.parentElement || undefined;
+					depth += 1;
+				}
+
+				return undefined;
+			};
+
+			// A list of all the descendant spawners: the spawner for this floating menu plus any spawners belonging to widgets inside this floating menu
+			const ownDescendantMenuSpawners = Array.from(self?.parentElement?.querySelectorAll("[data-floating-menu-spawner]") || []);
+
+			// Start with the parent of the spawner for this floating menu and keep widening the search for any other valid spawners that are hover-transferrable
+			let currentAncestor = (targetSpawner && ownSpawner?.parentElement) || undefined;
+			while (currentAncestor) {
+				const ownSpawnerDepthFromCurrentAncestor = ownSpawner && getDepthFromAncestor(ownSpawner, currentAncestor);
+				const currentAncestor2 = currentAncestor; // This duplicate variable avoids an ESLint warning
+
+				// Get the list of descendant spawners and filter out invalid possibilities for spawners that are hover-transferrable
+				const listOfDescendantSpawners = Array.from(currentAncestor?.querySelectorAll("[data-floating-menu-spawner]") || []);
+				const filteredListOfDescendantSpawners = listOfDescendantSpawners.filter((item: Element): boolean => {
+					// Filter away ourself and our descendants
+					const notOurself = !ownDescendantMenuSpawners.includes(item);
+					// And filter away unequal depths from the current ancestor
+					const notUnequalDepths = notOurself && getDepthFromAncestor(item, currentAncestor2) === ownSpawnerDepthFromCurrentAncestor;
+					// And filter away elements that explicitly disable hover transfer
+					return notUnequalDepths && !(item as HTMLElement).getAttribute?.("data-floating-menu-spawner")?.includes("no-hover-transfer");
+				});
+
+				// If none were found, widen the search by a level and keep trying (or stop looping if the root was reached)
+				if (filteredListOfDescendantSpawners.length === 0) {
+					currentAncestor = currentAncestor?.parentElement || undefined;
+				}
+				// Stop after the first non-empty set was found
+				else {
+					const foundTarget = filteredListOfDescendantSpawners.find((item: Element): boolean => item === targetSpawner);
+					// If the currently hovered spawner is one of the found valid hover-transferrable spawners, swap to it by clicking on it
+					if (foundTarget) {
+						this.$emit("update:open", false);
+						(foundTarget as HTMLElement).click();
+					}
+
+					// In either case, we are done searching
+					break;
+				}
 			}
 		},
 		keyDownHandler(e: KeyboardEvent) {
@@ -408,11 +490,14 @@ export default defineComponent({
 			window.removeEventListener("click", this.clickHandlerCapture, true);
 		},
 		isPointerEventOutsideFloatingMenu(e: PointerEvent, extraDistanceAllowed = 0): boolean {
-			// Considers all child menus as well as the top-level one.
-			const allContainedFloatingMenus = [...this.$el.querySelectorAll("[data-floating-menu-content]")];
+			// Consider all child menus as well as the top-level one
+			const floatingMenu: HTMLDivElement | undefined = this.$el;
+			if (!floatingMenu) return true;
+			const allContainedFloatingMenus = [...floatingMenu.querySelectorAll("[data-floating-menu-content]")];
+
 			return !allContainedFloatingMenus.find((element) => !this.isPointerEventOutsideMenuElement(e, element, extraDistanceAllowed));
 		},
-		isPointerEventOutsideMenuElement(e: PointerEvent, element: HTMLElement, extraDistanceAllowed = 0): boolean {
+		isPointerEventOutsideMenuElement(e: PointerEvent, element: Element, extraDistanceAllowed = 0): boolean {
 			const floatingMenuBounds = element.getBoundingClientRect();
 
 			if (floatingMenuBounds.left - e.clientX >= extraDistanceAllowed) return true;
@@ -428,6 +513,8 @@ export default defineComponent({
 		async open(newState: boolean, oldState: boolean) {
 			// Switching from closed to open
 			if (newState && !oldState) {
+				// TODO: Close any other floating menus that may already be open, which can happen using tab navigation and Enter/Space Bar to open
+
 				// Close floating menu if pointer strays far enough away
 				window.addEventListener("pointermove", this.pointerMoveHandler);
 				// Close floating menu if esc is pressed
@@ -441,7 +528,7 @@ export default defineComponent({
 
 				await nextTick();
 
-				const floatingMenuContainer = this.$refs.floatingMenuContainer as HTMLElement;
+				const floatingMenuContainer = this.$refs.floatingMenuContainer as HTMLDivElement | undefined;
 				if (!floatingMenuContainer) return;
 
 				// Start a new observation of the now-open floating menu

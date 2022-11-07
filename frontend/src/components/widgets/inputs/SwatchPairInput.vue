@@ -1,24 +1,18 @@
 <template>
 	<LayoutCol class="swatch-pair">
-		<LayoutRow class="secondary swatch">
-			<button @click="() => clickSecondarySwatch()" :style="`--swatch-color: ${secondary.toRgbaCSS()}`" data-hover-menu-spawner></button>
-			<FloatingMenu :type="'Popover'" :direction="'Right'" v-model:open="secondaryOpen">
-				<ColorPicker @update:color="(color: RGBA) => secondaryColorChanged(color)" :color="secondary.toRgba()" />
-			</FloatingMenu>
-		</LayoutRow>
 		<LayoutRow class="primary swatch">
-			<button @click="() => clickPrimarySwatch()" :style="`--swatch-color: ${primary.toRgbaCSS()}`" data-hover-menu-spawner></button>
-			<FloatingMenu :type="'Popover'" :direction="'Right'" v-model:open="primaryOpen">
-				<ColorPicker @update:color="(color: RGBA) => primaryColorChanged(color)" :color="primary.toRgba()" />
-			</FloatingMenu>
+			<button @click="() => clickPrimarySwatch()" :style="{ '--swatch-color': primary.toRgbaCSS() }" data-floating-menu-spawner="no-hover-transfer" tabindex="0"></button>
+			<ColorPicker v-model:open="primaryOpen" :color="primary" @update:color="(color: Color) => primaryColorChanged(color)" :direction="'Right'" />
+		</LayoutRow>
+		<LayoutRow class="secondary swatch">
+			<button @click="() => clickSecondarySwatch()" :style="{ '--swatch-color': secondary.toRgbaCSS() }" data-floating-menu-spawner="no-hover-transfer" tabindex="0"></button>
+			<ColorPicker v-model:open="secondaryOpen" :color="secondary" @update:color="(color: Color) => secondaryColorChanged(color)" :direction="'Right'" />
 		</LayoutRow>
 	</LayoutCol>
 </template>
 
 <style lang="scss">
 .swatch-pair {
-	// Reversed order of elements paired with `column-reverse` allows primary to overlap secondary without relying on `z-index`
-	flex-direction: column-reverse;
 	flex: 0 0 auto;
 
 	.swatch {
@@ -27,30 +21,20 @@
 		margin: 0 2px;
 		position: relative;
 
-		button {
+		> button {
 			--swatch-color: #ffffff;
 			width: 100%;
 			height: 100%;
 			border-radius: 50%;
-			border: 2px var(--color-7-middlegray) solid;
+			border: 2px var(--color-5-dullgray) solid;
 			box-shadow: 0 0 0 2px var(--color-3-darkgray);
 			margin: 0;
 			padding: 0;
 			box-sizing: border-box;
-			outline: none;
-			background: linear-gradient(45deg, #cccccc 25%, transparent 25%, transparent 75%, #cccccc 75%), linear-gradient(45deg, #cccccc 25%, transparent 25%, transparent 75%, #cccccc 75%),
-				linear-gradient(#ffffff, #ffffff);
-			background-size: 16px 16px;
-			background-position: 0 0, 8px 8px;
+			background: linear-gradient(var(--swatch-color), var(--swatch-color)), var(--color-transparent-checkered-background);
+			background-size: var(--color-transparent-checkered-background-size);
+			background-position: var(--color-transparent-checkered-background-position);
 			overflow: hidden;
-
-			&::before {
-				content: "";
-				display: block;
-				width: 100%;
-				height: 100%;
-				background: var(--swatch-color);
-			}
 		}
 
 		.floating-menu {
@@ -60,6 +44,7 @@
 
 		&.primary {
 			margin-bottom: -8px;
+			z-index: 1;
 		}
 	}
 }
@@ -68,11 +53,9 @@
 <script lang="ts">
 import { defineComponent, type PropType } from "vue";
 
-import { rgbaToDecimalRgba } from "@/utility-functions/color";
-import { type RGBA, type Color } from "@/wasm-communication/messages";
+import { type Color } from "@/wasm-communication/messages";
 
 import ColorPicker from "@/components/floating-menus/ColorPicker.vue";
-import FloatingMenu from "@/components/floating-menus/FloatingMenu.vue";
 import LayoutCol from "@/components/layout/LayoutCol.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 
@@ -97,18 +80,15 @@ export default defineComponent({
 			this.primaryOpen = false;
 			this.secondaryOpen = true;
 		},
-		primaryColorChanged(color: RGBA) {
-			const newColor = rgbaToDecimalRgba(color);
-			this.editor.instance.updatePrimaryColor(newColor.r, newColor.g, newColor.b, newColor.a);
+		primaryColorChanged(color: Color) {
+			this.editor.instance.updatePrimaryColor(color.red, color.green, color.blue, color.alpha);
 		},
-		secondaryColorChanged(color: RGBA) {
-			const newColor = rgbaToDecimalRgba(color);
-			this.editor.instance.updateSecondaryColor(newColor.r, newColor.g, newColor.b, newColor.a);
+		secondaryColorChanged(color: Color) {
+			this.editor.instance.updateSecondaryColor(color.red, color.green, color.blue, color.alpha);
 		},
 	},
 	components: {
 		ColorPicker,
-		FloatingMenu,
 		LayoutCol,
 		LayoutRow,
 	},

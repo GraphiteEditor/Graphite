@@ -48,6 +48,34 @@ where
 	}
 }
 
+pub trait AsRefNode<'n, T>
+where
+	&'n Self: Node<T>,
+	Self: 'n,
+{
+	type Output;
+	fn eval_box(&'n self, input: T) -> <Self>::Output;
+}
+
+impl<'n, N: 'n, I> AsRefNode<'n, I> for N
+where
+	&'n N: Node<I>,
+	N: Node<I>,
+	Self: 'n,
+{
+	type Output = <&'n N as Node<I>>::Output;
+	fn eval_box(&'n self, input: I) -> <Self>::Output {
+		self.eval(input)
+	}
+}
+
+impl<'n, T> Node<T> for &'n (dyn AsRefNode<'n, T, Output = T> + 'n) {
+	type Output = T;
+	fn eval(self, input: T) -> Self::Output {
+		self.eval_box(input)
+	}
+}
+
 #[cfg(feature = "async")]
 #[async_trait]
 pub trait AsyncNode<T> {

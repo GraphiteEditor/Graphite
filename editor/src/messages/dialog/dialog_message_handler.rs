@@ -7,17 +7,20 @@ use crate::messages::prelude::*;
 pub struct DialogMessageHandler {
 	export_dialog: ExportDialogMessageHandler,
 	new_document_dialog: NewDocumentDialogMessageHandler,
+	preferences_dialog: PreferencesDialogMessageHandler,
 }
 
-impl MessageHandler<DialogMessage, &PortfolioMessageHandler> for DialogMessageHandler {
+impl MessageHandler<DialogMessage, (&PortfolioMessageHandler, &PreferencesMessageHandler)> for DialogMessageHandler {
 	#[remain::check]
-	fn process_message(&mut self, message: DialogMessage, portfolio: &PortfolioMessageHandler, responses: &mut VecDeque<Message>) {
+	fn process_message(&mut self, message: DialogMessage, (portfolio, preferences): (&PortfolioMessageHandler, &PreferencesMessageHandler), responses: &mut VecDeque<Message>) {
 		#[remain::sorted]
 		match message {
 			#[remain::unsorted]
 			DialogMessage::ExportDialog(message) => self.export_dialog.process_message(message, (), responses),
 			#[remain::unsorted]
 			DialogMessage::NewDocumentDialog(message) => self.new_document_dialog.process_message(message, (), responses),
+			#[remain::unsorted]
+			DialogMessage::PreferencesDialog(message) => self.preferences_dialog.process_message(message, preferences, responses),
 
 			DialogMessage::CloseAllDocumentsWithConfirmation => {
 				let dialog = simple_dialogs::CloseAllDocumentsDialog;
@@ -97,12 +100,18 @@ impl MessageHandler<DialogMessage, &PortfolioMessageHandler> for DialogMessageHa
 				self.new_document_dialog.register_properties(responses, LayoutTarget::DialogDetails);
 				responses.push_back(FrontendMessage::DisplayDialog { icon: "File".to_string() }.into());
 			}
+			DialogMessage::RequestPreferencesDialog => {
+				self.preferences_dialog = PreferencesDialogMessageHandler {};
+				self.preferences_dialog.register_properties(responses, LayoutTarget::DialogDetails, preferences);
+				responses.push_back(FrontendMessage::DisplayDialog { icon: "Settings".to_string() }.into());
+			}
 		}
 	}
 
 	advertise_actions!(DialogMessageDiscriminant;
-		RequestNewDocumentDialog,
-		RequestExportDialog,
 		CloseAllDocumentsWithConfirmation,
+		RequestExportDialog,
+		RequestNewDocumentDialog,
+		RequestPreferencesDialog,
 	);
 }

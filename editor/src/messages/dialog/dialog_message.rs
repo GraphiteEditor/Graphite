@@ -13,6 +13,9 @@ pub enum DialogMessage {
 	#[remain::unsorted]
 	#[child]
 	NewDocumentDialog(NewDocumentDialogMessage),
+	#[remain::unsorted]
+	#[child]
+	PreferencesDialog(PreferencesDialogMessage),
 
 	// Messages
 	CloseAllDocumentsWithConfirmation,
@@ -32,4 +35,5 @@ pub enum DialogMessage {
 	},
 	RequestExportDialog,
 	RequestNewDocumentDialog,
+	RequestPreferencesDialog,
 }

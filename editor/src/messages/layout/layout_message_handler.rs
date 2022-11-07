@@ -4,6 +4,7 @@ use crate::messages::layout::utility_types::layout_widget::Layout;
 use crate::messages::layout::utility_types::layout_widget::Widget;
 use crate::messages::prelude::*;
 
+use graphene::color::Color;
 use graphene::layers::text_layer::Font;
 
 use serde_json::Value;
@@ -60,8 +61,23 @@ impl<F: Fn(&MessageDiscriminant) -> Vec<KeysGroup>> MessageHandler<LayoutMessage
 						responses.push_back(callback_message);
 					}
 					Widget::ColorInput(color_input) => {
-						let update_value = value.as_str().map(String::from);
-						color_input.value = update_value;
+						let update_value = value.as_object().expect("ColorInput update was not of type: object");
+						let parsed_color = (|| {
+							let is_none = update_value.get("none")?.as_bool()?;
+
+							if !is_none {
+								Some(Some(Color::from_rgbaf32(
+									update_value.get("red")?.as_f64()? as f32,
+									update_value.get("green")?.as_f64()? as f32,
+									update_value.get("blue")?.as_f64()? as f32,
+									update_value.get("alpha")?.as_f64()? as f32,
+								)?))
+							} else {
+								Some(None)
+							}
+						})()
+						.unwrap_or_else(|| panic!("ColorInput update was not able to be parsed with color data: {:?}", color_input));
+						color_input.value = parsed_color;
 						let callback_message = (color_input.on_update.callback)(color_input);
 						responses.push_back(callback_message);
 					}

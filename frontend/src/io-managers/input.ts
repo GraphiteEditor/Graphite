@@ -43,11 +43,7 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 		{ target: window, eventName: "wheel", action: (e: WheelEvent): void => onWheelScroll(e), options: { passive: false } },
 		{ target: window, eventName: "modifyinputfield", action: (e: CustomEvent): void => onModifyInputField(e) },
 		{ target: window.document.body, eventName: "paste", action: (e: ClipboardEvent): void => onPaste(e) },
-		{
-			target: app as EventListenerTarget,
-			eventName: "blur",
-			action: (): void => blurApp(),
-		},
+		{ target: app as EventListenerTarget, eventName: "blur", action: (): void => blurApp() },
 	];
 
 	// Event bindings
@@ -238,7 +234,7 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 
 	function onBeforeUnload(e: BeforeUnloadEvent): void {
 		const activeDocument = document.state.documents[document.state.activeDocumentIndex];
-		if (!activeDocument.isSaved) editor.instance.triggerAutoSave(activeDocument.id);
+		if (activeDocument && !activeDocument.isAutoSaved) editor.instance.triggerAutoSave(activeDocument.id);
 
 		// Skip the message if the editor crashed, since work is already lost
 		if (editor.instance.hasCrashed()) return;

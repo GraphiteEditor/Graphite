@@ -1,14 +1,14 @@
 <template>
-	<div class="pivot-assist">
-		<button @click="setPosition('TopLeft')" class="row-1 col-1" :class="{ active: position === 'TopLeft' }"></button>
-		<button @click="setPosition('TopCenter')" class="row-1 col-2" :class="{ active: position === 'TopCenter' }"><div></div></button>
-		<button @click="setPosition('TopRight')" class="row-1 col-3" :class="{ active: position === 'TopRight' }"><div></div></button>
-		<button @click="setPosition('CenterLeft')" class="row-2 col-1" :class="{ active: position === 'CenterLeft' }"><div></div></button>
-		<button @click="setPosition('Center')" class="row-2 col-2" :class="{ active: position === 'Center' }"><div></div></button>
-		<button @click="setPosition('CenterRight')" class="row-2 col-3" :class="{ active: position === 'CenterRight' }"><div></div></button>
-		<button @click="setPosition('BottomLeft')" class="row-3 col-1" :class="{ active: position === 'BottomLeft' }"><div></div></button>
-		<button @click="setPosition('BottomCenter')" class="row-3 col-2" :class="{ active: position === 'BottomCenter' }"><div></div></button>
-		<button @click="setPosition('BottomRight')" class="row-3 col-3" :class="{ active: position === 'BottomRight' }"><div></div></button>
+	<div class="pivot-assist" :class="{ disabled }">
+		<button @click="setPosition('TopLeft')" class="row-1 col-1" :class="{ active: position === 'TopLeft' }" tabindex="-1" :disabled="disabled"><div></div></button>
+		<button @click="setPosition('TopCenter')" class="row-1 col-2" :class="{ active: position === 'TopCenter' }" tabindex="-1" :disabled="disabled"><div></div></button>
+		<button @click="setPosition('TopRight')" class="row-1 col-3" :class="{ active: position === 'TopRight' }" tabindex="-1" :disabled="disabled"><div></div></button>
+		<button @click="setPosition('CenterLeft')" class="row-2 col-1" :class="{ active: position === 'CenterLeft' }" tabindex="-1" :disabled="disabled"><div></div></button>
+		<button @click="setPosition('Center')" class="row-2 col-2" :class="{ active: position === 'Center' }" tabindex="-1" :disabled="disabled"><div></div></button>
+		<button @click="setPosition('CenterRight')" class="row-2 col-3" :class="{ active: position === 'CenterRight' }" tabindex="-1" :disabled="disabled"><div></div></button>
+		<button @click="setPosition('BottomLeft')" class="row-3 col-1" :class="{ active: position === 'BottomLeft' }" tabindex="-1" :disabled="disabled"><div></div></button>
+		<button @click="setPosition('BottomCenter')" class="row-3 col-2" :class="{ active: position === 'BottomCenter' }" tabindex="-1" :disabled="disabled"><div></div></button>
+		<button @click="setPosition('BottomRight')" class="row-3 col-3" :class="{ active: position === 'BottomRight' }" tabindex="-1" :disabled="disabled"><div></div></button>
 	</div>
 </template>
 
@@ -18,6 +18,8 @@
 	flex: 0 0 auto;
 	width: 24px;
 	height: 24px;
+	--pivot-border-color: var(--color-5-dullgray);
+	--pivot-fill-active: var(--color-e-nearwhite);
 
 	button {
 		position: absolute;
@@ -25,18 +27,12 @@
 		height: 5px;
 		margin: 0;
 		padding: 0;
-		outline: none;
-		background: none;
-		border: 1px solid var(--color-7-middlegray);
-
-		&:hover {
-			border-color: transparent;
-			background: var(--color-6-lowergray);
-		}
+		background: var(--color-1-nearblack);
+		border: 1px solid var(--pivot-border-color);
 
 		&.active {
 			border-color: transparent;
-			background: var(--color-f-white);
+			background: var(--pivot-fill-active);
 		}
 
 		&.col-1::before,
@@ -45,7 +41,7 @@
 			pointer-events: none;
 			width: 2px;
 			height: 0;
-			border-top: 1px solid var(--color-7-middlegray);
+			border-top: 1px solid var(--pivot-border-color);
 			position: absolute;
 			top: 1px;
 			right: -3px;
@@ -57,7 +53,7 @@
 			pointer-events: none;
 			width: 0;
 			height: 2px;
-			border-left: 1px solid var(--color-7-middlegray);
+			border-left: 1px solid var(--pivot-border-color);
 			position: absolute;
 			bottom: -3px;
 			right: 1px;
@@ -92,6 +88,16 @@
 			margin: -2px;
 		}
 	}
+
+	&:not(.disabled) button:not(.active):hover {
+		border-color: transparent;
+		background: var(--color-6-lowergray);
+	}
+
+	&.disabled button {
+		--pivot-border-color: var(--color-4-dimgray);
+		--pivot-fill-active: var(--color-8-uppergray);
+	}
 }
 </style>
 
@@ -104,6 +110,7 @@ export default defineComponent({
 	emits: ["update:position"],
 	props: {
 		position: { type: String as PropType<string>, required: true },
+		disabled: { type: Boolean as PropType<boolean>, default: false },
 	},
 	methods: {
 		setPosition(newPosition: PivotPosition) {

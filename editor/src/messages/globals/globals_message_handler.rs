@@ -8,7 +8,9 @@ impl MessageHandler<GlobalsMessage, ()> for GlobalsMessageHandler {
 	fn process_message(&mut self, message: GlobalsMessage, _data: (), _responses: &mut VecDeque<Message>) {
 		match message {
 			GlobalsMessage::SetPlatform { platform } => {
-				GLOBAL_PLATFORM.set(platform).expect("Failed to set GLOBAL_PLATFORM");
+				if GLOBAL_PLATFORM.get() != Some(&platform) {
+					GLOBAL_PLATFORM.set(platform).expect("Failed to set GLOBAL_PLATFORM");
+				}
 			}
 		}
 	}

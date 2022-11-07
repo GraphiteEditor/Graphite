@@ -1,10 +1,14 @@
 <template>
 	<FieldInput
 		class="text-input"
+		:class="{ centered }"
 		v-model:value="text"
 		:label="label"
 		:spellcheck="true"
 		:disabled="disabled"
+		:tooltip="tooltip"
+		:style="{ 'min-width': minWidth > 0 ? `${minWidth}px` : undefined }"
+		:sharpRightCorners="sharpRightCorners"
 		@textFocused="() => onTextFocused()"
 		@textChanged="() => onTextChanged()"
 		@cancelTextChange="() => onCancelTextChange()"
@@ -17,6 +21,12 @@
 	input {
 		text-align: left;
 	}
+
+	&.centered {
+		input:not(:focus) {
+			text-align: center;
+		}
+	}
 }
 </style>
 
@@ -28,9 +38,20 @@ import FieldInput from "@/components/widgets/inputs/FieldInput.vue";
 export default defineComponent({
 	emits: ["update:value", "commitText"],
 	props: {
-		value: { type: String as PropType<string>, required: true },
+		// Label
 		label: { type: String as PropType<string>, required: false },
+		tooltip: { type: String as PropType<string | undefined>, required: false },
+
+		// Disabled
 		disabled: { type: Boolean as PropType<boolean>, default: false },
+
+		// Value
+		value: { type: String as PropType<string>, required: true },
+
+		// Styling
+		centered: { type: Boolean as PropType<boolean>, default: false },
+		minWidth: { type: Number as PropType<number>, default: 0 },
+		sharpRightCorners: { type: Boolean as PropType<boolean>, default: false },
 	},
 	data() {
 		return {
@@ -51,31 +72,28 @@ export default defineComponent({
 		onTextFocused() {
 			this.editing = true;
 
-			const inputElement = (this.$refs.fieldInput as typeof FieldInput).$refs.input as HTMLInputElement;
-			// Setting the value directly is required to make `inputElement.select()` work
-			inputElement.value = this.text;
-			inputElement.select();
+			(this.$refs.fieldInput as typeof FieldInput | undefined)?.selectAllText(this.text);
 		},
 		// Called only when `value` is changed from the <input> element via user input and committed, either with the
-		// enter key (via the `change` event) or when the <input> element is defocused (with the `blur` event binding)
+		// enter key (via the `change` event) or when the <input> element is unfocused (with the `blur` event binding)
 		onTextChanged() {
-			// The `inputElement.blur()` call in `onCancelTextChange()` causes itself to be run again, so this if statement skips a second run
+			// The `unFocus()` call in `onCancelTextChange()` causes itself to be run again, so this if statement skips a second run
 			if (!this.editing) return;
 
 			this.onCancelTextChange();
 
 			// TODO: Find a less hacky way to do this
-			const inputElement = (this.$refs.fieldInput as typeof FieldInput).$refs.input as HTMLInputElement;
-			this.$emit("commitText", inputElement.value);
+			const inputElement = this.$refs.fieldInput as typeof FieldInput | undefined;
+			if (!inputElement) return;
+			this.$emit("commitText", inputElement.getInputElementValue());
 
 			// Required if value is not changed by the parent component upon update:value event
-			inputElement.value = this.value;
+			inputElement.setInputElementValue(this.value);
 		},
 		onCancelTextChange() {
 			this.editing = false;
 
-			const inputElement = (this.$refs.fieldInput as typeof FieldInput).$refs.input as HTMLInputElement;
-			inputElement.blur();
+			(this.$refs.fieldInput as typeof FieldInput | undefined)?.unFocus();
 		},
 	},
 	components: { FieldInput },

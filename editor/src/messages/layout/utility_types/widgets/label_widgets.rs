@@ -5,15 +5,9 @@ use serde::{Deserialize, Serialize};
 pub struct IconLabel {
 	pub icon: String,
 
-	#[serde(rename = "iconStyle")]
-	pub icon_style: IconStyle,
-}
+	pub disabled: bool,
 
-#[derive(Clone, Serialize, Deserialize, Derivative, Debug, Default, PartialEq, Eq)]
-pub enum IconStyle {
-	#[default]
-	Normal,
-	Node,
+	pub tooltip: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -40,6 +34,8 @@ pub enum SeparatorType {
 
 #[derive(Clone, Serialize, Deserialize, Derivative, Debug, PartialEq, Eq, Default)]
 pub struct TextLabel {
+	pub disabled: bool,
+
 	pub bold: bool,
 
 	pub italic: bool,
@@ -48,6 +44,11 @@ pub struct TextLabel {
 	pub table_align: bool,
 
 	pub multiline: bool,
+
+	#[serde(rename = "minWidth")]
+	pub min_width: u32,
+
+	pub tooltip: String,
 
 	// Body
 	pub value: String,

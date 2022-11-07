@@ -130,18 +130,19 @@ impl SelectedEdges {
 
 	/// Calculates the required scaling to resize the bounding box
 	pub fn bounds_to_scale_transform(&self, position: DVec2, size: DVec2) -> (DAffine2, DVec2) {
-		let mut enlargement_factor = size / (self.bounds[1] - self.bounds[0]);
-		if enlargement_factor.x.is_nan() {
-			enlargement_factor.x = 0.;
+		let old_size = self.bounds[1] - self.bounds[0];
+		let mut enlargement_factor = size / old_size;
+		if !enlargement_factor.x.is_finite() || old_size.x.abs() < f64::EPSILON * 1000. {
+			enlargement_factor.x = 1.;
 		}
-		if enlargement_factor.y.is_nan() {
-			enlargement_factor.y = 0.;
+		if !enlargement_factor.y.is_finite() || old_size.y.abs() < f64::EPSILON * 1000. {
+			enlargement_factor.y = 1.;
 		}
 		let mut pivot = (self.bounds[0] * enlargement_factor - position) / (enlargement_factor - DVec2::splat(1.));
-		if pivot.x.is_nan() {
+		if !pivot.x.is_finite() {
 			pivot.x = 0.;
 		}
-		if pivot.y.is_nan() {
+		if !pivot.y.is_finite() {
 			pivot.y = 0.;
 		}
 		(DAffine2::from_scale(enlargement_factor), pivot)
@@ -278,6 +279,8 @@ impl BoundingBoxOverlays {
 			let mut bottom = (max.y - cursor.y).abs() < select_threshold;
 			let mut left = (cursor.x - min.x).abs() < select_threshold;
 			let mut right = (max.x - cursor.x).abs() < select_threshold;
+
+			// Prioritise single axis transformations on very small bounds
 			if cursor.y - min.y + max.y - cursor.y < select_threshold * 2. && (left || right) {
 				top = false;
 				bottom = false;
@@ -285,6 +288,16 @@ impl BoundingBoxOverlays {
 			if cursor.x - min.x + max.x - cursor.x < select_threshold * 2. && (top || bottom) {
 				left = false;
 				right = false;
+			}
+
+			// On bounds with no width/height, disallow transformation in the relevant axis
+			if (max.x - min.x) < f64::EPSILON * 1000. {
+				left = false;
+				right = false;
+			}
+			if (max.y - min.y) < f64::EPSILON * 1000. {
+				top = false;
+				bottom = false;
 			}
 
 			if top || bottom || left || right {
@@ -313,14 +326,14 @@ impl BoundingBoxOverlays {
 	pub fn get_cursor(&self, input: &InputPreprocessorMessageHandler, rotate: bool) -> MouseCursorIcon {
 		if let Some(directions) = self.check_selected_edges(input.mouse.position) {
 			match directions {
-				(true, false, false, false) | (false, true, false, false) => MouseCursorIcon::NSResize,
-				(false, false, true, false) | (false, false, false, true) => MouseCursorIcon::EWResize,
-				(true, false, true, false) | (false, true, false, true) => MouseCursorIcon::NWSEResize,
-				(true, false, false, true) | (false, true, true, false) => MouseCursorIcon::NESWResize,
+				(true, _, false, false) | (_, true, false, false) => MouseCursorIcon::NSResize,
+				(false, false, true, _) | (false, false, _, true) => MouseCursorIcon::EWResize,
+				(true, _, true, _) | (_, true, _, true) => MouseCursorIcon::NWSEResize,
+				(true, _, _, true) | (_, true, true, _) => MouseCursorIcon::NESWResize,
 				_ => MouseCursorIcon::Default,
 			}
 		} else if rotate && self.check_rotate(input.mouse.position) {
-			MouseCursorIcon::Grabbing
+			MouseCursorIcon::Rotate
 		} else {
 			MouseCursorIcon::Default
 		}

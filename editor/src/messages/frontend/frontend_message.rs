@@ -7,7 +7,9 @@ use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::HintData;
 
 use graphene::color::Color;
+use graphene::layers::imaginate_layer::{ImaginateBaseImage, ImaginateGenerationParameters};
 use graphene::layers::text_layer::Font;
+use graphene::LayerId;
 
 use serde::{Deserialize, Serialize};
 
@@ -50,6 +52,28 @@ pub enum FrontendMessage {
 		#[serde(rename = "isDefault")]
 		is_default: bool,
 	},
+	TriggerImaginateCheckServerStatus {
+		hostname: String,
+	},
+	TriggerImaginateGenerate {
+		parameters: ImaginateGenerationParameters,
+		#[serde(rename = "baseImage")]
+		base_image: Option<ImaginateBaseImage>,
+		hostname: String,
+		#[serde(rename = "refreshFrequency")]
+		refresh_frequency: f64,
+		#[serde(rename = "documentId")]
+		document_id: u64,
+		#[serde(rename = "layerPath")]
+		layer_path: Vec<LayerId>,
+	},
+	TriggerImaginateTerminate {
+		#[serde(rename = "documentId")]
+		document_id: u64,
+		#[serde(rename = "layerPath")]
+		layer_path: Vec<LayerId>,
+		hostname: String,
+	},
 	TriggerImport,
 	TriggerIndexedDbRemoveDocument {
 		#[serde(rename = "documentId")]
@@ -60,6 +84,16 @@ pub enum FrontendMessage {
 		details: FrontendDocumentDetails,
 		version: String,
 	},
+	TriggerLoadAutoSaveDocuments,
+	TriggerLoadPreferences,
+	TriggerNodeGraphFrameGenerate {
+		#[serde(rename = "documentId")]
+		document_id: u64,
+		#[serde(rename = "layerPath")]
+		layer_path: Vec<LayerId>,
+		svg: String,
+		size: glam::DVec2,
+	},
 	TriggerOpenDocument,
 	TriggerPaste,
 	TriggerRasterDownload {
@@ -69,6 +103,12 @@ pub enum FrontendMessage {
 		size: (f64, f64),
 	},
 	TriggerRefreshBoundsOfViewports,
+	TriggerRevokeBlobUrl {
+		url: String,
+	},
+	TriggerSavePreferences {
+		preferences: PreferencesMessageHandler,
+	},
 	TriggerTextCommit,
 	TriggerTextCopy {
 		#[serde(rename = "copyText")]
@@ -125,7 +165,19 @@ pub enum FrontendMessage {
 		size: (f64, f64),
 		multiplier: (f64, f64),
 	},
+	UpdateEyedropperSamplingState {
+		#[serde(rename = "mousePosition")]
+		mouse_position: Option<(f64, f64)>,
+		#[serde(rename = "primaryColor")]
+		primary_color: String,
+		#[serde(rename = "secondaryColor")]
+		secondary_color: String,
+		#[serde(rename = "setColorChoice")]
+		set_color_choice: Option<String>,
+	},
 	UpdateImageData {
+		#[serde(rename = "documentId")]
+		document_id: u64,
 		#[serde(rename = "imageData")]
 		image_data: Vec<FrontendImageData>,
 	},

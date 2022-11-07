@@ -1,6 +1,6 @@
 <template>
 	<LayoutRow class="optional-input">
-		<CheckboxInput :checked="checked" @input="(e: Event) => $emit('update:checked', (e.target as HTMLInputElement).checked)" :icon="icon" :tooltip="tooltip" />
+		<CheckboxInput :checked="checked" :disabled="disabled" @input="(e: Event) => $emit('update:checked', (e.target as HTMLInputElement).checked)" :icon="icon" :tooltip="tooltip" />
 	</LayoutRow>
 </template>
 
@@ -14,22 +14,9 @@
 		white-space: nowrap;
 		width: 24px;
 		height: 24px;
-		border: 1px solid var(--color-7-middlegray);
+		border: 1px solid var(--color-5-dullgray);
 		border-radius: 2px 0 0 2px;
 		box-sizing: border-box;
-
-		&:hover {
-			background: var(--color-6-lowergray);
-		}
-	}
-
-	input:checked + label {
-		border: 1px solid var(--color-accent);
-
-		&:hover {
-			border: 1px solid var(--color-accent-hover);
-			background: none;
-		}
 	}
 }
 </style>
@@ -46,6 +33,7 @@ export default defineComponent({
 	emits: ["update:checked"],
 	props: {
 		checked: { type: Boolean as PropType<boolean>, required: true },
+		disabled: { type: Boolean as PropType<boolean>, default: false },
 		icon: { type: String as PropType<IconName>, default: "Checkmark" },
 		tooltip: { type: String as PropType<string | undefined>, required: false },
 	},

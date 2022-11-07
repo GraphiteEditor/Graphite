@@ -1,13 +1,15 @@
+use crate::messages::layout::utility_types::layout_widget::WidgetCallback;
+
 use derivative::*;
 use glam::DVec2;
 use serde::{Deserialize, Serialize};
-
-use crate::messages::layout::utility_types::layout_widget::WidgetCallback;
 
 #[derive(Clone, Default, Derivative, Serialize, Deserialize)]
 #[derivative(Debug, PartialEq)]
 pub struct PivotAssist {
 	pub position: PivotPosition,
+
+	pub disabled: bool,
 
 	// Callbacks
 	#[serde(skip)]

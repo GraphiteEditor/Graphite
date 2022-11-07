@@ -1,12 +1,14 @@
 <template>
 	<button
 		class="text-button"
-		:class="{ emphasized, disabled }"
+		:class="{ emphasized, disabled, 'sharp-right-corners': sharpRightCorners }"
 		:data-emphasized="emphasized || undefined"
 		:data-disabled="disabled || undefined"
 		data-text-button
-		:style="minWidth > 0 ? `min-width: ${minWidth}px` : ''"
+		:title="tooltip"
+		:style="{ 'min-width': minWidth > 0 ? `${minWidth}px` : undefined }"
 		@click="(e: MouseEvent) => action(e)"
+		:tabindex="disabled ? -1 : 0"
 	>
 		<IconLabel v-if="icon" :icon="icon" />
 		<TextLabel>{{ label }}</TextLabel>
@@ -20,9 +22,9 @@
 	align-items: center;
 	flex: 0 0 auto;
 	height: 24px;
+	margin: 0;
 	padding: 0 8px;
 	box-sizing: border-box;
-	outline: none;
 	border: none;
 	border-radius: 2px;
 	background: var(--color-5-dullgray);
@@ -33,22 +35,22 @@
 		color: var(--color-f-white);
 	}
 
-	&.emphasized {
-		background: var(--color-accent);
-		color: var(--color-f-white);
-
-		&:hover {
-			background: var(--color-accent-hover);
-		}
-
-		&.disabled {
-			background: var(--color-accent-disabled);
-		}
-	}
-
 	&.disabled {
 		background: var(--color-4-dimgray);
 		color: var(--color-8-uppergray);
+	}
+
+	&.emphasized {
+		background: var(--color-e-nearwhite);
+		color: var(--color-2-mildblack);
+
+		&:hover {
+			background: var(--color-f-white);
+		}
+
+		&.disabled {
+			background: var(--color-8-uppergray);
+		}
 	}
 
 	& + .text-button {
@@ -71,23 +73,6 @@ import { type IconName } from "@/utility-functions/icons";
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
 import TextLabel from "@/components/widgets/labels/TextLabel.vue";
 
-export type TextButtonWidget = {
-	tooltip?: string;
-	message?: string | object;
-	callback?: () => void;
-	props: {
-		kind: "TextButton";
-		label: string;
-		icon?: string;
-		emphasized?: boolean;
-		minWidth?: number;
-		disabled?: boolean;
-
-		// Callbacks
-		// `action` is used via `IconButtonWidget.callback`
-	};
-};
-
 export default defineComponent({
 	props: {
 		label: { type: String as PropType<string>, required: true },
@@ -95,6 +80,8 @@ export default defineComponent({
 		emphasized: { type: Boolean as PropType<boolean>, default: false },
 		minWidth: { type: Number as PropType<number>, default: 0 },
 		disabled: { type: Boolean as PropType<boolean>, default: false },
+		tooltip: { type: String as PropType<string | undefined>, required: false },
+		sharpRightCorners: { type: Boolean as PropType<boolean>, default: false },
 
 		// Callbacks
 		action: { type: Function as PropType<(e: MouseEvent) => void>, required: true },
