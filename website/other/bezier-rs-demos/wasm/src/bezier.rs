@@ -356,22 +356,21 @@ impl WasmBezier {
 		let casteljau_svg = points
 			.iter()
 			.enumerate()
-			.map(|(idx, points)| {
-				let color_light = format!("hsl({}, 100%, 50%)", 90 * idx);
+			.map(|(index, points)| {
+				let color_light = format!("hsl({}, 100%, 50%)", 90 * index);
 				let points_and_handle_lines = points
 					.iter()
 					.enumerate()
 					.map(|(index, point)| {
-						format!(
-							"{}{}",
-							draw_circle(point.x, point.y, 3., &color_light, 1.5, WHITE),
-							if index != 0 {
-								let prev_point = points[index - 1];
-								draw_line(prev_point.x, prev_point.y, point.x, point.y, &color_light, 1.5)
-							} else {
-								String::new()
-							}
-						)
+						let circle = draw_circle(point.x, point.y, 3., &color_light, 1.5, WHITE);
+						if index != 0 {
+							let prev_point = points[index - 1];
+							let line = draw_line(prev_point.x, prev_point.y, point.x, point.y, &color_light, 1.5);
+
+							circle + line.as_str()
+						} else {
+							circle
+						}
 					})
 					.fold("".to_string(), |acc, point_svg| acc + &point_svg);
 				points_and_handle_lines
@@ -507,11 +506,11 @@ impl WasmBezier {
 			.reduce(None)
 			.iter()
 			.enumerate()
-			.map(|(idx, bezier_curve)| {
+			.map(|(index, bezier_curve)| {
 				let mut curve_svg = String::new();
 				bezier_curve.to_svg(
 					&mut curve_svg,
-					CURVE_ATTRIBUTES.to_string().replace(BLACK, &format!("hsl({}, 100%, 50%)", (40 * idx))),
+					CURVE_ATTRIBUTES.to_string().replace(BLACK, &format!("hsl({}, 100%, 50%)", (40 * index))),
 					empty_string.clone(),
 					empty_string.clone(),
 					empty_string.clone(),
@@ -530,11 +529,11 @@ impl WasmBezier {
 			.offset(distance)
 			.iter()
 			.enumerate()
-			.map(|(idx, bezier_curve)| {
+			.map(|(index, bezier_curve)| {
 				let mut curve_svg = String::new();
 				bezier_curve.to_svg(
 					&mut curve_svg,
-					CURVE_ATTRIBUTES.to_string().replace(BLACK, &format!("hsl({}, 100%, 50%)", (40 * idx))),
+					CURVE_ATTRIBUTES.to_string().replace(BLACK, &format!("hsl({}, 100%, 50%)", (40 * index))),
 					empty_string.clone(),
 					empty_string.clone(),
 					empty_string.clone(),
