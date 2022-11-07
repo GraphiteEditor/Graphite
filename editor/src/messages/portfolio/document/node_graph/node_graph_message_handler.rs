@@ -1,6 +1,15 @@
-use crate::messages::prelude::*;
+use crate::messages::{
+	layout::utility_types::{
+		layout_widget::{LayoutGroup, Widget, WidgetHolder},
+		widgets::label_widgets::TextLabel,
+	},
+	prelude::*,
+};
 use graph_craft::document::{DocumentNode, NodeInput};
-use graphene::{document::Document, layers::layer_info::LayerDataType};
+use graphene::{
+	document::Document,
+	layers::{layer_info::LayerDataType, nodegraph_layer::NodeGraphFrameLayer},
+};
 
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct FrontendNode {
@@ -12,16 +21,58 @@ pub struct FrontendNode {
 #[derive(Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize)]
 pub struct NodeGraphMessageHandler {
 	pub layer_path: Option<Vec<graphene::LayerId>>,
-	pub selected_node: Option<graph_craft::document::NodeId>,
+	pub selected_nodes: Vec<graph_craft::document::NodeId>,
 }
 
 impl NodeGraphMessageHandler {
 	/// Get the active graph_craft NodeNetwork struct
-	fn get_active_network<'a>(&self, document: &'a mut Document) -> Option<&'a mut graph_craft::document::NodeNetwork> {
+	fn get_active_network_mut<'a>(&self, document: &'a mut Document) -> Option<&'a mut graph_craft::document::NodeNetwork> {
 		self.layer_path.as_ref().and_then(|path| document.layer_mut(path).ok()).and_then(|layer| match &mut layer.data {
 			LayerDataType::NodeGraphFrame(n) => Some(&mut n.network),
 			_ => None,
 		})
+	}
+
+	pub fn collate_properties(&self, node_graph_frame: &NodeGraphFrameLayer) -> Vec<LayoutGroup> {
+		let network = &node_graph_frame.network;
+		let mut section = Vec::new();
+		for node_id in &self.selected_nodes {
+			let Some(document_node) = network.nodes.get(node_id) else{
+				continue;
+			};
+			let name = format!("Node {} Properties", document_node.name);
+			use graph_craft::document::DocumentNodeImplementation;
+			let layout = match &document_node.implementation {
+				DocumentNodeImplementation::Network(_) => vec![LayoutGroup::Row {
+					widgets: vec![WidgetHolder::new(Widget::TextLabel(TextLabel {
+						value: "Cannot currently display properties for network".to_string(),
+						..Default::default()
+					}))],
+				}],
+				DocumentNodeImplementation::Unresolved(identifier) => match identifier.name.as_ref() {
+					"bob" => vec![],
+					unknown => {
+						vec![
+							LayoutGroup::Row {
+								widgets: vec![WidgetHolder::new(Widget::TextLabel(TextLabel {
+									value: format!("TODO: {} properties", unknown),
+									..Default::default()
+								}))],
+							},
+							LayoutGroup::Row {
+								widgets: vec![WidgetHolder::new(Widget::TextLabel(TextLabel {
+									value: "Add in editor/src/messages/portfolio/document/node_graph/node_graph_message_handler.rs".to_string(),
+									..Default::default()
+								}))],
+							},
+						]
+					}
+				},
+			};
+			section.push(LayoutGroup::Section { name, layout });
+		}
+
+		section
 	}
 }
 
@@ -31,7 +82,7 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 		#[remain::sorted]
 		match message {
 			NodeGraphMessage::AddLink { from, to, to_index } => {
-				if let Some(network) = self.get_active_network(document) {
+				if let Some(network) = self.get_active_network_mut(document) {
 					if let Some(to) = network.nodes.get_mut(&to) {
 						// Extend number of inputs if not already large enough
 						if to_index >= to.inputs.len() {
@@ -50,7 +101,7 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 				}
 			}
 			NodeGraphMessage::CreateNode { node_id, name, identifier } => {
-				if let Some(network) = self.get_active_network(document) {
+				if let Some(network) = self.get_active_network_mut(document) {
 					network.nodes.insert(
 						node_id,
 						DocumentNode {
@@ -63,7 +114,7 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 				}
 			}
 			NodeGraphMessage::DeleteNode { node_id } => {
-				if let Some(network) = self.get_active_network(document) {
+				if let Some(network) = self.get_active_network_mut(document) {
 					network.nodes.remove(&node_id);
 					// TODO: Update UI if it is not already updated.
 				}
@@ -73,14 +124,14 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 					// TODO: Necessary cleanup of old node graph
 				}
 
-				if let Some(network) = self.get_active_network(document) {
-					self.selected_node = None;
+				if let Some(network) = self.get_active_network_mut(document) {
+					self.selected_nodes.clear();
 					responses.push_back(FrontendMessage::UpdateNodeGraphVisibility { visible: true }.into());
 					responses.push_back(PropertiesPanelMessage::ResendActiveProperties.into());
 					info!("Opening node graph with nodes {:?}", network.nodes);
 
 					// List of links in format (link_start, link_end, link_end_input_index)
-					let links = network
+					let _links = network
 						.nodes
 						.iter()
 						.flat_map(|(link_end, node)| node.inputs.iter().enumerate().map(move |(index, input)| (input, link_end, index)))
@@ -104,11 +155,11 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 				}
 			}
 			NodeGraphMessage::SelectNode { node } => {
-				self.selected_node = Some(node);
+				self.selected_nodes = vec![node];
 				responses.push_back(PropertiesPanelMessage::ResendActiveProperties.into());
 			}
 			NodeGraphMessage::SetInputValue { node, input_index, value } => {
-				if let Some(network) = self.get_active_network(document) {
+				if let Some(network) = self.get_active_network_mut(document) {
 					if let Some(node) = network.nodes.get_mut(&node) {
 						// Extend number of inputs if not already large enough
 						if input_index >= node.inputs.len() {

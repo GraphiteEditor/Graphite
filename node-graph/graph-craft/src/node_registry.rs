@@ -200,6 +200,21 @@ static NODE_REGISTRY: &[(NodeIdentifier, NodeConstructor)] = &[
 			}
 		})
 	}),
+	(NodeIdentifier::new("graphene_core::raster::DesaturateNode", &[]), |proto_node, stack| {
+		stack.push_fn(|nodes| {
+			let node = DynAnyNode::new(FnNode::new(|color: Color| {
+				let avg = (color.r() + color.g() + color.b()) / 3.0;
+				Color::from_rgbaf32_unchecked(avg, avg, avg, color.a())
+			}));
+
+			if let ProtoNodeInput::Node(pre_id) = proto_node.input {
+				let pre_node = nodes.get(pre_id as usize).unwrap();
+				(pre_node).then(node).into_type_erased()
+			} else {
+				node.into_type_erased()
+			}
+		})
+	}),
 	(NodeIdentifier::new("graphene_std::raster::MapImageNode", &[]), |proto_node, stack| {
 		if let ConstructionArgs::Nodes(operation_node_id) = proto_node.construction_args {
 			stack.push_fn(move |nodes| {
