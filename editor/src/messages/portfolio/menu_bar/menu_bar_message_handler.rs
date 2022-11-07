@@ -242,11 +242,6 @@ impl PropertyHolder for MenuBarMessageHandler {
 							..MenuBarEntry::default()
 						},
 					],
-					vec![MenuBarEntry {
-						label: "Node Graph (In Development)".into(),
-						action: MenuBarEntry::create_action(|_| WorkspaceMessage::NodeGraphToggleVisibility.into()),
-						..MenuBarEntry::default()
-					}],
 				]),
 			),
 			MenuBarEntry::new_root(

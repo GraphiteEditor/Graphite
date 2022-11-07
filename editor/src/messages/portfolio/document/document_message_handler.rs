@@ -168,6 +168,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 					artwork_document: &self.graphene_document,
 					artboard_document: &self.artboard_message_handler.artboards_graphene_document,
 					selected_layers: &mut self.layer_metadata.iter().filter_map(|(path, data)| data.selected.then_some(path.as_slice())),
+					node_graph_message_handler: &self.node_graph_handler,
 				};
 				self.properties_panel_message_handler
 					.process_message(message, (persistent_data, properties_panel_message_handler_data), responses);

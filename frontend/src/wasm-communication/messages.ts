@@ -21,6 +21,10 @@ export class JsMessage {
 // for details about how to transform the JSON from wasm-bindgen into classes.
 // ============================================================================
 
+export class UpdateNodeGraph extends JsMessage {
+	readonly nodes!: FrontendNode[];
+}
+
 export class UpdateNodeGraphVisibility extends JsMessage {
 	readonly visible!: boolean;
 }
@@ -50,6 +54,12 @@ export abstract class DocumentDetails {
 
 export class FrontendDocumentDetails extends DocumentDetails {
 	readonly id!: bigint;
+}
+
+export class FrontendNode {
+	readonly id!: bigint;
+
+	readonly displayName!: string;
 }
 
 export class IndexedDbDocumentDetails extends DocumentDetails {
@@ -1285,6 +1295,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateLayerTreeOptionsLayout,
 	UpdateMenuBarLayout,
 	UpdateMouseCursor,
+	UpdateNodeGraph,
 	UpdateNodeGraphVisibility,
 	UpdateOpenDocumentsList,
 	UpdatePropertyPanelOptionsLayout,

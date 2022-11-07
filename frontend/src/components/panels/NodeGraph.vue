@@ -161,6 +161,19 @@
 						<TextLabel>Gradient</TextLabel>
 					</div>
 				</div>
+
+				<div
+					v-for="node in nodes"
+					:key="node.id.toString()"
+					class="node"
+					:style="{ '--offset-left': Number(node.id) * 5, '--offset-top': '9', '--data-color': 'var(--color-data-raster)', '--data-color-dim': 'var(--color-data-raster-dim)' }"
+					:data-node-id="node.id"
+				>
+					<div class="primary">
+						<IconLabel :icon="'NodeGradient'" />
+						<TextLabel>{{ node.displayName }}</TextLabel>
+					</div>
+				</div>
 			</div>
 			<div
 				class="wires"
@@ -346,6 +359,8 @@
 <script lang="ts">
 import { defineComponent } from "vue";
 
+// import type { FrontendNode } from "@/wasm-communication/messages";
+
 import LayoutCol from "@/components/layout/LayoutCol.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
@@ -356,6 +371,7 @@ const GRID_COLLAPSE_SPACING = 10;
 const GRID_SIZE = 24;
 
 export default defineComponent({
+	inject: ["nodeGraph", "editor"],
 	data() {
 		return {
 			transform: { scale: 1, x: 0, y: 0 },
@@ -376,6 +392,9 @@ export default defineComponent({
 		},
 		dotRadius(): number {
 			return 1 + Math.floor(this.transform.scale - 0.5 + 0.001) / 2;
+		},
+		nodes() {
+			return this.nodeGraph.state.nodes;
 		},
 	},
 	methods: {
@@ -444,11 +463,14 @@ export default defineComponent({
 		},
 		pointerDown(e: PointerEvent) {
 			const port = (e.target as HTMLDivElement).closest("[data-port]") as HTMLDivElement;
+			const node = (e.target as HTMLElement).closest(".node") as HTMLElement | undefined;
 
 			if (port) {
 				const output = port.classList.contains("output");
 				const path = this.createWirePath(port, port, false, false);
 				this.drawing = { port, output, path };
+			} else if (node?.dataset.nodeId) {
+				this.editor.instance.selectNode(BigInt(node.dataset.nodeId));
 			} else {
 				this.panning = true;
 			}

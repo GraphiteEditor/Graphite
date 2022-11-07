@@ -238,6 +238,8 @@ import { createPersistenceManager } from "@/io-managers/persistence";
 import { createDialogState, type DialogState } from "@/state-providers/dialog";
 import { createFontsState, type FontsState } from "@/state-providers/fonts";
 import { createFullscreenState, type FullscreenState } from "@/state-providers/fullscreen";
+import type { NodeGraphState } from "@/state-providers/node_graph";
+import { createNodeGraphState } from "@/state-providers/node_graph";
 import { createPanelsState, type PanelsState } from "@/state-providers/panels";
 import { createPortfolioState, type PortfolioState } from "@/state-providers/portfolio";
 import { createWorkspaceState, type WorkspaceState } from "@/state-providers/workspace";
@@ -270,6 +272,7 @@ declare module "@vue/runtime-core" {
 		panels: PanelsState;
 		portfolio: PortfolioState;
 		workspace: WorkspaceState;
+		nodeGraph: NodeGraphState;
 	}
 }
 
@@ -290,6 +293,7 @@ export default defineComponent({
 			panels: createPanelsState(editor),
 			portfolio: createPortfolioState(editor),
 			workspace: createWorkspaceState(editor),
+			nodeGraph: createNodeGraphState(editor),
 		};
 	},
 	async mounted() {

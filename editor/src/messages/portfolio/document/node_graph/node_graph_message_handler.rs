@@ -2,9 +2,17 @@ use crate::messages::prelude::*;
 use graph_craft::document::{DocumentNode, NodeInput};
 use graphene::{document::Document, layers::layer_info::LayerDataType};
 
+#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct FrontendNode {
+	pub id: graph_craft::document::NodeId,
+	#[serde(rename = "displayName")]
+	pub display_name: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize)]
 pub struct NodeGraphMessageHandler {
 	pub layer_path: Option<Vec<graphene::LayerId>>,
+	pub selected_node: Option<graph_craft::document::NodeId>,
 }
 
 impl NodeGraphMessageHandler {
@@ -19,7 +27,7 @@ impl NodeGraphMessageHandler {
 
 impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageHandler)> for NodeGraphMessageHandler {
 	#[remain::check]
-	fn process_message(&mut self, message: NodeGraphMessage, (document, _ipp): (&mut Document, &InputPreprocessorMessageHandler), _responses: &mut VecDeque<Message>) {
+	fn process_message(&mut self, message: NodeGraphMessage, (document, _ipp): (&mut Document, &InputPreprocessorMessageHandler), responses: &mut VecDeque<Message>) {
 		#[remain::sorted]
 		match message {
 			NodeGraphMessage::AddLink { from, to, to_index } => {
@@ -36,6 +44,8 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 			NodeGraphMessage::CloseNodeGraph => {
 				if let Some(_old_layer_path) = self.layer_path.take() {
 					info!("Closing node graph");
+					responses.push_back(FrontendMessage::UpdateNodeGraphVisibility { visible: false }.into());
+					responses.push_back(PropertiesPanelMessage::ResendActiveProperties.into());
 					// TODO: Close UI and clean up old node graph
 				}
 			}
@@ -64,6 +74,9 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 				}
 
 				if let Some(network) = self.get_active_network(document) {
+					self.selected_node = None;
+					responses.push_back(FrontendMessage::UpdateNodeGraphVisibility { visible: true }.into());
+					responses.push_back(PropertiesPanelMessage::ResendActiveProperties.into());
 					info!("Opening node graph with nodes {:?}", network.nodes);
 
 					// List of links in format (link_start, link_end, link_end_input_index)
@@ -80,10 +93,19 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 						})
 						.collect::<Vec<_>>();
 
-					for (_id, _node) in &network.nodes {
-						// TODO: Populate initial frontend with nodes.
+					let mut nodes = Vec::new();
+					for (id, node) in &network.nodes {
+						nodes.push(FrontendNode {
+							id: *id,
+							display_name: node.name.clone(),
+						})
 					}
+					responses.push_back(FrontendMessage::UpdateNodeGraph { nodes }.into());
 				}
+			}
+			NodeGraphMessage::SelectNode { node } => {
+				self.selected_node = Some(node);
+				responses.push_back(PropertiesPanelMessage::ResendActiveProperties.into());
 			}
 			NodeGraphMessage::SetInputValue { node, input_index, value } => {
 				if let Some(network) = self.get_active_network(document) {

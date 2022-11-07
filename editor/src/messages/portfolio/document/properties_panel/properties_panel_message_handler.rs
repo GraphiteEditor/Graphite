@@ -24,6 +24,7 @@ impl<'a> MessageHandler<PropertiesPanelMessage, (&PersistentData, PropertiesPane
 			artwork_document,
 			artboard_document,
 			selected_layers,
+			node_graph_message_handler,
 		} = data;
 		let get_document = |document_selector: TargetDocument| match document_selector {
 			TargetDocument::Artboard => artboard_document,
@@ -140,9 +141,10 @@ impl<'a> MessageHandler<PropertiesPanelMessage, (&PersistentData, PropertiesPane
 			ResendActiveProperties => {
 				if let Some((path, target_document)) = self.active_selection.clone() {
 					let layer = get_document(target_document).layer(&path).unwrap();
+					let open_graph = node_graph_message_handler.layer_path.as_ref().filter(|layer_path| *layer_path == &path).is_some();
 					match target_document {
 						TargetDocument::Artboard => register_artboard_layer_properties(layer, responses, persistent_data),
-						TargetDocument::Artwork => register_artwork_layer_properties(path, layer, responses, persistent_data),
+						TargetDocument::Artwork => register_artwork_layer_properties(path, layer, responses, persistent_data, open_graph),
 					}
 				}
 			}

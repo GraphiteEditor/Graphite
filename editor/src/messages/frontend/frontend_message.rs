@@ -2,6 +2,7 @@ use super::utility_types::{FrontendDocumentDetails, FrontendImageData, MouseCurs
 use crate::messages::layout::utility_types::layout_widget::SubLayout;
 use crate::messages::layout::utility_types::misc::LayoutTarget;
 use crate::messages::layout::utility_types::widgets::menu_widgets::MenuBarEntry;
+use crate::messages::portfolio::document::node_graph::FrontendNode;
 use crate::messages::portfolio::document::utility_types::layer_panel::{LayerPanelEntry, RawBuffer};
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::HintData;
@@ -197,6 +198,9 @@ pub enum FrontendMessage {
 	},
 	UpdateMouseCursor {
 		cursor: MouseCursorIcon,
+	},
+	UpdateNodeGraph {
+		nodes: Vec<FrontendNode>,
 	},
 	UpdateNodeGraphVisibility {
 		visible: bool,
