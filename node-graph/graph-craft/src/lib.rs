@@ -119,7 +119,7 @@ mod tests {
 		use crate::executor::{Compiler, DynamicExecutor, Executor};
 
 		let compiler = Compiler {};
-		let protograph = compiler.compile(network);
+		let protograph = compiler.compile(network, false);
 
 		let exec = DynamicExecutor::new(protograph);
 

@@ -1,5 +1,6 @@
 #[cfg(feature = "std")]
 use dyn_any::{DynAny, StaticType};
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
 /// Structure that represents a color.
@@ -8,7 +9,7 @@ use serde::{Deserialize, Serialize};
 /// the values encode the brightness of each channel proportional to the light intensity in cd/m² (nits) in HDR, and `0.0` (black) to `1.0` (white) in SDR color.
 #[repr(C)]
 #[cfg_attr(feature = "std", derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize, DynAny))]
-#[cfg_attr(not(feature = "std"), derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize))]
+#[cfg_attr(not(feature = "std"), derive(Debug, Clone, Copy, PartialEq, Default))]
 pub struct Color {
 	red: f32,
 	green: f32,
@@ -39,7 +40,8 @@ impl Color {
 		if alpha > 1. || [red, green, blue, alpha].iter().any(|c| c.is_sign_negative() || !c.is_finite()) {
 			return None;
 		}
-		Some(Color { red, green, blue, alpha })
+		let color = Color { red, green, blue, alpha };
+		Some(color)
 	}
 
 	/// Return an opaque `Color` from given `f32` RGB channels.

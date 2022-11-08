@@ -1,5 +1,4 @@
 #![no_std]
-#![cfg_attr(target_arch = "spirv", feature(register_attr), register_attr(spirv))]
 
 #[cfg(feature = "async")]
 extern crate alloc;
@@ -11,6 +10,7 @@ use async_trait::async_trait;
 
 pub mod generic;
 pub mod ops;
+#[cfg(not(feature = "gpu"))]
 pub mod raster;
 pub mod structural;
 pub mod value;
@@ -19,12 +19,6 @@ pub trait Node<T> {
 	type Output;
 
 	fn eval(self, input: T) -> Self::Output;
-	fn input(&self) -> &str {
-		core::any::type_name::<T>()
-	}
-	fn output(&self) -> &str {
-		core::any::type_name::<Self::Output>()
-	}
 }
 
 trait Input<I> {
