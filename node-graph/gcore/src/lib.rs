@@ -1,5 +1,5 @@
 #![no_std]
-
+#![cfg_attr(feature = "gpu", feature(unchecked_math))]
 #[cfg(feature = "async")]
 extern crate alloc;
 
