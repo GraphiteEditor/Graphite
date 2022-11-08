@@ -472,8 +472,8 @@ pub fn subdivide_path_seg(p: &PathSeg, t_values: &mut [f64]) -> Vec<Option<PathS
 }
 
 pub fn composite_boolean_operation(mut select: BooleanOperation, shapes: &mut Vec<RefCell<ShapeLayer>>) -> Result<Vec<ShapeLayer>, BooleanOperationError> {
-	if select == BooleanOperation::SubtractBack {
-		select = BooleanOperation::SubtractFront;
+	if select == BooleanOperation::SubtractFront {
+		select = BooleanOperation::SubtractBack;
 		let temp_len = shapes.len();
 		shapes.swap(0, temp_len - 1);
 	}
@@ -504,7 +504,7 @@ pub fn composite_boolean_operation(mut select: BooleanOperation, shapes: &mut Ve
 			}
 			Ok(shapes.iter().map(|ref_shape_layer| ref_shape_layer.borrow().clone()).collect())
 		}
-		BooleanOperation::SubtractFront => {
+		BooleanOperation::SubtractBack => {
 			let mut result = vec![shapes[0].borrow().clone()];
 			for shape_idx in shapes.iter().skip(1) {
 				let mut temp = Vec::new();
@@ -523,11 +523,11 @@ pub fn composite_boolean_operation(mut select: BooleanOperation, shapes: &mut Ve
 			let mut difference = Vec::new();
 			for shape_idx in 0..shapes.len() {
 				shapes.swap(0, shape_idx);
-				difference.append(&mut composite_boolean_operation(BooleanOperation::SubtractFront, shapes)?);
+				difference.append(&mut composite_boolean_operation(BooleanOperation::SubtractBack, shapes)?);
 			}
 			Ok(difference)
 		}
-		BooleanOperation::SubtractBack => unreachable!("composite boolean operation: unreachable subtract from back"),
+		BooleanOperation::SubtractFront => unreachable!("composite boolean operation: unreachable subtract from back"),
 	}
 }
 
@@ -537,8 +537,8 @@ pub fn boolean_operation(mut select: BooleanOperation, alpha: &mut ShapeLayer, b
 	if alpha.shape.manipulator_groups().is_empty() || beta.shape.manipulator_groups().is_empty() {
 		return Err(BooleanOperationError::InvalidSelection);
 	}
-	if select == BooleanOperation::SubtractBack {
-		select = BooleanOperation::SubtractFront;
+	if select == BooleanOperation::SubtractFront {
+		select = BooleanOperation::SubtractBack;
 		swap(alpha, beta);
 	}
 	let mut alpha_shape = close_path(&(&alpha.shape).into());
@@ -625,10 +625,10 @@ pub fn boolean_operation(mut select: BooleanOperation, alpha: &mut ShapeLayer, b
 				Err(err) => Err(err),
 			}
 		}
-		BooleanOperation::SubtractBack => {
+		BooleanOperation::SubtractFront => {
 			unreachable!("Boolean operation: unreachable subtract from back");
 		}
-		BooleanOperation::SubtractFront => {
+		BooleanOperation::SubtractBack => {
 			match if beta_dir != alpha_dir {
 				PathGraph::from_paths(&alpha_shape, &beta_shape)
 			} else {
