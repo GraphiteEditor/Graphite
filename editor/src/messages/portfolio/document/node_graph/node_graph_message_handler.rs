@@ -1,24 +1,19 @@
-use crate::messages::{
-	layout::utility_types::{
-		layout_widget::{LayoutGroup, Widget, WidgetHolder},
-		widgets::label_widgets::TextLabel,
-	},
-	prelude::*,
-};
+use crate::messages::layout::utility_types::layout_widget::{LayoutGroup, Widget, WidgetHolder};
+use crate::messages::layout::utility_types::widgets::label_widgets::TextLabel;
+use crate::messages::prelude::*;
 use graph_craft::document::{DocumentNode, NodeInput};
-use graphene::{
-	document::Document,
-	layers::{layer_info::LayerDataType, nodegraph_layer::NodeGraphFrameLayer},
-};
+use graphene::document::Document;
+use graphene::layers::layer_info::LayerDataType;
+use graphene::layers::nodegraph_layer::NodeGraphFrameLayer;
 
-#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FrontendNode {
 	pub id: graph_craft::document::NodeId,
 	#[serde(rename = "displayName")]
 	pub display_name: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Default, serde::Serialize, serde::Deserialize)]
 pub struct NodeGraphMessageHandler {
 	pub layer_path: Option<Vec<graphene::LayerId>>,
 	pub selected_nodes: Vec<graph_craft::document::NodeId>,
@@ -37,7 +32,7 @@ impl NodeGraphMessageHandler {
 		let network = &node_graph_frame.network;
 		let mut section = Vec::new();
 		for node_id in &self.selected_nodes {
-			let Some(document_node) = network.nodes.get(node_id) else{
+			let Some(document_node) = network.nodes.get(node_id) else {
 				continue;
 			};
 			let name = format!("Node {} Properties", document_node.name);
