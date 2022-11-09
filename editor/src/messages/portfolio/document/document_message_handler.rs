@@ -1836,6 +1836,8 @@ impl DocumentMessageHandler {
 					value: opacity.map(|opacity| opacity * 100.),
 					min: Some(0.),
 					max: Some(100.),
+					range_min: Some(0.),
+					range_max: Some(100.),
 					mode: NumberInputMode::Range,
 					on_update: WidgetCallback::new(|number_input: &NumberInput| {
 						if let Some(value) = number_input.value {
