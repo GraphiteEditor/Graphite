@@ -238,8 +238,7 @@ import { createPersistenceManager } from "@/io-managers/persistence";
 import { createDialogState, type DialogState } from "@/state-providers/dialog";
 import { createFontsState, type FontsState } from "@/state-providers/fonts";
 import { createFullscreenState, type FullscreenState } from "@/state-providers/fullscreen";
-import type { NodeGraphState } from "@/state-providers/node_graph";
-import { createNodeGraphState } from "@/state-providers/node_graph";
+import { createNodeGraphState, type NodeGraphState } from "@/state-providers/node-graph";
 import { createPanelsState, type PanelsState } from "@/state-providers/panels";
 import { createPortfolioState, type PortfolioState } from "@/state-providers/portfolio";
 import { createWorkspaceState, type WorkspaceState } from "@/state-providers/workspace";
@@ -296,7 +295,7 @@ export default defineComponent({
 			nodeGraph: createNodeGraphState(editor),
 		};
 	},
-	async mounted() {
+	mounted() {
 		// Initialize managers, which are isolated systems that subscribe to backend messages to link them to browser API functionality (like JS events, IndexedDB, etc.)
 		Object.assign(managerDestructors, {
 			createClipboardManager: createClipboardManager(this.editor),

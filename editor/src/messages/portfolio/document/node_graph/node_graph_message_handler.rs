@@ -13,6 +13,17 @@ pub struct FrontendNode {
 	pub display_name: String,
 }
 
+// (link_start, link_end, link_end_input_index)
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct FrontendNodeLink {
+	#[serde(rename = "linkStart")]
+	pub link_start: u64,
+	#[serde(rename = "linkEnd")]
+	pub link_end: u64,
+	#[serde(rename = "linkEndInputIndex")]
+	pub link_end_input_index: u64,
+}
+
 #[derive(Debug, Clone, Eq, PartialEq, Default, serde::Serialize, serde::Deserialize)]
 pub struct NodeGraphMessageHandler {
 	pub layer_path: Option<Vec<graphene::LayerId>>,
@@ -126,13 +137,17 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 					info!("Opening node graph with nodes {:?}", network.nodes);
 
 					// List of links in format (link_start, link_end, link_end_input_index)
-					let _links = network
+					let links = network
 						.nodes
 						.iter()
 						.flat_map(|(link_end, node)| node.inputs.iter().enumerate().map(move |(index, input)| (input, link_end, index)))
-						.filter_map(|(input, link_end, link_end_index)| {
-							if let NodeInput::Node(link_start) = input {
-								Some((*link_start, *link_end, link_end_index))
+						.filter_map(|(input, &link_end, link_end_input_index)| {
+							if let NodeInput::Node(link_start) = *input {
+								Some(FrontendNodeLink {
+									link_start,
+									link_end,
+									link_end_input_index: link_end_input_index as u64,
+								})
 							} else {
 								None
 							}
@@ -146,7 +161,8 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 							display_name: node.name.clone(),
 						})
 					}
-					responses.push_back(FrontendMessage::UpdateNodeGraph { nodes }.into());
+					log::debug!("Nodes:\n{:#?}\n\nFrontend Nodes:\n{:#?}\n\nLinks:\n{:#?}", network.nodes, nodes, links);
+					responses.push_back(FrontendMessage::UpdateNodeGraph { nodes, links }.into());
 				}
 			}
 			NodeGraphMessage::SelectNode { node } => {

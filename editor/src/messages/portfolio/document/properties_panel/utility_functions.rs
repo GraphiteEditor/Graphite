@@ -1094,8 +1094,8 @@ fn node_section_node_graph_frame(layer_path: Vec<graphene::LayerId>, node_graph_
 			LayoutGroup::Row {
 				widgets: vec![
 					WidgetHolder::new(Widget::TextButton(TextButton {
-						label: "Generate".into(),
-						tooltip: "Fill layer frame by generating a new image".into(),
+						label: "Render".into(),
+						tooltip: "Fill layer frame by rendering the node graph".into(),
 						on_update: WidgetCallback::new(|_| DocumentMessage::NodeGraphFrameGenerate.into()),
 						..Default::default()
 					})),
@@ -1105,7 +1105,7 @@ fn node_section_node_graph_frame(layer_path: Vec<graphene::LayerId>, node_graph_
 					})),
 					WidgetHolder::new(Widget::TextButton(TextButton {
 						label: "Clear".into(),
-						tooltip: "Remove generated image from the layer frame".into(),
+						tooltip: "Remove rendered node graph from the layer frame".into(),
 						disabled: node_graph_frame.blob_url.is_none(),
 						on_update: WidgetCallback::new(|_| DocumentMessage::FrameClear.into()),
 						..Default::default()

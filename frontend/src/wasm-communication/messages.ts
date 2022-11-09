@@ -22,7 +22,11 @@ export class JsMessage {
 // ============================================================================
 
 export class UpdateNodeGraph extends JsMessage {
+	@Type(() => FrontendNode)
 	readonly nodes!: FrontendNode[];
+
+	@Type(() => FrontendNodeLink)
+	readonly links!: FrontendNodeLink[];
 }
 
 export class UpdateNodeGraphVisibility extends JsMessage {
@@ -60,6 +64,14 @@ export class FrontendNode {
 	readonly id!: bigint;
 
 	readonly displayName!: string;
+}
+
+export class FrontendNodeLink {
+	readonly linkStart!: bigint;
+
+	readonly linkEnd!: bigint;
+
+	readonly linkEndInputIndex!: bigint;
 }
 
 export class IndexedDbDocumentDetails extends DocumentDetails {
