@@ -508,7 +508,6 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				);
 			}
 			MoveSelectedManipulatorPoints { layer_path, delta } => {
-				self.backup(responses);
 				if let Ok(_layer) = self.graphene_document.layer(&layer_path) {
 					responses.push_back(DocumentOperation::MoveSelectedManipulatorPoints { layer_path, delta }.into());
 				}
