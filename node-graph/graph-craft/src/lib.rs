@@ -8,6 +8,9 @@ pub mod proto;
 
 pub mod executor;
 
+#[cfg(feature = "gpu")]
+pub mod gpu;
+
 #[cfg(test)]
 mod tests {
 

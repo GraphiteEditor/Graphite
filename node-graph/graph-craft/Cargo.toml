@@ -4,6 +4,12 @@ version = "0.1.0"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 
+[features]
+default = []
+profiling = ["nvtx", "gpu"]
+gpu = ["serde", "vulkano", "bytemuck", "spirv-builder", "tera"]
+serde = ["dep:serde", "graphene-std/serde", "glam/serde"]
+
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
@@ -18,5 +24,9 @@ log = "0.4"
 serde = { version = "1", features = ["derive", "rc"], optional = true }
 glam = { version = "0.17" }
 
-[features]
-serde = ["dep:serde", "graphene-std/serde", "glam/serde"]
+vulkano = {git = "https://github.com/GraphiteEditor/vulkano", branch = "fix_rust_gpu", optional = true}
+bytemuck = {version = "1.8" , optional = true}
+nvtx = {version = "1.1.1", optional = true}
+tempdir = "0.3.7"
+spirv-builder = {git = "https://github.com/EmbarkStudios/rust-gpu" , branch = "main", optional = true}
+tera = {version = "1.17.1", optional = true}

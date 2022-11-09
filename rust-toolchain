@@ -1,0 +1,14 @@
+# If you see this, run `rustup self update` to get rustup 1.23 or newer.
+
+# NOTE: above comment is for older `rustup` (before TOML support was added),
+# which will treat the first line as the toolchain name, and therefore show it
+# to the user in the error, instead of "error: invalid channel name '[toolchain]'".
+
+[toolchain]
+channel = "nightly-2022-10-01"
+components = ["rust-src", "rustc-dev", "llvm-tools-preview"]
+# commit_hash = 8ce3204af9463db3192ea1eb31c45c2f6d4b5ae6
+
+# Whenever changing the nightly channel, update the commit hash above, and make
+# sure to change REQUIRED_TOOLCHAIN in crates/rustc_codegen_spirv/src/build.rs also.
+
