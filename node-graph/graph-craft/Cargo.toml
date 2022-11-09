@@ -7,13 +7,13 @@ license = "MIT OR Apache-2.0"
 [features]
 default = []
 profiling = ["nvtx", "gpu"]
-gpu = ["serde", "vulkano", "bytemuck", "spirv-builder", "tera"]
+gpu = ["serde", "vulkano", "spirv-builder", "tera", "graphene-core/gpu"]
 serde = ["dep:serde", "graphene-std/serde", "glam/serde"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-graphene-core = { path = "../gcore", features = ["async", "std"] }
+graphene-core = { path = "../gcore", features = ["async", "std" ] }
 graphene-std = { path = "../gstd" }
 dyn-any = { path = "../../libraries/dyn-any", features = ["log-bad-types", "rc", "glam"] }
 num-traits = "0.2"
@@ -25,8 +25,9 @@ serde = { version = "1", features = ["derive", "rc"], optional = true }
 glam = { version = "0.17" }
 
 vulkano = {git = "https://github.com/GraphiteEditor/vulkano", branch = "fix_rust_gpu", optional = true}
-bytemuck = {version = "1.8" , optional = true}
+bytemuck = {version = "1.8"  }
 nvtx = {version = "1.1.1", optional = true}
 tempdir = "0.3.7"
 spirv-builder = {git = "https://github.com/EmbarkStudios/rust-gpu" , branch = "main", optional = true}
 tera = {version = "1.17.1", optional = true}
+anyhow = "1.0.66"

@@ -217,7 +217,6 @@ impl ProtoNetwork {
 	}
 	fn resolve_inputs_impl(&mut self) -> bool {
 		self.reorder_ids();
-		dbg!(&self);
 
 		let mut lookup = self.nodes.iter().map(|(id, _)| (*id, *id)).collect::<HashMap<_, _>>();
 		let compose_node_id = self.nodes.len() as NodeId;
@@ -321,7 +320,6 @@ impl ProtoNetwork {
 	}
 
 	fn replace_node_references(&mut self, lookup: &HashMap<u64, u64>) {
-		dbg!(&lookup);
 		self.nodes.iter_mut().for_each(|(sid, node)| {
 			node.map_ids(|id| *lookup.get(&id).expect("node not found in lookup table"));
 		});

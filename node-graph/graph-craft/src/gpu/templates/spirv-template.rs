@@ -7,14 +7,8 @@ extern crate spirv_std;
 
 #[cfg(target_arch = "spirv")]
 pub mod gpu {
-    #[repr(C)]
-    pub struct PushConsts {
-        n: u32,
-        node: u32,
-    }
     use super::*;
     use spirv_std::spirv;
-
     use spirv_std::glam::UVec3;
 
     #[allow(unused)]
@@ -23,7 +17,7 @@ pub mod gpu {
         #[spirv(global_invocation_id)] global_id: UVec3,
         #[spirv(storage_buffer, descriptor_set = 0, binding = 0)] a: &[{{input_type}}],
         #[spirv(storage_buffer, descriptor_set = 0, binding = 1)] y: &mut [{{output_type}}],
-        #[spirv(push_constant)] push_consts: &PushConsts,
+        #[spirv(push_constant)] push_consts: &graphene_core::gpu::PushConstants,
     ) {
         let gid = global_id.x as usize;
         // Only process up to n, which is the length of the buffers.

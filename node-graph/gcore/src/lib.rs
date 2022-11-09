@@ -10,10 +10,13 @@ use async_trait::async_trait;
 
 pub mod generic;
 pub mod ops;
-#[cfg(not(feature = "gpu"))]
-pub mod raster;
 pub mod structural;
 pub mod value;
+
+#[cfg(feature = "gpu")]
+pub mod gpu;
+#[cfg(not(target_arch = "spirv"))]
+pub mod raster;
 
 pub trait Node<T> {
 	type Output;

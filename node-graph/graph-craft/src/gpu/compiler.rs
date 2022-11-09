@@ -1,18 +1,20 @@
+use std::path::Path;
+
 use crate::proto::*;
 use tempdir::TempDir;
 use tera::Context;
 
-fn create_tempdir() -> std::io::Result<TempDir> {
+pub fn create_tempdir() -> std::io::Result<TempDir> {
 	TempDir::new("graphite_compile")
 }
 
-fn create_cargo_toml(metadata: &Metadata) -> String {
+fn create_cargo_toml(metadata: &Metadata) -> Result<String, tera::Error> {
 	let mut tera = tera::Tera::default();
-	tera.add_raw_template("cargo_toml", include_str!("templates/Cargo-template.toml")).unwrap();
+	tera.add_raw_template("cargo_toml", include_str!("templates/Cargo-template.toml"))?;
 	let mut context = Context::new();
 	context.insert("name", &metadata.name);
 	context.insert("authors", &metadata.authors);
-	tera.render("cargo_toml", &context).unwrap()
+	tera.render("cargo_toml", &context)
 }
 
 pub struct Metadata {
@@ -26,22 +28,28 @@ impl Metadata {
 	}
 }
 
-pub fn create_files(matadata: &Metadata, network: &ProtoNetwork) -> std::io::Result<TempDir> {
-	let dir = create_tempdir()?;
-	let cargo_toml = create_cargo_toml(matadata);
-	//std::fs::write(dir.path().join("Cargo.toml"), cargo_toml)?;
-	std::fs::write("/tmp/graphite_compile/Cargo.toml", cargo_toml)?;
-	let src = dir.path().join("src");
-	//std::fs::create_dir(&src)?;
-	//std::fs::create_dir("/tmp/graphite_compile/src")?;
+pub fn create_files(matadata: &Metadata, network: &ProtoNetwork, compile_dir: &Path, input_type: &str, output_type: &str) -> anyhow::Result<()> {
+	let src = compile_dir.join("src");
+	let cargo_file = compile_dir.join("Cargo.toml");
+	let cargo_toml = create_cargo_toml(matadata)?;
+	std::fs::write(cargo_file, cargo_toml)?;
+
+	// create src dir
+	match std::fs::create_dir(&src) {
+		Ok(_) => {}
+		Err(e) => {
+			if e.kind() != std::io::ErrorKind::AlreadyExists {
+				return Err(e.into());
+			}
+		}
+	}
 	let lib = src.join("lib.rs");
-	let shader = serialize_gpu(network, "u32".into(), "u32".into());
-	//std::fs::write(lib, shader)?;
-	std::fs::write("/tmp/graphite_compile/src/lib.rs", shader)?;
-	Ok(dir)
+	let shader = serialize_gpu(network, input_type, output_type)?;
+	std::fs::write(lib, shader)?;
+	Ok(())
 }
 
-pub fn serialize_gpu(network: &ProtoNetwork, input_type: String, output_type: String) -> String {
+pub fn serialize_gpu(network: &ProtoNetwork, input_type: &str, output_type: &str) -> anyhow::Result<String> {
 	assert_eq!(network.inputs.len(), 1);
 	/*let input = &network.nodes[network.inputs[0] as usize].1;
 	let output = &network.nodes[network.output as usize].1;
@@ -73,21 +81,19 @@ pub fn serialize_gpu(network: &ProtoNetwork, input_type: String, output_type: St
 
 	let template = include_str!("templates/spirv-template.rs");
 	let mut tera = tera::Tera::default();
-	tera.add_raw_template("spirv", template).unwrap();
+	tera.add_raw_template("spirv", template)?;
 	let mut context = Context::new();
 	nodes.reverse();
 	context.insert("input_type", &input_type);
 	context.insert("output_type", &output_type);
 	context.insert("nodes", &nodes);
 	context.insert("compute_threads", &64);
-	tera.render("spirv", &context).unwrap()
+	Ok(tera.render("spirv", &context)?)
 }
 
 use spirv_builder::{MetadataPrintout, SpirvBuilder, SpirvMetadata};
-pub fn compile(dir: &TempDir) -> Result<spirv_builder::CompileResult, spirv_builder::SpirvBuilderError> {
-	println!("using hardcoded path");
-	//let result = SpirvBuilder::new(dir.path().to_str().unwrap(), "spirv-unknown-spv1.5")
-	let result = SpirvBuilder::new("/tmp/graphite_compile", "spirv-unknown-spv1.5")
+pub fn compile(dir: &Path) -> Result<spirv_builder::CompileResult, spirv_builder::SpirvBuilderError> {
+	let result = SpirvBuilder::new(dir, "spirv-unknown-spv1.5")
         .print_metadata(MetadataPrintout::DependencyOnly)
         .multimodule(false)
         .preserve_bindings(true)
@@ -97,7 +103,6 @@ pub fn compile(dir: &TempDir) -> Result<spirv_builder::CompileResult, spirv_buil
         .spirv_metadata(SpirvMetadata::Full)
         .build()?;
 
-	println!("{:#?}", result);
 	Ok(result)
 }
 
@@ -116,8 +121,7 @@ mod test {
 			name: "project".to_owned(),
 			authors: vec!["Example <john.smith@example.com>".to_owned(), "smith.john@example.com".to_owned()],
 		});
-		let reference = r#"
-[package]
+		let reference = r#"[package]
 name = "project-node"
 version = "0.1.0"
 authors = ["Example <john.smith@example.com>", "smith.john@example.com", ]
@@ -133,6 +137,6 @@ spirv-std = { path = "/home/dennis/Projects/rust/rust-gpu/crates/spirv-std" , fe
 graphene-core = {path = "/home/dennis/graphite/node-graph/gcore", default-features = false, features = ["gpu"]}
 "#;
 
-		assert_eq!(cargo_toml, reference);
+		assert_eq!(cargo_toml.expect("failed to build carog toml template"), reference);
 	}
 }
