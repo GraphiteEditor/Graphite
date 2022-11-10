@@ -145,7 +145,7 @@ mod test {
 				(
 					11,
 					ProtoNode {
-						identifier: NodeIdentifier::new("graphene_core::ops::UncheckedAddNode", &[Type::Generic("u32"), Type::Generic("u32")]),
+						identifier: NodeIdentifier::new("graphene_core::ops::AddNode", &[Type::Generic("u32"), Type::Generic("u32")]),
 						input: ProtoNodeInput::Node(10),
 						construction_args: ConstructionArgs::Nodes(vec![]),
 					},
@@ -166,8 +166,9 @@ mod test {
 		construction_network.reorder_ids();
 		construction_network
 	}
+
 	#[test]
-	fn main() {
+	fn add_on_gpu() {
 		use crate::executor::Executor;
 		let m = compiler::Metadata::new("project".to_owned(), vec!["test@example.com".to_owned()]);
 		let network = inc_network();

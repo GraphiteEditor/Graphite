@@ -10,5 +10,5 @@ publish = false
 crate-type = ["dylib", "lib"]
 
 [dependencies]
-spirv-std = { path = "/home/dennis/Projects/rust/rust-gpu/crates/spirv-std" , features= ["glam"]}
-graphene-core = {path = "/home/dennis/graphite/node-graph/gcore", default-features = false, features = ["gpu"]}
+spirv-std = { git = "https://github.com/EmbarkStudios/rust-gpu" , features= ["glam"]}
+graphene-core = {path = "{{gcore_path}}", default-features = false, features = ["gpu"]}

@@ -14,6 +14,7 @@ fn create_cargo_toml(metadata: &Metadata) -> Result<String, tera::Error> {
 	let mut context = Context::new();
 	context.insert("name", &metadata.name);
 	context.insert("authors", &metadata.authors);
+	context.insert("gcore_path", &format!("{}{}", env!("CARGO_MANIFEST_DIR"), "/../gcore"));
 	tera.render("cargo_toml", &context)
 }
 
@@ -97,7 +98,7 @@ pub fn compile(dir: &Path) -> Result<spirv_builder::CompileResult, spirv_builder
         .print_metadata(MetadataPrintout::DependencyOnly)
         .multimodule(false)
         .preserve_bindings(true)
-        .release(false)
+        .release(true)
         //.relax_struct_store(true)
         //.relax_block_layout(true)
         .spirv_metadata(SpirvMetadata::Full)
@@ -121,6 +122,9 @@ mod test {
 			name: "project".to_owned(),
 			authors: vec!["Example <john.smith@example.com>".to_owned(), "smith.john@example.com".to_owned()],
 		});
+		let cargo_toml = cargo_toml.expect("failed to build carog toml template");
+		let lines = cargo_toml.split('\n').collect::<Vec<_>>();
+		let cargo_toml = lines[..lines.len() - 2].join("\n");
 		let reference = r#"[package]
 name = "project-node"
 version = "0.1.0"
@@ -133,10 +137,8 @@ publish = false
 crate-type = ["dylib", "lib"]
 
 [dependencies]
-spirv-std = { path = "/home/dennis/Projects/rust/rust-gpu/crates/spirv-std" , features= ["glam"]}
-graphene-core = {path = "/home/dennis/graphite/node-graph/gcore", default-features = false, features = ["gpu"]}
-"#;
+spirv-std = { git = "https://github.com/EmbarkStudios/rust-gpu" , features= ["glam"]}"#;
 
-		assert_eq!(cargo_toml.expect("failed to build carog toml template"), reference);
+		assert_eq!(cargo_toml, reference);
 	}
 }
