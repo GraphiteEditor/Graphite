@@ -394,7 +394,7 @@ impl Fsm for PenToolFsmState {
 							responses.push_back(op.into());
 
 							// Push a close path node
-							responses.push_back(add_manipulator_group(&tool_data.path, tool_data.from_start, ManipulatorGroup::closed()));
+							responses.push_back(add_manipulator_group(&tool_data.path, false, ManipulatorGroup::closed()));
 
 							responses.push_back(DocumentMessage::CommitTransaction.into());
 
