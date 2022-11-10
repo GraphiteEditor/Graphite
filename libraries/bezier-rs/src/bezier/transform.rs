@@ -743,16 +743,24 @@ mod tests {
 		assert_eq!(outline.len(), 4);
 
 		// Assert the first length-wise piece of the outline is 10 units from the line
-		assert!(f64_compare(outline[0].evaluate(0.25).distance(line.evaluate(0.25)), 10., MAX_ABSOLUTE_DIFFERENCE)); // f64
+		assert!(f64_compare(
+			outline[0].evaluate(ComputeType::Parametric { t: 0.25 }).distance(line.evaluate(ComputeType::Parametric { t: 0.25 })),
+			10.,
+			MAX_ABSOLUTE_DIFFERENCE
+		)); // f64
 
 		// Assert the first cap touches the line end point at the halfway point
-		assert!(outline[1].evaluate(0.5).abs_diff_eq(line.end(), MAX_ABSOLUTE_DIFFERENCE));
+		assert!(outline[1].evaluate(ComputeType::Parametric { t: 0.5 }).abs_diff_eq(line.end(), MAX_ABSOLUTE_DIFFERENCE));
 
 		// Assert the second length-wise piece of the outline is 10 units from the line
-		assert!(f64_compare(outline[2].evaluate(0.25).distance(line.evaluate(0.75)), 10., MAX_ABSOLUTE_DIFFERENCE)); // f64
+		assert!(f64_compare(
+			outline[2].evaluate(ComputeType::Parametric { t: 0.25 }).distance(line.evaluate(ComputeType::Parametric { t: 0.75 })),
+			10.,
+			MAX_ABSOLUTE_DIFFERENCE
+		)); // f64
 
 		// Assert the second cap touches the line start point at the halfway point
-		assert!(outline[3].evaluate(0.5).abs_diff_eq(line.start(), MAX_ABSOLUTE_DIFFERENCE));
+		assert!(outline[3].evaluate(ComputeType::Parametric { t: 0.5 }).abs_diff_eq(line.start(), MAX_ABSOLUTE_DIFFERENCE));
 	}
 
 	#[test]
@@ -769,9 +777,21 @@ mod tests {
 		dbg!(scaled_bezier);
 
 		// Assert the scaled bezier is 30 units from the line
-		assert!(f64_compare(scaled_bezier.evaluate(0.).distance(bezier.evaluate(0.)), 30., MAX_ABSOLUTE_DIFFERENCE));
-		assert!(f64_compare(scaled_bezier.evaluate(1.).distance(bezier.evaluate(1.)), 30., MAX_ABSOLUTE_DIFFERENCE));
-		assert!(f64_compare(scaled_bezier.evaluate(0.5).distance(bezier.evaluate(0.5)), 30., MAX_ABSOLUTE_DIFFERENCE));
+		assert!(f64_compare(
+			scaled_bezier.evaluate(ComputeType::Parametric { t: 0. }).distance(bezier.evaluate(ComputeType::Parametric { t: 0. })),
+			30.,
+			MAX_ABSOLUTE_DIFFERENCE
+		));
+		assert!(f64_compare(
+			scaled_bezier.evaluate(ComputeType::Parametric { t: 1. }).distance(bezier.evaluate(ComputeType::Parametric { t: 1. })),
+			30.,
+			MAX_ABSOLUTE_DIFFERENCE
+		));
+		assert!(f64_compare(
+			scaled_bezier.evaluate(ComputeType::Parametric { t: 0.5 }).distance(bezier.evaluate(ComputeType::Parametric { t: 0.5 })),
+			30.,
+			MAX_ABSOLUTE_DIFFERENCE
+		));
 	}
 
 	#[test]
