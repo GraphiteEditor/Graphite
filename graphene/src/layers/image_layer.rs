@@ -14,7 +14,7 @@ use std::fmt::Write;
 pub struct ImageLayer {
 	pub mime: String,
 	#[serde(serialize_with = "base64_serde::as_base64", deserialize_with = "base64_serde::from_base64")]
-	pub image_data: Vec<u8>,
+	pub image_data: std::rc::Rc<Vec<u8>>,
 	// TODO: Have the browser dispose of this blob URL when this is dropped (like when the layer is deleted)
 	#[serde(skip)]
 	pub blob_url: Option<String>,
@@ -75,7 +75,7 @@ impl LayerData for ImageLayer {
 }
 
 impl ImageLayer {
-	pub fn new(mime: String, image_data: Vec<u8>) -> Self {
+	pub fn new(mime: String, image_data: std::rc::Rc<Vec<u8>>) -> Self {
 		Self {
 			mime,
 			image_data,

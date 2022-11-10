@@ -53,7 +53,7 @@ pub enum ImaginateStatus {
 #[derive(Debug, Clone, Eq, PartialEq, Deserialize, Serialize)]
 pub struct ImaginateImageData {
 	#[serde(serialize_with = "base64_serde::as_base64", deserialize_with = "base64_serde::from_base64")]
-	pub image_data: Vec<u8>,
+	pub image_data: std::rc::Rc<Vec<u8>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
