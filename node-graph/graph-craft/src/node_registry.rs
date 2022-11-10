@@ -200,11 +200,11 @@ static NODE_REGISTRY: &[(NodeIdentifier, NodeConstructor)] = &[
 			}
 		})
 	}),
-	(NodeIdentifier::new("graphene_core::raster::DesaturateNode", &[]), |proto_node, stack| {
+	(NodeIdentifier::new("graph_craft::node_registry::BrightenColorNode", &[]), |proto_node, stack| {
 		stack.push_fn(|nodes| {
-			let node = DynAnyNode::new(FnNode::new(|color: Color| {
-				let avg = (color.r() + color.g() + color.b()) / 3.0;
-				Color::from_rgbaf32_unchecked(avg, avg, avg, color.a())
+			let node = DynAnyNode::new(FnNode::new(|(color, value): (Color, f32)| {
+				let per_channel = |col: f32| (col + value).clamp(0., 1.);
+				Color::from_rgbaf32_unchecked(per_channel(color.r()), per_channel(color.g()), per_channel(color.b()), color.a())
 			}));
 
 			if let ProtoNodeInput::Node(pre_id) = proto_node.input {
