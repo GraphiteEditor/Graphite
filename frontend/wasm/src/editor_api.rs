@@ -32,7 +32,7 @@ pub fn set_random_seed(seed: u64) {
 /// This avoids creating a json with a list millions of numbers long.
 #[wasm_bindgen(module = "@/wasm-communication/editor")]
 extern "C" {
-	fn updateImage(path: Vec<u64>, mime: String, imageData: Vec<u8>, document_id: u64);
+	fn updateImage(path: Vec<u64>, mime: String, imageData: &[u8], document_id: u64);
 }
 
 /// Provides a handle to access the raw WASM memory
@@ -100,7 +100,7 @@ impl JsEditorHandle {
 		// Special case for update image data to avoid serialization times.
 		if let FrontendMessage::UpdateImageData { document_id, image_data } = message {
 			for image in image_data {
-				updateImage(image.path, image.mime, image.image_data, document_id);
+				updateImage(image.path, image.mime, &image.image_data, document_id);
 			}
 			return;
 		}
