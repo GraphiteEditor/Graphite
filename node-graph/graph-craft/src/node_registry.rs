@@ -233,6 +233,24 @@ static NODE_REGISTRY: &[(NodeIdentifier, NodeConstructor)] = &[
 			unimplemented!()
 		}
 	}),
+	(NodeIdentifier::new("graph_craft::node_registry::GrayscaleImage", &[]), |proto_node, stack| {
+		stack.push_fn(move |nodes| {
+			let grayscale_node = DynAnyNode::new(FnNode::new(|mut image: Image| {
+				for pixel in &mut image.data {
+					let avg = (pixel.r() + pixel.g() + pixel.b()) / 3.;
+					*pixel = Color::from_rgbaf32_unchecked(avg, avg, avg, pixel.a());
+				}
+				image
+			}));
+
+			if let ProtoNodeInput::Node(node_id) = proto_node.input {
+				let pre_node = nodes.get(node_id as usize).unwrap();
+				(pre_node).then(grayscale_node).into_type_erased()
+			} else {
+				grayscale_node.into_type_erased()
+			}
+		})
+	}),
 	(
 		NodeIdentifier::new("graphene_std::raster::ImageNode", &[Concrete(std::borrow::Cow::Borrowed("&str"))]),
 		|_proto_node, stack| {
