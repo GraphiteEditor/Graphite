@@ -1,3 +1,6 @@
+#[macro_use]
+extern crate log;
+
 pub mod node_registry;
 
 pub mod document;

@@ -358,6 +358,7 @@ dependencies = [
  "dyn-clone",
  "graphene-core",
  "graphene-std",
+ "log",
  "num-traits",
  "rand_chacha",
  "serde",

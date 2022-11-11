@@ -201,6 +201,7 @@ static NODE_REGISTRY: &[(NodeIdentifier, NodeConstructor)] = &[
 		})
 	}),
 	(NodeIdentifier::new("graph_craft::node_registry::BrightenColorNode", &[]), |proto_node, stack| {
+		info!("proto node {:?}", proto_node);
 		stack.push_fn(|nodes| {
 			let node = DynAnyNode::new(FnNode::new(|(color, value): (Color, f32)| {
 				let per_channel = |col: f32| (col + value).clamp(0., 1.);

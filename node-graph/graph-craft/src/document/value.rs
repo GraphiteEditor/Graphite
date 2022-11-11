@@ -10,6 +10,7 @@ use dyn_any::{DynAny, Upcast};
 pub enum TaggedValue {
 	String(String),
 	U32(u32),
+	F32(f32),
 	//Image(graphene_std::raster::Image),
 	Color(graphene_core::raster::color::Color),
 }
@@ -19,6 +20,7 @@ impl TaggedValue {
 		match self {
 			TaggedValue::String(x) => Box::new(x),
 			TaggedValue::U32(x) => Box::new(x),
+			TaggedValue::F32(x) => Box::new(x),
 			TaggedValue::Color(x) => Box::new(x),
 		}
 	}

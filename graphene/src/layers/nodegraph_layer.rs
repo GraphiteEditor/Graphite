@@ -127,9 +127,9 @@ impl Default for NodeGraphFrameLayer {
 					(
 						0,
 						DocumentNode {
-							name: "Grayscale".into(),
-							inputs: vec![NodeInput::Network],
-							implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::raster::GrayscaleNode", &[])),
+							name: "Brighten".into(),
+							inputs: vec![NodeInput::Network, NodeInput::Value(value::TaggedValue::F32(4.))],
+							implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graph_craft::node_registry::BrightenColorNode", &[])),
 						},
 					),
 					(
