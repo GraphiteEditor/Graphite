@@ -476,6 +476,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 							.into(),
 						);
 						let mime = "image/bmp".to_string();
+						let image_data = std::rc::Rc::new(image_data);
 						responses.push_back(
 							FrontendMessage::UpdateImageData {
 								document_id,
