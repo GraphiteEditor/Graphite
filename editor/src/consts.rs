@@ -1,7 +1,7 @@
 use graphene::color::Color;
 
 // Viewport
-pub const VIEWPORT_ZOOM_WHEEL_RATE: f64 = 1. / 600.;
+pub const VIEWPORT_ZOOM_WHEEL_RATE: f64 = (1. / 600.) * 3.;
 pub const VIEWPORT_ZOOM_MOUSE_RATE: f64 = 1. / 400.;
 pub const VIEWPORT_ZOOM_SCALE_MIN: f64 = 0.000_000_1;
 pub const VIEWPORT_ZOOM_SCALE_MAX: f64 = 10_000.;

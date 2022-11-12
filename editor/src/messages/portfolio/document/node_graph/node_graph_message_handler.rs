@@ -106,6 +106,13 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 					// TODO: Close UI and clean up old node graph
 				}
 			}
+			NodeGraphMessage::ConnectNodesByLink {
+				output_node,
+				input_node,
+				input_node_connector_index,
+			} => {
+				log::debug!("Connect primary output from node {output_node} to input of index {input_node_connector_index} on node {input_node}.");
+			}
 			NodeGraphMessage::CreateNode { node_id, name, identifier } => {
 				if let Some(network) = self.get_active_network_mut(document) {
 					network.nodes.insert(

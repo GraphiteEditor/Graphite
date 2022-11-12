@@ -127,7 +127,7 @@ impl Default for NodeGraphFrameLayer {
 					(
 						0,
 						DocumentNode {
-							name: "grayscale".into(),
+							name: "Grayscale".into(),
 							inputs: vec![NodeInput::Network],
 							implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::raster::GrayscaleNode", &[])),
 						},
@@ -135,7 +135,7 @@ impl Default for NodeGraphFrameLayer {
 					(
 						1,
 						DocumentNode {
-							name: "map image".into(),
+							name: "Map Image".into(),
 							inputs: vec![NodeInput::Network, NodeInput::Node(0)],
 							implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_std::raster::MapImageNode", &[])),
 						},
