@@ -102,7 +102,7 @@ export default defineComponent({
 			if (!gutter || !nextSibling || !previousSibling) return;
 
 			// Are we resizing horizontally?
-			const isHorizontal = gutter.getAttribute("data-row-horizontal");
+			const isHorizontal = gutter.getAttribute("data-gutter-horizontal") !== null;
 
 			// Get the current size in px of the panels being resized
 			const nextSiblingSize = isHorizontal ? nextSibling.getBoundingClientRect().width : nextSibling.getBoundingClientRect().height;
