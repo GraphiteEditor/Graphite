@@ -4,7 +4,7 @@
 		<div class="node-list">
 			<LayoutRow>Nodes:</LayoutRow>
 			<LayoutRow>
-				<TextButton v-for="nodeType in nodeTypes" v-bind:key="String(nodeType)" :label="'Insert ' + nodeType.name + ' Node'" :action="() => createNode(nodeType.name)"></TextButton>
+				<TextButton v-for="nodeType in nodeTypes" v-bind:key="String(nodeType)" :label="nodeType.name + ' Node'" :action="() => createNode(nodeType.name)"></TextButton>
 			</LayoutRow>
 		</div>
 		<LayoutRow
@@ -35,8 +35,8 @@
 					class="node"
 					:class="{ selected: selected.includes(node.id) }"
 					:style="{
-						'--offset-left': 8 + Number(node.id) * 7,
-						'--offset-top': 4 + Number(node.id) * 2,
+						'--offset-left': 8 + Number(node.id < 9n ? node.id : node.id - 9n) * 7,
+						'--offset-top': 4 + Number(node.id < 9n ? node.id : node.id - 9n) * 2,
 						'--data-color': 'var(--color-data-raster)',
 						'--data-color-dim': 'var(--color-data-raster-dim)',
 					}"
