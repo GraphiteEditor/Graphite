@@ -90,6 +90,39 @@ impl NodeGraphMessageHandler {
 
 		section
 	}
+
+	fn send_graph(network: &NodeNetwork, responses: &mut VecDeque<Message>) {
+		responses.push_back(PropertiesPanelMessage::ResendActiveProperties.into());
+		info!("Opening node graph with nodes {:?}", network.nodes);
+
+		// List of links in format (link_start, link_end, link_end_input_index)
+		let links = network
+			.nodes
+			.iter()
+			.flat_map(|(link_end, node)| node.inputs.iter().enumerate().map(move |(index, input)| (input, link_end, index)))
+			.filter_map(|(input, &link_end, link_end_input_index)| {
+				if let NodeInput::Node(link_start) = *input {
+					Some(FrontendNodeLink {
+						link_start,
+						link_end,
+						link_end_input_index: link_end_input_index as u64,
+					})
+				} else {
+					None
+				}
+			})
+			.collect::<Vec<_>>();
+
+		let mut nodes = Vec::new();
+		for (id, node) in &network.nodes {
+			nodes.push(FrontendNode {
+				id: *id,
+				display_name: node.name.clone(),
+			})
+		}
+		log::debug!("Nodes:\n{:#?}\n\nFrontend Nodes:\n{:#?}\n\nLinks:\n{:#?}", network.nodes, nodes, links);
+		responses.push_back(FrontendMessage::UpdateNodeGraph { nodes, links }.into());
+	}
 }
 
 impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageHandler)> for NodeGraphMessageHandler {
@@ -156,6 +189,7 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 							implementation: DocumentNodeImplementation::Network(inner_network),
 						},
 					);
+					Self::send_graph(&network, responses);
 				}
 			}
 			NodeGraphMessage::DeleteNode { node_id } => {
@@ -172,44 +206,19 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 				if let Some(network) = self.get_active_network_mut(document) {
 					self.selected_nodes.clear();
 					responses.push_back(FrontendMessage::UpdateNodeGraphVisibility { visible: true }.into());
-					responses.push_back(PropertiesPanelMessage::ResendActiveProperties.into());
-					info!("Opening node graph with nodes {:?}", network.nodes);
 
-					// List of links in format (link_start, link_end, link_end_input_index)
-					let links = network
-						.nodes
-						.iter()
-						.flat_map(|(link_end, node)| node.inputs.iter().enumerate().map(move |(index, input)| (input, link_end, index)))
-						.filter_map(|(input, &link_end, link_end_input_index)| {
-							if let NodeInput::Node(link_start) = *input {
-								Some(FrontendNodeLink {
-									link_start,
-									link_end,
-									link_end_input_index: link_end_input_index as u64,
-								})
-							} else {
-								None
-							}
-						})
-						.collect::<Vec<_>>();
-
-					let mut nodes = Vec::new();
-					for (id, node) in &network.nodes {
-						nodes.push(FrontendNode {
-							id: *id,
-							display_name: node.name.clone(),
-						})
-					}
-					log::debug!("Nodes:\n{:#?}\n\nFrontend Nodes:\n{:#?}\n\nLinks:\n{:#?}", network.nodes, nodes, links);
-					responses.push_back(FrontendMessage::UpdateNodeGraph { nodes, links }.into());
+					Self::send_graph(&network, responses);
 
 					// TODO: Dynamic node library
 					responses.push_back(
 						FrontendMessage::UpdateNodeTypes {
 							node_types: vec![
+								FrontendNodeType::new("Identity"),
 								FrontendNodeType::new("Grayscale Color"),
 								FrontendNodeType::new("Brighten Color"),
 								FrontendNodeType::new("Hue Shift Color"),
+								FrontendNodeType::new("Add"),
+								FrontendNodeType::new("Map Image"),
 							],
 						}
 						.into(),
