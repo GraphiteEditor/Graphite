@@ -83,7 +83,7 @@ impl Color {
 	}
 
 	/// Create a [Color] from a hue, saturation, luminance and alpha (all between 0 and 1)
-	/// 
+	///
 	/// # Examples
 	/// ```
 	/// use graphene_core::raster::color::Color;
@@ -191,7 +191,7 @@ impl Color {
 
 	// https://www.niwa.nu/2013/05/math-behind-colorspace-conversions-rgb-hsl/
 	/// Convert a [Color] to a hue, saturation, luminance and alpha (all between 0 and 1)
-	/// 
+	///
 	/// # Examples
 	/// ```
 	/// use graphene_core::raster::color::Color;
