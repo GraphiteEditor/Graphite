@@ -118,10 +118,28 @@ impl Default for NodeGraphFrameLayer {
 	fn default() -> Self {
 		use graph_craft::document::*;
 		use graph_craft::proto::NodeIdentifier;
+		let brighten_network = NodeNetwork {
+			inputs: vec![0, 0],
+			output: 0,
+			nodes: [(
+				0,
+				DocumentNode {
+					name: "brighten".into(),
+					inputs: vec![NodeInput::Network, NodeInput::Network],
+					implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new(
+						"graphene_core::raster::BrightenColorNode",
+						&[graph_craft::proto::Type::Concrete(std::borrow::Cow::Borrowed("&TypeErasedNode"))],
+					)),
+				},
+			)]
+			.into_iter()
+			.collect(),
+		};
+
 		Self {
 			mime: String::new(),
 			network: NodeNetwork {
-				inputs: vec![1],
+				inputs: vec![1, 0],
 				output: 1,
 				nodes: [
 					(
@@ -129,7 +147,7 @@ impl Default for NodeGraphFrameLayer {
 						DocumentNode {
 							name: "Brighten".into(),
 							inputs: vec![NodeInput::Network, NodeInput::Value(value::TaggedValue::F32(4.))],
-							implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graph_craft::node_registry::BrightenColorNode", &[])),
+							implementation: DocumentNodeImplementation::Network(brighten_network),
 						},
 					),
 					(

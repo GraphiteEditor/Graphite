@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use borrow_stack::FixedSizeStack;
 use graphene_core::generic::FnNode;
 use graphene_core::ops::AddNode;
@@ -200,22 +202,25 @@ static NODE_REGISTRY: &[(NodeIdentifier, NodeConstructor)] = &[
 			}
 		})
 	}),
-	(NodeIdentifier::new("graph_craft::node_registry::BrightenColorNode", &[]), |proto_node, stack| {
-		info!("proto node {:?}", proto_node);
-		stack.push_fn(|nodes| {
-			let node = DynAnyNode::new(FnNode::new(|(color, value): (Color, f32)| {
-				let per_channel = |col: f32| (col + value).clamp(0., 1.);
-				Color::from_rgbaf32_unchecked(per_channel(color.r()), per_channel(color.g()), per_channel(color.b()), color.a())
-			}));
+	(
+		NodeIdentifier::new("graphene_core::raster::BrightenColorNode", &[Type::Concrete(Cow::Borrowed("&TypeErasedNode"))]),
+		|proto_node, stack| {
+			info!("proto node {:?}", proto_node);
+			stack.push_fn(|nodes| {
+				let ConstructionArgs::Nodes(construction_nodes) = proto_node.construction_args else { unreachable!("Brighten Color Node cunstructed with out brightness input node") };
+				let value_node = nodes.get(construction_nodes[0] as usize).unwrap();
+				let input_node: DowncastBothNode<_, (), f32> = DowncastBothNode::new(value_node);
+				let node = DynAnyNode::new(graphene_core::raster::BrightenColorNode::new(input_node));
 
-			if let ProtoNodeInput::Node(pre_id) = proto_node.input {
-				let pre_node = nodes.get(pre_id as usize).unwrap();
-				(pre_node).then(node).into_type_erased()
-			} else {
-				node.into_type_erased()
-			}
-		})
-	}),
+				if let ProtoNodeInput::Node(pre_id) = proto_node.input {
+					let pre_node = nodes.get(pre_id as usize).unwrap();
+					(pre_node).then(node).into_type_erased()
+				} else {
+					node.into_type_erased()
+				}
+			})
+		},
+	),
 	(NodeIdentifier::new("graphene_std::raster::MapImageNode", &[]), |proto_node, stack| {
 		if let ConstructionArgs::Nodes(operation_node_id) = proto_node.construction_args {
 			stack.push_fn(move |nodes| {

@@ -62,7 +62,12 @@ impl DocumentNode {
 				NodeInput::Network => (ProtoNodeInput::Network, ConstructionArgs::Nodes(vec![])),
 			};
 			assert!(!self.inputs.iter().any(|input| matches!(input, NodeInput::Network)), "recieved non resolved parameter");
-			assert!(!self.inputs.iter().any(|input| matches!(input, NodeInput::Value(_))), "recieved value as parameter");
+			assert!(
+				!self.inputs.iter().any(|input| matches!(input, NodeInput::Value(_))),
+				"recieved value as parameter. inupts: {:#?}, construction_args: {:#?}",
+				&self.inputs,
+				&args
+			);
 
 			if let ConstructionArgs::Nodes(nodes) = &mut args {
 				nodes.extend(self.inputs.iter().map(|input| match input {

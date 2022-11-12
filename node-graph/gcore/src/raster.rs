@@ -22,6 +22,32 @@ impl<'n> Node<Color> for &'n GrayscaleNode {
 	}
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct BrightenColorNode<N: Node<(), Output = f32>>(N);
+
+impl<N: Node<(), Output = f32>> Node<Color> for BrightenColorNode<N> {
+	type Output = Color;
+	fn eval(self, color: Color) -> Color {
+		let brightness = self.0.eval(());
+		let per_channel = |col: f32| (col + brightness).clamp(0., 1.);
+		Color::from_rgbaf32_unchecked(per_channel(color.r()), per_channel(color.g()), per_channel(color.b()), color.a())
+	}
+}
+impl<N: Node<(), Output = f32> + Copy> Node<Color> for &BrightenColorNode<N> {
+	type Output = Color;
+	fn eval(self, color: Color) -> Color {
+		let brightness = self.0.eval(());
+		let per_channel = |col: f32| (col + brightness).clamp(0., 1.);
+		Color::from_rgbaf32_unchecked(per_channel(color.r()), per_channel(color.g()), per_channel(color.b()), color.a())
+	}
+}
+
+impl<N: Node<(), Output = f32> + Copy> BrightenColorNode<N> {
+	pub fn new(node: N) -> Self {
+		Self(node)
+	}
+}
+
 pub struct ForEachNode<MN>(pub MN);
 
 impl<'n, I: Iterator<Item = S>, MN: 'n, S> Node<I> for &'n ForEachNode<MN>
