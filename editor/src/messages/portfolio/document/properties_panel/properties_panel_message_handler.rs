@@ -24,6 +24,7 @@ impl<'a> MessageHandler<PropertiesPanelMessage, (&PersistentData, PropertiesPane
 			artwork_document,
 			artboard_document,
 			selected_layers,
+			node_graph_message_handler,
 		} = data;
 		let get_document = |document_selector: TargetDocument| match document_selector {
 			TargetDocument::Artboard => artboard_document,
@@ -34,11 +35,15 @@ impl<'a> MessageHandler<PropertiesPanelMessage, (&PersistentData, PropertiesPane
 			SetActiveLayers { paths, document } => {
 				if paths.len() != 1 {
 					// TODO: Allow for multiple selected layers
-					responses.push_back(PropertiesPanelMessage::ClearSelection.into())
+					responses.push_back(PropertiesPanelMessage::ClearSelection.into());
+					responses.push_back(NodeGraphMessage::CloseNodeGraph.into());
 				} else {
 					let path = paths.into_iter().next().unwrap();
-					self.active_selection = Some((path, document));
-					responses.push_back(PropertiesPanelMessage::ResendActiveProperties.into())
+					if Some((path.clone(), document)) != self.active_selection {
+						self.active_selection = Some((path, document));
+						responses.push_back(PropertiesPanelMessage::ResendActiveProperties.into());
+						responses.push_back(NodeGraphMessage::CloseNodeGraph.into());
+					}
 				}
 			}
 			ClearSelection => {
@@ -138,7 +143,7 @@ impl<'a> MessageHandler<PropertiesPanelMessage, (&PersistentData, PropertiesPane
 					let layer = get_document(target_document).layer(&path).unwrap();
 					match target_document {
 						TargetDocument::Artboard => register_artboard_layer_properties(layer, responses, persistent_data),
-						TargetDocument::Artwork => register_artwork_layer_properties(layer, responses, persistent_data),
+						TargetDocument::Artwork => register_artwork_layer_properties(path, layer, responses, persistent_data, node_graph_message_handler),
 					}
 				}
 			}

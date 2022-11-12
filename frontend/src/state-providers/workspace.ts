@@ -1,5 +1,5 @@
 /* eslint-disable max-classes-per-file */
-import { reactive, readonly } from "vue";
+import { nextTick, reactive, readonly } from "vue";
 
 import { type Editor } from "@/wasm-communication/editor";
 import { UpdateNodeGraphVisibility } from "@/wasm-communication/messages";
@@ -11,8 +11,11 @@ export function createWorkspaceState(editor: Editor) {
 	});
 
 	// Set up message subscriptions on creation
-	editor.subscriptions.subscribeJsMessage(UpdateNodeGraphVisibility, (updateNodeGraphVisibility) => {
+	editor.subscriptions.subscribeJsMessage(UpdateNodeGraphVisibility, async (updateNodeGraphVisibility) => {
 		state.nodeGraphVisible = updateNodeGraphVisibility.visible;
+		// Update the viewport bounds
+		await nextTick();
+		window.dispatchEvent(new Event("resize"));
 	});
 
 	return {

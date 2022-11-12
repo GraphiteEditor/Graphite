@@ -21,6 +21,18 @@ export class JsMessage {
 // for details about how to transform the JSON from wasm-bindgen into classes.
 // ============================================================================
 
+export class UpdateNodeGraph extends JsMessage {
+	@Type(() => FrontendNode)
+	readonly nodes!: FrontendNode[];
+
+	@Type(() => FrontendNodeLink)
+	readonly links!: FrontendNodeLink[];
+}
+export class UpdateNodeTypes extends JsMessage {
+	@Type(() => FrontendNode)
+	readonly nodeTypes!: FrontendNodeType[];
+}
+
 export class UpdateNodeGraphVisibility extends JsMessage {
 	readonly visible!: boolean;
 }
@@ -50,6 +62,24 @@ export abstract class DocumentDetails {
 
 export class FrontendDocumentDetails extends DocumentDetails {
 	readonly id!: bigint;
+}
+
+export class FrontendNode {
+	readonly id!: bigint;
+
+	readonly displayName!: string;
+}
+
+export class FrontendNodeLink {
+	readonly linkStart!: bigint;
+
+	readonly linkEnd!: bigint;
+
+	readonly linkEndInputIndex!: bigint;
+}
+
+export class FrontendNodeType {
+	readonly name!: string;
 }
 
 export class IndexedDbDocumentDetails extends DocumentDetails {
@@ -1285,6 +1315,8 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateLayerTreeOptionsLayout,
 	UpdateMenuBarLayout,
 	UpdateMouseCursor,
+	UpdateNodeGraph,
+	UpdateNodeTypes,
 	UpdateNodeGraphVisibility,
 	UpdateOpenDocumentsList,
 	UpdatePropertyPanelOptionsLayout,

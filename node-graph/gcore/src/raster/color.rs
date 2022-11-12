@@ -82,6 +82,41 @@ impl Color {
 		}
 	}
 
+	/// Create a [Color] from a hue, saturation, luminance and alpha (all between 0 and 1)
+	///
+	/// # Examples
+	/// ```
+	/// use graphene_core::raster::color::Color;
+	/// let color = Color::from_hsla(0.5, 0.2, 0.3, 1.);
+	/// ```
+	pub fn from_hsla(hue: f32, saturation: f32, luminance: f32, alpha: f32) -> Color {
+		let temp1 = if luminance < 0.5 {
+			luminance * (saturation + 1.)
+		} else {
+			luminance + saturation - luminance * saturation
+		};
+		let temp2 = 2. * luminance - temp1;
+
+		let mut red = (hue + 1. / 3.).rem_euclid(1.);
+		let mut green = hue.rem_euclid(1.);
+		let mut blue = (hue - 1. / 3.).rem_euclid(1.);
+
+		for channel in [&mut red, &mut green, &mut blue] {
+			*channel = if *channel * 6. < 1. {
+				temp2 + (temp1 - temp2) * 6. * *channel
+			} else if *channel * 2. < 1. {
+				temp1
+			} else if *channel * 3. < 2. {
+				temp2 + (temp1 - temp2) * (2. / 3. - *channel) * 6.
+			} else {
+				temp2
+			}
+			.clamp(0., 1.);
+		}
+
+		Color { red, green, blue, alpha }
+	}
+
 	/// Return the `red` component.
 	///
 	/// # Examples
@@ -154,6 +189,38 @@ impl Color {
 		[(self.red * 255.) as u8, (self.green * 255.) as u8, (self.blue * 255.) as u8, (self.alpha * 255.) as u8]
 	}
 
+	// https://www.niwa.nu/2013/05/math-behind-colorspace-conversions-rgb-hsl/
+	/// Convert a [Color] to a hue, saturation, luminance and alpha (all between 0 and 1)
+	///
+	/// # Examples
+	/// ```
+	/// use graphene_core::raster::color::Color;
+	/// let color = Color::from_hsla(0.5, 0.2, 0.3, 1.).to_hsla();
+	/// ```
+	pub fn to_hsla(&self) -> [f32; 4] {
+		let min_channel = self.red.min(self.green).min(self.blue);
+		let max_channel = self.red.max(self.green).max(self.blue);
+
+		let luminance = (min_channel + max_channel) / 2.;
+		let saturation = if min_channel == max_channel {
+			0.
+		} else if luminance <= 0.5 {
+			(max_channel - min_channel) / (max_channel + min_channel)
+		} else {
+			(max_channel - min_channel) / (2. - max_channel - min_channel)
+		};
+		let hue = if self.red > self.green && self.red > self.blue {
+			(self.green - self.blue) / (max_channel - min_channel)
+		} else if self.green > self.red && self.green > self.blue {
+			2. + (self.blue - self.red) / (max_channel - min_channel)
+		} else {
+			4. + (self.red - self.green) / (max_channel - min_channel)
+		} / 6.;
+		let hue = hue.rem_euclid(1.);
+
+		[hue, saturation, luminance, self.alpha]
+	}
+
 	// TODO: Readd formatting
 
 	/// Creates a color from a 8-character RGBA hex string (without a # prefix).
@@ -189,5 +256,39 @@ impl Color {
 		let b = u8::from_str_radix(&color_str[4..6], 16).ok()?;
 
 		Some(Color::from_rgb8(r, g, b))
+	}
+}
+
+#[test]
+fn hsl_roundtrip() {
+	for (red, green, blue) in [
+		(24, 98, 118),
+		(69, 11, 89),
+		(54, 82, 38),
+		(47, 76, 50),
+		(25, 15, 73),
+		(62, 57, 33),
+		(55, 2, 18),
+		(12, 3, 82),
+		(91, 16, 98),
+		(91, 39, 82),
+		(97, 53, 32),
+		(76, 8, 91),
+		(54, 87, 19),
+		(56, 24, 88),
+		(14, 82, 34),
+		(61, 86, 31),
+		(73, 60, 75),
+		(95, 79, 88),
+		(13, 34, 4),
+		(82, 84, 84),
+	] {
+		let col = Color::from_rgb8(red, green, blue);
+		let [hue, saturation, luminance, alpha] = col.to_hsla();
+		let result = Color::from_hsla(hue, saturation, luminance, alpha);
+		assert!((col.r() - result.r()) < f32::EPSILON * 100.);
+		assert!((col.g() - result.g()) < f32::EPSILON * 100.);
+		assert!((col.b() - result.b()) < f32::EPSILON * 100.);
+		assert!((col.a() - result.a()) < f32::EPSILON * 100.);
 	}
 }

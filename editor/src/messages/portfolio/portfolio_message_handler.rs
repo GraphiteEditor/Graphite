@@ -437,14 +437,18 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 					// Execute the node graph
 
 					let mut network = node_graph_frame.network.clone();
+					info!("Network {network:?}");
 
 					let stack = borrow_stack::FixedSizeStack::new(256);
-					network.flatten(0);
+					for node_id in node_graph_frame.network.nodes.keys() {
+						network.flatten(*node_id);
+					}
 
 					let mut proto_network = network.into_proto_network();
 					proto_network.reorder_ids();
 
 					for (_id, node) in proto_network.nodes {
+						info!("Node {:?}", node);
 						graph_craft::node_registry::push_node(node, &stack);
 					}
 

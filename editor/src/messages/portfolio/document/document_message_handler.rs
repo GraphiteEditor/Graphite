@@ -64,6 +64,8 @@ pub struct DocumentMessageHandler {
 	#[serde(skip)]
 	transform_layer_handler: TransformLayerMessageHandler,
 	properties_panel_message_handler: PropertiesPanelMessageHandler,
+	#[serde(skip)]
+	node_graph_handler: NodeGraphMessageHandler,
 }
 
 impl Default for DocumentMessageHandler {
@@ -91,6 +93,7 @@ impl Default for DocumentMessageHandler {
 			artboard_message_handler: ArtboardMessageHandler::default(),
 			transform_layer_handler: TransformLayerMessageHandler::default(),
 			properties_panel_message_handler: PropertiesPanelMessageHandler::default(),
+			node_graph_handler: Default::default(),
 		}
 	}
 }
@@ -165,9 +168,14 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 					artwork_document: &self.graphene_document,
 					artboard_document: &self.artboard_message_handler.artboards_graphene_document,
 					selected_layers: &mut self.layer_metadata.iter().filter_map(|(path, data)| data.selected.then_some(path.as_slice())),
+					node_graph_message_handler: &self.node_graph_handler,
 				};
 				self.properties_panel_message_handler
 					.process_message(message, (persistent_data, properties_panel_message_handler_data), responses);
+			}
+			#[remain::unsorted]
+			NodeGraph(message) => {
+				self.node_graph_handler.process_message(message, (&mut self.graphene_document, ipp), responses);
 			}
 
 			// Messages

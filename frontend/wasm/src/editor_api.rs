@@ -539,6 +539,60 @@ impl JsEditorHandle {
 		self.dispatch(message);
 	}
 
+	/// Notifies the backend that the user connected a node's primary output to one of another node's inputs
+	#[wasm_bindgen(js_name = connectNodesByLink)]
+	pub fn connect_nodes_by_link(&self, output_node: u64, input_node: u64, input_node_connector_index: u32) {
+		let message = NodeGraphMessage::ConnectNodesByLink {
+			output_node,
+			input_node,
+			input_node_connector_index,
+		};
+		self.dispatch(message);
+	}
+
+	/// Creates a new document node in the node graph
+	#[wasm_bindgen(js_name = createNode)]
+	pub fn create_node(&self, node_type: String) {
+		use graph_craft::proto::{NodeIdentifier, Type};
+		use std::borrow::Cow;
+
+		fn generate_node_id() -> u64 {
+			static mut NODE_ID: u64 = 10;
+			unsafe {
+				NODE_ID += 1;
+				NODE_ID
+			}
+		}
+
+		let (ident, args) = match node_type.as_str() {
+			"Identity" => (NodeIdentifier::new("graphene_core::ops::IdNode", &[Type::Concrete(Cow::Borrowed("Any<'_>"))]), 1),
+			"Grayscale Color" => (NodeIdentifier::new("graphene_core::ops::IdNode", &[Type::Concrete(Cow::Borrowed("Any<'_>"))]), 1),
+			"Brighten Color" => (NodeIdentifier::new("graphene_core::ops::IdNode", &[Type::Concrete(Cow::Borrowed("Any<'_>"))]), 1),
+			"Hue Shift Color" => (NodeIdentifier::new("graphene_core::ops::IdNode", &[Type::Concrete(Cow::Borrowed("Any<'_>"))]), 1),
+			"Add" => (
+				NodeIdentifier::new("graphene_core::ops::AddNode", &[Type::Concrete(Cow::Borrowed("u32")), Type::Concrete(Cow::Borrowed("u32"))]),
+				2,
+			),
+			"Map Image" => (NodeIdentifier::new("graphene_std::raster::MapImageNode", &[]), 2),
+			_ => panic!("Invalid node type: {}", node_type),
+		};
+
+		let message = NodeGraphMessage::CreateNode {
+			node_id: generate_node_id(),
+			name: node_type,
+			identifier: ident,
+			num_inputs: args,
+		};
+		self.dispatch(message);
+	}
+
+	/// Notifies the backend that the user selected a node in the node graph
+	#[wasm_bindgen(js_name = selectNodes)]
+	pub fn select_nodes(&self, nodes: Vec<u64>) {
+		let message = NodeGraphMessage::SelectNodes { nodes };
+		self.dispatch(message);
+	}
+
 	/// Pastes an image
 	#[wasm_bindgen(js_name = pasteImage)]
 	pub fn paste_image(&self, mime: String, image_data: Vec<u8>, mouse_x: Option<f64>, mouse_y: Option<f64>) {

@@ -121,14 +121,26 @@ impl ProtoNode {
 }
 
 impl ProtoNetwork {
+	fn check_ref(&self, ref_id: &NodeId, id: &NodeId) {
+		assert!(
+			self.nodes.iter().any(|(check_id, _)| check_id == ref_id),
+			"Node id:{} has a reference which uses node id:{} which doesn't exist in network {:#?}",
+			id,
+			ref_id,
+			self
+		);
+	}
+
 	pub fn collect_outwards_edges(&self) -> HashMap<NodeId, Vec<NodeId>> {
 		let mut edges: HashMap<NodeId, Vec<NodeId>> = HashMap::new();
 		for (id, node) in &self.nodes {
 			if let ProtoNodeInput::Node(ref_id) = &node.input {
+				self.check_ref(ref_id, id);
 				edges.entry(*ref_id).or_default().push(*id)
 			}
 			if let ConstructionArgs::Nodes(ref_nodes) = &node.construction_args {
 				for ref_id in ref_nodes {
+					self.check_ref(ref_id, id);
 					edges.entry(*ref_id).or_default().push(*id)
 				}
 			}
@@ -140,10 +152,12 @@ impl ProtoNetwork {
 		let mut edges: HashMap<NodeId, Vec<NodeId>> = HashMap::new();
 		for (id, node) in &self.nodes {
 			if let ProtoNodeInput::Node(ref_id) = &node.input {
+				self.check_ref(ref_id, id);
 				edges.entry(*id).or_default().push(*ref_id)
 			}
 			if let ConstructionArgs::Nodes(ref_nodes) = &node.construction_args {
 				for ref_id in ref_nodes {
+					self.check_ref(ref_id, id);
 					edges.entry(*id).or_default().push(*ref_id)
 				}
 			}
