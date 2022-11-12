@@ -57,7 +57,6 @@ impl NodeGraphMessageHandler {
 				continue;
 			};
 			let name = format!("Node {} Properties", document_node.name);
-			use graph_craft::document::DocumentNodeImplementation;
 			let layout = match &document_node.implementation {
 				DocumentNodeImplementation::Network(_) => vec![LayoutGroup::Row {
 					widgets: vec![WidgetHolder::new(Widget::TextLabel(TextLabel {
@@ -189,7 +188,7 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 							implementation: DocumentNodeImplementation::Network(inner_network),
 						},
 					);
-					Self::send_graph(&network, responses);
+					Self::send_graph(network, responses);
 				}
 			}
 			NodeGraphMessage::DeleteNode { node_id } => {
@@ -207,7 +206,7 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 					self.selected_nodes.clear();
 					responses.push_back(FrontendMessage::UpdateNodeGraphVisibility { visible: true }.into());
 
-					Self::send_graph(&network, responses);
+					Self::send_graph(network, responses);
 
 					// TODO: Dynamic node library
 					responses.push_back(
