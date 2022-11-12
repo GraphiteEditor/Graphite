@@ -541,11 +541,11 @@ impl JsEditorHandle {
 
 	/// Notifies the backend that the user connected a node's primary output to one of another node's inputs
 	#[wasm_bindgen(js_name = connectNodesByLink)]
-	pub fn connect_nodes_by_link(&self, output_node: u64, input_node: u64, input_node_connector_index: u32) {
-		let message = NodeGraphMessage::ConnectNodesByLink {
-			output_node,
-			input_node,
-			input_node_connector_index,
+	pub fn connect_nodes_by_link(&self, output_node: u64, input_node: u64, input_node_connector_index: usize) {
+		let message = NodeGraphMessage::AddLink {
+			from: output_node,
+			to: input_node,
+			to_index: input_node_connector_index,
 		};
 		self.dispatch(message);
 	}

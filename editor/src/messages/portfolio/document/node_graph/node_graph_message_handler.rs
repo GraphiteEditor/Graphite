@@ -88,6 +88,8 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 		#[remain::sorted]
 		match message {
 			NodeGraphMessage::AddLink { from, to, to_index } => {
+				log::debug!("Connect primary output from node {from} to input of index {to_index} on node {to}.");
+
 				if let Some(network) = self.get_active_network_mut(document) {
 					if let Some(to) = network.nodes.get_mut(&to) {
 						// Extend number of inputs if not already large enough
@@ -105,13 +107,6 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 					responses.push_back(PropertiesPanelMessage::ResendActiveProperties.into());
 					// TODO: Close UI and clean up old node graph
 				}
-			}
-			NodeGraphMessage::ConnectNodesByLink {
-				output_node,
-				input_node,
-				input_node_connector_index,
-			} => {
-				log::debug!("Connect primary output from node {output_node} to input of index {input_node_connector_index} on node {input_node}.");
 			}
 			NodeGraphMessage::CreateNode { node_id, name, identifier } => {
 				if let Some(network) = self.get_active_network_mut(document) {
