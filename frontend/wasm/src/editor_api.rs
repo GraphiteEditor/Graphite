@@ -550,6 +550,39 @@ impl JsEditorHandle {
 		self.dispatch(message);
 	}
 
+	/// Creates a new document node in the node graph
+	#[wasm_bindgen(js_name = connectNodesByLink)]
+	pub fn create_node(&self, node_type: String) {
+		use graph_craft::proto::{NodeIdentifier, Type};
+		use std::borrow::Cow;
+
+		fn generate_node_id() -> u64 {
+			static mut NODE_ID: u64 = 10;
+			unsafe {
+				NODE_ID += 1;
+				NODE_ID
+			}
+		}
+
+		let (ident, args) = match node_type.as_str() {
+			"IdNode" => (NodeIdentifier::new("graphene_core::ops::IdNode", &[Type::Concrete(Cow::Borrowed("Any<'_>"))]), 1),
+			"AddNode" => (
+				NodeIdentifier::new("graphene_core::ops::AddNode", &[Type::Concrete(Cow::Borrowed("u32")), Type::Concrete(Cow::Borrowed("u32"))]),
+				2,
+			),
+			"MapImageNode" => (NodeIdentifier::new("graphene_std::raster::MapImageNode", &[]), 2),
+			_ => panic!("Invalid node type: {}", node_type),
+		};
+
+		let message = NodeGraphMessage::CreateNode {
+			node_id: generate_node_id(),
+			name: node_type,
+			identifier: ident,
+			num_inputs: args,
+		};
+		self.dispatch(message);
+	}
+
 	/// Notifies the backend that the user selected a node in the node graph
 	#[wasm_bindgen(js_name = selectNode)]
 	pub fn select_node(&self, node: u64) {

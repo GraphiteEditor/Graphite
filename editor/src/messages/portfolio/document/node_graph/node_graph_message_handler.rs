@@ -1,7 +1,7 @@
 use crate::messages::layout::utility_types::layout_widget::{LayoutGroup, Widget, WidgetHolder};
 use crate::messages::layout::utility_types::widgets::label_widgets::TextLabel;
 use crate::messages::prelude::*;
-use graph_craft::document::{DocumentNode, NodeInput};
+use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeInput, NodeNetwork};
 use graphene::document::Document;
 use graphene::layers::layer_info::LayerDataType;
 use graphene::layers::nodegraph_layer::NodeGraphFrameLayer;
@@ -115,15 +115,35 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 			} => {
 				log::debug!("Connect primary output from node {output_node} to input of index {input_node_connector_index} on node {input_node}.");
 			}
-			NodeGraphMessage::CreateNode { node_id, name, identifier } => {
+			NodeGraphMessage::CreateNode {
+				node_id,
+				name,
+				identifier,
+				num_inputs,
+			} => {
 				if let Some(network) = self.get_active_network_mut(document) {
+					let inner_network = NodeNetwork {
+						inputs: (0..num_inputs).map(|_| 0).collect(),
+						output: 0,
+						nodes: [(
+							node_id,
+							DocumentNode {
+								name: format!("{}_impl", name),
+								// TODO: Allow inserting nodes that contain other nodes.
+								implementation: DocumentNodeImplementation::Unresolved(identifier),
+								inputs: (0..num_inputs).map(|_| NodeInput::Network).collect(),
+							},
+						)]
+						.into_iter()
+						.collect(),
+					};
 					network.nodes.insert(
 						node_id,
 						DocumentNode {
 							name,
-							inputs: Vec::new(),
+							inputs: (0..num_inputs).map(|_| NodeInput::Network).collect(),
 							// TODO: Allow inserting nodes that contain other nodes.
-							implementation: graph_craft::document::DocumentNodeImplementation::Unresolved(identifier),
+							implementation: DocumentNodeImplementation::Network(inner_network),
 						},
 					);
 				}

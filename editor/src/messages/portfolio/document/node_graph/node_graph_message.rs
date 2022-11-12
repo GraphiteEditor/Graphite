@@ -25,6 +25,7 @@ pub enum NodeGraphMessage {
 		name: String,
 		// The node identifier must mach that found in `node-graph/graph-craft/src/node_registry.rs` e.g. "graphene_core::raster::GrayscaleNode
 		identifier: NodeIdentifier,
+		num_inputs: u32,
 	},
 	DeleteNode {
 		node_id: NodeId,
