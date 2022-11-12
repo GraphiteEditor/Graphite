@@ -28,6 +28,10 @@ export class UpdateNodeGraph extends JsMessage {
 	@Type(() => FrontendNodeLink)
 	readonly links!: FrontendNodeLink[];
 }
+export class UpdateNodeTypes extends JsMessage {
+	@Type(() => FrontendNode)
+	readonly nodeTypes!: FrontendNodeType[];
+}
 
 export class UpdateNodeGraphVisibility extends JsMessage {
 	readonly visible!: boolean;
@@ -72,6 +76,10 @@ export class FrontendNodeLink {
 	readonly linkEnd!: bigint;
 
 	readonly linkEndInputIndex!: bigint;
+}
+
+export class FrontendNodeType {
+	readonly name!: string;
 }
 
 export class IndexedDbDocumentDetails extends DocumentDetails {
@@ -1308,6 +1316,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateMenuBarLayout,
 	UpdateMouseCursor,
 	UpdateNodeGraph,
+	UpdateNodeTypes,
 	UpdateNodeGraphVisibility,
 	UpdateOpenDocumentsList,
 	UpdatePropertyPanelOptionsLayout,

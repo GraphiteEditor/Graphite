@@ -1,6 +1,12 @@
 <template>
 	<LayoutCol class="node-graph">
 		<LayoutRow class="options-bar"></LayoutRow>
+		<div class="node-list">
+			<LayoutRow>Nodes:</LayoutRow>
+			<LayoutRow>
+				<TextButton v-for="nodeType in nodeTypes" v-bind:key="String(nodeType)" :label="'Insert ' + nodeType.name + ' Node'" :action="() => createNode(nodeType.name)"></TextButton>
+			</LayoutRow>
+		</div>
 		<LayoutRow
 			class="graph"
 			ref="graph"
@@ -73,6 +79,16 @@
 <style lang="scss">
 .node-graph {
 	height: 100%;
+	position: relative;
+
+	.node-list {
+		width: max-content;
+		position: fixed;
+		padding: 20px;
+		margin: 40px 10px;
+		z-index: 3;
+		background-color: var(--color-4-dimgray);
+	}
 
 	.options-bar {
 		height: 32px;
@@ -253,6 +269,7 @@ import type { IconName } from "@/utility-functions/icons";
 
 import LayoutCol from "@/components/layout/LayoutCol.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
+import TextButton from "@/components/widgets/buttons/TextButton.vue";
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
 import TextLabel from "@/components/widgets/labels/TextLabel.vue";
 
@@ -288,6 +305,9 @@ export default defineComponent({
 		},
 		nodes() {
 			return this.nodeGraph.state.nodes;
+		},
+		nodeTypes() {
+			return this.nodeGraph.state.nodeTypes;
 		},
 		linkPathInProgress(): [string, string] | undefined {
 			if (this.linkInProgressFromConnector && this.linkInProgressToConnector) {
@@ -471,6 +491,9 @@ export default defineComponent({
 			this.linkInProgressFromConnector = undefined;
 			this.linkInProgressToConnector = undefined;
 		},
+		createNode(nodeType: string): void {
+			this.editor.instance.createNode(nodeType);
+		},
 	},
 	mounted() {
 		const outputPort1 = document.querySelectorAll(`[data-port="output"]`)[4] as HTMLDivElement | undefined;
@@ -486,6 +509,7 @@ export default defineComponent({
 		LayoutCol,
 		LayoutRow,
 		TextLabel,
+		TextButton,
 	},
 });
 </script>

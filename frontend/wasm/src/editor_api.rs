@@ -551,7 +551,7 @@ impl JsEditorHandle {
 	}
 
 	/// Creates a new document node in the node graph
-	#[wasm_bindgen(js_name = connectNodesByLink)]
+	#[wasm_bindgen(js_name = createNode)]
 	pub fn create_node(&self, node_type: String) {
 		use graph_craft::proto::{NodeIdentifier, Type};
 		use std::borrow::Cow;

@@ -24,6 +24,16 @@ pub struct FrontendNodeLink {
 	pub link_end_input_index: u64,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct FrontendNodeType {
+	pub name: String,
+}
+impl FrontendNodeType {
+	pub fn new(name: &'static str) -> Self {
+		Self { name: name.to_string() }
+	}
+}
+
 #[derive(Debug, Clone, Eq, PartialEq, Default, serde::Serialize, serde::Deserialize)]
 pub struct NodeGraphMessageHandler {
 	pub layer_path: Option<Vec<graphene::LayerId>>,
@@ -192,6 +202,18 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 					}
 					log::debug!("Nodes:\n{:#?}\n\nFrontend Nodes:\n{:#?}\n\nLinks:\n{:#?}", network.nodes, nodes, links);
 					responses.push_back(FrontendMessage::UpdateNodeGraph { nodes, links }.into());
+
+					// TODO: Dynamic node library
+					responses.push_back(
+						FrontendMessage::UpdateNodeTypes {
+							node_types: vec![
+								FrontendNodeType::new("Grayscale Color"),
+								FrontendNodeType::new("Brighten Color"),
+								FrontendNodeType::new("Hue Shift Color"),
+							],
+						}
+						.into(),
+					);
 				}
 			}
 			NodeGraphMessage::SelectNode { node } => {
