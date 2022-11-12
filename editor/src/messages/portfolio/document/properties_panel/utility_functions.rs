@@ -871,7 +871,7 @@ fn node_section_imaginate(imaginate_layer: &ImaginateLayer, layer: &Layer, persi
 			LayoutGroup::Row {
 				widgets: {
 					let tooltip = "
-					Strength of the artistic liberties allowing changes from the base image. The image is unchanged at 0 and completely different at 1.\n\
+					Strength of the artistic liberties allowing changes from the base image. The image is unchanged at 0% and completely different at 100%.\n\
 					\n\
 					This parameter is otherwise known as denoising strength.
 					"
@@ -889,18 +889,19 @@ fn node_section_imaginate(imaginate_layer: &ImaginateLayer, layer: &Layer, persi
 							direction: SeparatorDirection::Horizontal,
 						})),
 						WidgetHolder::new(Widget::NumberInput(NumberInput {
-							value: Some(imaginate_layer.denoising_strength),
+							value: Some(imaginate_layer.denoising_strength * 100.),
+							unit: "%".into(),
 							mode: NumberInputMode::Range,
 							range_min: Some(0.),
-							range_max: Some(1.),
+							range_max: Some(100.),
 							min: Some(0.),
-							max: Some(1.),
+							max: Some(100.),
 							display_decimal_places: 2,
 							disabled: !imaginate_layer.use_img2img,
 							tooltip,
 							on_update: WidgetCallback::new(move |number_input: &NumberInput| {
 								PropertiesPanelMessage::SetImaginateDenoisingStrength {
-									denoising_strength: number_input.value.unwrap(),
+									denoising_strength: number_input.value.unwrap() / 100.,
 								}
 								.into()
 							}),
