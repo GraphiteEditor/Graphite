@@ -299,8 +299,8 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 					);
 				}
 			}
-			NodeGraphMessage::SelectNode { node } => {
-				self.selected_nodes = vec![node];
+			NodeGraphMessage::SelectNodes { nodes } => {
+				self.selected_nodes = nodes;
 				responses.push_back(PropertiesPanelMessage::ResendActiveProperties.into());
 			}
 			NodeGraphMessage::SetInputValue { node, input_index, value } => {

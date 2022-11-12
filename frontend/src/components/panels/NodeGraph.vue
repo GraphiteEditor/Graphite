@@ -438,9 +438,11 @@ export default defineComponent({
 				const nodeId = node?.getAttribute("data-node") || undefined;
 				if (nodeId) {
 					const id = BigInt(nodeId);
-					this.editor.instance.selectNode(id);
+					this.editor.instance.selectNodes(new BigUint64Array([id]));
 					this.selected = [id];
 				} else {
+					this.editor.instance.selectNodes(new BigUint64Array([]));
+					this.selected = [];
 					const graphDiv: HTMLDivElement | undefined = (this.$refs.graph as typeof LayoutCol | undefined)?.$el;
 					graphDiv?.setPointerCapture(e.pointerId);
 

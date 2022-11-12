@@ -33,8 +33,8 @@ pub enum NodeGraphMessage {
 	OpenNodeGraph {
 		layer_path: Vec<graphene::LayerId>,
 	},
-	SelectNode {
-		node: NodeId,
+	SelectNodes {
+		nodes: Vec<NodeId>,
 	},
 	SetInputValue {
 		node: NodeId,
