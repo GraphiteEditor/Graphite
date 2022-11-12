@@ -3,8 +3,8 @@
 		<LayoutRow class="options-bar"></LayoutRow>
 		<LayoutRow
 			class="graph"
-			@wheel="(e: WheelEvent) => scroll(e)"
 			ref="graph"
+			@wheel="(e: WheelEvent) => scroll(e)"
 			@pointerdown="(e: PointerEvent) => pointerDown(e)"
 			@pointermove="(e: PointerEvent) => pointerMove(e)"
 			@pointerup="(e: PointerEvent) => pointerUp(e)"
@@ -262,6 +262,7 @@
 			svg {
 				width: 100%;
 				height: 100%;
+				overflow: visible;
 
 				path {
 					fill: none;
@@ -388,7 +389,7 @@
 </style>
 
 <script lang="ts">
-import { defineComponent } from "vue";
+import { defineComponent, nextTick } from "vue";
 
 // import type { FrontendNode } from "@/wasm-communication/messages";
 
@@ -411,6 +412,7 @@ export default defineComponent({
 			linkInProgressFromConnector: undefined as HTMLDivElement | undefined,
 			linkInProgressToConnector: undefined as HTMLDivElement | undefined,
 			linkInProgressToCursor: undefined as DOMRect | undefined,
+			linkPaths: undefined as [string, string][] | undefined,
 		};
 	},
 	computed: {
@@ -432,21 +434,27 @@ export default defineComponent({
 
 			return this.nodeGraph.state.nodes;
 		},
-		linkPaths(): [string, string][] {
-			const containerBounds = this.$refs.nodesContainer as HTMLDivElement | undefined;
-			if (!containerBounds) return [];
+	},
+	watch: {
+		nodes: {
+			immediate: true,
+			async handler() {
+				await nextTick();
 
-			const links = this.nodeGraph.state.links;
-			console.log("links:", links);
-			return links.flatMap((link) => {
-				const nodePrimaryOutput = (containerBounds.querySelector(`[data-node="${link.linkStart.toString()}"] [data-port="output"]`) || undefined) as HTMLDivElement | undefined;
-				const nodePrimaryInput = (containerBounds.querySelectorAll(`[data-node="${link.linkEnd.toString()}"] [data-port="input"]`) || undefined)?.[Number(link.linkEndInputIndex)] as
-					| HTMLDivElement
-					| undefined;
-				if (!nodePrimaryInput || !nodePrimaryOutput) return [];
+				const containerBounds = this.$refs.nodesContainer as HTMLDivElement | undefined;
+				if (!containerBounds) return;
 
-				return [this.createWirePath(nodePrimaryOutput, nodePrimaryInput, false, false)];
-			});
+				const links = this.nodeGraph.state.links;
+				this.linkPaths = links.flatMap((link) => {
+					const nodePrimaryOutput = (containerBounds.querySelector(`[data-node="${link.linkStart.toString()}"] [data-port="output"]`) || undefined) as HTMLDivElement | undefined;
+					const nodePrimaryInput = (containerBounds.querySelectorAll(`[data-node="${link.linkEnd.toString()}"] [data-port="input"]`) || undefined)?.[Number(link.linkEndInputIndex) - 1] as
+						| HTMLDivElement
+						| undefined;
+					if (!nodePrimaryInput || !nodePrimaryOutput) return [];
+
+					return [this.createWirePath(nodePrimaryOutput, nodePrimaryInput, false, false)];
+				});
+			},
 		},
 	},
 	methods: {

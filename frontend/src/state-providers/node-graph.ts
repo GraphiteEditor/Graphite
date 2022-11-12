@@ -1,8 +1,7 @@
 import { reactive, readonly } from "vue";
 
 import { type Editor } from "@/wasm-communication/editor";
-import type { FrontendNodeLink } from "@/wasm-communication/messages";
-import { type FrontendNode, UpdateNodeGraph } from "@/wasm-communication/messages";
+import { type FrontendNode, type FrontendNodeLink, UpdateNodeGraph } from "@/wasm-communication/messages";
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 export function createNodeGraphState(editor: Editor) {
