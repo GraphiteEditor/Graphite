@@ -103,6 +103,8 @@
 					@update:value="(value: number) => setColorAlphaPercent(value)"
 					:min="0"
 					:max="100"
+					:rangeMin="0"
+					:rangeMax="100"
 					:unit="'%'"
 					:mode="'Range'"
 					:tooltip="`Scale from transparent (0%) to opaque (100%) for the color's alpha channel`"
