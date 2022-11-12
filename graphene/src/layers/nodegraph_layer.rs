@@ -163,7 +163,7 @@ impl Default for NodeGraphFrameLayer {
 					(
 						0,
 						DocumentNode {
-							name: "Hue Shift".into(),
+							name: "Hue Shift Color".into(),
 							inputs: vec![NodeInput::Network, NodeInput::Value(value::TaggedValue::F32(50.))],
 							implementation: DocumentNodeImplementation::Network(hue_shift_network),
 						},
@@ -171,7 +171,7 @@ impl Default for NodeGraphFrameLayer {
 					(
 						1,
 						DocumentNode {
-							name: "Brighten".into(),
+							name: "Brighten Color".into(),
 							inputs: vec![NodeInput::Node(0), NodeInput::Value(value::TaggedValue::F32(10.))],
 							implementation: DocumentNodeImplementation::Network(brighten_network),
 						},

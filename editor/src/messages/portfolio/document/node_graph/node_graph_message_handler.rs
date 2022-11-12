@@ -1,6 +1,8 @@
-use crate::messages::layout::utility_types::layout_widget::{LayoutGroup, Widget, WidgetHolder};
-use crate::messages::layout::utility_types::widgets::label_widgets::TextLabel;
+use crate::messages::layout::utility_types::layout_widget::{LayoutGroup, Widget, WidgetCallback, WidgetHolder};
+use crate::messages::layout::utility_types::widgets::input_widgets::{NumberInput, NumberInputMode};
+use crate::messages::layout::utility_types::widgets::label_widgets::{Separator, SeparatorDirection, SeparatorType, TextLabel};
 use crate::messages::prelude::*;
+use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeInput, NodeNetwork};
 use graphene::document::Document;
 use graphene::layers::layer_info::LayerDataType;
@@ -53,19 +55,92 @@ impl NodeGraphMessageHandler {
 		let network = &node_graph_frame.network;
 		let mut section = Vec::new();
 		for node_id in &self.selected_nodes {
+			let node = *node_id;
 			let Some(document_node) = network.nodes.get(node_id) else {
 				continue;
 			};
 			let name = format!("Node {} Properties", document_node.name);
 			let layout = match &document_node.implementation {
-				DocumentNodeImplementation::Network(_) => vec![LayoutGroup::Row {
-					widgets: vec![WidgetHolder::new(Widget::TextLabel(TextLabel {
-						value: "Cannot currently display properties for network".to_string(),
-						..Default::default()
-					}))],
-				}],
+				DocumentNodeImplementation::Network(_) => match document_node.name.as_str() {
+					"Hue Shift Color" => vec![LayoutGroup::Row {
+						widgets: vec![
+							WidgetHolder::new(Widget::TextLabel(TextLabel {
+								value: "Shift degrees".into(),
+								..Default::default()
+							})),
+							WidgetHolder::new(Widget::Separator(Separator {
+								separator_type: SeparatorType::Unrelated,
+								direction: SeparatorDirection::Horizontal,
+							})),
+							WidgetHolder::new(Widget::NumberInput(NumberInput {
+								value: Some({
+									let NodeInput::Value (TaggedValue::F32(x)) = document_node.inputs[1] else {
+										panic!("Hue rotate should be f32")
+									};
+									x as f64
+								}),
+								unit: "°".into(),
+								mode: NumberInputMode::Range,
+								range_min: Some(-180.),
+								range_max: Some(180.),
+								on_update: WidgetCallback::new(move |number_input: &NumberInput| {
+									NodeGraphMessage::SetInputValue {
+										node,
+										input_index: 1,
+										value: TaggedValue::F32(number_input.value.unwrap() as f32),
+									}
+									.into()
+								}),
+								..NumberInput::default()
+							})),
+						],
+					}],
+					"Brighten Color" => vec![LayoutGroup::Row {
+						widgets: vec![
+							WidgetHolder::new(Widget::TextLabel(TextLabel {
+								value: "Brighten Amount".into(),
+								..Default::default()
+							})),
+							WidgetHolder::new(Widget::Separator(Separator {
+								separator_type: SeparatorType::Unrelated,
+								direction: SeparatorDirection::Horizontal,
+							})),
+							WidgetHolder::new(Widget::NumberInput(NumberInput {
+								value: Some({
+									let NodeInput::Value (TaggedValue::F32(x)) = document_node.inputs[1] else {
+										panic!("Brighten amount should be f32")
+									};
+									x as f64
+								}),
+								mode: NumberInputMode::Range,
+								range_min: Some(-255.),
+								range_max: Some(255.),
+								on_update: WidgetCallback::new(move |number_input: &NumberInput| {
+									NodeGraphMessage::SetInputValue {
+										node,
+										input_index: 1,
+										value: TaggedValue::F32(number_input.value.unwrap() as f32),
+									}
+									.into()
+								}),
+								..NumberInput::default()
+							})),
+						],
+					}],
+					_ => vec![LayoutGroup::Row {
+						widgets: vec![WidgetHolder::new(Widget::TextLabel(TextLabel {
+							value: format!("Cannot currently display properties for network {}", document_node.name),
+							..Default::default()
+						}))],
+					}],
+				},
 				DocumentNodeImplementation::Unresolved(identifier) => match identifier.name.as_ref() {
-					"bob" => vec![],
+					"graphene_std::raster::MapImageNode" | "graphene_core::ops::IdNode" => vec![LayoutGroup::Row {
+						widgets: vec![WidgetHolder::new(Widget::TextLabel(TextLabel {
+							value: format!("{} requires no properties", document_node.name),
+							..Default::default()
+						}))],
+					}],
 					unknown => {
 						vec![
 							LayoutGroup::Row {
