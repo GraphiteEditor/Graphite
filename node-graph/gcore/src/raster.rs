@@ -29,7 +29,7 @@ impl<N: Node<(), Output = f32>> Node<Color> for BrightenColorNode<N> {
 	type Output = Color;
 	fn eval(self, color: Color) -> Color {
 		let brightness = self.0.eval(());
-		let per_channel = |col: f32| (col + brightness).clamp(0., 1.);
+		let per_channel = |col: f32| (col + brightness / 255.).clamp(0., 1.);
 		Color::from_rgbaf32_unchecked(per_channel(color.r()), per_channel(color.g()), per_channel(color.b()), color.a())
 	}
 }
@@ -37,12 +37,38 @@ impl<N: Node<(), Output = f32> + Copy> Node<Color> for &BrightenColorNode<N> {
 	type Output = Color;
 	fn eval(self, color: Color) -> Color {
 		let brightness = self.0.eval(());
-		let per_channel = |col: f32| (col + brightness).clamp(0., 1.);
+		let per_channel = |col: f32| (col + brightness / 255.).clamp(0., 1.);
 		Color::from_rgbaf32_unchecked(per_channel(color.r()), per_channel(color.g()), per_channel(color.b()), color.a())
 	}
 }
 
 impl<N: Node<(), Output = f32> + Copy> BrightenColorNode<N> {
+	pub fn new(node: N) -> Self {
+		Self(node)
+	}
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct HueShiftNode<N: Node<(), Output = f32>>(N);
+
+impl<N: Node<(), Output = f32>> Node<Color> for HueShiftNode<N> {
+	type Output = Color;
+	fn eval(self, color: Color) -> Color {
+		let hue_shift = self.0.eval(());
+		let [hue, saturation, luminance, alpha] = color.to_hsla();
+		Color::from_hsla(hue + hue_shift / 360., saturation, luminance, alpha)
+	}
+}
+impl<N: Node<(), Output = f32> + Copy> Node<Color> for &HueShiftNode<N> {
+	type Output = Color;
+	fn eval(self, color: Color) -> Color {
+		let hue_shift = self.0.eval(());
+		let [hue, saturation, luminance, alpha] = color.to_hsla();
+		Color::from_hsla(hue + hue_shift / 360., saturation, luminance, alpha)
+	}
+}
+
+impl<N: Node<(), Output = f32> + Copy> HueShiftNode<N> {
 	pub fn new(node: N) -> Self {
 		Self(node)
 	}

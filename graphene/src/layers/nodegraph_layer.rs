@@ -136,25 +136,51 @@ impl Default for NodeGraphFrameLayer {
 			.collect(),
 		};
 
+		let hue_shift_network = NodeNetwork {
+			inputs: vec![0, 0],
+			output: 0,
+			nodes: [(
+				0,
+				DocumentNode {
+					name: "hue shift".into(),
+					inputs: vec![NodeInput::Network, NodeInput::Network],
+					implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new(
+						"graphene_core::raster::HueShiftNode",
+						&[graph_craft::proto::Type::Concrete(std::borrow::Cow::Borrowed("&TypeErasedNode"))],
+					)),
+				},
+			)]
+			.into_iter()
+			.collect(),
+		};
+
 		Self {
 			mime: String::new(),
 			network: NodeNetwork {
-				inputs: vec![1, 0],
-				output: 1,
+				inputs: vec![2, 1],
+				output: 2,
 				nodes: [
 					(
 						0,
 						DocumentNode {
-							name: "Brighten".into(),
-							inputs: vec![NodeInput::Network, NodeInput::Value(value::TaggedValue::F32(4.))],
-							implementation: DocumentNodeImplementation::Network(brighten_network),
+							name: "Hue Shift".into(),
+							inputs: vec![NodeInput::Network, NodeInput::Value(value::TaggedValue::F32(50.))],
+							implementation: DocumentNodeImplementation::Network(hue_shift_network),
 						},
 					),
 					(
 						1,
 						DocumentNode {
+							name: "Brighten".into(),
+							inputs: vec![NodeInput::Node(0), NodeInput::Value(value::TaggedValue::F32(10.))],
+							implementation: DocumentNodeImplementation::Network(brighten_network),
+						},
+					),
+					(
+						2,
+						DocumentNode {
 							name: "Map Image".into(),
-							inputs: vec![NodeInput::Network, NodeInput::Node(0)],
+							inputs: vec![NodeInput::Network, NodeInput::Node(1)],
 							implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_std::raster::MapImageNode", &[])),
 						},
 					),
