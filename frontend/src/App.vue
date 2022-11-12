@@ -70,6 +70,9 @@
 		linear-gradient(45deg, #cccccc 25%, transparent 25%, transparent 75%, #cccccc 75%), linear-gradient(#ffffff, #ffffff);
 	--color-transparent-checkered-background-size: 16px 16px;
 	--color-transparent-checkered-background-position: 0 0, 8px 8px;
+
+	--icon-expand-collapse-arrow: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8"><polygon fill="%23eee" points="3,0 1,0 5,4 1,8 3,8 7,4" /></svg>');
+	--icon-expand-collapse-arrow-hover: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8"><polygon fill="%23fff" points="3,0 1,0 5,4 1,8 3,8 7,4" /></svg>');
 }
 
 html,

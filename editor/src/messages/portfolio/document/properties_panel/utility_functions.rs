@@ -1065,34 +1065,42 @@ fn node_section_node_graph_frame(layer_path: Vec<graphene::LayerId>, node_graph_
 		name: "Node Graph Frame".into(),
 		layout: vec![
 			LayoutGroup::Row {
-				widgets: vec![WidgetHolder::new(Widget::TextLabel(TextLabel {
-					value: "Temporary layer that applies a grayscale to the layers below it.".into(),
-					..TextLabel::default()
-				}))],
-			},
-			LayoutGroup::Row {
-				widgets: vec![WidgetHolder::new(Widget::TextLabel(TextLabel {
-					value: "Powered by the node graph! :)".into(),
-					..TextLabel::default()
-				}))],
-			},
-			LayoutGroup::Row {
-				widgets: vec![WidgetHolder::new(Widget::TextButton(TextButton {
-					label: if open_graph { "Close Node Graph".into() } else { "Open Node Graph".into() },
-					tooltip: format!("{} the node graph associated with this layer", if open_graph { "Close" } else { "Open" }),
-					on_update: WidgetCallback::new(move |_| {
-						let layer_path = layer_path.clone();
-						if open_graph {
-							NodeGraphMessage::CloseNodeGraph.into()
-						} else {
-							NodeGraphMessage::OpenNodeGraph { layer_path }.into()
-						}
-					}),
-					..Default::default()
-				}))],
+				widgets: vec![
+					WidgetHolder::new(Widget::TextLabel(TextLabel {
+						value: "Network".into(),
+						tooltip: "Button to edit the node graph network for this layer".into(),
+						..Default::default()
+					})),
+					WidgetHolder::new(Widget::Separator(Separator {
+						separator_type: SeparatorType::Unrelated,
+						direction: SeparatorDirection::Horizontal,
+					})),
+					WidgetHolder::new(Widget::TextButton(TextButton {
+						label: if open_graph { "Close Node Graph".into() } else { "Open Node Graph".into() },
+						tooltip: format!("{} the node graph associated with this layer", if open_graph { "Close" } else { "Open" }),
+						on_update: WidgetCallback::new(move |_| {
+							let layer_path = layer_path.clone();
+							if open_graph {
+								NodeGraphMessage::CloseNodeGraph.into()
+							} else {
+								NodeGraphMessage::OpenNodeGraph { layer_path }.into()
+							}
+						}),
+						..Default::default()
+					})),
+				],
 			},
 			LayoutGroup::Row {
 				widgets: vec![
+					WidgetHolder::new(Widget::TextLabel(TextLabel {
+						value: "Image".into(),
+						tooltip: "Buttons to render the node graph and clear the last rendered image".into(),
+						..Default::default()
+					})),
+					WidgetHolder::new(Widget::Separator(Separator {
+						separator_type: SeparatorType::Unrelated,
+						direction: SeparatorDirection::Horizontal,
+					})),
 					WidgetHolder::new(Widget::TextButton(TextButton {
 						label: "Render".into(),
 						tooltip: "Fill layer frame by rendering the node graph".into(),
