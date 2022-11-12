@@ -62,7 +62,12 @@ impl DocumentNode {
 				NodeInput::Network => (ProtoNodeInput::Network, ConstructionArgs::Nodes(vec![])),
 			};
 			assert!(!self.inputs.iter().any(|input| matches!(input, NodeInput::Network)), "recieved non resolved parameter");
-			assert!(!self.inputs.iter().any(|input| matches!(input, NodeInput::Value(_))), "recieved value as parameter");
+			assert!(
+				!self.inputs.iter().any(|input| matches!(input, NodeInput::Value(_))),
+				"recieved value as parameter. inupts: {:#?}, construction_args: {:#?}",
+				&self.inputs,
+				&args
+			);
 
 			if let ConstructionArgs::Nodes(nodes) = &mut args {
 				nodes.extend(self.inputs.iter().map(|input| match input {
@@ -143,7 +148,10 @@ impl NodeNetwork {
 
 	/// Recursively dissolve non primitive document nodes and return a single flattened network of nodes.
 	pub fn flatten_with_fns(&mut self, node: NodeId, map_ids: impl Fn(NodeId, NodeId) -> NodeId + Copy, gen_id: impl Fn() -> NodeId + Copy) {
-		let (id, mut node) = self.nodes.remove_entry(&node).expect("The node which was supposed to be flattened does not exist in the network");
+		let (id, mut node) = self
+			.nodes
+			.remove_entry(&node)
+			.unwrap_or_else(|| panic!("The node which was supposed to be flattened does not exist in the network, id {} network {:#?}", node, self));
 
 		match node.implementation {
 			DocumentNodeImplementation::Network(mut inner_network) => {

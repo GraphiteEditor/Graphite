@@ -118,25 +118,69 @@ impl Default for NodeGraphFrameLayer {
 	fn default() -> Self {
 		use graph_craft::document::*;
 		use graph_craft::proto::NodeIdentifier;
+		let brighten_network = NodeNetwork {
+			inputs: vec![0, 0],
+			output: 0,
+			nodes: [(
+				0,
+				DocumentNode {
+					name: "brighten".into(),
+					inputs: vec![NodeInput::Network, NodeInput::Network],
+					implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new(
+						"graphene_core::raster::BrightenColorNode",
+						&[graph_craft::proto::Type::Concrete(std::borrow::Cow::Borrowed("&TypeErasedNode"))],
+					)),
+				},
+			)]
+			.into_iter()
+			.collect(),
+		};
+
+		let hue_shift_network = NodeNetwork {
+			inputs: vec![0, 0],
+			output: 0,
+			nodes: [(
+				0,
+				DocumentNode {
+					name: "hue shift".into(),
+					inputs: vec![NodeInput::Network, NodeInput::Network],
+					implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new(
+						"graphene_core::raster::HueShiftNode",
+						&[graph_craft::proto::Type::Concrete(std::borrow::Cow::Borrowed("&TypeErasedNode"))],
+					)),
+				},
+			)]
+			.into_iter()
+			.collect(),
+		};
+
 		Self {
 			mime: String::new(),
 			network: NodeNetwork {
-				inputs: vec![1],
-				output: 1,
+				inputs: vec![2, 1],
+				output: 2,
 				nodes: [
 					(
 						0,
 						DocumentNode {
-							name: "grayscale".into(),
-							inputs: vec![NodeInput::Network],
-							implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::raster::GrayscaleNode", &[])),
+							name: "Hue Shift Color".into(),
+							inputs: vec![NodeInput::Network, NodeInput::Value(value::TaggedValue::F32(50.))],
+							implementation: DocumentNodeImplementation::Network(hue_shift_network),
 						},
 					),
 					(
 						1,
 						DocumentNode {
-							name: "map image".into(),
-							inputs: vec![NodeInput::Network, NodeInput::Node(0)],
+							name: "Brighten Color".into(),
+							inputs: vec![NodeInput::Node(0), NodeInput::Value(value::TaggedValue::F32(10.))],
+							implementation: DocumentNodeImplementation::Network(brighten_network),
+						},
+					),
+					(
+						2,
+						DocumentNode {
+							name: "Map Image".into(),
+							inputs: vec![NodeInput::Network, NodeInput::Node(1)],
 							implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_std::raster::MapImageNode", &[])),
 						},
 					),

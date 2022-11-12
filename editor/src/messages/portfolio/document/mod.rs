@@ -3,6 +3,7 @@ mod document_message_handler;
 
 pub mod artboard;
 pub mod navigation;
+pub mod node_graph;
 pub mod overlays;
 pub mod properties_panel;
 pub mod transform_layer;

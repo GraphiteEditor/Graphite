@@ -54,7 +54,7 @@ module.exports = {
 	rules: {
 		// Standard ESLint config
 		indent: "off",
-		quotes: ["error", "double"],
+		quotes: ["error", "double", { allowTemplateLiterals: true }],
 		camelcase: ["error", { properties: "always" }],
 		"linebreak-style": ["error", "unix"],
 		"eol-last": ["error", "always"],
@@ -110,6 +110,7 @@ module.exports = {
 				tabWidth: 4,
 				tabs: true,
 				printWidth: 200,
+				singleQuote: false,
 			},
 		],
 

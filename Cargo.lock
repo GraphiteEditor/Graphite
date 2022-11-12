@@ -358,6 +358,7 @@ dependencies = [
  "dyn-clone",
  "graphene-core",
  "graphene-std",
+ "log",
  "num-traits",
  "rand_chacha",
  "serde",
@@ -460,6 +461,7 @@ dependencies = [
 name = "graphite-wasm"
 version = "0.0.0"
 dependencies = [
+ "graph-craft",
  "graphite-editor",
  "graphite-graphene",
  "js-sys",

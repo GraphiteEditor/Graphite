@@ -25,10 +25,6 @@
 
 	.sections {
 		flex: 1 1 100%;
-
-		.widget-section + .widget-section {
-			margin-top: 1px;
-		}
 	}
 }
 </style>
