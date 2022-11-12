@@ -13,6 +13,11 @@ pub enum NodeGraphMessage {
 		to_index: usize,
 	},
 	CloseNodeGraph,
+	ConnectNodesByLink {
+		output_node: u64,
+		input_node: u64,
+		input_node_connector_index: u32,
+	},
 	CreateNode {
 		// Having the caller generate the id means that we don't have to return it. This can be a random u64.
 		node_id: NodeId,
