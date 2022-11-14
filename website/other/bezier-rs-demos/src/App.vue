@@ -545,6 +545,25 @@ export default defineComponent({
 							[20, 20],
 						]),
 				},
+				{
+					name: "Intersect (Quadratic segment)",
+					callback: (subpath: WasmSubpathInstance): string =>
+						subpath.intersect_quadratic_segment([
+							[20, 80],
+							[180, 10],
+							[90, 120],
+						]),
+				},
+				{
+					name: "Intersect (Cubic segment)",
+					callback: (subpath: WasmSubpathInstance): string =>
+						subpath.intersect_cubic_segment([
+							[40, 20],
+							[100, 40],
+							[40, 120],
+							[175, 140],
+						]),
+				},
 			],
 		};
 	},
