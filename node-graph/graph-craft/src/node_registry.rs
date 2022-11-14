@@ -198,9 +198,9 @@ static NODE_REGISTRY: &[(NodeIdentifier, NodeConstructor)] = &[
 			}
 		})
 	}),
-	(NodeIdentifier::new("graphene_core::raster::GrayscaleNode", &[]), |proto_node, stack| {
+	(NodeIdentifier::new("graphene_core::raster::GrayscaleColorNode", &[]), |proto_node, stack| {
 		stack.push_fn(|nodes| {
-			let node = DynAnyNode::new(graphene_core::raster::GrayscaleNode);
+			let node = DynAnyNode::new(graphene_core::raster::GrayscaleColorNode);
 
 			if let ProtoNodeInput::Node(pre_id) = proto_node.input {
 				let pre_node = nodes.get(pre_id as usize).unwrap();
@@ -230,14 +230,14 @@ static NODE_REGISTRY: &[(NodeIdentifier, NodeConstructor)] = &[
 		},
 	),
 	(
-		NodeIdentifier::new("graphene_core::raster::HueShiftNode", &[Type::Concrete(Cow::Borrowed("&TypeErasedNode"))]),
+		NodeIdentifier::new("graphene_core::raster::HueShiftColorNode", &[Type::Concrete(Cow::Borrowed("&TypeErasedNode"))]),
 		|proto_node, stack| {
 			info!("proto node {:?}", proto_node);
 			stack.push_fn(|nodes| {
 				let ConstructionArgs::Nodes(construction_nodes) = proto_node.construction_args else { unreachable!("Hue Shift Color Node constructed with out shift input node") };
 				let value_node = nodes.get(construction_nodes[0] as usize).unwrap();
 				let input_node: DowncastBothNode<_, (), f32> = DowncastBothNode::new(value_node);
-				let node = DynAnyNode::new(graphene_core::raster::HueShiftNode::new(input_node));
+				let node = DynAnyNode::new(graphene_core::raster::HueShiftColorNode::new(input_node));
 
 				if let ProtoNodeInput::Node(pre_id) = proto_node.input {
 					let pre_node = nodes.get(pre_id as usize).unwrap();
@@ -267,45 +267,54 @@ static NODE_REGISTRY: &[(NodeIdentifier, NodeConstructor)] = &[
 			unimplemented!()
 		}
 	}),
-	(NodeIdentifier::new("graph_craft::node_registry::GrayscaleImage", &[]), |proto_node, stack| {
+	(NodeIdentifier::new("graphene_std::raster::GrayscaleImageNode", &[]), |proto_node, stack| {
 		stack.push_fn(move |nodes| {
-			let grayscale_node = DynAnyNode::new(FnNode::new(|mut image: Image| {
-				for pixel in &mut image.data {
-					let avg = (pixel.r() + pixel.g() + pixel.b()) / 3.;
-					*pixel = Color::from_rgbaf32_unchecked(avg, avg, avg, pixel.a());
-				}
-				image
-			}));
+			let node = DynAnyNode::new(graphene_std::raster::GrayscaleImageNode);
 
 			if let ProtoNodeInput::Node(node_id) = proto_node.input {
 				let pre_node = nodes.get(node_id as usize).unwrap();
-				(pre_node).then(grayscale_node).into_type_erased()
+				(pre_node).then(node).into_type_erased()
 			} else {
-				grayscale_node.into_type_erased()
+				node.into_type_erased()
 			}
 		})
 	}),
-	(NodeIdentifier::new("graph_craft::node_registry::HueShiftImage", &[]), |_proto_node, _stack| {
-		todo!();
-		// stack.push_fn(move |nodes| {
+	(
+		NodeIdentifier::new("graphene_std::raster::HueShiftImage", &[Type::Concrete(Cow::Borrowed("&TypeErasedNode"))]),
+		|proto_node, stack| {
+			stack.push_fn(move |nodes| {
+				let ConstructionArgs::Nodes(construction_nodes) = proto_node.construction_args else { unreachable!("Hue Shift Image Node constructed with out shift input node") };
+				let value_node = nodes.get(construction_nodes[0] as usize).unwrap();
+				let input_node: DowncastBothNode<_, (), f32> = DowncastBothNode::new(value_node);
+				let node = DynAnyNode::new(graphene_std::raster::HueShiftImage::new(input_node));
 
-		// 	let hue_shift_node = DynAnyNode::new(FnNode::new(|(mut image, amount): (Image, f32)| {
-		// 		for pixel in &mut image.data {
-		// 			let [mut hue, saturation, luminance, alpha] = pixel.to_hsla();
-		// 			hue += amount;
-		// 			*pixel = Color::from_hsla(hue, saturation, luminance, alpha);
-		// 		}
-		// 		image
-		// 	}));
+				if let ProtoNodeInput::Node(node_id) = proto_node.input {
+					let pre_node = nodes.get(node_id as usize).unwrap();
+					(pre_node).then(node).into_type_erased()
+				} else {
+					node.into_type_erased()
+				}
+			})
+		},
+	),
+	(
+		NodeIdentifier::new("graphene_std::raster::BrightenImageNode", &[Type::Concrete(Cow::Borrowed("&TypeErasedNode"))]),
+		|proto_node, stack| {
+			stack.push_fn(move |nodes| {
+				let ConstructionArgs::Nodes(construction_nodes) = proto_node.construction_args else { unreachable!("Brighten Image Node constructed with out brighten input node") };
+				let value_node = nodes.get(construction_nodes[0] as usize).unwrap();
+				let input_node: DowncastBothNode<_, (), f32> = DowncastBothNode::new(value_node);
+				let node = DynAnyNode::new(graphene_std::raster::BrightenImageNode::new(input_node));
 
-		// 	if let ProtoNodeInput::Node(node_id) = proto_node.input {
-		// 		let pre_node = nodes.get(node_id as usize).unwrap();
-		// 		(pre_node).then(hue_shift_node).into_type_erased()
-		// 	} else {
-		// 		hue_shift_node.into_type_erased()
-		// 	}
-		// })
-	}),
+				if let ProtoNodeInput::Node(node_id) = proto_node.input {
+					let pre_node = nodes.get(node_id as usize).unwrap();
+					(pre_node).then(node).into_type_erased()
+				} else {
+					node.into_type_erased()
+				}
+			})
+		},
+	),
 	(
 		NodeIdentifier::new("graphene_std::raster::ImageNode", &[Concrete(std::borrow::Cow::Borrowed("&str"))]),
 		|_proto_node, stack| {

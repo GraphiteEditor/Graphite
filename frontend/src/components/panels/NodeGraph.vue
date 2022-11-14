@@ -489,9 +489,9 @@ export default defineComponent({
 					const inputNodeConnectionIndex = inputNodeConnectionIndexSearch > -1 ? inputNodeConnectionIndexSearch : undefined;
 
 					if (inputNodeConnectionIndex !== undefined) {
-						const oneBasedIndex = inputNodeConnectionIndex + 1;
+						// const oneBasedIndex = inputNodeConnectionIndex + 1;
 
-						this.editor.instance.connectNodesByLink(BigInt(outputConnectedNodeID), BigInt(inputConnectedNodeID), oneBasedIndex);
+						this.editor.instance.connectNodesByLink(BigInt(outputConnectedNodeID), BigInt(inputConnectedNodeID), 0);
 					}
 				}
 			}

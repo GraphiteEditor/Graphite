@@ -566,14 +566,13 @@ impl JsEditorHandle {
 
 		let (ident, args) = match node_type.as_str() {
 			"Identity" => (NodeIdentifier::new("graphene_core::ops::IdNode", &[Type::Concrete(Cow::Borrowed("Any<'_>"))]), 1),
-			"Grayscale Color" => (NodeIdentifier::new("graphene_core::ops::IdNode", &[Type::Concrete(Cow::Borrowed("Any<'_>"))]), 1),
-			"Brighten Color" => (NodeIdentifier::new("graphene_core::ops::IdNode", &[Type::Concrete(Cow::Borrowed("Any<'_>"))]), 1),
-			"Hue Shift Color" => (NodeIdentifier::new("graphene_core::ops::IdNode", &[Type::Concrete(Cow::Borrowed("Any<'_>"))]), 1),
+			"Grayscale Image" => (NodeIdentifier::new("graphene_std::raster::GrayscaleImageNode", &[]), 1),
+			"Brighten Image" => (NodeIdentifier::new("graphene_std::raster::BrightenImageNode", &[Type::Concrete(Cow::Borrowed("&TypeErasedNode"))]), 2),
+			"Hue Shift Image" => (NodeIdentifier::new("graphene_std::raster::HueShiftImage", &[Type::Concrete(Cow::Borrowed("&TypeErasedNode"))]), 2),
 			"Add" => (
 				NodeIdentifier::new("graphene_core::ops::AddNode", &[Type::Concrete(Cow::Borrowed("u32")), Type::Concrete(Cow::Borrowed("u32"))]),
 				2,
 			),
-			"Map Image" => (NodeIdentifier::new("graphene_std::raster::MapImageNode", &[]), 2),
 			_ => panic!("Invalid node type: {}", node_type),
 		};
 

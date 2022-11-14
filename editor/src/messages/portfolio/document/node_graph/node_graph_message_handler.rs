@@ -62,7 +62,7 @@ impl NodeGraphMessageHandler {
 			let name = format!("Node {} Properties", document_node.name);
 			let layout = match &document_node.implementation {
 				DocumentNodeImplementation::Network(_) => match document_node.name.as_str() {
-					"Hue Shift Color" => vec![LayoutGroup::Row {
+					"Hue Shift Image" => vec![LayoutGroup::Row {
 						widgets: vec![
 							WidgetHolder::new(Widget::TextLabel(TextLabel {
 								value: "Shift degrees".into(),
@@ -95,7 +95,7 @@ impl NodeGraphMessageHandler {
 							})),
 						],
 					}],
-					"Brighten Color" => vec![LayoutGroup::Row {
+					"Brighten Image" => vec![LayoutGroup::Row {
 						widgets: vec![
 							WidgetHolder::new(Widget::TextLabel(TextLabel {
 								value: "Brighten Amount".into(),
@@ -292,10 +292,9 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 						FrontendMessage::UpdateNodeTypes {
 							node_types: vec![
 								FrontendNodeType::new("Identity"),
-								FrontendNodeType::new("Grayscale Color"),
-								FrontendNodeType::new("Brighten Color"),
-								FrontendNodeType::new("Hue Shift Color"),
-								FrontendNodeType::new("Add"),
+								FrontendNodeType::new("Grayscale Image"),
+								FrontendNodeType::new("Brighten Image"),
+								FrontendNodeType::new("Hue Shift Image"),
 								FrontendNodeType::new("Map Image"),
 							],
 						}

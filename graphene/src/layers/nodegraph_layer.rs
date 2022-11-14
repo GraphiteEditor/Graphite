@@ -125,10 +125,10 @@ impl Default for NodeGraphFrameLayer {
 			nodes: [(
 				0,
 				DocumentNode {
-					name: "brighten".into(),
+					name: "Brighten Image Node".into(),
 					inputs: vec![NodeInput::Network, NodeInput::Network],
 					implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new(
-						"graphene_core::raster::BrightenColorNode",
+						"graphene_std::raster::BrightenImageNode",
 						&[graph_craft::proto::Type::Concrete(std::borrow::Cow::Borrowed("&TypeErasedNode"))],
 					)),
 				},
@@ -143,10 +143,10 @@ impl Default for NodeGraphFrameLayer {
 			nodes: [(
 				0,
 				DocumentNode {
-					name: "hue shift".into(),
+					name: "Hue Shift Image Node".into(),
 					inputs: vec![NodeInput::Network, NodeInput::Network],
 					implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new(
-						"graphene_core::raster::HueShiftNode",
+						"graphene_std::raster::HueShiftImage",
 						&[graph_craft::proto::Type::Concrete(std::borrow::Cow::Borrowed("&TypeErasedNode"))],
 					)),
 				},
@@ -159,7 +159,7 @@ impl Default for NodeGraphFrameLayer {
 			mime: String::new(),
 			network: NodeNetwork {
 				inputs: vec![0],
-				output: 4,
+				output: 3,
 				nodes: [
 					(
 						0,
@@ -172,15 +172,15 @@ impl Default for NodeGraphFrameLayer {
 					(
 						1,
 						DocumentNode {
-							name: "Hue Shift Color".into(),
-							inputs: vec![NodeInput::Network, NodeInput::Value(value::TaggedValue::F32(50.))],
+							name: "Hue Shift Image".into(),
+							inputs: vec![NodeInput::Node(0), NodeInput::Value(value::TaggedValue::F32(50.))],
 							implementation: DocumentNodeImplementation::Network(hue_shift_network),
 						},
 					),
 					(
 						2,
 						DocumentNode {
-							name: "Brighten Color".into(),
+							name: "Brighten Image".into(),
 							inputs: vec![NodeInput::Node(1), NodeInput::Value(value::TaggedValue::F32(10.))],
 							implementation: DocumentNodeImplementation::Network(brighten_network),
 						},
@@ -188,16 +188,8 @@ impl Default for NodeGraphFrameLayer {
 					(
 						3,
 						DocumentNode {
-							name: "Map Image".into(),
-							inputs: vec![NodeInput::Node(0), NodeInput::Node(2)],
-							implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_std::raster::MapImageNode", &[])),
-						},
-					),
-					(
-						4,
-						DocumentNode {
 							name: "Output".into(),
-							inputs: vec![NodeInput::Node(3)],
+							inputs: vec![NodeInput::Node(2)],
 							implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode", &[Type::Generic])),
 						},
 					),

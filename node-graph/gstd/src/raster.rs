@@ -165,16 +165,104 @@ pub fn export_image_node<'n>() -> impl Node<(Image, &'n str), Output = Result<()
 	})
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct GrayscaleImageNode;
+
+impl Node<Image> for GrayscaleImageNode {
+	type Output = Image;
+	fn eval(self, mut image: Image) -> Image {
+		for pixel in &mut image.data {
+			let avg = (pixel.r() + pixel.g() + pixel.b()) / 3.;
+			*pixel = Color::from_rgbaf32_unchecked(avg, avg, avg, pixel.a());
+		}
+		image
+	}
+}
+impl Node<Image> for &GrayscaleImageNode {
+	type Output = Image;
+	fn eval(self, mut image: Image) -> Image {
+		for pixel in &mut image.data {
+			let avg = (pixel.r() + pixel.g() + pixel.b()) / 3.;
+			*pixel = Color::from_rgbaf32_unchecked(avg, avg, avg, pixel.a());
+		}
+		image
+	}
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct BrightenImageNode<N: Node<(), Output = f32>>(N);
+
+impl<N: Node<(), Output = f32>> Node<Image> for BrightenImageNode<N> {
+	type Output = Image;
+	fn eval(self, mut image: Image) -> Image {
+		let brightness = self.0.eval(());
+		let per_channel = |col: f32| (col + brightness / 255.).clamp(0., 1.);
+		for pixel in &mut image.data {
+			*pixel = Color::from_rgbaf32_unchecked(per_channel(pixel.r()), per_channel(pixel.g()), per_channel(pixel.b()), pixel.a());
+		}
+		image
+	}
+}
+impl<N: Node<(), Output = f32> + Copy> Node<Image> for &BrightenImageNode<N> {
+	type Output = Image;
+	fn eval(self, mut image: Image) -> Image {
+		let brightness = self.0.eval(());
+		let per_channel = |col: f32| (col + brightness / 255.).clamp(0., 1.);
+		for pixel in &mut image.data {
+			*pixel = Color::from_rgbaf32_unchecked(per_channel(pixel.r()), per_channel(pixel.g()), per_channel(pixel.b()), pixel.a());
+		}
+		image
+	}
+}
+
+impl<N: Node<(), Output = f32> + Copy> BrightenImageNode<N> {
+	pub fn new(node: N) -> Self {
+		Self(node)
+	}
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct HueShiftImage<N: Node<(), Output = f32>>(N);
+
+impl<N: Node<(), Output = f32>> Node<Image> for HueShiftImage<N> {
+	type Output = Image;
+	fn eval(self, mut image: Image) -> Image {
+		let hue_shift = self.0.eval(());
+		for pixel in &mut image.data {
+			let [hue, saturation, luminance, alpha] = pixel.to_hsla();
+			*pixel = Color::from_hsla(hue + hue_shift / 360., saturation, luminance, alpha);
+		}
+		image
+	}
+}
+impl<N: Node<(), Output = f32> + Copy> Node<Image> for &HueShiftImage<N> {
+	type Output = Image;
+	fn eval(self, mut image: Image) -> Image {
+		let hue_shift = self.0.eval(());
+		for pixel in &mut image.data {
+			let [hue, saturation, luminance, alpha] = pixel.to_hsla();
+			*pixel = Color::from_hsla(hue + hue_shift / 360., saturation, luminance, alpha);
+		}
+		image
+	}
+}
+
+impl<N: Node<(), Output = f32> + Copy> HueShiftImage<N> {
+	pub fn new(node: N) -> Self {
+		Self(node)
+	}
+}
+
 #[cfg(test)]
 mod test {
 	use super::*;
 	use graphene_core::raster::color::Color;
-	use graphene_core::raster::GrayscaleNode;
+	use graphene_core::raster::GrayscaleColorNode;
 
 	#[test]
 	fn map_node() {
 		let array = [Color::from_rgbaf32(1.0, 0.0, 0.0, 1.0).unwrap()];
-		let map = MapNode(GrayscaleNode, PhantomData);
+		let map = MapNode(GrayscaleColorNode, PhantomData);
 		let values = map.eval(array.into_iter());
 		assert_eq!(values[0], Color::from_rgbaf32(0.33333334, 0.33333334, 0.33333334, 1.0).unwrap());
 	}
@@ -182,7 +270,7 @@ mod test {
 	#[test]
 	fn load_image() {
 		let image = image_node::<&str>();
-		let gray = MapImageNode::new(GrayscaleNode);
+		let gray = MapImageNode::new(GrayscaleColorNode);
 
 		let grayscale_picture = image.then(MapResultNode::new(&gray));
 		let export = export_image_node();
