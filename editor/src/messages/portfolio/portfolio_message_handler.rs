@@ -495,7 +495,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 					}
 					Err(description) => responses.push_back(
 						DialogMessage::DisplayDialogError {
-							title: "Failed to update image".to_string(),
+							title: "Failed to update node graph".to_string(),
 							description,
 						}
 						.into(),

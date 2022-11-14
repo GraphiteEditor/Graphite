@@ -21,17 +21,25 @@ static NODE_REGISTRY: &[(NodeIdentifier, NodeConstructor)] = &[
 		NodeIdentifier::new("graphene_core::ops::IdNode", &[Concrete(std::borrow::Cow::Borrowed("Any<'_>"))]),
 		|proto_node, stack| {
 			stack.push_fn(|nodes| {
-				let pre_node = nodes.get(proto_node.input.unwrap_node() as usize).unwrap();
-				let node = pre_node.then(graphene_core::ops::IdNode);
-				node.into_type_erased()
+				if let ProtoNodeInput::Node(pre_id) = proto_node.input {
+					let pre_node = nodes.get(pre_id as usize).unwrap();
+					let node = pre_node.then(graphene_core::ops::IdNode);
+					node.into_type_erased()
+				} else {
+					graphene_core::ops::IdNode.into_type_erased()
+				}
 			})
 		},
 	),
 	(NodeIdentifier::new("graphene_core::ops::IdNode", &[Type::Generic]), |proto_node, stack| {
 		stack.push_fn(|nodes| {
-			let pre_node = nodes.get(proto_node.input.unwrap_node() as usize).unwrap();
-			let node = pre_node.then(graphene_core::ops::IdNode);
-			node.into_type_erased()
+			if let ProtoNodeInput::Node(pre_id) = proto_node.input {
+				let pre_node = nodes.get(pre_id as usize).unwrap();
+				let node = pre_node.then(graphene_core::ops::IdNode);
+				node.into_type_erased()
+			} else {
+				graphene_core::ops::IdNode.into_type_erased()
+			}
 		})
 	}),
 	(

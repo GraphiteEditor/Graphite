@@ -6,6 +6,7 @@ use crate::layers::text_layer::FontCache;
 use crate::LayerId;
 
 use glam::{DAffine2, DMat2, DVec2};
+use graph_craft::proto::Type;
 use kurbo::{Affine, BezPath, Shape as KurboShape};
 use serde::{Deserialize, Serialize};
 use std::fmt::Write;
@@ -157,11 +158,19 @@ impl Default for NodeGraphFrameLayer {
 		Self {
 			mime: String::new(),
 			network: NodeNetwork {
-				inputs: vec![2, 1],
-				output: 2,
+				inputs: vec![0],
+				output: 4,
 				nodes: [
 					(
 						0,
+						DocumentNode {
+							name: "Input".into(),
+							inputs: vec![NodeInput::Network],
+							implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode", &[Type::Generic])),
+						},
+					),
+					(
+						1,
 						DocumentNode {
 							name: "Hue Shift Color".into(),
 							inputs: vec![NodeInput::Network, NodeInput::Value(value::TaggedValue::F32(50.))],
@@ -169,19 +178,27 @@ impl Default for NodeGraphFrameLayer {
 						},
 					),
 					(
-						1,
+						2,
 						DocumentNode {
 							name: "Brighten Color".into(),
-							inputs: vec![NodeInput::Node(0), NodeInput::Value(value::TaggedValue::F32(10.))],
+							inputs: vec![NodeInput::Node(1), NodeInput::Value(value::TaggedValue::F32(10.))],
 							implementation: DocumentNodeImplementation::Network(brighten_network),
 						},
 					),
 					(
-						2,
+						3,
 						DocumentNode {
 							name: "Map Image".into(),
-							inputs: vec![NodeInput::Network, NodeInput::Node(1)],
+							inputs: vec![NodeInput::Node(0), NodeInput::Node(2)],
 							implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_std::raster::MapImageNode", &[])),
+						},
+					),
+					(
+						4,
+						DocumentNode {
+							name: "Output".into(),
+							inputs: vec![NodeInput::Node(3)],
+							implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode", &[Type::Generic])),
 						},
 					),
 				]
