@@ -437,7 +437,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 					// Execute the node graph
 
 					let mut network = node_graph_frame.network.clone();
-					info!("Network {network:?}");
+					info!("Executing network {network:#?}");
 
 					let stack = borrow_stack::FixedSizeStack::new(256);
 					for node_id in node_graph_frame.network.nodes.keys() {
@@ -447,14 +447,18 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 					let mut proto_network = network.into_proto_network();
 					proto_network.reorder_ids();
 
+					info!("proto_network with reordered ids: {proto_network:#?}");
+
+					assert_ne!(proto_network.nodes.len(), 0, "No protonodes exist?");
 					for (_id, node) in proto_network.nodes {
-						info!("Node {:?}", node);
+						info!("Inserting proto node {:?}", node);
 						graph_craft::node_registry::push_node(node, &stack);
 					}
 
 					use borrow_stack::BorrowStack;
 					use dyn_any::IntoDynAny;
 					use graphene_core::Node;
+
 					let result = unsafe { stack.get().last().unwrap().eval(image.into_dyn()) };
 					let result = *dyn_any::downcast::<Image>(result).unwrap();
 

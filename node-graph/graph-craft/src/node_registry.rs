@@ -243,6 +243,7 @@ static NODE_REGISTRY: &[(NodeIdentifier, NodeConstructor)] = &[
 	(NodeIdentifier::new("graphene_std::raster::MapImageNode", &[]), |proto_node, stack| {
 		if let ConstructionArgs::Nodes(operation_node_id) = proto_node.construction_args {
 			stack.push_fn(move |nodes| {
+				info!("Map image Depending upon id {:?}", operation_node_id);
 				let operation_node = nodes.get(operation_node_id[0] as usize).unwrap();
 				let operation_node: DowncastBothNode<_, Color, Color> = DowncastBothNode::new(operation_node);
 				let map_node = DynAnyNode::new(graphene_std::raster::MapImageNode::new(operation_node));
