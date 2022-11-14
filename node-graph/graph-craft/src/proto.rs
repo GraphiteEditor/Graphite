@@ -1,5 +1,4 @@
-use std::collections::HashMap;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use crate::document::value;
 use crate::document::NodeId;
@@ -224,10 +223,16 @@ impl ProtoNetwork {
 
 	pub fn reorder_ids(&mut self) {
 		let order = self.topological_sort();
+		// Map of node ids to indexes (which become the node ids as they are inserted into the borrow stack)
+		let lookup: HashMap<_, _> = order.iter().enumerate().map(|(pos, id)| (*id, pos as NodeId)).collect();
 		info!("Order {order:?}");
 		self.nodes = order
 			.iter()
-			.map(|id| self.nodes.swap_remove(self.nodes.iter().position(|(test_id, _)| test_id == id).unwrap()))
+			.map(|id| {
+				let mut node = self.nodes.swap_remove(self.nodes.iter().position(|(test_id, _)| test_id == id).unwrap()).1;
+				node.map_ids(|id| *lookup.get(&id).unwrap());
+				(*lookup.get(id).unwrap(), node)
+			})
 			.collect();
 		assert_eq!(order.len(), self.nodes.len());
 	}
