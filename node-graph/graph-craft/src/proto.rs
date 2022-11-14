@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::collections::HashSet;
 
 use crate::document::value;
 use crate::document::NodeId;
@@ -165,7 +166,37 @@ impl ProtoNetwork {
 		edges
 	}
 
-	// Based on https://en.wikipedia.org/wiki/Topological_sorting#Kahn's_algorithm
+	// Based on https://en.wikipedia.org/wiki/Topological_sorting#Depth-first_search
+	// This approach excludes nodes that are not connected
+	pub fn topological_sort(&self) -> Vec<NodeId> {
+		let mut sorted = Vec::new();
+		let inwards_edges = self.collect_inwards_edges();
+		fn visit(node_id: NodeId, temp_marks: &mut HashSet<NodeId>, sorted: &mut Vec<NodeId>, inwards_edges: &HashMap<NodeId, Vec<NodeId>>) {
+			if sorted.contains(&node_id) {
+				return;
+			};
+			if temp_marks.contains(&node_id) {
+				panic!("Cycle detected");
+			}
+			info!("Visiting {node_id}");
+
+			if let Some(dependencies) = inwards_edges.get(&node_id) {
+				temp_marks.insert(node_id);
+				for &dependant in dependencies {
+					visit(dependant, temp_marks, sorted, inwards_edges);
+				}
+				temp_marks.remove(&node_id);
+			}
+			sorted.push(node_id);
+		}
+		assert!(self.nodes.iter().any(|(id, _)| *id == self.output), "Output id {} does not exist", self.output);
+		visit(self.output, &mut HashSet::new(), &mut sorted, &inwards_edges);
+
+		info!("Sorted order {sorted:?}");
+		sorted
+	}
+
+	/*// Based on https://en.wikipedia.org/wiki/Topological_sorting#Kahn's_algorithm
 	pub fn topological_sort(&self) -> Vec<NodeId> {
 		let mut sorted = Vec::new();
 		let outwards_edges = self.collect_outwards_edges();
@@ -187,21 +218,18 @@ impl ProtoNetwork {
 				}
 			}
 		}
+		info!("Sorted order {sorted:?}");
 		sorted
-	}
+	}*/
 
 	pub fn reorder_ids(&mut self) {
 		let order = self.topological_sort();
-		let lookup = self
-			.nodes
+		info!("Order {order:?}");
+		self.nodes = order
 			.iter()
-			.map(|(id, _)| (*id, order.iter().position(|x| x == id).unwrap() as u64))
-			.collect::<HashMap<u64, u64>>();
-		self.nodes.sort_by_key(|(id, _)| lookup.get(id).unwrap());
-		self.nodes.iter_mut().for_each(|(id, node)| {
-			node.map_ids(|id| *lookup.get(&id).unwrap());
-			*id = *lookup.get(id).unwrap()
-		});
+			.map(|id| self.nodes.swap_remove(self.nodes.iter().position(|(test_id, _)| test_id == id).unwrap()))
+			.collect();
+		assert_eq!(order.len(), self.nodes.len());
 	}
 }
 
@@ -217,6 +245,14 @@ mod test {
 			inputs: vec![10],
 			output: 1,
 			nodes: [
+				(
+					7,
+					ProtoNode {
+						identifier: "id".into(),
+						input: ProtoNodeInput::Node(11),
+						construction_args: ConstructionArgs::Nodes(vec![]),
+					},
+				),
 				(
 					1,
 					ProtoNode {
