@@ -17,7 +17,7 @@
 import { defineComponent } from "vue";
 
 import { WasmBezier } from "@/../wasm/pkg";
-import { BezierCurveType, ExampleOptions, Point, WasmBezierInstance, WasmSubpathInstance } from "@/utils/types";
+import { BezierCurveType, ExampleOptions, WasmBezierInstance, WasmSubpathInstance } from "@/utils/types";
 
 import BezierExamplePane from "@/components/BezierExamplePane.vue";
 import SubpathExamplePane from "@/components/SubpathExamplePane.vue";
@@ -49,12 +49,11 @@ export default defineComponent({
 				{
 					name: "Bezier Through Points",
 					callback: (bezier: WasmBezierInstance, options: Record<string, number>): string => {
-						const points: Point[] = JSON.parse(bezier.get_points());
-						const formattedPoints: number[][] = points.map((p) => [p.x, p.y]);
+						const points = JSON.parse(bezier.get_points());
 						if (Object.values(options).length === 1) {
-							return WasmBezier.quadratic_through_points(formattedPoints, options.t);
+							return WasmBezier.quadratic_through_points(points, options.t);
 						}
-						return WasmBezier.cubic_through_points(formattedPoints, options.t, options["midpoint separation"]);
+						return WasmBezier.cubic_through_points(points, options.t, options["midpoint separation"]);
 					},
 					exampleOptions: {
 						[BezierCurveType.Linear]: {
@@ -221,8 +220,8 @@ export default defineComponent({
 				},
 				{
 					name: "Project",
-					callback: (bezier: WasmBezierInstance, _: Record<string, number>, mouseLocation: Point): string =>
-						mouseLocation ? bezier.project(mouseLocation.x, mouseLocation.y) : bezier.to_svg(),
+					callback: (bezier: WasmBezierInstance, _: Record<string, number>, mouseLocation: number[]): string =>
+						mouseLocation ? bezier.project(mouseLocation[0], mouseLocation[1]) : bezier.to_svg(),
 					triggerOnMouseMove: true,
 				},
 				{

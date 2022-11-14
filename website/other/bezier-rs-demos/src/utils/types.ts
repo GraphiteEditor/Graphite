@@ -14,7 +14,7 @@ export enum BezierCurveType {
 	Cubic = "Cubic",
 }
 
-export type BezierCallback = (bezier: WasmBezierInstance, options: Record<string, number>, mouseLocation?: Point) => string;
+export type BezierCallback = (bezier: WasmBezierInstance, options: Record<string, number>, mouseLocation?: number[]) => string;
 export type SubpathCallback = (subpath: WasmSubpathInstance) => string;
 
 export type ExampleOptions = {
@@ -32,9 +32,4 @@ export type SliderOption = {
 	default: number;
 	variable: string;
 	unit?: string | string[];
-};
-
-export type Point = {
-	x: number;
-	y: number;
 };
