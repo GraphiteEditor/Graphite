@@ -438,11 +438,17 @@ export default defineComponent({
 				const nodeId = node?.getAttribute("data-node") || undefined;
 				if (nodeId) {
 					const id = BigInt(nodeId);
-					this.editor.instance.selectNodes(new BigUint64Array([id]));
-					this.selected = [id];
+					if (e.shiftKey || e.ctrlKey) {
+						if (this.selected.includes(id)) this.selected.splice(this.selected.lastIndexOf(id), 1);
+						else this.selected.push(id);
+					} else {
+						this.selected = [id];
+					}
+
+					this.editor.instance.selectNodes(new BigUint64Array(this.selected));
 				} else {
-					this.editor.instance.selectNodes(new BigUint64Array([]));
 					this.selected = [];
+					this.editor.instance.selectNodes(new BigUint64Array(this.selected));
 					const graphDiv: HTMLDivElement | undefined = (this.$refs.graph as typeof LayoutCol | undefined)?.$el;
 					graphDiv?.setPointerCapture(e.pointerId);
 
