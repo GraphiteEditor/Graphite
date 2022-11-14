@@ -6,17 +6,6 @@
 		<div v-for="(feature, index) in bezierFeatures" :key="index">
 			<BezierExamplePane :name="feature.name" :callback="feature.callback" :exampleOptions="feature.exampleOptions" :triggerOnMouseMove="feature.triggerOnMouseMove" />
 		</div>
-		<!-- TODO: Remove the below and all associated canvas-related code, then rename `bezierFeatures` to `features` -->
-		<div v-for="(feature, index) in ([] as any)" :key="index">
-			<ExamplePane
-				:template="feature.template"
-				:templateOptions="feature.templateOptions"
-				:name="feature.name"
-				:callback="feature.callback"
-				:curveDegrees="feature.curveDegrees"
-				:customPoints="feature.customPoints"
-			/>
-		</div>
 		<h2>Subpaths</h2>
 		<div v-for="(feature, index) in subpathFeatures" :key="index">
 			<SubpathExamplePane :name="feature.name" :callback="feature.callback" />
@@ -31,7 +20,6 @@ import { WasmBezier } from "@/../wasm/pkg";
 import { BezierCurveType, ExampleOptions, Point, WasmBezierInstance, WasmSubpathInstance } from "@/utils/types";
 
 import BezierExamplePane from "@/components/BezierExamplePane.vue";
-import ExamplePane from "@/components/ExamplePane.vue";
 import SubpathExamplePane from "@/components/SubpathExamplePane.vue";
 
 const tSliderOptions = {
@@ -529,7 +517,6 @@ export default defineComponent({
 	},
 	components: {
 		BezierExamplePane,
-		ExamplePane,
 		SubpathExamplePane,
 	},
 });
