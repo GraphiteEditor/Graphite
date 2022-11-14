@@ -204,19 +204,6 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 	fn process_message(&mut self, message: NodeGraphMessage, (document, _ipp): (&mut Document, &InputPreprocessorMessageHandler), responses: &mut VecDeque<Message>) {
 		#[remain::sorted]
 		match message {
-			NodeGraphMessage::AddLink { from, to, to_index } => {
-				log::debug!("Connect primary output from node {from} to input of index {to_index} on node {to}.");
-
-				if let Some(network) = self.get_active_network_mut(document) {
-					if let Some(to) = network.nodes.get_mut(&to) {
-						// Extend number of inputs if not already large enough
-						if to_index >= to.inputs.len() {
-							to.inputs.extend(((to.inputs.len() - 1)..to_index).map(|_| NodeInput::Network));
-						}
-						to.inputs[to_index] = NodeInput::Node(from);
-					}
-				}
-			}
 			NodeGraphMessage::CloseNodeGraph => {
 				if let Some(_old_layer_path) = self.layer_path.take() {
 					info!("Closing node graph");
@@ -231,6 +218,23 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 				input_node_connector_index,
 			} => {
 				log::debug!("Connect primary output from node {output_node} to input of index {input_node_connector_index} on node {input_node}.");
+
+				let Some(network) = self.get_active_network_mut(document) else {
+					error!("No network");
+					return;
+				 };
+				let Some(input_node) = network.nodes.get_mut(&input_node) else {
+					error!("No to");
+					return;
+				 };
+				// Extend number of inputs if not already large enough
+				if input_node_connector_index >= input_node.inputs.len() {
+					input_node.inputs.extend(((input_node.inputs.len() - 1)..input_node_connector_index).map(|_| NodeInput::Network));
+				}
+				input_node.inputs[input_node_connector_index] = NodeInput::Node(output_node);
+
+				info!("Inputs: {:?}", input_node.inputs);
+				Self::send_graph(network, responses);
 			}
 			NodeGraphMessage::CreateNode {
 				node_id,

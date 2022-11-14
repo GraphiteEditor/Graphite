@@ -7,16 +7,11 @@ use graph_craft::proto::NodeIdentifier;
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum NodeGraphMessage {
 	// Messages
-	AddLink {
-		from: NodeId,
-		to: NodeId,
-		to_index: usize,
-	},
 	CloseNodeGraph,
 	ConnectNodesByLink {
 		output_node: u64,
 		input_node: u64,
-		input_node_connector_index: u32,
+		input_node_connector_index: usize,
 	},
 	CreateNode {
 		// Having the caller generate the id means that we don't have to return it. This can be a random u64.
