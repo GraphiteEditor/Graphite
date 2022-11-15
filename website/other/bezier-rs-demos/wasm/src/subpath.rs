@@ -1,4 +1,4 @@
-use bezier_rs::{ManipulatorGroup, Subpath, ToSVGOptions};
+use bezier_rs::{ManipulatorGroup, Subpath};
 use glam::DVec2;
 use wasm_bindgen::prelude::*;
 
@@ -37,11 +37,23 @@ impl WasmSubpath {
 	}
 
 	pub fn to_svg(&self) -> String {
-		format!("{}{}{}", SVG_OPEN_TAG, self.0.to_svg(ToSVGOptions::default()), SVG_CLOSE_TAG)
+		format!("{}{}{}", SVG_OPEN_TAG, self.to_default_svg(), SVG_CLOSE_TAG)
+	}
+
+	fn to_default_svg(&self) -> String {
+		let mut subpath_svg = String::new();
+		self.0.to_svg(
+			&mut subpath_svg,
+			CURVE_ATTRIBUTES.to_string(),
+			ANCHOR_ATTRIBUTES.to_string(),
+			HANDLE_ATTRIBUTES.to_string(),
+			HANDLE_LINE_ATTRIBUTES.to_string(),
+		);
+		subpath_svg
 	}
 
 	pub fn length(&self) -> String {
 		let length_text = draw_text(format!("Length: {:.2}", self.0.length(None)), 5., 193., BLACK);
-		format!("{}{}{}{}", SVG_OPEN_TAG, self.0.to_svg(ToSVGOptions::default()), length_text, SVG_CLOSE_TAG)
+		format!("{}{}{}{}", SVG_OPEN_TAG, self.to_default_svg(), length_text, SVG_CLOSE_TAG)
 	}
 }

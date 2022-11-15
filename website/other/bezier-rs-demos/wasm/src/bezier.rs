@@ -364,15 +364,8 @@ impl WasmBezier {
 	pub fn rotate(&self, angle: f64, pivot_x: f64, pivot_y: f64) -> String {
 		let original_bezier_svg = self.get_bezier_path();
 		let rotated_bezier = self.0.rotate_about_point(angle, DVec2::new(pivot_x, pivot_y));
-		let empty_string = String::new();
 		let mut rotated_bezier_svg = String::new();
-		rotated_bezier.to_svg(
-			&mut rotated_bezier_svg,
-			CURVE_ATTRIBUTES.to_string().replace(BLACK, RED),
-			empty_string.clone(),
-			empty_string.clone(),
-			empty_string,
-		);
+		rotated_bezier.to_svg(&mut rotated_bezier_svg, CURVE_ATTRIBUTES.to_string().replace(BLACK, RED), String::new(), String::new(), String::new());
 		let pivot = draw_circle(DVec2::new(pivot_x, pivot_y), 3., GRAY, 1.5, WHITE);
 
 		// Line between pivot and start point on curve
@@ -414,15 +407,8 @@ impl WasmBezier {
 
 		let bezier_curve_svg = self.get_bezier_path();
 
-		let empty_string = String::new();
 		let mut line_svg = String::new();
-		line.to_svg(
-			&mut line_svg,
-			CURVE_ATTRIBUTES.to_string().replace(BLACK, RED),
-			empty_string.clone(),
-			empty_string.clone(),
-			empty_string,
-		);
+		line.to_svg(&mut line_svg, CURVE_ATTRIBUTES.to_string().replace(BLACK, RED), String::new(), String::new(), String::new());
 
 		let intersections_svg = self
 			.intersect(&line, None)
@@ -441,15 +427,8 @@ impl WasmBezier {
 
 		let bezier_curve_svg = self.get_bezier_path();
 
-		let empty_string = String::new();
 		let mut quadratic_svg = String::new();
-		quadratic.to_svg(
-			&mut quadratic_svg,
-			CURVE_ATTRIBUTES.to_string().replace(BLACK, RED),
-			empty_string.clone(),
-			empty_string.clone(),
-			empty_string,
-		);
+		quadratic.to_svg(&mut quadratic_svg, CURVE_ATTRIBUTES.to_string().replace(BLACK, RED), String::new(), String::new(), String::new());
 
 		let intersections_svg = self
 			.intersect(&quadratic, Some(error))
@@ -468,15 +447,8 @@ impl WasmBezier {
 
 		let bezier_curve_svg = self.get_bezier_path();
 
-		let empty_string = String::new();
 		let mut cubic_svg = String::new();
-		cubic.to_svg(
-			&mut cubic_svg,
-			CURVE_ATTRIBUTES.to_string().replace(BLACK, RED),
-			empty_string.clone(),
-			empty_string.clone(),
-			empty_string,
-		);
+		cubic.to_svg(&mut cubic_svg, CURVE_ATTRIBUTES.to_string().replace(BLACK, RED), String::new(), String::new(), String::new());
 
 		let intersections_svg = self
 			.intersect(&cubic, Some(error))
@@ -507,7 +479,6 @@ impl WasmBezier {
 	}
 
 	pub fn reduce(&self) -> String {
-		let empty_string = String::new();
 		let original_curve_svg = self.get_bezier_path();
 		let bezier_curves_svg: String = self
 			.0
@@ -519,9 +490,9 @@ impl WasmBezier {
 				bezier_curve.to_svg(
 					&mut curve_svg,
 					CURVE_ATTRIBUTES.to_string().replace(BLACK, &format!("hsl({}, 100%, 50%)", (40 * index))),
-					empty_string.clone(),
-					empty_string.clone(),
-					empty_string.clone(),
+					String::new(),
+					String::new(),
+					String::new(),
 				);
 				curve_svg
 			})
@@ -530,7 +501,6 @@ impl WasmBezier {
 	}
 
 	pub fn offset(&self, distance: f64) -> String {
-		let empty_string = String::new();
 		let original_curve_svg = self.get_bezier_path();
 		let bezier_curves_svg = self
 			.0
@@ -542,9 +512,9 @@ impl WasmBezier {
 				bezier_curve.to_svg(
 					&mut curve_svg,
 					CURVE_ATTRIBUTES.to_string().replace(BLACK, &format!("hsl({}, 100%, 50%)", (40 * index))),
-					empty_string.clone(),
-					empty_string.clone(),
-					empty_string.clone(),
+					String::new(),
+					String::new(),
+					String::new(),
 				);
 				curve_svg
 			})
