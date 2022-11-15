@@ -235,7 +235,7 @@ mod test {
 				(
 					0,
 					DocumentNode {
-						name: "cons".into(),
+						name: "Cons".into(),
 						inputs: vec![NodeInput::Network, NodeInput::Network],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::structural::ConsNode", &[Type::Generic, Type::Generic])),
 					},
@@ -243,7 +243,7 @@ mod test {
 				(
 					1,
 					DocumentNode {
-						name: "add".into(),
+						name: "Add".into(),
 						inputs: vec![NodeInput::Node(0)],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::AddNode", &[Type::Generic, Type::Generic])),
 					},
@@ -265,7 +265,7 @@ mod test {
 				(
 					1,
 					DocumentNode {
-						name: "cons".into(),
+						name: "Cons".into(),
 						inputs: vec![NodeInput::Network, NodeInput::Network],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::structural::ConsNode", &[Type::Generic, Type::Generic])),
 					},
@@ -273,7 +273,7 @@ mod test {
 				(
 					2,
 					DocumentNode {
-						name: "add".into(),
+						name: "Add".into(),
 						inputs: vec![NodeInput::Node(1)],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::AddNode", &[Type::Generic, Type::Generic])),
 					},
@@ -312,7 +312,7 @@ mod test {
 	#[test]
 	fn resolve_proto_node_add() {
 		let document_node = DocumentNode {
-			name: "cons".into(),
+			name: "Cons".into(),
 			inputs: vec![NodeInput::Network, NodeInput::Node(0)],
 			implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::structural::ConsNode", &[Type::Generic, Type::Generic])),
 		};
@@ -385,7 +385,7 @@ mod test {
 				(
 					10,
 					DocumentNode {
-						name: "cons".into(),
+						name: "Cons".into(),
 						inputs: vec![NodeInput::Network, NodeInput::Node(14)],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::structural::ConsNode", &[Type::Generic, Type::Generic])),
 					},
@@ -401,7 +401,7 @@ mod test {
 				(
 					11,
 					DocumentNode {
-						name: "add".into(),
+						name: "Add".into(),
 						inputs: vec![NodeInput::Node(10)],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::AddNode", &[Type::Generic, Type::Generic])),
 					},

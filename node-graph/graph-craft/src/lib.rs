@@ -68,7 +68,7 @@ mod tests {
 					(
 						0,
 						DocumentNode {
-							name: "cons".into(),
+							name: "Cons".into(),
 							inputs: vec![NodeInput::Network, NodeInput::Network],
 							implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new(
 								"graphene_core::structural::ConsNode",
@@ -79,7 +79,7 @@ mod tests {
 					(
 						1,
 						DocumentNode {
-							name: "add".into(),
+							name: "Add".into(),
 							inputs: vec![NodeInput::Node(0)],
 							implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new(
 								"graphene_core::ops::AddNode",

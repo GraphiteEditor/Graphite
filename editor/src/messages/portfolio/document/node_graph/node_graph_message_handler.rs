@@ -59,13 +59,13 @@ impl NodeGraphMessageHandler {
 			let Some(document_node) = network.nodes.get(node_id) else {
 				continue;
 			};
-			let name = format!("Node {} Properties", document_node.name);
+			let name = document_node.name.clone();
 			let layout = match &document_node.implementation {
 				DocumentNodeImplementation::Network(_) => match document_node.name.as_str() {
 					"Hue Shift Image" => vec![LayoutGroup::Row {
 						widgets: vec![
 							WidgetHolder::new(Widget::TextLabel(TextLabel {
-								value: "Shift degrees".into(),
+								value: "Shift Degrees".into(),
 								..Default::default()
 							})),
 							WidgetHolder::new(Widget::Separator(Separator {
@@ -129,7 +129,7 @@ impl NodeGraphMessageHandler {
 					}],
 					_ => vec![LayoutGroup::Row {
 						widgets: vec![WidgetHolder::new(Widget::TextLabel(TextLabel {
-							value: format!("Cannot currently display properties for network {}", document_node.name),
+							value: format!("Cannot currently display parameters for network {}", document_node.name),
 							..Default::default()
 						}))],
 					}],
@@ -137,7 +137,7 @@ impl NodeGraphMessageHandler {
 				DocumentNodeImplementation::Unresolved(identifier) => match identifier.name.as_ref() {
 					"graphene_std::raster::MapImageNode" | "graphene_core::ops::IdNode" => vec![LayoutGroup::Row {
 						widgets: vec![WidgetHolder::new(Widget::TextLabel(TextLabel {
-							value: format!("{} requires no properties", document_node.name),
+							value: format!("{} exposes no parameters", document_node.name),
 							..Default::default()
 						}))],
 					}],
@@ -145,7 +145,7 @@ impl NodeGraphMessageHandler {
 						vec![
 							LayoutGroup::Row {
 								widgets: vec![WidgetHolder::new(Widget::TextLabel(TextLabel {
-									value: format!("TODO: {} properties", unknown),
+									value: format!("TODO: {} parameters", unknown),
 									..Default::default()
 								}))],
 							},

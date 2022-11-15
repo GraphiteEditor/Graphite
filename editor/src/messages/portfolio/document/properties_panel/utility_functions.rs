@@ -269,7 +269,10 @@ pub fn register_artwork_layer_properties(
 				direction: SeparatorDirection::Horizontal,
 			})),
 			WidgetHolder::new(Widget::TextLabel(TextLabel {
-				value: LayerDataTypeDiscriminant::from(&layer.data).to_string(),
+				value: match &layer.data {
+					LayerDataType::NodeGraphFrame(_) => "Node Graph Frame".into(),
+					other => LayerDataTypeDiscriminant::from(other).to_string(),
+				},
 				..TextLabel::default()
 			})),
 			WidgetHolder::new(Widget::Separator(Separator {
