@@ -3,6 +3,7 @@ use bezier_rs::{Bezier, ComputeType, ManipulatorGroup, Subpath, ToSVGOptions};
 use glam::DVec2;
 use wasm_bindgen::prelude::*;
 
+const SCALE_UNIT_VECTOR_FACTOR: f64 = 50.;
 /// Wrapper of the `Subpath` struct to be used in JS.
 #[wasm_bindgen]
 pub struct WasmSubpath(Subpath);
@@ -135,5 +136,27 @@ impl WasmSubpath {
 			.fold(String::new(), |acc, item| format!("{acc}{item}"));
 
 		wrap_svg_tag(format!("{subpath_svg}{line_svg}{intersections_svg}"))
+	}
+
+	pub fn tangent(&self, t: f64) -> String {
+		let intersection_point = self.0.evaluate(ComputeType::Parametric { t });
+		let tangent_point = self.0.tangent(ComputeType::Parametric { t });
+		let tangent_end = intersection_point + tangent_point * SCALE_UNIT_VECTOR_FACTOR;
+
+		let point_text = draw_circle(intersection_point.x, intersection_point.y, 4., RED, 1.5, WHITE);
+		let line_text = draw_line(intersection_point.x, intersection_point.y, tangent_end.x, tangent_end.y, RED, 1.);
+		let tangent_end_point = draw_circle(tangent_end.x, tangent_end.y, 3., RED, 1., WHITE);
+		wrap_svg_tag(format!("{}{}{}{}", self.0.to_svg(ToSVGOptions::default()), point_text, line_text, tangent_end_point))
+	}
+
+	pub fn normal(&self, t: f64) -> String {
+		let intersection_point = self.0.evaluate(ComputeType::Parametric { t });
+		let normal_point = self.0.normal(ComputeType::Parametric { t });
+		let normal_end = intersection_point + normal_point * SCALE_UNIT_VECTOR_FACTOR;
+
+		let point_text = draw_circle(intersection_point.x, intersection_point.y, 4., RED, 1.5, WHITE);
+		let line_text = draw_line(intersection_point.x, intersection_point.y, normal_end.x, normal_end.y, RED, 1.);
+		let normal_end_point = draw_circle(normal_end.x, normal_end.y, 3., RED, 1., WHITE);
+		wrap_svg_tag(format!("{}{}{}{}", self.0.to_svg(ToSVGOptions::default()), point_text, line_text, normal_end_point))
 	}
 }

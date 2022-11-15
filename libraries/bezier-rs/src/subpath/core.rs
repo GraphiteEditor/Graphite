@@ -49,6 +49,18 @@ impl Subpath {
 		number_of_curves
 	}
 
+	pub fn find_curve_parametric(&self, t: f64) -> (Option<Bezier>, f64) {
+		assert!((0.0..=1.).contains(&t));
+
+		let number_of_curves = self.len_segments() as f64;
+		let scaled_t = t * number_of_curves;
+
+		let target_curve_index = scaled_t.floor() as i32;
+		let target_curve_t = scaled_t % 1.;
+
+		(self.iter().nth(target_curve_index as usize), target_curve_t)
+	}
+
 	/// Returns an iterator of the [Bezier]s along the `Subpath`.
 	pub fn iter(&self) -> SubpathIter {
 		SubpathIter { sub_path: self, index: 0 }

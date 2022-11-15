@@ -10,13 +10,7 @@ impl Subpath {
 			ComputeType::Parametric { t } => {
 				assert!((0.0..=1.).contains(&t));
 
-				let number_of_curves = self.len_segments() as f64;
-				let scaled_t = t * number_of_curves;
-
-				let target_curve_index = scaled_t.floor() as i32;
-				let target_curve_t = scaled_t % 1.;
-
-				if let Some(curve) = self.iter().nth(target_curve_index as usize) {
+				if let (Some(curve), target_curve_t) = self.find_curve_parametric(t) {
 					curve.evaluate(target_curve_t)
 				} else {
 					self.iter().last().unwrap().evaluate(1.)
@@ -37,6 +31,36 @@ impl Subpath {
 			.enumerate()
 			.flat_map(|(index, bezier)| bezier.intersections(other, error).into_iter().map(|t| ((index as f64) + t) / number_of_curves).collect::<Vec<f64>>())
 			.collect()
+	}
+
+	pub fn tangent(&self, t: ComputeType) -> DVec2 {
+		match t {
+			ComputeType::Parametric { t } => {
+				assert!((0.0..=1.).contains(&t));
+
+				if let (Some(curve), target_curve_t) = self.find_curve_parametric(t) {
+					curve.tangent(target_curve_t)
+				} else {
+					self.iter().last().unwrap().tangent(1.)
+				}
+			}
+			ComputeType::Euclidean { t: _ } => unimplemented!(),
+		}
+	}
+
+	pub fn normal(&self, t: ComputeType) -> DVec2 {
+		match t {
+			ComputeType::Parametric { t } => {
+				assert!((0.0..=1.).contains(&t));
+
+				if let (Some(curve), target_curve_t) = self.find_curve_parametric(t) {
+					curve.normal(target_curve_t)
+				} else {
+					self.iter().last().unwrap().normal(1.)
+				}
+			}
+			ComputeType::Euclidean { t: _ } => unimplemented!(),
+		}
 	}
 }
 

@@ -564,6 +564,16 @@ export default defineComponent({
 							[175, 140],
 						]),
 				},
+				{
+					name: "Tangent",
+					callback: (subpath: WasmSubpathInstance, options: Record<string, number>): string => subpath.tangent(options.t),
+					sliderOptions: [tSliderOptions], // TODO: add slider to toggle between parametric and euclidean
+				},
+				{
+					name: "Normal",
+					callback: (subpath: WasmSubpathInstance, options: Record<string, number>): string => subpath.normal(options.t),
+					sliderOptions: [tSliderOptions], // TODO: add slider to toggle between parametric and euclidean
+				},
 			],
 		};
 	},
