@@ -1,6 +1,6 @@
 use super::*;
 use crate::consts::*;
-use crate::ToSVGOptions;
+use std::fmt::Write;
 
 /// Functionality relating to core `Subpath` operations, such as constructors and `iter`.
 impl Subpath {
@@ -45,45 +45,59 @@ impl Subpath {
 		SubpathIter { sub_path: self, index: 0 }
 	}
 
-	/// Returns an SVG representation of the `Subpath`.
-	pub fn to_svg(&self, options: ToSVGOptions) -> String {
-		if self.is_empty() {
-			return String::new();
-		}
-
+	/// Appends to the `svg` mutable string with an SVG shape representation of the curve.
+	pub fn curve_to_svg(&self, svg: &mut String, attributes: String) {
 		let curve_start_argument = format!("{SVG_ARG_MOVE}{} {}", self[0].anchor.x, self[0].anchor.y);
 		let mut curve_arguments: Vec<String> = self.iter().map(|bezier| bezier.svg_curve_argument()).collect();
 		if self.closed {
 			curve_arguments.push(String::from(SVG_ARG_CLOSED));
 		}
 
-		let anchor_arguments = options.formatted_anchor_arguments();
-		let anchor_circles = self
+		let _ = write!(svg, r#"<path d="{} {}" {attributes}/>"#, curve_start_argument, curve_arguments.join(" "));
+	}
+
+	/// Appends to the `svg` mutable string with an SVG shape representation of the handle lines.
+	pub fn handle_lines_to_svg(&self, svg: &mut String, attributes: String) {
+		let handle_lines: Vec<String> = self.iter().filter_map(|bezier| bezier.svg_handle_line_argument()).collect();
+		let _ = write!(svg, r#"<path d="{}" {attributes}/>"#, handle_lines.join(" "));
+	}
+
+	/// Appends to the `svg` mutable string with an SVG shape representation of the anchors.
+	pub fn anchors_to_svg(&self, svg: &mut String, attributes: String) {
+		let anchors = self
 			.manipulator_groups
 			.iter()
-			.map(|point| format!(r#"<circle cx="{}" cy="{}" {}/>"#, point.anchor.x, point.anchor.y, anchor_arguments))
+			.map(|point| format!(r#"<circle cx="{}" cy="{}" {attributes}/>"#, point.anchor.x, point.anchor.y))
 			.collect::<Vec<String>>();
+		let _ = write!(svg, "{}", anchors.concat());
+	}
 
-		let handle_point_arguments = options.formatted_handle_point_arguments();
-		let handle_circles: Vec<String> = self
+	/// Appends to the `svg` mutable string with an SVG shape representation of the handles.
+	pub fn handles_to_svg(&self, svg: &mut String, attributes: String) {
+		let handles = self
 			.manipulator_groups
 			.iter()
 			.flat_map(|group| [group.in_handle, group.out_handle])
 			.flatten()
-			.map(|handle| format!(r#"<circle cx="{}" cy="{}" {}/>"#, handle.x, handle.y, handle_point_arguments))
-			.collect();
+			.map(|handle| format!(r#"<circle cx="{}" cy="{}" {attributes}/>"#, handle.x, handle.y))
+			.collect::<Vec<String>>();
+		let _ = write!(svg, "{}", handles.concat());
+	}
 
-		let handle_pieces: Vec<String> = self.iter().filter_map(|bezier| bezier.svg_handle_line_argument()).collect();
-
-		format!(
-			r#"<path d="{} {}" {}/><path d="{}" {}/>{}{}"#,
-			curve_start_argument,
-			curve_arguments.join(" "),
-			options.formatted_curve_arguments(),
-			handle_pieces.join(" "),
-			options.formatted_handle_line_arguments(),
-			handle_circles.join(""),
-			anchor_circles.join(""),
-		)
+	/// Returns an SVG representation of the `Subpath`.
+	/// Appends to the `svg` mutable string with an SVG shape representation that includes the curve, the handle lines, the anchors, and the handles.
+	pub fn to_svg(&self, svg: &mut String, curve_attributes: String, anchor_attributes: String, handle_attributes: String, handle_line_attributes: String) {
+		if !curve_attributes.is_empty() {
+			self.curve_to_svg(svg, curve_attributes);
+		}
+		if !handle_line_attributes.is_empty() {
+			self.handle_lines_to_svg(svg, handle_line_attributes);
+		}
+		if !anchor_attributes.is_empty() {
+			self.anchors_to_svg(svg, anchor_attributes);
+		}
+		if !handle_attributes.is_empty() {
+			self.handles_to_svg(svg, handle_attributes);
+		}
 	}
 }
