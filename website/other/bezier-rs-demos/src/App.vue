@@ -19,7 +19,7 @@
 		</div>
 		<h2>Subpaths</h2>
 		<div v-for="(feature, index) in subpathFeatures" :key="index">
-			<SubpathExamplePane :name="feature.name" :callback="feature.callback" />
+			<SubpathExamplePane :name="feature.name" :callback="feature.callback" :sliderOptions="feature.sliderOptions" />
 		</div>
 	</div>
 </template>
@@ -335,6 +335,14 @@ export default defineComponent({
 							],
 						},
 					},
+					customPoints: {
+						[BezierCurveType.Cubic]: [
+							[31, 94],
+							[40, 40],
+							[107, 107],
+							[106, 106],
+						],
+					},
 				},
 				{
 					name: "Skewed Outline",
@@ -523,6 +531,38 @@ export default defineComponent({
 				{
 					name: "Length",
 					callback: (subpath: WasmSubpathInstance): string => subpath.length(),
+				},
+				{
+					name: "Evaluate",
+					callback: (subpath: WasmSubpathInstance, options: Record<string, number>): string => subpath.evaluate(options.t),
+					sliderOptions: [tSliderOptions], // TODO: add slider to toggle between parametric and euclidean
+				},
+				{
+					name: "Intersect (Line Segment)",
+					callback: (subpath: WasmSubpathInstance): string =>
+						subpath.intersect_line_segment([
+							[150, 150],
+							[20, 20],
+						]),
+				},
+				{
+					name: "Intersect (Quadratic segment)",
+					callback: (subpath: WasmSubpathInstance): string =>
+						subpath.intersect_quadratic_segment([
+							[20, 80],
+							[180, 10],
+							[90, 120],
+						]),
+				},
+				{
+					name: "Intersect (Cubic segment)",
+					callback: (subpath: WasmSubpathInstance): string =>
+						subpath.intersect_cubic_segment([
+							[40, 20],
+							[100, 40],
+							[40, 120],
+							[175, 140],
+						]),
 				},
 			],
 		};

@@ -1,8 +1,7 @@
-use bezier_rs::{ManipulatorGroup, Subpath};
+use crate::svg_drawing::*;
+use bezier_rs::{Bezier, ComputeType, ManipulatorGroup, Subpath};
 use glam::DVec2;
 use wasm_bindgen::prelude::*;
-
-use crate::svg_drawing::*;
 
 /// Wrapper of the `Subpath` struct to be used in JS.
 #[wasm_bindgen]
@@ -54,6 +53,99 @@ impl WasmSubpath {
 
 	pub fn length(&self) -> String {
 		let length_text = draw_text(format!("Length: {:.2}", self.0.length(None)), 5., 193., BLACK);
-		format!("{}{}{}{}", SVG_OPEN_TAG, self.to_default_svg(), length_text, SVG_CLOSE_TAG)
+		wrap_svg_tag(format!("{}{}", self.to_default_svg(), length_text))
+	}
+
+	pub fn evaluate(&self, t: f64) -> String {
+		let point = self.0.evaluate(ComputeType::Parametric { t });
+		let point_text = draw_circle(point.x, point.y, 4., RED, 1.5, WHITE);
+		wrap_svg_tag(format!("{}{}", self.to_default_svg(), point_text))
+	}
+
+	pub fn intersect_line_segment(&self, js_points: &JsValue) -> String {
+		let points: [DVec2; 2] = js_points.into_serde().unwrap();
+		let line = Bezier::from_linear_dvec2(points[0], points[1]);
+
+		let subpath_svg = self.to_default_svg();
+
+		let empty_string = String::new();
+		let mut line_svg = String::new();
+		line.to_svg(
+			&mut line_svg,
+			CURVE_ATTRIBUTES.to_string().replace(BLACK, RED),
+			empty_string.clone(),
+			empty_string.clone(),
+			empty_string,
+		);
+
+		let intersections_svg = self
+			.0
+			.intersections(&line, None)
+			.iter()
+			.map(|intersection_t| {
+				let point = &self.0.evaluate(ComputeType::Parametric { t: *intersection_t });
+				draw_circle(point.x, point.y, 4., RED, 1.5, WHITE)
+			})
+			.fold(String::new(), |acc, item| format!("{acc}{item}"));
+
+		wrap_svg_tag(format!("{subpath_svg}{line_svg}{intersections_svg}"))
+	}
+
+	pub fn intersect_quadratic_segment(&self, js_points: &JsValue) -> String {
+		let points: [DVec2; 3] = js_points.into_serde().unwrap();
+		let line = Bezier::from_quadratic_dvec2(points[0], points[1], points[2]);
+
+		let subpath_svg = self.to_default_svg();
+
+		let empty_string = String::new();
+		let mut line_svg = String::new();
+		line.to_svg(
+			&mut line_svg,
+			CURVE_ATTRIBUTES.to_string().replace(BLACK, RED),
+			empty_string.clone(),
+			empty_string.clone(),
+			empty_string,
+		);
+
+		let intersections_svg = self
+			.0
+			.intersections(&line, None)
+			.iter()
+			.map(|intersection_t| {
+				let point = &self.0.evaluate(ComputeType::Parametric { t: *intersection_t });
+				draw_circle(point.x, point.y, 4., RED, 1.5, WHITE)
+			})
+			.fold(String::new(), |acc, item| format!("{acc}{item}"));
+
+		wrap_svg_tag(format!("{subpath_svg}{line_svg}{intersections_svg}"))
+	}
+
+	pub fn intersect_cubic_segment(&self, js_points: &JsValue) -> String {
+		let points: [DVec2; 4] = js_points.into_serde().unwrap();
+		let line = Bezier::from_cubic_dvec2(points[0], points[1], points[2], points[3]);
+
+		let subpath_svg = self.to_default_svg();
+
+		let empty_string = String::new();
+		let mut line_svg = String::new();
+		line.to_svg(
+			&mut line_svg,
+			CURVE_ATTRIBUTES.to_string().replace(BLACK, RED),
+			empty_string.clone(),
+			empty_string.clone(),
+			empty_string,
+		);
+
+		let intersections_svg = self
+			.0
+			.intersections(&line, None)
+			.iter()
+			.map(|intersection_t| {
+				let point = &self.0.evaluate(ComputeType::Parametric { t: *intersection_t });
+				draw_circle(point.x, point.y, 4., RED, 1.5, WHITE)
+			})
+			.fold(String::new(), |acc, item| format!("{acc}{item}"));
+
+		wrap_svg_tag(format!("{subpath_svg}{line_svg}{intersections_svg}"))
 	}
 }

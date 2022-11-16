@@ -613,6 +613,26 @@ mod tests {
 		assert!(compare_points(bezier.evaluate(intersections2[1]), DVec2::new(85.84, 85.84)));
 	}
 
+	// TODO: fix
+	// #[test]
+	// fn test_intersect_curve_cubic_anchor_handle_overlap() {
+	// 	// M31 94 C40 40 107 107 106 106
+
+	// 	let p1 = DVec2::new(31., 94.);
+	// 	let p2 = DVec2::new(40., 40.);
+	// 	let p3 = DVec2::new(107., 107.);
+	// 	let p4 = DVec2::new(106., 106.);
+	// 	let bezier = Bezier::from_cubic_dvec2(p1, p2, p3, p4);
+
+	// 	let line = Bezier::from_linear_coordinates(150., 150., 20., 20.);
+	// 	let intersections = bezier.intersections(&line, None);
+
+	// 	println!("<<<<< intersections {:?}", intersections);
+
+	// 	assert_eq!(intersections.len(), 1);
+	// 	assert!(compare_points(bezier.evaluate(intersections[0]), p4));
+	// }
+
 	#[test]
 	fn test_intersect_curve() {
 		let bezier1 = Bezier::from_cubic_coordinates(30., 30., 60., 140., 150., 30., 160., 160.);

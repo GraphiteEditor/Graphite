@@ -40,6 +40,15 @@ impl Subpath {
 		self.manipulator_groups.len()
 	}
 
+	/// Returns the number of segments contained within the `Subpath`.
+	pub fn len_segments(&self) -> usize {
+		let mut number_of_curves = self.len();
+		if !self.closed {
+			number_of_curves -= 1_usize
+		}
+		number_of_curves
+	}
+
 	/// Returns an iterator of the [Bezier]s along the `Subpath`.
 	pub fn iter(&self) -> SubpathIter {
 		SubpathIter { sub_path: self, index: 0 }
