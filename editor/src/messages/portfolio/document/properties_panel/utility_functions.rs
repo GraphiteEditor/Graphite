@@ -269,7 +269,10 @@ pub fn register_artwork_layer_properties(
 				direction: SeparatorDirection::Horizontal,
 			})),
 			WidgetHolder::new(Widget::TextLabel(TextLabel {
-				value: LayerDataTypeDiscriminant::from(&layer.data).to_string(),
+				value: match &layer.data {
+					LayerDataType::NodeGraphFrame(_) => "Node Graph Frame".into(),
+					other => LayerDataTypeDiscriminant::from(other).to_string(),
+				},
 				..TextLabel::default()
 			})),
 			WidgetHolder::new(Widget::Separator(Separator {
@@ -322,14 +325,16 @@ pub fn register_artwork_layer_properties(
 		LayerDataType::NodeGraphFrame(node_graph_frame) => {
 			let is_graph_open = node_graph_message_handler.layer_path.as_ref().filter(|node_graph| *node_graph == &layer_path).is_some();
 			let selected_nodes = &node_graph_message_handler.selected_nodes;
+
+			let mut properties_sections = vec![
+				node_section_transform(layer, persistent_data),
+				node_section_node_graph_frame(layer_path, node_graph_frame, is_graph_open),
+			];
 			if !selected_nodes.is_empty() && is_graph_open {
-				node_graph_message_handler.collate_properties(&node_graph_frame)
-			} else {
-				vec![
-					node_section_transform(layer, persistent_data),
-					node_section_node_graph_frame(layer_path, node_graph_frame, is_graph_open),
-				]
+				let parameters_sections = node_graph_message_handler.collate_properties(node_graph_frame);
+				properties_sections.extend(parameters_sections.into_iter());
 			}
+			properties_sections
 		}
 		LayerDataType::Folder(_) => {
 			vec![node_section_transform(layer, persistent_data)]
