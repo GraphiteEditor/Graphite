@@ -541,7 +541,7 @@ impl JsEditorHandle {
 
 	/// Notifies the backend that the user connected a node's primary output to one of another node's inputs
 	#[wasm_bindgen(js_name = connectNodesByLink)]
-	pub fn connect_nodes_by_link(&self, output_node: u64, input_node: u64, input_node_connector_index: u32) {
+	pub fn connect_nodes_by_link(&self, output_node: u64, input_node: u64, input_node_connector_index: usize) {
 		let message = NodeGraphMessage::ConnectNodesByLink {
 			output_node,
 			input_node,
@@ -553,9 +553,6 @@ impl JsEditorHandle {
 	/// Creates a new document node in the node graph
 	#[wasm_bindgen(js_name = createNode)]
 	pub fn create_node(&self, node_type: String) {
-		use graph_craft::proto::{NodeIdentifier, Type};
-		use std::borrow::Cow;
-
 		fn generate_node_id() -> u64 {
 			static mut NODE_ID: u64 = 10;
 			unsafe {
@@ -564,24 +561,9 @@ impl JsEditorHandle {
 			}
 		}
 
-		let (ident, args) = match node_type.as_str() {
-			"Identity" => (NodeIdentifier::new("graphene_core::ops::IdNode", &[Type::Concrete(Cow::Borrowed("Any<'_>"))]), 1),
-			"Grayscale Color" => (NodeIdentifier::new("graphene_core::ops::IdNode", &[Type::Concrete(Cow::Borrowed("Any<'_>"))]), 1),
-			"Brighten Color" => (NodeIdentifier::new("graphene_core::ops::IdNode", &[Type::Concrete(Cow::Borrowed("Any<'_>"))]), 1),
-			"Hue Shift Color" => (NodeIdentifier::new("graphene_core::ops::IdNode", &[Type::Concrete(Cow::Borrowed("Any<'_>"))]), 1),
-			"Add" => (
-				NodeIdentifier::new("graphene_core::ops::AddNode", &[Type::Concrete(Cow::Borrowed("u32")), Type::Concrete(Cow::Borrowed("u32"))]),
-				2,
-			),
-			"Map Image" => (NodeIdentifier::new("graphene_std::raster::MapImageNode", &[]), 2),
-			_ => panic!("Invalid node type: {}", node_type),
-		};
-
 		let message = NodeGraphMessage::CreateNode {
 			node_id: generate_node_id(),
-			name: node_type,
-			identifier: ident,
-			num_inputs: args,
+			node_type,
 		};
 		self.dispatch(message);
 	}
@@ -590,6 +572,13 @@ impl JsEditorHandle {
 	#[wasm_bindgen(js_name = selectNodes)]
 	pub fn select_nodes(&self, nodes: Vec<u64>) {
 		let message = NodeGraphMessage::SelectNodes { nodes };
+		self.dispatch(message);
+	}
+
+	/// Notifies the backend that the selected nodes have been moved
+	#[wasm_bindgen(js_name = moveSelectedNodes)]
+	pub fn move_selected_nodes(&self, displacement_x: i32, displacement_y: i32) {
+		let message = NodeGraphMessage::MoveSelectedNodes { displacement_x, displacement_y };
 		self.dispatch(message);
 	}
 
