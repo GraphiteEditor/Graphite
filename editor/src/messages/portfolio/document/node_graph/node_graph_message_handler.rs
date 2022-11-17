@@ -147,6 +147,7 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 
 				info!("Inputs: {:?}", input_node.inputs);
 				Self::send_graph(network, responses);
+				responses.push_back(DocumentMessage::NodeGraphFrameGenerate.into());
 			}
 			NodeGraphMessage::CreateNode { node_id, node_type } => {
 				let Some(network) = self.get_active_network_mut(document) else{
@@ -196,6 +197,7 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 				if let Some(network) = self.get_active_network_mut(document) {
 					network.nodes.remove(&node_id);
 					Self::send_graph(network, responses);
+					responses.push_back(DocumentMessage::NodeGraphFrameGenerate.into());
 				}
 			}
 			NodeGraphMessage::MoveSelectedNodes { displacement_x, displacement_y } => {
@@ -238,6 +240,7 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 							node.inputs.extend(((node.inputs.len() - 1)..input_index).map(|_| NodeInput::Network));
 						}
 						node.inputs[input_index] = NodeInput::Value { tagged_value: value, exposed: false };
+						responses.push_back(DocumentMessage::NodeGraphFrameGenerate.into());
 					}
 				}
 			}
