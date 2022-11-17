@@ -173,7 +173,13 @@ impl Default for NodeGraphFrameLayer {
 						1,
 						DocumentNode {
 							name: "Hue Shift Image".into(),
-							inputs: vec![NodeInput::Node(0), NodeInput::Value(value::TaggedValue::F32(50.))],
+							inputs: vec![
+								NodeInput::Node(0),
+								NodeInput::Value {
+									tagged_value: value::TaggedValue::F32(50.),
+									exposed: false,
+								},
+							],
 							implementation: DocumentNodeImplementation::Network(hue_shift_network),
 						},
 					),
@@ -181,7 +187,13 @@ impl Default for NodeGraphFrameLayer {
 						2,
 						DocumentNode {
 							name: "Brighten Image".into(),
-							inputs: vec![NodeInput::Node(1), NodeInput::Value(value::TaggedValue::F32(10.))],
+							inputs: vec![
+								NodeInput::Node(1),
+								NodeInput::Value {
+									tagged_value: value::TaggedValue::F32(10.),
+									exposed: false,
+								},
+							],
 							implementation: DocumentNodeImplementation::Network(brighten_network),
 						},
 					),

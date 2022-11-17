@@ -100,7 +100,13 @@ mod tests {
 				0,
 				DocumentNode {
 					name: "Inc".into(),
-					inputs: vec![NodeInput::Network, NodeInput::Value(value::TaggedValue::U32(1))],
+					inputs: vec![
+						NodeInput::Network,
+						NodeInput::Value {
+							tagged_value: value::TaggedValue::U32(1),
+							exposed: false,
+						},
+					],
 					implementation: DocumentNodeImplementation::Network(add_network()),
 				},
 			)]

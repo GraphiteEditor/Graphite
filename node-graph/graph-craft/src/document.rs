@@ -54,7 +54,7 @@ impl DocumentNode {
 		let first = self.inputs.remove(0);
 		if let DocumentNodeImplementation::Unresolved(fqn) = self.implementation {
 			let (input, mut args) = match first {
-				NodeInput::Value(tagged_value) => {
+				NodeInput::Value { tagged_value, .. } => {
 					assert_eq!(self.inputs.len(), 0);
 					(ProtoNodeInput::None, ConstructionArgs::Value(tagged_value.to_value()))
 				}
@@ -63,7 +63,7 @@ impl DocumentNode {
 			};
 			assert!(!self.inputs.iter().any(|input| matches!(input, NodeInput::Network)), "recieved non resolved parameter");
 			assert!(
-				!self.inputs.iter().any(|input| matches!(input, NodeInput::Value(_))),
+				!self.inputs.iter().any(|input| matches!(input, NodeInput::Value { .. })),
 				"recieved value as parameter. inupts: {:#?}, construction_args: {:#?}",
 				&self.inputs,
 				&args
@@ -90,7 +90,7 @@ impl DocumentNode {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum NodeInput {
 	Node(NodeId),
-	Value(value::TaggedValue),
+	Value { tagged_value: value::TaggedValue, exposed: bool },
 	Network,
 }
 
@@ -100,13 +100,20 @@ impl NodeInput {
 			*self = NodeInput::Node(f(*id))
 		}
 	}
+	pub fn is_exposed(&self) -> bool {
+		if let NodeInput::Value { exposed, .. } = self {
+			*exposed
+		} else {
+			true
+		}
+	}
 }
 
 impl PartialEq for NodeInput {
 	fn eq(&self, other: &Self) -> bool {
 		match (&self, &other) {
 			(Self::Node(n1), Self::Node(n2)) => n1 == n2,
-			(Self::Value(v1), Self::Value(v2)) => v1 == v2,
+			(Self::Value { tagged_value: v1, .. }, Self::Value { tagged_value: v2, .. }) => v1 == v2,
 			_ => core::mem::discriminant(self) == core::mem::discriminant(other),
 		}
 	}
@@ -169,12 +176,12 @@ impl NodeNetwork {
 							let network_input = self.nodes.get_mut(network_input).unwrap();
 							network_input.populate_first_network_input(node, *offset);
 						}
-						NodeInput::Value(value) => {
-							let name = format!("Value: {:?}", value.clone().to_value());
+						NodeInput::Value { tagged_value, exposed } => {
+							let name = format!("Value: {:?}", tagged_value.clone().to_value());
 							let new_id = map_ids(id, gen_id());
 							let value_node = DocumentNode {
 								name: name.clone(),
-								inputs: vec![NodeInput::Value(value)],
+								inputs: vec![NodeInput::Value { tagged_value, exposed }],
 								implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::value::ValueNode", &[Type::Generic])),
 							};
 							assert!(!self.nodes.contains_key(&new_id));
@@ -294,7 +301,13 @@ mod test {
 				1,
 				DocumentNode {
 					name: "Inc".into(),
-					inputs: vec![NodeInput::Network, NodeInput::Value(value::TaggedValue::U32(2))],
+					inputs: vec![
+						NodeInput::Network,
+						NodeInput::Value {
+							tagged_value: value::TaggedValue::U32(2),
+							exposed: false,
+						},
+					],
 					implementation: DocumentNodeImplementation::Network(add_network()),
 				},
 			)]
@@ -394,7 +407,10 @@ mod test {
 					14,
 					DocumentNode {
 						name: "Value: 2".into(),
-						inputs: vec![NodeInput::Value(value::TaggedValue::U32(2))],
+						inputs: vec![NodeInput::Value {
+							tagged_value: value::TaggedValue::U32(2),
+							exposed: false,
+						}],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::value::ValueNode", &[Type::Generic])),
 					},
 				),

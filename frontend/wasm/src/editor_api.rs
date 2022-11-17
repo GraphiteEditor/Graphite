@@ -553,9 +553,6 @@ impl JsEditorHandle {
 	/// Creates a new document node in the node graph
 	#[wasm_bindgen(js_name = createNode)]
 	pub fn create_node(&self, node_type: String) {
-		use graph_craft::proto::{NodeIdentifier, Type};
-		use std::borrow::Cow;
-
 		fn generate_node_id() -> u64 {
 			static mut NODE_ID: u64 = 10;
 			unsafe {
@@ -564,23 +561,9 @@ impl JsEditorHandle {
 			}
 		}
 
-		let (ident, args) = match node_type.as_str() {
-			"Identity" => (NodeIdentifier::new("graphene_core::ops::IdNode", &[Type::Concrete(Cow::Borrowed("Any<'_>"))]), 1),
-			"Grayscale Image" => (NodeIdentifier::new("graphene_std::raster::GrayscaleImageNode", &[]), 1),
-			"Brighten Image" => (NodeIdentifier::new("graphene_std::raster::BrightenImageNode", &[Type::Concrete(Cow::Borrowed("&TypeErasedNode"))]), 2),
-			"Hue Shift Image" => (NodeIdentifier::new("graphene_std::raster::HueShiftImage", &[Type::Concrete(Cow::Borrowed("&TypeErasedNode"))]), 2),
-			"Add" => (
-				NodeIdentifier::new("graphene_core::ops::AddNode", &[Type::Concrete(Cow::Borrowed("u32")), Type::Concrete(Cow::Borrowed("u32"))]),
-				2,
-			),
-			_ => panic!("Invalid node type: {}", node_type),
-		};
-
 		let message = NodeGraphMessage::CreateNode {
 			node_id: generate_node_id(),
-			name: node_type,
-			identifier: ident,
-			num_inputs: args,
+			node_type,
 		};
 		self.dispatch(message);
 	}

@@ -35,8 +35,8 @@
 					class="node"
 					:class="{ selected: selected.includes(node.id) }"
 					:style="{
-						'--offset-left': 8 + Number(node.id < 9n ? node.id : node.id - 9n) * 7,
-						'--offset-top': 4 + Number(node.id < 9n ? node.id : node.id - 9n) * 2,
+						'--offset-left': 8 + Number(node.id < 9n ? node.id : node.id - 7n) * 7,
+						'--offset-top': 4 + Number(node.id < 9n ? node.id : node.id - 7n) * 2,
 						'--data-color': 'var(--color-data-raster)',
 						'--data-color-dim': 'var(--color-data-raster-dim)',
 					}"
@@ -491,7 +491,7 @@ export default defineComponent({
 					if (inputNodeConnectionIndex !== undefined) {
 						// const oneBasedIndex = inputNodeConnectionIndex + 1;
 
-						this.editor.instance.connectNodesByLink(BigInt(outputConnectedNodeID), BigInt(inputConnectedNodeID), 0);
+						this.editor.instance.connectNodesByLink(BigInt(outputConnectedNodeID), BigInt(inputConnectedNodeID), inputNodeConnectionIndex);
 					}
 				}
 			}

@@ -98,7 +98,8 @@ impl<Reader: std::io::Read> Node<Reader> for BufferNode {
 	}
 }
 
-#[derive(Clone, DynAny)]
+#[derive(Clone, Debug, PartialEq, DynAny)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Image {
 	pub width: u32,
 	pub height: u32,

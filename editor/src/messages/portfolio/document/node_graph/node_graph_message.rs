@@ -1,6 +1,5 @@
 use crate::messages::prelude::*;
 use graph_craft::document::{value::TaggedValue, NodeId};
-use graph_craft::proto::NodeIdentifier;
 
 #[remain::sorted]
 #[impl_message(Message, DocumentMessage, NodeGraph)]
@@ -17,10 +16,7 @@ pub enum NodeGraphMessage {
 		// Having the caller generate the id means that we don't have to return it. This can be a random u64.
 		node_id: NodeId,
 		// I don't really know what this is for (perhaps a user identifiable name).
-		name: String,
-		// The node identifier must mach that found in `node-graph/graph-craft/src/node_registry.rs` e.g. "graphene_core::raster::GrayscaleNode
-		identifier: NodeIdentifier,
-		num_inputs: u32,
+		node_type: String,
 	},
 	DeleteNode {
 		node_id: NodeId,

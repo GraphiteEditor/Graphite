@@ -1,12 +1,12 @@
-use crate::messages::layout::utility_types::layout_widget::{LayoutGroup, Widget, WidgetCallback, WidgetHolder};
-use crate::messages::layout::utility_types::widgets::input_widgets::{NumberInput, NumberInputMode};
-use crate::messages::layout::utility_types::widgets::label_widgets::{Separator, SeparatorDirection, SeparatorType, TextLabel};
+use crate::messages::layout::utility_types::layout_widget::LayoutGroup;
 use crate::messages::prelude::*;
-use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeInput, NodeNetwork};
 use graphene::document::Document;
 use graphene::layers::layer_info::LayerDataType;
 use graphene::layers::nodegraph_layer::NodeGraphFrameLayer;
+
+mod document_node_types;
+mod node_properties;
 
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FrontendNode {
@@ -55,111 +55,11 @@ impl NodeGraphMessageHandler {
 		let network = &node_graph_frame.network;
 		let mut section = Vec::new();
 		for node_id in &self.selected_nodes {
-			let node = *node_id;
 			let Some(document_node) = network.nodes.get(node_id) else {
 				continue;
 			};
-			let name = document_node.name.clone();
-			let layout = match &document_node.implementation {
-				DocumentNodeImplementation::Network(_) => match document_node.name.as_str() {
-					"Hue Shift Image" => vec![LayoutGroup::Row {
-						widgets: vec![
-							WidgetHolder::new(Widget::TextLabel(TextLabel {
-								value: "Shift Degrees".into(),
-								..Default::default()
-							})),
-							WidgetHolder::new(Widget::Separator(Separator {
-								separator_type: SeparatorType::Unrelated,
-								direction: SeparatorDirection::Horizontal,
-							})),
-							WidgetHolder::new(Widget::NumberInput(NumberInput {
-								value: Some({
-									let NodeInput::Value (TaggedValue::F32(x)) = document_node.inputs[1] else {
-										panic!("Hue rotate should be f32")
-									};
-									x as f64
-								}),
-								unit: "°".into(),
-								mode: NumberInputMode::Range,
-								range_min: Some(-180.),
-								range_max: Some(180.),
-								on_update: WidgetCallback::new(move |number_input: &NumberInput| {
-									NodeGraphMessage::SetInputValue {
-										node,
-										input_index: 1,
-										value: TaggedValue::F32(number_input.value.unwrap() as f32),
-									}
-									.into()
-								}),
-								..NumberInput::default()
-							})),
-						],
-					}],
-					"Brighten Image" => vec![LayoutGroup::Row {
-						widgets: vec![
-							WidgetHolder::new(Widget::TextLabel(TextLabel {
-								value: "Brighten Amount".into(),
-								..Default::default()
-							})),
-							WidgetHolder::new(Widget::Separator(Separator {
-								separator_type: SeparatorType::Unrelated,
-								direction: SeparatorDirection::Horizontal,
-							})),
-							WidgetHolder::new(Widget::NumberInput(NumberInput {
-								value: Some({
-									let NodeInput::Value (TaggedValue::F32(x)) = document_node.inputs[1] else {
-										panic!("Brighten amount should be f32")
-									};
-									x as f64
-								}),
-								mode: NumberInputMode::Range,
-								range_min: Some(-255.),
-								range_max: Some(255.),
-								on_update: WidgetCallback::new(move |number_input: &NumberInput| {
-									NodeGraphMessage::SetInputValue {
-										node,
-										input_index: 1,
-										value: TaggedValue::F32(number_input.value.unwrap() as f32),
-									}
-									.into()
-								}),
-								..NumberInput::default()
-							})),
-						],
-					}],
-					_ => vec![LayoutGroup::Row {
-						widgets: vec![WidgetHolder::new(Widget::TextLabel(TextLabel {
-							value: format!("Cannot currently display parameters for network {}", document_node.name),
-							..Default::default()
-						}))],
-					}],
-				},
-				DocumentNodeImplementation::Unresolved(identifier) => match identifier.name.as_ref() {
-					"graphene_std::raster::MapImageNode" | "graphene_core::ops::IdNode" => vec![LayoutGroup::Row {
-						widgets: vec![WidgetHolder::new(Widget::TextLabel(TextLabel {
-							value: format!("{} exposes no parameters", document_node.name),
-							..Default::default()
-						}))],
-					}],
-					unknown => {
-						vec![
-							LayoutGroup::Row {
-								widgets: vec![WidgetHolder::new(Widget::TextLabel(TextLabel {
-									value: format!("TODO: {} parameters", unknown),
-									..Default::default()
-								}))],
-							},
-							LayoutGroup::Row {
-								widgets: vec![WidgetHolder::new(Widget::TextLabel(TextLabel {
-									value: "Add in editor/src/messages/portfolio/document/node_graph/node_graph_message_handler.rs".to_string(),
-									..Default::default()
-								}))],
-							},
-						]
-					}
-				},
-			};
-			section.push(LayoutGroup::Section { name, layout });
+
+			section.push(node_properties::generate_node_properties(document_node, *node_id));
 		}
 
 		section
@@ -173,7 +73,7 @@ impl NodeGraphMessageHandler {
 		let links = network
 			.nodes
 			.iter()
-			.flat_map(|(link_end, node)| node.inputs.iter().enumerate().map(move |(index, input)| (input, link_end, index)))
+			.flat_map(|(link_end, node)| node.inputs.iter().filter(|input| input.is_exposed()).enumerate().map(move |(index, input)| (input, link_end, index)))
 			.filter_map(|(input, &link_end, link_end_input_index)| {
 				if let NodeInput::Node(link_start) = *input {
 					Some(FrontendNodeLink {
@@ -226,54 +126,59 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 				let Some(input_node) = network.nodes.get_mut(&input_node) else {
 					error!("No to");
 					return;
-				 };
-				// Extend number of inputs if not already large enough
-				if input_node_connector_index >= input_node.inputs.len() {
-					input_node.inputs.extend(((input_node.inputs.len() - 1)..input_node_connector_index).map(|_| NodeInput::Network));
-				}
-				input_node.inputs[input_node_connector_index] = NodeInput::Node(output_node);
+				};
+				let Some((actual_index, _)) = input_node.inputs.iter().enumerate().filter(|input|input.1.is_exposed()).nth(input_node_connector_index) else {
+					error!("Failed to find actual index of connector indes {input_node_connector_index} on node {input_node:#?}");
+					return;
+				};
+				input_node.inputs[actual_index] = NodeInput::Node(output_node);
 
 				info!("Inputs: {:?}", input_node.inputs);
 				Self::send_graph(network, responses);
 			}
-			NodeGraphMessage::CreateNode {
-				node_id,
-				name,
-				identifier,
-				num_inputs,
-			} => {
-				if let Some(network) = self.get_active_network_mut(document) {
-					let inner_network = NodeNetwork {
-						inputs: (0..num_inputs).map(|_| 0).collect(),
-						output: 0,
-						nodes: [(
-							node_id,
-							DocumentNode {
-								name: format!("{}_impl", name),
-								// TODO: Allow inserting nodes that contain other nodes.
-								implementation: DocumentNodeImplementation::Unresolved(identifier),
-								inputs: (0..num_inputs).map(|_| NodeInput::Network).collect(),
-							},
-						)]
-						.into_iter()
-						.collect(),
-					};
-					network.nodes.insert(
-						node_id,
+			NodeGraphMessage::CreateNode { node_id, node_type } => {
+				let Some(network) = self.get_active_network_mut(document) else{
+					warn!("No network");
+					return;
+				};
+
+				let Some(document_node_type) = document_node_types::resolve_document_node_type(&node_type) else{
+					responses.push_back(DialogMessage::DisplayDialogError { title: "Cannot insert node".to_string(), description: format!("The document node '{node_type}' does not exist in the document node list") }.into());
+					return;
+				};
+
+				let num_inputs = document_node_type.default_inputs.len();
+
+				let inner_network = NodeNetwork {
+					inputs: (0..num_inputs).map(|_| 0).collect(),
+					output: 0,
+					nodes: [(
+						0,
 						DocumentNode {
-							name,
-							inputs: (0..num_inputs).map(|_| NodeInput::Network).collect(),
+							name: format!("{}_impl", document_node_type.name),
 							// TODO: Allow inserting nodes that contain other nodes.
-							implementation: DocumentNodeImplementation::Network(inner_network),
+							implementation: DocumentNodeImplementation::Unresolved(document_node_type.identifier.clone()),
+							inputs: (0..num_inputs).map(|_| NodeInput::Network).collect(),
 						},
-					);
-					Self::send_graph(network, responses);
-				}
+					)]
+					.into_iter()
+					.collect(),
+				};
+				network.nodes.insert(
+					node_id,
+					DocumentNode {
+						name: node_type.clone(),
+						inputs: document_node_type.default_inputs.to_vec(),
+						// TODO: Allow inserting nodes that contain other nodes.
+						implementation: DocumentNodeImplementation::Network(inner_network),
+					},
+				);
+				Self::send_graph(network, responses);
 			}
 			NodeGraphMessage::DeleteNode { node_id } => {
 				if let Some(network) = self.get_active_network_mut(document) {
 					network.nodes.remove(&node_id);
-					// TODO: Update UI if it is not already updated.
+					Self::send_graph(network, responses);
 				}
 			}
 			NodeGraphMessage::OpenNodeGraph { layer_path } => {
@@ -287,19 +192,8 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 
 					Self::send_graph(network, responses);
 
-					// TODO: Dynamic node library
-					responses.push_back(
-						FrontendMessage::UpdateNodeTypes {
-							node_types: vec![
-								FrontendNodeType::new("Identity"),
-								FrontendNodeType::new("Grayscale Image"),
-								FrontendNodeType::new("Brighten Image"),
-								FrontendNodeType::new("Hue Shift Image"),
-								FrontendNodeType::new("Map Image"),
-							],
-						}
-						.into(),
-					);
+					let node_types = document_node_types::collect_node_types();
+					responses.push_back(FrontendMessage::UpdateNodeTypes { node_types }.into());
 				}
 			}
 			NodeGraphMessage::SelectNodes { nodes } => {
@@ -313,7 +207,7 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 						if input_index >= node.inputs.len() {
 							node.inputs.extend(((node.inputs.len() - 1)..input_index).map(|_| NodeInput::Network));
 						}
-						node.inputs[input_index] = NodeInput::Value(value);
+						node.inputs[input_index] = NodeInput::Value { tagged_value: value, exposed: false };
 					}
 				}
 			}
