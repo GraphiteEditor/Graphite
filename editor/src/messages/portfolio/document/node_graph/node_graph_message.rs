@@ -21,6 +21,11 @@ pub enum NodeGraphMessage {
 	DeleteNode {
 		node_id: NodeId,
 	},
+	ExposeInput {
+		node_id: NodeId,
+		input_index: usize,
+		new_exposed: bool,
+	},
 	MoveSelectedNodes {
 		displacement_x: i32,
 		displacement_y: i32,

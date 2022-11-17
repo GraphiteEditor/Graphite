@@ -200,6 +200,22 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 					responses.push_back(DocumentMessage::NodeGraphFrameGenerate.into());
 				}
 			}
+			NodeGraphMessage::ExposeInput { node_id, input_index, new_exposed } => {
+				let Some(network) = self.get_active_network_mut(document) else{
+					warn!("No network");
+					return;
+				};
+
+				let Some(node) = network.nodes.get_mut(&node_id) else {
+					warn!("No node");
+					return;
+				};
+
+				if let NodeInput::Value { exposed, .. } = &mut node.inputs[input_index] {
+					*exposed = new_exposed;
+				}
+				Self::send_graph(network, responses);
+			}
 			NodeGraphMessage::MoveSelectedNodes { displacement_x, displacement_y } => {
 				let Some(network) = self.get_active_network_mut(document) else{
 					warn!("No network");
