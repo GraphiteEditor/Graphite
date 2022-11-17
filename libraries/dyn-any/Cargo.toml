@@ -1,7 +1,7 @@
 [package]
 name = "dyn-any"
 version = "0.2.1"
-rust-version = "1.62.0"
+rust-version = "1.65.0"
 edition = "2021"
 authors = ["Graphite Authors <contact@graphite.rs>"]
 description = "An Any trait that works for arbitrary lifetimes"
