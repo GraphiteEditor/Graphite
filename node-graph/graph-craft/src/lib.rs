@@ -74,6 +74,7 @@ mod tests {
 								"graphene_core::structural::ConsNode",
 								&[Type::Concrete(std::borrow::Cow::Borrowed("u32")), Type::Concrete(std::borrow::Cow::Borrowed("u32"))],
 							)),
+							metadata: DocumentNodeMetadata::default(),
 						},
 					),
 					(
@@ -85,6 +86,7 @@ mod tests {
 								"graphene_core::ops::AddNode",
 								&[Type::Concrete(std::borrow::Cow::Borrowed("u32")), Type::Concrete(std::borrow::Cow::Borrowed("u32"))],
 							)),
+							metadata: DocumentNodeMetadata::default(),
 						},
 					),
 				]
@@ -108,6 +110,7 @@ mod tests {
 						},
 					],
 					implementation: DocumentNodeImplementation::Network(add_network()),
+					metadata: DocumentNodeMetadata::default(),
 				},
 			)]
 			.into_iter()
