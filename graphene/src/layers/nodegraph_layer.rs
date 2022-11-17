@@ -131,6 +131,7 @@ impl Default for NodeGraphFrameLayer {
 						"graphene_std::raster::BrightenImageNode",
 						&[graph_craft::proto::Type::Concrete(std::borrow::Cow::Borrowed("&TypeErasedNode"))],
 					)),
+					metadata: DocumentNodeMetadata::default(),
 				},
 			)]
 			.into_iter()
@@ -149,6 +150,7 @@ impl Default for NodeGraphFrameLayer {
 						"graphene_std::raster::HueShiftImage",
 						&[graph_craft::proto::Type::Concrete(std::borrow::Cow::Borrowed("&TypeErasedNode"))],
 					)),
+					metadata: DocumentNodeMetadata::default(),
 				},
 			)]
 			.into_iter()
@@ -167,6 +169,7 @@ impl Default for NodeGraphFrameLayer {
 							name: "Input".into(),
 							inputs: vec![NodeInput::Network],
 							implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode", &[Type::Generic])),
+							metadata: DocumentNodeMetadata { position: (8, 4) },
 						},
 					),
 					(
@@ -181,6 +184,7 @@ impl Default for NodeGraphFrameLayer {
 								},
 							],
 							implementation: DocumentNodeImplementation::Network(hue_shift_network),
+							metadata: DocumentNodeMetadata { position: (8 + 7, 4 + 2) },
 						},
 					),
 					(
@@ -195,6 +199,7 @@ impl Default for NodeGraphFrameLayer {
 								},
 							],
 							implementation: DocumentNodeImplementation::Network(brighten_network),
+							metadata: DocumentNodeMetadata { position: (8 + 7 * 2, 4 + 2 * 2) },
 						},
 					),
 					(
@@ -203,6 +208,7 @@ impl Default for NodeGraphFrameLayer {
 							name: "Output".into(),
 							inputs: vec![NodeInput::Node(2)],
 							implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode", &[Type::Generic])),
+							metadata: DocumentNodeMetadata { position: (8 + 7 * 3, 4) },
 						},
 					),
 				]

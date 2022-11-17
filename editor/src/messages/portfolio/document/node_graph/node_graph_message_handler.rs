@@ -1,6 +1,6 @@
 use crate::messages::layout::utility_types::layout_widget::LayoutGroup;
 use crate::messages::prelude::*;
-use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeInput, NodeNetwork};
+use graph_craft::document::{DocumentNode, DocumentNodeImplementation, DocumentNodeMetadata, NodeInput, NodeNetwork};
 use graphene::document::Document;
 use graphene::layers::layer_info::LayerDataType;
 use graphene::layers::nodegraph_layer::NodeGraphFrameLayer;
@@ -9,10 +9,19 @@ mod document_node_types;
 mod node_properties;
 
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
+pub enum DataType {
+	Raster,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FrontendNode {
 	pub id: graph_craft::document::NodeId,
 	#[serde(rename = "displayName")]
 	pub display_name: String,
+	#[serde(rename = "exposedInputs")]
+	pub exposed_inputs: Vec<DataType>,
+	pub outputs: Vec<DataType>,
+	pub position: (i32, i32),
 }
 
 // (link_start, link_end, link_end_input_index)
@@ -92,6 +101,9 @@ impl NodeGraphMessageHandler {
 			nodes.push(FrontendNode {
 				id: *id,
 				display_name: node.name.clone(),
+				exposed_inputs: node.inputs.iter().filter(|input| input.is_exposed()).map(|_| DataType::Raster).collect(),
+				outputs: vec![DataType::Raster],
+				position: node.metadata.position,
 			})
 		}
 		log::debug!("Nodes:\n{:#?}\n\nFrontend Nodes:\n{:#?}\n\nLinks:\n{:#?}", network.nodes, nodes, links);
@@ -159,6 +171,7 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 							// TODO: Allow inserting nodes that contain other nodes.
 							implementation: DocumentNodeImplementation::Unresolved(document_node_type.identifier.clone()),
 							inputs: (0..num_inputs).map(|_| NodeInput::Network).collect(),
+							metadata: DocumentNodeMetadata::default(),
 						},
 					)]
 					.into_iter()
@@ -171,6 +184,10 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 						inputs: document_node_type.default_inputs.to_vec(),
 						// TODO: Allow inserting nodes that contain other nodes.
 						implementation: DocumentNodeImplementation::Network(inner_network),
+						metadata: graph_craft::document::DocumentNodeMetadata {
+							// TODO: Better position default
+							position: (node_id as i32 * 7 - 41, node_id as i32 * 2 - 10),
+						},
 					},
 				);
 				Self::send_graph(network, responses);
@@ -179,6 +196,19 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 				if let Some(network) = self.get_active_network_mut(document) {
 					network.nodes.remove(&node_id);
 					Self::send_graph(network, responses);
+				}
+			}
+			NodeGraphMessage::MoveSelectedNodes { displacement_x, displacement_y } => {
+				let Some(network) = self.get_active_network_mut(document) else{
+					warn!("No network");
+					return;
+				};
+
+				for node_id in &self.selected_nodes {
+					if let Some(node) = network.nodes.get_mut(node_id) {
+						node.metadata.position.0 += displacement_x;
+						node.metadata.position.1 += displacement_y;
+					}
 				}
 			}
 			NodeGraphMessage::OpenNodeGraph { layer_path } => {

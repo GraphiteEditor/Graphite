@@ -28,12 +28,19 @@ fn merge_ids(a: u64, b: u64) -> u64 {
 	hasher.finish()
 }
 
+#[derive(Clone, Debug, PartialEq, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct DocumentNodeMetadata {
+	pub position: (i32, i32),
+}
+
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct DocumentNode {
 	pub name: String,
 	pub inputs: Vec<NodeInput>,
 	pub implementation: DocumentNodeImplementation,
+	pub metadata: DocumentNodeMetadata,
 }
 
 impl DocumentNode {
@@ -183,6 +190,7 @@ impl NodeNetwork {
 								name: name.clone(),
 								inputs: vec![NodeInput::Value { tagged_value, exposed }],
 								implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::value::ValueNode", &[Type::Generic])),
+								metadata: DocumentNodeMetadata::default(),
 							};
 							assert!(!self.nodes.contains_key(&new_id));
 							self.nodes.insert(new_id, value_node);
@@ -245,6 +253,7 @@ mod test {
 						name: "Cons".into(),
 						inputs: vec![NodeInput::Network, NodeInput::Network],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::structural::ConsNode", &[Type::Generic, Type::Generic])),
+						metadata: DocumentNodeMetadata::default(),
 					},
 				),
 				(
@@ -253,6 +262,7 @@ mod test {
 						name: "Add".into(),
 						inputs: vec![NodeInput::Node(0)],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::AddNode", &[Type::Generic, Type::Generic])),
+						metadata: DocumentNodeMetadata::default(),
 					},
 				),
 			]
@@ -275,6 +285,7 @@ mod test {
 						name: "Cons".into(),
 						inputs: vec![NodeInput::Network, NodeInput::Network],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::structural::ConsNode", &[Type::Generic, Type::Generic])),
+						metadata: DocumentNodeMetadata::default(),
 					},
 				),
 				(
@@ -283,6 +294,7 @@ mod test {
 						name: "Add".into(),
 						inputs: vec![NodeInput::Node(1)],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::AddNode", &[Type::Generic, Type::Generic])),
+						metadata: DocumentNodeMetadata::default(),
 					},
 				),
 			]
@@ -309,6 +321,7 @@ mod test {
 						},
 					],
 					implementation: DocumentNodeImplementation::Network(add_network()),
+					metadata: DocumentNodeMetadata::default(),
 				},
 			)]
 			.into_iter()
@@ -328,6 +341,7 @@ mod test {
 			name: "Cons".into(),
 			inputs: vec![NodeInput::Network, NodeInput::Node(0)],
 			implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::structural::ConsNode", &[Type::Generic, Type::Generic])),
+			metadata: DocumentNodeMetadata::default(),
 		};
 
 		let proto_node = document_node.resolve_proto_node();
@@ -393,6 +407,7 @@ mod test {
 						name: "Inc".into(),
 						inputs: vec![NodeInput::Node(11)],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode", &[Type::Generic])),
+						metadata: DocumentNodeMetadata::default(),
 					},
 				),
 				(
@@ -401,6 +416,7 @@ mod test {
 						name: "Cons".into(),
 						inputs: vec![NodeInput::Network, NodeInput::Node(14)],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::structural::ConsNode", &[Type::Generic, Type::Generic])),
+						metadata: DocumentNodeMetadata::default(),
 					},
 				),
 				(
@@ -412,6 +428,7 @@ mod test {
 							exposed: false,
 						}],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::value::ValueNode", &[Type::Generic])),
+						metadata: DocumentNodeMetadata::default(),
 					},
 				),
 				(
@@ -420,6 +437,7 @@ mod test {
 						name: "Add".into(),
 						inputs: vec![NodeInput::Node(10)],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::AddNode", &[Type::Generic, Type::Generic])),
+						metadata: DocumentNodeMetadata::default(),
 					},
 				),
 			]

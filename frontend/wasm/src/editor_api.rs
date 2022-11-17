@@ -575,6 +575,13 @@ impl JsEditorHandle {
 		self.dispatch(message);
 	}
 
+	/// Notifies the backend that the selected nodes have been moved
+	#[wasm_bindgen(js_name = moveSelectedNodes)]
+	pub fn move_selected_nodes(&self, displacement_x: i32, displacement_y: i32) {
+		let message = NodeGraphMessage::MoveSelectedNodes { displacement_x, displacement_y };
+		self.dispatch(message);
+	}
+
 	/// Pastes an image
 	#[wasm_bindgen(js_name = pasteImage)]
 	pub fn paste_image(&self, mime: String, image_data: Vec<u8>, mouse_x: Option<f64>, mouse_y: Option<f64>) {

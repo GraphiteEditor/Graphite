@@ -21,6 +21,10 @@ pub enum NodeGraphMessage {
 	DeleteNode {
 		node_id: NodeId,
 	},
+	MoveSelectedNodes {
+		displacement_x: i32,
+		displacement_y: i32,
+	},
 	OpenNodeGraph {
 		layer_path: Vec<graphene::LayerId>,
 	},
