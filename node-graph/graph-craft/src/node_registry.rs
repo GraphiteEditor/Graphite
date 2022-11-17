@@ -419,7 +419,7 @@ mod protograph_testing {
 		let grayscale_protonode = ProtoNode {
 			construction_args: ConstructionArgs::Nodes(vec![]),
 			input: ProtoNodeInput::Node(0),
-			identifier: NodeIdentifier::new("graphene_core::raster::GrayscaleNode", &[]),
+			identifier: NodeIdentifier::new("graphene_core::raster::GrayscaleColorNode", &[]),
 		};
 		push_node(grayscale_protonode, &stack);
 
@@ -456,7 +456,7 @@ mod protograph_testing {
 		let grayscale_protonode = ProtoNode {
 			construction_args: ConstructionArgs::Nodes(vec![]),
 			input: ProtoNodeInput::None,
-			identifier: NodeIdentifier::new("graphene_core::raster::GrayscaleNode", &[]),
+			identifier: NodeIdentifier::new("graphene_core::raster::GrayscaleColorNode", &[]),
 		};
 		push_node(grayscale_protonode, &stack);
 
