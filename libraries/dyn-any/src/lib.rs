@@ -50,11 +50,17 @@ impl<'a, T: DynAny<'a> + 'a> UpcastFrom<T> for dyn DynAny<'a> + 'a {
 
 pub trait DynAny<'a> {
 	fn type_id(&self) -> TypeId;
+	#[cfg(feature = "log-bad-types")]
+	fn type_name(&self) -> &'static str;
 }
 
 impl<'a, T: StaticType> DynAny<'a> for T {
 	fn type_id(&self) -> std::any::TypeId {
 		std::any::TypeId::of::<T::Static>()
+	}
+	#[cfg(feature = "log-bad-types")]
+	fn type_name(&self) -> &'static str {
+		std::any::type_name::<T>()
 	}
 }
 pub fn downcast_ref<'a, V: StaticType>(i: &'a dyn DynAny<'a>) -> Option<&'a V> {
@@ -74,7 +80,11 @@ pub fn downcast<'a, V: StaticType>(i: Box<dyn DynAny<'a> + 'a>) -> Option<Box<V>
 		let ptr = Box::into_raw(i) as *mut dyn DynAny<'a> as *mut V;
 		Some(unsafe { Box::from_raw(ptr) })
 	} else {
-		// TODO: add log error
+		#[cfg(feature = "log-bad-types")]
+		{
+			log::error!("Tried to downcast a {} to a {}", DynAny::type_name(i.as_ref()), core::any::type_name::<V>());
+		}
+
 		if type_id == std::any::TypeId::of::<&dyn DynAny<'static>>() {
 			panic!("downcast error: type_id == std::any::TypeId::of::<dyn DynAny<'a>>()");
 		}
@@ -192,9 +202,12 @@ impl_type!(Option<T>,Result<T, E>,Cell<T>,UnsafeCell<T>,RefCell<T>,MaybeUninit<T
 impl<T: crate::StaticType + ?Sized> crate::StaticType for Box<T> {
 	type Static = Box<<T as crate::StaticType>::Static>;
 }
-fn test() {
-	let foo = (Box::new(&1 as &dyn DynAny<'static>), Box::new(&2 as &dyn DynAny<'static>));
-	//let bar = &foo as &dyn DynAny<'static>;
+#[test]
+fn test_tuple_of_boxes() {
+	let tuple = (Box::new(&1 as &dyn DynAny<'static>), Box::new(&2 as &dyn DynAny<'static>));
+	let dyn_any = &tuple as &dyn DynAny;
+	assert_eq!(&1, downcast_ref(*downcast_ref::<(Box<&dyn DynAny>, Box<&dyn DynAny>)>(dyn_any).unwrap().0).unwrap());
+	assert_eq!(&2, downcast_ref(*downcast_ref::<(Box<&dyn DynAny>, Box<&dyn DynAny>)>(dyn_any).unwrap().1).unwrap());
 }
 
 macro_rules! impl_tuple {

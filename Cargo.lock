@@ -223,6 +223,7 @@ name = "dyn-any"
 version = "0.2.1"
 dependencies = [
  "dyn-any-derive",
+ "log",
 ]
 
 [[package]]
@@ -398,6 +399,7 @@ dependencies = [
  "once_cell",
  "proc-macro2",
  "quote",
+ "serde",
  "syn",
 ]
 

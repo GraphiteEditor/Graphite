@@ -35,8 +35,8 @@
 					class="node"
 					:class="{ selected: selected.includes(node.id) }"
 					:style="{
-						'--offset-left': 8 + Number(node.id < 9n ? node.id : node.id - 9n) * 7,
-						'--offset-top': 4 + Number(node.id < 9n ? node.id : node.id - 9n) * 2,
+						'--offset-left': node.position?.x || 0,
+						'--offset-top': node.position?.y || 0,
 						'--data-color': 'var(--color-data-raster)',
 						'--data-color-dim': 'var(--color-data-raster-dim)',
 					}"
@@ -438,11 +438,17 @@ export default defineComponent({
 				const nodeId = node?.getAttribute("data-node") || undefined;
 				if (nodeId) {
 					const id = BigInt(nodeId);
-					this.editor.instance.selectNodes(new BigUint64Array([id]));
-					this.selected = [id];
+					if (e.shiftKey || e.ctrlKey) {
+						if (this.selected.includes(id)) this.selected.splice(this.selected.lastIndexOf(id), 1);
+						else this.selected.push(id);
+					} else {
+						this.selected = [id];
+					}
+
+					this.editor.instance.selectNodes(new BigUint64Array(this.selected));
 				} else {
-					this.editor.instance.selectNodes(new BigUint64Array([]));
 					this.selected = [];
+					this.editor.instance.selectNodes(new BigUint64Array(this.selected));
 					const graphDiv: HTMLDivElement | undefined = (this.$refs.graph as typeof LayoutCol | undefined)?.$el;
 					graphDiv?.setPointerCapture(e.pointerId);
 
@@ -483,9 +489,9 @@ export default defineComponent({
 					const inputNodeConnectionIndex = inputNodeConnectionIndexSearch > -1 ? inputNodeConnectionIndexSearch : undefined;
 
 					if (inputNodeConnectionIndex !== undefined) {
-						const oneBasedIndex = inputNodeConnectionIndex + 1;
+						// const oneBasedIndex = inputNodeConnectionIndex + 1;
 
-						this.editor.instance.connectNodesByLink(BigInt(outputConnectedNodeID), BigInt(inputConnectedNodeID), oneBasedIndex);
+						this.editor.instance.connectNodesByLink(BigInt(outputConnectedNodeID), BigInt(inputConnectedNodeID), inputNodeConnectionIndex);
 					}
 				}
 			}
