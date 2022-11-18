@@ -220,7 +220,7 @@ export default defineComponent({
 				},
 				{
 					name: "Project",
-					callback: (bezier: WasmBezierInstance, _: Record<string, number>, mouseLocation: number[]): string =>
+					callback: (bezier: WasmBezierInstance, _: Record<string, number>, mouseLocation?: [number, number]): string =>
 						mouseLocation ? bezier.project(mouseLocation[0], mouseLocation[1]) : bezier.to_svg(),
 					triggerOnMouseMove: true,
 				},

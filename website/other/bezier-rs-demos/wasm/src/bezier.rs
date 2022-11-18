@@ -14,7 +14,6 @@ struct CircleSector {
 	end_angle: f64,
 }
 
-#[derive(Serialize, Deserialize)]
 #[wasm_bindgen]
 pub enum WasmMaximizeArcs {
 	Automatic, // 0
