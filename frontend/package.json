@@ -23,8 +23,8 @@
 		"vue": "^3.2.26"
 	},
 	"devDependencies": {
-		"@typescript-eslint/eslint-plugin": "^5.42.1",
-		"@typescript-eslint/parser": "^5.42.1",
+		"@typescript-eslint/eslint-plugin": "^5.43.0",
+		"@typescript-eslint/parser": "^5.43.0",
 		"@vue/cli-plugin-eslint": "^5.0.8",
 		"@vue/cli-plugin-typescript": "^5.0.8",
 		"@vue/cli-service": "^5.0.8",
@@ -39,11 +39,11 @@
 		"eslint-plugin-vue": "^9.7.0",
 		"license-checker-webpack-plugin": "^0.2.1",
 		"prettier": "^2.7.1",
-		"sass": "^1.56.0",
-		"sass-loader": "^13.1.0",
-		"typescript": "^4.8.4",
+		"sass": "^1.56.1",
+		"sass-loader": "^13.2.0",
+		"typescript": "^4.9.3",
 		"vue-loader": "^17.0.1",
-		"vue-template-compiler": "^2.7.13"
+		"vue-template-compiler": "^2.7.14"
 	},
 	"optionalDependencies": {
 		"wasm-pack": "^0.10.3"

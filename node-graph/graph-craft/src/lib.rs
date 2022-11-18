@@ -68,23 +68,25 @@ mod tests {
 					(
 						0,
 						DocumentNode {
-							name: "cons".into(),
+							name: "Cons".into(),
 							inputs: vec![NodeInput::Network, NodeInput::Network],
 							implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new(
 								"graphene_core::structural::ConsNode",
 								&[Type::Concrete(std::borrow::Cow::Borrowed("u32")), Type::Concrete(std::borrow::Cow::Borrowed("u32"))],
 							)),
+							metadata: DocumentNodeMetadata::default(),
 						},
 					),
 					(
 						1,
 						DocumentNode {
-							name: "add".into(),
+							name: "Add".into(),
 							inputs: vec![NodeInput::Node(0)],
 							implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new(
 								"graphene_core::ops::AddNode",
 								&[Type::Concrete(std::borrow::Cow::Borrowed("u32")), Type::Concrete(std::borrow::Cow::Borrowed("u32"))],
 							)),
+							metadata: DocumentNodeMetadata::default(),
 						},
 					),
 				]
@@ -100,8 +102,15 @@ mod tests {
 				0,
 				DocumentNode {
 					name: "Inc".into(),
-					inputs: vec![NodeInput::Network, NodeInput::Value(value::TaggedValue::U32(1))],
+					inputs: vec![
+						NodeInput::Network,
+						NodeInput::Value {
+							tagged_value: value::TaggedValue::U32(1),
+							exposed: false,
+						},
+					],
 					implementation: DocumentNodeImplementation::Network(add_network()),
+					metadata: DocumentNodeMetadata::default(),
 				},
 			)]
 			.into_iter()

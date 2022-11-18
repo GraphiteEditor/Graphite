@@ -9,14 +9,13 @@ license = "MIT OR Apache-2.0"
 [dependencies]
 graphene-core = { path = "../gcore", features = ["async", "std"] }
 graphene-std = { path = "../gstd" }
-dyn-any = { path = "../../libraries/dyn-any" }
+dyn-any = { path = "../../libraries/dyn-any", features = ["log-bad-types"] }
 num-traits = "0.2"
 borrow_stack = { path = "../borrow_stack" }
 dyn-clone = "1.0"
 rand_chacha = "0.3.1"
 log = "0.4"
+serde = { version = "1", features = ["derive"], optional = true }
 
-[dependencies.serde]
-version = "1.0"
-optional = true
-features = ["derive"]
+[features]
+serde = ["dep:serde", "graphene-std/serde"]

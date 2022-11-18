@@ -88,11 +88,11 @@
 
 		.widget-row {
 			&:first-child {
-				margin-top: -1px;
+				margin-top: calc(4px - 1px);
 			}
 
 			&:last-child {
-				margin-bottom: -1px;
+				margin-bottom: calc(4px - 1px);
 			}
 
 			> .text-label:first-of-type {
