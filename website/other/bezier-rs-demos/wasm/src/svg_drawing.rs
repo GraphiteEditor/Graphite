@@ -1,4 +1,5 @@
 use bezier_rs::Bezier;
+use glam::DVec2;
 use std::fmt::Write;
 
 // SVG drawing constants
@@ -35,8 +36,11 @@ pub fn draw_text(text: String, x_pos: f64, y_pos: f64, fill: &str) -> String {
 }
 
 /// Helper function to create an SVG circle entity.
-pub fn draw_circle(x_pos: f64, y_pos: f64, radius: f64, stroke: &str, stroke_width: f64, fill: &str) -> String {
-	format!(r#"<circle cx="{x_pos}" cy="{y_pos}" r="{radius}" stroke="{stroke}" stroke-width="{stroke_width}" fill="{fill}"/>"#)
+pub fn draw_circle(position: DVec2, radius: f64, stroke: &str, stroke_width: f64, fill: &str) -> String {
+	format!(
+		r#"<circle cx="{}" cy="{}" r="{radius}" stroke="{stroke}" stroke-width="{stroke_width}" fill="{fill}"/>"#,
+		position.x, position.y
+	)
 }
 
 /// Helper function to create an SVG circle entity.
@@ -65,11 +69,14 @@ fn polar_to_cartesian(center_x: f64, center_y: f64, radius: f64, angle_in_rad: f
 }
 
 // Helper function to create an SVG drawing of a sector
-pub fn draw_sector(center_x: f64, center_y: f64, radius: f64, start_angle: f64, end_angle: f64, stroke: &str, stroke_width: f64, fill: &str) -> String {
-	let [start_x, start_y] = polar_to_cartesian(center_x, center_y, radius, start_angle);
-	let [end_x, end_y] = polar_to_cartesian(center_x, center_y, radius, end_angle);
+pub fn draw_sector(center: DVec2, radius: f64, start_angle: f64, end_angle: f64, stroke: &str, stroke_width: f64, fill: &str) -> String {
+	let [start_x, start_y] = polar_to_cartesian(center.x, center.y, radius, start_angle);
+	let [end_x, end_y] = polar_to_cartesian(center.x, center.y, radius, end_angle);
 	// draw sector with fill color
-	let sector_svg = format!(r#"<path d="M {start_x} {start_y} A {radius} {radius} 0 0 1 {end_x} {end_y} L {center_x} {center_y} L {start_x} {start_y} Z"  stroke="none" fill="{fill}" />"#);
+	let sector_svg = format!(
+		r#"<path d="M {start_x} {start_y} A {radius} {radius} 0 0 1 {end_x} {end_y} L {} {} L {start_x} {start_y} Z"  stroke="none" fill="{fill}" />"#,
+		center.x, center.y
+	);
 	// draw arc with stroke color
 	let arc_svg = format!(r#"<path d="M {start_x} {start_y} A {radius} {radius} 0 0 1 {end_x} {end_y}" stroke="{stroke}" stroke-width="{stroke_width}" fill="none"/>"#);
 	format!("{sector_svg}{arc_svg}")
