@@ -7,3 +7,4 @@ mod utils;
 
 pub use bezier::*;
 pub use subpath::*;
+pub use utils::ComputeType;

@@ -1,5 +1,5 @@
 use super::*;
-use crate::utils::f64_compare;
+use crate::utils::{f64_compare, ComputeType};
 
 use glam::DMat2;
 use std::f64::consts::PI;
@@ -8,7 +8,7 @@ use std::f64::consts::PI;
 impl Bezier {
 	/// Returns the pair of Bezier curves that result from splitting the original curve at the point corresponding to `t`.
 	pub fn split(&self, t: f64) -> [Bezier; 2] {
-		let split_point = self.evaluate(t);
+		let split_point = self.evaluate(ComputeType::Parametric(t));
 
 		match self.handles {
 			BezierHandles::Linear => [Bezier::from_linear_dvec2(self.start, split_point), Bezier::from_linear_dvec2(split_point, self.end)],
@@ -53,7 +53,7 @@ impl Bezier {
 	pub fn trim(&self, t1: f64, t2: f64) -> Bezier {
 		// If t1 is equal to t2, return a bezier comprised entirely of the same point
 		if f64_compare(t1, t2, MAX_ABSOLUTE_DIFFERENCE) {
-			let point = self.evaluate(t1);
+			let point = self.evaluate(ComputeType::Parametric(t1));
 			return match self.handles {
 				BezierHandles::Linear => Bezier::from_linear_dvec2(point, point),
 				BezierHandles::Quadratic { handle: _ } => Bezier::from_quadratic_dvec2(point, point, point),
@@ -444,9 +444,9 @@ impl Bezier {
 			// Inner loop to find the next maximal segment of the curve that can be approximated with a circular arc
 			while iterations <= max_iterations {
 				iterations += 1;
-				let p1 = self.evaluate(low);
-				let p2 = self.evaluate(middle);
-				let p3 = self.evaluate(high);
+				let p1 = self.evaluate(ComputeType::Parametric(low));
+				let p2 = self.evaluate(ComputeType::Parametric(middle));
+				let p3 = self.evaluate(ComputeType::Parametric(high));
 
 				let wrapped_center = utils::compute_circle_center_from_points(p1, p2, p3);
 				// If the segment is linear, move on to next segment
@@ -486,8 +486,8 @@ impl Bezier {
 				};
 
 				// Use points in between low, middle, and high to evaluate how well the arc approximates the curve
-				let e1 = self.evaluate((low + middle) / 2.);
-				let e2 = self.evaluate((middle + high) / 2.);
+				let e1 = self.evaluate(ComputeType::Parametric((low + middle) / 2.));
+				let e2 = self.evaluate(ComputeType::Parametric((middle + high) / 2.));
 
 				// Iterate until we find the largest good approximation such that the next iteration is not a good approximation with an arc
 				if utils::f64_compare(radius, e1.distance(center), error) && utils::f64_compare(radius, e2.distance(center), error) {
@@ -537,6 +537,8 @@ impl Bezier {
 
 #[cfg(test)]
 mod tests {
+	use crate::utils::ComputeType;
+
 	use super::compare::{compare_arcs, compare_vector_of_beziers};
 	use super::*;
 
@@ -546,34 +548,34 @@ mod tests {
 		let [part1, part2] = line.split(0.5);
 
 		assert_eq!(part1.start(), line.start());
-		assert_eq!(part1.end(), line.evaluate(0.5));
-		assert_eq!(part1.evaluate(0.5), line.evaluate(0.25));
+		assert_eq!(part1.end(), line.evaluate(ComputeType::Parametric(0.5)));
+		assert_eq!(part1.evaluate(ComputeType::Parametric(0.5)), line.evaluate(ComputeType::Parametric(0.25)));
 
-		assert_eq!(part2.start(), line.evaluate(0.5));
+		assert_eq!(part2.start(), line.evaluate(ComputeType::Parametric(0.5)));
 		assert_eq!(part2.end(), line.end());
-		assert_eq!(part2.evaluate(0.5), line.evaluate(0.75));
+		assert_eq!(part2.evaluate(ComputeType::Parametric(0.5)), line.evaluate(ComputeType::Parametric(0.75)));
 
 		let quad_bezier = Bezier::from_quadratic_coordinates(10., 10., 50., 50., 90., 10.);
 		let [part3, part4] = quad_bezier.split(0.5);
 
 		assert_eq!(part3.start(), quad_bezier.start());
-		assert_eq!(part3.end(), quad_bezier.evaluate(0.5));
-		assert_eq!(part3.evaluate(0.5), quad_bezier.evaluate(0.25));
+		assert_eq!(part3.end(), quad_bezier.evaluate(ComputeType::Parametric(0.5)));
+		assert_eq!(part3.evaluate(ComputeType::Parametric(0.5)), quad_bezier.evaluate(ComputeType::Parametric(0.25)));
 
-		assert_eq!(part4.start(), quad_bezier.evaluate(0.5));
+		assert_eq!(part4.start(), quad_bezier.evaluate(ComputeType::Parametric(0.5)));
 		assert_eq!(part4.end(), quad_bezier.end());
-		assert_eq!(part4.evaluate(0.5), quad_bezier.evaluate(0.75));
+		assert_eq!(part4.evaluate(ComputeType::Parametric(0.5)), quad_bezier.evaluate(ComputeType::Parametric(0.75)));
 
 		let cubic_bezier = Bezier::from_cubic_coordinates(10., 10., 50., 50., 90., 10., 40., 50.);
 		let [part5, part6] = cubic_bezier.split(0.5);
 
 		assert_eq!(part5.start(), cubic_bezier.start());
-		assert_eq!(part5.end(), cubic_bezier.evaluate(0.5));
-		assert_eq!(part5.evaluate(0.5), cubic_bezier.evaluate(0.25));
+		assert_eq!(part5.end(), cubic_bezier.evaluate(ComputeType::Parametric(0.5)));
+		assert_eq!(part5.evaluate(ComputeType::Parametric(0.5)), cubic_bezier.evaluate(ComputeType::Parametric(0.25)));
 
-		assert_eq!(part6.start(), cubic_bezier.evaluate(0.5));
+		assert_eq!(part6.start(), cubic_bezier.evaluate(ComputeType::Parametric(0.5)));
 		assert_eq!(part6.end(), cubic_bezier.end());
-		assert_eq!(part6.evaluate(0.5), cubic_bezier.evaluate(0.75));
+		assert_eq!(part6.evaluate(ComputeType::Parametric(0.5)), cubic_bezier.evaluate(ComputeType::Parametric(0.75)));
 	}
 
 	#[test]
@@ -611,23 +613,23 @@ mod tests {
 		let line = Bezier::from_linear_coordinates(80., 80., 40., 40.);
 		let trimmed1 = line.trim(0.25, 0.75);
 
-		assert_eq!(trimmed1.start(), line.evaluate(0.25));
-		assert_eq!(trimmed1.end(), line.evaluate(0.75));
-		assert_eq!(trimmed1.evaluate(0.5), line.evaluate(0.5));
+		assert_eq!(trimmed1.start(), line.evaluate(ComputeType::Parametric(0.25)));
+		assert_eq!(trimmed1.end(), line.evaluate(ComputeType::Parametric(0.75)));
+		assert_eq!(trimmed1.evaluate(ComputeType::Parametric(0.5)), line.evaluate(ComputeType::Parametric(0.5)));
 
 		let quadratic_bezier = Bezier::from_quadratic_coordinates(80., 80., 40., 40., 70., 70.);
 		let trimmed2 = quadratic_bezier.trim(0.25, 0.75);
 
-		assert_eq!(trimmed2.start(), quadratic_bezier.evaluate(0.25));
-		assert_eq!(trimmed2.end(), quadratic_bezier.evaluate(0.75));
-		assert_eq!(trimmed2.evaluate(0.5), quadratic_bezier.evaluate(0.5));
+		assert_eq!(trimmed2.start(), quadratic_bezier.evaluate(ComputeType::Parametric(0.25)));
+		assert_eq!(trimmed2.end(), quadratic_bezier.evaluate(ComputeType::Parametric(0.75)));
+		assert_eq!(trimmed2.evaluate(ComputeType::Parametric(0.5)), quadratic_bezier.evaluate(ComputeType::Parametric(0.5)));
 
 		let cubic_bezier = Bezier::from_cubic_coordinates(80., 80., 40., 40., 70., 70., 150., 150.);
 		let trimmed3 = cubic_bezier.trim(0.25, 0.75);
 
-		assert_eq!(trimmed3.start(), cubic_bezier.evaluate(0.25));
-		assert_eq!(trimmed3.end(), cubic_bezier.evaluate(0.75));
-		assert_eq!(trimmed3.evaluate(0.5), cubic_bezier.evaluate(0.5));
+		assert_eq!(trimmed3.start(), cubic_bezier.evaluate(ComputeType::Parametric(0.25)));
+		assert_eq!(trimmed3.end(), cubic_bezier.evaluate(ComputeType::Parametric(0.75)));
+		assert_eq!(trimmed3.evaluate(ComputeType::Parametric(0.5)), cubic_bezier.evaluate(ComputeType::Parametric(0.5)));
 	}
 
 	#[test]
@@ -741,16 +743,24 @@ mod tests {
 		assert_eq!(outline.len(), 4);
 
 		// Assert the first length-wise piece of the outline is 10 units from the line
-		assert!(f64_compare(outline[0].evaluate(0.25).distance(line.evaluate(0.25)), 10., MAX_ABSOLUTE_DIFFERENCE)); // f64
+		assert!(f64_compare(
+			outline[0].evaluate(ComputeType::Parametric(0.25)).distance(line.evaluate(ComputeType::Parametric(0.25))),
+			10.,
+			MAX_ABSOLUTE_DIFFERENCE
+		)); // f64
 
 		// Assert the first cap touches the line end point at the halfway point
-		assert!(outline[1].evaluate(0.5).abs_diff_eq(line.end(), MAX_ABSOLUTE_DIFFERENCE));
+		assert!(outline[1].evaluate(ComputeType::Parametric(0.5)).abs_diff_eq(line.end(), MAX_ABSOLUTE_DIFFERENCE));
 
 		// Assert the second length-wise piece of the outline is 10 units from the line
-		assert!(f64_compare(outline[2].evaluate(0.25).distance(line.evaluate(0.75)), 10., MAX_ABSOLUTE_DIFFERENCE)); // f64
+		assert!(f64_compare(
+			outline[2].evaluate(ComputeType::Parametric(0.25)).distance(line.evaluate(ComputeType::Parametric(0.75))),
+			10.,
+			MAX_ABSOLUTE_DIFFERENCE
+		)); // f64
 
 		// Assert the second cap touches the line start point at the halfway point
-		assert!(outline[3].evaluate(0.5).abs_diff_eq(line.start(), MAX_ABSOLUTE_DIFFERENCE));
+		assert!(outline[3].evaluate(ComputeType::Parametric(0.5)).abs_diff_eq(line.start(), MAX_ABSOLUTE_DIFFERENCE));
 	}
 
 	#[test]
@@ -767,9 +777,21 @@ mod tests {
 		dbg!(scaled_bezier);
 
 		// Assert the scaled bezier is 30 units from the line
-		assert!(f64_compare(scaled_bezier.evaluate(0.).distance(bezier.evaluate(0.)), 30., MAX_ABSOLUTE_DIFFERENCE));
-		assert!(f64_compare(scaled_bezier.evaluate(1.).distance(bezier.evaluate(1.)), 30., MAX_ABSOLUTE_DIFFERENCE));
-		assert!(f64_compare(scaled_bezier.evaluate(0.5).distance(bezier.evaluate(0.5)), 30., MAX_ABSOLUTE_DIFFERENCE));
+		assert!(f64_compare(
+			scaled_bezier.evaluate(ComputeType::Parametric(0.)).distance(bezier.evaluate(ComputeType::Parametric(0.))),
+			30.,
+			MAX_ABSOLUTE_DIFFERENCE
+		));
+		assert!(f64_compare(
+			scaled_bezier.evaluate(ComputeType::Parametric(1.)).distance(bezier.evaluate(ComputeType::Parametric(1.))),
+			30.,
+			MAX_ABSOLUTE_DIFFERENCE
+		));
+		assert!(f64_compare(
+			scaled_bezier.evaluate(ComputeType::Parametric(0.5)).distance(bezier.evaluate(ComputeType::Parametric(0.5))),
+			30.,
+			MAX_ABSOLUTE_DIFFERENCE
+		));
 	}
 
 	#[test]

@@ -9,6 +9,8 @@
 	</div>
 </template>
 
+<style></style>
+
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
 
@@ -18,11 +20,8 @@ import SubpathExample from "@/components/SubpathExample.vue";
 
 export default defineComponent({
 	props: {
-		name: String,
-		callback: {
-			type: Function as PropType<SubpathCallback>,
-			required: true,
-		},
+		name: { type: String as PropType<string>, required: true },
+		callback: { type: Function as PropType<SubpathCallback>, required: true },
 	},
 	data() {
 		return {
@@ -58,15 +57,3 @@ export default defineComponent({
 	},
 });
 </script>
-
-<style scoped>
-.example-row {
-	display: flex;
-	flex-direction: row;
-	justify-content: center;
-}
-
-.example-pane-header {
-	margin-bottom: 0;
-}
-</style>
