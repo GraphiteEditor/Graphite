@@ -1,6 +1,15 @@
 <template>
-	<div>
+	<div class="example-pane-container">
 		<h3 class="example-pane-header">{{ name }}</h3>
+		<div v-if="chooseComputeType" class="compute-type-choice">
+			<strong>ComputeType:</strong>
+
+			<input type="radio" :id="`${id}-parametric`" value="Parametric" v-model="computeTypeChoice" />
+			<label :for="`${id}-parametric`">Parametric</label>
+
+			<input type="radio" :id="`${id}-euclidean`" value="Euclidean" v-model="computeTypeChoice" />
+			<label :for="`${id}-euclidean`">Euclidean</label>
+		</div>
 		<div class="example-row">
 			<div v-for="(example, index) in examples" :key="index">
 				<BezierExample
@@ -10,51 +19,46 @@
 					:callback="callback"
 					:sliderOptions="example.sliderOptions"
 					:triggerOnMouseMove="triggerOnMouseMove"
+					:computeType="computeTypeChoice"
 				/>
 			</div>
 		</div>
 	</div>
 </template>
 
+<style></style>
+
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
 
-import { BezierCallback, BezierCurveType, ExampleOptions, SliderOption } from "@/utils/types";
+import { BezierCallback, BezierCurveType, BEZIER_CURVE_TYPE, ComputeType, ExampleOptions, SliderOption } from "@/utils/types";
 
 import BezierExample from "@/components/BezierExample.vue";
 
 export default defineComponent({
 	props: {
-		name: String,
-		callback: {
-			type: Function as PropType<BezierCallback>,
-			required: true,
-		},
-		exampleOptions: {
-			type: Object as PropType<ExampleOptions>,
-			default: () => ({}),
-		},
-		triggerOnMouseMove: {
-			type: Boolean,
-			default: false,
-		},
+		name: { type: String as PropType<string>, required: true },
+		callback: { type: Function as PropType<BezierCallback>, required: true },
+		exampleOptions: { type: Object as PropType<ExampleOptions>, default: () => ({}) },
+		triggerOnMouseMove: { type: Boolean as PropType<boolean>, default: false },
+		chooseComputeType: { type: Boolean as PropType<boolean>, default: false },
 	},
 	data() {
 		const exampleDefaults = {
-			[BezierCurveType.Linear]: {
+			Linear: {
 				points: [
 					[30, 60],
 					[140, 120],
 				],
 			},
-			[BezierCurveType.Quadratic]: {
+			Quadratic: {
 				points: [
 					[30, 50],
 					[140, 30],
 					[160, 170],
 				],
 			},
-			[BezierCurveType.Cubic]: {
+			Cubic: {
 				points: [
 					[30, 30],
 					[60, 140],
@@ -65,10 +69,10 @@ export default defineComponent({
 		};
 
 		// Use quadratic slider options as a default if sliders are not provided for the other curve types.
-		const defaultSliderOptions: SliderOption[] = this.exampleOptions[BezierCurveType.Quadratic]?.sliderOptions || [];
+		const defaultSliderOptions: SliderOption[] = this.exampleOptions.Quadratic?.sliderOptions || [];
 
 		return {
-			examples: Object.values(BezierCurveType).map((curveType: BezierCurveType) => {
+			examples: BEZIER_CURVE_TYPE.map((curveType: BezierCurveType) => {
 				const givenData = this.exampleOptions[curveType];
 				const defaultData = exampleDefaults[curveType];
 				return {
@@ -78,6 +82,8 @@ export default defineComponent({
 					sliderOptions: givenData?.sliderOptions || defaultSliderOptions,
 				};
 			}),
+			id: `${Math.random()}`.substring(2),
+			computeTypeChoice: "Parametric" as ComputeType,
 		};
 	},
 	components: {
@@ -85,15 +91,3 @@ export default defineComponent({
 	},
 });
 </script>
-
-<style scoped>
-.example-row {
-	display: flex;
-	flex-direction: row;
-	justify-content: center;
-}
-
-.example-pane-header {
-	margin-bottom: 0;
-}
-</style>

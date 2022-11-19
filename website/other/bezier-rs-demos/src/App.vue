@@ -1,23 +1,69 @@
 <template>
-	<div class="App">
-		<h1>Bezier-rs Interactive Documentation</h1>
-		<p>This is the interactive documentation for the <b>bezier-rs</b> library. Click and drag on the endpoints of the example curves to visualize the various Bezier utilities and functions.</p>
-		<h2>Beziers</h2>
-		<div v-for="(feature, index) in bezierFeatures" :key="index">
-			<BezierExamplePane :name="feature.name" :callback="feature.callback" :exampleOptions="feature.exampleOptions" :triggerOnMouseMove="feature.triggerOnMouseMove" />
-		</div>
-		<h2>Subpaths</h2>
-		<div v-for="(feature, index) in subpathFeatures" :key="index">
-			<SubpathExamplePane :name="feature.name" :callback="feature.callback" />
-		</div>
+	<h1>Bezier-rs Interactive Documentation</h1>
+	<p>This is the interactive documentation for the <b>bezier-rs</b> library. Click and drag on the endpoints of the example curves to visualize the various Bezier utilities and functions.</p>
+	<h2>Beziers</h2>
+	<div v-for="(feature, index) in bezierFeatures" :key="index">
+		<BezierExamplePane
+			:name="feature.name"
+			:callback="feature.callback"
+			:exampleOptions="feature.exampleOptions"
+			:triggerOnMouseMove="feature.triggerOnMouseMove"
+			:chooseComputeType="feature.chooseComputeType"
+		/>
+	</div>
+	<h2>Subpaths</h2>
+	<div v-for="(feature, index) in subpathFeatures" :key="index">
+		<SubpathExamplePane :name="feature.name" :callback="feature.callback" />
 	</div>
 </template>
+
+<style>
+#app {
+	font-family: Arial, sans-serif;
+	text-align: center;
+	margin: 40px 0;
+}
+
+/* Example Pane styles */
+.example-row {
+	display: flex;
+	flex-direction: row;
+	justify-content: center;
+}
+
+.compute-type-choice {
+	margin-top: 20px;
+}
+
+.example-pane-header {
+	margin-top: 2em;
+	margin-bottom: 0;
+}
+
+.example-pane-container {
+	position: relative;
+	width: fit-content;
+	margin: auto;
+}
+
+/* Example styles */
+.example-header {
+	margin: 20px 0;
+}
+
+.example-figure {
+	width: 200px;
+	height: 200px;
+	margin-bottom: 20px;
+	border: solid 1px black;
+}
+</style>
 
 <script lang="ts">
 import { defineComponent } from "vue";
 
 import { WasmBezier } from "@/../wasm/pkg";
-import { BezierCurveType, ExampleOptions, WasmBezierInstance, WasmSubpathInstance } from "@/utils/types";
+import { ComputeType, ExampleOptions, WasmBezierInstance, WasmSubpathInstance } from "@/utils/types";
 
 import BezierExamplePane from "@/components/BezierExamplePane.vue";
 import SubpathExamplePane from "@/components/SubpathExamplePane.vue";
@@ -56,10 +102,10 @@ export default defineComponent({
 						return WasmBezier.cubic_through_points(points, options.t, options["midpoint separation"]);
 					},
 					exampleOptions: {
-						[BezierCurveType.Linear]: {
+						Linear: {
 							disabled: true,
 						},
-						[BezierCurveType.Quadratic]: {
+						Quadratic: {
 							customPoints: [
 								[30, 50],
 								[120, 70],
@@ -75,7 +121,7 @@ export default defineComponent({
 								},
 							],
 						},
-						[BezierCurveType.Cubic]: {
+						Cubic: {
 							customPoints: [
 								[30, 50],
 								[120, 70],
@@ -106,18 +152,19 @@ export default defineComponent({
 				},
 				{
 					name: "Evaluate",
-					callback: (bezier: WasmBezierInstance, options: Record<string, number>): string => bezier.evaluate(options.t),
+					callback: (bezier: WasmBezierInstance, options: Record<string, number>, _: undefined, computeType: ComputeType): string => bezier.evaluate(options.computeArgument, computeType),
 					exampleOptions: {
-						[BezierCurveType.Quadratic]: {
-							sliderOptions: [tSliderOptions],
+						Quadratic: {
+							sliderOptions: [{ ...tSliderOptions, variable: "computeArgument" }],
 						},
 					},
+					chooseComputeType: true,
 				},
 				{
 					name: "Lookup Table",
 					callback: (bezier: WasmBezierInstance, options: Record<string, number>): string => bezier.compute_lookup_table(options.steps),
 					exampleOptions: {
-						[BezierCurveType.Quadratic]: {
+						Quadratic: {
 							sliderOptions: [
 								{
 									min: 2,
@@ -134,17 +181,17 @@ export default defineComponent({
 					name: "Derivative",
 					callback: (bezier: WasmBezierInstance, _: Record<string, number>): string => bezier.derivative(),
 					exampleOptions: {
-						[BezierCurveType.Linear]: {
+						Linear: {
 							disabled: true,
 						},
-						[BezierCurveType.Quadratic]: {
+						Quadratic: {
 							customPoints: [
 								[30, 40],
 								[110, 50],
 								[120, 130],
 							],
 						},
-						[BezierCurveType.Cubic]: {
+						Cubic: {
 							customPoints: [
 								[50, 50],
 								[60, 100],
@@ -158,7 +205,7 @@ export default defineComponent({
 					name: "Tangent",
 					callback: (bezier: WasmBezierInstance, options: Record<string, number>): string => bezier.tangent(options.t),
 					exampleOptions: {
-						[BezierCurveType.Quadratic]: {
+						Quadratic: {
 							sliderOptions: [tSliderOptions],
 						},
 					},
@@ -168,7 +215,7 @@ export default defineComponent({
 					name: "Normal",
 					callback: (bezier: WasmBezierInstance, options: Record<string, number>): string => bezier.normal(options.t),
 					exampleOptions: {
-						[BezierCurveType.Quadratic]: {
+						Quadratic: {
 							sliderOptions: [tSliderOptions],
 						},
 					},
@@ -177,10 +224,10 @@ export default defineComponent({
 					name: "Curvature",
 					callback: (bezier: WasmBezierInstance, options: Record<string, number>): string => bezier.curvature(options.t),
 					exampleOptions: {
-						[BezierCurveType.Linear]: {
+						Linear: {
 							disabled: true,
 						},
-						[BezierCurveType.Quadratic]: {
+						Quadratic: {
 							sliderOptions: [tSliderOptions],
 						},
 					},
@@ -189,7 +236,7 @@ export default defineComponent({
 					name: "Split",
 					callback: (bezier: WasmBezierInstance, options: Record<string, number>): string => bezier.split(options.t),
 					exampleOptions: {
-						[BezierCurveType.Quadratic]: {
+						Quadratic: {
 							sliderOptions: [tSliderOptions],
 						},
 					},
@@ -198,7 +245,7 @@ export default defineComponent({
 					name: "Trim",
 					callback: (bezier: WasmBezierInstance, options: Record<string, number>): string => bezier.trim(options.t1, options.t2),
 					exampleOptions: {
-						[BezierCurveType.Quadratic]: {
+						Quadratic: {
 							sliderOptions: [
 								{
 									variable: "t1",
@@ -228,14 +275,14 @@ export default defineComponent({
 					name: "Local Extrema",
 					callback: (bezier: WasmBezierInstance, _: Record<string, number>): string => bezier.local_extrema(),
 					exampleOptions: {
-						[BezierCurveType.Quadratic]: {
+						Quadratic: {
 							customPoints: [
 								[40, 40],
 								[160, 30],
 								[110, 150],
 							],
 						},
-						[BezierCurveType.Cubic]: {
+						Cubic: {
 							customPoints: [
 								[160, 180],
 								[170, 10],
@@ -253,10 +300,10 @@ export default defineComponent({
 					name: "Inflections",
 					callback: (bezier: WasmBezierInstance, _: Record<string, number>): string => bezier.inflections(),
 					exampleOptions: {
-						[BezierCurveType.Linear]: {
+						Linear: {
 							disabled: true,
 						},
-						[BezierCurveType.Quadratic]: {
+						Quadratic: {
 							disabled: true,
 						},
 					},
@@ -269,7 +316,7 @@ export default defineComponent({
 					name: "Offset",
 					callback: (bezier: WasmBezierInstance, options: Record<string, number>): string => bezier.offset(options.distance),
 					exampleOptions: {
-						[BezierCurveType.Quadratic]: {
+						Quadratic: {
 							sliderOptions: [
 								{
 									variable: "distance",
@@ -286,7 +333,7 @@ export default defineComponent({
 					name: "Outline",
 					callback: (bezier: WasmBezierInstance, options: Record<string, number>): string => bezier.outline(options.distance),
 					exampleOptions: {
-						[BezierCurveType.Quadratic]: {
+						Quadratic: {
 							sliderOptions: [
 								{
 									variable: "distance",
@@ -303,7 +350,7 @@ export default defineComponent({
 					name: "Graduated Outline",
 					callback: (bezier: WasmBezierInstance, options: Record<string, number>): string => bezier.graduated_outline(options.start_distance, options.end_distance),
 					exampleOptions: {
-						[BezierCurveType.Quadratic]: {
+						Quadratic: {
 							sliderOptions: [
 								{
 									variable: "start_distance",
@@ -328,7 +375,7 @@ export default defineComponent({
 					callback: (bezier: WasmBezierInstance, options: Record<string, number>): string =>
 						bezier.skewed_outline(options.distance1, options.distance2, options.distance3, options.distance4),
 					exampleOptions: {
-						[BezierCurveType.Quadratic]: {
+						Quadratic: {
 							sliderOptions: [
 								{
 									variable: "distance1",
@@ -392,7 +439,7 @@ export default defineComponent({
 						];
 
 						return {
-							[BezierCurveType.Quadratic]: {
+							Quadratic: {
 								customPoints: [
 									[50, 50],
 									[85, 65],
@@ -401,7 +448,7 @@ export default defineComponent({
 								sliderOptions,
 								disabled: false,
 							},
-							[BezierCurveType.Cubic]: {
+							Cubic: {
 								customPoints: [
 									[160, 180],
 									[170, 10],
@@ -435,7 +482,7 @@ export default defineComponent({
 						return bezier.intersect_quadratic_segment(quadratic, options.error);
 					},
 					exampleOptions: {
-						[BezierCurveType.Quadratic]: {
+						Quadratic: {
 							sliderOptions: [tErrorOptions],
 						},
 					},
@@ -452,7 +499,7 @@ export default defineComponent({
 						return bezier.intersect_cubic_segment(cubic, options.error);
 					},
 					exampleOptions: {
-						[BezierCurveType.Quadratic]: {
+						Quadratic: {
 							sliderOptions: [tErrorOptions],
 						},
 					},
@@ -461,10 +508,10 @@ export default defineComponent({
 					name: "Intersect (Self)",
 					callback: (bezier: WasmBezierInstance, options: Record<string, number>): string => bezier.intersect_self(options.error),
 					exampleOptions: {
-						[BezierCurveType.Quadratic]: {
+						Quadratic: {
 							sliderOptions: [tErrorOptions],
 						},
-						[BezierCurveType.Cubic]: {
+						Cubic: {
 							customPoints: [
 								[160, 180],
 								[170, 10],
@@ -478,7 +525,7 @@ export default defineComponent({
 					name: "Rotate",
 					callback: (bezier: WasmBezierInstance, options: Record<string, number>): string => bezier.rotate(options.angle * Math.PI, 100, 100),
 					exampleOptions: {
-						[BezierCurveType.Quadratic]: {
+						Quadratic: {
 							sliderOptions: [
 								{
 									variable: "angle",
@@ -496,7 +543,7 @@ export default defineComponent({
 					name: "De Casteljau Points",
 					callback: (bezier: WasmBezierInstance, options: Record<string, number>): string => bezier.de_casteljau_points(options.t),
 					exampleOptions: {
-						[BezierCurveType.Quadratic]: {
+						Quadratic: {
 							sliderOptions: [tSliderOptions],
 						},
 					},
@@ -520,12 +567,3 @@ export default defineComponent({
 	},
 });
 </script>
-
-<style>
-#app {
-	font-family: Arial, sans-serif;
-	text-align: center;
-	color: #2c3e50;
-	margin-top: 60px;
-}
-</style>
