@@ -1,5 +1,6 @@
 use crate::messages::prelude::*;
 
+use bezier_rs::ComputeType;
 use graphene::layers::vector::consts::ManipulatorType;
 use graphene::layers::vector::manipulator_group::ManipulatorGroup;
 use graphene::layers::vector::manipulator_point::ManipulatorPoint;
@@ -277,7 +278,7 @@ impl ShapeEditor {
 		for bezier_id in document.layer(layer_path).ok()?.as_subpath()?.bezier_iter() {
 			let bezier = bezier_id.internal;
 			let t = bezier.project(layer_pos, projection_options);
-			let layerspace = bezier.evaluate(t);
+			let layerspace = bezier.evaluate(ComputeType::Parametric(t));
 
 			let screenspace = transform.transform_point2(layerspace);
 			let distance_squared = screenspace.distance_squared(position);

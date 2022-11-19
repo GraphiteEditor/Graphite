@@ -1,4 +1,5 @@
 use super::*;
+use crate::utils::ComputeType;
 
 use glam::DMat2;
 use std::ops::Range;
@@ -52,7 +53,7 @@ impl Bezier {
 	pub fn tangent(&self, t: f64) -> DVec2 {
 		match self.handles {
 			BezierHandles::Linear => self.end - self.start,
-			_ => self.derivative().unwrap().evaluate(t),
+			_ => self.derivative().unwrap().evaluate(ComputeType::Parametric(t)),
 		}
 		.normalize()
 	}
@@ -67,8 +68,8 @@ impl Bezier {
 	pub fn curvature(&self, t: f64) -> f64 {
 		let (d, dd) = match &self.derivative() {
 			Some(first_derivative) => match first_derivative.derivative() {
-				Some(second_derivative) => (first_derivative.evaluate(t), second_derivative.evaluate(t)),
-				None => (first_derivative.evaluate(t), first_derivative.end - first_derivative.start),
+				Some(second_derivative) => (first_derivative.evaluate(ComputeType::Parametric(t)), second_derivative.evaluate(ComputeType::Parametric(t))),
+				None => (first_derivative.evaluate(ComputeType::Parametric(t)), first_derivative.end - first_derivative.start),
 			},
 			None => (self.end - self.start, DVec2::new(0., 0.)),
 		};
@@ -128,7 +129,7 @@ impl Bezier {
 		let extrema = self.local_extrema();
 		for t_values in extrema {
 			for t in t_values {
-				let point = self.evaluate(t);
+				let point = self.evaluate(ComputeType::Parametric(t));
 				// Update bounding box if new min/max is found.
 				endpoints_min = endpoints_min.min(point);
 				endpoints_max = endpoints_max.max(point);
@@ -276,7 +277,7 @@ impl Bezier {
 				// Accept the t value if it is approximately in [0, 1] and if the corresponding coordinates are within the range of the linear line
 				.filter(|&t| {
 					utils::f64_approximately_in_range(t, 0., 1., MAX_ABSOLUTE_DIFFERENCE)
-						&& utils::dvec2_approximately_in_range(self.unrestricted_evaluate(t), min, max, MAX_ABSOLUTE_DIFFERENCE).all()
+						&& utils::dvec2_approximately_in_range(self.unrestricted_parametric_evaluate(t), min, max, MAX_ABSOLUTE_DIFFERENCE).all()
 				})
 				// Ensure the returned value is within the correct range
 				.map(|t| t.clamp(0., 1.))
@@ -348,7 +349,7 @@ mod tests {
 		];
 		assert_eq!(&de_casteljau_points, &expected_de_casteljau_points);
 
-		assert_eq!(expected_de_casteljau_points[3][0], bezier.evaluate(0.5));
+		assert_eq!(expected_de_casteljau_points[3][0], bezier.evaluate(ComputeType::Parametric(0.5)));
 	}
 
 	#[test]
@@ -564,12 +565,12 @@ mod tests {
 		let line1 = Bezier::from_linear_coordinates(20., 60., 70., 60.);
 		let intersections1 = bezier.intersections(&line1, None);
 		assert!(intersections1.len() == 1);
-		assert!(compare_points(bezier.evaluate(intersections1[0]), DVec2::new(30., 60.)));
+		assert!(compare_points(bezier.evaluate(ComputeType::Parametric(intersections1[0])), DVec2::new(30., 60.)));
 
 		// Intersection in the middle of curve
 		let line2 = Bezier::from_linear_coordinates(150., 150., 30., 30.);
 		let intersections2 = bezier.intersections(&line2, None);
-		assert!(compare_points(bezier.evaluate(intersections2[0]), DVec2::new(96., 96.)));
+		assert!(compare_points(bezier.evaluate(ComputeType::Parametric(intersections2[0])), DVec2::new(96., 96.)));
 	}
 
 	#[test]
@@ -583,12 +584,12 @@ mod tests {
 		let line1 = Bezier::from_linear_coordinates(20., 50., 40., 50.);
 		let intersections1 = bezier.intersections(&line1, None);
 		assert!(intersections1.len() == 1);
-		assert!(compare_points(bezier.evaluate(intersections1[0]), p1));
+		assert!(compare_points(bezier.evaluate(ComputeType::Parametric(intersections1[0])), p1));
 
 		// Intersection in the middle of curve
 		let line2 = Bezier::from_linear_coordinates(150., 150., 30., 30.);
 		let intersections2 = bezier.intersections(&line2, None);
-		assert!(compare_points(bezier.evaluate(intersections2[0]), DVec2::new(47.77355, 47.77354)));
+		assert!(compare_points(bezier.evaluate(ComputeType::Parametric(intersections2[0])), DVec2::new(47.77355, 47.77354)));
 	}
 
 	#[test]
@@ -603,14 +604,14 @@ mod tests {
 		let line1 = Bezier::from_linear_coordinates(20., 30., 40., 30.);
 		let intersections1 = bezier.intersections(&line1, None);
 		assert!(intersections1.len() == 1);
-		assert!(compare_points(bezier.evaluate(intersections1[0]), p1));
+		assert!(compare_points(bezier.evaluate(ComputeType::Parametric(intersections1[0])), p1));
 
 		// Intersection at edge and in middle of curve, Discriminant < 0
 		let line2 = Bezier::from_linear_coordinates(150., 150., 30., 30.);
 		let intersections2 = bezier.intersections(&line2, None);
 		assert!(intersections2.len() == 2);
-		assert!(compare_points(bezier.evaluate(intersections2[0]), p1));
-		assert!(compare_points(bezier.evaluate(intersections2[1]), DVec2::new(85.84, 85.84)));
+		assert!(compare_points(bezier.evaluate(ComputeType::Parametric(intersections2[0])), p1));
+		assert!(compare_points(bezier.evaluate(ComputeType::Parametric(intersections2[1])), DVec2::new(85.84, 85.84)));
 	}
 
 	// TODO: fix
@@ -641,8 +642,8 @@ mod tests {
 		let intersections = bezier1.intersections(&bezier2, None);
 		let intersections2 = bezier2.intersections(&bezier1, None);
 		assert!(compare_vec_of_points(
-			intersections.iter().map(|&t| bezier1.evaluate(t)).collect(),
-			intersections2.iter().map(|&t| bezier2.evaluate(t)).collect(),
+			intersections.iter().map(|&t| bezier1.evaluate(ComputeType::Parametric(t))).collect(),
+			intersections2.iter().map(|&t| bezier2.evaluate(ComputeType::Parametric(t))).collect(),
 			2.
 		));
 	}
@@ -652,8 +653,8 @@ mod tests {
 		let bezier = Bezier::from_cubic_coordinates(160., 180., 170., 10., 30., 90., 180., 140.);
 		let intersections = bezier.self_intersections(Some(0.5));
 		assert!(compare_vec_of_points(
-			intersections.iter().map(|&t| bezier.evaluate(t[0])).collect(),
-			intersections.iter().map(|&t| bezier.evaluate(t[1])).collect(),
+			intersections.iter().map(|&t| bezier.evaluate(ComputeType::Parametric(t[0]))).collect(),
+			intersections.iter().map(|&t| bezier.evaluate(ComputeType::Parametric(t[1]))).collect(),
 			2.
 		));
 		assert!(Bezier::from_linear_coordinates(160., 180., 170., 10.).self_intersections(None).is_empty());

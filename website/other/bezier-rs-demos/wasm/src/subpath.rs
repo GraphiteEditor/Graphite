@@ -57,7 +57,7 @@ impl WasmSubpath {
 	}
 
 	pub fn evaluate(&self, t: f64) -> String {
-		let point = self.0.evaluate(ComputeType::Parametric { t });
+		let point = self.0.evaluate(ComputeType::Parametric(t));
 		let point_text = draw_circle(point, 4., RED, 1.5, WHITE);
 		wrap_svg_tag(format!("{}{}", self.to_default_svg(), point_text))
 	}
@@ -83,7 +83,7 @@ impl WasmSubpath {
 			.intersections(&line, None)
 			.iter()
 			.map(|intersection_t| {
-				let point = self.0.evaluate(ComputeType::Parametric { t: *intersection_t });
+				let point = self.0.evaluate(ComputeType::Parametric(*intersection_t));
 				draw_circle(point, 4., RED, 1.5, WHITE)
 			})
 			.fold(String::new(), |acc, item| format!("{acc}{item}"));
@@ -112,7 +112,7 @@ impl WasmSubpath {
 			.intersections(&line, None)
 			.iter()
 			.map(|intersection_t| {
-				let point = self.0.evaluate(ComputeType::Parametric { t: *intersection_t });
+				let point = self.0.evaluate(ComputeType::Parametric(*intersection_t));
 				draw_circle(point, 4., RED, 1.5, WHITE)
 			})
 			.fold(String::new(), |acc, item| format!("{acc}{item}"));
@@ -141,7 +141,7 @@ impl WasmSubpath {
 			.intersections(&line, None)
 			.iter()
 			.map(|intersection_t| {
-				let point = self.0.evaluate(ComputeType::Parametric { t: *intersection_t });
+				let point = self.0.evaluate(ComputeType::Parametric(*intersection_t));
 				draw_circle(point, 4., RED, 1.5, WHITE)
 			})
 			.fold(String::new(), |acc, item| format!("{acc}{item}"));

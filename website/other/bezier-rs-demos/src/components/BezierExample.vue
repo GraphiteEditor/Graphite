@@ -9,42 +9,31 @@
 	</div>
 </template>
 
+<style></style>
+
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
 
 import { WasmBezier } from "@/../wasm/pkg";
-import { getConstructorKey, getCurveType } from "@/utils/helpers";
-import { BezierCallback, BezierCurveType, WasmBezierManipulatorKey, SliderOption } from "@/utils/types";
+import { getConstructorKey, getCurveType, BezierCallback, BezierCurveType, WasmBezierManipulatorKey, SliderOption, ComputeType } from "@/utils/types";
 
 const SELECTABLE_RANGE = 10;
 
 // Given the number of points in the curve, map the index of a point to the correct manipulator key
 const MANIPULATOR_KEYS_FROM_BEZIER_TYPE: { [key in BezierCurveType]: WasmBezierManipulatorKey[] } = {
-	[BezierCurveType.Linear]: ["set_start", "set_end"],
-	[BezierCurveType.Quadratic]: ["set_start", "set_handle_start", "set_end"],
-	[BezierCurveType.Cubic]: ["set_start", "set_handle_start", "set_handle_end", "set_end"],
+	Linear: ["set_start", "set_end"],
+	Quadratic: ["set_start", "set_handle_start", "set_end"],
+	Cubic: ["set_start", "set_handle_start", "set_handle_end", "set_end"],
 };
 
 export default defineComponent({
 	props: {
-		title: String,
-		points: {
-			type: Array as PropType<Array<Array<number>>>,
-			required: true,
-			mutable: true,
-		},
-		callback: {
-			type: Function as PropType<BezierCallback>,
-			required: true,
-		},
-		sliderOptions: {
-			type: Object as PropType<Array<SliderOption>>,
-			default: () => ({}),
-		},
-		triggerOnMouseMove: {
-			type: Boolean,
-			default: false,
-		},
+		title: { type: String as PropType<string>, required: true },
+		points: { type: Array as PropType<Array<Array<number>>>, required: true, mutable: true },
+		callback: { type: Function as PropType<BezierCallback>, required: true },
+		sliderOptions: { type: Object as PropType<Array<SliderOption>>, default: () => ({}) },
+		triggerOnMouseMove: { type: Boolean as PropType<boolean>, default: false },
+		computeType: { type: String as PropType<ComputeType>, default: "Parametric" },
 	},
 	data() {
 		const curveType = getCurveType(this.points.length);
@@ -55,7 +44,7 @@ export default defineComponent({
 
 		return {
 			bezier,
-			bezierSVG: this.callback(bezier, sliderData),
+			bezierSVG: this.callback(bezier, sliderData, undefined, "Euclidean"),
 			manipulatorKeys,
 			activeIndex: undefined as number | undefined,
 			mutablePoints: JSON.parse(JSON.stringify(this.points)),
@@ -84,9 +73,9 @@ export default defineComponent({
 			if (this.activeIndex !== undefined) {
 				this.bezier[this.manipulatorKeys[this.activeIndex]](mx, my);
 				this.mutablePoints[this.activeIndex] = [mx, my];
-				this.bezierSVG = this.callback(this.bezier, this.sliderData);
+				this.bezierSVG = this.callback(this.bezier, this.sliderData, undefined, this.computeType);
 			} else if (this.triggerOnMouseMove) {
-				this.bezierSVG = this.callback(this.bezier, this.sliderData, [mx, my]);
+				this.bezierSVG = this.callback(this.bezier, this.sliderData, [mx, my], this.computeType);
 			}
 		},
 		getSliderValue: (sliderValue: number, sliderUnit?: string | string[]) => (Array.isArray(sliderUnit) ? sliderUnit[sliderValue] : sliderUnit),
@@ -94,18 +83,15 @@ export default defineComponent({
 	watch: {
 		sliderData: {
 			handler() {
-				this.bezierSVG = this.callback(this.bezier, this.sliderData);
+				this.bezierSVG = this.callback(this.bezier, this.sliderData, undefined, this.computeType);
 			},
 			deep: true,
+		},
+		computeType: {
+			handler() {
+				this.bezierSVG = this.callback(this.bezier, this.sliderData, undefined, this.computeType);
+			},
 		},
 	},
 });
 </script>
-
-<style scoped>
-.example-figure {
-	border: solid 1px black;
-	width: 200px;
-	height: 200px;
-}
-</style>

@@ -1,3 +1,5 @@
+use crate::ComputeType;
+
 use super::*;
 
 use glam::DVec2;
@@ -7,7 +9,7 @@ impl Subpath {
 	/// Expects `t` to be within the inclusive range `[0, 1]`.
 	pub fn evaluate(&self, t: ComputeType) -> DVec2 {
 		match t {
-			ComputeType::Parametric { t } => {
+			ComputeType::Parametric(t) => {
 				assert!((0.0..=1.).contains(&t));
 
 				let number_of_curves = self.len_segments() as f64;
@@ -17,12 +19,13 @@ impl Subpath {
 				let target_curve_t = scaled_t % 1.;
 
 				if let Some(curve) = self.iter().nth(target_curve_index as usize) {
-					curve.evaluate(target_curve_t)
+					curve.evaluate(ComputeType::Parametric(target_curve_t))
 				} else {
-					self.iter().last().unwrap().evaluate(1.)
+					self.iter().last().unwrap().evaluate(ComputeType::Parametric(1.))
 				}
 			}
-			ComputeType::Euclidean { t: _ } => unimplemented!(),
+			ComputeType::Euclidean(_t) => todo!(),
+			ComputeType::EuclideanWithinError { t: _, epsilon: _ } => todo!(),
 		}
 	}
 
@@ -77,16 +80,16 @@ mod tests {
 		);
 
 		let t0 = 0.;
-		assert_eq!(subpath.evaluate(ComputeType::Parametric { t: t0 }), bezier.evaluate(t0));
+		assert_eq!(subpath.evaluate(ComputeType::Parametric(t0)), bezier.evaluate(ComputeType::Parametric(t0)));
 
 		let t1 = 0.25;
-		assert_eq!(subpath.evaluate(ComputeType::Parametric { t: t1 }), bezier.evaluate(t1));
+		assert_eq!(subpath.evaluate(ComputeType::Parametric(t1)), bezier.evaluate(ComputeType::Parametric(t1)));
 
 		let t2 = 0.50;
-		assert_eq!(subpath.evaluate(ComputeType::Parametric { t: t2 }), bezier.evaluate(t2));
+		assert_eq!(subpath.evaluate(ComputeType::Parametric(t2)), bezier.evaluate(ComputeType::Parametric(t2)));
 
 		let t3 = 1.;
-		assert_eq!(subpath.evaluate(ComputeType::Parametric { t: t3 }), bezier.evaluate(t3));
+		assert_eq!(subpath.evaluate(ComputeType::Parametric(t3)), bezier.evaluate(ComputeType::Parametric(t3)));
 	}
 
 	#[test]
@@ -128,29 +131,44 @@ mod tests {
 		let mut n = (subpath.len() as i64) - 1;
 
 		let t0 = 0.;
-		assert!(utils::dvec2_compare(subpath.evaluate(ComputeType::Parametric { t: t0 }), linear_bezier.evaluate(normalize_t(n, t0)), MAX_ABSOLUTE_DIFFERENCE).all());
+		assert!(utils::dvec2_compare(
+			subpath.evaluate(ComputeType::Parametric(t0)),
+			linear_bezier.evaluate(ComputeType::Parametric(normalize_t(n, t0))),
+			MAX_ABSOLUTE_DIFFERENCE
+		)
+		.all());
 
 		let t1 = 0.25;
-		assert!(utils::dvec2_compare(subpath.evaluate(ComputeType::Parametric { t: t1 }), linear_bezier.evaluate(normalize_t(n, t1)), MAX_ABSOLUTE_DIFFERENCE).all());
+		assert!(utils::dvec2_compare(
+			subpath.evaluate(ComputeType::Parametric(t1)),
+			linear_bezier.evaluate(ComputeType::Parametric(normalize_t(n, t1))),
+			MAX_ABSOLUTE_DIFFERENCE
+		)
+		.all());
 
 		let t2 = 0.50;
 		assert!(utils::dvec2_compare(
-			subpath.evaluate(ComputeType::Parametric { t: t2 }),
-			quadratic_bezier.evaluate(normalize_t(n, t2)),
+			subpath.evaluate(ComputeType::Parametric(t2)),
+			quadratic_bezier.evaluate(ComputeType::Parametric(normalize_t(n, t2))),
 			MAX_ABSOLUTE_DIFFERENCE
 		)
 		.all());
 
 		let t3 = 0.75;
 		assert!(utils::dvec2_compare(
-			subpath.evaluate(ComputeType::Parametric { t: t3 }),
-			quadratic_bezier.evaluate(normalize_t(n, t3)),
+			subpath.evaluate(ComputeType::Parametric(t3)),
+			quadratic_bezier.evaluate(ComputeType::Parametric(normalize_t(n, t3))),
 			MAX_ABSOLUTE_DIFFERENCE
 		)
 		.all());
 
 		let t4 = 1.0;
-		assert!(utils::dvec2_compare(subpath.evaluate(ComputeType::Parametric { t: t4 }), quadratic_bezier.evaluate(1.), MAX_ABSOLUTE_DIFFERENCE).all());
+		assert!(utils::dvec2_compare(
+			subpath.evaluate(ComputeType::Parametric(t4)),
+			quadratic_bezier.evaluate(ComputeType::Parametric(1.)),
+			MAX_ABSOLUTE_DIFFERENCE
+		)
+		.all());
 
 		// Test closed subpath
 
@@ -158,10 +176,20 @@ mod tests {
 		n = subpath.len() as i64;
 
 		let t5 = 2. / 3.;
-		assert!(utils::dvec2_compare(subpath.evaluate(ComputeType::Parametric { t: t5 }), cubic_bezier.evaluate(normalize_t(n, t5)), MAX_ABSOLUTE_DIFFERENCE).all());
+		assert!(utils::dvec2_compare(
+			subpath.evaluate(ComputeType::Parametric(t5)),
+			cubic_bezier.evaluate(ComputeType::Parametric(normalize_t(n, t5))),
+			MAX_ABSOLUTE_DIFFERENCE
+		)
+		.all());
 
 		let t6 = 1.;
-		assert!(utils::dvec2_compare(subpath.evaluate(ComputeType::Parametric { t: t6 }), cubic_bezier.evaluate(1.), MAX_ABSOLUTE_DIFFERENCE).all());
+		assert!(utils::dvec2_compare(
+			subpath.evaluate(ComputeType::Parametric(t6)),
+			cubic_bezier.evaluate(ComputeType::Parametric(1.)),
+			MAX_ABSOLUTE_DIFFERENCE
+		)
+		.all());
 	}
 
 	// TODO: fix

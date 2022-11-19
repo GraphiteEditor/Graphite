@@ -9,6 +9,8 @@
 	</div>
 </template>
 
+<style></style>
+
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
 
@@ -20,24 +22,11 @@ const POINT_INDEX_TO_MANIPULATOR: WasmSubpathManipulatorKey[] = ["set_anchor", "
 
 export default defineComponent({
 	props: {
-		title: String,
-		triples: {
-			type: Array as PropType<Array<Array<number[] | undefined>>>,
-			required: true,
-			mutable: true,
-		},
-		closed: {
-			type: Boolean as PropType<boolean>,
-			default: false,
-		},
-		callback: {
-			type: Function as PropType<SubpathCallback>,
-			required: true,
-		},
-		sliderOptions: {
-			type: Object as PropType<Array<SliderOption>>,
-			default: () => ({}),
-		},
+		title: { type: String as PropType<string>, required: true },
+		triples: { type: Array as PropType<Array<Array<number[] | undefined>>>, mutable: true, required: true },
+		closed: { type: Boolean as PropType<boolean>, default: false },
+		callback: { type: Function as PropType<SubpathCallback>, required: true },
+		sliderOptions: { type: Object as PropType<Array<SliderOption>>, default: () => ({}) },
 	},
 	data() {
 		const subpath = WasmSubpath.from_triples(this.triples, this.closed) as WasmSubpathInstance;
@@ -92,11 +81,3 @@ export default defineComponent({
 	},
 });
 </script>
-
-<style scoped>
-.example-figure {
-	border: solid 1px black;
-	width: 200px;
-	height: 200px;
-}
-</style>

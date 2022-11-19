@@ -6,9 +6,3 @@ pub struct ManipulatorGroup {
 	pub in_handle: Option<DVec2>,
 	pub out_handle: Option<DVec2>,
 }
-
-#[derive(Copy, Clone, PartialEq)]
-pub enum ComputeType {
-	Parametric { t: f64 },
-	Euclidean { t: f64 },
-}
