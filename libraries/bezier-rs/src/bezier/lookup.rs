@@ -50,15 +50,19 @@ impl Bezier {
 
 	/// Calculate the point on the curve based on the `t`-value provided.
 	/// Expects `t` to be within the inclusive range `[0, 1]`.
-	pub fn evaluate(&self, compute_argument: ComputeType) -> DVec2 {
-		match compute_argument {
-			ComputeType::Parametric { t } => {
+	pub fn evaluate(&self, t: ComputeType) -> DVec2 {
+		match t {
+			ComputeType::Parametric(t) => {
 				assert!((0.0..=1.).contains(&t));
 				self.unrestricted_parametric_evaluate(t)
 			}
-			ComputeType::Euclidean { d, error } => {
-				assert!((0.0..=1.).contains(&d));
-				self.unrestricted_euclidean_evaluate(d, error)
+			ComputeType::Euclidean(t) => {
+				assert!((0.0..=1.).contains(&t));
+				self.unrestricted_euclidean_evaluate(t, 0.0001)
+			}
+			ComputeType::EuclideanWithinError { t, epsilon } => {
+				assert!((0.0..=1.).contains(&t));
+				self.unrestricted_euclidean_evaluate(t, epsilon)
 			}
 		}
 	}
@@ -71,7 +75,7 @@ impl Bezier {
 		let mut steps_array = Vec::with_capacity(steps_unwrapped + 1);
 
 		for t in 0..steps_unwrapped + 1 {
-			steps_array.push(self.evaluate(ComputeType::Parametric { t: f64::from(t as i32) * ratio }))
+			steps_array.push(self.evaluate(ComputeType::Parametric(f64::from(t as i32) * ratio)))
 		}
 
 		steps_array
@@ -158,7 +162,7 @@ impl Bezier {
 				if step_index == 0 {
 					distance = *table_distance;
 				} else {
-					distance = point.distance(self.evaluate(ComputeType::Parametric { t: iterator_t }));
+					distance = point.distance(self.evaluate(ComputeType::Parametric(iterator_t)));
 					*table_distance = distance;
 				}
 				if distance < new_minimum_distance {
@@ -208,17 +212,17 @@ mod tests {
 		let p4 = DVec2::new(30., 21.);
 
 		let bezier1 = Bezier::from_quadratic_dvec2(p1, p2, p3);
-		assert_eq!(bezier1.evaluate(ComputeType::Parametric { t: 0.5 }), DVec2::new(12.5, 6.25));
+		assert_eq!(bezier1.evaluate(ComputeType::Parametric(0.5)), DVec2::new(12.5, 6.25));
 
 		let bezier2 = Bezier::from_cubic_dvec2(p1, p2, p3, p4);
-		assert_eq!(bezier2.evaluate(ComputeType::Parametric { t: 0.5 }), DVec2::new(16.5, 9.625));
+		assert_eq!(bezier2.evaluate(ComputeType::Parametric(0.5)), DVec2::new(16.5, 9.625));
 	}
 
 	#[test]
 	fn test_compute_lookup_table() {
 		let bezier1 = Bezier::from_quadratic_coordinates(10., 10., 30., 30., 50., 10.);
 		let lookup_table1 = bezier1.compute_lookup_table(Some(2));
-		assert_eq!(lookup_table1, vec![bezier1.start(), bezier1.evaluate(ComputeType::Parametric { t: 0.5 }), bezier1.end()]);
+		assert_eq!(lookup_table1, vec![bezier1.start(), bezier1.evaluate(ComputeType::Parametric(0.5)), bezier1.end()]);
 
 		let bezier2 = Bezier::from_cubic_coordinates(10., 10., 30., 30., 70., 70., 90., 10.);
 		let lookup_table2 = bezier2.compute_lookup_table(Some(4));
@@ -226,9 +230,9 @@ mod tests {
 			lookup_table2,
 			vec![
 				bezier2.start(),
-				bezier2.evaluate(ComputeType::Parametric { t: 0.25 }),
-				bezier2.evaluate(ComputeType::Parametric { t: 0.5 }),
-				bezier2.evaluate(ComputeType::Parametric { t: 0.75 }),
+				bezier2.evaluate(ComputeType::Parametric(0.25)),
+				bezier2.evaluate(ComputeType::Parametric(0.50)),
+				bezier2.evaluate(ComputeType::Parametric(0.75)),
 				bezier2.end()
 			]
 		);

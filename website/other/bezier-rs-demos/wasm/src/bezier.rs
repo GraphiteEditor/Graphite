@@ -135,9 +135,9 @@ impl WasmBezier {
 	pub fn evaluate(&self, t: f64, is_euclidean: bool) -> String {
 		let bezier = self.get_bezier_path();
 		let point = if is_euclidean {
-			self.0.evaluate(ComputeType::Euclidean { d: t, error: 0.0001 })
+			self.0.evaluate(ComputeType::Euclidean(t))
 		} else {
-			self.0.evaluate(ComputeType::Parametric { t })
+			self.0.evaluate(ComputeType::Parametric(t))
 		};
 		let content = format!("{bezier}{}", draw_circle(point, 4., RED, 1.5, WHITE));
 		wrap_svg_tag(content)
@@ -177,7 +177,7 @@ impl WasmBezier {
 		let bezier = self.get_bezier_path();
 
 		let tangent_point = self.0.tangent(t);
-		let intersection_point = self.0.evaluate(ComputeType::Parametric { t });
+		let intersection_point = self.0.evaluate(ComputeType::Parametric(t));
 		let tangent_end = intersection_point + tangent_point * SCALE_UNIT_VECTOR_FACTOR;
 
 		let content = format!(
@@ -193,7 +193,7 @@ impl WasmBezier {
 		let bezier = self.get_bezier_path();
 
 		let normal_point = self.0.normal(t);
-		let intersection_point = self.0.evaluate(ComputeType::Parametric { t });
+		let intersection_point = self.0.evaluate(ComputeType::Parametric(t));
 		let normal_end = intersection_point + normal_point * SCALE_UNIT_VECTOR_FACTOR;
 
 		let content = format!(
@@ -209,7 +209,7 @@ impl WasmBezier {
 		let bezier = self.get_bezier_path();
 		let radius = 1. / self.0.curvature(t);
 		let normal_point = self.0.normal(t);
-		let intersection_point = self.0.evaluate(ComputeType::Parametric { t });
+		let intersection_point = self.0.evaluate(ComputeType::Parametric(t));
 
 		let curvature_center = intersection_point + normal_point * radius;
 
@@ -273,7 +273,7 @@ impl WasmBezier {
 
 	pub fn project(&self, x: f64, y: f64) -> String {
 		let projected_t_value = self.0.project(DVec2::new(x, y), ProjectionOptions::default());
-		let projected_point = self.0.evaluate(ComputeType::Parametric { t: projected_t_value });
+		let projected_point = self.0.evaluate(ComputeType::Parametric(projected_t_value));
 
 		let bezier = self.get_bezier_path();
 		let content = format!("{bezier}{}", draw_line(projected_point.x, projected_point.y, x, y, RED, 1.),);
@@ -289,7 +289,7 @@ impl WasmBezier {
 			.zip([RED, GREEN])
 			.flat_map(|(t_value_list, color)| {
 				t_value_list.iter().map(|&t_value| {
-					let point = self.0.evaluate(ComputeType::Parametric { t: t_value });
+					let point = self.0.evaluate(ComputeType::Parametric(t_value));
 					draw_circle(point, 3., color, 1.5, WHITE)
 				})
 			})
@@ -324,7 +324,7 @@ impl WasmBezier {
 		let circles: String = inflections
 			.iter()
 			.map(|&t_value| {
-				let point = self.0.evaluate(ComputeType::Parametric { t: t_value });
+				let point = self.0.evaluate(ComputeType::Parametric(t_value));
 				draw_circle(point, 3., RED, 1.5, WHITE)
 			})
 			.fold("".to_string(), |acc, circle| acc + &circle);
@@ -417,7 +417,7 @@ impl WasmBezier {
 			.intersect(&line, None)
 			.iter()
 			.map(|intersection_t| {
-				let point = &self.0.evaluate(ComputeType::Parametric { t: *intersection_t });
+				let point = &self.0.evaluate(ComputeType::Parametric(*intersection_t));
 				draw_circle(*point, 4., RED, 1.5, WHITE)
 			})
 			.fold(String::new(), |acc, item| format!("{acc}{item}"));
@@ -437,7 +437,7 @@ impl WasmBezier {
 			.intersect(&quadratic, Some(error))
 			.iter()
 			.map(|intersection_t| {
-				let point = &self.0.evaluate(ComputeType::Parametric { t: *intersection_t });
+				let point = &self.0.evaluate(ComputeType::Parametric(*intersection_t));
 				draw_circle(*point, 4., RED, 1.5, WHITE)
 			})
 			.fold(String::new(), |acc, item| format!("{acc}{item}"));
@@ -457,7 +457,7 @@ impl WasmBezier {
 			.intersect(&cubic, Some(error))
 			.iter()
 			.map(|intersection_t| {
-				let point = &self.0.evaluate(ComputeType::Parametric { t: *intersection_t });
+				let point = &self.0.evaluate(ComputeType::Parametric(*intersection_t));
 				draw_circle(*point, 4., RED, 1.5, WHITE)
 			})
 			.fold(String::new(), |acc, item| format!("{acc}{item}"));
@@ -473,7 +473,7 @@ impl WasmBezier {
 			.self_intersections(Some(error))
 			.iter()
 			.map(|intersection_t| {
-				let point = &self.0.evaluate(ComputeType::Parametric { t: intersection_t[0] });
+				let point = &self.0.evaluate(ComputeType::Parametric(intersection_t[0]));
 				draw_circle(*point, 4., RED, 1.5, WHITE)
 			})
 			.fold(bezier_curve_svg, |acc, item| format!("{acc}{item}"));
