@@ -132,12 +132,12 @@ impl WasmBezier {
 		wrap_svg_tag(format!("{bezier}{}", draw_text(format!("Length: {:.2}", self.0.length(None)), TEXT_OFFSET_X, TEXT_OFFSET_Y, BLACK)))
 	}
 
-	pub fn evaluate(&self, t: f64, is_euclidean: bool) -> String {
+	pub fn evaluate(&self, t: f64, compute_type: String) -> String {
 		let bezier = self.get_bezier_path();
-		let point = if is_euclidean {
-			self.0.evaluate(ComputeType::Euclidean(t))
-		} else {
-			self.0.evaluate(ComputeType::Parametric(t))
+		let point = match compute_type.as_str() {
+			"Euclidean" => self.0.evaluate(ComputeType::Euclidean(t)),
+			"Parametric" => self.0.evaluate(ComputeType::Parametric(t)),
+			_ => panic!("Unexpected ComputeType string: '{}'", compute_type),
 		};
 		let content = format!("{bezier}{}", draw_circle(point, 4., RED, 1.5, WHITE));
 		wrap_svg_tag(content)
