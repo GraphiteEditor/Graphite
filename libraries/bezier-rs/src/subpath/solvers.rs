@@ -1,6 +1,5 @@
-use crate::ComputeType;
-
 use super::*;
+use crate::ComputeType;
 
 use glam::DVec2;
 

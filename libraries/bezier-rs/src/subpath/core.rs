@@ -1,5 +1,6 @@
 use super::*;
 use crate::consts::*;
+
 use std::fmt::Write;
 
 /// Functionality relating to core `Subpath` operations, such as constructors and `iter`.
@@ -44,7 +45,7 @@ impl Subpath {
 	pub fn len_segments(&self) -> usize {
 		let mut number_of_curves = self.len();
 		if !self.closed {
-			number_of_curves -= 1_usize
+			number_of_curves -= 1
 		}
 		number_of_curves
 	}

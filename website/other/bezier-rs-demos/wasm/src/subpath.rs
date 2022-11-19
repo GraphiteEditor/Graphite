@@ -1,5 +1,7 @@
 use crate::svg_drawing::*;
+
 use bezier_rs::{Bezier, ComputeType, ManipulatorGroup, Subpath};
+
 use glam::DVec2;
 use wasm_bindgen::prelude::*;
 
