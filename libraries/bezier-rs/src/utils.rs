@@ -269,36 +269,37 @@ mod tests {
 		assert!(solve_linear(2., -8.) == vec![4.]);
 	}
 
-	// TODO: fix
-	// #[test]
-	// fn test_solve_cubic() {
-	// 	// discriminant == 0
-	// 	let roots1 = solve_cubic(1., 0., 0., 0.);
-	// 	assert!(roots1 == vec![0.]);
+	// TODO: fix and reenable test
+	#[ignore]
+	#[test]
+	fn test_solve_cubic() {
+		// discriminant == 0
+		let roots1 = solve_cubic(1., 0., 0., 0.);
+		assert!(roots1 == vec![0.]);
 
-	// 	let roots2 = solve_cubic(1., 3., 0., -4.);
-	// 	assert!(roots2 == vec![1., -2.]);
+		let roots2 = solve_cubic(1., 3., 0., -4.);
+		assert!(roots2 == vec![1., -2.]);
 
-	// 	// p == 0
-	// 	let roots3 = solve_cubic(1., 0., 0., -1.);
-	// 	assert!(roots3 == vec![1.]);
+		// p == 0
+		let roots3 = solve_cubic(1., 0., 0., -1.);
+		assert!(roots3 == vec![1.]);
 
-	// 	// discriminant > 0
-	// 	let roots4 = solve_cubic(1., 3., 0., 2.);
-	// 	assert!(f64_compare_vector(roots4, vec![-3.196], MAX_ABSOLUTE_DIFFERENCE));
+		// discriminant > 0
+		let roots4 = solve_cubic(1., 3., 0., 2.);
+		assert!(f64_compare_vector(roots4, vec![-3.196], MAX_ABSOLUTE_DIFFERENCE));
 
-	// 	// discriminant < 0
-	// 	let roots5 = solve_cubic(1., 3., 0., -1.);
-	// 	assert!(f64_compare_vector(roots5, vec![0.532, -2.879, -0.653], MAX_ABSOLUTE_DIFFERENCE));
+		// discriminant < 0
+		let roots5 = solve_cubic(1., 3., 0., -1.);
+		assert!(f64_compare_vector(roots5, vec![0.532, -2.879, -0.653], MAX_ABSOLUTE_DIFFERENCE));
 
-	// 	// quadratic
-	// 	let roots6 = solve_cubic(0., 3., 0., -3.);
-	// 	assert!(roots6 == vec![1., -1.]);
+		// quadratic
+		let roots6 = solve_cubic(0., 3., 0., -3.);
+		assert!(roots6 == vec![1., -1.]);
 
-	// 	// linear
-	// 	let roots7 = solve_cubic(0., 0., 1., -1.);
-	// 	assert!(roots7 == vec![1.]);
-	// }
+		// linear
+		let roots7 = solve_cubic(0., 0., 1., -1.);
+		assert!(roots7 == vec![1.]);
+	}
 
 	#[test]
 	fn test_do_rectangles_overlap() {
