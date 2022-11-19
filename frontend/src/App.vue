@@ -70,6 +70,9 @@
 		linear-gradient(45deg, #cccccc 25%, transparent 25%, transparent 75%, #cccccc 75%), linear-gradient(#ffffff, #ffffff);
 	--color-transparent-checkered-background-size: 16px 16px;
 	--color-transparent-checkered-background-position: 0 0, 8px 8px;
+
+	--icon-expand-collapse-arrow: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8"><polygon fill="%23eee" points="3,0 1,0 5,4 1,8 3,8 7,4" /></svg>');
+	--icon-expand-collapse-arrow-hover: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8"><polygon fill="%23fff" points="3,0 1,0 5,4 1,8 3,8 7,4" /></svg>');
 }
 
 html,
@@ -238,6 +241,7 @@ import { createPersistenceManager } from "@/io-managers/persistence";
 import { createDialogState, type DialogState } from "@/state-providers/dialog";
 import { createFontsState, type FontsState } from "@/state-providers/fonts";
 import { createFullscreenState, type FullscreenState } from "@/state-providers/fullscreen";
+import { createNodeGraphState, type NodeGraphState } from "@/state-providers/node-graph";
 import { createPanelsState, type PanelsState } from "@/state-providers/panels";
 import { createPortfolioState, type PortfolioState } from "@/state-providers/portfolio";
 import { createWorkspaceState, type WorkspaceState } from "@/state-providers/workspace";
@@ -270,6 +274,7 @@ declare module "@vue/runtime-core" {
 		panels: PanelsState;
 		portfolio: PortfolioState;
 		workspace: WorkspaceState;
+		nodeGraph: NodeGraphState;
 	}
 }
 
@@ -290,9 +295,10 @@ export default defineComponent({
 			panels: createPanelsState(editor),
 			portfolio: createPortfolioState(editor),
 			workspace: createWorkspaceState(editor),
+			nodeGraph: createNodeGraphState(editor),
 		};
 	},
-	async mounted() {
+	mounted() {
 		// Initialize managers, which are isolated systems that subscribe to backend messages to link them to browser API functionality (like JS events, IndexedDB, etc.)
 		Object.assign(managerDestructors, {
 			createClipboardManager: createClipboardManager(this.editor),

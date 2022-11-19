@@ -5,20 +5,72 @@ use self::color::Color;
 pub mod color;
 
 #[derive(Debug, Clone, Copy)]
-pub struct GrayscaleNode;
+pub struct GrayscaleColorNode;
 
-impl Node<Color> for GrayscaleNode {
+impl Node<Color> for GrayscaleColorNode {
 	type Output = Color;
 	fn eval(self, color: Color) -> Color {
 		let avg = (color.r() + color.g() + color.b()) / 3.0;
 		Color::from_rgbaf32_unchecked(avg, avg, avg, color.a())
 	}
 }
-impl<'n> Node<Color> for &'n GrayscaleNode {
+impl<'n> Node<Color> for &'n GrayscaleColorNode {
 	type Output = Color;
 	fn eval(self, color: Color) -> Color {
 		let avg = (color.r() + color.g() + color.b()) / 3.0;
 		Color::from_rgbaf32_unchecked(avg, avg, avg, color.a())
+	}
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct BrightenColorNode<N: Node<(), Output = f32>>(N);
+
+impl<N: Node<(), Output = f32>> Node<Color> for BrightenColorNode<N> {
+	type Output = Color;
+	fn eval(self, color: Color) -> Color {
+		let brightness = self.0.eval(());
+		let per_channel = |col: f32| (col + brightness / 255.).clamp(0., 1.);
+		Color::from_rgbaf32_unchecked(per_channel(color.r()), per_channel(color.g()), per_channel(color.b()), color.a())
+	}
+}
+impl<N: Node<(), Output = f32> + Copy> Node<Color> for &BrightenColorNode<N> {
+	type Output = Color;
+	fn eval(self, color: Color) -> Color {
+		let brightness = self.0.eval(());
+		let per_channel = |col: f32| (col + brightness / 255.).clamp(0., 1.);
+		Color::from_rgbaf32_unchecked(per_channel(color.r()), per_channel(color.g()), per_channel(color.b()), color.a())
+	}
+}
+
+impl<N: Node<(), Output = f32> + Copy> BrightenColorNode<N> {
+	pub fn new(node: N) -> Self {
+		Self(node)
+	}
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct HueShiftColorNode<N: Node<(), Output = f32>>(N);
+
+impl<N: Node<(), Output = f32>> Node<Color> for HueShiftColorNode<N> {
+	type Output = Color;
+	fn eval(self, color: Color) -> Color {
+		let hue_shift = self.0.eval(());
+		let [hue, saturation, luminance, alpha] = color.to_hsla();
+		Color::from_hsla(hue + hue_shift / 360., saturation, luminance, alpha)
+	}
+}
+impl<N: Node<(), Output = f32> + Copy> Node<Color> for &HueShiftColorNode<N> {
+	type Output = Color;
+	fn eval(self, color: Color) -> Color {
+		let hue_shift = self.0.eval(());
+		let [hue, saturation, luminance, alpha] = color.to_hsla();
+		Color::from_hsla(hue + hue_shift / 360., saturation, luminance, alpha)
+	}
+}
+
+impl<N: Node<(), Output = f32> + Copy> HueShiftColorNode<N> {
+	pub fn new(node: N) -> Self {
+		Self(node)
 	}
 }
 
@@ -53,7 +105,7 @@ mod test {
 	#[test]
 	fn map_node() {
 		// let array = &mut [Color::from_rgbaf32(1.0, 0.0, 0.0, 1.0).unwrap()];
-		(&GrayscaleNode).eval(Color::from_rgbf32_unchecked(1., 0., 0.));
+		(&GrayscaleColorNode).eval(Color::from_rgbf32_unchecked(1., 0., 0.));
 		/*let map = ForEachNode(MutWrapper(GrayscaleNode));
 		(&map).eval(array.iter_mut());
 		assert_eq!(array[0], Color::from_rgbaf32(0.33333334, 0.33333334, 0.33333334, 1.0).unwrap());*/

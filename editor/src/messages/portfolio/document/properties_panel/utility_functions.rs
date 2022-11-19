@@ -223,7 +223,13 @@ pub fn register_artboard_layer_properties(layer: &Layer, responses: &mut VecDequ
 	);
 }
 
-pub fn register_artwork_layer_properties(layer: &Layer, responses: &mut VecDeque<Message>, persistent_data: &PersistentData) {
+pub fn register_artwork_layer_properties(
+	layer_path: Vec<graphene::LayerId>,
+	layer: &Layer,
+	responses: &mut VecDeque<Message>,
+	persistent_data: &PersistentData,
+	node_graph_message_handler: &NodeGraphMessageHandler,
+) {
 	let options_bar = vec![LayoutGroup::Row {
 		widgets: vec![
 			match &layer.data {
@@ -263,7 +269,10 @@ pub fn register_artwork_layer_properties(layer: &Layer, responses: &mut VecDeque
 				direction: SeparatorDirection::Horizontal,
 			})),
 			WidgetHolder::new(Widget::TextLabel(TextLabel {
-				value: LayerDataTypeDiscriminant::from(&layer.data).to_string(),
+				value: match &layer.data {
+					LayerDataType::NodeGraphFrame(_) => "Node Graph Frame".into(),
+					other => LayerDataTypeDiscriminant::from(other).to_string(),
+				},
 				..TextLabel::default()
 			})),
 			WidgetHolder::new(Widget::Separator(Separator {
@@ -314,7 +323,18 @@ pub fn register_artwork_layer_properties(layer: &Layer, responses: &mut VecDeque
 			vec![node_section_transform(layer, persistent_data), node_section_imaginate(imaginate, layer, persistent_data, responses)]
 		}
 		LayerDataType::NodeGraphFrame(node_graph_frame) => {
-			vec![node_section_transform(layer, persistent_data), node_section_node_graph_frame(node_graph_frame)]
+			let is_graph_open = node_graph_message_handler.layer_path.as_ref().filter(|node_graph| *node_graph == &layer_path).is_some();
+			let selected_nodes = &node_graph_message_handler.selected_nodes;
+
+			let mut properties_sections = vec![
+				node_section_transform(layer, persistent_data),
+				node_section_node_graph_frame(layer_path, node_graph_frame, is_graph_open),
+			];
+			if !selected_nodes.is_empty() && is_graph_open {
+				let parameters_sections = node_graph_message_handler.collate_properties(node_graph_frame);
+				properties_sections.extend(parameters_sections.into_iter());
+			}
+			properties_sections
 		}
 		LayerDataType::Folder(_) => {
 			vec![node_section_transform(layer, persistent_data)]
@@ -855,7 +875,14 @@ fn node_section_imaginate(imaginate_layer: &ImaginateLayer, layer: &Layer, persi
 			},
 			LayoutGroup::Row {
 				widgets: {
-					let tooltip = "Strength of the artistic liberties allowing changes from the base image. The image is unaltered at 0 and completely different at 1.".to_string();
+					let tooltip = "
+					Strength of the artistic liberties allowing changes from the base image. The image is unchanged at 0% and completely different at 100%.\n\
+					\n\
+					This parameter is otherwise known as denoising strength.
+					"
+					.trim()
+					.to_string();
+
 					vec![
 						WidgetHolder::new(Widget::TextLabel(TextLabel {
 							value: "Image Creativity".into(),
@@ -867,18 +894,19 @@ fn node_section_imaginate(imaginate_layer: &ImaginateLayer, layer: &Layer, persi
 							direction: SeparatorDirection::Horizontal,
 						})),
 						WidgetHolder::new(Widget::NumberInput(NumberInput {
-							value: Some(imaginate_layer.denoising_strength),
+							value: Some(imaginate_layer.denoising_strength * 100.),
+							unit: "%".into(),
 							mode: NumberInputMode::Range,
 							range_min: Some(0.),
-							range_max: Some(1.),
+							range_max: Some(100.),
 							min: Some(0.),
-							max: Some(1.),
+							max: Some(100.),
 							display_decimal_places: 2,
 							disabled: !imaginate_layer.use_img2img,
 							tooltip,
 							on_update: WidgetCallback::new(move |number_input: &NumberInput| {
 								PropertiesPanelMessage::SetImaginateDenoisingStrength {
-									denoising_strength: number_input.value.unwrap(),
+									denoising_strength: number_input.value.unwrap() / 100.,
 								}
 								.into()
 							}),
@@ -889,12 +917,19 @@ fn node_section_imaginate(imaginate_layer: &ImaginateLayer, layer: &Layer, persi
 			},
 			LayoutGroup::Row {
 				widgets: {
-					let tooltip =
-						"Amplification of the text prompt's influence over the outcome. Lower values are more creative and exploratory. Higher values are more literal and uninspired.".to_string();
+					let tooltip = "
+					Amplification of the text prompt's influence over the outcome. At 0, the prompt is entirely ignored.\n\
+					\n\
+					Lower values are more creative and exploratory. Higher values are more literal and uninspired, but may be lower quality.\n\
+					\n\
+					This parameter is otherwise known as CFG (classifier-free guidance) scale.
+					"
+					.trim()
+					.to_string();
 
 					vec![
 						WidgetHolder::new(Widget::TextLabel(TextLabel {
-							value: "Text Rigidness".into(),
+							value: "Text Literalness".into(),
 							tooltip: tooltip.to_string(),
 							..Default::default()
 						})),
@@ -1031,35 +1066,50 @@ fn node_section_imaginate(imaginate_layer: &ImaginateLayer, layer: &Layer, persi
 	}
 }
 
-fn node_section_node_graph_frame(node_graph_frame: &NodeGraphFrameLayer) -> LayoutGroup {
+fn node_section_node_graph_frame(layer_path: Vec<graphene::LayerId>, node_graph_frame: &NodeGraphFrameLayer, open_graph: bool) -> LayoutGroup {
 	LayoutGroup::Section {
 		name: "Node Graph Frame".into(),
 		layout: vec![
 			LayoutGroup::Row {
-				widgets: vec![WidgetHolder::new(Widget::TextLabel(TextLabel {
-					value: "Temporary layer that applies a grayscale to the layers below it.".into(),
-					..TextLabel::default()
-				}))],
-			},
-			LayoutGroup::Row {
-				widgets: vec![WidgetHolder::new(Widget::TextLabel(TextLabel {
-					value: "Powered by the node graph! :)".into(),
-					..TextLabel::default()
-				}))],
-			},
-			LayoutGroup::Row {
-				widgets: vec![WidgetHolder::new(Widget::TextButton(TextButton {
-					label: "Open Node Graph UI (coming soon)".into(),
-					tooltip: "Open the node graph associated with this layer".into(),
-					on_update: WidgetCallback::new(|_| DialogMessage::RequestComingSoonDialog { issue: Some(800) }.into()),
-					..Default::default()
-				}))],
+				widgets: vec![
+					WidgetHolder::new(Widget::TextLabel(TextLabel {
+						value: "Network".into(),
+						tooltip: "Button to edit the node graph network for this layer".into(),
+						..Default::default()
+					})),
+					WidgetHolder::new(Widget::Separator(Separator {
+						separator_type: SeparatorType::Unrelated,
+						direction: SeparatorDirection::Horizontal,
+					})),
+					WidgetHolder::new(Widget::TextButton(TextButton {
+						label: if open_graph { "Close Node Graph".into() } else { "Open Node Graph".into() },
+						tooltip: format!("{} the node graph associated with this layer", if open_graph { "Close" } else { "Open" }),
+						on_update: WidgetCallback::new(move |_| {
+							let layer_path = layer_path.clone();
+							if open_graph {
+								NodeGraphMessage::CloseNodeGraph.into()
+							} else {
+								NodeGraphMessage::OpenNodeGraph { layer_path }.into()
+							}
+						}),
+						..Default::default()
+					})),
+				],
 			},
 			LayoutGroup::Row {
 				widgets: vec![
+					WidgetHolder::new(Widget::TextLabel(TextLabel {
+						value: "Image".into(),
+						tooltip: "Buttons to render the node graph and clear the last rendered image".into(),
+						..Default::default()
+					})),
+					WidgetHolder::new(Widget::Separator(Separator {
+						separator_type: SeparatorType::Unrelated,
+						direction: SeparatorDirection::Horizontal,
+					})),
 					WidgetHolder::new(Widget::TextButton(TextButton {
-						label: "Generate".into(),
-						tooltip: "Fill layer frame by generating a new image".into(),
+						label: "Render".into(),
+						tooltip: "Fill layer frame by rendering the node graph".into(),
 						on_update: WidgetCallback::new(|_| DocumentMessage::NodeGraphFrameGenerate.into()),
 						..Default::default()
 					})),
@@ -1069,7 +1119,7 @@ fn node_section_node_graph_frame(node_graph_frame: &NodeGraphFrameLayer) -> Layo
 					})),
 					WidgetHolder::new(Widget::TextButton(TextButton {
 						label: "Clear".into(),
-						tooltip: "Remove generated image from the layer frame".into(),
+						tooltip: "Remove rendered node graph from the layer frame".into(),
 						disabled: node_graph_frame.blob_url.is_none(),
 						on_update: WidgetCallback::new(|_| DocumentMessage::FrameClear.into()),
 						..Default::default()

@@ -12,6 +12,11 @@ export class JsMessage {
 	static readonly jsMessageMarker = true;
 }
 
+const TupleToVec2 = Transform(({ value }: { value: [number, number] | undefined }) => (value === undefined ? undefined : { x: value[0], y: value[1] }));
+const BigIntTupleToVec2 = Transform(({ value }: { value: [bigint, bigint] | undefined }) => (value === undefined ? undefined : { x: Number(value[0]), y: Number(value[1]) }));
+
+export type XY = { x: number; y: number };
+
 // ============================================================================
 // Add additional classes below to replicate Rust's `FrontendMessage`s and data structures.
 //
@@ -20,6 +25,18 @@ export class JsMessage {
 // Read class-transformer docs at https://github.com/typestack/class-transformer#table-of-contents
 // for details about how to transform the JSON from wasm-bindgen into classes.
 // ============================================================================
+
+export class UpdateNodeGraph extends JsMessage {
+	@Type(() => FrontendNode)
+	readonly nodes!: FrontendNode[];
+
+	@Type(() => FrontendNodeLink)
+	readonly links!: FrontendNodeLink[];
+}
+export class UpdateNodeTypes extends JsMessage {
+	@Type(() => FrontendNode)
+	readonly nodeTypes!: FrontendNodeType[];
+}
 
 export class UpdateNodeGraphVisibility extends JsMessage {
 	readonly visible!: boolean;
@@ -50,6 +67,33 @@ export abstract class DocumentDetails {
 
 export class FrontendDocumentDetails extends DocumentDetails {
 	readonly id!: bigint;
+}
+
+export type DataType = "Raster" | "Color" | "Image" | "F32";
+
+export class FrontendNode {
+	readonly id!: bigint;
+
+	readonly displayName!: string;
+
+	readonly exposedInputs!: DataType[];
+
+	readonly outputs!: DataType[];
+
+	@TupleToVec2
+	readonly position!: XY | undefined;
+}
+
+export class FrontendNodeLink {
+	readonly linkStart!: bigint;
+
+	readonly linkEnd!: bigint;
+
+	readonly linkEndInputIndex!: bigint;
+}
+
+export class FrontendNodeType {
+	readonly name!: string;
 }
 
 export class IndexedDbDocumentDetails extends DocumentDetails {
@@ -372,11 +416,6 @@ export class UpdateDocumentOverlays extends JsMessage {
 export class UpdateDocumentArtboards extends JsMessage {
 	readonly svg!: string;
 }
-
-const TupleToVec2 = Transform(({ value }: { value: [number, number] | undefined }) => (value === undefined ? undefined : { x: value[0], y: value[1] }));
-const BigIntTupleToVec2 = Transform(({ value }: { value: [bigint, bigint] | undefined }) => (value === undefined ? undefined : { x: Number(value[0]), y: Number(value[1]) }));
-
-export type XY = { x: number; y: number };
 
 export class UpdateDocumentScrollbars extends JsMessage {
 	@TupleToVec2
@@ -1285,6 +1324,8 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateLayerTreeOptionsLayout,
 	UpdateMenuBarLayout,
 	UpdateMouseCursor,
+	UpdateNodeGraph,
+	UpdateNodeTypes,
 	UpdateNodeGraphVisibility,
 	UpdateOpenDocumentsList,
 	UpdatePropertyPanelOptionsLayout,

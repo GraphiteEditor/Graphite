@@ -14,17 +14,17 @@
 						ref="documentPanel"
 					/>
 				</LayoutRow>
-				<LayoutRow class="workspace-grid-resize-gutter" @pointerdown="(e: PointerEvent) => resizePanel(e)" v-if="nodeGraphVisible"></LayoutRow>
+				<LayoutRow class="workspace-grid-resize-gutter" data-gutter-vertical @pointerdown="(e: PointerEvent) => resizePanel(e)" v-if="nodeGraphVisible"></LayoutRow>
 				<LayoutRow class="workspace-grid-subdivision" v-if="nodeGraphVisible">
 					<Panel :panelType="'NodeGraph'" :tabLabels="[{ name: 'Node Graph' }]" :tabActiveIndex="0" />
 				</LayoutRow>
 			</LayoutCol>
-			<LayoutCol class="workspace-grid-resize-gutter" @pointerdown="(e: PointerEvent) => resizePanel(e)"></LayoutCol>
+			<LayoutCol class="workspace-grid-resize-gutter" data-gutter-horizontal @pointerdown="(e: PointerEvent) => resizePanel(e)"></LayoutCol>
 			<LayoutCol class="workspace-grid-subdivision" style="flex-grow: 0.2">
 				<LayoutRow class="workspace-grid-subdivision" style="flex-grow: 402">
 					<Panel :panelType="'Properties'" :tabLabels="[{ name: 'Properties' }]" :tabActiveIndex="0" />
 				</LayoutRow>
-				<LayoutRow class="workspace-grid-resize-gutter" @pointerdown="(e: PointerEvent) => resizePanel(e)"></LayoutRow>
+				<LayoutRow class="workspace-grid-resize-gutter" data-gutter-vertical @pointerdown="(e: PointerEvent) => resizePanel(e)"></LayoutRow>
 				<LayoutRow class="workspace-grid-subdivision" style="flex-grow: 590">
 					<Panel :panelType="'LayerTree'" :tabLabels="[{ name: 'Layer Tree' }]" :tabActiveIndex="0" />
 				</LayoutRow>
@@ -95,24 +95,26 @@ export default defineComponent({
 	},
 	methods: {
 		resizePanel(event: PointerEvent) {
-			const gutter = event.target as HTMLDivElement;
-			const nextSibling = gutter.nextElementSibling as HTMLDivElement;
-			const previousSibling = gutter.previousElementSibling as HTMLDivElement;
+			const gutter = (event.target || undefined) as HTMLDivElement | undefined;
+			const nextSibling = (gutter?.nextElementSibling || undefined) as HTMLDivElement | undefined;
+			const previousSibling = (gutter?.previousElementSibling || undefined) as HTMLDivElement | undefined;
+
+			if (!gutter || !nextSibling || !previousSibling) return;
 
 			// Are we resizing horizontally?
-			const horizontal = gutter.classList.contains("layout-col");
+			const isHorizontal = gutter.getAttribute("data-gutter-horizontal") !== null;
 
 			// Get the current size in px of the panels being resized
-			const nextSiblingSize = horizontal ? nextSibling.getBoundingClientRect().width : nextSibling.getBoundingClientRect().height;
-			const previousSiblingSize = horizontal ? previousSibling.getBoundingClientRect().width : previousSibling.getBoundingClientRect().height;
+			const nextSiblingSize = isHorizontal ? nextSibling.getBoundingClientRect().width : nextSibling.getBoundingClientRect().height;
+			const previousSiblingSize = isHorizontal ? previousSibling.getBoundingClientRect().width : previousSibling.getBoundingClientRect().height;
 
 			// Prevent cursor flicker as mouse temporarily leaves the gutter
 			gutter.setPointerCapture(event.pointerId);
 
-			const mouseStart = horizontal ? event.clientX : event.clientY;
+			const mouseStart = isHorizontal ? event.clientX : event.clientY;
 
-			function updatePosition(event: PointerEvent): void {
-				const mouseCurrent = horizontal ? event.clientX : event.clientY;
+			const updatePosition = (event: PointerEvent): void => {
+				const mouseCurrent = isHorizontal ? event.clientX : event.clientY;
 				let mouseDelta = mouseStart - mouseCurrent;
 
 				mouseDelta = Math.max(nextSiblingSize + mouseDelta, MIN_PANEL_SIZE) - nextSiblingSize;
@@ -122,15 +124,15 @@ export default defineComponent({
 				previousSibling.style.flexGrow = (previousSiblingSize - mouseDelta).toString();
 
 				window.dispatchEvent(new CustomEvent("resize"));
-			}
+			};
 
-			function cleanup(event: PointerEvent): void {
+			const cleanup = (event: PointerEvent): void => {
 				gutter.releasePointerCapture(event.pointerId);
 
 				document.removeEventListener("pointermove", updatePosition);
 				document.removeEventListener("pointerleave", cleanup);
 				document.removeEventListener("pointerup", cleanup);
-			}
+			};
 
 			document.addEventListener("pointermove", updatePosition);
 			document.addEventListener("pointerleave", cleanup);

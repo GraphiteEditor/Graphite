@@ -437,20 +437,28 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 					// Execute the node graph
 
 					let mut network = node_graph_frame.network.clone();
+					info!("Executing network {network:#?}");
 
 					let stack = borrow_stack::FixedSizeStack::new(256);
-					network.flatten(0);
+					for node_id in node_graph_frame.network.nodes.keys() {
+						network.flatten(*node_id);
+					}
 
 					let mut proto_network = network.into_proto_network();
 					proto_network.reorder_ids();
 
+					info!("proto_network with reordered ids: {proto_network:#?}");
+
+					assert_ne!(proto_network.nodes.len(), 0, "No protonodes exist?");
 					for (_id, node) in proto_network.nodes {
+						info!("Inserting proto node {:?}", node);
 						graph_craft::node_registry::push_node(node, &stack);
 					}
 
 					use borrow_stack::BorrowStack;
 					use dyn_any::IntoDynAny;
 					use graphene_core::Node;
+
 					let result = unsafe { stack.get().last().unwrap().eval(image.into_dyn()) };
 					let result = *dyn_any::downcast::<Image>(result).unwrap();
 
@@ -476,6 +484,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 							.into(),
 						);
 						let mime = "image/bmp".to_string();
+						let image_data = std::rc::Rc::new(image_data);
 						responses.push_back(
 							FrontendMessage::UpdateImageData {
 								document_id,
@@ -486,7 +495,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 					}
 					Err(description) => responses.push_back(
 						DialogMessage::DisplayDialogError {
-							title: "Failed to update image".to_string(),
+							title: "Failed to update node graph".to_string(),
 							description,
 						}
 						.into(),

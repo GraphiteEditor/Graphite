@@ -32,6 +32,9 @@ pub enum DocumentMessage {
 	#[remain::unsorted]
 	#[child]
 	PropertiesPanel(PropertiesPanelMessage),
+	#[remain::unsorted]
+	#[child]
+	NodeGraph(NodeGraphMessage),
 
 	// Messages
 	AbortTransaction,

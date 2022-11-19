@@ -6,18 +6,12 @@ use wasm_bindgen::prelude::*;
 
 #[derive(Serialize, Deserialize)]
 struct CircleSector {
-	center: Point,
+	center: DVec2,
 	radius: f64,
 	#[serde(rename = "startAngle")]
 	start_angle: f64,
 	#[serde(rename = "endAngle")]
 	end_angle: f64,
-}
-
-#[derive(Serialize, Deserialize)]
-struct Point {
-	x: f64,
-	y: f64,
 }
 
 #[wasm_bindgen]
@@ -33,11 +27,6 @@ const SCALE_UNIT_VECTOR_FACTOR: f64 = 50.;
 #[wasm_bindgen]
 #[derive(Clone)]
 pub struct WasmBezier(Bezier);
-
-/// Convert a `DVec2` into a `Point`.
-fn vec_to_point(p: &DVec2) -> Point {
-	Point { x: p.x, y: p.y }
-}
 
 /// Serialize some data and then convert it to a JsValue.
 fn to_js_value<T: Serialize>(data: T) -> JsValue {
@@ -85,7 +74,7 @@ impl WasmBezier {
 			HANDLE_ATTRIBUTES.to_string().replace(GRAY, RED),
 			HANDLE_LINE_ATTRIBUTES.to_string().replace(GRAY, RED),
 		);
-		let through_point_circle = format!(r#"<circle cx="{}" cy="{}" {}/>"#, through_point.x, through_point.y, ANCHOR_ATTRIBUTES.to_string());
+		let through_point_circle = format!(r#"<circle cx="{}" cy="{}" {}/>"#, through_point.x, through_point.y, ANCHOR_ATTRIBUTES);
 
 		wrap_svg_tag(format!("{bezier_string}{through_point_circle}"))
 	}
@@ -118,10 +107,8 @@ impl WasmBezier {
 		self.0.set_handle_end(DVec2::new(x, y));
 	}
 
-	/// The wrapped return type is `Vec<Point>`.
 	pub fn get_points(&self) -> JsValue {
-		let points: Vec<Point> = self.0.get_points().map(|point| vec_to_point(&point)).collect();
-		to_js_value(points)
+		to_js_value(self.0.get_points().collect::<Vec<DVec2>>())
 	}
 
 	fn get_bezier_path(&self) -> String {
@@ -145,12 +132,6 @@ impl WasmBezier {
 		wrap_svg_tag(format!("{bezier}{}", draw_text(format!("Length: {:.2}", self.0.length(None)), TEXT_OFFSET_X, TEXT_OFFSET_Y, BLACK)))
 	}
 
-	/// The wrapped return type is `Point`.
-	pub fn evaluate_value(&self, t: f64) -> JsValue {
-		let point: Point = vec_to_point(&self.0.evaluate(ComputeType::Parametric { t }));
-		to_js_value(point)
-	}
-
 	pub fn evaluate(&self, t: f64, is_euclidean: bool) -> String {
 		let bezier = self.get_bezier_path();
 		let point = if is_euclidean {
@@ -158,16 +139,16 @@ impl WasmBezier {
 		} else {
 			self.0.evaluate(ComputeType::Parametric { t })
 		};
-		let content = format!("{bezier}{}", draw_circle(point.x, point.y, 4., RED, 1.5, WHITE));
+		let content = format!("{bezier}{}", draw_circle(point, 4., RED, 1.5, WHITE));
 		wrap_svg_tag(content)
 	}
 
 	pub fn compute_lookup_table(&self, steps: usize) -> String {
 		let bezier = self.get_bezier_path();
-		let table_values: Vec<Point> = self.0.compute_lookup_table(Some(steps)).iter().map(vec_to_point).collect();
+		let table_values: Vec<DVec2> = self.0.compute_lookup_table(Some(steps));
 		let circles: String = table_values
 			.iter()
-			.map(|point| draw_circle(point.x, point.y, 3., RED, 1.5, WHITE))
+			.map(|point| draw_circle(*point, 3., RED, 1.5, WHITE))
 			.fold("".to_string(), |acc, circle| acc + &circle);
 		let content = format!("{bezier}{circles}");
 		wrap_svg_tag(content)
@@ -192,7 +173,6 @@ impl WasmBezier {
 		wrap_svg_tag(content)
 	}
 
-	/// The wrapped return type is `Point`.
 	pub fn tangent(&self, t: f64) -> String {
 		let bezier = self.get_bezier_path();
 
@@ -202,9 +182,9 @@ impl WasmBezier {
 
 		let content = format!(
 			"{bezier}{}{}{}",
-			draw_circle(intersection_point.x, intersection_point.y, 3., RED, 1., WHITE),
+			draw_circle(intersection_point, 3., RED, 1., WHITE),
 			draw_line(intersection_point.x, intersection_point.y, tangent_end.x, tangent_end.y, RED, 1.),
-			draw_circle(tangent_end.x, tangent_end.y, 3., RED, 1., WHITE),
+			draw_circle(tangent_end, 3., RED, 1., WHITE),
 		);
 		wrap_svg_tag(content)
 	}
@@ -219,8 +199,8 @@ impl WasmBezier {
 		let content = format!(
 			"{bezier}{}{}{}",
 			draw_line(intersection_point.x, intersection_point.y, normal_end.x, normal_end.y, RED, 1.),
-			draw_circle(intersection_point.x, intersection_point.y, 3., RED, 1., WHITE),
-			draw_circle(normal_end.x, normal_end.y, 3., RED, 1., WHITE),
+			draw_circle(intersection_point, 3., RED, 1., WHITE),
+			draw_circle(normal_end, 3., RED, 1., WHITE),
 		);
 		wrap_svg_tag(content)
 	}
@@ -235,10 +215,10 @@ impl WasmBezier {
 
 		let content = format!(
 			"{bezier}{}{}{}{}",
-			draw_circle(curvature_center.x, curvature_center.y, radius.abs(), RED, 1., NONE),
+			draw_circle(curvature_center, radius.abs(), RED, 1., NONE),
 			draw_line(intersection_point.x, intersection_point.y, curvature_center.x, curvature_center.y, RED, 1.),
-			draw_circle(intersection_point.x, intersection_point.y, 3., RED, 1., WHITE),
-			draw_circle(curvature_center.x, curvature_center.y, 3., RED, 1., WHITE),
+			draw_circle(intersection_point, 3., RED, 1., WHITE),
+			draw_circle(curvature_center, 3., RED, 1., WHITE),
 		);
 		wrap_svg_tag(content)
 	}
@@ -310,7 +290,7 @@ impl WasmBezier {
 			.flat_map(|(t_value_list, color)| {
 				t_value_list.iter().map(|&t_value| {
 					let point = self.0.evaluate(ComputeType::Parametric { t: t_value });
-					draw_circle(point.x, point.y, 3., color, 1.5, WHITE)
+					draw_circle(point, 3., color, 1.5, WHITE)
 				})
 			})
 			.fold("".to_string(), |acc, circle| acc + &circle);
@@ -345,7 +325,7 @@ impl WasmBezier {
 			.iter()
 			.map(|&t_value| {
 				let point = self.0.evaluate(ComputeType::Parametric { t: t_value });
-				draw_circle(point.x, point.y, 3., RED, 1.5, WHITE)
+				draw_circle(point, 3., RED, 1.5, WHITE)
 			})
 			.fold("".to_string(), |acc, circle| acc + &circle);
 		let content = format!("{bezier}{circles}");
@@ -366,7 +346,7 @@ impl WasmBezier {
 					.iter()
 					.enumerate()
 					.map(|(index, point)| {
-						let circle = draw_circle(point.x, point.y, 3., &color_light, 1.5, WHITE);
+						let circle = draw_circle(*point, 3., &color_light, 1.5, WHITE);
 						if index != 0 {
 							let prev_point = points[index - 1];
 							let line = draw_line(prev_point.x, prev_point.y, point.x, point.y, &color_light, 1.5);
@@ -387,16 +367,9 @@ impl WasmBezier {
 	pub fn rotate(&self, angle: f64, pivot_x: f64, pivot_y: f64) -> String {
 		let original_bezier_svg = self.get_bezier_path();
 		let rotated_bezier = self.0.rotate_about_point(angle, DVec2::new(pivot_x, pivot_y));
-		let empty_string = String::new();
 		let mut rotated_bezier_svg = String::new();
-		rotated_bezier.to_svg(
-			&mut rotated_bezier_svg,
-			CURVE_ATTRIBUTES.to_string().replace(BLACK, RED),
-			empty_string.clone(),
-			empty_string.clone(),
-			empty_string,
-		);
-		let pivot = draw_circle(pivot_x, pivot_y, 3., GRAY, 1.5, WHITE);
+		rotated_bezier.to_svg(&mut rotated_bezier_svg, CURVE_ATTRIBUTES.to_string().replace(BLACK, RED), String::new(), String::new(), String::new());
+		let pivot = draw_circle(DVec2::new(pivot_x, pivot_y), 3., GRAY, 1.5, WHITE);
 
 		// Line between pivot and start point on curve
 		let original_dashed_line_start = format!(
@@ -437,22 +410,15 @@ impl WasmBezier {
 
 		let bezier_curve_svg = self.get_bezier_path();
 
-		let empty_string = String::new();
 		let mut line_svg = String::new();
-		line.to_svg(
-			&mut line_svg,
-			CURVE_ATTRIBUTES.to_string().replace(BLACK, RED),
-			empty_string.clone(),
-			empty_string.clone(),
-			empty_string,
-		);
+		line.to_svg(&mut line_svg, CURVE_ATTRIBUTES.to_string().replace(BLACK, RED), String::new(), String::new(), String::new());
 
 		let intersections_svg = self
 			.intersect(&line, None)
 			.iter()
 			.map(|intersection_t| {
 				let point = &self.0.evaluate(ComputeType::Parametric { t: *intersection_t });
-				draw_circle(point.x, point.y, 4., RED, 1.5, WHITE)
+				draw_circle(*point, 4., RED, 1.5, WHITE)
 			})
 			.fold(String::new(), |acc, item| format!("{acc}{item}"));
 		wrap_svg_tag(format!("{bezier_curve_svg}{line_svg}{intersections_svg}"))
@@ -464,22 +430,15 @@ impl WasmBezier {
 
 		let bezier_curve_svg = self.get_bezier_path();
 
-		let empty_string = String::new();
 		let mut quadratic_svg = String::new();
-		quadratic.to_svg(
-			&mut quadratic_svg,
-			CURVE_ATTRIBUTES.to_string().replace(BLACK, RED),
-			empty_string.clone(),
-			empty_string.clone(),
-			empty_string,
-		);
+		quadratic.to_svg(&mut quadratic_svg, CURVE_ATTRIBUTES.to_string().replace(BLACK, RED), String::new(), String::new(), String::new());
 
 		let intersections_svg = self
 			.intersect(&quadratic, Some(error))
 			.iter()
 			.map(|intersection_t| {
 				let point = &self.0.evaluate(ComputeType::Parametric { t: *intersection_t });
-				draw_circle(point.x, point.y, 4., RED, 1.5, WHITE)
+				draw_circle(*point, 4., RED, 1.5, WHITE)
 			})
 			.fold(String::new(), |acc, item| format!("{acc}{item}"));
 		wrap_svg_tag(format!("{bezier_curve_svg}{quadratic_svg}{intersections_svg}"))
@@ -491,22 +450,15 @@ impl WasmBezier {
 
 		let bezier_curve_svg = self.get_bezier_path();
 
-		let empty_string = String::new();
 		let mut cubic_svg = String::new();
-		cubic.to_svg(
-			&mut cubic_svg,
-			CURVE_ATTRIBUTES.to_string().replace(BLACK, RED),
-			empty_string.clone(),
-			empty_string.clone(),
-			empty_string,
-		);
+		cubic.to_svg(&mut cubic_svg, CURVE_ATTRIBUTES.to_string().replace(BLACK, RED), String::new(), String::new(), String::new());
 
 		let intersections_svg = self
 			.intersect(&cubic, Some(error))
 			.iter()
 			.map(|intersection_t| {
 				let point = &self.0.evaluate(ComputeType::Parametric { t: *intersection_t });
-				draw_circle(point.x, point.y, 4., RED, 1.5, WHITE)
+				draw_circle(*point, 4., RED, 1.5, WHITE)
 			})
 			.fold(String::new(), |acc, item| format!("{acc}{item}"));
 
@@ -522,7 +474,7 @@ impl WasmBezier {
 			.iter()
 			.map(|intersection_t| {
 				let point = &self.0.evaluate(ComputeType::Parametric { t: intersection_t[0] });
-				draw_circle(point.x, point.y, 4., RED, 1.5, WHITE)
+				draw_circle(*point, 4., RED, 1.5, WHITE)
 			})
 			.fold(bezier_curve_svg, |acc, item| format!("{acc}{item}"));
 
@@ -530,7 +482,6 @@ impl WasmBezier {
 	}
 
 	pub fn reduce(&self) -> String {
-		let empty_string = String::new();
 		let original_curve_svg = self.get_bezier_path();
 		let bezier_curves_svg: String = self
 			.0
@@ -542,9 +493,9 @@ impl WasmBezier {
 				bezier_curve.to_svg(
 					&mut curve_svg,
 					CURVE_ATTRIBUTES.to_string().replace(BLACK, &format!("hsl({}, 100%, 50%)", (40 * index))),
-					empty_string.clone(),
-					empty_string.clone(),
-					empty_string.clone(),
+					String::new(),
+					String::new(),
+					String::new(),
 				);
 				curve_svg
 			})
@@ -553,7 +504,6 @@ impl WasmBezier {
 	}
 
 	pub fn offset(&self, distance: f64) -> String {
-		let empty_string = String::new();
 		let original_curve_svg = self.get_bezier_path();
 		let bezier_curves_svg = self
 			.0
@@ -565,9 +515,9 @@ impl WasmBezier {
 				bezier_curve.to_svg(
 					&mut curve_svg,
 					CURVE_ATTRIBUTES.to_string().replace(BLACK, &format!("hsl({}, 100%, 50%)", (40 * index))),
-					empty_string.clone(),
-					empty_string.clone(),
-					empty_string.clone(),
+					String::new(),
+					String::new(),
+					String::new(),
 				);
 				curve_svg
 			})
@@ -611,7 +561,6 @@ impl WasmBezier {
 		wrap_svg_tag(format!("{bezier_svg}{outline_svg}"))
 	}
 
-	/// The wrapped return type is `Vec<CircleSector>`.
 	pub fn arcs(&self, error: f64, max_iterations: usize, maximize_arcs: WasmMaximizeArcs) -> String {
 		let original_curve_svg = self.get_bezier_path();
 
@@ -625,8 +574,7 @@ impl WasmBezier {
 			.enumerate()
 			.map(|(idx, sector)| {
 				draw_sector(
-					sector.center.x,
-					sector.center.y,
+					sector.center,
 					sector.radius,
 					-sector.start_angle,
 					-sector.end_angle,

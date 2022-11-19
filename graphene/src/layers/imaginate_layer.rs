@@ -53,7 +53,7 @@ pub enum ImaginateStatus {
 #[derive(Debug, Clone, Eq, PartialEq, Deserialize, Serialize)]
 pub struct ImaginateImageData {
 	#[serde(serialize_with = "base64_serde::as_base64", deserialize_with = "base64_serde::from_base64")]
-	pub image_data: Vec<u8>,
+	pub image_data: std::rc::Rc<Vec<u8>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
@@ -71,11 +71,15 @@ pub enum ImaginateSamplingMethod {
 	Heun,
 	DPM2,
 	DPM2A,
+	DPMPlusPlus2sA,
+	DPMPlusPlus2m,
 	DPMFast,
 	DPMAdaptive,
 	LMSKarras,
 	DPM2Karras,
 	DPM2AKarras,
+	DPMPlusPlus2sAKarras,
+	DPMPlusPlus2mKarras,
 	DDIM,
 	PLMS,
 }
@@ -89,17 +93,21 @@ impl ImaginateSamplingMethod {
 			ImaginateSamplingMethod::Heun => "Heun",
 			ImaginateSamplingMethod::DPM2 => "DPM2",
 			ImaginateSamplingMethod::DPM2A => "DPM2 a",
+			ImaginateSamplingMethod::DPMPlusPlus2sA => "DPM++ 2S a",
+			ImaginateSamplingMethod::DPMPlusPlus2m => "DPM++ 2M",
 			ImaginateSamplingMethod::DPMFast => "DPM fast",
 			ImaginateSamplingMethod::DPMAdaptive => "DPM adaptive",
 			ImaginateSamplingMethod::LMSKarras => "LMS Karras",
 			ImaginateSamplingMethod::DPM2Karras => "DPM2 Karras",
 			ImaginateSamplingMethod::DPM2AKarras => "DPM2 a Karras",
+			ImaginateSamplingMethod::DPMPlusPlus2sAKarras => "DPM++ 2S a Karras",
+			ImaginateSamplingMethod::DPMPlusPlus2mKarras => "DPM++ 2M Karras",
 			ImaginateSamplingMethod::DDIM => "DDIM",
 			ImaginateSamplingMethod::PLMS => "PLMS",
 		}
 	}
 
-	pub fn list() -> [ImaginateSamplingMethod; 13] {
+	pub fn list() -> [ImaginateSamplingMethod; 17] {
 		[
 			ImaginateSamplingMethod::EulerA,
 			ImaginateSamplingMethod::Euler,
@@ -107,11 +115,15 @@ impl ImaginateSamplingMethod {
 			ImaginateSamplingMethod::Heun,
 			ImaginateSamplingMethod::DPM2,
 			ImaginateSamplingMethod::DPM2A,
+			ImaginateSamplingMethod::DPMPlusPlus2sA,
+			ImaginateSamplingMethod::DPMPlusPlus2m,
 			ImaginateSamplingMethod::DPMFast,
 			ImaginateSamplingMethod::DPMAdaptive,
 			ImaginateSamplingMethod::LMSKarras,
 			ImaginateSamplingMethod::DPM2Karras,
 			ImaginateSamplingMethod::DPM2AKarras,
+			ImaginateSamplingMethod::DPMPlusPlus2sAKarras,
+			ImaginateSamplingMethod::DPMPlusPlus2mKarras,
 			ImaginateSamplingMethod::DDIM,
 			ImaginateSamplingMethod::PLMS,
 		]
@@ -127,11 +139,15 @@ impl std::fmt::Display for ImaginateSamplingMethod {
 			ImaginateSamplingMethod::Heun => write!(f, "Heun"),
 			ImaginateSamplingMethod::DPM2 => write!(f, "DPM2"),
 			ImaginateSamplingMethod::DPM2A => write!(f, "DPM2 A"),
+			ImaginateSamplingMethod::DPMPlusPlus2sA => write!(f, "DPM++ 2S a"),
+			ImaginateSamplingMethod::DPMPlusPlus2m => write!(f, "DPM++ 2M"),
 			ImaginateSamplingMethod::DPMFast => write!(f, "DPM Fast"),
 			ImaginateSamplingMethod::DPMAdaptive => write!(f, "DPM Adaptive"),
 			ImaginateSamplingMethod::LMSKarras => write!(f, "LMS Karras"),
 			ImaginateSamplingMethod::DPM2Karras => write!(f, "DPM2 Karras"),
 			ImaginateSamplingMethod::DPM2AKarras => write!(f, "DPM2 A Karras"),
+			ImaginateSamplingMethod::DPMPlusPlus2sAKarras => write!(f, "DPM++ 2S a Karras"),
+			ImaginateSamplingMethod::DPMPlusPlus2mKarras => write!(f, "DPM++ 2M Karras"),
 			ImaginateSamplingMethod::DDIM => write!(f, "DDIM"),
 			ImaginateSamplingMethod::PLMS => write!(f, "PLMS"),
 		}

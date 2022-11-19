@@ -2,7 +2,7 @@
 name = "graphite-wasm"
 publish = false
 version = "0.0.0"
-rust-version = "1.62.0"
+rust-version = "1.65.0"
 authors = ["Graphite Authors <contact@graphite.rs>"]
 edition = "2021"
 readme = "../../README.md"
@@ -16,6 +16,7 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 editor = { path = "../../editor", package = "graphite-editor" }
 graphene = { path = "../../graphene", package = "graphite-graphene" }
+graph-craft = { path = "../../node-graph/graph-craft" }
 log = "0.4"
 serde = { version = "1.0", features = ["derive"] }
 wasm-bindgen = { version = "0.2.73" }

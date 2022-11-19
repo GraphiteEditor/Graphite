@@ -90,7 +90,7 @@ export default defineComponent({
 				this.mutablePoints[this.activeIndex] = [mx, my];
 				this.bezierSVG = this.callback(this.bezier, this.sliderData, undefined, this.isEuclidean);
 			} else if (this.triggerOnMouseMove) {
-				this.bezierSVG = this.callback(this.bezier, this.sliderData, { x: mx, y: my }, this.isEuclidean);
+				this.bezierSVG = this.callback(this.bezier, this.sliderData, [mx, my], this.isEuclidean);
 			}
 		},
 		getSliderValue: (sliderValue: number, sliderUnit?: string | string[]) => (Array.isArray(sliderUnit) ? sliderUnit[sliderValue] : sliderUnit),

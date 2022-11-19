@@ -6,6 +6,7 @@ use crate::layers::text_layer::FontCache;
 use crate::LayerId;
 
 use glam::{DAffine2, DMat2, DVec2};
+use graph_craft::proto::Type;
 use kurbo::{Affine, BezPath, Shape as KurboShape};
 use serde::{Deserialize, Serialize};
 use std::fmt::Write;
@@ -29,7 +30,7 @@ pub struct NodeGraphFrameLayer {
 #[derive(Debug, Clone, Eq, PartialEq, Deserialize, Serialize)]
 pub struct ImageData {
 	#[serde(serialize_with = "base64_serde::as_base64", deserialize_with = "base64_serde::from_base64")]
-	pub image_data: Vec<u8>,
+	pub image_data: std::rc::Rc<Vec<u8>>,
 }
 
 impl LayerData for NodeGraphFrameLayer {
@@ -118,26 +119,96 @@ impl Default for NodeGraphFrameLayer {
 	fn default() -> Self {
 		use graph_craft::document::*;
 		use graph_craft::proto::NodeIdentifier;
+		let brighten_network = NodeNetwork {
+			inputs: vec![0, 0],
+			output: 0,
+			nodes: [(
+				0,
+				DocumentNode {
+					name: "Brighten Image Node".into(),
+					inputs: vec![NodeInput::Network, NodeInput::Network],
+					implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new(
+						"graphene_std::raster::BrightenImageNode",
+						&[graph_craft::proto::Type::Concrete(std::borrow::Cow::Borrowed("&TypeErasedNode"))],
+					)),
+					metadata: DocumentNodeMetadata::default(),
+				},
+			)]
+			.into_iter()
+			.collect(),
+		};
+
+		let hue_shift_network = NodeNetwork {
+			inputs: vec![0, 0],
+			output: 0,
+			nodes: [(
+				0,
+				DocumentNode {
+					name: "Hue Shift Image Node".into(),
+					inputs: vec![NodeInput::Network, NodeInput::Network],
+					implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new(
+						"graphene_std::raster::HueShiftImage",
+						&[graph_craft::proto::Type::Concrete(std::borrow::Cow::Borrowed("&TypeErasedNode"))],
+					)),
+					metadata: DocumentNodeMetadata::default(),
+				},
+			)]
+			.into_iter()
+			.collect(),
+		};
+
 		Self {
 			mime: String::new(),
 			network: NodeNetwork {
-				inputs: vec![1],
-				output: 1,
+				inputs: vec![0],
+				output: 3,
 				nodes: [
 					(
 						0,
 						DocumentNode {
-							name: "grayscale".into(),
+							name: "Input".into(),
 							inputs: vec![NodeInput::Network],
-							implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::raster::GrayscaleNode", &[])),
+							implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode", &[Type::Generic])),
+							metadata: DocumentNodeMetadata { position: (8, 4) },
 						},
 					),
 					(
 						1,
 						DocumentNode {
-							name: "map image".into(),
-							inputs: vec![NodeInput::Network, NodeInput::Node(0)],
-							implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_std::raster::MapImageNode", &[])),
+							name: "Hue Shift Image".into(),
+							inputs: vec![
+								NodeInput::Node(0),
+								NodeInput::Value {
+									tagged_value: value::TaggedValue::F32(50.),
+									exposed: false,
+								},
+							],
+							implementation: DocumentNodeImplementation::Network(hue_shift_network),
+							metadata: DocumentNodeMetadata { position: (8 + 7, 4 + 2) },
+						},
+					),
+					(
+						2,
+						DocumentNode {
+							name: "Brighten Image".into(),
+							inputs: vec![
+								NodeInput::Node(1),
+								NodeInput::Value {
+									tagged_value: value::TaggedValue::F32(10.),
+									exposed: false,
+								},
+							],
+							implementation: DocumentNodeImplementation::Network(brighten_network),
+							metadata: DocumentNodeMetadata { position: (8 + 7 * 2, 4 + 2 * 2) },
+						},
+					),
+					(
+						3,
+						DocumentNode {
+							name: "Output".into(),
+							inputs: vec![NodeInput::Node(2)],
+							implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode", &[Type::Generic])),
+							metadata: DocumentNodeMetadata { position: (8 + 7 * 3, 4) },
 						},
 					),
 				]

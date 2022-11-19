@@ -223,6 +223,7 @@ name = "dyn-any"
 version = "0.2.1"
 dependencies = [
  "dyn-any-derive",
+ "log",
 ]
 
 [[package]]
@@ -358,6 +359,7 @@ dependencies = [
  "dyn-clone",
  "graphene-core",
  "graphene-std",
+ "log",
  "num-traits",
  "rand_chacha",
  "serde",
@@ -397,6 +399,7 @@ dependencies = [
  "once_cell",
  "proc-macro2",
  "quote",
+ "serde",
  "syn",
 ]
 
@@ -460,6 +463,7 @@ dependencies = [
 name = "graphite-wasm"
 version = "0.0.0"
 dependencies = [
+ "graph-craft",
  "graphite-editor",
  "graphite-graphene",
  "js-sys",

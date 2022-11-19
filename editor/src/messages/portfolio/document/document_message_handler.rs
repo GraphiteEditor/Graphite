@@ -49,9 +49,9 @@ pub struct DocumentMessageHandler {
 	pub overlays_visible: bool,
 
 	#[serde(skip)]
-	pub document_undo_history: Vec<DocumentSave>,
+	pub document_undo_history: VecDeque<DocumentSave>,
 	#[serde(skip)]
-	pub document_redo_history: Vec<DocumentSave>,
+	pub document_redo_history: VecDeque<DocumentSave>,
 
 	#[serde(with = "vectorize_layer_metadata")]
 	pub layer_metadata: HashMap<Vec<LayerId>, LayerMetadata>,
@@ -64,6 +64,8 @@ pub struct DocumentMessageHandler {
 	#[serde(skip)]
 	transform_layer_handler: TransformLayerMessageHandler,
 	properties_panel_message_handler: PropertiesPanelMessageHandler,
+	#[serde(skip)]
+	node_graph_handler: NodeGraphMessageHandler,
 }
 
 impl Default for DocumentMessageHandler {
@@ -80,8 +82,8 @@ impl Default for DocumentMessageHandler {
 			snapping_enabled: true,
 			overlays_visible: true,
 
-			document_undo_history: Vec::new(),
-			document_redo_history: Vec::new(),
+			document_undo_history: VecDeque::new(),
+			document_redo_history: VecDeque::new(),
 
 			layer_metadata: vec![(vec![], LayerMetadata::new(true))].into_iter().collect(),
 			layer_range_selection_reference: Vec::new(),
@@ -91,6 +93,7 @@ impl Default for DocumentMessageHandler {
 			artboard_message_handler: ArtboardMessageHandler::default(),
 			transform_layer_handler: TransformLayerMessageHandler::default(),
 			properties_panel_message_handler: PropertiesPanelMessageHandler::default(),
+			node_graph_handler: Default::default(),
 		}
 	}
 }
@@ -165,9 +168,14 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 					artwork_document: &self.graphene_document,
 					artboard_document: &self.artboard_message_handler.artboards_graphene_document,
 					selected_layers: &mut self.layer_metadata.iter().filter_map(|(path, data)| data.selected.then_some(path.as_slice())),
+					node_graph_message_handler: &self.node_graph_handler,
 				};
 				self.properties_panel_message_handler
 					.process_message(message, (persistent_data, properties_panel_message_handler_data), responses);
+			}
+			#[remain::unsorted]
+			NodeGraph(message) => {
+				self.node_graph_handler.process_message(message, (&mut self.graphene_document, ipp), responses);
 			}
 
 			// Messages
@@ -508,7 +516,6 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				);
 			}
 			MoveSelectedManipulatorPoints { layer_path, delta } => {
-				self.backup(responses);
 				if let Ok(_layer) = self.graphene_document.layer(&layer_path) {
 					responses.push_back(DocumentOperation::MoveSelectedManipulatorPoints { layer_path, delta }.into());
 				}
@@ -541,6 +548,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 					}
 					.into(),
 				);
+				let image_data = std::rc::Rc::new(image_data);
 				responses.push_back(
 					FrontendMessage::UpdateImageData {
 						document_id,
@@ -1322,7 +1330,10 @@ impl DocumentMessageHandler {
 
 	pub fn backup(&mut self, responses: &mut VecDeque<Message>) {
 		self.document_redo_history.clear();
-		self.document_undo_history.push((self.graphene_document.clone(), self.layer_metadata.clone()));
+		self.document_undo_history.push_back((self.graphene_document.clone(), self.layer_metadata.clone()));
+		if self.document_undo_history.len() > crate::consts::MAX_UNDO_HISTORY_LEN {
+			self.document_undo_history.pop_front();
+		}
 
 		// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
 		responses.push_back(PortfolioMessage::UpdateOpenDocumentsList.into());
@@ -1340,7 +1351,7 @@ impl DocumentMessageHandler {
 
 		let selected_paths: Vec<Vec<LayerId>> = self.selected_layers().map(|path| path.to_vec()).collect();
 
-		match self.document_undo_history.pop() {
+		match self.document_undo_history.pop_back() {
 			Some((document, layer_metadata)) => {
 				// Update the currently displayed layer on the Properties panel if the selection changes after an undo action
 				// Also appropriately update the Properties panel if an undo action results in a layer being deleted
@@ -1352,7 +1363,10 @@ impl DocumentMessageHandler {
 
 				let document = std::mem::replace(&mut self.graphene_document, document);
 				let layer_metadata = std::mem::replace(&mut self.layer_metadata, layer_metadata);
-				self.document_redo_history.push((document, layer_metadata));
+				self.document_redo_history.push_back((document, layer_metadata));
+				if self.document_redo_history.len() > crate::consts::MAX_UNDO_HISTORY_LEN {
+					self.document_redo_history.pop_front();
+				}
 
 				for layer in self.layer_metadata.keys() {
 					responses.push_back(DocumentMessage::LayerChanged { affected_layer_path: layer.clone() }.into())
@@ -1370,7 +1384,7 @@ impl DocumentMessageHandler {
 
 		let selected_paths: Vec<Vec<LayerId>> = self.selected_layers().map(|path| path.to_vec()).collect();
 
-		match self.document_redo_history.pop() {
+		match self.document_redo_history.pop_back() {
 			Some((document, layer_metadata)) => {
 				// Update currently displayed layer on property panel if selection changes after redo action
 				// Also appropriately update property panel if redo action results in a layer being added
@@ -1382,7 +1396,10 @@ impl DocumentMessageHandler {
 
 				let document = std::mem::replace(&mut self.graphene_document, document);
 				let layer_metadata = std::mem::replace(&mut self.layer_metadata, layer_metadata);
-				self.document_undo_history.push((document, layer_metadata));
+				self.document_undo_history.push_back((document, layer_metadata));
+				if self.document_undo_history.len() > crate::consts::MAX_UNDO_HISTORY_LEN {
+					self.document_undo_history.pop_front();
+				}
 
 				for layer in self.layer_metadata.keys() {
 					responses.push_back(DocumentMessage::LayerChanged { affected_layer_path: layer.clone() }.into())
@@ -1398,6 +1415,7 @@ impl DocumentMessageHandler {
 		// We can use the last state of the document to serve as the identifier to compare against
 		// This is useful since when the document is empty the identifier will be 0
 		self.document_undo_history
+			.iter()
 			.last()
 			.map(|(graphene_document, _)| graphene_document.current_state_identifier())
 			.unwrap_or(0)
@@ -1836,6 +1854,8 @@ impl DocumentMessageHandler {
 					value: opacity.map(|opacity| opacity * 100.),
 					min: Some(0.),
 					max: Some(100.),
+					range_min: Some(0.),
+					range_max: Some(100.),
 					mode: NumberInputMode::Range,
 					on_update: WidgetCallback::new(|number_input: &NumberInput| {
 						if let Some(value) = number_input.value {

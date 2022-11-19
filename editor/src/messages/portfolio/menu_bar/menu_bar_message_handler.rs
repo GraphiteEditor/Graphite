@@ -221,33 +221,26 @@ impl PropertyHolder for MenuBarMessageHandler {
 			),
 			MenuBarEntry::new_root(
 				"View".into(),
-				MenuBarEntryChildren(vec![
-					vec![
-						MenuBarEntry {
-							label: "Zoom to Fit".into(),
-							shortcut: action_keys!(DocumentMessageDiscriminant::ZoomCanvasToFitAll),
-							action: MenuBarEntry::create_action(|_| DocumentMessage::ZoomCanvasToFitAll.into()),
-							..MenuBarEntry::default()
-						},
-						MenuBarEntry {
-							label: "Zoom to 100%".into(),
-							shortcut: action_keys!(DocumentMessageDiscriminant::ZoomCanvasTo100Percent),
-							action: MenuBarEntry::create_action(|_| DocumentMessage::ZoomCanvasTo100Percent.into()),
-							..MenuBarEntry::default()
-						},
-						MenuBarEntry {
-							label: "Zoom to 200%".into(),
-							shortcut: action_keys!(DocumentMessageDiscriminant::ZoomCanvasTo200Percent),
-							action: MenuBarEntry::create_action(|_| DocumentMessage::ZoomCanvasTo200Percent.into()),
-							..MenuBarEntry::default()
-						},
-					],
-					vec![MenuBarEntry {
-						label: "Node Graph (In Development)".into(),
-						action: MenuBarEntry::create_action(|_| WorkspaceMessage::NodeGraphToggleVisibility.into()),
+				MenuBarEntryChildren(vec![vec![
+					MenuBarEntry {
+						label: "Zoom to Fit".into(),
+						shortcut: action_keys!(DocumentMessageDiscriminant::ZoomCanvasToFitAll),
+						action: MenuBarEntry::create_action(|_| DocumentMessage::ZoomCanvasToFitAll.into()),
 						..MenuBarEntry::default()
-					}],
-				]),
+					},
+					MenuBarEntry {
+						label: "Zoom to 100%".into(),
+						shortcut: action_keys!(DocumentMessageDiscriminant::ZoomCanvasTo100Percent),
+						action: MenuBarEntry::create_action(|_| DocumentMessage::ZoomCanvasTo100Percent.into()),
+						..MenuBarEntry::default()
+					},
+					MenuBarEntry {
+						label: "Zoom to 200%".into(),
+						shortcut: action_keys!(DocumentMessageDiscriminant::ZoomCanvasTo200Percent),
+						action: MenuBarEntry::create_action(|_| DocumentMessage::ZoomCanvasTo200Percent.into()),
+						..MenuBarEntry::default()
+					},
+				]]),
 			),
 			MenuBarEntry::new_root(
 				"Help".into(),

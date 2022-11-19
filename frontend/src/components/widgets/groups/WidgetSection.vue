@@ -1,9 +1,8 @@
 <!-- TODO: Implement collapsable sections with properties system -->
 <template>
 	<LayoutCol class="widget-section">
-		<button class="header" @click.stop="() => (expanded = !expanded)" tabindex="0">
-			<div class="expand-arrow" :class="{ expanded }"></div>
-			<Separator :type="'Related'" />
+		<button class="header" :class="{ expanded }" @click.stop="() => (expanded = !expanded)" tabindex="0">
+			<div class="expand-arrow"></div>
 			<TextLabel :bold="true">{{ widgetData.name }}</TextLabel>
 		</button>
 		<LayoutCol class="body" v-if="expanded">
@@ -17,18 +16,19 @@
 	flex: 0 0 auto;
 
 	.header {
+		text-align: left;
+		align-items: center;
 		display: flex;
 		flex: 0 0 24px;
-		border: 0;
-		text-align: left;
 		padding: 0 8px;
-		margin: 0 -4px;
-		background: var(--color-4-dimgray);
-		align-items: center;
+		margin-bottom: 4px;
+		border: 0;
+		border-radius: 4px;
+		background: var(--color-5-dullgray);
 
 		.expand-arrow {
-			width: 6px;
-			height: 100%;
+			width: 8px;
+			height: 8px;
 			margin: 0;
 			padding: 0;
 			position: relative;
@@ -40,29 +40,61 @@
 			&::after {
 				content: "";
 				position: absolute;
-				width: 0;
-				height: 0;
-				border-style: solid;
-				border-width: 3px 0 3px 6px;
-				border-color: transparent transparent transparent var(--color-e-nearwhite);
+				width: 8px;
+				height: 8px;
+				background: var(--icon-expand-collapse-arrow);
 			}
+		}
 
-			&.expanded::after {
-				border-width: 6px 3px 0 3px;
-				border-color: var(--color-e-nearwhite) transparent transparent transparent;
+		&.expanded {
+			border-radius: 4px 4px 0 0;
+			margin-bottom: 0;
+
+			.expand-arrow::after {
+				transform: rotate(90deg);
 			}
 		}
 
 		.text-label {
 			height: 18px;
+			margin-left: 8px;
 			display: inline-block;
+		}
+
+		&:hover {
+			background: var(--color-6-lowergray);
+
+			.expand-arrow::after {
+				background: var(--icon-expand-collapse-arrow-hover);
+			}
+
+			.text-label {
+				color: var(--color-f-white);
+			}
+
+			+ .body {
+				border: 1px solid var(--color-6-lowergray);
+			}
 		}
 	}
 
 	.body {
-		margin: 0 4px;
+		padding: 0 7px;
+		padding-top: 1px;
+		margin-top: -1px;
+		margin-bottom: 4px;
+		border: 1px solid var(--color-5-dullgray);
+		border-radius: 0 0 4px 4px;
 
 		.widget-row {
+			&:first-child {
+				margin-top: calc(4px - 1px);
+			}
+
+			&:last-child {
+				margin-bottom: calc(4px - 1px);
+			}
+
 			> .text-label:first-of-type {
 				flex: 0 0 30%;
 				text-align: right;
@@ -83,7 +115,6 @@ import { isWidgetRow, isWidgetSection, type LayoutGroup, type WidgetSection as W
 
 import LayoutCol from "@/components/layout/LayoutCol.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
-import Separator from "@/components/widgets/labels/Separator.vue";
 import TextLabel from "@/components/widgets/labels/TextLabel.vue";
 import WidgetRow from "@/components/widgets/WidgetRow.vue";
 
@@ -113,7 +144,6 @@ const WidgetSection = defineComponent({
 	components: {
 		LayoutCol,
 		LayoutRow,
-		Separator,
 		TextLabel,
 		WidgetRow,
 	},

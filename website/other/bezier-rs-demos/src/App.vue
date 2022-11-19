@@ -12,17 +12,6 @@
 				:euclideanParameterizationEnabled="feature.euclideanParameterizationEnabled"
 			/>
 		</div>
-		<!-- TODO: Remove the below and all associated canvas-related code, then rename `bezierFeatures` to `features` -->
-		<div v-for="(feature, index) in ([] as any)" :key="index">
-			<ExamplePane
-				:template="feature.template"
-				:templateOptions="feature.templateOptions"
-				:name="feature.name"
-				:callback="feature.callback"
-				:curveDegrees="feature.curveDegrees"
-				:customPoints="feature.customPoints"
-			/>
-		</div>
 		<h2>Subpaths</h2>
 		<div v-for="(feature, index) in subpathFeatures" :key="index">
 			<SubpathExamplePane :name="feature.name" :callback="feature.callback" />
@@ -35,10 +24,9 @@ import { defineComponent } from "vue";
 
 import { WasmBezier } from "@/../wasm/pkg";
 import "@/styles.css";
-import { BezierCurveType, ExampleOptions, Point, WasmBezierInstance, WasmSubpathInstance } from "@/utils/types";
+import { BezierCurveType, ExampleOptions, WasmBezierInstance, WasmSubpathInstance } from "@/utils/types";
 
 import BezierExamplePane from "@/components/BezierExamplePane.vue";
-import ExamplePane from "@/components/ExamplePane.vue";
 import SubpathExamplePane from "@/components/SubpathExamplePane.vue";
 
 const tSliderOptions = {
@@ -68,12 +56,11 @@ export default defineComponent({
 				{
 					name: "Bezier Through Points",
 					callback: (bezier: WasmBezierInstance, options: Record<string, number>): string => {
-						const points: Point[] = JSON.parse(bezier.get_points());
-						const formattedPoints: number[][] = points.map((p) => [p.x, p.y]);
+						const points = JSON.parse(bezier.get_points());
 						if (Object.values(options).length === 1) {
-							return WasmBezier.quadratic_through_points(formattedPoints, options.t);
+							return WasmBezier.quadratic_through_points(points, options.t);
 						}
-						return WasmBezier.cubic_through_points(formattedPoints, options.t, options["midpoint separation"]);
+						return WasmBezier.cubic_through_points(points, options.t, options["midpoint separation"]);
 					},
 					exampleOptions: {
 						[BezierCurveType.Linear]: {
@@ -126,7 +113,7 @@ export default defineComponent({
 				},
 				{
 					name: "Evaluate",
-					callback: (bezier: WasmBezierInstance, options: Record<string, number>, _: Point, isEuclidean: boolean): string => bezier.evaluate(options.computeArgument, isEuclidean),
+					callback: (bezier: WasmBezierInstance, options: Record<string, number>, _: undefined, isEuclidean: boolean): string => bezier.evaluate(options.computeArgument, isEuclidean),
 					exampleOptions: {
 						[BezierCurveType.Quadratic]: {
 							sliderOptions: [{ ...tSliderOptions, variable: "computeArgument" }],
@@ -241,8 +228,8 @@ export default defineComponent({
 				},
 				{
 					name: "Project",
-					callback: (bezier: WasmBezierInstance, _: Record<string, number>, mouseLocation: Point): string =>
-						mouseLocation ? bezier.project(mouseLocation.x, mouseLocation.y) : bezier.to_svg(),
+					callback: (bezier: WasmBezierInstance, _: Record<string, number>, mouseLocation?: [number, number]): string =>
+						mouseLocation ? bezier.project(mouseLocation[0], mouseLocation[1]) : bezier.to_svg(),
 					triggerOnMouseMove: true,
 				},
 				{
@@ -537,7 +524,6 @@ export default defineComponent({
 	},
 	components: {
 		BezierExamplePane,
-		ExamplePane,
 		SubpathExamplePane,
 	},
 });
