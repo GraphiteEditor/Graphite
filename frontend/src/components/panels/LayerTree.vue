@@ -291,7 +291,7 @@ const LAYER_INDENT = 16;
 const INSERT_MARK_MARGIN_LEFT = 4 + 32 + LAYER_INDENT;
 const INSERT_MARK_OFFSET = 2;
 
-type DraggingData = { insertFolder: BigUint64Array; insertIndex: number; highlightFolder: boolean; markerHeight: number };
+type DraggingData = { select: () => void; insertFolder: BigUint64Array; insertIndex: number; highlightFolder: boolean; markerHeight: number };
 
 export default defineComponent({
 	inject: ["editor"],
@@ -371,7 +371,7 @@ export default defineComponent({
 		async deselectAllLayers() {
 			this.editor.instance.deselectAllLayers();
 		},
-		calculateDragIndex(tree: HTMLDivElement, clientY: number): DraggingData {
+		calculateDragIndex(select: () => void, tree: HTMLDivElement, clientY: number): DraggingData {
 			const treeChildren = tree.children;
 			const treeOffset = tree.getBoundingClientRect().top;
 
@@ -430,11 +430,13 @@ export default defineComponent({
 
 			markerHeight -= treeOffset;
 
-			return { insertFolder, insertIndex, highlightFolder, markerHeight };
+			return { select, insertFolder, insertIndex, highlightFolder, markerHeight };
 		},
 		async dragStart(event: DragEvent, listing: LayerListingInfo) {
 			const layer = listing.entry;
-			if (!layer.layerMetadata.selected) this.selectLayer(event.ctrlKey, event.metaKey, event.shiftKey, listing, event);
+			const select = (): void => {
+				if (!layer.layerMetadata.selected) this.selectLayer(event.ctrlKey, event.metaKey, event.shiftKey, listing, event);
+			};
 
 			// Set style of cursor for drag
 			if (event.dataTransfer) {
@@ -443,19 +445,21 @@ export default defineComponent({
 			}
 
 			const tree: HTMLDivElement | undefined = (this.$refs.list as typeof LayoutCol | undefined)?.$el;
-			if (tree) this.draggingData = this.calculateDragIndex(tree, event.clientY);
+			if (tree) this.draggingData = this.calculateDragIndex(select, tree, event.clientY);
 		},
 		updateInsertLine(event: DragEvent) {
 			// Stop the drag from being shown as cancelled
 			event.preventDefault();
 
 			const tree: HTMLDivElement | undefined = (this.$refs.list as typeof LayoutCol | undefined)?.$el;
-			if (tree) this.draggingData = this.calculateDragIndex(tree, event.clientY);
+			// eslint-disable-next-line @typescript-eslint/no-empty-function
+			if (tree) this.draggingData = this.calculateDragIndex(this.draggingData?.select || ((): void => {}), tree, event.clientY);
 		},
 		async drop() {
 			if (this.draggingData) {
-				const { insertFolder, insertIndex } = this.draggingData;
+				const { select, insertFolder, insertIndex } = this.draggingData;
 
+				select();
 				this.editor.instance.moveLayerInTree(insertFolder, insertIndex);
 
 				this.draggingData = undefined;
