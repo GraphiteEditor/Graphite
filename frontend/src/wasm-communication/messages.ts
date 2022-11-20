@@ -512,6 +512,8 @@ export class TriggerImaginateGenerate extends JsMessage {
 	@Type(() => ImaginateBaseImage)
 	readonly maskImage: ImaginateBaseImage | undefined;
 
+	readonly inpaintOrOutpaint!: boolean;
+
 	readonly hostname!: string;
 
 	readonly refreshFrequency!: number;

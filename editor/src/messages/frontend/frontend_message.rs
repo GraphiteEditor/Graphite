@@ -62,6 +62,8 @@ pub enum FrontendMessage {
 		base_image: Option<ImaginateBaseImage>,
 		#[serde(rename = "maskImage")]
 		mask_image: Option<ImaginateBaseImage>,
+		#[serde(rename = "inpaintOrOutpaint")]
+		inpaint_or_outpaint: bool,
 		hostname: String,
 		#[serde(rename = "refreshFrequency")]
 		refresh_frequency: f64,

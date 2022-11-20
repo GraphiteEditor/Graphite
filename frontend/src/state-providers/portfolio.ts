@@ -68,7 +68,7 @@ export function createPortfolioState(editor: Editor) {
 		imaginateCheckConnection(hostname, editor);
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerImaginateGenerate, async (triggerImaginateGenerate) => {
-		const { documentId, layerPath, hostname, refreshFrequency, baseImage, maskImage, parameters } = triggerImaginateGenerate;
+		const { documentId, layerPath, hostname, refreshFrequency, baseImage, maskImage, inpaintOrOutpaint, parameters } = triggerImaginateGenerate;
 
 		// Handle img2img mode
 		let image: Blob | undefined;
@@ -86,7 +86,7 @@ export function createPortfolioState(editor: Editor) {
 			mask = await rasterizeSVG(maskImage.svg, maskImage.size[0], maskImage.size[1], "image/png");
 		}
 
-		imaginateGenerate(parameters, image, mask, hostname, refreshFrequency, documentId, layerPath, editor);
+		imaginateGenerate(parameters, image, mask, inpaintOrOutpaint, hostname, refreshFrequency, documentId, layerPath, editor);
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerImaginateTerminate, async (triggerImaginateTerminate) => {
 		const { documentId, layerPath, hostname } = triggerImaginateTerminate;

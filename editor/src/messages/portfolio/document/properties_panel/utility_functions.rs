@@ -929,48 +929,7 @@ fn node_section_imaginate(imaginate_layer: &ImaginateLayer, layer: &Layer, docum
 
 					vec![
 						WidgetHolder::new(Widget::TextLabel(TextLabel {
-							value: "Out/In painting".into(),
-							tooltip: tooltip.clone(),
-							..Default::default()
-						})),
-						WidgetHolder::new(Widget::Separator(Separator {
-							separator_type: SeparatorType::Unrelated,
-							direction: SeparatorDirection::Horizontal,
-						})),
-						WidgetHolder::new(Widget::RadioInput(RadioInput {
-							entries: [
-								(ImaginatePaintType::Normal, "Normal"),
-								(ImaginatePaintType::InPaint, "In Paint"),
-								(ImaginatePaintType::OutPaint, "Out paint"),
-							]
-							.into_iter()
-							.map(|(paint, name)| RadioEntryData {
-								label: name.to_string(),
-								on_update: WidgetCallback::new(move |_| PropertiesPanelMessage::SetImaginatePaint { paint }.into()),
-								tooltip: tooltip.clone(),
-								..Default::default()
-							})
-							.collect(),
-							selected_index: imaginate_layer.paint as u32,
-							disabled: !imaginate_layer.use_img2img,
-						})),
-					]
-				},
-			},
-			LayoutGroup::Row {
-				widgets: {
-					let tooltip = "Layer used by in/out paint for mask.\nAll colors in mask are sent to model".trim().to_string();
-
-					vec![
-						WidgetHolder::new(Widget::TextLabel(TextLabel {
-							value: format!(
-								"{} Paint Mask",
-								match imaginate_layer.paint {
-									ImaginatePaintType::InPaint => "In",
-									ImaginatePaintType::OutPaint => "Out",
-									_ => "In / Out",
-								}
-							),
+							value: "Masking Layer".into(),
 							tooltip: tooltip.clone(),
 							..Default::default()
 						})),
@@ -979,20 +938,72 @@ fn node_section_imaginate(imaginate_layer: &ImaginateLayer, layer: &Layer, docum
 							direction: SeparatorDirection::Horizontal,
 						})),
 						WidgetHolder::new(Widget::LayerReferenceInput(LayerReferenceInput {
-							value: imaginate_layer.layer_ref.clone(),
-							disabled: !imaginate_layer.use_img2img || imaginate_layer.paint == ImaginatePaintType::Normal,
+							value: imaginate_layer.mask_layer_ref.clone(),
 							tooltip,
 							display: imaginate_layer
-								.layer_ref
+								.mask_layer_ref
 								.as_ref()
 								.and_then(|path| document.layer(path).ok())
 								.map(|layer| layer.name.clone().unwrap_or_else(|| LayerDataTypeDiscriminant::from(&layer.data).to_string())),
 							on_update: WidgetCallback::new(move |val: &LayerReferenceInput| PropertiesPanelMessage::SetImaginateLayerPath { layer_path: val.value.clone() }.into()),
 							..Default::default()
 						})),
+						WidgetHolder::new(Widget::Separator(Separator {
+							separator_type: SeparatorType::Unrelated,
+							direction: SeparatorDirection::Horizontal,
+						})),
+						WidgetHolder::new(Widget::RadioInput(RadioInput {
+							entries: [(ImaginatePaintType::Inpaint, "Inpaint"), (ImaginatePaintType::Outpaint, "Outpaint")]
+								.into_iter()
+								.map(|(paint, name)| RadioEntryData {
+									label: name.to_string(),
+									on_update: WidgetCallback::new(move |_| PropertiesPanelMessage::SetImaginatePaint { paint }.into()),
+									tooltip: "Layer used by in/out paint for mask.\nAll colors in mask are sent to model.".to_string(),
+									..Default::default()
+								})
+								.collect(),
+							selected_index: imaginate_layer.paint as u32,
+							disabled: !imaginate_layer.use_img2img || imaginate_layer.mask_layer_ref.is_none(),
+						})),
 					]
 				},
 			},
+			// LayoutGroup::Row {
+			// 	widgets: {
+			// 		let tooltip = "Layer used by in/out paint for mask".trim().to_string();
+
+			// 		vec![
+			// 			WidgetHolder::new(Widget::TextLabel(TextLabel {
+			// 				value: format!(
+			// 					"{} Paint Mask",
+			// 					match imaginate_layer.paint {
+			// 						ImaginatePaintType::Inpaint => "In",
+			// 						ImaginatePaintType::Outpaint => "Out",
+			// 						_ => "In / Out",
+			// 					}
+			// 				),
+			// 				tooltip: tooltip.clone(),
+			// 				..Default::default()
+			// 			})),
+			// 			WidgetHolder::new(Widget::Separator(Separator {
+			// 				separator_type: SeparatorType::Unrelated,
+			// 				direction: SeparatorDirection::Horizontal,
+			// 			})),
+			// 			WidgetHolder::new(Widget::LayerReferenceInput(LayerReferenceInput {
+			// 				value: imaginate_layer.layer_ref.clone(),
+			// 				disabled: !imaginate_layer.use_img2img || imaginate_layer.paint == ImaginatePaintType::Normal,
+			// 				tooltip,
+			// 				display: imaginate_layer
+			// 					.layer_ref
+			// 					.as_ref()
+			// 					.and_then(|path| document.layer(path).ok())
+			// 					.map(|layer| layer.name.clone().unwrap_or_else(|| LayerDataTypeDiscriminant::from(&layer.data).to_string())),
+			// 				on_update: WidgetCallback::new(move |val: &LayerReferenceInput| PropertiesPanelMessage::SetImaginateLayerPath { layer_path: val.value.clone() }.into()),
+			// 				..Default::default()
+			// 			})),
+			// 		]
+			// 	},
+			// },
 			LayoutGroup::Row {
 				widgets: {
 					let tooltip = "

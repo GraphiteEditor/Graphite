@@ -944,7 +944,7 @@ impl Document {
 			Operation::ImaginateSetLayerPath { path, layer_path } => {
 				let layer = self.layer_mut(&path).expect("Setting Imaginate layer path strength for invalid layer");
 				if let LayerDataType::Imaginate(imaginate) = &mut layer.data {
-					imaginate.layer_ref = layer_path;
+					imaginate.mask_layer_ref = layer_path;
 				} else {
 					panic!("Incorrectly trying to set the layer path for a layer that is not an Imaginate layer type");
 				}

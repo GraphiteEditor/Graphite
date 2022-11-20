@@ -963,8 +963,9 @@ impl DocumentMessageHandler {
 			restore_faces: imaginate_layer.restore_faces,
 			tiling: imaginate_layer.tiling,
 		};
+		let inpaint_or_outpaint = imaginate_layer.paint == ImaginatePaintType::Inpaint;
 		let (base_image, mask_image) = if imaginate_layer.use_img2img {
-			let mask = imaginate_layer.layer_ref.clone().filter(|_| imaginate_layer.paint != ImaginatePaintType::Normal);
+			let mask = imaginate_layer.mask_layer_ref.clone();
 
 			// Calculate the size of the region to be exported
 			let size = DVec2::new(transform.transform_vector2(DVec2::new(1., 0.)).length(), transform.transform_vector2(DVec2::new(0., 1.)).length());
@@ -990,6 +991,7 @@ impl DocumentMessageHandler {
 				parameters,
 				base_image,
 				mask_image,
+				inpaint_or_outpaint,
 				hostname: preferences.imaginate_server_hostname.clone(),
 				refresh_frequency: preferences.imaginate_refresh_frequency,
 				document_id,

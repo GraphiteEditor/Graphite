@@ -24,6 +24,7 @@ export async function imaginateGenerate(
 	parameters: ImaginateGenerationParameters,
 	image: Blob | undefined,
 	mask: Blob | undefined,
+	inpaintOrOutpaint: boolean,
 	hostname: string,
 	refreshFrequency: number,
 	documentId: bigint,
@@ -42,7 +43,7 @@ export async function imaginateGenerate(
 	const discloseUploadingProgress = (progress: number): void => {
 		editor.instance.setImaginateGeneratingStatus(documentId, layerPath, progress * 100, "Uploading");
 	};
-	const { uploaded, result, xhr } = await generate(discloseUploadingProgress, hostname, image, mask, parameters);
+	const { uploaded, result, xhr } = await generate(discloseUploadingProgress, hostname, image, mask, inpaintOrOutpaint, parameters);
 	generatingAbortRequest = xhr;
 
 	try {
@@ -213,6 +214,7 @@ async function generate(
 	hostname: string,
 	image: Blob | undefined,
 	mask: Blob | undefined,
+	inpaintOrOutpaint: boolean,
 	parameters: ImaginateGenerationParameters
 ): Promise<{
 	uploaded: Promise<void>;
@@ -265,12 +267,12 @@ async function generate(
 			init_images: [sourceImageBase64],
 			// resize_mode: 0,
 			denoising_strength: parameters.denoisingStrength,
-			mask: maskImageBase64,
+			mask: mask && maskImageBase64,
 			// mask_blur: 4,
 			// inpainting_fill: 0,
-			// inpaint_full_res: true,
+			inpaint_full_res: mask && false,
 			// inpaint_full_res_padding: 0,
-			// inpainting_mask_invert: 0,
+			inpainting_mask_invert: mask && (inpaintOrOutpaint ? 1 : 0),
 			prompt: parameters.prompt,
 			// styles: [],
 			seed: Number(parameters.seed),
