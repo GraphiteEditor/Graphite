@@ -895,6 +895,16 @@ impl Document {
 				self.mark_as_dirty(&path)?;
 				Some(vec![LayerChanged { path }])
 			}
+			Operation::ImaginateSetPaint { path, paint } => {
+				let layer = self.layer_mut(&path).expect("Setting Imaginate paint for invalid layer");
+				if let LayerDataType::Imaginate(imaginate) = &mut layer.data {
+					imaginate.paint = paint;
+				} else {
+					panic!("Incorrectly trying to set the prompt for a layer that is not an Imaginate layer type");
+				}
+				self.mark_as_dirty(&path)?;
+				Some(vec![LayerChanged { path }])
+			}
 			Operation::ImaginateSetCfgScale { path, cfg_scale } => {
 				let layer = self.layer_mut(&path).expect("Setting Imaginate CFG scale for invalid layer");
 				if let LayerDataType::Imaginate(imaginate) = &mut layer.data {
@@ -911,6 +921,16 @@ impl Document {
 					imaginate.denoising_strength = denoising_strength;
 				} else {
 					panic!("Incorrectly trying to set the denoising strength for a layer that is not an Imaginate layer type");
+				}
+				self.mark_as_dirty(&path)?;
+				Some(vec![LayerChanged { path }])
+			}
+			Operation::ImaginateSetLayerPath { path, layer_path } => {
+				let layer = self.layer_mut(&path).expect("Setting Imaginate layer path strength for invalid layer");
+				if let LayerDataType::Imaginate(imaginate) = &mut layer.data {
+					imaginate.layer_ref = layer_path;
+				} else {
+					panic!("Incorrectly trying to set the layer path for a layer that is not an Imaginate layer type");
 				}
 				self.mark_as_dirty(&path)?;
 				Some(vec![LayerChanged { path }])

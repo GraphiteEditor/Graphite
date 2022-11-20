@@ -1,5 +1,5 @@
 <template>
-	<LayoutCol class="layer-tree">
+	<LayoutCol class="layer-tree" @dragenter="dragInPanel = true" @dragleave="dragInPanel = false">
 		<LayoutRow class="options-bar" :scrollableX="true">
 			<WidgetLayout :layout="layerTreeOptionsLayout" />
 		</LayoutRow>
@@ -31,7 +31,7 @@
 					></button>
 					<LayoutRow
 						class="layer"
-						:class="{ selected: listing.entry.layerMetadata.selected }"
+						:class="{ selected: fakeHighlight ? fakeHighlight.includes(listing.entry.path) : listing.entry.layerMetadata.selected }"
 						:data-layer="String(listing.entry.path)"
 						:data-index="index"
 						:title="listing.entry.tooltip"
@@ -66,7 +66,11 @@
 					</LayoutRow>
 				</LayoutRow>
 			</LayoutCol>
-			<div class="insert-mark" v-if="draggingData && !draggingData.highlightFolder" :style="{ left: markIndent(draggingData.insertFolder), top: markTopOffset(draggingData.markerHeight) }"></div>
+			<div
+				class="insert-mark"
+				v-if="draggingData && !draggingData.highlightFolder && dragInPanel"
+				:style="{ left: markIndent(draggingData.insertFolder), top: markTopOffset(draggingData.markerHeight) }"
+			></div>
 		</LayoutRow>
 	</LayoutCol>
 </template>
@@ -306,6 +310,8 @@ export default defineComponent({
 			// Interactive dragging
 			draggable: true,
 			draggingData: undefined as undefined | DraggingData,
+			fakeHighlight: undefined as undefined | BigUint64Array[],
+			dragInPanel: false,
 
 			// Layouts
 			layerTreeOptionsLayout: defaultWidgetLayout(),
@@ -436,8 +442,12 @@ export default defineComponent({
 		},
 		async dragStart(event: DragEvent, listing: LayerListingInfo) {
 			const layer = listing.entry;
+			this.dragInPanel = true;
+			if (!layer.layerMetadata.selected) {
+				this.fakeHighlight = [layer.path];
+			}
 			const select = (): void => {
-				if (!layer.layerMetadata.selected) this.selectLayer(event.ctrlKey, event.metaKey, event.shiftKey, listing, event);
+				if (!layer.layerMetadata.selected) this.selectLayer(false, false, false, listing, event);
 			};
 
 			const target = (event.target || undefined) as HTMLElement | undefined;
@@ -462,16 +472,15 @@ export default defineComponent({
 			if (tree) this.draggingData = this.calculateDragIndex(this.draggingData?.select || ((): void => {}), tree, event.clientY);
 		},
 		async drop() {
-			// TODO: Disable dropping when mouse is outside the Layer Tree panel (also temporarily remove insertion line when outside panel)
-			// TODO: Otherwise, right now, dropping in a LayerReferenceInput widget can cause layer rearrangement
-			if (this.draggingData) {
+			if (this.draggingData && this.dragInPanel) {
 				const { select, insertFolder, insertIndex } = this.draggingData;
 
 				select();
 				this.editor.instance.moveLayerInTree(insertFolder, insertIndex);
-
-				this.draggingData = undefined;
 			}
+			this.draggingData = undefined;
+			this.fakeHighlight = undefined;
+			this.dragInPanel = false;
 		},
 		rebuildLayerTree(updateDocumentLayerTreeStructure: UpdateDocumentLayerTreeStructure) {
 			const layerWithNameBeingEdited = this.layers.find((layer: LayerListingInfo) => layer.editingName);

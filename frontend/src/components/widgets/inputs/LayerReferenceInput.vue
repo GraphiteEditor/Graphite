@@ -3,13 +3,13 @@
 		class="layer-reference-input"
 		:class="{ disabled, droppable, 'sharp-right-corners': sharpRightCorners }"
 		:title="tooltip"
-		@dragover="(e: DragEvent) => dragOver(e)"
-		@dragleave="() => dragLeave()"
-		@drop="(e: DragEvent) => drop(e)"
+		@dragover="(e: DragEvent) => !disabled && dragOver(e)"
+		@dragleave="() => !disabled && dragLeave()"
+		@drop="(e: DragEvent) => !disabled && drop(e)"
 	>
 		<LayoutRow v-if="value === undefined || droppable" class="drop-zone"></LayoutRow>
 		<TextLabel v-if="value === undefined || droppable" :italic="true">Drag Layer Here</TextLabel>
-		<TextLabel v-if="value !== undefined && !droppable">{{ value }}</TextLabel>
+		<TextLabel v-if="value !== undefined && !droppable">{{ display || value }}</TextLabel>
 		<IconButton v-if="value !== undefined && !droppable" :icon="'CloseX'" :size="16" :disabled="disabled" :action="() => clearLayer()" />
 	</LayoutRow>
 </template>
@@ -79,6 +79,7 @@ export default defineComponent({
 	emits: ["update:value"],
 	props: {
 		value: { type: String as PropType<string | undefined>, required: false },
+		display: { type: String as PropType<string | undefined>, required: false },
 		disabled: { type: Boolean as PropType<boolean>, default: false },
 		tooltip: { type: String as PropType<string | undefined>, required: false },
 		sharpRightCorners: { type: Boolean as PropType<boolean>, default: false },

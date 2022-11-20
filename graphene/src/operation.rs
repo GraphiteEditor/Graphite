@@ -1,6 +1,6 @@
 use crate::boolean_ops::BooleanOperation as BooleanOperationType;
 use crate::layers::blend_mode::BlendMode;
-use crate::layers::imaginate_layer::{ImaginateSamplingMethod, ImaginateStatus};
+use crate::layers::imaginate_layer::{ImaginatePaintType, ImaginateSamplingMethod, ImaginateStatus};
 use crate::layers::layer_info::Layer;
 use crate::layers::style::{self, Stroke};
 use crate::layers::vector::consts::ManipulatorType;
@@ -95,6 +95,10 @@ pub enum Operation {
 		path: Vec<LayerId>,
 		prompt: String,
 	},
+	ImaginateSetPaint {
+		path: Vec<LayerId>,
+		paint: ImaginatePaintType,
+	},
 	ImaginateSetCfgScale {
 		path: Vec<LayerId>,
 		cfg_scale: f64,
@@ -117,6 +121,10 @@ pub enum Operation {
 	ImaginateSetDenoisingStrength {
 		path: Vec<LayerId>,
 		denoising_strength: f64,
+	},
+	ImaginateSetLayerPath {
+		path: Vec<LayerId>,
+		layer_path: Option<Vec<LayerId>>,
 	},
 	ImaginateSetUseImg2Img {
 		path: Vec<LayerId>,

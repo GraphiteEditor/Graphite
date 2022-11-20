@@ -7,7 +7,6 @@ use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup,
 use crate::messages::layout::utility_types::misc::LayoutTarget;
 use crate::messages::layout::utility_types::widgets::assist_widgets::{PivotAssist, PivotPosition};
 use crate::messages::layout::utility_types::widgets::button_widgets::{IconButton, PopoverButton};
-use crate::messages::layout::utility_types::widgets::input_widgets::LayerReferenceInput;
 use crate::messages::layout::utility_types::widgets::label_widgets::{Separator, SeparatorDirection, SeparatorType};
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis};
 use crate::messages::portfolio::document::utility_types::transformation::Selected;

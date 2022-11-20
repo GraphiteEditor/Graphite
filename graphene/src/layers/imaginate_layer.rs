@@ -18,6 +18,8 @@ pub struct ImaginateLayer {
 	pub sampling_method: ImaginateSamplingMethod,
 	pub use_img2img: bool,
 	pub denoising_strength: f64,
+	pub paint: ImaginatePaintType,
+	pub layer_ref: Option<Vec<LayerId>>,
 	pub cfg_scale: f64,
 	pub prompt: String,
 	pub negative_prompt: String,
@@ -82,6 +84,13 @@ pub enum ImaginateSamplingMethod {
 	DPMPlusPlus2mKarras,
 	DDIM,
 	PLMS,
+}
+#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, Deserialize, Serialize)]
+pub enum ImaginatePaintType {
+	#[default]
+	Normal,
+	InPaint,
+	OutPaint,
 }
 
 impl ImaginateSamplingMethod {
@@ -182,6 +191,8 @@ impl Default for ImaginateLayer {
 			sampling_method: Default::default(),
 			use_img2img: false,
 			denoising_strength: 0.66,
+			paint: ImaginatePaintType::Normal,
+			layer_ref: None,
 			cfg_scale: 10.,
 			prompt: "".into(),
 			negative_prompt: "".into(),

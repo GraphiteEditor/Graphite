@@ -5,15 +5,15 @@ use crate::messages::layout::utility_types::misc::LayoutTarget;
 use crate::messages::layout::utility_types::widgets::assist_widgets::PivotAssist;
 use crate::messages::layout::utility_types::widgets::button_widgets::{IconButton, PopoverButton, TextButton};
 use crate::messages::layout::utility_types::widgets::input_widgets::{
-	CheckboxInput, ColorInput, DropdownEntryData, DropdownInput, FontInput, NumberInput, NumberInputMode, RadioEntryData, RadioInput, TextAreaInput, TextInput,
+	CheckboxInput, ColorInput, DropdownEntryData, DropdownInput, FontInput, LayerReferenceInput, NumberInput, NumberInputMode, RadioEntryData, RadioInput, TextAreaInput, TextInput,
 };
 use crate::messages::layout::utility_types::widgets::label_widgets::{IconLabel, Separator, SeparatorDirection, SeparatorType, TextLabel};
 use crate::messages::portfolio::utility_types::{ImaginateServerStatus, PersistentData};
 use crate::messages::prelude::*;
 
 use graphene::color::Color;
-use graphene::document::pick_layer_safe_imaginate_resolution;
-use graphene::layers::imaginate_layer::{ImaginateLayer, ImaginateSamplingMethod, ImaginateStatus};
+use graphene::document::{pick_layer_safe_imaginate_resolution, Document};
+use graphene::layers::imaginate_layer::{ImaginateLayer, ImaginatePaintType, ImaginateSamplingMethod, ImaginateStatus};
 use graphene::layers::layer_info::{Layer, LayerDataType, LayerDataTypeDiscriminant};
 use graphene::layers::nodegraph_layer::NodeGraphFrameLayer;
 use graphene::layers::style::{Fill, Gradient, GradientType, LineCap, LineJoin, Stroke};
@@ -224,6 +224,7 @@ pub fn register_artboard_layer_properties(layer: &Layer, responses: &mut VecDequ
 }
 
 pub fn register_artwork_layer_properties(
+	document: &Document,
 	layer_path: Vec<graphene::LayerId>,
 	layer: &Layer,
 	responses: &mut VecDeque<Message>,
@@ -320,7 +321,10 @@ pub fn register_artwork_layer_properties(
 			vec![node_section_transform(layer, persistent_data)]
 		}
 		LayerDataType::Imaginate(imaginate) => {
-			vec![node_section_transform(layer, persistent_data), node_section_imaginate(imaginate, layer, persistent_data, responses)]
+			vec![
+				node_section_transform(layer, persistent_data),
+				node_section_imaginate(imaginate, layer, document, persistent_data, responses),
+			]
 		}
 		LayerDataType::NodeGraphFrame(node_graph_frame) => {
 			let is_graph_open = node_graph_message_handler.layer_path.as_ref().filter(|node_graph| *node_graph == &layer_path).is_some();
@@ -528,7 +532,7 @@ fn node_section_transform(layer: &Layer, persistent_data: &PersistentData) -> La
 	}
 }
 
-fn node_section_imaginate(imaginate_layer: &ImaginateLayer, layer: &Layer, persistent_data: &PersistentData, responses: &mut VecDeque<Message>) -> LayoutGroup {
+fn node_section_imaginate(imaginate_layer: &ImaginateLayer, layer: &Layer, document: &Document, persistent_data: &PersistentData, responses: &mut VecDeque<Message>) -> LayoutGroup {
 	LayoutGroup::Section {
 		name: "Imaginate".into(),
 		layout: vec![
@@ -910,6 +914,84 @@ fn node_section_imaginate(imaginate_layer: &ImaginateLayer, layer: &Layer, persi
 								}
 								.into()
 							}),
+							..Default::default()
+						})),
+					]
+				},
+			},
+			LayoutGroup::Row {
+				widgets: {
+					let tooltip = "
+					Outpainting extends the original image and inpaints the created empty space. Inpainting only modifies a specific part of the image but uses the surroundings as context.
+					"
+					.trim()
+					.to_string();
+
+					vec![
+						WidgetHolder::new(Widget::TextLabel(TextLabel {
+							value: "Out/In painting".into(),
+							tooltip: tooltip.clone(),
+							..Default::default()
+						})),
+						WidgetHolder::new(Widget::Separator(Separator {
+							separator_type: SeparatorType::Unrelated,
+							direction: SeparatorDirection::Horizontal,
+						})),
+						WidgetHolder::new(Widget::RadioInput(RadioInput {
+							entries: [
+								(ImaginatePaintType::Normal, "Normal"),
+								(ImaginatePaintType::InPaint, "In Paint"),
+								(ImaginatePaintType::OutPaint, "Out paint"),
+							]
+							.into_iter()
+							.map(|(paint, name)| RadioEntryData {
+								label: name.to_string(),
+								on_update: WidgetCallback::new(move |_| PropertiesPanelMessage::SetImaginatePaint { paint }.into()),
+								tooltip: tooltip.clone(),
+								..Default::default()
+							})
+							.collect(),
+							selected_index: imaginate_layer.paint as u32,
+							disabled: !imaginate_layer.use_img2img,
+						})),
+					]
+				},
+			},
+			LayoutGroup::Row {
+				widgets: {
+					let tooltip = "Layer used by in/out paint for mask".trim().to_string();
+
+					vec![
+						WidgetHolder::new(Widget::TextLabel(TextLabel {
+							value: format!(
+								"{} Paint Mask",
+								match imaginate_layer.paint {
+									ImaginatePaintType::InPaint => "In",
+									ImaginatePaintType::OutPaint => "Out",
+									_ => "In / Out",
+								}
+							),
+							tooltip: tooltip.clone(),
+							..Default::default()
+						})),
+						WidgetHolder::new(Widget::Separator(Separator {
+							separator_type: SeparatorType::Unrelated,
+							direction: SeparatorDirection::Horizontal,
+						})),
+						WidgetHolder::new(Widget::LayerReferenceInput(LayerReferenceInput {
+							value: imaginate_layer.layer_ref.clone(),
+							disabled: !imaginate_layer.use_img2img || imaginate_layer.paint == ImaginatePaintType::Normal,
+							tooltip,
+							display: imaginate_layer.layer_ref.as_ref().and_then(|path| document.layer(path).ok()).map(|layer| {
+								layer.name.clone().unwrap_or_else(|| LayerDataTypeDiscriminant::from(&layer.data).to_string())
+								// 						Imaginate: { name: "Imaginate", icon: "NodeImaginate" },
+								// NodeGraphFrame: { name: "Node Graph Frame", icon: "NodeNodes" },
+								// Folder: { name: "Folder", icon: "NodeFolder" },
+								// Image: { name: "Image", icon: "NodeImage" },
+								// Shape: { name: "Shape", icon: "NodeShape" },
+								// Text: { name: "Text", icon: "NodeText" },
+							}),
+							on_update: WidgetCallback::new(move |val: &LayerReferenceInput| PropertiesPanelMessage::SetImaginateLayerPath { layer_path: val.value.clone() }.into()),
 							..Default::default()
 						})),
 					]

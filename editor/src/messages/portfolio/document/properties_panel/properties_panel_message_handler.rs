@@ -140,10 +140,11 @@ impl<'a> MessageHandler<PropertiesPanelMessage, (&PersistentData, PropertiesPane
 			}
 			ResendActiveProperties => {
 				if let Some((path, target_document)) = self.active_selection.clone() {
-					let layer = get_document(target_document).layer(&path).unwrap();
+					let document = get_document(target_document);
+					let layer = document.layer(&path).unwrap();
 					match target_document {
 						TargetDocument::Artboard => register_artboard_layer_properties(layer, responses, persistent_data),
-						TargetDocument::Artwork => register_artwork_layer_properties(path, layer, responses, persistent_data, node_graph_message_handler),
+						TargetDocument::Artwork => register_artwork_layer_properties(document, path, layer, responses, persistent_data, node_graph_message_handler),
 					}
 				}
 			}
@@ -165,6 +166,14 @@ impl<'a> MessageHandler<PropertiesPanelMessage, (&PersistentData, PropertiesPane
 			SetImaginateDenoisingStrength { denoising_strength } => {
 				let (path, _) = self.active_selection.clone().expect("Received update for properties panel with no active layer");
 				responses.push_back(Operation::ImaginateSetDenoisingStrength { path, denoising_strength }.into());
+			}
+			SetImaginateLayerPath { layer_path } => {
+				let (path, _) = self.active_selection.clone().expect("Received update for properties panel with no active layer");
+				responses.push_back(Operation::ImaginateSetLayerPath { path, layer_path }.into());
+			}
+			SetImaginatePaint { paint } => {
+				let (path, _) = self.active_selection.clone().expect("Received update for properties panel with no active layer");
+				responses.push_back(Operation::ImaginateSetPaint { path, paint }.into());
 			}
 			SetImaginateSamples { samples } => {
 				let (path, _) = self.active_selection.clone().expect("Received update for properties panel with no active layer");

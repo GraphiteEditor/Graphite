@@ -3,7 +3,7 @@ use crate::messages::layout::utility_types::widgets::assist_widgets::PivotPositi
 use crate::messages::portfolio::document::utility_types::misc::TargetDocument;
 use crate::messages::prelude::*;
 
-use graphene::layers::imaginate_layer::ImaginateSamplingMethod;
+use graphene::layers::imaginate_layer::{ImaginatePaintType, ImaginateSamplingMethod};
 use graphene::layers::style::{Fill, Stroke};
 use graphene::LayerId;
 
@@ -29,7 +29,9 @@ pub enum PropertiesPanelMessage {
 	SetActiveLayers { paths: Vec<Vec<LayerId>>, document: TargetDocument },
 	SetImaginateCfgScale { cfg_scale: f64 },
 	SetImaginateDenoisingStrength { denoising_strength: f64 },
+	SetImaginateLayerPath { layer_path: Option<Vec<LayerId>> },
 	SetImaginateNegativePrompt { negative_prompt: String },
+	SetImaginatePaint { paint: ImaginatePaintType },
 	SetImaginatePrompt { prompt: String },
 	SetImaginateRestoreFaces { restore_faces: bool },
 	SetImaginateSamples { samples: u32 },

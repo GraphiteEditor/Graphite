@@ -157,6 +157,8 @@ pub struct LayerReferenceInput {
 
 	pub disabled: bool,
 
+	pub display: Option<String>,
+
 	pub tooltip: String,
 
 	#[serde(skip)]
