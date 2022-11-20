@@ -1,5 +1,5 @@
 <template>
-	<LayoutCol class="layer-tree" @dragenter="dragInPanel = true" @dragleave="dragInPanel = false">
+	<LayoutCol class="layer-tree" @dragleave="dragInPanel = false">
 		<LayoutRow class="options-bar" :scrollableX="true">
 			<WidgetLayout :layout="layerTreeOptionsLayout" />
 		</LayoutRow>
@@ -263,6 +263,7 @@
 			margin-top: -2px;
 			height: 5px;
 			z-index: 1;
+			pointer-events: none;
 		}
 	}
 }
@@ -466,6 +467,7 @@ export default defineComponent({
 		updateInsertLine(event: DragEvent) {
 			// Stop the drag from being shown as cancelled
 			event.preventDefault();
+			this.dragInPanel = true;
 
 			const tree: HTMLDivElement | undefined = (this.$refs.list as typeof LayoutCol | undefined)?.$el;
 			// eslint-disable-next-line @typescript-eslint/no-empty-function
