@@ -90,19 +90,18 @@ pub fn add_properties(document_node: &DocumentNode, node_id: NodeId) -> Vec<Layo
 			})),
 			WidgetHolder::new(Widget::NumberInput(NumberInput {
 				value: Some({
-					let NodeInput::Value {tagged_value: TaggedValue::U32(x), ..} = document_node.inputs[index] else {
-								panic!("Add input should be u32")
+					let NodeInput::Value {tagged_value: TaggedValue::F32(x), ..} = document_node.inputs[index] else {
+								panic!("Add input should be f32")
 							};
+
 					x as f64
 				}),
 				mode: NumberInputMode::Increment,
-				is_integer: true,
-				range_min: Some(0.),
 				on_update: WidgetCallback::new(move |number_input: &NumberInput| {
 					NodeGraphMessage::SetInputValue {
 						node: node_id,
 						input_index: index,
-						value: TaggedValue::U32(number_input.value.unwrap() as u32),
+						value: TaggedValue::F32(number_input.value.unwrap() as f32),
 					}
 					.into()
 				}),
@@ -110,7 +109,7 @@ pub fn add_properties(document_node: &DocumentNode, node_id: NodeId) -> Vec<Layo
 			})),
 		],
 	};
-	vec![operand("left", 0), operand("right", 1)]
+	vec![operand("Left", 0), operand("Right", 1)]
 }
 
 fn unknown_node_properties(document_node: &DocumentNode) -> Vec<LayoutGroup> {
