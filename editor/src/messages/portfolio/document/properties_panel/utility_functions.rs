@@ -982,15 +982,11 @@ fn node_section_imaginate(imaginate_layer: &ImaginateLayer, layer: &Layer, docum
 							value: imaginate_layer.layer_ref.clone(),
 							disabled: !imaginate_layer.use_img2img || imaginate_layer.paint == ImaginatePaintType::Normal,
 							tooltip,
-							display: imaginate_layer.layer_ref.as_ref().and_then(|path| document.layer(path).ok()).map(|layer| {
-								layer.name.clone().unwrap_or_else(|| LayerDataTypeDiscriminant::from(&layer.data).to_string())
-								// 						Imaginate: { name: "Imaginate", icon: "NodeImaginate" },
-								// NodeGraphFrame: { name: "Node Graph Frame", icon: "NodeNodes" },
-								// Folder: { name: "Folder", icon: "NodeFolder" },
-								// Image: { name: "Image", icon: "NodeImage" },
-								// Shape: { name: "Shape", icon: "NodeShape" },
-								// Text: { name: "Text", icon: "NodeText" },
-							}),
+							display: imaginate_layer
+								.layer_ref
+								.as_ref()
+								.and_then(|path| document.layer(path).ok())
+								.map(|layer| layer.name.clone().unwrap_or_else(|| LayerDataTypeDiscriminant::from(&layer.data).to_string())),
 							on_update: WidgetCallback::new(move |val: &LayerReferenceInput| PropertiesPanelMessage::SetImaginateLayerPath { layer_path: val.value.clone() }.into()),
 							..Default::default()
 						})),

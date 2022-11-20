@@ -25,7 +25,7 @@ use graphene::color::Color;
 use graphene::document::{pick_layer_safe_imaginate_resolution, Document as GrapheneDocument};
 use graphene::layers::blend_mode::BlendMode;
 use graphene::layers::folder_layer::FolderLayer;
-use graphene::layers::imaginate_layer::{ImaginateBaseImage, ImaginateGenerationParameters, ImaginateStatus};
+use graphene::layers::imaginate_layer::{ImaginateBaseImage, ImaginateGenerationParameters, ImaginatePaintType, ImaginateStatus};
 use graphene::layers::layer_info::{LayerDataType, LayerDataTypeDiscriminant};
 use graphene::layers::style::{Fill, RenderData, ViewMode};
 use graphene::layers::text_layer::{Font, FontCache};
@@ -963,23 +963,38 @@ impl DocumentMessageHandler {
 			restore_faces: imaginate_layer.restore_faces,
 			tiling: imaginate_layer.tiling,
 		};
-		let base_image = if imaginate_layer.use_img2img {
+		let (base_image, mask_image) = if imaginate_layer.use_img2img {
+			let mask = imaginate_layer.layer_ref.clone().filter(|_| imaginate_layer.paint != ImaginatePaintType::Normal);
+
 			// Calculate the size of the region to be exported
 			let size = DVec2::new(transform.transform_vector2(DVec2::new(1., 0.)).length(), transform.transform_vector2(DVec2::new(0., 1.)).length());
 
 			let old_transforms = self.remove_document_transform();
 			let svg = self.render_document(size, transform.inverse(), persistent_data, DocumentRenderMode::OnlyBelowLayerInFolder(&layer_path));
-			self.restore_document_transform(old_transforms);
 
-			Some(ImaginateBaseImage { svg, size })
+			let mask_image = if let Some(mask_layer_path) = mask {
+				let svg = self.render_document(
+					size,
+					transform.inverse(),
+					persistent_data,
+					DocumentRenderMode::LayerCutout(&mask_layer_path, Color::BLACK, Color::WHITE),
+				);
+
+				Some(ImaginateBaseImage { svg, size })
+			} else {
+				None
+			};
+			self.restore_document_transform(old_transforms);
+			(Some(ImaginateBaseImage { svg, size }), mask_image)
 		} else {
-			None
+			(None, None)
 		};
 
 		Some(
 			FrontendMessage::TriggerImaginateGenerate {
 				parameters,
 				base_image,
+				mask_image,
 				hostname: preferences.imaginate_server_hostname.clone(),
 				refresh_frequency: preferences.imaginate_refresh_frequency,
 				document_id,
@@ -1042,13 +1057,17 @@ impl DocumentMessageHandler {
 
 		let render_data = RenderData::new(ViewMode::Normal, &persistent_data.font_cache, None);
 
-		let artwork = match render_mode {
-			DocumentRenderMode::Root => self.graphene_document.render_root(render_data),
-			DocumentRenderMode::OnlyBelowLayerInFolder(below_layer_path) => self.graphene_document.render_layers_below(below_layer_path, render_data).unwrap(),
+		let (artwork, outside) = match render_mode {
+			DocumentRenderMode::Root => (self.graphene_document.render_root(render_data), None),
+			DocumentRenderMode::OnlyBelowLayerInFolder(below_layer_path) => (self.graphene_document.render_layers_below(below_layer_path, render_data).unwrap(), None),
+			DocumentRenderMode::LayerCutout(layer_path, color, background) => (self.graphene_document.render_layer(layer_path, color, render_data).unwrap(), Some(background)),
 		};
 		let artboards = self.artboard_message_handler.artboards_graphene_document.render_root(render_data);
-		let outside_artboards_color = if self.artboard_message_handler.artboard_ids.is_empty() { "#ffffff" } else { "#222222" };
-		let outside_artboards = format!(r#"<rect x="0" y="0" width="100%" height="100%" fill="{}" />"#, outside_artboards_color);
+		let outside_artboards_color = outside.map_or_else(
+			|| if self.artboard_message_handler.artboard_ids.is_empty() { "ffffff" } else { "222222" }.to_string(),
+			|col| col.rgba_hex(),
+		);
+		let outside_artboards = format!(r##"<rect x="0" y="0" width="100%" height="100%" fill="#{}" />"##, outside_artboards_color);
 		let matrix = transform
 			.to_cols_array()
 			.iter()

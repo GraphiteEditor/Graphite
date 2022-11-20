@@ -60,6 +60,8 @@ pub enum FrontendMessage {
 		parameters: ImaginateGenerationParameters,
 		#[serde(rename = "baseImage")]
 		base_image: Option<ImaginateBaseImage>,
+		#[serde(rename = "maskImage")]
+		mask_image: Option<ImaginateBaseImage>,
 		hostname: String,
 		#[serde(rename = "refreshFrequency")]
 		refresh_frequency: f64,

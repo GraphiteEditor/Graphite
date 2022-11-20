@@ -23,6 +23,7 @@ let statusAbortController = new AbortController();
 export async function imaginateGenerate(
 	parameters: ImaginateGenerationParameters,
 	image: Blob | undefined,
+	mask: Blob | undefined,
 	hostname: string,
 	refreshFrequency: number,
 	documentId: bigint,
@@ -41,7 +42,7 @@ export async function imaginateGenerate(
 	const discloseUploadingProgress = (progress: number): void => {
 		editor.instance.setImaginateGeneratingStatus(documentId, layerPath, progress * 100, "Uploading");
 	};
-	const { uploaded, result, xhr } = await generate(discloseUploadingProgress, hostname, image, parameters);
+	const { uploaded, result, xhr } = await generate(discloseUploadingProgress, hostname, image, mask, parameters);
 	generatingAbortRequest = xhr;
 
 	try {
@@ -211,6 +212,7 @@ async function generate(
 	discloseUploadingProgress: (progress: number) => void,
 	hostname: string,
 	image: Blob | undefined,
+	mask: Blob | undefined,
 	parameters: ImaginateGenerationParameters
 ): Promise<{
 	uploaded: Promise<void>;
@@ -255,6 +257,7 @@ async function generate(
 		};
 	} else {
 		const sourceImageBase64 = await blobToBase64(image);
+		const maskImageBase64 = mask ? await blobToBase64(mask) : "";
 
 		endpoint = `${hostname}sdapi/v1/img2img`;
 
@@ -262,7 +265,7 @@ async function generate(
 			init_images: [sourceImageBase64],
 			// resize_mode: 0,
 			denoising_strength: parameters.denoisingStrength,
-			// mask: "",
+			mask: maskImageBase64,
 			// mask_blur: 4,
 			// inpainting_fill: 0,
 			// inpaint_full_res: true,
