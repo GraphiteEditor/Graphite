@@ -99,6 +99,9 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 	async function onKeyDown(e: KeyboardEvent): Promise<void> {
 		const key = await getLocalizedScanCode(e);
 
+		const NO_KEY_REPEAT_MODIFIER_KEYS = ["ControlLeft", "ControlRight", "ShiftLeft", "ShiftRight", "MetaLeft", "MetaRight", "AltLeft", "AltRight", "AltGraph", "CapsLock", "Fn", "FnLock"];
+		if (e.repeat && NO_KEY_REPEAT_MODIFIER_KEYS.includes(key)) return;
+
 		if (await shouldRedirectKeyboardEventToBackend(e)) {
 			e.preventDefault();
 			const modifiers = makeKeyboardModifiersBitfield(e);
