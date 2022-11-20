@@ -298,7 +298,7 @@ const LAYER_INDENT = 16;
 const INSERT_MARK_MARGIN_LEFT = 4 + 32 + LAYER_INDENT;
 const INSERT_MARK_OFFSET = 2;
 
-type DraggingData = { select: () => void; insertFolder: BigUint64Array; insertIndex: number; highlightFolder: boolean; markerHeight: number };
+type DraggingData = { select?: () => void; insertFolder: BigUint64Array; insertIndex: number; highlightFolder: boolean; markerHeight: number };
 
 export default defineComponent({
 	inject: ["editor"],
@@ -380,7 +380,7 @@ export default defineComponent({
 		async deselectAllLayers() {
 			this.editor.instance.deselectAllLayers();
 		},
-		calculateDragIndex(select: () => void, tree: HTMLDivElement, clientY: number): DraggingData {
+		calculateDragIndex(tree: HTMLDivElement, clientY: number, select?: () => void): DraggingData {
 			const treeChildren = tree.children;
 			const treeOffset = tree.getBoundingClientRect().top;
 
@@ -462,7 +462,7 @@ export default defineComponent({
 			}
 
 			const tree: HTMLDivElement | undefined = (this.$refs.list as typeof LayoutCol | undefined)?.$el;
-			if (tree) this.draggingData = this.calculateDragIndex(select, tree, event.clientY);
+			if (tree) this.draggingData = this.calculateDragIndex(tree, event.clientY, select);
 		},
 		updateInsertLine(event: DragEvent) {
 			// Stop the drag from being shown as cancelled
@@ -470,14 +470,13 @@ export default defineComponent({
 			this.dragInPanel = true;
 
 			const tree: HTMLDivElement | undefined = (this.$refs.list as typeof LayoutCol | undefined)?.$el;
-			// eslint-disable-next-line @typescript-eslint/no-empty-function
-			if (tree) this.draggingData = this.calculateDragIndex(this.draggingData?.select || ((): void => {}), tree, event.clientY);
+			if (tree) this.draggingData = this.calculateDragIndex(tree, event.clientY, this.draggingData?.select);
 		},
 		async drop() {
 			if (this.draggingData && this.dragInPanel) {
 				const { select, insertFolder, insertIndex } = this.draggingData;
 
-				select();
+				select?.();
 				this.editor.instance.moveLayerInTree(insertFolder, insertIndex);
 			}
 			this.draggingData = undefined;
