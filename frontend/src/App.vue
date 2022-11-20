@@ -41,6 +41,8 @@
 
 	--color-data-general: #c5c5c5;
 	--color-data-general-rgb: 197, 197, 197;
+	--color-data-general-dim: #767676;
+	--color-data-general-dim-rgb: 118, 118, 118;
 	--color-data-vector: #65bbe5;
 	--color-data-vector-rgb: 101, 187, 229;
 	--color-data-vector-dim: #4b778c;
@@ -51,10 +53,14 @@
 	--color-data-raster-dim-rgb: 139, 119, 82;
 	--color-data-mask: #8d85c7;
 	--color-data-mask-rgb: 141, 133, 199;
-	--color-data-unused1: #d6536e;
-	--color-data-unused1-rgb: 214, 83, 110;
-	--color-data-unused2: #70a898;
-	--color-data-unused2-rgb: 112, 168, 152;
+	--color-data-number: #d6536e;
+	--color-data-number-rgb: 214, 83, 110;
+	--color-data-number-dim: #803242;
+	--color-data-number-dim-rgb: 128, 50, 66;
+	--color-data-color: #70a898;
+	--color-data-color-rgb: 112, 168, 152;
+	--color-data-color-dim: #43645b;
+	--color-data-color-dim-rgb: 67, 100, 91;
 
 	--color-none: white;
 	--color-none-repeat: no-repeat;

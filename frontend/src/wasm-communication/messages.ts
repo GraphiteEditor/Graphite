@@ -69,16 +69,22 @@ export class FrontendDocumentDetails extends DocumentDetails {
 	readonly id!: bigint;
 }
 
-export type DataType = "Raster" | "Color" | "Image" | "F32";
+export type FrontendGraphDataType = "general" | "raster" | "color" | "vector" | "number";
+
+export class NodeGraphInput {
+	readonly dataType!: FrontendGraphDataType;
+
+	readonly name!: string;
+}
 
 export class FrontendNode {
 	readonly id!: bigint;
 
 	readonly displayName!: string;
 
-	readonly exposedInputs!: DataType[];
+	readonly exposedInputs!: NodeGraphInput[];
 
-	readonly outputs!: DataType[];
+	readonly outputs!: FrontendGraphDataType[];
 
 	@TupleToVec2
 	readonly position!: XY | undefined;

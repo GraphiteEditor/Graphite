@@ -8,9 +8,25 @@ use graphene::layers::nodegraph_layer::NodeGraphFrameLayer;
 mod document_node_types;
 mod node_properties;
 
-#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
-pub enum DataType {
+#[derive(Clone, Copy, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
+pub enum FrontendGraphDataType {
+	#[serde(rename = "general")]
+	General,
+	#[serde(rename = "raster")]
 	Raster,
+	#[serde(rename = "color")]
+	Color,
+	#[serde(rename = "vector")]
+	Vector,
+	#[serde(rename = "number")]
+	Number,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct NodeGraphInput {
+	#[serde(rename = "dataType")]
+	data_type: FrontendGraphDataType,
+	name: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -19,8 +35,8 @@ pub struct FrontendNode {
 	#[serde(rename = "displayName")]
 	pub display_name: String,
 	#[serde(rename = "exposedInputs")]
-	pub exposed_inputs: Vec<DataType>,
-	pub outputs: Vec<DataType>,
+	pub exposed_inputs: Vec<NodeGraphInput>,
+	pub outputs: Vec<FrontendGraphDataType>,
 	pub position: (i32, i32),
 }
 
@@ -98,11 +114,24 @@ impl NodeGraphMessageHandler {
 
 		let mut nodes = Vec::new();
 		for (id, node) in &network.nodes {
+			let Some(node_type) = document_node_types::resolve_document_node_type(&node.name) else{
+				warn!("Node '{}' does not exist in library", node.name);
+				continue
+			};
 			nodes.push(FrontendNode {
 				id: *id,
 				display_name: node.name.clone(),
-				exposed_inputs: node.inputs.iter().filter(|input| input.is_exposed()).map(|_| DataType::Raster).collect(),
-				outputs: vec![DataType::Raster],
+				exposed_inputs: node
+					.inputs
+					.iter()
+					.zip(node_type.inputs)
+					.filter(|(input, _)| input.is_exposed())
+					.map(|(_, input_type)| NodeGraphInput {
+						data_type: input_type.data_type,
+						name: input_type.name.to_string(),
+					})
+					.collect(),
+				outputs: node_type.outputs.to_vec(),
 				position: node.metadata.position,
 			})
 		}
@@ -160,7 +189,7 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 					return;
 				};
 
-				let num_inputs = document_node_type.default_inputs.len();
+				let num_inputs = document_node_type.inputs.len();
 
 				let inner_network = NodeNetwork {
 					inputs: (0..num_inputs).map(|_| 0).collect(),
@@ -182,7 +211,7 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 					node_id,
 					DocumentNode {
 						name: node_type.clone(),
-						inputs: document_node_type.default_inputs.to_vec(),
+						inputs: document_node_type.inputs.iter().map(|input| input.default.clone()).collect(),
 						// TODO: Allow inserting nodes that contain other nodes.
 						implementation: DocumentNodeImplementation::Network(inner_network),
 						metadata: graph_craft::document::DocumentNodeMetadata {

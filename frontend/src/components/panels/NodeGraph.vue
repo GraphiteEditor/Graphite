@@ -44,15 +44,42 @@
 				>
 					<div class="primary">
 						<div class="ports">
-							<div class="input port" data-port="input" data-datatype="raster">
+							<div
+								v-if="node.exposedInputs.length > 0"
+								class="input port"
+								data-port="input"
+								:data-datatype="node.exposedInputs[0].dataType"
+								:style="{ '--data-color': `var(--color-data-${node.exposedInputs[0].dataType})`, '--data-color-dim': `var(--color-data-${node.exposedInputs[0].dataType}-dim)` }"
+							>
 								<div></div>
 							</div>
-							<div class="output port" data-port="output" data-datatype="raster">
+							<div
+								v-if="node.outputs.length > 0"
+								class="output port"
+								data-port="output"
+								:data-datatype="node.outputs[0]"
+								:style="{ '--data-color': `var(--color-data-${node.outputs[0]})`, '--data-color-dim': `var(--color-data-${node.outputs[0]}-dim)` }"
+							>
 								<div></div>
 							</div>
 						</div>
 						<IconLabel :icon="nodeIcon(node.displayName)" />
 						<TextLabel>{{ node.displayName }}</TextLabel>
+					</div>
+					<div v-if="node.exposedInputs.length > 1" class="arguments">
+						<div v-for="(argument, index) in node.exposedInputs.slice(1)" :key="index" class="argument">
+							<div class="ports">
+								<div
+									class="input port"
+									data-port="input"
+									:data-datatype="argument.dataType"
+									:style="{ '--data-color': `var(--color-data-${argument.dataType})`, '--data-color-dim': `var(--color-data-${argument.dataType}-dim)` }"
+								>
+									<div></div>
+								</div>
+							</div>
+							<TextLabel>{{ argument.name }}</TextLabel>
+						</div>
 					</div>
 				</div>
 			</div>
@@ -347,8 +374,10 @@ export default defineComponent({
 	methods: {
 		nodeIcon(nodeName: string): IconName {
 			const iconMap: Record<string, IconName> = {
-				Grayscale: "NodeColorCorrection",
-				"Map Image": "NodeOutput",
+				Output: "NodeOutput",
+				"Hue Shift Image": "NodeColorCorrection",
+				"Brighten Image": "NodeColorCorrection",
+				"Grayscale Image": "NodeColorCorrection",
 			};
 			return iconMap[nodeName] || "NodeNodes";
 		},
