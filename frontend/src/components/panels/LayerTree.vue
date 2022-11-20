@@ -32,6 +32,7 @@
 					<LayoutRow
 						class="layer"
 						:class="{ selected: listing.entry.layerMetadata.selected }"
+						:data-layer="String(listing.entry.path)"
 						:data-index="index"
 						:title="listing.entry.tooltip"
 						:draggable="draggable"
@@ -266,6 +267,7 @@
 <script lang="ts">
 import { defineComponent, nextTick } from "vue";
 
+import { beginDraggingElement } from "@/io-managers/drag";
 import { platformIsMac } from "@/utility-functions/platform";
 import {
 	type LayerType,
@@ -438,6 +440,10 @@ export default defineComponent({
 				if (!layer.layerMetadata.selected) this.selectLayer(event.ctrlKey, event.metaKey, event.shiftKey, listing, event);
 			};
 
+			const target = (event.target || undefined) as HTMLElement | undefined;
+			const draggingELement = (target?.closest("[data-layer]") || undefined) as HTMLElement | undefined;
+			if (draggingELement) beginDraggingElement(draggingELement);
+
 			// Set style of cursor for drag
 			if (event.dataTransfer) {
 				event.dataTransfer.dropEffect = "move";
@@ -456,6 +462,8 @@ export default defineComponent({
 			if (tree) this.draggingData = this.calculateDragIndex(this.draggingData?.select || ((): void => {}), tree, event.clientY);
 		},
 		async drop() {
+			// TODO: Disable dropping when mouse is outside the Layer Tree panel (also temporarily remove insertion line when outside panel)
+			// TODO: Otherwise, right now, dropping in a LayerReferenceInput widget can cause layer rearrangement
 			if (this.draggingData) {
 				const { select, insertFolder, insertIndex } = this.draggingData;
 

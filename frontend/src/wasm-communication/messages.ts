@@ -670,7 +670,7 @@ export class UpdateDocumentLayerDetails extends JsMessage {
 export class LayerPanelEntry {
 	name!: string;
 
-	@Transform(({ value }: { value: string }) => (value.length > 0 ? value : undefined))
+	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltip!: string | undefined;
 
 	visible!: boolean;
@@ -764,7 +764,7 @@ export class CheckboxInput extends WidgetProps {
 
 	icon!: IconName;
 
-	@Transform(({ value }: { value: string }) => (value.length > 0 ? value : undefined))
+	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltip!: string | undefined;
 }
 
@@ -778,7 +778,7 @@ export class ColorInput extends WidgetProps {
 
 	disabled!: boolean;
 
-	@Transform(({ value }: { value: string }) => (value.length > 0 ? value : undefined))
+	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltip!: string | undefined;
 }
 
@@ -818,7 +818,7 @@ export class DropdownInput extends WidgetProps {
 
 	disabled!: boolean;
 
-	@Transform(({ value }: { value: string }) => (value.length > 0 ? value : undefined))
+	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltip!: string | undefined;
 }
 
@@ -831,7 +831,7 @@ export class FontInput extends WidgetProps {
 
 	disabled!: boolean;
 
-	@Transform(({ value }: { value: string }) => (value.length > 0 ? value : undefined))
+	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltip!: string | undefined;
 }
 
@@ -844,7 +844,7 @@ export class IconButton extends WidgetProps {
 
 	active!: boolean;
 
-	@Transform(({ value }: { value: string }) => (value.length > 0 ? value : undefined))
+	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltip!: string | undefined;
 }
 
@@ -853,8 +853,22 @@ export class IconLabel extends WidgetProps {
 
 	disabled!: boolean;
 
-	@Transform(({ value }: { value: string }) => (value.length > 0 ? value : undefined))
+	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltip!: string | undefined;
+}
+
+export class LayerReferenceInput extends WidgetProps {
+	@Transform(({ value }: { value: BigUint64Array | undefined }) => (value ? String(value) : undefined))
+	value!: string | undefined;
+
+	disabled!: boolean;
+
+	@Transform(({ value }: { value: string }) => value || undefined)
+	tooltip!: string | undefined;
+
+	// Styling
+
+	minWidth!: number;
 }
 
 export type NumberInputIncrementBehavior = "Add" | "Multiply" | "Callback" | "None";
@@ -865,7 +879,7 @@ export class NumberInput extends WidgetProps {
 
 	label!: string | undefined;
 
-	@Transform(({ value }: { value: string }) => (value.length > 0 ? value : undefined))
+	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltip!: string | undefined;
 
 	// Disabled
@@ -914,7 +928,7 @@ export class OptionalInput extends WidgetProps {
 
 	icon!: IconName;
 
-	@Transform(({ value }: { value: string }) => (value.length > 0 ? value : undefined))
+	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltip!: string | undefined;
 }
 
@@ -928,7 +942,7 @@ export class PopoverButton extends WidgetProps {
 
 	text!: string;
 
-	@Transform(({ value }: { value: string }) => (value.length > 0 ? value : undefined))
+	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltip!: string | undefined;
 }
 
@@ -975,7 +989,7 @@ export class TextAreaInput extends WidgetProps {
 
 	disabled!: boolean;
 
-	@Transform(({ value }: { value: string }) => (value.length > 0 ? value : undefined))
+	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltip!: string | undefined;
 }
 
@@ -990,7 +1004,7 @@ export class TextButton extends WidgetProps {
 
 	disabled!: boolean;
 
-	@Transform(({ value }: { value: string }) => (value.length > 0 ? value : undefined))
+	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltip!: string | undefined;
 }
 
@@ -1021,7 +1035,7 @@ export class TextInput extends WidgetProps {
 
 	minWidth!: number;
 
-	@Transform(({ value }: { value: string }) => (value.length > 0 ? value : undefined))
+	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltip!: string | undefined;
 }
 
@@ -1042,7 +1056,7 @@ export class TextLabel extends WidgetProps {
 
 	multiline!: boolean;
 
-	@Transform(({ value }: { value: string }) => (value.length > 0 ? value : undefined))
+	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltip!: string | undefined;
 }
 
@@ -1063,6 +1077,7 @@ const widgetSubTypes = [
 	{ value: FontInput, name: "FontInput" },
 	{ value: IconButton, name: "IconButton" },
 	{ value: IconLabel, name: "IconLabel" },
+	{ value: LayerReferenceInput, name: "LayerReferenceInput" },
 	{ value: NumberInput, name: "NumberInput" },
 	{ value: OptionalInput, name: "OptionalInput" },
 	{ value: PopoverButton, name: "PopoverButton" },

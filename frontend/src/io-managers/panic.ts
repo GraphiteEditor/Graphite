@@ -4,6 +4,7 @@ import { type IconName } from "@/utility-functions/icons";
 import { browserVersion, operatingSystem } from "@/utility-functions/platform";
 import { stripIndents } from "@/utility-functions/strip-indents";
 import { type Editor } from "@/wasm-communication/editor";
+import type { TextLabel } from "@/wasm-communication/messages";
 import { type TextButtonWidget, type WidgetLayout, Widget, DisplayDialogPanic } from "@/wasm-communication/messages";
 
 export function createPanicManager(editor: Editor, dialogState: DialogState): void {
@@ -24,11 +25,11 @@ export function createPanicManager(editor: Editor, dialogState: DialogState): vo
 }
 
 function preparePanicDialog(header: string, details: string, panicDetails: string): [IconName, WidgetLayout, TextButtonWidget[]] {
+	const headerLabel: TextLabel = { kind: "TextLabel", value: header, disabled: false, bold: true, italic: false, tableAlign: false, minWidth: 0, multiline: false, tooltip: "" };
+	const detailsLabel: TextLabel = { kind: "TextLabel", value: details, disabled: false, bold: false, italic: false, tableAlign: false, minWidth: 0, multiline: true, tooltip: "" };
+
 	const widgets: WidgetLayout = {
-		layout: [
-			{ rowWidgets: [new Widget({ kind: "TextLabel", value: header, disabled: false, bold: true, italic: false, tableAlign: false, minWidth: 0, multiline: false, tooltip: "" }, 0n)] },
-			{ rowWidgets: [new Widget({ kind: "TextLabel", value: details, disabled: false, bold: false, italic: false, tableAlign: false, minWidth: 0, multiline: true, tooltip: "" }, 1n)] },
-		],
+		layout: [{ rowWidgets: [new Widget(headerLabel, 0n)] }, { rowWidgets: [new Widget(detailsLabel, 1n)] }],
 		layoutTarget: undefined,
 	};
 
