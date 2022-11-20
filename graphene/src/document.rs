@@ -1,5 +1,4 @@
 use crate::boolean_ops::composite_boolean_operation;
-use crate::color::Color;
 use crate::intersection::Quad;
 use crate::layers::folder_layer::FolderLayer;
 use crate::layers::image_layer::ImageLayer;
@@ -7,7 +6,7 @@ use crate::layers::imaginate_layer::{ImaginateImageData, ImaginateLayer, Imagina
 use crate::layers::layer_info::{Layer, LayerData, LayerDataType, LayerDataTypeDiscriminant};
 use crate::layers::nodegraph_layer::NodeGraphFrameLayer;
 use crate::layers::shape_layer::ShapeLayer;
-use crate::layers::style::{Fill, RenderData};
+use crate::layers::style::RenderData;
 use crate::layers::text_layer::{Font, FontCache, TextLayer};
 use crate::layers::vector::subpath::Subpath;
 use crate::{DocumentError, DocumentResponse, Operation};
@@ -84,27 +83,9 @@ impl Document {
 	}
 
 	/// Renders a layer and its children
-	pub fn render_layer(&mut self, layer_path: &[LayerId], color: Color, render_data: RenderData) -> Option<String> {
+	pub fn render_layer(&mut self, layer_path: &[LayerId], render_data: RenderData) -> Option<String> {
 		// Note: it is bad practice to directly clone and modify the Graphene document structure, this is a temporary hack until this whole system is replaced by the node graph
 		let mut temp_clone = self.layer_mut(layer_path).ok()?.clone();
-
-		fn reset_colors(layer: &mut Layer, color: Color) {
-			if let Ok(style) = layer.style_mut() {
-				style.set_fill(Fill::solid(color));
-				if let Some(mut stroke) = style.stroke() {
-					if stroke.color().is_some() {
-						stroke = stroke.with_color(&Some(color)).unwrap();
-					}
-					style.set_stroke(stroke);
-				}
-			}
-			if let LayerDataType::Folder(folder) = &mut layer.data {
-				for child in folder.layers_mut() {
-					reset_colors(child, color);
-				}
-			}
-		}
-		reset_colors(&mut temp_clone, color);
 
 		// Render and append to the defs section
 		let mut svg_defs = String::from("<defs>");

@@ -973,12 +973,7 @@ impl DocumentMessageHandler {
 			let svg = self.render_document(size, transform.inverse(), persistent_data, DocumentRenderMode::OnlyBelowLayerInFolder(&layer_path));
 
 			let mask_image = if let Some(mask_layer_path) = mask {
-				let svg = self.render_document(
-					size,
-					transform.inverse(),
-					persistent_data,
-					DocumentRenderMode::LayerCutout(&mask_layer_path, Color::BLACK, Color::WHITE),
-				);
+				let svg = self.render_document(size, transform.inverse(), persistent_data, DocumentRenderMode::LayerCutout(&mask_layer_path, Color::WHITE));
 
 				Some(ImaginateBaseImage { svg, size })
 			} else {
@@ -1060,7 +1055,7 @@ impl DocumentMessageHandler {
 		let (artwork, outside) = match render_mode {
 			DocumentRenderMode::Root => (self.graphene_document.render_root(render_data), None),
 			DocumentRenderMode::OnlyBelowLayerInFolder(below_layer_path) => (self.graphene_document.render_layers_below(below_layer_path, render_data).unwrap(), None),
-			DocumentRenderMode::LayerCutout(layer_path, color, background) => (self.graphene_document.render_layer(layer_path, color, render_data).unwrap(), Some(background)),
+			DocumentRenderMode::LayerCutout(layer_path, background) => (self.graphene_document.render_layer(layer_path, render_data).unwrap(), Some(background)),
 		};
 		let artboards = self.artboard_message_handler.artboards_graphene_document.render_root(render_data);
 		let outside_artboards_color = outside.map_or_else(

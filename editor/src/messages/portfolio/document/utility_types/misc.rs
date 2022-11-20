@@ -66,5 +66,5 @@ impl DocumentMode {
 pub enum DocumentRenderMode<'a> {
 	Root,
 	OnlyBelowLayerInFolder(&'a [LayerId]),
-	LayerCutout(&'a [LayerId], Color, Color),
+	LayerCutout(&'a [LayerId], Color),
 }

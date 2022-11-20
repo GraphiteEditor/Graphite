@@ -959,7 +959,7 @@ fn node_section_imaginate(imaginate_layer: &ImaginateLayer, layer: &Layer, docum
 			},
 			LayoutGroup::Row {
 				widgets: {
-					let tooltip = "Layer used by in/out paint for mask".trim().to_string();
+					let tooltip = "Layer used by in/out paint for mask.\nAll colors in mask are sent to model".trim().to_string();
 
 					vec![
 						WidgetHolder::new(Widget::TextLabel(TextLabel {
