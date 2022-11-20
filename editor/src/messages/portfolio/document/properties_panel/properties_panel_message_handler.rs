@@ -8,6 +8,7 @@ use crate::messages::portfolio::document::utility_types::misc::TargetDocument;
 use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::*;
 
+use graphene::layers::layer_info::LayerDataTypeDiscriminant;
 use graphene::{LayerId, Operation};
 
 use serde::{Deserialize, Serialize};
@@ -169,6 +170,23 @@ impl<'a> MessageHandler<PropertiesPanelMessage, (&PersistentData, PropertiesPane
 			}
 			SetImaginateLayerPath { layer_path } => {
 				let (path, _) = self.active_selection.clone().expect("Received update for properties panel with no active layer");
+				if let Some(layer_path) = &layer_path {
+					if artwork_document
+						.layer(layer_path)
+						.ok()
+						.filter(|layer| LayerDataTypeDiscriminant::from(&layer.data) == LayerDataTypeDiscriminant::Shape)
+						.is_some()
+					{
+						use graphene::layers::style::{Fill, PathStyle, Stroke};
+						responses.push_back(
+							Operation::SetLayerStyle {
+								path: layer_path.clone(),
+								style: PathStyle::new(Some(Stroke::new(crate::consts::COLOR_ACCENT, 2.)), Fill::None),
+							}
+							.into(),
+						);
+					}
+				}
 				responses.push_back(Operation::ImaginateSetLayerPath { path, layer_path }.into());
 			}
 			SetImaginatePaint { paint } => {
