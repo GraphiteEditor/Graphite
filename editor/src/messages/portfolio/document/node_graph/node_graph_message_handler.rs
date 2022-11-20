@@ -257,6 +257,7 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 						node.metadata.position.1 += displacement_y;
 					}
 				}
+				Self::send_graph(network, responses);
 			}
 			NodeGraphMessage::OpenNodeGraph { layer_path } => {
 				if let Some(_old_layer_path) = self.layer_path.replace(layer_path) {
