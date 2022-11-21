@@ -25,7 +25,7 @@ use graphene::color::Color;
 use graphene::document::{pick_layer_safe_imaginate_resolution, Document as GrapheneDocument};
 use graphene::layers::blend_mode::BlendMode;
 use graphene::layers::folder_layer::FolderLayer;
-use graphene::layers::imaginate_layer::{ImaginateBaseImage, ImaginateGenerationParameters, ImaginatePaintType, ImaginateStatus};
+use graphene::layers::imaginate_layer::{ImaginateBaseImage, ImaginateGenerationParameters, ImaginateStatus};
 use graphene::layers::layer_info::{LayerDataType, LayerDataTypeDiscriminant};
 use graphene::layers::style::{Fill, RenderData, ViewMode};
 use graphene::layers::text_layer::{Font, FontCache};
@@ -963,7 +963,9 @@ impl DocumentMessageHandler {
 			restore_faces: imaginate_layer.restore_faces,
 			tiling: imaginate_layer.tiling,
 		};
-		let inpaint_or_outpaint = imaginate_layer.paint == ImaginatePaintType::Inpaint;
+		let mask_paint_mode = imaginate_layer.mask_paint_mode;
+		let mask_blur_px = imaginate_layer.mask_blur_px;
+		let mask_fill_content = imaginate_layer.mask_fill_content;
 		let (base_image, mask_image) = if imaginate_layer.use_img2img {
 			let mask = imaginate_layer.mask_layer_ref.clone();
 
@@ -991,7 +993,9 @@ impl DocumentMessageHandler {
 				parameters,
 				base_image,
 				mask_image,
-				inpaint_or_outpaint,
+				mask_paint_mode,
+				mask_blur_px,
+				mask_fill_content,
 				hostname: preferences.imaginate_server_hostname.clone(),
 				refresh_frequency: preferences.imaginate_refresh_frequency,
 				document_id,

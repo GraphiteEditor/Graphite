@@ -171,9 +171,17 @@ impl<'a> MessageHandler<PropertiesPanelMessage, (&PersistentData, PropertiesPane
 				let (path, _) = self.active_selection.clone().expect("Received update for properties panel with no active layer");
 				responses.push_back(Operation::ImaginateSetLayerPath { path, layer_path }.into());
 			}
-			SetImaginatePaint { paint } => {
+			SetImaginateMaskBlurPx { mask_blur_px } => {
 				let (path, _) = self.active_selection.clone().expect("Received update for properties panel with no active layer");
-				responses.push_back(Operation::ImaginateSetPaint { path, paint }.into());
+				responses.push_back(Operation::ImaginateSetMaskBlurPx { path, mask_blur_px }.into());
+			}
+			SetImaginateMaskFillContent { mode } => {
+				let (path, _) = self.active_selection.clone().expect("Received update for properties panel with no active layer");
+				responses.push_back(Operation::ImaginateSetMaskFillContent { path, mode }.into());
+			}
+			SetImaginateMaskPaintMode { paint } => {
+				let (path, _) = self.active_selection.clone().expect("Received update for properties panel with no active layer");
+				responses.push_back(Operation::ImaginateSetMaskPaintMode { path, paint }.into());
 			}
 			SetImaginateSamples { samples } => {
 				let (path, _) = self.active_selection.clone().expect("Received update for properties panel with no active layer");

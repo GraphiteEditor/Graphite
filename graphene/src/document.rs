@@ -911,12 +911,32 @@ impl Document {
 				self.mark_as_dirty(&path)?;
 				Some(vec![LayerChanged { path }])
 			}
-			Operation::ImaginateSetPaint { path, paint } => {
-				let layer = self.layer_mut(&path).expect("Setting Imaginate paint for invalid layer");
+			Operation::ImaginateSetMaskBlurPx { path, mask_blur_px } => {
+				let layer = self.layer_mut(&path).expect("Setting Imaginate mask blur for invalid layer");
 				if let LayerDataType::Imaginate(imaginate) = &mut layer.data {
-					imaginate.paint = paint;
+					imaginate.mask_blur_px = mask_blur_px;
 				} else {
-					panic!("Incorrectly trying to set the prompt for a layer that is not an Imaginate layer type");
+					panic!("Incorrectly trying to set the mask blur for a layer that is not an Imaginate layer type");
+				}
+				self.mark_as_dirty(&path)?;
+				Some(vec![LayerChanged { path }])
+			}
+			Operation::ImaginateSetMaskFillContent { path, mode } => {
+				let layer = self.layer_mut(&path).expect("Setting Imaginate mask fill content for invalid layer");
+				if let LayerDataType::Imaginate(imaginate) = &mut layer.data {
+					imaginate.mask_fill_content = mode;
+				} else {
+					panic!("Incorrectly trying to set the mask fill content for a layer that is not an Imaginate layer type");
+				}
+				self.mark_as_dirty(&path)?;
+				Some(vec![LayerChanged { path }])
+			}
+			Operation::ImaginateSetMaskPaintMode { path, paint } => {
+				let layer = self.layer_mut(&path).expect("Setting Imaginate mask paint mode for invalid layer");
+				if let LayerDataType::Imaginate(imaginate) = &mut layer.data {
+					imaginate.mask_paint_mode = paint;
+				} else {
+					panic!("Incorrectly trying to set the mask paint mode for a layer that is not an Imaginate layer type");
 				}
 				self.mark_as_dirty(&path)?;
 				Some(vec![LayerChanged { path }])
