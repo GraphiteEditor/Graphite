@@ -975,6 +975,7 @@ impl DocumentMessageHandler {
 			let old_transforms = self.remove_document_transform();
 			let svg = self.render_document(size, transform.inverse(), persistent_data, DocumentRenderMode::OnlyBelowLayerInFolder(&layer_path));
 
+			let mask_is_some = mask.is_some();
 			let mask_image = mask.and_then(|mask_layer_path| match self.graphene_document.layer(&mask_layer_path) {
 				Ok(_) => {
 					let svg = self.render_document(size, transform.inverse(), persistent_data, DocumentRenderMode::LayerCutout(&mask_layer_path, Color::WHITE));
@@ -984,7 +985,7 @@ impl DocumentMessageHandler {
 				Err(_) => None,
 			});
 
-			if mask_image.is_none() {
+			if mask_is_some && mask_image.is_none() {
 				return Some(
 					DialogMessage::DisplayDialogError {
 						title: "Masking layer is missing".into(),
