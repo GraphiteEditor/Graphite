@@ -533,6 +533,13 @@ fn node_section_transform(layer: &Layer, persistent_data: &PersistentData) -> La
 }
 
 fn node_section_imaginate(imaginate_layer: &ImaginateLayer, layer: &Layer, document: &Document, persistent_data: &PersistentData, responses: &mut VecDeque<Message>) -> LayoutGroup {
+	let layer_reference_input_layer_display = imaginate_layer
+		.mask_layer_ref
+		.as_ref()
+		.and_then(|path| document.layer(path).ok())
+		.map(|layer| layer.name.clone().unwrap_or_else(|| LayerDataTypeDiscriminant::from(&layer.data).to_string()));
+	let layer_reference_input_layer_display_is_some = layer_reference_input_layer_display.is_some();
+
 	let mut layout = vec![
 		LayoutGroup::Row {
 			widgets: {
@@ -1033,11 +1040,7 @@ fn node_section_imaginate(imaginate_layer: &ImaginateLayer, layer: &Layer, docum
 					WidgetHolder::new(Widget::LayerReferenceInput(LayerReferenceInput {
 						value: imaginate_layer.mask_layer_ref.clone(),
 						tooltip,
-						display: imaginate_layer
-							.mask_layer_ref
-							.as_ref()
-							.and_then(|path| document.layer(path).ok())
-							.map(|layer| layer.name.clone().unwrap_or_else(|| LayerDataTypeDiscriminant::from(&layer.data).to_string())),
+						display: layer_reference_input_layer_display,
 						disabled: !imaginate_layer.use_img2img,
 						on_update: WidgetCallback::new(move |val: &LayerReferenceInput| PropertiesPanelMessage::SetImaginateLayerPath { layer_path: val.value.clone() }.into()),
 						..Default::default()
@@ -1047,7 +1050,7 @@ fn node_section_imaginate(imaginate_layer: &ImaginateLayer, layer: &Layer, docum
 		},
 	];
 
-	if imaginate_layer.use_img2img && imaginate_layer.mask_layer_ref.is_some() {
+	if imaginate_layer.use_img2img && imaginate_layer.mask_layer_ref.is_some() && layer_reference_input_layer_display_is_some {
 		layout.extend(vec![
 			LayoutGroup::Row {
 				widgets: {
@@ -1082,7 +1085,7 @@ fn node_section_imaginate(imaginate_layer: &ImaginateLayer, layer: &Layer, docum
 								})
 								.collect(),
 							selected_index: imaginate_layer.mask_paint_mode as u32,
-							disabled: !imaginate_layer.use_img2img || imaginate_layer.mask_layer_ref.is_none(),
+							..Default::default()
 						})),
 					]
 				},

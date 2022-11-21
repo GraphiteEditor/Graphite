@@ -975,13 +975,29 @@ impl DocumentMessageHandler {
 			let old_transforms = self.remove_document_transform();
 			let svg = self.render_document(size, transform.inverse(), persistent_data, DocumentRenderMode::OnlyBelowLayerInFolder(&layer_path));
 
-			let mask_image = if let Some(mask_layer_path) = mask {
-				let svg = self.render_document(size, transform.inverse(), persistent_data, DocumentRenderMode::LayerCutout(&mask_layer_path, Color::WHITE));
+			let mask_image = mask.and_then(|mask_layer_path| match self.graphene_document.layer(&mask_layer_path) {
+				Ok(_) => {
+					let svg = self.render_document(size, transform.inverse(), persistent_data, DocumentRenderMode::LayerCutout(&mask_layer_path, Color::WHITE));
 
-				Some(ImaginateBaseImage { svg, size })
-			} else {
-				None
-			};
+					Some(ImaginateBaseImage { svg, size })
+				}
+				Err(_) => None,
+			});
+
+			if mask_image.is_none() {
+				return Some(
+					DialogMessage::DisplayDialogError {
+						title: "Masking layer is missing".into(),
+						description: "
+							It may have been deleted or moved. Please drag a new layer reference\n\
+							into the 'Masking Layer' parameter input, then generate again."
+							.trim()
+							.into(),
+					}
+					.into(),
+				);
+			}
+
 			self.restore_document_transform(old_transforms);
 			(Some(ImaginateBaseImage { svg, size }), mask_image)
 		} else {

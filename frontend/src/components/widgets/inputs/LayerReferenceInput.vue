@@ -9,7 +9,7 @@
 	>
 		<LayoutRow v-if="value === undefined || droppable" class="drop-zone"></LayoutRow>
 		<TextLabel v-if="value === undefined || droppable" :italic="true">Drag Layer Here</TextLabel>
-		<TextLabel v-if="value !== undefined && !droppable">{{ display || value }}</TextLabel>
+		<TextLabel v-if="value !== undefined && !droppable">{{ display || "Layer Missing" }}</TextLabel>
 		<IconButton v-if="value !== undefined && !droppable" :icon="'CloseX'" :size="16" :disabled="disabled" :action="() => clearLayer()" />
 	</LayoutRow>
 </template>
