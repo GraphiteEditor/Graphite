@@ -7,9 +7,15 @@
 		@dragleave="() => !disabled && dragLeave()"
 		@drop="(e: DragEvent) => !disabled && drop(e)"
 	>
-		<LayoutRow v-if="value === undefined || droppable" class="drop-zone"></LayoutRow>
-		<TextLabel v-if="value === undefined || droppable" :italic="true">Drag Layer Here</TextLabel>
-		<TextLabel v-if="value !== undefined && !droppable">{{ display || "Layer Missing" }}</TextLabel>
+		<template v-if="value === undefined || droppable">
+			<LayoutRow class="drop-zone"></LayoutRow>
+			<TextLabel :italic="true">{{ droppable ? "Drop" : "Drag" }} Layer Here</TextLabel>
+		</template>
+		<template v-if="value !== undefined && !droppable">
+			<IconLabel v-if="layerName !== undefined && layerType" :icon="layerTypeData(layerType).icon" class="layer-icon" />
+			<TextLabel v-if="layerName !== undefined && layerType" :italic="layerName === ''" class="layer-name">{{ layerName || layerTypeData(layerType).name }}</TextLabel>
+			<TextLabel :bold="true" :italic="true" v-else class="missing">Layer Missing</TextLabel>
+		</template>
 		<IconButton v-if="value !== undefined && !droppable" :icon="'CloseX'" :size="16" :disabled="disabled" :action="() => clearLayer()" />
 	</LayoutRow>
 </template>
@@ -23,6 +29,7 @@
 	background: var(--color-1-nearblack);
 
 	.drop-zone {
+		pointer-events: none;
 		border: 1px dashed var(--color-5-dullgray);
 		border-radius: 1px;
 		position: absolute;
@@ -36,11 +43,27 @@
 		border: 1px dashed var(--color-e-nearwhite);
 	}
 
+	.layer-icon {
+		margin: 4px 8px;
+
+		+ .text-label {
+			padding-left: 0;
+		}
+	}
+
 	.text-label {
 		line-height: 18px;
 		padding: 3px calc(8px + 2px);
 		width: 100%;
 		text-align: center;
+
+		&.missing {
+			color: var(--color-data-unused1);
+		}
+
+		&.layer-name {
+			text-align: left;
+		}
 	}
 
 	.icon-button {
@@ -71,15 +94,20 @@ import { defineComponent, type PropType } from "vue";
 
 import { currentDraggingElement } from "@/io-managers/drag";
 
+import type { LayerType, LayerTypeData } from "@/wasm-communication/messages";
+import { layerTypeData } from "@/wasm-communication/messages";
+
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 import IconButton from "@/components/widgets/buttons/IconButton.vue";
+import IconLabel from "@/components/widgets/labels/IconLabel.vue";
 import TextLabel from "@/components/widgets/labels/TextLabel.vue";
 
 export default defineComponent({
 	emits: ["update:value"],
 	props: {
 		value: { type: String as PropType<string | undefined>, required: false },
-		display: { type: String as PropType<string | undefined>, required: false },
+		layerName: { type: String as PropType<string | undefined>, required: false },
+		layerType: { type: String as PropType<LayerType | undefined>, required: false },
 		disabled: { type: Boolean as PropType<boolean>, default: false },
 		tooltip: { type: String as PropType<string | undefined>, required: false },
 		sharpRightCorners: { type: Boolean as PropType<boolean>, default: false },
@@ -118,9 +146,13 @@ export default defineComponent({
 		clearLayer(): void {
 			this.$emit("update:value", undefined);
 		},
+		layerTypeData(layerType: LayerType): LayerTypeData {
+			return layerTypeData(layerType) || { name: "Error", icon: "Info" };
+		},
 	},
 	components: {
 		IconButton,
+		IconLabel,
 		LayoutRow,
 		TextLabel,
 	},

@@ -870,6 +870,10 @@ export class LayerReferenceInput extends WidgetProps {
 	@Transform(({ value }: { value: BigUint64Array | undefined }) => (value ? String(value) : undefined))
 	value!: string | undefined;
 
+	layerName!: string | undefined;
+
+	layerType!: LayerType | undefined;
+
 	disabled!: boolean;
 
 	@Transform(({ value }: { value: string }) => value || undefined)

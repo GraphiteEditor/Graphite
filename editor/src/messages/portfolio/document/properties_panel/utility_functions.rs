@@ -533,12 +533,16 @@ fn node_section_transform(layer: &Layer, persistent_data: &PersistentData) -> La
 }
 
 fn node_section_imaginate(imaginate_layer: &ImaginateLayer, layer: &Layer, document: &Document, persistent_data: &PersistentData, responses: &mut VecDeque<Message>) -> LayoutGroup {
-	let layer_reference_input_layer_display = imaginate_layer
+	let layer_reference_input_layer = imaginate_layer
 		.mask_layer_ref
 		.as_ref()
 		.and_then(|path| document.layer(path).ok())
-		.map(|layer| layer.name.clone().unwrap_or_else(|| LayerDataTypeDiscriminant::from(&layer.data).to_string()));
-	let layer_reference_input_layer_display_is_some = layer_reference_input_layer_display.is_some();
+		.map(|layer| (layer.name.clone().unwrap_or_default(), LayerDataTypeDiscriminant::from(&layer.data)));
+
+	let layer_reference_input_layer_is_some = layer_reference_input_layer.is_some();
+
+	let layer_reference_input_layer_name = layer_reference_input_layer.as_ref().map(|(layer_name, _)| layer_name);
+	let layer_reference_input_layer_type = layer_reference_input_layer.as_ref().map(|(_, layer_type)| layer_type);
 
 	let mut layout = vec![
 		LayoutGroup::Row {
@@ -1040,7 +1044,8 @@ fn node_section_imaginate(imaginate_layer: &ImaginateLayer, layer: &Layer, docum
 					WidgetHolder::new(Widget::LayerReferenceInput(LayerReferenceInput {
 						value: imaginate_layer.mask_layer_ref.clone(),
 						tooltip,
-						display: layer_reference_input_layer_display,
+						layer_name: layer_reference_input_layer_name.cloned(),
+						layer_type: layer_reference_input_layer_type.cloned(),
 						disabled: !imaginate_layer.use_img2img,
 						on_update: WidgetCallback::new(move |val: &LayerReferenceInput| PropertiesPanelMessage::SetImaginateLayerPath { layer_path: val.value.clone() }.into()),
 						..Default::default()
@@ -1050,7 +1055,7 @@ fn node_section_imaginate(imaginate_layer: &ImaginateLayer, layer: &Layer, docum
 		},
 	];
 
-	if imaginate_layer.use_img2img && imaginate_layer.mask_layer_ref.is_some() && layer_reference_input_layer_display_is_some {
+	if imaginate_layer.use_img2img && imaginate_layer.mask_layer_ref.is_some() && layer_reference_input_layer_is_some {
 		layout.extend(vec![
 			LayoutGroup::Row {
 				widgets: {

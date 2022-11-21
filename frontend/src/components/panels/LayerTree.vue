@@ -516,7 +516,7 @@ export default defineComponent({
 			recurse(updateDocumentLayerTreeStructure, this.layers, this.layerCache);
 		},
 		layerTypeData(layerType: LayerType): LayerTypeData {
-			return layerTypeData(layerType) || { name: "Error", icon: "NodeText" };
+			return layerTypeData(layerType) || { name: "Error", icon: "Info" };
 		},
 	},
 	mounted() {
