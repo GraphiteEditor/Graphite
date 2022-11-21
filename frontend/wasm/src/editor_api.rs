@@ -179,7 +179,7 @@ impl JsEditorHandle {
 				self.dispatch(message);
 				Ok(())
 			}
-			_ => Err(Error::new("Could not update UI").into()),
+			(target, val) => Err(Error::new(&format!("Could not update UI\nDetails:\nTarget: {:?}\nValue: {:?}", target, val)).into()),
 		}
 	}
 

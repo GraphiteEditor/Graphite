@@ -15,7 +15,6 @@ export function createNodeGraphState(editor: Editor) {
 	editor.subscriptions.subscribeJsMessage(UpdateNodeGraph, (updateNodeGraph) => {
 		state.nodes = updateNodeGraph.nodes;
 		state.links = updateNodeGraph.links;
-		console.info("Recieved updated nodes", state.nodes);
 	});
 	editor.subscriptions.subscribeJsMessage(UpdateNodeTypes, (updateNodeTypes) => {
 		state.nodeTypes = updateNodeTypes.nodeTypes;

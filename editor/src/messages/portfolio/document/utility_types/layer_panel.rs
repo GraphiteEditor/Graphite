@@ -61,12 +61,12 @@ impl LayerPanelEntry {
 	pub fn new(layer_metadata: &LayerMetadata, transform: DAffine2, layer: &Layer, path: Vec<LayerId>, font_cache: &FontCache) -> Self {
 		let name = layer.name.clone().unwrap_or_else(|| String::from(""));
 
-		let tooltip = if cfg!(debug_assertions) {
-			let joined = &path.iter().map(|id| id.to_string()).collect::<Vec<_>>().join(" / ");
-			name.clone() + "\nLayer Path: " + joined.as_str()
-		} else {
-			name.clone()
-		};
+		let mut tooltip = name.clone();
+		if cfg!(debug_assertions) {
+			tooltip += "\nLayer Path: ";
+			tooltip += &path.iter().map(|id| id.to_string()).collect::<Vec<_>>().join(" / ");
+			tooltip = tooltip.trim().to_string();
+		}
 
 		let arr = layer.data.bounding_box(transform, font_cache).unwrap_or([DVec2::ZERO, DVec2::ZERO]);
 		let arr = arr.iter().map(|x| (*x).into()).collect::<Vec<(f64, f64)>>();

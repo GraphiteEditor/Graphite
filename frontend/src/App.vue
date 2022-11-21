@@ -233,6 +233,7 @@ img {
 import { defineComponent } from "vue";
 
 import { createClipboardManager } from "@/io-managers/clipboard";
+import { createDragManager } from "@/io-managers/drag";
 import { createHyperlinkManager } from "@/io-managers/hyperlinks";
 import { createInputManager } from "@/io-managers/input";
 import { createLocalizationManager } from "@/io-managers/localization";
@@ -252,6 +253,7 @@ import MainWindow from "@/components/window/MainWindow.vue";
 
 const managerDestructors: {
 	createClipboardManager?: () => void;
+	createDragManager?: () => void;
 	createHyperlinkManager?: () => void;
 	createInputManager?: () => void;
 	createLocalizationManager?: () => void;
@@ -302,6 +304,7 @@ export default defineComponent({
 		// Initialize managers, which are isolated systems that subscribe to backend messages to link them to browser API functionality (like JS events, IndexedDB, etc.)
 		Object.assign(managerDestructors, {
 			createClipboardManager: createClipboardManager(this.editor),
+			createDragManager: createDragManager(),
 			createHyperlinkManager: createHyperlinkManager(this.editor),
 			createInputManager: createInputManager(this.editor, this.$el.parentElement, this.dialog, this.portfolio, this.fullscreen),
 			createLocalizationManager: createLocalizationManager(this.editor),

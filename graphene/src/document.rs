@@ -82,6 +82,22 @@ impl Document {
 		}
 	}
 
+	/// Renders a layer and its children
+	pub fn render_layer(&mut self, layer_path: &[LayerId], render_data: RenderData) -> Option<String> {
+		// Note: it is bad practice to directly clone and modify the Graphene document structure, this is a temporary hack until this whole system is replaced by the node graph
+		let mut temp_clone = self.layer_mut(layer_path).ok()?.clone();
+
+		// Render and append to the defs section
+		let mut svg_defs = String::from("<defs>");
+		temp_clone.render(&mut vec![], &mut svg_defs, render_data);
+		svg_defs.push_str("</defs>");
+
+		// Append the cached rendered SVG
+		svg_defs.push_str(&temp_clone.cache);
+
+		Some(svg_defs)
+	}
+
 	pub fn current_state_identifier(&self) -> u64 {
 		self.state_identifier.finish()
 	}
@@ -895,6 +911,36 @@ impl Document {
 				self.mark_as_dirty(&path)?;
 				Some(vec![LayerChanged { path }])
 			}
+			Operation::ImaginateSetMaskBlurPx { path, mask_blur_px } => {
+				let layer = self.layer_mut(&path).expect("Setting Imaginate mask blur for invalid layer");
+				if let LayerDataType::Imaginate(imaginate) = &mut layer.data {
+					imaginate.mask_blur_px = mask_blur_px;
+				} else {
+					panic!("Incorrectly trying to set the mask blur for a layer that is not an Imaginate layer type");
+				}
+				self.mark_as_dirty(&path)?;
+				Some(vec![LayerChanged { path }])
+			}
+			Operation::ImaginateSetMaskFillContent { path, mode } => {
+				let layer = self.layer_mut(&path).expect("Setting Imaginate mask fill content for invalid layer");
+				if let LayerDataType::Imaginate(imaginate) = &mut layer.data {
+					imaginate.mask_fill_content = mode;
+				} else {
+					panic!("Incorrectly trying to set the mask fill content for a layer that is not an Imaginate layer type");
+				}
+				self.mark_as_dirty(&path)?;
+				Some(vec![LayerChanged { path }])
+			}
+			Operation::ImaginateSetMaskPaintMode { path, paint } => {
+				let layer = self.layer_mut(&path).expect("Setting Imaginate mask paint mode for invalid layer");
+				if let LayerDataType::Imaginate(imaginate) = &mut layer.data {
+					imaginate.mask_paint_mode = paint;
+				} else {
+					panic!("Incorrectly trying to set the mask paint mode for a layer that is not an Imaginate layer type");
+				}
+				self.mark_as_dirty(&path)?;
+				Some(vec![LayerChanged { path }])
+			}
 			Operation::ImaginateSetCfgScale { path, cfg_scale } => {
 				let layer = self.layer_mut(&path).expect("Setting Imaginate CFG scale for invalid layer");
 				if let LayerDataType::Imaginate(imaginate) = &mut layer.data {
@@ -911,6 +957,16 @@ impl Document {
 					imaginate.denoising_strength = denoising_strength;
 				} else {
 					panic!("Incorrectly trying to set the denoising strength for a layer that is not an Imaginate layer type");
+				}
+				self.mark_as_dirty(&path)?;
+				Some(vec![LayerChanged { path }])
+			}
+			Operation::ImaginateSetLayerPath { path, layer_path } => {
+				let layer = self.layer_mut(&path).expect("Setting Imaginate layer path strength for invalid layer");
+				if let LayerDataType::Imaginate(imaginate) = &mut layer.data {
+					imaginate.mask_layer_ref = layer_path;
+				} else {
+					panic!("Incorrectly trying to set the layer path for a layer that is not an Imaginate layer type");
 				}
 				self.mark_as_dirty(&path)?;
 				Some(vec![LayerChanged { path }])
