@@ -23,6 +23,10 @@ let statusAbortController = new AbortController();
 export async function imaginateGenerate(
 	parameters: ImaginateGenerationParameters,
 	image: Blob | undefined,
+	mask: Blob | undefined,
+	maskPaintMode: string,
+	maskBlurPx: number,
+	maskFillContent: string,
 	hostname: string,
 	refreshFrequency: number,
 	documentId: bigint,
@@ -41,7 +45,7 @@ export async function imaginateGenerate(
 	const discloseUploadingProgress = (progress: number): void => {
 		editor.instance.setImaginateGeneratingStatus(documentId, layerPath, progress * 100, "Uploading");
 	};
-	const { uploaded, result, xhr } = await generate(discloseUploadingProgress, hostname, image, parameters);
+	const { uploaded, result, xhr } = await generate(discloseUploadingProgress, hostname, image, mask, maskPaintMode, maskBlurPx, maskFillContent, parameters);
 	generatingAbortRequest = xhr;
 
 	try {
@@ -211,6 +215,10 @@ async function generate(
 	discloseUploadingProgress: (progress: number) => void,
 	hostname: string,
 	image: Blob | undefined,
+	mask: Blob | undefined,
+	maskPaintMode: string,
+	maskBlurPx: number,
+	maskFillContent: string,
 	parameters: ImaginateGenerationParameters
 ): Promise<{
 	uploaded: Promise<void>;
@@ -255,6 +263,13 @@ async function generate(
 		};
 	} else {
 		const sourceImageBase64 = await blobToBase64(image);
+		const maskImageBase64 = mask ? await blobToBase64(mask) : "";
+
+		const maskFillContentIndexes = ["Fill", "Original", "LatentNoise", "LatentNothing"];
+		const maskFillContentIndexFound = maskFillContentIndexes.indexOf(maskFillContent);
+		const maskFillContentIndex = maskFillContentIndexFound === -1 ? undefined : maskFillContentIndexFound;
+
+		const maskInvert = maskPaintMode === "Inpaint" ? 1 : 0;
 
 		endpoint = `${hostname}sdapi/v1/img2img`;
 
@@ -262,12 +277,12 @@ async function generate(
 			init_images: [sourceImageBase64],
 			// resize_mode: 0,
 			denoising_strength: parameters.denoisingStrength,
-			// mask: "",
-			// mask_blur: 4,
-			// inpainting_fill: 0,
-			// inpaint_full_res: true,
+			mask: mask && maskImageBase64,
+			mask_blur: mask && maskBlurPx,
+			inpainting_fill: mask && maskFillContentIndex,
+			inpaint_full_res: mask && false,
 			// inpaint_full_res_padding: 0,
-			// inpainting_mask_invert: 0,
+			inpainting_mask_invert: mask && maskInvert,
 			prompt: parameters.prompt,
 			// styles: [],
 			seed: Number(parameters.seed),
@@ -291,6 +306,7 @@ async function generate(
 			// s_noise: 1,
 			override_settings: {
 				show_progress_every_n_steps: PROGRESS_EVERY_N_STEPS,
+				img2img_fix_steps: true,
 			},
 			sampler_index: parameters.samplingMethod,
 			// include_init_images: false,

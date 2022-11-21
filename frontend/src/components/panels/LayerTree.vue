@@ -1,5 +1,5 @@
 <template>
-	<LayoutCol class="layer-tree">
+	<LayoutCol class="layer-tree" @dragleave="dragInPanel = false">
 		<LayoutRow class="options-bar" :scrollableX="true">
 			<WidgetLayout :layout="layerTreeOptionsLayout" />
 		</LayoutRow>
@@ -31,7 +31,8 @@
 					></button>
 					<LayoutRow
 						class="layer"
-						:class="{ selected: listing.entry.layerMetadata.selected }"
+						:class="{ selected: fakeHighlight ? fakeHighlight.includes(listing.entry.path) : listing.entry.layerMetadata.selected }"
+						:data-layer="String(listing.entry.path)"
 						:data-index="index"
 						:title="listing.entry.tooltip"
 						:draggable="draggable"
@@ -65,7 +66,11 @@
 					</LayoutRow>
 				</LayoutRow>
 			</LayoutCol>
-			<div class="insert-mark" v-if="draggingData && !draggingData.highlightFolder" :style="{ left: markIndent(draggingData.insertFolder), top: markTopOffset(draggingData.markerHeight) }"></div>
+			<div
+				class="insert-mark"
+				v-if="draggingData && !draggingData.highlightFolder && dragInPanel"
+				:style="{ left: markIndent(draggingData.insertFolder), top: markTopOffset(draggingData.markerHeight) }"
+			></div>
 		</LayoutRow>
 	</LayoutCol>
 </template>
@@ -258,6 +263,7 @@
 			margin-top: -2px;
 			height: 5px;
 			z-index: 1;
+			pointer-events: none;
 		}
 	}
 }
@@ -266,6 +272,7 @@
 <script lang="ts">
 import { defineComponent, nextTick } from "vue";
 
+import { beginDraggingElement } from "@/io-managers/drag";
 import { platformIsMac } from "@/utility-functions/platform";
 import {
 	type LayerType,
@@ -291,7 +298,7 @@ const LAYER_INDENT = 16;
 const INSERT_MARK_MARGIN_LEFT = 4 + 32 + LAYER_INDENT;
 const INSERT_MARK_OFFSET = 2;
 
-type DraggingData = { insertFolder: BigUint64Array; insertIndex: number; highlightFolder: boolean; markerHeight: number };
+type DraggingData = { select?: () => void; insertFolder: BigUint64Array; insertIndex: number; highlightFolder: boolean; markerHeight: number };
 
 export default defineComponent({
 	inject: ["editor"],
@@ -304,6 +311,8 @@ export default defineComponent({
 			// Interactive dragging
 			draggable: true,
 			draggingData: undefined as undefined | DraggingData,
+			fakeHighlight: undefined as undefined | BigUint64Array[],
+			dragInPanel: false,
 
 			// Layouts
 			layerTreeOptionsLayout: defaultWidgetLayout(),
@@ -371,7 +380,7 @@ export default defineComponent({
 		async deselectAllLayers() {
 			this.editor.instance.deselectAllLayers();
 		},
-		calculateDragIndex(tree: HTMLDivElement, clientY: number): DraggingData {
+		calculateDragIndex(tree: HTMLDivElement, clientY: number, select?: () => void): DraggingData {
 			const treeChildren = tree.children;
 			const treeOffset = tree.getBoundingClientRect().top;
 
@@ -430,11 +439,21 @@ export default defineComponent({
 
 			markerHeight -= treeOffset;
 
-			return { insertFolder, insertIndex, highlightFolder, markerHeight };
+			return { select, insertFolder, insertIndex, highlightFolder, markerHeight };
 		},
 		async dragStart(event: DragEvent, listing: LayerListingInfo) {
 			const layer = listing.entry;
-			if (!layer.layerMetadata.selected) this.selectLayer(event.ctrlKey, event.metaKey, event.shiftKey, listing, event);
+			this.dragInPanel = true;
+			if (!layer.layerMetadata.selected) {
+				this.fakeHighlight = [layer.path];
+			}
+			const select = (): void => {
+				if (!layer.layerMetadata.selected) this.selectLayer(false, false, false, listing, event);
+			};
+
+			const target = (event.target || undefined) as HTMLElement | undefined;
+			const draggingELement = (target?.closest("[data-layer]") || undefined) as HTMLElement | undefined;
+			if (draggingELement) beginDraggingElement(draggingELement);
 
 			// Set style of cursor for drag
 			if (event.dataTransfer) {
@@ -443,23 +462,26 @@ export default defineComponent({
 			}
 
 			const tree: HTMLDivElement | undefined = (this.$refs.list as typeof LayoutCol | undefined)?.$el;
-			if (tree) this.draggingData = this.calculateDragIndex(tree, event.clientY);
+			if (tree) this.draggingData = this.calculateDragIndex(tree, event.clientY, select);
 		},
 		updateInsertLine(event: DragEvent) {
 			// Stop the drag from being shown as cancelled
 			event.preventDefault();
+			this.dragInPanel = true;
 
 			const tree: HTMLDivElement | undefined = (this.$refs.list as typeof LayoutCol | undefined)?.$el;
-			if (tree) this.draggingData = this.calculateDragIndex(tree, event.clientY);
+			if (tree) this.draggingData = this.calculateDragIndex(tree, event.clientY, this.draggingData?.select);
 		},
 		async drop() {
-			if (this.draggingData) {
-				const { insertFolder, insertIndex } = this.draggingData;
+			if (this.draggingData && this.dragInPanel) {
+				const { select, insertFolder, insertIndex } = this.draggingData;
 
+				select?.();
 				this.editor.instance.moveLayerInTree(insertFolder, insertIndex);
-
-				this.draggingData = undefined;
 			}
+			this.draggingData = undefined;
+			this.fakeHighlight = undefined;
+			this.dragInPanel = false;
 		},
 		rebuildLayerTree(updateDocumentLayerTreeStructure: UpdateDocumentLayerTreeStructure) {
 			const layerWithNameBeingEdited = this.layers.find((layer: LayerListingInfo) => layer.editingName);
@@ -494,7 +516,7 @@ export default defineComponent({
 			recurse(updateDocumentLayerTreeStructure, this.layers, this.layerCache);
 		},
 		layerTypeData(layerType: LayerType): LayerTypeData {
-			return layerTypeData(layerType) || { name: "Error", icon: "NodeText" };
+			return layerTypeData(layerType) || { name: "Error", icon: "Info" };
 		},
 	},
 	mounted() {

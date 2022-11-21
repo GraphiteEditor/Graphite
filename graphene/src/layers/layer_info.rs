@@ -76,7 +76,7 @@ impl fmt::Display for LayerDataTypeDiscriminant {
 			LayerDataTypeDiscriminant::Text => write!(f, "Text"),
 			LayerDataTypeDiscriminant::Image => write!(f, "Image"),
 			LayerDataTypeDiscriminant::Imaginate => write!(f, "Imaginate"),
-			LayerDataTypeDiscriminant::NodeGraphFrame => write!(f, "NodeGraphFrame"),
+			LayerDataTypeDiscriminant::NodeGraphFrame => write!(f, "Node Graph Frame"),
 		}
 	}
 }

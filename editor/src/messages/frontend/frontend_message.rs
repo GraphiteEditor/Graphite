@@ -8,7 +8,7 @@ use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::HintData;
 
 use graphene::color::Color;
-use graphene::layers::imaginate_layer::{ImaginateBaseImage, ImaginateGenerationParameters};
+use graphene::layers::imaginate_layer::{ImaginateBaseImage, ImaginateGenerationParameters, ImaginateMaskFillContent, ImaginateMaskPaintMode};
 use graphene::layers::text_layer::Font;
 use graphene::LayerId;
 
@@ -60,6 +60,14 @@ pub enum FrontendMessage {
 		parameters: ImaginateGenerationParameters,
 		#[serde(rename = "baseImage")]
 		base_image: Option<ImaginateBaseImage>,
+		#[serde(rename = "maskImage")]
+		mask_image: Option<ImaginateBaseImage>,
+		#[serde(rename = "maskPaintMode")]
+		mask_paint_mode: ImaginateMaskPaintMode,
+		#[serde(rename = "maskBlurPx")]
+		mask_blur_px: u32,
+		#[serde(rename = "maskFillContent")]
+		mask_fill_content: ImaginateMaskFillContent,
 		hostname: String,
 		#[serde(rename = "refreshFrequency")]
 		refresh_frequency: f64,

@@ -61,11 +61,12 @@ impl Layout {
 				let mut tooltip_shortcut = match &mut widget_holder.widget {
 					Widget::CheckboxInput(widget) => Some((&mut widget.tooltip, &mut widget.tooltip_shortcut)),
 					Widget::ColorInput(widget) => Some((&mut widget.tooltip, &mut widget.tooltip_shortcut)),
-					Widget::IconButton(widget) => Some((&mut widget.tooltip, &mut widget.tooltip_shortcut)),
-					Widget::OptionalInput(widget) => Some((&mut widget.tooltip, &mut widget.tooltip_shortcut)),
 					Widget::DropdownInput(widget) => Some((&mut widget.tooltip, &mut widget.tooltip_shortcut)),
 					Widget::FontInput(widget) => Some((&mut widget.tooltip, &mut widget.tooltip_shortcut)),
+					Widget::IconButton(widget) => Some((&mut widget.tooltip, &mut widget.tooltip_shortcut)),
+					Widget::LayerReferenceInput(widget) => Some((&mut widget.tooltip, &mut widget.tooltip_shortcut)),
 					Widget::NumberInput(widget) => Some((&mut widget.tooltip, &mut widget.tooltip_shortcut)),
+					Widget::OptionalInput(widget) => Some((&mut widget.tooltip, &mut widget.tooltip_shortcut)),
 					Widget::PopoverButton(widget) => Some((&mut widget.tooltip, &mut widget.tooltip_shortcut)),
 					Widget::TextButton(widget) => Some((&mut widget.tooltip, &mut widget.tooltip_shortcut)),
 					Widget::IconLabel(_)
@@ -290,6 +291,7 @@ pub enum Widget {
 	IconButton(IconButton),
 	IconLabel(IconLabel),
 	InvisibleStandinInput(InvisibleStandinInput),
+	LayerReferenceInput(LayerReferenceInput),
 	NumberInput(NumberInput),
 	OptionalInput(OptionalInput),
 	PivotAssist(PivotAssist),
