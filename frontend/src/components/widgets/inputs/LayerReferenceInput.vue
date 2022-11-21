@@ -58,7 +58,8 @@
 		text-align: center;
 
 		&.missing {
-			color: var(--color-data-unused1);
+			// TODO: Define this as a permanent color palette choice
+			color: #d6536e;
 		}
 
 		&.layer-name {

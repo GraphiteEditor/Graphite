@@ -100,6 +100,10 @@
 				text-align: right;
 			}
 
+			> .parameter-expose-button ~ .text-label:first-of-type {
+				text-align: left;
+			}
+
 			> .text-button {
 				flex-grow: 1;
 			}

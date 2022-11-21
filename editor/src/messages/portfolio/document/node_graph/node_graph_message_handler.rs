@@ -8,8 +8,9 @@ use graphene::layers::nodegraph_layer::NodeGraphFrameLayer;
 mod document_node_types;
 mod node_properties;
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum FrontendGraphDataType {
+	#[default]
 	#[serde(rename = "general")]
 	General,
 	#[serde(rename = "raster")]
