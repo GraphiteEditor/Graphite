@@ -156,7 +156,7 @@ static DOCUMENT_NODE_TYPES: [DocumentNodeType; 7] = [
 		identifier: NodeIdentifier::new("graphene_core::ops::AddNode", &[Type::Concrete(Cow::Borrowed("&TypeErasedNode"))]),
 		inputs: &[
 			DocumentInputType {
-				name: "Left",
+				name: "Input",
 				data_type: FrontendGraphDataType::Number,
 				default: NodeInput::Value {
 					tagged_value: TaggedValue::F32(0.),
@@ -164,7 +164,7 @@ static DOCUMENT_NODE_TYPES: [DocumentNodeType; 7] = [
 				},
 			},
 			DocumentInputType {
-				name: "Right",
+				name: "Addend",
 				data_type: FrontendGraphDataType::Number,
 				default: NodeInput::Value {
 					tagged_value: TaggedValue::F32(0.),

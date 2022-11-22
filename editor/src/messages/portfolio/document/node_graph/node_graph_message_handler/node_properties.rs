@@ -188,7 +188,7 @@ pub fn add_properties(document_node: &DocumentNode, node_id: NodeId) -> Vec<Layo
 
 		LayoutGroup::Row { widgets }
 	};
-	vec![operand("Left", 0), operand("Right", 1)]
+	vec![operand("Input", 0), operand("Addend", 1)]
 }
 
 fn unknown_node_properties(document_node: &DocumentNode) -> Vec<LayoutGroup> {
