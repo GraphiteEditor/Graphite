@@ -180,6 +180,7 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 				responses.push_back(DocumentMessage::NodeGraphFrameGenerate.into());
 			}
 			NodeGraphMessage::CreateNode { node_id, node_type } => {
+				let node_id = node_id.unwrap_or_else(crate::application::generate_uuid);
 				let Some(network) = self.get_active_network_mut(document) else{
 					warn!("No network");
 					return;
@@ -208,6 +209,8 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 					.into_iter()
 					.collect(),
 				};
+				let far_right_node = network.nodes.iter().map(|node| node.1.metadata.position).max_by_key(|pos| pos.0).unwrap_or_default();
+
 				network.nodes.insert(
 					node_id,
 					DocumentNode {
@@ -217,7 +220,7 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 						implementation: DocumentNodeImplementation::Network(inner_network),
 						metadata: graph_craft::document::DocumentNodeMetadata {
 							// TODO: Better position default
-							position: (node_id as i32 * 7 - 41, node_id as i32 * 2 - 10),
+							position: (far_right_node.0 + 7, far_right_node.1 + 2),
 						},
 					},
 				);
