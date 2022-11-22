@@ -69,16 +69,22 @@ export class FrontendDocumentDetails extends DocumentDetails {
 	readonly id!: bigint;
 }
 
-export type DataType = "Raster" | "Color" | "Image" | "F32";
+export type FrontendGraphDataType = "general" | "raster" | "color" | "vector" | "number";
+
+export class NodeGraphInput {
+	readonly dataType!: FrontendGraphDataType;
+
+	readonly name!: string;
+}
 
 export class FrontendNode {
 	readonly id!: bigint;
 
 	readonly displayName!: string;
 
-	readonly exposedInputs!: DataType[];
+	readonly exposedInputs!: NodeGraphInput[];
 
-	readonly outputs!: DataType[];
+	readonly outputs!: FrontendGraphDataType[];
 
 	@TupleToVec2
 	readonly position!: XY | undefined;
@@ -1006,6 +1012,15 @@ export class TextAreaInput extends WidgetProps {
 	tooltip!: string | undefined;
 }
 
+export class ParameterExposeButton extends WidgetProps {
+	exposed!: boolean;
+
+	dataType!: string;
+
+	@Transform(({ value }: { value: string }) => value || undefined)
+	tooltip!: string | undefined;
+}
+
 export class TextButton extends WidgetProps {
 	label!: string;
 
@@ -1099,6 +1114,7 @@ const widgetSubTypes = [
 	{ value: SwatchPairInput, name: "SwatchPairInput" },
 	{ value: TextAreaInput, name: "TextAreaInput" },
 	{ value: TextButton, name: "TextButton" },
+	{ value: ParameterExposeButton, name: "ParameterExposeButton" },
 	{ value: TextInput, name: "TextInput" },
 	{ value: TextLabel, name: "TextLabel" },
 	{ value: PivotAssist, name: "PivotAssist" },
