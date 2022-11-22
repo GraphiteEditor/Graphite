@@ -67,6 +67,7 @@ impl Layout {
 					Widget::LayerReferenceInput(widget) => Some((&mut widget.tooltip, &mut widget.tooltip_shortcut)),
 					Widget::NumberInput(widget) => Some((&mut widget.tooltip, &mut widget.tooltip_shortcut)),
 					Widget::OptionalInput(widget) => Some((&mut widget.tooltip, &mut widget.tooltip_shortcut)),
+					Widget::ParameterExposeButton(widget) => Some((&mut widget.tooltip, &mut widget.tooltip_shortcut)),
 					Widget::PopoverButton(widget) => Some((&mut widget.tooltip, &mut widget.tooltip_shortcut)),
 					Widget::TextButton(widget) => Some((&mut widget.tooltip, &mut widget.tooltip_shortcut)),
 					Widget::IconLabel(_)
@@ -294,6 +295,7 @@ pub enum Widget {
 	LayerReferenceInput(LayerReferenceInput),
 	NumberInput(NumberInput),
 	OptionalInput(OptionalInput),
+	ParameterExposeButton(ParameterExposeButton),
 	PivotAssist(PivotAssist),
 	PopoverButton(PopoverButton),
 	RadioInput(RadioInput),

@@ -1,5 +1,5 @@
-use crate::messages::input_mapper::utility_types::misc::ActionKeys;
 use crate::messages::layout::utility_types::layout_widget::WidgetCallback;
+use crate::messages::{input_mapper::utility_types::misc::ActionKeys, portfolio::document::node_graph::FrontendGraphDataType};
 
 use derivative::*;
 use serde::{Deserialize, Serialize};
@@ -43,6 +43,26 @@ pub struct PopoverButton {
 
 	#[serde(skip)]
 	pub tooltip_shortcut: Option<ActionKeys>,
+}
+
+#[derive(Clone, Serialize, Deserialize, Derivative, Default)]
+#[derivative(Debug, PartialEq)]
+#[serde(rename_all(serialize = "camelCase", deserialize = "camelCase"))]
+pub struct ParameterExposeButton {
+	pub exposed: bool,
+
+	#[serde(rename = "dataType")]
+	pub data_type: FrontendGraphDataType,
+
+	pub tooltip: String,
+
+	#[serde(skip)]
+	pub tooltip_shortcut: Option<ActionKeys>,
+
+	// Callbacks
+	#[serde(skip)]
+	#[derivative(Debug = "ignore", PartialEq = "ignore")]
+	pub on_update: WidgetCallback<ParameterExposeButton>,
 }
 
 #[derive(Clone, Serialize, Deserialize, Derivative, Default)]

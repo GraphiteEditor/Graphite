@@ -43,6 +43,24 @@ static NODE_REGISTRY: &[(NodeIdentifier, NodeConstructor)] = &[
 		})
 	}),
 	(
+		NodeIdentifier::new("graphene_core::ops::AddNode", &[Type::Concrete(Cow::Borrowed("&TypeErasedNode"))]),
+		|proto_node, stack| {
+			stack.push_fn(move |nodes| {
+				let ConstructionArgs::Nodes(construction_nodes) = proto_node.construction_args else { unreachable!("Add Node constructed with out rhs input node") };
+				let value_node = nodes.get(construction_nodes[0] as usize).unwrap();
+				let input_node: DowncastBothNode<_, (), f32> = DowncastBothNode::new(value_node);
+				let node: DynAnyNode<_, f32, _, _> = DynAnyNode::new(ConsNode::new(input_node).then(graphene_core::ops::AddNode));
+
+				if let ProtoNodeInput::Node(node_id) = proto_node.input {
+					let pre_node = nodes.get(node_id as usize).unwrap();
+					(pre_node).then(node).into_type_erased()
+				} else {
+					node.into_type_erased()
+				}
+			})
+		},
+	),
+	(
 		NodeIdentifier::new(
 			"graphene_core::ops::AddNode",
 			&[Concrete(std::borrow::Cow::Borrowed("u32")), Concrete(std::borrow::Cow::Borrowed("u32"))],

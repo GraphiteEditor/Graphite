@@ -1,0 +1,73 @@
+<template>
+	<LayoutRow class="parameter-expose-button">
+		<button :class="{ exposed }" :style="{ '--data-type-color': dataTypeColor }" @click="(e: MouseEvent) => action(e)" :title="tooltip" :tabindex="0"></button>
+	</LayoutRow>
+</template>
+
+<style lang="scss">
+.parameter-expose-button {
+	display: flex;
+	align-items: center;
+	flex: 0 0 auto;
+
+	button {
+		flex: 0 0 auto;
+		width: 8px;
+		height: 8px;
+		margin: 0;
+		padding: 0;
+		border: none;
+		border-radius: 50%;
+
+		&:not(.exposed) {
+			background: none;
+			border: 1px solid var(--data-type-color);
+
+			&:hover {
+				background: var(--color-6-lowergray);
+			}
+		}
+
+		&.exposed {
+			background: var(--data-type-color);
+
+			&:hover {
+				border: 1px solid var(--color-f-white);
+			}
+		}
+	}
+}
+</style>
+
+<script lang="ts">
+import { defineComponent, type PropType } from "vue";
+
+import LayoutRow from "@/components/layout/LayoutRow.vue";
+
+export default defineComponent({
+	props: {
+		exposed: { type: Boolean as PropType<boolean>, required: true },
+		dataType: { type: String as PropType<string>, required: true },
+		tooltip: { type: String as PropType<string | undefined>, required: false },
+
+		// Callbacks
+		action: { type: Function as PropType<(e?: MouseEvent) => void>, required: true },
+	},
+	computed: {
+		dataTypeColor(): string {
+			// TODO: Move this function somewhere where it can be reused by other components
+			const colorsMap = {
+				general: "var(--color-data-general)",
+				vector: "var(--color-data-vector)",
+				raster: "var(--color-data-raster)",
+				mask: "var(--color-data-mask)",
+				number: "var(--color-data-number)",
+				color: "var(--color-data-color)",
+			} as const;
+
+			return colorsMap[this.dataType as keyof typeof colorsMap] || colorsMap.general;
+		},
+	},
+	components: { LayoutRow },
+});
+</script>

@@ -154,6 +154,10 @@ impl<F: Fn(&MessageDiscriminant) -> Vec<KeysGroup>> MessageHandler<LayoutMessage
 						let callback_message = (optional_input.on_update.callback)(optional_input);
 						responses.push_back(callback_message);
 					}
+					Widget::ParameterExposeButton(parameter_expose_button) => {
+						let callback_message = (parameter_expose_button.on_update.callback)(parameter_expose_button);
+						responses.push_back(callback_message);
+					}
 					Widget::PivotAssist(pivot_assist) => {
 						let update_value = value.as_str().expect("RadioInput update was not of type: u64");
 						pivot_assist.position = update_value.into();
