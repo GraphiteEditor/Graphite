@@ -82,6 +82,8 @@ export class FrontendNode {
 
 	readonly displayName!: string;
 
+	readonly primaryInput!: FrontendGraphDataType | undefined;
+
 	readonly exposedInputs!: NodeGraphInput[];
 
 	readonly outputs!: FrontendGraphDataType[];

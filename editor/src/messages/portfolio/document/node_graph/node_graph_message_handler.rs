@@ -35,6 +35,8 @@ pub struct FrontendNode {
 	pub id: graph_craft::document::NodeId,
 	#[serde(rename = "displayName")]
 	pub display_name: String,
+	#[serde(rename = "primaryInput")]
+	pub primary_input: Option<FrontendGraphDataType>,
 	#[serde(rename = "exposedInputs")]
 	pub exposed_inputs: Vec<NodeGraphInput>,
 	pub outputs: Vec<FrontendGraphDataType>,
@@ -122,10 +124,17 @@ impl NodeGraphMessageHandler {
 			nodes.push(FrontendNode {
 				id: *id,
 				display_name: node.name.clone(),
+				primary_input: node
+					.inputs
+					.first()
+					.filter(|input| input.is_exposed())
+					.and_then(|_| node_type.inputs.get(0))
+					.map(|input_type| input_type.data_type),
 				exposed_inputs: node
 					.inputs
 					.iter()
 					.zip(node_type.inputs)
+					.skip(1)
 					.filter(|(input, _)| input.is_exposed())
 					.map(|(_, input_type)| NodeGraphInput {
 						data_type: input_type.data_type,

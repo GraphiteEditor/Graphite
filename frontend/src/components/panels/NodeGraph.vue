@@ -45,11 +45,11 @@
 					<div class="primary">
 						<div class="ports">
 							<div
-								v-if="node.exposedInputs.length > 0"
+								v-if="node.primaryInput"
 								class="input port"
 								data-port="input"
-								:data-datatype="node.exposedInputs[0].dataType"
-								:style="{ '--data-color': `var(--color-data-${node.exposedInputs[0].dataType})`, '--data-color-dim': `var(--color-data-${node.exposedInputs[0].dataType}-dim)` }"
+								:data-datatype="node.primaryInput"
+								:style="{ '--data-color': `var(--color-data-${node.primaryInput})`, '--data-color-dim': `var(--color-data-${node.primaryInput}-dim)` }"
 							>
 								<div></div>
 							</div>
@@ -66,8 +66,8 @@
 						<IconLabel :icon="nodeIcon(node.displayName)" />
 						<TextLabel>{{ node.displayName }}</TextLabel>
 					</div>
-					<div v-if="node.exposedInputs.length > 1" class="arguments">
-						<div v-for="(argument, index) in node.exposedInputs.slice(1)" :key="index" class="argument">
+					<div v-if="node.exposedInputs.length > 0" class="arguments">
+						<div v-for="(argument, index) in node.exposedInputs" :key="index" class="argument">
 							<div class="ports">
 								<div
 									class="input port"
