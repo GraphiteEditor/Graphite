@@ -37,7 +37,7 @@ static DOCUMENT_NODE_TYPES: [DocumentNodeType; 7] = [
 		properties: |_document_node, _node_id| {
 			vec![LayoutGroup::Row {
 				widgets: vec![WidgetHolder::new(Widget::TextLabel(TextLabel {
-					value: format!("The identity node simply returns the input"),
+					value: "The identity node simply returns the input".to_string(),
 					..Default::default()
 				}))],
 			}]
@@ -46,12 +46,16 @@ static DOCUMENT_NODE_TYPES: [DocumentNodeType; 7] = [
 	DocumentNodeType {
 		name: "Input",
 		identifier: NodeIdentifier::new("graphene_core::ops::IdNode", &[Type::Concrete(Cow::Borrowed("Any<'_>"))]),
-		inputs: &[],
+		inputs: &[DocumentInputType {
+			name: "In",
+			data_type: FrontendGraphDataType::Raster,
+			default: NodeInput::Network,
+		}],
 		outputs: &[FrontendGraphDataType::Raster],
 		properties: |_document_node, _node_id| {
 			vec![LayoutGroup::Row {
 				widgets: vec![WidgetHolder::new(Widget::TextLabel(TextLabel {
-					value: format!("The input to the graph is the bitmap under the frame"),
+					value: "The input to the graph is the bitmap under the frame".to_string(),
 					..Default::default()
 				}))],
 			}]
@@ -72,7 +76,7 @@ static DOCUMENT_NODE_TYPES: [DocumentNodeType; 7] = [
 		properties: |_document_node, _node_id| {
 			vec![LayoutGroup::Row {
 				widgets: vec![WidgetHolder::new(Widget::TextLabel(TextLabel {
-					value: format!("The output to the graph is rendered in the frame"),
+					value: "The output to the graph is rendered in the frame".to_string(),
 					..Default::default()
 				}))],
 			}]
@@ -93,7 +97,7 @@ static DOCUMENT_NODE_TYPES: [DocumentNodeType; 7] = [
 		properties: |_document_node, _node_id| {
 			vec![LayoutGroup::Row {
 				widgets: vec![WidgetHolder::new(Widget::TextLabel(TextLabel {
-					value: format!("The output to the graph is rendered in the frame"),
+					value: "The output to the graph is rendered in the frame".to_string(),
 					..Default::default()
 				}))],
 			}]
@@ -178,5 +182,9 @@ pub fn resolve_document_node_type(name: &str) -> Option<&DocumentNodeType> {
 }
 
 pub fn collect_node_types() -> Vec<FrontendNodeType> {
-	DOCUMENT_NODE_TYPES.iter().map(|node_type| FrontendNodeType { name: node_type.name.to_string() }).collect()
+	DOCUMENT_NODE_TYPES
+		.iter()
+		.filter(|node_type| !matches!(node_type.name, "Input" | "Output"))
+		.map(|node_type| FrontendNodeType { name: node_type.name.to_string() })
+		.collect()
 }
