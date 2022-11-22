@@ -366,7 +366,7 @@ export default defineComponent({
 
 			const links = this.nodeGraph.state.links;
 			this.nodeLinkPaths = links.flatMap((link) => {
-				const connectorIndex = 0;
+				const connectorIndex = Number(link.linkEndInputIndex);
 
 				const nodePrimaryOutput = (containerBounds.querySelector(`[data-node="${String(link.linkStart)}"] [data-port="output"]`) || undefined) as HTMLDivElement | undefined;
 

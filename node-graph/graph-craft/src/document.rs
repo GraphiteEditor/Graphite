@@ -108,10 +108,10 @@ impl NodeInput {
 		}
 	}
 	pub fn is_exposed(&self) -> bool {
-		if let NodeInput::Value { exposed, .. } = self {
-			*exposed
-		} else {
-			true
+		match self {
+			NodeInput::Node(_) => true,
+			NodeInput::Value { exposed, .. } => *exposed,
+			NodeInput::Network => false,
 		}
 	}
 }

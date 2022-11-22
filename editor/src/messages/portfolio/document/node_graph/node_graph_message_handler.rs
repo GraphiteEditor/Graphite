@@ -243,8 +243,16 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 
 				if let NodeInput::Value { exposed, .. } = &mut node.inputs[input_index] {
 					*exposed = new_exposed;
+				} else if let Some(node_type) = document_node_types::resolve_document_node_type(&node.name) {
+					if let NodeInput::Value { tagged_value, .. } = &node_type.inputs[input_index].default {
+						node.inputs[input_index] = NodeInput::Value {
+							tagged_value: tagged_value.clone(),
+							exposed: new_exposed,
+						};
+					}
 				}
 				Self::send_graph(network, responses);
+				responses.push_back(PropertiesPanelMessage::ResendActiveProperties.into());
 			}
 			NodeGraphMessage::MoveSelectedNodes { displacement_x, displacement_y } => {
 				let Some(network) = self.get_active_network_mut(document) else{
