@@ -35,6 +35,8 @@ pub struct FrontendNode {
 	pub id: graph_craft::document::NodeId,
 	#[serde(rename = "displayName")]
 	pub display_name: String,
+	#[serde(rename = "primaryInput")]
+	pub primary_input: Option<FrontendGraphDataType>,
 	#[serde(rename = "exposedInputs")]
 	pub exposed_inputs: Vec<NodeGraphInput>,
 	pub outputs: Vec<FrontendGraphDataType>,
@@ -122,10 +124,17 @@ impl NodeGraphMessageHandler {
 			nodes.push(FrontendNode {
 				id: *id,
 				display_name: node.name.clone(),
+				primary_input: node
+					.inputs
+					.first()
+					.filter(|input| input.is_exposed())
+					.and_then(|_| node_type.inputs.get(0))
+					.map(|input_type| input_type.data_type),
 				exposed_inputs: node
 					.inputs
 					.iter()
 					.zip(node_type.inputs)
+					.skip(1)
 					.filter(|(input, _)| input.is_exposed())
 					.map(|(_, input_type)| NodeGraphInput {
 						data_type: input_type.data_type,
@@ -180,6 +189,7 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 				responses.push_back(DocumentMessage::NodeGraphFrameGenerate.into());
 			}
 			NodeGraphMessage::CreateNode { node_id, node_type } => {
+				let node_id = node_id.unwrap_or_else(crate::application::generate_uuid);
 				let Some(network) = self.get_active_network_mut(document) else{
 					warn!("No network");
 					return;
@@ -208,6 +218,8 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 					.into_iter()
 					.collect(),
 				};
+				let far_right_node = network.nodes.iter().map(|node| node.1.metadata.position).max_by_key(|pos| pos.0).unwrap_or_default();
+
 				network.nodes.insert(
 					node_id,
 					DocumentNode {
@@ -217,7 +229,7 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 						implementation: DocumentNodeImplementation::Network(inner_network),
 						metadata: graph_craft::document::DocumentNodeMetadata {
 							// TODO: Better position default
-							position: (node_id as i32 * 7 - 41, node_id as i32 * 2 - 10),
+							position: (far_right_node.0 + 7, far_right_node.1 + 2),
 						},
 					},
 				);
@@ -243,8 +255,16 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 
 				if let NodeInput::Value { exposed, .. } = &mut node.inputs[input_index] {
 					*exposed = new_exposed;
+				} else if let Some(node_type) = document_node_types::resolve_document_node_type(&node.name) {
+					if let NodeInput::Value { tagged_value, .. } = &node_type.inputs[input_index].default {
+						node.inputs[input_index] = NodeInput::Value {
+							tagged_value: tagged_value.clone(),
+							exposed: new_exposed,
+						};
+					}
 				}
 				Self::send_graph(network, responses);
+				responses.push_back(PropertiesPanelMessage::ResendActiveProperties.into());
 			}
 			NodeGraphMessage::MoveSelectedNodes { displacement_x, displacement_y } => {
 				let Some(network) = self.get_active_network_mut(document) else{

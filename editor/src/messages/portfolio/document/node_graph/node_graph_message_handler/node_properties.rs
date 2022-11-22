@@ -10,33 +10,46 @@ use graph_craft::document::{DocumentNode, NodeId, NodeInput};
 use super::FrontendGraphDataType;
 
 pub fn hue_shift_image_properties(document_node: &DocumentNode, node_id: NodeId) -> Vec<LayoutGroup> {
-	vec![LayoutGroup::Row {
-		widgets: vec![
-			WidgetHolder::new(Widget::ParameterExposeButton(ParameterExposeButton {
-				exposed: true,
-				data_type: FrontendGraphDataType::Number,
-				tooltip: "Expose input parameter in node graph".into(),
-				..Default::default()
-			})),
-			WidgetHolder::new(Widget::Separator(Separator {
-				separator_type: SeparatorType::Unrelated,
-				direction: SeparatorDirection::Horizontal,
-			})),
-			WidgetHolder::new(Widget::TextLabel(TextLabel {
-				value: "Shift Degrees".into(),
-				..Default::default()
-			})),
+	let index = 1;
+	let input: &NodeInput = document_node.inputs.get(index).unwrap();
+	let exposed = input.is_exposed();
+
+	let mut widgets = vec![
+		WidgetHolder::new(Widget::ParameterExposeButton(ParameterExposeButton {
+			exposed,
+			data_type: FrontendGraphDataType::Number,
+			tooltip: "Expose input parameter in node graph".into(),
+			on_update: WidgetCallback::new(move |_parameter| {
+				NodeGraphMessage::ExposeInput {
+					node_id,
+					input_index: index,
+					new_exposed: !exposed,
+				}
+				.into()
+			}),
+			..Default::default()
+		})),
+		WidgetHolder::new(Widget::Separator(Separator {
+			separator_type: SeparatorType::Unrelated,
+			direction: SeparatorDirection::Horizontal,
+		})),
+		WidgetHolder::new(Widget::TextLabel(TextLabel {
+			value: "Shift Degrees".into(),
+			..Default::default()
+		})),
+	];
+	if let NodeInput::Value {
+		tagged_value: TaggedValue::F32(x),
+		exposed: false,
+	} = document_node.inputs[index]
+	{
+		widgets.extend_from_slice(&[
 			WidgetHolder::new(Widget::Separator(Separator {
 				separator_type: SeparatorType::Unrelated,
 				direction: SeparatorDirection::Horizontal,
 			})),
 			WidgetHolder::new(Widget::NumberInput(NumberInput {
-				value: Some({
-					let NodeInput::Value {tagged_value: TaggedValue::F32(x), ..} = document_node.inputs[1] else {
-						panic!("Hue rotate should be f32")
-					};
-					x as f64
-				}),
+				value: Some(x as f64),
 				unit: "°".into(),
 				mode: NumberInputMode::Range,
 				range_min: Some(-180.),
@@ -51,38 +64,54 @@ pub fn hue_shift_image_properties(document_node: &DocumentNode, node_id: NodeId)
 				}),
 				..NumberInput::default()
 			})),
-		],
-	}]
+		])
+	}
+
+	vec![LayoutGroup::Row { widgets }]
 }
 
 pub fn brighten_image_properties(document_node: &DocumentNode, node_id: NodeId) -> Vec<LayoutGroup> {
-	vec![LayoutGroup::Row {
-		widgets: vec![
-			WidgetHolder::new(Widget::ParameterExposeButton(ParameterExposeButton {
-				exposed: true,
-				data_type: FrontendGraphDataType::Number,
-				tooltip: "Expose input parameter in node graph".into(),
-				..Default::default()
-			})),
-			WidgetHolder::new(Widget::Separator(Separator {
-				separator_type: SeparatorType::Unrelated,
-				direction: SeparatorDirection::Horizontal,
-			})),
-			WidgetHolder::new(Widget::TextLabel(TextLabel {
-				value: "Brighten Amount".into(),
-				..Default::default()
-			})),
+	let index = 1;
+	let input: &NodeInput = document_node.inputs.get(index).unwrap();
+	let exposed = input.is_exposed();
+
+	let mut widgets = vec![
+		WidgetHolder::new(Widget::ParameterExposeButton(ParameterExposeButton {
+			exposed,
+			data_type: FrontendGraphDataType::Number,
+			tooltip: "Expose input parameter in node graph".into(),
+			on_update: WidgetCallback::new(move |_parameter| {
+				NodeGraphMessage::ExposeInput {
+					node_id,
+					input_index: index,
+					new_exposed: !exposed,
+				}
+				.into()
+			}),
+			..Default::default()
+		})),
+		WidgetHolder::new(Widget::Separator(Separator {
+			separator_type: SeparatorType::Unrelated,
+			direction: SeparatorDirection::Horizontal,
+		})),
+		WidgetHolder::new(Widget::TextLabel(TextLabel {
+			value: "Brighten Amount".into(),
+			..Default::default()
+		})),
+	];
+
+	if let NodeInput::Value {
+		tagged_value: TaggedValue::F32(x),
+		exposed: false,
+	} = document_node.inputs[index]
+	{
+		widgets.extend_from_slice(&[
 			WidgetHolder::new(Widget::Separator(Separator {
 				separator_type: SeparatorType::Unrelated,
 				direction: SeparatorDirection::Horizontal,
 			})),
 			WidgetHolder::new(Widget::NumberInput(NumberInput {
-				value: Some({
-					let NodeInput::Value {tagged_value: TaggedValue::F32(x), ..} = document_node.inputs[1] else {
-						panic!("Brighten amount should be f32")
-					};
-					x as f64
-				}),
+				value: Some(x as f64),
 				mode: NumberInputMode::Range,
 				range_min: Some(-255.),
 				range_max: Some(255.),
@@ -96,17 +125,29 @@ pub fn brighten_image_properties(document_node: &DocumentNode, node_id: NodeId) 
 				}),
 				..NumberInput::default()
 			})),
-		],
-	}]
+		])
+	}
+
+	vec![LayoutGroup::Row { widgets }]
 }
 
 pub fn add_properties(document_node: &DocumentNode, node_id: NodeId) -> Vec<LayoutGroup> {
-	let operand = |name: &str, index| LayoutGroup::Row {
-		widgets: vec![
+	let operand = |name: &str, index| {
+		let input: &NodeInput = document_node.inputs.get(index).unwrap();
+		let exposed = input.is_exposed();
+		let mut widgets = vec![
 			WidgetHolder::new(Widget::ParameterExposeButton(ParameterExposeButton {
-				exposed: true,
+				exposed,
 				data_type: FrontendGraphDataType::Number,
 				tooltip: "Expose input parameter in node graph".into(),
+				on_update: WidgetCallback::new(move |_parameter| {
+					NodeGraphMessage::ExposeInput {
+						node_id,
+						input_index: index,
+						new_exposed: !exposed,
+					}
+					.into()
+				}),
 				..Default::default()
 			})),
 			WidgetHolder::new(Widget::Separator(Separator {
@@ -117,32 +158,37 @@ pub fn add_properties(document_node: &DocumentNode, node_id: NodeId) -> Vec<Layo
 				value: name.into(),
 				..Default::default()
 			})),
-			WidgetHolder::new(Widget::Separator(Separator {
-				separator_type: SeparatorType::Unrelated,
-				direction: SeparatorDirection::Horizontal,
-			})),
-			WidgetHolder::new(Widget::NumberInput(NumberInput {
-				value: Some({
-					let NodeInput::Value {tagged_value: TaggedValue::F32(x), ..} = document_node.inputs[index] else {
-						panic!("Add input should be f32")
-					};
+		];
 
-					x as f64
-				}),
-				mode: NumberInputMode::Increment,
-				on_update: WidgetCallback::new(move |number_input: &NumberInput| {
-					NodeGraphMessage::SetInputValue {
-						node: node_id,
-						input_index: index,
-						value: TaggedValue::F32(number_input.value.unwrap() as f32),
-					}
-					.into()
-				}),
-				..NumberInput::default()
-			})),
-		],
+		if let NodeInput::Value {
+			tagged_value: TaggedValue::F32(x),
+			exposed: false,
+		} = document_node.inputs[index]
+		{
+			widgets.extend_from_slice(&[
+				WidgetHolder::new(Widget::Separator(Separator {
+					separator_type: SeparatorType::Unrelated,
+					direction: SeparatorDirection::Horizontal,
+				})),
+				WidgetHolder::new(Widget::NumberInput(NumberInput {
+					value: Some(x as f64),
+					mode: NumberInputMode::Increment,
+					on_update: WidgetCallback::new(move |number_input: &NumberInput| {
+						NodeGraphMessage::SetInputValue {
+							node: node_id,
+							input_index: index,
+							value: TaggedValue::F32(number_input.value.unwrap() as f32),
+						}
+						.into()
+					}),
+					..NumberInput::default()
+				})),
+			]);
+		}
+
+		LayoutGroup::Row { widgets }
 	};
-	vec![operand("Left", 0), operand("Right", 1)]
+	vec![operand("Input", 0), operand("Addend", 1)]
 }
 
 fn unknown_node_properties(document_node: &DocumentNode) -> Vec<LayoutGroup> {
