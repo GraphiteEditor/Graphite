@@ -511,8 +511,8 @@ export default defineComponent({
 					this.linkInProgressToConnector = new DOMRect(e.x, e.y);
 				}
 			} else if (this.draggingNodes) {
-				const deltaX = Math.round((e.x - this.draggingNodes.startX) / this.transform.scale / this.gridSpacing);
-				const deltaY = Math.round((e.y - this.draggingNodes.startY) / this.transform.scale / this.gridSpacing);
+				const deltaX = Math.round((e.x - this.draggingNodes.startX) / this.transform.scale / GRID_SIZE);
+				const deltaY = Math.round((e.y - this.draggingNodes.startY) / this.transform.scale / GRID_SIZE);
 				if (this.draggingNodes.roundX !== deltaX || this.draggingNodes.roundY !== deltaY) {
 					this.draggingNodes.roundX = deltaX;
 					this.draggingNodes.roundY = deltaY;
