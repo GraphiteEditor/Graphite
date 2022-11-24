@@ -23,7 +23,8 @@ impl Subpath {
 					self.iter().last().unwrap().evaluate(ComputeType::Parametric(1.))
 				}
 			}
-			ComputeType::Euclidean(_t) => todo!(),
+			// TODO: change this implementation to Euclidean compute
+			ComputeType::Euclidean(_t) => self.iter().next().unwrap().evaluate(ComputeType::Parametric(0.)),
 			ComputeType::EuclideanWithinError { t: _, epsilon: _ } => todo!(),
 		}
 	}

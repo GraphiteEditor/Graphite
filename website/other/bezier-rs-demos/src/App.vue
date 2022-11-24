@@ -13,7 +13,7 @@
 	</div>
 	<h2>Subpaths</h2>
 	<div v-for="(feature, index) in subpathFeatures" :key="index">
-		<SubpathExamplePane :name="feature.name" :callback="feature.callback" :sliderOptions="feature.sliderOptions" />
+		<SubpathExamplePane :name="feature.name" :callback="feature.callback" :sliderOptions="feature.sliderOptions" :chooseComputeType="feature.chooseComputeType" />
 	</div>
 </template>
 
@@ -568,8 +568,9 @@ export default defineComponent({
 				},
 				{
 					name: "Evaluate",
-					callback: (subpath: WasmSubpathInstance, options: Record<string, number>): string => subpath.evaluate(options.t),
-					sliderOptions: [tSliderOptions], // TODO: add slider to toggle between parametric and euclidean
+					callback: (subpath: WasmSubpathInstance, options: Record<string, number>, _: undefined, computeType: ComputeType): string => subpath.evaluate(options.computeArgument, computeType),
+					sliderOptions: [{ ...tSliderOptions, variable: "computeArgument" }],
+					chooseComputeType: true,
 				},
 				{
 					name: "Intersect (Line Segment)",

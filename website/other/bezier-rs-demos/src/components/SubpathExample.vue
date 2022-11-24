@@ -15,7 +15,7 @@
 import { defineComponent, PropType } from "vue";
 
 import { WasmSubpath } from "@/../wasm/pkg";
-import { SubpathCallback, WasmSubpathInstance, WasmSubpathManipulatorKey, SliderOption } from "@/utils/types";
+import { SubpathCallback, WasmSubpathInstance, WasmSubpathManipulatorKey, SliderOption, ComputeType } from "@/utils/types";
 
 const SELECTABLE_RANGE = 10;
 const POINT_INDEX_TO_MANIPULATOR: WasmSubpathManipulatorKey[] = ["set_anchor", "set_in_handle", "set_out_handle"];
@@ -27,6 +27,7 @@ export default defineComponent({
 		closed: { type: Boolean as PropType<boolean>, default: false },
 		callback: { type: Function as PropType<SubpathCallback>, required: true },
 		sliderOptions: { type: Object as PropType<Array<SliderOption>>, default: () => ({}) },
+		computeType: { type: String as PropType<ComputeType>, default: "Parametric" },
 	},
 	data() {
 		const subpath = WasmSubpath.from_triples(this.triples, this.closed) as WasmSubpathInstance;
@@ -36,7 +37,7 @@ export default defineComponent({
 
 		return {
 			subpath,
-			subpathSVG: this.callback(subpath, sliderData),
+			subpathSVG: this.callback(subpath, sliderData, undefined, "Euclidean"),
 			activeIndex: undefined as number[] | undefined,
 			mutableTriples: JSON.parse(JSON.stringify(this.triples)),
 			sliderData,
@@ -66,7 +67,7 @@ export default defineComponent({
 			if (this.activeIndex) {
 				this.subpath[POINT_INDEX_TO_MANIPULATOR[this.activeIndex[1]]](this.activeIndex[0], mx, my);
 				this.mutableTriples[this.activeIndex[0]][this.activeIndex[1]] = [mx, my];
-				this.subpathSVG = this.callback(this.subpath, this.sliderData);
+				this.subpathSVG = this.callback(this.subpath, this.sliderData, [mx, my], this.computeType);
 			}
 		},
 		getSliderValue: (sliderValue: number, sliderUnit?: string | string[]) => (Array.isArray(sliderUnit) ? sliderUnit[sliderValue] : sliderUnit),
@@ -74,9 +75,14 @@ export default defineComponent({
 	watch: {
 		sliderData: {
 			handler() {
-				this.subpathSVG = this.callback(this.subpath, this.sliderData);
+				this.subpathSVG = this.callback(this.subpath, this.sliderData, undefined, this.computeType);
 			},
 			deep: true,
+		},
+		computeType: {
+			handler() {
+				this.subpathSVG = this.callback(this.subpath, this.sliderData, undefined, this.computeType);
+			},
 		},
 	},
 });
