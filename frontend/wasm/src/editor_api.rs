@@ -179,7 +179,7 @@ impl JsEditorHandle {
 				self.dispatch(message);
 				Ok(())
 			}
-			_ => Err(Error::new("Could not update UI").into()),
+			(target, val) => Err(Error::new(&format!("Could not update UI\nDetails:\nTarget: {:?}\nValue: {:?}", target, val)).into()),
 		}
 	}
 
@@ -553,18 +553,7 @@ impl JsEditorHandle {
 	/// Creates a new document node in the node graph
 	#[wasm_bindgen(js_name = createNode)]
 	pub fn create_node(&self, node_type: String) {
-		fn generate_node_id() -> u64 {
-			static mut NODE_ID: u64 = 10;
-			unsafe {
-				NODE_ID += 1;
-				NODE_ID
-			}
-		}
-
-		let message = NodeGraphMessage::CreateNode {
-			node_id: generate_node_id(),
-			node_type,
-		};
+		let message = NodeGraphMessage::CreateNode { node_id: None, node_type };
 		self.dispatch(message);
 	}
 

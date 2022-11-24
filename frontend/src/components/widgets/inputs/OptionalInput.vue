@@ -1,5 +1,5 @@
 <template>
-	<LayoutRow class="optional-input">
+	<LayoutRow class="optional-input" :class="disabled">
 		<CheckboxInput :checked="checked" :disabled="disabled" @input="(e: Event) => $emit('update:checked', (e.target as HTMLInputElement).checked)" :icon="icon" :tooltip="tooltip" />
 	</LayoutRow>
 </template>
@@ -17,6 +17,10 @@
 		border: 1px solid var(--color-5-dullgray);
 		border-radius: 2px 0 0 2px;
 		box-sizing: border-box;
+	}
+
+	&.disabled label {
+		border: 1px solid var(--color-4-dimgray);
 	}
 }
 </style>

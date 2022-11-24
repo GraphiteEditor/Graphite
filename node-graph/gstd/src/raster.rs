@@ -98,12 +98,22 @@ impl<Reader: std::io::Read> Node<Reader> for BufferNode {
 	}
 }
 
-#[derive(Clone, Debug, PartialEq, DynAny)]
+#[derive(Clone, Debug, PartialEq, DynAny, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Image {
 	pub width: u32,
 	pub height: u32,
 	pub data: Vec<Color>,
+}
+
+impl Image {
+	pub const fn empty() -> Self {
+		Self {
+			width: 0,
+			height: 0,
+			data: Vec::new(),
+		}
+	}
 }
 
 impl IntoIterator for Image {

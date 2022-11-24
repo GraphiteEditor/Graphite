@@ -18,6 +18,10 @@ pub struct ImaginateLayer {
 	pub sampling_method: ImaginateSamplingMethod,
 	pub use_img2img: bool,
 	pub denoising_strength: f64,
+	pub mask_layer_ref: Option<Vec<LayerId>>,
+	pub mask_paint_mode: ImaginateMaskPaintMode,
+	pub mask_blur_px: u32,
+	pub mask_fill_content: ImaginateMaskFillContent,
 	pub cfg_scale: f64,
 	pub prompt: String,
 	pub negative_prompt: String,
@@ -60,6 +64,44 @@ pub struct ImaginateImageData {
 pub struct ImaginateBaseImage {
 	pub svg: String,
 	pub size: DVec2,
+}
+
+#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, Deserialize, Serialize)]
+pub enum ImaginateMaskPaintMode {
+	#[default]
+	Inpaint,
+	Outpaint,
+}
+
+#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, Deserialize, Serialize)]
+pub enum ImaginateMaskFillContent {
+	#[default]
+	Fill,
+	Original,
+	LatentNoise,
+	LatentNothing,
+}
+
+impl ImaginateMaskFillContent {
+	pub fn list() -> [ImaginateMaskFillContent; 4] {
+		[
+			ImaginateMaskFillContent::Fill,
+			ImaginateMaskFillContent::Original,
+			ImaginateMaskFillContent::LatentNoise,
+			ImaginateMaskFillContent::LatentNothing,
+		]
+	}
+}
+
+impl std::fmt::Display for ImaginateMaskFillContent {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self {
+			ImaginateMaskFillContent::Fill => write!(f, "Smeared Surroundings"),
+			ImaginateMaskFillContent::Original => write!(f, "Original Base Image"),
+			ImaginateMaskFillContent::LatentNoise => write!(f, "Randomness (Latent Noise)"),
+			ImaginateMaskFillContent::LatentNothing => write!(f, "Neutral (Latent Nothing)"),
+		}
+	}
 }
 
 #[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Deserialize, Serialize)]
@@ -182,6 +224,10 @@ impl Default for ImaginateLayer {
 			sampling_method: Default::default(),
 			use_img2img: false,
 			denoising_strength: 0.66,
+			mask_paint_mode: ImaginateMaskPaintMode::default(),
+			mask_layer_ref: None,
+			mask_blur_px: 4,
+			mask_fill_content: ImaginateMaskFillContent::default(),
 			cfg_scale: 10.,
 			prompt: "".into(),
 			negative_prompt: "".into(),

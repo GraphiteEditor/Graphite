@@ -6,8 +6,10 @@ use crate::messages::prelude::*;
 
 use graphene::color::Color;
 use graphene::layers::text_layer::Font;
+use graphene::LayerId;
 
 use serde_json::Value;
+use std::ops::Not;
 
 #[derive(Debug, Clone, Default)]
 pub struct LayoutMessageHandler {
@@ -117,6 +119,19 @@ impl<F: Fn(&MessageDiscriminant) -> Vec<KeysGroup>> MessageHandler<LayoutMessage
 						let callback_message = (invisible.on_update.callback)(&());
 						responses.push_back(callback_message);
 					}
+					Widget::LayerReferenceInput(layer_reference_input) => {
+						let update_value = value.is_null().not().then(|| {
+							value
+								.as_str()
+								.expect("LayerReferenceInput update was not of type: string")
+								.split(',')
+								.map(|id| id.parse::<LayerId>().unwrap())
+								.collect::<Vec<_>>()
+						});
+						layer_reference_input.value = update_value;
+						let callback_message = (layer_reference_input.on_update.callback)(layer_reference_input);
+						responses.push_back(callback_message);
+					}
 					Widget::NumberInput(number_input) => match value {
 						Value::Number(num) => {
 							let update_value = num.as_f64().unwrap();
@@ -137,6 +152,10 @@ impl<F: Fn(&MessageDiscriminant) -> Vec<KeysGroup>> MessageHandler<LayoutMessage
 						let update_value = value.as_bool().expect("OptionalInput update was not of type: bool");
 						optional_input.checked = update_value;
 						let callback_message = (optional_input.on_update.callback)(optional_input);
+						responses.push_back(callback_message);
+					}
+					Widget::ParameterExposeButton(parameter_expose_button) => {
+						let callback_message = (parameter_expose_button.on_update.callback)(parameter_expose_button);
 						responses.push_back(callback_message);
 					}
 					Widget::PivotAssist(pivot_assist) => {

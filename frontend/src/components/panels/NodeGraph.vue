@@ -35,8 +35,8 @@
 					class="node"
 					:class="{ selected: selected.includes(node.id) }"
 					:style="{
-						'--offset-left': node.position?.x || 0,
-						'--offset-top': node.position?.y || 0,
+						'--offset-left': (node.position?.x || 0) + (selected.includes(node.id) ? draggingNodes?.roundX || 0 : 0),
+						'--offset-top': (node.position?.y || 0) + (selected.includes(node.id) ? draggingNodes?.roundY || 0 : 0),
 						'--data-color': 'var(--color-data-raster)',
 						'--data-color-dim': 'var(--color-data-raster-dim)',
 					}"
@@ -44,15 +44,42 @@
 				>
 					<div class="primary">
 						<div class="ports">
-							<div class="input port" data-port="input" data-datatype="raster">
+							<div
+								v-if="node.primaryInput"
+								class="input port"
+								data-port="input"
+								:data-datatype="node.primaryInput"
+								:style="{ '--data-color': `var(--color-data-${node.primaryInput})`, '--data-color-dim': `var(--color-data-${node.primaryInput}-dim)` }"
+							>
 								<div></div>
 							</div>
-							<div class="output port" data-port="output" data-datatype="raster">
+							<div
+								v-if="node.outputs.length > 0"
+								class="output port"
+								data-port="output"
+								:data-datatype="node.outputs[0]"
+								:style="{ '--data-color': `var(--color-data-${node.outputs[0]})`, '--data-color-dim': `var(--color-data-${node.outputs[0]}-dim)` }"
+							>
 								<div></div>
 							</div>
 						</div>
 						<IconLabel :icon="nodeIcon(node.displayName)" />
 						<TextLabel>{{ node.displayName }}</TextLabel>
+					</div>
+					<div v-if="node.exposedInputs.length > 0" class="arguments">
+						<div v-for="(argument, index) in node.exposedInputs" :key="index" class="argument">
+							<div class="ports">
+								<div
+									class="input port"
+									data-port="input"
+									:data-datatype="argument.dataType"
+									:style="{ '--data-color': `var(--color-data-${argument.dataType})`, '--data-color-dim': `var(--color-data-${argument.dataType}-dim)` }"
+								>
+									<div></div>
+								</div>
+							</div>
+							<TextLabel>{{ argument.name }}</TextLabel>
+						</div>
 					</div>
 				</div>
 			</div>
@@ -284,6 +311,8 @@ export default defineComponent({
 			transform: { scale: 1, x: 0, y: 0 },
 			panning: false,
 			selected: [] as bigint[],
+			draggingNodes: undefined as { startX: number; startY: number; roundX: number; roundY: number } | undefined,
+			selectIfNotDragged: undefined as undefined | bigint,
 			linkInProgressFromConnector: undefined as HTMLDivElement | undefined,
 			linkInProgressToConnector: undefined as HTMLDivElement | DOMRect | undefined,
 			nodeLinkPaths: [] as [string, string][],
@@ -324,31 +353,36 @@ export default defineComponent({
 		nodes: {
 			immediate: true,
 			async handler() {
-				await nextTick();
-
-				const containerBounds = this.$refs.nodesContainer as HTMLDivElement | undefined;
-				if (!containerBounds) return;
-
-				const links = this.nodeGraph.state.links;
-				this.nodeLinkPaths = links.flatMap((link) => {
-					const connectorIndex = 0;
-
-					const nodePrimaryOutput = (containerBounds.querySelector(`[data-node="${String(link.linkStart)}"] [data-port="output"]`) || undefined) as HTMLDivElement | undefined;
-
-					const nodeInputConnectors = containerBounds.querySelectorAll(`[data-node="${String(link.linkEnd)}"] [data-port="input"]`) || undefined;
-					const nodePrimaryInput = nodeInputConnectors?.[connectorIndex] as HTMLDivElement | undefined;
-
-					if (!nodePrimaryInput || !nodePrimaryOutput) return [];
-					return [this.createWirePath(nodePrimaryOutput, nodePrimaryInput.getBoundingClientRect(), false, false)];
-				});
+				await this.refreshLinks();
 			},
 		},
 	},
 	methods: {
+		async refreshLinks(): Promise<void> {
+			await nextTick();
+
+			const containerBounds = this.$refs.nodesContainer as HTMLDivElement | undefined;
+			if (!containerBounds) return;
+
+			const links = this.nodeGraph.state.links;
+			this.nodeLinkPaths = links.flatMap((link) => {
+				const connectorIndex = Number(link.linkEndInputIndex);
+
+				const nodePrimaryOutput = (containerBounds.querySelector(`[data-node="${String(link.linkStart)}"] [data-port="output"]`) || undefined) as HTMLDivElement | undefined;
+
+				const nodeInputConnectors = containerBounds.querySelectorAll(`[data-node="${String(link.linkEnd)}"] [data-port="input"]`) || undefined;
+				const nodePrimaryInput = nodeInputConnectors?.[connectorIndex] as HTMLDivElement | undefined;
+
+				if (!nodePrimaryInput || !nodePrimaryOutput) return [];
+				return [this.createWirePath(nodePrimaryOutput, nodePrimaryInput.getBoundingClientRect(), false, false)];
+			});
+		},
 		nodeIcon(nodeName: string): IconName {
 			const iconMap: Record<string, IconName> = {
-				Grayscale: "NodeColorCorrection",
-				"Map Image": "NodeOutput",
+				Output: "NodeOutput",
+				"Hue Shift Image": "NodeColorCorrection",
+				"Brighten Image": "NodeColorCorrection",
+				"Grayscale Image": "NodeColorCorrection",
 			};
 			return iconMap[nodeName] || "NodeNodes";
 		},
@@ -441,8 +475,16 @@ export default defineComponent({
 					if (e.shiftKey || e.ctrlKey) {
 						if (this.selected.includes(id)) this.selected.splice(this.selected.lastIndexOf(id), 1);
 						else this.selected.push(id);
-					} else {
+					} else if (!this.selected.includes(id)) {
 						this.selected = [id];
+					} else {
+						this.selectIfNotDragged = id;
+					}
+
+					if (this.selected.includes(id)) {
+						this.draggingNodes = { startX: e.x, startY: e.y, roundX: 0, roundY: 0 };
+						const graphDiv: HTMLDivElement | undefined = (this.$refs.graph as typeof LayoutCol | undefined)?.$el;
+						graphDiv?.setPointerCapture(e.pointerId);
 					}
 
 					this.editor.instance.selectNodes(new BigUint64Array(this.selected));
@@ -467,6 +509,14 @@ export default defineComponent({
 					this.linkInProgressToConnector = dot;
 				} else {
 					this.linkInProgressToConnector = new DOMRect(e.x, e.y);
+				}
+			} else if (this.draggingNodes) {
+				const deltaX = Math.round((e.x - this.draggingNodes.startX) / this.transform.scale / GRID_SIZE);
+				const deltaY = Math.round((e.y - this.draggingNodes.startY) / this.transform.scale / GRID_SIZE);
+				if (this.draggingNodes.roundX !== deltaX || this.draggingNodes.roundY !== deltaY) {
+					this.draggingNodes.roundX = deltaX;
+					this.draggingNodes.roundY = deltaY;
+					this.refreshLinks();
 				}
 			}
 		},
@@ -494,6 +544,16 @@ export default defineComponent({
 						this.editor.instance.connectNodesByLink(BigInt(outputConnectedNodeID), BigInt(inputConnectedNodeID), inputNodeConnectionIndex);
 					}
 				}
+			} else if (this.draggingNodes) {
+				if (this.draggingNodes.startX === e.x || this.draggingNodes.startY === e.y) {
+					if (this.selectIfNotDragged) {
+						this.selected = [this.selectIfNotDragged];
+						this.editor.instance.selectNodes(new BigUint64Array(this.selected));
+					}
+				}
+				this.editor.instance.moveSelectedNodes(this.draggingNodes.roundX, this.draggingNodes.roundY);
+				this.draggingNodes = undefined;
+				this.selectIfNotDragged = undefined;
 			}
 
 			this.linkInProgressFromConnector = undefined;

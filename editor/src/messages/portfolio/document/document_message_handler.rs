@@ -963,23 +963,56 @@ impl DocumentMessageHandler {
 			restore_faces: imaginate_layer.restore_faces,
 			tiling: imaginate_layer.tiling,
 		};
-		let base_image = if imaginate_layer.use_img2img {
+		let mask_paint_mode = imaginate_layer.mask_paint_mode;
+		let mask_blur_px = imaginate_layer.mask_blur_px;
+		let mask_fill_content = imaginate_layer.mask_fill_content;
+		let (base_image, mask_image) = if imaginate_layer.use_img2img {
+			let mask = imaginate_layer.mask_layer_ref.clone();
+
 			// Calculate the size of the region to be exported
 			let size = DVec2::new(transform.transform_vector2(DVec2::new(1., 0.)).length(), transform.transform_vector2(DVec2::new(0., 1.)).length());
 
 			let old_transforms = self.remove_document_transform();
 			let svg = self.render_document(size, transform.inverse(), persistent_data, DocumentRenderMode::OnlyBelowLayerInFolder(&layer_path));
-			self.restore_document_transform(old_transforms);
 
-			Some(ImaginateBaseImage { svg, size })
+			let mask_is_some = mask.is_some();
+			let mask_image = mask.and_then(|mask_layer_path| match self.graphene_document.layer(&mask_layer_path) {
+				Ok(_) => {
+					let svg = self.render_document(size, transform.inverse(), persistent_data, DocumentRenderMode::LayerCutout(&mask_layer_path, Color::WHITE));
+
+					Some(ImaginateBaseImage { svg, size })
+				}
+				Err(_) => None,
+			});
+
+			if mask_is_some && mask_image.is_none() {
+				return Some(
+					DialogMessage::DisplayDialogError {
+						title: "Masking layer is missing".into(),
+						description: "
+							It may have been deleted or moved. Please drag a new layer reference\n\
+							into the 'Masking Layer' parameter input, then generate again."
+							.trim()
+							.into(),
+					}
+					.into(),
+				);
+			}
+
+			self.restore_document_transform(old_transforms);
+			(Some(ImaginateBaseImage { svg, size }), mask_image)
 		} else {
-			None
+			(None, None)
 		};
 
 		Some(
 			FrontendMessage::TriggerImaginateGenerate {
 				parameters,
 				base_image,
+				mask_image,
+				mask_paint_mode,
+				mask_blur_px,
+				mask_fill_content,
 				hostname: preferences.imaginate_server_hostname.clone(),
 				refresh_frequency: preferences.imaginate_refresh_frequency,
 				document_id,
@@ -1042,13 +1075,17 @@ impl DocumentMessageHandler {
 
 		let render_data = RenderData::new(ViewMode::Normal, &persistent_data.font_cache, None);
 
-		let artwork = match render_mode {
-			DocumentRenderMode::Root => self.graphene_document.render_root(render_data),
-			DocumentRenderMode::OnlyBelowLayerInFolder(below_layer_path) => self.graphene_document.render_layers_below(below_layer_path, render_data).unwrap(),
+		let (artwork, outside) = match render_mode {
+			DocumentRenderMode::Root => (self.graphene_document.render_root(render_data), None),
+			DocumentRenderMode::OnlyBelowLayerInFolder(below_layer_path) => (self.graphene_document.render_layers_below(below_layer_path, render_data).unwrap(), None),
+			DocumentRenderMode::LayerCutout(layer_path, background) => (self.graphene_document.render_layer(layer_path, render_data).unwrap(), Some(background)),
 		};
 		let artboards = self.artboard_message_handler.artboards_graphene_document.render_root(render_data);
-		let outside_artboards_color = if self.artboard_message_handler.artboard_ids.is_empty() { "#ffffff" } else { "#222222" };
-		let outside_artboards = format!(r#"<rect x="0" y="0" width="100%" height="100%" fill="{}" />"#, outside_artboards_color);
+		let outside_artboards_color = outside.map_or_else(
+			|| if self.artboard_message_handler.artboard_ids.is_empty() { "ffffff" } else { "222222" }.to_string(),
+			|col| col.rgba_hex(),
+		);
+		let outside_artboards = format!(r##"<rect x="0" y="0" width="100%" height="100%" fill="#{}" />"##, outside_artboards_color);
 		let matrix = transform
 			.to_cols_array()
 			.iter()

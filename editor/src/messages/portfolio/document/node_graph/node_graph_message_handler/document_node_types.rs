@@ -1,86 +1,179 @@
-use std::borrow::Cow;
+use super::{FrontendGraphDataType, FrontendNodeType};
+use crate::messages::layout::utility_types::layout_widget::{LayoutGroup, Widget, WidgetHolder};
+use crate::messages::layout::utility_types::widgets::label_widgets::TextLabel;
 
 use graph_craft::document::value::TaggedValue;
-use graph_craft::document::NodeInput;
+use graph_craft::document::{DocumentNode, NodeId, NodeInput};
 use graph_craft::proto::{NodeIdentifier, Type};
 use graphene_std::raster::Image;
 
-use super::FrontendNodeType;
+use std::borrow::Cow;
+
+pub struct DocumentInputType {
+	pub name: &'static str,
+	pub data_type: FrontendGraphDataType,
+	pub default: NodeInput,
+}
 
 pub struct DocumentNodeType {
 	pub name: &'static str,
 	pub identifier: NodeIdentifier,
-	pub default_inputs: &'static [NodeInput],
+	pub inputs: &'static [DocumentInputType],
+	pub outputs: &'static [FrontendGraphDataType],
+	pub properties: fn(&DocumentNode, NodeId) -> Vec<LayoutGroup>,
 }
 
 // TODO: Dynamic node library
-static DOCUMENT_NODE_TYPES: [DocumentNodeType; 5] = [
+static DOCUMENT_NODE_TYPES: [DocumentNodeType; 7] = [
 	DocumentNodeType {
 		name: "Identity",
 		identifier: NodeIdentifier::new("graphene_core::ops::IdNode", &[Type::Concrete(Cow::Borrowed("Any<'_>"))]),
-		default_inputs: &[NodeInput::Node(0)],
+		inputs: &[DocumentInputType {
+			name: "In",
+			data_type: FrontendGraphDataType::General,
+			default: NodeInput::Node(0),
+		}],
+		outputs: &[FrontendGraphDataType::General],
+		properties: |_document_node, _node_id| {
+			vec![LayoutGroup::Row {
+				widgets: vec![WidgetHolder::new(Widget::TextLabel(TextLabel {
+					value: "The identity node simply returns the input".to_string(),
+					..Default::default()
+				}))],
+			}]
+		},
+	},
+	DocumentNodeType {
+		name: "Input",
+		identifier: NodeIdentifier::new("graphene_core::ops::IdNode", &[Type::Concrete(Cow::Borrowed("Any<'_>"))]),
+		inputs: &[DocumentInputType {
+			name: "In",
+			data_type: FrontendGraphDataType::Raster,
+			default: NodeInput::Network,
+		}],
+		outputs: &[FrontendGraphDataType::Raster],
+		properties: |_document_node, _node_id| {
+			vec![LayoutGroup::Row {
+				widgets: vec![WidgetHolder::new(Widget::TextLabel(TextLabel {
+					value: "The input to the graph is the bitmap under the frame".to_string(),
+					..Default::default()
+				}))],
+			}]
+		},
+	},
+	DocumentNodeType {
+		name: "Output",
+		identifier: NodeIdentifier::new("graphene_core::ops::IdNode", &[Type::Concrete(Cow::Borrowed("Any<'_>"))]),
+		inputs: &[DocumentInputType {
+			name: "In",
+			data_type: FrontendGraphDataType::Raster,
+			default: NodeInput::Value {
+				tagged_value: TaggedValue::Image(Image::empty()),
+				exposed: true,
+			},
+		}],
+		outputs: &[],
+		properties: |_document_node, _node_id| {
+			vec![LayoutGroup::Row {
+				widgets: vec![WidgetHolder::new(Widget::TextLabel(TextLabel {
+					value: "The output to the graph is rendered in the frame".to_string(),
+					..Default::default()
+				}))],
+			}]
+		},
 	},
 	DocumentNodeType {
 		name: "Grayscale Image",
 		identifier: NodeIdentifier::new("graphene_std::raster::GrayscaleImageNode", &[]),
-		default_inputs: &[NodeInput::Value {
-			tagged_value: TaggedValue::Image(Image {
-				width: 0,
-				height: 0,
-				data: Vec::new(),
-			}),
-			exposed: true,
+		inputs: &[DocumentInputType {
+			name: "Image",
+			data_type: FrontendGraphDataType::Raster,
+			default: NodeInput::Value {
+				tagged_value: TaggedValue::Image(Image::empty()),
+				exposed: true,
+			},
 		}],
+		outputs: &[FrontendGraphDataType::Raster],
+		properties: |_document_node, _node_id| {
+			vec![LayoutGroup::Row {
+				widgets: vec![WidgetHolder::new(Widget::TextLabel(TextLabel {
+					value: "The output to the graph is rendered in the frame".to_string(),
+					..Default::default()
+				}))],
+			}]
+		},
 	},
 	DocumentNodeType {
 		name: "Brighten Image",
 		identifier: NodeIdentifier::new("graphene_std::raster::BrightenImageNode", &[Type::Concrete(Cow::Borrowed("&TypeErasedNode"))]),
-		default_inputs: &[
-			NodeInput::Value {
-				tagged_value: TaggedValue::Image(Image {
-					width: 0,
-					height: 0,
-					data: Vec::new(),
-				}),
-				exposed: true,
+		inputs: &[
+			DocumentInputType {
+				name: "Image",
+				data_type: FrontendGraphDataType::Raster,
+				default: NodeInput::Value {
+					tagged_value: TaggedValue::Image(Image::empty()),
+					exposed: true,
+				},
 			},
-			NodeInput::Value {
-				tagged_value: TaggedValue::F32(10.),
-				exposed: false,
+			DocumentInputType {
+				name: "Amount",
+				data_type: FrontendGraphDataType::Number,
+				default: NodeInput::Value {
+					tagged_value: TaggedValue::F32(10.),
+					exposed: false,
+				},
 			},
 		],
+		outputs: &[FrontendGraphDataType::Raster],
+		properties: super::node_properties::brighten_image_properties,
 	},
 	DocumentNodeType {
 		name: "Hue Shift Image",
 		identifier: NodeIdentifier::new("graphene_std::raster::HueShiftImage", &[Type::Concrete(Cow::Borrowed("&TypeErasedNode"))]),
-		default_inputs: &[
-			NodeInput::Value {
-				tagged_value: TaggedValue::Image(Image {
-					width: 0,
-					height: 0,
-					data: Vec::new(),
-				}),
-				exposed: true,
+		inputs: &[
+			DocumentInputType {
+				name: "Image",
+				data_type: FrontendGraphDataType::Raster,
+				default: NodeInput::Value {
+					tagged_value: TaggedValue::Image(Image::empty()),
+					exposed: true,
+				},
 			},
-			NodeInput::Value {
-				tagged_value: TaggedValue::F32(50.),
-				exposed: false,
+			DocumentInputType {
+				name: "Amount",
+				data_type: FrontendGraphDataType::Number,
+				default: NodeInput::Value {
+					tagged_value: TaggedValue::F32(10.),
+					exposed: false,
+				},
 			},
 		],
+		outputs: &[FrontendGraphDataType::Raster],
+		properties: super::node_properties::hue_shift_image_properties,
 	},
 	DocumentNodeType {
 		name: "Add",
-		identifier: NodeIdentifier::new("graphene_core::ops::AddNode", &[Type::Concrete(Cow::Borrowed("u32")), Type::Concrete(Cow::Borrowed("u32"))]),
-		default_inputs: &[
-			NodeInput::Value {
-				tagged_value: TaggedValue::U32(0),
-				exposed: false,
+		identifier: NodeIdentifier::new("graphene_core::ops::AddNode", &[Type::Concrete(Cow::Borrowed("&TypeErasedNode"))]),
+		inputs: &[
+			DocumentInputType {
+				name: "Input",
+				data_type: FrontendGraphDataType::Number,
+				default: NodeInput::Value {
+					tagged_value: TaggedValue::F32(0.),
+					exposed: true,
+				},
 			},
-			NodeInput::Value {
-				tagged_value: TaggedValue::U32(0),
-				exposed: false,
+			DocumentInputType {
+				name: "Addend",
+				data_type: FrontendGraphDataType::Number,
+				default: NodeInput::Value {
+					tagged_value: TaggedValue::F32(0.),
+					exposed: true,
+				},
 			},
 		],
+		outputs: &[FrontendGraphDataType::Number],
+		properties: super::node_properties::add_properties,
 	},
 ];
 
@@ -89,5 +182,9 @@ pub fn resolve_document_node_type(name: &str) -> Option<&DocumentNodeType> {
 }
 
 pub fn collect_node_types() -> Vec<FrontendNodeType> {
-	DOCUMENT_NODE_TYPES.iter().map(|node_type| FrontendNodeType { name: node_type.name.to_string() }).collect()
+	DOCUMENT_NODE_TYPES
+		.iter()
+		.filter(|node_type| !matches!(node_type.name, "Input" | "Output"))
+		.map(|node_type| FrontendNodeType { name: node_type.name.to_string() })
+		.collect()
 }

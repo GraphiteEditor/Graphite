@@ -1,5 +1,6 @@
 pub use super::layer_panel::{LayerMetadata, LayerPanelEntry};
 
+use graphene::color::Color;
 use graphene::document::Document as GrapheneDocument;
 use graphene::LayerId;
 
@@ -65,4 +66,5 @@ impl DocumentMode {
 pub enum DocumentRenderMode<'a> {
 	Root,
 	OnlyBelowLayerInFolder(&'a [LayerId]),
+	LayerCutout(&'a [LayerId], Color),
 }

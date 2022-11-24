@@ -1,7 +1,7 @@
 use crate::messages::input_mapper::utility_types::misc::ActionKeys;
 use crate::messages::layout::utility_types::layout_widget::WidgetCallback;
 
-use graphene::color::Color;
+use graphene::{color::Color, layers::layer_info::LayerDataTypeDiscriminant, LayerId};
 
 use derivative::*;
 use serde::{Deserialize, Serialize};
@@ -148,6 +148,34 @@ pub struct InvisibleStandinInput {
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
 	pub on_update: WidgetCallback<()>,
+}
+
+#[derive(Clone, Serialize, Deserialize, Derivative)]
+#[derivative(Debug, PartialEq, Default)]
+pub struct LayerReferenceInput {
+	pub value: Option<Vec<LayerId>>,
+
+	#[serde(rename = "layerName")]
+	pub layer_name: Option<String>,
+
+	#[serde(rename = "layerType")]
+	pub layer_type: Option<LayerDataTypeDiscriminant>,
+
+	pub disabled: bool,
+
+	pub tooltip: String,
+
+	#[serde(skip)]
+	pub tooltip_shortcut: Option<ActionKeys>,
+
+	// Styling
+	#[serde(rename = "minWidth")]
+	pub min_width: u32,
+
+	// Callbacks
+	#[serde(skip)]
+	#[derivative(Debug = "ignore", PartialEq = "ignore")]
+	pub on_update: WidgetCallback<LayerReferenceInput>,
 }
 
 #[derive(Clone, Serialize, Deserialize, Derivative)]

@@ -407,25 +407,32 @@ impl Fsm for SelectToolFsmState {
 					self
 				}
 				(_, EditLayer) => {
+					// On double click with select tool we sometimes want to edit the double clicked layers
+
+					// Setup required data for checking the clicked layer
 					let mouse_pos = input.mouse.position;
 					let tolerance = DVec2::splat(SELECTION_TOLERANCE);
 					let quad = Quad::from_box([mouse_pos - tolerance, mouse_pos + tolerance]);
 
-					if let Some(Ok(intersect)) = document
-						.graphene_document
-						.intersects_quad_root(quad, font_cache)
-						.last()
-						.map(|path| document.graphene_document.layer(path))
-					{
-						match intersect.data {
-							LayerDataType::Text(_) => {
-								responses.push_front(ToolMessage::ActivateTool { tool_type: ToolType::Text }.into());
-								responses.push_back(TextToolMessage::Interact.into());
+					// Check the last (top most) intersection layer.
+					if let Some(intersect_layer_path) = document.graphene_document.intersects_quad_root(quad, font_cache).last() {
+						if let Ok(intersect) = document.graphene_document.layer(intersect_layer_path) {
+							match intersect.data {
+								LayerDataType::Text(_) => {
+									responses.push_front(ToolMessage::ActivateTool { tool_type: ToolType::Text }.into());
+									responses.push_back(TextToolMessage::Interact.into());
+								}
+								LayerDataType::Shape(_) => {
+									responses.push_front(ToolMessage::ActivateTool { tool_type: ToolType::Path }.into());
+								}
+								LayerDataType::NodeGraphFrame(_) => {
+									let replacement_selected_layers = vec![intersect_layer_path.clone()];
+									let layer_path = intersect_layer_path.clone();
+									responses.push_back(DocumentMessage::SetSelectedLayers { replacement_selected_layers }.into());
+									responses.push_back(NodeGraphMessage::OpenNodeGraph { layer_path }.into());
+								}
+								_ => {}
 							}
-							LayerDataType::Shape(_) => {
-								responses.push_front(ToolMessage::ActivateTool { tool_type: ToolType::Path }.into());
-							}
-							_ => {}
 						}
 					}
 

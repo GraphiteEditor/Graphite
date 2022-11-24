@@ -26,8 +26,10 @@
 				@changeFont="(value: unknown) => updateLayout(component.widgetId, value)"
 				:sharpRightCorners="nextIsSuffix"
 			/>
+			<ParameterExposeButton v-if="component.props.kind === 'ParameterExposeButton'" v-bind="component.props" :action="() => updateLayout(component.widgetId, undefined)" />
 			<IconButton v-if="component.props.kind === 'IconButton'" v-bind="component.props" :action="() => updateLayout(component.widgetId, undefined)" :sharpRightCorners="nextIsSuffix" />
 			<IconLabel v-if="component.props.kind === 'IconLabel'" v-bind="component.props" />
+			<LayerReferenceInput v-if="component.props.kind === 'LayerReferenceInput'" v-bind="component.props" @update:value="(value: BigUint64Array) => updateLayout(component.widgetId, value)" />
 			<NumberInput
 				v-if="component.props.kind === 'NumberInput'"
 				v-bind="component.props"
@@ -103,12 +105,14 @@ import { isWidgetColumn, isWidgetRow, type WidgetColumn, type WidgetRow } from "
 
 import PivotAssist from "@/components/widgets/assists/PivotAssist.vue";
 import IconButton from "@/components/widgets/buttons/IconButton.vue";
+import ParameterExposeButton from "@/components/widgets/buttons/ParameterExposeButton.vue";
 import PopoverButton from "@/components/widgets/buttons/PopoverButton.vue";
 import TextButton from "@/components/widgets/buttons/TextButton.vue";
 import CheckboxInput from "@/components/widgets/inputs/CheckboxInput.vue";
 import ColorInput from "@/components/widgets/inputs/ColorInput.vue";
 import DropdownInput from "@/components/widgets/inputs/DropdownInput.vue";
 import FontInput from "@/components/widgets/inputs/FontInput.vue";
+import LayerReferenceInput from "@/components/widgets/inputs/LayerReferenceInput.vue";
 import NumberInput from "@/components/widgets/inputs/NumberInput.vue";
 import OptionalInput from "@/components/widgets/inputs/OptionalInput.vue";
 import RadioInput from "@/components/widgets/inputs/RadioInput.vue";
@@ -170,8 +174,10 @@ export default defineComponent({
 		FontInput,
 		IconButton,
 		IconLabel,
+		LayerReferenceInput,
 		NumberInput,
 		OptionalInput,
+		ParameterExposeButton,
 		PivotAssist,
 		PopoverButton,
 		RadioInput,
