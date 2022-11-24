@@ -616,10 +616,17 @@ impl<T: Iterator<Item = PathEl>> From<T> for Subpath {
 	/// Create a Subpath from a [BezPath].
 	fn from(path: T) -> Self {
 		let mut subpath = Subpath::new();
+		let mut closed = false;
 		for path_el in path {
+			if closed {
+				warn!("Verbs appear after the close path in a subpath. This will probably cause crashes.");
+			}
 			match path_el {
 				PathEl::MoveTo(p) => {
 					subpath.manipulator_groups_mut().push_end(ManipulatorGroup::new_with_anchor(kurbo_point_to_dvec2(p)));
+					if !subpath.0.is_empty() {
+						warn!("A move to path element appears part way through a subpath. This will be treated as a line to verb.");
+					}
 				}
 				PathEl::LineTo(p) => {
 					subpath.manipulator_groups_mut().push_end(ManipulatorGroup::new_with_anchor(kurbo_point_to_dvec2(p)));
@@ -635,6 +642,7 @@ impl<T: Iterator<Item = PathEl>> From<T> for Subpath {
 				}
 				PathEl::ClosePath => {
 					subpath.manipulator_groups_mut().push_end(ManipulatorGroup::closed());
+					closed = true;
 				}
 			}
 		}

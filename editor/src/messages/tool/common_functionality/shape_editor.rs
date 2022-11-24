@@ -358,10 +358,17 @@ impl ShapeEditor {
 			};
 
 			let (in_handle, out_handle) = if already_sharp {
+				let is_closed = manipulator_groups.last().filter(|group| group.is_close()).is_some();
+
 				// Grab the next and previous manipulator groups by simply looking at the next / previous index
-				// TODO: Wrapping around on a closed path
-				let previous_position = index.checked_sub(1).and_then(|index| manipulator_groups.by_index(index)).and_then(|group| group.points[0].as_ref());
-				let next_position = manipulator_groups.by_index(index + 1).and_then(|group| group.points[0].as_ref());
+				let mut previous_position = index.checked_sub(1).and_then(|index| manipulator_groups.by_index(index)).and_then(|group| group.points[0].as_ref());
+				let mut next_position = manipulator_groups.by_index(index + 1).and_then(|group| group.points[0].as_ref());
+
+				// Wrapping around closed path (assuming format is point elements then a single close path)
+				if is_closed {
+					previous_position = previous_position.or_else(|| manipulator_groups.iter().nth_back(1).and_then(|group| group.points[0].as_ref()));
+					next_position = next_position.or_else(|| manipulator_groups.first().and_then(|group| group.points[0].as_ref()));
+				}
 
 				// To find the length of the new tangent we just take the distance to the anchor and divide by 3 (pretty arbitrary)
 				let length_previous = previous_position.map(|point| (point.position - anchor_position).length() / 3.);
