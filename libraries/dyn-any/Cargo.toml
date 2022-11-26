@@ -18,6 +18,8 @@ log = { version = "0.4", optional = true }
 [features]
 derive = ["dyn-any-derive"]
 log-bad-types = ["log"]
+# Opt into impls for Rc<T> and Arc<T>.
+rc = []
 
 [package.metadata.docs.rs]
 all-features = true

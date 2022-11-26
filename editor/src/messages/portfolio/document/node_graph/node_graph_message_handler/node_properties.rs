@@ -192,11 +192,16 @@ pub fn add_properties(document_node: &DocumentNode, node_id: NodeId) -> Vec<Layo
 }
 
 fn unknown_node_properties(document_node: &DocumentNode) -> Vec<LayoutGroup> {
+	string_properties(format!("Node '{}' cannot be found in library", document_node.name))
+}
+
+pub fn no_properties(document_node: &DocumentNode, _node_id: NodeId) -> Vec<LayoutGroup> {
+	string_properties(format!("The {} node requires no properties.", document_node.name.to_lowercase()))
+}
+
+pub fn string_properties(value: String) -> Vec<LayoutGroup> {
 	vec![LayoutGroup::Row {
-		widgets: vec![WidgetHolder::new(Widget::TextLabel(TextLabel {
-			value: format!("Node '{}' cannot be found in library", document_node.name),
-			..Default::default()
-		}))],
+		widgets: vec![WidgetHolder::new(Widget::TextLabel(TextLabel { value, ..Default::default() }))],
 	}]
 }
 

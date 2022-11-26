@@ -29,8 +29,8 @@ use graphene::layers::imaginate_layer::{ImaginateBaseImage, ImaginateGenerationP
 use graphene::layers::layer_info::{LayerDataType, LayerDataTypeDiscriminant};
 use graphene::layers::style::{Fill, RenderData, ViewMode};
 use graphene::layers::text_layer::{Font, FontCache};
-use graphene::layers::vector::subpath::Subpath;
 use graphene::{DocumentError, DocumentResponse, LayerId, Operation as DocumentOperation};
+use graphene_std::vector::subpath::Subpath;
 
 use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};

@@ -8,8 +8,9 @@ use crate::layers::nodegraph_layer::NodeGraphFrameLayer;
 use crate::layers::shape_layer::ShapeLayer;
 use crate::layers::style::RenderData;
 use crate::layers::text_layer::{Font, FontCache, TextLayer};
-use crate::layers::vector::subpath::Subpath;
 use crate::{DocumentError, DocumentResponse, Operation};
+
+use graphene_std::vector::subpath::Subpath;
 
 use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};

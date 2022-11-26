@@ -1,4 +1,4 @@
-use super::{FrontendGraphDataType, FrontendNodeType};
+use super::{node_properties, FrontendGraphDataType, FrontendNodeType};
 use crate::messages::layout::utility_types::layout_widget::{LayoutGroup, Widget, WidgetHolder};
 use crate::messages::layout::utility_types::widgets::label_widgets::TextLabel;
 
@@ -24,7 +24,7 @@ pub struct DocumentNodeType {
 }
 
 // TODO: Dynamic node library
-static DOCUMENT_NODE_TYPES: [DocumentNodeType; 7] = [
+static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 	DocumentNodeType {
 		name: "Identity",
 		identifier: NodeIdentifier::new("graphene_core::ops::IdNode", &[Type::Concrete(Cow::Borrowed("Any<'_>"))]),
@@ -52,14 +52,7 @@ static DOCUMENT_NODE_TYPES: [DocumentNodeType; 7] = [
 			default: NodeInput::Network,
 		}],
 		outputs: &[FrontendGraphDataType::Raster],
-		properties: |_document_node, _node_id| {
-			vec![LayoutGroup::Row {
-				widgets: vec![WidgetHolder::new(Widget::TextLabel(TextLabel {
-					value: "The input to the graph is the bitmap under the frame".to_string(),
-					..Default::default()
-				}))],
-			}]
-		},
+		properties: |_document_node, _node_id| node_properties::string_properties("The input to the graph is the bitmap under the frame".to_string()),
 	},
 	DocumentNodeType {
 		name: "Output",
@@ -73,14 +66,7 @@ static DOCUMENT_NODE_TYPES: [DocumentNodeType; 7] = [
 			},
 		}],
 		outputs: &[],
-		properties: |_document_node, _node_id| {
-			vec![LayoutGroup::Row {
-				widgets: vec![WidgetHolder::new(Widget::TextLabel(TextLabel {
-					value: "The output to the graph is rendered in the frame".to_string(),
-					..Default::default()
-				}))],
-			}]
-		},
+		properties: |_document_node, _node_id| node_properties::string_properties("The output to the graph is rendered in the frame".to_string()),
 	},
 	DocumentNodeType {
 		name: "Grayscale Image",
@@ -94,14 +80,7 @@ static DOCUMENT_NODE_TYPES: [DocumentNodeType; 7] = [
 			},
 		}],
 		outputs: &[FrontendGraphDataType::Raster],
-		properties: |_document_node, _node_id| {
-			vec![LayoutGroup::Row {
-				widgets: vec![WidgetHolder::new(Widget::TextLabel(TextLabel {
-					value: "The output to the graph is rendered in the frame".to_string(),
-					..Default::default()
-				}))],
-			}]
-		},
+		properties: node_properties::no_properties,
 	},
 	DocumentNodeType {
 		name: "Brighten Image",
@@ -125,7 +104,7 @@ static DOCUMENT_NODE_TYPES: [DocumentNodeType; 7] = [
 			},
 		],
 		outputs: &[FrontendGraphDataType::Raster],
-		properties: super::node_properties::brighten_image_properties,
+		properties: node_properties::brighten_image_properties,
 	},
 	DocumentNodeType {
 		name: "Hue Shift Image",
@@ -149,7 +128,7 @@ static DOCUMENT_NODE_TYPES: [DocumentNodeType; 7] = [
 			},
 		],
 		outputs: &[FrontendGraphDataType::Raster],
-		properties: super::node_properties::hue_shift_image_properties,
+		properties: node_properties::hue_shift_image_properties,
 	},
 	DocumentNodeType {
 		name: "Add",
@@ -173,7 +152,42 @@ static DOCUMENT_NODE_TYPES: [DocumentNodeType; 7] = [
 			},
 		],
 		outputs: &[FrontendGraphDataType::Number],
-		properties: super::node_properties::add_properties,
+		properties: node_properties::add_properties,
+	},
+	DocumentNodeType {
+		name: "Unit Circle Generator",
+		identifier: NodeIdentifier::new("graphene_core::ops::AddNode", &[]),
+		inputs: &[],
+		outputs: &[FrontendGraphDataType::Subpath],
+		properties: node_properties::no_properties,
+	},
+	DocumentNodeType {
+		name: "Unit Square Generator",
+		identifier: NodeIdentifier::new("graphene_core::ops::AddNode", &[]),
+		inputs: &[],
+		outputs: &[FrontendGraphDataType::Subpath],
+		properties: node_properties::no_properties,
+	},
+	DocumentNodeType {
+		name: "Path Generator",
+		identifier: NodeIdentifier::new("graphene_core::ops::AddNode", &[]),
+		inputs: &[],
+		outputs: &[FrontendGraphDataType::Subpath],
+		properties: node_properties::no_properties,
+	},
+	DocumentNodeType {
+		name: "Transform Subpath",
+		identifier: NodeIdentifier::new("graphene_std::raster::GrayscaleImageNode", &[]),
+		inputs: &[DocumentInputType {
+			name: "Subpath",
+			data_type: FrontendGraphDataType::Subpath,
+			default: NodeInput::Value {
+				tagged_value: TaggedValue::Subpath(graphene_std::vector::subpath::Subpath::new()),
+				exposed: true,
+			},
+		}],
+		outputs: &[FrontendGraphDataType::Raster],
+		properties: node_properties::no_properties,
 	},
 ];
 

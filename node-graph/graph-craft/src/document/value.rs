@@ -1,8 +1,7 @@
 use dyn_any::StaticType;
-
-use dyn_clone::DynClone;
-
 use dyn_any::{DynAny, Upcast};
+use dyn_clone::DynClone;
+use std::sync::Arc;
 
 /// A type that is known, allowing serialization (serde::Deserialize is not object safe)
 #[derive(Clone, Debug, PartialEq)]
@@ -13,6 +12,8 @@ pub enum TaggedValue {
 	F32(f32),
 	Image(graphene_std::raster::Image),
 	Color(graphene_core::raster::color::Color),
+	Subpath(graphene_std::vector::subpath::Subpath),
+	RcSubpath(Arc<graphene_std::vector::subpath::Subpath>),
 }
 
 impl TaggedValue {
@@ -23,6 +24,8 @@ impl TaggedValue {
 			TaggedValue::F32(x) => Box::new(x),
 			TaggedValue::Image(x) => Box::new(x),
 			TaggedValue::Color(x) => Box::new(x),
+			TaggedValue::Subpath(x) => Box::new(x),
+			TaggedValue::RcSubpath(x) => Box::new(x),
 		}
 	}
 }

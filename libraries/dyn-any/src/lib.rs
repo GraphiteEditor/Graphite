@@ -190,7 +190,7 @@ use std::{
 	vec::Vec,
 };
 
-impl_type!(Option<T>,Result<T, E>,Cell<T>,UnsafeCell<T>,RefCell<T>,MaybeUninit<T>,
+impl_type!(Option<T>,Result<T, E>, Cell<T>,UnsafeCell<T>,RefCell<T>,MaybeUninit<T>,
 		   Vec<T>, String, BTreeMap<K,V>,BTreeSet<V>, LinkedList<T>, VecDeque<T>,
 		   BinaryHeap<T>,  ManuallyDrop<T>, PhantomData<T>, PhantomPinned,Empty<T>,
 		   Wrapping<T>, Duration, Once, Mutex<T>, RwLock<T>,  bool, f32, f64, char,
@@ -198,6 +198,11 @@ impl_type!(Option<T>,Result<T, E>,Cell<T>,UnsafeCell<T>,RefCell<T>,MaybeUninit<T
 		   i8,AtomicI8, i16,AtomicI16, i32,AtomicI32, i64,AtomicI64, isize,AtomicIsize,
 			i128, u128, AtomicBool, AtomicPtr<T>
 );
+
+#[cfg(feature = "rc")]
+use std::{rc::Rc, sync::Arc};
+#[cfg(feature = "rc")]
+impl_type!(Rc<T>, Arc<T>);
 
 impl<T: crate::StaticType + ?Sized> crate::StaticType for Box<T> {
 	type Static = Box<<T as crate::StaticType>::Static>;

@@ -390,12 +390,16 @@ dependencies = [
 name = "graphene-std"
 version = "0.1.0"
 dependencies = [
+ "bezier-rs",
  "borrow_stack",
  "dyn-any",
  "dyn-clone",
+ "glam",
  "graph-proc-macros",
  "graphene-core",
  "image",
+ "kurbo",
+ "log",
  "once_cell",
  "proc-macro2",
  "quote",
@@ -440,6 +444,7 @@ dependencies = [
  "bezier-rs",
  "glam",
  "graph-craft",
+ "graphene-std",
  "image",
  "kurbo",
  "log",

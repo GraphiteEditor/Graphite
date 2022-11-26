@@ -1,11 +1,11 @@
 use crate::messages::prelude::*;
 
 use bezier_rs::ComputeType;
-use graphene::layers::vector::consts::ManipulatorType;
-use graphene::layers::vector::manipulator_group::ManipulatorGroup;
-use graphene::layers::vector::manipulator_point::ManipulatorPoint;
-use graphene::layers::vector::subpath::{BezierId, Subpath};
 use graphene::{LayerId, Operation};
+use graphene_std::vector::consts::ManipulatorType;
+use graphene_std::vector::manipulator_group::ManipulatorGroup;
+use graphene_std::vector::manipulator_point::ManipulatorPoint;
+use graphene_std::vector::subpath::{BezierId, Subpath};
 
 use glam::DVec2;
 use graphene::document::Document;
