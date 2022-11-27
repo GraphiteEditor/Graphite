@@ -375,13 +375,13 @@ impl ShapeEditor {
 				let length_next = next_position.map(|point| (point.position - anchor_position).length() / 3.);
 
 				// Use the position relative to the anchor
-				let relative_previous_normalised = previous_position.map(|point| (point.position - anchor_position).normalize());
-				let relative_next_normalised = next_position.map(|point| (point.position - anchor_position).normalize());
+				let previous_angle = previous_position.map(|point| (point.position - anchor_position)).map(|pos| pos.y.atan2(pos.x));
+				let next_angle = next_position.map(|point| (point.position - anchor_position)).map(|pos| pos.y.atan2(pos.x));
 
 				// The direction of the handles is either the perpendicular vector to the sum of the anchors' positions or just the anchor's position (if only one)
-				let handle_direction = match (relative_previous_normalised, relative_next_normalised) {
-					(Some(previous), Some(next)) => DVec2::new(previous.y + next.y, -(previous.x + next.x)),
-					(None, Some(val)) => -val,
+				let handle_direction = match (previous_angle, next_angle) {
+					(Some(previous), Some(next)) => (previous + next) / 2. + core::f64::consts::FRAC_PI_2,
+					(None, Some(val)) => core::f64::consts::PI + val,
 					(Some(val), None) => val,
 					(None, None) => return None,
 				};
@@ -397,10 +397,13 @@ impl ShapeEditor {
 					.into(),
 				);
 
-				let mut handle_vector = handle_direction.normalize();
+				let (sin, cos) = handle_direction.sin_cos();
+				let mut handle_vector = DVec2::new(cos, sin);
 
 				// Flip the vector if it is not facing towards the same direction as the anchor
-				if relative_previous_normalised.filter(|pos| pos.dot(handle_vector) < 0.).is_some() || relative_next_normalised.filter(|pos| pos.dot(handle_vector) > 0.).is_some() {
+				if previous_position.filter(|pos| (pos.position - anchor_position).normalize().dot(handle_vector) < 0.).is_some()
+					|| next_position.filter(|pos| (pos.position - anchor_position).normalize().dot(handle_vector) > 0.).is_some()
+				{
 					handle_vector = -handle_vector;
 				}
 
