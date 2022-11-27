@@ -21,6 +21,8 @@ pub enum FrontendGraphDataType {
 	Subpath,
 	#[serde(rename = "number")]
 	Number,
+	#[serde(rename = "vec2")]
+	Vector,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]

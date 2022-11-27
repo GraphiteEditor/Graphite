@@ -58,6 +58,7 @@ impl DocumentNode {
 	}
 
 	fn resolve_proto_node(mut self) -> ProtoNode {
+		assert_ne!(self.inputs.len(), 0, "Resolving document node {:#?} with no inputs", self);
 		let first = self.inputs.remove(0);
 		if let DocumentNodeImplementation::Unresolved(fqn) = self.implementation {
 			let (input, mut args) = match first {
@@ -102,6 +103,9 @@ pub enum NodeInput {
 }
 
 impl NodeInput {
+	pub const fn value(tagged_value: value::TaggedValue, exposed: bool) -> Self {
+		Self::Value { tagged_value, exposed }
+	}
 	fn map_ids(&mut self, f: impl Fn(NodeId) -> NodeId) {
 		if let NodeInput::Node(id) = self {
 			*self = NodeInput::Node(f(*id))

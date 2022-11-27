@@ -43,10 +43,10 @@
 	--color-data-general-rgb: 197, 197, 197;
 	--color-data-general-dim: #767676;
 	--color-data-general-dim-rgb: 118, 118, 118;
-	--color-data-vector: #65bbe5;
-	--color-data-vector-rgb: 101, 187, 229;
-	--color-data-vector-dim: #4b778c;
-	--color-data-vector-dim-rgb: 75, 119, 140;
+	--color-data-subpath: #65bbe5;
+	--color-data-subpath-rgb: 101, 187, 229;
+	--color-data-subpath-dim: #4b778c;
+	--color-data-subpath-dim-rgb: 75, 119, 140;
 	--color-data-raster: #e4bb72;
 	--color-data-raster-rgb: 228, 187, 114;
 	--color-data-raster-dim: #8b7752;
@@ -57,6 +57,8 @@
 	--color-data-number-rgb: 214, 83, 110;
 	--color-data-number-dim: #803242;
 	--color-data-number-dim-rgb: 128, 50, 66;
+	--color-data-vec2: #cc00ff;
+	--color-data-vec2-dim: #71008d;
 	--color-data-color: #70a898;
 	--color-data-color-rgb: 112, 168, 152;
 	--color-data-color-dim: #43645b;

@@ -223,6 +223,7 @@ name = "dyn-any"
 version = "0.2.1"
 dependencies = [
  "dyn-any-derive",
+ "glam",
  "log",
 ]
 
@@ -357,6 +358,7 @@ dependencies = [
  "borrow_stack",
  "dyn-any",
  "dyn-clone",
+ "glam",
  "graphene-core",
  "graphene-std",
  "log",

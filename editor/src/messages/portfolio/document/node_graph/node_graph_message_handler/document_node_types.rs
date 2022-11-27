@@ -2,10 +2,12 @@ use super::{node_properties, FrontendGraphDataType, FrontendNodeType};
 use crate::messages::layout::utility_types::layout_widget::{LayoutGroup, Widget, WidgetHolder};
 use crate::messages::layout::utility_types::widgets::label_widgets::TextLabel;
 
+use glam::DVec2;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, NodeId, NodeInput};
 use graph_craft::proto::{NodeIdentifier, Type};
 use graphene_std::raster::Image;
+use graphene_std::vector::subpath::Subpath;
 
 use std::borrow::Cow;
 
@@ -13,6 +15,16 @@ pub struct DocumentInputType {
 	pub name: &'static str,
 	pub data_type: FrontendGraphDataType,
 	pub default: NodeInput,
+}
+
+impl DocumentInputType {
+	pub const fn none() -> Self {
+		Self {
+			name: "None",
+			data_type: FrontendGraphDataType::General,
+			default: NodeInput::value(TaggedValue::None, false),
+		}
+	}
 }
 
 pub struct DocumentNodeType {
@@ -60,10 +72,7 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 		inputs: &[DocumentInputType {
 			name: "In",
 			data_type: FrontendGraphDataType::Raster,
-			default: NodeInput::Value {
-				tagged_value: TaggedValue::Image(Image::empty()),
-				exposed: true,
-			},
+			default: NodeInput::value(TaggedValue::Image(Image::empty()), true),
 		}],
 		outputs: &[],
 		properties: |_document_node, _node_id| node_properties::string_properties("The output to the graph is rendered in the frame".to_string()),
@@ -74,10 +83,7 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 		inputs: &[DocumentInputType {
 			name: "Image",
 			data_type: FrontendGraphDataType::Raster,
-			default: NodeInput::Value {
-				tagged_value: TaggedValue::Image(Image::empty()),
-				exposed: true,
-			},
+			default: NodeInput::value(TaggedValue::Image(Image::empty()), true),
 		}],
 		outputs: &[FrontendGraphDataType::Raster],
 		properties: node_properties::no_properties,
@@ -89,18 +95,12 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 			DocumentInputType {
 				name: "Image",
 				data_type: FrontendGraphDataType::Raster,
-				default: NodeInput::Value {
-					tagged_value: TaggedValue::Image(Image::empty()),
-					exposed: true,
-				},
+				default: NodeInput::value(TaggedValue::Image(Image::empty()), true),
 			},
 			DocumentInputType {
 				name: "Amount",
 				data_type: FrontendGraphDataType::Number,
-				default: NodeInput::Value {
-					tagged_value: TaggedValue::F32(10.),
-					exposed: false,
-				},
+				default: NodeInput::value(TaggedValue::F32(10.), false),
 			},
 		],
 		outputs: &[FrontendGraphDataType::Raster],
@@ -113,18 +113,12 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 			DocumentInputType {
 				name: "Image",
 				data_type: FrontendGraphDataType::Raster,
-				default: NodeInput::Value {
-					tagged_value: TaggedValue::Image(Image::empty()),
-					exposed: true,
-				},
+				default: NodeInput::value(TaggedValue::Image(Image::empty()), true),
 			},
 			DocumentInputType {
 				name: "Amount",
 				data_type: FrontendGraphDataType::Number,
-				default: NodeInput::Value {
-					tagged_value: TaggedValue::F32(10.),
-					exposed: false,
-				},
+				default: NodeInput::value(TaggedValue::F32(10.), false),
 			},
 		],
 		outputs: &[FrontendGraphDataType::Raster],
@@ -137,18 +131,12 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 			DocumentInputType {
 				name: "Input",
 				data_type: FrontendGraphDataType::Number,
-				default: NodeInput::Value {
-					tagged_value: TaggedValue::F32(0.),
-					exposed: true,
-				},
+				default: NodeInput::value(TaggedValue::F32(0.), true),
 			},
 			DocumentInputType {
 				name: "Addend",
 				data_type: FrontendGraphDataType::Number,
-				default: NodeInput::Value {
-					tagged_value: TaggedValue::F32(0.),
-					exposed: true,
-				},
+				default: NodeInput::value(TaggedValue::F32(0.), true),
 			},
 		],
 		outputs: &[FrontendGraphDataType::Number],
@@ -156,36 +144,77 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 	},
 	DocumentNodeType {
 		name: "Unit Circle Generator",
-		identifier: NodeIdentifier::new("graphene_core::ops::AddNode", &[]),
-		inputs: &[],
+		identifier: NodeIdentifier::new("graphene_std::vector::generator_nodes::UnitCircleGenerator", &[]),
+		inputs: &[DocumentInputType::none()],
 		outputs: &[FrontendGraphDataType::Subpath],
 		properties: node_properties::no_properties,
 	},
 	DocumentNodeType {
 		name: "Unit Square Generator",
-		identifier: NodeIdentifier::new("graphene_core::ops::AddNode", &[]),
-		inputs: &[],
+		identifier: NodeIdentifier::new("graphene_std::vector::generator_nodes::UnitSquareGenerator", &[]),
+		inputs: &[DocumentInputType::none()],
 		outputs: &[FrontendGraphDataType::Subpath],
 		properties: node_properties::no_properties,
 	},
 	DocumentNodeType {
 		name: "Path Generator",
-		identifier: NodeIdentifier::new("graphene_core::ops::AddNode", &[]),
-		inputs: &[],
+		identifier: NodeIdentifier::new("graphene_core::ops::IdNode", &[Type::Concrete(Cow::Borrowed("Any<'_>"))]),
+		inputs: &[DocumentInputType {
+			name: "Path Data",
+			data_type: FrontendGraphDataType::Subpath,
+			default: NodeInput::value(TaggedValue::Subpath(Subpath::new()), false),
+		}],
 		outputs: &[FrontendGraphDataType::Subpath],
 		properties: node_properties::no_properties,
 	},
 	DocumentNodeType {
 		name: "Transform Subpath",
-		identifier: NodeIdentifier::new("graphene_std::raster::GrayscaleImageNode", &[]),
-		inputs: &[DocumentInputType {
-			name: "Subpath",
-			data_type: FrontendGraphDataType::Subpath,
-			default: NodeInput::Value {
-				tagged_value: TaggedValue::Subpath(graphene_std::vector::subpath::Subpath::new()),
-				exposed: true,
+		identifier: NodeIdentifier::new("graphene_std::vector::generator_nodes::TransformSubpathNode", &[]),
+		inputs: &[
+			DocumentInputType {
+				name: "Subpath",
+				data_type: FrontendGraphDataType::Subpath,
+				default: NodeInput::value(TaggedValue::Subpath(Subpath::new()), true),
 			},
-		}],
+			DocumentInputType {
+				name: "Translation",
+				data_type: FrontendGraphDataType::Vector,
+				default: NodeInput::value(TaggedValue::DVec2(DVec2::ZERO), false),
+			},
+			DocumentInputType {
+				name: "Rotation",
+				data_type: FrontendGraphDataType::Number,
+				default: NodeInput::value(TaggedValue::F64(0.), false),
+			},
+			DocumentInputType {
+				name: "Scale",
+				data_type: FrontendGraphDataType::Vector,
+				default: NodeInput::value(TaggedValue::DVec2(DVec2::ONE), false),
+			},
+			DocumentInputType {
+				name: "Skew",
+				data_type: FrontendGraphDataType::Vector,
+				default: NodeInput::value(TaggedValue::DVec2(DVec2::ZERO), false),
+			},
+		],
+		outputs: &[FrontendGraphDataType::Subpath],
+		properties: node_properties::transform_properties,
+	},
+	DocumentNodeType {
+		name: "Blit Subpath",
+		identifier: NodeIdentifier::new("graphene_std::vector::generator_nodes::BlitSubpath", &[]),
+		inputs: &[
+			DocumentInputType {
+				name: "Image",
+				data_type: FrontendGraphDataType::Raster,
+				default: NodeInput::value(TaggedValue::Image(Image::empty()), true),
+			},
+			DocumentInputType {
+				name: "Subpath",
+				data_type: FrontendGraphDataType::Subpath,
+				default: NodeInput::value(TaggedValue::Subpath(Subpath::new()), true),
+			},
+		],
 		outputs: &[FrontendGraphDataType::Raster],
 		properties: node_properties::no_properties,
 	},

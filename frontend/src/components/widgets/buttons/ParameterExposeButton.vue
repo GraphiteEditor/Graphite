@@ -1,6 +1,6 @@
 <template>
 	<LayoutRow class="parameter-expose-button">
-		<button :class="{ exposed }" :style="{ '--data-type-color': dataTypeColor }" @click="(e: MouseEvent) => action(e)" :title="tooltip" :tabindex="0"></button>
+		<button :class="{ exposed }" :style="{ '--data-type-color': `var(--color-data-${dataType})` }" @click="(e: MouseEvent) => action(e)" :title="tooltip" :tabindex="0"></button>
 	</LayoutRow>
 </template>
 
@@ -52,21 +52,6 @@ export default defineComponent({
 
 		// Callbacks
 		action: { type: Function as PropType<(e?: MouseEvent) => void>, required: true },
-	},
-	computed: {
-		dataTypeColor(): string {
-			// TODO: Move this function somewhere where it can be reused by other components
-			const colorsMap = {
-				general: "var(--color-data-general)",
-				vector: "var(--color-data-vector)",
-				raster: "var(--color-data-raster)",
-				mask: "var(--color-data-mask)",
-				number: "var(--color-data-number)",
-				color: "var(--color-data-color)",
-			} as const;
-
-			return colorsMap[this.dataType as keyof typeof colorsMap] || colorsMap.general;
-		},
 	},
 	components: { LayoutRow },
 });
