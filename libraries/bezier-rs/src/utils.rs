@@ -1,4 +1,4 @@
-use crate::consts::{MAX_ABSOLUTE_DIFFERENCE, STRICT_MAX_ABSOLUTE_DIFFERENCE};
+use crate::consts::{MAX_ABSOLUTE_DIFFERENCE, MIN_SEPERATION_VALUE, STRICT_MAX_ABSOLUTE_DIFFERENCE};
 
 use glam::{BVec2, DMat2, DVec2};
 use std::f64::consts::PI;
@@ -97,18 +97,10 @@ pub fn solve_reformatted_cubic(discriminant: f64, a: f64, p: f64, q: f64) -> Vec
 		let a_divided_by_3 = a / 3.;
 		let root_1 = 2. * cube_root(-q_divided_by_2) - a_divided_by_3;
 		let root_2 = cube_root(q_divided_by_2) - a_divided_by_3;
-		roots.push(root_1);
-		if (root_1 - root_2).abs() < MAX_ABSOLUTE_DIFFERENCE {
-			roots.push(root_2);
+		if (root_1 - root_2).abs() > MIN_SEPERATION_VALUE {
+			roots.push(root_1);
 		}
-	} else if p.abs() <= STRICT_MAX_ABSOLUTE_DIFFERENCE {
-		// Handle when p is approximately 0
-		roots.push(cube_root(-q));
-	} else if q.abs() <= STRICT_MAX_ABSOLUTE_DIFFERENCE {
-		// Handle when q is approximately 0
-		if p < 0. {
-			roots.push((-p).powf(1. / 2.));
-		}
+		roots.push(root_2);
 	} else if discriminant > 0. {
 		// When discriminant > 0, there is one real and two imaginary roots
 		let q_divided_by_2 = q / 2.;
@@ -269,8 +261,6 @@ mod tests {
 		assert!(solve_linear(2., -8.) == vec![4.]);
 	}
 
-	// TODO: fix and reenable test
-	#[ignore]
 	#[test]
 	fn test_solve_cubic() {
 		// discriminant == 0

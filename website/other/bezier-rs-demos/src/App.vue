@@ -84,6 +84,14 @@ const tErrorOptions = {
 	default: 0.5,
 };
 
+const tMinimumSeperationOptions = {
+	variable: "minimum_seperation",
+	min: 0.001,
+	max: 0.25,
+	step: 0.001,
+	default: 0.05,
+};
+
 export default defineComponent({
 	data() {
 		return {
@@ -487,11 +495,11 @@ export default defineComponent({
 							[180, 10],
 							[90, 120],
 						];
-						return bezier.intersect_quadratic_segment(quadratic, options.error);
+						return bezier.intersect_quadratic_segment(quadratic, options.error, options.minimum_seperation);
 					},
 					exampleOptions: {
 						Quadratic: {
-							sliderOptions: [tErrorOptions],
+							sliderOptions: [tErrorOptions, tMinimumSeperationOptions],
 						},
 					},
 				},
@@ -504,11 +512,11 @@ export default defineComponent({
 							[40, 120],
 							[175, 140],
 						];
-						return bezier.intersect_cubic_segment(cubic, options.error);
+						return bezier.intersect_cubic_segment(cubic, options.error, options.minimum_seperation);
 					},
 					exampleOptions: {
 						Quadratic: {
-							sliderOptions: [tErrorOptions],
+							sliderOptions: [tErrorOptions, tMinimumSeperationOptions],
 						},
 					},
 				},

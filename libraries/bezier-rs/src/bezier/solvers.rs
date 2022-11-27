@@ -223,10 +223,35 @@ impl Bezier {
 	}
 
 	// TODO: Use an `impl Iterator` return type instead of a `Vec`
+	/// Returns a list of filtered `t` values that correspond to intersection points between the current bezier curve and the provided one
+	/// such that the difference between adjacent `t` values in sorted order is greater than some minimum seperation value. If the difference
+	/// between 2 adjacent `t` values is lesss than the minimum difference, the filtering takes the larger `t` value and discards the smaller `t` value.
+	/// The returned `t` values are with respect to the current bezier, not the provided parameter.
+	/// If the provided curve is linear, then zero intersection points will be returned along colinear segments.
+	/// - `error` - For intersections where the provided bezier is non-linear, `error` defines the threshold for bounding boxes to be considered an intersection point.
+	/// - `minimum_seperation` - The minimum difference between adjacent `t` values in sorted order
+	pub fn intersections(&self, other: &Bezier, error: Option<f64>, minimum_seperation: Option<f64>) -> Vec<f64> {
+		// TODO: Consider using the `intersections_between_vectors_of_curves` helper function here
+		// Otherwise, use bounding box to determine intersections
+		let mut intersection_t_values = self.unfiltered_intersections(other, error);
+		intersection_t_values.sort_by(|a, b| a.partial_cmp(b).unwrap());
+
+		// println!("<<<<< intersection_t_values :: {:?}", intersection_t_values);
+
+		intersection_t_values.iter().fold(Vec::new(), |mut accumulator, t| {
+			if !accumulator.is_empty() && (accumulator.last().unwrap() - t).abs() < minimum_seperation.unwrap_or(MIN_SEPERATION_VALUE) {
+				accumulator.pop();
+			}
+			accumulator.push(*t);
+			accumulator
+		})
+	}
+
+	// TODO: Use an `impl Iterator` return type instead of a `Vec`
 	/// Returns a list of `t` values that correspond to intersection points between the current bezier curve and the provided one. The returned `t` values are with respect to the current bezier, not the provided parameter.
 	/// If the provided curve is linear, then zero intersection points will be returned along colinear segments.
 	/// - `error` - For intersections where the provided bezier is non-linear, `error` defines the threshold for bounding boxes to be considered an intersection point.
-	pub fn intersections(&self, other: &Bezier, error: Option<f64>) -> Vec<f64> {
+	fn unfiltered_intersections(&self, other: &Bezier, error: Option<f64>) -> Vec<f64> {
 		let error = error.unwrap_or(0.5);
 		if other.handles == BezierHandles::Linear {
 			// Rotate the bezier and the line by the angle that the line makes with the x axis
@@ -295,7 +320,7 @@ impl Bezier {
 		let segment_pairs = subcurves1.iter().flat_map(move |(curve1, curve1_t_pair)| {
 			subcurves2
 				.iter()
-				.filter_map(move |(curve2, curve2_t_pair)| utils::do_rectangles_overlap(curve1.bounding_box(), curve2.bounding_box()).then(|| (curve1, curve1_t_pair, curve2, curve2_t_pair)))
+				.filter_map(move |(curve2, curve2_t_pair)| utils::do_rectangles_overlap(curve1.bounding_box(), curve2.bounding_box()).then_some((curve1, curve1_t_pair, curve2, curve2_t_pair)))
 		});
 		segment_pairs
 			.flat_map(|(curve1, curve1_t_pair, curve2, curve2_t_pair)| curve1.intersections_between_subcurves(curve1_t_pair.clone(), curve2, curve2_t_pair.clone(), error))
@@ -563,13 +588,13 @@ mod tests {
 		// Intersection at edge of curve
 		let bezier = Bezier::from_linear_dvec2(p1, p2);
 		let line1 = Bezier::from_linear_coordinates(20., 60., 70., 60.);
-		let intersections1 = bezier.intersections(&line1, None);
+		let intersections1 = bezier.intersections(&line1, None, None);
 		assert!(intersections1.len() == 1);
 		assert!(compare_points(bezier.evaluate(ComputeType::Parametric(intersections1[0])), DVec2::new(30., 60.)));
 
 		// Intersection in the middle of curve
 		let line2 = Bezier::from_linear_coordinates(150., 150., 30., 30.);
-		let intersections2 = bezier.intersections(&line2, None);
+		let intersections2 = bezier.intersections(&line2, None, None);
 		assert!(compare_points(bezier.evaluate(ComputeType::Parametric(intersections2[0])), DVec2::new(96., 96.)));
 	}
 
@@ -582,13 +607,13 @@ mod tests {
 		// Intersection at edge of curve
 		let bezier = Bezier::from_quadratic_dvec2(p1, p2, p3);
 		let line1 = Bezier::from_linear_coordinates(20., 50., 40., 50.);
-		let intersections1 = bezier.intersections(&line1, None);
+		let intersections1 = bezier.intersections(&line1, None, None);
 		assert!(intersections1.len() == 1);
 		assert!(compare_points(bezier.evaluate(ComputeType::Parametric(intersections1[0])), p1));
 
 		// Intersection in the middle of curve
 		let line2 = Bezier::from_linear_coordinates(150., 150., 30., 30.);
-		let intersections2 = bezier.intersections(&line2, None);
+		let intersections2 = bezier.intersections(&line2, None, None);
 		assert!(compare_points(bezier.evaluate(ComputeType::Parametric(intersections2[0])), DVec2::new(47.77355, 47.77354)));
 	}
 
@@ -602,20 +627,18 @@ mod tests {
 		let bezier = Bezier::from_cubic_dvec2(p1, p2, p3, p4);
 		// Intersection at edge of curve, Discriminant > 0
 		let line1 = Bezier::from_linear_coordinates(20., 30., 40., 30.);
-		let intersections1 = bezier.intersections(&line1, None);
+		let intersections1 = bezier.intersections(&line1, None, None);
 		assert!(intersections1.len() == 1);
 		assert!(compare_points(bezier.evaluate(ComputeType::Parametric(intersections1[0])), p1));
 
 		// Intersection at edge and in middle of curve, Discriminant < 0
 		let line2 = Bezier::from_linear_coordinates(150., 150., 30., 30.);
-		let intersections2 = bezier.intersections(&line2, None);
+		let intersections2 = bezier.intersections(&line2, None, None);
 		assert!(intersections2.len() == 2);
 		assert!(compare_points(bezier.evaluate(ComputeType::Parametric(intersections2[0])), p1));
 		assert!(compare_points(bezier.evaluate(ComputeType::Parametric(intersections2[1])), DVec2::new(85.84, 85.84)));
 	}
 
-	// TODO: fix and reenable test
-	#[ignore]
 	#[test]
 	fn test_intersect_curve_cubic_anchor_handle_overlap() {
 		// M31 94 C40 40 107 107 106 106
@@ -627,12 +650,26 @@ mod tests {
 		let bezier = Bezier::from_cubic_dvec2(p1, p2, p3, p4);
 
 		let line = Bezier::from_linear_coordinates(150., 150., 20., 20.);
-		let intersections = bezier.intersections(&line, None);
-
-		println!("<<<<< intersections {:?}", intersections);
+		let intersections = bezier.intersections(&line, None, None);
 
 		assert_eq!(intersections.len(), 1);
 		assert!(compare_points(bezier.evaluate(ComputeType::Parametric(intersections[0])), p4));
+	}
+
+	#[test]
+	fn test_intersect_curve_cubic_edge_case() {
+		// M34 107 C40 40 120 120 102 29
+
+		let p1 = DVec2::new(34., 107.);
+		let p2 = DVec2::new(40., 40.);
+		let p3 = DVec2::new(120., 120.);
+		let p4 = DVec2::new(102., 29.);
+		let bezier = Bezier::from_cubic_dvec2(p1, p2, p3, p4);
+
+		let line = Bezier::from_linear_coordinates(150., 150., 20., 20.);
+		let intersections = bezier.intersections(&line, None, None);
+
+		assert_eq!(intersections.len(), 1);
 	}
 
 	#[test]
@@ -640,13 +677,15 @@ mod tests {
 		let bezier1 = Bezier::from_cubic_coordinates(30., 30., 60., 140., 150., 30., 160., 160.);
 		let bezier2 = Bezier::from_quadratic_coordinates(175., 140., 20., 20., 120., 20.);
 
-		let intersections = bezier1.intersections(&bezier2, None);
-		let intersections2 = bezier2.intersections(&bezier1, None);
-		assert!(compare_vec_of_points(
-			intersections.iter().map(|&t| bezier1.evaluate(ComputeType::Parametric(t))).collect(),
-			intersections2.iter().map(|&t| bezier2.evaluate(ComputeType::Parametric(t))).collect(),
-			2.
-		));
+		let intersections1 = bezier1.intersections(&bezier2, None, None);
+		let intersections2 = bezier2.intersections(&bezier1, None, None);
+
+		let mut intersections1_points: Vec<DVec2> = intersections1.iter().map(|&t| bezier1.evaluate(ComputeType::Parametric(t))).collect();
+		let mut intersections2_points: Vec<DVec2> = intersections2.iter().map(|&t| bezier2.evaluate(ComputeType::Parametric(t))).collect();
+		intersections1_points.sort_by(|a, b| a.partial_cmp(b).unwrap());
+		intersections2_points.sort_by(|a, b| a.partial_cmp(b).unwrap());
+
+		assert!(compare_vec_of_points(intersections1_points, intersections2_points, 2.));
 	}
 
 	#[test]

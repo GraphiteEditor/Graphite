@@ -86,7 +86,7 @@ impl WasmSubpath {
 
 		let intersections_svg = self
 			.0
-			.intersections(&line, None)
+			.intersections(&line, None, None)
 			.iter()
 			.map(|intersection_t| {
 				let point = self.0.evaluate(ComputeType::Parametric(*intersection_t));
@@ -115,7 +115,7 @@ impl WasmSubpath {
 
 		let intersections_svg = self
 			.0
-			.intersections(&line, None)
+			.intersections(&line, None, None)
 			.iter()
 			.map(|intersection_t| {
 				let point = self.0.evaluate(ComputeType::Parametric(*intersection_t));
@@ -144,7 +144,7 @@ impl WasmSubpath {
 
 		let intersections_svg = self
 			.0
-			.intersections(&line, None)
+			.intersections(&line, None, None)
 			.iter()
 			.map(|intersection_t| {
 				let point = self.0.evaluate(ComputeType::Parametric(*intersection_t));

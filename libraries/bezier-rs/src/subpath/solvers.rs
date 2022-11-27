@@ -1,5 +1,5 @@
 use super::*;
-use crate::ComputeType;
+use crate::{consts::MIN_SEPERATION_VALUE, ComputeType};
 
 use glam::DVec2;
 
@@ -33,13 +33,30 @@ impl Subpath {
 	/// This function expects the following:
 	/// - other: a [Bezier] curve to check intersections against
 	/// - error: an optional f64 value to provide an error bound
-	pub fn intersections(&self, other: &Bezier, error: Option<f64>) -> Vec<f64> {
+	pub fn intersections(&self, other: &Bezier, error: Option<f64>, minimum_seperation: Option<f64>) -> Vec<f64> {
 		// TODO: account for either euclidean or parametric type
 		let number_of_curves = self.len_segments() as f64;
-		self.iter()
+		let intersection_t_values: Vec<f64> = self
+			.iter()
 			.enumerate()
-			.flat_map(|(index, bezier)| bezier.intersections(other, error).into_iter().map(|t| ((index as f64) + t) / number_of_curves).collect::<Vec<f64>>())
-			.collect()
+			.flat_map(|(index, bezier)| {
+				bezier
+					.intersections(other, error, minimum_seperation)
+					.into_iter()
+					.map(|t| ((index as f64) + t) / number_of_curves)
+					.collect::<Vec<f64>>()
+			})
+			.collect();
+
+		intersection_t_values.iter().fold(Vec::new(), |mut accumulator, t| {
+			if !accumulator.is_empty() && (accumulator.last().unwrap() - t).abs() < minimum_seperation.unwrap_or(MIN_SEPERATION_VALUE) {
+				accumulator.pop();
+			}
+			accumulator.push(*t);
+			accumulator
+		});
+
+		intersection_t_values
 	}
 }
 
@@ -192,8 +209,6 @@ mod tests {
 		.all());
 	}
 
-	// TODO: fix and reenable test
-	#[ignore]
 	#[test]
 	fn intersection_linear_multiple_subpath_curves_test_one() {
 		// M 35 125 C 40 40 120 120 43 43 Q 175 90 145 150 Q 70 185 35 125 Z
@@ -210,7 +225,6 @@ mod tests {
 
 		let cubic_bezier = Bezier::from_cubic_dvec2(cubic_start, cubic_handle_1, cubic_handle_2, cubic_end);
 		let quadratic_bezier_1 = Bezier::from_quadratic_dvec2(cubic_end, quadratic_1_handle, quadratic_end);
-		let quadratic_bezier_2 = Bezier::from_quadratic_dvec2(quadratic_end, quadratic_2_handle, cubic_start);
 
 		let subpath = Subpath::new(
 			vec![
@@ -235,17 +249,9 @@ mod tests {
 
 		let line = Bezier::from_linear_coordinates(150., 150., 20., 20.);
 
-		let cubic_intersections = cubic_bezier.intersections(&line, None);
-		println!("<<<<< cubic << {:?}", cubic_intersections);
-
-		let quadratic_1_intersections = quadratic_bezier_1.intersections(&line, None);
-		println!("<<<<< quad 1 << {:?}", quadratic_1_intersections);
-
-		let quadratic_2_intersections = quadratic_bezier_2.intersections(&line, None);
-		println!("<<<<< quad 2 << {:?}", quadratic_2_intersections);
-
-		let subpath_intersections = subpath.intersections(&line, None);
-		println!("<<<<< subpath << {:?}", subpath_intersections);
+		let cubic_intersections = cubic_bezier.intersections(&line, None, None);
+		let quadratic_1_intersections = quadratic_bezier_1.intersections(&line, None, None);
+		let subpath_intersections = subpath.intersections(&line, None, None);
 
 		assert!(utils::dvec2_compare(
 			cubic_bezier.evaluate(ComputeType::Parametric(cubic_intersections[0])),
@@ -269,11 +275,10 @@ mod tests {
 		.all());
 	}
 
-	// TODO: fix and reenable test
-	#[ignore]
 	#[test]
 	fn intersection_linear_multiple_subpath_curves_test_two() {
 		// M34 107 C40 40 120 120 102 29 Q175 90 129 171 Q70 185 34 107 Z
+		// M150 150 L 20 20
 
 		let cubic_start = DVec2::new(34., 107.);
 		let cubic_handle_1 = DVec2::new(40., 40.);
@@ -287,7 +292,6 @@ mod tests {
 
 		let cubic_bezier = Bezier::from_cubic_dvec2(cubic_start, cubic_handle_1, cubic_handle_2, cubic_end);
 		let quadratic_bezier_1 = Bezier::from_quadratic_dvec2(cubic_end, quadratic_1_handle, quadratic_end);
-		let quadratic_bezier_2 = Bezier::from_quadratic_dvec2(quadratic_end, quadratic_2_handle, cubic_start);
 
 		let subpath = Subpath::new(
 			vec![
@@ -312,17 +316,9 @@ mod tests {
 
 		let line = Bezier::from_linear_coordinates(150., 150., 20., 20.);
 
-		let cubic_intersections = cubic_bezier.intersections(&line, None);
-		println!("<<<<< cubic << {:?}", cubic_intersections);
-
-		let quadratic_1_intersections = quadratic_bezier_1.intersections(&line, None);
-		println!("<<<<< quad 1 << {:?}", quadratic_1_intersections);
-
-		let quadratic_2_intersections = quadratic_bezier_2.intersections(&line, None);
-		println!("<<<<< quad 2 << {:?}", quadratic_2_intersections);
-
-		let subpath_intersections = subpath.intersections(&line, None);
-		println!("<<<<< subpath << {:?}", subpath_intersections);
+		let cubic_intersections = cubic_bezier.intersections(&line, None, None);
+		let quadratic_1_intersections = quadratic_bezier_1.intersections(&line, None, None);
+		let subpath_intersections = subpath.intersections(&line, None, None);
 
 		assert!(utils::dvec2_compare(
 			cubic_bezier.evaluate(ComputeType::Parametric(cubic_intersections[0])),
@@ -337,17 +333,8 @@ mod tests {
 			MAX_ABSOLUTE_DIFFERENCE
 		)
 		.all());
-
-		assert!(utils::dvec2_compare(
-			quadratic_bezier_1.evaluate(ComputeType::Parametric(quadratic_1_intersections[1])),
-			subpath.evaluate(ComputeType::Parametric(subpath_intersections[2])),
-			MAX_ABSOLUTE_DIFFERENCE
-		)
-		.all());
 	}
 
-	// TODO: fix and reenable test
-	#[ignore]
 	#[test]
 	fn intersection_linear_multiple_subpath_curves_test_three() {
 		// M35 125 C40 40 120 120 44 44 Q175 90 145 150 Q70 185 35 125 Z
@@ -364,7 +351,6 @@ mod tests {
 
 		let cubic_bezier = Bezier::from_cubic_dvec2(cubic_start, cubic_handle_1, cubic_handle_2, cubic_end);
 		let quadratic_bezier_1 = Bezier::from_quadratic_dvec2(cubic_end, quadratic_1_handle, quadratic_end);
-		let quadratic_bezier_2 = Bezier::from_quadratic_dvec2(quadratic_end, quadratic_2_handle, cubic_start);
 
 		let subpath = Subpath::new(
 			vec![
@@ -389,17 +375,9 @@ mod tests {
 
 		let line = Bezier::from_linear_coordinates(150., 150., 20., 20.);
 
-		let cubic_intersections = cubic_bezier.intersections(&line, None);
-		println!("<<<<< cubic << {:?}", cubic_intersections);
-
-		let quadratic_1_intersections = quadratic_bezier_1.intersections(&line, None);
-		println!("<<<<< quad 1 << {:?}", quadratic_1_intersections);
-
-		let quadratic_2_intersections = quadratic_bezier_2.intersections(&line, None);
-		println!("<<<<< quad 2 << {:?}", quadratic_2_intersections);
-
-		let subpath_intersections = subpath.intersections(&line, None);
-		println!("<<<<< subpath << {:?}", subpath_intersections);
+		let cubic_intersections = cubic_bezier.intersections(&line, None, None);
+		let quadratic_1_intersections = quadratic_bezier_1.intersections(&line, None, None);
+		let subpath_intersections = subpath.intersections(&line, None, None);
 
 		assert!(utils::dvec2_compare(
 			cubic_bezier.evaluate(ComputeType::Parametric(cubic_intersections[0])),
