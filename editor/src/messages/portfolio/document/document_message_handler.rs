@@ -928,6 +928,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 		}
 		common.extend(self.navigation_handler.actions());
 		common.extend(self.transform_layer_handler.actions());
+		common.extend(self.node_graph_handler.actions());
 		common
 	}
 }

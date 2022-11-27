@@ -21,6 +21,7 @@ pub enum NodeGraphMessage {
 	DeleteNode {
 		node_id: NodeId,
 	},
+	DeleteSelectedNodes,
 	ExposeInput {
 		node_id: NodeId,
 		input_index: usize,
