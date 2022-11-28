@@ -50,8 +50,8 @@ static NODE_REGISTRY: &[(NodeIdentifier, NodeConstructor)] = &[
 			stack.push_fn(move |nodes| {
 				let ConstructionArgs::Nodes(construction_nodes) = proto_node.construction_args else { unreachable!("Add Node constructed with out rhs input node") };
 				let value_node = nodes.get(construction_nodes[0] as usize).unwrap();
-				let input_node: DowncastBothNode<_, (), f32> = DowncastBothNode::new(value_node);
-				let node: DynAnyNode<_, f32, _, _> = DynAnyNode::new(ConsNode::new(input_node).then(graphene_core::ops::AddNode));
+				let input_node: DowncastBothNode<_, (), f64> = DowncastBothNode::new(value_node);
+				let node: DynAnyNode<_, f64, _, _> = DynAnyNode::new(ConsNode::new(input_node).then(graphene_core::ops::AddNode));
 
 				if let ProtoNodeInput::Node(node_id) = proto_node.input {
 					let pre_node = nodes.get(node_id as usize).unwrap();
