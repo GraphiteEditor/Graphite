@@ -21,6 +21,8 @@ pub enum FrontendGraphDataType {
 	Subpath,
 	#[serde(rename = "number")]
 	Number,
+	#[serde(rename = "boolean")]
+	Boolean,
 	#[serde(rename = "vec2")]
 	Vector,
 }

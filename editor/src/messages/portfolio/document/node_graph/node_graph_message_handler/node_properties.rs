@@ -42,66 +42,65 @@ fn expose_widget(node_id: NodeId, index: usize, data_type: FrontendGraphDataType
 	}))
 }
 
-pub fn hue_shift_image_properties(document_node: &DocumentNode, node_id: NodeId) -> Vec<LayoutGroup> {
-	let index = 1;
+fn number_range_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, range_min: Option<f64>, range_max: Option<f64>, unit: String) -> Vec<WidgetHolder> {
 	let input: &NodeInput = document_node.inputs.get(index).unwrap();
 
 	let mut widgets = vec![
 		expose_widget(node_id, index, FrontendGraphDataType::Number, input.is_exposed()),
 		WidgetHolder::unrelated_seperator(),
-		WidgetHolder::text_widget("Shift Degrees"),
+		WidgetHolder::text_widget(name),
 	];
+
 	if let NodeInput::Value {
-		tagged_value: TaggedValue::F32(x),
+		tagged_value: TaggedValue::F64(x),
 		exposed: false,
 	} = document_node.inputs[index]
 	{
 		widgets.extend_from_slice(&[
 			WidgetHolder::unrelated_seperator(),
 			WidgetHolder::new(Widget::NumberInput(NumberInput {
-				value: Some(x as f64),
-				unit: "°".into(),
-				mode: NumberInputMode::Range,
-				range_min: Some(-180.),
-				range_max: Some(180.),
-				on_update: update_value(|number_input: &NumberInput| TaggedValue::F32(number_input.value.unwrap() as f32), node_id, 1),
+				value: Some(x),
+				mode: if range_max.is_some() { NumberInputMode::Range } else { NumberInputMode::Increment },
+				range_min,
+				range_max,
+				unit,
+				on_update: update_value(|x: &NumberInput| TaggedValue::F64(x.value.unwrap()), node_id, index),
 				..NumberInput::default()
 			})),
 		])
 	}
+	widgets
+}
 
-	vec![LayoutGroup::Row { widgets }]
+pub fn adjust_hsl_properties(document_node: &DocumentNode, node_id: NodeId) -> Vec<LayoutGroup> {
+	let hue_shift = number_range_widget(document_node, node_id, 1, "Hue Shift", Some(-180.), Some(180.), "°".into());
+	let saturation_shift = number_range_widget(document_node, node_id, 2, "Saturation Shift", Some(-100.), Some(100.), "%".into());
+	let luminance_shift = number_range_widget(document_node, node_id, 3, "Luminance Shift", Some(-100.), Some(100.), "%".into());
+
+	vec![
+		LayoutGroup::Row { widgets: hue_shift },
+		LayoutGroup::Row { widgets: saturation_shift },
+		LayoutGroup::Row { widgets: luminance_shift },
+	]
 }
 
 pub fn brighten_image_properties(document_node: &DocumentNode, node_id: NodeId) -> Vec<LayoutGroup> {
-	let index = 1;
-	let input: &NodeInput = document_node.inputs.get(index).unwrap();
+	let brightness = number_range_widget(document_node, node_id, 1, "Brightness", Some(-255.), Some(255.), "".into());
+	let contrast = number_range_widget(document_node, node_id, 2, "Contrast", Some(-255.), Some(255.), "".into());
 
-	let mut widgets = vec![
-		expose_widget(node_id, index, FrontendGraphDataType::Number, input.is_exposed()),
-		WidgetHolder::unrelated_seperator(),
-		WidgetHolder::text_widget("Brighten Amount"),
-	];
+	vec![LayoutGroup::Row { widgets: brightness }, LayoutGroup::Row { widgets: contrast }]
+}
 
-	if let NodeInput::Value {
-		tagged_value: TaggedValue::F32(x),
-		exposed: false,
-	} = document_node.inputs[index]
-	{
-		widgets.extend_from_slice(&[
-			WidgetHolder::unrelated_seperator(),
-			WidgetHolder::new(Widget::NumberInput(NumberInput {
-				value: Some(x as f64),
-				mode: NumberInputMode::Range,
-				range_min: Some(-255.),
-				range_max: Some(255.),
-				on_update: update_value(|x: &NumberInput| TaggedValue::F32(x.value.unwrap() as f32), node_id, 1),
-				..NumberInput::default()
-			})),
-		])
-	}
+pub fn adjust_gamma_properties(document_node: &DocumentNode, node_id: NodeId) -> Vec<LayoutGroup> {
+	let gamma = number_range_widget(document_node, node_id, 1, "Gamma", Some(0.01), None, "".into());
 
-	vec![LayoutGroup::Row { widgets }]
+	vec![LayoutGroup::Row { widgets: gamma }]
+}
+
+pub fn multiply_opacity(document_node: &DocumentNode, node_id: NodeId) -> Vec<LayoutGroup> {
+	let gamma = number_range_widget(document_node, node_id, 1, "Factor", Some(0.), Some(1.), "".into());
+
+	vec![LayoutGroup::Row { widgets: gamma }]
 }
 
 pub fn add_properties(document_node: &DocumentNode, node_id: NodeId) -> Vec<LayoutGroup> {

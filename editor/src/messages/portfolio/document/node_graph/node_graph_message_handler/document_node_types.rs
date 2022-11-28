@@ -83,7 +83,7 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 	},
 	DocumentNodeType {
 		name: "Grayscale Image",
-		category: "Image Manipulation",
+		category: "Image Color Correction",
 		identifier: NodeIdentifier::new("graphene_std::raster::GrayscaleImageNode", &[]),
 		inputs: &[DocumentInputType {
 			name: "Image",
@@ -94,9 +94,21 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 		properties: node_properties::no_properties,
 	},
 	DocumentNodeType {
-		name: "Brighten Image",
-		category: "Image Manipulation",
-		identifier: NodeIdentifier::new("graphene_std::raster::BrightenImageNode", &[Type::Concrete(Cow::Borrowed("&TypeErasedNode"))]),
+		name: "Invert Image Color",
+		category: "Image Color Correction",
+		identifier: NodeIdentifier::new("graphene_std::raster::InvertImageColorNode", &[]),
+		inputs: &[DocumentInputType {
+			name: "Image",
+			data_type: FrontendGraphDataType::Raster,
+			default: NodeInput::value(TaggedValue::Image(Image::empty()), true),
+		}],
+		outputs: &[FrontendGraphDataType::Raster],
+		properties: node_properties::no_properties,
+	},
+	DocumentNodeType {
+		name: "Shift Image HSL",
+		category: "Image Color Correction",
+		identifier: NodeIdentifier::new("graphene_std::raster::ShiftImageHSLNode", &[Type::Concrete(Cow::Borrowed("&TypeErasedNode"))]),
 		inputs: &[
 			DocumentInputType {
 				name: "Image",
@@ -104,18 +116,52 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 				default: NodeInput::value(TaggedValue::Image(Image::empty()), true),
 			},
 			DocumentInputType {
-				name: "Amount",
+				name: "Hue Shift",
 				data_type: FrontendGraphDataType::Number,
-				default: NodeInput::value(TaggedValue::F32(10.), false),
+				default: NodeInput::value(TaggedValue::F64(0.), false),
+			},
+			DocumentInputType {
+				name: "Saturation Shift",
+				data_type: FrontendGraphDataType::Number,
+				default: NodeInput::value(TaggedValue::F64(0.), false),
+			},
+			DocumentInputType {
+				name: "Luminance Shift",
+				data_type: FrontendGraphDataType::Number,
+				default: NodeInput::value(TaggedValue::F64(0.), false),
+			},
+		],
+		outputs: &[FrontendGraphDataType::Raster],
+		properties: node_properties::adjust_hsl_properties,
+	},
+	DocumentNodeType {
+		name: "Image Contrast and Brightness",
+		category: "Image Color Correction",
+		identifier: NodeIdentifier::new("graphene_std::raster::ImageBrightnessAndContrast", &[Type::Concrete(Cow::Borrowed("&TypeErasedNode"))]),
+		inputs: &[
+			DocumentInputType {
+				name: "Image",
+				data_type: FrontendGraphDataType::Raster,
+				default: NodeInput::value(TaggedValue::Image(Image::empty()), true),
+			},
+			DocumentInputType {
+				name: "Brightness",
+				data_type: FrontendGraphDataType::Number,
+				default: NodeInput::value(TaggedValue::F64(0.), false),
+			},
+			DocumentInputType {
+				name: "Contrast",
+				data_type: FrontendGraphDataType::Number,
+				default: NodeInput::value(TaggedValue::F64(0.), false),
 			},
 		],
 		outputs: &[FrontendGraphDataType::Raster],
 		properties: node_properties::brighten_image_properties,
 	},
 	DocumentNodeType {
-		name: "Hue Shift Image",
-		category: "Image Manipulation",
-		identifier: NodeIdentifier::new("graphene_std::raster::HueShiftImage", &[Type::Concrete(Cow::Borrowed("&TypeErasedNode"))]),
+		name: "Adjust Image Gamma",
+		category: "Image Color Correction",
+		identifier: NodeIdentifier::new("graphene_std::raster::ImageGammaNode", &[Type::Concrete(Cow::Borrowed("&TypeErasedNode"))]),
 		inputs: &[
 			DocumentInputType {
 				name: "Image",
@@ -123,13 +169,32 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 				default: NodeInput::value(TaggedValue::Image(Image::empty()), true),
 			},
 			DocumentInputType {
-				name: "Amount",
+				name: "Gamma",
 				data_type: FrontendGraphDataType::Number,
-				default: NodeInput::value(TaggedValue::F32(10.), false),
+				default: NodeInput::value(TaggedValue::F64(1.), false),
 			},
 		],
 		outputs: &[FrontendGraphDataType::Raster],
-		properties: node_properties::hue_shift_image_properties,
+		properties: node_properties::adjust_gamma_properties,
+	},
+	DocumentNodeType {
+		name: "Multiply Image Opactiy",
+		category: "Image Color Correction",
+		identifier: NodeIdentifier::new("graphene_std::raster::ImageOpacityNode", &[Type::Concrete(Cow::Borrowed("&TypeErasedNode"))]),
+		inputs: &[
+			DocumentInputType {
+				name: "Image",
+				data_type: FrontendGraphDataType::Raster,
+				default: NodeInput::value(TaggedValue::Image(Image::empty()), true),
+			},
+			DocumentInputType {
+				name: "Factor",
+				data_type: FrontendGraphDataType::Number,
+				default: NodeInput::value(TaggedValue::F64(1.), false),
+			},
+		],
+		outputs: &[FrontendGraphDataType::Raster],
+		properties: node_properties::multiply_opacity,
 	},
 	DocumentNodeType {
 		name: "Add",
@@ -139,12 +204,12 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 			DocumentInputType {
 				name: "Input",
 				data_type: FrontendGraphDataType::Number,
-				default: NodeInput::value(TaggedValue::F32(0.), true),
+				default: NodeInput::value(TaggedValue::F64(0.), true),
 			},
 			DocumentInputType {
 				name: "Addend",
 				data_type: FrontendGraphDataType::Number,
-				default: NodeInput::value(TaggedValue::F32(0.), true),
+				default: NodeInput::value(TaggedValue::F64(0.), true),
 			},
 		],
 		outputs: &[FrontendGraphDataType::Number],

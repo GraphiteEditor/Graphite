@@ -176,89 +176,221 @@ pub fn export_image_node<'n>() -> impl Node<(Image, &'n str), Output = Result<()
 	})
 }
 
+fn grayscale_image(mut image: Image) -> Image {
+	for pixel in &mut image.data {
+		let avg = (pixel.r() + pixel.g() + pixel.b()) / 3.;
+		*pixel = Color::from_rgbaf32_unchecked(avg, avg, avg, pixel.a());
+	}
+	image
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct GrayscaleImageNode;
 
 impl Node<Image> for GrayscaleImageNode {
 	type Output = Image;
-	fn eval(self, mut image: Image) -> Image {
-		for pixel in &mut image.data {
-			let avg = (pixel.r() + pixel.g() + pixel.b()) / 3.;
-			*pixel = Color::from_rgbaf32_unchecked(avg, avg, avg, pixel.a());
-		}
-		image
+	fn eval(self, image: Image) -> Image {
+		grayscale_image(image)
 	}
 }
 impl Node<Image> for &GrayscaleImageNode {
 	type Output = Image;
-	fn eval(self, mut image: Image) -> Image {
-		for pixel in &mut image.data {
-			let avg = (pixel.r() + pixel.g() + pixel.b()) / 3.;
-			*pixel = Color::from_rgbaf32_unchecked(avg, avg, avg, pixel.a());
-		}
-		image
+	fn eval(self, image: Image) -> Image {
+		grayscale_image(image)
 	}
+}
+
+fn invert_image(mut image: Image) -> Image {
+	for pixel in &mut image.data {
+		*pixel = Color::from_rgbaf32_unchecked(1. - pixel.r(), 1. - pixel.g(), 1. - pixel.b(), pixel.a());
+	}
+	image
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct BrightenImageNode<N: Node<(), Output = f32>>(N);
+pub struct InvertImageColorNode;
 
-impl<N: Node<(), Output = f32>> Node<Image> for BrightenImageNode<N> {
+impl Node<Image> for InvertImageColorNode {
 	type Output = Image;
-	fn eval(self, mut image: Image) -> Image {
-		let brightness = self.0.eval(());
-		let per_channel = |col: f32| (col + brightness / 255.).clamp(0., 1.);
-		for pixel in &mut image.data {
-			*pixel = Color::from_rgbaf32_unchecked(per_channel(pixel.r()), per_channel(pixel.g()), per_channel(pixel.b()), pixel.a());
-		}
-		image
+	fn eval(self, image: Image) -> Image {
+		invert_image(image)
 	}
 }
-impl<N: Node<(), Output = f32> + Copy> Node<Image> for &BrightenImageNode<N> {
+impl Node<Image> for &InvertImageColorNode {
 	type Output = Image;
-	fn eval(self, mut image: Image) -> Image {
-		let brightness = self.0.eval(());
-		let per_channel = |col: f32| (col + brightness / 255.).clamp(0., 1.);
-		for pixel in &mut image.data {
-			*pixel = Color::from_rgbaf32_unchecked(per_channel(pixel.r()), per_channel(pixel.g()), per_channel(pixel.b()), pixel.a());
-		}
-		image
+	fn eval(self, image: Image) -> Image {
+		invert_image(image)
 	}
 }
 
-impl<N: Node<(), Output = f32> + Copy> BrightenImageNode<N> {
+fn shift_image_hsl(mut image: Image, hue_shift: f32, saturation_shift: f32, luminance_shift: f32) -> Image {
+	for pixel in &mut image.data {
+		let [hue, saturation, luminance, alpha] = pixel.to_hsla();
+		*pixel = Color::from_hsla(
+			(hue + hue_shift / 360.) % 1.,
+			(saturation + saturation_shift / 100.).clamp(0., 1.),
+			(luminance + luminance_shift / 100.).clamp(0., 1.),
+			alpha,
+		);
+	}
+	image
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct ShiftImageHSLNode<Hue, Sat, Lum>
+where
+	Hue: Node<(), Output = f64>,
+	Sat: Node<(), Output = f64>,
+	Lum: Node<(), Output = f64>,
+{
+	hue: Hue,
+	saturation: Sat,
+	luminance: Lum,
+}
+
+impl<Hue, Sat, Lum> Node<Image> for ShiftImageHSLNode<Hue, Sat, Lum>
+where
+	Hue: Node<(), Output = f64>,
+	Sat: Node<(), Output = f64>,
+	Lum: Node<(), Output = f64>,
+{
+	type Output = Image;
+	fn eval(self, image: Image) -> Image {
+		shift_image_hsl(image, self.hue.eval(()) as f32, self.saturation.eval(()) as f32, self.luminance.eval(()) as f32)
+	}
+}
+impl<Hue, Sat, Lum> Node<Image> for &ShiftImageHSLNode<Hue, Sat, Lum>
+where
+	Hue: Node<(), Output = f64> + Copy,
+	Sat: Node<(), Output = f64> + Copy,
+	Lum: Node<(), Output = f64> + Copy,
+{
+	type Output = Image;
+	fn eval(self, image: Image) -> Image {
+		shift_image_hsl(image, self.hue.eval(()) as f32, self.saturation.eval(()) as f32, self.luminance.eval(()) as f32)
+	}
+}
+
+impl<Hue, Sat, Lum> ShiftImageHSLNode<Hue, Sat, Lum>
+where
+	Hue: Node<(), Output = f64>,
+	Sat: Node<(), Output = f64>,
+	Lum: Node<(), Output = f64>,
+{
+	pub fn new(hue: Hue, saturation: Sat, luminance: Lum) -> Self {
+		Self { hue, saturation, luminance }
+	}
+}
+
+// Copy pasta from https://stackoverflow.com/questions/2976274/adjust-bitmap-image-brightness-contrast-using-c
+fn adjust_image_brightness_and_contrast(mut image: Image, brightness_shift: f32, contrast: f32) -> Image {
+	let factor = (259. * (contrast + 255.)) / (255. * (259. - contrast));
+	let channel = |channel: f32| ((factor * (channel * 255. + brightness_shift - 128.) + 128.) / 255.).clamp(0., 1.);
+
+	for pixel in &mut image.data {
+		*pixel = Color::from_rgbaf32_unchecked(channel(pixel.r()), channel(pixel.g()), channel(pixel.b()), pixel.a())
+	}
+	image
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct ImageBrightnessAndContrast<Brightness, Contrast>
+where
+	Brightness: Node<(), Output = f64>,
+	Contrast: Node<(), Output = f64>,
+{
+	brightness: Brightness,
+	contrast: Contrast,
+}
+
+impl<Brightness, Contrast> Node<Image> for ImageBrightnessAndContrast<Brightness, Contrast>
+where
+	Brightness: Node<(), Output = f64>,
+	Contrast: Node<(), Output = f64>,
+{
+	type Output = Image;
+	fn eval(self, image: Image) -> Image {
+		adjust_image_brightness_and_contrast(image, self.brightness.eval(()) as f32, self.contrast.eval(()) as f32)
+	}
+}
+
+impl<Brightness, Contrast> Node<Image> for &ImageBrightnessAndContrast<Brightness, Contrast>
+where
+	Brightness: Node<(), Output = f64> + Copy,
+	Contrast: Node<(), Output = f64> + Copy,
+{
+	type Output = Image;
+	fn eval(self, image: Image) -> Image {
+		adjust_image_brightness_and_contrast(image, self.brightness.eval(()) as f32, self.contrast.eval(()) as f32)
+	}
+}
+
+impl<Brightness, Contrast> ImageBrightnessAndContrast<Brightness, Contrast>
+where
+	Brightness: Node<(), Output = f64>,
+	Contrast: Node<(), Output = f64>,
+{
+	pub fn new(brightness: Brightness, contrast: Contrast) -> Self {
+		Self { brightness, contrast }
+	}
+}
+
+// https://www.dfstudios.co.uk/articles/programming/image-programming-algorithms/image-processing-algorithms-part-6-gamma-correction/
+fn image_gamma(mut image: Image, gamma: f32) -> Image {
+	let inverse_gamma = 1. / gamma;
+	let channel = |channel: f32| channel.powf(inverse_gamma);
+	for pixel in &mut image.data {
+		*pixel = Color::from_rgbaf32_unchecked(channel(pixel.r()), channel(pixel.g()), channel(pixel.b()), pixel.a())
+	}
+	image
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct ImageGammaNode<N: Node<(), Output = f64>>(N);
+
+impl<N: Node<(), Output = f64>> Node<Image> for ImageGammaNode<N> {
+	type Output = Image;
+	fn eval(self, image: Image) -> Image {
+		image_gamma(image, self.0.eval(()) as f32)
+	}
+}
+impl<N: Node<(), Output = f64> + Copy> Node<Image> for &ImageGammaNode<N> {
+	type Output = Image;
+	fn eval(self, image: Image) -> Image {
+		image_gamma(image, self.0.eval(()) as f32)
+	}
+}
+
+impl<N: Node<(), Output = f64> + Copy> ImageGammaNode<N> {
 	pub fn new(node: N) -> Self {
 		Self(node)
 	}
 }
 
+fn image_opacity(mut image: Image, opacity_multiplier: f32) -> Image {
+	for pixel in &mut image.data {
+		*pixel = Color::from_rgbaf32_unchecked(pixel.r(), pixel.g(), pixel.b(), pixel.a() * opacity_multiplier)
+	}
+	image
+}
+
 #[derive(Debug, Clone, Copy)]
-pub struct HueShiftImage<N: Node<(), Output = f32>>(N);
+pub struct ImageOpacityNode<N: Node<(), Output = f64>>(N);
 
-impl<N: Node<(), Output = f32>> Node<Image> for HueShiftImage<N> {
+impl<N: Node<(), Output = f64>> Node<Image> for ImageOpacityNode<N> {
 	type Output = Image;
-	fn eval(self, mut image: Image) -> Image {
-		let hue_shift = self.0.eval(());
-		for pixel in &mut image.data {
-			let [hue, saturation, luminance, alpha] = pixel.to_hsla();
-			*pixel = Color::from_hsla(hue + hue_shift / 360., saturation, luminance, alpha);
-		}
-		image
+	fn eval(self, image: Image) -> Image {
+		image_opacity(image, self.0.eval(()) as f32)
 	}
 }
-impl<N: Node<(), Output = f32> + Copy> Node<Image> for &HueShiftImage<N> {
+impl<N: Node<(), Output = f64> + Copy> Node<Image> for &ImageOpacityNode<N> {
 	type Output = Image;
-	fn eval(self, mut image: Image) -> Image {
-		let hue_shift = self.0.eval(());
-		for pixel in &mut image.data {
-			let [hue, saturation, luminance, alpha] = pixel.to_hsla();
-			*pixel = Color::from_hsla(hue + hue_shift / 360., saturation, luminance, alpha);
-		}
-		image
+	fn eval(self, image: Image) -> Image {
+		image_opacity(image, self.0.eval(()) as f32)
 	}
 }
 
-impl<N: Node<(), Output = f32> + Copy> HueShiftImage<N> {
+impl<N: Node<(), Output = f64> + Copy> ImageOpacityNode<N> {
 	pub fn new(node: N) -> Self {
 		Self(node)
 	}
