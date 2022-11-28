@@ -29,6 +29,7 @@ impl DocumentInputType {
 
 pub struct DocumentNodeType {
 	pub name: &'static str,
+	pub category: &'static str,
 	pub identifier: NodeIdentifier,
 	pub inputs: &'static [DocumentInputType],
 	pub outputs: &'static [FrontendGraphDataType],
@@ -39,6 +40,7 @@ pub struct DocumentNodeType {
 static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 	DocumentNodeType {
 		name: "Identity",
+		category: "Meta",
 		identifier: NodeIdentifier::new("graphene_core::ops::IdNode", &[Type::Concrete(Cow::Borrowed("Any<'_>"))]),
 		inputs: &[DocumentInputType {
 			name: "In",
@@ -57,6 +59,7 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 	},
 	DocumentNodeType {
 		name: "Input",
+		category: "Meta",
 		identifier: NodeIdentifier::new("graphene_core::ops::IdNode", &[Type::Concrete(Cow::Borrowed("Any<'_>"))]),
 		inputs: &[DocumentInputType {
 			name: "In",
@@ -68,6 +71,7 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 	},
 	DocumentNodeType {
 		name: "Output",
+		category: "Meta",
 		identifier: NodeIdentifier::new("graphene_core::ops::IdNode", &[Type::Concrete(Cow::Borrowed("Any<'_>"))]),
 		inputs: &[DocumentInputType {
 			name: "In",
@@ -79,6 +83,7 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 	},
 	DocumentNodeType {
 		name: "Grayscale Image",
+		category: "Image Manipulation",
 		identifier: NodeIdentifier::new("graphene_std::raster::GrayscaleImageNode", &[]),
 		inputs: &[DocumentInputType {
 			name: "Image",
@@ -90,6 +95,7 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 	},
 	DocumentNodeType {
 		name: "Brighten Image",
+		category: "Image Manipulation",
 		identifier: NodeIdentifier::new("graphene_std::raster::BrightenImageNode", &[Type::Concrete(Cow::Borrowed("&TypeErasedNode"))]),
 		inputs: &[
 			DocumentInputType {
@@ -108,6 +114,7 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 	},
 	DocumentNodeType {
 		name: "Hue Shift Image",
+		category: "Image Manipulation",
 		identifier: NodeIdentifier::new("graphene_std::raster::HueShiftImage", &[Type::Concrete(Cow::Borrowed("&TypeErasedNode"))]),
 		inputs: &[
 			DocumentInputType {
@@ -126,6 +133,7 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 	},
 	DocumentNodeType {
 		name: "Add",
+		category: "Mathmatics",
 		identifier: NodeIdentifier::new("graphene_core::ops::AddNode", &[Type::Concrete(Cow::Borrowed("&TypeErasedNode"))]),
 		inputs: &[
 			DocumentInputType {
@@ -144,6 +152,7 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 	},
 	DocumentNodeType {
 		name: "Unit Circle Generator",
+		category: "Vector",
 		identifier: NodeIdentifier::new("graphene_std::vector::generator_nodes::UnitCircleGenerator", &[]),
 		inputs: &[DocumentInputType::none()],
 		outputs: &[FrontendGraphDataType::Subpath],
@@ -151,6 +160,7 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 	},
 	DocumentNodeType {
 		name: "Unit Square Generator",
+		category: "Vector",
 		identifier: NodeIdentifier::new("graphene_std::vector::generator_nodes::UnitSquareGenerator", &[]),
 		inputs: &[DocumentInputType::none()],
 		outputs: &[FrontendGraphDataType::Subpath],
@@ -158,6 +168,7 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 	},
 	DocumentNodeType {
 		name: "Path Generator",
+		category: "Vector",
 		identifier: NodeIdentifier::new("graphene_core::ops::IdNode", &[Type::Concrete(Cow::Borrowed("Any<'_>"))]),
 		inputs: &[DocumentInputType {
 			name: "Path Data",
@@ -169,6 +180,7 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 	},
 	DocumentNodeType {
 		name: "Transform Subpath",
+		category: "Vector",
 		identifier: NodeIdentifier::new("graphene_std::vector::generator_nodes::TransformSubpathNode", &[]),
 		inputs: &[
 			DocumentInputType {
@@ -202,6 +214,7 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 	},
 	DocumentNodeType {
 		name: "Blit Subpath",
+		category: "Vector",
 		identifier: NodeIdentifier::new("graphene_std::vector::generator_nodes::BlitSubpath", &[]),
 		inputs: &[
 			DocumentInputType {
@@ -228,6 +241,6 @@ pub fn collect_node_types() -> Vec<FrontendNodeType> {
 	DOCUMENT_NODE_TYPES
 		.iter()
 		.filter(|node_type| !matches!(node_type.name, "Input" | "Output"))
-		.map(|node_type| FrontendNodeType { name: node_type.name.to_string() })
+		.map(|node_type| FrontendNodeType::new(node_type.name, node_type.category))
 		.collect()
 }

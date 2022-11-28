@@ -1,12 +1,6 @@
 <template>
 	<LayoutCol class="node-graph">
 		<LayoutRow class="options-bar"></LayoutRow>
-		<div class="node-list">
-			<LayoutRow>Nodes:</LayoutRow>
-			<LayoutRow>
-				<TextButton v-for="nodeType in nodeTypes" v-bind:key="String(nodeType)" :label="nodeType.name + ' Node'" :action="() => createNode(nodeType.name)"></TextButton>
-			</LayoutRow>
-		</div>
 		<LayoutRow
 			class="graph"
 			ref="graph"
@@ -21,6 +15,14 @@
 				'--dot-radius': `${dotRadius}px`,
 			}"
 		>
+			<LayoutCol class="node-list" v-if="nodeListLocation" :style="{ marginLeft: `${nodeListX}px`, marginTop: `${nodeListY}px` }">
+				<TextInput placeholder="Search Nodes..." :value="searchTerm" @update:value="(val) => (searchTerm = val)" v-focus />
+				<LayoutCol v-for="nodeCategory in nodeCategories" :key="nodeCategory[0]">
+					<TextLabel>{{ nodeCategory[0] }}</TextLabel>
+					<TextButton v-for="nodeType in nodeCategory[1]" v-bind:key="String(nodeType)" :label="nodeType.name + ' Node'" :action="() => createNode(nodeType.name)" />
+				</LayoutCol>
+				<TextLabel v-if="nodeCategories.length === 0">No search results :(</TextLabel>
+			</LayoutCol>
 			<div
 				class="nodes"
 				ref="nodesContainer"
@@ -111,10 +113,9 @@
 	.node-list {
 		width: max-content;
 		position: fixed;
-		padding: 20px;
-		margin: 40px 10px;
+		padding: 5px;
 		z-index: 3;
-		background-color: var(--color-4-dimgray);
+		background-color: var(--color-3-darkgray);
 	}
 
 	.options-bar {
@@ -181,7 +182,7 @@
 				border-radius: 4px;
 				background: var(--color-4-dimgray);
 				left: calc((var(--offset-left) + 0.5) * 24px);
-				top: calc((var(--offset-top) + 0.5) * 24px);
+				top: calc((var(--offset-top) - 0.5) * 24px);
 
 				&.selected {
 					border: 1px solid var(--color-e-nearwhite);
@@ -298,6 +299,7 @@ import type { IconName } from "@/utility-functions/icons";
 import LayoutCol from "@/components/layout/LayoutCol.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 import TextButton from "@/components/widgets/buttons/TextButton.vue";
+import TextInput from "@/components/widgets/inputs/TextInput.vue";
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
 import TextLabel from "@/components/widgets/labels/TextLabel.vue";
 
@@ -317,6 +319,8 @@ export default defineComponent({
 			linkInProgressFromConnector: undefined as HTMLDivElement | undefined,
 			linkInProgressToConnector: undefined as HTMLDivElement | DOMRect | undefined,
 			nodeLinkPaths: [] as [string, string][],
+			searchTerm: "",
+			nodeListLocation: undefined as { x: number; y: number } | undefined,
 		};
 	},
 	computed: {
@@ -336,8 +340,24 @@ export default defineComponent({
 		nodes() {
 			return this.nodeGraph.state.nodes;
 		},
-		nodeTypes() {
-			return this.nodeGraph.state.nodeTypes;
+		nodeCategories() {
+			const categories = new Map();
+			this.nodeGraph.state.nodeTypes.forEach((node) => {
+				if (this.searchTerm.length && !node.name.toLowerCase().includes(this.searchTerm.toLowerCase()) && !node.category.toLowerCase().includes(this.searchTerm.toLowerCase())) return;
+
+				const category = categories.get(node.category);
+				if (category) category.push(node);
+				else categories.set(node.category, [node]);
+			});
+
+			const result = Array.from(categories);
+			return result;
+		},
+		nodeListX() {
+			return ((this.nodeListLocation?.x || 0) * GRID_SIZE + this.transform.x) * this.transform.scale;
+		},
+		nodeListY() {
+			return ((this.nodeListLocation?.y || 0) * GRID_SIZE + this.transform.y) * this.transform.scale;
 		},
 		linkPathInProgress(): [string, string] | undefined {
 			if (this.linkInProgressFromConnector && this.linkInProgressToConnector) {
@@ -462,6 +482,16 @@ export default defineComponent({
 			}
 		},
 		pointerDown(e: PointerEvent) {
+			if (e.button === 2) {
+				const graphDiv: HTMLDivElement | undefined = (this.$refs.graph as typeof LayoutCol | undefined)?.$el;
+				const graph = graphDiv?.getBoundingClientRect() || new DOMRect();
+				this.nodeListLocation = {
+					x: Math.round(((e.clientX - graph.x) / this.transform.scale - this.transform.x) / GRID_SIZE),
+					y: Math.round(((e.clientY - graph.y) / this.transform.scale - this.transform.y) / GRID_SIZE),
+				};
+				return;
+			}
+
 			const port = (e.target as HTMLDivElement).closest("[data-port]") as HTMLDivElement;
 			const node = (e.target as HTMLElement).closest("[data-node]") as HTMLElement | undefined;
 
@@ -561,7 +591,10 @@ export default defineComponent({
 			this.linkInProgressToConnector = undefined;
 		},
 		createNode(nodeType: string): void {
-			this.editor.instance.createNode(nodeType);
+			if (!this.nodeListLocation) return;
+
+			this.editor.instance.createNode(nodeType, this.nodeListLocation.x, this.nodeListLocation.y);
+			this.nodeListLocation = undefined;
 		},
 	},
 	mounted() {
@@ -579,6 +612,7 @@ export default defineComponent({
 		LayoutRow,
 		TextLabel,
 		TextButton,
+		TextInput,
 	},
 });
 </script>

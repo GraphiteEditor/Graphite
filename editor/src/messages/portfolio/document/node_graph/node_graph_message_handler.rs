@@ -59,10 +59,14 @@ pub struct FrontendNodeLink {
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FrontendNodeType {
 	pub name: String,
+	pub category: String,
 }
 impl FrontendNodeType {
-	pub fn new(name: &'static str) -> Self {
-		Self { name: name.to_string() }
+	pub fn new(name: &'static str, category: &'static str) -> Self {
+		Self {
+			name: name.to_string(),
+			category: category.to_string(),
+		}
 	}
 }
 
@@ -238,7 +242,7 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 				Self::send_graph(network, responses);
 				responses.push_back(DocumentMessage::NodeGraphFrameGenerate.into());
 			}
-			NodeGraphMessage::CreateNode { node_id, node_type } => {
+			NodeGraphMessage::CreateNode { node_id, node_type, x, y } => {
 				let node_id = node_id.unwrap_or_else(crate::application::generate_uuid);
 				let Some(network) = self.get_active_network_mut(document) else{
 					warn!("No network");
@@ -268,7 +272,6 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 					.into_iter()
 					.collect(),
 				};
-				let far_right_node = network.nodes.iter().map(|node| node.1.metadata.position).max_by_key(|pos| pos.0).unwrap_or_default();
 
 				network.nodes.insert(
 					node_id,
@@ -277,10 +280,7 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 						inputs: document_node_type.inputs.iter().map(|input| input.default.clone()).collect(),
 						// TODO: Allow inserting nodes that contain other nodes.
 						implementation: DocumentNodeImplementation::Network(inner_network),
-						metadata: graph_craft::document::DocumentNodeMetadata {
-							// TODO: Better position default
-							position: (far_right_node.0 + 7, far_right_node.1 + 2),
-						},
+						metadata: graph_craft::document::DocumentNodeMetadata { position: (x, y) },
 					},
 				);
 				Self::send_graph(network, responses);
