@@ -385,6 +385,23 @@ static NODE_REGISTRY: &[(NodeIdentifier, NodeConstructor)] = &[
 		},
 	),
 	(
+		NodeIdentifier::new("graphene_std::raster::Posterize", &[Type::Concrete(Cow::Borrowed("&TypeErasedNode"))]),
+		|proto_node, stack| {
+			stack.push_fn(move |nodes| {
+				let ConstructionArgs::Nodes(construction_nodes) = proto_node.construction_args else { unreachable!("ImageOpacityNode Node constructed with out brighten input node") };
+				let value: DowncastBothNode<_, (), f64> = DowncastBothNode::new(nodes.get(construction_nodes[0] as usize).unwrap());
+				let node = DynAnyNode::new(graphene_std::raster::Posterize::new(value));
+
+				if let ProtoNodeInput::Node(node_id) = proto_node.input {
+					let pre_node = nodes.get(node_id as usize).unwrap();
+					(pre_node).then(node).into_type_erased()
+				} else {
+					node.into_type_erased()
+				}
+			})
+		},
+	),
+	(
 		NodeIdentifier::new("graphene_std::raster::ImageNode", &[Concrete(std::borrow::Cow::Borrowed("&str"))]),
 		|_proto_node, stack| {
 			stack.push_fn(|_nodes| {

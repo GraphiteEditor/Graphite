@@ -374,6 +374,39 @@ fn image_opacity(mut image: Image, opacity_multiplier: f32) -> Image {
 	image
 }
 
+// Based on http://www.axiomx.com/posterize.htm
+fn posterize(mut image: Image, posterize_value: f32) -> Image {
+	let number_of_areas = (256. / posterize_value) / 255.;
+	let size_of_areas = (255. / (posterize_value - 1.)) / 255.;
+	let channel = |channel: f32| (channel / number_of_areas).floor() * size_of_areas;
+	for pixel in &mut image.data {
+		*pixel = Color::from_rgbaf32_unchecked(channel(pixel.r()), channel(pixel.g()), channel(pixel.b()), pixel.a())
+	}
+	image
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct Posterize<N: Node<(), Output = f64>>(N);
+
+impl<N: Node<(), Output = f64>> Node<Image> for Posterize<N> {
+	type Output = Image;
+	fn eval(self, image: Image) -> Image {
+		posterize(image, self.0.eval(()) as f32)
+	}
+}
+impl<N: Node<(), Output = f64> + Copy> Node<Image> for &Posterize<N> {
+	type Output = Image;
+	fn eval(self, image: Image) -> Image {
+		posterize(image, self.0.eval(()) as f32)
+	}
+}
+
+impl<N: Node<(), Output = f64> + Copy> Posterize<N> {
+	pub fn new(node: N) -> Self {
+		Self(node)
+	}
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct ImageOpacityNode<N: Node<(), Output = f64>>(N);
 

@@ -197,6 +197,25 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 		properties: node_properties::multiply_opacity,
 	},
 	DocumentNodeType {
+		name: "Posterize",
+		category: "Image Filters",
+		identifier: NodeIdentifier::new("graphene_std::raster::Posterize", &[Type::Concrete(Cow::Borrowed("&TypeErasedNode"))]),
+		inputs: &[
+			DocumentInputType {
+				name: "Image",
+				data_type: FrontendGraphDataType::Raster,
+				default: NodeInput::value(TaggedValue::Image(Image::empty()), true),
+			},
+			DocumentInputType {
+				name: "Value",
+				data_type: FrontendGraphDataType::Number,
+				default: NodeInput::value(TaggedValue::F64(5.), false),
+			},
+		],
+		outputs: &[FrontendGraphDataType::Raster],
+		properties: node_properties::posterize_properties,
+	},
+	DocumentNodeType {
 		name: "Add",
 		category: "Mathmatics",
 		identifier: NodeIdentifier::new("graphene_core::ops::AddNode", &[Type::Concrete(Cow::Borrowed("&TypeErasedNode"))]),
