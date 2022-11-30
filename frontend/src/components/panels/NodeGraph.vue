@@ -39,8 +39,6 @@
 					:style="{
 						'--offset-left': (node.position?.x || 0) + (selected.includes(node.id) ? draggingNodes?.roundX || 0 : 0),
 						'--offset-top': (node.position?.y || 0) + (selected.includes(node.id) ? draggingNodes?.roundY || 0 : 0),
-						'--data-color': 'var(--color-data-raster)',
-						'--data-color-dim': 'var(--color-data-raster-dim)',
 					}"
 					:data-node="node.id"
 				>
