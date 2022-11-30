@@ -46,6 +46,7 @@ pub fn create_files(matadata: &Metadata, network: &ProtoNetwork, compile_dir: &P
 	}
 	let lib = src.join("lib.rs");
 	let shader = serialize_gpu(network, input_type, output_type)?;
+	println!("{}", shader);
 	std::fs::write(lib, shader)?;
 	Ok(())
 }
@@ -70,12 +71,12 @@ pub fn serialize_gpu(network: &ProtoNetwork, input_type: &str, output_type: &str
 		args: Vec<String>,
 	}
 	for (ref id, node) in network.nodes.iter() {
-		let fqn = node.identifier.name;
+		let fqn = &node.identifier.name;
 		let id = nid(id);
 
 		nodes.push(Node {
 			id,
-			fqn: fqn.to_owned(),
+			fqn: fqn.to_string(),
 			args: node.construction_args.new_function_args(),
 		});
 	}
@@ -84,10 +85,10 @@ pub fn serialize_gpu(network: &ProtoNetwork, input_type: &str, output_type: &str
 	let mut tera = tera::Tera::default();
 	tera.add_raw_template("spirv", template)?;
 	let mut context = Context::new();
-	nodes.reverse();
 	context.insert("input_type", &input_type);
 	context.insert("output_type", &output_type);
 	context.insert("nodes", &nodes);
+	context.insert("last_node", &nid(&network.output));
 	context.insert("compute_threads", &64);
 	Ok(tera.render("spirv", &context)?)
 }

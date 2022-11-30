@@ -119,6 +119,8 @@ fn create_buffer<T: Pod + Send + Sync>(data: Vec<T>, alloc: &StandardMemoryAlloc
 #[cfg(test)]
 mod test {
 	use super::*;
+	use crate::concrete;
+	use crate::generic;
 	use crate::gpu::compiler;
 
 	fn inc_network() -> ProtoNetwork {
@@ -129,7 +131,7 @@ mod test {
 				(
 					1,
 					ProtoNode {
-						identifier: NodeIdentifier::new("graphene_core::ops::IdNode", &[Type::Generic("u32")]),
+						identifier: NodeIdentifier::new("graphene_core::ops::IdNode", &[generic!("u32")]),
 						input: ProtoNodeInput::Node(11),
 						construction_args: ConstructionArgs::Nodes(vec![]),
 					},
@@ -137,7 +139,7 @@ mod test {
 				(
 					10,
 					ProtoNode {
-						identifier: NodeIdentifier::new("graphene_core::structural::ConsNode", &[Type::Generic("&ValueNode<u32>"), Type::Generic("()")]),
+						identifier: NodeIdentifier::new("graphene_core::structural::ConsNode", &[generic!("&ValueNode<u32>"), generic!("()")]),
 						input: ProtoNodeInput::Network,
 						construction_args: ConstructionArgs::Nodes(vec![14]),
 					},
@@ -145,7 +147,7 @@ mod test {
 				(
 					11,
 					ProtoNode {
-						identifier: NodeIdentifier::new("graphene_core::ops::AddNode", &[Type::Generic("u32"), Type::Generic("u32")]),
+						identifier: NodeIdentifier::new("graphene_core::ops::AddNode", &[generic!("u32"), generic!("u32")]),
 						input: ProtoNodeInput::Node(10),
 						construction_args: ConstructionArgs::Nodes(vec![]),
 					},
@@ -153,7 +155,7 @@ mod test {
 				(
 					14,
 					ProtoNode {
-						identifier: NodeIdentifier::new("graphene_core::value::ValueNode", &[Type::Concrete("u32")]),
+						identifier: NodeIdentifier::new("graphene_core::value::ValueNode", &[concrete!("u32")]),
 						input: ProtoNodeInput::None,
 						construction_args: ConstructionArgs::Value(Box::new(3_u32)),
 					},
@@ -172,8 +174,9 @@ mod test {
 		use crate::executor::Executor;
 		let m = compiler::Metadata::new("project".to_owned(), vec!["test@example.com".to_owned()]);
 		let network = inc_network();
+		let temp_dir = tempdir::TempDir::new("graphite_compile").unwrap();
 
-		let executor: GpuExecutor<u32, u32> = GpuExecutor::new(Context::new(), network, m, Path::new("/tmp/graphite_compile")).unwrap();
+		let executor: GpuExecutor<u32, u32> = GpuExecutor::new(Context::new(), network, m, temp_dir.path()).unwrap();
 
 		let data: Vec<_> = (0..1024).map(|x| x as u32).collect();
 		let result = executor.execute(Box::new(data)).unwrap();

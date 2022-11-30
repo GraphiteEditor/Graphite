@@ -124,7 +124,7 @@ pub struct ProtoNode {
 	pub identifier: NodeIdentifier,
 }
 
-#[derive(Debug, Default, PartialEq, Eq)]
+#[derive(Debug, Default, PartialEq, Eq, Clone, Copy)]
 pub enum ProtoNodeInput {
 	None,
 	#[default]
@@ -220,11 +220,13 @@ impl ProtoNetwork {
 
 		let mut lookup = self.nodes.iter().map(|(id, _)| (*id, *id)).collect::<HashMap<_, _>>();
 		let compose_node_id = self.nodes.len() as NodeId;
+		let inputs = self.nodes.iter().map(|(_, node)| node.input).collect::<Vec<_>>();
 
-		if let Some((input_node, id)) = self.nodes.iter_mut().find_map(|(id, node)| {
+		if let Some((input_node, id, input)) = self.nodes.iter_mut().find_map(|(id, node)| {
 			if let ProtoNodeInput::Node(input_node) = node.input {
 				node.input = ProtoNodeInput::None;
-				Some((input_node, *id))
+				let pre_node_input = inputs.get(input_node as usize).expect("input node should exist");
+				Some((input_node, *id, *pre_node_input))
 			} else {
 				None
 			}
@@ -236,7 +238,7 @@ impl ProtoNetwork {
 				ProtoNode {
 					identifier: NodeIdentifier::new("graphene_core::structural::ComposeNode", &[generic!("T"), Type::Generic(Cow::Borrowed("U"))]),
 					construction_args: ConstructionArgs::Nodes(vec![input_node, id]),
-					input: ProtoNodeInput::None,
+					input,
 				},
 			));
 			return false;
@@ -258,7 +260,6 @@ impl ProtoNetwork {
 				panic!("Cycle detected");
 			}
 			info!("Visiting {node_id}");
-			println!("Visiting {node_id}");
 
 			if let Some(dependencies) = inwards_edges.get(&node_id) {
 				temp_marks.insert(node_id);

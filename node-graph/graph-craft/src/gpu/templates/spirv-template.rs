@@ -32,7 +32,7 @@ pub mod gpu {
         {% for node in nodes %}
         let {{node.id}} = {{node.fqn}}::new({% for arg in node.args %}{{arg}}, {% endfor %});
         {% endfor %}
-        n0.eval(input)
+		{{last_node}}.eval(input)
     }
 
 }
