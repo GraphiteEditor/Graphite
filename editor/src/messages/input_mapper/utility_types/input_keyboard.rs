@@ -51,7 +51,7 @@ bitflags! {
 // (although we ignore the shift key, so the user doesn't have to press `Ctrl Shift +` on a US keyboard), even if the keyboard layout
 // is for a different locale where the `+` key is somewhere entirely different, shifted or not. This would then also work for numpad `+`.
 #[impl_message(Message, InputMapperMessage, KeyDown)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize)]
 pub enum Key {
 	// Writing system keys
 	Digit0,
@@ -210,18 +210,6 @@ pub enum Key {
 	NumKeys,
 }
 
-impl Serialize for Key {
-	fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-		let key = format!("{:?}", self);
-		let label = self.to_string();
-
-		let mut state = serializer.serialize_struct("KeyWithLabel", 2)?;
-		state.serialize_field("key", &key)?;
-		state.serialize_field("label", &label)?;
-		state.end()
-	}
-}
-
 impl fmt::Display for Key {
 	// TODO: Relevant key labels should be localized when we get around to implementing localization/internationalization
 	fn fmt(&self, f: &mut fmt::Formatter) -> std::fmt::Result {
@@ -308,6 +296,35 @@ impl fmt::Display for Key {
 	}
 }
 
+impl From<Key> for LayoutKey {
+	fn from(key: Key) -> Self {
+		Self {
+			key: format!("{:?}", key),
+			label: key.to_string(),
+		}
+	}
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+struct LayoutKey {
+	key: String,
+	label: String,
+}
+/*
+impl Serialize for Key {
+	fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+		let key = format!("{:?}", self.0);
+		let label = self.0.to_string();
+
+		assert_eq!(serde_json::to_string(Key::KeyEscape), {"key": KeyEscape, "label": "Esc"});
+
+		let mut state = serializer.serialize_struct("KeyWithLabel", 2)?;
+		state.serialize_field("key", &key)?;
+		state.serialize_field("label", &label)?;
+		state.end()
+	}
+}*/
+
 pub const NUMBER_OF_KEYS: usize = Key::NumKeys as usize;
 
 /// Only `Key`s that exist on a physical keyboard should be used.
@@ -339,6 +356,22 @@ impl fmt::Display for KeysGroup {
 		}
 
 		write!(f, "{}", joined)
+	}
+}
+
+impl From<KeysGroup> for String {
+	fn from(keys: KeysGroup) -> Self {
+		let layout_keys: LayoutKeysGroup = keys.into();
+		serde_json::to_string(&layout_keys).expect("Failed to serialize KeysGroup")
+	}
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LayoutKeysGroup(Vec<LayoutKey>);
+
+impl From<KeysGroup> for LayoutKeysGroup {
+	fn from(keys_group: KeysGroup) -> Self {
+		Self(keys_group.0.into_iter().map(|key| key.into()).collect())
 	}
 }
 

@@ -3,6 +3,12 @@ use dyn_any::{DynAny, StaticType};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
+#[cfg(target_arch = "spirv")]
+use spirv_std::num_traits::float::Float;
+
+#[cfg(target_arch = "spirv")]
+use spirv_std::num_traits::Euclid;
+
 /// Structure that represents a color.
 /// Internally alpha is stored as `f32` that ranges from `0.0` (transparent) to `1.0` (opaque).
 /// The other components (RGB) are stored as `f32` that range from `0.0` up to `f32::MAX`,
@@ -92,6 +98,7 @@ impl Color {
 	/// use graphene_core::raster::color::Color;
 	/// let color = Color::from_hsla(0.5, 0.2, 0.3, 1.);
 	/// ```
+    #[cfg(not(target_arch = "spirv"))]
 	pub fn from_hsla(hue: f32, saturation: f32, lightness: f32, alpha: f32) -> Color {
 		let temp1 = if lightness < 0.5 {
 			lightness * (saturation + 1.)
@@ -219,7 +226,10 @@ impl Color {
 		} else {
 			4. + (self.red - self.green) / (max_channel - min_channel)
 		} / 6.;
+		#[cfg(not(target_arch = "spirv"))]
 		let hue = hue.rem_euclid(1.);
+		#[cfg(target_arch = "spirv")]
+		let hue = hue.rem_euclid(&1.);
 
 		[hue, saturation, lightness, self.alpha]
 	}

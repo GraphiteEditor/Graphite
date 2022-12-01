@@ -6,8 +6,8 @@ use glam::DVec2;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, NodeId, NodeInput};
 use graph_craft::proto::{NodeIdentifier, Type};
-use graphene_std::raster::Image;
-use graphene_std::vector::subpath::Subpath;
+use graphene_core::raster::Image;
+use graphene_core::vector::subpath::Subpath;
 
 use std::borrow::Cow;
 

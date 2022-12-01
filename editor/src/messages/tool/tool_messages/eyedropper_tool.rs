@@ -178,7 +178,7 @@ impl Fsm for EyedropperToolFsmState {
 				},
 			])]),
 			EyedropperToolFsmState::SamplingPrimary | EyedropperToolFsmState::SamplingSecondary => HintData(vec![HintGroup(vec![HintInfo {
-				key_groups: vec![KeysGroup(vec![Key::Escape])],
+				key_groups: vec![KeysGroup(vec![Key::Escape]).into()],
 				key_groups_mac: None,
 				mouse: None,
 				label: String::from("Cancel"),

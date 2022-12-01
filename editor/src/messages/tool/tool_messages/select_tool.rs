@@ -793,21 +793,21 @@ impl Fsm for SelectToolFsmState {
 				}]),
 				HintGroup(vec![
 					HintInfo {
-						key_groups: vec![KeysGroup(vec![Key::KeyG])],
+						key_groups: vec![KeysGroup(vec![Key::KeyG]).into()],
 						key_groups_mac: None,
 						mouse: None,
 						label: String::from("Grab Selected"),
 						plus: false,
 					},
 					HintInfo {
-						key_groups: vec![KeysGroup(vec![Key::KeyR])],
+						key_groups: vec![KeysGroup(vec![Key::KeyR]).into()],
 						key_groups_mac: None,
 						mouse: None,
 						label: String::from("Rotate Selected"),
 						plus: false,
 					},
 					HintInfo {
-						key_groups: vec![KeysGroup(vec![Key::KeyS])],
+						key_groups: vec![KeysGroup(vec![Key::KeyS]).into()],
 						key_groups_mac: None,
 						mouse: None,
 						label: String::from("Scale Selected"),
@@ -823,14 +823,14 @@ impl Fsm for SelectToolFsmState {
 						plus: false,
 					},
 					HintInfo {
-						key_groups: vec![KeysGroup(vec![Key::Control])],
-						key_groups_mac: Some(vec![KeysGroup(vec![Key::Command])]),
+						key_groups: vec![KeysGroup(vec![Key::Control]).into()],
+						key_groups_mac: Some(vec![KeysGroup(vec![Key::Command]).into()]),
 						mouse: None,
 						label: String::from("Innermost"),
 						plus: true,
 					},
 					HintInfo {
-						key_groups: vec![KeysGroup(vec![Key::Shift])],
+						key_groups: vec![KeysGroup(vec![Key::Shift]).into()],
 						key_groups_mac: None,
 						mouse: None,
 						label: String::from("Grow/Shrink Selection"),
@@ -846,7 +846,7 @@ impl Fsm for SelectToolFsmState {
 						plus: false,
 					},
 					HintInfo {
-						key_groups: vec![KeysGroup(vec![Key::Shift])],
+						key_groups: vec![KeysGroup(vec![Key::Shift]).into()],
 						key_groups_mac: None,
 						mouse: None,
 						label: String::from("Grow/Shrink Selection"),
@@ -856,10 +856,10 @@ impl Fsm for SelectToolFsmState {
 				HintGroup(vec![
 					HintInfo {
 						key_groups: vec![
-							KeysGroup(vec![Key::ArrowUp]),
-							KeysGroup(vec![Key::ArrowRight]),
-							KeysGroup(vec![Key::ArrowDown]),
-							KeysGroup(vec![Key::ArrowLeft]),
+							KeysGroup(vec![Key::ArrowUp]).into(),
+							KeysGroup(vec![Key::ArrowRight]).into(),
+							KeysGroup(vec![Key::ArrowDown]).into(),
+							KeysGroup(vec![Key::ArrowLeft]).into(),
 						],
 						key_groups_mac: None,
 						mouse: None,
@@ -867,7 +867,7 @@ impl Fsm for SelectToolFsmState {
 						plus: false,
 					},
 					HintInfo {
-						key_groups: vec![KeysGroup(vec![Key::Shift])],
+						key_groups: vec![KeysGroup(vec![Key::Shift]).into()],
 						key_groups_mac: None,
 						mouse: None,
 						label: String::from("Big Increment Nudge"),
@@ -876,15 +876,15 @@ impl Fsm for SelectToolFsmState {
 				]),
 				HintGroup(vec![
 					HintInfo {
-						key_groups: vec![KeysGroup(vec![Key::Alt])],
+						key_groups: vec![KeysGroup(vec![Key::Alt]).into()],
 						key_groups_mac: None,
 						mouse: Some(MouseMotion::LmbDrag),
 						label: String::from("Move Duplicate"),
 						plus: false,
 					},
 					HintInfo {
-						key_groups: vec![KeysGroup(vec![Key::Control, Key::KeyD])],
-						key_groups_mac: Some(vec![KeysGroup(vec![Key::Command, Key::KeyD])]),
+						key_groups: vec![KeysGroup(vec![Key::Control, Key::KeyD]).into()],
+						key_groups_mac: Some(vec![KeysGroup(vec![Key::Command, Key::KeyD]).into()]),
 						mouse: None,
 						label: String::from("Duplicate"),
 						plus: false,
@@ -893,14 +893,14 @@ impl Fsm for SelectToolFsmState {
 			]),
 			SelectToolFsmState::Dragging => HintData(vec![HintGroup(vec![
 				HintInfo {
-					key_groups: vec![KeysGroup(vec![Key::Shift])],
+					key_groups: vec![KeysGroup(vec![Key::Shift]).into()],
 					key_groups_mac: None,
 					mouse: None,
 					label: String::from("Constrain to Axis"),
 					plus: false,
 				},
 				HintInfo {
-					key_groups: vec![KeysGroup(vec![Key::Control])],
+					key_groups: vec![KeysGroup(vec![Key::Control]).into()],
 					key_groups_mac: None,
 					mouse: None,
 					label: String::from("Snap to Points (coming soon)"),
@@ -910,7 +910,7 @@ impl Fsm for SelectToolFsmState {
 			SelectToolFsmState::DrawingBox => HintData(vec![]),
 			SelectToolFsmState::ResizingBounds => HintData(vec![]),
 			SelectToolFsmState::RotatingBounds => HintData(vec![HintGroup(vec![HintInfo {
-				key_groups: vec![KeysGroup(vec![Key::Control])],
+				key_groups: vec![KeysGroup(vec![Key::Control]).into()],
 				key_groups_mac: None,
 				mouse: None,
 				label: String::from("Snap 15°"),

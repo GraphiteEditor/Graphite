@@ -1,7 +1,7 @@
 use crate::Node;
 
 pub mod color;
-use self::color::Color;
+pub use self::color::Color;
 
 #[derive(Debug, Clone, Copy)]
 pub struct GrayscaleColorNode;
@@ -48,8 +48,10 @@ impl<N: Node<(), Output = f32> + Copy> BrightenColorNode<N> {
 }
 
 #[derive(Debug, Clone, Copy)]
+#[cfg(not(target_arch = "spirv"))]
 pub struct HueShiftColorNode<N: Node<(), Output = f32>>(N);
 
+#[cfg(not(target_arch = "spirv"))]
 impl<N: Node<(), Output = f32>> Node<Color> for HueShiftColorNode<N> {
 	type Output = Color;
 	fn eval(self, color: Color) -> Color {
@@ -58,6 +60,7 @@ impl<N: Node<(), Output = f32>> Node<Color> for HueShiftColorNode<N> {
 		Color::from_hsla(hue + hue_shift / 360., saturation, lightness, alpha)
 	}
 }
+#[cfg(not(target_arch = "spirv"))]
 impl<N: Node<(), Output = f32> + Copy> Node<Color> for &HueShiftColorNode<N> {
 	type Output = Color;
 	fn eval(self, color: Color) -> Color {
@@ -67,6 +70,7 @@ impl<N: Node<(), Output = f32> + Copy> Node<Color> for &HueShiftColorNode<N> {
 	}
 }
 
+#[cfg(not(target_arch = "spirv"))]
 impl<N: Node<(), Output = f32> + Copy> HueShiftColorNode<N> {
 	pub fn new(node: N) -> Self {
 		Self(node)
@@ -82,6 +86,48 @@ where
 	type Output = ();
 	fn eval(self, input: I) -> Self::Output {
 		input.for_each(|x| (&self.0).eval(x))
+	}
+}
+
+#[cfg(feature = "alloc")]
+pub use image::Image;
+#[cfg(feature = "alloc")]
+mod image {
+	use super::Color;
+	use alloc::vec::Vec;
+	use dyn_any::{DynAny, StaticType};
+	#[derive(Clone, Debug, PartialEq, DynAny, Default)]
+	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+	pub struct Image {
+		pub width: u32,
+		pub height: u32,
+		pub data: Vec<Color>,
+	}
+
+	impl Image {
+		pub const fn empty() -> Self {
+			Self {
+				width: 0,
+				height: 0,
+				data: Vec::new(),
+			}
+		}
+	}
+
+	impl IntoIterator for Image {
+		type Item = Color;
+		type IntoIter = alloc::vec::IntoIter<Color>;
+		fn into_iter(self) -> Self::IntoIter {
+			self.data.into_iter()
+		}
+	}
+
+	impl<'a> IntoIterator for &'a Image {
+		type Item = &'a Color;
+		type IntoIter = alloc::slice::Iter<'a, Color>;
+		fn into_iter(self) -> Self::IntoIter {
+			self.data.iter()
+		}
 	}
 }
 

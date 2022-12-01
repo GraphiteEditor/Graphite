@@ -10,7 +10,7 @@ use crate::messages::layout::utility_types::misc::LayoutTarget;
 use crate::messages::prelude::*;
 
 use serde::{Deserialize, Serialize};
-use std::rc::Rc;
+use std::sync::Arc;
 
 pub trait PropertyHolder {
 	fn properties(&self) -> Layout {
@@ -39,11 +39,9 @@ impl Layout {
 		if let Layout::WidgetLayout(mut widget_layout) = self {
 			// Function used multiple times later in this code block to convert `ActionKeys::Action` to `ActionKeys::Keys` and append its shortcut to the tooltip
 			let apply_shortcut_to_tooltip = |tooltip_shortcut: &mut ActionKeys, tooltip: &mut String| {
-				tooltip_shortcut.to_keys(action_input_mapping);
+				let shortcut_text = tooltip_shortcut.to_keys(action_input_mapping);
 
 				if let ActionKeys::Keys(keys) = tooltip_shortcut {
-					let shortcut_text = keys.to_string();
-
 					if !shortcut_text.is_empty() {
 						if !tooltip.is_empty() {
 							tooltip.push(' ');
@@ -279,12 +277,12 @@ impl WidgetHolder {
 
 #[derive(Clone)]
 pub struct WidgetCallback<T> {
-	pub callback: Rc<dyn Fn(&T) -> Message + 'static>,
+	pub callback: Arc<dyn Fn(&T) -> Message + 'static + Send + Sync>,
 }
 
 impl<T> WidgetCallback<T> {
-	pub fn new(callback: impl Fn(&T) -> Message + 'static) -> Self {
-		Self { callback: Rc::new(callback) }
+	pub fn new(callback: impl Fn(&T) -> Message + 'static + Send + Sync) -> Self {
+		Self { callback: Arc::new(callback) }
 	}
 }
 

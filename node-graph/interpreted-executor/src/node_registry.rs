@@ -3,19 +3,19 @@ use glam::DVec2;
 use graphene_core::generic::FnNode;
 use graphene_core::ops::{AddNode, IdNode};
 use graphene_core::raster::color::Color;
+use graphene_core::raster::Image;
 use graphene_core::structural::{ConsNode, Then};
+use graphene_core::vector::subpath::Subpath;
 use graphene_core::Node;
 use graphene_std::any::DowncastBothNode;
 use graphene_std::any::{Any, DowncastNode, DynAnyNode, IntoTypeErasedNode, TypeErasedNode};
-use graphene_std::raster::Image;
-use graphene_std::vector::subpath::Subpath;
 
-use crate::proto::Type;
-use crate::proto::{ConstructionArgs, NodeIdentifier, ProtoNode, ProtoNodeInput};
+use graph_craft::proto::Type;
+use graph_craft::proto::{ConstructionArgs, NodeIdentifier, ProtoNode, ProtoNodeInput};
 
 type NodeConstructor = fn(ProtoNode, &FixedSizeStack<TypeErasedNode<'static>>);
 
-use crate::{concrete, generic};
+use graph_craft::{concrete, generic};
 
 //TODO: turn into hasmap
 static NODE_REGISTRY: &[(NodeIdentifier, NodeConstructor)] = &[
@@ -25,7 +25,7 @@ static NODE_REGISTRY: &[(NodeIdentifier, NodeConstructor)] = &[
 				let pre_node = nodes.get(pre_id as usize).unwrap();
 				pre_node.into_type_erased()
 			} else {
-				graphene_core::ops::IdNode.into_type_erased()
+				IdNode.into_type_erased()
 			}
 		})
 	}),
@@ -35,7 +35,7 @@ static NODE_REGISTRY: &[(NodeIdentifier, NodeConstructor)] = &[
 				let pre_node = nodes.get(pre_id as usize).unwrap();
 				pre_node.into_type_erased()
 			} else {
-				graphene_core::ops::IdNode.into_type_erased()
+				IdNode.into_type_erased()
 			}
 		})
 	}),

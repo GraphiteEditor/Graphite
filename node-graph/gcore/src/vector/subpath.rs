@@ -3,6 +3,9 @@ use super::id_vec::IdBackedVec;
 use super::manipulator_group::ManipulatorGroup;
 use super::manipulator_point::ManipulatorPoint;
 
+use alloc::string::String;
+use alloc::vec;
+use alloc::vec::Vec;
 use dyn_any::{DynAny, StaticType};
 use glam::{DAffine2, DVec2};
 use kurbo::{BezPath, PathEl, Shape};
@@ -92,7 +95,7 @@ impl Subpath {
 	pub fn new_ngon(center: DVec2, sides: u64, radius: f64) -> Self {
 		let mut manipulator_groups = vec![];
 		for i in 0..sides {
-			let angle = (i as f64) * std::f64::consts::TAU / (sides as f64);
+			let angle = (i as f64) * core::f64::consts::TAU / (sides as f64);
 			let center = center + DVec2::ONE * radius;
 			let position = ManipulatorGroup::new_with_anchor(DVec2::new(center.x + radius * f64::cos(angle), center.y + radius * f64::sin(angle)) * 0.5);
 
@@ -346,7 +349,7 @@ impl Subpath {
 	/// Generate an SVG `path` elements's `d` attribute: `<path d="...">`.
 	pub fn to_svg(&mut self) -> String {
 		fn write_positions(result: &mut String, values: [Option<DVec2>; 3]) {
-			use std::fmt::Write;
+			use core::fmt::Write;
 			let count = values.into_iter().flatten().count();
 			for (index, pos) in values.into_iter().flatten().enumerate() {
 				write!(result, "{},{}", pos.x, pos.y).unwrap();
@@ -442,7 +445,7 @@ impl BezierId {
 
 /// An iterator over [`bezier_rs::Bezier`] segments constructable via [`Subpath::bezier_iter`].
 pub struct PathIter<'a> {
-	path: std::iter::Zip<core::slice::Iter<'a, u64>, core::slice::Iter<'a, ManipulatorGroup>>,
+	path: core::iter::Zip<core::slice::Iter<'a, u64>, core::slice::Iter<'a, ManipulatorGroup>>,
 
 	last_anchor: Option<DVec2>,
 	last_out_handle: Option<DVec2>,

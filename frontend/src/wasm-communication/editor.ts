@@ -1,3 +1,5 @@
+import { invoke } from "@tauri-apps/api";
+
 import type WasmBindgenPackage from "@/../wasm/pkg";
 import { panicProxy } from "@/utility-functions/panic-proxy";
 import { type JsMessageType } from "@/wasm-communication/messages";
@@ -24,6 +26,27 @@ export async function updateImage(path: BigUint64Array, mime: string, imageData:
 	editorInstance?.setImageBlobURL(documentId, path, blobURL, image.naturalWidth, image.naturalHeight);
 }
 
+export async function fetchImage(path: BigUint64Array, mime: string, documentId: bigint, url: string): Promise<void> {
+	const data = await fetch(url);
+	const blob = await data.blob();
+
+	const blobURL = URL.createObjectURL(blob);
+
+	// Pre-decode the image so it is ready to be drawn instantly once it's placed into the viewport SVG
+	const image = new Image();
+	image.src = blobURL;
+	await image.decode();
+
+	editorInstance?.setImageBlobURL(documentId, path, blobURL, image.naturalWidth, image.naturalHeight);
+}
+
+// export async function dispatchTauri(message: string): Promise<string> {
+export async function dispatchTauri(message: string): Promise<void> {
+	const response: string = await invoke("handle_message", { message });
+
+	editorInstance?.tauriResponse(response);
+}
+
 // Should be called asynchronously before `createEditor()`
 export async function initWasm(): Promise<void> {
 	// Skip if the WASM module is already initialized
@@ -34,8 +57,10 @@ export async function initWasm(): Promise<void> {
 	wasmImport = await import("@/../wasm/pkg").then(panicProxy);
 
 	// Provide a random starter seed which must occur after initializing the WASM module, since WASM can't generate its own random numbers
-	const randomSeed = BigInt(Math.floor(Math.random() * Number.MAX_SAFE_INTEGER));
+	const randomSeedFloat = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER);
+	const randomSeed = BigInt(randomSeedFloat);
 	wasmImport?.setRandomSeed(randomSeed);
+	await invoke("set_random_seed", { seed: randomSeedFloat });
 }
 
 // Should be called after running `initWasm()` and its promise resolving

@@ -1,5 +1,9 @@
 #![doc(html_root_url = "http://docs.rs/const-default/1.0.0")]
 #![cfg_attr(feature = "unstable-docs", feature(doc_cfg))]
+#![cfg_attr(not(feature = "std"), no_std)]
+
+#[cfg(feature = "alloc")]
+extern crate alloc;
 
 #[cfg(feature = "derive")]
 #[cfg_attr(feature = "unstable-docs", doc(cfg(feature = "derive")))]
@@ -9,6 +13,7 @@ pub use dyn_any_derive::DynAny;
 pub trait UpcastFrom<T: ?Sized> {
 	fn up_from(value: &T) -> &Self;
 	fn up_from_mut(value: &mut T) -> &mut Self;
+	#[cfg(feature = "alloc")]
 	fn up_from_box(value: Box<T>) -> Box<Self>;
 }
 
@@ -16,6 +21,7 @@ pub trait UpcastFrom<T: ?Sized> {
 pub trait Upcast<U: ?Sized> {
 	fn up(&self) -> &U;
 	fn up_mut(&mut self) -> &mut U;
+	#[cfg(feature = "alloc")]
 	fn up_box(self: Box<Self>) -> Box<U>;
 }
 
@@ -29,12 +35,13 @@ where
 	fn up_mut(&mut self) -> &mut U {
 		U::up_from_mut(self)
 	}
+	#[cfg(feature = "alloc")]
 	fn up_box(self: Box<Self>) -> Box<U> {
 		U::up_from_box(self)
 	}
 }
 
-use std::any::TypeId;
+use core::any::TypeId;
 
 impl<'a, T: DynAny<'a> + 'a> UpcastFrom<T> for dyn DynAny<'a> + 'a {
 	fn up_from(value: &T) -> &(dyn DynAny<'a> + 'a) {
@@ -43,6 +50,7 @@ impl<'a, T: DynAny<'a> + 'a> UpcastFrom<T> for dyn DynAny<'a> + 'a {
 	fn up_from_mut(value: &mut T) -> &mut (dyn DynAny<'a> + 'a) {
 		value
 	}
+	#[cfg(feature = "alloc")]
 	fn up_from_box(value: Box<T>) -> Box<Self> {
 		value
 	}
@@ -55,16 +63,16 @@ pub trait DynAny<'a> {
 }
 
 impl<'a, T: StaticType> DynAny<'a> for T {
-	fn type_id(&self) -> std::any::TypeId {
-		std::any::TypeId::of::<T::Static>()
+	fn type_id(&self) -> core::any::TypeId {
+		core::any::TypeId::of::<T::Static>()
 	}
 	#[cfg(feature = "log-bad-types")]
 	fn type_name(&self) -> &'static str {
-		std::any::type_name::<T>()
+		core::any::type_name::<T>()
 	}
 }
 pub fn downcast_ref<'a, V: StaticType>(i: &'a dyn DynAny<'a>) -> Option<&'a V> {
-	if i.type_id() == std::any::TypeId::of::<<V as StaticType>::Static>() {
+	if i.type_id() == core::any::TypeId::of::<<V as StaticType>::Static>() {
 		// SAFETY: caller guarantees that T is the correct type
 		let ptr = i as *const dyn DynAny<'a> as *const V;
 		Some(unsafe { &*ptr })
@@ -73,9 +81,10 @@ pub fn downcast_ref<'a, V: StaticType>(i: &'a dyn DynAny<'a>) -> Option<&'a V> {
 	}
 }
 
+#[cfg(feature = "alloc")]
 pub fn downcast<'a, V: StaticType>(i: Box<dyn DynAny<'a> + 'a>) -> Option<Box<V>> {
 	let type_id = DynAny::type_id(i.as_ref());
-	if type_id == std::any::TypeId::of::<<V as StaticType>::Static>() {
+	if type_id == core::any::TypeId::of::<<V as StaticType>::Static>() {
 		// SAFETY: caller guarantees that T is the correct type
 		let ptr = Box::into_raw(i) as *mut dyn DynAny<'a> as *mut V;
 		Some(unsafe { Box::from_raw(ptr) })
@@ -85,26 +94,24 @@ pub fn downcast<'a, V: StaticType>(i: Box<dyn DynAny<'a> + 'a>) -> Option<Box<V>
 			log::error!("Tried to downcast a {} to a {}", DynAny::type_name(i.as_ref()), core::any::type_name::<V>());
 		}
 
-		if type_id == std::any::TypeId::of::<&dyn DynAny<'static>>() {
-			panic!("downcast error: type_id == std::any::TypeId::of::<dyn DynAny<'a>>()");
+		if type_id == core::any::TypeId::of::<&dyn DynAny<'static>>() {
+			panic!("downcast error: type_id == core::any::TypeId::of::<dyn DynAny<'a>>()");
 		}
-		println!("expected: {:?}", std::any::TypeId::of::<<V as StaticType>::Static>());
-		println!("actual one: {:?}", type_id);
 		None
 	}
 }
 
 pub trait StaticType {
 	type Static: 'static + ?Sized;
-	fn type_id(&self) -> std::any::TypeId {
-		std::any::TypeId::of::<Self::Static>()
+	fn type_id(&self) -> core::any::TypeId {
+		core::any::TypeId::of::<Self::Static>()
 	}
 }
 
 pub trait StaticTypeSized {
 	type Static: 'static;
-	fn type_id(&self) -> std::any::TypeId {
-		std::any::TypeId::of::<Self::Static>()
+	fn type_id(&self) -> core::any::TypeId {
+		core::any::TypeId::of::<Self::Static>()
 	}
 }
 impl<T: StaticType + Sized> StaticTypeSized for T
@@ -115,8 +122,8 @@ where
 }
 pub trait StaticTypeClone {
 	type Static: 'static + Clone;
-	fn type_id(&self) -> std::any::TypeId {
-		std::any::TypeId::of::<Self::Static>()
+	fn type_id(&self) -> core::any::TypeId {
+		core::any::TypeId::of::<Self::Static>()
 	}
 }
 impl<T: StaticType + Clone> StaticTypeClone for T
@@ -135,8 +142,10 @@ macro_rules! impl_type {
         )*
     };
 }
-impl<'a, T: StaticTypeClone + Clone> StaticType for std::borrow::Cow<'a, T> {
-	type Static = std::borrow::Cow<'static, T::Static>;
+
+#[cfg(feature = "alloc")]
+impl<'a, T: StaticTypeClone + Clone> StaticType for Cow<'a, T> {
+	type Static = Cow<'static, T::Static>;
 }
 impl<T: StaticTypeSized> StaticType for *const [T] {
 	type Static = *const [<T as StaticTypeSized>::Static];
@@ -163,19 +172,31 @@ impl<T: StaticTypeSized, const N: usize> StaticType for [T; N] {
 impl<'a> StaticType for dyn DynAny<'a> + '_ {
 	type Static = dyn DynAny<'static>;
 }
+#[cfg(feature = "alloc")]
 pub trait IntoDynAny<'n>: Sized + StaticType + 'n {
 	fn into_dyn(self) -> Box<dyn DynAny<'n> + 'n> {
 		Box::new(self)
 	}
 }
+#[cfg(feature = "alloc")]
 impl<'n, T: StaticType + 'n> IntoDynAny<'n> for T {}
 
+#[cfg(feature = "alloc")]
 impl From<()> for Box<dyn DynAny<'static>> {
 	fn from(_: ()) -> Box<dyn DynAny<'static>> {
 		Box::new(())
 	}
 }
 
+#[cfg(feature = "alloc")]
+use alloc::{
+	borrow::Cow,
+	boxed::Box,
+	collections::{BTreeMap, BTreeSet, BinaryHeap, LinkedList, VecDeque},
+	string::String,
+	vec::Vec,
+};
+use core::sync::atomic::*;
 use core::{
 	cell::{Cell, RefCell, UnsafeCell},
 	iter::Empty,
@@ -184,26 +205,41 @@ use core::{
 	num::Wrapping,
 	time::Duration,
 };
-use std::{
-	collections::*,
-	sync::{atomic::*, *},
-	vec::Vec,
-};
 
 impl_type!(
 	Option<T>, Result<T, E>, Cell<T>, UnsafeCell<T>, RefCell<T>, MaybeUninit<T>,
-	Vec<T>, String, BTreeMap<K,V>,BTreeSet<V>, LinkedList<T>, VecDeque<T>,
-	BinaryHeap<T>, ManuallyDrop<T>, PhantomData<T>, PhantomPinned, Empty<T>,
-	Wrapping<T>, Duration, Once, Mutex<T>, RwLock<T>, bool, f32, f64, char,
-	u8, AtomicU8, u16, AtomicU16, u32, AtomicU32, u64, AtomicU64, usize, AtomicUsize,
-	i8, AtomicI8, i16, AtomicI16, i32, AtomicI32, i64, AtomicI64, isize, AtomicIsize,
+	 ManuallyDrop<T>, PhantomData<T>, PhantomPinned, Empty<T>,
+	Wrapping<T>, Duration, bool, f32, f64, char,
+	u8, AtomicU8, u16, AtomicU16, u32, AtomicU32, u64,  usize, AtomicUsize,
+	i8, AtomicI8, i16, AtomicI16, i32, AtomicI32, i64,  isize, AtomicIsize,
 	i128, u128, AtomicBool, AtomicPtr<T>
 );
+#[cfg(feature = "large-atomics")]
+impl_type!(
+	 AtomicU64,
+	 AtomicI64
+);
+
+#[cfg(feature = "alloc")]
+impl_type!(
+	Vec<T>, String, BTreeMap<K,V>,BTreeSet<V>, LinkedList<T>, VecDeque<T>,
+	BinaryHeap<T>
+);
+
+#[cfg(feature = "std")]
+use std::sync::*;
+
+#[cfg(feature = "std")]
+impl_type!(Once, Mutex<T>, RwLock<T>);
 
 #[cfg(feature = "rc")]
-use std::{rc::Rc, sync::Arc};
+use std::rc::Rc;
 #[cfg(feature = "rc")]
-impl_type!(Rc<T>, Arc<T>);
+impl_type!(Rc<T>);
+#[cfg(all(feature = "rc", feature = "alloc"))]
+use std::sync::Arc;
+#[cfg(all(feature = "rc", feature = "alloc"))]
+impl_type!(Arc<T>);
 
 #[cfg(feature = "glam")]
 use glam::*;
@@ -216,6 +252,7 @@ impl_type!(
 	Quat, Affine2, Affine3A, DAffine2, DAffine3, DQuat
 );
 
+#[cfg(feature = "alloc")]
 impl<T: crate::StaticType + ?Sized> crate::StaticType for Box<T> {
 	type Static = Box<<T as crate::StaticType>::Static>;
 }

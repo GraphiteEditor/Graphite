@@ -33,6 +33,9 @@ pub fn set_random_seed(seed: u64) {
 #[wasm_bindgen(module = "@/wasm-communication/editor")]
 extern "C" {
 	fn updateImage(path: Vec<u64>, mime: String, imageData: &[u8], document_id: u64);
+	fn fetchImage(path: Vec<u64>, mime: String, document_id: u64, identifier: String);
+	//fn dispatchTauri(message: String) -> String;
+	fn dispatchTauri(message: String);
 }
 
 /// Provides a handle to access the raw WASM memory
@@ -73,36 +76,52 @@ impl JsEditorHandle {
 			return;
 		}
 
-		// Get the editor instances, dispatch the message, and store the `FrontendMessage` queue response
-		let frontend_messages = EDITOR_INSTANCES.with(|instances| {
-			// Mutably borrow the editors, and if successful, we can access them in the closure
-			instances.try_borrow_mut().map(|mut editors| {
-				// Get the editor instance for this editor ID, then dispatch the message to the backend, and return its response `FrontendMessage` queue
-				editors
-					.get_mut(&self.editor_id)
-					.expect("EDITOR_INSTANCES does not contain the current editor_id")
-					.handle_message(message.into())
-			})
-		});
+		#[cfg(feature = "tauri")]
+		{
+			let message: Message = message.into();
+			let message = ron::to_string(&message).unwrap();
 
-		// Process any `FrontendMessage` responses resulting from the backend processing the dispatched message
-		if let Ok(frontend_messages) = frontend_messages {
-			// Send each `FrontendMessage` to the JavaScript frontend
-			for message in frontend_messages.into_iter() {
-				self.send_frontend_message_to_js(message);
+			dispatchTauri(message);
+		}
+		#[cfg(not(feature = "tauri"))]
+		{
+			// Get the editor instances, dispatch the message, and store the `FrontendMessage` queue response
+			let frontend_messages = EDITOR_INSTANCES.with(|instances| {
+				// Mutably borrow the editors, and if successful, we can access them in the closure
+				instances.try_borrow_mut().map(|mut editors| {
+					// Get the editor instance for this editor ID, then dispatch the message to the backend, and return its response `FrontendMessage` queue
+					editors
+						.get_mut(&self.editor_id)
+						.expect("EDITOR_INSTANCES does not contain the current editor_id")
+						.handle_message(message.into())
+				})
+			});
+
+			// Process any `FrontendMessage` responses resulting from the backend processing the dispatched message
+			if let Ok(frontend_messages) = frontend_messages {
+				// Send each `FrontendMessage` to the JavaScript frontend
+				for message in frontend_messages.into_iter() {
+					self.send_frontend_message_to_js(message);
+				}
 			}
 		}
 		// If the editor cannot be borrowed then it has encountered a panic - we should just ignore new dispatches
 	}
 
 	// Sends a FrontendMessage to JavaScript
-	fn send_frontend_message_to_js(&self, message: FrontendMessage) {
+	fn send_frontend_message_to_js(&self, mut message: FrontendMessage) {
 		// Special case for update image data to avoid serialization times.
 		if let FrontendMessage::UpdateImageData { document_id, image_data } = message {
 			for image in image_data {
+				#[cfg(not(feature = "tauri"))]
 				updateImage(image.path, image.mime, &image.image_data, document_id);
+				#[cfg(feature = "tauri")]
+				fetchImage(image.path.clone(), image.mime, document_id, format!("http://localhost:3001/image/{:?}_{}", &image.path, document_id));
 			}
 			return;
+		}
+		if let FrontendMessage::UpdateDocumentLayerTreeStructure { data_buffer } = message {
+			message = FrontendMessage::UpdateDocumentLayerTreeStructureJs { data_buffer: data_buffer.into() };
 		}
 
 		let message_type = message.to_discriminant().local_name();
@@ -128,6 +147,8 @@ impl JsEditorHandle {
 
 	#[wasm_bindgen(js_name = initAfterFrontendReady)]
 	pub fn init_after_frontend_ready(&self, platform: String) {
+		#[cfg(feature = "tauri")]
+		let platform = "Linux".to_string();
 		let platform = match platform.as_str() {
 			"Windows" => Platform::Windows,
 			"Mac" => Platform::Mac,
@@ -137,6 +158,20 @@ impl JsEditorHandle {
 
 		self.dispatch(GlobalsMessage::SetPlatform { platform });
 		self.dispatch(Message::Init);
+	}
+
+	#[wasm_bindgen(js_name = tauriResponse)]
+	pub fn tauri_response(&self, message: String) {
+		match ron::from_str::<Vec<FrontendMessage>>(&message) {
+			Ok(response) => {
+				for message in response {
+					self.send_frontend_message_to_js(message);
+				}
+			}
+			Err(error) => {
+				log::error!("tauri response: {:?}\n{:?}", error, message);
+			}
+		}
 	}
 
 	/// Displays a dialog with an error message

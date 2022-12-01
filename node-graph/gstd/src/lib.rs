@@ -9,7 +9,6 @@ extern crate log;
 pub mod memo;
 
 pub mod raster;
-pub mod vector;
 
 pub mod any;
 

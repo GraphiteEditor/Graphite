@@ -3,7 +3,7 @@ use crate::messages::layout::utility_types::layout_widget::SubLayout;
 use crate::messages::layout::utility_types::misc::LayoutTarget;
 use crate::messages::layout::utility_types::widgets::menu_widgets::MenuBarEntry;
 use crate::messages::portfolio::document::node_graph::{FrontendNode, FrontendNodeLink, FrontendNodeType};
-use crate::messages::portfolio::document::utility_types::layer_panel::{LayerPanelEntry, RawBuffer};
+use crate::messages::portfolio::document::utility_types::layer_panel::{JsRawBuffer, LayerPanelEntry, RawBuffer};
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::HintData;
 
@@ -155,6 +155,10 @@ pub enum FrontendMessage {
 	UpdateDocumentLayerTreeStructure {
 		#[serde(rename = "dataBuffer")]
 		data_buffer: RawBuffer,
+	},
+	UpdateDocumentLayerTreeStructureJs {
+		#[serde(rename = "dataBuffer")]
+		data_buffer: JsRawBuffer,
 	},
 	UpdateDocumentModeLayout {
 		#[serde(rename = "layoutTarget")]

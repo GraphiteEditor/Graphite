@@ -14,7 +14,7 @@ pub fn string_properties(text: impl Into<String>) -> Vec<LayoutGroup> {
 	vec![LayoutGroup::Row { widgets: vec![widget] }]
 }
 
-fn update_value<T, F: Fn(&T) -> TaggedValue + 'static>(value: F, node_id: NodeId, input_index: usize) -> WidgetCallback<T> {
+fn update_value<T, F: Fn(&T) -> TaggedValue + 'static + Send + Sync>(value: F, node_id: NodeId, input_index: usize) -> WidgetCallback<T> {
 	WidgetCallback::new(move |number_input: &T| {
 		NodeGraphMessage::SetInputValue {
 			node: node_id,

@@ -10,6 +10,9 @@ homepage = "https://graphite.rs"
 repository = "https://github.com/GraphiteEditor/Graphite"
 license = "Apache-2.0"
 
+[features]
+gpu = ["graph-craft/gpu"]
+
 [dependencies]
 log = "0.4"
 bitflags = "1.2.1"
@@ -18,7 +21,7 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0" }
 graphite-proc-macros = { path = "../proc-macros" }
 bezier-rs = { path = "../libraries/bezier-rs" }
-glam = { version="0.17", features = ["serde"] }
+glam = { version="0.22", features = ["serde"] }
 rand_chacha = "0.3.1"
 spin = "0.9.2"
 kurbo = { git = "https://github.com/linebender/kurbo.git", features = [
@@ -31,6 +34,7 @@ once_cell = "1.13.0" # Remove when `core::cell::OnceCell` is stabilized (<https:
 # Node graph
 image = { version = "0.24", default-features = false, features = ["bmp"] }
 graph-craft = { path = "../node-graph/graph-craft" }
+interpreted-executor = { path = "../node-graph/interpreted-executor" }
 borrow_stack = { path = "../node-graph/borrow_stack" }
 dyn-any = { path = "../libraries/dyn-any" }
 graphene-core = { path = "../node-graph/gcore" }
