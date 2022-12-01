@@ -36,24 +36,6 @@ impl AddNode {
 	}
 }
 
-#[cfg(feature = "gpu")]
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
-pub struct UncheckedAddNode;
-#[cfg(feature = "gpu")]
-impl Node<(u32, u32)> for UncheckedAddNode {
-	type Output = u32;
-	fn eval(self, input: (u32, u32)) -> Self::Output {
-		unsafe { u32::unchecked_add(input.0, input.1) }
-	}
-}
-
-#[cfg(feature = "gpu")]
-impl UncheckedAddNode {
-	pub fn new() -> Self {
-		Self
-	}
-}
-
 #[cfg(feature = "std")]
 pub mod dynamic {
 	use super::*;
