@@ -14,7 +14,7 @@ pub mod value;
 
 #[cfg(feature = "gpu")]
 pub mod gpu;
-#[cfg(not(target_arch = "spirv"))]
+
 pub mod raster;
 
 pub trait Node<T> {
