@@ -105,7 +105,7 @@ pub fn multiply_opacity(document_node: &DocumentNode, node_id: NodeId) -> Vec<La
 }
 
 pub fn posterize_properties(document_node: &DocumentNode, node_id: NodeId) -> Vec<LayoutGroup> {
-	let value = number_range_widget(document_node, node_id, 1, "Value", Some(2.), Some(255.), "".into(), true);
+	let value = number_range_widget(document_node, node_id, 1, "Levels", Some(2.), Some(255.), "".into(), true);
 
 	vec![LayoutGroup::Row { widgets: value }]
 }
