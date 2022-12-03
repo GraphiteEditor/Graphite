@@ -218,7 +218,7 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 	DocumentNodeType {
 		name: "Exposure",
 		category: "Image Color Correction",
-		identifier: NodeIdentifier::new("graphene_std::raster::Posterize", &[Type::Concrete(Cow::Borrowed("&TypeErasedNode"))]),
+		identifier: NodeIdentifier::new("graphene_std::raster::Exposure", &[Type::Concrete(Cow::Borrowed("&TypeErasedNode"))]),
 		inputs: &[
 			DocumentInputType {
 				name: "Image",
