@@ -136,6 +136,7 @@ impl<'a> MessageHandler<PropertiesPanelMessage, (&PersistentData, PropertiesPane
 						}
 						.into(),
 					);
+					responses.push_back(NodeGraphMessage::CloseNodeGraph.into());
 				}
 			}
 			ResendActiveProperties => {

@@ -552,8 +552,8 @@ impl JsEditorHandle {
 
 	/// Creates a new document node in the node graph
 	#[wasm_bindgen(js_name = createNode)]
-	pub fn create_node(&self, node_type: String) {
-		let message = NodeGraphMessage::CreateNode { node_id: None, node_type };
+	pub fn create_node(&self, node_type: String, x: i32, y: i32) {
+		let message = NodeGraphMessage::CreateNode { node_id: None, node_type, x, y };
 		self.dispatch(message);
 	}
 

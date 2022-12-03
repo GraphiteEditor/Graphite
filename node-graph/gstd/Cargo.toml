@@ -27,6 +27,13 @@ quote = {version = "1.0", default-features = false }
 image = "*"
 dyn-clone = "1.0"
 
+log = "0.4"
+bezier-rs = { path = "../../libraries/bezier-rs" }
+kurbo = { git = "https://github.com/linebender/kurbo.git", features = [
+	"serde",
+] }
+glam = { version = "0.17", features = ["serde"] }
+
 [dependencies.serde]
 version = "1.0"
 optional = true

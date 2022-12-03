@@ -10,7 +10,7 @@ use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, ToolActionHan
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 
 use graphene::intersection::Quad;
-use graphene::layers::vector::consts::ManipulatorType;
+use graphene_std::vector::consts::ManipulatorType;
 
 use glam::DVec2;
 use serde::{Deserialize, Serialize};

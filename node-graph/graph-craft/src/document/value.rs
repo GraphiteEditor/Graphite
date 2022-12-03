@@ -1,28 +1,40 @@
 use dyn_any::StaticType;
-
-use dyn_clone::DynClone;
-
 use dyn_any::{DynAny, Upcast};
+use dyn_clone::DynClone;
+use glam::DVec2;
+use std::sync::Arc;
 
 /// A type that is known, allowing serialization (serde::Deserialize is not object safe)
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum TaggedValue {
+	None,
 	String(String),
 	U32(u32),
 	F32(f32),
+	F64(f64),
+	Bool(bool),
+	DVec2(DVec2),
 	Image(graphene_std::raster::Image),
 	Color(graphene_core::raster::color::Color),
+	Subpath(graphene_std::vector::subpath::Subpath),
+	RcSubpath(Arc<graphene_std::vector::subpath::Subpath>),
 }
 
 impl TaggedValue {
 	pub fn to_value(self) -> Value {
 		match self {
+			TaggedValue::None => Box::new(()),
 			TaggedValue::String(x) => Box::new(x),
 			TaggedValue::U32(x) => Box::new(x),
 			TaggedValue::F32(x) => Box::new(x),
+			TaggedValue::F64(x) => Box::new(x),
+			TaggedValue::Bool(x) => Box::new(x),
+			TaggedValue::DVec2(x) => Box::new(x),
 			TaggedValue::Image(x) => Box::new(x),
 			TaggedValue::Color(x) => Box::new(x),
+			TaggedValue::Subpath(x) => Box::new(x),
+			TaggedValue::RcSubpath(x) => Box::new(x),
 		}
 	}
 }

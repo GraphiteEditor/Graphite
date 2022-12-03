@@ -3,10 +3,11 @@ use crate::layers::blend_mode::BlendMode;
 use crate::layers::imaginate_layer::{ImaginateMaskFillContent, ImaginateMaskPaintMode, ImaginateSamplingMethod, ImaginateStatus};
 use crate::layers::layer_info::Layer;
 use crate::layers::style::{self, Stroke};
-use crate::layers::vector::consts::ManipulatorType;
-use crate::layers::vector::manipulator_group::ManipulatorGroup;
-use crate::layers::vector::subpath::Subpath;
 use crate::LayerId;
+
+use graphene_std::vector::consts::ManipulatorType;
+use graphene_std::vector::manipulator_group::ManipulatorGroup;
+use graphene_std::vector::subpath::Subpath;
 
 use serde::{Deserialize, Serialize};
 use std::collections::hash_map::DefaultHasher;

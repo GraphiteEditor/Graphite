@@ -7,6 +7,7 @@
 		:spellcheck="true"
 		:disabled="disabled"
 		:tooltip="tooltip"
+		:placeholder="placeholder"
 		:style="{ 'min-width': minWidth > 0 ? `${minWidth}px` : undefined }"
 		:sharpRightCorners="sharpRightCorners"
 		@textFocused="() => onTextFocused()"
@@ -41,6 +42,7 @@ export default defineComponent({
 		// Label
 		label: { type: String as PropType<string>, required: false },
 		tooltip: { type: String as PropType<string | undefined>, required: false },
+		placeholder: { type: String as PropType<string>, required: false },
 
 		// Disabled
 		disabled: { type: Boolean as PropType<boolean>, default: false },

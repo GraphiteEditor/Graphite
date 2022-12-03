@@ -190,13 +190,30 @@ use std::{
 	vec::Vec,
 };
 
-impl_type!(Option<T>,Result<T, E>,Cell<T>,UnsafeCell<T>,RefCell<T>,MaybeUninit<T>,
-		   Vec<T>, String, BTreeMap<K,V>,BTreeSet<V>, LinkedList<T>, VecDeque<T>,
-		   BinaryHeap<T>,  ManuallyDrop<T>, PhantomData<T>, PhantomPinned,Empty<T>,
-		   Wrapping<T>, Duration, Once, Mutex<T>, RwLock<T>,  bool, f32, f64, char,
-		   u8, AtomicU8, u16,AtomicU16, u32,AtomicU32, u64,AtomicU64, usize,AtomicUsize,
-		   i8,AtomicI8, i16,AtomicI16, i32,AtomicI32, i64,AtomicI64, isize,AtomicIsize,
-			i128, u128, AtomicBool, AtomicPtr<T>
+impl_type!(
+	Option<T>, Result<T, E>, Cell<T>, UnsafeCell<T>, RefCell<T>, MaybeUninit<T>,
+	Vec<T>, String, BTreeMap<K,V>,BTreeSet<V>, LinkedList<T>, VecDeque<T>,
+	BinaryHeap<T>, ManuallyDrop<T>, PhantomData<T>, PhantomPinned, Empty<T>,
+	Wrapping<T>, Duration, Once, Mutex<T>, RwLock<T>, bool, f32, f64, char,
+	u8, AtomicU8, u16, AtomicU16, u32, AtomicU32, u64, AtomicU64, usize, AtomicUsize,
+	i8, AtomicI8, i16, AtomicI16, i32, AtomicI32, i64, AtomicI64, isize, AtomicIsize,
+	i128, u128, AtomicBool, AtomicPtr<T>
+);
+
+#[cfg(feature = "rc")]
+use std::{rc::Rc, sync::Arc};
+#[cfg(feature = "rc")]
+impl_type!(Rc<T>, Arc<T>);
+
+#[cfg(feature = "glam")]
+use glam::*;
+#[cfg(feature = "glam")]
+#[rustfmt::skip]
+impl_type!(
+	IVec2, IVec3, IVec4, UVec2, UVec3, UVec4, BVec2, BVec3, BVec4,
+	Vec2, Vec3, Vec3A, Vec4, DVec2, DVec3, DVec4,
+	Mat2, Mat3, Mat3A, Mat4, DMat2, DMat3, DMat4,
+	Quat, Affine2, Affine3A, DAffine2, DAffine3, DQuat
 );
 
 impl<T: crate::StaticType + ?Sized> crate::StaticType for Box<T> {

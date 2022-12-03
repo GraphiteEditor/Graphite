@@ -1,9 +1,9 @@
 use super::consts::ManipulatorType;
+use super::id_vec::IdBackedVec;
 use super::manipulator_group::ManipulatorGroup;
 use super::manipulator_point::ManipulatorPoint;
-use crate::layers::id_vec::IdBackedVec;
-use crate::layers::layer_info::{Layer, LayerDataType};
 
+use dyn_any::{DynAny, StaticType};
 use glam::{DAffine2, DVec2};
 use kurbo::{BezPath, PathEl, Shape};
 use serde::{Deserialize, Serialize};
@@ -11,15 +11,15 @@ use serde::{Deserialize, Serialize};
 /// [Subpath] represents a single vector path, containing many [ManipulatorGroups].
 /// For each closed shape we keep a [Subpath] which contains the [ManipulatorGroup]s (handles and anchors) that define that shape.
 // TODO Add "closed" bool to subpath
-#[derive(PartialEq, Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(PartialEq, Clone, Debug, Default, Serialize, Deserialize, DynAny)]
 pub struct Subpath(IdBackedVec<ManipulatorGroup>);
 
 impl Subpath {
 	// ** INITIALIZATION **
 
 	/// Create a new [Subpath] with no [ManipulatorGroup]s.
-	pub fn new() -> Self {
-		Subpath { ..Default::default() }
+	pub const fn new() -> Self {
+		Subpath(IdBackedVec::new())
 	}
 
 	/// Construct a [Subpath] from a point iterator
@@ -417,34 +417,6 @@ impl Subpath {
 			first_anchor: None,
 			first_id: None,
 			start_new_contour: true,
-		}
-	}
-}
-
-// ** CONVERSIONS **
-
-impl<'a> TryFrom<&'a mut Layer> for &'a mut Subpath {
-	type Error = &'static str;
-	/// Convert a mutable layer into a mutable [Subpath].
-	fn try_from(layer: &'a mut Layer) -> Result<&'a mut Subpath, Self::Error> {
-		match &mut layer.data {
-			LayerDataType::Shape(layer) => Ok(&mut layer.shape),
-			// TODO Resolve converting text into a Subpath at the layer level
-			// LayerDataType::Text(text) => Some(Subpath::new(path_to_shape.to_vec(), viewport_transform, true)),
-			_ => Err("Did not find any shape data in the layer"),
-		}
-	}
-}
-
-impl<'a> TryFrom<&'a Layer> for &'a Subpath {
-	type Error = &'static str;
-	/// Convert a reference to a layer into a reference of a [Subpath].
-	fn try_from(layer: &'a Layer) -> Result<&'a Subpath, Self::Error> {
-		match &layer.data {
-			LayerDataType::Shape(layer) => Ok(&layer.shape),
-			// TODO Resolve converting text into a Subpath at the layer level
-			// LayerDataType::Text(text) => Some(Subpath::new(path_to_shape.to_vec(), viewport_transform, true)),
-			_ => Err("Did not find any shape data in the layer"),
 		}
 	}
 }

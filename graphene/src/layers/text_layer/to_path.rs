@@ -1,7 +1,7 @@
-use crate::layers::vector::consts::ManipulatorType;
-use crate::layers::vector::manipulator_group::ManipulatorGroup;
-use crate::layers::vector::manipulator_point::ManipulatorPoint;
-use crate::layers::vector::subpath::Subpath;
+use graphene_std::vector::consts::ManipulatorType;
+use graphene_std::vector::manipulator_group::ManipulatorGroup;
+use graphene_std::vector::manipulator_point::ManipulatorPoint;
+use graphene_std::vector::subpath::Subpath;
 
 use glam::DVec2;
 use rustybuzz::{GlyphBuffer, UnicodeBuffer};

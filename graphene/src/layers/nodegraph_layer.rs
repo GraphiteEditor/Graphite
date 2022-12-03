@@ -119,49 +119,12 @@ impl Default for NodeGraphFrameLayer {
 	fn default() -> Self {
 		use graph_craft::document::*;
 		use graph_craft::proto::NodeIdentifier;
-		let brighten_network = NodeNetwork {
-			inputs: vec![0, 0],
-			output: 0,
-			nodes: [(
-				0,
-				DocumentNode {
-					name: "Brighten Image Node".into(),
-					inputs: vec![NodeInput::Network, NodeInput::Network],
-					implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new(
-						"graphene_std::raster::BrightenImageNode",
-						&[graph_craft::proto::Type::Concrete(std::borrow::Cow::Borrowed("&TypeErasedNode"))],
-					)),
-					metadata: DocumentNodeMetadata::default(),
-				},
-			)]
-			.into_iter()
-			.collect(),
-		};
-
-		let hue_shift_network = NodeNetwork {
-			inputs: vec![0, 0],
-			output: 0,
-			nodes: [(
-				0,
-				DocumentNode {
-					name: "Hue Shift Image Node".into(),
-					inputs: vec![NodeInput::Network, NodeInput::Network],
-					implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new(
-						"graphene_std::raster::HueShiftImage",
-						&[graph_craft::proto::Type::Concrete(std::borrow::Cow::Borrowed("&TypeErasedNode"))],
-					)),
-					metadata: DocumentNodeMetadata::default(),
-				},
-			)]
-			.into_iter()
-			.collect(),
-		};
 
 		Self {
 			mime: String::new(),
 			network: NodeNetwork {
 				inputs: vec![0],
-				output: 3,
+				output: 1,
 				nodes: [
 					(
 						0,
@@ -175,40 +138,10 @@ impl Default for NodeGraphFrameLayer {
 					(
 						1,
 						DocumentNode {
-							name: "Hue Shift Image".into(),
-							inputs: vec![
-								NodeInput::Node(0),
-								NodeInput::Value {
-									tagged_value: value::TaggedValue::F32(50.),
-									exposed: false,
-								},
-							],
-							implementation: DocumentNodeImplementation::Network(hue_shift_network),
-							metadata: DocumentNodeMetadata { position: (8 + 7, 4 + 2) },
-						},
-					),
-					(
-						2,
-						DocumentNode {
-							name: "Brighten Image".into(),
-							inputs: vec![
-								NodeInput::Node(1),
-								NodeInput::Value {
-									tagged_value: value::TaggedValue::F32(10.),
-									exposed: false,
-								},
-							],
-							implementation: DocumentNodeImplementation::Network(brighten_network),
-							metadata: DocumentNodeMetadata { position: (8 + 7 * 2, 4 + 2 * 2) },
-						},
-					),
-					(
-						3,
-						DocumentNode {
 							name: "Output".into(),
-							inputs: vec![NodeInput::Node(2)],
+							inputs: vec![NodeInput::Node(0)],
 							implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode", &[Type::Generic])),
-							metadata: DocumentNodeMetadata { position: (8 + 7 * 3, 4) },
+							metadata: DocumentNodeMetadata { position: (20, 4) },
 						},
 					),
 				]
