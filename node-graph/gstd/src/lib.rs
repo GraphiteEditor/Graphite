@@ -12,4 +12,7 @@ pub mod raster;
 
 pub mod any;
 
+#[cfg(feature = "gpu")]
+pub mod executor;
+
 pub use graphene_core::*;

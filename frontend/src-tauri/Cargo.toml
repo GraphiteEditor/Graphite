@@ -12,7 +12,7 @@ rust-version = "1.59"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [build-dependencies]
-tauri-build = { version = "1.2.1", features = [] }
+tauri-build = { path = "../../../tauri/core/tauri-build", features = [] }
 
 [dependencies]
 serde_json = "1.0"
