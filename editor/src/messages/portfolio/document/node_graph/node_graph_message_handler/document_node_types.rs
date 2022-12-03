@@ -253,7 +253,7 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 		outputs: &[FrontendGraphDataType::Number],
 		properties: node_properties::add_properties,
 	},
-	DocumentNodeType {
+	/*DocumentNodeType {
 		name: "Unit Circle Generator",
 		category: "Vector",
 		identifier: NodeIdentifier::new("graphene_std::vector::generator_nodes::UnitCircleGenerator", &[]),
@@ -333,7 +333,7 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 		],
 		outputs: &[FrontendGraphDataType::Raster],
 		properties: node_properties::no_properties,
-	},
+	},*/
 ];
 
 pub fn resolve_document_node_type(name: &str) -> Option<&DocumentNodeType> {
