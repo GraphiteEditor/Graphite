@@ -42,7 +42,7 @@ fn expose_widget(node_id: NodeId, index: usize, data_type: FrontendGraphDataType
 	}))
 }
 
-fn number_range_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, range_min: Option<f64>, range_max: Option<f64>, unit: String) -> Vec<WidgetHolder> {
+fn number_range_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, range_min: Option<f64>, range_max: Option<f64>, unit: String, is_integer: bool) -> Vec<WidgetHolder> {
 	let input: &NodeInput = document_node.inputs.get(index).unwrap();
 
 	let mut widgets = vec![
@@ -64,6 +64,7 @@ fn number_range_widget(document_node: &DocumentNode, node_id: NodeId, index: usi
 				range_min,
 				range_max,
 				unit,
+				is_integer,
 				on_update: update_value(|x: &NumberInput| TaggedValue::F64(x.value.unwrap()), node_id, index),
 				..NumberInput::default()
 			})),
@@ -73,9 +74,9 @@ fn number_range_widget(document_node: &DocumentNode, node_id: NodeId, index: usi
 }
 
 pub fn adjust_hsl_properties(document_node: &DocumentNode, node_id: NodeId) -> Vec<LayoutGroup> {
-	let hue_shift = number_range_widget(document_node, node_id, 1, "Hue Shift", Some(-180.), Some(180.), "°".into());
-	let saturation_shift = number_range_widget(document_node, node_id, 2, "Saturation Shift", Some(-100.), Some(100.), "%".into());
-	let luminance_shift = number_range_widget(document_node, node_id, 3, "Luminance Shift", Some(-100.), Some(100.), "%".into());
+	let hue_shift = number_range_widget(document_node, node_id, 1, "Hue Shift", Some(-180.), Some(180.), "°".into(), false);
+	let saturation_shift = number_range_widget(document_node, node_id, 2, "Saturation Shift", Some(-100.), Some(100.), "%".into(), false);
+	let luminance_shift = number_range_widget(document_node, node_id, 3, "Luminance Shift", Some(-100.), Some(100.), "%".into(), false);
 
 	vec![
 		LayoutGroup::Row { widgets: hue_shift },
@@ -85,32 +86,32 @@ pub fn adjust_hsl_properties(document_node: &DocumentNode, node_id: NodeId) -> V
 }
 
 pub fn brighten_image_properties(document_node: &DocumentNode, node_id: NodeId) -> Vec<LayoutGroup> {
-	let brightness = number_range_widget(document_node, node_id, 1, "Brightness", Some(-255.), Some(255.), "".into());
-	let contrast = number_range_widget(document_node, node_id, 2, "Contrast", Some(-255.), Some(255.), "".into());
+	let brightness = number_range_widget(document_node, node_id, 1, "Brightness", Some(-255.), Some(255.), "".into(), false);
+	let contrast = number_range_widget(document_node, node_id, 2, "Contrast", Some(-255.), Some(255.), "".into(), false);
 
 	vec![LayoutGroup::Row { widgets: brightness }, LayoutGroup::Row { widgets: contrast }]
 }
 
 pub fn adjust_gamma_properties(document_node: &DocumentNode, node_id: NodeId) -> Vec<LayoutGroup> {
-	let gamma = number_range_widget(document_node, node_id, 1, "Gamma", Some(0.01), None, "".into());
+	let gamma = number_range_widget(document_node, node_id, 1, "Gamma", Some(0.01), None, "".into(), false);
 
 	vec![LayoutGroup::Row { widgets: gamma }]
 }
 
 pub fn multiply_opacity(document_node: &DocumentNode, node_id: NodeId) -> Vec<LayoutGroup> {
-	let gamma = number_range_widget(document_node, node_id, 1, "Factor", Some(0.), Some(1.), "".into());
+	let gamma = number_range_widget(document_node, node_id, 1, "Factor", Some(0.), Some(1.), "".into(), false);
 
 	vec![LayoutGroup::Row { widgets: gamma }]
 }
 
 pub fn posterize_properties(document_node: &DocumentNode, node_id: NodeId) -> Vec<LayoutGroup> {
-	let value = number_range_widget(document_node, node_id, 1, "Value", Some(2.), Some(255.), "".into());
+	let value = number_range_widget(document_node, node_id, 1, "Value", Some(2.), Some(255.), "".into(), true);
 
 	vec![LayoutGroup::Row { widgets: value }]
 }
 
 pub fn exposure_properties(document_node: &DocumentNode, node_id: NodeId) -> Vec<LayoutGroup> {
-	let value = number_range_widget(document_node, node_id, 1, "Value", Some(-3.), Some(3.), "".into());
+	let value = number_range_widget(document_node, node_id, 1, "Value", Some(-3.), Some(3.), "".into(), false);
 
 	vec![LayoutGroup::Row { widgets: value }]
 }

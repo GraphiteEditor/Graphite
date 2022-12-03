@@ -376,8 +376,8 @@ fn image_opacity(mut image: Image, opacity_multiplier: f32) -> Image {
 
 // Based on http://www.axiomx.com/posterize.htm
 fn posterize(mut image: Image, posterize_value: f32) -> Image {
-	let number_of_areas = (256. / posterize_value) / 255.;
-	let size_of_areas = (255. / (posterize_value - 1.)) / 255.;
+	let number_of_areas = posterize_value.recip();
+	let size_of_areas = (posterize_value - 1.).recip();
 	let channel = |channel: f32| (channel / number_of_areas).floor() * size_of_areas;
 	for pixel in &mut image.data {
 		*pixel = Color::from_rgbaf32_unchecked(channel(pixel.r()), channel(pixel.g()), channel(pixel.b()), pixel.a())
