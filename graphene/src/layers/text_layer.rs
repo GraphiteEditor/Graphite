@@ -1,9 +1,10 @@
 use super::layer_info::LayerData;
 use super::style::{PathStyle, RenderData, ViewMode};
-use super::vector::subpath::Subpath;
 use crate::intersection::{intersect_quad_bez_path, Quad};
 use crate::LayerId;
 pub use font_cache::{Font, FontCache};
+
+use graphene_std::vector::subpath::Subpath;
 
 use glam::{DAffine2, DMat2, DVec2};
 use rustybuzz::Face;

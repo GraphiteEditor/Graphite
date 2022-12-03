@@ -6,11 +6,12 @@ use super::nodegraph_layer::NodeGraphFrameLayer;
 use super::shape_layer::ShapeLayer;
 use super::style::{PathStyle, RenderData};
 use super::text_layer::TextLayer;
-use super::vector::subpath::Subpath;
 use crate::intersection::Quad;
 use crate::layers::text_layer::FontCache;
 use crate::DocumentError;
 use crate::LayerId;
+
+use graphene_std::vector::subpath::Subpath;
 
 use core::fmt;
 use glam::{DAffine2, DMat2, DVec2};
@@ -92,6 +93,34 @@ impl From<&LayerDataType> for LayerDataTypeDiscriminant {
 			Image(_) => LayerDataTypeDiscriminant::Image,
 			Imaginate(_) => LayerDataTypeDiscriminant::Imaginate,
 			NodeGraphFrame(_) => LayerDataTypeDiscriminant::NodeGraphFrame,
+		}
+	}
+}
+
+// ** CONVERSIONS **
+
+impl<'a> TryFrom<&'a mut Layer> for &'a mut Subpath {
+	type Error = &'static str;
+	/// Convert a mutable layer into a mutable [Subpath].
+	fn try_from(layer: &'a mut Layer) -> Result<&'a mut Subpath, Self::Error> {
+		match &mut layer.data {
+			LayerDataType::Shape(layer) => Ok(&mut layer.shape),
+			// TODO Resolve converting text into a Subpath at the layer level
+			// LayerDataType::Text(text) => Some(Subpath::new(path_to_shape.to_vec(), viewport_transform, true)),
+			_ => Err("Did not find any shape data in the layer"),
+		}
+	}
+}
+
+impl<'a> TryFrom<&'a Layer> for &'a Subpath {
+	type Error = &'static str;
+	/// Convert a reference to a layer into a reference of a [Subpath].
+	fn try_from(layer: &'a Layer) -> Result<&'a Subpath, Self::Error> {
+		match &layer.data {
+			LayerDataType::Shape(layer) => Ok(&layer.shape),
+			// TODO Resolve converting text into a Subpath at the layer level
+			// LayerDataType::Text(text) => Some(Subpath::new(path_to_shape.to_vec(), viewport_transform, true)),
+			_ => Err("Did not find any shape data in the layer"),
 		}
 	}
 }

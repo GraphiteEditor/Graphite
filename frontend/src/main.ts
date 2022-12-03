@@ -17,5 +17,20 @@ import App from "@/App.vue";
 	await initWasm();
 
 	// Initialize the Vue application
-	createApp(App).mount("#app");
+	createApp(App)
+		.directive("focus", {
+			// When the bound element is inserted into the DOM
+			mounted(el) {
+				let focus = el;
+
+				// Find actual relevant child
+				while (focus.children.length) focus = focus.children[0];
+
+				// Random timeout needed?
+				setTimeout(() => {
+					focus.focus(); // Focus the element
+				}, 0);
+			},
+		})
+		.mount("#app");
 };

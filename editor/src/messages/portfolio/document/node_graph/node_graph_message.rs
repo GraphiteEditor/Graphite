@@ -15,12 +15,14 @@ pub enum NodeGraphMessage {
 	CreateNode {
 		// Having the caller generate the id means that we don't have to return it. This can be a random u64.
 		node_id: Option<NodeId>,
-		// I don't really know what this is for (perhaps a user identifiable name).
 		node_type: String,
+		x: i32,
+		y: i32,
 	},
 	DeleteNode {
 		node_id: NodeId,
 	},
+	DeleteSelectedNodes,
 	ExposeInput {
 		node_id: NodeId,
 		input_index: usize,

@@ -25,6 +25,15 @@ pub struct IdBackedVec<T> {
 }
 
 impl<T> IdBackedVec<T> {
+	/// Creates a new empty vector
+	pub const fn new() -> Self {
+		IdBackedVec {
+			elements: vec![],
+			element_ids: vec![],
+			next_id: 0,
+		}
+	}
+
 	/// Push a new element to the start of the vector
 	pub fn push_front(&mut self, element: T) -> Option<ElementId> {
 		self.next_id += 1;
@@ -135,11 +144,7 @@ impl<T> IdBackedVec<T> {
 
 impl<T> Default for IdBackedVec<T> {
 	fn default() -> Self {
-		IdBackedVec {
-			elements: vec![],
-			element_ids: vec![],
-			next_id: 0,
-		}
+		Self::new()
 	}
 }
 

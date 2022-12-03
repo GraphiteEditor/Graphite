@@ -6,8 +6,8 @@ use graphene::intersection::Quad;
 use graphene::layers::layer_info::LayerDataType;
 use graphene::layers::style::{self, Fill, Stroke};
 use graphene::layers::text_layer::FontCache;
-use graphene::layers::vector::subpath::Subpath;
 use graphene::{LayerId, Operation};
+use graphene_std::vector::subpath::Subpath;
 
 use glam::{DAffine2, DVec2};
 

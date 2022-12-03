@@ -7,8 +7,8 @@ use crate::messages::prelude::*;
 
 use graphene::layers::layer_info::{Layer, LayerDataType};
 use graphene::layers::style::{self, Stroke};
-use graphene::layers::vector::consts::ManipulatorType;
 use graphene::{LayerId, Operation};
+use graphene_std::vector::consts::ManipulatorType;
 
 use glam::{DAffine2, DVec2};
 use std::f64::consts::PI;

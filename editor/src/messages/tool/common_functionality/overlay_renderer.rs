@@ -6,11 +6,11 @@ use crate::messages::prelude::*;
 use graphene::color::Color;
 use graphene::document::Document;
 use graphene::layers::style::{self, Fill, Stroke};
-use graphene::layers::vector::consts::ManipulatorType;
-use graphene::layers::vector::manipulator_group::ManipulatorGroup;
-use graphene::layers::vector::manipulator_point::ManipulatorPoint;
-use graphene::layers::vector::subpath::Subpath;
 use graphene::{LayerId, Operation};
+use graphene_std::vector::consts::ManipulatorType;
+use graphene_std::vector::manipulator_group::ManipulatorGroup;
+use graphene_std::vector::manipulator_point::ManipulatorPoint;
+use graphene_std::vector::subpath::Subpath;
 
 use glam::{DAffine2, DVec2};
 

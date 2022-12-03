@@ -10,6 +10,7 @@
 			v-model="inputValue"
 			:spellcheck="spellcheck"
 			:disabled="disabled"
+			:placeholder="placeholder"
 			@focus="() => $emit('textFocused')"
 			@blur="() => $emit('textChanged')"
 			@change="() => $emit('textChanged')"
@@ -148,6 +149,7 @@ export default defineComponent({
 		textarea: { type: Boolean as PropType<boolean>, default: false },
 		tooltip: { type: String as PropType<string | undefined>, required: false },
 		sharpRightCorners: { type: Boolean as PropType<boolean>, default: false },
+		placeholder: { type: String as PropType<string>, required: false },
 	},
 	data() {
 		return {

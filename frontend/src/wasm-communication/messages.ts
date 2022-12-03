@@ -102,6 +102,8 @@ export class FrontendNodeLink {
 
 export class FrontendNodeType {
 	readonly name!: string;
+
+	readonly category!: string;
 }
 
 export class IndexedDbDocumentDetails extends DocumentDetails {

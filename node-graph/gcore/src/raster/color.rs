@@ -209,9 +209,9 @@ impl Color {
 		} else {
 			(max_channel - min_channel) / (2. - max_channel - min_channel)
 		};
-		let hue = if self.red > self.green && self.red > self.blue {
+		let hue = if self.red >= self.green && self.red >= self.blue {
 			(self.green - self.blue) / (max_channel - min_channel)
-		} else if self.green > self.red && self.green > self.blue {
+		} else if self.green >= self.red && self.green >= self.blue {
 			2. + (self.blue - self.red) / (max_channel - min_channel)
 		} else {
 			4. + (self.red - self.green) / (max_channel - min_channel)
@@ -282,6 +282,7 @@ fn hsl_roundtrip() {
 		(95, 79, 88),
 		(13, 34, 4),
 		(82, 84, 84),
+		(255, 255, 178),
 	] {
 		let col = Color::from_rgb8(red, green, blue);
 		let [hue, saturation, luminance, alpha] = col.to_hsla();

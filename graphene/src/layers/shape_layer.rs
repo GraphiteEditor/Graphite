@@ -1,9 +1,10 @@
 use super::layer_info::LayerData;
 use super::style::{self, PathStyle, RenderData, ViewMode};
-use super::vector::subpath::Subpath;
 use crate::intersection::{intersect_quad_bez_path, Quad};
 use crate::layers::text_layer::FontCache;
 use crate::LayerId;
+
+use graphene_std::vector::subpath::Subpath;
 
 use glam::{DAffine2, DMat2, DVec2};
 use serde::{Deserialize, Serialize};
