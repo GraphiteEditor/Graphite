@@ -109,6 +109,12 @@ pub fn posterize_properties(document_node: &DocumentNode, node_id: NodeId) -> Ve
 	vec![LayoutGroup::Row { widgets: value }]
 }
 
+pub fn exposure_properties(document_node: &DocumentNode, node_id: NodeId) -> Vec<LayoutGroup> {
+	let value = number_range_widget(document_node, node_id, 1, "Value", Some(0.), Some(8.), "".into());
+
+	vec![LayoutGroup::Row { widgets: value }]
+}
+
 pub fn add_properties(document_node: &DocumentNode, node_id: NodeId) -> Vec<LayoutGroup> {
 	let operand = |name: &str, index| {
 		let input: &NodeInput = document_node.inputs.get(index).unwrap();

@@ -385,6 +385,15 @@ fn posterize(mut image: Image, posterize_value: f32) -> Image {
 	image
 }
 
+// Based on https://stackoverflow.com/questions/12166117/what-is-the-math-behind-exposure-adjustment-on-photoshop
+fn exposure(mut image: Image, exposure: f32) -> Image {
+	let multiplier = 2f32.powf(exposure);
+	let channel = |channel: f32| channel * multiplier;
+	for pixel in &mut image.data {
+		*pixel = Color::from_rgbaf32_unchecked(channel(pixel.r()), channel(pixel.g()), channel(pixel.b()), pixel.a())
+	}
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct Posterize<N: Node<(), Output = f64>>(N);
 
@@ -424,6 +433,28 @@ impl<N: Node<(), Output = f64> + Copy> Node<Image> for &ImageOpacityNode<N> {
 }
 
 impl<N: Node<(), Output = f64> + Copy> ImageOpacityNode<N> {
+	pub fn new(node: N) -> Self {
+		Self(node)
+	}
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct ExposureNode<N: Node<(), Output = f64>>(N);
+
+impl<N: Node<(), Output = f64>> Node<Image> for ExposureNode<N> {
+	type Output = Image;
+	fn eval(self, image: Image) -> Image {
+		exposure(image, self.0.eval(()) as f32)
+	}
+}
+impl<N: Node<(), Output = f64> + Copy> Node<Image> for &ExposureNode<N> {
+	type Output = Image;
+	fn eval(self, image: Image) -> Image {
+		exposure(image, self.0.eval(()) as f32)
+	}
+}
+
+impl<N: Node<(), Output = f64> + Copy> ExposureNode<N> {
 	pub fn new(node: N) -> Self {
 		Self(node)
 	}
