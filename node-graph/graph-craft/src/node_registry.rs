@@ -315,7 +315,7 @@ static NODE_REGISTRY: &[(NodeIdentifier, NodeConstructor)] = &[
 		NodeIdentifier::new("graphene_std::raster::ShiftImageHSLNode", &[Type::Concrete(Cow::Borrowed("&TypeErasedNode"))]),
 		|proto_node, stack| {
 			stack.push_fn(move |nodes| {
-				let ConstructionArgs::Nodes(construction_nodes) = proto_node.construction_args else { unreachable!("ShiftImageHSLNode Node constructed with out shift input node") };
+				let ConstructionArgs::Nodes(construction_nodes) = proto_node.construction_args else { unreachable!("ShiftImageHSLNode Node constructed without inputs") };
 
 				let hue: DowncastBothNode<_, (), f64> = DowncastBothNode::new(nodes.get(construction_nodes[0] as usize).unwrap());
 				let saturation: DowncastBothNode<_, (), f64> = DowncastBothNode::new(nodes.get(construction_nodes[1] as usize).unwrap());
@@ -335,7 +335,7 @@ static NODE_REGISTRY: &[(NodeIdentifier, NodeConstructor)] = &[
 		NodeIdentifier::new("graphene_std::raster::ImageBrightnessAndContrast", &[Type::Concrete(Cow::Borrowed("&TypeErasedNode"))]),
 		|proto_node, stack| {
 			stack.push_fn(move |nodes| {
-				let ConstructionArgs::Nodes(construction_nodes) = proto_node.construction_args else { unreachable!("ImageBrightnessAndContrast Node constructed with out brighten input node") };
+				let ConstructionArgs::Nodes(construction_nodes) = proto_node.construction_args else { unreachable!("ImageBrightnessAndContrast Node constructed without inputs") };
 
 				let brightness: DowncastBothNode<_, (), f64> = DowncastBothNode::new(nodes.get(construction_nodes[0] as usize).unwrap());
 				let contrast: DowncastBothNode<_, (), f64> = DowncastBothNode::new(nodes.get(construction_nodes[1] as usize).unwrap());
@@ -354,7 +354,7 @@ static NODE_REGISTRY: &[(NodeIdentifier, NodeConstructor)] = &[
 		NodeIdentifier::new("graphene_std::raster::ImageGammaNode", &[Type::Concrete(Cow::Borrowed("&TypeErasedNode"))]),
 		|proto_node, stack| {
 			stack.push_fn(move |nodes| {
-				let ConstructionArgs::Nodes(construction_nodes) = proto_node.construction_args else { unreachable!("ImageGammaNode Node constructed with out brighten input node") };
+				let ConstructionArgs::Nodes(construction_nodes) = proto_node.construction_args else { unreachable!("ImageGammaNode Node constructed without inputs") };
 				let gamma: DowncastBothNode<_, (), f64> = DowncastBothNode::new(nodes.get(construction_nodes[0] as usize).unwrap());
 				let node = DynAnyNode::new(graphene_std::raster::ImageGammaNode::new(gamma));
 
@@ -371,7 +371,7 @@ static NODE_REGISTRY: &[(NodeIdentifier, NodeConstructor)] = &[
 		NodeIdentifier::new("graphene_std::raster::ImageOpacityNode", &[Type::Concrete(Cow::Borrowed("&TypeErasedNode"))]),
 		|proto_node, stack| {
 			stack.push_fn(move |nodes| {
-				let ConstructionArgs::Nodes(construction_nodes) = proto_node.construction_args else { unreachable!("ImageOpacityNode Node constructed with out brighten input node") };
+				let ConstructionArgs::Nodes(construction_nodes) = proto_node.construction_args else { unreachable!("ImageOpacityNode Node constructed without inputs") };
 				let opacity: DowncastBothNode<_, (), f64> = DowncastBothNode::new(nodes.get(construction_nodes[0] as usize).unwrap());
 				let node = DynAnyNode::new(graphene_std::raster::ImageOpacityNode::new(opacity));
 
@@ -388,7 +388,7 @@ static NODE_REGISTRY: &[(NodeIdentifier, NodeConstructor)] = &[
 		NodeIdentifier::new("graphene_std::raster::Posterize", &[Type::Concrete(Cow::Borrowed("&TypeErasedNode"))]),
 		|proto_node, stack| {
 			stack.push_fn(move |nodes| {
-				let ConstructionArgs::Nodes(construction_nodes) = proto_node.construction_args else { unreachable!("ImageOpacityNode Node constructed with out brighten input node") };
+				let ConstructionArgs::Nodes(construction_nodes) = proto_node.construction_args else { unreachable!("Posterize Node constructed without inputs") };
 				let value: DowncastBothNode<_, (), f64> = DowncastBothNode::new(nodes.get(construction_nodes[0] as usize).unwrap());
 				let node = DynAnyNode::new(graphene_std::raster::Posterize::new(value));
 
