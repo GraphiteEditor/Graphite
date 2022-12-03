@@ -110,7 +110,7 @@ pub fn posterize_properties(document_node: &DocumentNode, node_id: NodeId) -> Ve
 }
 
 pub fn exposure_properties(document_node: &DocumentNode, node_id: NodeId) -> Vec<LayoutGroup> {
-	let value = number_range_widget(document_node, node_id, 1, "Value", Some(0.), Some(8.), "".into());
+	let value = number_range_widget(document_node, node_id, 1, "Value", Some(0.), Some(2.), "".into());
 
 	vec![LayoutGroup::Row { widgets: value }]
 }

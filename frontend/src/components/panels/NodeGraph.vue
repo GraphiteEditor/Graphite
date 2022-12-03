@@ -492,6 +492,7 @@ export default defineComponent({
 
 			const port = (e.target as HTMLDivElement).closest("[data-port]") as HTMLDivElement;
 			const node = (e.target as HTMLElement).closest("[data-node]") as HTMLElement | undefined;
+			const nodeList = (e.target as HTMLElement).closest(".node-list") as HTMLElement | undefined;
 
 			if (port) {
 				const isOutput = Boolean(port.getAttribute("data-port") === "output");
@@ -517,7 +518,7 @@ export default defineComponent({
 					}
 
 					this.editor.instance.selectNodes(new BigUint64Array(this.selected));
-				} else {
+				} else if (!nodeList) {
 					this.selected = [];
 					this.editor.instance.selectNodes(new BigUint64Array(this.selected));
 					const graphDiv: HTMLDivElement | undefined = (this.$refs.graph as typeof LayoutCol | undefined)?.$el;

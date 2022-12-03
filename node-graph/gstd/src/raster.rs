@@ -392,6 +392,7 @@ fn exposure(mut image: Image, exposure: f32) -> Image {
 	for pixel in &mut image.data {
 		*pixel = Color::from_rgbaf32_unchecked(channel(pixel.r()), channel(pixel.g()), channel(pixel.b()), pixel.a())
 	}
+	image
 }
 
 #[derive(Debug, Clone, Copy)]
