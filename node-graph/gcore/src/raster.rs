@@ -55,16 +55,16 @@ impl<N: Node<(), Output = f32>> Node<Color> for HueShiftColorNode<N> {
 	type Output = Color;
 	fn eval(self, color: Color) -> Color {
 		let hue_shift = self.0.eval(());
-		let [hue, saturation, luminance, alpha] = color.to_hsla();
-		Color::from_hsla(hue + hue_shift / 360., saturation, luminance, alpha)
+		let [hue, saturation, lightness, alpha] = color.to_hsla();
+		Color::from_hsla(hue + hue_shift / 360., saturation, lightness, alpha)
 	}
 }
 impl<N: Node<(), Output = f32> + Copy> Node<Color> for &HueShiftColorNode<N> {
 	type Output = Color;
 	fn eval(self, color: Color) -> Color {
 		let hue_shift = self.0.eval(());
-		let [hue, saturation, luminance, alpha] = color.to_hsla();
-		Color::from_hsla(hue + hue_shift / 360., saturation, luminance, alpha)
+		let [hue, saturation, lightness, alpha] = color.to_hsla();
+		Color::from_hsla(hue + hue_shift / 360., saturation, lightness, alpha)
 	}
 }
 
