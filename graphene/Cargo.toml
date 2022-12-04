@@ -12,6 +12,7 @@ license = "Apache-2.0"
 
 [dependencies]
 graph-craft = { path = "../node-graph/graph-craft", features = ["serde"] }
+graphene-std = { path = "../node-graph/gstd", features = ["serde"] }
 image = { version = "0.24", default-features = false }
 
 log = "0.4"

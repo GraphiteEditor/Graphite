@@ -20,7 +20,6 @@ pub mod base64_serde;
 pub mod blend_mode;
 /// Contains the [FolderLayer](folder_layer::FolderLayer) type that encapsulates other layers, including more folders.
 pub mod folder_layer;
-pub mod id_vec;
 /// Contains the [ImageLayer](image_layer::ImageLayer) type that contains a bitmap image.
 pub mod image_layer;
 /// Contains the [ImaginateLayer](imaginate_layer::ImaginateLayer) type that contains a bitmap image generated based on a prompt and optionally the layers beneath it.
@@ -34,4 +33,3 @@ pub mod shape_layer;
 pub mod style;
 /// Contains the [TextLayer](text_layer::TextLayer) type.
 pub mod text_layer;
-pub mod vector;

@@ -82,20 +82,20 @@ impl Color {
 		}
 	}
 
-	/// Create a [Color] from a hue, saturation, luminance and alpha (all between 0 and 1)
+	/// Create a [Color] from a hue, saturation, lightness and alpha (all between 0 and 1)
 	///
 	/// # Examples
 	/// ```
 	/// use graphene_core::raster::color::Color;
 	/// let color = Color::from_hsla(0.5, 0.2, 0.3, 1.);
 	/// ```
-	pub fn from_hsla(hue: f32, saturation: f32, luminance: f32, alpha: f32) -> Color {
-		let temp1 = if luminance < 0.5 {
-			luminance * (saturation + 1.)
+	pub fn from_hsla(hue: f32, saturation: f32, lightness: f32, alpha: f32) -> Color {
+		let temp1 = if lightness < 0.5 {
+			lightness * (saturation + 1.)
 		} else {
-			luminance + saturation - luminance * saturation
+			lightness + saturation - lightness * saturation
 		};
-		let temp2 = 2. * luminance - temp1;
+		let temp2 = 2. * lightness - temp1;
 
 		let mut red = (hue + 1. / 3.).rem_euclid(1.);
 		let mut green = hue.rem_euclid(1.);
@@ -190,7 +190,7 @@ impl Color {
 	}
 
 	// https://www.niwa.nu/2013/05/math-behind-colorspace-conversions-rgb-hsl/
-	/// Convert a [Color] to a hue, saturation, luminance and alpha (all between 0 and 1)
+	/// Convert a [Color] to a hue, saturation, lightness and alpha (all between 0 and 1)
 	///
 	/// # Examples
 	/// ```
@@ -201,24 +201,24 @@ impl Color {
 		let min_channel = self.red.min(self.green).min(self.blue);
 		let max_channel = self.red.max(self.green).max(self.blue);
 
-		let luminance = (min_channel + max_channel) / 2.;
+		let lightness = (min_channel + max_channel) / 2.;
 		let saturation = if min_channel == max_channel {
 			0.
-		} else if luminance <= 0.5 {
+		} else if lightness <= 0.5 {
 			(max_channel - min_channel) / (max_channel + min_channel)
 		} else {
 			(max_channel - min_channel) / (2. - max_channel - min_channel)
 		};
-		let hue = if self.red > self.green && self.red > self.blue {
+		let hue = if self.red >= self.green && self.red >= self.blue {
 			(self.green - self.blue) / (max_channel - min_channel)
-		} else if self.green > self.red && self.green > self.blue {
+		} else if self.green >= self.red && self.green >= self.blue {
 			2. + (self.blue - self.red) / (max_channel - min_channel)
 		} else {
 			4. + (self.red - self.green) / (max_channel - min_channel)
 		} / 6.;
 		let hue = hue.rem_euclid(1.);
 
-		[hue, saturation, luminance, self.alpha]
+		[hue, saturation, lightness, self.alpha]
 	}
 
 	// TODO: Readd formatting
@@ -282,10 +282,11 @@ fn hsl_roundtrip() {
 		(95, 79, 88),
 		(13, 34, 4),
 		(82, 84, 84),
+		(255, 255, 178),
 	] {
 		let col = Color::from_rgb8(red, green, blue);
-		let [hue, saturation, luminance, alpha] = col.to_hsla();
-		let result = Color::from_hsla(hue, saturation, luminance, alpha);
+		let [hue, saturation, lightness, alpha] = col.to_hsla();
+		let result = Color::from_hsla(hue, saturation, lightness, alpha);
 		assert!((col.r() - result.r()) < f32::EPSILON * 100.);
 		assert!((col.g() - result.g()) < f32::EPSILON * 100.);
 		assert!((col.b() - result.b()) < f32::EPSILON * 100.);

@@ -10,10 +10,10 @@ use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, ToolActionHan
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 
 use graphene::layers::style;
-use graphene::layers::vector::consts::ManipulatorType;
-use graphene::layers::vector::manipulator_group::ManipulatorGroup;
 use graphene::LayerId;
 use graphene::Operation;
+use graphene_std::vector::consts::ManipulatorType;
+use graphene_std::vector::manipulator_group::ManipulatorGroup;
 
 use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};

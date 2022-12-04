@@ -1,9 +1,9 @@
 use super::consts::ManipulatorType;
+use super::id_vec::IdBackedVec;
 use super::manipulator_group::ManipulatorGroup;
 use super::manipulator_point::ManipulatorPoint;
-use crate::layers::id_vec::IdBackedVec;
-use crate::layers::layer_info::{Layer, LayerDataType};
 
+use dyn_any::{DynAny, StaticType};
 use glam::{DAffine2, DVec2};
 use kurbo::{BezPath, PathEl, Shape};
 use serde::{Deserialize, Serialize};
@@ -11,15 +11,15 @@ use serde::{Deserialize, Serialize};
 /// [Subpath] represents a single vector path, containing many [ManipulatorGroups].
 /// For each closed shape we keep a [Subpath] which contains the [ManipulatorGroup]s (handles and anchors) that define that shape.
 // TODO Add "closed" bool to subpath
-#[derive(PartialEq, Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(PartialEq, Clone, Debug, Default, Serialize, Deserialize, DynAny)]
 pub struct Subpath(IdBackedVec<ManipulatorGroup>);
 
 impl Subpath {
 	// ** INITIALIZATION **
 
 	/// Create a new [Subpath] with no [ManipulatorGroup]s.
-	pub fn new() -> Self {
-		Subpath { ..Default::default() }
+	pub const fn new() -> Self {
+		Subpath(IdBackedVec::new())
 	}
 
 	/// Construct a [Subpath] from a point iterator
@@ -421,34 +421,6 @@ impl Subpath {
 	}
 }
 
-// ** CONVERSIONS **
-
-impl<'a> TryFrom<&'a mut Layer> for &'a mut Subpath {
-	type Error = &'static str;
-	/// Convert a mutable layer into a mutable [Subpath].
-	fn try_from(layer: &'a mut Layer) -> Result<&'a mut Subpath, Self::Error> {
-		match &mut layer.data {
-			LayerDataType::Shape(layer) => Ok(&mut layer.shape),
-			// TODO Resolve converting text into a Subpath at the layer level
-			// LayerDataType::Text(text) => Some(Subpath::new(path_to_shape.to_vec(), viewport_transform, true)),
-			_ => Err("Did not find any shape data in the layer"),
-		}
-	}
-}
-
-impl<'a> TryFrom<&'a Layer> for &'a Subpath {
-	type Error = &'static str;
-	/// Convert a reference to a layer into a reference of a [Subpath].
-	fn try_from(layer: &'a Layer) -> Result<&'a Subpath, Self::Error> {
-		match &layer.data {
-			LayerDataType::Shape(layer) => Ok(&layer.shape),
-			// TODO Resolve converting text into a Subpath at the layer level
-			// LayerDataType::Text(text) => Some(Subpath::new(path_to_shape.to_vec(), viewport_transform, true)),
-			_ => Err("Did not find any shape data in the layer"),
-		}
-	}
-}
-
 /// A wrapper around [`bezier_rs::Bezier`] containing also the IDs for the [`ManipulatorGroup`]s where the points are from.
 pub struct BezierId {
 	/// The internal [`bezier_rs::Bezier`].
@@ -616,10 +588,17 @@ impl<T: Iterator<Item = PathEl>> From<T> for Subpath {
 	/// Create a Subpath from a [BezPath].
 	fn from(path: T) -> Self {
 		let mut subpath = Subpath::new();
+		let mut closed = false;
 		for path_el in path {
+			if closed {
+				warn!("Verbs appear after the close path in a subpath. This will probably cause crashes.");
+			}
 			match path_el {
 				PathEl::MoveTo(p) => {
 					subpath.manipulator_groups_mut().push_end(ManipulatorGroup::new_with_anchor(kurbo_point_to_dvec2(p)));
+					if !subpath.0.is_empty() {
+						warn!("A move to path element appears part way through a subpath. This will be treated as a line to verb.");
+					}
 				}
 				PathEl::LineTo(p) => {
 					subpath.manipulator_groups_mut().push_end(ManipulatorGroup::new_with_anchor(kurbo_point_to_dvec2(p)));
@@ -635,6 +614,7 @@ impl<T: Iterator<Item = PathEl>> From<T> for Subpath {
 				}
 				PathEl::ClosePath => {
 					subpath.manipulator_groups_mut().push_end(ManipulatorGroup::closed());
+					closed = true;
 				}
 			}
 		}

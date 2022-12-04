@@ -29,8 +29,8 @@ use graphene::layers::imaginate_layer::{ImaginateBaseImage, ImaginateGenerationP
 use graphene::layers::layer_info::{LayerDataType, LayerDataTypeDiscriminant};
 use graphene::layers::style::{Fill, RenderData, ViewMode};
 use graphene::layers::text_layer::{Font, FontCache};
-use graphene::layers::vector::subpath::Subpath;
 use graphene::{DocumentError, DocumentResponse, LayerId, Operation as DocumentOperation};
+use graphene_std::vector::subpath::Subpath;
 
 use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};
@@ -928,6 +928,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 		}
 		common.extend(self.navigation_handler.actions());
 		common.extend(self.transform_layer_handler.actions());
+		common.extend(self.node_graph_handler.actions());
 		common
 	}
 }

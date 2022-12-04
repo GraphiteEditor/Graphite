@@ -27,6 +27,10 @@ pub fn default_mapping() -> Mapping {
 		),
 		// NORMAL PRIORITY:
 		//
+		// NodeGraphMessage
+		entry!(KeyDown(Delete); action_dispatch=NodeGraphMessage::DeleteSelectedNodes),
+		entry!(KeyDown(Backspace); action_dispatch=NodeGraphMessage::DeleteSelectedNodes),
+		//
 		// TransformLayerMessage
 		entry!(KeyDown(Enter); action_dispatch=TransformLayerMessage::ApplyTransformOperation),
 		entry!(KeyDown(Lmb); action_dispatch=TransformLayerMessage::ApplyTransformOperation),

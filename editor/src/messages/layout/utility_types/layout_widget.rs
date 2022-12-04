@@ -263,6 +263,18 @@ impl WidgetHolder {
 	pub fn new(widget: Widget) -> Self {
 		Self { widget_id: generate_uuid(), widget }
 	}
+	pub fn unrelated_seperator() -> Self {
+		WidgetHolder::new(Widget::Separator(Separator {
+			separator_type: SeparatorType::Unrelated,
+			direction: SeparatorDirection::Horizontal,
+		}))
+	}
+	pub fn text_widget(text: impl Into<String>) -> Self {
+		WidgetHolder::new(Widget::TextLabel(TextLabel {
+			value: text.into(),
+			..Default::default()
+		}))
+	}
 }
 
 #[derive(Clone)]

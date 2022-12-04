@@ -1,11 +1,11 @@
 use crate::messages::prelude::*;
 
 use bezier_rs::ComputeType;
-use graphene::layers::vector::consts::ManipulatorType;
-use graphene::layers::vector::manipulator_group::ManipulatorGroup;
-use graphene::layers::vector::manipulator_point::ManipulatorPoint;
-use graphene::layers::vector::subpath::{BezierId, Subpath};
 use graphene::{LayerId, Operation};
+use graphene_std::vector::consts::ManipulatorType;
+use graphene_std::vector::manipulator_group::ManipulatorGroup;
+use graphene_std::vector::manipulator_point::ManipulatorPoint;
+use graphene_std::vector::subpath::{BezierId, Subpath};
 
 use glam::DVec2;
 use graphene::document::Document;
@@ -358,23 +358,30 @@ impl ShapeEditor {
 			};
 
 			let (in_handle, out_handle) = if already_sharp {
+				let is_closed = manipulator_groups.last().filter(|group| group.is_close()).is_some();
+
 				// Grab the next and previous manipulator groups by simply looking at the next / previous index
-				// TODO: Wrapping around on a closed path
-				let previous_position = index.checked_sub(1).and_then(|index| manipulator_groups.by_index(index)).and_then(|group| group.points[0].as_ref());
-				let next_position = manipulator_groups.by_index(index + 1).and_then(|group| group.points[0].as_ref());
+				let mut previous_position = index.checked_sub(1).and_then(|index| manipulator_groups.by_index(index)).and_then(|group| group.points[0].as_ref());
+				let mut next_position = manipulator_groups.by_index(index + 1).and_then(|group| group.points[0].as_ref());
+
+				// Wrapping around closed path (assuming format is point elements then a single close path)
+				if is_closed {
+					previous_position = previous_position.or_else(|| manipulator_groups.iter().nth_back(1).and_then(|group| group.points[0].as_ref()));
+					next_position = next_position.or_else(|| manipulator_groups.first().and_then(|group| group.points[0].as_ref()));
+				}
 
 				// To find the length of the new tangent we just take the distance to the anchor and divide by 3 (pretty arbitrary)
 				let length_previous = previous_position.map(|point| (point.position - anchor_position).length() / 3.);
 				let length_next = next_position.map(|point| (point.position - anchor_position).length() / 3.);
 
 				// Use the position relative to the anchor
-				let relative_previous_normalised = previous_position.map(|point| (point.position - anchor_position).normalize());
-				let relative_next_normalised = next_position.map(|point| (point.position - anchor_position).normalize());
+				let previous_angle = previous_position.map(|point| (point.position - anchor_position)).map(|pos| pos.y.atan2(pos.x));
+				let next_angle = next_position.map(|point| (point.position - anchor_position)).map(|pos| pos.y.atan2(pos.x));
 
 				// The direction of the handles is either the perpendicular vector to the sum of the anchors' positions or just the anchor's position (if only one)
-				let handle_direction = match (relative_previous_normalised, relative_next_normalised) {
-					(Some(previous), Some(next)) => DVec2::new(previous.y + next.y, -(previous.x + next.x)),
-					(None, Some(val)) => -val,
+				let handle_direction = match (previous_angle, next_angle) {
+					(Some(previous), Some(next)) => (previous + next) / 2. + core::f64::consts::FRAC_PI_2,
+					(None, Some(val)) => core::f64::consts::PI + val,
 					(Some(val), None) => val,
 					(None, None) => return None,
 				};
@@ -390,10 +397,13 @@ impl ShapeEditor {
 					.into(),
 				);
 
-				let mut handle_vector = handle_direction.normalize();
+				let (sin, cos) = handle_direction.sin_cos();
+				let mut handle_vector = DVec2::new(cos, sin);
 
 				// Flip the vector if it is not facing towards the same direction as the anchor
-				if relative_previous_normalised.filter(|pos| pos.dot(handle_vector) < 0.).is_some() || relative_next_normalised.filter(|pos| pos.dot(handle_vector) > 0.).is_some() {
+				if previous_position.filter(|pos| (pos.position - anchor_position).normalize().dot(handle_vector) < 0.).is_some()
+					|| next_position.filter(|pos| (pos.position - anchor_position).normalize().dot(handle_vector) > 0.).is_some()
+				{
 					handle_vector = -handle_vector;
 				}
 

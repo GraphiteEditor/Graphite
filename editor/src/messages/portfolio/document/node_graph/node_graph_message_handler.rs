@@ -1,6 +1,6 @@
 use crate::messages::layout::utility_types::layout_widget::LayoutGroup;
 use crate::messages::prelude::*;
-use graph_craft::document::{DocumentNode, DocumentNodeImplementation, DocumentNodeMetadata, NodeInput, NodeNetwork};
+use graph_craft::document::{DocumentNode, DocumentNodeImplementation, DocumentNodeMetadata, NodeId, NodeInput, NodeNetwork};
 use graphene::document::Document;
 use graphene::layers::layer_info::LayerDataType;
 use graphene::layers::nodegraph_layer::NodeGraphFrameLayer;
@@ -18,9 +18,13 @@ pub enum FrontendGraphDataType {
 	#[serde(rename = "color")]
 	Color,
 	#[serde(rename = "vector")]
-	Vector,
+	Subpath,
 	#[serde(rename = "number")]
 	Number,
+	#[serde(rename = "boolean")]
+	Boolean,
+	#[serde(rename = "vec2")]
+	Vector,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -57,10 +61,14 @@ pub struct FrontendNodeLink {
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FrontendNodeType {
 	pub name: String,
+	pub category: String,
 }
 impl FrontendNodeType {
-	pub fn new(name: &'static str) -> Self {
-		Self { name: name.to_string() }
+	pub fn new(name: &'static str, category: &'static str) -> Self {
+		Self {
+			name: name.to_string(),
+			category: category.to_string(),
+		}
 	}
 }
 
@@ -148,6 +156,54 @@ impl NodeGraphMessageHandler {
 		log::debug!("Nodes:\n{:#?}\n\nFrontend Nodes:\n{:#?}\n\nLinks:\n{:#?}", network.nodes, nodes, links);
 		responses.push_back(FrontendMessage::UpdateNodeGraph { nodes, links }.into());
 	}
+
+	fn remove_node(&mut self, network: &mut NodeNetwork, node_id: NodeId) -> bool {
+		fn remove_from_network(network: &mut NodeNetwork, node_id: NodeId) -> bool {
+			if network.inputs.iter().any(|&id| id == node_id) {
+				warn!("Deleting input node");
+				return false;
+			}
+			if network.output == node_id {
+				warn!("Deleting the output node!");
+				return false;
+			}
+			for (id, node) in network.nodes.iter_mut() {
+				if *id == node_id {
+					continue;
+				}
+				for (input_index, input) in node.inputs.iter_mut().enumerate() {
+					let NodeInput::Node(id) = input else {
+						continue;
+					};
+					if *id != node_id {
+						continue;
+					}
+
+					let Some(node_type) = document_node_types::resolve_document_node_type(&node.name) else{
+						warn!("Removing input of invalid node type '{}'", node.name);
+						return false;
+					};
+					if let NodeInput::Value { tagged_value, .. } = &node_type.inputs[input_index].default {
+						*input = NodeInput::Value {
+							tagged_value: tagged_value.clone(),
+							exposed: true,
+						};
+					}
+				}
+				if let DocumentNodeImplementation::Network(network) = &mut node.implementation {
+					remove_from_network(network, node_id);
+				}
+			}
+			true
+		}
+		if remove_from_network(network, node_id) {
+			network.nodes.remove(&node_id);
+			self.selected_nodes.retain(|&id| id != node_id);
+			true
+		} else {
+			false
+		}
+	}
 }
 
 impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageHandler)> for NodeGraphMessageHandler {
@@ -188,7 +244,7 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 				Self::send_graph(network, responses);
 				responses.push_back(DocumentMessage::NodeGraphFrameGenerate.into());
 			}
-			NodeGraphMessage::CreateNode { node_id, node_type } => {
+			NodeGraphMessage::CreateNode { node_id, node_type, x, y } => {
 				let node_id = node_id.unwrap_or_else(crate::application::generate_uuid);
 				let Some(network) = self.get_active_network_mut(document) else{
 					warn!("No network");
@@ -218,7 +274,6 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 					.into_iter()
 					.collect(),
 				};
-				let far_right_node = network.nodes.iter().map(|node| node.1.metadata.position).max_by_key(|pos| pos.0).unwrap_or_default();
 
 				network.nodes.insert(
 					node_id,
@@ -227,19 +282,29 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 						inputs: document_node_type.inputs.iter().map(|input| input.default.clone()).collect(),
 						// TODO: Allow inserting nodes that contain other nodes.
 						implementation: DocumentNodeImplementation::Network(inner_network),
-						metadata: graph_craft::document::DocumentNodeMetadata {
-							// TODO: Better position default
-							position: (far_right_node.0 + 7, far_right_node.1 + 2),
-						},
+						metadata: graph_craft::document::DocumentNodeMetadata { position: (x, y) },
 					},
 				);
 				Self::send_graph(network, responses);
 			}
 			NodeGraphMessage::DeleteNode { node_id } => {
 				if let Some(network) = self.get_active_network_mut(document) {
-					network.nodes.remove(&node_id);
-					Self::send_graph(network, responses);
-					responses.push_back(DocumentMessage::NodeGraphFrameGenerate.into());
+					if self.remove_node(network, node_id) {
+						Self::send_graph(network, responses);
+						responses.push_back(DocumentMessage::NodeGraphFrameGenerate.into());
+					}
+				}
+			}
+			NodeGraphMessage::DeleteSelectedNodes => {
+				if let Some(network) = self.get_active_network_mut(document) {
+					let mut modified = false;
+					for node_id in self.selected_nodes.clone() {
+						modified = modified || self.remove_node(network, node_id);
+					}
+					if modified {
+						Self::send_graph(network, responses);
+						responses.push_back(DocumentMessage::NodeGraphFrameGenerate.into());
+					}
 				}
 			}
 			NodeGraphMessage::ExposeInput { node_id, input_index, new_exposed } => {
@@ -314,5 +379,11 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 		}
 	}
 
-	advertise_actions!(NodeGraphMessageDiscriminant; DeleteNode,);
+	fn actions(&self) -> ActionList {
+		if self.layer_path.is_some() && !self.selected_nodes.is_empty() {
+			actions!(NodeGraphMessageDiscriminant; DeleteSelectedNodes,)
+		} else {
+			actions!(NodeGraphMessageDiscriminant;)
+		}
+	}
 }
