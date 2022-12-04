@@ -185,15 +185,15 @@ fn grayscale_image(mut image: Image) -> Image {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct GrayscaleImageNode;
+pub struct GrayscaleNode;
 
-impl Node<Image> for GrayscaleImageNode {
+impl Node<Image> for GrayscaleNode {
 	type Output = Image;
 	fn eval(self, image: Image) -> Image {
 		grayscale_image(image)
 	}
 }
-impl Node<Image> for &GrayscaleImageNode {
+impl Node<Image> for &GrayscaleNode {
 	type Output = Image;
 	fn eval(self, image: Image) -> Image {
 		grayscale_image(image)
@@ -208,28 +208,28 @@ fn invert_image(mut image: Image) -> Image {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct InvertImageColorNode;
+pub struct InvertRGBNode;
 
-impl Node<Image> for InvertImageColorNode {
+impl Node<Image> for InvertRGBNode {
 	type Output = Image;
 	fn eval(self, image: Image) -> Image {
 		invert_image(image)
 	}
 }
-impl Node<Image> for &InvertImageColorNode {
+impl Node<Image> for &InvertRGBNode {
 	type Output = Image;
 	fn eval(self, image: Image) -> Image {
 		invert_image(image)
 	}
 }
 
-fn shift_image_hsl(mut image: Image, hue_shift: f32, saturation_shift: f32, luminance_shift: f32) -> Image {
+fn shift_image_hsl(mut image: Image, hue_shift: f32, saturation_shift: f32, lightness_shift: f32) -> Image {
 	for pixel in &mut image.data {
-		let [hue, saturation, luminance, alpha] = pixel.to_hsla();
+		let [hue, saturation, lightness, alpha] = pixel.to_hsla();
 		*pixel = Color::from_hsla(
 			(hue + hue_shift / 360.) % 1.,
 			(saturation + saturation_shift / 100.).clamp(0., 1.),
-			(luminance + luminance_shift / 100.).clamp(0., 1.),
+			(lightness + lightness_shift / 100.).clamp(0., 1.),
 			alpha,
 		);
 	}
@@ -237,48 +237,48 @@ fn shift_image_hsl(mut image: Image, hue_shift: f32, saturation_shift: f32, lumi
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct ShiftImageHSLNode<Hue, Sat, Lum>
+pub struct HueSaturationNode<Hue, Sat, Lit>
 where
 	Hue: Node<(), Output = f64>,
 	Sat: Node<(), Output = f64>,
-	Lum: Node<(), Output = f64>,
+	Lit: Node<(), Output = f64>,
 {
 	hue: Hue,
 	saturation: Sat,
-	luminance: Lum,
+	lightness: Lit,
 }
 
-impl<Hue, Sat, Lum> Node<Image> for ShiftImageHSLNode<Hue, Sat, Lum>
+impl<Hue, Sat, Lit> Node<Image> for HueSaturationNode<Hue, Sat, Lit>
 where
 	Hue: Node<(), Output = f64>,
 	Sat: Node<(), Output = f64>,
-	Lum: Node<(), Output = f64>,
+	Lit: Node<(), Output = f64>,
 {
 	type Output = Image;
 	fn eval(self, image: Image) -> Image {
-		shift_image_hsl(image, self.hue.eval(()) as f32, self.saturation.eval(()) as f32, self.luminance.eval(()) as f32)
+		shift_image_hsl(image, self.hue.eval(()) as f32, self.saturation.eval(()) as f32, self.lightness.eval(()) as f32)
 	}
 }
-impl<Hue, Sat, Lum> Node<Image> for &ShiftImageHSLNode<Hue, Sat, Lum>
+impl<Hue, Sat, Lit> Node<Image> for &HueSaturationNode<Hue, Sat, Lit>
 where
 	Hue: Node<(), Output = f64> + Copy,
 	Sat: Node<(), Output = f64> + Copy,
-	Lum: Node<(), Output = f64> + Copy,
+	Lit: Node<(), Output = f64> + Copy,
 {
 	type Output = Image;
 	fn eval(self, image: Image) -> Image {
-		shift_image_hsl(image, self.hue.eval(()) as f32, self.saturation.eval(()) as f32, self.luminance.eval(()) as f32)
+		shift_image_hsl(image, self.hue.eval(()) as f32, self.saturation.eval(()) as f32, self.lightness.eval(()) as f32)
 	}
 }
 
-impl<Hue, Sat, Lum> ShiftImageHSLNode<Hue, Sat, Lum>
+impl<Hue, Sat, Lit> HueSaturationNode<Hue, Sat, Lit>
 where
 	Hue: Node<(), Output = f64>,
 	Sat: Node<(), Output = f64>,
-	Lum: Node<(), Output = f64>,
+	Lit: Node<(), Output = f64>,
 {
-	pub fn new(hue: Hue, saturation: Sat, luminance: Lum) -> Self {
-		Self { hue, saturation, luminance }
+	pub fn new(hue: Hue, saturation: Sat, lightness: Lit) -> Self {
+		Self { hue, saturation, lightness }
 	}
 }
 
@@ -294,7 +294,7 @@ fn adjust_image_brightness_and_contrast(mut image: Image, brightness_shift: f32,
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct ImageBrightnessAndContrast<Brightness, Contrast>
+pub struct BrightnessContrastNode<Brightness, Contrast>
 where
 	Brightness: Node<(), Output = f64>,
 	Contrast: Node<(), Output = f64>,
@@ -303,7 +303,7 @@ where
 	contrast: Contrast,
 }
 
-impl<Brightness, Contrast> Node<Image> for ImageBrightnessAndContrast<Brightness, Contrast>
+impl<Brightness, Contrast> Node<Image> for BrightnessContrastNode<Brightness, Contrast>
 where
 	Brightness: Node<(), Output = f64>,
 	Contrast: Node<(), Output = f64>,
@@ -314,7 +314,7 @@ where
 	}
 }
 
-impl<Brightness, Contrast> Node<Image> for &ImageBrightnessAndContrast<Brightness, Contrast>
+impl<Brightness, Contrast> Node<Image> for &BrightnessContrastNode<Brightness, Contrast>
 where
 	Brightness: Node<(), Output = f64> + Copy,
 	Contrast: Node<(), Output = f64> + Copy,
@@ -325,7 +325,7 @@ where
 	}
 }
 
-impl<Brightness, Contrast> ImageBrightnessAndContrast<Brightness, Contrast>
+impl<Brightness, Contrast> BrightnessContrastNode<Brightness, Contrast>
 where
 	Brightness: Node<(), Output = f64>,
 	Contrast: Node<(), Output = f64>,
@@ -346,22 +346,22 @@ fn image_gamma(mut image: Image, gamma: f32) -> Image {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct ImageGammaNode<N: Node<(), Output = f64>>(N);
+pub struct GammaNode<N: Node<(), Output = f64>>(N);
 
-impl<N: Node<(), Output = f64>> Node<Image> for ImageGammaNode<N> {
+impl<N: Node<(), Output = f64>> Node<Image> for GammaNode<N> {
 	type Output = Image;
 	fn eval(self, image: Image) -> Image {
 		image_gamma(image, self.0.eval(()) as f32)
 	}
 }
-impl<N: Node<(), Output = f64> + Copy> Node<Image> for &ImageGammaNode<N> {
+impl<N: Node<(), Output = f64> + Copy> Node<Image> for &GammaNode<N> {
 	type Output = Image;
 	fn eval(self, image: Image) -> Image {
 		image_gamma(image, self.0.eval(()) as f32)
 	}
 }
 
-impl<N: Node<(), Output = f64> + Copy> ImageGammaNode<N> {
+impl<N: Node<(), Output = f64> + Copy> GammaNode<N> {
 	pub fn new(node: N) -> Self {
 		Self(node)
 	}
@@ -396,44 +396,44 @@ fn exposure(mut image: Image, exposure: f32) -> Image {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct Posterize<N: Node<(), Output = f64>>(N);
+pub struct PosterizeNode<N: Node<(), Output = f64>>(N);
 
-impl<N: Node<(), Output = f64>> Node<Image> for Posterize<N> {
+impl<N: Node<(), Output = f64>> Node<Image> for PosterizeNode<N> {
 	type Output = Image;
 	fn eval(self, image: Image) -> Image {
 		posterize(image, self.0.eval(()) as f32)
 	}
 }
-impl<N: Node<(), Output = f64> + Copy> Node<Image> for &Posterize<N> {
+impl<N: Node<(), Output = f64> + Copy> Node<Image> for &PosterizeNode<N> {
 	type Output = Image;
 	fn eval(self, image: Image) -> Image {
 		posterize(image, self.0.eval(()) as f32)
 	}
 }
 
-impl<N: Node<(), Output = f64> + Copy> Posterize<N> {
+impl<N: Node<(), Output = f64> + Copy> PosterizeNode<N> {
 	pub fn new(node: N) -> Self {
 		Self(node)
 	}
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct ImageOpacityNode<N: Node<(), Output = f64>>(N);
+pub struct OpacityNode<N: Node<(), Output = f64>>(N);
 
-impl<N: Node<(), Output = f64>> Node<Image> for ImageOpacityNode<N> {
+impl<N: Node<(), Output = f64>> Node<Image> for OpacityNode<N> {
 	type Output = Image;
 	fn eval(self, image: Image) -> Image {
 		image_opacity(image, self.0.eval(()) as f32)
 	}
 }
-impl<N: Node<(), Output = f64> + Copy> Node<Image> for &ImageOpacityNode<N> {
+impl<N: Node<(), Output = f64> + Copy> Node<Image> for &OpacityNode<N> {
 	type Output = Image;
 	fn eval(self, image: Image) -> Image {
 		image_opacity(image, self.0.eval(()) as f32)
 	}
 }
 
-impl<N: Node<(), Output = f64> + Copy> ImageOpacityNode<N> {
+impl<N: Node<(), Output = f64> + Copy> OpacityNode<N> {
 	pub fn new(node: N) -> Self {
 		Self(node)
 	}

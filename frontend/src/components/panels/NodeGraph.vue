@@ -19,7 +19,7 @@
 				<TextInput placeholder="Search Nodes..." :value="searchTerm" @update:value="(val) => (searchTerm = val)" v-focus />
 				<LayoutCol v-for="nodeCategory in nodeCategories" :key="nodeCategory[0]">
 					<TextLabel>{{ nodeCategory[0] }}</TextLabel>
-					<TextButton v-for="nodeType in nodeCategory[1]" v-bind:key="String(nodeType)" :label="nodeType.name + ' Node'" :action="() => createNode(nodeType.name)" />
+					<TextButton v-for="nodeType in nodeCategory[1]" v-bind:key="String(nodeType)" :label="nodeType.name" :action="() => createNode(nodeType.name)" />
 				</LayoutCol>
 				<TextLabel v-if="nodeCategories.length === 0">No search results :(</TextLabel>
 			</LayoutCol>
@@ -114,6 +114,11 @@
 		padding: 5px;
 		z-index: 3;
 		background-color: var(--color-3-darkgray);
+
+		.text-button + .text-button {
+			margin-left: 0;
+			margin-top: 4px;
+		}
 	}
 
 	.options-bar {

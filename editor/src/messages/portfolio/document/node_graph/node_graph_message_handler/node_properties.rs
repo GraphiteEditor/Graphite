@@ -76,12 +76,12 @@ fn number_range_widget(document_node: &DocumentNode, node_id: NodeId, index: usi
 pub fn adjust_hsl_properties(document_node: &DocumentNode, node_id: NodeId) -> Vec<LayoutGroup> {
 	let hue_shift = number_range_widget(document_node, node_id, 1, "Hue Shift", Some(-180.), Some(180.), "°".into(), false);
 	let saturation_shift = number_range_widget(document_node, node_id, 2, "Saturation Shift", Some(-100.), Some(100.), "%".into(), false);
-	let luminance_shift = number_range_widget(document_node, node_id, 3, "Luminance Shift", Some(-100.), Some(100.), "%".into(), false);
+	let lightness_shift = number_range_widget(document_node, node_id, 3, "Lightness Shift", Some(-100.), Some(100.), "%".into(), false);
 
 	vec![
 		LayoutGroup::Row { widgets: hue_shift },
 		LayoutGroup::Row { widgets: saturation_shift },
-		LayoutGroup::Row { widgets: luminance_shift },
+		LayoutGroup::Row { widgets: lightness_shift },
 	]
 }
 
@@ -261,8 +261,8 @@ fn unknown_node_properties(document_node: &DocumentNode) -> Vec<LayoutGroup> {
 	string_properties(format!("Node '{}' cannot be found in library", document_node.name))
 }
 
-pub fn no_properties(document_node: &DocumentNode, _node_id: NodeId) -> Vec<LayoutGroup> {
-	string_properties(format!("The {} node requires no properties.", document_node.name.to_lowercase()))
+pub fn no_properties(_document_node: &DocumentNode, _node_id: NodeId) -> Vec<LayoutGroup> {
+	string_properties("Node has no properties")
 }
 
 pub fn generate_node_properties(document_node: &DocumentNode, node_id: NodeId) -> LayoutGroup {

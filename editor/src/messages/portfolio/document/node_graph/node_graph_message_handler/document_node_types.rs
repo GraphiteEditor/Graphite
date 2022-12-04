@@ -40,7 +40,7 @@ pub struct DocumentNodeType {
 static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 	DocumentNodeType {
 		name: "Identity",
-		category: "Meta",
+		category: "General",
 		identifier: NodeIdentifier::new("graphene_core::ops::IdNode", &[Type::Concrete(Cow::Borrowed("Any<'_>"))]),
 		inputs: &[DocumentInputType {
 			name: "In",
@@ -82,9 +82,9 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 		properties: |_document_node, _node_id| node_properties::string_properties("The output to the graph is rendered in the frame".to_string()),
 	},
 	DocumentNodeType {
-		name: "Grayscale Image",
-		category: "Image Color Correction",
-		identifier: NodeIdentifier::new("graphene_std::raster::GrayscaleImageNode", &[]),
+		name: "Grayscale",
+		category: "Image Adjustments",
+		identifier: NodeIdentifier::new("graphene_std::raster::GrayscaleNode", &[]),
 		inputs: &[DocumentInputType {
 			name: "Image",
 			data_type: FrontendGraphDataType::Raster,
@@ -94,9 +94,9 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 		properties: node_properties::no_properties,
 	},
 	DocumentNodeType {
-		name: "Invert Image Color",
-		category: "Image Color Correction",
-		identifier: NodeIdentifier::new("graphene_std::raster::InvertImageColorNode", &[]),
+		name: "Invert RGB",
+		category: "Image Adjustments",
+		identifier: NodeIdentifier::new("graphene_std::raster::InvertRGBNode", &[]),
 		inputs: &[DocumentInputType {
 			name: "Image",
 			data_type: FrontendGraphDataType::Raster,
@@ -106,9 +106,9 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 		properties: node_properties::no_properties,
 	},
 	DocumentNodeType {
-		name: "Shift Image HSL",
-		category: "Image Color Correction",
-		identifier: NodeIdentifier::new("graphene_std::raster::ShiftImageHSLNode", &[Type::Concrete(Cow::Borrowed("&TypeErasedNode"))]),
+		name: "Hue/Saturation",
+		category: "Image Adjustments",
+		identifier: NodeIdentifier::new("graphene_std::raster::HueSaturationNode", &[Type::Concrete(Cow::Borrowed("&TypeErasedNode"))]),
 		inputs: &[
 			DocumentInputType {
 				name: "Image",
@@ -126,7 +126,7 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 				default: NodeInput::value(TaggedValue::F64(0.), false),
 			},
 			DocumentInputType {
-				name: "Luminance Shift",
+				name: "Lightness Shift",
 				data_type: FrontendGraphDataType::Number,
 				default: NodeInput::value(TaggedValue::F64(0.), false),
 			},
@@ -135,9 +135,9 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 		properties: node_properties::adjust_hsl_properties,
 	},
 	DocumentNodeType {
-		name: "Image Contrast and Brightness",
-		category: "Image Color Correction",
-		identifier: NodeIdentifier::new("graphene_std::raster::ImageBrightnessAndContrast", &[Type::Concrete(Cow::Borrowed("&TypeErasedNode"))]),
+		name: "Brightness/Contrast",
+		category: "Image Adjustments",
+		identifier: NodeIdentifier::new("graphene_std::raster::BrightnessContrastNode", &[Type::Concrete(Cow::Borrowed("&TypeErasedNode"))]),
 		inputs: &[
 			DocumentInputType {
 				name: "Image",
@@ -159,9 +159,9 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 		properties: node_properties::brighten_image_properties,
 	},
 	DocumentNodeType {
-		name: "Adjust Image Gamma",
-		category: "Image Color Correction",
-		identifier: NodeIdentifier::new("graphene_std::raster::ImageGammaNode", &[Type::Concrete(Cow::Borrowed("&TypeErasedNode"))]),
+		name: "Gamma",
+		category: "Image Adjustments",
+		identifier: NodeIdentifier::new("graphene_std::raster::GammaNode", &[Type::Concrete(Cow::Borrowed("&TypeErasedNode"))]),
 		inputs: &[
 			DocumentInputType {
 				name: "Image",
@@ -178,9 +178,9 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 		properties: node_properties::adjust_gamma_properties,
 	},
 	DocumentNodeType {
-		name: "Multiply Image Opactiy",
-		category: "Image Color Correction",
-		identifier: NodeIdentifier::new("graphene_std::raster::ImageOpacityNode", &[Type::Concrete(Cow::Borrowed("&TypeErasedNode"))]),
+		name: "Opacity",
+		category: "Image Adjustments",
+		identifier: NodeIdentifier::new("graphene_std::raster::OpacityNode", &[Type::Concrete(Cow::Borrowed("&TypeErasedNode"))]),
 		inputs: &[
 			DocumentInputType {
 				name: "Image",
@@ -198,8 +198,8 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 	},
 	DocumentNodeType {
 		name: "Posterize",
-		category: "Image Filters",
-		identifier: NodeIdentifier::new("graphene_std::raster::Posterize", &[Type::Concrete(Cow::Borrowed("&TypeErasedNode"))]),
+		category: "Image Adjustments",
+		identifier: NodeIdentifier::new("graphene_std::raster::PosterizeNode", &[Type::Concrete(Cow::Borrowed("&TypeErasedNode"))]),
 		inputs: &[
 			DocumentInputType {
 				name: "Image",
@@ -217,7 +217,7 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 	},
 	DocumentNodeType {
 		name: "Exposure",
-		category: "Image Color Correction",
+		category: "Image Adjustments",
 		identifier: NodeIdentifier::new("graphene_std::raster::ExposureNode", &[Type::Concrete(Cow::Borrowed("&TypeErasedNode"))]),
 		inputs: &[
 			DocumentInputType {
@@ -228,7 +228,7 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 			DocumentInputType {
 				name: "Value",
 				data_type: FrontendGraphDataType::Number,
-				default: NodeInput::value(TaggedValue::F64(1.), false),
+				default: NodeInput::value(TaggedValue::F64(0.), false),
 			},
 		],
 		outputs: &[FrontendGraphDataType::Raster],
@@ -236,7 +236,7 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 	},
 	DocumentNodeType {
 		name: "Add",
-		category: "Mathmatics",
+		category: "Math",
 		identifier: NodeIdentifier::new("graphene_core::ops::AddNode", &[Type::Concrete(Cow::Borrowed("&TypeErasedNode"))]),
 		inputs: &[
 			DocumentInputType {
