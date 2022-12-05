@@ -1,7 +1,21 @@
+use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 
 use crate::document::value;
 use crate::document::NodeId;
+
+#[macro_export]
+macro_rules! concrete {
+	($type:expr) => {
+		Type::Concrete(std::borrow::Cow::Borrowed($type))
+	};
+}
+#[macro_export]
+macro_rules! generic {
+	($type:expr) => {
+		Type::Generic(std::borrow::Cow::Borrowed($type))
+	};
+}
 
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -10,16 +24,40 @@ pub struct NodeIdentifier {
 	pub types: std::borrow::Cow<'static, [Type]>,
 }
 
+impl NodeIdentifier {
+	pub fn fully_qualified_name(&self) -> String {
+		let mut name = String::new();
+		name.push_str(self.name.as_ref());
+		name.push('<');
+		for t in self.types.as_ref() {
+			name.push_str(t.to_string().as_str());
+			name.push_str(", ");
+		}
+		name.pop();
+		name.pop();
+		name.push('>');
+		name
+	}
+}
+
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Type {
-	Generic,
+	Generic(std::borrow::Cow<'static, str>),
 	Concrete(std::borrow::Cow<'static, str>),
 }
 
 impl From<&'static str> for Type {
 	fn from(s: &'static str) -> Self {
 		Type::Concrete(std::borrow::Cow::Borrowed(s))
+	}
+}
+impl std::fmt::Display for Type {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self {
+			Type::Generic(name) => write!(f, "{}", name),
+			Type::Concrete(name) => write!(f, "{}", name),
+		}
 	}
 }
 
@@ -70,6 +108,15 @@ impl PartialEq for ConstructionArgs {
 	}
 }
 
+impl ConstructionArgs {
+	pub fn new_function_args(&self) -> Vec<String> {
+		match self {
+			ConstructionArgs::Nodes(nodes) => nodes.iter().map(|n| format!("n{}", n)).collect(),
+			ConstructionArgs::Value(value) => vec![format!("{:?}", value)],
+		}
+	}
+}
+
 #[derive(Debug, PartialEq)]
 pub struct ProtoNode {
 	pub construction_args: ConstructionArgs,
@@ -77,7 +124,7 @@ pub struct ProtoNode {
 	pub identifier: NodeIdentifier,
 }
 
-#[derive(Debug, Default, PartialEq, Eq)]
+#[derive(Debug, Default, PartialEq, Eq, Clone, Copy)]
 pub enum ProtoNodeInput {
 	None,
 	#[default]
@@ -97,7 +144,7 @@ impl ProtoNodeInput {
 impl ProtoNode {
 	pub fn value(value: ConstructionArgs) -> Self {
 		Self {
-			identifier: NodeIdentifier::new("graphene_core::value::ValueNode", &[Type::Generic]),
+			identifier: NodeIdentifier::new("graphene_core::value::ValueNode", &[Type::Generic(Cow::Borrowed("T"))]),
 			construction_args: value,
 			input: ProtoNodeInput::None,
 		}
@@ -165,6 +212,41 @@ impl ProtoNetwork {
 		edges
 	}
 
+	pub fn resolve_inputs(&mut self) {
+		while !self.resolve_inputs_impl() {}
+	}
+	fn resolve_inputs_impl(&mut self) -> bool {
+		self.reorder_ids();
+
+		let mut lookup = self.nodes.iter().map(|(id, _)| (*id, *id)).collect::<HashMap<_, _>>();
+		let compose_node_id = self.nodes.len() as NodeId;
+		let inputs = self.nodes.iter().map(|(_, node)| node.input).collect::<Vec<_>>();
+
+		if let Some((input_node, id, input)) = self.nodes.iter_mut().find_map(|(id, node)| {
+			if let ProtoNodeInput::Node(input_node) = node.input {
+				node.input = ProtoNodeInput::None;
+				let pre_node_input = inputs.get(input_node as usize).expect("input node should exist");
+				Some((input_node, *id, *pre_node_input))
+			} else {
+				None
+			}
+		}) {
+			lookup.insert(id, compose_node_id);
+			self.replace_node_references(&lookup);
+			self.nodes.push((
+				compose_node_id,
+				ProtoNode {
+					identifier: NodeIdentifier::new("graphene_core::structural::ComposeNode", &[generic!("T"), Type::Generic(Cow::Borrowed("U"))]),
+					construction_args: ConstructionArgs::Nodes(vec![input_node, id]),
+					input,
+				},
+			));
+			return false;
+		}
+
+		true
+	}
+
 	// Based on https://en.wikipedia.org/wiki/Topological_sorting#Depth-first_search
 	// This approach excludes nodes that are not connected
 	pub fn topological_sort(&self) -> Vec<NodeId> {
@@ -228,13 +310,27 @@ impl ProtoNetwork {
 		info!("Order {order:?}");
 		self.nodes = order
 			.iter()
-			.map(|id| {
-				let mut node = self.nodes.swap_remove(self.nodes.iter().position(|(test_id, _)| test_id == id).unwrap()).1;
-				node.map_ids(|id| *lookup.get(&id).unwrap());
-				(*lookup.get(id).unwrap(), node)
+			.enumerate()
+			.map(|(pos, id)| {
+				let node = self.nodes.swap_remove(self.nodes.iter().position(|(test_id, _)| test_id == id).unwrap()).1;
+				(pos as NodeId, node)
 			})
 			.collect();
+		self.replace_node_references(&lookup);
 		assert_eq!(order.len(), self.nodes.len());
+	}
+
+	fn replace_node_references(&mut self, lookup: &HashMap<u64, u64>) {
+		self.nodes.iter_mut().for_each(|(sid, node)| {
+			node.map_ids(|id| *lookup.get(&id).expect("node not found in lookup table"));
+		});
+		self.inputs = self.inputs.iter().map(|id| *lookup.get(id).unwrap()).collect();
+		self.output = *lookup.get(&self.output).unwrap();
+	}
+
+	fn replace_ids_with_lookup(&mut self, lookup: HashMap<u64, u64>) {
+		self.nodes.iter_mut().for_each(|(id, _)| *id = *lookup.get(id).unwrap());
+		self.replace_node_references(&lookup);
 	}
 }
 
@@ -246,6 +342,51 @@ mod test {
 
 	#[test]
 	fn topological_sort() {
+		let construction_network = test_network();
+		let sorted = construction_network.topological_sort();
+
+		println!("{:#?}", sorted);
+		assert_eq!(sorted, vec![14, 10, 11, 1]);
+	}
+
+	#[test]
+	fn id_reordering() {
+		let mut construction_network = test_network();
+		construction_network.reorder_ids();
+		let sorted = construction_network.topological_sort();
+		println!("nodes: {:#?}", construction_network.nodes);
+		assert_eq!(sorted, vec![0, 1, 2, 3]);
+		let ids: Vec<_> = construction_network.nodes.iter().map(|(id, _)| *id).collect();
+		println!("{:#?}", ids);
+		println!("nodes: {:#?}", construction_network.nodes);
+		assert_eq!(construction_network.nodes[0].1.identifier.name.as_ref(), "value");
+		assert_eq!(ids, vec![0, 1, 2, 3]);
+	}
+
+	#[test]
+	fn id_reordering_idempotent() {
+		let mut construction_network = test_network();
+		construction_network.reorder_ids();
+		construction_network.reorder_ids();
+		let sorted = construction_network.topological_sort();
+		assert_eq!(sorted, vec![0, 1, 2, 3]);
+		let ids: Vec<_> = construction_network.nodes.iter().map(|(id, _)| *id).collect();
+		println!("{:#?}", ids);
+		assert_eq!(construction_network.nodes[0].1.identifier.name.as_ref(), "value");
+		assert_eq!(ids, vec![0, 1, 2, 3]);
+	}
+
+	#[test]
+	fn input_resolution() {
+		let mut construction_network = test_network();
+		construction_network.resolve_inputs();
+		println!("{:#?}", construction_network);
+		assert_eq!(construction_network.nodes[0].1.identifier.name.as_ref(), "value");
+		assert_eq!(construction_network.nodes.len(), 6);
+		assert_eq!(construction_network.nodes[5].1.construction_args, ConstructionArgs::Nodes(vec![3, 4]));
+	}
+
+	fn test_network() -> ProtoNetwork {
 		let construction_network = ProtoNetwork {
 			inputs: vec![10],
 			output: 1,
@@ -294,9 +435,6 @@ mod test {
 			.into_iter()
 			.collect(),
 		};
-		let sorted = construction_network.topological_sort();
-
-		println!("{:#?}", sorted);
-		assert_eq!(sorted, vec![14, 10, 11, 1]);
+		construction_network
 	}
 }
