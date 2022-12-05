@@ -10,14 +10,16 @@ license = "MIT OR Apache-2.0"
 
 [features]
 std = ["dyn-any"]
-default = ["async"]
-gpu = ["spirv-std"]
+default = ["async", "serde"]
+gpu = ["spirv-std", "bytemuck"]
 async = ["async-trait"]
 nightly = []
+serde = ["dep:serde"]
 
 [dependencies]
 dyn-any = {path = "../../libraries/dyn-any", features = ["derive"], optional = true}
 
 spirv-std = { git = "https://github.com/EmbarkStudios/rust-gpu", features = ["glam"] , optional = true}
+bytemuck = {version = "1.8", features = ["derive"], optional = true}
 async-trait = {version = "0.1", optional = true}
-serde = {version =  "1.0", features = ["derive"]}
+serde = {version =  "1.0", features = ["derive"], optional = true}
