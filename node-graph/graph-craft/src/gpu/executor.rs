@@ -174,7 +174,7 @@ mod test {
 		use crate::executor::Executor;
 		let m = compiler::Metadata::new("project".to_owned(), vec!["test@example.com".to_owned()]);
 		let network = inc_network();
-		let temp_dir = tempdir::TempDir::new("graphite_compile").unwrap();
+		let temp_dir = tempfile::tempdir().expect("failed to create tempdir");
 
 		let executor: GpuExecutor<u32, u32> = GpuExecutor::new(Context::new(), network, m, temp_dir.path()).unwrap();
 

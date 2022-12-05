@@ -27,7 +27,7 @@ glam = { version = "0.17" }
 vulkano = {git = "https://github.com/GraphiteEditor/vulkano", branch = "fix_rust_gpu", optional = true}
 bytemuck = {version = "1.8"  }
 nvtx = {version = "1.1.1", optional = true}
-tempdir = "0.3.7"
+tempfile = "3"
 spirv-builder = {git = "https://github.com/EmbarkStudios/rust-gpu" , branch = "main", optional = true, default-features = false, features=["use-installed-tools"]}
 tera = {version = "1.17.1", optional = true}
 anyhow = "1.0.66"

@@ -73,7 +73,11 @@ allow = [
     "MIT",
     "Apache-2.0",
     "BSD-3-Clause",
+    "BSD-2-Clause",
     "Zlib",
+	"Zlib",
+	"Unicode-DFS-2016",
+	"ISC",
     #"Apache-2.0 WITH LLVM-exception",
 ]
 # List of explicitly disallowed licenses
@@ -173,8 +177,8 @@ skip = [
     #{ name = "ansi_term", version = "=0.11.0" },
     { name = "cfg-if", version = "=0.1.10" },
 ]
-# Similarly to `skip` allows you to skip certain crates during duplicate 
-# detection. Unlike skip, it also includes the entire tree of transitive 
+# Similarly to `skip` allows you to skip certain crates during duplicate
+# detection. Unlike skip, it also includes the entire tree of transitive
 # dependencies starting at the specified crate, up to a certain depth, which is
 # by default infinite
 skip-tree = [

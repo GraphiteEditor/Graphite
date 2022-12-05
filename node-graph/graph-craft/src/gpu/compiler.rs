@@ -1,12 +1,7 @@
 use std::path::Path;
 
 use crate::proto::*;
-use tempdir::TempDir;
 use tera::Context;
-
-pub fn create_tempdir() -> std::io::Result<TempDir> {
-	TempDir::new("graphite_compile")
-}
 
 fn create_cargo_toml(metadata: &Metadata) -> Result<String, tera::Error> {
 	let mut tera = tera::Tera::default();
@@ -110,12 +105,6 @@ pub fn compile(dir: &Path) -> Result<spirv_builder::CompileResult, spirv_builder
 
 #[cfg(test)]
 mod test {
-
-	#[test]
-	fn test_create_tempdir() {
-		let tempdir = super::create_tempdir().unwrap();
-		assert!(tempdir.path().exists());
-	}
 
 	#[test]
 	fn test_create_cargo_toml() {

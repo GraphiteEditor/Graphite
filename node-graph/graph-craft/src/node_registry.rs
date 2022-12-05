@@ -355,6 +355,13 @@ static NODE_REGISTRY: &[(NodeIdentifier, NodeConstructor)] = &[
 			}
 		})
 	}),
+	(NodeIdentifier::new("graphene_std::raster::ImageNode", &[concrete!("&str")]), |_proto_node, stack| {
+		stack.push_fn(|_nodes| {
+			let image = FnNode::new(|s: &str| graphene_std::raster::image_node::<&str>().eval(s).unwrap());
+			let node: DynAnyNode<_, &str, _, _> = DynAnyNode::new(image);
+			node.into_type_erased()
+		})
+	}),
 	(NodeIdentifier::new("graphene_std::raster::ExportImageNode", &[concrete!("&str")]), |proto_node, stack| {
 		stack.push_fn(|nodes| {
 			let pre_node = nodes.get(proto_node.input.unwrap_node() as usize).unwrap();
