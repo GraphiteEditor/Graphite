@@ -12,12 +12,12 @@ rust-version = "1.59"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [build-dependencies]
-tauri-build = { path = "../../../tauri/core/tauri-build", features = [] }
+tauri-build = { version = "1.2", features = [] }
 
 [dependencies]
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
-tauri = { path = "../../../tauri/core/tauri", features = ["api-all", "devtools"] }
+tauri = { version = "1.2", features = ["api-all", "devtools"] }
 axum = "0.6.1"
 graphite-editor = { version = "0.0.0", path = "../../editor" }
 chrono = "*"
