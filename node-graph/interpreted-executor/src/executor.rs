@@ -4,8 +4,8 @@ use borrow_stack::{BorrowStack, FixedSizeStack};
 use graphene_core::Node;
 use graphene_std::any::{Any, TypeErasedNode};
 
-use graph_craft::{executor::Executor, proto::ProtoNetwork};
 use crate::node_registry::push_node;
+use graph_craft::{executor::Executor, proto::ProtoNetwork};
 
 pub struct DynamicExecutor {
 	stack: FixedSizeStack<TypeErasedNode<'static>>,

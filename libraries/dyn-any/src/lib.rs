@@ -215,10 +215,7 @@ impl_type!(
 	i128, u128, AtomicBool, AtomicPtr<T>
 );
 #[cfg(feature = "large-atomics")]
-impl_type!(
-	 AtomicU64,
-	 AtomicI64
-);
+impl_type!(AtomicU64, AtomicI64);
 
 #[cfg(feature = "alloc")]
 impl_type!(

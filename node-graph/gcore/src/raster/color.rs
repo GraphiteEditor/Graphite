@@ -102,7 +102,7 @@ impl Color {
 	/// use graphene_core::raster::color::Color;
 	/// let color = Color::from_hsla(0.5, 0.2, 0.3, 1.);
 	/// ```
-    #[cfg(not(target_arch = "spirv"))]
+	#[cfg(not(target_arch = "spirv"))]
 	pub fn from_hsla(hue: f32, saturation: f32, lightness: f32, alpha: f32) -> Color {
 		let temp1 = if lightness < 0.5 {
 			lightness * (saturation + 1.)

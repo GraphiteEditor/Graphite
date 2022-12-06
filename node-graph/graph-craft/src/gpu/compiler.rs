@@ -32,7 +32,7 @@ pub fn create_files(matadata: &Metadata, network: &ProtoNetwork, compile_dir: &P
 
 	let toolchain_file = compile_dir.join("rust-toolchain");
 	let toolchain = include_str!("templates/rust-toolchain");
-    std::fs::write(toolchain_file, toolchain)?;
+	std::fs::write(toolchain_file, toolchain)?;
 
 	// create src dir
 	match std::fs::create_dir(&src) {

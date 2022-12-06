@@ -1,8 +1,8 @@
 #[macro_use]
 extern crate log;
 
-pub mod node_registry;
 pub mod executor;
+pub mod node_registry;
 
 #[cfg(test)]
 mod tests {
@@ -112,8 +112,8 @@ mod tests {
 			.collect(),
 		};
 
-		use graph_craft::executor::{Compiler, Executor};
 		use crate::executor::DynamicExecutor;
+		use graph_craft::executor::{Compiler, Executor};
 
 		let compiler = Compiler {};
 		let protograph = compiler.compile(network, false);
