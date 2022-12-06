@@ -176,7 +176,7 @@ mod test {
 		let network = inc_network();
 		let temp_dir = tempfile::tempdir().expect("failed to create tempdir");
 
-		let executor: GpuExecutor<u32, u32> = GpuExecutor::new(Context::new(), network, m, Path::new("/tmp/graphite_compile")).unwrap();
+		let executor: GpuExecutor<u32, u32> = GpuExecutor::new(Context::new(), network, m, temp_dir.path()).unwrap();
 
 		let data: Vec<_> = (0..1024).map(|x| x as u32).collect();
 		let result = executor.execute(Box::new(data)).unwrap();
