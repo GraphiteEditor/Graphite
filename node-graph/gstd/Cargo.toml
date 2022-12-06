@@ -21,7 +21,6 @@ borrow_stack = {path = "../borrow_stack"}
 dyn-any = {path = "../../libraries/dyn-any", features = ["derive"]}
 graph-proc-macros = {path = "../proc-macro", optional = true}
 graph-craft = {path = "../graph-craft"}
-tempdir = "0.3.7"
 bytemuck = {version = "1.8"  }
 once_cell = {version= "1.10", optional = true}
 #pretty-token-stream = {path = "../../pretty-token-stream"}
