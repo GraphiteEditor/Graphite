@@ -42,9 +42,12 @@ export async function fetchImage(path: BigUint64Array, mime: string, documentId:
 
 // export async function dispatchTauri(message: string): Promise<string> {
 export async function dispatchTauri(message: any): Promise<void> {
-	const response = await invoke("handle_message", { message });
-
-	editorInstance?.tauriResponse(response);
+	try {
+		const response = await invoke("handle_message", { message });
+		editorInstance?.tauriResponse(response);
+	} catch {
+		console.error("Failed to dispatch Tauri message");
+	}
 }
 
 // Should be called asynchronously before `createEditor()`
@@ -60,7 +63,11 @@ export async function initWasm(): Promise<void> {
 	const randomSeedFloat = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER);
 	const randomSeed = BigInt(randomSeedFloat);
 	wasmImport?.setRandomSeed(randomSeed);
-	await invoke("set_random_seed", { seed: randomSeedFloat });
+	try {
+		await invoke("set_random_seed", { seed: randomSeedFloat });
+	} catch {
+		// Ignore errors
+	}
 }
 
 // Should be called after running `initWasm()` and its promise resolving
