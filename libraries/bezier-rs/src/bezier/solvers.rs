@@ -201,7 +201,7 @@ impl Bezier {
 		// Check if the bounding boxes overlap
 		if utils::do_rectangles_overlap(bounding_box1, bounding_box2) {
 			// If bounding boxes are within the error threshold (i.e. are small enough), we have found an intersection
-			if (bounding_box1[1] - bounding_box1[0]).lt(&error_threshold) && (bounding_box2[1] - bounding_box2[0]).lt(&error_threshold) {
+			if (bounding_box1[1] - bounding_box1[0]).cmplt(error_threshold).all() && (bounding_box2[1] - bounding_box2[0]).cmplt(error_threshold).all() {
 				// Use the middle t value, return the corresponding `t` value for `self` and `other`
 				return vec![[self_mid_t, other_mid_t]];
 			}

@@ -7,7 +7,7 @@ use glam::{DAffine2, DVec2};
 use serde::ser::SerializeStruct;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct RawBuffer(Vec<u8>);
 
 impl From<Vec<u64>> for RawBuffer {
@@ -22,8 +22,15 @@ impl From<Vec<u64>> for RawBuffer {
 		Self(v_from_raw)
 	}
 }
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+pub struct JsRawBuffer(Vec<u8>);
 
-impl Serialize for RawBuffer {
+impl From<RawBuffer> for JsRawBuffer {
+	fn from(buffer: RawBuffer) -> Self {
+		Self(buffer.0)
+	}
+}
+impl Serialize for JsRawBuffer {
 	fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
 		let mut buffer = serializer.serialize_struct("Buffer", 2)?;
 		buffer.serialize_field("pointer", &(self.0.as_ptr() as usize))?;

@@ -9,17 +9,26 @@ license = "MIT OR Apache-2.0"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-std = ["dyn-any"]
-default = ["async", "serde"]
-gpu = ["spirv-std", "bytemuck"]
-async = ["async-trait"]
+std = ["dyn-any", "dyn-any/std"]
+default = ["async", "serde", "kurbo", "log"]
+log = ["dep:log"]
+serde = ["dep:serde", "glam/serde"]
+gpu = ["spirv-std", "bytemuck", "glam/bytemuck", "dyn-any"]
+async = ["async-trait", "alloc"]
 nightly = []
-serde = ["dep:serde"]
+alloc = ["dyn-any", "bezier-rs"]
 
 [dependencies]
-dyn-any = {path = "../../libraries/dyn-any", features = ["derive"], optional = true}
+dyn-any = {path = "../../libraries/dyn-any", features = ["derive"], optional = true, default-features = false }
 
 spirv-std = { git = "https://github.com/EmbarkStudios/rust-gpu", features = ["glam"] , optional = true}
 bytemuck = {version = "1.8", features = ["derive"], optional = true}
 async-trait = {version = "0.1", optional = true}
-serde = {version =  "1.0", features = ["derive"], optional = true}
+serde = {version =  "1.0", features = ["derive"], optional = true, default-features = false }
+log = {version = "0.4", optional = true}
+
+bezier-rs = { path = "../../libraries/bezier-rs", optional = true }
+kurbo = { git = "https://github.com/linebender/kurbo.git", features = [
+	"serde",
+], optional = true }
+glam = { version = "^0.22", default-features = false, features = ["scalar-math", "libm"]}

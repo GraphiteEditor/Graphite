@@ -12,13 +12,17 @@ license = "MIT OR Apache-2.0"
 derive = ["graph-proc-macros"]
 memoization = ["once_cell"]
 default = ["derive", "memoization"]
+gpu = ["graph-craft/gpu", "graphene-core/gpu"]
 
 
 [dependencies]
-graphene-core = {path = "../gcore", features = ["async", "std"], default-features = false}
+graphene-core = {path = "../gcore", features = ["async", "std" ], default-features = false}
 borrow_stack = {path = "../borrow_stack"}
 dyn-any = {path = "../../libraries/dyn-any", features = ["derive"]}
 graph-proc-macros = {path = "../proc-macro", optional = true}
+graph-craft = {path = "../graph-craft"}
+bytemuck = {version = "1.8"  }
+tempfile = "3"
 once_cell = {version= "1.10", optional = true}
 #pretty-token-stream = {path = "../../pretty-token-stream"}
 syn = {version = "1.0", default-features = false, features = ["parsing", "printing"]}
@@ -32,7 +36,7 @@ bezier-rs = { path = "../../libraries/bezier-rs" }
 kurbo = { git = "https://github.com/linebender/kurbo.git", features = [
 	"serde",
 ] }
-glam = { version = "0.17", features = ["serde"] }
+glam = { version = "0.22", features = ["serde"] }
 
 [dependencies.serde]
 version = "1.0"

@@ -1,6 +1,6 @@
 use crate::messages::layout::utility_types::layout_widget::{LayoutGroup, Widget, WidgetCallback, WidgetHolder};
 use crate::messages::layout::utility_types::widgets::button_widgets::ParameterExposeButton;
-use crate::messages::layout::utility_types::widgets::input_widgets::{NumberInput, NumberInputMode};
+use crate::messages::layout::utility_types::widgets::input_widgets::{NumberInput, NumberInputMode, TextInput};
 use crate::messages::prelude::NodeGraphMessage;
 
 use glam::DVec2;
@@ -14,7 +14,7 @@ pub fn string_properties(text: impl Into<String>) -> Vec<LayoutGroup> {
 	vec![LayoutGroup::Row { widgets: vec![widget] }]
 }
 
-fn update_value<T, F: Fn(&T) -> TaggedValue + 'static>(value: F, node_id: NodeId, input_index: usize) -> WidgetCallback<T> {
+fn update_value<T, F: Fn(&T) -> TaggedValue + 'static + Send + Sync>(value: F, node_id: NodeId, input_index: usize) -> WidgetCallback<T> {
 	WidgetCallback::new(move |number_input: &T| {
 		NodeGraphMessage::SetInputValue {
 			node: node_id,
@@ -40,6 +40,32 @@ fn expose_widget(node_id: NodeId, index: usize, data_type: FrontendGraphDataType
 		}),
 		..Default::default()
 	}))
+}
+
+fn text_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str) -> Vec<WidgetHolder> {
+	let input: &NodeInput = document_node.inputs.get(index).unwrap();
+
+	let mut widgets = vec![
+		expose_widget(node_id, index, FrontendGraphDataType::Number, input.is_exposed()),
+		WidgetHolder::unrelated_seperator(),
+		WidgetHolder::text_widget(name),
+	];
+
+	if let NodeInput::Value {
+		tagged_value: TaggedValue::String(x),
+		exposed: false,
+	} = &document_node.inputs[index]
+	{
+		widgets.extend_from_slice(&[
+			WidgetHolder::unrelated_seperator(),
+			WidgetHolder::new(Widget::TextInput(TextInput {
+				value: x.clone(),
+				on_update: update_value(|x: &TextInput| TaggedValue::String(x.value.clone()), node_id, index),
+				..TextInput::default()
+			})),
+		])
+	}
+	widgets
 }
 
 fn number_range_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, range_min: Option<f64>, range_max: Option<f64>, unit: String, is_integer: bool) -> Vec<WidgetHolder> {
@@ -96,6 +122,12 @@ pub fn adjust_gamma_properties(document_node: &DocumentNode, node_id: NodeId) ->
 	let gamma = number_range_widget(document_node, node_id, 1, "Gamma", Some(0.01), None, "".into(), false);
 
 	vec![LayoutGroup::Row { widgets: gamma }]
+}
+
+pub fn gpu_map_properties(document_node: &DocumentNode, node_id: NodeId) -> Vec<LayoutGroup> {
+	let map = text_widget(document_node, node_id, 1, "Map");
+
+	vec![LayoutGroup::Row { widgets: map }]
 }
 
 pub fn multiply_opacity(document_node: &DocumentNode, node_id: NodeId) -> Vec<LayoutGroup> {

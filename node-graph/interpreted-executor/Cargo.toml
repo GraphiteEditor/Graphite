@@ -1,0 +1,25 @@
+[package]
+name = "interpreted-executor"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+
+[features]
+default = []
+serde = ["dep:serde", "graphene-std/serde", "glam/serde"]
+gpu = ["graphene-std/gpu"]
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+graphene-core = { path = "../gcore", features = ["async", "std" ] }
+graphene-std = { path = "../gstd" }
+graph-craft = { path = "../graph-craft" }
+dyn-any = { path = "../../libraries/dyn-any", features = ["log-bad-types"] }
+num-traits = "0.2"
+borrow_stack = { path = "../borrow_stack" }
+dyn-clone = "1.0"
+rand_chacha = "0.3.1"
+log = "0.4"
+serde = { version = "1", features = ["derive"], optional = true }
+glam = { version = "0.22" }

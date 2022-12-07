@@ -15,10 +15,10 @@ pub enum TaggedValue {
 	F64(f64),
 	Bool(bool),
 	DVec2(DVec2),
-	Image(graphene_std::raster::Image),
+	Image(graphene_core::raster::Image),
 	Color(graphene_core::raster::color::Color),
-	Subpath(graphene_std::vector::subpath::Subpath),
-	RcSubpath(Arc<graphene_std::vector::subpath::Subpath>),
+	Subpath(graphene_core::vector::subpath::Subpath),
+	RcSubpath(Arc<graphene_core::vector::subpath::Subpath>),
 }
 
 impl TaggedValue {

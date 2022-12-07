@@ -548,7 +548,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 					}
 					.into(),
 				);
-				let image_data = std::rc::Rc::new(image_data);
+				let image_data = std::sync::Arc::new(image_data);
 				responses.push_back(
 					FrontendMessage::UpdateImageData {
 						document_id,

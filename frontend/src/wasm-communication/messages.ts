@@ -136,9 +136,9 @@ export type HintData = HintGroup[];
 export type HintGroup = HintInfo[];
 
 export class HintInfo {
-	readonly keyGroups!: KeysGroup[];
+	readonly keyGroups!: LayoutKeysGroup[];
 
-	readonly keyGroupsMac!: KeysGroup[] | undefined;
+	readonly keyGroupsMac!: LayoutKeysGroup[] | undefined;
 
 	readonly mouse!: MouseMotion | undefined;
 
@@ -151,8 +151,8 @@ export class HintInfo {
 export type KeyRaw = string;
 // Serde converts a Rust `Key` enum variant into this format (via a custom serializer) with both the `Key` variant name (called `RawKey` in TS) and the localized `label` for the key
 export type Key = { key: KeyRaw; label: string };
-export type KeysGroup = Key[];
-export type ActionKeys = { keys: KeysGroup };
+export type LayoutKeysGroup = Key[];
+export type ActionKeys = { keys: LayoutKeysGroup };
 
 export type MouseMotion = string;
 
@@ -596,8 +596,8 @@ export class TriggerSavePreferences extends JsMessage {
 
 export class DocumentChanged extends JsMessage {}
 
-export class UpdateDocumentLayerTreeStructure extends JsMessage {
-	constructor(readonly layerId: bigint, readonly children: UpdateDocumentLayerTreeStructure[]) {
+export class UpdateDocumentLayerTreeStructureJs extends JsMessage {
+	constructor(readonly layerId: bigint, readonly children: UpdateDocumentLayerTreeStructureJs[]) {
 		super();
 	}
 }
@@ -607,7 +607,7 @@ type DataBuffer = {
 	length: bigint;
 };
 
-export function newUpdateDocumentLayerTreeStructure(input: { dataBuffer: DataBuffer }, wasm: WasmRawInstance): UpdateDocumentLayerTreeStructure {
+export function newUpdateDocumentLayerTreeStructure(input: { dataBuffer: DataBuffer }, wasm: WasmRawInstance): UpdateDocumentLayerTreeStructureJs {
 	const pointerNum = Number(input.dataBuffer.pointer);
 	const lengthNum = Number(input.dataBuffer.length);
 
@@ -624,7 +624,7 @@ export function newUpdateDocumentLayerTreeStructure(input: { dataBuffer: DataBuf
 	const layerIdsSection = new DataView(wasmMemoryBuffer, pointerNum + 8 + structureSectionLength * 8);
 
 	let layersEncountered = 0;
-	let currentFolder = new UpdateDocumentLayerTreeStructure(BigInt(-1), []);
+	let currentFolder = new UpdateDocumentLayerTreeStructureJs(BigInt(-1), []);
 	const currentFolderStack = [currentFolder];
 
 	for (let i = 0; i < structureSectionLength; i += 1) {
@@ -639,7 +639,7 @@ export function newUpdateDocumentLayerTreeStructure(input: { dataBuffer: DataBuf
 			const layerId = layerIdsSection.getBigUint64(layersEncountered * 8, true);
 			layersEncountered += 1;
 
-			const childLayer = new UpdateDocumentLayerTreeStructure(layerId, []);
+			const childLayer = new UpdateDocumentLayerTreeStructureJs(layerId, []);
 			currentFolder.children.push(childLayer);
 		}
 
@@ -1361,7 +1361,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateDocumentArtwork,
 	UpdateDocumentBarLayout,
 	UpdateDocumentLayerDetails,
-	UpdateDocumentLayerTreeStructure: newUpdateDocumentLayerTreeStructure,
+	UpdateDocumentLayerTreeStructureJs: newUpdateDocumentLayerTreeStructure,
 	UpdateDocumentModeLayout,
 	UpdateDocumentOverlays,
 	UpdateDocumentRulers,

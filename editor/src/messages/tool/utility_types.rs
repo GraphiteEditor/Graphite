@@ -1,5 +1,5 @@
 use super::tool_messages::*;
-use crate::messages::input_mapper::utility_types::input_keyboard::KeysGroup;
+use crate::messages::input_mapper::utility_types::input_keyboard::LayoutKeysGroup;
 use crate::messages::input_mapper::utility_types::input_keyboard::MouseMotion;
 use crate::messages::input_mapper::utility_types::macros::action_keys;
 use crate::messages::input_mapper::utility_types::misc::ActionKeys;
@@ -21,7 +21,7 @@ pub type ToolActionHandlerData<'a> = (&'a DocumentMessageHandler, u64, &'a Docum
 pub trait ToolCommon: for<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> + PropertyHolder + ToolTransition + ToolMetadata {}
 impl<T> ToolCommon for T where T: for<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> + PropertyHolder + ToolTransition + ToolMetadata {}
 
-type Tool = dyn ToolCommon;
+type Tool = dyn ToolCommon + Send + Sync;
 
 pub trait Fsm {
 	type ToolData;
@@ -442,10 +442,10 @@ pub struct HintInfo {
 	/// A `KeysGroup` specifies all the keys pressed simultaneously to perform an action (like "Ctrl C" to copy).
 	/// Usually at most one is given, but less commonly, multiple can be used to describe additional hotkeys not used simultaneously (like the four different arrow keys to nudge a layer).
 	#[serde(rename = "keyGroups")]
-	pub key_groups: Vec<KeysGroup>,
+	pub key_groups: Vec<LayoutKeysGroup>,
 	/// `None` means that the regular `key_groups` should be used for all platforms, `Some` is an override for a Mac-only input hint.
 	#[serde(rename = "keyGroupsMac")]
-	pub key_groups_mac: Option<Vec<KeysGroup>>,
+	pub key_groups_mac: Option<Vec<LayoutKeysGroup>>,
 	/// An optional `MouseMotion` that can indicate the mouse action, like which mouse button is used and whether a drag occurs.
 	/// No such icon is shown if `None` is given, and it can be combined with `key_groups` if desired.
 	pub mouse: Option<MouseMotion>,
