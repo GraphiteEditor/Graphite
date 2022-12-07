@@ -280,7 +280,7 @@ import {
 	type LayerPanelEntry,
 	defaultWidgetLayout,
 	UpdateDocumentLayerDetails,
-	UpdateDocumentLayerTreeStructure,
+	UpdateDocumentLayerTreeStructureJs,
 	UpdateLayerTreeOptionsLayout,
 	layerTypeData,
 } from "@/wasm-communication/messages";
@@ -483,14 +483,14 @@ export default defineComponent({
 			this.fakeHighlight = undefined;
 			this.dragInPanel = false;
 		},
-		rebuildLayerTree(updateDocumentLayerTreeStructure: UpdateDocumentLayerTreeStructure) {
+		rebuildLayerTree(updateDocumentLayerTreeStructure: UpdateDocumentLayerTreeStructureJs) {
 			const layerWithNameBeingEdited = this.layers.find((layer: LayerListingInfo) => layer.editingName);
 			const layerPathWithNameBeingEdited = layerWithNameBeingEdited?.entry.path;
 			const layerIdWithNameBeingEdited = layerPathWithNameBeingEdited?.slice(-1)[0];
 			const path = [] as bigint[];
 			this.layers = [] as LayerListingInfo[];
 
-			const recurse = (folder: UpdateDocumentLayerTreeStructure, layers: LayerListingInfo[], cache: Map<string, LayerPanelEntry>): void => {
+			const recurse = (folder: UpdateDocumentLayerTreeStructureJs, layers: LayerListingInfo[], cache: Map<string, LayerPanelEntry>): void => {
 				folder.children.forEach((item, index) => {
 					// TODO: fix toString
 					const layerId = BigInt(item.layerId.toString());
@@ -520,7 +520,7 @@ export default defineComponent({
 		},
 	},
 	mounted() {
-		this.editor.subscriptions.subscribeJsMessage(UpdateDocumentLayerTreeStructure, (updateDocumentLayerTreeStructure) => {
+		this.editor.subscriptions.subscribeJsMessage(UpdateDocumentLayerTreeStructureJs, (updateDocumentLayerTreeStructure) => {
 			this.rebuildLayerTree(updateDocumentLayerTreeStructure);
 		});
 

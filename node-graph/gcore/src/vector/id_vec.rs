@@ -1,5 +1,8 @@
+use core::ops::{Deref, DerefMut};
 use serde::{Deserialize, Serialize};
-use std::ops::{Deref, DerefMut};
+
+use alloc::vec;
+use alloc::vec::Vec;
 
 /// Brief description: A vec that allows indexing elements by both index and an assigned unique ID
 /// Goals of this Data Structure:
@@ -121,7 +124,7 @@ impl<T> IdBackedVec<T> {
 	}
 
 	/// Enumerate the ids and elements in this container `(&ElementId, &T)`
-	pub fn enumerate(&self) -> std::iter::Zip<core::slice::Iter<u64>, core::slice::Iter<T>> {
+	pub fn enumerate(&self) -> core::iter::Zip<core::slice::Iter<u64>, core::slice::Iter<T>> {
 		self.element_ids.iter().zip(self.elements.iter())
 	}
 

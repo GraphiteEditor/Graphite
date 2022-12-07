@@ -214,7 +214,7 @@ import { defineComponent, nextTick, type PropType } from "vue";
 
 import { platformIsMac } from "@/utility-functions/platform";
 
-import { type KeysGroup, type Key } from "@/wasm-communication/messages";
+import { type LayoutKeysGroup, type Key } from "@/wasm-communication/messages";
 
 import LayoutCol from "@/components/layout/LayoutCol.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
@@ -258,7 +258,7 @@ export default defineComponent({
 		openDocument() {
 			this.editor.instance.documentOpen();
 		},
-		platformModifiers(reservedKey: boolean): KeysGroup {
+		platformModifiers(reservedKey: boolean): LayoutKeysGroup {
 			// TODO: Remove this by properly feeding these keys from a layout provided by the backend
 
 			const ALT: Key = { key: "Alt", label: "Alt" };

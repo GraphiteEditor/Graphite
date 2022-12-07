@@ -7,7 +7,9 @@
 		"serve": "vue-cli-service serve || echo 'Graphite project failed to build. Did you remember to `npm install` the dependencies?'",
 		"build": "vue-cli-service build || echo 'Graphite project failed to build. Did you remember to `npm install` the dependencies?'",
 		"lint": "vue-cli-service lint || echo 'Graphite project had lint errors or otherwise failed. In the latter case, did you remember to `npm install` the dependencies?'",
-		"lint-no-fix": "vue-cli-service lint --no-fix || echo 'Graphite project had lint errors or otherwise failed. In the latter case, did you remember to `npm install` the dependencies?'"
+		"lint-no-fix": "vue-cli-service lint --no-fix || echo 'Graphite project had lint errors or otherwise failed. In the latter case, did you remember to `npm install` the dependencies?'",
+		"tauri:build": "vue-cli-service tauri:build",
+		"tauri:serve": "vue-cli-service tauri:serve"
 	},
 	"repository": {
 		"type": "git",
@@ -17,6 +19,7 @@
 	"license": "Apache-2.0",
 	"homepage": "https://graphite.rs",
 	"dependencies": {
+		"@tauri-apps/api": "^1.2.0",
 		"class-transformer": "^0.5.1",
 		"idb-keyval": "^6.2.0",
 		"reflect-metadata": "^0.1.13",
@@ -42,6 +45,7 @@
 		"sass": "^1.56.1",
 		"sass-loader": "^13.2.0",
 		"typescript": "^4.9.3",
+		"vue-cli-plugin-tauri": "~1.0.0",
 		"vue-loader": "^17.0.1",
 		"vue-template-compiler": "^2.7.14"
 	},

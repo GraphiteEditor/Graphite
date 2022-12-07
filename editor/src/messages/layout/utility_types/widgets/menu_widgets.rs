@@ -48,7 +48,7 @@ impl MenuBarEntry {
 		}
 	}
 
-	pub fn create_action(callback: impl Fn(&()) -> Message + 'static) -> WidgetHolder {
+	pub fn create_action(callback: impl Fn(&()) -> Message + 'static + Send + Sync) -> WidgetHolder {
 		WidgetHolder::new(Widget::InvisibleStandinInput(InvisibleStandinInput {
 			on_update: WidgetCallback::new(callback),
 		}))

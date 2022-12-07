@@ -1,4 +1,4 @@
-use super::input_keyboard::{all_required_modifiers_pressed, KeysGroup};
+use super::input_keyboard::{all_required_modifiers_pressed, KeysGroup, LayoutKeysGroup};
 use crate::messages::input_mapper::default_mapping::default_mapping;
 use crate::messages::input_mapper::utility_types::input_keyboard::{KeyStates, NUMBER_OF_KEYS};
 use crate::messages::prelude::*;
@@ -81,24 +81,27 @@ pub struct MappingEntry {
 pub enum ActionKeys {
 	Action(MessageDiscriminant),
 	#[serde(rename = "keys")]
-	Keys(KeysGroup),
+	Keys(LayoutKeysGroup),
 }
 
 impl ActionKeys {
-	pub fn to_keys(&mut self, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Vec<KeysGroup>) {
+	pub fn to_keys(&mut self, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Vec<KeysGroup>) -> String {
 		match self {
 			ActionKeys::Action(action) => {
 				if let Some(keys) = action_input_mapping(action).get_mut(0) {
 					let mut taken_keys = KeysGroup::default();
 					std::mem::swap(keys, &mut taken_keys);
-
-					*self = ActionKeys::Keys(taken_keys);
+					let description = taken_keys.to_string();
+					*self = ActionKeys::Keys(taken_keys.into());
+					description
 				} else {
-					*self = ActionKeys::Keys(KeysGroup::default());
+					*self = ActionKeys::Keys(KeysGroup::default().into());
+					String::new()
 				}
 			}
 			ActionKeys::Keys(keys) => {
 				warn!("Calling `.to_keys()` on a `ActionKeys::Keys` is a mistake/bug. Keys are: {:?}.", keys);
+				String::new()
 			}
 		}
 	}

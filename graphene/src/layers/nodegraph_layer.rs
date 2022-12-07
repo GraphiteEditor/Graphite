@@ -31,7 +31,7 @@ pub struct NodeGraphFrameLayer {
 #[derive(Debug, Clone, Eq, PartialEq, Deserialize, Serialize)]
 pub struct ImageData {
 	#[serde(serialize_with = "base64_serde::as_base64", deserialize_with = "base64_serde::from_base64")]
-	pub image_data: std::rc::Rc<Vec<u8>>,
+	pub image_data: std::sync::Arc<Vec<u8>>,
 }
 
 impl LayerData for NodeGraphFrameLayer {

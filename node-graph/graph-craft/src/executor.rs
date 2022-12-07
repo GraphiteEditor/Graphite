@@ -1,10 +1,8 @@
 use std::error::Error;
 
-use borrow_stack::{BorrowStack, FixedSizeStack};
-use graphene_core::Node;
-use graphene_std::any::{Any, TypeErasedNode};
+use dyn_any::DynAny;
 
-use crate::{document::NodeNetwork, node_registry::push_node, proto::ProtoNetwork};
+use crate::{document::NodeNetwork, proto::ProtoNetwork};
 
 pub struct Compiler {}
 
@@ -25,30 +23,8 @@ impl Compiler {
 		proto_network
 	}
 }
+pub type Any<'a> = Box<dyn DynAny<'a> + 'a>;
 
 pub trait Executor {
 	fn execute(&self, input: Any<'static>) -> Result<Any<'static>, Box<dyn Error>>;
-}
-
-pub struct DynamicExecutor {
-	stack: FixedSizeStack<TypeErasedNode<'static>>,
-}
-
-impl DynamicExecutor {
-	pub fn new(proto_network: ProtoNetwork) -> Self {
-		assert_eq!(proto_network.inputs.len(), 1);
-		let node_count = proto_network.nodes.len();
-		let stack = FixedSizeStack::new(node_count);
-		for (_id, node) in proto_network.nodes {
-			push_node(node, &stack);
-		}
-		Self { stack }
-	}
-}
-
-impl Executor for DynamicExecutor {
-	fn execute(&self, input: Any<'static>) -> Result<Any<'static>, Box<dyn Error>> {
-		let result = unsafe { self.stack.get().last().unwrap().eval(input) };
-		Ok(result)
-	}
 }
