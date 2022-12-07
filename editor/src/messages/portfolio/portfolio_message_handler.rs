@@ -420,12 +420,12 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 				size,
 			} => {
 				fn read_image(document: Option<&DocumentMessageHandler>, layer_path: &[LayerId], image_data: Vec<u8>, (width, height): (u32, u32)) -> Result<Vec<u8>, String> {
-					use graphene_std::raster::Image;
+					use graphene_core::raster::Image;
 					use image::{ImageBuffer, Rgba};
 					use std::io::Cursor;
 
 					let data = image_data.chunks_exact(4).map(|v| graphene_core::raster::color::Color::from_rgba8(v[0], v[1], v[2], v[3])).collect();
-					let image = graphene_std::raster::Image { width, height, data };
+					let image = graphene_core::raster::Image { width, height, data };
 
 					let document = document.ok_or_else(|| "Invalid document".to_string())?;
 					let layer = document.graphene_document.layer(layer_path).map_err(|e| format!("No layer: {e:?}"))?;
@@ -452,7 +452,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 					assert_ne!(proto_network.nodes.len(), 0, "No protonodes exist?");
 					for (_id, node) in proto_network.nodes {
 						info!("Inserting proto node {:?}", node);
-						graph_craft::node_registry::push_node(node, &stack);
+						interpreted_executor::node_registry::push_node(node, &stack);
 					}
 
 					use borrow_stack::BorrowStack;
@@ -484,7 +484,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 							.into(),
 						);
 						let mime = "image/bmp".to_string();
-						let image_data = std::rc::Rc::new(image_data);
+						let image_data = std::sync::Arc::new(image_data);
 						responses.push_back(
 							FrontendMessage::UpdateImageData {
 								document_id,

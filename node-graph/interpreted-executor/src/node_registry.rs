@@ -3,19 +3,19 @@ use glam::DVec2;
 use graphene_core::generic::FnNode;
 use graphene_core::ops::{AddNode, IdNode};
 use graphene_core::raster::color::Color;
+use graphene_core::raster::Image;
 use graphene_core::structural::{ConsNode, Then};
+use graphene_core::vector::subpath::Subpath;
 use graphene_core::Node;
 use graphene_std::any::DowncastBothNode;
 use graphene_std::any::{Any, DowncastNode, DynAnyNode, IntoTypeErasedNode, TypeErasedNode};
-use graphene_std::raster::Image;
-use graphene_std::vector::subpath::Subpath;
 
-use crate::proto::Type;
-use crate::proto::{ConstructionArgs, NodeIdentifier, ProtoNode, ProtoNodeInput};
+use graph_craft::proto::Type;
+use graph_craft::proto::{ConstructionArgs, NodeIdentifier, ProtoNode, ProtoNodeInput};
 
 type NodeConstructor = fn(ProtoNode, &FixedSizeStack<TypeErasedNode<'static>>);
 
-use crate::{concrete, generic};
+use graph_craft::{concrete, generic};
 
 //TODO: turn into hasmap
 static NODE_REGISTRY: &[(NodeIdentifier, NodeConstructor)] = &[
@@ -25,7 +25,7 @@ static NODE_REGISTRY: &[(NodeIdentifier, NodeConstructor)] = &[
 				let pre_node = nodes.get(pre_id as usize).unwrap();
 				pre_node.into_type_erased()
 			} else {
-				graphene_core::ops::IdNode.into_type_erased()
+				IdNode.into_type_erased()
 			}
 		})
 	}),
@@ -35,7 +35,7 @@ static NODE_REGISTRY: &[(NodeIdentifier, NodeConstructor)] = &[
 				let pre_node = nodes.get(pre_id as usize).unwrap();
 				pre_node.into_type_erased()
 			} else {
-				graphene_core::ops::IdNode.into_type_erased()
+				IdNode.into_type_erased()
 			}
 		})
 	}),
@@ -221,6 +221,54 @@ static NODE_REGISTRY: &[(NodeIdentifier, NodeConstructor)] = &[
 			}
 		})
 	}),
+	#[cfg(feature = "gpu")]
+	(
+		NodeIdentifier::new("graphene_std::executor::MapGpuNode", &[concrete!("&TypeErasedNode"), concrete!("Color"), concrete!("Color")]),
+		|proto_node, stack| {
+			if let ConstructionArgs::Nodes(operation_node_id) = proto_node.construction_args {
+				stack.push_fn(move |nodes| {
+					info!("Map image Depending upon id {:?}", operation_node_id);
+					let operation_node = nodes.get(operation_node_id[0] as usize).unwrap();
+					let input_node: DowncastBothNode<_, (), &graph_craft::document::NodeNetwork> = DowncastBothNode::new(operation_node);
+					let map_node: graphene_std::executor::MapGpuNode<_, Vec<u32>, u32, u32> = graphene_std::executor::MapGpuNode::new(input_node);
+					let map_node = DynAnyNode::new(map_node);
+
+					if let ProtoNodeInput::Node(node_id) = proto_node.input {
+						let pre_node = nodes.get(node_id as usize).unwrap();
+						(pre_node).then(map_node).into_type_erased()
+					} else {
+						map_node.into_type_erased()
+					}
+				})
+			} else {
+				unimplemented!()
+			}
+		},
+	),
+	#[cfg(feature = "gpu")]
+	(
+		NodeIdentifier::new("graphene_std::executor::MapGpuSingleImageNode", &[concrete!("&TypeErasedNode")]),
+		|proto_node, stack| {
+			if let ConstructionArgs::Nodes(operation_node_id) = proto_node.construction_args {
+				stack.push_fn(move |nodes| {
+					info!("Map image Depending upon id {:?}", operation_node_id);
+					let operation_node = nodes.get(operation_node_id[0] as usize).unwrap();
+					let input_node: DowncastBothNode<_, (), String> = DowncastBothNode::new(operation_node);
+					let map_node = graphene_std::executor::MapGpuSingleImageNode(input_node);
+					let map_node = DynAnyNode::new(map_node);
+
+					if let ProtoNodeInput::Node(node_id) = proto_node.input {
+						let pre_node = nodes.get(node_id as usize).unwrap();
+						(pre_node).then(map_node).into_type_erased()
+					} else {
+						map_node.into_type_erased()
+					}
+				})
+			} else {
+				unimplemented!()
+			}
+		},
+	),
 	(NodeIdentifier::new("graphene_std::raster::MapImageNode", &[]), |proto_node, stack| {
 		if let ConstructionArgs::Nodes(operation_node_id) = proto_node.construction_args {
 			stack.push_fn(move |nodes| {
@@ -442,7 +490,7 @@ pub fn push_node<'a>(proto_node: ProtoNode, stack: &'a FixedSizeStack<TypeErased
 			.filter(|id| id.name.as_ref() == proto_node.identifier.name.as_ref())
 			.collect::<Vec<_>>();
 		panic!(
-			"NodeImplementation: {:?} not found in Registry types for which the node is implemented:\n {:#?}",
+			"NodeImplementation: {:?} not found in Registry. Types for which the node is implemented:\n {:#?}",
 			proto_node.identifier, other_types
 		);
 	}

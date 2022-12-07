@@ -17,6 +17,8 @@ pub enum FrontendGraphDataType {
 	Raster,
 	#[serde(rename = "color")]
 	Color,
+	#[serde(rename = "text")]
+	Text,
 	#[serde(rename = "vector")]
 	Subpath,
 	#[serde(rename = "number")]

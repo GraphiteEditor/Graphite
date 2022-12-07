@@ -5,6 +5,7 @@ use std::sync::Mutex;
 
 pub mod value;
 
+use dyn_any::{DynAny, StaticType};
 use rand_chacha::{
 	rand_core::{RngCore, SeedableRng},
 	ChaCha20Rng,
@@ -138,7 +139,7 @@ pub enum DocumentNodeImplementation {
 	Unresolved(NodeIdentifier),
 }
 
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct NodeNetwork {
 	pub inputs: Vec<NodeId>,

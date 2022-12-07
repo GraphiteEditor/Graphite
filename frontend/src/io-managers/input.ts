@@ -30,7 +30,7 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	const listeners: { target: EventListenerTarget; eventName: EventName; action: (event: any) => void; options?: boolean | AddEventListenerOptions }[] = [
 		{ target: window, eventName: "resize", action: (): void => onWindowResize(container) },
-		{ target: window, eventName: "beforeunload", action: (e: BeforeUnloadEvent): void => onBeforeUnload(e) },
+		{ target: window, eventName: "beforeunload", action: (e: BeforeUnloadEvent): Promise<void> => onBeforeUnload(e) },
 		{ target: window.document, eventName: "contextmenu", action: (e: MouseEvent): void => e.preventDefault() },
 		{ target: window.document, eventName: "fullscreenchange", action: (): void => fullscreen.fullscreenModeChanged() },
 		{ target: window, eventName: "keyup", action: (e: KeyboardEvent): Promise<void> => onKeyUp(e) },
@@ -235,15 +235,15 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 		if (boundsOfViewports.length > 0) editor.instance.boundsOfViewports(data);
 	}
 
-	function onBeforeUnload(e: BeforeUnloadEvent): void {
+	async function onBeforeUnload(e: BeforeUnloadEvent): Promise<void> {
 		const activeDocument = document.state.documents[document.state.activeDocumentIndex];
 		if (activeDocument && !activeDocument.isAutoSaved) editor.instance.triggerAutoSave(activeDocument.id);
 
 		// Skip the message if the editor crashed, since work is already lost
-		if (editor.instance.hasCrashed()) return;
+		if (await editor.instance.hasCrashed()) return;
 
 		// Skip the message during development, since it's annoying when testing
-		if (editor.instance.inDevelopmentMode()) return;
+		if (await editor.instance.inDevelopmentMode()) return;
 
 		const allDocumentsSaved = document.state.documents.reduce((acc, doc) => acc && doc.isSaved, true);
 		if (!allDocumentsSaved) {

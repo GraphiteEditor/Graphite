@@ -127,7 +127,7 @@ import { defineComponent, type PropType } from "vue";
 
 import { type IconName } from "@/utility-functions/icons";
 import { platformIsMac } from "@/utility-functions/platform";
-import { type KeyRaw, type KeysGroup, type Key, type MouseMotion } from "@/wasm-communication/messages";
+import { type KeyRaw, type LayoutKeysGroup, type Key, type MouseMotion } from "@/wasm-communication/messages";
 
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
@@ -158,7 +158,7 @@ const ICON_WIDTHS = {
 export default defineComponent({
 	inject: ["fullscreen"],
 	props: {
-		keysWithLabelsGroups: { type: Array as PropType<KeysGroup[]>, default: () => [] },
+		keysWithLabelsGroups: { type: Array as PropType<LayoutKeysGroup[]>, default: () => [] },
 		mouseMotion: { type: String as PropType<MouseMotion | undefined>, required: false },
 		requiresLock: { type: Boolean as PropType<boolean>, default: false },
 	},
@@ -182,7 +182,7 @@ export default defineComponent({
 		},
 	},
 	methods: {
-		keyTextOrIconList(keyGroup: KeysGroup): LabelData[] {
+		keyTextOrIconList(keyGroup: LayoutKeysGroup): LabelData[] {
 			return keyGroup.map((key) => this.keyTextOrIcon(key));
 		},
 		keyTextOrIcon(keyWithLabel: Key): LabelData {

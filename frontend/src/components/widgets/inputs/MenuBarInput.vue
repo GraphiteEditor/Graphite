@@ -68,7 +68,7 @@
 import { defineComponent } from "vue";
 
 import { platformIsMac } from "@/utility-functions/platform";
-import { type KeyRaw, type KeysGroup, type MenuBarEntry, type MenuListEntry, UpdateMenuBarLayout } from "@/wasm-communication/messages";
+import { type KeyRaw, type LayoutKeysGroup, type MenuBarEntry, type MenuListEntry, UpdateMenuBarLayout } from "@/wasm-communication/messages";
 
 import MenuList from "@/components/floating-menus/MenuList.vue";
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
@@ -92,7 +92,7 @@ export default defineComponent({
 	mounted() {
 		this.editor.subscriptions.subscribeJsMessage(UpdateMenuBarLayout, (updateMenuBarLayout) => {
 			const arraysEqual = (a: KeyRaw[], b: KeyRaw[]): boolean => a.length === b.length && a.every((aValue, i) => aValue === b[i]);
-			const shortcutRequiresLock = (shortcut: KeysGroup): boolean => {
+			const shortcutRequiresLock = (shortcut: LayoutKeysGroup): boolean => {
 				const shortcutKeys = shortcut.map((keyWithLabel) => keyWithLabel.key);
 
 				// If this shortcut matches any of the browser-reserved shortcuts

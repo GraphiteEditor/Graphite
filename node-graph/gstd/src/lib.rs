@@ -9,8 +9,10 @@ extern crate log;
 pub mod memo;
 
 pub mod raster;
-pub mod vector;
 
 pub mod any;
+
+#[cfg(feature = "gpu")]
+pub mod executor;
 
 pub use graphene_core::*;
