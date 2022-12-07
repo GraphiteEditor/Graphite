@@ -2,14 +2,11 @@ use super::{node_properties, FrontendGraphDataType, FrontendNodeType};
 use crate::messages::layout::utility_types::layout_widget::{LayoutGroup, Widget, WidgetHolder};
 use crate::messages::layout::utility_types::widgets::label_widgets::TextLabel;
 
-use glam::DVec2;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, NodeId, NodeInput};
 use graph_craft::proto::{NodeIdentifier, Type};
+use graph_craft::concrete;
 use graphene_core::raster::Image;
-use graphene_core::vector::subpath::Subpath;
-
-use std::borrow::Cow;
 
 pub struct DocumentInputType {
 	pub name: &'static str,
@@ -41,7 +38,7 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 	DocumentNodeType {
 		name: "Identity",
 		category: "General",
-		identifier: NodeIdentifier::new("graphene_core::ops::IdNode", &[Type::Concrete(Cow::Borrowed("Any<'_>"))]),
+		identifier: NodeIdentifier::new("graphene_core::ops::IdNode", &[concrete!("Any<'_>")]),
 		inputs: &[DocumentInputType {
 			name: "In",
 			data_type: FrontendGraphDataType::General,
@@ -60,7 +57,7 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 	DocumentNodeType {
 		name: "Input",
 		category: "Meta",
-		identifier: NodeIdentifier::new("graphene_core::ops::IdNode", &[Type::Concrete(Cow::Borrowed("Any<'_>"))]),
+		identifier: NodeIdentifier::new("graphene_core::ops::IdNode", &[concrete!("Any<'_>")]),
 		inputs: &[DocumentInputType {
 			name: "In",
 			data_type: FrontendGraphDataType::Raster,
@@ -72,7 +69,7 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 	DocumentNodeType {
 		name: "Output",
 		category: "Meta",
-		identifier: NodeIdentifier::new("graphene_core::ops::IdNode", &[Type::Concrete(Cow::Borrowed("Any<'_>"))]),
+		identifier: NodeIdentifier::new("graphene_core::ops::IdNode", &[concrete!("Any<'_>")]),
 		inputs: &[DocumentInputType {
 			name: "In",
 			data_type: FrontendGraphDataType::Raster,
@@ -94,6 +91,25 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 		properties: node_properties::no_properties,
 	},
 	DocumentNodeType {
+		name: "GpuImage",
+		category: "Image Adjustments",
+		identifier: NodeIdentifier::new("graphene_std::executor::MapGpuSingleImageNode", &[concrete!("&TypeErasedNode")]),
+		inputs: &[
+			DocumentInputType {
+				name: "Image",
+				data_type: FrontendGraphDataType::Raster,
+				default: NodeInput::value(TaggedValue::Image(Image::empty()), true),
+			},
+			DocumentInputType {
+				name: "Path",
+				data_type: FrontendGraphDataType::Text,
+				default: NodeInput::value(TaggedValue::String(String::new()), true),
+			},
+		],
+		outputs: &[FrontendGraphDataType::Raster],
+		properties: node_properties::gpu_map_properties,
+	},
+	DocumentNodeType {
 		name: "Invert RGB",
 		category: "Image Adjustments",
 		identifier: NodeIdentifier::new("graphene_std::raster::InvertRGBNode", &[]),
@@ -108,7 +124,7 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 	DocumentNodeType {
 		name: "Hue/Saturation",
 		category: "Image Adjustments",
-		identifier: NodeIdentifier::new("graphene_std::raster::HueSaturationNode", &[Type::Concrete(Cow::Borrowed("&TypeErasedNode"))]),
+		identifier: NodeIdentifier::new("graphene_std::raster::HueSaturationNode", &[concrete!("&TypeErasedNode")]),
 		inputs: &[
 			DocumentInputType {
 				name: "Image",
@@ -137,7 +153,7 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 	DocumentNodeType {
 		name: "Brightness/Contrast",
 		category: "Image Adjustments",
-		identifier: NodeIdentifier::new("graphene_std::raster::BrightnessContrastNode", &[Type::Concrete(Cow::Borrowed("&TypeErasedNode"))]),
+		identifier: NodeIdentifier::new("graphene_std::raster::BrightnessContrastNode", &[concrete!("&TypeErasedNode")]),
 		inputs: &[
 			DocumentInputType {
 				name: "Image",
@@ -161,7 +177,7 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 	DocumentNodeType {
 		name: "Gamma",
 		category: "Image Adjustments",
-		identifier: NodeIdentifier::new("graphene_std::raster::GammaNode", &[Type::Concrete(Cow::Borrowed("&TypeErasedNode"))]),
+		identifier: NodeIdentifier::new("graphene_std::raster::GammaNode", &[concrete!("&TypeErasedNode")]),
 		inputs: &[
 			DocumentInputType {
 				name: "Image",
@@ -180,7 +196,7 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 	DocumentNodeType {
 		name: "Opacity",
 		category: "Image Adjustments",
-		identifier: NodeIdentifier::new("graphene_std::raster::OpacityNode", &[Type::Concrete(Cow::Borrowed("&TypeErasedNode"))]),
+		identifier: NodeIdentifier::new("graphene_std::raster::OpacityNode", &[concrete!("&TypeErasedNode")]),
 		inputs: &[
 			DocumentInputType {
 				name: "Image",
@@ -199,7 +215,7 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 	DocumentNodeType {
 		name: "Posterize",
 		category: "Image Adjustments",
-		identifier: NodeIdentifier::new("graphene_std::raster::PosterizeNode", &[Type::Concrete(Cow::Borrowed("&TypeErasedNode"))]),
+		identifier: NodeIdentifier::new("graphene_std::raster::PosterizeNode", &[concrete!("&TypeErasedNode")]),
 		inputs: &[
 			DocumentInputType {
 				name: "Image",
@@ -218,7 +234,7 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 	DocumentNodeType {
 		name: "Exposure",
 		category: "Image Adjustments",
-		identifier: NodeIdentifier::new("graphene_std::raster::ExposureNode", &[Type::Concrete(Cow::Borrowed("&TypeErasedNode"))]),
+		identifier: NodeIdentifier::new("graphene_std::raster::ExposureNode", &[concrete!("&TypeErasedNode")]),
 		inputs: &[
 			DocumentInputType {
 				name: "Image",
@@ -237,7 +253,7 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 	DocumentNodeType {
 		name: "Add",
 		category: "Math",
-		identifier: NodeIdentifier::new("graphene_core::ops::AddNode", &[Type::Concrete(Cow::Borrowed("&TypeErasedNode"))]),
+		identifier: NodeIdentifier::new("graphene_core::ops::AddNode", &[concrete!("&TypeErasedNode")]),
 		inputs: &[
 			DocumentInputType {
 				name: "Input",
@@ -272,7 +288,7 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 	DocumentNodeType {
 		name: "Path Generator",
 		category: "Vector",
-		identifier: NodeIdentifier::new("graphene_core::ops::IdNode", &[Type::Concrete(Cow::Borrowed("Any<'_>"))]),
+		identifier: NodeIdentifier::new("graphene_core::ops::IdNode", &[concrete!("Any<'_>")]),
 		inputs: &[DocumentInputType {
 			name: "Path Data",
 			data_type: FrontendGraphDataType::Subpath,

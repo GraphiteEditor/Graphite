@@ -12,7 +12,7 @@ license = "MIT OR Apache-2.0"
 derive = ["graph-proc-macros"]
 memoization = ["once_cell"]
 default = ["derive", "memoization"]
-gpu = ["graph-craft/gpu"]
+gpu = ["graph-craft/gpu", "graphene-core/gpu"]
 
 
 [dependencies]
@@ -22,6 +22,7 @@ dyn-any = {path = "../../libraries/dyn-any", features = ["derive"]}
 graph-proc-macros = {path = "../proc-macro", optional = true}
 graph-craft = {path = "../graph-craft"}
 bytemuck = {version = "1.8"  }
+tempfile = "3"
 once_cell = {version= "1.10", optional = true}
 #pretty-token-stream = {path = "../../pretty-token-stream"}
 syn = {version = "1.0", default-features = false, features = ["parsing", "printing"]}

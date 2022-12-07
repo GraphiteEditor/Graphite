@@ -21,6 +21,12 @@ impl<'n> Node<Color> for &'n GrayscaleColorNode {
 	}
 }
 
+impl GrayscaleColorNode {
+	pub fn new() -> Self {
+		Self
+	}
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct BrightenColorNode<N: Node<(), Output = f32>>(N);
 

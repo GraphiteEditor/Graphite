@@ -30,7 +30,9 @@ where
 		input.borrow().hash(&mut hasher);
 		let hash = hasher.finish();
 
-		self.map.get_or_create_with(&hash, || CacheNode::new(self.node))
+		self.map.get_or_create_with(&hash, ||{
+			trace!("Creating new cache node");
+			CacheNode::new(self.node)})
 	}
 }
 

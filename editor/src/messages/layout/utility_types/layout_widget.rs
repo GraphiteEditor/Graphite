@@ -41,7 +41,7 @@ impl Layout {
 			let apply_shortcut_to_tooltip = |tooltip_shortcut: &mut ActionKeys, tooltip: &mut String| {
 				let shortcut_text = tooltip_shortcut.to_keys(action_input_mapping);
 
-				if let ActionKeys::Keys(keys) = tooltip_shortcut {
+				if let ActionKeys::Keys(_keys) = tooltip_shortcut {
 					if !shortcut_text.is_empty() {
 						if !tooltip.is_empty() {
 							tooltip.push(' ');

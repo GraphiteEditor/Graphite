@@ -91,7 +91,7 @@ fn execute_shader<I: Pod + Send + Sync, O: Pod + Send + Sync>(
 		.bind_pipeline_compute(compute_pipeline.clone())
 		.bind_descriptor_sets(PipelineBindPoint::Compute, compute_pipeline.layout().clone(), 0, set)
 		.push_constants(compute_pipeline.layout().clone(), 0, constants)
-		.dispatch([1024, 1, 1])
+		.dispatch([((constants.n as isize - 1) / 1024 + 1) as u32 * 1024, 1, 1])
 		.unwrap();
 	let command_buffer = builder.build().unwrap();
 

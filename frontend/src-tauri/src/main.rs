@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use axum::body::{BoxBody, Bytes, StreamBody};
+use axum::body::StreamBody;
 use axum::extract::Path;
 use axum::http;
 use axum::response::IntoResponse;
@@ -16,16 +16,11 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 use tauri::Manager;
 
-enum Message {
-	Provide((String, Vec<u8>)),
-	Remove(String),
-}
-
 static IMAGES: Mutex<Option<HashMap<String, FrontendImageData>>> = Mutex::new(None);
 static EDITOR: Mutex<Option<Editor>> = Mutex::new(None);
 
 async fn respond_to(id: Path<String>) -> impl IntoResponse {
-	let mut builder = Response::builder().header("Access-Control-Allow-Origin", "*").status(StatusCode::OK);
+	let builder = Response::builder().header("Access-Control-Allow-Origin", "*").status(StatusCode::OK);
 
 	let guard = IMAGES.lock().unwrap();
 	let images = guard;

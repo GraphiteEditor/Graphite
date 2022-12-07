@@ -11,7 +11,7 @@ repository = "https://github.com/GraphiteEditor/Graphite"
 license = "Apache-2.0"
 
 [features]
-gpu = ["graph-craft/gpu"]
+gpu = ["graph-craft/gpu", "interpreted-executor/gpu"]
 
 [dependencies]
 log = "0.4"

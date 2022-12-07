@@ -3,7 +3,7 @@ use core::marker::PhantomData;
 use dyn_any::StaticTypeSized;
 use graph_craft::document::*;
 use graph_craft::proto::*;
-use graphene_core::{ops::CloneNode, raster::Image, structural::Then, value::ValueNode, Node};
+use graphene_core::{raster::Image,  value::ValueNode, Node};
 
 pub struct MapGpuNode<NN: Node<()>, I: IntoIterator<Item = S>, S: StaticTypeSized + Sync + Send + Pod, O: StaticTypeSized + Sync + Send + Pod>(pub NN, PhantomData<(S, I, O)>);
 
@@ -21,7 +21,7 @@ impl<'n, I: IntoIterator<Item = S>, NN: Node<(), Output = &'n NodeNetwork> + Cop
 		let proto_network = compiler.compile(network.clone(), true);
 
 		let m = Metadata::new("project".to_owned(), vec!["test@example.com".to_owned()]);
-		let temp_dir = tempdir::TempDir::new("graphite_compile").unwrap();
+		let temp_dir = tempfile::tempdir().expect("failed to create tempdir");
 
 		use graph_craft::gpu::context::Context;
 		use graph_craft::gpu::executor::GpuExecutor;
@@ -45,7 +45,7 @@ impl<'n, I: IntoIterator<Item = S>, NN: Node<(), Output = &'n NodeNetwork> + Cop
 		let proto_network = compiler.compile(network.clone(), true);
 
 		let m = Metadata::new("project".to_owned(), vec!["test@example.com".to_owned()]);
-		let temp_dir = tempdir::TempDir::new("graphite_compile").unwrap();
+		let temp_dir = tempfile::tempdir().expect("failed to create tempdir");
 
 		use graph_craft::gpu::context::Context;
 		use graph_craft::gpu::executor::GpuExecutor;

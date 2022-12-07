@@ -147,8 +147,6 @@ impl JsEditorHandle {
 
 	#[wasm_bindgen(js_name = initAfterFrontendReady)]
 	pub fn init_after_frontend_ready(&self, platform: String) {
-		#[cfg(feature = "tauri")]
-		let platform = "Linux".to_string();
 		let platform = match platform.as_str() {
 			"Windows" => Platform::Windows,
 			"Mac" => Platform::Mac,

@@ -19,7 +19,7 @@
 			"category": "DeveloperTool",
 			"copyright": "",
 			"deb": {
-				"depends": []
+				"depends": ["librustc_codegen_spirv"]
 			},
 			"externalBin": [],
 			"icon": [

@@ -4,7 +4,6 @@ use crate::messages::prelude::*;
 pub use graphene::DocumentResponse;
 
 use bitflags::bitflags;
-use serde::ser::SerializeStruct;
 use serde::{Deserialize, Serialize};
 use std::fmt::{self, Display, Formatter};
 use std::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign};

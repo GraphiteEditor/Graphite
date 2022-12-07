@@ -490,7 +490,7 @@ pub fn push_node<'a>(proto_node: ProtoNode, stack: &'a FixedSizeStack<TypeErased
 			.filter(|id| id.name.as_ref() == proto_node.identifier.name.as_ref())
 			.collect::<Vec<_>>();
 		panic!(
-			"NodeImplementation: {:?} not found in Registry types for which the node is implemented:\n {:#?}",
+			"NodeImplementation: {:?} not found in Registry. Types for which the node is implemented:\n {:#?}",
 			proto_node.identifier, other_types
 		);
 	}
