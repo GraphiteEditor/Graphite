@@ -28,8 +28,10 @@ jobs:
         npm ci
 
     - name: 🔧 Install libgtk
-      run: |
-        apt-get -y update && apt-get -y install libgtk-3-0
+      uses: awalsh128/cache-apt-pkgs-action@latest
+      with:
+        packages: libgtk-3-0
+        version: 1.0
 
     - name: 🔼 Update Rust to latest stable
       run: |
