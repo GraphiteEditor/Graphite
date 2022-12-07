@@ -41,8 +41,8 @@ export async function fetchImage(path: BigUint64Array, mime: string, documentId:
 }
 
 // export async function dispatchTauri(message: string): Promise<string> {
-export async function dispatchTauri(message: string): Promise<void> {
-	const response: string = await invoke("handle_message", { message });
+export async function dispatchTauri(message: any): Promise<void> {
+	const response = await invoke("handle_message", { message });
 
 	editorInstance?.tauriResponse(response);
 }
