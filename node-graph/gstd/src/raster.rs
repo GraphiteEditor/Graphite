@@ -1,7 +1,7 @@
 use core::marker::PhantomData;
 use dyn_any::{DynAny, StaticType};
 use graphene_core::ops::FlatMapResultNode;
-use graphene_core::raster::color::Color;
+use graphene_core::raster::{Color, Image};
 use graphene_core::structural::{ComposeNode, ConsNode};
 use graphene_core::{generic::FnNode, ops::MapResultNode, structural::Then, value::ValueNode, Node};
 use image::Pixel;
@@ -95,40 +95,6 @@ impl<Reader: std::io::Read> Node<Reader> for BufferNode {
 		let mut buffer = Vec::new();
 		reader.read_to_end(&mut buffer)?;
 		Ok(buffer)
-	}
-}
-
-#[derive(Clone, Debug, PartialEq, DynAny, Default)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct Image {
-	pub width: u32,
-	pub height: u32,
-	pub data: Vec<Color>,
-}
-
-impl Image {
-	pub const fn empty() -> Self {
-		Self {
-			width: 0,
-			height: 0,
-			data: Vec::new(),
-		}
-	}
-}
-
-impl IntoIterator for Image {
-	type Item = Color;
-	type IntoIter = std::vec::IntoIter<Color>;
-	fn into_iter(self) -> Self::IntoIter {
-		self.data.into_iter()
-	}
-}
-
-impl<'a> IntoIterator for &'a Image {
-	type Item = &'a Color;
-	type IntoIter = std::slice::Iter<'a, Color>;
-	fn into_iter(self) -> Self::IntoIter {
-		self.data.iter()
 	}
 }
 

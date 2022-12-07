@@ -49,6 +49,7 @@ notice = "warn"
 # output a note when they are encountered.
 ignore = [
     #"RUSTSEC-0000-0000",
+	"RUSTSEC-2020-0071", # This has been fixed in the version of chrono we use
 ]
 # Threshold for security vulnerabilities, any vulnerability with a CVSS score
 # lower than the range specified will be ignored. Note that ignored advisories
@@ -71,13 +72,14 @@ unlicensed = "deny"
 # [possible values: any SPDX 3.11 short identifier (+ optional exception)].
 allow = [
     "MIT",
+    "MIT-0",
     "Apache-2.0",
     "BSD-3-Clause",
     "BSD-2-Clause",
     "Zlib",
-	"Zlib",
 	"Unicode-DFS-2016",
 	"ISC",
+	"MPL-2.0",
     #"Apache-2.0 WITH LLVM-exception",
 ]
 # List of explicitly disallowed licenses

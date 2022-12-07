@@ -321,16 +321,11 @@ impl ProtoNetwork {
 	}
 
 	fn replace_node_references(&mut self, lookup: &HashMap<u64, u64>) {
-		self.nodes.iter_mut().for_each(|(sid, node)| {
+		self.nodes.iter_mut().for_each(|(_, node)| {
 			node.map_ids(|id| *lookup.get(&id).expect("node not found in lookup table"));
 		});
 		self.inputs = self.inputs.iter().map(|id| *lookup.get(id).unwrap()).collect();
 		self.output = *lookup.get(&self.output).unwrap();
-	}
-
-	fn replace_ids_with_lookup(&mut self, lookup: HashMap<u64, u64>) {
-		self.nodes.iter_mut().for_each(|(id, _)| *id = *lookup.get(id).unwrap());
-		self.replace_node_references(&lookup);
 	}
 }
 

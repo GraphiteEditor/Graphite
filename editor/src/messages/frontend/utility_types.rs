@@ -16,7 +16,7 @@ pub struct FrontendImageData {
 	pub path: Vec<LayerId>,
 	pub mime: String,
 	#[serde(skip)]
-	pub image_data: std::rc::Rc<Vec<u8>>,
+	pub image_data: std::sync::Arc<Vec<u8>>,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]

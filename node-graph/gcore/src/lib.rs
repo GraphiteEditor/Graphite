@@ -1,6 +1,11 @@
 #![no_std]
-#[cfg(feature = "async")]
+
+#[cfg(feature = "alloc")]
 extern crate alloc;
+
+#[cfg_attr(feature = "log", macro_use)]
+#[cfg(feature = "log")]
+extern crate log;
 
 #[cfg(feature = "async")]
 use alloc::boxed::Box;
@@ -16,6 +21,9 @@ pub mod value;
 pub mod gpu;
 
 pub mod raster;
+
+#[cfg(feature = "alloc")]
+pub mod vector;
 
 pub trait Node<T> {
 	type Output;

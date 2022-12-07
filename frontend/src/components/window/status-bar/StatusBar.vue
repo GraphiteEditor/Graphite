@@ -49,7 +49,7 @@
 import { defineComponent } from "vue";
 
 import { platformIsMac } from "@/utility-functions/platform";
-import { type HintData, type HintInfo, type KeysGroup, UpdateInputHints } from "@/wasm-communication/messages";
+import { type HintData, type HintInfo, type LayoutKeysGroup, UpdateInputHints } from "@/wasm-communication/messages";
 
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 import Separator from "@/components/widgets/labels/Separator.vue";
@@ -63,7 +63,7 @@ export default defineComponent({
 		};
 	},
 	methods: {
-		inputKeysForPlatform(hint: HintInfo): KeysGroup[] {
+		inputKeysForPlatform(hint: HintInfo): LayoutKeysGroup[] {
 			if (platformIsMac() && hint.keyGroupsMac) return hint.keyGroupsMac;
 			return hint.keyGroups;
 		},

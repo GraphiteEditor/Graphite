@@ -1,7 +1,5 @@
-use std::sync::Arc;
-
+use crate::Node;
 use glam::{DAffine2, DVec2};
-use graphene_core::Node;
 
 use super::subpath::Subpath;
 
@@ -40,8 +38,10 @@ impl Node<()> for &UnitSquareGenerator {
 	}
 }
 
+// TODO: I removed the Arc requirement we shouuld think about when it makes sense to use its
+// vs making a generic value node
 #[derive(Debug, Clone)]
-pub struct PathGenerator(Arc<Subpath>);
+pub struct PathGenerator(Subpath);
 
 impl Node<()> for PathGenerator {
 	type Output = VectorData;
@@ -53,7 +53,7 @@ impl Node<()> for PathGenerator {
 impl Node<()> for &PathGenerator {
 	type Output = VectorData;
 	fn eval(self, _input: ()) -> Self::Output {
-		(*self.0).clone()
+		(self.0).clone()
 	}
 }
 use crate::raster::Image;
@@ -65,7 +65,7 @@ impl<N: Node<(), Output = Subpath>> Node<Image> for BlitSubpath<N> {
 	type Output = Image;
 	fn eval(self, input: Image) -> Self::Output {
 		let subpath = self.0.eval(());
-		info!("Blitting subpath {subpath:?}");
+		log::info!("Blitting subpath {subpath:?}");
 		input
 	}
 }
@@ -74,7 +74,7 @@ impl<N: Node<(), Output = Subpath> + Copy> Node<Image> for &BlitSubpath<N> {
 	type Output = Image;
 	fn eval(self, input: Image) -> Self::Output {
 		let subpath = self.0.eval(());
-		info!("Blitting subpath {subpath:?}");
+		log::info!("Blitting subpath {subpath:?}");
 		input
 	}
 }

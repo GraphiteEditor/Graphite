@@ -21,7 +21,7 @@ use graphene::layers::text_layer::{FontCache, TextLayer};
 
 use glam::{DAffine2, DVec2};
 use std::f64::consts::PI;
-use std::rc::Rc;
+use std::sync::Arc;
 
 pub fn apply_transform_operation(layer: &Layer, transform_op: TransformOp, value: f64, font_cache: &FontCache) -> [f64; 6] {
 	let transformation = match transform_op {
@@ -1457,7 +1457,7 @@ fn node_gradient_type(gradient: &Gradient) -> LayoutGroup {
 }
 
 fn node_gradient_color(gradient: &Gradient, position: usize) -> LayoutGroup {
-	let gradient_clone = Rc::new(gradient.clone());
+	let gradient_clone = Arc::new(gradient.clone());
 	let gradient_2 = gradient_clone.clone();
 	let gradient_3 = gradient_clone.clone();
 	let send_fill_message = move |new_gradient: Gradient| PropertiesPanelMessage::ModifyFill { fill: Fill::Gradient(new_gradient) }.into();

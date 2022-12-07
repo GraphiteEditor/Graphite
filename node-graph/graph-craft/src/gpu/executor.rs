@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use super::{compiler::Metadata, context::Context};
-use crate::gpu::compiler;
+use crate::{executor::Any, gpu::compiler};
 use bytemuck::Pod;
 use dyn_any::StaticTypeSized;
 use vulkano::{
@@ -44,7 +44,7 @@ impl<I: StaticTypeSized, O> GpuExecutor<I, O> {
 }
 
 impl<I: StaticTypeSized + Sync + Pod + Send, O: StaticTypeSized + Send + Sync + Pod> crate::executor::Executor for GpuExecutor<I, O> {
-	fn execute(&self, input: graphene_std::any::Any<'static>) -> Result<graphene_std::any::Any<'static>, Box<dyn std::error::Error>> {
+	fn execute(&self, input: Any<'static>) -> Result<Any<'static>, Box<dyn std::error::Error>> {
 		let input = dyn_any::downcast::<Vec<I>>(input).expect("Wrong input type");
 		let context = &self.context;
 		let result: Vec<O> = execute_shader(
@@ -91,7 +91,7 @@ fn execute_shader<I: Pod + Send + Sync, O: Pod + Send + Sync>(
 		.bind_pipeline_compute(compute_pipeline.clone())
 		.bind_descriptor_sets(PipelineBindPoint::Compute, compute_pipeline.layout().clone(), 0, set)
 		.push_constants(compute_pipeline.layout().clone(), 0, constants)
-		.dispatch([1024, 1, 1])
+		.dispatch([((constants.n as isize - 1) / 1024 + 1) as u32 * 1024, 1, 1])
 		.unwrap();
 	let command_buffer = builder.build().unwrap();
 

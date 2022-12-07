@@ -3,13 +3,23 @@ use dyn_any::{DynAny, StaticType};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
+#[cfg(target_arch = "spirv")]
+use spirv_std::num_traits::float::Float;
+
+#[cfg(target_arch = "spirv")]
+use spirv_std::num_traits::Euclid;
+
+#[cfg(feature = "gpu")]
+use bytemuck::{Pod, Zeroable};
+
 /// Structure that represents a color.
 /// Internally alpha is stored as `f32` that ranges from `0.0` (transparent) to `1.0` (opaque).
 /// The other components (RGB) are stored as `f32` that range from `0.0` up to `f32::MAX`,
 /// the values encode the brightness of each channel proportional to the light intensity in cd/m² (nits) in HDR, and `0.0` (black) to `1.0` (white) in SDR color.
 #[repr(C)]
-#[cfg_attr(feature = "std", derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize, DynAny))]
-#[cfg_attr(not(feature = "std"), derive(Debug, Clone, Copy, PartialEq, Default))]
+#[cfg_attr(feature = "std", derive(Serialize, Deserialize, DynAny))]
+#[cfg_attr(feature = "gpu", derive(Pod, Zeroable))]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct Color {
 	red: f32,
 	green: f32,
@@ -92,6 +102,7 @@ impl Color {
 	/// use graphene_core::raster::color::Color;
 	/// let color = Color::from_hsla(0.5, 0.2, 0.3, 1.);
 	/// ```
+	#[cfg(not(target_arch = "spirv"))]
 	pub fn from_hsla(hue: f32, saturation: f32, lightness: f32, alpha: f32) -> Color {
 		let temp1 = if lightness < 0.5 {
 			lightness * (saturation + 1.)
@@ -219,7 +230,10 @@ impl Color {
 		} else {
 			4. + (self.red - self.green) / (max_channel - min_channel)
 		} / 6.;
+		#[cfg(not(target_arch = "spirv"))]
 		let hue = hue.rem_euclid(1.);
+		#[cfg(target_arch = "spirv")]
+		let hue = hue.rem_euclid(&1.);
 
 		[hue, saturation, lightness, self.alpha]
 	}

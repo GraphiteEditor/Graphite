@@ -11,4 +11,4 @@ homepage = "https://graphite.rs/libraries/bezier-rs"
 repository = "https://github.com/GraphiteEditor/Graphite/libraries/bezier-rs"
 
 [dependencies]
-glam = { version = "0.17", features = ["serde"] }
+glam = { version = "0.22", features = ["serde"] }

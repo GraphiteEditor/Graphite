@@ -600,7 +600,7 @@ impl Document {
 				image_data,
 				mime,
 			} => {
-				let image_data = std::rc::Rc::new(image_data);
+				let image_data = std::sync::Arc::new(image_data);
 				let layer = Layer::new(LayerDataType::Image(ImageLayer::new(mime, image_data)), transform);
 
 				self.set_layer(&path, layer, insert_index)?;
@@ -624,7 +624,7 @@ impl Document {
 			Operation::SetNodeGraphFrameImageData { layer_path, image_data } => {
 				let layer = self.layer_mut(&layer_path).expect("Setting NodeGraphFrame image data for invalid layer");
 				if let LayerDataType::NodeGraphFrame(node_graph_frame) = &mut layer.data {
-					let image_data = std::rc::Rc::new(image_data);
+					let image_data = std::sync::Arc::new(image_data);
 					node_graph_frame.image_data = Some(crate::layers::nodegraph_layer::ImageData { image_data });
 				} else {
 					panic!("Incorrectly trying to set image data for a layer that is not an NodeGraphFrame layer type");
@@ -850,7 +850,7 @@ impl Document {
 			Operation::ImaginateSetImageData { layer_path, image_data } => {
 				let layer = self.layer_mut(&layer_path).expect("Setting Imaginate image data for invalid layer");
 				if let LayerDataType::Imaginate(imaginate) = &mut layer.data {
-					let image_data = std::rc::Rc::new(image_data);
+					let image_data = std::sync::Arc::new(image_data);
 					imaginate.image_data = Some(ImaginateImageData { image_data });
 				} else {
 					panic!("Incorrectly trying to set image data for a layer that is not an Imaginate layer type");

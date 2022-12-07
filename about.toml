@@ -1,11 +1,14 @@
 accepted = [
 	"Apache-2.0",
 	"MIT",
+	"MIT-0",
+	"BSD-2-Clause",
 	"BSD-3-Clause",
 	"BSD-2-Clause",
 	"Zlib",
 	"Unicode-DFS-2016",
 	"ISC",
+	"MPL-2.0",
 ]
 ignore-build-dependencies = true
 ignore-dev-dependencies = true
