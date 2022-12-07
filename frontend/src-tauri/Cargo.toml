@@ -1,11 +1,11 @@
 [package]
-name = "app"
+name = "graphite-desktop"
 version = "0.1.0"
-description = "A Tauri App"
-authors = ["you"]
-license = ""
+description = "Graphite Desktop"
+authors = ["Graphite Authors <contact@graphite.rs>"]
+license = "Apache-2.0"
 repository = ""
-default-run = "app"
+default-run = "graphite-desktop"
 edition = "2021"
 rust-version = "1.59"
 

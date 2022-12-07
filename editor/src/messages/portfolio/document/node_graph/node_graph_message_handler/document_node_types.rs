@@ -2,10 +2,10 @@ use super::{node_properties, FrontendGraphDataType, FrontendNodeType};
 use crate::messages::layout::utility_types::layout_widget::{LayoutGroup, Widget, WidgetHolder};
 use crate::messages::layout::utility_types::widgets::label_widgets::TextLabel;
 
+use graph_craft::concrete;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, NodeId, NodeInput};
 use graph_craft::proto::{NodeIdentifier, Type};
-use graph_craft::concrete;
 use graphene_core::raster::Image;
 
 pub struct DocumentInputType {

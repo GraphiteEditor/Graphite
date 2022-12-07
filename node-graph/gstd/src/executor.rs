@@ -3,7 +3,7 @@ use core::marker::PhantomData;
 use dyn_any::StaticTypeSized;
 use graph_craft::document::*;
 use graph_craft::proto::*;
-use graphene_core::{raster::Image,  value::ValueNode, Node};
+use graphene_core::{raster::Image, value::ValueNode, Node};
 
 pub struct MapGpuNode<NN: Node<()>, I: IntoIterator<Item = S>, S: StaticTypeSized + Sync + Send + Pod, O: StaticTypeSized + Sync + Send + Pod>(pub NN, PhantomData<(S, I, O)>);
 

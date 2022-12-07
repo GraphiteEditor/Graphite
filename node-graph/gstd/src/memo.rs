@@ -9,7 +9,7 @@ pub struct CacheNode<CachedNode: Node<I>, I> {
 impl<'n, CashedNode: Node<I> + Copy, I> Node<I> for &'n CacheNode<CashedNode, I> {
 	type Output = &'n CashedNode::Output;
 	fn eval(self, input: I) -> Self::Output {
-		self.cache.get_or_init(||{
+		self.cache.get_or_init(|| {
 			trace!("Creating new cache node");
 			self.node.eval(input)
 		})
