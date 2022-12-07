@@ -21,6 +21,12 @@ impl<N: Node<(), Output = u32> + Copy> Node<Image> for &GenerateQuantizationNode
 	}
 }
 
+impl<N: Node<(), Output = u32>> GenerateQuantizationNode<N> {
+    pub fn new(node: N) -> Self {
+        Self(node)
+    }
+}
+
 fn generate_quantization_fn(samples: u32, input: Image) -> Image {
 	let data: Vec<f64> = input
 		.data

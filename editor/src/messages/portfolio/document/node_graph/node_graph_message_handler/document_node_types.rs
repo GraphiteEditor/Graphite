@@ -111,6 +111,25 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 		properties: node_properties::gpu_map_properties,
 	},
 	DocumentNodeType {
+		name: "QuantizeImage",
+		category: "Image Adjustments",
+		identifier: NodeIdentifier::new("graphene_std::quantization::GenerateQuantizationNode", &[concrete!("&TypeErasedNode")]),
+		inputs: &[
+			DocumentInputType {
+				name: "Image",
+				data_type: FrontendGraphDataType::Raster,
+				default: NodeInput::value(TaggedValue::Image(Image::empty()), true),
+			},
+			DocumentInputType {
+				name: "samples",
+				data_type: FrontendGraphDataType::Text,
+				default: NodeInput::value(TaggedValue::U32(100), true),
+			},
+		],
+		outputs: &[FrontendGraphDataType::Raster],
+		properties: node_properties::posterize_properties,
+	},
+	DocumentNodeType {
 		name: "Invert RGB",
 		category: "Image Adjustments",
 		identifier: NodeIdentifier::new("graphene_std::raster::InvertRGBNode", &[]),
