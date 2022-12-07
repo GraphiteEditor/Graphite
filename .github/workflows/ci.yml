@@ -30,7 +30,7 @@ jobs:
     - name: 🔧 Install libgtk
       uses: awalsh128/cache-apt-pkgs-action@latest
       with:
-        packages: libgtk-3-0
+        packages: libgtk-3-dev
         version: 1.0
 
     - name: 🔼 Update Rust to latest stable
