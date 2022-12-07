@@ -159,8 +159,8 @@ impl JsEditorHandle {
 	}
 
 	#[wasm_bindgen(js_name = tauriResponse)]
-	#[cfg(feature = "tauri")]
 	pub fn tauri_response(&self, message: JsValue) {
+		#[cfg(feature = "tauri")]
 		match ron::from_str::<Vec<FrontendMessage>>(&message.as_string().unwrap()) {
 			Ok(response) => {
 				for message in response {
