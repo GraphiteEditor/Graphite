@@ -104,7 +104,7 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 			DocumentInputType {
 				name: "Path",
 				data_type: FrontendGraphDataType::Text,
-				default: NodeInput::value(TaggedValue::String(String::new()), true),
+				default: NodeInput::value(TaggedValue::String(String::new()), false),
 			},
 		],
 		outputs: &[FrontendGraphDataType::Raster],
@@ -122,12 +122,12 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 			},
 			DocumentInputType {
 				name: "samples",
-				data_type: FrontendGraphDataType::Text,
-				default: NodeInput::value(TaggedValue::U32(100), true),
+				data_type: FrontendGraphDataType::Number,
+				default: NodeInput::value(TaggedValue::U32(100), false),
 			},
 		],
 		outputs: &[FrontendGraphDataType::Raster],
-		properties: node_properties::posterize_properties,
+		properties: node_properties::quantize_properties,
 	},
 	DocumentNodeType {
 		name: "Invert RGB",

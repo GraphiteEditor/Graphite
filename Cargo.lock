@@ -171,7 +171,7 @@ checksum = "d468802bab17cbc0cc575e9b053f41e72aa36bfa6b7f55e3529ffa43161b97fa"
 [[package]]
 name = "autoquant"
 version = "0.1.0"
-source = "git+https://github.com/TrueDoctor/autoquant#b496fe52382c1ececee7bfa77fea96d168db38a0"
+source = "git+https://github.com/TrueDoctor/autoquant#6f7aae2d32da28ca60a9f8709a6e1eb496bf89ff"
 dependencies = [
  "anyhow",
  "nalgebra",
