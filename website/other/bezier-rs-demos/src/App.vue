@@ -602,6 +602,13 @@ export default defineComponent({
 					callback: (subpath: WasmSubpathInstance): string => subpath.to_svg(),
 				},
 				{
+					name: "Add manipulator group",
+					callback: (subpath: WasmSubpathInstance, options: Record<string, number>, _: undefined, computeType: ComputeType): string =>
+						subpath.add_manipulator_group(options.computeArgument, computeType),
+					sliderOptions: [{ ...tSliderOptions, variable: "computeArgument" }],
+					chooseComputeType: true,
+				},
+				{
 					name: "Length",
 					callback: (subpath: WasmSubpathInstance): string => subpath.length(),
 				},
