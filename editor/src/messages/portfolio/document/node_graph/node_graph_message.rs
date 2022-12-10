@@ -26,6 +26,9 @@ pub enum NodeGraphMessage {
 	DoubleClickNode {
 		node: NodeId,
 	},
+	ExitNestedNetwork {
+		depth_of_nesting: usize,
+	},
 	ExposeInput {
 		node_id: NodeId,
 		input_index: usize,

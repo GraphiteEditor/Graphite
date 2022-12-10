@@ -375,6 +375,17 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 				let nested_network = self.collect_nested_addresses(document).join(", ");
 				info!("Inside nested network: {nested_network}")
 			}
+			NodeGraphMessage::ExitNestedNetwork { depth_of_nesting } => {
+				self.selected_nodes = Vec::new();
+				for _ in 0..depth_of_nesting {
+					self.nested_path.pop();
+				}
+				if let Some(network) = self.get_active_network_mut(document) {
+					Self::send_graph(network, responses);
+				}
+				let nested_network = self.collect_nested_addresses(document).join(", ");
+				info!("Inside nested network: {nested_network}")
+			}
 			NodeGraphMessage::ExposeInput { node_id, input_index, new_exposed } => {
 				let Some(network) = self.get_active_network_mut(document) else{
 					warn!("No network");
