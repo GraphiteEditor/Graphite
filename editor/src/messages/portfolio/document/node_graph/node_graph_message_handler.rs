@@ -99,16 +99,42 @@ pub struct NodeGraphMessageHandler {
 }
 
 impl NodeGraphMessageHandler {
-	/// Get the active graph_craft NodeNetwork struct
-	fn get_active_network_mut<'a>(&self, document: &'a mut Document) -> Option<&'a mut graph_craft::document::NodeNetwork> {
-		let mut network = self.layer_path.as_ref().and_then(|path| document.layer_mut(path).ok()).and_then(|layer| match &mut layer.data {
+	fn get_root_network<'a>(&self, document: &'a Document) -> Option<&'a graph_craft::document::NodeNetwork> {
+		self.layer_path.as_ref().and_then(|path| document.layer(path).ok()).and_then(|layer| match &layer.data {
+			LayerDataType::NodeGraphFrame(n) => Some(&n.network),
+			_ => None,
+		})
+	}
+
+	fn get_root_network_mut<'a>(&self, document: &'a mut Document) -> Option<&'a mut graph_craft::document::NodeNetwork> {
+		self.layer_path.as_ref().and_then(|path| document.layer_mut(path).ok()).and_then(|layer| match &mut layer.data {
 			LayerDataType::NodeGraphFrame(n) => Some(&mut n.network),
 			_ => None,
-		});
+		})
+	}
+
+	/// Get the active graph_craft NodeNetwork struct
+	fn get_active_network_mut<'a>(&self, document: &'a mut Document) -> Option<&'a mut graph_craft::document::NodeNetwork> {
+		let mut network = self.get_root_network_mut(document);
+
 		for segement in &self.nested_path {
 			network = network.and_then(|network| network.nodes.get_mut(segement)).and_then(|node| node.implementation.get_network_mut());
 		}
 		network
+	}
+
+	/// Collect the addresses of the currently viewed nested node e.g. Root -> MyFunFilter -> Exposure
+	fn collect_nested_addresses(&self, document: &Document) -> Vec<String> {
+		let mut path = vec!["Root".to_string()];
+		let mut network = self.get_root_network(document);
+		for node_id in &self.nested_path {
+			let node = network.and_then(|network| network.nodes.get(node_id));
+			if let Some(DocumentNode { name, .. }) = node {
+				path.push(name.clone());
+			}
+			network = node.and_then(|node| node.implementation.get_network());
+		}
+		path
 	}
 
 	pub fn collate_properties(&self, node_graph_frame: &NodeGraphFrameLayer) -> Vec<LayoutGroup> {
@@ -337,13 +363,17 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 				}
 			}
 			NodeGraphMessage::DoubleClickNode { node } => {
+				self.selected_nodes = Vec::new();
 				if let Some(network) = self.get_active_network_mut(document) {
 					if network.nodes.get(&node).and_then(|node| node.implementation.get_network()).is_some() {
-						self.selected_nodes = Vec::new();
 						self.nested_path.push(node);
-						Self::send_graph(&network, responses);
 					}
 				}
+				if let Some(network) = self.get_active_network_mut(document) {
+					Self::send_graph(network, responses);
+				}
+				let nested_network = self.collect_nested_addresses(document).join(", ");
+				info!("Inside nested network: {nested_network}")
 			}
 			NodeGraphMessage::ExposeInput { node_id, input_index, new_exposed } => {
 				let Some(network) = self.get_active_network_mut(document) else{
