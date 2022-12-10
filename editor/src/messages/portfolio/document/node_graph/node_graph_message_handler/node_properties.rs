@@ -158,16 +158,16 @@ pub fn add_properties(document_node: &DocumentNode, node_id: NodeId) -> Vec<Layo
 		];
 
 		if let NodeInput::Value {
-			tagged_value: TaggedValue::F32(x),
+			tagged_value: TaggedValue::F64(x),
 			exposed: false,
 		} = document_node.inputs[index]
 		{
 			widgets.extend_from_slice(&[
 				WidgetHolder::unrelated_seperator(),
 				WidgetHolder::new(Widget::NumberInput(NumberInput {
-					value: Some(x as f64),
+					value: Some(x),
 					mode: NumberInputMode::Increment,
-					on_update: update_value(|number_input: &NumberInput| TaggedValue::F32(number_input.value.unwrap() as f32), node_id, index),
+					on_update: update_value(|number_input: &NumberInput| TaggedValue::F64(number_input.value.unwrap()), node_id, index),
 					..NumberInput::default()
 				})),
 			]);
