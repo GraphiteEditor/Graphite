@@ -15,12 +15,10 @@ pub struct DocumentInputType {
 }
 
 impl DocumentInputType {
-	pub const fn none() -> Self {
-		Self {
-			name: "None",
-			data_type: FrontendGraphDataType::General,
-			default: NodeInput::value(TaggedValue::None, false),
-		}
+	pub const fn new(name: &'static str, tagged_value: TaggedValue, exposed: bool) -> Self {
+		let data_type = FrontendGraphDataType::with_tagged_value(&tagged_value);
+		let default = NodeInput::value(tagged_value, exposed);
+		Self { name, data_type, default }
 	}
 }
 
@@ -82,11 +80,7 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 		name: "Grayscale",
 		category: "Image Adjustments",
 		identifier: NodeIdentifier::new("graphene_std::raster::GrayscaleNode", &[]),
-		inputs: &[DocumentInputType {
-			name: "Image",
-			data_type: FrontendGraphDataType::Raster,
-			default: NodeInput::value(TaggedValue::Image(Image::empty()), true),
-		}],
+		inputs: &[DocumentInputType::new("Image", TaggedValue::Image(Image::empty()), true)],
 		outputs: &[FrontendGraphDataType::Raster],
 		properties: node_properties::no_properties,
 	},
@@ -95,11 +89,7 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 		category: "Image Adjustments",
 		identifier: NodeIdentifier::new("graphene_std::executor::MapGpuSingleImageNode", &[concrete!("&TypeErasedNode")]),
 		inputs: &[
-			DocumentInputType {
-				name: "Image",
-				data_type: FrontendGraphDataType::Raster,
-				default: NodeInput::value(TaggedValue::Image(Image::empty()), true),
-			},
+			DocumentInputType::new("Image", TaggedValue::Image(Image::empty()), true),
 			DocumentInputType {
 				name: "Path",
 				data_type: FrontendGraphDataType::Text,
@@ -113,11 +103,7 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 		name: "Invert RGB",
 		category: "Image Adjustments",
 		identifier: NodeIdentifier::new("graphene_std::raster::InvertRGBNode", &[]),
-		inputs: &[DocumentInputType {
-			name: "Image",
-			data_type: FrontendGraphDataType::Raster,
-			default: NodeInput::value(TaggedValue::Image(Image::empty()), true),
-		}],
+		inputs: &[DocumentInputType::new("Image", TaggedValue::Image(Image::empty()), true)],
 		outputs: &[FrontendGraphDataType::Raster],
 		properties: node_properties::no_properties,
 	},
@@ -126,26 +112,10 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 		category: "Image Adjustments",
 		identifier: NodeIdentifier::new("graphene_std::raster::HueSaturationNode", &[concrete!("&TypeErasedNode")]),
 		inputs: &[
-			DocumentInputType {
-				name: "Image",
-				data_type: FrontendGraphDataType::Raster,
-				default: NodeInput::value(TaggedValue::Image(Image::empty()), true),
-			},
-			DocumentInputType {
-				name: "Hue Shift",
-				data_type: FrontendGraphDataType::Number,
-				default: NodeInput::value(TaggedValue::F64(0.), false),
-			},
-			DocumentInputType {
-				name: "Saturation Shift",
-				data_type: FrontendGraphDataType::Number,
-				default: NodeInput::value(TaggedValue::F64(0.), false),
-			},
-			DocumentInputType {
-				name: "Lightness Shift",
-				data_type: FrontendGraphDataType::Number,
-				default: NodeInput::value(TaggedValue::F64(0.), false),
-			},
+			DocumentInputType::new("Image", TaggedValue::Image(Image::empty()), true),
+			DocumentInputType::new("Hue Shift", TaggedValue::F64(0.), false),
+			DocumentInputType::new("Saturation Shift", TaggedValue::F64(0.), false),
+			DocumentInputType::new("Lightness Shift", TaggedValue::F64(0.), false),
 		],
 		outputs: &[FrontendGraphDataType::Raster],
 		properties: node_properties::adjust_hsl_properties,
@@ -155,21 +125,9 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 		category: "Image Adjustments",
 		identifier: NodeIdentifier::new("graphene_std::raster::BrightnessContrastNode", &[concrete!("&TypeErasedNode")]),
 		inputs: &[
-			DocumentInputType {
-				name: "Image",
-				data_type: FrontendGraphDataType::Raster,
-				default: NodeInput::value(TaggedValue::Image(Image::empty()), true),
-			},
-			DocumentInputType {
-				name: "Brightness",
-				data_type: FrontendGraphDataType::Number,
-				default: NodeInput::value(TaggedValue::F64(0.), false),
-			},
-			DocumentInputType {
-				name: "Contrast",
-				data_type: FrontendGraphDataType::Number,
-				default: NodeInput::value(TaggedValue::F64(0.), false),
-			},
+			DocumentInputType::new("Image", TaggedValue::Image(Image::empty()), true),
+			DocumentInputType::new("Brightness", TaggedValue::F64(0.), false),
+			DocumentInputType::new("Contrast", TaggedValue::F64(0.), false),
 		],
 		outputs: &[FrontendGraphDataType::Raster],
 		properties: node_properties::brighten_image_properties,
@@ -179,16 +137,8 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 		category: "Image Adjustments",
 		identifier: NodeIdentifier::new("graphene_std::raster::GammaNode", &[concrete!("&TypeErasedNode")]),
 		inputs: &[
-			DocumentInputType {
-				name: "Image",
-				data_type: FrontendGraphDataType::Raster,
-				default: NodeInput::value(TaggedValue::Image(Image::empty()), true),
-			},
-			DocumentInputType {
-				name: "Gamma",
-				data_type: FrontendGraphDataType::Number,
-				default: NodeInput::value(TaggedValue::F64(1.), false),
-			},
+			DocumentInputType::new("Image", TaggedValue::Image(Image::empty()), true),
+			DocumentInputType::new("Gamma", TaggedValue::F64(1.), false),
 		],
 		outputs: &[FrontendGraphDataType::Raster],
 		properties: node_properties::adjust_gamma_properties,
@@ -198,16 +148,8 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 		category: "Image Adjustments",
 		identifier: NodeIdentifier::new("graphene_std::raster::OpacityNode", &[concrete!("&TypeErasedNode")]),
 		inputs: &[
-			DocumentInputType {
-				name: "Image",
-				data_type: FrontendGraphDataType::Raster,
-				default: NodeInput::value(TaggedValue::Image(Image::empty()), true),
-			},
-			DocumentInputType {
-				name: "Factor",
-				data_type: FrontendGraphDataType::Number,
-				default: NodeInput::value(TaggedValue::F64(1.), false),
-			},
+			DocumentInputType::new("Image", TaggedValue::Image(Image::empty()), true),
+			DocumentInputType::new("Factor", TaggedValue::F64(1.), false),
 		],
 		outputs: &[FrontendGraphDataType::Raster],
 		properties: node_properties::multiply_opacity,
@@ -217,16 +159,8 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 		category: "Image Adjustments",
 		identifier: NodeIdentifier::new("graphene_std::raster::PosterizeNode", &[concrete!("&TypeErasedNode")]),
 		inputs: &[
-			DocumentInputType {
-				name: "Image",
-				data_type: FrontendGraphDataType::Raster,
-				default: NodeInput::value(TaggedValue::Image(Image::empty()), true),
-			},
-			DocumentInputType {
-				name: "Value",
-				data_type: FrontendGraphDataType::Number,
-				default: NodeInput::value(TaggedValue::F64(5.), false),
-			},
+			DocumentInputType::new("Image", TaggedValue::Image(Image::empty()), true),
+			DocumentInputType::new("Value", TaggedValue::F64(5.), false),
 		],
 		outputs: &[FrontendGraphDataType::Raster],
 		properties: node_properties::posterize_properties,
@@ -236,16 +170,8 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 		category: "Image Adjustments",
 		identifier: NodeIdentifier::new("graphene_std::raster::ExposureNode", &[concrete!("&TypeErasedNode")]),
 		inputs: &[
-			DocumentInputType {
-				name: "Image",
-				data_type: FrontendGraphDataType::Raster,
-				default: NodeInput::value(TaggedValue::Image(Image::empty()), true),
-			},
-			DocumentInputType {
-				name: "Value",
-				data_type: FrontendGraphDataType::Number,
-				default: NodeInput::value(TaggedValue::F64(0.), false),
-			},
+			DocumentInputType::new("Image", TaggedValue::Image(Image::empty()), true),
+			DocumentInputType::new("Value", TaggedValue::F64(0.), false),
 		],
 		outputs: &[FrontendGraphDataType::Raster],
 		properties: node_properties::exposure_properties,
@@ -255,16 +181,8 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 		category: "Math",
 		identifier: NodeIdentifier::new("graphene_core::ops::AddNode", &[concrete!("&TypeErasedNode")]),
 		inputs: &[
-			DocumentInputType {
-				name: "Input",
-				data_type: FrontendGraphDataType::Number,
-				default: NodeInput::value(TaggedValue::F64(0.), true),
-			},
-			DocumentInputType {
-				name: "Addend",
-				data_type: FrontendGraphDataType::Number,
-				default: NodeInput::value(TaggedValue::F64(0.), true),
-			},
+			DocumentInputType::new("Input", TaggedValue::F64(0.), true),
+			DocumentInputType::new("Addend", TaggedValue::F64(0.), true),
 		],
 		outputs: &[FrontendGraphDataType::Number],
 		properties: node_properties::add_properties,
