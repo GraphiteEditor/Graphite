@@ -26,8 +26,6 @@ pub enum FrontendGraphDataType {
 	Number,
 	#[serde(rename = "boolean")]
 	Boolean,
-	#[serde(rename = "string")]
-	String,
 	#[serde(rename = "vec2")]
 	Vector,
 }
@@ -35,7 +33,7 @@ impl FrontendGraphDataType {
 	pub const fn with_tagged_value(value: &TaggedValue) -> Self {
 		match value {
 			TaggedValue::None => Self::General,
-			TaggedValue::String(_) => Self::String,
+			TaggedValue::String(_) => Self::Text,
 			TaggedValue::F32(_) | TaggedValue::F64(_) | TaggedValue::U32(_) => Self::Number,
 			TaggedValue::Bool(_) => Self::Boolean,
 			TaggedValue::DVec2(_) => Self::Vector,
