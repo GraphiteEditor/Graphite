@@ -185,46 +185,47 @@ impl NodeGraphMessageHandler {
 		responses.push_back(FrontendMessage::UpdateNodeGraph { nodes, links }.into());
 	}
 
-	fn remove_node(&mut self, network: &mut NodeNetwork, node_id: NodeId) -> bool {
-		fn remove_from_network(network: &mut NodeNetwork, node_id: NodeId) -> bool {
-			if network.inputs.iter().any(|&id| id == node_id) {
-				warn!("Deleting input node");
-				return false;
+	fn remove_references_from_network(network: &mut NodeNetwork, node_id: NodeId) -> bool {
+		if network.inputs.iter().any(|&id| id == node_id) {
+			warn!("Deleting input node");
+			return false;
+		}
+		if network.output == node_id {
+			warn!("Deleting the output node!");
+			return false;
+		}
+		for (id, node) in network.nodes.iter_mut() {
+			if *id == node_id {
+				continue;
 			}
-			if network.output == node_id {
-				warn!("Deleting the output node!");
-				return false;
-			}
-			for (id, node) in network.nodes.iter_mut() {
-				if *id == node_id {
+			for (input_index, input) in node.inputs.iter_mut().enumerate() {
+				let NodeInput::Node(id) = input else {
+					continue;
+				};
+				if *id != node_id {
 					continue;
 				}
-				for (input_index, input) in node.inputs.iter_mut().enumerate() {
-					let NodeInput::Node(id) = input else {
-						continue;
-					};
-					if *id != node_id {
-						continue;
-					}
 
-					let Some(node_type) = document_node_types::resolve_document_node_type(&node.name) else{
+				let Some(node_type) = document_node_types::resolve_document_node_type(&node.name) else {
 						warn!("Removing input of invalid node type '{}'", node.name);
 						return false;
 					};
-					if let NodeInput::Value { tagged_value, .. } = &node_type.inputs[input_index].default {
-						*input = NodeInput::Value {
-							tagged_value: tagged_value.clone(),
-							exposed: true,
-						};
-					}
-				}
-				if let DocumentNodeImplementation::Network(network) = &mut node.implementation {
-					remove_from_network(network, node_id);
+				if let NodeInput::Value { tagged_value, .. } = &node_type.inputs[input_index].default {
+					*input = NodeInput::Value {
+						tagged_value: tagged_value.clone(),
+						exposed: true,
+					};
 				}
 			}
-			true
+			if let DocumentNodeImplementation::Network(network) = &mut node.implementation {
+				Self::remove_references_from_network(network, node_id);
+			}
 		}
-		if remove_from_network(network, node_id) {
+		true
+	}
+
+	fn remove_node(&mut self, network: &mut NodeNetwork, node_id: NodeId) -> bool {
+		if Self::remove_references_from_network(network, node_id) {
 			network.nodes.remove(&node_id);
 			self.selected_nodes.retain(|&id| id != node_id);
 			true
