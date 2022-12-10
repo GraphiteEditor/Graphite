@@ -94,20 +94,29 @@ impl FrontendNodeType {
 #[derive(Debug, Clone, Eq, PartialEq, Default, serde::Serialize, serde::Deserialize)]
 pub struct NodeGraphMessageHandler {
 	pub layer_path: Option<Vec<graphene::LayerId>>,
+	pub nested_path: Vec<graph_craft::document::NodeId>,
 	pub selected_nodes: Vec<graph_craft::document::NodeId>,
 }
 
 impl NodeGraphMessageHandler {
 	/// Get the active graph_craft NodeNetwork struct
 	fn get_active_network_mut<'a>(&self, document: &'a mut Document) -> Option<&'a mut graph_craft::document::NodeNetwork> {
-		self.layer_path.as_ref().and_then(|path| document.layer_mut(path).ok()).and_then(|layer| match &mut layer.data {
+		let mut network = self.layer_path.as_ref().and_then(|path| document.layer_mut(path).ok()).and_then(|layer| match &mut layer.data {
 			LayerDataType::NodeGraphFrame(n) => Some(&mut n.network),
 			_ => None,
-		})
+		});
+		for segement in &self.nested_path {
+			network = network.and_then(|network| network.nodes.get_mut(segement)).and_then(|node| node.implementation.get_network_mut());
+		}
+		network
 	}
 
 	pub fn collate_properties(&self, node_graph_frame: &NodeGraphFrameLayer) -> Vec<LayoutGroup> {
-		let network = &node_graph_frame.network;
+		let mut network = &node_graph_frame.network;
+		for segement in &self.nested_path {
+			network = network.nodes.get(segement).and_then(|node| node.implementation.get_network()).unwrap();
+		}
+
 		let mut section = Vec::new();
 		for node_id in &self.selected_nodes {
 			let Some(document_node) = network.nodes.get(node_id) else {
@@ -323,6 +332,15 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 					if modified {
 						Self::send_graph(network, responses);
 						responses.push_back(DocumentMessage::NodeGraphFrameGenerate.into());
+					}
+				}
+			}
+			NodeGraphMessage::DoubleClickNode { node } => {
+				if let Some(network) = self.get_active_network_mut(document) {
+					if network.nodes.get(&node).and_then(|node| node.implementation.get_network()).is_some() {
+						self.selected_nodes = Vec::new();
+						self.nested_path.push(node);
+						Self::send_graph(&network, responses);
 					}
 				}
 			}

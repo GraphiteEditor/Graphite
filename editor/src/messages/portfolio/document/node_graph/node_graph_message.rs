@@ -23,6 +23,9 @@ pub enum NodeGraphMessage {
 		node_id: NodeId,
 	},
 	DeleteSelectedNodes,
+	DoubleClickNode {
+		node: NodeId,
+	},
 	ExposeInput {
 		node_id: NodeId,
 		input_index: usize,

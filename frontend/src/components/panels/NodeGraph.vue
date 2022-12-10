@@ -8,6 +8,7 @@
 			@pointerdown="(e: PointerEvent) => pointerDown(e)"
 			@pointermove="(e: PointerEvent) => pointerMove(e)"
 			@pointerup="(e: PointerEvent) => pointerUp(e)"
+			@dblclick="(e: MouseEvent) => doubleClick(e)"
 			:style="{
 				'--grid-spacing': `${gridSpacing}px`,
 				'--grid-offset-x': `${transform.x * transform.scale}px`,
@@ -531,6 +532,14 @@ export default defineComponent({
 
 					this.panning = true;
 				}
+			}
+		},
+		doubleClick(e: MouseEvent) {
+			const node = (e.target as HTMLElement).closest("[data-node]") as HTMLElement | undefined;
+			const nodeId = node?.getAttribute("data-node") || undefined;
+			if (nodeId) {
+				const id = BigInt(nodeId);
+				this.editor.instance.doubleClickNode(id);
 			}
 		},
 		pointerMove(e: PointerEvent) {

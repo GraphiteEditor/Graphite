@@ -20,6 +20,14 @@ impl DocumentInputType {
 		let default = NodeInput::value(tagged_value, exposed);
 		Self { name, data_type, default }
 	}
+	
+	pub const fn _none() -> Self {
+		Self {
+			name: "None",
+			data_type: FrontendGraphDataType::General,
+			default: NodeInput::value(TaggedValue::None, false),
+		}
+	}
 }
 
 pub struct DocumentNodeType {
