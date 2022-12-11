@@ -58,7 +58,7 @@ pub struct ImaginateInput {
 	pub dimensions: DVec2,
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Deserialize, Serialize, DynAny)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Deserialize, Serialize, DynAny)]
 pub enum ImaginateStatus {
 	#[default]
 	Idle,

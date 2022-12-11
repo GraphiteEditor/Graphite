@@ -20,13 +20,13 @@ pub enum FrontendGraphDataType {
 	Raster,
 	#[serde(rename = "color")]
 	Color,
-	#[serde(rename = "text")]
+	#[serde(rename = "number")]
 	Text,
 	#[serde(rename = "vector")]
 	Subpath,
 	#[serde(rename = "number")]
 	Number,
-	#[serde(rename = "boolean")]
+	#[serde(rename = "number")]
 	Boolean,
 	#[serde(rename = "vec2")]
 	Vector,

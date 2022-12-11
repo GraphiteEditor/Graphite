@@ -250,7 +250,8 @@ pub enum LayoutGroup {
 	Section { name: String, layout: SubLayout },
 }
 impl LayoutGroup {
-	pub fn with_tooltip(mut self, tooltip: impl Into<String>) -> Self {
+	/// Applies a tooltip to all widgets in this row or column without a tooltip.
+	pub fn with_tooltip(self, tooltip: impl Into<String>) -> Self {
 		let (is_col, mut widgets) = match self {
 			LayoutGroup::Column { widgets } => (true, widgets),
 			LayoutGroup::Row { widgets } => (false, widgets),

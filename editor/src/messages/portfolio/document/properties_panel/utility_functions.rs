@@ -17,7 +17,6 @@ use graphene::layers::style::{Fill, Gradient, GradientType, LineCap, LineJoin, S
 use graphene::layers::text_layer::{FontCache, TextLayer};
 
 use glam::{DAffine2, DVec2};
-use serde::__private::doc;
 use std::f64::consts::PI;
 use std::sync::Arc;
 

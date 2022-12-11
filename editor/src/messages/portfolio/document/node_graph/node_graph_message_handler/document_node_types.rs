@@ -190,7 +190,7 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 		category: "Image Synthesis",
 		identifier: NodeIdentifier::new("graphene_std::raster::ImaginateNode", &[concrete!("&TypeErasedNode")]),
 		inputs: &[
-			DocumentInputType::new("Image", TaggedValue::Image(Image::empty()), true),
+			DocumentInputType::new("Base Image", TaggedValue::Image(Image::empty()), true),
 			DocumentInputType::new("Seed", TaggedValue::F64(0.), false),
 			DocumentInputType::new("Samples", TaggedValue::F64(30.), false),
 			DocumentInputType::new("Sampling Method", TaggedValue::ImaginateSamplingMethod(ImaginateSamplingMethod::EulerA), false),
@@ -198,7 +198,7 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 			DocumentInputType::new("Text Prompt", TaggedValue::String(String::new()), false),
 			DocumentInputType::new("Neg. Prompt", TaggedValue::String(String::new()), false),
 			DocumentInputType::new("Use Base Image", TaggedValue::Bool(true), false),
-			DocumentInputType::new("Image Creativity", TaggedValue::F64(0.66), false),
+			DocumentInputType::new("Image Creativity", TaggedValue::F64(66.), false),
 			DocumentInputType::new("Masking Layer", TaggedValue::LayerPath(None), false),
 			DocumentInputType::new("Inpaint", TaggedValue::Bool(true), false),
 			DocumentInputType::new("Mask Blur", TaggedValue::F64(4.), false),
@@ -215,7 +215,7 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 	},
 	DocumentNodeType {
 		name: "Add",
-		category: "Math",
+		category: "Mathematics",
 		identifier: NodeIdentifier::new("graphene_core::ops::AddNode", &[concrete!("&TypeErasedNode")]),
 		inputs: &[
 			DocumentInputType::new("Input", TaggedValue::F64(0.), true),

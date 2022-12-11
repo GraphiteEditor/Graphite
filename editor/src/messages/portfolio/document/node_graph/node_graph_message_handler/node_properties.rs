@@ -1,5 +1,6 @@
 use crate::messages::layout::utility_types::layout_widget::*;
-use crate::messages::layout::utility_types::widgets::{button_widgets::*, input_widgets::*, label_widgets::*};
+use crate::messages::layout::utility_types::widgets::{button_widgets::*, input_widgets::*};
+use crate::messages::portfolio::document::node_graph::node_graph_message_handler::document_node_types::resolve_document_node_type;
 use crate::messages::portfolio::utility_types::ImaginateServerStatus;
 use crate::messages::prelude::*;
 
@@ -7,6 +8,7 @@ use glam::DVec2;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, NodeId, NodeInput};
 use graph_craft::imaginate_input::*;
+use graphene::layers::layer_info::LayerDataTypeDiscriminant;
 
 use super::document_node_types::NodePropertiesContext;
 use super::FrontendGraphDataType;
@@ -44,14 +46,17 @@ fn expose_widget(node_id: NodeId, index: usize, data_type: FrontendGraphDataType
 	}))
 }
 
-fn text_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str) -> Vec<WidgetHolder> {
-	let input: &NodeInput = document_node.inputs.get(index).unwrap();
-
-	let mut widgets = vec![
-		expose_widget(node_id, index, FrontendGraphDataType::Number, input.is_exposed()),
+fn start_widgets(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, data_type: FrontendGraphDataType) -> Vec<WidgetHolder> {
+	let input = document_node.inputs.get(index).unwrap();
+	vec![
+		expose_widget(node_id, index, data_type, input.is_exposed()),
 		WidgetHolder::unrelated_seperator(),
 		WidgetHolder::text_widget(name),
-	];
+	]
+}
+
+fn text_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str) -> Vec<WidgetHolder> {
+	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::Text);
 
 	if let NodeInput::Value {
 		tagged_value: TaggedValue::String(x),
@@ -70,14 +75,48 @@ fn text_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name
 	widgets
 }
 
-fn number_range_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, range_min: Option<f64>, range_max: Option<f64>, unit: String, is_integer: bool) -> Vec<WidgetHolder> {
-	let input: &NodeInput = document_node.inputs.get(index).unwrap();
+fn text_area_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str) -> Vec<WidgetHolder> {
+	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::Text);
 
-	let mut widgets = vec![
-		expose_widget(node_id, index, FrontendGraphDataType::Number, input.is_exposed()),
-		WidgetHolder::unrelated_seperator(),
-		WidgetHolder::text_widget(name),
-	];
+	if let NodeInput::Value {
+		tagged_value: TaggedValue::String(x),
+		exposed: false,
+	} = &document_node.inputs[index]
+	{
+		widgets.extend_from_slice(&[
+			WidgetHolder::unrelated_seperator(),
+			WidgetHolder::new(Widget::TextAreaInput(TextAreaInput {
+				value: x.clone(),
+				on_update: update_value(|x: &TextAreaInput| TaggedValue::String(x.value.clone()), node_id, index),
+				..TextAreaInput::default()
+			})),
+		])
+	}
+	widgets
+}
+
+fn bool_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str) -> Vec<WidgetHolder> {
+	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::Boolean);
+
+	if let NodeInput::Value {
+		tagged_value: TaggedValue::Bool(x),
+		exposed: false,
+	} = &document_node.inputs[index]
+	{
+		widgets.extend_from_slice(&[
+			WidgetHolder::unrelated_seperator(),
+			WidgetHolder::new(Widget::CheckboxInput(CheckboxInput {
+				checked: *x,
+				on_update: update_value(|x: &CheckboxInput| TaggedValue::Bool(x.checked), node_id, index),
+				..CheckboxInput::default()
+			})),
+		])
+	}
+	widgets
+}
+
+fn number_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, number_props: NumberInput) -> Vec<WidgetHolder> {
+	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::Number);
 
 	if let NodeInput::Value {
 		tagged_value: TaggedValue::F64(x),
@@ -88,13 +127,8 @@ fn number_range_widget(document_node: &DocumentNode, node_id: NodeId, index: usi
 			WidgetHolder::unrelated_seperator(),
 			WidgetHolder::new(Widget::NumberInput(NumberInput {
 				value: Some(x),
-				mode: if range_max.is_some() { NumberInputMode::Range } else { NumberInputMode::Increment },
-				range_min,
-				range_max,
-				unit,
-				is_integer,
 				on_update: update_value(|x: &NumberInput| TaggedValue::F64(x.value.unwrap()), node_id, index),
-				..NumberInput::default()
+				..number_props
 			})),
 		])
 	}
@@ -102,9 +136,9 @@ fn number_range_widget(document_node: &DocumentNode, node_id: NodeId, index: usi
 }
 
 pub fn adjust_hsl_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let hue_shift = number_range_widget(document_node, node_id, 1, "Hue Shift", Some(-180.), Some(180.), "°".into(), false);
-	let saturation_shift = number_range_widget(document_node, node_id, 2, "Saturation Shift", Some(-100.), Some(100.), "%".into(), false);
-	let lightness_shift = number_range_widget(document_node, node_id, 3, "Lightness Shift", Some(-100.), Some(100.), "%".into(), false);
+	let hue_shift = number_widget(document_node, node_id, 1, "Hue Shift", NumberInput::new().min(-180.).max(180.).unit("°"));
+	let saturation_shift = number_widget(document_node, node_id, 2, "Saturation Shift", NumberInput::new().min(-100.).max(100.).unit("%"));
+	let lightness_shift = number_widget(document_node, node_id, 3, "Lightness Shift", NumberInput::new().min(-100.).max(100.).unit("%"));
 
 	vec![
 		LayoutGroup::Row { widgets: hue_shift },
@@ -114,14 +148,14 @@ pub fn adjust_hsl_properties(document_node: &DocumentNode, node_id: NodeId, _con
 }
 
 pub fn brighten_image_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let brightness = number_range_widget(document_node, node_id, 1, "Brightness", Some(-255.), Some(255.), "".into(), false);
-	let contrast = number_range_widget(document_node, node_id, 2, "Contrast", Some(-255.), Some(255.), "".into(), false);
+	let brightness = number_widget(document_node, node_id, 1, "Brightness", NumberInput::new().min(-255.).max(255.));
+	let contrast = number_widget(document_node, node_id, 2, "Contrast", NumberInput::new().min(-255.).max(255.));
 
 	vec![LayoutGroup::Row { widgets: brightness }, LayoutGroup::Row { widgets: contrast }]
 }
 
 pub fn adjust_gamma_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let gamma = number_range_widget(document_node, node_id, 1, "Gamma", Some(0.01), None, "".into(), false);
+	let gamma = number_widget(document_node, node_id, 1, "Gamma", NumberInput::new().min(0.01));
 
 	vec![LayoutGroup::Row { widgets: gamma }]
 }
@@ -133,63 +167,37 @@ pub fn gpu_map_properties(document_node: &DocumentNode, node_id: NodeId, _contex
 }
 
 pub fn multiply_opacity(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let gamma = number_range_widget(document_node, node_id, 1, "Factor", Some(0.), Some(1.), "".into(), false);
+	let gamma = number_widget(document_node, node_id, 1, "Factor", NumberInput::new().min(0.).max(1.));
 
 	vec![LayoutGroup::Row { widgets: gamma }]
 }
 
 pub fn posterize_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let value = number_range_widget(document_node, node_id, 1, "Levels", Some(2.), Some(255.), "".into(), true);
+	let value = number_widget(document_node, node_id, 1, "Levels", NumberInput::new().min(2.).max(255.).int());
 
 	vec![LayoutGroup::Row { widgets: value }]
 }
 
 pub fn exposure_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let value = number_range_widget(document_node, node_id, 1, "Value", Some(-3.), Some(3.), "".into(), false);
+	let value = number_widget(document_node, node_id, 1, "Value", NumberInput::new().min(-3.).max(3.));
 
 	vec![LayoutGroup::Row { widgets: value }]
 }
 
 pub fn add_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let operand = |name: &str, index| {
-		let input: &NodeInput = document_node.inputs.get(index).unwrap();
-		let mut widgets = vec![
-			expose_widget(node_id, index, FrontendGraphDataType::Number, input.is_exposed()),
-			WidgetHolder::unrelated_seperator(),
-			WidgetHolder::text_widget(name),
-		];
-
-		if let NodeInput::Value {
-			tagged_value: TaggedValue::F64(x),
-			exposed: false,
-		} = document_node.inputs[index]
-		{
-			widgets.extend_from_slice(&[
-				WidgetHolder::unrelated_seperator(),
-				WidgetHolder::new(Widget::NumberInput(NumberInput {
-					value: Some(x),
-					mode: NumberInputMode::Increment,
-					on_update: update_value(|number_input: &NumberInput| TaggedValue::F64(number_input.value.unwrap()), node_id, index),
-					..NumberInput::default()
-				})),
-			]);
-		}
+		let widgets = number_widget(document_node, node_id, index, name, NumberInput::new());
 
 		LayoutGroup::Row { widgets }
 	};
 	vec![operand("Input", 0), operand("Addend", 1)]
 }
 
-pub fn transform_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub fn _transform_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let translation = {
 		let index = 1;
-		let input: &NodeInput = document_node.inputs.get(index).unwrap();
 
-		let mut widgets = vec![
-			expose_widget(node_id, index, FrontendGraphDataType::Vector, input.is_exposed()),
-			WidgetHolder::unrelated_seperator(),
-			WidgetHolder::text_widget("Translation"),
-		];
+		let mut widgets = start_widgets(document_node, node_id, index, "Translation", FrontendGraphDataType::Vector);
 
 		if let NodeInput::Value {
 			tagged_value: TaggedValue::DVec2(vec2),
@@ -221,13 +229,8 @@ pub fn transform_properties(document_node: &DocumentNode, node_id: NodeId, _cont
 
 	let rotation = {
 		let index = 2;
-		let input: &NodeInput = document_node.inputs.get(index).unwrap();
 
-		let mut widgets = vec![
-			expose_widget(node_id, index, FrontendGraphDataType::Number, input.is_exposed()),
-			WidgetHolder::unrelated_seperator(),
-			WidgetHolder::text_widget("Rotation"),
-		];
+		let mut widgets = start_widgets(document_node, node_id, index, "Rotation", FrontendGraphDataType::Number);
 
 		if let NodeInput::Value {
 			tagged_value: TaggedValue::F64(val),
@@ -253,13 +256,8 @@ pub fn transform_properties(document_node: &DocumentNode, node_id: NodeId, _cont
 
 	let scale = {
 		let index = 3;
-		let input: &NodeInput = document_node.inputs.get(index).unwrap();
 
-		let mut widgets = vec![
-			expose_widget(node_id, index, FrontendGraphDataType::Vector, input.is_exposed()),
-			WidgetHolder::unrelated_seperator(),
-			WidgetHolder::text_widget("Scale"),
-		];
+		let mut widgets = start_widgets(document_node, node_id, index, "Scale", FrontendGraphDataType::Vector);
 
 		if let NodeInput::Value {
 			tagged_value: TaggedValue::DVec2(vec2),
@@ -292,6 +290,27 @@ pub fn transform_properties(document_node: &DocumentNode, node_id: NodeId, _cont
 }
 
 pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let node_type = resolve_document_node_type("Imaginate").expect("Imaginate in node library");
+	let resolve_input = |name: &str| node_type.inputs.iter().position(|input| input.name == name).unwrap_or_else(|| panic!("Input {name} not found"));
+	let seed_index = resolve_input("Seed");
+	let samples_index = resolve_input("Samples");
+	let sampling_method_index = resolve_input("Sampling Method");
+	let text_guidance_index = resolve_input("Text Guidance");
+	let text_index = resolve_input("Text Prompt");
+	let neg_index = resolve_input("Neg. Prompt");
+	let base_img_index = resolve_input("Use Base Image");
+	let img_creativity_index = resolve_input("Image Creativity");
+	let mask_index = resolve_input("Masking Layer");
+	let inpaint_index = resolve_input("Inpaint");
+	let mask_blur_index = resolve_input("Mask Blur");
+	let mask_fill_index = resolve_input("Mask Starting Fill");
+	let faces_index = resolve_input("Improve Faces");
+	let tiling_index = resolve_input("Tiling");
+
+	let cached_value = &document_node.inputs[resolve_input("Cached Data")];
+	let complete_value = &document_node.inputs[resolve_input("Percent Complete")];
+	let status_value = &document_node.inputs[resolve_input("Status")];
+
 	let server_status = {
 		let status = match &context.persistent_data.imaginate_server_status {
 			ImaginateServerStatus::Unknown => {
@@ -326,600 +345,378 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 		LayoutGroup::Row { widgets }.with_tooltip("Connection status to the server that computes generated images")
 	};
 
+	let &NodeInput::Value {tagged_value: TaggedValue::ImaginateStatus( imaginate_status),..} = status_value else{
+		panic!("Invalid status input")
+	};
+	let NodeInput::Value {tagged_value: TaggedValue::RcImage( cached_data),..} = cached_value else{
+		panic!("Invalid cached image input")
+	};
+	let &NodeInput::Value {tagged_value: TaggedValue::F64( percent_complete),..} = complete_value else{
+		panic!("Invalid percent complete input")
+	};
+	let use_base_image = if let &NodeInput::Value {
+		tagged_value: TaggedValue::Bool(use_base_image),
+		..
+	} = &document_node.inputs[base_img_index]
+	{
+		use_base_image
+	} else {
+		true
+	};
 	let progress = {
-		let widgets = vec![
-			WidgetHolder::text_widget("Progress"),
-			WidgetHolder::unrelated_seperator(),
-			WidgetHolder::bold_text({
-				// // Since we don't serialize the status, we need to derive from other state whether the Idle state is actually supposed to be the Terminated state
-				// let mut interpreted_status = imaginate_layer.status.clone();
-				// if imaginate_layer.status == ImaginateStatus::Idle && imaginate_layer.blob_url.is_some() && imaginate_layer.percent_complete > 0. && imaginate_layer.percent_complete < 100. {
-				// 	interpreted_status = ImaginateStatus::Terminated;
-				// }
+		// Since we don't serialize the status, we need to derive from other state whether the Idle state is actually supposed to be the Terminated state
+		let mut interpreted_status = imaginate_status;
+		if imaginate_status == ImaginateStatus::Idle && cached_data.is_some() && percent_complete > 0. && percent_complete < 100. {
+			interpreted_status = ImaginateStatus::Terminated;
+		}
 
-				// match interpreted_status {
-				// 	ImaginateStatus::Idle => match imaginate_layer.blob_url {
-				// 		Some(_) => "Done".into(),
-				// 		None => "Ready".into(),
-				// 	},
-				// 	ImaginateStatus::Beginning => "Beginning...".into(),
-				// 	ImaginateStatus::Uploading(percent) => format!("Uploading Base Image: {:.0}%", percent),
-				// 	ImaginateStatus::Generating => format!("Generating: {:.0}%", imaginate_layer.percent_complete),
-				// 	ImaginateStatus::Terminating => "Terminating...".into(),
-				// 	ImaginateStatus::Terminated => format!("{:.0}% (Terminated)", imaginate_layer.percent_complete),
-				// }
-				"hi"
-			}),
-		];
+		let status = match interpreted_status {
+			ImaginateStatus::Idle => match cached_data {
+				Some(_) => "Done".into(),
+				None => "Ready".into(),
+			},
+			ImaginateStatus::Beginning => "Beginning...".into(),
+			ImaginateStatus::Uploading(percent) => format!("Uploading Base Image: {percent:.0}%"),
+			ImaginateStatus::Generating => format!("Generating: {percent_complete:.0}%"),
+			ImaginateStatus::Terminating => "Terminating...".into(),
+			ImaginateStatus::Terminated => format!("{percent_complete:.0}% (Terminated)"),
+		};
+		let widgets = vec![WidgetHolder::text_widget("Progress"), WidgetHolder::unrelated_seperator(), WidgetHolder::bold_text(status)];
 		LayoutGroup::Row { widgets }.with_tooltip("When generating, the percentage represents how many sampling steps have so far been processed out of the target number")
 	};
 
-	/*let layer_reference_input_layer = imaginate_layer
-		.mask_layer_ref
-		.as_ref()
-		.and_then(|path| document.layer(path).ok())
-		.map(|layer| (layer.name.clone().unwrap_or_default(), LayerDataTypeDiscriminant::from(&layer.data)));
+	let image_controls = {
+		let mut widgets = vec![WidgetHolder::text_widget("Image"), WidgetHolder::unrelated_seperator()];
+		match imaginate_status {
+			ImaginateStatus::Beginning | ImaginateStatus::Uploading(_) => widgets.push(WidgetHolder::new(Widget::TextButton(TextButton {
+				label: "Beginning...".into(),
+				tooltip: "Sending image generation request to the server".into(),
+				disabled: true,
+				..Default::default()
+			}))),
+			ImaginateStatus::Generating => widgets.push(WidgetHolder::new(Widget::TextButton(TextButton {
+				label: "Terminate".into(),
+				tooltip: "Cancel the in-progress image generation and keep the latest progress".into(),
+				//on_update: WidgetCallback::new(|_| DocumentMessage::ImaginateTerminate.into()),
+				..Default::default()
+			}))),
+			ImaginateStatus::Terminating => widgets.push(WidgetHolder::new(Widget::TextButton(TextButton {
+				label: "Terminating...".into(),
+				tooltip: "Waiting on the final image generated after termination".into(),
+				disabled: true,
+				..Default::default()
+			}))),
+			ImaginateStatus::Idle | ImaginateStatus::Terminated => widgets.extend_from_slice(&[
+				WidgetHolder::new(Widget::IconButton(IconButton {
+					size: 24,
+					icon: "Random".into(),
+					tooltip: "Generate with a new random seed".into(),
+					//on_update: WidgetCallback::new(|_| PropertiesPanelMessage::SetImaginateSeedRandomizeAndGenerate.into()),
+					..Default::default()
+				})),
+				WidgetHolder::related_seperator(),
+				WidgetHolder::new(Widget::TextButton(TextButton {
+					label: "Generate".into(),
+					tooltip: "Fill layer frame by generating a new image".into(),
+					//on_update: WidgetCallback::new(|_| DocumentMessage::ImaginateGenerate.into()),
+					..Default::default()
+				})),
+				WidgetHolder::related_seperator(),
+				WidgetHolder::new(Widget::TextButton(TextButton {
+					label: "Clear".into(),
+					tooltip: "Remove generated image from the layer frame".into(),
+					disabled: cached_data.is_none(),
+					//on_update: WidgetCallback::new(|_| DocumentMessage::FrameClear.into()),
+					..Default::default()
+				})),
+			]),
+		}
+		LayoutGroup::Row { widgets }.with_tooltip("Buttons that control the image generation process")
+	};
 
-	let layer_reference_input_layer_is_some = layer_reference_input_layer.is_some();
+	// Requires custom layout for the regenerate button
+	let seed = {
+		let mut widgets = start_widgets(document_node, node_id, seed_index, "Seed", FrontendGraphDataType::Number);
 
-	let layer_reference_input_layer_name = layer_reference_input_layer.as_ref().map(|(layer_name, _)| layer_name);
-	let layer_reference_input_layer_type = layer_reference_input_layer.as_ref().map(|(_, layer_type)| layer_type);
-
-	let mut layout = vec![
-
-
-		LayoutGroup::Row {
-			widgets: [
-				vec![
-					WidgetHolder::new(Widget::TextLabel(TextLabel {
-						value: "Image".into(),
-						tooltip: "Buttons that control the image generation process".into(),
-						..Default::default()
-					})),
-					WidgetHolder::unrelated_seperator(),
-				],
-				{
-					match imaginate_layer.status {
-						ImaginateStatus::Beginning | ImaginateStatus::Uploading(_) => vec![WidgetHolder::new(Widget::TextButton(TextButton {
-							label: "Beginning...".into(),
-							tooltip: "Sending image generation request to the server".into(),
-							disabled: true,
-							..Default::default()
-						}))],
-						ImaginateStatus::Generating => vec![WidgetHolder::new(Widget::TextButton(TextButton {
-							label: "Terminate".into(),
-							tooltip: "Cancel the in-progress image generation and keep the latest progress".into(),
-							on_update: WidgetCallback::new(|_| DocumentMessage::ImaginateTerminate.into()),
-							..Default::default()
-						}))],
-						ImaginateStatus::Terminating => vec![WidgetHolder::new(Widget::TextButton(TextButton {
-							label: "Terminating...".into(),
-							tooltip: "Waiting on the final image generated after termination".into(),
-							disabled: true,
-							..Default::default()
-						}))],
-						ImaginateStatus::Idle | ImaginateStatus::Terminated => vec![
-							WidgetHolder::new(Widget::IconButton(IconButton {
-								size: 24,
-								icon: "Random".into(),
-								tooltip: "Generate with a new random seed".into(),
-								on_update: WidgetCallback::new(|_| PropertiesPanelMessage::SetImaginateSeedRandomizeAndGenerate.into()),
-								..Default::default()
-							})),
-							WidgetHolder::new(Widget::Separator(Separator {
-								separator_type: SeparatorType::Related,
-								direction: SeparatorDirection::Horizontal,
-							})),
-							WidgetHolder::new(Widget::TextButton(TextButton {
-								label: "Generate".into(),
-								tooltip: "Fill layer frame by generating a new image".into(),
-								on_update: WidgetCallback::new(|_| DocumentMessage::ImaginateGenerate.into()),
-								..Default::default()
-							})),
-							WidgetHolder::new(Widget::Separator(Separator {
-								separator_type: SeparatorType::Related,
-								direction: SeparatorDirection::Horizontal,
-							})),
-							WidgetHolder::new(Widget::TextButton(TextButton {
-								label: "Clear".into(),
-								tooltip: "Remove generated image from the layer frame".into(),
-								disabled: imaginate_layer.blob_url.is_none(),
-								on_update: WidgetCallback::new(|_| DocumentMessage::FrameClear.into()),
-								..Default::default()
-							})),
-						],
-					}
-				},
-			]
-			.concat(),
-		},
-		LayoutGroup::Row {
-			widgets: {
-				let tooltip = "Seed determines the random outcome, enabling limitless unique variations".to_string();
-
-				vec![
-					WidgetHolder::new(Widget::TextLabel(TextLabel {
-						value: "Seed".into(),
-						tooltip: tooltip.clone(),
-						..Default::default()
-					})),
-					WidgetHolder::unrelated_seperator(),
-					WidgetHolder::new(Widget::IconButton(IconButton {
-						size: 24,
-						icon: "Regenerate".into(),
-						tooltip: "Set a new random seed".into(),
-						on_update: WidgetCallback::new(|_| PropertiesPanelMessage::SetImaginateSeedRandomize.into()),
-						..Default::default()
-					})),
-					WidgetHolder::unrelated_seperator(),
-					WidgetHolder::new(Widget::NumberInput(NumberInput {
-						value: Some(imaginate_layer.seed as f64),
-						min: Some(-1.),
-						tooltip,
-						on_update: WidgetCallback::new(move |number_input: &NumberInput| {
-							PropertiesPanelMessage::SetImaginateSeed {
-								seed: number_input.value.unwrap().round() as u64,
-							}
-							.into()
-						}),
-						..Default::default()
-					})),
-				]
-			},
-		},
-		LayoutGroup::Row {
-			widgets: {
-				let tooltip = "
-				Width and height of the image that will be generated. Larger resolutions take longer to compute.\n\
+		if let &NodeInput::Value {
+			tagged_value: TaggedValue::F64(seed),
+			exposed: false,
+		} = &document_node.inputs[seed_index]
+		{
+			widgets.extend_from_slice(&[
+				WidgetHolder::unrelated_seperator(),
+				WidgetHolder::new(Widget::IconButton(IconButton {
+					size: 24,
+					icon: "Regenerate".into(),
+					tooltip: "Set a new random seed".into(),
+					//on_update: WidgetCallback::new(|_| PropertiesPanelMessage::SetImaginateSeedRandomize.into()),
+					..Default::default()
+				})),
+				WidgetHolder::unrelated_seperator(),
+				WidgetHolder::new(Widget::NumberInput(NumberInput {
+					value: Some(seed),
+					min: Some(0.),
+					is_integer: true,
+					on_update: update_value(move |input: &NumberInput| TaggedValue::F64(input.value.unwrap()), node_id, seed_index),
+					..Default::default()
+				})),
+			])
+		}
+		// Note: Limited by f64. You cannot even have all the possible u64 values :)
+		LayoutGroup::Row { widgets }.with_tooltip("Seed determines the random outcome, enabling limitless unique variations")
+	};
+	// TODO: What do to about this in new system?
+	let resolution = {
+		let widgets = vec![
+			WidgetHolder::text_widget("Resolution"),
+			WidgetHolder::unrelated_seperator(),
+			// WidgetHolder::new(Widget::IconButton(IconButton {
+			// 	size: 24,
+			// 	icon: "Rescale".into(),
+			// 	tooltip: "Set the layer scale to this resolution".into(),
+			// 	on_update: WidgetCallback::new(|_| PropertiesPanelMessage::SetImaginateScaleFromResolution.into()),
+			// 	..Default::default()
+			// })),
+			// WidgetHolder::unrelated_seperator(),
+			WidgetHolder::bold_text(
+				cached_data
+					.as_ref()
+					.map(|img| format!("{} W x {} H", img.width, img.height))
+					.unwrap_or_else(|| "No computed image".to_string()),
+			),
+		];
+		LayoutGroup::Row { widgets }.with_tooltip("Width and height of the image that will be generated. Larger resolutions take longer to compute.\n\
 				\n\
 				512x512 yields optimal results because the AI is trained to understand that scale best. Larger sizes may tend to integrate the prompt's subject more than once. Small sizes are often incoherent. Put the layer in a folder and resize that to keep resolution unchanged.\n\
 				\n\
-				Dimensions must be a multiple of 64, so these are set by rounding the layer dimensions. A resolution exceeding 1 megapixel is reduced below that limit because larger sizes may exceed available GPU memory on the server.
-				".trim().to_string();
+				Dimensions must be a multiple of 64, so these are set by rounding the layer dimensions. A resolution exceeding 1 megapixel is reduced below that limit because larger sizes may exceed available GPU memory on the server.".trim())
+	};
 
-				vec![
-					WidgetHolder::new(Widget::TextLabel(TextLabel {
-						value: "Resolution".into(),
-						tooltip: tooltip.clone(),
-						..Default::default()
-					})),
-					WidgetHolder::unrelated_seperator(),
-					WidgetHolder::new(Widget::IconButton(IconButton {
-						size: 24,
-						icon: "Rescale".into(),
-						tooltip: "Set the layer scale to this resolution".into(),
-						on_update: WidgetCallback::new(|_| PropertiesPanelMessage::SetImaginateScaleFromResolution.into()),
-						..Default::default()
-					})),
-					WidgetHolder::unrelated_seperator(),
-					WidgetHolder::new(Widget::TextLabel(TextLabel {
-						value: {
-							let (width, height) = pick_layer_safe_imaginate_resolution(layer, &persistent_data.font_cache);
-							format!("{} W x {} H", width, height)
-						},
-						tooltip,
-						bold: true,
-						..Default::default()
-					})),
-				]
-			},
-		},
-		LayoutGroup::Row {
-			widgets: {
-				let tooltip = "Number of iterations to improve the image generation quality, with diminishing returns around 40 when using the Euler A sampling method".to_string();
-				vec![
-					WidgetHolder::new(Widget::TextLabel(TextLabel {
-						value: "Sampling Steps".into(),
-						tooltip: tooltip.clone(),
-						..Default::default()
-					})),
-					WidgetHolder::unrelated_seperator(),
-					WidgetHolder::new(Widget::NumberInput(NumberInput {
-						value: Some(imaginate_layer.samples.into()),
-						mode: NumberInputMode::Range,
-						range_min: Some(0.),
-						range_max: Some(150.),
-						is_integer: true,
-						min: Some(0.),
-						max: Some(150.),
-						tooltip,
-						on_update: WidgetCallback::new(move |number_input: &NumberInput| {
-							PropertiesPanelMessage::SetImaginateSamples {
-								samples: number_input.value.unwrap().round() as u32,
-							}
-							.into()
-						}),
-						..Default::default()
-					})),
-				]
-			},
-		},
-		LayoutGroup::Row {
-			widgets: {
-				let tooltip = "Algorithm used to generate the image during each sampling step".to_string();
+	let sampling_steps = {
+		let widgets = number_widget(document_node, node_id, samples_index, "Sampling Steps", NumberInput::new().min(0.).max(150.).int());
+		LayoutGroup::Row { widgets }.with_tooltip("Number of iterations to improve the image generation quality, with diminishing returns around 40 when using the Euler A sampling method")
+	};
 
-				let sampling_methods = ImaginateSamplingMethod::list();
-				let mut entries = Vec::with_capacity(sampling_methods.len());
-				for method in sampling_methods {
+	let sampling_method = {
+		let mut widgets = start_widgets(document_node, node_id, sampling_method_index, "Sampling Method", FrontendGraphDataType::General);
+
+		if let &NodeInput::Value {
+			tagged_value: TaggedValue::ImaginateSamplingMethod(sampling_method),
+			exposed: false,
+		} = &document_node.inputs[sampling_method_index]
+		{
+			let sampling_methods = ImaginateSamplingMethod::list();
+			let mut entries = Vec::with_capacity(sampling_methods.len());
+			for method in sampling_methods {
+				entries.push(DropdownEntryData {
+					label: method.to_string(),
+					on_update: update_value(move |_| TaggedValue::ImaginateSamplingMethod(method), node_id, sampling_method_index),
+					..DropdownEntryData::default()
+				});
+			}
+			let entries = vec![entries];
+
+			widgets.extend_from_slice(&[
+				WidgetHolder::unrelated_seperator(),
+				WidgetHolder::new(Widget::DropdownInput(DropdownInput {
+					entries,
+					selected_index: Some(sampling_method as u32),
+					..Default::default()
+				})),
+			]);
+		}
+		LayoutGroup::Row { widgets }.with_tooltip("Algorithm used to generate the image during each sampling step")
+	};
+
+	let text_guidance = {
+		let widgets = number_widget(document_node, node_id, text_guidance_index, "Text Guidance", NumberInput::new().min(0.).max(30.));
+		LayoutGroup::Row { widgets }.with_tooltip(
+			"Amplification of the text prompt's influence over the outcome. At 0, the prompt is entirely ignored.\n\
+			\n\
+			Lower values are more creative and exploratory. Higher values are more literal and uninspired, but may be lower quality.\n\
+			\n\
+			This parameter is otherwise known as CFG (classifier-free guidance)."
+				.trim(),
+		)
+	};
+
+	let text_prompt = {
+		let widgets = text_area_widget(document_node, node_id, text_index, "Text Prompt");
+		LayoutGroup::Row { widgets }.with_tooltip(
+			"Description of the desired image subject and style.\n\
+			\n\
+			Include an artist name like \"Rembrandt\" or art medium like \"watercolor\" or \"photography\" to influence the look. List multiple to meld styles.\n\
+			\n\
+			To boost (or lessen) the importance of a word or phrase, wrap it in parentheses ending with a colon and a multiplier, for example:\n\
+			\"Colorless green ideas (sleep:1.3) furiously\""
+				.trim(),
+		)
+	};
+	let neg_prompt = {
+		let widgets = text_area_widget(document_node, node_id, neg_index, "Neg. Prompt");
+		LayoutGroup::Row { widgets }.with_tooltip("A negative text prompt can be used to list things like objects or colors to avoid".trim())
+	};
+	let base_image = {
+		let widgets = bool_widget(document_node, node_id, base_img_index, "Use Base Image");
+		LayoutGroup::Row { widgets }.with_tooltip("Generate an image based upon some raster data")
+	};
+	let image_creativity = {
+		let props = NumberInput::new().percentage().disabled(!use_base_image);
+		let widgets = number_widget(document_node, node_id, img_creativity_index, "Image Creativity", props);
+		LayoutGroup::Row { widgets }.with_tooltip(
+			"Strength of the artistic liberties allowing changes from the base image. The image is unchanged at 0% and completely different at 100%.\n\
+			\n\
+			This parameter is otherwise known as denoising strength."
+				.trim(),
+		)
+	};
+
+	let mut layer_reference_input_layer_is_some = false;
+	let layer_mask = {
+		let mut widgets = start_widgets(document_node, node_id, mask_index, "Masking Layer", FrontendGraphDataType::General);
+
+		if let NodeInput::Value {
+			tagged_value: TaggedValue::LayerPath(layer_path),
+			exposed: false,
+		} = &document_node.inputs[mask_index]
+		{
+			let layer_reference_input_layer = layer_path
+				.as_ref()
+				.and_then(|path| context.document.layer(path).ok())
+				.map(|layer| (layer.name.clone().unwrap_or_default(), LayerDataTypeDiscriminant::from(&layer.data)));
+
+			layer_reference_input_layer_is_some = layer_reference_input_layer.is_some();
+
+			let layer_reference_input_layer_name = layer_reference_input_layer.as_ref().map(|(layer_name, _)| layer_name);
+			let layer_reference_input_layer_type = layer_reference_input_layer.as_ref().map(|(_, layer_type)| layer_type);
+
+			widgets.extend_from_slice(&[
+				WidgetHolder::unrelated_seperator(),
+				WidgetHolder::new(Widget::LayerReferenceInput(LayerReferenceInput {
+					value: layer_path.clone(),
+					layer_name: layer_reference_input_layer_name.cloned(),
+					layer_type: layer_reference_input_layer_type.cloned(),
+					disabled: !use_base_image,
+					on_update: update_value(|input: &LayerReferenceInput| TaggedValue::LayerPath(input.value.clone()), node_id, mask_index),
+					..Default::default()
+				})),
+			]);
+		}
+		LayoutGroup::Row { widgets }.with_tooltip(
+			"Reference to a layer or folder which masks parts of the base image. Image generation is constrained to masked areas.\n\
+			\n\
+			Black shapes represent the masked regions. Lighter shades of gray act as a partial mask, and colors become grayscale."
+				.trim(),
+		)
+	};
+
+	let mut layout = vec![
+		server_status,
+		progress,
+		image_controls,
+		seed,
+		resolution,
+		sampling_steps,
+		sampling_method,
+		text_guidance,
+		text_prompt,
+		neg_prompt,
+		base_image,
+		image_creativity,
+		layer_mask,
+	];
+
+	if use_base_image && layer_reference_input_layer_is_some {
+		let in_paint = {
+			let mut widgets = start_widgets(document_node, node_id, inpaint_index, "In Paint", FrontendGraphDataType::Boolean);
+
+			if let &NodeInput::Value {
+				tagged_value: TaggedValue::Bool(in_paint),
+				exposed: false,
+			} = &document_node.inputs[inpaint_index]
+			{
+				widgets.extend_from_slice(&[
+					WidgetHolder::unrelated_seperator(),
+					WidgetHolder::new(Widget::RadioInput(RadioInput {
+						entries: [(true, "Inpaint"), (false, "Outpaint")]
+							.into_iter()
+							.map(|(paint, name)| RadioEntryData {
+								label: name.to_string(),
+								on_update: update_value(move |_| TaggedValue::Bool(paint), node_id, inpaint_index),
+								..Default::default()
+							})
+							.collect(),
+						selected_index: in_paint as u32,
+						..Default::default()
+					})),
+				]);
+			}
+			LayoutGroup::Row { widgets }.with_tooltip(
+				"Constrain image generation to the interior (inpaint) or exterior (outpaint) of the mask, while referencing the other unchanged parts as context imagery.\n\
+				\n\
+				An unwanted part of an image can be replaced by drawing around it with a black shape and inpainting with that mask layer.\n\
+				\n\
+				An image can be uncropped by resizing the Imaginate layer to the target bounds and outpainting with a black rectangle mask matching the original image bounds.",
+			)
+		};
+
+		let blur_radius = {
+			let widgets = number_widget(document_node, node_id, mask_blur_index, "Mask Blur", NumberInput::new().unit(" px").min(0.).max(25.).int());
+			LayoutGroup::Row { widgets }.with_tooltip("Blur radius for the mask. Useful for softening sharp edges to blend the masked area with the rest of the image.")
+		};
+
+		let mask_starting_fill = {
+			let mut widgets = start_widgets(document_node, node_id, mask_fill_index, "Mask Starting Fill", FrontendGraphDataType::General);
+
+			if let &NodeInput::Value {
+				tagged_value: TaggedValue::ImaginateMaskStartingFill(starting_fill),
+				exposed: false,
+			} = &document_node.inputs[mask_fill_index]
+			{
+				let mask_fill_content_modes = ImaginateMaskStartingFill::list();
+				let mut entries = Vec::with_capacity(mask_fill_content_modes.len());
+				for mode in mask_fill_content_modes {
 					entries.push(DropdownEntryData {
-						label: method.to_string(),
-						on_update: WidgetCallback::new(move |_| PropertiesPanelMessage::SetImaginateSamplingMethod { method }.into()),
+						label: mode.to_string(),
+						on_update: update_value(move |_| TaggedValue::ImaginateMaskStartingFill(mode), node_id, mask_fill_index),
 						..DropdownEntryData::default()
 					});
 				}
 				let entries = vec![entries];
 
-				vec![
-					WidgetHolder::new(Widget::TextLabel(TextLabel {
-						value: "Sampling Method".into(),
-						tooltip: tooltip.clone(),
-						..Default::default()
-					})),
+				widgets.extend_from_slice(&[
 					WidgetHolder::unrelated_seperator(),
 					WidgetHolder::new(Widget::DropdownInput(DropdownInput {
 						entries,
-						selected_index: Some(imaginate_layer.sampling_method as u32),
-						tooltip,
+						selected_index: Some(starting_fill as u32),
 						..Default::default()
 					})),
-				]
-			},
-		},
-		LayoutGroup::Row {
-			widgets: {
-				let tooltip = "
-					Amplification of the text prompt's influence over the outcome. At 0, the prompt is entirely ignored.\n\
+				]);
+			}
+			LayoutGroup::Row { widgets }.with_tooltip(
+				"Begin in/outpainting the masked areas using this fill content as the starting base image.\n\
 					\n\
-					Lower values are more creative and exploratory. Higher values are more literal and uninspired, but may be lower quality.\n\
-					\n\
-					This parameter is otherwise known as CFG (classifier-free guidance).
-					"
-				.trim()
-				.to_string();
-
-				vec![
-					WidgetHolder::new(Widget::TextLabel(TextLabel {
-						value: "Text Guidance".into(),
-						tooltip: tooltip.to_string(),
-						..Default::default()
-					})),
-					WidgetHolder::unrelated_seperator(),
-					WidgetHolder::new(Widget::NumberInput(NumberInput {
-						value: Some(imaginate_layer.cfg_scale),
-						mode: NumberInputMode::Range,
-						range_min: Some(0.),
-						range_max: Some(30.),
-						min: Some(0.),
-						max: Some(30.),
-						tooltip,
-						on_update: WidgetCallback::new(move |number_input: &NumberInput| {
-							PropertiesPanelMessage::SetImaginateCfgScale {
-								cfg_scale: number_input.value.unwrap(),
-							}
-							.into()
-						}),
-						..Default::default()
-					})),
-				]
-			},
-		},
-		LayoutGroup::Row {
-			widgets: vec![
-				WidgetHolder::new(Widget::TextLabel(TextLabel {
-					value: "Text Prompt".into(),
-					tooltip: "
-						Description of the desired image subject and style.\n\
-						\n\
-						Include an artist name like \"Rembrandt\" or art medium like \"watercolor\" or \"photography\" to influence the look. List multiple to meld styles.\n\
-						\n\
-						To boost (or lessen) the importance of a word or phrase, wrap it in parentheses ending with a colon and a multiplier, for example:\n\
-						\"Colorless green ideas (sleep:1.3) furiously\"
-						"
-					.trim()
-					.into(),
-					..Default::default()
-				})),
-				WidgetHolder::new(Widget::Separator(Separator {
-					separator_type: SeparatorType::Unrelated,
-					direction: SeparatorDirection::Horizontal,
-				})),
-				WidgetHolder::new(Widget::TextAreaInput(TextAreaInput {
-					value: imaginate_layer.prompt.clone(),
-					on_update: WidgetCallback::new(move |text_area_input: &TextAreaInput| {
-						PropertiesPanelMessage::SetImaginatePrompt {
-							prompt: text_area_input.value.clone(),
-						}
-						.into()
-					}),
-					..Default::default()
-				})),
-			],
-		},
-		LayoutGroup::Row {
-			widgets: vec![
-				WidgetHolder::new(Widget::TextLabel(TextLabel {
-					value: "Neg. Prompt".into(),
-					tooltip: "A negative text prompt can be used to list things like objects or colors to avoid".into(),
-					..Default::default()
-				})),
-				WidgetHolder::new(Widget::Separator(Separator {
-					separator_type: SeparatorType::Unrelated,
-					direction: SeparatorDirection::Horizontal,
-				})),
-				WidgetHolder::new(Widget::TextAreaInput(TextAreaInput {
-					value: imaginate_layer.negative_prompt.clone(),
-					on_update: WidgetCallback::new(move |text_area_input: &TextAreaInput| {
-						PropertiesPanelMessage::SetImaginateNegativePrompt {
-							negative_prompt: text_area_input.value.clone(),
-						}
-						.into()
-					}),
-					..Default::default()
-				})),
-			],
-		},
-		LayoutGroup::Row {
-			widgets: {
-				let tooltip = "Generate an image based upon the artwork beneath this frame in the containing folder".to_string();
-
-				vec![
-					WidgetHolder::new(Widget::TextLabel(TextLabel {
-						value: "Use Base Image".into(),
-						tooltip: tooltip.clone(),
-						..Default::default()
-					})),
-					WidgetHolder::unrelated_seperator(),
-					WidgetHolder::new(Widget::CheckboxInput(CheckboxInput {
-						checked: imaginate_layer.use_img2img,
-						tooltip,
-						on_update: WidgetCallback::new(move |checkbox_input: &CheckboxInput| PropertiesPanelMessage::SetImaginateUseImg2Img { use_img2img: checkbox_input.checked }.into()),
-						..Default::default()
-					})),
-				]
-			},
-		},
-		LayoutGroup::Row {
-			widgets: {
-				let tooltip = "
-				Strength of the artistic liberties allowing changes from the base image. The image is unchanged at 0% and completely different at 100%.\n\
-				\n\
-				This parameter is otherwise known as denoising strength.
-				"
-				.trim()
-				.to_string();
-
-				vec![
-					WidgetHolder::new(Widget::TextLabel(TextLabel {
-						value: "Image Creativity".into(),
-						tooltip: tooltip.clone(),
-						..Default::default()
-					})),
-					WidgetHolder::unrelated_seperator(),
-					WidgetHolder::new(Widget::NumberInput(NumberInput {
-						value: Some(imaginate_layer.denoising_strength * 100.),
-						unit: "%".into(),
-						mode: NumberInputMode::Range,
-						range_min: Some(0.),
-						range_max: Some(100.),
-						min: Some(0.),
-						max: Some(100.),
-						display_decimal_places: 2,
-						disabled: !imaginate_layer.use_img2img,
-						tooltip,
-						on_update: WidgetCallback::new(move |number_input: &NumberInput| {
-							PropertiesPanelMessage::SetImaginateDenoisingStrength {
-								denoising_strength: number_input.value.unwrap() / 100.,
-							}
-							.into()
-						}),
-						..Default::default()
-					})),
-				]
-			},
-		},
-		LayoutGroup::Row {
-			widgets: {
-				let tooltip = "
-				Reference to a layer or folder which masks parts of the base image. Image generation is constrained to masked areas.\n\
-				\n\
-				Black shapes represent the masked regions. Lighter shades of gray act as a partial mask, and colors become grayscale.
-				"
-				.trim()
-				.to_string();
-
-				vec![
-					WidgetHolder::new(Widget::TextLabel(TextLabel {
-						value: "Masking Layer".into(),
-						tooltip: tooltip.clone(),
-						..Default::default()
-					})),
-					WidgetHolder::unrelated_seperator(),
-					WidgetHolder::new(Widget::LayerReferenceInput(LayerReferenceInput {
-						value: imaginate_layer.mask_layer_ref.clone(),
-						tooltip,
-						layer_name: layer_reference_input_layer_name.cloned(),
-						layer_type: layer_reference_input_layer_type.cloned(),
-						disabled: !imaginate_layer.use_img2img,
-						on_update: WidgetCallback::new(move |val: &LayerReferenceInput| PropertiesPanelMessage::SetImaginateLayerPath { layer_path: val.value.clone() }.into()),
-						..Default::default()
-					})),
-				]
-			},
-		},
-	];
-
-	if imaginate_layer.use_img2img && imaginate_layer.mask_layer_ref.is_some() && layer_reference_input_layer_is_some {
-		layout.extend(vec![
-			LayoutGroup::Row {
-				widgets: {
-					let tooltip = "
-					Constrain image generation to the interior (inpaint) or exterior (outpaint) of the mask, while referencing the other unchanged parts as context imagery.\n\
-					\n\
-					An unwanted part of an image can be replaced by drawing around it with a black shape and inpainting with that mask layer.\n\
-					\n\
-					An image can be uncropped by resizing the Imaginate layer to the target bounds and outpainting with a black rectangle mask matching the original image bounds.
-					"
-					.trim()
-					.to_string();
-
-					vec![
-						WidgetHolder::new(Widget::TextLabel(TextLabel {
-							value: "Mask Direction".to_string(),
-							tooltip: tooltip.clone(),
-							..Default::default()
-						})),
-						WidgetHolder::new(Widget::Separator(Separator {
-							separator_type: SeparatorType::Unrelated,
-							direction: SeparatorDirection::Horizontal,
-						})),
-						WidgetHolder::new(Widget::RadioInput(RadioInput {
-							entries: [(ImaginateMaskPaintMode::Inpaint, "Inpaint"), (ImaginateMaskPaintMode::Outpaint, "Outpaint")]
-								.into_iter()
-								.map(|(paint, name)| RadioEntryData {
-									label: name.to_string(),
-									on_update: WidgetCallback::new(move |_| PropertiesPanelMessage::SetImaginateMaskPaintMode { paint }.into()),
-									tooltip: tooltip.clone(),
-									..Default::default()
-								})
-								.collect(),
-							selected_index: imaginate_layer.mask_paint_mode as u32,
-							..Default::default()
-						})),
-					]
-				},
-			},
-			LayoutGroup::Row {
-				widgets: {
-					let tooltip = "Blur radius for the mask. Useful for softening sharp edges to blend the masked area with the rest of the image.".to_string();
-
-					vec![
-						WidgetHolder::new(Widget::TextLabel(TextLabel {
-							value: "Mask Blur".to_string(),
-							tooltip: tooltip.clone(),
-							..Default::default()
-						})),
-						WidgetHolder::new(Widget::Separator(Separator {
-							separator_type: SeparatorType::Unrelated,
-							direction: SeparatorDirection::Horizontal,
-						})),
-						WidgetHolder::new(Widget::NumberInput(NumberInput {
-							value: Some(imaginate_layer.mask_blur_px as f64),
-							unit: " px".into(),
-							mode: NumberInputMode::Range,
-							range_min: Some(0.),
-							range_max: Some(25.),
-							min: Some(0.),
-							is_integer: true,
-							tooltip,
-							on_update: WidgetCallback::new(move |number_input: &NumberInput| {
-								PropertiesPanelMessage::SetImaginateMaskBlurPx {
-									mask_blur_px: number_input.value.unwrap() as u32,
-								}
-								.into()
-							}),
-							..Default::default()
-						})),
-					]
-				},
-			},
-			LayoutGroup::Row {
-				widgets: {
-					let tooltip = "
-					Begin in/outpainting the masked areas using this fill content as the starting base image.\n\
-					\n\
-					Each option can be visualized by generating with 'Sampling Steps' set to 0.
-					"
-					.trim()
-					.to_string();
-
-					let mask_fill_content_modes = ImaginateMaskFillContent::list();
-					let mut entries = Vec::with_capacity(mask_fill_content_modes.len());
-					for mode in mask_fill_content_modes {
-						entries.push(DropdownEntryData {
-							label: mode.to_string(),
-							on_update: WidgetCallback::new(move |_| PropertiesPanelMessage::SetImaginateMaskFillContent { mode }.into()),
-							..DropdownEntryData::default()
-						});
-					}
-					let entries = vec![entries];
-
-					vec![
-						WidgetHolder::new(Widget::TextLabel(TextLabel {
-							value: "Mask Starting Fill".to_string(),
-							tooltip: tooltip.clone(),
-							..Default::default()
-						})),
-						WidgetHolder::new(Widget::Separator(Separator {
-							separator_type: SeparatorType::Unrelated,
-							direction: SeparatorDirection::Horizontal,
-						})),
-						WidgetHolder::new(Widget::DropdownInput(DropdownInput {
-							entries,
-							selected_index: Some(imaginate_layer.mask_fill_content as u32),
-							tooltip,
-							..Default::default()
-						})),
-					]
-				},
-			},
-		]);
+					Each option can be visualized by generating with 'Sampling Steps' set to 0.",
+			)
+		};
+		layout.extend_from_slice(&[in_paint, blur_radius, mask_starting_fill]);
 	}
 
-	layout.extend(vec![
-		LayoutGroup::Row {
-			widgets: {
-				let tooltip = "
-				Postprocess human (or human-like) faces to look subtly less distorted.\n\
+	let improve_faces = {
+		let widgets = bool_widget(document_node, node_id, faces_index, "Improve Faces");
+		LayoutGroup::Row { widgets }.with_tooltip(
+			"Postprocess human (or human-like) faces to look subtly less distorted.\n\
 				\n\
-				This filter can be used on its own by enabling 'Use Base Image' and setting 'Sampling Steps' to 0.
-				"
-				.to_string();
+				This filter can be used on its own by enabling 'Use Base Image' and setting 'Sampling Steps' to 0.",
+		)
+	};
+	let tiling = {
+		let widgets = bool_widget(document_node, node_id, tiling_index, "Tiling");
+		LayoutGroup::Row { widgets }.with_tooltip("Generate the image so its edges loop seamlessly to make repeatable patterns or textures")
+	};
+	layout.extend_from_slice(&[improve_faces, tiling]);
 
-				vec![
-					WidgetHolder::new(Widget::TextLabel(TextLabel {
-						value: "Improve Faces".into(),
-						tooltip: tooltip.clone(),
-						..Default::default()
-					})),
-					WidgetHolder::unrelated_seperator(),
-					WidgetHolder::new(Widget::CheckboxInput(CheckboxInput {
-						checked: imaginate_layer.restore_faces,
-						tooltip,
-						on_update: WidgetCallback::new(move |checkbox_input: &CheckboxInput| {
-							PropertiesPanelMessage::SetImaginateRestoreFaces {
-								restore_faces: checkbox_input.checked,
-							}
-							.into()
-						}),
-						..Default::default()
-					})),
-				]
-			},
-		},
-		LayoutGroup::Row {
-			widgets: {
-				let tooltip = "Generate the image so its edges loop seamlessly to make repeatable patterns or textures".to_string();
-
-				vec![
-					WidgetHolder::new(Widget::TextLabel(TextLabel {
-						value: "Tiling".into(),
-						tooltip: tooltip.clone(),
-						..Default::default()
-					})),
-					WidgetHolder::unrelated_seperator(),
-					WidgetHolder::new(Widget::CheckboxInput(CheckboxInput {
-						checked: imaginate_layer.tiling,
-						tooltip,
-						on_update: WidgetCallback::new(move |checkbox_input: &CheckboxInput| PropertiesPanelMessage::SetImaginateTiling { tiling: checkbox_input.checked }.into()),
-						..Default::default()
-					})),
-				]
-			},
-		},
-	]);
-
-	LayoutGroup::Section { name: "Imaginate".into(), layout }*/
-	vec![server_status]
+	layout
 }
 
 fn unknown_node_properties(document_node: &DocumentNode) -> Vec<LayoutGroup> {
