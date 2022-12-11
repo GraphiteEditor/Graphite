@@ -213,9 +213,9 @@ pub struct GammaNode<G> {
 
 // https://www.dfstudios.co.uk/articles/programming/image-programming-algorithms/image-processing-algorithms-part-6-gamma-correction/
 #[node_macro::node_fn(GammaNode)]
-fn image_gamma(mut image: Image, gamma: f32) -> Image {
+fn image_gamma(mut image: Image, gamma: f64) -> Image {
 	let inverse_gamma = 1. / gamma;
-	let channel = |channel: f32| channel.powf(inverse_gamma);
+	let channel = |channel: f32| channel.powf(inverse_gamma as f32);
 	for pixel in &mut image.data {
 		*pixel = Color::from_rgbaf32_unchecked(channel(pixel.r()), channel(pixel.g()), channel(pixel.b()), pixel.a())
 	}
