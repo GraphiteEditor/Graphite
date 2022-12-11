@@ -1,9 +1,18 @@
 <template>
 	<div>
 		<h3 class="example-pane-header">{{ name }}</h3>
+		<div v-if="chooseComputeType" class="compute-type-choice">
+			<strong>ComputeType:</strong>
+
+			<input type="radio" :id="`${id}-parametric`" value="Parametric" v-model="computeTypeChoice" />
+			<label :for="`${id}-parametric`">Parametric</label>
+
+			<input type="radio" :id="`${id}-euclidean`" value="Euclidean" v-model="computeTypeChoice" />
+			<label :for="`${id}-euclidean`">Euclidean</label>
+		</div>
 		<div class="example-row">
 			<div v-for="(example, index) in examples" :key="index">
-				<SubpathExample :title="example.title" :triples="example.triples" :closed="example.closed" :callback="callback" />
+				<SubpathExample :title="example.title" :triples="example.triples" :closed="example.closed" :callback="callback" :sliderOptions="sliderOptions" :computeType="computeTypeChoice" />
 			</div>
 		</div>
 	</div>
@@ -14,7 +23,7 @@
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
 
-import { SubpathCallback } from "@/utils/types";
+import { SubpathCallback, SliderOption, ComputeType } from "@/utils/types";
 
 import SubpathExample from "@/components/SubpathExample.vue";
 
@@ -22,6 +31,8 @@ export default defineComponent({
 	props: {
 		name: { type: String as PropType<string>, required: true },
 		callback: { type: Function as PropType<SubpathCallback>, required: true },
+		sliderOptions: { type: Array as PropType<Array<SliderOption>>, default: () => [] },
+		chooseComputeType: { type: Boolean as PropType<boolean>, default: false },
 	},
 	data() {
 		return {
@@ -50,6 +61,8 @@ export default defineComponent({
 					closed: true,
 				},
 			],
+			id: `${Math.random()}`.substring(2),
+			computeTypeChoice: "Parametric" as ComputeType,
 		};
 	},
 	components: {

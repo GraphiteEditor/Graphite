@@ -41,10 +41,6 @@ fn convert_wasm_maximize_arcs(wasm_enum_value: WasmMaximizeArcs) -> ArcStrategy 
 	}
 }
 
-fn wrap_svg_tag(contents: String) -> String {
-	format!("{}{}{}", SVG_OPEN_TAG, contents, SVG_CLOSE_TAG)
-}
-
 #[wasm_bindgen]
 impl WasmBezier {
 	/// Expect js_points to be a list of 2 pairs.
@@ -400,8 +396,8 @@ impl WasmBezier {
 		))
 	}
 
-	fn intersect(&self, curve: &Bezier, error: Option<f64>) -> Vec<f64> {
-		self.0.intersections(curve, error)
+	fn intersect(&self, curve: &Bezier, error: Option<f64>, minimum_separation: Option<f64>) -> Vec<f64> {
+		self.0.intersections(curve, error, minimum_separation)
 	}
 
 	pub fn intersect_line_segment(&self, js_points: &JsValue) -> String {
@@ -414,7 +410,7 @@ impl WasmBezier {
 		line.to_svg(&mut line_svg, CURVE_ATTRIBUTES.to_string().replace(BLACK, RED), String::new(), String::new(), String::new());
 
 		let intersections_svg = self
-			.intersect(&line, None)
+			.intersect(&line, None, None)
 			.iter()
 			.map(|intersection_t| {
 				let point = &self.0.evaluate(ComputeType::Parametric(*intersection_t));
@@ -424,7 +420,7 @@ impl WasmBezier {
 		wrap_svg_tag(format!("{bezier_curve_svg}{line_svg}{intersections_svg}"))
 	}
 
-	pub fn intersect_quadratic_segment(&self, js_points: &JsValue, error: f64) -> String {
+	pub fn intersect_quadratic_segment(&self, js_points: &JsValue, error: f64, minimum_separation: f64) -> String {
 		let points: [DVec2; 3] = js_points.into_serde().unwrap();
 		let quadratic = Bezier::from_quadratic_dvec2(points[0], points[1], points[2]);
 
@@ -434,7 +430,7 @@ impl WasmBezier {
 		quadratic.to_svg(&mut quadratic_svg, CURVE_ATTRIBUTES.to_string().replace(BLACK, RED), String::new(), String::new(), String::new());
 
 		let intersections_svg = self
-			.intersect(&quadratic, Some(error))
+			.intersect(&quadratic, Some(error), Some(minimum_separation))
 			.iter()
 			.map(|intersection_t| {
 				let point = &self.0.evaluate(ComputeType::Parametric(*intersection_t));
@@ -444,7 +440,7 @@ impl WasmBezier {
 		wrap_svg_tag(format!("{bezier_curve_svg}{quadratic_svg}{intersections_svg}"))
 	}
 
-	pub fn intersect_cubic_segment(&self, js_points: &JsValue, error: f64) -> String {
+	pub fn intersect_cubic_segment(&self, js_points: &JsValue, error: f64, minimum_separation: f64) -> String {
 		let points: [DVec2; 4] = js_points.into_serde().unwrap();
 		let cubic = Bezier::from_cubic_dvec2(points[0], points[1], points[2], points[3]);
 
@@ -454,7 +450,7 @@ impl WasmBezier {
 		cubic.to_svg(&mut cubic_svg, CURVE_ATTRIBUTES.to_string().replace(BLACK, RED), String::new(), String::new(), String::new());
 
 		let intersections_svg = self
-			.intersect(&cubic, Some(error))
+			.intersect(&cubic, Some(error), Some(minimum_separation))
 			.iter()
 			.map(|intersection_t| {
 				let point = &self.0.evaluate(ComputeType::Parametric(*intersection_t));

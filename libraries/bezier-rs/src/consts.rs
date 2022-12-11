@@ -8,6 +8,8 @@ pub const STRICT_MAX_ABSOLUTE_DIFFERENCE: f64 = 1e-6;
 pub const NUM_DISTANCES: usize = 5;
 /// Maximum allowed angle that the normal of the `start` or `end` point can make with the normal of the corresponding handle for a curve to be considered scalable/simple.
 pub const SCALABLE_CURVE_MAX_ENDPOINT_NORMAL_ANGLE: f64 = std::f64::consts::PI / 3.;
+/// Minimum allowable separation between adjacent `t` values when calculating curve intersections
+pub const MIN_SEPERATION_VALUE: f64 = 5. * 1e-3;
 
 // Method argument defaults
 

@@ -1,4 +1,4 @@
-use crate::consts::{MAX_ABSOLUTE_DIFFERENCE, STRICT_MAX_ABSOLUTE_DIFFERENCE};
+use crate::consts::{MAX_ABSOLUTE_DIFFERENCE, MIN_SEPERATION_VALUE, STRICT_MAX_ABSOLUTE_DIFFERENCE};
 
 use glam::{BVec2, DMat2, DVec2};
 use std::f64::consts::PI;
@@ -90,21 +90,17 @@ fn cube_root(f: f64) -> f64 {
 /// Solve a cubic of the form `x^3 + px + q`, derivation from: <https://trans4mind.com/personal_development/mathematics/polynomials/cubicAlgebra.htm>.
 pub fn solve_reformatted_cubic(discriminant: f64, a: f64, p: f64, q: f64) -> Vec<f64> {
 	let mut roots = Vec::new();
-	if p.abs() <= STRICT_MAX_ABSOLUTE_DIFFERENCE {
-		// Handle when p is approximately 0
-		roots.push(cube_root(-q));
-	} else if q.abs() <= STRICT_MAX_ABSOLUTE_DIFFERENCE {
-		// Handle when q is approximately 0
-		if p < 0. {
-			roots.push((-p).powf(1. / 2.));
-		}
-	} else if discriminant.abs() <= STRICT_MAX_ABSOLUTE_DIFFERENCE {
+	if discriminant.abs() <= STRICT_MAX_ABSOLUTE_DIFFERENCE {
 		// When discriminant is 0 (check for approximation because of floating point errors), all roots are real, and 2 are repeated
+		// filter out repeated roots (ie. roots whose distance is less than some epsilon)
 		let q_divided_by_2 = q / 2.;
 		let a_divided_by_3 = a / 3.;
-
-		roots.push(2. * cube_root(-q_divided_by_2) - a_divided_by_3);
-		roots.push(cube_root(q_divided_by_2) - a_divided_by_3);
+		let root_1 = 2. * cube_root(-q_divided_by_2) - a_divided_by_3;
+		let root_2 = cube_root(q_divided_by_2) - a_divided_by_3;
+		if (root_1 - root_2).abs() > MIN_SEPERATION_VALUE {
+			roots.push(root_1);
+		}
+		roots.push(root_2);
 	} else if discriminant > 0. {
 		// When discriminant > 0, there is one real and two imaginary roots
 		let q_divided_by_2 = q / 2.;
@@ -139,6 +135,7 @@ pub fn solve_cubic(a: f64, b: f64, c: f64, d: f64) -> Vec<f64> {
 			solve_quadratic(discriminant, 2. * b, c, d)
 		}
 	} else {
+		// convert at^3 + bt^2 + ct + d ==> t^3 + a't^2 + b't + c'
 		let new_a = b / a;
 		let new_b = c / a;
 		let new_c = d / a;

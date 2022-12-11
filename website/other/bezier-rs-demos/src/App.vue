@@ -13,7 +13,7 @@
 	</div>
 	<h2>Subpaths</h2>
 	<div v-for="(feature, index) in subpathFeatures" :key="index">
-		<SubpathExamplePane :name="feature.name" :callback="feature.callback" />
+		<SubpathExamplePane :name="feature.name" :callback="feature.callback" :sliderOptions="feature.sliderOptions" :chooseComputeType="feature.chooseComputeType" />
 	</div>
 </template>
 
@@ -82,6 +82,14 @@ const tErrorOptions = {
 	max: 2,
 	step: 0.1,
 	default: 0.5,
+};
+
+const tMinimumSeperationOptions = {
+	variable: "minimum_seperation",
+	min: 0.001,
+	max: 0.25,
+	step: 0.001,
+	default: 0.05,
 };
 
 export default defineComponent({
@@ -369,6 +377,14 @@ export default defineComponent({
 							],
 						},
 					},
+					customPoints: {
+						Cubic: [
+							[31, 94],
+							[40, 40],
+							[107, 107],
+							[106, 106],
+						],
+					},
 				},
 				{
 					name: "Skewed Outline",
@@ -479,11 +495,11 @@ export default defineComponent({
 							[180, 10],
 							[90, 120],
 						];
-						return bezier.intersect_quadratic_segment(quadratic, options.error);
+						return bezier.intersect_quadratic_segment(quadratic, options.error, options.minimum_seperation);
 					},
 					exampleOptions: {
 						Quadratic: {
-							sliderOptions: [tErrorOptions],
+							sliderOptions: [tErrorOptions, tMinimumSeperationOptions],
 						},
 					},
 				},
@@ -496,11 +512,11 @@ export default defineComponent({
 							[40, 120],
 							[175, 140],
 						];
-						return bezier.intersect_cubic_segment(cubic, options.error);
+						return bezier.intersect_cubic_segment(cubic, options.error, options.minimum_seperation);
 					},
 					exampleOptions: {
 						Quadratic: {
-							sliderOptions: [tErrorOptions],
+							sliderOptions: [tErrorOptions, tMinimumSeperationOptions],
 						},
 					},
 				},
@@ -557,6 +573,39 @@ export default defineComponent({
 				{
 					name: "Length",
 					callback: (subpath: WasmSubpathInstance): string => subpath.length(),
+				},
+				{
+					name: "Evaluate",
+					callback: (subpath: WasmSubpathInstance, options: Record<string, number>, _: undefined, computeType: ComputeType): string => subpath.evaluate(options.computeArgument, computeType),
+					sliderOptions: [{ ...tSliderOptions, variable: "computeArgument" }],
+					chooseComputeType: true,
+				},
+				{
+					name: "Intersect (Line Segment)",
+					callback: (subpath: WasmSubpathInstance): string =>
+						subpath.intersect_line_segment([
+							[150, 150],
+							[20, 20],
+						]),
+				},
+				{
+					name: "Intersect (Quadratic segment)",
+					callback: (subpath: WasmSubpathInstance): string =>
+						subpath.intersect_quadratic_segment([
+							[20, 80],
+							[180, 10],
+							[90, 120],
+						]),
+				},
+				{
+					name: "Intersect (Cubic segment)",
+					callback: (subpath: WasmSubpathInstance): string =>
+						subpath.intersect_cubic_segment([
+							[40, 20],
+							[100, 40],
+							[40, 120],
+							[175, 140],
+						]),
 				},
 			],
 		};

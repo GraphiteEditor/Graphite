@@ -14,7 +14,7 @@ export type BezierCurveType = typeof BEZIER_CURVE_TYPE[number];
 export type ComputeType = "Euclidean" | "Parametric";
 
 export type BezierCallback = (bezier: WasmBezierInstance, options: Record<string, number>, mouseLocation?: [number, number], computeType?: ComputeType) => string;
-export type SubpathCallback = (subpath: WasmSubpathInstance) => string;
+export type SubpathCallback = (subpath: WasmSubpathInstance, options: Record<string, number>, mouseLocation?: [number, number], computeType?: ComputeType) => string;
 
 export type ExampleOptions = {
 	[key in BezierCurveType]: {
