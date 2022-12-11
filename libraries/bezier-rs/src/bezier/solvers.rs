@@ -680,10 +680,8 @@ mod tests {
 		let intersections1 = bezier1.intersections(&bezier2, None, None);
 		let intersections2 = bezier2.intersections(&bezier1, None, None);
 
-		let mut intersections1_points: Vec<DVec2> = intersections1.iter().map(|&t| bezier1.evaluate(ComputeType::Parametric(t))).collect();
-		let mut intersections2_points: Vec<DVec2> = intersections2.iter().map(|&t| bezier2.evaluate(ComputeType::Parametric(t))).collect();
-		intersections1_points.sort_by(|a, b| a.partial_cmp(b).unwrap());
-		intersections2_points.sort_by(|a, b| a.partial_cmp(b).unwrap());
+		let intersections1_points: Vec<DVec2> = intersections1.iter().map(|&t| bezier1.evaluate(ComputeType::Parametric(t))).collect();
+		let intersections2_points: Vec<DVec2> = intersections2.iter().map(|&t| bezier2.evaluate(ComputeType::Parametric(t))).rev().collect();
 
 		assert!(compare_vec_of_points(intersections1_points, intersections2_points, 2.));
 	}
