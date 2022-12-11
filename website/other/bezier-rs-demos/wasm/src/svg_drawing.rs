@@ -26,6 +26,10 @@ pub const HANDLE_ATTRIBUTES: &str = "r=\"3\" stroke=\"gray\" stroke-width=\"1.5\
 pub const TEXT_OFFSET_X: f64 = 5.;
 pub const TEXT_OFFSET_Y: f64 = 193.;
 
+pub fn wrap_svg_tag(contents: String) -> String {
+	format!("{}{}{}", SVG_OPEN_TAG, contents, SVG_CLOSE_TAG)
+}
+
 /// Helper function to create an SVG text entity.
 pub fn draw_text(text: String, x_pos: f64, y_pos: f64, fill: &str) -> String {
 	format!(r#"<text x="{x_pos}" y="{y_pos}" fill="{fill}">{text}</text>"#)
