@@ -54,6 +54,7 @@
 			<SwatchPairInput v-if="component.props.kind === 'SwatchPairInput'" v-bind="component.props" />
 			<TextAreaInput v-if="component.props.kind === 'TextAreaInput'" v-bind="component.props" @commitText="(value: string) => updateLayout(component.widgetId, value)" />
 			<TextButton v-if="component.props.kind === 'TextButton'" v-bind="component.props" :action="() => updateLayout(component.widgetId, undefined)" :sharpRightCorners="nextIsSuffix" />
+			<BreadcrumbTrailButtons v-if="component.props.kind === 'BreadcrumbTrailButtons'" v-bind="component.props" :action="(index: number) => updateLayout(component.widgetId, index)" />
 			<TextInput
 				v-if="component.props.kind === 'TextInput'"
 				v-bind="component.props"
@@ -104,6 +105,7 @@ import type { Widget } from "@/wasm-communication/messages";
 import { isWidgetColumn, isWidgetRow, type WidgetColumn, type WidgetRow } from "@/wasm-communication/messages";
 
 import PivotAssist from "@/components/widgets/assists/PivotAssist.vue";
+import BreadcrumbTrailButtons from "@/components/widgets/buttons/BreadcrumbTrailButtons.vue";
 import IconButton from "@/components/widgets/buttons/IconButton.vue";
 import ParameterExposeButton from "@/components/widgets/buttons/ParameterExposeButton.vue";
 import PopoverButton from "@/components/widgets/buttons/PopoverButton.vue";
@@ -168,6 +170,7 @@ export default defineComponent({
 		},
 	},
 	components: {
+		BreadcrumbTrailButtons,
 		CheckboxInput,
 		ColorInput,
 		DropdownInput,
