@@ -1,3 +1,4 @@
+#[cfg(feature = "serde")]
 mod base64_serde {
 	use serde::{Deserialize, Deserializer, Serializer};
 
@@ -23,10 +24,10 @@ mod base64_serde {
 
 use dyn_any::{DynAny, StaticType};
 use glam::DVec2;
-use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
 
-#[derive(Clone, PartialEq, Deserialize, Serialize, Debug, DynAny)]
+#[derive(Clone, PartialEq, Debug, DynAny)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ImaginateInput {
 	// User-configurable layer parameters
 	pub seed: u64,
@@ -50,15 +51,16 @@ pub struct ImaginateInput {
 	pub percent_complete: f64,
 
 	// TODO: Have the browser dispose of this blob URL when this is dropped (like when the layer is deleted)
-	#[serde(skip)]
+	#[cfg_attr(feature = "serde", serde(skip))]
 	pub blob_url: Option<String>,
-	#[serde(skip)]
+	#[cfg_attr(feature = "serde", serde(skip))]
 	pub status: ImaginateStatus,
-	#[serde(skip)]
+	#[cfg_attr(feature = "serde", serde(skip))]
 	pub dimensions: DVec2,
 }
 
-#[derive(Default, Debug, Clone, Copy, PartialEq, Deserialize, Serialize, DynAny)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, DynAny)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ImaginateStatus {
 	#[default]
 	Idle,
@@ -69,9 +71,10 @@ pub enum ImaginateStatus {
 	Terminated,
 }
 
-#[derive(Clone, Eq, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ImaginateImageData {
-	#[serde(serialize_with = "base64_serde::as_base64", deserialize_with = "base64_serde::from_base64")]
+	#[cfg_attr(feature = "serde", serde(serialize_with = "base64_serde::as_base64", deserialize_with = "base64_serde::from_base64"))]
 	pub image_data: std::sync::Arc<Vec<u8>>,
 }
 
@@ -81,20 +84,23 @@ impl Debug for ImaginateImageData {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ImaginateBaseImage {
 	pub svg: String,
 	pub size: DVec2,
 }
 
-#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, Deserialize, Serialize)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Default, Clone, Copy, Eq, PartialEq)]
 pub enum ImaginateMaskPaintMode {
 	#[default]
 	Inpaint,
 	Outpaint,
 }
 
-#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, Deserialize, Serialize, DynAny)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, DynAny)]
 pub enum ImaginateMaskStartingFill {
 	#[default]
 	Fill,
@@ -125,7 +131,8 @@ impl std::fmt::Display for ImaginateMaskStartingFill {
 	}
 }
 
-#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Deserialize, Serialize, DynAny)]
+#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, DynAny)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ImaginateSamplingMethod {
 	#[default]
 	EulerA,
@@ -217,22 +224,23 @@ impl std::fmt::Display for ImaginateSamplingMethod {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ImaginateGenerationParameters {
 	pub seed: u64,
 	pub samples: u32,
 	/// Use `ImaginateSamplingMethod::api_value()` to generate this string
-	#[serde(rename = "samplingMethod")]
+	#[cfg_attr(feature = "serde", serde(rename = "samplingMethod"))]
 	pub sampling_method: String,
-	#[serde(rename = "denoisingStrength")]
+	#[cfg_attr(feature = "serde", serde(rename = "denoisingStrength"))]
 	pub denoising_strength: Option<f64>,
-	#[serde(rename = "cfgScale")]
+	#[cfg_attr(feature = "serde", serde(rename = "cfgScale"))]
 	pub cfg_scale: f64,
 	pub prompt: String,
-	#[serde(rename = "negativePrompt")]
+	#[cfg_attr(feature = "serde", serde(rename = "negativePrompt"))]
 	pub negative_prompt: String,
 	pub resolution: (u64, u64),
-	#[serde(rename = "restoreFaces")]
+	#[cfg_attr(feature = "serde", serde(rename = "restoreFaces"))]
 	pub restore_faces: bool,
 	pub tiling: bool,
 }
