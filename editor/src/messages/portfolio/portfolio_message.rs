@@ -2,7 +2,8 @@ use super::utility_types::ImaginateServerStatus;
 use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
 use crate::messages::prelude::*;
 
-use graphene::layers::{imaginate_layer::ImaginateStatus, text_layer::Font};
+use graph_craft::imaginate_input::ImaginateStatus;
+use graphene::layers::text_layer::Font;
 use graphene::LayerId;
 
 use serde::{Deserialize, Serialize};
@@ -52,12 +53,6 @@ pub enum PortfolioMessage {
 		is_default: bool,
 	},
 	ImaginateCheckServerStatus,
-	ImaginateSetBlobUrl {
-		document_id: u64,
-		layer_path: Vec<LayerId>,
-		blob_url: String,
-		resolution: (f64, f64),
-	},
 	ImaginateSetGeneratingStatus {
 		document_id: u64,
 		path: Vec<LayerId>,

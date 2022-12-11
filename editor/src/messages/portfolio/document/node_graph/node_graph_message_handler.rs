@@ -6,6 +6,8 @@ use graphene::document::Document;
 use graphene::layers::layer_info::LayerDataType;
 use graphene::layers::nodegraph_layer::NodeGraphFrameLayer;
 
+pub use self::document_node_types::NodePropertiesContext;
+
 mod document_node_types;
 mod node_properties;
 
@@ -32,7 +34,6 @@ pub enum FrontendGraphDataType {
 impl FrontendGraphDataType {
 	pub const fn with_tagged_value(value: &TaggedValue) -> Self {
 		match value {
-			TaggedValue::None => Self::General,
 			TaggedValue::String(_) => Self::Text,
 			TaggedValue::F32(_) | TaggedValue::F64(_) | TaggedValue::U32(_) => Self::Number,
 			TaggedValue::Bool(_) => Self::Boolean,
@@ -40,6 +41,7 @@ impl FrontendGraphDataType {
 			TaggedValue::Image(_) => Self::Raster,
 			TaggedValue::Color(_) => Self::Color,
 			TaggedValue::RcSubpath(_) | TaggedValue::Subpath(_) => Self::Subpath,
+			_ => Self::General,
 		}
 	}
 }
@@ -104,7 +106,7 @@ impl NodeGraphMessageHandler {
 		})
 	}
 
-	pub fn collate_properties(&self, node_graph_frame: &NodeGraphFrameLayer) -> Vec<LayoutGroup> {
+	pub fn collate_properties(&self, node_graph_frame: &NodeGraphFrameLayer, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 		let network = &node_graph_frame.network;
 		let mut section = Vec::new();
 		for node_id in &self.selected_nodes {
@@ -112,7 +114,7 @@ impl NodeGraphMessageHandler {
 				continue;
 			};
 
-			section.push(node_properties::generate_node_properties(document_node, *node_id));
+			section.push(node_properties::generate_node_properties(document_node, *node_id, context));
 		}
 
 		section

@@ -1,8 +1,10 @@
-use dyn_any::StaticType;
+pub use dyn_any::StaticType;
 use dyn_any::{DynAny, Upcast};
 use dyn_clone::DynClone;
-use glam::DVec2;
-use std::sync::Arc;
+pub use glam::DVec2;
+pub use std::sync::Arc;
+
+pub use crate::imaginate_input::{ImaginateMaskStartingFill, ImaginateSamplingMethod, ImaginateStatus};
 
 /// A type that is known, allowing serialization (serde::Deserialize is not object safe)
 #[derive(Clone, Debug, PartialEq)]
@@ -16,12 +18,18 @@ pub enum TaggedValue {
 	Bool(bool),
 	DVec2(DVec2),
 	Image(graphene_core::raster::Image),
+	RcImage(Option<Arc<graphene_core::raster::Image>>),
 	Color(graphene_core::raster::color::Color),
 	Subpath(graphene_core::vector::subpath::Subpath),
 	RcSubpath(Arc<graphene_core::vector::subpath::Subpath>),
+	ImaginateSamplingMethod(ImaginateSamplingMethod),
+	ImaginateMaskStartingFill(ImaginateMaskStartingFill),
+	ImaginateStatus(ImaginateStatus),
+	LayerPath(Option<Vec<u64>>),
 }
 
 impl TaggedValue {
+	/// Converts to a Box<dyn DynAny> - this isn't very neat but I'm not sure of a better approach
 	pub fn to_value(self) -> Value {
 		match self {
 			TaggedValue::None => Box::new(()),
@@ -32,9 +40,14 @@ impl TaggedValue {
 			TaggedValue::Bool(x) => Box::new(x),
 			TaggedValue::DVec2(x) => Box::new(x),
 			TaggedValue::Image(x) => Box::new(x),
+			TaggedValue::RcImage(x) => Box::new(x),
 			TaggedValue::Color(x) => Box::new(x),
 			TaggedValue::Subpath(x) => Box::new(x),
 			TaggedValue::RcSubpath(x) => Box::new(x),
+			TaggedValue::ImaginateSamplingMethod(x) => Box::new(x),
+			TaggedValue::ImaginateMaskStartingFill(x) => Box::new(x),
+			TaggedValue::ImaginateStatus(x) => Box::new(x),
+			TaggedValue::LayerPath(x) => Box::new(x),
 		}
 	}
 }

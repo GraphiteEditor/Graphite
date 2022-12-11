@@ -78,8 +78,6 @@ pub enum DocumentMessage {
 	},
 	FrameClear,
 	GroupSelectedLayers,
-	ImaginateGenerate,
-	ImaginateTerminate,
 	LayerChanged {
 		affected_layer_path: Vec<LayerId>,
 	},

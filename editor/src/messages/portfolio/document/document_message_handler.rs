@@ -22,10 +22,9 @@ use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::*;
 
 use graphene::color::Color;
-use graphene::document::{pick_layer_safe_imaginate_resolution, Document as GrapheneDocument};
+use graphene::document::Document as GrapheneDocument;
 use graphene::layers::blend_mode::BlendMode;
 use graphene::layers::folder_layer::FolderLayer;
-use graphene::layers::imaginate_layer::{ImaginateBaseImage, ImaginateGenerationParameters, ImaginateStatus};
 use graphene::layers::layer_info::{LayerDataType, LayerDataTypeDiscriminant};
 use graphene::layers::style::{Fill, RenderData, ViewMode};
 use graphene::layers::text_layer::{Font, FontCache};
@@ -388,20 +387,17 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				responses.extend([LayerChanged { affected_layer_path }.into(), DocumentStructureChanged.into()]);
 			}
 			FrameClear => {
-				let mut selected_frame_layers = self
-					.selected_layers_with_type(LayerDataTypeDiscriminant::Imaginate)
-					.chain(self.selected_layers_with_type(LayerDataTypeDiscriminant::NodeGraphFrame));
-				// Get what is hopefully the only selected Imaginate/NodeGraphFrame layer
+				let mut selected_frame_layers = self.selected_layers_with_type(LayerDataTypeDiscriminant::NodeGraphFrame);
+				// Get what is hopefully the only selected NodeGraphFrame layer
 				let layer_path = selected_frame_layers.next();
-				// Abort if we didn't have any Imaginate/NodeGraphFrame layer, or if there are additional ones also selected
+				// Abort if we didn't have any NodeGraphFrame layer, or if there are additional ones also selected
 				if layer_path.is_none() || selected_frame_layers.next().is_some() {
 					return;
 				}
 				let layer_path = layer_path.unwrap();
 
-				let layer = self.graphene_document.layer(layer_path).expect("Clearing Imaginate/NodeGraphFrame image for invalid layer");
+				let layer = self.graphene_document.layer(layer_path).expect("Clearing NodeGraphFrame image for invalid layer");
 				let previous_blob_url = match &layer.data {
-					LayerDataType::Imaginate(imaginate) => &imaginate.blob_url,
 					LayerDataType::NodeGraphFrame(node_graph_frame) => &node_graph_frame.blob_url,
 					x => panic!("Cannot find blob url for layer type {}", LayerDataTypeDiscriminant::from(x)),
 				};
@@ -440,7 +436,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 					.into(),
 				);
 			}
-			ImaginateGenerate => {
+			/*ImaginateGenerate => {
 				if let Some(message) = self.call_imaginate(document_id, preferences, persistent_data) {
 					// TODO: Eventually remove this after a message system ordering architectural change
 					// This message is a workaround for the fact that, when `imaginate.ts` calls...
@@ -482,7 +478,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				if let Some(layer_path) = layer_path {
 					responses.push_back(FrontendMessage::TriggerImaginateTerminate { document_id, layer_path, hostname }.into());
 				}
-			}
+			}*/
 			LayerChanged { affected_layer_path } => {
 				if let Ok(layer_entry) = self.layer_panel_entry(affected_layer_path.clone(), &persistent_data.font_cache) {
 					responses.push_back(FrontendMessage::UpdateDocumentLayerDetails { data: layer_entry }.into());
@@ -721,11 +717,6 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 
 				// Revoke the old blob URL
 				match &layer.data {
-					LayerDataType::Imaginate(imaginate) => {
-						if let Some(url) = &imaginate.blob_url {
-							responses.push_back(FrontendMessage::TriggerRevokeBlobUrl { url: url.clone() }.into());
-						}
-					}
 					LayerDataType::NodeGraphFrame(node_graph_frame) => {
 						if let Some(url) = &node_graph_frame.blob_url {
 							responses.push_back(FrontendMessage::TriggerRevokeBlobUrl { url: url.clone() }.into());
@@ -934,7 +925,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 }
 
 impl DocumentMessageHandler {
-	pub fn call_imaginate(&mut self, document_id: u64, preferences: &PreferencesMessageHandler, persistent_data: &PersistentData) -> Option<Message> {
+	/*pub fn call_imaginate(&mut self, document_id: u64, preferences: &PreferencesMessageHandler, persistent_data: &PersistentData) -> Option<Message> {
 		let layer_path = {
 			let mut selected_imaginate_layers = self.selected_layers_with_type(LayerDataTypeDiscriminant::Imaginate);
 
@@ -1021,7 +1012,7 @@ impl DocumentMessageHandler {
 			}
 			.into(),
 		)
-	}
+	}*/
 
 	pub fn call_node_graph_frame(&mut self, document_id: u64, _preferences: &PreferencesMessageHandler, persistent_data: &PersistentData) -> Option<Message> {
 		let layer_path = {
@@ -1568,15 +1559,6 @@ impl DocumentMessageHandler {
 					image_data: image.image_data.clone(),
 					mime: image.mime.clone(),
 				}),
-				LayerDataType::Imaginate(imaginate) => {
-					if let Some(data) = &imaginate.image_data {
-						image_data.push(FrontendImageData {
-							path: path.clone(),
-							image_data: data.image_data.clone(),
-							mime: imaginate.mime.clone(),
-						});
-					}
-				}
 				LayerDataType::NodeGraphFrame(node_graph_frame) => {
 					if let Some(data) = &node_graph_frame.image_data {
 						image_data.push(FrontendImageData {

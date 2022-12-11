@@ -1,34 +1,49 @@
-use super::base64_serde;
-use super::layer_info::LayerData;
-use super::style::{RenderData, ViewMode};
-use crate::intersection::{intersect_quad_bez_path, Quad};
-use crate::layers::text_layer::FontCache;
-use crate::LayerId;
+mod base64_serde {
+	use serde::{Deserialize, Deserializer, Serializer};
 
-use glam::{DAffine2, DMat2, DVec2};
-use kurbo::{Affine, BezPath, Shape as KurboShape};
+	pub fn as_base64<S>(key: &std::sync::Arc<Vec<u8>>, serializer: S) -> Result<S::Ok, S::Error>
+	where
+		S: Serializer,
+	{
+		serializer.serialize_str(&base64::encode(key.as_slice()))
+	}
+
+	pub fn from_base64<'a, D>(deserializer: D) -> Result<std::sync::Arc<Vec<u8>>, D::Error>
+	where
+		D: Deserializer<'a>,
+	{
+		use serde::de::Error;
+
+		String::deserialize(deserializer)
+			.and_then(|string| base64::decode(string).map_err(|err| Error::custom(err.to_string())))
+			.map(std::sync::Arc::new)
+			.map_err(serde::de::Error::custom)
+	}
+}
+
+use dyn_any::{DynAny, StaticType};
+use glam::DVec2;
 use serde::{Deserialize, Serialize};
-use std::fmt::Write;
+use std::fmt::Debug;
 
-#[derive(Clone, PartialEq, Deserialize, Serialize)]
-pub struct ImaginateLayer {
+#[derive(Clone, PartialEq, Deserialize, Serialize, Debug, DynAny)]
+pub struct ImaginateInput {
 	// User-configurable layer parameters
 	pub seed: u64,
 	pub samples: u32,
 	pub sampling_method: ImaginateSamplingMethod,
 	pub use_img2img: bool,
 	pub denoising_strength: f64,
-	pub mask_layer_ref: Option<Vec<LayerId>>,
+	pub mask_layer_ref: Option<Vec<u64>>,
 	pub mask_paint_mode: ImaginateMaskPaintMode,
 	pub mask_blur_px: u32,
-	pub mask_fill_content: ImaginateMaskFillContent,
+	pub mask_fill_content: ImaginateMaskStartingFill,
 	pub cfg_scale: f64,
 	pub prompt: String,
 	pub negative_prompt: String,
 	pub restore_faces: bool,
 	pub tiling: bool,
 
-	// Image stored in layer after generation completes
 	pub image_data: Option<ImaginateImageData>,
 	pub mime: String,
 	/// 0 is not started, 100 is complete.
@@ -43,7 +58,7 @@ pub struct ImaginateLayer {
 	pub dimensions: DVec2,
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Default, Debug, Clone, PartialEq, Deserialize, Serialize, DynAny)]
 pub enum ImaginateStatus {
 	#[default]
 	Idle,
@@ -54,10 +69,16 @@ pub enum ImaginateStatus {
 	Terminated,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Eq, PartialEq, Deserialize, Serialize)]
 pub struct ImaginateImageData {
 	#[serde(serialize_with = "base64_serde::as_base64", deserialize_with = "base64_serde::from_base64")]
 	pub image_data: std::sync::Arc<Vec<u8>>,
+}
+
+impl Debug for ImaginateImageData {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.write_str("[image data...]")
+	}
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
@@ -73,8 +94,8 @@ pub enum ImaginateMaskPaintMode {
 	Outpaint,
 }
 
-#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, Deserialize, Serialize)]
-pub enum ImaginateMaskFillContent {
+#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, Deserialize, Serialize, DynAny)]
+pub enum ImaginateMaskStartingFill {
 	#[default]
 	Fill,
 	Original,
@@ -82,29 +103,29 @@ pub enum ImaginateMaskFillContent {
 	LatentNothing,
 }
 
-impl ImaginateMaskFillContent {
-	pub fn list() -> [ImaginateMaskFillContent; 4] {
+impl ImaginateMaskStartingFill {
+	pub fn list() -> [ImaginateMaskStartingFill; 4] {
 		[
-			ImaginateMaskFillContent::Fill,
-			ImaginateMaskFillContent::Original,
-			ImaginateMaskFillContent::LatentNoise,
-			ImaginateMaskFillContent::LatentNothing,
+			ImaginateMaskStartingFill::Fill,
+			ImaginateMaskStartingFill::Original,
+			ImaginateMaskStartingFill::LatentNoise,
+			ImaginateMaskStartingFill::LatentNothing,
 		]
 	}
 }
 
-impl std::fmt::Display for ImaginateMaskFillContent {
+impl std::fmt::Display for ImaginateMaskStartingFill {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
-			ImaginateMaskFillContent::Fill => write!(f, "Smeared Surroundings"),
-			ImaginateMaskFillContent::Original => write!(f, "Original Base Image"),
-			ImaginateMaskFillContent::LatentNoise => write!(f, "Randomness (Latent Noise)"),
-			ImaginateMaskFillContent::LatentNothing => write!(f, "Neutral (Latent Nothing)"),
+			ImaginateMaskStartingFill::Fill => write!(f, "Smeared Surroundings"),
+			ImaginateMaskStartingFill::Original => write!(f, "Original Base Image"),
+			ImaginateMaskStartingFill::LatentNoise => write!(f, "Randomness (Latent Noise)"),
+			ImaginateMaskStartingFill::LatentNothing => write!(f, "Neutral (Latent Nothing)"),
 		}
 	}
 }
 
-#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Deserialize, Serialize, DynAny)]
 pub enum ImaginateSamplingMethod {
 	#[default]
 	EulerA,
@@ -216,7 +237,7 @@ pub struct ImaginateGenerationParameters {
 	pub tiling: bool,
 }
 
-impl Default for ImaginateLayer {
+impl Default for ImaginateInput {
 	fn default() -> Self {
 		Self {
 			seed: 0,
@@ -227,7 +248,7 @@ impl Default for ImaginateLayer {
 			mask_paint_mode: ImaginateMaskPaintMode::default(),
 			mask_layer_ref: None,
 			mask_blur_px: 4,
-			mask_fill_content: ImaginateMaskFillContent::default(),
+			mask_fill_content: ImaginateMaskStartingFill::default(),
 			cfg_scale: 10.,
 			prompt: "".into(),
 			negative_prompt: "".into(),
@@ -242,110 +263,5 @@ impl Default for ImaginateLayer {
 			status: Default::default(),
 			dimensions: Default::default(),
 		}
-	}
-}
-
-impl LayerData for ImaginateLayer {
-	fn render(&mut self, svg: &mut String, _svg_defs: &mut String, transforms: &mut Vec<DAffine2>, render_data: RenderData) {
-		let transform = self.transform(transforms, render_data.view_mode);
-		let inverse = transform.inverse();
-
-		let (width, height) = (transform.transform_vector2(DVec2::new(1., 0.)).length(), transform.transform_vector2(DVec2::new(0., 1.)).length());
-
-		if !inverse.is_finite() {
-			let _ = write!(svg, "<!-- SVG shape has an invalid transform -->");
-			return;
-		}
-
-		let _ = writeln!(svg, r#"<g transform="matrix("#);
-		inverse.to_cols_array().iter().enumerate().for_each(|(i, entry)| {
-			let _ = svg.write_str(&(entry.to_string() + if i == 5 { "" } else { "," }));
-		});
-		let _ = svg.write_str(r#")">"#);
-
-		if let Some(blob_url) = &self.blob_url {
-			let _ = write!(
-				svg,
-				r#"<image width="{}" height="{}" preserveAspectRatio="none" href="{}" transform="matrix("#,
-				width.abs(),
-				height.abs(),
-				blob_url
-			);
-		} else {
-			let _ = write!(
-				svg,
-				r#"<rect width="{}" height="{}" fill="none" stroke="var(--color-data-raster)" stroke-width="3" stroke-dasharray="8" transform="matrix("#,
-				width.abs(),
-				height.abs(),
-			);
-		}
-
-		(transform * DAffine2::from_scale((width, height).into()).inverse())
-			.to_cols_array()
-			.iter()
-			.enumerate()
-			.for_each(|(i, entry)| {
-				let _ = svg.write_str(&(entry.to_string() + if i == 5 { "" } else { "," }));
-			});
-
-		let _ = svg.write_str(r#")" /> </g>"#);
-	}
-
-	fn bounding_box(&self, transform: glam::DAffine2, _font_cache: &FontCache) -> Option<[DVec2; 2]> {
-		let mut path = self.bounds();
-
-		if transform.matrix2 == DMat2::ZERO {
-			return None;
-		}
-		path.apply_affine(glam_to_kurbo(transform));
-
-		let kurbo::Rect { x0, y0, x1, y1 } = path.bounding_box();
-		Some([(x0, y0).into(), (x1, y1).into()])
-	}
-
-	fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, _font_cache: &FontCache) {
-		if intersect_quad_bez_path(quad, &self.bounds(), true) {
-			intersections.push(path.clone());
-		}
-	}
-}
-
-impl ImaginateLayer {
-	pub fn transform(&self, transforms: &[DAffine2], mode: ViewMode) -> DAffine2 {
-		let start = match mode {
-			ViewMode::Outline => 0,
-			_ => (transforms.len() as i32 - 1).max(0) as usize,
-		};
-		transforms.iter().skip(start).cloned().reduce(|a, b| a * b).unwrap_or(DAffine2::IDENTITY)
-	}
-
-	fn bounds(&self) -> BezPath {
-		kurbo::Rect::from_origin_size(kurbo::Point::ZERO, kurbo::Size::new(1., 1.)).to_path(0.)
-	}
-}
-
-fn glam_to_kurbo(transform: DAffine2) -> Affine {
-	Affine::new(transform.to_cols_array())
-}
-
-impl std::fmt::Debug for ImaginateLayer {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		f.debug_struct("ImaginateLayer")
-			.field("seed", &self.seed)
-			.field("samples", &self.samples)
-			.field("use_img2img", &self.use_img2img)
-			.field("denoising_strength", &self.denoising_strength)
-			.field("cfg_scale", &self.cfg_scale)
-			.field("prompt", &self.prompt)
-			.field("negative_prompt", &self.negative_prompt)
-			.field("restore_faces", &self.restore_faces)
-			.field("tiling", &self.tiling)
-			.field("image_data", &self.image_data.as_ref().map(|_| "..."))
-			.field("mime", &self.mime)
-			.field("percent_complete", &self.percent_complete)
-			.field("blob_url", &self.blob_url)
-			.field("status", &self.status)
-			.field("dimensions", &self.dimensions)
-			.finish()
 	}
 }

@@ -1429,6 +1429,7 @@ name = "graph-craft"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "base64",
  "borrow_stack",
  "bytemuck",
  "dyn-any",

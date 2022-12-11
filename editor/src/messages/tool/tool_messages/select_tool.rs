@@ -1,6 +1,6 @@
 use crate::application::generate_uuid;
 use crate::consts::{ROTATE_SNAP_ANGLE, SELECTION_TOLERANCE};
-use crate::messages::frontend::utility_types::{FrontendImageData, MouseCursorIcon};
+use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, KeysGroup, MouseMotion};
 use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
 use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, PropertyHolder, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
@@ -572,7 +572,7 @@ impl Fsm for SelectToolFsmState {
 					tool_data.drag_current = mouse_position + closest_move;
 
 					if input.keyboard.get(duplicate as usize) && tool_data.not_duplicated_layers.is_none() {
-						tool_data.start_duplicates(document, document_id, responses);
+						tool_data.start_duplicates(document, responses);
 					} else if !input.keyboard.get(duplicate as usize) && tool_data.not_duplicated_layers.is_some() {
 						tool_data.stop_duplicates(responses);
 					}
@@ -929,7 +929,7 @@ impl Fsm for SelectToolFsmState {
 
 impl SelectToolData {
 	/// Duplicates the currently dragging layers. Called when Alt is pressed and the layers have not yet been duplicated.
-	fn start_duplicates(&mut self, document: &DocumentMessageHandler, document_id: u64, responses: &mut VecDeque<Message>) {
+	fn start_duplicates(&mut self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
 		responses.push_back(DocumentMessage::DeselectAllLayers.into());
 
 		self.not_duplicated_layers = Some(self.layers_dragging.clone());
@@ -947,7 +947,7 @@ impl SelectToolData {
 
 			// Copy the layers.
 			// Not using the Copy message allows us to retrieve the ids of the new layers to initialize the drag.
-			let mut layer = match document.graphene_document.layer(layer_path) {
+			let layer = match document.graphene_document.layer(layer_path) {
 				Ok(layer) => layer.clone(),
 				Err(e) => {
 					warn!("Could not access selected layer {:?}: {:?}", layer_path, e);
@@ -957,20 +957,6 @@ impl SelectToolData {
 
 			let layer_metadata = *document.layer_metadata(layer_path);
 			*layer_path.last_mut().unwrap() = generate_uuid();
-
-			let image_data = if let LayerDataType::Imaginate(imaginate) = &mut layer.data {
-				imaginate.blob_url = None;
-
-				imaginate.image_data.as_ref().map(|data| {
-					vec![FrontendImageData {
-						path: layer_path.clone(),
-						image_data: data.image_data.clone(),
-						mime: imaginate.mime.clone(),
-					}]
-				})
-			} else {
-				None
-			};
 
 			responses.push_back(
 				Operation::InsertLayer {
@@ -988,10 +974,6 @@ impl SelectToolData {
 				}
 				.into(),
 			);
-
-			if let Some(image_data) = image_data {
-				responses.push_back(FrontendMessage::UpdateImageData { image_data, document_id }.into());
-			}
 		}
 	}
 

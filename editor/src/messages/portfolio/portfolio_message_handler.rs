@@ -191,40 +191,21 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 			}
 			PortfolioMessage::ImaginateCheckServerStatus => {
 				self.persistent_data.imaginate_server_status = ImaginateServerStatus::Checking;
-				responses.push_back(
-					FrontendMessage::TriggerImaginateCheckServerStatus {
-						hostname: preferences.imaginate_server_hostname.clone(),
-					}
-					.into(),
-				);
+				// responses.push_back(
+				// 	FrontendMessage::TriggerImaginateCheckServerStatus {
+				// 		hostname: preferences.imaginate_server_hostname.clone(),
+				// 	}
+				// 	.into(),
+				// );
 				responses.push_back(PropertiesPanelMessage::ResendActiveProperties.into());
 			}
-			PortfolioMessage::ImaginateSetBlobUrl {
-				document_id,
-				layer_path,
-				blob_url,
-				resolution,
-			} => {
-				if let Some(document) = self.documents.get_mut(&document_id) {
-					if let Ok(layer) = document.graphene_document.layer(&layer_path) {
-						let previous_blob_url = &layer.as_imaginate().unwrap().blob_url;
-
-						if let Some(url) = previous_blob_url {
-							responses.push_back(FrontendMessage::TriggerRevokeBlobUrl { url: url.clone() }.into());
-						}
-
-						let message = DocumentOperation::SetLayerBlobUrl { layer_path, blob_url, resolution }.into();
-						responses.push_back(PortfolioMessage::DocumentPassMessage { document_id, message }.into());
-					}
-				}
+			PortfolioMessage::ImaginateSetGeneratingStatus { .. } => {
+				//let message = DocumentOperation::ImaginateSetGeneratingStatus { path, percent, status }.into();
+				//responses.push_back(PortfolioMessage::DocumentPassMessage { document_id, message }.into());
 			}
-			PortfolioMessage::ImaginateSetGeneratingStatus { document_id, path, percent, status } => {
-				let message = DocumentOperation::ImaginateSetGeneratingStatus { path, percent, status }.into();
-				responses.push_back(PortfolioMessage::DocumentPassMessage { document_id, message }.into());
-			}
-			PortfolioMessage::ImaginateSetImageData { document_id, layer_path, image_data } => {
-				let message = DocumentOperation::ImaginateSetImageData { layer_path, image_data }.into();
-				responses.push_back(PortfolioMessage::DocumentPassMessage { document_id, message }.into());
+			PortfolioMessage::ImaginateSetImageData { .. } => {
+				//let message = DocumentOperation::ImaginateSetImageData { layer_path, image_data }.into();
+				//responses.push_back(PortfolioMessage::DocumentPassMessage { document_id, message }.into());
 			}
 			PortfolioMessage::ImaginateSetServerStatus { status } => {
 				self.persistent_data.imaginate_server_status = status;

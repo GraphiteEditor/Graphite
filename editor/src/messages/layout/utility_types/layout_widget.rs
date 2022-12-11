@@ -249,6 +249,44 @@ pub enum LayoutGroup {
 	#[serde(rename = "section")]
 	Section { name: String, layout: SubLayout },
 }
+impl LayoutGroup {
+	pub fn with_tooltip(mut self, tooltip: impl Into<String>) -> Self {
+		let (is_col, mut widgets) = match self {
+			LayoutGroup::Column { widgets } => (true, widgets),
+			LayoutGroup::Row { widgets } => (false, widgets),
+			_ => unimplemented!(),
+		};
+		let tooltip = tooltip.into();
+		for widget in &mut widgets {
+			let val = match &mut widget.widget {
+				Widget::CheckboxInput(x) => &mut x.tooltip,
+				Widget::ColorInput(x) => &mut x.tooltip,
+				Widget::DropdownInput(x) => &mut x.tooltip,
+				Widget::FontInput(x) => &mut x.tooltip,
+				Widget::IconButton(x) => &mut x.tooltip,
+				Widget::IconLabel(x) => &mut x.tooltip,
+				Widget::LayerReferenceInput(x) => &mut x.tooltip,
+				Widget::NumberInput(x) => &mut x.tooltip,
+				Widget::OptionalInput(x) => &mut x.tooltip,
+				Widget::ParameterExposeButton(x) => &mut x.tooltip,
+				Widget::PopoverButton(x) => &mut x.tooltip,
+				Widget::TextAreaInput(x) => &mut x.tooltip,
+				Widget::TextButton(x) => &mut x.tooltip,
+				Widget::TextInput(x) => &mut x.tooltip,
+				Widget::TextLabel(x) => &mut x.tooltip,
+				Widget::InvisibleStandinInput(_) | Widget::PivotAssist(_) | Widget::RadioInput(_) | Widget::Separator(_) | Widget::SwatchPairInput(_) => continue,
+			};
+			if val.is_empty() {
+				*val = tooltip.clone();
+			}
+		}
+		if is_col {
+			Self::Column { widgets }
+		} else {
+			Self::Row { widgets }
+		}
+	}
+}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct WidgetHolder {
@@ -267,9 +305,22 @@ impl WidgetHolder {
 			direction: SeparatorDirection::Horizontal,
 		}))
 	}
+	pub fn related_seperator() -> Self {
+		WidgetHolder::new(Widget::Separator(Separator {
+			separator_type: SeparatorType::Related,
+			direction: SeparatorDirection::Horizontal,
+		}))
+	}
 	pub fn text_widget(text: impl Into<String>) -> Self {
 		WidgetHolder::new(Widget::TextLabel(TextLabel {
 			value: text.into(),
+			..Default::default()
+		}))
+	}
+	pub fn bold_text(text: impl Into<String>) -> Self {
+		WidgetHolder::new(Widget::TextLabel(TextLabel {
+			value: text.into(),
+			bold: true,
 			..Default::default()
 		}))
 	}

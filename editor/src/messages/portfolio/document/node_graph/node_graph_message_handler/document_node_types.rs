@@ -1,10 +1,13 @@
+use std::collections::VecDeque;
+
 use super::{node_properties, FrontendGraphDataType, FrontendNodeType};
 use crate::messages::layout::utility_types::layout_widget::{LayoutGroup, Widget, WidgetHolder};
 use crate::messages::layout::utility_types::widgets::label_widgets::TextLabel;
 
 use graph_craft::concrete;
-use graph_craft::document::value::TaggedValue;
+use graph_craft::document::value::*;
 use graph_craft::document::{DocumentNode, NodeId, NodeInput};
+use graph_craft::imaginate_input::ImaginateSamplingMethod;
 use graph_craft::proto::{NodeIdentifier, Type};
 use graphene_core::raster::Image;
 
@@ -22,13 +25,19 @@ impl DocumentInputType {
 	}
 }
 
+pub struct NodePropertiesContext<'a> {
+	pub persistent_data: &'a crate::messages::portfolio::utility_types::PersistentData,
+	pub document: &'a graphene::document::Document,
+	pub responses: &'a mut VecDeque<crate::messages::prelude::Message>,
+}
+
 pub struct DocumentNodeType {
 	pub name: &'static str,
 	pub category: &'static str,
 	pub identifier: NodeIdentifier,
 	pub inputs: &'static [DocumentInputType],
 	pub outputs: &'static [FrontendGraphDataType],
-	pub properties: fn(&DocumentNode, NodeId) -> Vec<LayoutGroup>,
+	pub properties: fn(&DocumentNode, NodeId, &mut NodePropertiesContext) -> Vec<LayoutGroup>,
 }
 
 // TODO: Dynamic node library
@@ -43,7 +52,7 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 			default: NodeInput::Node(0),
 		}],
 		outputs: &[FrontendGraphDataType::General],
-		properties: |_document_node, _node_id| {
+		properties: |_document_node, _node_id, _context| {
 			vec![LayoutGroup::Row {
 				widgets: vec![WidgetHolder::new(Widget::TextLabel(TextLabel {
 					value: "The identity node simply returns the input".to_string(),
@@ -62,7 +71,7 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 			default: NodeInput::Network,
 		}],
 		outputs: &[FrontendGraphDataType::Raster],
-		properties: |_document_node, _node_id| node_properties::string_properties("The input to the graph is the bitmap under the frame".to_string()),
+		properties: |_document_node, _node_id, _context| node_properties::string_properties("The input to the graph is the bitmap under the frame".to_string()),
 	},
 	DocumentNodeType {
 		name: "Output",
@@ -74,7 +83,7 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 			default: NodeInput::value(TaggedValue::Image(Image::empty()), true),
 		}],
 		outputs: &[],
-		properties: |_document_node, _node_id| node_properties::string_properties("The output to the graph is rendered in the frame".to_string()),
+		properties: |_document_node, _node_id, _context| node_properties::string_properties("The output to the graph is rendered in the frame".to_string()),
 	},
 	DocumentNodeType {
 		name: "Grayscale",
@@ -175,6 +184,34 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 		],
 		outputs: &[FrontendGraphDataType::Raster],
 		properties: node_properties::exposure_properties,
+	},
+	DocumentNodeType {
+		name: "Imaginate",
+		category: "Image Synthesis",
+		identifier: NodeIdentifier::new("graphene_std::raster::ImaginateNode", &[concrete!("&TypeErasedNode")]),
+		inputs: &[
+			DocumentInputType::new("Image", TaggedValue::Image(Image::empty()), true),
+			DocumentInputType::new("Seed", TaggedValue::F64(0.), false),
+			DocumentInputType::new("Samples", TaggedValue::F64(30.), false),
+			DocumentInputType::new("Sampling Method", TaggedValue::ImaginateSamplingMethod(ImaginateSamplingMethod::EulerA), false),
+			DocumentInputType::new("Text Guidance", TaggedValue::F64(10.), false),
+			DocumentInputType::new("Text Prompt", TaggedValue::String(String::new()), false),
+			DocumentInputType::new("Neg. Prompt", TaggedValue::String(String::new()), false),
+			DocumentInputType::new("Use Base Image", TaggedValue::Bool(true), false),
+			DocumentInputType::new("Image Creativity", TaggedValue::F64(0.66), false),
+			DocumentInputType::new("Masking Layer", TaggedValue::LayerPath(None), false),
+			DocumentInputType::new("Inpaint", TaggedValue::Bool(true), false),
+			DocumentInputType::new("Mask Blur", TaggedValue::F64(4.), false),
+			DocumentInputType::new("Mask Starting Fill", TaggedValue::ImaginateMaskStartingFill(ImaginateMaskStartingFill::Fill), false),
+			DocumentInputType::new("Improve Faces", TaggedValue::Bool(false), false),
+			DocumentInputType::new("Tiling", TaggedValue::Bool(false), false),
+			// Non user status (is document input the right way to do this?)
+			DocumentInputType::new("Cached Data", TaggedValue::RcImage(None), false),
+			DocumentInputType::new("Percent Complete", TaggedValue::F64(0.), false),
+			DocumentInputType::new("Status", TaggedValue::ImaginateStatus(ImaginateStatus::Idle), false),
+		],
+		outputs: &[FrontendGraphDataType::Raster],
+		properties: node_properties::imaginate_properties,
 	},
 	DocumentNodeType {
 		name: "Add",

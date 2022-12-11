@@ -7,9 +7,6 @@ use crate::messages::tool::common_functionality::resize::Resize;
 use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 
-use graphene::Operation;
-
-use glam::DAffine2;
 use serde::{Deserialize, Serialize};
 
 #[derive(Default)]
@@ -137,14 +134,7 @@ impl Fsm for ImaginateToolFsmState {
 					shape_data.path = Some(document.get_path_for_new_layer());
 					responses.push_back(DocumentMessage::DeselectAllLayers.into());
 
-					responses.push_back(
-						Operation::AddImaginateFrame {
-							path: shape_data.path.clone().unwrap(),
-							insert_index: -1,
-							transform: DAffine2::ZERO.to_cols_array(),
-						}
-						.into(),
-					);
+					// TODO: Fix tool (low priority)
 
 					Drawing
 				}
