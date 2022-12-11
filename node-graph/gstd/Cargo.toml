@@ -37,6 +37,7 @@ kurbo = { git = "https://github.com/linebender/kurbo.git", features = [
 	"serde",
 ] }
 glam = { version = "0.22", features = ["serde"] }
+node-macro = { path="../node-macro" }
 
 [dependencies.serde]
 version = "1.0"
