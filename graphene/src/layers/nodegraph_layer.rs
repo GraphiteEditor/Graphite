@@ -9,6 +9,7 @@ use glam::{DAffine2, DMat2, DVec2};
 use graph_craft::proto::Type;
 use kurbo::{Affine, BezPath, Shape as KurboShape};
 use serde::{Deserialize, Serialize};
+use std::borrow::Cow;
 use std::fmt::Write;
 
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
@@ -131,7 +132,7 @@ impl Default for NodeGraphFrameLayer {
 						DocumentNode {
 							name: "Input".into(),
 							inputs: vec![NodeInput::Network],
-							implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode", &[Type::Generic])),
+							implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode", &[Type::Generic(Cow::Borrowed("T"))])),
 							metadata: DocumentNodeMetadata { position: (8, 4) },
 						},
 					),
@@ -140,7 +141,7 @@ impl Default for NodeGraphFrameLayer {
 						DocumentNode {
 							name: "Output".into(),
 							inputs: vec![NodeInput::Node(0)],
-							implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode", &[Type::Generic])),
+							implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode", &[Type::Generic(Cow::Borrowed("T"))])),
 							metadata: DocumentNodeMetadata { position: (20, 4) },
 						},
 					),

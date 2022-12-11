@@ -1,9 +1,7 @@
-use std::borrow::Cow;
-
 use borrow_stack::FixedSizeStack;
 use glam::DVec2;
 use graphene_core::generic::FnNode;
-use graphene_core::ops::AddNode;
+use graphene_core::ops::{AddNode, IdNode};
 use graphene_core::raster::color::Color;
 use graphene_core::structural::{ConsNode, Then};
 use graphene_core::Node;
@@ -13,105 +11,78 @@ use graphene_std::raster::Image;
 use graphene_std::vector::subpath::Subpath;
 
 use crate::proto::Type;
-use crate::proto::{ConstructionArgs, NodeIdentifier, ProtoNode, ProtoNodeInput, Type::Concrete};
+use crate::proto::{ConstructionArgs, NodeIdentifier, ProtoNode, ProtoNodeInput};
 
 type NodeConstructor = fn(ProtoNode, &FixedSizeStack<TypeErasedNode<'static>>);
 
+use crate::{concrete, generic};
+
 //TODO: turn into hasmap
 static NODE_REGISTRY: &[(NodeIdentifier, NodeConstructor)] = &[
-	(
-		NodeIdentifier::new("graphene_core::ops::IdNode", &[Concrete(std::borrow::Cow::Borrowed("Any<'_>"))]),
-		|proto_node, stack| {
-			stack.push_fn(|nodes| {
-				if let ProtoNodeInput::Node(pre_id) = proto_node.input {
-					let pre_node = nodes.get(pre_id as usize).unwrap();
-					let node = pre_node.then(graphene_core::ops::IdNode);
-					node.into_type_erased()
-				} else {
-					graphene_core::ops::IdNode.into_type_erased()
-				}
-			})
-		},
-	),
-	(NodeIdentifier::new("graphene_core::ops::IdNode", &[Type::Generic]), |proto_node, stack| {
+	(NodeIdentifier::new("graphene_core::ops::IdNode", &[concrete!("Any<'_>")]), |proto_node, stack| {
 		stack.push_fn(|nodes| {
 			if let ProtoNodeInput::Node(pre_id) = proto_node.input {
 				let pre_node = nodes.get(pre_id as usize).unwrap();
-				let node = pre_node.then(graphene_core::ops::IdNode);
-				node.into_type_erased()
+				pre_node.into_type_erased()
 			} else {
 				graphene_core::ops::IdNode.into_type_erased()
 			}
 		})
 	}),
-	(
-		NodeIdentifier::new("graphene_core::ops::AddNode", &[Type::Concrete(Cow::Borrowed("&TypeErasedNode"))]),
-		|proto_node, stack| {
-			stack.push_fn(move |nodes| {
-				let ConstructionArgs::Nodes(construction_nodes) = proto_node.construction_args else { unreachable!("Add Node constructed with out rhs input node") };
-				let value_node = nodes.get(construction_nodes[0] as usize).unwrap();
-				let input_node: DowncastBothNode<_, (), f64> = DowncastBothNode::new(value_node);
-				let node: DynAnyNode<_, f64, _, _> = DynAnyNode::new(ConsNode::new(input_node).then(graphene_core::ops::AddNode));
+	(NodeIdentifier::new("graphene_core::ops::IdNode", &[generic!("T")]), |proto_node, stack| {
+		stack.push_fn(|nodes| {
+			if let ProtoNodeInput::Node(pre_id) = proto_node.input {
+				let pre_node = nodes.get(pre_id as usize).unwrap();
+				pre_node.into_type_erased()
+			} else {
+				graphene_core::ops::IdNode.into_type_erased()
+			}
+		})
+	}),
+	(NodeIdentifier::new("graphene_core::ops::AddNode", &[concrete!("&TypeErasedNode")]), |proto_node, stack| {
+		stack.push_fn(move |nodes| {
+			let ConstructionArgs::Nodes(construction_nodes) = proto_node.construction_args else { unreachable!("Add Node constructed with out rhs input node") };
+			let value_node = nodes.get(construction_nodes[0] as usize).unwrap();
+			let input_node: DowncastBothNode<_, (), f64> = DowncastBothNode::new(value_node);
+			let node: DynAnyNode<_, f64, _, _> = DynAnyNode::new(ConsNode::new(input_node).then(graphene_core::ops::AddNode));
 
-				if let ProtoNodeInput::Node(node_id) = proto_node.input {
-					let pre_node = nodes.get(node_id as usize).unwrap();
-					(pre_node).then(node).into_type_erased()
-				} else {
-					node.into_type_erased()
-				}
-			})
-		},
-	),
-	(
-		NodeIdentifier::new(
-			"graphene_core::ops::AddNode",
-			&[Concrete(std::borrow::Cow::Borrowed("u32")), Concrete(std::borrow::Cow::Borrowed("u32"))],
-		),
-		|proto_node, stack| {
-			stack.push_fn(|nodes| {
-				let pre_node = nodes.get(proto_node.input.unwrap_node() as usize).unwrap();
-				let node: DynAnyNode<AddNode, (u32, u32), _, _> = DynAnyNode::new(graphene_core::ops::AddNode);
-				let node = (pre_node).then(node);
-
+			if let ProtoNodeInput::Node(node_id) = proto_node.input {
+				let pre_node = nodes.get(node_id as usize).unwrap();
+				(pre_node).then(node).into_type_erased()
+			} else {
 				node.into_type_erased()
-			})
-		},
-	),
-	(
-		NodeIdentifier::new(
-			"graphene_core::ops::AddNode",
-			&[Concrete(std::borrow::Cow::Borrowed("&u32")), Concrete(std::borrow::Cow::Borrowed("&u32"))],
-		),
-		|proto_node, stack| {
-			stack.push_fn(|nodes| {
-				let pre_node = nodes.get(proto_node.input.unwrap_node() as usize).unwrap();
-				let node: DynAnyNode<AddNode, (&u32, &u32), _, _> = DynAnyNode::new(graphene_core::ops::AddNode);
-				let node = (pre_node).then(node);
+			}
+		})
+	}),
+	(NodeIdentifier::new("graphene_core::ops::AddNode", &[concrete!("u32"), concrete!("u32")]), |proto_node, stack| {
+		stack.push_fn(|nodes| {
+			let pre_node = nodes.get(proto_node.input.unwrap_node() as usize).unwrap();
+			let node: DynAnyNode<AddNode, (u32, u32), _, _> = DynAnyNode::new(graphene_core::ops::AddNode);
+			let node = (pre_node).then(node);
 
-				node.into_type_erased()
-			})
-		},
-	),
-	(
-		NodeIdentifier::new(
-			"graphene_core::ops::AddNode",
-			&[Concrete(std::borrow::Cow::Borrowed("&u32")), Concrete(std::borrow::Cow::Borrowed("u32"))],
-		),
-		|proto_node, stack| {
-			stack.push_fn(|nodes| {
-				let pre_node = nodes.get(proto_node.input.unwrap_node() as usize).unwrap();
-				let node: DynAnyNode<AddNode, (&u32, u32), _, _> = DynAnyNode::new(graphene_core::ops::AddNode);
-				let node = (pre_node).then(node);
+			node.into_type_erased()
+		})
+	}),
+	(NodeIdentifier::new("graphene_core::ops::AddNode", &[concrete!("&u32"), concrete!("&u32")]), |proto_node, stack| {
+		stack.push_fn(|nodes| {
+			let pre_node = nodes.get(proto_node.input.unwrap_node() as usize).unwrap();
+			let node: DynAnyNode<AddNode, (&u32, &u32), _, _> = DynAnyNode::new(graphene_core::ops::AddNode);
+			let node = (pre_node).then(node);
 
-				node.into_type_erased()
-			})
-		},
-	),
+			node.into_type_erased()
+		})
+	}),
+	(NodeIdentifier::new("graphene_core::ops::AddNode", &[concrete!("&u32"), concrete!("u32")]), |proto_node, stack| {
+		stack.push_fn(|nodes| {
+			let pre_node = nodes.get(proto_node.input.unwrap_node() as usize).unwrap();
+			let node: DynAnyNode<AddNode, (&u32, u32), _, _> = DynAnyNode::new(graphene_core::ops::AddNode);
+			let node = (pre_node).then(node);
+
+			node.into_type_erased()
+		})
+	}),
 	(
-		NodeIdentifier::new(
-			"graphene_core::structural::ConsNode",
-			&[Concrete(std::borrow::Cow::Borrowed("&u32")), Concrete(std::borrow::Cow::Borrowed("u32"))],
-		),
+		NodeIdentifier::new("graphene_core::structural::ConsNode", &[concrete!("&u32"), concrete!("u32")]),
 		|proto_node, stack| {
 			if let ConstructionArgs::Nodes(cons_node_arg) = proto_node.construction_args {
 				stack.push_fn(move |nodes| {
@@ -135,10 +106,7 @@ static NODE_REGISTRY: &[(NodeIdentifier, NodeConstructor)] = &[
 		},
 	),
 	(
-		NodeIdentifier::new(
-			"graphene_core::structural::ConsNode",
-			&[Concrete(std::borrow::Cow::Borrowed("u32")), Concrete(std::borrow::Cow::Borrowed("u32"))],
-		),
+		NodeIdentifier::new("graphene_core::structural::ConsNode", &[concrete!("u32"), concrete!("u32")]),
 		|proto_node, stack| {
 			if let ConstructionArgs::Nodes(cons_node_arg) = proto_node.construction_args {
 				stack.push_fn(move |nodes| {
@@ -163,10 +131,7 @@ static NODE_REGISTRY: &[(NodeIdentifier, NodeConstructor)] = &[
 	),
 	// TODO: create macro to impl for all types
 	(
-		NodeIdentifier::new(
-			"graphene_core::structural::ConsNode",
-			&[Concrete(std::borrow::Cow::Borrowed("&u32")), Concrete(std::borrow::Cow::Borrowed("&u32"))],
-		),
+		NodeIdentifier::new("graphene_core::structural::ConsNode", &[concrete!("&u32"), concrete!("&u32")]),
 		|proto_node, stack| {
 			let node_id = proto_node.input.unwrap_node() as usize;
 			if let ConstructionArgs::Nodes(cons_node_arg) = proto_node.construction_args {
@@ -184,31 +149,25 @@ static NODE_REGISTRY: &[(NodeIdentifier, NodeConstructor)] = &[
 			}
 		},
 	),
-	(
-		NodeIdentifier::new("graphene_core::any::DowncastNode", &[Concrete(std::borrow::Cow::Borrowed("&u32"))]),
-		|proto_node, stack| {
-			stack.push_fn(|nodes| {
-				let pre_node = nodes.get(proto_node.input.unwrap_node() as usize).unwrap();
-				let node = pre_node.then(graphene_core::ops::IdNode);
-				node.into_type_erased()
-			})
-		},
-	),
-	(
-		NodeIdentifier::new("graphene_core::value::ValueNode", &[Concrete(std::borrow::Cow::Borrowed("Any<'_>"))]),
-		|proto_node, stack| {
-			stack.push_fn(|_nodes| {
-				if let ConstructionArgs::Value(value) = proto_node.construction_args {
-					let node = FnNode::new(move |_| value.clone().up_box() as Any<'static>);
+	(NodeIdentifier::new("graphene_core::any::DowncastNode", &[concrete!("&u32")]), |proto_node, stack| {
+		stack.push_fn(|nodes| {
+			let pre_node = nodes.get(proto_node.input.unwrap_node() as usize).unwrap();
+			let node = pre_node.then(graphene_core::ops::IdNode);
+			node.into_type_erased()
+		})
+	}),
+	(NodeIdentifier::new("graphene_core::value::ValueNode", &[concrete!("Any<'>")]), |proto_node, stack| {
+		stack.push_fn(|_nodes| {
+			if let ConstructionArgs::Value(value) = proto_node.construction_args {
+				let node = FnNode::new(move |_| value.clone().up_box() as Any<'static>);
 
-					node.into_type_erased()
-				} else {
-					unreachable!()
-				}
-			})
-		},
-	),
-	(NodeIdentifier::new("graphene_core::value::ValueNode", &[Type::Generic]), |proto_node, stack| {
+				node.into_type_erased()
+			} else {
+				unreachable!()
+			}
+		})
+	}),
+	(NodeIdentifier::new("graphene_core::value::ValueNode", &[generic!("T")]), |proto_node, stack| {
 		stack.push_fn(|_nodes| {
 			if let ConstructionArgs::Value(value) = proto_node.construction_args {
 				let node = FnNode::new(move |_| value.clone().up_box() as Any<'static>);
@@ -230,44 +189,38 @@ static NODE_REGISTRY: &[(NodeIdentifier, NodeConstructor)] = &[
 			}
 		})
 	}),
-	(
-		NodeIdentifier::new("graphene_core::raster::BrightenColorNode", &[Type::Concrete(Cow::Borrowed("&TypeErasedNode"))]),
-		|proto_node, stack| {
-			info!("proto node {:?}", proto_node);
-			stack.push_fn(|nodes| {
-				let ConstructionArgs::Nodes(construction_nodes) = proto_node.construction_args else { unreachable!("Brighten Color Node constructed with out brightness input node") };
-				let value_node = nodes.get(construction_nodes[0] as usize).unwrap();
-				let input_node: DowncastBothNode<_, (), f32> = DowncastBothNode::new(value_node);
-				let node = DynAnyNode::new(graphene_core::raster::BrightenColorNode::new(input_node));
+	(NodeIdentifier::new("graphene_core::raster::BrightenColorNode", &[concrete!("&TypeErasedNode")]), |proto_node, stack| {
+		info!("proto node {:?}", proto_node);
+		stack.push_fn(|nodes| {
+			let ConstructionArgs::Nodes(construction_nodes) = proto_node.construction_args else { unreachable!("Brighten Color Node constructed with out brightness input node") };
+			let value_node = nodes.get(construction_nodes[0] as usize).unwrap();
+			let input_node: DowncastBothNode<_, (), f32> = DowncastBothNode::new(value_node);
+			let node = DynAnyNode::new(graphene_core::raster::BrightenColorNode::new(input_node));
 
-				if let ProtoNodeInput::Node(pre_id) = proto_node.input {
-					let pre_node = nodes.get(pre_id as usize).unwrap();
-					(pre_node).then(node).into_type_erased()
-				} else {
-					node.into_type_erased()
-				}
-			})
-		},
-	),
-	(
-		NodeIdentifier::new("graphene_core::raster::HueShiftColorNode", &[Type::Concrete(Cow::Borrowed("&TypeErasedNode"))]),
-		|proto_node, stack| {
-			info!("proto node {:?}", proto_node);
-			stack.push_fn(|nodes| {
-				let ConstructionArgs::Nodes(construction_nodes) = proto_node.construction_args else { unreachable!("Hue Shift Color Node constructed with out shift input node") };
-				let value_node = nodes.get(construction_nodes[0] as usize).unwrap();
-				let input_node: DowncastBothNode<_, (), f32> = DowncastBothNode::new(value_node);
-				let node = DynAnyNode::new(graphene_core::raster::HueShiftColorNode::new(input_node));
+			if let ProtoNodeInput::Node(pre_id) = proto_node.input {
+				let pre_node = nodes.get(pre_id as usize).unwrap();
+				(pre_node).then(node).into_type_erased()
+			} else {
+				node.into_type_erased()
+			}
+		})
+	}),
+	(NodeIdentifier::new("graphene_core::raster::HueShiftColorNode", &[concrete!("&TypeErasedNode")]), |proto_node, stack| {
+		info!("proto node {:?}", proto_node);
+		stack.push_fn(|nodes| {
+			let ConstructionArgs::Nodes(construction_nodes) = proto_node.construction_args else { unreachable!("Hue Shift Color Node constructed with out shift input node") };
+			let value_node = nodes.get(construction_nodes[0] as usize).unwrap();
+			let input_node: DowncastBothNode<_, (), f32> = DowncastBothNode::new(value_node);
+			let node = DynAnyNode::new(graphene_core::raster::HueShiftColorNode::new(input_node));
 
-				if let ProtoNodeInput::Node(pre_id) = proto_node.input {
-					let pre_node = nodes.get(pre_id as usize).unwrap();
-					(pre_node).then(node).into_type_erased()
-				} else {
-					node.into_type_erased()
-				}
-			})
-		},
-	),
+			if let ProtoNodeInput::Node(pre_id) = proto_node.input {
+				let pre_node = nodes.get(pre_id as usize).unwrap();
+				(pre_node).then(node).into_type_erased()
+			} else {
+				node.into_type_erased()
+			}
+		})
+	}),
 	(NodeIdentifier::new("graphene_std::raster::MapImageNode", &[]), |proto_node, stack| {
 		if let ConstructionArgs::Nodes(operation_node_id) = proto_node.construction_args {
 			stack.push_fn(move |nodes| {
@@ -311,28 +264,24 @@ static NODE_REGISTRY: &[(NodeIdentifier, NodeConstructor)] = &[
 			}
 		})
 	}),
-	(
-		NodeIdentifier::new("graphene_std::raster::HueSaturationNode", &[Type::Concrete(Cow::Borrowed("&TypeErasedNode"))]),
-		|proto_node, stack| {
-			stack.push_fn(move |nodes| {
-				let ConstructionArgs::Nodes(construction_nodes) = proto_node.construction_args else { unreachable!("HueSaturationNode Node constructed without inputs") };
+	(NodeIdentifier::new("graphene_std::raster::HueSaturationNode", &[concrete!("&TypeErasedNode")]), |proto_node, stack| {
+		stack.push_fn(move |nodes| {
+			let ConstructionArgs::Nodes(construction_nodes) = proto_node.construction_args else { unreachable!("HueSaturationNode Node constructed without inputs") };
 
-				let hue: DowncastBothNode<_, (), f64> = DowncastBothNode::new(nodes.get(construction_nodes[0] as usize).unwrap());
-				let saturation: DowncastBothNode<_, (), f64> = DowncastBothNode::new(nodes.get(construction_nodes[1] as usize).unwrap());
-				let lightness: DowncastBothNode<_, (), f64> = DowncastBothNode::new(nodes.get(construction_nodes[2] as usize).unwrap());
-				let node = DynAnyNode::new(graphene_std::raster::HueSaturationNode::new(hue, saturation, lightness));
-
-				if let ProtoNodeInput::Node(node_id) = proto_node.input {
-					let pre_node = nodes.get(node_id as usize).unwrap();
-					(pre_node).then(node).into_type_erased()
-				} else {
-					node.into_type_erased()
-				}
-			})
-		},
-	),
+			let hue: DowncastBothNode<_, (), f64> = DowncastBothNode::new(nodes.get(construction_nodes[0] as usize).unwrap());
+			let saturation: DowncastBothNode<_, (), f64> = DowncastBothNode::new(nodes.get(construction_nodes[1] as usize).unwrap());
+			let lightness: DowncastBothNode<_, (), f64> = DowncastBothNode::new(nodes.get(construction_nodes[2] as usize).unwrap());
+			let node = DynAnyNode::new(graphene_std::raster::HueSaturationNode::new(hue, saturation, lightness));
+			if let ProtoNodeInput::Node(node_id) = proto_node.input {
+				let pre_node = nodes.get(node_id as usize).unwrap();
+				(pre_node).then(node).into_type_erased()
+			} else {
+				node.into_type_erased()
+			}
+		})
+	}),
 	(
-		NodeIdentifier::new("graphene_std::raster::BrightnessContrastNode", &[Type::Concrete(Cow::Borrowed("&TypeErasedNode"))]),
+		NodeIdentifier::new("graphene_std::raster::BrightnessContrastNode", &[concrete!("&TypeErasedNode")]),
 		|proto_node, stack| {
 			stack.push_fn(move |nodes| {
 				let ConstructionArgs::Nodes(construction_nodes) = proto_node.construction_args else { unreachable!("BrightnessContrastNode Node constructed without inputs") };
@@ -350,102 +299,81 @@ static NODE_REGISTRY: &[(NodeIdentifier, NodeConstructor)] = &[
 			})
 		},
 	),
-	(
-		NodeIdentifier::new("graphene_std::raster::GammaNode", &[Type::Concrete(Cow::Borrowed("&TypeErasedNode"))]),
-		|proto_node, stack| {
-			stack.push_fn(move |nodes| {
-				let ConstructionArgs::Nodes(construction_nodes) = proto_node.construction_args else { unreachable!("GammaNode Node constructed without inputs") };
-				let gamma: DowncastBothNode<_, (), f64> = DowncastBothNode::new(nodes.get(construction_nodes[0] as usize).unwrap());
-				let node = DynAnyNode::new(graphene_std::raster::GammaNode::new(gamma));
+	(NodeIdentifier::new("graphene_std::raster::GammaNode", &[concrete!("&TypeErasedNode")]), |proto_node, stack| {
+		stack.push_fn(move |nodes| {
+			let ConstructionArgs::Nodes(construction_nodes) = proto_node.construction_args else { unreachable!("GammaNode Node constructed without inputs") };
+			let gamma: DowncastBothNode<_, (), f64> = DowncastBothNode::new(nodes.get(construction_nodes[0] as usize).unwrap());
+			let node = DynAnyNode::new(graphene_std::raster::GammaNode::new(gamma));
 
-				if let ProtoNodeInput::Node(node_id) = proto_node.input {
-					let pre_node = nodes.get(node_id as usize).unwrap();
-					(pre_node).then(node).into_type_erased()
-				} else {
-					node.into_type_erased()
-				}
-			})
-		},
-	),
-	(
-		NodeIdentifier::new("graphene_std::raster::OpacityNode", &[Type::Concrete(Cow::Borrowed("&TypeErasedNode"))]),
-		|proto_node, stack| {
-			stack.push_fn(move |nodes| {
-				let ConstructionArgs::Nodes(construction_nodes) = proto_node.construction_args else { unreachable!("OpacityNode Node constructed without inputs") };
-				let opacity: DowncastBothNode<_, (), f64> = DowncastBothNode::new(nodes.get(construction_nodes[0] as usize).unwrap());
-				let node = DynAnyNode::new(graphene_std::raster::OpacityNode::new(opacity));
-
-				if let ProtoNodeInput::Node(node_id) = proto_node.input {
-					let pre_node = nodes.get(node_id as usize).unwrap();
-					(pre_node).then(node).into_type_erased()
-				} else {
-					node.into_type_erased()
-				}
-			})
-		},
-	),
-	(
-		NodeIdentifier::new("graphene_std::raster::PosterizeNode", &[Type::Concrete(Cow::Borrowed("&TypeErasedNode"))]),
-		|proto_node, stack| {
-			stack.push_fn(move |nodes| {
-				let ConstructionArgs::Nodes(construction_nodes) = proto_node.construction_args else { unreachable!("Posterize node constructed without inputs") };
-				let value: DowncastBothNode<_, (), f64> = DowncastBothNode::new(nodes.get(construction_nodes[0] as usize).unwrap());
-				let node = DynAnyNode::new(graphene_std::raster::PosterizeNode::new(value));
-
-				if let ProtoNodeInput::Node(node_id) = proto_node.input {
-					let pre_node = nodes.get(node_id as usize).unwrap();
-					(pre_node).then(node).into_type_erased()
-				} else {
-					node.into_type_erased()
-				}
-			})
-		},
-	),
-	(
-		NodeIdentifier::new("graphene_std::raster::ExposureNode", &[Type::Concrete(Cow::Borrowed("&TypeErasedNode"))]),
-		|proto_node, stack| {
-			stack.push_fn(move |nodes| {
-				let ConstructionArgs::Nodes(construction_nodes) = proto_node.construction_args else { unreachable!("ExposureNode constructed without inputs") };
-				let value: DowncastBothNode<_, (), f64> = DowncastBothNode::new(nodes.get(construction_nodes[0] as usize).unwrap());
-				let node = DynAnyNode::new(graphene_std::raster::ExposureNode::new(value));
-
-				if let ProtoNodeInput::Node(node_id) = proto_node.input {
-					let pre_node = nodes.get(node_id as usize).unwrap();
-					(pre_node).then(node).into_type_erased()
-				} else {
-					node.into_type_erased()
-				}
-			})
-		},
-	),
-	(
-		NodeIdentifier::new("graphene_std::raster::ImageNode", &[Concrete(std::borrow::Cow::Borrowed("&str"))]),
-		|_proto_node, stack| {
-			stack.push_fn(|_nodes| {
-				let image = FnNode::new(|s: &str| graphene_std::raster::image_node::<&str>().eval(s).unwrap());
-				let node: DynAnyNode<_, &str, _, _> = DynAnyNode::new(image);
+			if let ProtoNodeInput::Node(node_id) = proto_node.input {
+				let pre_node = nodes.get(node_id as usize).unwrap();
+				(pre_node).then(node).into_type_erased()
+			} else {
 				node.into_type_erased()
-			})
-		},
-	),
-	(
-		NodeIdentifier::new("graphene_std::raster::ExportImageNode", &[Concrete(std::borrow::Cow::Borrowed("&str"))]),
-		|proto_node, stack| {
-			stack.push_fn(|nodes| {
-				let pre_node = nodes.get(proto_node.input.unwrap_node() as usize).unwrap();
+			}
+		})
+	}),
+	(NodeIdentifier::new("graphene_std::raster::OpacityNode", &[concrete!("&TypeErasedNode")]), |proto_node, stack| {
+		stack.push_fn(move |nodes| {
+			let ConstructionArgs::Nodes(construction_nodes) = proto_node.construction_args else { unreachable!("OpacityNode Node constructed without inputs") };
+			let opacity: DowncastBothNode<_, (), f64> = DowncastBothNode::new(nodes.get(construction_nodes[0] as usize).unwrap());
+			let node = DynAnyNode::new(graphene_std::raster::OpacityNode::new(opacity));
 
-				let image = FnNode::new(|input: (Image, &str)| graphene_std::raster::export_image_node().eval(input).unwrap());
-				let node: DynAnyNode<_, (Image, &str), _, _> = DynAnyNode::new(image);
-				let node = (pre_node).then(node);
+			if let ProtoNodeInput::Node(node_id) = proto_node.input {
+				let pre_node = nodes.get(node_id as usize).unwrap();
+				(pre_node).then(node).into_type_erased()
+			} else {
 				node.into_type_erased()
-			})
-		},
-	),
+			}
+		})
+	}),
+	(NodeIdentifier::new("graphene_std::raster::PosterizeNode", &[concrete!("&TypeErasedNode")]), |proto_node, stack| {
+		stack.push_fn(move |nodes| {
+			let ConstructionArgs::Nodes(construction_nodes) = proto_node.construction_args else { unreachable!("Posterize node constructed without inputs") };
+			let value: DowncastBothNode<_, (), f64> = DowncastBothNode::new(nodes.get(construction_nodes[0] as usize).unwrap());
+			let node = DynAnyNode::new(graphene_std::raster::PosterizeNode::new(value));
+
+			if let ProtoNodeInput::Node(node_id) = proto_node.input {
+				let pre_node = nodes.get(node_id as usize).unwrap();
+				(pre_node).then(node).into_type_erased()
+			} else {
+				node.into_type_erased()
+			}
+		})
+	}),
+	(NodeIdentifier::new("graphene_std::raster::ExposureNode", &[concrete!("&TypeErasedNode")]), |proto_node, stack| {
+		stack.push_fn(move |nodes| {
+			let ConstructionArgs::Nodes(construction_nodes) = proto_node.construction_args else { unreachable!("ExposureNode constructed without inputs") };
+			let value: DowncastBothNode<_, (), f64> = DowncastBothNode::new(nodes.get(construction_nodes[0] as usize).unwrap());
+			let node = DynAnyNode::new(graphene_std::raster::ExposureNode::new(value));
+
+			if let ProtoNodeInput::Node(node_id) = proto_node.input {
+				let pre_node = nodes.get(node_id as usize).unwrap();
+				(pre_node).then(node).into_type_erased()
+			} else {
+				node.into_type_erased()
+			}
+		})
+	}),
+	(NodeIdentifier::new("graphene_std::raster::ImageNode", &[concrete!("&str")]), |_proto_node, stack| {
+		stack.push_fn(|_nodes| {
+			let image = FnNode::new(|s: &str| graphene_std::raster::image_node::<&str>().eval(s).unwrap());
+			let node: DynAnyNode<_, &str, _, _> = DynAnyNode::new(image);
+			node.into_type_erased()
+		})
+	}),
+	(NodeIdentifier::new("graphene_std::raster::ExportImageNode", &[concrete!("&str")]), |proto_node, stack| {
+		stack.push_fn(|nodes| {
+			let pre_node = nodes.get(proto_node.input.unwrap_node() as usize).unwrap();
+
+			let image = FnNode::new(|input: (Image, &str)| graphene_std::raster::export_image_node().eval(input).unwrap());
+			let node: DynAnyNode<_, (Image, &str), _, _> = DynAnyNode::new(image);
+			let node = (pre_node).then(node);
+			node.into_type_erased()
+		})
+	}),
 	(
-		NodeIdentifier::new(
-			"graphene_core::structural::ConsNode",
-			&[Concrete(std::borrow::Cow::Borrowed("Image")), Concrete(std::borrow::Cow::Borrowed("&str"))],
-		),
+		NodeIdentifier::new("graphene_core::structural::ConsNode", &[concrete!("Image"), concrete!("&str")]),
 		|proto_node, stack| {
 			let node_id = proto_node.input.unwrap_node() as usize;
 			if let ConstructionArgs::Nodes(cons_node_arg) = proto_node.construction_args {
@@ -504,11 +432,19 @@ static NODE_REGISTRY: &[(NodeIdentifier, NodeConstructor)] = &[
 	}),
 ];
 
-pub fn push_node(proto_node: ProtoNode, stack: &FixedSizeStack<TypeErasedNode<'static>>) {
+pub fn push_node<'a>(proto_node: ProtoNode, stack: &'a FixedSizeStack<TypeErasedNode<'static>>) {
 	if let Some((_id, f)) = NODE_REGISTRY.iter().find(|(id, _)| *id == proto_node.identifier) {
 		f(proto_node, stack);
 	} else {
-		panic!("NodeImplementation: {:?} not found in Registry", proto_node.identifier);
+		let other_types = NODE_REGISTRY
+			.iter()
+			.map(|(id, _)| id)
+			.filter(|id| id.name.as_ref() == proto_node.identifier.name.as_ref())
+			.collect::<Vec<_>>();
+		panic!(
+			"NodeImplementation: {:?} not found in Registry types for which the node is implemented:\n {:#?}",
+			proto_node.identifier, other_types
+		);
 	}
 }
 
@@ -530,20 +466,14 @@ mod protograph_testing {
 		let cons_protonode = ProtoNode {
 			construction_args: ConstructionArgs::Nodes(vec![1]),
 			input: ProtoNodeInput::Node(0),
-			identifier: NodeIdentifier::new(
-				"graphene_core::structural::ConsNode",
-				&[Concrete(std::borrow::Cow::Borrowed("u32")), Concrete(std::borrow::Cow::Borrowed("u32"))],
-			),
+			identifier: NodeIdentifier::new("graphene_core::structural::ConsNode", &[concrete!("u32"), concrete!("u32")]),
 		};
 		push_node(cons_protonode, &stack);
 
 		let add_protonode = ProtoNode {
 			construction_args: ConstructionArgs::Nodes(vec![]),
 			input: ProtoNodeInput::Node(2),
-			identifier: NodeIdentifier::new(
-				"graphene_core::ops::AddNode",
-				&[Concrete(std::borrow::Cow::Borrowed("u32")), Concrete(std::borrow::Cow::Borrowed("u32"))],
-			),
+			identifier: NodeIdentifier::new("graphene_core::ops::AddNode", &[concrete!("u32"), concrete!("u32")]),
 		};
 		push_node(add_protonode, &stack);
 
@@ -576,7 +506,7 @@ mod protograph_testing {
 		let image_protonode = ProtoNode {
 			construction_args: ConstructionArgs::Nodes(vec![]),
 			input: ProtoNodeInput::None,
-			identifier: NodeIdentifier::new("graphene_std::raster::ImageNode", &[Concrete(std::borrow::Cow::Borrowed("&str"))]),
+			identifier: NodeIdentifier::new("graphene_std::raster::ImageNode", &[concrete!("&str")]),
 		};
 		push_node(image_protonode, &stack);
 
@@ -591,7 +521,7 @@ mod protograph_testing {
 		let image_protonode = ProtoNode {
 			construction_args: ConstructionArgs::Nodes(vec![]),
 			input: ProtoNodeInput::None,
-			identifier: NodeIdentifier::new("graphene_std::raster::ImageNode", &[Concrete(std::borrow::Cow::Borrowed("&str"))]),
+			identifier: NodeIdentifier::new("graphene_std::raster::ImageNode", &[concrete!("&str")]),
 		};
 		push_node(image_protonode, &stack);
 

@@ -1,8 +1,7 @@
 use crate::Node;
 
-use self::color::Color;
-
 pub mod color;
+use self::color::Color;
 
 #[derive(Debug, Clone, Copy)]
 pub struct GrayscaleColorNode;

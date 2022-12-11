@@ -89,10 +89,8 @@ mod mul {
 // }
 
 fn main() {
-	use graphene_std::*;
-	use quote::quote;
 	// use syn::parse::Parse;
-	let nodes = vec![
+	/*let nodes = vec![
 		NodeKind::Input,
 		NodeKind::Value(syn::parse_quote!(1u32)),
 		NodeKind::Node(syn::parse_quote!(graphene_core::ops::AddNode), vec![0, 0]),
@@ -105,7 +103,7 @@ fn main() {
 		nodes,
 		input: syn::Type::Verbatim(quote! {u32}),
 		output: syn::Type::Verbatim(quote! {u32}),
-	};
+	};*/
 
 	//let pretty = pretty_token_stream::Pretty::new(nodegraph.serialize_gpu("add"));
 	//pretty.print();

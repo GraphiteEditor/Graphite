@@ -1,5 +1,6 @@
 use crate::messages::layout::utility_types::layout_widget::LayoutGroup;
 use crate::messages::prelude::*;
+use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, DocumentNodeMetadata, NodeId, NodeInput, NodeNetwork};
 use graphene::document::Document;
 use graphene::layers::layer_info::LayerDataType;
@@ -23,8 +24,24 @@ pub enum FrontendGraphDataType {
 	Number,
 	#[serde(rename = "boolean")]
 	Boolean,
+	#[serde(rename = "string")]
+	String,
 	#[serde(rename = "vec2")]
 	Vector,
+}
+impl FrontendGraphDataType {
+	pub const fn with_tagged_value(value: &TaggedValue) -> Self {
+		match value {
+			TaggedValue::None => Self::General,
+			TaggedValue::String(_) => Self::String,
+			TaggedValue::F32(_) | TaggedValue::F64(_) | TaggedValue::U32(_) => Self::Number,
+			TaggedValue::Bool(_) => Self::Boolean,
+			TaggedValue::DVec2(_) => Self::Vector,
+			TaggedValue::Image(_) => Self::Raster,
+			TaggedValue::Color(_) => Self::Color,
+			TaggedValue::RcSubpath(_) | TaggedValue::Subpath(_) => Self::Subpath,
+		}
+	}
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
