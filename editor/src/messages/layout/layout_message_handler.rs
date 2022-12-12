@@ -233,6 +233,10 @@ impl LayoutMessageHandler {
 				layout_target,
 				layout: layout.clone().unwrap_menu_layout(action_input_mapping).layout,
 			},
+			LayoutTarget::NodeGraphBar => FrontendMessage::UpdateNodeGraphBarLayout {
+				layout_target,
+				layout: layout.clone().unwrap_widget_layout(action_input_mapping).layout,
+			},
 			LayoutTarget::PropertiesOptions => FrontendMessage::UpdatePropertyPanelOptionsLayout {
 				layout_target,
 				layout: layout.clone().unwrap_widget_layout(action_input_mapping).layout,

@@ -1,6 +1,6 @@
 <template>
 	<LayoutCol class="node-graph">
-		<LayoutRow class="options-bar"></LayoutRow>
+		<LayoutRow class="options-bar"><WidgetLayout :layout="nodeGraphBarLayout" /></LayoutRow>
 		<LayoutRow
 			class="graph"
 			ref="graph"
@@ -306,6 +306,7 @@ import TextButton from "@/components/widgets/buttons/TextButton.vue";
 import TextInput from "@/components/widgets/inputs/TextInput.vue";
 import IconLabel from "@/components/widgets/labels/IconLabel.vue";
 import TextLabel from "@/components/widgets/labels/TextLabel.vue";
+import WidgetLayout from "@/components/widgets/WidgetLayout.vue";
 
 const WHEEL_RATE = (1 / 600) * 3;
 const GRID_COLLAPSE_SPACING = 10;
@@ -343,6 +344,9 @@ export default defineComponent({
 		},
 		nodes() {
 			return this.nodeGraph.state.nodes;
+		},
+		nodeGraphBarLayout() {
+			return this.nodeGraph.state.nodeGraphBarLayout;
 		},
 		nodeCategories() {
 			const categories = new Map();
@@ -626,6 +630,7 @@ export default defineComponent({
 		TextLabel,
 		TextButton,
 		TextInput,
+		WidgetLayout,
 	},
 });
 </script>

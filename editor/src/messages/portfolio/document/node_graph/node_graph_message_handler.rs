@@ -1,4 +1,5 @@
-use crate::messages::layout::utility_types::layout_widget::LayoutGroup;
+use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
+use crate::messages::layout::utility_types::widgets::button_widgets::BreadcrumbTrailButtons;
 use crate::messages::prelude::*;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, DocumentNodeMetadata, NodeId, NodeInput, NodeNetwork};
@@ -124,7 +125,7 @@ impl NodeGraphMessageHandler {
 	}
 
 	/// Collect the addresses of the currently viewed nested node e.g. Root -> MyFunFilter -> Exposure
-	fn collect_nested_addresses(&self, document: &Document) -> Vec<String> {
+	fn collect_nested_addresses(&self, document: &Document, responses: &mut VecDeque<Message>) {
 		let mut path = vec!["Root".to_string()];
 		let mut network = self.get_root_network(document);
 		for node_id in &self.nested_path {
@@ -134,7 +135,26 @@ impl NodeGraphMessageHandler {
 			}
 			network = node.and_then(|node| node.implementation.get_network());
 		}
-		path
+		let nesting = path.len();
+
+		responses.push_back(
+			LayoutMessage::SendLayout {
+				layout: Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row {
+					widgets: vec![WidgetHolder::new(Widget::BreadcrumbTrailButtons(BreadcrumbTrailButtons {
+						labels: path,
+						on_update: WidgetCallback::new(move |input: &u64| {
+							NodeGraphMessage::ExitNestedNetwork {
+								depth_of_nesting: nesting - (*input as usize) - 1,
+							}
+							.into()
+						}),
+						..Default::default()
+					}))],
+				}])),
+				layout_target: crate::messages::layout::utility_types::misc::LayoutTarget::NodeGraphBar,
+			}
+			.into(),
+		);
 	}
 
 	pub fn collate_properties(&self, node_graph_frame: &NodeGraphFrameLayer) -> Vec<LayoutGroup> {
@@ -372,8 +392,7 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 				if let Some(network) = self.get_active_network_mut(document) {
 					Self::send_graph(network, responses);
 				}
-				let nested_network = self.collect_nested_addresses(document).join(", ");
-				info!("Inside nested network: {nested_network}")
+				self.collect_nested_addresses(document, responses);
 			}
 			NodeGraphMessage::ExitNestedNetwork { depth_of_nesting } => {
 				self.selected_nodes = Vec::new();
@@ -383,8 +402,7 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 				if let Some(network) = self.get_active_network_mut(document) {
 					Self::send_graph(network, responses);
 				}
-				let nested_network = self.collect_nested_addresses(document).join(", ");
-				info!("Inside nested network: {nested_network}")
+				self.collect_nested_addresses(document, responses);
 			}
 			NodeGraphMessage::ExposeInput { node_id, input_index, new_exposed } => {
 				let Some(network) = self.get_active_network_mut(document) else{
@@ -438,6 +456,7 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 					let node_types = document_node_types::collect_node_types();
 					responses.push_back(FrontendMessage::UpdateNodeTypes { node_types }.into());
 				}
+				self.collect_nested_addresses(document, responses);
 			}
 			NodeGraphMessage::SelectNodes { nodes } => {
 				self.selected_nodes = nodes;
