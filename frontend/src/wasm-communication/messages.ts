@@ -1058,6 +1058,15 @@ export type TextButtonWidget = {
 	};
 };
 
+export class BreadcrumbTrailButtons extends WidgetProps {
+	labels!: string;
+
+	disabled!: boolean;
+
+	@Transform(({ value }: { value: string }) => value || undefined)
+	tooltip!: string | undefined;
+}
+
 export class TextInput extends WidgetProps {
 	value!: string;
 

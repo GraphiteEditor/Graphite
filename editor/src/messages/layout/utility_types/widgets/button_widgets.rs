@@ -90,3 +90,22 @@ pub struct TextButton {
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
 	pub on_update: WidgetCallback<TextButton>,
 }
+
+#[derive(Clone, Serialize, Deserialize, Derivative, Default)]
+#[derivative(Debug, PartialEq)]
+#[serde(rename_all(serialize = "camelCase", deserialize = "camelCase"))]
+pub struct BreadcrumbTrailButtons {
+	pub labels: Vec<String>,
+
+	pub disabled: bool,
+
+	pub tooltip: String,
+
+	#[serde(skip)]
+	pub tooltip_shortcut: Option<ActionKeys>,
+
+	// Callbacks
+	#[serde(skip)]
+	#[derivative(Debug = "ignore", PartialEq = "ignore")]
+	pub on_update: WidgetCallback<u64>,
+}
