@@ -274,9 +274,11 @@ static NODE_REGISTRY: &[(NodeIdentifier, NodeConstructor)] = &[
 			if let ConstructionArgs::Nodes(operation_node_id) = proto_node.construction_args {
 				stack.push_fn(move |nodes| {
 					info!("Quantization Depending upon id {:?}", operation_node_id);
-					let operation_node = nodes.get(operation_node_id[0] as usize).unwrap();
-					let input_node: DowncastBothNode<_, (), u32> = DowncastBothNode::new(operation_node);
-					let map_node = graphene_std::quantization::GenerateQuantizationNode::new(input_node);
+					let samples_node = nodes.get(operation_node_id[0] as usize).unwrap();
+					let index_node = nodes.get(operation_node_id[1] as usize).unwrap();
+					let samples_node: DowncastBothNode<_, (), u32> = DowncastBothNode::new(samples_node);
+					let index_node: DowncastBothNode<_, (), u32> = DowncastBothNode::new(index_node);
+					let map_node = graphene_std::quantization::GenerateQuantizationNode::new(samples_node, index_node);
 					let map_node = DynAnyNode::new(map_node);
 
 					if let ProtoNodeInput::Node(node_id) = proto_node.input {

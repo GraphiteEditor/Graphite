@@ -125,6 +125,11 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 				data_type: FrontendGraphDataType::Number,
 				default: NodeInput::value(TaggedValue::U32(100), false),
 			},
+			DocumentInputType {
+				name: "Fn index",
+				data_type: FrontendGraphDataType::Number,
+				default: NodeInput::value(TaggedValue::U32(0), false),
+			},
 		],
 		outputs: &[FrontendGraphDataType::Raster],
 		properties: node_properties::quantize_properties,
