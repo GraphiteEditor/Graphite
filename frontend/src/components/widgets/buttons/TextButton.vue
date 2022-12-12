@@ -27,29 +27,31 @@
 	box-sizing: border-box;
 	border: none;
 	border-radius: 2px;
-	background: var(--color-5-dullgray);
-	color: var(--color-e-nearwhite);
+	background: var(--button-background-color);
+	color: var(--button-text-color);
+	--button-background-color: var(--color-5-dullgray);
+	--button-text-color: var(--color-e-nearwhite);
 
 	&:hover {
-		background: var(--color-6-lowergray);
-		color: var(--color-f-white);
+		--button-background-color: var(--color-6-lowergray);
+		--button-text-color: var(--color-f-white);
 	}
 
 	&.disabled {
-		background: var(--color-4-dimgray);
-		color: var(--color-8-uppergray);
+		--button-background-color: var(--color-4-dimgray);
+		--button-text-color: var(--color-8-uppergray);
 	}
 
 	&.emphasized {
-		background: var(--color-e-nearwhite);
-		color: var(--color-2-mildblack);
+		--button-background-color: var(--color-e-nearwhite);
+		--button-text-color: var(--color-2-mildblack);
 
 		&:hover {
-			background: var(--color-f-white);
+			--button-background-color: var(--color-f-white);
 		}
 
 		&.disabled {
-			background: var(--color-8-uppergray);
+			--button-background-color: var(--color-8-uppergray);
 		}
 	}
 
@@ -63,7 +65,6 @@
 	}
 }
 </style>
-
 
 <script lang="ts">
 import { defineComponent, type PropType } from "vue";

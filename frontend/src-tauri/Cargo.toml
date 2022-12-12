@@ -17,7 +17,7 @@ tauri-build = { version = "1.2", features = [] }
 [dependencies]
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
-tauri = { version = "1.2", features = ["api-all", "devtools"] }
+tauri = { version = "1.2", features = ["api-all", "devtools", "linux-protocol-headers", "wry"] }
 axum = "0.6.1"
 graphite-editor = { version = "0.0.0", path = "../../editor" }
 chrono = "^0.4.23"
