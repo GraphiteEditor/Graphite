@@ -56,6 +56,12 @@ impl<F: Fn(&MessageDiscriminant) -> Vec<KeysGroup>> MessageHandler<LayoutMessage
 
 				#[remain::sorted]
 				match &mut widget_holder.widget {
+					Widget::BreadcrumbTrailButtons(breadcrumb_trail_buttons) => {
+						let update_value = value.as_u64().expect("BreadcrumbTrailButtons update was not of type: u64");
+
+						let callback_message = (breadcrumb_trail_buttons.on_update.callback)(&update_value);
+						responses.push_back(callback_message);
+					}
 					Widget::CheckboxInput(checkbox_input) => {
 						let update_value = value.as_bool().expect("CheckboxInput update was not of type: bool");
 						checkbox_input.checked = update_value;
