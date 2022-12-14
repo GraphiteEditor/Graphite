@@ -16,7 +16,7 @@
 				'--dot-radius': `${dotRadius}px`,
 			}"
 		>
-			<LayoutCol class="node-list" v-if="nodeListLocation" :style="{ marginLeft: `${nodeListX}px`, marginTop: `${nodeListY}px` }">
+			<LayoutCol class="node-list" data-node-list v-if="nodeListLocation" :style="{ marginLeft: `${nodeListX}px`, marginTop: `${nodeListY}px` }">
 				<TextInput placeholder="Search Nodes..." :value="searchTerm" @update:value="(val) => (searchTerm = val)" v-focus />
 				<LayoutCol v-for="nodeCategory in nodeCategories" :key="nodeCategory[0]">
 					<TextLabel>{{ nodeCategory[0] }}</TextLabel>
@@ -489,6 +489,7 @@ export default defineComponent({
 				this.transform.x -= scrollY / this.transform.scale;
 			}
 		},
+		// TODO: Move the event listener from the graph to the window so dragging outside the graph area (or even the browser window) works
 		pointerDown(e: PointerEvent) {
 			if (e.button === 2) {
 				const graphDiv: HTMLDivElement | undefined = (this.$refs.graph as typeof LayoutCol | undefined)?.$el;
@@ -502,41 +503,46 @@ export default defineComponent({
 
 			const port = (e.target as HTMLDivElement).closest("[data-port]") as HTMLDivElement;
 			const node = (e.target as HTMLElement).closest("[data-node]") as HTMLElement | undefined;
-			const nodeList = (e.target as HTMLElement).closest(".node-list") as HTMLElement | undefined;
+			const nodeId = node?.getAttribute("data-node") || undefined;
+			const nodeList = (e.target as HTMLElement).closest("[data-node-list]") as HTMLElement | undefined;
 
+			// If the user is clicking on the add nodes list, exit here
+			if (nodeList) return;
+
+			// Clicked on a port dot
 			if (port) {
 				const isOutput = Boolean(port.getAttribute("data-port") === "output");
 
 				if (isOutput) this.linkInProgressFromConnector = port;
-			} else {
-				const nodeId = node?.getAttribute("data-node") || undefined;
-				if (nodeId) {
-					const id = BigInt(nodeId);
-					if (e.shiftKey || e.ctrlKey) {
-						if (this.selected.includes(id)) this.selected.splice(this.selected.lastIndexOf(id), 1);
-						else this.selected.push(id);
-					} else if (!this.selected.includes(id)) {
-						this.selected = [id];
-					} else {
-						this.selectIfNotDragged = id;
-					}
 
-					if (this.selected.includes(id)) {
-						this.draggingNodes = { startX: e.x, startY: e.y, roundX: 0, roundY: 0 };
-						const graphDiv: HTMLDivElement | undefined = (this.$refs.graph as typeof LayoutCol | undefined)?.$el;
-						graphDiv?.setPointerCapture(e.pointerId);
-					}
-
-					this.editor.instance.selectNodes(new BigUint64Array(this.selected));
-				} else if (!nodeList) {
-					this.selected = [];
-					this.editor.instance.selectNodes(new BigUint64Array(this.selected));
-					const graphDiv: HTMLDivElement | undefined = (this.$refs.graph as typeof LayoutCol | undefined)?.$el;
-					graphDiv?.setPointerCapture(e.pointerId);
-
-					this.panning = true;
-				}
+				return;
 			}
+
+			// Clicked on a node
+			if (nodeId) {
+				const id = BigInt(nodeId);
+				if (e.shiftKey || e.ctrlKey) {
+					if (this.selected.includes(id)) this.selected.splice(this.selected.lastIndexOf(id), 1);
+					else this.selected.push(id);
+				} else if (!this.selected.includes(id)) {
+					this.selected = [id];
+				} else {
+					this.selectIfNotDragged = id;
+				}
+
+				if (this.selected.includes(id)) {
+					this.draggingNodes = { startX: e.x, startY: e.y, roundX: 0, roundY: 0 };
+				}
+
+				this.editor.instance.selectNodes(new BigUint64Array(this.selected));
+
+				return;
+			}
+
+			// Clicked on the graph background
+			this.panning = true;
+			this.selected = [];
+			this.editor.instance.selectNodes(new BigUint64Array(this.selected));
 		},
 		doubleClick(e: MouseEvent) {
 			const node = (e.target as HTMLElement).closest("[data-node]") as HTMLElement | undefined;
@@ -569,9 +575,6 @@ export default defineComponent({
 			}
 		},
 		pointerUp(e: PointerEvent) {
-			const graph: HTMLDivElement | undefined = (this.$refs.graph as typeof LayoutCol | undefined)?.$el;
-			graph?.releasePointerCapture(e.pointerId);
-
 			this.panning = false;
 
 			if (this.linkInProgressToConnector instanceof HTMLDivElement && this.linkInProgressFromConnector) {
