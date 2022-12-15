@@ -30,6 +30,7 @@ impl<N: Node<(), Output = u32>, M: Node<(), Output = u32>> GenerateQuantizationN
 }
 
 fn generate_quantization_fn(samples: u32, function: u32, input: Image) -> Image {
+	let max_energy = 16380.;
 	let data: Vec<f64> = input
 		.data
 		.iter()
@@ -39,22 +40,30 @@ fn generate_quantization_fn(samples: u32, function: u32, input: Image) -> Image 
 			acc
 		})
 		.unwrap_or_default();
+	let data: Vec<f64> = data.iter().map(|x| x * max_energy).collect();
 	let mut dist = autoquant::integrate_distribution(data.clone());
 	autoquant::drop_duplicates(&mut dist);
 	let dist = autoquant::normalize_distribution(dist.as_slice());
 	let max = dist.last().unwrap().0;
 	let linear = Box::new(autoquant::SimpleFitFn {
-		function: move |x| x / max,
-		inverse: move |x| x * max,
-		name: "identity",
-	});
-	//log::info!("dist: {:?}", dist);
+			function: move |x| x / max,
+			inverse: move |x| x * max,
+			name: "identity",
+		});
+		//log::info!("dist: {:?}", dist);
 
-	//let power = autoquant::models::VarPro::<autoquant::models::PowerTwo>::new(dist.clone());
-	//let log = autoquant::models::VarPro::<autoquant::models::PowerTwo>::new(dist);
-
-	let mut functions = autoquant::fit_functions(dist);
-	let best = (0, functions.remove(function as usize));
+		//let power = autoquant::models::VarPro::<autoquant::models::PowerTwo>::new(dist.clone());
+		//let log = autoquant::models::VarPro::<autoquant::models::PowerTwo>::new(dist);
+	//let log = autoquant::models::OptimizedLog::new(dist.clone(), 200);
+	//log::debug!("log: {:?}", log);
+	//let functions = autoquant::fit_functions(dist);
+    let best = match function {
+            0 => linear as Box<dyn autoquant::FitFn>,
+            1 => linear as Box<dyn autoquant::FitFn>,
+            2 => Box::new(autoquant::models::OptimizedLog::new(dist.clone(), 20)) as Box<dyn autoquant::FitFn>,
+            _ => linear as Box<dyn autoquant::FitFn>,
+    };
+	let best = (0, &best);
 	/*
 			.into_iter()
 			.map(|f| (autoquant::calculate_sampled_error(&data, f.as_ref(), samples), f))
@@ -62,8 +71,8 @@ fn generate_quantization_fn(samples: u32, function: u32, input: Image) -> Image 
 			.unwrap();
 	*/
 	let roundtrip = |sample: f32| -> f32 {
-		let encoded = autoquant::encode(sample as f64, best.1.as_ref(), samples);
-		let decoded = autoquant::decode(encoded, best.1.as_ref(), samples).clamp(0., 1.);
+		let encoded = autoquant::encode(sample as f64 * max_energy, best.1.as_ref(), samples);
+		let decoded = autoquant::decode(encoded, best.1.as_ref(), samples) / max_energy;
 		log::trace!("{} enc: {} dec: {}", sample, encoded, decoded);
 		decoded as f32
 	};
