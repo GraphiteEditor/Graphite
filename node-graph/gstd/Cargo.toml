@@ -16,7 +16,7 @@ quantization = ["autoquant"]
 
 
 [dependencies]
-autoquant = { git = "https://github.com/TrueDoctor/autoquant", optional = true, features = ["fitting"] }
+autoquant = { path = "../../../autoquant", optional = true, features = ["fitting"] }
 graphene-core = {path = "../gcore", features = ["async", "std" ], default-features = false}
 borrow_stack = {path = "../borrow_stack"}
 dyn-any = {path = "../../libraries/dyn-any", features = ["derive"]}

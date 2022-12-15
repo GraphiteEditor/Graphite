@@ -48,13 +48,13 @@ fn generate_quantization_fn(samples: u32, function: u32, input: Image) -> Image 
 		inverse: move |x| x * max,
 		name: "identity",
 	});
-	log::info!("dist: {:?}", dist);
+	//log::info!("dist: {:?}", dist);
 
-	let power = autoquant::models::VarPro::<autoquant::models::PowerTwo>::new(dist.clone());
-	let log = autoquant::models::VarPro::<autoquant::models::PowerTwo>::new(dist);
+	//let power = autoquant::models::VarPro::<autoquant::models::PowerTwo>::new(dist.clone());
+	//let log = autoquant::models::VarPro::<autoquant::models::PowerTwo>::new(dist);
 
-	//let functions = autoquant::fit_functions(dist);
-	let best = (0, &[linear as Box<dyn autoquant::FitFn>, Box::new(power), Box::new(log)][function as usize]);
+	let mut functions = autoquant::fit_functions(dist);
+	let best = (0, functions.remove(function as usize));
 	/*
 			.into_iter()
 			.map(|f| (autoquant::calculate_sampled_error(&data, f.as_ref(), samples), f))
