@@ -23,6 +23,12 @@ pub enum NodeGraphMessage {
 		node_id: NodeId,
 	},
 	DeleteSelectedNodes,
+	DoubleClickNode {
+		node: NodeId,
+	},
+	ExitNestedNetwork {
+		depth_of_nesting: usize,
+	},
 	ExposeInput {
 		node_id: NodeId,
 		input_index: usize,

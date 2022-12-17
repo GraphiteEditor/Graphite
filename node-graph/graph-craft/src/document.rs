@@ -139,6 +139,24 @@ pub enum DocumentNodeImplementation {
 	Unresolved(NodeIdentifier),
 }
 
+impl DocumentNodeImplementation {
+	pub fn get_network(&self) -> Option<&NodeNetwork> {
+		if let DocumentNodeImplementation::Network(n) = self {
+			Some(n)
+		} else {
+			None
+		}
+	}
+
+	pub fn get_network_mut(&mut self) -> Option<&mut NodeNetwork> {
+		if let DocumentNodeImplementation::Network(n) = self {
+			Some(n)
+		} else {
+			None
+		}
+	}
+}
+
 #[derive(Clone, Debug, Default, PartialEq, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct NodeNetwork {
