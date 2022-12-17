@@ -214,6 +214,11 @@ pub enum FrontendMessage {
 		nodes: Vec<FrontendNode>,
 		links: Vec<FrontendNodeLink>,
 	},
+	UpdateNodeGraphBarLayout {
+		#[serde(rename = "layoutTarget")]
+		layout_target: LayoutTarget,
+		layout: SubLayout,
+	},
 	UpdateNodeGraphVisibility {
 		visible: bool,
 	},

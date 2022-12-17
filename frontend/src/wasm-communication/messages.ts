@@ -1058,6 +1058,15 @@ export type TextButtonWidget = {
 	};
 };
 
+export class BreadcrumbTrailButtons extends WidgetProps {
+	labels!: string;
+
+	disabled!: boolean;
+
+	@Transform(({ value }: { value: string }) => value || undefined)
+	tooltip!: string | undefined;
+}
+
 export class TextInput extends WidgetProps {
 	value!: string;
 
@@ -1304,6 +1313,15 @@ export class UpdateMenuBarLayout extends JsMessage {
 	layout!: MenuBarEntry[];
 }
 
+export class UpdateNodeGraphBarLayout extends JsMessage {
+	layoutTarget!: unknown;
+
+	// TODO: Replace `any` with correct typing
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	@Transform(({ value }: { value: any }) => createWidgetLayout(value))
+	layout!: LayoutGroup[];
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function createMenuLayout(menuBarEntry: any[]): MenuBarEntry[] {
 	return menuBarEntry.map((entry) => ({
@@ -1373,6 +1391,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateMenuBarLayout,
 	UpdateMouseCursor,
 	UpdateNodeGraph,
+	UpdateNodeGraphBarLayout,
 	UpdateNodeTypes,
 	UpdateNodeGraphVisibility,
 	UpdateOpenDocumentsList,

@@ -57,6 +57,7 @@ impl Layout {
 			for widget_holder in &mut widget_layout.iter_mut() {
 				// Handle all the widgets that have tooltips
 				let mut tooltip_shortcut = match &mut widget_holder.widget {
+					Widget::BreadcrumbTrailButtons(widget) => Some((&mut widget.tooltip, &mut widget.tooltip_shortcut)),
 					Widget::CheckboxInput(widget) => Some((&mut widget.tooltip, &mut widget.tooltip_shortcut)),
 					Widget::ColorInput(widget) => Some((&mut widget.tooltip, &mut widget.tooltip_shortcut)),
 					Widget::DropdownInput(widget) => Some((&mut widget.tooltip, &mut widget.tooltip_shortcut)),
@@ -347,6 +348,7 @@ impl<T> Default for WidgetCallback<T> {
 #[remain::sorted]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Widget {
+	BreadcrumbTrailButtons(BreadcrumbTrailButtons),
 	CheckboxInput(CheckboxInput),
 	ColorInput(ColorInput),
 	DropdownInput(DropdownInput),

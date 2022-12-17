@@ -597,6 +597,13 @@ impl JsEditorHandle {
 		self.dispatch(message);
 	}
 
+	/// Notifies the backend that the user double clicked a node
+	#[wasm_bindgen(js_name = doubleClickNode)]
+	pub fn double_click_node(&self, node: u64) {
+		let message = NodeGraphMessage::DoubleClickNode { node };
+		self.dispatch(message);
+	}
+
 	/// Notifies the backend that the selected nodes have been moved
 	#[wasm_bindgen(js_name = moveSelectedNodes)]
 	pub fn move_selected_nodes(&self, displacement_x: i32, displacement_y: i32) {
