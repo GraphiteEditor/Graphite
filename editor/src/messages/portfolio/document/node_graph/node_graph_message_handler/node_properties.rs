@@ -178,7 +178,7 @@ pub fn add_properties(document_node: &DocumentNode, node_id: NodeId) -> Vec<Layo
 	vec![operand("Input", 0), operand("Addend", 1)]
 }
 
-pub fn transform_properties(document_node: &DocumentNode, node_id: NodeId) -> Vec<LayoutGroup> {
+pub fn _transform_properties(document_node: &DocumentNode, node_id: NodeId) -> Vec<LayoutGroup> {
 	let translation = {
 		let index = 1;
 		let input: &NodeInput = document_node.inputs.get(index).unwrap();
