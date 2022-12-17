@@ -9,6 +9,7 @@ pub enum LayoutTarget {
 	DocumentMode,
 	LayerTreeOptions,
 	MenuBar,
+	NodeGraphBar,
 	PropertiesOptions,
 	PropertiesSections,
 	ToolOptions,
