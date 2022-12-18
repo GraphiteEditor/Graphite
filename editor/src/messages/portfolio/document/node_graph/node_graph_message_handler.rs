@@ -1,13 +1,14 @@
 use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
 use crate::messages::layout::utility_types::widgets::button_widgets::BreadcrumbTrailButtons;
 use crate::messages::prelude::*;
+
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, DocumentNodeMetadata, NodeId, NodeInput, NodeNetwork};
 use graphene::document::Document;
 use graphene::layers::layer_info::LayerDataType;
 use graphene::layers::nodegraph_layer::NodeGraphFrameLayer;
 
-pub use self::document_node_types::NodePropertiesContext;
+pub use self::document_node_types::*;
 
 mod document_node_types;
 mod node_properties;
@@ -279,6 +280,20 @@ impl NodeGraphMessageHandler {
 			false
 		}
 	}
+
+	fn get_node(network: &mut NodeNetwork, node_id: NodeId) -> Option<&mut DocumentNode> {
+		for (id, node) in &mut network.nodes {
+			if *id == node_id {
+				return Some(node);
+			}
+			if let DocumentNodeImplementation::Network(n) = &mut node.implementation {
+				if let Some(node) = Self::get_node(n, node_id) {
+					return Some(node);
+				}
+			}
+		}
+		None
+	}
 }
 
 impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageHandler)> for NodeGraphMessageHandler {
@@ -427,6 +442,17 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 				}
 				Self::send_graph(network, responses);
 				responses.push_back(PropertiesPanelMessage::ResendActiveProperties.into());
+			}
+			NodeGraphMessage::ImaginateClear { node_id } => {
+				if let Some(network) = self.get_active_network_mut(document) {
+					if let Some(imaginate_node) = Self::get_node(network, node_id) {
+						imaginate_node.inputs[15] = NodeInput::Value {
+							tagged_value: TaggedValue::RcImage(None),
+							exposed: false,
+						};
+						responses.push_back(DocumentMessage::NodeGraphFrameGenerate.into());
+					}
+				}
 			}
 			NodeGraphMessage::MoveSelectedNodes { displacement_x, displacement_y } => {
 				let Some(network) = self.get_active_network_mut(document) else{

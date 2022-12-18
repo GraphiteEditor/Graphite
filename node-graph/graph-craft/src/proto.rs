@@ -324,7 +324,7 @@ impl ProtoNetwork {
 		self.nodes.iter_mut().for_each(|(_, node)| {
 			node.map_ids(|id| *lookup.get(&id).expect("node not found in lookup table"));
 		});
-		self.inputs = self.inputs.iter().map(|id| *lookup.get(id).unwrap()).collect();
+		self.inputs = self.inputs.iter().filter_map(|id| lookup.get(id).copied()).collect();
 		self.output = *lookup.get(&self.output).unwrap();
 	}
 }

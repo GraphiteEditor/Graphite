@@ -7,6 +7,8 @@ use crate::messages::portfolio::document::utility_types::layer_panel::{JsRawBuff
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::HintData;
 
+use graph_craft::document::NodeId;
+use graph_craft::imaginate_input::*;
 use graphene::color::Color;
 use graphene::layers::text_layer::Font;
 use graphene::LayerId;
@@ -52,36 +54,36 @@ pub enum FrontendMessage {
 		#[serde(rename = "isDefault")]
 		is_default: bool,
 	},
-	// TriggerImaginateCheckServerStatus {
-	// 	hostname: String,
-	// },
-	// TriggerImaginateGenerate {
-	// 	parameters: ImaginateGenerationParameters,
-	// 	#[serde(rename = "baseImage")]
-	// 	base_image: Option<ImaginateBaseImage>,
-	// 	#[serde(rename = "maskImage")]
-	// 	mask_image: Option<ImaginateBaseImage>,
-	// 	#[serde(rename = "maskPaintMode")]
-	// 	mask_paint_mode: ImaginateMaskPaintMode,
-	// 	#[serde(rename = "maskBlurPx")]
-	// 	mask_blur_px: u32,
-	// 	#[serde(rename = "maskFillContent")]
-	// 	mask_fill_content: ImaginateMaskFillContent,
-	// 	hostname: String,
-	// 	#[serde(rename = "refreshFrequency")]
-	// 	refresh_frequency: f64,
-	// 	#[serde(rename = "documentId")]
-	// 	document_id: u64,
-	// 	#[serde(rename = "layerPath")]
-	// 	layer_path: Vec<LayerId>,
-	// },
-	// TriggerImaginateTerminate {
-	// 	#[serde(rename = "documentId")]
-	// 	document_id: u64,
-	// 	#[serde(rename = "layerPath")]
-	// 	layer_path: Vec<LayerId>,
-	// 	hostname: String,
-	// },
+	TriggerImaginateCheckServerStatus {
+		hostname: String,
+	},
+	TriggerImaginateGenerate {
+		parameters: ImaginateGenerationParameters,
+		#[serde(rename = "baseImage")]
+		base_image: Option<ImaginateBaseImage>,
+		#[serde(rename = "maskImage")]
+		mask_image: Option<ImaginateMaskImage>,
+		#[serde(rename = "maskPaintMode")]
+		mask_paint_mode: ImaginateMaskPaintMode,
+		#[serde(rename = "maskBlurPx")]
+		mask_blur_px: u32,
+		#[serde(rename = "maskFillContent")]
+		imaginate_mask_starting_fill: ImaginateMaskStartingFill,
+		hostname: String,
+		#[serde(rename = "refreshFrequency")]
+		refresh_frequency: f64,
+		#[serde(rename = "documentId")]
+		document_id: u64,
+		#[serde(rename = "layerPath")]
+		layer_path: Vec<LayerId>,
+	},
+	TriggerImaginateTerminate {
+		#[serde(rename = "documentId")]
+		document_id: u64,
+		#[serde(rename = "layerPath")]
+		layer_path: Vec<LayerId>,
+		hostname: String,
+	},
 	TriggerImport,
 	TriggerIndexedDbRemoveDocument {
 		#[serde(rename = "documentId")]
@@ -101,6 +103,8 @@ pub enum FrontendMessage {
 		layer_path: Vec<LayerId>,
 		svg: String,
 		size: glam::DVec2,
+		#[serde(rename = "imaginateNode")]
+		imaginate_node: Option<Vec<NodeId>>,
 	},
 	TriggerOpenDocument,
 	TriggerPaste,

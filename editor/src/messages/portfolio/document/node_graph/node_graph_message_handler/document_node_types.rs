@@ -1,9 +1,7 @@
 use std::collections::VecDeque;
 
 use super::{node_properties, FrontendGraphDataType, FrontendNodeType};
-use crate::messages::layout::utility_types::layout_widget::{LayoutGroup, Widget, WidgetHolder};
-use crate::messages::layout::utility_types::widgets::label_widgets::TextLabel;
-
+use crate::messages::layout::utility_types::layout_widget::LayoutGroup;
 use graph_craft::concrete;
 use graph_craft::document::value::*;
 use graph_craft::document::{DocumentNode, NodeId, NodeInput};
@@ -37,6 +35,7 @@ pub struct NodePropertiesContext<'a> {
 	pub persistent_data: &'a crate::messages::portfolio::utility_types::PersistentData,
 	pub document: &'a graphene::document::Document,
 	pub responses: &'a mut VecDeque<crate::messages::prelude::Message>,
+	pub nested_path: &'a [NodeId],
 }
 
 pub struct DocumentNodeType {
@@ -60,14 +59,7 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 			default: NodeInput::Node(0),
 		}],
 		outputs: &[FrontendGraphDataType::General],
-		properties: |_document_node, _node_id, _context| {
-			vec![LayoutGroup::Row {
-				widgets: vec![WidgetHolder::new(Widget::TextLabel(TextLabel {
-					value: "The identity node simply returns the input".to_string(),
-					..Default::default()
-				}))],
-			}]
-		},
+		properties: |_document_node, _node_id, _context| node_properties::string_properties("The identity node simply returns the input".to_string()),
 	},
 	DocumentNodeType {
 		name: "Input",
@@ -200,6 +192,7 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 		inputs: &[
 			DocumentInputType::new("Base Image", TaggedValue::Image(Image::empty()), true),
 			DocumentInputType::new("Seed", TaggedValue::F64(0.), false),
+			DocumentInputType::new("Resolution", TaggedValue::DVec2(DVec2::splat(512.)), false),
 			DocumentInputType::new("Samples", TaggedValue::F64(30.), false),
 			DocumentInputType::new("Sampling Method", TaggedValue::ImaginateSamplingMethod(ImaginateSamplingMethod::EulerA), false),
 			DocumentInputType::new("Text Guidance", TaggedValue::F64(10.), false),

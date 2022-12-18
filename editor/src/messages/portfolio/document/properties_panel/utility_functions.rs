@@ -321,7 +321,12 @@ pub fn register_artwork_layer_properties(
 				node_section_node_graph_frame(layer_path, node_graph_frame, is_graph_open),
 			];
 			if !selected_nodes.is_empty() && is_graph_open {
-				let mut context = crate::messages::portfolio::document::node_graph::NodePropertiesContext { persistent_data, document, responses };
+				let mut context = crate::messages::portfolio::document::node_graph::NodePropertiesContext {
+					persistent_data,
+					document,
+					responses,
+					nested_path: &node_graph_message_handler.nested_path,
+				};
 				let parameters_sections = node_graph_message_handler.collate_properties(node_graph_frame, &mut context);
 				properties_sections.extend(parameters_sections.into_iter());
 			}

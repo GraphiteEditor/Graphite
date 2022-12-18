@@ -87,6 +87,15 @@ impl Debug for ImaginateImageData {
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ImaginateBaseImage {
+	pub mime: String,
+	#[serde(rename = "imageData")]
+	pub image_data: Vec<u8>,
+	pub size: DVec2,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct ImaginateMaskImage {
 	pub svg: String,
 	pub size: DVec2,
 }
@@ -233,13 +242,13 @@ pub struct ImaginateGenerationParameters {
 	#[cfg_attr(feature = "serde", serde(rename = "samplingMethod"))]
 	pub sampling_method: String,
 	#[cfg_attr(feature = "serde", serde(rename = "denoisingStrength"))]
-	pub denoising_strength: Option<f64>,
+	pub image_creativity: Option<f64>,
 	#[cfg_attr(feature = "serde", serde(rename = "cfgScale"))]
-	pub cfg_scale: f64,
-	pub prompt: String,
+	pub text_guidance: f64,
+	pub text_prompt: String,
 	#[cfg_attr(feature = "serde", serde(rename = "negativePrompt"))]
 	pub negative_prompt: String,
-	pub resolution: (u64, u64),
+	pub resolution: (u32, u32),
 	#[cfg_attr(feature = "serde", serde(rename = "restoreFaces"))]
 	pub restore_faces: bool,
 	pub tiling: bool,

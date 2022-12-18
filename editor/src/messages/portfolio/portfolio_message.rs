@@ -2,6 +2,7 @@ use super::utility_types::ImaginateServerStatus;
 use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
 use crate::messages::prelude::*;
 
+use graph_craft::document::NodeId;
 use graph_craft::imaginate_input::ImaginateStatus;
 use graphene::layers::text_layer::Font;
 use graphene::LayerId;
@@ -109,6 +110,7 @@ pub enum PortfolioMessage {
 		layer_path: Vec<LayerId>,
 		image_data: Vec<u8>,
 		size: (u32, u32),
+		imaginate_node: Option<Vec<NodeId>>,
 	},
 	SelectDocument {
 		document_id: u64,

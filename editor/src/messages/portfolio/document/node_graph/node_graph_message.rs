@@ -34,6 +34,9 @@ pub enum NodeGraphMessage {
 		input_index: usize,
 		new_exposed: bool,
 	},
+	ImaginateClear {
+		node_id: NodeId,
+	},
 	MoveSelectedNodes {
 		displacement_x: i32,
 		displacement_y: i32,

@@ -73,9 +73,7 @@ export function createPortfolioState(editor: Editor) {
 		// Handle img2img mode
 		let image: Blob | undefined;
 		if (parameters.denoisingStrength !== undefined && baseImage !== undefined) {
-			// Rasterize the SVG to an image file
-			image = await rasterizeSVG(baseImage.svg, baseImage.size[0], baseImage.size[1], "image/png");
-
+			image = new Blob([baseImage.imageData], { type: baseImage.mime });
 			preloadAndSetImaginateBlobURL(editor, image, documentId, layerPath, baseImage.size[0], baseImage.size[1]);
 		}
 
@@ -109,12 +107,12 @@ export function createPortfolioState(editor: Editor) {
 		});
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerNodeGraphFrameGenerate, async (triggerNodeGraphFrameGenerate) => {
-		const { documentId, layerPath, svg, size } = triggerNodeGraphFrameGenerate;
+		const { documentId, layerPath, svg, size, imaginateNode } = triggerNodeGraphFrameGenerate;
 
 		// Rasterize the SVG to an image file
 		const imageData = (await rasterizeSVGCanvas(svg, size[0], size[1])).getContext("2d")?.getImageData(0, 0, size[0], size[1]);
 
-		if (imageData) editor.instance.processNodeGraphFrame(documentId, layerPath, new Uint8Array(imageData.data), imageData.width, imageData.height);
+		if (imageData) editor.instance.processNodeGraphFrame(documentId, layerPath, new Uint8Array(imageData.data), imageData.width, imageData.height, imaginateNode);
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerRevokeBlobUrl, async (triggerRevokeBlobUrl) => {
 		URL.revokeObjectURL(triggerRevokeBlobUrl.url);

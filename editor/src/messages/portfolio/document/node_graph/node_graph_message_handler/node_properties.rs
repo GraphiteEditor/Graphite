@@ -290,9 +290,12 @@ pub fn _transform_properties(document_node: &DocumentNode, node_id: NodeId, _con
 }
 
 pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let imaginate_node = [context.nested_path, &[node_id]].concat();
+
 	let node_type = resolve_document_node_type("Imaginate").expect("Imaginate in node library");
 	let resolve_input = |name: &str| node_type.inputs.iter().position(|input| input.name == name).unwrap_or_else(|| panic!("Input {name} not found"));
 	let seed_index = resolve_input("Seed");
+	let resolution_index = resolve_input("Resolution");
 	let samples_index = resolve_input("Samples");
 	let sampling_method_index = resolve_input("Sampling Method");
 	let text_guidance_index = resolve_input("Text Guidance");
@@ -418,7 +421,12 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 				WidgetHolder::new(Widget::TextButton(TextButton {
 					label: "Generate".into(),
 					tooltip: "Fill layer frame by generating a new image".into(),
-					//on_update: WidgetCallback::new(|_| DocumentMessage::ImaginateGenerate.into()),
+					on_update: WidgetCallback::new(move |_| {
+						DocumentMessage::NodeGraphFrameGenerateImaginate {
+							imaginate_node: imaginate_node.clone(),
+						}
+						.into()
+					}),
 					..Default::default()
 				})),
 				WidgetHolder::related_seperator(),
@@ -426,7 +434,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 					label: "Clear".into(),
 					tooltip: "Remove generated image from the layer frame".into(),
 					disabled: cached_data.is_none(),
-					//on_update: WidgetCallback::new(|_| DocumentMessage::FrameClear.into()),
+					on_update: WidgetCallback::new(move |_| NodeGraphMessage::ImaginateClear { node_id }.into()),
 					..Default::default()
 				})),
 			]),
@@ -449,7 +457,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 					size: 24,
 					icon: "Regenerate".into(),
 					tooltip: "Set a new random seed".into(),
-					//on_update: WidgetCallback::new(|_| PropertiesPanelMessage::SetImaginateSeedRandomize.into()),
+					// on_update: WidgetCallback::new(|_| PropertiesPanelMessage::SetImaginateSeedRandomize.into()),
 					..Default::default()
 				})),
 				WidgetHolder::unrelated_seperator(),
@@ -467,27 +475,48 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 	};
 	// TODO: What do to about this in new system?
 	let resolution = {
-		let widgets = vec![
-			WidgetHolder::text_widget("Resolution"),
-			WidgetHolder::unrelated_seperator(),
-			// WidgetHolder::new(Widget::IconButton(IconButton {
-			// 	size: 24,
-			// 	icon: "Rescale".into(),
-			// 	tooltip: "Set the layer scale to this resolution".into(),
-			// 	on_update: WidgetCallback::new(|_| PropertiesPanelMessage::SetImaginateScaleFromResolution.into()),
-			// 	..Default::default()
-			// })),
-			// WidgetHolder::unrelated_seperator(),
-			WidgetHolder::bold_text(
-				cached_data
-					.as_ref()
-					.map(|img| format!("{} W x {} H", img.width, img.height))
-					.unwrap_or_else(|| "No computed image".to_string()),
-			),
-		];
+		use graphene::document::pick_safe_imaginate_resolution;
+		let mut widgets = start_widgets(document_node, node_id, resolution_index, "Resolution", FrontendGraphDataType::Vector);
+
+		let round = |x: DVec2| {
+			let (x, y) = pick_safe_imaginate_resolution(x.into());
+			DVec2::new(x as f64, y as f64)
+		};
+		if let &NodeInput::Value {
+			tagged_value: TaggedValue::DVec2(vec2),
+			exposed: false,
+		} = &document_node.inputs[resolution_index]
+		{
+			widgets.extend_from_slice(&[
+				WidgetHolder::unrelated_seperator(),
+				WidgetHolder::new(Widget::NumberInput(NumberInput {
+					value: Some(vec2.x),
+					label: "X".into(),
+					unit: " px".into(),
+					on_update: update_value(
+						move |number_input: &NumberInput| TaggedValue::DVec2(round(DVec2::new(number_input.value.unwrap(), vec2.y))),
+						node_id,
+						resolution_index,
+					),
+					..NumberInput::default()
+				})),
+				WidgetHolder::unrelated_seperator(),
+				WidgetHolder::new(Widget::NumberInput(NumberInput {
+					value: Some(vec2.y),
+					label: "Y".into(),
+					unit: " px".into(),
+					on_update: update_value(
+						move |number_input: &NumberInput| TaggedValue::DVec2(round(DVec2::new(vec2.x, number_input.value.unwrap()))),
+						node_id,
+						resolution_index,
+					),
+					..NumberInput::default()
+				})),
+			])
+		}
 		LayoutGroup::Row { widgets }.with_tooltip("Width and height of the image that will be generated. Larger resolutions take longer to compute.\n\
 				\n\
-				512x512 yields optimal results because the AI is trained to understand that scale best. Larger sizes may tend to integrate the prompt's subject more than once. Small sizes are often incoherent. Put the layer in a folder and resize that to keep resolution unchanged.\n\
+				512x512 yields optimal results because the AI is trained to understand that scale best. Larger sizes may tend to integrate the prompt's subject more than once. Small sizes are often incoherent.\n\
 				\n\
 				Dimensions must be a multiple of 64, so these are set by rounding the layer dimensions. A resolution exceeding 1 megapixel is reduced below that limit because larger sizes may exceed available GPU memory on the server.".trim())
 	};
@@ -646,7 +675,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 								..Default::default()
 							})
 							.collect(),
-						selected_index: in_paint as u32,
+						selected_index: 1 - in_paint as u32,
 						..Default::default()
 					})),
 				]);

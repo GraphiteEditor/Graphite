@@ -276,6 +276,7 @@ impl LayoutGroup {
 				Widget::TextButton(x) => &mut x.tooltip,
 				Widget::TextInput(x) => &mut x.tooltip,
 				Widget::TextLabel(x) => &mut x.tooltip,
+				Widget::BreadcrumbTrailButtons(x) => &mut x.tooltip,
 				Widget::InvisibleStandinInput(_) | Widget::PivotAssist(_) | Widget::RadioInput(_) | Widget::Separator(_) | Widget::SwatchPairInput(_) => continue,
 			};
 			if val.is_empty() {
