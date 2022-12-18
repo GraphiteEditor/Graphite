@@ -676,6 +676,8 @@ impl PortfolioMessageHandler {
 
 		let mut image_data: Vec<u8> = Vec::new();
 		let [image_width, image_height] = [image.width, image.height];
+		assert_ne!(image_width, 0);
+		assert_ne!(image_height, 0);
 		let size_estimate = (image_width * image_height * 4) as usize;
 
 		let mut result_bytes = Vec::with_capacity(size_estimate);
@@ -683,7 +685,9 @@ impl PortfolioMessageHandler {
 		let mut output: ImageBuffer<Rgba<u8>, _> = image::ImageBuffer::from_raw(image_width, image_height, result_bytes).ok_or_else(|| "Invalid image size".to_string())?;
 		if resize {
 			let (new_width, new_height) = pick_safe_imaginate_resolution((image_width as f64, image_height as f64));
-			output = image::imageops::resize(&output, new_width as u32, new_height as u32, image::imageops::Triangle);
+			if new_width > 0 && new_height > 0 {
+				output = image::imageops::resize(&output, new_width as u32, new_height as u32, image::imageops::Triangle);
+			}
 		}
 		let size = output.dimensions();
 		output.write_to(&mut Cursor::new(&mut image_data), format).map_err(|e| e.to_string())?;
@@ -733,7 +737,7 @@ impl PortfolioMessageHandler {
 				text_guidance: Self::compute_input(&network, &imaginate_node, get("Text Guidance"), Cow::Borrowed(&image))?,
 				text_prompt: Self::compute_input(&network, &imaginate_node, get("Text Prompt"), Cow::Borrowed(&image))?,
 				negative_prompt: Self::compute_input(&network, &imaginate_node, get("Neg. Prompt"), Cow::Borrowed(&image))?,
-				image_creativity: Some(Self::compute_input(&network, &imaginate_node, get("Image Creativity"), Cow::Borrowed(&image))?),
+				image_creativity: Some(Self::compute_input::<f64>(&network, &imaginate_node, get("Image Creativity"), Cow::Borrowed(&image))? / 100.),
 				restore_faces: Self::compute_input(&network, &imaginate_node, get("Improve Faces"), Cow::Borrowed(&image))?,
 				tiling: Self::compute_input(&network, &imaginate_node, get("Tiling"), Cow::Borrowed(&image))?,
 			};
