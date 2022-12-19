@@ -493,13 +493,18 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 
 		let round = |x: DVec2| {
 			let (x, y) = pick_safe_imaginate_resolution(x.into());
-			DVec2::new(x as f64, y as f64)
+			Some(DVec2::new(x as f64, y as f64))
 		};
 		if let &NodeInput::Value {
-			tagged_value: TaggedValue::DVec2(vec2),
+			tagged_value: TaggedValue::OptionalDVec2(vec2),
 			exposed: false,
 		} = &document_node.inputs[resolution_index]
 		{
+			let vec2 = vec2.unwrap_or_else(|| {
+				let transform = context.document.root.transform.inverse() * context.document.multiply_transforms(context.layer_path).unwrap();
+				let (x, y) = pick_safe_imaginate_resolution((transform.transform_vector2(DVec2::new(1., 0.)).length(), transform.transform_vector2(DVec2::new(0., 1.)).length()));
+				DVec2::new(x as f64, y as f64)
+			});
 			widgets.extend_from_slice(&[
 				WidgetHolder::unrelated_seperator(),
 				WidgetHolder::new(Widget::NumberInput(NumberInput {
@@ -507,7 +512,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 					label: "X".into(),
 					unit: " px".into(),
 					on_update: update_value(
-						move |number_input: &NumberInput| TaggedValue::DVec2(round(DVec2::new(number_input.value.unwrap(), vec2.y))),
+						move |number_input: &NumberInput| TaggedValue::OptionalDVec2(round(DVec2::new(number_input.value.unwrap(), vec2.y))),
 						node_id,
 						resolution_index,
 					),
@@ -519,7 +524,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 					label: "Y".into(),
 					unit: " px".into(),
 					on_update: update_value(
-						move |number_input: &NumberInput| TaggedValue::DVec2(round(DVec2::new(vec2.x, number_input.value.unwrap()))),
+						move |number_input: &NumberInput| TaggedValue::OptionalDVec2(round(DVec2::new(vec2.x, number_input.value.unwrap()))),
 						node_id,
 						resolution_index,
 					),

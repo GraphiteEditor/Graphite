@@ -737,7 +737,7 @@ impl PortfolioMessageHandler {
 	}
 
 	/// Encodes an image into a format using the image crate
-	fn encode_img(image: Image, resize: bool, format: image::ImageOutputFormat) -> Result<(Vec<u8>, (u32, u32)), String> {
+	fn encode_img(image: Image, resize: Option<DVec2>, format: image::ImageOutputFormat) -> Result<(Vec<u8>, (u32, u32)), String> {
 		use image::{ImageBuffer, Rgba};
 		use std::io::Cursor;
 
@@ -748,10 +748,10 @@ impl PortfolioMessageHandler {
 		let mut result_bytes = Vec::with_capacity(size_estimate);
 		result_bytes.extend(image.data.into_iter().flat_map(|colour| colour.to_rgba8()));
 		let mut output: ImageBuffer<Rgba<u8>, _> = image::ImageBuffer::from_raw(image_width, image_height, result_bytes).ok_or_else(|| "Invalid image size".to_string())?;
-		if resize {
-			let (new_width, new_height) = pick_safe_imaginate_resolution((image_width as f64, image_height as f64));
-			if new_width > 0 && new_height > 0 {
-				output = image::imageops::resize(&output, new_width as u32, new_height as u32, image::imageops::Triangle);
+		if let Some(size) = resize {
+			let size = size.as_uvec2();
+			if size.x > 0 && size.y > 0 {
+				output = image::imageops::resize(&output, size.x, size.y, image::imageops::Triangle);
 			}
 		}
 		let size = output.dimensions();
@@ -789,7 +789,12 @@ impl PortfolioMessageHandler {
 
 			let get = |name: &str| IMAGINATE_NODE.inputs.iter().position(|input| input.name == name).unwrap_or_else(|| panic!("Input {name} not found"));
 
-			let resolution: glam::DVec2 = Self::compute_input(&network, &imaginate_node, get("Resolution"), Cow::Borrowed(&image))?;
+			let resolution: Option<glam::DVec2> = Self::compute_input(&network, &imaginate_node, get("Resolution"), Cow::Borrowed(&image))?;
+			let resolution = resolution.unwrap_or_else(|| {
+				let transform = document.graphene_document.root.transform.inverse() * document.graphene_document.multiply_transforms(&layer_path).unwrap();
+				let (x, y) = pick_safe_imaginate_resolution((transform.transform_vector2(DVec2::new(1., 0.)).length(), transform.transform_vector2(DVec2::new(0., 1.)).length()));
+				DVec2::new(x as f64, y as f64)
+			});
 
 			let transform = document.graphene_document.root.transform.inverse() * document.graphene_document.multiply_transforms(&layer_path).unwrap();
 			let parameters = ImaginateGenerationParameters {
@@ -812,7 +817,7 @@ impl PortfolioMessageHandler {
 				let image: Image = Self::compute_input(&network, &imaginate_node, get("Base Image"), Cow::Borrowed(&image))?;
 				// Only use if has size
 				if image.width > 0 && image.height > 0 {
-					let (image_data, size) = Self::encode_img(image, false, image::ImageOutputFormat::Png)?;
+					let (image_data, size) = Self::encode_img(image, Some(resolution), image::ImageOutputFormat::Png)?;
 					let size = DVec2::new(size.0 as f64, size.1 as f64);
 					let mime = "image/png".to_string();
 					Some(ImaginateBaseImage { image_data, size, mime })
@@ -879,7 +884,7 @@ impl PortfolioMessageHandler {
 				image = graphene_core::raster::Image { width, height, data };
 			}
 
-			let (image_data, _size) = Self::encode_img(image, false, image::ImageOutputFormat::Bmp)?;
+			let (image_data, _size) = Self::encode_img(image, None, image::ImageOutputFormat::Bmp)?;
 
 			responses.push_back(
 				DocumentOperation::SetNodeGraphFrameImageData {

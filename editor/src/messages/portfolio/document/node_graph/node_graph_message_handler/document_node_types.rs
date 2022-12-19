@@ -288,7 +288,7 @@ pub const IMAGINATE_NODE: DocumentNodeType = DocumentNodeType {
 	inputs: &[
 		DocumentInputType::new("Base Image", TaggedValue::Image(Image::empty()), true),
 		DocumentInputType::new("Seed", TaggedValue::F64(0.), false),
-		DocumentInputType::new("Resolution", TaggedValue::DVec2(DVec2::splat(512.)), false),
+		DocumentInputType::new("Resolution", TaggedValue::OptionalDVec2(None), false),
 		DocumentInputType::new("Samples", TaggedValue::F64(30.), false),
 		DocumentInputType::new("Sampling Method", TaggedValue::ImaginateSamplingMethod(ImaginateSamplingMethod::EulerA), false),
 		DocumentInputType::new("Text Guidance", TaggedValue::F64(10.), false),
