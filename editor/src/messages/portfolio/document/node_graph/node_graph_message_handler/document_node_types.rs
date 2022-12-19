@@ -35,6 +35,7 @@ pub struct NodePropertiesContext<'a> {
 	pub persistent_data: &'a crate::messages::portfolio::utility_types::PersistentData,
 	pub document: &'a graphene::document::Document,
 	pub responses: &'a mut VecDeque<crate::messages::prelude::Message>,
+	pub layer_path: &'a [graphene::LayerId],
 	pub nested_path: &'a [NodeId],
 }
 
@@ -185,35 +186,7 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 		outputs: &[FrontendGraphDataType::Raster],
 		properties: node_properties::exposure_properties,
 	},
-	DocumentNodeType {
-		name: "Imaginate",
-		category: "Image Synthesis",
-		identifier: NodeIdentifier::new("graphene_std::raster::ImaginateNode", &[concrete!("&TypeErasedNode")]),
-		inputs: &[
-			DocumentInputType::new("Base Image", TaggedValue::Image(Image::empty()), true),
-			DocumentInputType::new("Seed", TaggedValue::F64(0.), false),
-			DocumentInputType::new("Resolution", TaggedValue::DVec2(DVec2::splat(512.)), false),
-			DocumentInputType::new("Samples", TaggedValue::F64(30.), false),
-			DocumentInputType::new("Sampling Method", TaggedValue::ImaginateSamplingMethod(ImaginateSamplingMethod::EulerA), false),
-			DocumentInputType::new("Text Guidance", TaggedValue::F64(10.), false),
-			DocumentInputType::new("Text Prompt", TaggedValue::String(String::new()), false),
-			DocumentInputType::new("Neg. Prompt", TaggedValue::String(String::new()), false),
-			DocumentInputType::new("Use Base Image", TaggedValue::Bool(true), false),
-			DocumentInputType::new("Image Creativity", TaggedValue::F64(66.), false),
-			DocumentInputType::new("Masking Layer", TaggedValue::LayerPath(None), false),
-			DocumentInputType::new("Inpaint", TaggedValue::Bool(true), false),
-			DocumentInputType::new("Mask Blur", TaggedValue::F64(4.), false),
-			DocumentInputType::new("Mask Starting Fill", TaggedValue::ImaginateMaskStartingFill(ImaginateMaskStartingFill::Fill), false),
-			DocumentInputType::new("Improve Faces", TaggedValue::Bool(false), false),
-			DocumentInputType::new("Tiling", TaggedValue::Bool(false), false),
-			// Non user status (is document input the right way to do this?)
-			DocumentInputType::new("Cached Data", TaggedValue::RcImage(None), false),
-			DocumentInputType::new("Percent Complete", TaggedValue::F64(0.), false),
-			DocumentInputType::new("Status", TaggedValue::ImaginateStatus(ImaginateStatus::Idle), false),
-		],
-		outputs: &[FrontendGraphDataType::Raster],
-		properties: node_properties::imaginate_properties,
-	},
+	IMAGINATE_NODE,
 	DocumentNodeType {
 		name: "Add",
 		category: "Mathematics",
@@ -307,6 +280,36 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 		properties: node_properties::no_properties,
 	},*/
 ];
+
+pub const IMAGINATE_NODE: DocumentNodeType = DocumentNodeType {
+	name: "Imaginate",
+	category: "Image Synthesis",
+	identifier: NodeIdentifier::new("graphene_std::raster::ImaginateNode", &[concrete!("&TypeErasedNode")]),
+	inputs: &[
+		DocumentInputType::new("Base Image", TaggedValue::Image(Image::empty()), true),
+		DocumentInputType::new("Seed", TaggedValue::F64(0.), false),
+		DocumentInputType::new("Resolution", TaggedValue::DVec2(DVec2::splat(512.)), false),
+		DocumentInputType::new("Samples", TaggedValue::F64(30.), false),
+		DocumentInputType::new("Sampling Method", TaggedValue::ImaginateSamplingMethod(ImaginateSamplingMethod::EulerA), false),
+		DocumentInputType::new("Text Guidance", TaggedValue::F64(10.), false),
+		DocumentInputType::new("Text Prompt", TaggedValue::String(String::new()), false),
+		DocumentInputType::new("Neg. Prompt", TaggedValue::String(String::new()), false),
+		DocumentInputType::new("Use Base Image", TaggedValue::Bool(true), false),
+		DocumentInputType::new("Image Creativity", TaggedValue::F64(66.), false),
+		DocumentInputType::new("Masking Layer", TaggedValue::LayerPath(None), false),
+		DocumentInputType::new("Inpaint", TaggedValue::Bool(true), false),
+		DocumentInputType::new("Mask Blur", TaggedValue::F64(4.), false),
+		DocumentInputType::new("Mask Starting Fill", TaggedValue::ImaginateMaskStartingFill(ImaginateMaskStartingFill::Fill), false),
+		DocumentInputType::new("Improve Faces", TaggedValue::Bool(false), false),
+		DocumentInputType::new("Tiling", TaggedValue::Bool(false), false),
+		// Non user status (is document input the right way to do this?)
+		DocumentInputType::new("Cached Data", TaggedValue::RcImage(None), false),
+		DocumentInputType::new("Percent Complete", TaggedValue::F64(0.), false),
+		DocumentInputType::new("Status", TaggedValue::ImaginateStatus(ImaginateStatus::Idle), false),
+	],
+	outputs: &[FrontendGraphDataType::Raster],
+	properties: node_properties::imaginate_properties,
+};
 
 pub fn resolve_document_node_type(name: &str) -> Option<&DocumentNodeType> {
 	DOCUMENT_NODE_TYPES.iter().find(|node| node.name == name)

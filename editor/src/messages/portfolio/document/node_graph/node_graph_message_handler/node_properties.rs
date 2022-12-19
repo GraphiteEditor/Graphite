@@ -1,17 +1,16 @@
 use crate::messages::layout::utility_types::layout_widget::*;
 use crate::messages::layout::utility_types::widgets::{button_widgets::*, input_widgets::*};
-use crate::messages::portfolio::document::node_graph::node_graph_message_handler::document_node_types::resolve_document_node_type;
 use crate::messages::portfolio::utility_types::ImaginateServerStatus;
 use crate::messages::prelude::*;
 
 use glam::DVec2;
 use graph_craft::document::value::TaggedValue;
-use graph_craft::document::{DocumentNode, NodeId, NodeInput};
+use graph_craft::document::{generate_uuid, DocumentNode, NodeId, NodeInput};
 use graph_craft::imaginate_input::*;
 use graphene::layers::layer_info::LayerDataTypeDiscriminant;
 
 use super::document_node_types::NodePropertiesContext;
-use super::FrontendGraphDataType;
+use super::{FrontendGraphDataType, IMAGINATE_NODE};
 
 pub fn string_properties(text: impl Into<String>) -> Vec<LayoutGroup> {
 	let widget = WidgetHolder::text_widget(text);
@@ -291,9 +290,10 @@ pub fn _transform_properties(document_node: &DocumentNode, node_id: NodeId, _con
 
 pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let imaginate_node = [context.nested_path, &[node_id]].concat();
+	let imaginate_node_1 = imaginate_node.clone();
+	let layer_path = context.layer_path.to_vec();
 
-	let node_type = resolve_document_node_type("Imaginate").expect("Imaginate in node library");
-	let resolve_input = |name: &str| node_type.inputs.iter().position(|input| input.name == name).unwrap_or_else(|| panic!("Input {name} not found"));
+	let resolve_input = |name: &str| IMAGINATE_NODE.inputs.iter().position(|input| input.name == name).unwrap_or_else(|| panic!("Input {name} not found"));
 	let seed_index = resolve_input("Seed");
 	let resolution_index = resolve_input("Resolution");
 	let samples_index = resolve_input("Samples");
@@ -309,8 +309,9 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 	let mask_fill_index = resolve_input("Mask Starting Fill");
 	let faces_index = resolve_input("Improve Faces");
 	let tiling_index = resolve_input("Tiling");
+	let cached_index = resolve_input("Cached Data");
 
-	let cached_value = &document_node.inputs[resolve_input("Cached Data")];
+	let cached_value = &document_node.inputs[cached_index];
 	let complete_value = &document_node.inputs[resolve_input("Percent Complete")];
 	let status_value = &document_node.inputs[resolve_input("Status")];
 
@@ -400,7 +401,13 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 			ImaginateStatus::Generating => widgets.push(WidgetHolder::new(Widget::TextButton(TextButton {
 				label: "Terminate".into(),
 				tooltip: "Cancel the in-progress image generation and keep the latest progress".into(),
-				//on_update: WidgetCallback::new(|_| DocumentMessage::ImaginateTerminate.into()),
+				on_update: WidgetCallback::new(move |_| {
+					DocumentMessage::NodeGraphFrameImaginateTerminate {
+						layer_path: layer_path.clone(),
+						node_path: imaginate_node.clone(),
+					}
+					.into()
+				}),
 				..Default::default()
 			}))),
 			ImaginateStatus::Terminating => widgets.push(WidgetHolder::new(Widget::TextButton(TextButton {
@@ -414,7 +421,12 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 					size: 24,
 					icon: "Random".into(),
 					tooltip: "Generate with a new random seed".into(),
-					//on_update: WidgetCallback::new(|_| PropertiesPanelMessage::SetImaginateSeedRandomizeAndGenerate.into()),
+					on_update: WidgetCallback::new(move |_| {
+						DocumentMessage::NodeGraphFrameImaginateRandom {
+							imaginate_node: imaginate_node.clone(),
+						}
+						.into()
+					}),
 					..Default::default()
 				})),
 				WidgetHolder::related_seperator(),
@@ -422,8 +434,8 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 					label: "Generate".into(),
 					tooltip: "Fill layer frame by generating a new image".into(),
 					on_update: WidgetCallback::new(move |_| {
-						DocumentMessage::NodeGraphFrameGenerateImaginate {
-							imaginate_node: imaginate_node.clone(),
+						DocumentMessage::NodeGraphFrameImaginate {
+							imaginate_node: imaginate_node_1.clone(),
 						}
 						.into()
 					}),
@@ -434,7 +446,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 					label: "Clear".into(),
 					tooltip: "Remove generated image from the layer frame".into(),
 					disabled: cached_data.is_none(),
-					on_update: WidgetCallback::new(move |_| NodeGraphMessage::ImaginateClear { node_id }.into()),
+					on_update: update_value(|_| TaggedValue::RcImage(None), node_id, cached_index),
 					..Default::default()
 				})),
 			]),
@@ -457,7 +469,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 					size: 24,
 					icon: "Regenerate".into(),
 					tooltip: "Set a new random seed".into(),
-					// on_update: WidgetCallback::new(|_| PropertiesPanelMessage::SetImaginateSeedRandomize.into()),
+					on_update: update_value(move |_| TaggedValue::F64((generate_uuid() >> 1) as f64), node_id, seed_index),
 					..Default::default()
 				})),
 				WidgetHolder::unrelated_seperator(),
@@ -473,7 +485,8 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 		// Note: Limited by f64. You cannot even have all the possible u64 values :)
 		LayoutGroup::Row { widgets }.with_tooltip("Seed determines the random outcome, enabling limitless unique variations")
 	};
-	// TODO: What do to about this in new system?
+
+	// TODO: Automatically pick resolution.
 	let resolution = {
 		use graphene::document::pick_safe_imaginate_resolution;
 		let mut widgets = start_widgets(document_node, node_id, resolution_index, "Resolution", FrontendGraphDataType::Vector);

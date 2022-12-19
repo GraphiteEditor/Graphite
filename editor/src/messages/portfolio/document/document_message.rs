@@ -92,8 +92,15 @@ pub enum DocumentMessage {
 		delta: (f64, f64),
 	},
 	NodeGraphFrameGenerate,
-	NodeGraphFrameGenerateImaginate {
+	NodeGraphFrameImaginate {
 		imaginate_node: Vec<NodeId>,
+	},
+	NodeGraphFrameImaginateRandom {
+		imaginate_node: Vec<NodeId>,
+	},
+	NodeGraphFrameImaginateTerminate {
+		layer_path: Vec<LayerId>,
+		node_path: Vec<NodeId>,
 	},
 	NudgeSelectedLayers {
 		delta_x: f64,

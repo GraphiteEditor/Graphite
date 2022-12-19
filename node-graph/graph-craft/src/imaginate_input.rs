@@ -245,6 +245,7 @@ pub struct ImaginateGenerationParameters {
 	pub image_creativity: Option<f64>,
 	#[cfg_attr(feature = "serde", serde(rename = "cfgScale"))]
 	pub text_guidance: f64,
+	#[cfg_attr(feature = "serde", serde(rename = "prompt"))]
 	pub text_prompt: String,
 	#[cfg_attr(feature = "serde", serde(rename = "negativePrompt"))]
 	pub negative_prompt: String,

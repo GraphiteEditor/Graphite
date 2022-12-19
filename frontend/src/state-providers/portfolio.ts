@@ -2,7 +2,7 @@
 import { reactive, readonly } from "vue";
 
 import { downloadFileText, downloadFileBlob, upload } from "@/utility-functions/files";
-import { imaginateGenerate, imaginateCheckConnection, imaginateTerminate, preloadAndSetImaginateBlobURL } from "@/utility-functions/imaginate";
+import { imaginateGenerate, imaginateCheckConnection, imaginateTerminate, updateBackendImage } from "@/utility-functions/imaginate";
 import { rasterizeSVG, rasterizeSVGCanvas } from "@/utility-functions/rasterization";
 import { type Editor } from "@/wasm-communication/editor";
 import {
@@ -68,13 +68,15 @@ export function createPortfolioState(editor: Editor) {
 		imaginateCheckConnection(hostname, editor);
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerImaginateGenerate, async (triggerImaginateGenerate) => {
-		const { documentId, layerPath, hostname, refreshFrequency, baseImage, maskImage, maskPaintMode, maskBlurPx, maskFillContent, parameters } = triggerImaginateGenerate;
+		const { documentId, layerPath, nodePath, hostname, refreshFrequency, baseImage, maskImage, maskPaintMode, maskBlurPx, maskFillContent, parameters } = triggerImaginateGenerate;
 
 		// Handle img2img mode
 		let image: Blob | undefined;
 		if (parameters.denoisingStrength !== undefined && baseImage !== undefined) {
-			image = new Blob([baseImage.imageData], { type: baseImage.mime });
-			preloadAndSetImaginateBlobURL(editor, image, documentId, layerPath, baseImage.size[0], baseImage.size[1]);
+			const buffer = new Uint8Array(baseImage.imageData.values()).buffer;
+
+			image = new Blob([buffer], { type: baseImage.mime });
+			updateBackendImage(editor, image, documentId, layerPath, nodePath);
 		}
 
 		// Handle layer mask
@@ -84,12 +86,12 @@ export function createPortfolioState(editor: Editor) {
 			mask = await rasterizeSVG(maskImage.svg, maskImage.size[0], maskImage.size[1], "image/png");
 		}
 
-		imaginateGenerate(parameters, image, mask, maskPaintMode, maskBlurPx, maskFillContent, hostname, refreshFrequency, documentId, layerPath, editor);
+		imaginateGenerate(parameters, image, mask, maskPaintMode, maskBlurPx, maskFillContent, hostname, refreshFrequency, documentId, layerPath, nodePath, editor);
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerImaginateTerminate, async (triggerImaginateTerminate) => {
-		const { documentId, layerPath, hostname } = triggerImaginateTerminate;
+		const { documentId, layerPath, nodePath, hostname } = triggerImaginateTerminate;
 
-		imaginateTerminate(hostname, documentId, layerPath, editor);
+		imaginateTerminate(hostname, documentId, layerPath, nodePath, editor);
 	});
 	editor.subscriptions.subscribeJsMessage(UpdateImageData, (updateImageData) => {
 		updateImageData.imageData.forEach(async (element) => {

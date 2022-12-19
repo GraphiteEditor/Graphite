@@ -5,13 +5,13 @@ use crate::messages::dialog::simple_dialogs;
 use crate::messages::frontend::utility_types::{FrontendDocumentDetails, FrontendImageData};
 use crate::messages::layout::utility_types::layout_widget::PropertyHolder;
 use crate::messages::layout::utility_types::misc::LayoutTarget;
-use crate::messages::portfolio::document::node_graph::resolve_document_node_type;
+use crate::messages::portfolio::document::node_graph::IMAGINATE_NODE;
 use crate::messages::portfolio::document::utility_types::clipboards::{Clipboard, CopyBufferEntry, INTERNAL_CLIPBOARD_COUNT};
 use crate::messages::portfolio::document::utility_types::misc::DocumentRenderMode;
 use crate::messages::portfolio::utility_types::ImaginateServerStatus;
 use crate::messages::prelude::*;
 
-use graph_craft::document::DocumentNodeImplementation;
+use graph_craft::document::value::TaggedValue;
 use graph_craft::document::NodeId;
 use graph_craft::document::{NodeInput, NodeNetwork};
 use graphene::document::pick_safe_imaginate_resolution;
@@ -209,13 +209,85 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 				);
 				responses.push_back(PropertiesPanelMessage::ResendActiveProperties.into());
 			}
-			PortfolioMessage::ImaginateSetGeneratingStatus { .. } => {
-				//let message = DocumentOperation::ImaginateSetGeneratingStatus { path, percent, status }.into();
-				//responses.push_back(PortfolioMessage::DocumentPassMessage { document_id, message }.into());
+			PortfolioMessage::ImaginateSetGeneratingStatus {
+				document_id,
+				layer_path,
+				node_path,
+				percent,
+				status,
+			} => {
+				let get = |name: &str| IMAGINATE_NODE.inputs.iter().position(|input| input.name == name).unwrap_or_else(|| panic!("Input {name} not found"));
+				if let Some(percentage) = percent {
+					responses.push_back(
+						PortfolioMessage::DocumentPassMessage {
+							document_id,
+							message: NodeGraphMessage::SetQualifiedInputValue {
+								layer_path: layer_path.clone(),
+								node_path: node_path.clone(),
+								input_index: get("Percent Complete"),
+								value: TaggedValue::F64(percentage),
+							}
+							.into(),
+						}
+						.into(),
+					);
+				}
+
+				if status == graph_craft::imaginate_input::ImaginateStatus::Generating {
+					responses.push_back(
+						PortfolioMessage::DocumentPassMessage {
+							document_id,
+							message: NodeGraphMessage::SetQualifiedInputValue {
+								layer_path: layer_path.clone(),
+								node_path: node_path.clone(),
+								input_index: get("Cached Data"),
+								value: TaggedValue::RcImage(None),
+							}
+							.into(),
+						}
+						.into(),
+					);
+				}
+
+				responses.push_back(
+					PortfolioMessage::DocumentPassMessage {
+						document_id,
+						message: NodeGraphMessage::SetQualifiedInputValue {
+							layer_path: layer_path.clone(),
+							node_path: node_path.clone(),
+							input_index: get("Status"),
+							value: TaggedValue::ImaginateStatus(status),
+						}
+						.into(),
+					}
+					.into(),
+				);
 			}
-			PortfolioMessage::ImaginateSetImageData { .. } => {
-				//let message = DocumentOperation::ImaginateSetImageData { layer_path, image_data }.into();
-				//responses.push_back(PortfolioMessage::DocumentPassMessage { document_id, message }.into());
+			PortfolioMessage::ImaginateSetImageData {
+				document_id,
+				layer_path,
+				node_path,
+				image_data,
+				width,
+				height,
+			} => {
+				let get = |name: &str| IMAGINATE_NODE.inputs.iter().position(|input| input.name == name).unwrap_or_else(|| panic!("Input {name} not found"));
+
+				let data = image_data.chunks_exact(4).map(|v| graphene_core::raster::color::Color::from_rgba8(v[0], v[1], v[2], v[3])).collect();
+				let image = Image { width, height, data };
+				responses.push_back(
+					PortfolioMessage::DocumentPassMessage {
+						document_id,
+						message: NodeGraphMessage::SetQualifiedInputValue {
+							layer_path: layer_path.clone(),
+							node_path: node_path.clone(),
+							input_index: get("Cached Data"),
+							value: TaggedValue::RcImage(Some(std::sync::Arc::new(image))),
+						}
+						.into(),
+					}
+					.into(),
+				);
 			}
 			PortfolioMessage::ImaginateSetServerStatus { status } => {
 				self.persistent_data.imaginate_server_status = status;
@@ -411,7 +483,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 				size,
 				imaginate_node,
 			} => {
-				if let Err(description) = self.evaluate_node_graph(document_id, layer_path, image_data, size, imaginate_node, preferences, responses) {
+				if let Err(description) = self.evaluate_node_graph(document_id, layer_path, (image_data, size), imaginate_node, preferences, responses) {
 					responses.push_back(
 						DialogMessage::DisplayDialogError {
 							title: "Unable to update node graph".to_string(),
@@ -601,27 +673,24 @@ impl PortfolioMessageHandler {
 		self.document_ids.iter().position(|id| id == &document_id).expect("Active document is missing from document ids")
 	}
 
+	/// Computes an input for a node in the graph
 	fn compute_input<T: dyn_any::StaticType>(old_network: &NodeNetwork, node_path: &[NodeId], mut input_index: usize, image: Cow<Image>) -> Result<T, String> {
 		let mut network = old_network.clone();
 		// Adjust the output of the graph so we find the relevant output
 		'outer: for end in (0..node_path.len()).rev() {
 			let mut inner_network = &mut network;
-			for index in 0..=end {
+			for index in 0..end {
 				let node_id = node_path[index];
 				inner_network.output = node_id;
 
-				if index != end {
-					if let DocumentNodeImplementation::Network(n) = &mut inner_network.nodes.get_mut(&node_id).ok_or_else(|| "Invalid node path".to_string())?.implementation {
-						inner_network = n;
-					} else {
-						return Err("Path incomplete".to_string());
-					}
-				}
+				let Some(new_inner) = inner_network.nodes.get_mut(&node_id).and_then(|node| node.implementation.get_network_mut()) else{
+					return Err("Failed to find network".to_string());
+				};
+				inner_network = new_inner;
 			}
 			match &inner_network.nodes.get(&node_path[end]).unwrap().inputs[input_index] {
 				// If the input is from a parent network then adjust the input index and continue iteration
 				NodeInput::Network => {
-					error!("Input is network!!!");
 					input_index = inner_network
 						.inputs
 						.iter()
@@ -653,11 +722,8 @@ impl PortfolioMessageHandler {
 		let mut proto_network = network.into_proto_network();
 		proto_network.reorder_ids();
 
-		info!("proto_network with reordered ids: {proto_network:#?}");
-
 		assert_ne!(proto_network.nodes.len(), 0, "No protonodes exist?");
 		for (_id, node) in proto_network.nodes {
-			info!("Inserting proto node {:?}", node);
 			interpreted_executor::node_registry::push_node(node, &stack);
 		}
 
@@ -670,14 +736,13 @@ impl PortfolioMessageHandler {
 		dyn_any::downcast::<T>(boxed).map(|v| *v).ok_or_else(|| "Incorrectly typed output".to_string())
 	}
 
+	/// Encodes an image into a format using the image crate
 	fn encode_img(image: Image, resize: bool, format: image::ImageOutputFormat) -> Result<(Vec<u8>, (u32, u32)), String> {
 		use image::{ImageBuffer, Rgba};
 		use std::io::Cursor;
 
 		let mut image_data: Vec<u8> = Vec::new();
 		let [image_width, image_height] = [image.width, image.height];
-		assert_ne!(image_width, 0);
-		assert_ne!(image_height, 0);
 		let size_estimate = (image_width * image_height * 4) as usize;
 
 		let mut result_bytes = Vec::with_capacity(size_estimate);
@@ -698,16 +763,17 @@ impl PortfolioMessageHandler {
 		&mut self,
 		document_id: u64,
 		layer_path: Vec<LayerId>,
-		image_data: Vec<u8>,
-		size: (u32, u32),
+		(image_data, size): (Vec<u8>, (u32, u32)),
 		imaginate_node: Option<Vec<NodeId>>,
 		preferences: &PreferencesMessageHandler,
 		responses: &mut VecDeque<Message>,
 	) -> Result<(), String> {
+		// Reformat the input image data into an f32 image
 		let data = image_data.chunks_exact(4).map(|v| graphene_core::raster::color::Color::from_rgba8(v[0], v[1], v[2], v[3])).collect();
 		let (width, height) = size;
 		let image = graphene_core::raster::Image { width, height, data };
 
+		// Get the node graph layer
 		let document = self.documents.get_mut(&document_id).ok_or_else(|| "Invalid document".to_string())?;
 		let layer = document.graphene_document.layer(&layer_path).map_err(|e| format!("No layer: {e:?}"))?;
 		let node_graph_frame = match &layer.data {
@@ -717,12 +783,10 @@ impl PortfolioMessageHandler {
 		let network = node_graph_frame.network.clone();
 
 		// Execute the node graph
-
 		if let Some(imaginate_node) = imaginate_node {
 			use graph_craft::imaginate_input::*;
 
-			let node_type = resolve_document_node_type("Imaginate").expect("Imaginate in node library");
-			let get = |name: &str| node_type.inputs.iter().position(|input| input.name == name).unwrap_or_else(|| panic!("Input {name} not found"));
+			let get = |name: &str| IMAGINATE_NODE.inputs.iter().position(|input| input.name == name).unwrap_or_else(|| panic!("Input {name} not found"));
 
 			let resolution: glam::DVec2 = Self::compute_input(&network, &imaginate_node, get("Resolution"), Cow::Borrowed(&image))?;
 
@@ -745,7 +809,8 @@ impl PortfolioMessageHandler {
 
 			let base_image = if use_base_image {
 				let image: Image = Self::compute_input(&network, &imaginate_node, get("Base Image"), Cow::Borrowed(&image))?;
-				if image.width > 0 {
+				// Only use if has size
+				if image.width > 0 && image.height > 0 {
 					let (image_data, size) = Self::encode_img(image, false, image::ImageOutputFormat::Png)?;
 					let size = DVec2::new(size.0 as f64, size.1 as f64);
 					let mime = "image/png".to_string();
@@ -759,21 +824,17 @@ impl PortfolioMessageHandler {
 
 			let mask_image =
 				if base_image.is_some() {
-					let mask: Option<Vec<LayerId>> = Self::compute_input(&network, &imaginate_node, get("Masking Layer"), Cow::Borrowed(&image))?;
+					let mask_path: Option<Vec<LayerId>> = Self::compute_input(&network, &imaginate_node, get("Masking Layer"), Cow::Borrowed(&image))?;
 
-					// Calculate the size of the region to be exported
+					// Calculate the size of the node graph frame
 					let size = DVec2::new(transform.transform_vector2(DVec2::new(1., 0.)).length(), transform.transform_vector2(DVec2::new(0., 1.)).length());
 
+					// Render the masking layer within the node graph frame
 					let old_transforms = document.remove_document_transform();
-
-					let mask_is_some = mask.is_some();
-					let mask_image = mask.filter(|mask_layer_path| document.graphene_document.layer(mask_layer_path).is_ok()).map(|mask_layer_path| {
-						let svg = document.render_document(
-							size,
-							transform.inverse(),
-							&self.persistent_data,
-							DocumentRenderMode::LayerCutout(&mask_layer_path, graphene::color::Color::WHITE),
-						);
+					let mask_is_some = mask_path.is_some();
+					let mask_image = mask_path.filter(|mask_layer_path| document.graphene_document.layer(mask_layer_path).is_ok()).map(|mask_layer_path| {
+						let render_mode = DocumentRenderMode::LayerCutout(&mask_layer_path, graphene::color::Color::WHITE);
+						let svg = document.render_document(size, transform.inverse(), &self.persistent_data, render_mode);
 
 						ImaginateMaskImage { svg, size }
 					});
@@ -804,11 +865,19 @@ impl PortfolioMessageHandler {
 					refresh_frequency: preferences.imaginate_refresh_frequency,
 					document_id,
 					layer_path,
+					node_path: imaginate_node,
 				}
 				.into(),
 			);
 		} else {
-			let image: Image = Self::compute_input(&network, &[1], 0, Cow::Owned(image))?;
+			let mut image: Image = Self::compute_input(&network, &[1], 0, Cow::Owned(image))?;
+
+			// If no image was generated, use the input image
+			if image.width == 0 || image.height == 0 {
+				let data = image_data.chunks_exact(4).map(|v| graphene_core::raster::color::Color::from_rgba8(v[0], v[1], v[2], v[3])).collect();
+				image = graphene_core::raster::Image { width, height, data };
+			}
+
 			let (image_data, _size) = Self::encode_img(image, false, image::ImageOutputFormat::Bmp)?;
 
 			responses.push_back(

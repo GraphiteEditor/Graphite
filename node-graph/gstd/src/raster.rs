@@ -278,6 +278,7 @@ pub struct ImaginateNode<E> {
 // Based on https://stackoverflow.com/questions/12166117/what-is-the-math-behind-exposure-adjustment-on-photoshop
 #[node_macro::node_fn(ImaginateNode)]
 fn imaginate(image: Image, cached: Option<std::sync::Arc<graphene_core::raster::Image>>) -> Image {
+	info!("Imaginating image with {} pixels", image.data.len());
 	cached.map(|mut x| std::sync::Arc::make_mut(&mut x).clone()).unwrap_or(image)
 }
 

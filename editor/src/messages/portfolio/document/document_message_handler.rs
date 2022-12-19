@@ -437,49 +437,6 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 					.into(),
 				);
 			}
-			/*ImaginateGenerate => {
-				if let Some(message) = self.call_imaginate(document_id, preferences, persistent_data) {
-					// TODO: Eventually remove this after a message system ordering architectural change
-					// This message is a workaround for the fact that, when `imaginate.ts` calls...
-					// `editor.instance.setImaginateGeneratingStatus(layerPath, 0, true);`
-					// ...execution transfers from the Rust part of the call stack into the JS part of the call stack (before the Rust message queue is empty,
-					// and there is a Properties panel refresh queued next). Then the JS calls that line shown above and enters the Rust part of the callstack
-					// again, so it's gone through JS (user initiation) -> Rust (process the button press) -> JS (beginning server request) -> Rust (set
-					// progress percentage to 0). As that call stack returns back from the Rust and back from the JS, it returns to the Rust and finishes
-					// processing the queue. That's where it then processes the Properties panel refresh that sent the "Ready" or "Done" state that existed
-					// before pressing the Generate button causing it to show "0%". So "Ready" or "Done" immediately overwrites the "0%". This block below,
-					// therefore, adds a redundant call to set it to 0% progress so the message execution order ends with this as the final percentage shown
-					// to the user.
-					responses.push_back(
-						DocumentOperation::ImaginateSetGeneratingStatus {
-							path: self.selected_layers_with_type(LayerDataTypeDiscriminant::Imaginate).next().unwrap().to_vec(),
-							percent: Some(0.),
-							status: ImaginateStatus::Beginning,
-						}
-						.into(),
-					);
-
-					responses.push_back(message);
-				}
-			}
-			ImaginateTerminate => {
-				let hostname = preferences.imaginate_server_hostname.clone();
-
-				let layer_path = {
-					let mut selected_imaginate_layers = self.selected_layers_with_type(LayerDataTypeDiscriminant::Imaginate);
-
-					// Get what is hopefully the only selected Imaginate layer
-					match selected_imaginate_layers.next() {
-						// Continue only if there are no additional Imaginate layers also selected
-						Some(layer_path) if selected_imaginate_layers.next().is_none() => Some(layer_path.to_owned()),
-						_ => None,
-					}
-				};
-
-				if let Some(layer_path) = layer_path {
-					responses.push_back(FrontendMessage::TriggerImaginateTerminate { document_id, layer_path, hostname }.into());
-				}
-			}*/
 			LayerChanged { affected_layer_path } => {
 				if let Ok(layer_entry) = self.layer_panel_entry(affected_layer_path.clone(), &persistent_data.font_cache) {
 					responses.push_back(FrontendMessage::UpdateDocumentLayerDetails { data: layer_entry }.into());
@@ -522,10 +479,32 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 					responses.push_back(message);
 				}
 			}
-			NodeGraphFrameGenerateImaginate { imaginate_node } => {
+			NodeGraphFrameImaginate { imaginate_node } => {
 				if let Some(message) = self.call_node_graph_frame(document_id, preferences, persistent_data, Some(imaginate_node)) {
 					responses.push_back(message);
 				}
+			}
+			NodeGraphFrameImaginateRandom { imaginate_node } => {
+				responses.push_back(
+					NodeGraphMessage::SetInputValue {
+						node: *imaginate_node.last().unwrap(),
+						input_index: 1,
+						value: graph_craft::document::value::TaggedValue::F64((generate_uuid() >> 1) as f64),
+					}
+					.into(),
+				);
+				responses.push_back(DocumentMessage::NodeGraphFrameImaginate { imaginate_node }.into());
+			}
+			NodeGraphFrameImaginateTerminate { layer_path, node_path } => {
+				responses.push_back(
+					FrontendMessage::TriggerImaginateTerminate {
+						document_id,
+						layer_path,
+						node_path,
+						hostname: preferences.imaginate_server_hostname.clone(),
+					}
+					.into(),
+				);
 			}
 			NudgeSelectedLayers { delta_x, delta_y } => {
 				self.backup(responses);

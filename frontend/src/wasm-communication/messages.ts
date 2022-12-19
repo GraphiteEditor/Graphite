@@ -535,6 +535,8 @@ export class TriggerImaginateGenerate extends JsMessage {
 	readonly documentId!: bigint;
 
 	readonly layerPath!: BigUint64Array;
+
+	readonly nodePath!: BigUint64Array;
 }
 
 export class ImaginateMaskImage {
@@ -579,6 +581,8 @@ export class TriggerImaginateTerminate extends JsMessage {
 	readonly documentId!: bigint;
 
 	readonly layerPath!: BigUint64Array;
+
+	readonly nodePath!: BigUint64Array;
 
 	readonly hostname!: string;
 }

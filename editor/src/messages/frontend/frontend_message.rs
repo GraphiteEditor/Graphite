@@ -76,12 +76,16 @@ pub enum FrontendMessage {
 		document_id: u64,
 		#[serde(rename = "layerPath")]
 		layer_path: Vec<LayerId>,
+		#[serde(rename = "nodePath")]
+		node_path: Vec<NodeId>,
 	},
 	TriggerImaginateTerminate {
 		#[serde(rename = "documentId")]
 		document_id: u64,
 		#[serde(rename = "layerPath")]
 		layer_path: Vec<LayerId>,
+		#[serde(rename = "nodePath")]
+		node_path: Vec<NodeId>,
 		hostname: String,
 	},
 	TriggerImport,

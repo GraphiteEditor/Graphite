@@ -1,5 +1,7 @@
 use crate::messages::prelude::*;
+
 use graph_craft::document::{value::TaggedValue, NodeId};
+use graphene::LayerId;
 
 #[remain::sorted]
 #[impl_message(Message, DocumentMessage, NodeGraph)]
@@ -34,9 +36,6 @@ pub enum NodeGraphMessage {
 		input_index: usize,
 		new_exposed: bool,
 	},
-	ImaginateClear {
-		node_id: NodeId,
-	},
 	MoveSelectedNodes {
 		displacement_x: i32,
 		displacement_y: i32,
@@ -49,6 +48,12 @@ pub enum NodeGraphMessage {
 	},
 	SetInputValue {
 		node: NodeId,
+		input_index: usize,
+		value: TaggedValue,
+	},
+	SetQualifiedInputValue {
+		layer_path: Vec<LayerId>,
+		node_path: Vec<NodeId>,
 		input_index: usize,
 		value: TaggedValue,
 	},

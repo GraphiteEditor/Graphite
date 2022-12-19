@@ -259,7 +259,6 @@ impl ProtoNetwork {
 			if temp_marks.contains(&node_id) {
 				panic!("Cycle detected");
 			}
-			info!("Visiting {node_id}");
 
 			if let Some(dependencies) = inwards_edges.get(&node_id) {
 				temp_marks.insert(node_id);
@@ -273,7 +272,6 @@ impl ProtoNetwork {
 		assert!(self.nodes.iter().any(|(id, _)| *id == self.output), "Output id {} does not exist", self.output);
 		visit(self.output, &mut HashSet::new(), &mut sorted, &inwards_edges);
 
-		info!("Sorted order {sorted:?}");
 		sorted
 	}
 
@@ -307,7 +305,6 @@ impl ProtoNetwork {
 		let order = self.topological_sort();
 		// Map of node ids to indexes (which become the node ids as they are inserted into the borrow stack)
 		let lookup: HashMap<_, _> = order.iter().enumerate().map(|(pos, id)| (*id, pos as NodeId)).collect();
-		info!("Order {order:?}");
 		self.nodes = order
 			.iter()
 			.enumerate()

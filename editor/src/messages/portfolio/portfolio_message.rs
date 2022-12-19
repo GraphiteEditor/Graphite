@@ -56,14 +56,18 @@ pub enum PortfolioMessage {
 	ImaginateCheckServerStatus,
 	ImaginateSetGeneratingStatus {
 		document_id: u64,
-		path: Vec<LayerId>,
+		layer_path: Vec<LayerId>,
+		node_path: Vec<NodeId>,
 		percent: Option<f64>,
 		status: ImaginateStatus,
 	},
 	ImaginateSetImageData {
 		document_id: u64,
 		layer_path: Vec<LayerId>,
+		node_path: Vec<NodeId>,
 		image_data: Vec<u8>,
+		width: u32,
+		height: u32,
 	},
 	ImaginateSetServerStatus {
 		status: ImaginateServerStatus,

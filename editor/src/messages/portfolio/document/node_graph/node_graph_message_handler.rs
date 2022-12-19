@@ -178,7 +178,6 @@ impl NodeGraphMessageHandler {
 
 	fn send_graph(network: &NodeNetwork, responses: &mut VecDeque<Message>) {
 		responses.push_back(PropertiesPanelMessage::ResendActiveProperties.into());
-		info!("Opening node graph with nodes {:?}", network.nodes);
 
 		// List of links in format (link_start, link_end, link_end_input_index)
 		let links = network
@@ -228,7 +227,7 @@ impl NodeGraphMessageHandler {
 				position: node.metadata.position,
 			})
 		}
-		log::debug!("Nodes:\n{:#?}\n\nFrontend Nodes:\n{:#?}\n\nLinks:\n{:#?}", network.nodes, nodes, links);
+		log::debug!("Frontend Nodes:\n{:#?}\n\nLinks:\n{:#?}", nodes, links);
 		responses.push_back(FrontendMessage::UpdateNodeGraph { nodes, links }.into());
 	}
 
@@ -280,20 +279,6 @@ impl NodeGraphMessageHandler {
 			false
 		}
 	}
-
-	fn get_node(network: &mut NodeNetwork, node_id: NodeId) -> Option<&mut DocumentNode> {
-		for (id, node) in &mut network.nodes {
-			if *id == node_id {
-				return Some(node);
-			}
-			if let DocumentNodeImplementation::Network(n) = &mut node.implementation {
-				if let Some(node) = Self::get_node(n, node_id) {
-					return Some(node);
-				}
-			}
-		}
-		None
-	}
 }
 
 impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageHandler)> for NodeGraphMessageHandler {
@@ -303,7 +288,6 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 		match message {
 			NodeGraphMessage::CloseNodeGraph => {
 				if let Some(_old_layer_path) = self.layer_path.take() {
-					info!("Closing node graph");
 					responses.push_back(FrontendMessage::UpdateNodeGraphVisibility { visible: false }.into());
 					responses.push_back(PropertiesPanelMessage::ResendActiveProperties.into());
 					// TODO: Close UI and clean up old node graph
@@ -330,7 +314,6 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 				};
 				input_node.inputs[actual_index] = NodeInput::Node(output_node);
 
-				info!("Inputs: {:?}", input_node.inputs);
 				Self::send_graph(network, responses);
 				responses.push_back(DocumentMessage::NodeGraphFrameGenerate.into());
 			}
@@ -443,17 +426,6 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 				Self::send_graph(network, responses);
 				responses.push_back(PropertiesPanelMessage::ResendActiveProperties.into());
 			}
-			NodeGraphMessage::ImaginateClear { node_id } => {
-				if let Some(network) = self.get_active_network_mut(document) {
-					if let Some(imaginate_node) = Self::get_node(network, node_id) {
-						imaginate_node.inputs[15] = NodeInput::Value {
-							tagged_value: TaggedValue::RcImage(None),
-							exposed: false,
-						};
-						responses.push_back(DocumentMessage::NodeGraphFrameGenerate.into());
-					}
-				}
-			}
 			NodeGraphMessage::MoveSelectedNodes { displacement_x, displacement_y } => {
 				let Some(network) = self.get_active_network_mut(document) else{
 					warn!("No network");
@@ -491,6 +463,36 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 			NodeGraphMessage::SetInputValue { node, input_index, value } => {
 				if let Some(network) = self.get_active_network_mut(document) {
 					if let Some(node) = network.nodes.get_mut(&node) {
+						// Extend number of inputs if not already large enough
+						if input_index >= node.inputs.len() {
+							node.inputs.extend(((node.inputs.len() - 1)..input_index).map(|_| NodeInput::Network));
+						}
+						node.inputs[input_index] = NodeInput::Value { tagged_value: value, exposed: false };
+						responses.push_back(DocumentMessage::NodeGraphFrameGenerate.into());
+					}
+				}
+			}
+			NodeGraphMessage::SetQualifiedInputValue {
+				layer_path,
+				node_path,
+				input_index,
+				value,
+			} => {
+				let mut network = document.layer_mut(&layer_path).ok().and_then(|layer| match &mut layer.data {
+					LayerDataType::NodeGraphFrame(n) => Some(&mut n.network),
+					_ => None,
+				});
+
+				let Some((node_id, node_path)) = node_path.split_last() else {
+					error!("Node path is empty");
+					return
+				};
+				for segement in node_path {
+					network = network.and_then(|network| network.nodes.get_mut(segement)).and_then(|node| node.implementation.get_network_mut());
+				}
+
+				if let Some(network) = network {
+					if let Some(node) = network.nodes.get_mut(node_id) {
 						// Extend number of inputs if not already large enough
 						if input_index >= node.inputs.len() {
 							node.inputs.extend(((node.inputs.len() - 1)..input_index).map(|_| NodeInput::Network));

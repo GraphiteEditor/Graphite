@@ -31,6 +31,7 @@ export async function imaginateGenerate(
 	refreshFrequency: number,
 	documentId: bigint,
 	layerPath: BigUint64Array,
+	nodePath: BigUint64Array,
 	editor: Editor
 ): Promise<void> {
 	// Ignore a request to generate a new image while another is already being generated
@@ -39,11 +40,11 @@ export async function imaginateGenerate(
 	terminated = false;
 
 	// Immediately set the progress to 0% so the backend knows to update its layout
-	editor.instance.setImaginateGeneratingStatus(documentId, layerPath, 0, "Beginning");
+	editor.instance.setImaginateGeneratingStatus(documentId, layerPath, nodePath, 0, "Beginning");
 
 	// Initiate a request to the computation server
 	const discloseUploadingProgress = (progress: number): void => {
-		editor.instance.setImaginateGeneratingStatus(documentId, layerPath, progress * 100, "Uploading");
+		editor.instance.setImaginateGeneratingStatus(documentId, layerPath, nodePath, progress * 100, "Uploading");
 	};
 	const { uploaded, result, xhr } = await generate(discloseUploadingProgress, hostname, image, mask, maskPaintMode, maskBlurPx, maskFillContent, parameters);
 	generatingAbortRequest = xhr;
@@ -51,13 +52,13 @@ export async function imaginateGenerate(
 	try {
 		// Wait until the request is fully uploaded, which could be slow if the img2img source is large and the user is on a slow connection
 		await uploaded;
-		editor.instance.setImaginateGeneratingStatus(documentId, layerPath, 0, "Generating");
+		editor.instance.setImaginateGeneratingStatus(documentId, layerPath, nodePath, 0, "Generating");
 
 		// Begin polling for updates to the in-progress image generation at the specified interval
 		// Don't poll if the chosen interval is 0, or if the chosen sampling method does not support polling
 		if (refreshFrequency > 0) {
 			const interval = Math.max(refreshFrequency * 1000, 500);
-			scheduleNextPollingUpdate(interval, Date.now(), 0, editor, hostname, documentId, layerPath, parameters.resolution);
+			scheduleNextPollingUpdate(interval, Date.now(), 0, editor, hostname, documentId, layerPath, nodePath, parameters.resolution);
 		}
 
 		// Wait for the final image to be returned by the initial request containing either the full image or the last frame if it was terminated by the user
@@ -75,16 +76,12 @@ export async function imaginateGenerate(
 		// Send the backend an updated status
 		const percent = terminated ? undefined : 100;
 		const newStatus = terminated ? "Terminated" : "Idle";
-		editor.instance.setImaginateGeneratingStatus(documentId, layerPath, percent, newStatus);
+		editor.instance.setImaginateGeneratingStatus(documentId, layerPath, nodePath, percent, newStatus);
 
 		// Send the backend a blob URL for the final image
-		preloadAndSetImaginateBlobURL(editor, blob, documentId, layerPath, parameters.resolution.x, parameters.resolution.y);
-
-		// Send the backend the blob data to be stored persistently in the layer
-		const u8Array = new Uint8Array(await blob.arrayBuffer());
-		editor.instance.setImaginateImageData(documentId, layerPath, u8Array);
+		updateBackendImage(editor, blob, documentId, layerPath, nodePath);
 	} catch {
-		editor.instance.setImaginateGeneratingStatus(documentId, layerPath, undefined, "Terminated");
+		editor.instance.setImaginateGeneratingStatus(documentId, layerPath, nodePath, undefined, "Terminated");
 
 		await imaginateCheckConnection(hostname, editor);
 	}
@@ -93,19 +90,19 @@ export async function imaginateGenerate(
 	abortAndResetPolling();
 }
 
-export async function imaginateTerminate(hostname: string, documentId: bigint, layerPath: BigUint64Array, editor: Editor): Promise<void> {
+export async function imaginateTerminate(hostname: string, documentId: bigint, layerPath: BigUint64Array, nodePath: BigUint64Array, editor: Editor): Promise<void> {
 	terminated = true;
 	abortAndResetPolling();
 
 	try {
 		await terminate(hostname);
 
-		editor.instance.setImaginateGeneratingStatus(documentId, layerPath, undefined, "Terminating");
+		editor.instance.setImaginateGeneratingStatus(documentId, layerPath, nodePath, undefined, "Terminating");
 	} catch {
 		abortAndResetGenerating();
 		abortAndResetPolling();
 
-		editor.instance.setImaginateGeneratingStatus(documentId, layerPath, undefined, "Terminated");
+		editor.instance.setImaginateGeneratingStatus(documentId, layerPath, nodePath, undefined, "Terminated");
 
 		await imaginateCheckConnection(hostname, editor);
 	}
@@ -116,15 +113,21 @@ export async function imaginateCheckConnection(hostname: string, editor: Editor)
 	editor.instance.setImaginateServerStatus(serverReached);
 }
 
-export async function preloadAndSetImaginateBlobURL(editor: Editor, blob: Blob, documentId: bigint, layerPath: BigUint64Array, width: number, height: number): Promise<void> {
-	const blobURL = URL.createObjectURL(blob);
+// Converts the blob image into a list of pixels using an invisible canvas.
+export async function updateBackendImage(editor: Editor, blob: Blob, documentId: bigint, layerPath: BigUint64Array, nodePath: BigUint64Array): Promise<void> {
+	const image = await createImageBitmap(blob);
+	const canvas = document.createElement("canvas");
+	canvas.width = image.width;
+	canvas.height = image.height;
+	const ctx = canvas.getContext("2d");
+	if (!ctx) throw new Error("Could not create canvas context");
+	ctx.drawImage(image, 0, 0);
 
-	// Pre-decode the image so it is ready to be drawn instantly once it's placed into the viewport SVG
-	const image = new Image();
-	image.src = blobURL;
-	await image.decode();
+	// Send the backend the blob data to be stored persistently in the layer
+	const imageData = ctx.getImageData(0, 0, image.width, image.height);
+	const u8Array = new Uint8Array(imageData.data);
 
-	editor.instance.setImaginateBlobURL(documentId, layerPath, blobURL, width, height);
+	editor.instance.setImaginateImageData(documentId, layerPath, nodePath, u8Array, imageData.width, imageData.height);
 }
 
 // ABORTING AND RESETTING HELPERS
@@ -150,6 +153,7 @@ function scheduleNextPollingUpdate(
 	hostname: string,
 	documentId: bigint,
 	layerPath: BigUint64Array,
+	nodePath: BigUint64Array,
 	resolution: XY
 ): void {
 	// Pick a future time that keeps to the user-requested interval if possible, but on slower connections will go as fast as possible without overlapping itself
@@ -165,10 +169,10 @@ function scheduleNextPollingUpdate(
 			// After waiting for the polling result back from the server, if during that intervening time the user has terminated the generation, exit so we don't overwrite that terminated status
 			if (terminated) return;
 
-			if (blob) preloadAndSetImaginateBlobURL(editor, blob, documentId, layerPath, resolution.x, resolution.y);
-			editor.instance.setImaginateGeneratingStatus(documentId, layerPath, percentComplete, "Generating");
+			if (blob) updateBackendImage(editor, blob, documentId, layerPath, nodePath);
+			editor.instance.setImaginateGeneratingStatus(documentId, layerPath, nodePath, percentComplete, "Generating");
 
-			scheduleNextPollingUpdate(interval, nextTimeoutBegan, 0, editor, hostname, documentId, layerPath, resolution);
+			scheduleNextPollingUpdate(interval, nextTimeoutBegan, 0, editor, hostname, documentId, layerPath, nodePath, resolution);
 		} catch {
 			if (generatingAbortRequest === undefined) return;
 
@@ -178,7 +182,7 @@ function scheduleNextPollingUpdate(
 
 				await imaginateCheckConnection(hostname, editor);
 			} else {
-				scheduleNextPollingUpdate(interval, nextTimeoutBegan, pollingRetries + 1, editor, hostname, documentId, layerPath, resolution);
+				scheduleNextPollingUpdate(interval, nextTimeoutBegan, pollingRetries + 1, editor, hostname, documentId, layerPath, nodePath, resolution);
 			}
 		}
 	}, timeFromNow);
