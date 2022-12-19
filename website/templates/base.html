@@ -3,7 +3,7 @@
 <head>
 	<meta charset="utf-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5, minimum-scale=1">
-	<title>Graphite | {% block title %}{% endblock title %}</title>
+	<title>Graphite | {% block title %}{% endblock title %}.</title>
 	{% block rss %}
 	<link rel="alternate" type="application/rss+xml" title="RSS" href="{{ get_url(path='blog/rss.xml', trailing_slash=false) }}">
 	{% endblock %}
@@ -13,30 +13,28 @@
 	<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bona+Nova:wght@400;700">
 	<script src="/js/navbar.js"></script>
 	<style>
+	.balance-text {
+		visibility: hidden;
+	}
+
+	@media (scripting: none) {
 		.balance-text {
-			visibility: hidden;
+			visibility: visible;
 		}
+	}
 
-		@media (scripting: none) {
-			.balance-text {
-				visibility: visible;
-			}
+	@supports (text-wrap: balance) {
+		.balance-text {
+			text-wrap: balance;
+			visibility: visible;
 		}
-
-		@supports (text-wrap: balance) {
-			.balance-text {
-				text-wrap: balance;
-				visibility: visible;
-			}
-		}
-
+	}
 	</style>
 	<noscript>
 		<style>
-			.balance-text {
-				visibility: visible !important;
-			}
-
+		.balance-text {
+			visibility: visible !important;
+		}
 		</style>
 	</noscript>
 </head>

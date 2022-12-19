@@ -3,6 +3,11 @@ title = "Features and roadmap"
 template = "page.html"
 +++
 
+<section class="section-row">
+<div class="section">
+
+# Features and roadmap.
+
 The current version of Graphite provides tools for designing vector art with Bezier curves, similar to tools like Inkscape, Illustrator, and Affinity Designer. These creations may be exported to SVG, JPG, or PNG formats. External images may be imported and placed in the document as a layer (but not directly edited yet).
 
 The present priority is building the node graph system and integrating it with the existing vector editing toolset. Once ready, work will shift to building a raster-based render engine. More advanced features will build off those core capabilities.
@@ -60,3 +65,6 @@ Long Term:
 - Live video compositing
 - Animated SVG authorship
 - Distributed rendering system
+
+</div>
+</section>
