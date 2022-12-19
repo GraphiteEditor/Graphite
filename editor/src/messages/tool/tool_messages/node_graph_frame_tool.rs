@@ -137,7 +137,7 @@ impl Fsm for NodeGraphToolFsmState {
 					shape_data.path = Some(document.get_path_for_new_layer());
 					responses.push_back(DocumentMessage::DeselectAllLayers.into());
 
-					use graph_craft::{document::*, proto::*, generic};
+					use graph_craft::{document::*, generic, proto::*};
 					let network = NodeNetwork {
 						inputs: vec![0],
 						output: 1,
