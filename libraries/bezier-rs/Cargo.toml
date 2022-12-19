@@ -4,11 +4,14 @@ version = "0.1.0"
 rust-version = "1.65.0"
 edition = "2021"
 authors = ["Graphite Authors <contact@graphite.rs>"]
-description = "A wide assortment of useful math functions for Bezier segments and shapes."
+description = "Computational geometry algorithms for Bézier segments and shapes useful in the context of 2D graphics"
 license = "MIT OR Apache-2.0"
-readme = "./README.md"
-homepage = "https://graphite.rs/libraries/bezier-rs"
-repository = "https://github.com/GraphiteEditor/Graphite/libraries/bezier-rs"
+readme = "README.md"
+keywords = ["bezier", "curve", "geometry", "2d", "graphics"]
+categories = ["graphics", "mathematics"]
+homepage = "https://github.com/GraphiteEditor/Graphite/tree/master/libraries/bezier-rs"
+repository = "https://github.com/GraphiteEditor/Graphite/tree/master/libraries/bezier-rs"
+documentation = "https://graphite.rs/bezier-rs-demos/"
 
 [dependencies]
 glam = { version = "0.22", features = ["serde"] }

@@ -1,6 +1,11 @@
 <template>
 	<h1>Bezier-rs Interactive Documentation</h1>
-	<p>This is the interactive documentation for the <b>bezier-rs</b> library. Click and drag on the endpoints of the example curves to visualize the various Bezier utilities and functions.</p>
+	<p>
+		This is the interactive documentation for the <a href="https://crates.io/crates/bezier-rs"><b>Bezier-rs</b></a> library. View the
+		<a href="https://docs.rs/bezier-rs/latest/bezier_rs">crate documentation</a>
+		for detailed function descriptions and API usage. Click and drag on the endpoints of the example curves to visualize the various Bezier utilities and functions.
+	</p>
+
 	<h2>Beziers</h2>
 	<div v-for="(feature, index) in bezierFeatures" :key="index">
 		<BezierExamplePane
@@ -11,6 +16,7 @@
 			:chooseComputeType="feature.chooseComputeType"
 		/>
 	</div>
+
 	<h2>Subpaths</h2>
 	<div v-for="(feature, index) in subpathFeatures" :key="index">
 		<SubpathExamplePane :name="feature.name" :callback="feature.callback" :sliderOptions="feature.sliderOptions" :chooseComputeType="feature.chooseComputeType" />
@@ -22,6 +28,17 @@
 	font-family: Arial, sans-serif;
 	text-align: center;
 	margin: 40px 0;
+}
+
+#app > h1 + p {
+	max-width: 768px;
+	line-height: 1.4;
+	margin: auto;
+	text-align: justify;
+}
+
+#app > h2 {
+	margin-top: 40px;
 }
 
 /* Example Pane styles */

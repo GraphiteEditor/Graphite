@@ -1,4 +1,0 @@
-+++
-title = ""
-template = "index.html"
-+++

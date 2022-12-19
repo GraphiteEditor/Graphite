@@ -1,15 +1,12 @@
 {% extends "base.html" %}
-{% block title %}{{ section.title }}.{% endblock title %}
+{% block title %}{{ section.title }}{% endblock title %}
 
 {% block head %}
-<link rel="stylesheet" href="/page.css">
+{% if section.extra.css %}
+<link rel="stylesheet" href="{{ section.extra.css | safe }}">
+{% endif %}
 {% endblock head %}
 
 {% block content %}
-<section class="section-row">
-	<div class="section">
-		<h1>{{ section.title }}.</h1>
-		{{ section.content | safe }}
-	</div>
-</section>
+{{ section.content | safe }}
 {% endblock content %}
