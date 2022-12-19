@@ -6,13 +6,11 @@ use crate::layers::text_layer::FontCache;
 use crate::LayerId;
 
 use glam::{DAffine2, DMat2, DVec2};
-use graph_craft::proto::Type;
 use kurbo::{Affine, BezPath, Shape as KurboShape};
 use serde::{Deserialize, Serialize};
-use std::borrow::Cow;
 use std::fmt::Write;
 
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Default, PartialEq, Deserialize, Serialize)]
 pub struct NodeGraphFrameLayer {
 	// Image stored in layer after generation completes
 	pub mime: String,
@@ -114,44 +112,4 @@ impl NodeGraphFrameLayer {
 
 fn glam_to_kurbo(transform: DAffine2) -> Affine {
 	Affine::new(transform.to_cols_array())
-}
-
-impl Default for NodeGraphFrameLayer {
-	fn default() -> Self {
-		use graph_craft::document::*;
-		use graph_craft::proto::NodeIdentifier;
-
-		Self {
-			mime: String::new(),
-			network: NodeNetwork {
-				inputs: vec![0],
-				output: 1,
-				nodes: [
-					(
-						0,
-						DocumentNode {
-							name: "Input".into(),
-							inputs: vec![NodeInput::Network],
-							implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode", &[Type::Generic(Cow::Borrowed("T"))])),
-							metadata: DocumentNodeMetadata { position: (8, 4) },
-						},
-					),
-					(
-						1,
-						DocumentNode {
-							name: "Output".into(),
-							inputs: vec![NodeInput::Node(0)],
-							implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode", &[Type::Generic(Cow::Borrowed("T"))])),
-							metadata: DocumentNodeMetadata { position: (20, 4) },
-						},
-					),
-				]
-				.into_iter()
-				.collect(),
-			},
-			blob_url: None,
-			dimensions: DVec2::ZERO,
-			image_data: None,
-		}
-	}
 }

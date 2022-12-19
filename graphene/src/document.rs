@@ -606,8 +606,13 @@ impl Document {
 
 				Some([vec![DocumentChanged, CreatedLayer { path: path.clone() }], update_thumbnails_upstream(&path)].concat())
 			}
-			Operation::AddNodeGraphFrame { path, insert_index, transform } => {
-				let layer = Layer::new(LayerDataType::NodeGraphFrame(NodeGraphFrameLayer::default()), transform);
+			Operation::AddNodeGraphFrame {
+				path,
+				insert_index,
+				transform,
+				network,
+			} => {
+				let layer = Layer::new(LayerDataType::NodeGraphFrame(NodeGraphFrameLayer { network, ..Default::default() }), transform);
 
 				self.set_layer(&path, layer, insert_index)?;
 

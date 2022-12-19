@@ -56,6 +56,7 @@ pub enum Operation {
 		path: Vec<LayerId>,
 		insert_index: isize,
 		transform: [f64; 6],
+		network: graph_craft::document::NodeNetwork,
 	},
 	SetNodeGraphFrameImageData {
 		layer_path: Vec<LayerId>,

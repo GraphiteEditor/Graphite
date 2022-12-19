@@ -485,6 +485,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				}
 			}
 			NodeGraphFrameImaginateRandom { imaginate_node } => {
+				// Set a random seed input
 				responses.push_back(
 					NodeGraphMessage::SetInputValue {
 						node: *imaginate_node.last().unwrap(),
@@ -493,6 +494,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 					}
 					.into(),
 				);
+				// Generate the image
 				responses.push_back(DocumentMessage::NodeGraphFrameImaginate { imaginate_node }.into());
 			}
 			NodeGraphFrameImaginateTerminate { layer_path, node_path } => {

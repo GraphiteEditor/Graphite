@@ -137,11 +137,40 @@ impl Fsm for NodeGraphToolFsmState {
 					shape_data.path = Some(document.get_path_for_new_layer());
 					responses.push_back(DocumentMessage::DeselectAllLayers.into());
 
+					use graph_craft::{document::*, proto::*, generic};
+					let network = NodeNetwork {
+						inputs: vec![0],
+						output: 1,
+						nodes: [
+							(
+								0,
+								DocumentNode {
+									name: "Input".into(),
+									inputs: vec![NodeInput::Network],
+									implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode", &[generic!("T")])),
+									metadata: DocumentNodeMetadata { position: (8, 4) },
+								},
+							),
+							(
+								1,
+								DocumentNode {
+									name: "Output".into(),
+									inputs: vec![NodeInput::Node(0)],
+									implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode", &[generic!("T")])),
+									metadata: DocumentNodeMetadata { position: (20, 4) },
+								},
+							),
+						]
+						.into_iter()
+						.collect(),
+					};
+
 					responses.push_back(
 						Operation::AddNodeGraphFrame {
 							path: shape_data.path.clone().unwrap(),
 							insert_index: -1,
 							transform: DAffine2::ZERO.to_cols_array(),
+							network,
 						}
 						.into(),
 					);

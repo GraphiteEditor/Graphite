@@ -2,11 +2,15 @@ use crate::consts::DRAG_THRESHOLD;
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, KeysGroup, MouseMotion};
 use crate::messages::layout::utility_types::layout_widget::PropertyHolder;
+use crate::messages::portfolio::document::node_graph::IMAGINATE_NODE;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::resize::Resize;
 use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 
+use graphene::Operation;
+
+use glam::DAffine2;
 use serde::{Deserialize, Serialize};
 
 #[derive(Default)]
@@ -134,7 +138,76 @@ impl Fsm for ImaginateToolFsmState {
 					shape_data.path = Some(document.get_path_for_new_layer());
 					responses.push_back(DocumentMessage::DeselectAllLayers.into());
 
-					// TODO: Fix tool (low priority)
+					use graph_craft::{document::*, generic, proto::*};
+
+					let imaginate_node_type = IMAGINATE_NODE;
+					let num_inputs = imaginate_node_type.inputs.len();
+
+					let imaginate_inner_network = NodeNetwork {
+						inputs: (0..num_inputs).map(|_| 0).collect(),
+						output: 0,
+						nodes: [(
+							0,
+							DocumentNode {
+								name: format!("{}_impl", imaginate_node_type.name),
+								// TODO: Allow inserting nodes that contain other nodes.
+								implementation: DocumentNodeImplementation::Unresolved(imaginate_node_type.identifier.clone()),
+								inputs: (0..num_inputs).map(|_| NodeInput::Network).collect(),
+								metadata: DocumentNodeMetadata::default(),
+							},
+						)]
+						.into_iter()
+						.collect(),
+					};
+					let mut imaginate_inputs: Vec<NodeInput> = imaginate_node_type.inputs.iter().map(|input| input.default.clone()).collect();
+					imaginate_inputs[0] = NodeInput::Node(0);
+
+					let network = NodeNetwork {
+						inputs: vec![0],
+						output: 1,
+						nodes: [
+							(
+								0,
+								DocumentNode {
+									name: "Input".into(),
+									inputs: vec![NodeInput::Network],
+									implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode", &[generic!("T")])),
+									metadata: DocumentNodeMetadata { position: (8, 4) },
+								},
+							),
+							(
+								1,
+								DocumentNode {
+									name: "Output".into(),
+									inputs: vec![NodeInput::Node(2)],
+									implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode", &[generic!("T")])),
+									metadata: DocumentNodeMetadata { position: (32, 4) },
+								},
+							),
+							(
+								2,
+								DocumentNode {
+									name: imaginate_node_type.name.to_string(),
+									inputs: imaginate_inputs,
+									// TODO: Allow inserting nodes that contain other nodes.
+									implementation: DocumentNodeImplementation::Network(imaginate_inner_network),
+									metadata: graph_craft::document::DocumentNodeMetadata { position: (20, 4) },
+								},
+							),
+						]
+						.into_iter()
+						.collect(),
+					};
+
+					responses.push_back(
+						Operation::AddNodeGraphFrame {
+							path: shape_data.path.clone().unwrap(),
+							insert_index: -1,
+							transform: DAffine2::ZERO.to_cols_array(),
+							network,
+						}
+						.into(),
+					);
 
 					Drawing
 				}

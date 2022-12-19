@@ -759,6 +759,7 @@ impl PortfolioMessageHandler {
 		Ok::<_, String>((image_data, size))
 	}
 
+	/// Evaluates a node graph, computing either the imaginate node or the entire graph
 	fn evaluate_node_graph(
 		&mut self,
 		document_id: u64,

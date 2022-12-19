@@ -8,10 +8,9 @@ use graphene::document::Document;
 use graphene::layers::layer_info::LayerDataType;
 use graphene::layers::nodegraph_layer::NodeGraphFrameLayer;
 
-pub use self::document_node_types::*;
-
 mod document_node_types;
 mod node_properties;
+pub use self::document_node_types::*;
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum FrontendGraphDataType {
