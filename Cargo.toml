@@ -4,6 +4,7 @@ members = [
 	"graphene",
 	"proc-macros",
 	"frontend/wasm",
+	"frontend/src-tauri",
 	"node-graph/gcore",
 	"node-graph/gstd",
 	"node-graph/graph-craft",
