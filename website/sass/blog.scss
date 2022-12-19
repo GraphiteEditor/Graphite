@@ -28,6 +28,7 @@
 
 				.link {
 					vertical-align: top;
+					margin-top: 0;
 				}
 			}
 		}
@@ -37,9 +38,8 @@
 #articles {
 	display: flex;
 	flex-direction: column;
-	gap: 80px;
 
-	article {
+	section {
 		display: flex;
 		gap: 20px 80px;
 
@@ -58,9 +58,13 @@
 			flex-direction: column;
 			gap: 20px;
 
-			.headline a {
-				text-decoration: none;
-				color: var(--color-navy);
+			.headline {
+				margin-top: -0.5em;
+				
+				a {
+					text-decoration: none;
+					color: var(--color-navy);
+				}
 			}
 
 			.publication {

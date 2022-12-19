@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+
 {% block title %}{{ section.title }}{% endblock title %}
 
 {% block head %}
@@ -10,25 +11,25 @@
 
 <section id="articles" class="section">
 	{% for page in section.pages %}
-	<article>
+	<section>
 		<div class="banner">
-			<a href="{{ page.permalink | safe }}"><img src="{{ page.extra.banner | safe }}" /></a>
+			<a href="{{ page.path }}"><img src="{{ page.extra.banner | safe }}" /></a>
 		</div>
 		<div class="details">
 			<div class="headline">
-				<h2><a href="{{ page.permalink | safe }}">{{ page.title }}.</a></h2>
+				<h2><a href="{{ page.path }}">{{ page.title }}.</a></h2>
 			</div>
-			<span class="publication">By {{ page.extra.author }}. {{ page.date | date(format="%B %d, %Y", timezone="America/Los_Angeles") }}.</span>
+			<span class="publication">By {{ page.extra.author }}. {{ page.date | date(format = "%B %d, %Y", timezone = "America/Los_Angeles") }}.</span>
 			<div class="summary">
 				<div>
 					{{ page.summary | safe }}
 				</div>
 			</div>
 			<div class="keep-reading">
-				<a href="{{ page.permalink | safe }}" class="link arrow">Keep Reading</a>
+				<a href="{{ page.path }}" class="link arrow">Keep Reading</a>
 			</div>
 		</div>
-	</article>
+	</section>
 	{% endfor %}
 </section>
 {% endblock content %}

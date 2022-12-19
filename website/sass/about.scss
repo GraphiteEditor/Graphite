@@ -1,0 +1,51 @@
+@import url('https://fonts.googleapis.com/css2?family=Noto+Color+Emoji&display=swap');
+
+.loading-data:empty::after {
+	content: "(loading...)";
+	font-style: italic;
+	opacity: 0;
+	animation: fadeInAfterWait 2s ease-in 2s forwards;
+
+	@keyframes fadeInAfterWait {
+		0% { opacity: 0; }
+		100% { opacity: 1; }
+	}
+}
+
+#core-team {
+	background-color: var(--color-parchment);
+	background-blend-mode: color-burn;
+
+	h2,
+	h2 + p,
+	h3,
+	h3 + p {
+		width: 100%;
+		text-align: center;
+	}
+
+	h2 + p {
+		margin-top: 4px;
+		opacity: 0.75;
+	}
+
+	h3 + p {
+		margin-top: 0;
+	}
+
+	h2 .flag {
+		font-family: "Noto Color Emoji", sans-serif;
+		font-size: 0.8em;
+		margin-left: 0.2em;
+		cursor: default;
+	}
+
+	p:first-child {
+		width: 100%;
+		text-align: center;
+
+		img {
+			max-width: Min(100%, 480px);
+		}
+	}
+}
