@@ -687,17 +687,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "graph-proc-macros"
-version = "0.1.0"
-dependencies = [
- "graphene-core",
- "proc-macro2",
- "proc_macro_roids",
- "quote",
- "syn",
-]
-
-[[package]]
 name = "graphene-core"
 version = "0.1.0"
 dependencies = [
@@ -723,7 +712,6 @@ dependencies = [
  "dyn-clone",
  "glam",
  "graph-craft",
- "graph-proc-macros",
  "graphene-core",
  "image",
  "kurbo",
@@ -1369,17 +1357,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5ea3d908b0e36316caf9e9e2c4625cdde190a7e6f440d794667ed17a1855e725"
 dependencies = [
  "unicode-ident",
-]
-
-[[package]]
-name = "proc_macro_roids"
-version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "06675fa2c577f52bcf77fbb511123927547d154faa08097cc012c66ec3c9611a"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
 ]
 
 [[package]]
