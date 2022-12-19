@@ -3,6 +3,11 @@ title = "Contribute to Graphite"
 template = "page.html"
 +++
 
+<section class="section-row">
+<div class="section">
+
+# Contribute to Graphite.
+
 It's great to hear you are interested in contributing to Graphite! We want to make it as easy and frictionless as possible for you to get started. Here are the basics.
 
 ## Building and running the codebase.
@@ -133,3 +138,6 @@ Once you begin writing code, please open a pull request immediately and mark it 
 Open a new PR as a draft / Convert an existing PR to a draft:
 
 ![Screenhots showing GitHub's "Create pull request (arrow) > Create draft pull request" and "Still in progress? Convert to draft" buttons](https://static.graphite.rs/content/contribute/draft-pr.png)
+
+</div>
+</section>

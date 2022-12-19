@@ -1,25 +1,13 @@
 {% extends "base.html" %}
-{% block title %}{{ section.title }}.{% endblock title %}
+{% block title %}{{ section.title }}{% endblock title %}
 
 {% block head %}
 <link rel="stylesheet" href="/blog.css">
 {% endblock head %}
 
 {% block content %}
-<section id="intro" class="section-row">
-	<div class="section">
-		<h1>{{ section.title }}.</h1>
-		<div class="left-right-split">
-			<p>Latest news and articles from the Graphite team.</p>
-			<p class="feed">
-				<a href="/blog/rss.xml">
-					<img class="icon" src="https://static.graphite.rs/icons/feed.svg" alt="RSS" />
-					<span class="link arrow">RSS Feed</span>
-				</a>
-			</p>
-		</div>
-	</div>
-</section>
+{{ section.content | safe }}
+
 <section id="articles" class="section">
 	{% for page in section.pages %}
 	<article>
