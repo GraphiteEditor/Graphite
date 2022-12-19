@@ -3,6 +3,11 @@ title = "Press resources"
 template = "page.html"
 +++
 
+<section class="section-row">
+<div class="section">
+
+# Press resources.
+
 This page provides materials for members of the press and anyone looking to share Graphite with their audiences.
 
 ## Contact.
@@ -12,3 +17,6 @@ Please get in touch if you'd like to conduct an interview, get any questions ans
 ## Logo.
 
 Logos in PNG and SVG format are available for use in articles talking about Graphite. See the [logo](/logo) page for downloads.
+
+</div>
+</section>
