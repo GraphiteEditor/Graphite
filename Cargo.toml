@@ -10,6 +10,7 @@ members = [
 	"node-graph/graph-craft",
 	"node-graph/interpreted-executor",
 	"node-graph/borrow_stack",
+	"node-graph/node-macro",
 	"libraries/dyn-any",
 	"libraries/bezier-rs",
 	"website/other/bezier-rs-demos/wasm",

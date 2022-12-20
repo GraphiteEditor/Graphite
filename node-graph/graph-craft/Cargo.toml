@@ -22,6 +22,7 @@ rand_chacha = "0.3.1"
 log = "0.4"
 serde = { version = "1", features = ["derive", "rc"], optional = true }
 glam = { version = "0.22" }
+base64 = "0.13"
 
 vulkano = {git = "https://github.com/GraphiteEditor/vulkano", branch = "fix_rust_gpu", optional = true}
 bytemuck = {version = "1.8"  }

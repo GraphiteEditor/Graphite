@@ -246,6 +246,42 @@ pub struct NumberInput {
 	pub on_update: WidgetCallback<NumberInput>,
 }
 
+impl NumberInput {
+	pub fn new() -> Self {
+		Self::default()
+	}
+	pub fn int(mut self) -> Self {
+		self.is_integer = true;
+		self
+	}
+	pub fn min(mut self, val: f64) -> Self {
+		self.min = Some(val);
+		self.range_min = Some(val);
+		self
+	}
+	pub fn max(mut self, val: f64) -> Self {
+		self.max = Some(val);
+		self.range_max = Some(val);
+		self.mode = NumberInputMode::Range;
+		self
+	}
+	pub fn unit(mut self, val: impl Into<String>) -> Self {
+		self.unit = val.into();
+		self
+	}
+	pub fn dp(mut self, decimal_places: u32) -> Self {
+		self.display_decimal_places = decimal_places;
+		self
+	}
+	pub fn percentage(self) -> Self {
+		self.min(0.).max(100.).unit("%").dp(2)
+	}
+	pub fn disabled(mut self, disabled: bool) -> Self {
+		self.disabled = disabled;
+		self
+	}
+}
+
 #[derive(Clone, Serialize, Deserialize, Debug, Default, PartialEq, Eq)]
 pub enum NumberInputIncrementBehavior {
 	#[default]

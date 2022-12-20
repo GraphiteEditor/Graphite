@@ -133,8 +133,6 @@
 				flex: 0 0 auto;
 
 				.widget-row {
-					min-height: 0;
-
 					.swatch-pair {
 						margin: 0;
 					}

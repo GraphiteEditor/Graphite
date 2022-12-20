@@ -26,7 +26,6 @@ export async function upload<T extends "text" | "data">(acceptedExtensions: stri
 	return new Promise<UploadResult<T>>((resolve, _) => {
 		const element = document.createElement("input");
 		element.type = "file";
-		element.style.display = "none";
 		element.accept = acceptedExtensions;
 
 		element.addEventListener(

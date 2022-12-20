@@ -4,16 +4,13 @@ use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup,
 use crate::messages::layout::utility_types::misc::LayoutTarget;
 use crate::messages::layout::utility_types::widgets::assist_widgets::PivotAssist;
 use crate::messages::layout::utility_types::widgets::button_widgets::{IconButton, PopoverButton, TextButton};
-use crate::messages::layout::utility_types::widgets::input_widgets::{
-	CheckboxInput, ColorInput, DropdownEntryData, DropdownInput, FontInput, LayerReferenceInput, NumberInput, NumberInputMode, RadioEntryData, RadioInput, TextAreaInput, TextInput,
-};
-use crate::messages::layout::utility_types::widgets::label_widgets::{IconLabel, Separator, SeparatorDirection, SeparatorType, TextLabel};
-use crate::messages::portfolio::utility_types::{ImaginateServerStatus, PersistentData};
+use crate::messages::layout::utility_types::widgets::input_widgets::{ColorInput, FontInput, NumberInput, NumberInputMode, RadioEntryData, RadioInput, TextAreaInput, TextInput};
+use crate::messages::layout::utility_types::widgets::label_widgets::{IconLabel, TextLabel};
+use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::*;
 
 use graphene::color::Color;
-use graphene::document::{pick_layer_safe_imaginate_resolution, Document};
-use graphene::layers::imaginate_layer::{ImaginateLayer, ImaginateMaskFillContent, ImaginateMaskPaintMode, ImaginateSamplingMethod, ImaginateStatus};
+use graphene::document::Document;
 use graphene::layers::layer_info::{Layer, LayerDataType, LayerDataTypeDiscriminant};
 use graphene::layers::nodegraph_layer::NodeGraphFrameLayer;
 use graphene::layers::style::{Fill, Gradient, GradientType, LineCap, LineJoin, Stroke};
@@ -49,27 +46,18 @@ pub fn register_artboard_layer_properties(layer: &Layer, responses: &mut VecDequ
 				tooltip: "Artboard".into(),
 				..Default::default()
 			})),
-			WidgetHolder::new(Widget::Separator(Separator {
-				separator_type: SeparatorType::Related,
-				direction: SeparatorDirection::Horizontal,
-			})),
+			WidgetHolder::related_separator(),
 			WidgetHolder::new(Widget::TextLabel(TextLabel {
 				value: "Artboard".into(),
 				..TextLabel::default()
 			})),
-			WidgetHolder::new(Widget::Separator(Separator {
-				separator_type: SeparatorType::Unrelated,
-				direction: SeparatorDirection::Horizontal,
-			})),
+			WidgetHolder::unrelated_separator(),
 			WidgetHolder::new(Widget::TextInput(TextInput {
 				value: layer.name.clone().unwrap_or_else(|| "Untitled".to_string()),
 				on_update: WidgetCallback::new(|text_input: &TextInput| PropertiesPanelMessage::ModifyName { name: text_input.value.clone() }.into()),
 				..Default::default()
 			})),
-			WidgetHolder::new(Widget::Separator(Separator {
-				separator_type: SeparatorType::Related,
-				direction: SeparatorDirection::Horizontal,
-			})),
+			WidgetHolder::related_separator(),
 			WidgetHolder::new(Widget::PopoverButton(PopoverButton {
 				header: "Options Bar".into(),
 				text: "The contents of this popover menu are coming soon".into(),
@@ -100,10 +88,11 @@ pub fn register_artboard_layer_properties(layer: &Layer, responses: &mut VecDequ
 							value: "Location".into(),
 							..TextLabel::default()
 						})),
-						WidgetHolder::new(Widget::Separator(Separator {
-							separator_type: SeparatorType::Unrelated,
-							direction: SeparatorDirection::Horizontal,
-						})),
+						WidgetHolder::unrelated_separator(),
+						WidgetHolder::unrelated_separator(), // TODO: These three separators add up to 24px,
+						WidgetHolder::unrelated_separator(), // TODO: which is the width of the Assist area.
+						WidgetHolder::unrelated_separator(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
+						WidgetHolder::unrelated_separator(),
 						WidgetHolder::new(Widget::NumberInput(NumberInput {
 							value: Some(layer.transform.x() + pivot.x),
 							label: "X".into(),
@@ -117,10 +106,7 @@ pub fn register_artboard_layer_properties(layer: &Layer, responses: &mut VecDequ
 							}),
 							..NumberInput::default()
 						})),
-						WidgetHolder::new(Widget::Separator(Separator {
-							separator_type: SeparatorType::Related,
-							direction: SeparatorDirection::Horizontal,
-						})),
+						WidgetHolder::related_separator(),
 						WidgetHolder::new(Widget::NumberInput(NumberInput {
 							value: Some(layer.transform.y() + pivot.y),
 							label: "Y".into(),
@@ -142,10 +128,11 @@ pub fn register_artboard_layer_properties(layer: &Layer, responses: &mut VecDequ
 							value: "Dimensions".into(),
 							..TextLabel::default()
 						})),
-						WidgetHolder::new(Widget::Separator(Separator {
-							separator_type: SeparatorType::Unrelated,
-							direction: SeparatorDirection::Horizontal,
-						})),
+						WidgetHolder::unrelated_separator(),
+						WidgetHolder::unrelated_separator(), // TODO: These three separators add up to 24px,
+						WidgetHolder::unrelated_separator(), // TODO: which is the width of the Assist area.
+						WidgetHolder::unrelated_separator(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
+						WidgetHolder::unrelated_separator(),
 						WidgetHolder::new(Widget::NumberInput(NumberInput {
 							value: Some(layer.bounding_transform(&persistent_data.font_cache).scale_x()),
 							label: "W".into(),
@@ -161,10 +148,7 @@ pub fn register_artboard_layer_properties(layer: &Layer, responses: &mut VecDequ
 							}),
 							..NumberInput::default()
 						})),
-						WidgetHolder::new(Widget::Separator(Separator {
-							separator_type: SeparatorType::Related,
-							direction: SeparatorDirection::Horizontal,
-						})),
+						WidgetHolder::related_separator(),
 						WidgetHolder::new(Widget::NumberInput(NumberInput {
 							value: Some(layer.bounding_transform(&persistent_data.font_cache).scale_y()),
 							label: "H".into(),
@@ -188,15 +172,16 @@ pub fn register_artboard_layer_properties(layer: &Layer, responses: &mut VecDequ
 							value: "Background".into(),
 							..TextLabel::default()
 						})),
-						WidgetHolder::new(Widget::Separator(Separator {
-							separator_type: SeparatorType::Unrelated,
-							direction: SeparatorDirection::Horizontal,
-						})),
+						WidgetHolder::unrelated_separator(),
+						WidgetHolder::unrelated_separator(), // TODO: These three separators add up to 24px,
+						WidgetHolder::unrelated_separator(), // TODO: which is the width of the Assist area.
+						WidgetHolder::unrelated_separator(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
+						WidgetHolder::unrelated_separator(),
 						WidgetHolder::new(Widget::ColorInput(ColorInput {
 							value: Some(*color),
 							on_update: WidgetCallback::new(|text_input: &ColorInput| {
-								let fill = if let Some(value) = text_input.value { Fill::Solid(value) } else { Fill::None };
-								PropertiesPanelMessage::ModifyFill { fill }.into()
+								let fill = if let Some(value) = text_input.value { value } else { Color::TRANSPARENT };
+								PropertiesPanelMessage::ModifyFill { fill: Fill::Solid(fill) }.into()
 							}),
 							no_transparency: true,
 							..Default::default()
@@ -254,21 +239,13 @@ pub fn register_artwork_layer_properties(
 					tooltip: "Image".into(),
 					..Default::default()
 				})),
-				LayerDataType::Imaginate(_) => WidgetHolder::new(Widget::IconLabel(IconLabel {
-					icon: "NodeImaginate".into(),
-					tooltip: "Imaginate".into(),
-					..Default::default()
-				})),
 				LayerDataType::NodeGraphFrame(_) => WidgetHolder::new(Widget::IconLabel(IconLabel {
 					icon: "NodeNodes".into(),
 					tooltip: "Node Graph Frame".into(),
 					..Default::default()
 				})),
 			},
-			WidgetHolder::new(Widget::Separator(Separator {
-				separator_type: SeparatorType::Related,
-				direction: SeparatorDirection::Horizontal,
-			})),
+			WidgetHolder::related_separator(),
 			WidgetHolder::new(Widget::TextLabel(TextLabel {
 				value: match &layer.data {
 					LayerDataType::NodeGraphFrame(_) => "Node Graph Frame".into(),
@@ -276,19 +253,13 @@ pub fn register_artwork_layer_properties(
 				},
 				..TextLabel::default()
 			})),
-			WidgetHolder::new(Widget::Separator(Separator {
-				separator_type: SeparatorType::Unrelated,
-				direction: SeparatorDirection::Horizontal,
-			})),
+			WidgetHolder::unrelated_separator(),
 			WidgetHolder::new(Widget::TextInput(TextInput {
 				value: layer.name.clone().unwrap_or_else(|| "Untitled".to_string()),
 				on_update: WidgetCallback::new(|text_input: &TextInput| PropertiesPanelMessage::ModifyName { name: text_input.value.clone() }.into()),
 				..Default::default()
 			})),
-			WidgetHolder::new(Widget::Separator(Separator {
-				separator_type: SeparatorType::Related,
-				direction: SeparatorDirection::Horizontal,
-			})),
+			WidgetHolder::related_separator(),
 			WidgetHolder::new(Widget::PopoverButton(PopoverButton {
 				header: "Options Bar".into(),
 				text: "The contents of this popover menu are coming soon".into(),
@@ -320,22 +291,23 @@ pub fn register_artwork_layer_properties(
 		LayerDataType::Image(_) => {
 			vec![node_section_transform(layer, persistent_data)]
 		}
-		LayerDataType::Imaginate(imaginate) => {
-			vec![
-				node_section_transform(layer, persistent_data),
-				node_section_imaginate(imaginate, layer, document, persistent_data, responses),
-			]
-		}
 		LayerDataType::NodeGraphFrame(node_graph_frame) => {
 			let is_graph_open = node_graph_message_handler.layer_path.as_ref().filter(|node_graph| *node_graph == &layer_path).is_some();
 			let selected_nodes = &node_graph_message_handler.selected_nodes;
 
 			let mut properties_sections = vec![
 				node_section_transform(layer, persistent_data),
-				node_section_node_graph_frame(layer_path, node_graph_frame, is_graph_open),
+				node_section_node_graph_frame(layer_path.clone(), node_graph_frame, is_graph_open),
 			];
 			if !selected_nodes.is_empty() && is_graph_open {
-				let parameters_sections = node_graph_message_handler.collate_properties(node_graph_frame);
+				let mut context = crate::messages::portfolio::document::node_graph::NodePropertiesContext {
+					persistent_data,
+					document,
+					responses,
+					nested_path: &node_graph_message_handler.nested_path,
+					layer_path: &layer_path,
+				};
+				let parameters_sections = node_graph_message_handler.collate_properties(node_graph_frame, &mut context);
 				properties_sections.extend(parameters_sections.into_iter());
 			}
 			properties_sections
@@ -372,19 +344,13 @@ fn node_section_transform(layer: &Layer, persistent_data: &PersistentData) -> La
 						value: "Location".into(),
 						..TextLabel::default()
 					})),
-					WidgetHolder::new(Widget::Separator(Separator {
-						separator_type: SeparatorType::Related,
-						direction: SeparatorDirection::Horizontal,
-					})),
+					WidgetHolder::unrelated_separator(),
 					WidgetHolder::new(Widget::PivotAssist(PivotAssist {
 						position: layer.pivot.into(),
 						on_update: WidgetCallback::new(|pivot_assist: &PivotAssist| PropertiesPanelMessage::SetPivot { new_position: pivot_assist.position }.into()),
 						..Default::default()
 					})),
-					WidgetHolder::new(Widget::Separator(Separator {
-						separator_type: SeparatorType::Unrelated,
-						direction: SeparatorDirection::Horizontal,
-					})),
+					WidgetHolder::unrelated_separator(),
 					WidgetHolder::new(Widget::NumberInput(NumberInput {
 						value: Some(layer.transform.x() + pivot.x),
 						label: "X".into(),
@@ -398,10 +364,7 @@ fn node_section_transform(layer: &Layer, persistent_data: &PersistentData) -> La
 						}),
 						..NumberInput::default()
 					})),
-					WidgetHolder::new(Widget::Separator(Separator {
-						separator_type: SeparatorType::Related,
-						direction: SeparatorDirection::Horizontal,
-					})),
+					WidgetHolder::related_separator(),
 					WidgetHolder::new(Widget::NumberInput(NumberInput {
 						value: Some(layer.transform.y() + pivot.y),
 						label: "Y".into(),
@@ -423,10 +386,11 @@ fn node_section_transform(layer: &Layer, persistent_data: &PersistentData) -> La
 						value: "Rotation".into(),
 						..TextLabel::default()
 					})),
-					WidgetHolder::new(Widget::Separator(Separator {
-						separator_type: SeparatorType::Unrelated,
-						direction: SeparatorDirection::Horizontal,
-					})),
+					WidgetHolder::unrelated_separator(),
+					WidgetHolder::unrelated_separator(), // TODO: These three separators add up to 24px,
+					WidgetHolder::unrelated_separator(), // TODO: which is the width of the Assist area.
+					WidgetHolder::unrelated_separator(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
+					WidgetHolder::unrelated_separator(),
 					WidgetHolder::new(Widget::NumberInput(NumberInput {
 						value: Some(layer.transform.rotation() * 180. / PI),
 						unit: "°".into(),
@@ -450,10 +414,11 @@ fn node_section_transform(layer: &Layer, persistent_data: &PersistentData) -> La
 						value: "Scale".into(),
 						..TextLabel::default()
 					})),
-					WidgetHolder::new(Widget::Separator(Separator {
-						separator_type: SeparatorType::Unrelated,
-						direction: SeparatorDirection::Horizontal,
-					})),
+					WidgetHolder::unrelated_separator(),
+					WidgetHolder::unrelated_separator(), // TODO: These three separators add up to 24px,
+					WidgetHolder::unrelated_separator(), // TODO: which is the width of the Assist area.
+					WidgetHolder::unrelated_separator(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
+					WidgetHolder::unrelated_separator(),
 					WidgetHolder::new(Widget::NumberInput(NumberInput {
 						value: Some(layer.transform.scale_x()),
 						label: "X".into(),
@@ -467,10 +432,7 @@ fn node_section_transform(layer: &Layer, persistent_data: &PersistentData) -> La
 						}),
 						..NumberInput::default()
 					})),
-					WidgetHolder::new(Widget::Separator(Separator {
-						separator_type: SeparatorType::Related,
-						direction: SeparatorDirection::Horizontal,
-					})),
+					WidgetHolder::related_separator(),
 					WidgetHolder::new(Widget::NumberInput(NumberInput {
 						value: Some(layer.transform.scale_y()),
 						label: "Y".into(),
@@ -492,10 +454,11 @@ fn node_section_transform(layer: &Layer, persistent_data: &PersistentData) -> La
 						value: "Dimensions".into(),
 						..TextLabel::default()
 					})),
-					WidgetHolder::new(Widget::Separator(Separator {
-						separator_type: SeparatorType::Unrelated,
-						direction: SeparatorDirection::Horizontal,
-					})),
+					WidgetHolder::unrelated_separator(),
+					WidgetHolder::unrelated_separator(), // TODO: These three separators add up to 24px,
+					WidgetHolder::unrelated_separator(), // TODO: which is the width of the Assist area.
+					WidgetHolder::unrelated_separator(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
+					WidgetHolder::unrelated_separator(),
 					WidgetHolder::new(Widget::NumberInput(NumberInput {
 						value: Some(layer.bounding_transform(&persistent_data.font_cache).scale_x()),
 						label: "W".into(),
@@ -509,10 +472,7 @@ fn node_section_transform(layer: &Layer, persistent_data: &PersistentData) -> La
 						}),
 						..NumberInput::default()
 					})),
-					WidgetHolder::new(Widget::Separator(Separator {
-						separator_type: SeparatorType::Related,
-						direction: SeparatorDirection::Horizontal,
-					})),
+					WidgetHolder::related_separator(),
 					WidgetHolder::new(Widget::NumberInput(NumberInput {
 						value: Some(layer.bounding_transform(&persistent_data.font_cache).scale_y()),
 						label: "H".into(),
@@ -532,708 +492,6 @@ fn node_section_transform(layer: &Layer, persistent_data: &PersistentData) -> La
 	}
 }
 
-fn node_section_imaginate(imaginate_layer: &ImaginateLayer, layer: &Layer, document: &Document, persistent_data: &PersistentData, responses: &mut VecDeque<Message>) -> LayoutGroup {
-	let layer_reference_input_layer = imaginate_layer
-		.mask_layer_ref
-		.as_ref()
-		.and_then(|path| document.layer(path).ok())
-		.map(|layer| (layer.name.clone().unwrap_or_default(), LayerDataTypeDiscriminant::from(&layer.data)));
-
-	let layer_reference_input_layer_is_some = layer_reference_input_layer.is_some();
-
-	let layer_reference_input_layer_name = layer_reference_input_layer.as_ref().map(|(layer_name, _)| layer_name);
-	let layer_reference_input_layer_type = layer_reference_input_layer.as_ref().map(|(_, layer_type)| layer_type);
-
-	let mut layout = vec![
-		LayoutGroup::Row {
-			widgets: {
-				let tooltip = "Connection status to the server that computes generated images".to_string();
-
-				vec![
-					WidgetHolder::new(Widget::TextLabel(TextLabel {
-						value: "Server".into(),
-						tooltip: tooltip.clone(),
-						..Default::default()
-					})),
-					WidgetHolder::new(Widget::Separator(Separator {
-						separator_type: SeparatorType::Unrelated,
-						direction: SeparatorDirection::Horizontal,
-					})),
-					WidgetHolder::new(Widget::IconButton(IconButton {
-						size: 24,
-						icon: "Settings".into(),
-						tooltip: "Preferences: Imaginate".into(),
-						on_update: WidgetCallback::new(|_| DialogMessage::RequestPreferencesDialog.into()),
-						..Default::default()
-					})),
-					WidgetHolder::new(Widget::Separator(Separator {
-						separator_type: SeparatorType::Related,
-						direction: SeparatorDirection::Horizontal,
-					})),
-					WidgetHolder::new(Widget::TextLabel(TextLabel {
-						value: {
-							match &persistent_data.imaginate_server_status {
-								ImaginateServerStatus::Unknown => {
-									responses.push_back(PortfolioMessage::ImaginateCheckServerStatus.into());
-									"Checking...".into()
-								}
-								ImaginateServerStatus::Checking => "Checking...".into(),
-								ImaginateServerStatus::Unavailable => "Unavailable".into(),
-								ImaginateServerStatus::Connected => "Connected".into(),
-							}
-						},
-						bold: true,
-						tooltip,
-						..Default::default()
-					})),
-					WidgetHolder::new(Widget::Separator(Separator {
-						separator_type: SeparatorType::Related,
-						direction: SeparatorDirection::Horizontal,
-					})),
-					WidgetHolder::new(Widget::IconButton(IconButton {
-						size: 24,
-						icon: "Reload".into(),
-						tooltip: "Refresh connection status".into(),
-						on_update: WidgetCallback::new(|_| PortfolioMessage::ImaginateCheckServerStatus.into()),
-						..Default::default()
-					})),
-				]
-			},
-		},
-		LayoutGroup::Row {
-			widgets: {
-				let tooltip = "When generating, the percentage represents how many sampling steps have so far been processed out of the target number".to_string();
-
-				vec![
-					WidgetHolder::new(Widget::TextLabel(TextLabel {
-						value: "Progress".into(),
-						tooltip: tooltip.clone(),
-						..Default::default()
-					})),
-					WidgetHolder::new(Widget::Separator(Separator {
-						separator_type: SeparatorType::Unrelated,
-						direction: SeparatorDirection::Horizontal,
-					})),
-					WidgetHolder::new(Widget::TextLabel(TextLabel {
-						value: {
-							// Since we don't serialize the status, we need to derive from other state whether the Idle state is actually supposed to be the Terminated state
-							let mut interpreted_status = imaginate_layer.status.clone();
-							if imaginate_layer.status == ImaginateStatus::Idle && imaginate_layer.blob_url.is_some() && imaginate_layer.percent_complete > 0. && imaginate_layer.percent_complete < 100.
-							{
-								interpreted_status = ImaginateStatus::Terminated;
-							}
-
-							match interpreted_status {
-								ImaginateStatus::Idle => match imaginate_layer.blob_url {
-									Some(_) => "Done".into(),
-									None => "Ready".into(),
-								},
-								ImaginateStatus::Beginning => "Beginning...".into(),
-								ImaginateStatus::Uploading(percent) => format!("Uploading Base Image: {:.0}%", percent),
-								ImaginateStatus::Generating => format!("Generating: {:.0}%", imaginate_layer.percent_complete),
-								ImaginateStatus::Terminating => "Terminating...".into(),
-								ImaginateStatus::Terminated => format!("{:.0}% (Terminated)", imaginate_layer.percent_complete),
-							}
-						},
-						bold: true,
-						tooltip,
-						..Default::default()
-					})),
-				]
-			},
-		},
-		LayoutGroup::Row {
-			widgets: [
-				vec![
-					WidgetHolder::new(Widget::TextLabel(TextLabel {
-						value: "Image".into(),
-						tooltip: "Buttons that control the image generation process".into(),
-						..Default::default()
-					})),
-					WidgetHolder::new(Widget::Separator(Separator {
-						separator_type: SeparatorType::Unrelated,
-						direction: SeparatorDirection::Horizontal,
-					})),
-				],
-				{
-					match imaginate_layer.status {
-						ImaginateStatus::Beginning | ImaginateStatus::Uploading(_) => vec![WidgetHolder::new(Widget::TextButton(TextButton {
-							label: "Beginning...".into(),
-							tooltip: "Sending image generation request to the server".into(),
-							disabled: true,
-							..Default::default()
-						}))],
-						ImaginateStatus::Generating => vec![WidgetHolder::new(Widget::TextButton(TextButton {
-							label: "Terminate".into(),
-							tooltip: "Cancel the in-progress image generation and keep the latest progress".into(),
-							on_update: WidgetCallback::new(|_| DocumentMessage::ImaginateTerminate.into()),
-							..Default::default()
-						}))],
-						ImaginateStatus::Terminating => vec![WidgetHolder::new(Widget::TextButton(TextButton {
-							label: "Terminating...".into(),
-							tooltip: "Waiting on the final image generated after termination".into(),
-							disabled: true,
-							..Default::default()
-						}))],
-						ImaginateStatus::Idle | ImaginateStatus::Terminated => vec![
-							WidgetHolder::new(Widget::IconButton(IconButton {
-								size: 24,
-								icon: "Random".into(),
-								tooltip: "Generate with a new random seed".into(),
-								on_update: WidgetCallback::new(|_| PropertiesPanelMessage::SetImaginateSeedRandomizeAndGenerate.into()),
-								..Default::default()
-							})),
-							WidgetHolder::new(Widget::Separator(Separator {
-								separator_type: SeparatorType::Related,
-								direction: SeparatorDirection::Horizontal,
-							})),
-							WidgetHolder::new(Widget::TextButton(TextButton {
-								label: "Generate".into(),
-								tooltip: "Fill layer frame by generating a new image".into(),
-								on_update: WidgetCallback::new(|_| DocumentMessage::ImaginateGenerate.into()),
-								..Default::default()
-							})),
-							WidgetHolder::new(Widget::Separator(Separator {
-								separator_type: SeparatorType::Related,
-								direction: SeparatorDirection::Horizontal,
-							})),
-							WidgetHolder::new(Widget::TextButton(TextButton {
-								label: "Clear".into(),
-								tooltip: "Remove generated image from the layer frame".into(),
-								disabled: imaginate_layer.blob_url.is_none(),
-								on_update: WidgetCallback::new(|_| DocumentMessage::FrameClear.into()),
-								..Default::default()
-							})),
-						],
-					}
-				},
-			]
-			.concat(),
-		},
-		LayoutGroup::Row {
-			widgets: {
-				let tooltip = "Seed determines the random outcome, enabling limitless unique variations".to_string();
-
-				vec![
-					WidgetHolder::new(Widget::TextLabel(TextLabel {
-						value: "Seed".into(),
-						tooltip: tooltip.clone(),
-						..Default::default()
-					})),
-					WidgetHolder::new(Widget::Separator(Separator {
-						separator_type: SeparatorType::Unrelated,
-						direction: SeparatorDirection::Horizontal,
-					})),
-					WidgetHolder::new(Widget::IconButton(IconButton {
-						size: 24,
-						icon: "Regenerate".into(),
-						tooltip: "Set a new random seed".into(),
-						on_update: WidgetCallback::new(|_| PropertiesPanelMessage::SetImaginateSeedRandomize.into()),
-						..Default::default()
-					})),
-					WidgetHolder::new(Widget::Separator(Separator {
-						separator_type: SeparatorType::Related,
-						direction: SeparatorDirection::Horizontal,
-					})),
-					WidgetHolder::new(Widget::NumberInput(NumberInput {
-						value: Some(imaginate_layer.seed as f64),
-						min: Some(-1.),
-						tooltip,
-						on_update: WidgetCallback::new(move |number_input: &NumberInput| {
-							PropertiesPanelMessage::SetImaginateSeed {
-								seed: number_input.value.unwrap().round() as u64,
-							}
-							.into()
-						}),
-						..Default::default()
-					})),
-				]
-			},
-		},
-		LayoutGroup::Row {
-			widgets: {
-				let tooltip = "
-				Width and height of the image that will be generated. Larger resolutions take longer to compute.\n\
-				\n\
-				512x512 yields optimal results because the AI is trained to understand that scale best. Larger sizes may tend to integrate the prompt's subject more than once. Small sizes are often incoherent. Put the layer in a folder and resize that to keep resolution unchanged.\n\
-				\n\
-				Dimensions must be a multiple of 64, so these are set by rounding the layer dimensions. A resolution exceeding 1 megapixel is reduced below that limit because larger sizes may exceed available GPU memory on the server.
-				".trim().to_string();
-
-				vec![
-					WidgetHolder::new(Widget::TextLabel(TextLabel {
-						value: "Resolution".into(),
-						tooltip: tooltip.clone(),
-						..Default::default()
-					})),
-					WidgetHolder::new(Widget::Separator(Separator {
-						separator_type: SeparatorType::Unrelated,
-						direction: SeparatorDirection::Horizontal,
-					})),
-					WidgetHolder::new(Widget::IconButton(IconButton {
-						size: 24,
-						icon: "Rescale".into(),
-						tooltip: "Set the layer scale to this resolution".into(),
-						on_update: WidgetCallback::new(|_| PropertiesPanelMessage::SetImaginateScaleFromResolution.into()),
-						..Default::default()
-					})),
-					WidgetHolder::new(Widget::Separator(Separator {
-						separator_type: SeparatorType::Related,
-						direction: SeparatorDirection::Horizontal,
-					})),
-					WidgetHolder::new(Widget::TextLabel(TextLabel {
-						value: {
-							let (width, height) = pick_layer_safe_imaginate_resolution(layer, &persistent_data.font_cache);
-							format!("{} W x {} H", width, height)
-						},
-						tooltip,
-						bold: true,
-						..Default::default()
-					})),
-				]
-			},
-		},
-		LayoutGroup::Row {
-			widgets: {
-				let tooltip = "Number of iterations to improve the image generation quality, with diminishing returns around 40 when using the Euler A sampling method".to_string();
-				vec![
-					WidgetHolder::new(Widget::TextLabel(TextLabel {
-						value: "Sampling Steps".into(),
-						tooltip: tooltip.clone(),
-						..Default::default()
-					})),
-					WidgetHolder::new(Widget::Separator(Separator {
-						separator_type: SeparatorType::Unrelated,
-						direction: SeparatorDirection::Horizontal,
-					})),
-					WidgetHolder::new(Widget::NumberInput(NumberInput {
-						value: Some(imaginate_layer.samples.into()),
-						mode: NumberInputMode::Range,
-						range_min: Some(0.),
-						range_max: Some(150.),
-						is_integer: true,
-						min: Some(0.),
-						max: Some(150.),
-						tooltip,
-						on_update: WidgetCallback::new(move |number_input: &NumberInput| {
-							PropertiesPanelMessage::SetImaginateSamples {
-								samples: number_input.value.unwrap().round() as u32,
-							}
-							.into()
-						}),
-						..Default::default()
-					})),
-				]
-			},
-		},
-		LayoutGroup::Row {
-			widgets: {
-				let tooltip = "Algorithm used to generate the image during each sampling step".to_string();
-
-				let sampling_methods = ImaginateSamplingMethod::list();
-				let mut entries = Vec::with_capacity(sampling_methods.len());
-				for method in sampling_methods {
-					entries.push(DropdownEntryData {
-						label: method.to_string(),
-						on_update: WidgetCallback::new(move |_| PropertiesPanelMessage::SetImaginateSamplingMethod { method }.into()),
-						..DropdownEntryData::default()
-					});
-				}
-				let entries = vec![entries];
-
-				vec![
-					WidgetHolder::new(Widget::TextLabel(TextLabel {
-						value: "Sampling Method".into(),
-						tooltip: tooltip.clone(),
-						..Default::default()
-					})),
-					WidgetHolder::new(Widget::Separator(Separator {
-						separator_type: SeparatorType::Unrelated,
-						direction: SeparatorDirection::Horizontal,
-					})),
-					WidgetHolder::new(Widget::DropdownInput(DropdownInput {
-						entries,
-						selected_index: Some(imaginate_layer.sampling_method as u32),
-						tooltip,
-						..Default::default()
-					})),
-				]
-			},
-		},
-		LayoutGroup::Row {
-			widgets: {
-				let tooltip = "
-					Amplification of the text prompt's influence over the outcome. At 0, the prompt is entirely ignored.\n\
-					\n\
-					Lower values are more creative and exploratory. Higher values are more literal and uninspired, but may be lower quality.\n\
-					\n\
-					This parameter is otherwise known as CFG (classifier-free guidance).
-					"
-				.trim()
-				.to_string();
-
-				vec![
-					WidgetHolder::new(Widget::TextLabel(TextLabel {
-						value: "Text Guidance".into(),
-						tooltip: tooltip.to_string(),
-						..Default::default()
-					})),
-					WidgetHolder::new(Widget::Separator(Separator {
-						separator_type: SeparatorType::Unrelated,
-						direction: SeparatorDirection::Horizontal,
-					})),
-					WidgetHolder::new(Widget::NumberInput(NumberInput {
-						value: Some(imaginate_layer.cfg_scale),
-						mode: NumberInputMode::Range,
-						range_min: Some(0.),
-						range_max: Some(30.),
-						min: Some(0.),
-						max: Some(30.),
-						tooltip,
-						on_update: WidgetCallback::new(move |number_input: &NumberInput| {
-							PropertiesPanelMessage::SetImaginateCfgScale {
-								cfg_scale: number_input.value.unwrap(),
-							}
-							.into()
-						}),
-						..Default::default()
-					})),
-				]
-			},
-		},
-		LayoutGroup::Row {
-			widgets: vec![
-				WidgetHolder::new(Widget::TextLabel(TextLabel {
-					value: "Text Prompt".into(),
-					tooltip: "
-						Description of the desired image subject and style.\n\
-						\n\
-						Include an artist name like \"Rembrandt\" or art medium like \"watercolor\" or \"photography\" to influence the look. List multiple to meld styles.\n\
-						\n\
-						To boost (or lessen) the importance of a word or phrase, wrap it in parentheses ending with a colon and a multiplier, for example:\n\
-						\"Colorless green ideas (sleep:1.3) furiously\"
-						"
-					.trim()
-					.into(),
-					..Default::default()
-				})),
-				WidgetHolder::new(Widget::Separator(Separator {
-					separator_type: SeparatorType::Unrelated,
-					direction: SeparatorDirection::Horizontal,
-				})),
-				WidgetHolder::new(Widget::TextAreaInput(TextAreaInput {
-					value: imaginate_layer.prompt.clone(),
-					on_update: WidgetCallback::new(move |text_area_input: &TextAreaInput| {
-						PropertiesPanelMessage::SetImaginatePrompt {
-							prompt: text_area_input.value.clone(),
-						}
-						.into()
-					}),
-					..Default::default()
-				})),
-			],
-		},
-		LayoutGroup::Row {
-			widgets: vec![
-				WidgetHolder::new(Widget::TextLabel(TextLabel {
-					value: "Neg. Prompt".into(),
-					tooltip: "A negative text prompt can be used to list things like objects or colors to avoid".into(),
-					..Default::default()
-				})),
-				WidgetHolder::new(Widget::Separator(Separator {
-					separator_type: SeparatorType::Unrelated,
-					direction: SeparatorDirection::Horizontal,
-				})),
-				WidgetHolder::new(Widget::TextAreaInput(TextAreaInput {
-					value: imaginate_layer.negative_prompt.clone(),
-					on_update: WidgetCallback::new(move |text_area_input: &TextAreaInput| {
-						PropertiesPanelMessage::SetImaginateNegativePrompt {
-							negative_prompt: text_area_input.value.clone(),
-						}
-						.into()
-					}),
-					..Default::default()
-				})),
-			],
-		},
-		LayoutGroup::Row {
-			widgets: {
-				let tooltip = "Generate an image based upon the artwork beneath this frame in the containing folder".to_string();
-
-				vec![
-					WidgetHolder::new(Widget::TextLabel(TextLabel {
-						value: "Use Base Image".into(),
-						tooltip: tooltip.clone(),
-						..Default::default()
-					})),
-					WidgetHolder::new(Widget::Separator(Separator {
-						separator_type: SeparatorType::Unrelated,
-						direction: SeparatorDirection::Horizontal,
-					})),
-					WidgetHolder::new(Widget::CheckboxInput(CheckboxInput {
-						checked: imaginate_layer.use_img2img,
-						tooltip,
-						on_update: WidgetCallback::new(move |checkbox_input: &CheckboxInput| PropertiesPanelMessage::SetImaginateUseImg2Img { use_img2img: checkbox_input.checked }.into()),
-						..Default::default()
-					})),
-				]
-			},
-		},
-		LayoutGroup::Row {
-			widgets: {
-				let tooltip = "
-				Strength of the artistic liberties allowing changes from the base image. The image is unchanged at 0% and completely different at 100%.\n\
-				\n\
-				This parameter is otherwise known as denoising strength.
-				"
-				.trim()
-				.to_string();
-
-				vec![
-					WidgetHolder::new(Widget::TextLabel(TextLabel {
-						value: "Image Creativity".into(),
-						tooltip: tooltip.clone(),
-						..Default::default()
-					})),
-					WidgetHolder::new(Widget::Separator(Separator {
-						separator_type: SeparatorType::Unrelated,
-						direction: SeparatorDirection::Horizontal,
-					})),
-					WidgetHolder::new(Widget::NumberInput(NumberInput {
-						value: Some(imaginate_layer.denoising_strength * 100.),
-						unit: "%".into(),
-						mode: NumberInputMode::Range,
-						range_min: Some(0.),
-						range_max: Some(100.),
-						min: Some(0.),
-						max: Some(100.),
-						display_decimal_places: 2,
-						disabled: !imaginate_layer.use_img2img,
-						tooltip,
-						on_update: WidgetCallback::new(move |number_input: &NumberInput| {
-							PropertiesPanelMessage::SetImaginateDenoisingStrength {
-								denoising_strength: number_input.value.unwrap() / 100.,
-							}
-							.into()
-						}),
-						..Default::default()
-					})),
-				]
-			},
-		},
-		LayoutGroup::Row {
-			widgets: {
-				let tooltip = "
-				Reference to a layer or folder which masks parts of the base image. Image generation is constrained to masked areas.\n\
-				\n\
-				Black shapes represent the masked regions. Lighter shades of gray act as a partial mask, and colors become grayscale.
-				"
-				.trim()
-				.to_string();
-
-				vec![
-					WidgetHolder::new(Widget::TextLabel(TextLabel {
-						value: "Masking Layer".into(),
-						tooltip: tooltip.clone(),
-						..Default::default()
-					})),
-					WidgetHolder::new(Widget::Separator(Separator {
-						separator_type: SeparatorType::Unrelated,
-						direction: SeparatorDirection::Horizontal,
-					})),
-					WidgetHolder::new(Widget::LayerReferenceInput(LayerReferenceInput {
-						value: imaginate_layer.mask_layer_ref.clone(),
-						tooltip,
-						layer_name: layer_reference_input_layer_name.cloned(),
-						layer_type: layer_reference_input_layer_type.cloned(),
-						disabled: !imaginate_layer.use_img2img,
-						on_update: WidgetCallback::new(move |val: &LayerReferenceInput| PropertiesPanelMessage::SetImaginateLayerPath { layer_path: val.value.clone() }.into()),
-						..Default::default()
-					})),
-				]
-			},
-		},
-	];
-
-	if imaginate_layer.use_img2img && imaginate_layer.mask_layer_ref.is_some() && layer_reference_input_layer_is_some {
-		layout.extend(vec![
-			LayoutGroup::Row {
-				widgets: {
-					let tooltip = "
-					Constrain image generation to the interior (inpaint) or exterior (outpaint) of the mask, while referencing the other unchanged parts as context imagery.\n\
-					\n\
-					An unwanted part of an image can be replaced by drawing around it with a black shape and inpainting with that mask layer.\n\
-					\n\
-					An image can be uncropped by resizing the Imaginate layer to the target bounds and outpainting with a black rectangle mask matching the original image bounds.
-					"
-					.trim()
-					.to_string();
-
-					vec![
-						WidgetHolder::new(Widget::TextLabel(TextLabel {
-							value: "Mask Direction".to_string(),
-							tooltip: tooltip.clone(),
-							..Default::default()
-						})),
-						WidgetHolder::new(Widget::Separator(Separator {
-							separator_type: SeparatorType::Unrelated,
-							direction: SeparatorDirection::Horizontal,
-						})),
-						WidgetHolder::new(Widget::RadioInput(RadioInput {
-							entries: [(ImaginateMaskPaintMode::Inpaint, "Inpaint"), (ImaginateMaskPaintMode::Outpaint, "Outpaint")]
-								.into_iter()
-								.map(|(paint, name)| RadioEntryData {
-									label: name.to_string(),
-									on_update: WidgetCallback::new(move |_| PropertiesPanelMessage::SetImaginateMaskPaintMode { paint }.into()),
-									tooltip: tooltip.clone(),
-									..Default::default()
-								})
-								.collect(),
-							selected_index: imaginate_layer.mask_paint_mode as u32,
-							..Default::default()
-						})),
-					]
-				},
-			},
-			LayoutGroup::Row {
-				widgets: {
-					let tooltip = "Blur radius for the mask. Useful for softening sharp edges to blend the masked area with the rest of the image.".to_string();
-
-					vec![
-						WidgetHolder::new(Widget::TextLabel(TextLabel {
-							value: "Mask Blur".to_string(),
-							tooltip: tooltip.clone(),
-							..Default::default()
-						})),
-						WidgetHolder::new(Widget::Separator(Separator {
-							separator_type: SeparatorType::Unrelated,
-							direction: SeparatorDirection::Horizontal,
-						})),
-						WidgetHolder::new(Widget::NumberInput(NumberInput {
-							value: Some(imaginate_layer.mask_blur_px as f64),
-							unit: " px".into(),
-							mode: NumberInputMode::Range,
-							range_min: Some(0.),
-							range_max: Some(25.),
-							min: Some(0.),
-							is_integer: true,
-							tooltip,
-							on_update: WidgetCallback::new(move |number_input: &NumberInput| {
-								PropertiesPanelMessage::SetImaginateMaskBlurPx {
-									mask_blur_px: number_input.value.unwrap() as u32,
-								}
-								.into()
-							}),
-							..Default::default()
-						})),
-					]
-				},
-			},
-			LayoutGroup::Row {
-				widgets: {
-					let tooltip = "
-					Begin in/outpainting the masked areas using this fill content as the starting base image.\n\
-					\n\
-					Each option can be visualized by generating with 'Sampling Steps' set to 0.
-					"
-					.trim()
-					.to_string();
-
-					let mask_fill_content_modes = ImaginateMaskFillContent::list();
-					let mut entries = Vec::with_capacity(mask_fill_content_modes.len());
-					for mode in mask_fill_content_modes {
-						entries.push(DropdownEntryData {
-							label: mode.to_string(),
-							on_update: WidgetCallback::new(move |_| PropertiesPanelMessage::SetImaginateMaskFillContent { mode }.into()),
-							..DropdownEntryData::default()
-						});
-					}
-					let entries = vec![entries];
-
-					vec![
-						WidgetHolder::new(Widget::TextLabel(TextLabel {
-							value: "Mask Starting Fill".to_string(),
-							tooltip: tooltip.clone(),
-							..Default::default()
-						})),
-						WidgetHolder::new(Widget::Separator(Separator {
-							separator_type: SeparatorType::Unrelated,
-							direction: SeparatorDirection::Horizontal,
-						})),
-						WidgetHolder::new(Widget::DropdownInput(DropdownInput {
-							entries,
-							selected_index: Some(imaginate_layer.mask_fill_content as u32),
-							tooltip,
-							..Default::default()
-						})),
-					]
-				},
-			},
-		]);
-	}
-
-	layout.extend(vec![
-		LayoutGroup::Row {
-			widgets: {
-				let tooltip = "
-				Postprocess human (or human-like) faces to look subtly less distorted.\n\
-				\n\
-				This filter can be used on its own by enabling 'Use Base Image' and setting 'Sampling Steps' to 0.
-				"
-				.to_string();
-
-				vec![
-					WidgetHolder::new(Widget::TextLabel(TextLabel {
-						value: "Improve Faces".into(),
-						tooltip: tooltip.clone(),
-						..Default::default()
-					})),
-					WidgetHolder::new(Widget::Separator(Separator {
-						separator_type: SeparatorType::Unrelated,
-						direction: SeparatorDirection::Horizontal,
-					})),
-					WidgetHolder::new(Widget::CheckboxInput(CheckboxInput {
-						checked: imaginate_layer.restore_faces,
-						tooltip,
-						on_update: WidgetCallback::new(move |checkbox_input: &CheckboxInput| {
-							PropertiesPanelMessage::SetImaginateRestoreFaces {
-								restore_faces: checkbox_input.checked,
-							}
-							.into()
-						}),
-						..Default::default()
-					})),
-				]
-			},
-		},
-		LayoutGroup::Row {
-			widgets: {
-				let tooltip = "Generate the image so its edges loop seamlessly to make repeatable patterns or textures".to_string();
-
-				vec![
-					WidgetHolder::new(Widget::TextLabel(TextLabel {
-						value: "Tiling".into(),
-						tooltip: tooltip.clone(),
-						..Default::default()
-					})),
-					WidgetHolder::new(Widget::Separator(Separator {
-						separator_type: SeparatorType::Unrelated,
-						direction: SeparatorDirection::Horizontal,
-					})),
-					WidgetHolder::new(Widget::CheckboxInput(CheckboxInput {
-						checked: imaginate_layer.tiling,
-						tooltip,
-						on_update: WidgetCallback::new(move |checkbox_input: &CheckboxInput| PropertiesPanelMessage::SetImaginateTiling { tiling: checkbox_input.checked }.into()),
-						..Default::default()
-					})),
-				]
-			},
-		},
-	]);
-
-	LayoutGroup::Section { name: "Imaginate".into(), layout }
-}
-
 fn node_section_node_graph_frame(layer_path: Vec<graphene::LayerId>, node_graph_frame: &NodeGraphFrameLayer, open_graph: bool) -> LayoutGroup {
 	LayoutGroup::Section {
 		name: "Node Graph Frame".into(),
@@ -1245,10 +503,11 @@ fn node_section_node_graph_frame(layer_path: Vec<graphene::LayerId>, node_graph_
 						tooltip: "Button to edit the node graph network for this layer".into(),
 						..Default::default()
 					})),
-					WidgetHolder::new(Widget::Separator(Separator {
-						separator_type: SeparatorType::Unrelated,
-						direction: SeparatorDirection::Horizontal,
-					})),
+					WidgetHolder::unrelated_separator(),
+					WidgetHolder::unrelated_separator(), // TODO: These three separators add up to 24px,
+					WidgetHolder::unrelated_separator(), // TODO: which is the width of the Assist area.
+					WidgetHolder::unrelated_separator(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
+					WidgetHolder::unrelated_separator(),
 					WidgetHolder::new(Widget::TextButton(TextButton {
 						label: if open_graph { "Close Node Graph".into() } else { "Open Node Graph".into() },
 						tooltip: format!("{} the node graph associated with this layer", if open_graph { "Close" } else { "Open" }),
@@ -1271,20 +530,18 @@ fn node_section_node_graph_frame(layer_path: Vec<graphene::LayerId>, node_graph_
 						tooltip: "Buttons to render the node graph and clear the last rendered image".into(),
 						..Default::default()
 					})),
-					WidgetHolder::new(Widget::Separator(Separator {
-						separator_type: SeparatorType::Unrelated,
-						direction: SeparatorDirection::Horizontal,
-					})),
+					WidgetHolder::unrelated_separator(),
+					WidgetHolder::unrelated_separator(), // TODO: These three separators add up to 24px,
+					WidgetHolder::unrelated_separator(), // TODO: which is the width of the Assist area.
+					WidgetHolder::unrelated_separator(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
+					WidgetHolder::unrelated_separator(),
 					WidgetHolder::new(Widget::TextButton(TextButton {
 						label: "Render".into(),
 						tooltip: "Fill layer frame by rendering the node graph".into(),
 						on_update: WidgetCallback::new(|_| DocumentMessage::NodeGraphFrameGenerate.into()),
 						..Default::default()
 					})),
-					WidgetHolder::new(Widget::Separator(Separator {
-						separator_type: SeparatorType::Related,
-						direction: SeparatorDirection::Horizontal,
-					})),
+					WidgetHolder::related_separator(),
 					WidgetHolder::new(Widget::TextButton(TextButton {
 						label: "Clear".into(),
 						tooltip: "Remove rendered node graph from the layer frame".into(),
@@ -1310,10 +567,11 @@ fn node_section_font(layer: &TextLayer) -> LayoutGroup {
 						value: "Text".into(),
 						..TextLabel::default()
 					})),
-					WidgetHolder::new(Widget::Separator(Separator {
-						separator_type: SeparatorType::Unrelated,
-						direction: SeparatorDirection::Horizontal,
-					})),
+					WidgetHolder::unrelated_separator(),
+					WidgetHolder::unrelated_separator(), // TODO: These three separators add up to 24px,
+					WidgetHolder::unrelated_separator(), // TODO: which is the width of the Assist area.
+					WidgetHolder::unrelated_separator(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
+					WidgetHolder::unrelated_separator(),
 					WidgetHolder::new(Widget::TextAreaInput(TextAreaInput {
 						value: layer.text.clone(),
 						on_update: WidgetCallback::new(|text_area: &TextAreaInput| PropertiesPanelMessage::ModifyText { new_text: text_area.value.clone() }.into()),
@@ -1327,10 +585,11 @@ fn node_section_font(layer: &TextLayer) -> LayoutGroup {
 						value: "Font".into(),
 						..TextLabel::default()
 					})),
-					WidgetHolder::new(Widget::Separator(Separator {
-						separator_type: SeparatorType::Unrelated,
-						direction: SeparatorDirection::Horizontal,
-					})),
+					WidgetHolder::unrelated_separator(),
+					WidgetHolder::unrelated_separator(), // TODO: These three separators add up to 24px,
+					WidgetHolder::unrelated_separator(), // TODO: which is the width of the Assist area.
+					WidgetHolder::unrelated_separator(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
+					WidgetHolder::unrelated_separator(),
 					WidgetHolder::new(Widget::FontInput(FontInput {
 						is_style_picker: false,
 						font_family: layer.font.font_family.clone(),
@@ -1353,10 +612,11 @@ fn node_section_font(layer: &TextLayer) -> LayoutGroup {
 						value: "Style".into(),
 						..TextLabel::default()
 					})),
-					WidgetHolder::new(Widget::Separator(Separator {
-						separator_type: SeparatorType::Unrelated,
-						direction: SeparatorDirection::Horizontal,
-					})),
+					WidgetHolder::unrelated_separator(),
+					WidgetHolder::unrelated_separator(), // TODO: These three separators add up to 24px,
+					WidgetHolder::unrelated_separator(), // TODO: which is the width of the Assist area.
+					WidgetHolder::unrelated_separator(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
+					WidgetHolder::unrelated_separator(),
 					WidgetHolder::new(Widget::FontInput(FontInput {
 						is_style_picker: true,
 						font_family: layer.font.font_family.clone(),
@@ -1379,10 +639,11 @@ fn node_section_font(layer: &TextLayer) -> LayoutGroup {
 						value: "Size".into(),
 						..TextLabel::default()
 					})),
-					WidgetHolder::new(Widget::Separator(Separator {
-						separator_type: SeparatorType::Unrelated,
-						direction: SeparatorDirection::Horizontal,
-					})),
+					WidgetHolder::unrelated_separator(),
+					WidgetHolder::unrelated_separator(), // TODO: These three separators add up to 24px,
+					WidgetHolder::unrelated_separator(), // TODO: which is the width of the Assist area.
+					WidgetHolder::unrelated_separator(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
+					WidgetHolder::unrelated_separator(),
 					WidgetHolder::new(Widget::NumberInput(NumberInput {
 						value: Some(layer.size),
 						min: Some(1.),
@@ -1418,10 +679,11 @@ fn node_gradient_type(gradient: &Gradient) -> LayoutGroup {
 				value: "Gradient Type".into(),
 				..TextLabel::default()
 			})),
-			WidgetHolder::new(Widget::Separator(Separator {
-				separator_type: SeparatorType::Unrelated,
-				direction: SeparatorDirection::Horizontal,
-			})),
+			WidgetHolder::unrelated_separator(),
+			WidgetHolder::unrelated_separator(), // TODO: These three separators add up to 24px,
+			WidgetHolder::unrelated_separator(), // TODO: which is the width of the Assist area.
+			WidgetHolder::unrelated_separator(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
+			WidgetHolder::unrelated_separator(),
 			WidgetHolder::new(Widget::RadioInput(RadioInput {
 				selected_index,
 				entries: vec![
@@ -1463,24 +725,27 @@ fn node_gradient_color(gradient: &Gradient, position: usize) -> LayoutGroup {
 	let send_fill_message = move |new_gradient: Gradient| PropertiesPanelMessage::ModifyFill { fill: Fill::Gradient(new_gradient) }.into();
 
 	let value = format!("Gradient: {:.0}%", gradient_clone.positions[position].0 * 100.);
-	let mut widgets = vec![WidgetHolder::new(Widget::TextLabel(TextLabel {
-		value,
-		tooltip: "Adjustable by dragging the gradient stops in the viewport with the Gradient tool active".into(),
-		..TextLabel::default()
-	}))];
-	widgets.push(WidgetHolder::new(Widget::Separator(Separator {
-		separator_type: SeparatorType::Unrelated,
-		direction: SeparatorDirection::Horizontal,
-	})));
-	widgets.push(WidgetHolder::new(Widget::ColorInput(ColorInput {
-		value: gradient_clone.positions[position].1,
-		on_update: WidgetCallback::new(move |text_input: &ColorInput| {
-			let mut new_gradient = (*gradient_clone).clone();
-			new_gradient.positions[position].1 = text_input.value;
-			send_fill_message(new_gradient)
-		}),
-		..ColorInput::default()
-	})));
+	let mut widgets = vec![
+		WidgetHolder::new(Widget::TextLabel(TextLabel {
+			value,
+			tooltip: "Adjustable by dragging the gradient stops in the viewport with the Gradient tool active".into(),
+			..TextLabel::default()
+		})),
+		WidgetHolder::unrelated_separator(),
+		WidgetHolder::unrelated_separator(), // TODO: These three separators add up to 24px,
+		WidgetHolder::unrelated_separator(), // TODO: which is the width of the Assist area.
+		WidgetHolder::unrelated_separator(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
+		WidgetHolder::unrelated_separator(),
+		WidgetHolder::new(Widget::ColorInput(ColorInput {
+			value: gradient_clone.positions[position].1,
+			on_update: WidgetCallback::new(move |text_input: &ColorInput| {
+				let mut new_gradient = (*gradient_clone).clone();
+				new_gradient.positions[position].1 = text_input.value;
+				send_fill_message(new_gradient)
+			}),
+			..ColorInput::default()
+		})),
+	];
 
 	let mut skip_separator = false;
 	// Remove button
@@ -1492,10 +757,7 @@ fn node_gradient_color(gradient: &Gradient, position: usize) -> LayoutGroup {
 		});
 
 		skip_separator = true;
-		widgets.push(WidgetHolder::new(Widget::Separator(Separator {
-			separator_type: SeparatorType::Related,
-			direction: SeparatorDirection::Horizontal,
-		})));
+		widgets.push(WidgetHolder::related_separator());
 		widgets.push(WidgetHolder::new(Widget::IconButton(IconButton {
 			icon: "Remove".to_string(),
 			tooltip: "Remove this gradient stop".to_string(),
@@ -1524,10 +786,7 @@ fn node_gradient_color(gradient: &Gradient, position: usize) -> LayoutGroup {
 		});
 
 		if !skip_separator {
-			widgets.push(WidgetHolder::new(Widget::Separator(Separator {
-				separator_type: SeparatorType::Related,
-				direction: SeparatorDirection::Horizontal,
-			})));
+			widgets.push(WidgetHolder::related_separator());
 		}
 		widgets.push(WidgetHolder::new(Widget::IconButton(IconButton {
 			icon: "Add".to_string(),
@@ -1553,10 +812,11 @@ fn node_section_fill(fill: &Fill) -> Option<LayoutGroup> {
 							value: "Color".into(),
 							..TextLabel::default()
 						})),
-						WidgetHolder::new(Widget::Separator(Separator {
-							separator_type: SeparatorType::Unrelated,
-							direction: SeparatorDirection::Horizontal,
-						})),
+						WidgetHolder::unrelated_separator(),
+						WidgetHolder::unrelated_separator(), // TODO: These three separators add up to 24px,
+						WidgetHolder::unrelated_separator(), // TODO: which is the width of the Assist area.
+						WidgetHolder::unrelated_separator(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
+						WidgetHolder::unrelated_separator(),
 						WidgetHolder::new(Widget::ColorInput(ColorInput {
 							value: if let Fill::Solid(color) = fill { Some(*color) } else { None },
 							on_update: WidgetCallback::new(|text_input: &ColorInput| {
@@ -1573,10 +833,11 @@ fn node_section_fill(fill: &Fill) -> Option<LayoutGroup> {
 							value: "".into(),
 							..TextLabel::default()
 						})),
-						WidgetHolder::new(Widget::Separator(Separator {
-							separator_type: SeparatorType::Unrelated,
-							direction: SeparatorDirection::Horizontal,
-						})),
+						WidgetHolder::unrelated_separator(),
+						WidgetHolder::unrelated_separator(), // TODO: These three separators add up to 24px,
+						WidgetHolder::unrelated_separator(), // TODO: which is the width of the Assist area.
+						WidgetHolder::unrelated_separator(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
+						WidgetHolder::unrelated_separator(),
 						WidgetHolder::new(Widget::TextButton(TextButton {
 							label: "Use Gradient".into(),
 							tooltip: "Change this fill from a solid color to a gradient".into(),
@@ -1617,10 +878,11 @@ fn node_section_fill(fill: &Fill) -> Option<LayoutGroup> {
 							value: "".into(),
 							..TextLabel::default()
 						})),
-						WidgetHolder::new(Widget::Separator(Separator {
-							separator_type: SeparatorType::Unrelated,
-							direction: SeparatorDirection::Horizontal,
-						})),
+						WidgetHolder::unrelated_separator(),
+						WidgetHolder::unrelated_separator(), // TODO: These three separators add up to 24px,
+						WidgetHolder::unrelated_separator(), // TODO: which is the width of the Assist area.
+						WidgetHolder::unrelated_separator(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
+						WidgetHolder::unrelated_separator(),
 						WidgetHolder::new(Widget::TextButton(TextButton {
 							label: "Invert".into(),
 							icon: Some("Swap".into()),
@@ -1641,10 +903,11 @@ fn node_section_fill(fill: &Fill) -> Option<LayoutGroup> {
 							value: "".into(),
 							..TextLabel::default()
 						})),
-						WidgetHolder::new(Widget::Separator(Separator {
-							separator_type: SeparatorType::Unrelated,
-							direction: SeparatorDirection::Horizontal,
-						})),
+						WidgetHolder::unrelated_separator(),
+						WidgetHolder::unrelated_separator(), // TODO: These three separators add up to 24px,
+						WidgetHolder::unrelated_separator(), // TODO: which is the width of the Assist area.
+						WidgetHolder::unrelated_separator(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
+						WidgetHolder::unrelated_separator(),
 						WidgetHolder::new(Widget::TextButton(TextButton {
 							label: "Use Solid Color".into(),
 							tooltip: "Change this fill from a gradient to a solid color, keeping the 0% stop color".into(),
@@ -1687,10 +950,11 @@ fn node_section_stroke(stroke: &Stroke) -> LayoutGroup {
 						value: "Color".into(),
 						..TextLabel::default()
 					})),
-					WidgetHolder::new(Widget::Separator(Separator {
-						separator_type: SeparatorType::Unrelated,
-						direction: SeparatorDirection::Horizontal,
-					})),
+					WidgetHolder::unrelated_separator(),
+					WidgetHolder::unrelated_separator(), // TODO: These three separators add up to 24px,
+					WidgetHolder::unrelated_separator(), // TODO: which is the width of the Assist area.
+					WidgetHolder::unrelated_separator(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
+					WidgetHolder::unrelated_separator(),
 					WidgetHolder::new(Widget::ColorInput(ColorInput {
 						value: stroke.color(),
 						on_update: WidgetCallback::new(move |text_input: &ColorInput| {
@@ -1709,10 +973,11 @@ fn node_section_stroke(stroke: &Stroke) -> LayoutGroup {
 						value: "Weight".into(),
 						..TextLabel::default()
 					})),
-					WidgetHolder::new(Widget::Separator(Separator {
-						separator_type: SeparatorType::Unrelated,
-						direction: SeparatorDirection::Horizontal,
-					})),
+					WidgetHolder::unrelated_separator(),
+					WidgetHolder::unrelated_separator(), // TODO: These three separators add up to 24px,
+					WidgetHolder::unrelated_separator(), // TODO: which is the width of the Assist area.
+					WidgetHolder::unrelated_separator(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
+					WidgetHolder::unrelated_separator(),
 					WidgetHolder::new(Widget::NumberInput(NumberInput {
 						value: Some(stroke.weight()),
 						is_integer: false,
@@ -1734,10 +999,11 @@ fn node_section_stroke(stroke: &Stroke) -> LayoutGroup {
 						value: "Dash Lengths".into(),
 						..TextLabel::default()
 					})),
-					WidgetHolder::new(Widget::Separator(Separator {
-						separator_type: SeparatorType::Unrelated,
-						direction: SeparatorDirection::Horizontal,
-					})),
+					WidgetHolder::unrelated_separator(),
+					WidgetHolder::unrelated_separator(), // TODO: These three separators add up to 24px,
+					WidgetHolder::unrelated_separator(), // TODO: which is the width of the Assist area.
+					WidgetHolder::unrelated_separator(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
+					WidgetHolder::unrelated_separator(),
 					WidgetHolder::new(Widget::TextInput(TextInput {
 						value: stroke.dash_lengths(),
 						centered: true,
@@ -1757,10 +1023,11 @@ fn node_section_stroke(stroke: &Stroke) -> LayoutGroup {
 						value: "Dash Offset".into(),
 						..TextLabel::default()
 					})),
-					WidgetHolder::new(Widget::Separator(Separator {
-						separator_type: SeparatorType::Unrelated,
-						direction: SeparatorDirection::Horizontal,
-					})),
+					WidgetHolder::unrelated_separator(),
+					WidgetHolder::unrelated_separator(), // TODO: These three separators add up to 24px,
+					WidgetHolder::unrelated_separator(), // TODO: which is the width of the Assist area.
+					WidgetHolder::unrelated_separator(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
+					WidgetHolder::unrelated_separator(),
 					WidgetHolder::new(Widget::NumberInput(NumberInput {
 						value: Some(stroke.dash_offset()),
 						is_integer: true,
@@ -1782,10 +1049,11 @@ fn node_section_stroke(stroke: &Stroke) -> LayoutGroup {
 						value: "Line Cap".into(),
 						..TextLabel::default()
 					})),
-					WidgetHolder::new(Widget::Separator(Separator {
-						separator_type: SeparatorType::Unrelated,
-						direction: SeparatorDirection::Horizontal,
-					})),
+					WidgetHolder::unrelated_separator(),
+					WidgetHolder::unrelated_separator(), // TODO: These three separators add up to 24px,
+					WidgetHolder::unrelated_separator(), // TODO: which is the width of the Assist area.
+					WidgetHolder::unrelated_separator(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
+					WidgetHolder::unrelated_separator(),
 					WidgetHolder::new(Widget::RadioInput(RadioInput {
 						selected_index: stroke.line_cap_index(),
 						entries: vec![
@@ -1830,10 +1098,11 @@ fn node_section_stroke(stroke: &Stroke) -> LayoutGroup {
 						value: "Line Join".into(),
 						..TextLabel::default()
 					})),
-					WidgetHolder::new(Widget::Separator(Separator {
-						separator_type: SeparatorType::Unrelated,
-						direction: SeparatorDirection::Horizontal,
-					})),
+					WidgetHolder::unrelated_separator(),
+					WidgetHolder::unrelated_separator(), // TODO: These three separators add up to 24px,
+					WidgetHolder::unrelated_separator(), // TODO: which is the width of the Assist area.
+					WidgetHolder::unrelated_separator(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
+					WidgetHolder::unrelated_separator(),
 					WidgetHolder::new(Widget::RadioInput(RadioInput {
 						selected_index: stroke.line_join_index(),
 						entries: vec![
@@ -1879,10 +1148,11 @@ fn node_section_stroke(stroke: &Stroke) -> LayoutGroup {
 						value: "Miter Limit".into(),
 						..TextLabel::default()
 					})),
-					WidgetHolder::new(Widget::Separator(Separator {
-						separator_type: SeparatorType::Unrelated,
-						direction: SeparatorDirection::Horizontal,
-					})),
+					WidgetHolder::unrelated_separator(),
+					WidgetHolder::unrelated_separator(), // TODO: These three separators add up to 24px,
+					WidgetHolder::unrelated_separator(), // TODO: which is the width of the Assist area.
+					WidgetHolder::unrelated_separator(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
+					WidgetHolder::unrelated_separator(),
 					WidgetHolder::new(Widget::NumberInput(NumberInput {
 						value: Some(stroke.line_join_miter_limit() as f64),
 						is_integer: true,
