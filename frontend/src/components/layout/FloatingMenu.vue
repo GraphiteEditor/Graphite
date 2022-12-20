@@ -267,6 +267,7 @@ export default defineComponent({
 
 			if (!inParentFloatingMenu) {
 				// Required to correctly position content when scrolled (it has a `position: fixed` to prevent clipping)
+				// We use `.style` on a ref (instead of a `:style` Vue binding) because the binding causes the `updated()` hook to call the function we're in recursively forever
 				const tailOffset = this.type === "Popover" ? 10 : 0;
 				if (this.direction === "Bottom") floatingMenuContent.style.top = `${tailOffset + this.floatingMenuBounds.top}px`;
 				if (this.direction === "Top") floatingMenuContent.style.bottom = `${tailOffset + this.floatingMenuBounds.bottom}px`;
@@ -274,7 +275,7 @@ export default defineComponent({
 				if (this.direction === "Left") floatingMenuContent.style.right = `${tailOffset + this.floatingMenuBounds.right}px`;
 
 				// Required to correctly position tail when scrolled (it has a `position: fixed` to prevent clipping)
-				// We use a ref here, instead of a `:style` binding, because that causes the `updated()` hook to call the function we're in recursively forever
+				// We use `.style` on a ref (instead of a `:style` Vue binding) because the binding causes the `updated()` hook to call the function we're in recursively forever
 				const tail = this.$refs.tail as HTMLElement;
 				if (tail && this.direction === "Bottom") tail.style.top = `${this.floatingMenuBounds.top}px`;
 				if (tail && this.direction === "Top") tail.style.bottom = `${this.floatingMenuBounds.bottom}px`;
@@ -289,6 +290,7 @@ export default defineComponent({
 			if (this.direction === "Top" || this.direction === "Bottom") {
 				zeroedBorderVertical = this.direction === "Top" ? "Bottom" : "Top";
 
+				// We use `.style` on a ref (instead of a `:style` Vue binding) because the binding causes the `updated()` hook to call the function we're in recursively forever
 				if (this.floatingMenuContentBounds.left - this.windowEdgeMargin <= this.workspaceBounds.left) {
 					floatingMenuContent.style.left = `${this.windowEdgeMargin}px`;
 					if (this.workspaceBounds.left + floatingMenuContainerBounds.left === 12) zeroedBorderHorizontal = "Left";
@@ -301,6 +303,7 @@ export default defineComponent({
 			if (this.direction === "Left" || this.direction === "Right") {
 				zeroedBorderHorizontal = this.direction === "Left" ? "Right" : "Left";
 
+				// We use `.style` on a ref (instead of a `:style` Vue binding) because the binding causes the `updated()` hook to call the function we're in recursively forever
 				if (this.floatingMenuContentBounds.top - this.windowEdgeMargin <= this.workspaceBounds.top) {
 					floatingMenuContent.style.top = `${this.windowEdgeMargin}px`;
 					if (this.workspaceBounds.top + floatingMenuContainerBounds.top === 12) zeroedBorderVertical = "Top";
@@ -313,6 +316,7 @@ export default defineComponent({
 
 			// Remove the rounded corner from the content where the tail perfectly meets the corner
 			if (this.type === "Popover" && this.windowEdgeMargin === 6 && zeroedBorderVertical && zeroedBorderHorizontal) {
+				// We use `.style` on a ref (instead of a `:style` Vue binding) because the binding causes the `updated()` hook to call the function we're in recursively forever
 				switch (`${zeroedBorderVertical}${zeroedBorderHorizontal}`) {
 					case "TopLeft":
 						floatingMenuContent.style.borderTopLeftRadius = "0";

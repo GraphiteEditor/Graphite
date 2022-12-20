@@ -806,7 +806,7 @@ impl PortfolioMessageHandler {
 					.to_string(),
 				text_guidance: Self::compute_input(&network, &imaginate_node, get("Text Guidance"), Cow::Borrowed(&image))?,
 				text_prompt: Self::compute_input(&network, &imaginate_node, get("Text Prompt"), Cow::Borrowed(&image))?,
-				negative_prompt: Self::compute_input(&network, &imaginate_node, get("Neg. Prompt"), Cow::Borrowed(&image))?,
+				negative_prompt: Self::compute_input(&network, &imaginate_node, get("Negative Prompt"), Cow::Borrowed(&image))?,
 				image_creativity: Some(Self::compute_input::<f64>(&network, &imaginate_node, get("Image Creativity"), Cow::Borrowed(&image))? / 100.),
 				restore_faces: Self::compute_input(&network, &imaginate_node, get("Improve Faces"), Cow::Borrowed(&image))?,
 				tiling: Self::compute_input(&network, &imaginate_node, get("Tiling"), Cow::Borrowed(&image))?,

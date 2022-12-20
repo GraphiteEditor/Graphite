@@ -19,6 +19,12 @@ impl Color {
 	pub const RED: Color = Color::from_unsafe(1., 0., 0.);
 	pub const GREEN: Color = Color::from_unsafe(0., 1., 0.);
 	pub const BLUE: Color = Color::from_unsafe(0., 0., 1.);
+	pub const TRANSPARENT: Color = Self {
+		red: 0.,
+		green: 0.,
+		blue: 0.,
+		alpha: 0.,
+	};
 
 	/// Returns `Some(Color)` if `red`, `green`, `blue` and `alpha` have a valid value. Negative numbers (including `-0.0`), NaN, and infinity are not valid values and return `None`.
 	/// Alpha values greater than `1.0` are not valid.

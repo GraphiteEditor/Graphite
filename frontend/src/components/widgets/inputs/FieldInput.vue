@@ -113,7 +113,7 @@
 	}
 
 	textarea {
-		min-height: calc(18px * 4);
+		min-height: calc(18px * 2);
 		margin: 3px;
 		padding: 0 5px;
 		box-sizing: border-box;

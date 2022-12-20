@@ -302,13 +302,13 @@ impl WidgetHolder {
 	pub fn new(widget: Widget) -> Self {
 		Self { widget_id: generate_uuid(), widget }
 	}
-	pub fn unrelated_seperator() -> Self {
+	pub fn unrelated_separator() -> Self {
 		WidgetHolder::new(Widget::Separator(Separator {
 			separator_type: SeparatorType::Unrelated,
 			direction: SeparatorDirection::Horizontal,
 		}))
 	}
-	pub fn related_seperator() -> Self {
+	pub fn related_separator() -> Self {
 		WidgetHolder::new(Widget::Separator(Separator {
 			separator_type: SeparatorType::Related,
 			direction: SeparatorDirection::Horizontal,

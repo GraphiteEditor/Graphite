@@ -9,6 +9,7 @@
 	display: flex;
 	align-items: center;
 	flex: 0 0 auto;
+	max-height: 24px;
 
 	button {
 		flex: 0 0 auto;
