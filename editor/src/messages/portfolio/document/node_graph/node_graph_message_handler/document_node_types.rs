@@ -1,13 +1,14 @@
-use std::collections::VecDeque;
-
 use super::{node_properties, FrontendGraphDataType, FrontendNodeType};
 use crate::messages::layout::utility_types::layout_widget::LayoutGroup;
+
 use graph_craft::concrete;
 use graph_craft::document::value::*;
 use graph_craft::document::{DocumentNode, NodeId, NodeInput};
 use graph_craft::imaginate_input::ImaginateSamplingMethod;
 use graph_craft::proto::{NodeIdentifier, Type};
 use graphene_core::raster::Image;
+
+use std::collections::VecDeque;
 
 pub struct DocumentInputType {
 	pub name: &'static str,
@@ -189,7 +190,7 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 	IMAGINATE_NODE,
 	DocumentNodeType {
 		name: "Add",
-		category: "Mathematics",
+		category: "Math",
 		identifier: NodeIdentifier::new("graphene_core::ops::AddNode", &[concrete!("&TypeErasedNode")]),
 		inputs: &[
 			DocumentInputType::new("Input", TaggedValue::F64(0.), true),
@@ -302,7 +303,7 @@ pub const IMAGINATE_NODE: DocumentNodeType = DocumentNodeType {
 		DocumentInputType::new("Mask Starting Fill", TaggedValue::ImaginateMaskStartingFill(ImaginateMaskStartingFill::Fill), false),
 		DocumentInputType::new("Improve Faces", TaggedValue::Bool(false), false),
 		DocumentInputType::new("Tiling", TaggedValue::Bool(false), false),
-		// Non user status (is document input the right way to do this?)
+		// Non-user status (is document input the right way to do this?)
 		DocumentInputType::new("Cached Data", TaggedValue::RcImage(None), false),
 		DocumentInputType::new("Percent Complete", TaggedValue::F64(0.), false),
 		DocumentInputType::new("Status", TaggedValue::ImaginateStatus(ImaginateStatus::Idle), false),
