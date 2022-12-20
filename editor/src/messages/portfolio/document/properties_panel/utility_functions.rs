@@ -5,7 +5,7 @@ use crate::messages::layout::utility_types::misc::LayoutTarget;
 use crate::messages::layout::utility_types::widgets::assist_widgets::PivotAssist;
 use crate::messages::layout::utility_types::widgets::button_widgets::{IconButton, PopoverButton, TextButton};
 use crate::messages::layout::utility_types::widgets::input_widgets::{ColorInput, FontInput, NumberInput, NumberInputMode, RadioEntryData, RadioInput, TextAreaInput, TextInput};
-use crate::messages::layout::utility_types::widgets::label_widgets::{IconLabel, Separator, SeparatorDirection, SeparatorType, TextLabel};
+use crate::messages::layout::utility_types::widgets::label_widgets::{IconLabel, TextLabel};
 use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::*;
 

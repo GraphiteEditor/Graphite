@@ -222,6 +222,14 @@ pub enum Operation {
 		transform: [f64; 6],
 		scope: [f64; 6],
 	},
+	TransformLayerScaleAroundPivot {
+		path: Vec<LayerId>,
+		scale_factor: (f64, f64),
+	},
+	SetLayerScaleAroundPivot {
+		path: Vec<LayerId>,
+		new_scale: (f64, f64),
+	},
 	SetLayerTransform {
 		path: Vec<LayerId>,
 		transform: [f64; 6],

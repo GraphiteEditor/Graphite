@@ -141,7 +141,7 @@ impl Document {
 			return Ok(&self.root);
 		}
 		let (path, id) = split_path(path)?;
-		self.folder(&path)?.layer(id).ok_or_else(|| DocumentError::LayerNotFound(path.into()))
+		self.folder(path)?.layer(id).ok_or_else(|| DocumentError::LayerNotFound(path.into()))
 	}
 
 	/// Returns a mutable reference to the layer or folder at the path.
@@ -960,6 +960,33 @@ impl Document {
 				let transform = DAffine2::from_cols_array(&transform);
 				let scope = DAffine2::from_cols_array(&scope);
 				self.set_transform_relative_to_scope(&path, Some(scope), transform)?;
+				self.mark_as_dirty(&path)?;
+				Some([vec![DocumentChanged], update_thumbnails_upstream(&path)].concat())
+			}
+			Operation::TransformLayerScaleAroundPivot { path, scale_factor } => {
+				let layer = self.layer_mut(&path)?;
+
+				let offset = DAffine2::from_translation(-layer.pivot);
+				let scale = DAffine2::from_scale(scale_factor.into());
+				let offset_back = DAffine2::from_translation(layer.pivot);
+				layer.transform = layer.transform * offset_back * scale * offset;
+
+				self.mark_as_dirty(&path)?;
+				Some([vec![DocumentChanged], update_thumbnails_upstream(&path)].concat())
+			}
+			Operation::SetLayerScaleAroundPivot { path, new_scale } => {
+				let layer = self.layer_mut(&path)?;
+
+				let matrix = layer.transform.to_cols_array();
+				let old_scale = (matrix[0], matrix[3]);
+
+				let scale_factor = DVec2::from(new_scale) / DVec2::from(old_scale);
+
+				let offset = DAffine2::from_translation(-layer.pivot);
+				let scale = DAffine2::from_scale(scale_factor);
+				let offset_back = DAffine2::from_translation(layer.pivot);
+				layer.transform = layer.transform * offset_back * scale * offset;
+
 				self.mark_as_dirty(&path)?;
 				Some([vec![DocumentChanged], update_thumbnails_upstream(&path)].concat())
 			}

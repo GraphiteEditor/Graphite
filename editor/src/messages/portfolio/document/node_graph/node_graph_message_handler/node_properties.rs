@@ -8,6 +8,7 @@ use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{generate_uuid, DocumentNode, NodeId, NodeInput};
 use graph_craft::imaginate_input::*;
 use graphene::layers::layer_info::LayerDataTypeDiscriminant;
+use graphene::Operation;
 
 use super::document_node_types::NodePropertiesContext;
 use super::{FrontendGraphDataType, IMAGINATE_NODE};
@@ -544,13 +545,21 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 
 				DVec2::new(x as f64, y as f64)
 			});
+
+			let layer_path = context.layer_path.to_vec();
 			widgets.extend_from_slice(&[
 				WidgetHolder::unrelated_separator(),
 				WidgetHolder::new(Widget::IconButton(IconButton {
 					size: 24,
 					icon: "Rescale".into(),
 					tooltip: "Set the Node Graph Frame layer dimensions to this resolution".into(),
-					on_update: WidgetCallback::new(|_| DialogMessage::RequestComingSoonDialog { issue: None }.into()), // TODO: Implement this; I (Keavon) couldn't figure out how
+					on_update: WidgetCallback::new(move |_| {
+						Operation::SetLayerScaleAroundPivot {
+							path: layer_path.clone(),
+							new_scale: vec2.into(),
+						}
+						.into()
+					}),
 					..Default::default()
 				})),
 				WidgetHolder::unrelated_separator(),

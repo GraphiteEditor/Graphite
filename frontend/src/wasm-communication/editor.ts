@@ -41,11 +41,12 @@ export async function fetchImage(path: BigUint64Array, mime: string, documentId:
 }
 
 // export async function dispatchTauri(message: string): Promise<string> {
-export async function dispatchTauri(message: any): Promise<void> {
+export async function dispatchTauri(message: unknown): Promise<void> {
 	try {
 		const response = await invoke("handle_message", { message });
 		editorInstance?.tauriResponse(response);
 	} catch {
+		// eslint-disable-next-line no-console
 		console.error("Failed to dispatch Tauri message");
 	}
 }
