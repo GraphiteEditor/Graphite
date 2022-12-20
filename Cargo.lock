@@ -148,7 +148,7 @@ version = "0.2.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d9b39be18770d11421cdb1b9947a45dd3f37e93092cbf377614828a319d5fee8"
 dependencies = [
- "hermit-abi",
+ "hermit-abi 0.1.19",
  "libc",
  "winapi",
 ]
@@ -1692,6 +1692,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "hermit-abi"
+version = "0.2.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ee512640fe35acbfb4bb779db6f0d80704c2cacfa2e39b601ef3e3f47d1ae4c7"
+dependencies = [
+ "libc",
+]
+
+[[package]]
 name = "html5ever"
 version = "0.25.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2379,11 +2388,11 @@ dependencies = [
 
 [[package]]
 name = "num_cpus"
-version = "1.14.0"
+version = "1.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f6058e64324c71e02bc2b150e4f3bc8286db6c83092132ffa3f6b1eab0f9def5"
+checksum = "0fac9e2da13b5eb447a6ce3d392f23a29d8694bff781bf03a16cd9ac8697593b"
 dependencies = [
- "hermit-abi",
+ "hermit-abi 0.2.6",
  "libc",
 ]
 
@@ -2474,9 +2483,9 @@ dependencies = [
 
 [[package]]
 name = "openssl"
-version = "0.10.44"
+version = "0.10.45"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "29d971fd5722fec23977260f6e81aa67d2f22cadbdc2aa049f1022d9a3be1566"
+checksum = "b102428fd03bc5edf97f62620f7298614c45cedf287c271e7ed450bbaf83f2e1"
 dependencies = [
  "bitflags",
  "cfg-if",
@@ -2506,9 +2515,9 @@ checksum = "ff011a302c396a5197692431fc1948019154afc178baf7d8e37367442a4601cf"
 
 [[package]]
 name = "openssl-sys"
-version = "0.9.79"
+version = "0.9.80"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5454462c0eced1e97f2ec09036abc8da362e66802f66fd20f86854d9d8cbcbc4"
+checksum = "23bbbf7854cd45b83958ebe919f0e8e516793727652e27fda10a8384cfc790b7"
 dependencies = [
  "autocfg",
  "cc",
@@ -3189,7 +3198,7 @@ checksum = "08d43f7aa6b08d49f382cde6a7982047c3426db949b1424bc4b7ec9ae12c6ce2"
 [[package]]
 name = "rustc_codegen_spirv"
 version = "0.4.0-alpha.17"
-source = "git+https://github.com/EmbarkStudios/rust-gpu?branch=main#985cce77da1b5412c5767b77c56ca8082ed24a06"
+source = "git+https://github.com/EmbarkStudios/rust-gpu?branch=main#d2d6ee2f7513a51c193a65b0fd99a7d40be74ec8"
 dependencies = [
  "ar",
  "either",
@@ -3214,7 +3223,7 @@ dependencies = [
 [[package]]
 name = "rustc_codegen_spirv-types"
 version = "0.4.0-alpha.17"
-source = "git+https://github.com/EmbarkStudios/rust-gpu?branch=main#985cce77da1b5412c5767b77c56ca8082ed24a06"
+source = "git+https://github.com/EmbarkStudios/rust-gpu?branch=main#d2d6ee2f7513a51c193a65b0fd99a7d40be74ec8"
 dependencies = [
  "rspirv",
  "serde",
@@ -3675,7 +3684,7 @@ dependencies = [
 [[package]]
 name = "spirv-builder"
 version = "0.4.0-alpha.17"
-source = "git+https://github.com/EmbarkStudios/rust-gpu?branch=main#985cce77da1b5412c5767b77c56ca8082ed24a06"
+source = "git+https://github.com/EmbarkStudios/rust-gpu?branch=main#d2d6ee2f7513a51c193a65b0fd99a7d40be74ec8"
 dependencies = [
  "memchr",
  "raw-string",
@@ -3688,7 +3697,7 @@ dependencies = [
 [[package]]
 name = "spirv-std"
 version = "0.4.0-alpha.17"
-source = "git+https://github.com/EmbarkStudios/rust-gpu#985cce77da1b5412c5767b77c56ca8082ed24a06"
+source = "git+https://github.com/EmbarkStudios/rust-gpu#d2d6ee2f7513a51c193a65b0fd99a7d40be74ec8"
 dependencies = [
  "bitflags",
  "glam",
@@ -3700,7 +3709,7 @@ dependencies = [
 [[package]]
 name = "spirv-std-macros"
 version = "0.4.0-alpha.17"
-source = "git+https://github.com/EmbarkStudios/rust-gpu#985cce77da1b5412c5767b77c56ca8082ed24a06"
+source = "git+https://github.com/EmbarkStudios/rust-gpu#d2d6ee2f7513a51c193a65b0fd99a7d40be74ec8"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3711,7 +3720,7 @@ dependencies = [
 [[package]]
 name = "spirv-std-types"
 version = "0.4.0-alpha.17"
-source = "git+https://github.com/EmbarkStudios/rust-gpu#985cce77da1b5412c5767b77c56ca8082ed24a06"
+source = "git+https://github.com/EmbarkStudios/rust-gpu#d2d6ee2f7513a51c193a65b0fd99a7d40be74ec8"
 
 [[package]]
 name = "spirv-tools"
