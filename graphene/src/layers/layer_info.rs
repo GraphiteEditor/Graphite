@@ -1,7 +1,6 @@
 use super::blend_mode::BlendMode;
 use super::folder_layer::FolderLayer;
 use super::image_layer::ImageLayer;
-use super::imaginate_layer::ImaginateLayer;
 use super::nodegraph_layer::NodeGraphFrameLayer;
 use super::shape_layer::ShapeLayer;
 use super::style::{PathStyle, RenderData};
@@ -29,8 +28,6 @@ pub enum LayerDataType {
 	Text(TextLayer),
 	/// A layer that wraps an [ImageLayer] struct.
 	Image(ImageLayer),
-	/// A layer that wraps an [ImaginateLayer] struct.
-	Imaginate(ImaginateLayer),
 	/// A layer that wraps an [NodeGraphFrameLayer] struct.
 	NodeGraphFrame(NodeGraphFrameLayer),
 }
@@ -42,7 +39,6 @@ impl LayerDataType {
 			LayerDataType::Folder(f) => f,
 			LayerDataType::Text(t) => t,
 			LayerDataType::Image(i) => i,
-			LayerDataType::Imaginate(a) => a,
 			LayerDataType::NodeGraphFrame(n) => n,
 		}
 	}
@@ -53,7 +49,6 @@ impl LayerDataType {
 			LayerDataType::Folder(f) => f,
 			LayerDataType::Text(t) => t,
 			LayerDataType::Image(i) => i,
-			LayerDataType::Imaginate(a) => a,
 			LayerDataType::NodeGraphFrame(n) => n,
 		}
 	}
@@ -65,7 +60,6 @@ pub enum LayerDataTypeDiscriminant {
 	Shape,
 	Text,
 	Image,
-	Imaginate,
 	NodeGraphFrame,
 }
 
@@ -76,7 +70,6 @@ impl fmt::Display for LayerDataTypeDiscriminant {
 			LayerDataTypeDiscriminant::Shape => write!(f, "Shape"),
 			LayerDataTypeDiscriminant::Text => write!(f, "Text"),
 			LayerDataTypeDiscriminant::Image => write!(f, "Image"),
-			LayerDataTypeDiscriminant::Imaginate => write!(f, "Imaginate"),
 			LayerDataTypeDiscriminant::NodeGraphFrame => write!(f, "Node Graph Frame"),
 		}
 	}
@@ -91,7 +84,6 @@ impl From<&LayerDataType> for LayerDataTypeDiscriminant {
 			Shape(_) => LayerDataTypeDiscriminant::Shape,
 			Text(_) => LayerDataTypeDiscriminant::Text,
 			Image(_) => LayerDataTypeDiscriminant::Image,
-			Imaginate(_) => LayerDataTypeDiscriminant::Imaginate,
 			NodeGraphFrame(_) => LayerDataTypeDiscriminant::NodeGraphFrame,
 		}
 	}
@@ -496,24 +488,6 @@ impl Layer {
 		match &self.data {
 			LayerDataType::Image(img) => Ok(img),
 			_ => Err(DocumentError::NotAnImage),
-		}
-	}
-
-	/// Get a mutable reference to the Imaginate element wrapped by the layer.
-	/// This operation will fail if the [Layer type](Layer::data) is not `LayerDataType::Imaginate`.
-	pub fn as_imaginate_mut(&mut self) -> Result<&mut ImaginateLayer, DocumentError> {
-		match &mut self.data {
-			LayerDataType::Imaginate(imaginate) => Ok(imaginate),
-			_ => Err(DocumentError::NotAnImaginate),
-		}
-	}
-
-	/// Get a reference to the Imaginate element wrapped by the layer.
-	/// This operation will fail if the [Layer type](Layer::data) is not `LayerDataType::Imaginate`.
-	pub fn as_imaginate(&self) -> Result<&ImaginateLayer, DocumentError> {
-		match &self.data {
-			LayerDataType::Imaginate(imaginate) => Ok(imaginate),
-			_ => Err(DocumentError::NotAnImaginate),
 		}
 	}
 

@@ -21,11 +21,11 @@ use crate::messages::portfolio::document::utility_types::vectorize_layer_metadat
 use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::*;
 
+use graph_craft::document::NodeId;
 use graphene::color::Color;
-use graphene::document::{pick_layer_safe_imaginate_resolution, Document as GrapheneDocument};
+use graphene::document::Document as GrapheneDocument;
 use graphene::layers::blend_mode::BlendMode;
 use graphene::layers::folder_layer::FolderLayer;
-use graphene::layers::imaginate_layer::{ImaginateBaseImage, ImaginateGenerationParameters, ImaginateStatus};
 use graphene::layers::layer_info::{LayerDataType, LayerDataTypeDiscriminant};
 use graphene::layers::style::{Fill, RenderData, ViewMode};
 use graphene::layers::text_layer::{Font, FontCache};
@@ -388,20 +388,17 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				responses.extend([LayerChanged { affected_layer_path }.into(), DocumentStructureChanged.into()]);
 			}
 			FrameClear => {
-				let mut selected_frame_layers = self
-					.selected_layers_with_type(LayerDataTypeDiscriminant::Imaginate)
-					.chain(self.selected_layers_with_type(LayerDataTypeDiscriminant::NodeGraphFrame));
-				// Get what is hopefully the only selected Imaginate/NodeGraphFrame layer
+				let mut selected_frame_layers = self.selected_layers_with_type(LayerDataTypeDiscriminant::NodeGraphFrame);
+				// Get what is hopefully the only selected NodeGraphFrame layer
 				let layer_path = selected_frame_layers.next();
-				// Abort if we didn't have any Imaginate/NodeGraphFrame layer, or if there are additional ones also selected
+				// Abort if we didn't have any NodeGraphFrame layer, or if there are additional ones also selected
 				if layer_path.is_none() || selected_frame_layers.next().is_some() {
 					return;
 				}
 				let layer_path = layer_path.unwrap();
 
-				let layer = self.graphene_document.layer(layer_path).expect("Clearing Imaginate/NodeGraphFrame image for invalid layer");
+				let layer = self.graphene_document.layer(layer_path).expect("Clearing NodeGraphFrame image for invalid layer");
 				let previous_blob_url = match &layer.data {
-					LayerDataType::Imaginate(imaginate) => &imaginate.blob_url,
 					LayerDataType::NodeGraphFrame(node_graph_frame) => &node_graph_frame.blob_url,
 					x => panic!("Cannot find blob url for layer type {}", LayerDataTypeDiscriminant::from(x)),
 				};
@@ -439,49 +436,6 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 					}
 					.into(),
 				);
-			}
-			ImaginateGenerate => {
-				if let Some(message) = self.call_imaginate(document_id, preferences, persistent_data) {
-					// TODO: Eventually remove this after a message system ordering architectural change
-					// This message is a workaround for the fact that, when `imaginate.ts` calls...
-					// `editor.instance.setImaginateGeneratingStatus(layerPath, 0, true);`
-					// ...execution transfers from the Rust part of the call stack into the JS part of the call stack (before the Rust message queue is empty,
-					// and there is a Properties panel refresh queued next). Then the JS calls that line shown above and enters the Rust part of the callstack
-					// again, so it's gone through JS (user initiation) -> Rust (process the button press) -> JS (beginning server request) -> Rust (set
-					// progress percentage to 0). As that call stack returns back from the Rust and back from the JS, it returns to the Rust and finishes
-					// processing the queue. That's where it then processes the Properties panel refresh that sent the "Ready" or "Done" state that existed
-					// before pressing the Generate button causing it to show "0%". So "Ready" or "Done" immediately overwrites the "0%". This block below,
-					// therefore, adds a redundant call to set it to 0% progress so the message execution order ends with this as the final percentage shown
-					// to the user.
-					responses.push_back(
-						DocumentOperation::ImaginateSetGeneratingStatus {
-							path: self.selected_layers_with_type(LayerDataTypeDiscriminant::Imaginate).next().unwrap().to_vec(),
-							percent: Some(0.),
-							status: ImaginateStatus::Beginning,
-						}
-						.into(),
-					);
-
-					responses.push_back(message);
-				}
-			}
-			ImaginateTerminate => {
-				let hostname = preferences.imaginate_server_hostname.clone();
-
-				let layer_path = {
-					let mut selected_imaginate_layers = self.selected_layers_with_type(LayerDataTypeDiscriminant::Imaginate);
-
-					// Get what is hopefully the only selected Imaginate layer
-					match selected_imaginate_layers.next() {
-						// Continue only if there are no additional Imaginate layers also selected
-						Some(layer_path) if selected_imaginate_layers.next().is_none() => Some(layer_path.to_owned()),
-						_ => None,
-					}
-				};
-
-				if let Some(layer_path) = layer_path {
-					responses.push_back(FrontendMessage::TriggerImaginateTerminate { document_id, layer_path, hostname }.into());
-				}
 			}
 			LayerChanged { affected_layer_path } => {
 				if let Ok(layer_entry) = self.layer_panel_entry(affected_layer_path.clone(), &persistent_data.font_cache) {
@@ -521,9 +475,38 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				}
 			}
 			NodeGraphFrameGenerate => {
-				if let Some(message) = self.call_node_graph_frame(document_id, preferences, persistent_data) {
+				if let Some(message) = self.call_node_graph_frame(document_id, preferences, persistent_data, None) {
 					responses.push_back(message);
 				}
+			}
+			NodeGraphFrameImaginate { imaginate_node } => {
+				if let Some(message) = self.call_node_graph_frame(document_id, preferences, persistent_data, Some(imaginate_node)) {
+					responses.push_back(message);
+				}
+			}
+			NodeGraphFrameImaginateRandom { imaginate_node } => {
+				// Set a random seed input
+				responses.push_back(
+					NodeGraphMessage::SetInputValue {
+						node: *imaginate_node.last().unwrap(),
+						input_index: 1,
+						value: graph_craft::document::value::TaggedValue::F64((generate_uuid() >> 1) as f64),
+					}
+					.into(),
+				);
+				// Generate the image
+				responses.push_back(DocumentMessage::NodeGraphFrameImaginate { imaginate_node }.into());
+			}
+			NodeGraphFrameImaginateTerminate { layer_path, node_path } => {
+				responses.push_back(
+					FrontendMessage::TriggerImaginateTerminate {
+						document_id,
+						layer_path,
+						node_path,
+						hostname: preferences.imaginate_server_hostname.clone(),
+					}
+					.into(),
+				);
 			}
 			NudgeSelectedLayers { delta_x, delta_y } => {
 				self.backup(responses);
@@ -721,11 +704,6 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 
 				// Revoke the old blob URL
 				match &layer.data {
-					LayerDataType::Imaginate(imaginate) => {
-						if let Some(url) = &imaginate.blob_url {
-							responses.push_back(FrontendMessage::TriggerRevokeBlobUrl { url: url.clone() }.into());
-						}
-					}
 					LayerDataType::NodeGraphFrame(node_graph_frame) => {
 						if let Some(url) = &node_graph_frame.blob_url {
 							responses.push_back(FrontendMessage::TriggerRevokeBlobUrl { url: url.clone() }.into());
@@ -934,96 +912,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 }
 
 impl DocumentMessageHandler {
-	pub fn call_imaginate(&mut self, document_id: u64, preferences: &PreferencesMessageHandler, persistent_data: &PersistentData) -> Option<Message> {
-		let layer_path = {
-			let mut selected_imaginate_layers = self.selected_layers_with_type(LayerDataTypeDiscriminant::Imaginate);
-
-			// Get what is hopefully the only selected Imaginate layer
-			match selected_imaginate_layers.next() {
-				// Continue only if there are no additional Imaginate layers also selected
-				Some(layer_path) if selected_imaginate_layers.next().is_none() => layer_path.to_owned(),
-				_ => return None,
-			}
-		};
-
-		// Prepare the Imaginate parameters and base image
-
-		let transform = self.graphene_document.root.transform.inverse() * self.graphene_document.multiply_transforms(&layer_path).unwrap();
-		let layer = self.graphene_document.layer(&layer_path).unwrap();
-		let imaginate_layer = layer.as_imaginate().unwrap();
-
-		let parameters = ImaginateGenerationParameters {
-			seed: imaginate_layer.seed,
-			samples: imaginate_layer.samples,
-			sampling_method: imaginate_layer.sampling_method.api_value().to_string(),
-			denoising_strength: imaginate_layer.use_img2img.then_some(imaginate_layer.denoising_strength),
-			cfg_scale: imaginate_layer.cfg_scale,
-			prompt: imaginate_layer.prompt.clone(),
-			negative_prompt: imaginate_layer.negative_prompt.clone(),
-			resolution: pick_layer_safe_imaginate_resolution(layer, &persistent_data.font_cache),
-			restore_faces: imaginate_layer.restore_faces,
-			tiling: imaginate_layer.tiling,
-		};
-		let mask_paint_mode = imaginate_layer.mask_paint_mode;
-		let mask_blur_px = imaginate_layer.mask_blur_px;
-		let mask_fill_content = imaginate_layer.mask_fill_content;
-		let (base_image, mask_image) = if imaginate_layer.use_img2img {
-			let mask = imaginate_layer.mask_layer_ref.clone();
-
-			// Calculate the size of the region to be exported
-			let size = DVec2::new(transform.transform_vector2(DVec2::new(1., 0.)).length(), transform.transform_vector2(DVec2::new(0., 1.)).length());
-
-			let old_transforms = self.remove_document_transform();
-			let svg = self.render_document(size, transform.inverse(), persistent_data, DocumentRenderMode::OnlyBelowLayerInFolder(&layer_path));
-
-			let mask_is_some = mask.is_some();
-			let mask_image = mask.and_then(|mask_layer_path| match self.graphene_document.layer(&mask_layer_path) {
-				Ok(_) => {
-					let svg = self.render_document(size, transform.inverse(), persistent_data, DocumentRenderMode::LayerCutout(&mask_layer_path, Color::WHITE));
-
-					Some(ImaginateBaseImage { svg, size })
-				}
-				Err(_) => None,
-			});
-
-			if mask_is_some && mask_image.is_none() {
-				return Some(
-					DialogMessage::DisplayDialogError {
-						title: "Masking layer is missing".into(),
-						description: "
-							It may have been deleted or moved. Please drag a new layer reference\n\
-							into the 'Masking Layer' parameter input, then generate again."
-							.trim()
-							.into(),
-					}
-					.into(),
-				);
-			}
-
-			self.restore_document_transform(old_transforms);
-			(Some(ImaginateBaseImage { svg, size }), mask_image)
-		} else {
-			(None, None)
-		};
-
-		Some(
-			FrontendMessage::TriggerImaginateGenerate {
-				parameters,
-				base_image,
-				mask_image,
-				mask_paint_mode,
-				mask_blur_px,
-				mask_fill_content,
-				hostname: preferences.imaginate_server_hostname.clone(),
-				refresh_frequency: preferences.imaginate_refresh_frequency,
-				document_id,
-				layer_path,
-			}
-			.into(),
-		)
-	}
-
-	pub fn call_node_graph_frame(&mut self, document_id: u64, _preferences: &PreferencesMessageHandler, persistent_data: &PersistentData) -> Option<Message> {
+	pub fn call_node_graph_frame(&mut self, document_id: u64, _preferences: &PreferencesMessageHandler, persistent_data: &PersistentData, imaginate_node: Option<Vec<NodeId>>) -> Option<Message> {
 		let layer_path = {
 			let mut selected_nodegraph_layers = self.selected_layers_with_type(LayerDataTypeDiscriminant::NodeGraphFrame);
 
@@ -1046,11 +935,20 @@ impl DocumentMessageHandler {
 		let svg = self.render_document(size, transform.inverse(), persistent_data, DocumentRenderMode::OnlyBelowLayerInFolder(&layer_path));
 		self.restore_document_transform(old_transforms);
 
-		Some(FrontendMessage::TriggerNodeGraphFrameGenerate { document_id, layer_path, svg, size }.into())
+		Some(
+			FrontendMessage::TriggerNodeGraphFrameGenerate {
+				document_id,
+				layer_path,
+				svg,
+				size,
+				imaginate_node,
+			}
+			.into(),
+		)
 	}
 
 	/// Remove the artwork and artboard pan/tilt/zoom to render it without the user's viewport navigation, and save it to be restored at the end
-	fn remove_document_transform(&mut self) -> [DAffine2; 2] {
+	pub(crate) fn remove_document_transform(&mut self) -> [DAffine2; 2] {
 		let old_artwork_transform = self.graphene_document.root.transform;
 		self.graphene_document.root.transform = DAffine2::IDENTITY;
 		GrapheneDocument::mark_children_as_dirty(&mut self.graphene_document.root);
@@ -1063,7 +961,7 @@ impl DocumentMessageHandler {
 	}
 
 	/// Transform the artwork and artboard back to their original scales
-	fn restore_document_transform(&mut self, [old_artwork_transform, old_artboard_transform]: [DAffine2; 2]) {
+	pub(crate) fn restore_document_transform(&mut self, [old_artwork_transform, old_artboard_transform]: [DAffine2; 2]) {
 		self.graphene_document.root.transform = old_artwork_transform;
 		GrapheneDocument::mark_children_as_dirty(&mut self.graphene_document.root);
 
@@ -1568,15 +1466,6 @@ impl DocumentMessageHandler {
 					image_data: image.image_data.clone(),
 					mime: image.mime.clone(),
 				}),
-				LayerDataType::Imaginate(imaginate) => {
-					if let Some(data) = &imaginate.image_data {
-						image_data.push(FrontendImageData {
-							path: path.clone(),
-							image_data: data.image_data.clone(),
-							mime: imaginate.mime.clone(),
-						});
-					}
-				}
 				LayerDataType::NodeGraphFrame(node_graph_frame) => {
 					if let Some(data) = &node_graph_frame.image_data {
 						image_data.push(FrontendImageData {

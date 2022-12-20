@@ -1,6 +1,7 @@
 use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
 use crate::messages::layout::utility_types::widgets::button_widgets::BreadcrumbTrailButtons;
 use crate::messages::prelude::*;
+
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, DocumentNodeMetadata, NodeId, NodeInput, NodeNetwork};
 use graphene::document::Document;
@@ -9,6 +10,7 @@ use graphene::layers::nodegraph_layer::NodeGraphFrameLayer;
 
 mod document_node_types;
 mod node_properties;
+pub use self::document_node_types::*;
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum FrontendGraphDataType {
@@ -19,30 +21,28 @@ pub enum FrontendGraphDataType {
 	Raster,
 	#[serde(rename = "color")]
 	Color,
-	#[serde(rename = "text")]
+	#[serde(rename = "number")]
 	Text,
 	#[serde(rename = "vector")]
 	Subpath,
 	#[serde(rename = "number")]
 	Number,
-	#[serde(rename = "boolean")]
+	#[serde(rename = "number")]
 	Boolean,
-	#[serde(rename = "string")]
-	String,
 	#[serde(rename = "vec2")]
 	Vector,
 }
 impl FrontendGraphDataType {
 	pub const fn with_tagged_value(value: &TaggedValue) -> Self {
 		match value {
-			TaggedValue::None => Self::General,
-			TaggedValue::String(_) => Self::String,
+			TaggedValue::String(_) => Self::Text,
 			TaggedValue::F32(_) | TaggedValue::F64(_) | TaggedValue::U32(_) => Self::Number,
 			TaggedValue::Bool(_) => Self::Boolean,
 			TaggedValue::DVec2(_) => Self::Vector,
 			TaggedValue::Image(_) => Self::Raster,
 			TaggedValue::Color(_) => Self::Color,
 			TaggedValue::RcSubpath(_) | TaggedValue::Subpath(_) => Self::Subpath,
+			_ => Self::General,
 		}
 	}
 }
@@ -157,7 +157,7 @@ impl NodeGraphMessageHandler {
 		);
 	}
 
-	pub fn collate_properties(&self, node_graph_frame: &NodeGraphFrameLayer) -> Vec<LayoutGroup> {
+	pub fn collate_properties(&self, node_graph_frame: &NodeGraphFrameLayer, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 		let mut network = &node_graph_frame.network;
 		for segement in &self.nested_path {
 			network = network.nodes.get(segement).and_then(|node| node.implementation.get_network()).unwrap();
@@ -169,7 +169,7 @@ impl NodeGraphMessageHandler {
 				continue;
 			};
 
-			section.push(node_properties::generate_node_properties(document_node, *node_id));
+			section.push(node_properties::generate_node_properties(document_node, *node_id, context));
 		}
 
 		section
@@ -177,7 +177,6 @@ impl NodeGraphMessageHandler {
 
 	fn send_graph(network: &NodeNetwork, responses: &mut VecDeque<Message>) {
 		responses.push_back(PropertiesPanelMessage::ResendActiveProperties.into());
-		info!("Opening node graph with nodes {:?}", network.nodes);
 
 		// List of links in format (link_start, link_end, link_end_input_index)
 		let links = network
@@ -227,7 +226,7 @@ impl NodeGraphMessageHandler {
 				position: node.metadata.position,
 			})
 		}
-		log::debug!("Nodes:\n{:#?}\n\nFrontend Nodes:\n{:#?}\n\nLinks:\n{:#?}", network.nodes, nodes, links);
+		log::debug!("Frontend Nodes:\n{:#?}\n\nLinks:\n{:#?}", nodes, links);
 		responses.push_back(FrontendMessage::UpdateNodeGraph { nodes, links }.into());
 	}
 
@@ -288,7 +287,6 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 		match message {
 			NodeGraphMessage::CloseNodeGraph => {
 				if let Some(_old_layer_path) = self.layer_path.take() {
-					info!("Closing node graph");
 					responses.push_back(FrontendMessage::UpdateNodeGraphVisibility { visible: false }.into());
 					responses.push_back(PropertiesPanelMessage::ResendActiveProperties.into());
 					// TODO: Close UI and clean up old node graph
@@ -315,7 +313,6 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 				};
 				input_node.inputs[actual_index] = NodeInput::Node(output_node);
 
-				info!("Inputs: {:?}", input_node.inputs);
 				Self::send_graph(network, responses);
 				responses.push_back(DocumentMessage::NodeGraphFrameGenerate.into());
 			}
@@ -465,6 +462,36 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 			NodeGraphMessage::SetInputValue { node, input_index, value } => {
 				if let Some(network) = self.get_active_network_mut(document) {
 					if let Some(node) = network.nodes.get_mut(&node) {
+						// Extend number of inputs if not already large enough
+						if input_index >= node.inputs.len() {
+							node.inputs.extend(((node.inputs.len() - 1)..input_index).map(|_| NodeInput::Network));
+						}
+						node.inputs[input_index] = NodeInput::Value { tagged_value: value, exposed: false };
+						responses.push_back(DocumentMessage::NodeGraphFrameGenerate.into());
+					}
+				}
+			}
+			NodeGraphMessage::SetQualifiedInputValue {
+				layer_path,
+				node_path,
+				input_index,
+				value,
+			} => {
+				let mut network = document.layer_mut(&layer_path).ok().and_then(|layer| match &mut layer.data {
+					LayerDataType::NodeGraphFrame(n) => Some(&mut n.network),
+					_ => None,
+				});
+
+				let Some((node_id, node_path)) = node_path.split_last() else {
+					error!("Node path is empty");
+					return
+				};
+				for segement in node_path {
+					network = network.and_then(|network| network.nodes.get_mut(segement)).and_then(|node| node.implementation.get_network_mut());
+				}
+
+				if let Some(network) = network {
+					if let Some(node) = network.nodes.get_mut(node_id) {
 						// Extend number of inputs if not already large enough
 						if input_index >= node.inputs.len() {
 							node.inputs.extend(((node.inputs.len() - 1)..input_index).map(|_| NodeInput::Network));

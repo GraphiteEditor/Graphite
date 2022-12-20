@@ -77,8 +77,6 @@
 
 <style lang="scss">
 .layer-tree {
-	min-height: 0;
-
 	// Options bar
 	.options-bar {
 		height: 32px;

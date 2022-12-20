@@ -1,6 +1,5 @@
 use crate::boolean_ops::BooleanOperation as BooleanOperationType;
 use crate::layers::blend_mode::BlendMode;
-use crate::layers::imaginate_layer::{ImaginateMaskFillContent, ImaginateMaskPaintMode, ImaginateSamplingMethod, ImaginateStatus};
 use crate::layers::layer_info::Layer;
 use crate::layers::style::{self, Stroke};
 use crate::LayerId;
@@ -53,15 +52,11 @@ pub enum Operation {
 		mime: String,
 		image_data: Vec<u8>,
 	},
-	AddImaginateFrame {
-		path: Vec<LayerId>,
-		insert_index: isize,
-		transform: [f64; 6],
-	},
 	AddNodeGraphFrame {
 		path: Vec<LayerId>,
 		insert_index: isize,
 		transform: [f64; 6],
+		network: graph_craft::document::NodeNetwork,
 	},
 	SetNodeGraphFrameImageData {
 		layer_path: Vec<LayerId>,
@@ -78,74 +73,6 @@ pub enum Operation {
 	/// **Be sure to call `FrontendMessage::TriggerRevokeBlobUrl` together with this.**
 	ClearBlobURL {
 		path: Vec<LayerId>,
-	},
-	ImaginateSetGeneratingStatus {
-		path: Vec<LayerId>,
-		percent: Option<f64>,
-		status: ImaginateStatus,
-	},
-	ImaginateSetImageData {
-		layer_path: Vec<LayerId>,
-		image_data: Vec<u8>,
-	},
-	ImaginateSetNegativePrompt {
-		path: Vec<LayerId>,
-		negative_prompt: String,
-	},
-	ImaginateSetPrompt {
-		path: Vec<LayerId>,
-		prompt: String,
-	},
-	ImaginateSetMaskBlurPx {
-		path: Vec<LayerId>,
-		mask_blur_px: u32,
-	},
-	ImaginateSetMaskFillContent {
-		path: Vec<LayerId>,
-		mode: ImaginateMaskFillContent,
-	},
-	ImaginateSetMaskPaintMode {
-		path: Vec<LayerId>,
-		paint: ImaginateMaskPaintMode,
-	},
-	ImaginateSetCfgScale {
-		path: Vec<LayerId>,
-		cfg_scale: f64,
-	},
-	ImaginateSetSamples {
-		path: Vec<LayerId>,
-		samples: u32,
-	},
-	SetImaginateSamplingMethod {
-		path: Vec<LayerId>,
-		method: ImaginateSamplingMethod,
-	},
-	ImaginateSetScaleFromResolution {
-		path: Vec<LayerId>,
-	},
-	ImaginateSetSeed {
-		path: Vec<LayerId>,
-		seed: u64,
-	},
-	ImaginateSetDenoisingStrength {
-		path: Vec<LayerId>,
-		denoising_strength: f64,
-	},
-	ImaginateSetLayerPath {
-		path: Vec<LayerId>,
-		layer_path: Option<Vec<LayerId>>,
-	},
-	ImaginateSetUseImg2Img {
-		path: Vec<LayerId>,
-		use_img2img: bool,
-	},
-	ImaginateSetRestoreFaces {
-		path: Vec<LayerId>,
-		restore_faces: bool,
-	},
-	ImaginateSetTiling {
-		path: Vec<LayerId>,
-		tiling: bool,
 	},
 	SetPivot {
 		layer_path: Vec<LayerId>,
@@ -294,6 +221,14 @@ pub enum Operation {
 		path: Vec<LayerId>,
 		transform: [f64; 6],
 		scope: [f64; 6],
+	},
+	TransformLayerScaleAroundPivot {
+		path: Vec<LayerId>,
+		scale_factor: (f64, f64),
+	},
+	SetLayerScaleAroundPivot {
+		path: Vec<LayerId>,
+		new_scale: (f64, f64),
 	},
 	SetLayerTransform {
 		path: Vec<LayerId>,

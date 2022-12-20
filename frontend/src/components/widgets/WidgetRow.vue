@@ -76,6 +76,7 @@
 .widget-row {
 	flex: 0 0 auto;
 	display: flex;
+	overflow: hidden;
 	min-height: 32px;
 
 	> * {

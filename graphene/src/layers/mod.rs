@@ -22,8 +22,6 @@ pub mod blend_mode;
 pub mod folder_layer;
 /// Contains the [ImageLayer](image_layer::ImageLayer) type that contains a bitmap image.
 pub mod image_layer;
-/// Contains the [ImaginateLayer](imaginate_layer::ImaginateLayer) type that contains a bitmap image generated based on a prompt and optionally the layers beneath it.
-pub mod imaginate_layer;
 /// Contains the base [Layer](layer_info::Layer) type, an abstraction over the different types of layers.
 pub mod layer_info;
 /// Contains the [NodegraphLayer](nodegraph_layer::NodegraphLayer) type that contains a node graph.

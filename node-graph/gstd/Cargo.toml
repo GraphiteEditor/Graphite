@@ -9,9 +9,8 @@ license = "MIT OR Apache-2.0"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-derive = ["graph-proc-macros"]
 memoization = ["once_cell"]
-default = ["derive", "memoization"]
+default = ["memoization"]
 gpu = ["graph-craft/gpu", "graphene-core/gpu"]
 
 
@@ -19,7 +18,6 @@ gpu = ["graph-craft/gpu", "graphene-core/gpu"]
 graphene-core = {path = "../gcore", features = ["async", "std" ], default-features = false}
 borrow_stack = {path = "../borrow_stack"}
 dyn-any = {path = "../../libraries/dyn-any", features = ["derive"]}
-graph-proc-macros = {path = "../proc-macro", optional = true}
 graph-craft = {path = "../graph-craft"}
 bytemuck = {version = "1.8"  }
 tempfile = "3"
@@ -37,6 +35,7 @@ kurbo = { git = "https://github.com/linebender/kurbo.git", features = [
 	"serde",
 ] }
 glam = { version = "0.22", features = ["serde"] }
+node-macro = { path="../node-macro" }
 
 [dependencies.serde]
 version = "1.0"

@@ -83,6 +83,13 @@ body,
 	user-select: none;
 }
 
+// The default value of `auto` from the CSS spec is a footgun with flexbox layouts:
+// https://stackoverflow.com/questions/36247140/why-dont-flex-items-shrink-past-content-size
+* {
+	min-width: 0;
+	min-height: 0;
+}
+
 html,
 body,
 input,
