@@ -168,7 +168,6 @@
 		background: var(--color-3-darkgray);
 		flex: 1 1 100%;
 		flex-direction: column;
-		min-height: 0;
 
 		.empty-panel {
 			background: var(--color-2-mildblack);

@@ -1,6 +1,5 @@
 use super::utility_functions::{register_artboard_layer_properties, register_artwork_layer_properties};
 use super::utility_types::PropertiesPanelMessageHandlerData;
-use crate::application::generate_uuid;
 use crate::messages::layout::utility_types::layout_widget::{Layout, WidgetLayout};
 use crate::messages::layout::utility_types::misc::LayoutTarget;
 use crate::messages::portfolio::document::properties_panel::utility_functions::apply_transform_operation;
@@ -156,78 +155,6 @@ impl<'a> MessageHandler<PropertiesPanelMessage, (&PersistentData, PropertiesPane
 				}
 				.into(),
 			),
-			SetImaginatePrompt { prompt } => {
-				let (path, _) = self.active_selection.clone().expect("Received update for properties panel with no active layer");
-				responses.push_back(Operation::ImaginateSetPrompt { path, prompt }.into());
-			}
-			SetImaginateNegativePrompt { negative_prompt } => {
-				let (path, _) = self.active_selection.clone().expect("Received update for properties panel with no active layer");
-				responses.push_back(Operation::ImaginateSetNegativePrompt { path, negative_prompt }.into());
-			}
-			SetImaginateDenoisingStrength { denoising_strength } => {
-				let (path, _) = self.active_selection.clone().expect("Received update for properties panel with no active layer");
-				responses.push_back(Operation::ImaginateSetDenoisingStrength { path, denoising_strength }.into());
-			}
-			SetImaginateLayerPath { layer_path } => {
-				let (path, _) = self.active_selection.clone().expect("Received update for properties panel with no active layer");
-				responses.push_back(Operation::ImaginateSetLayerPath { path, layer_path }.into());
-			}
-			SetImaginateMaskBlurPx { mask_blur_px } => {
-				let (path, _) = self.active_selection.clone().expect("Received update for properties panel with no active layer");
-				responses.push_back(Operation::ImaginateSetMaskBlurPx { path, mask_blur_px }.into());
-			}
-			SetImaginateMaskFillContent { mode } => {
-				let (path, _) = self.active_selection.clone().expect("Received update for properties panel with no active layer");
-				responses.push_back(Operation::ImaginateSetMaskFillContent { path, mode }.into());
-			}
-			SetImaginateMaskPaintMode { paint } => {
-				let (path, _) = self.active_selection.clone().expect("Received update for properties panel with no active layer");
-				responses.push_back(Operation::ImaginateSetMaskPaintMode { path, paint }.into());
-			}
-			SetImaginateSamples { samples } => {
-				let (path, _) = self.active_selection.clone().expect("Received update for properties panel with no active layer");
-				responses.push_back(Operation::ImaginateSetSamples { path, samples }.into());
-			}
-			SetImaginateSamplingMethod { method } => {
-				let (path, _) = self.active_selection.clone().expect("Received update for properties panel with no active layer");
-				responses.push_back(Operation::SetImaginateSamplingMethod { path, method }.into());
-			}
-			SetImaginateScaleFromResolution => {
-				let (path, _) = self.active_selection.clone().expect("Received update for properties panel with no active layer");
-
-				responses.push_back(Operation::ImaginateSetScaleFromResolution { path }.into());
-			}
-			SetImaginateSeed { seed } => {
-				let (path, _) = self.active_selection.clone().expect("Received update for properties panel with no active layer");
-				responses.push_back(Operation::ImaginateSetSeed { path, seed }.into());
-			}
-			SetImaginateSeedRandomize => {
-				let (path, _) = self.active_selection.clone().expect("Received update for properties panel with no active layer");
-				let seed = generate_uuid();
-				responses.push_back(Operation::ImaginateSetSeed { path, seed }.into());
-			}
-			SetImaginateSeedRandomizeAndGenerate => {
-				let (path, _) = self.active_selection.clone().expect("Received update for properties panel with no active layer");
-				let seed = generate_uuid();
-				responses.push_back(Operation::ImaginateSetSeed { path, seed }.into());
-				responses.push_back(DocumentMessage::ImaginateGenerate.into());
-			}
-			SetImaginateCfgScale { cfg_scale } => {
-				let (path, _) = self.active_selection.clone().expect("Received update for properties panel with no active layer");
-				responses.push_back(Operation::ImaginateSetCfgScale { path, cfg_scale }.into());
-			}
-			SetImaginateUseImg2Img { use_img2img } => {
-				let (path, _) = self.active_selection.clone().expect("Received update for properties panel with no active layer");
-				responses.push_back(Operation::ImaginateSetUseImg2Img { path, use_img2img }.into());
-			}
-			SetImaginateRestoreFaces { restore_faces } => {
-				let (path, _) = self.active_selection.clone().expect("Received update for properties panel with no active layer");
-				responses.push_back(Operation::ImaginateSetRestoreFaces { path, restore_faces }.into());
-			}
-			SetImaginateTiling { tiling } => {
-				let (path, _) = self.active_selection.clone().expect("Received update for properties panel with no active layer");
-				responses.push_back(Operation::ImaginateSetTiling { path, tiling }.into());
-			}
 		}
 	}
 

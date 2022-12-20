@@ -3,6 +3,7 @@ use crate::messages::portfolio::document::utility_types::layer_panel::LayerMetad
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis};
 use crate::messages::prelude::*;
 
+use graph_craft::document::NodeId;
 use graphene::boolean_ops::BooleanOperation as BooleanOperationType;
 use graphene::layers::blend_mode::BlendMode;
 use graphene::layers::style::ViewMode;
@@ -78,8 +79,6 @@ pub enum DocumentMessage {
 	},
 	FrameClear,
 	GroupSelectedLayers,
-	ImaginateGenerate,
-	ImaginateTerminate,
 	LayerChanged {
 		affected_layer_path: Vec<LayerId>,
 	},
@@ -93,6 +92,16 @@ pub enum DocumentMessage {
 		delta: (f64, f64),
 	},
 	NodeGraphFrameGenerate,
+	NodeGraphFrameImaginate {
+		imaginate_node: Vec<NodeId>,
+	},
+	NodeGraphFrameImaginateRandom {
+		imaginate_node: Vec<NodeId>,
+	},
+	NodeGraphFrameImaginateTerminate {
+		layer_path: Vec<LayerId>,
+		node_path: Vec<NodeId>,
+	},
 	NudgeSelectedLayers {
 		delta_x: f64,
 		delta_y: f64,

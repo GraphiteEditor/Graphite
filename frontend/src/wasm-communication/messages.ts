@@ -519,8 +519,8 @@ export class TriggerImaginateGenerate extends JsMessage {
 	@Type(() => ImaginateBaseImage)
 	readonly baseImage!: ImaginateBaseImage | undefined;
 
-	@Type(() => ImaginateBaseImage)
-	readonly maskImage: ImaginateBaseImage | undefined;
+	@Type(() => ImaginateMaskImage)
+	readonly maskImage: ImaginateMaskImage | undefined;
 
 	readonly maskPaintMode!: string;
 
@@ -535,11 +535,22 @@ export class TriggerImaginateGenerate extends JsMessage {
 	readonly documentId!: bigint;
 
 	readonly layerPath!: BigUint64Array;
+
+	readonly nodePath!: BigUint64Array;
+}
+
+export class ImaginateMaskImage {
+	readonly svg!: string;
+
+	readonly size!: [number, number];
 }
 
 export class ImaginateBaseImage {
-	readonly svg!: string;
+	readonly mime!: string;
 
+	readonly imageData!: Uint8Array;
+
+	@TupleToVec2
 	readonly size!: [number, number];
 }
 
@@ -571,6 +582,8 @@ export class TriggerImaginateTerminate extends JsMessage {
 
 	readonly layerPath!: BigUint64Array;
 
+	readonly nodePath!: BigUint64Array;
+
 	readonly hostname!: string;
 }
 
@@ -582,6 +595,8 @@ export class TriggerNodeGraphFrameGenerate extends JsMessage {
 	readonly svg!: string;
 
 	readonly size!: [number, number];
+
+	readonly imaginateNode!: BigUint64Array | undefined;
 }
 
 export class TriggerRefreshBoundsOfViewports extends JsMessage {}

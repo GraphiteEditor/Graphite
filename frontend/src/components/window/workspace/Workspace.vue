@@ -1,8 +1,8 @@
 <template>
 	<LayoutRow class="workspace" data-workspace>
-		<LayoutRow class="workspace-grid-subdivision">
-			<LayoutCol class="workspace-grid-subdivision">
-				<LayoutRow class="workspace-grid-subdivision">
+		<LayoutRow class="workspace-grid-subdivision" :style="{ 'flex-grow': panelSizes['root'] }" data-subdivision-name="root">
+			<LayoutCol class="workspace-grid-subdivision" :style="{ 'flex-grow': panelSizes['content'] }" data-subdivision-name="content">
+				<LayoutRow class="workspace-grid-subdivision" :style="{ 'flex-grow': panelSizes['document'] }" data-subdivision-name="document">
 					<Panel
 						:panelType="portfolio.state.documents.length > 0 ? 'Document' : undefined"
 						:tabCloseButtons="true"
@@ -15,17 +15,17 @@
 					/>
 				</LayoutRow>
 				<LayoutRow class="workspace-grid-resize-gutter" data-gutter-vertical @pointerdown="(e: PointerEvent) => resizePanel(e)" v-if="nodeGraphVisible"></LayoutRow>
-				<LayoutRow class="workspace-grid-subdivision" v-if="nodeGraphVisible">
+				<LayoutRow class="workspace-grid-subdivision" v-if="nodeGraphVisible" :style="{ 'flex-grow': panelSizes['graph'] }" data-subdivision-name="graph">
 					<Panel :panelType="'NodeGraph'" :tabLabels="[{ name: 'Node Graph' }]" :tabActiveIndex="0" />
 				</LayoutRow>
 			</LayoutCol>
 			<LayoutCol class="workspace-grid-resize-gutter" data-gutter-horizontal @pointerdown="(e: PointerEvent) => resizePanel(e)"></LayoutCol>
-			<LayoutCol class="workspace-grid-subdivision" style="flex-grow: 0.2">
-				<LayoutRow class="workspace-grid-subdivision" style="flex-grow: 402">
+			<LayoutCol class="workspace-grid-subdivision" :style="{ 'flex-grow': panelSizes['details'] }" data-subdivision-name="details">
+				<LayoutRow class="workspace-grid-subdivision" :style="{ 'flex-grow': panelSizes['properties'] }" data-subdivision-name="properties">
 					<Panel :panelType="'Properties'" :tabLabels="[{ name: 'Properties' }]" :tabActiveIndex="0" />
 				</LayoutRow>
 				<LayoutRow class="workspace-grid-resize-gutter" data-gutter-vertical @pointerdown="(e: PointerEvent) => resizePanel(e)"></LayoutRow>
-				<LayoutRow class="workspace-grid-subdivision" style="flex-grow: 590">
+				<LayoutRow class="workspace-grid-subdivision" :style="{ 'flex-grow': panelSizes['layers'] }" data-subdivision-name="layers">
 					<Panel :panelType="'LayerTree'" :tabLabels="[{ name: 'Layer Tree' }]" :tabActiveIndex="0" />
 				</LayoutRow>
 			</LayoutCol>
@@ -72,9 +72,23 @@ import LayoutRow from "@/components/layout/LayoutRow.vue";
 import Panel from "@/components/window/workspace/Panel.vue";
 
 const MIN_PANEL_SIZE = 100;
+const PANEL_SIZES = {
+	/**/ root: 100,
+	/*   ├── */ content: 80,
+	/*   │      ├── */ document: 60,
+	/*   │      └── */ graph: 40,
+	/*   └── */ details: 20,
+	/*          ├── */ properties: 45,
+	/*          └── */ layers: 55,
+};
 
 export default defineComponent({
 	inject: ["workspace", "portfolio", "dialog", "editor"],
+	data() {
+		return {
+			panelSizes: PANEL_SIZES,
+		};
+	},
 	computed: {
 		activeDocumentIndex() {
 			return this.portfolio.state.activeDocumentIndex;
@@ -97,16 +111,26 @@ export default defineComponent({
 		resizePanel(event: PointerEvent) {
 			const gutter = (event.target || undefined) as HTMLDivElement | undefined;
 			const nextSibling = (gutter?.nextElementSibling || undefined) as HTMLDivElement | undefined;
-			const previousSibling = (gutter?.previousElementSibling || undefined) as HTMLDivElement | undefined;
+			const prevSibling = (gutter?.previousElementSibling || undefined) as HTMLDivElement | undefined;
+			const parentElement = (gutter?.parentElement || undefined) as HTMLDivElement | undefined;
 
-			if (!gutter || !nextSibling || !previousSibling) return;
+			const nextSiblingName = (nextSibling?.getAttribute("data-subdivision-name") || undefined) as keyof typeof PANEL_SIZES;
+			const prevSiblingName = (prevSibling?.getAttribute("data-subdivision-name") || undefined) as keyof typeof PANEL_SIZES;
+
+			if (!gutter || !nextSibling || !prevSibling || !parentElement || !nextSiblingName || !prevSiblingName) return;
 
 			// Are we resizing horizontally?
 			const isHorizontal = gutter.getAttribute("data-gutter-horizontal") !== null;
 
-			// Get the current size in px of the panels being resized
+			// Get the current size in px of the panels being resized and the gutter
+			const gutterSize = isHorizontal ? gutter.getBoundingClientRect().width : gutter.getBoundingClientRect().height;
 			const nextSiblingSize = isHorizontal ? nextSibling.getBoundingClientRect().width : nextSibling.getBoundingClientRect().height;
-			const previousSiblingSize = isHorizontal ? previousSibling.getBoundingClientRect().width : previousSibling.getBoundingClientRect().height;
+			const prevSiblingSize = isHorizontal ? prevSibling.getBoundingClientRect().width : prevSibling.getBoundingClientRect().height;
+			const parentElementSize = isHorizontal ? parentElement.getBoundingClientRect().width : parentElement.getBoundingClientRect().height;
+
+			// Measure the resizing panels as a percentage of all sibling panels
+			const totalResizingSpaceOccupied = gutterSize + nextSiblingSize + prevSiblingSize;
+			const proportionBeingResized = totalResizingSpaceOccupied / parentElementSize;
 
 			// Prevent cursor flicker as mouse temporarily leaves the gutter
 			gutter.setPointerCapture(event.pointerId);
@@ -118,10 +142,10 @@ export default defineComponent({
 				let mouseDelta = mouseStart - mouseCurrent;
 
 				mouseDelta = Math.max(nextSiblingSize + mouseDelta, MIN_PANEL_SIZE) - nextSiblingSize;
-				mouseDelta = previousSiblingSize - Math.max(previousSiblingSize - mouseDelta, MIN_PANEL_SIZE);
+				mouseDelta = prevSiblingSize - Math.max(prevSiblingSize - mouseDelta, MIN_PANEL_SIZE);
 
-				nextSibling.style.flexGrow = (nextSiblingSize + mouseDelta).toString();
-				previousSibling.style.flexGrow = (previousSiblingSize - mouseDelta).toString();
+				this.panelSizes[nextSiblingName] = ((nextSiblingSize + mouseDelta) / totalResizingSpaceOccupied) * proportionBeingResized * 100;
+				this.panelSizes[prevSiblingName] = ((prevSiblingSize - mouseDelta) / totalResizingSpaceOccupied) * proportionBeingResized * 100;
 
 				window.dispatchEvent(new CustomEvent("resize"));
 			};

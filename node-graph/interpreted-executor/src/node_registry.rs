@@ -190,7 +190,6 @@ static NODE_REGISTRY: &[(NodeIdentifier, NodeConstructor)] = &[
 		})
 	}),
 	(NodeIdentifier::new("graphene_core::raster::BrightenColorNode", &[concrete!("&TypeErasedNode")]), |proto_node, stack| {
-		info!("proto node {:?}", proto_node);
 		stack.push_fn(|nodes| {
 			let ConstructionArgs::Nodes(construction_nodes) = proto_node.construction_args else { unreachable!("Brighten Color Node constructed with out brightness input node") };
 			let value_node = nodes.get(construction_nodes[0] as usize).unwrap();
@@ -272,7 +271,6 @@ static NODE_REGISTRY: &[(NodeIdentifier, NodeConstructor)] = &[
 	(NodeIdentifier::new("graphene_std::raster::MapImageNode", &[]), |proto_node, stack| {
 		if let ConstructionArgs::Nodes(operation_node_id) = proto_node.construction_args {
 			stack.push_fn(move |nodes| {
-				info!("Map image Depending upon id {:?}", operation_node_id);
 				let operation_node = nodes.get(operation_node_id[0] as usize).unwrap();
 				let operation_node: DowncastBothNode<_, Color, Color> = DowncastBothNode::new(operation_node);
 				let map_node = DynAnyNode::new(graphene_std::raster::MapImageNode::new(operation_node));
@@ -394,6 +392,21 @@ static NODE_REGISTRY: &[(NodeIdentifier, NodeConstructor)] = &[
 			let ConstructionArgs::Nodes(construction_nodes) = proto_node.construction_args else { unreachable!("ExposureNode constructed without inputs") };
 			let value: DowncastBothNode<_, (), f64> = DowncastBothNode::new(nodes.get(construction_nodes[0] as usize).unwrap());
 			let node = DynAnyNode::new(graphene_std::raster::ExposureNode::new(value));
+
+			if let ProtoNodeInput::Node(node_id) = proto_node.input {
+				let pre_node = nodes.get(node_id as usize).unwrap();
+				(pre_node).then(node).into_type_erased()
+			} else {
+				node.into_type_erased()
+			}
+		})
+	}),
+	(NodeIdentifier::new("graphene_std::raster::ImaginateNode", &[concrete!("&TypeErasedNode")]), |proto_node, stack| {
+		stack.push_fn(move |nodes| {
+			let ConstructionArgs::Nodes(construction_nodes) = proto_node.construction_args else { unreachable!("ImaginateNode constructed without inputs") };
+			let value: DowncastBothNode<_, (), Option<std::sync::Arc<graphene_core::raster::Image>>> = DowncastBothNode::new(nodes.get(construction_nodes[15] as usize).unwrap());
+
+			let node = DynAnyNode::new(graphene_std::raster::ImaginateNode::new(value));
 
 			if let ProtoNodeInput::Node(node_id) = proto_node.input {
 				let pre_node = nodes.get(node_id as usize).unwrap();

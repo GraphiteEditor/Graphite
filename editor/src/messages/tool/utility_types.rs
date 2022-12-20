@@ -315,8 +315,8 @@ fn list_tools_in_groups() -> Vec<Vec<ToolAvailability>> {
 		],
 		vec![
 			// Raster tool group
-			ToolAvailability::Available(Box::<imaginate_tool::ImaginateTool>::default()),
 			ToolAvailability::Available(Box::<node_graph_frame_tool::NodeGraphFrameTool>::default()),
+			ToolAvailability::Available(Box::<imaginate_tool::ImaginateTool>::default()),
 			ToolAvailability::ComingSoon(ToolEntry {
 				tool_type: ToolType::Brush,
 				icon_name: "RasterBrushTool".into(),

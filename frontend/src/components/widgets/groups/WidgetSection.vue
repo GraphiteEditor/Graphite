@@ -96,12 +96,12 @@
 			}
 
 			> .text-label:first-of-type {
-				flex: 0 0 30%;
-				text-align: right;
+				flex: 0 0 25%;
+				margin-left: 16px;
 			}
 
 			> .parameter-expose-button ~ .text-label:first-of-type {
-				text-align: left;
+				margin-left: 0;
 			}
 
 			> .text-button {
