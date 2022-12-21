@@ -905,6 +905,7 @@ dependencies = [
 name = "dyn-any-derive"
 version = "0.2.1"
 dependencies = [
+ "dyn-any",
  "proc-macro2",
  "quote",
  "syn",

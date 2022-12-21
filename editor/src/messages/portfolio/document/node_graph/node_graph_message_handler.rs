@@ -157,22 +157,35 @@ impl NodeGraphMessageHandler {
 		);
 	}
 
-	pub fn collate_properties(&self, node_graph_frame: &NodeGraphFrameLayer, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	pub fn collate_properties(&self, node_graph_frame: &NodeGraphFrameLayer, context: &mut NodePropertiesContext, sections: &mut Vec<LayoutGroup>) {
 		let mut network = &node_graph_frame.network;
 		for segement in &self.nested_path {
 			network = network.nodes.get(segement).and_then(|node| node.implementation.get_network()).unwrap();
 		}
 
-		let mut section = Vec::new();
+		// If empty, show all nodes in the network starting with the output
+		if self.selected_nodes.is_empty() {
+			let mut stack = vec![network.output];
+			let mut nodes = Vec::new();
+			while let Some(node_id) = stack.pop() {
+				let Some(document_node) = network.nodes.get(&node_id) else {
+					continue;
+				};
+
+				stack.extend(document_node.inputs.iter().filter_map(|input| if let NodeInput::Node(ref_id) = input { Some(*ref_id) } else { None }));
+				nodes.push((document_node, node_id));
+			}
+			for &(document_node, node_id) in nodes.iter().rev() {
+				sections.push(node_properties::generate_node_properties(document_node, node_id, context));
+			}
+		}
 		for node_id in &self.selected_nodes {
 			let Some(document_node) = network.nodes.get(node_id) else {
 				continue;
 			};
 
-			section.push(node_properties::generate_node_properties(document_node, *node_id, context));
+			sections.push(node_properties::generate_node_properties(document_node, *node_id, context));
 		}
-
-		section
 	}
 
 	fn send_graph(network: &NodeNetwork, responses: &mut VecDeque<Message>) {
