@@ -7,152 +7,70 @@ type VectorData = Subpath;
 
 pub struct UnitCircleGenerator;
 
-impl Node<()> for UnitCircleGenerator {
-	type Output = VectorData;
-	fn eval(self, input: ()) -> Self::Output {
-		(&self).eval(input)
-	}
-}
-
-impl Node<()> for &UnitCircleGenerator {
-	type Output = VectorData;
-	fn eval(self, _input: ()) -> Self::Output {
-		Subpath::new_ellipse(DVec2::ZERO, DVec2::ONE)
-	}
+#[node_macro::node_fn(UnitCircleGenerator)]
+fn unit_circle(_input: ()) -> VectorData {
+	Subpath::new_ellipse(DVec2::ZERO, DVec2::ONE)
 }
 
 #[derive(Debug, Clone, Copy)]
 pub struct UnitSquareGenerator;
 
-impl Node<()> for UnitSquareGenerator {
-	type Output = VectorData;
-	fn eval(self, input: ()) -> Self::Output {
-		(&self).eval(input)
-	}
-}
-
-impl Node<()> for &UnitSquareGenerator {
-	type Output = VectorData;
-	fn eval(self, _input: ()) -> Self::Output {
-		Subpath::new_rect(DVec2::ZERO, DVec2::ONE)
-	}
+#[node_macro::node_fn(UnitSquareGenerator)]
+fn unit_square(_input: ()) -> VectorData {
+	Subpath::new_rect(DVec2::ZERO, DVec2::ONE)
 }
 
 // TODO: I removed the Arc requirement we shouuld think about when it makes sense to use its
 // vs making a generic value node
 #[derive(Debug, Clone)]
-pub struct PathGenerator(Subpath);
-
-impl Node<()> for PathGenerator {
-	type Output = VectorData;
-	fn eval(self, input: ()) -> Self::Output {
-		(&self).eval(input)
-	}
+pub struct PathGenerator<P> {
+	path_data: P,
 }
 
-impl Node<()> for &PathGenerator {
-	type Output = VectorData;
-	fn eval(self, _input: ()) -> Self::Output {
-		(self.0).clone()
-	}
+#[node_macro::node_fn(PathGenerator)]
+fn generate_path(_input: (), path_data: Subpath) -> VectorData {
+	path_data
 }
+
 use crate::raster::Image;
 
 #[derive(Debug, Clone, Copy)]
-pub struct BlitSubpath<N: Node<(), Output = Subpath>>(N);
-
-impl<N: Node<(), Output = Subpath>> Node<Image> for BlitSubpath<N> {
-	type Output = Image;
-	fn eval(self, input: Image) -> Self::Output {
-		let subpath = self.0.eval(());
-		log::info!("Blitting subpath {subpath:?}");
-		input
-	}
+pub struct BlitSubpath<P: Node<(), Output = Subpath>> {
+	path_data: P,
 }
 
-impl<N: Node<(), Output = Subpath> + Copy> Node<Image> for &BlitSubpath<N> {
-	type Output = Image;
-	fn eval(self, input: Image) -> Self::Output {
-		let subpath = self.0.eval(());
-		log::info!("Blitting subpath {subpath:?}");
-		input
-	}
-}
+#[node_macro::node_fn(BlitSubpath)]
+fn bilt_subpath(base_image: Image, path_data: Subpath) -> Image {
+	log::info!("Blitting subpath {path_data:#?}");
+	// TODO: Get forma to compile
+	/*use forma::prelude::*;
+	let composition = Composition::new();
+	let mut renderer = cpu::Renderer::new();
+	let mut path_builder = PathBuilder::new();
+	for path_segement in path_data.bezier_iter() {
+		let points = path_segement.internal.get_points().collect::<Vec<_>>();
+		match points.len() {
+			2 => path_builder.line_to(points[1].into()),
+			3 => path_builder.quad_to(points[1].into(), points[2].into()),
+			4 => path_builder.cubic_to(points[1].into(), points[2].into(), points[3].into()),
+		}
+	}*/
 
-impl<N: Node<(), Output = Subpath>> BlitSubpath<N> {
-	pub fn new(node: N) -> Self {
-		Self(node)
-	}
+	base_image
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct TransformSubpathNode<Translation, Rotation, Scale, Shear>
-where
-	Translation: Node<(), Output = DVec2>,
-	Rotation: Node<(), Output = f64>,
-	Scale: Node<(), Output = DVec2>,
-	Shear: Node<(), Output = DVec2>,
-{
-	translate_node: Translation,
-	rotate_node: Rotation,
-	scale_node: Scale,
-	shear_node: Shear,
+pub struct TransformSubpathNode<Translation, Rotation, Scale, Shear> {
+	translate: Translation,
+	rotate: Rotation,
+	scale: Scale,
+	shear: Shear,
 }
 
-impl<Translation, Rotation, Scale, Shear> TransformSubpathNode<Translation, Rotation, Scale, Shear>
-where
-	Translation: Node<(), Output = DVec2>,
-	Rotation: Node<(), Output = f64>,
-	Scale: Node<(), Output = DVec2>,
-	Shear: Node<(), Output = DVec2>,
-{
-	pub fn new(translate_node: Translation, rotate_node: Rotation, scale_node: Scale, shear_node: Shear) -> Self {
-		Self {
-			translate_node,
-			rotate_node,
-			scale_node,
-			shear_node,
-		}
-	}
-}
+#[node_macro::node_fn(TransformSubpathNode)]
+fn transform_subpath(mut subpath: Subpath, translate: DVec2, rotate: f64, scale: DVec2, shear: DVec2) -> VectorData {
+	let (sin, cos) = rotate.sin_cos();
 
-impl<Translation, Rotation, Scale, Shear> Node<Subpath> for TransformSubpathNode<Translation, Rotation, Scale, Shear>
-where
-	Translation: Node<(), Output = DVec2>,
-	Rotation: Node<(), Output = f64>,
-	Scale: Node<(), Output = DVec2>,
-	Shear: Node<(), Output = DVec2>,
-{
-	type Output = Subpath;
-	fn eval(self, mut subpath: Subpath) -> Subpath {
-		let translate = self.translate_node.eval(());
-		let rotate = self.rotate_node.eval(());
-		let scale = self.scale_node.eval(());
-		let shear = self.shear_node.eval(());
-
-		let (sin, cos) = rotate.sin_cos();
-
-		subpath.apply_affine(DAffine2::from_cols_array(&[scale.x + cos, shear.y + sin, shear.x - sin, scale.y + cos, translate.x, translate.y]));
-		subpath
-	}
-}
-impl<Translation, Rotation, Scale, Shear> Node<Subpath> for &TransformSubpathNode<Translation, Rotation, Scale, Shear>
-where
-	Translation: Node<(), Output = DVec2> + Copy,
-	Rotation: Node<(), Output = f64> + Copy,
-	Scale: Node<(), Output = DVec2> + Copy,
-	Shear: Node<(), Output = DVec2> + Copy,
-{
-	type Output = Subpath;
-	fn eval(self, mut subpath: Subpath) -> Subpath {
-		let translate = self.translate_node.eval(());
-		let rotate = self.rotate_node.eval(());
-		let scale = self.scale_node.eval(());
-		let shear = self.shear_node.eval(());
-
-		let (sin, cos) = rotate.sin_cos();
-
-		subpath.apply_affine(DAffine2::from_cols_array(&[scale.x + cos, shear.y + sin, shear.x - sin, scale.y + cos, translate.x, translate.y]));
-		subpath
-	}
+	subpath.apply_affine(DAffine2::from_cols_array(&[scale.x + cos, shear.y + sin, shear.x - sin, scale.y + cos, translate.x, translate.y]));
+	subpath
 }

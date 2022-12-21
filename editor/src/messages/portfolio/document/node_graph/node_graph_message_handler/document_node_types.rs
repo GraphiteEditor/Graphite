@@ -232,31 +232,11 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 		category: "Vector",
 		identifier: NodeIdentifier::new("graphene_std::vector::generator_nodes::TransformSubpathNode", &[]),
 		inputs: &[
-			DocumentInputType {
-				name: "Subpath",
-				data_type: FrontendGraphDataType::Subpath,
-				default: NodeInput::value(TaggedValue::Subpath(Subpath::new()), true),
-			},
-			DocumentInputType {
-				name: "Translation",
-				data_type: FrontendGraphDataType::Vector,
-				default: NodeInput::value(TaggedValue::DVec2(DVec2::ZERO), false),
-			},
-			DocumentInputType {
-				name: "Rotation",
-				data_type: FrontendGraphDataType::Number,
-				default: NodeInput::value(TaggedValue::F64(0.), false),
-			},
-			DocumentInputType {
-				name: "Scale",
-				data_type: FrontendGraphDataType::Vector,
-				default: NodeInput::value(TaggedValue::DVec2(DVec2::ONE), false),
-			},
-			DocumentInputType {
-				name: "Skew",
-				data_type: FrontendGraphDataType::Vector,
-				default: NodeInput::value(TaggedValue::DVec2(DVec2::ZERO), false),
-			},
+			DocumentInputType::new("Subpath", TaggedValue::Subpath(Subpath::empty()), true),
+			DocumentInputType::new("Translation", TaggedValue::DVec2(DVec2::ZERO), false),
+			DocumentInputType::new("Rotation", TaggedValue::F64(0.), false),
+			DocumentInputType::new("Scale", TaggedValue::DVec2(DVec2::ONE), false),
+			DocumentInputType::new("Skew", TaggedValue::DVec2(DVec2::ZERO), false),
 		],
 		outputs: &[FrontendGraphDataType::Subpath],
 		properties: node_properties::transform_properties,
@@ -266,16 +246,8 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 		category: "Vector",
 		identifier: NodeIdentifier::new("graphene_std::vector::generator_nodes::BlitSubpath", &[]),
 		inputs: &[
-			DocumentInputType {
-				name: "Image",
-				data_type: FrontendGraphDataType::Raster,
-				default: NodeInput::value(TaggedValue::Image(Image::empty()), true),
-			},
-			DocumentInputType {
-				name: "Subpath",
-				data_type: FrontendGraphDataType::Subpath,
-				default: NodeInput::value(TaggedValue::Subpath(Subpath::new()), true),
-			},
+			DocumentInputType::new("Image", TaggedValue::Image(Image::empty()), true),
+			DocumentInputType::new("Subpath", TaggedValue::Subpath(Subpath::empty()), true),
 		],
 		outputs: &[FrontendGraphDataType::Raster],
 		properties: node_properties::no_properties,

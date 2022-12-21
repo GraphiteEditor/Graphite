@@ -1468,6 +1468,7 @@ dependencies = [
  "glam",
  "kurbo",
  "log",
+ "node-macro",
  "serde",
  "spirv-std",
 ]
