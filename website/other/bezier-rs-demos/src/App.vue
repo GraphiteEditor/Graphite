@@ -624,10 +624,10 @@ export default defineComponent({
 							[175, 140],
 						]),
 				},
-				// {
-				// 	name: "Self Intersection",
-				// 	callback: (subpath: WasmSubpathInstance): string => subpath.self_intersections(),
-				// },
+				{
+					name: "Self Intersection",
+					callback: (subpath: WasmSubpathInstance): string => subpath.self_intersections(),
+				},
 			],
 		};
 	},

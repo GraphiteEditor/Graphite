@@ -1,5 +1,3 @@
-use core::error;
-
 use crate::svg_drawing::*;
 
 use bezier_rs::{Bezier, ComputeType, ManipulatorGroup, Subpath};
