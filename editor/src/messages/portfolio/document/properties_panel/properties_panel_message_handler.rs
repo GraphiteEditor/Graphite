@@ -7,6 +7,7 @@ use crate::messages::portfolio::document::utility_types::misc::TargetDocument;
 use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::*;
 
+use graphene::layers::layer_info::LayerDataTypeDiscriminant;
 use graphene::{LayerId, Operation};
 
 use serde::{Deserialize, Serialize};
@@ -39,9 +40,20 @@ impl<'a> MessageHandler<PropertiesPanelMessage, (&PersistentData, PropertiesPane
 				} else {
 					let path = paths.into_iter().next().unwrap();
 					if Some((path.clone(), document)) != self.active_selection {
+						// Update the node graph frame visibility
+						if get_document(document)
+							.layer(&path)
+							.ok()
+							.filter(|layer| LayerDataTypeDiscriminant::from(&layer.data) == LayerDataTypeDiscriminant::NodeGraphFrame)
+							.is_some()
+						{
+							responses.push_back(NodeGraphMessage::OpenNodeGraph { layer_path: path.clone() }.into());
+						} else {
+							responses.push_back(NodeGraphMessage::CloseNodeGraph.into());
+						}
+
 						self.active_selection = Some((path, document));
 						responses.push_back(PropertiesPanelMessage::ResendActiveProperties.into());
-						responses.push_back(NodeGraphMessage::CloseNodeGraph.into());
 					}
 				}
 			}
@@ -60,6 +72,7 @@ impl<'a> MessageHandler<PropertiesPanelMessage, (&PersistentData, PropertiesPane
 					}
 					.into(),
 				);
+				responses.push_back(NodeGraphMessage::CloseNodeGraph.into());
 				self.active_selection = None;
 			}
 			Deactivate => responses.push_back(

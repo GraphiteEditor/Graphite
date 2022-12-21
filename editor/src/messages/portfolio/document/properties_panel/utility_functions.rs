@@ -12,7 +12,6 @@ use crate::messages::prelude::*;
 use graphene::color::Color;
 use graphene::document::Document;
 use graphene::layers::layer_info::{Layer, LayerDataType, LayerDataTypeDiscriminant};
-use graphene::layers::nodegraph_layer::NodeGraphFrameLayer;
 use graphene::layers::style::{Fill, Gradient, GradientType, LineCap, LineJoin, Stroke};
 use graphene::layers::text_layer::{FontCache, TextLayer};
 
@@ -295,10 +294,7 @@ pub fn register_artwork_layer_properties(
 			let is_graph_open = node_graph_message_handler.layer_path.as_ref().filter(|node_graph| *node_graph == &layer_path).is_some();
 			let selected_nodes = &node_graph_message_handler.selected_nodes;
 
-			let mut properties_sections = vec![
-				node_section_transform(layer, persistent_data),
-				node_section_node_graph_frame(layer_path.clone(), node_graph_frame, is_graph_open),
-			];
+			let mut properties_sections = vec![node_section_transform(layer, persistent_data)];
 			if !selected_nodes.is_empty() && is_graph_open {
 				let mut context = crate::messages::portfolio::document::node_graph::NodePropertiesContext {
 					persistent_data,
@@ -485,69 +481,6 @@ fn node_section_transform(layer: &Layer, persistent_data: &PersistentData) -> La
 							.into()
 						}),
 						..NumberInput::default()
-					})),
-				],
-			},
-		],
-	}
-}
-
-fn node_section_node_graph_frame(layer_path: Vec<graphene::LayerId>, node_graph_frame: &NodeGraphFrameLayer, open_graph: bool) -> LayoutGroup {
-	LayoutGroup::Section {
-		name: "Node Graph Frame".into(),
-		layout: vec![
-			LayoutGroup::Row {
-				widgets: vec![
-					WidgetHolder::new(Widget::TextLabel(TextLabel {
-						value: "Network".into(),
-						tooltip: "Button to edit the node graph network for this layer".into(),
-						..Default::default()
-					})),
-					WidgetHolder::unrelated_separator(),
-					WidgetHolder::unrelated_separator(), // TODO: These three separators add up to 24px,
-					WidgetHolder::unrelated_separator(), // TODO: which is the width of the Assist area.
-					WidgetHolder::unrelated_separator(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
-					WidgetHolder::unrelated_separator(),
-					WidgetHolder::new(Widget::TextButton(TextButton {
-						label: if open_graph { "Close Node Graph".into() } else { "Open Node Graph".into() },
-						tooltip: format!("{} the node graph associated with this layer", if open_graph { "Close" } else { "Open" }),
-						on_update: WidgetCallback::new(move |_| {
-							let layer_path = layer_path.clone();
-							if open_graph {
-								NodeGraphMessage::CloseNodeGraph.into()
-							} else {
-								NodeGraphMessage::OpenNodeGraph { layer_path }.into()
-							}
-						}),
-						..Default::default()
-					})),
-				],
-			},
-			LayoutGroup::Row {
-				widgets: vec![
-					WidgetHolder::new(Widget::TextLabel(TextLabel {
-						value: "Image".into(),
-						tooltip: "Buttons to render the node graph and clear the last rendered image".into(),
-						..Default::default()
-					})),
-					WidgetHolder::unrelated_separator(),
-					WidgetHolder::unrelated_separator(), // TODO: These three separators add up to 24px,
-					WidgetHolder::unrelated_separator(), // TODO: which is the width of the Assist area.
-					WidgetHolder::unrelated_separator(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
-					WidgetHolder::unrelated_separator(),
-					WidgetHolder::new(Widget::TextButton(TextButton {
-						label: "Render".into(),
-						tooltip: "Fill layer frame by rendering the node graph".into(),
-						on_update: WidgetCallback::new(|_| DocumentMessage::NodeGraphFrameGenerate.into()),
-						..Default::default()
-					})),
-					WidgetHolder::related_separator(),
-					WidgetHolder::new(Widget::TextButton(TextButton {
-						label: "Clear".into(),
-						tooltip: "Remove rendered node graph from the layer frame".into(),
-						disabled: node_graph_frame.blob_url.is_none(),
-						on_update: WidgetCallback::new(|_| DocumentMessage::FrameClear.into()),
-						..Default::default()
 					})),
 				],
 			},

@@ -1297,7 +1297,12 @@ impl DocumentMessageHandler {
 					responses.push_back(BroadcastEvent::SelectionChanged.into());
 				}
 
+				// Keeping the root is required if the bounds of the viewport have changed during the operation
+				let old_root = self.graphene_document.root.transform;
 				let document = std::mem::replace(&mut self.graphene_document, document);
+				self.graphene_document.root.transform = old_root;
+				self.graphene_document.root.cache_dirty = true;
+
 				let layer_metadata = std::mem::replace(&mut self.layer_metadata, layer_metadata);
 				self.document_redo_history.push_back((document, layer_metadata));
 				if self.document_redo_history.len() > crate::consts::MAX_UNDO_HISTORY_LEN {
@@ -1330,7 +1335,12 @@ impl DocumentMessageHandler {
 					responses.push_back(BroadcastEvent::SelectionChanged.into());
 				}
 
+				// Keeping the root is required if the bounds of the viewport have changed during the operation
+				let old_root = self.graphene_document.root.transform;
 				let document = std::mem::replace(&mut self.graphene_document, document);
+				self.graphene_document.root.transform = old_root;
+				self.graphene_document.root.cache_dirty = true;
+
 				let layer_metadata = std::mem::replace(&mut self.layer_metadata, layer_metadata);
 				self.document_undo_history.push_back((document, layer_metadata));
 				if self.document_undo_history.len() > crate::consts::MAX_UNDO_HISTORY_LEN {
