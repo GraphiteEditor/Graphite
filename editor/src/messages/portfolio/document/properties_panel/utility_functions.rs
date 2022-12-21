@@ -291,21 +291,17 @@ pub fn register_artwork_layer_properties(
 			vec![node_section_transform(layer, persistent_data)]
 		}
 		LayerDataType::NodeGraphFrame(node_graph_frame) => {
-			let is_graph_open = node_graph_message_handler.layer_path.as_ref().filter(|node_graph| *node_graph == &layer_path).is_some();
-			let selected_nodes = &node_graph_message_handler.selected_nodes;
-
 			let mut properties_sections = vec![node_section_transform(layer, persistent_data)];
-			if !selected_nodes.is_empty() && is_graph_open {
-				let mut context = crate::messages::portfolio::document::node_graph::NodePropertiesContext {
-					persistent_data,
-					document,
-					responses,
-					nested_path: &node_graph_message_handler.nested_path,
-					layer_path: &layer_path,
-				};
-				let parameters_sections = node_graph_message_handler.collate_properties(node_graph_frame, &mut context);
-				properties_sections.extend(parameters_sections.into_iter());
-			}
+
+			let mut context = crate::messages::portfolio::document::node_graph::NodePropertiesContext {
+				persistent_data,
+				document,
+				responses,
+				nested_path: &node_graph_message_handler.nested_path,
+				layer_path: &layer_path,
+			};
+			node_graph_message_handler.collate_properties(node_graph_frame, &mut context, &mut properties_sections);
+
 			properties_sections
 		}
 		LayerDataType::Folder(_) => {
