@@ -355,6 +355,19 @@ impl Bezier {
 			.flat_map(|(index, (subcurve, t_pair))| Bezier::intersections_between_vectors_of_curves(&[(subcurve, t_pair)], &combined_list2[index + 2..], error))
 			.collect()
 	}
+
+	/// Returns a list of `t` values that correspond to the intersection points between the curve and a rectangle defined by its top-left and bottom-right corners.
+	pub fn rectangle_intersections(&self, top_left_corner: DVec2, bottom_right_corner: DVec2) -> Vec<f64> {
+		[
+			Bezier::from_linear_coordinates(top_left_corner.x, top_left_corner.y, bottom_right_corner.x, top_left_corner.y),
+			Bezier::from_linear_coordinates(bottom_right_corner.x, top_left_corner.y, bottom_right_corner.x, bottom_right_corner.y),
+			Bezier::from_linear_coordinates(bottom_right_corner.x, bottom_right_corner.y, top_left_corner.x, bottom_right_corner.y),
+			Bezier::from_linear_coordinates(top_left_corner.x, bottom_right_corner.y, top_left_corner.x, top_left_corner.y),
+		]
+		.iter()
+		.flat_map(|bezier| self.intersections(bezier, None, None))
+		.collect()
+	}
 }
 
 #[cfg(test)]
