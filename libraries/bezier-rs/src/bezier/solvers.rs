@@ -139,6 +139,12 @@ impl Bezier {
 		[endpoints_min, endpoints_max]
 	}
 
+	/// Returns `true` if the bounding box of the bezier is contained entirely within a rectangle defined by its minimum and maximum corners.
+	pub fn is_contained_within(&self, min_corner: DVec2, max_corner: DVec2) -> bool {
+		let [bounding_box_min, bounding_box_max] = self.bounding_box();
+		min_corner.x <= bounding_box_min.x && min_corner.y <= bounding_box_min.y && bounding_box_max.x <= max_corner.x && bounding_box_max.y <= max_corner.y
+	}
+
 	// TODO: Use an `impl Iterator` return type instead of a `Vec`
 	/// Returns list of `t`-values representing the inflection points of the curve.
 	/// The inflection points are defined to be points at which the second derivative of the curve is equal to zero.
@@ -356,13 +362,13 @@ impl Bezier {
 			.collect()
 	}
 
-	/// Returns a list of `t` values that correspond to the intersection points between the curve and a rectangle defined by its top-left and bottom-right corners.
-	pub fn rectangle_intersections(&self, top_left_corner: DVec2, bottom_right_corner: DVec2) -> Vec<f64> {
+	/// Returns a list of `t` values that correspond to the intersection points between the curve and a rectangle defined by opposite corners.
+	pub fn rectangle_intersections(&self, corner1: DVec2, corner2: DVec2) -> Vec<f64> {
 		[
-			Bezier::from_linear_coordinates(top_left_corner.x, top_left_corner.y, bottom_right_corner.x, top_left_corner.y),
-			Bezier::from_linear_coordinates(bottom_right_corner.x, top_left_corner.y, bottom_right_corner.x, bottom_right_corner.y),
-			Bezier::from_linear_coordinates(bottom_right_corner.x, bottom_right_corner.y, top_left_corner.x, bottom_right_corner.y),
-			Bezier::from_linear_coordinates(top_left_corner.x, bottom_right_corner.y, top_left_corner.x, top_left_corner.y),
+			Bezier::from_linear_coordinates(corner1.x, corner1.y, corner2.x, corner1.y),
+			Bezier::from_linear_coordinates(corner2.x, corner1.y, corner2.x, corner2.y),
+			Bezier::from_linear_coordinates(corner2.x, corner2.y, corner1.x, corner2.y),
+			Bezier::from_linear_coordinates(corner1.x, corner2.y, corner1.x, corner1.y),
 		]
 		.iter()
 		.flat_map(|bezier| self.intersections(bezier, None, None))
