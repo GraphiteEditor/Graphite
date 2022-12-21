@@ -626,7 +626,7 @@ export default defineComponent({
 				}
 			} else if (this.draggingNodes) {
 				if (this.draggingNodes.startX === e.x || this.draggingNodes.startY === e.y) {
-					if (this.selectIfNotDragged) {
+					if (this.selectIfNotDragged !== undefined) {
 						this.selected = [this.selectIfNotDragged];
 						this.editor.instance.selectNodes(new BigUint64Array(this.selected));
 					}
