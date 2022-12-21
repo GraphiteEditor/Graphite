@@ -1,3 +1,5 @@
+use core::error;
+
 use crate::svg_drawing::*;
 
 use bezier_rs::{Bezier, ComputeType, ManipulatorGroup, Subpath};
@@ -153,5 +155,20 @@ impl WasmSubpath {
 			.fold(String::new(), |acc, item| format!("{acc}{item}"));
 
 		wrap_svg_tag(format!("{subpath_svg}{line_svg}{intersections_svg}"))
+	}
+
+	pub fn self_intersections(&self) -> String {
+		let subpath_svg = self.to_default_svg();
+		let self_intersections_svg = self
+			.0
+			.self_intersections(None, None)
+			.iter()
+			.map(|intersection_t| {
+				let point = &self.0.evaluate(ComputeType::Parametric(*intersection_t));
+				draw_circle(*point, 4., RED, 1.5, WHITE)
+			})
+			.fold(String::new(), |acc, item| format!("{acc}{item}"));
+
+		wrap_svg_tag(format!("{subpath_svg}{self_intersections_svg}"))
 	}
 }

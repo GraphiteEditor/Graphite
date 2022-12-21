@@ -58,6 +58,26 @@ impl Subpath {
 
 		intersection_t_values
 	}
+
+	pub fn self_intersections(&self, error: Option<f64>, minimum_seperation: Option<f64>) -> Vec<f64> {
+		let mut intersections_vec = Vec::new();
+		let n = self.len_segments();
+		for i in 0..n {
+			let other = self.iter().nth(i).unwrap();
+			intersections_vec.extend(other.self_intersections(error).iter().map(|value| value[0] * (i as f64) / (n as f64)));
+			for j in i + 1..n {
+				intersections_vec.extend(
+					self.iter()
+						.nth(j)
+						.unwrap()
+						.intersections(&other, error, minimum_seperation)
+						.iter()
+						.map(|value| value * (j as f64) / (n as f64)),
+				);
+			}
+		}
+		intersections_vec
+	}
 }
 
 #[cfg(test)]
