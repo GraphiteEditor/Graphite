@@ -26,39 +26,6 @@ use dyn_any::{DynAny, StaticType};
 use glam::DVec2;
 use std::fmt::Debug;
 
-#[derive(Clone, PartialEq, Debug, DynAny)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct ImaginateInput {
-	// User-configurable layer parameters
-	pub seed: u64,
-	pub samples: u32,
-	pub sampling_method: ImaginateSamplingMethod,
-	pub use_img2img: bool,
-	pub denoising_strength: f64,
-	pub mask_layer_ref: Option<Vec<u64>>,
-	pub mask_paint_mode: ImaginateMaskPaintMode,
-	pub mask_blur_px: u32,
-	pub mask_fill_content: ImaginateMaskStartingFill,
-	pub cfg_scale: f64,
-	pub prompt: String,
-	pub negative_prompt: String,
-	pub restore_faces: bool,
-	pub tiling: bool,
-
-	pub image_data: Option<ImaginateImageData>,
-	pub mime: String,
-	/// 0 is not started, 100 is complete.
-	pub percent_complete: f64,
-
-	// TODO: Have the browser dispose of this blob URL when this is dropped (like when the layer is deleted)
-	#[cfg_attr(feature = "serde", serde(skip))]
-	pub blob_url: Option<String>,
-	#[cfg_attr(feature = "serde", serde(skip))]
-	pub status: ImaginateStatus,
-	#[cfg_attr(feature = "serde", serde(skip))]
-	pub dimensions: DVec2,
-}
-
 #[derive(Default, Debug, Clone, Copy, PartialEq, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ImaginateStatus {
@@ -69,19 +36,6 @@ pub enum ImaginateStatus {
 	Generating,
 	Terminating,
 	Terminated,
-}
-
-#[derive(Clone, Eq, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct ImaginateImageData {
-	#[cfg_attr(feature = "serde", serde(serialize_with = "base64_serde::as_base64", deserialize_with = "base64_serde::from_base64"))]
-	pub image_data: std::sync::Arc<Vec<u8>>,
-}
-
-impl Debug for ImaginateImageData {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		f.write_str("[image data...]")
-	}
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -253,33 +207,4 @@ pub struct ImaginateGenerationParameters {
 	#[cfg_attr(feature = "serde", serde(rename = "restoreFaces"))]
 	pub restore_faces: bool,
 	pub tiling: bool,
-}
-
-impl Default for ImaginateInput {
-	fn default() -> Self {
-		Self {
-			seed: 0,
-			samples: 30,
-			sampling_method: Default::default(),
-			use_img2img: false,
-			denoising_strength: 0.66,
-			mask_paint_mode: ImaginateMaskPaintMode::default(),
-			mask_layer_ref: None,
-			mask_blur_px: 4,
-			mask_fill_content: ImaginateMaskStartingFill::default(),
-			cfg_scale: 10.,
-			prompt: "".into(),
-			negative_prompt: "".into(),
-			restore_faces: false,
-			tiling: false,
-
-			image_data: None,
-			mime: "image/png".into(),
-
-			blob_url: None,
-			percent_complete: 0.,
-			status: Default::default(),
-			dimensions: Default::default(),
-		}
-	}
 }
