@@ -73,7 +73,7 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 			default: NodeInput::Network,
 		}],
 		outputs: &[FrontendGraphDataType::Raster],
-		properties: |_document_node, _node_id, _context| node_properties::string_properties("The input to the graph is the bitmap under the frame".to_string()),
+		properties: |_document_node, _node_id, _context| node_properties::string_properties("The graph's input is the imagery under the frame layer".to_string()),
 	},
 	DocumentNodeType {
 		name: "Output",
@@ -85,7 +85,7 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 			default: NodeInput::value(TaggedValue::Image(Image::empty()), true),
 		}],
 		outputs: &[],
-		properties: |_document_node, _node_id, _context| node_properties::string_properties("The output to the graph is rendered in the frame".to_string()),
+		properties: |_document_node, _node_id, _context| node_properties::string_properties("The graph's output is rendered into the frame".to_string()),
 	},
 	DocumentNodeType {
 		name: "Grayscale",
