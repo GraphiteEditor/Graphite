@@ -477,6 +477,33 @@ impl WasmBezier {
 		wrap_svg_tag(intersect_self_svg)
 	}
 
+	pub fn intersect_rectangle(&self, js_points: &JsValue) -> String {
+		let points: [DVec2; 2] = js_points.into_serde().unwrap();
+
+		let bezier_curve_svg = self.get_bezier_path();
+
+		let mut rectangle_svg = String::new();
+		[
+			Bezier::from_linear_coordinates(points[0].x, points[0].y, points[1].x, points[0].y),
+			Bezier::from_linear_coordinates(points[1].x, points[0].y, points[1].x, points[1].y),
+			Bezier::from_linear_coordinates(points[1].x, points[1].y, points[0].x, points[1].y),
+			Bezier::from_linear_coordinates(points[0].x, points[1].y, points[0].x, points[0].y),
+		]
+		.iter()
+		.for_each(|line| line.to_svg(&mut rectangle_svg, CURVE_ATTRIBUTES.to_string().replace(BLACK, RED), String::new(), String::new(), String::new()));
+
+		let intersections_svg = self
+			.0
+			.rectangle_intersections(points[0], points[1])
+			.iter()
+			.map(|intersection_t| {
+				let point = &self.0.evaluate(ComputeType::Parametric(*intersection_t));
+				draw_circle(*point, 4., RED, 1.5, WHITE)
+			})
+			.fold(String::new(), |acc, item| format!("{acc}{item}"));
+		wrap_svg_tag(format!("{bezier_curve_svg}{rectangle_svg}{intersections_svg}"))
+	}
+
 	pub fn reduce(&self) -> String {
 		let original_curve_svg = self.get_bezier_path();
 		let bezier_curves_svg: String = self
