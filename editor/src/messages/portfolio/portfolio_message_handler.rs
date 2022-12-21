@@ -233,22 +233,6 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 					);
 				}
 
-				if status == graph_craft::imaginate_input::ImaginateStatus::Generating {
-					responses.push_back(
-						PortfolioMessage::DocumentPassMessage {
-							document_id,
-							message: NodeGraphMessage::SetQualifiedInputValue {
-								layer_path: layer_path.clone(),
-								node_path: node_path.clone(),
-								input_index: get("Cached Data"),
-								value: TaggedValue::RcImage(None),
-							}
-							.into(),
-						}
-						.into(),
-					);
-				}
-
 				responses.push_back(
 					PortfolioMessage::DocumentPassMessage {
 						document_id,
