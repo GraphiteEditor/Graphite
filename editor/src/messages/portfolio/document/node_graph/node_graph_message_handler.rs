@@ -392,6 +392,22 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 					}
 				}
 			}
+			NodeGraphMessage::DisconnectNodes { node_id, input_index } => {
+				let Some(network) = self.get_active_network_mut(document) else {
+					warn!("No network");
+					return;
+				};
+				let Some(node) = network.nodes.get_mut(&node_id) else {
+					warn!("Invalid node");
+					return;
+				};
+				let Some(node_type) = resolve_document_node_type(&node.name) else {
+					warn!("Node {} not in library", node.name);
+					return;
+				};
+				node.inputs[input_index] = node_type.inputs[input_index].default.clone();
+				Self::send_graph(network, responses);
+			}
 			NodeGraphMessage::DoubleClickNode { node } => {
 				self.selected_nodes = Vec::new();
 				if let Some(network) = self.get_active_network_mut(document) {

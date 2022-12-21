@@ -323,6 +323,7 @@ export default defineComponent({
 			selectIfNotDragged: undefined as undefined | bigint,
 			linkInProgressFromConnector: undefined as HTMLDivElement | undefined,
 			linkInProgressToConnector: undefined as HTMLDivElement | DOMRect | undefined,
+			disconnecting: undefined as { nodeId: bigint; inputIndex: number; linkIndex: number } | undefined,
 			nodeLinkPaths: [] as [string, string][],
 			searchTerm: "",
 			nodeListLocation: undefined as { x: number; y: number } | undefined,
@@ -394,7 +395,7 @@ export default defineComponent({
 			if (!containerBounds) return;
 
 			const links = this.nodeGraph.state.links;
-			this.nodeLinkPaths = links.flatMap((link) => {
+			this.nodeLinkPaths = links.flatMap((link, index) => {
 				const connectorIndex = Number(link.linkEndInputIndex);
 
 				const nodePrimaryOutput = (containerBounds.querySelector(`[data-node="${String(link.linkStart)}"] [data-port="output"]`) || undefined) as HTMLDivElement | undefined;
@@ -403,6 +404,8 @@ export default defineComponent({
 				const nodePrimaryInput = nodeInputConnectors?.[connectorIndex] as HTMLDivElement | undefined;
 
 				if (!nodePrimaryInput || !nodePrimaryOutput) return [];
+				if (this.disconnecting?.linkIndex === index) return [];
+
 				return [this.createWirePath(nodePrimaryOutput, nodePrimaryInput.getBoundingClientRect(), false, false)];
 			});
 		},
@@ -506,15 +509,35 @@ export default defineComponent({
 			const node = (e.target as HTMLElement).closest("[data-node]") as HTMLElement | undefined;
 			const nodeId = node?.getAttribute("data-node") || undefined;
 			const nodeList = (e.target as HTMLElement).closest("[data-node-list]") as HTMLElement | undefined;
+			const containerBounds = this.$refs.nodesContainer as HTMLDivElement | undefined;
+			if (!containerBounds) return;
 
 			// If the user is clicking on the add nodes list, exit here
 			if (nodeList) return;
 
 			// Clicked on a port dot
-			if (port) {
+			if (port && node) {
 				const isOutput = Boolean(port.getAttribute("data-port") === "output");
 
 				if (isOutput) this.linkInProgressFromConnector = port;
+				else {
+					const inputNodeInPorts = Array.from(node.querySelectorAll(`[data-port="input"]`));
+					const inputNodeConnectionIndexSearch = inputNodeInPorts.indexOf(port);
+					const inputIndex = inputNodeConnectionIndexSearch > -1 ? inputNodeConnectionIndexSearch : undefined;
+					// Set the link to draw from the input that a previous link was on
+					if (inputIndex !== undefined && nodeId) {
+						const nodeIdInt = BigInt(nodeId);
+						const inputIndexInt = BigInt(inputIndex);
+						const links = this.nodeGraph.state.links;
+						const linkIndex = links.findIndex((value) => value.linkEnd === nodeIdInt && value.linkEndInputIndex === inputIndexInt);
+						const queryString = `[data-node="${String(links[linkIndex].linkStart)}"] [data-port="output"]`;
+						this.linkInProgressFromConnector = (containerBounds.querySelector(queryString) || undefined) as HTMLDivElement | undefined;
+						const nodeInputConnectors = containerBounds.querySelectorAll(`[data-node="${String(links[linkIndex].linkEnd)}"] [data-port="input"]`) || undefined;
+						this.linkInProgressToConnector = nodeInputConnectors?.[Number(links[linkIndex].linkEndInputIndex)] as HTMLDivElement | undefined;
+						this.disconnecting = { nodeId: nodeIdInt, inputIndex, linkIndex };
+						this.refreshLinks();
+					}
+				}
 
 				return;
 			}
@@ -578,6 +601,11 @@ export default defineComponent({
 		pointerUp(e: PointerEvent) {
 			this.panning = false;
 
+			if (this.disconnecting) {
+				this.editor.instance.disconnectNodes(BigInt(this.disconnecting.nodeId), this.disconnecting.inputIndex);
+			}
+			this.disconnecting = undefined;
+
 			if (this.linkInProgressToConnector instanceof HTMLDivElement && this.linkInProgressFromConnector) {
 				const outputNode = this.linkInProgressFromConnector.closest("[data-node]");
 				const inputNode = this.linkInProgressToConnector.closest("[data-node]");
@@ -598,7 +626,7 @@ export default defineComponent({
 				}
 			} else if (this.draggingNodes) {
 				if (this.draggingNodes.startX === e.x || this.draggingNodes.startY === e.y) {
-					if (this.selectIfNotDragged) {
+					if (this.selectIfNotDragged !== undefined) {
 						this.selected = [this.selectIfNotDragged];
 						this.editor.instance.selectNodes(new BigUint64Array(this.selected));
 					}
