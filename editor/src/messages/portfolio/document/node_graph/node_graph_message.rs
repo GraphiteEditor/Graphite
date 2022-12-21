@@ -25,6 +25,10 @@ pub enum NodeGraphMessage {
 		node_id: NodeId,
 	},
 	DeleteSelectedNodes,
+	DisconnectNodes {
+		node_id: NodeId,
+		input_index: usize,
+	},
 	DoubleClickNode {
 		node: NodeId,
 	},
