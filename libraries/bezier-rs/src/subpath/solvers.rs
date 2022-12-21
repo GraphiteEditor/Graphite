@@ -1,5 +1,8 @@
 use super::*;
-use crate::{consts::MIN_SEPERATION_VALUE, ComputeType};
+use crate::{
+	consts::{MAX_ABSOLUTE_DIFFERENCE, MIN_SEPERATION_VALUE},
+	ComputeType,
+};
 
 use glam::DVec2;
 
@@ -64,15 +67,16 @@ impl Subpath {
 		let n = self.len_segments();
 		for i in 0..n {
 			let other = self.iter().nth(i).unwrap();
-			intersections_vec.extend(other.self_intersections(error).iter().map(|value| value[0] * (i as f64) / (n as f64)));
-			for j in i + 1..n {
+			intersections_vec.extend(other.self_intersections(error).iter().map(|value| (value[0] + (i as f64)) / (n as f64)));
+			for j in (i + 1)..n {
 				intersections_vec.extend(
 					self.iter()
 						.nth(j)
 						.unwrap()
 						.intersections(&other, error, minimum_seperation)
 						.iter()
-						.map(|value| value * (j as f64) / (n as f64)),
+						.filter(|&value| value > &MAX_ABSOLUTE_DIFFERENCE && (1. - value) > MAX_ABSOLUTE_DIFFERENCE)
+						.map(|value| (value + (j as f64)) / (n as f64)),
 				);
 			}
 		}
