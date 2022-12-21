@@ -587,6 +587,13 @@ impl JsEditorHandle {
 		self.dispatch(message);
 	}
 
+	/// Notifies the backend that the user disconnected a node
+	#[wasm_bindgen(js_name = disconnectNodes)]
+	pub fn disconnect_nodes(&self, node_id: u64, input_index: usize) {
+		let message = NodeGraphMessage::DisconnectNodes { node_id, input_index };
+		self.dispatch(message);
+	}
+
 	/// Creates a new document node in the node graph
 	#[wasm_bindgen(js_name = createNode)]
 	pub fn create_node(&self, node_type: String, x: i32, y: i32) {
