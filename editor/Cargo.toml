@@ -41,7 +41,7 @@ graphene-core = { path = "../node-graph/gcore" }
 graphene-std = { path = "../node-graph/gstd" }
 
 [dependencies.graphene]
-path = "../graphene"
+path = "../document-legacy"
 package = "graphite-graphene"
 
 [dev-dependencies]

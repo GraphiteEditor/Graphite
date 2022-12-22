@@ -19,7 +19,7 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 editor = { path = "../../editor", package = "graphite-editor" }
-graphene = { path = "../../graphene", package = "graphite-graphene" }
+graphene = { path = "../../document-legacy", package = "graphite-graphene" }
 graph-craft = { path = "../../node-graph/graph-craft" }
 log = "0.4"
 serde = { version = "1.0", features = ["derive"] }
