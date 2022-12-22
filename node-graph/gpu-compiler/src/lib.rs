@@ -1,7 +1,21 @@
 use std::path::Path;
 
-use crate::proto::*;
+use graph_craft::proto::*;
 use tera::Context;
+
+pub fn compile_spriv(network: graph_craft::document::NodeNetwork, input_type: &str, output_type: &str, compile_dir: Option<&str>) -> anyhow::Result<Vec<u8>> {
+	let serialized_graph = serde_json::to_string(&network)?;
+	std::process::Command::new("cargo")
+		.arg("run")
+		.arg("--release")
+		.arg("--target-dir")
+		.arg(compile_dir.unwrap_or("target"))
+		.arg("--manifest-path")
+		.current_dir(std::env::var("CARGO_MANIFEST_DIR").unwrap())
+		.arg(compile_dir.unwrap_or_default())
+		.input(serialized_graph)
+		.output()
+}
 
 fn create_cargo_toml(metadata: &Metadata) -> Result<String, tera::Error> {
 	let mut tera = tera::Tera::default();
@@ -52,12 +66,6 @@ pub fn create_files(matadata: &Metadata, network: &ProtoNetwork, compile_dir: &P
 
 pub fn serialize_gpu(network: &ProtoNetwork, input_type: &str, output_type: &str) -> anyhow::Result<String> {
 	assert_eq!(network.inputs.len(), 1);
-	/*let input = &network.nodes[network.inputs[0] as usize].1;
-	let output = &network.nodes[network.output as usize].1;
-	let input_type = format!("{}::Input", input.identifier.fully_qualified_name());
-	let output_type = format!("{}::Output", output.identifier.fully_qualified_name());
-	*/
-
 	fn nid(id: &u64) -> String {
 		format!("n{id}")
 	}

@@ -1,0 +1,17 @@
+[package]
+name = "gpu-compiler-bin-wrapper"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+
+[features]
+default = []
+profiling = []
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+graph-craft = {path = "../../graph-craft" }
+log = "0.4"
+anyhow = "1.0.66"
+serde_json = "1.0.91"

@@ -16,16 +16,11 @@ impl<'n, I: IntoIterator<Item = S>, NN: Node<(), Output = &'n NodeNetwork> + Cop
 
 		use graph_craft::executor::Compiler;
 		use graph_craft::executor::Executor;
-		use graph_craft::gpu::compiler::Metadata;
 		let compiler = Compiler {};
-		let proto_network = compiler.compile(network.clone(), true);
+		let bytes = gpu_compiler_bin_wrapper::compile_spirv(&network, std::any::type_name::<S>(), std::any::type_name::<O>(), None);
 
-		let m = Metadata::new("project".to_owned(), vec!["test@example.com".to_owned()]);
-		let temp_dir = tempfile::tempdir().expect("failed to create tempdir");
-
-		use graph_craft::gpu::context::Context;
-		use graph_craft::gpu::executor::GpuExecutor;
-		let executor: GpuExecutor<S, O> = GpuExecutor::new(Context::new(), proto_network, m, temp_dir.path()).unwrap();
+		use vulkan_executor::{Context, GpuExecutor};
+		let executor: GpuExecutor<S, O> = GpuExecutor::new(Context::new(), &bytes.unwrap(), "gpu::eval".into()).unwrap();
 
 		let data: Vec<_> = input.into_iter().collect();
 		let result = executor.execute(Box::new(data)).unwrap();
@@ -40,16 +35,11 @@ impl<'n, I: IntoIterator<Item = S>, NN: Node<(), Output = &'n NodeNetwork> + Cop
 
 		use graph_craft::executor::Compiler;
 		use graph_craft::executor::Executor;
-		use graph_craft::gpu::compiler::Metadata;
 		let compiler = Compiler {};
-		let proto_network = compiler.compile(network.clone(), true);
+		let bytes = gpu_compiler_bin_wrapper::compile_spirv(&network, std::any::type_name::<S>(), std::any::type_name::<O>(), None);
 
-		let m = Metadata::new("project".to_owned(), vec!["test@example.com".to_owned()]);
-		let temp_dir = tempfile::tempdir().expect("failed to create tempdir");
-
-		use graph_craft::gpu::context::Context;
-		use graph_craft::gpu::executor::GpuExecutor;
-		let executor: GpuExecutor<S, O> = GpuExecutor::new(Context::new(), proto_network, m, temp_dir.path()).unwrap();
+		use vulkan_executor::{Context, GpuExecutor};
+		let executor: GpuExecutor<S, O> = GpuExecutor::new(Context::new(), &bytes.unwrap(), "gpu::eval".into()).unwrap();
 
 		let data: Vec<_> = input.into_iter().collect();
 		let result = executor.execute(Box::new(data)).unwrap();

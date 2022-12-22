@@ -11,9 +11,16 @@ members = [
 	"node-graph/interpreted-executor",
 	"node-graph/borrow_stack",
 	"node-graph/node-macro",
+	"node-graph/compilation-server",
+	"node-graph/vulkan-executor",
+	"node-graph/gpu-compiler/gpu-compiler-bin-wrapper",
 	"libraries/dyn-any",
 	"libraries/bezier-rs",
 	"website/other/bezier-rs-demos/wasm",
+]
+
+exclude = [
+	"node-graph/gpu-compiler",
 ]
 
 [profile.release.package.graphite-wasm]
