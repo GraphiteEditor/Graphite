@@ -694,6 +694,7 @@ export default defineComponent({
 						if (link) {
 							this.editor.instance.connectNodesByLink(link.linkStart, selectedNodeId, 0);
 							this.editor.instance.connectNodesByLink(selectedNodeId, link.linkEnd, Number(link.linkEndInputIndex));
+							this.editor.instance.shiftNode(selectedNodeId);
 						}
 					}
 				}

@@ -180,6 +180,19 @@ impl NodeNetwork {
 			.collect();
 	}
 
+	/// Collect a hashmap of nodes with a list of the nodes that use it as input
+	pub fn collect_outwards_links(&self) -> HashMap<NodeId, Vec<NodeId>> {
+		let mut outwards_links: HashMap<u64, Vec<u64>> = HashMap::new();
+		for (node_id, node) in &self.nodes {
+			for input in &node.inputs {
+				if let NodeInput::Node(ref_id) = input {
+					outwards_links.entry(*ref_id).or_default().push(*node_id)
+				}
+			}
+		}
+		outwards_links
+	}
+
 	pub fn flatten(&mut self, node: NodeId) {
 		self.flatten_with_fns(node, merge_ids, generate_uuid)
 	}

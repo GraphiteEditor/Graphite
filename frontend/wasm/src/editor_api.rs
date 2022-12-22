@@ -587,6 +587,13 @@ impl JsEditorHandle {
 		self.dispatch(message);
 	}
 
+	/// Shifts the node and its children to stop nodes going ontop of each other
+	#[wasm_bindgen(js_name = shiftNode)]
+	pub fn shift_node(&self, node_id: u64) {
+		let message = NodeGraphMessage::ShiftNode { node_id };
+		self.dispatch(message);
+	}
+
 	/// Notifies the backend that the user disconnected a node
 	#[wasm_bindgen(js_name = disconnectNodes)]
 	pub fn disconnect_nodes(&self, node_id: u64, input_index: usize) {
