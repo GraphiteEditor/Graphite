@@ -506,8 +506,16 @@ export default defineComponent({
 				this.transform.x -= scrollY / this.transform.scale;
 			}
 		},
+		keydown(e: KeyboardEvent): void {
+			if (e.key.toLowerCase() === "escape") {
+				this.nodeListLocation = undefined;
+				document.removeEventListener("keydown", this.keydown);
+			}
+		},
 		// TODO: Move the event listener from the graph to the window so dragging outside the graph area (or even the browser window) works
 		pointerDown(e: PointerEvent) {
+			if (this.nodeListLocation && !(e.target as HTMLElement).closest("[data-node-list]")) this.nodeListLocation = undefined;
+
 			if (e.button === 2) {
 				const graphDiv: HTMLDivElement | undefined = (this.$refs.graph as typeof LayoutCol | undefined)?.$el;
 				const graph = graphDiv?.getBoundingClientRect() || new DOMRect();
@@ -515,6 +523,8 @@ export default defineComponent({
 					x: Math.round(((e.clientX - graph.x) / this.transform.scale - this.transform.x) / GRID_SIZE),
 					y: Math.round(((e.clientY - graph.y) / this.transform.scale - this.transform.y) / GRID_SIZE),
 				};
+
+				document.addEventListener("keydown", this.keydown);
 				return;
 			}
 
