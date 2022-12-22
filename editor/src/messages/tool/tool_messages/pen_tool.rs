@@ -9,9 +9,9 @@ use crate::messages::tool::common_functionality::snapping::SnapManager;
 use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 
-use graphene::layers::style;
-use graphene::LayerId;
-use graphene::Operation;
+use document_legacy::layers::style;
+use document_legacy::LayerId;
+use document_legacy::Operation;
 use graphene_std::vector::consts::ManipulatorType;
 use graphene_std::vector::manipulator_group::ManipulatorGroup;
 
@@ -186,7 +186,7 @@ impl Fsm for PenToolFsmState {
 		tool_options: &Self::ToolOptions,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
-		let transform = tool_data.path.as_ref().and_then(|path| document.graphene_document.multiply_transforms(path).ok()).unwrap_or_default();
+		let transform = tool_data.path.as_ref().and_then(|path| document.document_legacy.multiply_transforms(path).ok()).unwrap_or_default();
 
 		if let ToolMessage::Pen(event) = event {
 			match (self, event) {
@@ -194,14 +194,14 @@ impl Fsm for PenToolFsmState {
 					// When the document has moved / needs to be redraw, re-render the overlays
 					// TODO the overlay system should probably receive this message instead of the tool
 					for layer_path in document.selected_visible_layers() {
-						tool_data.overlay_renderer.render_subpath_overlays(&document.graphene_document, layer_path.to_vec(), responses);
+						tool_data.overlay_renderer.render_subpath_overlays(&document.document_legacy, layer_path.to_vec(), responses);
 					}
 					self
 				}
 				(_, PenToolMessage::SelectionChanged) => {
 					// Set the previously selected layers to invisible
 					for layer_path in document.all_layers() {
-						tool_data.overlay_renderer.layer_overlay_visibility(&document.graphene_document, layer_path.to_vec(), false, responses);
+						tool_data.overlay_renderer.layer_overlay_visibility(&document.document_legacy, layer_path.to_vec(), false, responses);
 					}
 					self
 				}
@@ -222,7 +222,7 @@ impl Fsm for PenToolFsmState {
 
 						// Stop the handles on the first point from mirroring
 						let mut stop_mirror = || {
-							let subpath = document.graphene_document.layer(layer).ok().and_then(|layer| layer.as_subpath())?;
+							let subpath = document.document_legacy.layer(layer).ok().and_then(|layer| layer.as_subpath())?;
 							let mut manipulator_groups = subpath.manipulator_groups().enumerate();
 							let (&id, _) = if from_start { manipulator_groups.next()? } else { manipulator_groups.next_back()? };
 
@@ -251,7 +251,7 @@ impl Fsm for PenToolFsmState {
 					let transform = tool_data
 						.path
 						.as_ref()
-						.and_then(|path| document.graphene_document.multiply_transforms(&path[..path.len() - 1]).ok())
+						.and_then(|path| document.document_legacy.multiply_transforms(&path[..path.len() - 1]).ok())
 						.unwrap_or_default();
 					let snapped_position = tool_data.snap_manager.snap_position(responses, document, input.mouse.position);
 					let start_position = transform.inverse().transform_point2(snapped_position);
@@ -284,7 +284,7 @@ impl Fsm for PenToolFsmState {
 					let mut check_break = || {
 						// Get subpath
 						let layer_path = tool_data.path.as_ref()?;
-						let subpath = document.graphene_document.layer(layer_path).ok().and_then(|layer| layer.as_subpath())?;
+						let subpath = document.document_legacy.layer(layer_path).ok().and_then(|layer| layer.as_subpath())?;
 
 						// Get the last manipulator group and the one previous to that
 						let mut manipulator_groups = subpath.manipulator_groups().enumerate();
@@ -330,7 +330,7 @@ impl Fsm for PenToolFsmState {
 
 								// The overlay system cannot detect deleted points so we must just delete all the overlays
 								for layer_path in document.all_layers() {
-									tool_data.overlay_renderer.clear_subpath_overlays(&document.graphene_document, layer_path.to_vec(), responses);
+									tool_data.overlay_renderer.clear_subpath_overlays(&document.document_legacy, layer_path.to_vec(), responses);
 								}
 
 								tool_data.should_mirror = false;
@@ -344,7 +344,7 @@ impl Fsm for PenToolFsmState {
 					let mut process = || {
 						// Get subpath
 						let layer_path = tool_data.path.as_ref()?;
-						let subpath = document.graphene_document.layer(layer_path).ok().and_then(|layer| layer.as_subpath())?;
+						let subpath = document.document_legacy.layer(layer_path).ok().and_then(|layer| layer.as_subpath())?;
 
 						// Get the last manipulator group and the one previous to that
 						let mut manipulator_groups = subpath.manipulator_groups().enumerate();
@@ -400,7 +400,7 @@ impl Fsm for PenToolFsmState {
 
 							// Clean up overlays
 							for layer_path in document.all_layers() {
-								tool_data.overlay_renderer.clear_subpath_overlays(&document.graphene_document, layer_path.to_vec(), responses);
+								tool_data.overlay_renderer.clear_subpath_overlays(&document.document_legacy, layer_path.to_vec(), responses);
 							}
 
 							// Clean up tool data
@@ -425,7 +425,7 @@ impl Fsm for PenToolFsmState {
 					let mut process = || {
 						// Get subpath
 						let layer_path = tool_data.path.as_ref()?;
-						let subpath = document.graphene_document.layer(layer_path).ok().and_then(|layer| layer.as_subpath())?;
+						let subpath = document.document_legacy.layer(layer_path).ok().and_then(|layer| layer.as_subpath())?;
 
 						// Get the last manipulator group
 						let mut manipulator_groups = subpath.manipulator_groups().enumerate();
@@ -487,7 +487,7 @@ impl Fsm for PenToolFsmState {
 					let mut process = || {
 						// Get subpath
 						let layer_path = tool_data.path.as_ref()?;
-						let subpath = document.graphene_document.layer(layer_path).ok().and_then(|layer| layer.as_subpath())?;
+						let subpath = document.document_legacy.layer(layer_path).ok().and_then(|layer| layer.as_subpath())?;
 
 						// Get the last manipulator group and the one previous to that
 						let mut manipulator_groups = subpath.manipulator_groups().enumerate();
@@ -541,7 +541,7 @@ impl Fsm for PenToolFsmState {
 					let mut commit = || {
 						// Get subpath
 						let layer_path = tool_data.path.as_ref()?;
-						let subpath = document.graphene_document.layer(layer_path).ok().and_then(|layer| layer.as_subpath())?;
+						let subpath = document.document_legacy.layer(layer_path).ok().and_then(|layer| layer.as_subpath())?;
 
 						// If placing anchor we should abort if there are less than three manipulators (as the last one gets deleted)
 						if self == PenToolFsmState::PlacingAnchor && subpath.manipulator_groups().len() < 3 {
@@ -590,7 +590,7 @@ impl Fsm for PenToolFsmState {
 
 					// Clean up overlays
 					for layer_path in document.all_layers() {
-						tool_data.overlay_renderer.clear_subpath_overlays(&document.graphene_document, layer_path.to_vec(), responses);
+						tool_data.overlay_renderer.clear_subpath_overlays(&document.document_legacy, layer_path.to_vec(), responses);
 					}
 					tool_data.path = None;
 					tool_data.snap_manager.cleanup(responses);
@@ -600,7 +600,7 @@ impl Fsm for PenToolFsmState {
 				(_, PenToolMessage::Abort) => {
 					// Clean up overlays
 					for layer_path in document.all_layers() {
-						tool_data.overlay_renderer.clear_subpath_overlays(&document.graphene_document, layer_path.to_vec(), responses);
+						tool_data.overlay_renderer.clear_subpath_overlays(&document.document_legacy, layer_path.to_vec(), responses);
 					}
 					self
 				}
@@ -710,9 +710,9 @@ fn should_extend(document: &DocumentMessageHandler, pos: DVec2, tolerance: f64) 
 
 	for layer_path in document.selected_layers() {
 		(|| {
-			let viewspace = document.graphene_document.generate_transform_relative_to_viewport(layer_path).ok()?;
+			let viewspace = document.document_legacy.generate_transform_relative_to_viewport(layer_path).ok()?;
 
-			let subpath = document.graphene_document.layer(layer_path).ok().and_then(|layer| layer.as_subpath())?;
+			let subpath = document.document_legacy.layer(layer_path).ok().and_then(|layer| layer.as_subpath())?;
 			let (_first_id, first) = subpath.manipulator_groups().enumerate().next()?;
 			let (_last_id, last) = subpath.manipulator_groups().enumerate().next_back()?;
 

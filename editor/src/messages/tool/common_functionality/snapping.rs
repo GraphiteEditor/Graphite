@@ -5,9 +5,9 @@ use crate::consts::{
 };
 use crate::messages::prelude::*;
 
-use graphene::layers::layer_info::{Layer, LayerDataType};
-use graphene::layers::style::{self, Stroke};
-use graphene::{LayerId, Operation};
+use document_legacy::layers::layer_info::{Layer, LayerDataType};
+use document_legacy::layers::style::{self, Stroke};
+use document_legacy::{LayerId, Operation};
 use graphene_std::vector::consts::ManipulatorType;
 
 use glam::{DAffine2, DVec2};
@@ -239,7 +239,7 @@ impl SnapManager {
 	/// This should be called after start_snap
 	pub fn add_snap_path(&mut self, document_message_handler: &DocumentMessageHandler, layer: &Layer, path: &[LayerId], include_handles: bool, ignore_points: &[(&[LayerId], u64, ManipulatorType)]) {
 		if let LayerDataType::Shape(shape_layer) = &layer.data {
-			let transform = document_message_handler.graphene_document.multiply_transforms(path).unwrap();
+			let transform = document_message_handler.document_legacy.multiply_transforms(path).unwrap();
 			let snap_points = shape_layer
 				.shape
 				.manipulator_groups()
@@ -273,7 +273,7 @@ impl SnapManager {
 	) {
 		for path in document_message_handler.all_layers() {
 			if !exclude.contains(&path) {
-				let layer = document_message_handler.graphene_document.layer(path).expect("Could not get layer for snapping");
+				let layer = document_message_handler.document_legacy.layer(path).expect("Could not get layer for snapping");
 				self.add_snap_path(document_message_handler, layer, path, include_handles.contains(&path), ignore_points);
 			}
 		}

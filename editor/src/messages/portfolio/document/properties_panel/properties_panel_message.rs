@@ -3,8 +3,8 @@ use crate::messages::layout::utility_types::widgets::assist_widgets::PivotPositi
 use crate::messages::portfolio::document::utility_types::misc::TargetDocument;
 use crate::messages::prelude::*;
 
-use graphene::layers::style::{Fill, Stroke};
-use graphene::LayerId;
+use document_legacy::layers::style::{Fill, Stroke};
+use document_legacy::LayerId;
 
 use serde::{Deserialize, Serialize};
 

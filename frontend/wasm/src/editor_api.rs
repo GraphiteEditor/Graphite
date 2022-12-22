@@ -5,6 +5,8 @@
 use crate::helpers::{translate_key, Error};
 use crate::{EDITOR_HAS_CRASHED, EDITOR_INSTANCES, JS_EDITOR_HANDLES};
 
+use document_legacy::color::Color;
+use document_legacy::LayerId;
 use editor::application::generate_uuid;
 use editor::application::Editor;
 use editor::consts::{FILE_SAVE_SUFFIX, GRAPHITE_DOCUMENT_VERSION};
@@ -13,8 +15,6 @@ use editor::messages::input_mapper::utility_types::input_mouse::{EditorMouseStat
 use editor::messages::portfolio::utility_types::{ImaginateServerStatus, Platform};
 use editor::messages::prelude::*;
 use graph_craft::document::NodeId;
-use graphene::color::Color;
-use graphene::LayerId;
 
 use serde::Serialize;
 use serde_wasm_bindgen::{self, from_value};
@@ -159,7 +159,7 @@ impl JsEditorHandle {
 	}
 
 	#[wasm_bindgen(js_name = tauriResponse)]
-	pub fn tauri_response(&self, message: JsValue) {
+	pub fn tauri_response(&self, _message: JsValue) {
 		#[cfg(feature = "tauri")]
 		match ron::from_str::<Vec<FrontendMessage>>(&message.as_string().unwrap()) {
 			Ok(response) => {

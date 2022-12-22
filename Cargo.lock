@@ -1515,37 +1515,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "graphite-editor"
-version = "0.0.0"
-dependencies = [
- "bezier-rs",
- "bitflags",
- "borrow_stack",
- "derivative",
- "dyn-any",
- "env_logger",
- "glam",
- "graph-craft",
- "graphene-core",
- "graphene-std",
- "graphite-graphene",
- "graphite-proc-macros",
- "image",
- "interpreted-executor",
- "kurbo",
- "log",
- "once_cell",
- "rand_chacha 0.3.1",
- "remain",
- "serde",
- "serde_json",
- "spin",
- "test-case",
- "thiserror",
-]
-
-[[package]]
-name = "graphite-graphene"
+name = "graphite-document-legacy"
 version = "0.0.0"
 dependencies = [
  "base64",
@@ -1559,6 +1529,36 @@ dependencies = [
  "rustybuzz",
  "serde",
  "ttf-parser",
+]
+
+[[package]]
+name = "graphite-editor"
+version = "0.0.0"
+dependencies = [
+ "bezier-rs",
+ "bitflags",
+ "borrow_stack",
+ "derivative",
+ "dyn-any",
+ "env_logger",
+ "glam",
+ "graph-craft",
+ "graphene-core",
+ "graphene-std",
+ "graphite-document-legacy",
+ "graphite-proc-macros",
+ "image",
+ "interpreted-executor",
+ "kurbo",
+ "log",
+ "once_cell",
+ "rand_chacha 0.3.1",
+ "remain",
+ "serde",
+ "serde_json",
+ "spin",
+ "test-case",
+ "thiserror",
 ]
 
 [[package]]
@@ -1578,8 +1578,8 @@ version = "0.0.0"
 dependencies = [
  "bezier-rs",
  "graph-craft",
+ "graphite-document-legacy",
  "graphite-editor",
- "graphite-graphene",
  "js-sys",
  "log",
  "ron",
