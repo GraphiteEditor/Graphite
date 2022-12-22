@@ -52,10 +52,10 @@ impl FolderLayer {
 	///
 	/// # Example
 	/// ```
-	/// # use graphite_graphene::layers::shape_layer::ShapeLayer;
-	/// # use graphite_graphene::layers::folder_layer::FolderLayer;
-	/// # use graphite_graphene::layers::style::PathStyle;
-	/// # use graphite_graphene::layers::layer_info::LayerDataType;
+	/// # use graphite_document_legacy::layers::shape_layer::ShapeLayer;
+	/// # use graphite_document_legacy::layers::folder_layer::FolderLayer;
+	/// # use graphite_document_legacy::layers::style::PathStyle;
+	/// # use graphite_document_legacy::layers::layer_info::LayerDataType;
 	/// let mut folder = FolderLayer::default();
 	///
 	/// // Create two layers to be added to the folder
@@ -100,7 +100,7 @@ impl FolderLayer {
 	///
 	/// # Example
 	/// ```
-	/// # use graphite_graphene::layers::folder_layer::FolderLayer;
+	/// # use graphite_document_legacy::layers::folder_layer::FolderLayer;
 	/// let mut folder = FolderLayer::default();
 	///
 	/// // Try to remove a layer that does not exist
@@ -149,7 +149,7 @@ impl FolderLayer {
 	///
 	/// # Example
 	/// ```
-	/// # use graphite_graphene::layers::folder_layer::FolderLayer;
+	/// # use graphite_document_legacy::layers::folder_layer::FolderLayer;
 	/// let mut folder = FolderLayer::default();
 	///
 	/// // Search for an id that does not exist
@@ -170,7 +170,7 @@ impl FolderLayer {
 	///
 	/// # Example
 	/// ```
-	/// # use graphite_graphene::layers::folder_layer::FolderLayer;
+	/// # use graphite_document_legacy::layers::folder_layer::FolderLayer;
 	/// let mut folder = FolderLayer::default();
 	///
 	/// // Search for an id that does not exist
@@ -193,9 +193,9 @@ impl FolderLayer {
 	///
 	/// # Example
 	/// ```
-	/// # use graphite_graphene::layers::folder_layer::FolderLayer;
-	/// # use graphite_graphene::layers::shape_layer::ShapeLayer;
-	/// # use graphite_graphene::layers::style::PathStyle;
+	/// # use graphite_document_legacy::layers::folder_layer::FolderLayer;
+	/// # use graphite_document_legacy::layers::shape_layer::ShapeLayer;
+	/// # use graphite_document_legacy::layers::style::PathStyle;
 	/// let mut folder = FolderLayer::default();
 	///
 	/// // Search for an id that does not exist

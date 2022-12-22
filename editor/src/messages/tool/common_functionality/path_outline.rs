@@ -2,11 +2,11 @@ use crate::application::generate_uuid;
 use crate::consts::{COLOR_ACCENT, PATH_OUTLINE_WEIGHT, SELECTION_TOLERANCE};
 use crate::messages::prelude::*;
 
-use graphene::intersection::Quad;
-use graphene::layers::layer_info::LayerDataType;
-use graphene::layers::style::{self, Fill, Stroke};
-use graphene::layers::text_layer::FontCache;
-use graphene::{LayerId, Operation};
+use document_legacy::intersection::Quad;
+use document_legacy::layers::layer_info::LayerDataType;
+use document_legacy::layers::style::{self, Fill, Stroke};
+use document_legacy::layers::text_layer::FontCache;
+use document_legacy::{LayerId, Operation};
 use graphene_std::vector::subpath::Subpath;
 
 use glam::{DAffine2, DVec2};
@@ -29,7 +29,7 @@ impl PathOutline {
 		font_cache: &FontCache,
 	) -> Option<Vec<LayerId>> {
 		// Get layer data
-		let document_layer = document.graphene_document.layer(&document_layer_path).ok()?;
+		let document_layer = document.document_legacy.layer(&document_layer_path).ok()?;
 
 		// TODO Purge this area of BezPath and Kurbo
 		// Get the bezpath from the shape or text
@@ -65,7 +65,7 @@ impl PathOutline {
 		// Update the transform to match the document
 		let operation = Operation::SetLayerTransform {
 			path: overlay.clone(),
-			transform: document.graphene_document.multiply_transforms(&document_layer_path).unwrap().to_cols_array(),
+			transform: document.document_legacy.multiply_transforms(&document_layer_path).unwrap().to_cols_array(),
 		};
 		responses.push_back(DocumentMessage::Overlays(operation.into()).into());
 
@@ -86,7 +86,7 @@ impl PathOutline {
 		// Get the layer the user is hovering over
 		let tolerance = DVec2::splat(SELECTION_TOLERANCE);
 		let quad = Quad::from_box([input.mouse.position - tolerance, input.mouse.position + tolerance]);
-		let mut intersection = document.graphene_document.intersects_quad_root(quad, font_cache);
+		let mut intersection = document.document_legacy.intersects_quad_root(quad, font_cache);
 
 		// If the user is hovering over a layer they have not already selected, then update outline
 		if let Some(path) = intersection.pop() {

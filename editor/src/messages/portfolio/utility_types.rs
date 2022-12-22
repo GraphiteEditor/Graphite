@@ -1,4 +1,4 @@
-use graphene::layers::text_layer::FontCache;
+use document_legacy::layers::text_layer::FontCache;
 
 use serde::{Deserialize, Serialize};
 

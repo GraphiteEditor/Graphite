@@ -6,9 +6,9 @@ use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 
-use graphene::intersection::Quad;
-use graphene::layers::style::Fill;
-use graphene::Operation;
+use document_legacy::intersection::Quad;
+use document_legacy::layers::style::Fill;
+use document_legacy::Operation;
 
 use glam::DVec2;
 use serde::{Deserialize, Serialize};
@@ -119,7 +119,7 @@ impl Fsm for FillToolFsmState {
 					let tolerance = DVec2::splat(SELECTION_TOLERANCE);
 					let quad = Quad::from_box([mouse_pos - tolerance, mouse_pos + tolerance]);
 
-					if let Some(path) = document.graphene_document.intersects_quad_root(quad, font_cache).last() {
+					if let Some(path) = document.document_legacy.intersects_quad_root(quad, font_cache).last() {
 						let color = match lmb_or_rmb {
 							LeftPointerDown => global_tool_data.primary_color,
 							RightPointerDown => global_tool_data.secondary_color,

@@ -7,8 +7,8 @@ use crate::messages::tool::common_functionality::resize::Resize;
 use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 
-use graphene::layers::style;
-use graphene::Operation;
+use document_legacy::layers::style;
+use document_legacy::Operation;
 
 use glam::DAffine2;
 use serde::{Deserialize, Serialize};

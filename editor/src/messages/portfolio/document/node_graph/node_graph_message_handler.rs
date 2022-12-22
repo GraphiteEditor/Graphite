@@ -2,11 +2,11 @@ use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup,
 use crate::messages::layout::utility_types::widgets::button_widgets::BreadcrumbTrailButtons;
 use crate::messages::prelude::*;
 
+use document_legacy::document::Document;
+use document_legacy::layers::layer_info::LayerDataType;
+use document_legacy::layers::nodegraph_layer::NodeGraphFrameLayer;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, DocumentNodeMetadata, NodeId, NodeInput, NodeNetwork};
-use graphene::document::Document;
-use graphene::layers::layer_info::LayerDataType;
-use graphene::layers::nodegraph_layer::NodeGraphFrameLayer;
 
 mod document_node_types;
 mod node_properties;
@@ -94,7 +94,7 @@ impl FrontendNodeType {
 
 #[derive(Debug, Clone, Eq, PartialEq, Default, serde::Serialize, serde::Deserialize)]
 pub struct NodeGraphMessageHandler {
-	pub layer_path: Option<Vec<graphene::LayerId>>,
+	pub layer_path: Option<Vec<document_legacy::LayerId>>,
 	pub nested_path: Vec<graph_craft::document::NodeId>,
 	pub selected_nodes: Vec<graph_craft::document::NodeId>,
 }

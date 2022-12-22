@@ -31,7 +31,7 @@ impl Color {
 	///
 	/// # Examples
 	/// ```
-	/// use graphite_graphene::color::Color;
+	/// use graphite_document_legacy::color::Color;
 	/// let color = Color::from_rgbaf32(0.3, 0.14, 0.15, 0.92).unwrap();
 	/// assert!(color.components() == (0.3, 0.14, 0.15, 0.92));
 	///
@@ -54,7 +54,7 @@ impl Color {
 	///
 	/// # Examples
 	/// ```
-	/// use graphite_graphene::color::Color;
+	/// use graphite_document_legacy::color::Color;
 	/// let color = Color::from_rgb8(0x72, 0x67, 0x62);
 	/// let color2 = Color::from_rgba8(0x72, 0x67, 0x62, 0xFF);
 	/// assert!(color == color2)
@@ -67,7 +67,7 @@ impl Color {
 	///
 	/// # Examples
 	/// ```
-	/// use graphite_graphene::color::Color;
+	/// use graphite_document_legacy::color::Color;
 	/// let color = Color::from_rgba8(0x72, 0x67, 0x62, 0x61);
 	/// assert!("72676261" == color.rgba_hex())
 	/// ```
@@ -85,7 +85,7 @@ impl Color {
 	///
 	/// # Examples
 	/// ```
-	/// use graphite_graphene::color::Color;
+	/// use graphite_document_legacy::color::Color;
 	/// let color = Color::from_rgbaf32(0.114, 0.103, 0.98, 0.97).unwrap();
 	/// assert!(color.r() == 0.114);
 	/// ```
@@ -97,7 +97,7 @@ impl Color {
 	///
 	/// # Examples
 	/// ```
-	/// use graphite_graphene::color::Color;
+	/// use graphite_document_legacy::color::Color;
 	/// let color = Color::from_rgbaf32(0.114, 0.103, 0.98, 0.97).unwrap();
 	/// assert!(color.g() == 0.103);
 	/// ```
@@ -109,7 +109,7 @@ impl Color {
 	///
 	/// # Examples
 	/// ```
-	/// use graphite_graphene::color::Color;
+	/// use graphite_document_legacy::color::Color;
 	/// let color = Color::from_rgbaf32(0.114, 0.103, 0.98, 0.97).unwrap();
 	/// assert!(color.b() == 0.98);
 	/// ```
@@ -121,7 +121,7 @@ impl Color {
 	///
 	/// # Examples
 	/// ```
-	/// use graphite_graphene::color::Color;
+	/// use graphite_document_legacy::color::Color;
 	/// let color = Color::from_rgbaf32(0.114, 0.103, 0.98, 0.97).unwrap();
 	/// assert!(color.a() == 0.97);
 	/// ```
@@ -133,7 +133,7 @@ impl Color {
 	///
 	/// # Examples
 	/// ```
-	/// use graphite_graphene::color::Color;
+	/// use graphite_document_legacy::color::Color;
 	/// let color = Color::from_rgbaf32(0.114, 0.103, 0.98, 0.97).unwrap();
 	/// assert!(color.components() == (0.114, 0.103, 0.98, 0.97));
 	/// ```
@@ -145,7 +145,7 @@ impl Color {
 	///
 	/// # Examples
 	/// ```
-	/// use graphite_graphene::color::Color;
+	/// use graphite_document_legacy::color::Color;
 	/// let color = Color::from_rgba8(0x7C, 0x67, 0xFA, 0x61);
 	/// assert!("7C67FA61" == color.rgba_hex())
 	/// ```
@@ -161,7 +161,7 @@ impl Color {
 
 	/// Return a 6-character RGB hex string (without a # prefix).
 	/// ```
-	/// use graphite_graphene::color::Color;
+	/// use graphite_document_legacy::color::Color;
 	/// let color = Color::from_rgba8(0x7C, 0x67, 0xFA, 0x61);
 	/// assert!("7C67FA" == color.rgb_hex())
 	/// ```
@@ -173,7 +173,7 @@ impl Color {
 	///
 	/// # Examples
 	/// ```
-	/// use graphite_graphene::color::Color;
+	/// use graphite_document_legacy::color::Color;
 	/// let color = Color::from_rgba_str("7C67FA61").unwrap();
 	/// assert!("7C67FA61" == color.rgba_hex())
 	/// ```
@@ -191,7 +191,7 @@ impl Color {
 
 	/// Creates a color from a 6-character RGB hex string (without a # prefix).
 	/// ```
-	/// use graphite_graphene::color::Color;
+	/// use graphite_document_legacy::color::Color;
 	/// let color = Color::from_rgb_str("7C67FA").unwrap();
 	/// assert!("7C67FA" == color.rgb_hex())
 	/// ```
