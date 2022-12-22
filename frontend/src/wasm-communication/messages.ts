@@ -33,9 +33,15 @@ export class UpdateNodeGraph extends JsMessage {
 	@Type(() => FrontendNodeLink)
 	readonly links!: FrontendNodeLink[];
 }
+
 export class UpdateNodeTypes extends JsMessage {
 	@Type(() => FrontendNode)
 	readonly nodeTypes!: FrontendNodeType[];
+}
+
+export class UpdateNodeGraphSelection extends JsMessage {
+	@Type(() => BigInt)
+	readonly selected!: bigint[];
 }
 
 export class UpdateNodeGraphVisibility extends JsMessage {
@@ -1407,6 +1413,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateMouseCursor,
 	UpdateNodeGraph,
 	UpdateNodeGraphBarLayout,
+	UpdateNodeGraphSelection,
 	UpdateNodeTypes,
 	UpdateNodeGraphVisibility,
 	UpdateOpenDocumentsList,

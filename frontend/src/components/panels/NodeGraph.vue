@@ -300,6 +300,8 @@ import { defineComponent, nextTick } from "vue";
 
 import type { IconName } from "@/utility-functions/icons";
 
+import { UpdateNodeGraphSelection } from "@/wasm-communication/messages";
+
 import LayoutCol from "@/components/layout/LayoutCol.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 import TextButton from "@/components/widgets/buttons/TextButton.vue";
@@ -654,6 +656,10 @@ export default defineComponent({
 		const outputPort2 = document.querySelectorAll(`[data-port="output"]`)[6] as HTMLDivElement | undefined;
 		const inputPort2 = document.querySelectorAll(`[data-port="input"]`)[3] as HTMLDivElement | undefined;
 		if (outputPort2 && inputPort2) this.createWirePath(outputPort2, inputPort2.getBoundingClientRect(), true, false);
+
+		this.editor.subscriptions.subscribeJsMessage(UpdateNodeGraphSelection, (updateNodeGraphSelection) => {
+			this.selected = updateNodeGraphSelection.selected;
+		});
 	},
 	components: {
 		IconLabel,

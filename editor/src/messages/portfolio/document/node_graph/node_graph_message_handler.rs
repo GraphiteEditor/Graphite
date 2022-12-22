@@ -243,6 +243,16 @@ impl NodeGraphMessageHandler {
 		responses.push_back(FrontendMessage::UpdateNodeGraph { nodes, links }.into());
 	}
 
+	/// Updates the frontend's selection state inline with the backend
+	fn update_selected(&self, responses: &mut VecDeque<Message>) {
+		responses.push_back(
+			FrontendMessage::UpdateNodeGraphSelection {
+				selected: self.selected_nodes.clone(),
+			}
+			.into(),
+		);
+	}
+
 	fn remove_references_from_network(network: &mut NodeNetwork, node_id: NodeId) -> bool {
 		if network.inputs.iter().any(|&id| id == node_id) {
 			warn!("Deleting input node");
@@ -443,6 +453,7 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 					Self::send_graph(network, responses);
 				}
 				self.collect_nested_addresses(document, responses);
+				self.update_selected(responses);
 			}
 			NodeGraphMessage::DuplicateSelectedNodes => {
 				if let Some(network) = self.get_active_network_mut(document) {
@@ -465,6 +476,7 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 					}
 					self.selected_nodes = new_selected;
 					Self::send_graph(network, responses);
+					self.update_selected(responses);
 				}
 			}
 			NodeGraphMessage::ExitNestedNetwork { depth_of_nesting } => {
@@ -555,6 +567,7 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 				}
 
 				Self::send_graph(network, responses);
+				self.update_selected(responses);
 			}
 			NodeGraphMessage::SelectNodes { nodes } => {
 				self.selected_nodes = nodes;
