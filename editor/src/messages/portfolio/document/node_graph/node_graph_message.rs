@@ -34,7 +34,7 @@ pub enum NodeGraphMessage {
 	DoubleClickNode {
 		node: NodeId,
 	},
-	DuplicateSelected,
+	DuplicateSelectedNodes,
 	ExitNestedNetwork {
 		depth_of_nesting: usize,
 	},

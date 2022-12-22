@@ -444,7 +444,7 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 				}
 				self.collect_nested_addresses(document, responses);
 			}
-			NodeGraphMessage::DuplicateSelected => {
+			NodeGraphMessage::DuplicateSelectedNodes => {
 				if let Some(network) = self.get_active_network_mut(document) {
 					let mut new_selected = Vec::new();
 					for &id in &self.selected_nodes {
@@ -456,7 +456,7 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 
 								// Shift duplicated nodes
 								node.metadata.position.0 += 2;
-								node.metadata.position.0 += 2;
+								node.metadata.position.1 += 2;
 
 								network.nodes.insert(new_id, node);
 								new_selected.push(new_id);
@@ -464,6 +464,7 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 						}
 					}
 					self.selected_nodes = new_selected;
+					Self::send_graph(network, responses);
 				}
 			}
 			NodeGraphMessage::ExitNestedNetwork { depth_of_nesting } => {
@@ -606,7 +607,7 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 
 	fn actions(&self) -> ActionList {
 		if self.layer_path.is_some() && !self.selected_nodes.is_empty() {
-			actions!(NodeGraphMessageDiscriminant; DeleteSelectedNodes, Cut, Copy)
+			actions!(NodeGraphMessageDiscriminant; DeleteSelectedNodes, Cut, Copy, DuplicateSelectedNodes)
 		} else {
 			actions!(NodeGraphMessageDiscriminant;)
 		}
