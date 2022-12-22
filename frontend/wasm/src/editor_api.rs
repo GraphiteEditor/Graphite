@@ -603,7 +603,7 @@ impl JsEditorHandle {
 			(bezier_x[2], bezier_y[2]).into(),
 			(bezier_x[3], bezier_y[3]).into(),
 		);
-		!bezier.rectangle_intersections((left, top).into(), (right, bottom).into()).is_empty()
+		!bezier.rectangle_intersections((left, top).into(), (right, bottom).into()).is_empty() || bezier.is_contained_within((left, top).into(), (right, bottom).into())
 	}
 
 	/// Creates a new document node in the node graph
