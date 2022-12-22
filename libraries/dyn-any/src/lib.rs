@@ -82,22 +82,25 @@ pub fn downcast_ref<'a, V: StaticType>(i: &'a dyn DynAny<'a>) -> Option<&'a V> {
 }
 
 #[cfg(feature = "alloc")]
-pub fn downcast<'a, V: StaticType>(i: Box<dyn DynAny<'a> + 'a>) -> Option<Box<V>> {
+pub fn downcast<'a, V: StaticType>(i: Box<dyn DynAny<'a> + 'a>) -> Result<Box<V>, String> {
 	let type_id = DynAny::type_id(i.as_ref());
 	if type_id == core::any::TypeId::of::<<V as StaticType>::Static>() {
 		// SAFETY: caller guarantees that T is the correct type
 		let ptr = Box::into_raw(i) as *mut dyn DynAny<'a> as *mut V;
-		Some(unsafe { Box::from_raw(ptr) })
+		Ok(unsafe { Box::from_raw(ptr) })
 	} else {
-		#[cfg(feature = "log-bad-types")]
-		{
-			log::error!("Tried to downcast a {} to a {}", DynAny::type_name(i.as_ref()), core::any::type_name::<V>());
-		}
-
 		if type_id == core::any::TypeId::of::<&dyn DynAny<'static>>() {
 			panic!("downcast error: type_id == core::any::TypeId::of::<dyn DynAny<'a>>()");
 		}
-		None
+		#[cfg(feature = "log-bad-types")]
+		{
+			Err(format!("Incorrect type, expected {} but found {}", core::any::type_name::<V>(), DynAny::type_name(i.as_ref())))
+		}
+
+		#[cfg(not(feature = "log-bad-types"))]
+		{
+			Err(format!("Incorrect type, expected {}", core::any::type_name::<V>()))
+		}
 	}
 }
 

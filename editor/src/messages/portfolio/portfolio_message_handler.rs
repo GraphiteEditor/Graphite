@@ -685,11 +685,7 @@ impl PortfolioMessageHandler {
 						.0;
 				}
 				// If the input is just a value, return that value
-				NodeInput::Value { tagged_value, .. } => {
-					return dyn_any::downcast::<T>(tagged_value.clone().to_value().up_box())
-						.map(|v| *v)
-						.ok_or_else(|| "Incorrectly typed value".to_string())
-				}
+				NodeInput::Value { tagged_value, .. } => return dyn_any::downcast::<T>(tagged_value.clone().to_value().up_box()).map(|v| *v),
 				// If the input is from a node, set the node to be the output (so that is what is evaluated)
 				NodeInput::Node(n) => {
 					inner_network.output = *n;
@@ -717,7 +713,7 @@ impl PortfolioMessageHandler {
 
 		let boxed = unsafe { stack.get().last().unwrap().eval(image.into_owned().into_dyn()) };
 
-		dyn_any::downcast::<T>(boxed).map(|v| *v).ok_or_else(|| "Incorrectly typed output".to_string())
+		dyn_any::downcast::<T>(boxed).map(|v| *v)
 	}
 
 	/// Encodes an image into a format using the image crate
