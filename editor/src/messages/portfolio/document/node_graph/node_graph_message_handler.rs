@@ -243,6 +243,16 @@ impl NodeGraphMessageHandler {
 		responses.push_back(FrontendMessage::UpdateNodeGraph { nodes, links }.into());
 	}
 
+	/// Updates the frontend's selection state inline with the backend
+	fn update_selected(&self, responses: &mut VecDeque<Message>) {
+		responses.push_back(
+			FrontendMessage::UpdateNodeGraphSelection {
+				selected: self.selected_nodes.clone(),
+			}
+			.into(),
+		);
+	}
+
 	fn remove_references_from_network(network: &mut NodeNetwork, node_id: NodeId) -> bool {
 		if network.inputs.iter().any(|&id| id == node_id) {
 			warn!("Deleting input node");
@@ -329,6 +339,26 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 				Self::send_graph(network, responses);
 				responses.push_back(DocumentMessage::NodeGraphFrameGenerate.into());
 			}
+			NodeGraphMessage::Copy => {
+				let Some(network) = self.get_active_network_mut(document) else {
+					error!("No network");
+					return;
+				};
+
+				// Collect the selected nodes
+				let selected_nodes = self
+					.selected_nodes
+					.iter()
+					.filter(|&&id| !network.inputs.contains(&id) && network.output != id) // Don't copy input or output nodes
+					.filter_map(|id| network.nodes.get(id))
+					.collect::<Vec<_>>();
+
+				// Prefix to show that this is nodes
+				let mut copy_text = String::from("graphite/nodes: ");
+				copy_text += &serde_json::to_string(&selected_nodes).expect("Could not serialize paste");
+
+				responses.push_back(FrontendMessage::TriggerTextCopy { copy_text }.into());
+			}
 			NodeGraphMessage::CreateNode { node_id, node_type, x, y } => {
 				let node_id = node_id.unwrap_or_else(crate::application::generate_uuid);
 				let Some(network) = self.get_active_network_mut(document) else{
@@ -371,6 +401,10 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 					},
 				);
 				Self::send_graph(network, responses);
+			}
+			NodeGraphMessage::Cut => {
+				responses.push_back(NodeGraphMessage::Copy.into());
+				responses.push_back(NodeGraphMessage::DeleteSelectedNodes.into());
 			}
 			NodeGraphMessage::DeleteNode { node_id } => {
 				if let Some(network) = self.get_active_network_mut(document) {
@@ -419,6 +453,31 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 					Self::send_graph(network, responses);
 				}
 				self.collect_nested_addresses(document, responses);
+				self.update_selected(responses);
+			}
+			NodeGraphMessage::DuplicateSelectedNodes => {
+				if let Some(network) = self.get_active_network_mut(document) {
+					let mut new_selected = Vec::new();
+					for &id in &self.selected_nodes {
+						// Don't allow copying input or output nodes.
+						if id != network.output && !network.inputs.contains(&id) {
+							if let Some(node) = network.nodes.get(&id) {
+								let new_id = crate::application::generate_uuid();
+								let mut node = node.clone();
+
+								// Shift duplicated nodes
+								node.metadata.position.0 += 2;
+								node.metadata.position.1 += 2;
+
+								network.nodes.insert(new_id, node);
+								new_selected.push(new_id);
+							}
+						}
+					}
+					self.selected_nodes = new_selected;
+					Self::send_graph(network, responses);
+					self.update_selected(responses);
+				}
 			}
 			NodeGraphMessage::ExitNestedNetwork { depth_of_nesting } => {
 				self.selected_nodes = Vec::new();
@@ -483,6 +542,32 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 					responses.push_back(FrontendMessage::UpdateNodeTypes { node_types }.into());
 				}
 				self.collect_nested_addresses(document, responses);
+			}
+			NodeGraphMessage::PasteNodes { serialized_nodes } => {
+				let Some(network) = self.get_active_network_mut(document) else{
+					warn!("No network");
+					return;
+				};
+
+				let data = match serde_json::from_str::<Vec<DocumentNode>>(&serialized_nodes) {
+					Ok(d) => d,
+					Err(e) => {
+						warn!("Invalid node data {e:?}");
+						return;
+					}
+				};
+
+				self.selected_nodes.clear();
+				for node in data {
+					let id = crate::application::generate_uuid();
+					network.nodes.insert(id, node);
+
+					// Select the newly pasted node
+					self.selected_nodes.push(id);
+				}
+
+				Self::send_graph(network, responses);
+				self.update_selected(responses);
 			}
 			NodeGraphMessage::SelectNodes { nodes } => {
 				self.selected_nodes = nodes;
@@ -582,7 +667,7 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 
 	fn actions(&self) -> ActionList {
 		if self.layer_path.is_some() && !self.selected_nodes.is_empty() {
-			actions!(NodeGraphMessageDiscriminant; DeleteSelectedNodes,)
+			actions!(NodeGraphMessageDiscriminant; DeleteSelectedNodes, Cut, Copy, DuplicateSelectedNodes)
 		} else {
 			actions!(NodeGraphMessageDiscriminant;)
 		}

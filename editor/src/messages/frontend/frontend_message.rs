@@ -227,6 +227,9 @@ pub enum FrontendMessage {
 		layout_target: LayoutTarget,
 		layout: SubLayout,
 	},
+	UpdateNodeGraphSelection {
+		selected: Vec<NodeId>,
+	},
 	UpdateNodeGraphVisibility {
 		visible: bool,
 	},
