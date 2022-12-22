@@ -18,7 +18,7 @@ pub enum ImaginateStatus {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ImaginateBaseImage {
 	pub mime: String,
-	#[serde(rename = "imageData")]
+	#[cfg_attr(feature = "serde", serde(rename = "imageData"))]
 	pub image_data: Vec<u8>,
 	pub size: DVec2,
 }
