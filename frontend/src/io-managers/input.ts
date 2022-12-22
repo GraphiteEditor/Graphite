@@ -262,6 +262,8 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 				item.getAsString((text) => {
 					if (text.startsWith("graphite/layer: ")) {
 						editor.instance.pasteSerializedData(text.substring(16, text.length));
+					} else if (text.startsWith("graphite/nodes: ")) {
+						editor.instance.pasteSerializedNodes(text.substring(16, text.length));
 					}
 				});
 			}

@@ -14,6 +14,7 @@ pub enum NodeGraphMessage {
 		input_node: u64,
 		input_node_connector_index: usize,
 	},
+	Copy,
 	CreateNode {
 		// Having the caller generate the id means that we don't have to return it. This can be a random u64.
 		node_id: Option<NodeId>,
@@ -21,6 +22,7 @@ pub enum NodeGraphMessage {
 		x: i32,
 		y: i32,
 	},
+	Cut,
 	DeleteNode {
 		node_id: NodeId,
 	},
@@ -32,6 +34,7 @@ pub enum NodeGraphMessage {
 	DoubleClickNode {
 		node: NodeId,
 	},
+	DuplicateSelected,
 	ExitNestedNetwork {
 		depth_of_nesting: usize,
 	},
@@ -46,6 +49,9 @@ pub enum NodeGraphMessage {
 	},
 	OpenNodeGraph {
 		layer_path: Vec<document_legacy::LayerId>,
+	},
+	PasteNodes {
+		serialized_nodes: String,
 	},
 	SelectNodes {
 		nodes: Vec<NodeId>,

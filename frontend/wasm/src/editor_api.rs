@@ -608,6 +608,13 @@ impl JsEditorHandle {
 		self.dispatch(message);
 	}
 
+	/// Pastes the nodes based on serialized data
+	#[wasm_bindgen(js_name = pasteSerializedNodes)]
+	pub fn paste_serialized_nodes(&self, serialized_nodes: String) {
+		let message = NodeGraphMessage::PasteNodes { serialized_nodes };
+		self.dispatch(message);
+	}
+
 	/// Notifies the backend that the user double clicked a node
 	#[wasm_bindgen(js_name = doubleClickNode)]
 	pub fn double_click_node(&self, node: u64) {

@@ -30,6 +30,8 @@ pub fn default_mapping() -> Mapping {
 		// NodeGraphMessage
 		entry!(KeyDown(Delete); action_dispatch=NodeGraphMessage::DeleteSelectedNodes),
 		entry!(KeyDown(Backspace); action_dispatch=NodeGraphMessage::DeleteSelectedNodes),
+		entry!(KeyDown(KeyX); modifiers=[Accel], action_dispatch=NodeGraphMessage::Cut),
+		entry!(KeyDown(KeyC); modifiers=[Accel], action_dispatch=NodeGraphMessage::Copy),
 		//
 		// TransformLayerMessage
 		entry!(KeyDown(Enter); action_dispatch=TransformLayerMessage::ApplyTransformOperation),
