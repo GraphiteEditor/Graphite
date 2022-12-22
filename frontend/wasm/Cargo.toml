@@ -28,6 +28,7 @@ serde-wasm-bindgen = "0.4.1"
 js-sys = "0.3.55"
 wasm-bindgen-futures = "0.4.33"
 ron = {version = "0.8", optional = true}
+bezier-rs = { path = "../../libraries/bezier-rs" }
 
 [dev-dependencies]
 wasm-bindgen-test = "0.3.22"

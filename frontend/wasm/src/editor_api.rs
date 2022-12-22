@@ -594,6 +594,18 @@ impl JsEditorHandle {
 		self.dispatch(message);
 	}
 
+	/// Check for intersections between the curve and a rectangle defined by opposite corners
+	#[wasm_bindgen(js_name = rectangleIntersects)]
+	pub fn rectangle_intersects(&self, bezier_x: Vec<f64>, bezier_y: Vec<f64>, top: f64, left: f64, bottom: f64, right: f64) -> bool {
+		let bezier = bezier_rs::Bezier::from_cubic_dvec2(
+			(bezier_x[0], bezier_y[0]).into(),
+			(bezier_x[1], bezier_y[1]).into(),
+			(bezier_x[2], bezier_y[2]).into(),
+			(bezier_x[3], bezier_y[3]).into(),
+		);
+		!bezier.rectangle_intersections((left, top).into(), (right, bottom).into()).is_empty()
+	}
+
 	/// Creates a new document node in the node graph
 	#[wasm_bindgen(js_name = createNode)]
 	pub fn create_node(&self, node_type: String, x: i32, y: i32) {

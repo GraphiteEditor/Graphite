@@ -1576,6 +1576,7 @@ dependencies = [
 name = "graphite-wasm"
 version = "0.0.0"
 dependencies = [
+ "bezier-rs",
  "graph-craft",
  "graphite-editor",
  "graphite-graphene",
