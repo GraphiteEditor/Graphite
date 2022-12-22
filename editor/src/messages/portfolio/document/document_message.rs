@@ -3,12 +3,12 @@ use crate::messages::portfolio::document::utility_types::layer_panel::LayerMetad
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis};
 use crate::messages::prelude::*;
 
+use document_legacy::boolean_ops::BooleanOperation as BooleanOperationType;
+use document_legacy::layers::blend_mode::BlendMode;
+use document_legacy::layers::style::ViewMode;
+use document_legacy::LayerId;
+use document_legacy::Operation as DocumentOperation;
 use graph_craft::document::NodeId;
-use graphene::boolean_ops::BooleanOperation as BooleanOperationType;
-use graphene::layers::blend_mode::BlendMode;
-use graphene::layers::style::ViewMode;
-use graphene::LayerId;
-use graphene::Operation as DocumentOperation;
 use serde::{Deserialize, Serialize};
 
 #[remain::sorted]

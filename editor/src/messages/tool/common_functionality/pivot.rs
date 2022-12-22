@@ -5,9 +5,9 @@ use crate::consts::{COLOR_ACCENT, PIVOT_INNER, PIVOT_OUTER, PIVOT_OUTER_OUTLINE_
 use crate::messages::layout::utility_types::widgets::assist_widgets::PivotPosition;
 use crate::messages::prelude::*;
 
-use graphene::layers::style;
-use graphene::layers::text_layer::FontCache;
-use graphene::{LayerId, Operation};
+use document_legacy::layers::style;
+use document_legacy::layers::text_layer::FontCache;
+use document_legacy::{LayerId, Operation};
 
 use glam::{DAffine2, DVec2};
 use std::collections::VecDeque;
@@ -40,7 +40,7 @@ impl Default for Pivot {
 
 impl Pivot {
 	/// Calculates the transform that gets from normalized pivot to viewspace.
-	fn get_layer_pivot_transform(layer_path: &[LayerId], layer: &graphene::layers::layer_info::Layer, document: &DocumentMessageHandler, font_cache: &FontCache) -> DAffine2 {
+	fn get_layer_pivot_transform(layer_path: &[LayerId], layer: &document_legacy::layers::layer_info::Layer, document: &DocumentMessageHandler, font_cache: &FontCache) -> DAffine2 {
 		let [mut min, max] = layer.aabb_for_transform(DAffine2::IDENTITY, font_cache).unwrap_or([DVec2::ZERO, DVec2::ONE]);
 
 		// If the layer bounds are 0 in either axis then set them to one (to avoid div 0)
@@ -51,7 +51,7 @@ impl Pivot {
 			min.y = max.y - 1.;
 		}
 		let bounds_transform = DAffine2::from_translation(min) * DAffine2::from_scale(max - min);
-		let layer_transform = document.graphene_document.multiply_transforms(layer_path).unwrap_or(DAffine2::IDENTITY);
+		let layer_transform = document.document_legacy.multiply_transforms(layer_path).unwrap_or(DAffine2::IDENTITY);
 		layer_transform * bounds_transform
 	}
 
@@ -64,7 +64,7 @@ impl Pivot {
 
 			// If just one layer is selected we can use its inner transform
 			if selected_layers_count == 1 {
-				if let Ok(layer) = document.graphene_document.layer(first) {
+				if let Ok(layer) = document.document_legacy.layer(first) {
 					self.normalized_pivot = layer.pivot;
 					self.transform_from_normalized = Self::get_layer_pivot_transform(first, layer, document, font_cache);
 					self.pivot = Some(self.transform_from_normalized.transform_point2(layer.pivot));
@@ -73,7 +73,7 @@ impl Pivot {
 				// If more than one layer is selected we use the AABB with the mean of the pivots
 				let xy_summation = document
 					.selected_visible_layers()
-					.filter_map(|path| document.graphene_document.pivot(path, font_cache))
+					.filter_map(|path| document.document_legacy.pivot(path, font_cache))
 					.reduce(|a, b| a + b)
 					.unwrap_or_default();
 
@@ -113,7 +113,10 @@ impl Pivot {
 				Operation::AddEllipse {
 					path: layer_paths[0].clone(),
 					transform: DAffine2::IDENTITY.to_cols_array(),
-					style: style::PathStyle::new(Some(style::Stroke::new(COLOR_ACCENT, PIVOT_OUTER_OUTLINE_THICKNESS)), style::Fill::Solid(graphene::color::Color::WHITE)),
+					style: style::PathStyle::new(
+						Some(style::Stroke::new(COLOR_ACCENT, PIVOT_OUTER_OUTLINE_THICKNESS)),
+						style::Fill::Solid(document_legacy::color::Color::WHITE),
+					),
 					insert_index: -1,
 				}
 				.into(),
@@ -164,7 +167,7 @@ impl Pivot {
 	/// Sets the viewport position of the pivot for all selected layers.
 	pub fn set_viewport_position(&self, position: DVec2, document: &DocumentMessageHandler, font_cache: &FontCache, responses: &mut VecDeque<Message>) {
 		for layer_path in document.selected_visible_layers() {
-			if let Ok(layer) = document.graphene_document.layer(layer_path) {
+			if let Ok(layer) = document.document_legacy.layer(layer_path) {
 				let transform = Self::get_layer_pivot_transform(layer_path, layer, document, font_cache);
 				let pivot = transform.inverse().transform_point2(position);
 				// Only update the pivot when computed position is finite. Infinite can happen when scale is 0.

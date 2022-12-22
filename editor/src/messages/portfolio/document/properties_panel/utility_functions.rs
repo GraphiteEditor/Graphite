@@ -9,11 +9,11 @@ use crate::messages::layout::utility_types::widgets::label_widgets::{IconLabel, 
 use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::*;
 
-use graphene::color::Color;
-use graphene::document::Document;
-use graphene::layers::layer_info::{Layer, LayerDataType, LayerDataTypeDiscriminant};
-use graphene::layers::style::{Fill, Gradient, GradientType, LineCap, LineJoin, Stroke};
-use graphene::layers::text_layer::{FontCache, TextLayer};
+use document_legacy::color::Color;
+use document_legacy::document::Document;
+use document_legacy::layers::layer_info::{Layer, LayerDataType, LayerDataTypeDiscriminant};
+use document_legacy::layers::style::{Fill, Gradient, GradientType, LineCap, LineJoin, Stroke};
+use document_legacy::layers::text_layer::{FontCache, TextLayer};
 
 use glam::{DAffine2, DVec2};
 use std::f64::consts::PI;
@@ -209,7 +209,7 @@ pub fn register_artboard_layer_properties(layer: &Layer, responses: &mut VecDequ
 
 pub fn register_artwork_layer_properties(
 	document: &Document,
-	layer_path: Vec<graphene::LayerId>,
+	layer_path: Vec<document_legacy::LayerId>,
 	layer: &Layer,
 	responses: &mut VecDeque<Message>,
 	persistent_data: &PersistentData,

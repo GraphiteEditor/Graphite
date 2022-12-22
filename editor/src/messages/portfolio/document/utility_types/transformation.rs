@@ -1,10 +1,10 @@
 use crate::consts::{ROTATE_SNAP_ANGLE, SCALE_SNAP_INTERVAL};
 use crate::messages::prelude::*;
 
-use graphene::document::Document;
-use graphene::layers::text_layer::FontCache;
-use graphene::LayerId;
-use graphene::Operation as DocumentOperation;
+use document_legacy::document::Document;
+use document_legacy::layers::text_layer::FontCache;
+use document_legacy::LayerId;
+use document_legacy::Operation as DocumentOperation;
 
 use glam::{DAffine2, DVec2};
 use std::collections::{HashMap, VecDeque};

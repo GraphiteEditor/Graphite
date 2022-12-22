@@ -1,7 +1,7 @@
 [workspace]
 members = [
 	"editor",
-	"graphene",
+	"document-legacy",
 	"proc-macros",
 	"frontend/wasm",
 	"frontend/src-tauri",

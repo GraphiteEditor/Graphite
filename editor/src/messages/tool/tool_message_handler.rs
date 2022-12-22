@@ -6,7 +6,7 @@ use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::ToolType;
 
-use graphene::color::Color;
+use document_legacy::color::Color;
 
 #[derive(Debug, Default)]
 pub struct ToolMessageHandler {

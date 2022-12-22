@@ -1,14 +1,14 @@
 use crate::messages::prelude::*;
 
 use bezier_rs::ComputeType;
-use graphene::{LayerId, Operation};
+use document_legacy::{LayerId, Operation};
 use graphene_std::vector::consts::ManipulatorType;
 use graphene_std::vector::manipulator_group::ManipulatorGroup;
 use graphene_std::vector::manipulator_point::ManipulatorPoint;
 use graphene_std::vector::subpath::{BezierId, Subpath};
 
+use document_legacy::document::Document;
 use glam::DVec2;
-use graphene::document::Document;
 
 /// ShapeEditor is the container for all of the layer paths that are represented as [Subpath]s and provides
 /// functionality required to query and create the [Subpath] / [ManipulatorGroup]s / [ManipulatorPoint]s.

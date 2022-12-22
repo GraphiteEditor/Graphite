@@ -1,6 +1,6 @@
 use super::layer_panel::LayerMetadata;
 
-use graphene::layers::layer_info::Layer;
+use document_legacy::layers::layer_info::Layer;
 
 use serde::{Deserialize, Serialize};
 
