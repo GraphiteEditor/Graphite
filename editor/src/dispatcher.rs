@@ -2,7 +2,7 @@ use crate::consts::{DEFAULT_FONT_FAMILY, DEFAULT_FONT_STYLE};
 use crate::messages::debug::utility_types::MessageLoggingVerbosity;
 use crate::messages::prelude::*;
 
-use graphene::layers::text_layer::Font;
+use document_legacy::layers::text_layer::Font;
 
 #[derive(Debug, Default)]
 pub struct Dispatcher {
@@ -256,9 +256,9 @@ mod test {
 	use crate::messages::prelude::*;
 	use crate::test_utils::EditorTestUtils;
 
-	use graphene::color::Color;
-	use graphene::LayerId;
-	use graphene::Operation;
+	use document_legacy::color::Color;
+	use document_legacy::LayerId;
+	use document_legacy::Operation;
 
 	fn init_logger() {
 		let _ = env_logger::builder().is_test(true).try_init();
@@ -294,14 +294,14 @@ mod test {
 	fn copy_paste_single_layer() {
 		let mut editor = create_editor_with_three_layers();
 
-		let document_before_copy = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap().graphene_document.clone();
+		let document_before_copy = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap().document_legacy.clone();
 		editor.handle_message(PortfolioMessage::Copy { clipboard: Clipboard::Internal });
 		editor.handle_message(PortfolioMessage::PasteIntoFolder {
 			clipboard: Clipboard::Internal,
 			folder_path: vec![],
 			insert_index: -1,
 		});
-		let document_after_copy = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap().graphene_document.clone();
+		let document_after_copy = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap().document_legacy.clone();
 
 		let layers_before_copy = document_before_copy.root.as_folder().unwrap().layers();
 		let layers_after_copy = document_after_copy.root.as_folder().unwrap().layers();
@@ -327,7 +327,7 @@ mod test {
 	fn copy_paste_single_layer_from_middle() {
 		let mut editor = create_editor_with_three_layers();
 
-		let document_before_copy = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap().graphene_document.clone();
+		let document_before_copy = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap().document_legacy.clone();
 		let shape_id = document_before_copy.root.as_folder().unwrap().layer_ids[1];
 
 		editor.handle_message(DocumentMessage::SetSelectedLayers {
@@ -340,7 +340,7 @@ mod test {
 			insert_index: -1,
 		});
 
-		let document_after_copy = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap().graphene_document.clone();
+		let document_after_copy = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap().document_legacy.clone();
 
 		let layers_before_copy = document_before_copy.root.as_folder().unwrap().layers();
 		let layers_after_copy = document_after_copy.root.as_folder().unwrap().layers();
@@ -371,7 +371,7 @@ mod test {
 
 		editor.handle_message(DocumentMessage::CreateEmptyFolder { container_path: vec![] });
 
-		let document_before_added_shapes = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap().graphene_document.clone();
+		let document_before_added_shapes = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap().document_legacy.clone();
 		let folder_id = document_before_added_shapes.root.as_folder().unwrap().layer_ids[FOLDER_INDEX];
 
 		// TODO: This adding of a Line and Pen should be rewritten using the corresponding functions in EditorTestUtils.
@@ -395,7 +395,7 @@ mod test {
 			replacement_selected_layers: vec![vec![folder_id]],
 		});
 
-		let document_before_copy = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap().graphene_document.clone();
+		let document_before_copy = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap().document_legacy.clone();
 
 		editor.handle_message(PortfolioMessage::Copy { clipboard: Clipboard::Internal });
 		editor.handle_message(DocumentMessage::DeleteSelectedLayers);
@@ -410,7 +410,7 @@ mod test {
 			insert_index: -1,
 		});
 
-		let document_after_copy = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap().graphene_document.clone();
+		let document_after_copy = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap().document_legacy.clone();
 
 		let layers_before_copy = document_before_copy.root.as_folder().unwrap().layers();
 		let layers_after_copy = document_after_copy.root.as_folder().unwrap().layers();
@@ -460,7 +460,7 @@ mod test {
 		const SHAPE_INDEX: usize = 1;
 		const RECT_INDEX: usize = 0;
 
-		let document_before_copy = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap().graphene_document.clone();
+		let document_before_copy = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap().document_legacy.clone();
 		let rect_id = document_before_copy.root.as_folder().unwrap().layer_ids[RECT_INDEX];
 		let ellipse_id = document_before_copy.root.as_folder().unwrap().layer_ids[ELLIPSE_INDEX];
 
@@ -481,7 +481,7 @@ mod test {
 			insert_index: -1,
 		});
 
-		let document_after_copy = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap().graphene_document.clone();
+		let document_after_copy = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap().document_legacy.clone();
 
 		let layers_before_copy = document_before_copy.root.as_folder().unwrap().layers();
 		let layers_after_copy = document_after_copy.root.as_folder().unwrap().layers();

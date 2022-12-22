@@ -65,7 +65,7 @@ impl MessageHandler<DialogMessage, (&PortfolioMessageHandler, &PreferencesMessag
 						.artboard_ids
 						.iter()
 						.rev()
-						.filter_map(|&artboard| artboard_handler.artboards_graphene_document.layer(&[artboard]).ok().map(|layer| (artboard, layer)))
+						.filter_map(|&artboard| artboard_handler.artboards_document.layer(&[artboard]).ok().map(|layer| (artboard, layer)))
 						.map(|(artboard, layer)| {
 							(
 								artboard,

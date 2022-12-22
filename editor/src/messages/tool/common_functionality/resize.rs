@@ -3,9 +3,9 @@ use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::snapping::SnapManager;
 
-use graphene::layers::text_layer::FontCache;
-use graphene::LayerId;
-use graphene::Operation;
+use document_legacy::layers::text_layer::FontCache;
+use document_legacy::LayerId;
+use document_legacy::Operation;
 
 use glam::{DAffine2, DVec2, Vec2Swizzles};
 

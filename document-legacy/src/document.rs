@@ -60,7 +60,7 @@ impl Document {
 		// Split the path into the layer ID and its parent folder
 		let (layer_id_to_render_below, parent_folder_path) = below_layer_path.split_last()?;
 
-		// Note: it is bad practice to directly clone and modify the Graphene document structure, this is a temporary hack until this whole system is replaced by the node graph
+		// Note: it is bad practice to directly clone and modify the document structure, this is a temporary hack until this whole system is replaced by the node graph
 		let mut temp_subset_folder = self.layer_mut(parent_folder_path).ok()?.clone();
 		if let LayerDataType::Folder(ref mut folder) = temp_subset_folder.data {
 			// Remove the upper layers to leave behind the lower subset for rendering
@@ -84,7 +84,7 @@ impl Document {
 
 	/// Renders a layer and its children
 	pub fn render_layer(&mut self, layer_path: &[LayerId], render_data: RenderData) -> Option<String> {
-		// Note: it is bad practice to directly clone and modify the Graphene document structure, this is a temporary hack until this whole system is replaced by the node graph
+		// Note: it is bad practice to directly clone and modify the document structure, this is a temporary hack until this whole system is replaced by the node graph
 		let mut temp_clone = self.layer_mut(layer_path).ok()?.clone();
 
 		// Render and append to the defs section

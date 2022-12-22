@@ -376,8 +376,8 @@ impl PathStyle {
 	///
 	/// # Example
 	/// ```
-	/// # use graphite_graphene::layers::style::{Fill, PathStyle};
-	/// # use graphite_graphene::color::Color;
+	/// # use graphite_document_legacy::layers::style::{Fill, PathStyle};
+	/// # use graphite_document_legacy::color::Color;
 	/// let fill = Fill::solid(Color::RED);
 	/// let style = PathStyle::new(None, fill.clone());
 	///
@@ -391,8 +391,8 @@ impl PathStyle {
 	///
 	/// # Example
 	/// ```
-	/// # use graphite_graphene::layers::style::{Fill, Stroke, PathStyle};
-	/// # use graphite_graphene::color::Color;
+	/// # use graphite_document_legacy::layers::style::{Fill, Stroke, PathStyle};
+	/// # use graphite_document_legacy::color::Color;
 	/// let stroke = Stroke::new(Color::GREEN, 42.);
 	/// let style = PathStyle::new(Some(stroke.clone()), Fill::None);
 	///
@@ -406,8 +406,8 @@ impl PathStyle {
 	///
 	/// # Example
 	/// ```
-	/// # use graphite_graphene::layers::style::{Fill, PathStyle};
-	/// # use graphite_graphene::color::Color;
+	/// # use graphite_document_legacy::layers::style::{Fill, PathStyle};
+	/// # use graphite_document_legacy::color::Color;
 	/// let mut style = PathStyle::default();
 	///
 	/// assert_eq!(*style.fill(), Fill::None);
@@ -425,8 +425,8 @@ impl PathStyle {
 	///
 	/// # Example
 	/// ```
-	/// # use graphite_graphene::layers::style::{Stroke, PathStyle};
-	/// # use graphite_graphene::color::Color;
+	/// # use graphite_document_legacy::layers::style::{Stroke, PathStyle};
+	/// # use graphite_document_legacy::color::Color;
 	/// let mut style = PathStyle::default();
 	///
 	/// assert_eq!(style.stroke(), None);
@@ -444,8 +444,8 @@ impl PathStyle {
 	///
 	/// # Example
 	/// ```
-	/// # use graphite_graphene::layers::style::{Fill, PathStyle};
-	/// # use graphite_graphene::color::Color;
+	/// # use graphite_document_legacy::layers::style::{Fill, PathStyle};
+	/// # use graphite_document_legacy::color::Color;
 	/// let mut style = PathStyle::new(None, Fill::Solid(Color::RED));
 	///
 	/// assert!(style.fill().is_some());
@@ -462,8 +462,8 @@ impl PathStyle {
 	///
 	/// # Example
 	/// ```
-	/// # use graphite_graphene::layers::style::{Fill, Stroke, PathStyle};
-	/// # use graphite_graphene::color::Color;
+	/// # use graphite_document_legacy::layers::style::{Fill, Stroke, PathStyle};
+	/// # use graphite_document_legacy::color::Color;
 	/// let mut style = PathStyle::new(Some(Stroke::new(Color::GREEN, 42.)), Fill::None);
 	///
 	/// assert!(style.stroke().is_some());

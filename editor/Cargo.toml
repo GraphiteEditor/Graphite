@@ -40,9 +40,9 @@ dyn-any = { path = "../libraries/dyn-any" }
 graphene-core = { path = "../node-graph/gcore" }
 graphene-std = { path = "../node-graph/gstd" }
 
-[dependencies.graphene]
+[dependencies.document-legacy]
 path = "../document-legacy"
-package = "graphite-graphene"
+package = "graphite-document-legacy"
 
 [dev-dependencies]
 env_logger = "0.8.4"

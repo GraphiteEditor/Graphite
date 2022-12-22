@@ -123,9 +123,9 @@ pub trait LayerData {
 	///
 	/// # Example
 	/// ```
-	/// # use graphite_graphene::layers::shape_layer::ShapeLayer;
-	/// # use graphite_graphene::layers::style::{Fill, PathStyle, ViewMode, RenderData};
-	/// # use graphite_graphene::layers::layer_info::LayerData;
+	/// # use graphite_document_legacy::layers::shape_layer::ShapeLayer;
+	/// # use graphite_document_legacy::layers::style::{Fill, PathStyle, ViewMode, RenderData};
+	/// # use graphite_document_legacy::layers::layer_info::LayerData;
 	/// # use std::collections::HashMap;
 	///
 	/// let mut shape = ShapeLayer::rectangle(PathStyle::new(None, Fill::None));
@@ -148,10 +148,10 @@ pub trait LayerData {
 	/// Determine the layers within this layer that intersect a given quad.
 	/// # Example
 	/// ```
-	/// # use graphite_graphene::layers::shape_layer::ShapeLayer;
-	/// # use graphite_graphene::layers::style::{Fill, PathStyle, ViewMode};
-	/// # use graphite_graphene::layers::layer_info::LayerData;
-	/// # use graphite_graphene::intersection::Quad;
+	/// # use graphite_document_legacy::layers::shape_layer::ShapeLayer;
+	/// # use graphite_document_legacy::layers::style::{Fill, PathStyle, ViewMode};
+	/// # use graphite_document_legacy::layers::layer_info::LayerData;
+	/// # use graphite_document_legacy::intersection::Quad;
 	/// # use glam::f64::{DAffine2, DVec2};
 	/// # use std::collections::HashMap;
 	///
@@ -172,9 +172,9 @@ pub trait LayerData {
 	/// Calculate the bounding box for the layer's contents after applying a given transform.
 	/// # Example
 	/// ```no_run
-	/// # use graphite_graphene::layers::shape_layer::ShapeLayer;
-	/// # use graphite_graphene::layers::style::{Fill, PathStyle};
-	/// # use graphite_graphene::layers::layer_info::LayerData;
+	/// # use graphite_document_legacy::layers::shape_layer::ShapeLayer;
+	/// # use graphite_document_legacy::layers::style::{Fill, PathStyle};
+	/// # use graphite_document_legacy::layers::layer_info::LayerData;
 	/// # use glam::f64::{DAffine2, DVec2};
 	/// # use std::collections::HashMap;
 	/// let shape = ShapeLayer::ellipse(PathStyle::new(None, Fill::None));
@@ -271,10 +271,10 @@ impl Layer {
 	///
 	/// # Example
 	/// ```
-	/// # use graphite_graphene::layers::shape_layer::ShapeLayer;
-	/// # use graphite_graphene::layers::layer_info::Layer;
-	/// # use graphite_graphene::layers::style::PathStyle;
-	/// # use graphite_graphene::layers::folder_layer::FolderLayer;
+	/// # use graphite_document_legacy::layers::shape_layer::ShapeLayer;
+	/// # use graphite_document_legacy::layers::layer_info::Layer;
+	/// # use graphite_document_legacy::layers::style::PathStyle;
+	/// # use graphite_document_legacy::layers::folder_layer::FolderLayer;
 	/// let mut root_folder = FolderLayer::default();
 	///
 	/// // Add a shape to the root folder
@@ -361,9 +361,9 @@ impl Layer {
 	///
 	/// # Example
 	/// ```
-	/// # use graphite_graphene::layers::shape_layer::ShapeLayer;
-	/// # use graphite_graphene::layers::layer_info::Layer;
-	/// # use graphite_graphene::layers::style::PathStyle;
+	/// # use graphite_document_legacy::layers::shape_layer::ShapeLayer;
+	/// # use graphite_document_legacy::layers::layer_info::Layer;
+	/// # use graphite_document_legacy::layers::style::PathStyle;
 	/// # use glam::DVec2;
 	/// # use glam::f64::DAffine2;
 	/// # use std::collections::HashMap;

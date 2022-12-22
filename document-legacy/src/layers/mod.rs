@@ -1,12 +1,12 @@
 //! # Layers
 //! A document consists of a set of [Layers](layer_info::Layer).
 //! Layers allow the user to mutate part of the document while leaving the rest unchanged.
-//! Graphene currently includes these different types of layers:
+//! There are currently these different types of layers:
 //! * [Folder layers](folder_layer::FolderLayer), which encapsulate sub-layers
 //! * [Shape layers](shape_layer::ShapeLayer), which contain generic SVG [`<path>`](https://developer.mozilla.org/en-US/docs/Web/SVG/Element/path)s
 //! * [Text layers](text_layer::TextLayer), which contain a description of laid out text
 //! * [Image layers](image_layer::ImageLayer), which contain a bitmap image
-//! * [Imaginate layers](imaginate_layer::ImaginateLayer), which contain a bitmap image generated based on a prompt and optionally the layers beneath it
+//! * [Nodegraph layers](nodegraph_layer::NodegraphLayer), which contain a node graph frame
 //!
 //! Refer to the module-level documentation for detailed information on each layer.
 //!

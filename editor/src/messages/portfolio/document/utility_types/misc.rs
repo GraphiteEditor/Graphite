@@ -1,14 +1,14 @@
 pub use super::layer_panel::{LayerMetadata, LayerPanelEntry};
 
-use graphene::color::Color;
-use graphene::document::Document as GrapheneDocument;
-use graphene::LayerId;
+use document_legacy::color::Color;
+use document_legacy::document::Document as DocumentLegacy;
+use document_legacy::LayerId;
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt;
 
-pub type DocumentSave = (GrapheneDocument, HashMap<Vec<LayerId>, LayerMetadata>);
+pub type DocumentSave = (DocumentLegacy, HashMap<Vec<LayerId>, LayerMetadata>);
 
 #[derive(PartialEq, Eq, Clone, Debug, Serialize, Deserialize, Hash)]
 pub enum FlipAxis {

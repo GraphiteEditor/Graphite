@@ -4,11 +4,11 @@ use crate::messages::portfolio::document::utility_types::layer_panel::LayerMetad
 use crate::messages::portfolio::document::utility_types::transformation::{Axis, OriginalTransforms, Selected, TransformOperation, Typing};
 use crate::messages::prelude::*;
 
-use graphene::document::Document;
-use graphene::LayerId;
+use document_legacy::document::Document;
+use document_legacy::LayerId;
 
+use document_legacy::layers::text_layer::FontCache;
 use glam::DVec2;
-use graphene::layers::text_layer::FontCache;
 
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct TransformLayerMessageHandler {

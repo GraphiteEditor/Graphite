@@ -1,7 +1,7 @@
 use crate::messages::prelude::*;
 
+use document_legacy::LayerId;
 use graph_craft::document::{value::TaggedValue, NodeId};
-use graphene::LayerId;
 
 #[remain::sorted]
 #[impl_message(Message, DocumentMessage, NodeGraph)]
@@ -45,7 +45,7 @@ pub enum NodeGraphMessage {
 		displacement_y: i32,
 	},
 	OpenNodeGraph {
-		layer_path: Vec<graphene::LayerId>,
+		layer_path: Vec<document_legacy::LayerId>,
 	},
 	SelectNodes {
 		nodes: Vec<NodeId>,
