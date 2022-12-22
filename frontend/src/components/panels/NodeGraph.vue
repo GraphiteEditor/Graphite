@@ -300,6 +300,8 @@ import { defineComponent, nextTick } from "vue";
 
 import type { IconName } from "@/utility-functions/icons";
 
+import type { FrontendNodeLink } from "@/wasm-communication/messages";
+
 import LayoutCol from "@/components/layout/LayoutCol.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
 import TextButton from "@/components/widgets/buttons/TextButton.vue";
@@ -388,6 +390,15 @@ export default defineComponent({
 		},
 	},
 	methods: {
+		resolveLink(link: FrontendNodeLink, containerBounds: HTMLDivElement): { nodePrimaryOutput: HTMLDivElement | undefined; nodePrimaryInput: HTMLDivElement | undefined } {
+			const connectorIndex = Number(link.linkEndInputIndex);
+
+			const nodePrimaryOutput = (containerBounds.querySelector(`[data-node="${String(link.linkStart)}"] [data-port="output"]`) || undefined) as HTMLDivElement | undefined;
+
+			const nodeInputConnectors = containerBounds.querySelectorAll(`[data-node="${String(link.linkEnd)}"] [data-port="input"]`) || undefined;
+			const nodePrimaryInput = nodeInputConnectors?.[connectorIndex] as HTMLDivElement | undefined;
+			return { nodePrimaryOutput, nodePrimaryInput };
+		},
 		async refreshLinks(): Promise<void> {
 			await nextTick();
 
@@ -396,13 +407,7 @@ export default defineComponent({
 
 			const links = this.nodeGraph.state.links;
 			this.nodeLinkPaths = links.flatMap((link, index) => {
-				const connectorIndex = Number(link.linkEndInputIndex);
-
-				const nodePrimaryOutput = (containerBounds.querySelector(`[data-node="${String(link.linkStart)}"] [data-port="output"]`) || undefined) as HTMLDivElement | undefined;
-
-				const nodeInputConnectors = containerBounds.querySelectorAll(`[data-node="${String(link.linkEnd)}"] [data-port="input"]`) || undefined;
-				const nodePrimaryInput = nodeInputConnectors?.[connectorIndex] as HTMLDivElement | undefined;
-
+				const { nodePrimaryInput, nodePrimaryOutput } = this.resolveLink(link, containerBounds);
 				if (!nodePrimaryInput || !nodePrimaryOutput) return [];
 				if (this.disconnecting?.linkIndex === index) return [];
 
@@ -419,9 +424,9 @@ export default defineComponent({
 			};
 			return iconMap[nodeName] || "NodeNodes";
 		},
-		buildWirePathString(outputBounds: DOMRect, inputBounds: DOMRect, verticalOut: boolean, verticalIn: boolean): string {
+		buildWirePathLocations(outputBounds: DOMRect, inputBounds: DOMRect, verticalOut: boolean, verticalIn: boolean): { x: number; y: number }[] {
 			const containerBounds = (this.$refs.nodesContainer as HTMLDivElement | undefined)?.getBoundingClientRect();
-			if (!containerBounds) return "[error]";
+			if (!containerBounds) return [];
 
 			const outX = verticalOut ? outputBounds.x + outputBounds.width / 2 : outputBounds.x + outputBounds.width - 1;
 			const outY = verticalOut ? outputBounds.y + 1 : outputBounds.y + outputBounds.height / 2;
@@ -443,9 +448,17 @@ export default defineComponent({
 			const horizontalCurve = horizontalCurveAmount * curveLength;
 			const verticalCurve = verticalCurveAmount * curveLength;
 
-			return `M${outConnectorX},${outConnectorY} C${verticalOut ? outConnectorX : outConnectorX + horizontalCurve},${verticalOut ? outConnectorY - verticalCurve : outConnectorY} ${
-				verticalIn ? inConnectorX : inConnectorX - horizontalCurve
-			},${verticalIn ? inConnectorY + verticalCurve : inConnectorY} ${inConnectorX},${inConnectorY}`;
+			return [
+				{ x: outConnectorX, y: outConnectorY },
+				{ x: verticalOut ? outConnectorX : outConnectorX + horizontalCurve, y: verticalOut ? outConnectorY - verticalCurve : outConnectorY },
+				{ x: verticalIn ? inConnectorX : inConnectorX - horizontalCurve, y: verticalIn ? inConnectorY + verticalCurve : inConnectorY },
+				{ x: inConnectorX, y: inConnectorY },
+			];
+		},
+		buildWirePathString(outputBounds: DOMRect, inputBounds: DOMRect, verticalOut: boolean, verticalIn: boolean): string {
+			const locations = this.buildWirePathLocations(outputBounds, inputBounds, verticalOut, verticalIn);
+			if (locations.length === 0) return "[error]";
+			return `M${locations[0].x},${locations[0].y} C${locations[1].x},${locations[1].y} ${locations[2].x},${locations[2].y} ${locations[3].x},${locations[3].y}`;
 		},
 		createWirePath(outputPort: HTMLDivElement, inputPort: HTMLDivElement | DOMRect, verticalOut: boolean, verticalIn: boolean): [string, string] {
 			const inputPortRect = inputPort instanceof HTMLDivElement ? inputPort.getBoundingClientRect() : inputPort;
@@ -493,8 +506,16 @@ export default defineComponent({
 				this.transform.x -= scrollY / this.transform.scale;
 			}
 		},
+		keydown(e: KeyboardEvent): void {
+			if (e.key.toLowerCase() === "escape") {
+				this.nodeListLocation = undefined;
+				document.removeEventListener("keydown", this.keydown);
+			}
+		},
 		// TODO: Move the event listener from the graph to the window so dragging outside the graph area (or even the browser window) works
 		pointerDown(e: PointerEvent) {
+			if (this.nodeListLocation && !(e.target as HTMLElement).closest("[data-node-list]")) this.nodeListLocation = undefined;
+
 			if (e.button === 2) {
 				const graphDiv: HTMLDivElement | undefined = (this.$refs.graph as typeof LayoutCol | undefined)?.$el;
 				const graph = graphDiv?.getBoundingClientRect() || new DOMRect();
@@ -502,6 +523,8 @@ export default defineComponent({
 					x: Math.round(((e.clientX - graph.x) / this.transform.scale - this.transform.x) / GRID_SIZE),
 					y: Math.round(((e.clientY - graph.y) / this.transform.scale - this.transform.y) / GRID_SIZE),
 				};
+
+				document.addEventListener("keydown", this.keydown);
 				return;
 			}
 
@@ -599,6 +622,8 @@ export default defineComponent({
 			}
 		},
 		pointerUp(e: PointerEvent) {
+			const containerBounds = this.$refs.nodesContainer as HTMLDivElement | undefined;
+			if (!containerBounds) return;
 			this.panning = false;
 
 			if (this.disconnecting) {
@@ -632,6 +657,48 @@ export default defineComponent({
 					}
 				}
 				this.editor.instance.moveSelectedNodes(this.draggingNodes.roundX, this.draggingNodes.roundY);
+
+				// Check if this node should be inserted between two other nodes
+				if (this.selected.length === 1) {
+					const selectedNodeId = this.selected[0];
+					const selectedNode = containerBounds.querySelector(`[data-node="${String(selectedNodeId)}"]`);
+
+					// Check that neither the input or output of the selected node are already connected.
+					const notConnected =
+						this.nodeGraph.state.links.findIndex((link) => link.linkStart === selectedNodeId || (link.linkEnd === selectedNodeId && link.linkEndInputIndex === BigInt(0))) === -1;
+					const input = selectedNode?.querySelector(`[data-port="input"]`);
+					const output = selectedNode?.querySelector(`[data-port="output"]`);
+
+					// TODO: Make sure inputs are correctly typed
+					if (selectedNode && notConnected && input && output) {
+						// Find the link that the node has been dragged on top of
+						const link = this.nodeGraph.state.links.find((link): boolean => {
+							const { nodePrimaryInput, nodePrimaryOutput } = this.resolveLink(link, containerBounds);
+							if (!nodePrimaryInput || !nodePrimaryOutput) return false;
+
+							const wireCurveLocations = this.buildWirePathLocations(nodePrimaryOutput.getBoundingClientRect(), nodePrimaryInput.getBoundingClientRect(), false, false);
+
+							const selectedNodeBounds = selectedNode.getBoundingClientRect();
+							const containerBoundsBounds = containerBounds.getBoundingClientRect();
+
+							return this.editor.instance.rectangleIntersects(
+								new Float64Array(wireCurveLocations.map((loc) => loc.x)),
+								new Float64Array(wireCurveLocations.map((loc) => loc.y)),
+								selectedNodeBounds.top - containerBoundsBounds.y,
+								selectedNodeBounds.left - containerBoundsBounds.x,
+								selectedNodeBounds.bottom - containerBoundsBounds.y,
+								selectedNodeBounds.right - containerBoundsBounds.x
+							);
+						});
+						// If the node has been dragged on top of the link then connect it into the middle.
+						if (link) {
+							this.editor.instance.connectNodesByLink(link.linkStart, selectedNodeId, 0);
+							this.editor.instance.connectNodesByLink(selectedNodeId, link.linkEnd, Number(link.linkEndInputIndex));
+							this.editor.instance.shiftNode(selectedNodeId);
+						}
+					}
+				}
+
 				this.draggingNodes = undefined;
 				this.selectIfNotDragged = undefined;
 			}

@@ -61,4 +61,7 @@ pub enum NodeGraphMessage {
 		input_index: usize,
 		value: TaggedValue,
 	},
+	ShiftNode {
+		node_id: NodeId,
+	},
 }
