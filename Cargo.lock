@@ -210,6 +210,7 @@ checksum = "d468802bab17cbc0cc575e9b053f41e72aa36bfa6b7f55e3529ffa43161b97fa"
 [[package]]
 name = "autoquant"
 version = "0.1.0"
+source = "git+https://github.com/truedoctor/autoquant#425fe5bd743c502922bfdcda808b8a0b3d1332d2"
 dependencies = [
  "anyhow",
  "argmin",
