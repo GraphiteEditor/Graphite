@@ -3,12 +3,12 @@ use crate::messages::layout::utility_types::widgets::{button_widgets::*, input_w
 use crate::messages::portfolio::utility_types::ImaginateServerStatus;
 use crate::messages::prelude::*;
 
+use document_legacy::layers::layer_info::LayerDataTypeDiscriminant;
+use document_legacy::Operation;
 use glam::DVec2;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{generate_uuid, DocumentNode, NodeId, NodeInput};
 use graph_craft::imaginate_input::*;
-use graphene::layers::layer_info::LayerDataTypeDiscriminant;
-use graphene::Operation;
 
 use super::document_node_types::NodePropertiesContext;
 use super::{FrontendGraphDataType, IMAGINATE_NODE};
@@ -521,7 +521,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 	};
 
 	let resolution = {
-		use graphene::document::pick_safe_imaginate_resolution;
+		use document_legacy::document::pick_safe_imaginate_resolution;
 
 		let mut widgets = start_widgets(document_node, node_id, resolution_index, "Resolution", FrontendGraphDataType::Vector, false);
 

@@ -5,8 +5,8 @@ use crate::messages::input_mapper::utility_types::input_mouse::{ViewportBounds, 
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 
-use graphene::document::Document;
-use graphene::Operation as DocumentOperation;
+use document_legacy::document::Document;
+use document_legacy::Operation as DocumentOperation;
 
 use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};

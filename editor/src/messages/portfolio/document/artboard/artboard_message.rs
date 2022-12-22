@@ -1,7 +1,7 @@
 use crate::messages::prelude::*;
 
-use graphene::LayerId;
-use graphene::Operation as DocumentOperation;
+use document_legacy::LayerId;
+use document_legacy::Operation as DocumentOperation;
 
 use serde::{Deserialize, Serialize};
 

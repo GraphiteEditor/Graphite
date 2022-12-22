@@ -4,10 +4,10 @@ use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::portfolio::document::utility_types::transformation::OriginalTransforms;
 use crate::messages::prelude::*;
 
-use graphene::color::Color;
-use graphene::layers::style::{self, Fill, Stroke};
-use graphene::LayerId;
-use graphene::Operation;
+use document_legacy::color::Color;
+use document_legacy::layers::style::{self, Fill, Stroke};
+use document_legacy::LayerId;
+use document_legacy::Operation;
 
 use glam::{DAffine2, DVec2};
 

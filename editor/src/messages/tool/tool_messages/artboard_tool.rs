@@ -10,8 +10,8 @@ use crate::messages::tool::common_functionality::transformation_cage::*;
 use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 
-use graphene::intersection::Quad;
-use graphene::LayerId;
+use document_legacy::intersection::Quad;
+use document_legacy::LayerId;
 
 use glam::{DVec2, Vec2Swizzles};
 use serde::{Deserialize, Serialize};
@@ -198,8 +198,8 @@ impl Fsm for ArtboardToolFsmState {
 						tool_data.snap_manager.add_all_document_handles(document, &[], &[], &[]);
 
 						if let Some(bounds) = &mut tool_data.bounding_box_overlays {
-							let pivot = document.artboard_message_handler.artboards_graphene_document.pivot(&[artboard], font_cache).unwrap_or_default();
-							let root = document.graphene_document.root.transform;
+							let pivot = document.artboard_message_handler.artboards_document.pivot(&[artboard], font_cache).unwrap_or_default();
+							let root = document.document_legacy.root.transform;
 							let pivot = root.inverse().transform_point2(pivot);
 							bounds.center_of_transformation = pivot;
 						}
@@ -208,7 +208,7 @@ impl Fsm for ArtboardToolFsmState {
 					} else {
 						let tolerance = DVec2::splat(SELECTION_TOLERANCE);
 						let quad = Quad::from_box([input.mouse.position - tolerance, input.mouse.position + tolerance]);
-						let intersection = document.artboard_message_handler.artboards_graphene_document.intersects_quad_root(quad, font_cache);
+						let intersection = document.artboard_message_handler.artboards_document.intersects_quad_root(quad, font_cache);
 
 						responses.push_back(BroadcastEvent::DocumentIsDirty.into());
 						if let Some(intersection) = intersection.last() {
@@ -294,7 +294,7 @@ impl Fsm for ArtboardToolFsmState {
 					let mouse_position = input.mouse.position;
 					let snapped_mouse_position = tool_data.snap_manager.snap_position(responses, document, mouse_position);
 
-					let root_transform = document.graphene_document.root.transform.inverse();
+					let root_transform = document.document_legacy.root.transform.inverse();
 
 					let mut start = tool_data.drag_start;
 					let mut size = snapped_mouse_position - start;
