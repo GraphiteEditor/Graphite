@@ -2,10 +2,6 @@ use dyn_any::{DynAny, StaticType, StaticTypeSized};
 pub use graphene_core::{generic, ops /*, structural*/, Node, RefNode};
 use std::marker::PhantomData;
 
-fn fmt_error<I>() -> String {
-	format!("DynAnyNode: input is not of correct type, expected {}", std::any::type_name::<I>())
-}
-
 pub struct DynAnyNode<N, I: StaticType, O: StaticType, ORef: StaticType>(pub N, pub PhantomData<(I, O, ORef)>);
 /*impl<'n, I: StaticType, N: RefNode<'n, &'n I, Output = O> + 'n, O: 'n + StaticType> Node<&'n dyn DynAny<'n>> for DynAnyNode<'n, N, I> {
 	type Output = Box<dyn dyn_any::DynAny<'n> + 'n>;
@@ -35,7 +31,7 @@ where
 {
 	type Output = Any<'n>;
 	fn eval(self, input: Any<'n>) -> Self::Output {
-		let input: Box<I> = dyn_any::downcast(input).unwrap_or_else(|| panic!("{}", fmt_error::<I>()));
+		let input: Box<I> = dyn_any::downcast(input).expect("DynAnyNode Input");
 		Box::new(self.0.eval(*input))
 	}
 }
@@ -45,7 +41,7 @@ where
 {
 	type Output = Any<'n>;
 	fn eval(self, input: Any<'n>) -> Self::Output {
-		let input: Box<I> = dyn_any::downcast(input).unwrap_or_else(|| panic!("{}", fmt_error::<I>()));
+		let input: Box<I> = dyn_any::downcast(input).expect("DynAnyNode Input");
 		Box::new((&self.0).eval_ref(*input))
 	}
 }
@@ -132,7 +128,7 @@ where
 	type Output = O;
 	fn eval(self, input: Any<'n>) -> Self::Output {
 		let output = self.0.eval(input);
-		*dyn_any::downcast(output).unwrap_or_else(|| panic!("DowncastNode: {}", fmt_error::<O>()))
+		*dyn_any::downcast(output).expect("DowncastNode Output")
 	}
 }
 impl<'n, N, I: StaticType> DowncastNode<N, I>
@@ -162,7 +158,7 @@ where
 	fn eval(self, input: I) -> Self::Output {
 		let input = Box::new(input) as Box<dyn DynAny>;
 		let output = self.0.eval(input);
-		*dyn_any::downcast(output).unwrap_or_else(|| panic!("DowncastBothNode Output: {}", fmt_error::<O>()))
+		*dyn_any::downcast(output).expect("DowncastBothNode Output")
 	}
 }
 impl<'n, N, I: StaticType, O: StaticType> DowncastBothNode<N, I, O>
