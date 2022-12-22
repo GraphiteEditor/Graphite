@@ -13,7 +13,7 @@ serde = ["graphene-core/serde", "glam/serde"]
 
 [dependencies]
 graphene-core = { path = "../gcore", features = ["async", "std", "alloc"] }
-graph-craft = {path = "../graph-craft" }
+graph-craft = {path = "../graph-craft", features = ["serde"] }
 dyn-any = { path = "../../libraries/dyn-any", features = ["log-bad-types", "rc", "glam"] }
 num-traits = "0.2"
 rand_chacha = "0.3.1"

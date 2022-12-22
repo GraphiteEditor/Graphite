@@ -12,6 +12,7 @@ members = [
 	"node-graph/borrow_stack",
 	"node-graph/node-macro",
 	"node-graph/compilation-server",
+	"node-graph/compilation-client",
 	"node-graph/vulkan-executor",
 	"node-graph/gpu-compiler/gpu-compiler-bin-wrapper",
 	"libraries/dyn-any",

@@ -3,20 +3,6 @@ use std::path::Path;
 use graph_craft::proto::*;
 use tera::Context;
 
-pub fn compile_spriv(network: graph_craft::document::NodeNetwork, input_type: &str, output_type: &str, compile_dir: Option<&str>) -> anyhow::Result<Vec<u8>> {
-	let serialized_graph = serde_json::to_string(&network)?;
-	std::process::Command::new("cargo")
-		.arg("run")
-		.arg("--release")
-		.arg("--target-dir")
-		.arg(compile_dir.unwrap_or("target"))
-		.arg("--manifest-path")
-		.current_dir(std::env::var("CARGO_MANIFEST_DIR").unwrap())
-		.arg(compile_dir.unwrap_or_default())
-		.input(serialized_graph)
-		.output()
-}
-
 fn create_cargo_toml(metadata: &Metadata) -> Result<String, tera::Error> {
 	let mut tera = tera::Tera::default();
 	tera.add_raw_template("cargo_toml", include_str!("templates/Cargo-template.toml"))?;

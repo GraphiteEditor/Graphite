@@ -3,6 +3,7 @@ use gpu_compiler as compiler;
 use std::io::Write;
 
 fn main() ->  anyhow::Result<()> {
+    println!("Starting Gpu Compiler!");
 	let mut stdin = std::io::stdin();
 	let mut stdout = std::io::stdout();
 	let input_type = std::env::args().nth(1).expect("input type arg missing");
