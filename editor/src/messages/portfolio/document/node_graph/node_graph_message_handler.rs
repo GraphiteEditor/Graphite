@@ -530,6 +530,53 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 					}
 				}
 			}
+			NodeGraphMessage::ShiftNode { node_id } => {
+				let Some(network) = self.get_active_network_mut(document) else{
+					warn!("No network");
+					return;
+				};
+				let outwards_links = network.collect_outwards_links();
+				let required_shift = |left: NodeId, right: NodeId, network: &NodeNetwork| {
+					if let (Some(left), Some(right)) = (network.nodes.get(&left), network.nodes.get(&right)) {
+						if right.metadata.position.0 < left.metadata.position.0 {
+							0
+						} else {
+							(8 - (right.metadata.position.0 - left.metadata.position.0)).max(0)
+						}
+					} else {
+						0
+					}
+				};
+				let shift_node = |node_id: NodeId, shift: i32, network: &mut NodeNetwork| {
+					if let Some(node) = network.nodes.get_mut(&node_id) {
+						node.metadata.position.0 += shift
+					}
+				};
+				// Shift the actual node
+				let inputs = network
+					.nodes
+					.get(&node_id)
+					.map_or(&Vec::new(), |node| &node.inputs)
+					.iter()
+					.filter_map(|input| if let NodeInput::Node(previous_id) = input { Some(*previous_id) } else { None })
+					.collect::<Vec<_>>();
+
+				for input_node in inputs {
+					let shift = required_shift(input_node, node_id, network);
+					shift_node(node_id, shift, network);
+				}
+
+				// Shift nodes connected to the output port of the specified node
+				for &decendant in outwards_links.get(&node_id).unwrap_or(&Vec::new()) {
+					let shift = required_shift(node_id, decendant, network);
+					let mut stack = vec![decendant];
+					while let Some(id) = stack.pop() {
+						shift_node(id, shift, network);
+						stack.extend(outwards_links.get(&id).unwrap_or(&Vec::new()).iter().copied())
+					}
+				}
+				Self::send_graph(network, responses);
+			}
 		}
 	}
 
