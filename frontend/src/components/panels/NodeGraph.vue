@@ -648,33 +648,42 @@ export default defineComponent({
 				}
 				this.editor.instance.moveSelectedNodes(this.draggingNodes.roundX, this.draggingNodes.roundY);
 
+				// Check if this node should be inserted between two other nodes
 				if (this.selected.length === 1) {
-					const id = this.selected[0];
-					const selectedNode = containerBounds.querySelector(` [data-node="${String(id)}"]`);
-					const notConnected = this.nodeGraph.state.links.findIndex((link) => link.linkStart === id || (link.linkEnd === id && link.linkEndInputIndex === BigInt(0))) === -1;
+					const selectedNodeId = this.selected[0];
+					const selectedNode = containerBounds.querySelector(`[data-node="${String(selectedNodeId)}"]`);
+
+					// Check that neither the input or output of the selected node are already connected.
+					const notConnected =
+						this.nodeGraph.state.links.findIndex((link) => link.linkStart === selectedNodeId || (link.linkEnd === selectedNodeId && link.linkEndInputIndex === BigInt(0))) === -1;
 					const input = selectedNode?.querySelector(`[data-port="input"]`);
 					const output = selectedNode?.querySelector(`[data-port="output"]`);
+
+					// TODO: Make sure inputs are correctly typed
 					if (selectedNode && notConnected && input && output) {
+						// Find the link that the node has been dragged on top of
 						const link = this.nodeGraph.state.links.find((link): boolean => {
 							const { nodePrimaryInput, nodePrimaryOutput } = this.resolveLink(link, containerBounds);
 							if (!nodePrimaryInput || !nodePrimaryOutput) return false;
 
-							const locations = this.buildWirePathLocations(nodePrimaryOutput.getBoundingClientRect(), nodePrimaryInput.getBoundingClientRect(), false, false);
+							const wireCurveLocations = this.buildWirePathLocations(nodePrimaryOutput.getBoundingClientRect(), nodePrimaryInput.getBoundingClientRect(), false, false);
 
 							const selectedNodeBounds = selectedNode.getBoundingClientRect();
 							const containerBoundsBounds = containerBounds.getBoundingClientRect();
+
 							return this.editor.instance.rectangleIntersects(
-								new Float64Array(locations.map((loc) => loc.x)),
-								new Float64Array(locations.map((loc) => loc.y)),
+								new Float64Array(wireCurveLocations.map((loc) => loc.x)),
+								new Float64Array(wireCurveLocations.map((loc) => loc.y)),
 								selectedNodeBounds.top - containerBoundsBounds.y,
 								selectedNodeBounds.left - containerBoundsBounds.x,
 								selectedNodeBounds.bottom - containerBoundsBounds.y,
 								selectedNodeBounds.right - containerBoundsBounds.x
 							);
 						});
+						// If the node has been dragged on top of the link then connect it into the middle.
 						if (link) {
-							this.editor.instance.connectNodesByLink(link.linkStart, id, 0);
-							this.editor.instance.connectNodesByLink(id, link.linkEnd, Number(link.linkEndInputIndex));
+							this.editor.instance.connectNodesByLink(link.linkStart, selectedNodeId, 0);
+							this.editor.instance.connectNodesByLink(selectedNodeId, link.linkEnd, Number(link.linkEndInputIndex));
 						}
 					}
 				}
