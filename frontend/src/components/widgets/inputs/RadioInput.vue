@@ -26,6 +26,7 @@
 		border: none;
 		display: flex;
 		align-items: center;
+		justify-content: center;
 
 		&:hover {
 			background: var(--color-6-lowergray);
