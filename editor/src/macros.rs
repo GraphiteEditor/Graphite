@@ -75,7 +75,7 @@ macro_rules! clone {
 
 macro_rules! widget_callback {
 	([$($tt:tt)*], $expr:expr) => {{
-        crate::messages::layout::utility_types::layout_widget::clone!($($tt)*);
+        clone!($($tt)*);
         WidgetCallback::new($expr)
     }};
 	($expr:expr) => {{
