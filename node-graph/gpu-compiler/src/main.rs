@@ -12,6 +12,7 @@ fn main() ->  anyhow::Result<()> {
 	let network: NodeNetwork = serde_json::from_reader(&mut stdin)?;
 	let compiler = graph_craft::executor::Compiler{};
 	let proto_network = compiler.compile(network, true);
+    dbg!(&compile_dir);
 
 	let metadata = compiler::Metadata::new("project".to_owned(), vec!["test@example.com".to_owned()]);
 

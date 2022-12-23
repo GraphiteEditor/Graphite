@@ -23,7 +23,7 @@ pub fn compile_spirv(network: &graph_craft::document::NodeNetwork, input_type: &
         .arg(input_type)
         .arg(output_type)
         // TODO: handle None case properly
-        .arg(compile_dir.unwrap_or_default())
+        .arg(compile_dir.unwrap())
 		.stdin(std::process::Stdio::piped())
 		.stdout(std::process::Stdio::piped())
         .spawn()?;

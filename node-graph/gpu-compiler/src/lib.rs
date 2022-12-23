@@ -88,6 +88,7 @@ pub fn serialize_gpu(network: &ProtoNetwork, input_type: &str, output_type: &str
 
 use spirv_builder::{MetadataPrintout, SpirvBuilder, SpirvMetadata};
 pub fn compile(dir: &Path) -> Result<spirv_builder::CompileResult, spirv_builder::SpirvBuilderError> {
+    dbg!(&dir);
 	let result = SpirvBuilder::new(dir, "spirv-unknown-spv1.5")
         .print_metadata(MetadataPrintout::DependencyOnly)
         .multimodule(false)
