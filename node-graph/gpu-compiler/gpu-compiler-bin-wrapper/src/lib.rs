@@ -1,5 +1,5 @@
+use serde::{Deserialize, Serialize};
 use std::io::Write;
-use serde::{Serialize, Deserialize};
 
 pub fn compile_spirv(network: &graph_craft::document::NodeNetwork, input_type: &str, output_type: &str, compile_dir: Option<&str>, manifest_path: &str) -> anyhow::Result<Vec<u8>> {
 	let serialized_graph = serde_json::to_string(&network)?;
@@ -7,8 +7,8 @@ pub fn compile_spirv(network: &graph_craft::document::NodeNetwork, input_type: &
 	#[cfg(feature = "profiling")]
 	let features = "profiling";
 
-    println!("calling cargo run!");
-    let non_cargo_env_vars = std::env::vars().filter(|(k, _)| k.starts_with("PATH")).collect::<Vec<_>>();
+	println!("calling cargo run!");
+	let non_cargo_env_vars = std::env::vars().filter(|(k, _)| k.starts_with("PATH")).collect::<Vec<_>>();
 	let mut cargo_command = std::process::Command::new("/usr/bin/cargo")
 		.arg("run")
 		.arg("--release")
@@ -36,19 +36,18 @@ pub fn compile_spirv(network: &graph_craft::document::NodeNetwork, input_type: &
 	Ok(output.stdout)
 }
 
-
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct CompileRequest {
-    network: graph_craft::document::NodeNetwork,
-    input_type: String,
-    output_type: String,
+	network: graph_craft::document::NodeNetwork,
+	input_type: String,
+	output_type: String,
 }
 
 impl CompileRequest {
-    pub fn new(network: graph_craft::document::NodeNetwork, input_type: String, output_type: String) -> Self {
-        Self { network, input_type, output_type }
-    }
-    pub fn compile(&self, compile_dir: &str, manifest_path: &str ) -> anyhow::Result<Vec<u8>> {
-        compile_spirv(&self.network, &self.input_type, &self.output_type, Some(compile_dir), manifest_path)
-    }
+	pub fn new(network: graph_craft::document::NodeNetwork, input_type: String, output_type: String) -> Self {
+		Self { network, input_type, output_type }
+	}
+	pub fn compile(&self, compile_dir: &str, manifest_path: &str) -> anyhow::Result<Vec<u8>> {
+		compile_spirv(&self.network, &self.input_type, &self.output_type, Some(compile_dir), manifest_path)
+	}
 }
