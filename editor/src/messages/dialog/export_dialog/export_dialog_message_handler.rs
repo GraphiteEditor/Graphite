@@ -58,7 +58,7 @@ impl PropertyHolder for ExportDialogMessageHandler {
 			})),
 			WidgetHolder::new(Widget::TextInput(TextInput {
 				value: self.file_name.clone(),
-				on_update: WidgetCallback::new(|text_input: &TextInput| ExportDialogMessage::FileName(text_input.value.clone()).into()),
+				on_update: widget_callback!(|text_input: &TextInput| ExportDialogMessage::FileName(text_input.value.clone()).into()),
 				..Default::default()
 			})),
 		];
@@ -67,7 +67,7 @@ impl PropertyHolder for ExportDialogMessageHandler {
 			.into_iter()
 			.map(|(val, name)| RadioEntryData {
 				label: name.into(),
-				on_update: WidgetCallback::new(move |_| ExportDialogMessage::FileType(val).into()),
+				on_update: widget_callback!(move |_| ExportDialogMessage::FileType(val).into()),
 				..RadioEntryData::default()
 			})
 			.collect();
@@ -100,7 +100,7 @@ impl PropertyHolder for ExportDialogMessageHandler {
 			.into_iter()
 			.map(|(val, name, disabled)| DropdownEntryData {
 				label: name,
-				on_update: WidgetCallback::new(move |_| ExportDialogMessage::ExportBounds(val).into()),
+				on_update: widget_callback!(move |_| ExportDialogMessage::ExportBounds(val).into()),
 				disabled,
 				..Default::default()
 			})
@@ -139,7 +139,7 @@ impl PropertyHolder for ExportDialogMessageHandler {
 				unit: " ".into(),
 				min: Some(0.),
 				disabled: self.file_type == FileType::Svg,
-				on_update: WidgetCallback::new(|number_input: &NumberInput| ExportDialogMessage::ScaleFactor(number_input.value.unwrap()).into()),
+				on_update: widget_callback!(|number_input: &NumberInput| ExportDialogMessage::ScaleFactor(number_input.value.unwrap()).into()),
 				..NumberInput::default()
 			})),
 		];
@@ -149,7 +149,7 @@ impl PropertyHolder for ExportDialogMessageHandler {
 				label: "Export".to_string(),
 				min_width: 96,
 				emphasized: true,
-				on_update: WidgetCallback::new(|_| {
+				on_update: widget_callback!(|_| {
 					DialogMessage::CloseDialogAndThen {
 						followups: vec![ExportDialogMessage::Submit.into()],
 					}
@@ -160,7 +160,7 @@ impl PropertyHolder for ExportDialogMessageHandler {
 			WidgetHolder::new(Widget::TextButton(TextButton {
 				label: "Cancel".to_string(),
 				min_width: 96,
-				on_update: WidgetCallback::new(|_| FrontendMessage::DisplayDialogDismiss.into()),
+				on_update: widget_callback!(|_| FrontendMessage::DisplayDialogDismiss.into()),
 				..Default::default()
 			})),
 		];

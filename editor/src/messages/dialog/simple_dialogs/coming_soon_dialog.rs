@@ -17,7 +17,7 @@ impl PropertyHolder for ComingSoonDialog {
 			label: "OK".to_string(),
 			emphasized: true,
 			min_width: 96,
-			on_update: WidgetCallback::new(|_| FrontendMessage::DisplayDialogDismiss.into()),
+			on_update: widget_callback!(|_| FrontendMessage::DisplayDialogDismiss.into()),
 			..Default::default()
 		}))];
 		if let Some(issue) = self.issue {
@@ -25,7 +25,7 @@ impl PropertyHolder for ComingSoonDialog {
 			buttons.push(WidgetHolder::new(Widget::TextButton(TextButton {
 				label: format!("Issue #{issue}"),
 				min_width: 96,
-				on_update: WidgetCallback::new(move |_| {
+				on_update: widget_callback!(|_| {
 					FrontendMessage::TriggerVisitLink {
 						url: format!("https://github.com/GraphiteEditor/Graphite/issues/{issue}"),
 					}

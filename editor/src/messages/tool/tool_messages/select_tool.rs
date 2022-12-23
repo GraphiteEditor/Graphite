@@ -89,7 +89,7 @@ impl PropertyHolder for SelectTool {
 					icon: "AlignLeft".into(),
 					tooltip: "Align Left".into(),
 					size: 24,
-					on_update: WidgetCallback::new(|_| {
+					on_update: widget_callback!(|_| {
 						DocumentMessage::AlignSelectedLayers {
 							axis: AlignAxis::X,
 							aggregate: AlignAggregate::Min,
@@ -102,7 +102,7 @@ impl PropertyHolder for SelectTool {
 					icon: "AlignHorizontalCenter".into(),
 					tooltip: "Align Horizontal Center".into(),
 					size: 24,
-					on_update: WidgetCallback::new(|_| {
+					on_update: widget_callback!(|_| {
 						DocumentMessage::AlignSelectedLayers {
 							axis: AlignAxis::X,
 							aggregate: AlignAggregate::Center,
@@ -115,7 +115,7 @@ impl PropertyHolder for SelectTool {
 					icon: "AlignRight".into(),
 					tooltip: "Align Right".into(),
 					size: 24,
-					on_update: WidgetCallback::new(|_| {
+					on_update: widget_callback!(|_| {
 						DocumentMessage::AlignSelectedLayers {
 							axis: AlignAxis::X,
 							aggregate: AlignAggregate::Max,
@@ -132,7 +132,7 @@ impl PropertyHolder for SelectTool {
 					icon: "AlignTop".into(),
 					tooltip: "Align Top".into(),
 					size: 24,
-					on_update: WidgetCallback::new(|_| {
+					on_update: widget_callback!(|_| {
 						DocumentMessage::AlignSelectedLayers {
 							axis: AlignAxis::Y,
 							aggregate: AlignAggregate::Min,
@@ -145,7 +145,7 @@ impl PropertyHolder for SelectTool {
 					icon: "AlignVerticalCenter".into(),
 					tooltip: "Align Vertical Center".into(),
 					size: 24,
-					on_update: WidgetCallback::new(|_| {
+					on_update: widget_callback!(|_| {
 						DocumentMessage::AlignSelectedLayers {
 							axis: AlignAxis::Y,
 							aggregate: AlignAggregate::Center,
@@ -158,7 +158,7 @@ impl PropertyHolder for SelectTool {
 					icon: "AlignBottom".into(),
 					tooltip: "Align Bottom".into(),
 					size: 24,
-					on_update: WidgetCallback::new(|_| {
+					on_update: widget_callback!(|_| {
 						DocumentMessage::AlignSelectedLayers {
 							axis: AlignAxis::Y,
 							aggregate: AlignAggregate::Max,
@@ -184,14 +184,14 @@ impl PropertyHolder for SelectTool {
 					icon: "FlipHorizontal".into(),
 					tooltip: "Flip Horizontal".into(),
 					size: 24,
-					on_update: WidgetCallback::new(|_| SelectToolMessage::FlipHorizontal.into()),
+					on_update: widget_callback!(|_| SelectToolMessage::FlipHorizontal.into()),
 					..IconButton::default()
 				})),
 				WidgetHolder::new(Widget::IconButton(IconButton {
 					icon: "FlipVertical".into(),
 					tooltip: "Flip Vertical".into(),
 					size: 24,
-					on_update: WidgetCallback::new(|_| SelectToolMessage::FlipVertical.into()),
+					on_update: widget_callback!(|_| SelectToolMessage::FlipVertical.into()),
 					..IconButton::default()
 				})),
 				WidgetHolder::new(Widget::Separator(Separator {
@@ -211,35 +211,35 @@ impl PropertyHolder for SelectTool {
 					icon: "BooleanUnion".into(),
 					tooltip: "Boolean Union".into(),
 					size: 24,
-					on_update: WidgetCallback::new(|_| DocumentMessage::BooleanOperation(BooleanOperation::Union).into()),
+					on_update: widget_callback!(|_| DocumentMessage::BooleanOperation(BooleanOperation::Union).into()),
 					..IconButton::default()
 				})),
 				WidgetHolder::new(Widget::IconButton(IconButton {
 					icon: "BooleanSubtractFront".into(),
 					tooltip: "Boolean Subtract Front".into(),
 					size: 24,
-					on_update: WidgetCallback::new(|_| DocumentMessage::BooleanOperation(BooleanOperation::SubtractFront).into()),
+					on_update: widget_callback!(|_| DocumentMessage::BooleanOperation(BooleanOperation::SubtractFront).into()),
 					..IconButton::default()
 				})),
 				WidgetHolder::new(Widget::IconButton(IconButton {
 					icon: "BooleanSubtractBack".into(),
 					tooltip: "Boolean Subtract Back".into(),
 					size: 24,
-					on_update: WidgetCallback::new(|_| DocumentMessage::BooleanOperation(BooleanOperation::SubtractBack).into()),
+					on_update: widget_callback!(|_| DocumentMessage::BooleanOperation(BooleanOperation::SubtractBack).into()),
 					..IconButton::default()
 				})),
 				WidgetHolder::new(Widget::IconButton(IconButton {
 					icon: "BooleanIntersect".into(),
 					tooltip: "Boolean Intersect".into(),
 					size: 24,
-					on_update: WidgetCallback::new(|_| DocumentMessage::BooleanOperation(BooleanOperation::Intersection).into()),
+					on_update: widget_callback!(|_| DocumentMessage::BooleanOperation(BooleanOperation::Intersection).into()),
 					..IconButton::default()
 				})),
 				WidgetHolder::new(Widget::IconButton(IconButton {
 					icon: "BooleanDifference".into(),
 					tooltip: "Boolean Difference".into(),
 					size: 24,
-					on_update: WidgetCallback::new(|_| DocumentMessage::BooleanOperation(BooleanOperation::Difference).into()),
+					on_update: widget_callback!(|_| DocumentMessage::BooleanOperation(BooleanOperation::Difference).into()),
 					..IconButton::default()
 				})),
 				WidgetHolder::new(Widget::Separator(Separator {
@@ -258,7 +258,7 @@ impl PropertyHolder for SelectTool {
 				// We'd like this widget to hide and show itself whenever the transformation cage is active or inactive (i.e. when no layers are selected)
 				WidgetHolder::new(Widget::PivotAssist(PivotAssist {
 					position: self.tool_data.pivot.to_pivot_position(),
-					on_update: WidgetCallback::new(|pivot_assist: &PivotAssist| SelectToolMessage::SetPivot { position: pivot_assist.position }.into()),
+					on_update: widget_callback!(|pivot_assist: &PivotAssist| SelectToolMessage::SetPivot { position: pivot_assist.position }.into()),
 					..Default::default()
 				})),
 			],

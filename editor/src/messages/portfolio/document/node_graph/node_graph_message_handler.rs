@@ -142,7 +142,7 @@ impl NodeGraphMessageHandler {
 				layout: Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row {
 					widgets: vec![WidgetHolder::new(Widget::BreadcrumbTrailButtons(BreadcrumbTrailButtons {
 						labels: path,
-						on_update: WidgetCallback::new(move |input: &u64| {
+						on_update: widget_callback!(move |input: &u64| {
 							NodeGraphMessage::ExitNestedNetwork {
 								depth_of_nesting: nesting - (*input as usize) - 1,
 							}

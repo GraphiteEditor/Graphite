@@ -54,3 +54,31 @@ macro_rules! advertise_actions {
 		}
 	}
 }
+
+// Inspired by https://github.com/jquesada2016/clone-macro-rs
+macro_rules! clone {
+    () => {};
+    ([$($tt:tt)*], $expr:expr) => {{
+        clone!($($tt)*);
+        $expr
+    }};
+    ($(,)? mut $ident:ident $($tt:tt)*) => {
+        let mut $ident = ::core::clone::Clone::clone(&$ident);
+        clone!($($tt)*);
+    };
+    ($(,)? $ident:ident $($tt:tt)*) => {
+        let $ident = ::core::clone::Clone::clone(&$ident);
+        clone!($($tt)*);
+    };
+    ($(,)?) => {};
+}
+
+macro_rules! widget_callback {
+	([$($tt:tt)*], $expr:expr) => {{
+        crate::messages::layout::utility_types::layout_widget::clone!($($tt)*);
+        WidgetCallback::new($expr)
+    }};
+	($expr:expr) => {{
+        WidgetCallback::new($expr)
+    }};
+}

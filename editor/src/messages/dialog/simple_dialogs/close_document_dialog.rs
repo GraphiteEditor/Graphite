@@ -19,7 +19,7 @@ impl PropertyHolder for CloseDocumentDialog {
 				label: "Save".to_string(),
 				min_width: 96,
 				emphasized: true,
-				on_update: WidgetCallback::new(|_| {
+				on_update: widget_callback!(|_| {
 					DialogMessage::CloseDialogAndThen {
 						followups: vec![DocumentMessage::SaveDocument.into()],
 					}
@@ -30,7 +30,7 @@ impl PropertyHolder for CloseDocumentDialog {
 			WidgetHolder::new(Widget::TextButton(TextButton {
 				label: "Discard".to_string(),
 				min_width: 96,
-				on_update: WidgetCallback::new(move |_| {
+				on_update: widget_callback!(|_| {
 					DialogMessage::CloseDialogAndThen {
 						followups: vec![BroadcastEvent::ToolAbort.into(), PortfolioMessage::CloseDocument { document_id }.into()],
 					}
@@ -41,7 +41,7 @@ impl PropertyHolder for CloseDocumentDialog {
 			WidgetHolder::new(Widget::TextButton(TextButton {
 				label: "Cancel".to_string(),
 				min_width: 96,
-				on_update: WidgetCallback::new(|_| FrontendMessage::DisplayDialogDismiss.into()),
+				on_update: widget_callback!(|_| FrontendMessage::DisplayDialogDismiss.into()),
 				..Default::default()
 			})),
 		];

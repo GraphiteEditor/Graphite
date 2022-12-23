@@ -53,7 +53,7 @@ pub fn register_artboard_layer_properties(layer: &Layer, responses: &mut VecDequ
 			WidgetHolder::unrelated_separator(),
 			WidgetHolder::new(Widget::TextInput(TextInput {
 				value: layer.name.clone().unwrap_or_else(|| "Untitled".to_string()),
-				on_update: WidgetCallback::new(|text_input: &TextInput| PropertiesPanelMessage::ModifyName { name: text_input.value.clone() }.into()),
+				on_update: widget_callback!(|text_input: &TextInput| PropertiesPanelMessage::ModifyName { name: text_input.value.clone() }.into()),
 				..Default::default()
 			})),
 			WidgetHolder::related_separator(),
@@ -96,7 +96,7 @@ pub fn register_artboard_layer_properties(layer: &Layer, responses: &mut VecDequ
 							value: Some(layer.transform.x() + pivot.x),
 							label: "X".into(),
 							unit: " px".into(),
-							on_update: WidgetCallback::new(move |number_input: &NumberInput| {
+							on_update: widget_callback!(move |number_input: &NumberInput| {
 								PropertiesPanelMessage::ModifyTransform {
 									value: number_input.value.unwrap() - pivot.x,
 									transform_op: TransformOp::X,
@@ -110,7 +110,7 @@ pub fn register_artboard_layer_properties(layer: &Layer, responses: &mut VecDequ
 							value: Some(layer.transform.y() + pivot.y),
 							label: "Y".into(),
 							unit: " px".into(),
-							on_update: WidgetCallback::new(move |number_input: &NumberInput| {
+							on_update: widget_callback!(move |number_input: &NumberInput| {
 								PropertiesPanelMessage::ModifyTransform {
 									value: number_input.value.unwrap() - pivot.y,
 									transform_op: TransformOp::Y,
@@ -138,7 +138,7 @@ pub fn register_artboard_layer_properties(layer: &Layer, responses: &mut VecDequ
 							unit: " px".into(),
 							is_integer: true,
 							min: Some(1.),
-							on_update: WidgetCallback::new(|number_input: &NumberInput| {
+							on_update: widget_callback!(|number_input: &NumberInput| {
 								PropertiesPanelMessage::ModifyTransform {
 									value: number_input.value.unwrap(),
 									transform_op: TransformOp::Width,
@@ -154,7 +154,7 @@ pub fn register_artboard_layer_properties(layer: &Layer, responses: &mut VecDequ
 							unit: " px".into(),
 							is_integer: true,
 							min: Some(1.),
-							on_update: WidgetCallback::new(|number_input: &NumberInput| {
+							on_update: widget_callback!(|number_input: &NumberInput| {
 								PropertiesPanelMessage::ModifyTransform {
 									value: number_input.value.unwrap(),
 									transform_op: TransformOp::Height,
@@ -178,7 +178,7 @@ pub fn register_artboard_layer_properties(layer: &Layer, responses: &mut VecDequ
 						WidgetHolder::unrelated_separator(),
 						WidgetHolder::new(Widget::ColorInput(ColorInput {
 							value: Some(*color),
-							on_update: WidgetCallback::new(|text_input: &ColorInput| {
+							on_update: widget_callback!(|text_input: &ColorInput| {
 								let fill = if let Some(value) = text_input.value { value } else { Color::TRANSPARENT };
 								PropertiesPanelMessage::ModifyFill { fill: Fill::Solid(fill) }.into()
 							}),
@@ -255,7 +255,7 @@ pub fn register_artwork_layer_properties(
 			WidgetHolder::unrelated_separator(),
 			WidgetHolder::new(Widget::TextInput(TextInput {
 				value: layer.name.clone().unwrap_or_else(|| "Untitled".to_string()),
-				on_update: WidgetCallback::new(|text_input: &TextInput| PropertiesPanelMessage::ModifyName { name: text_input.value.clone() }.into()),
+				on_update: widget_callback!(|text_input: &TextInput| PropertiesPanelMessage::ModifyName { name: text_input.value.clone() }.into()),
 				..Default::default()
 			})),
 			WidgetHolder::related_separator(),
@@ -339,7 +339,7 @@ fn node_section_transform(layer: &Layer, persistent_data: &PersistentData) -> La
 					WidgetHolder::unrelated_separator(),
 					WidgetHolder::new(Widget::PivotAssist(PivotAssist {
 						position: layer.pivot.into(),
-						on_update: WidgetCallback::new(|pivot_assist: &PivotAssist| PropertiesPanelMessage::SetPivot { new_position: pivot_assist.position }.into()),
+						on_update: widget_callback!(|pivot_assist: &PivotAssist| PropertiesPanelMessage::SetPivot { new_position: pivot_assist.position }.into()),
 						..Default::default()
 					})),
 					WidgetHolder::unrelated_separator(),
@@ -347,7 +347,7 @@ fn node_section_transform(layer: &Layer, persistent_data: &PersistentData) -> La
 						value: Some(layer.transform.x() + pivot.x),
 						label: "X".into(),
 						unit: " px".into(),
-						on_update: WidgetCallback::new(move |number_input: &NumberInput| {
+						on_update: widget_callback!(move |number_input: &NumberInput| {
 							PropertiesPanelMessage::ModifyTransform {
 								value: number_input.value.unwrap() - pivot.x,
 								transform_op: TransformOp::X,
@@ -361,7 +361,7 @@ fn node_section_transform(layer: &Layer, persistent_data: &PersistentData) -> La
 						value: Some(layer.transform.y() + pivot.y),
 						label: "Y".into(),
 						unit: " px".into(),
-						on_update: WidgetCallback::new(move |number_input: &NumberInput| {
+						on_update: widget_callback!(move |number_input: &NumberInput| {
 							PropertiesPanelMessage::ModifyTransform {
 								value: number_input.value.unwrap() - pivot.y,
 								transform_op: TransformOp::Y,
@@ -389,7 +389,7 @@ fn node_section_transform(layer: &Layer, persistent_data: &PersistentData) -> La
 						mode: NumberInputMode::Range,
 						range_min: Some(-180.),
 						range_max: Some(180.),
-						on_update: WidgetCallback::new(|number_input: &NumberInput| {
+						on_update: widget_callback!(|number_input: &NumberInput| {
 							PropertiesPanelMessage::ModifyTransform {
 								value: number_input.value.unwrap() / 180. * PI,
 								transform_op: TransformOp::Rotation,
@@ -415,7 +415,7 @@ fn node_section_transform(layer: &Layer, persistent_data: &PersistentData) -> La
 						value: Some(layer.transform.scale_x()),
 						label: "X".into(),
 						unit: "".into(),
-						on_update: WidgetCallback::new(|number_input: &NumberInput| {
+						on_update: widget_callback!(|number_input: &NumberInput| {
 							PropertiesPanelMessage::ModifyTransform {
 								value: number_input.value.unwrap(),
 								transform_op: TransformOp::ScaleX,
@@ -429,7 +429,7 @@ fn node_section_transform(layer: &Layer, persistent_data: &PersistentData) -> La
 						value: Some(layer.transform.scale_y()),
 						label: "Y".into(),
 						unit: "".into(),
-						on_update: WidgetCallback::new(|number_input: &NumberInput| {
+						on_update: widget_callback!(|number_input: &NumberInput| {
 							PropertiesPanelMessage::ModifyTransform {
 								value: number_input.value.unwrap(),
 								transform_op: TransformOp::ScaleY,
@@ -455,7 +455,7 @@ fn node_section_transform(layer: &Layer, persistent_data: &PersistentData) -> La
 						value: Some(layer.bounding_transform(&persistent_data.font_cache).scale_x()),
 						label: "W".into(),
 						unit: " px".into(),
-						on_update: WidgetCallback::new(|number_input: &NumberInput| {
+						on_update: widget_callback!(|number_input: &NumberInput| {
 							PropertiesPanelMessage::ModifyTransform {
 								value: number_input.value.unwrap(),
 								transform_op: TransformOp::Width,
@@ -469,7 +469,7 @@ fn node_section_transform(layer: &Layer, persistent_data: &PersistentData) -> La
 						value: Some(layer.bounding_transform(&persistent_data.font_cache).scale_y()),
 						label: "H".into(),
 						unit: " px".into(),
-						on_update: WidgetCallback::new(|number_input: &NumberInput| {
+						on_update: widget_callback!(|number_input: &NumberInput| {
 							PropertiesPanelMessage::ModifyTransform {
 								value: number_input.value.unwrap(),
 								transform_op: TransformOp::Height,
@@ -503,7 +503,7 @@ fn node_section_font(layer: &TextLayer) -> LayoutGroup {
 					WidgetHolder::unrelated_separator(),
 					WidgetHolder::new(Widget::TextAreaInput(TextAreaInput {
 						value: layer.text.clone(),
-						on_update: WidgetCallback::new(|text_area: &TextAreaInput| PropertiesPanelMessage::ModifyText { new_text: text_area.value.clone() }.into()),
+						on_update: widget_callback!(|text_area: &TextAreaInput| PropertiesPanelMessage::ModifyText { new_text: text_area.value.clone() }.into()),
 						..Default::default()
 					})),
 				],
@@ -523,7 +523,7 @@ fn node_section_font(layer: &TextLayer) -> LayoutGroup {
 						is_style_picker: false,
 						font_family: layer.font.font_family.clone(),
 						font_style: layer.font.font_style.clone(),
-						on_update: WidgetCallback::new(move |font_input: &FontInput| {
+						on_update: widget_callback!(move |font_input: &FontInput| {
 							PropertiesPanelMessage::ModifyFont {
 								font_family: font_input.font_family.clone(),
 								font_style: font_input.font_style.clone(),
@@ -550,7 +550,7 @@ fn node_section_font(layer: &TextLayer) -> LayoutGroup {
 						is_style_picker: true,
 						font_family: layer.font.font_family.clone(),
 						font_style: layer.font.font_style.clone(),
-						on_update: WidgetCallback::new(move |font_input: &FontInput| {
+						on_update: widget_callback!(move |font_input: &FontInput| {
 							PropertiesPanelMessage::ModifyFont {
 								font_family: font_input.font_family.clone(),
 								font_style: font_input.font_style.clone(),
@@ -577,7 +577,7 @@ fn node_section_font(layer: &TextLayer) -> LayoutGroup {
 						value: Some(layer.size),
 						min: Some(1.),
 						unit: " px".into(),
-						on_update: WidgetCallback::new(move |number_input: &NumberInput| {
+						on_update: widget_callback!(move |number_input: &NumberInput| {
 							PropertiesPanelMessage::ModifyFont {
 								font_family: font.font_family.clone(),
 								font_style: font.font_style.clone(),
@@ -620,7 +620,7 @@ fn node_gradient_type(gradient: &Gradient) -> LayoutGroup {
 						value: "linear".into(),
 						label: "Linear".into(),
 						tooltip: "Linear gradient changes colors from one side to the other along a line".into(),
-						on_update: WidgetCallback::new(move |_| {
+						on_update: widget_callback!(move |_| {
 							PropertiesPanelMessage::ModifyFill {
 								fill: Fill::Gradient(cloned_gradient_linear.clone()),
 							}
@@ -632,7 +632,7 @@ fn node_gradient_type(gradient: &Gradient) -> LayoutGroup {
 						value: "radial".into(),
 						label: "Radial".into(),
 						tooltip: "Radial gradient changes colors from the inside to the outside of a circular area".into(),
-						on_update: WidgetCallback::new(move |_| {
+						on_update: widget_callback!(move |_| {
 							PropertiesPanelMessage::ModifyFill {
 								fill: Fill::Gradient(cloned_gradient_radial.clone()),
 							}
@@ -648,12 +648,8 @@ fn node_gradient_type(gradient: &Gradient) -> LayoutGroup {
 }
 
 fn node_gradient_color(gradient: &Gradient, position: usize) -> LayoutGroup {
-	let gradient_clone = Arc::new(gradient.clone());
-	let gradient_2 = gradient_clone.clone();
-	let gradient_3 = gradient_clone.clone();
 	let send_fill_message = move |new_gradient: Gradient| PropertiesPanelMessage::ModifyFill { fill: Fill::Gradient(new_gradient) }.into();
-
-	let value = format!("Gradient: {:.0}%", gradient_clone.positions[position].0 * 100.);
+	let value = format!("Gradient: {:.0}%", gradient.positions[position].0 * 100.);
 	let mut widgets = vec![
 		WidgetHolder::new(Widget::TextLabel(TextLabel {
 			value,
@@ -666,9 +662,9 @@ fn node_gradient_color(gradient: &Gradient, position: usize) -> LayoutGroup {
 		WidgetHolder::unrelated_separator(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
 		WidgetHolder::unrelated_separator(),
 		WidgetHolder::new(Widget::ColorInput(ColorInput {
-			value: gradient_clone.positions[position].1,
-			on_update: WidgetCallback::new(move |text_input: &ColorInput| {
-				let mut new_gradient = (*gradient_clone).clone();
+			value: gradient.positions[position].1,
+			on_update: widget_callback!([gradient], move |text_input: &ColorInput| {
+				let mut new_gradient = (*gradient).clone();
 				new_gradient.positions[position].1 = text_input.value;
 				send_fill_message(new_gradient)
 			}),
@@ -679,8 +675,8 @@ fn node_gradient_color(gradient: &Gradient, position: usize) -> LayoutGroup {
 	let mut skip_separator = false;
 	// Remove button
 	if gradient.positions.len() != position + 1 && position != 0 {
-		let on_update = WidgetCallback::new(move |_| {
-			let mut new_gradient = (*gradient_3).clone();
+		let on_update = widget_callback!([gradient], move |_| {
+			let mut new_gradient = (*gradient).clone();
 			new_gradient.positions.remove(position);
 			send_fill_message(new_gradient)
 		});
@@ -697,8 +693,8 @@ fn node_gradient_color(gradient: &Gradient, position: usize) -> LayoutGroup {
 	}
 	// Add button
 	if gradient.positions.len() != position + 1 {
-		let on_update = WidgetCallback::new(move |_| {
-			let mut gradient = (*gradient_2).clone();
+		let on_update = widget_callback!([gradient], move |_| {
+			let mut gradient = (*gradient).clone();
 
 			let get_color = |index: usize| match (gradient.positions[index].1, gradient.positions.get(index + 1).and_then(|x| x.1)) {
 				(Some(a), Some(b)) => Color::from_rgbaf32((a.r() + b.r()) / 2., (a.g() + b.g()) / 2., (a.b() + b.b()) / 2., ((a.a() + b.a()) / 2.).clamp(0., 1.)),
@@ -748,7 +744,7 @@ fn node_section_fill(fill: &Fill) -> Option<LayoutGroup> {
 						WidgetHolder::unrelated_separator(),
 						WidgetHolder::new(Widget::ColorInput(ColorInput {
 							value: if let Fill::Solid(color) = fill { Some(*color) } else { None },
-							on_update: WidgetCallback::new(|text_input: &ColorInput| {
+							on_update: widget_callback!(|text_input: &ColorInput| {
 								let fill = if let Some(value) = text_input.value { Fill::Solid(value) } else { Fill::None };
 								PropertiesPanelMessage::ModifyFill { fill }.into()
 							}),
@@ -770,7 +766,7 @@ fn node_section_fill(fill: &Fill) -> Option<LayoutGroup> {
 						WidgetHolder::new(Widget::TextButton(TextButton {
 							label: "Use Gradient".into(),
 							tooltip: "Change this fill from a solid color to a gradient".into(),
-							on_update: WidgetCallback::new(move |_: &TextButton| {
+							on_update: widget_callback!(move |_: &TextButton| {
 								let (r, g, b, _) = initial_color.components();
 								let opposite_color = Color::from_rgbaf32(1. - r, 1. - g, 1. - b, 1.).unwrap();
 
@@ -796,7 +792,6 @@ fn node_section_fill(fill: &Fill) -> Option<LayoutGroup> {
 		Fill::Gradient(gradient) => Some(LayoutGroup::Section {
 			name: "Fill".into(),
 			layout: {
-				let cloned_gradient = gradient.clone();
 				let first_color = gradient.positions.get(0).unwrap_or(&(0., None)).1;
 
 				let mut layout = vec![node_gradient_type(gradient)];
@@ -816,8 +811,8 @@ fn node_section_fill(fill: &Fill) -> Option<LayoutGroup> {
 							label: "Invert".into(),
 							icon: Some("Swap".into()),
 							tooltip: "Reverse the order of each color stop".into(),
-							on_update: WidgetCallback::new(move |_: &TextButton| {
-								let mut new_gradient = cloned_gradient.clone();
+							on_update: widget_callback!([gradient], move |_: &TextButton| {
+								let mut new_gradient = gradient.clone();
 								new_gradient.positions = new_gradient.positions.iter().map(|(distance, color)| (1. - distance, *color)).collect();
 								new_gradient.positions.reverse();
 								PropertiesPanelMessage::ModifyFill { fill: Fill::Gradient(new_gradient) }.into()
@@ -840,7 +835,7 @@ fn node_section_fill(fill: &Fill) -> Option<LayoutGroup> {
 						WidgetHolder::new(Widget::TextButton(TextButton {
 							label: "Use Solid Color".into(),
 							tooltip: "Change this fill from a gradient to a solid color, keeping the 0% stop color".into(),
-							on_update: WidgetCallback::new(move |_: &TextButton| {
+							on_update: widget_callback!(move |_: &TextButton| {
 								PropertiesPanelMessage::ModifyFill {
 									fill: Fill::Solid(first_color.unwrap_or_default()),
 								}
@@ -857,19 +852,6 @@ fn node_section_fill(fill: &Fill) -> Option<LayoutGroup> {
 }
 
 fn node_section_stroke(stroke: &Stroke) -> LayoutGroup {
-	// We have to make multiple variables because they get moved into different closures.
-	let internal_stroke1 = stroke.clone();
-	let internal_stroke2 = stroke.clone();
-	let internal_stroke3 = stroke.clone();
-	let internal_stroke4 = stroke.clone();
-	let internal_stroke5 = stroke.clone();
-	let internal_stroke6 = stroke.clone();
-	let internal_stroke7 = stroke.clone();
-	let internal_stroke8 = stroke.clone();
-	let internal_stroke9 = stroke.clone();
-	let internal_stroke10 = stroke.clone();
-	let internal_stroke11 = stroke.clone();
-
 	LayoutGroup::Section {
 		name: "Stroke".into(),
 		layout: vec![
@@ -886,8 +868,8 @@ fn node_section_stroke(stroke: &Stroke) -> LayoutGroup {
 					WidgetHolder::unrelated_separator(),
 					WidgetHolder::new(Widget::ColorInput(ColorInput {
 						value: stroke.color(),
-						on_update: WidgetCallback::new(move |text_input: &ColorInput| {
-							internal_stroke1
+						on_update: widget_callback!([stroke], move |text_input: &ColorInput| {
+							stroke
 								.clone()
 								.with_color(&text_input.value)
 								.map_or(PropertiesPanelMessage::ResendActiveProperties.into(), |stroke| PropertiesPanelMessage::ModifyStroke { stroke }.into())
@@ -912,9 +894,9 @@ fn node_section_stroke(stroke: &Stroke) -> LayoutGroup {
 						is_integer: false,
 						min: Some(0.),
 						unit: " px".into(),
-						on_update: WidgetCallback::new(move |number_input: &NumberInput| {
+						on_update: widget_callback!([stroke], move |number_input: &NumberInput| {
 							PropertiesPanelMessage::ModifyStroke {
-								stroke: internal_stroke2.clone().with_weight(number_input.value.unwrap()),
+								stroke: stroke.clone().with_weight(number_input.value.unwrap()),
 							}
 							.into()
 						}),
@@ -936,8 +918,8 @@ fn node_section_stroke(stroke: &Stroke) -> LayoutGroup {
 					WidgetHolder::new(Widget::TextInput(TextInput {
 						value: stroke.dash_lengths(),
 						centered: true,
-						on_update: WidgetCallback::new(move |text_input: &TextInput| {
-							internal_stroke3
+						on_update: widget_callback!([stroke], move |text_input: &TextInput| {
+							stroke
 								.clone()
 								.with_dash_lengths(&text_input.value)
 								.map_or(PropertiesPanelMessage::ResendActiveProperties.into(), |stroke| PropertiesPanelMessage::ModifyStroke { stroke }.into())
@@ -962,9 +944,9 @@ fn node_section_stroke(stroke: &Stroke) -> LayoutGroup {
 						is_integer: true,
 						min: Some(0.),
 						unit: " px".into(),
-						on_update: WidgetCallback::new(move |number_input: &NumberInput| {
+						on_update: widget_callback!([stroke], move |number_input: &NumberInput| {
 							PropertiesPanelMessage::ModifyStroke {
-								stroke: internal_stroke4.clone().with_dash_offset(number_input.value.unwrap()),
+								stroke: stroke.clone().with_dash_offset(number_input.value.unwrap()),
 							}
 							.into()
 						}),
@@ -988,9 +970,9 @@ fn node_section_stroke(stroke: &Stroke) -> LayoutGroup {
 						entries: vec![
 							RadioEntryData {
 								label: "Butt".into(),
-								on_update: WidgetCallback::new(move |_| {
+								on_update: widget_callback!([stoke], move |_| {
 									PropertiesPanelMessage::ModifyStroke {
-										stroke: internal_stroke6.clone().with_line_cap(LineCap::Butt),
+										stroke: stroke.clone().with_line_cap(LineCap::Butt),
 									}
 									.into()
 								}),
@@ -998,9 +980,9 @@ fn node_section_stroke(stroke: &Stroke) -> LayoutGroup {
 							},
 							RadioEntryData {
 								label: "Round".into(),
-								on_update: WidgetCallback::new(move |_| {
+								on_update: widget_callback!([stroke], move |_| {
 									PropertiesPanelMessage::ModifyStroke {
-										stroke: internal_stroke7.clone().with_line_cap(LineCap::Round),
+										stroke: stroke.clone().with_line_cap(LineCap::Round),
 									}
 									.into()
 								}),
@@ -1008,9 +990,9 @@ fn node_section_stroke(stroke: &Stroke) -> LayoutGroup {
 							},
 							RadioEntryData {
 								label: "Square".into(),
-								on_update: WidgetCallback::new(move |_| {
+								on_update: widget_callback!([stroke], move |_| {
 									PropertiesPanelMessage::ModifyStroke {
-										stroke: internal_stroke8.clone().with_line_cap(LineCap::Square),
+										stroke: stroke.clone().with_line_cap(LineCap::Square),
 									}
 									.into()
 								}),
@@ -1037,9 +1019,9 @@ fn node_section_stroke(stroke: &Stroke) -> LayoutGroup {
 						entries: vec![
 							RadioEntryData {
 								label: "Miter".into(),
-								on_update: WidgetCallback::new(move |_| {
+								on_update: widget_callback!([stroke], move |_| {
 									PropertiesPanelMessage::ModifyStroke {
-										stroke: internal_stroke9.clone().with_line_join(LineJoin::Miter),
+										stroke: stroke.clone().with_line_join(LineJoin::Miter),
 									}
 									.into()
 								}),
@@ -1047,9 +1029,9 @@ fn node_section_stroke(stroke: &Stroke) -> LayoutGroup {
 							},
 							RadioEntryData {
 								label: "Bevel".into(),
-								on_update: WidgetCallback::new(move |_| {
+								on_update: widget_callback!([stroke], move |_| {
 									PropertiesPanelMessage::ModifyStroke {
-										stroke: internal_stroke10.clone().with_line_join(LineJoin::Bevel),
+										stroke: stroke.clone().with_line_join(LineJoin::Bevel),
 									}
 									.into()
 								}),
@@ -1057,9 +1039,9 @@ fn node_section_stroke(stroke: &Stroke) -> LayoutGroup {
 							},
 							RadioEntryData {
 								label: "Round".into(),
-								on_update: WidgetCallback::new(move |_| {
+								on_update: widget_callback!([stroke], move |_| {
 									PropertiesPanelMessage::ModifyStroke {
-										stroke: internal_stroke11.clone().with_line_join(LineJoin::Round),
+										stroke: stroke.clone().with_line_join(LineJoin::Round),
 									}
 									.into()
 								}),
@@ -1087,9 +1069,9 @@ fn node_section_stroke(stroke: &Stroke) -> LayoutGroup {
 						is_integer: true,
 						min: Some(0.),
 						unit: "".into(),
-						on_update: WidgetCallback::new(move |number_input: &NumberInput| {
+						on_update: widget_callback!([stroke], move |number_input: &NumberInput| {
 							PropertiesPanelMessage::ModifyStroke {
-								stroke: internal_stroke5.clone().with_line_join_miter_limit(number_input.value.unwrap()),
+								stroke: stroke.clone().with_line_join_miter_limit(number_input.value.unwrap()),
 							}
 							.into()
 						}),

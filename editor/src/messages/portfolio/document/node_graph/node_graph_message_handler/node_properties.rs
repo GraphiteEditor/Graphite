@@ -19,7 +19,7 @@ pub fn string_properties(text: impl Into<String>) -> Vec<LayoutGroup> {
 }
 
 fn update_value<T, F: Fn(&T) -> TaggedValue + 'static + Send + Sync>(value: F, node_id: NodeId, input_index: usize) -> WidgetCallback<T> {
-	WidgetCallback::new(move |input_value: &T| {
+	widget_callback!(move |input_value: &T| {
 		NodeGraphMessage::SetInputValue {
 			node: node_id,
 			input_index,
@@ -34,7 +34,7 @@ fn expose_widget(node_id: NodeId, index: usize, data_type: FrontendGraphDataType
 		exposed,
 		data_type,
 		tooltip: "Expose this parameter input in node graph".into(),
-		on_update: WidgetCallback::new(move |_parameter| {
+		on_update: widget_callback!(move |_parameter| {
 			NodeGraphMessage::ExposeInput {
 				node_id,
 				input_index: index,
@@ -342,7 +342,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 				size: 24,
 				icon: "Settings".into(),
 				tooltip: "Preferences: Imaginate".into(),
-				on_update: WidgetCallback::new(|_| DialogMessage::RequestPreferencesDialog.into()),
+				on_update: widget_callback!(|_| DialogMessage::RequestPreferencesDialog.into()),
 				..Default::default()
 			})),
 			WidgetHolder::unrelated_separator(),
@@ -352,7 +352,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 				size: 24,
 				icon: "Reload".into(),
 				tooltip: "Refresh connection status".into(),
-				on_update: WidgetCallback::new(|_| PortfolioMessage::ImaginateCheckServerStatus.into()),
+				on_update: widget_callback!(|_| PortfolioMessage::ImaginateCheckServerStatus.into()),
 				..Default::default()
 			})),
 		];
@@ -431,7 +431,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 				widgets.push(WidgetHolder::new(Widget::TextButton(TextButton {
 					label: "Terminate".into(),
 					tooltip: "Cancel the in-progress image generation and keep the latest progress".into(),
-					on_update: WidgetCallback::new(move |_| {
+					on_update: widget_callback!(move |_| {
 						DocumentMessage::NodeGraphFrameImaginateTerminate {
 							layer_path: layer_path.clone(),
 							node_path: imaginate_node.clone(),
@@ -455,7 +455,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 					size: 24,
 					icon: "Random".into(),
 					tooltip: "Generate with a new random seed".into(),
-					on_update: WidgetCallback::new(move |_| {
+					on_update: widget_callback!(move |_| {
 						DocumentMessage::NodeGraphFrameImaginateRandom {
 							imaginate_node: imaginate_node.clone(),
 						}
@@ -467,7 +467,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 				WidgetHolder::new(Widget::TextButton(TextButton {
 					label: "Generate".into(),
 					tooltip: "Fill layer frame by generating a new image".into(),
-					on_update: WidgetCallback::new(move |_| {
+					on_update: widget_callback!(move |_| {
 						DocumentMessage::NodeGraphFrameImaginate {
 							imaginate_node: imaginate_node_1.clone(),
 						}
@@ -553,7 +553,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 					size: 24,
 					icon: "Rescale".into(),
 					tooltip: "Set the Node Graph Frame layer dimensions to this resolution".into(),
-					on_update: WidgetCallback::new(move |_| {
+					on_update: widget_callback!(move |_| {
 						Operation::SetLayerScaleAroundPivot {
 							path: layer_path.clone(),
 							new_scale: vec2.into(),

@@ -1506,7 +1506,7 @@ impl DocumentMessageHandler {
 				checked: self.snapping_enabled,
 				icon: "Snapping".into(),
 				tooltip: "Snapping".into(),
-				on_update: WidgetCallback::new(|optional_input: &OptionalInput| DocumentMessage::SetSnapping { snap: optional_input.checked }.into()),
+				on_update: widget_callback!(|optional_input: &OptionalInput| DocumentMessage::SetSnapping { snap: optional_input.checked }.into()),
 				..Default::default()
 			})),
 			WidgetHolder::new(Widget::PopoverButton(PopoverButton {
@@ -1522,7 +1522,7 @@ impl DocumentMessageHandler {
 				checked: true,
 				icon: "Grid".into(),
 				tooltip: "Grid".into(),
-				on_update: WidgetCallback::new(|_| DialogMessage::RequestComingSoonDialog { issue: Some(318) }.into()),
+				on_update: widget_callback!(|_| DialogMessage::RequestComingSoonDialog { issue: Some(318) }.into()),
 				..Default::default()
 			})),
 			WidgetHolder::new(Widget::PopoverButton(PopoverButton {
@@ -1538,7 +1538,7 @@ impl DocumentMessageHandler {
 				checked: self.overlays_visible,
 				icon: "Overlays".into(),
 				tooltip: "Overlays".into(),
-				on_update: WidgetCallback::new(|optional_input: &OptionalInput| DocumentMessage::SetOverlaysVisibility { visible: optional_input.checked }.into()),
+				on_update: widget_callback!(|optional_input: &OptionalInput| DocumentMessage::SetOverlaysVisibility { visible: optional_input.checked }.into()),
 				..Default::default()
 			})),
 			WidgetHolder::new(Widget::PopoverButton(PopoverButton {
@@ -1557,21 +1557,21 @@ impl DocumentMessageHandler {
 						value: "normal".into(),
 						icon: "ViewModeNormal".into(),
 						tooltip: "View Mode: Normal".into(),
-						on_update: WidgetCallback::new(|_| DocumentMessage::SetViewMode { view_mode: ViewMode::Normal }.into()),
+						on_update: widget_callback!(|_| DocumentMessage::SetViewMode { view_mode: ViewMode::Normal }.into()),
 						..RadioEntryData::default()
 					},
 					RadioEntryData {
 						value: "outline".into(),
 						icon: "ViewModeOutline".into(),
 						tooltip: "View Mode: Outline".into(),
-						on_update: WidgetCallback::new(|_| DocumentMessage::SetViewMode { view_mode: ViewMode::Outline }.into()),
+						on_update: widget_callback!(|_| DocumentMessage::SetViewMode { view_mode: ViewMode::Outline }.into()),
 						..RadioEntryData::default()
 					},
 					RadioEntryData {
 						value: "pixels".into(),
 						icon: "ViewModePixels".into(),
 						tooltip: "View Mode: Pixels".into(),
-						on_update: WidgetCallback::new(|_| DialogMessage::RequestComingSoonDialog { issue: Some(320) }.into()),
+						on_update: widget_callback!(|_| DialogMessage::RequestComingSoonDialog { issue: Some(320) }.into()),
 						..RadioEntryData::default()
 					},
 				],
@@ -1591,7 +1591,7 @@ impl DocumentMessageHandler {
 				icon: "ZoomIn".into(),
 				tooltip: "Zoom In".into(),
 				tooltip_shortcut: action_keys!(NavigationMessageDiscriminant::IncreaseCanvasZoom),
-				on_update: WidgetCallback::new(|_| NavigationMessage::IncreaseCanvasZoom { center_on_mouse: false }.into()),
+				on_update: widget_callback!(|_| NavigationMessage::IncreaseCanvasZoom { center_on_mouse: false }.into()),
 				..IconButton::default()
 			})),
 			WidgetHolder::new(Widget::IconButton(IconButton {
@@ -1599,7 +1599,7 @@ impl DocumentMessageHandler {
 				icon: "ZoomOut".into(),
 				tooltip: "Zoom Out".into(),
 				tooltip_shortcut: action_keys!(NavigationMessageDiscriminant::DecreaseCanvasZoom),
-				on_update: WidgetCallback::new(|_| NavigationMessage::DecreaseCanvasZoom { center_on_mouse: false }.into()),
+				on_update: widget_callback!(|_| NavigationMessage::DecreaseCanvasZoom { center_on_mouse: false }.into()),
 				..IconButton::default()
 			})),
 			WidgetHolder::new(Widget::IconButton(IconButton {
@@ -1607,7 +1607,7 @@ impl DocumentMessageHandler {
 				icon: "ZoomReset".into(),
 				tooltip: "Zoom to 100%".into(),
 				tooltip_shortcut: action_keys!(DocumentMessageDiscriminant::ZoomCanvasTo100Percent),
-				on_update: WidgetCallback::new(|_| NavigationMessage::SetCanvasZoom { zoom_factor: 1. }.into()),
+				on_update: widget_callback!(|_| NavigationMessage::SetCanvasZoom { zoom_factor: 1. }.into()),
 				..IconButton::default()
 			})),
 			WidgetHolder::new(Widget::Separator(Separator {
@@ -1619,15 +1619,15 @@ impl DocumentMessageHandler {
 				value: Some(self.navigation_handler.snapped_scale() * 100.),
 				min: Some(0.000001),
 				max: Some(1000000.),
-				on_update: WidgetCallback::new(|number_input: &NumberInput| {
+				on_update: widget_callback!(|number_input: &NumberInput| {
 					NavigationMessage::SetCanvasZoom {
 						zoom_factor: number_input.value.unwrap() / 100.,
 					}
 					.into()
 				}),
 				increment_behavior: NumberInputIncrementBehavior::Callback,
-				increment_callback_decrease: WidgetCallback::new(|_| NavigationMessage::DecreaseCanvasZoom { center_on_mouse: false }.into()),
-				increment_callback_increase: WidgetCallback::new(|_| NavigationMessage::IncreaseCanvasZoom { center_on_mouse: false }.into()),
+				increment_callback_decrease: widget_callback!(|_| NavigationMessage::DecreaseCanvasZoom { center_on_mouse: false }.into()),
+				increment_callback_increase: widget_callback!(|_| NavigationMessage::IncreaseCanvasZoom { center_on_mouse: false }.into()),
 				..NumberInput::default()
 			})),
 		];
@@ -1642,7 +1642,7 @@ impl DocumentMessageHandler {
 					unit: "°".into(),
 					value: Some(rotation_value),
 					step: 15.,
-					on_update: WidgetCallback::new(|number_input: &NumberInput| {
+					on_update: widget_callback!(|number_input: &NumberInput| {
 						NavigationMessage::SetCanvasRotation {
 							angle_radians: number_input.value.unwrap() * (std::f64::consts::PI / 180.),
 						}
@@ -1677,13 +1677,13 @@ impl DocumentMessageHandler {
 						DropdownEntryData {
 							label: DocumentMode::SelectMode.to_string(),
 							icon: DocumentMode::SelectMode.icon_name(),
-							on_update: WidgetCallback::new(|_| DialogMessage::RequestComingSoonDialog { issue: Some(330) }.into()),
+							on_update: widget_callback!(|_| DialogMessage::RequestComingSoonDialog { issue: Some(330) }.into()),
 							..DropdownEntryData::default()
 						},
 						DropdownEntryData {
 							label: DocumentMode::GuideMode.to_string(),
 							icon: DocumentMode::GuideMode.icon_name(),
-							on_update: WidgetCallback::new(|_| DialogMessage::RequestComingSoonDialog { issue: Some(331) }.into()),
+							on_update: widget_callback!(|_| DialogMessage::RequestComingSoonDialog { issue: Some(331) }.into()),
 							..DropdownEntryData::default()
 						},
 					]],
@@ -1763,7 +1763,7 @@ impl DocumentMessageHandler {
 					.map(|mode| DropdownEntryData {
 						label: mode.to_string(),
 						value: mode.to_string(),
-						on_update: WidgetCallback::new(|_| DocumentMessage::SetBlendModeForSelectedLayers { blend_mode: *mode }.into()),
+						on_update: widget_callback!(|_| DocumentMessage::SetBlendModeForSelectedLayers { blend_mode: *mode }.into()),
 						..Default::default()
 					})
 					.collect()
@@ -1794,7 +1794,7 @@ impl DocumentMessageHandler {
 					range_min: Some(0.),
 					range_max: Some(100.),
 					mode: NumberInputMode::Range,
-					on_update: WidgetCallback::new(|number_input: &NumberInput| {
+					on_update: widget_callback!(|number_input: &NumberInput| {
 						if let Some(value) = number_input.value {
 							DocumentMessage::SetOpacityForSelectedLayers { opacity: value / 100. }.into()
 						} else {
@@ -1812,7 +1812,7 @@ impl DocumentMessageHandler {
 					tooltip: "New Folder".into(),
 					tooltip_shortcut: action_keys!(DocumentMessageDiscriminant::CreateEmptyFolder),
 					size: 24,
-					on_update: WidgetCallback::new(|_| DocumentMessage::CreateEmptyFolder { container_path: vec![] }.into()),
+					on_update: widget_callback!(|_| DocumentMessage::CreateEmptyFolder { container_path: vec![] }.into()),
 					..Default::default()
 				})),
 				WidgetHolder::new(Widget::IconButton(IconButton {
@@ -1820,7 +1820,7 @@ impl DocumentMessageHandler {
 					tooltip: "Delete Selected".into(),
 					tooltip_shortcut: action_keys!(DocumentMessageDiscriminant::DeleteSelectedLayers),
 					size: 24,
-					on_update: WidgetCallback::new(|_| DocumentMessage::DeleteSelectedLayers.into()),
+					on_update: widget_callback!(|_| DocumentMessage::DeleteSelectedLayers.into()),
 					..Default::default()
 				})),
 			],

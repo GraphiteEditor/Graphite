@@ -118,14 +118,14 @@ impl PropertyHolder for GradientTool {
 						value: "linear".into(),
 						label: "Linear".into(),
 						tooltip: "Linear Gradient".into(),
-						on_update: WidgetCallback::new(move |_| GradientToolMessage::UpdateOptions(GradientOptionsUpdate::Type(GradientType::Linear)).into()),
+						on_update: widget_callback!(|_| GradientToolMessage::UpdateOptions(GradientOptionsUpdate::Type(GradientType::Linear)).into()),
 						..RadioEntryData::default()
 					},
 					RadioEntryData {
 						value: "radial".into(),
 						label: "Radial".into(),
 						tooltip: "Radial Gradient".into(),
-						on_update: WidgetCallback::new(move |_| GradientToolMessage::UpdateOptions(GradientOptionsUpdate::Type(GradientType::Radial)).into()),
+						on_update: widget_callback!(|_| GradientToolMessage::UpdateOptions(GradientOptionsUpdate::Type(GradientType::Radial)).into()),
 						..RadioEntryData::default()
 					},
 				],

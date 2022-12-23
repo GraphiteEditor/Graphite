@@ -78,7 +78,7 @@ impl PropertyHolder for FreehandTool {
 				value: Some(self.options.line_weight as f64),
 				is_integer: false,
 				min: Some(1.),
-				on_update: WidgetCallback::new(|number_input: &NumberInput| FreehandToolMessage::UpdateOptions(FreehandToolMessageOptionsUpdate::LineWeight(number_input.value.unwrap())).into()),
+				on_update: widget_callback!(|number_input: &NumberInput| FreehandToolMessage::UpdateOptions(FreehandToolMessageOptionsUpdate::LineWeight(number_input.value.unwrap())).into()),
 				..NumberInput::default()
 			}))],
 		}]))

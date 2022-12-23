@@ -22,7 +22,7 @@ impl PropertyHolder for AboutGraphiteDialog {
 			.map(|(label, url)| {
 				WidgetHolder::new(Widget::TextButton(TextButton {
 					label: label.to_string(),
-					on_update: WidgetCallback::new(|_| FrontendMessage::TriggerVisitLink { url: url.to_string() }.into()),
+					on_update: widget_callback!(|_| FrontendMessage::TriggerVisitLink { url: url.to_string() }.into()),
 					..Default::default()
 				}))
 			})

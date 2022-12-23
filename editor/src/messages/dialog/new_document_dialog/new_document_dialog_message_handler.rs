@@ -66,7 +66,7 @@ impl PropertyHolder for NewDocumentDialogMessageHandler {
 			})),
 			WidgetHolder::new(Widget::TextInput(TextInput {
 				value: self.name.clone(),
-				on_update: WidgetCallback::new(|text_input: &TextInput| NewDocumentDialogMessage::Name(text_input.value.clone()).into()),
+				on_update: widget_callback!(|text_input: &TextInput| NewDocumentDialogMessage::Name(text_input.value.clone()).into()),
 				..Default::default()
 			})),
 		];
@@ -83,7 +83,7 @@ impl PropertyHolder for NewDocumentDialogMessageHandler {
 			})),
 			WidgetHolder::new(Widget::CheckboxInput(CheckboxInput {
 				checked: self.infinite,
-				on_update: WidgetCallback::new(|checkbox_input: &CheckboxInput| NewDocumentDialogMessage::Infinite(checkbox_input.checked).into()),
+				on_update: widget_callback!(|checkbox_input: &CheckboxInput| NewDocumentDialogMessage::Infinite(checkbox_input.checked).into()),
 				..Default::default()
 			})),
 		];
@@ -106,7 +106,7 @@ impl PropertyHolder for NewDocumentDialogMessageHandler {
 				is_integer: true,
 				disabled: self.infinite,
 				min_width: 100,
-				on_update: WidgetCallback::new(|number_input: &NumberInput| NewDocumentDialogMessage::DimensionsX(number_input.value.unwrap()).into()),
+				on_update: widget_callback!(|number_input: &NumberInput| NewDocumentDialogMessage::DimensionsX(number_input.value.unwrap()).into()),
 				..NumberInput::default()
 			})),
 			WidgetHolder::new(Widget::Separator(Separator {
@@ -121,7 +121,7 @@ impl PropertyHolder for NewDocumentDialogMessageHandler {
 				is_integer: true,
 				disabled: self.infinite,
 				min_width: 100,
-				on_update: WidgetCallback::new(|number_input: &NumberInput| NewDocumentDialogMessage::DimensionsY(number_input.value.unwrap()).into()),
+				on_update: widget_callback!(|number_input: &NumberInput| NewDocumentDialogMessage::DimensionsY(number_input.value.unwrap()).into()),
 				..NumberInput::default()
 			})),
 		];
@@ -131,7 +131,7 @@ impl PropertyHolder for NewDocumentDialogMessageHandler {
 				label: "OK".to_string(),
 				min_width: 96,
 				emphasized: true,
-				on_update: WidgetCallback::new(|_| {
+				on_update: widget_callback!(|_| {
 					DialogMessage::CloseDialogAndThen {
 						followups: vec![NewDocumentDialogMessage::Submit.into()],
 					}
@@ -142,7 +142,7 @@ impl PropertyHolder for NewDocumentDialogMessageHandler {
 			WidgetHolder::new(Widget::TextButton(TextButton {
 				label: "Cancel".to_string(),
 				min_width: 96,
-				on_update: WidgetCallback::new(|_| FrontendMessage::DisplayDialogDismiss.into()),
+				on_update: widget_callback!(|_| FrontendMessage::DisplayDialogDismiss.into()),
 				..Default::default()
 			})),
 		];

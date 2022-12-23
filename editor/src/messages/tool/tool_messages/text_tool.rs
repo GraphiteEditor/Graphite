@@ -92,7 +92,7 @@ impl PropertyHolder for TextTool {
 					is_style_picker: false,
 					font_family: self.options.font_name.clone(),
 					font_style: self.options.font_style.clone(),
-					on_update: WidgetCallback::new(|font_input: &FontInput| {
+					on_update: widget_callback!(|font_input: &FontInput| {
 						TextToolMessage::UpdateOptions(TextOptionsUpdate::Font {
 							family: font_input.font_family.clone(),
 							style: font_input.font_style.clone(),
@@ -109,7 +109,7 @@ impl PropertyHolder for TextTool {
 					is_style_picker: true,
 					font_family: self.options.font_name.clone(),
 					font_style: self.options.font_style.clone(),
-					on_update: WidgetCallback::new(|font_input: &FontInput| {
+					on_update: widget_callback!(|font_input: &FontInput| {
 						TextToolMessage::UpdateOptions(TextOptionsUpdate::Font {
 							family: font_input.font_family.clone(),
 							style: font_input.font_style.clone(),
@@ -128,7 +128,7 @@ impl PropertyHolder for TextTool {
 					value: Some(self.options.font_size as f64),
 					is_integer: true,
 					min: Some(1.),
-					on_update: WidgetCallback::new(|number_input: &NumberInput| TextToolMessage::UpdateOptions(TextOptionsUpdate::FontSize(number_input.value.unwrap() as u32)).into()),
+					on_update: widget_callback!(|number_input: &NumberInput| TextToolMessage::UpdateOptions(TextOptionsUpdate::FontSize(number_input.value.unwrap() as u32)).into()),
 					..NumberInput::default()
 				})),
 			],

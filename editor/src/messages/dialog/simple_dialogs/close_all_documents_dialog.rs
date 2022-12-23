@@ -12,7 +12,7 @@ impl PropertyHolder for CloseAllDocumentsDialog {
 			WidgetHolder::new(Widget::TextButton(TextButton {
 				label: "Discard All".to_string(),
 				min_width: 96,
-				on_update: WidgetCallback::new(|_| {
+				on_update: widget_callback!(|_| {
 					DialogMessage::CloseDialogAndThen {
 						followups: vec![PortfolioMessage::CloseAllDocuments.into()],
 					}
@@ -23,7 +23,7 @@ impl PropertyHolder for CloseAllDocumentsDialog {
 			WidgetHolder::new(Widget::TextButton(TextButton {
 				label: "Cancel".to_string(),
 				min_width: 96,
-				on_update: WidgetCallback::new(|_| FrontendMessage::DisplayDialogDismiss.into()),
+				on_update: widget_callback!(|_| FrontendMessage::DisplayDialogDismiss.into()),
 				..Default::default()
 			})),
 		];

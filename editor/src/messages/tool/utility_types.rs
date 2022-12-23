@@ -56,7 +56,7 @@ impl DocumentToolData {
 						icon: "Swap".into(),
 						tooltip: "Swap".into(),
 						tooltip_shortcut: action_keys!(ToolMessageDiscriminant::SwapColors),
-						on_update: WidgetCallback::new(|_| ToolMessage::SwapColors.into()),
+						on_update: widget_callback!(|_| ToolMessage::SwapColors.into()),
 						..Default::default()
 					})),
 					WidgetHolder::new(Widget::IconButton(IconButton {
@@ -64,7 +64,7 @@ impl DocumentToolData {
 						icon: "ResetColors".into(),
 						tooltip: "Reset".into(),
 						tooltip_shortcut: action_keys!(ToolMessageDiscriminant::ResetColors),
-						on_update: WidgetCallback::new(|_| ToolMessage::ResetColors.into()),
+						on_update: widget_callback!(|_| ToolMessage::ResetColors.into()),
 						..Default::default()
 					})),
 				],
@@ -187,7 +187,7 @@ impl PropertyHolder for ToolData {
 						active: self.active_tool_type == tool_type,
 						tooltip: tooltip.clone(),
 						tooltip_shortcut,
-						on_update: WidgetCallback::new(move |_| {
+						on_update: widget_callback!(move |_| {
 							if !tooltip.contains("Coming Soon") {
 								ToolMessage::ActivateTool { tool_type }.into()
 							} else {

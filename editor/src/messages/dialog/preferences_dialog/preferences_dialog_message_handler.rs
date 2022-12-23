@@ -52,7 +52,7 @@ impl PreferencesDialogMessageHandler {
 			WidgetHolder::new(Widget::TextInput(TextInput {
 				value: preferences.imaginate_server_hostname.clone(),
 				min_width: 200,
-				on_update: WidgetCallback::new(|text_input: &TextInput| PreferencesMessage::ImaginateServerHostname { hostname: text_input.value.clone() }.into()),
+				on_update: widget_callback!(|text_input: &TextInput| PreferencesMessage::ImaginateServerHostname { hostname: text_input.value.clone() }.into()),
 				..Default::default()
 			})),
 		];
@@ -73,7 +73,7 @@ impl PreferencesDialogMessageHandler {
 				value: Some(preferences.imaginate_refresh_frequency),
 				min: Some(0.),
 				min_width: 200,
-				on_update: WidgetCallback::new(|number_input: &NumberInput| PreferencesMessage::ImaginateRefreshFrequency { seconds: number_input.value.unwrap() }.into()),
+				on_update: widget_callback!(|number_input: &NumberInput| PreferencesMessage::ImaginateRefreshFrequency { seconds: number_input.value.unwrap() }.into()),
 				..Default::default()
 			})),
 		];
@@ -83,7 +83,7 @@ impl PreferencesDialogMessageHandler {
 				label: "Ok".to_string(),
 				min_width: 96,
 				emphasized: true,
-				on_update: WidgetCallback::new(|_| {
+				on_update: widget_callback!(|_| {
 					DialogMessage::CloseDialogAndThen {
 						followups: vec![PreferencesDialogMessage::Confirm.into()],
 					}
@@ -94,7 +94,7 @@ impl PreferencesDialogMessageHandler {
 			WidgetHolder::new(Widget::TextButton(TextButton {
 				label: "Reset to Defaults".to_string(),
 				min_width: 96,
-				on_update: WidgetCallback::new(|_| PreferencesMessage::ResetToDefaults.into()),
+				on_update: widget_callback!(|_| PreferencesMessage::ResetToDefaults.into()),
 				..Default::default()
 			})),
 		];
