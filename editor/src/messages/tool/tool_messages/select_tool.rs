@@ -173,7 +173,7 @@ impl PropertyHolder for SelectTool {
 				})),
 				WidgetHolder::new(Widget::PopoverButton(PopoverButton {
 					header: "Align".into(),
-					text: "The contents of this popover menu are coming soon".into(),
+					text: "Coming soon".into(),
 					..Default::default()
 				})),
 				WidgetHolder::new(Widget::Separator(Separator {
@@ -200,7 +200,7 @@ impl PropertyHolder for SelectTool {
 				})),
 				WidgetHolder::new(Widget::PopoverButton(PopoverButton {
 					header: "Flip".into(),
-					text: "The contents of this popover menu are coming soon".into(),
+					text: "Coming soon".into(),
 					..Default::default()
 				})),
 				WidgetHolder::new(Widget::Separator(Separator {
@@ -248,7 +248,7 @@ impl PropertyHolder for SelectTool {
 				})),
 				WidgetHolder::new(Widget::PopoverButton(PopoverButton {
 					header: "Boolean".into(),
-					text: "The contents of this popover menu are coming soon".into(),
+					text: "Coming soon".into(),
 					..Default::default()
 				})),
 				WidgetHolder::new(Widget::Separator(Separator {

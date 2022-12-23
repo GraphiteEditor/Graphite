@@ -1032,7 +1032,7 @@ impl DocumentMessageHandler {
 				document.name = name;
 				Ok(document)
 			}
-			Err(DocumentError::InvalidFile(msg)) => Err(EditorError::Document(msg)),
+			Err(DocumentError::InvalidFile(msg)) => Err(EditorError::DocumentDeserialization(msg)),
 			_ => Err(EditorError::Document(String::from("Failed to open file"))),
 		}
 	}
@@ -1508,7 +1508,7 @@ impl DocumentMessageHandler {
 			})),
 			WidgetHolder::new(Widget::PopoverButton(PopoverButton {
 				header: "Snapping".into(),
-				text: "The contents of this popover menu are coming soon".into(),
+				text: "Coming soon".into(),
 				..Default::default()
 			})),
 			WidgetHolder::new(Widget::Separator(Separator {
@@ -1524,7 +1524,7 @@ impl DocumentMessageHandler {
 			})),
 			WidgetHolder::new(Widget::PopoverButton(PopoverButton {
 				header: "Grid".into(),
-				text: "The contents of this popover menu are coming soon".into(),
+				text: "Coming soon".into(),
 				..Default::default()
 			})),
 			WidgetHolder::new(Widget::Separator(Separator {
@@ -1540,7 +1540,7 @@ impl DocumentMessageHandler {
 			})),
 			WidgetHolder::new(Widget::PopoverButton(PopoverButton {
 				header: "Overlays".into(),
-				text: "The contents of this popover menu are coming soon".into(),
+				text: "Coming soon".into(),
 				..Default::default()
 			})),
 			WidgetHolder::new(Widget::Separator(Separator {
@@ -1576,7 +1576,7 @@ impl DocumentMessageHandler {
 			})),
 			WidgetHolder::new(Widget::PopoverButton(PopoverButton {
 				header: "View Mode".into(),
-				text: "The contents of this popover menu are coming soon".into(),
+				text: "Coming soon".into(),
 				..Default::default()
 			})),
 			WidgetHolder::new(Widget::Separator(Separator {

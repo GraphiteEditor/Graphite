@@ -59,7 +59,7 @@ pub fn register_artboard_layer_properties(layer: &Layer, responses: &mut VecDequ
 			WidgetHolder::related_separator(),
 			WidgetHolder::new(Widget::PopoverButton(PopoverButton {
 				header: "Options Bar".into(),
-				text: "The contents of this popover menu are coming soon".into(),
+				text: "Coming soon".into(),
 				..Default::default()
 			})),
 		],
@@ -261,7 +261,7 @@ pub fn register_artwork_layer_properties(
 			WidgetHolder::related_separator(),
 			WidgetHolder::new(Widget::PopoverButton(PopoverButton {
 				header: "Options Bar".into(),
-				text: "The contents of this popover menu are coming soon".into(),
+				text: "Coming soon".into(),
 				..Default::default()
 			})),
 		],
