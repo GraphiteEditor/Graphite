@@ -300,7 +300,7 @@ import { defineComponent, nextTick } from "vue";
 
 import type { IconName } from "@/utility-functions/icons";
 
-import { UpdateNodeGraphSelection, FrontendNodeLink } from "@/wasm-communication/messages";
+import { UpdateNodeGraphSelection, type FrontendNodeLink } from "@/wasm-communication/messages";
 
 import LayoutCol from "@/components/layout/LayoutCol.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
