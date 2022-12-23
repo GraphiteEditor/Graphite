@@ -5,7 +5,7 @@ use crate::consts::{ASYMPTOTIC_EFFECT, DEFAULT_DOCUMENT_NAME, FILE_SAVE_SUFFIX, 
 use crate::messages::frontend::utility_types::ExportBounds;
 use crate::messages::frontend::utility_types::{FileType, FrontendImageData};
 use crate::messages::input_mapper::utility_types::macros::action_keys;
-use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
+use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, Widget, WidgetHolder, WidgetLayout};
 use crate::messages::layout::utility_types::misc::LayoutTarget;
 use crate::messages::layout::utility_types::widgets::button_widgets::{IconButton, PopoverButton};
 use crate::messages::layout::utility_types::widgets::input_widgets::{

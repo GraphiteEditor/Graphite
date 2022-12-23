@@ -1,4 +1,4 @@
-use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, PropertyHolder, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
+use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, PropertyHolder, Widget, WidgetHolder, WidgetLayout};
 use crate::messages::layout::utility_types::widgets::button_widgets::TextButton;
 use crate::messages::layout::utility_types::widgets::label_widgets::TextLabel;
 use crate::messages::prelude::*;
@@ -25,7 +25,7 @@ impl PropertyHolder for ComingSoonDialog {
 			buttons.push(WidgetHolder::new(Widget::TextButton(TextButton {
 				label: format!("Issue #{issue}"),
 				min_width: 96,
-				on_update: widget_callback!(|_| {
+				on_update: widget_callback!(move |_| {
 					FrontendMessage::TriggerVisitLink {
 						url: format!("https://github.com/GraphiteEditor/Graphite/issues/{issue}"),
 					}

@@ -1,7 +1,7 @@
 use crate::messages::input_mapper::utility_types::input_keyboard::KeysGroup;
 use crate::messages::input_mapper::utility_types::misc::ActionKeys;
+use crate::messages::layout::utility_types::layout_widget::Widget;
 use crate::messages::layout::utility_types::layout_widget::WidgetHolder;
-use crate::messages::layout::utility_types::layout_widget::{Widget, WidgetCallback};
 use crate::messages::prelude::*;
 
 use serde::{Deserialize, Serialize};

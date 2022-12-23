@@ -3,7 +3,7 @@ use crate::messages::input_mapper::utility_types::input_keyboard::LayoutKeysGrou
 use crate::messages::input_mapper::utility_types::input_keyboard::MouseMotion;
 use crate::messages::input_mapper::utility_types::macros::action_keys;
 use crate::messages::input_mapper::utility_types::misc::ActionKeys;
-use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, PropertyHolder, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
+use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, PropertyHolder, Widget, WidgetHolder, WidgetLayout};
 use crate::messages::layout::utility_types::misc::LayoutTarget;
 use crate::messages::layout::utility_types::widgets::button_widgets::IconButton;
 use crate::messages::layout::utility_types::widgets::input_widgets::SwatchPairInput;

@@ -1,5 +1,5 @@
 use crate::messages::broadcast::broadcast_event::BroadcastEvent;
-use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, PropertyHolder, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
+use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, PropertyHolder, Widget, WidgetHolder, WidgetLayout};
 use crate::messages::layout::utility_types::widgets::button_widgets::TextButton;
 use crate::messages::layout::utility_types::widgets::label_widgets::TextLabel;
 use crate::messages::prelude::*;
@@ -30,7 +30,7 @@ impl PropertyHolder for CloseDocumentDialog {
 			WidgetHolder::new(Widget::TextButton(TextButton {
 				label: "Discard".to_string(),
 				min_width: 96,
-				on_update: widget_callback!(|_| {
+				on_update: widget_callback!(move |_| {
 					DialogMessage::CloseDialogAndThen {
 						followups: vec![BroadcastEvent::ToolAbort.into(), PortfolioMessage::CloseDocument { document_id }.into()],
 					}

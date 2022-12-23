@@ -1,6 +1,6 @@
 use super::utility_types::TransformOp;
 use crate::application::generate_uuid;
-use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
+use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, Widget, WidgetHolder, WidgetLayout};
 use crate::messages::layout::utility_types::misc::LayoutTarget;
 use crate::messages::layout::utility_types::widgets::assist_widgets::PivotAssist;
 use crate::messages::layout::utility_types::widgets::button_widgets::{IconButton, PopoverButton, TextButton};
@@ -648,6 +648,7 @@ fn node_gradient_type(gradient: &Gradient) -> LayoutGroup {
 }
 
 fn node_gradient_color(gradient: &Gradient, position: usize) -> LayoutGroup {
+	let ref gradient = Arc::new(gradient.clone());
 	let send_fill_message = move |new_gradient: Gradient| PropertiesPanelMessage::ModifyFill { fill: Fill::Gradient(new_gradient) }.into();
 	let value = format!("Gradient: {:.0}%", gradient.positions[position].0 * 100.);
 	let mut widgets = vec![
@@ -795,7 +796,7 @@ fn node_section_fill(fill: &Fill) -> Option<LayoutGroup> {
 				let first_color = gradient.positions.get(0).unwrap_or(&(0., None)).1;
 
 				let mut layout = vec![node_gradient_type(gradient)];
-				layout.extend((0..gradient.positions.len()).map(|pos| node_gradient_color(gradient, pos)));
+				layout.extend((0..gradient.positions.len()).map(|pos| node_gradient_color(&gradient, pos)));
 				layout.push(LayoutGroup::Row {
 					widgets: vec![
 						WidgetHolder::new(Widget::TextLabel(TextLabel {
@@ -970,7 +971,7 @@ fn node_section_stroke(stroke: &Stroke) -> LayoutGroup {
 						entries: vec![
 							RadioEntryData {
 								label: "Butt".into(),
-								on_update: widget_callback!([stoke], move |_| {
+								on_update: widget_callback!([stroke], move |_| {
 									PropertiesPanelMessage::ModifyStroke {
 										stroke: stroke.clone().with_line_cap(LineCap::Butt),
 									}

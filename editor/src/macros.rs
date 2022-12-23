@@ -63,11 +63,11 @@ macro_rules! clone {
         $expr
     }};
     ($(,)? mut $ident:ident $($tt:tt)*) => {
-        let mut $ident = ::core::clone::Clone::clone(&$ident);
+        let mut $ident = ::core::clone::Clone::clone($ident);
         clone!($($tt)*);
     };
     ($(,)? $ident:ident $($tt:tt)*) => {
-        let $ident = ::core::clone::Clone::clone(&$ident);
+        let $ident = ::core::clone::Clone::clone($ident);
         clone!($($tt)*);
     };
     ($(,)?) => {};
@@ -76,9 +76,9 @@ macro_rules! clone {
 macro_rules! widget_callback {
 	([$($tt:tt)*], $expr:expr) => {{
         clone!($($tt)*);
-        WidgetCallback::new($expr)
+        crate::messages::layout::utility_types::layout_widget::WidgetCallback::new($expr)
     }};
 	($expr:expr) => {{
-        WidgetCallback::new($expr)
+        crate::messages::layout::utility_types::layout_widget::WidgetCallback::new($expr)
     }};
 }
