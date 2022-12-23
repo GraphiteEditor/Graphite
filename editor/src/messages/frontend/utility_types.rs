@@ -1,4 +1,4 @@
-use graphene::LayerId;
+use document_legacy::LayerId;
 use serde::{Deserialize, Serialize};
 
 #[derive(PartialEq, Eq, Clone, Debug, Serialize, Deserialize)]

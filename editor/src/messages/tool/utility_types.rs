@@ -10,8 +10,8 @@ use crate::messages::layout::utility_types::widgets::input_widgets::SwatchPairIn
 use crate::messages::layout::utility_types::widgets::label_widgets::{Separator, SeparatorDirection, SeparatorType};
 use crate::messages::prelude::*;
 
-use graphene::color::Color;
-use graphene::layers::text_layer::FontCache;
+use document_legacy::color::Color;
+use document_legacy::layers::text_layer::FontCache;
 
 use serde::{Deserialize, Serialize};
 use std::fmt::{self, Debug};

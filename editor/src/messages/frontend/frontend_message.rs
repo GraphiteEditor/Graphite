@@ -7,11 +7,11 @@ use crate::messages::portfolio::document::utility_types::layer_panel::{JsRawBuff
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::HintData;
 
+use document_legacy::color::Color;
+use document_legacy::layers::text_layer::Font;
+use document_legacy::LayerId;
 use graph_craft::document::NodeId;
 use graph_craft::imaginate_input::*;
-use graphene::color::Color;
-use graphene::layers::text_layer::Font;
-use graphene::LayerId;
 
 use serde::{Deserialize, Serialize};
 
@@ -226,6 +226,9 @@ pub enum FrontendMessage {
 		#[serde(rename = "layoutTarget")]
 		layout_target: LayoutTarget,
 		layout: SubLayout,
+	},
+	UpdateNodeGraphSelection {
+		selected: Vec<NodeId>,
 	},
 	UpdateNodeGraphVisibility {
 		visible: bool,

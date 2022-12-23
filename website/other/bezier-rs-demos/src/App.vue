@@ -556,7 +556,11 @@ export default defineComponent({
 				},
 				{
 					name: "Intersect (Rectangle)",
-					callback: (bezier: WasmBezierInstance): string => bezier.intersect_rectangle([[50, 50], [150, 150]]),
+					callback: (bezier: WasmBezierInstance): string =>
+						bezier.intersect_rectangle([
+							[50, 50],
+							[150, 150],
+						]),
 				},
 				{
 					name: "Rotate",

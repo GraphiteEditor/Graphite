@@ -1,12 +1,12 @@
 use crate::messages::prelude::*;
 
-use graphene::document::Document as GrapheneDocument;
-use graphene::layers::style::{RenderData, ViewMode};
-use graphene::layers::text_layer::FontCache;
+use document_legacy::document::Document as DocumentLegacy;
+use document_legacy::layers::style::{RenderData, ViewMode};
+use document_legacy::layers::text_layer::FontCache;
 
 #[derive(Debug, Clone, Default)]
 pub struct OverlaysMessageHandler {
-	pub overlays_graphene_document: GrapheneDocument,
+	pub overlays_document: DocumentLegacy,
 }
 
 impl MessageHandler<OverlaysMessage, (bool, &FontCache, &InputPreprocessorMessageHandler)> for OverlaysMessageHandler {
@@ -18,7 +18,7 @@ impl MessageHandler<OverlaysMessage, (bool, &FontCache, &InputPreprocessorMessag
 		match message {
 			// Sub-messages
 			#[remain::unsorted]
-			DispatchOperation(operation) => match self.overlays_graphene_document.handle_operation(*operation, font_cache) {
+			DispatchOperation(operation) => match self.overlays_document.handle_operation(*operation, font_cache) {
 				Ok(_) => responses.push_back(OverlaysMessage::Rerender.into()),
 				Err(e) => error!("OverlaysError: {:?}", e),
 			},
@@ -32,7 +32,7 @@ impl MessageHandler<OverlaysMessage, (bool, &FontCache, &InputPreprocessorMessag
 					FrontendMessage::UpdateDocumentOverlays {
 						svg: if overlays_visible {
 							let render_data = RenderData::new(ViewMode::Normal, font_cache, Some(ipp.document_bounds()));
-							self.overlays_graphene_document.render_root(render_data)
+							self.overlays_document.render_root(render_data)
 						} else {
 							String::from("")
 						},

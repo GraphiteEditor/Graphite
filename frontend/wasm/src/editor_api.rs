@@ -5,6 +5,8 @@
 use crate::helpers::{translate_key, Error};
 use crate::{EDITOR_HAS_CRASHED, EDITOR_INSTANCES, JS_EDITOR_HANDLES};
 
+use document_legacy::color::Color;
+use document_legacy::LayerId;
 use editor::application::generate_uuid;
 use editor::application::Editor;
 use editor::consts::{FILE_SAVE_SUFFIX, GRAPHITE_DOCUMENT_VERSION};
@@ -13,8 +15,6 @@ use editor::messages::input_mapper::utility_types::input_mouse::{EditorMouseStat
 use editor::messages::portfolio::utility_types::{ImaginateServerStatus, Platform};
 use editor::messages::prelude::*;
 use graph_craft::document::NodeId;
-use graphene::color::Color;
-use graphene::LayerId;
 
 use serde::Serialize;
 use serde_wasm_bindgen::{self, from_value};
@@ -159,7 +159,7 @@ impl JsEditorHandle {
 	}
 
 	#[wasm_bindgen(js_name = tauriResponse)]
-	pub fn tauri_response(&self, message: JsValue) {
+	pub fn tauri_response(&self, _message: JsValue) {
 		#[cfg(feature = "tauri")]
 		match ron::from_str::<Vec<FrontendMessage>>(&message.as_string().unwrap()) {
 			Ok(response) => {
@@ -587,11 +587,30 @@ impl JsEditorHandle {
 		self.dispatch(message);
 	}
 
+	/// Shifts the node and its children to stop nodes going ontop of each other
+	#[wasm_bindgen(js_name = shiftNode)]
+	pub fn shift_node(&self, node_id: u64) {
+		let message = NodeGraphMessage::ShiftNode { node_id };
+		self.dispatch(message);
+	}
+
 	/// Notifies the backend that the user disconnected a node
 	#[wasm_bindgen(js_name = disconnectNodes)]
 	pub fn disconnect_nodes(&self, node_id: u64, input_index: usize) {
 		let message = NodeGraphMessage::DisconnectNodes { node_id, input_index };
 		self.dispatch(message);
+	}
+
+	/// Check for intersections between the curve and a rectangle defined by opposite corners
+	#[wasm_bindgen(js_name = rectangleIntersects)]
+	pub fn rectangle_intersects(&self, bezier_x: Vec<f64>, bezier_y: Vec<f64>, top: f64, left: f64, bottom: f64, right: f64) -> bool {
+		let bezier = bezier_rs::Bezier::from_cubic_dvec2(
+			(bezier_x[0], bezier_y[0]).into(),
+			(bezier_x[1], bezier_y[1]).into(),
+			(bezier_x[2], bezier_y[2]).into(),
+			(bezier_x[3], bezier_y[3]).into(),
+		);
+		!bezier.rectangle_intersections((left, top).into(), (right, bottom).into()).is_empty() || bezier.is_contained_within((left, top).into(), (right, bottom).into())
 	}
 
 	/// Creates a new document node in the node graph
@@ -605,6 +624,13 @@ impl JsEditorHandle {
 	#[wasm_bindgen(js_name = selectNodes)]
 	pub fn select_nodes(&self, nodes: Vec<u64>) {
 		let message = NodeGraphMessage::SelectNodes { nodes };
+		self.dispatch(message);
+	}
+
+	/// Pastes the nodes based on serialized data
+	#[wasm_bindgen(js_name = pasteSerializedNodes)]
+	pub fn paste_serialized_nodes(&self, serialized_nodes: String) {
+		let message = NodeGraphMessage::PasteNodes { serialized_nodes };
 		self.dispatch(message);
 	}
 

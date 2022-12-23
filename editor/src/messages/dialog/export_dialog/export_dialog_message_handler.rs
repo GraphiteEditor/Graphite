@@ -6,7 +6,7 @@ use crate::messages::layout::utility_types::widgets::input_widgets::{DropdownEnt
 use crate::messages::layout::utility_types::widgets::label_widgets::{Separator, SeparatorDirection, SeparatorType, TextLabel};
 use crate::messages::prelude::*;
 
-use graphene::LayerId;
+use document_legacy::LayerId;
 
 /// A dialog to allow users to customize their file export.
 #[derive(Debug, Clone, Default)]

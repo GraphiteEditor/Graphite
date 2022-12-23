@@ -10,11 +10,11 @@ use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 
-use graphene::intersection::Quad;
-use graphene::layers::style::{self, Fill, Stroke};
-use graphene::layers::text_layer::FontCache;
-use graphene::LayerId;
-use graphene::Operation;
+use document_legacy::intersection::Quad;
+use document_legacy::layers::style::{self, Fill, Stroke};
+use document_legacy::layers::text_layer::FontCache;
+use document_legacy::LayerId;
+use document_legacy::Operation;
 
 use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};
@@ -246,10 +246,10 @@ fn update_overlays(document: &DocumentMessageHandler, tool_data: &mut TextToolDa
 		.zip(&tool_data.overlays)
 		.filter_map(|(layer_path, overlay_path)| {
 			document
-				.graphene_document
+				.document_legacy
 				.layer(layer_path)
 				.unwrap()
-				.aabb_for_transform(document.graphene_document.multiply_transforms(layer_path).unwrap(), font_cache)
+				.aabb_for_transform(document.document_legacy.multiply_transforms(layer_path).unwrap(), font_cache)
 				.map(|bounds| (bounds, overlay_path))
 		})
 		.collect::<Vec<_>>();
@@ -294,10 +294,10 @@ impl Fsm for TextToolFsmState {
 					let quad = Quad::from_box([mouse_pos - tolerance, mouse_pos + tolerance]);
 
 					let new_state = if let Some(l) = document
-						.graphene_document
+						.document_legacy
 						.intersects_quad_root(quad, font_cache)
 						.last()
-						.filter(|l| document.graphene_document.layer(l).map(|l| l.as_text().is_ok()).unwrap_or(false))
+						.filter(|l| document.document_legacy.layer(l).map(|l| l.as_text().is_ok()).unwrap_or(false))
 					// Editing existing text
 					{
 						if state == TextToolFsmState::Editing {
@@ -433,10 +433,10 @@ impl Fsm for TextToolFsmState {
 				}
 				(Editing, UpdateBounds { new_text }) => {
 					resize_overlays(&mut tool_data.overlays, responses, 1);
-					let text = document.graphene_document.layer(&tool_data.path).unwrap().as_text().unwrap();
+					let text = document.document_legacy.layer(&tool_data.path).unwrap().as_text().unwrap();
 					let quad = text.bounding_box(&new_text, text.load_face(font_cache));
 
-					let transformed_quad = document.graphene_document.multiply_transforms(&tool_data.path).unwrap() * quad;
+					let transformed_quad = document.document_legacy.multiply_transforms(&tool_data.path).unwrap() * quad;
 					let bounds = transformed_quad.bounding_box();
 
 					let operation = Operation::SetLayerTransformInViewport {

@@ -1,7 +1,7 @@
 use crate::messages::prelude::*;
 
+use document_legacy::LayerId;
 use graph_craft::document::{value::TaggedValue, NodeId};
-use graphene::LayerId;
 
 #[remain::sorted]
 #[impl_message(Message, DocumentMessage, NodeGraph)]
@@ -14,6 +14,7 @@ pub enum NodeGraphMessage {
 		input_node: u64,
 		input_node_connector_index: usize,
 	},
+	Copy,
 	CreateNode {
 		// Having the caller generate the id means that we don't have to return it. This can be a random u64.
 		node_id: Option<NodeId>,
@@ -21,6 +22,7 @@ pub enum NodeGraphMessage {
 		x: i32,
 		y: i32,
 	},
+	Cut,
 	DeleteNode {
 		node_id: NodeId,
 	},
@@ -32,6 +34,7 @@ pub enum NodeGraphMessage {
 	DoubleClickNode {
 		node: NodeId,
 	},
+	DuplicateSelectedNodes,
 	ExitNestedNetwork {
 		depth_of_nesting: usize,
 	},
@@ -45,7 +48,10 @@ pub enum NodeGraphMessage {
 		displacement_y: i32,
 	},
 	OpenNodeGraph {
-		layer_path: Vec<graphene::LayerId>,
+		layer_path: Vec<document_legacy::LayerId>,
+	},
+	PasteNodes {
+		serialized_nodes: String,
 	},
 	SelectNodes {
 		nodes: Vec<NodeId>,
@@ -60,5 +66,8 @@ pub enum NodeGraphMessage {
 		node_path: Vec<NodeId>,
 		input_index: usize,
 		value: TaggedValue,
+	},
+	ShiftNode {
+		node_id: NodeId,
 	},
 }

@@ -1,7 +1,7 @@
-use graphene::layers::layer_info::{Layer, LayerData, LayerDataTypeDiscriminant};
-use graphene::layers::style::{RenderData, ViewMode};
-use graphene::layers::text_layer::FontCache;
-use graphene::LayerId;
+use document_legacy::layers::layer_info::{Layer, LayerData, LayerDataTypeDiscriminant};
+use document_legacy::layers::style::{RenderData, ViewMode};
+use document_legacy::layers::text_layer::FontCache;
+use document_legacy::LayerId;
 
 use glam::{DAffine2, DVec2};
 use serde::ser::SerializeStruct;

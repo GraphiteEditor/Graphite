@@ -1,7 +1,7 @@
 use crate::messages::portfolio::utility_types::KeyboardPlatformLayout;
 use crate::messages::prelude::*;
 
-pub use graphene::DocumentResponse;
+pub use document_legacy::DocumentResponse;
 
 use bitflags::bitflags;
 use serde::{Deserialize, Serialize};

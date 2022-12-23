@@ -18,12 +18,12 @@ use crate::messages::tool::common_functionality::transformation_cage::*;
 use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 
-use graphene::boolean_ops::BooleanOperation;
-use graphene::document::Document;
-use graphene::intersection::Quad;
-use graphene::layers::layer_info::LayerDataType;
-use graphene::LayerId;
-use graphene::Operation;
+use document_legacy::boolean_ops::BooleanOperation;
+use document_legacy::document::Document;
+use document_legacy::intersection::Quad;
+use document_legacy::layers::layer_info::LayerDataType;
+use document_legacy::LayerId;
+use document_legacy::Operation;
 
 use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};
@@ -173,7 +173,7 @@ impl PropertyHolder for SelectTool {
 				})),
 				WidgetHolder::new(Widget::PopoverButton(PopoverButton {
 					header: "Align".into(),
-					text: "The contents of this popover menu are coming soon".into(),
+					text: "Coming soon".into(),
 					..Default::default()
 				})),
 				WidgetHolder::new(Widget::Separator(Separator {
@@ -200,7 +200,7 @@ impl PropertyHolder for SelectTool {
 				})),
 				WidgetHolder::new(Widget::PopoverButton(PopoverButton {
 					header: "Flip".into(),
-					text: "The contents of this popover menu are coming soon".into(),
+					text: "Coming soon".into(),
 					..Default::default()
 				})),
 				WidgetHolder::new(Widget::Separator(Separator {
@@ -248,7 +248,7 @@ impl PropertyHolder for SelectTool {
 				})),
 				WidgetHolder::new(Widget::PopoverButton(PopoverButton {
 					header: "Boolean".into(),
-					text: "The contents of this popover menu are coming soon".into(),
+					text: "Coming soon".into(),
 					..Default::default()
 				})),
 				WidgetHolder::new(Widget::Separator(Separator {
@@ -415,8 +415,8 @@ impl Fsm for SelectToolFsmState {
 					let quad = Quad::from_box([mouse_pos - tolerance, mouse_pos + tolerance]);
 
 					// Check the last (top most) intersection layer.
-					if let Some(intersect_layer_path) = document.graphene_document.intersects_quad_root(quad, font_cache).last() {
-						if let Ok(intersect) = document.graphene_document.layer(intersect_layer_path) {
+					if let Some(intersect_layer_path) = document.document_legacy.intersects_quad_root(quad, font_cache).last() {
+						if let Ok(intersect) = document.document_legacy.layer(intersect_layer_path) {
 							match intersect.data {
 								LayerDataType::Text(_) => {
 									responses.push_front(ToolMessage::ActivateTool { tool_type: ToolType::Text }.into());
@@ -466,7 +466,7 @@ impl Fsm for SelectToolFsmState {
 
 					let mut selected: Vec<_> = document.selected_visible_layers().map(|path| path.to_vec()).collect();
 					let quad = tool_data.selection_quad();
-					let mut intersection = document.graphene_document.intersects_quad_root(quad, font_cache);
+					let mut intersection = document.document_legacy.intersects_quad_root(quad, font_cache);
 					// If the user is dragging the bounding box bounds, go into ResizingBounds mode.
 					// If the user is dragging the rotate trigger, go into RotatingBounds mode.
 					// If the user clicks on a layer that is in their current selection, go into the dragging mode.
@@ -489,7 +489,7 @@ impl Fsm for SelectToolFsmState {
 						tool_data.layers_dragging = selected;
 
 						if let Some(bounds) = &mut tool_data.bounding_box_overlays {
-							let document = &document.graphene_document;
+							let document = &document.document_legacy;
 
 							let selected = &tool_data.layers_dragging.iter().collect::<Vec<_>>();
 							let mut selected = Selected::new(&mut bounds.original_transforms, &mut bounds.center_of_transformation, selected, responses, document);
@@ -500,7 +500,7 @@ impl Fsm for SelectToolFsmState {
 					} else if rotating_bounds {
 						if let Some(bounds) = &mut tool_data.bounding_box_overlays {
 							let selected = selected.iter().collect::<Vec<_>>();
-							let mut selected = Selected::new(&mut bounds.original_transforms, &mut bounds.center_of_transformation, &selected, responses, &document.graphene_document);
+							let mut selected = Selected::new(&mut bounds.original_transforms, &mut bounds.center_of_transformation, &selected, responses, &document.document_legacy);
 
 							bounds.center_of_transformation = selected.mean_average_of_pivots(font_cache);
 						}
@@ -554,7 +554,7 @@ impl Fsm for SelectToolFsmState {
 					let snap = tool_data
 						.layers_dragging
 						.iter()
-						.filter_map(|path| document.graphene_document.viewport_bounding_box(path, font_cache).ok()?)
+						.filter_map(|path| document.document_legacy.viewport_bounding_box(path, font_cache).ok()?)
 						.flat_map(snapping::expand_bounds)
 						.collect();
 
@@ -592,7 +592,7 @@ impl Fsm for SelectToolFsmState {
 							let (delta, mut pivot) = movement.bounds_to_scale_transform(position, size);
 
 							let selected = &tool_data.layers_dragging.iter().collect::<Vec<_>>();
-							let mut selected = Selected::new(&mut bounds.original_transforms, &mut pivot, selected, responses, &document.graphene_document);
+							let mut selected = Selected::new(&mut bounds.original_transforms, &mut pivot, selected, responses, &document.document_legacy);
 
 							selected.update_transforms(delta);
 						}
@@ -618,7 +618,7 @@ impl Fsm for SelectToolFsmState {
 						let delta = DAffine2::from_angle(snapped_angle);
 
 						let selected = tool_data.layers_dragging.iter().collect::<Vec<_>>();
-						let mut selected = Selected::new(&mut bounds.original_transforms, &mut bounds.center_of_transformation, &selected, responses, &document.graphene_document);
+						let mut selected = Selected::new(&mut bounds.original_transforms, &mut bounds.center_of_transformation, &selected, responses, &document.document_legacy);
 
 						selected.update_transforms(delta);
 					}
@@ -703,7 +703,7 @@ impl Fsm for SelectToolFsmState {
 					let quad = tool_data.selection_quad();
 					responses.push_front(
 						DocumentMessage::AddSelectedLayers {
-							additional_layers: document.graphene_document.intersects_quad_root(quad, font_cache),
+							additional_layers: document.document_legacy.intersects_quad_root(quad, font_cache),
 						}
 						.into(),
 					);
@@ -738,7 +738,7 @@ impl Fsm for SelectToolFsmState {
 							&mut bounding_box_overlays.opposite_pivot,
 							&selected,
 							responses,
-							&document.graphene_document,
+							&document.document_legacy,
 						);
 
 						selected.revert_operation();
@@ -947,7 +947,7 @@ impl SelectToolData {
 
 			// Copy the layers.
 			// Not using the Copy message allows us to retrieve the ids of the new layers to initialize the drag.
-			let layer = match document.graphene_document.layer(layer_path) {
+			let layer = match document.document_legacy.layer(layer_path) {
 				Ok(layer) => layer.clone(),
 				Err(e) => {
 					warn!("Could not access selected layer {:?}: {:?}", layer_path, e);

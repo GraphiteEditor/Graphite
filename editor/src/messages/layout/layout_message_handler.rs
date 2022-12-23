@@ -4,9 +4,9 @@ use crate::messages::layout::utility_types::layout_widget::Layout;
 use crate::messages::layout::utility_types::layout_widget::Widget;
 use crate::messages::prelude::*;
 
-use graphene::color::Color;
-use graphene::layers::text_layer::Font;
-use graphene::LayerId;
+use document_legacy::color::Color;
+use document_legacy::layers::text_layer::Font;
+use document_legacy::LayerId;
 
 use serde_json::Value;
 use std::ops::Not;

@@ -6,9 +6,9 @@ use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::{DocumentToolData, EventToMessageMap, Fsm, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 
-use graphene::layers::style;
-use graphene::LayerId;
-use graphene::Operation;
+use document_legacy::layers::style;
+use document_legacy::LayerId;
+use document_legacy::Operation;
 
 use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};
@@ -168,7 +168,7 @@ impl Fsm for FreehandToolFsmState {
 		use FreehandToolFsmState::*;
 		use FreehandToolMessage::*;
 
-		let transform = document.graphene_document.root.transform;
+		let transform = document.document_legacy.root.transform;
 
 		if let ToolMessage::Freehand(event) = event {
 			match (self, event) {
