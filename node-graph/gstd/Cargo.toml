@@ -11,7 +11,7 @@ license = "MIT OR Apache-2.0"
 [features]
 memoization = ["once_cell"]
 default = ["memoization"]
-gpu = ["graphene-core/gpu", "vulkan-executor", "gpu-compiler-bin-wrapper"]
+gpu = ["graphene-core/gpu", "vulkan-executor", "gpu-compiler-bin-wrapper", "compilation-client"]
 
 
 [dependencies]
@@ -21,6 +21,7 @@ dyn-any = {path = "../../libraries/dyn-any", features = ["derive"]}
 graph-craft = {path = "../graph-craft"}
 vulkan-executor = {path = "../vulkan-executor", optional = true}
 gpu-compiler-bin-wrapper = {path = "../gpu-compiler/gpu-compiler-bin-wrapper", optional = true}
+compilation-client = {path = "../compilation-client", optional = true}
 bytemuck = {version = "1.8"  }
 tempfile = "3"
 once_cell = {version= "1.10", optional = true}

@@ -161,14 +161,14 @@ impl JsEditorHandle {
 	#[wasm_bindgen(js_name = tauriResponse)]
 	pub fn tauri_response(&self, _message: JsValue) {
 		#[cfg(feature = "tauri")]
-		match ron::from_str::<Vec<FrontendMessage>>(&message.as_string().unwrap()) {
+		match ron::from_str::<Vec<FrontendMessage>>(&_message.as_string().unwrap()) {
 			Ok(response) => {
 				for message in response {
 					self.send_frontend_message_to_js(message);
 				}
 			}
 			Err(error) => {
-				log::error!("tauri response: {:?}\n{:?}", error, message);
+				log::error!("tauri response: {:?}\n{:?}", error, _message);
 			}
 		}
 	}

@@ -1444,6 +1444,7 @@ dependencies = [
  "bezier-rs",
  "borrow_stack",
  "bytemuck",
+ "compilation-client",
  "dyn-any",
  "dyn-clone",
  "glam",

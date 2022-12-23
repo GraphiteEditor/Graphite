@@ -17,7 +17,7 @@ impl<'n, I: IntoIterator<Item = S>, NN: Node<(), Output = &'n NodeNetwork> + Cop
 		use graph_craft::executor::Compiler;
 		use graph_craft::executor::Executor;
 		let compiler = Compiler {};
-		let bytes = gpu_compiler_bin_wrapper::compile_spirv(&network, std::any::type_name::<S>(), std::any::type_name::<O>(), None);
+		let bytes = compilation_client::compile::<u32, u32>(network.clone());
 
 		use vulkan_executor::{Context, GpuExecutor};
 		let executor: GpuExecutor<S, O> = GpuExecutor::new(Context::new(), &bytes.unwrap(), "gpu::eval".into()).unwrap();
@@ -36,7 +36,7 @@ impl<'n, I: IntoIterator<Item = S>, NN: Node<(), Output = &'n NodeNetwork> + Cop
 		use graph_craft::executor::Compiler;
 		use graph_craft::executor::Executor;
 		let compiler = Compiler {};
-		let bytes = gpu_compiler_bin_wrapper::compile_spirv(&network, std::any::type_name::<S>(), std::any::type_name::<O>(), None);
+		let bytes = compilation_client::compile::<u32, u32>(network.clone());
 
 		use vulkan_executor::{Context, GpuExecutor};
 		let executor: GpuExecutor<S, O> = GpuExecutor::new(Context::new(), &bytes.unwrap(), "gpu::eval".into()).unwrap();
