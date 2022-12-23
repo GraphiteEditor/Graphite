@@ -87,6 +87,7 @@ mod tests {
 				]
 				.into_iter()
 				.collect(),
+				..Default::default()
 			}
 		}
 
@@ -110,6 +111,7 @@ mod tests {
 			)]
 			.into_iter()
 			.collect(),
+			..Default::default()
 		};
 
 		use crate::executor::DynamicExecutor;
