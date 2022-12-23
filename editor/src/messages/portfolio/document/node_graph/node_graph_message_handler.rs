@@ -1,5 +1,5 @@
 use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
-use crate::messages::layout::utility_types::widgets::button_widgets::BreadcrumbTrailButtons;
+use crate::messages::layout::utility_types::widgets::button_widgets::{BreadcrumbTrailButtons, TextButton};
 use crate::messages::prelude::*;
 
 use document_legacy::document::Document;
@@ -65,6 +65,8 @@ pub struct FrontendNode {
 	pub exposed_inputs: Vec<NodeGraphInput>,
 	pub outputs: Vec<FrontendGraphDataType>,
 	pub position: (i32, i32),
+	pub disabled: bool,
+	pub output: bool,
 }
 
 // (link_start, link_end, link_end_input_index)
@@ -92,11 +94,13 @@ impl FrontendNodeType {
 	}
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Default, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize)]
 pub struct NodeGraphMessageHandler {
 	pub layer_path: Option<Vec<document_legacy::LayerId>>,
 	pub nested_path: Vec<graph_craft::document::NodeId>,
 	pub selected_nodes: Vec<graph_craft::document::NodeId>,
+	#[serde(skip)]
+	pub widgets: [LayoutGroup; 2],
 }
 
 impl NodeGraphMessageHandler {
@@ -124,8 +128,20 @@ impl NodeGraphMessageHandler {
 		network
 	}
 
+	/// Send the cached layout for the bar at the top of the node panel to the frontend
+	fn send_node_bar_layout(&self, responses: &mut VecDeque<Message>) {
+		responses.push_back(
+			LayoutMessage::SendLayout {
+				layout: Layout::WidgetLayout(WidgetLayout::new(self.widgets.to_vec())),
+				layout_target: crate::messages::layout::utility_types::misc::LayoutTarget::NodeGraphBar,
+			}
+			.into(),
+		);
+	}
+
 	/// Collect the addresses of the currently viewed nested node e.g. Root -> MyFunFilter -> Exposure
-	fn collect_nested_addresses(&self, document: &Document, responses: &mut VecDeque<Message>) {
+	fn collect_nested_addresses(&mut self, document: &Document, responses: &mut VecDeque<Message>) {
+		// Build path list
 		let mut path = vec!["Root".to_string()];
 		let mut network = self.get_root_network(document);
 		for node_id in &self.nested_path {
@@ -137,24 +153,56 @@ impl NodeGraphMessageHandler {
 		}
 		let nesting = path.len();
 
-		responses.push_back(
-			LayoutMessage::SendLayout {
-				layout: Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row {
-					widgets: vec![WidgetHolder::new(Widget::BreadcrumbTrailButtons(BreadcrumbTrailButtons {
-						labels: path,
-						on_update: WidgetCallback::new(move |input: &u64| {
-							NodeGraphMessage::ExitNestedNetwork {
-								depth_of_nesting: nesting - (*input as usize) - 1,
-							}
-							.into()
-						}),
-						..Default::default()
-					}))],
-				}])),
-				layout_target: crate::messages::layout::utility_types::misc::LayoutTarget::NodeGraphBar,
+		// Update UI
+		self.widgets[0] = LayoutGroup::Row {
+			widgets: vec![WidgetHolder::new(Widget::BreadcrumbTrailButtons(BreadcrumbTrailButtons {
+				labels: path.clone(),
+				on_update: WidgetCallback::new(move |input: &u64| {
+					NodeGraphMessage::ExitNestedNetwork {
+						depth_of_nesting: nesting - (*input as usize) - 1,
+					}
+					.into()
+				}),
+				..Default::default()
+			}))],
+		};
+
+		self.send_node_bar_layout(responses);
+	}
+
+	/// Updates the buttons for disable and preview
+	fn update_selection_action_buttons(&mut self, document: &mut Document, responses: &mut VecDeque<Message>) {
+		if let Some(network) = self.get_active_network_mut(document) {
+			let mut widgets = Vec::new();
+
+			// Show an enable or disable nodes button if there is a selection
+			if !self.selected_nodes.is_empty() {
+				let is_enabled = self.selected_nodes.iter().any(|id| !network.disabled.contains(id));
+				let enable_button = WidgetHolder::new(Widget::TextButton(TextButton {
+					label: if is_enabled { "Disable" } else { "Enable" }.to_string(),
+					on_update: WidgetCallback::new(move |_| NodeGraphMessage::SetSelectedEnabled { enabled: !is_enabled }.into()),
+					..Default::default()
+				}));
+				widgets.push(enable_button);
 			}
-			.into(),
-		);
+
+			// If only one node is selected then show the preview or stop previewing button
+			if self.selected_nodes.len() == 1 {
+				let is_output = network.output == self.selected_nodes[0];
+				// Don't show stop previewing on the output node
+				if !(is_output && network.previous_output.filter(|&id| id != self.selected_nodes[0]).is_none()) {
+					let output_button = WidgetHolder::new(Widget::TextButton(TextButton {
+						label: if is_output { "Stop Previewing" } else { "Preview" }.to_string(),
+						on_update: WidgetCallback::new(move |_| NodeGraphMessage::SetSelectedOutput { output: !is_output }.into()),
+						..Default::default()
+					}));
+					widgets.push(output_button);
+				}
+			}
+
+			self.widgets[1] = LayoutGroup::Row { widgets };
+		}
+		self.send_node_bar_layout(responses);
 	}
 
 	pub fn collate_properties(&self, node_graph_frame: &NodeGraphFrameLayer, context: &mut NodePropertiesContext, sections: &mut Vec<LayoutGroup>) {
@@ -237,14 +285,17 @@ impl NodeGraphMessageHandler {
 					.collect(),
 				outputs: node_type.outputs.to_vec(),
 				position: node.metadata.position,
+				output: network.output == *id,
+				disabled: network.disabled.contains(id),
 			})
 		}
 		log::debug!("Frontend Nodes:\n{:#?}\n\nLinks:\n{:#?}", nodes, links);
 		responses.push_back(FrontendMessage::UpdateNodeGraph { nodes, links }.into());
 	}
 
-	/// Updates the frontend's selection state inline with the backend
-	fn update_selected(&self, responses: &mut VecDeque<Message>) {
+	/// Updates the frontend's selection state in line with the backend
+	fn update_selected(&mut self, document: &mut Document, responses: &mut VecDeque<Message>) {
+		self.update_selection_action_buttons(document, responses);
 		responses.push_back(
 			FrontendMessage::UpdateNodeGraphSelection {
 				selected: self.selected_nodes.clone(),
@@ -388,6 +439,7 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 					)]
 					.into_iter()
 					.collect(),
+					..Default::default()
 				};
 
 				network.nodes.insert(
@@ -413,6 +465,7 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 						responses.push_back(DocumentMessage::NodeGraphFrameGenerate.into());
 					}
 				}
+				self.update_selected(document, responses);
 			}
 			NodeGraphMessage::DeleteSelectedNodes => {
 				if let Some(network) = self.get_active_network_mut(document) {
@@ -425,6 +478,7 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 						responses.push_back(DocumentMessage::NodeGraphFrameGenerate.into());
 					}
 				}
+				self.update_selected(document, responses);
 			}
 			NodeGraphMessage::DisconnectNodes { node_id, input_index } => {
 				let Some(network) = self.get_active_network_mut(document) else {
@@ -443,7 +497,7 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 				Self::send_graph(network, responses);
 			}
 			NodeGraphMessage::DoubleClickNode { node } => {
-				self.selected_nodes = Vec::new();
+				self.selected_nodes.clear();
 				if let Some(network) = self.get_active_network_mut(document) {
 					if network.nodes.get(&node).and_then(|node| node.implementation.get_network()).is_some() {
 						self.nested_path.push(node);
@@ -453,7 +507,7 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 					Self::send_graph(network, responses);
 				}
 				self.collect_nested_addresses(document, responses);
-				self.update_selected(responses);
+				self.update_selected(document, responses);
 			}
 			NodeGraphMessage::DuplicateSelectedNodes => {
 				if let Some(network) = self.get_active_network_mut(document) {
@@ -476,11 +530,11 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 					}
 					self.selected_nodes = new_selected;
 					Self::send_graph(network, responses);
-					self.update_selected(responses);
+					self.update_selected(document, responses);
 				}
 			}
 			NodeGraphMessage::ExitNestedNetwork { depth_of_nesting } => {
-				self.selected_nodes = Vec::new();
+				self.selected_nodes.clear();
 				for _ in 0..depth_of_nesting {
 					self.nested_path.pop();
 				}
@@ -488,6 +542,7 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 					Self::send_graph(network, responses);
 				}
 				self.collect_nested_addresses(document, responses);
+				self.update_selected(document, responses);
 			}
 			NodeGraphMessage::ExposeInput { node_id, input_index, new_exposed } => {
 				let Some(network) = self.get_active_network_mut(document) else{
@@ -542,6 +597,7 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 					responses.push_back(FrontendMessage::UpdateNodeTypes { node_types }.into());
 				}
 				self.collect_nested_addresses(document, responses);
+				self.update_selected(document, responses);
 			}
 			NodeGraphMessage::PasteNodes { serialized_nodes } => {
 				let Some(network) = self.get_active_network_mut(document) else{
@@ -567,10 +623,11 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 				}
 
 				Self::send_graph(network, responses);
-				self.update_selected(responses);
+				self.update_selected(document, responses);
 			}
 			NodeGraphMessage::SelectNodes { nodes } => {
 				self.selected_nodes = nodes;
+				self.update_selection_action_buttons(document, responses);
 				responses.push_back(PropertiesPanelMessage::ResendActiveProperties.into());
 			}
 			NodeGraphMessage::SetInputValue { node, input_index, value } => {
@@ -614,6 +671,31 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 						responses.push_back(DocumentMessage::NodeGraphFrameGenerate.into());
 					}
 				}
+			}
+			NodeGraphMessage::SetSelectedEnabled { enabled } => {
+				if let Some(network) = self.get_active_network_mut(document) {
+					if enabled {
+						network.disabled.retain(|id| !self.selected_nodes.contains(id));
+					} else {
+						network.disabled.extend(&self.selected_nodes);
+					}
+					Self::send_graph(network, responses);
+				}
+				self.update_selection_action_buttons(document, responses);
+				responses.push_back(DocumentMessage::NodeGraphFrameGenerate.into());
+			}
+			NodeGraphMessage::SetSelectedOutput { output } => {
+				if let Some(network) = self.get_active_network_mut(document) {
+					if output {
+						network.previous_output = Some(network.previous_output.unwrap_or(network.output));
+						network.output = self.selected_nodes[0];
+					} else if let Some(output) = network.previous_output.take() {
+						network.output = output
+					}
+					Self::send_graph(network, responses);
+				}
+				self.update_selection_action_buttons(document, responses);
+				responses.push_back(DocumentMessage::NodeGraphFrameGenerate.into());
 			}
 			NodeGraphMessage::ShiftNode { node_id } => {
 				let Some(network) = self.get_active_network_mut(document) else{

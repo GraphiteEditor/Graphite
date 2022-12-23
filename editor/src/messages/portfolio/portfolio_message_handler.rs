@@ -657,6 +657,30 @@ impl PortfolioMessageHandler {
 		self.document_ids.iter().position(|id| id == &document_id).expect("Active document is missing from document ids")
 	}
 
+	/// Execute the network by flattening it and creating a borrow stack. Casts the output to the generic `T`.
+	fn execute_network<T: dyn_any::StaticType>(mut network: NodeNetwork, image: Image) -> Result<T, String> {
+		for node_id in network.nodes.keys().copied().collect::<Vec<_>>() {
+			network.flatten(node_id);
+		}
+
+		let mut proto_network = network.into_proto_network();
+		proto_network.reorder_ids();
+
+		assert_ne!(proto_network.nodes.len(), 0, "No protonodes exist?");
+		let stack = borrow_stack::FixedSizeStack::new(proto_network.nodes.len());
+		for (_id, node) in proto_network.nodes {
+			interpreted_executor::node_registry::push_node(node, &stack);
+		}
+
+		use borrow_stack::BorrowStack;
+		use dyn_any::IntoDynAny;
+		use graphene_core::Node;
+
+		let boxed = unsafe { stack.get().last().unwrap().eval(image.into_dyn()) };
+
+		dyn_any::downcast::<T>(boxed).map(|v| *v)
+	}
+
 	/// Computes an input for a node in the graph
 	fn compute_input<T: dyn_any::StaticType>(old_network: &NodeNetwork, node_path: &[NodeId], mut input_index: usize, image: Cow<Image>) -> Result<T, String> {
 		let mut network = old_network.clone();
@@ -694,26 +718,7 @@ impl PortfolioMessageHandler {
 			}
 		}
 
-		let stack = borrow_stack::FixedSizeStack::new(256);
-		for node_id in old_network.nodes.keys() {
-			network.flatten(*node_id);
-		}
-
-		let mut proto_network = network.into_proto_network();
-		proto_network.reorder_ids();
-
-		assert_ne!(proto_network.nodes.len(), 0, "No protonodes exist?");
-		for (_id, node) in proto_network.nodes {
-			interpreted_executor::node_registry::push_node(node, &stack);
-		}
-
-		use borrow_stack::BorrowStack;
-		use dyn_any::IntoDynAny;
-		use graphene_core::Node;
-
-		let boxed = unsafe { stack.get().last().unwrap().eval(image.into_owned().into_dyn()) };
-
-		dyn_any::downcast::<T>(boxed).map(|v| *v)
+		Self::execute_network(network, image.into_owned())
 	}
 
 	/// Encodes an image into a format using the image crate
@@ -856,7 +861,7 @@ impl PortfolioMessageHandler {
 				.into(),
 			);
 		} else {
-			let mut image: Image = Self::compute_input(&network, &[1], 0, Cow::Owned(image))?;
+			let mut image: Image = Self::execute_network(network, image)?;
 
 			// If no image was generated, use the input image
 			if image.width == 0 || image.height == 0 {

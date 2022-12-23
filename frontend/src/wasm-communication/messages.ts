@@ -96,6 +96,10 @@ export class FrontendNode {
 
 	@TupleToVec2
 	readonly position!: XY | undefined;
+
+	readonly output!: boolean;
+
+	readonly disabled!: boolean;
 }
 
 export class FrontendNodeLink {
