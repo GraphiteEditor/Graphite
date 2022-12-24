@@ -1223,10 +1223,14 @@ export function patchWidgetLayout(layout: WidgetLayout, updates: WidgetDiffUpdat
 			else targetLayout = targetLayout[index];
 		});
 
-		// Some odd code required to update the objects (assigning things doesn't work?)
+		// If this is a list with a length, then set the length to 0 to clear the list
 		if (targetLayout !== undefined && "length" in targetLayout) targetLayout.length = 0;
+		// Remove all of the keys from the old object
 		// eslint-disable-next-line @typescript-eslint/no-explicit-any
 		if (targetLayout !== undefined) Object.keys(targetLayout).forEach((key) => delete (targetLayout as any)[key]);
+		// Assign keys to the new object
+		// `Object.assign` works but `targetLayout = update.newValue;` doesn't.
+		// https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/assign
 		if (targetLayout !== undefined) Object.assign(targetLayout, update.newValue);
 	});
 }
