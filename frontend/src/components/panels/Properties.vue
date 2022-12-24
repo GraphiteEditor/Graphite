@@ -48,11 +48,11 @@ export default defineComponent({
 	},
 	mounted() {
 		this.editor.subscriptions.subscribeJsMessage(UpdatePropertyPanelOptionsLayout, (updatePropertyPanelOptionsLayout) => {
-			this.propertiesOptionsLayout = patchWidgetLayout(this.propertiesOptionsLayout, updatePropertyPanelOptionsLayout);
+			patchWidgetLayout(this.propertiesOptionsLayout, updatePropertyPanelOptionsLayout);
 		});
 
 		this.editor.subscriptions.subscribeJsMessage(UpdatePropertyPanelSectionsLayout, (updatePropertyPanelSectionsLayout) => {
-			this.propertiesSectionsLayout = patchWidgetLayout(this.propertiesSectionsLayout, updatePropertyPanelSectionsLayout);
+			patchWidgetLayout(this.propertiesSectionsLayout, updatePropertyPanelSectionsLayout);
 		});
 	},
 	components: {

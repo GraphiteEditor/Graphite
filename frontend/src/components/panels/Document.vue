@@ -506,19 +506,19 @@ export default defineComponent({
 		},
 		// Update layouts
 		updateDocumentModeLayout(updateDocumentModeLayout: UpdateDocumentModeLayout) {
-			this.documentModeLayout = patchWidgetLayout(this.documentModeLayout, updateDocumentModeLayout);
+			patchWidgetLayout(this.documentModeLayout, updateDocumentModeLayout);
 		},
 		updateToolOptionsLayout(updateToolOptionsLayout: UpdateToolOptionsLayout) {
-			this.toolOptionsLayout = patchWidgetLayout(this.toolOptionsLayout, updateToolOptionsLayout);
+			patchWidgetLayout(this.toolOptionsLayout, updateToolOptionsLayout);
 		},
 		updateDocumentBarLayout(updateDocumentBarLayout: UpdateDocumentBarLayout) {
-			this.documentBarLayout = patchWidgetLayout(this.documentBarLayout, updateDocumentBarLayout);
+			patchWidgetLayout(this.documentBarLayout, updateDocumentBarLayout);
 		},
 		updateToolShelfLayout(updateToolShelfLayout: UpdateToolShelfLayout) {
-			this.toolShelfLayout = patchWidgetLayout(this.toolShelfLayout, updateToolShelfLayout);
+			patchWidgetLayout(this.toolShelfLayout, updateToolShelfLayout);
 		},
 		updateWorkingColorsLayout(updateWorkingColorsLayout: UpdateWorkingColorsLayout) {
-			this.workingColorsLayout = patchWidgetLayout(this.workingColorsLayout, updateWorkingColorsLayout);
+			patchWidgetLayout(this.workingColorsLayout, updateWorkingColorsLayout);
 		},
 		// Resize elements to render the new viewport size
 		viewportResize() {

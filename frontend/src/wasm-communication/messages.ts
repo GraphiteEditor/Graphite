@@ -1205,7 +1205,7 @@ export function defaultWidgetLayout(): WidgetLayout {
 }
 
 // Updates a widget layout based on a list of updates, returning the new layout
-export function patchWidgetLayout(layout: WidgetLayout, updates: WidgetDiffUpdate): WidgetLayout {
+export function patchWidgetLayout(layout: WidgetLayout, updates: WidgetDiffUpdate) {
 	layout.layoutTarget = updates.layoutTarget;
 
 	updates.diff.forEach((update) => {
@@ -1213,11 +1213,11 @@ export function patchWidgetLayout(layout: WidgetLayout, updates: WidgetDiffUpdat
 		let targetLayout = layout.layout as LayoutGroup[] | LayoutGroup | Widget | MenuBarEntry[] | MenuBarEntry | undefined;
 		update.path.forEach((index) => {
 			if (!targetLayout) return;
-			if ("columnWidgets" in targetLayout) targetLayout = new Proxy(targetLayout.columnWidgets[index], {});
-			else if ("rowWidgets" in targetLayout) targetLayout = new Proxy(targetLayout.rowWidgets[index], {});
-			else if ("layout" in targetLayout) targetLayout = new Proxy(targetLayout.layout[index], {});
+			if ("columnWidgets" in targetLayout) targetLayout = targetLayout.columnWidgets[index];
+			else if ("rowWidgets" in targetLayout) targetLayout = targetLayout.rowWidgets[index];
+			else if ("layout" in targetLayout) targetLayout = targetLayout.layout[index];
 			else if (targetLayout instanceof Widget) console.error("Tried to index widget");
-			else if ("action" in targetLayout) targetLayout = targetLayout.children ? new Proxy(targetLayout.children[index], {}) : undefined;
+			else if ("action" in targetLayout) targetLayout = targetLayout.children ? targetLayout.children[index] : undefined;
 			else targetLayout = targetLayout[index];
 		});
 
@@ -1226,8 +1226,6 @@ export function patchWidgetLayout(layout: WidgetLayout, updates: WidgetDiffUpdat
 		if (targetLayout !== undefined) Object.keys(targetLayout).forEach((key) => delete (targetLayout as any)[key]);
 		if (targetLayout !== undefined) Object.assign(targetLayout, update.new);
 	});
-
-	return layout;
 }
 
 export type LayoutGroup = WidgetRow | WidgetColumn | WidgetSection;

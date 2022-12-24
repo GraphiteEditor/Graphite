@@ -30,7 +30,7 @@ export function createNodeGraphState(editor: Editor) {
 		state.nodeTypes = updateNodeTypes.nodeTypes;
 	});
 	editor.subscriptions.subscribeJsMessage(UpdateNodeGraphBarLayout, (updateNodeGraphBarLayout) => {
-		state.nodeGraphBarLayout = patchWidgetLayout(state.nodeGraphBarLayout, updateNodeGraphBarLayout);
+		patchWidgetLayout(state.nodeGraphBarLayout, updateNodeGraphBarLayout);
 	});
 
 	return {

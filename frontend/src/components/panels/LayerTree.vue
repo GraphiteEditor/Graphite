@@ -524,7 +524,7 @@ export default defineComponent({
 		});
 
 		this.editor.subscriptions.subscribeJsMessage(UpdateLayerTreeOptionsLayout, (updateLayerTreeOptionsLayout) => {
-			this.layerTreeOptionsLayout = patchWidgetLayout(this.layerTreeOptionsLayout, updateLayerTreeOptionsLayout);
+			patchWidgetLayout(this.layerTreeOptionsLayout, updateLayerTreeOptionsLayout);
 		});
 
 		this.editor.subscriptions.subscribeJsMessage(UpdateDocumentLayerDetails, (updateDocumentLayerDetails) => {

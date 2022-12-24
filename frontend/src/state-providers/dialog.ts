@@ -37,7 +37,7 @@ export function createDialogState(editor: Editor) {
 		state.icon = displayDialog.icon;
 	});
 	editor.subscriptions.subscribeJsMessage(UpdateDialogDetails, (updateDialogDetails) => {
-		state.widgets = patchWidgetLayout(state.widgets, updateDialogDetails);
+		patchWidgetLayout(state.widgets, updateDialogDetails);
 		state.jsCallbackBasedButtons = undefined;
 	});
 	editor.subscriptions.subscribeJsMessage(DisplayDialogDismiss, dismissDialog);
