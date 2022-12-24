@@ -151,7 +151,7 @@ impl Layout {
 	/// Diffing updates self (where self is old) based on new, updating the list of modifications as it does so.
 	pub fn diff(&mut self, new: Self, path: &mut Vec<usize>, widget_diffs: &mut Vec<WidgetDiff>) {
 		match (self, new) {
-			(Self::WidgetLayout(s), Self::WidgetLayout(new)) => return s.diff(new, path, widget_diffs),
+			(Self::WidgetLayout(s), Self::WidgetLayout(new)) => s.diff(new, path, widget_diffs),
 			(current, new) => {
 				let new_val = match new.clone() {
 					Self::WidgetLayout(widget_layout) => DiffUpdate::SubLayout(widget_layout.layout),
