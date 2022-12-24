@@ -1,4 +1,4 @@
-use super::utility_types::layout_widget::{LayoutGroup, WidgetDiff};
+use super::utility_types::layout_widget::{LayoutGroup, WidgetDiff, WidgetHolder};
 use super::utility_types::misc::LayoutTarget;
 use crate::messages::input_mapper::utility_types::input_keyboard::KeysGroup;
 use crate::messages::layout::utility_types::layout_widget::{DiffUpdate, Widget};
@@ -17,6 +17,32 @@ pub struct LayoutMessageHandler {
 	layouts: [Layout; LayoutTarget::LayoutTargetLength as usize],
 }
 
+impl LayoutMessageHandler {
+	/// Get the widget path for the widget with the specified id
+	fn get_widget_path(widget_layout: &WidgetLayout, id: u64) -> Option<(&WidgetHolder, Vec<usize>)> {
+		let mut stack = widget_layout.layout.iter().enumerate().map(|(index, val)| (vec![index], val)).collect::<Vec<_>>();
+		while let Some((mut widget_path, group)) = stack.pop() {
+			match group {
+				// Check if any of the widgets in the current column or row have the correct id
+				LayoutGroup::Column { widgets } | LayoutGroup::Row { widgets } => {
+					for (index, widget) in widgets.iter().enumerate() {
+						// Return if this is the correct ID
+						if widget.widget_id == id {
+							widget_path.push(index);
+							return Some((widget, widget_path));
+						}
+					}
+				}
+				// A section contains more LayoutGroups which we add to the stack.
+				LayoutGroup::Section { layout, .. } => {
+					stack.extend(layout.iter().enumerate().map(|(index, val)| ([widget_path.as_slice(), &[index]].concat(), val)));
+				}
+			}
+		}
+		None
+	}
+}
+
 impl<F: Fn(&MessageDiscriminant) -> Vec<KeysGroup>> MessageHandler<LayoutMessage, F> for LayoutMessageHandler {
 	#[remain::check]
 	fn process_message(&mut self, message: LayoutMessage, data: F, responses: &mut std::collections::VecDeque<Message>) {
@@ -26,35 +52,14 @@ impl<F: Fn(&MessageDiscriminant) -> Vec<KeysGroup>> MessageHandler<LayoutMessage
 		#[remain::sorted]
 		match message {
 			RefreshLayout { layout_target, dirty_id } => {
-				// Create a widget update diff for the relevant id
-				let create_widget_diff = |widget_layout: &WidgetLayout, id: u64| {
-					let mut stack = widget_layout.layout.iter().enumerate().map(|(index, val)| (vec![index], val)).collect::<Vec<_>>();
-					while let Some((mut path, group)) = stack.pop() {
-						match group {
-							// Check if any of the widgets in the current column or row have the correct id
-							LayoutGroup::Column { widgets } | LayoutGroup::Row { widgets } => {
-								for (index, widget) in widgets.iter().enumerate() {
-									// Return if this is the correct ID
-									if widget.widget_id == id {
-										path.push(index);
-										let new_value = DiffUpdate::Widget(widget.clone());
-										let widget_path = path;
-										return Some(WidgetDiff { widget_path, new_value });
-									}
-								}
-							}
-							// A section contains more LayoutGroups which we add to the stack.
-							LayoutGroup::Section { layout, .. } => {
-								stack.extend(layout.iter().enumerate().map(|(index, val)| ([path.as_slice(), &[index]].concat(), val)));
-							}
-						}
-					}
-					None
-				};
 				// Find the updated diff based on the specified layout target
 				let Some(diff) = (match &self.layouts[layout_target as usize] {
 					Layout::MenuLayout(_) => return,
-					Layout::WidgetLayout(layout) => create_widget_diff(layout, dirty_id),
+					Layout::WidgetLayout(layout) => Self::get_widget_path(layout, dirty_id).map(|(widget, widget_path)| {
+						// Create a widget update diff for the relevant id
+						let new_value = DiffUpdate::Widget(widget.clone());
+						WidgetDiff { widget_path, new_value }
+					}),
 				}) else {
 					return;
 				};
