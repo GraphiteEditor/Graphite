@@ -258,12 +258,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				);
 			}
 			DebugPrintDocument => {
-				let initial_level = log::max_level();
-				log::set_max_level(log::LevelFilter::Trace);
-
-				trace!("{:#?}\n{:#?}", self.document_legacy, self.layer_metadata);
-
-				log::set_max_level(initial_level);
+				info!("{:#?}\n{:#?}", self.document_legacy, self.layer_metadata);
 			}
 			DeleteLayer { layer_path } => {
 				responses.push_front(DocumentOperation::DeleteLayer { path: layer_path.clone() }.into());
