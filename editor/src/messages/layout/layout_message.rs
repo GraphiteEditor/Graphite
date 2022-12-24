@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 #[impl_message(Message, Layout)]
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub enum LayoutMessage {
-	RefreshLayout { layout_target: LayoutTarget },
+	RefreshLayout { layout_target: LayoutTarget, dirty_id: u64 },
 	SendLayout { layout: Layout, layout_target: LayoutTarget },
 	UpdateLayout { layout_target: LayoutTarget, widget_id: u64, value: serde_json::Value },
 }

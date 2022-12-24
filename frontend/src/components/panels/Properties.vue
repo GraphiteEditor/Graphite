@@ -32,7 +32,7 @@
 <script lang="ts">
 import { defineComponent } from "vue";
 
-import { defaultWidgetLayout, UpdatePropertyPanelOptionsLayout, UpdatePropertyPanelSectionsLayout } from "@/wasm-communication/messages";
+import { defaultWidgetLayout, patchWidgetLayout, UpdatePropertyPanelOptionsLayout, UpdatePropertyPanelSectionsLayout } from "@/wasm-communication/messages";
 
 import LayoutCol from "@/components/layout/LayoutCol.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
@@ -48,11 +48,11 @@ export default defineComponent({
 	},
 	mounted() {
 		this.editor.subscriptions.subscribeJsMessage(UpdatePropertyPanelOptionsLayout, (updatePropertyPanelOptionsLayout) => {
-			this.propertiesOptionsLayout = updatePropertyPanelOptionsLayout;
+			this.propertiesOptionsLayout = patchWidgetLayout(this.propertiesOptionsLayout, updatePropertyPanelOptionsLayout);
 		});
 
 		this.editor.subscriptions.subscribeJsMessage(UpdatePropertyPanelSectionsLayout, (updatePropertyPanelSectionsLayout) => {
-			this.propertiesSectionsLayout = updatePropertyPanelSectionsLayout;
+			this.propertiesSectionsLayout = patchWidgetLayout(this.propertiesSectionsLayout, updatePropertyPanelSectionsLayout);
 		});
 	},
 	components: {

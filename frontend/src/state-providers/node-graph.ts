@@ -1,7 +1,16 @@
 import { reactive, readonly } from "vue";
 
 import { type Editor } from "@/wasm-communication/editor";
-import { type FrontendNode, type FrontendNodeLink, type FrontendNodeType, UpdateNodeGraph, UpdateNodeTypes, UpdateNodeGraphBarLayout, defaultWidgetLayout } from "@/wasm-communication/messages";
+import {
+	type FrontendNode,
+	type FrontendNodeLink,
+	type FrontendNodeType,
+	UpdateNodeGraph,
+	UpdateNodeTypes,
+	UpdateNodeGraphBarLayout,
+	defaultWidgetLayout,
+	patchWidgetLayout,
+} from "@/wasm-communication/messages";
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 export function createNodeGraphState(editor: Editor) {
@@ -21,7 +30,7 @@ export function createNodeGraphState(editor: Editor) {
 		state.nodeTypes = updateNodeTypes.nodeTypes;
 	});
 	editor.subscriptions.subscribeJsMessage(UpdateNodeGraphBarLayout, (updateNodeGraphBarLayout) => {
-		state.nodeGraphBarLayout = updateNodeGraphBarLayout;
+		state.nodeGraphBarLayout = patchWidgetLayout(state.nodeGraphBarLayout, updateNodeGraphBarLayout);
 	});
 
 	return {

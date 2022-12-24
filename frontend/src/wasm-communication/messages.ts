@@ -1168,17 +1168,19 @@ export class Widget {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
+function parseWidgetHolder(widgetHolder: any): Widget {
+	const kind = Object.keys(widgetHolder.widget)[0];
+	const props = widgetHolder.widget[kind];
+	props.kind = kind;
+
+	const { widgetId } = widgetHolder;
+
+	return plainToClass(Widget, { props, widgetId });
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function hoistWidgetHolders(widgetHolders: any[]): Widget[] {
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	return widgetHolders.map((widgetHolder: any) => {
-		const kind = Object.keys(widgetHolder.widget)[0];
-		const props = widgetHolder.widget[kind];
-		props.kind = kind;
-
-		const { widgetId } = widgetHolder;
-
-		return plainToClass(Widget, { props, widgetId });
-	});
+	return widgetHolders.map(parseWidgetHolder);
 }
 
 // WIDGET LAYOUT
@@ -1188,11 +1190,44 @@ export type WidgetLayout = {
 	layout: LayoutGroup[];
 };
 
+export type WidgetDiffUpdate = {
+	layoutTarget: unknown;
+	diff: WidgetDiff[];
+};
+
+type WidgetDiff = { path: number[]; new: LayoutGroup[] | LayoutGroup | Widget | MenuBarEntry[] };
+
 export function defaultWidgetLayout(): WidgetLayout {
 	return {
 		layoutTarget: undefined,
 		layout: [],
 	};
+}
+
+// Updates a widget layout based on a list of updates, returning the new layout
+export function patchWidgetLayout(layout: WidgetLayout, updates: WidgetDiffUpdate): WidgetLayout {
+	layout.layoutTarget = updates.layoutTarget;
+
+	updates.diff.forEach((update) => {
+		// Find the object where the diff applies to
+		let targetLayout = layout.layout as LayoutGroup[] | LayoutGroup | Widget | MenuBarEntry[] | MenuBarEntry | undefined;
+		update.path.forEach((index) => {
+			if (!targetLayout) return;
+			if ("columnWidgets" in targetLayout) targetLayout = new Proxy(targetLayout.columnWidgets[index], {});
+			else if ("rowWidgets" in targetLayout) targetLayout = new Proxy(targetLayout.rowWidgets[index], {});
+			else if ("layout" in targetLayout) targetLayout = new Proxy(targetLayout.layout[index], {});
+			else if (targetLayout instanceof Widget) console.error("Tried to index widget");
+			else if ("action" in targetLayout) targetLayout = targetLayout.children ? new Proxy(targetLayout.children[index], {}) : undefined;
+			else targetLayout = targetLayout[index];
+		});
+
+		// Some odd code required to update the objects (assigning things doesn't work?)
+		if (targetLayout !== undefined && "length" in targetLayout) targetLayout.length = 0;
+		if (targetLayout !== undefined) Object.keys(targetLayout).forEach((key) => delete (targetLayout as any)[key]);
+		if (targetLayout !== undefined) Object.assign(targetLayout, update.new);
+	});
+
+	return layout;
 }
 
 export type LayoutGroup = WidgetRow | WidgetColumn | WidgetSection;
@@ -1214,115 +1249,127 @@ export function isWidgetSection(layoutRow: LayoutGroup): layoutRow is WidgetSect
 
 // Unpacking rust types to more usable type in the frontend
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function createWidgetLayout(widgetLayout: any[]): LayoutGroup[] {
-	return widgetLayout.map((layoutType): LayoutGroup => {
-		if (layoutType.column) {
-			const columnWidgets = hoistWidgetHolders(layoutType.column.columnWidgets);
-
-			const result: WidgetColumn = { columnWidgets };
-			return result;
+function createWidgetDiff(diffs: any[]): WidgetDiff[] {
+	const diff = diffs.map((diff): WidgetDiff => {
+		const { path, newVal } = diff;
+		if (newVal.subLayout) {
+			return { path, new: newVal.subLayout.map(createLayoutGroup) };
 		}
-
-		if (layoutType.row) {
-			const rowWidgets = hoistWidgetHolders(layoutType.row.rowWidgets);
-
-			const result: WidgetRow = { rowWidgets };
-			return result;
+		if (newVal.layoutGroup) {
+			return { path, new: createLayoutGroup(newVal.layoutGroup) };
 		}
-
-		if (layoutType.section) {
-			const { name } = layoutType.section;
-			const layout = createWidgetLayout(layoutType.section.layout);
-
-			const result: WidgetSection = { name, layout };
-			return result;
+		if (newVal.widget) {
+			return { path, new: parseWidgetHolder(newVal.widget) };
 		}
-
-		throw new Error("Layout row type does not exist");
+		throw new Error("DiffUpdate invalid");
 	});
+	return diff;
+}
+
+// Unpacking a layout group
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function createLayoutGroup(newVal: any): LayoutGroup {
+	if (newVal.column) {
+		const columnWidgets = hoistWidgetHolders(newVal.column.columnWidgets);
+
+		const result: WidgetColumn = { columnWidgets };
+		return result;
+	}
+
+	if (newVal.row) {
+		const result: WidgetRow = { rowWidgets: hoistWidgetHolders(newVal.row.rowWidgets) };
+		return result;
+	}
+
+	if (newVal.section) {
+		const result: WidgetSection = { name: newVal.section.name, layout: newVal.section.layout.map(createLayoutGroup) };
+		return result;
+	}
+
+	throw new Error("Layout row type does not exist");
 }
 
 // WIDGET LAYOUTS
 
-export class UpdateDialogDetails extends JsMessage implements WidgetLayout {
+export class UpdateDialogDetails extends JsMessage implements WidgetDiffUpdate {
 	layoutTarget!: unknown;
 
 	// TODO: Replace `any` with correct typing
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	@Transform(({ value }: { value: any }) => createWidgetLayout(value))
-	layout!: LayoutGroup[];
+	@Transform(({ value }: { value: any }) => createWidgetDiff(value))
+	diff!: WidgetDiff[];
 }
 
-export class UpdateDocumentModeLayout extends JsMessage implements WidgetLayout {
+export class UpdateDocumentModeLayout extends JsMessage implements WidgetDiffUpdate {
 	layoutTarget!: unknown;
 
 	// TODO: Replace `any` with correct typing
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	@Transform(({ value }: { value: any }) => createWidgetLayout(value))
-	layout!: LayoutGroup[];
+	@Transform(({ value }: { value: any }) => createWidgetDiff(value))
+	diff!: WidgetDiff[];
 }
 
-export class UpdateToolOptionsLayout extends JsMessage implements WidgetLayout {
+export class UpdateToolOptionsLayout extends JsMessage implements WidgetDiffUpdate {
 	layoutTarget!: unknown;
 
 	// TODO: Replace `any` with correct typing
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	@Transform(({ value }: { value: any }) => createWidgetLayout(value))
-	layout!: LayoutGroup[];
+	@Transform(({ value }: { value: any }) => createWidgetDiff(value))
+	diff!: WidgetDiff[];
 }
 
-export class UpdateDocumentBarLayout extends JsMessage implements WidgetLayout {
+export class UpdateDocumentBarLayout extends JsMessage implements WidgetDiffUpdate {
 	layoutTarget!: unknown;
 
 	// TODO: Replace `any` with correct typing
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	@Transform(({ value }: { value: any }) => createWidgetLayout(value))
-	layout!: LayoutGroup[];
+	@Transform(({ value }: { value: any }) => createWidgetDiff(value))
+	diff!: WidgetDiff[];
 }
 
-export class UpdateToolShelfLayout extends JsMessage implements WidgetLayout {
+export class UpdateToolShelfLayout extends JsMessage implements WidgetDiffUpdate {
 	layoutTarget!: unknown;
 
 	// TODO: Replace `any` with correct typing
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	@Transform(({ value }: { value: any }) => createWidgetLayout(value))
-	layout!: LayoutGroup[];
+	@Transform(({ value }: { value: any }) => createWidgetDiff(value))
+	diff!: WidgetDiff[];
 }
 
-export class UpdateWorkingColorsLayout extends JsMessage implements WidgetLayout {
+export class UpdateWorkingColorsLayout extends JsMessage implements WidgetDiffUpdate {
 	layoutTarget!: unknown;
 
 	// TODO: Replace `any` with correct typing
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	@Transform(({ value }: { value: any }) => createWidgetLayout(value))
-	layout!: LayoutGroup[];
+	@Transform(({ value }: { value: any }) => createWidgetDiff(value))
+	diff!: WidgetDiff[];
 }
 
-export class UpdatePropertyPanelOptionsLayout extends JsMessage implements WidgetLayout {
+export class UpdatePropertyPanelOptionsLayout extends JsMessage implements WidgetDiffUpdate {
 	layoutTarget!: unknown;
 
 	// TODO: Replace `any` with correct typing
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	@Transform(({ value }: { value: any }) => createWidgetLayout(value))
-	layout!: LayoutGroup[];
+	@Transform(({ value }: { value: any }) => createWidgetDiff(value))
+	diff!: WidgetDiff[];
 }
 
-export class UpdatePropertyPanelSectionsLayout extends JsMessage implements WidgetLayout {
+export class UpdatePropertyPanelSectionsLayout extends JsMessage implements WidgetDiffUpdate {
 	layoutTarget!: unknown;
 
 	// TODO: Replace `any` with correct typing
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	@Transform(({ value }: { value: any }) => createWidgetLayout(value))
-	layout!: LayoutGroup[];
+	@Transform(({ value }: { value: any }) => createWidgetDiff(value))
+	diff!: WidgetDiff[];
 }
 
-export class UpdateLayerTreeOptionsLayout extends JsMessage implements WidgetLayout {
+export class UpdateLayerTreeOptionsLayout extends JsMessage implements WidgetDiffUpdate {
 	layoutTarget!: unknown;
 
 	// TODO: Replace `any` with correct typing
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	@Transform(({ value }: { value: any }) => createWidgetLayout(value))
-	layout!: LayoutGroup[];
+	@Transform(({ value }: { value: any }) => createWidgetDiff(value))
+	diff!: WidgetDiff[];
 }
 
 export class UpdateMenuBarLayout extends JsMessage {
@@ -1339,8 +1386,8 @@ export class UpdateNodeGraphBarLayout extends JsMessage {
 
 	// TODO: Replace `any` with correct typing
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	@Transform(({ value }: { value: any }) => createWidgetLayout(value))
-	layout!: LayoutGroup[];
+	@Transform(({ value }: { value: any }) => createWidgetDiff(value))
+	diff!: WidgetDiff[];
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
