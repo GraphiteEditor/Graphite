@@ -37,10 +37,9 @@ impl<F: Fn(&MessageDiscriminant) -> Vec<KeysGroup>> MessageHandler<LayoutMessage
 									// Return if this is the correct ID
 									if widget.widget_id == id {
 										path.push(index);
-										return Some(WidgetDiff {
-											path,
-											new_val: DiffUpdate::Widget(widget.clone()),
-										});
+										let new_val = DiffUpdate::Widget(widget.clone());
+										let widget_path = path;
+										return Some(WidgetDiff { widget_path, new_val });
 									}
 								}
 							}

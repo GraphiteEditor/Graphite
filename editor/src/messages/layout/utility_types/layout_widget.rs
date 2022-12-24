@@ -46,7 +46,8 @@ pub enum DiffUpdate {
 
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub struct WidgetDiff {
-	pub path: Vec<usize>,
+	#[serde(rename = "widgetPath")]
+	pub widget_path: Vec<usize>,
 	#[serde(rename = "newVal")]
 	pub new_val: DiffUpdate,
 }
@@ -149,15 +150,16 @@ impl Layout {
 	}
 
 	/// Diffing updates self (where self is old) based on new, updating the list of modifications as it does so.
-	pub fn diff(&mut self, new: Self, path: &mut Vec<usize>, widget_diffs: &mut Vec<WidgetDiff>) {
+	pub fn diff(&mut self, new: Self, widget_path: &mut Vec<usize>, widget_diffs: &mut Vec<WidgetDiff>) {
 		match (self, new) {
-			(Self::WidgetLayout(s), Self::WidgetLayout(new)) => s.diff(new, path, widget_diffs),
+			(Self::WidgetLayout(s), Self::WidgetLayout(new)) => s.diff(new, widget_path, widget_diffs),
 			(current, new) => {
 				let new_val = match new.clone() {
 					Self::WidgetLayout(widget_layout) => DiffUpdate::SubLayout(widget_layout.layout),
 					Self::MenuLayout(_) => panic!("Cannot diff menu layout"),
 				};
-				widget_diffs.push(WidgetDiff { path: path.to_vec(), new_val });
+				let widget_path = widget_path.to_vec();
+				widget_diffs.push(WidgetDiff { widget_path, new_val });
 				*current = new;
 			}
 		}
@@ -195,18 +197,21 @@ impl WidgetLayout {
 	}
 
 	/// Diffing updates self (where self is old) based on new, updating the list of modifications as it does so.
-	pub fn diff(&mut self, new: Self, path: &mut Vec<usize>, widget_diffs: &mut Vec<WidgetDiff>) {
+	pub fn diff(&mut self, new: Self, widget_path: &mut Vec<usize>, widget_diffs: &mut Vec<WidgetDiff>) {
 		// TODO: Diff insersion and deletion of items
 		if self.layout.len() != new.layout.len() {
 			self.layout = new.layout.clone();
 			let new = DiffUpdate::SubLayout(new.layout);
-			widget_diffs.push(WidgetDiff { path: path.to_vec(), new_val: new });
+			widget_diffs.push(WidgetDiff {
+				widget_path: widget_path.to_vec(),
+				new_val: new,
+			});
 			return;
 		}
 		for (index, (s, new)) in self.layout.iter_mut().zip(new.layout.into_iter()).enumerate() {
-			path.push(index);
-			s.diff(new, path, widget_diffs);
-			path.pop();
+			widget_path.push(index);
+			s.diff(new, widget_path, widget_diffs);
+			widget_path.pop();
 		}
 	}
 }
@@ -340,7 +345,7 @@ impl LayoutGroup {
 	}
 
 	/// Diffing updates self (where self is old) based on new, updating the list of modifications as it does so.
-	pub fn diff(&mut self, new: Self, path: &mut Vec<usize>, widget_diffs: &mut Vec<WidgetDiff>) {
+	pub fn diff(&mut self, new: Self, widget_path: &mut Vec<usize>, widget_diffs: &mut Vec<WidgetDiff>) {
 		let is_column = matches!(new, Self::Column { .. });
 		match (self, new) {
 			(Self::Column { widgets: s }, Self::Column { widgets: new_widgets }) | (Self::Row { widgets: s }, Self::Row { widgets: new_widgets }) => {
@@ -349,14 +354,15 @@ impl LayoutGroup {
 				if s.len() != new_widgets.len() {
 					*s = new_widgets.clone();
 					let new_val = DiffUpdate::LayoutGroup(if is_column { Self::Column { widgets: new_widgets } } else { Self::Row { widgets: new_widgets } });
-					widget_diffs.push(WidgetDiff { path: path.to_vec(), new_val });
+					let widget_path = widget_path.to_vec();
+					widget_diffs.push(WidgetDiff { widget_path, new_val });
 					return;
 				}
 				// Diff all of the children
 				for (index, (s, new)) in s.iter_mut().zip(new_widgets.into_iter()).enumerate() {
-					path.push(index);
-					s.diff(new, path, widget_diffs);
-					path.pop();
+					widget_path.push(index);
+					s.diff(new, widget_path, widget_diffs);
+					widget_path.pop();
 				}
 			}
 			(Self::Section { name: s_name, layout: s_layout }, Self::Section { name: new_name, layout: new_layout }) => {
@@ -365,21 +371,23 @@ impl LayoutGroup {
 				if *s_name != new_name || s_layout.len() != new_layout.len() {
 					*s_name = new_name.clone();
 					*s_layout = new_layout.clone();
-					let new = DiffUpdate::LayoutGroup(Self::Section { name: new_name, layout: new_layout });
-					widget_diffs.push(WidgetDiff { path: path.to_vec(), new_val: new });
+					let new_val = DiffUpdate::LayoutGroup(Self::Section { name: new_name, layout: new_layout });
+					let widget_path = widget_path.to_vec();
+					widget_diffs.push(WidgetDiff { widget_path, new_val });
 					return;
 				}
 				// Diff all of the children
 				for (index, (s, new)) in s_layout.iter_mut().zip(new_layout.into_iter()).enumerate() {
-					path.push(index);
-					s.diff(new, path, widget_diffs);
-					path.pop();
+					widget_path.push(index);
+					s.diff(new, widget_path, widget_diffs);
+					widget_path.pop();
 				}
 			}
 			(current, new) => {
 				*current = new.clone();
-				let new = DiffUpdate::LayoutGroup(new);
-				widget_diffs.push(WidgetDiff { path: path.to_vec(), new_val: new });
+				let new_val = DiffUpdate::LayoutGroup(new);
+				let widget_path = widget_path.to_vec();
+				widget_diffs.push(WidgetDiff { widget_path, new_val });
 			}
 		}
 	}
@@ -429,11 +437,12 @@ impl WidgetHolder {
 		}))
 	}
 	/// Diffing updates self (where self is old) based on new, updating the list of modifications as it does so.
-	pub fn diff(&mut self, new: Self, path: &mut [usize], widget_diffs: &mut Vec<WidgetDiff>) {
+	pub fn diff(&mut self, new: Self, widget_path: &mut [usize], widget_diffs: &mut Vec<WidgetDiff>) {
 		if self.widget != new.widget {
 			*self = new.clone();
-			let new = DiffUpdate::Widget(new);
-			widget_diffs.push(WidgetDiff { path: path.to_vec(), new_val: new });
+			let new_val = DiffUpdate::Widget(new);
+			let widget_path = widget_path.to_vec();
+			widget_diffs.push(WidgetDiff { widget_path, new_val });
 		} else {
 			// Required to update the callback function, which the PartialEq check above skips
 			self.widget = new.widget;

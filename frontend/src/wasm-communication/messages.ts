@@ -1195,7 +1195,7 @@ export type WidgetDiffUpdate = {
 	diff: WidgetDiff[];
 };
 
-type WidgetDiff = { path: number[]; new: LayoutGroup[] | LayoutGroup | Widget | MenuBarEntry[] };
+type WidgetDiff = { widgetPath: number[]; new: LayoutGroup[] | LayoutGroup | Widget | MenuBarEntry[] };
 
 export function defaultWidgetLayout(): WidgetLayout {
 	return {
@@ -1211,7 +1211,7 @@ export function patchWidgetLayout(layout: WidgetLayout, updates: WidgetDiffUpdat
 	updates.diff.forEach((update) => {
 		// Find the object where the diff applies to
 		let targetLayout = layout.layout as LayoutGroup[] | LayoutGroup | Widget | MenuBarEntry[] | MenuBarEntry | undefined;
-		update.path.forEach((index) => {
+		update.widgetPath.forEach((index) => {
 			if (!targetLayout) return;
 			if ("columnWidgets" in targetLayout) targetLayout = targetLayout.columnWidgets[index];
 			else if ("rowWidgets" in targetLayout) targetLayout = targetLayout.rowWidgets[index];
@@ -1251,15 +1251,15 @@ export function isWidgetSection(layoutRow: LayoutGroup): layoutRow is WidgetSect
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function createWidgetDiff(diffs: any[]): WidgetDiff[] {
 	const diff = diffs.map((diff): WidgetDiff => {
-		const { path, newVal } = diff;
+		const { widgetPath, newVal } = diff;
 		if (newVal.subLayout) {
-			return { path, new: newVal.subLayout.map(createLayoutGroup) };
+			return { widgetPath, new: newVal.subLayout.map(createLayoutGroup) };
 		}
 		if (newVal.layoutGroup) {
-			return { path, new: createLayoutGroup(newVal.layoutGroup) };
+			return { widgetPath, new: createLayoutGroup(newVal.layoutGroup) };
 		}
 		if (newVal.widget) {
-			return { path, new: parseWidgetHolder(newVal.widget) };
+			return { widgetPath, new: parseWidgetHolder(newVal.widget) };
 		}
 		throw new Error("DiffUpdate invalid");
 	});
