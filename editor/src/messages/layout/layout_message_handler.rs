@@ -246,7 +246,7 @@ impl LayoutMessageHandler {
 	/// Diff the update and send to the frontend where necessary
 	fn send_layout(&mut self, layout_target: LayoutTarget, new_layout: Layout, responses: &mut VecDeque<Message>, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Vec<KeysGroup>) {
 		// We don't diff the menu bar layout yet.
-		if layout_target == LayoutTarget::MenuBar {
+		if matches!(new_layout, Layout::MenuLayout(_)) {
 			// Skip update if the same
 			if self.layouts[layout_target as usize] == new_layout {
 				return;
