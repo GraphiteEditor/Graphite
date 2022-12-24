@@ -1195,7 +1195,8 @@ export type WidgetDiffUpdate = {
 	diff: WidgetDiff[];
 };
 
-type WidgetDiff = { widgetPath: number[]; new: LayoutGroup[] | LayoutGroup | Widget | MenuBarEntry[] };
+type UIItem = LayoutGroup[] | LayoutGroup | Widget | MenuBarEntry[] | MenuBarEntry | undefined;
+type WidgetDiff = { widgetPath: number[]; newValue: UIItem };
 
 export function defaultWidgetLayout(): WidgetLayout {
 	return {
@@ -1210,7 +1211,7 @@ export function patchWidgetLayout(layout: WidgetLayout, updates: WidgetDiffUpdat
 
 	updates.diff.forEach((update) => {
 		// Find the object where the diff applies to
-		let targetLayout = layout.layout as LayoutGroup[] | LayoutGroup | Widget | MenuBarEntry[] | MenuBarEntry | undefined;
+		let targetLayout = layout.layout as UIItem;
 		update.widgetPath.forEach((index) => {
 			if (!targetLayout) return;
 			if ("columnWidgets" in targetLayout) targetLayout = targetLayout.columnWidgets[index];
@@ -1226,7 +1227,7 @@ export function patchWidgetLayout(layout: WidgetLayout, updates: WidgetDiffUpdat
 		if (targetLayout !== undefined && "length" in targetLayout) targetLayout.length = 0;
 		// eslint-disable-next-line @typescript-eslint/no-explicit-any
 		if (targetLayout !== undefined) Object.keys(targetLayout).forEach((key) => delete (targetLayout as any)[key]);
-		if (targetLayout !== undefined) Object.assign(targetLayout, update.new);
+		if (targetLayout !== undefined) Object.assign(targetLayout, update.newValue);
 	});
 }
 
@@ -1251,15 +1252,15 @@ export function isWidgetSection(layoutRow: LayoutGroup): layoutRow is WidgetSect
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function createWidgetDiff(diffs: any[]): WidgetDiff[] {
 	const diff = diffs.map((diff): WidgetDiff => {
-		const { widgetPath, newVal } = diff;
-		if (newVal.subLayout) {
-			return { widgetPath, new: newVal.subLayout.map(createLayoutGroup) };
+		const { widgetPath, newValue } = diff;
+		if (newValue.subLayout) {
+			return { widgetPath, newValue: newValue.subLayout.map(createLayoutGroup) };
 		}
-		if (newVal.layoutGroup) {
-			return { widgetPath, new: createLayoutGroup(newVal.layoutGroup) };
+		if (newValue.layoutGroup) {
+			return { widgetPath, newValue: createLayoutGroup(newValue.layoutGroup) };
 		}
-		if (newVal.widget) {
-			return { widgetPath, new: parseWidgetHolder(newVal.widget) };
+		if (newValue.widget) {
+			return { widgetPath, newValue: parseWidgetHolder(newValue.widget) };
 		}
 		throw new Error("DiffUpdate invalid");
 	});

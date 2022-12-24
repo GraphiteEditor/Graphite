@@ -37,9 +37,9 @@ impl<F: Fn(&MessageDiscriminant) -> Vec<KeysGroup>> MessageHandler<LayoutMessage
 									// Return if this is the correct ID
 									if widget.widget_id == id {
 										path.push(index);
-										let new_val = DiffUpdate::Widget(widget.clone());
+										let new_value = DiffUpdate::Widget(widget.clone());
 										let widget_path = path;
-										return Some(WidgetDiff { widget_path, new_val });
+										return Some(WidgetDiff { widget_path, new_value });
 									}
 								}
 							}
@@ -272,7 +272,7 @@ impl LayoutMessageHandler {
 	/// Send a diff to the frontend based on the layout target.
 	#[remain::check]
 	fn send_diff(&self, mut diff: Vec<WidgetDiff>, layout_target: LayoutTarget, responses: &mut VecDeque<Message>, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Vec<KeysGroup>) {
-		diff.iter_mut().for_each(|diff| diff.new_val.apply_shortcut(action_input_mapping));
+		diff.iter_mut().for_each(|diff| diff.new_value.apply_shortcut(action_input_mapping));
 
 		info!("{layout_target:?} diff {diff:#?}");
 
