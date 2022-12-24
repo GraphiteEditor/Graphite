@@ -302,7 +302,7 @@ impl PropertyHolder for MenuBarMessageHandler {
 						},
 						MenuBarEntry {
 							label: "Debug: Print Trace Logs".into(),
-							icon: Some(if let log::LevelFilter::Trace = log::max_level() { "CheckboxChecked" } else { "CheckboxUnchecked" }.into()),
+							icon: Some(if log::max_level() == log::LevelFilter::Trace { "CheckboxChecked" } else { "CheckboxUnchecked" }.into()),
 							shortcut: action_keys!(DebugMessageDiscriminant::ToggleTraceLogs),
 							action: MenuBarEntry::create_action(|_| DebugMessage::ToggleTraceLogs.into()),
 							..MenuBarEntry::default()
