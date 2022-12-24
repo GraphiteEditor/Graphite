@@ -51,7 +51,7 @@ impl<F: Fn(&MessageDiscriminant) -> Vec<KeysGroup>> MessageHandler<LayoutMessage
 		use LayoutMessage::*;
 		#[remain::sorted]
 		match message {
-			RefreshLayout { layout_target, dirty_id } => {
+			ResendActiveWidget { layout_target, dirty_id } => {
 				// Find the updated diff based on the specified layout target
 				let Some(diff) = (match &self.layouts[layout_target as usize] {
 					Layout::MenuLayout(_) => return,
@@ -232,7 +232,7 @@ impl<F: Fn(&MessageDiscriminant) -> Vec<KeysGroup>> MessageHandler<LayoutMessage
 					}
 					Widget::TextLabel(_) => {}
 				};
-				responses.push_back(RefreshLayout { layout_target, dirty_id: widget_id }.into());
+				responses.push_back(ResendActiveWidget { layout_target, dirty_id: widget_id }.into());
 			}
 		}
 	}
