@@ -1269,21 +1269,21 @@ function createWidgetDiff(diffs: any[]): WidgetDiff[] {
 
 // Unpacking a layout group
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function createLayoutGroup(newVal: any): LayoutGroup {
-	if (newVal.column) {
-		const columnWidgets = hoistWidgetHolders(newVal.column.columnWidgets);
+function createLayoutGroup(layoutGroup: any): LayoutGroup {
+	if (layoutGroup.column) {
+		const columnWidgets = hoistWidgetHolders(layoutGroup.column.columnWidgets);
 
 		const result: WidgetColumn = { columnWidgets };
 		return result;
 	}
 
-	if (newVal.row) {
-		const result: WidgetRow = { rowWidgets: hoistWidgetHolders(newVal.row.rowWidgets) };
+	if (layoutGroup.row) {
+		const result: WidgetRow = { rowWidgets: hoistWidgetHolders(layoutGroup.row.rowWidgets) };
 		return result;
 	}
 
-	if (newVal.section) {
-		const result: WidgetSection = { name: newVal.section.name, layout: newVal.section.layout.map(createLayoutGroup) };
+	if (layoutGroup.section) {
+		const result: WidgetSection = { name: layoutGroup.section.name, layout: layoutGroup.section.layout.map(createLayoutGroup) };
 		return result;
 	}
 
