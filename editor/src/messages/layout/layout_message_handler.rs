@@ -279,7 +279,7 @@ impl LayoutMessageHandler {
 	fn send_diff(&self, mut diff: Vec<WidgetDiff>, layout_target: LayoutTarget, responses: &mut VecDeque<Message>, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Vec<KeysGroup>) {
 		diff.iter_mut().for_each(|diff| diff.new_value.apply_shortcut(action_input_mapping));
 
-		info!("{layout_target:?} diff {diff:#?}");
+		trace!("{layout_target:?} diff {diff:#?}");
 
 		#[remain::sorted]
 		let message = match layout_target {
