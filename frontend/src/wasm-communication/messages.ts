@@ -1205,7 +1205,7 @@ export function defaultWidgetLayout(): WidgetLayout {
 }
 
 // Updates a widget layout based on a list of updates, returning the new layout
-export function patchWidgetLayout(layout: WidgetLayout, updates: WidgetDiffUpdate) {
+export function patchWidgetLayout(layout: WidgetLayout, updates: WidgetDiffUpdate): void {
 	layout.layoutTarget = updates.layoutTarget;
 
 	updates.diff.forEach((update) => {
@@ -1216,6 +1216,7 @@ export function patchWidgetLayout(layout: WidgetLayout, updates: WidgetDiffUpdat
 			if ("columnWidgets" in targetLayout) targetLayout = targetLayout.columnWidgets[index];
 			else if ("rowWidgets" in targetLayout) targetLayout = targetLayout.rowWidgets[index];
 			else if ("layout" in targetLayout) targetLayout = targetLayout.layout[index];
+			// eslint-disable-next-line no-console
 			else if (targetLayout instanceof Widget) console.error("Tried to index widget");
 			else if ("action" in targetLayout) targetLayout = targetLayout.children ? targetLayout.children[index] : undefined;
 			else targetLayout = targetLayout[index];
@@ -1223,6 +1224,7 @@ export function patchWidgetLayout(layout: WidgetLayout, updates: WidgetDiffUpdat
 
 		// Some odd code required to update the objects (assigning things doesn't work?)
 		if (targetLayout !== undefined && "length" in targetLayout) targetLayout.length = 0;
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
 		if (targetLayout !== undefined) Object.keys(targetLayout).forEach((key) => delete (targetLayout as any)[key]);
 		if (targetLayout !== undefined) Object.assign(targetLayout, update.new);
 	});
