@@ -34,6 +34,9 @@ pub enum Layout {
 	MenuLayout(MenuLayout),
 }
 
+/// The new value of the UI, sent as part of a diff.
+///
+/// An update can represent a single widget or an entire SubLayout, or just a single layout group.
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub enum DiffUpdate {
 	#[serde(rename = "subLayout")]
@@ -44,15 +47,21 @@ pub enum DiffUpdate {
 	Widget(WidgetHolder),
 }
 
+/// A single change to part of the UI, containing the location of the change and the new value.
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub struct WidgetDiff {
+	/// A path to the change
+	/// e.g. [0, 1, 2] in the properties panel is the first section, second row and third widget.
+	/// An empty path [] shows that the entire panel has changed and is sent when the UI is first created.
 	#[serde(rename = "widgetPath")]
 	pub widget_path: Vec<usize>,
+	/// What the specified part of the UI has changed to.
 	#[serde(rename = "newValue")]
 	pub new_value: DiffUpdate,
 }
 
 impl DiffUpdate {
+	/// Append the shortcut to the tooltip where applicable
 	pub fn apply_shortcut(&mut self, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Vec<KeysGroup>) {
 		// Function used multiple times later in this code block to convert `ActionKeys::Action` to `ActionKeys::Keys` and append its shortcut to the tooltip
 		let apply_shortcut_to_tooltip = |tooltip_shortcut: &mut ActionKeys, tooltip: &mut String| {
@@ -152,16 +161,18 @@ impl Layout {
 	/// Diffing updates self (where self is old) based on new, updating the list of modifications as it does so.
 	pub fn diff(&mut self, new: Self, widget_path: &mut Vec<usize>, widget_diffs: &mut Vec<WidgetDiff>) {
 		match (self, new) {
-			(Self::WidgetLayout(s), Self::WidgetLayout(new)) => s.diff(new, widget_path, widget_diffs),
-			(current, new) => {
-				let new_value = match new.clone() {
-					Self::WidgetLayout(widget_layout) => DiffUpdate::SubLayout(widget_layout.layout),
-					Self::MenuLayout(_) => panic!("Cannot diff menu layout"),
-				};
+			// Simply diff the internal layout
+			(Self::WidgetLayout(current), Self::WidgetLayout(new)) => current.diff(new, widget_path, widget_diffs),
+			(current, Self::WidgetLayout(widget_layout)) => {
+				// Upate current to the new value
+				*current = Self::WidgetLayout(widget_layout.clone());
+
+				// Push an update sublayout value
+				let new_value = DiffUpdate::SubLayout(widget_layout.layout);
 				let widget_path = widget_path.to_vec();
 				widget_diffs.push(WidgetDiff { widget_path, new_value });
-				*current = new;
 			}
+			(_, Self::MenuLayout(_)) => panic!("Cannot diff menu layout"),
 		}
 	}
 }
@@ -198,9 +209,13 @@ impl WidgetLayout {
 
 	/// Diffing updates self (where self is old) based on new, updating the list of modifications as it does so.
 	pub fn diff(&mut self, new: Self, widget_path: &mut Vec<usize>, widget_diffs: &mut Vec<WidgetDiff>) {
+		// Check if the length of items is different
 		// TODO: Diff insersion and deletion of items
 		if self.layout.len() != new.layout.len() {
+			// Update the layout to the new layout
 			self.layout = new.layout.clone();
+
+			// Push an update sublayout to the diff
 			let new = DiffUpdate::SubLayout(new.layout);
 			widget_diffs.push(WidgetDiff {
 				widget_path: widget_path.to_vec(),
@@ -208,9 +223,10 @@ impl WidgetLayout {
 			});
 			return;
 		}
-		for (index, (s, new)) in self.layout.iter_mut().zip(new.layout.into_iter()).enumerate() {
+		// Diff all of the children
+		for (index, (current_child, new_child)) in self.layout.iter_mut().zip(new.layout.into_iter()).enumerate() {
 			widget_path.push(index);
-			s.diff(new, widget_path, widget_diffs);
+			current_child.diff(new_child, widget_path, widget_diffs);
 			widget_path.pop();
 		}
 	}
@@ -348,38 +364,50 @@ impl LayoutGroup {
 	pub fn diff(&mut self, new: Self, widget_path: &mut Vec<usize>, widget_diffs: &mut Vec<WidgetDiff>) {
 		let is_column = matches!(new, Self::Column { .. });
 		match (self, new) {
-			(Self::Column { widgets: s }, Self::Column { widgets: new_widgets }) | (Self::Row { widgets: s }, Self::Row { widgets: new_widgets }) => {
+			(Self::Column { widgets: current_widgets }, Self::Column { widgets: new_widgets }) | (Self::Row { widgets: current_widgets }, Self::Row { widgets: new_widgets }) => {
 				// If the lengths are different then resend the entire panel
 				// TODO: Diff insersion and deletion of items
-				if s.len() != new_widgets.len() {
-					*s = new_widgets.clone();
+				if current_widgets.len() != new_widgets.len() {
+					// Update to the new value
+					*current_widgets = new_widgets.clone();
+
+					// Push back a LayoutGroup update to the diff
 					let new_value = DiffUpdate::LayoutGroup(if is_column { Self::Column { widgets: new_widgets } } else { Self::Row { widgets: new_widgets } });
 					let widget_path = widget_path.to_vec();
 					widget_diffs.push(WidgetDiff { widget_path, new_value });
 					return;
 				}
 				// Diff all of the children
-				for (index, (s, new)) in s.iter_mut().zip(new_widgets.into_iter()).enumerate() {
+				for (index, (current_child, new_child)) in current_widgets.iter_mut().zip(new_widgets.into_iter()).enumerate() {
 					widget_path.push(index);
-					s.diff(new, widget_path, widget_diffs);
+					current_child.diff(new_child, widget_path, widget_diffs);
 					widget_path.pop();
 				}
 			}
-			(Self::Section { name: s_name, layout: s_layout }, Self::Section { name: new_name, layout: new_layout }) => {
+			(
+				Self::Section {
+					name: current_name,
+					layout: current_layout,
+				},
+				Self::Section { name: new_name, layout: new_layout },
+			) => {
 				// If the lengths are different then resend the entire panel
 				// TODO: Diff insersion and deletion of items
-				if *s_name != new_name || s_layout.len() != new_layout.len() {
-					*s_name = new_name.clone();
-					*s_layout = new_layout.clone();
+				if *current_name != new_name || current_layout.len() != new_layout.len() {
+					// Update self to reflect new changes
+					*current_name = new_name.clone();
+					*current_layout = new_layout.clone();
+
+					// Push an update layout group to the diff
 					let new_value = DiffUpdate::LayoutGroup(Self::Section { name: new_name, layout: new_layout });
 					let widget_path = widget_path.to_vec();
 					widget_diffs.push(WidgetDiff { widget_path, new_value });
 					return;
 				}
 				// Diff all of the children
-				for (index, (s, new)) in s_layout.iter_mut().zip(new_layout.into_iter()).enumerate() {
+				for (index, (current_child, new_child)) in current_layout.iter_mut().zip(new_layout.into_iter()).enumerate() {
 					widget_path.push(index);
-					s.diff(new, widget_path, widget_diffs);
+					current_child.diff(new_child, widget_path, widget_diffs);
 					widget_path.pop();
 				}
 			}
@@ -438,8 +466,12 @@ impl WidgetHolder {
 	}
 	/// Diffing updates self (where self is old) based on new, updating the list of modifications as it does so.
 	pub fn diff(&mut self, new: Self, widget_path: &mut [usize], widget_diffs: &mut Vec<WidgetDiff>) {
+		// If there have been changes to the acutal widget (not just the id)
 		if self.widget != new.widget {
+			// We should update to the new widget value as well as a new widget id
 			*self = new.clone();
+
+			// Push a widget update to the diff
 			let new_value = DiffUpdate::Widget(new);
 			let widget_path = widget_path.to_vec();
 			widget_diffs.push(WidgetDiff { widget_path, new_value });
