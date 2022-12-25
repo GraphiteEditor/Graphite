@@ -58,6 +58,8 @@ impl<NN: Node<(), Output = String> + Copy> Node<Image> for MapGpuSingleImageNode
 
 		let network = NodeNetwork {
 			inputs: vec![0],
+			disabled: vec![],
+			previous_output: None,
 			output: 0,
 			nodes: [(
 				0,
@@ -93,6 +95,8 @@ impl<NN: Node<(), Output = String> + Copy> Node<Image> for &MapGpuSingleImageNod
 		let network = NodeNetwork {
 			inputs: vec![0],
 			output: 0,
+			disabled: vec![],
+			previous_output: None,
 			nodes: [(
 				0,
 				DocumentNode {
