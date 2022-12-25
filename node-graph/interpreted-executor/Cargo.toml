@@ -7,7 +7,7 @@ license = "MIT OR Apache-2.0"
 [features]
 default = []
 serde = ["dep:serde", "graphene-std/serde", "glam/serde"]
-gpu = ["graphene-std/gpu", "graphene-core/gpu"]
+gpu = ["graphene-std/gpu", "graphene-core/gpu", "graphene-std/wgpu"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

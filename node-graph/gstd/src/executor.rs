@@ -14,13 +14,12 @@ impl<'n, I: IntoIterator<Item = S>, NN: Node<(), Output = &'n NodeNetwork> + Cop
 	fn eval(self, input: I) -> Self::Output {
 		let network = self.0.eval(());
 
-		use graph_craft::executor::Compiler;
 		use graph_craft::executor::Executor;
-		let compiler = Compiler {};
-		let bytes = compilation_client::compile::<u32, u32>(network.clone());
+		let bytes = compilation_client::compile::<u32, u32>(network.clone()).unwrap();
+		let words = unsafe { std::slice::from_raw_parts(bytes.as_ptr() as *const u32, bytes.len() / 4) };
 
-		use vulkan_executor::{Context, GpuExecutor};
-		let executor: GpuExecutor<S, O> = GpuExecutor::new(Context::new(), &bytes.unwrap(), "gpu::eval".into()).unwrap();
+		use wgpu_executor::{Context, GpuExecutor};
+		let executor: GpuExecutor<S, O> = GpuExecutor::new(Context::new_sync().unwrap(), words.into(), "gpu::eval".into()).unwrap();
 
 		let data: Vec<_> = input.into_iter().collect();
 		let result = executor.execute(Box::new(data)).unwrap();
@@ -33,13 +32,12 @@ impl<'n, I: IntoIterator<Item = S>, NN: Node<(), Output = &'n NodeNetwork> + Cop
 	fn eval(self, input: I) -> Self::Output {
 		let network = self.0.eval(());
 
-		use graph_craft::executor::Compiler;
 		use graph_craft::executor::Executor;
-		let compiler = Compiler {};
-		let bytes = compilation_client::compile::<u32, u32>(network.clone());
+		let bytes = compilation_client::compile::<u32, u32>(network.clone()).unwrap();
+		let words = unsafe { std::slice::from_raw_parts(bytes.as_ptr() as *const u32, bytes.len() / 4) };
 
-		use vulkan_executor::{Context, GpuExecutor};
-		let executor: GpuExecutor<S, O> = GpuExecutor::new(Context::new(), &bytes.unwrap(), "gpu::eval".into()).unwrap();
+		use wgpu_executor::{Context, GpuExecutor};
+		let executor: GpuExecutor<S, O> = GpuExecutor::new(Context::new_sync().unwrap(), words.into(), "gpu::eval".into()).unwrap();
 
 		let data: Vec<_> = input.into_iter().collect();
 		let result = executor.execute(Box::new(data)).unwrap();

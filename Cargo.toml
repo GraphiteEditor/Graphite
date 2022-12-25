@@ -14,11 +14,14 @@ members = [
 	"node-graph/compilation-server",
 	"node-graph/compilation-client",
 	"node-graph/vulkan-executor",
+	"node-graph/wgpu-executor",
 	"node-graph/gpu-compiler/gpu-compiler-bin-wrapper",
 	"libraries/dyn-any",
 	"libraries/bezier-rs",
 	"website/other/bezier-rs-demos/wasm",
 ]
+
+resolver = "2"
 
 exclude = [
 	"node-graph/gpu-compiler",

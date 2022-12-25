@@ -18,7 +18,7 @@ default = []
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-editor = { path = "../../editor", package = "graphite-editor" }
+editor = { path = "../../editor", package = "graphite-editor", features = ["gpu"] }
 document-legacy = { path = "../../document-legacy", package = "graphite-document-legacy" }
 graph-craft = { path = "../../node-graph/graph-craft" }
 log = "0.4"
