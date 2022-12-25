@@ -20,7 +20,7 @@ impl<'n, I: IntoIterator<Item = S>, NN: Node<(), Output = &'n NodeNetwork> + Cop
 
 fn map_gpu_impl<I: IntoIterator<Item = S>, S: StaticTypeSized + Sync + Send + Pod, O: StaticTypeSized + Sync + Send + Pod>(network: &NodeNetwork, input: I) -> Vec<O> {
 	use graph_craft::executor::Executor;
-	let bytes = compilation_client::compile_sync::<u32, u32>(network.clone()).unwrap();
+	let bytes = compilation_client::compile_sync::<S, O>(network.clone()).unwrap();
 	let words = unsafe { std::slice::from_raw_parts(bytes.as_ptr() as *const u32, bytes.len() / 4) };
 	use wgpu_executor::{Context, GpuExecutor};
 	let executor: GpuExecutor<S, O> = GpuExecutor::new(Context::new_sync().unwrap(), words.into(), "gpu::eval".into()).unwrap();
