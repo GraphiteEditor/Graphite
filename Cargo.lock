@@ -522,7 +522,7 @@ name = "compilation-client"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "futures",
+ "future-executor",
  "gpu-compiler-bin-wrapper",
  "graph-craft",
  "reqwest",
@@ -1100,6 +1100,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "future-executor"
+version = "0.1.0"
+dependencies = [
+ "futures",
+ "log",
+ "wasm-rs-async-executor",
+]
+
+[[package]]
 name = "futures"
 version = "0.3.25"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1591,6 +1600,7 @@ dependencies = [
  "serde_json",
  "tauri",
  "tauri-build",
+ "tokio",
 ]
 
 [[package]]
@@ -4864,6 +4874,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "wasm-rs-async-executor"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fed8e8c10166d28c68859dd5d159d408fa50fdf668ae39461f2ea41148655d52"
+dependencies = [
+ "futures",
+ "js-sys",
+ "pin-project",
+ "wasm-bindgen",
+ "web-sys",
+]
+
+[[package]]
 name = "web-sys"
 version = "0.3.60"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5037,6 +5060,7 @@ dependencies = [
  "base64",
  "bytemuck",
  "dyn-any",
+ "future-executor",
  "futures",
  "futures-intrusive",
  "glam",

@@ -1,4 +1,5 @@
 use std::borrow::Cow;
+use std::sync::Arc;
 use wgpu::util::DeviceExt;
 
 use super::context::Context;
@@ -29,16 +30,19 @@ impl<'a, I: StaticTypeSized + Sync + Pod + Send, O: StaticTypeSized + Send + Syn
 	fn execute(&self, input: Any<'static>) -> Result<Any<'static>, Box<dyn std::error::Error>> {
 		let input = dyn_any::downcast::<Vec<I>>(input).expect("Wrong input type");
 		let context = &self.context;
-		let result: Vec<O> = execute_shader(&context.device, &context.queue, self.shader.clone(), *input, &self.entry_point).ok_or_else(|| String::from("Failed to execute shader"))?;
+		let future = execute_shader(context.device.clone(), context.queue.clone(), self.shader.to_vec().into(), *input, self.entry_point.clone());
+		let result = future_executor::block_on(future);
+
+		let result: Vec<O> = result.ok_or_else(|| String::from("Failed to execute shader"))?;
 		Ok(Box::new(result))
 	}
 }
 
-fn execute_shader<I: Pod + Send + Sync, O: Pod + Send + Sync>(device: &wgpu::Device, queue: &wgpu::Queue, shader: Cow<[u32]>, data: Vec<I>, entry_point: &str) -> Option<Vec<O>> {
+async fn execute_shader<I: Pod + Send + Sync, O: Pod + Send + Sync>(device: Arc<wgpu::Device>, queue: Arc<wgpu::Queue>, shader: Vec<u32>, data: Vec<I>, entry_point: String) -> Option<Vec<O>> {
 	// Loads the shader from WGSL
 	let cs_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
 		label: None,
-		source: wgpu::ShaderSource::SpirV(shader),
+		source: wgpu::ShaderSource::SpirV(shader.into()),
 	});
 
 	// Gets the size in bytes of the buffer.
@@ -90,7 +94,7 @@ fn execute_shader<I: Pod + Send + Sync, O: Pod + Send + Sync>(device: &wgpu::Dev
 		label: None,
 		layout: None,
 		module: &cs_module,
-		entry_point,
+		entry_point: entry_point.as_str(),
 	});
 
 	// Instantiates the bind group, once again specifying the binding of buffers.
@@ -141,7 +145,7 @@ fn execute_shader<I: Pod + Send + Sync, O: Pod + Send + Sync>(device: &wgpu::Dev
 	// Awaits until `buffer_future` can be read from
 	#[cfg(feature = "profiling")]
 	nvtx::range_push!("compute");
-	let result = futures::executor::block_on(receiver.receive());
+	let result = receiver.receive().await;
 	#[cfg(feature = "profiling")]
 	nvtx::range_pop!();
 	if let Some(Ok(())) = result {

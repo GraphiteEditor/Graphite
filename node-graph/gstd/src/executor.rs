@@ -14,35 +14,26 @@ impl<'n, I: IntoIterator<Item = S>, NN: Node<(), Output = &'n NodeNetwork> + Cop
 	fn eval(self, input: I) -> Self::Output {
 		let network = self.0.eval(());
 
-		use graph_craft::executor::Executor;
-		let bytes = compilation_client::compile::<u32, u32>(network.clone()).unwrap();
-		let words = unsafe { std::slice::from_raw_parts(bytes.as_ptr() as *const u32, bytes.len() / 4) };
-
-		use wgpu_executor::{Context, GpuExecutor};
-		let executor: GpuExecutor<S, O> = GpuExecutor::new(Context::new_sync().unwrap(), words.into(), "gpu::eval".into()).unwrap();
-
-		let data: Vec<_> = input.into_iter().collect();
-		let result = executor.execute(Box::new(data)).unwrap();
-		let result = dyn_any::downcast::<Vec<O>>(result).unwrap();
-		*result
+		map_gpu_impl(network, input)
 	}
+}
+
+fn map_gpu_impl<I: IntoIterator<Item = S>, S: StaticTypeSized + Sync + Send + Pod, O: StaticTypeSized + Sync + Send + Pod>(network: &NodeNetwork, input: I) -> Vec<O> {
+	use graph_craft::executor::Executor;
+	let bytes = compilation_client::compile_sync::<u32, u32>(network.clone()).unwrap();
+	let words = unsafe { std::slice::from_raw_parts(bytes.as_ptr() as *const u32, bytes.len() / 4) };
+	use wgpu_executor::{Context, GpuExecutor};
+	let executor: GpuExecutor<S, O> = GpuExecutor::new(Context::new_sync().unwrap(), words.into(), "gpu::eval".into()).unwrap();
+	let data: Vec<_> = input.into_iter().collect();
+	let result = executor.execute(Box::new(data)).unwrap();
+	let result = dyn_any::downcast::<Vec<O>>(result).unwrap();
+	*result
 }
 impl<'n, I: IntoIterator<Item = S>, NN: Node<(), Output = &'n NodeNetwork> + Copy, S: StaticTypeSized + Sync + Send + Pod, O: StaticTypeSized + Sync + Send + Pod> Node<I> for MapGpuNode<NN, I, S, O> {
 	type Output = Vec<O>;
 	fn eval(self, input: I) -> Self::Output {
 		let network = self.0.eval(());
-
-		use graph_craft::executor::Executor;
-		let bytes = compilation_client::compile::<u32, u32>(network.clone()).unwrap();
-		let words = unsafe { std::slice::from_raw_parts(bytes.as_ptr() as *const u32, bytes.len() / 4) };
-
-		use wgpu_executor::{Context, GpuExecutor};
-		let executor: GpuExecutor<S, O> = GpuExecutor::new(Context::new_sync().unwrap(), words.into(), "gpu::eval".into()).unwrap();
-
-		let data: Vec<_> = input.into_iter().collect();
-		let result = executor.execute(Box::new(data)).unwrap();
-		let result = dyn_any::downcast::<Vec<O>>(result).unwrap();
-		*result
+		map_gpu_impl(network, input)
 	}
 }
 

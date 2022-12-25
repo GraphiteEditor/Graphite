@@ -1,10 +1,11 @@
+use std::sync::Arc;
 use wgpu::{Device, Instance, Queue};
 
 #[derive(Debug)]
 pub struct Context {
-	pub device: Device,
-	pub queue: Queue,
-	pub instance: Instance,
+	pub device: Arc<Device>,
+	pub queue: Arc<Queue>,
+	pub instance: Arc<Instance>,
 }
 
 impl Context {
@@ -34,10 +35,14 @@ impl Context {
 		if info.vendor == 0x10005 {
 			return None;
 		}
-		Some(Self { instance, device, queue })
+		Some(Self {
+			device: Arc::new(device),
+			queue: Arc::new(queue),
+			instance: Arc::new(instance),
+		})
 	}
 
 	pub fn new_sync() -> Option<Self> {
-		futures::executor::block_on(Self::new())
+		future_executor::block_on(Self::new())
 	}
 }
