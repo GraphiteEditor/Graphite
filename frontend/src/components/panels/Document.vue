@@ -231,6 +231,7 @@ import { textInputCleanup } from "@/utility-functions/keyboard-entry";
 import { rasterizeSVGCanvas } from "@/utility-functions/rasterization";
 import {
 	defaultWidgetLayout,
+	patchWidgetLayout,
 	type DisplayEditableTextbox,
 	type MouseCursorIcon,
 	type UpdateDocumentBarLayout,
@@ -505,19 +506,19 @@ export default defineComponent({
 		},
 		// Update layouts
 		updateDocumentModeLayout(updateDocumentModeLayout: UpdateDocumentModeLayout) {
-			this.documentModeLayout = updateDocumentModeLayout;
+			patchWidgetLayout(this.documentModeLayout, updateDocumentModeLayout);
 		},
 		updateToolOptionsLayout(updateToolOptionsLayout: UpdateToolOptionsLayout) {
-			this.toolOptionsLayout = updateToolOptionsLayout;
+			patchWidgetLayout(this.toolOptionsLayout, updateToolOptionsLayout);
 		},
 		updateDocumentBarLayout(updateDocumentBarLayout: UpdateDocumentBarLayout) {
-			this.documentBarLayout = updateDocumentBarLayout;
+			patchWidgetLayout(this.documentBarLayout, updateDocumentBarLayout);
 		},
 		updateToolShelfLayout(updateToolShelfLayout: UpdateToolShelfLayout) {
-			this.toolShelfLayout = updateToolShelfLayout;
+			patchWidgetLayout(this.toolShelfLayout, updateToolShelfLayout);
 		},
 		updateWorkingColorsLayout(updateWorkingColorsLayout: UpdateWorkingColorsLayout) {
-			this.workingColorsLayout = updateWorkingColorsLayout;
+			patchWidgetLayout(this.workingColorsLayout, updateWorkingColorsLayout);
 		},
 		// Resize elements to render the new viewport size
 		viewportResize() {
