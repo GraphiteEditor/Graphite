@@ -67,6 +67,12 @@ pub enum NodeGraphMessage {
 		input_index: usize,
 		value: TaggedValue,
 	},
+	SetSelectedEnabled {
+		enabled: bool,
+	},
+	SetSelectedOutput {
+		output: bool,
+	},
 	ShiftNode {
 		node_id: NodeId,
 	},
