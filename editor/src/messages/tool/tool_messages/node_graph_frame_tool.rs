@@ -163,6 +163,7 @@ impl Fsm for NodeGraphToolFsmState {
 						]
 						.into_iter()
 						.collect(),
+						..Default::default()
 					};
 
 					responses.push_back(
