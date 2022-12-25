@@ -1,5 +1,5 @@
 use super::utility_types::{FrontendDocumentDetails, FrontendImageData, MouseCursorIcon};
-use crate::messages::layout::utility_types::layout_widget::SubLayout;
+use crate::messages::layout::utility_types::layout_widget::WidgetDiff;
 use crate::messages::layout::utility_types::misc::LayoutTarget;
 use crate::messages::layout::utility_types::widgets::menu_widgets::MenuBarEntry;
 use crate::messages::portfolio::document::node_graph::{FrontendNode, FrontendNodeLink, FrontendNodeType};
@@ -143,7 +143,7 @@ pub enum FrontendMessage {
 	UpdateDialogDetails {
 		#[serde(rename = "layoutTarget")]
 		layout_target: LayoutTarget,
-		layout: SubLayout,
+		diff: Vec<WidgetDiff>,
 	},
 	UpdateDocumentArtboards {
 		svg: String,
@@ -154,7 +154,7 @@ pub enum FrontendMessage {
 	UpdateDocumentBarLayout {
 		#[serde(rename = "layoutTarget")]
 		layout_target: LayoutTarget,
-		layout: SubLayout,
+		diff: Vec<WidgetDiff>,
 	},
 	UpdateDocumentLayerDetails {
 		data: LayerPanelEntry,
@@ -170,7 +170,7 @@ pub enum FrontendMessage {
 	UpdateDocumentModeLayout {
 		#[serde(rename = "layoutTarget")]
 		layout_target: LayoutTarget,
-		layout: SubLayout,
+		diff: Vec<WidgetDiff>,
 	},
 	UpdateDocumentOverlays {
 		svg: String,
@@ -208,7 +208,7 @@ pub enum FrontendMessage {
 	UpdateLayerTreeOptionsLayout {
 		#[serde(rename = "layoutTarget")]
 		layout_target: LayoutTarget,
-		layout: SubLayout,
+		diff: Vec<WidgetDiff>,
 	},
 	UpdateMenuBarLayout {
 		#[serde(rename = "layoutTarget")]
@@ -225,7 +225,7 @@ pub enum FrontendMessage {
 	UpdateNodeGraphBarLayout {
 		#[serde(rename = "layoutTarget")]
 		layout_target: LayoutTarget,
-		layout: SubLayout,
+		diff: Vec<WidgetDiff>,
 	},
 	UpdateNodeGraphSelection {
 		selected: Vec<NodeId>,
@@ -244,26 +244,26 @@ pub enum FrontendMessage {
 	UpdatePropertyPanelOptionsLayout {
 		#[serde(rename = "layoutTarget")]
 		layout_target: LayoutTarget,
-		layout: SubLayout,
+		diff: Vec<WidgetDiff>,
 	},
 	UpdatePropertyPanelSectionsLayout {
 		#[serde(rename = "layoutTarget")]
 		layout_target: LayoutTarget,
-		layout: SubLayout,
+		diff: Vec<WidgetDiff>,
 	},
 	UpdateToolOptionsLayout {
 		#[serde(rename = "layoutTarget")]
 		layout_target: LayoutTarget,
-		layout: SubLayout,
+		diff: Vec<WidgetDiff>,
 	},
 	UpdateToolShelfLayout {
 		#[serde(rename = "layoutTarget")]
 		layout_target: LayoutTarget,
-		layout: SubLayout,
+		diff: Vec<WidgetDiff>,
 	},
 	UpdateWorkingColorsLayout {
 		#[serde(rename = "layoutTarget")]
 		layout_target: LayoutTarget,
-		layout: SubLayout,
+		diff: Vec<WidgetDiff>,
 	},
 }
