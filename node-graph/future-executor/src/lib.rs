@@ -8,8 +8,7 @@ pub fn block_on<F: Future + 'static>(future: F) -> F::Output {
 		let val = std::sync::Arc::new(std::sync::Mutex::new(None));
 		let move_val = val.clone();
 		let result = executor::spawn(async move {
-			let result = executor::yield_async(future)
-				.await;
+			let result = executor::yield_async(future).await;
 			*move_val.lock().unwrap() = Some(result);
 			log::info!("Finished");
 		});
