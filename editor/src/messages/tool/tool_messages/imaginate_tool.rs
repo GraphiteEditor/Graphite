@@ -158,6 +158,7 @@ impl Fsm for ImaginateToolFsmState {
 						)]
 						.into_iter()
 						.collect(),
+						..Default::default()
 					};
 					let mut imaginate_inputs: Vec<NodeInput> = imaginate_node_type.inputs.iter().map(|input| input.default.clone()).collect();
 					imaginate_inputs[0] = NodeInput::Node(0);
@@ -197,6 +198,7 @@ impl Fsm for ImaginateToolFsmState {
 						]
 						.into_iter()
 						.collect(),
+						..Default::default()
 					};
 
 					responses.push_back(

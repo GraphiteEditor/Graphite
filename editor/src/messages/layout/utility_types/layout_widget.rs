@@ -250,6 +250,13 @@ pub enum LayoutGroup {
 	#[serde(rename = "section")]
 	Section { name: String, layout: SubLayout },
 }
+
+impl Default for LayoutGroup {
+	fn default() -> Self {
+		Self::Row { widgets: Vec::new() }
+	}
+}
+
 impl LayoutGroup {
 	/// Applies a tooltip to all widgets in this row or column without a tooltip.
 	pub fn with_tooltip(self, tooltip: impl Into<String>) -> Self {

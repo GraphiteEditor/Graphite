@@ -36,7 +36,7 @@
 					v-for="node in nodes"
 					:key="String(node.id)"
 					class="node"
-					:class="{ selected: selected.includes(node.id) }"
+					:class="{ selected: selected.includes(node.id), output: node.output, disabled: node.disabled }"
 					:style="{
 						'--offset-left': (node.position?.x || 0) + (selected.includes(node.id) ? draggingNodes?.roundX || 0 : 0),
 						'--offset-top': (node.position?.y || 0) + (selected.includes(node.id) ? draggingNodes?.roundY || 0 : 0),
@@ -127,6 +127,12 @@
 		margin: 0 4px;
 		flex: 0 0 auto;
 		align-items: center;
+
+		.widget-layout {
+			flex-direction: row;
+			flex-grow: 1;
+			justify-content: space-between;
+		}
 	}
 
 	.graph {
@@ -191,6 +197,19 @@
 				&.selected {
 					border: 1px solid var(--color-e-nearwhite);
 					margin: -1px;
+				}
+
+				&.disabled {
+					background: var(--color-3-darkgray);
+					color: var(--color-a-softgray);
+
+					.icon-label {
+						fill: var(--color-a-softgray);
+					}
+				}
+
+				&.output {
+					outline: 3px solid var(--color-data-vector);
 				}
 
 				.primary {
@@ -385,6 +404,7 @@ export default defineComponent({
 		nodes: {
 			immediate: true,
 			async handler() {
+				this.selected = this.selected.filter((id) => this.nodeGraph.state.nodes.find((node) => node.id === id));
 				await this.refreshLinks();
 			},
 		},
