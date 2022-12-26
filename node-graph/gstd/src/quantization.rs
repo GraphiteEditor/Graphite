@@ -46,23 +46,23 @@ fn generate_quantization_fn(samples: u32, function: u32, input: Image) -> Image 
 	let dist = autoquant::normalize_distribution(dist.as_slice());
 	let max = dist.last().unwrap().0;
 	let linear = Box::new(autoquant::SimpleFitFn {
-			function: move |x| x / max,
-			inverse: move |x| x * max,
-			name: "identity",
-		});
-		//log::info!("dist: {:?}", dist);
+		function: move |x| x / max,
+		inverse: move |x| x * max,
+		name: "identity",
+	});
+	//log::info!("dist: {:?}", dist);
 
-		//let power = autoquant::models::VarPro::<autoquant::models::PowerTwo>::new(dist.clone());
-		//let log = autoquant::models::VarPro::<autoquant::models::PowerTwo>::new(dist);
+	//let power = autoquant::models::VarPro::<autoquant::models::PowerTwo>::new(dist.clone());
+	//let log = autoquant::models::VarPro::<autoquant::models::PowerTwo>::new(dist);
 	//let log = autoquant::models::OptimizedLog::new(dist.clone(), 200);
 	//log::debug!("log: {:?}", log);
 	//let functions = autoquant::fit_functions(dist);
-    let best = match function {
-            0 => linear as Box<dyn autoquant::FitFn>,
-            1 => linear as Box<dyn autoquant::FitFn>,
-            2 => Box::new(autoquant::models::OptimizedLog::new(dist.clone(), 20)) as Box<dyn autoquant::FitFn>,
-            _ => linear as Box<dyn autoquant::FitFn>,
-    };
+	let best = match function {
+		0 => linear as Box<dyn autoquant::FitFn>,
+		1 => linear as Box<dyn autoquant::FitFn>,
+		2 => Box::new(autoquant::models::OptimizedLog::new(dist.clone(), 20)) as Box<dyn autoquant::FitFn>,
+		_ => linear as Box<dyn autoquant::FitFn>,
+	};
 	let best = (0, &best);
 	/*
 			.into_iter()
