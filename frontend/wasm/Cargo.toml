@@ -19,7 +19,7 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 editor = { path = "../../editor", package = "graphite-editor" }
-graphene = { path = "../../graphene", package = "graphite-graphene" }
+document-legacy = { path = "../../document-legacy", package = "graphite-document-legacy" }
 graph-craft = { path = "../../node-graph/graph-craft" }
 log = "0.4"
 serde = { version = "1.0", features = ["derive"] }
@@ -28,6 +28,7 @@ serde-wasm-bindgen = "0.4.1"
 js-sys = "0.3.55"
 wasm-bindgen-futures = "0.4.33"
 ron = {version = "0.8", optional = true}
+bezier-rs = { path = "../../libraries/bezier-rs" }
 
 [dev-dependencies]
 wasm-bindgen-test = "0.3.22"

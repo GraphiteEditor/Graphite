@@ -2,7 +2,7 @@ import { reactive, readonly } from "vue";
 
 import { type IconName } from "@/utility-functions/icons";
 import { type Editor } from "@/wasm-communication/editor";
-import { type TextButtonWidget, type WidgetLayout, defaultWidgetLayout, DisplayDialog, DisplayDialogDismiss, UpdateDialogDetails } from "@/wasm-communication/messages";
+import { type TextButtonWidget, type WidgetLayout, defaultWidgetLayout, DisplayDialog, DisplayDialogDismiss, UpdateDialogDetails, patchWidgetLayout } from "@/wasm-communication/messages";
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 export function createDialogState(editor: Editor) {
@@ -37,7 +37,7 @@ export function createDialogState(editor: Editor) {
 		state.icon = displayDialog.icon;
 	});
 	editor.subscriptions.subscribeJsMessage(UpdateDialogDetails, (updateDialogDetails) => {
-		state.widgets = updateDialogDetails;
+		patchWidgetLayout(state.widgets, updateDialogDetails);
 		state.jsCallbackBasedButtons = undefined;
 	});
 	editor.subscriptions.subscribeJsMessage(DisplayDialogDismiss, dismissDialog);

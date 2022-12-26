@@ -12,8 +12,8 @@ pub struct WasmSubpath(Subpath);
 #[wasm_bindgen]
 impl WasmSubpath {
 	/// Expects js_points to be an unbounded list of triples, where each item is a tuple of floats.
-	pub fn from_triples(js_points: &JsValue, closed: bool) -> WasmSubpath {
-		let point_triples: Vec<[Option<DVec2>; 3]> = js_points.into_serde().unwrap();
+	pub fn from_triples(js_points: JsValue, closed: bool) -> WasmSubpath {
+		let point_triples: Vec<[Option<DVec2>; 3]> = serde_wasm_bindgen::from_value(js_points).unwrap();
 		let manipulator_groups = point_triples
 			.into_iter()
 			.map(|point_triple| ManipulatorGroup {
@@ -68,8 +68,8 @@ impl WasmSubpath {
 		wrap_svg_tag(format!("{}{}", self.to_default_svg(), point_text))
 	}
 
-	pub fn intersect_line_segment(&self, js_points: &JsValue) -> String {
-		let points: [DVec2; 2] = js_points.into_serde().unwrap();
+	pub fn intersect_line_segment(&self, js_points: JsValue) -> String {
+		let points: [DVec2; 2] = serde_wasm_bindgen::from_value(js_points).unwrap();
 		let line = Bezier::from_linear_dvec2(points[0], points[1]);
 
 		let subpath_svg = self.to_default_svg();
@@ -97,8 +97,8 @@ impl WasmSubpath {
 		wrap_svg_tag(format!("{subpath_svg}{line_svg}{intersections_svg}"))
 	}
 
-	pub fn intersect_quadratic_segment(&self, js_points: &JsValue) -> String {
-		let points: [DVec2; 3] = js_points.into_serde().unwrap();
+	pub fn intersect_quadratic_segment(&self, js_points: JsValue) -> String {
+		let points: [DVec2; 3] = serde_wasm_bindgen::from_value(js_points).unwrap();
 		let line = Bezier::from_quadratic_dvec2(points[0], points[1], points[2]);
 
 		let subpath_svg = self.to_default_svg();
@@ -126,8 +126,8 @@ impl WasmSubpath {
 		wrap_svg_tag(format!("{subpath_svg}{line_svg}{intersections_svg}"))
 	}
 
-	pub fn intersect_cubic_segment(&self, js_points: &JsValue) -> String {
-		let points: [DVec2; 4] = js_points.into_serde().unwrap();
+	pub fn intersect_cubic_segment(&self, js_points: JsValue) -> String {
+		let points: [DVec2; 4] = serde_wasm_bindgen::from_value(js_points).unwrap();
 		let line = Bezier::from_cubic_dvec2(points[0], points[1], points[2], points[3]);
 
 		let subpath_svg = self.to_default_svg();

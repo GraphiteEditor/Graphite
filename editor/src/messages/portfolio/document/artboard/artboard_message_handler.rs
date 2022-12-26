@@ -1,20 +1,20 @@
 use crate::application::generate_uuid;
 use crate::messages::prelude::*;
 
-use graphene::color::Color;
-use graphene::document::Document as GrapheneDocument;
-use graphene::layers::style::{self, Fill, RenderData, ViewMode};
-use graphene::layers::text_layer::FontCache;
-use graphene::DocumentResponse;
-use graphene::LayerId;
-use graphene::Operation as DocumentOperation;
+use document_legacy::color::Color;
+use document_legacy::document::Document as DocumentLegacy;
+use document_legacy::layers::style::{self, Fill, RenderData, ViewMode};
+use document_legacy::layers::text_layer::FontCache;
+use document_legacy::DocumentResponse;
+use document_legacy::LayerId;
+use document_legacy::Operation as DocumentOperation;
 
 use glam::DAffine2;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ArtboardMessageHandler {
-	pub artboards_graphene_document: GrapheneDocument,
+	pub artboards_document: DocumentLegacy,
 	pub artboard_ids: Vec<LayerId>,
 }
 
@@ -27,7 +27,7 @@ impl MessageHandler<ArtboardMessage, &FontCache> for ArtboardMessageHandler {
 		match message {
 			// Sub-messages
 			#[remain::unsorted]
-			DispatchOperation(operation) => match self.artboards_graphene_document.handle_operation(*operation, font_cache) {
+			DispatchOperation(operation) => match self.artboards_document.handle_operation(*operation, font_cache) {
 				Ok(Some(document_responses)) => {
 					for response in document_responses {
 						match &response {
@@ -88,7 +88,7 @@ impl MessageHandler<ArtboardMessage, &FontCache> for ArtboardMessageHandler {
 					let render_data = RenderData::new(ViewMode::Normal, font_cache, None);
 					responses.push_back(
 						FrontendMessage::UpdateDocumentArtboards {
-							svg: self.artboards_graphene_document.render_root(render_data),
+							svg: self.artboards_document.render_root(render_data),
 						}
 						.into(),
 					);

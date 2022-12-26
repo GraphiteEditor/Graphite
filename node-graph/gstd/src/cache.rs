@@ -11,8 +11,6 @@ use std::{
 };
 use storage_map::{StorageMap, StorageMapGuard};
 
-use graphene_api::{DynamicInput, Node};
-
 /// Caches the output of a given Node and acts as a proxy
 /// Automatically resets if it receives different input
 pub struct SmartCacheNode<'n, 'c, NODE: Node + 'c> {
@@ -30,9 +28,10 @@ where
 		input.borrow().hash(&mut hasher);
 		let hash = hasher.finish();
 
-		self.map.get_or_create_with(&hash, ||{
+		self.map.get_or_create_with(&hash, || {
 			trace!("Creating new cache node");
-			CacheNode::new(self.node)})
+			CacheNode::new(self.node)
+		})
 	}
 }
 

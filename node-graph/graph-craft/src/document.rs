@@ -163,12 +163,18 @@ pub struct NodeNetwork {
 	pub inputs: Vec<NodeId>,
 	pub output: NodeId,
 	pub nodes: HashMap<NodeId, DocumentNode>,
+	/// These nodes are replaced with identity nodes when flattening
+	pub disabled: Vec<NodeId>,
+	/// In the case where a new node is chosen as output - what was the origional
+	pub previous_output: Option<NodeId>,
 }
 
 impl NodeNetwork {
 	pub fn map_ids(&mut self, f: impl Fn(NodeId) -> NodeId + Copy) {
 		self.inputs.iter_mut().for_each(|id| *id = f(*id));
 		self.output = f(self.output);
+		self.disabled.iter_mut().for_each(|id| *id = f(*id));
+		self.previous_output = self.previous_output.map(f);
 		let mut empty = HashMap::new();
 		std::mem::swap(&mut self.nodes, &mut empty);
 		self.nodes = empty
@@ -178,6 +184,19 @@ impl NodeNetwork {
 				(f(id), node)
 			})
 			.collect();
+	}
+
+	/// Collect a hashmap of nodes with a list of the nodes that use it as input
+	pub fn collect_outwards_links(&self) -> HashMap<NodeId, Vec<NodeId>> {
+		let mut outwards_links: HashMap<u64, Vec<u64>> = HashMap::new();
+		for (node_id, node) in &self.nodes {
+			for input in &node.inputs {
+				if let NodeInput::Node(ref_id) = input {
+					outwards_links.entry(*ref_id).or_default().push(*node_id)
+				}
+			}
+		}
+		outwards_links
 	}
 
 	pub fn flatten(&mut self, node: NodeId) {
@@ -191,6 +210,13 @@ impl NodeNetwork {
 			.remove_entry(&node)
 			.unwrap_or_else(|| panic!("The node which was supposed to be flattened does not exist in the network, id {} network {:#?}", node, self));
 
+		if self.disabled.contains(&id) {
+			node.implementation = DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode", &[generic!("T")]));
+			node.inputs.drain(1..);
+			self.nodes.insert(id, node);
+			return;
+		}
+
 		match node.implementation {
 			DocumentNodeImplementation::Network(mut inner_network) => {
 				// Connect all network inputs to either the parent network nodes, or newly created value nodes.
@@ -198,6 +224,7 @@ impl NodeNetwork {
 				let new_nodes = inner_network.nodes.keys().cloned().collect::<Vec<_>>();
 				// Copy nodes from the inner network into the parent network
 				self.nodes.extend(inner_network.nodes);
+				self.disabled.extend(inner_network.disabled);
 
 				let mut network_offsets = HashMap::new();
 				for (document_input, network_input) in node.inputs.into_iter().zip(inner_network.inputs.iter()) {
@@ -292,6 +319,7 @@ mod test {
 			]
 			.into_iter()
 			.collect(),
+			..Default::default()
 		}
 	}
 
@@ -324,6 +352,7 @@ mod test {
 			]
 			.into_iter()
 			.collect(),
+			..Default::default()
 		};
 		assert_eq!(network, maped_add);
 	}
@@ -350,6 +379,7 @@ mod test {
 			)]
 			.into_iter()
 			.collect(),
+			..Default::default()
 		};
 		network.flatten_with_fns(1, |self_id, inner_id| self_id * 10 + inner_id, gen_node_id);
 		let flat_network = flat_network();
@@ -467,6 +497,7 @@ mod test {
 			]
 			.into_iter()
 			.collect(),
+			..Default::default()
 		}
 	}
 }

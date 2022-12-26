@@ -5,10 +5,10 @@ extern crate log;
 pub mod boolean_ops;
 /// Contains the [Color](color::Color) type.
 pub mod color;
-/// Contains constant values used by Graphene.
+/// Contains constant values used by this crate.
 pub mod consts;
 pub mod document;
-/// Defines errors that can occur when using Graphene.
+/// Defines errors that can occur when using this crate.
 pub mod error;
 /// Utilities for computing intersections.
 pub mod intersection;

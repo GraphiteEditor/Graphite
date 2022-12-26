@@ -7,8 +7,8 @@ use crate::messages::portfolio::document::utility_types::misc::TargetDocument;
 use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::*;
 
-use graphene::layers::layer_info::LayerDataTypeDiscriminant;
-use graphene::{LayerId, Operation};
+use document_legacy::layers::layer_info::LayerDataTypeDiscriminant;
+use document_legacy::{LayerId, Operation};
 
 use serde::{Deserialize, Serialize};
 

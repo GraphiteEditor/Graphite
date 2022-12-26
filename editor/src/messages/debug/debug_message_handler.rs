@@ -11,7 +11,7 @@ impl MessageHandler<DebugMessage, ()> for DebugMessageHandler {
 	fn process_message(&mut self, message: DebugMessage, _data: (), responses: &mut VecDeque<Message>) {
 		match message {
 			DebugMessage::ToggleTraceLogs => {
-				if let log::LevelFilter::Debug = log::max_level() {
+				if log::max_level() == log::LevelFilter::Debug {
 					log::set_max_level(log::LevelFilter::Trace);
 				} else {
 					log::set_max_level(log::LevelFilter::Debug);

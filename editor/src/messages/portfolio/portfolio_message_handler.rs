@@ -11,13 +11,13 @@ use crate::messages::portfolio::document::utility_types::misc::DocumentRenderMod
 use crate::messages::portfolio::utility_types::ImaginateServerStatus;
 use crate::messages::prelude::*;
 
+use document_legacy::document::pick_safe_imaginate_resolution;
+use document_legacy::layers::layer_info::{LayerDataType, LayerDataTypeDiscriminant};
+use document_legacy::layers::text_layer::Font;
+use document_legacy::{LayerId, Operation as DocumentOperation};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::NodeId;
 use graph_craft::document::{NodeInput, NodeNetwork};
-use graphene::document::pick_safe_imaginate_resolution;
-use graphene::layers::layer_info::{LayerDataType, LayerDataTypeDiscriminant};
-use graphene::layers::text_layer::Font;
-use graphene::{LayerId, Operation as DocumentOperation};
 use graphene_core::raster::Image;
 
 use glam::DVec2;
@@ -151,7 +151,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 				if let Some(active_document) = self.active_document_id.and_then(|id| self.documents.get(&id)) {
 					let copy_val = |buffer: &mut Vec<CopyBufferEntry>| {
 						for layer_path in active_document.selected_layers_without_children() {
-							match (active_document.graphene_document.layer(layer_path).map(|t| t.clone()), *active_document.layer_metadata(layer_path)) {
+							match (active_document.document_legacy.layer(layer_path).map(|t| t.clone()), *active_document.layer_metadata(layer_path)) {
 								(Ok(layer), layer_metadata) => {
 									buffer.push(CopyBufferEntry { layer, layer_metadata });
 								}
@@ -194,7 +194,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 				self.persistent_data.font_cache.insert(Font::new(font_family, font_style), preview_url, data, is_default);
 
 				if let Some(document) = self.active_document_mut() {
-					document.graphene_document.mark_all_layers_of_type_as_dirty(LayerDataTypeDiscriminant::Text);
+					document.document_legacy.mark_all_layers_of_type_as_dirty(LayerDataTypeDiscriminant::Text);
 					responses.push_back(DocumentMessage::RenderDocument.into());
 					responses.push_back(BroadcastEvent::DocumentIsDirty.into());
 				}
@@ -285,7 +285,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 			}
 			PortfolioMessage::LoadDocumentResources { document_id } => {
 				if let Some(document) = self.document_mut(document_id) {
-					document.load_layer_resources(responses, &document.graphene_document.root.data, Vec::new(), document_id);
+					document.load_layer_resources(responses, &document.document_legacy.root.data, Vec::new(), document_id);
 				}
 			}
 			PortfolioMessage::LoadFont { font, is_default } => {
@@ -358,7 +358,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 			PortfolioMessage::Paste { clipboard } => {
 				let shallowest_common_folder = self.active_document().map(|document| {
 					document
-						.graphene_document
+						.document_legacy
 						.shallowest_common_folder(document.selected_layers())
 						.expect("While pasting, the selected layers did not exist while attempting to find the appropriate folder path for insertion")
 				});
@@ -420,7 +420,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 				if let Some(document) = self.active_document() {
 					if let Ok(data) = serde_json::from_str::<Vec<CopyBufferEntry>>(&data) {
 						let shallowest_common_folder = document
-							.graphene_document
+							.document_legacy
 							.shallowest_common_folder(document.selected_layers())
 							.expect("While pasting from serialized, the selected layers did not exist while attempting to find the appropriate folder path for insertion");
 						responses.push_back(DocumentMessage::DeselectAllLayers.into());
@@ -657,6 +657,30 @@ impl PortfolioMessageHandler {
 		self.document_ids.iter().position(|id| id == &document_id).expect("Active document is missing from document ids")
 	}
 
+	/// Execute the network by flattening it and creating a borrow stack. Casts the output to the generic `T`.
+	fn execute_network<T: dyn_any::StaticType>(mut network: NodeNetwork, image: Image) -> Result<T, String> {
+		for node_id in network.nodes.keys().copied().collect::<Vec<_>>() {
+			network.flatten(node_id);
+		}
+
+		let mut proto_network = network.into_proto_network();
+		proto_network.reorder_ids();
+
+		assert_ne!(proto_network.nodes.len(), 0, "No protonodes exist?");
+		let stack = borrow_stack::FixedSizeStack::new(proto_network.nodes.len());
+		for (_id, node) in proto_network.nodes {
+			interpreted_executor::node_registry::push_node(node, &stack);
+		}
+
+		use borrow_stack::BorrowStack;
+		use dyn_any::IntoDynAny;
+		use graphene_core::Node;
+
+		let boxed = unsafe { stack.get().last().unwrap().eval(image.into_dyn()) };
+
+		dyn_any::downcast::<T>(boxed).map(|v| *v)
+	}
+
 	/// Computes an input for a node in the graph
 	fn compute_input<T: dyn_any::StaticType>(old_network: &NodeNetwork, node_path: &[NodeId], mut input_index: usize, image: Cow<Image>) -> Result<T, String> {
 		let mut network = old_network.clone();
@@ -685,11 +709,7 @@ impl PortfolioMessageHandler {
 						.0;
 				}
 				// If the input is just a value, return that value
-				NodeInput::Value { tagged_value, .. } => {
-					return dyn_any::downcast::<T>(tagged_value.clone().to_value().up_box())
-						.map(|v| *v)
-						.ok_or_else(|| "Incorrectly typed value".to_string())
-				}
+				NodeInput::Value { tagged_value, .. } => return dyn_any::downcast::<T>(tagged_value.clone().to_value().up_box()).map(|v| *v),
 				// If the input is from a node, set the node to be the output (so that is what is evaluated)
 				NodeInput::Node(n) => {
 					inner_network.output = *n;
@@ -698,26 +718,7 @@ impl PortfolioMessageHandler {
 			}
 		}
 
-		let stack = borrow_stack::FixedSizeStack::new(256);
-		for node_id in old_network.nodes.keys() {
-			network.flatten(*node_id);
-		}
-
-		let mut proto_network = network.into_proto_network();
-		proto_network.reorder_ids();
-
-		assert_ne!(proto_network.nodes.len(), 0, "No protonodes exist?");
-		for (_id, node) in proto_network.nodes {
-			interpreted_executor::node_registry::push_node(node, &stack);
-		}
-
-		use borrow_stack::BorrowStack;
-		use dyn_any::IntoDynAny;
-		use graphene_core::Node;
-
-		let boxed = unsafe { stack.get().last().unwrap().eval(image.into_owned().into_dyn()) };
-
-		dyn_any::downcast::<T>(boxed).map(|v| *v).ok_or_else(|| "Incorrectly typed output".to_string())
+		Self::execute_network(network, image.into_owned())
 	}
 
 	/// Encodes an image into a format using the image crate
@@ -760,7 +761,7 @@ impl PortfolioMessageHandler {
 
 		// Get the node graph layer
 		let document = self.documents.get_mut(&document_id).ok_or_else(|| "Invalid document".to_string())?;
-		let layer = document.graphene_document.layer(&layer_path).map_err(|e| format!("No layer: {e:?}"))?;
+		let layer = document.document_legacy.layer(&layer_path).map_err(|e| format!("No layer: {e:?}"))?;
 		let node_graph_frame = match &layer.data {
 			LayerDataType::NodeGraphFrame(frame) => Ok(frame),
 			_ => Err("Invalid layer type".to_string()),
@@ -775,12 +776,12 @@ impl PortfolioMessageHandler {
 
 			let resolution: Option<glam::DVec2> = Self::compute_input(&network, &imaginate_node, get("Resolution"), Cow::Borrowed(&image))?;
 			let resolution = resolution.unwrap_or_else(|| {
-				let transform = document.graphene_document.root.transform.inverse() * document.graphene_document.multiply_transforms(&layer_path).unwrap();
+				let transform = document.document_legacy.root.transform.inverse() * document.document_legacy.multiply_transforms(&layer_path).unwrap();
 				let (x, y) = pick_safe_imaginate_resolution((transform.transform_vector2(DVec2::new(1., 0.)).length(), transform.transform_vector2(DVec2::new(0., 1.)).length()));
 				DVec2::new(x as f64, y as f64)
 			});
 
-			let transform = document.graphene_document.root.transform.inverse() * document.graphene_document.multiply_transforms(&layer_path).unwrap();
+			let transform = document.document_legacy.root.transform.inverse() * document.document_legacy.multiply_transforms(&layer_path).unwrap();
 			let parameters = ImaginateGenerationParameters {
 				seed: Self::compute_input::<f64>(&network, &imaginate_node, get("Seed"), Cow::Borrowed(&image))? as u64,
 				resolution: resolution.as_uvec2().into(),
@@ -822,8 +823,8 @@ impl PortfolioMessageHandler {
 					// Render the masking layer within the node graph frame
 					let old_transforms = document.remove_document_transform();
 					let mask_is_some = mask_path.is_some();
-					let mask_image = mask_path.filter(|mask_layer_path| document.graphene_document.layer(mask_layer_path).is_ok()).map(|mask_layer_path| {
-						let render_mode = DocumentRenderMode::LayerCutout(&mask_layer_path, graphene::color::Color::WHITE);
+					let mask_image = mask_path.filter(|mask_layer_path| document.document_legacy.layer(mask_layer_path).is_ok()).map(|mask_layer_path| {
+						let render_mode = DocumentRenderMode::LayerCutout(&mask_layer_path, document_legacy::color::Color::WHITE);
 						let svg = document.render_document(size, transform.inverse(), &self.persistent_data, render_mode);
 
 						ImaginateMaskImage { svg, size }
@@ -860,7 +861,7 @@ impl PortfolioMessageHandler {
 				.into(),
 			);
 		} else {
-			let mut image: Image = Self::compute_input(&network, &[1], 0, Cow::Owned(image))?;
+			let mut image: Image = Self::execute_network(network, image)?;
 
 			// If no image was generated, use the input image
 			if image.width == 0 || image.height == 0 {

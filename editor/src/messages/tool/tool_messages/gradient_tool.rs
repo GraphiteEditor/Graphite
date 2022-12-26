@@ -9,15 +9,15 @@ use crate::messages::tool::common_functionality::snapping::SnapManager;
 use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 
-use graphene::color::Color;
-use graphene::intersection::Quad;
-use graphene::layers::layer_info::Layer;
-use graphene::layers::style::{Fill, Gradient, GradientType, PathStyle, Stroke};
-use graphene::LayerId;
-use graphene::Operation;
+use document_legacy::color::Color;
+use document_legacy::intersection::Quad;
+use document_legacy::layers::layer_info::Layer;
+use document_legacy::layers::style::{Fill, Gradient, GradientType, PathStyle, Stroke};
+use document_legacy::LayerId;
+use document_legacy::Operation;
 
+use document_legacy::layers::text_layer::FontCache;
 use glam::{DAffine2, DVec2};
-use graphene::layers::text_layer::FontCache;
 use serde::{Deserialize, Serialize};
 
 #[derive(Default)]
@@ -152,7 +152,7 @@ fn gradient_space_transform(path: &[LayerId], layer: &Layer, document: &Document
 	let bounds = layer.aabb_for_transform(DAffine2::IDENTITY, font_cache).unwrap();
 	let bound_transform = DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
 
-	let multiplied = document.graphene_document.multiply_transforms(path).unwrap();
+	let multiplied = document.document_legacy.multiply_transforms(path).unwrap();
 
 	multiplied * bound_transform
 }
@@ -385,10 +385,10 @@ impl Fsm for GradientToolFsmState {
 					}
 
 					for path in document.selected_visible_layers() {
-						if !document.graphene_document.multiply_transforms(path).unwrap().inverse().is_finite() {
+						if !document.document_legacy.multiply_transforms(path).unwrap().inverse().is_finite() {
 							continue;
 						}
-						let layer = document.graphene_document.layer(path).unwrap();
+						let layer = document.document_legacy.layer(path).unwrap();
 
 						if let Ok(Fill::Gradient(gradient)) = layer.style().map(|style| style.fill()) {
 							let dragging = tool_data
@@ -445,7 +445,7 @@ impl Fsm for GradientToolFsmState {
 					} else {
 						let tolerance = DVec2::splat(SELECTION_TOLERANCE);
 						let quad = Quad::from_box([input.mouse.position - tolerance, input.mouse.position + tolerance]);
-						let intersection = document.graphene_document.intersects_quad_root(quad, font_cache).pop();
+						let intersection = document.document_legacy.intersects_quad_root(quad, font_cache).pop();
 
 						if let Some(intersection) = intersection {
 							if !document.selected_layers_contains(&intersection) {
@@ -454,7 +454,7 @@ impl Fsm for GradientToolFsmState {
 								responses.push_back(DocumentMessage::SetSelectedLayers { replacement_selected_layers }.into());
 							}
 
-							let layer = document.graphene_document.layer(&intersection).unwrap();
+							let layer = document.document_legacy.layer(&intersection).unwrap();
 
 							let gradient = Gradient::new(
 								DVec2::ZERO,

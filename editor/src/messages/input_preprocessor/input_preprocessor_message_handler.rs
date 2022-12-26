@@ -3,7 +3,8 @@ use crate::messages::input_mapper::utility_types::input_mouse::{MouseKeys, Mouse
 use crate::messages::portfolio::utility_types::KeyboardPlatformLayout;
 use crate::messages::prelude::*;
 
-pub use graphene::DocumentResponse;
+pub use document_legacy::DocumentResponse;
+pub use document_legacy::Operation;
 
 use glam::DVec2;
 
@@ -34,7 +35,7 @@ impl MessageHandler<InputPreprocessorMessage, KeyboardPlatformLayout> for InputP
 					self.viewport_bounds = bounds;
 
 					responses.push_back(
-						graphene::Operation::TransformLayer {
+						Operation::TransformLayer {
 							path: vec![],
 							transform: glam::DAffine2::from_translation(translation).to_cols_array(),
 						}
@@ -42,7 +43,7 @@ impl MessageHandler<InputPreprocessorMessage, KeyboardPlatformLayout> for InputP
 					);
 					responses.push_back(
 						DocumentMessage::Artboard(
-							graphene::Operation::TransformLayer {
+							Operation::TransformLayer {
 								path: vec![],
 								transform: glam::DAffine2::from_translation(translation).to_cols_array(),
 							}
