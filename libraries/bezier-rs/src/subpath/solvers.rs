@@ -34,8 +34,10 @@ impl Subpath {
 
 	/// Calculates the intersection points the subpath has with a given line and returns a list of parameteric `t`-values.
 	/// This function expects the following:
-	/// - other: a [Bezier] curve to check intersections against
-	/// - error: an optional f64 value to provide an error bound
+	/// - `other`: a [Bezier] curve to check intersections against
+	/// - `error`: an optional f64 value to provide an error bound
+	/// - minimum_seperation: the minimum difference 2 adjacent `t`-values must have, when comparing adjacent `t`-values, if 2 `t`-values do not satisfy the
+	/// condition, the function takes the larger `t`-value of the 2
 	pub fn intersections(&self, other: &Bezier, error: Option<f64>, minimum_seperation: Option<f64>) -> Vec<f64> {
 		// TODO: account for either euclidean or parametric type
 		let number_of_curves = self.len_segments() as f64;
@@ -62,6 +64,10 @@ impl Subpath {
 		intersection_t_values
 	}
 
+	/// Returns a list of `t` values that correspond to the self intersection points of the subpath. For each intersection point, the returned `t` value is the smaller of the two that correspond to the point.
+	/// - `error` - For intersections with non-linear beziers, `error` defines the threshold for bounding boxes to be considered an intersection point.
+	/// - `minimum_seperation`: the minimum difference 2 adjacent `t`-values must have, when comparing adjacent t-values, if 2 `t`-values do not satisfy the
+	/// condition, the function takes the larger `t`-value
 	pub fn self_intersections(&self, error: Option<f64>, minimum_seperation: Option<f64>) -> Vec<f64> {
 		let mut intersections_vec = Vec::new();
 		let n = self.len_segments();
