@@ -12,7 +12,15 @@
 		</div>
 		<div class="example-row">
 			<div v-for="(example, index) in examples" :key="index">
-				<SubpathExample :title="example.title" :triples="example.triples" :closed="example.closed" :callback="callback" :sliderOptions="sliderOptions" :computeType="computeTypeChoice" />
+				<SubpathExample 
+					:title="example.title"
+					:triples="example.triples"
+					:closed="example.closed"
+					:callback="callback"
+					:sliderOptions="sliderOptions"
+					:triggerOnMouseMove="triggerOnMouseMove"
+					:computeType="computeTypeChoice"
+				/>
 			</div>
 		</div>
 	</div>
@@ -32,6 +40,7 @@ export default defineComponent({
 		name: { type: String as PropType<string>, required: true },
 		callback: { type: Function as PropType<SubpathCallback>, required: true },
 		sliderOptions: { type: Array as PropType<Array<SliderOption>>, default: () => [] },
+		triggerOnMouseMove: { type: Boolean as PropType<boolean>, default: false },
 		chooseComputeType: { type: Boolean as PropType<boolean>, default: false },
 	},
 	data() {
