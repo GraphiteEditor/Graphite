@@ -175,6 +175,7 @@ mod test {
 	use super::*;
 	use graph_craft::concrete;
 	use graph_craft::generic;
+	use graph_craft::proto::*;
 
 	fn inc_network() -> ProtoNetwork {
 		let mut construction_network = ProtoNetwork {
