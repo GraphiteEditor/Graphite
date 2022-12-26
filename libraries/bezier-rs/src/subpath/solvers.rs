@@ -71,6 +71,7 @@ impl Subpath {
 	pub fn self_intersections(&self, error: Option<f64>, minimum_seperation: Option<f64>) -> Vec<f64> {
 		let mut intersections_vec = Vec::new();
 		let n = self.len_segments();
+		// TODO: optimization opportunity - this for-loop currently compares all intersections with all curve-segments in the subpath collection
 		for i in 0..n {
 			let other = self.iter().nth(i).unwrap();
 			intersections_vec.extend(other.self_intersections(error).iter().map(|value| (value[0] + (i as f64)) / (n as f64)));
