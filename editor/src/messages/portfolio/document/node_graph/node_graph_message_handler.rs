@@ -638,7 +638,10 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 							node.inputs.extend(((node.inputs.len() - 1)..input_index).map(|_| NodeInput::Network));
 						}
 						node.inputs[input_index] = NodeInput::Value { tagged_value: value, exposed: false };
-						responses.push_back(DocumentMessage::NodeGraphFrameGenerate.into());
+						responses.push_back(PropertiesPanelMessage::ResendActiveProperties.into());
+						if node.name != "Imaginate" || input_index == 0 {
+							responses.push_back(DocumentMessage::NodeGraphFrameGenerate.into());
+						}
 					}
 				}
 			}
