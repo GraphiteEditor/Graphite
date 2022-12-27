@@ -162,8 +162,8 @@ impl WasmSubpath {
 			.self_intersections(None, None)
 			.iter()
 			.map(|intersection_t| {
-				let point = &self.0.evaluate(ComputeType::Parametric(*intersection_t));
-				draw_circle(*point, 4., RED, 1.5, WHITE)
+				let point = self.0.evaluate(ComputeType::Parametric(*intersection_t));
+				draw_circle(point, 4., RED, 1.5, WHITE)
 			})
 			.fold(String::new(), |acc, item| format!("{acc}{item}"));
 
