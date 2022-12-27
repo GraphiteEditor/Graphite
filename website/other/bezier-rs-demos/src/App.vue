@@ -606,7 +606,8 @@ export default defineComponent({
 					callback: (subpath: WasmSubpathInstance, options: Record<string, number>, _: undefined, computeType: ComputeType): string =>
 						subpath.add_manipulator_group(options.computeArgument, computeType),
 					sliderOptions: [{ ...tSliderOptions, variable: "computeArgument" }],
-					chooseComputeType: true,
+					// TODO: Uncomment this after implementing the Euclidean version
+					// chooseComputeType: true,
 				},
 				{
 					name: "Length",
