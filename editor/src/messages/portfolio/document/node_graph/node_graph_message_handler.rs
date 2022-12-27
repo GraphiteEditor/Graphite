@@ -175,12 +175,18 @@ impl NodeGraphMessageHandler {
 		if let Some(network) = self.get_active_network_mut(document) {
 			let mut widgets = Vec::new();
 
-			// Show an enable or disable nodes button if there is a selection
-			if !self.selected_nodes.is_empty() {
-				let is_enabled = self.selected_nodes.iter().any(|id| !network.disabled.contains(id));
+			// Don't allow disabling input or output nodes
+			let mut selected_nodes = self.selected_nodes.iter().filter(|&&id| !network.inputs.contains(&id) && network.original_output() != id);
+
+			// If there is at least one other selected node then show the disable or enable button
+			if selected_nodes.next().is_some() {
+				// Check if all of the selected nodes are disabled
+				let is_disabled = self.selected_nodes.iter().any(|id| network.disabled.contains(id));
+
+				// Generate the enable or disable button accordingly
 				let enable_button = WidgetHolder::new(Widget::TextButton(TextButton {
-					label: if is_enabled { "Disable" } else { "Enable" }.to_string(),
-					on_update: WidgetCallback::new(move |_| NodeGraphMessage::SetSelectedEnabled { enabled: !is_enabled }.into()),
+					label: if is_disabled { "Enable" } else { "Disable" }.to_string(),
+					on_update: WidgetCallback::new(move |_| NodeGraphMessage::SetSelectedEnabled { enabled: is_disabled }.into()),
 					..Default::default()
 				}));
 				widgets.push(enable_button);
@@ -188,8 +194,10 @@ impl NodeGraphMessageHandler {
 
 			// If only one node is selected then show the preview or stop previewing button
 			if self.selected_nodes.len() == 1 {
+				// Is this node the current output
 				let is_output = network.output == self.selected_nodes[0];
-				// Don't show stop previewing on the output node
+
+				// Don't show stop previewing button on the origional output node
 				if !(is_output && network.previous_output.filter(|&id| id != self.selected_nodes[0]).is_none()) {
 					let output_button = WidgetHolder::new(Widget::TextButton(TextButton {
 						label: if is_output { "Stop Previewing" } else { "Preview" }.to_string(),
@@ -675,9 +683,12 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 			NodeGraphMessage::SetSelectedEnabled { enabled } => {
 				if let Some(network) = self.get_active_network_mut(document) {
 					if enabled {
+						// Remove all selected nodes from the disabled list
 						network.disabled.retain(|id| !self.selected_nodes.contains(id));
 					} else {
-						network.disabled.extend(&self.selected_nodes);
+						let original_output = network.original_output();
+						// Add all selected nodes to the disabled list (excluding input or output nodes)
+						network.disabled.extend(self.selected_nodes.iter().filter(|&id| !network.inputs.contains(id) && original_output != *id));
 					}
 					Self::send_graph(network, responses);
 				}
