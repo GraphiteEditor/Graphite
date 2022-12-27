@@ -523,14 +523,17 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 			}
 			NodeGraphMessage::DuplicateSelectedNodes => {
 				if let Some(network) = self.get_active_network_mut(document) {
-					self.selected_nodes.clear();
 					let new_ids = &self.selected_nodes.iter().map(|&id| (id, crate::application::generate_uuid())).collect();
+					self.selected_nodes.clear();
+
+					// Copy the selected nodes
 					let copied_nodes = Self::copy_nodes(network, new_ids).collect::<Vec<_>>();
 					for (new_id, mut node) in copied_nodes {
-						// Shift duplicated nodes
+						// Shift duplicated node
 						node.metadata.position.0 += 2;
 						node.metadata.position.1 += 2;
 
+						// Add new node to the list
 						self.selected_nodes.push(new_id);
 						network.nodes.insert(new_id, node);
 					}
