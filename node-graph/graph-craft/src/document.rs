@@ -94,6 +94,28 @@ impl DocumentNode {
 			unreachable!("tried to resolve not flattened node on resolved node");
 		}
 	}
+
+	/// Converts all node id inputs to a new id based on a HashMap.
+	///
+	/// If the node is not in the hashmap then a default input is found based on the node name and input index.
+	pub fn map_ids<P>(mut self, default_input: P, new_ids: &HashMap<NodeId, NodeId>) -> Self
+	where
+		P: Fn(String, usize) -> Option<NodeInput>,
+	{
+		for (index, input) in self.inputs.iter_mut().enumerate() {
+			let &mut NodeInput::Node(id) = input else {
+				continue;
+			};
+			if let Some(&new_id) = new_ids.get(&id) {
+				*input = NodeInput::Node(new_id);
+			} else if let Some(new_input) = default_input(self.name.clone(), index) {
+				*input = new_input;
+			} else {
+				warn!("Node does not exist in library with that many inputs");
+			}
+		}
+		self
+	}
 }
 
 #[derive(Clone, Debug)]

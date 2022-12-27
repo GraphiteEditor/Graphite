@@ -352,6 +352,22 @@ impl NodeGraphMessageHandler {
 			false
 		}
 	}
+
+	/// Gets the default node input based on the node name and the input index
+	fn default_node_input(name: String, index: usize) -> Option<NodeInput> {
+		resolve_document_node_type(&name)
+			.and_then(|node| node.inputs.get(index))
+			.map(|input: &DocumentInputType| input.default.clone())
+	}
+
+	/// Returns an iterator of nodes to be copied and their ids, excluding output and input nodes
+	fn copy_nodes<'a>(network: &'a NodeNetwork, new_ids: &'a HashMap<NodeId, NodeId>) -> impl Iterator<Item = (NodeId, DocumentNode)> + 'a {
+		new_ids
+			.iter()
+			.filter(|&(&id, _)| id != network.output && !network.inputs.contains(&id))
+			.filter_map(|(&id, &new)| network.nodes.get(&id).map(|node| (new, node.clone())))
+			.map(move |(new, node)| (new, node.map_ids(Self::default_node_input, new_ids)))
+	}
 }
 
 impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageHandler)> for NodeGraphMessageHandler {
@@ -397,16 +413,12 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 				};
 
 				// Collect the selected nodes
-				let selected_nodes = self
-					.selected_nodes
-					.iter()
-					.filter(|&&id| !network.inputs.contains(&id) && network.output != id) // Don't copy input or output nodes
-					.filter_map(|id| network.nodes.get(id))
-					.collect::<Vec<_>>();
+				let new_ids = &self.selected_nodes.iter().copied().enumerate().map(|(new, old)| (old, new as NodeId)).collect();
+				let copied_nodes: Vec<_> = Self::copy_nodes(network, new_ids).collect();
 
 				// Prefix to show that this is nodes
 				let mut copy_text = String::from("graphite/nodes: ");
-				copy_text += &serde_json::to_string(&selected_nodes).expect("Could not serialize paste");
+				copy_text += &serde_json::to_string(&copied_nodes).expect("Could not serialize paste");
 
 				responses.push_back(FrontendMessage::TriggerTextCopy { copy_text }.into());
 			}
@@ -511,24 +523,17 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 			}
 			NodeGraphMessage::DuplicateSelectedNodes => {
 				if let Some(network) = self.get_active_network_mut(document) {
-					let mut new_selected = Vec::new();
-					for &id in &self.selected_nodes {
-						// Don't allow copying input or output nodes.
-						if id != network.output && !network.inputs.contains(&id) {
-							if let Some(node) = network.nodes.get(&id) {
-								let new_id = crate::application::generate_uuid();
-								let mut node = node.clone();
+					self.selected_nodes.clear();
+					let new_ids = &self.selected_nodes.iter().map(|&id| (id, crate::application::generate_uuid())).collect();
+					let copied_nodes = Self::copy_nodes(network, new_ids).collect::<Vec<_>>();
+					for (new_id, mut node) in copied_nodes {
+						// Shift duplicated nodes
+						node.metadata.position.0 += 2;
+						node.metadata.position.1 += 2;
 
-								// Shift duplicated nodes
-								node.metadata.position.0 += 2;
-								node.metadata.position.1 += 2;
-
-								network.nodes.insert(new_id, node);
-								new_selected.push(new_id);
-							}
-						}
+						self.selected_nodes.push(new_id);
+						network.nodes.insert(new_id, node);
 					}
-					self.selected_nodes = new_selected;
 					Self::send_graph(network, responses);
 					self.update_selected(document, responses);
 				}
@@ -605,7 +610,7 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 					return;
 				};
 
-				let data = match serde_json::from_str::<Vec<DocumentNode>>(&serialized_nodes) {
+				let data = match serde_json::from_str::<Vec<(NodeId, DocumentNode)>>(&serialized_nodes) {
 					Ok(d) => d,
 					Err(e) => {
 						warn!("Invalid node data {e:?}");
@@ -614,12 +619,14 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 				};
 
 				self.selected_nodes.clear();
-				for node in data {
-					let id = crate::application::generate_uuid();
-					network.nodes.insert(id, node);
+
+				let new_ids: HashMap<_, _> = data.iter().map(|&(id, _)| (id, crate::application::generate_uuid())).collect();
+				for (old_id, node) in data {
+					let new_id = *new_ids.get(&old_id).unwrap();
+					network.nodes.insert(new_id, node.map_ids(Self::default_node_input, &new_ids));
 
 					// Select the newly pasted node
-					self.selected_nodes.push(id);
+					self.selected_nodes.push(new_id);
 				}
 
 				Self::send_graph(network, responses);
