@@ -161,6 +161,17 @@ where
 		*dyn_any::downcast(output).expect("DowncastBothNode Output")
 	}
 }
+impl<'n, N, I: 'n + StaticType, O: 'n + StaticType> Node<I> for &DowncastBothNode<N, I, O>
+where
+	N: Node<Any<'n>, Output = Any<'n>> + Copy,
+{
+	type Output = O;
+	fn eval(self, input: I) -> Self::Output {
+		let input = Box::new(input) as Box<dyn DynAny>;
+		let output = self.0.eval(input);
+		*dyn_any::downcast(output).expect("DowncastBothNode Output")
+	}
+}
 impl<'n, N, I: StaticType, O: StaticType> DowncastBothNode<N, I, O>
 where
 	N: Node<Any<'n>>,

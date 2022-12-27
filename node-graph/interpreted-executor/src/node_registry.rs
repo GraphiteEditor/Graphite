@@ -4,7 +4,7 @@ use graphene_core::generic::FnNode;
 use graphene_core::ops::{AddNode, IdNode};
 use graphene_core::raster::color::Color;
 use graphene_core::raster::{Image, MapFnIterator};
-use graphene_core::structural::{ConsNode, Then};
+use graphene_core::structural::{ComposeNode, ConsNode, Then};
 use graphene_core::vector::subpath::Subpath;
 use graphene_core::Node;
 use graphene_std::any::DowncastBothNode;
@@ -454,28 +454,28 @@ static NODE_REGISTRY: &[(NodeIdentifier, NodeConstructor)] = &[
 	),
 	(NodeIdentifier::new("graphene_core::raster::BlurNode", &[]), |proto_node, stack| {
 		let node_id = proto_node.input.unwrap_node() as usize;
-		use graphene_core::raster::{MapNode, MapSndNode};
+		use graphene_core::raster::{CollectNode, ImageSlice, ImageWindowIterator, MapNode, MapSndNode, WeightedAvgNode};
 		if let ConstructionArgs::Nodes(blur_args) = proto_node.construction_args {
 			stack.push_fn(move |nodes| {
-				let pre_node = nodes.get(node_id).unwrap();
+				let image = nodes.get(node_id).unwrap();
 				let radius = nodes.get(blur_args[0] as usize).unwrap();
 				let sigma = nodes.get(blur_args[1] as usize).unwrap();
 
 				let radius = DowncastBothNode::<_, (), u32>::new(radius);
 				let sigma = DowncastBothNode::<_, (), f32>::new(sigma);
-				let window = graphene_core::raster::WindowNode::new(radius, pre_node);
+				let image = DowncastBothNode::<_, (), ImageSlice<'static>>::new(image);
+				let window = graphene_core::raster::WindowNode::new(radius, image);
 				let pos_to_dist = MapSndNode::new(graphene_core::raster::DistanceNode);
-				let distance = window.then(MapNode::new(pos_to_dist));
-				let map_gaussian = MapSndNode::new(graphene_core::raster::GaussianNode::new(sigma));
-				let map_distances: MapNode<_, MapSndNode<_>, Color, Color> = MapNode::new(map_gaussian);
+				let distance = window.then(&MapNode::new(pos_to_dist));
+				let map_gaussian = &MapSndNode::new(graphene_core::raster::GaussianNode::new(sigma));
+				let map_distances: &MapNode<_, &MapSndNode<_>, _, _> = &MapNode::new(&map_gaussian);
 				let gaussian_iter = distance.then(map_distances);
-				let avg = graphene_core::raster::WeightedAvgNode::new();
+				let avg = gaussian_iter.then(WeightedAvgNode::new());
 				let blur_iter = MapNode::new(avg);
-				let blur = graphene_core::raster::ImageIndexIterNode {}.then(blur_iter);
-				let collect = graphene_core::raster::CollectNode {};
-				let vec = blur.then(collect);
-				let node: DynAnyNode<_, Vec<_>, _, _> = DynAnyNode::new(vec);
-				let node = (pre_node).then(node);
+				let blur = image.then(graphene_core::raster::ImageIndexIterNode).then(blur_iter);
+				let collect = CollectNode {};
+				let vec: ComposeNode<&ComposeNode<_, _, _>, &CollectNode, ()> = ComposeNode::new(&blur, &collect);
+				let node: DynAnyNode<_, (), Vec<Color>, Vec<Color>> = DynAnyNode::new(vec);
 				node.into_type_erased()
 			})
 		} else {

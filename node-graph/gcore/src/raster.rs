@@ -13,12 +13,12 @@ fn grayscale_color_node(input: Color) -> Color {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct MapNode<Iter, MapFn, Item, Out> {
+pub struct MapNode<Iter, MapFn: Node<Item, Output = Out>, Item, Out> {
 	map_fn: MapFn,
 	_phantom: core::marker::PhantomData<(Iter, Item, Out)>,
 }
 
-impl<Iter, MapFn, Item, Out> MapNode<Iter, MapFn, Item, Out> {
+impl<Iter, MapFn: Node<Item, Output = Out>, Item, Out> MapNode<Iter, MapFn, Item, Out> {
 	pub fn new(map_fn: MapFn) -> Self {
 		Self {
 			map_fn,
@@ -27,7 +27,15 @@ impl<Iter, MapFn, Item, Out> MapNode<Iter, MapFn, Item, Out> {
 	}
 }
 
-impl<Iter: Iterator<Item = Item>, MapFn: Node<Item>, Item, Out> Node<Iter> for MapNode<Iter, MapFn, Item, Out> {
+impl<Iter: Iterator<Item = Item>, MapFn: Node<Item, Output = Out>, Item, Out> Node<Iter> for MapNode<Iter, MapFn, Item, Out> {
+	type Output = MapFnIterator<Iter, MapFn>;
+
+	fn eval(self, input: Iter) -> Self::Output {
+		MapFnIterator::new(input, self.map_fn)
+	}
+}
+
+impl<Iter: Iterator<Item = Item>, MapFn: Node<Item, Output = Out> + Copy, Item, Out> Node<Iter> for &MapNode<Iter, MapFn, Item, Out> {
 	type Output = MapFnIterator<Iter, MapFn>;
 
 	fn eval(self, input: Iter) -> Self::Output {
@@ -65,7 +73,7 @@ where
 	}
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default)]
 pub struct WeightedAvgNode<Iter> {
 	_phantom: core::marker::PhantomData<Iter>,
 }
@@ -76,22 +84,22 @@ impl<Iter> WeightedAvgNode<Iter> {
 	}
 }
 
-fn weighted_avg_node<Iter: Iterator<Item = (Color, f32)> + Copy>(input: Iter) -> Color {
-	let total_weight: f32 = input.map(|(_, weight)| weight).sum();
-	let total_r: f32 = input.map(|(color, weight)| color.r() * weight).sum();
-	let total_g: f32 = input.map(|(color, weight)| color.g() * weight).sum();
-	let total_b: f32 = input.map(|(color, weight)| color.b() * weight).sum();
+fn weighted_avg_node<Iter: Iterator<Item = (Color, f32)> + Clone>(input: Iter) -> Color {
+	let total_weight: f32 = input.clone().map(|(_, weight)| weight).sum();
+	let total_r: f32 = input.clone().map(|(color, weight)| color.r() * weight).sum();
+	let total_g: f32 = input.clone().map(|(color, weight)| color.g() * weight).sum();
+	let total_b: f32 = input.clone().map(|(color, weight)| color.b() * weight).sum();
 	let total_a: f32 = input.map(|(color, weight)| color.a() * weight).sum();
 	Color::from_rgbaf32_unchecked(total_r / total_weight, total_g / total_weight, total_b / total_weight, total_a / total_weight)
 }
 
-impl<Iter: Iterator<Item = (Color, f32)> + Copy> Node<Iter> for WeightedAvgNode<Iter> {
+impl<Iter: Iterator<Item = (Color, f32)> + Clone> Node<Iter> for WeightedAvgNode<Iter> {
 	type Output = Color;
 	fn eval(self, input: Iter) -> Self::Output {
 		weighted_avg_node(input)
 	}
 }
-impl<Iter: Iterator<Item = (Color, f32)> + Copy> Node<Iter> for &WeightedAvgNode<Iter> {
+impl<Iter: Iterator<Item = (Color, f32)> + Clone> Node<Iter> for &WeightedAvgNode<Iter> {
 	type Output = Color;
 	fn eval(self, input: Iter) -> Self::Output {
 		weighted_avg_node(input)
@@ -121,9 +129,8 @@ fn distance_node(input: (i32, i32)) -> f32 {
 pub struct ImageIndexIterNode;
 
 #[node_macro::node_fn(ImageIndexIterNode)]
-fn image_index_iter_node(input: (i32, i32)) -> core::ops::Range<u32> {
-	let (width, height) = input;
-	0..(width * height) as u32
+fn image_index_iter_node(input: ImageSlice<'static>) -> core::ops::Range<u32> {
+	0..(input.width * input.height)
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -184,7 +191,7 @@ impl<'a> ImageWindowIterator<'a> {
 }
 
 impl<'a> Iterator for ImageWindowIterator<'a> {
-	type Item = (Color, (u32, u32));
+	type Item = (Color, (i32, i32));
 	fn next(&mut self) -> Option<Self::Item> {
 		let start_x = self.index as i32 % self.image.width as i32;
 		let start_y = self.index as i32 / self.image.width as i32;
@@ -201,7 +208,7 @@ impl<'a> Iterator for ImageWindowIterator<'a> {
 		if self.y > max_y {
 			return None;
 		}
-		Some((self.image.data[(self.x + self.y * self.image.width) as usize], (self.x, self.y)))
+		Some((self.image.data[(self.x + self.y * self.image.width) as usize], (self.x as i32 - start_x, self.y as i32 - start_y)))
 	}
 }
 
