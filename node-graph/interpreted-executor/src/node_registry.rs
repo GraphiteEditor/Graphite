@@ -3,7 +3,7 @@ use glam::DVec2;
 use graphene_core::generic::FnNode;
 use graphene_core::ops::{AddNode, IdNode};
 use graphene_core::raster::color::Color;
-use graphene_core::raster::Image;
+use graphene_core::raster::{Image, MapFnIterator};
 use graphene_core::structural::{ConsNode, Then};
 use graphene_core::vector::subpath::Subpath;
 use graphene_core::Node;
@@ -452,6 +452,36 @@ static NODE_REGISTRY: &[(NodeIdentifier, NodeConstructor)] = &[
 			}
 		},
 	),
+	(NodeIdentifier::new("graphene_core::raster::BlurNode", &[]), |proto_node, stack| {
+		let node_id = proto_node.input.unwrap_node() as usize;
+		use graphene_core::raster::{MapNode, MapSndNode};
+		if let ConstructionArgs::Nodes(blur_args) = proto_node.construction_args {
+			stack.push_fn(move |nodes| {
+				let pre_node = nodes.get(node_id).unwrap();
+				let radius = nodes.get(blur_args[0] as usize).unwrap();
+				let sigma = nodes.get(blur_args[1] as usize).unwrap();
+
+				let radius = DowncastBothNode::<_, (), u32>::new(radius);
+				let sigma = DowncastBothNode::<_, (), f32>::new(sigma);
+				let window = graphene_core::raster::WindowNode::new(radius, pre_node);
+				let pos_to_dist = MapSndNode::new(graphene_core::raster::DistanceNode);
+				let distance = window.then(MapNode::new(pos_to_dist));
+				let map_gaussian = MapSndNode::new(graphene_core::raster::GaussianNode::new(sigma));
+				let map_distances: MapNode<_, MapSndNode<_>, Color, Color> = MapNode::new(map_gaussian);
+				let gaussian_iter = distance.then(map_distances);
+				let avg = graphene_core::raster::WeightedAvgNode::new();
+				let blur_iter = MapNode::new(avg);
+				let blur = graphene_core::raster::ImageIndexIterNode {}.then(blur_iter);
+				let collect = graphene_core::raster::CollectNode {};
+				let vec = blur.then(collect);
+				let node: DynAnyNode<_, Vec<_>, _, _> = DynAnyNode::new(vec);
+				let node = (pre_node).then(node);
+				node.into_type_erased()
+			})
+		} else {
+			unimplemented!()
+		}
+	}),
 	(NodeIdentifier::new("graphene_std::vector::generator_nodes::UnitCircleGenerator", &[]), |_proto_node, stack| {
 		stack.push_fn(|_nodes| DynAnyNode::new(graphene_std::vector::generator_nodes::UnitCircleGenerator).into_type_erased())
 	}),
