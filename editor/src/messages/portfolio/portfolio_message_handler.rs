@@ -789,17 +789,17 @@ impl PortfolioMessageHandler {
 				sampling_method: Self::compute_input::<ImaginateSamplingMethod>(&network, &imaginate_node, get("Sampling Method"), Cow::Borrowed(&image))?
 					.api_value()
 					.to_string(),
-				text_guidance: Self::compute_input(&network, &imaginate_node, get("Text Guidance"), Cow::Borrowed(&image))?,
-				text_prompt: Self::compute_input(&network, &imaginate_node, get("Text Prompt"), Cow::Borrowed(&image))?,
+				text_guidance: Self::compute_input(&network, &imaginate_node, get("Prompt Guidance"), Cow::Borrowed(&image))?,
+				text_prompt: Self::compute_input(&network, &imaginate_node, get("Prompt"), Cow::Borrowed(&image))?,
 				negative_prompt: Self::compute_input(&network, &imaginate_node, get("Negative Prompt"), Cow::Borrowed(&image))?,
 				image_creativity: Some(Self::compute_input::<f64>(&network, &imaginate_node, get("Image Creativity"), Cow::Borrowed(&image))? / 100.),
 				restore_faces: Self::compute_input(&network, &imaginate_node, get("Improve Faces"), Cow::Borrowed(&image))?,
 				tiling: Self::compute_input(&network, &imaginate_node, get("Tiling"), Cow::Borrowed(&image))?,
 			};
-			let use_base_image = Self::compute_input::<bool>(&network, &imaginate_node, get("Use Base Image"), Cow::Borrowed(&image))?;
+			let use_base_image = Self::compute_input::<bool>(&network, &imaginate_node, get("Adapt Input Image"), Cow::Borrowed(&image))?;
 
 			let base_image = if use_base_image {
-				let image: Image = Self::compute_input(&network, &imaginate_node, get("Base Image"), Cow::Borrowed(&image))?;
+				let image: Image = Self::compute_input(&network, &imaginate_node, get("Input Image"), Cow::Borrowed(&image))?;
 				// Only use if has size
 				if image.width > 0 && image.height > 0 {
 					let (image_data, size) = Self::encode_img(image, Some(resolution), image::ImageOutputFormat::Png)?;
