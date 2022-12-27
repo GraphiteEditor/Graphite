@@ -919,7 +919,7 @@ impl DocumentMessageHandler {
 			}
 		};
 
-		// Prepare the node graph base image base image
+		// Prepare the node graph input image
 
 		// Calculate the size of the region to be exported
 
