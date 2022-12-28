@@ -4,8 +4,7 @@ use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup,
 use crate::messages::layout::utility_types::misc::LayoutTarget;
 use crate::messages::layout::utility_types::widgets::assist_widgets::PivotAssist;
 use crate::messages::layout::utility_types::widgets::button_widgets::{IconButton, PopoverButton, TextButton};
-use crate::messages::layout::utility_types::widgets::input_widgets::OptionalInput;
-use crate::messages::layout::utility_types::widgets::input_widgets::{ColorInput, FontInput, NumberInput, NumberInputMode, RadioEntryData, RadioInput, TextAreaInput, TextInput};
+use crate::messages::layout::utility_types::widgets::input_widgets::{CheckboxInput, ColorInput, FontInput, NumberInput, NumberInputMode, RadioEntryData, RadioInput, TextAreaInput, TextInput};
 use crate::messages::layout::utility_types::widgets::label_widgets::{IconLabel, TextLabel};
 use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::*;
@@ -148,13 +147,15 @@ pub fn register_artboard_layer_properties(layer: &Layer, responses: &mut VecDequ
 							..TextLabel::default()
 						})),
 						WidgetHolder::unrelated_separator(),
-						WidgetHolder::new(Widget::OptionalInput(OptionalInput {
+						WidgetHolder::related_separator(),
+						WidgetHolder::new(Widget::CheckboxInput(CheckboxInput {
 							checked: layer.preserve_aspect,
 							icon: "Link".into(),
-							tooltip: "Preserve Aspect Ratio of Layers".into(),
-							on_update: WidgetCallback::new(|input: &OptionalInput| PropertiesPanelMessage::ModifyPreserveAspect { preserve_aspect: input.checked }.into()),
+							tooltip: "Preserve Aspect Ratio".into(),
+							on_update: WidgetCallback::new(|input: &CheckboxInput| PropertiesPanelMessage::ModifyPreserveAspect { preserve_aspect: input.checked }.into()),
 							..Default::default()
 						})),
+						WidgetHolder::related_separator(),
 						WidgetHolder::unrelated_separator(),
 						WidgetHolder::new(Widget::NumberInput(NumberInput {
 							value: Some(layer.bounding_transform(&persistent_data.font_cache).scale_x()),
@@ -431,13 +432,15 @@ fn node_section_transform(layer: &Layer, persistent_data: &PersistentData) -> La
 						..TextLabel::default()
 					})),
 					WidgetHolder::unrelated_separator(),
-					WidgetHolder::new(Widget::OptionalInput(OptionalInput {
+					WidgetHolder::related_separator(),
+					WidgetHolder::new(Widget::CheckboxInput(CheckboxInput {
 						checked: layer.preserve_aspect,
 						icon: "Link".into(),
-						tooltip: "Preserve Aspect Ratio of Layers".into(),
-						on_update: WidgetCallback::new(|input: &OptionalInput| PropertiesPanelMessage::ModifyPreserveAspect { preserve_aspect: input.checked }.into()),
+						tooltip: "Preserve Aspect Ratio".into(),
+						on_update: WidgetCallback::new(|input: &CheckboxInput| PropertiesPanelMessage::ModifyPreserveAspect { preserve_aspect: input.checked }.into()),
 						..Default::default()
 					})),
+					WidgetHolder::related_separator(),
 					WidgetHolder::unrelated_separator(),
 					WidgetHolder::new(Widget::NumberInput(NumberInput {
 						value: Some(layer.transform.scale_x()),
