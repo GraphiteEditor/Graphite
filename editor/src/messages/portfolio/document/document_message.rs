@@ -47,6 +47,7 @@ pub enum DocumentMessage {
 		aggregate: AlignAggregate,
 	},
 	BooleanOperation(BooleanOperationType),
+	ClearLayerTree,
 	CommitTransaction,
 	CreateEmptyFolder {
 		container_path: Vec<LayerId>,
