@@ -12,6 +12,8 @@ mod document_node_types;
 mod node_properties;
 pub use self::document_node_types::*;
 
+use glam::IVec2;
+
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum FrontendGraphDataType {
 	#[default]
@@ -284,7 +286,7 @@ impl NodeGraphMessageHandler {
 					})
 					.collect(),
 				outputs: node_type.outputs.to_vec(),
-				position: node.metadata.position,
+				position: node.metadata.position.into(),
 				output: network.output == *id,
 				disabled: network.disabled.contains(id),
 			})
@@ -461,7 +463,7 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 						inputs: document_node_type.inputs.iter().map(|input| input.default.clone()).collect(),
 						// TODO: Allow inserting nodes that contain other nodes.
 						implementation: DocumentNodeImplementation::Network(inner_network),
-						metadata: graph_craft::document::DocumentNodeMetadata { position: (x, y) },
+						metadata: graph_craft::document::DocumentNodeMetadata { position: (x, y).into() },
 					},
 				);
 				Self::send_graph(network, responses);
@@ -530,8 +532,7 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 					let copied_nodes = Self::copy_nodes(network, new_ids).collect::<Vec<_>>();
 					for (new_id, mut node) in copied_nodes {
 						// Shift duplicated node
-						node.metadata.position.0 += 2;
-						node.metadata.position.1 += 2;
+						node.metadata.position += IVec2::splat(2);
 
 						// Add new node to the list
 						self.selected_nodes.push(new_id);
@@ -584,8 +585,7 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 
 				for node_id in &self.selected_nodes {
 					if let Some(node) = network.nodes.get_mut(node_id) {
-						node.metadata.position.0 += displacement_x;
-						node.metadata.position.1 += displacement_y;
+						node.metadata.position += IVec2::new(displacement_x, displacement_y)
 					}
 				}
 				Self::send_graph(network, responses);
@@ -621,11 +621,26 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 					}
 				};
 
+				// Shift nodes until it is not in the same position as another node
+				let mut shift = IVec2::ZERO;
+				while data
+					.iter()
+					.all(|(_, node)| network.nodes.values().any(|existing_node| node.metadata.position + shift == existing_node.metadata.position))
+				{
+					shift += IVec2::splat(2);
+				}
+
 				self.selected_nodes.clear();
 
 				let new_ids: HashMap<_, _> = data.iter().map(|&(id, _)| (id, crate::application::generate_uuid())).collect();
-				for (old_id, node) in data {
+				for (old_id, mut node) in data {
+					// Shift copied node
+					node.metadata.position += shift;
+
+					// Get the new, non-conflicting id
 					let new_id = *new_ids.get(&old_id).unwrap();
+
+					// Insert node into network
 					network.nodes.insert(new_id, node.map_ids(Self::default_node_input, &new_ids));
 
 					// Select the newly pasted node
@@ -718,10 +733,10 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 				let outwards_links = network.collect_outwards_links();
 				let required_shift = |left: NodeId, right: NodeId, network: &NodeNetwork| {
 					if let (Some(left), Some(right)) = (network.nodes.get(&left), network.nodes.get(&right)) {
-						if right.metadata.position.0 < left.metadata.position.0 {
+						if right.metadata.position.x < left.metadata.position.x {
 							0
 						} else {
-							(8 - (right.metadata.position.0 - left.metadata.position.0)).max(0)
+							(8 - (right.metadata.position.x - left.metadata.position.x)).max(0)
 						}
 					} else {
 						0
@@ -729,7 +744,7 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 				};
 				let shift_node = |node_id: NodeId, shift: i32, network: &mut NodeNetwork| {
 					if let Some(node) = network.nodes.get_mut(&node_id) {
-						node.metadata.position.0 += shift
+						node.metadata.position.x += shift
 					}
 				};
 				// Shift the actual node

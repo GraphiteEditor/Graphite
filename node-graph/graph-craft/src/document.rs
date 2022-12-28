@@ -6,6 +6,7 @@ use std::sync::Mutex;
 pub mod value;
 
 use dyn_any::{DynAny, StaticType};
+use glam::IVec2;
 use rand_chacha::{
 	rand_core::{RngCore, SeedableRng},
 	ChaCha20Rng,
@@ -33,7 +34,7 @@ fn merge_ids(a: u64, b: u64) -> u64 {
 #[derive(Clone, Debug, PartialEq, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct DocumentNodeMetadata {
-	pub position: (i32, i32),
+	pub position: IVec2,
 }
 
 #[derive(Clone, Debug, PartialEq)]
