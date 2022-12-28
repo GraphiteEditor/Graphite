@@ -21,7 +21,7 @@ pub struct PathOutline {
 
 impl PathOutline {
 	/// Creates an outline of a layer either with a pre-existing overlay or by generating a new one
-	fn create_outline(
+	fn try_create_outline(
 		document_layer_path: Vec<LayerId>,
 		overlay_path: Option<Vec<LayerId>>,
 		document: &DocumentMessageHandler,
@@ -70,6 +70,28 @@ impl PathOutline {
 		responses.push_back(DocumentMessage::Overlays(operation.into()).into());
 
 		Some(overlay)
+	}
+
+	/// Creates an outline of a layer either with a pre-existing overlay or by generating a new one
+	///
+	/// Creates an outline, discarding the overlay on failiure
+	fn create_outline(
+		document_layer_path: Vec<LayerId>,
+		overlay_path: Option<Vec<LayerId>>,
+		document: &DocumentMessageHandler,
+		responses: &mut VecDeque<Message>,
+		font_cache: &FontCache,
+	) -> Option<Vec<LayerId>> {
+		let copied_overlay_path = overlay_path.clone();
+		let result = Self::try_create_outline(document_layer_path, overlay_path, document, responses, font_cache);
+		if result.is_none() {
+			// Discard the overlay layer if it exists
+			if let Some(overlay_path) = copied_overlay_path {
+				let operation = Operation::DeleteLayer { path: overlay_path };
+				responses.push_back(DocumentMessage::Overlays(operation.into()).into());
+			}
+		}
+		result
 	}
 
 	/// Removes the hovered overlay and deletes path references

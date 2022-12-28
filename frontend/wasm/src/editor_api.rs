@@ -648,6 +648,13 @@ impl JsEditorHandle {
 		self.dispatch(message);
 	}
 
+	/// Toggle preview on node
+	#[wasm_bindgen(js_name = togglePreview)]
+	pub fn toggle_preview(&self, node_id: NodeId) {
+		let message = NodeGraphMessage::TogglePreview { node_id };
+		self.dispatch(message);
+	}
+
 	/// Pastes an image
 	#[wasm_bindgen(js_name = pasteImage)]
 	pub fn paste_image(&self, mime: String, image_data: Vec<u8>, mouse_x: Option<f64>, mouse_y: Option<f64>) {

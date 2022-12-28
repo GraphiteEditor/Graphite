@@ -24,7 +24,9 @@ impl MessageHandler<OverlaysMessage, (bool, &FontCache, &InputPreprocessorMessag
 			},
 
 			// Messages
-			ClearAllOverlays => todo!(),
+			ClearAllOverlays => {
+				self.overlays_document = DocumentLegacy::default();
+			}
 			Rerender =>
 			// Render overlays
 			{
