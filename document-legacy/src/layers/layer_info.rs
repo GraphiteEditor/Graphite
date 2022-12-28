@@ -228,6 +228,7 @@ pub struct Layer {
 	#[serde(with = "DAffine2Ref")]
 	pub transform: glam::DAffine2,
 	/// Should the aspect ratio of this layer be preserved?
+	#[serde(default = "return_true")]
 	pub preserve_aspect: bool,
 	/// The center of transformations like rotation or scaling with the shift key.
 	/// This is in local space (so the layer's transform should be applied).
