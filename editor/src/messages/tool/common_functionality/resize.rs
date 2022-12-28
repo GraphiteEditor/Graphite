@@ -11,7 +11,7 @@ use glam::{DAffine2, DVec2, Vec2Swizzles};
 
 #[derive(Clone, Debug, Default)]
 pub struct Resize {
-	pub drag_start: ViewportPosition,
+	drag_start: ViewportPosition,
 	pub path: Option<Vec<LayerId>>,
 	snap_manager: SnapManager,
 }
@@ -21,7 +21,14 @@ impl Resize {
 	pub fn start(&mut self, responses: &mut VecDeque<Message>, document: &DocumentMessageHandler, mouse_position: DVec2, font_cache: &FontCache) {
 		self.snap_manager.start_snap(document, document.bounding_boxes(None, None, font_cache), true, true);
 		self.snap_manager.add_all_document_handles(document, &[], &[], &[]);
-		self.drag_start = self.snap_manager.snap_position(responses, document, mouse_position);
+		let root_transform = document.document_legacy.root.transform;
+		self.drag_start = root_transform.inverse().transform_point2(self.snap_manager.snap_position(responses, document, mouse_position));
+	}
+
+	/// Calculate the drag start position in viewport space.
+	pub fn viewport_drag_start(&self, document: &DocumentMessageHandler) -> DVec2 {
+		let root_transform = document.document_legacy.root.transform;
+		root_transform.transform_point2(self.drag_start)
 	}
 
 	pub fn calculate_transform(
@@ -33,7 +40,7 @@ impl Resize {
 		ipp: &InputPreprocessorMessageHandler,
 	) -> Option<Message> {
 		if let Some(path) = &self.path {
-			let mut start = self.drag_start;
+			let mut start = self.viewport_drag_start(document);
 
 			let stop = self.snap_manager.snap_position(responses, document, ipp.mouse.position);
 

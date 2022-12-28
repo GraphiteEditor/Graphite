@@ -4,8 +4,9 @@ use crate::messages::layout::utility_types::widgets::button_widgets::{Breadcrumb
 use crate::messages::prelude::*;
 
 use document_legacy::document::Document;
-use document_legacy::layers::layer_info::LayerDataType;
+use document_legacy::layers::layer_info::{LayerDataType, LayerDataTypeDiscriminant};
 use document_legacy::layers::nodegraph_layer::NodeGraphFrameLayer;
+use document_legacy::LayerId;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, DocumentNodeMetadata, NodeId, NodeInput, NodeNetwork};
 
@@ -104,6 +105,9 @@ pub struct NodeGraphMessageHandler {
 	pub selected_nodes: Vec<graph_craft::document::NodeId>,
 	#[serde(skip)]
 	pub widgets: [LayoutGroup; 2],
+	/// Do not allow the node graph window to open or close whilst the user is drawing a node graph frame
+	#[serde(skip)]
+	pub is_drawing_node_graph_frame: bool,
 }
 
 impl NodeGraphMessageHandler {
@@ -388,12 +392,17 @@ impl NodeGraphMessageHandler {
 	}
 }
 
-impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageHandler)> for NodeGraphMessageHandler {
+impl MessageHandler<NodeGraphMessage, (&mut Document, &mut dyn Iterator<Item = &[LayerId]>)> for NodeGraphMessageHandler {
 	#[remain::check]
-	fn process_message(&mut self, message: NodeGraphMessage, (document, _ipp): (&mut Document, &InputPreprocessorMessageHandler), responses: &mut VecDeque<Message>) {
+	fn process_message(&mut self, message: NodeGraphMessage, (document, selected): (&mut Document, &mut dyn Iterator<Item = &[LayerId]>), responses: &mut VecDeque<Message>) {
 		#[remain::sorted]
 		match message {
 			NodeGraphMessage::CloseNodeGraph => {
+				// Don't close when drawing a node graph frame
+				if self.is_drawing_node_graph_frame {
+					return;
+				}
+
 				if let Some(_old_layer_path) = self.layer_path.take() {
 					responses.push_back(FrontendMessage::UpdateNodeGraphVisibility { visible: false }.into());
 					responses.push_back(PropertiesPanelMessage::ResendActiveProperties.into());
@@ -607,6 +616,11 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 				Self::send_graph(network, responses);
 			}
 			NodeGraphMessage::OpenNodeGraph { layer_path } => {
+				// Don't open when drawing a node graph frame
+				if self.is_drawing_node_graph_frame {
+					return;
+				}
+
 				if let Some(_old_layer_path) = self.layer_path.replace(layer_path) {
 					// TODO: Necessary cleanup of old node graph
 				}
@@ -670,6 +684,25 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 				self.selected_nodes = nodes;
 				self.update_selection_action_buttons(document, responses);
 				responses.push_back(PropertiesPanelMessage::ResendActiveProperties.into());
+			}
+			NodeGraphMessage::SetDrawing { new_drawing } => {
+				let selected: Vec<_> = selected.collect();
+				// Check if we stopped drawing a node graph frame
+				if self.is_drawing_node_graph_frame && !new_drawing {
+					// Check if we should open or close the node graph
+					if selected.len() == 1
+						&& document
+							.layer(selected[0])
+							.ok()
+							.filter(|layer| LayerDataTypeDiscriminant::from(&layer.data) == LayerDataTypeDiscriminant::NodeGraphFrame)
+							.is_some()
+					{
+						responses.push_back(NodeGraphMessage::OpenNodeGraph { layer_path: selected[0].to_vec() }.into());
+					} else {
+						responses.push_back(NodeGraphMessage::CloseNodeGraph.into());
+					}
+				}
+				self.is_drawing_node_graph_frame = new_drawing
 			}
 			NodeGraphMessage::SetInputValue { node, input_index, value } => {
 				if let Some(network) = self.get_active_network_mut(document) {

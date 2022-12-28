@@ -135,6 +135,7 @@ impl Fsm for ImaginateToolFsmState {
 				(Ready, DragStart) => {
 					shape_data.start(responses, document, input.mouse.position, font_cache);
 					responses.push_back(DocumentMessage::StartTransaction.into());
+					responses.push_back(NodeGraphMessage::SetDrawing { new_drawing: true }.into());
 					shape_data.path = Some(document.get_path_for_new_layer());
 					responses.push_back(DocumentMessage::DeselectAllLayers.into());
 
@@ -221,17 +222,20 @@ impl Fsm for ImaginateToolFsmState {
 					state
 				}
 				(Drawing, DragStop) => {
-					match shape_data.drag_start.distance(input.mouse.position) <= DRAG_THRESHOLD {
+					match shape_data.viewport_drag_start(document).distance(input.mouse.position) <= DRAG_THRESHOLD {
 						true => responses.push_back(DocumentMessage::AbortTransaction.into()),
 						false => responses.push_back(DocumentMessage::CommitTransaction.into()),
 					}
 
+					responses.push_back(NodeGraphMessage::SetDrawing { new_drawing: false }.into());
 					shape_data.cleanup(responses);
 
 					Ready
 				}
 				(Drawing, Abort) => {
 					responses.push_back(DocumentMessage::AbortTransaction.into());
+
+					responses.push_back(NodeGraphMessage::SetDrawing { new_drawing: false }.into());
 
 					shape_data.cleanup(responses);
 
