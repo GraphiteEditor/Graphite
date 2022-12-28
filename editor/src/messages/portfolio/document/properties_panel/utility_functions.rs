@@ -37,9 +37,8 @@ pub fn apply_transform_operation(layer: &Layer, transform_op: TransformOp, value
 		_ => 1.,
 	};
 
-	// Apply the operation
+	// Apply the operation and find the delta transform
 	let mut delta = layer.transform.inverse() * transformation(layer.transform, value / scale);
-	info!("Delta {delta} pivot {pivot}");
 
 	// Preserve aspect ratio
 	if matches!(transform_op, TransformOp::ScaleX | TransformOp::Width) && layer.preserve_aspect {
