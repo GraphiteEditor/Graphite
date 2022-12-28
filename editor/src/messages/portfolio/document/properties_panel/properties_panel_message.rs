@@ -21,6 +21,7 @@ pub enum PropertiesPanelMessage {
 	ModifyFill { fill: Fill },
 	ModifyFont { font_family: String, font_style: String, size: f64 },
 	ModifyName { name: String },
+	ModifyPreserveAspect { preserve_aspect: bool },
 	ModifyStroke { stroke: Stroke },
 	ModifyText { new_text: String },
 	ModifyTransform { value: f64, transform_op: TransformOp },

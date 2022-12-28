@@ -4,6 +4,7 @@ use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup,
 use crate::messages::layout::utility_types::misc::LayoutTarget;
 use crate::messages::layout::utility_types::widgets::assist_widgets::PivotAssist;
 use crate::messages::layout::utility_types::widgets::button_widgets::{IconButton, PopoverButton, TextButton};
+use crate::messages::layout::utility_types::widgets::input_widgets::OptionalInput;
 use crate::messages::layout::utility_types::widgets::input_widgets::{ColorInput, FontInput, NumberInput, NumberInputMode, RadioEntryData, RadioInput, TextAreaInput, TextInput};
 use crate::messages::layout::utility_types::widgets::label_widgets::{IconLabel, TextLabel};
 use crate::messages::portfolio::utility_types::PersistentData;
@@ -407,9 +408,13 @@ fn node_section_transform(layer: &Layer, persistent_data: &PersistentData) -> La
 						..TextLabel::default()
 					})),
 					WidgetHolder::unrelated_separator(),
-					WidgetHolder::unrelated_separator(), // TODO: These three separators add up to 24px,
-					WidgetHolder::unrelated_separator(), // TODO: which is the width of the Assist area.
-					WidgetHolder::unrelated_separator(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
+					WidgetHolder::new(Widget::OptionalInput(OptionalInput {
+						checked: layer.preserve_aspect,
+						icon: "Link".into(),
+						tooltip: "Preserve Aspect Ratio of Layers".into(),
+						on_update: WidgetCallback::new(|input: &OptionalInput| PropertiesPanelMessage::ModifyPreserveAspect { preserve_aspect: input.checked }.into()),
+						..Default::default()
+					})),
 					WidgetHolder::unrelated_separator(),
 					WidgetHolder::new(Widget::NumberInput(NumberInput {
 						value: Some(layer.transform.scale_x()),
