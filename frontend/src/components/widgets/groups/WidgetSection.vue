@@ -95,6 +95,10 @@
 				margin-bottom: calc(4px - 1px);
 			}
 
+			> .text-button:first-child {
+				margin-left: 16px;
+			}
+
 			> .text-label:first-of-type {
 				flex: 0 0 25%;
 				margin-left: 16px;
