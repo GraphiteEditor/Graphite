@@ -101,22 +101,14 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 				responses.push_back(PortfolioMessage::UpdateOpenDocumentsList.into());
 			}
 			PortfolioMessage::CloseDocument { document_id } => {
-				let document_index = self.document_index(document_id);
-				self.documents.remove(&document_id);
-				self.document_ids.remove(document_index);
-
-				if self.document_ids.is_empty() {
-					self.active_document_id = None;
-				} else if self.active_document_id.is_some() {
-					let document_id = if document_index == self.document_ids.len() {
-						// If we closed the last document take the one previous (same as last)
-						*self.document_ids.last().unwrap()
-					} else {
-						// Move to the next tab
-						self.document_ids[document_index]
-					};
-					responses.push_back(PortfolioMessage::SelectDocument { document_id }.into());
+				// Is this the last document?
+				if self.documents.len() == 1 && self.document_ids[0] == document_id {
+					// Clear properties panel and layer tree
+					responses.push_back(PropertiesPanelMessage::ClearSelection.into());
+					responses.push_back(DocumentMessage::ClearLayerTree.into());
 				}
+				// Actually delete the document (delay to delete document is required to let the document and properties panel messages above get processed)
+				responses.push_back(PortfolioMessage::DeleteDocument { document_id }.into());
 
 				// Send the new list of document tab names
 				responses.push_back(PortfolioMessage::UpdateOpenDocumentsList.into());
@@ -177,6 +169,24 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 			PortfolioMessage::Cut { clipboard } => {
 				responses.push_back(PortfolioMessage::Copy { clipboard }.into());
 				responses.push_back(DocumentMessage::DeleteSelectedLayers.into());
+			}
+			PortfolioMessage::DeleteDocument { document_id } => {
+				let document_index = self.document_index(document_id);
+				self.documents.remove(&document_id);
+				self.document_ids.remove(document_index);
+
+				if self.document_ids.is_empty() {
+					self.active_document_id = None;
+				} else if self.active_document_id.is_some() {
+					let document_id = if document_index == self.document_ids.len() {
+						// If we closed the last document take the one previous (same as last)
+						*self.document_ids.last().unwrap()
+					} else {
+						// Move to the next tab
+						self.document_ids[document_index]
+					};
+					responses.push_back(PortfolioMessage::SelectDocument { document_id }.into());
+				}
 			}
 			PortfolioMessage::DestroyAllDocuments => {
 				// Empty the list of internal document data
