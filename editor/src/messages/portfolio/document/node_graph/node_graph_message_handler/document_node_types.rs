@@ -73,7 +73,7 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 			default: NodeInput::Network,
 		}],
 		outputs: &[FrontendGraphDataType::Raster],
-		properties: |_document_node, _node_id, _context| node_properties::string_properties("The graph's input is the artwork under the frame layer".to_string()),
+		properties: node_properties::input_properties,
 	},
 	DocumentNodeType {
 		name: "Output",

@@ -144,6 +144,18 @@ fn number_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, na
 	widgets
 }
 
+/// Properties for the input node, with information describing how frames work and a refresh button
+pub fn input_properties(_document_node: &DocumentNode, _node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let information = WidgetHolder::text_widget("The graph's input is the artwork under the frame layer");
+	let refresh_button = WidgetHolder::new(Widget::TextButton(TextButton {
+		label: "Refresh Input".to_string(),
+		tooltip: "Refresh the artwork under the frame".to_string(),
+		on_update: WidgetCallback::new(|_| DocumentMessage::NodeGraphFrameGenerate.into()),
+		..Default::default()
+	}));
+	vec![LayoutGroup::Row { widgets: vec![information] }, LayoutGroup::Row { widgets: vec![refresh_button] }]
+}
+
 pub fn adjust_hsl_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let hue_shift = number_widget(document_node, node_id, 1, "Hue Shift", NumberInput::new().min(-180.).max(180.).unit("°"), true);
 	let saturation_shift = number_widget(document_node, node_id, 2, "Saturation Shift", NumberInput::new().min(-100.).max(100.).unit("%"), true);
