@@ -534,8 +534,10 @@ export default defineComponent({
 		},
 		// TODO: Move the event listener from the graph to the window so dragging outside the graph area (or even the browser window) works
 		pointerDown(e: PointerEvent) {
+			// Exit the add node popup by clicking elsewhere in the graph
 			if (this.nodeListLocation && !(e.target as HTMLElement).closest("[data-node-list]")) this.nodeListLocation = undefined;
 
+			// Handle the add node popup on right click
 			if (e.button === 2) {
 				const graphDiv: HTMLDivElement | undefined = (this.$refs.graph as typeof LayoutCol | undefined)?.$el;
 				const graph = graphDiv?.getBoundingClientRect() || new DOMRect();
@@ -557,6 +559,10 @@ export default defineComponent({
 
 			// If the user is clicking on the add nodes list, exit here
 			if (nodeList) return;
+
+			if (e.altKey && nodeId) {
+				this.editor.instance.togglePreview(BigInt(nodeId));
+			}
 
 			// Clicked on a port dot
 			if (port && node) {

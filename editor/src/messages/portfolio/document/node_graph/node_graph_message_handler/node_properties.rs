@@ -308,10 +308,10 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 	let resolution_index = resolve_input("Resolution");
 	let samples_index = resolve_input("Samples");
 	let sampling_method_index = resolve_input("Sampling Method");
-	let text_guidance_index = resolve_input("Text Guidance");
-	let text_index = resolve_input("Text Prompt");
+	let text_guidance_index = resolve_input("Prompt Guidance");
+	let text_index = resolve_input("Prompt");
 	let neg_index = resolve_input("Negative Prompt");
-	let base_img_index = resolve_input("Use Base Image");
+	let base_img_index = resolve_input("Adapt Input Image");
 	let img_creativity_index = resolve_input("Image Creativity");
 	let mask_index = resolve_input("Masking Layer");
 	let inpaint_index = resolve_input("Inpaint");
@@ -390,7 +390,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 				None => "Ready".into(),
 			},
 			ImaginateStatus::Beginning => "Beginning...".into(),
-			ImaginateStatus::Uploading(percent) => format!("Uploading Base Image: {percent:.0}%"),
+			ImaginateStatus::Uploading(percent) => format!("Uploading Input Image: {percent:.0}%"),
 			ImaginateStatus::Generating => format!("Generating: {percent_complete:.0}%"),
 			ImaginateStatus::Terminating => "Terminating...".into(),
 			ImaginateStatus::Terminated => format!("{percent_complete:.0}% (Terminated)"),
@@ -653,7 +653,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 	};
 
 	let text_guidance = {
-		let widgets = number_widget(document_node, node_id, text_guidance_index, "Text Guidance", NumberInput::new().min(0.).max(30.), true);
+		let widgets = number_widget(document_node, node_id, text_guidance_index, "Prompt Guidance", NumberInput::new().min(0.).max(30.), true);
 		LayoutGroup::Row { widgets }.with_tooltip(
 			"Amplification of the text prompt's influence over the outcome. At 0, the prompt is entirely ignored.\n\
 			\n\
@@ -664,7 +664,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 	};
 
 	let text_prompt = {
-		let widgets = text_area_widget(document_node, node_id, text_index, "Text Prompt", true);
+		let widgets = text_area_widget(document_node, node_id, text_index, "Prompt", true);
 		LayoutGroup::Row { widgets }.with_tooltip(
 			"Description of the desired image subject and style.\n\
 			\n\
@@ -679,14 +679,14 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 		LayoutGroup::Row { widgets }.with_tooltip("A negative text prompt can be used to list things like objects or colors to avoid")
 	};
 	let base_image = {
-		let widgets = bool_widget(document_node, node_id, base_img_index, "Use Base Image", true);
-		LayoutGroup::Row { widgets }.with_tooltip("Generate an image based upon some raster data")
+		let widgets = bool_widget(document_node, node_id, base_img_index, "Adapt Input Image", true);
+		LayoutGroup::Row { widgets }.with_tooltip("Generate an image based upon the bitmap data plugged into this node")
 	};
 	let image_creativity = {
 		let props = NumberInput::new().percentage().disabled(!use_base_image);
 		let widgets = number_widget(document_node, node_id, img_creativity_index, "Image Creativity", props, true);
 		LayoutGroup::Row { widgets }.with_tooltip(
-			"Strength of the artistic liberties allowing changes from the base image. The image is unchanged at 0% and completely different at 100%.\n\
+			"Strength of the artistic liberties allowing changes from the input image. The image is unchanged at 0% and completely different at 100%.\n\
 			\n\
 			This parameter is otherwise known as denoising strength.",
 		)
@@ -724,7 +724,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 			]);
 		}
 		LayoutGroup::Row { widgets }.with_tooltip(
-			"Reference to a layer or folder which masks parts of the base image. Image generation is constrained to masked areas.\n\
+			"Reference to a layer or folder which masks parts of the input image. Image generation is constrained to masked areas.\n\
 			\n\
 			Black shapes represent the masked regions. Lighter shades of gray act as a partial mask, and colors become grayscale.",
 		)
@@ -814,7 +814,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 				]);
 			}
 			LayoutGroup::Row { widgets }.with_tooltip(
-				"Begin in/outpainting the masked areas using this fill content as the starting base image.\n\
+				"Begin in/outpainting the masked areas using this fill content as the starting input image.\n\
 				\n\
 				Each option can be visualized by generating with 'Sampling Steps' set to 0.",
 			)
@@ -827,7 +827,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 		LayoutGroup::Row { widgets }.with_tooltip(
 			"Postprocess human (or human-like) faces to look subtly less distorted.\n\
 			\n\
-			This filter can be used on its own by enabling 'Use Base Image' and setting 'Sampling Steps' to 0.",
+			This filter can be used on its own by enabling 'Adapt Input Image' and setting 'Sampling Steps' to 0.",
 		)
 	};
 	let tiling = {
