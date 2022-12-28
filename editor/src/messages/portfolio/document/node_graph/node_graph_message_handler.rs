@@ -207,8 +207,8 @@ impl NodeGraphMessageHandler {
 				// Don't show stop previewing button on the origional output node
 				if !(is_output && network.previous_output.filter(|&id| id != self.selected_nodes[0]).is_none()) {
 					let output_button = WidgetHolder::new(Widget::TextButton(TextButton {
-						label: if is_output { "Stop Previewing" } else { "Preview" }.to_string(),
-						tooltip: if is_output { "Stop Previewing" } else { "Preview" }.to_string() + " Node (hold alt and click node)",
+						label: if is_output { "End Preview" } else { "Preview" }.to_string(),
+						tooltip: if is_output { "Restore preview to Output node" } else { "Preview node" }.to_string() + " (shortcut: Alt+click node)",
 						on_update: WidgetCallback::new(move |_| NodeGraphMessage::TogglePreview { node_id }.into()),
 						..Default::default()
 					}));
