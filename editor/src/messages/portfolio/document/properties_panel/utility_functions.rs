@@ -21,6 +21,8 @@ use std::f64::consts::PI;
 use std::sync::Arc;
 
 pub fn apply_transform_operation(layer: &Layer, transform_op: TransformOp, value: f64, font_cache: &FontCache) -> [f64; 6] {
+	let pivot = DAffine2::from_translation(layer.transform.transform_point2(layer.layerspace_pivot(font_cache)));
+
 	let transformation = match transform_op {
 		TransformOp::X => DAffine2::update_x,
 		TransformOp::Y => DAffine2::update_y,
@@ -35,7 +37,25 @@ pub fn apply_transform_operation(layer: &Layer, transform_op: TransformOp, value
 		_ => 1.,
 	};
 
-	transformation(layer.transform, value / scale).to_cols_array()
+	// Apply the operation
+	let mut delta = layer.transform.inverse() * transformation(layer.transform, value / scale);
+	info!("Delta {delta} pivot {pivot}");
+
+	// Preserve aspect ratio
+	if matches!(transform_op, TransformOp::ScaleX | TransformOp::Width) && layer.preserve_aspect {
+		let scale_x = layer.transform.scale_x();
+		if scale_x != 0. {
+			delta = DAffine2::from_scale((1., (value / scale) / scale_x).into()) * delta;
+		}
+	} else if matches!(transform_op, TransformOp::ScaleY | TransformOp::Height) && layer.preserve_aspect {
+		let scale_y = layer.transform.scale_y();
+		if scale_y != 0. {
+			delta = DAffine2::from_scale(((value / scale) / scale_y, 1.).into()) * delta;
+		}
+	}
+
+	// Transform around pivot
+	((pivot * delta * pivot.inverse()) * layer.transform).to_cols_array()
 }
 
 pub fn register_artboard_layer_properties(layer: &Layer, responses: &mut VecDeque<Message>, persistent_data: &PersistentData) {
@@ -129,9 +149,13 @@ pub fn register_artboard_layer_properties(layer: &Layer, responses: &mut VecDequ
 							..TextLabel::default()
 						})),
 						WidgetHolder::unrelated_separator(),
-						WidgetHolder::unrelated_separator(), // TODO: These three separators add up to 24px,
-						WidgetHolder::unrelated_separator(), // TODO: which is the width of the Assist area.
-						WidgetHolder::unrelated_separator(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
+						WidgetHolder::new(Widget::OptionalInput(OptionalInput {
+							checked: layer.preserve_aspect,
+							icon: "Link".into(),
+							tooltip: "Preserve Aspect Ratio of Layers".into(),
+							on_update: WidgetCallback::new(|input: &OptionalInput| PropertiesPanelMessage::ModifyPreserveAspect { preserve_aspect: input.checked }.into()),
+							..Default::default()
+						})),
 						WidgetHolder::unrelated_separator(),
 						WidgetHolder::new(Widget::NumberInput(NumberInput {
 							value: Some(layer.bounding_transform(&persistent_data.font_cache).scale_x()),
