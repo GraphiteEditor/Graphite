@@ -456,17 +456,22 @@ impl Fsm for GradientToolFsmState {
 
 							let layer = document.document_legacy.layer(&intersection).unwrap();
 
-							let gradient = Gradient::new(
-								DVec2::ZERO,
-								global_tool_data.secondary_color,
-								DVec2::ONE,
-								global_tool_data.primary_color,
-								DAffine2::IDENTITY,
-								generate_uuid(),
-								tool_options.gradient_type,
-							);
-							let mut selected_gradient = SelectedGradient::new(gradient, &intersection, layer, document, font_cache).with_gradient_start(input.mouse.position);
-							selected_gradient.update_gradient(input.mouse.position, responses, false, tool_options.gradient_type);
+							// Use the already existing gradient if it exists
+							let gradient = if let Some(gradient) = layer.style().ok().map(|style| style.fill()).and_then(|fill| fill.as_gradient()) {
+								gradient.clone()
+							} else {
+								// Generate a new gradient
+								Gradient::new(
+									DVec2::ZERO,
+									global_tool_data.secondary_color,
+									DVec2::ONE,
+									global_tool_data.primary_color,
+									DAffine2::IDENTITY,
+									generate_uuid(),
+									tool_options.gradient_type,
+								)
+							};
+							let selected_gradient = SelectedGradient::new(gradient, &intersection, layer, document, font_cache).with_gradient_start(input.mouse.position);
 
 							tool_data.selected_gradient = Some(selected_gradient);
 

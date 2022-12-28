@@ -189,6 +189,15 @@ impl Fill {
 	pub fn is_some(&self) -> bool {
 		*self != Self::None
 	}
+
+	/// Extract a gradient from the fill
+	pub fn as_gradient(&self) -> Option<&Gradient> {
+		if let Self::Gradient(gradient) = self {
+			Some(gradient)
+		} else {
+			None
+		}
+	}
 }
 
 /// The stroke (outline) style of an SVG element.
