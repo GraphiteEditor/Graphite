@@ -243,6 +243,20 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				);
 				responses.push_back(CommitTransaction.into());
 			}
+			ClearLayerTree => {
+				// Send an empty layer tree
+				let data_buffer: RawBuffer = Self::default().serialize_root().into();
+				responses.push_back(FrontendMessage::UpdateDocumentLayerTreeStructure { data_buffer }.into());
+
+				// Clear the options bar
+				responses.push_back(
+					LayoutMessage::SendLayout {
+						layout: Layout::WidgetLayout(Default::default()),
+						layout_target: LayoutTarget::LayerTreeOptions,
+					}
+					.into(),
+				);
+			}
 			CommitTransaction => (),
 			CreateEmptyFolder { mut container_path } => {
 				let id = generate_uuid();

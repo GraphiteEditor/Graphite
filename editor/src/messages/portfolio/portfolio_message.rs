@@ -45,6 +45,9 @@ pub enum PortfolioMessage {
 	Cut {
 		clipboard: Clipboard,
 	},
+	DeleteDocument {
+		document_id: u64,
+	},
 	DestroyAllDocuments,
 	FontLoaded {
 		font_family: String,
