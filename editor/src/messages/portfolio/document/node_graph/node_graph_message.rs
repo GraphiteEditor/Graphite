@@ -56,6 +56,9 @@ pub enum NodeGraphMessage {
 	SelectNodes {
 		nodes: Vec<NodeId>,
 	},
+	SetDrawing {
+		new_drawing: bool,
+	},
 	SetInputValue {
 		node: NodeId,
 		input_index: usize,
