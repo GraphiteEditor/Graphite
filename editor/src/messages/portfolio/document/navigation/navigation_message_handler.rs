@@ -307,11 +307,15 @@ impl NavigationMessageHandler {
 	}
 
 	pub fn calculate_offset_transform(&self, offset: DVec2) -> DAffine2 {
+		// Try to avoid fractional coordinates to reduce anti aliasing.
+		let scale = self.snapped_scale();
+		let rounded_pan = ((self.pan + offset) * scale).round() / scale - offset;
+
 		// TODO: replace with DAffine2::from_scale_angle_translation and fix the errors
 		let offset_transform = DAffine2::from_translation(offset);
-		let scale_transform = DAffine2::from_scale(DVec2::splat(self.snapped_scale()));
+		let scale_transform = DAffine2::from_scale(DVec2::splat(scale));
 		let angle_transform = DAffine2::from_angle(self.snapped_angle());
-		let translation_transform = DAffine2::from_translation(self.pan);
+		let translation_transform = DAffine2::from_translation(rounded_pan);
 		scale_transform * offset_transform * angle_transform * translation_transform
 	}
 
