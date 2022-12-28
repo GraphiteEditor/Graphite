@@ -492,6 +492,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 
 				if self.active_document().is_some() {
 					responses.push_back(BroadcastEvent::ToolAbort.into());
+					responses.push_back(OverlaysMessage::ClearAllOverlays.into());
 				}
 
 				// TODO: Remove this message in favor of having tools have specific data per document instance

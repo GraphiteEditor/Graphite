@@ -743,6 +743,8 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 			}
 			SetOverlaysVisibility { visible } => {
 				self.overlays_visible = visible;
+				responses.push_back(BroadcastEvent::ToolAbort.into());
+				responses.push_back(OverlaysMessage::ClearAllOverlays.into());
 				responses.push_back(OverlaysMessage::Rerender.into());
 			}
 			SetSelectedLayers { replacement_selected_layers } => {
