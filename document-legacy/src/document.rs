@@ -628,6 +628,12 @@ impl Document {
 				}
 				Some(vec![LayerChanged { path: layer_path.clone() }])
 			}
+			Operation::SetLayerPreserveAspect { layer_path, preserve_aspect } => {
+				if let Ok(layer) = self.layer_mut(&layer_path) {
+					layer.preserve_aspect = preserve_aspect;
+				}
+				Some(vec![LayerChanged { path: layer_path.clone() }])
+			}
 			Operation::SetTextEditability { path, editable } => {
 				self.layer_mut(&path)?.as_text_mut()?.editable = editable;
 				self.mark_as_dirty(&path)?;

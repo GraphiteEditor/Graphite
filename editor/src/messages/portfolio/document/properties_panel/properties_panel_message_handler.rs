@@ -107,6 +107,10 @@ impl<'a> MessageHandler<PropertiesPanelMessage, (&PersistentData, PropertiesPane
 				let (path, _) = self.active_selection.clone().expect("Received update for properties panel with no active layer");
 				responses.push_back(self.create_document_operation(Operation::SetLayerName { path, name }))
 			}
+			ModifyPreserveAspect { preserve_aspect } => {
+				let (layer_path, _) = self.active_selection.clone().expect("Received update for properties panel with no active layer");
+				responses.push_back(self.create_document_operation(Operation::SetLayerPreserveAspect { layer_path, preserve_aspect }))
+			}
 			ModifyFill { fill } => {
 				let (path, _) = self.active_selection.clone().expect("Received update for properties panel with no active layer");
 				responses.push_back(self.create_document_operation(Operation::SetLayerFill { path, fill }));

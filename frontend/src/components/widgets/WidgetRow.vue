@@ -76,7 +76,6 @@
 .widget-row {
 	flex: 0 0 auto;
 	display: flex;
-	overflow: hidden;
 	min-height: 32px;
 
 	> * {
@@ -94,6 +93,31 @@
 
 		&.icon-label.size-16 {
 			--widget-height: 16px;
+		}
+	}
+
+	// TODO: Target this in a better way than using the tooltip, which will break if changed, or when localized/translated
+	.checkbox-input [title="Preserve Aspect Ratio"] {
+		margin-bottom: -32px;
+		position: relative;
+
+		&::before,
+		&::after {
+			content: "";
+			pointer-events: none;
+			position: absolute;
+			left: 8px;
+			width: 1px;
+			height: 16px;
+			background: var(--color-7-middlegray);
+		}
+
+		&::before {
+			top: calc(-4px - 16px);
+		}
+
+		&::after {
+			bottom: calc(-4px - 16px);
 		}
 	}
 }

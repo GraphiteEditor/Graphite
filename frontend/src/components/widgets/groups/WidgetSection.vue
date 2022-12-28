@@ -85,6 +85,7 @@
 		margin-bottom: 4px;
 		border: 1px solid var(--color-5-dullgray);
 		border-radius: 0 0 4px 4px;
+		overflow: hidden;
 
 		.widget-row {
 			&:first-child {
