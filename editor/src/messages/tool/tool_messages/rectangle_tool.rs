@@ -158,7 +158,7 @@ impl Fsm for RectangleToolFsmState {
 					state
 				}
 				(Drawing, DragStop) => {
-					match shape_data.drag_start.distance(input.mouse.position) <= DRAG_THRESHOLD {
+					match shape_data.viewport_drag_start(document).distance(input.mouse.position) <= DRAG_THRESHOLD {
 						true => responses.push_back(DocumentMessage::AbortTransaction.into()),
 						false => responses.push_back(DocumentMessage::CommitTransaction.into()),
 					}
