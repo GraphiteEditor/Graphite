@@ -32,6 +32,12 @@ pub struct Document {
 	pub state_identifier: DefaultHasher,
 }
 
+impl PartialEq for Document {
+	fn eq(&self, other: &Self) -> bool {
+		self.state_identifier.finish() == other.state_identifier.finish()
+	}
+}
+
 impl Default for Document {
 	fn default() -> Self {
 		Self {

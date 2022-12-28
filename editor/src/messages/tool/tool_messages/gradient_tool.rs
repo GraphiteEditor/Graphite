@@ -1,5 +1,5 @@
 use crate::application::generate_uuid;
-use crate::consts::{COLOR_ACCENT, LINE_ROTATE_SNAP_ANGLE, MANIPULATOR_GROUP_MARKER_SIZE, SELECTION_TOLERANCE};
+use crate::consts::{COLOR_ACCENT, DRAG_THRESHOLD, LINE_ROTATE_SNAP_ANGLE, MANIPULATOR_GROUP_MARKER_SIZE, SELECTION_TOLERANCE};
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, KeysGroup, MouseMotion};
 use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, PropertyHolder, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
@@ -360,6 +360,7 @@ struct GradientToolData {
 	gradient_overlays: Vec<GradientOverlay>,
 	selected_gradient: Option<SelectedGradient>,
 	snap_manager: SnapManager,
+	drag_start: DVec2,
 }
 
 pub fn start_snap(snap_manager: &mut SnapManager, document: &DocumentMessageHandler, font_cache: &FontCache) {
@@ -418,6 +419,8 @@ impl Fsm for GradientToolFsmState {
 
 							// Try and insert the new stop
 							if let Some(index) = gradient.insert_stop(mouse) {
+								document.backup_nonmut(responses);
+
 								// Update the layer fill
 								let fill = Fill::Gradient(gradient.clone());
 								let path = overlay.path.clone();
@@ -442,6 +445,7 @@ impl Fsm for GradientToolFsmState {
 					responses.push_back(BroadcastEvent::DocumentIsDirty.into());
 
 					let mouse = input.mouse.position;
+					tool_data.drag_start = mouse;
 					let tolerance = MANIPULATOR_GROUP_MARKER_SIZE.powi(2);
 
 					let mut dragging = false;
@@ -478,6 +482,7 @@ impl Fsm for GradientToolFsmState {
 						}
 					}
 					if dragging {
+						document.backup_nonmut(responses);
 						GradientToolFsmState::Drawing
 					} else {
 						let tolerance = DVec2::splat(SELECTION_TOLERANCE);
@@ -492,6 +497,8 @@ impl Fsm for GradientToolFsmState {
 							}
 
 							let layer = document.document_legacy.layer(&intersection).unwrap();
+
+							document.backup_nonmut(responses);
 
 							// Use the already existing gradient if it exists
 							let gradient = if let Some(gradient) = layer.style().ok().map(|style| style.fill()).and_then(|fill| fill.as_gradient()) {
@@ -529,6 +536,11 @@ impl Fsm for GradientToolFsmState {
 				}
 
 				(GradientToolFsmState::Drawing, GradientToolMessage::PointerUp) => {
+					match tool_data.drag_start.distance(input.mouse.position) <= DRAG_THRESHOLD {
+						true => responses.push_back(DocumentMessage::AbortTransaction.into()),
+						false => responses.push_back(DocumentMessage::CommitTransaction.into()),
+					}
+
 					tool_data.snap_manager.cleanup(responses);
 
 					GradientToolFsmState::Ready
