@@ -174,7 +174,7 @@ impl Fsm for ImaginateToolFsmState {
 									name: "Input".into(),
 									inputs: vec![NodeInput::Network],
 									implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode", &[generic!("T")])),
-									metadata: DocumentNodeMetadata { position: (8, 4) },
+									metadata: DocumentNodeMetadata { position: (8, 4).into() },
 								},
 							),
 							(
@@ -183,7 +183,7 @@ impl Fsm for ImaginateToolFsmState {
 									name: "Output".into(),
 									inputs: vec![NodeInput::Node(2)],
 									implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode", &[generic!("T")])),
-									metadata: DocumentNodeMetadata { position: (32, 4) },
+									metadata: DocumentNodeMetadata { position: (32, 4).into() },
 								},
 							),
 							(
@@ -193,7 +193,7 @@ impl Fsm for ImaginateToolFsmState {
 									inputs: imaginate_inputs,
 									// TODO: Allow inserting nodes that contain other nodes.
 									implementation: DocumentNodeImplementation::Network(imaginate_inner_network),
-									metadata: graph_craft::document::DocumentNodeMetadata { position: (20, 4) },
+									metadata: graph_craft::document::DocumentNodeMetadata { position: (20, 4).into() },
 								},
 							),
 						]
