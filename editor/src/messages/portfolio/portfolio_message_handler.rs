@@ -91,6 +91,10 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 					responses.push_back(PropertiesPanelMessage::Deactivate.into());
 					responses.push_back(BroadcastEvent::ToolAbort.into());
 					responses.push_back(ToolMessage::DeactivateTools.into());
+
+					// Clear properties panel and layer tree
+					responses.push_back(PropertiesPanelMessage::ClearSelection.into());
+					responses.push_back(DocumentMessage::ClearLayerTree.into());
 				}
 
 				for document_id in &self.document_ids {
