@@ -13,6 +13,8 @@ mod document_node_types;
 mod node_properties;
 pub use self::document_node_types::*;
 
+use glam::IVec2;
+
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum FrontendGraphDataType {
 	#[default]
@@ -300,7 +302,7 @@ impl NodeGraphMessageHandler {
 					})
 					.collect(),
 				outputs: node_type.outputs.to_vec(),
-				position: node.metadata.position,
+				position: node.metadata.position.into(),
 				output: network.output == *id,
 				disabled: network.disabled.contains(id),
 			})
@@ -368,6 +370,22 @@ impl NodeGraphMessageHandler {
 			false
 		}
 	}
+
+	/// Gets the default node input based on the node name and the input index
+	fn default_node_input(name: String, index: usize) -> Option<NodeInput> {
+		resolve_document_node_type(&name)
+			.and_then(|node| node.inputs.get(index))
+			.map(|input: &DocumentInputType| input.default.clone())
+	}
+
+	/// Returns an iterator of nodes to be copied and their ids, excluding output and input nodes
+	fn copy_nodes<'a>(network: &'a NodeNetwork, new_ids: &'a HashMap<NodeId, NodeId>) -> impl Iterator<Item = (NodeId, DocumentNode)> + 'a {
+		new_ids
+			.iter()
+			.filter(|&(&id, _)| id != network.output && !network.inputs.contains(&id))
+			.filter_map(|(&id, &new)| network.nodes.get(&id).map(|node| (new, node.clone())))
+			.map(move |(new, node)| (new, node.map_ids(Self::default_node_input, new_ids)))
+	}
 }
 
 impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageHandler)> for NodeGraphMessageHandler {
@@ -413,16 +431,12 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 				};
 
 				// Collect the selected nodes
-				let selected_nodes = self
-					.selected_nodes
-					.iter()
-					.filter(|&&id| !network.inputs.contains(&id) && network.output != id) // Don't copy input or output nodes
-					.filter_map(|id| network.nodes.get(id))
-					.collect::<Vec<_>>();
+				let new_ids = &self.selected_nodes.iter().copied().enumerate().map(|(new, old)| (old, new as NodeId)).collect();
+				let copied_nodes: Vec<_> = Self::copy_nodes(network, new_ids).collect();
 
 				// Prefix to show that this is nodes
 				let mut copy_text = String::from("graphite/nodes: ");
-				copy_text += &serde_json::to_string(&selected_nodes).expect("Could not serialize paste");
+				copy_text += &serde_json::to_string(&copied_nodes).expect("Could not serialize paste");
 
 				responses.push_back(FrontendMessage::TriggerTextCopy { copy_text }.into());
 			}
@@ -465,7 +479,7 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 						inputs: document_node_type.inputs.iter().map(|input| input.default.clone()).collect(),
 						// TODO: Allow inserting nodes that contain other nodes.
 						implementation: DocumentNodeImplementation::Network(inner_network),
-						metadata: graph_craft::document::DocumentNodeMetadata { position: (x, y) },
+						metadata: graph_craft::document::DocumentNodeMetadata { position: (x, y).into() },
 					},
 				);
 				Self::send_graph(network, responses);
@@ -527,24 +541,19 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 			}
 			NodeGraphMessage::DuplicateSelectedNodes => {
 				if let Some(network) = self.get_active_network_mut(document) {
-					let mut new_selected = Vec::new();
-					for &id in &self.selected_nodes {
-						// Don't allow copying input or output nodes.
-						if id != network.output && !network.inputs.contains(&id) {
-							if let Some(node) = network.nodes.get(&id) {
-								let new_id = crate::application::generate_uuid();
-								let mut node = node.clone();
+					let new_ids = &self.selected_nodes.iter().map(|&id| (id, crate::application::generate_uuid())).collect();
+					self.selected_nodes.clear();
 
-								// Shift duplicated nodes
-								node.metadata.position.0 += 2;
-								node.metadata.position.1 += 2;
+					// Copy the selected nodes
+					let copied_nodes = Self::copy_nodes(network, new_ids).collect::<Vec<_>>();
+					for (new_id, mut node) in copied_nodes {
+						// Shift duplicated node
+						node.metadata.position += IVec2::splat(2);
 
-								network.nodes.insert(new_id, node);
-								new_selected.push(new_id);
-							}
-						}
+						// Add new node to the list
+						self.selected_nodes.push(new_id);
+						network.nodes.insert(new_id, node);
 					}
-					self.selected_nodes = new_selected;
 					Self::send_graph(network, responses);
 					self.update_selected(document, responses);
 				}
@@ -592,8 +601,7 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 
 				for node_id in &self.selected_nodes {
 					if let Some(node) = network.nodes.get_mut(node_id) {
-						node.metadata.position.0 += displacement_x;
-						node.metadata.position.1 += displacement_y;
+						node.metadata.position += IVec2::new(displacement_x, displacement_y)
 					}
 				}
 				Self::send_graph(network, responses);
@@ -621,7 +629,7 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 					return;
 				};
 
-				let data = match serde_json::from_str::<Vec<DocumentNode>>(&serialized_nodes) {
+				let data = match serde_json::from_str::<Vec<(NodeId, DocumentNode)>>(&serialized_nodes) {
 					Ok(d) => d,
 					Err(e) => {
 						warn!("Invalid node data {e:?}");
@@ -629,13 +637,30 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 					}
 				};
 
+				// Shift nodes until it is not in the same position as another node
+				let mut shift = IVec2::ZERO;
+				while data
+					.iter()
+					.all(|(_, node)| network.nodes.values().any(|existing_node| node.metadata.position + shift == existing_node.metadata.position))
+				{
+					shift += IVec2::splat(2);
+				}
+
 				self.selected_nodes.clear();
-				for node in data {
-					let id = crate::application::generate_uuid();
-					network.nodes.insert(id, node);
+
+				let new_ids: HashMap<_, _> = data.iter().map(|&(id, _)| (id, crate::application::generate_uuid())).collect();
+				for (old_id, mut node) in data {
+					// Shift copied node
+					node.metadata.position += shift;
+
+					// Get the new, non-conflicting id
+					let new_id = *new_ids.get(&old_id).unwrap();
+
+					// Insert node into network
+					network.nodes.insert(new_id, node.map_ids(Self::default_node_input, &new_ids));
 
 					// Select the newly pasted node
-					self.selected_nodes.push(id);
+					self.selected_nodes.push(new_id);
 				}
 
 				Self::send_graph(network, responses);
@@ -699,10 +724,10 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 				let outwards_links = network.collect_outwards_links();
 				let required_shift = |left: NodeId, right: NodeId, network: &NodeNetwork| {
 					if let (Some(left), Some(right)) = (network.nodes.get(&left), network.nodes.get(&right)) {
-						if right.metadata.position.0 < left.metadata.position.0 {
+						if right.metadata.position.x < left.metadata.position.x {
 							0
 						} else {
-							(8 - (right.metadata.position.0 - left.metadata.position.0)).max(0)
+							(8 - (right.metadata.position.x - left.metadata.position.x)).max(0)
 						}
 					} else {
 						0
@@ -710,7 +735,7 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 				};
 				let shift_node = |node_id: NodeId, shift: i32, network: &mut NodeNetwork| {
 					if let Some(node) = network.nodes.get_mut(&node_id) {
-						node.metadata.position.0 += shift
+						node.metadata.position.x += shift
 					}
 				};
 				// Shift the actual node
