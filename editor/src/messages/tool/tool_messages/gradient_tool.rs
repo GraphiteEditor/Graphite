@@ -48,6 +48,7 @@ pub enum GradientToolMessage {
 	DocumentIsDirty,
 
 	// Tool-specific messages
+	InsertStop,
 	PointerDown,
 	PointerMove {
 		constrain_axis: Key,
@@ -105,6 +106,7 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for GradientTool
 		PointerUp,
 		PointerMove,
 		Abort,
+		InsertStop,
 	);
 }
 
@@ -326,7 +328,7 @@ impl SelectedGradient {
 				let new_pos = ((self.gradient.end - self.gradient.start).angle_between(mouse - self.gradient.start)).cos() * self.gradient.start.distance(mouse)
 					/ self.gradient.start.distance(self.gradient.end);
 
-				// Should not go off end but can swap (like inscape)
+				// Should not go off end but can swap
 				let clamped = new_pos.clamp(0., 1.);
 				self.gradient.positions[s].0 = clamped;
 				let new_pos = self.gradient.positions[s];
@@ -348,7 +350,7 @@ impl ToolTransition for GradientTool {
 		EventToMessageMap {
 			document_dirty: Some(GradientToolMessage::DocumentIsDirty.into()),
 			tool_abort: Some(GradientToolMessage::Abort.into()),
-			selection_changed: None,
+			selection_changed: Some(GradientToolMessage::DocumentIsDirty.into()),
 		}
 	}
 }
@@ -396,6 +398,41 @@ impl Fsm for GradientToolFsmState {
 								.as_ref()
 								.and_then(|selected| if selected.path == path { Some(selected.dragging) } else { None });
 							tool_data.gradient_overlays.push(GradientOverlay::new(gradient, dragging, path, layer, document, responses, font_cache))
+						}
+					}
+
+					self
+				}
+				(_, GradientToolMessage::InsertStop) => {
+					for overlay in &tool_data.gradient_overlays {
+						let mouse = input.mouse.position;
+						let (start, end) = (overlay.evaluate_gradient_start(), overlay.evaluate_gradient_end());
+
+						// Compute the distance from the mouse to the gradient line in viewport space
+						let distance = (end - start).angle_between(mouse - start).sin() * (mouse - start).length();
+
+						// If click is on the line then insert point
+						if distance < SELECTION_TOLERANCE {
+							let mut gradient = overlay.gradient.clone();
+							let mouse = overlay.transform.inverse().transform_point2(mouse);
+
+							// Try and insert the new stop
+							if let Some(index) = gradient.insert_stop(mouse) {
+								// Update the layer fill
+								let fill = Fill::Gradient(gradient.clone());
+								let path = overlay.path.clone();
+								responses.push_back(Operation::SetLayerFill { path, fill }.into());
+
+								// Select the new point
+								let layer = document.document_legacy.layer(&overlay.path);
+								if let Ok(layer) = layer {
+									let mut selected_gradient = SelectedGradient::new(gradient, &overlay.path, layer, document, font_cache);
+									selected_gradient.dragging = GradientDragTarget::Step(index);
+									tool_data.selected_gradient = Some(selected_gradient);
+								}
+
+								break;
+							}
 						}
 					}
 

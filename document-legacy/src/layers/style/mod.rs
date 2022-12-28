@@ -138,6 +138,42 @@ impl Gradient {
 			}
 		}
 	}
+
+	/// Insert a stop into the gradient, the index if successful
+	pub fn insert_stop(&mut self, mouse: DVec2) -> Option<usize> {
+		// Calculate the new position by finding the closest point on the line
+		let new_position = ((self.end - self.start).angle_between(mouse - self.start)).cos() * self.start.distance(mouse) / self.start.distance(self.end);
+
+		// Don't insert point past end of line
+		if !(0. ..=1.).contains(&new_position) {
+			return None;
+		}
+
+		// Compute the color of the inserted stop
+		let get_color = |index: usize, time: f64| match (self.positions[index].1, self.positions.get(index + 1).and_then(|x| x.1)) {
+			// Lerp between the nearest colours if applicable
+			(Some(a), Some(b)) => a.lerp(
+				b,
+				((time - self.positions[index].0) / self.positions.get(index + 1).map(|end| end.0 - self.positions[index].0).unwrap_or_default()) as f32,
+			),
+			// Use the start or the end colour if applicable
+			(Some(v), _) | (_, Some(v)) => Some(v),
+			_ => Some(Color::WHITE),
+		};
+
+		// Compute the correct index to keep the positions in order
+		let mut index = 0;
+		while self.positions.len() > index && self.positions[index].0 <= new_position {
+			index += 1;
+		}
+
+		let new_color = get_color(index - 1, new_position);
+
+		// Insert the new stop
+		self.positions.insert(index, (new_position, new_color));
+
+		Some(index)
+	}
 }
 
 /// Describes the fill of a layer.
