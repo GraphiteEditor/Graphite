@@ -102,8 +102,9 @@ pub struct NodeGraphMessageHandler {
 	pub selected_nodes: Vec<graph_craft::document::NodeId>,
 	#[serde(skip)]
 	pub widgets: [LayoutGroup; 2],
+	/// Do not allow the node graph window to open or close whilst the user is drawing a node graph frame
 	#[serde(skip)]
-	pub is_drawing: bool,
+	pub is_drawing_node_graph_frame: bool,
 }
 
 impl NodeGraphMessageHandler {
@@ -363,8 +364,8 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &mut dyn Iterator<Item = &
 		#[remain::sorted]
 		match message {
 			NodeGraphMessage::CloseNodeGraph => {
-				// Don't close when drawing
-				if self.is_drawing {
+				// Don't close when drawing a node graph frame
+				if self.is_drawing_node_graph_frame {
 					return;
 				}
 
@@ -591,8 +592,8 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &mut dyn Iterator<Item = &
 				Self::send_graph(network, responses);
 			}
 			NodeGraphMessage::OpenNodeGraph { layer_path } => {
-				// Don't open when drawing
-				if self.is_drawing {
+				// Don't open when drawing a node graph frame
+				if self.is_drawing_node_graph_frame {
 					return;
 				}
 
@@ -645,8 +646,8 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &mut dyn Iterator<Item = &
 			}
 			NodeGraphMessage::SetDrawing { new_drawing } => {
 				let selected: Vec<_> = selected.collect();
-				// Check if we stopped drawing
-				if self.is_drawing && !new_drawing {
+				// Check if we stopped drawing a node graph frame
+				if self.is_drawing_node_graph_frame && !new_drawing {
 					// Check if we should open or close the node graph
 					if selected.len() == 1
 						&& document
@@ -660,7 +661,7 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &mut dyn Iterator<Item = &
 						responses.push_back(NodeGraphMessage::CloseNodeGraph.into());
 					}
 				}
-				self.is_drawing = new_drawing
+				self.is_drawing_node_graph_frame = new_drawing
 			}
 			NodeGraphMessage::SetInputValue { node, input_index, value } => {
 				if let Some(network) = self.get_active_network_mut(document) {
