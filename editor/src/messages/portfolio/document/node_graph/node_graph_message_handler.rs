@@ -1,3 +1,4 @@
+use crate::messages::input_mapper::utility_types::macros::action_keys;
 use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
 use crate::messages::layout::utility_types::widgets::button_widgets::{BreadcrumbTrailButtons, TextButton};
 use crate::messages::prelude::*;
@@ -175,25 +176,40 @@ impl NodeGraphMessageHandler {
 		if let Some(network) = self.get_active_network_mut(document) {
 			let mut widgets = Vec::new();
 
-			// Show an enable or disable nodes button if there is a selection
-			if !self.selected_nodes.is_empty() {
-				let is_enabled = self.selected_nodes.iter().any(|id| !network.disabled.contains(id));
-				let enable_button = WidgetHolder::new(Widget::TextButton(TextButton {
-					label: if is_enabled { "Disable" } else { "Enable" }.to_string(),
-					on_update: WidgetCallback::new(move |_| NodeGraphMessage::SetSelectedEnabled { enabled: !is_enabled }.into()),
+			// Don't allow disabling input or output nodes
+			let mut selected_nodes = self.selected_nodes.iter().filter(|&&id| !network.inputs.contains(&id) && network.original_output() != id);
+
+			// If there is at least one other selected node then show the hide or show button
+			if selected_nodes.next().is_some() {
+				// Check if any of the selected nodes are disabled
+				let is_hidden = self.selected_nodes.iter().any(|id| network.disabled.contains(id));
+
+				// Check if multiple nodes are selected
+				let mutliple_nodes = selected_nodes.next().is_some();
+
+				// Generate the enable or disable button accordingly
+				let hide_button = WidgetHolder::new(Widget::TextButton(TextButton {
+					label: if is_hidden { "Show" } else { "Hide" }.to_string(),
+					tooltip: if is_hidden { "Show node" } else { "Hide node" }.to_string() + if mutliple_nodes { "s" } else { "" },
+					tooltip_shortcut: action_keys!(NodeGraphMessageDiscriminant::ToggleHidden),
+					on_update: WidgetCallback::new(move |_| NodeGraphMessage::ToggleHidden.into()),
 					..Default::default()
 				}));
-				widgets.push(enable_button);
+				widgets.push(hide_button);
 			}
 
 			// If only one node is selected then show the preview or stop previewing button
 			if self.selected_nodes.len() == 1 {
-				let is_output = network.output == self.selected_nodes[0];
-				// Don't show stop previewing on the output node
+				let node_id = self.selected_nodes[0];
+				// Is this node the current output
+				let is_output = network.output == node_id;
+
+				// Don't show stop previewing button on the origional output node
 				if !(is_output && network.previous_output.filter(|&id| id != self.selected_nodes[0]).is_none()) {
 					let output_button = WidgetHolder::new(Widget::TextButton(TextButton {
-						label: if is_output { "Stop Previewing" } else { "Preview" }.to_string(),
-						on_update: WidgetCallback::new(move |_| NodeGraphMessage::SetSelectedOutput { output: !is_output }.into()),
+						label: if is_output { "End Preview" } else { "Preview" }.to_string(),
+						tooltip: if is_output { "Restore preview to Output node" } else { "Preview node" }.to_string() + " (shortcut: Alt+click node)",
+						on_update: WidgetCallback::new(move |_| NodeGraphMessage::TogglePreview { node_id }.into()),
 						..Default::default()
 					}));
 					widgets.push(output_button);
@@ -675,31 +691,6 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 					}
 				}
 			}
-			NodeGraphMessage::SetSelectedEnabled { enabled } => {
-				if let Some(network) = self.get_active_network_mut(document) {
-					if enabled {
-						network.disabled.retain(|id| !self.selected_nodes.contains(id));
-					} else {
-						network.disabled.extend(&self.selected_nodes);
-					}
-					Self::send_graph(network, responses);
-				}
-				self.update_selection_action_buttons(document, responses);
-				responses.push_back(DocumentMessage::NodeGraphFrameGenerate.into());
-			}
-			NodeGraphMessage::SetSelectedOutput { output } => {
-				if let Some(network) = self.get_active_network_mut(document) {
-					if output {
-						network.previous_output = Some(network.previous_output.unwrap_or(network.output));
-						network.output = self.selected_nodes[0];
-					} else if let Some(output) = network.previous_output.take() {
-						network.output = output
-					}
-					Self::send_graph(network, responses);
-				}
-				self.update_selection_action_buttons(document, responses);
-				responses.push_back(DocumentMessage::NodeGraphFrameGenerate.into());
-			}
 			NodeGraphMessage::ShiftNode { node_id } => {
 				let Some(network) = self.get_active_network_mut(document) else{
 					warn!("No network");
@@ -747,12 +738,42 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &InputPreprocessorMessageH
 				}
 				Self::send_graph(network, responses);
 			}
+			NodeGraphMessage::ToggleHidden => {
+				if let Some(network) = self.get_active_network_mut(document) {
+					// Check if any of the selected nodes are hidden
+					if self.selected_nodes.iter().any(|id| network.disabled.contains(id)) {
+						// Remove all selected nodes from the disabled list
+						network.disabled.retain(|id| !self.selected_nodes.contains(id));
+					} else {
+						let original_output = network.original_output();
+						// Add all selected nodes to the disabled list (excluding input or output nodes)
+						network.disabled.extend(self.selected_nodes.iter().filter(|&id| !network.inputs.contains(id) && original_output != *id));
+					}
+					Self::send_graph(network, responses);
+				}
+				self.update_selection_action_buttons(document, responses);
+				responses.push_back(DocumentMessage::NodeGraphFrameGenerate.into());
+			}
+			NodeGraphMessage::TogglePreview { node_id } => {
+				if let Some(network) = self.get_active_network_mut(document) {
+					// Check if the node is not already
+					if network.output != node_id {
+						network.previous_output = Some(network.previous_output.unwrap_or(network.output));
+						network.output = node_id;
+					} else if let Some(output) = network.previous_output.take() {
+						network.output = output
+					}
+					Self::send_graph(network, responses);
+				}
+				self.update_selection_action_buttons(document, responses);
+				responses.push_back(DocumentMessage::NodeGraphFrameGenerate.into());
+			}
 		}
 	}
 
 	fn actions(&self) -> ActionList {
 		if self.layer_path.is_some() && !self.selected_nodes.is_empty() {
-			actions!(NodeGraphMessageDiscriminant; DeleteSelectedNodes, Cut, Copy, DuplicateSelectedNodes)
+			actions!(NodeGraphMessageDiscriminant; DeleteSelectedNodes, Cut, Copy, DuplicateSelectedNodes, ToggleHidden)
 		} else {
 			actions!(NodeGraphMessageDiscriminant;)
 		}
