@@ -277,6 +277,11 @@ impl NodeNetwork {
 			nodes,
 		}
 	}
+
+	/// Get the original output node of this network, ignoring any preview node
+	pub fn original_output(&self) -> NodeId {
+		self.previous_output.unwrap_or(self.output)
+	}
 }
 
 #[cfg(test)]
