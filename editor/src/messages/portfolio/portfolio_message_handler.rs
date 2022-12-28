@@ -91,6 +91,10 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 					responses.push_back(PropertiesPanelMessage::Deactivate.into());
 					responses.push_back(BroadcastEvent::ToolAbort.into());
 					responses.push_back(ToolMessage::DeactivateTools.into());
+
+					// Clear properties panel and layer tree
+					responses.push_back(PropertiesPanelMessage::ClearSelection.into());
+					responses.push_back(DocumentMessage::ClearLayerTree.into());
 				}
 
 				for document_id in &self.document_ids {
@@ -101,22 +105,14 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 				responses.push_back(PortfolioMessage::UpdateOpenDocumentsList.into());
 			}
 			PortfolioMessage::CloseDocument { document_id } => {
-				let document_index = self.document_index(document_id);
-				self.documents.remove(&document_id);
-				self.document_ids.remove(document_index);
-
-				if self.document_ids.is_empty() {
-					self.active_document_id = None;
-				} else if self.active_document_id.is_some() {
-					let document_id = if document_index == self.document_ids.len() {
-						// If we closed the last document take the one previous (same as last)
-						*self.document_ids.last().unwrap()
-					} else {
-						// Move to the next tab
-						self.document_ids[document_index]
-					};
-					responses.push_back(PortfolioMessage::SelectDocument { document_id }.into());
+				// Is this the last document?
+				if self.documents.len() == 1 && self.document_ids[0] == document_id {
+					// Clear properties panel and layer tree
+					responses.push_back(PropertiesPanelMessage::ClearSelection.into());
+					responses.push_back(DocumentMessage::ClearLayerTree.into());
 				}
+				// Actually delete the document (delay to delete document is required to let the document and properties panel messages above get processed)
+				responses.push_back(PortfolioMessage::DeleteDocument { document_id }.into());
 
 				// Send the new list of document tab names
 				responses.push_back(PortfolioMessage::UpdateOpenDocumentsList.into());
@@ -177,6 +173,24 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 			PortfolioMessage::Cut { clipboard } => {
 				responses.push_back(PortfolioMessage::Copy { clipboard }.into());
 				responses.push_back(DocumentMessage::DeleteSelectedLayers.into());
+			}
+			PortfolioMessage::DeleteDocument { document_id } => {
+				let document_index = self.document_index(document_id);
+				self.documents.remove(&document_id);
+				self.document_ids.remove(document_index);
+
+				if self.document_ids.is_empty() {
+					self.active_document_id = None;
+				} else if self.active_document_id.is_some() {
+					let document_id = if document_index == self.document_ids.len() {
+						// If we closed the last document take the one previous (same as last)
+						*self.document_ids.last().unwrap()
+					} else {
+						// Move to the next tab
+						self.document_ids[document_index]
+					};
+					responses.push_back(PortfolioMessage::SelectDocument { document_id }.into());
+				}
 			}
 			PortfolioMessage::DestroyAllDocuments => {
 				// Empty the list of internal document data
@@ -789,17 +803,17 @@ impl PortfolioMessageHandler {
 				sampling_method: Self::compute_input::<ImaginateSamplingMethod>(&network, &imaginate_node, get("Sampling Method"), Cow::Borrowed(&image))?
 					.api_value()
 					.to_string(),
-				text_guidance: Self::compute_input(&network, &imaginate_node, get("Text Guidance"), Cow::Borrowed(&image))?,
-				text_prompt: Self::compute_input(&network, &imaginate_node, get("Text Prompt"), Cow::Borrowed(&image))?,
+				text_guidance: Self::compute_input(&network, &imaginate_node, get("Prompt Guidance"), Cow::Borrowed(&image))?,
+				text_prompt: Self::compute_input(&network, &imaginate_node, get("Prompt"), Cow::Borrowed(&image))?,
 				negative_prompt: Self::compute_input(&network, &imaginate_node, get("Negative Prompt"), Cow::Borrowed(&image))?,
 				image_creativity: Some(Self::compute_input::<f64>(&network, &imaginate_node, get("Image Creativity"), Cow::Borrowed(&image))? / 100.),
 				restore_faces: Self::compute_input(&network, &imaginate_node, get("Improve Faces"), Cow::Borrowed(&image))?,
 				tiling: Self::compute_input(&network, &imaginate_node, get("Tiling"), Cow::Borrowed(&image))?,
 			};
-			let use_base_image = Self::compute_input::<bool>(&network, &imaginate_node, get("Use Base Image"), Cow::Borrowed(&image))?;
+			let use_base_image = Self::compute_input::<bool>(&network, &imaginate_node, get("Adapt Input Image"), Cow::Borrowed(&image))?;
 
 			let base_image = if use_base_image {
-				let image: Image = Self::compute_input(&network, &imaginate_node, get("Base Image"), Cow::Borrowed(&image))?;
+				let image: Image = Self::compute_input(&network, &imaginate_node, get("Input Image"), Cow::Borrowed(&image))?;
 				// Only use if has size
 				if image.width > 0 && image.height > 0 {
 					let (image_data, size) = Self::encode_img(image, Some(resolution), image::ImageOutputFormat::Png)?;
