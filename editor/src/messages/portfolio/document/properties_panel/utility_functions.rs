@@ -20,8 +20,6 @@ use std::f64::consts::PI;
 use std::sync::Arc;
 
 pub fn apply_transform_operation(layer: &Layer, transform_op: TransformOp, value: f64, font_cache: &FontCache) -> [f64; 6] {
-	let pivot = DAffine2::from_translation(layer.transform.transform_point2(layer.layerspace_pivot(font_cache)));
-
 	let transformation = match transform_op {
 		TransformOp::X => DAffine2::update_x,
 		TransformOp::Y => DAffine2::update_y,
@@ -36,8 +34,19 @@ pub fn apply_transform_operation(layer: &Layer, transform_op: TransformOp, value
 		_ => 1.,
 	};
 
-	// Apply the operation and find the delta transform
-	let mut delta = layer.transform.inverse() * transformation(layer.transform, value / scale);
+	// Apply the operation
+	let transform = transformation(layer.transform, value / scale);
+
+	// Return this transform if it is not a dimensions change
+	if !matches!(transform_op, TransformOp::ScaleX | TransformOp::Width | TransformOp::ScaleY | TransformOp::Height) {
+		return transform.to_cols_array();
+	}
+
+	// Find the layerspace pivot
+	let pivot = DAffine2::from_translation(layer.transform.transform_point2(layer.layerspace_pivot(font_cache)));
+
+	// Find the delta transform
+	let mut delta = layer.transform.inverse() * transform;
 
 	// Preserve aspect ratio
 	if matches!(transform_op, TransformOp::ScaleX | TransformOp::Width) && layer.preserve_aspect {
@@ -45,7 +54,7 @@ pub fn apply_transform_operation(layer: &Layer, transform_op: TransformOp, value
 		if scale_x != 0. {
 			delta = DAffine2::from_scale((1., (value / scale) / scale_x).into()) * delta;
 		}
-	} else if matches!(transform_op, TransformOp::ScaleY | TransformOp::Height) && layer.preserve_aspect {
+	} else if layer.preserve_aspect {
 		let scale_y = layer.transform.scale_y();
 		if scale_y != 0. {
 			delta = DAffine2::from_scale(((value / scale) / scale_y, 1.).into()) * delta;
