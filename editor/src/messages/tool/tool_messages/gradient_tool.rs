@@ -48,6 +48,7 @@ pub enum GradientToolMessage {
 	DocumentIsDirty,
 
 	// Tool-specific messages
+	DeleteStop,
 	InsertStop,
 	PointerDown,
 	PointerMove {
@@ -113,6 +114,7 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for GradientTool
 		PointerMove,
 		Abort,
 		InsertStop,
+		DeleteStop,
 	);
 }
 
@@ -459,6 +461,52 @@ impl Fsm for GradientToolFsmState {
 
 					self
 				}
+				(GradientToolFsmState::Ready, GradientToolMessage::DeleteStop) => {
+					let Some(selected_gradient) = &mut tool_data.selected_gradient else{
+						return self;
+					};
+
+					// Skip if invalid gradient
+					if selected_gradient.gradient.positions.len() < 2 {
+						return self;
+					}
+
+					// Remove the selected point
+					match selected_gradient.dragging {
+						GradientDragTarget::Start => selected_gradient.gradient.positions.remove(0),
+						GradientDragTarget::End => selected_gradient.gradient.positions.pop().unwrap(),
+						GradientDragTarget::Step(index) => selected_gradient.gradient.positions.remove(index),
+					};
+
+					// The gradient has only one point and so should become a fill
+					if selected_gradient.gradient.positions.len() == 1 {
+						let fill = Fill::Solid(selected_gradient.gradient.positions[0].1.unwrap_or(Color::BLACK));
+						let path = selected_gradient.path.clone();
+						responses.push_back(Operation::SetLayerFill { path, fill }.into());
+						return self;
+					}
+
+					// Find the minimum and maximum positions
+					let min_position = selected_gradient.gradient.positions.iter().map(|(pos, _)| *pos).reduce(f64::min).expect("No min");
+					let max_position = selected_gradient.gradient.positions.iter().map(|(pos, _)| *pos).reduce(f64::max).expect("No max");
+
+					// Recompute the start and end posiiton of the gradient (in viewport transform)
+					let transform = selected_gradient.transform;
+					let (start, end) = (transform.transform_point2(selected_gradient.gradient.start), transform.transform_point2(selected_gradient.gradient.end));
+					let (new_start, new_end) = (start.lerp(end, min_position), start.lerp(end, max_position));
+					selected_gradient.gradient.start = transform.inverse().transform_point2(new_start);
+					selected_gradient.gradient.end = transform.inverse().transform_point2(new_end);
+
+					// Remap the positions
+					for (position, _) in selected_gradient.gradient.positions.iter_mut() {
+						*position = (*position - min_position) / (max_position - min_position);
+					}
+
+					// Render the new gradient
+					selected_gradient.render_gradient(responses);
+
+					self
+				}
 				(_, GradientToolMessage::InsertStop) => {
 					for overlay in &tool_data.gradient_overlays {
 						let mouse = input.mouse.position;
@@ -591,7 +639,10 @@ impl Fsm for GradientToolFsmState {
 
 				(GradientToolFsmState::Drawing, GradientToolMessage::PointerUp) => {
 					match tool_data.drag_start.distance(input.mouse.position) <= DRAG_THRESHOLD {
-						true => responses.push_back(DocumentMessage::AbortTransaction.into()),
+						true => {
+							responses.push_back(DocumentMessage::AbortTransaction.into());
+							responses.push_back(GradientToolMessage::DocumentIsDirty.into());
+						}
 						false => responses.push_back(DocumentMessage::CommitTransaction.into()),
 					}
 

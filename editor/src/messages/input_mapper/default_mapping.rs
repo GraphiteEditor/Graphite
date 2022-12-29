@@ -116,6 +116,8 @@ pub fn default_mapping() -> Mapping {
 		entry!(PointerMove; refresh_keys=[Shift], action_dispatch=GradientToolMessage::PointerMove { constrain_axis: Shift }),
 		entry!(KeyUp(Lmb); action_dispatch=GradientToolMessage::PointerUp),
 		entry!(DoubleClick; action_dispatch=GradientToolMessage::InsertStop),
+		entry!(KeyDown(Delete); action_dispatch=GradientToolMessage::DeleteStop),
+		entry!(KeyDown(Backspace); action_dispatch=GradientToolMessage::DeleteStop),
 		//
 		// RectangleToolMessage
 		entry!(KeyDown(Lmb); action_dispatch=RectangleToolMessage::DragStart),
