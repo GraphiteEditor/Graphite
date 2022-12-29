@@ -1,6 +1,6 @@
 use crate::svg_drawing::*;
 
-use bezier_rs::{Bezier, ComputeType, ManipulatorGroup, Subpath};
+use bezier_rs::{Bezier, ComputeType, ManipulatorGroup, ProjectionOptions, Subpath};
 
 use glam::DVec2;
 use wasm_bindgen::prelude::*;
@@ -66,6 +66,15 @@ impl WasmSubpath {
 		};
 		let point_text = draw_circle(point, 4., RED, 1.5, WHITE);
 		wrap_svg_tag(format!("{}{}", self.to_default_svg(), point_text))
+	}
+
+	pub fn project(&self, x: f64, y: f64) -> String {
+		let (segment_index, projected_t) = self.0.project(DVec2::new(x, y), ProjectionOptions::default()).unwrap();
+		let projected_point = self.0.evaluate(ComputeType::Parametric((segment_index as f64 + projected_t) / (self.0.len_segments() as f64)));
+
+		let subpath_svg = self.to_default_svg();
+		let content = format!("{subpath_svg}{}", draw_line(projected_point.x, projected_point.y, x, y, RED, 1.),);
+		wrap_svg_tag(content)
 	}
 
 	pub fn intersect_line_segment(&self, js_points: JsValue) -> String {
