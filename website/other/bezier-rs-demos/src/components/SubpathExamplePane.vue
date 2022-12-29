@@ -12,7 +12,7 @@
 		</div>
 		<div class="example-row">
 			<div v-for="(example, index) in examples" :key="index">
-				<SubpathExample 
+				<SubpathExample
 					:title="example.title"
 					:triples="example.triples"
 					:closed="example.closed"

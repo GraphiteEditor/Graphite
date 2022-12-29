@@ -19,12 +19,12 @@
 
 	<h2>Subpaths</h2>
 	<div v-for="(feature, index) in subpathFeatures" :key="index">
-		<SubpathExamplePane 
+		<SubpathExamplePane
 			:name="feature.name"
 			:callback="feature.callback"
 			:sliderOptions="feature.sliderOptions"
 			:triggerOnMouseMove="feature.triggerOnMouseMove"
-			:chooseComputeType="feature.chooseComputeType" 
+			:chooseComputeType="feature.chooseComputeType"
 		/>
 	</div>
 </template>
