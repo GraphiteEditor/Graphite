@@ -1,3 +1,5 @@
+use core::fmt::Debug;
+
 use crate::Node;
 
 pub mod color;
@@ -27,9 +29,10 @@ impl<Iter, MapFn: Node<Item, Output = Out>, Item, Out> MapNode<Iter, MapFn, Item
 	}
 }
 
-impl<Iter: Iterator<Item = Item>, MapFn: Node<Item, Output = Out>, Item, Out> Node<Iter> for MapNode<Iter, MapFn, Item, Out> {
+impl<Iter: Iterator<Item = Item> + core::fmt::Debug, MapFn: Node<Item, Output = Out>, Item, Out> Node<Iter> for MapNode<Iter, MapFn, Item, Out> {
 	type Output = MapFnIterator<Iter, MapFn>;
 
+	#[inline]
 	fn eval(self, input: Iter) -> Self::Output {
 		MapFnIterator::new(input, self.map_fn)
 	}
@@ -38,6 +41,7 @@ impl<Iter: Iterator<Item = Item>, MapFn: Node<Item, Output = Out>, Item, Out> No
 impl<Iter: Iterator<Item = Item>, MapFn: Node<Item, Output = Out> + Copy, Item, Out> Node<Iter> for &MapNode<Iter, MapFn, Item, Out> {
 	type Output = MapFnIterator<Iter, MapFn>;
 
+	#[inline]
 	fn eval(self, input: Iter) -> Self::Output {
 		MapFnIterator::new(input, self.map_fn)
 	}
@@ -49,6 +53,14 @@ pub struct MapFnIterator<Iter, MapFn> {
 	iter: Iter,
 	map_fn: MapFn,
 }
+
+impl<Iter: Debug, MapFn> Debug for MapFnIterator<Iter, MapFn> {
+	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+		f.debug_struct("MapFnIterator").field("iter", &self.iter).field("map_fn", &"MapFn").finish()
+	}
+}
+
+impl<Iter: Copy, MapFn: Copy> Copy for MapFnIterator<Iter, MapFn> {}
 
 impl<Iter, MapFn> MapFnIterator<Iter, MapFn> {
 	pub fn new(iter: Iter, map_fn: MapFn) -> Self {
@@ -84,6 +96,7 @@ impl<Iter> WeightedAvgNode<Iter> {
 	}
 }
 
+#[inline]
 fn weighted_avg_node<Iter: Iterator<Item = (Color, f32)> + Clone>(input: Iter) -> Color {
 	let total_weight: f32 = input.clone().map(|(_, weight)| weight).sum();
 	let total_r: f32 = input.clone().map(|(color, weight)| color.r() * weight).sum();
@@ -95,12 +108,16 @@ fn weighted_avg_node<Iter: Iterator<Item = (Color, f32)> + Clone>(input: Iter) -
 
 impl<Iter: Iterator<Item = (Color, f32)> + Clone> Node<Iter> for WeightedAvgNode<Iter> {
 	type Output = Color;
+
+	#[inline]
 	fn eval(self, input: Iter) -> Self::Output {
 		weighted_avg_node(input)
 	}
 }
 impl<Iter: Iterator<Item = (Color, f32)> + Clone> Node<Iter> for &WeightedAvgNode<Iter> {
 	type Output = Color;
+
+	#[inline]
 	fn eval(self, input: Iter) -> Self::Output {
 		weighted_avg_node(input)
 	}
@@ -147,6 +164,7 @@ impl<Radius, Image> WindowNode<Radius, Image> {
 
 impl<'a, Radius: Node<(), Output = u32>, Image: Node<(), Output = ImageSlice<'a>>> Node<u32> for WindowNode<Radius, Image> {
 	type Output = ImageWindowIterator<'a>;
+	#[inline]
 	fn eval(self, input: u32) -> Self::Output {
 		let radius = self.radius.eval(());
 		let image = self.image.eval(());
@@ -156,6 +174,7 @@ impl<'a, Radius: Node<(), Output = u32>, Image: Node<(), Output = ImageSlice<'a>
 }
 impl<'a, 'b: 'a, Radius: Node<(), Output = u32> + Copy, Index: Node<(), Output = ImageSlice<'b>> + Copy> Node<u32> for &'a WindowNode<Radius, Index> {
 	type Output = ImageWindowIterator<'a>;
+	#[inline]
 	fn eval(self, input: u32) -> Self::Output {
 		let radius = self.radius.eval(());
 		let image = self.image.eval(());
@@ -192,6 +211,7 @@ impl<'a> ImageWindowIterator<'a> {
 
 impl<'a> Iterator for ImageWindowIterator<'a> {
 	type Item = (Color, (i32, i32));
+	#[inline]
 	fn next(&mut self) -> Option<Self::Item> {
 		let start_x = self.index as i32 % self.image.width as i32;
 		let start_y = self.index as i32 / self.image.width as i32;
@@ -200,6 +220,7 @@ impl<'a> Iterator for ImageWindowIterator<'a> {
 		let min_x = (start_x - radius).max(0) as u32;
 		let max_x = (start_x + radius).min(self.image.width as i32 - 1) as u32;
 		let max_y = (start_y + radius).min(self.image.height as i32 - 1) as u32;
+		self.x += 1;
 
 		if self.x > max_x {
 			self.x = min_x;
@@ -225,12 +246,14 @@ impl<MapFn> MapSndNode<MapFn> {
 
 impl<MapFn: Node<I>, I, F> Node<(F, I)> for MapSndNode<MapFn> {
 	type Output = (F, MapFn::Output);
+	#[inline]
 	fn eval(self, input: (F, I)) -> Self::Output {
 		(input.0, self.map_fn.eval(input.1))
 	}
 }
 impl<MapFn: Node<I> + Copy, I, F> Node<(F, I)> for &MapSndNode<MapFn> {
 	type Output = (F, MapFn::Output);
+	#[inline]
 	fn eval(self, input: (F, I)) -> Self::Output {
 		(input.0, self.map_fn.eval(input.1))
 	}
@@ -408,7 +431,14 @@ where
 
 #[cfg(test)]
 mod test {
+	use crate::{
+		ops::TypeNode,
+		structural::{ComposeNode, Then},
+		value::ValueNode,
+	};
+
 	use super::*;
+	use alloc::vec::Vec;
 
 	#[test]
 	fn map_node() {
@@ -417,5 +447,46 @@ mod test {
 		/*let map = ForEachNode(MutWrapper(GrayscaleNode));
 		(&map).eval(array.iter_mut());
 		assert_eq!(array[0], Color::from_rgbaf32(0.33333334, 0.33333334, 0.33333334, 1.0).unwrap());*/
+	}
+	#[test]
+	fn window_node() {
+		let radius = ValueNode::new(1u32);
+		static data: &[Color] = &[Color::from_rgbf32_unchecked(1., 0., 0.); 25];
+		let image = ValueNode::<_>::new(ImageSlice { width: 5, height: 5, data });
+		let window = WindowNode::new(radius, image);
+		//let window: TypeNode<_, u32, ImageWindowIterator<'static>> = TypeNode::new(window);
+		let vec = window.eval(0);
+		assert_eq!(vec.count(), 3);
+		/*let vec = window.eval(12);
+		assert_eq!(vec.count(), 9);
+		let vec = window.eval(5);
+		assert_eq!(vec.count(), 3);
+		*/
+	}
+
+	#[test]
+	fn blur_node() {
+		let radius = ValueNode::new(5u32);
+		let sigma = ValueNode::new(3f32);
+		static data: &[Color] = &[Color::from_rgbf32_unchecked(1., 0., 0.); 20];
+		let image = ValueNode::<_>::new(ImageSlice { width: 10, height: 2, data });
+		let window = WindowNode::new(radius, image);
+		let window: TypeNode<_, u32, ImageWindowIterator<'static>> = TypeNode::new(window);
+		let pos_to_dist = MapSndNode::new(DistanceNode);
+		let distance = window.then(MapNode::new(pos_to_dist));
+		let map_gaussian = MapSndNode::new(GaussianNode::new(sigma));
+		let map_distances: MapNode<_, MapSndNode<_>, _, _> = MapNode::new(map_gaussian);
+		let gaussian_iter = distance.then(map_distances);
+		let avg = gaussian_iter.then(WeightedAvgNode::new());
+		let avg: TypeNode<_, u32, Color> = TypeNode::new(avg);
+		let blur_iter = MapNode::new(avg);
+		let blur = image.then(ImageIndexIterNode).then(blur_iter);
+		let blur: TypeNode<_, (), MapFnIterator<_, _>> = TypeNode::new(blur);
+		let collect = CollectNode {};
+		let vec = collect.eval(0..10);
+		assert_eq!(vec.len(), 10);
+		let vec = ComposeNode::new(blur, collect);
+		let vec: TypeNode<_, (), Vec<Color>> = TypeNode::new(vec);
+		let image = vec.eval(());
 	}
 }

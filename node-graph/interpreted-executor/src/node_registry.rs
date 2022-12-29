@@ -1,7 +1,7 @@
 use borrow_stack::FixedSizeStack;
 use glam::DVec2;
 use graphene_core::generic::FnNode;
-use graphene_core::ops::{AddNode, IdNode};
+use graphene_core::ops::{AddNode, IdNode, TypeNode};
 use graphene_core::raster::color::Color;
 use graphene_core::raster::{Image, MapFnIterator};
 use graphene_core::structural::{ComposeNode, ConsNode, Then};
@@ -460,22 +460,28 @@ static NODE_REGISTRY: &[(NodeIdentifier, NodeConstructor)] = &[
 				let image = nodes.get(node_id).unwrap();
 				let radius = nodes.get(blur_args[0] as usize).unwrap();
 				let sigma = nodes.get(blur_args[1] as usize).unwrap();
-
+				/*
 				let radius = DowncastBothNode::<_, (), u32>::new(radius);
 				let sigma = DowncastBothNode::<_, (), f32>::new(sigma);
 				let image = DowncastBothNode::<_, (), ImageSlice<'static>>::new(image);
 				let window = graphene_core::raster::WindowNode::new(radius, image);
+				let window: TypeNode<_, u32, ImageWindowIterator<'static>> = TypeNode::new(window);
 				let pos_to_dist = MapSndNode::new(graphene_core::raster::DistanceNode);
 				let distance = window.then(&MapNode::new(pos_to_dist));
-				let map_gaussian = &MapSndNode::new(graphene_core::raster::GaussianNode::new(sigma));
-				let map_distances: &MapNode<_, &MapSndNode<_>, _, _> = &MapNode::new(&map_gaussian);
+				let map_gaussian = MapSndNode::new(graphene_core::raster::GaussianNode::new(sigma));
+				let map_distances: MapNode<_, MapSndNode<_>, _, _> = MapNode::new(map_gaussian);
 				let gaussian_iter = distance.then(map_distances);
 				let avg = gaussian_iter.then(WeightedAvgNode::new());
 				let blur_iter = MapNode::new(avg);
 				let blur = image.then(graphene_core::raster::ImageIndexIterNode).then(blur_iter);
+				let blur: TypeNode<_, (), MapFnIterator<_, _>> = TypeNode::new(blur);
 				let collect = CollectNode {};
-				let vec: ComposeNode<&ComposeNode<_, _, _>, &CollectNode, ()> = ComposeNode::new(&blur, &collect);
+				let vec = ComposeNode::new(blur, collect);
+				let vec: TypeNode<_, (), Vec<Color>> = TypeNode::new(vec);
+				let image = vec.eval(());
 				let node: DynAnyNode<_, (), Vec<Color>, Vec<Color>> = DynAnyNode::new(vec);
+				*/
+				let node = image;
 				node.into_type_erased()
 			})
 		} else {

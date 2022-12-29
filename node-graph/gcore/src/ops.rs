@@ -189,6 +189,34 @@ impl IdNode {
 	}
 }
 
+/// Ascribe the node types
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+pub struct TypeNode<N, I, O>(pub N, pub PhantomData<(I, O)>);
+impl<N: Node<I>, I> Node<I> for TypeNode<N, I, N::Output> {
+	type Output = N::Output;
+	fn eval(self, input: I) -> Self::Output {
+		self.0.eval(input)
+	}
+}
+impl<N: Node<I> + Copy, I> Node<I> for &TypeNode<N, I, N::Output> {
+	type Output = N::Output;
+	fn eval(self, input: I) -> Self::Output {
+		self.0.eval(input)
+	}
+} /*
+  impl<N: RefNode<I>, I> Node<I> for &TypeNode<N, I, N::Output> {
+	  type Output = N::Output;
+	  fn eval(self, input: I) -> Self::Output {
+		  self.0.eval_ref(input)
+	  }
+  }*/
+
+impl<N: Node<I>, I> TypeNode<N, I, N::Output> {
+	pub fn new(node: N) -> Self {
+		Self(node, PhantomData)
+	}
+}
+
 pub struct MapResultNode<MN, I, E>(pub MN, pub PhantomData<(I, E)>);
 
 impl<MN: Node<I>, I, E> Node<Result<I, E>> for MapResultNode<MN, I, E> {
