@@ -232,6 +232,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 					responses.push_back(BroadcastEvent::DocumentIsDirty.into());
 				}
 			}
+			BackupDocument { document, layer_metadata } => self.backup_with_document(document, layer_metadata, responses),
 			BooleanOperation(op) => {
 				// Convert Vec<&[LayerId]> to Vec<Vec<&LayerId>> because Vec<&[LayerId]> does not implement several traits (Debug, Serialize, Deserialize, ...) required by DocumentOperation enum
 				responses.push_back(StartTransaction.into());
@@ -1276,15 +1277,32 @@ impl DocumentMessageHandler {
 			.unwrap_or_else(|| panic!("Layer data cannot be found because the path {:?} does not exist", path))
 	}
 
-	pub fn backup(&mut self, responses: &mut VecDeque<Message>) {
+	/// Places a document into the history system
+	fn backup_with_document(&mut self, document: DocumentLegacy, layer_metadata: HashMap<Vec<LayerId>, LayerMetadata>, responses: &mut VecDeque<Message>) {
 		self.document_redo_history.clear();
-		self.document_undo_history.push_back((self.document_legacy.clone(), self.layer_metadata.clone()));
+		self.document_undo_history.push_back((document, layer_metadata));
 		if self.document_undo_history.len() > crate::consts::MAX_UNDO_HISTORY_LEN {
 			self.document_undo_history.pop_front();
 		}
 
 		// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
 		responses.push_back(PortfolioMessage::UpdateOpenDocumentsList.into());
+	}
+
+	/// Copies the entire document into the history system
+	pub fn backup(&mut self, responses: &mut VecDeque<Message>) {
+		self.backup_with_document(self.document_legacy.clone(), self.layer_metadata.clone(), responses);
+	}
+
+	/// Push a message backing up the document in its current state
+	pub fn backup_nonmut(&self, responses: &mut VecDeque<Message>) {
+		responses.push_back(
+			DocumentMessage::BackupDocument {
+				document: self.document_legacy.clone(),
+				layer_metadata: self.layer_metadata.clone(),
+			}
+			.into(),
+		);
 	}
 
 	pub fn rollback(&mut self, responses: &mut VecDeque<Message>) -> Result<(), EditorError> {
