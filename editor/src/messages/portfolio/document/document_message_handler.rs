@@ -175,7 +175,8 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 			}
 			#[remain::unsorted]
 			NodeGraph(message) => {
-				self.node_graph_handler.process_message(message, (&mut self.document_legacy, ipp), responses);
+				let selected_layers = &mut self.layer_metadata.iter().filter_map(|(path, data)| data.selected.then_some(path.as_slice()));
+				self.node_graph_handler.process_message(message, (&mut self.document_legacy, selected_layers), responses);
 			}
 
 			// Messages
@@ -758,6 +759,8 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 			}
 			SetOverlaysVisibility { visible } => {
 				self.overlays_visible = visible;
+				responses.push_back(BroadcastEvent::ToolAbort.into());
+				responses.push_back(OverlaysMessage::ClearAllOverlays.into());
 				responses.push_back(OverlaysMessage::Rerender.into());
 			}
 			SetSelectedLayers { replacement_selected_layers } => {

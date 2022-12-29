@@ -227,6 +227,9 @@ pub struct Layer {
 	/// A transformation applied to the layer (translation, rotation, scaling, and shear).
 	#[serde(with = "DAffine2Ref")]
 	pub transform: glam::DAffine2,
+	/// Should the aspect ratio of this layer be preserved?
+	#[serde(default = "return_true")]
+	pub preserve_aspect: bool,
 	/// The center of transformations like rotation or scaling with the shift key.
 	/// This is in local space (so the layer's transform should be applied).
 	pub pivot: DVec2,
@@ -255,6 +258,7 @@ impl Layer {
 			name: None,
 			data,
 			transform: glam::DAffine2::from_cols_array(&transform),
+			preserve_aspect: true,
 			pivot: DVec2::splat(0.5),
 			cache: String::new(),
 			thumbnail_cache: String::new(),
@@ -515,6 +519,7 @@ impl Clone for Layer {
 			name: self.name.clone(),
 			data: self.data.clone(),
 			transform: self.transform,
+			preserve_aspect: self.preserve_aspect,
 			pivot: self.pivot,
 			cache: String::new(),
 			thumbnail_cache: String::new(),
