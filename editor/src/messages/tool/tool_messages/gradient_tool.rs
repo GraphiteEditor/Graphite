@@ -318,15 +318,16 @@ impl SelectedGradient {
 			mouse = point - rotated;
 		}
 
-		mouse = self.transform.inverse().transform_point2(mouse);
+		let transformed_mouse = self.transform.inverse().transform_point2(mouse);
 
 		match self.dragging {
-			GradientDragTarget::Start => self.gradient.start = mouse,
-			GradientDragTarget::End => self.gradient.end = mouse,
+			GradientDragTarget::Start => self.gradient.start = transformed_mouse,
+			GradientDragTarget::End => self.gradient.end = transformed_mouse,
 			GradientDragTarget::Step(s) => {
+				let (start, end) = (self.transform.transform_point2(self.gradient.start), self.transform.transform_point2(self.gradient.end));
+
 				// Calculate the new position by finding the closest point on the line
-				let new_pos = ((self.gradient.end - self.gradient.start).angle_between(mouse - self.gradient.start)).cos() * self.gradient.start.distance(mouse)
-					/ self.gradient.start.distance(self.gradient.end);
+				let new_pos = ((end - start).angle_between(mouse - start)).cos() * start.distance(mouse) / start.distance(end);
 
 				// Should not go off end but can swap
 				let clamped = new_pos.clamp(0., 1.);
@@ -415,10 +416,9 @@ impl Fsm for GradientToolFsmState {
 						// If click is on the line then insert point
 						if distance < SELECTION_TOLERANCE {
 							let mut gradient = overlay.gradient.clone();
-							let mouse = overlay.transform.inverse().transform_point2(mouse);
 
 							// Try and insert the new stop
-							if let Some(index) = gradient.insert_stop(mouse) {
+							if let Some(index) = gradient.insert_stop(mouse, overlay.transform) {
 								document.backup_nonmut(responses);
 
 								// Update the layer fill

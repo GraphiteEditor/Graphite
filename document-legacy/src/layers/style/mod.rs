@@ -140,9 +140,12 @@ impl Gradient {
 	}
 
 	/// Insert a stop into the gradient, the index if successful
-	pub fn insert_stop(&mut self, mouse: DVec2) -> Option<usize> {
+	pub fn insert_stop(&mut self, mouse: DVec2, transform: DAffine2) -> Option<usize> {
+		// Transform the start and end positions to the same coordinate space as the mouse.
+		let (start, end) = (transform.transform_point2(self.start), transform.transform_point2(self.end));
+
 		// Calculate the new position by finding the closest point on the line
-		let new_position = ((self.end - self.start).angle_between(mouse - self.start)).cos() * self.start.distance(mouse) / self.start.distance(self.end);
+		let new_position = ((end - start).angle_between(mouse - start)).cos() * start.distance(mouse) / start.distance(end);
 
 		// Don't insert point past end of line
 		if !(0. ..=1.).contains(&new_position) {
