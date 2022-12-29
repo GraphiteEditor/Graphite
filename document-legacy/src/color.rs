@@ -205,4 +205,17 @@ impl Color {
 
 		Some(Color::from_rgb8(r, g, b))
 	}
+
+	/// Linearly interpolates between two colors based on t.
+	///
+	/// T must be between 0 and 1.
+	pub fn lerp(self, other: Color, t: f32) -> Option<Self> {
+		assert!((0. ..=1.).contains(&t));
+		Color::from_rgbaf32(
+			self.red + ((other.red - self.red) * t),
+			self.green + ((other.green - self.green) * t),
+			self.blue + ((other.blue - self.blue) * t),
+			self.alpha + ((other.alpha - self.alpha) * t),
+		)
+	}
 }

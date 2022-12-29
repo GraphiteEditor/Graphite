@@ -4,6 +4,7 @@ use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, 
 use crate::messages::prelude::*;
 
 use document_legacy::boolean_ops::BooleanOperation as BooleanOperationType;
+use document_legacy::document::Document as DocumentLegacy;
 use document_legacy::layers::blend_mode::BlendMode;
 use document_legacy::layers::style::ViewMode;
 use document_legacy::LayerId;
@@ -45,6 +46,10 @@ pub enum DocumentMessage {
 	AlignSelectedLayers {
 		axis: AlignAxis,
 		aggregate: AlignAggregate,
+	},
+	BackupDocument {
+		document: DocumentLegacy,
+		layer_metadata: HashMap<Vec<LayerId>, LayerMetadata>,
 	},
 	BooleanOperation(BooleanOperationType),
 	ClearLayerTree,
