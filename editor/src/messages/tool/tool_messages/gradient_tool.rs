@@ -88,7 +88,13 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for GradientTool
 		}
 		if let ToolMessage::Gradient(GradientToolMessage::UpdateOptions(action)) = message {
 			match action {
-				GradientOptionsUpdate::Type(gradient_type) => self.options.gradient_type = gradient_type,
+				GradientOptionsUpdate::Type(gradient_type) => {
+					self.options.gradient_type = gradient_type;
+					if let Some(selected_gradient) = &mut self.data.selected_gradient {
+						selected_gradient.gradient.gradient_type = gradient_type;
+						selected_gradient.render_gradient(responses);
+					}
+				}
 			}
 			return;
 		}
@@ -114,7 +120,11 @@ impl PropertyHolder for GradientTool {
 	fn properties(&self) -> Layout {
 		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row {
 			widgets: vec![WidgetHolder::new(Widget::RadioInput(RadioInput {
-				selected_index: if self.options.gradient_type == GradientType::Radial { 1 } else { 0 },
+				selected_index: if self.selected_gradient().unwrap_or(self.options.gradient_type) == GradientType::Radial {
+					1
+				} else {
+					0
+				},
 				entries: vec![
 					RadioEntryData {
 						value: "linear".into(),
@@ -291,6 +301,35 @@ impl SelectedGradient {
 		}
 	}
 
+	/// Update the selected gradient, checking for removal or change of gradient.
+	pub fn update(gradient: &mut Option<Self>, document: &DocumentMessageHandler, font_cache: &FontCache, responses: &mut VecDeque<Message>) {
+		let Some(inner_gradient) = gradient else {
+			return;
+		};
+
+		// Clear the gradient if layer deleted
+		let Ok(layer) = document.document_legacy.layer(&inner_gradient.path) else{
+			responses.push_back(ToolMessage::RefreshToolOptions.into());
+			*gradient = None;
+			return;
+		};
+
+		// Update transform
+		inner_gradient.transform = gradient_space_transform(&inner_gradient.path, layer, document, font_cache);
+
+		// Clear if no longer a gradient
+		let Some(gradient) = layer.style().ok().and_then(|style|style.fill().as_gradient()) else{
+			responses.push_back(ToolMessage::RefreshToolOptions.into());
+			*gradient = None;
+			return;
+		};
+
+		if gradient.gradient_type != inner_gradient.gradient.gradient_type {
+			responses.push_back(ToolMessage::RefreshToolOptions.into());
+		}
+		inner_gradient.gradient = gradient.clone();
+	}
+
 	pub fn with_gradient_start(mut self, start: DVec2) -> Self {
 		self.gradient.start = self.transform.inverse().transform_point2(start);
 		self
@@ -338,11 +377,22 @@ impl SelectedGradient {
 				self.dragging = GradientDragTarget::Step(self.gradient.positions.iter().position(|x| *x == new_pos).unwrap());
 			}
 		}
+		self.render_gradient(responses);
+	}
 
+	/// Update the layer fill to the current gradient
+	pub fn render_gradient(&mut self, responses: &mut VecDeque<Message>) {
 		self.gradient.transform = self.transform;
 		let fill = Fill::Gradient(self.gradient.clone());
 		let path = self.path.clone();
 		responses.push_back(Operation::SetLayerFill { path, fill }.into());
+	}
+}
+
+impl GradientTool {
+	/// Get the gradient type of the selected gradient (if it exists)
+	pub fn selected_gradient(&self) -> Option<GradientType> {
+		self.data.selected_gradient.as_ref().map(|selected| selected.gradient.gradient_type)
 	}
 }
 
@@ -388,6 +438,10 @@ impl Fsm for GradientToolFsmState {
 						overlay.delete_overlays(responses);
 					}
 
+					if self != GradientToolFsmState::Drawing {
+						SelectedGradient::update(&mut tool_data.selected_gradient, document, font_cache, responses);
+					}
+
 					for path in document.selected_visible_layers() {
 						if !document.document_legacy.multiply_transforms(path).unwrap().inverse().is_finite() {
 							continue;
@@ -421,16 +475,16 @@ impl Fsm for GradientToolFsmState {
 							if let Some(index) = gradient.insert_stop(mouse, overlay.transform) {
 								document.backup_nonmut(responses);
 
-								// Update the layer fill
-								let fill = Fill::Gradient(gradient.clone());
-								let path = overlay.path.clone();
-								responses.push_back(Operation::SetLayerFill { path, fill }.into());
-
-								// Select the new point
 								let layer = document.document_legacy.layer(&overlay.path);
 								if let Ok(layer) = layer {
 									let mut selected_gradient = SelectedGradient::new(gradient, &overlay.path, layer, document, font_cache);
+
+									// Select the new point
 									selected_gradient.dragging = GradientDragTarget::Step(index);
+
+									// Update the layer fill
+									selected_gradient.render_gradient(responses);
+
 									tool_data.selected_gradient = Some(selected_gradient);
 								}
 
@@ -498,7 +552,7 @@ impl Fsm for GradientToolFsmState {
 
 							let layer = document.document_legacy.layer(&intersection).unwrap();
 
-							document.backup_nonmut(responses);
+							responses.push_back(DocumentMessage::StartTransaction.into());
 
 							// Use the already existing gradient if it exists
 							let gradient = if let Some(gradient) = layer.style().ok().map(|style| style.fill()).and_then(|fill| fill.as_gradient()) {
