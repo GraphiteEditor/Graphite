@@ -175,7 +175,8 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 			}
 			#[remain::unsorted]
 			NodeGraph(message) => {
-				self.node_graph_handler.process_message(message, (&mut self.document_legacy, ipp), responses);
+				let selected_layers = &mut self.layer_metadata.iter().filter_map(|(path, data)| data.selected.then_some(path.as_slice()));
+				self.node_graph_handler.process_message(message, (&mut self.document_legacy, selected_layers), responses);
 			}
 
 			// Messages
@@ -242,6 +243,20 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 					.into(),
 				);
 				responses.push_back(CommitTransaction.into());
+			}
+			ClearLayerTree => {
+				// Send an empty layer tree
+				let data_buffer: RawBuffer = Self::default().serialize_root().into();
+				responses.push_back(FrontendMessage::UpdateDocumentLayerTreeStructure { data_buffer }.into());
+
+				// Clear the options bar
+				responses.push_back(
+					LayoutMessage::SendLayout {
+						layout: Layout::WidgetLayout(Default::default()),
+						layout_target: LayoutTarget::LayerTreeOptions,
+					}
+					.into(),
+				);
 			}
 			CommitTransaction => (),
 			CreateEmptyFolder { mut container_path } => {
@@ -743,6 +758,8 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 			}
 			SetOverlaysVisibility { visible } => {
 				self.overlays_visible = visible;
+				responses.push_back(BroadcastEvent::ToolAbort.into());
+				responses.push_back(OverlaysMessage::ClearAllOverlays.into());
 				responses.push_back(OverlaysMessage::Rerender.into());
 			}
 			SetSelectedLayers { replacement_selected_layers } => {
@@ -919,7 +936,7 @@ impl DocumentMessageHandler {
 			}
 		};
 
-		// Prepare the node graph base image base image
+		// Prepare the node graph input image
 
 		// Calculate the size of the region to be exported
 
