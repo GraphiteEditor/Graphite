@@ -1353,6 +1353,8 @@ impl DocumentMessageHandler {
 					responses.push_back(DocumentMessage::LayerChanged { affected_layer_path: layer.clone() }.into())
 				}
 
+				responses.push_back(NodeGraphMessage::SendGraph.into());
+
 				Ok(())
 			}
 			None => Err(EditorError::NoTransactionInProgress),
@@ -1390,6 +1392,8 @@ impl DocumentMessageHandler {
 				for layer in self.layer_metadata.keys() {
 					responses.push_back(DocumentMessage::LayerChanged { affected_layer_path: layer.clone() }.into())
 				}
+
+				responses.push_back(NodeGraphMessage::SendGraph.into());
 
 				Ok(())
 			}

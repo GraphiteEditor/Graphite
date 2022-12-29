@@ -210,8 +210,16 @@ impl Default for TextToolFsmState {
 
 #[derive(Clone, Debug, Default)]
 struct TextToolData {
-	path: Vec<LayerId>,
+	layer_path: Vec<LayerId>,
 	overlays: Vec<Vec<LayerId>>,
+}
+
+impl TextToolData {
+	/// Set the editing state of the currently modifying layer
+	fn set_editing(&self, editable: bool, responses: &mut VecDeque<Message>) {
+		let path = self.layer_path.clone();
+		responses.push_back(DocumentMessage::SetTextboxEditability { path, editable }.into());
+	}
 }
 
 fn transform_from_box(pos1: DVec2, pos2: DVec2) -> [f64; 6] {
@@ -293,55 +301,44 @@ impl Fsm for TextToolFsmState {
 					let tolerance = DVec2::splat(SELECTION_TOLERANCE);
 					let quad = Quad::from_box([mouse_pos - tolerance, mouse_pos + tolerance]);
 
-					let new_state = if let Some(l) = document
+					// Check if the user has selected an existing text layer
+					let new_state = if let Some(clicked_text_layer_path) = document
 						.document_legacy
 						.intersects_quad_root(quad, font_cache)
 						.last()
 						.filter(|l| document.document_legacy.layer(l).map(|l| l.as_text().is_ok()).unwrap_or(false))
-					// Editing existing text
 					{
 						if state == TextToolFsmState::Editing {
-							responses.push_back(
-								DocumentMessage::SetTextboxEditability {
-									path: tool_data.path.clone(),
-									editable: false,
-								}
-								.into(),
-							);
+							tool_data.set_editing(false, responses);
 						}
 
-						tool_data.path = l.clone();
+						tool_data.layer_path = clicked_text_layer_path.clone();
 
-						responses.push_back(
-							DocumentMessage::SetTextboxEditability {
-								path: tool_data.path.clone(),
-								editable: true,
-							}
-							.into(),
-						);
-						responses.push_back(
-							DocumentMessage::SetSelectedLayers {
-								replacement_selected_layers: vec![tool_data.path.clone()],
-							}
-							.into(),
-						);
+						responses.push_back(DocumentMessage::StartTransaction.into());
+
+						tool_data.set_editing(true, responses);
+
+						let replacement_selected_layers = vec![tool_data.layer_path.clone()];
+						responses.push_back(DocumentMessage::SetSelectedLayers { replacement_selected_layers }.into());
 
 						Editing
 					}
-					// Creating new text
+					// Create new text
 					else if state == TextToolFsmState::Ready {
+						responses.push_back(DocumentMessage::StartTransaction.into());
+
 						let transform = DAffine2::from_translation(input.mouse.position).to_cols_array();
 						let font_size = tool_options.font_size;
 						let font_name = tool_options.font_name.clone();
 						let font_style = tool_options.font_style.clone();
-						tool_data.path = document.get_path_for_new_layer();
+						tool_data.layer_path = document.get_path_for_new_layer();
 
 						responses.push_back(
 							Operation::AddText {
-								path: tool_data.path.clone(),
+								path: tool_data.layer_path.clone(),
 								transform: DAffine2::ZERO.to_cols_array(),
 								insert_index: -1,
-								text: r#""#.to_string(),
+								text: String::new(),
 								style: style::PathStyle::new(None, Fill::solid(global_tool_data.primary_color)),
 								size: font_size as f64,
 								font_name,
@@ -351,37 +348,22 @@ impl Fsm for TextToolFsmState {
 						);
 						responses.push_back(
 							Operation::SetLayerTransformInViewport {
-								path: tool_data.path.clone(),
+								path: tool_data.layer_path.clone(),
 								transform,
 							}
 							.into(),
 						);
 
-						responses.push_back(
-							DocumentMessage::SetTextboxEditability {
-								path: tool_data.path.clone(),
-								editable: true,
-							}
-							.into(),
-						);
+						tool_data.set_editing(true, responses);
 
-						responses.push_back(
-							DocumentMessage::SetSelectedLayers {
-								replacement_selected_layers: vec![tool_data.path.clone()],
-							}
-							.into(),
-						);
+						let replacement_selected_layers = vec![tool_data.layer_path.clone()];
+
+						responses.push_back(DocumentMessage::SetSelectedLayers { replacement_selected_layers }.into());
 
 						Editing
 					} else {
 						// Removing old text as editable
-						responses.push_back(
-							DocumentMessage::SetTextboxEditability {
-								path: tool_data.path.clone(),
-								editable: false,
-							}
-							.into(),
-						);
+						tool_data.set_editing(false, responses);
 
 						resize_overlays(&mut tool_data.overlays, responses, 0);
 
@@ -392,13 +374,7 @@ impl Fsm for TextToolFsmState {
 				}
 				(state, Abort) => {
 					if state == TextToolFsmState::Editing {
-						responses.push_back(
-							DocumentMessage::SetTextboxEditability {
-								path: tool_data.path.clone(),
-								editable: false,
-							}
-							.into(),
-						);
+						tool_data.set_editing(false, responses);
 					}
 
 					resize_overlays(&mut tool_data.overlays, responses, 0);
@@ -411,21 +387,10 @@ impl Fsm for TextToolFsmState {
 					Editing
 				}
 				(Editing, TextChange { new_text }) => {
-					responses.push_back(
-						Operation::SetTextContent {
-							path: tool_data.path.clone(),
-							new_text,
-						}
-						.into(),
-					);
+					let path = tool_data.layer_path.clone();
+					responses.push_back(Operation::SetTextContent { path, new_text }.into());
 
-					responses.push_back(
-						DocumentMessage::SetTextboxEditability {
-							path: tool_data.path.clone(),
-							editable: false,
-						}
-						.into(),
-					);
+					tool_data.set_editing(false, responses);
 
 					resize_overlays(&mut tool_data.overlays, responses, 0);
 
@@ -433,10 +398,10 @@ impl Fsm for TextToolFsmState {
 				}
 				(Editing, UpdateBounds { new_text }) => {
 					resize_overlays(&mut tool_data.overlays, responses, 1);
-					let text = document.document_legacy.layer(&tool_data.path).unwrap().as_text().unwrap();
+					let text = document.document_legacy.layer(&tool_data.layer_path).unwrap().as_text().unwrap();
 					let quad = text.bounding_box(&new_text, text.load_face(font_cache));
 
-					let transformed_quad = document.document_legacy.multiply_transforms(&tool_data.path).unwrap() * quad;
+					let transformed_quad = document.document_legacy.multiply_transforms(&tool_data.layer_path).unwrap() * quad;
 					let bounds = transformed_quad.bounding_box();
 
 					let operation = Operation::SetLayerTransformInViewport {
