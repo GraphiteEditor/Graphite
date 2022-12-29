@@ -1,5 +1,5 @@
 use crate::application::generate_uuid;
-use crate::consts::{COLOR_ACCENT, DRAG_THRESHOLD, LINE_ROTATE_SNAP_ANGLE, MANIPULATOR_GROUP_MARKER_SIZE, SELECTION_TOLERANCE};
+use crate::consts::{COLOR_ACCENT, DRAG_THRESHOLD, LINE_ROTATE_SNAP_ANGLE, MANIPULATOR_GROUP_MARKER_SIZE, SELECTION_THRESHOLD, SELECTION_TOLERANCE};
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, KeysGroup, MouseMotion};
 use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, PropertyHolder, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
@@ -516,7 +516,7 @@ impl Fsm for GradientToolFsmState {
 						let distance = (end - start).angle_between(mouse - start).sin() * (mouse - start).length();
 
 						// If click is on the line then insert point
-						if distance < SELECTION_TOLERANCE {
+						if distance < SELECTION_THRESHOLD {
 							let mut gradient = overlay.gradient.clone();
 
 							// Try and insert the new stop
