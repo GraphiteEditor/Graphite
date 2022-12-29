@@ -69,7 +69,7 @@ impl WasmSubpath {
 	}
 
 	pub fn project(&self, x: f64, y: f64) -> String {
-		let (segment_index, projected_t) = self.0.project(DVec2::new(x, y), ProjectionOptions::default());
+		let (segment_index, projected_t) = self.0.project(DVec2::new(x, y), ProjectionOptions::default()).unwrap();
 		let projected_point = self.0.evaluate(ComputeType::Parametric((segment_index as f64 + projected_t) / (self.0.len_segments() as f64)));
 
 		let subpath_svg = self.to_default_svg();

@@ -12,9 +12,9 @@ impl Subpath {
 
 	/// Returns the segment index and `t` value that corresponds to the closest point on the curve to the provided point.
 	/// Uses a searching algorithm akin to binary search that can be customized using the [ProjectionOptions] structure.
-	pub fn project(&self, point: DVec2, options: ProjectionOptions) -> (usize, f64) {
+	pub fn project(&self, point: DVec2, options: ProjectionOptions) -> Option<(usize, f64)> {
 		if self.is_empty() {
-			panic!("Can not project to an empty Subpath")
+			return None;
 		}
 
 		// TODO: Optimization opportunity: Filter out segments which are *definitely* not the closest to the given point
@@ -25,12 +25,10 @@ impl Subpath {
 				(bezier.evaluate(ComputeType::Parametric(project_t)).distance(point), project_t)
 			})
 			.enumerate()
-			.fold(
-				(0, (f64::INFINITY, 0.)), // If the Subpath contains only a single manipulator group, returns (0, 0.)
-				|(i1, (d1, t1)), (i2, (d2, t2))| if d1 < d2 { (i1, (d1, t1)) } else { (i2, (d2, t2)) },
-			);
+			.min_by(|(_, (distance1, _)), (_, (distance2, _))| distance1.total_cmp(distance2))
+			.unwrap_or((0, (0., 0.))); // If the Subpath contains only a single manipulator group, returns (0, 0.)
 
-		(index, project_t)
+		Some((index, project_t))
 	}
 }
 
