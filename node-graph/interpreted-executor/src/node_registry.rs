@@ -454,34 +454,31 @@ static NODE_REGISTRY: &[(NodeIdentifier, NodeConstructor)] = &[
 	),
 	(NodeIdentifier::new("graphene_core::raster::BlurNode", &[]), |proto_node, stack| {
 		let node_id = proto_node.input.unwrap_node() as usize;
-		use graphene_core::raster::{CollectNode, ImageSlice, ImageWindowIterator, MapNode, MapSndNode, WeightedAvgNode};
+		use graphene_core::raster::*;
 		if let ConstructionArgs::Nodes(blur_args) = proto_node.construction_args {
 			stack.push_fn(move |nodes| {
 				let image = nodes.get(node_id).unwrap();
 				let radius = nodes.get(blur_args[0] as usize).unwrap();
 				let sigma = nodes.get(blur_args[1] as usize).unwrap();
-				/*
 				let radius = DowncastBothNode::<_, (), u32>::new(radius);
 				let sigma = DowncastBothNode::<_, (), f32>::new(sigma);
 				let image = DowncastBothNode::<_, (), ImageSlice<'static>>::new(image);
-				let window = graphene_core::raster::WindowNode::new(radius, image);
+				let window = WindowNode::new(radius, image);
 				let window: TypeNode<_, u32, ImageWindowIterator<'static>> = TypeNode::new(window);
-				let pos_to_dist = MapSndNode::new(graphene_core::raster::DistanceNode);
-				let distance = window.then(&MapNode::new(pos_to_dist));
-				let map_gaussian = MapSndNode::new(graphene_core::raster::GaussianNode::new(sigma));
-				let map_distances: MapNode<_, MapSndNode<_>, _, _> = MapNode::new(map_gaussian);
+				let pos_to_dist = MapSndNode::new(DistanceNode);
+				let distance = window.then(MapNode::new(pos_to_dist));
+				let map_gaussian = MapSndNode::new(GaussianNode::new(sigma));
+				let map_distances: MapNode<_, MapSndNode<_>> = MapNode::new(map_gaussian);
 				let gaussian_iter = distance.then(map_distances);
 				let avg = gaussian_iter.then(WeightedAvgNode::new());
+				let avg: TypeNode<_, u32, Color> = TypeNode::new(avg);
 				let blur_iter = MapNode::new(avg);
-				let blur = image.then(graphene_core::raster::ImageIndexIterNode).then(blur_iter);
+				let blur = image.then(ImageIndexIterNode).then(blur_iter);
 				let blur: TypeNode<_, (), MapFnIterator<_, _>> = TypeNode::new(blur);
 				let collect = CollectNode {};
-				let vec = ComposeNode::new(blur, collect);
+				let vec = blur.then(collect);
 				let vec: TypeNode<_, (), Vec<Color>> = TypeNode::new(vec);
-				let image = vec.eval(());
 				let node: DynAnyNode<_, (), Vec<Color>, Vec<Color>> = DynAnyNode::new(vec);
-				*/
-				let node = image;
 				node.into_type_erased()
 			})
 		} else {

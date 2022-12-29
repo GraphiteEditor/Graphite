@@ -14,13 +14,23 @@ fn grayscale_color_node(input: Color) -> Color {
 	Color::from_rgbaf32_unchecked(avg, avg, avg, input.a())
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct MapNode<Iter, MapFn: Node<Item, Output = Out>, Item, Out> {
+#[derive(Debug)]
+pub struct MapNode<Iter: Iterator, MapFn: Node<Iter::Item>> {
 	map_fn: MapFn,
-	_phantom: core::marker::PhantomData<(Iter, Item, Out)>,
+	_phantom: core::marker::PhantomData<Iter>,
 }
 
-impl<Iter, MapFn: Node<Item, Output = Out>, Item, Out> MapNode<Iter, MapFn, Item, Out> {
+impl<Iter: Iterator, MapFn: Node<Iter::Item> + Clone> Clone for MapNode<Iter, MapFn> {
+	fn clone(&self) -> Self {
+		Self {
+			map_fn: self.map_fn.clone(),
+			_phantom: self._phantom,
+		}
+	}
+}
+impl<Iter: Iterator, MapFn: Node<Iter::Item> + Copy> Copy for MapNode<Iter, MapFn> {}
+
+impl<Iter: Iterator, MapFn: Node<Iter::Item>> MapNode<Iter, MapFn> {
 	pub fn new(map_fn: MapFn) -> Self {
 		Self {
 			map_fn,
@@ -29,7 +39,7 @@ impl<Iter, MapFn: Node<Item, Output = Out>, Item, Out> MapNode<Iter, MapFn, Item
 	}
 }
 
-impl<Iter: Iterator<Item = Item> + core::fmt::Debug, MapFn: Node<Item, Output = Out>, Item, Out> Node<Iter> for MapNode<Iter, MapFn, Item, Out> {
+impl<Iter: Iterator<Item = Item>, MapFn: Node<Item, Output = Out>, Item, Out> Node<Iter> for MapNode<Iter, MapFn> {
 	type Output = MapFnIterator<Iter, MapFn>;
 
 	#[inline]
@@ -38,7 +48,7 @@ impl<Iter: Iterator<Item = Item> + core::fmt::Debug, MapFn: Node<Item, Output = 
 	}
 }
 
-impl<Iter: Iterator<Item = Item>, MapFn: Node<Item, Output = Out> + Copy, Item, Out> Node<Iter> for &MapNode<Iter, MapFn, Item, Out> {
+impl<Iter: Iterator<Item = Item>, MapFn: Node<Item, Output = Out> + Copy, Item, Out> Node<Iter> for &MapNode<Iter, MapFn> {
 	type Output = MapFnIterator<Iter, MapFn>;
 
 	#[inline]
