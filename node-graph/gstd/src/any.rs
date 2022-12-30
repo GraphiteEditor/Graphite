@@ -31,7 +31,8 @@ where
 {
 	type Output = Any<'n>;
 	fn eval(self, input: Any<'n>) -> Self::Output {
-		let input: Box<I> = dyn_any::downcast(input).expect("DynAnyNode Input");
+		let node = core::any::type_name::<N>();
+		let input: Box<I> = dyn_any::downcast(input).expect(format!("DynAnyNode Input \n{node}").as_str());
 		Box::new(self.0.eval(*input))
 	}
 }
@@ -41,7 +42,8 @@ where
 {
 	type Output = Any<'n>;
 	fn eval(self, input: Any<'n>) -> Self::Output {
-		let input: Box<I> = dyn_any::downcast(input).expect("DynAnyNode Input");
+		let node = core::any::type_name::<N>();
+		let input: Box<I> = dyn_any::downcast(input).expect(format!("DynAnyNode Input \n{node}").as_str());
 		Box::new((&self.0).eval_ref(*input))
 	}
 }

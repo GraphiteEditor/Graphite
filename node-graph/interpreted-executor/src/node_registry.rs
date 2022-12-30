@@ -1,10 +1,11 @@
 use borrow_stack::FixedSizeStack;
 use glam::DVec2;
 use graphene_core::generic::FnNode;
-use graphene_core::ops::{AddNode, IdNode, TypeNode};
+use graphene_core::ops::{AddNode, CloneNode, IdNode, TypeNode};
 use graphene_core::raster::color::Color;
 use graphene_core::raster::{Image, MapFnIterator};
 use graphene_core::structural::{ComposeNode, ConsNode, Then};
+use graphene_core::value::ValueNode;
 use graphene_core::vector::subpath::Subpath;
 use graphene_core::Node;
 use graphene_std::any::DowncastBothNode;
@@ -460,6 +461,7 @@ static NODE_REGISTRY: &[(NodeIdentifier, NodeConstructor)] = &[
 			stack.push_fn(move |nodes| {
 				let image = nodes.get(node_id).unwrap();
 				let node: DynAnyNode<_, Image, Image, &Image> = DynAnyNode::new(CacheNode::new());
+
 				let node = image.then(node);
 				node.into_type_erased()
 			})
@@ -470,15 +472,19 @@ static NODE_REGISTRY: &[(NodeIdentifier, NodeConstructor)] = &[
 	(NodeIdentifier::new("graphene_core::raster::BlurNode", &[]), |proto_node, stack| {
 		let node_id = proto_node.input.unwrap_node() as usize;
 		use graphene_core::raster::*;
+
+		static EMPTY_IMAGE: ValueNode<Image> = ValueNode::new(Image::empty());
 		if let ConstructionArgs::Nodes(blur_args) = proto_node.construction_args {
 			stack.push_fn(move |nodes| {
 				let pre_node = nodes.get(node_id).unwrap();
 				let radius = nodes.get(blur_args[0] as usize).unwrap();
 				let sigma = nodes.get(blur_args[1] as usize).unwrap();
 				let radius = DowncastBothNode::<_, (), u32>::new(radius);
-				let sigma = DowncastBothNode::<_, (), f32>::new(sigma);
-				let image = DowncastBothNode::<_, (), &Image>::new(pre_node);
-				let image = image.then(ImageRefNode::new());
+				let sigma = DowncastBothNode::<_, (), f64>::new(sigma);
+				let image = DowncastBothNode::<_, Image, &Image>::new(pre_node);
+				// dirty hack
+				let empty: TypeNode<_, (), Image> = TypeNode::new((&EMPTY_IMAGE).then(CloneNode));
+				let image = empty.then(image).then(ImageRefNode::new());
 				let window = WindowNode::new(radius, image);
 				let window: TypeNode<_, u32, ImageWindowIterator<'static>> = TypeNode::new(window);
 				let map_gaussian = MapSndNode::new(DistanceNode.then(GaussianNode::new(sigma)));
@@ -494,9 +500,9 @@ static NODE_REGISTRY: &[(NodeIdentifier, NodeConstructor)] = &[
 				let vec: TypeNode<_, ImageSlice<'_>, Vec<Color>> = TypeNode::new(vec);
 				let new_image = MapImageSliceNode::new(vec);
 				let new_image: TypeNode<_, ImageSlice<'_>, Image> = TypeNode::new(new_image);
-				let image: TypeNode<_, (), Image> = TypeNode::new(image.then(new_image));
-				let node: DynAnyNode<_, (), Image, Image> = DynAnyNode::new(image);
-				let node = node;
+				//let image: TypeNode<_, (), Image> = TypeNode::new(then(new_image));
+				let node: DynAnyNode<_, &Image, Image, Image> = DynAnyNode::new(ImageRefNode.then(new_image));
+				let node = ComposeNode::new(pre_node, node);
 				node.into_type_erased()
 			})
 		} else {

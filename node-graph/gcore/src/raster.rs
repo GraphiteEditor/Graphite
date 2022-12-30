@@ -139,7 +139,8 @@ pub struct GaussianNode<Sigma> {
 }
 
 #[node_macro::node_fn(GaussianNode)]
-fn gaussian_node(input: f32, sigma: f32) -> f32 {
+fn gaussian_node(input: f32, sigma: f64) -> f32 {
+	let sigma = sigma as f32;
 	(1.0 / (2.0 * core::f32::consts::PI * sigma * sigma).sqrt()) * (-input * input / (2.0 * sigma * sigma)).exp()
 }
 

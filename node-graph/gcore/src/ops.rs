@@ -95,6 +95,12 @@ impl<'n, O: Clone> Node<&'n O> for CloneNode {
 		input.clone()
 	}
 }
+impl<'n, O: Clone> Node<&'n O> for &CloneNode {
+	type Output = O;
+	fn eval(self, input: &'n O) -> Self::Output {
+		input.clone()
+	}
+}
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct FstNode;
