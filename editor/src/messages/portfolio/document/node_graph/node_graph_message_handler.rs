@@ -831,6 +831,10 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &mut dyn Iterator<Item = &
 				responses.push_back(NodeGraphMessage::SendGraph.into());
 			}
 			NodeGraphMessage::ToggleHidden => {
+				responses.push_back(DocumentMessage::StartTransaction.into());
+				responses.push_back(NodeGraphMessage::ToggleHiddenImpl.into());
+			}
+			NodeGraphMessage::ToggleHiddenImpl => {
 				if let Some(network) = self.get_active_network_mut(document) {
 					// Check if any of the selected nodes are hidden
 					if self.selected_nodes.iter().any(|id| network.disabled.contains(id)) {
@@ -847,6 +851,10 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &mut dyn Iterator<Item = &
 				responses.push_back(DocumentMessage::NodeGraphFrameGenerate.into());
 			}
 			NodeGraphMessage::TogglePreview { node_id } => {
+				responses.push_back(DocumentMessage::StartTransaction.into());
+				responses.push_back(NodeGraphMessage::TogglePreviewImpl { node_id }.into());
+			}
+			NodeGraphMessage::TogglePreviewImpl { node_id } => {
 				if let Some(network) = self.get_active_network_mut(document) {
 					// Check if the node is not already
 					if network.output != node_id {
