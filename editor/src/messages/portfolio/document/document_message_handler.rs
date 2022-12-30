@@ -547,6 +547,8 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				responses.push_back(BroadcastEvent::DocumentIsDirty.into());
 			}
 			PasteImage { mime, image_data, mouse } => {
+				responses.push_back(DocumentMessage::StartTransaction.into());
+
 				let path = vec![generate_uuid()];
 				responses.push_back(
 					DocumentOperation::AddImage {
