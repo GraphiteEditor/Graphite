@@ -110,6 +110,7 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 		outputs: &[FrontendGraphDataType::Raster],
 		properties: node_properties::gpu_map_properties,
 	},
+	#[cfg(feature = "quantization")]
 	DocumentNodeType {
 		name: "QuantizeImage",
 		category: "Image Adjustments",

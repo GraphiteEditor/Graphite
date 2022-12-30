@@ -268,6 +268,7 @@ static NODE_REGISTRY: &[(NodeIdentifier, NodeConstructor)] = &[
 			}
 		},
 	),
+	#[cfg(feature = "quantization")]
 	(
 		NodeIdentifier::new("graphene_std::quantization::GenerateQuantizationNode", &[concrete!("&TypeErasedNode")]),
 		|proto_node, stack| {

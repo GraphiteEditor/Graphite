@@ -10,7 +10,7 @@ license = "MIT OR Apache-2.0"
 
 [features]
 memoization = ["once_cell"]
-default = ["memoization", "quantization"]
+default = ["memoization"]
 gpu = ["graph-craft/gpu", "graphene-core/gpu"]
 quantization = ["autoquant"]
 
