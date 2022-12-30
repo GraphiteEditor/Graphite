@@ -368,11 +368,44 @@ impl<'a> IntoIterator for &'a ImageSlice<'a> {
 	}
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct MapImageSliceNode<MapFn>(MapFn);
+
+impl<MapFn> MapImageSliceNode<MapFn> {
+	pub fn new(map_fn: MapFn) -> Self {
+		Self(map_fn)
+	}
+}
+
+impl<'a, MapFn: Node<ImageSlice<'a>, Output = Vec<Color>>> Node<ImageSlice<'a>> for MapImageSliceNode<MapFn> {
+	type Output = Image;
+	fn eval(self, image: ImageSlice<'a>) -> Self::Output {
+		let data = self.0.eval(image);
+		Image {
+			width: image.width,
+			height: image.height,
+			data,
+		}
+	}
+}
+
+impl<'a, MapFn: Copy + Node<ImageSlice<'a>, Output = Vec<Color>>> Node<ImageSlice<'a>> for &MapImageSliceNode<MapFn> {
+	type Output = Image;
+	fn eval(self, image: ImageSlice<'a>) -> Self::Output {
+		let data = self.0.eval(image);
+		Image {
+			width: image.width,
+			height: image.height,
+			data,
+		}
+	}
+}
+
 #[cfg(feature = "alloc")]
-pub use image::{CollectNode, Image};
+pub use image::{CollectNode, Image, ImageRefNode};
 #[cfg(feature = "alloc")]
 mod image {
-	use super::Color;
+	use super::{Color, ImageSlice};
 	use alloc::vec::Vec;
 	use dyn_any::{DynAny, StaticType};
 	#[derive(Clone, Debug, PartialEq, DynAny, Default)]
@@ -391,6 +424,13 @@ mod image {
 				data: Vec::new(),
 			}
 		}
+		pub fn as_slice(&self) -> ImageSlice {
+			ImageSlice {
+				width: self.width,
+				height: self.height,
+				data: self.data.as_slice(),
+			}
+		}
 	}
 
 	impl IntoIterator for Image {
@@ -401,11 +441,26 @@ mod image {
 		}
 	}
 
-	impl<'a> IntoIterator for &'a Image {
-		type Item = &'a Color;
-		type IntoIter = alloc::slice::Iter<'a, Color>;
-		fn into_iter(self) -> Self::IntoIter {
-			self.data.iter()
+	#[derive(Debug, Clone, Copy, Default)]
+	pub struct ImageRefNode;
+
+	impl ImageRefNode {
+		pub fn new() -> Self {
+			Self
+		}
+	}
+
+	impl<'a> Node<&'a Image> for ImageRefNode {
+		type Output = ImageSlice<'a>;
+		fn eval(self, image: &'a Image) -> Self::Output {
+			image.as_slice()
+		}
+	}
+
+	impl<'a> Node<&'a Image> for &ImageRefNode {
+		type Output = ImageSlice<'a>;
+		fn eval(self, image: &'a Image) -> Self::Output {
+			image.as_slice()
 		}
 	}
 

@@ -16,6 +16,7 @@ use graph_craft::proto::{ConstructionArgs, NodeIdentifier, ProtoNode, ProtoNodeI
 type NodeConstructor = fn(ProtoNode, &FixedSizeStack<TypeErasedNode<'static>>);
 
 use graph_craft::{concrete, generic};
+use graphene_std::memo::CacheNode;
 
 //TODO: turn into hasmap
 static NODE_REGISTRY: &[(NodeIdentifier, NodeConstructor)] = &[
@@ -452,30 +453,50 @@ static NODE_REGISTRY: &[(NodeIdentifier, NodeConstructor)] = &[
 			}
 		},
 	),
+	(NodeIdentifier::new("graphene_std::memo::CacheNode", &[concrete!("Image")]), |proto_node, stack| {
+		let node_id = proto_node.input.unwrap_node() as usize;
+		use graphene_core::raster::*;
+		if let ConstructionArgs::Nodes(image_args) = proto_node.construction_args {
+			stack.push_fn(move |nodes| {
+				let image = nodes.get(node_id).unwrap();
+				let node: DynAnyNode<_, Image, Image, &Image> = DynAnyNode::new(CacheNode::new());
+				let node = image.then(node);
+				node.into_type_erased()
+			})
+		} else {
+			unimplemented!()
+		}
+	}),
 	(NodeIdentifier::new("graphene_core::raster::BlurNode", &[]), |proto_node, stack| {
 		let node_id = proto_node.input.unwrap_node() as usize;
 		use graphene_core::raster::*;
 		if let ConstructionArgs::Nodes(blur_args) = proto_node.construction_args {
 			stack.push_fn(move |nodes| {
-				let image = nodes.get(node_id).unwrap();
+				let pre_node = nodes.get(node_id).unwrap();
 				let radius = nodes.get(blur_args[0] as usize).unwrap();
 				let sigma = nodes.get(blur_args[1] as usize).unwrap();
 				let radius = DowncastBothNode::<_, (), u32>::new(radius);
 				let sigma = DowncastBothNode::<_, (), f32>::new(sigma);
-				let image = DowncastBothNode::<_, (), ImageSlice<'static>>::new(image);
+				let image = DowncastBothNode::<_, (), &Image>::new(pre_node);
+				let image = image.then(ImageRefNode::new());
 				let window = WindowNode::new(radius, image);
+				let window: TypeNode<_, u32, ImageWindowIterator<'static>> = TypeNode::new(window);
 				let map_gaussian = MapSndNode::new(DistanceNode.then(GaussianNode::new(sigma)));
 				let map_distances = MapNode::new(map_gaussian);
 				let gaussian_iter = window.then(map_distances);
 				let avg = gaussian_iter.then(WeightedAvgNode::new());
 				let avg: TypeNode<_, u32, Color> = TypeNode::new(avg);
 				let blur_iter = MapNode::new(avg);
-				let blur = image.then(ImageIndexIterNode).then(blur_iter);
-				let blur: TypeNode<_, (), MapFnIterator<_, _>> = TypeNode::new(blur);
+				let blur = ImageIndexIterNode.then(blur_iter);
+				let blur: TypeNode<_, ImageSlice<'_>, MapFnIterator<_, _>> = TypeNode::new(blur);
 				let collect = CollectNode {};
 				let vec = blur.then(collect);
-				let vec: TypeNode<_, (), Vec<Color>> = TypeNode::new(vec);
-				let node: DynAnyNode<_, (), Vec<Color>, Vec<Color>> = DynAnyNode::new(vec);
+				let vec: TypeNode<_, ImageSlice<'_>, Vec<Color>> = TypeNode::new(vec);
+				let new_image = MapImageSliceNode::new(vec);
+				let new_image: TypeNode<_, ImageSlice<'_>, Image> = TypeNode::new(new_image);
+				let image: TypeNode<_, (), Image> = TypeNode::new(image.then(new_image));
+				let node: DynAnyNode<_, (), Image, Image> = DynAnyNode::new(image);
+				let node = node;
 				node.into_type_erased()
 			})
 		} else {
