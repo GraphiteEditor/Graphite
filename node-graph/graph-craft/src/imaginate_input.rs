@@ -63,7 +63,7 @@ impl std::fmt::Display for ImaginateMaskStartingFill {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
 			ImaginateMaskStartingFill::Fill => write!(f, "Smeared Surroundings"),
-			ImaginateMaskStartingFill::Original => write!(f, "Original Base Image"),
+			ImaginateMaskStartingFill::Original => write!(f, "Original Input Image"),
 			ImaginateMaskStartingFill::LatentNoise => write!(f, "Randomness (Latent Noise)"),
 			ImaginateMaskStartingFill::LatentNothing => write!(f, "Neutral (Latent Nothing)"),
 		}

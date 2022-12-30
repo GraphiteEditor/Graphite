@@ -9,16 +9,11 @@ import {
 	TriggerViewportResize,
 	UpdateDocumentArtboards,
 	UpdateDocumentArtwork,
-	UpdateDocumentBarLayout,
-	UpdateDocumentModeLayout,
 	UpdateDocumentOverlays,
 	UpdateDocumentRulers,
 	UpdateDocumentScrollbars,
 	UpdateEyedropperSamplingState,
 	UpdateMouseCursor,
-	UpdateToolOptionsLayout,
-	UpdateToolShelfLayout,
-	UpdateWorkingColorsLayout,
 } from "@/wasm-communication/messages";
 
 import DocumentComponent from "@/components/panels/Document.vue";
@@ -91,28 +86,6 @@ export function createPanelsState(editor: Editor) {
 		editor.subscriptions.subscribeJsMessage(DisplayRemoveEditableTextbox, async () => {
 			await nextTick();
 			state.documentPanel.displayRemoveEditableTextbox();
-		});
-
-		// Update layouts
-		editor.subscriptions.subscribeJsMessage(UpdateDocumentModeLayout, async (updateDocumentModeLayout) => {
-			await nextTick();
-			state.documentPanel.updateDocumentModeLayout(updateDocumentModeLayout);
-		});
-		editor.subscriptions.subscribeJsMessage(UpdateToolOptionsLayout, async (updateToolOptionsLayout) => {
-			await nextTick();
-			state.documentPanel.updateToolOptionsLayout(updateToolOptionsLayout);
-		});
-		editor.subscriptions.subscribeJsMessage(UpdateDocumentBarLayout, async (updateDocumentBarLayout) => {
-			await nextTick();
-			state.documentPanel.updateDocumentBarLayout(updateDocumentBarLayout);
-		});
-		editor.subscriptions.subscribeJsMessage(UpdateToolShelfLayout, async (updateToolShelfLayout) => {
-			await nextTick();
-			state.documentPanel.updateToolShelfLayout(updateToolShelfLayout);
-		});
-		editor.subscriptions.subscribeJsMessage(UpdateWorkingColorsLayout, async (updateWorkingColorsLayout) => {
-			await nextTick();
-			state.documentPanel.updateWorkingColorsLayout(updateWorkingColorsLayout);
 		});
 
 		// Resize elements to render the new viewport size

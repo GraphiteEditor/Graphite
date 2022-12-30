@@ -21,11 +21,11 @@ impl ViewportBounds {
 	}
 
 	pub fn size(&self) -> DVec2 {
-		self.bottom_right - self.top_left
+		(self.bottom_right - self.top_left).ceil()
 	}
 
 	pub fn center(&self) -> DVec2 {
-		self.bottom_right.lerp(self.top_left, 0.5)
+		(self.bottom_right - self.top_left).ceil() / 2.
 	}
 
 	pub fn in_bounds(&self, position: ViewportPosition) -> bool {

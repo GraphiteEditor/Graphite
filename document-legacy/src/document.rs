@@ -32,6 +32,12 @@ pub struct Document {
 	pub state_identifier: DefaultHasher,
 }
 
+impl PartialEq for Document {
+	fn eq(&self, other: &Self) -> bool {
+		self.state_identifier.finish() == other.state_identifier.finish()
+	}
+}
+
 impl Default for Document {
 	fn default() -> Self {
 		Self {
@@ -625,6 +631,12 @@ impl Document {
 					node_graph_frame.image_data = Some(crate::layers::nodegraph_layer::ImageData { image_data });
 				} else {
 					panic!("Incorrectly trying to set image data for a layer that is not an NodeGraphFrame layer type");
+				}
+				Some(vec![LayerChanged { path: layer_path.clone() }])
+			}
+			Operation::SetLayerPreserveAspect { layer_path, preserve_aspect } => {
+				if let Ok(layer) = self.layer_mut(&layer_path) {
+					layer.preserve_aspect = preserve_aspect;
 				}
 				Some(vec![LayerChanged { path: layer_path.clone() }])
 			}
