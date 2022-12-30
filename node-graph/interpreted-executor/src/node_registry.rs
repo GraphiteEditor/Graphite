@@ -482,7 +482,8 @@ static NODE_REGISTRY: &[(NodeIdentifier, NodeConstructor)] = &[
 				let radius = DowncastBothNode::<_, (), u32>::new(radius);
 				let sigma = DowncastBothNode::<_, (), f64>::new(sigma);
 				let image = DowncastBothNode::<_, Image, &Image>::new(pre_node);
-				// dirty hack
+				// dirty hack: we abuse that the cache node will ignore the input if it is
+				// evaluated a second time
 				let empty: TypeNode<_, (), Image> = TypeNode::new((&EMPTY_IMAGE).then(CloneNode));
 				let image = empty.then(image).then(ImageRefNode::new());
 				let window = WindowNode::new(radius, image);
@@ -500,7 +501,6 @@ static NODE_REGISTRY: &[(NodeIdentifier, NodeConstructor)] = &[
 				let vec: TypeNode<_, ImageSlice<'_>, Vec<Color>> = TypeNode::new(vec);
 				let new_image = MapImageSliceNode::new(vec);
 				let new_image: TypeNode<_, ImageSlice<'_>, Image> = TypeNode::new(new_image);
-				//let image: TypeNode<_, (), Image> = TypeNode::new(then(new_image));
 				let node: DynAnyNode<_, &Image, Image, Image> = DynAnyNode::new(ImageRefNode.then(new_image));
 				let node = ComposeNode::new(pre_node, node);
 				node.into_type_erased()

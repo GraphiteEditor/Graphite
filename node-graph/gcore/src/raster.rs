@@ -231,16 +231,17 @@ impl<'a> Iterator for ImageWindowIterator<'a> {
 		let min_x = (start_x - radius).max(0) as u32;
 		let max_x = (start_x + radius).min(self.image.width as i32 - 1) as u32;
 		let max_y = (start_y + radius).min(self.image.height as i32 - 1) as u32;
-		self.x += 1;
+		if self.y > max_y {
+			return None;
+		}
+		let value = Some((self.image.data[(self.x + self.y * self.image.width) as usize], (self.x as i32 - start_x, self.y as i32 - start_y)));
 
+		self.x += 1;
 		if self.x > max_x {
 			self.x = min_x;
 			self.y += 1;
 		}
-		if self.y > max_y {
-			return None;
-		}
-		Some((self.image.data[(self.x + self.y * self.image.width) as usize], (self.x as i32 - start_x, self.y as i32 - start_y)))
+		value
 	}
 }
 
@@ -522,18 +523,17 @@ mod test {
 		let window = WindowNode::new(radius, image);
 		//let window: TypeNode<_, u32, ImageWindowIterator<'static>> = TypeNode::new(window);
 		let vec = window.eval(0);
-		assert_eq!(vec.count(), 3);
-		/*let vec = window.eval(12);
-		assert_eq!(vec.count(), 9);
+		assert_eq!(vec.count(), 4);
 		let vec = window.eval(5);
-		assert_eq!(vec.count(), 3);
-		*/
+		assert_eq!(vec.count(), 6);
+		let vec = window.eval(12);
+		assert_eq!(vec.count(), 9);
 	}
 
 	#[test]
 	fn blur_node() {
-		let radius = ValueNode::new(5u32);
-		let sigma = ValueNode::new(3f32);
+		let radius = ValueNode::new(1u32);
+		let sigma = ValueNode::new(3f64);
 		static data: &[Color] = &[Color::from_rgbf32_unchecked(1., 0., 0.); 20];
 		let image = ValueNode::<_>::new(ImageSlice { width: 10, height: 2, data });
 		let window = WindowNode::new(radius, image);
@@ -541,7 +541,7 @@ mod test {
 		let pos_to_dist = MapSndNode::new(DistanceNode);
 		let distance = window.then(MapNode::new(pos_to_dist));
 		let map_gaussian = MapSndNode::new(GaussianNode::new(sigma));
-		let map_distances: MapNode<_, MapSndNode<_>, _, _> = MapNode::new(map_gaussian);
+		let map_distances: MapNode<_, MapSndNode<_>> = MapNode::new(map_gaussian);
 		let gaussian_iter = distance.then(map_distances);
 		let avg = gaussian_iter.then(WeightedAvgNode::new());
 		let avg: TypeNode<_, u32, Color> = TypeNode::new(avg);
