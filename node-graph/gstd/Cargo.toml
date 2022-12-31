@@ -14,9 +14,11 @@ default = ["memoization"]
 gpu = ["graphene-core/gpu", "gpu-compiler-bin-wrapper", "compilation-client"]
 vulkan = ["gpu", "vulkan-executor"]
 wgpu = ["gpu", "wgpu-executor"]
+quantization = ["autoquant"]
 
 
 [dependencies]
+autoquant = { git = "https://github.com/truedoctor/autoquant", optional = true, features = ["fitting"] }
 graphene-core = {path = "../gcore", features = ["async", "std" ], default-features = false}
 borrow_stack = {path = "../borrow_stack"}
 dyn-any = {path = "../../libraries/dyn-any", features = ["derive"]}
