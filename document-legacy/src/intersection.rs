@@ -454,7 +454,10 @@ pub fn extend_curve(curve: &mut PathSeg, distance: f64) {
 		let mut c_prime = c.deriv().eval(0.0);
 		c_prime.x *= d / c_prime.distance(Point::ORIGIN);
 		c_prime.y *= d / c_prime.distance(Point::ORIGIN);
-		let es_vec = c.eval(0.0) - c_prime;
+
+		// Don't apply a subtraction if c_prime is not finite (to prevent NaNs)
+		let es_vec = if c_prime.is_finite() { c.eval(0.0) - c_prime } else { c.eval(0.0).to_vec2() };
+
 		Point { x: es_vec.x, y: es_vec.y }
 	}
 	match curve {
@@ -847,6 +850,27 @@ pub fn overlap(a: &Rect, b: &Rect) -> bool {
 /// Uses [crate::consts::F64PRECISE] to allow a slightly larger range of values.
 pub fn valid_t(t: f64) -> bool {
 	t > -F64PRECISE && t < (1.0 - F64PRECISE)
+}
+
+// Tests that a very simple line curve intersection computes two intersections
+#[test]
+fn line_curve_intersection() {
+	let mut alpha = BezPath::new();
+
+	alpha.move_to((10., 10.));
+	alpha.curve_to((10., 10.), (30., 10.), (30., 10.));
+	alpha.curve_to((30., 10.), (30., 30.), (30., 30.));
+	alpha.curve_to((30., 30.), (10., 30.), (10., 30.));
+	alpha.curve_to((10., 30.), (10., 10.), (10., 10.));
+	alpha.close_path();
+	let mut beta = BezPath::new();
+	beta.move_to((0., 0.));
+	beta.line_to((20., 0.));
+	beta.line_to((20., 20.));
+	beta.line_to((0., 20.));
+	beta.close_path();
+
+	assert_eq!(intersections(&alpha, &beta).len(), 2);
 }
 
 /// Each of these tests have been visually, but not mathematically, verified.
