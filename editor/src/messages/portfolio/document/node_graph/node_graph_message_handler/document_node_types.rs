@@ -137,6 +137,26 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 		properties: node_properties::quantize_properties,
 	},
 	DocumentNodeType {
+		name: "Gaussian Blur",
+		category: "Image Filters",
+		identifier: NodeIdentifier::new("graphene_core::raster::BlurNode", &[]),
+		inputs: &[
+			DocumentInputType::new("Image", TaggedValue::Image(Image::empty()), true),
+			DocumentInputType::new("Radius", TaggedValue::U32(3), false),
+			DocumentInputType::new("Sigma", TaggedValue::F64(1.), false),
+		],
+		outputs: &[FrontendGraphDataType::Raster],
+		properties: node_properties::blur_image_properties,
+	},
+	DocumentNodeType {
+		name: "Cache",
+		category: "Structural",
+		identifier: NodeIdentifier::new("graphene_std::memo::CacheNode", &[concrete!("Image")]),
+		inputs: &[DocumentInputType::new("Image", TaggedValue::Image(Image::empty()), true)],
+		outputs: &[FrontendGraphDataType::Raster],
+		properties: node_properties::no_properties,
+	},
+	DocumentNodeType {
 		name: "Invert RGB",
 		category: "Image Adjustments",
 		identifier: NodeIdentifier::new("graphene_std::raster::InvertRGBNode", &[]),

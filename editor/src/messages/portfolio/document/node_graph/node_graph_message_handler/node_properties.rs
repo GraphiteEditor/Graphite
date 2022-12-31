@@ -189,6 +189,13 @@ pub fn brighten_image_properties(document_node: &DocumentNode, node_id: NodeId, 
 	vec![LayoutGroup::Row { widgets: brightness }, LayoutGroup::Row { widgets: contrast }]
 }
 
+pub fn blur_image_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let radius = number_widget(document_node, node_id, 1, "Radius", NumberInput::new().min(0.).max(20.).int(), true);
+	let sigma = number_widget(document_node, node_id, 2, "Sigma", NumberInput::new().min(0.).max(10000.), true);
+
+	vec![LayoutGroup::Row { widgets: radius }, LayoutGroup::Row { widgets: sigma }]
+}
+
 pub fn adjust_gamma_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let gamma = number_widget(document_node, node_id, 1, "Gamma", NumberInput::new().min(0.01), true);
 
