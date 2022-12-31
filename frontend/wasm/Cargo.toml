@@ -12,13 +12,14 @@ license = "Apache-2.0"
 
 [features]
 tauri = ["ron"]
+gpu = ["editor/gpu"]
 default = []
 
 [lib]
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-editor = { path = "../../editor", package = "graphite-editor", features = ["gpu"] }
+editor = { path = "../../editor", package = "graphite-editor" }
 document-legacy = { path = "../../document-legacy", package = "graphite-document-legacy" }
 graph-craft = { path = "../../node-graph/graph-craft" }
 log = "0.4"
