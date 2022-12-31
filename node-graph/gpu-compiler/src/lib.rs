@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use crate::proto::*;
+use graph_craft::proto::*;
 use tera::Context;
 
 fn create_cargo_toml(metadata: &Metadata) -> Result<String, tera::Error> {
@@ -52,12 +52,6 @@ pub fn create_files(matadata: &Metadata, network: &ProtoNetwork, compile_dir: &P
 
 pub fn serialize_gpu(network: &ProtoNetwork, input_type: &str, output_type: &str) -> anyhow::Result<String> {
 	assert_eq!(network.inputs.len(), 1);
-	/*let input = &network.nodes[network.inputs[0] as usize].1;
-	let output = &network.nodes[network.output as usize].1;
-	let input_type = format!("{}::Input", input.identifier.fully_qualified_name());
-	let output_type = format!("{}::Output", output.identifier.fully_qualified_name());
-	*/
-
 	fn nid(id: &u64) -> String {
 		format!("n{id}")
 	}
@@ -94,6 +88,7 @@ pub fn serialize_gpu(network: &ProtoNetwork, input_type: &str, output_type: &str
 
 use spirv_builder::{MetadataPrintout, SpirvBuilder, SpirvMetadata};
 pub fn compile(dir: &Path) -> Result<spirv_builder::CompileResult, spirv_builder::SpirvBuilderError> {
+    dbg!(&dir);
 	let result = SpirvBuilder::new(dir, "spirv-unknown-spv1.5")
         .print_metadata(MetadataPrintout::DependencyOnly)
         .multimodule(false)

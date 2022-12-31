@@ -5,7 +5,7 @@ use crate::Node;
 pub mod color;
 pub use self::color::Color;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default)]
 pub struct GrayscaleColorNode;
 
 #[node_macro::node_fn(GrayscaleColorNode)]
@@ -292,6 +292,32 @@ impl<N: Node<(), Output = f32> + Copy> Node<Color> for &BrightenColorNode<N> {
 }
 
 impl<N: Node<(), Output = f32> + Copy> BrightenColorNode<N> {
+	pub fn new(node: N) -> Self {
+		Self(node)
+	}
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct GammaColorNode<N: Node<(), Output = f32>>(N);
+
+impl<N: Node<(), Output = f32>> Node<Color> for GammaColorNode<N> {
+	type Output = Color;
+	fn eval(self, color: Color) -> Color {
+		let gamma = self.0.eval(());
+		let per_channel = |col: f32| col.powf(gamma);
+		Color::from_rgbaf32_unchecked(per_channel(color.r()), per_channel(color.g()), per_channel(color.b()), color.a())
+	}
+}
+impl<N: Node<(), Output = f32> + Copy> Node<Color> for &GammaColorNode<N> {
+	type Output = Color;
+	fn eval(self, color: Color) -> Color {
+		let gamma = self.0.eval(());
+		let per_channel = |col: f32| col.powf(gamma);
+		Color::from_rgbaf32_unchecked(per_channel(color.r()), per_channel(color.g()), per_channel(color.b()), color.a())
+	}
+}
+
+impl<N: Node<(), Output = f32> + Copy> GammaColorNode<N> {
 	pub fn new(node: N) -> Self {
 		Self(node)
 	}

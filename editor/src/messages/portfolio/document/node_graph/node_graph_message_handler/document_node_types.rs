@@ -95,6 +95,7 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 		outputs: &[FrontendGraphDataType::Raster],
 		properties: node_properties::no_properties,
 	},
+	#[cfg(feature = "gpu")]
 	DocumentNodeType {
 		name: "GpuImage",
 		category: "Image Adjustments",
@@ -104,11 +105,36 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 			DocumentInputType {
 				name: "Path",
 				data_type: FrontendGraphDataType::Text,
-				default: NodeInput::value(TaggedValue::String(String::new()), true),
+				default: NodeInput::value(TaggedValue::String(String::new()), false),
 			},
 		],
 		outputs: &[FrontendGraphDataType::Raster],
 		properties: node_properties::gpu_map_properties,
+	},
+	#[cfg(feature = "quantization")]
+	DocumentNodeType {
+		name: "QuantizeImage",
+		category: "Image Adjustments",
+		identifier: NodeIdentifier::new("graphene_std::quantization::GenerateQuantizationNode", &[concrete!("&TypeErasedNode")]),
+		inputs: &[
+			DocumentInputType {
+				name: "Image",
+				data_type: FrontendGraphDataType::Raster,
+				default: NodeInput::value(TaggedValue::Image(Image::empty()), true),
+			},
+			DocumentInputType {
+				name: "samples",
+				data_type: FrontendGraphDataType::Number,
+				default: NodeInput::value(TaggedValue::U32(100), false),
+			},
+			DocumentInputType {
+				name: "Fn index",
+				data_type: FrontendGraphDataType::Number,
+				default: NodeInput::value(TaggedValue::U32(0), false),
+			},
+		],
+		outputs: &[FrontendGraphDataType::Raster],
+		properties: node_properties::quantize_properties,
 	},
 	DocumentNodeType {
 		name: "Blur",

@@ -270,6 +270,32 @@ static NODE_REGISTRY: &[(NodeIdentifier, NodeConstructor)] = &[
 			}
 		},
 	),
+	#[cfg(feature = "quantization")]
+	(
+		NodeIdentifier::new("graphene_std::quantization::GenerateQuantizationNode", &[concrete!("&TypeErasedNode")]),
+		|proto_node, stack| {
+			if let ConstructionArgs::Nodes(operation_node_id) = proto_node.construction_args {
+				stack.push_fn(move |nodes| {
+					info!("Quantization Depending upon id {:?}", operation_node_id);
+					let samples_node = nodes.get(operation_node_id[0] as usize).unwrap();
+					let index_node = nodes.get(operation_node_id[1] as usize).unwrap();
+					let samples_node: DowncastBothNode<_, (), u32> = DowncastBothNode::new(samples_node);
+					let index_node: DowncastBothNode<_, (), u32> = DowncastBothNode::new(index_node);
+					let map_node = graphene_std::quantization::GenerateQuantizationNode::new(samples_node, index_node);
+					let map_node = DynAnyNode::new(map_node);
+
+					if let ProtoNodeInput::Node(node_id) = proto_node.input {
+						let pre_node = nodes.get(node_id as usize).unwrap();
+						(pre_node).then(map_node).into_type_erased()
+					} else {
+						map_node.into_type_erased()
+					}
+				})
+			} else {
+				unimplemented!()
+			}
+		},
+	),
 	(NodeIdentifier::new("graphene_std::raster::MapImageNode", &[]), |proto_node, stack| {
 		if let ConstructionArgs::Nodes(operation_node_id) = proto_node.construction_args {
 			stack.push_fn(move |nodes| {
@@ -550,7 +576,7 @@ static NODE_REGISTRY: &[(NodeIdentifier, NodeConstructor)] = &[
 	}),
 ];
 
-pub fn push_node<'a>(proto_node: ProtoNode, stack: &'a FixedSizeStack<TypeErasedNode<'static>>) {
+pub fn push_node(proto_node: ProtoNode, stack: &FixedSizeStack<TypeErasedNode<'static>>) {
 	if let Some((_id, f)) = NODE_REGISTRY.iter().find(|(id, _)| *id == proto_node.identifier) {
 		f(proto_node, stack);
 	} else {

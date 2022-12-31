@@ -12,6 +12,7 @@ license = "Apache-2.0"
 
 [features]
 tauri = ["ron"]
+gpu = ["editor/gpu"]
 default = []
 
 [lib]
