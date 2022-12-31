@@ -15,4 +15,7 @@ pub mod any;
 #[cfg(feature = "gpu")]
 pub mod executor;
 
+#[cfg(feature = "quantization")]
+pub mod quantization;
+
 pub use graphene_core::*;
