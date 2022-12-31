@@ -141,6 +141,20 @@ fn number_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, na
 			})),
 		])
 	}
+	if let NodeInput::Value {
+		tagged_value: TaggedValue::U32(x),
+		exposed: false,
+	} = document_node.inputs[index]
+	{
+		widgets.extend_from_slice(&[
+			WidgetHolder::unrelated_separator(),
+			WidgetHolder::new(Widget::NumberInput(NumberInput {
+				value: Some(x as f64),
+				on_update: update_value(|x: &NumberInput| TaggedValue::U32(x.value.unwrap() as u32), node_id, index),
+				..NumberInput::default()
+			})),
+		])
+	}
 	widgets
 }
 
@@ -199,6 +213,12 @@ pub fn posterize_properties(document_node: &DocumentNode, node_id: NodeId, _cont
 	vec![LayoutGroup::Row { widgets: value }]
 }
 
+pub fn quantize_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let value = number_widget(document_node, node_id, 1, "Levels", NumberInput::new().min(1.).max(1000.).int(), true);
+	let index = number_widget(document_node, node_id, 1, "Fit Fn Index", NumberInput::new().min(0.).max(2.).int(), true);
+
+	vec![LayoutGroup::Row { widgets: value }, LayoutGroup::Row { widgets: index }]
+}
 pub fn exposure_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let value = number_widget(document_node, node_id, 1, "Value", NumberInput::new().min(-3.).max(3.), true);
 
