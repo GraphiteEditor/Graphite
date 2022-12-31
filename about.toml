@@ -9,6 +9,18 @@ accepted = [
 	"Unicode-DFS-2016",
 	"ISC",
 	"MPL-2.0",
+	"CC0-1.0",
+	"OpenSSL",
 ]
 ignore-build-dependencies = true
 ignore-dev-dependencies = true
+
+workarounds = ["ring"]
+
+# https://raw.githubusercontent.com/briansmith/webpki/main/LICENSE looks like MIT to me
+[webpki.clarify]
+license = "MIT"
+
+[[webpki.clarify.files]]
+path = 'LICENSE'
+checksum = "5b698ca13897be3afdb7174256fa1574f8c6892b8bea1a66dd6469d3fe27885a"
