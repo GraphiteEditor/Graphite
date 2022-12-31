@@ -32,7 +32,8 @@ async fn respond_to(id: Path<String>) -> impl IntoResponse {
 	builder.body(StreamBody::new(stream)).unwrap()
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
 	println!("Starting server...");
 
 	let colors = ColoredLevelConfig::new().debug(Color::Magenta).info(Color::Green).error(Color::Red);
