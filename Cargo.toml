@@ -11,9 +11,21 @@ members = [
 	"node-graph/interpreted-executor",
 	"node-graph/borrow_stack",
 	"node-graph/node-macro",
+	"node-graph/compilation-server",
+	"node-graph/compilation-client",
+	"node-graph/vulkan-executor",
+	"node-graph/wgpu-executor",
+	"node-graph/future-executor",
+	"node-graph/gpu-compiler/gpu-compiler-bin-wrapper",
 	"libraries/dyn-any",
 	"libraries/bezier-rs",
 	"website/other/bezier-rs-demos/wasm",
+]
+
+resolver = "2"
+
+exclude = [
+	"node-graph/gpu-compiler",
 ]
 
 [profile.release.package.graphite-wasm]
@@ -22,5 +34,5 @@ opt-level = 3
 [profile.dev.package.graphite-wasm]
 opt-level = 3
 
-[profile.dev]
-opt-level = 3
+#[profile.dev]
+#opt-level = 3

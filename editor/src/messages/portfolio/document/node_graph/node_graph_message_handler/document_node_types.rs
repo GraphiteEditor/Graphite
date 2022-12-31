@@ -95,6 +95,7 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 		outputs: &[FrontendGraphDataType::Raster],
 		properties: node_properties::no_properties,
 	},
+	#[cfg(feature = "gpu")]
 	DocumentNodeType {
 		name: "GpuImage",
 		category: "Image Adjustments",
