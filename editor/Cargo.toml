@@ -12,6 +12,7 @@ license = "Apache-2.0"
 
 [features]
 gpu = ["interpreted-executor/gpu", "graphene-std/gpu", "graphene-core/gpu"]
+quantization = ["graphene-std/quantization", "interpreted-executor/quantization"]
 
 [dependencies]
 log = "0.4"
