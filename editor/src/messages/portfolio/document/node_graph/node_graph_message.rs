@@ -56,6 +56,9 @@ pub enum NodeGraphMessage {
 	SelectNodes {
 		nodes: Vec<NodeId>,
 	},
+	SetDrawing {
+		new_drawing: bool,
+	},
 	SetInputValue {
 		node: NodeId,
 		input_index: usize,
@@ -67,13 +70,11 @@ pub enum NodeGraphMessage {
 		input_index: usize,
 		value: TaggedValue,
 	},
-	SetSelectedEnabled {
-		enabled: bool,
-	},
-	SetSelectedOutput {
-		output: bool,
-	},
 	ShiftNode {
+		node_id: NodeId,
+	},
+	ToggleHidden,
+	TogglePreview {
 		node_id: NodeId,
 	},
 }

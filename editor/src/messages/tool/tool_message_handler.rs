@@ -105,6 +105,9 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, u64, &InputPreprocess
 
 				// Notify the frontend about the new active tool to be displayed
 				tool_data.register_properties(responses, LayoutTarget::ToolShelf);
+
+				// Ensure the node graph drawing state is reset
+				responses.push_back(NodeGraphMessage::SetDrawing { new_drawing: false }.into());
 			}
 			ToolMessage::DeactivateTools => {
 				let tool_data = &mut self.tool_state.tool_data;
@@ -135,6 +138,10 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, u64, &InputPreprocess
 				tool_data
 					.active_tool_mut()
 					.process_message(ToolMessage::UpdateCursor, (document, document_id, document_data, input, &persistent_data.font_cache), responses);
+			}
+			ToolMessage::RefreshToolOptions => {
+				let tool_data = &mut self.tool_state.tool_data;
+				tool_data.tools.get(&tool_data.active_tool_type).unwrap().register_properties(responses, LayoutTarget::ToolOptions);
 			}
 			ToolMessage::ResetColors => {
 				let document_data = &mut self.tool_state.document_tool_data;

@@ -1,23 +1,23 @@
 <template>
 	<LayoutCol class="document">
 		<LayoutRow class="options-bar" :scrollableX="true">
-			<WidgetLayout :layout="documentModeLayout" />
-			<WidgetLayout :layout="toolOptionsLayout" />
+			<WidgetLayout :layout="document.state.documentModeLayout" />
+			<WidgetLayout :layout="document.state.toolOptionsLayout" />
 
 			<LayoutRow class="spacer"></LayoutRow>
 
-			<WidgetLayout :layout="documentBarLayout" />
+			<WidgetLayout :layout="document.state.documentBarLayout" />
 		</LayoutRow>
 		<LayoutRow class="shelf-and-viewport">
 			<LayoutCol class="shelf">
 				<LayoutCol class="tools" :scrollableY="true">
-					<WidgetLayout :layout="toolShelfLayout" />
+					<WidgetLayout :layout="document.state.toolShelfLayout" />
 				</LayoutCol>
 
 				<LayoutCol class="spacer"></LayoutCol>
 
 				<LayoutCol class="working-colors">
-					<WidgetLayout :layout="workingColorsLayout" />
+					<WidgetLayout :layout="document.state.workingColorsLayout" />
 				</LayoutCol>
 			</LayoutCol>
 			<LayoutCol class="viewport">
@@ -229,18 +229,7 @@ import { defineComponent, nextTick } from "vue";
 
 import { textInputCleanup } from "@/utility-functions/keyboard-entry";
 import { rasterizeSVGCanvas } from "@/utility-functions/rasterization";
-import {
-	defaultWidgetLayout,
-	patchWidgetLayout,
-	type DisplayEditableTextbox,
-	type MouseCursorIcon,
-	type UpdateDocumentBarLayout,
-	type UpdateDocumentModeLayout,
-	type UpdateToolOptionsLayout,
-	type UpdateToolShelfLayout,
-	type UpdateWorkingColorsLayout,
-	type XY,
-} from "@/wasm-communication/messages";
+import { type DisplayEditableTextbox, type MouseCursorIcon, type XY } from "@/wasm-communication/messages";
 
 import EyedropperPreview, { ZOOM_WINDOW_DIMENSIONS } from "@/components/floating-menus/EyedropperPreview.vue";
 import LayoutCol from "@/components/layout/LayoutCol.vue";
@@ -250,7 +239,7 @@ import PersistentScrollbar from "@/components/widgets/metrics/PersistentScrollba
 import WidgetLayout from "@/components/widgets/WidgetLayout.vue";
 
 export default defineComponent({
-	inject: ["editor", "panels"],
+	inject: ["editor", "panels", "document"],
 	data() {
 		const scrollbarPos: XY = { x: 0.5, y: 0.5 };
 		const scrollbarSize: XY = { x: 0.5, y: 0.5 };
@@ -294,13 +283,6 @@ export default defineComponent({
 			cursorEyedropperPreviewColorChoice: "",
 			cursorEyedropperPreviewColorPrimary: "",
 			cursorEyedropperPreviewColorSecondary: "",
-
-			// Layouts
-			documentModeLayout: defaultWidgetLayout(),
-			toolOptionsLayout: defaultWidgetLayout(),
-			documentBarLayout: defaultWidgetLayout(),
-			toolShelfLayout: defaultWidgetLayout(),
-			workingColorsLayout: defaultWidgetLayout(),
 		};
 	},
 	mounted() {
@@ -503,22 +485,6 @@ export default defineComponent({
 		displayRemoveEditableTextbox() {
 			this.textInput = undefined;
 			window.dispatchEvent(new CustomEvent("modifyinputfield", { detail: undefined }));
-		},
-		// Update layouts
-		updateDocumentModeLayout(updateDocumentModeLayout: UpdateDocumentModeLayout) {
-			patchWidgetLayout(this.documentModeLayout, updateDocumentModeLayout);
-		},
-		updateToolOptionsLayout(updateToolOptionsLayout: UpdateToolOptionsLayout) {
-			patchWidgetLayout(this.toolOptionsLayout, updateToolOptionsLayout);
-		},
-		updateDocumentBarLayout(updateDocumentBarLayout: UpdateDocumentBarLayout) {
-			patchWidgetLayout(this.documentBarLayout, updateDocumentBarLayout);
-		},
-		updateToolShelfLayout(updateToolShelfLayout: UpdateToolShelfLayout) {
-			patchWidgetLayout(this.toolShelfLayout, updateToolShelfLayout);
-		},
-		updateWorkingColorsLayout(updateWorkingColorsLayout: UpdateWorkingColorsLayout) {
-			patchWidgetLayout(this.workingColorsLayout, updateWorkingColorsLayout);
 		},
 		// Resize elements to render the new viewport size
 		viewportResize() {
