@@ -137,7 +137,7 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 		properties: node_properties::quantize_properties,
 	},
 	DocumentNodeType {
-		name: "Blur",
+		name: "Gaussian Blur",
 		category: "Image Filters",
 		identifier: NodeIdentifier::new("graphene_core::raster::BlurNode", &[]),
 		inputs: &[
