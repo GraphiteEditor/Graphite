@@ -132,7 +132,7 @@ pub fn export_image_node<'n>() -> impl Node<(Image, &'n str), Output = Result<()
 	FnNode::new(|input: (Image, &str)| {
 		let (image, path) = input;
 		let mut new_image = image::ImageBuffer::new(image.width, image.height);
-		for ((x, y, pixel), color) in new_image.enumerate_pixels_mut().zip((&image).into_iter()) {
+		for ((x, y, pixel), color) in new_image.enumerate_pixels_mut().zip((&image).data.iter()) {
 			let color: Color = *color;
 			assert!(x < image.width);
 			assert!(y < image.height);

@@ -2,7 +2,7 @@ use core::marker::PhantomData;
 
 use crate::{AsRefNode, Node, RefNode};
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct ComposeNode<First, Second, Input> {
 	first: First,
 	second: Second,
@@ -56,7 +56,6 @@ where
 		(self.second).eval_ref(arg)
 	}
 }
-#[cfg(feature = "std")]
 impl<Input: 'static, First: 'static, Second: 'static> dyn_any::StaticType for ComposeNode<First, Second, Input> {
 	type Static = ComposeNode<First, Second, Input>;
 }
