@@ -138,7 +138,7 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 	},
 	DocumentNodeType {
 		name: "Blur",
-		category: "Image Adjustments",
+		category: "Image Filters",
 		identifier: NodeIdentifier::new("graphene_core::raster::BlurNode", &[]),
 		inputs: &[
 			DocumentInputType::new("Image", TaggedValue::Image(Image::empty()), true),
@@ -150,7 +150,7 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 	},
 	DocumentNodeType {
 		name: "Cache",
-		category: "Image Adjustments",
+		category: "Structural",
 		identifier: NodeIdentifier::new("graphene_std::memo::CacheNode", &[concrete!("Image")]),
 		inputs: &[DocumentInputType::new("Image", TaggedValue::Image(Image::empty()), true)],
 		outputs: &[FrontendGraphDataType::Raster],

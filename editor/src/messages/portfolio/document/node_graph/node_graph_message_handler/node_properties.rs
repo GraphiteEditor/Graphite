@@ -190,8 +190,8 @@ pub fn brighten_image_properties(document_node: &DocumentNode, node_id: NodeId, 
 }
 
 pub fn blur_image_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let radius = number_widget(document_node, node_id, 1, "radius", NumberInput::new().min(-255.).max(255.), true);
-	let sigma = number_widget(document_node, node_id, 2, "sigma", NumberInput::new().min(-255.).max(255.), true);
+	let radius = number_widget(document_node, node_id, 1, "Radius", NumberInput::new().min(0.).max(20.).int(), true);
+	let sigma = number_widget(document_node, node_id, 2, "Sigma", NumberInput::new().min(0.).max(10000.), true);
 
 	vec![LayoutGroup::Row { widgets: radius }, LayoutGroup::Row { widgets: sigma }]
 }
