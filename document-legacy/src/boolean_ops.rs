@@ -18,7 +18,7 @@ pub enum BooleanOperation {
 	SubtractBack,
 }
 
-#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 pub enum BooleanOperationError {
 	InvalidSelection,
 	InvalidIntersections,

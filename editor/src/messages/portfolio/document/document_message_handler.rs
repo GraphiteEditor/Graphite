@@ -21,6 +21,7 @@ use crate::messages::portfolio::document::utility_types::vectorize_layer_metadat
 use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::*;
 
+use document_legacy::boolean_ops::BooleanOperationError;
 use document_legacy::color::Color;
 use document_legacy::document::Document as DocumentLegacy;
 use document_legacy::layers::blend_mode::BlendMode;
@@ -141,6 +142,14 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 						responses.push_back(BroadcastEvent::DocumentIsDirty.into());
 					}
 				}
+				// Display boolean operation error to the user (except if it is a nothing done error).
+				Err(DocumentError::BooleanOperationError(boolean_operation_error)) if boolean_operation_error != BooleanOperationError::NothingDone => responses.push_back(
+					DialogMessage::DisplayDialogError {
+						title: "Error processing boolean operation".into(),
+						description: format!("Boolean operations can unfortunatley be somewhat unreliable.\nError: {boolean_operation_error:?}"),
+					}
+					.into(),
+				),
 				Err(e) => error!("DocumentError: {:?}", e),
 				Ok(_) => (),
 			},
@@ -236,6 +245,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 			BooleanOperation(op) => {
 				// Convert Vec<&[LayerId]> to Vec<Vec<&LayerId>> because Vec<&[LayerId]> does not implement several traits (Debug, Serialize, Deserialize, ...) required by DocumentOperation enum
 				responses.push_back(StartTransaction.into());
+				responses.push_back(BroadcastEvent::ToolAbort.into());
 				responses.push_back(
 					DocumentOperation::BooleanOperation {
 						operation: op,
