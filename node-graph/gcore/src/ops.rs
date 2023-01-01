@@ -59,7 +59,7 @@ pub mod dynamic {
 				alloc::boxed::Box::new($node.eval(($(*dyn_any::downcast::<$t>($arg).unwrap()),*)) ) as Dynamic
 			}
 		)else*
-		else{
+		else {
 			panic!("Unhandled type"); // TODO: Exit neatly (although this should probably not happen)
 		}
 	};

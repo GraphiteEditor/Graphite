@@ -187,6 +187,7 @@ pub enum DocumentMessage {
 		toggle_angle: bool,
 	},
 	Undo,
+	UndoFinished,
 	UngroupLayers {
 		folder_path: Vec<LayerId>,
 	},

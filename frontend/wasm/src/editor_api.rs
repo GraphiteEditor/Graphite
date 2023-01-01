@@ -644,6 +644,9 @@ impl JsEditorHandle {
 	/// Notifies the backend that the selected nodes have been moved
 	#[wasm_bindgen(js_name = moveSelectedNodes)]
 	pub fn move_selected_nodes(&self, displacement_x: i32, displacement_y: i32) {
+		let message = DocumentMessage::StartTransaction;
+		self.dispatch(message);
+
 		let message = NodeGraphMessage::MoveSelectedNodes { displacement_x, displacement_y };
 		self.dispatch(message);
 	}

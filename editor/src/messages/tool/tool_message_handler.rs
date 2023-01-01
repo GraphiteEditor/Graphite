@@ -100,8 +100,8 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, u64, &InputPreprocess
 				// Send the DocumentIsDirty message to the active tool's sub-tool message handler
 				responses.push_back(BroadcastEvent::DocumentIsDirty.into());
 
-				// Send Properties to the frontend
-				tool_data.tools.get(&tool_type).unwrap().register_properties(responses, LayoutTarget::ToolOptions);
+				// Send tool options to the frontend
+				responses.push_back(ToolMessage::RefreshToolOptions.into());
 
 				// Notify the frontend about the new active tool to be displayed
 				tool_data.register_properties(responses, LayoutTarget::ToolShelf);

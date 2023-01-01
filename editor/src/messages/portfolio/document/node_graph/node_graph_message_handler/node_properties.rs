@@ -21,7 +21,7 @@ pub fn string_properties(text: impl Into<String>) -> Vec<LayoutGroup> {
 fn update_value<T, F: Fn(&T) -> TaggedValue + 'static + Send + Sync>(value: F, node_id: NodeId, input_index: usize) -> WidgetCallback<T> {
 	WidgetCallback::new(move |input_value: &T| {
 		NodeGraphMessage::SetInputValue {
-			node: node_id,
+			node_id,
 			input_index,
 			value: value(input_value),
 		}
@@ -398,13 +398,13 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 		LayoutGroup::Row { widgets }.with_tooltip("Connection status to the server that computes generated images")
 	};
 
-	let &NodeInput::Value {tagged_value: TaggedValue::ImaginateStatus( imaginate_status),..} = status_value else{
+	let &NodeInput::Value {tagged_value: TaggedValue::ImaginateStatus( imaginate_status),..} = status_value else {
 		panic!("Invalid status input")
 	};
-	let NodeInput::Value {tagged_value: TaggedValue::RcImage( cached_data),..} = cached_value else{
+	let NodeInput::Value {tagged_value: TaggedValue::RcImage( cached_data),..} = cached_value else {
 		panic!("Invalid cached image input")
 	};
-	let &NodeInput::Value {tagged_value: TaggedValue::F64( percent_complete),..} = complete_value else{
+	let &NodeInput::Value {tagged_value: TaggedValue::F64( percent_complete),..} = complete_value else {
 		panic!("Invalid percent complete input")
 	};
 	let use_base_image = if let &NodeInput::Value {

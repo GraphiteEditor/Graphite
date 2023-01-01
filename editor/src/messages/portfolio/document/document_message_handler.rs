@@ -53,6 +53,9 @@ pub struct DocumentMessageHandler {
 	pub document_undo_history: VecDeque<DocumentSave>,
 	#[serde(skip)]
 	pub document_redo_history: VecDeque<DocumentSave>,
+	/// Don't allow aborting transactions whilst undoing to avoid #559
+	#[serde(skip)]
+	undo_in_progress: bool,
 
 	#[serde(with = "vectorize_layer_metadata")]
 	pub layer_metadata: HashMap<Vec<LayerId>, LayerMetadata>,
@@ -85,6 +88,7 @@ impl Default for DocumentMessageHandler {
 
 			document_undo_history: VecDeque::new(),
 			document_redo_history: VecDeque::new(),
+			undo_in_progress: false,
 
 			layer_metadata: vec![(vec![], LayerMetadata::new(true))].into_iter().collect(),
 			layer_range_selection_reference: Vec::new(),
@@ -190,8 +194,10 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 
 			// Messages
 			AbortTransaction => {
-				self.undo(responses).unwrap_or_else(|e| warn!("{}", e));
-				responses.extend([RenderDocument.into(), DocumentStructureChanged.into()]);
+				if !self.undo_in_progress {
+					self.undo(responses).unwrap_or_else(|e| warn!("{}", e));
+					responses.extend([RenderDocument.into(), DocumentStructureChanged.into()]);
+				}
 			}
 			AddSelectedLayers { additional_layers } => {
 				for layer_path in &additional_layers {
@@ -509,7 +515,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				// Set a random seed input
 				responses.push_back(
 					NodeGraphMessage::SetInputValue {
-						node: *imaginate_node.last().unwrap(),
+						node_id: *imaginate_node.last().unwrap(),
 						input_index: 1,
 						value: graph_craft::document::value::TaggedValue::F64((generate_uuid() >> 1) as f64),
 					}
@@ -541,6 +547,8 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				responses.push_back(BroadcastEvent::DocumentIsDirty.into());
 			}
 			PasteImage { mime, image_data, mouse } => {
+				responses.push_back(DocumentMessage::StartTransaction.into());
+
 				let path = vec![generate_uuid()];
 				responses.push_back(
 					DocumentOperation::AddImage {
@@ -833,12 +841,15 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				);
 			}
 			Undo => {
+				self.undo_in_progress = true;
 				responses.push_back(BroadcastEvent::ToolAbort.into());
 				responses.push_back(DocumentHistoryBackward.into());
 				responses.push_back(BroadcastEvent::DocumentIsDirty.into());
 				responses.push_back(RenderDocument.into());
 				responses.push_back(FolderChanged { affected_folder_path: vec![] }.into());
+				responses.push_back(UndoFinished.into());
 			}
+			UndoFinished => self.undo_in_progress = false,
 			UngroupLayers { folder_path } => {
 				// Select all the children of the folder
 				let select = self.document_legacy.folder_children_paths(&folder_path);
@@ -1353,6 +1364,8 @@ impl DocumentMessageHandler {
 					responses.push_back(DocumentMessage::LayerChanged { affected_layer_path: layer.clone() }.into())
 				}
 
+				responses.push_back(NodeGraphMessage::SendGraph.into());
+
 				Ok(())
 			}
 			None => Err(EditorError::NoTransactionInProgress),
@@ -1390,6 +1403,8 @@ impl DocumentMessageHandler {
 				for layer in self.layer_metadata.keys() {
 					responses.push_back(DocumentMessage::LayerChanged { affected_layer_path: layer.clone() }.into())
 				}
+
+				responses.push_back(NodeGraphMessage::SendGraph.into());
 
 				Ok(())
 			}

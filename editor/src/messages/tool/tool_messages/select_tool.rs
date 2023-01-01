@@ -473,11 +473,15 @@ impl Fsm for SelectToolFsmState {
 					// If the user clicks on new shape, make that layer their new selection.
 					// Otherwise enter the box select mode
 					let state = if tool_data.pivot.is_over(input.mouse.position) {
+						responses.push_back(DocumentMessage::StartTransaction.into());
+
 						tool_data.snap_manager.start_snap(document, document.bounding_boxes(None, None, font_cache), true, true);
 						tool_data.snap_manager.add_all_document_handles(document, &[], &[], &[]);
 
 						DraggingPivot
 					} else if let Some(selected_edges) = dragging_bounds {
+						responses.push_back(DocumentMessage::StartTransaction.into());
+
 						let snap_x = selected_edges.2 || selected_edges.3;
 						let snap_y = selected_edges.0 || selected_edges.1;
 
@@ -498,6 +502,8 @@ impl Fsm for SelectToolFsmState {
 
 						ResizingBounds
 					} else if rotating_bounds {
+						responses.push_back(DocumentMessage::StartTransaction.into());
+
 						if let Some(bounds) = &mut tool_data.bounding_box_overlays {
 							let selected = selected.iter().collect::<Vec<_>>();
 							let mut selected = Selected::new(&mut bounds.original_transforms, &mut bounds.center_of_transformation, &selected, responses, &document.document_legacy);
@@ -679,6 +685,12 @@ impl Fsm for SelectToolFsmState {
 					Ready
 				}
 				(ResizingBounds, DragStop) => {
+					let response = match input.mouse.position.distance(tool_data.drag_start) < 10. * f64::EPSILON {
+						true => DocumentMessage::Undo,
+						false => DocumentMessage::CommitTransaction,
+					};
+					responses.push_back(response.into());
+
 					tool_data.snap_manager.cleanup(responses);
 
 					if let Some(bounds) = &mut tool_data.bounding_box_overlays {
@@ -688,6 +700,12 @@ impl Fsm for SelectToolFsmState {
 					Ready
 				}
 				(RotatingBounds, DragStop) => {
+					let response = match input.mouse.position.distance(tool_data.drag_start) < 10. * f64::EPSILON {
+						true => DocumentMessage::Undo,
+						false => DocumentMessage::CommitTransaction,
+					};
+					responses.push_back(response.into());
+
 					if let Some(bounds) = &mut tool_data.bounding_box_overlays {
 						bounds.original_transforms.clear();
 					}
@@ -695,6 +713,12 @@ impl Fsm for SelectToolFsmState {
 					Ready
 				}
 				(DraggingPivot, DragStop) => {
+					let response = match input.mouse.position.distance(tool_data.drag_start) < 10. * f64::EPSILON {
+						true => DocumentMessage::Undo,
+						false => DocumentMessage::CommitTransaction,
+					};
+					responses.push_back(response.into());
+
 					tool_data.snap_manager.cleanup(responses);
 
 					Ready
@@ -769,6 +793,8 @@ impl Fsm for SelectToolFsmState {
 					self
 				}
 				(_, SetPivot { position }) => {
+					responses.push_back(DocumentMessage::StartTransaction.into());
+
 					let pos: Option<DVec2> = position.into();
 					tool_data.pivot.set_normalized_position(pos.unwrap(), document, font_cache, responses);
 
