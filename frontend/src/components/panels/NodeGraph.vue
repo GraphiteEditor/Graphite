@@ -593,15 +593,18 @@ export default defineComponent({
 
 			// Clicked on a node
 			if (nodeId) {
-				const id = BigInt(nodeId);
 				let modifiedSelected = false;
+
+				const id = BigInt(nodeId);
 				if (e.shiftKey || e.ctrlKey) {
+					modifiedSelected = true;
+
 					if (this.selected.includes(id)) this.selected.splice(this.selected.lastIndexOf(id), 1);
 					else this.selected.push(id);
-					modifiedSelected = true;
 				} else if (!this.selected.includes(id)) {
-					this.selected = [id];
 					modifiedSelected = true;
+
+					this.selected = [id];
 				} else {
 					this.selectIfNotDragged = id;
 				}

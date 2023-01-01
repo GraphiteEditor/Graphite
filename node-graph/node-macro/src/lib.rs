@@ -12,7 +12,7 @@ pub fn node_fn(attr: TokenStream, item: TokenStream) -> TokenStream {
 
 	// Extract primary input as first argument
 	let primary_input = function_inputs.next().expect("Primary input required - set to `()` if not needed.");
-	let Pat::Ident(PatIdent{ident: primary_input_ident,..} ) =&*primary_input.pat else{
+	let Pat::Ident(PatIdent{ident: primary_input_ident,..} ) =&*primary_input.pat else {
 		panic!("Expected ident as primary input.");
 	};
 	let primary_input_ty = &primary_input.ty;

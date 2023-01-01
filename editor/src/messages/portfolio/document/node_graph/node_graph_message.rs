@@ -1,8 +1,8 @@
 use crate::messages::prelude::*;
 
 use document_legacy::LayerId;
-use graph_craft::document::{value::TaggedValue, NodeId};
-use graph_craft::document::{DocumentNode, NodeInput};
+use graph_craft::document::value::TaggedValue;
+use graph_craft::document::{DocumentNode, NodeId, NodeInput};
 
 #[remain::sorted]
 #[impl_message(Message, DocumentMessage, NodeGraph)]
@@ -66,7 +66,7 @@ pub enum NodeGraphMessage {
 		new_drawing: bool,
 	},
 	SetInputValue {
-		node: NodeId,
+		node_id: NodeId,
 		input_index: usize,
 		value: TaggedValue,
 	},

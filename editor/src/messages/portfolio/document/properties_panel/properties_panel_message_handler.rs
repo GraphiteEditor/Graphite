@@ -198,7 +198,7 @@ impl PropertiesPanelMessageHandler {
 				responses.push_back(ArtboardMessage::DispatchOperation(Box::new(operation)).into())
 			}
 			TargetDocument::Artwork => {
-				// Comit to history before the modification
+				// Co mit to history before the modification
 				if commit_history {
 					responses.push_back(DocumentMessage::StartTransaction.into());
 				}

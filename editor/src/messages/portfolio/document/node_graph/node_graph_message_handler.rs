@@ -291,7 +291,7 @@ impl NodeGraphMessageHandler {
 
 		let mut nodes = Vec::new();
 		for (id, node) in &network.nodes {
-			let Some(node_type) = document_node_types::resolve_document_node_type(&node.name) else{
+			let Some(node_type) = document_node_types::resolve_document_node_type(&node.name) else {
 				warn!("Node '{}' does not exist in library", node.name);
 				continue
 			};
@@ -465,7 +465,7 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &mut dyn Iterator<Item = &
 			NodeGraphMessage::CreateNode { node_id, node_type, x, y } => {
 				let node_id = node_id.unwrap_or_else(crate::application::generate_uuid);
 
-				let Some(document_node_type) = document_node_types::resolve_document_node_type(&node_type) else{
+				let Some(document_node_type) = document_node_types::resolve_document_node_type(&node_type) else {{
 					responses.push_back(DialogMessage::DisplayDialogError { title: "Cannot insert node".to_string(), description: format!("The document node '{node_type}' does not exist in the document node list") }.into());
 					return;
 				};
@@ -592,7 +592,7 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &mut dyn Iterator<Item = &
 				self.update_selected(document, responses);
 			}
 			NodeGraphMessage::ExposeInput { node_id, input_index, new_exposed } => {
-				let Some(network) = self.get_active_network(document) else{
+				let Some(network) = self.get_active_network(document) else {
 					warn!("No network");
 					return;
 				};
@@ -626,7 +626,7 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &mut dyn Iterator<Item = &
 				}
 			}
 			NodeGraphMessage::MoveSelectedNodes { displacement_x, displacement_y } => {
-				let Some(network) = self.get_active_network_mut(document) else{
+				let Some(network) = self.get_active_network_mut(document) else {
 					warn!("No network");
 					return;
 				};
@@ -659,7 +659,7 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &mut dyn Iterator<Item = &
 				self.update_selected(document, responses);
 			}
 			NodeGraphMessage::PasteNodes { serialized_nodes } => {
-				let Some(network) = self.get_active_network(document) else{
+				let Some(network) = self.get_active_network(document) else {
 					warn!("No network");
 					return;
 				};
@@ -732,7 +732,7 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &mut dyn Iterator<Item = &
 				}
 				self.is_drawing_node_graph_frame = new_drawing
 			}
-			NodeGraphMessage::SetInputValue { node: node_id, input_index, value } => {
+			NodeGraphMessage::SetInputValue { node_id, input_index, value } => {
 				if let Some(network) = self.get_active_network(document) {
 					if let Some(node) = network.nodes.get(&node_id) {
 						responses.push_back(DocumentMessage::StartTransaction.into());
@@ -784,7 +784,7 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &mut dyn Iterator<Item = &
 				}
 			}
 			NodeGraphMessage::ShiftNode { node_id } => {
-				let Some(network) = self.get_active_network_mut(document) else{
+				let Some(network) = self.get_active_network_mut(document) else {
 					warn!("No network");
 					return;
 				};

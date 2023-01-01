@@ -515,7 +515,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				// Set a random seed input
 				responses.push_back(
 					NodeGraphMessage::SetInputValue {
-						node: *imaginate_node.last().unwrap(),
+						node_id: *imaginate_node.last().unwrap(),
 						input_index: 1,
 						value: graph_craft::document::value::TaggedValue::F64((generate_uuid() >> 1) as f64),
 					}
