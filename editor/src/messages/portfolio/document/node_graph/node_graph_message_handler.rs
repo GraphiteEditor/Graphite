@@ -465,7 +465,7 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &mut dyn Iterator<Item = &
 			NodeGraphMessage::CreateNode { node_id, node_type, x, y } => {
 				let node_id = node_id.unwrap_or_else(crate::application::generate_uuid);
 
-				let Some(document_node_type) = document_node_types::resolve_document_node_type(&node_type) else {{
+				let Some(document_node_type) = document_node_types::resolve_document_node_type(&node_type) else {
 					responses.push_back(DialogMessage::DisplayDialogError { title: "Cannot insert node".to_string(), description: format!("The document node '{node_type}' does not exist in the document node list") }.into());
 					return;
 				};
