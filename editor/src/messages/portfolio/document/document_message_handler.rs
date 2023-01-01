@@ -145,8 +145,8 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				// Display boolean operation error to the user (except if it is a nothing done error).
 				Err(DocumentError::BooleanOperationError(boolean_operation_error)) if boolean_operation_error != BooleanOperationError::NothingDone => responses.push_back(
 					DialogMessage::DisplayDialogError {
-						title: "Error processing boolean operation".into(),
-						description: format!("Boolean operations can unfortunatley be somewhat unreliable.\nError: {boolean_operation_error:?}"),
+						title: "Failed to calculate boolean operation".into(),
+						description: format!("Unfortunately, this feature not that robust yet.\n\nError: {boolean_operation_error:?}"),
 					}
 					.into(),
 				),
