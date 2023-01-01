@@ -17,9 +17,10 @@ ignore-dev-dependencies = true
 
 workarounds = ["ring"]
 
-# https://raw.githubusercontent.com/briansmith/webpki/main/LICENSE looks like MIT to me
+# https://raw.githubusercontent.com/briansmith/webpki/main/LICENSE
+# is the ISC license but test code within the repo is BSD-3-Clause, but is not compiled into the crate when we use it
 [webpki.clarify]
-license = "MIT"
+license = "ISC"
 
 [[webpki.clarify.files]]
 path = 'LICENSE'

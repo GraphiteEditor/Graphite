@@ -310,7 +310,7 @@ impl SelectedGradient {
 		};
 
 		// Clear the gradient if layer deleted
-		let Ok(layer) = document.document_legacy.layer(&inner_gradient.path) else{
+		let Ok(layer) = document.document_legacy.layer(&inner_gradient.path) else {
 			responses.push_back(ToolMessage::RefreshToolOptions.into());
 			*gradient = None;
 			return;
@@ -320,7 +320,7 @@ impl SelectedGradient {
 		inner_gradient.transform = gradient_space_transform(&inner_gradient.path, layer, document, font_cache);
 
 		// Clear if no longer a gradient
-		let Some(gradient) = layer.style().ok().and_then(|style|style.fill().as_gradient()) else{
+		let Some(gradient) = layer.style().ok().and_then(|style|style.fill().as_gradient()) else {
 			responses.push_back(ToolMessage::RefreshToolOptions.into());
 			*gradient = None;
 			return;
@@ -462,7 +462,7 @@ impl Fsm for GradientToolFsmState {
 					self
 				}
 				(GradientToolFsmState::Ready, GradientToolMessage::DeleteStop) => {
-					let Some(selected_gradient) = &mut tool_data.selected_gradient else{
+					let Some(selected_gradient) = &mut tool_data.selected_gradient else {
 						return self;
 					};
 

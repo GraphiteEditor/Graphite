@@ -706,7 +706,7 @@ impl PortfolioMessageHandler {
 				let node_id = node_path[index];
 				inner_network.output = node_id;
 
-				let Some(new_inner) = inner_network.nodes.get_mut(&node_id).and_then(|node| node.implementation.get_network_mut()) else{
+				let Some(new_inner) = inner_network.nodes.get_mut(&node_id).and_then(|node| node.implementation.get_network_mut()) else {
 					return Err("Failed to find network".to_string());
 				};
 				inner_network = new_inner;
