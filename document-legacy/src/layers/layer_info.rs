@@ -119,7 +119,7 @@ impl<'a> TryFrom<&'a Layer> for &'a Subpath {
 
 /// Defines shared behavior for every layer type.
 pub trait LayerData {
-	/// Render the layer as an SVG tag to a given string.
+	/// Render the layer as an SVG tag to a given string, returning if rendering fully successful.
 	///
 	/// # Example
 	/// ```
@@ -143,7 +143,7 @@ pub trait LayerData {
 	///     </g>"
 	/// );
 	/// ```
-	fn render(&mut self, svg: &mut String, svg_defs: &mut String, transforms: &mut Vec<glam::DAffine2>, render_data: RenderData);
+	fn render(&mut self, svg: &mut String, svg_defs: &mut String, transforms: &mut Vec<glam::DAffine2>, render_data: RenderData) -> bool;
 
 	/// Determine the layers within this layer that intersect a given quad.
 	/// # Example
@@ -190,7 +190,7 @@ pub trait LayerData {
 }
 
 impl LayerData for LayerDataType {
-	fn render(&mut self, svg: &mut String, svg_defs: &mut String, transforms: &mut Vec<glam::DAffine2>, render_data: RenderData) {
+	fn render(&mut self, svg: &mut String, svg_defs: &mut String, transforms: &mut Vec<glam::DAffine2>, render_data: RenderData) -> bool {
 		self.inner_mut().render(svg, svg_defs, transforms, render_data)
 	}
 
@@ -304,12 +304,15 @@ impl Layer {
 		LayerIter { stack: vec![self] }
 	}
 
-	pub fn render(&mut self, transforms: &mut Vec<DAffine2>, svg_defs: &mut String, render_data: RenderData) -> &str {
+	/// Renders the layer, returning the result and if success
+	pub fn render(&mut self, transforms: &mut Vec<DAffine2>, svg_defs: &mut String, render_data: RenderData) -> (&str, bool) {
 		if !self.visible {
-			return "";
+			return ("", true);
 		}
 
 		transforms.push(self.transform);
+
+		// Skip rendering if outside the viewport bounds
 		if let Some(viewport_bounds) = render_data.culling_bounds {
 			if let Some(bounding_box) = self
 				.data
@@ -321,15 +324,17 @@ impl Layer {
 					transforms.pop();
 					self.cache.clear();
 					self.cache_dirty = true;
-					return "";
+					return ("", false);
 				}
 			}
 		}
 
+		let mut success = true;
+
 		if self.cache_dirty {
 			self.thumbnail_cache.clear();
 			self.svg_defs_cache.clear();
-			self.data.render(&mut self.thumbnail_cache, &mut self.svg_defs_cache, transforms, render_data);
+			success = self.data.render(&mut self.thumbnail_cache, &mut self.svg_defs_cache, transforms, render_data);
 
 			self.cache.clear();
 			let _ = writeln!(self.cache, r#"<g transform="matrix("#);
@@ -346,10 +351,16 @@ impl Layer {
 
 			self.cache_dirty = false;
 		}
+
 		transforms.pop();
 		svg_defs.push_str(&self.svg_defs_cache);
 
-		self.cache.as_str()
+		// If rendering not successful then set the cache to dirty
+		if !success {
+			self.cache_dirty = true;
+		}
+
+		(self.cache.as_str(), success)
 	}
 
 	pub fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, font_cache: &FontCache) {

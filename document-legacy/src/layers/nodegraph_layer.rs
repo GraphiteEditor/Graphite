@@ -33,7 +33,7 @@ pub struct ImageData {
 }
 
 impl LayerData for NodeGraphFrameLayer {
-	fn render(&mut self, svg: &mut String, _svg_defs: &mut String, transforms: &mut Vec<DAffine2>, render_data: RenderData) {
+	fn render(&mut self, svg: &mut String, _svg_defs: &mut String, transforms: &mut Vec<DAffine2>, render_data: RenderData) -> bool {
 		let transform = self.transform(transforms, render_data.view_mode);
 		let inverse = transform.inverse();
 
@@ -41,7 +41,7 @@ impl LayerData for NodeGraphFrameLayer {
 
 		if !inverse.is_finite() {
 			let _ = write!(svg, "<!-- SVG shape has an invalid transform -->");
-			return;
+			return false;
 		}
 
 		let _ = writeln!(svg, r#"<g transform="matrix("#);
@@ -75,6 +75,8 @@ impl LayerData for NodeGraphFrameLayer {
 		);
 
 		let _ = svg.write_str(r#"</g>"#);
+
+		true
 	}
 
 	fn bounding_box(&self, transform: glam::DAffine2, _font_cache: &FontCache) -> Option<[DVec2; 2]> {
