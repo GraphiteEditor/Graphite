@@ -691,7 +691,7 @@ export default defineComponent({
 					}
 				}
 
-				if (this.selected.length > 0 && this.draggingNodes.roundX !== 0 && this.draggingNodes.roundY !== 0)
+				if (this.selected.length > 0 && (this.draggingNodes.roundX !== 0 || this.draggingNodes.roundY !== 0))
 					this.editor.instance.moveSelectedNodes(this.draggingNodes.roundX, this.draggingNodes.roundY);
 
 				// Check if this node should be inserted between two other nodes
