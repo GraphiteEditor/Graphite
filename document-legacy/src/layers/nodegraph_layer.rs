@@ -76,7 +76,7 @@ impl LayerData for NodeGraphFrameLayer {
 
 		let _ = svg.write_str(r#"</g>"#);
 
-		true
+		false
 	}
 
 	fn bounding_box(&self, transform: glam::DAffine2, _font_cache: &FontCache) -> Option<[DVec2; 2]> {

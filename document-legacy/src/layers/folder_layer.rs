@@ -22,13 +22,13 @@ pub struct FolderLayer {
 
 impl LayerData for FolderLayer {
 	fn render(&mut self, svg: &mut String, svg_defs: &mut String, transforms: &mut Vec<glam::DAffine2>, render_data: RenderData) -> bool {
-		let mut failed = false;
+		let mut any_child_requires_refresh = false;
 		for layer in &mut self.layers {
-			let (svg_value, success) = layer.render(transforms, svg_defs, render_data);
+			let (svg_value, requires_refresh) = layer.render(transforms, svg_defs, render_data);
 			*svg += svg_value;
-			failed = failed || (!success);
+			any_child_requires_refresh = any_child_requires_refresh || requires_refresh;
 		}
-		!failed
+		!any_child_requires_refresh
 	}
 
 	fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, font_cache: &FontCache) {

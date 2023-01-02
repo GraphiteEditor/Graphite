@@ -86,7 +86,7 @@ impl LayerData for TextLayer {
 		}
 		let _ = svg.write_str("</g>");
 
-		true
+		false
 	}
 
 	fn bounding_box(&self, transform: glam::DAffine2, font_cache: &FontCache) -> Option<[DVec2; 2]> {

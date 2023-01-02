@@ -119,7 +119,7 @@ impl<'a> TryFrom<&'a Layer> for &'a Subpath {
 
 /// Defines shared behavior for every layer type.
 pub trait LayerData {
-	/// Render the layer as an SVG tag to a given string, returning if rendering fully successful.
+	/// Render the layer as an SVG tag to a given string, returning a boolean to indicate if a redraw is required next frame.
 	///
 	/// # Example
 	/// ```
@@ -304,10 +304,10 @@ impl Layer {
 		LayerIter { stack: vec![self] }
 	}
 
-	/// Renders the layer, returning the result and if success
+	/// Renders the layer, returning the result and if a redraw is required
 	pub fn render(&mut self, transforms: &mut Vec<DAffine2>, svg_defs: &mut String, render_data: RenderData) -> (&str, bool) {
 		if !self.visible {
-			return ("", true);
+			return ("", false);
 		}
 
 		transforms.push(self.transform);
@@ -324,17 +324,17 @@ impl Layer {
 					transforms.pop();
 					self.cache.clear();
 					self.cache_dirty = true;
-					return ("", false);
+					return ("", true);
 				}
 			}
 		}
 
-		let mut success = true;
+		let mut requires_redraw = false;
 
 		if self.cache_dirty {
 			self.thumbnail_cache.clear();
 			self.svg_defs_cache.clear();
-			success = self.data.render(&mut self.thumbnail_cache, &mut self.svg_defs_cache, transforms, render_data);
+			requires_redraw = self.data.render(&mut self.thumbnail_cache, &mut self.svg_defs_cache, transforms, render_data);
 
 			self.cache.clear();
 			let _ = writeln!(self.cache, r#"<g transform="matrix("#);
@@ -355,12 +355,12 @@ impl Layer {
 		transforms.pop();
 		svg_defs.push_str(&self.svg_defs_cache);
 
-		// If rendering not successful then set the cache to dirty
-		if !success {
+		// If a redraw is required then set the cache to dirty.
+		if requires_redraw {
 			self.cache_dirty = true;
 		}
 
-		(self.cache.as_str(), success)
+		(self.cache.as_str(), requires_redraw)
 	}
 
 	pub fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, font_cache: &FontCache) {
