@@ -27,7 +27,7 @@ pub struct ShapeLayer {
 }
 
 impl LayerData for ShapeLayer {
-	fn render(&mut self, svg: &mut String, svg_defs: &mut String, transforms: &mut Vec<DAffine2>, render_data: RenderData) {
+	fn render(&mut self, svg: &mut String, svg_defs: &mut String, transforms: &mut Vec<DAffine2>, render_data: RenderData) -> bool {
 		let mut subpath = self.shape.clone();
 
 		let layer_bounds = subpath.bounding_box().unwrap_or_default();
@@ -36,7 +36,7 @@ impl LayerData for ShapeLayer {
 		let inverse = transform.inverse();
 		if !inverse.is_finite() {
 			let _ = write!(svg, "<!-- SVG shape has an invalid transform -->");
-			return;
+			return false;
 		}
 		subpath.apply_affine(transform);
 
@@ -54,6 +54,8 @@ impl LayerData for ShapeLayer {
 			self.style.render(render_data.view_mode, svg_defs, transform, layer_bounds, transformed_bounds)
 		);
 		let _ = svg.write_str("</g>");
+
+		false
 	}
 
 	fn bounding_box(&self, transform: glam::DAffine2, _font_cache: &FontCache) -> Option<[DVec2; 2]> {
