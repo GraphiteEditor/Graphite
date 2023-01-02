@@ -447,29 +447,16 @@ impl WidgetHolder {
 		Self { widget_id: generate_uuid(), widget }
 	}
 	pub fn unrelated_separator() -> Self {
-		WidgetHolder::new(Widget::Separator(Separator {
-			separator_type: SeparatorType::Unrelated,
-			direction: SeparatorDirection::Horizontal,
-		}))
+		Separator::new().separator_type(SeparatorType::Unrelated).direction(SeparatorDirection::Horizontal).widget_holder()
 	}
 	pub fn related_separator() -> Self {
-		WidgetHolder::new(Widget::Separator(Separator {
-			separator_type: SeparatorType::Related,
-			direction: SeparatorDirection::Horizontal,
-		}))
+		Separator::new().separator_type(SeparatorType::Related).direction(SeparatorDirection::Horizontal).widget_holder()
 	}
 	pub fn text_widget(text: impl Into<String>) -> Self {
-		WidgetHolder::new(Widget::TextLabel(TextLabel {
-			value: text.into(),
-			..Default::default()
-		}))
+		TextLabel::new().value(text).widget_holder()
 	}
 	pub fn bold_text(text: impl Into<String>) -> Self {
-		WidgetHolder::new(Widget::TextLabel(TextLabel {
-			value: text.into(),
-			bold: true,
-			..Default::default()
-		}))
+		TextLabel::new().value(text).bold(true).widget_holder()
 	}
 	/// Diffing updates self (where self is old) based on new, updating the list of modifications as it does so.
 	pub fn diff(&mut self, new: Self, widget_path: &mut [usize], widget_diffs: &mut Vec<WidgetDiff>) {
