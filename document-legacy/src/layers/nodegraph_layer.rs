@@ -65,14 +65,15 @@ impl LayerData for NodeGraphFrameLayer {
 				blob_url,
 				matrix
 			);
+		} else {
+			let _ = write!(
+				svg,
+				r#"<rect width="{}" height="{}" fill="none" stroke="var(--color-data-vector)" stroke-width="3" stroke-dasharray="8" transform="matrix({})" />"#,
+				width.abs(),
+				height.abs(),
+				matrix,
+			);
 		}
-		let _ = write!(
-			svg,
-			r#"<rect width="{}" height="{}" fill="none" stroke="var(--color-data-vector)" stroke-width="3" stroke-dasharray="8" transform="matrix({})" />"#,
-			width.abs(),
-			height.abs(),
-			matrix,
-		);
 
 		let _ = svg.write_str(r#"</g>"#);
 
