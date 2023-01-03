@@ -85,11 +85,17 @@ function formatThirdPartyLicenses(jsLicenses) {
 
 		if (rustLicenses === undefined) {
 			// This is probably caused by cargo about not being installed
-			console.error(`
-Could not run \`cargo about\`, which is required to generate license information.
-To install cargo-about on your system, you can run:
-    cargo install cargo-about
-License information is required on production builds. Aborting.`);
+			console.error(
+				`
+				Could not run \`cargo about\`, which is required to generate license information.
+				To install cargo-about on your system, you can run \`cargo install cargo-about\`.
+				License information is required on production builds. Aborting.
+				`
+					.trim()
+					.split("\n")
+					.map((line) => line.trim())
+					.join("\n")
+			);
 			process.exit(1);
 		}
 	}

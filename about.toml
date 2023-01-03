@@ -14,7 +14,6 @@ accepted = [
 ]
 ignore-build-dependencies = true
 ignore-dev-dependencies = true
-
 workarounds = ["ring"]
 
 # https://raw.githubusercontent.com/briansmith/webpki/main/LICENSE
