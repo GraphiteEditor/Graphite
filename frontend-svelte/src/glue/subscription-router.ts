@@ -1,6 +1,4 @@
-import { plainToInstance } from "class-transformer";
-
-import { type WasmEditorInstance, type WasmRawInstance } from "./editor";
+import type { WasmEditorInstance, WasmRawInstance } from "./editor";
 import { type JsMessageType, messageMakers, type JsMessage } from "./messages";
 
 type JsMessageCallback<T extends JsMessage> = (messageData: T) => void;
@@ -42,7 +40,7 @@ export function createSubscriptionRouter() {
 		// If the `messageMaker` is a `JsMessage` class then we use the class-transformer library's `plainToInstance` function in order to convert the JSON data into the destination class.
 		// If it is not a `JsMessage` then it should be a custom function that creates a JsMessage from a JSON, so we call the function itself with the raw JSON as an argument.
 		// The resulting `message` is an instance of a class that extends `JsMessage`.
-		const message = messageIsClass ? plainToInstance(messageMaker, unwrappedMessageData) : messageMaker(unwrappedMessageData, wasm, instance);
+		const message = messageIsClass ? Object.setPrototypeOf(unwrappedMessageData, messageMaker.prototype) : messageMaker(unwrappedMessageData, wasm, instance);
 
 		// It is ok to use constructor.name even with minification since it is used consistently with registerHandler
 		const callback = subscriptions[message.constructor.name];

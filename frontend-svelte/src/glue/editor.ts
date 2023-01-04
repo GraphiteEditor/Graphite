@@ -53,22 +53,22 @@ export async function dispatchTauri(message: unknown): Promise<void> {
 
 // Should be called asynchronously before `createEditor()`
 export async function initWasm(): Promise<void> {
-	// Skip if the WASM module is already initialized
-	if (wasmImport !== undefined) return;
+	// // Skip if the WASM module is already initialized
+	// if (wasmImport !== undefined) return;
 
-	// Import the WASM module JS bindings and wrap them in the panic proxy
-	// eslint-disable-next-line import/no-cycle
-	wasmImport = await import("graphite-wasm").then(panicProxy);
+	// // Import the WASM module JS bindings and wrap them in the panic proxy
+	// // eslint-disable-next-line import/no-cycle
+	// wasmImport = await import("graphite-wasm/xxx.wasm").then(panicProxy);
 
-	// Provide a random starter seed which must occur after initializing the WASM module, since WASM can't generate its own random numbers
-	const randomSeedFloat = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER);
-	const randomSeed = BigInt(randomSeedFloat);
-	wasmImport?.setRandomSeed(randomSeed);
-	try {
-		await invoke("set_random_seed", { seed: randomSeedFloat });
-	} catch {
-		// Ignore errors
-	}
+	// // Provide a random starter seed which must occur after initializing the WASM module, since WASM can't generate its own random numbers
+	// const randomSeedFloat = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER);
+	// const randomSeed = BigInt(randomSeedFloat);
+	// wasmImport?.setRandomSeed(randomSeed);
+	// try {
+	// 	await invoke("set_random_seed", { seed: randomSeedFloat });
+	// } catch {
+	// 	// Ignore errors
+	// }
 }
 
 // Should be called after running `initWasm()` and its promise resolving
