@@ -1,7 +1,6 @@
 {
-	"name": "frontend",
+	"name": "graphite-frontend",
 	"version": "0.0.1",
-	"private": true,
 	"scripts": {
 		"dev": "vite dev",
 		"build": "vite build",
@@ -23,7 +22,7 @@
 	},
 	"type": "module",
 	"dependencies": {
-		"graphite-wasm": "file:../wasm/pkg",
-		"graphite-wasm-communication": "file:../wasm-comm"
+		"@tauri-apps/api": "^1.2.0",
+		"graphite-wasm": "file:../wasm/pkg"
 	}
 }

@@ -1,7 +1,7 @@
 import { plainToInstance } from "class-transformer";
 
-import { type WasmEditorInstance, type WasmRawInstance } from "@/wasm-communication/editor";
-import { type JsMessageType, messageMakers, type JsMessage } from "@/wasm-communication/messages";
+import { type WasmEditorInstance, type WasmRawInstance } from "./editor";
+import { type JsMessageType, messageMakers, type JsMessage } from "./messages";
 
 type JsMessageCallback<T extends JsMessage> = (messageData: T) => void;
 // Don't know a better way of typing this since it can be any subclass of JsMessage
