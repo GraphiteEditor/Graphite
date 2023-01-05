@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Derivative, Serialize, Deserialize, WidgetBuilder)]
 #[derivative(Debug, PartialEq)]
 pub struct CheckboxInput {
+	#[widget_builder(constructor)]
 	pub checked: bool,
 
 	pub disabled: bool,
@@ -43,6 +44,7 @@ impl Default for CheckboxInput {
 #[derive(Clone, Derivative, Serialize, Deserialize, WidgetBuilder)]
 #[derivative(Debug, PartialEq, Default)]
 pub struct ColorInput {
+	#[widget_builder(constructor)]
 	pub value: Option<Color>,
 
 	// TODO: Add allow_none
@@ -66,6 +68,7 @@ pub struct ColorInput {
 #[derive(Clone, Serialize, Deserialize, Derivative, WidgetBuilder)]
 #[derivative(Debug, PartialEq, Default)]
 pub struct DropdownInput {
+	#[widget_builder(constructor)]
 	pub entries: DropdownInputEntries,
 
 	// This uses `u32` instead of `usize` since it will be serialized as a normal JS number (replace this with `usize` after switching to a Rust-based GUI)
@@ -97,6 +100,7 @@ pub type DropdownInputEntries = Vec<Vec<DropdownEntryData>>;
 pub struct DropdownEntryData {
 	pub value: String,
 
+	#[widget_builder(constructor)]
 	pub label: String,
 
 	pub icon: String,
@@ -120,9 +124,11 @@ pub struct DropdownEntryData {
 #[derivative(Debug, PartialEq, Default)]
 pub struct FontInput {
 	#[serde(rename = "fontFamily")]
+	#[widget_builder(constructor)]
 	pub font_family: String,
 
 	#[serde(rename = "fontStyle")]
+	#[widget_builder(constructor)]
 	pub font_style: String,
 
 	#[serde(rename = "isStyle")]
@@ -155,12 +161,15 @@ pub struct InvisibleStandinInput {
 #[derive(Clone, Serialize, Deserialize, Derivative, WidgetBuilder)]
 #[derivative(Debug, PartialEq, Default)]
 pub struct LayerReferenceInput {
+	#[widget_builder(constructor)]
 	pub value: Option<Vec<LayerId>>,
 
 	#[serde(rename = "layerName")]
+	#[widget_builder(constructor)]
 	pub layer_name: Option<String>,
 
 	#[serde(rename = "layerType")]
+	#[widget_builder(constructor)]
 	pub layer_type: Option<LayerDataTypeDiscriminant>,
 
 	pub disabled: bool,
@@ -195,6 +204,7 @@ pub struct NumberInput {
 	pub disabled: bool,
 
 	// Value
+	#[widget_builder(constructor)]
 	pub value: Option<f64>,
 
 	#[widget_builder(skip)]
@@ -289,10 +299,12 @@ pub enum NumberInputMode {
 #[derive(Clone, Default, Derivative, Serialize, Deserialize, WidgetBuilder)]
 #[derivative(Debug, PartialEq)]
 pub struct OptionalInput {
+	#[widget_builder(constructor)]
 	pub checked: bool,
 
 	pub disabled: bool,
 
+	#[widget_builder(constructor)]
 	pub icon: String,
 
 	pub tooltip: String,
@@ -309,6 +321,7 @@ pub struct OptionalInput {
 #[derive(Clone, Default, Derivative, Serialize, Deserialize, WidgetBuilder)]
 #[derivative(Debug, PartialEq)]
 pub struct RadioInput {
+	#[widget_builder(constructor)]
 	pub entries: Vec<RadioEntryData>,
 
 	pub disabled: bool,
@@ -324,6 +337,7 @@ pub struct RadioInput {
 pub struct RadioEntryData {
 	pub value: String,
 
+	#[widget_builder(constructor)]
 	pub label: String,
 
 	pub icon: String,
@@ -342,14 +356,17 @@ pub struct RadioEntryData {
 #[derive(Clone, Serialize, Deserialize, Derivative, WidgetBuilder)]
 #[derivative(Debug, PartialEq, Default)]
 pub struct SwatchPairInput {
+	#[widget_builder(constructor)]
 	pub primary: Color,
 
+	#[widget_builder(constructor)]
 	pub secondary: Color,
 }
 
 #[derive(Clone, Serialize, Deserialize, Derivative, WidgetBuilder)]
 #[derivative(Debug, PartialEq, Default)]
 pub struct TextAreaInput {
+	#[widget_builder(constructor)]
 	pub value: String,
 
 	pub label: Option<String>,
@@ -367,6 +384,7 @@ pub struct TextAreaInput {
 #[derive(Clone, Serialize, Deserialize, Derivative, WidgetBuilder)]
 #[derivative(Debug, PartialEq, Default)]
 pub struct TextInput {
+	#[widget_builder(constructor)]
 	pub value: String,
 
 	pub label: Option<String>,

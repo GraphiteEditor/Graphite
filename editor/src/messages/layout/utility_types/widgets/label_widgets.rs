@@ -2,8 +2,9 @@ use derivative::*;
 use graphite_proc_macros::WidgetBuilder;
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Serialize, Deserialize, Derivative, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Serialize, Deserialize, Derivative, Debug, Default, PartialEq, Eq, WidgetBuilder)]
 pub struct IconLabel {
+	#[widget_builder(constructor)]
 	pub icon: String,
 
 	pub disabled: bool,
@@ -13,9 +14,11 @@ pub struct IconLabel {
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, WidgetBuilder)]
 pub struct Separator {
+	#[widget_builder(constructor)]
 	pub direction: SeparatorDirection,
 
 	#[serde(rename = "type")]
+	#[widget_builder(constructor)]
 	pub separator_type: SeparatorType,
 }
 
@@ -54,6 +57,7 @@ pub struct TextLabel {
 	pub tooltip: String,
 
 	// Body
+	#[widget_builder(constructor)]
 	pub value: String,
 }
 

@@ -8,8 +8,10 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Default, Derivative, Serialize, Deserialize, WidgetBuilder)]
 #[derivative(Debug, PartialEq)]
 pub struct IconButton {
+	#[widget_builder(constructor)]
 	pub icon: String,
 
+	#[widget_builder(constructor)]
 	pub size: u32, // TODO: Convert to an `IconSize` enum
 
 	pub disabled: bool,
@@ -35,9 +37,11 @@ pub struct PopoverButton {
 	pub disabled: bool,
 
 	// Placeholder popover content heading
+	#[widget_builder(constructor)]
 	pub header: String,
 
 	// Placeholder popover content paragraph
+	#[widget_builder(constructor)]
 	pub text: String,
 
 	pub tooltip: String,
@@ -70,6 +74,7 @@ pub struct ParameterExposeButton {
 #[derivative(Debug, PartialEq)]
 #[serde(rename_all(serialize = "camelCase", deserialize = "camelCase"))]
 pub struct TextButton {
+	#[widget_builder(constructor)]
 	pub label: String,
 
 	pub icon: Option<String>,
@@ -96,6 +101,7 @@ pub struct TextButton {
 #[derivative(Debug, PartialEq)]
 #[serde(rename_all(serialize = "camelCase", deserialize = "camelCase"))]
 pub struct BreadcrumbTrailButtons {
+	#[widget_builder(constructor)]
 	pub labels: Vec<String>,
 
 	pub disabled: bool,
