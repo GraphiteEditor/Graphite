@@ -1,0 +1,1 @@
+../../editor/types.d.ts

@@ -1,45 +1,68 @@
-export type ActionKeys = { Action: MessageDiscriminant } |
+export type ActionKeys =
+{ Action: MessageDiscriminant } |
 { keys: LayoutKeysGroup };
-export type ArtboardMessageDiscriminant = { DispatchOperation: null } |
+
+export type ArtboardMessageDiscriminant =
+{ DispatchOperation: null } |
 { AddArtboard: null } |
 { ClearArtboards: null } |
 { DeleteArtboard: null } |
 { RenderArtboards: null } |
 { ResizeArtboard: null };
-export type ArtboardToolMessageDiscriminant = { Abort: null } |
+
+export type ArtboardToolMessageDiscriminant =
+{ Abort: null } |
 { DocumentIsDirty: null } |
 { DeleteSelected: null } |
 { NudgeSelected: null } |
 { PointerDown: null } |
 { PointerMove: null } |
 { PointerUp: null };
-export type BreadcrumbTrailButtons = { labels: Array<string>,
+
+export type BreadcrumbTrailButtons =
+{ labels: Array<string>,
 disabled: boolean,
 tooltip: string };
-export type BroadcastEventDiscriminant = { DocumentIsDirty: null } |
+
+export type BroadcastEventDiscriminant =
+{ DocumentIsDirty: null } |
 { ToolAbort: null } |
 { SelectionChanged: null };
-export type BroadcastMessageDiscriminant = { TriggerEvent: BroadcastEventDiscriminant } |
+
+export type BroadcastMessageDiscriminant =
+{ TriggerEvent: BroadcastEventDiscriminant } |
 { SubscribeEvent: null } |
 { UnsubscribeEvent: null };
-export type CheckboxInput = { checked: boolean,
+
+export type CheckboxInput =
+{ checked: boolean,
 disabled: boolean,
 icon: string,
 tooltip: string };
-export type Color = { red: number,
+
+export type Color =
+{ red: number,
 green: number,
 blue: number,
 alpha: number };
-export type ColorInput = { value: (undefined | Color),
+
+export type ColorInput =
+{ value: (undefined | Color),
 noTransparency: boolean,
 disabled: boolean,
 tooltip: string };
-export type DVec2 = [number, number];
-export type DebugMessageDiscriminant = { ToggleTraceLogs: null } |
+
+export type DVec2 =
+[number, number];
+
+export type DebugMessageDiscriminant =
+{ ToggleTraceLogs: null } |
 { MessageOff: null } |
 { MessageNames: null } |
 { MessageContents: null };
-export type DialogMessageDiscriminant = { ExportDialog: ExportDialogMessageDiscriminant } |
+
+export type DialogMessageDiscriminant =
+{ ExportDialog: ExportDialogMessageDiscriminant } |
 { NewDocumentDialog: NewDocumentDialogMessageDiscriminant } |
 { PreferencesDialog: PreferencesDialogMessageDiscriminant } |
 { CloseAllDocumentsWithConfirmation: null } |
@@ -51,10 +74,14 @@ export type DialogMessageDiscriminant = { ExportDialog: ExportDialogMessageDiscr
 { RequestExportDialog: null } |
 { RequestNewDocumentDialog: null } |
 { RequestPreferencesDialog: null };
-export type DiffUpdate = { subLayout: Array<LayoutGroup> } |
+
+export type DiffUpdate =
+{ subLayout: Array<LayoutGroup> } |
 { layoutGroup: LayoutGroup } |
 { widget: WidgetHolder };
-export type DocumentMessageDiscriminant = { DispatchOperation: null } |
+
+export type DocumentMessageDiscriminant =
+{ DispatchOperation: null } |
 { Artboard: ArtboardMessageDiscriminant } |
 { Navigation: NavigationMessageDiscriminant } |
 { Overlays: OverlaysMessageDiscriminant } |
@@ -129,54 +156,76 @@ export type DocumentMessageDiscriminant = { DispatchOperation: null } |
 { ZoomCanvasTo100Percent: null } |
 { ZoomCanvasTo200Percent: null } |
 { ZoomCanvasToFitAll: null };
-export type DropdownEntryData = { value: string,
+
+export type DropdownEntryData =
+{ value: string,
 label: string,
 icon: string,
 shortcut: Array<string>,
 shortcutRequiresLock: boolean,
 disabled: boolean,
 children: Array<Array<DropdownEntryData>> };
-export type DropdownInput = { entries: Array<Array<DropdownEntryData>>,
+
+export type DropdownInput =
+{ entries: Array<Array<DropdownEntryData>>,
 selectedIndex: (undefined | number),
 drawIcon: boolean,
 interactive: boolean,
 disabled: boolean,
 tooltip: string };
-export type EllipseToolMessageDiscriminant = { Abort: null } |
+
+export type EllipseToolMessageDiscriminant =
+{ Abort: null } |
 { DragStart: null } |
 { DragStop: null } |
 { Resize: null };
-export type ExportDialogMessageDiscriminant = { FileName: null } |
+
+export type ExportDialogMessageDiscriminant =
+{ FileName: null } |
 { FileType: null } |
 { ScaleFactor: null } |
 { ExportBounds: null } |
 { Submit: null };
-export type EyedropperToolMessageDiscriminant = { Abort: null } |
+
+export type EyedropperToolMessageDiscriminant =
+{ Abort: null } |
 { LeftPointerDown: null } |
 { LeftPointerUp: null } |
 { PointerMove: null } |
 { RightPointerDown: null } |
 { RightPointerUp: null };
-export type FillToolMessageDiscriminant = { Abort: null } |
+
+export type FillToolMessageDiscriminant =
+{ Abort: null } |
 { LeftPointerDown: null } |
 { RightPointerDown: null };
-export type Font = { fontFamily: string,
+
+export type Font =
+{ fontFamily: string,
 fontStyle: string };
-export type FontInput = { fontFamily: string,
+
+export type FontInput =
+{ fontFamily: string,
 fontStyle: string,
 isStyle: boolean,
 disabled: boolean,
 tooltip: string };
-export type FreehandToolMessageDiscriminant = { Abort: null } |
+
+export type FreehandToolMessageDiscriminant =
+{ Abort: null } |
 { DragStart: null } |
 { DragStop: null } |
 { PointerMove: null } |
 { UpdateOptions: null };
-export type FrontendDocumentDetails = { isAutoSaved: boolean,
+
+export type FrontendDocumentDetails =
+{ isAutoSaved: boolean,
 isSaved: boolean,
 name: string,
 id: number };
-export type FrontendGraphDataType = { general: null } |
+
+export type FrontendGraphDataType =
+{ general: null } |
 { raster: null } |
 { color: null } |
 { number: null } |
@@ -184,9 +233,13 @@ export type FrontendGraphDataType = { general: null } |
 { number: null } |
 { number: null } |
 { vec2: null };
-export type FrontendImageData = { path: Array<number>,
+
+export type FrontendImageData =
+{ path: Array<number>,
 mime: string };
-export type FrontendMessage = { DisplayDialog: { icon: string } } |
+
+export type FrontendMessage =
+{ DisplayDialog: { icon: string } } |
 { DisplayDialogDismiss: null } |
 { DisplayDialogPanic: { panicInfo: string,
 header: string,
@@ -291,7 +344,9 @@ diff: Array<WidgetDiff> } } |
 diff: Array<WidgetDiff> } } |
 { UpdateWorkingColorsLayout: { layoutTarget: LayoutTarget,
 diff: Array<WidgetDiff> } };
-export type FrontendMessageDiscriminant = { DisplayDialog: null } |
+
+export type FrontendMessageDiscriminant =
+{ DisplayDialog: null } |
 { DisplayDialogDismiss: null } |
 { DisplayDialogPanic: null } |
 { DisplayEditableTextbox: null } |
@@ -347,7 +402,9 @@ export type FrontendMessageDiscriminant = { DisplayDialog: null } |
 { UpdateToolOptionsLayout: null } |
 { UpdateToolShelfLayout: null } |
 { UpdateWorkingColorsLayout: null };
-export type FrontendNode = { id: number,
+
+export type FrontendNode =
+{ id: number,
 displayName: string,
 primaryInput: (undefined | FrontendGraphDataType),
 exposedInputs: Array<NodeGraphInput>,
@@ -355,13 +412,21 @@ outputs: Array<FrontendGraphDataType>,
 position: (Array<number> & { length: 2 }),
 disabled: boolean,
 output: boolean };
-export type FrontendNodeLink = { linkStart: number,
+
+export type FrontendNodeLink =
+{ linkStart: number,
 linkEnd: number,
 linkEndInputIndex: number };
-export type FrontendNodeType = { name: string,
+
+export type FrontendNodeType =
+{ name: string,
 category: string };
-export type GlobalsMessageDiscriminant = { SetPlatform: null };
-export type GradientToolMessageDiscriminant = { Abort: null } |
+
+export type GlobalsMessageDiscriminant =
+{ SetPlatform: null };
+
+export type GradientToolMessageDiscriminant =
+{ Abort: null } |
 { DocumentIsDirty: null } |
 { DeleteStop: null } |
 { InsertStop: null } |
@@ -369,25 +434,39 @@ export type GradientToolMessageDiscriminant = { Abort: null } |
 { PointerMove: null } |
 { PointerUp: null } |
 { UpdateOptions: null };
-export type HintData = Array<HintGroup>;
-export type HintGroup = Array<HintInfo>;
-export type HintInfo = { keyGroups: Array<LayoutKeysGroup>,
+
+export type HintData =
+Array<HintGroup>;
+
+export type HintGroup =
+Array<HintInfo>;
+
+export type HintInfo =
+{ keyGroups: Array<LayoutKeysGroup>,
 keyGroupsMac: (undefined | Array<LayoutKeysGroup>),
 mouse: (undefined | MouseMotion),
 label: string,
 plus: boolean };
-export type IconButton = { icon: string,
+
+export type IconButton =
+{ icon: string,
 size: number,
 disabled: boolean,
 active: boolean,
 tooltip: string };
-export type IconLabel = { icon: string,
+
+export type IconLabel =
+{ icon: string,
 disabled: boolean,
 tooltip: string };
-export type ImaginateBaseImage = { mime: string,
+
+export type ImaginateBaseImage =
+{ mime: string,
 imageData: Array<number>,
 size: DVec2 };
-export type ImaginateGenerationParameters = { seed: number,
+
+export type ImaginateGenerationParameters =
+{ seed: number,
 samples: number,
 samplingMethod: string,
 denoisingStrength: (undefined | number),
@@ -397,24 +476,36 @@ negativePrompt: string,
 resolution: (Array<number> & { length: 2 }),
 restoreFaces: boolean,
 tiling: boolean };
-export type ImaginateMaskImage = { svg: string,
+
+export type ImaginateMaskImage =
+{ svg: string,
 size: DVec2 };
-export type ImaginateMaskPaintMode = { Inpaint: null } |
+
+export type ImaginateMaskPaintMode =
+{ Inpaint: null } |
 { Outpaint: null };
-export type ImaginateMaskStartingFill = { Fill: null } |
+
+export type ImaginateMaskStartingFill =
+{ Fill: null } |
 { Original: null } |
 { LatentNoise: null } |
 { LatentNothing: null };
-export type ImaginateToolMessageDiscriminant = { Abort: null } |
+
+export type ImaginateToolMessageDiscriminant =
+{ Abort: null } |
 { DragStart: null } |
 { DragStop: null } |
 { Resize: null };
-export type InputMapperMessageDiscriminant = { KeyDown: KeyDiscriminant } |
+
+export type InputMapperMessageDiscriminant =
+{ KeyDown: KeyDiscriminant } |
 { KeyUp: KeyDiscriminant } |
 { DoubleClick: null } |
 { PointerMove: null } |
 { WheelScroll: null };
-export type InputPreprocessorMessageDiscriminant = { BoundsOfViewports: null } |
+
+export type InputPreprocessorMessageDiscriminant =
+{ BoundsOfViewports: null } |
 { DoubleClick: null } |
 { KeyDown: null } |
 { KeyUp: null } |
@@ -422,9 +513,15 @@ export type InputPreprocessorMessageDiscriminant = { BoundsOfViewports: null } |
 { PointerMove: null } |
 { PointerUp: null } |
 { WheelScroll: null };
-export type InvisibleStandinInput = {  };
-export type JsRawBuffer = Array<number>;
-export type KeyDiscriminant = { Digit0: null } |
+
+export type InvisibleStandinInput =
+{  };
+
+export type JsRawBuffer =
+Array<number>;
+
+export type KeyDiscriminant =
+{ Digit0: null } |
 { Digit1: null } |
 { Digit2: null } |
 { Digit3: null } |
@@ -535,37 +632,55 @@ export type KeyDiscriminant = { Digit0: null } |
 { Rmb: null } |
 { Mmb: null } |
 { NumKeys: null };
-export type LayerDataTypeDiscriminant = { Folder: null } |
+
+export type LayerDataTypeDiscriminant =
+{ Folder: null } |
 { Shape: null } |
 { Text: null } |
 { Image: null } |
 { NodeGraphFrame: null };
-export type LayerMetadata = { selected: boolean,
+
+export type LayerMetadata =
+{ selected: boolean,
 expanded: boolean };
-export type LayerPanelEntry = { name: string,
+
+export type LayerPanelEntry =
+{ name: string,
 tooltip: string,
 visible: boolean,
 layerType: LayerDataTypeDiscriminant,
 layerMetadata: LayerMetadata,
 path: Array<number>,
 thumbnail: string };
-export type LayerReferenceInput = { value: (undefined | Array<number>),
+
+export type LayerReferenceInput =
+{ value: (undefined | Array<number>),
 layerName: (undefined | string),
 layerType: (undefined | LayerDataTypeDiscriminant),
 disabled: boolean,
 tooltip: string,
 minWidth: number };
-export type LayoutGroup = { column: { columnWidgets: Array<WidgetHolder> } } |
+
+export type LayoutGroup =
+{ column: { columnWidgets: Array<WidgetHolder> } } |
 { row: { rowWidgets: Array<WidgetHolder> } } |
 { section: { name: string,
 layout: Array<LayoutGroup> } };
-export type LayoutKey = { key: string,
+
+export type LayoutKey =
+{ key: string,
 label: string };
-export type LayoutKeysGroup = Array<LayoutKey>;
-export type LayoutMessageDiscriminant = { ResendActiveWidget: null } |
+
+export type LayoutKeysGroup =
+Array<LayoutKey>;
+
+export type LayoutMessageDiscriminant =
+{ ResendActiveWidget: null } |
 { SendLayout: null } |
 { UpdateLayout: null };
-export type LayoutTarget = { DialogDetails: null } |
+
+export type LayoutTarget =
+{ DialogDetails: null } |
 { DocumentBar: null } |
 { DocumentMode: null } |
 { LayerTreeOptions: null } |
@@ -577,19 +692,29 @@ export type LayoutTarget = { DialogDetails: null } |
 { ToolShelf: null } |
 { WorkingColors: null } |
 { LayoutTargetLength: null };
-export type LineToolMessageDiscriminant = { Abort: null } |
+
+export type LineToolMessageDiscriminant =
+{ Abort: null } |
 { DragStart: null } |
 { DragStop: null } |
 { Redraw: null } |
 { UpdateOptions: null };
-export type MenuBarEntry = { label: string,
+
+export type MenuBarEntry =
+{ label: string,
 icon: (undefined | string),
 shortcut: (undefined | ActionKeys),
 action: WidgetHolder,
 children: MenuBarEntryChildren };
-export type MenuBarEntryChildren = Array<Array<MenuBarEntry>>;
-export type MenuBarMessageDiscriminant = { SendLayout: null };
-export type MessageDiscriminant = { NoOp: null } |
+
+export type MenuBarEntryChildren =
+Array<Array<MenuBarEntry>>;
+
+export type MenuBarMessageDiscriminant =
+{ SendLayout: null };
+
+export type MessageDiscriminant =
+{ NoOp: null } |
 { Init: null } |
 { Broadcast: BroadcastMessageDiscriminant } |
 { Debug: DebugMessageDiscriminant } |
@@ -603,7 +728,9 @@ export type MessageDiscriminant = { NoOp: null } |
 { Preferences: PreferencesMessageDiscriminant } |
 { Tool: ToolMessageDiscriminant } |
 { Workspace: WorkspaceMessageDiscriminant };
-export type MouseCursorIcon = { Default: null } |
+
+export type MouseCursorIcon =
+{ Default: null } |
 { None: null } |
 { ZoomIn: null } |
 { ZoomOut: null } |
@@ -616,7 +743,9 @@ export type MouseCursorIcon = { Default: null } |
 { NESWResize: null } |
 { NWSEResize: null } |
 { Rotate: null };
-export type MouseMotion = { None: null } |
+
+export type MouseMotion =
+{ None: null } |
 { Lmb: null } |
 { Rmb: null } |
 { Mmb: null } |
@@ -626,14 +755,18 @@ export type MouseMotion = { None: null } |
 { LmbDrag: null } |
 { RmbDrag: null } |
 { MmbDrag: null };
-export type NavigateToolMessageDiscriminant = { Abort: null } |
+
+export type NavigateToolMessageDiscriminant =
+{ Abort: null } |
 { ClickZoom: null } |
 { PointerMove: null } |
 { RotateCanvasBegin: null } |
 { TransformCanvasEnd: null } |
 { TranslateCanvasBegin: null } |
 { ZoomCanvasBegin: null };
-export type NavigationMessageDiscriminant = { DecreaseCanvasZoom: null } |
+
+export type NavigationMessageDiscriminant =
+{ DecreaseCanvasZoom: null } |
 { FitViewportToBounds: null } |
 { IncreaseCanvasZoom: null } |
 { PointerMove: null } |
@@ -647,18 +780,26 @@ export type NavigationMessageDiscriminant = { DecreaseCanvasZoom: null } |
 { WheelCanvasTranslate: null } |
 { WheelCanvasZoom: null } |
 { ZoomCanvasBegin: null };
-export type NewDocumentDialogMessageDiscriminant = { Name: null } |
+
+export type NewDocumentDialogMessageDiscriminant =
+{ Name: null } |
 { Infinite: null } |
 { DimensionsX: null } |
 { DimensionsY: null } |
 { Submit: null };
-export type NodeGraphFrameToolMessageDiscriminant = { Abort: null } |
+
+export type NodeGraphFrameToolMessageDiscriminant =
+{ Abort: null } |
 { DragStart: null } |
 { DragStop: null } |
 { Resize: null };
-export type NodeGraphInput = { dataType: FrontendGraphDataType,
+
+export type NodeGraphInput =
+{ dataType: FrontendGraphDataType,
 name: string };
-export type NodeGraphMessageDiscriminant = { CloseNodeGraph: null } |
+
+export type NodeGraphMessageDiscriminant =
+{ CloseNodeGraph: null } |
 { ConnectNodesByLink: null } |
 { Copy: null } |
 { CreateNode: null } |
@@ -685,7 +826,9 @@ export type NodeGraphMessageDiscriminant = { CloseNodeGraph: null } |
 { ToggleHiddenImpl: null } |
 { TogglePreview: null } |
 { TogglePreviewImpl: null };
-export type NumberInput = { label: string,
+
+export type NumberInput =
+{ label: string,
 tooltip: string,
 disabled: boolean,
 value: (undefined | number),
@@ -701,22 +844,34 @@ step: number,
 rangeMin: (undefined | number),
 rangeMax: (undefined | number),
 minWidth: number };
-export type NumberInputIncrementBehavior = { Add: null } |
+
+export type NumberInputIncrementBehavior =
+{ Add: null } |
 { Multiply: null } |
 { Callback: null };
-export type NumberInputMode = { Increment: null } |
+
+export type NumberInputMode =
+{ Increment: null } |
 { Range: null };
-export type OptionalInput = { checked: boolean,
+
+export type OptionalInput =
+{ checked: boolean,
 disabled: boolean,
 icon: string,
 tooltip: string };
-export type OverlaysMessageDiscriminant = { DispatchOperation: null } |
+
+export type OverlaysMessageDiscriminant =
+{ DispatchOperation: null } |
 { ClearAllOverlays: null } |
 { Rerender: null };
-export type ParameterExposeButton = { exposed: boolean,
+
+export type ParameterExposeButton =
+{ exposed: boolean,
 dataType: FrontendGraphDataType,
 tooltip: string };
-export type PathToolMessageDiscriminant = { Abort: null } |
+
+export type PathToolMessageDiscriminant =
+{ Abort: null } |
 { DocumentIsDirty: null } |
 { SelectionChanged: null } |
 { Delete: null } |
@@ -724,7 +879,9 @@ export type PathToolMessageDiscriminant = { Abort: null } |
 { DragStop: null } |
 { InsertPoint: null } |
 { PointerMove: null };
-export type PenToolMessageDiscriminant = { DocumentIsDirty: null } |
+
+export type PenToolMessageDiscriminant =
+{ DocumentIsDirty: null } |
 { Abort: null } |
 { SelectionChanged: null } |
 { Confirm: null } |
@@ -733,9 +890,13 @@ export type PenToolMessageDiscriminant = { DocumentIsDirty: null } |
 { PointerMove: null } |
 { Undo: null } |
 { UpdateOptions: null };
-export type PivotAssist = { position: PivotPosition,
+
+export type PivotAssist =
+{ position: PivotPosition,
 disabled: boolean };
-export type PivotPosition = { None: null } |
+
+export type PivotPosition =
+{ None: null } |
 { TopLeft: null } |
 { TopCenter: null } |
 { TopRight: null } |
@@ -745,12 +906,16 @@ export type PivotPosition = { None: null } |
 { BottomLeft: null } |
 { BottomCenter: null } |
 { BottomRight: null };
-export type PopoverButton = { icon: (undefined | string),
+
+export type PopoverButton =
+{ icon: (undefined | string),
 disabled: boolean,
 header: string,
 text: string,
 tooltip: string };
-export type PortfolioMessageDiscriminant = { MenuBar: MenuBarMessageDiscriminant } |
+
+export type PortfolioMessageDiscriminant =
+{ MenuBar: MenuBarMessageDiscriminant } |
 { Document: DocumentMessageDiscriminant } |
 { DocumentPassMessage: null } |
 { AutoSaveActiveDocument: null } |
@@ -786,14 +951,22 @@ export type PortfolioMessageDiscriminant = { MenuBar: MenuBarMessageDiscriminant
 { SetImageBlobUrl: null } |
 { UpdateDocumentWidgets: null } |
 { UpdateOpenDocumentsList: null };
-export type PreferencesDialogMessageDiscriminant = { Confirm: null };
-export type PreferencesMessageDiscriminant = { Load: null } |
+
+export type PreferencesDialogMessageDiscriminant =
+{ Confirm: null };
+
+export type PreferencesMessageDiscriminant =
+{ Load: null } |
 { ResetToDefaults: null } |
 { ImaginateRefreshFrequency: null } |
 { ImaginateServerHostname: null };
-export type PreferencesMessageHandler = { imaginate_server_hostname: string,
+
+export type PreferencesMessageHandler =
+{ imaginate_server_hostname: string,
 imaginate_refresh_frequency: number };
-export type PropertiesPanelMessageDiscriminant = { CheckSelectedWasDeleted: null } |
+
+export type PropertiesPanelMessageDiscriminant =
+{ CheckSelectedWasDeleted: null } |
 { CheckSelectedWasUpdated: null } |
 { ClearSelection: null } |
 { Deactivate: null } |
@@ -809,19 +982,29 @@ export type PropertiesPanelMessageDiscriminant = { CheckSelectedWasDeleted: null
 { SetActiveLayers: null } |
 { SetPivot: null } |
 { UpdateSelectedDocumentProperties: null };
-export type RadioEntryData = { value: string,
+
+export type RadioEntryData =
+{ value: string,
 label: string,
 icon: string,
 tooltip: string };
-export type RadioInput = { entries: Array<RadioEntryData>,
+
+export type RadioInput =
+{ entries: Array<RadioEntryData>,
 disabled: boolean,
 selectedIndex: number };
-export type RawBuffer = Array<number>;
-export type RectangleToolMessageDiscriminant = { Abort: null } |
+
+export type RawBuffer =
+Array<number>;
+
+export type RectangleToolMessageDiscriminant =
+{ Abort: null } |
 { DragStart: null } |
 { DragStop: null } |
 { Resize: null };
-export type SelectToolMessageDiscriminant = { Abort: null } |
+
+export type SelectToolMessageDiscriminant =
+{ Abort: null } |
 { DocumentIsDirty: null } |
 { SelectionChanged: null } |
 { Align: null } |
@@ -832,45 +1015,65 @@ export type SelectToolMessageDiscriminant = { Abort: null } |
 { FlipVertical: null } |
 { PointerMove: null } |
 { SetPivot: null };
-export type Separator = { direction: SeparatorDirection,
+
+export type Separator =
+{ direction: SeparatorDirection,
 type: SeparatorType };
-export type SeparatorDirection = { Horizontal: null } |
+
+export type SeparatorDirection =
+{ Horizontal: null } |
 { Vertical: null };
-export type SeparatorType = { Related: null } |
+
+export type SeparatorType =
+{ Related: null } |
 { Unrelated: null } |
 { Section: null } |
 { List: null };
-export type ShapeToolMessageDiscriminant = { Abort: null } |
+
+export type ShapeToolMessageDiscriminant =
+{ Abort: null } |
 { DragStart: null } |
 { DragStop: null } |
 { Resize: null } |
 { UpdateOptions: null };
-export type SplineToolMessageDiscriminant = { Abort: null } |
+
+export type SplineToolMessageDiscriminant =
+{ Abort: null } |
 { Confirm: null } |
 { DragStart: null } |
 { DragStop: null } |
 { PointerMove: null } |
 { Undo: null } |
 { UpdateOptions: null };
-export type SwatchPairInput = { primary: Color,
+
+export type SwatchPairInput =
+{ primary: Color,
 secondary: Color };
-export type TextAreaInput = { value: string,
+
+export type TextAreaInput =
+{ value: string,
 label: (undefined | string),
 disabled: boolean,
 tooltip: string };
-export type TextButton = { label: string,
+
+export type TextButton =
+{ label: string,
 icon: (undefined | string),
 emphasized: boolean,
 minWidth: number,
 disabled: boolean,
 tooltip: string };
-export type TextInput = { value: string,
+
+export type TextInput =
+{ value: string,
 label: (undefined | string),
 disabled: boolean,
 tooltip: string,
 centered: boolean,
 minWidth: number };
-export type TextLabel = { disabled: boolean,
+
+export type TextLabel =
+{ disabled: boolean,
 bold: boolean,
 italic: boolean,
 tableAlign: boolean,
@@ -878,14 +1081,18 @@ multiline: boolean,
 minWidth: number,
 tooltip: string,
 value: string };
-export type TextToolMessageDiscriminant = { Abort: null } |
+
+export type TextToolMessageDiscriminant =
+{ Abort: null } |
 { DocumentIsDirty: null } |
 { CommitText: null } |
 { Interact: null } |
 { TextChange: null } |
 { UpdateBounds: null } |
 { UpdateOptions: null };
-export type ToolMessageDiscriminant = { Select: SelectToolMessageDiscriminant } |
+
+export type ToolMessageDiscriminant =
+{ Select: SelectToolMessageDiscriminant } |
 { Artboard: ArtboardToolMessageDiscriminant } |
 { Navigate: NavigateToolMessageDiscriminant } |
 { Eyedropper: EyedropperToolMessageDiscriminant } |
@@ -930,7 +1137,9 @@ export type ToolMessageDiscriminant = { Select: SelectToolMessageDiscriminant } 
 { SwapColors: null } |
 { UpdateCursor: null } |
 { UpdateHints: null };
-export type TransformLayerMessageDiscriminant = { ApplyTransformOperation: null } |
+
+export type TransformLayerMessageDiscriminant =
+{ ApplyTransformOperation: null } |
 { BeginGrab: null } |
 { BeginRotate: null } |
 { BeginScale: null } |
@@ -942,7 +1151,9 @@ export type TransformLayerMessageDiscriminant = { ApplyTransformOperation: null 
 { TypeDecimalPoint: null } |
 { TypeDigit: null } |
 { TypeNegate: null };
-export type Widget = { BreadcrumbTrailButtons: BreadcrumbTrailButtons } |
+
+export type Widget =
+{ BreadcrumbTrailButtons: BreadcrumbTrailButtons } |
 { CheckboxInput: CheckboxInput } |
 { ColorInput: ColorInput } |
 { DropdownInput: DropdownInput } |
@@ -963,8 +1174,15 @@ export type Widget = { BreadcrumbTrailButtons: BreadcrumbTrailButtons } |
 { TextButton: TextButton } |
 { TextInput: TextInput } |
 { TextLabel: TextLabel };
-export type WidgetDiff = { widgetPath: Array<number>,
+
+export type WidgetDiff =
+{ widgetPath: Array<number>,
 newValue: DiffUpdate };
-export type WidgetHolder = { widgetId: number,
+
+export type WidgetHolder =
+{ widgetId: number,
 widget: Widget };
-export type WorkspaceMessageDiscriminant = { NodeGraphToggleVisibility: null };
+
+export type WorkspaceMessageDiscriminant =
+{ NodeGraphToggleVisibility: null };
+

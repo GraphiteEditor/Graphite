@@ -35,9 +35,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 			serde_reflection::ContainerFormat::NewTypeStruct(inner) => format_type(inner),
 			serde_reflection::ContainerFormat::TupleStruct(inner) => format_tuple(inner),
 			serde_reflection::ContainerFormat::Struct(inner) => format_struct(inner),
-			serde_reflection::ContainerFormat::Enum(inner) => (inner.values().map(|pair| -> String { format!("{{ {}: {} }}", pair.name, format_variant_type(&pair.value)) }).collect::<Vec<String>>().join(" |\n")),
+			serde_reflection::ContainerFormat::Enum(inner) => inner.values().map(|pair| -> String { format!("{{ {}: {} }}", pair.name, format_variant_type(&pair.value)) }).collect::<Vec<String>>().join(" |\n"),
 		};
-		println!("export type {type_name} = {ts_typedef};");
+		println!("export type {type_name} =\n{ts_typedef};\n");
 	}
 	Ok(())
 }
