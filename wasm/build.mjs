@@ -34,7 +34,8 @@ const p0 = child_process.spawn("wasm-pack", ["build", ...extra_args], {
 p0.on("exit", (code) => {
   assert.equal(code, 0)
   process.chdir("pkg")
-  const p1 = child_process.spawn("npm", ["add", "../../frontend/glue"], {
+  const command = /^win/.test(process.platform) ? 'npm.cmd' : 'npm';
+  const p1 = child_process.spawn(command, ["add", "../../frontend/glue"], {
     stdio: "inherit",
   })
   p1.on("exit", (code) => {
