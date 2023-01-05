@@ -25,10 +25,12 @@ switch (process.env.NODE_ENV) {
 }
 
 // change $PWD to script's directory
-process.chdir(path.dirname(new URL(import.meta.url).pathname))
+// process.chdir(path.dirname(new URL(import.meta.url).pathname))
 
 const extra_args = devMode ? ["--dev"] : []
-const p0 = child_process.spawn("wasm-pack", ["build", extra_args], { stdio: "inherit" })
+const p0 = child_process.spawn("wasm-pack", ["build", ...extra_args], {
+  stdio: "inherit",
+})
 p0.on("exit", (code) => {
   assert.equal(code, 0)
   process.chdir("pkg")

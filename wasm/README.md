@@ -3,8 +3,14 @@
 ## Development command
 
 Need: `cargo install cargo-watch`
+
 ```
+# Unix
 NODE_ENV=development cargo watch -s ./build.mjs
+
+# Windows
+# set envvar (TK)
+cargo watch -s "node build.mjs"
 ```
 
 ## WASM wrapper API: `src/editor_api.rs`
