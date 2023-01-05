@@ -43,6 +43,10 @@ bitflags! {
 	}
 }
 
+#[derive(specta::Type)]
+#[specta(remote = "ModifierKeys", inline)]
+struct ModifierKeysDef(u8);
+
 // Currently this is mostly based on the JS `KeyboardEvent.code` list: <https://www.w3.org/TR/uievents-code/>
 // But in the future, especially once users can customize keyboard mappings, we should deviate more from this so we have actual symbols
 // like `+` (which doesn't exist because it's the shifted version of `=` on the US keyboard, after which these scan codes are named).
@@ -50,7 +54,7 @@ bitflags! {
 // (although we ignore the shift key, so the user doesn't have to press `Ctrl Shift +` on a US keyboard), even if the keyboard layout
 // is for a different locale where the `+` key is somewhere entirely different, shifted or not. This would then also work for numpad `+`.
 #[impl_message(Message, InputMapperMessage, KeyDown)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize, specta::Type)]
 pub enum Key {
 	// Writing system keys
 	Digit0,
@@ -304,7 +308,7 @@ impl From<Key> for LayoutKey {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, specta::Type)]
 struct LayoutKey {
 	key: String,
 	label: String,
@@ -365,7 +369,7 @@ impl From<KeysGroup> for String {
 	}
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 pub struct LayoutKeysGroup(Vec<LayoutKey>);
 
 impl From<KeysGroup> for LayoutKeysGroup {
@@ -374,7 +378,7 @@ impl From<KeysGroup> for LayoutKeysGroup {
 	}
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, specta::Type)]
 pub enum MouseMotion {
 	None,
 	Lmb,

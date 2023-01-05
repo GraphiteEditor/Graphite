@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 ///     /            |            \
 /// "Anchor"    "InHandle"    "OutHandle"    <- These are ManipulatorPoints and the only editable "primitive"
 /// ```
-#[derive(PartialEq, Clone, Debug, Serialize, Deserialize, Default)]
+#[derive(PartialEq, Clone, Debug, Serialize, Deserialize, Default, specta::Type)]
 pub struct ManipulatorGroup {
 	/// Editable points for the anchor and handles.
 	pub points: [Option<ManipulatorPoint>; 3],

@@ -1,11 +1,12 @@
 use serde::{Deserialize, Serialize};
+use specta::Type;
 
 /// Structure that represents a color.
 /// Internally alpha is stored as `f32` that ranges from `0.0` (transparent) to `1.0` (opaque).
 /// The other components (RGB) are stored as `f32` that range from `0.0` up to `f32::MAX`,
 /// the values encode the brightness of each channel proportional to the light intensity in cd/m² (nits) in HDR, and `0.0` (black) to `1.0` (white) in SDR color.
 #[repr(C)]
-#[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize, Type)]
 pub struct Color {
 	red: f32,
 	green: f32,

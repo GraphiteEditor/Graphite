@@ -37,7 +37,7 @@ impl Default for PenOptions {
 
 #[remain::sorted]
 #[impl_message(Message, ToolMessage, Pen)]
-#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
+#[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
 pub enum PenToolMessage {
 	// Standard messages
 	#[remain::unsorted]
@@ -67,7 +67,7 @@ enum PenToolFsmState {
 }
 
 #[remain::sorted]
-#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
+#[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
 pub enum PenOptionsUpdate {
 	LineWeight(f64),
 }

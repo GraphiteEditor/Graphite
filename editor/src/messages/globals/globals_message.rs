@@ -4,7 +4,7 @@ use crate::messages::prelude::*;
 use serde::{Deserialize, Serialize};
 
 #[impl_message(Message, Globals)]
-#[derive(PartialEq, Eq, Clone, Debug, Serialize, Deserialize)]
+#[derive(PartialEq, Eq, Clone, Debug, Serialize, Deserialize, specta::Type)]
 pub enum GlobalsMessage {
 	SetPlatform { platform: Platform },
 }

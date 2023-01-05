@@ -1,8 +1,9 @@
 use crate::messages::prelude::*;
 
 use serde::{Deserialize, Serialize};
+use specta::Type;
 
-#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Clone, Serialize, Deserialize, Type)]
 pub struct PreferencesMessageHandler {
 	pub imaginate_server_hostname: String,
 	pub imaginate_refresh_frequency: f64,

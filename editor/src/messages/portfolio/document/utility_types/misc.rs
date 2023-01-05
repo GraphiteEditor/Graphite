@@ -10,19 +10,19 @@ use std::fmt;
 
 pub type DocumentSave = (DocumentLegacy, HashMap<Vec<LayerId>, LayerMetadata>);
 
-#[derive(PartialEq, Eq, Clone, Debug, Serialize, Deserialize, Hash)]
+#[derive(PartialEq, Eq, Clone, Debug, Serialize, Deserialize, Hash, specta::Type)]
 pub enum FlipAxis {
 	X,
 	Y,
 }
 
-#[derive(PartialEq, Eq, Clone, Debug, Serialize, Deserialize, Hash)]
+#[derive(PartialEq, Eq, Clone, Debug, Serialize, Deserialize, Hash, specta::Type)]
 pub enum AlignAxis {
 	X,
 	Y,
 }
 
-#[derive(PartialEq, Eq, Clone, Debug, Serialize, Deserialize, Hash)]
+#[derive(PartialEq, Eq, Clone, Debug, Serialize, Deserialize, Hash, specta::Type)]
 pub enum AlignAggregate {
 	Min,
 	Max,
@@ -30,13 +30,13 @@ pub enum AlignAggregate {
 	Average,
 }
 
-#[derive(PartialEq, Eq, Clone, Copy, Debug, Serialize, Deserialize)]
+#[derive(PartialEq, Eq, Clone, Copy, Debug, Serialize, Deserialize, specta::Type)]
 pub enum TargetDocument {
 	Artboard,
 	Artwork,
 }
 
-#[derive(PartialEq, Eq, Clone, Copy, Debug, Serialize, Deserialize)]
+#[derive(PartialEq, Eq, Clone, Copy, Debug, Serialize, Deserialize, specta::Type)]
 pub enum DocumentMode {
 	DesignMode,
 	SelectMode,

@@ -8,7 +8,7 @@ use std::hash::{Hash, Hasher};
 
 #[remain::sorted]
 #[impl_message]
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, specta::Type)]
 pub enum Message {
 	#[remain::unsorted]
 	NoOp,
@@ -62,3 +62,7 @@ impl Message {
 		s.finish()
 	}
 }
+
+#[derive(specta::Type)]
+#[specta(inline, remote = "MessageDiscriminant")]
+pub struct MessageDiscriminantDef(u8);

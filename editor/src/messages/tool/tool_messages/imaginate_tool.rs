@@ -21,7 +21,7 @@ pub struct ImaginateTool {
 
 #[remain::sorted]
 #[impl_message(Message, ToolMessage, Imaginate)]
-#[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize)]
+#[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize, specta::Type)]
 pub enum ImaginateToolMessage {
 	// Standard messages
 	#[remain::unsorted]

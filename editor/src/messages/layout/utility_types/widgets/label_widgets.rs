@@ -1,7 +1,7 @@
 use derivative::*;
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Serialize, Deserialize, Derivative, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Serialize, Deserialize, Derivative, Debug, Default, PartialEq, Eq, specta::Type)]
 pub struct IconLabel {
 	pub icon: String,
 
@@ -10,7 +10,7 @@ pub struct IconLabel {
 	pub tooltip: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 pub struct Separator {
 	pub direction: SeparatorDirection,
 
@@ -18,13 +18,13 @@ pub struct Separator {
 	pub separator_type: SeparatorType,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 pub enum SeparatorDirection {
 	Horizontal,
 	Vertical,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 pub enum SeparatorType {
 	Related,
 	Unrelated,
@@ -32,7 +32,7 @@ pub enum SeparatorType {
 	List,
 }
 
-#[derive(Clone, Serialize, Deserialize, Derivative, Debug, PartialEq, Eq, Default)]
+#[derive(Clone, Serialize, Deserialize, Derivative, Debug, PartialEq, Eq, Default, specta::Type)]
 pub struct TextLabel {
 	pub disabled: bool,
 

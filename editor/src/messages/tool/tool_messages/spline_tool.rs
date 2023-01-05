@@ -34,7 +34,7 @@ impl Default for SplineOptions {
 
 #[remain::sorted]
 #[impl_message(Message, ToolMessage, Spline)]
-#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
+#[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
 pub enum SplineToolMessage {
 	// Standard messages
 	#[remain::unsorted]
@@ -56,7 +56,7 @@ enum SplineToolFsmState {
 }
 
 #[remain::sorted]
-#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
+#[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
 pub enum SplineOptionsUpdate {
 	LineWeight(f64),
 }

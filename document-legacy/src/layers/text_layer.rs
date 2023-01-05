@@ -17,7 +17,7 @@ mod to_path;
 /// A line, or multiple lines, of text drawn in the document.
 /// Like [ShapeLayers](super::shape_layer::ShapeLayer), [TextLayer] are rendered as
 /// [`<path>`s](https://developer.mozilla.org/en-US/docs/Web/SVG/Element/path).
-#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize, specta::Type)]
 pub struct TextLayer {
 	/// The string of text, encompassing one or multiple lines.
 	pub text: String,

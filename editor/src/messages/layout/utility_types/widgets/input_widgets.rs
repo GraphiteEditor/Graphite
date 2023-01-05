@@ -6,7 +6,7 @@ use document_legacy::{color::Color, layers::layer_info::LayerDataTypeDiscriminan
 use derivative::*;
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Derivative, Serialize, Deserialize)]
+#[derive(Clone, Derivative, Serialize, Deserialize, specta::Type)]
 #[derivative(Debug, PartialEq)]
 pub struct CheckboxInput {
 	pub checked: bool,
@@ -39,7 +39,7 @@ impl Default for CheckboxInput {
 	}
 }
 
-#[derive(Clone, Derivative, Serialize, Deserialize)]
+#[derive(Clone, Derivative, Serialize, Deserialize, specta::Type)]
 #[derivative(Debug, PartialEq, Default)]
 pub struct ColorInput {
 	pub value: Option<Color>,
@@ -62,7 +62,7 @@ pub struct ColorInput {
 	pub on_update: WidgetCallback<ColorInput>,
 }
 
-#[derive(Clone, Serialize, Deserialize, Derivative)]
+#[derive(Clone, Serialize, Deserialize, Derivative, specta::Type)]
 #[derivative(Debug, PartialEq, Default)]
 pub struct DropdownInput {
 	pub entries: DropdownInputEntries,
@@ -90,7 +90,7 @@ pub struct DropdownInput {
 
 pub type DropdownInputEntries = Vec<Vec<DropdownEntryData>>;
 
-#[derive(Clone, Serialize, Deserialize, Derivative, Default)]
+#[derive(Clone, Serialize, Deserialize, Derivative, Default, specta::Type)]
 #[derivative(Debug, PartialEq)]
 pub struct DropdownEntryData {
 	pub value: String,
@@ -114,7 +114,7 @@ pub struct DropdownEntryData {
 	pub on_update: WidgetCallback<()>,
 }
 
-#[derive(Clone, Serialize, Deserialize, Derivative)]
+#[derive(Clone, Serialize, Deserialize, Derivative, specta::Type)]
 #[derivative(Debug, PartialEq, Default)]
 pub struct FontInput {
 	#[serde(rename = "fontFamily")]
@@ -142,7 +142,7 @@ pub struct FontInput {
 /// This widget allows for the flexible use of the layout system.
 /// In a custom layout, one can define a widget that is just used to trigger code on the backend.
 /// This is used in MenuLayout to pipe the triggering of messages from the frontend to backend.
-#[derive(Clone, Serialize, Deserialize, Derivative, Default)]
+#[derive(Clone, Serialize, Deserialize, Derivative, Default, specta::Type)]
 #[derivative(Debug, PartialEq)]
 pub struct InvisibleStandinInput {
 	#[serde(skip)]
@@ -150,7 +150,7 @@ pub struct InvisibleStandinInput {
 	pub on_update: WidgetCallback<()>,
 }
 
-#[derive(Clone, Serialize, Deserialize, Derivative)]
+#[derive(Clone, Serialize, Deserialize, Derivative, specta::Type)]
 #[derivative(Debug, PartialEq, Default)]
 pub struct LayerReferenceInput {
 	pub value: Option<Vec<LayerId>>,
@@ -178,7 +178,7 @@ pub struct LayerReferenceInput {
 	pub on_update: WidgetCallback<LayerReferenceInput>,
 }
 
-#[derive(Clone, Serialize, Deserialize, Derivative)]
+#[derive(Clone, Serialize, Deserialize, Derivative, specta::Type)]
 #[derivative(Debug, PartialEq, Default)]
 pub struct NumberInput {
 	// Label
@@ -282,7 +282,7 @@ impl NumberInput {
 	}
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Serialize, Deserialize, Debug, Default, PartialEq, Eq, specta::Type)]
 pub enum NumberInputIncrementBehavior {
 	#[default]
 	Add,
@@ -290,14 +290,14 @@ pub enum NumberInputIncrementBehavior {
 	Callback,
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Serialize, Deserialize, Debug, Default, PartialEq, Eq, specta::Type)]
 pub enum NumberInputMode {
 	#[default]
 	Increment,
 	Range,
 }
 
-#[derive(Clone, Default, Derivative, Serialize, Deserialize)]
+#[derive(Clone, Default, Derivative, Serialize, Deserialize, specta::Type)]
 #[derivative(Debug, PartialEq)]
 pub struct OptionalInput {
 	pub checked: bool,
@@ -317,7 +317,7 @@ pub struct OptionalInput {
 	pub on_update: WidgetCallback<OptionalInput>,
 }
 
-#[derive(Clone, Default, Derivative, Serialize, Deserialize)]
+#[derive(Clone, Default, Derivative, Serialize, Deserialize, specta::Type)]
 #[derivative(Debug, PartialEq)]
 pub struct RadioInput {
 	pub entries: Vec<RadioEntryData>,
@@ -329,7 +329,7 @@ pub struct RadioInput {
 	pub selected_index: u32,
 }
 
-#[derive(Clone, Default, Derivative, Serialize, Deserialize)]
+#[derive(Clone, Default, Derivative, Serialize, Deserialize, specta::Type)]
 #[derivative(Debug, PartialEq)]
 pub struct RadioEntryData {
 	pub value: String,
@@ -349,7 +349,7 @@ pub struct RadioEntryData {
 	pub on_update: WidgetCallback<()>,
 }
 
-#[derive(Clone, Serialize, Deserialize, Derivative)]
+#[derive(Clone, Serialize, Deserialize, Derivative, specta::Type)]
 #[derivative(Debug, PartialEq, Default)]
 pub struct SwatchPairInput {
 	pub primary: Color,
@@ -357,7 +357,7 @@ pub struct SwatchPairInput {
 	pub secondary: Color,
 }
 
-#[derive(Clone, Serialize, Deserialize, Derivative)]
+#[derive(Clone, Serialize, Deserialize, Derivative, specta::Type)]
 #[derivative(Debug, PartialEq, Default)]
 pub struct TextAreaInput {
 	pub value: String,
@@ -374,7 +374,7 @@ pub struct TextAreaInput {
 	pub on_update: WidgetCallback<TextAreaInput>,
 }
 
-#[derive(Clone, Serialize, Deserialize, Derivative)]
+#[derive(Clone, Serialize, Deserialize, Derivative, specta::Type)]
 #[derivative(Debug, PartialEq, Default)]
 pub struct TextInput {
 	pub value: String,

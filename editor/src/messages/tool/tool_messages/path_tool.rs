@@ -23,7 +23,7 @@ pub struct PathTool {
 
 #[remain::sorted]
 #[impl_message(Message, ToolMessage, Path)]
-#[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize)]
+#[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize, specta::Type)]
 pub enum PathToolMessage {
 	// Standard messages
 	#[remain::unsorted]

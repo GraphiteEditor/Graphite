@@ -12,3 +12,9 @@ pub mod dispatcher;
 pub mod messages;
 pub mod test_utils;
 pub mod utility_traits;
+
+#[cfg(test)]
+#[test]
+fn export_types() {
+	specta::export::ts("../types.ts");
+}

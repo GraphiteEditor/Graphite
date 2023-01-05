@@ -5,7 +5,7 @@ use document_legacy::layers::layer_info::Layer;
 use serde::{Deserialize, Serialize};
 
 #[repr(u8)]
-#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug, specta::Type)]
 pub enum Clipboard {
 	Internal,
 

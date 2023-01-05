@@ -32,7 +32,7 @@ impl Default for FreehandOptions {
 
 #[remain::sorted]
 #[impl_message(Message, ToolMessage, Freehand)]
-#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
+#[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
 pub enum FreehandToolMessage {
 	// Standard messages
 	#[remain::unsorted]
@@ -46,7 +46,7 @@ pub enum FreehandToolMessage {
 }
 
 #[remain::sorted]
-#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
+#[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
 pub enum FreehandToolMessageOptionsUpdate {
 	LineWeight(f64),
 }

@@ -36,7 +36,7 @@ pub struct SelectTool {
 
 #[remain::sorted]
 #[impl_message(Message, ToolMessage, Select)]
-#[derive(PartialEq, Eq, Clone, Debug, Serialize, Deserialize)]
+#[derive(PartialEq, Eq, Clone, Debug, Serialize, Deserialize, specta::Type)]
 pub enum SelectToolMessage {
 	// Standard messages
 	#[remain::unsorted]

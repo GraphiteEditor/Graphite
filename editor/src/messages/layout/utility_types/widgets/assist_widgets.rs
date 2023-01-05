@@ -4,7 +4,7 @@ use derivative::*;
 use glam::DVec2;
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Default, Derivative, Serialize, Deserialize)]
+#[derive(Clone, Default, Derivative, Serialize, Deserialize, specta::Type)]
 #[derivative(Debug, PartialEq)]
 pub struct PivotAssist {
 	pub position: PivotPosition,
@@ -17,7 +17,7 @@ pub struct PivotAssist {
 	pub on_update: WidgetCallback<PivotAssist>,
 }
 
-#[derive(Clone, Copy, Serialize, Deserialize, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Serialize, Deserialize, Debug, Default, PartialEq, Eq, specta::Type)]
 pub enum PivotPosition {
 	#[default]
 	None,

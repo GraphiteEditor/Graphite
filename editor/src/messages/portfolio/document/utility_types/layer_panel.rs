@@ -7,7 +7,7 @@ use glam::{DAffine2, DVec2};
 use serde::ser::SerializeStruct;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, specta::Type)]
 pub struct RawBuffer(Vec<u8>);
 
 impl From<Vec<u64>> for RawBuffer {
@@ -22,7 +22,7 @@ impl From<Vec<u64>> for RawBuffer {
 		Self(v_from_raw)
 	}
 }
-#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq, specta::Type)]
 pub struct JsRawBuffer(Vec<u8>);
 
 impl From<RawBuffer> for JsRawBuffer {
@@ -39,7 +39,7 @@ impl Serialize for JsRawBuffer {
 	}
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Copy)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Copy, specta::Type)]
 pub struct LayerMetadata {
 	pub selected: bool,
 	pub expanded: bool,
@@ -51,7 +51,7 @@ impl LayerMetadata {
 	}
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, specta::Type)]
 pub struct LayerPanelEntry {
 	pub name: String,
 	pub tooltip: String,

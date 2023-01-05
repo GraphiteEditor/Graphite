@@ -17,7 +17,7 @@ impl Default for PersistentData {
 	}
 }
 
-#[derive(PartialEq, Eq, Clone, Copy, Default, Debug, Serialize, Deserialize)]
+#[derive(PartialEq, Eq, Clone, Copy, Default, Debug, Serialize, Deserialize, specta::Type)]
 pub enum ImaginateServerStatus {
 	#[default]
 	Unknown,
@@ -26,7 +26,7 @@ pub enum ImaginateServerStatus {
 	Connected,
 }
 
-#[derive(PartialEq, Eq, Clone, Copy, Default, Debug, Serialize, Deserialize)]
+#[derive(PartialEq, Eq, Clone, Copy, Default, Debug, Serialize, Deserialize, specta::Type)]
 pub enum Platform {
 	#[default]
 	Unknown,

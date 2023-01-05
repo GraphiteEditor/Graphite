@@ -34,5 +34,8 @@ opt-level = 3
 [profile.dev.package.graphite-wasm]
 opt-level = 3
 
+[workspace.dependencies]
+specta = { path = "../../oscartbeaumont/rspc/crates/specta", features = ["export"] }
+
 #[profile.dev]
 #opt-level = 3
