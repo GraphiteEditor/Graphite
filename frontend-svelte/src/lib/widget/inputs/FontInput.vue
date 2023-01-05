@@ -1,0 +1,193 @@
+<!-- TODO: Combine this widget into the DropdownInput widget -->
+
+<template>
+	<LayoutRow class="font-input">
+		<LayoutRow
+			class="dropdown-box"
+			:class="{ disabled, 'sharp-right-corners': sharpRightCorners }"
+			:style="{ minWidth: `${minWidth}px` }"
+			:title="tooltip"
+			:tabindex="disabled ? -1 : 0"
+			@click="toggleOpen"
+			@keydown="keydown"
+			data-floating-menu-spawner
+		>
+			<TextLabel class="dropdown-label">{{ activeEntry?.value || "" }}</TextLabel>
+			<IconLabel class="dropdown-arrow" :icon="'DropdownArrow'" />
+		</LayoutRow>
+		<MenuList
+			v-model:activeEntry="activeEntry"
+			v-model:open="open"
+			:entries="[entries]"
+			:minWidth="isStyle ? 0 : minWidth"
+			:virtualScrollingEntryHeight="isStyle ? 0 : 20"
+			:scrollableY="true"
+			@naturalWidth="(newNaturalWidth: number) => (isStyle && (minWidth = newNaturalWidth))"
+			ref="menuList"
+		></MenuList>
+	</LayoutRow>
+</template>
+
+<style lang="scss">
+.font-input {
+	position: relative;
+
+	.dropdown-box {
+		align-items: center;
+		white-space: nowrap;
+		background: var(--color-1-nearblack);
+		height: 24px;
+		border-radius: 2px;
+
+		.dropdown-label {
+			margin: 0;
+			margin-left: 8px;
+			flex: 1 1 100%;
+		}
+
+		.dropdown-arrow {
+			margin: 6px 2px;
+			flex: 0 0 auto;
+		}
+
+		&:hover,
+		&.open {
+			background: var(--color-6-lowergray);
+
+			span {
+				color: var(--color-f-white);
+			}
+		}
+
+		&.open {
+			border-radius: 2px 2px 0 0;
+		}
+
+		&.disabled {
+			background: var(--color-2-mildblack);
+
+			span {
+				color: var(--color-8-uppergray);
+			}
+		}
+	}
+
+	.menu-list .floating-menu-container .floating-menu-content {
+		max-height: 400px;
+		padding: 4px 0;
+	}
+}
+</style>
+
+<script lang="ts">
+import { defineComponent, nextTick, type PropType } from "vue";
+
+import { type MenuListEntry } from "@/wasm-communication/messages";
+
+import MenuList from "@/components/floating-menus/MenuList.vue";
+import LayoutRow from "@/components/layout/LayoutRow.vue";
+import IconLabel from "@/components/widgets/labels/IconLabel.vue";
+import TextLabel from "@/components/widgets/labels/TextLabel.vue";
+
+export default defineComponent({
+	inject: ["fonts"],
+	emits: ["update:fontFamily", "update:fontStyle", "changeFont"],
+	props: {
+		fontFamily: { type: String as PropType<string>, required: true },
+		fontStyle: { type: String as PropType<string>, required: true },
+		isStyle: { type: Boolean as PropType<boolean>, default: false },
+		disabled: { type: Boolean as PropType<boolean>, default: false },
+		tooltip: { type: String as PropType<string | undefined>, required: false },
+		sharpRightCorners: { type: Boolean as PropType<boolean>, default: false },
+	},
+	data() {
+		return {
+			open: false,
+			entries: [] as MenuListEntry[],
+			activeEntry: undefined as MenuListEntry | undefined,
+			highlighted: undefined as MenuListEntry | undefined,
+			entriesStart: 0,
+			minWidth: this.isStyle ? 0 : 300,
+		};
+	},
+	async mounted() {
+		this.entries = await this.getEntries();
+		this.activeEntry = this.getActiveEntry(this.entries);
+		this.highlighted = this.activeEntry;
+	},
+	methods: {
+		async setOpen(): Promise<void> {
+			this.open = true;
+
+			// Scroll to the active entry (the scroller div does not yet exist so we must wait for Vue to render)
+			await nextTick();
+
+			if (this.activeEntry) {
+				const index = this.entries.indexOf(this.activeEntry);
+				(this.$refs.menuList as typeof MenuList | undefined)?.scrollViewTo(0, Math.max(0, index * 20 - 190));
+			}
+		},
+		toggleOpen(): void {
+			if (!this.disabled) {
+				this.open = !this.open;
+
+				if (this.open) this.setOpen();
+			}
+		},
+		keydown(e: KeyboardEvent): void {
+			(this.$refs.menuList as typeof MenuList | undefined)?.keydown(e, false);
+		},
+		async selectFont(newName: string): Promise<void> {
+			let fontFamily;
+			let fontStyle;
+
+			if (this.isStyle) {
+				this.$emit("update:fontStyle", newName);
+
+				fontFamily = this.fontFamily;
+				fontStyle = newName;
+			} else {
+				this.$emit("update:fontFamily", newName);
+
+				fontFamily = newName;
+				fontStyle = "Normal (400)";
+			}
+
+			const fontFileUrl = await this.fonts.getFontFileUrl(fontFamily, fontStyle);
+			this.$emit("changeFont", { fontFamily, fontStyle, fontFileUrl });
+		},
+		async getEntries(): Promise<MenuListEntry[]> {
+			const x = this.isStyle ? this.fonts.getFontStyles(this.fontFamily) : this.fonts.fontNames();
+			return (await x).map((entry: { name: string; url: URL | undefined }) => ({
+				label: entry.name,
+				value: entry.name,
+				font: entry.url,
+				action: () => this.selectFont(entry.name),
+			}));
+		},
+		getActiveEntry(entries: MenuListEntry[]): MenuListEntry {
+			const selectedChoice = this.isStyle ? this.fontStyle : this.fontFamily;
+
+			return entries.find((entry) => entry.value === selectedChoice) as MenuListEntry;
+		},
+	},
+	watch: {
+		async fontFamily() {
+			this.entries = await this.getEntries();
+			this.activeEntry = this.getActiveEntry(this.entries);
+			this.highlighted = this.activeEntry;
+		},
+		async fontStyle() {
+			this.entries = await this.getEntries();
+			this.activeEntry = this.getActiveEntry(this.entries);
+			this.highlighted = this.activeEntry;
+		},
+	},
+	components: {
+		IconLabel,
+		LayoutRow,
+		MenuList,
+		TextLabel,
+	},
+});
+</script>

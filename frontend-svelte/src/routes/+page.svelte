@@ -1,13 +1,16 @@
 <script lang="ts">
-import { editor } from "$lib/stores"
-import { onMount } from "svelte"
-
+import "../app.scss"
+import App from "$lib/App.svelte";
 </script>
 
-<h1>Welcome to SvelteKit</h1>
-<p>
-  Visit <a href="https://kit.svelte.dev">kit.svelte.dev</a> to read the documentation
-</p>
-<p>
-  Graphite version: {$editor?.graphiteDocumentVersion()}
-</p>
+<div id="root">
+  <App/>
+</div>
+
+<style>
+#root {
+  height: 100%;
+  overflow: auto;
+  touch-action: none;
+}
+</style>
