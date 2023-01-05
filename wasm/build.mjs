@@ -5,13 +5,6 @@ import path from "path"
 import child_process from "child_process"
 import assert from "assert"
 
-for (let [key, value] of Object.entries(process.env)) {
-  if (key.startsWith("CARGO")) {
-
-    console.log(key, value)
-  }
-}
-
 let devMode = false
 switch (process.env.NODE_ENV) {
   case undefined:
@@ -34,7 +27,8 @@ switch (process.env.NODE_ENV) {
 // change $PWD to script's directory
 process.chdir(path.dirname(new URL(import.meta.url).pathname))
 
-const p0 = child_process.spawn("wasm-pack", ["build"], { stdio: "inherit" })
+const extra_args = devMode ? ["--dev"] : []
+const p0 = child_process.spawn("wasm-pack", ["build", extra_args], { stdio: "inherit" })
 p0.on("exit", (code) => {
   assert.equal(code, 0)
   process.chdir("pkg")

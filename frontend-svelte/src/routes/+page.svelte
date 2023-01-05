@@ -1,20 +1,7 @@
 <script lang="ts">
-import type { JsMessageType } from "graphite-frontend-glue/messages"
+import { editor } from "$lib/stores"
 import { onMount } from "svelte"
 
-let graphiteVersion = "i don't know"
-onMount(async () => {
-  let { JsEditorHandle } = await import("graphite-frontend-glue/editor")
-  const editor = new JsEditorHandle(
-    (
-      messageType: JsMessageType,
-      messageData: Record<string, unknown>
-    ): void => {
-      console.log("message:", messageType, messageData)
-    }
-  )
-  graphiteVersion = editor.graphiteDocumentVersion()
-})
 </script>
 
 <h1>Welcome to SvelteKit</h1>
@@ -22,5 +9,5 @@ onMount(async () => {
   Visit <a href="https://kit.svelte.dev">kit.svelte.dev</a> to read the documentation
 </p>
 <p>
-  Graphite version: {graphiteVersion}
+  Graphite version: {$editor?.graphiteDocumentVersion()}
 </p>

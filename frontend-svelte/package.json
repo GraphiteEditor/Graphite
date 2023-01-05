@@ -22,6 +22,6 @@
 	},
 	"type": "module",
 	"dependencies": {
-		"graphite-frontend-glue": "file:glue"
+		"graphite-frontend-glue": "file:./glue"
 	}
 }

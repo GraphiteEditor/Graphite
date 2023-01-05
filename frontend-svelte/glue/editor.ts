@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api";
-import { createNanoEvents, Emitter } from "nanoevents";
+import { createNanoEvents, type Emitter } from "nanoevents";
 
 import * as graphite from "graphite-wasm";
 import { JsEditorHandle } from "graphite-wasm";

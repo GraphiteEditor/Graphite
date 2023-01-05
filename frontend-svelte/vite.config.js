@@ -5,6 +5,11 @@ import topLevelAwait from "vite-plugin-top-level-await";
 /** @type {import('vite').UserConfig} */
 const config = {
 	plugins: [topLevelAwait(), wasm(), sveltekit()],
+	server: {
+		fs: {
+			allow: ["glue"],
+		},
+	},
 };
 
 export default config;
