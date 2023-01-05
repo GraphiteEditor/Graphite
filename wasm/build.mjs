@@ -1,7 +1,35 @@
+#!/usr/bin/env node
+
 import fs from "fs/promises"
 import path from "path"
 import child_process from "child_process"
 import assert from "assert"
+
+for (let [key, value] of Object.entries(process.env)) {
+  if (key.startsWith("CARGO")) {
+
+    console.log(key, value)
+  }
+}
+
+let devMode = false
+switch (process.env.NODE_ENV) {
+  case undefined:
+    console.error("No NODE_ENV, I bail!")
+    console.error("Valid values: 'development' or 'production'")
+    process.exit(1)
+    break
+  case "development":
+    devMode = true
+    break
+  case "production":
+    break
+  default:
+    console.error("Invalid NODE_ENV, I also bail!")
+    console.error("Valid values: 'development' or 'production'")
+    process.exit(1)
+    break
+}
 
 // change $PWD to script's directory
 process.chdir(path.dirname(new URL(import.meta.url).pathname))
