@@ -1,21 +1,21 @@
 import { invoke } from "@tauri-apps/api";
-import { createNanoEvents } from "nanoevents";
+import { createNanoEvents, Emitter } from "nanoevents";
 
 import * as graphite from "graphite-wasm";
 import { JsEditorHandle } from "graphite-wasm";
 export { JsEditorHandle } from "graphite-wasm";
 
-import type { GraphiteEvents } from "./messages";
+import type { GraphiteEmitter } from "./emitter_type";
 
-// init_
+/* init wasm module */
 // Provide a random starter seed which must occur after initializing the WASM module, since WASM can't generate its own random numbers
 const randomSeedFloat = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER);
 const randomSeed = BigInt(randomSeedFloat);
 graphite.setRandomSeed(randomSeed);
 
-export const editor_pubsub = createNanoEvents<GraphiteEvents>();
+export const editor_pubsub = createNanoEvents() as GraphiteEmitter;
 export const editor: JsEditorHandle = new JsEditorHandle((messageType: string, messageData: any): void => {
-	editor_pubsub.emit(messageType as keyof GraphiteEvents, messageData);
+	editor_pubsub.emit(messageType as any, messageData);
 });
 
 export async function updateImage(path: BigUint64Array, mime: string, imageData: Uint8Array, documentId: bigint): Promise<void> {

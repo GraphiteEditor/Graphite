@@ -30,15 +30,36 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 	// serde_json::to_writer(std::io::stdout(), &registry)?;
 
 	for (type_name, type_def) in &registry {
+		if type_name.ends_with("Discriminant") {
+			// special_enum = registry[type_name[0..type_name.len()-"Discriminant".len()]]
+
+			continue;
+		}
 		let ts_typedef = match type_def {
 			serde_reflection::ContainerFormat::UnitStruct => "{}".into(),
 			serde_reflection::ContainerFormat::NewTypeStruct(inner) => format_type(inner),
 			serde_reflection::ContainerFormat::TupleStruct(inner) => format_tuple(inner),
 			serde_reflection::ContainerFormat::Struct(inner) => format_struct(inner),
-			serde_reflection::ContainerFormat::Enum(inner) => inner.values().map(|pair| -> String { format!("{{ {}: {} }}", pair.name, format_variant_type(&pair.value)) }).collect::<Vec<String>>().join(" |\n"),
+			serde_reflection::ContainerFormat::Enum(inner) => inner
+				.values()
+				.map(|pair| -> String { format!("{{ {}: {} }}", pair.name, format_variant_type(&pair.value)) })
+				.collect::<Vec<String>>()
+				.join(" |\n"),
 		};
 		println!("export type {type_name} =\n{ts_typedef};\n");
 	}
+
+	let serde_reflection::ContainerFormat::Enum(inner) = &registry["FrontendMessage"] else { unreachable!() };
+	println!(
+		"export type {}_keyed = {{ {} }};\n",
+		"FrontendMessage",
+		(inner
+			.values()
+			.map(|pair| format!("{}: {}", pair.name, format_variant_type(&pair.value)))
+			.collect::<Vec<String>>()
+			.join(", "))
+	);
+
 	Ok(())
 }
 
@@ -47,7 +68,10 @@ fn format_tuple(inner: &[Format]) -> String {
 }
 
 fn format_struct(inner: &[Named<Format>]) -> String {
-	format!("{{ {} }}", (inner.iter().map(|pair| format!("{}: {}", pair.name, format_type(&pair.value))).collect::<Vec<String>>().join(",\n")))
+	format!(
+		"{{\n{}\n}}",
+		(inner.iter().map(|pair| format!("{}: {}", pair.name, format_type(&pair.value))).collect::<Vec<String>>().join(",\n"))
+	)
 }
 
 fn format_type(inner: &Format) -> String {
