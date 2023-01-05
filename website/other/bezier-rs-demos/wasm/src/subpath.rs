@@ -210,6 +210,24 @@ impl WasmSubpath {
 		wrap_svg_tag(format!("{subpath_svg}{line_svg}{intersections_svg}"))
 	}
 
+	pub fn bounding_box(&self) -> String {
+		let subpath_svg = self.0.to_svg(ToSVGOptions::default());
+		let bounding_box = self.0.bounding_box();
+		match bounding_box {
+			None => wrap_svg_tag(subpath_svg),
+			Some(bounding_box) => {
+				let content = format!(
+					"{subpath_svg}<rect x={} y ={} width=\"{}\" height=\"{}\" style=\"fill:{NONE};stroke:{RED};stroke-width:1\" />",
+					bounding_box[0].x,
+					bounding_box[0].y,
+					bounding_box[1].x - bounding_box[0].x,
+					bounding_box[1].y - bounding_box[0].y,
+				);
+				wrap_svg_tag(content)
+			}
+		}
+	}
+
 	pub fn split(&self, t: f64, t_variant: String) -> String {
 		let t = parse_t_variant(&t_variant, t);
 		let (main_subpath, optional_subpath) = self.0.split(t);

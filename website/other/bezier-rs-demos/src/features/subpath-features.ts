@@ -40,6 +40,10 @@ const subpathFeatures = {
 		sliderOptions: [tSliderOptions],
 		chooseTVariant: true,
 	},
+	"bounding-box": {
+		name: "Bounding Box",
+		callback: (subpath: WasmSubpathInstance): string => subpath.bounding_box(),
+	},
 	"intersect-linear": {
 		name: "Intersect (Line Segment)",
 		callback: (subpath: WasmSubpathInstance): string =>
