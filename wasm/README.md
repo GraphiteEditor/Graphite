@@ -1,6 +1,14 @@
 # Overview of `/frontend/wasm/`
 
-## Development command
+## How to build
+
+First, you need wasm-pack installed to build this.
+```
+cargo install wasm-pack
+```
+Then, run the build script `./build.mjs`.
+
+## Watch command
 
 Need: `cargo install cargo-watch`
 
