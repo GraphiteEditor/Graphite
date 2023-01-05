@@ -13,6 +13,9 @@
 
 <style lang="scss">
 .widget-section {
+	--icon-expand-collapse-arrow: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8"><polygon fill="%23eee" points="3,0 1,0 5,4 1,8 3,8 7,4" /></svg>');
+	--icon-expand-collapse-arrow-hover: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8"><polygon fill="%23fff" points="3,0 1,0 5,4 1,8 3,8 7,4" /></svg>');
+
 	flex: 0 0 auto;
 
 	.header {
