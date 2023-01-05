@@ -6,7 +6,7 @@ export let scrollableY: boolean = false
 </script>
 
 <div
-  class="layout-col"
+  class="layout-row"
   class:scrollable-x="{scrollableX}"
   class:scrollable-y="{scrollableY}"
   title="{tooltip}"
@@ -16,9 +16,9 @@ export let scrollableY: boolean = false
 
 <style lang="scss">
 @import "./layout.scss";
-.layout-col {
+.layout-row {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   flex-grow: 1;
 }
 </style>

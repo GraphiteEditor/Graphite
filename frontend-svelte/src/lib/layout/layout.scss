@@ -1,3 +1,7 @@
+:global(.spacer) {
+	flex: 1 1 100%;
+}
+
 .scrollable-x,
 .scrollable-y {
 	// Firefox (standardized in CSS, but less capable)
