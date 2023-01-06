@@ -1,4 +1,4 @@
-# Overview of `/frontend/src/`
+# Overview of `/frontend-svelte/src/`
 
 ## Vue components: `components/`
 
@@ -6,7 +6,7 @@ Vue components that build the Graphite editor GUI, which are mounted in `App.vue
 
 ## I/O managers: `io-managers/`
 
-TypeScript files which manage the input/output of browser APIs and link this functionality with the editor backend. These files subscribe to backend events to execute JS APIs, and in response to these APIs or user interactions, they may call functions into the backend (defined in `/frontend/wasm/editor_api.rs`).
+TypeScript files which manage the input/output of browser APIs and link this functionality with the editor backend. These files subscribe to backend events to execute JS APIs, and in response to these APIs or user interactions, they may call functions into the backend (defined in `/wasm/editor_api.rs`).
 
 Each I/O manager is a self-contained module where one instance is created in `App.vue` when it's mounted to the DOM at app startup.
 
