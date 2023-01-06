@@ -4,7 +4,7 @@ members = [
 	"document-legacy",
 	"proc-macros",
 	"wasm",
-	"frontend-vue/src-tauri",
+	"frontend/src-tauri",
 	"node-graph/gcore",
 	"node-graph/gstd",
 	"node-graph/graph-craft",
