@@ -30,7 +30,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 	// serde_json::to_writer(std::io::stdout(), &registry)?;
 
 	for (type_name, type_def) in &registry {
-		if type_name.ends_with("Discriminant") {
+		if option_env!("SKIP_DISCRIMINANT") != None && type_name.ends_with("Discriminant") {
 			// special_enum = registry[type_name[0..type_name.len()-"Discriminant".len()]]
 
 			continue;
