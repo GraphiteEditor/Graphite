@@ -20,27 +20,25 @@
   $: windowTitle = `${displayName}${displayName && " - "}Graphite`;
 </script>
 
-<template>
-  <LayoutRow class="title-bar">
-    <LayoutRow class="header-part">
-      {#if platform === "Mac"}
-        <WindowButtonsMac {maximized} />
-      {:else}
-        <MenuBarInput />
-      {/if}
-    </LayoutRow>
-    <LayoutRow class="header-part">
-      <WindowTitle text={windowTitle} />
-    </LayoutRow>
-    <LayoutRow class="header-part">
-      {#if platform === "Windows" || platform === "Linux"}
-        <WindowButtonsWindows {maximized} />
-      {:else if platform === "Web"}
-        <WindowButtonsWeb />
-      {/if}
-    </LayoutRow>
+<LayoutRow class="title-bar">
+  <LayoutRow class="header-part">
+    {#if platform === "Mac"}
+      <WindowButtonsMac {maximized} />
+    {:else}
+      <MenuBarInput />
+    {/if}
   </LayoutRow>
-</template>
+  <LayoutRow class="header-part">
+    <WindowTitle text={windowTitle} />
+  </LayoutRow>
+  <LayoutRow class="header-part">
+    {#if platform === "Windows" || platform === "Linux"}
+      <WindowButtonsWindows {maximized} />
+    {:else if platform === "Web"}
+      <WindowButtonsWeb />
+    {/if}
+  </LayoutRow>
+</LayoutRow>
 
 <style lang="scss" global>
   .title-bar {

@@ -4,13 +4,11 @@
   export let maximized = false;
 </script>
 
-<template>
-  <LayoutRow class="window-buttons-mac">
-    <div class="close" title="Close" />
-    <div class="minimize" title="Minimize" />
-    <div class="zoom" title="Zoom" />
-  </LayoutRow>
-</template>
+<LayoutRow class="window-buttons-mac">
+  <div class="close" title="Close" />
+  <div class="minimize" title="Minimize" />
+  <div class="zoom" title="Zoom" />
+</LayoutRow>
 
 <style lang="scss" global>
   .window-buttons-mac {

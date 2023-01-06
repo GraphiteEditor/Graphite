@@ -32,27 +32,25 @@
   });
 </script>
 
-<template>
-  <LayoutRow class="status-bar">
-    <LayoutRow class="hint-groups">
-      {#each hintData as hintGroup, index (hintGroup)}
-        {#if index !== 0}
-          <Separator type={"Section"} />
+<LayoutRow class="status-bar">
+  <LayoutRow class="hint-groups">
+    {#each hintData as hintGroup, index (hintGroup)}
+      {#if index !== 0}
+        <Separator type={"Section"} />
+      {/if}
+      {#each hintGroup as hint (hint)}
+        {#if hint.plus}
+          <LayoutRow class="plus">+</LayoutRow>
         {/if}
-        {#each hintGroup as hint (hint)}
-          {#if hint.plus}
-            <LayoutRow class="plus">+</LayoutRow>
-          {/if}
-          <UserInputLabel
-            mouseMotion={hint.mouse}
-            keysWithLabelsGroups={inputKeysForPlatform(hint)}
-            >{hint.label}</UserInputLabel
-          >
-        {/each}
+        <UserInputLabel
+          mouseMotion={hint.mouse}
+          keysWithLabelsGroups={inputKeysForPlatform(hint)}
+          >{hint.label}</UserInputLabel
+        >
       {/each}
-    </LayoutRow>
+    {/each}
   </LayoutRow>
-</template>
+</LayoutRow>
 
 <style lang="scss" global>
   .status-bar {

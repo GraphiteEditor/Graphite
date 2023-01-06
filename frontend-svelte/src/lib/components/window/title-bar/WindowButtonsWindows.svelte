@@ -5,26 +5,21 @@
   export let maximized = false;
 </script>
 
-<template>
-  <LayoutRow class="window-button windows minimize" tooltip="Minimize">
-    <IconLabel icon={"WindowButtonWinMinimize"} />
+<LayoutRow class="window-button windows minimize" tooltip="Minimize">
+  <IconLabel icon={"WindowButtonWinMinimize"} />
+</LayoutRow>
+{#if !maximized}
+  <LayoutRow class="window-button windows maximize" tooltip="Maximize">
+    <IconLabel icon={"WindowButtonWinMaximize"} />
   </LayoutRow>
-  {#if !maximized}
-    <LayoutRow class="window-button windows maximize" tooltip="Maximize">
-      <IconLabel icon={"WindowButtonWinMaximize"} />
-    </LayoutRow>
-  {:else}
-    <LayoutRow
-      class="window-button windows restore-down"
-      tooltip="Restore Down"
-    >
-      <IconLabel icon={"WindowButtonWinRestoreDown"} />
-    </LayoutRow>
-  {/if}
-  <LayoutRow class="window-button windows close" tooltip="Close">
-    <IconLabel icon={"WindowButtonWinClose"} />
+{:else}
+  <LayoutRow class="window-button windows restore-down" tooltip="Restore Down">
+    <IconLabel icon={"WindowButtonWinRestoreDown"} />
   </LayoutRow>
-</template>
+{/if}
+<LayoutRow class="window-button windows close" tooltip="Close">
+  <IconLabel icon={"WindowButtonWinClose"} />
+</LayoutRow>
 
 <style lang="scss" global>
   .window-button.windows {

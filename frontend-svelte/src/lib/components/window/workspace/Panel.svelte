@@ -73,98 +73,93 @@
   }
 </script>
 
-<template>
-  <LayoutCol class="panel">
-    <LayoutRow class="tab-bar" classes={{ "min-widths": tabMinWidths }}>
-      <LayoutRow class="tab-group" scrollableX={true}>
-        {#each tabLabels as tabLabel, tabIndex (tabIndex)}
-          <LayoutRow
-            class="tab"
-            classes={{ active: tabIndex === tabActiveIndex }}
-            tooltip={tabLabel.tooltip || undefined}
-            click={(e) => {
-              e.stopPropagation();
-              if (e.button === 0) clickAction?.(tabIndex);
-              if (e.button === 1) closeAction?.(tabIndex);
-            }}
-            bind:this={tabElements[tabIndex]}
-          >
-            <TextLabel>{tabLabel.name}</TextLabel>
-            {#if tabCloseButtons}
-              <IconButton
-                action={(e) => {
-                  e?.stopPropagation();
-                  closeAction?.(tabIndex);
-                }}
-                icon="CloseX"
-                size={16}
-              />
-            {/if}
-          </LayoutRow>
-        {/each}
-      </LayoutRow>
-      <PopoverButton icon="VerticalEllipsis">
-        <TextLabel bold={true}>Panel Options</TextLabel>
-        <TextLabel multiline={true}>Coming soon</TextLabel>
-      </PopoverButton>
+<LayoutCol class="panel">
+  <LayoutRow class="tab-bar" classes={{ "min-widths": tabMinWidths }}>
+    <LayoutRow class="tab-group" scrollableX={true}>
+      {#each tabLabels as tabLabel, tabIndex (tabIndex)}
+        <LayoutRow
+          class="tab"
+          classes={{ active: tabIndex === tabActiveIndex }}
+          tooltip={tabLabel.tooltip || undefined}
+          click={(e) => {
+            e.stopPropagation();
+            if (e.button === 0) clickAction?.(tabIndex);
+            if (e.button === 1) closeAction?.(tabIndex);
+          }}
+          bind:this={tabElements[tabIndex]}
+        >
+          <TextLabel>{tabLabel.name}</TextLabel>
+          {#if tabCloseButtons}
+            <IconButton
+              action={(e) => {
+                e?.stopPropagation();
+                closeAction?.(tabIndex);
+              }}
+              icon="CloseX"
+              size={16}
+            />
+          {/if}
+        </LayoutRow>
+      {/each}
     </LayoutRow>
-    <LayoutCol class="panel-body">
-      {#if panelType}
-        <svelte:component this={PANEL_COMPONENTS[panelType]} />
-      {:else}
-        <LayoutCol class="empty-panel">
-          <LayoutCol class="content">
-            <LayoutRow class="logotype">
-              <IconLabel icon="GraphiteLogotypeSolid" />
-            </LayoutRow>
-            <LayoutRow class="actions">
-              <table>
-                <tr>
-                  <td>
-                    <TextButton
-                      label="New Document"
-                      icon="File"
-                      action={() => newDocument()}
-                    />
-                  </td>
-                  <td>
-                    <UserInputLabel
-                      keysWithLabelsGroups={[
-                        [
-                          ...platformModifiers(true),
-                          { key: "KeyN", label: "N" },
-                        ],
-                      ]}
-                    />
-                  </td>
-                </tr>
-                <tr>
-                  <td>
-                    <TextButton
-                      label="Open Document"
-                      icon="Folder"
-                      action={() => openDocument()}
-                    />
-                  </td>
-                  <td>
-                    <UserInputLabel
-                      keysWithLabelsGroups={[
-                        [
-                          ...platformModifiers(false),
-                          { key: "KeyO", label: "O" },
-                        ],
-                      ]}
-                    />
-                  </td>
-                </tr>
-              </table>
-            </LayoutRow>
-          </LayoutCol>
+    <PopoverButton icon="VerticalEllipsis">
+      <TextLabel bold={true}>Panel Options</TextLabel>
+      <TextLabel multiline={true}>Coming soon</TextLabel>
+    </PopoverButton>
+  </LayoutRow>
+  <LayoutCol class="panel-body">
+    {#if panelType}
+      <svelte:component this={PANEL_COMPONENTS[panelType]} />
+    {:else}
+      <LayoutCol class="empty-panel">
+        <LayoutCol class="content">
+          <LayoutRow class="logotype">
+            <IconLabel icon="GraphiteLogotypeSolid" />
+          </LayoutRow>
+          <LayoutRow class="actions">
+            <table>
+              <tr>
+                <td>
+                  <TextButton
+                    label="New Document"
+                    icon="File"
+                    action={() => newDocument()}
+                  />
+                </td>
+                <td>
+                  <UserInputLabel
+                    keysWithLabelsGroups={[
+                      [...platformModifiers(true), { key: "KeyN", label: "N" }],
+                    ]}
+                  />
+                </td>
+              </tr>
+              <tr>
+                <td>
+                  <TextButton
+                    label="Open Document"
+                    icon="Folder"
+                    action={() => openDocument()}
+                  />
+                </td>
+                <td>
+                  <UserInputLabel
+                    keysWithLabelsGroups={[
+                      [
+                        ...platformModifiers(false),
+                        { key: "KeyO", label: "O" },
+                      ],
+                    ]}
+                  />
+                </td>
+              </tr>
+            </table>
+          </LayoutRow>
         </LayoutCol>
-      {/if}
-    </LayoutCol>
+      </LayoutCol>
+    {/if}
   </LayoutCol>
-</template>
+</LayoutCol>
 
 <style lang="scss" global>
   .panel {

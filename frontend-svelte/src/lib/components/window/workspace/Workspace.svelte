@@ -133,105 +133,103 @@
   }
 </script>
 
-<template>
-  <LayoutRow class="workspace" data-workspace>
-    <LayoutRow
+<LayoutRow class="workspace" data-workspace>
+  <LayoutRow
+    class="workspace-grid-subdivision"
+    styles={{ "flex-grow": panelSizes["root"] }}
+    data-subdivision-name="root"
+  >
+    <LayoutCol
       class="workspace-grid-subdivision"
-      styles={{ "flex-grow": panelSizes["root"] }}
-      data-subdivision-name="root"
+      styles={{ "flex-grow": panelSizes["content"] }}
+      data-subdivision-name="content"
     >
-      <LayoutCol
+      <LayoutRow
         class="workspace-grid-subdivision"
-        styles={{ "flex-grow": panelSizes["content"] }}
-        data-subdivision-name="content"
+        styles={{ "flex-grow": panelSizes["document"] }}
+        data-subdivision-name="document"
       >
-        <LayoutRow
-          class="workspace-grid-subdivision"
-          styles={{ "flex-grow": panelSizes["document"] }}
-          data-subdivision-name="document"
-        >
-          <Panel
-            panelType={portfolio.state.documents.length > 0
-              ? "Document"
-              : undefined}
-            tabCloseButtons={true}
-            tabMinWidths={true}
-            tabLabels={documentTabLabels}
-            clickAction={(tabIndex) =>
-              editor.instance.selectDocument(
-                portfolio.state.documents[tabIndex].id
-              )}
-            closeAction={(tabIndex) =>
-              editor.instance.closeDocumentWithConfirmation(
-                portfolio.state.documents[tabIndex].id
-              )}
-            tabActiveIndex={portfolio.state.activeDocumentIndex}
-            bind:this={documentPanel}
-          />
-        </LayoutRow>
-        {#if nodeGraphVisible}
-          <LayoutRow
-            class="workspace-grid-resize-gutter"
-            data-gutter-vertical
-            pointerdown={resizePanel}
-          />
-          <LayoutRow
-            class="workspace-grid-subdivision"
-            styles={{ "flex-grow": panelSizes["graph"] }}
-            data-subdivision-name="graph"
-          >
-            <Panel
-              panelType="NodeGraph"
-              tabLabels={[{ name: "Node Graph" }]}
-              tabActiveIndex={0}
-            />
-          </LayoutRow>
-        {/if}
-      </LayoutCol>
-      <LayoutCol
-        class="workspace-grid-resize-gutter"
-        data-gutter-horizontal
-        pointerdown={(e) => resizePanel(e)}
-      />
-      <LayoutCol
-        class="workspace-grid-subdivision"
-        styles={{ "flex-grow": panelSizes["details"] }}
-        data-subdivision-name="details"
-      >
-        <LayoutRow
-          class="workspace-grid-subdivision"
-          styles={{ "flex-grow": panelSizes["properties"] }}
-          data-subdivision-name="properties"
-        >
-          <Panel
-            panelType="Properties"
-            tabLabels={[{ name: "Properties" }]}
-            tabActiveIndex={0}
-          />
-        </LayoutRow>
+        <Panel
+          panelType={portfolio.state.documents.length > 0
+            ? "Document"
+            : undefined}
+          tabCloseButtons={true}
+          tabMinWidths={true}
+          tabLabels={documentTabLabels}
+          clickAction={(tabIndex) =>
+            editor.instance.selectDocument(
+              portfolio.state.documents[tabIndex].id
+            )}
+          closeAction={(tabIndex) =>
+            editor.instance.closeDocumentWithConfirmation(
+              portfolio.state.documents[tabIndex].id
+            )}
+          tabActiveIndex={portfolio.state.activeDocumentIndex}
+          bind:this={documentPanel}
+        />
+      </LayoutRow>
+      {#if nodeGraphVisible}
         <LayoutRow
           class="workspace-grid-resize-gutter"
           data-gutter-vertical
-          pointerdown={(e) => resizePanel(e)}
+          pointerdown={resizePanel}
         />
         <LayoutRow
           class="workspace-grid-subdivision"
-          styles={{ "flex-grow": panelSizes["layers"] }}
-          data-subdivision-name="layers"
+          styles={{ "flex-grow": panelSizes["graph"] }}
+          data-subdivision-name="graph"
         >
           <Panel
-            panelType="LayerTree"
-            tabLabels={[{ name: "Layer Tree" }]}
+            panelType="NodeGraph"
+            tabLabels={[{ name: "Node Graph" }]}
             tabActiveIndex={0}
           />
         </LayoutRow>
-      </LayoutCol>
-    </LayoutRow>
-    {#if dialog.state.visible}
-      <DialogModal />
-    {/if}
+      {/if}
+    </LayoutCol>
+    <LayoutCol
+      class="workspace-grid-resize-gutter"
+      data-gutter-horizontal
+      pointerdown={(e) => resizePanel(e)}
+    />
+    <LayoutCol
+      class="workspace-grid-subdivision"
+      styles={{ "flex-grow": panelSizes["details"] }}
+      data-subdivision-name="details"
+    >
+      <LayoutRow
+        class="workspace-grid-subdivision"
+        styles={{ "flex-grow": panelSizes["properties"] }}
+        data-subdivision-name="properties"
+      >
+        <Panel
+          panelType="Properties"
+          tabLabels={[{ name: "Properties" }]}
+          tabActiveIndex={0}
+        />
+      </LayoutRow>
+      <LayoutRow
+        class="workspace-grid-resize-gutter"
+        data-gutter-vertical
+        pointerdown={(e) => resizePanel(e)}
+      />
+      <LayoutRow
+        class="workspace-grid-subdivision"
+        styles={{ "flex-grow": panelSizes["layers"] }}
+        data-subdivision-name="layers"
+      >
+        <Panel
+          panelType="LayerTree"
+          tabLabels={[{ name: "Layer Tree" }]}
+          tabActiveIndex={0}
+        />
+      </LayoutRow>
+    </LayoutCol>
   </LayoutRow>
-</template>
+  {#if dialog.state.visible}
+    <DialogModal />
+  {/if}
+</LayoutRow>
 
 <style lang="scss" global>
   .workspace {

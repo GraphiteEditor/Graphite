@@ -15,18 +15,16 @@
   }
 </script>
 
-<template>
-  <LayoutRow
-    class="window-buttons-web"
-    on:click={() => handleClick()}
-    tooltip={(windowFullscreen ? "Exit" : "Enter") + " Fullscreen (F11)"}
-  >
-    {#if requestFullscreenHotkeys}
-      <TextLabel italic={true}>Go fullscreen to access all hotkeys</TextLabel>
-    {/if}
-    <IconLabel icon={windowFullscreen ? "FullscreenExit" : "FullscreenEnter"} />
-  </LayoutRow>
-</template>
+<LayoutRow
+  class="window-buttons-web"
+  on:click={() => handleClick()}
+  tooltip={(windowFullscreen ? "Exit" : "Enter") + " Fullscreen (F11)"}
+>
+  {#if requestFullscreenHotkeys}
+    <TextLabel italic={true}>Go fullscreen to access all hotkeys</TextLabel>
+  {/if}
+  <IconLabel icon={windowFullscreen ? "FullscreenExit" : "FullscreenEnter"} />
+</LayoutRow>
 
 <style lang="scss" global>
   .window-buttons-web {
