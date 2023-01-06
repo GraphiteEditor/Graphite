@@ -3,21 +3,21 @@ export type ActionKeys =
 { keys: LayoutKeysGroup };
 
 export type ArtboardMessageDiscriminant =
-{ DispatchOperation: null } |
-{ AddArtboard: null } |
-{ ClearArtboards: null } |
-{ DeleteArtboard: null } |
-{ RenderArtboards: null } |
-{ ResizeArtboard: null };
+"DispatchOperation" |
+"AddArtboard" |
+"ClearArtboards" |
+"DeleteArtboard" |
+"RenderArtboards" |
+"ResizeArtboard";
 
 export type ArtboardToolMessageDiscriminant =
-{ Abort: null } |
-{ DocumentIsDirty: null } |
-{ DeleteSelected: null } |
-{ NudgeSelected: null } |
-{ PointerDown: null } |
-{ PointerMove: null } |
-{ PointerUp: null };
+"Abort" |
+"DocumentIsDirty" |
+"DeleteSelected" |
+"NudgeSelected" |
+"PointerDown" |
+"PointerMove" |
+"PointerUp";
 
 export type BreadcrumbTrailButtons =
 {
@@ -27,14 +27,14 @@ tooltip: string
 };
 
 export type BroadcastEventDiscriminant =
-{ DocumentIsDirty: null } |
-{ ToolAbort: null } |
-{ SelectionChanged: null };
+"DocumentIsDirty" |
+"ToolAbort" |
+"SelectionChanged";
 
 export type BroadcastMessageDiscriminant =
 { TriggerEvent: BroadcastEventDiscriminant } |
-{ SubscribeEvent: null } |
-{ UnsubscribeEvent: null };
+"SubscribeEvent" |
+"UnsubscribeEvent";
 
 export type CheckboxInput =
 {
@@ -64,24 +64,24 @@ export type DVec2 =
 [number, number];
 
 export type DebugMessageDiscriminant =
-{ ToggleTraceLogs: null } |
-{ MessageOff: null } |
-{ MessageNames: null } |
-{ MessageContents: null };
+"ToggleTraceLogs" |
+"MessageOff" |
+"MessageNames" |
+"MessageContents";
 
 export type DialogMessageDiscriminant =
 { ExportDialog: ExportDialogMessageDiscriminant } |
 { NewDocumentDialog: NewDocumentDialogMessageDiscriminant } |
 { PreferencesDialog: PreferencesDialogMessageDiscriminant } |
-{ CloseAllDocumentsWithConfirmation: null } |
-{ CloseDialogAndThen: null } |
-{ DisplayDialogError: null } |
-{ RequestAboutGraphiteDialog: null } |
-{ RequestAboutGraphiteDialogWithLocalizedCommitDate: null } |
-{ RequestComingSoonDialog: null } |
-{ RequestExportDialog: null } |
-{ RequestNewDocumentDialog: null } |
-{ RequestPreferencesDialog: null };
+"CloseAllDocumentsWithConfirmation" |
+"CloseDialogAndThen" |
+"DisplayDialogError" |
+"RequestAboutGraphiteDialog" |
+"RequestAboutGraphiteDialogWithLocalizedCommitDate" |
+"RequestComingSoonDialog" |
+"RequestExportDialog" |
+"RequestNewDocumentDialog" |
+"RequestPreferencesDialog";
 
 export type DiffUpdate =
 { subLayout: Array<LayoutGroup> } |
@@ -89,81 +89,81 @@ export type DiffUpdate =
 { widget: WidgetHolder };
 
 export type DocumentMessageDiscriminant =
-{ DispatchOperation: null } |
+"DispatchOperation" |
 { Artboard: ArtboardMessageDiscriminant } |
 { Navigation: NavigationMessageDiscriminant } |
 { Overlays: OverlaysMessageDiscriminant } |
 { TransformLayer: TransformLayerMessageDiscriminant } |
 { PropertiesPanel: PropertiesPanelMessageDiscriminant } |
 { NodeGraph: NodeGraphMessageDiscriminant } |
-{ AbortTransaction: null } |
-{ AddSelectedLayers: null } |
-{ AlignSelectedLayers: null } |
-{ BackupDocument: null } |
-{ BooleanOperation: null } |
-{ ClearLayerTree: null } |
-{ CommitTransaction: null } |
-{ CreateEmptyFolder: null } |
-{ DebugPrintDocument: null } |
-{ DeleteLayer: null } |
-{ DeleteSelectedLayers: null } |
-{ DeleteSelectedManipulatorPoints: null } |
-{ DeselectAllLayers: null } |
-{ DeselectAllManipulatorPoints: null } |
-{ DirtyRenderDocument: null } |
-{ DirtyRenderDocumentInOutlineView: null } |
-{ DocumentHistoryBackward: null } |
-{ DocumentHistoryForward: null } |
-{ DocumentStructureChanged: null } |
-{ DuplicateSelectedLayers: null } |
-{ ExportDocument: null } |
-{ FlipSelectedLayers: null } |
-{ FolderChanged: null } |
-{ FrameClear: null } |
-{ GroupSelectedLayers: null } |
-{ LayerChanged: null } |
-{ MoveSelectedLayersTo: null } |
-{ MoveSelectedManipulatorPoints: null } |
-{ NodeGraphFrameGenerate: null } |
-{ NodeGraphFrameImaginate: null } |
-{ NodeGraphFrameImaginateRandom: null } |
-{ NodeGraphFrameImaginateTerminate: null } |
-{ NudgeSelectedLayers: null } |
-{ PasteImage: null } |
-{ Redo: null } |
-{ RenameLayer: null } |
-{ RenderDocument: null } |
-{ RollbackTransaction: null } |
-{ SaveDocument: null } |
-{ SelectAllLayers: null } |
-{ SelectedLayersLower: null } |
-{ SelectedLayersLowerToBack: null } |
-{ SelectedLayersRaise: null } |
-{ SelectedLayersRaiseToFront: null } |
-{ SelectedLayersReorder: null } |
-{ SelectLayer: null } |
-{ SetBlendModeForSelectedLayers: null } |
-{ SetImageBlobUrl: null } |
-{ SetLayerExpansion: null } |
-{ SetLayerName: null } |
-{ SetOpacityForSelectedLayers: null } |
-{ SetOverlaysVisibility: null } |
-{ SetSelectedLayers: null } |
-{ SetSnapping: null } |
-{ SetTextboxEditability: null } |
-{ SetViewMode: null } |
-{ StartTransaction: null } |
-{ ToggleLayerExpansion: null } |
-{ ToggleLayerVisibility: null } |
-{ ToggleSelectedHandleMirroring: null } |
-{ Undo: null } |
-{ UndoFinished: null } |
-{ UngroupLayers: null } |
-{ UngroupSelectedLayers: null } |
-{ UpdateLayerMetadata: null } |
-{ ZoomCanvasTo100Percent: null } |
-{ ZoomCanvasTo200Percent: null } |
-{ ZoomCanvasToFitAll: null };
+"AbortTransaction" |
+"AddSelectedLayers" |
+"AlignSelectedLayers" |
+"BackupDocument" |
+"BooleanOperation" |
+"ClearLayerTree" |
+"CommitTransaction" |
+"CreateEmptyFolder" |
+"DebugPrintDocument" |
+"DeleteLayer" |
+"DeleteSelectedLayers" |
+"DeleteSelectedManipulatorPoints" |
+"DeselectAllLayers" |
+"DeselectAllManipulatorPoints" |
+"DirtyRenderDocument" |
+"DirtyRenderDocumentInOutlineView" |
+"DocumentHistoryBackward" |
+"DocumentHistoryForward" |
+"DocumentStructureChanged" |
+"DuplicateSelectedLayers" |
+"ExportDocument" |
+"FlipSelectedLayers" |
+"FolderChanged" |
+"FrameClear" |
+"GroupSelectedLayers" |
+"LayerChanged" |
+"MoveSelectedLayersTo" |
+"MoveSelectedManipulatorPoints" |
+"NodeGraphFrameGenerate" |
+"NodeGraphFrameImaginate" |
+"NodeGraphFrameImaginateRandom" |
+"NodeGraphFrameImaginateTerminate" |
+"NudgeSelectedLayers" |
+"PasteImage" |
+"Redo" |
+"RenameLayer" |
+"RenderDocument" |
+"RollbackTransaction" |
+"SaveDocument" |
+"SelectAllLayers" |
+"SelectedLayersLower" |
+"SelectedLayersLowerToBack" |
+"SelectedLayersRaise" |
+"SelectedLayersRaiseToFront" |
+"SelectedLayersReorder" |
+"SelectLayer" |
+"SetBlendModeForSelectedLayers" |
+"SetImageBlobUrl" |
+"SetLayerExpansion" |
+"SetLayerName" |
+"SetOpacityForSelectedLayers" |
+"SetOverlaysVisibility" |
+"SetSelectedLayers" |
+"SetSnapping" |
+"SetTextboxEditability" |
+"SetViewMode" |
+"StartTransaction" |
+"ToggleLayerExpansion" |
+"ToggleLayerVisibility" |
+"ToggleSelectedHandleMirroring" |
+"Undo" |
+"UndoFinished" |
+"UngroupLayers" |
+"UngroupSelectedLayers" |
+"UpdateLayerMetadata" |
+"ZoomCanvasTo100Percent" |
+"ZoomCanvasTo200Percent" |
+"ZoomCanvasToFitAll";
 
 export type DropdownEntryData =
 {
@@ -187,30 +187,30 @@ tooltip: string
 };
 
 export type EllipseToolMessageDiscriminant =
-{ Abort: null } |
-{ DragStart: null } |
-{ DragStop: null } |
-{ Resize: null };
+"Abort" |
+"DragStart" |
+"DragStop" |
+"Resize";
 
 export type ExportDialogMessageDiscriminant =
-{ FileName: null } |
-{ FileType: null } |
-{ ScaleFactor: null } |
-{ ExportBounds: null } |
-{ Submit: null };
+"FileName" |
+"FileType" |
+"ScaleFactor" |
+"ExportBounds" |
+"Submit";
 
 export type EyedropperToolMessageDiscriminant =
-{ Abort: null } |
-{ LeftPointerDown: null } |
-{ LeftPointerUp: null } |
-{ PointerMove: null } |
-{ RightPointerDown: null } |
-{ RightPointerUp: null };
+"Abort" |
+"LeftPointerDown" |
+"LeftPointerUp" |
+"PointerMove" |
+"RightPointerDown" |
+"RightPointerUp";
 
 export type FillToolMessageDiscriminant =
-{ Abort: null } |
-{ LeftPointerDown: null } |
-{ RightPointerDown: null };
+"Abort" |
+"LeftPointerDown" |
+"RightPointerDown";
 
 export type Font =
 {
@@ -228,33 +228,33 @@ tooltip: string
 };
 
 export type FreehandToolMessageDiscriminant =
-{ Abort: null } |
-{ DragStart: null } |
-{ DragStop: null } |
-{ PointerMove: null } |
-{ UpdateOptions: null };
+"Abort" |
+"DragStart" |
+"DragStop" |
+"PointerMove" |
+"UpdateOptions";
 
 export type FrontendDocumentDetails =
 {
 isAutoSaved: boolean,
 isSaved: boolean,
 name: string,
-id: number
+id: bigint
 };
 
 export type FrontendGraphDataType =
-{ general: null } |
-{ raster: null } |
-{ color: null } |
-{ number: null } |
-{ vector: null } |
-{ number: null } |
-{ number: null } |
-{ vec2: null };
+"general" |
+"raster" |
+"color" |
+"number" |
+"vector" |
+"number" |
+"number" |
+"vec2";
 
 export type FrontendImageData =
 {
-path: Array<number>,
+path: Array<bigint>,
 mime: string
 };
 
@@ -262,7 +262,7 @@ export type FrontendMessage =
 { DisplayDialog: {
 icon: string
 } } |
-{ DisplayDialogDismiss: null } |
+"DisplayDialogDismiss" |
 { DisplayDialogPanic: {
 panicInfo: string,
 header: string,
@@ -274,7 +274,7 @@ lineWidth: (undefined | number),
 fontSize: number,
 color: Color
 } } |
-{ DisplayRemoveEditableTextbox: null } |
+"DisplayRemoveEditableTextbox" |
 { TriggerAboutGraphiteLocalizedCommitDate: {
 commitDate: string
 } } |
@@ -298,59 +298,59 @@ maskBlurPx: number,
 maskFillContent: ImaginateMaskStartingFill,
 hostname: string,
 refreshFrequency: number,
-documentId: number,
-layerPath: Array<number>,
-nodePath: Array<number>
+documentId: bigint,
+layerPath: Array<bigint>,
+nodePath: Array<bigint>
 } } |
 { TriggerImaginateTerminate: {
-documentId: number,
-layerPath: Array<number>,
-nodePath: Array<number>,
+documentId: bigint,
+layerPath: Array<bigint>,
+nodePath: Array<bigint>,
 hostname: string
 } } |
-{ TriggerImport: null } |
+"TriggerImport" |
 { TriggerIndexedDbRemoveDocument: {
-documentId: number
+documentId: bigint
 } } |
 { TriggerIndexedDbWriteDocument: {
 document: string,
 details: FrontendDocumentDetails,
 version: string
 } } |
-{ TriggerLoadAutoSaveDocuments: null } |
-{ TriggerLoadPreferences: null } |
+"TriggerLoadAutoSaveDocuments" |
+"TriggerLoadPreferences" |
 { TriggerNodeGraphFrameGenerate: {
-documentId: number,
-layerPath: Array<number>,
+documentId: bigint,
+layerPath: Array<bigint>,
 svg: string,
 size: DVec2,
-imaginateNode: (undefined | Array<number>)
+imaginateNode: (undefined | Array<bigint>)
 } } |
-{ TriggerOpenDocument: null } |
-{ TriggerPaste: null } |
+"TriggerOpenDocument" |
+"TriggerPaste" |
 { TriggerRasterDownload: {
 svg: string,
 name: string,
 mime: string,
 size: (Array<number> & { length: 2 })
 } } |
-{ TriggerRefreshBoundsOfViewports: null } |
+"TriggerRefreshBoundsOfViewports" |
 { TriggerRevokeBlobUrl: {
 url: string
 } } |
 { TriggerSavePreferences: {
 preferences: PreferencesMessageHandler
 } } |
-{ TriggerTextCommit: null } |
+"TriggerTextCommit" |
 { TriggerTextCopy: {
 copyText: string
 } } |
-{ TriggerViewportResize: null } |
+"TriggerViewportResize" |
 { TriggerVisitLink: {
 url: string
 } } |
 { UpdateActiveDocument: {
-documentId: number
+documentId: bigint
 } } |
 { UpdateDialogDetails: {
 layoutTarget: LayoutTarget,
@@ -399,7 +399,7 @@ secondaryColor: string,
 setColorChoice: (undefined | string)
 } } |
 { UpdateImageData: {
-documentId: number,
+documentId: bigint,
 imageData: Array<FrontendImageData>
 } } |
 { UpdateInputHints: {
@@ -425,7 +425,7 @@ layoutTarget: LayoutTarget,
 diff: Array<WidgetDiff>
 } } |
 { UpdateNodeGraphSelection: {
-selected: Array<number>
+selected: Array<bigint>
 } } |
 { UpdateNodeGraphVisibility: {
 visible: boolean
@@ -458,66 +458,66 @@ diff: Array<WidgetDiff>
 } };
 
 export type FrontendMessageDiscriminant =
-{ DisplayDialog: null } |
-{ DisplayDialogDismiss: null } |
-{ DisplayDialogPanic: null } |
-{ DisplayEditableTextbox: null } |
-{ DisplayRemoveEditableTextbox: null } |
-{ TriggerAboutGraphiteLocalizedCommitDate: null } |
-{ TriggerFileDownload: null } |
-{ TriggerFontLoad: null } |
-{ TriggerImaginateCheckServerStatus: null } |
-{ TriggerImaginateGenerate: null } |
-{ TriggerImaginateTerminate: null } |
-{ TriggerImport: null } |
-{ TriggerIndexedDbRemoveDocument: null } |
-{ TriggerIndexedDbWriteDocument: null } |
-{ TriggerLoadAutoSaveDocuments: null } |
-{ TriggerLoadPreferences: null } |
-{ TriggerNodeGraphFrameGenerate: null } |
-{ TriggerOpenDocument: null } |
-{ TriggerPaste: null } |
-{ TriggerRasterDownload: null } |
-{ TriggerRefreshBoundsOfViewports: null } |
-{ TriggerRevokeBlobUrl: null } |
-{ TriggerSavePreferences: null } |
-{ TriggerTextCommit: null } |
-{ TriggerTextCopy: null } |
-{ TriggerViewportResize: null } |
-{ TriggerVisitLink: null } |
-{ UpdateActiveDocument: null } |
-{ UpdateDialogDetails: null } |
-{ UpdateDocumentArtboards: null } |
-{ UpdateDocumentArtwork: null } |
-{ UpdateDocumentBarLayout: null } |
-{ UpdateDocumentLayerDetails: null } |
-{ UpdateDocumentLayerTreeStructure: null } |
-{ UpdateDocumentLayerTreeStructureJs: null } |
-{ UpdateDocumentModeLayout: null } |
-{ UpdateDocumentOverlays: null } |
-{ UpdateDocumentRulers: null } |
-{ UpdateDocumentScrollbars: null } |
-{ UpdateEyedropperSamplingState: null } |
-{ UpdateImageData: null } |
-{ UpdateInputHints: null } |
-{ UpdateLayerTreeOptionsLayout: null } |
-{ UpdateMenuBarLayout: null } |
-{ UpdateMouseCursor: null } |
-{ UpdateNodeGraph: null } |
-{ UpdateNodeGraphBarLayout: null } |
-{ UpdateNodeGraphSelection: null } |
-{ UpdateNodeGraphVisibility: null } |
-{ UpdateNodeTypes: null } |
-{ UpdateOpenDocumentsList: null } |
-{ UpdatePropertyPanelOptionsLayout: null } |
-{ UpdatePropertyPanelSectionsLayout: null } |
-{ UpdateToolOptionsLayout: null } |
-{ UpdateToolShelfLayout: null } |
-{ UpdateWorkingColorsLayout: null };
+"DisplayDialog" |
+"DisplayDialogDismiss" |
+"DisplayDialogPanic" |
+"DisplayEditableTextbox" |
+"DisplayRemoveEditableTextbox" |
+"TriggerAboutGraphiteLocalizedCommitDate" |
+"TriggerFileDownload" |
+"TriggerFontLoad" |
+"TriggerImaginateCheckServerStatus" |
+"TriggerImaginateGenerate" |
+"TriggerImaginateTerminate" |
+"TriggerImport" |
+"TriggerIndexedDbRemoveDocument" |
+"TriggerIndexedDbWriteDocument" |
+"TriggerLoadAutoSaveDocuments" |
+"TriggerLoadPreferences" |
+"TriggerNodeGraphFrameGenerate" |
+"TriggerOpenDocument" |
+"TriggerPaste" |
+"TriggerRasterDownload" |
+"TriggerRefreshBoundsOfViewports" |
+"TriggerRevokeBlobUrl" |
+"TriggerSavePreferences" |
+"TriggerTextCommit" |
+"TriggerTextCopy" |
+"TriggerViewportResize" |
+"TriggerVisitLink" |
+"UpdateActiveDocument" |
+"UpdateDialogDetails" |
+"UpdateDocumentArtboards" |
+"UpdateDocumentArtwork" |
+"UpdateDocumentBarLayout" |
+"UpdateDocumentLayerDetails" |
+"UpdateDocumentLayerTreeStructure" |
+"UpdateDocumentLayerTreeStructureJs" |
+"UpdateDocumentModeLayout" |
+"UpdateDocumentOverlays" |
+"UpdateDocumentRulers" |
+"UpdateDocumentScrollbars" |
+"UpdateEyedropperSamplingState" |
+"UpdateImageData" |
+"UpdateInputHints" |
+"UpdateLayerTreeOptionsLayout" |
+"UpdateMenuBarLayout" |
+"UpdateMouseCursor" |
+"UpdateNodeGraph" |
+"UpdateNodeGraphBarLayout" |
+"UpdateNodeGraphSelection" |
+"UpdateNodeGraphVisibility" |
+"UpdateNodeTypes" |
+"UpdateOpenDocumentsList" |
+"UpdatePropertyPanelOptionsLayout" |
+"UpdatePropertyPanelSectionsLayout" |
+"UpdateToolOptionsLayout" |
+"UpdateToolShelfLayout" |
+"UpdateWorkingColorsLayout";
 
 export type FrontendNode =
 {
-id: number,
+id: bigint,
 displayName: string,
 primaryInput: (undefined | FrontendGraphDataType),
 exposedInputs: Array<NodeGraphInput>,
@@ -529,9 +529,9 @@ output: boolean
 
 export type FrontendNodeLink =
 {
-linkStart: number,
-linkEnd: number,
-linkEndInputIndex: number
+linkStart: bigint,
+linkEnd: bigint,
+linkEndInputIndex: bigint
 };
 
 export type FrontendNodeType =
@@ -541,17 +541,17 @@ category: string
 };
 
 export type GlobalsMessageDiscriminant =
-{ SetPlatform: null };
+"SetPlatform";
 
 export type GradientToolMessageDiscriminant =
-{ Abort: null } |
-{ DocumentIsDirty: null } |
-{ DeleteStop: null } |
-{ InsertStop: null } |
-{ PointerDown: null } |
-{ PointerMove: null } |
-{ PointerUp: null } |
-{ UpdateOptions: null };
+"Abort" |
+"DocumentIsDirty" |
+"DeleteStop" |
+"InsertStop" |
+"PointerDown" |
+"PointerMove" |
+"PointerUp" |
+"UpdateOptions";
 
 export type HintData =
 Array<HintGroup>;
@@ -593,7 +593,7 @@ size: DVec2
 
 export type ImaginateGenerationParameters =
 {
-seed: number,
+seed: bigint,
 samples: number,
 samplingMethod: string,
 denoisingStrength: (undefined | number),
@@ -612,37 +612,37 @@ size: DVec2
 };
 
 export type ImaginateMaskPaintMode =
-{ Inpaint: null } |
-{ Outpaint: null };
+"Inpaint" |
+"Outpaint";
 
 export type ImaginateMaskStartingFill =
-{ Fill: null } |
-{ Original: null } |
-{ LatentNoise: null } |
-{ LatentNothing: null };
+"Fill" |
+"Original" |
+"LatentNoise" |
+"LatentNothing";
 
 export type ImaginateToolMessageDiscriminant =
-{ Abort: null } |
-{ DragStart: null } |
-{ DragStop: null } |
-{ Resize: null };
+"Abort" |
+"DragStart" |
+"DragStop" |
+"Resize";
 
 export type InputMapperMessageDiscriminant =
 { KeyDown: KeyDiscriminant } |
 { KeyUp: KeyDiscriminant } |
-{ DoubleClick: null } |
-{ PointerMove: null } |
-{ WheelScroll: null };
+"DoubleClick" |
+"PointerMove" |
+"WheelScroll";
 
 export type InputPreprocessorMessageDiscriminant =
-{ BoundsOfViewports: null } |
-{ DoubleClick: null } |
-{ KeyDown: null } |
-{ KeyUp: null } |
-{ PointerDown: null } |
-{ PointerMove: null } |
-{ PointerUp: null } |
-{ WheelScroll: null };
+"BoundsOfViewports" |
+"DoubleClick" |
+"KeyDown" |
+"KeyUp" |
+"PointerDown" |
+"PointerMove" |
+"PointerUp" |
+"WheelScroll";
 
 export type InvisibleStandinInput =
 {
@@ -653,124 +653,124 @@ export type JsRawBuffer =
 Array<number>;
 
 export type KeyDiscriminant =
-{ Digit0: null } |
-{ Digit1: null } |
-{ Digit2: null } |
-{ Digit3: null } |
-{ Digit4: null } |
-{ Digit5: null } |
-{ Digit6: null } |
-{ Digit7: null } |
-{ Digit8: null } |
-{ Digit9: null } |
-{ KeyA: null } |
-{ KeyB: null } |
-{ KeyC: null } |
-{ KeyD: null } |
-{ KeyE: null } |
-{ KeyF: null } |
-{ KeyG: null } |
-{ KeyH: null } |
-{ KeyI: null } |
-{ KeyJ: null } |
-{ KeyK: null } |
-{ KeyL: null } |
-{ KeyM: null } |
-{ KeyN: null } |
-{ KeyO: null } |
-{ KeyP: null } |
-{ KeyQ: null } |
-{ KeyR: null } |
-{ KeyS: null } |
-{ KeyT: null } |
-{ KeyU: null } |
-{ KeyV: null } |
-{ KeyW: null } |
-{ KeyX: null } |
-{ KeyY: null } |
-{ KeyZ: null } |
-{ Backquote: null } |
-{ Backslash: null } |
-{ BracketLeft: null } |
-{ BracketRight: null } |
-{ Comma: null } |
-{ Equal: null } |
-{ Minus: null } |
-{ Period: null } |
-{ Quote: null } |
-{ Semicolon: null } |
-{ Slash: null } |
-{ Alt: null } |
-{ Meta: null } |
-{ Shift: null } |
-{ Control: null } |
-{ Backspace: null } |
-{ CapsLock: null } |
-{ ContextMenu: null } |
-{ Enter: null } |
-{ Space: null } |
-{ Tab: null } |
-{ Delete: null } |
-{ End: null } |
-{ Help: null } |
-{ Home: null } |
-{ Insert: null } |
-{ PageDown: null } |
-{ PageUp: null } |
-{ ArrowDown: null } |
-{ ArrowLeft: null } |
-{ ArrowRight: null } |
-{ ArrowUp: null } |
-{ NumLock: null } |
-{ NumpadAdd: null } |
-{ NumpadHash: null } |
-{ NumpadMultiply: null } |
-{ NumpadParenLeft: null } |
-{ NumpadParenRight: null } |
-{ Escape: null } |
-{ F1: null } |
-{ F2: null } |
-{ F3: null } |
-{ F4: null } |
-{ F5: null } |
-{ F6: null } |
-{ F7: null } |
-{ F8: null } |
-{ F9: null } |
-{ F10: null } |
-{ F11: null } |
-{ F12: null } |
-{ F13: null } |
-{ F14: null } |
-{ F15: null } |
-{ F16: null } |
-{ F17: null } |
-{ F18: null } |
-{ F19: null } |
-{ F20: null } |
-{ F21: null } |
-{ F22: null } |
-{ F23: null } |
-{ F24: null } |
-{ Fn: null } |
-{ FnLock: null } |
-{ PrintScreen: null } |
-{ ScrollLock: null } |
-{ Pause: null } |
-{ Unidentified: null } |
-{ Command: null } |
-{ Accel: null } |
-{ Lmb: null } |
-{ Rmb: null } |
-{ Mmb: null } |
-{ NumKeys: null };
+"Digit0" |
+"Digit1" |
+"Digit2" |
+"Digit3" |
+"Digit4" |
+"Digit5" |
+"Digit6" |
+"Digit7" |
+"Digit8" |
+"Digit9" |
+"KeyA" |
+"KeyB" |
+"KeyC" |
+"KeyD" |
+"KeyE" |
+"KeyF" |
+"KeyG" |
+"KeyH" |
+"KeyI" |
+"KeyJ" |
+"KeyK" |
+"KeyL" |
+"KeyM" |
+"KeyN" |
+"KeyO" |
+"KeyP" |
+"KeyQ" |
+"KeyR" |
+"KeyS" |
+"KeyT" |
+"KeyU" |
+"KeyV" |
+"KeyW" |
+"KeyX" |
+"KeyY" |
+"KeyZ" |
+"Backquote" |
+"Backslash" |
+"BracketLeft" |
+"BracketRight" |
+"Comma" |
+"Equal" |
+"Minus" |
+"Period" |
+"Quote" |
+"Semicolon" |
+"Slash" |
+"Alt" |
+"Meta" |
+"Shift" |
+"Control" |
+"Backspace" |
+"CapsLock" |
+"ContextMenu" |
+"Enter" |
+"Space" |
+"Tab" |
+"Delete" |
+"End" |
+"Help" |
+"Home" |
+"Insert" |
+"PageDown" |
+"PageUp" |
+"ArrowDown" |
+"ArrowLeft" |
+"ArrowRight" |
+"ArrowUp" |
+"NumLock" |
+"NumpadAdd" |
+"NumpadHash" |
+"NumpadMultiply" |
+"NumpadParenLeft" |
+"NumpadParenRight" |
+"Escape" |
+"F1" |
+"F2" |
+"F3" |
+"F4" |
+"F5" |
+"F6" |
+"F7" |
+"F8" |
+"F9" |
+"F10" |
+"F11" |
+"F12" |
+"F13" |
+"F14" |
+"F15" |
+"F16" |
+"F17" |
+"F18" |
+"F19" |
+"F20" |
+"F21" |
+"F22" |
+"F23" |
+"F24" |
+"Fn" |
+"FnLock" |
+"PrintScreen" |
+"ScrollLock" |
+"Pause" |
+"Unidentified" |
+"Command" |
+"Accel" |
+"Lmb" |
+"Rmb" |
+"Mmb" |
+"NumKeys";
 
 export type LayerDataTypeDiscriminant =
-{ Folder: null } |
-{ Shape: null } |
-{ Text: null } |
-{ Image: null } |
-{ NodeGraphFrame: null };
+"Folder" |
+"Shape" |
+"Text" |
+"Image" |
+"NodeGraphFrame";
 
 export type LayerMetadata =
 {
@@ -785,13 +785,13 @@ tooltip: string,
 visible: boolean,
 layerType: LayerDataTypeDiscriminant,
 layerMetadata: LayerMetadata,
-path: Array<number>,
+path: Array<bigint>,
 thumbnail: string
 };
 
 export type LayerReferenceInput =
 {
-value: (undefined | Array<number>),
+value: (undefined | Array<bigint>),
 layerName: (undefined | string),
 layerType: (undefined | LayerDataTypeDiscriminant),
 disabled: boolean,
@@ -821,30 +821,30 @@ export type LayoutKeysGroup =
 Array<LayoutKey>;
 
 export type LayoutMessageDiscriminant =
-{ ResendActiveWidget: null } |
-{ SendLayout: null } |
-{ UpdateLayout: null };
+"ResendActiveWidget" |
+"SendLayout" |
+"UpdateLayout";
 
 export type LayoutTarget =
-{ DialogDetails: null } |
-{ DocumentBar: null } |
-{ DocumentMode: null } |
-{ LayerTreeOptions: null } |
-{ MenuBar: null } |
-{ NodeGraphBar: null } |
-{ PropertiesOptions: null } |
-{ PropertiesSections: null } |
-{ ToolOptions: null } |
-{ ToolShelf: null } |
-{ WorkingColors: null } |
-{ LayoutTargetLength: null };
+"DialogDetails" |
+"DocumentBar" |
+"DocumentMode" |
+"LayerTreeOptions" |
+"MenuBar" |
+"NodeGraphBar" |
+"PropertiesOptions" |
+"PropertiesSections" |
+"ToolOptions" |
+"ToolShelf" |
+"WorkingColors" |
+"LayoutTargetLength";
 
 export type LineToolMessageDiscriminant =
-{ Abort: null } |
-{ DragStart: null } |
-{ DragStop: null } |
-{ Redraw: null } |
-{ UpdateOptions: null };
+"Abort" |
+"DragStart" |
+"DragStop" |
+"Redraw" |
+"UpdateOptions";
 
 export type MenuBarEntry =
 {
@@ -859,11 +859,11 @@ export type MenuBarEntryChildren =
 Array<Array<MenuBarEntry>>;
 
 export type MenuBarMessageDiscriminant =
-{ SendLayout: null };
+"SendLayout";
 
 export type MessageDiscriminant =
-{ NoOp: null } |
-{ Init: null } |
+"NoOp" |
+"Init" |
 { Broadcast: BroadcastMessageDiscriminant } |
 { Debug: DebugMessageDiscriminant } |
 { Dialog: DialogMessageDiscriminant } |
@@ -878,69 +878,69 @@ export type MessageDiscriminant =
 { Workspace: WorkspaceMessageDiscriminant };
 
 export type MouseCursorIcon =
-{ Default: null } |
-{ None: null } |
-{ ZoomIn: null } |
-{ ZoomOut: null } |
-{ Grabbing: null } |
-{ Crosshair: null } |
-{ Text: null } |
-{ Move: null } |
-{ NSResize: null } |
-{ EWResize: null } |
-{ NESWResize: null } |
-{ NWSEResize: null } |
-{ Rotate: null };
+"Default" |
+"None" |
+"ZoomIn" |
+"ZoomOut" |
+"Grabbing" |
+"Crosshair" |
+"Text" |
+"Move" |
+"NSResize" |
+"EWResize" |
+"NESWResize" |
+"NWSEResize" |
+"Rotate";
 
 export type MouseMotion =
-{ None: null } |
-{ Lmb: null } |
-{ Rmb: null } |
-{ Mmb: null } |
-{ ScrollUp: null } |
-{ ScrollDown: null } |
-{ Drag: null } |
-{ LmbDrag: null } |
-{ RmbDrag: null } |
-{ MmbDrag: null };
+"None" |
+"Lmb" |
+"Rmb" |
+"Mmb" |
+"ScrollUp" |
+"ScrollDown" |
+"Drag" |
+"LmbDrag" |
+"RmbDrag" |
+"MmbDrag";
 
 export type NavigateToolMessageDiscriminant =
-{ Abort: null } |
-{ ClickZoom: null } |
-{ PointerMove: null } |
-{ RotateCanvasBegin: null } |
-{ TransformCanvasEnd: null } |
-{ TranslateCanvasBegin: null } |
-{ ZoomCanvasBegin: null };
+"Abort" |
+"ClickZoom" |
+"PointerMove" |
+"RotateCanvasBegin" |
+"TransformCanvasEnd" |
+"TranslateCanvasBegin" |
+"ZoomCanvasBegin";
 
 export type NavigationMessageDiscriminant =
-{ DecreaseCanvasZoom: null } |
-{ FitViewportToBounds: null } |
-{ IncreaseCanvasZoom: null } |
-{ PointerMove: null } |
-{ RotateCanvasBegin: null } |
-{ SetCanvasRotation: null } |
-{ SetCanvasZoom: null } |
-{ TransformCanvasEnd: null } |
-{ TranslateCanvas: null } |
-{ TranslateCanvasBegin: null } |
-{ TranslateCanvasByViewportFraction: null } |
-{ WheelCanvasTranslate: null } |
-{ WheelCanvasZoom: null } |
-{ ZoomCanvasBegin: null };
+"DecreaseCanvasZoom" |
+"FitViewportToBounds" |
+"IncreaseCanvasZoom" |
+"PointerMove" |
+"RotateCanvasBegin" |
+"SetCanvasRotation" |
+"SetCanvasZoom" |
+"TransformCanvasEnd" |
+"TranslateCanvas" |
+"TranslateCanvasBegin" |
+"TranslateCanvasByViewportFraction" |
+"WheelCanvasTranslate" |
+"WheelCanvasZoom" |
+"ZoomCanvasBegin";
 
 export type NewDocumentDialogMessageDiscriminant =
-{ Name: null } |
-{ Infinite: null } |
-{ DimensionsX: null } |
-{ DimensionsY: null } |
-{ Submit: null };
+"Name" |
+"Infinite" |
+"DimensionsX" |
+"DimensionsY" |
+"Submit";
 
 export type NodeGraphFrameToolMessageDiscriminant =
-{ Abort: null } |
-{ DragStart: null } |
-{ DragStop: null } |
-{ Resize: null };
+"Abort" |
+"DragStart" |
+"DragStop" |
+"Resize";
 
 export type NodeGraphInput =
 {
@@ -949,33 +949,33 @@ name: string
 };
 
 export type NodeGraphMessageDiscriminant =
-{ CloseNodeGraph: null } |
-{ ConnectNodesByLink: null } |
-{ Copy: null } |
-{ CreateNode: null } |
-{ Cut: null } |
-{ DeleteNode: null } |
-{ DeleteSelectedNodes: null } |
-{ DisconnectNodes: null } |
-{ DoubleClickNode: null } |
-{ DuplicateSelectedNodes: null } |
-{ ExitNestedNetwork: null } |
-{ ExposeInput: null } |
-{ InsertNode: null } |
-{ MoveSelectedNodes: null } |
-{ OpenNodeGraph: null } |
-{ PasteNodes: null } |
-{ SelectNodes: null } |
-{ SendGraph: null } |
-{ SetDrawing: null } |
-{ SetInputValue: null } |
-{ SetNodeInput: null } |
-{ SetQualifiedInputValue: null } |
-{ ShiftNode: null } |
-{ ToggleHidden: null } |
-{ ToggleHiddenImpl: null } |
-{ TogglePreview: null } |
-{ TogglePreviewImpl: null };
+"CloseNodeGraph" |
+"ConnectNodesByLink" |
+"Copy" |
+"CreateNode" |
+"Cut" |
+"DeleteNode" |
+"DeleteSelectedNodes" |
+"DisconnectNodes" |
+"DoubleClickNode" |
+"DuplicateSelectedNodes" |
+"ExitNestedNetwork" |
+"ExposeInput" |
+"InsertNode" |
+"MoveSelectedNodes" |
+"OpenNodeGraph" |
+"PasteNodes" |
+"SelectNodes" |
+"SendGraph" |
+"SetDrawing" |
+"SetInputValue" |
+"SetNodeInput" |
+"SetQualifiedInputValue" |
+"ShiftNode" |
+"ToggleHidden" |
+"ToggleHiddenImpl" |
+"TogglePreview" |
+"TogglePreviewImpl";
 
 export type NumberInput =
 {
@@ -998,13 +998,13 @@ minWidth: number
 };
 
 export type NumberInputIncrementBehavior =
-{ Add: null } |
-{ Multiply: null } |
-{ Callback: null };
+"Add" |
+"Multiply" |
+"Callback";
 
 export type NumberInputMode =
-{ Increment: null } |
-{ Range: null };
+"Increment" |
+"Range";
 
 export type OptionalInput =
 {
@@ -1015,9 +1015,9 @@ tooltip: string
 };
 
 export type OverlaysMessageDiscriminant =
-{ DispatchOperation: null } |
-{ ClearAllOverlays: null } |
-{ Rerender: null };
+"DispatchOperation" |
+"ClearAllOverlays" |
+"Rerender";
 
 export type ParameterExposeButton =
 {
@@ -1027,25 +1027,25 @@ tooltip: string
 };
 
 export type PathToolMessageDiscriminant =
-{ Abort: null } |
-{ DocumentIsDirty: null } |
-{ SelectionChanged: null } |
-{ Delete: null } |
-{ DragStart: null } |
-{ DragStop: null } |
-{ InsertPoint: null } |
-{ PointerMove: null };
+"Abort" |
+"DocumentIsDirty" |
+"SelectionChanged" |
+"Delete" |
+"DragStart" |
+"DragStop" |
+"InsertPoint" |
+"PointerMove";
 
 export type PenToolMessageDiscriminant =
-{ DocumentIsDirty: null } |
-{ Abort: null } |
-{ SelectionChanged: null } |
-{ Confirm: null } |
-{ DragStart: null } |
-{ DragStop: null } |
-{ PointerMove: null } |
-{ Undo: null } |
-{ UpdateOptions: null };
+"DocumentIsDirty" |
+"Abort" |
+"SelectionChanged" |
+"Confirm" |
+"DragStart" |
+"DragStop" |
+"PointerMove" |
+"Undo" |
+"UpdateOptions";
 
 export type PivotAssist =
 {
@@ -1054,16 +1054,16 @@ disabled: boolean
 };
 
 export type PivotPosition =
-{ None: null } |
-{ TopLeft: null } |
-{ TopCenter: null } |
-{ TopRight: null } |
-{ CenterLeft: null } |
-{ Center: null } |
-{ CenterRight: null } |
-{ BottomLeft: null } |
-{ BottomCenter: null } |
-{ BottomRight: null };
+"None" |
+"TopLeft" |
+"TopCenter" |
+"TopRight" |
+"CenterLeft" |
+"Center" |
+"CenterRight" |
+"BottomLeft" |
+"BottomCenter" |
+"BottomRight";
 
 export type PopoverButton =
 {
@@ -1077,49 +1077,49 @@ tooltip: string
 export type PortfolioMessageDiscriminant =
 { MenuBar: MenuBarMessageDiscriminant } |
 { Document: DocumentMessageDiscriminant } |
-{ DocumentPassMessage: null } |
-{ AutoSaveActiveDocument: null } |
-{ AutoSaveDocument: null } |
-{ CloseActiveDocumentWithConfirmation: null } |
-{ CloseAllDocuments: null } |
-{ CloseDocument: null } |
-{ CloseDocumentWithConfirmation: null } |
-{ Copy: null } |
-{ Cut: null } |
-{ DeleteDocument: null } |
-{ DestroyAllDocuments: null } |
-{ FontLoaded: null } |
-{ ImaginateCheckServerStatus: null } |
-{ ImaginateSetGeneratingStatus: null } |
-{ ImaginateSetImageData: null } |
-{ ImaginateSetServerStatus: null } |
-{ Import: null } |
-{ LoadDocumentResources: null } |
-{ LoadFont: null } |
-{ NewDocumentWithName: null } |
-{ NextDocument: null } |
-{ OpenDocument: null } |
-{ OpenDocumentFile: null } |
-{ OpenDocumentFileWithId: null } |
-{ Paste: null } |
-{ PasteIntoFolder: null } |
-{ PasteSerializedData: null } |
-{ PrevDocument: null } |
-{ ProcessNodeGraphFrame: null } |
-{ SelectDocument: null } |
-{ SetActiveDocument: null } |
-{ SetImageBlobUrl: null } |
-{ UpdateDocumentWidgets: null } |
-{ UpdateOpenDocumentsList: null };
+"DocumentPassMessage" |
+"AutoSaveActiveDocument" |
+"AutoSaveDocument" |
+"CloseActiveDocumentWithConfirmation" |
+"CloseAllDocuments" |
+"CloseDocument" |
+"CloseDocumentWithConfirmation" |
+"Copy" |
+"Cut" |
+"DeleteDocument" |
+"DestroyAllDocuments" |
+"FontLoaded" |
+"ImaginateCheckServerStatus" |
+"ImaginateSetGeneratingStatus" |
+"ImaginateSetImageData" |
+"ImaginateSetServerStatus" |
+"Import" |
+"LoadDocumentResources" |
+"LoadFont" |
+"NewDocumentWithName" |
+"NextDocument" |
+"OpenDocument" |
+"OpenDocumentFile" |
+"OpenDocumentFileWithId" |
+"Paste" |
+"PasteIntoFolder" |
+"PasteSerializedData" |
+"PrevDocument" |
+"ProcessNodeGraphFrame" |
+"SelectDocument" |
+"SetActiveDocument" |
+"SetImageBlobUrl" |
+"UpdateDocumentWidgets" |
+"UpdateOpenDocumentsList";
 
 export type PreferencesDialogMessageDiscriminant =
-{ Confirm: null };
+"Confirm";
 
 export type PreferencesMessageDiscriminant =
-{ Load: null } |
-{ ResetToDefaults: null } |
-{ ImaginateRefreshFrequency: null } |
-{ ImaginateServerHostname: null };
+"Load" |
+"ResetToDefaults" |
+"ImaginateRefreshFrequency" |
+"ImaginateServerHostname";
 
 export type PreferencesMessageHandler =
 {
@@ -1128,22 +1128,22 @@ imaginate_refresh_frequency: number
 };
 
 export type PropertiesPanelMessageDiscriminant =
-{ CheckSelectedWasDeleted: null } |
-{ CheckSelectedWasUpdated: null } |
-{ ClearSelection: null } |
-{ Deactivate: null } |
-{ Init: null } |
-{ ModifyFill: null } |
-{ ModifyFont: null } |
-{ ModifyName: null } |
-{ ModifyPreserveAspect: null } |
-{ ModifyStroke: null } |
-{ ModifyText: null } |
-{ ModifyTransform: null } |
-{ ResendActiveProperties: null } |
-{ SetActiveLayers: null } |
-{ SetPivot: null } |
-{ UpdateSelectedDocumentProperties: null };
+"CheckSelectedWasDeleted" |
+"CheckSelectedWasUpdated" |
+"ClearSelection" |
+"Deactivate" |
+"Init" |
+"ModifyFill" |
+"ModifyFont" |
+"ModifyName" |
+"ModifyPreserveAspect" |
+"ModifyStroke" |
+"ModifyText" |
+"ModifyTransform" |
+"ResendActiveProperties" |
+"SetActiveLayers" |
+"SetPivot" |
+"UpdateSelectedDocumentProperties";
 
 export type RadioEntryData =
 {
@@ -1164,23 +1164,23 @@ export type RawBuffer =
 Array<number>;
 
 export type RectangleToolMessageDiscriminant =
-{ Abort: null } |
-{ DragStart: null } |
-{ DragStop: null } |
-{ Resize: null };
+"Abort" |
+"DragStart" |
+"DragStop" |
+"Resize";
 
 export type SelectToolMessageDiscriminant =
-{ Abort: null } |
-{ DocumentIsDirty: null } |
-{ SelectionChanged: null } |
-{ Align: null } |
-{ DragStart: null } |
-{ DragStop: null } |
-{ EditLayer: null } |
-{ FlipHorizontal: null } |
-{ FlipVertical: null } |
-{ PointerMove: null } |
-{ SetPivot: null };
+"Abort" |
+"DocumentIsDirty" |
+"SelectionChanged" |
+"Align" |
+"DragStart" |
+"DragStop" |
+"EditLayer" |
+"FlipHorizontal" |
+"FlipVertical" |
+"PointerMove" |
+"SetPivot";
 
 export type Separator =
 {
@@ -1189,30 +1189,30 @@ type: SeparatorType
 };
 
 export type SeparatorDirection =
-{ Horizontal: null } |
-{ Vertical: null };
+"Horizontal" |
+"Vertical";
 
 export type SeparatorType =
-{ Related: null } |
-{ Unrelated: null } |
-{ Section: null } |
-{ List: null };
+"Related" |
+"Unrelated" |
+"Section" |
+"List";
 
 export type ShapeToolMessageDiscriminant =
-{ Abort: null } |
-{ DragStart: null } |
-{ DragStop: null } |
-{ Resize: null } |
-{ UpdateOptions: null };
+"Abort" |
+"DragStart" |
+"DragStop" |
+"Resize" |
+"UpdateOptions";
 
 export type SplineToolMessageDiscriminant =
-{ Abort: null } |
-{ Confirm: null } |
-{ DragStart: null } |
-{ DragStop: null } |
-{ PointerMove: null } |
-{ Undo: null } |
-{ UpdateOptions: null };
+"Abort" |
+"Confirm" |
+"DragStart" |
+"DragStop" |
+"PointerMove" |
+"Undo" |
+"UpdateOptions";
 
 export type SwatchPairInput =
 {
@@ -1261,13 +1261,13 @@ value: string
 };
 
 export type TextToolMessageDiscriminant =
-{ Abort: null } |
-{ DocumentIsDirty: null } |
-{ CommitText: null } |
-{ Interact: null } |
-{ TextChange: null } |
-{ UpdateBounds: null } |
-{ UpdateOptions: null };
+"Abort" |
+"DocumentIsDirty" |
+"CommitText" |
+"Interact" |
+"TextChange" |
+"UpdateBounds" |
+"UpdateOptions";
 
 export type ToolMessageDiscriminant =
 { Select: SelectToolMessageDiscriminant } |
@@ -1287,48 +1287,48 @@ export type ToolMessageDiscriminant =
 { Text: TextToolMessageDiscriminant } |
 { Imaginate: ImaginateToolMessageDiscriminant } |
 { NodeGraphFrame: NodeGraphFrameToolMessageDiscriminant } |
-{ ActivateToolSelect: null } |
-{ ActivateToolArtboard: null } |
-{ ActivateToolNavigate: null } |
-{ ActivateToolEyedropper: null } |
-{ ActivateToolText: null } |
-{ ActivateToolFill: null } |
-{ ActivateToolGradient: null } |
-{ ActivateToolPath: null } |
-{ ActivateToolPen: null } |
-{ ActivateToolFreehand: null } |
-{ ActivateToolSpline: null } |
-{ ActivateToolLine: null } |
-{ ActivateToolRectangle: null } |
-{ ActivateToolEllipse: null } |
-{ ActivateToolShape: null } |
-{ ActivateToolImaginate: null } |
-{ ActivateToolNodeGraphFrame: null } |
-{ ActivateTool: null } |
-{ DeactivateTools: null } |
-{ InitTools: null } |
-{ RefreshToolOptions: null } |
-{ ResetColors: null } |
-{ SelectPrimaryColor: null } |
-{ SelectRandomPrimaryColor: null } |
-{ SelectSecondaryColor: null } |
-{ SwapColors: null } |
-{ UpdateCursor: null } |
-{ UpdateHints: null };
+"ActivateToolSelect" |
+"ActivateToolArtboard" |
+"ActivateToolNavigate" |
+"ActivateToolEyedropper" |
+"ActivateToolText" |
+"ActivateToolFill" |
+"ActivateToolGradient" |
+"ActivateToolPath" |
+"ActivateToolPen" |
+"ActivateToolFreehand" |
+"ActivateToolSpline" |
+"ActivateToolLine" |
+"ActivateToolRectangle" |
+"ActivateToolEllipse" |
+"ActivateToolShape" |
+"ActivateToolImaginate" |
+"ActivateToolNodeGraphFrame" |
+"ActivateTool" |
+"DeactivateTools" |
+"InitTools" |
+"RefreshToolOptions" |
+"ResetColors" |
+"SelectPrimaryColor" |
+"SelectRandomPrimaryColor" |
+"SelectSecondaryColor" |
+"SwapColors" |
+"UpdateCursor" |
+"UpdateHints";
 
 export type TransformLayerMessageDiscriminant =
-{ ApplyTransformOperation: null } |
-{ BeginGrab: null } |
-{ BeginRotate: null } |
-{ BeginScale: null } |
-{ CancelTransformOperation: null } |
-{ ConstrainX: null } |
-{ ConstrainY: null } |
-{ PointerMove: null } |
-{ TypeBackspace: null } |
-{ TypeDecimalPoint: null } |
-{ TypeDigit: null } |
-{ TypeNegate: null };
+"ApplyTransformOperation" |
+"BeginGrab" |
+"BeginRotate" |
+"BeginScale" |
+"CancelTransformOperation" |
+"ConstrainX" |
+"ConstrainY" |
+"PointerMove" |
+"TypeBackspace" |
+"TypeDecimalPoint" |
+"TypeDigit" |
+"TypeNegate";
 
 export type Widget =
 { BreadcrumbTrailButtons: BreadcrumbTrailButtons } |
@@ -1355,22 +1355,22 @@ export type Widget =
 
 export type WidgetDiff =
 {
-widgetPath: Array<number>,
+widgetPath: Array<bigint>,
 newValue: DiffUpdate
 };
 
 export type WidgetHolder =
 {
-widgetId: number,
+widgetId: bigint,
 widget: Widget
 };
 
 export type WorkspaceMessageDiscriminant =
-{ NodeGraphToggleVisibility: null };
+"NodeGraphToggleVisibility";
 
 export type FrontendMessage_keyed = { DisplayDialog: {
 icon: string
-}, DisplayDialogDismiss: null, DisplayDialogPanic: {
+}, DisplayDialogDismiss: void, DisplayDialogPanic: {
 panicInfo: string,
 header: string,
 description: string
@@ -1379,7 +1379,7 @@ text: string,
 lineWidth: (undefined | number),
 fontSize: number,
 color: Color
-}, DisplayRemoveEditableTextbox: null, TriggerAboutGraphiteLocalizedCommitDate: {
+}, DisplayRemoveEditableTextbox: void, TriggerAboutGraphiteLocalizedCommitDate: {
 commitDate: string
 }, TriggerFileDownload: {
 document: string,
@@ -1398,41 +1398,41 @@ maskBlurPx: number,
 maskFillContent: ImaginateMaskStartingFill,
 hostname: string,
 refreshFrequency: number,
-documentId: number,
-layerPath: Array<number>,
-nodePath: Array<number>
+documentId: bigint,
+layerPath: Array<bigint>,
+nodePath: Array<bigint>
 }, TriggerImaginateTerminate: {
-documentId: number,
-layerPath: Array<number>,
-nodePath: Array<number>,
+documentId: bigint,
+layerPath: Array<bigint>,
+nodePath: Array<bigint>,
 hostname: string
-}, TriggerImport: null, TriggerIndexedDbRemoveDocument: {
-documentId: number
+}, TriggerImport: void, TriggerIndexedDbRemoveDocument: {
+documentId: bigint
 }, TriggerIndexedDbWriteDocument: {
 document: string,
 details: FrontendDocumentDetails,
 version: string
-}, TriggerLoadAutoSaveDocuments: null, TriggerLoadPreferences: null, TriggerNodeGraphFrameGenerate: {
-documentId: number,
-layerPath: Array<number>,
+}, TriggerLoadAutoSaveDocuments: void, TriggerLoadPreferences: void, TriggerNodeGraphFrameGenerate: {
+documentId: bigint,
+layerPath: Array<bigint>,
 svg: string,
 size: DVec2,
-imaginateNode: (undefined | Array<number>)
-}, TriggerOpenDocument: null, TriggerPaste: null, TriggerRasterDownload: {
+imaginateNode: (undefined | Array<bigint>)
+}, TriggerOpenDocument: void, TriggerPaste: void, TriggerRasterDownload: {
 svg: string,
 name: string,
 mime: string,
 size: (Array<number> & { length: 2 })
-}, TriggerRefreshBoundsOfViewports: null, TriggerRevokeBlobUrl: {
+}, TriggerRefreshBoundsOfViewports: void, TriggerRevokeBlobUrl: {
 url: string
 }, TriggerSavePreferences: {
 preferences: PreferencesMessageHandler
-}, TriggerTextCommit: null, TriggerTextCopy: {
+}, TriggerTextCommit: void, TriggerTextCopy: {
 copyText: string
-}, TriggerViewportResize: null, TriggerVisitLink: {
+}, TriggerViewportResize: void, TriggerVisitLink: {
 url: string
 }, UpdateActiveDocument: {
-documentId: number
+documentId: bigint
 }, UpdateDialogDetails: {
 layoutTarget: LayoutTarget,
 diff: Array<WidgetDiff>
@@ -1468,7 +1468,7 @@ primaryColor: string,
 secondaryColor: string,
 setColorChoice: (undefined | string)
 }, UpdateImageData: {
-documentId: number,
+documentId: bigint,
 imageData: Array<FrontendImageData>
 }, UpdateInputHints: {
 hintData: HintData
@@ -1487,7 +1487,7 @@ links: Array<FrontendNodeLink>
 layoutTarget: LayoutTarget,
 diff: Array<WidgetDiff>
 }, UpdateNodeGraphSelection: {
-selected: Array<number>
+selected: Array<bigint>
 }, UpdateNodeGraphVisibility: {
 visible: boolean
 }, UpdateNodeTypes: {

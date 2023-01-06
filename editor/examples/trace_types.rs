@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use document_legacy::layers::layer_info::LayerDataTypeDiscriminant;
 use graph_craft::imaginate_input::{ImaginateMaskPaintMode, ImaginateMaskStartingFill};
 use graphite_editor::messages::{
@@ -31,8 +33,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 	for (type_name, type_def) in &registry {
 		if option_env!("SKIP_DISCRIMINANT") != None && type_name.ends_with("Discriminant") {
-			// special_enum = registry[type_name[0..type_name.len()-"Discriminant".len()]]
-
 			continue;
 		}
 		let ts_typedef = match type_def {
@@ -40,11 +40,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 			serde_reflection::ContainerFormat::NewTypeStruct(inner) => format_type(inner),
 			serde_reflection::ContainerFormat::TupleStruct(inner) => format_tuple(inner),
 			serde_reflection::ContainerFormat::Struct(inner) => format_struct(inner),
-			serde_reflection::ContainerFormat::Enum(inner) => inner
-				.values()
-				.map(|pair| -> String { format!("{{ {}: {} }}", pair.name, format_variant_type(&pair.value)) })
-				.collect::<Vec<String>>()
-				.join(" |\n"),
+			serde_reflection::ContainerFormat::Enum(inner) => format_enum(inner),
 		};
 		println!("export type {type_name} =\n{ts_typedef};\n");
 	}
@@ -74,6 +70,20 @@ fn format_struct(inner: &[Named<Format>]) -> String {
 	)
 }
 
+fn format_enum(inner: &BTreeMap<u32, Named<VariantFormat>>) -> String {
+	inner
+		.values()
+		.map(|pair| -> String {
+			if let VariantFormat::Unit = pair.value {
+				format!(r#""{}""#, pair.name)
+			} else {
+				format!("{{ {}: {} }}", pair.name, format_variant_type(&pair.value))
+			}
+		})
+		.collect::<Vec<String>>()
+		.join(" |\n")
+}
+
 fn format_type(inner: &Format) -> String {
 	match inner {
 		Format::Variable(_) => "any".into(),
@@ -83,18 +93,18 @@ fn format_type(inner: &Format) -> String {
 		Format::I8 => "number".into(),
 		Format::I16 => "number".into(),
 		Format::I32 => "number".into(),
-		Format::I64 => "number".into(),
-		Format::I128 => "number".into(),
+		Format::I64 => "bigint".into(),
+		Format::I128 => "bigint".into(),
 		Format::U8 => "number".into(),
 		Format::U16 => "number".into(),
 		Format::U32 => "number".into(),
-		Format::U64 => "number".into(),
-		Format::U128 => "number".into(),
+		Format::U64 => "bigint".into(),
+		Format::U128 => "bigint".into(),
 		Format::F32 => "number".into(),
 		Format::F64 => "number".into(),
 		Format::Char => "number".into(),
 		Format::Str => "string".into(),
-		Format::Bytes => "string".into(),
+		Format::Bytes => "Uint8Array".into(),
 		Format::Option(inner) => format!("(undefined | {})", format_type(inner)),
 		Format::Seq(inner) => format!("Array<{}>", format_type(inner)),
 		Format::Map { key, value } => format!("Record<{}, {}>", format_type(key), format_type(value)),
@@ -106,7 +116,7 @@ fn format_type(inner: &Format) -> String {
 fn format_variant_type(format: &VariantFormat) -> String {
 	match format {
 		VariantFormat::Variable(_) => "any".into(),
-		VariantFormat::Unit => "null".into(),
+		VariantFormat::Unit => "void".into(), // only for reference. enum variant like this is formatted as string
 		VariantFormat::NewType(inner) => format_type(inner),
 		VariantFormat::Tuple(inner) => format_tuple(inner),
 		VariantFormat::Struct(inner) => format_struct(inner),
