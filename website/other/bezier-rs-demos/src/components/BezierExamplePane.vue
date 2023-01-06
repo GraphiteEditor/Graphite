@@ -12,12 +12,12 @@
 		</div>
 		<div class="example-row">
 			<div v-for="(example, index) in examples" :key="index">
-				<BezierExample
+				<bezier-example
 					v-if="!example.disabled"
 					:title="example.title"
-					:points="example.points"
-					:callback="callback"
-					:sliderOptions="example.sliderOptions"
+					:points="JSON.stringify(example.points)"
+					:name="name"
+					:sliderOptions="JSON.stringify(example.sliderOptions)"
 					:triggerOnMouseMove="triggerOnMouseMove"
 					:computeType="computeTypeChoice"
 				/>
@@ -31,9 +31,10 @@
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
 
-import { BezierCallback, BezierCurveType, BEZIER_CURVE_TYPE, ComputeType, ExampleOptions, SliderOption } from "@/utils/types";
+// eslint-disable-next-line no-restricted-imports, import/extensions, @typescript-eslint/no-unused-vars
+import BezierExample from "./BezierExample";
 
-import BezierExample from "@/components/BezierExample.vue";
+import { BezierCallback, BezierCurveType, BEZIER_CURVE_TYPE, ComputeType, ExampleOptions, SliderOption } from "@/utils/types";
 
 export default defineComponent({
 	props: {
