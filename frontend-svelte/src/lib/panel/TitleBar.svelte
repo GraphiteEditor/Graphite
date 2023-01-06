@@ -4,38 +4,39 @@
 
 <script lang="ts">
   import LayoutRow from "$lib/layout/LayoutRow.svelte";
-  import MenuBarInput from "$lib/widgets/inputs/MenuBarInput.svelte";
-  import WindowButtonsMac from "$lib/window/title-bar/WindowButtonsMac.svelte";
-  import WindowButtonsWeb from "$lib/window/title-bar/WindowButtonsWeb.svelte";
-  import WindowButtonsWindows from "$lib/window/title-bar/WindowButtonsWindows.svelte";
-  import WindowTitle from "$lib/window/title-bar/WindowTitle.svelte";
+  // import MenuBarInput from "$lib/widgets/inputs/MenuBarInput.svelte";
+  // import WindowButtonsMac from "$lib/window/title-bar/WindowButtonsMac.svelte";
+  // import WindowButtonsWeb from "$lib/window/title-bar/WindowButtonsWeb.svelte";
+  // import WindowButtonsWindows from "$lib/window/title-bar/WindowButtonsWindows.svelte";
+  // import WindowTitle from "$lib/window/title-bar/WindowTitle.svelte";
 
   export let platform: Platform;
   export let maximized: boolean;
 
   // inject: ["portfolio"],
 
-  $: index = portfolio.state.activeDocumentIndex;
-  $: name = portfolio.state.documents[index]?.displayName || "";
-  $: windowTitle = `${name}${name && " - "}Graphite`;
+  // $: index = portfolio.state.activeDocumentIndex;
+  // $: name = portfolio.state.documents[index]?.displayName || "";
+  // $: windowTitle = `${name}${name && " - "}Graphite`;
+  let windowTitle = "TODO - Graphite";
 </script>
 
 <LayoutRow class="title-bar">
   <LayoutRow class="header-part">
     {#if platform === "Mac"}
-      <WindowButtonsMac {maximized} />
+      <!-- <WindowButtonsMac {maximized} /> -->
     {:else}
-      <MenuBarInput />
+      <!-- <MenuBarInput /> -->
     {/if}
   </LayoutRow>
   <LayoutRow class="header-part">
-    <WindowTitle text={windowTitle} />
+    <!-- <WindowTitle text={windowTitle} /> -->
   </LayoutRow>
   <LayoutRow class="header-part">
     {#if platform === "Windows" || platform === "Linux"}
-      <WindowButtonsWindows {maximized} />
+      <!-- <WindowButtonsWindows {maximized} /> -->
     {:else if platform === "Web"}
-      <WindowButtonsWeb {maximized} />
+      <!-- <WindowButtonsWeb {maximized} /> -->
     {/if}
   </LayoutRow>
 </LayoutRow>
