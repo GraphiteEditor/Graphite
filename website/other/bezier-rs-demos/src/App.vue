@@ -8,10 +8,9 @@
 
 	<h2>Beziers</h2>
 	<div v-for="[name, feature] in Object.entries(bezierFeatures)" :key="name">
-		<BezierExamplePane
+		<bezier-example-pane
 			:name="name"
-			:callback="feature.callback"
-			:exampleOptions="feature.exampleOptions"
+			:exampleOptions="JSON.stringify(feature.exampleOptions)"
 			:triggerOnMouseMove="feature.triggerOnMouseMove"
 			:chooseComputeType="feature.chooseComputeType"
 		/>
@@ -85,10 +84,12 @@
 <script lang="ts">
 import { defineComponent } from "vue";
 
+// eslint-disable-next-line no-restricted-imports
+import BezierExamplePane from "./components/BezierExamplePane";
+
 import bezierFeatures from "@/features/bezierFeatures";
 import subpathFeatures from "@/features/subpathFeatures";
 
-import BezierExamplePane from "@/components/BezierExamplePane.vue";
 import SubpathExamplePane from "@/components/SubpathExamplePane.vue";
 
 export default defineComponent({

@@ -16,7 +16,7 @@ module.exports = defineConfig({
 			.tap(options => {
 			options.compilerOptions = {
 				...(options.compilerOptions || {}),
-				isCustomElement: tag => tag === "bezier-example"
+				isCustomElement: tag => tag === "bezier-example" || tag === "bezier-example-pane"
 			};
 			return options;
 			});

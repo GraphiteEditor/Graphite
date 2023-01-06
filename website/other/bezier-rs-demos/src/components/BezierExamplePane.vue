@@ -31,7 +31,7 @@
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
 
-// eslint-disable-next-line no-restricted-imports, import/extensions, @typescript-eslint/no-unused-vars
+// eslint-disable-next-line no-restricted-imports
 import BezierExample from "./BezierExample";
 
 import { BezierCallback, BezierCurveType, BEZIER_CURVE_TYPE, ComputeType, ExampleOptions, SliderOption } from "@/utils/types";

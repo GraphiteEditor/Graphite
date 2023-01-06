@@ -452,3 +452,4 @@ const bezierFeatures = {
 };
 
 export default bezierFeatures;
+export type BezierFeature = keyof typeof bezierFeatures;

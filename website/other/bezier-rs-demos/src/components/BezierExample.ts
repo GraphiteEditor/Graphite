@@ -1,6 +1,6 @@
 import { WasmBezier } from "@/../wasm/pkg";
 
-import bezierFeatures from "@/features/bezierFeatures";
+import bezierFeatures, { BezierFeature } from "@/features/bezierFeatures";
 import { getConstructorKey, getCurveType, BezierCallback, BezierCurveType, SliderOption, WasmBezierManipulatorKey, ComputeType } from "@/utils/types";
 
 const SELECTABLE_RANGE = 10;
@@ -18,7 +18,7 @@ class BezierExample extends HTMLElement {
 
 	points!: number[][];
 
-	name!: keyof typeof bezierFeatures;
+	name!: BezierFeature;
 
 	sliderOptions!: SliderOption[];
 
@@ -153,3 +153,9 @@ class BezierExample extends HTMLElement {
 window.customElements.define("bezier-example", BezierExample);
 
 export default BezierExample;
+
+declare global {   
+	interface HTMLElementTagNameMap {
+		"bezier-example": BezierExample;   
+ } 
+}
