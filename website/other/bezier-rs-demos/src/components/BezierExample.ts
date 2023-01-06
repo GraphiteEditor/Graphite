@@ -24,7 +24,7 @@ class BezierExample extends HTMLElement {
 
 	triggerOnMouseMove!: boolean;
 
-	computeTypeChoice!: ComputeType;
+	computeType!: ComputeType;
 
 	callback!: BezierCallback;
 
@@ -35,32 +35,37 @@ class BezierExample extends HTMLElement {
 
 	activeIndex!: number | undefined;
 
-	mutablePoints!: number[][];
+	sliderData!: Record<string, number>;
 
-	sliderData: any;
-
-	sliderUnits?: string | string[];
+	sliderUnits!: Record<string, string | string[]>;
 
 	static get observedAttributes(): string[] {
-		return ["title", "points", "name", "sliderOptions", "triggerOnMouseMove", "computeType"];
+		return ["computetype"];
+	}
+
+	attributeChangedCallback(name: string, oldValue: string, newValue: string): void {
+		if (name === "computetype" && oldValue) {
+			this.computeType = (newValue || "Parametric") as ComputeType;
+			const figure = this.querySelector("figure") as HTMLElement;
+			figure.innerHTML = this.callback(this.bezier, this.sliderData, undefined, this.computeType);
+		}
 	}
 
 	connectedCallback(): void {
 		this.title = this.getAttribute("title") || "";
-		this.points = JSON.parse(this.getAttribute("points") || "");
+		this.points = JSON.parse(this.getAttribute("points") || "[]");
 		this.name = this.getAttribute("name") as keyof typeof bezierFeatures;
-		this.sliderOptions = JSON.parse(this.getAttribute("sliderOptions") || "");
+		this.sliderOptions = JSON.parse(this.getAttribute("sliderOptions") || "[]");
 		this.triggerOnMouseMove = this.getAttribute("triggerOnMouseMove") === "true";
-		this.computeTypeChoice = (this.getAttribute("computeTypeChoice") || "Parametric") as ComputeType;
+		this.computeType = (this.getAttribute("computetype") || "Parametric") as ComputeType;
 
 		this.callback = bezierFeatures[this.name].callback as BezierCallback;
 		const curveType = getCurveType(this.points.length);
 
 		this.manipulatorKeys = MANIPULATOR_KEYS_FROM_BEZIER_TYPE[curveType];
 		this.bezier = WasmBezier[getConstructorKey(curveType)](this.points);
-		this.sliderData = Object.assign({}, ...this.sliderOptions.map((s) => ({ [s.variable]: s.default })));
 		this.activeIndex = undefined as number | undefined;
-		this.mutablePoints = JSON.parse(JSON.stringify(this.points));
+		this.sliderData = Object.assign({}, ...this.sliderOptions.map((s) => ({ [s.variable]: s.default })));
 		this.sliderUnits = Object.assign({}, ...this.sliderOptions.map((s) => ({ [s.variable]: s.unit })));
 
 		this.onMouseDown.bind(this);
@@ -69,12 +74,8 @@ class BezierExample extends HTMLElement {
 		this.render();
 
 		const figure = this.querySelector("figure") as HTMLElement;
-		figure.innerHTML = this.callback(this.bezier, this.sliderData, undefined, this.computeTypeChoice);
+		figure.innerHTML = this.callback(this.bezier, this.sliderData, undefined, this.computeType);
 	}
-
-	//   attributeChangedCallback(name, oldValue, newValue) {
-	//       this.render();
-	//   }
 
 	render(): void {
 		const header = document.createElement("h4");
@@ -89,13 +90,36 @@ class BezierExample extends HTMLElement {
 
 		this.append(header);
 		this.append(figure);
+
+		this.sliderOptions.forEach((sliderOption) => {
+			const sliderLabel = document.createElement("div");
+			const sliderData = this.sliderData[sliderOption.variable];
+			const sliderUnit = BezierExample.getSliderUnit(sliderData, this.sliderUnits[sliderOption.variable]);
+			sliderLabel.className = "slider-label";
+			sliderLabel.innerText = `${sliderOption.variable} = ${sliderData}${sliderUnit}`;
+			this.append(sliderLabel);
+
+			const sliderInput = document.createElement("input");
+			sliderInput.className = "slider-input";
+			sliderInput.type = "range";
+			sliderInput.max = String(sliderOption.max);
+			sliderInput.min = String(sliderOption.min);
+			sliderInput.step = String(sliderOption.step);
+			sliderInput.value = String(sliderOption.default);
+			sliderInput.addEventListener("input", (event: Event): void => {
+				this.sliderData[sliderOption.variable] = Number((event.target as HTMLInputElement).value);
+				sliderLabel.innerText = `${sliderOption.variable} = ${this.sliderData[sliderOption.variable]}${sliderUnit}`;
+				figure.innerHTML = this.callback(this.bezier, this.sliderData, undefined, this.computeType);
+			});
+			this.append(sliderInput);
+		});
 	}
 
 	onMouseDown(event: MouseEvent): void {
 		const mx = event.offsetX;
 		const my = event.offsetY;
 		for (let pointIndex = 0; pointIndex < this.points.length; pointIndex += 1) {
-			const point = this.mutablePoints[pointIndex];
+			const point = this.points[pointIndex];
 			if (point && Math.abs(mx - point[0]) < SELECTABLE_RANGE && Math.abs(my - point[1]) < SELECTABLE_RANGE) {
 				this.activeIndex = pointIndex;
 				return;
@@ -114,15 +138,15 @@ class BezierExample extends HTMLElement {
 
 		if (this.activeIndex !== undefined) {
 			this.bezier[this.manipulatorKeys[this.activeIndex]](mx, my);
-			this.mutablePoints[this.activeIndex] = [mx, my];
-			figure.innerHTML = this.callback(this.bezier, this.sliderData, undefined, this.computeTypeChoice);
+			this.points[this.activeIndex] = [mx, my];
+			figure.innerHTML = this.callback(this.bezier, this.sliderData, undefined, this.computeType);
 		} else if (this.triggerOnMouseMove) {
-			figure.innerHTML = this.callback(this.bezier, this.sliderData, [mx, my], this.computeTypeChoice);
+			figure.innerHTML = this.callback(this.bezier, this.sliderData, [mx, my], this.computeType);
 		}
 	}
 
-	static getSliderValue(sliderValue: number, sliderUnit?: string | string[]): string | undefined {
-		return Array.isArray(sliderUnit) ? sliderUnit[sliderValue] : sliderUnit;
+	static getSliderUnit(sliderValue: number, sliderUnit?: string | string[]): string {
+		return (Array.isArray(sliderUnit) ? sliderUnit[sliderValue] : sliderUnit) || "";
 	}
 }
 

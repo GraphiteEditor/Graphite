@@ -4,10 +4,10 @@
 		<div v-if="chooseComputeType" class="compute-type-choice">
 			<strong>ComputeType:</strong>
 
-			<input type="radio" :id="`${id}-parametric`" value="Parametric" v-model="computeTypeChoice" />
+			<input type="radio" :id="`${id}-parametric`" value="Parametric" v-model="computeType" />
 			<label :for="`${id}-parametric`">Parametric</label>
 
-			<input type="radio" :id="`${id}-euclidean`" value="Euclidean" v-model="computeTypeChoice" />
+			<input type="radio" :id="`${id}-euclidean`" value="Euclidean" v-model="computeType" />
 			<label :for="`${id}-euclidean`">Euclidean</label>
 		</div>
 		<div class="example-row">
@@ -19,7 +19,7 @@
 					:name="name"
 					:sliderOptions="JSON.stringify(example.sliderOptions)"
 					:triggerOnMouseMove="triggerOnMouseMove"
-					:computeType="computeTypeChoice"
+					:computetype="computeType"
 				/>
 			</div>
 		</div>
@@ -84,7 +84,7 @@ export default defineComponent({
 				};
 			}),
 			id: `${Math.random()}`.substring(2),
-			computeTypeChoice: "Parametric" as ComputeType,
+			computeType: "Parametric" as ComputeType,
 		};
 	},
 	components: {
