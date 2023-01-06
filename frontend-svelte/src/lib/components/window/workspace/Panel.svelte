@@ -81,7 +81,7 @@
           class="tab"
           classes={{ active: tabIndex === tabActiveIndex }}
           tooltip={tabLabel.tooltip || undefined}
-          click={(e) => {
+          on:click={(e) => {
             e.stopPropagation();
             if (e.button === 0) clickAction?.(tabIndex);
             if (e.button === 1) closeAction?.(tabIndex);

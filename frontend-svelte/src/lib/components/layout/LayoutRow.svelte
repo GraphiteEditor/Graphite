@@ -8,8 +8,6 @@
   export let tooltip: string | undefined = undefined;
   export let scrollableX: boolean = false;
   export let scrollableY: boolean = false;
-  export let click: ((e: MouseEvent) => void) | undefined = undefined;
-  export let pointerdown: ((e: PointerEvent) => void) | undefined = undefined;
 
   $: extraClasses = Object.entries(classes)
     .flatMap((classAndState) => (classAndState[1] ? [classAndState[0]] : []))
@@ -25,8 +23,8 @@
   class:scrollable-y={scrollableY}
   style={`${styleName} ${extraStyles}`.trim()}
   title={tooltip}
-  on:click={click}
-  on:pointerdown={pointerdown}
+  on:click
+  on:pointerdown
   {...$$restProps}
 >
   <slot />

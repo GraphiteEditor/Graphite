@@ -245,7 +245,7 @@
   }
 
   // To be called by the parent component. Measures the actual width of the floating menu content element and returns it in a promise.
-  async function measureAndEmitNaturalWidth(): Promise<void> {
+  export async function measureAndEmitNaturalWidth(): Promise<void> {
     // Wait for the changed content which fired the `updated()` Vue event to be put into the DOM
     await tick();
 

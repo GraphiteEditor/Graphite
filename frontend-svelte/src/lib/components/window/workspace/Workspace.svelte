@@ -172,7 +172,7 @@
         <LayoutRow
           class="workspace-grid-resize-gutter"
           data-gutter-vertical
-          pointerdown={resizePanel}
+          on:pointerdown={resizePanel}
         />
         <LayoutRow
           class="workspace-grid-subdivision"
@@ -190,7 +190,7 @@
     <LayoutCol
       class="workspace-grid-resize-gutter"
       data-gutter-horizontal
-      pointerdown={(e) => resizePanel(e)}
+      on:pointerdown={(e) => resizePanel(e)}
     />
     <LayoutCol
       class="workspace-grid-subdivision"
@@ -211,7 +211,7 @@
       <LayoutRow
         class="workspace-grid-resize-gutter"
         data-gutter-vertical
-        pointerdown={(e) => resizePanel(e)}
+        on:pointerdown={(e) => resizePanel(e)}
       />
       <LayoutRow
         class="workspace-grid-subdivision"
