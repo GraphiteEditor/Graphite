@@ -29,7 +29,7 @@
 	</LayoutRow>
 </template>
 
-<style lang="scss">
+<style lang="scss" global>
 .dropdown-input {
 	position: relative;
 
@@ -97,14 +97,14 @@
 </style>
 
 <script lang="ts">
-import { defineComponent, type PropType, toRaw } from "vue";
+
 
 import { type MenuListEntry } from "@/wasm-communication/messages";
 
-import MenuList from "@/components/floating-menus/MenuList.vue";
-import LayoutRow from "@/components/layout/LayoutRow.vue";
-import IconLabel from "@/components/widgets/labels/IconLabel.vue";
-import TextLabel from "@/components/widgets/labels/TextLabel.vue";
+import MenuList from "$lib/components/floating-menus/MenuList.svelte";
+import LayoutRow from "$lib/components/layout/LayoutRow.svelte";
+import IconLabel from "$lib/components/widgets/labels/IconLabel.svelte";
+import TextLabel from "$lib/components/widgets/labels/TextLabel.svelte";
 
 const DASH_ENTRY = { label: "-" };
 

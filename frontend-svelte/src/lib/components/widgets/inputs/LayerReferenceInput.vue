@@ -20,7 +20,7 @@
 	</LayoutRow>
 </template>
 
-<style lang="scss">
+<style lang="scss" global>
 .layer-reference-input {
 	position: relative;
 	flex: 1 0 auto;
@@ -91,17 +91,17 @@
 </style>
 
 <script lang="ts">
-import { defineComponent, type PropType } from "vue";
+
 
 import { currentDraggingElement } from "@/io-managers/drag";
 
 import type { LayerType, LayerTypeData } from "@/wasm-communication/messages";
 import { layerTypeData } from "@/wasm-communication/messages";
 
-import LayoutRow from "@/components/layout/LayoutRow.vue";
-import IconButton from "@/components/widgets/buttons/IconButton.vue";
-import IconLabel from "@/components/widgets/labels/IconLabel.vue";
-import TextLabel from "@/components/widgets/labels/TextLabel.vue";
+import LayoutRow from "$lib/components/layout/LayoutRow.svelte";
+import IconButton from "$lib/components/widgets/buttons/IconButton.svelte";
+import IconLabel from "$lib/components/widgets/labels/IconLabel.svelte";
+import TextLabel from "$lib/components/widgets/labels/TextLabel.svelte";
 
 export default defineComponent({
 	emits: ["update:value"],

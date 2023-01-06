@@ -4,7 +4,7 @@
 	</LayoutRow>
 </template>
 
-<style lang="scss">
+<style lang="scss" global>
 .optional-input {
 	flex-grow: 0;
 
@@ -26,12 +26,12 @@
 </style>
 
 <script lang="ts">
-import { defineComponent, type PropType } from "vue";
+
 
 import { type IconName } from "@/utility-functions/icons";
 
-import LayoutRow from "@/components/layout/LayoutRow.vue";
-import CheckboxInput from "@/components/widgets/inputs/CheckboxInput.vue";
+import LayoutRow from "$lib/components/layout/LayoutRow.svelte";
+import CheckboxInput from "$lib/components/widgets/inputs/CheckboxInput.svelte";
 
 export default defineComponent({
 	emits: ["update:checked"],

@@ -56,7 +56,7 @@
 	</div>
 </template>
 
-<style lang="scss">
+<style lang="scss" global>
 .widget-column {
 	flex: 0 0 auto;
 	display: flex;
@@ -114,32 +114,32 @@
 </style>
 
 <script lang="ts">
-import { defineComponent, type PropType } from "vue";
 
-import { debouncer } from "@/components/widgets/debounce";
+
+import { debouncer } from "$lib/components/widgets/debounce";
 import type { Widget } from "@/wasm-communication/messages";
 import { isWidgetColumn, isWidgetRow, type WidgetColumn, type WidgetRow } from "@/wasm-communication/messages";
 
-import PivotAssist from "@/components/widgets/assists/PivotAssist.vue";
-import BreadcrumbTrailButtons from "@/components/widgets/buttons/BreadcrumbTrailButtons.vue";
-import IconButton from "@/components/widgets/buttons/IconButton.vue";
-import ParameterExposeButton from "@/components/widgets/buttons/ParameterExposeButton.vue";
-import PopoverButton from "@/components/widgets/buttons/PopoverButton.vue";
-import TextButton from "@/components/widgets/buttons/TextButton.vue";
-import CheckboxInput from "@/components/widgets/inputs/CheckboxInput.vue";
-import ColorInput from "@/components/widgets/inputs/ColorInput.vue";
-import DropdownInput from "@/components/widgets/inputs/DropdownInput.vue";
-import FontInput from "@/components/widgets/inputs/FontInput.vue";
-import LayerReferenceInput from "@/components/widgets/inputs/LayerReferenceInput.vue";
-import NumberInput from "@/components/widgets/inputs/NumberInput.vue";
-import OptionalInput from "@/components/widgets/inputs/OptionalInput.vue";
-import RadioInput from "@/components/widgets/inputs/RadioInput.vue";
-import SwatchPairInput from "@/components/widgets/inputs/SwatchPairInput.vue";
-import TextAreaInput from "@/components/widgets/inputs/TextAreaInput.vue";
-import TextInput from "@/components/widgets/inputs/TextInput.vue";
-import IconLabel from "@/components/widgets/labels/IconLabel.vue";
-import Separator from "@/components/widgets/labels/Separator.vue";
-import TextLabel from "@/components/widgets/labels/TextLabel.vue";
+import PivotAssist from "$lib/components/widgets/assists/PivotAssist.svelte";
+import BreadcrumbTrailButtons from "$lib/components/widgets/buttons/BreadcrumbTrailButtons.svelte";
+import IconButton from "$lib/components/widgets/buttons/IconButton.svelte";
+import ParameterExposeButton from "$lib/components/widgets/buttons/ParameterExposeButton.svelte";
+import PopoverButton from "$lib/components/widgets/buttons/PopoverButton.svelte";
+import TextButton from "$lib/components/widgets/buttons/TextButton.svelte";
+import CheckboxInput from "$lib/components/widgets/inputs/CheckboxInput.svelte";
+import ColorInput from "$lib/components/widgets/inputs/ColorInput.svelte";
+import DropdownInput from "$lib/components/widgets/inputs/DropdownInput.svelte";
+import FontInput from "$lib/components/widgets/inputs/FontInput.svelte";
+import LayerReferenceInput from "$lib/components/widgets/inputs/LayerReferenceInput.svelte";
+import NumberInput from "$lib/components/widgets/inputs/NumberInput.svelte";
+import OptionalInput from "$lib/components/widgets/inputs/OptionalInput.svelte";
+import RadioInput from "$lib/components/widgets/inputs/RadioInput.svelte";
+import SwatchPairInput from "$lib/components/widgets/inputs/SwatchPairInput.svelte";
+import TextAreaInput from "$lib/components/widgets/inputs/TextAreaInput.svelte";
+import TextInput from "$lib/components/widgets/inputs/TextInput.svelte";
+import IconLabel from "$lib/components/widgets/labels/IconLabel.svelte";
+import Separator from "$lib/components/widgets/labels/Separator.svelte";
+import TextLabel from "$lib/components/widgets/labels/TextLabel.svelte";
 
 const SUFFIX_WIDGETS = ["PopoverButton"];
 

@@ -12,7 +12,7 @@
 	</div>
 </template>
 
-<style lang="scss">
+<style lang="scss" global>
 .pivot-assist {
 	position: relative;
 	flex: 0 0 auto;
@@ -102,7 +102,7 @@
 </style>
 
 <script lang="ts">
-import { defineComponent, type PropType } from "vue";
+
 
 import { type PivotPosition } from "@/wasm-communication/messages";
 

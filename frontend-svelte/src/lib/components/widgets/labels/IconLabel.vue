@@ -4,7 +4,7 @@
 	</LayoutRow>
 </template>
 
-<style lang="scss">
+<style lang="scss" global>
 .icon-label {
 	flex: 0 0 auto;
 	fill: var(--color-e-nearwhite);
@@ -31,11 +31,11 @@
 </style>
 
 <script lang="ts">
-import { defineComponent, type PropType } from "vue";
+
 
 import { type IconName, ICONS, ICON_COMPONENTS } from "@/utility-functions/icons";
 
-import LayoutRow from "@/components/layout/LayoutRow.vue";
+import LayoutRow from "$lib/components/layout/LayoutRow.svelte";
 
 export default defineComponent({
 	props: {

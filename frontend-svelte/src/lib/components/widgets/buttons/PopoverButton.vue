@@ -7,7 +7,7 @@
 	</LayoutRow>
 </template>
 
-<style lang="scss">
+<style lang="scss" global>
 .popover-button {
 	position: relative;
 	width: 16px;
@@ -52,13 +52,13 @@
 </style>
 
 <script lang="ts">
-import { defineComponent, type PropType } from "vue";
+
 
 import { type IconName } from "@/utility-functions/icons";
 
-import FloatingMenu from "@/components/layout/FloatingMenu.vue";
-import LayoutRow from "@/components/layout/LayoutRow.vue";
-import IconButton from "@/components/widgets/buttons/IconButton.vue";
+import FloatingMenu from "$lib/components/layout/FloatingMenu.svelte";
+import LayoutRow from "$lib/components/layout/LayoutRow.svelte";
+import IconButton from "$lib/components/widgets/buttons/IconButton.svelte";
 
 export default defineComponent({
 	props: {

@@ -15,7 +15,7 @@
 	</FloatingMenu>
 </template>
 
-<style lang="scss">
+<style lang="scss" global>
 .dialog-modal {
 	position: absolute;
 	pointer-events: none;
@@ -67,14 +67,14 @@
 </style>
 
 <script lang="ts">
-import { defineComponent } from "vue";
 
-import FloatingMenu from "@/components/layout/FloatingMenu.vue";
-import LayoutCol from "@/components/layout/LayoutCol.vue";
-import LayoutRow from "@/components/layout/LayoutRow.vue";
-import TextButton from "@/components/widgets/buttons/TextButton.vue";
-import IconLabel from "@/components/widgets/labels/IconLabel.vue";
-import WidgetLayout from "@/components/widgets/WidgetLayout.vue";
+
+import FloatingMenu from "$lib/components/layout/FloatingMenu.svelte";
+import LayoutCol from "$lib/components/layout/LayoutCol.svelte";
+import LayoutRow from "$lib/components/layout/LayoutRow.svelte";
+import TextButton from "$lib/components/widgets/buttons/TextButton.svelte";
+import IconLabel from "$lib/components/widgets/labels/IconLabel.svelte";
+import WidgetLayout from "$lib/components/widgets/WidgetLayout.svelte";
 
 export default defineComponent({
 	inject: ["dialog"],

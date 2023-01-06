@@ -1,4 +1,4 @@
-import { reactive } from "vue";
+
 
 import { type Editor } from "@/wasm-communication/editor";
 import { TriggerFontLoad } from "@/wasm-communication/messages";

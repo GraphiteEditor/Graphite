@@ -16,7 +16,7 @@
 	</LayoutRow>
 </template>
 
-<style lang="scss">
+<style lang="scss" global>
 .checkbox-input {
 	flex: 0 0 auto;
 	align-items: center;
@@ -82,12 +82,12 @@
 </style>
 
 <script lang="ts">
-import { defineComponent, type PropType } from "vue";
+
 
 import { type IconName } from "@/utility-functions/icons";
 
-import LayoutRow from "@/components/layout/LayoutRow.vue";
-import IconLabel from "@/components/widgets/labels/IconLabel.vue";
+import LayoutRow from "$lib/components/layout/LayoutRow.svelte";
+import IconLabel from "$lib/components/widgets/labels/IconLabel.svelte";
 
 export default defineComponent({
 	emits: ["update:checked"],

@@ -15,7 +15,7 @@
 	</button>
 </template>
 
-<style lang="scss">
+<style lang="scss" global>
 .text-button {
 	display: flex;
 	justify-content: center;
@@ -67,12 +67,12 @@
 </style>
 
 <script lang="ts">
-import { defineComponent, type PropType } from "vue";
+
 
 import { type IconName } from "@/utility-functions/icons";
 
-import IconLabel from "@/components/widgets/labels/IconLabel.vue";
-import TextLabel from "@/components/widgets/labels/TextLabel.vue";
+import IconLabel from "$lib/components/widgets/labels/IconLabel.svelte";
+import TextLabel from "$lib/components/widgets/labels/TextLabel.svelte";
 
 export default defineComponent({
 	props: {

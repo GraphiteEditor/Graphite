@@ -9,7 +9,7 @@
 	</LayoutCol>
 </template>
 
-<style lang="scss">
+<style lang="scss" global>
 .properties {
 	height: 100%;
 
@@ -30,13 +30,13 @@
 </style>
 
 <script lang="ts">
-import { defineComponent } from "vue";
+
 
 import { defaultWidgetLayout, patchWidgetLayout, UpdatePropertyPanelOptionsLayout, UpdatePropertyPanelSectionsLayout } from "@/wasm-communication/messages";
 
-import LayoutCol from "@/components/layout/LayoutCol.vue";
-import LayoutRow from "@/components/layout/LayoutRow.vue";
-import WidgetLayout from "@/components/widgets/WidgetLayout.vue";
+import LayoutCol from "$lib/components/layout/LayoutCol.svelte";
+import LayoutRow from "$lib/components/layout/LayoutRow.svelte";
+import WidgetLayout from "$lib/components/widgets/WidgetLayout.svelte";
 
 export default defineComponent({
 	inject: ["editor", "dialog"],

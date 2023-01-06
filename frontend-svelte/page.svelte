@@ -7,7 +7,7 @@
   <MainWindow />
 </div>
 
-<style lang="scss">
+<style lang="scss" global>
   :root {
     // Replace usage of `-rgb` variants with CSS color() function to calculate alpha when browsers support it
     // See https://developer.mozilla.org/en-US/docs/Web/CSS/color_value/color() and https://caniuse.com/css-color-function

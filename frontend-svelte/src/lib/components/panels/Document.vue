@@ -75,7 +75,7 @@
 	</LayoutCol>
 </template>
 
-<style lang="scss">
+<style lang="scss" global>
 .document {
 	height: 100%;
 
@@ -225,18 +225,18 @@
 </style>
 
 <script lang="ts">
-import { defineComponent, nextTick } from "vue";
+
 
 import { textInputCleanup } from "@/utility-functions/keyboard-entry";
 import { rasterizeSVGCanvas } from "@/utility-functions/rasterization";
 import { type DisplayEditableTextbox, type MouseCursorIcon, type XY } from "@/wasm-communication/messages";
 
-import EyedropperPreview, { ZOOM_WINDOW_DIMENSIONS } from "@/components/floating-menus/EyedropperPreview.vue";
-import LayoutCol from "@/components/layout/LayoutCol.vue";
-import LayoutRow from "@/components/layout/LayoutRow.vue";
-import CanvasRuler from "@/components/widgets/metrics/CanvasRuler.vue";
-import PersistentScrollbar from "@/components/widgets/metrics/PersistentScrollbar.vue";
-import WidgetLayout from "@/components/widgets/WidgetLayout.vue";
+import EyedropperPreview, { ZOOM_WINDOW_DIMENSIONS } from "$lib/components/floating-menus/EyedropperPreview.svelte";
+import LayoutCol from "$lib/components/layout/LayoutCol.svelte";
+import LayoutRow from "$lib/components/layout/LayoutRow.svelte";
+import CanvasRuler from "$lib/components/widgets/metrics/CanvasRuler.svelte";
+import PersistentScrollbar from "$lib/components/widgets/metrics/PersistentScrollbar.svelte";
+import WidgetLayout from "$lib/components/widgets/WidgetLayout.svelte";
 
 export default defineComponent({
 	inject: ["editor", "panels", "document"],

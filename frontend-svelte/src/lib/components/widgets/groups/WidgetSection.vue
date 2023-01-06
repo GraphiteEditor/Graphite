@@ -11,7 +11,7 @@
 	</LayoutCol>
 </template>
 
-<style lang="scss">
+<style lang="scss" global>
 .widget-section {
 	flex: 0 0 auto;
 
@@ -122,14 +122,14 @@
 </style>
 
 <script lang="ts">
-import { defineComponent, type PropType } from "vue";
+
 
 import { isWidgetRow, isWidgetSection, type LayoutGroup, type WidgetSection as WidgetSectionFromJsMessages } from "@/wasm-communication/messages";
 
-import LayoutCol from "@/components/layout/LayoutCol.vue";
-import LayoutRow from "@/components/layout/LayoutRow.vue";
-import TextLabel from "@/components/widgets/labels/TextLabel.vue";
-import WidgetRow from "@/components/widgets/WidgetRow.vue";
+import LayoutCol from "$lib/components/layout/LayoutCol.svelte";
+import LayoutRow from "$lib/components/layout/LayoutRow.svelte";
+import TextLabel from "$lib/components/widgets/labels/TextLabel.svelte";
+import WidgetRow from "$lib/components/widgets/WidgetRow.svelte";
 
 const WidgetSection = defineComponent({
 	name: "WidgetSection",

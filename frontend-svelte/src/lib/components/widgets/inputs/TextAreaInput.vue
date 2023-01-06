@@ -15,12 +15,12 @@
 	></FieldInput>
 </template>
 
-<style lang="scss"></style>
+<style lang="scss" global></style>
 
 <script lang="ts">
-import { defineComponent, type PropType } from "vue";
 
-import FieldInput from "@/components/widgets/inputs/FieldInput.vue";
+
+import FieldInput from "$lib/components/widgets/inputs/FieldInput.svelte";
 
 export default defineComponent({
 	emits: ["update:value", "commitText"],

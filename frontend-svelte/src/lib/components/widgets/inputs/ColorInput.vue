@@ -13,7 +13,7 @@
 	</LayoutRow>
 </template>
 
-<style lang="scss">
+<style lang="scss" global>
 .color-input {
 	box-sizing: border-box;
 	position: relative;
@@ -79,13 +79,13 @@
 </style>
 
 <script lang="ts">
-import { defineComponent, type PropType } from "vue";
+
 
 import { Color } from "@/wasm-communication/messages";
 
-import ColorPicker from "@/components/floating-menus/ColorPicker.vue";
-import LayoutRow from "@/components/layout/LayoutRow.vue";
-import TextLabel from "@/components/widgets/labels/TextLabel.vue";
+import ColorPicker from "$lib/components/floating-menus/ColorPicker.svelte";
+import LayoutRow from "$lib/components/layout/LayoutRow.svelte";
+import TextLabel from "$lib/components/widgets/labels/TextLabel.svelte";
 
 export default defineComponent({
 	emits: ["update:value", "update:open"],

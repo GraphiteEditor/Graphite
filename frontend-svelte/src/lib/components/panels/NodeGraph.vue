@@ -104,7 +104,7 @@
 	</LayoutCol>
 </template>
 
-<style lang="scss">
+<style lang="scss" global>
 .node-graph {
 	height: 100%;
 	position: relative;
@@ -313,7 +313,7 @@
 </style>
 
 <script lang="ts">
-import { defineComponent, nextTick } from "vue";
+
 
 // import type { FrontendNode } from "@/wasm-communication/messages";
 
@@ -321,13 +321,13 @@ import type { IconName } from "@/utility-functions/icons";
 
 import { UpdateNodeGraphSelection, type FrontendNodeLink } from "@/wasm-communication/messages";
 
-import LayoutCol from "@/components/layout/LayoutCol.vue";
-import LayoutRow from "@/components/layout/LayoutRow.vue";
-import TextButton from "@/components/widgets/buttons/TextButton.vue";
-import TextInput from "@/components/widgets/inputs/TextInput.vue";
-import IconLabel from "@/components/widgets/labels/IconLabel.vue";
-import TextLabel from "@/components/widgets/labels/TextLabel.vue";
-import WidgetLayout from "@/components/widgets/WidgetLayout.vue";
+import LayoutCol from "$lib/components/layout/LayoutCol.svelte";
+import LayoutRow from "$lib/components/layout/LayoutRow.svelte";
+import TextButton from "$lib/components/widgets/buttons/TextButton.svelte";
+import TextInput from "$lib/components/widgets/inputs/TextInput.svelte";
+import IconLabel from "$lib/components/widgets/labels/IconLabel.svelte";
+import TextLabel from "$lib/components/widgets/labels/TextLabel.svelte";
+import WidgetLayout from "$lib/components/widgets/WidgetLayout.svelte";
 
 const WHEEL_RATE = (1 / 600) * 3;
 const GRID_COLLAPSE_SPACING = 10;

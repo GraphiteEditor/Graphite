@@ -8,7 +8,7 @@
 	</div>
 </template>
 
-<style lang="scss">
+<style lang="scss" global>
 .persistent-scrollbar {
 	display: flex;
 	flex: 1 1 100%;
@@ -107,7 +107,7 @@
 </style>
 
 <script lang="ts">
-import { defineComponent, type PropType } from "vue";
+
 
 export type ScrollbarDirection = "Horizontal" | "Vertical";
 

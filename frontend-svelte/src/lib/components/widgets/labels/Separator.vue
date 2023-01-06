@@ -4,7 +4,7 @@
 	</div>
 </template>
 
-<style lang="scss">
+<style lang="scss" global>
 .separator {
 	&.vertical {
 		flex: 0 0 auto;
@@ -73,7 +73,7 @@
 </style>
 
 <script lang="ts">
-import { defineComponent, type PropType } from "vue";
+
 
 import { type SeparatorDirection, type SeparatorType } from "@/wasm-communication/messages";
 

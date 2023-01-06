@@ -36,7 +36,7 @@
 	</FieldInput>
 </template>
 
-<style lang="scss">
+<style lang="scss" global>
 .number-input {
 	&.increment {
 		// Widen the label and input margins from the edges by an extra 8px to make room for the increment arrows
@@ -242,11 +242,11 @@
 </style>
 
 <script lang="ts">
-import { defineComponent, type PropType } from "vue";
+
 
 import { type NumberInputMode, type NumberInputIncrementBehavior } from "@/wasm-communication/messages";
 
-import FieldInput from "@/components/widgets/inputs/FieldInput.vue";
+import FieldInput from "$lib/components/widgets/inputs/FieldInput.svelte";
 
 export default defineComponent({
 	emits: ["update:value"],

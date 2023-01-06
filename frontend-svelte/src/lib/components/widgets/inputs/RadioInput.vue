@@ -15,7 +15,7 @@
 	</LayoutRow>
 </template>
 
-<style lang="scss">
+<style lang="scss" global>
 .radio-input {
 	button {
 		background: var(--color-5-dullgray);
@@ -89,13 +89,13 @@
 </style>
 
 <script lang="ts">
-import { defineComponent, type PropType } from "vue";
+
 
 import { type RadioEntries, type RadioEntryData } from "@/wasm-communication/messages";
 
-import LayoutRow from "@/components/layout/LayoutRow.vue";
-import IconLabel from "@/components/widgets/labels/IconLabel.vue";
-import TextLabel from "@/components/widgets/labels/TextLabel.vue";
+import LayoutRow from "$lib/components/layout/LayoutRow.svelte";
+import IconLabel from "$lib/components/widgets/labels/IconLabel.svelte";
+import TextLabel from "$lib/components/widgets/labels/TextLabel.svelte";
 
 export default defineComponent({
 	emits: ["update:selectedIndex"],

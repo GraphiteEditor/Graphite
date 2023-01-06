@@ -6,7 +6,7 @@
 	</div>
 </template>
 
-<style lang="scss">
+<style lang="scss" global>
 .widget-layout {
 	height: 100%;
 	flex: 0 0 auto;
@@ -16,12 +16,12 @@
 </style>
 
 <script lang="ts">
-import { defineComponent, type PropType } from "vue";
+
 
 import { isWidgetColumn, isWidgetRow, isWidgetSection, type LayoutGroup, type WidgetLayout } from "@/wasm-communication/messages";
 
-import WidgetSection from "@/components/widgets/groups/WidgetSection.vue";
-import WidgetRow from "@/components/widgets/WidgetRow.vue";
+import WidgetSection from "$lib/components/widgets/groups/WidgetSection.svelte";
+import WidgetRow from "$lib/components/widgets/WidgetRow.svelte";
 
 export default defineComponent({
 	props: {

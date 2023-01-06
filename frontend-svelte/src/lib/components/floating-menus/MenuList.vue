@@ -58,7 +58,7 @@
 	</FloatingMenu>
 </template>
 
-<style lang="scss">
+<style lang="scss" global>
 .menu-list {
 	.floating-menu-container .floating-menu-content {
 		padding: 4px 0;
@@ -162,17 +162,17 @@
 </style>
 
 <script lang="ts">
-import { defineComponent, type PropType } from "vue";
+
 
 import { type MenuListEntry } from "@/wasm-communication/messages";
 
-import FloatingMenu, { type MenuDirection } from "@/components/layout/FloatingMenu.vue";
-import LayoutCol from "@/components/layout/LayoutCol.vue";
-import LayoutRow from "@/components/layout/LayoutRow.vue";
-import IconLabel from "@/components/widgets/labels/IconLabel.vue";
-import Separator from "@/components/widgets/labels/Separator.vue";
-import TextLabel from "@/components/widgets/labels/TextLabel.vue";
-import UserInputLabel from "@/components/widgets/labels/UserInputLabel.vue";
+import FloatingMenu, { type MenuDirection } from "$lib/components/layout/FloatingMenu.svelte";
+import LayoutCol from "$lib/components/layout/LayoutCol.svelte";
+import LayoutRow from "$lib/components/layout/LayoutRow.svelte";
+import IconLabel from "$lib/components/widgets/labels/IconLabel.svelte";
+import Separator from "$lib/components/widgets/labels/Separator.svelte";
+import TextLabel from "$lib/components/widgets/labels/TextLabel.svelte";
+import UserInputLabel from "$lib/components/widgets/labels/UserInputLabel.svelte";
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 type MenuListInstance = InstanceType<typeof MenuList>;

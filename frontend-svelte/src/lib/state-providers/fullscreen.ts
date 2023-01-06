@@ -1,4 +1,4 @@
-import { reactive, readonly } from "vue";
+
 
 import { type Editor } from "@/wasm-communication/editor";
 

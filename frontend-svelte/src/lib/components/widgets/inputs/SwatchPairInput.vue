@@ -11,7 +11,7 @@
 	</LayoutCol>
 </template>
 
-<style lang="scss">
+<style lang="scss" global>
 .swatch-pair {
 	flex: 0 0 auto;
 
@@ -51,13 +51,13 @@
 </style>
 
 <script lang="ts">
-import { defineComponent, type PropType } from "vue";
+
 
 import { type Color } from "@/wasm-communication/messages";
 
-import ColorPicker from "@/components/floating-menus/ColorPicker.vue";
-import LayoutCol from "@/components/layout/LayoutCol.vue";
-import LayoutRow from "@/components/layout/LayoutRow.vue";
+import ColorPicker from "$lib/components/floating-menus/ColorPicker.svelte";
+import LayoutCol from "$lib/components/layout/LayoutCol.svelte";
+import LayoutRow from "$lib/components/layout/LayoutRow.svelte";
 
 export default defineComponent({
 	inject: ["editor"],

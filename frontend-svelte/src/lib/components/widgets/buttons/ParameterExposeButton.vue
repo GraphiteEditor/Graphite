@@ -4,7 +4,7 @@
 	</LayoutRow>
 </template>
 
-<style lang="scss">
+<style lang="scss" global>
 .parameter-expose-button {
 	display: flex;
 	align-items: center;
@@ -41,9 +41,9 @@
 </style>
 
 <script lang="ts">
-import { defineComponent, type PropType } from "vue";
 
-import LayoutRow from "@/components/layout/LayoutRow.vue";
+
+import LayoutRow from "$lib/components/layout/LayoutRow.svelte";
 
 export default defineComponent({
 	props: {

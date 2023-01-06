@@ -75,7 +75,7 @@
 	</LayoutCol>
 </template>
 
-<style lang="scss">
+<style lang="scss" global>
 .layer-tree {
 	// Options bar
 	.options-bar {
@@ -268,7 +268,7 @@
 </style>
 
 <script lang="ts">
-import { defineComponent, nextTick } from "vue";
+
 
 import { beginDraggingElement } from "@/io-managers/drag";
 import { platformIsMac } from "@/utility-functions/platform";
@@ -284,11 +284,11 @@ import {
 	layerTypeData,
 } from "@/wasm-communication/messages";
 
-import LayoutCol from "@/components/layout/LayoutCol.vue";
-import LayoutRow from "@/components/layout/LayoutRow.vue";
-import IconButton from "@/components/widgets/buttons/IconButton.vue";
-import IconLabel from "@/components/widgets/labels/IconLabel.vue";
-import WidgetLayout from "@/components/widgets/WidgetLayout.vue";
+import LayoutCol from "$lib/components/layout/LayoutCol.svelte";
+import LayoutRow from "$lib/components/layout/LayoutRow.svelte";
+import IconButton from "$lib/components/widgets/buttons/IconButton.svelte";
+import IconLabel from "$lib/components/widgets/labels/IconLabel.svelte";
+import WidgetLayout from "$lib/components/widgets/WidgetLayout.svelte";
 
 type LayerListingInfo = { folderIndex: number; bottomLayer: boolean; editingName: boolean; entry: LayerPanelEntry };
 

@@ -133,7 +133,7 @@
 	</FloatingMenu>
 </template>
 
-<style lang="scss">
+<style lang="scss" global>
 .color-picker {
 	.saturation-value-picker {
 		width: 256px;
@@ -356,21 +356,21 @@
 </style>
 
 <script lang="ts">
-import { defineComponent, type PropType } from "vue";
+
 
 import { clamp } from "@/utility-functions/math";
 import type { HSV, RGB } from "@/wasm-communication/messages";
 import { Color } from "@/wasm-communication/messages";
 
-import FloatingMenu, { type MenuDirection } from "@/components/layout/FloatingMenu.vue";
-import LayoutCol from "@/components/layout/LayoutCol.vue";
-import LayoutRow from "@/components/layout/LayoutRow.vue";
-import IconButton from "@/components/widgets/buttons/IconButton.vue";
-import DropdownInput from "@/components/widgets/inputs/DropdownInput.vue";
-import NumberInput from "@/components/widgets/inputs/NumberInput.vue";
-import TextInput from "@/components/widgets/inputs/TextInput.vue";
-import Separator from "@/components/widgets/labels/Separator.vue";
-import TextLabel from "@/components/widgets/labels/TextLabel.vue";
+import FloatingMenu, { type MenuDirection } from "$lib/components/layout/FloatingMenu.svelte";
+import LayoutCol from "$lib/components/layout/LayoutCol.svelte";
+import LayoutRow from "$lib/components/layout/LayoutRow.svelte";
+import IconButton from "$lib/components/widgets/buttons/IconButton.svelte";
+import DropdownInput from "$lib/components/widgets/inputs/DropdownInput.svelte";
+import NumberInput from "$lib/components/widgets/inputs/NumberInput.svelte";
+import TextInput from "$lib/components/widgets/inputs/TextInput.svelte";
+import Separator from "$lib/components/widgets/labels/Separator.svelte";
+import TextLabel from "$lib/components/widgets/labels/TextLabel.svelte";
 
 type PresetColors = "none" | "black" | "white" | "red" | "yellow" | "green" | "cyan" | "blue" | "magenta";
 

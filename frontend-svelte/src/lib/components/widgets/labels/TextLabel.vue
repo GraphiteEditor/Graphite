@@ -4,7 +4,7 @@
 	</span>
 </template>
 
-<style lang="scss">
+<style lang="scss" global>
 .text-label {
 	line-height: 18px;
 	white-space: nowrap;
@@ -36,7 +36,7 @@
 </style>
 
 <script lang="ts">
-import { defineComponent, type PropType } from "vue";
+
 
 export default defineComponent({
 	props: {

@@ -26,7 +26,7 @@
 	</div>
 </template>
 
-<style lang="scss">
+<style lang="scss" global>
 .menu-bar-input {
 	display: flex;
 
@@ -65,14 +65,14 @@
 </style>
 
 <script lang="ts">
-import { defineComponent } from "vue";
+
 
 import { platformIsMac } from "@/utility-functions/platform";
 import { type KeyRaw, type LayoutKeysGroup, type MenuBarEntry, type MenuListEntry, UpdateMenuBarLayout } from "@/wasm-communication/messages";
 
-import MenuList from "@/components/floating-menus/MenuList.vue";
-import IconLabel from "@/components/widgets/labels/IconLabel.vue";
-import TextLabel from "@/components/widgets/labels/TextLabel.vue";
+import MenuList from "$lib/components/floating-menus/MenuList.svelte";
+import IconLabel from "$lib/components/widgets/labels/IconLabel.svelte";
+import TextLabel from "$lib/components/widgets/labels/TextLabel.svelte";
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 type MenuListInstance = InstanceType<typeof MenuList>;

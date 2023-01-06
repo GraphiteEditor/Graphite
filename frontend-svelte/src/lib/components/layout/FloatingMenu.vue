@@ -9,7 +9,7 @@
 	</div>
 </template>
 
-<style lang="scss">
+<style lang="scss" global>
 .floating-menu {
 	position: absolute;
 	width: 0;
@@ -182,9 +182,9 @@
 </style>
 
 <script lang="ts">
-import { defineComponent, nextTick, type PropType } from "vue";
 
-import LayoutCol from "@/components/layout/LayoutCol.vue";
+
+import LayoutCol from "$lib/components/layout/LayoutCol.svelte";
 
 export type MenuDirection = "Top" | "Bottom" | "Left" | "Right" | "TopLeft" | "TopRight" | "BottomLeft" | "BottomRight" | "Center";
 export type MenuType = "Popover" | "Dropdown" | "Dialog" | "Cursor";

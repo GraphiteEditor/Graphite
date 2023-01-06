@@ -11,7 +11,7 @@
 	</LayoutRow>
 </template>
 
-<style lang="scss">
+<style lang="scss" global>
 .breadcrumb-trail-buttons {
 	.text-button {
 		position: relative;
@@ -59,10 +59,10 @@
 </style>
 
 <script lang="ts">
-import { defineComponent, type PropType } from "vue";
 
-import LayoutRow from "@/components/layout/LayoutRow.vue";
-import TextButton from "@/components/widgets/buttons/TextButton.vue";
+
+import LayoutRow from "$lib/components/layout/LayoutRow.svelte";
+import TextButton from "$lib/components/widgets/buttons/TextButton.svelte";
 
 export default defineComponent({
 	props: {

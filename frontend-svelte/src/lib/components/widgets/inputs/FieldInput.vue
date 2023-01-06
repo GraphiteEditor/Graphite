@@ -40,7 +40,7 @@
 	</LayoutRow>
 </template>
 
-<style lang="scss">
+<style lang="scss" global>
 .field-input {
 	min-width: 80px;
 	height: auto;
@@ -133,11 +133,11 @@
 </style>
 
 <script lang="ts">
-import { defineComponent, type PropType } from "vue";
+
 
 import { platformIsMac } from "@/utility-functions/platform";
 
-import LayoutRow from "@/components/layout/LayoutRow.vue";
+import LayoutRow from "$lib/components/layout/LayoutRow.svelte";
 
 export default defineComponent({
 	emits: ["update:value", "textFocused", "textChanged", "cancelTextChange"],

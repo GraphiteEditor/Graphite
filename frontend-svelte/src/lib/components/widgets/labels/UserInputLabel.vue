@@ -19,7 +19,7 @@
 	</LayoutRow>
 </template>
 
-<style lang="scss">
+<style lang="scss" global>
 .user-input-label {
 	flex: 0 0 auto;
 	height: 100%;
@@ -123,16 +123,16 @@
 </style>
 
 <script lang="ts">
-import { defineComponent, type PropType } from "vue";
+
 
 import { type IconName } from "@/utility-functions/icons";
 import { platformIsMac } from "@/utility-functions/platform";
 import { type KeyRaw, type LayoutKeysGroup, type Key, type MouseMotion } from "@/wasm-communication/messages";
 
-import LayoutRow from "@/components/layout/LayoutRow.vue";
-import IconLabel from "@/components/widgets/labels/IconLabel.vue";
-import Separator from "@/components/widgets/labels/Separator.vue";
-import TextLabel from "@/components/widgets/labels/TextLabel.vue";
+import LayoutRow from "$lib/components/layout/LayoutRow.svelte";
+import IconLabel from "$lib/components/widgets/labels/IconLabel.svelte";
+import Separator from "$lib/components/widgets/labels/Separator.svelte";
+import TextLabel from "$lib/components/widgets/labels/TextLabel.svelte";
 
 type LabelData = { label?: string; icon?: IconName; width: string };
 

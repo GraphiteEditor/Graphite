@@ -14,7 +14,7 @@
 	</FloatingMenu>
 </template>
 
-<style lang="scss">
+<style lang="scss" global>
 .eyedropper-preview {
 	pointer-events: none;
 
@@ -81,9 +81,9 @@
 </style>
 
 <script lang="ts">
-import { defineComponent, type PropType } from "vue";
 
-import FloatingMenu from "@/components/layout/FloatingMenu.vue";
+
+import FloatingMenu from "$lib/components/layout/FloatingMenu.svelte";
 
 // Should be equal to the width and height of the canvas in the CSS above
 const ZOOM_WINDOW_DIMENSIONS_EXPANDED = 110;

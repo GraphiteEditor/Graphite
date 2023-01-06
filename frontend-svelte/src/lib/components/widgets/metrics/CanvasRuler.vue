@@ -7,7 +7,7 @@
 	</div>
 </template>
 
-<style lang="scss">
+<style lang="scss" global>
 .canvas-ruler {
 	flex: 1 1 100%;
 	background: var(--color-4-dimgray);
@@ -43,7 +43,7 @@
 </style>
 
 <script lang="ts">
-import { defineComponent, type PropType } from "vue";
+
 
 const RULER_THICKNESS = 16;
 const MAJOR_MARK_THICKNESS = 16;

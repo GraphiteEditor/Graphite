@@ -17,7 +17,7 @@
 	></FieldInput>
 </template>
 
-<style lang="scss">
+<style lang="scss" global>
 .text-input {
 	input {
 		text-align: left;
@@ -32,9 +32,9 @@
 </style>
 
 <script lang="ts">
-import { defineComponent, type PropType } from "vue";
 
-import FieldInput from "@/components/widgets/inputs/FieldInput.vue";
+
+import FieldInput from "$lib/components/widgets/inputs/FieldInput.svelte";
 
 export default defineComponent({
 	emits: ["update:value", "commitText"],
