@@ -374,11 +374,12 @@ dependencies = [
 
 [[package]]
 name = "bstr"
-version = "0.2.17"
+version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ba3569f383e8f1598449f1a423e72e99569137b47740b1da11ef19af3d5c3223"
+checksum = "b45ea9b00a7b3f2988e9a65ad3917e62123c38dba709b666506207be96d1790b"
 dependencies = [
  "memchr",
+ "serde",
 ]
 
 [[package]]
@@ -1511,15 +1512,15 @@ dependencies = [
 
 [[package]]
 name = "glob"
-version = "0.3.0"
+version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9b919933a397b79c37e33b77bb2aa3dc8eb6e165ad809e58ff75bc7db2e34574"
+checksum = "d2fabcfbdc87f4758337ca535fb41a6d701b65693ce38287d856d1674551ec9b"
 
 [[package]]
 name = "globset"
-version = "0.4.9"
+version = "0.4.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0a1e17342619edbc21a964c2afbeb6c820c6a2560032872f397bb97ea127bd0a"
+checksum = "029d74589adefde59de1a0c4f4732695c32805624aec7b68d91503d4dba79afc"
 dependencies = [
  "aho-corasick",
  "bstr",
@@ -1695,7 +1696,6 @@ dependencies = [
  "log",
  "rustybuzz",
  "serde",
- "ttf-parser",
 ]
 
 [[package]]
@@ -2056,11 +2056,10 @@ dependencies = [
 
 [[package]]
 name = "ignore"
-version = "0.4.18"
+version = "0.4.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "713f1b139373f96a2e0ce3ac931cd01ee973c3c5dd7c40c0c2efe96ad2b6751d"
+checksum = "a05705bc64e0b66a806c3740bd6578ea66051b157ec42dc219c785cbf185aef3"
 dependencies = [
- "crossbeam-utils",
  "globset",
  "lazy_static",
  "log",
@@ -4094,7 +4093,7 @@ dependencies = [
 [[package]]
 name = "spirv-std"
 version = "0.4.0"
-source = "git+https://github.com/EmbarkStudios/rust-gpu#8fcb61e82a3bd74df67204c9b4fb1f6f71d20c73"
+source = "git+https://github.com/EmbarkStudios/rust-gpu#bab728f205a2769ec2d61ee5c1544668e0d017e0"
 dependencies = [
  "bitflags",
  "glam",
@@ -4106,7 +4105,7 @@ dependencies = [
 [[package]]
 name = "spirv-std-macros"
 version = "0.4.0"
-source = "git+https://github.com/EmbarkStudios/rust-gpu#8fcb61e82a3bd74df67204c9b4fb1f6f71d20c73"
+source = "git+https://github.com/EmbarkStudios/rust-gpu#bab728f205a2769ec2d61ee5c1544668e0d017e0"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -4117,7 +4116,7 @@ dependencies = [
 [[package]]
 name = "spirv-std-types"
 version = "0.4.0"
-source = "git+https://github.com/EmbarkStudios/rust-gpu#8fcb61e82a3bd74df67204c9b4fb1f6f71d20c73"
+source = "git+https://github.com/EmbarkStudios/rust-gpu#bab728f205a2769ec2d61ee5c1544668e0d017e0"
 
 [[package]]
 name = "stable_deref_trait"
@@ -4666,9 +4665,9 @@ checksum = "cda74da7e1a664f795bb1f8a87ec406fb89a02522cf6e50620d016add6dbbf5c"
 
 [[package]]
 name = "tokio"
-version = "1.23.0"
+version = "1.24.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eab6d665857cc6ca78d6e80303a02cea7a7851e85dfbd77cbdc09bd129f1ef46"
+checksum = "1d9f76183f91ecfb55e1d7d5602bd1d979e38a3a522fe900241cf195624d67ae"
 dependencies = [
  "autocfg",
  "bytes",
@@ -4860,9 +4859,9 @@ dependencies = [
 
 [[package]]
 name = "try-lock"
-version = "0.2.3"
+version = "0.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "59547bce71d9c38b83d9c0e92b6066c4253371f15005def0c30d9657f50c7642"
+checksum = "3528ecfd12c466c6f163363caf2d02a71161dd5e1cc6ae7b34207ea2d42d81ed"
 
 [[package]]
 name = "ttf-parser"
