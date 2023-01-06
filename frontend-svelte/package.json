@@ -22,6 +22,6 @@
 	},
 	"type": "module",
 	"dependencies": {
-		"graphite-wasm": "file:../wasm/pkg"
+		"graphite-frontend-glue": "file:glue"
 	}
 }

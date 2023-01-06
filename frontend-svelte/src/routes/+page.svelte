@@ -1,16 +1,19 @@
 <script lang="ts">
-import type { JsMessageType } from "$lib/../glue/messages"
+import type { JsMessageType } from "graphite-frontend-glue/messages"
 import { onMount } from "svelte"
 
-let graphiteVersion= "i don't know"
+let graphiteVersion = "i don't know"
 onMount(async () => {
-
-  let { JsEditorHandle } = await import("$lib/shim")
-  const editor = new JsEditorHandle((messageType: JsMessageType, messageData: Record<string, unknown>): void => {
-	console.log("message:", messageType, messageData)	
-	});
+  let { JsEditorHandle } = await import("graphite-frontend-glue/editor")
+  const editor = new JsEditorHandle(
+    (
+      messageType: JsMessageType,
+      messageData: Record<string, unknown>
+    ): void => {
+      console.log("message:", messageType, messageData)
+    }
+  )
   graphiteVersion = editor.graphiteDocumentVersion()
-  
 })
 </script>
 

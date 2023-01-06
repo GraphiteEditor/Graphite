@@ -1,14 +1,13 @@
 /* eslint-disable max-classes-per-file */
 
-import type { IconName, IconSize } from "./utils/icons";
-import type { WasmEditorInstance, WasmRawInstance } from "./editor";
+// import type { IconName, IconSize } from "./utils/icons";
 
 // import type MenuList from "@/components/floating-menus/MenuList.vue";
 
-export class JsMessage {
-	// The marker provides a way to check if an object is a sub-class constructor for a jsMessage.
-	static readonly jsMessageMarker = true;
-}
+// export class JsMessage {
+// 	// The marker provides a way to check if an object is a sub-class constructor for a jsMessage.
+// 	static readonly jsMessageMarker = true;
+// }
 
 // const TupleToVec2 = Transform(({ value }: { value: [number, number] | undefined }) => (value === undefined ? undefined : { x: value[0], y: value[1] }));
 // const BigIntTupleToVec2 = Transform(({ value }: { value: [bigint, bigint] | undefined }) => (value === undefined ? undefined : { x: Number(value[0]), y: Number(value[1]) }));
@@ -1354,66 +1353,67 @@ export class JsMessage {
 // 	);
 // }
 
-// `any` is used since the type of the object should be known from the Rust side
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type JSMessageFactory = (data: any, wasm: WasmRawInstance, instance: WasmEditorInstance) => JsMessage;
-type MessageMaker = typeof JsMessage | JSMessageFactory;
+// nano emiter event
+type NE<T> = (_: T) => void;
 
-export const messageMakers: Record<string, MessageMaker> = {
-// 	DisplayDialog,
-// 	DisplayDialogDismiss,
-// 	DisplayDialogPanic,
-// 	DisplayEditableTextbox,
-// 	DisplayRemoveEditableTextbox,
-// 	TriggerAboutGraphiteLocalizedCommitDate,
-// 	TriggerImaginateCheckServerStatus,
-// 	TriggerImaginateGenerate,
-// 	TriggerImaginateTerminate,
-// 	TriggerNodeGraphFrameGenerate,
-// 	TriggerFileDownload,
-// 	TriggerFontLoad,
-// 	TriggerImport,
-// 	TriggerIndexedDbRemoveDocument,
-// 	TriggerIndexedDbWriteDocument,
-// 	TriggerLoadAutoSaveDocuments,
-// 	TriggerLoadPreferences,
-// 	TriggerOpenDocument,
-// 	TriggerPaste,
-// 	TriggerRasterDownload,
-// 	TriggerRefreshBoundsOfViewports,
-// 	TriggerRevokeBlobUrl,
-// 	TriggerSavePreferences,
-// 	TriggerTextCommit,
-// 	TriggerTextCopy,
-// 	TriggerViewportResize,
-// 	TriggerVisitLink,
-// 	UpdateActiveDocument,
-// 	UpdateDialogDetails,
-// 	UpdateDocumentArtboards,
-// 	UpdateDocumentArtwork,
-// 	UpdateDocumentBarLayout,
-// 	UpdateDocumentLayerDetails,
-// 	UpdateDocumentLayerTreeStructureJs: newUpdateDocumentLayerTreeStructure,
-// 	UpdateDocumentModeLayout,
-// 	UpdateDocumentOverlays,
-// 	UpdateDocumentRulers,
-// 	UpdateEyedropperSamplingState,
-// 	UpdateDocumentScrollbars,
-// 	UpdateImageData,
-// 	UpdateInputHints,
-// 	UpdateLayerTreeOptionsLayout,
-// 	UpdateMenuBarLayout,
-// 	UpdateMouseCursor,
-// 	UpdateNodeGraph,
-// 	UpdateNodeGraphBarLayout,
-// 	UpdateNodeGraphSelection,
-// 	UpdateNodeTypes,
-// 	UpdateNodeGraphVisibility,
-// 	UpdateOpenDocumentsList,
-// 	UpdatePropertyPanelOptionsLayout,
-// 	UpdatePropertyPanelSectionsLayout,
-// 	UpdateToolOptionsLayout,
-// 	UpdateToolShelfLayout,
-// 	UpdateWorkingColorsLayout,
-} as const;
-export type JsMessageType = keyof typeof messageMakers;
+export type GraphiteEvents = {
+	// key name (string): value (type)
+	todo: NE<{ foo: string }>;
+
+	// 	DisplayDialog,
+	// 	DisplayDialogDismiss,
+	// 	DisplayDialogPanic,
+	// 	DisplayEditableTextbox,
+	// 	DisplayRemoveEditableTextbox,
+	// 	TriggerAboutGraphiteLocalizedCommitDate,
+	// 	TriggerImaginateCheckServerStatus,
+	// 	TriggerImaginateGenerate,
+	// 	TriggerImaginateTerminate,
+	// 	TriggerNodeGraphFrameGenerate,
+	// 	TriggerFileDownload,
+	// 	TriggerFontLoad,
+	// 	TriggerImport,
+	// 	TriggerIndexedDbRemoveDocument,
+	// 	TriggerIndexedDbWriteDocument,
+	// 	TriggerLoadAutoSaveDocuments,
+	// 	TriggerLoadPreferences,
+	// 	TriggerOpenDocument,
+	// 	TriggerPaste,
+	// 	TriggerRasterDownload,
+	// 	TriggerRefreshBoundsOfViewports,
+	// 	TriggerRevokeBlobUrl,
+	// 	TriggerSavePreferences,
+	// 	TriggerTextCommit,
+	// 	TriggerTextCopy,
+	// 	TriggerViewportResize,
+	// 	TriggerVisitLink,
+	// 	UpdateActiveDocument,
+	// 	UpdateDialogDetails,
+	// 	UpdateDocumentArtboards,
+	// 	UpdateDocumentArtwork,
+	// 	UpdateDocumentBarLayout,
+	// 	UpdateDocumentLayerDetails,
+	// 	UpdateDocumentLayerTreeStructureJs: newUpdateDocumentLayerTreeStructure,
+	// 	UpdateDocumentModeLayout,
+	// 	UpdateDocumentOverlays,
+	// 	UpdateDocumentRulers,
+	// 	UpdateEyedropperSamplingState,
+	// 	UpdateDocumentScrollbars,
+	// 	UpdateImageData,
+	// 	UpdateInputHints,
+	// 	UpdateLayerTreeOptionsLayout,
+	// 	UpdateMenuBarLayout,
+	// 	UpdateMouseCursor,
+	// 	UpdateNodeGraph,
+	// 	UpdateNodeGraphBarLayout,
+	// 	UpdateNodeGraphSelection,
+	// 	UpdateNodeTypes,
+	// 	UpdateNodeGraphVisibility,
+	// 	UpdateOpenDocumentsList,
+	// 	UpdatePropertyPanelOptionsLayout,
+	// 	UpdatePropertyPanelSectionsLayout,
+	// 	UpdateToolOptionsLayout,
+	// 	UpdateToolShelfLayout,
+	// 	UpdateWorkingColorsLayout,
+};
+export type JsMessageType = keyof GraphiteEvents;

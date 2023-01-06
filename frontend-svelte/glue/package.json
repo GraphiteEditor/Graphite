@@ -1,0 +1,9 @@
+{
+    "name": "graphite-frontend-glue",
+    "type": "module",
+    "dependencies": {
+        "@tauri-apps/api": "^1.2.0",
+        "graphite-wasm": "file:../../wasm/pkg",
+        "nanoevents": "^7.0.1"
+    }
+}
