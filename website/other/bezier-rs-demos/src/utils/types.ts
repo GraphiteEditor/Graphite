@@ -16,7 +16,7 @@ export type ComputeType = "Euclidean" | "Parametric";
 export type BezierCallback = (bezier: WasmBezierInstance, options: Record<string, number>, mouseLocation?: [number, number], computeType?: ComputeType) => string;
 export type SubpathCallback = (subpath: WasmSubpathInstance, options: Record<string, number>, mouseLocation?: [number, number], computeType?: ComputeType) => string;
 
-export type ExampleOptions = {
+export type BezierExampleOptions = {
 	[key in BezierCurveType]: {
 		disabled: boolean;
 		sliderOptions: SliderOption[];
@@ -54,6 +54,21 @@ export function getConstructorKey(bezierCurveType: BezierCurveType): WasmBezierC
 	return mapping[bezierCurveType];
 }
 
+export interface ExampleArgs {
+	title: string;
+	disabled?: boolean;
+}
+
+export interface BezierExampleArgs extends ExampleArgs {
+	points: number[][];
+	sliderOptions: SliderOption[];
+};
+
+export interface SubpathExampleArgs extends ExampleArgs {
+	triples: (number[] | undefined)[][];
+	closed: boolean
+};
+
 export interface Example extends HTMLElement {
 	sliderOptions: SliderOption[];
 	sliderData: Record<string, number>;
@@ -64,4 +79,13 @@ export interface Example extends HTMLElement {
 	onMouseUp(): void;
 	onMouseMove(event: MouseEvent): void;
 	getSliderUnit(sliderValue: number, variable: string): string;
+}
+
+export interface ExamplePane extends HTMLElement {
+	name: string;
+	examples: ExampleArgs[];
+	id: string;
+	chooseComputeType: boolean;
+	computeType: ComputeType;
+	buildExample(example: ExampleArgs): Example;
 }

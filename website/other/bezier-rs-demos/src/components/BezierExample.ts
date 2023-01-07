@@ -1,7 +1,6 @@
 import { WasmBezier } from "@/../wasm/pkg";
-
 import bezierFeatures, { BezierFeature } from "@/features/bezierFeatures";
-import { renderExample } from "@/utils/common";
+import { renderExample } from "@/utils/render";
 import { getConstructorKey, getCurveType, BezierCallback, BezierCurveType, SliderOption, WasmBezierManipulatorKey, ComputeType, Example } from "@/utils/types";
 
 const SELECTABLE_RANGE = 10;

@@ -1,9 +1,9 @@
 import { createApp } from "vue";
 
-
 import BezierExample from "@/components/BezierExample";
 import BezierExamplePane from "@/components/BezierExamplePane";
 import SubpathExample from "@/components/SubpathExample";
+import SubpathExamplePane from "@/components/SubpathExamplePane";
 
 import App from "@/App.vue";
 
@@ -12,6 +12,7 @@ document.title = "Bezier-rs Interactive Documentation";
 window.customElements.define("bezier-example", BezierExample);
 window.customElements.define("bezier-example-pane", BezierExamplePane);
 window.customElements.define("subpath-example", SubpathExample);
+window.customElements.define("subpath-example-pane", SubpathExamplePane);
 createApp(App).mount("#app");
 
 declare global {
@@ -19,5 +20,6 @@ declare global {
 		"bezier-example": BezierExample;
 		"bezier-example-pane": BezierExamplePane;
 		"subpath-example": SubpathExample;
+		"subpath-example-pane": SubpathExamplePane
 	}
 }

@@ -8,15 +8,19 @@
 
 	<h2>Beziers</h2>
 	<div v-for="[name, feature] in Object.entries(bezierFeatures)" :key="name">
-		<bezier-example-pane :name="name" :exampleOptions="JSON.stringify(feature.exampleOptions)" :triggerOnMouseMove="feature.triggerOnMouseMove" :chooseComputeType="feature.chooseComputeType" />
+		<bezier-example-pane 
+			:name="name" 
+			:exampleOptions="JSON.stringify(feature.exampleOptions)" 
+			:triggerOnMouseMove="feature.triggerOnMouseMove" 
+			:chooseComputeType="feature.chooseComputeType" />
 	</div>
 
 	<h2>Subpaths</h2>
 	<div v-for="[name, feature] in Object.entries(subpathFeatures)" :key="name">
-		<SubpathExamplePane
+		<subpath-example-pane
 			:name="name"
 			:callback="feature.callback"
-			:sliderOptions="feature.sliderOptions"
+			:sliderOptions="JSON.stringify(feature.sliderOptions)"
 			:triggerOnMouseMove="feature.triggerOnMouseMove"
 			:chooseComputeType="feature.chooseComputeType"
 		/>
@@ -79,13 +83,10 @@
 <script lang="ts">
 import { defineComponent } from "vue";
 
-// eslint-disable-next-line no-restricted-imports
-import BezierExamplePane from "./components/BezierExamplePane";
-
+import BezierExamplePane from "@/components/BezierExamplePane";
+import SubpathExamplePane from "@/components/SubpathExamplePane";
 import bezierFeatures from "@/features/bezierFeatures";
 import subpathFeatures from "@/features/subpathFeatures";
-
-import SubpathExamplePane from "@/components/SubpathExamplePane.vue";
 
 export default defineComponent({
 	data() {

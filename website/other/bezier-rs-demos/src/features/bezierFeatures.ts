@@ -1,6 +1,6 @@
 import { WasmBezier } from "@/../wasm/pkg";
 import { tSliderOptions, tErrorOptions, tMinimumSeperationOptions } from "@/utils/options";
-import { ComputeType, ExampleOptions, WasmBezierInstance } from "@/utils/types";
+import { ComputeType, BezierExampleOptions, WasmBezierInstance } from "@/utils/types";
 
 const bezierFeatures = {
 	Constructor: {
@@ -312,7 +312,7 @@ const bezierFeatures = {
 	},
 	Arcs: {
 		callback: (bezier: WasmBezierInstance, options: Record<string, number>): string => bezier.arcs(options.error, options.max_iterations, options.strategy),
-		exampleOptions: ((): Omit<ExampleOptions, "Linear"> => {
+		exampleOptions: ((): Omit<BezierExampleOptions, "Linear"> => {
 			const sliderOptions = [
 				{
 					variable: "strategy",

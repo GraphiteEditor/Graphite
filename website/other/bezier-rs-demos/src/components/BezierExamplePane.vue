@@ -34,13 +34,13 @@ import { defineComponent, PropType } from "vue";
 // eslint-disable-next-line no-restricted-imports
 import BezierExample from "./BezierExample";
 
-import { BezierCallback, BezierCurveType, BEZIER_CURVE_TYPE, ComputeType, ExampleOptions, SliderOption } from "@/utils/types";
+import { BezierCallback, BezierCurveType, BezierExampleOptions, BEZIER_CURVE_TYPE, ComputeType, SliderOption } from "@/utils/types";
 
 export default defineComponent({
 	props: {
 		name: { type: String as PropType<string>, required: true },
 		callback: { type: Function as PropType<BezierCallback>, required: true },
-		exampleOptions: { type: Object as PropType<ExampleOptions>, default: () => ({}) },
+		exampleOptions: { type: Object as PropType<BezierExampleOptions>, default: () => ({}) },
 		triggerOnMouseMove: { type: Boolean as PropType<boolean>, default: false },
 		chooseComputeType: { type: Boolean as PropType<boolean>, default: false },
 	},

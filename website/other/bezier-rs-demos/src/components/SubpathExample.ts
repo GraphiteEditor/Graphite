@@ -1,13 +1,13 @@
 import { WasmSubpath } from "@/../wasm/pkg";
 import subpathFeatures, { SubpathFeature } from "@/features/subpathFeatures";
-import { renderExample } from "@/utils/common";
+import { renderExample } from "@/utils/render";
 
-import { SubpathCallback, WasmSubpathInstance, WasmSubpathManipulatorKey, SliderOption, ComputeType, Example } from "@/utils/types";
+import { SubpathCallback, WasmSubpathInstance, WasmSubpathManipulatorKey, SliderOption, ComputeType } from "@/utils/types";
 
 const SELECTABLE_RANGE = 10;
 const POINT_INDEX_TO_MANIPULATOR: WasmSubpathManipulatorKey[] = ["set_anchor", "set_in_handle", "set_out_handle"];
 
-class SubpathExample extends HTMLElement implements Example {
+class SubpathExample extends HTMLElement {
 	// Props
 	title!: string;
 
