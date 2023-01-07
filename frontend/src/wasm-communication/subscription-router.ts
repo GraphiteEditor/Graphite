@@ -1,3 +1,4 @@
+// eslint-disable-next-line
 import { plainToInstance } from "class-transformer";
 
 import { type WasmEditorInstance, type WasmRawInstance } from "@/wasm-communication/editor";
