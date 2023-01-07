@@ -1,14 +1,5 @@
 <script lang="ts" context="module">
-	export type MenuDirection =
-		| "Top"
-		| "Bottom"
-		| "Left"
-		| "Right"
-		| "TopLeft"
-		| "TopRight"
-		| "BottomLeft"
-		| "BottomRight"
-		| "Center";
+	export type MenuDirection = "Top" | "Bottom" | "Left" | "Right" | "TopLeft" | "TopRight" | "BottomLeft" | "BottomRight" | "Center";
 	export type MenuType = "Popover" | "Dropdown" | "Dialog" | "Cursor";
 </script>
 
@@ -21,6 +12,12 @@
 
 	// emits: ["open", "naturalWidth"],
 
+	let className = "";
+	export { className as class };
+	export let classes: Record<string, boolean> = {};
+	let styleName = "";
+	export { styleName as style };
+	export let styles: Record<string, string | number> = {};
 	export let open: boolean;
 	export let type: MenuType;
 	export let direction: MenuDirection = "Bottom";
@@ -40,11 +37,9 @@
 	// tell the floating menu content to use it as a min-width so the floating menu is at least the width of the parent element's floating menu spawner.
 	// This is the opposite concern of the natural width measurement system, which gets the natural width of the floating menu content in order for the
 	// spawner widget to optionally set its min-size to the floating menu's natural width.
-	let containerResizeObserver = new ResizeObserver(
-		(entries: ResizeObserverEntry[]) => {
-			resizeObserverCallback(entries);
-		}
-	);
+	let containerResizeObserver = new ResizeObserver((entries: ResizeObserverEntry[]) => {
+		resizeObserverCallback(entries);
+	});
 	let wasOpen = open;
 	let measuringOngoing = false;
 	let measuringOngoingGuard = false;
@@ -54,11 +49,15 @@
 	let floatingMenuBounds = new DOMRect();
 	let floatingMenuContentBounds = new DOMRect();
 
-	$: minWidthStyleValue = measuringOngoing
-		? "0"
-		: `${Math.max(minWidth, minWidthParentWidth)}px`;
+	$: minWidthStyleValue = measuringOngoing ? "0" : `${Math.max(minWidth, minWidthParentWidth)}px`;
 	$: displayTail = open && type === "Popover";
 	$: displayContainer = open || measuringOngoing;
+	$: extraClasses = Object.entries(classes)
+		.flatMap((classAndState) => (classAndState[1] ? [classAndState[0]] : []))
+		.join(" ");
+	$: extraStyles = Object.entries(styles)
+		.map((styleAndValue) => `${styleAndValue[0]}: ${styleAndValue[1]};`)
+		.join(" ");
 
 	$: watchOpenChange(open);
 
@@ -119,55 +118,30 @@
 
 		const workspace = document.querySelector("[data-workspace]");
 
-		if (
-			!workspace ||
-			!floatingMenu ||
-			!floatingMenuContainer ||
-			!floatingMenuContent
-		)
-			return;
+		if (!workspace || !floatingMenu || !floatingMenuContainer || !floatingMenuContent) return;
 
 		workspaceBounds = workspace.getBoundingClientRect();
 		floatingMenuBounds = floatingMenu.getBoundingClientRect();
-		const floatingMenuContainerBounds =
-			floatingMenuContainer.getBoundingClientRect();
+		const floatingMenuContainerBounds = floatingMenuContainer.getBoundingClientRect();
 		floatingMenuContentBounds = floatingMenuContent.getBoundingClientRect();
 
-		const inParentFloatingMenu = Boolean(
-			floatingMenuContainer.closest("[data-floating-menu-content]")
-		);
+		const inParentFloatingMenu = Boolean(floatingMenuContainer.closest("[data-floating-menu-content]"));
 
 		if (!inParentFloatingMenu) {
 			// Required to correctly position content when scrolled (it has a `position: fixed` to prevent clipping)
 			// We use `.style` on a ref (instead of a `:style` Vue binding) because the binding causes the `updated()` hook to call the function we're in recursively forever
 			const tailOffset = type === "Popover" ? 10 : 0;
-			if (direction === "Bottom")
-				floatingMenuContent.style.top = `${
-					tailOffset + floatingMenuBounds.top
-				}px`;
-			if (direction === "Top")
-				floatingMenuContent.style.bottom = `${
-					tailOffset + floatingMenuBounds.bottom
-				}px`;
-			if (direction === "Right")
-				floatingMenuContent.style.left = `${
-					tailOffset + floatingMenuBounds.left
-				}px`;
-			if (direction === "Left")
-				floatingMenuContent.style.right = `${
-					tailOffset + floatingMenuBounds.right
-				}px`;
+			if (direction === "Bottom") floatingMenuContent.style.top = `${tailOffset + floatingMenuBounds.top}px`;
+			if (direction === "Top") floatingMenuContent.style.bottom = `${tailOffset + floatingMenuBounds.bottom}px`;
+			if (direction === "Right") floatingMenuContent.style.left = `${tailOffset + floatingMenuBounds.left}px`;
+			if (direction === "Left") floatingMenuContent.style.right = `${tailOffset + floatingMenuBounds.right}px`;
 
 			// Required to correctly position tail when scrolled (it has a `position: fixed` to prevent clipping)
 			// We use `.style` on a ref (instead of a `:style` Vue binding) because the binding causes the `updated()` hook to call the function we're in recursively forever
-			if (tail && direction === "Bottom")
-				tail.style.top = `${floatingMenuBounds.top}px`;
-			if (tail && direction === "Top")
-				tail.style.bottom = `${floatingMenuBounds.bottom}px`;
-			if (tail && direction === "Right")
-				tail.style.left = `${floatingMenuBounds.left}px`;
-			if (tail && direction === "Left")
-				tail.style.right = `${floatingMenuBounds.right}px`;
+			if (tail && direction === "Bottom") tail.style.top = `${floatingMenuBounds.top}px`;
+			if (tail && direction === "Top") tail.style.bottom = `${floatingMenuBounds.bottom}px`;
+			if (tail && direction === "Right") tail.style.left = `${floatingMenuBounds.left}px`;
+			if (tail && direction === "Left") tail.style.right = `${floatingMenuBounds.right}px`;
 		}
 
 		type Edge = "Top" | "Bottom" | "Left" | "Right";
@@ -178,66 +152,31 @@
 			zeroedBorderVertical = direction === "Top" ? "Bottom" : "Top";
 
 			// We use `.style` on a ref (instead of a `:style` Vue binding) because the binding causes the `updated()` hook to call the function we're in recursively forever
-			if (
-				floatingMenuContentBounds.left - windowEdgeMargin <=
-				workspaceBounds.left
-			) {
+			if (floatingMenuContentBounds.left - windowEdgeMargin <= workspaceBounds.left) {
 				floatingMenuContent.style.left = `${windowEdgeMargin}px`;
-				if (
-					workspaceBounds.left + floatingMenuContainerBounds.left ===
-					12
-				)
-					zeroedBorderHorizontal = "Left";
+				if (workspaceBounds.left + floatingMenuContainerBounds.left === 12) zeroedBorderHorizontal = "Left";
 			}
-			if (
-				floatingMenuContentBounds.right + windowEdgeMargin >=
-				workspaceBounds.right
-			) {
+			if (floatingMenuContentBounds.right + windowEdgeMargin >= workspaceBounds.right) {
 				floatingMenuContent.style.right = `${windowEdgeMargin}px`;
-				if (
-					workspaceBounds.right -
-						floatingMenuContainerBounds.right ===
-					12
-				)
-					zeroedBorderHorizontal = "Right";
+				if (workspaceBounds.right - floatingMenuContainerBounds.right === 12) zeroedBorderHorizontal = "Right";
 			}
 		}
 		if (direction === "Left" || direction === "Right") {
 			zeroedBorderHorizontal = direction === "Left" ? "Right" : "Left";
 
 			// We use `.style` on a ref (instead of a `:style` Vue binding) because the binding causes the `updated()` hook to call the function we're in recursively forever
-			if (
-				floatingMenuContentBounds.top - windowEdgeMargin <=
-				workspaceBounds.top
-			) {
+			if (floatingMenuContentBounds.top - windowEdgeMargin <= workspaceBounds.top) {
 				floatingMenuContent.style.top = `${windowEdgeMargin}px`;
-				if (
-					workspaceBounds.top + floatingMenuContainerBounds.top ===
-					12
-				)
-					zeroedBorderVertical = "Top";
+				if (workspaceBounds.top + floatingMenuContainerBounds.top === 12) zeroedBorderVertical = "Top";
 			}
-			if (
-				floatingMenuContentBounds.bottom + windowEdgeMargin >=
-				workspaceBounds.bottom
-			) {
+			if (floatingMenuContentBounds.bottom + windowEdgeMargin >= workspaceBounds.bottom) {
 				floatingMenuContent.style.bottom = `${windowEdgeMargin}px`;
-				if (
-					workspaceBounds.bottom -
-						floatingMenuContainerBounds.bottom ===
-					12
-				)
-					zeroedBorderVertical = "Bottom";
+				if (workspaceBounds.bottom - floatingMenuContainerBounds.bottom === 12) zeroedBorderVertical = "Bottom";
 			}
 		}
 
 		// Remove the rounded corner from the content where the tail perfectly meets the corner
-		if (
-			type === "Popover" &&
-			windowEdgeMargin === 6 &&
-			zeroedBorderVertical &&
-			zeroedBorderHorizontal
-		) {
+		if (type === "Popover" && windowEdgeMargin === 6 && zeroedBorderVertical && zeroedBorderHorizontal) {
 			// We use `.style` on a ref (instead of a `:style` Vue binding) because the binding causes the `updated()` hook to call the function we're in recursively forever
 			switch (`${zeroedBorderVertical}${zeroedBorderHorizontal}`) {
 				case "TopLeft":
@@ -275,8 +214,7 @@
 
 		// Measure the width of the floating menu content element, if it's currently visible
 		// The result will be `undefined` if the menu is invisible, perhaps because an ancestor component is hidden with a falsy `v-if` condition
-		const naturalWidth: number | undefined =
-			floatingMenuContent?.clientWidth;
+		const naturalWidth: number | undefined = floatingMenuContent?.clientWidth;
 
 		// Turn off measuring mode for the component, which triggers another call to the `updated()` Vue event, so we can turn off the protection after that has happened
 		measuringOngoing = false;
@@ -295,13 +233,9 @@
 
 		// Get the spawner element (that which is clicked to spawn this floating menu)
 		// Assumes the spawner is a sibling of this FloatingMenu component
-		const ownSpawner: HTMLElement | undefined =
-			floatingMenu?.parentElement?.querySelector(
-				":scope > [data-floating-menu-spawner]"
-			) || undefined;
+		const ownSpawner: HTMLElement | undefined = floatingMenu?.parentElement?.querySelector(":scope > [data-floating-menu-spawner]") || undefined;
 		// Get the spawner element containing whatever element the user is hovering over now, if there is one
-		const targetSpawner: HTMLElement | undefined =
-			target?.closest("[data-floating-menu-spawner]") || undefined;
+		const targetSpawner: HTMLElement | undefined = target?.closest("[data-floating-menu-spawner]") || undefined;
 
 		// HOVER TRANSFER
 		// Transfer from this open floating menu to a sibling floating menu if the pointer hovers to a valid neighboring floating menu spawner
@@ -310,11 +244,7 @@
 		// POINTER STRAY
 		// Close the floating menu if the pointer has strayed far enough from its bounds (and it's not hovering over its own spawner)
 		const notHoveringOverOwnSpawner = ownSpawner !== targetSpawner;
-		if (
-			strayCloses &&
-			notHoveringOverOwnSpawner &&
-			isPointerEventOutsideFloatingMenu(e, POINTER_STRAY_DISTANCE)
-		) {
+		if (strayCloses && notHoveringOverOwnSpawner && isPointerEventOutsideFloatingMenu(e, POINTER_STRAY_DISTANCE)) {
 			// TODO: Extend this rectangle bounds check to all submenu bounds up the DOM tree since currently submenus disappear
 			// TODO: with zero stray distance if the cursor is further than the stray distance from only the top-level menu
 			createEventDispatcher("open", false);
@@ -328,11 +258,7 @@
 		}
 	}
 
-	function hoverTransfer(
-		self: HTMLDivElement | undefined,
-		ownSpawner: HTMLElement | undefined,
-		targetSpawner: HTMLElement | undefined
-	): void {
+	function hoverTransfer(self: HTMLDivElement | undefined, ownSpawner: HTMLElement | undefined, targetSpawner: HTMLElement | undefined): void {
 		// Algorithm pseudo-code to detect and transfer to hover-transferrable floating menu spawners
 		// Accompanying diagram: <https://files.keavon.com/-/SpringgreenKnownXantus/capture.png>
 		//
@@ -346,10 +272,7 @@
 		//         No -> do nothing and terminate
 
 		// Helper function that gets used below
-		const getDepthFromAncestor = (
-			item: Element,
-			ancestor: Element
-		): number | undefined => {
+		const getDepthFromAncestor = (item: Element, ancestor: Element): number | undefined => {
 			let depth = 1;
 
 			let parent = item.parentElement || undefined;
@@ -364,44 +287,24 @@
 		};
 
 		// A list of all the descendant spawners: the spawner for this floating menu plus any spawners belonging to widgets inside this floating menu
-		const ownDescendantMenuSpawners = Array.from(
-			self?.parentElement?.querySelectorAll(
-				"[data-floating-menu-spawner]"
-			) || []
-		);
+		const ownDescendantMenuSpawners = Array.from(self?.parentElement?.querySelectorAll("[data-floating-menu-spawner]") || []);
 
 		// Start with the parent of the spawner for this floating menu and keep widening the search for any other valid spawners that are hover-transferrable
-		let currentAncestor =
-			(targetSpawner && ownSpawner?.parentElement) || undefined;
+		let currentAncestor = (targetSpawner && ownSpawner?.parentElement) || undefined;
 		while (currentAncestor) {
-			const ownSpawnerDepthFromCurrentAncestor =
-				ownSpawner && getDepthFromAncestor(ownSpawner, currentAncestor);
+			const ownSpawnerDepthFromCurrentAncestor = ownSpawner && getDepthFromAncestor(ownSpawner, currentAncestor);
 			const currentAncestor2 = currentAncestor; // This duplicate variable avoids an ESLint warning
 
 			// Get the list of descendant spawners and filter out invalid possibilities for spawners that are hover-transferrable
-			const listOfDescendantSpawners = Array.from(
-				currentAncestor?.querySelectorAll(
-					"[data-floating-menu-spawner]"
-				) || []
-			);
-			const filteredListOfDescendantSpawners =
-				listOfDescendantSpawners.filter((item: Element): boolean => {
-					// Filter away ourself and our descendants
-					const notOurself =
-						!ownDescendantMenuSpawners.includes(item);
-					// And filter away unequal depths from the current ancestor
-					const notUnequalDepths =
-						notOurself &&
-						getDepthFromAncestor(item, currentAncestor2) ===
-							ownSpawnerDepthFromCurrentAncestor;
-					// And filter away elements that explicitly disable hover transfer
-					return (
-						notUnequalDepths &&
-						!(item as HTMLElement)
-							.getAttribute?.("data-floating-menu-spawner")
-							?.includes("no-hover-transfer")
-					);
-				});
+			const listOfDescendantSpawners = Array.from(currentAncestor?.querySelectorAll("[data-floating-menu-spawner]") || []);
+			const filteredListOfDescendantSpawners = listOfDescendantSpawners.filter((item: Element): boolean => {
+				// Filter away ourself and our descendants
+				const notOurself = !ownDescendantMenuSpawners.includes(item);
+				// And filter away unequal depths from the current ancestor
+				const notUnequalDepths = notOurself && getDepthFromAncestor(item, currentAncestor2) === ownSpawnerDepthFromCurrentAncestor;
+				// And filter away elements that explicitly disable hover transfer
+				return notUnequalDepths && !(item as HTMLElement).getAttribute?.("data-floating-menu-spawner")?.includes("no-hover-transfer");
+			});
 
 			// If none were found, widen the search by a level and keep trying (or stop looping if the root was reached)
 			if (filteredListOfDescendantSpawners.length === 0) {
@@ -409,9 +312,7 @@
 			}
 			// Stop after the first non-empty set was found
 			else {
-				const foundTarget = filteredListOfDescendantSpawners.find(
-					(item: Element): boolean => item === targetSpawner
-				);
+				const foundTarget = filteredListOfDescendantSpawners.find((item: Element): boolean => item === targetSpawner);
 				// If the currently hovered spawner is one of the found valid hover-transferrable spawners, swap to it by clicking on it
 				if (foundTarget) {
 					createEventDispatcher("open", false);
@@ -459,61 +360,37 @@
 		window.removeEventListener("click", clickHandlerCapture, true);
 	}
 
-	function isPointerEventOutsideFloatingMenu(
-		e: PointerEvent,
-		extraDistanceAllowed = 0
-	): boolean {
+	function isPointerEventOutsideFloatingMenu(e: PointerEvent, extraDistanceAllowed = 0): boolean {
 		// Consider all child menus as well as the top-level one
-		const allContainedFloatingMenus = [
-			...floatingMenu.querySelectorAll("[data-floating-menu-content]"),
-		];
+		const allContainedFloatingMenus = [...floatingMenu.querySelectorAll("[data-floating-menu-content]")];
 
-		return !allContainedFloatingMenus.find(
-			(element) =>
-				!isPointerEventOutsideMenuElement(
-					e,
-					element,
-					extraDistanceAllowed
-				)
-		);
+		return !allContainedFloatingMenus.find((element) => !isPointerEventOutsideMenuElement(e, element, extraDistanceAllowed));
 	}
 
-	function isPointerEventOutsideMenuElement(
-		e: PointerEvent,
-		element: Element,
-		extraDistanceAllowed = 0
-	): boolean {
+	function isPointerEventOutsideMenuElement(e: PointerEvent, element: Element, extraDistanceAllowed = 0): boolean {
 		const floatingMenuBounds = element.getBoundingClientRect();
 
-		if (floatingMenuBounds.left - e.clientX >= extraDistanceAllowed)
-			return true;
-		if (e.clientX - floatingMenuBounds.right >= extraDistanceAllowed)
-			return true;
-		if (floatingMenuBounds.top - e.clientY >= extraDistanceAllowed)
-			return true;
-		if (e.clientY - floatingMenuBounds.bottom >= extraDistanceAllowed)
-			return true;
+		if (floatingMenuBounds.left - e.clientX >= extraDistanceAllowed) return true;
+		if (e.clientX - floatingMenuBounds.right >= extraDistanceAllowed) return true;
+		if (floatingMenuBounds.top - e.clientY >= extraDistanceAllowed) return true;
+		if (e.clientY - floatingMenuBounds.bottom >= extraDistanceAllowed) return true;
 
 		return false;
 	}
 </script>
 
 <div
-	class={`floating-menu ${direction.toLowerCase()} ${type.toLowerCase()}`}
+	class={`floating-menu ${direction.toLowerCase()} ${type.toLowerCase()} ${className} ${extraClasses}`.trim()}
+	style={`${styleName} ${extraStyles}`.trim()}
 	bind:this={floatingMenu}
+	{...$$restProps}
 >
 	{#if displayTail}
 		<div class="tail" bind:this={tail} />
 	{/if}
 	{#if displayContainer}
 		<div class="floating-menu-container" bind:this={floatingMenuContainer}>
-			<LayoutCol
-				class="floating-menu-content"
-				styles={{ minWidth: minWidthStyleValue }}
-				{scrollableY}
-				bind:this={floatingMenuContent}
-				data-floating-menu-content
-			>
+			<LayoutCol class="floating-menu-content" styles={{ "min-width": minWidthStyleValue }} {scrollableY} bind:this={floatingMenuContent} data-floating-menu-content>
 				<slot />
 			</LayoutCol>
 		</div>
@@ -644,32 +521,28 @@
 
 		&.top .tail {
 			border-width: 8px 6px 0 6px;
-			border-color: rgba(var(--color-2-mildblack-rgb), 0.95) transparent
-				transparent transparent;
+			border-color: rgba(var(--color-2-mildblack-rgb), 0.95) transparent transparent transparent;
 			margin-left: -6px;
 			margin-bottom: 2px;
 		}
 
 		&.bottom .tail {
 			border-width: 0 6px 8px 6px;
-			border-color: transparent transparent
-				rgba(var(--color-2-mildblack-rgb), 0.95) transparent;
+			border-color: transparent transparent rgba(var(--color-2-mildblack-rgb), 0.95) transparent;
 			margin-left: -6px;
 			margin-top: 2px;
 		}
 
 		&.left .tail {
 			border-width: 6px 0 6px 8px;
-			border-color: transparent transparent transparent
-				rgba(var(--color-2-mildblack-rgb), 0.95);
+			border-color: transparent transparent transparent rgba(var(--color-2-mildblack-rgb), 0.95);
 			margin-top: -6px;
 			margin-right: 2px;
 		}
 
 		&.right .tail {
 			border-width: 6px 8px 6px 0;
-			border-color: transparent rgba(var(--color-2-mildblack-rgb), 0.95)
-				transparent transparent;
+			border-color: transparent rgba(var(--color-2-mildblack-rgb), 0.95) transparent transparent;
 			margin-top: -6px;
 			margin-left: 2px;
 		}

@@ -40,6 +40,7 @@
 	on:dragstart
 	on:dragend
 	on:wheel
+	on:scroll
 	{...$$restProps}
 >
 	<slot />

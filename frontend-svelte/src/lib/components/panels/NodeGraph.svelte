@@ -459,7 +459,7 @@
 		}}
 	>
 		{#if nodeListLocation}
-			<LayoutCol class="node-list" data-node-list styles={{ marginLeft: `${nodeListX}px`, marginTop: `${nodeListY}px` }}>
+			<LayoutCol class="node-list" data-node-list styles={{ "margin-left": `${nodeListX}px`, "margin-top": `${nodeListY}px` }}>
 				<TextInput placeholder="Search Nodes..." bind:value={searchTerm} />
 				{#each nodeCategories as nodeCategory (nodeCategory[0])}
 					<LayoutCol>

@@ -3,15 +3,9 @@
 
 	import { textInputCleanup } from "@/utility-functions/keyboard-entry";
 	import { rasterizeSVGCanvas } from "@/utility-functions/rasterization";
-	import {
-		type DisplayEditableTextbox,
-		type MouseCursorIcon,
-		type XY,
-	} from "@/wasm-communication/messages";
+	import { type DisplayEditableTextbox, type MouseCursorIcon, type XY } from "@/wasm-communication/messages";
 
-	import EyedropperPreview, {
-		ZOOM_WINDOW_DIMENSIONS,
-	} from "$lib/components/floating-menus/EyedropperPreview.svelte";
+	import EyedropperPreview, { ZOOM_WINDOW_DIMENSIONS } from "$lib/components/floating-menus/EyedropperPreview.svelte";
 	import LayoutCol from "$lib/components/layout/LayoutCol.svelte";
 	import LayoutRow from "$lib/components/layout/LayoutRow.svelte";
 	import CanvasRuler from "$lib/components/widgets/metrics/CanvasRuler.svelte";
@@ -81,12 +75,7 @@
 				const buffer = await file.arrayBuffer();
 				const u8Array = new Uint8Array(buffer);
 
-				editor.instance.pasteImage(
-					file.type,
-					u8Array,
-					e.clientX,
-					e.clientY
-				);
+				editor.instance.pasteImage(file.type, u8Array, e.clientX, e.clientY);
 			}
 		});
 	}
@@ -114,8 +103,7 @@
 	}
 
 	function canvasPointerDown(e: PointerEvent) {
-		const onEditbox =
-			e.target instanceof HTMLDivElement && e.target.contentEditable;
+		const onEditbox = e.target instanceof HTMLDivElement && e.target.contentEditable;
 
 		if (!onEditbox) canvasDiv?.setPointerCapture(e.pointerId);
 	}
@@ -128,15 +116,11 @@
 		await tick();
 
 		if (textInput) {
-			const foreignObject = canvasDiv.getElementsByTagName(
-				"foreignObject"
-			)[0] as SVGForeignObjectElement;
+			const foreignObject = canvasDiv.getElementsByTagName("foreignObject")[0] as SVGForeignObjectElement;
 			if (foreignObject.children.length > 0) return;
 
 			const addedInput = foreignObject.appendChild(textInput);
-			window.dispatchEvent(
-				new CustomEvent("modifyinputfield", { detail: addedInput })
-			);
+			window.dispatchEvent(new CustomEvent("modifyinputfield", { detail: addedInput }));
 
 			await tick();
 
@@ -165,19 +149,14 @@
 		rasterizedCanvas = undefined;
 	}
 
-	async function updateEyedropperSamplingState(
-		mousePosition: XY | undefined,
-		colorPrimary: string,
-		colorSecondary: string
-	): Promise<[number, number, number] | undefined> {
+	async function updateEyedropperSamplingState(mousePosition: XY | undefined, colorPrimary: string, colorSecondary: string): Promise<[number, number, number] | undefined> {
 		if (mousePosition === undefined) {
 			cursorEyedropper = false;
 			return undefined;
 		}
 		cursorEyedropper = true;
 
-		if (canvasSvgWidth === undefined || canvasSvgHeight === undefined)
-			return undefined;
+		if (canvasSvgWidth === undefined || canvasSvgHeight === undefined) return undefined;
 
 		cursorLeft = mousePosition.x;
 		cursorTop = mousePosition.y;
@@ -186,9 +165,7 @@
 		const dpiFactor = window.devicePixelRatio;
 		const [width, height] = [canvasSvgWidth, canvasSvgHeight];
 
-		const outsideArtboardsColor = getComputedStyle(
-			document.documentElement
-		).getPropertyValue("--color-2-mildblack");
+		const outsideArtboardsColor = getComputedStyle(document.documentElement).getPropertyValue("--color-2-mildblack");
 		const outsideArtboards = `<rect x="0" y="0" width="100%" height="100%" fill="${outsideArtboardsColor}" />`;
 		const artboards = artboardSvg;
 		const artwork = artworkSvg;
@@ -197,33 +174,16 @@
 				`.trim();
 
 		if (!rasterizedCanvas) {
-			rasterizedCanvas = await rasterizeSVGCanvas(
-				svg,
-				width * dpiFactor,
-				height * dpiFactor,
-				"image/png"
-			);
+			rasterizedCanvas = await rasterizeSVGCanvas(svg, width * dpiFactor, height * dpiFactor, "image/png");
 			rasterizedContext = rasterizedCanvas.getContext("2d") || undefined;
 		}
 		if (!rasterizedContext) return undefined;
 
-		const rgbToHex = (r: number, g: number, b: number): string =>
-			`#${[r, g, b]
-				.map((x) => x.toString(16).padStart(2, "0"))
-				.join("")}`;
+		const rgbToHex = (r: number, g: number, b: number): string => `#${[r, g, b].map((x) => x.toString(16).padStart(2, "0")).join("")}`;
 
-		const pixel = rasterizedContext.getImageData(
-			mousePosition.x * dpiFactor,
-			mousePosition.y * dpiFactor,
-			1,
-			1
-		).data;
+		const pixel = rasterizedContext.getImageData(mousePosition.x * dpiFactor, mousePosition.y * dpiFactor, 1, 1).data;
 		const hex = rgbToHex(pixel[0], pixel[1], pixel[2]);
-		const rgb: [number, number, number] = [
-			pixel[0] / 255,
-			pixel[1] / 255,
-			pixel[2] / 255,
-		];
+		const rgb: [number, number, number] = [pixel[0] / 255, pixel[1] / 255, pixel[2] / 255];
 
 		cursorEyedropperPreviewColorChoice = hex;
 		cursorEyedropperPreviewColorPrimary = colorPrimary;
@@ -247,11 +207,7 @@
 		scrollbarMultiplier = multiplier;
 	}
 
-	function updateDocumentRulers(
-		origin: XY,
-		spacing: number,
-		interval: number
-	) {
+	function updateDocumentRulers(origin: XY, spacing: number, interval: number) {
 		rulerOrigin = origin;
 		rulerSpacing = spacing;
 		rulerInterval = interval;
@@ -292,22 +248,17 @@
 		editor.instance.onChangeText(textCleaned);
 	}
 
-	function displayEditableTextbox(
-		displayEditableTextbox: DisplayEditableTextbox
-	) {
+	function displayEditableTextbox(displayEditableTextbox: DisplayEditableTextbox) {
 		textInput = document.createElement("div") as HTMLDivElement;
 
 		if (displayEditableTextbox.text === "") textInput.textContent = "";
 		else textInput.textContent = `${displayEditableTextbox.text}\n`;
 
 		textInput.contentEditable = "true";
-		textInput.style.width = displayEditableTextbox.lineWidth
-			? `${displayEditableTextbox.lineWidth}px`
-			: "max-content";
+		textInput.style.width = displayEditableTextbox.lineWidth ? `${displayEditableTextbox.lineWidth}px` : "max-content";
 		textInput.style.height = "auto";
 		textInput.style.fontSize = `${displayEditableTextbox.fontSize}px`;
-		textInput.style.color =
-			displayEditableTextbox.color.toHexOptionalAlpha() || "transparent";
+		textInput.style.color = displayEditableTextbox.color.toHexOptionalAlpha() || "transparent";
 
 		textInput.oninput = (): void => {
 			if (!textInput) return;
@@ -317,20 +268,14 @@
 
 	function displayRemoveEditableTextbox() {
 		textInput = undefined;
-		window.dispatchEvent(
-			new CustomEvent("modifyinputfield", { detail: undefined })
-		);
+		window.dispatchEvent(new CustomEvent("modifyinputfield", { detail: undefined }));
 	}
 
 	// Resize elements to render the new viewport size
 	function viewportResize() {
 		// Resize the canvas
-		canvasSvgWidth = Math.ceil(
-			parseFloat(getComputedStyle(canvasDiv).width)
-		);
-		canvasSvgHeight = Math.ceil(
-			parseFloat(getComputedStyle(canvasDiv).height)
-		);
+		canvasSvgWidth = Math.ceil(parseFloat(getComputedStyle(canvasDiv).width));
+		canvasSvgHeight = Math.ceil(parseFloat(getComputedStyle(canvasDiv).height));
 
 		// Resize the rulers
 		rulerHorizontal?.resize();
@@ -370,29 +315,13 @@
 		</LayoutCol>
 		<LayoutCol class="viewport">
 			<LayoutRow class="bar-area">
-				<CanvasRuler
-					origin={rulerOrigin.x}
-					majorMarkSpacing={rulerSpacing}
-					numberInterval={rulerInterval}
-					direction="Horizontal"
-					class="top-ruler"
-					bind:this={rulerHorizontal}
-				/>
+				<CanvasRuler origin={rulerOrigin.x} majorMarkSpacing={rulerSpacing} numberInterval={rulerInterval} direction="Horizontal" class="top-ruler" bind:this={rulerHorizontal} />
 			</LayoutRow>
 			<LayoutRow class="canvas-area">
 				<LayoutCol class="bar-area">
-					<CanvasRuler
-						origin={rulerOrigin.y}
-						majorMarkSpacing={rulerSpacing}
-						numberInterval={rulerInterval}
-						direction="Vertical"
-						bind:this={rulerVertical}
-					/>
+					<CanvasRuler origin={rulerOrigin.y} majorMarkSpacing={rulerSpacing} numberInterval={rulerInterval} direction="Vertical" bind:this={rulerVertical} />
 				</LayoutCol>
-				<LayoutCol
-					class="canvas-area"
-					styles={{ cursor: canvasCursor }}
-				>
+				<LayoutCol class="canvas-area" styles={{ cursor: canvasCursor }}>
 					{#if cursorEyedropper}
 						<EyedropperPreview
 							colorChoice={cursorEyedropperPreviewColorChoice}
@@ -405,35 +334,14 @@
 							}}
 						/>
 					{/if}
-					<div
-						class="canvas"
-						on:pointerdown={(e) => canvasPointerDown(e)}
-						on:dragover={(e) => e.preventDefault()}
-						on:drop={(e) => pasteFile(e)}
-						bind:this={canvasDiv}
-						data-canvas
-					>
-						<svg
-							class="artboards"
-							style:width={canvasWidthCSS}
-							style:height={canvasHeightCSS}
-						>
+					<div class="canvas" on:pointerdown={(e) => canvasPointerDown(e)} on:dragover={(e) => e.preventDefault()} on:drop={(e) => pasteFile(e)} bind:this={canvasDiv} data-canvas>
+						<svg class="artboards" style:width={canvasWidthCSS} style:height={canvasHeightCSS}>
 							{@html artboardSvg}
 						</svg>
-						<svg
-							class="artwork"
-							xmlns="http://www.w3.org/2000/svg"
-							xmlns:xlink="http://www.w3.org/1999/xlink"
-							style:width={canvasWidthCSS}
-							style:height={canvasHeightCSS}
-						>
+						<svg class="artwork" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" style:width={canvasWidthCSS} style:height={canvasHeightCSS}>
 							{@html artworkSvg}
 						</svg>
-						<svg
-							class="overlays"
-							style:width={canvasWidthCSS}
-							style:height={canvasHeightCSS}
-						>
+						<svg class="overlays" style:width={canvasWidthCSS} style:height={canvasHeightCSS}>
 							{@html overlaysSvg}
 						</svg>
 					</div>
@@ -443,8 +351,7 @@
 						direction="Vertical"
 						handlePosition={scrollbarPos.y}
 						handleLength={scrollbarSize.y}
-						on:handlePosition={(newValue) =>
-							translateCanvasY(newValue)}
+						on:handlePosition={(newValue) => translateCanvasY(newValue)}
 						on:pressTrack={(delta) => pageY(delta)}
 					/>
 				</LayoutCol>
