@@ -4094,6 +4094,7 @@ dependencies = [
 [[package]]
 name = "specta"
 version = "0.0.6"
+source = "git+https://github.com/oscartbeaumont/rspc?rev=c18b315bb8e3d62adefb850c1bb3477ce6f17645#c18b315bb8e3d62adefb850c1bb3477ce6f17645"
 dependencies = [
  "ctor",
  "document-features",
@@ -4108,6 +4109,7 @@ dependencies = [
 [[package]]
 name = "specta-macros"
 version = "0.0.6"
+source = "git+https://github.com/oscartbeaumont/rspc?rev=c18b315bb8e3d62adefb850c1bb3477ce6f17645#c18b315bb8e3d62adefb850c1bb3477ce6f17645"
 dependencies = [
  "Inflector",
  "proc-macro2",

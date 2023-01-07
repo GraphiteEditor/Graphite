@@ -35,7 +35,7 @@ opt-level = 3
 opt-level = 3
 
 [workspace.dependencies]
-specta = { git = "https://github.com/oscartbeaumont/rspc", rev = "6b7653927f3f100133d40f3f6d7d04f6bc72faf7", features = ["export"] }
+specta = { git = "https://github.com/oscartbeaumont/rspc", rev = "c18b315bb8e3d62adefb850c1bb3477ce6f17645", features = ["export"] }
 
 #[profile.dev]
 #opt-level = 3
