@@ -53,3 +53,15 @@ export function getConstructorKey(bezierCurveType: BezierCurveType): WasmBezierC
 	};
 	return mapping[bezierCurveType];
 }
+
+export interface Example extends HTMLElement {
+	sliderOptions: SliderOption[];
+	sliderData: Record<string, number>;
+	sliderUnits: Record<string, string | string[]>;
+
+	drawExample(figure: HTMLElement, mouseLocation?: [number, number]): void;
+	onMouseDown(event: MouseEvent): void;
+	onMouseUp(): void;
+	onMouseMove(event: MouseEvent): void;
+	getSliderUnit(sliderValue: number, variable: string): string;
+}

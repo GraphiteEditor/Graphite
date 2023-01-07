@@ -1,25 +1,25 @@
 <template>
-	<div>
+	<div class="example-pane-container">
 		<h3 class="example-pane-header">{{ name }}</h3>
 		<div v-if="chooseComputeType" class="compute-type-choice">
 			<strong>ComputeType:</strong>
 
-			<input type="radio" :id="`${id}-parametric`" value="Parametric" v-model="computeTypeChoice" />
+			<input type="radio" :id="`${id}-parametric`" value="Parametric" v-model="computeType" />
 			<label :for="`${id}-parametric`">Parametric</label>
 
-			<input type="radio" :id="`${id}-euclidean`" value="Euclidean" v-model="computeTypeChoice" />
+			<input type="radio" :id="`${id}-euclidean`" value="Euclidean" v-model="computeType" />
 			<label :for="`${id}-euclidean`">Euclidean</label>
 		</div>
 		<div class="example-row">
 			<div v-for="(example, index) in examples" :key="index">
-				<SubpathExample
+				<subpath-example
 					:title="example.title"
-					:triples="example.triples"
+					:name="name"
+					:triples="JSON.stringify(example.triples)"
 					:closed="example.closed"
-					:callback="callback"
-					:sliderOptions="sliderOptions"
+					:sliderOptions="JSON.stringify(sliderOptions)"
 					:triggerOnMouseMove="triggerOnMouseMove"
-					:computeType="computeTypeChoice"
+					:computetype="computeType"
 				/>
 			</div>
 		</div>
@@ -31,9 +31,10 @@
 <script lang="ts">
 import { defineComponent, PropType } from "vue";
 
-import { SubpathCallback, SliderOption, ComputeType } from "@/utils/types";
+// eslint-disable-next-line no-restricted-imports
+import SubpathExample from "./SubpathExample";
 
-import SubpathExample from "@/components/SubpathExample.vue";
+import { SubpathCallback, SliderOption, ComputeType } from "@/utils/types";
 
 export default defineComponent({
 	props: {
@@ -71,7 +72,7 @@ export default defineComponent({
 				},
 			],
 			id: `${Math.random()}`.substring(2),
-			computeTypeChoice: "Parametric" as ComputeType,
+			computeType: "Parametric" as ComputeType,
 		};
 	},
 	components: {

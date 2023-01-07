@@ -45,3 +45,4 @@ const subpathFeatures = {
 };
 
 export default subpathFeatures;
+export type SubpathFeature = keyof typeof subpathFeatures;

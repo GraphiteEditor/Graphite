@@ -15,8 +15,8 @@
 				<bezier-example
 					v-if="!example.disabled"
 					:title="example.title"
-					:points="JSON.stringify(example.points)"
 					:name="name"
+					:points="JSON.stringify(example.points)"
 					:sliderOptions="JSON.stringify(example.sliderOptions)"
 					:triggerOnMouseMove="triggerOnMouseMove"
 					:computetype="computeType"
