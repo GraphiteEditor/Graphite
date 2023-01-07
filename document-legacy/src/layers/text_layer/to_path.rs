@@ -4,8 +4,8 @@ use graphene_std::vector::manipulator_point::ManipulatorPoint;
 use graphene_std::vector::subpath::Subpath;
 
 use glam::DVec2;
+use rustybuzz::ttf_parser::{GlyphId, OutlineBuilder};
 use rustybuzz::{GlyphBuffer, UnicodeBuffer};
-use ttf_parser::{GlyphId, OutlineBuilder};
 
 struct Builder {
 	path: Subpath,
