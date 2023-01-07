@@ -8,12 +8,7 @@
 
 	<h2>Beziers</h2>
 	<div v-for="[name, feature] in Object.entries(bezierFeatures)" :key="name">
-		<bezier-example-pane
-			:name="name"
-			:exampleOptions="JSON.stringify(feature.exampleOptions)"
-			:triggerOnMouseMove="feature.triggerOnMouseMove"
-			:chooseComputeType="feature.chooseComputeType"
-		/>
+		<bezier-example-pane :name="name" :exampleOptions="JSON.stringify(feature.exampleOptions)" :triggerOnMouseMove="feature.triggerOnMouseMove" :chooseComputeType="feature.chooseComputeType" />
 	</div>
 
 	<h2>Subpaths</h2>

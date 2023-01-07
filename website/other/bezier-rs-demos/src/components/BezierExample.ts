@@ -26,10 +26,10 @@ class BezierExample extends HTMLElement {
 
 	computeType!: ComputeType;
 
-	callback!: BezierCallback;
-
 	// Data
 	bezier!: WasmBezier;
+
+	callback!: BezierCallback;
 
 	manipulatorKeys!: WasmBezierManipulatorKey[];
 
@@ -150,12 +150,4 @@ class BezierExample extends HTMLElement {
 	}
 }
 
-window.customElements.define("bezier-example", BezierExample);
-
 export default BezierExample;
-
-declare global {   
-	interface HTMLElementTagNameMap {
-		"bezier-example": BezierExample;   
- } 
-}

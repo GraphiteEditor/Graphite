@@ -1,7 +1,7 @@
 // eslint-disable-next-line no-restricted-imports, import/extensions, @typescript-eslint/no-unused-vars
 import BezierExample from "./BezierExample";
 
-import { BezierFeature } from "@/features/bezierFeatures"
+import { BezierFeature } from "@/features/bezierFeatures";
 import { BezierCurveType, BEZIER_CURVE_TYPE, ComputeType, ExampleOptions, SliderOption } from "@/utils/types";
 
 const exampleDefaults = {
@@ -29,12 +29,12 @@ const exampleDefaults = {
 };
 
 type Example = {
-	title: BezierCurveType,
-	disabled: boolean,
-	points: number[][],
-	sliderOptions: SliderOption[],
-}
-		
+	title: BezierCurveType;
+	disabled: boolean;
+	points: number[][];
+	sliderOptions: SliderOption[];
+};
+
 class BezierExamplePane extends HTMLElement {
 	// Props
 	name!: BezierFeature;
@@ -48,19 +48,20 @@ class BezierExamplePane extends HTMLElement {
 	// Data
 	examples!: Example[];
 
-	id: string = `${Math.random()}`.substring(2);
+	id!: string;
 
-	computeType: ComputeType = "Parametric";
+	computeType!: ComputeType;
 
 	connectedCallback(): void {
+		this.id = `${Math.random()}`.substring(2);
+		this.computeType = "Parametric";
+
 		this.name = (this.getAttribute("name") || "") as BezierFeature;
 		this.exampleOptions = JSON.parse(this.getAttribute("exampleOptions") || "[]");
 		this.triggerOnMouseMove = this.getAttribute("triggerOnMouseMove") === "true";
 		this.chooseComputeType = this.getAttribute("chooseComputeType") === "true";
-		
 		// Use quadratic slider options as a default if sliders are not provided for the other curve types.
 		const defaultSliderOptions: SliderOption[] = this.exampleOptions.Quadratic?.sliderOptions || [];
-
 		this.examples = BEZIER_CURVE_TYPE.map((curveType: BezierCurveType) => {
 			const givenData = this.exampleOptions[curveType];
 			const defaultData = exampleDefaults[curveType];
@@ -71,61 +72,73 @@ class BezierExamplePane extends HTMLElement {
 				sliderOptions: givenData?.sliderOptions || defaultSliderOptions,
 			};
 		});
+		this.render();
 	}
 
 	render(): void {
 		const container = document.createElement("div");
 		container.className = "example-pane-container";
-		
+
 		const header = document.createElement("h3");
 		header.innerText = this.name;
 		header.className = "example-pane-header";
 
 		const computeTypeContainer = document.createElement("div");
-		computeTypeContainer.className="compute-type-choice";
+		computeTypeContainer.className = "compute-type-choice";
 
 		const computeTypeLabel = document.createElement("strong");
 		computeTypeLabel.innerText = "ComputeType:";
 		computeTypeContainer.append(computeTypeLabel);
 
-		["Parametric", "Euclidean"].forEach((computeType) => {
-			const id = `${this.id}-${computeType}`
+		const radioInputs = ["Parametric", "Euclidean"].map((computeType) => {
+			const id = `${this.id}-${computeType}`;
 			const radioInput = document.createElement("input");
-			radioInput.type ="radio";
+			radioInput.type = "radio";
 			radioInput.id = id;
 			radioInput.value = computeType;
+			radioInput.name = "ComputeType";
+			radioInput.checked = computeType === "Parametric";
 			computeTypeContainer.append(radioInput);
 
 			const label = document.createElement("label");
 			label.htmlFor = id;
 			label.innerText = computeType;
-			computeTypeContainer.append(radioInput);
-		})
+			computeTypeContainer.append(label);
+			return radioInput;
+		});
 
 		const exampleRow = document.createElement("div");
-				exampleRow.className = "example-row";
+		exampleRow.className = "example-row";
 
 		this.examples.forEach((example) => {
 			if (example.disabled) {
 				return;
 			}
 			const bezierExample = document.createElement("bezier-example");
-			bezierExample.title = example.title;
-			bezierExample.points = example.points; // JSON.stringify(example.points)
-			bezierExample.name = this.name;
-			bezierExample.sliderOptions = example.sliderOptions
-			bezierExample.triggerOnMouseMove = this.triggerOnMouseMove
+			bezierExample.setAttribute("title", example.title);
+			bezierExample.setAttribute("points", JSON.stringify(example.points));
+			bezierExample.setAttribute("name", this.name);
+			bezierExample.setAttribute("sliderOptions", JSON.stringify(example.sliderOptions));
+			bezierExample.setAttribute("triggerOnMouseMove", String(this.triggerOnMouseMove));
 			bezierExample.setAttribute("computetype", this.computeType);
 
+			radioInputs.forEach((radioInput) => {
+				radioInput.addEventListener("input", (event: Event): void => {
+					this.computeType = (event.target as HTMLInputElement).value as ComputeType;
+					bezierExample.setAttribute("computetype", this.computeType);
+				});
+			});
 			exampleRow.append(bezierExample);
-		})
+		});
 
 		container.append(header);
-		container.append(computeTypeContainer);
+		if (this.chooseComputeType) {
+			container.append(computeTypeContainer);
+		}
 		container.append(exampleRow);
+
+		this.append(container);
 	}
 }
-
-window.customElements.define("bezier-example-pane", BezierExamplePane);
 
 export default BezierExamplePane;
