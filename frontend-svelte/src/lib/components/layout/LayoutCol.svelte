@@ -31,11 +31,15 @@
 	title={tooltip}
 	bind:this={divElement}
 	on:click
+	on:dblclick
 	on:pointerdown
+	on:pointermove
+	on:pointerup
 	on:dragleave
 	on:dragover
 	on:dragstart
 	on:dragend
+	on:wheel
 	{...$$restProps}
 >
 	<slot />
