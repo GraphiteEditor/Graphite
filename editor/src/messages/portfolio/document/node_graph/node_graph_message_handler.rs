@@ -470,33 +470,12 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &mut dyn Iterator<Item = &
 					return;
 				};
 
-				let num_inputs = document_node_type.inputs.len();
-
-				let inner_network = NodeNetwork {
-					inputs: (0..num_inputs).map(|_| 0).collect(),
-					output: 0,
-					nodes: [(
-						0,
-						DocumentNode {
-							name: format!("{}_impl", document_node_type.name),
-							// TODO: Allow inserting nodes that contain other nodes.
-							implementation: DocumentNodeImplementation::Unresolved(document_node_type.identifier.clone()),
-							inputs: (0..num_inputs).map(|_| NodeInput::Network).collect(),
-							metadata: DocumentNodeMetadata::default(),
-						},
-					)]
-					.into_iter()
-					.collect(),
-					..Default::default()
-				};
-
 				responses.push_back(DocumentMessage::StartTransaction.into());
 
 				let document_node = DocumentNode {
 					name: node_type.clone(),
 					inputs: document_node_type.inputs.iter().map(|input| input.default.clone()).collect(),
-					// TODO: Allow inserting nodes that contain other nodes.
-					implementation: DocumentNodeImplementation::Network(inner_network),
+					implementation: document_node_type.generate_implementation(),
 					metadata: graph_craft::document::DocumentNodeMetadata { position: (x, y).into() },
 				};
 				responses.push_back(NodeGraphMessage::InsertNode { node_id, document_node }.into());

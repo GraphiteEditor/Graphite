@@ -227,6 +227,7 @@
 <script lang="ts">
 import { defineComponent, nextTick } from "vue";
 
+import { extractPixelData } from "@/utility-functions/extract-pixel-data";
 import { textInputCleanup } from "@/utility-functions/keyboard-entry";
 import { rasterizeSVGCanvas } from "@/utility-functions/rasterization";
 import { type DisplayEditableTextbox, type MouseCursorIcon, type XY } from "@/wasm-communication/messages";
@@ -300,10 +301,9 @@ export default defineComponent({
 			Array.from(dataTransfer.items).forEach(async (item) => {
 				const file = item.getAsFile();
 				if (file?.type.startsWith("image")) {
-					const buffer = await file.arrayBuffer();
-					const u8Array = new Uint8Array(buffer);
+					const imageData = await extractPixelData(file);
 
-					this.editor.instance.pasteImage(file.type, u8Array, e.clientX, e.clientY);
+					this.editor.instance.pasteImage(new Uint8Array(imageData.data), imageData.width, imageData.height, e.clientX, e.clientY);
 				}
 			});
 		},

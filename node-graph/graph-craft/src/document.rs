@@ -1,3 +1,4 @@
+use crate::document::value::TaggedValue;
 use crate::generic;
 use crate::proto::{ConstructionArgs, NodeIdentifier, ProtoNetwork, ProtoNode, ProtoNodeInput, Type};
 use std::collections::HashMap;
@@ -258,10 +259,18 @@ impl NodeNetwork {
 							network_input.populate_first_network_input(node, *offset);
 						}
 						NodeInput::Value { tagged_value, exposed } => {
-							let name = format!("Value: {:?}", tagged_value.clone().to_value());
+							// Skip formatting very large values for seconds in performance speedup
+							let name = if matches!(
+								tagged_value,
+								TaggedValue::Image(_) | TaggedValue::RcImage(_) | TaggedValue::Color(_) | TaggedValue::Subpath(_) | TaggedValue::RcSubpath(_)
+							) {
+								"Value".to_string()
+							} else {
+								format!("Value: {:?}", tagged_value.clone().to_value())
+							};
 							let new_id = map_ids(id, gen_id());
 							let value_node = DocumentNode {
-								name: name.clone(),
+								name,
 								inputs: vec![NodeInput::Value { tagged_value, exposed }],
 								implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::value::ValueNode", &[generic!("T")])),
 								metadata: DocumentNodeMetadata::default(),
@@ -304,6 +313,37 @@ impl NodeNetwork {
 	/// Get the original output node of this network, ignoring any preview node
 	pub fn original_output(&self) -> NodeId {
 		self.previous_output.unwrap_or(self.output)
+	}
+
+	/// A graph with just an input and output node
+	pub fn new_network(output_offset: i32, output_node_id: NodeId) -> Self {
+		Self {
+			inputs: vec![0],
+			output: 1,
+			nodes: [
+				(
+					0,
+					DocumentNode {
+						name: "Input".into(),
+						inputs: vec![NodeInput::Network],
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode", &[generic!("T")])),
+						metadata: DocumentNodeMetadata { position: (8, 4).into() },
+					},
+				),
+				(
+					1,
+					DocumentNode {
+						name: "Output".into(),
+						inputs: vec![NodeInput::Node(output_node_id)],
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode", &[generic!("T")])),
+						metadata: DocumentNodeMetadata { position: (output_offset, 4).into() },
+					},
+				),
+			]
+			.into_iter()
+			.collect(),
+			..Default::default()
+		}
 	}
 }
 

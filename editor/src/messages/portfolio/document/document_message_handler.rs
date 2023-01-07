@@ -546,25 +546,36 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				}
 				responses.push_back(BroadcastEvent::DocumentIsDirty.into());
 			}
-			PasteImage { mime, image_data, mouse } => {
+			PasteImage { image, mouse } => {
+				let image_size = DVec2::new(image.width as f64, image.height as f64);
+
 				responses.push_back(DocumentMessage::StartTransaction.into());
 
 				let path = vec![generate_uuid()];
-				responses.push_back(
-					DocumentOperation::AddImage {
-						path: path.clone(),
-						transform: DAffine2::ZERO.to_cols_array(),
-						insert_index: -1,
-						image_data: image_data.clone(),
-						mime: mime.clone(),
-					}
-					.into(),
+				let image_node_id = 2;
+				let mut network = graph_craft::document::NodeNetwork::new_network(32, image_node_id);
+
+				let Some(image_node_type) = crate::messages::portfolio::document::node_graph::resolve_document_node_type("Image") else{ 
+					warn!("Image node should be in registry");
+					return;
+				};
+
+				network.nodes.insert(
+					image_node_id,
+					graph_craft::document::DocumentNode {
+						name: image_node_type.name.to_string(),
+						inputs: vec![graph_craft::document::NodeInput::value(graph_craft::document::value::TaggedValue::Image(image), false)],
+						implementation: image_node_type.generate_implementation(),
+						metadata: graph_craft::document::DocumentNodeMetadata { position: (20, 4).into() },
+					},
 				);
-				let image_data = std::sync::Arc::new(image_data);
+
 				responses.push_back(
-					FrontendMessage::UpdateImageData {
-						document_id,
-						image_data: vec![FrontendImageData { path: path.clone(), image_data, mime }],
+					DocumentOperation::AddNodeGraphFrame {
+						path: path.clone(),
+						insert_index: -1,
+						transform: DAffine2::ZERO.to_cols_array(),
+						network,
 					}
 					.into(),
 				);
@@ -575,9 +586,21 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 					.into(),
 				);
 
-				let mouse = mouse.map_or(ipp.viewport_bounds.center(), |pos| pos.into());
-				let transform = DAffine2::from_translation(mouse - ipp.viewport_bounds.top_left).to_cols_array();
-				responses.push_back(DocumentOperation::SetLayerTransformInViewport { path, transform }.into());
+				// Transform of parent folder
+				let to_parent_folder = self.document_legacy.generate_transform_across_scope(&path[..path.len() - 1], None).unwrap_or_default();
+
+				// Align the layer with the mouse or centre of viewport
+				let viewport_location = mouse.map_or(ipp.viewport_bounds.center(), |pos| pos.into());
+				let centre_in_viewport = DAffine2::from_translation(viewport_location - ipp.viewport_bounds.top_left);
+				let centre_in_viewport_layerspace = to_parent_folder.inverse() * centre_in_viewport;
+
+				// Make layer the size of the image
+				let fit_image_size = DAffine2::from_scale_angle_translation(image_size, 0., image_size / -2.);
+
+				let transform = (centre_in_viewport_layerspace * fit_image_size).to_cols_array();
+				responses.push_back(DocumentOperation::SetLayerTransform { path, transform }.into());
+
+				responses.push_back(DocumentMessage::NodeGraphFrameGenerate.into());
 			}
 			Redo => {
 				responses.push_back(SelectToolMessage::Abort.into());
