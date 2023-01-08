@@ -333,7 +333,7 @@
 							action={(e) => (toggleLayerVisibility(listing.entry.path), e?.stopPropagation())}
 							size={24}
 							icon={listing.entry.visible ? "EyeVisible" : "EyeHidden"}
-							title={listing.entry.visible ? "Visible" : "Hidden"}
+							tooltip={listing.entry.visible ? "Visible" : "Hidden"}
 						/>
 					</LayoutRow>
 
@@ -349,13 +349,13 @@
 						}}
 						data-layer={String(listing.entry.path)}
 						data-index={index}
-						title={listing.entry.tooltip}
+						tooltip={listing.entry.tooltip}
 						{draggable}
 						on:dragstart={(e) => draggable && dragStart(e, listing)}
 						on:click={(e) => selectLayerWithModifiers(e, listing)}
 					>
 						<LayoutRow class="layer-type-icon">
-							<IconLabel icon={getLayerTypeData(listing.entry.layerType).icon} title={getLayerTypeData(listing.entry.layerType).name} />
+							<IconLabel icon={getLayerTypeData(listing.entry.layerType).icon} tooltip={getLayerTypeData(listing.entry.layerType).name} />
 						</LayoutRow>
 						<LayoutRow class="layer-name" on:dblclick={() => onEditLayerName(listing)}>
 							<input

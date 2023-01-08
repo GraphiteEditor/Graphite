@@ -17,7 +17,7 @@
 	// emits: ["update:open", "update:activeEntry", "naturalWidth"],
 
 	export let entries: MenuListEntry[][];
-	export let activeEntry: MenuListEntry;
+	export let activeEntry: MenuListEntry | undefined = undefined;
 	export let open: boolean;
 	export let direction: MenuDirection = "Bottom";
 	export let minWidth = 0;
@@ -25,7 +25,7 @@
 	export let interactive = false;
 	export let scrollableY = false;
 	export let virtualScrollingEntryHeight = 0;
-	export let tooltip: string | undefined;
+	export let tooltip: string | undefined = undefined;
 
 	let isOpen = open;
 	let highlighted = activeEntry as MenuListEntry | undefined;
@@ -204,7 +204,7 @@
 					class="row"
 					classes={{ open: isEntryOpen(entry), active: entry.label === highlighted?.label, disabled: entry.disabled }}
 					styles={{ height: virtualScrollingEntryHeight || "20px" }}
-					title={tooltip}
+					{tooltip}
 					on:click={() => !entry.disabled && onEntryClick(entry)}
 					on:pointerenter={() => !entry.disabled && onEntryPointerEnter(entry)}
 					on:pointerleave={() => !entry.disabled && onEntryPointerLeave(entry)}

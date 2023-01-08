@@ -4,7 +4,7 @@
 	export let classes: Record<string, boolean> = {};
 	let styleName = "";
 	export { styleName as style };
-	export let styles: Record<string, string | number> = {};
+	export let styles: Record<string, string | number | undefined> = {};
 	export let tooltip: string | undefined = undefined;
 	export let scrollableX: boolean = false;
 	export let scrollableY: boolean = false;
@@ -15,7 +15,7 @@
 		.flatMap((classAndState) => (classAndState[1] ? [classAndState[0]] : []))
 		.join(" ");
 	$: extraStyles = Object.entries(styles)
-		.map((styleAndValue) => `${styleAndValue[0]}: ${styleAndValue[1]};`)
+		.flatMap((styleAndValue) => (styleAndValue[1] !== undefined ? [`${styleAndValue[0]}: ${styleAndValue[1]};`] : []))
 		.join(" ");
 
 	export function div(): HTMLDivElement {
@@ -39,8 +39,11 @@
 	on:dragover
 	on:dragstart
 	on:dragend
+	on:drop
 	on:wheel
 	on:scroll
+	on:focus
+	on:blur
 	{...$$restProps}
 >
 	<slot />

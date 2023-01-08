@@ -1,0 +1,49 @@
+<script lang="ts">
+	import { type IconName, ICONS, ICON_COMPONENTS } from "@/utility-functions/icons";
+
+	import LayoutRow from "$lib/components/layout/LayoutRow.svelte";
+
+	// TODO: Svelte: fix icon imports
+
+	let className = "";
+	export { className as class };
+	export let classes: Record<string, boolean> = {};
+	export let icon: IconName;
+	export let disabled = false;
+	export let tooltip: string | undefined = undefined;
+
+	$: iconSizeClass = `size-${ICONS[icon].size}`;
+	$: extraClasses = Object.entries(classes)
+		.flatMap((classAndState) => (classAndState[1] ? [classAndState[0]] : []))
+		.join(" ");
+</script>
+
+<LayoutRow class={`icon-label ${iconSizeClass} ${className} ${extraClasses}`.trim()} classes={{ disabled }} {tooltip}>
+	<svelte:component this={icon} />
+</LayoutRow>
+
+<style lang="scss" global>
+	.icon-label {
+		flex: 0 0 auto;
+		fill: var(--color-e-nearwhite);
+
+		&.disabled {
+			fill: var(--color-8-uppergray);
+		}
+
+		&.size-12 {
+			width: 12px;
+			height: 12px;
+		}
+
+		&.size-16 {
+			width: 16px;
+			height: 16px;
+		}
+
+		&.size-24 {
+			width: 24px;
+			height: 24px;
+		}
+	}
+</style>

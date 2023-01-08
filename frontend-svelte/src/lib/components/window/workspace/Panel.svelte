@@ -24,10 +24,7 @@
 
 	import { platformIsMac } from "@/utility-functions/platform";
 
-	import {
-		type LayoutKeysGroup,
-		type Key,
-	} from "@/wasm-communication/messages";
+	import { type LayoutKeysGroup, type Key } from "@/wasm-communication/messages";
 
 	import LayoutCol from "$lib/components/layout/LayoutCol.svelte";
 	import LayoutRow from "$lib/components/layout/LayoutRow.svelte";
@@ -41,7 +38,7 @@
 	export let tabCloseButtons = false;
 	export let tabLabels: { name: string; tooltip?: string }[];
 	export let tabActiveIndex: number;
-	export let panelType: PanelTypes | undefined;
+	export let panelType: PanelTypes | undefined = undefined;
 	export let clickAction: ((index: number) => void) | undefined = undefined;
 	export let closeAction: ((index: number) => void) | undefined = undefined;
 
@@ -120,40 +117,18 @@
 						<table>
 							<tr>
 								<td>
-									<TextButton
-										label="New Document"
-										icon="File"
-										action={() => newDocument()}
-									/>
+									<TextButton label="New Document" icon="File" action={() => newDocument()} />
 								</td>
 								<td>
-									<UserInputLabel
-										keysWithLabelsGroups={[
-											[
-												...platformModifiers(true),
-												{ key: "KeyN", label: "N" },
-											],
-										]}
-									/>
+									<UserInputLabel keysWithLabelsGroups={[[...platformModifiers(true), { key: "KeyN", label: "N" }]]} />
 								</td>
 							</tr>
 							<tr>
 								<td>
-									<TextButton
-										label="Open Document"
-										icon="Folder"
-										action={() => openDocument()}
-									/>
+									<TextButton label="Open Document" icon="Folder" action={() => openDocument()} />
 								</td>
 								<td>
-									<UserInputLabel
-										keysWithLabelsGroups={[
-											[
-												...platformModifiers(false),
-												{ key: "KeyO", label: "O" },
-											],
-										]}
-									/>
+									<UserInputLabel keysWithLabelsGroups={[[...platformModifiers(false), { key: "KeyO", label: "O" }]]} />
 								</td>
 							</tr>
 						</table>

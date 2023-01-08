@@ -10,14 +10,14 @@
 
 	const POINTER_STRAY_DISTANCE = 100;
 
-	// emits: ["open", "naturalWidth"],
+	// emits: ["update:open", "naturalWidth"],
 
 	let className = "";
 	export { className as class };
 	export let classes: Record<string, boolean> = {};
 	let styleName = "";
 	export { styleName as style };
-	export let styles: Record<string, string | number> = {};
+	export let styles: Record<string, string | number | undefined> = {};
 	export let open: boolean;
 	export let type: MenuType;
 	export let direction: MenuDirection = "Bottom";
@@ -56,7 +56,7 @@
 		.flatMap((classAndState) => (classAndState[1] ? [classAndState[0]] : []))
 		.join(" ");
 	$: extraStyles = Object.entries(styles)
-		.map((styleAndValue) => `${styleAndValue[0]}: ${styleAndValue[1]};`)
+		.flatMap((styleAndValue) => (styleAndValue[1] !== undefined ? [`${styleAndValue[0]}: ${styleAndValue[1]};`] : []))
 		.join(" ");
 
 	$: watchOpenChange(open);
@@ -247,7 +247,7 @@
 		if (strayCloses && notHoveringOverOwnSpawner && isPointerEventOutsideFloatingMenu(e, POINTER_STRAY_DISTANCE)) {
 			// TODO: Extend this rectangle bounds check to all submenu bounds up the DOM tree since currently submenus disappear
 			// TODO: with zero stray distance if the cursor is further than the stray distance from only the top-level menu
-			createEventDispatcher("open", false);
+			createEventDispatcher("update:open", false);
 		}
 
 		// Clean up any messes from lost pointerup events
@@ -315,7 +315,7 @@
 				const foundTarget = filteredListOfDescendantSpawners.find((item: Element): boolean => item === targetSpawner);
 				// If the currently hovered spawner is one of the found valid hover-transferrable spawners, swap to it by clicking on it
 				if (foundTarget) {
-					createEventDispatcher("open", false);
+					createEventDispatcher("update:open", false);
 					(foundTarget as HTMLElement).click();
 				}
 
@@ -327,14 +327,14 @@
 
 	function keyDownHandler(e: KeyboardEvent) {
 		if (escapeCloses && e.key.toLowerCase() === "escape") {
-			createEventDispatcher("open", false);
+			createEventDispatcher("update:open", false);
 		}
 	}
 
 	function pointerDownHandler(e: PointerEvent) {
 		// Close the floating menu if the pointer clicked outside the floating menu (but within stray distance)
 		if (isPointerEventOutsideFloatingMenu(e)) {
-			createEventDispatcher("open", false);
+			createEventDispatcher("update:open", false);
 
 			// Track if the left pointer button is now down so its later click event can be canceled
 			const eventIsForLmb = e.button === 0;
