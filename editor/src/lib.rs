@@ -13,6 +13,8 @@ pub mod messages;
 pub mod test_utils;
 pub mod utility_traits;
 
+/// Running this test will generate a `types.ts` file at the root of the repo,
+/// containing every type annotated with `specta::Type`
 #[cfg(test)]
 #[test]
 fn export_types() {
