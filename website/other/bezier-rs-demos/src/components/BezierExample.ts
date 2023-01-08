@@ -1,5 +1,5 @@
 import { WasmBezier } from "@/../wasm/pkg";
-import bezierFeatures, { BezierFeature } from "@/features/bezierFeatures";
+import bezierFeatures, { BezierFeatureName } from "@/features/bezierFeatures";
 import { renderExample } from "@/utils/render";
 import { getConstructorKey, getCurveType, BezierCallback, BezierCurveType, SliderOption, WasmBezierManipulatorKey, ComputeType, Example } from "@/utils/types";
 
@@ -18,7 +18,7 @@ class BezierExample extends HTMLElement implements Example {
 
 	points!: number[][];
 
-	name!: BezierFeature;
+	name!: BezierFeatureName;
 
 	sliderOptions!: SliderOption[];
 
@@ -54,7 +54,7 @@ class BezierExample extends HTMLElement implements Example {
 	connectedCallback(): void {
 		this.title = this.getAttribute("title") || "";
 		this.points = JSON.parse(this.getAttribute("points") || "[]");
-		this.name = this.getAttribute("name") as BezierFeature;
+		this.name = this.getAttribute("name") as BezierFeatureName;
 		this.sliderOptions = JSON.parse(this.getAttribute("sliderOptions") || "[]");
 		this.triggerOnMouseMove = this.getAttribute("triggerOnMouseMove") === "true";
 		this.computeType = (this.getAttribute("computetype") || "Parametric") as ComputeType;
@@ -73,14 +73,13 @@ class BezierExample extends HTMLElement implements Example {
 		this.drawExample(figure);
 	}
 
-	render(): void { 
+	render(): void {
 		renderExample(this);
 	}
 
 	drawExample(figure: HTMLElement, mouseLocation?: [number, number]): void {
 		figure.innerHTML = this.callback(this.bezier, this.sliderData, mouseLocation, this.computeType);
 	}
-
 
 	onMouseDown(event: MouseEvent): void {
 		const mx = event.offsetX;
@@ -113,7 +112,7 @@ class BezierExample extends HTMLElement implements Example {
 	}
 
 	getSliderUnit(sliderValue: number, variable: string): string {
-		const sliderUnit = this.sliderUnits[variable]
+		const sliderUnit = this.sliderUnits[variable];
 		return (Array.isArray(sliderUnit) ? sliderUnit[sliderValue] : sliderUnit) || "";
 	}
 }

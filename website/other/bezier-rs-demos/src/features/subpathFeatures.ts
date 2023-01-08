@@ -1,5 +1,5 @@
 import { tSliderOptions } from "@/utils/options";
-import { ComputeType, WasmSubpathInstance } from "@/utils/types";
+import { ComputeType, SliderOption, SubpathCallback, WasmSubpathInstance } from "@/utils/types";
 
 const subpathFeatures = {
 	Constructor: {
@@ -44,5 +44,11 @@ const subpathFeatures = {
 	},
 };
 
-export default subpathFeatures;
-export type SubpathFeature = keyof typeof subpathFeatures;
+export type SubpathFeatureName = keyof typeof subpathFeatures;
+export type SubpathFeatureOptions = {
+	callback: SubpathCallback;
+	sliderOptions?: SliderOption[];
+	triggerOnMouseMove?: boolean;
+	chooseComputeType?: boolean;
+};
+export default subpathFeatures as Record<SubpathFeatureName, SubpathFeatureOptions>;

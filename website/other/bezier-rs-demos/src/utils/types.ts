@@ -18,9 +18,9 @@ export type SubpathCallback = (subpath: WasmSubpathInstance, options: Record<str
 
 export type BezierExampleOptions = {
 	[key in BezierCurveType]: {
-		disabled: boolean;
-		sliderOptions: SliderOption[];
-		customPoints: number[][];
+		disabled?: boolean;
+		sliderOptions?: SliderOption[];
+		customPoints?: number[][];
 	};
 };
 
@@ -62,12 +62,12 @@ export interface ExampleArgs {
 export interface BezierExampleArgs extends ExampleArgs {
 	points: number[][];
 	sliderOptions: SliderOption[];
-};
+}
 
 export interface SubpathExampleArgs extends ExampleArgs {
 	triples: (number[] | undefined)[][];
-	closed: boolean
-};
+	closed: boolean;
+}
 
 export interface Example extends HTMLElement {
 	sliderOptions: SliderOption[];

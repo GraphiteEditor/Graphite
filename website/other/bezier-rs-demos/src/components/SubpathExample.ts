@@ -1,5 +1,5 @@
 import { WasmSubpath } from "@/../wasm/pkg";
-import subpathFeatures, { SubpathFeature } from "@/features/subpathFeatures";
+import subpathFeatures, { SubpathFeatureName } from "@/features/subpathFeatures";
 import { renderExample } from "@/utils/render";
 
 import { SubpathCallback, WasmSubpathInstance, WasmSubpathManipulatorKey, SliderOption, ComputeType } from "@/utils/types";
@@ -13,7 +13,7 @@ class SubpathExample extends HTMLElement {
 
 	triples!: (number[] | undefined)[][];
 
-	name!: SubpathFeature;
+	name!: SubpathFeatureName;
 
 	closed!: boolean;
 
@@ -51,7 +51,7 @@ class SubpathExample extends HTMLElement {
 	connectedCallback(): void {
 		this.title = this.getAttribute("title") || "";
 		this.triples = JSON.parse(this.getAttribute("triples") || "[]");
-		this.name = this.getAttribute("name") as SubpathFeature;
+		this.name = this.getAttribute("name") as SubpathFeatureName;
 		this.sliderOptions = JSON.parse(this.getAttribute("sliderOptions") || "[]");
 		this.triggerOnMouseMove = this.getAttribute("triggerOnMouseMove") === "true";
 		this.closed = this.getAttribute("closed") === "true";
@@ -108,7 +108,7 @@ class SubpathExample extends HTMLElement {
 	}
 
 	getSliderUnit(sliderValue: number, variable: string): string {
-		const sliderUnit = this.sliderUnits[variable]
+		const sliderUnit = this.sliderUnits[variable];
 		return (Array.isArray(sliderUnit) ? sliderUnit[sliderValue] : sliderUnit) || "";
 	}
 }

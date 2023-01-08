@@ -1,4 +1,4 @@
-import { BezierFeature } from "@/features/bezierFeatures";
+import { BezierFeatureName } from "@/features/bezierFeatures";
 import { renderExamplePane } from "@/utils/render";
 import { BezierCurveType, BEZIER_CURVE_TYPE, ComputeType, BezierExampleOptions, SliderOption, Example, ExamplePane, BezierExampleArgs } from "@/utils/types";
 
@@ -28,7 +28,7 @@ const exampleDefaults = {
 
 class BezierExamplePane extends HTMLElement implements ExamplePane {
 	// Props
-	name!: BezierFeature;
+	name!: BezierFeatureName;
 
 	exampleOptions!: BezierExampleOptions;
 
@@ -47,7 +47,7 @@ class BezierExamplePane extends HTMLElement implements ExamplePane {
 		this.id = `${Math.random()}`.substring(2);
 		this.computeType = "Parametric";
 
-		this.name = (this.getAttribute("name") || "") as BezierFeature;
+		this.name = (this.getAttribute("name") || "") as BezierFeatureName;
 		this.exampleOptions = JSON.parse(this.getAttribute("exampleOptions") || "[]");
 		this.triggerOnMouseMove = this.getAttribute("triggerOnMouseMove") === "true";
 		this.chooseComputeType = this.getAttribute("chooseComputeType") === "true";
@@ -70,7 +70,7 @@ class BezierExamplePane extends HTMLElement implements ExamplePane {
 		renderExamplePane(this);
 	}
 
-	buildExample(example: BezierExampleArgs) : Example {
+	buildExample(example: BezierExampleArgs): Example {
 		const bezierExample = document.createElement("bezier-example");
 		bezierExample.setAttribute("title", example.title);
 		bezierExample.setAttribute("points", JSON.stringify(example.points));

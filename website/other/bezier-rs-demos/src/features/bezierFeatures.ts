@@ -1,6 +1,6 @@
 import { WasmBezier } from "@/../wasm/pkg";
 import { tSliderOptions, tErrorOptions, tMinimumSeperationOptions } from "@/utils/options";
-import { ComputeType, BezierExampleOptions, WasmBezierInstance } from "@/utils/types";
+import { ComputeType, BezierExampleOptions, WasmBezierInstance, BezierCallback } from "@/utils/types";
 
 const bezierFeatures = {
 	Constructor: {
@@ -451,5 +451,11 @@ const bezierFeatures = {
 	},
 };
 
-export default bezierFeatures;
-export type BezierFeature = keyof typeof bezierFeatures;
+export type BezierFeatureName = keyof typeof bezierFeatures;
+export type BezierFeatureOptions = {
+	callback: BezierCallback;
+	exampleOptions?: Partial<BezierExampleOptions>;
+	triggerOnMouseMove?: boolean;
+	chooseComputeType?: boolean;
+};
+export default bezierFeatures as Record<BezierFeatureName, BezierFeatureOptions>;

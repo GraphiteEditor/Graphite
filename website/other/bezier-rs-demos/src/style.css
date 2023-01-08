@@ -1,0 +1,51 @@
+
+#app {
+	font-family: Arial, sans-serif;
+	text-align: center;
+	margin: 40px 0;
+}
+
+#app > h1 + p {
+	max-width: 768px;
+	line-height: 1.4;
+	margin: auto;
+	text-align: justify;
+}
+
+#app > h2 {
+	margin-top: 40px;
+}
+
+/* Example Pane styles */
+.example-row {
+	display: flex;
+	flex-direction: row;
+	justify-content: center;
+}
+
+.compute-type-choice {
+	margin-top: 20px;
+}
+
+.example-pane-header {
+	margin-top: 2em;
+	margin-bottom: 0;
+}
+
+.example-pane-container {
+	position: relative;
+	width: fit-content;
+	margin: auto;
+}
+
+/* Example styles */
+.example-header {
+	margin: 20px 0;
+}
+
+.example-figure {
+	width: 200px;
+	height: 200px;
+	margin-bottom: 20px;
+	border: solid 1px black;
+}

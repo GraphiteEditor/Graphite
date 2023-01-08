@@ -9,19 +9,6 @@ module.exports = defineConfig({
 	transpileDependencies: true,
 	// https://cli.vuejs.org/guide/webpack.html
 	chainWebpack: (config) => {
-		config.module
-			.rule("vue")
-			.use("vue-loader")
-			.loader("vue-loader")
-			.tap(options => {
-			options.compilerOptions = {
-				...(options.compilerOptions || {}),
-				isCustomElement: tag => tag === "bezier-example" || tag === "bezier-example-pane" || tag === "subpath-example" || tag === "subpath-example-pane"
-			};
-			return options;
-			});
-
-		
 		// WASM Pack Plugin integrates compiled Rust code (.wasm) and generated wasm-bindgen code (.js) with the webpack bundle
 		// Use this JS to import the bundled Rust entry points: const wasm = import("@/../wasm/pkg").then(panicProxy);
 		// Then call WASM functions with: (await wasm).function_name()

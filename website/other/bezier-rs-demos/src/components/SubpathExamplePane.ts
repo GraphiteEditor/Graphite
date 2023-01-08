@@ -1,10 +1,10 @@
-import { SubpathFeature } from "@/features/subpathFeatures";
+import { SubpathFeatureName } from "@/features/subpathFeatures";
 import { renderExamplePane } from "@/utils/render";
 import { ComputeType, Example, ExamplePane, SliderOption, SubpathExampleArgs } from "@/utils/types";
 
 class SubpathExamplePane extends HTMLElement implements ExamplePane {
 	// Props
-	name!: SubpathFeature;
+	name!: SubpathFeatureName;
 
 	sliderOptions!: SliderOption[];
 
@@ -44,15 +44,15 @@ class SubpathExamplePane extends HTMLElement implements ExamplePane {
 				],
 				closed: true,
 			},
-		]
+		];
 		this.id = `${Math.random()}`.substring(2);
 		this.computeType = "Parametric";
 
-		this.name = (this.getAttribute("name") || "") as SubpathFeature;
+		this.name = (this.getAttribute("name") || "") as SubpathFeatureName;
 		this.sliderOptions = JSON.parse(this.getAttribute("sliderOptions") || "[]");
 		this.triggerOnMouseMove = this.getAttribute("triggerOnMouseMove") === "true";
 		this.chooseComputeType = this.getAttribute("chooseComputeType") === "true";
-		
+
 		this.render();
 	}
 
@@ -71,7 +71,6 @@ class SubpathExamplePane extends HTMLElement implements ExamplePane {
 		subpathExample.setAttribute("computetype", this.computeType);
 		return subpathExample;
 	}
-		
 }
 
 export default SubpathExamplePane;
