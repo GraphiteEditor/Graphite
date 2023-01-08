@@ -10,7 +10,6 @@ use crate::messages::layout::utility_types::misc::LayoutTarget;
 use crate::messages::prelude::*;
 
 use serde::{Deserialize, Serialize};
-use specta::Type;
 use std::sync::Arc;
 
 pub trait PropertyHolder {
