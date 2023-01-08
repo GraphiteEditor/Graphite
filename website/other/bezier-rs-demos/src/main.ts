@@ -35,7 +35,7 @@ const bezierExamples = document.getElementById("bezier-examples");
 	const example = document.createElement("bezier-example-pane");
 
 	example.setAttribute("name", featureName);
-	example.setAttribute("exampleOptions", JSON.stringify(feature.exampleOptions));
+	example.setAttribute("exampleOptions", JSON.stringify(feature.exampleOptions || {}));
 	example.setAttribute("triggerOnMouseMove", String(feature.triggerOnMouseMove));
 	example.setAttribute("chooseComputeType", String(feature.chooseComputeType));
 	bezierExamples?.append(example);
@@ -47,7 +47,7 @@ const subpathExamples = document.getElementById("subpath-examples");
 	const example = document.createElement("subpath-example-pane");
 
 	example.setAttribute("name", featureName);
-	example.setAttribute("sliderOptions", JSON.stringify(feature.sliderOptions));
+	example.setAttribute("sliderOptions", JSON.stringify(feature.sliderOptions || []));
 	example.setAttribute("triggerOnMouseMove", String(feature.triggerOnMouseMove));
 	example.setAttribute("chooseComputeType", String(feature.chooseComputeType));
 	subpathExamples?.append(example);
