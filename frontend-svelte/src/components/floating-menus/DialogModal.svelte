@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from "svelte";
+	import { getContext, onMount } from "svelte";
 
 	import FloatingMenu from "@/components/layout/FloatingMenu.svelte";
 	import LayoutCol from "@/components/layout/LayoutCol.svelte";
@@ -7,8 +7,9 @@
 	import TextButton from "@/components/widgets/buttons/TextButton.svelte";
 	import IconLabel from "@/components/widgets/labels/IconLabel.svelte";
 	import WidgetLayout from "@/components/widgets/WidgetLayout.svelte";
+	import { type DialogState } from "@/state-providers/dialog";
 
-	// inject: ["dialog"],
+	const dialog = getContext<DialogState>("dialog");
 
 	let dialogModal: FloatingMenu;
 
@@ -26,16 +27,16 @@
 <FloatingMenu open={true} class="dialog-modal" type="Dialog" direction="Center" bind:this={dialogModal} data-dialog-modal>
 	<LayoutRow>
 		<LayoutCol class="icon-column">
-			<!-- `dialog.state.icon` class exists to provide special sizing in CSS to specific icons -->
-			<IconLabel icon={dialog.state.icon} class={dialog.state.icon.toLowerCase()} />
+			<!-- `$dialog.icon` class exists to provide special sizing in CSS to specific icons -->
+			<IconLabel icon={$dialog.icon} class={$dialog.icon.toLowerCase()} />
 		</LayoutCol>
 		<LayoutCol class="main-column">
-			{#if dialog.state.widgets.layout.length > 0}
-				<WidgetLayout layout={dialog.state.widgets} class="details" />
+			{#if $dialog.widgets.layout.length > 0}
+				<WidgetLayout layout={$dialog.widgets} class="details" />
 			{/if}
-			{#if (dialog.state.jsCallbackBasedButtons?.length || NaN) > 0}
+			{#if ($dialog.jsCallbackBasedButtons?.length || NaN) > 0}
 				<LayoutRow class="panic-buttons-row">
-					{#each dialog.state.jsCallbackBasedButtons as button, index (index)}
+					{#each $dialog.jsCallbackBasedButtons as button, index (index)}
 						<TextButton action={() => button.callback?.()} {...button.props} />
 					{/each}
 				</LayoutRow>

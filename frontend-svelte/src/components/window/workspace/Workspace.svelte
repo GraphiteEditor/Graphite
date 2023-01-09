@@ -3,6 +3,11 @@
 	import LayoutCol from "@/components/layout/LayoutCol.svelte";
 	import LayoutRow from "@/components/layout/LayoutRow.svelte";
 	import Panel from "$/components/window/workspace/Panel.svelte";
+	import { getContext } from "svelte";
+	import { type Editor } from "@/wasm-communication/editor";
+	import { type WorkspaceState } from "@/state-providers/workspace";
+	import { type PortfolioState } from "@/state-providers/portfolio";
+	import { type DialogState } from "@/state-providers/dialog";
 
 	const MIN_PANEL_SIZE = 100;
 	const PANEL_SIZES = {
@@ -18,9 +23,9 @@
 	let panelSizes = PANEL_SIZES;
 	let documentPanel: Panel;
 
-	$: activeDocumentIndex = portfolio.state.activeDocumentIndex;
-	$: nodeGraphVisible = workspace.state.nodeGraphVisible;
-	$: documentTabLabels = portfolio.state.documents.map((doc: FrontendDocumentDetails) => {
+	$: activeDocumentIndex = $portfolio.activeDocumentIndex;
+	$: nodeGraphVisible = $workspace.nodeGraphVisible;
+	$: documentTabLabels = $portfolio.documents.map((doc: FrontendDocumentDetails) => {
 		const name = doc.displayName;
 
 		if (!editor.instance.inDevelopmentMode()) return { name };
@@ -35,7 +40,10 @@
 		documentPanel?.scrollTabIntoView(index);
 	}
 
-	// inject: ["workspace", "portfolio", "dialog", "editor"],
+	const editor = getContext<Editor>("editor");
+	const workspace = getContext<WorkspaceState>("workspace");
+	const portfolio = getContext<PortfolioState>("portfolio");
+	const dialog = getContext<DialogState>("dialog");
 
 	function resizePanel(e: PointerEvent) {
 		const gutter = (e.target || undefined) as HTMLDivElement | undefined;
@@ -98,13 +106,13 @@
 		<LayoutCol class="workspace-grid-subdivision" styles={{ "flex-grow": panelSizes["content"] }} data-subdivision-name="content">
 			<LayoutRow class="workspace-grid-subdivision" styles={{ "flex-grow": panelSizes["document"] }} data-subdivision-name="document">
 				<Panel
-					panelType={portfolio.state.documents.length > 0 ? "Document" : undefined}
+					panelType={$portfolio.documents.length > 0 ? "Document" : undefined}
 					tabCloseButtons={true}
 					tabMinWidths={true}
 					tabLabels={documentTabLabels}
-					clickAction={(tabIndex) => editor.instance.selectDocument(portfolio.state.documents[tabIndex].id)}
-					closeAction={(tabIndex) => editor.instance.closeDocumentWithConfirmation(portfolio.state.documents[tabIndex].id)}
-					tabActiveIndex={portfolio.state.activeDocumentIndex}
+					clickAction={(tabIndex) => editor.instance.selectDocument($portfolio.documents[tabIndex].id)}
+					closeAction={(tabIndex) => editor.instance.closeDocumentWithConfirmation($portfolio.documents[tabIndex].id)}
+					tabActiveIndex={$portfolio.activeDocumentIndex}
 					bind:this={documentPanel}
 				/>
 			</LayoutRow>
@@ -126,7 +134,7 @@
 			</LayoutRow>
 		</LayoutCol>
 	</LayoutRow>
-	{#if dialog.state.visible}
+	{#if $dialog.visible}
 		<DialogModal />
 	{/if}
 </LayoutRow>

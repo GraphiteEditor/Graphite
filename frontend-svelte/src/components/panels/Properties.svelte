@@ -1,13 +1,14 @@
 <script lang="ts">
-	import { onMount } from "svelte";
+	import { getContext, onMount } from "svelte";
 
 	import { defaultWidgetLayout, patchWidgetLayout, UpdatePropertyPanelOptionsLayout, UpdatePropertyPanelSectionsLayout } from "@/wasm-communication/messages";
 
 	import LayoutCol from "@/components/layout/LayoutCol.svelte";
 	import LayoutRow from "@/components/layout/LayoutRow.svelte";
 	import WidgetLayout from "@/components/widgets/WidgetLayout.svelte";
+	import { type Editor } from "@/wasm-communication/editor";
 
-	// inject: ["editor", "dialog"],
+	const editor = getContext<Editor>("editor");
 
 	let propertiesOptionsLayout = defaultWidgetLayout();
 	let propertiesSectionsLayout = defaultWidgetLayout();

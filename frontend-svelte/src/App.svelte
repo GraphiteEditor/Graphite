@@ -27,19 +27,19 @@
 
 	// 		// State provider systems
 	// 		dialog: DialogState;
+	// 		document: DocumentState;
 	// 		fonts: FontsState;
 	// 		fullscreen: FullscreenState;
+	// 		nodeGraph: NodeGraphState;
 	// 		panels: PanelsState;
 	// 		portfolio: PortfolioState;
 	// 		workspace: WorkspaceState;
-	// 		nodeGraph: NodeGraphState;
-	// 		document: DocumentState;
 	// 	}
 	// }
 </script>
 
 <script lang="ts">
-	import { onMount, onDestroy } from "svelte";
+	import { onMount, onDestroy, setContext } from "svelte";
 
 	import MainWindow from "@/components/window/MainWindow.svelte";
 
@@ -53,20 +53,28 @@
 		createPersistenceManager?: () => void;
 	} = {};
 
-	// provide() { return { ...this.$data }; },
-
 	let self: MainWindow;
 	// Graphite WASM editor instance
 	let editor = createEditor();
 	// State provider systems
 	let dialog = createDialogState(editor);
+	let document = createDocumentState(editor);
 	let fonts = createFontsState(editor);
 	let fullscreen = createFullscreenState(editor);
+	let nodeGraph = createNodeGraphState(editor);
 	let panels = createPanelsState(editor);
 	let portfolio = createPortfolioState(editor);
 	let workspace = createWorkspaceState(editor);
-	let nodeGraph = createNodeGraphState(editor);
-	let document = createDocumentState(editor);
+
+	// provide() { return { ...this.$data }; },
+	setContext("dialog", dialog);
+	setContext("document", document);
+	setContext("fonts", fonts);
+	setContext("fullscreen", fullscreen);
+	setContext("nodeGraph", nodeGraph);
+	setContext("panels", panels);
+	setContext("portfolio", portfolio);
+	setContext("workspace", workspace);
 
 	onMount(() => {
 		// Initialize managers, which are isolated systems that subscribe to backend messages to link them to browser API functionality (like JS events, IndexedDB, etc.)

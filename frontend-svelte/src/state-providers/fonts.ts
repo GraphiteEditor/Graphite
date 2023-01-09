@@ -1,11 +1,12 @@
-
+import { writable } from "svelte/store";
 
 import { type Editor } from "@/wasm-communication/editor";
 import { TriggerFontLoad } from "@/wasm-communication/messages";
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 export function createFontsState(editor: Editor) {
-	const state = reactive({});
+	// TODO: Svelte: refactor to remove the need for this empty store
+	const { subscribe } = writable({});
 
 	function createURL(font: string): URL {
 		const url = new URL("https://fonts.googleapis.com/css2");
@@ -73,7 +74,12 @@ export function createFontsState(editor: Editor) {
 			});
 	});
 
-	return { state, fontNames, getFontStyles, getFontFileUrl };
+	return {
+		subscribe,
+		fontNames,
+		getFontStyles,
+		getFontFileUrl,
+	};
 }
 export type FontsState = ReturnType<typeof createFontsState>;
 

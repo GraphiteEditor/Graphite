@@ -7,6 +7,8 @@
 	import IconLabel from "@/components/widgets/labels/IconLabel.svelte";
 	import Separator from "@/components/widgets/labels/Separator.svelte";
 	import TextLabel from "@/components/widgets/labels/TextLabel.svelte";
+	import { getContext } from "svelte";
+	import { type FullscreenState } from "@/state-providers/fullscreen";
 
 	type LabelData = { label?: string; icon?: IconName; width: string };
 
@@ -29,14 +31,14 @@
 		...(platformIsMac() ? ICON_WIDTHS_MAC : {}),
 	};
 
-	// inject: ["fullscreen"],
+	const fullscreen = getContext<FullscreenState>("fullscreen");
 
 	export let keysWithLabelsGroups: LayoutKeysGroup[] = [];
 	export let mouseMotion: MouseMotion | undefined = undefined;
 	export let requiresLock = false;
 
 	$: keyboardLockInfoMessage = watchKeyboardLockInfoMessage(fullscreen.keyboardLockApiSupported);
-	$: displayKeyboardLockNotice = requiresLock && !fullscreen.state.keyboardLocked;
+	$: displayKeyboardLockNotice = requiresLock && !$fullscreen.keyboardLocked;
 
 	function watchKeyboardLockInfoMessage(keyboardLockApiSupported: boolean): string {
 		const RESERVED = "This hotkey is reserved by the browser. ";

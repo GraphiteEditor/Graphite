@@ -1,8 +1,8 @@
 <script lang="ts">
-	import { onDestroy, createEventDispatcher } from "svelte";
+	import { onDestroy, createEventDispatcher, getContext } from "svelte";
 
 	import { clamp } from "@/utility-functions/math";
-	import type { HSV, RGB } from "@/wasm-communication/messages";
+	import { type HSV, type RGB } from "@/wasm-communication/messages";
 	import { Color } from "@/wasm-communication/messages";
 
 	import FloatingMenu, { type MenuDirection } from "@/components/layout/FloatingMenu.svelte";
@@ -14,6 +14,7 @@
 	import TextInput from "@/components/widgets/inputs/TextInput.svelte";
 	import Separator from "@/components/widgets/labels/Separator.svelte";
 	import TextLabel from "@/components/widgets/labels/TextLabel.svelte";
+	import { type Editor } from "@/wasm-communication/editor";
 
 	type PresetColors = "none" | "black" | "white" | "red" | "yellow" | "green" | "cyan" | "blue" | "magenta";
 
@@ -30,12 +31,13 @@
 	};
 	const COLOR_SPACE_CHOICES = [[{ label: "sRGB" }]];
 
-	// inject: ["editor"],
+	const editor = getContext<Editor>("editor");
+
 	// emits: ["update:color", "update:open"],
 
 	export let color: Color;
 	export let allowNone = false;
-	export let allowTransparency = false; // TODO: Implement this
+	// export let allowTransparency = false; // TODO: Implement this
 	export let direction: MenuDirection = "Bottom";
 	// TODO: See if this should be made to follow the pattern of DropdownInput.svelte so this could be removed
 	export let open: boolean;
@@ -298,7 +300,7 @@
 				<Separator />
 				<LayoutRow>
 					<TextInput
-						on:value={newColor.toHexOptionalAlpha() || "-"}
+						bind:value={newColor.toHexOptionalAlpha() || "-"}
 						on:commitText={setColorCode}
 						centered={true}
 						tooltip="Color code in hexadecimal format. 6 digits if opaque, 8 with alpha.\nAccepts input of CSS color values including named colors."
@@ -318,7 +320,6 @@
 							on:value={(value) => setColorRGB(channel, value)}
 							min={0}
 							max={255}
-							centered={true}
 							minWidth={56}
 							tooltip={`${{ r: "Red", g: "Green", b: "Blue" }[channel]} channel, integers 0–255`}
 						/>
@@ -341,7 +342,6 @@
 							min={0}
 							max={channel === "h" ? 360 : 100}
 							unit={channel === "h" ? "°" : "%"}
-							centered={true}
 							minWidth={56}
 							tooltip={{
 								h: "Hue component, the &quot;color&quot; along the rainbow",

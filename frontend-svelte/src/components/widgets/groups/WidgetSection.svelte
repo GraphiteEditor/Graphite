@@ -4,8 +4,10 @@
 	import LayoutCol from "@/components/layout/LayoutCol.svelte";
 	import TextLabel from "@/components/widgets/labels/TextLabel.svelte";
 	import WidgetRow from "@/components/widgets/WidgetRow.svelte";
+	import { getContext } from "svelte";
+	import { type Editor } from "@/wasm-communication/editor";
 
-	// inject: ["editor"],
+	const editor = getContext<Editor>("editor");
 
 	export let widgetData: WidgetSectionFromJsMessages;
 	export let layoutTarget: any; // TODO: Give type

@@ -20,7 +20,7 @@
 </script>
 
 <script lang="ts">
-	import { tick } from "svelte";
+	import { getContext, tick } from "svelte";
 
 	import { platformIsMac } from "@/utility-functions/platform";
 
@@ -31,8 +31,9 @@
 	import IconLabel from "@/components/widgets/labels/IconLabel.svelte";
 	import TextLabel from "@/components/widgets/labels/TextLabel.svelte";
 	import UserInputLabel from "@/components/widgets/labels/UserInputLabel.svelte";
+	import { type Editor } from "@/wasm-communication/editor";
 
-	// inject: ["editor"],
+	const editor = getContext<Editor>("editor");
 
 	export let tabMinWidths = false;
 	export let tabCloseButtons = false;

@@ -23,10 +23,12 @@
 	import IconLabel from "@/components/widgets/labels/IconLabel.svelte";
 	import Separator from "@/components/widgets/labels/Separator.svelte";
 	import TextLabel from "@/components/widgets/labels/TextLabel.svelte";
+	import { getContext } from "svelte";
+	import { type Editor } from "@/wasm-communication/editor";
 
 	const SUFFIX_WIDGETS = ["PopoverButton"];
 
-	// inject: ["editor"],
+	const editor = getContext<Editor>("editor");
 
 	export let widgetData: WidgetColumn | WidgetRow;
 	export let layoutTarget: any;

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount, tick } from "svelte";
+	import { getContext, onMount, tick } from "svelte";
 
 	import { beginDraggingElement } from "@/io-managers/drag";
 	import { platformIsMac } from "@/utility-functions/platform";
@@ -20,6 +20,7 @@
 	import IconButton from "@/components/widgets/buttons/IconButton.svelte";
 	import IconLabel from "@/components/widgets/labels/IconLabel.svelte";
 	import WidgetLayout from "@/components/widgets/WidgetLayout.svelte";
+	import { type Editor } from "@/wasm-communication/editor";
 
 	type LayerListingInfo = {
 		folderIndex: number;
@@ -43,7 +44,7 @@
 		markerHeight: number;
 	};
 
-	// inject: ["editor"],
+	const editor = getContext<Editor>("editor");
 
 	// Layer data
 	let layerCache: Map<string, LayerPanelEntry> = new Map(); // TODO: replace with BigUint64Array as index

@@ -1,3 +1,5 @@
+import { get } from "svelte/store";
+
 import { type DialogState } from "@/state-providers/dialog";
 import { type FullscreenState } from "@/state-providers/fullscreen";
 import { type PortfolioState } from "@/state-providers/portfolio";
@@ -61,7 +63,7 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 
 	async function shouldRedirectKeyboardEventToBackend(e: KeyboardEvent): Promise<boolean> {
 		// Don't redirect when a modal is covering the workspace
-		if (dialog.dialogIsVisible()) return false;
+		if (get(dialog).visible) return false;
 
 		const key = await getLocalizedScanCode(e);
 
@@ -109,7 +111,7 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 			return;
 		}
 
-		if (dialog.dialogIsVisible() && key === "Escape") {
+		if (get(dialog).visible && key === "Escape") {
 			dialog.dismissDialog();
 		}
 	}
@@ -154,7 +156,7 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 		const inDialog = target instanceof Element && target.closest("[data-dialog-modal] [data-floating-menu-content]");
 		const inTextInput = target === textInput;
 
-		if (dialog.dialogIsVisible() && !inDialog) {
+		if (get(dialog).visible && !inDialog) {
 			dialog.dismissDialog();
 			e.preventDefault();
 			e.stopPropagation();

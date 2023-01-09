@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount, tick } from "svelte";
+	import { getContext, onMount, tick } from "svelte";
 
 	import { textInputCleanup } from "@/utility-functions/keyboard-entry";
 	import { rasterizeSVGCanvas } from "@/utility-functions/rasterization";
@@ -11,12 +11,17 @@
 	import CanvasRuler from "@/components/widgets/metrics/CanvasRuler.svelte";
 	import PersistentScrollbar from "@/components/widgets/metrics/PersistentScrollbar.svelte";
 	import WidgetLayout from "@/components/widgets/WidgetLayout.svelte";
+	import { type Editor } from "@/wasm-communication/editor";
+	import { type PanelsState } from "@/state-providers/panels";
+	import { type DocumentState } from "@/state-providers/document";
 
 	let rulerHorizontal: CanvasRuler;
 	let rulerVertical: CanvasRuler;
 	let canvasDiv: HTMLDivElement;
 
-	// inject: ["editor", "panels", "document"],
+	const editor = getContext<Editor>("editor");
+	const panels = getContext<PanelsState>("panels");
+	const document = getContext<DocumentState>("document");
 
 	// Interactive text editing
 	let textInput: undefined | HTMLDivElement = undefined;
@@ -109,7 +114,7 @@
 	}
 
 	// Update rendered SVGs
-	async function updateDocumentArtwork(svg: string) {
+	export async function updateDocumentArtwork(svg: string) {
 		artworkSvg = svg;
 		rasterizedCanvas = undefined;
 
@@ -140,16 +145,16 @@
 		}
 	}
 
-	function updateDocumentOverlays(svg: string) {
+	export function updateDocumentOverlays(svg: string) {
 		overlaysSvg = svg;
 	}
 
-	function updateDocumentArtboards(svg: string) {
+	export function updateDocumentArtboards(svg: string) {
 		artboardSvg = svg;
 		rasterizedCanvas = undefined;
 	}
 
-	async function updateEyedropperSamplingState(mousePosition: XY | undefined, colorPrimary: string, colorSecondary: string): Promise<[number, number, number] | undefined> {
+	export async function updateEyedropperSamplingState(mousePosition: XY | undefined, colorPrimary: string, colorSecondary: string): Promise<[number, number, number] | undefined> {
 		if (mousePosition === undefined) {
 			cursorEyedropper = false;
 			return undefined;
@@ -201,20 +206,20 @@
 	}
 
 	// Update scrollbars and rulers
-	function updateDocumentScrollbars(position: XY, size: XY, multiplier: XY) {
+	export function updateDocumentScrollbars(position: XY, size: XY, multiplier: XY) {
 		scrollbarPos = position;
 		scrollbarSize = size;
 		scrollbarMultiplier = multiplier;
 	}
 
-	function updateDocumentRulers(origin: XY, spacing: number, interval: number) {
+	export function updateDocumentRulers(origin: XY, spacing: number, interval: number) {
 		rulerOrigin = origin;
 		rulerSpacing = spacing;
 		rulerInterval = interval;
 	}
 
 	// Update mouse cursor icon
-	function updateMouseCursor(cursor: MouseCursorIcon) {
+	export function updateMouseCursor(cursor: MouseCursorIcon) {
 		let cursorString: string = cursor;
 
 		// This isn't very clean but it's good enough for now until we need more icons, then we can build something more robust (consider blob URLs)
@@ -242,13 +247,13 @@
 	}
 
 	// Text entry
-	function triggerTextCommit() {
+	export function triggerTextCommit() {
 		if (!textInput) return;
 		const textCleaned = textInputCleanup(textInput.innerText);
 		editor.instance.onChangeText(textCleaned);
 	}
 
-	function displayEditableTextbox(displayEditableTextbox: DisplayEditableTextbox) {
+	export function displayEditableTextbox(displayEditableTextbox: DisplayEditableTextbox) {
 		textInput = document.createElement("div") as HTMLDivElement;
 
 		if (displayEditableTextbox.text === "") textInput.textContent = "";
@@ -266,13 +271,13 @@
 		};
 	}
 
-	function displayRemoveEditableTextbox() {
+	export function displayRemoveEditableTextbox() {
 		textInput = undefined;
 		window.dispatchEvent(new CustomEvent("modifyinputfield", { detail: undefined }));
 	}
 
 	// Resize elements to render the new viewport size
-	function viewportResize() {
+	export function viewportResize() {
 		// Resize the canvas
 		canvasSvgWidth = Math.ceil(parseFloat(getComputedStyle(canvasDiv).width));
 		canvasSvgHeight = Math.ceil(parseFloat(getComputedStyle(canvasDiv).height));
@@ -294,23 +299,23 @@
 
 <LayoutCol class="document">
 	<LayoutRow class="options-bar" scrollableX={true}>
-		<WidgetLayout layout={document.state.documentModeLayout} />
-		<WidgetLayout layout={document.state.toolOptionsLayout} />
+		<WidgetLayout layout={$document.documentModeLayout} />
+		<WidgetLayout layout={$document.toolOptionsLayout} />
 
 		<LayoutRow class="spacer" />
 
-		<WidgetLayout layout={document.state.documentBarLayout} />
+		<WidgetLayout layout={$document.documentBarLayout} />
 	</LayoutRow>
 	<LayoutRow class="shelf-and-viewport">
 		<LayoutCol class="shelf">
 			<LayoutCol class="tools" scrollableY={true}>
-				<WidgetLayout layout={document.state.toolShelfLayout} />
+				<WidgetLayout layout={$document.toolShelfLayout} />
 			</LayoutCol>
 
 			<LayoutCol class="spacer" />
 
 			<LayoutCol class="working-colors">
-				<WidgetLayout layout={document.state.workingColorsLayout} />
+				<WidgetLayout layout={$document.workingColorsLayout} />
 			</LayoutCol>
 		</LayoutCol>
 		<LayoutCol class="viewport">
@@ -328,10 +333,8 @@
 							primaryColor={cursorEyedropperPreviewColorPrimary}
 							secondaryColor={cursorEyedropperPreviewColorSecondary}
 							imageData={cursorEyedropperPreviewImageData}
-							styles={{
-								left: cursorLeft + "px",
-								top: cursorTop + "px",
-							}}
+							x={cursorLeft}
+							y={cursorTop}
 						/>
 					{/if}
 					<div class="canvas" on:pointerdown={(e) => canvasPointerDown(e)} on:dragover={(e) => e.preventDefault()} on:drop={(e) => pasteFile(e)} bind:this={canvasDiv} data-canvas>

@@ -9,14 +9,16 @@
 	import WindowButtonsWeb from "@/components/window/title-bar/WindowButtonsWeb.svelte";
 	import WindowButtonsWindows from "@/components/window/title-bar/WindowButtonsWindows.svelte";
 	import WindowTitle from "@/components/window/title-bar/WindowTitle.svelte";
+	import { type PortfolioState } from "@/state-providers/portfolio";
+	import { getContext } from "svelte";
 
 	export let platform: Platform;
 	export let maximized: boolean;
 
-	// inject: ["portfolio"],
+	const portfolio = getContext<PortfolioState>("portfolio");
 
-	$: docIndex = portfolio.state.activeDocumentIndex;
-	$: displayName = portfolio.state.documents[docIndex]?.displayName || "";
+	$: docIndex = $portfolio.activeDocumentIndex;
+	$: displayName = $portfolio.documents[docIndex]?.displayName || "";
 	$: windowTitle = `${displayName}${displayName && " - "}Graphite`;
 </script>
 

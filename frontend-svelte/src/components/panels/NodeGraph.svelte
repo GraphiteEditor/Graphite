@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount, tick } from "svelte";
+	import { getContext, onMount, tick } from "svelte";
 
 	import type { IconName } from "@/utility-functions/icons";
 
@@ -12,12 +12,15 @@
 	import IconLabel from "@/components/widgets/labels/IconLabel.svelte";
 	import TextLabel from "@/components/widgets/labels/TextLabel.svelte";
 	import WidgetLayout from "@/components/widgets/WidgetLayout.svelte";
+	import { type Editor } from "@/wasm-communication/editor";
+	import { type NodeGraphState } from "@/state-providers/node-graph";
 
 	const WHEEL_RATE = (1 / 600) * 3;
 	const GRID_COLLAPSE_SPACING = 10;
 	const GRID_SIZE = 24;
 
-	// inject: ["nodeGraph", "editor"],
+	const editor = getContext<Editor>("editor");
+	const nodeGraph = getContext<NodeGraphState>("nodeGraph");
 
 	let graph: LayoutRow;
 	let nodesContainer: HTMLDivElement;
@@ -36,14 +39,14 @@
 
 	$: gridSpacing = calculateGridSpacing(transform.scale);
 	$: dotRadius = 1 + Math.floor(transform.scale - 0.5 + 0.001) / 2;
-	$: nodeGraphBarLayout = nodeGraph.state.nodeGraphBarLayout;
-	$: nodeCategories = buildNodeCategories(nodeGraph.state.nodeTypes, searchTerm);
+	$: nodeGraphBarLayout = $nodeGraph.nodeGraphBarLayout;
+	$: nodeCategories = buildNodeCategories($nodeGraph.nodeTypes, searchTerm);
 	$: nodeListX = ((nodeListLocation?.x || 0) * GRID_SIZE + transform.x) * transform.scale;
 	$: nodeListY = ((nodeListLocation?.y || 0) * GRID_SIZE + transform.y) * transform.scale;
 	$: linkPathInProgress = createLinkPathInProgress(linkInProgressFromConnector, linkInProgressToConnector);
 	$: linkPaths = createLinkPaths(linkPathInProgress, nodeLinkPaths);
 
-	$: watchNodes(nodeGraph.state.nodes);
+	$: watchNodes($nodeGraph.nodes);
 
 	function calculateGridSpacing(scale: number): number {
 		const dense = scale * GRID_SIZE;
@@ -101,7 +104,7 @@
 	async function refreshLinks(): Promise<void> {
 		await tick();
 
-		const links = nodeGraph.state.links;
+		const links = $nodeGraph.links;
 		nodeLinkPaths = links.flatMap((link, index) => {
 			const { nodePrimaryInput, nodePrimaryOutput } = resolveLink(link, nodesContainer);
 			if (!nodePrimaryInput || !nodePrimaryOutput) return [];
@@ -258,7 +261,7 @@
 				if (inputIndex !== undefined && nodeId) {
 					const nodeIdInt = BigInt(nodeId);
 					const inputIndexInt = BigInt(inputIndex);
-					const links = nodeGraph.state.links;
+					const links = $nodeGraph.links;
 					const linkIndex = links.findIndex((value) => value.linkEnd === nodeIdInt && value.linkEndInputIndex === inputIndexInt);
 					const queryString = `[data-node="${String(links[linkIndex].linkStart)}"] [data-port="output"]`;
 					linkInProgressFromConnector = (nodesContainer.querySelector(queryString) || undefined) as HTMLDivElement | undefined;
@@ -381,14 +384,14 @@
 				const selectedNode = nodesContainer.querySelector(`[data-node="${String(selectedNodeId)}"]`);
 
 				// Check that neither the input or output of the selected node are already connected.
-				const notConnected = nodeGraph.state.links.findIndex((link) => link.linkStart === selectedNodeId || (link.linkEnd === selectedNodeId && link.linkEndInputIndex === BigInt(0))) === -1;
+				const notConnected = $nodeGraph.links.findIndex((link) => link.linkStart === selectedNodeId || (link.linkEnd === selectedNodeId && link.linkEndInputIndex === BigInt(0))) === -1;
 				const input = selectedNode?.querySelector(`[data-port="input"]`);
 				const output = selectedNode?.querySelector(`[data-port="output"]`);
 
 				// TODO: Make sure inputs are correctly typed
 				if (selectedNode && notConnected && input && output) {
 					// Find the link that the node has been dragged on top of
-					const link = nodeGraph.state.links.find((link): boolean => {
+					const link = $nodeGraph.links.find((link): boolean => {
 						const { nodePrimaryInput, nodePrimaryOutput } = resolveLink(link, nodesContainer);
 						if (!nodePrimaryInput || !nodePrimaryOutput) return false;
 
@@ -478,7 +481,7 @@
 			</LayoutCol>
 		{/if}
 		<div class="nodes" style:transform={`scale(${transform.scale}) translate(${transform.x}px, ${transform.y}px)`} style:transform-origin={`0 0`} bind:this={nodesContainer}>
-			{#each nodeGraph.state.nodes as node (String(node.id))}
+			{#each $nodeGraph.nodes as node (String(node.id))}
 				<div
 					class="node"
 					class:selected={selected.includes(node.id)}

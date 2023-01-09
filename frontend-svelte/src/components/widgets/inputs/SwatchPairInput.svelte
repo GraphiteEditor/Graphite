@@ -5,7 +5,7 @@
 	import LayoutCol from "@/components/layout/LayoutCol.svelte";
 	import LayoutRow from "@/components/layout/LayoutRow.svelte";
 
-	// inject: ["editor"],
+	const editor = getContext<Editor>("editor");
 
 	export let primary: Color;
 	export let secondary: Color;

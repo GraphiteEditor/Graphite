@@ -5,8 +5,8 @@
 
 	//   inject: ["fullscreen"],
 
-	$: windowFullscreen = fullscreen.state.windowFullscreen;
-	$: requestFullscreenHotkeys = fullscreen.keyboardLockApiSupported && !fullscreen.state.keyboardLocked;
+	$: windowFullscreen = $fullscreen.windowFullscreen;
+	$: requestFullscreenHotkeys = fullscreen.keyboardLockApiSupported && !$fullscreen.keyboardLocked;
 
 	async function handleClick() {
 		if (windowFullscreen) fullscreen.exitFullscreen();

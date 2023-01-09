@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { createEventDispatcher, onMount, tick } from "svelte";
+	import { createEventDispatcher, getContext, onMount, tick } from "svelte";
 
 	import { type MenuListEntry } from "@/wasm-communication/messages";
 
@@ -7,8 +7,9 @@
 	import LayoutRow from "@/components/layout/LayoutRow.svelte";
 	import IconLabel from "@/components/widgets/labels/IconLabel.svelte";
 	import TextLabel from "@/components/widgets/labels/TextLabel.svelte";
+	import { type FontsState } from "@/state-providers/fonts";
 
-	// inject: ["fonts"],
+	const fonts = getContext<FontsState>("fonts");
 	// emits: ["update:fontFamily", "update:fontStyle", "changeFont"],
 
 	let menuList: MenuList;

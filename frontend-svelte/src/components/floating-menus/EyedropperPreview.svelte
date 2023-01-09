@@ -20,6 +20,8 @@
 	export let colorChoice: string;
 	export let primaryColor: string;
 	export let secondaryColor: string;
+	export let x: number;
+	export let y: number;
 
 	$: watchImageData(imageData);
 
@@ -51,7 +53,12 @@
 	});
 </script>
 
-<FloatingMenu open={true} class="eyedropper-preview" type="Cursor" styles={{ "--ring-color-primary": primaryColor, "--ring-color-secondary": secondaryColor, "--ring-color-choice": colorChoice }}>
+<FloatingMenu
+	open={true}
+	class="eyedropper-preview"
+	type="Cursor"
+	styles={{ "--ring-color-primary": primaryColor, "--ring-color-secondary": secondaryColor, "--ring-color-choice": colorChoice, left: x + "px", top: y + "px" }}
+>
 	<div class="ring">
 		<div class="canvas-container">
 			<canvas bind:this={zoomPreviewCanvas} />

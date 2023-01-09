@@ -1,4 +1,5 @@
-
+import {tick} from "svelte";
+import {writable} from "svelte/store";
 
 import { type Editor } from "@/wasm-communication/editor";
 import {
@@ -14,7 +15,7 @@ import {
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 export function createNodeGraphState(editor: Editor) {
-	const state = reactive({
+	const { subscribe, update } = writable({
 		nodes: [] as FrontendNode[],
 		links: [] as FrontendNodeLink[],
 		nodeTypes: [] as FrontendNodeType[],
@@ -23,18 +24,27 @@ export function createNodeGraphState(editor: Editor) {
 
 	// Set up message subscriptions on creation
 	editor.subscriptions.subscribeJsMessage(UpdateNodeGraph, (updateNodeGraph) => {
-		state.nodes = updateNodeGraph.nodes;
-		state.links = updateNodeGraph.links;
+		update((state) => {
+			state.nodes = updateNodeGraph.nodes;
+			state.links = updateNodeGraph.links;
+			return state;
+		});
 	});
 	editor.subscriptions.subscribeJsMessage(UpdateNodeTypes, (updateNodeTypes) => {
-		state.nodeTypes = updateNodeTypes.nodeTypes;
+		update((state) => {
+			state.nodeTypes = updateNodeTypes.nodeTypes;
+			return state;
+		});
 	});
 	editor.subscriptions.subscribeJsMessage(UpdateNodeGraphBarLayout, (updateNodeGraphBarLayout) => {
-		patchWidgetLayout(state.nodeGraphBarLayout, updateNodeGraphBarLayout);
+		update((state) => {
+			patchWidgetLayout(state.nodeGraphBarLayout, updateNodeGraphBarLayout);
+			return state;
+		});
 	});
 
 	return {
-		state: readonly(state) as typeof state,
+		subscribe,
 	};
 }
 export type NodeGraphState = ReturnType<typeof createNodeGraphState>;
