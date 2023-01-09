@@ -249,7 +249,7 @@ impl ShapeEditor {
 		if let Some(shape) = document.layer(layer_path).ok()?.as_subpath() {
 			let viewspace = document.generate_transform_relative_to_viewport(layer_path).ok()?;
 			for (manipulator_id, manipulator) in shape.manipulator_groups().enumerate() {
-				let manipulator_point_index = manipulator.closest_point(&viewspace, pos);
+				let manipulator_point_index = manipulator.closest_point(&viewspace, pos, crate::consts::HIDE_HANDLE_DISTANCE);
 				if let Some(point) = &manipulator.points[manipulator_point_index] {
 					if point.editor_state.can_be_selected {
 						let distance_squared = viewspace.transform_point2(point.position).distance_squared(pos);
