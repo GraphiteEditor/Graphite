@@ -3,7 +3,7 @@ members = [
 	"editor",
 	"document-legacy",
 	"proc-macros",
-	"wasm",
+	"frontend/wasm",
 	"frontend/src-tauri",
 	"node-graph/gcore",
 	"node-graph/gstd",
