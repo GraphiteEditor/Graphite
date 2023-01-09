@@ -1,6 +1,6 @@
 use crate::application::generate_uuid;
 use crate::consts::VIEWPORT_GRID_ROUNDING_BIAS;
-use crate::consts::{COLOR_ACCENT, MANIPULATOR_GROUP_MARKER_SIZE, PATH_OUTLINE_WEIGHT};
+use crate::consts::{COLOR_ACCENT, HIDE_HANDLE_DISTANCE, MANIPULATOR_GROUP_MARKER_SIZE, PATH_OUTLINE_WEIGHT};
 use crate::messages::prelude::*;
 
 use document_legacy::color::Color;
@@ -45,7 +45,7 @@ impl OverlayRenderer {
 				trace!("Overlay: Outline cache {:?}", &outline_cache);
 
 				// Create an outline if we do not have a cached one
-				if outline_cache == None {
+				if outline_cache.is_none() {
 					let outline_path = self.create_shape_outline_overlay(shape.clone(), responses);
 					self.shape_overlay_cache.insert(*layer_id, outline_path.clone());
 					Self::place_outline_overlays(outline_path.clone(), &transform, responses);
@@ -58,26 +58,42 @@ impl OverlayRenderer {
 
 				// Create, place, and style the manipulator overlays
 				for (manipulator_group_id, manipulator_group) in shape.manipulator_groups().enumerate() {
-					let manipulator_group_cache = self.manipulator_group_overlay_cache.get_mut(&(*layer_id, *manipulator_group_id));
+					let manipulator_group_cache = self.manipulator_group_overlay_cache.entry((*layer_id, *manipulator_group_id)).or_insert(Default::default());
 
-					// If cached update placement and style
-					if let Some(manipulator_group_overlays) = manipulator_group_cache {
-						trace!("Overlay: Updating detail overlays for {:?}", manipulator_group_overlays);
-						Self::place_manipulator_group_overlays(manipulator_group, manipulator_group_overlays, &transform, responses);
-						Self::style_overlays(manipulator_group, manipulator_group_overlays, responses);
+					// Only view in and out handles if they are not on top of the anchor
+					let [in_handle, out_handle] = {
+						let Some(anchor) = manipulator_group.points[ManipulatorType::Anchor].as_ref() else{
+							continue;
+						};
+
+						let anchor_position = transform.transform_point2(anchor.position);
+						let filter_position = |handle: &&ManipulatorPoint| transform.transform_point2(handle.position).distance_squared(anchor_position) >= HIDE_HANDLE_DISTANCE * HIDE_HANDLE_DISTANCE;
+						let filter_manipulator_point = |manipulator_type| manipulator_group.points[manipulator_type as usize].as_ref().filter(filter_position);
+						[filter_manipulator_point(ManipulatorType::InHandle), filter_manipulator_point(ManipulatorType::OutHandle)]
+					};
+
+					// Create anchor
+					manipulator_group_cache[0] = manipulator_group_cache[0].take().or_else(|| Some(Self::create_anchor_overlay(responses)));
+					// Create or delete in handle
+					if in_handle.is_none() {
+						Self::remove_overlay(manipulator_group_cache[1].take(), responses);
+						Self::remove_overlay(manipulator_group_cache[3].take(), responses);
 					} else {
-						// Create if not cached
-						let mut manipulator_group_overlays = [
-							Some(self.create_anchor_overlay(responses)),
-							Self::create_handle_overlay_if_exists(&manipulator_group.points[ManipulatorType::InHandle], responses),
-							Self::create_handle_overlay_if_exists(&manipulator_group.points[ManipulatorType::OutHandle], responses),
-							Self::create_handle_line_overlay_if_exists(&manipulator_group.points[ManipulatorType::InHandle], responses),
-							Self::create_handle_line_overlay_if_exists(&manipulator_group.points[ManipulatorType::OutHandle], responses),
-						];
-						Self::place_manipulator_group_overlays(manipulator_group, &mut manipulator_group_overlays, &transform, responses);
-						Self::style_overlays(manipulator_group, &manipulator_group_overlays, responses);
-						self.manipulator_group_overlay_cache.insert((*layer_id, *manipulator_group_id), manipulator_group_overlays);
+						manipulator_group_cache[1] = manipulator_group_cache[1].take().or_else(|| Self::create_handle_overlay_if_exists(in_handle, responses));
+						manipulator_group_cache[3] = manipulator_group_cache[3].take().or_else(|| Self::create_handle_line_overlay_if_exists(in_handle, responses));
 					}
+					// Create or delete out handle
+					if out_handle.is_none() {
+						Self::remove_overlay(manipulator_group_cache[2].take(), responses);
+						Self::remove_overlay(manipulator_group_cache[4].take(), responses);
+					} else {
+						manipulator_group_cache[2] = manipulator_group_cache[2].take().or_else(|| Self::create_handle_overlay_if_exists(out_handle, responses));
+						manipulator_group_cache[4] = manipulator_group_cache[4].take().or_else(|| Self::create_handle_line_overlay_if_exists(out_handle, responses));
+					}
+
+					// Update placement and style
+					Self::place_manipulator_group_overlays(manipulator_group, manipulator_group_cache, &transform, responses);
+					Self::style_overlays(manipulator_group, manipulator_group_cache, responses);
 				}
 				// TODO Handle removing shapes from cache so we don't memory leak
 				// Eventually will get replaced with am immediate mode renderer for overlays
@@ -143,7 +159,7 @@ impl OverlayRenderer {
 	}
 
 	/// Create a single anchor overlay and return its layer ID.
-	fn create_anchor_overlay(&self, responses: &mut VecDeque<Message>) -> Vec<LayerId> {
+	fn create_anchor_overlay(responses: &mut VecDeque<Message>) -> Vec<LayerId> {
 		let layer_path = vec![generate_uuid()];
 		let operation = Operation::AddRect {
 			path: layer_path.clone(),
@@ -169,8 +185,15 @@ impl OverlayRenderer {
 	}
 
 	/// Create a single handle overlay and return its layer id if it exists.
-	fn create_handle_overlay_if_exists(handle: &Option<ManipulatorPoint>, responses: &mut VecDeque<Message>) -> Option<Vec<LayerId>> {
-		handle.as_ref().map(|_| Self::create_handle_overlay(responses))
+	fn create_handle_overlay_if_exists(handle: Option<&ManipulatorPoint>, responses: &mut VecDeque<Message>) -> Option<Vec<LayerId>> {
+		handle.map(|_| Self::create_handle_overlay(responses))
+	}
+
+	/// Remove an overlay at the specified path
+	fn remove_overlay(path: Option<Vec<LayerId>>, responses: &mut VecDeque<Message>) {
+		if let Some(path) = path {
+			responses.push_back(DocumentMessage::Overlays(Operation::DeleteLayer { path }.into()).into());
+		}
 	}
 
 	/// Create the shape outline overlay and return its layer ID.
@@ -187,7 +210,7 @@ impl OverlayRenderer {
 	}
 
 	/// Create the shape outline overlay and return its layer ID.
-	fn create_handle_line_overlay_if_exists(handle: &Option<ManipulatorPoint>, responses: &mut VecDeque<Message>) -> Option<Vec<LayerId>> {
+	fn create_handle_line_overlay_if_exists(handle: Option<&ManipulatorPoint>, responses: &mut VecDeque<Message>) -> Option<Vec<LayerId>> {
 		handle.as_ref().map(|_| Self::create_handle_line_overlay(responses))
 	}
 
@@ -205,15 +228,13 @@ impl OverlayRenderer {
 	fn place_manipulator_group_overlays(manipulator_group: &ManipulatorGroup, overlays: &mut ManipulatorGroupOverlays, parent_transform: &DAffine2, responses: &mut VecDeque<Message>) {
 		if let Some(manipulator_point) = &manipulator_group.points[ManipulatorType::Anchor] {
 			// Helper function to keep things DRY (don't-repeat-yourself)
-			let mut place_handle_and_line = |handle: &ManipulatorPoint, line_source: &mut Option<Vec<LayerId>>, marker_source: &mut Option<Vec<LayerId>>| {
-				let line_overlay = line_source.take().unwrap_or_else(|| Self::create_handle_line_overlay(responses));
+			let mut place_handle_and_line = |handle: &ManipulatorPoint, line_overlay: &mut Vec<LayerId>, marker_source: &mut Option<Vec<LayerId>>| {
 				let line_vector = parent_transform.transform_point2(manipulator_point.position) - parent_transform.transform_point2(handle.position);
 				let scale = DVec2::splat(line_vector.length());
 				let angle = -line_vector.angle_between(DVec2::X);
 				let translation = (parent_transform.transform_point2(handle.position) + VIEWPORT_GRID_ROUNDING_BIAS).round() + DVec2::splat(0.5);
 				let transform = DAffine2::from_scale_angle_translation(scale, angle, translation).to_cols_array();
 				responses.push_back(Self::overlay_transform_message(line_overlay.clone(), transform));
-				*line_source = Some(line_overlay);
 
 				let marker_overlay = marker_source.take().unwrap_or_else(|| Self::create_handle_overlay(responses));
 				let scale = DVec2::splat(MANIPULATOR_GROUP_MARKER_SIZE);
@@ -228,11 +249,11 @@ impl OverlayRenderer {
 			let [_, h1, h2] = &manipulator_group.points;
 			let [a, b, c, line1, line2] = overlays;
 			let markers = [a, b, c];
-			if let Some(handle) = &h1 {
-				place_handle_and_line(handle, line1, markers[handle.manipulator_type as usize]);
+			if let (Some(handle), Some(line_source)) = (h1.as_ref(), line1.as_mut()) {
+				place_handle_and_line(handle, line_source, markers[handle.manipulator_type as usize]);
 			}
-			if let Some(handle) = &h2 {
-				place_handle_and_line(handle, line2, markers[handle.manipulator_type as usize]);
+			if let (Some(handle), Some(line_source)) = (h2.as_ref(), line2.as_mut()) {
+				place_handle_and_line(handle, line_source, markers[handle.manipulator_type as usize]);
 			}
 
 			// Place the anchor point overlay
