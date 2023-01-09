@@ -50,7 +50,7 @@ impl Bezier {
 	}
 
 	/// Returns a normalized unit vector representing the tangent at the point designated by `t` on the curve.
-	pub fn tangent(&self, t: f64) -> DVec2 {
+	pub fn parametric_tangent(&self, t: f64) -> DVec2 {
 		match self.handles {
 			BezierHandles::Linear => self.end - self.start,
 			_ => self.derivative().unwrap().evaluate(ComputeType::Parametric(t)),
@@ -58,8 +58,33 @@ impl Bezier {
 		.normalize()
 	}
 
+	/// Returns a normalized unit vector representing the tangent at the distance designated by `d` on the curve.
+	pub fn euclidean_tangent(&self, d: f64, error: f64) -> DVec2 {
+		let t_value = self.euclidean_to_parametric(d, error);
+		self.parametric_tangent(t_value)
+	}
+
+	/// Returns a normalized unit vector representing the tangent at a factor designated by `t`.
+	/// Expects `t` to be within the inclusive range `[0, 1]`.
+	pub fn tangent(&self, t: ComputeType) -> DVec2 {
+		match t {
+			ComputeType::Parametric(t) => {
+				assert!((0.0..=1.).contains(&t));
+				self.parametric_tangent(t)
+			}
+			ComputeType::Euclidean(t) => {
+				assert!((0.0..=1.).contains(&t));
+				self.euclidean_tangent(t, 0.0001)
+			}
+			ComputeType::EuclideanWithinError { t, epsilon } => {
+				assert!((0.0..=1.).contains(&t));
+				self.euclidean_tangent(t, epsilon)
+			}
+		}
+	}
+	
 	/// Returns a normalized unit vector representing the direction of the normal at the point designated by `t` on the curve.
-	pub fn normal(&self, t: f64) -> DVec2 {
+	pub fn normal(&self, t: ComputeType) -> DVec2 {
 		self.tangent(t).perp()
 	}
 
@@ -433,16 +458,16 @@ mod tests {
 
 		let linear = Bezier::from_linear_dvec2(p1, p2);
 		let unit_slope = DVec2::new(30., 20.).normalize();
-		assert_eq!(linear.tangent(0.), unit_slope);
-		assert_eq!(linear.tangent(1.), unit_slope);
+		assert_eq!(linear.tangent(ComputeType::Parametric(0.)), unit_slope);
+		assert_eq!(linear.tangent(ComputeType::Parametric(1.)), unit_slope);
 
 		let quadratic = Bezier::from_quadratic_dvec2(p1, p2, p3);
-		assert_eq!(quadratic.tangent(0.), DVec2::new(60., 40.).normalize());
-		assert_eq!(quadratic.tangent(1.), DVec2::new(40., 60.).normalize());
+		assert_eq!(quadratic.tangent(ComputeType::Parametric(0.)), DVec2::new(60., 40.).normalize());
+		assert_eq!(quadratic.tangent(ComputeType::Parametric(1.)), DVec2::new(40., 60.).normalize());
 
 		let cubic = Bezier::from_cubic_dvec2(p1, p2, p3, p4);
-		assert_eq!(cubic.tangent(0.), DVec2::new(90., 60.).normalize());
-		assert_eq!(cubic.tangent(1.), DVec2::new(30., 120.).normalize());
+		assert_eq!(cubic.tangent(ComputeType::Parametric(0.)), DVec2::new(90., 60.).normalize());
+		assert_eq!(cubic.tangent(ComputeType::Parametric(1.)), DVec2::new(30., 120.).normalize());
 	}
 
 	#[test]
@@ -455,16 +480,16 @@ mod tests {
 
 		let linear = Bezier::from_linear_dvec2(p1, p2);
 		let unit_slope = DVec2::new(-20., 30.).normalize();
-		assert_eq!(linear.normal(0.), unit_slope);
-		assert_eq!(linear.normal(1.), unit_slope);
+		assert_eq!(linear.normal(ComputeType::Parametric(0.)), unit_slope);
+		assert_eq!(linear.normal(ComputeType::Parametric(1.)), unit_slope);
 
 		let quadratic = Bezier::from_quadratic_dvec2(p1, p2, p3);
-		assert_eq!(quadratic.normal(0.), DVec2::new(-40., 60.).normalize());
-		assert_eq!(quadratic.normal(1.), DVec2::new(-60., 40.).normalize());
+		assert_eq!(quadratic.normal(ComputeType::Parametric(0.)), DVec2::new(-40., 60.).normalize());
+		assert_eq!(quadratic.normal(ComputeType::Parametric(1.)), DVec2::new(-60., 40.).normalize());
 
 		let cubic = Bezier::from_cubic_dvec2(p1, p2, p3, p4);
-		assert_eq!(cubic.normal(0.), DVec2::new(-60., 90.).normalize());
-		assert_eq!(cubic.normal(1.), DVec2::new(-120., 30.).normalize());
+		assert_eq!(cubic.normal(ComputeType::Parametric(0.)), DVec2::new(-60., 90.).normalize());
+		assert_eq!(cubic.normal(ComputeType::Parametric(1.)), DVec2::new(-120., 30.).normalize());
 	}
 
 	#[test]

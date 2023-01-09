@@ -118,21 +118,23 @@ const bezierFeatures = {
 	},
 	tangent: {
 		name: "Tangent",
-		callback: (bezier: WasmBezierInstance, options: Record<string, number>): string => bezier.tangent(options.t),
+		callback: (bezier: WasmBezierInstance, options: Record<string, number>, _: undefined, computeType: ComputeType): string => bezier.tangent(options.t, computeType),
 		demoOptions: {
 			Quadratic: {
 				sliderOptions: [tSliderOptions],
 			},
 		},
+		chooseComputeType: true,
 	},
 	normal: {
 		name: "Normal",
-		callback: (bezier: WasmBezierInstance, options: Record<string, number>): string => bezier.normal(options.t),
+		callback: (bezier: WasmBezierInstance, options: Record<string, number>, _: undefined, computeType: ComputeType): string => bezier.normal(options.t, computeType),
 		demoOptions: {
 			Quadratic: {
 				sliderOptions: [tSliderOptions],
 			},
 		},
+		chooseComputeType: true,
 	},
 	curvature: {
 		name: "Curvature",

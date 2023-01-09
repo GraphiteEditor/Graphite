@@ -169,11 +169,19 @@ impl WasmBezier {
 		wrap_svg_tag(content)
 	}
 
-	pub fn tangent(&self, t: f64) -> String {
+	pub fn tangent(&self, t: f64, compute_type: String) -> String {
 		let bezier = self.get_bezier_path();
 
-		let tangent_point = self.0.tangent(t);
-		let intersection_point = self.0.evaluate(ComputeType::Parametric(t));
+		let tangent_point = match compute_type.as_str() {
+			"Euclidean" => self.0.tangent(ComputeType::Euclidean(t)),
+			"Parametric" => self.0.tangent(ComputeType::Parametric(t)),
+			_ => panic!("Unexpected ComputeType string: '{}'", compute_type),
+		};
+		let intersection_point = match compute_type.as_str() {
+			"Euclidean" => self.0.evaluate(ComputeType::Euclidean(t)),
+			"Parametric" => self.0.evaluate(ComputeType::Parametric(t)),
+			_ => panic!("Unexpected ComputeType string: '{}'", compute_type),
+		};
 		let tangent_end = intersection_point + tangent_point * SCALE_UNIT_VECTOR_FACTOR;
 
 		let content = format!(
@@ -185,11 +193,18 @@ impl WasmBezier {
 		wrap_svg_tag(content)
 	}
 
-	pub fn normal(&self, t: f64) -> String {
+	pub fn normal(&self, t: f64, compute_type: String) -> String {
 		let bezier = self.get_bezier_path();
-
-		let normal_point = self.0.normal(t);
-		let intersection_point = self.0.evaluate(ComputeType::Parametric(t));
+		let normal_point = match compute_type.as_str() {
+			"Euclidean" => self.0.normal(ComputeType::Euclidean(t)),
+			"Parametric" => self.0.normal(ComputeType::Parametric(t)),
+			_ => panic!("Unexpected ComputeType string: '{}'", compute_type),
+		};
+		let intersection_point = match compute_type.as_str() {
+			"Euclidean" => self.0.evaluate(ComputeType::Euclidean(t)),
+			"Parametric" => self.0.evaluate(ComputeType::Parametric(t)),
+			_ => panic!("Unexpected ComputeType string: '{}'", compute_type),
+		};
 		let normal_end = intersection_point + normal_point * SCALE_UNIT_VECTOR_FACTOR;
 
 		let content = format!(
@@ -204,7 +219,7 @@ impl WasmBezier {
 	pub fn curvature(&self, t: f64) -> String {
 		let bezier = self.get_bezier_path();
 		let radius = 1. / self.0.curvature(t);
-		let normal_point = self.0.normal(t);
+		let normal_point = self.0.normal(ComputeType::Parametric(t));
 		let intersection_point = self.0.evaluate(ComputeType::Parametric(t));
 
 		let curvature_center = intersection_point + normal_point * radius;

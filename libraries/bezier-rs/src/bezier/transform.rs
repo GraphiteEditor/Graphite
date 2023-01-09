@@ -132,8 +132,8 @@ impl Bezier {
 			}
 		}
 		// Verify the angle formed by the endpoint normals is sufficiently small, ensuring the on-curve point for `t = 0.5` occurs roughly in the center of the polygon.
-		let normal_0 = self.normal(0.);
-		let normal_1 = self.normal(1.);
+		let normal_0 = self.normal(ComputeType::Parametric(0.));
+		let normal_1 = self.normal(ComputeType::Parametric(1.));
 		let endpoint_normal_angle = (normal_0.x * normal_1.x + normal_0.y * normal_1.y).acos();
 		endpoint_normal_angle < SCALABLE_CURVE_MAX_ENDPOINT_NORMAL_ANGLE
 	}
@@ -236,8 +236,8 @@ impl Bezier {
 	fn scale(&self, distance: f64) -> Bezier {
 		assert!(self.is_scalable(), "The curve provided to scale is not scalable. Reduce the curve first.");
 
-		let normal_start = self.normal(0.);
-		let normal_end = self.normal(1.);
+		let normal_start = self.normal(ComputeType::Parametric(0.));
+		let normal_end = self.normal(ComputeType::Parametric(1.));
 
 		// If normal unit vectors are equal, then the lines are parallel
 		if normal_start.abs_diff_eq(normal_end, MAX_ABSOLUTE_DIFFERENCE) {
@@ -263,30 +263,30 @@ impl Bezier {
 	pub fn graduated_scale(&self, start_distance: f64, end_distance: f64) -> Bezier {
 		assert!(self.is_scalable(), "The curve provided to scale is not scalable. Reduce the curve first.");
 
-		let normal_start = self.normal(0.);
-		let normal_end = self.normal(1.);
+		let normal_start = self.normal(ComputeType::Parametric(0.));
+		let normal_end = self.normal(ComputeType::Parametric(1.));
 
 		// If normal unit vectors are equal, then the lines are parallel
 		if normal_start.abs_diff_eq(normal_end, MAX_ABSOLUTE_DIFFERENCE) {
-			let transformed_start = utils::scale_point_from_direction_vector(self.start, self.normal(0.), false, start_distance);
-			let transformed_end = utils::scale_point_from_direction_vector(self.end, self.normal(1.), false, end_distance);
+			let transformed_start = utils::scale_point_from_direction_vector(self.start, self.normal(ComputeType::Parametric(0.)), false, start_distance);
+			let transformed_end = utils::scale_point_from_direction_vector(self.end, self.normal(ComputeType::Parametric(1.)), false, end_distance);
 
 			return match self.handles {
 				BezierHandles::Linear => Bezier::from_linear_dvec2(transformed_start, transformed_end),
 				BezierHandles::Quadratic { handle } => {
 					let handle_closest_t = self.project(handle, ProjectionOptions::default());
 					let handle_scale_distance = (1. - handle_closest_t) * start_distance + handle_closest_t * end_distance;
-					let transformed_handle = utils::scale_point_from_direction_vector(handle, self.normal(handle_closest_t), false, handle_scale_distance);
+					let transformed_handle = utils::scale_point_from_direction_vector(handle, self.normal(ComputeType::Parametric(handle_closest_t)), false, handle_scale_distance);
 					Bezier::from_quadratic_dvec2(transformed_start, transformed_handle, transformed_end)
 				}
 				BezierHandles::Cubic { handle_start, handle_end } => {
 					let handle_start_closest_t = self.project(handle_start, ProjectionOptions::default());
 					let handle_start_scale_distance = (1. - handle_start_closest_t) * start_distance + handle_start_closest_t * end_distance;
-					let transformed_handle_start = utils::scale_point_from_direction_vector(handle_start, self.normal(handle_start_closest_t), false, handle_start_scale_distance);
+					let transformed_handle_start = utils::scale_point_from_direction_vector(handle_start, self.normal(ComputeType::Parametric(handle_start_closest_t)), false, handle_start_scale_distance);
 
 					let handle_end_closest_t = self.project(handle_start, ProjectionOptions::default());
 					let handle_end_scale_distance = (1. - handle_end_closest_t) * start_distance + handle_end_closest_t * end_distance;
-					let transformed_handle_end = utils::scale_point_from_direction_vector(handle_end, self.normal(handle_end_closest_t), false, handle_end_scale_distance);
+					let transformed_handle_end = utils::scale_point_from_direction_vector(handle_end, self.normal(ComputeType::Parametric(handle_end_closest_t)), false, handle_end_scale_distance);
 					Bezier::from_cubic_dvec2(transformed_start, transformed_handle_start, transformed_handle_end, transformed_end)
 				}
 			};
