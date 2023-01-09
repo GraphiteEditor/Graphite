@@ -4,6 +4,29 @@ use super::*;
 
 /// Functionality relating to looking up properties of the `Bezier` or points along the `Bezier`.
 impl Bezier {
+
+	/// Convert the euclidean distance to the parametric t-value.
+	pub fn euclidean_to_parametric(&self, d: f64, error: f64) -> f64 {
+		let mut low = 0.;
+		let mut mid = 0.;
+		let mut high = 1.;
+		let total_length = self.length(None);
+
+		while low < high {
+			mid = (low + high) / 2.;
+			let test_d = self.trim(0., mid).length(None) / total_length;
+			if f64_compare(test_d, d, error) {
+				break;
+			} else if test_d < d {
+				low = mid;
+			} else {
+				high = mid;
+			}
+		}
+
+		mid
+	}
+
 	/// Calculate the point on the curve based on the `t`-value provided.
 	pub(crate) fn unrestricted_parametric_evaluate(&self, t: f64) -> DVec2 {
 		// Basis code based off of pseudocode found here: <https://pomax.github.io/bezierinfo/#explanation>.
@@ -25,27 +48,8 @@ impl Bezier {
 
 	/// Calculate the point along the curve that is a factor of `d` away from the start.
 	pub(crate) fn unrestricted_euclidean_evaluate(&self, d: f64, error: f64) -> DVec2 {
-		if let BezierHandles::Linear = self.handles {
-			return self.unrestricted_parametric_evaluate(d);
-		}
-
-		let mut low = 0.;
-		let mut mid = 0.;
-		let mut high = 1.;
-		let total_length = self.length(None);
-
-		while low < high {
-			mid = (low + high) / 2.;
-			let test_d = self.trim(0., mid).length(None) / total_length;
-			if f64_compare(test_d, d, error) {
-				break;
-			} else if test_d < d {
-				low = mid;
-			} else {
-				high = mid;
-			}
-		}
-		self.unrestricted_parametric_evaluate(mid)
+		let t_value = self.euclidean_to_parametric(d, error);
+		self.unrestricted_parametric_evaluate(t_value)
 	}
 
 	/// Calculate the point on the curve based on the `t`-value provided.
