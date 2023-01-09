@@ -40,9 +40,17 @@ const subpathFeatures = {
 		sliderOptions: [tSliderOptions],
 		chooseTVariant: true,
 	},
+	"local-extrema": {
+		name: "Local Extrema",
+		callback: (subpath: WasmSubpathInstance): string => subpath.local_extrema(),
+	},
 	"bounding-box": {
 		name: "Bounding Box",
 		callback: (subpath: WasmSubpathInstance): string => subpath.bounding_box(),
+	},
+	inflections: {
+		name: "Inflections",
+		callback: (subpath: WasmSubpathInstance): string => subpath.inflections(),
 	},
 	"intersect-linear": {
 		name: "Intersect (Line Segment)",

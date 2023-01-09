@@ -59,6 +59,24 @@ impl Subpath {
 		self.get_segment(segment_index).unwrap().normal(TValue::Parametric(t))
 	}
 
+	/// Returns two lists of `t`-values representing the local extrema of the `x` and `y` parametric subpaths respectively.
+	/// The list of `t`-values returned are filtered such that they fall within the range `[0, 1]`.
+	/// <iframe frameBorder="0" width="100%" height="400px" src="https://graphite.rs/bezier-rs-demos#subpath/local-extrema/solo" title="Local Extrema Demo"></iframe>
+	pub fn local_extrema(&self) -> [Vec<f64>; 2] {
+		let (mut x_extremas, mut y_extremas) = (Vec::new(), Vec::new());
+		let number_of_curves = self.len_segments() as f64;
+
+		for (index, bezier) in self.iter().enumerate() {
+			// Convert t-values of bezier curve to t-values of subpath
+			let extremas = bezier.local_extrema();
+			x_extremas.extend(extremas[0].iter().map(|t| ((index as f64) + t) / number_of_curves).collect::<Vec<f64>>());
+			y_extremas.extend(extremas[1].iter().map(|t| ((index as f64) + t) / number_of_curves).collect::<Vec<f64>>());
+		}
+
+		// TODO: Consider the point between bezier curves.
+		[x_extremas, y_extremas]
+	}
+
 	/// Return the min and max corners that represent the bounding box of the subpath.
 	/// <iframe frameBorder="0" width="100%" height="400px" src="https://graphite.rs/bezier-rs-demos#subpath/bounding-box/solo" title="Bounding Box Demo"></iframe>
 	pub fn bounding_box(&self) -> Option<[DVec2; 2]> {
@@ -76,6 +94,28 @@ impl Subpath {
 			}
 			Some([min_points, max_points])
 		}
+	}
+
+	/// Returns list of `t`-values representing the inflection points of the subpath.
+	/// The list of `t`-values returned are filtered such that they fall within the range `[0, 1]`.
+	/// <iframe frameBorder="0" width="100%" height="400px" src="https://graphite.rs/bezier-rs-demos#subpath/inflections/solo" title="Inflections Demo"></iframe>
+	pub fn inflections(&self) -> Vec<f64> {
+		let number_of_curves = self.len_segments() as f64;
+		let inflection_t_values: Vec<f64> = self
+			.iter()
+			.enumerate()
+			.flat_map(|(index, bezier)| {
+				bezier
+					.inflections()
+					.into_iter()
+					// Convert t-values of bezier curve to t-values of subpath
+					.map(|t| ((index as f64) + t) / number_of_curves)
+					.collect::<Vec<f64>>()
+			})
+			.collect();
+
+		// TODO: Consider the point between bezier curves.
+		inflection_t_values
 	}
 }
 
