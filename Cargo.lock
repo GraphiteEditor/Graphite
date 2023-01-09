@@ -1757,6 +1757,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "graphite-wasm-svelte"
+version = "0.0.0"
+dependencies = [
+ "bezier-rs",
+ "graph-craft",
+ "graphite-document-legacy",
+ "graphite-editor",
+ "js-sys",
+ "log",
+ "ron",
+ "serde",
+ "serde-wasm-bindgen",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "wasm-bindgen-test",
+]
+
+[[package]]
 name = "gtk"
 version = "0.15.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"

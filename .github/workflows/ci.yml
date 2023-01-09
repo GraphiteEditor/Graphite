@@ -42,7 +42,7 @@ jobs:
         SKIP_CARGO_ABOUT: true
       run: |
         cd frontend
-        npm run build
+        npm run build-prod-unix
 
     - name: 👕 Lint Graphite web formatting
       env:

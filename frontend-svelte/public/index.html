@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=0.5, maximum-scale=0.5, minimum-scale=0.5">
+	<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Sans+Pro:ital,wght@0,400;0,700;1,400;1,700&family=Inconsolata:wght@400;700">
+	<title>Graphite</title>
+	<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+	<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
+	<link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
+	<link rel="manifest" href="/site.webmanifest">
+	<link rel="mask-icon" href="/safari-pinned-tab.svg" color="#473a3a">
+	<meta name="apple-mobile-web-app-title" content="Graphite">
+	<meta name="application-name" content="Graphite">
+	<meta name="msapplication-TileColor" content="#ffffff">
+	<meta name="theme-color" content="#ffffff">
+	<link rel="stylesheet" href="/build/bundle.css">
+	<script defer src="/build/bundle.js"></script>
+</head>
+
+<body>
+	<noscript>JavaScript is required</noscript>
+	<div data-app id="app" tabindex="0"></div>
+	<script>
+	// Confirm the browser is compatible before initializing the application
+
+	// Display an error if the browser is incompatible with a required API
+	// This is run outside the JS code bundle in case unsupported features cause a syntax error when parsing the bundle, preventing the any bundle code from running
+	let error;
+	if (!("BigUint64Array" in window)) {
+		error = `
+<style>
+h2, p, a { text-align: center; color: white; }
+#app { display: none; }
+</style>
+<h2>This browser is too old to run Graphite</h2>
+<p>Please upgrade to a modern web browser such as the latest Firefox, Chrome, Edge, or Safari version 15 or newer.</p>
+<p>(The <a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/BigInt64Array#browser_compatibility" target="_blank"><code>BigInt64Array</code></a>
+JavaScript API must be supported by the browser for Graphite to function.)</p>
+		`.trim();
+	}
+	if (error) {
+		document.body.innerHTML = error + document.body.innerHTML;
+		delete window.graphiteAppInit;
+	} else {
+		const retry = () => {
+			if (window.graphiteAppInit) {
+				const init = window.graphiteAppInit;
+				delete window.graphiteAppInit;
+				init();
+			}
+			else {
+				setTimeout(retry, 0);
+			}
+		};
+		retry();
+	}
+
+	</script>
+</body>
+
+</html>
