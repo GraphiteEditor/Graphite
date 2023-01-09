@@ -1,11 +1,11 @@
 /* eslint-disable max-classes-per-file */
 
-import type MenuList from "@/components/floating-menus/MenuList.vue";
-import { type IconName, type IconSize } from "@/utility-functions/icons";
-
 import { Transform, Type, plainToClass } from "class-transformer";
 
+import { type IconName, type IconSize } from "@/utility-functions/icons";
 import { type WasmEditorInstance, type WasmRawInstance } from "@/wasm-communication/editor";
+
+import type MenuList from "@/components/floating-menus/MenuList.vue";
 
 export class JsMessage {
 	// The marker provides a way to check if an object is a sub-class constructor for a jsMessage.

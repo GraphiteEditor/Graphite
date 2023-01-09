@@ -1722,7 +1722,6 @@ dependencies = [
  "rand_chacha 0.3.1",
  "remain",
  "serde",
- "serde-reflection",
  "serde_json",
  "spin 0.9.4",
  "test-case",
@@ -3760,17 +3759,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bb7d1f0d3021d347a83e556fc4683dea2ea09d87bccdf88ff5c12545d89d5efb"
 dependencies = [
  "serde_derive",
-]
-
-[[package]]
-name = "serde-reflection"
-version = "0.3.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f05a5f801ac62a51a49d378fdb3884480041b99aced450b28990673e8ff99895"
-dependencies = [
- "once_cell",
- "serde",
- "thiserror",
 ]
 
 [[package]]

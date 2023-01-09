@@ -3,27 +3,27 @@
 	"[rust]": {
 		"editor.formatOnSave": true,
 		"editor.formatOnPaste": true,
-		"editor.defaultFormatter": "rust-lang.rust-analyzer"
+		"editor.defaultFormatter": "rust-lang.rust-analyzer",
 	},
 	// Web: save on format
 	"[typescript][javascript][vue]": {
 		"editor.codeActionsOnSave": {
-			"source.fixAll.eslint": true
+			"source.fixAll.eslint": true,
 		},
 		"editor.formatOnSave": true,
-		"editor.defaultFormatter": "dbaeumer.vscode-eslint"
+		"editor.defaultFormatter": "dbaeumer.vscode-eslint",
 	},
 	"[scss]": {
 		"editor.codeActionsOnSave": {
-			"source.fixAll.eslint": true
+			"source.fixAll.eslint": true,
 		},
 		"editor.formatOnSave": true,
-		"editor.defaultFormatter": "esbenp.prettier-vscode"
+		"editor.defaultFormatter": "esbenp.prettier-vscode",
 	},
 	// Handlebars: don't save on format
 	// (`about.hbs` is used by Cargo About to encode license information)
 	"[handlebars]": {
-		"editor.formatOnSave": false
+		"editor.formatOnSave": false,
 	},
 	// Rust Analyzer config
 	"rust-analyzer.cargo.target": "wasm32-unknown-unknown",
@@ -31,8 +31,15 @@
 	"rust-analyzer.diagnostics.disabled": ["unresolved-macro-call"], // Remove when https://github.com/rust-lang/rust-analyzer/issues/6835 is fixed
 	// ESLint config
 	"eslint.format.enable": true,
-	"eslint.workingDirectories": ["./frontend", "./website/other/bezier-rs-demos", "./website"],
-	"eslint.validate": ["javascript", "typescript"],
+	"eslint.workingDirectories": [
+		"./frontend",
+		"./website/other/bezier-rs-demos",
+		"./website",
+	],
+	"eslint.validate": [
+		"javascript",
+		"typescript",
+	],
 	// Vue config
 	"volar.completion.preferredAttrNameCase": "camel",
 	"volar.completion.preferredTagNameCase": "pascal",
@@ -43,5 +50,5 @@
 	"prettier.singleQuote": false,
 	"prettier.useTabs": true,
 	"prettier.tabWidth": 4,
-	"prettier.printWidth": 200
+	"prettier.printWidth": 200,
 }

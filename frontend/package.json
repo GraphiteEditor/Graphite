@@ -17,7 +17,6 @@
 	"dependencies": {
 		"@tauri-apps/api": "^1.2.0",
 		"class-transformer": "^0.5.1",
-		"graphite-frontend-glue": "file:src/wasm-communication",
 		"idb-keyval": "^6.2.0",
 		"reflect-metadata": "^0.1.13",
 		"vue": "^3.2.26"

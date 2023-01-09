@@ -1,9 +1,9 @@
 import { invoke } from "@tauri-apps/api";
-import type WasmBindgenPackage from "graphite-wasm";
-import { panicProxy } from "graphite-web-frontend/src/utility-functions/panic-proxy";
 
-import { type JsMessageType } from "graphite-frontend-glue/messages";
-import { createSubscriptionRouter, type SubscriptionRouter } from "graphite-frontend-glue/subscription-router";
+import type WasmBindgenPackage from "@/../wasm/pkg";
+import { panicProxy } from "@/utility-functions/panic-proxy";
+import { type JsMessageType } from "@/wasm-communication/messages";
+import { createSubscriptionRouter, type SubscriptionRouter } from "@/wasm-communication/subscription-router";
 
 export type WasmRawInstance = typeof WasmBindgenPackage;
 export type WasmEditorInstance = InstanceType<WasmRawInstance["JsEditorHandle"]>;
@@ -58,7 +58,7 @@ export async function initWasm(): Promise<void> {
 
 	// Import the WASM module JS bindings and wrap them in the panic proxy
 	// eslint-disable-next-line import/no-cycle
-	wasmImport = await import("graphite-wasm").then(panicProxy);
+	wasmImport = await import("@/../wasm/pkg").then(panicProxy);
 
 	// Provide a random starter seed which must occur after initializing the WASM module, since WASM can't generate its own random numbers
 	const randomSeedFloat = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER);
