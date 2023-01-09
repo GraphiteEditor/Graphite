@@ -78,12 +78,23 @@ impl ManipulatorGroup {
 	}
 
 	/// Finds the closest [ManipulatorPoint] owned by this [ManipulatorGroup]. This may return the anchor or either handle.
-	pub fn closest_point(&self, transform_space: &DAffine2, target: glam::DVec2) -> usize {
+	pub fn closest_point(&self, transform_space: &DAffine2, target: glam::DVec2, hide_handle_distance: f64) -> usize {
 		let mut closest_index: usize = 0;
 		let mut closest_distance_squared: f64 = f64::MAX; // Not ideal
 		for (index, point) in self.points.iter().enumerate() {
 			if let Some(point) = point {
-				let distance_squared = transform_space.transform_point2(point.position).distance_squared(target);
+				let transfomed_point = transform_space.transform_point2(point.position);
+
+				// Don't check handles under the anchor
+				if index != ManipulatorType::Anchor as usize {
+					if let Some(anchor) = &self.points[ManipulatorType::Anchor] {
+						if transfomed_point.distance_squared(transform_space.transform_point2(anchor.position)) < hide_handle_distance * hide_handle_distance {
+							continue;
+						}
+					}
+				}
+
+				let distance_squared = transfomed_point.distance_squared(target);
 				if distance_squared < closest_distance_squared {
 					closest_distance_squared = distance_squared;
 					closest_index = index;
