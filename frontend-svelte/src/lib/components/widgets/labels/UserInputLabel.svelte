@@ -1,7 +1,7 @@
 <script lang="ts">
-	import { type IconName } from "@/utility-functions/icons";
-	import { platformIsMac } from "@/utility-functions/platform";
-	import { type KeyRaw, type LayoutKeysGroup, type Key, type MouseMotion } from "@/wasm-communication/messages";
+	import { type IconName } from "$lib/utility-functions/icons";
+	import { platformIsMac } from "$lib/utility-functions/platform";
+	import { type KeyRaw, type LayoutKeysGroup, type Key, type MouseMotion } from "$lib/wasm-communication/messages";
 
 	import LayoutRow from "$lib/components/layout/LayoutRow.svelte";
 	import IconLabel from "$lib/components/widgets/labels/IconLabel.svelte";

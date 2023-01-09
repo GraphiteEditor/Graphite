@@ -1,9 +1,9 @@
 <script lang="ts">
 	import { onMount, tick } from "svelte";
 
-	import { textInputCleanup } from "@/utility-functions/keyboard-entry";
-	import { rasterizeSVGCanvas } from "@/utility-functions/rasterization";
-	import { type DisplayEditableTextbox, type MouseCursorIcon, type XY } from "@/wasm-communication/messages";
+	import { textInputCleanup } from "$lib/utility-functions/keyboard-entry";
+	import { rasterizeSVGCanvas } from "$lib/utility-functions/rasterization";
+	import { type DisplayEditableTextbox, type MouseCursorIcon, type XY } from "$lib/wasm-communication/messages";
 
 	import EyedropperPreview, { ZOOM_WINDOW_DIMENSIONS } from "$lib/components/floating-menus/EyedropperPreview.svelte";
 	import LayoutCol from "$lib/components/layout/LayoutCol.svelte";

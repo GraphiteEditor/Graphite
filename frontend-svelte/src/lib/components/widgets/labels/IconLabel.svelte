@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { type IconName, ICONS, ICON_COMPONENTS } from "@/utility-functions/icons";
+	import { type IconName, ICONS, ICON_COMPONENTS } from "$lib/utility-functions/icons";
 
 	import LayoutRow from "$lib/components/layout/LayoutRow.svelte";
 

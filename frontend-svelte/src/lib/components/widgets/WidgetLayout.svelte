@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { isWidgetColumn, isWidgetRow, isWidgetSection, type WidgetLayout } from "@/wasm-communication/messages";
+	import { isWidgetColumn, isWidgetRow, isWidgetSection, type WidgetLayout } from "$lib/wasm-communication/messages";
 
 	import WidgetSection from "$lib/components/widgets/groups/WidgetSection.svelte";
 	import WidgetRow from "$lib/components/widgets/WidgetRow.svelte";

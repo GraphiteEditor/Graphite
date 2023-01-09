@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { type SeparatorDirection, type SeparatorType } from "@/wasm-communication/messages";
+	import { type SeparatorDirection, type SeparatorType } from "$lib/wasm-communication/messages";
 
 	export let direction: SeparatorDirection = "Horizontal";
 	export let type: SeparatorType = "Unrelated";

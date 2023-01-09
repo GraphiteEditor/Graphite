@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { onMount, tick } from "svelte";
 
-	import { beginDraggingElement } from "@/io-managers/drag";
-	import { platformIsMac } from "@/utility-functions/platform";
+	import { beginDraggingElement } from "$lib/io-managers/drag";
+	import { platformIsMac } from "$lib/utility-functions/platform";
 	import {
 		type LayerType,
 		type LayerTypeData,
@@ -13,7 +13,7 @@
 		UpdateDocumentLayerTreeStructureJs,
 		UpdateLayerTreeOptionsLayout,
 		layerTypeData,
-	} from "@/wasm-communication/messages";
+	} from "$lib/wasm-communication/messages";
 
 	import LayoutCol from "$lib/components/layout/LayoutCol.svelte";
 	import LayoutRow from "$lib/components/layout/LayoutRow.svelte";

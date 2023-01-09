@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from "svelte";
 
-	import { defaultWidgetLayout, patchWidgetLayout, UpdatePropertyPanelOptionsLayout, UpdatePropertyPanelSectionsLayout } from "@/wasm-communication/messages";
+	import { defaultWidgetLayout, patchWidgetLayout, UpdatePropertyPanelOptionsLayout, UpdatePropertyPanelSectionsLayout } from "$lib/wasm-communication/messages";
 
 	import LayoutCol from "$lib/components/layout/LayoutCol.svelte";
 	import LayoutRow from "$lib/components/layout/LayoutRow.svelte";

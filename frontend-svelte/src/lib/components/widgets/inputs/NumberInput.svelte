@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { createEventDispatcher } from "svelte";
 
-	import { type NumberInputMode, type NumberInputIncrementBehavior } from "@/wasm-communication/messages";
+	import { type NumberInputMode, type NumberInputIncrementBehavior } from "$lib/wasm-communication/messages";
 
 	import FieldInput from "$lib/components/widgets/inputs/FieldInput.svelte";
 

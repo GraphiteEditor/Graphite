@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { onMount } from "svelte";
 
-	import { platformIsMac } from "@/utility-functions/platform";
-	import { type KeyRaw, type LayoutKeysGroup, type MenuBarEntry, type MenuListEntry, UpdateMenuBarLayout } from "@/wasm-communication/messages";
+	import { platformIsMac } from "$lib/utility-functions/platform";
+	import { type KeyRaw, type LayoutKeysGroup, type MenuBarEntry, type MenuListEntry, UpdateMenuBarLayout } from "$lib/wasm-communication/messages";
 
 	import MenuList from "$lib/components/floating-menus/MenuList.svelte";
 	import IconLabel from "$lib/components/widgets/labels/IconLabel.svelte";

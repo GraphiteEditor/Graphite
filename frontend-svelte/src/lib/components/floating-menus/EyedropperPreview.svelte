@@ -3,6 +3,7 @@
 	const ZOOM_WINDOW_DIMENSIONS_EXPANDED = 110;
 	// Should be equal to the width and height of the `.pixel-outline` div in the CSS, and should be evenly divisible into the number above
 	const UPSCALE_FACTOR = 10;
+
 	export const ZOOM_WINDOW_DIMENSIONS = ZOOM_WINDOW_DIMENSIONS_EXPANDED / UPSCALE_FACTOR;
 </script>
 

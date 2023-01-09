@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { platformIsMac } from "@/utility-functions/platform";
+	import { platformIsMac } from "$lib/utility-functions/platform";
 
 	import LayoutRow from "$lib/components/layout/LayoutRow.svelte";
 

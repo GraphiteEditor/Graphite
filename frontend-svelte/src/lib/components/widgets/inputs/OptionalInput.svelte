@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { createEventDispatcher } from "svelte";
 
-	import { type IconName } from "@/utility-functions/icons";
+	import { type IconName } from "$lib/utility-functions/icons";
 
 	import LayoutRow from "$lib/components/layout/LayoutRow.svelte";
 	import CheckboxInput from "$lib/components/widgets/inputs/CheckboxInput.svelte";

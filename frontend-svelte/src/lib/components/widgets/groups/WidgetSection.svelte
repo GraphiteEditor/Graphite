@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { isWidgetRow, isWidgetSection, type LayoutGroup, type WidgetSection as WidgetSectionFromJsMessages } from "@/wasm-communication/messages";
+	import { isWidgetRow, isWidgetSection, type LayoutGroup, type WidgetSection as WidgetSectionFromJsMessages } from "$lib/wasm-communication/messages";
 
 	import LayoutCol from "$lib/components/layout/LayoutCol.svelte";
 	import TextLabel from "$lib/components/widgets/labels/TextLabel.svelte";

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { type Color } from "@/wasm-communication/messages";
+	import { type Color } from "$lib/wasm-communication/messages";
 
 	import ColorPicker from "$lib/components/floating-menus/ColorPicker.svelte";
 	import LayoutCol from "$lib/components/layout/LayoutCol.svelte";

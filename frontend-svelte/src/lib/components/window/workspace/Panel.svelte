@@ -22,9 +22,9 @@
 <script lang="ts">
 	import { tick } from "svelte";
 
-	import { platformIsMac } from "@/utility-functions/platform";
+	import { platformIsMac } from "$lib/utility-functions/platform";
 
-	import { type LayoutKeysGroup, type Key } from "@/wasm-communication/messages";
+	import { type LayoutKeysGroup, type Key } from "$lib/wasm-communication/messages";
 
 	import LayoutCol from "$lib/components/layout/LayoutCol.svelte";
 	import LayoutRow from "$lib/components/layout/LayoutRow.svelte";

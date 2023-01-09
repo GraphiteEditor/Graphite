@@ -1,9 +1,9 @@
 <script lang="ts">
 	import { onMount, tick } from "svelte";
 
-	import type { IconName } from "@/utility-functions/icons";
+	import type { IconName } from "$lib/utility-functions/icons";
 
-	import { UpdateNodeGraphSelection, type FrontendNodeLink, type FrontendNodeType, type FrontendNode } from "@/wasm-communication/messages";
+	import { UpdateNodeGraphSelection, type FrontendNodeLink, type FrontendNodeType, type FrontendNode } from "$lib/wasm-communication/messages";
 
 	import LayoutCol from "$lib/components/layout/LayoutCol.svelte";
 	import LayoutRow from "$lib/components/layout/LayoutRow.svelte";

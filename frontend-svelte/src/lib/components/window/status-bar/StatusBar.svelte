@@ -1,13 +1,8 @@
 <script lang="ts">
 	import { onMount } from "svelte";
 
-	import { platformIsMac } from "@/utility-functions/platform";
-	import {
-		type HintData,
-		type HintInfo,
-		type LayoutKeysGroup,
-		UpdateInputHints,
-	} from "@/wasm-communication/messages";
+	import { platformIsMac } from "$lib/utility-functions/platform";
+	import { type HintData, type HintInfo, type LayoutKeysGroup, UpdateInputHints } from "$lib/wasm-communication/messages";
 
 	import LayoutRow from "$lib/components/layout/LayoutRow.svelte";
 	import Separator from "$lib/components/widgets/labels/Separator.svelte";
@@ -23,12 +18,9 @@
 	}
 
 	onMount(() => {
-		editor.subscriptions.subscribeJsMessage(
-			UpdateInputHints,
-			(updateInputHints) => {
-				hintData = updateInputHints.hintData;
-			}
-		);
+		editor.subscriptions.subscribeJsMessage(UpdateInputHints, (updateInputHints) => {
+			hintData = updateInputHints.hintData;
+		});
 	});
 </script>
 
@@ -42,11 +34,7 @@
 				{#if hint.plus}
 					<LayoutRow class="plus">+</LayoutRow>
 				{/if}
-				<UserInputLabel
-					mouseMotion={hint.mouse}
-					keysWithLabelsGroups={inputKeysForPlatform(hint)}
-					>{hint.label}</UserInputLabel
-				>
+				<UserInputLabel mouseMotion={hint.mouse} keysWithLabelsGroups={inputKeysForPlatform(hint)}>{hint.label}</UserInputLabel>
 			{/each}
 		{/each}
 	</LayoutRow>

@@ -1,9 +1,9 @@
 <script lang="ts">
 	import { onDestroy, createEventDispatcher } from "svelte";
 
-	import { clamp } from "@/utility-functions/math";
-	import type { HSV, RGB } from "@/wasm-communication/messages";
-	import { Color } from "@/wasm-communication/messages";
+	import { clamp } from "$lib/utility-functions/math";
+	import type { HSV, RGB } from "$lib/wasm-communication/messages";
+	import { Color } from "$lib/wasm-communication/messages";
 
 	import FloatingMenu, { type MenuDirection } from "$lib/components/layout/FloatingMenu.svelte";
 	import LayoutCol from "$lib/components/layout/LayoutCol.svelte";

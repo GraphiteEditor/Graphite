@@ -1,10 +1,10 @@
 <script lang="ts">
 	import { createEventDispatcher } from "svelte";
 
-	import { currentDraggingElement } from "@/io-managers/drag";
+	import { currentDraggingElement } from "$lib/io-managers/drag";
 
-	import type { LayerType, LayerTypeData } from "@/wasm-communication/messages";
-	import { layerTypeData } from "@/wasm-communication/messages";
+	import type { LayerType, LayerTypeData } from "$lib/wasm-communication/messages";
+	import { layerTypeData } from "$lib/wasm-communication/messages";
 
 	import LayoutRow from "$lib/components/layout/LayoutRow.svelte";
 	import IconButton from "$lib/components/widgets/buttons/IconButton.svelte";

@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { createEventDispatcher } from "svelte";
 
-	import { type RadioEntries, type RadioEntryData } from "@/wasm-communication/messages";
+	import { type RadioEntries, type RadioEntryData } from "$lib/wasm-communication/messages";
 
 	import LayoutRow from "$lib/components/layout/LayoutRow.svelte";
 	import IconLabel from "$lib/components/widgets/labels/IconLabel.svelte";

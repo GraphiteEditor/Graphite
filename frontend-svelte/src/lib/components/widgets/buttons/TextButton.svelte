@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { type IconName } from "@/utility-functions/icons";
+	import { type IconName } from "$lib/utility-functions/icons";
 
 	import IconLabel from "$lib/components/widgets/labels/IconLabel.svelte";
 	import TextLabel from "$lib/components/widgets/labels/TextLabel.svelte";
