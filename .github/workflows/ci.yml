@@ -50,18 +50,18 @@ jobs:
 
     - name: 🔬 Check Rust formatting
       run: |
-        cargo fmt --all -- --check
+        mold -run cargo fmt --all -- --check
 
     - name: 🦀 Build Rust code
       run: |
-        cargo build --verbose
+        mold -run cargo build --verbose
 
     - name: 🧪 Run Rust tests
       run: |
-        cargo test --verbose
+        mold -run cargo test --verbose
 
   cargo-deny:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
 
     strategy:
       matrix:
