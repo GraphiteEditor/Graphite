@@ -10,6 +10,8 @@
 	import { type FontsState } from "@/state-providers/fonts";
 
 	const fonts = getContext<FontsState>("fonts");
+	const dispatch = createEventDispatcher<{ changeFont: { fontFamily: string; fontStyle: string; fontFileUrl: string | undefined } }>();
+
 	// emits: ["update:fontFamily", "update:fontStyle", "changeFont"],
 
 	let menuList: MenuList;
@@ -61,23 +63,23 @@
 	}
 
 	async function selectFont(newName: string): Promise<void> {
-		let fontFamily;
-		let fontStyle;
+		let family;
+		let style;
 
 		if (isStyle) {
 			createEventDispatcher("update:fontStyle", newName);
 
-			fontFamily = fontFamily;
-			fontStyle = newName;
+			family = fontFamily;
+			style = newName;
 		} else {
 			createEventDispatcher("update:fontFamily", newName);
 
-			fontFamily = newName;
-			fontStyle = "Normal (400)";
+			family = newName;
+			style = "Normal (400)";
 		}
 
-		const fontFileUrl = await fonts.getFontFileUrl(fontFamily, fontStyle);
-		createEventDispatcher("changeFont", { fontFamily, fontStyle, fontFileUrl });
+		const fontFileUrl = await fonts.getFontFileUrl(family, style);
+		dispatch("changeFont", { fontFamily: family, fontStyle: style, fontFileUrl });
 	}
 
 	async function getEntries(): Promise<MenuListEntry[]> {
@@ -126,7 +128,7 @@
 		minWidth={isStyle ? 0 : minWidth}
 		virtualScrollingEntryHeight={isStyle ? 0 : 20}
 		scrollableY={true}
-		on:naturalWidth={(newNaturalWidth) => isStyle && (minWidth = newNaturalWidth)}
+		on:naturalWidth={({ detail }) => isStyle && (minWidth = detail)}
 		bind:this={menuList}
 	/>
 </LayoutRow>

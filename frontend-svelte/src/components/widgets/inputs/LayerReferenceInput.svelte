@@ -22,16 +22,12 @@
 
 	let hoveringDrop = false;
 
-	$: droppable = hoveringDrop && currentDraggingElement();
+	$: droppable = hoveringDrop && Boolean(currentDraggingElement());
 
 	function dragOver(e: DragEvent): void {
 		hoveringDrop = true;
 
 		e.preventDefault();
-	}
-
-	function dragLeave(): void {
-		hoveringDrop = false;
 	}
 
 	function drop(e: DragEvent): void {
@@ -47,10 +43,6 @@
 		}
 	}
 
-	function clearLayer(): void {
-		createEventDispatcher("update:value", undefined);
-	}
-
 	function getLayerTypeData(layerType: LayerType): LayerTypeData {
 		return layerTypeData(layerType) || { name: "Error", icon: "Info" };
 	}
@@ -61,7 +53,7 @@
 	classes={{ disabled, droppable, "sharp-right-corners": sharpRightCorners }}
 	{tooltip}
 	on:dragover={(e) => !disabled && dragOver(e)}
-	on:dragleave={() => !disabled && dragLeave()}
+	on:dragleave={() => !disabled && (hoveringDrop = false)}
 	on:drop={(e) => !disabled && drop(e)}
 >
 	{#if value === undefined || droppable}
@@ -74,7 +66,7 @@
 		{:else}
 			<TextLabel bold={true} italic={true} class="missing">Layer Missing</TextLabel>
 		{/if}
-		<IconButton icon="CloseX" size={16} {disabled} action={() => clearLayer()} />
+		<IconButton icon="CloseX" size={16} {disabled} action={() => createEventDispatcher("update:value", undefined)} />
 	{/if}
 </LayoutRow>
 

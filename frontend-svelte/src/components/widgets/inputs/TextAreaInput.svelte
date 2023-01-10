@@ -3,6 +3,8 @@
 
 	import FieldInput from "@/components/widgets/inputs/FieldInput.svelte";
 
+	const dispatch = createEventDispatcher<{ commitText: string }>();
+
 	// emits: ["update:value", "commitText"],
 
 	export let value: string;
@@ -29,7 +31,7 @@
 		onCancelTextChange();
 
 		// TODO: Find a less hacky way to do this
-		createEventDispatcher("commitText", fieldInput.getInputElementValue());
+		dispatch("commitText", fieldInput.getInputElementValue());
 
 		// Required if value is not changed by the parent component upon update:value event
 		fieldInput.setInputElementValue(value);

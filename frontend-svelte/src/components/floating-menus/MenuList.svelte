@@ -175,7 +175,7 @@
 	class="menu-list"
 	open={isOpen}
 	on:open={(state) => (isOpen = state)}
-	on:naturalWidth={(newNaturalWidth) => createEventDispatcher("naturalWidth", newNaturalWidth)}
+	on:naturalWidth
 	type="Dropdown"
 	windowEdgeMargin={0}
 	escapeCloses={false}
@@ -202,7 +202,7 @@
 			{#each virtualScrollingEntryHeight ? section.slice(virtualScrollingStartIndex, virtualScrollingEndIndex) : section as entry, entryIndex (entryIndex + (virtualScrollingEntryHeight ? virtualScrollingStartIndex : 0))}
 				<LayoutRow
 					class="row"
-					classes={{ open: isEntryOpen(entry), active: entry.label === highlighted?.label, disabled: entry.disabled }}
+					classes={{ open: isEntryOpen(entry), active: entry.label === highlighted?.label, disabled: Boolean(entry.disabled) }}
 					styles={{ height: virtualScrollingEntryHeight || "20px" }}
 					{tooltip}
 					on:click={() => !entry.disabled && onEntryClick(entry)}
@@ -232,16 +232,7 @@
 					{/if}
 
 					{#if entry.children}
-						<svelte:self
-							on:naturalWidth={(newNaturalWidth) => createEventDispatcher("naturalWidth", newNaturalWidth)}
-							open={entry.ref?.open || false}
-							direction="TopRight"
-							entries={entry.children}
-							{minWidth}
-							{drawIcon}
-							{scrollableY}
-							bind:this={entry.ref}
-						/>
+						<svelte:self on:naturalWidth open={entry.ref?.open || false} direction="TopRight" entries={entry.children} {minWidth} {drawIcon} {scrollableY} bind:this={entry.ref} />
 					{/if}
 				</LayoutRow>
 			{/each}

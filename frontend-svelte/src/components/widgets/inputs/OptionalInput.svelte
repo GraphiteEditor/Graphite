@@ -12,10 +12,12 @@
 	export let disabled = false;
 	export let icon: IconName = "Checkmark";
 	export let tooltip: string | undefined = undefined;
+
+	let checkboxInput: CheckboxInput;
 </script>
 
 <LayoutRow class="optional-input" classes={{ disabled }}>
-	<CheckboxInput {checked} {disabled} on:input={(e) => createEventDispatcher("update:checked", e.target.checked)} {icon} {tooltip} />
+	<CheckboxInput {checked} {disabled} on:input={(e) => createEventDispatcher("update:checked", checkboxInput.input().checked)} {icon} {tooltip} bind:this={checkboxInput} />
 </LayoutRow>
 
 <style lang="scss" global>

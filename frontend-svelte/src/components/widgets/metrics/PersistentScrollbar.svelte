@@ -5,6 +5,8 @@
 <script lang="ts">
 	import { createEventDispatcher, onMount, onDestroy } from "svelte";
 
+	const dispatch = createEventDispatcher<{ pressTrack: number }>();
+
 	// Linear Interpolation
 	const lerp = (x: number, y: number, a: number): number => x * (1 - a) + y * a;
 
@@ -70,7 +72,7 @@
 
 			const oldPointer = handleToTrack(handleLength, handlePosition) * length + offset;
 			const pointerPos = pointerPosition(direction, e);
-			createEventDispatcher("pressTrack", pointerPos - oldPointer);
+			dispatch("pressTrack", pointerPos - oldPointer);
 		}
 	}
 

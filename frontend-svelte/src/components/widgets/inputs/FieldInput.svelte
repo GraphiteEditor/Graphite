@@ -1,7 +1,11 @@
 <script lang="ts">
+	import { createEventDispatcher } from "svelte";
+
 	import { platformIsMac } from "@/utility-functions/platform";
 
 	import LayoutRow from "@/components/layout/LayoutRow.svelte";
+
+	const dispatch = createEventDispatcher<{ textFocused: undefined; textChanged: undefined; cancelTextChange: undefined }>();
 
 	// emits: ["update:value", "textFocused", "textChanged", "cancelTextChange"],
 
@@ -40,7 +44,7 @@
 		input.blur();
 	}
 
-	export function getInputElementValue(): string | undefined {
+	export function getInputElementValue(): string {
 		return input.value;
 	}
 
@@ -61,11 +65,11 @@
 			{placeholder}
 			bind:value={inputValue}
 			bind:this={input}
-			on:focus={() => createEventDispatcher("textFocused")}
-			on:blur={() => createEventDispatcher("textChanged")}
-			on:change={() => createEventDispatcher("textChanged")}
-			on:keydown={(e) => e.key === "Enter" && createEventDispatcher("textChanged")}
-			on:keydown={(e) => e.key === "Escape" && createEventDispatcher("cancelTextChange")}
+			on:focus={() => dispatch("textFocused")}
+			on:blur={() => dispatch("textChanged")}
+			on:change={() => dispatch("textChanged")}
+			on:keydown={(e) => e.key === "Enter" && dispatch("textChanged")}
+			on:keydown={(e) => e.key === "Escape" && dispatch("cancelTextChange")}
 			data-input-element
 		/>
 	{:else}
@@ -78,11 +82,11 @@
 			{disabled}
 			bind:value={inputValue}
 			bind:this={input}
-			on:focus={() => createEventDispatcher("textFocused")}
-			on:blur={() => createEventDispatcher("textChanged")}
-			on:change={() => createEventDispatcher("textChanged")}
-			on:keydown={(e) => (macKeyboardLayout ? e.metaKey : e.ctrlKey) && e.key === "Enter" && createEventDispatcher("textChanged")}
-			on:keydown={(e) => e.key === "Escape" && createEventDispatcher("cancelTextChange")}
+			on:focus={() => dispatch("textFocused")}
+			on:blur={() => dispatch("textChanged")}
+			on:change={() => dispatch("textChanged")}
+			on:keydown={(e) => (macKeyboardLayout ? e.metaKey : e.ctrlKey) && e.key === "Enter" && dispatch("textChanged")}
+			on:keydown={(e) => e.key === "Escape" && dispatch("cancelTextChange")}
 		/>
 	{/if}
 	{#if label}

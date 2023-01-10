@@ -13,12 +13,17 @@
 	export let icon: IconName = "Checkmark";
 	export let tooltip: string | undefined = undefined;
 
+	let inputElement: HTMLInputElement;
 	let id = `${Math.random()}`.substring(2);
 
 	$: displayIcon = (!checked && icon === "Checkmark" ? "Empty12px" : icon) as IconName;
 
 	export function isChecked() {
 		return checked;
+	}
+
+	export function input(): HTMLInputElement {
+		return inputElement;
 	}
 
 	function toggleCheckboxFromLabel(e: KeyboardEvent) {
@@ -29,7 +34,15 @@
 </script>
 
 <LayoutRow class="checkbox-input">
-	<input type="checkbox" id={`checkbox-input-${id}`} {checked} on:change={(e) => createEventDispatcher("update:checked", e.target.checked)} {disabled} tabindex={disabled ? -1 : 0} />
+	<input
+		type="checkbox"
+		id={`checkbox-input-${id}`}
+		{checked}
+		on:change={(e) => createEventDispatcher("update:checked", inputElement.checked)}
+		{disabled}
+		tabindex={disabled ? -1 : 0}
+		bind:this={inputElement}
+	/>
 	<label class:disabled class:checked for={`checkbox-input-${id}`} on:keydown={(e) => e.key === "Enter" && toggleCheckboxFromLabel(e)} title={tooltip}>
 		<LayoutRow class="checkbox-box">
 			<IconLabel icon={displayIcon} />

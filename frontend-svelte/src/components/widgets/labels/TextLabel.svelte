@@ -2,6 +2,9 @@
 	let className = "";
 	export { className as class };
 	export let classes: Record<string, boolean> = {};
+	let styleName = "";
+	export { styleName as style };
+	export let styles: Record<string, string | number | undefined> = {};
 	export let disabled = false;
 	export let bold = false;
 	export let italic = false;
@@ -13,6 +16,9 @@
 	$: extraClasses = Object.entries(classes)
 		.flatMap((classAndState) => (classAndState[1] ? [classAndState[0]] : []))
 		.join(" ");
+	$: extraStyles = Object.entries(styles)
+		.flatMap((styleAndValue) => (styleAndValue[1] !== undefined ? [`${styleAndValue[0]}: ${styleAndValue[1]};`] : []))
+		.join(" ");
 </script>
 
 <span
@@ -23,6 +29,7 @@
 	class:multiline
 	class:table-align={tableAlign}
 	style:min-width={minWidth > 0 ? `${minWidth}px` : undefined}
+	style={`${styleName} ${extraStyles}`.trim()}
 	title={tooltip}
 >
 	<slot />

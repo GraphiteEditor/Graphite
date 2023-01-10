@@ -42,7 +42,7 @@
 		if (activeEntrySkipWatcher) {
 			activeEntrySkipWatcher = false;
 		} else if (activeEntry !== DASH_ENTRY) {
-			createEventDispatcher("update:selectedIndex", entries.flat().indexOf(newActiveEntry));
+			createEventDispatcher("update:selectedIndex", entries.flat().indexOf(activeEntry));
 		}
 	}
 
@@ -79,17 +79,7 @@
 		<TextLabel class="dropdown-label">{activeEntry.label}</TextLabel>
 		<IconLabel class="dropdown-arrow" icon="DropdownArrow" />
 	</LayoutRow>
-	<MenuList
-		bind:activeEntry
-		bind:open
-		on:naturalWidth={(newNaturalWidth) => (minWidth = newNaturalWidth)}
-		{entries}
-		{drawIcon}
-		{interactive}
-		direction="Bottom"
-		scrollableY={true}
-		bind:this={menuList}
-	/>
+	<MenuList bind:activeEntry bind:open on:naturalWidth={({ detail }) => (minWidth = detail)} {entries} {drawIcon} {interactive} direction="Bottom" scrollableY={true} bind:this={menuList} />
 </LayoutRow>
 
 <style lang="scss" global>

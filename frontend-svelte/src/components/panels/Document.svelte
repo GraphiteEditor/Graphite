@@ -355,7 +355,7 @@
 						handlePosition={scrollbarPos.y}
 						handleLength={scrollbarSize.y}
 						on:handlePosition={(newValue) => translateCanvasY(newValue)}
-						on:pressTrack={(delta) => pageY(delta)}
+						on:pressTrack={({ detail }) => pageY(detail)}
 					/>
 				</LayoutCol>
 			</LayoutRow>
@@ -365,7 +365,7 @@
 					handlePosition={scrollbarPos.x}
 					handleLength={scrollbarSize.x}
 					on:handlePosition={(newValue) => translateCanvasX(newValue)}
-					on:pressTrack={(delta) => pageX(delta)}
+					on:pressTrack={({ detail }) => pageX(detail)}
 				/>
 			</LayoutRow>
 		</LayoutCol>

@@ -89,7 +89,7 @@
 			<DropdownInput {...component.props} bind:open on:selectedIndex={(value) => updateLayout(index, value)} sharpRightCorners={nextIsSuffix} />
 		{/if}
 		{#if component.props.kind === "FontInput"}
-			<FontInput {...component.props} bind:open on:changeFont={(value) => updateLayout(index, value)} sharpRightCorners={nextIsSuffix} />
+			<FontInput {...component.props} bind:open on:changeFont={({ detail }) => updateLayout(index, detail)} sharpRightCorners={nextIsSuffix} />
 		{/if}
 		{#if component.props.kind === "ParameterExposeButton"}
 			<ParameterExposeButton {...component.props} action={() => updateLayout(index, undefined)} />
@@ -134,7 +134,7 @@
 			<SwatchPairInput {...component.props} />
 		{/if}
 		{#if component.props.kind === "TextAreaInput"}
-			<TextAreaInput {...component.props} on:commitText={(value) => updateLayout(index, value)} />
+			<TextAreaInput {...component.props} on:commitText={({ detail }) => updateLayout(index, detail)} />
 		{/if}
 		{#if component.props.kind === "TextButton"}
 			<TextButton {...component.props} action={() => updateLayout(index, undefined)} sharpRightCorners={nextIsSuffix} />
@@ -143,7 +143,7 @@
 			<BreadcrumbTrailButtons {...component.props} action={(index) => updateLayout(index, index)} />
 		{/if}
 		{#if component.props.kind === "TextInput"}
-			<TextInput {...component.props} on:commitText={(value) => updateLayout(index, value)} sharpRightCorners={nextIsSuffix} />
+			<TextInput {...component.props} on:commitText={({ detail }) => updateLayout(index, detail)} sharpRightCorners={nextIsSuffix} />
 		{/if}
 		{#if component.props.kind === "TextLabel"}
 			<TextLabel {...excludeValue(component.props)}>{component.props.value}</TextLabel>

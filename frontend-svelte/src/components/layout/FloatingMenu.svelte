@@ -27,6 +27,8 @@
 	export let escapeCloses = true;
 	export let strayCloses = true;
 
+	const dispatch = createEventDispatcher<{ naturalWidth: number }>();
+
 	let tail: HTMLDivElement;
 	let floatingMenu: HTMLDivElement;
 	let floatingMenuContainer: HTMLDivElement;
@@ -223,7 +225,7 @@
 
 		// Emit the measured natural width to the parent
 		if (naturalWidth !== undefined && naturalWidth >= 0) {
-			createEventDispatcher("naturalWidth", naturalWidth);
+			dispatch("naturalWidth", naturalWidth);
 		}
 	}
 

@@ -18,16 +18,13 @@
 	// TODO: See if this should be made to follow the pattern of DropdownInput.svelte so this could be removed
 	export let open: boolean;
 
+	// TODO: Implement
 	$: chip = undefined;
 	$: {
 		isOpen = open;
 	}
 	$: {
 		createEventDispatcher("update:open", isOpen);
-	}
-
-	function colorPickerUpdated(color: Color) {
-		createEventDispatcher("update:value", color);
 	}
 </script>
 
@@ -44,7 +41,7 @@
 			<TextLabel class="chip" bold={true}>{chip}</TextLabel>
 		{/if}
 	</button>
-	<ColorPicker bind:open={isOpen} color={value} on:color={colorPickerUpdated} allowNone={true} />
+	<ColorPicker bind:open={isOpen} color={value} on:color={(color) => createEventDispatcher("update:value", color)} allowNone={true} />
 </LayoutRow>
 
 <style lang="scss" global>

@@ -59,7 +59,7 @@
 	let colorSpaceChoices = COLOR_SPACE_CHOICES;
 	let strayCloses = true;
 
-	$: rgbChannels = Object.entries(newColor.toRgb255() || { r: undefined, g: undefined, b: undefined });
+	$: rgbChannels = Object.entries(newColor.toRgb255() || { r: undefined, g: undefined, b: undefined }) as [keyof RGB, number | undefined][];
 	$: hsvChannels = !isNone ? Object.entries({ h: hue * 360, s: saturation * 100, v: value * 100 }) : Object.entries({ h: undefined, s: undefined, v: undefined });
 	$: opaqueHueColor = new Color({ h: hue, s: 1, v: 1, a: 1 });
 	$: newColor = isNone ? new Color("none") : new Color({ h: hue, s: saturation, v: value, a: alpha });
@@ -301,7 +301,7 @@
 				<LayoutRow>
 					<TextInput
 						bind:value={newColor.toHexOptionalAlpha() || "-"}
-						on:commitText={setColorCode}
+						on:commitText={({ detail }) => setColorCode(detail)}
 						centered={true}
 						tooltip="Color code in hexadecimal format. 6 digits if opaque, 8 with alpha.\nAccepts input of CSS color values including named colors."
 					/>
