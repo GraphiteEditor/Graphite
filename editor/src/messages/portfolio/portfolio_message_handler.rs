@@ -93,9 +93,11 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 					responses.push_back(BroadcastEvent::ToolAbort.into());
 					responses.push_back(ToolMessage::DeactivateTools.into());
 
-					// Clear properties panel and layer tree
+					// Clear relevant UI layouts if there are no documents
 					responses.push_back(PropertiesPanelMessage::ClearSelection.into());
 					responses.push_back(DocumentMessage::ClearLayerTree.into());
+					let hint_data = HintData(vec![HintGroup(vec![])]);
+					responses.push_back(FrontendMessage::UpdateInputHints { hint_data }.into());
 				}
 
 				for document_id in &self.document_ids {
