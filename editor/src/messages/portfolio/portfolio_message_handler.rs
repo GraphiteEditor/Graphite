@@ -108,11 +108,9 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 			PortfolioMessage::CloseDocument { document_id } => {
 				// Is this the last document?
 				if self.documents.len() == 1 && self.document_ids[0] == document_id {
-					// Clear properties panel and layer tree
+					// Clear UI layouts that assume the existence of a document
 					responses.push_back(PropertiesPanelMessage::ClearSelection.into());
 					responses.push_back(DocumentMessage::ClearLayerTree.into());
-
-					// Clear existing hints
 					let hint_data = HintData(vec![HintGroup(vec![])]);
 					responses.push_back(FrontendMessage::UpdateInputHints { hint_data }.into());
 				}
