@@ -11,6 +11,7 @@ use crate::messages::portfolio::document::utility_types::misc::DocumentRenderMod
 use crate::messages::portfolio::utility_types::ImaginateServerStatus;
 use crate::messages::prelude::*;
 
+use crate::messages::tool::utility_types::{HintData, HintGroup};
 use document_legacy::document::pick_safe_imaginate_resolution;
 use document_legacy::layers::layer_info::{LayerDataType, LayerDataTypeDiscriminant};
 use document_legacy::layers::text_layer::Font;
@@ -110,6 +111,10 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 					// Clear properties panel and layer tree
 					responses.push_back(PropertiesPanelMessage::ClearSelection.into());
 					responses.push_back(DocumentMessage::ClearLayerTree.into());
+
+					// Clear existing hints
+					let hint_data = HintData(vec![HintGroup(vec![])]);
+					responses.push_back(FrontendMessage::UpdateInputHints { hint_data }.into());
 				}
 				// Actually delete the document (delay to delete document is required to let the document and properties panel messages above get processed)
 				responses.push_back(PortfolioMessage::DeleteDocument { document_id }.into());
