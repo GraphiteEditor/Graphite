@@ -18,5 +18,7 @@ pub mod utility_traits;
 #[cfg(test)]
 #[test]
 fn export_types() {
-	specta::export::ts("../types.ts");
+	use specta::ts::{BigIntExportBehavior, ExportConfiguration};
+
+	specta::export::ts(&ExportConfiguration { bigint: BigIntExportBehavior::Number }, "../types.ts").unwrap();
 }
