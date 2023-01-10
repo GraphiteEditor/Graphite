@@ -18,7 +18,7 @@
 </script>
 
 <LayoutRow class="optional-input" classes={{ disabled }}>
-	<CheckboxInput {checked} {disabled} on:input={(e) => dispatch("checked", checkboxInput.input().checked)} {icon} {tooltip} bind:this={checkboxInput} />
+	<CheckboxInput {checked} on:checked {disabled} {icon} {tooltip} bind:this={checkboxInput} />
 </LayoutRow>
 
 <style lang="scss" global>

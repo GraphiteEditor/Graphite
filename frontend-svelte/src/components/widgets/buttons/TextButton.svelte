@@ -13,6 +13,7 @@
 	export let sharpRightCorners: boolean = false;
 
 	// Callbacks
+	// TODO: Replace this with an event binding (and on other components that do this)
 	export let action: (e: MouseEvent) => void;
 </script>
 

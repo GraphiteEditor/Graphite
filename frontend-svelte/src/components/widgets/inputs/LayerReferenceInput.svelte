@@ -109,7 +109,7 @@
 			text-align: center;
 
 			&.missing {
-				// TODO: Define this as a permanent color palette choice
+				// TODO: Define this as a permanent color palette choice (search the project for all uses of this hex code)
 				color: #d6536e;
 			}
 

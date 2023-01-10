@@ -80,7 +80,19 @@
 		<TextLabel class="dropdown-label">{activeEntry.label}</TextLabel>
 		<IconLabel class="dropdown-arrow" icon="DropdownArrow" />
 	</LayoutRow>
-	<MenuList bind:activeEntry bind:open on:naturalWidth={({ detail }) => (minWidth = detail)} {entries} {drawIcon} {interactive} direction="Bottom" scrollableY={true} bind:this={menuList} />
+	<MenuList
+		on:naturalWidth={({ detail }) => (minWidth = detail)}
+		{activeEntry}
+		on:activeEntry={({ detail }) => (activeEntry = detail)}
+		{open}
+		on:open={({ detail }) => (open = detail)}
+		{entries}
+		{drawIcon}
+		{interactive}
+		direction="Bottom"
+		scrollableY={true}
+		bind:this={menuList}
+	/>
 </LayoutRow>
 
 <style lang="scss" global>

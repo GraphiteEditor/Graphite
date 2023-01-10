@@ -29,7 +29,7 @@
 				{:else if isWidgetSection(layoutGroup)}
 					<svelte:self widgetData={layoutGroup} {layoutTarget} />
 				{:else}
-					<span style="color: red">Error: The widget that belongs here has an invalid layout group type</span>
+					<span style="color: #d6536e">Error: The widget that belongs here has an invalid layout group type</span>
 				{/if}
 			{/each}
 		</LayoutCol>

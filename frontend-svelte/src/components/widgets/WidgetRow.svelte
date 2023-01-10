@@ -80,16 +80,16 @@
 <div class={`widget-${direction}`}>
 	{#each widgetsAndNextSiblingIsSuffix as [component, nextIsSuffix], index (index)}
 		{#if component.props.kind === "CheckboxInput"}
-			<CheckboxInput {...component.props} on:checked={(value) => updateLayout(index, value)} />
+			<CheckboxInput {...component.props} on:checked={({ detail }) => updateLayout(index, detail)} />
 		{/if}
 		{#if component.props.kind === "ColorInput"}
-			<ColorInput {...component.props} bind:open on:value={(value) => updateLayout(index, value)} sharpRightCorners={nextIsSuffix} />
+			<ColorInput {...component.props} on:value={({ detail }) => updateLayout(index, detail)} sharpRightCorners={nextIsSuffix} />
 		{/if}
 		{#if component.props.kind === "DropdownInput"}
-			<DropdownInput {...component.props} bind:open on:selectedIndex={(value) => updateLayout(index, value)} sharpRightCorners={nextIsSuffix} />
+			<DropdownInput {...component.props} on:selectedIndex={({ detail }) => updateLayout(index, detail)} sharpRightCorners={nextIsSuffix} />
 		{/if}
 		{#if component.props.kind === "FontInput"}
-			<FontInput {...component.props} bind:open on:changeFont={({ detail }) => updateLayout(index, detail)} sharpRightCorners={nextIsSuffix} />
+			<FontInput {...component.props} on:changeFont={({ detail }) => updateLayout(index, detail)} sharpRightCorners={nextIsSuffix} />
 		{/if}
 		{#if component.props.kind === "ParameterExposeButton"}
 			<ParameterExposeButton {...component.props} action={() => updateLayout(index, undefined)} />
@@ -101,22 +101,22 @@
 			<IconLabel {...component.props} />
 		{/if}
 		{#if component.props.kind === "LayerReferenceInput"}
-			<LayerReferenceInput {...component.props} on:value={(value) => updateLayout(index, value)} />
+			<LayerReferenceInput {...component.props} on:value={({ detail }) => updateLayout(index, detail)} />
 		{/if}
 		{#if component.props.kind === "NumberInput"}
 			<NumberInput
 				{...component.props}
-				on:value={debouncer((value) => updateLayout(index, value)).updateValue}
+				on:value={({ detail }) => debouncer(() => updateLayout(index, detail))}
 				incrementCallbackIncrease={() => updateLayout(index, "Increment")}
 				incrementCallbackDecrease={() => updateLayout(index, "Decrement")}
 				sharpRightCorners={nextIsSuffix}
 			/>
 		{/if}
 		{#if component.props.kind === "OptionalInput"}
-			<OptionalInput {...component.props} on:checked={(value) => updateLayout(index, value)} />
+			<OptionalInput {...component.props} on:checked={({ detail }) => updateLayout(index, detail)} />
 		{/if}
 		{#if component.props.kind === "PivotAssist"}
-			<PivotAssist {...component.props} on:position={(value) => updateLayout(index, value)} />
+			<PivotAssist {...component.props} on:position={({ detail }) => updateLayout(index, detail)} />
 		{/if}
 		{#if component.props.kind === "PopoverButton"}
 			<PopoverButton {...component.props}>
@@ -125,7 +125,7 @@
 			</PopoverButton>
 		{/if}
 		{#if component.props.kind === "RadioInput"}
-			<RadioInput {...component.props} on:selectedIndex={(value) => updateLayout(index, value)} sharpRightCorners={nextIsSuffix} />
+			<RadioInput {...component.props} on:selectedIndex={({ detail }) => updateLayout(index, detail)} sharpRightCorners={nextIsSuffix} />
 		{/if}
 		{#if component.props.kind === "Separator"}
 			<Separator {...component.props} />

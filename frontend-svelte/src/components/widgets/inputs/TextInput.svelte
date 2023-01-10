@@ -56,17 +56,18 @@
 <FieldInput
 	class="text-input"
 	classes={{ centered }}
-	bind:value={text}
-	{label}
-	spellcheck={true}
-	{disabled}
-	{tooltip}
-	{placeholder}
 	styles={{ "min-width": minWidth > 0 ? `${minWidth}px` : undefined }}
-	{sharpRightCorners}
+	value={text}
+	on:value={({ detail }) => (text = detail)}
 	on:textFocused={onTextFocused}
 	on:textChanged={onTextChanged}
 	on:cancelTextChange={onCancelTextChange}
+	spellcheck={true}
+	{label}
+	{disabled}
+	{tooltip}
+	{placeholder}
+	{sharpRightCorners}
 	bind:this={fieldInput}
 />
 

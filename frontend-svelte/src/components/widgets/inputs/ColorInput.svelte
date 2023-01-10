@@ -1,32 +1,25 @@
 <script lang="ts">
+	import { createEventDispatcher } from "svelte";
+
 	import { Color } from "@/wasm-communication/messages";
 
 	import ColorPicker from "@/components/floating-menus/ColorPicker.svelte";
 	import LayoutRow from "@/components/layout/LayoutRow.svelte";
 	import TextLabel from "@/components/widgets/labels/TextLabel.svelte";
 
-	// emits: ["update:value", "update:open"],
-	const dispatch = createEventDispatcher<{ value: Color; open: boolean }>();
+	// emits: ["update:value"],
+	const dispatch = createEventDispatcher<{ value: Color }>();
 
-	let isOpen = false;
+	let open = false;
 
 	export let value: Color;
 	export let noTransparency = false; // TODO: Rename to allowTransparency, also implement allowNone
 	export let disabled = false; // TODO: Design and implement
 	export let tooltip: string | undefined = undefined;
 	export let sharpRightCorners = false;
-	// Bound through `v-model`
-	// TODO: See if this should be made to follow the pattern of DropdownInput.svelte so this could be removed
-	export let open: boolean;
 
 	// TODO: Implement
 	$: chip = undefined;
-	$: {
-		isOpen = open;
-	}
-	$: {
-		dispatch("open", isOpen);
-	}
 </script>
 
 <LayoutRow class="color-input" classes={{ "sharp-right-corners": sharpRightCorners }} {tooltip}>
@@ -34,7 +27,7 @@
 		class:none={value.none}
 		class:sharp-right-corners={sharpRightCorners}
 		style:--chosen-color={value.toHexOptionalAlpha()}
-		on:click={() => dispatch("open", true)}
+		on:click={() => (open = true)}
 		tabindex="0"
 		data-floating-menu-spawner
 	>
@@ -42,7 +35,7 @@
 			<TextLabel class="chip" bold={true}>{chip}</TextLabel>
 		{/if}
 	</button>
-	<ColorPicker bind:open={isOpen} color={value} on:color={(color) => dispatch("value", color)} allowNone={true} />
+	<ColorPicker {open} on:open={({ detail }) => (open = detail)} color={value} on:color={({ detail }) => dispatch("value", detail)} allowNone={true} />
 </LayoutRow>
 
 <style lang="scss" global>

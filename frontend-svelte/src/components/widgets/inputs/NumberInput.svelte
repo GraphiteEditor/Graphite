@@ -234,16 +234,17 @@
 
 <FieldInput
 	class={`number-input ${mode.toLocaleLowerCase()}`}
-	bind:value={text}
-	{label}
-	spellcheck={false}
-	{disabled}
-	styles={{ "min-width": minWidth > 0 ? `${minWidth}px` : undefined, "--progress-factor": (rangeSliderValueAsRendered - rangeMin) / (rangeMax - rangeMin) }}
-	{tooltip}
-	{sharpRightCorners}
+	value={text}
+	on:value={({ detail }) => (text = detail)}
 	on:textFocused={onTextFocused}
 	on:textChanged={onTextChanged}
 	on:cancelTextChange={onCancelTextChange}
+	{label}
+	{disabled}
+	{tooltip}
+	{sharpRightCorners}
+	spellcheck={false}
+	styles={{ "min-width": minWidth > 0 ? `${minWidth}px` : undefined, "--progress-factor": (rangeSliderValueAsRendered - rangeMin) / (rangeMax - rangeMin) }}
 	bind:this={fieldInput}
 >
 	{#if value !== undefined && mode === "Increment" && incrementBehavior !== "None"}

@@ -352,9 +352,9 @@
 				<LayoutCol class="bar-area right-scrollbar">
 					<PersistentScrollbar
 						direction="Vertical"
-						handlePosition={scrollbarPos.y}
 						handleLength={scrollbarSize.y}
-						on:handlePosition={(newValue) => translateCanvasY(newValue)}
+						handlePosition={scrollbarPos.y}
+						on:handlePosition={({ detail }) => translateCanvasY(detail)}
 						on:pressTrack={({ detail }) => pageY(detail)}
 					/>
 				</LayoutCol>
@@ -362,9 +362,9 @@
 			<LayoutRow class="bar-area bottom-scrollbar">
 				<PersistentScrollbar
 					direction="Horizontal"
-					handlePosition={scrollbarPos.x}
 					handleLength={scrollbarSize.x}
-					on:handlePosition={(newValue) => translateCanvasX(newValue)}
+					handlePosition={scrollbarPos.x}
+					on:handlePosition={({ detail }) => translateCanvasX(detail)}
 					on:pressTrack={({ detail }) => pageX(detail)}
 				/>
 			</LayoutRow>

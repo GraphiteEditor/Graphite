@@ -34,7 +34,7 @@
 	const editor = getContext<Editor>("editor");
 
 	// emits: ["update:color", "update:open"],
-	const dispatch = createEventDispatcher<{ color: Color; open: boolean }>();
+	const dispatch = createEventDispatcher<{ color: Color }>();
 
 	export let color: Color;
 	export let allowNone = false;
@@ -61,7 +61,7 @@
 	let strayCloses = true;
 
 	$: rgbChannels = Object.entries(newColor.toRgb255() || { r: undefined, g: undefined, b: undefined }) as [keyof RGB, number | undefined][];
-	$: hsvChannels = !isNone ? Object.entries({ h: hue * 360, s: saturation * 100, v: value * 100 }) : Object.entries({ h: undefined, s: undefined, v: undefined });
+	$: hsvChannels = Object.entries(!isNone ? { h: hue * 360, s: saturation * 100, v: value * 100 } : { h: undefined, s: undefined, v: undefined }) as [keyof HSV, number | undefined][];
 	$: opaqueHueColor = new Color({ h: hue, s: 1, v: 1, a: 1 });
 	$: newColor = isNone ? new Color("none") : new Color({ h: hue, s: saturation, v: value, a: alpha });
 	$: initialColor = initialIsNone ? new Color("none") : new Color({ h: initialHue, s: initialSaturation, v: initialValue, a: initialAlpha });
@@ -70,8 +70,8 @@
 	$: watchColor(color);
 
 	// Called only when `open` is changed from outside this component (with v-model)
-	function watchOpen(isOpen: boolean) {
-		if (isOpen) setInitialHSVA(hue, saturation, value, alpha, isNone);
+	function watchOpen(open: boolean) {
+		if (open) setInitialHSVA(hue, saturation, value, alpha, isNone);
 	}
 
 	// Called only when `color` is changed from outside this component (with v-model)
@@ -151,10 +151,6 @@
 		document.removeEventListener("pointerup", onPointerUp);
 	}
 
-	function emitOpenState(isOpen: boolean) {
-		dispatch("open", isOpen);
-	}
-
 	function setColor(color?: Color) {
 		const colorToEmit = color || new Color({ h: hue, s: saturation, v: value, a: alpha });
 		dispatch("color", colorToEmit);
@@ -180,22 +176,28 @@
 		if (color) setColor(color);
 	}
 
-	function setColorRGB(channel: keyof RGB, strength: number) {
-		if (channel === "r") setColor(new Color(strength / 255, newColor.green, newColor.blue, newColor.alpha));
+	function setColorRGB(channel: keyof RGB, strength: number | undefined) {
+		// Do nothing if the given value is undefined
+		if (strength === undefined) undefined;
+		// Set the specified channel to the given value
+		else if (channel === "r") setColor(new Color(strength / 255, newColor.green, newColor.blue, newColor.alpha));
 		else if (channel === "g") setColor(new Color(newColor.red, strength / 255, newColor.blue, newColor.alpha));
 		else if (channel === "b") setColor(new Color(newColor.red, newColor.green, strength / 255, newColor.alpha));
 	}
 
-	function setColorHSV(channel: keyof HSV, strength: number) {
-		if (channel === "h") hue = strength / 360;
+	function setColorHSV(channel: keyof HSV, strength: number | undefined) {
+		// Do nothing if the given value is undefined
+		if (strength === undefined) undefined;
+		// Set the specified channel to the given value
+		else if (channel === "h") hue = strength / 360;
 		else if (channel === "s") saturation = strength / 100;
 		else if (channel === "v") value = strength / 100;
 
 		setColor();
 	}
 
-	function setColorAlphaPercent(alpha: number) {
-		alpha = alpha / 100;
+	function setColorAlphaPercent(strength: number | undefined) {
+		if (strength !== undefined) alpha = strength / 100;
 		setColor();
 	}
 
@@ -258,7 +260,7 @@
 	});
 </script>
 
-<FloatingMenu class="color-picker" {open} on:open={(isOpen) => emitOpenState(isOpen)} {strayCloses} {direction} type="Popover">
+<FloatingMenu class="color-picker" {open} on:open {strayCloses} {direction} type="Popover">
 	<LayoutRow
 		styles={{
 			"--new-color": newColor.toHexOptionalAlpha(),
@@ -301,7 +303,7 @@
 				<Separator />
 				<LayoutRow>
 					<TextInput
-						bind:value={newColor.toHexOptionalAlpha() || "-"}
+						value={newColor.toHexOptionalAlpha() || "-"}
 						on:commitText={({ detail }) => setColorCode(detail)}
 						centered={true}
 						tooltip="Color code in hexadecimal format. 6 digits if opaque, 8 with alpha.\nAccepts input of CSS color values including named colors."
@@ -318,7 +320,7 @@
 						{/if}
 						<NumberInput
 							value={strength}
-							on:value={(value) => setColorRGB(channel, value)}
+							on:value={({ detail }) => setColorRGB(channel, detail)}
 							min={0}
 							max={255}
 							minWidth={56}
@@ -339,7 +341,7 @@
 						{/if}
 						<NumberInput
 							value={strength}
-							on:value={(value) => setColorHSV(channel, value)}
+							on:value={({ detail }) => setColorHSV(channel, detail)}
 							min={0}
 							max={channel === "h" ? 360 : 100}
 							unit={channel === "h" ? "°" : "%"}
@@ -356,7 +358,7 @@
 			<NumberInput
 				label="Alpha"
 				value={!isNone ? alpha * 100 : undefined}
-				on:value={setColorAlphaPercent}
+				on:value={({ detail }) => setColorAlphaPercent(detail)}
 				min={0}
 				max={100}
 				rangeMin={0}

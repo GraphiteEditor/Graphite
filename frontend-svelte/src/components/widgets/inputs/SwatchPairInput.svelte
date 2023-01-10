@@ -1,9 +1,12 @@
 <script lang="ts">
+	import { getContext } from "svelte";
+
 	import { type Color } from "@/wasm-communication/messages";
 
 	import ColorPicker from "@/components/floating-menus/ColorPicker.svelte";
 	import LayoutCol from "@/components/layout/LayoutCol.svelte";
 	import LayoutRow from "@/components/layout/LayoutRow.svelte";
+	import { Editor } from "@/wasm-communication/editor";
 
 	const editor = getContext<Editor>("editor");
 
@@ -35,11 +38,11 @@
 <LayoutCol class="swatch-pair">
 	<LayoutRow class="primary swatch">
 		<button on:click={clickPrimarySwatch} style:--swatch-color={primary.toRgbaCSS()} data-floating-menu-spawner="no-hover-transfer" tabindex="0" />
-		<ColorPicker bind:open={primaryOpen} color={primary} on:color={(color) => primaryColorChanged(color)} direction="Right" />
+		<ColorPicker open={primaryOpen} on:open={({ detail }) => (primaryOpen = detail)} color={primary} on:color={({ detail }) => primaryColorChanged(detail)} direction="Right" />
 	</LayoutRow>
 	<LayoutRow class="secondary swatch">
 		<button on:click={clickSecondarySwatch} style:--swatch-color={secondary.toRgbaCSS()} data-floating-menu-spawner="no-hover-transfer" tabindex="0" />
-		<ColorPicker bind:open={secondaryOpen} color={secondary} on:color={(color) => secondaryColorChanged(color)} direction="Right" />
+		<ColorPicker open={secondaryOpen} on:open={({ detail }) => (secondaryOpen = detail)} color={secondary} on:color={({ detail }) => secondaryColorChanged(detail)} direction="Right" />
 	</LayoutRow>
 </LayoutCol>
 

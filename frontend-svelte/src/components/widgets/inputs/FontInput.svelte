@@ -126,13 +126,15 @@
 		<IconLabel class="dropdown-arrow" icon="DropdownArrow" />
 	</LayoutRow>
 	<MenuList
-		bind:activeEntry
-		bind:open
+		on:naturalWidth={({ detail }) => isStyle && (minWidth = detail)}
+		{activeEntry}
+		on:activeEntry={({ detail }) => (activeEntry = detail)}
+		{open}
+		on:open={({ detail }) => (open = detail)}
 		entries={[entries]}
 		minWidth={isStyle ? 0 : minWidth}
 		virtualScrollingEntryHeight={isStyle ? 0 : 20}
 		scrollableY={true}
-		on:naturalWidth={({ detail }) => isStyle && (minWidth = detail)}
 		bind:this={menuList}
 	/>
 </LayoutRow>

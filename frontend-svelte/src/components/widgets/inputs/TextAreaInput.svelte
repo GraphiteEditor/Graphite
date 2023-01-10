@@ -44,20 +44,21 @@
 </script>
 
 <FieldInput
-	textarea={true}
 	class="text-area-input"
 	classes={{
 		// TODO: Svelte: check if this should be based on `Boolean(label)` or `label !== ""`
 		"has-label": Boolean(label),
 	}}
-	{label}
-	{disabled}
-	{tooltip}
-	spellcheck={true}
-	bind:value={inputValue}
+	on:value={({ detail }) => (inputValue = detail)}
 	on:textFocused={onTextFocused}
 	on:textChanged={onTextChanged}
 	on:cancelTextChange={onCancelTextChange}
+	textarea={true}
+	spellcheck={true}
+	{label}
+	{disabled}
+	{tooltip}
+	value={inputValue}
 	bind:this={fieldInput}
 />
 

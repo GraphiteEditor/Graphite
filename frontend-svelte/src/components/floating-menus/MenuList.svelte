@@ -175,14 +175,14 @@
 <FloatingMenu
 	class="menu-list"
 	open={isOpen}
-	on:open={(state) => (isOpen = state)}
+	on:open={({ detail }) => (isOpen = detail)}
 	on:naturalWidth
 	type="Dropdown"
 	windowEdgeMargin={0}
 	escapeCloses={false}
 	{direction}
-	scrollableY={scrollableY && virtualScrollingEntryHeight === 0}
 	{minWidth}
+	scrollableY={scrollableY && virtualScrollingEntryHeight === 0}
 	bind:this={floatingMenu}
 >
 	<!-- If we put the scrollableY on the layoutcol for non-font dropdowns then for some reason it always creates a tiny scrollbar.
