@@ -27,9 +27,6 @@ jobs:
         cd frontend
         npm ci
 
-    - name: 🔧 Install libgtk
-      run: sudo apt install -y libgtk-3-dev libssl-dev build-essential curl wget libayatana-appindicator3-dev librsvg2-dev libsoup2.4-dev libjavascriptcoregtk-4.0-dev libwebkit2gtk-4.0-dev
-
     - name: 🔼 Update Rust to latest stable
       run: |
         rustc --version
