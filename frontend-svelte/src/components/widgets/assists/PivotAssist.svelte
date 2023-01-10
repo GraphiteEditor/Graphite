@@ -4,12 +4,13 @@
 	import { type PivotPosition } from "@/wasm-communication/messages";
 
 	// emits: ["update:position"],
+	const dispatch = createEventDispatcher<{ position: PivotPosition }>();
 
 	export let position: string;
 	export let disabled = false;
 
 	function setPosition(newPosition: PivotPosition) {
-		createEventDispatcher("update:position", newPosition);
+		dispatch("position", newPosition);
 	}
 </script>
 

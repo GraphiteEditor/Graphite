@@ -34,6 +34,7 @@
 	const editor = getContext<Editor>("editor");
 
 	// emits: ["update:color", "update:open"],
+	const dispatch = createEventDispatcher<{ color: Color; open: boolean }>();
 
 	export let color: Color;
 	export let allowNone = false;
@@ -151,12 +152,12 @@
 	}
 
 	function emitOpenState(isOpen: boolean) {
-		createEventDispatcher("update:open", isOpen);
+		dispatch("open", isOpen);
 	}
 
 	function setColor(color?: Color) {
 		const colorToEmit = color || new Color({ h: hue, s: saturation, v: value, a: alpha });
-		createEventDispatcher("update:color", colorToEmit);
+		dispatch("color", colorToEmit);
 	}
 
 	function swapNewWithInitial() {

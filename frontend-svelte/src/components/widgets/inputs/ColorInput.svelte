@@ -6,6 +6,7 @@
 	import TextLabel from "@/components/widgets/labels/TextLabel.svelte";
 
 	// emits: ["update:value", "update:open"],
+	const dispatch = createEventDispatcher<{ value: Color; open: boolean }>();
 
 	let isOpen = false;
 
@@ -24,7 +25,7 @@
 		isOpen = open;
 	}
 	$: {
-		createEventDispatcher("update:open", isOpen);
+		dispatch("open", isOpen);
 	}
 </script>
 
@@ -33,7 +34,7 @@
 		class:none={value.none}
 		class:sharp-right-corners={sharpRightCorners}
 		style:--chosen-color={value.toHexOptionalAlpha()}
-		on:click={() => createEventDispatcher("update:open", true)}
+		on:click={() => dispatch("open", true)}
 		tabindex="0"
 		data-floating-menu-spawner
 	>
@@ -41,7 +42,7 @@
 			<TextLabel class="chip" bold={true}>{chip}</TextLabel>
 		{/if}
 	</button>
-	<ColorPicker bind:open={isOpen} color={value} on:color={(color) => createEventDispatcher("update:value", color)} allowNone={true} />
+	<ColorPicker bind:open={isOpen} color={value} on:color={(color) => dispatch("value", color)} allowNone={true} />
 </LayoutRow>
 
 <style lang="scss" global>

@@ -6,6 +6,7 @@
 	import FieldInput from "@/components/widgets/inputs/FieldInput.svelte";
 
 	// emits: ["update:value"],
+	const dispatch = createEventDispatcher<{ value: number | undefined }>();
 
 	// Label
 	export let label: string | undefined = undefined;
@@ -206,7 +207,7 @@
 		// Required as the call to update:value can, not change the value
 		text = displayText(value);
 
-		if (newValue !== undefined) createEventDispatcher("update:value", cleaned);
+		if (newValue !== undefined) dispatch("value", cleaned);
 	}
 
 	function displayText(value: number | undefined): string {

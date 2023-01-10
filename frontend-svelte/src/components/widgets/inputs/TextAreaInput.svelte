@@ -3,9 +3,8 @@
 
 	import FieldInput from "@/components/widgets/inputs/FieldInput.svelte";
 
-	const dispatch = createEventDispatcher<{ commitText: string }>();
-
 	// emits: ["update:value", "commitText"],
+	const dispatch = createEventDispatcher<{ value: string; commitText: string }>();
 
 	export let value: string;
 	export let label: string | undefined = undefined;
@@ -16,7 +15,7 @@
 	let editing = false;
 	let inputValue = value;
 
-	$: createEventDispatcher("update:value", inputValue);
+	$: dispatch("value", inputValue);
 
 	function onTextFocused() {
 		editing = true;

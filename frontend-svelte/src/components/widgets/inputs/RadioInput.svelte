@@ -8,6 +8,7 @@
 	import TextLabel from "@/components/widgets/labels/TextLabel.svelte";
 
 	// emits: ["update:selectedIndex"],
+	const dispatch = createEventDispatcher<{ selectedIndex: number }>();
 
 	export let entries: RadioEntries;
 	export let selectedIndex: number;
@@ -16,7 +17,7 @@
 
 	function handleEntryClick(radioEntryData: RadioEntryData) {
 		const index = entries.indexOf(radioEntryData);
-		createEventDispatcher("update:selectedIndex", index);
+		dispatch("selectedIndex", index);
 
 		radioEntryData.action?.();
 	}

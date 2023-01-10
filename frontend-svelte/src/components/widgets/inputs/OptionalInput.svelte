@@ -7,6 +7,7 @@
 	import CheckboxInput from "@/components/widgets/inputs/CheckboxInput.svelte";
 
 	// emits: ["update:checked"],
+	const dispatch = createEventDispatcher<{ checked: boolean }>();
 
 	export let checked: boolean;
 	export let disabled = false;
@@ -17,7 +18,7 @@
 </script>
 
 <LayoutRow class="optional-input" classes={{ disabled }}>
-	<CheckboxInput {checked} {disabled} on:input={(e) => createEventDispatcher("update:checked", checkboxInput.input().checked)} {icon} {tooltip} bind:this={checkboxInput} />
+	<CheckboxInput {checked} {disabled} on:input={(e) => dispatch("checked", checkboxInput.input().checked)} {icon} {tooltip} bind:this={checkboxInput} />
 </LayoutRow>
 
 <style lang="scss" global>

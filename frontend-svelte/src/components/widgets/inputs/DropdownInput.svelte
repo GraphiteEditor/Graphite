@@ -11,6 +11,7 @@
 	const DASH_ENTRY = { label: "-" };
 
 	// emits: ["update:selectedIndex"],
+	const dispatch = createEventDispatcher<{ selectedIndex: number }>();
 
 	let menuList: MenuList;
 	let self: LayoutRow;
@@ -42,7 +43,7 @@
 		if (activeEntrySkipWatcher) {
 			activeEntrySkipWatcher = false;
 		} else if (activeEntry !== DASH_ENTRY) {
-			createEventDispatcher("update:selectedIndex", entries.flat().indexOf(activeEntry));
+			dispatch("selectedIndex", entries.flat().indexOf(activeEntry));
 		}
 	}
 

@@ -10,9 +10,13 @@
 	import { type FontsState } from "@/state-providers/fonts";
 
 	const fonts = getContext<FontsState>("fonts");
-	const dispatch = createEventDispatcher<{ changeFont: { fontFamily: string; fontStyle: string; fontFileUrl: string | undefined } }>();
 
 	// emits: ["update:fontFamily", "update:fontStyle", "changeFont"],
+	const dispatch = createEventDispatcher<{
+		fontFamily: string;
+		fontStyle: string;
+		changeFont: { fontFamily: string; fontStyle: string; fontFileUrl: string | undefined };
+	}>();
 
 	let menuList: MenuList;
 
@@ -67,12 +71,12 @@
 		let style;
 
 		if (isStyle) {
-			createEventDispatcher("update:fontStyle", newName);
+			dispatch("fontStyle", newName);
 
 			family = fontFamily;
 			style = newName;
 		} else {
-			createEventDispatcher("update:fontFamily", newName);
+			dispatch("fontFamily", newName);
 
 			family = newName;
 			style = "Normal (400)";

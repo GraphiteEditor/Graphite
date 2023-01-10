@@ -5,8 +5,6 @@
 <script lang="ts">
 	import { createEventDispatcher, onMount, onDestroy } from "svelte";
 
-	const dispatch = createEventDispatcher<{ pressTrack: number }>();
-
 	// Linear Interpolation
 	const lerp = (x: number, y: number, a: number): number => x * (1 - a) + y * a;
 
@@ -17,6 +15,7 @@
 	const pointerPosition = (direction: ScrollbarDirection, e: PointerEvent): number => (direction === "Vertical" ? e.clientY : e.clientX);
 
 	// emits: { "update:handlePosition": null, pressTrack: (pointerOffset: number) => typeof pointerOffset === "number" }
+	const dispatch = createEventDispatcher<{ handlePosition: number; pressTrack: number }>();
 
 	export let direction: ScrollbarDirection = "Vertical";
 	export let handlePosition: number = 0.5;
@@ -44,7 +43,7 @@
 
 	function clampHandlePosition(newPos: number) {
 		const clampedPosition = Math.min(Math.max(newPos, 0), 1);
-		createEventDispatcher("update:handlePosition", clampedPosition);
+		dispatch("handlePosition", clampedPosition);
 	}
 
 	function updateHandlePosition(e: PointerEvent) {

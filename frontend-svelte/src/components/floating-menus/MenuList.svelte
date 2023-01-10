@@ -15,6 +15,7 @@
 	let scroller: LayoutCol;
 
 	// emits: ["update:open", "update:activeEntry", "naturalWidth"],
+	const dispatch = createEventDispatcher<{ open: boolean; activeEntry: MenuListEntry }>();
 
 	export let entries: MenuListEntry[][];
 	export let activeEntry: MenuListEntry | undefined = undefined;
@@ -33,7 +34,7 @@
 
 	// Called only when `open` is changed from outside this component (with v-model)
 	$: watchOpen(open);
-	$: createEventDispatcher("update:open", isOpen);
+	$: dispatch("open", isOpen);
 	$: entries, floatingMenu.measureAndEmitNaturalWidth();
 	$: drawIcon, floatingMenu.measureAndEmitNaturalWidth();
 	$: virtualScrollingTotalHeight = entries[0].length * virtualScrollingEntryHeight;
@@ -54,11 +55,11 @@
 		if (menuListEntry.action) menuListEntry.action();
 
 		// Emit the clicked entry as the new active entry
-		createEventDispatcher("update:activeEntry", menuListEntry);
+		dispatch("activeEntry", menuListEntry);
 
 		// Close the containing menu
 		if (menuListEntry.ref) menuListEntry.ref.isOpen = false;
-		createEventDispatcher("update:open", false);
+		dispatch("open", false);
 		isOpen = false; // TODO: This is a hack for MenuBarInput submenus, remove it when we get rid of using `ref`
 	}
 
@@ -66,14 +67,14 @@
 		if (!menuListEntry.children?.length) return;
 
 		if (menuListEntry.ref) menuListEntry.ref.isOpen = true;
-		else createEventDispatcher("update:open", true);
+		else dispatch("open", true);
 	}
 
 	function onEntryPointerLeave(menuListEntry: MenuListEntry): void {
 		if (!menuListEntry.children?.length) return;
 
 		if (menuListEntry.ref) menuListEntry.ref.isOpen = false;
-		else createEventDispatcher("update:open", false);
+		else dispatch("open", false);
 	}
 
 	function isEntryOpen(menuListEntry: MenuListEntry): boolean {
@@ -162,7 +163,7 @@
 	function setHighlighted(newHighlight: MenuListEntry | undefined) {
 		highlighted = newHighlight;
 		// Interactive menus should keep the active entry the same as the highlighted one
-		if (interactive && newHighlight?.value !== activeEntry?.value) createEventDispatcher("update:activeEntry", newHighlight);
+		if (interactive && newHighlight?.value !== activeEntry?.value && newHighlight) dispatch("activeEntry", newHighlight);
 	}
 
 	function onScroll(e: Event) {

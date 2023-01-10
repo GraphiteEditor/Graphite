@@ -12,6 +12,7 @@
 	import TextLabel from "@/components/widgets/labels/TextLabel.svelte";
 
 	// emits: ["update:value"],
+	const dispatch = createEventDispatcher<{ value: string | undefined }>();
 
 	export let value: string | undefined = undefined;
 	export let layerName: string | undefined = undefined;
@@ -39,7 +40,7 @@
 		if (layerPath) {
 			e.preventDefault();
 
-			createEventDispatcher("update:value", layerPath);
+			dispatch("value", layerPath);
 		}
 	}
 
@@ -66,7 +67,7 @@
 		{:else}
 			<TextLabel bold={true} italic={true} class="missing">Layer Missing</TextLabel>
 		{/if}
-		<IconButton icon="CloseX" size={16} {disabled} action={() => createEventDispatcher("update:value", undefined)} />
+		<IconButton icon="CloseX" size={16} {disabled} action={() => dispatch("value", undefined)} />
 	{/if}
 </LayoutRow>
 

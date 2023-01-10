@@ -5,9 +5,13 @@
 
 	import LayoutRow from "@/components/layout/LayoutRow.svelte";
 
-	const dispatch = createEventDispatcher<{ textFocused: undefined; textChanged: undefined; cancelTextChange: undefined }>();
-
 	// emits: ["update:value", "textFocused", "textChanged", "cancelTextChange"],
+	const dispatch = createEventDispatcher<{
+		value: string;
+		textFocused: undefined;
+		textChanged: undefined;
+		cancelTextChange: undefined;
+	}>();
 
 	let className = "";
 	export { className as class };
@@ -29,7 +33,7 @@
 	let macKeyboardLayout = platformIsMac();
 	let inputValue = value;
 
-	$: createEventDispatcher("update:value", inputValue);
+	$: dispatch("value", inputValue);
 
 	// Select (highlight) all the text. For technical reasons, it is necessary to pass the current text.
 	// TODO: Svelte: Test if the above message is still true
