@@ -348,13 +348,17 @@ impl Bezier {
 		let (self2, self2_t_values) = (self1.clone(), self1_t_values.clone());
 		let num_curves = self1.len();
 
+		// Adjacent reduced curves cannot intersect
+		if num_curves <= 2 {
+			return vec![];
+		}
+
 		// Create iterators that combine a subcurve with the `t` value pair that it was trimmed with
 		let combined_iterator1 = self1.into_iter().zip(self1_t_values.windows(2).map(|t_pair| Range { start: t_pair[0], end: t_pair[1] }));
 		// Second one needs to be a list because Iterator does not implement copy
 		let combined_list2: Vec<(Bezier, Range<f64>)> = self2.into_iter().zip(self2_t_values.windows(2).map(|t_pair| Range { start: t_pair[0], end: t_pair[1] })).collect();
 
-		// Adjacent reduced curves cannot intersect
-		// So for each curve, look for intersections with every curve that is at least 2 indices away
+		// For each curve, look for intersections with every curve that is at least 2 indices away
 		combined_iterator1
 			.take(num_curves - 2)
 			.enumerate()
