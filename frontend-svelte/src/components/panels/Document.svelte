@@ -3,7 +3,22 @@
 
 	import { textInputCleanup } from "@/utility-functions/keyboard-entry";
 	import { rasterizeSVGCanvas } from "@/utility-functions/rasterization";
-	import { type DisplayEditableTextbox, type MouseCursorIcon, type XY } from "@/wasm-communication/messages";
+	import {
+		type MouseCursorIcon,
+		type XY,
+		DisplayEditableTextbox,
+		DisplayRemoveEditableTextbox,
+		TriggerRefreshBoundsOfViewports,
+		TriggerTextCommit,
+		TriggerViewportResize,
+		UpdateDocumentArtboards,
+		UpdateDocumentArtwork,
+		UpdateDocumentOverlays,
+		UpdateDocumentRulers,
+		UpdateDocumentScrollbars,
+		UpdateEyedropperSamplingState,
+		UpdateMouseCursor,
+	} from "@/wasm-communication/messages";
 
 	import EyedropperPreview, { ZOOM_WINDOW_DIMENSIONS } from "@/components/floating-menus/EyedropperPreview.svelte";
 	import LayoutCol from "@/components/layout/LayoutCol.svelte";
@@ -12,15 +27,14 @@
 	import PersistentScrollbar from "@/components/widgets/metrics/PersistentScrollbar.svelte";
 	import WidgetLayout from "@/components/widgets/WidgetLayout.svelte";
 	import { type Editor } from "@/wasm-communication/editor";
-	import { type PanelsState } from "@/state-providers/panels";
 	import { type DocumentState } from "@/state-providers/document";
 
+	let self: LayoutCol;
 	let rulerHorizontal: CanvasRuler;
 	let rulerVertical: CanvasRuler;
 	let canvasDiv: HTMLDivElement;
 
 	const editor = getContext<Editor>("editor");
-	const panels = getContext<PanelsState>("panels");
 	const document = getContext<DocumentState>("document");
 
 	// Interactive text editing
@@ -61,13 +75,6 @@
 
 	$: canvasWidthCSS = canvasDimensionCSS(canvasSvgWidth);
 	$: canvasHeightCSS = canvasDimensionCSS(canvasSvgHeight);
-
-	onMount(() => {
-		panels.registerPanel("Document", this);
-
-		// Once this component is mounted, we want to resend the document bounds to the backend via the resize event handler which does that
-		window.dispatchEvent(new Event("resize"));
-	});
 
 	function pasteFile(e: DragEvent) {
 		const { dataTransfer } = e;
@@ -131,7 +138,7 @@
 
 			// Necessary to select contenteditable: https://stackoverflow.com/questions/6139107/programmatically-select-text-in-a-contenteditable-html-element/6150060#6150060
 
-			const range = document.createRange();
+			const range = window.document.createRange();
 			range.selectNodeContents(addedInput);
 
 			const selection = window.getSelection();
@@ -170,7 +177,7 @@
 		const dpiFactor = window.devicePixelRatio;
 		const [width, height] = [canvasSvgWidth, canvasSvgHeight];
 
-		const outsideArtboardsColor = getComputedStyle(document.documentElement).getPropertyValue("--color-2-mildblack");
+		const outsideArtboardsColor = getComputedStyle(window.document.documentElement).getPropertyValue("--color-2-mildblack");
 		const outsideArtboards = `<rect x="0" y="0" width="100%" height="100%" fill="${outsideArtboardsColor}" />`;
 		const artboards = artboardSvg;
 		const artwork = artworkSvg;
@@ -254,7 +261,7 @@
 	}
 
 	export function displayEditableTextbox(displayEditableTextbox: DisplayEditableTextbox) {
-		textInput = document.createElement("div") as HTMLDivElement;
+		textInput = window.document.createElement("div") as HTMLDivElement;
 
 		if (displayEditableTextbox.text === "") textInput.textContent = "";
 		else textInput.textContent = `${displayEditableTextbox.text}\n`;
@@ -295,9 +302,97 @@
 		// Dimension is rounded up to the nearest even number because resizing is centered, and dividing an odd number by 2 for centering causes antialiasing
 		return `${dimension % 2 === 1 ? dimension + 1 : dimension}px`;
 	}
+
+	onMount(() => {
+		// Once this component is mounted, we want to resend the document bounds to the backend via the resize event handler which does that
+		window.dispatchEvent(new Event("resize"));
+
+		// Update rendered SVGs
+		editor.subscriptions.subscribeJsMessage(UpdateDocumentArtwork, async (data) => {
+			await tick();
+
+			updateDocumentArtwork(data.svg);
+		});
+		editor.subscriptions.subscribeJsMessage(UpdateDocumentOverlays, async (data) => {
+			await tick();
+
+			updateDocumentOverlays(data.svg);
+		});
+		editor.subscriptions.subscribeJsMessage(UpdateDocumentArtboards, async (data) => {
+			await tick();
+
+			updateDocumentArtboards(data.svg);
+		});
+		editor.subscriptions.subscribeJsMessage(UpdateEyedropperSamplingState, async (data) => {
+			await tick();
+
+			const { mousePosition, primaryColor, secondaryColor, setColorChoice } = data;
+			const rgb = await updateEyedropperSamplingState(mousePosition, primaryColor, secondaryColor);
+
+			if (setColorChoice && rgb) {
+				if (setColorChoice === "Primary") editor.instance.updatePrimaryColor(...rgb, 1);
+				if (setColorChoice === "Secondary") editor.instance.updateSecondaryColor(...rgb, 1);
+			}
+		});
+
+		// Update scrollbars and rulers
+		editor.subscriptions.subscribeJsMessage(UpdateDocumentScrollbars, async (data) => {
+			await tick();
+
+			const { position, size, multiplier } = data;
+			updateDocumentScrollbars(position, size, multiplier);
+		});
+		editor.subscriptions.subscribeJsMessage(UpdateDocumentRulers, async (data) => {
+			await tick();
+
+			const { origin, spacing, interval } = data;
+			updateDocumentRulers(origin, spacing, interval);
+		});
+
+		// Update mouse cursor icon
+		editor.subscriptions.subscribeJsMessage(UpdateMouseCursor, async (data) => {
+			await tick();
+
+			const { cursor } = data;
+			updateMouseCursor(cursor);
+		});
+
+		// Text entry
+		editor.subscriptions.subscribeJsMessage(TriggerTextCommit, async () => {
+			await tick();
+
+			triggerTextCommit();
+		});
+		editor.subscriptions.subscribeJsMessage(DisplayEditableTextbox, async (data) => {
+			await tick();
+
+			displayEditableTextbox(data);
+		});
+		editor.subscriptions.subscribeJsMessage(DisplayRemoveEditableTextbox, async () => {
+			await tick();
+
+			displayRemoveEditableTextbox();
+		});
+
+		// Resize elements to render the new viewport size
+		editor.subscriptions.subscribeJsMessage(TriggerViewportResize, async () => {
+			await tick();
+
+			viewportResize();
+		});
+		editor.subscriptions.subscribeJsMessage(TriggerRefreshBoundsOfViewports, async () => {
+			// Wait to display the unpopulated document panel (missing: tools, options bar content, scrollbar positioning, and canvas)
+			await tick();
+			// Wait to display the populated document panel
+			await tick();
+
+			// Request a resize event so the viewport gets measured now that the canvas is populated and positioned correctly
+			window.dispatchEvent(new CustomEvent("resize"));
+		});
+	});
 </script>
 
-<LayoutCol class="document">
+<LayoutCol class="document" bind:this={self}>
 	<LayoutRow class="options-bar" scrollableX={true}>
 		<WidgetLayout layout={$document.documentModeLayout} />
 		<WidgetLayout layout={$document.toolOptionsLayout} />
@@ -319,8 +414,8 @@
 			</LayoutCol>
 		</LayoutCol>
 		<LayoutCol class="viewport">
-			<LayoutRow class="bar-area">
-				<CanvasRuler origin={rulerOrigin.x} majorMarkSpacing={rulerSpacing} numberInterval={rulerInterval} direction="Horizontal" class="top-ruler" bind:this={rulerHorizontal} />
+			<LayoutRow class="bar-area top-ruler">
+				<CanvasRuler origin={rulerOrigin.x} majorMarkSpacing={rulerSpacing} numberInterval={rulerInterval} direction="Horizontal" bind:this={rulerHorizontal} />
 			</LayoutRow>
 			<LayoutRow class="canvas-area">
 				<LayoutCol class="bar-area">
@@ -455,7 +550,7 @@
 					flex: 0 0 auto;
 				}
 
-				.top-ruler {
+				.top-ruler .canvas-ruler {
 					padding-left: 16px;
 					margin-right: 16px;
 				}

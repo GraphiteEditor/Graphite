@@ -36,7 +36,7 @@
 			{/if}
 			{#if ($dialog.jsCallbackBasedButtons?.length || NaN) > 0}
 				<LayoutRow class="panic-buttons-row">
-					{#each $dialog.jsCallbackBasedButtons as button, index (index)}
+					{#each $dialog.jsCallbackBasedButtons || [] as button, index (index)}
 						<TextButton action={() => button.callback?.()} {...button.props} />
 					{/each}
 				</LayoutRow>

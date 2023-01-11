@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { debouncer } from "@/utility-functions/debounce";
-	import type { Widget } from "@/wasm-communication/messages";
+	import { narrowWidgetProps, Widget } from "@/wasm-communication/messages";
 	import { isWidgetColumn, isWidgetRow, type WidgetColumn, type WidgetRow } from "@/wasm-communication/messages";
 
 	import PivotAssist from "@/components/widgets/assists/PivotAssist.svelte";
@@ -33,22 +33,20 @@
 	export let widgetData: WidgetColumn | WidgetRow;
 	export let layoutTarget: any;
 
-	let open = false;
-
 	$: direction = watchDirection(widgetData);
 	$: widgets = watchWidgets(widgetData);
 	$: widgetsAndNextSiblingIsSuffix = watchWidgetsAndNextSiblingIsSuffix(widgets);
 
-	function watchDirection(widgetData: WidgetColumn): "column" | "row" | "ERROR" {
-		if (isWidgetColumn(widgetData)) return "column";
+	function watchDirection(widgetData: WidgetRow | WidgetColumn): "row" | "column" | "ERROR" {
 		if (isWidgetRow(widgetData)) return "row";
+		if (isWidgetColumn(widgetData)) return "column";
 		return "ERROR";
 	}
 
-	function watchWidgets(widgetData: WidgetColumn): Widget[] {
+	function watchWidgets(widgetData: WidgetRow | WidgetColumn): Widget[] {
 		let widgets: Widget[] = [];
-		if (isWidgetColumn(widgetData)) widgets = widgetData.columnWidgets;
-		else if (isWidgetRow(widgetData)) widgets = widgetData.rowWidgets;
+		if (isWidgetRow(widgetData)) widgets = widgetData.rowWidgets;
+		else if (isWidgetColumn(widgetData)) widgets = widgetData.columnWidgets;
 		return widgets;
 	}
 
@@ -79,74 +77,94 @@
 
 <div class={`widget-${direction}`}>
 	{#each widgetsAndNextSiblingIsSuffix as [component, nextIsSuffix], index (index)}
-		{#if component.props.kind === "CheckboxInput"}
-			<CheckboxInput {...component.props} on:checked={({ detail }) => updateLayout(index, detail)} />
+		{@const checkboxInput = narrowWidgetProps(component.props, "CheckboxInput")}
+		{#if checkboxInput}
+			<CheckboxInput {...checkboxInput} on:checked={({ detail }) => updateLayout(index, detail)} />
 		{/if}
-		{#if component.props.kind === "ColorInput"}
-			<ColorInput {...component.props} on:value={({ detail }) => updateLayout(index, detail)} sharpRightCorners={nextIsSuffix} />
+		{@const colorInput = narrowWidgetProps(component.props, "ColorInput")}
+		{#if colorInput}
+			<ColorInput {...colorInput} on:value={({ detail }) => updateLayout(index, detail)} sharpRightCorners={nextIsSuffix} />
 		{/if}
-		{#if component.props.kind === "DropdownInput"}
-			<DropdownInput {...component.props} on:selectedIndex={({ detail }) => updateLayout(index, detail)} sharpRightCorners={nextIsSuffix} />
+		{@const dropdownInput = narrowWidgetProps(component.props, "DropdownInput")}
+		{#if dropdownInput}
+			<DropdownInput {...dropdownInput} on:selectedIndex={({ detail }) => updateLayout(index, detail)} sharpRightCorners={nextIsSuffix} />
 		{/if}
-		{#if component.props.kind === "FontInput"}
-			<FontInput {...component.props} on:changeFont={({ detail }) => updateLayout(index, detail)} sharpRightCorners={nextIsSuffix} />
+		{@const fontInput = narrowWidgetProps(component.props, "FontInput")}
+		{#if fontInput}
+			<FontInput {...fontInput} on:changeFont={({ detail }) => updateLayout(index, detail)} sharpRightCorners={nextIsSuffix} />
 		{/if}
-		{#if component.props.kind === "ParameterExposeButton"}
-			<ParameterExposeButton {...component.props} action={() => updateLayout(index, undefined)} />
+		{@const parameterExposeButton = narrowWidgetProps(component.props, "ParameterExposeButton")}
+		{#if parameterExposeButton}
+			<ParameterExposeButton {...parameterExposeButton} action={() => updateLayout(index, undefined)} />
 		{/if}
-		{#if component.props.kind === "IconButton"}
-			<IconButton {...component.props} action={() => updateLayout(index, undefined)} sharpRightCorners={nextIsSuffix} />
+		{@const iconButton = narrowWidgetProps(component.props, "IconButton")}
+		{#if iconButton}
+			<IconButton {...iconButton} action={() => updateLayout(index, undefined)} sharpRightCorners={nextIsSuffix} />
 		{/if}
-		{#if component.props.kind === "IconLabel"}
-			<IconLabel {...component.props} />
+		{@const iconLabel = narrowWidgetProps(component.props, "IconLabel")}
+		{#if iconLabel}
+			<IconLabel {...iconLabel} />
 		{/if}
-		{#if component.props.kind === "LayerReferenceInput"}
-			<LayerReferenceInput {...component.props} on:value={({ detail }) => updateLayout(index, detail)} />
+		{@const layerReferenceInput = narrowWidgetProps(component.props, "LayerReferenceInput")}
+		{#if layerReferenceInput}
+			<LayerReferenceInput {...layerReferenceInput} on:value={({ detail }) => updateLayout(index, detail)} />
 		{/if}
-		{#if component.props.kind === "NumberInput"}
+		{@const numberInput = narrowWidgetProps(component.props, "NumberInput")}
+		{#if numberInput}
 			<NumberInput
-				{...component.props}
+				{...numberInput}
 				on:value={({ detail }) => debouncer(() => updateLayout(index, detail))}
 				incrementCallbackIncrease={() => updateLayout(index, "Increment")}
 				incrementCallbackDecrease={() => updateLayout(index, "Decrement")}
 				sharpRightCorners={nextIsSuffix}
 			/>
 		{/if}
-		{#if component.props.kind === "OptionalInput"}
-			<OptionalInput {...component.props} on:checked={({ detail }) => updateLayout(index, detail)} />
+		{@const optionalInput = narrowWidgetProps(component.props, "OptionalInput")}
+		{#if optionalInput}
+			<OptionalInput {...optionalInput} on:checked={({ detail }) => updateLayout(index, detail)} />
 		{/if}
-		{#if component.props.kind === "PivotAssist"}
-			<PivotAssist {...component.props} on:position={({ detail }) => updateLayout(index, detail)} />
+		{@const pivotAssist = narrowWidgetProps(component.props, "PivotAssist")}
+		{#if pivotAssist}
+			<PivotAssist {...pivotAssist} on:position={({ detail }) => updateLayout(index, detail)} />
 		{/if}
-		{#if component.props.kind === "PopoverButton"}
-			<PopoverButton {...component.props}>
-				<TextLabel bold={true}>{component.props.header}</TextLabel>
-				<TextLabel multiline={true}>{component.props.text}</TextLabel>
+		{@const popoverButton = narrowWidgetProps(component.props, "PopoverButton")}
+		{#if popoverButton}
+			<PopoverButton {...popoverButton}>
+				<TextLabel bold={true}>{popoverButton.header}</TextLabel>
+				<TextLabel multiline={true}>{popoverButton.text}</TextLabel>
 			</PopoverButton>
 		{/if}
-		{#if component.props.kind === "RadioInput"}
-			<RadioInput {...component.props} on:selectedIndex={({ detail }) => updateLayout(index, detail)} sharpRightCorners={nextIsSuffix} />
+		{@const radioInput = narrowWidgetProps(component.props, "RadioInput")}
+		{#if radioInput}
+			<RadioInput {...radioInput} on:selectedIndex={({ detail }) => updateLayout(index, detail)} sharpRightCorners={nextIsSuffix} />
 		{/if}
-		{#if component.props.kind === "Separator"}
-			<Separator {...component.props} />
+		{@const separator = narrowWidgetProps(component.props, "Separator")}
+		{#if separator}
+			<Separator {...separator} />
 		{/if}
-		{#if component.props.kind === "SwatchPairInput"}
-			<SwatchPairInput {...component.props} />
+		{@const swatchPairInput = narrowWidgetProps(component.props, "SwatchPairInput")}
+		{#if swatchPairInput}
+			<SwatchPairInput {...swatchPairInput} />
 		{/if}
-		{#if component.props.kind === "TextAreaInput"}
-			<TextAreaInput {...component.props} on:commitText={({ detail }) => updateLayout(index, detail)} />
+		{@const textAreaInput = narrowWidgetProps(component.props, "TextAreaInput")}
+		{#if textAreaInput}
+			<TextAreaInput {...textAreaInput} on:commitText={({ detail }) => updateLayout(index, detail)} />
 		{/if}
-		{#if component.props.kind === "TextButton"}
-			<TextButton {...component.props} action={() => updateLayout(index, undefined)} sharpRightCorners={nextIsSuffix} />
+		{@const textButton = narrowWidgetProps(component.props, "TextButton")}
+		{#if textButton}
+			<TextButton {...textButton} action={() => updateLayout(index, undefined)} sharpRightCorners={nextIsSuffix} />
 		{/if}
-		{#if component.props.kind === "BreadcrumbTrailButtons"}
-			<BreadcrumbTrailButtons {...component.props} action={(index) => updateLayout(index, index)} />
+		{@const breadcrumbTrailButtons = narrowWidgetProps(component.props, "BreadcrumbTrailButtons")}
+		{#if breadcrumbTrailButtons}
+			<BreadcrumbTrailButtons {...breadcrumbTrailButtons} action={(index) => updateLayout(index, index)} />
 		{/if}
-		{#if component.props.kind === "TextInput"}
-			<TextInput {...component.props} on:commitText={({ detail }) => updateLayout(index, detail)} sharpRightCorners={nextIsSuffix} />
+		{@const textInput = narrowWidgetProps(component.props, "TextInput")}
+		{#if textInput}
+			<TextInput {...textInput} on:commitText={({ detail }) => updateLayout(index, detail)} sharpRightCorners={nextIsSuffix} />
 		{/if}
-		{#if component.props.kind === "TextLabel"}
-			<TextLabel {...excludeValue(component.props)}>{component.props.value}</TextLabel>
+		{@const textLabel = narrowWidgetProps(component.props, "TextLabel")}
+		{#if textLabel}
+			<TextLabel {...excludeValue(textLabel)}>{textLabel.value}</TextLabel>
 		{/if}
 	{/each}
 </div>

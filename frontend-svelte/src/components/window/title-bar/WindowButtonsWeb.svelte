@@ -1,9 +1,12 @@
 <script lang="ts">
+	import { getContext } from "svelte";
+
 	import LayoutRow from "@/components/layout/LayoutRow.svelte";
 	import IconLabel from "@/components/widgets/labels/IconLabel.svelte";
 	import TextLabel from "@/components/widgets/labels/TextLabel.svelte";
+	import { FullscreenState } from "@/state-providers/fullscreen";
 
-	//   inject: ["fullscreen"],
+	const fullscreen = getContext<FullscreenState>("fullscreen");
 
 	$: windowFullscreen = $fullscreen.windowFullscreen;
 	$: requestFullscreenHotkeys = fullscreen.keyboardLockApiSupported && !$fullscreen.keyboardLocked;

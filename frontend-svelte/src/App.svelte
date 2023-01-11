@@ -11,7 +11,6 @@
 	import { createFontsState, type FontsState } from "@/state-providers/fonts";
 	import { createFullscreenState, type FullscreenState } from "@/state-providers/fullscreen";
 	import { createNodeGraphState, type NodeGraphState } from "@/state-providers/node-graph";
-	import { createPanelsState, type PanelsState } from "@/state-providers/panels";
 	import { createPortfolioState, type PortfolioState } from "@/state-providers/portfolio";
 	import { createWorkspaceState, type WorkspaceState } from "@/state-providers/workspace";
 	import { operatingSystem } from "@/utility-functions/platform";
@@ -31,7 +30,6 @@
 	// 		fonts: FontsState;
 	// 		fullscreen: FullscreenState;
 	// 		nodeGraph: NodeGraphState;
-	// 		panels: PanelsState;
 	// 		portfolio: PortfolioState;
 	// 		workspace: WorkspaceState;
 	// 	}
@@ -62,7 +60,6 @@
 	let fonts = createFontsState(editor);
 	let fullscreen = createFullscreenState(editor);
 	let nodeGraph = createNodeGraphState(editor);
-	let panels = createPanelsState(editor);
 	let portfolio = createPortfolioState(editor);
 	let workspace = createWorkspaceState(editor);
 
@@ -72,7 +69,6 @@
 	setContext("fonts", fonts);
 	setContext("fullscreen", fullscreen);
 	setContext("nodeGraph", nodeGraph);
-	setContext("panels", panels);
 	setContext("portfolio", portfolio);
 	setContext("workspace", workspace);
 

@@ -238,7 +238,7 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 	}
 
 	async function onBeforeUnload(e: BeforeUnloadEvent): Promise<void> {
-		const activeDocument = document.state.documents[document.state.activeDocumentIndex];
+		const activeDocument = get(document).documents[get(document).activeDocumentIndex];
 		if (activeDocument && !activeDocument.isAutoSaved) editor.instance.triggerAutoSave(activeDocument.id);
 
 		// Skip the message if the editor crashed, since work is already lost
@@ -247,7 +247,7 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 		// Skip the message during development, since it's annoying when testing
 		if (await editor.instance.inDevelopmentMode()) return;
 
-		const allDocumentsSaved = document.state.documents.reduce((acc, doc) => acc && doc.isSaved, true);
+		const allDocumentsSaved = get(document).documents.reduce((acc, doc) => acc && doc.isSaved, true);
 		if (!allDocumentsSaved) {
 			e.returnValue = "Unsaved work will be lost if the web browser tab is closed. Close anyway?";
 			e.preventDefault();

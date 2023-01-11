@@ -11,7 +11,7 @@
 
 	const editor = getContext<Editor>("editor");
 
-	let hintData: HintData[] = [];
+	let hintData: HintData = [];
 
 	function inputKeysForPlatform(hint: HintInfo): LayoutKeysGroup[] {
 		if (platformIsMac() && hint.keyGroupsMac) return hint.keyGroupsMac;
@@ -19,8 +19,8 @@
 	}
 
 	onMount(() => {
-		editor.subscriptions.subscribeJsMessage(UpdateInputHints, (updateInputHints) => {
-			hintData = updateInputHints.hintData;
+		editor.subscriptions.subscribeJsMessage(UpdateInputHints, (data) => {
+			hintData = data.hintData;
 		});
 	});
 </script>

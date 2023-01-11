@@ -798,7 +798,7 @@ export class TriggerViewportResize extends JsMessage {}
 // WIDGET PROPS
 
 export abstract class WidgetProps {
-	kind!: string;
+	kind!: WidgetPropsNames;
 }
 
 export class CheckboxInput extends WidgetProps {
@@ -848,7 +848,7 @@ export type MenuListEntry = MenuEntryCommon & {
 	disabled?: boolean;
 	tooltip?: string;
 	font?: URL;
-	ref?: InstanceType<typeof MenuList>;
+	ref?: MenuList;
 };
 
 export class DropdownInput extends WidgetProps {
@@ -981,7 +981,7 @@ export class OptionalInput extends WidgetProps {
 }
 
 export class PopoverButton extends WidgetProps {
-	icon!: string | undefined;
+	icon!: IconName | undefined;
 
 	disabled!: boolean;
 
@@ -1053,7 +1053,7 @@ export class ParameterExposeButton extends WidgetProps {
 export class TextButton extends WidgetProps {
 	label!: string;
 
-	icon!: string | undefined;
+	icon!: IconName | undefined;
 
 	emphasized!: boolean;
 
@@ -1084,7 +1084,7 @@ export type TextButtonWidget = {
 };
 
 export class BreadcrumbTrailButtons extends WidgetProps {
-	labels!: string;
+	labels!: string[];
 
 	disabled!: boolean;
 
@@ -1137,6 +1137,7 @@ export class PivotAssist extends WidgetProps {
 // WIDGET
 
 const widgetSubTypes = [
+	{ value: BreadcrumbTrailButtons, name: "BreadcrumbTrailButtons"},
 	{ value: CheckboxInput, name: "CheckboxInput" },
 	{ value: ColorInput, name: "ColorInput" },
 	{ value: DropdownInput, name: "DropdownInput" },
@@ -1146,18 +1147,27 @@ const widgetSubTypes = [
 	{ value: LayerReferenceInput, name: "LayerReferenceInput" },
 	{ value: NumberInput, name: "NumberInput" },
 	{ value: OptionalInput, name: "OptionalInput" },
+	{ value: ParameterExposeButton, name: "ParameterExposeButton" },
+	{ value: PivotAssist, name: "PivotAssist" },
 	{ value: PopoverButton, name: "PopoverButton" },
 	{ value: RadioInput, name: "RadioInput" },
 	{ value: Separator, name: "Separator" },
 	{ value: SwatchPairInput, name: "SwatchPairInput" },
 	{ value: TextAreaInput, name: "TextAreaInput" },
 	{ value: TextButton, name: "TextButton" },
-	{ value: ParameterExposeButton, name: "ParameterExposeButton" },
 	{ value: TextInput, name: "TextInput" },
 	{ value: TextLabel, name: "TextLabel" },
-	{ value: PivotAssist, name: "PivotAssist" },
-];
-export type WidgetPropsSet = InstanceType<typeof widgetSubTypes[number]["value"]>;
+] as const;
+
+type WidgetSubTypes = typeof widgetSubTypes[number];
+type WidgetKindMap = { [T in WidgetSubTypes as T["name"]]: InstanceType<T["value"]> };
+export type WidgetPropsNames = keyof WidgetKindMap;
+export type WidgetPropsSet = WidgetKindMap[WidgetPropsNames];
+
+export function narrowWidgetProps<K extends WidgetPropsNames>(props: WidgetPropsSet, kind: K) {
+	if (props.kind === kind) return props as WidgetKindMap[K]
+	else return undefined;
+}
 
 export class Widget {
 	constructor(props: WidgetPropsSet, widgetId: bigint) {
@@ -1165,7 +1175,7 @@ export class Widget {
 		this.widgetId = widgetId;
 	}
 
-	@Type(() => WidgetProps, { discriminator: { property: "kind", subTypes: widgetSubTypes }, keepDiscriminatorProperty: true })
+	@Type(() => WidgetProps, { discriminator: { property: "kind", subTypes: [...widgetSubTypes] }, keepDiscriminatorProperty: true })
 	props!: WidgetPropsSet;
 
 	widgetId!: bigint;
