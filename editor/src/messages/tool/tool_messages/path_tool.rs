@@ -189,7 +189,7 @@ impl Fsm for PathToolFsmState {
 						let ignore_document = tool_data.shape_editor.selected_layers().clone();
 						tool_data
 							.snap_manager
-							.start_snap(document, document.bounding_boxes(Some(&ignore_document), None, font_cache), true, true);
+							.start_snap(document, input, document.bounding_boxes(Some(&ignore_document), None, font_cache), true, true);
 
 						// Do not snap against handles when anchor is selected
 						let mut extension = Vec::new();
@@ -202,7 +202,7 @@ impl Fsm for PathToolFsmState {
 						new_selected.extend(extension);
 
 						let include_handles = tool_data.shape_editor.selected_layers_ref();
-						tool_data.snap_manager.add_all_document_handles(document, &include_handles, &[], &new_selected);
+						tool_data.snap_manager.add_all_document_handles(document, input, &include_handles, &[], &new_selected);
 
 						tool_data.drag_start_pos = input.mouse.position - offset;
 						PathToolFsmState::Dragging

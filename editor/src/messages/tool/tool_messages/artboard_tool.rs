@@ -194,8 +194,10 @@ impl Fsm for ArtboardToolFsmState {
 						let snap_y = selected_edges.0 || selected_edges.1;
 
 						let artboard = tool_data.selected_artboard.unwrap();
-						tool_data.snap_manager.start_snap(document, document.bounding_boxes(None, Some(artboard), font_cache), snap_x, snap_y);
-						tool_data.snap_manager.add_all_document_handles(document, &[], &[], &[]);
+						tool_data
+							.snap_manager
+							.start_snap(document, input, document.bounding_boxes(None, Some(artboard), font_cache), snap_x, snap_y);
+						tool_data.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
 
 						if let Some(bounds) = &mut tool_data.bounding_box_overlays {
 							let pivot = document.artboard_message_handler.artboards_document.pivot(&[artboard], font_cache).unwrap_or_default();
@@ -216,8 +218,8 @@ impl Fsm for ArtboardToolFsmState {
 
 							tool_data
 								.snap_manager
-								.start_snap(document, document.bounding_boxes(None, Some(intersection[0]), font_cache), true, true);
-							tool_data.snap_manager.add_all_document_handles(document, &[], &[], &[]);
+								.start_snap(document, input, document.bounding_boxes(None, Some(intersection[0]), font_cache), true, true);
+							tool_data.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
 
 							responses.push_back(
 								PropertiesPanelMessage::SetActiveLayers {
@@ -324,8 +326,8 @@ impl Fsm for ArtboardToolFsmState {
 						let id = generate_uuid();
 						tool_data.selected_artboard = Some(id);
 
-						tool_data.snap_manager.start_snap(document, document.bounding_boxes(None, Some(id), font_cache), true, true);
-						tool_data.snap_manager.add_all_document_handles(document, &[], &[], &[]);
+						tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(None, Some(id), font_cache), true, true);
+						tool_data.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
 
 						responses.push_back(
 							ArtboardMessage::AddArtboard {

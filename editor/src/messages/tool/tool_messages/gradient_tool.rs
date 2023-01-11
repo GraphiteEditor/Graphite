@@ -416,9 +416,9 @@ struct GradientToolData {
 	drag_start: DVec2,
 }
 
-pub fn start_snap(snap_manager: &mut SnapManager, document: &DocumentMessageHandler, font_cache: &FontCache) {
-	snap_manager.start_snap(document, document.bounding_boxes(None, None, font_cache), true, true);
-	snap_manager.add_all_document_handles(document, &[], &[], &[]);
+pub fn start_snap(snap_manager: &mut SnapManager, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, font_cache: &FontCache) {
+	snap_manager.start_snap(document, input, document.bounding_boxes(None, None, font_cache), true, true);
+	snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
 }
 
 impl Fsm for GradientToolFsmState {
@@ -573,7 +573,7 @@ impl Fsm for GradientToolFsmState {
 						] {
 							if pos.distance_squared(mouse) < tolerance {
 								dragging = true;
-								start_snap(&mut tool_data.snap_manager, document, font_cache);
+								start_snap(&mut tool_data.snap_manager, document, input, font_cache);
 								tool_data.selected_gradient = Some(SelectedGradient {
 									path: overlay.path.clone(),
 									transform: overlay.transform,
@@ -621,7 +621,7 @@ impl Fsm for GradientToolFsmState {
 
 							tool_data.selected_gradient = Some(selected_gradient);
 
-							start_snap(&mut tool_data.snap_manager, document, font_cache);
+							start_snap(&mut tool_data.snap_manager, document, input, font_cache);
 
 							GradientToolFsmState::Drawing
 						} else {

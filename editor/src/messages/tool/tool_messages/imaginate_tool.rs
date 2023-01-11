@@ -133,7 +133,7 @@ impl Fsm for ImaginateToolFsmState {
 		if let ToolMessage::Imaginate(event) = event {
 			match (self, event) {
 				(Ready, DragStart) => {
-					shape_data.start(responses, document, input.mouse.position, font_cache);
+					shape_data.start(responses, document, input, font_cache);
 					responses.push_back(DocumentMessage::StartTransaction.into());
 					responses.push_back(NodeGraphMessage::SetDrawing { new_drawing: true }.into());
 					shape_data.path = Some(document.get_path_for_new_layer());
