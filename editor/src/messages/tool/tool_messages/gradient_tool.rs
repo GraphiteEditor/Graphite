@@ -1,5 +1,5 @@
 use crate::application::generate_uuid;
-use crate::consts::{COLOR_ACCENT, LINE_ROTATE_SNAP_ANGLE, MANIPULATOR_GROUP_MARKER_SIZE, SELECTION_TOLERANCE};
+use crate::consts::{COLOR_ACCENT, DRAG_THRESHOLD, LINE_ROTATE_SNAP_ANGLE, MANIPULATOR_GROUP_MARKER_SIZE, SELECTION_THRESHOLD, SELECTION_TOLERANCE};
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, KeysGroup, MouseMotion};
 use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, PropertyHolder, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
@@ -48,6 +48,8 @@ pub enum GradientToolMessage {
 	DocumentIsDirty,
 
 	// Tool-specific messages
+	DeleteStop,
+	InsertStop,
 	PointerDown,
 	PointerMove {
 		constrain_axis: Key,
@@ -87,7 +89,13 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for GradientTool
 		}
 		if let ToolMessage::Gradient(GradientToolMessage::UpdateOptions(action)) = message {
 			match action {
-				GradientOptionsUpdate::Type(gradient_type) => self.options.gradient_type = gradient_type,
+				GradientOptionsUpdate::Type(gradient_type) => {
+					self.options.gradient_type = gradient_type;
+					if let Some(selected_gradient) = &mut self.data.selected_gradient {
+						selected_gradient.gradient.gradient_type = gradient_type;
+						selected_gradient.render_gradient(responses);
+					}
+				}
 			}
 			return;
 		}
@@ -105,6 +113,8 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for GradientTool
 		PointerUp,
 		PointerMove,
 		Abort,
+		InsertStop,
+		DeleteStop,
 	);
 }
 
@@ -112,7 +122,11 @@ impl PropertyHolder for GradientTool {
 	fn properties(&self) -> Layout {
 		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row {
 			widgets: vec![WidgetHolder::new(Widget::RadioInput(RadioInput {
-				selected_index: if self.options.gradient_type == GradientType::Radial { 1 } else { 0 },
+				selected_index: if self.selected_gradient().unwrap_or(self.options.gradient_type) == GradientType::Radial {
+					1
+				} else {
+					0
+				},
 				entries: vec![
 					RadioEntryData {
 						value: "linear".into(),
@@ -289,6 +303,35 @@ impl SelectedGradient {
 		}
 	}
 
+	/// Update the selected gradient, checking for removal or change of gradient.
+	pub fn update(gradient: &mut Option<Self>, document: &DocumentMessageHandler, font_cache: &FontCache, responses: &mut VecDeque<Message>) {
+		let Some(inner_gradient) = gradient else {
+			return;
+		};
+
+		// Clear the gradient if layer deleted
+		let Ok(layer) = document.document_legacy.layer(&inner_gradient.path) else {
+			responses.push_back(ToolMessage::RefreshToolOptions.into());
+			*gradient = None;
+			return;
+		};
+
+		// Update transform
+		inner_gradient.transform = gradient_space_transform(&inner_gradient.path, layer, document, font_cache);
+
+		// Clear if no longer a gradient
+		let Some(gradient) = layer.style().ok().and_then(|style|style.fill().as_gradient()) else {
+			responses.push_back(ToolMessage::RefreshToolOptions.into());
+			*gradient = None;
+			return;
+		};
+
+		if gradient.gradient_type != inner_gradient.gradient.gradient_type {
+			responses.push_back(ToolMessage::RefreshToolOptions.into());
+		}
+		inner_gradient.gradient = gradient.clone();
+	}
+
 	pub fn with_gradient_start(mut self, start: DVec2) -> Self {
 		self.gradient.start = self.transform.inverse().transform_point2(start);
 		self
@@ -316,17 +359,18 @@ impl SelectedGradient {
 			mouse = point - rotated;
 		}
 
-		mouse = self.transform.inverse().transform_point2(mouse);
+		let transformed_mouse = self.transform.inverse().transform_point2(mouse);
 
 		match self.dragging {
-			GradientDragTarget::Start => self.gradient.start = mouse,
-			GradientDragTarget::End => self.gradient.end = mouse,
+			GradientDragTarget::Start => self.gradient.start = transformed_mouse,
+			GradientDragTarget::End => self.gradient.end = transformed_mouse,
 			GradientDragTarget::Step(s) => {
-				// Calculate the new position by finding the closest point on the line
-				let new_pos = ((self.gradient.end - self.gradient.start).angle_between(mouse - self.gradient.start)).cos() * self.gradient.start.distance(mouse)
-					/ self.gradient.start.distance(self.gradient.end);
+				let (start, end) = (self.transform.transform_point2(self.gradient.start), self.transform.transform_point2(self.gradient.end));
 
-				// Should not go off end but can swap (like inscape)
+				// Calculate the new position by finding the closest point on the line
+				let new_pos = ((end - start).angle_between(mouse - start)).cos() * start.distance(mouse) / start.distance(end);
+
+				// Should not go off end but can swap
 				let clamped = new_pos.clamp(0., 1.);
 				self.gradient.positions[s].0 = clamped;
 				let new_pos = self.gradient.positions[s];
@@ -335,11 +379,22 @@ impl SelectedGradient {
 				self.dragging = GradientDragTarget::Step(self.gradient.positions.iter().position(|x| *x == new_pos).unwrap());
 			}
 		}
+		self.render_gradient(responses);
+	}
 
+	/// Update the layer fill to the current gradient
+	pub fn render_gradient(&mut self, responses: &mut VecDeque<Message>) {
 		self.gradient.transform = self.transform;
 		let fill = Fill::Gradient(self.gradient.clone());
 		let path = self.path.clone();
 		responses.push_back(Operation::SetLayerFill { path, fill }.into());
+	}
+}
+
+impl GradientTool {
+	/// Get the gradient type of the selected gradient (if it exists)
+	pub fn selected_gradient(&self) -> Option<GradientType> {
+		self.data.selected_gradient.as_ref().map(|selected| selected.gradient.gradient_type)
 	}
 }
 
@@ -348,7 +403,7 @@ impl ToolTransition for GradientTool {
 		EventToMessageMap {
 			document_dirty: Some(GradientToolMessage::DocumentIsDirty.into()),
 			tool_abort: Some(GradientToolMessage::Abort.into()),
-			selection_changed: None,
+			selection_changed: Some(GradientToolMessage::DocumentIsDirty.into()),
 		}
 	}
 }
@@ -358,6 +413,7 @@ struct GradientToolData {
 	gradient_overlays: Vec<GradientOverlay>,
 	selected_gradient: Option<SelectedGradient>,
 	snap_manager: SnapManager,
+	drag_start: DVec2,
 }
 
 pub fn start_snap(snap_manager: &mut SnapManager, document: &DocumentMessageHandler, font_cache: &FontCache) {
@@ -384,6 +440,10 @@ impl Fsm for GradientToolFsmState {
 						overlay.delete_overlays(responses);
 					}
 
+					if self != GradientToolFsmState::Drawing {
+						SelectedGradient::update(&mut tool_data.selected_gradient, document, font_cache, responses);
+					}
+
 					for path in document.selected_visible_layers() {
 						if !document.document_legacy.multiply_transforms(path).unwrap().inverse().is_finite() {
 							continue;
@@ -401,10 +461,93 @@ impl Fsm for GradientToolFsmState {
 
 					self
 				}
+				(GradientToolFsmState::Ready, GradientToolMessage::DeleteStop) => {
+					let Some(selected_gradient) = &mut tool_data.selected_gradient else {
+						return self;
+					};
+
+					// Skip if invalid gradient
+					if selected_gradient.gradient.positions.len() < 2 {
+						return self;
+					}
+
+					// Remove the selected point
+					match selected_gradient.dragging {
+						GradientDragTarget::Start => selected_gradient.gradient.positions.remove(0),
+						GradientDragTarget::End => selected_gradient.gradient.positions.pop().unwrap(),
+						GradientDragTarget::Step(index) => selected_gradient.gradient.positions.remove(index),
+					};
+
+					// The gradient has only one point and so should become a fill
+					if selected_gradient.gradient.positions.len() == 1 {
+						let fill = Fill::Solid(selected_gradient.gradient.positions[0].1.unwrap_or(Color::BLACK));
+						let path = selected_gradient.path.clone();
+						responses.push_back(Operation::SetLayerFill { path, fill }.into());
+						return self;
+					}
+
+					// Find the minimum and maximum positions
+					let min_position = selected_gradient.gradient.positions.iter().map(|(pos, _)| *pos).reduce(f64::min).expect("No min");
+					let max_position = selected_gradient.gradient.positions.iter().map(|(pos, _)| *pos).reduce(f64::max).expect("No max");
+
+					// Recompute the start and end posiiton of the gradient (in viewport transform)
+					let transform = selected_gradient.transform;
+					let (start, end) = (transform.transform_point2(selected_gradient.gradient.start), transform.transform_point2(selected_gradient.gradient.end));
+					let (new_start, new_end) = (start.lerp(end, min_position), start.lerp(end, max_position));
+					selected_gradient.gradient.start = transform.inverse().transform_point2(new_start);
+					selected_gradient.gradient.end = transform.inverse().transform_point2(new_end);
+
+					// Remap the positions
+					for (position, _) in selected_gradient.gradient.positions.iter_mut() {
+						*position = (*position - min_position) / (max_position - min_position);
+					}
+
+					// Render the new gradient
+					selected_gradient.render_gradient(responses);
+
+					self
+				}
+				(_, GradientToolMessage::InsertStop) => {
+					for overlay in &tool_data.gradient_overlays {
+						let mouse = input.mouse.position;
+						let (start, end) = (overlay.evaluate_gradient_start(), overlay.evaluate_gradient_end());
+
+						// Compute the distance from the mouse to the gradient line in viewport space
+						let distance = (end - start).angle_between(mouse - start).sin() * (mouse - start).length();
+
+						// If click is on the line then insert point
+						if distance < SELECTION_THRESHOLD {
+							let mut gradient = overlay.gradient.clone();
+
+							// Try and insert the new stop
+							if let Some(index) = gradient.insert_stop(mouse, overlay.transform) {
+								document.backup_nonmut(responses);
+
+								let layer = document.document_legacy.layer(&overlay.path);
+								if let Ok(layer) = layer {
+									let mut selected_gradient = SelectedGradient::new(gradient, &overlay.path, layer, document, font_cache);
+
+									// Select the new point
+									selected_gradient.dragging = GradientDragTarget::Step(index);
+
+									// Update the layer fill
+									selected_gradient.render_gradient(responses);
+
+									tool_data.selected_gradient = Some(selected_gradient);
+								}
+
+								break;
+							}
+						}
+					}
+
+					self
+				}
 				(GradientToolFsmState::Ready, GradientToolMessage::PointerDown) => {
 					responses.push_back(BroadcastEvent::DocumentIsDirty.into());
 
 					let mouse = input.mouse.position;
+					tool_data.drag_start = mouse;
 					let tolerance = MANIPULATOR_GROUP_MARKER_SIZE.powi(2);
 
 					let mut dragging = false;
@@ -441,6 +584,7 @@ impl Fsm for GradientToolFsmState {
 						}
 					}
 					if dragging {
+						document.backup_nonmut(responses);
 						GradientToolFsmState::Drawing
 					} else {
 						let tolerance = DVec2::splat(SELECTION_TOLERANCE);
@@ -456,17 +600,24 @@ impl Fsm for GradientToolFsmState {
 
 							let layer = document.document_legacy.layer(&intersection).unwrap();
 
-							let gradient = Gradient::new(
-								DVec2::ZERO,
-								global_tool_data.secondary_color,
-								DVec2::ONE,
-								global_tool_data.primary_color,
-								DAffine2::IDENTITY,
-								generate_uuid(),
-								tool_options.gradient_type,
-							);
-							let mut selected_gradient = SelectedGradient::new(gradient, &intersection, layer, document, font_cache).with_gradient_start(input.mouse.position);
-							selected_gradient.update_gradient(input.mouse.position, responses, false, tool_options.gradient_type);
+							responses.push_back(DocumentMessage::StartTransaction.into());
+
+							// Use the already existing gradient if it exists
+							let gradient = if let Some(gradient) = layer.style().ok().map(|style| style.fill()).and_then(|fill| fill.as_gradient()) {
+								gradient.clone()
+							} else {
+								// Generate a new gradient
+								Gradient::new(
+									DVec2::ZERO,
+									global_tool_data.secondary_color,
+									DVec2::ONE,
+									global_tool_data.primary_color,
+									DAffine2::IDENTITY,
+									generate_uuid(),
+									tool_options.gradient_type,
+								)
+							};
+							let selected_gradient = SelectedGradient::new(gradient, &intersection, layer, document, font_cache).with_gradient_start(input.mouse.position);
 
 							tool_data.selected_gradient = Some(selected_gradient);
 
@@ -487,6 +638,14 @@ impl Fsm for GradientToolFsmState {
 				}
 
 				(GradientToolFsmState::Drawing, GradientToolMessage::PointerUp) => {
+					match tool_data.drag_start.distance(input.mouse.position) <= DRAG_THRESHOLD {
+						true => {
+							responses.push_back(DocumentMessage::AbortTransaction.into());
+							responses.push_back(GradientToolMessage::DocumentIsDirty.into());
+						}
+						false => responses.push_back(DocumentMessage::CommitTransaction.into()),
+					}
+
 					tool_data.snap_manager.cleanup(responses);
 
 					GradientToolFsmState::Ready

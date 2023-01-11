@@ -21,6 +21,7 @@ use crate::messages::portfolio::document::utility_types::vectorize_layer_metadat
 use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::*;
 
+use document_legacy::boolean_ops::BooleanOperationError;
 use document_legacy::color::Color;
 use document_legacy::document::Document as DocumentLegacy;
 use document_legacy::layers::blend_mode::BlendMode;
@@ -52,6 +53,9 @@ pub struct DocumentMessageHandler {
 	pub document_undo_history: VecDeque<DocumentSave>,
 	#[serde(skip)]
 	pub document_redo_history: VecDeque<DocumentSave>,
+	/// Don't allow aborting transactions whilst undoing to avoid #559
+	#[serde(skip)]
+	undo_in_progress: bool,
 
 	#[serde(with = "vectorize_layer_metadata")]
 	pub layer_metadata: HashMap<Vec<LayerId>, LayerMetadata>,
@@ -84,6 +88,7 @@ impl Default for DocumentMessageHandler {
 
 			document_undo_history: VecDeque::new(),
 			document_redo_history: VecDeque::new(),
+			undo_in_progress: false,
 
 			layer_metadata: vec![(vec![], LayerMetadata::new(true))].into_iter().collect(),
 			layer_range_selection_reference: Vec::new(),
@@ -141,6 +146,14 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 						responses.push_back(BroadcastEvent::DocumentIsDirty.into());
 					}
 				}
+				// Display boolean operation error to the user (except if it is a nothing done error).
+				Err(DocumentError::BooleanOperationError(boolean_operation_error)) if boolean_operation_error != BooleanOperationError::NothingDone => responses.push_back(
+					DialogMessage::DisplayDialogError {
+						title: "Failed to calculate boolean operation".into(),
+						description: format!("Unfortunately, this feature not that robust yet.\n\nError: {boolean_operation_error:?}"),
+					}
+					.into(),
+				),
 				Err(e) => error!("DocumentError: {:?}", e),
 				Ok(_) => (),
 			},
@@ -175,13 +188,16 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 			}
 			#[remain::unsorted]
 			NodeGraph(message) => {
-				self.node_graph_handler.process_message(message, (&mut self.document_legacy, ipp), responses);
+				let selected_layers = &mut self.layer_metadata.iter().filter_map(|(path, data)| data.selected.then_some(path.as_slice()));
+				self.node_graph_handler.process_message(message, (&mut self.document_legacy, selected_layers), responses);
 			}
 
 			// Messages
 			AbortTransaction => {
-				self.undo(responses).unwrap_or_else(|e| warn!("{}", e));
-				responses.extend([RenderDocument.into(), DocumentStructureChanged.into()]);
+				if !self.undo_in_progress {
+					self.undo(responses).unwrap_or_else(|e| warn!("{}", e));
+					responses.extend([RenderDocument.into(), DocumentStructureChanged.into()]);
+				}
 			}
 			AddSelectedLayers { additional_layers } => {
 				for layer_path in &additional_layers {
@@ -231,9 +247,11 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 					responses.push_back(BroadcastEvent::DocumentIsDirty.into());
 				}
 			}
+			BackupDocument { document, layer_metadata } => self.backup_with_document(document, layer_metadata, responses),
 			BooleanOperation(op) => {
 				// Convert Vec<&[LayerId]> to Vec<Vec<&LayerId>> because Vec<&[LayerId]> does not implement several traits (Debug, Serialize, Deserialize, ...) required by DocumentOperation enum
 				responses.push_back(StartTransaction.into());
+				responses.push_back(BroadcastEvent::ToolAbort.into());
 				responses.push_back(
 					DocumentOperation::BooleanOperation {
 						operation: op,
@@ -242,6 +260,20 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 					.into(),
 				);
 				responses.push_back(CommitTransaction.into());
+			}
+			ClearLayerTree => {
+				// Send an empty layer tree
+				let data_buffer: RawBuffer = Self::default().serialize_root().into();
+				responses.push_back(FrontendMessage::UpdateDocumentLayerTreeStructure { data_buffer }.into());
+
+				// Clear the options bar
+				responses.push_back(
+					LayoutMessage::SendLayout {
+						layout: Layout::WidgetLayout(Default::default()),
+						layout_target: LayoutTarget::LayerTreeOptions,
+					}
+					.into(),
+				);
 			}
 			CommitTransaction => (),
 			CreateEmptyFolder { mut container_path } => {
@@ -483,7 +515,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				// Set a random seed input
 				responses.push_back(
 					NodeGraphMessage::SetInputValue {
-						node: *imaginate_node.last().unwrap(),
+						node_id: *imaginate_node.last().unwrap(),
 						input_index: 1,
 						value: graph_craft::document::value::TaggedValue::F64((generate_uuid() >> 1) as f64),
 					}
@@ -515,6 +547,8 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				responses.push_back(BroadcastEvent::DocumentIsDirty.into());
 			}
 			PasteImage { mime, image_data, mouse } => {
+				responses.push_back(DocumentMessage::StartTransaction.into());
+
 				let path = vec![generate_uuid()];
 				responses.push_back(
 					DocumentOperation::AddImage {
@@ -743,6 +777,8 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 			}
 			SetOverlaysVisibility { visible } => {
 				self.overlays_visible = visible;
+				responses.push_back(BroadcastEvent::ToolAbort.into());
+				responses.push_back(OverlaysMessage::ClearAllOverlays.into());
 				responses.push_back(OverlaysMessage::Rerender.into());
 			}
 			SetSelectedLayers { replacement_selected_layers } => {
@@ -805,12 +841,15 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				);
 			}
 			Undo => {
+				self.undo_in_progress = true;
 				responses.push_back(BroadcastEvent::ToolAbort.into());
 				responses.push_back(DocumentHistoryBackward.into());
 				responses.push_back(BroadcastEvent::DocumentIsDirty.into());
 				responses.push_back(RenderDocument.into());
 				responses.push_back(FolderChanged { affected_folder_path: vec![] }.into());
+				responses.push_back(UndoFinished.into());
 			}
+			UndoFinished => self.undo_in_progress = false,
 			UngroupLayers { folder_path } => {
 				// Select all the children of the folder
 				let select = self.document_legacy.folder_children_paths(&folder_path);
@@ -919,7 +958,7 @@ impl DocumentMessageHandler {
 			}
 		};
 
-		// Prepare the node graph base image base image
+		// Prepare the node graph input image
 
 		// Calculate the size of the region to be exported
 
@@ -1259,15 +1298,32 @@ impl DocumentMessageHandler {
 			.unwrap_or_else(|| panic!("Layer data cannot be found because the path {:?} does not exist", path))
 	}
 
-	pub fn backup(&mut self, responses: &mut VecDeque<Message>) {
+	/// Places a document into the history system
+	fn backup_with_document(&mut self, document: DocumentLegacy, layer_metadata: HashMap<Vec<LayerId>, LayerMetadata>, responses: &mut VecDeque<Message>) {
 		self.document_redo_history.clear();
-		self.document_undo_history.push_back((self.document_legacy.clone(), self.layer_metadata.clone()));
+		self.document_undo_history.push_back((document, layer_metadata));
 		if self.document_undo_history.len() > crate::consts::MAX_UNDO_HISTORY_LEN {
 			self.document_undo_history.pop_front();
 		}
 
 		// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
 		responses.push_back(PortfolioMessage::UpdateOpenDocumentsList.into());
+	}
+
+	/// Copies the entire document into the history system
+	pub fn backup(&mut self, responses: &mut VecDeque<Message>) {
+		self.backup_with_document(self.document_legacy.clone(), self.layer_metadata.clone(), responses);
+	}
+
+	/// Push a message backing up the document in its current state
+	pub fn backup_nonmut(&self, responses: &mut VecDeque<Message>) {
+		responses.push_back(
+			DocumentMessage::BackupDocument {
+				document: self.document_legacy.clone(),
+				layer_metadata: self.layer_metadata.clone(),
+			}
+			.into(),
+		);
 	}
 
 	pub fn rollback(&mut self, responses: &mut VecDeque<Message>) -> Result<(), EditorError> {
@@ -1308,6 +1364,8 @@ impl DocumentMessageHandler {
 					responses.push_back(DocumentMessage::LayerChanged { affected_layer_path: layer.clone() }.into())
 				}
 
+				responses.push_back(NodeGraphMessage::SendGraph.into());
+
 				Ok(())
 			}
 			None => Err(EditorError::NoTransactionInProgress),
@@ -1345,6 +1403,8 @@ impl DocumentMessageHandler {
 				for layer in self.layer_metadata.keys() {
 					responses.push_back(DocumentMessage::LayerChanged { affected_layer_path: layer.clone() }.into())
 				}
+
+				responses.push_back(NodeGraphMessage::SendGraph.into());
 
 				Ok(())
 			}

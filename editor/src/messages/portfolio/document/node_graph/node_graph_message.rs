@@ -1,7 +1,8 @@
 use crate::messages::prelude::*;
 
 use document_legacy::LayerId;
-use graph_craft::document::{value::TaggedValue, NodeId};
+use graph_craft::document::value::TaggedValue;
+use graph_craft::document::{DocumentNode, NodeId, NodeInput};
 
 #[remain::sorted]
 #[impl_message(Message, DocumentMessage, NodeGraph)]
@@ -43,6 +44,10 @@ pub enum NodeGraphMessage {
 		input_index: usize,
 		new_exposed: bool,
 	},
+	InsertNode {
+		node_id: NodeId,
+		document_node: DocumentNode,
+	},
 	MoveSelectedNodes {
 		displacement_x: i32,
 		displacement_y: i32,
@@ -56,10 +61,19 @@ pub enum NodeGraphMessage {
 	SelectNodes {
 		nodes: Vec<NodeId>,
 	},
+	SendGraph,
+	SetDrawing {
+		new_drawing: bool,
+	},
 	SetInputValue {
-		node: NodeId,
+		node_id: NodeId,
 		input_index: usize,
 		value: TaggedValue,
+	},
+	SetNodeInput {
+		node_id: NodeId,
+		input_index: usize,
+		input: NodeInput,
 	},
 	SetQualifiedInputValue {
 		layer_path: Vec<LayerId>,
@@ -67,13 +81,15 @@ pub enum NodeGraphMessage {
 		input_index: usize,
 		value: TaggedValue,
 	},
-	SetSelectedEnabled {
-		enabled: bool,
-	},
-	SetSelectedOutput {
-		output: bool,
-	},
 	ShiftNode {
+		node_id: NodeId,
+	},
+	ToggleHidden,
+	ToggleHiddenImpl,
+	TogglePreview {
+		node_id: NodeId,
+	},
+	TogglePreviewImpl {
 		node_id: NodeId,
 	},
 }

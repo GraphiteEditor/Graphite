@@ -161,14 +161,14 @@ impl JsEditorHandle {
 	#[wasm_bindgen(js_name = tauriResponse)]
 	pub fn tauri_response(&self, _message: JsValue) {
 		#[cfg(feature = "tauri")]
-		match ron::from_str::<Vec<FrontendMessage>>(&message.as_string().unwrap()) {
+		match ron::from_str::<Vec<FrontendMessage>>(&_message.as_string().unwrap()) {
 			Ok(response) => {
 				for message in response {
 					self.send_frontend_message_to_js(message);
 				}
 			}
 			Err(error) => {
-				log::error!("tauri response: {:?}\n{:?}", error, message);
+				log::error!("tauri response: {:?}\n{:?}", error, _message);
 			}
 		}
 	}
@@ -644,7 +644,17 @@ impl JsEditorHandle {
 	/// Notifies the backend that the selected nodes have been moved
 	#[wasm_bindgen(js_name = moveSelectedNodes)]
 	pub fn move_selected_nodes(&self, displacement_x: i32, displacement_y: i32) {
+		let message = DocumentMessage::StartTransaction;
+		self.dispatch(message);
+
 		let message = NodeGraphMessage::MoveSelectedNodes { displacement_x, displacement_y };
+		self.dispatch(message);
+	}
+
+	/// Toggle preview on node
+	#[wasm_bindgen(js_name = togglePreview)]
+	pub fn toggle_preview(&self, node_id: NodeId) {
+		let message = NodeGraphMessage::TogglePreview { node_id };
 		self.dispatch(message);
 	}
 

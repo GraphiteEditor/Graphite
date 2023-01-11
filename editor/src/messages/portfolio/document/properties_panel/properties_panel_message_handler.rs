@@ -92,7 +92,7 @@ impl<'a> MessageHandler<PropertiesPanelMessage, (&PersistentData, PropertiesPane
 			ModifyFont { font_family, font_style, size } => {
 				let (path, _) = self.active_selection.clone().expect("Received update for properties panel with no active layer");
 
-				responses.push_back(self.create_document_operation(Operation::ModifyFont { path, font_family, font_style, size }));
+				self.create_document_operation(Operation::ModifyFont { path, font_family, font_style, size }, true, responses);
 				responses.push_back(ResendActiveProperties.into());
 			}
 			ModifyTransform { value, transform_op } => {
@@ -101,29 +101,34 @@ impl<'a> MessageHandler<PropertiesPanelMessage, (&PersistentData, PropertiesPane
 
 				let transform = apply_transform_operation(layer, transform_op, value, &persistent_data.font_cache);
 
-				responses.push_back(self.create_document_operation(Operation::SetLayerTransform { path: path.clone(), transform }));
+				self.create_document_operation(Operation::SetLayerTransform { path: path.clone(), transform }, true, responses);
 			}
 			ModifyName { name } => {
 				let (path, _) = self.active_selection.clone().expect("Received update for properties panel with no active layer");
-				responses.push_back(self.create_document_operation(Operation::SetLayerName { path, name }))
+				self.create_document_operation(Operation::SetLayerName { path, name }, true, responses);
+			}
+			ModifyPreserveAspect { preserve_aspect } => {
+				let (layer_path, _) = self.active_selection.clone().expect("Received update for properties panel with no active layer");
+				self.create_document_operation(Operation::SetLayerPreserveAspect { layer_path, preserve_aspect }, true, responses);
 			}
 			ModifyFill { fill } => {
 				let (path, _) = self.active_selection.clone().expect("Received update for properties panel with no active layer");
-				responses.push_back(self.create_document_operation(Operation::SetLayerFill { path, fill }));
+				self.create_document_operation(Operation::SetLayerFill { path, fill }, true, responses);
 			}
 			ModifyStroke { stroke } => {
 				let (path, _) = self.active_selection.clone().expect("Received update for properties panel with no active layer");
-				responses.push_back(self.create_document_operation(Operation::SetLayerStroke { path, stroke }))
+				self.create_document_operation(Operation::SetLayerStroke { path, stroke }, true, responses);
 			}
 			ModifyText { new_text } => {
 				let (path, _) = self.active_selection.clone().expect("Received update for properties panel with no active layer");
-				responses.push_back(Operation::SetTextContent { path, new_text }.into())
+				self.create_document_operation(Operation::SetTextContent { path, new_text }, true, responses);
 			}
 			SetPivot { new_position } => {
 				let (layer_path, _) = self.active_selection.clone().expect("Received update for properties panel with no active layer");
 				let position: Option<glam::DVec2> = new_position.into();
 				let pivot = position.unwrap().into();
 
+				responses.push_back(DocumentMessage::StartTransaction.into());
 				responses.push_back(Operation::SetPivot { layer_path, pivot }.into());
 			}
 			CheckSelectedWasUpdated { path } => {
@@ -183,11 +188,24 @@ impl PropertiesPanelMessageHandler {
 		matches!((last_active_path_id, last_modified), (Some(active_last), Some(modified_last)) if active_last == modified_last)
 	}
 
-	fn create_document_operation(&self, operation: Operation) -> Message {
+	fn create_document_operation(&self, operation: Operation, commit_history: bool, responses: &mut VecDeque<Message>) {
 		let (_, target_document) = self.active_selection.as_ref().unwrap();
 		match *target_document {
-			TargetDocument::Artboard => ArtboardMessage::DispatchOperation(Box::new(operation)).into(),
-			TargetDocument::Artwork => DocumentMessage::DispatchOperation(Box::new(operation)).into(),
+			TargetDocument::Artboard => {
+				// Commit history is not respected as the artboard document is not saved in the history system.
+
+				// Dispatch the relevant operation to the artboard document
+				responses.push_back(ArtboardMessage::DispatchOperation(Box::new(operation)).into())
+			}
+			TargetDocument::Artwork => {
+				// Commit to history before the modification
+				if commit_history {
+					responses.push_back(DocumentMessage::StartTransaction.into());
+				}
+
+				// Dispatch the relevant operation to the main document
+				responses.push_back(DocumentMessage::DispatchOperation(Box::new(operation)).into());
+			}
 		}
 	}
 }

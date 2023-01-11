@@ -1,10 +1,11 @@
 use borrow_stack::FixedSizeStack;
 use glam::DVec2;
 use graphene_core::generic::FnNode;
-use graphene_core::ops::{AddNode, IdNode};
+use graphene_core::ops::{AddNode, CloneNode, IdNode, TypeNode};
 use graphene_core::raster::color::Color;
-use graphene_core::raster::Image;
-use graphene_core::structural::{ConsNode, Then};
+use graphene_core::raster::{Image, MapFnIterator};
+use graphene_core::structural::{ComposeNode, ConsNode, Then};
+use graphene_core::value::ValueNode;
 use graphene_core::vector::subpath::Subpath;
 use graphene_core::Node;
 use graphene_std::any::DowncastBothNode;
@@ -16,6 +17,7 @@ use graph_craft::proto::{ConstructionArgs, NodeIdentifier, ProtoNode, ProtoNodeI
 type NodeConstructor = fn(ProtoNode, &FixedSizeStack<TypeErasedNode<'static>>);
 
 use graph_craft::{concrete, generic};
+use graphene_std::memo::CacheNode;
 
 //TODO: turn into hasmap
 static NODE_REGISTRY: &[(NodeIdentifier, NodeConstructor)] = &[
@@ -268,6 +270,32 @@ static NODE_REGISTRY: &[(NodeIdentifier, NodeConstructor)] = &[
 			}
 		},
 	),
+	#[cfg(feature = "quantization")]
+	(
+		NodeIdentifier::new("graphene_std::quantization::GenerateQuantizationNode", &[concrete!("&TypeErasedNode")]),
+		|proto_node, stack| {
+			if let ConstructionArgs::Nodes(operation_node_id) = proto_node.construction_args {
+				stack.push_fn(move |nodes| {
+					info!("Quantization Depending upon id {:?}", operation_node_id);
+					let samples_node = nodes.get(operation_node_id[0] as usize).unwrap();
+					let index_node = nodes.get(operation_node_id[1] as usize).unwrap();
+					let samples_node: DowncastBothNode<_, (), u32> = DowncastBothNode::new(samples_node);
+					let index_node: DowncastBothNode<_, (), u32> = DowncastBothNode::new(index_node);
+					let map_node = graphene_std::quantization::GenerateQuantizationNode::new(samples_node, index_node);
+					let map_node = DynAnyNode::new(map_node);
+
+					if let ProtoNodeInput::Node(node_id) = proto_node.input {
+						let pre_node = nodes.get(node_id as usize).unwrap();
+						(pre_node).then(map_node).into_type_erased()
+					} else {
+						map_node.into_type_erased()
+					}
+				})
+			} else {
+				unimplemented!()
+			}
+		},
+	),
 	(NodeIdentifier::new("graphene_std::raster::MapImageNode", &[]), |proto_node, stack| {
 		if let ConstructionArgs::Nodes(operation_node_id) = proto_node.construction_args {
 			stack.push_fn(move |nodes| {
@@ -452,6 +480,61 @@ static NODE_REGISTRY: &[(NodeIdentifier, NodeConstructor)] = &[
 			}
 		},
 	),
+	(NodeIdentifier::new("graphene_std::memo::CacheNode", &[concrete!("Image")]), |proto_node, stack| {
+		let node_id = proto_node.input.unwrap_node() as usize;
+		use graphene_core::raster::*;
+		if let ConstructionArgs::Nodes(image_args) = proto_node.construction_args {
+			stack.push_fn(move |nodes| {
+				let image = nodes.get(node_id).unwrap();
+				let node: DynAnyNode<_, Image, Image, &Image> = DynAnyNode::new(CacheNode::new());
+
+				let node = image.then(node);
+				node.into_type_erased()
+			})
+		} else {
+			unimplemented!()
+		}
+	}),
+	(NodeIdentifier::new("graphene_core::raster::BlurNode", &[]), |proto_node, stack| {
+		let node_id = proto_node.input.unwrap_node() as usize;
+		use graphene_core::raster::*;
+
+		static EMPTY_IMAGE: ValueNode<Image> = ValueNode::new(Image::empty());
+		if let ConstructionArgs::Nodes(blur_args) = proto_node.construction_args {
+			stack.push_fn(move |nodes| {
+				let pre_node = nodes.get(node_id).unwrap();
+				let radius = nodes.get(blur_args[0] as usize).unwrap();
+				let sigma = nodes.get(blur_args[1] as usize).unwrap();
+				let radius = DowncastBothNode::<_, (), u32>::new(radius);
+				let sigma = DowncastBothNode::<_, (), f64>::new(sigma);
+				let image = DowncastBothNode::<_, Image, &Image>::new(pre_node);
+				// dirty hack: we abuse that the cache node will ignore the input if it is
+				// evaluated a second time
+				let empty: TypeNode<_, (), Image> = TypeNode::new((&EMPTY_IMAGE).then(CloneNode));
+				let image = empty.then(image).then(ImageRefNode::new());
+				let window = WindowNode::new(radius, image);
+				let window: TypeNode<_, u32, ImageWindowIterator<'static>> = TypeNode::new(window);
+				let map_gaussian = MapSndNode::new(DistanceNode.then(GaussianNode::new(sigma)));
+				let map_distances = MapNode::new(map_gaussian);
+				let gaussian_iter = window.then(map_distances);
+				let avg = gaussian_iter.then(WeightedAvgNode::new());
+				let avg: TypeNode<_, u32, Color> = TypeNode::new(avg);
+				let blur_iter = MapNode::new(avg);
+				let blur = ImageIndexIterNode.then(blur_iter);
+				let blur: TypeNode<_, ImageSlice<'_>, MapFnIterator<_, _>> = TypeNode::new(blur);
+				let collect = CollectNode {};
+				let vec = blur.then(collect);
+				let vec: TypeNode<_, ImageSlice<'_>, Vec<Color>> = TypeNode::new(vec);
+				let new_image = MapImageSliceNode::new(vec);
+				let new_image: TypeNode<_, ImageSlice<'_>, Image> = TypeNode::new(new_image);
+				let node: DynAnyNode<_, &Image, Image, Image> = DynAnyNode::new(ImageRefNode.then(new_image));
+				let node = ComposeNode::new(pre_node, node);
+				node.into_type_erased()
+			})
+		} else {
+			unimplemented!()
+		}
+	}),
 	(NodeIdentifier::new("graphene_std::vector::generator_nodes::UnitCircleGenerator", &[]), |_proto_node, stack| {
 		stack.push_fn(|_nodes| DynAnyNode::new(graphene_std::vector::generator_nodes::UnitCircleGenerator).into_type_erased())
 	}),
@@ -493,7 +576,7 @@ static NODE_REGISTRY: &[(NodeIdentifier, NodeConstructor)] = &[
 	}),
 ];
 
-pub fn push_node<'a>(proto_node: ProtoNode, stack: &'a FixedSizeStack<TypeErasedNode<'static>>) {
+pub fn push_node(proto_node: ProtoNode, stack: &FixedSizeStack<TypeErasedNode<'static>>) {
 	if let Some((_id, f)) = NODE_REGISTRY.iter().find(|(id, _)| *id == proto_node.identifier) {
 		f(proto_node, stack);
 	} else {

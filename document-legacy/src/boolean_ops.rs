@@ -18,13 +18,14 @@ pub enum BooleanOperation {
 	SubtractBack,
 }
 
-#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 pub enum BooleanOperationError {
 	InvalidSelection,
 	InvalidIntersections,
 	NoIntersections,
 	NothingDone, // Not necessarily an error
 	DirectionUndefined,
+	NoResult,
 	Unexpected, // For debugging, when complete nothing should be unexpected
 }
 
@@ -492,9 +493,13 @@ pub fn composite_boolean_operation(mut select: BooleanOperation, shapes: &mut Ve
 					match partial_union {
 						Ok(temp_union) => {
 							// The result of a successful union will be exactly one shape
-							shapes.push(RefCell::new(temp_union.into_iter().next().unwrap()));
-							shapes.swap_remove(subject_idx);
-							shapes.swap_remove(shape_idx);
+							if let Some(result) = temp_union.into_iter().next() {
+								shapes.push(RefCell::new(result));
+								shapes.swap_remove(subject_idx);
+								shapes.swap_remove(shape_idx);
+							} else {
+								return Err(BooleanOperationError::NoResult);
+							}
 						}
 						Err(BooleanOperationError::NothingDone) => shape_idx += 1,
 						Err(err) => return Err(err),

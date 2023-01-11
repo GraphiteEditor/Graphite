@@ -1,4 +1,6 @@
 use super::*;
+use crate::{ComputeType, ProjectionOptions};
+use glam::DVec2;
 
 /// Functionality relating to looking up properties of the `Subpath` or points along the `Subpath`.
 impl Subpath {
@@ -7,13 +9,32 @@ impl Subpath {
 	pub fn length(&self, num_subdivisions: Option<usize>) -> f64 {
 		self.iter().fold(0., |accumulator, bezier| accumulator + bezier.length(num_subdivisions))
 	}
+
+	/// Returns the segment index and `t` value that corresponds to the closest point on the curve to the provided point.
+	/// Uses a searching algorithm akin to binary search that can be customized using the [ProjectionOptions] structure.
+	pub fn project(&self, point: DVec2, options: ProjectionOptions) -> Option<(usize, f64)> {
+		if self.is_empty() {
+			return None;
+		}
+
+		// TODO: Optimization opportunity: Filter out segments which are *definitely* not the closest to the given point
+		let (index, (_, project_t)) = self
+			.iter()
+			.map(|bezier| {
+				let project_t = bezier.project(point, options);
+				(bezier.evaluate(ComputeType::Parametric(project_t)).distance(point), project_t)
+			})
+			.enumerate()
+			.min_by(|(_, (distance1, _)), (_, (distance2, _))| distance1.total_cmp(distance2))
+			.unwrap_or((0, (0., 0.))); // If the Subpath contains only a single manipulator group, returns (0, 0.)
+
+		Some((index, project_t))
+	}
 }
 
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::Bezier;
-	use glam::DVec2;
 
 	#[test]
 	fn length_quadratic() {

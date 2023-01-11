@@ -534,8 +534,10 @@ export default defineComponent({
 		},
 		// TODO: Move the event listener from the graph to the window so dragging outside the graph area (or even the browser window) works
 		pointerDown(e: PointerEvent) {
+			// Exit the add node popup by clicking elsewhere in the graph
 			if (this.nodeListLocation && !(e.target as HTMLElement).closest("[data-node-list]")) this.nodeListLocation = undefined;
 
+			// Handle the add node popup on right click
 			if (e.button === 2) {
 				const graphDiv: HTMLDivElement | undefined = (this.$refs.graph as typeof LayoutCol | undefined)?.$el;
 				const graph = graphDiv?.getBoundingClientRect() || new DOMRect();
@@ -557,6 +559,10 @@ export default defineComponent({
 
 			// If the user is clicking on the add nodes list, exit here
 			if (nodeList) return;
+
+			if (e.altKey && nodeId) {
+				this.editor.instance.togglePreview(BigInt(nodeId));
+			}
 
 			// Clicked on a port dot
 			if (port && node) {
@@ -587,11 +593,17 @@ export default defineComponent({
 
 			// Clicked on a node
 			if (nodeId) {
+				let modifiedSelected = false;
+
 				const id = BigInt(nodeId);
 				if (e.shiftKey || e.ctrlKey) {
+					modifiedSelected = true;
+
 					if (this.selected.includes(id)) this.selected.splice(this.selected.lastIndexOf(id), 1);
 					else this.selected.push(id);
 				} else if (!this.selected.includes(id)) {
+					modifiedSelected = true;
+
 					this.selected = [id];
 				} else {
 					this.selectIfNotDragged = id;
@@ -601,15 +613,17 @@ export default defineComponent({
 					this.draggingNodes = { startX: e.x, startY: e.y, roundX: 0, roundY: 0 };
 				}
 
-				this.editor.instance.selectNodes(new BigUint64Array(this.selected));
+				if (modifiedSelected) this.editor.instance.selectNodes(new BigUint64Array(this.selected));
 
 				return;
 			}
 
 			// Clicked on the graph background
 			this.panning = true;
-			this.selected = [];
-			this.editor.instance.selectNodes(new BigUint64Array(this.selected));
+			if (this.selected.length !== 0) {
+				this.selected = [];
+				this.editor.instance.selectNodes(new BigUint64Array(this.selected));
+			}
 		},
 		doubleClick(e: MouseEvent) {
 			const node = (e.target as HTMLElement).closest("[data-node]") as HTMLElement | undefined;
@@ -671,12 +685,14 @@ export default defineComponent({
 				}
 			} else if (this.draggingNodes) {
 				if (this.draggingNodes.startX === e.x || this.draggingNodes.startY === e.y) {
-					if (this.selectIfNotDragged !== undefined) {
+					if (this.selectIfNotDragged !== undefined && (this.selected.length !== 1 || this.selected[0] !== this.selectIfNotDragged)) {
 						this.selected = [this.selectIfNotDragged];
 						this.editor.instance.selectNodes(new BigUint64Array(this.selected));
 					}
 				}
-				this.editor.instance.moveSelectedNodes(this.draggingNodes.roundX, this.draggingNodes.roundY);
+
+				if (this.selected.length > 0 && (this.draggingNodes.roundX !== 0 || this.draggingNodes.roundY !== 0))
+					this.editor.instance.moveSelectedNodes(this.draggingNodes.roundX, this.draggingNodes.roundY);
 
 				// Check if this node should be inserted between two other nodes
 				if (this.selected.length === 1) {

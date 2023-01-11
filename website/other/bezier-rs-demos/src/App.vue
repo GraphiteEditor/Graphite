@@ -19,7 +19,13 @@
 
 	<h2>Subpaths</h2>
 	<div v-for="(feature, index) in subpathFeatures" :key="index">
-		<SubpathExamplePane :name="feature.name" :callback="feature.callback" :sliderOptions="feature.sliderOptions" :chooseComputeType="feature.chooseComputeType" />
+		<SubpathExamplePane
+			:name="feature.name"
+			:callback="feature.callback"
+			:sliderOptions="feature.sliderOptions"
+			:triggerOnMouseMove="feature.triggerOnMouseMove"
+			:chooseComputeType="feature.chooseComputeType"
+		/>
 	</div>
 </template>
 
@@ -604,6 +610,12 @@ export default defineComponent({
 					callback: (subpath: WasmSubpathInstance, options: Record<string, number>, _: undefined, computeType: ComputeType): string => subpath.evaluate(options.computeArgument, computeType),
 					sliderOptions: [{ ...tSliderOptions, variable: "computeArgument" }],
 					chooseComputeType: true,
+				},
+				{
+					name: "Project",
+					callback: (subpath: WasmSubpathInstance, _: Record<string, number>, mouseLocation?: [number, number]): string =>
+						mouseLocation ? subpath.project(mouseLocation[0], mouseLocation[1]) : subpath.to_svg(),
+					triggerOnMouseMove: true,
 				},
 				{
 					name: "Intersect (Line Segment)",

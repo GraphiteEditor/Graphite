@@ -119,7 +119,7 @@ impl<'a> TryFrom<&'a Layer> for &'a Subpath {
 
 /// Defines shared behavior for every layer type.
 pub trait LayerData {
-	/// Render the layer as an SVG tag to a given string.
+	/// Render the layer as an SVG tag to a given string, returning a boolean to indicate if a redraw is required next frame.
 	///
 	/// # Example
 	/// ```
@@ -143,7 +143,7 @@ pub trait LayerData {
 	///     </g>"
 	/// );
 	/// ```
-	fn render(&mut self, svg: &mut String, svg_defs: &mut String, transforms: &mut Vec<glam::DAffine2>, render_data: RenderData);
+	fn render(&mut self, svg: &mut String, svg_defs: &mut String, transforms: &mut Vec<glam::DAffine2>, render_data: RenderData) -> bool;
 
 	/// Determine the layers within this layer that intersect a given quad.
 	/// # Example
@@ -190,7 +190,7 @@ pub trait LayerData {
 }
 
 impl LayerData for LayerDataType {
-	fn render(&mut self, svg: &mut String, svg_defs: &mut String, transforms: &mut Vec<glam::DAffine2>, render_data: RenderData) {
+	fn render(&mut self, svg: &mut String, svg_defs: &mut String, transforms: &mut Vec<glam::DAffine2>, render_data: RenderData) -> bool {
 		self.inner_mut().render(svg, svg_defs, transforms, render_data)
 	}
 
@@ -227,6 +227,9 @@ pub struct Layer {
 	/// A transformation applied to the layer (translation, rotation, scaling, and shear).
 	#[serde(with = "DAffine2Ref")]
 	pub transform: glam::DAffine2,
+	/// Should the aspect ratio of this layer be preserved?
+	#[serde(default = "return_true")]
+	pub preserve_aspect: bool,
 	/// The center of transformations like rotation or scaling with the shift key.
 	/// This is in local space (so the layer's transform should be applied).
 	pub pivot: DVec2,
@@ -255,6 +258,7 @@ impl Layer {
 			name: None,
 			data,
 			transform: glam::DAffine2::from_cols_array(&transform),
+			preserve_aspect: true,
 			pivot: DVec2::splat(0.5),
 			cache: String::new(),
 			thumbnail_cache: String::new(),
@@ -300,12 +304,15 @@ impl Layer {
 		LayerIter { stack: vec![self] }
 	}
 
-	pub fn render(&mut self, transforms: &mut Vec<DAffine2>, svg_defs: &mut String, render_data: RenderData) -> &str {
+	/// Renders the layer, returning the result and if a redraw is required
+	pub fn render(&mut self, transforms: &mut Vec<DAffine2>, svg_defs: &mut String, render_data: RenderData) -> (&str, bool) {
 		if !self.visible {
-			return "";
+			return ("", false);
 		}
 
 		transforms.push(self.transform);
+
+		// Skip rendering if outside the viewport bounds
 		if let Some(viewport_bounds) = render_data.culling_bounds {
 			if let Some(bounding_box) = self
 				.data
@@ -317,15 +324,17 @@ impl Layer {
 					transforms.pop();
 					self.cache.clear();
 					self.cache_dirty = true;
-					return "";
+					return ("", true);
 				}
 			}
 		}
 
+		let mut requires_redraw = false;
+
 		if self.cache_dirty {
 			self.thumbnail_cache.clear();
 			self.svg_defs_cache.clear();
-			self.data.render(&mut self.thumbnail_cache, &mut self.svg_defs_cache, transforms, render_data);
+			requires_redraw = self.data.render(&mut self.thumbnail_cache, &mut self.svg_defs_cache, transforms, render_data);
 
 			self.cache.clear();
 			let _ = writeln!(self.cache, r#"<g transform="matrix("#);
@@ -342,10 +351,16 @@ impl Layer {
 
 			self.cache_dirty = false;
 		}
+
 		transforms.pop();
 		svg_defs.push_str(&self.svg_defs_cache);
 
-		self.cache.as_str()
+		// If a redraw is required then set the cache to dirty.
+		if requires_redraw {
+			self.cache_dirty = true;
+		}
+
+		(self.cache.as_str(), requires_redraw)
 	}
 
 	pub fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, font_cache: &FontCache) {
@@ -515,6 +530,7 @@ impl Clone for Layer {
 			name: self.name.clone(),
 			data: self.data.clone(),
 			transform: self.transform,
+			preserve_aspect: self.preserve_aspect,
 			pivot: self.pivot,
 			cache: String::new(),
 			thumbnail_cache: String::new(),
