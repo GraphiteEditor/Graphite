@@ -54,11 +54,11 @@ jobs:
 
     - name: 🦀 Build Rust code
       run: |
-        mold -run cargo build --verbose
+        mold -run cargo build
 
     - name: 🧪 Run Rust tests
       run: |
-        mold -run cargo test --verbose
+        mold -run cargo test
 
   cargo-deny:
     runs-on: ubuntu-latest
