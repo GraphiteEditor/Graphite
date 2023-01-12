@@ -1,5 +1,6 @@
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
+use std::hash::Hash;
 
 use crate::document::value;
 use crate::document::NodeId;
@@ -87,6 +88,7 @@ impl NodeIdentifier {
 
 #[derive(Debug, Default, PartialEq)]
 pub struct ProtoNetwork {
+	// Should a proto Network even allow inputs? Don't think so
 	pub inputs: Vec<NodeId>,
 	pub output: NodeId,
 	pub nodes: Vec<(NodeId, ProtoNode)>,
@@ -104,6 +106,20 @@ impl PartialEq for ConstructionArgs {
 			(Self::Nodes(n1), Self::Nodes(n2)) => n1 == n2,
 			(Self::Value(v1), Self::Value(v2)) => v1 == v2,
 			_ => core::mem::discriminant(self) == core::mem::discriminant(other),
+		}
+	}
+}
+
+impl Hash for ConstructionArgs {
+	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+		match self {
+			Self::Nodes(nodes) => {
+				"nodes".hash(state);
+				for node in nodes {
+					node.hash(state);
+				}
+			}
+			Self::Value(value) => value.hash(state),
 		}
 	}
 }
@@ -142,6 +158,19 @@ impl ProtoNodeInput {
 }
 
 impl ProtoNode {
+	pub fn stable_node_id(&self) -> Option<NodeId> {
+		use std::hash::Hasher;
+		let mut hasher = std::collections::hash_map::DefaultHasher::new();
+		self.identifier.fully_qualified_name().hash(&mut hasher);
+		self.construction_args.hash(&mut hasher);
+		match self.input {
+			ProtoNodeInput::None => "none".hash(&mut hasher),
+			ProtoNodeInput::Network => "network".hash(&mut hasher),
+			ProtoNodeInput::Node(id) => id.hash(&mut hasher),
+		};
+		Some(hasher.finish() as NodeId)
+	}
+
 	pub fn value(value: ConstructionArgs) -> Self {
 		Self {
 			identifier: NodeIdentifier::new("graphene_core::value::ValueNode", &[Type::Generic(Cow::Borrowed("T"))]),
@@ -193,6 +222,19 @@ impl ProtoNetwork {
 			}
 		}
 		edges
+	}
+
+	pub fn generate_stable_node_ids(&mut self) {
+		let mut lookup = self.nodes.iter().map(|(id, _)| (*id, *id)).collect::<HashMap<_, _>>();
+		for (ref mut id, node) in self.nodes.iter_mut() {
+			if let Some(sni) = node.stable_node_id() {
+				lookup.insert(*id, sni);
+				*id = sni;
+			} else {
+				panic!("failed to generate stable node id for node {:#?}", node);
+			}
+		}
+		self.replace_node_references(&lookup)
 	}
 
 	pub fn collect_inwards_edges(&self) -> HashMap<NodeId, Vec<NodeId>> {
@@ -376,6 +418,28 @@ mod test {
 		assert_eq!(construction_network.nodes[0].1.identifier.name.as_ref(), "value");
 		assert_eq!(construction_network.nodes.len(), 6);
 		assert_eq!(construction_network.nodes[5].1.construction_args, ConstructionArgs::Nodes(vec![3, 4]));
+	}
+
+	#[test]
+	fn stable_node_id_generation() {
+		let mut construction_network = test_network();
+		construction_network.reorder_ids();
+		construction_network.generate_stable_node_ids();
+		construction_network.resolve_inputs();
+		construction_network.generate_stable_node_ids();
+		assert_eq!(construction_network.nodes[0].1.identifier.name.as_ref(), "value");
+		let ids: Vec<_> = construction_network.nodes.iter().map(|(id, _)| *id).collect();
+		assert_eq!(
+			ids,
+			vec![
+				9188000751767037325,
+				5865678846923584030,
+				2268573767208263092,
+				3242938302173674298,
+				12110007198416821768,
+				15126059990334077620
+			]
+		);
 	}
 
 	fn test_network() -> ProtoNetwork {

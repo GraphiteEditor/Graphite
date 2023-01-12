@@ -2,6 +2,7 @@ pub use dyn_any::StaticType;
 use dyn_any::{DynAny, Upcast};
 use dyn_clone::DynClone;
 pub use glam::DVec2;
+use std::hash::Hash;
 pub use std::sync::Arc;
 
 pub use crate::imaginate_input::{ImaginateMaskStartingFill, ImaginateSamplingMethod, ImaginateStatus};
@@ -93,6 +94,15 @@ impl PartialEq for Box<dyn ValueTrait> {
 		let self_mem = unsafe { std::slice::from_raw_parts(self_trait_object.self_ptr, size) };
 		let other_mem = unsafe { std::slice::from_raw_parts(other_trait_object.self_ptr, size) };
 		self_mem == other_mem
+	}
+}
+
+impl Hash for Value {
+	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+		let self_trait_object = unsafe { std::mem::transmute::<&dyn ValueTrait, TraitObject>(self.as_ref()) };
+		let size = self_trait_object.vtable.size;
+		let self_mem = unsafe { std::slice::from_raw_parts(self_trait_object.self_ptr, size) };
+		self_mem.hash(state);
 	}
 }
 
