@@ -203,6 +203,11 @@ impl Fsm for PenToolFsmState {
 					for layer_path in document.all_layers() {
 						tool_data.overlay_renderer.layer_overlay_visibility(&document.document_legacy, layer_path.to_vec(), false, responses);
 					}
+
+					// Redraw the overlays of the newly selected layers
+					for layer_path in document.selected_visible_layers() {
+						tool_data.overlay_renderer.render_subpath_overlays(&document.document_legacy, layer_path.to_vec(), responses);
+					}
 					self
 				}
 				(PenToolFsmState::Ready, PenToolMessage::DragStart) => {
