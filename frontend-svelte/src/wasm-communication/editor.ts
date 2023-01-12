@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api";
+// import { invoke } from "@tauri-apps/api";
 
 import type WasmBindgenPackage from "@/../wasm/pkg";
 import { panicProxy } from "@/utility-functions/panic-proxy";
@@ -40,16 +40,17 @@ export async function fetchImage(path: BigUint64Array, mime: string, documentId:
 	editorInstance?.setImageBlobURL(documentId, path, blobURL, image.naturalWidth, image.naturalHeight);
 }
 
-// export async function dispatchTauri(message: string): Promise<string> {
-export async function dispatchTauri(message: unknown): Promise<void> {
-	try {
-		const response = await invoke("handle_message", { message });
-		editorInstance?.tauriResponse(response);
-	} catch {
-		// eslint-disable-next-line no-console
-		console.error("Failed to dispatch Tauri message");
-	}
-}
+// TODO: Svelte: reenable this
+// // export async function dispatchTauri(message: string): Promise<string> {
+// export async function dispatchTauri(message: unknown): Promise<void> {
+// 	try {
+// 		const response = await invoke("handle_message", { message });
+// 		editorInstance?.tauriResponse(response);
+// 	} catch {
+// 		// eslint-disable-next-line no-console
+// 		console.error("Failed to dispatch Tauri message");
+// 	}
+// }
 
 // Should be called asynchronously before `createEditor()`
 export async function initWasm(): Promise<void> {
@@ -64,11 +65,12 @@ export async function initWasm(): Promise<void> {
 	const randomSeedFloat = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER);
 	const randomSeed = BigInt(randomSeedFloat);
 	wasmImport?.setRandomSeed(randomSeed);
-	try {
-		await invoke("set_random_seed", { seed: randomSeedFloat });
-	} catch {
-		// Ignore errors
-	}
+	// TODO: Tauri: reenable this
+	// try {
+	// 	await invoke("set_random_seed", { seed: randomSeedFloat });
+	// } catch {
+	// 	// Ignore errors
+	// }
 }
 
 // Should be called after running `initWasm()` and its promise resolving

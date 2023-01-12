@@ -35,8 +35,8 @@
 	// Called only when `open` is changed from outside this component (with v-model)
 	$: watchOpen(open);
 	$: dispatch("open", isOpen);
-	$: entries, floatingMenu.measureAndEmitNaturalWidth();
-	$: drawIcon, floatingMenu.measureAndEmitNaturalWidth();
+	$: watchEntries(entries, floatingMenu);
+	$: watchDrawIcon(drawIcon, floatingMenu);
 	$: virtualScrollingTotalHeight = entries[0].length * virtualScrollingEntryHeight;
 	$: virtualScrollingStartIndex = Math.floor(virtualScrollingEntriesStart / virtualScrollingEntryHeight);
 	$: virtualScrollingEndIndex = Math.min(entries[0].length, virtualScrollingStartIndex + 1 + 400 / virtualScrollingEntryHeight);
@@ -46,7 +46,16 @@
 		highlighted = activeEntry;
 	}
 
-	export function scrollViewTo(distanceDown: number): void {
+	function watchEntries(_: MenuListEntry[][], floatingMenu: FloatingMenu) {
+		floatingMenu?.measureAndEmitNaturalWidth();
+	}
+
+	function watchDrawIcon(_: boolean, floatingMenu: FloatingMenu) {
+		floatingMenu?.measureAndEmitNaturalWidth();
+	}
+
+	// TODO: Svelte: Re-enable the `export` prefix
+	function scrollViewTo(distanceDown: number): void {
 		scroller.div().scrollTo(0, distanceDown);
 	}
 

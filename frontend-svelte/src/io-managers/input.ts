@@ -15,9 +15,8 @@ type EventListenerTarget = {
 	removeEventListener: typeof window.removeEventListener;
 };
 
-export function createInputManager(editor: Editor, container: HTMLElement, dialog: DialogState, document: PortfolioState, fullscreen: FullscreenState): () => void {
-	const app = window.document.querySelector("[data-app]") as HTMLElement | undefined;
-	app?.focus();
+export function createInputManager(editor: Editor, dialog: DialogState, document: PortfolioState, fullscreen: FullscreenState): () => void {
+	window.document.body.focus();
 
 	let viewportPointerInteractionOngoing = false;
 	let textInput = undefined as undefined | HTMLDivElement;
@@ -31,7 +30,7 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	const listeners: { target: EventListenerTarget; eventName: EventName; action: (event: any) => void; options?: boolean | AddEventListenerOptions }[] = [
-		{ target: window, eventName: "resize", action: (): void => onWindowResize(container) },
+		{ target: window, eventName: "resize", action: (): void => onWindowResize(window.document.body) },
 		{ target: window, eventName: "beforeunload", action: (e: BeforeUnloadEvent): Promise<void> => onBeforeUnload(e) },
 		{ target: window.document, eventName: "contextmenu", action: (e: MouseEvent): void => e.preventDefault() },
 		{ target: window.document, eventName: "fullscreenchange", action: (): void => fullscreen.fullscreenModeChanged() },
@@ -45,7 +44,7 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 		{ target: window, eventName: "wheel", action: (e: WheelEvent): void => onWheelScroll(e), options: { passive: false } },
 		{ target: window, eventName: "modifyinputfield", action: (e: CustomEvent): void => onModifyInputField(e) },
 		{ target: window.document.body, eventName: "paste", action: (e: ClipboardEvent): void => onPaste(e) },
-		{ target: app as EventListenerTarget, eventName: "blur", action: (): void => blurApp() },
+		{ target: window.document.body, eventName: "blur", action: (): void => blurApp() }, // TODO: Svelte: check if this works with the new target of `body`
 	];
 
 	// Event bindings
@@ -143,7 +142,7 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 		const newInCanvas = (target instanceof Element && target.closest("[data-canvas]")) instanceof Element && !targetIsTextField(window.document.activeElement || undefined);
 		if (newInCanvas && !canvasFocused) {
 			canvasFocused = true;
-			app?.focus();
+			window.document.body.focus();
 		}
 
 		const modifiers = makeKeyboardModifiersBitfield(e);
@@ -355,7 +354,7 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 	// Bind the event listeners
 	bindListeners();
 	// Resize on creation
-	onWindowResize(container);
+	onWindowResize(window.document.body);
 
 	// Return the destructor
 	return unbindListeners;

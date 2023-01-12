@@ -22,7 +22,9 @@
 	"exclude": ["node_modules"],
 	"ts-node": {
 		"compilerOptions": {
-			"module": "commonjs"
+			"module": "commonjs",
+			"useDefineForClassFields": false,
+			"noImplicitOverride": true
 		}
 	}
 }

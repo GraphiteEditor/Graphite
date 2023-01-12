@@ -1,6 +1,5 @@
 <!DOCTYPE html>
 <html>
-
 <head>
 	<meta charset="utf-8">
 	<meta name="viewport" content="width=device-width, initial-scale=0.5, maximum-scale=0.5, minimum-scale=0.5">
@@ -15,13 +14,9 @@
 	<meta name="application-name" content="Graphite">
 	<meta name="msapplication-TileColor" content="#ffffff">
 	<meta name="theme-color" content="#ffffff">
-	<link rel="stylesheet" href="/build/bundle.css">
-	<script defer src="/build/bundle.js"></script>
 </head>
-
 <body>
 	<noscript>JavaScript is required</noscript>
-	<div data-app id="app" tabindex="0"></div>
 	<script>
 	// Confirm the browser is compatible before initializing the application
 
@@ -30,34 +25,15 @@
 	let error;
 	if (!("BigUint64Array" in window)) {
 		error = `
-<style>
-h2, p, a { text-align: center; color: white; }
-#app { display: none; }
-</style>
+<style>h2, p, a { text-align: center; color: white; }</style>
 <h2>This browser is too old to run Graphite</h2>
 <p>Please upgrade to a modern web browser such as the latest Firefox, Chrome, Edge, or Safari version 15 or newer.</p>
 <p>(The <a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/BigInt64Array#browser_compatibility" target="_blank"><code>BigInt64Array</code></a>
 JavaScript API must be supported by the browser for Graphite to function.)</p>
 		`.trim();
 	}
-	if (error) {
-		document.body.innerHTML = error + document.body.innerHTML;
-		delete window.graphiteAppInit;
-	} else {
-		const retry = () => {
-			if (window.graphiteAppInit) {
-				const init = window.graphiteAppInit;
-				delete window.graphiteAppInit;
-				init();
-			}
-			else {
-				setTimeout(retry, 0);
-			}
-		};
-		retry();
-	}
-
+	if (error) document.body.innerHTML = error;
 	</script>
+	<script src="/build/bundle.js"></script>
 </body>
-
 </html>

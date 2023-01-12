@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { type IconName, ICONS, ICON_COMPONENTS } from "@/utility-functions/icons";
+	import { type IconName, ICONS, ICON_SVG_STRINGS } from "@/utility-functions/icons";
 
 	import LayoutRow from "@/components/layout/LayoutRow.svelte";
 
@@ -19,7 +19,7 @@
 </script>
 
 <LayoutRow class={`icon-label ${iconSizeClass} ${className} ${extraClasses}`.trim()} classes={{ disabled }} {tooltip}>
-	<svelte:component this={icon} />
+	{@html ICON_SVG_STRINGS[icon]}
 </LayoutRow>
 
 <style lang="scss" global>

@@ -51,9 +51,17 @@ const config: webpack.Configuration = {
 						preprocess: SveltePreprocess({
 							scss: true,
 							sass: true,
+							postcss: true,
 						}),
-						onwarn(warning: { code: string; }, onwarn: (warn: any) => any) {
-							return warning.code === 'css-unused-selector' || onwarn(warning);
+						onwarn(warning: { code: string; }, handler: (warn: any) => any) {
+							const suppress = [
+								"css-unused-selector",
+								"unused-export-let",
+								"a11y-no-noninteractive-tabindex",
+							];
+							if (suppress.includes(warning.code)) return;
+
+							handler(warning);
 						},
 					}
 				},
@@ -73,6 +81,7 @@ const config: webpack.Configuration = {
 				test: /\.(scss|sass)$/,
 				use: [
 					'css-loader',
+					'postcss-loader',
 					'sass-loader'
 				]
 			},
@@ -90,7 +99,13 @@ const config: webpack.Configuration = {
 				test: /\.ts$/,
 				use: 'ts-loader',
 				exclude: /node_modules/
-			}
+			},
+
+			// Rule: SVG
+			{
+				test: /\.svg$/,
+				type: "asset/source",
+			},
 		]
 	},
 	devServer: {
@@ -120,7 +135,7 @@ const config: webpack.Configuration = {
 			filter: /(^.*[/\\]node_modules[/\\]((?:@[^/\\]+[/\\])?(?:[^@/\\][^/\\]*)))/,
 		}),
 
-		new SvelteCheckPlugin(),
+		// new SvelteCheckPlugin(),
 	],
 	devtool: mode === 'development' ? 'source-map' : false,
 	// // https://cli.vuejs.org/guide/webpack.html

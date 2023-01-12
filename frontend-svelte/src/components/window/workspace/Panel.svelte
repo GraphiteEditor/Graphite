@@ -9,12 +9,9 @@
 
 	const PANEL_COMPONENTS = {
 		Document,
-		IconButton,
 		LayerTree,
 		NodeGraph,
-		PopoverButton,
 		Properties,
-		TextButton,
 	};
 	type PanelTypes = keyof typeof PANEL_COMPONENTS;
 </script>

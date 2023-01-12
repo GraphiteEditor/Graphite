@@ -62,4 +62,5 @@
 	bind:this={fieldInput}
 />
 
-<style lang="scss" global></style>
+<style lang="scss" global>
+</style>
