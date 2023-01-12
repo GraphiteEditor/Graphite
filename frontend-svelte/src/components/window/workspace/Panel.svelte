@@ -64,7 +64,7 @@
 	// TODO: Svelte: test this
 	export async function scrollTabIntoView(newIndex: number) {
 		await tick();
-		tabElements[newIndex].scrollIntoView();
+		tabElements[newIndex].div().scrollIntoView();
 	}
 </script>
 

@@ -5,6 +5,7 @@ import { type Editor } from "@/wasm-communication/editor";
 import {
 	defaultWidgetLayout,
 	patchWidgetLayout,
+	TriggerRefreshBoundsOfViewports,
 	UpdateDocumentBarLayout,
 	UpdateDocumentModeLayout,
 	UpdateToolOptionsLayout,
@@ -69,6 +70,15 @@ export function createDocumentState(editor: Editor) {
 			patchWidgetLayout(state.workingColorsLayout, updateWorkingColorsLayout);
 			return state;
 		});
+	});
+	editor.subscriptions.subscribeJsMessage(TriggerRefreshBoundsOfViewports, async () => {
+		// Wait to display the unpopulated document panel (missing: tools, options bar content, scrollbar positioning, and canvas)
+		await tick();
+		// Wait to display the populated document panel
+		await tick();
+
+		// Request a resize event so the viewport gets measured now that the canvas is populated and positioned correctly
+		window.dispatchEvent(new CustomEvent("resize"));
 	});
 
 	return {

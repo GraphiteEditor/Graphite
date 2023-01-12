@@ -8,7 +8,6 @@
 		type XY,
 		DisplayEditableTextbox,
 		DisplayRemoveEditableTextbox,
-		TriggerRefreshBoundsOfViewports,
 		TriggerTextCommit,
 		TriggerViewportResize,
 		UpdateDocumentArtboards,
@@ -304,9 +303,6 @@
 	}
 
 	onMount(() => {
-		// Once this component is mounted, we want to resend the document bounds to the backend via the resize event handler which does that
-		window.dispatchEvent(new Event("resize"));
-
 		// Update rendered SVGs
 		editor.subscriptions.subscribeJsMessage(UpdateDocumentArtwork, async (data) => {
 			await tick();
@@ -380,15 +376,9 @@
 
 			viewportResize();
 		});
-		editor.subscriptions.subscribeJsMessage(TriggerRefreshBoundsOfViewports, async () => {
-			// Wait to display the unpopulated document panel (missing: tools, options bar content, scrollbar positioning, and canvas)
-			await tick();
-			// Wait to display the populated document panel
-			await tick();
 
-			// Request a resize event so the viewport gets measured now that the canvas is populated and positioned correctly
-			window.dispatchEvent(new CustomEvent("resize"));
-		});
+		// Once this component is mounted, we want to resend the document bounds to the backend via the resize event handler which does that
+		window.dispatchEvent(new Event("resize"));
 	});
 </script>
 

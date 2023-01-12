@@ -95,7 +95,7 @@
 				{/if}
 			</div>
 			{#if entry.children && entry.children.length > 0}
-				<MenuList open={entry.ref?.open || false} entries={entry.children || []} direction="Bottom" minWidth={240} drawIcon={true} bind:this={entry.ref} />
+				<MenuList open={entry.ref?.menuIsOpen() || false} entries={entry.children || []} direction="Bottom" minWidth={240} drawIcon={true} bind:this={entry.ref} />
 			{/if}
 		</div>
 	{/each}

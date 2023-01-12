@@ -12,7 +12,9 @@
 	export let disabled = false;
 	export let tooltip: string | undefined = undefined;
 
-	$: iconSizeClass = `size-${ICONS[icon].size}`;
+	$: iconSizeClass = ((icon: IconName) => {
+		return `size-${ICONS[icon].size}`;
+	})(icon);
 	$: extraClasses = Object.entries(classes)
 		.flatMap((classAndState) => (classAndState[1] ? [classAndState[0]] : []))
 		.join(" ");

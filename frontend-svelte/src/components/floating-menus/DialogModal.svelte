@@ -19,7 +19,7 @@
 
 	onMount(() => {
 		// Focus the first button in the popup
-		const emphasizedOrFirstButton = (dialogModal.querySelector("[data-emphasized]") || dialogModal.querySelector("[data-text-button]") || undefined) as HTMLButtonElement | undefined;
+		const emphasizedOrFirstButton = (dialogModal.div().querySelector("[data-emphasized]") || dialogModal.div().querySelector("[data-text-button]") || undefined) as HTMLButtonElement | undefined;
 		emphasizedOrFirstButton?.focus();
 	});
 </script>

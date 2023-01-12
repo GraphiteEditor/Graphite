@@ -66,9 +66,17 @@
 	}
 
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	function excludeValue(props: Record<string, any>): Record<string, unknown> {
-		const { value: _, ...rest } = props;
-		return rest;
+	// function exclude<T extends Record<string, any>>(props: T, additional?: (keyof T)[]): Pick<T, Exclude<keyof T, "kind" | (typeof additional extends Array<infer K> ? K : never)>> {
+	// 	const exclusions = ["kind", ...(additional || [])];
+
+	// 	return Object.fromEntries(Object.entries(props).filter((entry) => !exclusions.includes(entry[0]))) as any;
+	// }
+
+	// TODO: This seems to work, but verify the correctness and terseness of this, it's adapted from https://stackoverflow.com/a/67434028/775283
+	function exclude<T extends object>(props: T, additional?: (keyof T)[]): Omit<T, typeof additional extends Array<infer K> ? K : never> {
+		const exclusions = ["kind", ...(additional || [])];
+
+		return Object.fromEntries(Object.entries(props).filter((entry) => !exclusions.includes(entry[0]))) as any;
 	}
 </script>
 
@@ -79,40 +87,40 @@
 	{#each widgetsAndNextSiblingIsSuffix as [component, nextIsSuffix], index (index)}
 		{@const checkboxInput = narrowWidgetProps(component.props, "CheckboxInput")}
 		{#if checkboxInput}
-			<CheckboxInput {...checkboxInput} on:checked={({ detail }) => updateLayout(index, detail)} />
+			<CheckboxInput {...exclude(checkboxInput)} on:checked={({ detail }) => updateLayout(index, detail)} />
 		{/if}
 		{@const colorInput = narrowWidgetProps(component.props, "ColorInput")}
 		{#if colorInput}
-			<ColorInput {...colorInput} on:value={({ detail }) => updateLayout(index, detail)} sharpRightCorners={nextIsSuffix} />
+			<ColorInput {...exclude(colorInput)} on:value={({ detail }) => updateLayout(index, detail)} sharpRightCorners={nextIsSuffix} />
 		{/if}
 		{@const dropdownInput = narrowWidgetProps(component.props, "DropdownInput")}
 		{#if dropdownInput}
-			<DropdownInput {...dropdownInput} on:selectedIndex={({ detail }) => updateLayout(index, detail)} sharpRightCorners={nextIsSuffix} />
+			<DropdownInput {...exclude(dropdownInput)} on:selectedIndex={({ detail }) => updateLayout(index, detail)} sharpRightCorners={nextIsSuffix} />
 		{/if}
 		{@const fontInput = narrowWidgetProps(component.props, "FontInput")}
 		{#if fontInput}
-			<FontInput {...fontInput} on:changeFont={({ detail }) => updateLayout(index, detail)} sharpRightCorners={nextIsSuffix} />
+			<FontInput {...exclude(fontInput)} on:changeFont={({ detail }) => updateLayout(index, detail)} sharpRightCorners={nextIsSuffix} />
 		{/if}
 		{@const parameterExposeButton = narrowWidgetProps(component.props, "ParameterExposeButton")}
 		{#if parameterExposeButton}
-			<ParameterExposeButton {...parameterExposeButton} action={() => updateLayout(index, undefined)} />
+			<ParameterExposeButton {...exclude(parameterExposeButton)} action={() => updateLayout(index, undefined)} />
 		{/if}
 		{@const iconButton = narrowWidgetProps(component.props, "IconButton")}
 		{#if iconButton}
-			<IconButton {...iconButton} action={() => updateLayout(index, undefined)} sharpRightCorners={nextIsSuffix} />
+			<IconButton {...exclude(iconButton)} action={() => updateLayout(index, undefined)} sharpRightCorners={nextIsSuffix} />
 		{/if}
 		{@const iconLabel = narrowWidgetProps(component.props, "IconLabel")}
 		{#if iconLabel}
-			<IconLabel {...iconLabel} />
+			<IconLabel {...exclude(iconLabel)} />
 		{/if}
 		{@const layerReferenceInput = narrowWidgetProps(component.props, "LayerReferenceInput")}
 		{#if layerReferenceInput}
-			<LayerReferenceInput {...layerReferenceInput} on:value={({ detail }) => updateLayout(index, detail)} />
+			<LayerReferenceInput {...exclude(layerReferenceInput)} on:value={({ detail }) => updateLayout(index, detail)} />
 		{/if}
 		{@const numberInput = narrowWidgetProps(component.props, "NumberInput")}
 		{#if numberInput}
 			<NumberInput
-				{...numberInput}
+				{...exclude(numberInput)}
 				on:value={({ detail }) => debouncer(() => updateLayout(index, detail))}
 				incrementCallbackIncrease={() => updateLayout(index, "Increment")}
 				incrementCallbackDecrease={() => updateLayout(index, "Decrement")}
@@ -121,50 +129,50 @@
 		{/if}
 		{@const optionalInput = narrowWidgetProps(component.props, "OptionalInput")}
 		{#if optionalInput}
-			<OptionalInput {...optionalInput} on:checked={({ detail }) => updateLayout(index, detail)} />
+			<OptionalInput {...exclude(optionalInput)} on:checked={({ detail }) => updateLayout(index, detail)} />
 		{/if}
 		{@const pivotAssist = narrowWidgetProps(component.props, "PivotAssist")}
 		{#if pivotAssist}
-			<PivotAssist {...pivotAssist} on:position={({ detail }) => updateLayout(index, detail)} />
+			<PivotAssist {...exclude(pivotAssist)} on:position={({ detail }) => updateLayout(index, detail)} />
 		{/if}
 		{@const popoverButton = narrowWidgetProps(component.props, "PopoverButton")}
 		{#if popoverButton}
-			<PopoverButton {...popoverButton}>
+			<PopoverButton {...exclude(popoverButton, ["header", "text"])}>
 				<TextLabel bold={true}>{popoverButton.header}</TextLabel>
 				<TextLabel multiline={true}>{popoverButton.text}</TextLabel>
 			</PopoverButton>
 		{/if}
 		{@const radioInput = narrowWidgetProps(component.props, "RadioInput")}
 		{#if radioInput}
-			<RadioInput {...radioInput} on:selectedIndex={({ detail }) => updateLayout(index, detail)} sharpRightCorners={nextIsSuffix} />
+			<RadioInput {...exclude(radioInput)} on:selectedIndex={({ detail }) => updateLayout(index, detail)} sharpRightCorners={nextIsSuffix} />
 		{/if}
 		{@const separator = narrowWidgetProps(component.props, "Separator")}
 		{#if separator}
-			<Separator {...separator} />
+			<Separator {...exclude(separator)} />
 		{/if}
 		{@const swatchPairInput = narrowWidgetProps(component.props, "SwatchPairInput")}
 		{#if swatchPairInput}
-			<SwatchPairInput {...swatchPairInput} />
+			<SwatchPairInput {...exclude(swatchPairInput)} />
 		{/if}
 		{@const textAreaInput = narrowWidgetProps(component.props, "TextAreaInput")}
 		{#if textAreaInput}
-			<TextAreaInput {...textAreaInput} on:commitText={({ detail }) => updateLayout(index, detail)} />
+			<TextAreaInput {...exclude(textAreaInput)} on:commitText={({ detail }) => updateLayout(index, detail)} />
 		{/if}
 		{@const textButton = narrowWidgetProps(component.props, "TextButton")}
 		{#if textButton}
-			<TextButton {...textButton} action={() => updateLayout(index, undefined)} sharpRightCorners={nextIsSuffix} />
+			<TextButton {...exclude(textButton)} action={() => updateLayout(index, undefined)} sharpRightCorners={nextIsSuffix} />
 		{/if}
 		{@const breadcrumbTrailButtons = narrowWidgetProps(component.props, "BreadcrumbTrailButtons")}
 		{#if breadcrumbTrailButtons}
-			<BreadcrumbTrailButtons {...breadcrumbTrailButtons} action={(index) => updateLayout(index, index)} />
+			<BreadcrumbTrailButtons {...exclude(breadcrumbTrailButtons)} action={(index) => updateLayout(index, index)} />
 		{/if}
 		{@const textInput = narrowWidgetProps(component.props, "TextInput")}
 		{#if textInput}
-			<TextInput {...textInput} on:commitText={({ detail }) => updateLayout(index, detail)} sharpRightCorners={nextIsSuffix} />
+			<TextInput {...exclude(textInput)} on:commitText={({ detail }) => updateLayout(index, detail)} sharpRightCorners={nextIsSuffix} />
 		{/if}
 		{@const textLabel = narrowWidgetProps(component.props, "TextLabel")}
 		{#if textLabel}
-			<TextLabel {...excludeValue(textLabel)}>{textLabel.value}</TextLabel>
+			<TextLabel {...exclude(textLabel, ["value"])}>{textLabel.value}</TextLabel>
 		{/if}
 	{/each}
 </div>

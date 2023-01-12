@@ -277,6 +277,10 @@
 
 <style lang="scss" global>
 	.number-input {
+		input {
+			text-align: center;
+		}
+
 		&.increment {
 			// Widen the label and input margins from the edges by an extra 8px to make room for the increment arrows
 			label {

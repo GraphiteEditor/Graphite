@@ -29,7 +29,7 @@
 	export let strayCloses = true;
 
 	let tail: HTMLDivElement;
-	let floatingMenu: HTMLDivElement;
+	let self: HTMLDivElement;
 	let floatingMenuContainer: HTMLDivElement;
 	let floatingMenuContent: LayoutCol;
 
@@ -119,12 +119,12 @@
 
 		const workspace = document.querySelector("[data-workspace]");
 
-		if (!workspace || !floatingMenu || !floatingMenuContainer || !floatingMenuContent) return;
+		if (!workspace || !self || !floatingMenuContainer || !floatingMenuContent) return;
 
 		workspaceBounds = workspace.getBoundingClientRect();
-		floatingMenuBounds = floatingMenu.getBoundingClientRect();
+		floatingMenuBounds = self.getBoundingClientRect();
 		const floatingMenuContainerBounds = floatingMenuContainer.getBoundingClientRect();
-		floatingMenuContentBounds = floatingMenuContent.getBoundingClientRect();
+		floatingMenuContentBounds = floatingMenuContent.div().getBoundingClientRect();
 
 		const inParentFloatingMenu = Boolean(floatingMenuContainer.closest("[data-floating-menu-content]"));
 
@@ -198,6 +198,10 @@
 		}
 	}
 
+	export function div(): HTMLDivElement {
+		return self;
+	}
+
 	// To be called by the parent component. Measures the actual width of the floating menu content element and returns it in a promise.
 	export async function measureAndEmitNaturalWidth(): Promise<void> {
 		// Wait for the changed content which fired the `updated()` Vue event to be put into the DOM
@@ -234,13 +238,13 @@
 
 		// Get the spawner element (that which is clicked to spawn this floating menu)
 		// Assumes the spawner is a sibling of this FloatingMenu component
-		const ownSpawner: HTMLElement | undefined = floatingMenu?.parentElement?.querySelector(":scope > [data-floating-menu-spawner]") || undefined;
+		const ownSpawner: HTMLElement | undefined = self?.parentElement?.querySelector(":scope > [data-floating-menu-spawner]") || undefined;
 		// Get the spawner element containing whatever element the user is hovering over now, if there is one
 		const targetSpawner: HTMLElement | undefined = target?.closest("[data-floating-menu-spawner]") || undefined;
 
 		// HOVER TRANSFER
 		// Transfer from this open floating menu to a sibling floating menu if the pointer hovers to a valid neighboring floating menu spawner
-		hoverTransfer(floatingMenu, ownSpawner, targetSpawner);
+		hoverTransfer(self, ownSpawner, targetSpawner);
 
 		// POINTER STRAY
 		// Close the floating menu if the pointer has strayed far enough from its bounds (and it's not hovering over its own spawner)
@@ -363,7 +367,7 @@
 
 	function isPointerEventOutsideFloatingMenu(e: PointerEvent, extraDistanceAllowed = 0): boolean {
 		// Consider all child menus as well as the top-level one
-		const allContainedFloatingMenus = [...floatingMenu.querySelectorAll("[data-floating-menu-content]")];
+		const allContainedFloatingMenus = [...self.querySelectorAll("[data-floating-menu-content]")];
 
 		return !allContainedFloatingMenus.find((element) => !isPointerEventOutsideMenuElement(e, element, extraDistanceAllowed));
 	}
@@ -383,7 +387,7 @@
 <div
 	class={`floating-menu ${direction.toLowerCase()} ${type.toLowerCase()} ${className} ${extraClasses}`.trim()}
 	style={`${styleName} ${extraStyles}`.trim() || undefined}
-	bind:this={floatingMenu}
+	bind:this={self}
 	{...$$restProps}
 >
 	{#if displayTail}

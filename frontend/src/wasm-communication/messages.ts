@@ -985,9 +985,10 @@ export class PopoverButton extends WidgetProps {
 
 	disabled!: boolean;
 
-	// Body
+	// Placeholder popover content heading
 	header!: string;
 
+	// Placeholder popover content paragraph
 	text!: string;
 
 	@Transform(({ value }: { value: string }) => value || undefined)

@@ -20,8 +20,6 @@
 
 	import MainWindow from "@/components/window/MainWindow.svelte";
 
-	console.log("Editor.svelte: entry start");
-
 	// Graphite WASM editor instance
 	export let editor: ReturnType<typeof createEditor>;
 	setContext("editor", editor);
@@ -51,25 +49,15 @@
 	let dragManagerDestructor = createDragManager();
 	let inputManagerDestructor = createInputManager(editor, dialog, portfolio, fullscreen);
 
-	console.log("Editor.svelte: entry end (created states and managers)");
-
 	onMount(() => {
-		console.log("Editor.svelte: onMount start");
-
 		// Initialize certain setup tasks required by the editor backend to be ready for the user now that the frontend is ready
 		editor.instance.initAfterFrontendReady(operatingSystem());
-
-		console.log("Editor.svelte: onMount end");
 	});
 
 	onDestroy(() => {
-		console.log("Editor.svelte: onDestroy start");
-
 		// Call the destructor for each manager
 		dragManagerDestructor();
 		inputManagerDestructor();
-
-		console.log("Editor.svelte: onDestroy end");
 	});
 </script>
 

@@ -154,7 +154,7 @@
 		}
 
 		input {
-			text-align: center;
+			// text-align: center;
 
 			&:not(:focus).has-label {
 				text-align: right;

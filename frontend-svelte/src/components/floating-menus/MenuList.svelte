@@ -37,26 +37,28 @@
 	$: dispatch("open", isOpen);
 	$: watchEntries(entries, floatingMenu);
 	$: watchDrawIcon(drawIcon, floatingMenu);
-	$: virtualScrollingTotalHeight = entries[0].length * virtualScrollingEntryHeight;
-	$: virtualScrollingStartIndex = Math.floor(virtualScrollingEntriesStart / virtualScrollingEntryHeight);
-	$: virtualScrollingEndIndex = Math.min(entries[0].length, virtualScrollingStartIndex + 1 + 400 / virtualScrollingEntryHeight);
+	$: virtualScrollingTotalHeight = entries.length === 0 ? 0 : entries[0].length * virtualScrollingEntryHeight;
+	$: virtualScrollingStartIndex = Math.floor(virtualScrollingEntriesStart / virtualScrollingEntryHeight) || 0;
+	$: virtualScrollingEndIndex = entries.length === 0 ? 0 : Math.min(entries[0].length, virtualScrollingStartIndex + 1 + 400 / virtualScrollingEntryHeight);
 
 	function watchOpen(open: boolean) {
 		isOpen = open;
 		highlighted = activeEntry;
 	}
 
+	// TODO: Svelte: fix infinite loop and reenable
 	function watchEntries(_: MenuListEntry[][], floatingMenu: FloatingMenu) {
-		floatingMenu?.measureAndEmitNaturalWidth();
+		// floatingMenu?.measureAndEmitNaturalWidth();
 	}
 
+	// TODO: Svelte: fix infinite loop and reenable
 	function watchDrawIcon(_: boolean, floatingMenu: FloatingMenu) {
-		floatingMenu?.measureAndEmitNaturalWidth();
+		// floatingMenu?.measureAndEmitNaturalWidth();
 	}
 
-	// TODO: Svelte: Re-enable the `export` prefix
-	function scrollViewTo(distanceDown: number): void {
-		scroller.div().scrollTo(0, distanceDown);
+	function onScroll(e: Event) {
+		if (!virtualScrollingEntryHeight) return;
+		virtualScrollingEntriesStart = (e.target as HTMLElement)?.scrollTop || 0;
 	}
 
 	function onEntryClick(menuListEntry: MenuListEntry): void {
@@ -93,7 +95,7 @@
 	}
 
 	/// Handles keyboard navigation for the menu. Returns if the entire menu stack should be dismissed
-	function keydown(e: KeyboardEvent, submenu: boolean): boolean {
+	export function keydown(e: KeyboardEvent, submenu: boolean): boolean {
 		// Interactive menus should keep the active entry the same as the highlighted one
 		if (interactive) highlighted = activeEntry;
 
@@ -169,15 +171,19 @@
 		return false;
 	}
 
-	function setHighlighted(newHighlight: MenuListEntry | undefined) {
+	export function setHighlighted(newHighlight: MenuListEntry | undefined) {
 		highlighted = newHighlight;
 		// Interactive menus should keep the active entry the same as the highlighted one
 		if (interactive && newHighlight?.value !== activeEntry?.value && newHighlight) dispatch("activeEntry", newHighlight);
 	}
 
-	function onScroll(e: Event) {
-		if (!virtualScrollingEntryHeight) return;
-		virtualScrollingEntriesStart = (e.target as HTMLElement)?.scrollTop || 0;
+	// TODO: Svelte: Re-enable the `export` prefix
+	export function scrollViewTo(distanceDown: number): void {
+		scroller.div().scrollTo(0, distanceDown);
+	}
+
+	export function menuIsOpen(): boolean {
+		return open;
 	}
 </script>
 
@@ -242,7 +248,7 @@
 					{/if}
 
 					{#if entry.children}
-						<svelte:self on:naturalWidth open={entry.ref?.open || false} direction="TopRight" entries={entry.children} {minWidth} {drawIcon} {scrollableY} bind:this={entry.ref} />
+						<svelte:self on:naturalWidth open={entry.ref?.menuIsOpen() || false} direction="TopRight" entries={entry.children} {minWidth} {drawIcon} {scrollableY} bind:this={entry.ref} />
 					{/if}
 				</LayoutRow>
 			{/each}

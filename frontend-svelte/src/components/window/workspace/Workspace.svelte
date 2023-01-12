@@ -37,8 +37,8 @@
 	$: {
 		scrollIntoView(activeDocumentIndex);
 	}
-	function scrollIntoView(index: number) {
-		documentPanel?.scrollTabIntoView(index);
+	function scrollIntoView(activeDocumentIndex: number) {
+		documentPanel?.scrollTabIntoView(activeDocumentIndex);
 	}
 
 	const editor = getContext<Editor>("editor");
