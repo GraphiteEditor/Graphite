@@ -17,15 +17,49 @@
 </head>
 <body>
 	<noscript>JavaScript is required</noscript>
+	<style>
+		body {
+			background: #222;
+			height: 100%;
+			margin: 0;
+		}
+
+		body::after {
+			content: "";
+			display: block;
+			position: absolute;
+			left: 50%;
+			top: 50%;
+			width: 60px;
+			height: 60px;
+			border-radius: 50%;
+			border: 4px solid #eee;
+			border-color: #eee transparent #eee transparent;
+			animation: spinning-loading-indicator 1s linear infinite;
+		}
+
+		@keyframes spinning-loading-indicator {
+			0% {
+				transform: translate(-30px, -30px) rotate(0deg);
+			}
+			100% {
+				transform: translate(-30px, -30px) rotate(360deg);
+			}
+		}
+	</style>
 	<script>
 	// Confirm the browser is compatible before initializing the application
 
 	// Display an error if the browser is incompatible with a required API
 	// This is run outside the JS code bundle in case unsupported features cause a syntax error when parsing the bundle, preventing the any bundle code from running
+	// TODO: Svelte: reenable this
 	let error;
 	if (!("BigUint64Array" in window)) {
 		error = `
-<style>h2, p, a { text-align: center; color: white; }</style>
+<style>
+	body::after { content: none; }
+	h2, p, a { text-align: center; color: white; }
+</style>
 <h2>This browser is too old to run Graphite</h2>
 <p>Please upgrade to a modern web browser such as the latest Firefox, Chrome, Edge, or Safari version 15 or newer.</p>
 <p>(The <a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/BigInt64Array#browser_compatibility" target="_blank"><code>BigInt64Array</code></a>

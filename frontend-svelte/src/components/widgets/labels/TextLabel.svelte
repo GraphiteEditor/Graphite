@@ -29,7 +29,7 @@
 	class:multiline
 	class:table-align={tableAlign}
 	style:min-width={minWidth > 0 ? `${minWidth}px` : undefined}
-	style={`${styleName} ${extraStyles}`.trim()}
+	style={`${styleName} ${extraStyles}`.trim() || undefined}
 	title={tooltip}
 >
 	<slot />

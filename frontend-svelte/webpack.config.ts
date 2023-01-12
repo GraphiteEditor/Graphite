@@ -51,7 +51,6 @@ const config: webpack.Configuration = {
 						preprocess: SveltePreprocess({
 							scss: true,
 							sass: true,
-							postcss: true,
 						}),
 						onwarn(warning: { code: string; }, handler: (warn: any) => any) {
 							const suppress = [
@@ -81,7 +80,6 @@ const config: webpack.Configuration = {
 				test: /\.(scss|sass)$/,
 				use: [
 					'css-loader',
-					'postcss-loader',
 					'sass-loader'
 				]
 			},

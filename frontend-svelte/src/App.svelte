@@ -35,6 +35,4 @@
 
 {#if editor !== undefined}
 	<Editor {editor} />
-{:else}
-	<p>Initializing...</p>
 {/if}

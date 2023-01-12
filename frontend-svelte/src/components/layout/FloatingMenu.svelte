@@ -382,7 +382,7 @@
 
 <div
 	class={`floating-menu ${direction.toLowerCase()} ${type.toLowerCase()} ${className} ${extraClasses}`.trim()}
-	style={`${styleName} ${extraStyles}`.trim()}
+	style={`${styleName} ${extraStyles}`.trim() || undefined}
 	bind:this={floatingMenu}
 	{...$$restProps}
 >

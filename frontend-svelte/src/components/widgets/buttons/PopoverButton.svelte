@@ -38,7 +38,7 @@
 			bottom: 0;
 		}
 
-		.icon-button {
+		.icon-button.icon-button {
 			width: 100%;
 			height: 100%;
 			padding: 0;

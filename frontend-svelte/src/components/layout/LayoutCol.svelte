@@ -27,7 +27,7 @@
 	class={`layout-col ${className} ${extraClasses}`.trim()}
 	class:scrollable-x={scrollableX}
 	class:scrollable-y={scrollableY}
-	style={`${styleName} ${extraStyles}`.trim()}
+	style={`${styleName} ${extraStyles}`.trim() || undefined}
 	title={tooltip}
 	bind:this={divElement}
 	on:click

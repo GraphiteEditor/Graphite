@@ -76,6 +76,11 @@
 <MainWindow />
 
 <style lang="scss" global>
+	// Disable the spinning loading indicator
+	body::after {
+		content: none !important;
+	}
+
 	:root {
 		// Replace usage of `-rgb` variants with CSS color() function to calculate alpha when browsers support it
 		// See https://developer.mozilla.org/en-US/docs/Web/CSS/color_value/color() and https://caniuse.com/css-color-function
