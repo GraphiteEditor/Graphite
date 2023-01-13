@@ -5,6 +5,12 @@ const subpathFeatures = {
 	Constructor: {
 		callback: (subpath: WasmSubpathInstance): string => subpath.to_svg(),
 	},
+	Insert: {
+		callback: (subpath: WasmSubpathInstance, options: Record<string, number>, _: undefined, computeType: ComputeType): string => subpath.insert(options.computeArgument, computeType),
+		sliderOptions: [{ ...tSliderOptions, variable: "computeArgument" }],
+		// TODO: Uncomment this after implementing the Euclidean version
+		// chooseComputeType: true,
+	},
 	Length: {
 		callback: (subpath: WasmSubpathInstance): string => subpath.length(),
 	},
