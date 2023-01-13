@@ -105,9 +105,8 @@ impl ManipulatorGroup {
 	}
 
 	/// Move the selected points by the provided transform.
-	pub fn move_selected_points(&mut self, delta: DVec2) {
+	pub fn move_selected_points(&mut self, delta: DVec2, mirror_distance: bool) {
 		let mirror_angle = self.editor_state.mirror_angle_between_handles;
-		let mirror_distance = self.editor_state.mirror_distance_between_handles;
 
 		// Move the point absolutely or relatively depending on if the point is under the cursor (the last selected point)
 		let move_point = |point: &mut ManipulatorPoint, delta: DVec2| {
@@ -270,10 +269,7 @@ impl ManipulatorGroup {
 	}
 
 	/// Set the mirroring state
-	pub fn toggle_mirroring(&mut self, toggle_distance: bool, toggle_angle: bool) {
-		if toggle_distance {
-			self.editor_state.mirror_distance_between_handles = !self.editor_state.mirror_distance_between_handles;
-		}
+	pub fn toggle_mirroring(&mut self, toggle_angle: bool) {
 		if toggle_angle {
 			self.editor_state.mirror_angle_between_handles = !self.editor_state.mirror_angle_between_handles;
 		}
@@ -301,15 +297,10 @@ impl ManipulatorGroup {
 pub struct ManipulatorGroupEditorState {
 	// Whether the angle between the handles should be maintained
 	pub mirror_angle_between_handles: bool,
-	// Whether the distance between the handles should be equidistant to the anchor
-	pub mirror_distance_between_handles: bool,
 }
 
 impl Default for ManipulatorGroupEditorState {
 	fn default() -> Self {
-		Self {
-			mirror_angle_between_handles: true,
-			mirror_distance_between_handles: false,
-		}
+		Self { mirror_angle_between_handles: true }
 	}
 }
