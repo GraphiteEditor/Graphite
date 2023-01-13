@@ -141,7 +141,7 @@ impl Dispatcher {
 						.process_message(message, (&self.message_handlers.input_preprocessor_message_handler, actions), &mut queue);
 				}
 				InputPreprocessor(message) => {
-					let keyboard_platform = GLOBAL_PLATFORM.get().unwrap_or_default().as_keyboard_platform_layout();
+					let keyboard_platform = GLOBAL_PLATFORM.get().copied().unwrap_or_default().as_keyboard_platform_layout();
 
 					self.message_handlers.input_preprocessor_message_handler.process_message(message, keyboard_platform, &mut queue);
 				}
