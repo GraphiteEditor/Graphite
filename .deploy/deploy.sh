@@ -29,4 +29,5 @@ cargo install cargo-about
 
 # Build for production
 echo 👷 Build Graphite web client
-npm run build-prod-unix
+export NODE_ENV=production
+npm run build
