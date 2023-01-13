@@ -44,10 +44,8 @@ impl ShapeEditor {
 		if self.selected_layers.is_empty() {
 			return None;
 		}
-
 		if let Some((shape_layer_path, manipulator_group_id, manipulator_point_index)) = self.find_nearest_point_indices(document, mouse_position, select_threshold) {
 			trace!("Selecting... manipulator group ID: {}, manipulator point index: {}", manipulator_group_id, manipulator_point_index);
-
 			// If the point we're selecting has already been selected
 			// we can assume this point exists.. since we did just click on it hence the unwrap
 			let is_point_selected = self.shape(document, shape_layer_path).unwrap().manipulator_groups().by_id(manipulator_group_id).unwrap().points[manipulator_point_index]
@@ -84,13 +82,21 @@ impl ShapeEditor {
 			if should_select {
 				let add = add_to_selection || is_point_selected;
 				let point = (manipulator_group_id, ManipulatorType::from_index(manipulator_point_index));
+			
 				// Clear all point in other selected shapes
 				if !add {
 					responses.push_back(DocumentMessage::DeselectAllManipulatorPoints.into());
 					points = vec![(shape_layer_path, point.0, point.1)];
 				} else {
+					
+					// Checks if point clicked on is one of the selected points
+					let point_with_layer = (shape_layer_path, point.0, point.1);
+					if points.contains(&point_with_layer){
+						responses.push_back(DocumentMessage::DeselectAllManipulatorPoints.into());
+					}
+
 					points.push((shape_layer_path, point.0, point.1));
-				}
+    			}
 				responses.push_back(
 					Operation::SelectManipulatorPoints {
 						layer_path: shape_layer_path.to_vec(),
@@ -121,7 +127,6 @@ impl ShapeEditor {
 				return None;
 			}
 		}
-
 		// Deselect all points if no nearby point
 		responses.push_back(DocumentMessage::DeselectAllManipulatorPoints.into());
 		None

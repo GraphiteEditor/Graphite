@@ -205,6 +205,7 @@ impl Fsm for PathToolFsmState {
 						tool_data.snap_manager.add_all_document_handles(document, &include_handles, &[], &new_selected);
 
 						tool_data.drag_start_pos = input.mouse.position - offset;
+						
 						PathToolFsmState::Dragging
 					}
 					// We didn't find a point nearby, so consider selecting the nearest shape instead
