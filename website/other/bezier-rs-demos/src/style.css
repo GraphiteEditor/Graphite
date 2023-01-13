@@ -1,0 +1,52 @@
+html,
+body {
+	height: 100%;
+	font-family: Arial, sans-serif;
+	text-align: center;
+	margin: 40px 0;
+}
+
+body > h1 + p {
+	max-width: 768px;
+	line-height: 1.4;
+	margin: auto;
+	text-align: justify;
+}
+
+body > h2 {
+	margin-top: 40px;
+}
+
+/* Demo Pane styles */
+.demo-row {
+	display: flex;
+	flex-direction: row;
+	justify-content: center;
+}
+
+.compute-type-choice {
+	margin-top: 20px;
+}
+
+.demo-pane-header {
+	margin-top: 2em;
+	margin-bottom: 0;
+}
+
+.demo-pane-container {
+	position: relative;
+	width: fit-content;
+	margin: auto;
+}
+
+/* Demo styles */
+.demo-header {
+	margin: 20px 0;
+}
+
+.demo-figure {
+	width: 200px;
+	height: 200px;
+	margin-bottom: 20px;
+	border: solid 1px black;
+}

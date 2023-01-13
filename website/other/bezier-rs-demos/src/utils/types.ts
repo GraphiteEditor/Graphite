@@ -16,11 +16,11 @@ export type ComputeType = "Euclidean" | "Parametric";
 export type BezierCallback = (bezier: WasmBezierInstance, options: Record<string, number>, mouseLocation?: [number, number], computeType?: ComputeType) => string;
 export type SubpathCallback = (subpath: WasmSubpathInstance, options: Record<string, number>, mouseLocation?: [number, number], computeType?: ComputeType) => string;
 
-export type ExampleOptions = {
+export type BezierDemoOptions = {
 	[key in BezierCurveType]: {
-		disabled: boolean;
-		sliderOptions: SliderOption[];
-		customPoints: number[][];
+		disabled?: boolean;
+		sliderOptions?: SliderOption[];
+		customPoints?: number[][];
 	};
 };
 
@@ -52,4 +52,40 @@ export function getConstructorKey(bezierCurveType: BezierCurveType): WasmBezierC
 		Cubic: "new_cubic",
 	};
 	return mapping[bezierCurveType];
+}
+
+export interface DemoArgs {
+	title: string;
+	disabled?: boolean;
+}
+
+export interface BezierDemoArgs extends DemoArgs {
+	points: number[][];
+	sliderOptions: SliderOption[];
+}
+
+export interface SubpathDemoArgs extends DemoArgs {
+	triples: (number[] | undefined)[][];
+	closed: boolean;
+}
+
+export interface Demo extends HTMLElement {
+	sliderOptions: SliderOption[];
+	sliderData: Record<string, number>;
+	sliderUnits: Record<string, string | string[]>;
+
+	drawDemo(figure: HTMLElement, mouseLocation?: [number, number]): void;
+	onMouseDown(event: MouseEvent): void;
+	onMouseUp(): void;
+	onMouseMove(event: MouseEvent): void;
+	getSliderUnit(sliderValue: number, variable: string): string;
+}
+
+export interface DemoPane extends HTMLElement {
+	name: string;
+	demos: DemoArgs[];
+	id: string;
+	chooseComputeType: boolean;
+	computeType: ComputeType;
+	buildDemo(demo: DemoArgs): Demo;
 }
