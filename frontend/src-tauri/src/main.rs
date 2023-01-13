@@ -1,18 +1,19 @@
 #![cfg_attr(all(not(debug_assertions), target_os = "windows"), windows_subsystem = "windows")]
 
-use std::sync::Arc;
+use graphite_editor::application::Editor;
+use graphite_editor::messages::frontend::utility_types::FrontendImageData;
+use graphite_editor::messages::prelude::*;
 
 use axum::body::StreamBody;
 use axum::extract::Path;
 use axum::http;
 use axum::response::IntoResponse;
-use axum::{routing::get, Router};
+use axum::routing::get;
+use axum::Router;
 use fern::colors::{Color, ColoredLevelConfig};
-use graphite_editor::application::Editor;
-use graphite_editor::messages::frontend::utility_types::FrontendImageData;
-use graphite_editor::messages::prelude::*;
 use http::{Response, StatusCode};
 use std::collections::HashMap;
+use std::sync::Arc;
 use std::sync::Mutex;
 use tauri::Manager;
 
