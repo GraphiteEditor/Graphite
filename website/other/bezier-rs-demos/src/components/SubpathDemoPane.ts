@@ -1,4 +1,4 @@
-import { SubpathFeatureName } from "@/features/subpathFeatures";
+import { SubpathFeatureName } from "@/features/subpath-features";
 import { renderDemoPane } from "@/utils/render";
 import { ComputeType, Demo, DemoPane, SliderOption, SubpathDemoArgs } from "@/utils/types";
 

@@ -1,5 +1,5 @@
 import { WasmSubpath } from "@/../wasm/pkg";
-import subpathFeatures, { SubpathFeatureName } from "@/features/subpathFeatures";
+import subpathFeatures, { SubpathFeatureName } from "@/features/subpath-features";
 import { renderDemo } from "@/utils/render";
 
 import { SubpathCallback, WasmSubpathInstance, WasmSubpathManipulatorKey, SliderOption, ComputeType } from "@/utils/types";

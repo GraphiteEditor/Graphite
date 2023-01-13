@@ -1,4 +1,4 @@
-import { BezierFeatureName } from "@/features/bezierFeatures";
+import { BezierFeatureName } from "@/features/bezier-features";
 import { renderDemoPane } from "@/utils/render";
 import { BezierCurveType, BEZIER_CURVE_TYPE, ComputeType, BezierDemoOptions, SliderOption, Demo, DemoPane, BezierDemoArgs } from "@/utils/types";
 

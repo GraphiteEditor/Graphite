@@ -1,5 +1,5 @@
 import { WasmBezier } from "@/../wasm/pkg";
-import bezierFeatures, { BezierFeatureName } from "@/features/bezierFeatures";
+import bezierFeatures, { BezierFeatureName } from "@/features/bezier-features";
 import { renderDemo } from "@/utils/render";
 import { getConstructorKey, getCurveType, BezierCallback, BezierCurveType, SliderOption, WasmBezierManipulatorKey, ComputeType, Demo } from "@/utils/types";
 

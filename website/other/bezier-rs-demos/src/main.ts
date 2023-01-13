@@ -3,8 +3,8 @@ import BezierDemoPane from "@/components/BezierDemoPane";
 import SubpathDemo from "@/components/SubpathDemo";
 import SubpathDemoPane from "@/components/SubpathDemoPane";
 
-import bezierFeatures, { BezierFeatureName } from "@/features/bezierFeatures";
-import subpathFeatures, { SubpathFeatureName } from "@/features/subpathFeatures";
+import bezierFeatures, { BezierFeatureName } from "@/features/bezier-features";
+import subpathFeatures, { SubpathFeatureName } from "@/features/subpath-features";
 
 import "@/style.css";
 
