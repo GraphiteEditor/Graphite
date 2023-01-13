@@ -2,7 +2,8 @@ use std::error::Error;
 
 use dyn_any::DynAny;
 
-use crate::{document::NodeNetwork, proto::ProtoNetwork};
+use crate::document::NodeNetwork;
+use crate::proto::ProtoNetwork;
 
 pub struct Compiler {}
 

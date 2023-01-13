@@ -62,23 +62,23 @@ fn start_widgets(document_node: &DocumentNode, node_id: NodeId, index: usize, na
 	widgets
 }
 
-fn text_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> Vec<WidgetHolder> {
-	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::Text, blank_assist);
+// fn text_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> Vec<WidgetHolder> {
+// 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::Text, blank_assist);
 
-	if let NodeInput::Value {
-		tagged_value: TaggedValue::String(x),
-		exposed: false,
-	} = &document_node.inputs[index]
-	{
-		widgets.extend_from_slice(&[
-			WidgetHolder::unrelated_separator(),
-			TextInput::new(x.clone())
-				.on_update(update_value(|x: &TextInput| TaggedValue::String(x.value.clone()), node_id, index))
-				.widget_holder(),
-		])
-	}
-	widgets
-}
+// 	if let NodeInput::Value {
+// 		tagged_value: TaggedValue::String(x),
+// 		exposed: false,
+// 	} = &document_node.inputs[index]
+// 	{
+// 		widgets.extend_from_slice(&[
+// 			WidgetHolder::unrelated_separator(),
+// 			TextInput::new(x.clone())
+// 				.on_update(update_value(|x: &TextInput| TaggedValue::String(x.value.clone()), node_id, index))
+// 				.widget_holder(),
+// 		])
+// 	}
+// 	widgets
+// }
 
 fn text_area_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> Vec<WidgetHolder> {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::Text, blank_assist);
