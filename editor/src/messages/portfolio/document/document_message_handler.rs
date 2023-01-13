@@ -496,9 +496,9 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 					.into(),
 				);
 			}
-			MoveSelectedManipulatorPoints { layer_path, delta } => {
+			MoveSelectedManipulatorPoints { layer_path, delta, mirror_distance } => {
 				if let Ok(_layer) = self.document_legacy.layer(&layer_path) {
-					responses.push_back(DocumentOperation::MoveSelectedManipulatorPoints { layer_path, delta }.into());
+					responses.push_back(DocumentOperation::MoveSelectedManipulatorPoints { layer_path, delta, mirror_distance }.into());
 				}
 			}
 			NodeGraphFrameGenerate => {
@@ -826,19 +826,8 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				responses.push_back(DocumentOperation::ToggleLayerVisibility { path: layer_path }.into());
 				responses.push_back(BroadcastEvent::DocumentIsDirty.into());
 			}
-			ToggleSelectedHandleMirroring {
-				layer_path,
-				toggle_distance,
-				toggle_angle,
-			} => {
-				responses.push_back(
-					DocumentOperation::SetSelectedHandleMirroring {
-						layer_path,
-						toggle_distance,
-						toggle_angle,
-					}
-					.into(),
-				);
+			ToggleSelectedHandleMirroring { layer_path, toggle_angle } => {
+				responses.push_back(DocumentOperation::SetSelectedHandleMirroring { layer_path, toggle_angle }.into());
 			}
 			Undo => {
 				self.undo_in_progress = true;

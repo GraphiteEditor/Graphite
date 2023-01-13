@@ -131,7 +131,6 @@ struct PathToolData {
 
 	drag_start_pos: DVec2,
 	alt_debounce: bool,
-	shift_debounce: bool,
 }
 
 impl Fsm for PathToolFsmState {
@@ -248,20 +247,16 @@ impl Fsm for PathToolFsmState {
 						tool_data.alt_debounce = alt_pressed;
 						// Only on alt down
 						if alt_pressed {
-							tool_data.shape_editor.toggle_handle_mirroring_on_selected(true, false, responses);
+							tool_data.shape_editor.toggle_handle_mirroring_on_selected(true, responses);
 						}
 					}
 
 					// Determine when shift state changes
 					let shift_pressed = input.keyboard.get(shift_mirror_distance as usize);
-					if shift_pressed != tool_data.shift_debounce {
-						tool_data.shift_debounce = shift_pressed;
-						tool_data.shape_editor.toggle_handle_mirroring_on_selected(false, true, responses);
-					}
 
 					// Move the selected points by the mouse position
 					let snapped_position = tool_data.snap_manager.snap_position(responses, document, input.mouse.position);
-					tool_data.shape_editor.move_selected_points(snapped_position - tool_data.drag_start_pos, responses);
+					tool_data.shape_editor.move_selected_points(snapped_position - tool_data.drag_start_pos, shift_pressed, responses);
 					tool_data.drag_start_pos = snapped_position;
 					PathToolFsmState::Dragging
 				}
