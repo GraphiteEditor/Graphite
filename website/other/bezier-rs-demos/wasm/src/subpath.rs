@@ -53,17 +53,17 @@ impl WasmSubpath {
 		subpath_svg
 	}
 
-	pub fn add_manipulator_group(&self, t: f64, compute_type: String) -> String {
+	pub fn insert(&self, t: f64, compute_type: String) -> String {
 		let mut subpath = self.0.clone();
 		let point = match compute_type.as_str() {
 			"Euclidean" => {
 				let parameter = ComputeType::Euclidean(t);
-				subpath.add_manipulator_group(parameter);
+				subpath.insert(parameter);
 				self.0.evaluate(parameter)
 			}
 			"Parametric" => {
 				let parameter = ComputeType::Parametric(t);
-				subpath.add_manipulator_group(parameter);
+				subpath.insert(parameter);
 				self.0.evaluate(parameter)
 			}
 			_ => panic!("Unexpected ComputeType string: '{}'", compute_type),

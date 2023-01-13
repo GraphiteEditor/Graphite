@@ -602,9 +602,8 @@ export default defineComponent({
 					callback: (subpath: WasmSubpathInstance): string => subpath.to_svg(),
 				},
 				{
-					name: "Add manipulator group",
-					callback: (subpath: WasmSubpathInstance, options: Record<string, number>, _: undefined, computeType: ComputeType): string =>
-						subpath.add_manipulator_group(options.computeArgument, computeType),
+					name: "Insert",
+					callback: (subpath: WasmSubpathInstance, options: Record<string, number>, _: undefined, computeType: ComputeType): string => subpath.insert(options.computeArgument, computeType),
 					sliderOptions: [{ ...tSliderOptions, variable: "computeArgument" }],
 					// TODO: Uncomment this after implementing the Euclidean version
 					// chooseComputeType: true,

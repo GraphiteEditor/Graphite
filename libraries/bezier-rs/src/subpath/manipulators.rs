@@ -4,9 +4,9 @@ use crate::utils::f64_compare;
 use crate::ComputeType;
 
 impl Subpath {
-	/// Inserts a manipulator group at a certain point along the subpath based on the parametric `t`-value provided.
+	/// Inserts a `ManipulatorGroup` at a certain point along the subpath based on the parametric `t`-value provided.
 	/// Expects `t` to be within the inclusive range `[0, 1]`.
-	pub fn add_manipulator_group(&mut self, t: ComputeType) {
+	pub fn insert(&mut self, t: ComputeType) {
 		match t {
 			ComputeType::Parametric(t) => {
 				assert!((0.0..=1.).contains(&t));
@@ -92,44 +92,44 @@ mod tests {
 	}
 
 	#[test]
-	fn add_manipulator_group_in_first_segment_of_open_subpath() {
+	fn insert_in_first_segment_of_open_subpath() {
 		let mut subpath = set_up_open_subpath();
 		let location = subpath.evaluate(ComputeType::Parametric(0.2));
 		let split_pair = subpath.iter().next().unwrap().split((0.2 * 3.) % 1.);
-		subpath.add_manipulator_group(ComputeType::Parametric(0.2));
+		subpath.insert(ComputeType::Parametric(0.2));
 		assert_eq!(subpath.manipulator_groups[1].anchor, location);
 		assert_eq!(split_pair[0], subpath.iter().next().unwrap());
 		assert_eq!(split_pair[1], subpath.iter().nth(1).unwrap());
 	}
 
 	#[test]
-	fn add_manipulator_group_in_last_segment_of_open_subpath() {
+	fn insert_in_last_segment_of_open_subpath() {
 		let mut subpath = set_up_open_subpath();
 		let location = subpath.evaluate(ComputeType::Parametric(0.9));
 		let split_pair = subpath.iter().nth(2).unwrap().split((0.9 * 3.) % 1.);
-		subpath.add_manipulator_group(ComputeType::Parametric(0.9));
+		subpath.insert(ComputeType::Parametric(0.9));
 		assert_eq!(subpath.manipulator_groups[3].anchor, location);
 		assert_eq!(split_pair[0], subpath.iter().nth(2).unwrap());
 		assert_eq!(split_pair[1], subpath.iter().nth(3).unwrap());
 	}
 
 	#[test]
-	fn add_manipulator_group_at_exisiting_manipulator_group_of_open_subpath() {
+	fn insert_at_exisiting_manipulator_group_of_open_subpath() {
 		// This will do nothing to the subpath
 		let mut subpath = set_up_open_subpath();
 		let location = subpath.evaluate(ComputeType::Parametric(0.75));
-		subpath.add_manipulator_group(ComputeType::Parametric(0.75));
+		subpath.insert(ComputeType::Parametric(0.75));
 		assert_eq!(subpath.manipulator_groups[3].anchor, location);
 		assert_eq!(subpath.manipulator_groups.len(), 5);
 		assert_eq!(subpath.len_segments(), 4);
 	}
 
 	#[test]
-	fn add_manipulator_group_at_last_segment_of_closed_subpath() {
+	fn insert_at_last_segment_of_closed_subpath() {
 		let mut subpath = set_up_closed_subpath();
 		let location = subpath.evaluate(ComputeType::Parametric(0.9));
 		let split_pair = subpath.iter().nth(3).unwrap().split((0.9 * 4.) % 1.);
-		subpath.add_manipulator_group(ComputeType::Parametric(0.9));
+		subpath.insert(ComputeType::Parametric(0.9));
 		assert_eq!(subpath.manipulator_groups[4].anchor, location);
 		assert_eq!(split_pair[0], subpath.iter().nth(3).unwrap());
 		assert_eq!(split_pair[1], subpath.iter().nth(4).unwrap());
@@ -137,11 +137,11 @@ mod tests {
 	}
 
 	#[test]
-	fn add_manipulator_group_at_last_manipulator_group_of_closed_subpath() {
+	fn insert_at_last_manipulator_group_of_closed_subpath() {
 		// This will do nothing to the subpath
 		let mut subpath = set_up_closed_subpath();
 		let location = subpath.evaluate(ComputeType::Parametric(1.));
-		subpath.add_manipulator_group(ComputeType::Parametric(1.));
+		subpath.insert(ComputeType::Parametric(1.));
 		assert_eq!(subpath.manipulator_groups[0].anchor, location);
 		assert_eq!(subpath.manipulator_groups.len(), 4);
 		assert!(subpath.closed);
