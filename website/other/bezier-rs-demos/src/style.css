@@ -1,18 +1,19 @@
-
-#app {
+html,
+body {
+	height: 100%;
 	font-family: Arial, sans-serif;
 	text-align: center;
 	margin: 40px 0;
 }
 
-#app > h1 + p {
+body > h1 + p {
 	max-width: 768px;
 	line-height: 1.4;
 	margin: auto;
 	text-align: justify;
 }
 
-#app > h2 {
+body > h2 {
 	margin-top: 40px;
 }
 

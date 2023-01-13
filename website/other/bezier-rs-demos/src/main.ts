@@ -8,27 +8,35 @@ import subpathFeatures, { SubpathFeatureName } from "@/features/subpathFeatures"
 
 import "@/style.css";
 
-document.title = "Bezier-rs Interactive Documentation";
+window.document.title = "Bezier-rs Interactive Documentation";
+window.document.body.innerHTML = `
+<h1>Bezier-rs Interactive Documentation</h1>
+<p>
+	This is the interactive documentation for the <a href="https://crates.io/crates/bezier-rs"><b>Bezier-rs</b></a> library. View the
+	<a href="https://docs.rs/bezier-rs/latest/bezier_rs">crate documentation</a>
+	for detailed function descriptions and API usage. Click and drag on the endpoints of the example curves to visualize the various Bezier utilities and functions.
+</p>
+
+<h2>Beziers</h2>
+<div id="bezier-examples"></div>
+<h2>Subpaths</h2>
+<div id="subpath-examples"></div>
+`.trim();
+
+declare global {
+	interface HTMLElementTagNameMap {
+		"bezier-example": BezierExample;
+		"bezier-example-pane": BezierExamplePane;
+		"subpath-example": SubpathExample;
+		"subpath-example-pane": SubpathExamplePane;
+	}
+}
 
 window.customElements.define("bezier-example", BezierExample);
 window.customElements.define("bezier-example-pane", BezierExamplePane);
 window.customElements.define("subpath-example", SubpathExample);
 window.customElements.define("subpath-example-pane", SubpathExamplePane);
 
-const App = document.getElementById("app");
-if (App) {
-	App.innerHTML = `<h1>Bezier-rs Interactive Documentation</h1>
-  <p>
-    This is the interactive documentation for the <a href="https://crates.io/crates/bezier-rs"><b>Bezier-rs</b></a> library. View the
-    <a href="https://docs.rs/bezier-rs/latest/bezier_rs">crate documentation</a>
-    for detailed function descriptions and API usage. Click and drag on the endpoints of the example curves to visualize the various Bezier utilities and functions.
-  </p>
-
-  <h2>Beziers</h2>
-  <div id="bezier-examples"></div>
-  <h2>Subpaths</h2>
-  <div id="subpath-examples"></div>`;
-}
 const bezierExamples = document.getElementById("bezier-examples");
 (Object.keys(bezierFeatures) as BezierFeatureName[]).forEach((featureName) => {
 	const feature = bezierFeatures[featureName];
@@ -52,12 +60,3 @@ const subpathExamples = document.getElementById("subpath-examples");
 	example.setAttribute("chooseComputeType", String(feature.chooseComputeType));
 	subpathExamples?.append(example);
 });
-
-declare global {
-	interface HTMLElementTagNameMap {
-		"bezier-example": BezierExample;
-		"bezier-example-pane": BezierExamplePane;
-		"subpath-example": SubpathExample;
-		"subpath-example-pane": SubpathExamplePane;
-	}
-}
