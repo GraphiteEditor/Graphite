@@ -3,9 +3,6 @@
 	"private": true,
 	"scripts": {
 		"start": "cd frontend && npm run serve",
-		"serve": "cd frontend && npm run serve",
-		"build": "cd frontend && npm run build",
-		"lint": "cd frontend && npm run lint",
-		"lint-no-fix": "cd frontend && npm run lint-no-fix"
+		"serve": "cd frontend && npm run serve"
 	}
 }
