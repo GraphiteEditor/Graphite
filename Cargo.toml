@@ -4,6 +4,7 @@ members = [
 	"document-legacy",
 	"proc-macros",
 	"frontend/wasm",
+	"frontend-svelte/wasm",
 	"frontend/src-tauri",
 	"node-graph/gcore",
 	"node-graph/gstd",
@@ -32,6 +33,12 @@ exclude = [
 opt-level = 3
 
 [profile.dev.package.graphite-wasm]
+opt-level = 3
+
+[profile.release.package.graphite-wasm-svelte]
+opt-level = 3
+
+[profile.dev.package.graphite-wasm-svelte]
 opt-level = 3
 
 #[profile.dev]

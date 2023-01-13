@@ -47,4 +47,8 @@
 	"html.format.wrapLineLength": 200,
 	"files.eol": "\n",
 	"files.insertFinalNewline": true,
+	"prettier.singleQuote": false,
+	"prettier.useTabs": true,
+	"prettier.tabWidth": 4,
+	"prettier.printWidth": 200,
 }
