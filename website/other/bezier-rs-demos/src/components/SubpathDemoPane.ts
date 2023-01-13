@@ -1,8 +1,8 @@
 import { SubpathFeatureName } from "@/features/subpathFeatures";
-import { renderExamplePane } from "@/utils/render";
-import { ComputeType, Example, ExamplePane, SliderOption, SubpathExampleArgs } from "@/utils/types";
+import { renderDemoPane } from "@/utils/render";
+import { ComputeType, Demo, DemoPane, SliderOption, SubpathDemoArgs } from "@/utils/types";
 
-class SubpathExamplePane extends HTMLElement implements ExamplePane {
+class SubpathDemoPane extends HTMLElement implements DemoPane {
 	// Props
 	name!: SubpathFeatureName;
 
@@ -13,14 +13,14 @@ class SubpathExamplePane extends HTMLElement implements ExamplePane {
 	chooseComputeType!: boolean;
 
 	// Data
-	examples!: SubpathExampleArgs[];
+	demos!: SubpathDemoArgs[];
 
 	id!: string;
 
 	computeType!: ComputeType;
 
 	connectedCallback(): void {
-		this.examples = [
+		this.demos = [
 			{
 				title: "Open Subpath",
 				triples: [
@@ -57,20 +57,20 @@ class SubpathExamplePane extends HTMLElement implements ExamplePane {
 	}
 
 	render(): void {
-		renderExamplePane(this);
+		renderDemoPane(this);
 	}
 
-	buildExample(example: SubpathExampleArgs): Example {
-		const subpathExample = document.createElement("subpath-example");
-		subpathExample.setAttribute("title", example.title);
-		subpathExample.setAttribute("triples", JSON.stringify(example.triples));
-		subpathExample.setAttribute("closed", String(example.closed));
-		subpathExample.setAttribute("name", this.name);
-		subpathExample.setAttribute("sliderOptions", JSON.stringify(this.sliderOptions));
-		subpathExample.setAttribute("triggerOnMouseMove", String(this.triggerOnMouseMove));
-		subpathExample.setAttribute("computetype", this.computeType);
-		return subpathExample;
+	buildDemo(demo: SubpathDemoArgs): Demo {
+		const subpathDemo = document.createElement("subpath-demo");
+		subpathDemo.setAttribute("title", demo.title);
+		subpathDemo.setAttribute("triples", JSON.stringify(demo.triples));
+		subpathDemo.setAttribute("closed", String(demo.closed));
+		subpathDemo.setAttribute("name", this.name);
+		subpathDemo.setAttribute("sliderOptions", JSON.stringify(this.sliderOptions));
+		subpathDemo.setAttribute("triggerOnMouseMove", String(this.triggerOnMouseMove));
+		subpathDemo.setAttribute("computetype", this.computeType);
+		return subpathDemo;
 	}
 }
 
-export default SubpathExamplePane;
+export default SubpathDemoPane;

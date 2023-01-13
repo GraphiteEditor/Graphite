@@ -1,26 +1,26 @@
-import { ComputeType, Example, ExamplePane, SliderOption } from "@/utils/types";
+import { ComputeType, Demo, DemoPane, SliderOption } from "@/utils/types";
 
-export function renderExample(example: Example): void {
+export function renderDemo(demo: Demo): void {
 	const header = document.createElement("h4");
-	header.className = "example-header";
-	header.innerText = example.title;
+	header.className = "demo-header";
+	header.innerText = demo.title;
 
 	const figure = document.createElement("figure");
-	figure.className = "example-figure";
-	figure.addEventListener("mousedown", example.onMouseDown.bind(example));
-	figure.addEventListener("mouseup", example.onMouseUp.bind(example));
-	figure.addEventListener("mousemove", example.onMouseMove.bind(example));
+	figure.className = "demo-figure";
+	figure.addEventListener("mousedown", demo.onMouseDown.bind(demo));
+	figure.addEventListener("mouseup", demo.onMouseUp.bind(demo));
+	figure.addEventListener("mousemove", demo.onMouseMove.bind(demo));
 
-	example.append(header);
-	example.append(figure);
+	demo.append(header);
+	demo.append(figure);
 
-	example.sliderOptions.forEach((sliderOption: SliderOption) => {
+	demo.sliderOptions.forEach((sliderOption: SliderOption) => {
 		const sliderLabel = document.createElement("div");
-		const sliderData = example.sliderData[sliderOption.variable];
-		const sliderUnit = example.getSliderUnit(sliderData, sliderOption.variable);
+		const sliderData = demo.sliderData[sliderOption.variable];
+		const sliderUnit = demo.getSliderUnit(sliderData, sliderOption.variable);
 		sliderLabel.className = "slider-label";
 		sliderLabel.innerText = `${sliderOption.variable} = ${sliderData}${sliderUnit}`;
-		example.append(sliderLabel);
+		demo.append(sliderLabel);
 
 		const sliderInput = document.createElement("input");
 		sliderInput.className = "slider-input";
@@ -30,21 +30,21 @@ export function renderExample(example: Example): void {
 		sliderInput.step = String(sliderOption.step);
 		sliderInput.value = String(sliderOption.default);
 		sliderInput.addEventListener("input", (event: Event): void => {
-			example.sliderData[sliderOption.variable] = Number((event.target as HTMLInputElement).value);
-			sliderLabel.innerText = `${sliderOption.variable} = ${example.sliderData[sliderOption.variable]}${sliderUnit}`;
-			example.drawExample(figure);
+			demo.sliderData[sliderOption.variable] = Number((event.target as HTMLInputElement).value);
+			sliderLabel.innerText = `${sliderOption.variable} = ${demo.sliderData[sliderOption.variable]}${sliderUnit}`;
+			demo.drawDemo(figure);
 		});
-		example.append(sliderInput);
+		demo.append(sliderInput);
 	});
 }
 
-export function renderExamplePane(examplePane: ExamplePane): void {
+export function renderDemoPane(demoPane: DemoPane): void {
 	const container = document.createElement("div");
-	container.className = "example-pane-container";
+	container.className = "demo-pane-container";
 
 	const header = document.createElement("h3");
-	header.innerText = examplePane.name;
-	header.className = "example-pane-header";
+	header.innerText = demoPane.name;
+	header.className = "demo-pane-header";
 
 	const computeTypeContainer = document.createElement("div");
 	computeTypeContainer.className = "compute-type-choice";
@@ -54,7 +54,7 @@ export function renderExamplePane(examplePane: ExamplePane): void {
 	computeTypeContainer.append(computeTypeLabel);
 
 	const radioInputs = ["Parametric", "Euclidean"].map((computeType) => {
-		const id = `${examplePane.id}-${computeType}`;
+		const id = `${demoPane.id}-${computeType}`;
 		const radioInput = document.createElement("input");
 		radioInput.type = "radio";
 		radioInput.id = id;
@@ -70,29 +70,29 @@ export function renderExamplePane(examplePane: ExamplePane): void {
 		return radioInput;
 	});
 
-	const exampleRow = document.createElement("div");
-	exampleRow.className = "example-row";
+	const demoRow = document.createElement("div");
+	demoRow.className = "demo-row";
 
-	examplePane.examples.forEach((example) => {
-		if (example.disabled) {
+	demoPane.demos.forEach((demo) => {
+		if (demo.disabled) {
 			return;
 		}
-		const exampleComponent = examplePane.buildExample(example);
+		const demoComponent = demoPane.buildDemo(demo);
 
 		radioInputs.forEach((radioInput: HTMLElement) => {
 			radioInput.addEventListener("input", (event: Event): void => {
-				examplePane.computeType = (event.target as HTMLInputElement).value as ComputeType;
-				exampleComponent.setAttribute("computetype", examplePane.computeType);
+				demoPane.computeType = (event.target as HTMLInputElement).value as ComputeType;
+				demoComponent.setAttribute("computetype", demoPane.computeType);
 			});
 		});
-		exampleRow.append(exampleComponent);
+		demoRow.append(demoComponent);
 	});
 
 	container.append(header);
-	if (examplePane.chooseComputeType) {
+	if (demoPane.chooseComputeType) {
 		container.append(computeTypeContainer);
 	}
-	container.append(exampleRow);
+	container.append(demoRow);
 
-	examplePane.append(container);
+	demoPane.append(container);
 }

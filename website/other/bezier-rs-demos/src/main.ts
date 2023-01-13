@@ -1,7 +1,7 @@
-import BezierExample from "@/components/BezierExample";
-import BezierExamplePane from "@/components/BezierExamplePane";
-import SubpathExample from "@/components/SubpathExample";
-import SubpathExamplePane from "@/components/SubpathExamplePane";
+import BezierDemo from "@/components/BezierDemo";
+import BezierDemoPane from "@/components/BezierDemoPane";
+import SubpathDemo from "@/components/SubpathDemo";
+import SubpathDemoPane from "@/components/SubpathDemoPane";
 
 import bezierFeatures, { BezierFeatureName } from "@/features/bezierFeatures";
 import subpathFeatures, { SubpathFeatureName } from "@/features/subpathFeatures";
@@ -14,49 +14,49 @@ window.document.body.innerHTML = `
 <p>
 	This is the interactive documentation for the <a href="https://crates.io/crates/bezier-rs"><b>Bezier-rs</b></a> library. View the
 	<a href="https://docs.rs/bezier-rs/latest/bezier_rs">crate documentation</a>
-	for detailed function descriptions and API usage. Click and drag on the endpoints of the example curves to visualize the various Bezier utilities and functions.
+	for detailed function descriptions and API usage. Click and drag on the endpoints of the demo curves to visualize the various Bezier utilities and functions.
 </p>
 
 <h2>Beziers</h2>
-<div id="bezier-examples"></div>
+<div id="bezier-demos"></div>
 <h2>Subpaths</h2>
-<div id="subpath-examples"></div>
+<div id="subpath-demos"></div>
 `.trim();
 
 declare global {
 	interface HTMLElementTagNameMap {
-		"bezier-example": BezierExample;
-		"bezier-example-pane": BezierExamplePane;
-		"subpath-example": SubpathExample;
-		"subpath-example-pane": SubpathExamplePane;
+		"bezier-demo": BezierDemo;
+		"bezier-demo-pane": BezierDemoPane;
+		"subpath-demo": SubpathDemo;
+		"subpath-demo-pane": SubpathDemoPane;
 	}
 }
 
-window.customElements.define("bezier-example", BezierExample);
-window.customElements.define("bezier-example-pane", BezierExamplePane);
-window.customElements.define("subpath-example", SubpathExample);
-window.customElements.define("subpath-example-pane", SubpathExamplePane);
+window.customElements.define("bezier-demo", BezierDemo);
+window.customElements.define("bezier-demo-pane", BezierDemoPane);
+window.customElements.define("subpath-demo", SubpathDemo);
+window.customElements.define("subpath-demo-pane", SubpathDemoPane);
 
-const bezierExamples = document.getElementById("bezier-examples");
+const bezierDemos = document.getElementById("bezier-demos");
 (Object.keys(bezierFeatures) as BezierFeatureName[]).forEach((featureName) => {
 	const feature = bezierFeatures[featureName];
-	const example = document.createElement("bezier-example-pane");
+	const demo = document.createElement("bezier-demo-pane");
 
-	example.setAttribute("name", featureName);
-	example.setAttribute("exampleOptions", JSON.stringify(feature.exampleOptions || {}));
-	example.setAttribute("triggerOnMouseMove", String(feature.triggerOnMouseMove));
-	example.setAttribute("chooseComputeType", String(feature.chooseComputeType));
-	bezierExamples?.append(example);
+	demo.setAttribute("name", featureName);
+	demo.setAttribute("demoOptions", JSON.stringify(feature.demoOptions || {}));
+	demo.setAttribute("triggerOnMouseMove", String(feature.triggerOnMouseMove));
+	demo.setAttribute("chooseComputeType", String(feature.chooseComputeType));
+	bezierDemos?.append(demo);
 });
 
-const subpathExamples = document.getElementById("subpath-examples");
+const subpathDemos = document.getElementById("subpath-demos");
 (Object.keys(subpathFeatures) as SubpathFeatureName[]).forEach((featureName) => {
 	const feature = subpathFeatures[featureName];
-	const example = document.createElement("subpath-example-pane");
+	const demo = document.createElement("subpath-demo-pane");
 
-	example.setAttribute("name", featureName);
-	example.setAttribute("sliderOptions", JSON.stringify(feature.sliderOptions || []));
-	example.setAttribute("triggerOnMouseMove", String(feature.triggerOnMouseMove));
-	example.setAttribute("chooseComputeType", String(feature.chooseComputeType));
-	subpathExamples?.append(example);
+	demo.setAttribute("name", featureName);
+	demo.setAttribute("sliderOptions", JSON.stringify(feature.sliderOptions || []));
+	demo.setAttribute("triggerOnMouseMove", String(feature.triggerOnMouseMove));
+	demo.setAttribute("chooseComputeType", String(feature.chooseComputeType));
+	subpathDemos?.append(demo);
 });

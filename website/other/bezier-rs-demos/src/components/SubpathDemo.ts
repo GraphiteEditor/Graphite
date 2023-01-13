@@ -1,13 +1,13 @@
 import { WasmSubpath } from "@/../wasm/pkg";
 import subpathFeatures, { SubpathFeatureName } from "@/features/subpathFeatures";
-import { renderExample } from "@/utils/render";
+import { renderDemo } from "@/utils/render";
 
 import { SubpathCallback, WasmSubpathInstance, WasmSubpathManipulatorKey, SliderOption, ComputeType } from "@/utils/types";
 
 const SELECTABLE_RANGE = 10;
 const POINT_INDEX_TO_MANIPULATOR: WasmSubpathManipulatorKey[] = ["set_anchor", "set_in_handle", "set_out_handle"];
 
-class SubpathExample extends HTMLElement {
+class SubpathDemo extends HTMLElement {
 	// Props
 	title!: string;
 
@@ -44,7 +44,7 @@ class SubpathExample extends HTMLElement {
 		if (name === "computetype" && oldValue) {
 			this.computeType = (newValue || "Parametric") as ComputeType;
 			const figure = this.querySelector("figure") as HTMLElement;
-			this.drawExample(figure);
+			this.drawDemo(figure);
 		}
 	}
 
@@ -65,14 +65,14 @@ class SubpathExample extends HTMLElement {
 		this.render();
 
 		const figure = this.querySelector("figure") as HTMLElement;
-		this.drawExample(figure);
+		this.drawDemo(figure);
 	}
 
 	render(): void {
-		renderExample(this);
+		renderDemo(this);
 	}
 
-	drawExample(figure: HTMLElement, mouseLocation?: [number, number]): void {
+	drawDemo(figure: HTMLElement, mouseLocation?: [number, number]): void {
 		figure.innerHTML = this.callback(this.subpath, this.sliderData, mouseLocation, this.computeType);
 	}
 
@@ -101,9 +101,9 @@ class SubpathExample extends HTMLElement {
 		if (this.activeIndex) {
 			this.subpath[POINT_INDEX_TO_MANIPULATOR[this.activeIndex[1]]](this.activeIndex[0], mx, my);
 			this.triples[this.activeIndex[0]][this.activeIndex[1]] = [mx, my];
-			this.drawExample(figure);
+			this.drawDemo(figure);
 		} else if (this.triggerOnMouseMove) {
-			this.drawExample(figure, [mx, my]);
+			this.drawDemo(figure, [mx, my]);
 		}
 	}
 
@@ -113,4 +113,4 @@ class SubpathExample extends HTMLElement {
 	}
 }
 
-export default SubpathExample;
+export default SubpathDemo;

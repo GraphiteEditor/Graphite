@@ -1,7 +1,7 @@
 import { WasmBezier } from "@/../wasm/pkg";
 import bezierFeatures, { BezierFeatureName } from "@/features/bezierFeatures";
-import { renderExample } from "@/utils/render";
-import { getConstructorKey, getCurveType, BezierCallback, BezierCurveType, SliderOption, WasmBezierManipulatorKey, ComputeType, Example } from "@/utils/types";
+import { renderDemo } from "@/utils/render";
+import { getConstructorKey, getCurveType, BezierCallback, BezierCurveType, SliderOption, WasmBezierManipulatorKey, ComputeType, Demo } from "@/utils/types";
 
 const SELECTABLE_RANGE = 10;
 
@@ -12,7 +12,7 @@ const MANIPULATOR_KEYS_FROM_BEZIER_TYPE: { [key in BezierCurveType]: WasmBezierM
 	Cubic: ["set_start", "set_handle_start", "set_handle_end", "set_end"],
 };
 
-class BezierExample extends HTMLElement implements Example {
+class BezierDemo extends HTMLElement implements Demo {
 	// Props
 	title!: string;
 
@@ -47,7 +47,7 @@ class BezierExample extends HTMLElement implements Example {
 		if (name === "computetype" && oldValue) {
 			this.computeType = (newValue || "Parametric") as ComputeType;
 			const figure = this.querySelector("figure") as HTMLElement;
-			this.drawExample(figure);
+			this.drawDemo(figure);
 		}
 	}
 
@@ -70,14 +70,14 @@ class BezierExample extends HTMLElement implements Example {
 		this.render();
 
 		const figure = this.querySelector("figure") as HTMLElement;
-		this.drawExample(figure);
+		this.drawDemo(figure);
 	}
 
 	render(): void {
-		renderExample(this);
+		renderDemo(this);
 	}
 
-	drawExample(figure: HTMLElement, mouseLocation?: [number, number]): void {
+	drawDemo(figure: HTMLElement, mouseLocation?: [number, number]): void {
 		figure.innerHTML = this.callback(this.bezier, this.sliderData, mouseLocation, this.computeType);
 	}
 
@@ -105,9 +105,9 @@ class BezierExample extends HTMLElement implements Example {
 		if (this.activeIndex !== undefined) {
 			this.bezier[this.manipulatorKeys[this.activeIndex]](mx, my);
 			this.points[this.activeIndex] = [mx, my];
-			this.drawExample(figure);
+			this.drawDemo(figure);
 		} else if (this.triggerOnMouseMove) {
-			this.drawExample(figure, [mx, my]);
+			this.drawDemo(figure, [mx, my]);
 		}
 	}
 
@@ -117,4 +117,4 @@ class BezierExample extends HTMLElement implements Example {
 	}
 }
 
-export default BezierExample;
+export default BezierDemo;

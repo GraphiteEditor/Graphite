@@ -17,8 +17,8 @@ body > h2 {
 	margin-top: 40px;
 }
 
-/* Example Pane styles */
-.example-row {
+/* Demo Pane styles */
+.demo-row {
 	display: flex;
 	flex-direction: row;
 	justify-content: center;
@@ -28,23 +28,23 @@ body > h2 {
 	margin-top: 20px;
 }
 
-.example-pane-header {
+.demo-pane-header {
 	margin-top: 2em;
 	margin-bottom: 0;
 }
 
-.example-pane-container {
+.demo-pane-container {
 	position: relative;
 	width: fit-content;
 	margin: auto;
 }
 
-/* Example styles */
-.example-header {
+/* Demo styles */
+.demo-header {
 	margin: 20px 0;
 }
 
-.example-figure {
+.demo-figure {
 	width: 200px;
 	height: 200px;
 	margin-bottom: 20px;
