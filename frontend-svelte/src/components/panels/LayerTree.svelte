@@ -109,7 +109,7 @@
 
 		await tick();
 
-		const textInput: HTMLInputElement | undefined = list?.querySelector("[data-text-input]:not([disabled])") || undefined;
+		const textInput = (list?.div().querySelector("[data-text-input]:not([disabled])") || undefined) as HTMLInputElement | undefined;
 		textInput?.select();
 	}
 
@@ -169,7 +169,7 @@
 
 	function calculateDragIndex(tree: LayoutCol, clientY: number, select?: () => void): DraggingData {
 		const treeChildren = tree.div().children;
-		const treeOffset = tree.getBoundingClientRect().top;
+		const treeOffset = tree.div().getBoundingClientRect().top;
 
 		// Closest distance to the middle of the row along the Y axis
 		let closest = Infinity;

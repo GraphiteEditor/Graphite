@@ -9,7 +9,7 @@
 	export let scrollableX: boolean = false;
 	export let scrollableY: boolean = false;
 
-	let divElement: HTMLDivElement;
+	let self: HTMLDivElement;
 
 	$: extraClasses = Object.entries(classes)
 		.flatMap((classAndState) => (classAndState[1] ? [classAndState[0]] : []))
@@ -19,7 +19,7 @@
 		.join(" ");
 
 	export function div(): HTMLDivElement {
-		return divElement;
+		return self;
 	}
 </script>
 
@@ -29,21 +29,52 @@
 	class:scrollable-y={scrollableY}
 	style={`${styleName} ${extraStyles}`.trim() || undefined}
 	title={tooltip}
-	bind:this={divElement}
+	bind:this={self}
+	on:focus
+	on:blur
+	on:fullscreenchange
+	on:fullscreenerror
+	on:scroll
+	on:cut
+	on:copy
+	on:paste
+	on:keydown
+	on:keypress
+	on:keyup
+	on:auxclick
 	on:click
+	on:contextmenu
 	on:dblclick
+	on:mousedown
+	on:mouseenter
+	on:mouseleave
+	on:mousemove
+	on:mouseover
+	on:mouseout
+	on:mouseup
+	on:select
+	on:wheel
+	on:drag
+	on:dragend
+	on:dragenter
+	on:dragstart
+	on:dragleave
+	on:dragover
+	on:drop
+	on:touchcancel
+	on:touchend
+	on:touchmove
+	on:touchstart
+	on:pointerover
+	on:pointerenter
 	on:pointerdown
 	on:pointermove
 	on:pointerup
-	on:dragleave
-	on:dragover
-	on:dragstart
-	on:dragend
-	on:drop
-	on:wheel
-	on:scroll
-	on:focus
-	on:blur
+	on:pointercancel
+	on:pointerout
+	on:pointerleave
+	on:gotpointercapture
+	on:lostpointercapture
 	{...$$restProps}
 >
 	<slot />

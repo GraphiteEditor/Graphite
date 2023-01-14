@@ -28,10 +28,9 @@
 	import { type Editor } from "@/wasm-communication/editor";
 	import { type DocumentState } from "@/state-providers/document";
 
-	let self: LayoutCol;
 	let rulerHorizontal: CanvasRuler;
 	let rulerVertical: CanvasRuler;
-	let canvasDiv: HTMLDivElement;
+	let canvasContainer: HTMLDivElement;
 
 	const editor = getContext<Editor>("editor");
 	const document = getContext<DocumentState>("document");
@@ -116,7 +115,7 @@
 	function canvasPointerDown(e: PointerEvent) {
 		const onEditbox = e.target instanceof HTMLDivElement && e.target.contentEditable;
 
-		if (!onEditbox) canvasDiv?.setPointerCapture(e.pointerId);
+		if (!onEditbox) canvasContainer?.setPointerCapture(e.pointerId);
 	}
 
 	// Update rendered SVGs
@@ -127,7 +126,7 @@
 		await tick();
 
 		if (textInput) {
-			const foreignObject = canvasDiv.getElementsByTagName("foreignObject")[0] as SVGForeignObjectElement;
+			const foreignObject = canvasContainer.getElementsByTagName("foreignObject")[0] as SVGForeignObjectElement;
 			if (foreignObject.children.length > 0) return;
 
 			const addedInput = foreignObject.appendChild(textInput);
@@ -285,8 +284,8 @@
 	// Resize elements to render the new viewport size
 	export function viewportResize() {
 		// Resize the canvas
-		canvasSvgWidth = Math.ceil(parseFloat(getComputedStyle(canvasDiv).width));
-		canvasSvgHeight = Math.ceil(parseFloat(getComputedStyle(canvasDiv).height));
+		canvasSvgWidth = Math.ceil(parseFloat(getComputedStyle(canvasContainer).width));
+		canvasSvgHeight = Math.ceil(parseFloat(getComputedStyle(canvasContainer).height));
 
 		// Resize the rulers
 		rulerHorizontal?.resize();
@@ -382,7 +381,7 @@
 	});
 </script>
 
-<LayoutCol class="document" bind:this={self}>
+<LayoutCol class="document">
 	<LayoutRow class="options-bar" scrollableX={true}>
 		<WidgetLayout layout={$document.documentModeLayout} />
 		<WidgetLayout layout={$document.toolOptionsLayout} />
@@ -422,7 +421,7 @@
 							y={cursorTop}
 						/>
 					{/if}
-					<div class="canvas" on:pointerdown={(e) => canvasPointerDown(e)} on:dragover={(e) => e.preventDefault()} on:drop={(e) => pasteFile(e)} bind:this={canvasDiv} data-canvas>
+					<div class="canvas" on:pointerdown={(e) => canvasPointerDown(e)} on:dragover={(e) => e.preventDefault()} on:drop={(e) => pasteFile(e)} bind:this={canvasContainer} data-canvas>
 						<svg class="artboards" style:width={canvasWidthCSS} style:height={canvasHeightCSS}>
 							{@html artboardSvg}
 						</svg>
