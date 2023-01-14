@@ -3,6 +3,9 @@ body {
 	height: 100%;
 	font-family: Arial, sans-serif;
 	text-align: center;
+}
+
+body > h1 {
 	margin: 40px 0;
 }
 
