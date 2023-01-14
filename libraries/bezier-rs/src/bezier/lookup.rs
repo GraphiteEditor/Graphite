@@ -4,8 +4,7 @@ use super::*;
 
 /// Functionality relating to looking up properties of the `Bezier` or points along the `Bezier`.
 impl Bezier {
-
-	/// Convert the euclidean distance to the parametric t-value.
+	/// Convert a euclidean distance along the `Bezier` to a parametric `t`-value.
 	pub fn euclidean_to_parametric(&self, d: f64, error: f64) -> f64 {
 		let mut low = 0.;
 		let mut mid = 0.;
@@ -14,7 +13,7 @@ impl Bezier {
 
 		while low < high {
 			mid = (low + high) / 2.;
-			let test_d = self.trim(0., mid).length(None) / total_length;
+			let test_d = self.trim(ComputeType::Parametric(0.), ComputeType::Parametric(mid)).length(None) / total_length;
 			if f64_compare(test_d, d, error) {
 				break;
 			} else if test_d < d {
@@ -25,6 +24,24 @@ impl Bezier {
 		}
 
 		mid
+	}
+
+	/// Convert a [ComputeType] to a parametric `t`-value.
+	pub(crate) fn compute_type_to_parametric(&self, c: ComputeType) -> f64 {
+		match c {
+			ComputeType::Parametric(t) => {
+				assert!((0.0..=1.).contains(&t));
+				t
+			}
+			ComputeType::Euclidean(distance) => {
+				assert!((0.0..=1.).contains(&distance));
+				self.euclidean_to_parametric(distance, 0.0001)
+			}
+			ComputeType::EuclideanWithinError { distance, epsilon } => {
+				assert!((0.0..=1.).contains(&distance));
+				self.euclidean_to_parametric(distance, epsilon)
+			}
+		}
 	}
 
 	/// Calculate the point on the curve based on the `t`-value provided.
@@ -46,29 +63,11 @@ impl Bezier {
 		}
 	}
 
-	/// Calculate the point along the curve that is a factor of `d` away from the start.
-	pub(crate) fn unrestricted_euclidean_evaluate(&self, d: f64, error: f64) -> DVec2 {
-		let t_value = self.euclidean_to_parametric(d, error);
-		self.unrestricted_parametric_evaluate(t_value)
-	}
-
 	/// Calculate the point on the curve based on the `t`-value provided.
 	/// Expects `t` to be within the inclusive range `[0, 1]`.
-	pub fn evaluate(&self, t: ComputeType) -> DVec2 {
-		match t {
-			ComputeType::Parametric(t) => {
-				assert!((0.0..=1.).contains(&t));
-				self.unrestricted_parametric_evaluate(t)
-			}
-			ComputeType::Euclidean(t) => {
-				assert!((0.0..=1.).contains(&t));
-				self.unrestricted_euclidean_evaluate(t, 0.0001)
-			}
-			ComputeType::EuclideanWithinError { t, epsilon } => {
-				assert!((0.0..=1.).contains(&t));
-				self.unrestricted_euclidean_evaluate(t, epsilon)
-			}
-		}
+	pub fn evaluate(&self, c: ComputeType) -> DVec2 {
+		let t = self.compute_type_to_parametric(c);
+		self.unrestricted_parametric_evaluate(t)
 	}
 
 	/// Return a selection of equidistant points on the bezier curve.
@@ -111,7 +110,7 @@ impl Bezier {
 		}
 	}
 
-	/// Returns the `t` value that corresponds to the closest point on the curve to the provided point.
+	/// Returns the parametric `t`-value that corresponds to the closest point on the curve to the provided point.
 	/// Uses a searching algorithm akin to binary search that can be customized using the [ProjectionOptions] structure.
 	pub fn project(&self, point: DVec2, options: ProjectionOptions) -> f64 {
 		let ProjectionOptions {

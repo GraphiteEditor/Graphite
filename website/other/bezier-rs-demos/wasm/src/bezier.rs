@@ -41,6 +41,14 @@ fn convert_wasm_maximize_arcs(wasm_enum_value: WasmMaximizeArcs) -> ArcStrategy 
 	}
 }
 
+fn parse_compute_type(compute_type: &String, c: f64) -> ComputeType {
+	match compute_type.as_str() {
+		"Parametric" => ComputeType::Parametric(c),
+		"Euclidean" => ComputeType::Euclidean(c),
+		_ => panic!("Unexpected ComputeType string: '{}'", compute_type),
+	}
+}
+
 #[wasm_bindgen]
 impl WasmBezier {
 	/// Expect js_points to be a list of 2 pairs.
@@ -128,13 +136,10 @@ impl WasmBezier {
 		wrap_svg_tag(format!("{bezier}{}", draw_text(format!("Length: {:.2}", self.0.length(None)), TEXT_OFFSET_X, TEXT_OFFSET_Y, BLACK)))
 	}
 
-	pub fn evaluate(&self, t: f64, compute_type: String) -> String {
+	pub fn evaluate(&self, raw_c: f64, compute_type: String) -> String {
 		let bezier = self.get_bezier_path();
-		let point = match compute_type.as_str() {
-			"Euclidean" => self.0.evaluate(ComputeType::Euclidean(t)),
-			"Parametric" => self.0.evaluate(ComputeType::Parametric(t)),
-			_ => panic!("Unexpected ComputeType string: '{}'", compute_type),
-		};
+		let c = parse_compute_type(&compute_type, raw_c);
+		let point = self.0.evaluate(c);
 		let content = format!("{bezier}{}", draw_circle(point, 4., RED, 1.5, WHITE));
 		wrap_svg_tag(content)
 	}
@@ -169,19 +174,12 @@ impl WasmBezier {
 		wrap_svg_tag(content)
 	}
 
-	pub fn tangent(&self, t: f64, compute_type: String) -> String {
+	pub fn tangent(&self, raw_c: f64, compute_type: String) -> String {
 		let bezier = self.get_bezier_path();
+		let c = parse_compute_type(&compute_type, raw_c);
 
-		let tangent_point = match compute_type.as_str() {
-			"Euclidean" => self.0.tangent(ComputeType::Euclidean(t)),
-			"Parametric" => self.0.tangent(ComputeType::Parametric(t)),
-			_ => panic!("Unexpected ComputeType string: '{}'", compute_type),
-		};
-		let intersection_point = match compute_type.as_str() {
-			"Euclidean" => self.0.evaluate(ComputeType::Euclidean(t)),
-			"Parametric" => self.0.evaluate(ComputeType::Parametric(t)),
-			_ => panic!("Unexpected ComputeType string: '{}'", compute_type),
-		};
+		let tangent_point = self.0.tangent(c);
+		let intersection_point = self.0.evaluate(c);
 		let tangent_end = intersection_point + tangent_point * SCALE_UNIT_VECTOR_FACTOR;
 
 		let content = format!(
@@ -193,18 +191,12 @@ impl WasmBezier {
 		wrap_svg_tag(content)
 	}
 
-	pub fn normal(&self, t: f64, compute_type: String) -> String {
+	pub fn normal(&self, raw_c: f64, compute_type: String) -> String {
 		let bezier = self.get_bezier_path();
-		let normal_point = match compute_type.as_str() {
-			"Euclidean" => self.0.normal(ComputeType::Euclidean(t)),
-			"Parametric" => self.0.normal(ComputeType::Parametric(t)),
-			_ => panic!("Unexpected ComputeType string: '{}'", compute_type),
-		};
-		let intersection_point = match compute_type.as_str() {
-			"Euclidean" => self.0.evaluate(ComputeType::Euclidean(t)),
-			"Parametric" => self.0.evaluate(ComputeType::Parametric(t)),
-			_ => panic!("Unexpected ComputeType string: '{}'", compute_type),
-		};
+		let c = parse_compute_type(&compute_type, raw_c);
+
+		let normal_point = self.0.normal(c);
+		let intersection_point = self.0.evaluate(c);
 		let normal_end = intersection_point + normal_point * SCALE_UNIT_VECTOR_FACTOR;
 
 		let content = format!(
@@ -216,11 +208,13 @@ impl WasmBezier {
 		wrap_svg_tag(content)
 	}
 
-	pub fn curvature(&self, t: f64) -> String {
+	pub fn curvature(&self, raw_c: f64, compute_type: String) -> String {
 		let bezier = self.get_bezier_path();
-		let radius = 1. / self.0.curvature(t);
-		let normal_point = self.0.normal(ComputeType::Parametric(t));
-		let intersection_point = self.0.evaluate(ComputeType::Parametric(t));
+		let c = parse_compute_type(&compute_type, raw_c);
+
+		let radius = 1. / self.0.curvature(c);
+		let normal_point = self.0.normal(c);
+		let intersection_point = self.0.evaluate(c);
 
 		let curvature_center = intersection_point + normal_point * radius;
 
@@ -234,8 +228,9 @@ impl WasmBezier {
 		wrap_svg_tag(content)
 	}
 
-	pub fn split(&self, t: f64) -> String {
-		let beziers: [Bezier; 2] = self.0.split(t);
+	pub fn split(&self, raw_c: f64, compute_type: String) -> String {
+		let c = parse_compute_type(&compute_type, raw_c);
+		let beziers: [Bezier; 2] = self.0.split(c);
 
 		let mut original_bezier_svg = String::new();
 		self.0.to_svg(
@@ -267,8 +262,9 @@ impl WasmBezier {
 		wrap_svg_tag(format!("{original_bezier_svg}{bezier_svg_1}{bezier_svg_2}"))
 	}
 
-	pub fn trim(&self, t1: f64, t2: f64) -> String {
-		let trimmed_bezier = self.0.trim(t1, t2);
+	pub fn trim(&self, raw_c1: f64, raw_c2: f64, compute_type: String) -> String {
+		let (c1, c2) = (parse_compute_type(&compute_type, raw_c1), parse_compute_type(&compute_type, raw_c2));
+		let trimmed_bezier = self.0.trim(c1, c2);
 
 		let mut trimmed_bezier_svg = String::new();
 		trimmed_bezier.to_svg(
@@ -343,8 +339,9 @@ impl WasmBezier {
 		wrap_svg_tag(content)
 	}
 
-	pub fn de_casteljau_points(&self, t: f64) -> String {
-		let points: Vec<Vec<DVec2>> = self.0.de_casteljau_points(t);
+	pub fn de_casteljau_points(&self, raw_c: f64, compute_type: String) -> String {
+		let c = parse_compute_type(&compute_type, raw_c);
+		let points: Vec<Vec<DVec2>> = self.0.de_casteljau_points(c);
 
 		let bezier_svg = self.get_bezier_path();
 

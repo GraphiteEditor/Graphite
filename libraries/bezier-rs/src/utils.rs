@@ -7,7 +7,7 @@ use std::f64::consts::PI;
 pub enum ComputeType {
 	Parametric(f64),
 	Euclidean(f64),
-	EuclideanWithinError { t: f64, epsilon: f64 },
+	EuclideanWithinError { distance: f64, epsilon: f64 },
 }
 
 /// Helper to perform the computation of a and c, where b is the provided point on the curve.

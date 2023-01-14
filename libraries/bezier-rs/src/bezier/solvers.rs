@@ -6,10 +6,11 @@ use std::ops::Range;
 
 /// Functionality that solve for various curve information such as derivative, tangent, intersect, etc.
 impl Bezier {
-	/// Returns a list of lists of points representing the De Casteljau points for all iterations at the point corresponding to `t` using De Casteljau's algorithm.
+	/// Returns a list of lists of points representing the De Casteljau points for all iterations at the point `c` along the curve using De Casteljau's algorithm.
 	/// The `i`th element of the list represents the set of points in the `i`th iteration.
 	/// More information on the algorithm can be found in the [De Casteljau section](https://pomax.github.io/bezierinfo/#decasteljau) in Pomax's primer.
-	pub fn de_casteljau_points(&self, t: f64) -> Vec<Vec<DVec2>> {
+	pub fn de_casteljau_points(&self, c: ComputeType) -> Vec<Vec<DVec2>> {
+		let t = self.compute_type_to_parametric(c);
 		let bezier_points = match self.handles {
 			BezierHandles::Linear => vec![self.start, self.end],
 			BezierHandles::Quadratic { handle } => vec![self.start, handle, self.end],
@@ -49,8 +50,9 @@ impl Bezier {
 		}
 	}
 
-	/// Returns a normalized unit vector representing the tangent at the point designated by `t` on the curve.
-	pub fn parametric_tangent(&self, t: f64) -> DVec2 {
+	/// Returns a normalized unit vector representing the tangent at the point `c` along the curve.
+	pub fn tangent(&self, c: ComputeType) -> DVec2 {
+		let t = self.compute_type_to_parametric(c);
 		match self.handles {
 			BezierHandles::Linear => self.end - self.start,
 			_ => self.derivative().unwrap().evaluate(ComputeType::Parametric(t)),
@@ -58,39 +60,15 @@ impl Bezier {
 		.normalize()
 	}
 
-	/// Returns a normalized unit vector representing the tangent at the distance designated by `d` on the curve.
-	pub fn euclidean_tangent(&self, d: f64, error: f64) -> DVec2 {
-		let t_value = self.euclidean_to_parametric(d, error);
-		self.parametric_tangent(t_value)
+	/// Returns a normalized unit vector representing the direction of the normal at the point `c` along the curve.
+	pub fn normal(&self, c: ComputeType) -> DVec2 {
+		self.tangent(c).perp()
 	}
 
-	/// Returns a normalized unit vector representing the tangent at a factor designated by `t`.
-	/// Expects `t` to be within the inclusive range `[0, 1]`.
-	pub fn tangent(&self, t: ComputeType) -> DVec2 {
-		match t {
-			ComputeType::Parametric(t) => {
-				assert!((0.0..=1.).contains(&t));
-				self.parametric_tangent(t)
-			}
-			ComputeType::Euclidean(t) => {
-				assert!((0.0..=1.).contains(&t));
-				self.euclidean_tangent(t, 0.0001)
-			}
-			ComputeType::EuclideanWithinError { t, epsilon } => {
-				assert!((0.0..=1.).contains(&t));
-				self.euclidean_tangent(t, epsilon)
-			}
-		}
-	}
-	
-	/// Returns a normalized unit vector representing the direction of the normal at the point designated by `t` on the curve.
-	pub fn normal(&self, t: ComputeType) -> DVec2 {
-		self.tangent(t).perp()
-	}
-
-	/// Returns the curvature, a scalar value for the derivative at the given `t`-value along the curve.
+	/// Returns the curvature, a scalar value for the derivative at the point `c` along the curve.
 	/// Curvature is 1 over the radius of a circle with an equivalent derivative.
-	pub fn curvature(&self, t: f64) -> f64 {
+	pub fn curvature(&self, c: ComputeType) -> f64 {
+		let t = self.compute_type_to_parametric(c);
 		let (d, dd) = match &self.derivative() {
 			Some(first_derivative) => match first_derivative.derivative() {
 				Some(second_derivative) => (first_derivative.evaluate(ComputeType::Parametric(t)), second_derivative.evaluate(ComputeType::Parametric(t))),
@@ -203,7 +181,7 @@ impl Bezier {
 		}
 	}
 
-	/// Returns list of `t`-values representing the inflection points of the curve.
+	/// Returns list of parametric `t`-values representing the inflection points of the curve.
 	/// The list of `t`-values returned are filtered such that they fall within the range `[0, 1]`.
 	pub fn inflections(&self) -> Vec<f64> {
 		self.unrestricted_inflections().into_iter().filter(|&t| t > 0. && t < 1.).collect::<Vec<f64>>()
@@ -238,8 +216,8 @@ impl Bezier {
 			}
 
 			// Split curves in half and repeat with the combinations of the two halves of each curve
-			let [split_1_a, split_1_b] = self.split(0.5);
-			let [split_2_a, split_2_b] = other.split(0.5);
+			let [split_1_a, split_1_b] = self.split(ComputeType::Parametric(0.5));
+			let [split_2_a, split_2_b] = other.split(ComputeType::Parametric(0.5));
 
 			[
 				split_1_a.intersections_between_subcurves(self_start_t..self_mid_t, &split_2_a, other_start_t..other_mid_t, error),
@@ -254,7 +232,7 @@ impl Bezier {
 	}
 
 	// TODO: Use an `impl Iterator` return type instead of a `Vec`
-	/// Returns a list of filtered `t` values that correspond to intersection points between the current bezier curve and the provided one
+	/// Returns a list of filtered parametric `t` values that correspond to intersection points between the current bezier curve and the provided one
 	/// such that the difference between adjacent `t` values in sorted order is greater than some minimum seperation value. If the difference
 	/// between 2 adjacent `t` values is lesss than the minimum difference, the filtering takes the larger `t` value and discards the smaller `t` value.
 	/// The returned `t` values are with respect to the current bezier, not the provided parameter.
@@ -359,7 +337,7 @@ impl Bezier {
 	}
 
 	// TODO: Use an `impl Iterator` return type instead of a `Vec`
-	/// Returns a list of `t` values that correspond to the self intersection points of the current bezier curve. For each intersection point, the returned `t` value is the smaller of the two that correspond to the point.
+	/// Returns a list of parametric `t` values that correspond to the self intersection points of the current bezier curve. For each intersection point, the returned `t` value is the smaller of the two that correspond to the point.
 	/// - `error` - For intersections with non-linear beziers, `error` defines the threshold for bounding boxes to be considered an intersection point.
 	pub fn self_intersections(&self, error: Option<f64>) -> Vec<[f64; 2]> {
 		if self.handles == BezierHandles::Linear || matches!(self.handles, BezierHandles::Quadratic { .. }) {
@@ -387,7 +365,7 @@ impl Bezier {
 			.collect()
 	}
 
-	/// Returns a list of `t` values that correspond to the intersection points between the curve and a rectangle defined by opposite corners.
+	/// Returns a list of parametric `t` values that correspond to the intersection points between the curve and a rectangle defined by opposite corners.
 	pub fn rectangle_intersections(&self, corner1: DVec2, corner2: DVec2) -> Vec<f64> {
 		[
 			Bezier::from_linear_coordinates(corner1.x, corner1.y, corner2.x, corner1.y),
@@ -409,7 +387,7 @@ mod tests {
 	#[test]
 	fn test_de_casteljau_points() {
 		let bezier = Bezier::from_cubic_coordinates(0., 0., 0., 100., 100., 100., 100., 0.);
-		let de_casteljau_points = bezier.de_casteljau_points(0.5);
+		let de_casteljau_points = bezier.de_casteljau_points(ComputeType::Parametric(0.5));
 		let expected_de_casteljau_points = vec![
 			vec![DVec2::new(0., 0.), DVec2::new(0., 100.), DVec2::new(100., 100.), DVec2::new(100., 0.)],
 			vec![DVec2::new(0., 50.), DVec2::new(50., 100.), DVec2::new(100., 50.)],
@@ -500,24 +478,24 @@ mod tests {
 		let p4 = DVec2::new(50., 10.);
 
 		let linear = Bezier::from_linear_dvec2(p1, p2);
-		assert_eq!(linear.curvature(0.), 0.);
-		assert_eq!(linear.curvature(0.5), 0.);
-		assert_eq!(linear.curvature(1.), 0.);
+		assert_eq!(linear.curvature(ComputeType::Parametric(0.)), 0.);
+		assert_eq!(linear.curvature(ComputeType::Parametric(0.5)), 0.);
+		assert_eq!(linear.curvature(ComputeType::Parametric(1.)), 0.);
 
 		let quadratic = Bezier::from_quadratic_dvec2(p1, p2, p3);
-		assert!(compare_f64s(quadratic.curvature(0.), 0.0125));
-		assert!(compare_f64s(quadratic.curvature(0.5), 0.035355));
-		assert!(compare_f64s(quadratic.curvature(1.), 0.0125));
+		assert!(compare_f64s(quadratic.curvature(ComputeType::Parametric(0.)), 0.0125));
+		assert!(compare_f64s(quadratic.curvature(ComputeType::Parametric(0.5)), 0.035355));
+		assert!(compare_f64s(quadratic.curvature(ComputeType::Parametric(1.)), 0.0125));
 
 		let cubic = Bezier::from_cubic_dvec2(p1, p2, p3, p4);
-		assert!(compare_f64s(cubic.curvature(0.), 0.016667));
-		assert!(compare_f64s(cubic.curvature(0.5), 0.));
-		assert!(compare_f64s(cubic.curvature(1.), 0.));
+		assert!(compare_f64s(cubic.curvature(ComputeType::Parametric(0.)), 0.016667));
+		assert!(compare_f64s(cubic.curvature(ComputeType::Parametric(0.5)), 0.));
+		assert!(compare_f64s(cubic.curvature(ComputeType::Parametric(1.)), 0.));
 
 		// The curvature at an inflection point is zero
 		let inflection_curve = Bezier::from_cubic_coordinates(30., 30., 30., 150., 150., 30., 150., 150.);
 		let inflections = inflection_curve.inflections();
-		assert_eq!(inflection_curve.curvature(inflections[0]), 0.);
+		assert_eq!(inflection_curve.curvature(ComputeType::Parametric(inflections[0])), 0.);
 	}
 
 	#[test]

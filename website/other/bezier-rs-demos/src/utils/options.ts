@@ -1,12 +1,12 @@
-export const tSliderOptions = {
+export const cSliderOptions = {
 	min: 0,
 	max: 1,
 	step: 0.01,
 	default: 0.5,
-	variable: "t",
+	variable: "c",
 };
 
-export const tErrorOptions = {
+export const errorOptions = {
 	variable: "error",
 	min: 0.1,
 	max: 2,
@@ -14,7 +14,7 @@ export const tErrorOptions = {
 	default: 0.5,
 };
 
-export const tMinimumSeperationOptions = {
+export const minimumSeparationOptions = {
 	variable: "minimum_seperation",
 	min: 0.001,
 	max: 0.25,

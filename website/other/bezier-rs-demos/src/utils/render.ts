@@ -66,7 +66,7 @@ export function renderDemoPane(demoPane: DemoPane): void {
 		radioInput.type = "radio";
 		radioInput.id = id;
 		radioInput.value = computeType;
-		radioInput.name = "ComputeType";
+		radioInput.name = `ComputeType - ${demoPane.id}`;
 		radioInput.checked = computeType === "Parametric";
 		computeTypeContainer.append(radioInput);
 

@@ -314,7 +314,7 @@ impl ShapeEditor {
 	pub fn split(&self, document: &Document, position: glam::DVec2, tolerance: f64, responses: &mut VecDeque<Message>) {
 		for layer_path in &self.selected_layers {
 			if let Some((bezier_id, t)) = self.closest_segment(document, layer_path, position, tolerance) {
-				let [first, second] = bezier_id.internal.split(t);
+				let [first, second] = bezier_id.internal.split(ComputeType::Parametric(t));
 
 				// Adjust the first manipulator group's out handle
 				let out_handle = Operation::SetManipulatorPoints {

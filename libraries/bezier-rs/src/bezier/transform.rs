@@ -6,8 +6,9 @@ use std::f64::consts::PI;
 
 /// Functionality that transform Beziers, such as split, reduce, offset, etc.
 impl Bezier {
-	/// Returns the pair of Bezier curves that result from splitting the original curve at the point corresponding to `t`.
-	pub fn split(&self, t: f64) -> [Bezier; 2] {
+	/// Returns the pair of Bezier curves that result from splitting the original curve at the point `c` along the curve.
+	pub fn split(&self, c: ComputeType) -> [Bezier; 2] {
+		let t = self.compute_type_to_parametric(c);
 		let split_point = self.evaluate(ComputeType::Parametric(t));
 
 		match self.handles {
@@ -49,8 +50,9 @@ impl Bezier {
 		}
 	}
 
-	/// Returns the Bezier curve representing the sub-curve starting at the point corresponding to `t1` and ending at the point corresponding to `t2`.
-	pub fn trim(&self, t1: f64, t2: f64) -> Bezier {
+	/// Returns the Bezier curve representing the sub-curve starting at the point `c1` and ending at the point `c2` along the curve.
+	pub fn trim(&self, c1: ComputeType, c2: ComputeType) -> Bezier {
+		let (t1, t2) = (self.compute_type_to_parametric(c1), self.compute_type_to_parametric(c2));
 		// If t1 is equal to t2, return a bezier comprised entirely of the same point
 		if f64_compare(t1, t2, MAX_ABSOLUTE_DIFFERENCE) {
 			let point = self.evaluate(ComputeType::Parametric(t1));
@@ -63,7 +65,7 @@ impl Bezier {
 		// Depending on the order of `t1` and `t2`, determine which half of the split we need to keep
 		let t1_split_side = usize::from(t1 <= t2);
 		let t2_split_side = usize::from(t1 > t2);
-		let bezier_starting_at_t1 = self.split(t1)[t1_split_side];
+		let bezier_starting_at_t1 = self.split(ComputeType::Parametric(t1))[t1_split_side];
 		// Adjust the ratio `t2` to its corresponding value on the new curve that was split on `t1`
 		let adjusted_t2 = if t1 < t2 || t1 == 0. {
 			// Case where we took the split from t1 to the end
@@ -73,7 +75,7 @@ impl Bezier {
 			// Case where we took the split from the beginning to `t1`
 			t2 / t1
 		};
-		let result = bezier_starting_at_t1.split(adjusted_t2)[t2_split_side];
+		let result = bezier_starting_at_t1.split(ComputeType::Parametric(adjusted_t2))[t2_split_side];
 		if t2 < t1 {
 			return result.reverse();
 		}
@@ -169,7 +171,7 @@ impl Bezier {
 		extrema.windows(2).for_each(|t_pair| {
 			let t_subcurve_start = t_pair[0];
 			let t_subcurve_end = t_pair[1];
-			let subcurve = self.trim(t_subcurve_start, t_subcurve_end);
+			let subcurve = self.trim(ComputeType::Parametric(t_subcurve_start), ComputeType::Parametric(t_subcurve_end));
 			// Perform no processing on the subcurve if it's already scalable.
 			if subcurve.is_scalable() {
 				result_beziers.push(subcurve);
@@ -177,7 +179,7 @@ impl Bezier {
 				return;
 			}
 			// According to <https://pomax.github.io/bezierinfo/#offsetting>, it is generally sufficient to split subcurves with no local extrema at `t = 0.5` to generate two scalable segments.
-			let [first_half, second_half] = subcurve.split(0.5);
+			let [first_half, second_half] = subcurve.split(ComputeType::Parametric(0.5));
 			if first_half.is_scalable() && second_half.is_scalable() {
 				result_beziers.push(first_half);
 				result_beziers.push(second_half);
@@ -191,14 +193,14 @@ impl Bezier {
 			let mut t1 = 0.;
 			let mut t2 = step_size;
 			while t2 <= 1. + step_size {
-				segment = subcurve.trim(t1, f64::min(t2, 1.));
+				segment = subcurve.trim(ComputeType::Parametric(t1), ComputeType::Parametric(f64::min(t2, 1.)));
 				if !segment.is_scalable() {
 					t2 -= step_size;
 
 					// If the previous step does not exist, the start of the subcurve is irreducible.
 					// Otherwise, add the valid segment from the previous step to the result.
 					if f64::abs(t1 - t2) >= step_size {
-						segment = subcurve.trim(t1, t2);
+						segment = subcurve.trim(ComputeType::Parametric(t1), ComputeType::Parametric(t2));
 						result_beziers.push(segment);
 						result_t_values.push(t_subcurve_start + t2 * (t_subcurve_end - t_subcurve_start));
 					} else {
@@ -210,7 +212,7 @@ impl Bezier {
 			}
 			// Collect final remainder of the curve.
 			if t1 < 1. {
-				segment = subcurve.trim(t1, 1.);
+				segment = subcurve.trim(ComputeType::Parametric(t1), ComputeType::Parametric(1.));
 				if segment.is_scalable() {
 					result_beziers.push(segment);
 					result_t_values.push(t_subcurve_end);
@@ -282,7 +284,8 @@ impl Bezier {
 				BezierHandles::Cubic { handle_start, handle_end } => {
 					let handle_start_closest_t = self.project(handle_start, ProjectionOptions::default());
 					let handle_start_scale_distance = (1. - handle_start_closest_t) * start_distance + handle_start_closest_t * end_distance;
-					let transformed_handle_start = utils::scale_point_from_direction_vector(handle_start, self.normal(ComputeType::Parametric(handle_start_closest_t)), false, handle_start_scale_distance);
+					let transformed_handle_start =
+						utils::scale_point_from_direction_vector(handle_start, self.normal(ComputeType::Parametric(handle_start_closest_t)), false, handle_start_scale_distance);
 
 					let handle_end_closest_t = self.project(handle_start, ProjectionOptions::default());
 					let handle_end_scale_distance = (1. - handle_end_closest_t) * start_distance + handle_end_closest_t * end_distance;
@@ -399,7 +402,7 @@ impl Bezier {
 		match maximize_arcs {
 			ArcStrategy::Automatic => {
 				let (auto_arcs, final_low_t) = self.approximate_curve_with_arcs(0., 1., error, max_iterations, true);
-				let arc_approximations = self.split(final_low_t)[1].arcs(ArcsOptions {
+				let arc_approximations = self.split(ComputeType::Parametric(final_low_t))[1].arcs(ArcsOptions {
 					strategy: ArcStrategy::FavorCorrectness,
 					error,
 					max_iterations,
@@ -545,7 +548,7 @@ mod tests {
 	#[test]
 	fn test_split() {
 		let line = Bezier::from_linear_coordinates(25., 25., 75., 75.);
-		let [part1, part2] = line.split(0.5);
+		let [part1, part2] = line.split(ComputeType::Parametric(0.5));
 
 		assert_eq!(part1.start(), line.start());
 		assert_eq!(part1.end(), line.evaluate(ComputeType::Parametric(0.5)));
@@ -556,7 +559,7 @@ mod tests {
 		assert_eq!(part2.evaluate(ComputeType::Parametric(0.5)), line.evaluate(ComputeType::Parametric(0.75)));
 
 		let quad_bezier = Bezier::from_quadratic_coordinates(10., 10., 50., 50., 90., 10.);
-		let [part3, part4] = quad_bezier.split(0.5);
+		let [part3, part4] = quad_bezier.split(ComputeType::Parametric(0.5));
 
 		assert_eq!(part3.start(), quad_bezier.start());
 		assert_eq!(part3.end(), quad_bezier.evaluate(ComputeType::Parametric(0.5)));
@@ -567,7 +570,7 @@ mod tests {
 		assert_eq!(part4.evaluate(ComputeType::Parametric(0.5)), quad_bezier.evaluate(ComputeType::Parametric(0.75)));
 
 		let cubic_bezier = Bezier::from_cubic_coordinates(10., 10., 50., 50., 90., 10., 40., 50.);
-		let [part5, part6] = cubic_bezier.split(0.5);
+		let [part5, part6] = cubic_bezier.split(ComputeType::Parametric(0.5));
 
 		assert_eq!(part5.start(), cubic_bezier.start());
 		assert_eq!(part5.end(), cubic_bezier.evaluate(ComputeType::Parametric(0.5)));
@@ -586,24 +589,24 @@ mod tests {
 		let bezier_quadratic = Bezier::from_quadratic_dvec2(start, DVec2::new(140., 30.), end);
 
 		// Test splitting a quadratic bezier at the startpoint
-		let [point_bezier1, remainder1] = bezier_quadratic.split(0.);
+		let [point_bezier1, remainder1] = bezier_quadratic.split(ComputeType::Parametric(0.));
 		assert_eq!(point_bezier1, Bezier::from_quadratic_dvec2(start, start, start));
 		assert!(remainder1.abs_diff_eq(&bezier_quadratic, MAX_ABSOLUTE_DIFFERENCE));
 
 		// Test splitting a quadratic bezier at the endpoint
-		let [remainder2, point_bezier2] = bezier_quadratic.split(1.);
+		let [remainder2, point_bezier2] = bezier_quadratic.split(ComputeType::Parametric(1.));
 		assert_eq!(point_bezier2, Bezier::from_quadratic_dvec2(end, end, end));
 		assert!(remainder2.abs_diff_eq(&bezier_quadratic, MAX_ABSOLUTE_DIFFERENCE));
 
 		let bezier_cubic = Bezier::from_cubic_dvec2(start, DVec2::new(60., 140.), DVec2::new(150., 30.), end);
 
 		// Test splitting a cubic bezier at the startpoint
-		let [point_bezier3, remainder3] = bezier_cubic.split(0.);
+		let [point_bezier3, remainder3] = bezier_cubic.split(ComputeType::Parametric(0.));
 		assert_eq!(point_bezier3, Bezier::from_cubic_dvec2(start, start, start, start));
 		assert!(remainder3.abs_diff_eq(&bezier_cubic, MAX_ABSOLUTE_DIFFERENCE));
 
 		// Test splitting a cubic bezier at the endpoint
-		let [remainder4, point_bezier4] = bezier_cubic.split(1.);
+		let [remainder4, point_bezier4] = bezier_cubic.split(ComputeType::Parametric(1.));
 		assert_eq!(point_bezier4, Bezier::from_cubic_dvec2(end, end, end, end));
 		assert!(remainder4.abs_diff_eq(&bezier_cubic, MAX_ABSOLUTE_DIFFERENCE));
 	}
@@ -611,21 +614,21 @@ mod tests {
 	#[test]
 	fn test_trim() {
 		let line = Bezier::from_linear_coordinates(80., 80., 40., 40.);
-		let trimmed1 = line.trim(0.25, 0.75);
+		let trimmed1 = line.trim(ComputeType::Parametric(0.25), ComputeType::Parametric(0.75));
 
 		assert_eq!(trimmed1.start(), line.evaluate(ComputeType::Parametric(0.25)));
 		assert_eq!(trimmed1.end(), line.evaluate(ComputeType::Parametric(0.75)));
 		assert_eq!(trimmed1.evaluate(ComputeType::Parametric(0.5)), line.evaluate(ComputeType::Parametric(0.5)));
 
 		let quadratic_bezier = Bezier::from_quadratic_coordinates(80., 80., 40., 40., 70., 70.);
-		let trimmed2 = quadratic_bezier.trim(0.25, 0.75);
+		let trimmed2 = quadratic_bezier.trim(ComputeType::Parametric(0.25), ComputeType::Parametric(0.75));
 
 		assert_eq!(trimmed2.start(), quadratic_bezier.evaluate(ComputeType::Parametric(0.25)));
 		assert_eq!(trimmed2.end(), quadratic_bezier.evaluate(ComputeType::Parametric(0.75)));
 		assert_eq!(trimmed2.evaluate(ComputeType::Parametric(0.5)), quadratic_bezier.evaluate(ComputeType::Parametric(0.5)));
 
 		let cubic_bezier = Bezier::from_cubic_coordinates(80., 80., 40., 40., 70., 70., 150., 150.);
-		let trimmed3 = cubic_bezier.trim(0.25, 0.75);
+		let trimmed3 = cubic_bezier.trim(ComputeType::Parametric(0.25), ComputeType::Parametric(0.75));
 
 		assert_eq!(trimmed3.start(), cubic_bezier.evaluate(ComputeType::Parametric(0.25)));
 		assert_eq!(trimmed3.end(), cubic_bezier.evaluate(ComputeType::Parametric(0.75)));
@@ -636,14 +639,14 @@ mod tests {
 	fn test_trim_t2_greater_than_t1() {
 		// Test trimming quadratic curve when t2 > t1
 		let bezier_quadratic = Bezier::from_quadratic_coordinates(30., 50., 140., 30., 160., 170.);
-		let trim1 = bezier_quadratic.trim(0.25, 0.75);
-		let trim2 = bezier_quadratic.trim(0.75, 0.25).reverse();
+		let trim1 = bezier_quadratic.trim(ComputeType::Parametric(0.25), ComputeType::Parametric(0.75));
+		let trim2 = bezier_quadratic.trim(ComputeType::Parametric(0.75), ComputeType::Parametric(0.25)).reverse();
 		assert!(trim1.abs_diff_eq(&trim2, MAX_ABSOLUTE_DIFFERENCE));
 
 		// Test trimming cubic curve when t2 > t1
 		let bezier_cubic = Bezier::from_cubic_coordinates(30., 30., 60., 140., 150., 30., 160., 160.);
-		let trim3 = bezier_cubic.trim(0.25, 0.75);
-		let trim4 = bezier_cubic.trim(0.75, 0.25).reverse();
+		let trim3 = bezier_cubic.trim(ComputeType::Parametric(0.25), ComputeType::Parametric(0.75));
+		let trim4 = bezier_cubic.trim(ComputeType::Parametric(0.75), ComputeType::Parametric(0.25)).reverse();
 		assert!(trim3.abs_diff_eq(&trim4, MAX_ABSOLUTE_DIFFERENCE));
 	}
 
@@ -704,7 +707,7 @@ mod tests {
 		assert!(reduced_curves
 			.iter()
 			.zip(helper_t_values.windows(2))
-			.all(|(curve, t_pair)| curve.abs_diff_eq(&bezier.trim(t_pair[0], t_pair[1]), MAX_ABSOLUTE_DIFFERENCE)))
+			.all(|(curve, t_pair)| curve.abs_diff_eq(&bezier.trim(ComputeType::Parametric(t_pair[0]), ComputeType::Parametric(t_pair[1])), MAX_ABSOLUTE_DIFFERENCE)))
 	}
 
 	#[test]

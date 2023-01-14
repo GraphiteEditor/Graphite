@@ -25,7 +25,7 @@ impl Subpath {
 				// But the above if case would catch that, since `target_curve_t` would be 0.
 				let curve = self.iter().nth(target_curve_index as usize).unwrap();
 
-				let [first, second] = curve.split(target_curve_t);
+				let [first, second] = curve.split(ComputeType::Parametric(target_curve_t));
 				let new_group = ManipulatorGroup {
 					anchor: first.end(),
 					in_handle: first.handle_end(),
@@ -38,7 +38,7 @@ impl Subpath {
 			}
 			// TODO: change this implementation to Euclidean compute
 			ComputeType::Euclidean(_t) => {}
-			ComputeType::EuclideanWithinError { t: _, epsilon: _ } => todo!(),
+			ComputeType::EuclideanWithinError { distance: _, epsilon: _ } => todo!(),
 		}
 	}
 }
@@ -95,7 +95,7 @@ mod tests {
 	fn insert_in_first_segment_of_open_subpath() {
 		let mut subpath = set_up_open_subpath();
 		let location = subpath.evaluate(ComputeType::Parametric(0.2));
-		let split_pair = subpath.iter().next().unwrap().split((0.2 * 3.) % 1.);
+		let split_pair = subpath.iter().next().unwrap().split(ComputeType::Parametric((0.2 * 3.) % 1.));
 		subpath.insert(ComputeType::Parametric(0.2));
 		assert_eq!(subpath.manipulator_groups[1].anchor, location);
 		assert_eq!(split_pair[0], subpath.iter().next().unwrap());
@@ -106,7 +106,7 @@ mod tests {
 	fn insert_in_last_segment_of_open_subpath() {
 		let mut subpath = set_up_open_subpath();
 		let location = subpath.evaluate(ComputeType::Parametric(0.9));
-		let split_pair = subpath.iter().nth(2).unwrap().split((0.9 * 3.) % 1.);
+		let split_pair = subpath.iter().nth(2).unwrap().split(ComputeType::Parametric((0.9 * 3.) % 1.));
 		subpath.insert(ComputeType::Parametric(0.9));
 		assert_eq!(subpath.manipulator_groups[3].anchor, location);
 		assert_eq!(split_pair[0], subpath.iter().nth(2).unwrap());
@@ -128,7 +128,7 @@ mod tests {
 	fn insert_at_last_segment_of_closed_subpath() {
 		let mut subpath = set_up_closed_subpath();
 		let location = subpath.evaluate(ComputeType::Parametric(0.9));
-		let split_pair = subpath.iter().nth(3).unwrap().split((0.9 * 4.) % 1.);
+		let split_pair = subpath.iter().nth(3).unwrap().split(ComputeType::Parametric((0.9 * 4.) % 1.));
 		subpath.insert(ComputeType::Parametric(0.9));
 		assert_eq!(subpath.manipulator_groups[4].anchor, location);
 		assert_eq!(split_pair[0], subpath.iter().nth(3).unwrap());

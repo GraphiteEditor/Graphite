@@ -1,4 +1,4 @@
-import { tSliderOptions } from "@/utils/options";
+import { cSliderOptions } from "@/utils/options";
 import { ComputeType, SliderOption, SubpathCallback, WasmSubpathInstance } from "@/utils/types";
 
 const subpathFeatures = {
@@ -8,8 +8,8 @@ const subpathFeatures = {
 	},
 	insert: {
 		name: "Insert",
-		callback: (subpath: WasmSubpathInstance, options: Record<string, number>, _: undefined, computeType: ComputeType): string => subpath.insert(options.computeArgument, computeType),
-		sliderOptions: [{ ...tSliderOptions, variable: "computeArgument" }],
+		callback: (subpath: WasmSubpathInstance, options: Record<string, number>, _: undefined, computeType: ComputeType): string => subpath.insert(options.c, computeType),
+		sliderOptions: [cSliderOptions],
 		// TODO: Uncomment this after implementing the Euclidean version
 		// chooseComputeType: true,
 	},
@@ -19,8 +19,8 @@ const subpathFeatures = {
 	},
 	evaluate: {
 		name: "Evaluate",
-		callback: (subpath: WasmSubpathInstance, options: Record<string, number>, _: undefined, computeType: ComputeType): string => subpath.evaluate(options.computeArgument, computeType),
-		sliderOptions: [{ ...tSliderOptions, variable: "computeArgument" }],
+		callback: (subpath: WasmSubpathInstance, options: Record<string, number>, _: undefined, computeType: ComputeType): string => subpath.evaluate(options.c, computeType),
+		sliderOptions: [cSliderOptions],
 		chooseComputeType: true,
 	},
 	project: {
