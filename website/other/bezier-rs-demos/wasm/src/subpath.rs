@@ -77,7 +77,7 @@ impl WasmSubpath {
 		wrap_svg_tag(content)
 	}
 
-	pub fn intersect_line_segment(&self, js_points: JsValue) -> String {
+	pub fn intersect_line_segment(&self, js_points: JsValue, error: f64, minimum_separation: f64) -> String {
 		let points: [DVec2; 2] = serde_wasm_bindgen::from_value(js_points).unwrap();
 		let line = Bezier::from_linear_dvec2(points[0], points[1]);
 
@@ -95,7 +95,7 @@ impl WasmSubpath {
 
 		let intersections_svg = self
 			.0
-			.intersections(&line, None, None)
+			.intersections(&line, Some(error), Some(minimum_separation))
 			.iter()
 			.map(|intersection_t| {
 				let point = self.0.evaluate(ComputeType::Parametric(*intersection_t));
@@ -106,7 +106,7 @@ impl WasmSubpath {
 		wrap_svg_tag(format!("{subpath_svg}{line_svg}{intersections_svg}"))
 	}
 
-	pub fn intersect_quadratic_segment(&self, js_points: JsValue) -> String {
+	pub fn intersect_quadratic_segment(&self, js_points: JsValue, error: f64, minimum_separation: f64) -> String {
 		let points: [DVec2; 3] = serde_wasm_bindgen::from_value(js_points).unwrap();
 		let line = Bezier::from_quadratic_dvec2(points[0], points[1], points[2]);
 
@@ -124,7 +124,7 @@ impl WasmSubpath {
 
 		let intersections_svg = self
 			.0
-			.intersections(&line, None, None)
+			.intersections(&line, Some(error), Some(minimum_separation))
 			.iter()
 			.map(|intersection_t| {
 				let point = self.0.evaluate(ComputeType::Parametric(*intersection_t));
@@ -135,7 +135,7 @@ impl WasmSubpath {
 		wrap_svg_tag(format!("{subpath_svg}{line_svg}{intersections_svg}"))
 	}
 
-	pub fn intersect_cubic_segment(&self, js_points: JsValue) -> String {
+	pub fn intersect_cubic_segment(&self, js_points: JsValue, error: f64, minimum_separation: f64) -> String {
 		let points: [DVec2; 4] = serde_wasm_bindgen::from_value(js_points).unwrap();
 		let line = Bezier::from_cubic_dvec2(points[0], points[1], points[2], points[3]);
 
@@ -153,7 +153,7 @@ impl WasmSubpath {
 
 		let intersections_svg = self
 			.0
-			.intersections(&line, None, None)
+			.intersections(&line, Some(error), Some(minimum_separation))
 			.iter()
 			.map(|intersection_t| {
 				let point = self.0.evaluate(ComputeType::Parametric(*intersection_t));
@@ -164,11 +164,11 @@ impl WasmSubpath {
 		wrap_svg_tag(format!("{subpath_svg}{line_svg}{intersections_svg}"))
 	}
 
-	pub fn self_intersections(&self) -> String {
+	pub fn self_intersections(&self, error: f64, minimum_separation: f64) -> String {
 		let subpath_svg = self.to_default_svg();
 		let self_intersections_svg = self
 			.0
-			.self_intersections(None, None)
+			.self_intersections(Some(error), Some(minimum_separation), None)
 			.iter()
 			.map(|intersection_t| {
 				let point = self.0.evaluate(ComputeType::Parametric(*intersection_t));

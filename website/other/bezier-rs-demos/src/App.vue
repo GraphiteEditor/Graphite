@@ -101,10 +101,10 @@ const tSliderOptions = {
 
 const tErrorOptions = {
 	variable: "error",
-	min: 0.1,
-	max: 2,
-	step: 0.1,
-	default: 0.5,
+	min: 0.01,
+	max: 0.525,
+	step: 0.025,
+	default: 0.2,
 };
 
 const tMinimumSeperationOptions = {
@@ -619,34 +619,50 @@ export default defineComponent({
 				},
 				{
 					name: "Intersect (Line Segment)",
-					callback: (subpath: WasmSubpathInstance): string =>
-						subpath.intersect_line_segment([
-							[150, 150],
-							[20, 20],
-						]),
+					callback: (subpath: WasmSubpathInstance, options: Record<string, number>): string =>
+						subpath.intersect_line_segment(
+							[
+								[150, 150],
+								[20, 20],
+							],
+							options.error,
+							options.minimum_seperation
+						),
+					sliderOptions: [tErrorOptions, tMinimumSeperationOptions],
 				},
 				{
 					name: "Intersect (Quadratic segment)",
-					callback: (subpath: WasmSubpathInstance): string =>
-						subpath.intersect_quadratic_segment([
-							[20, 80],
-							[180, 10],
-							[90, 120],
-						]),
+					callback: (subpath: WasmSubpathInstance, options: Record<string, number>): string =>
+						subpath.intersect_quadratic_segment(
+							[
+								[20, 80],
+								[180, 10],
+								[90, 120],
+							],
+							options.error,
+							options.minimum_seperation
+						),
+					sliderOptions: [tErrorOptions, tMinimumSeperationOptions],
 				},
 				{
 					name: "Intersect (Cubic segment)",
-					callback: (subpath: WasmSubpathInstance): string =>
-						subpath.intersect_cubic_segment([
-							[40, 20],
-							[100, 40],
-							[40, 120],
-							[175, 140],
-						]),
+					callback: (subpath: WasmSubpathInstance, options: Record<string, number>): string =>
+						subpath.intersect_cubic_segment(
+							[
+								[40, 20],
+								[100, 40],
+								[40, 120],
+								[175, 140],
+							],
+							options.error,
+							options.minimum_seperation
+						),
+					sliderOptions: [tErrorOptions, tMinimumSeperationOptions],
 				},
 				{
 					name: "Self Intersection",
-					callback: (subpath: WasmSubpathInstance): string => subpath.self_intersections(),
+					callback: (subpath: WasmSubpathInstance, options: Record<string, number>): string => subpath.self_intersections(options.error, options.minimum_seperation),
+					sliderOptions: [tErrorOptions, tMinimumSeperationOptions],
 				},
 			],
 		};
