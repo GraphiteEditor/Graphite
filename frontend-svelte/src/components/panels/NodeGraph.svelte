@@ -180,7 +180,7 @@
 			let zoomFactor = 1 + Math.abs(scrollY) * WHEEL_RATE;
 			if (scrollY > 0) zoomFactor = 1 / zoomFactor;
 
-			const { x, y, width, height } = graph.getBoundingClientRect();
+			const { x, y, width, height } = graph.div().getBoundingClientRect();
 
 			transform.scale *= zoomFactor;
 
@@ -222,7 +222,7 @@
 
 		// Handle the add node popup on right click
 		if (e.button === 2) {
-			const graphBounds = graph.getBoundingClientRect();
+			const graphBounds = graph.div().getBoundingClientRect();
 			nodeListLocation = {
 				x: Math.round(((e.clientX - graphBounds.x) / transform.scale - transform.x) / GRID_SIZE),
 				y: Math.round(((e.clientY - graphBounds.y) / transform.scale - transform.y) / GRID_SIZE),

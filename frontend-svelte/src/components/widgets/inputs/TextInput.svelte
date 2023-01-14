@@ -19,7 +19,7 @@
 	export let minWidth = 0;
 	export let sharpRightCorners = false;
 
-	let fieldInput: FieldInput;
+	let self: FieldInput;
 	let editing = false;
 	let text = value;
 
@@ -28,7 +28,7 @@
 	function onTextFocused() {
 		editing = true;
 
-		fieldInput.selectAllText(text);
+		self.selectAllText(text);
 	}
 
 	// Called only when `value` is changed from the <input> element via user input and committed, either with the
@@ -40,16 +40,20 @@
 		onCancelTextChange();
 
 		// TODO: Find a less hacky way to do this
-		dispatch("commitText", fieldInput.getInputElementValue());
+		dispatch("commitText", self.getValue());
 
 		// Required if value is not changed by the parent component upon update:value event
-		fieldInput.setInputElementValue(value);
+		self.setInputElementValue(value);
 	}
 
 	function onCancelTextChange() {
 		editing = false;
 
-		fieldInput.unFocus();
+		self.unFocus();
+	}
+
+	export function focus() {
+		self.focus();
 	}
 </script>
 
@@ -68,7 +72,7 @@
 	{tooltip}
 	{placeholder}
 	{sharpRightCorners}
-	bind:this={fieldInput}
+	bind:this={self}
 />
 
 <style lang="scss" global>

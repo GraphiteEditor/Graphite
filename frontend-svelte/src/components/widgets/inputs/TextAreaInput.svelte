@@ -11,7 +11,7 @@
 	export let tooltip: string | undefined = undefined;
 	export let disabled = false;
 
-	let fieldInput: FieldInput;
+	let self: FieldInput;
 	let editing = false;
 	let inputValue = value;
 
@@ -30,16 +30,20 @@
 		onCancelTextChange();
 
 		// TODO: Find a less hacky way to do this
-		dispatch("commitText", fieldInput.getInputElementValue());
+		dispatch("commitText", self.getValue());
 
 		// Required if value is not changed by the parent component upon update:value event
-		fieldInput.setInputElementValue(value);
+		self.setInputElementValue(value);
 	}
 
 	function onCancelTextChange() {
 		editing = false;
 
-		fieldInput.unFocus();
+		self.unFocus();
+	}
+
+	export function focus() {
+		self.focus();
 	}
 </script>
 
@@ -59,7 +63,7 @@
 	{disabled}
 	{tooltip}
 	value={inputValue}
-	bind:this={fieldInput}
+	bind:this={self}
 />
 
 <style lang="scss" global>

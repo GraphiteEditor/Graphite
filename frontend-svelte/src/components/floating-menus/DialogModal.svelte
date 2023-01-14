@@ -11,7 +11,7 @@
 
 	const dialog = getContext<DialogState>("dialog");
 
-	let dialogModal: FloatingMenu;
+	let self: FloatingMenu;
 
 	export function dismiss() {
 		dialog.dismissDialog();
@@ -19,12 +19,12 @@
 
 	onMount(() => {
 		// Focus the first button in the popup
-		const emphasizedOrFirstButton = (dialogModal.div().querySelector("[data-emphasized]") || dialogModal.div().querySelector("[data-text-button]") || undefined) as HTMLButtonElement | undefined;
+		const emphasizedOrFirstButton = (self.div().querySelector("[data-emphasized]") || self.div().querySelector("[data-text-button]") || undefined) as HTMLButtonElement | undefined;
 		emphasizedOrFirstButton?.focus();
 	});
 </script>
 
-<FloatingMenu open={true} class="dialog-modal" type="Dialog" direction="Center" bind:this={dialogModal} data-dialog-modal>
+<FloatingMenu open={true} class="dialog-modal" type="Dialog" direction="Center" bind:this={self} data-dialog-modal>
 	<LayoutRow>
 		<LayoutCol class="icon-column">
 			<!-- `$dialog.icon` class exists to provide special sizing in CSS to specific icons -->
