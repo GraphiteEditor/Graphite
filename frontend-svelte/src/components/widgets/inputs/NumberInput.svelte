@@ -51,7 +51,7 @@
 	export let incrementCallbackIncrease: (() => void) | undefined = undefined;
 	export let incrementCallbackDecrease: (() => void) | undefined = undefined;
 
-	let fieldInput: FieldInput;
+	let self: FieldInput;
 	let text = displayText(value);
 	let editing = false;
 	// Stays in sync with a binding to the actual input range slider element.
@@ -127,7 +127,7 @@
 	function sliderPointerUp() {
 		// User clicked but didn't drag, so we focus the text input element
 		if (rangeSliderClickDragState === "mousedown") {
-			const inputElement = fieldInput.querySelector("[data-input-element]") as HTMLInputElement | undefined;
+			const inputElement = self.element().querySelector("[data-input-element]") as HTMLInputElement | undefined;
 			if (!inputElement) return;
 
 			// Set the slider position back to the original position to undo the user moving it
@@ -148,7 +148,7 @@
 
 		editing = true;
 
-		fieldInput.selectAllText(text);
+		self.selectAllText(text);
 	}
 
 	// Called only when `value` is changed from the <input> element via user input and committed, either with the
@@ -164,7 +164,7 @@
 
 		editing = false;
 
-		fieldInput.unFocus();
+		self.unFocus();
 	}
 
 	function onCancelTextChange() {
@@ -172,7 +172,7 @@
 
 		editing = false;
 
-		fieldInput.unFocus();
+		self.unFocus();
 	}
 
 	function onIncrement(direction: "Decrease" | "Increase") {
@@ -245,7 +245,7 @@
 	{sharpRightCorners}
 	spellcheck={false}
 	styles={{ "min-width": minWidth > 0 ? `${minWidth}px` : undefined, "--progress-factor": (rangeSliderValueAsRendered - rangeMin) / (rangeMax - rangeMin) }}
-	bind:this={fieldInput}
+	bind:this={self}
 >
 	{#if value !== undefined && mode === "Increment" && incrementBehavior !== "None"}
 		<button class="arrow left" on:click={() => onIncrement("Decrease")} tabindex="-1" />

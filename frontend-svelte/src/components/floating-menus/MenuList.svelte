@@ -11,7 +11,7 @@
 	import TextLabel from "@/components/widgets/labels/TextLabel.svelte";
 	import UserInputLabel from "@/components/widgets/labels/UserInputLabel.svelte";
 
-	let floatingMenu: FloatingMenu;
+	let self: FloatingMenu;
 	let scroller: LayoutCol;
 
 	// emits: ["update:open", "update:activeEntry", "naturalWidth"],
@@ -35,8 +35,8 @@
 	// Called only when `open` is changed from outside this component (with v-model)
 	$: watchOpen(open);
 	$: dispatch("open", isOpen);
-	$: watchEntries(entries, floatingMenu);
-	$: watchDrawIcon(drawIcon, floatingMenu);
+	$: watchEntries(entries, self);
+	$: watchDrawIcon(drawIcon, self);
 	$: virtualScrollingTotalHeight = entries.length === 0 ? 0 : entries[0].length * virtualScrollingEntryHeight;
 	$: virtualScrollingStartIndex = Math.floor(virtualScrollingEntriesStart / virtualScrollingEntryHeight) || 0;
 	$: virtualScrollingEndIndex = entries.length === 0 ? 0 : Math.min(entries[0].length, virtualScrollingStartIndex + 1 + 400 / virtualScrollingEntryHeight);
@@ -48,12 +48,12 @@
 
 	// TODO: Svelte: fix infinite loop and reenable
 	function watchEntries(_: MenuListEntry[][], floatingMenu: FloatingMenu) {
-		// floatingMenu?.measureAndEmitNaturalWidth();
+		// floatingMenu?.div().measureAndEmitNaturalWidth();
 	}
 
 	// TODO: Svelte: fix infinite loop and reenable
 	function watchDrawIcon(_: boolean, floatingMenu: FloatingMenu) {
-		// floatingMenu?.measureAndEmitNaturalWidth();
+		// floatingMenu?.div().measureAndEmitNaturalWidth();
 	}
 
 	function onScroll(e: Event) {
@@ -198,7 +198,7 @@
 	{direction}
 	{minWidth}
 	scrollableY={scrollableY && virtualScrollingEntryHeight === 0}
-	bind:this={floatingMenu}
+	bind:this={self}
 >
 	<!-- If we put the scrollableY on the layoutcol for non-font dropdowns then for some reason it always creates a tiny scrollbar.
 	However when we are using the virtual scrolling then we need the layoutcol to be scrolling so we can bind the events without using $refs. -->

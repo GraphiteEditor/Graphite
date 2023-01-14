@@ -28,7 +28,7 @@
 	export let sharpRightCorners = false;
 	export let placeholder: string | undefined = undefined;
 
-	let input: HTMLInputElement | HTMLTextAreaElement;
+	let inputOrTextarea: HTMLInputElement | HTMLTextAreaElement;
 	let id = `${Math.random()}`.substring(2);
 	let macKeyboardLayout = platformIsMac();
 	let inputValue = value;
@@ -40,20 +40,28 @@
 	export function selectAllText(currentText: string) {
 		// Setting the value directly is required to make `input.select()` work
 		// TODO: Svelte: Test if the above message is still true
-		input.value = currentText;
-		input.select();
+		inputOrTextarea.value = currentText;
+		inputOrTextarea.select();
+	}
+
+	export function focus() {
+		inputOrTextarea.focus();
 	}
 
 	export function unFocus() {
-		input.blur();
+		inputOrTextarea.blur();
 	}
 
-	export function getInputElementValue(): string {
-		return input.value;
+	export function getValue(): string {
+		return inputOrTextarea.value;
 	}
 
 	export function setInputElementValue(value: string) {
-		input.value = value;
+		inputOrTextarea.value = value;
+	}
+
+	export function element(): HTMLInputElement | HTMLTextAreaElement {
+		return inputOrTextarea;
 	}
 </script>
 
@@ -68,7 +76,7 @@
 			{disabled}
 			{placeholder}
 			bind:value={inputValue}
-			bind:this={input}
+			bind:this={inputOrTextarea}
 			on:focus={() => dispatch("textFocused")}
 			on:blur={() => dispatch("textChanged")}
 			on:change={() => dispatch("textChanged")}
@@ -85,7 +93,7 @@
 			{spellcheck}
 			{disabled}
 			bind:value={inputValue}
-			bind:this={input}
+			bind:this={inputOrTextarea}
 			on:focus={() => dispatch("textFocused")}
 			on:blur={() => dispatch("textChanged")}
 			on:change={() => dispatch("textChanged")}

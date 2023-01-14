@@ -115,8 +115,6 @@ fn handle_message(message: String) -> String {
 		let serialized = ron::to_string(&send_frontend_message_to_js(response.clone())).unwrap();
 		if let Err(error) = ron::from_str::<FrontendMessage>(&serialized) {
 			log::error!("Error deserializing message: {}", error);
-			log::debug!("{:#?}", response);
-			log::debug!("{}", serialized);
 		}
 	}
 

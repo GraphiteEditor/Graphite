@@ -132,10 +132,10 @@
 			// Required to correctly position content when scrolled (it has a `position: fixed` to prevent clipping)
 			// We use `.style` on a ref (instead of a `:style` Vue binding) because the binding causes the `updated()` hook to call the function we're in recursively forever
 			const tailOffset = type === "Popover" ? 10 : 0;
-			if (direction === "Bottom") floatingMenuContent.style.top = `${tailOffset + floatingMenuBounds.top}px`;
-			if (direction === "Top") floatingMenuContent.style.bottom = `${tailOffset + floatingMenuBounds.bottom}px`;
-			if (direction === "Right") floatingMenuContent.style.left = `${tailOffset + floatingMenuBounds.left}px`;
-			if (direction === "Left") floatingMenuContent.style.right = `${tailOffset + floatingMenuBounds.right}px`;
+			if (direction === "Bottom") floatingMenuContent.div().style.top = `${tailOffset + floatingMenuBounds.top}px`;
+			if (direction === "Top") floatingMenuContent.div().style.bottom = `${tailOffset + floatingMenuBounds.bottom}px`;
+			if (direction === "Right") floatingMenuContent.div().style.left = `${tailOffset + floatingMenuBounds.left}px`;
+			if (direction === "Left") floatingMenuContent.div().style.right = `${tailOffset + floatingMenuBounds.right}px`;
 
 			// Required to correctly position tail when scrolled (it has a `position: fixed` to prevent clipping)
 			// We use `.style` on a ref (instead of a `:style` Vue binding) because the binding causes the `updated()` hook to call the function we're in recursively forever
@@ -154,11 +154,11 @@
 
 			// We use `.style` on a ref (instead of a `:style` Vue binding) because the binding causes the `updated()` hook to call the function we're in recursively forever
 			if (floatingMenuContentBounds.left - windowEdgeMargin <= workspaceBounds.left) {
-				floatingMenuContent.style.left = `${windowEdgeMargin}px`;
+				floatingMenuContent.div().style.left = `${windowEdgeMargin}px`;
 				if (workspaceBounds.left + floatingMenuContainerBounds.left === 12) zeroedBorderHorizontal = "Left";
 			}
 			if (floatingMenuContentBounds.right + windowEdgeMargin >= workspaceBounds.right) {
-				floatingMenuContent.style.right = `${windowEdgeMargin}px`;
+				floatingMenuContent.div().style.right = `${windowEdgeMargin}px`;
 				if (workspaceBounds.right - floatingMenuContainerBounds.right === 12) zeroedBorderHorizontal = "Right";
 			}
 		}
@@ -167,11 +167,11 @@
 
 			// We use `.style` on a ref (instead of a `:style` Vue binding) because the binding causes the `updated()` hook to call the function we're in recursively forever
 			if (floatingMenuContentBounds.top - windowEdgeMargin <= workspaceBounds.top) {
-				floatingMenuContent.style.top = `${windowEdgeMargin}px`;
+				floatingMenuContent.div().style.top = `${windowEdgeMargin}px`;
 				if (workspaceBounds.top + floatingMenuContainerBounds.top === 12) zeroedBorderVertical = "Top";
 			}
 			if (floatingMenuContentBounds.bottom + windowEdgeMargin >= workspaceBounds.bottom) {
-				floatingMenuContent.style.bottom = `${windowEdgeMargin}px`;
+				floatingMenuContent.div().style.bottom = `${windowEdgeMargin}px`;
 				if (workspaceBounds.bottom - floatingMenuContainerBounds.bottom === 12) zeroedBorderVertical = "Bottom";
 			}
 		}
@@ -181,16 +181,16 @@
 			// We use `.style` on a ref (instead of a `:style` Vue binding) because the binding causes the `updated()` hook to call the function we're in recursively forever
 			switch (`${zeroedBorderVertical}${zeroedBorderHorizontal}`) {
 				case "TopLeft":
-					floatingMenuContent.style.borderTopLeftRadius = "0";
+					floatingMenuContent.div().style.borderTopLeftRadius = "0";
 					break;
 				case "TopRight":
-					floatingMenuContent.style.borderTopRightRadius = "0";
+					floatingMenuContent.div().style.borderTopRightRadius = "0";
 					break;
 				case "BottomLeft":
-					floatingMenuContent.style.borderBottomLeftRadius = "0";
+					floatingMenuContent.div().style.borderBottomLeftRadius = "0";
 					break;
 				case "BottomRight":
-					floatingMenuContent.style.borderBottomRightRadius = "0";
+					floatingMenuContent.div().style.borderBottomRightRadius = "0";
 					break;
 				default:
 					break;
@@ -219,7 +219,7 @@
 
 		// Measure the width of the floating menu content element, if it's currently visible
 		// The result will be `undefined` if the menu is invisible, perhaps because an ancestor component is hidden with a falsy `v-if` condition
-		const naturalWidth: number | undefined = floatingMenuContent?.clientWidth;
+		const naturalWidth: number | undefined = floatingMenuContent?.div().clientWidth;
 
 		// Turn off measuring mode for the component, which triggers another call to the `updated()` Vue event, so we can turn off the protection after that has happened
 		measuringOngoing = false;
