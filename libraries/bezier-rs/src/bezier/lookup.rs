@@ -35,7 +35,7 @@ impl Bezier {
 			}
 			ComputeType::Euclidean(distance) => {
 				assert!((0.0..=1.).contains(&distance));
-				self.euclidean_to_parametric(distance, 0.0001)
+				self.euclidean_to_parametric(distance, DEFAULT_EUCLIDEAN_ERROR_BOUND)
 			}
 			ComputeType::EuclideanWithinError { distance, epsilon } => {
 				assert!((0.0..=1.).contains(&distance));
@@ -63,8 +63,8 @@ impl Bezier {
 		}
 	}
 
-	/// Calculate the point on the curve based on the `t`-value provided.
-	/// Expects `t` to be within the inclusive range `[0, 1]`.
+	/// Calculate the coordinates of the point `c` along the curve.
+	/// Expects `t` or `distance` argument enclosed within `c` to be within the inclusive range `[0, 1]`.
 	pub fn evaluate(&self, c: ComputeType) -> DVec2 {
 		let t = self.compute_type_to_parametric(c);
 		self.unrestricted_parametric_evaluate(t)

@@ -245,8 +245,6 @@ impl Bezier {
 		let mut intersection_t_values = self.unfiltered_intersections(other, error);
 		intersection_t_values.sort_by(|a, b| a.partial_cmp(b).unwrap());
 
-		// println!("<<<<< intersection_t_values :: {:?}", intersection_t_values);
-
 		intersection_t_values.iter().fold(Vec::new(), |mut accumulator, t| {
 			if !accumulator.is_empty() && (accumulator.last().unwrap() - t).abs() < minimum_seperation.unwrap_or(MIN_SEPERATION_VALUE) {
 				accumulator.pop();
