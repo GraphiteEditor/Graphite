@@ -8,7 +8,11 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt;
 
-pub type DocumentSave = (DocumentLegacy, HashMap<Vec<LayerId>, LayerMetadata>);
+#[derive(Debug, Clone)]
+pub struct DocumentSave {
+	pub document: DocumentLegacy,
+	pub layer_metadata: HashMap<Vec<LayerId>, LayerMetadata>,
+}
 
 #[derive(PartialEq, Eq, Clone, Debug, Serialize, Deserialize, Hash)]
 pub enum FlipAxis {

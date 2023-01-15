@@ -1290,7 +1290,7 @@ impl DocumentMessageHandler {
 	/// Places a document into the history system
 	fn backup_with_document(&mut self, document: DocumentLegacy, layer_metadata: HashMap<Vec<LayerId>, LayerMetadata>, responses: &mut VecDeque<Message>) {
 		self.document_redo_history.clear();
-		self.document_undo_history.push_back((document, layer_metadata));
+		self.document_undo_history.push_back(DocumentSave { document, layer_metadata });
 		if self.document_undo_history.len() > crate::consts::MAX_UNDO_HISTORY_LEN {
 			self.document_undo_history.pop_front();
 		}
@@ -1328,7 +1328,7 @@ impl DocumentMessageHandler {
 		let selected_paths: Vec<Vec<LayerId>> = self.selected_layers().map(|path| path.to_vec()).collect();
 
 		match self.document_undo_history.pop_back() {
-			Some((document, layer_metadata)) => {
+			Some(DocumentSave { document, layer_metadata }) => {
 				// Update the currently displayed layer on the Properties panel if the selection changes after an undo action
 				// Also appropriately update the Properties panel if an undo action results in a layer being deleted
 				let prev_selected_paths: Vec<Vec<LayerId>> = layer_metadata.iter().filter_map(|(layer_id, metadata)| metadata.selected.then_some(layer_id.clone())).collect();
@@ -1344,7 +1344,7 @@ impl DocumentMessageHandler {
 				self.document_legacy.root.cache_dirty = true;
 
 				let layer_metadata = std::mem::replace(&mut self.layer_metadata, layer_metadata);
-				self.document_redo_history.push_back((document, layer_metadata));
+				self.document_redo_history.push_back(DocumentSave { document, layer_metadata });
 				if self.document_redo_history.len() > crate::consts::MAX_UNDO_HISTORY_LEN {
 					self.document_redo_history.pop_front();
 				}
@@ -1368,7 +1368,7 @@ impl DocumentMessageHandler {
 		let selected_paths: Vec<Vec<LayerId>> = self.selected_layers().map(|path| path.to_vec()).collect();
 
 		match self.document_redo_history.pop_back() {
-			Some((document, layer_metadata)) => {
+			Some(DocumentSave { document, layer_metadata }) => {
 				// Update currently displayed layer on property panel if selection changes after redo action
 				// Also appropriately update property panel if redo action results in a layer being added
 				let next_selected_paths: Vec<Vec<LayerId>> = layer_metadata.iter().filter_map(|(layer_id, metadata)| metadata.selected.then_some(layer_id.clone())).collect();
@@ -1384,7 +1384,7 @@ impl DocumentMessageHandler {
 				self.document_legacy.root.cache_dirty = true;
 
 				let layer_metadata = std::mem::replace(&mut self.layer_metadata, layer_metadata);
-				self.document_undo_history.push_back((document, layer_metadata));
+				self.document_undo_history.push_back(DocumentSave { document, layer_metadata });
 				if self.document_undo_history.len() > crate::consts::MAX_UNDO_HISTORY_LEN {
 					self.document_undo_history.pop_front();
 				}
@@ -1407,7 +1407,7 @@ impl DocumentMessageHandler {
 		self.document_undo_history
 			.iter()
 			.last()
-			.map(|(document_legacy, _)| document_legacy.current_state_identifier())
+			.map(|DocumentSave { document, .. }| document.current_state_identifier())
 			.unwrap_or(0)
 	}
 
