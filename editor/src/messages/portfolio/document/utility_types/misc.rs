@@ -1,4 +1,5 @@
 pub use super::layer_panel::{LayerMetadata, LayerPanelEntry};
+use crate::messages::prelude::ArtboardMessageHandler;
 
 use document_legacy::color::Color;
 use document_legacy::document::Document as DocumentLegacy;
@@ -11,6 +12,7 @@ use std::fmt;
 #[derive(Debug, Clone)]
 pub struct DocumentSave {
 	pub document: DocumentLegacy,
+	pub artboard: ArtboardMessageHandler,
 	pub layer_metadata: HashMap<Vec<LayerId>, LayerMetadata>,
 }
 
