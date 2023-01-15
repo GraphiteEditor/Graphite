@@ -1322,6 +1322,23 @@ impl DocumentMessageHandler {
 		// TODO: Consider if we should check if the document is saved
 	}
 
+	/// Replace the document with a new document save, returning the document save.
+	pub fn replace_document(&mut self, DocumentSave { document, artboard, layer_metadata }: DocumentSave) -> DocumentSave {
+		// Keeping the root is required if the bounds of the viewport have changed during the operation
+		let old_root = self.document_legacy.root.transform;
+		let old_artboard_root = self.artboard_message_handler.artboards_document.root.transform;
+		let document = std::mem::replace(&mut self.document_legacy, document);
+		let artboard = std::mem::replace(&mut self.artboard_message_handler, artboard);
+		self.document_legacy.root.transform = old_root;
+		self.artboard_message_handler.artboards_document.root.transform = old_artboard_root;
+		self.document_legacy.root.cache_dirty = true;
+		self.artboard_message_handler.artboards_document.root.cache_dirty = true;
+
+		let layer_metadata = std::mem::replace(&mut self.layer_metadata, layer_metadata);
+
+		DocumentSave { document, artboard, layer_metadata }
+	}
+
 	pub fn undo(&mut self, responses: &mut VecDeque<Message>) -> Result<(), EditorError> {
 		// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
 		responses.push_back(PortfolioMessage::UpdateOpenDocumentsList.into());
@@ -1338,14 +1355,9 @@ impl DocumentMessageHandler {
 					responses.push_back(BroadcastEvent::SelectionChanged.into());
 				}
 
-				// Keeping the root is required if the bounds of the viewport have changed during the operation
-				let old_root = self.document_legacy.root.transform;
-				let document = std::mem::replace(&mut self.document_legacy, document);
-				self.document_legacy.root.transform = old_root;
-				self.document_legacy.root.cache_dirty = true;
+				let document_save = self.replace_document(DocumentSave { document, artboard, layer_metadata });
 
-				let layer_metadata = std::mem::replace(&mut self.layer_metadata, layer_metadata);
-				self.document_redo_history.push_back(DocumentSave { document, artboard, layer_metadata });
+				self.document_redo_history.push_back(document_save);
 				if self.document_redo_history.len() > crate::consts::MAX_UNDO_HISTORY_LEN {
 					self.document_redo_history.pop_front();
 				}
@@ -1378,14 +1390,8 @@ impl DocumentMessageHandler {
 					responses.push_back(BroadcastEvent::SelectionChanged.into());
 				}
 
-				// Keeping the root is required if the bounds of the viewport have changed during the operation
-				let old_root = self.document_legacy.root.transform;
-				let document = std::mem::replace(&mut self.document_legacy, document);
-				self.document_legacy.root.transform = old_root;
-				self.document_legacy.root.cache_dirty = true;
-
-				let layer_metadata = std::mem::replace(&mut self.layer_metadata, layer_metadata);
-				self.document_undo_history.push_back(DocumentSave { document, artboard, layer_metadata });
+				let document_save = self.replace_document(DocumentSave { document, artboard, layer_metadata });
+				self.document_undo_history.push_back(document_save);
 				if self.document_undo_history.len() > crate::consts::MAX_UNDO_HISTORY_LEN {
 					self.document_undo_history.pop_front();
 				}
