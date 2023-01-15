@@ -972,6 +972,24 @@ impl DocumentMessageHandler {
 
 		// Prepare the node graph input image
 
+		let Some(node_network) = self.document_legacy.layer(&layer_path).ok().and_then(|layer|layer.as_node_network().ok()) else {
+			return None;
+		};
+
+		// Skip processing under node graph frame input if not connected
+		if !node_network.connected_to_output(node_network.inputs[0]) {
+			return Some(
+				PortfolioMessage::ProcessNodeGraphFrame {
+					document_id,
+					layer_path,
+					image_data: Default::default(),
+					size: (0, 0),
+					imaginate_node,
+				}
+				.into(),
+			);
+		}
+
 		// Calculate the size of the region to be exported
 
 		let old_transforms = self.remove_document_transform();

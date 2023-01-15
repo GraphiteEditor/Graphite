@@ -8,7 +8,7 @@ use document_legacy::layers::layer_info::{LayerDataType, LayerDataTypeDiscrimina
 use document_legacy::layers::nodegraph_layer::NodeGraphFrameLayer;
 use document_legacy::LayerId;
 use graph_craft::document::value::TaggedValue;
-use graph_craft::document::{DocumentNode, DocumentNodeImplementation, DocumentNodeMetadata, NodeId, NodeInput, NodeNetwork};
+use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork};
 
 mod document_node_types;
 mod node_properties;
@@ -112,37 +112,24 @@ pub struct NodeGraphMessageHandler {
 
 impl NodeGraphMessageHandler {
 	fn get_root_network<'a>(&self, document: &'a Document) -> Option<&'a graph_craft::document::NodeNetwork> {
-		self.layer_path.as_ref().and_then(|path| document.layer(path).ok()).and_then(|layer| match &layer.data {
-			LayerDataType::NodeGraphFrame(n) => Some(&n.network),
-			_ => None,
-		})
+		self.layer_path.as_ref().and_then(|path| document.layer(path).ok()).and_then(|layer| layer.as_node_network().ok())
 	}
 
 	fn get_root_network_mut<'a>(&self, document: &'a mut Document) -> Option<&'a mut graph_craft::document::NodeNetwork> {
-		self.layer_path.as_ref().and_then(|path| document.layer_mut(path).ok()).and_then(|layer| match &mut layer.data {
-			LayerDataType::NodeGraphFrame(n) => Some(&mut n.network),
-			_ => None,
-		})
+		self.layer_path
+			.as_ref()
+			.and_then(|path| document.layer_mut(path).ok())
+			.and_then(|layer| layer.as_node_network_mut().ok())
 	}
 
 	/// Get the active graph_craft NodeNetwork struct
 	fn get_active_network<'a>(&self, document: &'a Document) -> Option<&'a graph_craft::document::NodeNetwork> {
-		let mut network = self.get_root_network(document);
-
-		for segement in &self.nested_path {
-			network = network.and_then(|network| network.nodes.get(segement)).and_then(|node| node.implementation.get_network());
-		}
-		network
+		self.get_root_network(document).and_then(|network| network.nested_network(&self.nested_path))
 	}
 
 	/// Get the active graph_craft NodeNetwork struct
 	fn get_active_network_mut<'a>(&self, document: &'a mut Document) -> Option<&'a mut graph_craft::document::NodeNetwork> {
-		let mut network = self.get_root_network_mut(document);
-
-		for segement in &self.nested_path {
-			network = network.and_then(|network| network.nodes.get_mut(segement)).and_then(|node| node.implementation.get_network_mut());
-		}
-		network
+		self.get_root_network_mut(document).and_then(|network| network.nested_network_mut(&self.nested_path))
 	}
 
 	/// Send the cached layout for the bar at the top of the node panel to the frontend

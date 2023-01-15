@@ -506,6 +506,24 @@ impl Layer {
 		}
 	}
 
+	/// Get a mutable reference to the NodeNetwork
+	/// This operation will fail if the [Layer type](Layer::data) is not `LayerDataType::NodeGraphFrame`.
+	pub fn as_node_network_mut(&mut self) -> Result<&mut graph_craft::document::NodeNetwork, DocumentError> {
+		match &mut self.data {
+			LayerDataType::NodeGraphFrame(frame) => Ok(&mut frame.network),
+			_ => Err(DocumentError::NotANodeGraph),
+		}
+	}
+
+	/// Get a reference to the NodeNetwork
+	/// This operation will fail if the [Layer type](Layer::data) is not `LayerDataType::NodeGraphFrame`.
+	pub fn as_node_network(&self) -> Result<&graph_craft::document::NodeNetwork, DocumentError> {
+		match &self.data {
+			LayerDataType::NodeGraphFrame(frame) => Ok(&frame.network),
+			_ => Err(DocumentError::NotANodeGraph),
+		}
+	}
+
 	pub fn style(&self) -> Result<&PathStyle, DocumentError> {
 		match &self.data {
 			LayerDataType::Shape(s) => Ok(&s.style),

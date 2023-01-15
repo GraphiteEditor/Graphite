@@ -1,7 +1,7 @@
 use crate::document::value::TaggedValue;
 use crate::generic;
 use crate::proto::{ConstructionArgs, NodeIdentifier, ProtoNetwork, ProtoNode, ProtoNodeInput, Type};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
 
 pub mod value;
@@ -344,6 +344,64 @@ impl NodeNetwork {
 			.collect(),
 			..Default::default()
 		}
+	}
+
+	/// Get the nested network given by the path of node ids
+	pub fn nested_network(&self, nested_path: &[NodeId]) -> Option<&Self> {
+		let mut network = Some(self);
+
+		for segement in nested_path {
+			network = network.and_then(|network| network.nodes.get(segement)).and_then(|node| node.implementation.get_network());
+		}
+		network
+	}
+
+	/// Get the mutable nested network given by the path of node ids
+	pub fn nested_network_mut(&mut self, nested_path: &[NodeId]) -> Option<&mut Self> {
+		let mut network = Some(self);
+
+		for segement in nested_path {
+			network = network.and_then(|network| network.nodes.get_mut(segement)).and_then(|node| node.implementation.get_network_mut());
+		}
+		network
+	}
+
+	/// Check if the specified node id is connected to the output
+	pub fn connected_to_output(&self, node_id: NodeId) -> bool {
+		// If the node is the output then return true
+		if self.output == node_id {
+			return true;
+		}
+		// Get the output
+		let Some(output_node) = self.nodes.get(&self.output) else{
+			return false;
+		};
+		let mut stack = vec![output_node];
+		let mut already_visited = HashSet::new();
+		already_visited.insert(self.output);
+
+		while let Some(node) = stack.pop() {
+			for input in &node.inputs {
+				if let &NodeInput::Node(ref_id) = input {
+					// Skip if already viewed
+					if already_visited.contains(&ref_id) {
+						continue;
+					}
+					// If the target node is used as input then return true
+					if ref_id == node_id {
+						return true;
+					}
+					// Add the referenced node to the stack
+					let Some(ref_node) = self.nodes.get(&ref_id) else{
+						continue
+					};
+					already_visited.insert(ref_id);
+					stack.push(ref_node);
+				}
+			}
+		}
+
+		false
 	}
 }
 
