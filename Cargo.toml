@@ -4,6 +4,7 @@ members = [
 	"document-legacy",
 	"proc-macros",
 	"frontend/wasm",
+	"frontend-svelte/wasm",
 	"frontend/src-tauri",
 	"node-graph/gcore",
 	"node-graph/gstd",
@@ -28,14 +29,20 @@ exclude = [
 	"node-graph/gpu-compiler",
 ]
 
+[workspace.dependencies]
+specta = { git = "https://github.com/oscartbeaumont/rspc", rev = "9725ddbfe40183debc055b88c37910eb6f818eae", features = ["export", "glam"] }
+
 [profile.release.package.graphite-wasm]
 opt-level = 3
 
 [profile.dev.package.graphite-wasm]
 opt-level = 3
 
-[workspace.dependencies]
-specta = { git = "https://github.com/oscartbeaumont/rspc", rev = "9725ddbfe40183debc055b88c37910eb6f818eae", features = ["export", "glam"] }
+[profile.release.package.graphite-wasm-svelte]
+opt-level = 3
+
+[profile.dev.package.graphite-wasm-svelte]
+opt-level = 3
 
 #[profile.dev]
 #opt-level = 3

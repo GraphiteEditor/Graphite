@@ -144,6 +144,7 @@ pub enum Operation {
 	MoveSelectedManipulatorPoints {
 		layer_path: Vec<LayerId>,
 		delta: (f64, f64),
+		mirror_distance: bool,
 	},
 	MoveManipulatorPoint {
 		layer_path: Vec<LayerId>,
@@ -272,12 +273,10 @@ pub enum Operation {
 	SetManipulatorHandleMirroring {
 		layer_path: Vec<LayerId>,
 		id: u64,
-		mirror_distance: bool,
 		mirror_angle: bool,
 	},
 	SetSelectedHandleMirroring {
 		layer_path: Vec<LayerId>,
-		toggle_distance: bool,
 		toggle_angle: bool,
 	},
 }

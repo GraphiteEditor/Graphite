@@ -139,6 +139,7 @@ impl Fsm for NodeGraphToolFsmState {
 					responses.push_back(DocumentMessage::DeselectAllLayers.into());
 
 					use graph_craft::{document::*, generic, proto::*};
+
 					let network = NodeNetwork {
 						inputs: vec![0],
 						output: 1,

@@ -182,9 +182,9 @@ impl Subpath {
 	}
 
 	/// Move the selected points by the delta vector
-	pub fn move_selected(&mut self, delta: DVec2) {
+	pub fn move_selected(&mut self, delta: DVec2, mirror_distance: bool) {
 		self.selected_manipulator_groups_any_points_mut()
-			.for_each(|manipulator_group| manipulator_group.move_selected_points(delta));
+			.for_each(|manipulator_group| manipulator_group.move_selected_points(delta, mirror_distance));
 	}
 
 	/// Delete the selected points from the [Subpath]

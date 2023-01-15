@@ -1,7 +1,9 @@
 use crate::messages::input_mapper::utility_types::misc::ActionKeys;
 use crate::messages::layout::utility_types::layout_widget::WidgetCallback;
 
-use document_legacy::{color::Color, layers::layer_info::LayerDataTypeDiscriminant, LayerId};
+use document_legacy::color::Color;
+use document_legacy::layers::layer_info::LayerDataTypeDiscriminant;
+use document_legacy::LayerId;
 use graphite_proc_macros::WidgetBuilder;
 
 use derivative::*;

@@ -228,7 +228,7 @@ impl fmt::Display for Key {
 			return write!(f, "{}", key_name.chars().skip(KEY_PREFIX.len()).collect::<String>());
 		}
 
-		let keyboard_layout = || GLOBAL_PLATFORM.get().expect("Failed to get GLOBAL_PLATFORM").as_keyboard_platform_layout();
+		let keyboard_layout = || GLOBAL_PLATFORM.get().copied().unwrap_or_default().as_keyboard_platform_layout();
 
 		let name = match self {
 			// Writing system keys
@@ -342,7 +342,7 @@ impl fmt::Display for KeysGroup {
 			.0
 			.iter()
 			.map(|key| {
-				let keyboard_layout = GLOBAL_PLATFORM.get().expect("Failed to get GLOBAL_PLATFORM").as_keyboard_platform_layout();
+				let keyboard_layout = GLOBAL_PLATFORM.get().copied().unwrap_or_default().as_keyboard_platform_layout();
 				let key_is_modifier = matches!(*key, Key::Control | Key::Command | Key::Alt | Key::Shift | Key::Meta | Key::Accel);
 
 				if keyboard_layout == KeyboardPlatformLayout::Mac && key_is_modifier {
