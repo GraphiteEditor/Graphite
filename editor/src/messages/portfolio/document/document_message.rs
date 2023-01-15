@@ -49,7 +49,7 @@ pub enum DocumentMessage {
 	},
 	BackupDocument {
 		document: DocumentLegacy,
-		// artboard: ArtboardMessageHandler,
+		artboard: ArtboardMessageHandler,
 		layer_metadata: HashMap<Vec<LayerId>, LayerMetadata>,
 	},
 	BooleanOperation(BooleanOperationType),

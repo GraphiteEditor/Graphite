@@ -247,7 +247,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 					responses.push_back(BroadcastEvent::DocumentIsDirty.into());
 				}
 			}
-			BackupDocument { document, layer_metadata } => self.backup_with_document(document, self.artboard_message_handler.clone(), layer_metadata, responses),
+			BackupDocument { document, artboard, layer_metadata } => self.backup_with_document(document, artboard, layer_metadata, responses),
 			BooleanOperation(op) => {
 				// Convert Vec<&[LayerId]> to Vec<Vec<&LayerId>> because Vec<&[LayerId]> does not implement several traits (Debug, Serialize, Deserialize, ...) required by DocumentOperation enum
 				responses.push_back(StartTransaction.into());
@@ -1309,7 +1309,7 @@ impl DocumentMessageHandler {
 		responses.push_back(
 			DocumentMessage::BackupDocument {
 				document: self.document_legacy.clone(),
-				//artboard: self.artboard_message_handler.clone(),
+				artboard: self.artboard_message_handler.clone(),
 				layer_metadata: self.layer_metadata.clone(),
 			}
 			.into(),
