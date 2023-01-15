@@ -61,7 +61,9 @@ pub enum NodeGraphMessage {
 	SelectNodes {
 		nodes: Vec<NodeId>,
 	},
-	SendGraph,
+	SendGraph {
+		rerender: bool,
+	},
 	SetDrawing {
 		new_drawing: bool,
 	},

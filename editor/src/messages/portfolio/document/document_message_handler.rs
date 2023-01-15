@@ -1394,7 +1394,7 @@ impl DocumentMessageHandler {
 					responses.push_back(DocumentMessage::LayerChanged { affected_layer_path: layer.clone() }.into())
 				}
 
-				responses.push_back(NodeGraphMessage::SendGraph.into());
+				responses.push_back(NodeGraphMessage::SendGraph { rerender: true }.into());
 
 				Ok(())
 			}
@@ -1434,7 +1434,7 @@ impl DocumentMessageHandler {
 					responses.push_back(DocumentMessage::LayerChanged { affected_layer_path: layer.clone() }.into())
 				}
 
-				responses.push_back(NodeGraphMessage::SendGraph.into());
+				responses.push_back(NodeGraphMessage::SendGraph { rerender: true }.into());
 
 				Ok(())
 			}
