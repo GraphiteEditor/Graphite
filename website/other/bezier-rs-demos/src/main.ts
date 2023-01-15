@@ -60,8 +60,6 @@ if (splitPathName[1] === "bezier" && splitPathName[2] in bezierFeatures) {
   <div id="subpath-demos"></div>
   `.trim();
 	renderSubpathPane(splitPathName[2] as SubpathFeatureKey, document.getElementById("subpath-demos"));
-} else if (pathname !== "/") {
-	window.location.pathname = "/";
 } else {
 	window.document.body.innerHTML = `
   <h1>Bezier-rs Interactive Documentation</h1>
