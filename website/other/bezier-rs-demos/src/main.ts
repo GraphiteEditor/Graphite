@@ -51,14 +51,10 @@ const splitPathName = pathname.split("/");
 
 // Render based on pathname
 if (splitPathName[1] === "bezier" && splitPathName[2] in bezierFeatures) {
-	window.document.body.innerHTML = `
-  <div id="bezier-demos"></div>
-  `.trim();
+	window.document.body.innerHTML = `<div id="bezier-demos"></div>`;
 	renderBezierPane(splitPathName[2] as BezierFeatureKey, document.getElementById("bezier-demos"));
 } else if (splitPathName[1] === "subpath" && splitPathName[2] in subpathFeatures) {
-	window.document.body.innerHTML = `
-  <div id="subpath-demos"></div>
-  `.trim();
+	window.document.body.innerHTML = `<div id="subpath-demos"></div>`;
 	renderSubpathPane(splitPathName[2] as SubpathFeatureKey, document.getElementById("subpath-demos"));
 } else {
 	window.document.body.innerHTML = `
