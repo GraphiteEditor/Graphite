@@ -1,5 +1,6 @@
 use super::*;
-use crate::{consts::MIN_SEPERATION_VALUE, ComputeType};
+use crate::consts::MIN_SEPERATION_VALUE;
+use crate::ComputeType;
 
 use glam::DVec2;
 

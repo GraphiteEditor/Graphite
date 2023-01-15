@@ -11,6 +11,7 @@ use crate::messages::portfolio::document::utility_types::misc::DocumentRenderMod
 use crate::messages::portfolio::utility_types::ImaginateServerStatus;
 use crate::messages::prelude::*;
 
+use crate::messages::tool::utility_types::{HintData, HintGroup};
 use document_legacy::document::pick_safe_imaginate_resolution;
 use document_legacy::layers::layer_info::{LayerDataType, LayerDataTypeDiscriminant};
 use document_legacy::layers::text_layer::Font;
@@ -92,9 +93,11 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 					responses.push_back(BroadcastEvent::ToolAbort.into());
 					responses.push_back(ToolMessage::DeactivateTools.into());
 
-					// Clear properties panel and layer tree
+					// Clear relevant UI layouts if there are no documents
 					responses.push_back(PropertiesPanelMessage::ClearSelection.into());
 					responses.push_back(DocumentMessage::ClearLayerTree.into());
+					let hint_data = HintData(vec![HintGroup(vec![])]);
+					responses.push_back(FrontendMessage::UpdateInputHints { hint_data }.into());
 				}
 
 				for document_id in &self.document_ids {
@@ -107,9 +110,11 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 			PortfolioMessage::CloseDocument { document_id } => {
 				// Is this the last document?
 				if self.documents.len() == 1 && self.document_ids[0] == document_id {
-					// Clear properties panel and layer tree
+					// Clear UI layouts that assume the existence of a document
 					responses.push_back(PropertiesPanelMessage::ClearSelection.into());
 					responses.push_back(DocumentMessage::ClearLayerTree.into());
+					let hint_data = HintData(vec![HintGroup(vec![])]);
+					responses.push_back(FrontendMessage::UpdateInputHints { hint_data }.into());
 				}
 				// Actually delete the document (delay to delete document is required to let the document and properties panel messages above get processed)
 				responses.push_back(PortfolioMessage::DeleteDocument { document_id }.into());

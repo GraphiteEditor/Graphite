@@ -321,7 +321,6 @@ impl NodeGraphMessageHandler {
 				disabled: network.disabled.contains(id),
 			})
 		}
-		log::debug!("Frontend Nodes:\n{:#?}\n\nLinks:\n{:#?}", nodes, links);
 		responses.push_back(FrontendMessage::UpdateNodeGraph { nodes, links }.into());
 	}
 
@@ -423,7 +422,6 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &mut dyn Iterator<Item = &
 				input_node,
 				input_node_connector_index,
 			} => {
-				log::debug!("Connect primary output from node {output_node} to input of index {input_node_connector_index} on node {input_node}.");
 				let node_id = input_node;
 
 				let Some(network) = self.get_active_network(document) else {
