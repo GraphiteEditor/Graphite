@@ -1714,7 +1714,6 @@ dependencies = [
  "rustybuzz",
  "serde",
  "specta",
- "ttf-parser",
 ]
 
 [[package]]
