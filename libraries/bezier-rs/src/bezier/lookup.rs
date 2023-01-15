@@ -4,8 +4,8 @@ use super::*;
 
 /// Functionality relating to looking up properties of the `Bezier` or points along the `Bezier`.
 impl Bezier {
-	/// Convert a euclidean distance along the `Bezier` to a parametric `t`-value.
-	pub fn euclidean_to_parametric(&self, d: f64, error: f64) -> f64 {
+	/// Convert a euclidean distance ratio along the `Bezier` curve to a parametric `t`-value.
+	pub fn euclidean_to_parametric(&self, ratio: f64, error: f64) -> f64 {
 		let mut low = 0.;
 		let mut mid = 0.;
 		let mut high = 1.;
@@ -13,10 +13,10 @@ impl Bezier {
 
 		while low < high {
 			mid = (low + high) / 2.;
-			let test_d = self.trim(ComputeType::Parametric(0.), ComputeType::Parametric(mid)).length(None) / total_length;
-			if f64_compare(test_d, d, error) {
+			let test_ratio = self.trim(ComputeType::Parametric(0.), ComputeType::Parametric(mid)).length(None) / total_length;
+			if f64_compare(test_ratio, ratio, error) {
 				break;
-			} else if test_d < d {
+			} else if test_ratio < ratio {
 				low = mid;
 			} else {
 				high = mid;
@@ -33,13 +33,13 @@ impl Bezier {
 				assert!((0.0..=1.).contains(&t));
 				t
 			}
-			ComputeType::Euclidean(distance) => {
-				assert!((0.0..=1.).contains(&distance));
-				self.euclidean_to_parametric(distance, DEFAULT_EUCLIDEAN_ERROR_BOUND)
+			ComputeType::Euclidean(r) => {
+				assert!((0.0..=1.).contains(&r));
+				self.euclidean_to_parametric(r, DEFAULT_EUCLIDEAN_ERROR_BOUND)
 			}
-			ComputeType::EuclideanWithinError { distance, epsilon } => {
-				assert!((0.0..=1.).contains(&distance));
-				self.euclidean_to_parametric(distance, epsilon)
+			ComputeType::EuclideanWithinError { r, error } => {
+				assert!((0.0..=1.).contains(&r));
+				self.euclidean_to_parametric(r, error)
 			}
 		}
 	}

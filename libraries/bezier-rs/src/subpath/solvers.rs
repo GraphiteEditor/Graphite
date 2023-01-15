@@ -20,7 +20,7 @@ impl Subpath {
 			}
 			// TODO: change this implementation to Euclidean compute
 			ComputeType::Euclidean(_t) => self.iter().next().unwrap().evaluate(ComputeType::Parametric(0.)),
-			ComputeType::EuclideanWithinError { distance: _, epsilon: _ } => todo!(),
+			ComputeType::EuclideanWithinError { r: _, error: _ } => todo!(),
 		}
 	}
 

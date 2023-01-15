@@ -38,7 +38,7 @@ impl Subpath {
 			}
 			// TODO: change this implementation to Euclidean compute
 			ComputeType::Euclidean(_t) => {}
-			ComputeType::EuclideanWithinError { distance: _, epsilon: _ } => todo!(),
+			ComputeType::EuclideanWithinError { r: _, error: _ } => todo!(),
 		}
 	}
 }

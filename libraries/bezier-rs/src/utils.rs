@@ -4,10 +4,17 @@ use glam::{BVec2, DMat2, DVec2};
 use std::f64::consts::PI;
 
 #[derive(Copy, Clone, PartialEq)]
+/// A structure which can be used to represent a particular point along a `Bezier`.
+/// - The `Parametric` variant represents the point calculated using the parametric equation of the curve at argument `t`. `t` must lie in the range `[0, 1]`.
+/// - The `Euclidean` variant represents the point calculated at a distance ratio `r` along the length of the curve. `r` must lie in the range `[0, 1]`
+///   - E.g. If `d` is the distance from the start point of a `Bezier` to a point `p` along the curve, and `l` is the total length of the curve, the point `p` lies at a distance ratio `r = d / l`.
+///   - All `Bezier` functions will implicitly convert a Euclidean [ComputeType] argument to a parametric `t`-value using binary search, computed within a particular error. That is, a point at distance
+///     ratio `r*`, satisfying `r* +- r <= error = 0.001`. Given this requires a lengthier calculation, it is not recommended to use either Euclidean [ComputeType]s frequently in computationally intensive tasks.
+/// - The `EuclideanWithinError` variant functions exactly as the `Euclidean` variant, but allows the `error` to be customized when computing `t` internally.
 pub enum ComputeType {
 	Parametric(f64),
 	Euclidean(f64),
-	EuclideanWithinError { distance: f64, epsilon: f64 },
+	EuclideanWithinError { r: f64, error: f64 },
 }
 
 /// Helper to perform the computation of a and c, where b is the provided point on the curve.
