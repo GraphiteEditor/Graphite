@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use borrow_stack::FixedSizeStack;
 use glam::DVec2;
 use graphene_core::generic::FnNode;
@@ -14,13 +16,29 @@ use graphene_std::any::{Any, DowncastNode, DynAnyNode, IntoTypeErasedNode, TypeE
 use graph_craft::proto::Type;
 use graph_craft::proto::{ConstructionArgs, NodeIdentifier, ProtoNode, ProtoNodeInput};
 
-type NodeConstructor = fn(ProtoNode, &FixedSizeStack<TypeErasedNode<'static>>);
+type NodeConstructor = fn(Vec<Arc<TypeErasedNode<'static>>>) -> TypeErasedNode<'static>;
 
 use graph_craft::{concrete, generic};
 use graphene_std::memo::CacheNode;
 
+macro_rules! register_node {
+	($path:ty, input: $input:ty, params: [$($type:ty),*]) => {
+		( {NodeIdentifier::new(stringify!($path), &[$(concrete!(stringify!($type))),*])},
+		|args| {
+			let mut args = args.clone();
+			args.reverse();
+			let node = <$path>::new($(graphene_std::any::input_node::<$type, _>(args.pop().expect("not enough arguments provided to construct node"))),*);
+			let any: DynAnyNode<_, $input, _, _> = graphene_std::any::DynAnyNode::new(node);
+			any.into_type_erased()
+		})
+	};
+}
+
 //TODO: turn into hasmap
 static NODE_REGISTRY: &[(NodeIdentifier, NodeConstructor)] = &[
+	register_node!(graphene_core::ops::IdNode, input: Any<'_>, params: []),
+	register_node!(graphene_core::ops::ConsNode, input: u32, params: [u32]),
+	/*
 	(NodeIdentifier::new("graphene_core::ops::IdNode", &[concrete!("Any<'_>")]), |proto_node, stack| {
 		stack.push_fn(|nodes| {
 			if let ProtoNodeInput::Node(pre_id) = proto_node.input {
@@ -574,6 +592,7 @@ static NODE_REGISTRY: &[(NodeIdentifier, NodeConstructor)] = &[
 			}
 		})
 	}),
+	*/
 ];
 
 pub fn push_node(proto_node: ProtoNode, stack: &FixedSizeStack<TypeErasedNode<'static>>) {

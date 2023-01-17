@@ -47,34 +47,34 @@ where
 		Box::new((&self.0).eval_ref(*input))
 	}
 }
-pub struct TypeErasedNode<'n>(pub Box<dyn AsRefNode<'n, Any<'n>, Output = Any<'n>> + 'n>);
-impl<'n> Node<Any<'n>> for &'n TypeErasedNode<'n> {
+pub struct TypeErasedNode(pub Box<dyn for<'n> AsRefNode<'n, Any<'n>, Output = Any<'n>>>);
+impl<'n> Node<Any<'n>> for &'n TypeErasedNode {
 	type Output = Any<'n>;
 	fn eval(self, input: Any<'n>) -> Self::Output {
 		self.0.eval_box(input)
 	}
 }
-impl<'n> Node<Any<'n>> for &'n &'n TypeErasedNode<'n> {
+impl<'n> Node<Any<'n>> for &'n &'n TypeErasedNode {
 	type Output = Any<'n>;
 	fn eval(self, input: Any<'n>) -> Self::Output {
 		self.0.eval_box(input)
 	}
 }
 
-pub trait IntoTypeErasedNode<'n> {
-	fn into_type_erased(self) -> TypeErasedNode<'n>;
+pub trait IntoTypeErasedNode {
+	fn into_type_erased(self) -> TypeErasedNode;
 }
 
-impl<'n> StaticTypeSized for TypeErasedNode<'n> {
-	type Static = TypeErasedNode<'static>;
+impl<'n> StaticTypeSized for TypeErasedNode {
+	type Static = TypeErasedNode;
 }
 
-impl<'n, N: 'n> IntoTypeErasedNode<'n> for N
+impl<'n, N: 'n> IntoTypeErasedNode for N
 where
 	N: AsRefNode<'n, Any<'n>, Output = Any<'n>>,
 	&'n N: Node<Any<'n>, Output = Any<'n>>,
 {
-	fn into_type_erased(self) -> TypeErasedNode<'n> {
+	fn into_type_erased(self) -> TypeErasedNode {
 		TypeErasedNode(Box::new(self))
 	}
 }
@@ -98,7 +98,7 @@ where
 	pub fn as_ref(self: &'n &'n Self) -> &'n (dyn RefNode<Any<'n>, Output = Any<'n>> + 'n) {
 		self
 	}
-	pub fn into_box<'a: 'n>(self) -> TypeErasedNode<'n>
+	pub fn into_box<'a: 'n>(self) -> TypeErasedNode
 	where
 		Self: 'a,
 		N: Node<I, Output = O>,
@@ -181,6 +181,9 @@ where
 	pub fn new(n: N) -> Self {
 		DowncastBothNode(n, PhantomData)
 	}
+}
+pub fn input_node<'n, O: StaticType, N: Node<Any<'n>>>(n: N) -> DowncastBothNode<N, (), O> {
+	DowncastBothNode(n, PhantomData)
 }
 
 /*
