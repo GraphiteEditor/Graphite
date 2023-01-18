@@ -12,27 +12,23 @@ use alloc::boxed::Box;
 #[cfg(feature = "async")]
 use async_trait::async_trait;
 
-//pub mod generic;
-//pub mod ops;
-//pub mod structural;
+pub mod generic;
+pub mod ops;
+pub mod structural;
 pub mod value;
 
 #[cfg(feature = "gpu")]
 pub mod gpu;
 
-//pub mod raster;
+pub mod raster;
 
 #[cfg(feature = "alloc")]
 pub mod vector;
 
 pub trait Node<T> {
-	type Output<'n>
-	where
-		Self: 'n;
+	type Output;
 
-	fn eval<'n>(&'n self, input: T) -> Self::Output<'n>
-	where
-		T: 'n;
+	fn eval(self, input: T) -> Self::Output;
 }
 
 trait Input<I> {
@@ -50,7 +46,7 @@ where
 	&'n N: Node<I>,
 	Self: 'n,
 {
-	type Output = <&'n N as Node<I>>::Output<'n>;
+	type Output = <&'n N as Node<I>>::Output;
 	fn eval_ref(&self, input: I) -> Self::Output {
 		self.eval(input)
 	}
@@ -68,9 +64,10 @@ where
 impl<'n, N: 'n, I> AsRefNode<'n, I> for N
 where
 	&'n N: Node<I>,
+	N: Node<I>,
 	Self: 'n,
 {
-	type Output = <&'n N as Node<I>>::Output<'n>;
+	type Output = <&'n N as Node<I>>::Output;
 	fn eval_box(&'n self, input: I) -> <Self>::Output {
 		self.eval(input)
 	}
@@ -78,7 +75,7 @@ where
 
 impl<'n, T> Node<T> for &'n (dyn AsRefNode<'n, T, Output = T> + 'n) {
 	type Output = T;
-	fn eval<'o>(self, input: T) -> Self::Output<'o> {
+	fn eval(self, input: T) -> Self::Output {
 		self.eval_box(input)
 	}
 }
@@ -110,8 +107,8 @@ impl<N, I> Node<I> for Box<N>
 where
 	N: Node<I>,
 {
-	type Output<'o> = <N as Node<I>>::Output<'o>;
-	fn eval<'o>(self, input: I) -> Self::Output<'o> {
+	type Output = <N as Node<I>>::Output;
+	fn eval(self, input: I) -> Self::Output {
 		(*self).eval(input)
 	}
 }
@@ -120,18 +117,8 @@ impl<'n, N, I> Node<I> for &'n Box<N>
 where
 	&'n N: Node<I>,
 {
-	type Output<'o> = <&'n N as Node<I>>::Output<'o>;
-	fn eval<'o>(self, input: I) -> Self::Output<'o> {
+	type Output = <&'n N as Node<I>>::Output;
+	fn eval(self, input: I) -> Self::Output {
 		self.as_ref().eval(input)
-	}
-}
-#[cfg(feature = "async")]
-impl<N, I> Node<I> for std::sync::Arc<N>
-where
-	N: RefNode<I>,
-{
-	type Output<'o> = <N as RefNode<I>>::Output;
-	fn eval<'o>(self, input: I) -> Self::Output<'o> {
-		self.as_ref().eval_ref(input)
 	}
 }

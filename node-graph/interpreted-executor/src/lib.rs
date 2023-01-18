@@ -36,7 +36,7 @@ mod tests {
 		});
 		stack.push_fn(|nodes| {
 			let compose_node = nodes[1].after(&nodes[2]);
-			TypeErasedNode(Box::new(compose_node))
+			TypeErasedNode(Box::pin(compose_node))
 		});
 
 		let result = unsafe { &stack.get()[0] }.eval_ref(().into_dyn());

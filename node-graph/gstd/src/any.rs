@@ -1,6 +1,6 @@
 use dyn_any::{DynAny, StaticType, StaticTypeSized};
 pub use graphene_core::{generic, ops /*, structural*/, Node, RefNode};
-use std::marker::PhantomData;
+use std::{marker::PhantomData, pin::Pin};
 
 pub struct DynAnyNode<N, I: StaticType, O: StaticType, ORef: StaticType>(pub N, pub PhantomData<(I, O, ORef)>);
 /*impl<'n, I: StaticType, N: RefNode<'n, &'n I, Output = O> + 'n, O: 'n + StaticType> Node<&'n dyn DynAny<'n>> for DynAnyNode<'n, N, I> {
@@ -32,7 +32,7 @@ where
 	type Output = Any<'n>;
 	fn eval(self, input: Any<'n>) -> Self::Output {
 		let node = core::any::type_name::<N>();
-		let input: Box<I> = dyn_any::downcast(input).expect(format!("DynAnyNode Input in:\n{node}").as_str());
+		let input: Box<I> = dyn_any::downcast(input).unwrap_or_else(|_| panic!("DynAnyNode Input in:\n{node}"));
 		Box::new(self.0.eval(*input))
 	}
 }
@@ -43,39 +43,39 @@ where
 	type Output = Any<'n>;
 	fn eval(self, input: Any<'n>) -> Self::Output {
 		let node = core::any::type_name::<N>();
-		let input: Box<I> = dyn_any::downcast(input).expect(format!("DynAnyNode Input in:\n{node}").as_str());
+		let input: Box<I> = dyn_any::downcast(input).unwrap_or_else(|_| panic!("DynAnyNode Input in:\n{node}"));
 		Box::new((&self.0).eval_ref(*input))
 	}
 }
-pub struct TypeErasedNode(pub Box<dyn for<'n> AsRefNode<'n, Any<'n>, Output = Any<'n>>>);
-impl<'n> Node<Any<'n>> for &'n TypeErasedNode {
+pub struct TypeErasedNode<'n>(pub Pin<Box<dyn AsRefNode<'n, Any<'n>, Output = Any<'n>> + 'n>>);
+impl<'n> Node<Any<'n>> for &'n TypeErasedNode<'n> {
 	type Output = Any<'n>;
 	fn eval(self, input: Any<'n>) -> Self::Output {
 		self.0.eval_box(input)
 	}
 }
-impl<'n> Node<Any<'n>> for &'n &'n TypeErasedNode {
+impl<'n> Node<Any<'n>> for &'n &'n TypeErasedNode<'n> {
 	type Output = Any<'n>;
 	fn eval(self, input: Any<'n>) -> Self::Output {
 		self.0.eval_box(input)
 	}
 }
 
-pub trait IntoTypeErasedNode {
-	fn into_type_erased(self) -> TypeErasedNode;
+pub trait IntoTypeErasedNode<'n> {
+	fn into_type_erased(self) -> TypeErasedNode<'n>;
 }
 
-impl<'n> StaticTypeSized for TypeErasedNode {
-	type Static = TypeErasedNode;
+impl<'n> StaticTypeSized for TypeErasedNode<'n> {
+	type Static = TypeErasedNode<'static>;
 }
 
-impl<'n, N: 'n> IntoTypeErasedNode for N
+impl<'n, N: 'n> IntoTypeErasedNode<'n> for N
 where
 	N: AsRefNode<'n, Any<'n>, Output = Any<'n>>,
 	&'n N: Node<Any<'n>, Output = Any<'n>>,
 {
-	fn into_type_erased(self) -> TypeErasedNode {
-		TypeErasedNode(Box::new(self))
+	fn into_type_erased(self) -> TypeErasedNode<'n> {
+		TypeErasedNode(Box::pin(self))
 	}
 }
 
@@ -98,7 +98,7 @@ where
 	pub fn as_ref(self: &'n &'n Self) -> &'n (dyn RefNode<Any<'n>, Output = Any<'n>> + 'n) {
 		self
 	}
-	pub fn into_box<'a: 'n>(self) -> TypeErasedNode
+	pub fn into_box<'a: 'n>(self) -> TypeErasedNode<'n>
 	where
 		Self: 'a,
 		N: Node<I, Output = O>,

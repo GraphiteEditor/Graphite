@@ -686,17 +686,19 @@ impl PortfolioMessageHandler {
 		let mut proto_network = network.into_proto_network();
 		proto_network.reorder_ids();
 
+
 		assert_ne!(proto_network.nodes.len(), 0, "No protonodes exist?");
-		let stack = borrow_stack::FixedSizeStack::new(proto_network.nodes.len());
-		for (_id, node) in proto_network.nodes {
-			interpreted_executor::node_registry::push_node(node, &stack);
-		}
+		let output = proto_network.output;
+		let tree = interpreted_executor::executor::BorrowTree::new(proto_network);
 
 		use borrow_stack::BorrowStack;
 		use dyn_any::IntoDynAny;
 		use graphene_core::Node;
 
-		let boxed = unsafe { stack.get().last().unwrap().eval(image.into_dyn()) };
+		let node = tree.get(output).unwrap();
+		let node = node.as_ref();
+		let node = unsafe { node.static_ref() };
+		let boxed = node.eval(image.into_dyn());
 
 		dyn_any::downcast::<T>(boxed).map(|v| *v)
 	}

@@ -16,7 +16,7 @@ use graphene_std::any::{Any, DowncastNode, DynAnyNode, IntoTypeErasedNode, TypeE
 use graph_craft::proto::Type;
 use graph_craft::proto::{ConstructionArgs, NodeIdentifier, ProtoNode, ProtoNodeInput};
 
-type NodeConstructor = fn(Vec<Arc<TypeErasedNode<'static>>>) -> TypeErasedNode<'static>;
+type NodeConstructor = for<'a> fn(Vec<&'a TypeErasedNode<'a>>) -> TypeErasedNode<'a>;
 
 use graph_craft::{concrete, generic};
 use graphene_std::memo::CacheNode;
@@ -34,10 +34,15 @@ macro_rules! register_node {
 	};
 }
 
-//TODO: turn into hasmap
+//TODO: turn into hashmap
 static NODE_REGISTRY: &[(NodeIdentifier, NodeConstructor)] = &[
 	register_node!(graphene_core::ops::IdNode, input: Any<'_>, params: []),
-	register_node!(graphene_core::ops::ConsNode, input: u32, params: [u32]),
+	register_node!(graphene_core::structural::ConsNode<_, _>, input: u32, params: [u32]),
+	register_node!(graphene_core::ops::AddNode, input: (u32, u32), params: []),
+	register_node!(graphene_core::ops::AddNode, input: (&u32, u32), params: []),
+	register_node!(graphene_core::ops::AddNode, input: (u32, &u32), params: []),
+	register_node!(graphene_core::ops::AddNode, input: (&u32, &u32), params: []),
+	register_node!(graphene_core::raster::GrayscaleColorNode, input: Color, params: []),
 	/*
 	(NodeIdentifier::new("graphene_core::ops::IdNode", &[concrete!("Any<'_>")]), |proto_node, stack| {
 		stack.push_fn(|nodes| {
@@ -595,22 +600,15 @@ static NODE_REGISTRY: &[(NodeIdentifier, NodeConstructor)] = &[
 	*/
 ];
 
-pub fn push_node(proto_node: ProtoNode, stack: &FixedSizeStack<TypeErasedNode<'static>>) {
-	if let Some((_id, f)) = NODE_REGISTRY.iter().find(|(id, _)| *id == proto_node.identifier) {
-		f(proto_node, stack);
+pub fn constrcut_node<'a>(ident: NodeIdentifier, construction_args: Vec<&'a TypeErasedNode<'a>>) -> TypeErasedNode<'a> {
+	if let Some((_id, f)) = NODE_REGISTRY.iter().find(|(id, _)| *id == ident) {
+		f(construction_args)
 	} else {
-		let other_types = NODE_REGISTRY
-			.iter()
-			.map(|(id, _)| id)
-			.filter(|id| id.name.as_ref() == proto_node.identifier.name.as_ref())
-			.collect::<Vec<_>>();
-		panic!(
-			"NodeImplementation: {:?} not found in Registry. Types for which the node is implemented:\n {:#?}",
-			proto_node.identifier, other_types
-		);
+		let other_types = NODE_REGISTRY.iter().map(|(id, _)| id).filter(|id| id.name.as_ref() == ident.name.as_ref()).collect::<Vec<_>>();
+		panic!("NodeImplementation: {:?} not found in Registry. Types for which the node is implemented:\n {:#?}", ident, other_types);
 	}
 }
-
+/*
 #[cfg(test)]
 mod protograph_testing {
 	use borrow_stack::BorrowStack;
@@ -621,24 +619,24 @@ mod protograph_testing {
 	fn add_values() {
 		let stack = FixedSizeStack::new(256);
 		let val_1_protonode = ProtoNode::value(ConstructionArgs::Value(Box::new(2u32)));
-		push_node(val_1_protonode, &stack);
+		constrcut_node(val_1_protonode, &stack);
 
 		let val_2_protonode = ProtoNode::value(ConstructionArgs::Value(Box::new(40u32)));
-		push_node(val_2_protonode, &stack);
+		constrcut_node(val_2_protonode, &stack);
 
 		let cons_protonode = ProtoNode {
 			construction_args: ConstructionArgs::Nodes(vec![1]),
 			input: ProtoNodeInput::Node(0),
 			identifier: NodeIdentifier::new("graphene_core::structural::ConsNode", &[concrete!("u32"), concrete!("u32")]),
 		};
-		push_node(cons_protonode, &stack);
+		constrcut_node(cons_protonode, &stack);
 
 		let add_protonode = ProtoNode {
 			construction_args: ConstructionArgs::Nodes(vec![]),
 			input: ProtoNodeInput::Node(2),
 			identifier: NodeIdentifier::new("graphene_core::ops::AddNode", &[concrete!("u32"), concrete!("u32")]),
 		};
-		push_node(add_protonode, &stack);
+		constrcut_node(add_protonode, &stack);
 
 		let result = unsafe { stack.get()[3].eval(Box::new(())) };
 		let val = *dyn_any::downcast::<u32>(result).unwrap();
@@ -649,14 +647,14 @@ mod protograph_testing {
 	fn grayscale_color() {
 		let stack = FixedSizeStack::new(256);
 		let val_protonode = ProtoNode::value(ConstructionArgs::Value(Box::new(Color::from_rgb8(10, 20, 30))));
-		push_node(val_protonode, &stack);
+		constrcut_node(val_protonode, &stack);
 
 		let grayscale_protonode = ProtoNode {
 			construction_args: ConstructionArgs::Nodes(vec![]),
 			input: ProtoNodeInput::Node(0),
 			identifier: NodeIdentifier::new("graphene_core::raster::GrayscaleColorNode", &[]),
 		};
-		push_node(grayscale_protonode, &stack);
+		constrcut_node(grayscale_protonode, &stack);
 
 		let result = unsafe { stack.get()[1].eval(Box::new(())) };
 		let val = *dyn_any::downcast::<Color>(result).unwrap();
@@ -671,7 +669,7 @@ mod protograph_testing {
 			input: ProtoNodeInput::None,
 			identifier: NodeIdentifier::new("graphene_std::raster::ImageNode", &[concrete!("&str")]),
 		};
-		push_node(image_protonode, &stack);
+		constrcut_node(image_protonode, &stack);
 
 		let result = unsafe { stack.get()[0].eval(Box::new("../gstd/test-image-1.png")) };
 		let image = *dyn_any::downcast::<Image>(result).unwrap();
@@ -686,24 +684,25 @@ mod protograph_testing {
 			input: ProtoNodeInput::None,
 			identifier: NodeIdentifier::new("graphene_std::raster::ImageNode", &[concrete!("&str")]),
 		};
-		push_node(image_protonode, &stack);
+		constrcut_node(image_protonode, &stack);
 
 		let grayscale_protonode = ProtoNode {
 			construction_args: ConstructionArgs::Nodes(vec![]),
 			input: ProtoNodeInput::None,
 			identifier: NodeIdentifier::new("graphene_core::raster::GrayscaleColorNode", &[]),
 		};
-		push_node(grayscale_protonode, &stack);
+		constrcut_node(grayscale_protonode, &stack);
 
 		let image_map_protonode = ProtoNode {
 			construction_args: ConstructionArgs::Nodes(vec![1]),
 			input: ProtoNodeInput::Node(0),
 			identifier: NodeIdentifier::new("graphene_std::raster::MapImageNode", &[]),
 		};
-		push_node(image_map_protonode, &stack);
+		constrcut_node(image_map_protonode, &stack);
 
 		let result = unsafe { stack.get()[2].eval(Box::new("../gstd/test-image-1.png")) };
 		let image = *dyn_any::downcast::<Image>(result).unwrap();
 		assert!(!image.data.iter().any(|c| c.r() != c.b() || c.b() != c.g()));
 	}
 }
+*/

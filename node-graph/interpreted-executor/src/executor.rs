@@ -8,7 +8,7 @@ use graph_craft::proto::{ConstructionArgs, ProtoNode, ProtoNodeInput};
 use graphene_core::Node;
 use graphene_std::any::{Any, IntoTypeErasedNode, TypeErasedNode};
 
-use crate::node_registry::push_node;
+use crate::node_registry::constrcut_node;
 use graph_craft::{executor::Executor, proto::ProtoNetwork};
 
 pub struct DynamicExecutor {
@@ -21,7 +21,7 @@ impl DynamicExecutor {
 		let node_count = proto_network.nodes.len();
 		let stack = FixedSizeStack::new(node_count);
 		for (_id, node) in proto_network.nodes {
-			push_node(node, &stack);
+			//constrcut_node(node, &stack);
 		}
 		Self { stack }
 	}
@@ -34,9 +34,26 @@ impl Executor for DynamicExecutor {
 	}
 }
 
+pub struct NodeContainer<'n> {
+	node: TypeErasedNode<'n>,
+	dependencies: Vec<Arc<NodeContainer<'n>>>,
+}
+
+impl<'a> NodeContainer<'a> {
+	pub unsafe fn static_ref(&self) -> &'static TypeErasedNode<'a> {
+		&*(&self.node as *const TypeErasedNode<'a>)
+	}
+}
+
+impl<'a> AsRef<TypeErasedNode<'a>> for NodeContainer<'a> {
+	fn as_ref(&self) -> &TypeErasedNode<'a> {
+		&self.node
+	}
+}
+
 #[derive(Default)]
-struct BorrowTree {
-	nodes: HashMap<NodeId, Arc<TypeErasedNode<'static>>>,
+pub struct BorrowTree {
+	nodes: HashMap<NodeId, Arc<NodeContainer<'static>>>,
 }
 
 impl BorrowTree {
@@ -47,28 +64,50 @@ impl BorrowTree {
 		}
 		nodes
 	}
-	fn node_refs(&self, nodes: &[NodeId]) -> Vec<&Arc<TypeErasedNode<'static>>> {
-		nodes.iter().map(|node| self.nodes.get(node).unwrap()).collect()
+	fn node_refs(&self, nodes: &[NodeId]) -> Vec<&'static TypeErasedNode<'static>> {
+		nodes
+			.iter()
+			.map(|node| unsafe { &*((&self.nodes.get(node).unwrap().as_ref().node) as *const TypeErasedNode<'static>) as &'static TypeErasedNode<'static> })
+			.collect()
+	}
+	fn node_deps(&self, nodes: &[NodeId]) -> Vec<Arc<NodeContainer<'static>>> {
+		nodes.iter().map(|node| self.nodes.get(node).unwrap().clone()).collect()
+	}
+
+	fn store_node(&mut self, node: TypeErasedNode<'static>, id: NodeId, dependencies: Vec<Arc<NodeContainer<'static>>>) -> Arc<NodeContainer<'static>> {
+		let node = Arc::new(NodeContainer { node, dependencies });
+		self.nodes.insert(id, node.clone());
+		node
+	}
+
+	pub fn get(&self, id: NodeId) -> Option<Arc<NodeContainer<'static>>> {
+		self.nodes.get(&id).cloned()
+	}
+
+	fn free_node(&mut self, id: NodeId) {
+		self.nodes.remove(&id);
 	}
 
 	pub fn push_node(&mut self, id: NodeId, proto_node: ProtoNode) {
+		let ProtoNode { input, construction_args, identifier } = proto_node;
+
 		assert_eq!(
-			proto_node.input,
+			input,
 			ProtoNodeInput::None,
 			"Only nodes without inputs are supported. Any inputs should already be resolved by placing ComposeNodes"
 		);
-
-		let ProtoNode { input, construction_args, identifier } = proto_node;
 
 		match construction_args {
 			ConstructionArgs::Value(value) => {
 				let node = graphene_core::generic::FnNode::new(move |_| value.clone().up_box() as Any<'static>);
 
 				let node = node.into_type_erased();
-				self.nodes.insert(id, Arc::new(node));
+				self.store_node(node, id, vec![]);
 			}
 			ConstructionArgs::Nodes(ids) => {
 				let construction_nodes = self.node_refs(ids.as_slice());
+				let node = constrcut_node(identifier, construction_nodes);
+				self.store_node(node, id, self.node_deps(ids.as_slice()));
 			}
 		}
 
@@ -86,5 +125,21 @@ impl BorrowTree {
 				proto_node.identifier, other_types
 			);
 		}*/
+	}
+}
+
+#[cfg(test)]
+mod test {
+	use super::*;
+
+	#[test]
+	fn push_node() {
+		let mut tree = BorrowTree::default();
+		let val_1_protonode = ProtoNode::value(ConstructionArgs::Value(Box::new(2u32)));
+		tree.push_node(0, val_1_protonode);
+		let node = tree.get(0).unwrap();
+		let node = unsafe { node.static_ref() };
+		let value = node.eval(().into());
+		assert_eq!(*dyn_any::downcast::<u32>(value).unwrap(), 2u32);
 	}
 }
