@@ -43,8 +43,11 @@ export function renderDemoPane(demoPane: DemoPane): void {
 	container.className = "demo-pane-container";
 
 	const header = document.createElement("h3");
-	header.innerText = demoPane.name;
+	const headerHref = document.createElement("a");
+	headerHref.innerText = demoPane.name;
+	headerHref.href = `#${demoPane.id}`;
 	header.className = "demo-pane-header";
+	header.append(headerHref);
 
 	const computeTypeContainer = document.createElement("div");
 	computeTypeContainer.className = "compute-type-choice";

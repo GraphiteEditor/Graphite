@@ -49,7 +49,7 @@ function renderSubpathPane(featureName: SubpathFeatureKey, container: HTMLElemen
 const pathname = window.location.pathname;
 const splitPathName = pathname.split("/");
 
-// Render based on pathname
+// Determine which examples to render based on pathname
 if (splitPathName[1] === "bezier" && splitPathName[2] in bezierFeatures) {
 	window.document.body.innerHTML = `<div id="bezier-demos"></div>`;
 	renderBezierPane(splitPathName[2] as BezierFeatureKey, document.getElementById("bezier-demos"));
@@ -76,4 +76,11 @@ if (splitPathName[1] === "bezier" && splitPathName[2] in bezierFeatures) {
 
 	(Object.keys(bezierFeatures) as BezierFeatureKey[]).forEach((feature) => renderBezierPane(feature, bezierDemos));
 	(Object.keys(subpathFeatures) as SubpathFeatureKey[]).forEach((feature) => renderSubpathPane(feature, subpathDemos));
+}
+
+// Scroll to specified hash if it exists
+const hash = window.location.hash;
+const target = document.querySelector(hash);
+if (target) {
+	target.scrollIntoView();
 }

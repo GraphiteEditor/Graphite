@@ -46,10 +46,10 @@ class BezierDemoPane extends HTMLElement implements DemoPane {
 	computeType!: ComputeType;
 
 	connectedCallback(): void {
-		this.id = `${Math.random()}`.substring(2);
 		this.computeType = "Parametric";
 
 		this.key = (this.getAttribute("name") || "") as BezierFeatureKey;
+		this.id = `bezier_${this.key}`;
 		this.name = bezierFeatures[this.key].name;
 		this.demoOptions = JSON.parse(this.getAttribute("demoOptions") || "[]");
 		this.triggerOnMouseMove = this.getAttribute("triggerOnMouseMove") === "true";
