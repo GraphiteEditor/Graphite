@@ -45,7 +45,11 @@ export function renderDemoPane(demoPane: DemoPane): void {
 	const header = document.createElement("h3");
 	const headerHref = document.createElement("a");
 	headerHref.innerText = demoPane.name;
-	headerHref.href = `#${demoPane.id}`;
+	const currentHash = window.location.hash.split("_");
+	// Add href anchor if not on a solo example page
+	if (currentHash.length !== 3 && currentHash[2] !== "solo") {
+		headerHref.href = `#${demoPane.id}`;
+	}
 	header.className = "demo-pane-header";
 	header.append(headerHref);
 

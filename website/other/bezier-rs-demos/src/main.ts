@@ -46,41 +46,63 @@ function renderSubpathPane(featureName: SubpathFeatureKey, container: HTMLElemen
 	container?.append(demo);
 }
 
-const pathname = window.location.pathname;
-const splitPathName = pathname.split("/");
-
-// Determine which examples to render based on pathname
-if (splitPathName[1] === "bezier" && splitPathName[2] in bezierFeatures) {
-	window.document.body.innerHTML = `<div id="bezier-demos"></div>`;
-	renderBezierPane(splitPathName[2] as BezierFeatureKey, document.getElementById("bezier-demos"));
-} else if (splitPathName[1] === "subpath" && splitPathName[2] in subpathFeatures) {
-	window.document.body.innerHTML = `<div id="subpath-demos"></div>`;
-	renderSubpathPane(splitPathName[2] as SubpathFeatureKey, document.getElementById("subpath-demos"));
-} else {
-	window.document.body.innerHTML = `
-  <h1>Bezier-rs Interactive Documentation</h1>
-  <p>
-    This is the interactive documentation for the <a href="https://crates.io/crates/bezier-rs"><b>Bezier-rs</b></a> library. View the
-    <a href="https://docs.rs/bezier-rs/latest/bezier_rs">crate documentation</a>
-    for detailed function descriptions and API usage. Click and drag on the endpoints of the demo curves to visualize the various Bezier utilities and functions.
-  </p>
-  
-  <h2>Beziers</h2>
-  <div id="bezier-demos"></div>
-  <h2>Subpaths</h2>
-  <div id="subpath-demos"></div>
-  `.trim();
-
-	const bezierDemos = document.getElementById("bezier-demos");
-	const subpathDemos = document.getElementById("subpath-demos");
-
-	(Object.keys(bezierFeatures) as BezierFeatureKey[]).forEach((feature) => renderBezierPane(feature, bezierDemos));
-	(Object.keys(subpathFeatures) as SubpathFeatureKey[]).forEach((feature) => renderSubpathPane(feature, subpathDemos));
+function isUrlSolo(url: string): boolean {
+	const hash = url.split("#")?.[1];
+	const splitHash = hash?.split("_");
+	return splitHash?.length === 3 && splitHash?.[2] === "solo";
 }
 
-// Scroll to specified hash if it exists
-const hash = window.location.hash;
-const target = document.querySelector(hash);
-if (target) {
-	target.scrollIntoView();
+window.addEventListener("hashchange", (e: Event): void => {
+	const hashChangeEvent = e as HashChangeEvent;
+	const isOldHashSolo = isUrlSolo(hashChangeEvent.oldURL);
+	const isNewHashSolo = isUrlSolo(hashChangeEvent.newURL);
+	const target = document.querySelector(window.location.hash);
+	// Determine whether the page needs to recompute which examples to show
+	if (!target || isOldHashSolo !== isNewHashSolo) {
+		renderExamples();
+	}
+});
+
+function renderExamples(): void {
+	const hash = window.location.hash;
+	const splitHash = hash.split("_");
+
+	// Determine which examples to render based on hash
+	if (splitHash[0] === "#bezier" && splitHash[1] in bezierFeatures && splitHash[2] === "solo") {
+		window.document.body.innerHTML = `<div id="bezier-demos"></div>`;
+		renderBezierPane(splitHash[1] as BezierFeatureKey, document.getElementById("bezier-demos"));
+	} else if (splitHash[0] === "#subpath" && splitHash[1] in subpathFeatures && splitHash[2] === "solo") {
+		window.document.body.innerHTML = `<div id="subpath-demos"></div>`;
+		renderSubpathPane(splitHash[1] as SubpathFeatureKey, document.getElementById("subpath-demos"));
+	} else {
+		window.document.body.innerHTML = `
+    <h1>Bezier-rs Interactive Documentation</h1>
+    <p>
+      This is the interactive documentation for the <a href="https://crates.io/crates/bezier-rs"><b>Bezier-rs</b></a> library. View the
+      <a href="https://docs.rs/bezier-rs/latest/bezier_rs">crate documentation</a>
+      for detailed function descriptions and API usage. Click and drag on the endpoints of the demo curves to visualize the various Bezier utilities and functions.
+    </p>
+    
+    <h2>Beziers</h2>
+    <div id="bezier-demos"></div>
+    <h2>Subpaths</h2>
+    <div id="subpath-demos"></div>
+    `.trim();
+
+		const bezierDemos = document.getElementById("bezier-demos");
+		const subpathDemos = document.getElementById("subpath-demos");
+
+		(Object.keys(bezierFeatures) as BezierFeatureKey[]).forEach((feature) => renderBezierPane(feature, bezierDemos));
+		(Object.keys(subpathFeatures) as SubpathFeatureKey[]).forEach((feature) => renderSubpathPane(feature, subpathDemos));
+	}
+
+	// Scroll to specified hash if it exists
+	if (hash) {
+		const target = document.querySelector(hash);
+		if (target) {
+			target.scrollIntoView();
+		}
+	}
 }
+
+renderExamples();
