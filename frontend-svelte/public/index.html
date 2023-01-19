@@ -52,22 +52,26 @@
 
 	// Display an error if the browser is incompatible with a required API
 	// This is run outside the JS code bundle in case unsupported features cause a syntax error when parsing the bundle, preventing the any bundle code from running
-	// TODO: Svelte: reenable this
-	let error;
+	let incompatibility;
 	if (!("BigUint64Array" in window)) {
-		error = `
-<style>
-	body::after { content: none; }
-	h2, p, a { text-align: center; color: white; }
-</style>
-<h2>This browser is too old to run Graphite</h2>
-<p>Please upgrade to a modern web browser such as the latest Firefox, Chrome, Edge, or Safari version 15 or newer.</p>
-<p>(The <a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/BigInt64Array#browser_compatibility" target="_blank"><code>BigInt64Array</code></a>
-JavaScript API must be supported by the browser for Graphite to function.)</p>
-		`.trim();
+		incompatibility = `
+			<style>
+				body::after { content: none; }
+				h2, p, a { text-align: center; color: #eee; font-family: "Source Sans Pro", Arial, sans-serif; }
+			</style>
+			<h2>This browser is too old to run Graphite</h2>
+			<p>Please upgrade to a modern web browser such as the latest Firefox, Chrome, Edge, or Safari version 15 or newer.</p>
+			<p>(The <a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/BigInt64Array#browser_compatibility" target="_blank"><code>BigInt64Array</code></a>
+			JavaScript API must be supported by the browser for Graphite to function.)</p>
+			`.trim();
 	}
-	if (error) document.body.innerHTML = error;
+
+	// Load the editor application or display the incompatibility message
+	if (!incompatibility) {
+		import("/build/bundle.js");
+	} else {
+		document.body.innerHTML += incompatibility;
+	}
 	</script>
-	<script src="/build/bundle.js"></script>
 </body>
 </html>
