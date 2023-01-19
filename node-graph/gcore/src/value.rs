@@ -62,6 +62,12 @@ impl<'n, T: Default + 'n> Node for DefaultNode<T> {
 	}
 }
 
+impl<T> DefaultNode<T> {
+	pub fn new() -> Self {
+		Self(PhantomData)
+	}
+}
+
 #[repr(C)]
 /// Return the unit value
 #[derive(Default, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
@@ -74,4 +80,36 @@ impl<'n> NodeIO<'n> for UnitNode {
 
 impl Node for UnitNode {
 	fn eval<'i, 's: 'i>(&'s self, _input: <Self as NodeIO<'i>>::Input) -> <Self as NodeIO<'i>>::Output {}
+}
+
+impl UnitNode {
+	pub const fn new() -> Self {
+		UnitNode
+	}
+}
+
+#[cfg(test)]
+mod test {
+	use super::*;
+
+	#[test]
+	fn test_int_node() {
+		let node = IntNode::<5>;
+		assert_eq!(node.eval(()), 5);
+	}
+	#[test]
+	fn test_value_node() {
+		let node = ValueNode::new(5);
+		assert_eq!(*node.eval(()), 5);
+	}
+	#[test]
+	fn test_default_node() {
+		let node = DefaultNode::<u32>::new();
+		assert_eq!(node.eval(()), 0);
+	}
+	#[test]
+	fn test_unit_node() {
+		let node = UnitNode::new();
+		assert_eq!(node.eval(()), ());
+	}
 }
