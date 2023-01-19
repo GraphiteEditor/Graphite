@@ -6,7 +6,7 @@
 	import ColorPicker from "@/components/floating-menus/ColorPicker.svelte";
 	import LayoutCol from "@/components/layout/LayoutCol.svelte";
 	import LayoutRow from "@/components/layout/LayoutRow.svelte";
-	import { Editor } from "@/wasm-communication/editor";
+	import type { Editor } from "@/wasm-communication/editor";
 
 	const editor = getContext<Editor>("editor");
 
