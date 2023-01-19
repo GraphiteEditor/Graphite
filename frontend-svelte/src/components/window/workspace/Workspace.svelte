@@ -4,10 +4,10 @@
 	import LayoutRow from "@/components/layout/LayoutRow.svelte";
 	import Panel from "@/components/window/workspace/Panel.svelte";
 	import { getContext } from "svelte";
-	import { type Editor } from "@/wasm-communication/editor";
-	import { type WorkspaceState } from "@/state-providers/workspace";
-	import { type PortfolioState } from "@/state-providers/portfolio";
-	import { type DialogState } from "@/state-providers/dialog";
+	import type { Editor } from "@/wasm-communication/editor";
+	import type { WorkspaceState } from "@/state-providers/workspace";
+	import type { PortfolioState } from "@/state-providers/portfolio";
+	import type { DialogState } from "@/state-providers/dialog";
 	import type { FrontendDocumentDetails } from "@/wasm-communication/messages";
 
 	const MIN_PANEL_SIZE = 100;

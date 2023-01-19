@@ -4,7 +4,7 @@
 	import LayoutRow from "@/components/layout/LayoutRow.svelte";
 	import IconLabel from "@/components/widgets/labels/IconLabel.svelte";
 	import TextLabel from "@/components/widgets/labels/TextLabel.svelte";
-	import { type FullscreenState } from "@/state-providers/fullscreen";
+	import type { FullscreenState } from "@/state-providers/fullscreen";
 
 	const fullscreen = getContext<FullscreenState>("fullscreen");
 

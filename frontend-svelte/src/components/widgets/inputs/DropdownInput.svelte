@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { createEventDispatcher } from "svelte";
 
-	import { type MenuListEntry } from "@/wasm-communication/messages";
+	import type { MenuListEntry } from "@/wasm-communication/messages";
 
 	import MenuList from "@/components/floating-menus/MenuList.svelte";
 	import LayoutRow from "@/components/layout/LayoutRow.svelte";

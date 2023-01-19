@@ -6,7 +6,7 @@
 	import LayoutCol from "@/components/layout/LayoutCol.svelte";
 	import LayoutRow from "@/components/layout/LayoutRow.svelte";
 	import WidgetLayout from "@/components/widgets/WidgetLayout.svelte";
-	import { type Editor } from "@/wasm-communication/editor";
+	import type { Editor } from "@/wasm-communication/editor";
 
 	const editor = getContext<Editor>("editor");
 

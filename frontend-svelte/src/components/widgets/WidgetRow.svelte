@@ -25,7 +25,7 @@
 	import Separator from "@/components/widgets/labels/Separator.svelte";
 	import TextLabel from "@/components/widgets/labels/TextLabel.svelte";
 	import { getContext } from "svelte";
-	import { type Editor } from "@/wasm-communication/editor";
+	import type { Editor } from "@/wasm-communication/editor";
 
 	const SUFFIX_WIDGETS = ["PopoverButton"];
 

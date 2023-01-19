@@ -25,8 +25,8 @@
 	import CanvasRuler from "@/components/widgets/metrics/CanvasRuler.svelte";
 	import PersistentScrollbar from "@/components/widgets/metrics/PersistentScrollbar.svelte";
 	import WidgetLayout from "@/components/widgets/WidgetLayout.svelte";
-	import { type Editor } from "@/wasm-communication/editor";
-	import { type DocumentState } from "@/state-providers/document";
+	import type { Editor } from "@/wasm-communication/editor";
+	import type { DocumentState } from "@/state-providers/document";
 
 	let rulerHorizontal: CanvasRuler;
 	let rulerVertical: CanvasRuler;

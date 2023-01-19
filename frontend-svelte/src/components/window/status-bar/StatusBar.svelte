@@ -7,7 +7,7 @@
 	import LayoutRow from "@/components/layout/LayoutRow.svelte";
 	import Separator from "@/components/widgets/labels/Separator.svelte";
 	import UserInputLabel from "@/components/widgets/labels/UserInputLabel.svelte";
-	import { type Editor } from "@/wasm-communication/editor";
+	import type { Editor } from "@/wasm-communication/editor";
 
 	const editor = getContext<Editor>("editor");
 

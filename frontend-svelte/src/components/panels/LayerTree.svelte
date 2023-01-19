@@ -20,7 +20,7 @@
 	import IconButton from "@/components/widgets/buttons/IconButton.svelte";
 	import IconLabel from "@/components/widgets/labels/IconLabel.svelte";
 	import WidgetLayout from "@/components/widgets/WidgetLayout.svelte";
-	import { type Editor } from "@/wasm-communication/editor";
+	import type { Editor } from "@/wasm-communication/editor";
 
 	type LayerListingInfo = {
 		folderIndex: number;

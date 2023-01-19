@@ -12,8 +12,8 @@
 	import IconLabel from "@/components/widgets/labels/IconLabel.svelte";
 	import TextLabel from "@/components/widgets/labels/TextLabel.svelte";
 	import WidgetLayout from "@/components/widgets/WidgetLayout.svelte";
-	import { type Editor } from "@/wasm-communication/editor";
-	import { type NodeGraphState } from "@/state-providers/node-graph";
+	import type { Editor } from "@/wasm-communication/editor";
+	import type { NodeGraphState } from "@/state-providers/node-graph";
 
 	const WHEEL_RATE = (1 / 600) * 3;
 	const GRID_COLLAPSE_SPACING = 10;
