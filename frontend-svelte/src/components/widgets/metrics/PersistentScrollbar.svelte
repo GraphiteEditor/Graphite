@@ -18,8 +18,8 @@
 	const dispatch = createEventDispatcher<{ handlePosition: number; pressTrack: number }>();
 
 	export let direction: ScrollbarDirection = "Vertical";
-	export let handlePosition: number = 0.5;
-	export let handleLength: number = 0.5;
+	export let handlePosition = 0.5;
+	export let handleLength = 0.5;
 
 	let scrollTrack: HTMLDivElement;
 	let dragging = false;

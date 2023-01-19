@@ -3,9 +3,9 @@ import fs from "fs";
 import { spawnSync } from "child_process";
 import WasmPackPlugin from "@wasm-tool/wasm-pack-plugin";
 import SvelteCheckPlugin from "svelte-check-plugin";
-import SveltePreprocess from 'svelte-preprocess';
-import * as webpack from "webpack";
-import 'webpack-dev-server';
+import SveltePreprocess from "svelte-preprocess";
+import type * as webpack from "webpack";
+import "webpack-dev-server";
 const LicenseCheckerWebpackPlugin = require("license-checker-webpack-plugin");
 
 const mode = process.env.NODE_ENV === "production" ? "production" : "development";
@@ -18,16 +18,16 @@ const config: webpack.Configuration = {
 	resolve: {
 		alias: {
 			// Note: Later in this config file, we'll automatically add paths from `tsconfig.compilerOptions.paths`
-			svelte: path.resolve('node_modules', 'svelte')
+			svelte: path.resolve("node_modules", "svelte")
 		},
-		extensions: ['.ts', '.js', '.svelte'],
-		mainFields: ['svelte', 'browser', 'module', 'main']
+		extensions: [".ts", ".js", ".svelte"],
+		mainFields: ["svelte", "browser", "module", "main"]
 	},
 	output: {
-		path: path.resolve(__dirname, 'public/build'),
-		publicPath: '/build/',
-		filename: '[name].js',
-		chunkFilename: '[name].[id].js'
+		path: path.resolve(__dirname, "public/build"),
+		publicPath: "/build/",
+		filename: "[name].js",
+		chunkFilename: "[name].[id].js"
 	},
 	module: {
 		rules: [
@@ -35,7 +35,7 @@ const config: webpack.Configuration = {
 			{
 				test: /\.svelte$/,
 				use: {
-					loader: 'svelte-loader',
+					loader: "svelte-loader",
 					options: {
 						compilerOptions: {
 							// Dev mode must be enabled for HMR to work!
@@ -79,8 +79,8 @@ const config: webpack.Configuration = {
 			{
 				test: /\.(scss|sass)$/,
 				use: [
-					'css-loader',
-					'sass-loader'
+					"css-loader",
+					"sass-loader"
 				]
 			},
 
@@ -88,14 +88,14 @@ const config: webpack.Configuration = {
 			{
 				test: /\.css$/,
 				use: [
-					'css-loader',
+					"css-loader",
 				]
 			},
 
 			// Rule: TypeScript
 			{
 				test: /\.ts$/,
-				use: 'ts-loader',
+				use: "ts-loader",
 				exclude: /node_modules/
 			},
 
@@ -135,7 +135,7 @@ const config: webpack.Configuration = {
 
 		// new SvelteCheckPlugin(),
 	],
-	devtool: mode === 'development' ? 'source-map' : false,
+	devtool: mode === "development" ? "source-map" : false,
 	// // https://cli.vuejs.org/guide/webpack.html
 	// chainWebpack: (config) => {
 	// 	// Change the loaders used by the Vue compilation process
@@ -165,10 +165,10 @@ const config: webpack.Configuration = {
 };
 
 // Load path aliases from the tsconfig.json file
-const tsconfigPath = path.resolve(__dirname, 'tsconfig.json');
+const tsconfigPath = path.resolve(__dirname, "tsconfig.json");
 const tsconfig = fs.existsSync(tsconfigPath) ? require(tsconfigPath) : {};
 
-if ('compilerOptions' in tsconfig && 'paths' in tsconfig.compilerOptions) {
+if ("compilerOptions" in tsconfig && "paths" in tsconfig.compilerOptions) {
 	const aliases = tsconfig.compilerOptions.paths;
 
 	for (const alias in aliases) {
@@ -177,8 +177,8 @@ if ('compilerOptions' in tsconfig && 'paths' in tsconfig.compilerOptions) {
 		// Our tsconfig uses glob path formats, whereas webpack just wants directories
 		// We'll need to transform the glob format into a format acceptable to webpack
 
-		const wpAlias = alias.replace(/(\\|\/)\*$/, '');
-		const wpPaths = paths.map((p: string) => p.replace(/(\\|\/)\*$/, ''));
+		const wpAlias = alias.replace(/(\\|\/)\*$/, "");
+		const wpPaths = paths.map((p: string) => p.replace(/(\\|\/)\*$/, ""));
 
 		if (config.resolve && config.resolve.alias) {
 			if (!(wpAlias in config.resolve.alias) && wpPaths.length) {
@@ -190,23 +190,23 @@ if ('compilerOptions' in tsconfig && 'paths' in tsconfig.compilerOptions) {
 
 module.exports = config;
 
-interface LicenseInfo {
+type LicenseInfo = {
 	licenseName: string;
 	licenseText: string;
 	packages: PackageInfo[]
 }
 
-interface PackageInfo {
+type PackageInfo = {
 	name: string;
 	version: string;
 	author: string;
 	repository: string;
 }
 
-interface Dependency extends PackageInfo {
+type Dependency = {
 	licenseName: string;
 	licenseText?: string;
-}
+} & PackageInfo
 
 function formatThirdPartyLicenses(jsLicenses: {dependencies: Dependency[]}): string {
 	let rustLicenses: LicenseInfo[] | undefined;

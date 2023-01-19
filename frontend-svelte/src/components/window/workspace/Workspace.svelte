@@ -8,7 +8,7 @@
 	import { type WorkspaceState } from "@/state-providers/workspace";
 	import { type PortfolioState } from "@/state-providers/portfolio";
 	import { type DialogState } from "@/state-providers/dialog";
-	import { FrontendDocumentDetails } from "@/wasm-communication/messages";
+	import type { FrontendDocumentDetails } from "@/wasm-communication/messages";
 
 	const MIN_PANEL_SIZE = 100;
 	const PANEL_SIZES = {

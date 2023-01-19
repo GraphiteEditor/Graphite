@@ -6,11 +6,11 @@
 
 	export let label: string;
 	export let icon: IconName | undefined = undefined;
-	export let emphasized: boolean = false;
-	export let minWidth: number = 0;
-	export let disabled: boolean = false;
+	export let emphasized = false;
+	export let minWidth = 0;
+	export let disabled = false;
 	export let tooltip: string | undefined = undefined;
-	export let sharpRightCorners: boolean = false;
+	export let sharpRightCorners = false;
 
 	// Callbacks
 	// TODO: Replace this with an event binding (and on other components that do this)

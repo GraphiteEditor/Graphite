@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { debouncer } from "@/utility-functions/debounce";
-	import { narrowWidgetProps, Widget } from "@/wasm-communication/messages";
+	import type { Widget } from "@/wasm-communication/messages";
+	import { narrowWidgetProps } from "@/wasm-communication/messages";
 	import { isWidgetColumn, isWidgetRow, type WidgetColumn, type WidgetRow } from "@/wasm-communication/messages";
 
 	import PivotAssist from "@/components/widgets/assists/PivotAssist.svelte";
