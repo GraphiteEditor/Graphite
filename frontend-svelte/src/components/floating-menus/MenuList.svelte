@@ -3,7 +3,7 @@
 <script lang="ts">
 	import { createEventDispatcher } from "svelte";
 
-	import { type MenuListEntry } from "@/wasm-communication/messages";
+	import type { MenuListEntry } from "@/wasm-communication/messages";
 
 	import FloatingMenu, { type MenuDirection } from "@/components/layout/FloatingMenu.svelte";
 	import LayoutCol from "@/components/layout/LayoutCol.svelte";

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { type IconName } from "@/utility-functions/icons";
+	import type { IconName } from "@/utility-functions/icons";
 
 	import LayoutRow from "@/components/layout/LayoutRow.svelte";
 	import CheckboxInput from "@/components/widgets/inputs/CheckboxInput.svelte";

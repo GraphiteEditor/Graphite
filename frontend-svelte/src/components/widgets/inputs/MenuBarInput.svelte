@@ -7,7 +7,7 @@
 	import MenuList from "@/components/floating-menus/MenuList.svelte";
 	import IconLabel from "@/components/widgets/labels/IconLabel.svelte";
 	import TextLabel from "@/components/widgets/labels/TextLabel.svelte";
-	import { type Editor } from "@/wasm-communication/editor";
+	import type { Editor } from "@/wasm-communication/editor";
 
 	// TODO: Apparently, Safari does not support the Keyboard.lock() API but does relax its authority over certain keyboard shortcuts in fullscreen mode, which we should take advantage of
 	const accelKey = platformIsMac() ? "Command" : "Control";

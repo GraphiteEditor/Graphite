@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { getContext } from "svelte";
 
-	import { type Color } from "@/wasm-communication/messages";
+	import type { Color } from "@/wasm-communication/messages";
 
 	import ColorPicker from "@/components/floating-menus/ColorPicker.svelte";
 	import LayoutCol from "@/components/layout/LayoutCol.svelte";
