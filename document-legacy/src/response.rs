@@ -1,4 +1,4 @@
-use crate::LayerId;
+use crate::{document::Document, LayerId};
 
 use serde::{Deserialize, Serialize};
 use std::fmt;
@@ -32,6 +32,7 @@ impl fmt::Display for DocumentResponse {
 			DocumentResponse::CreatedLayer { .. } => write!(f, "CreatedLayer"),
 			DocumentResponse::LayerChanged { .. } => write!(f, "LayerChanged"),
 			DocumentResponse::DeletedLayer { .. } => write!(f, "DeleteLayer"),
+			DocumentResponse::DeletedSelectedManipulatorPoints { .. } => write!(f, "DeletedSelectedManipulatorPoints"),
 		}
 	}
 }

@@ -5,7 +5,7 @@ use crate::consts::{ASYMPTOTIC_EFFECT, DEFAULT_DOCUMENT_NAME, FILE_SAVE_SUFFIX, 
 use crate::messages::frontend::utility_types::ExportBounds;
 use crate::messages::frontend::utility_types::{FileType, FrontendImageData};
 use crate::messages::input_mapper::utility_types::macros::action_keys;
-use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
+use crate::messages::layout::utility_types::layout_widget::{DiffUpdate, Layout, LayoutGroup, Widget, WidgetCallback, WidgetDiff, WidgetHolder, WidgetLayout};
 use crate::messages::layout::utility_types::misc::LayoutTarget;
 use crate::messages::layout::utility_types::widgets::button_widgets::{IconButton, PopoverButton};
 use crate::messages::layout::utility_types::widgets::input_widgets::{
@@ -146,7 +146,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 								// clear Properties panel after deleting all points
 								responses.push_back(
 									FrontendMessage::UpdatePropertyPanelOptionsLayout {
-										layout_target: PropertiesOptions,
+										layout_target: LayoutTarget::PropertiesOptions,
 										diff: vec![WidgetDiff {
 											widget_path: vec![],
 											new_value: DiffUpdate::SubLayout(vec![]),
@@ -156,7 +156,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 								);
 								responses.push_back(
 									FrontendMessage::UpdatePropertyPanelSectionsLayout {
-										layout_target: PropertiesSections,
+										layout_target: LayoutTarget::PropertiesSections,
 										diff: vec![WidgetDiff {
 											widget_path: vec![],
 											new_value: DiffUpdate::SubLayout(vec![]),
