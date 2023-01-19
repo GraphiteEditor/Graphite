@@ -4,55 +4,66 @@ use dyn_any::{StaticType, StaticTypeSized};
 
 use crate::{Node, NodeIO};
 
-trait Pair<'i>: NodeIO<'i>
+trait Pair<'i, 's: 'i>: NodeIO<'i>
 where
-	Self: 'i,
+	Self: 'i + 's,
 {
-	type First: NodeIO<'i, Input = Self::Input> + 'i + Node;
-	type Second: NodeIO<'i, Input = <Self::First as NodeIO<'i>>::Output, Output = Self::Output> + 'i + Node;
+	type First: NodeIO<'i, Input = Self::Input> + 's + Node;
+	type Second: NodeIO<'i, Input = <Self::First as NodeIO<'i>>::Output, Output = Self::Output> + 's + Node;
 }
-trait PairEval: for<'n> Pair<'n> {
-	fn eval<'i, 's: 'i>(first: &'s <Self as Pair<'i>>::First, second: <Self as Pair<'i>>::Second, input: <Self as NodeIO<'i>>::Input) -> <Self as NodeIO<'i>>::Output;
+trait PairFn<'i, 'a>: for<'o, 's> Pair<'o, 's> {
+	fn first(&'a self) -> &'a <Self as Pair<'i, 'a>>::First;
+	fn second(&'a self) -> &'a <Self as Pair<'i, 'a>>::Second;
+}
+
+trait PairEval<'a>: for<'i> Pair<'i, 'a> + for<'i> PairFn<'i, 'a> {
+	fn eval<'i, 's: 'i>(&'s self, input: <Self as NodeIO<'i>>::Input) -> <Self as NodeIO<'i>>::Output {
+		let arg = self.first().eval(input);
+		self.second().eval(arg)
+	}
+}
+
+impl<'a, P: for<'i, 's> Pair<'i, 's> + for<'i> PairFn<'i, 'a>> PairEval<'a> for P {}
+
+impl<'n, 'r, First: 'n, Second: 'n, Input: 'n> PairFn<'r, 'n> for ComposeNode<Input, First, Second>
+where
+	First: Node<Input = Input> + 'r,
+	Second: Node<Input = <First as NodeIO<'r>>::Output>,
+	Self: for<'i> Pair<'i, 'n>,
+{
+	fn first(&self) -> &<Self as Pair<'r, 'n>>::First {
+		&self.0
+	}
+	fn second(&self) -> &<Self as Pair<'r, 'n>>::Second {
+		&self.1
+	}
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct ComposeNode<First, Second> {
+pub struct ComposeNode<Input, First, Second> {
 	first: First,
 	second: Second,
+	_phantom: PhantomData<Input>,
 }
 
-impl<'n, First, Second> NodeIO<'n> for (First, Second)
+impl<'i, Input, First, Second> NodeIO<'i> for ComposeNode<Input, First, Second>
 where
-	First: Node,
-	First: NodeIO<'n, Input = Self::Input>,
-	Second: Node,
-	Second: NodeIO<'n, Input = <First as NodeIO<'n>>::Output, Output = Self::Output>,
+	First: Node<Input = Input>,
+	Second: Node<Input = <First as NodeIO<'i>>::Output>,
 {
-	type Input = <First as NodeIO<'n>>::Input;
-	type Output = <Second as NodeIO<'n>>::Output;
+	type Input = Input;
+	type Output = <Second as NodeIO<'i>>::Output;
 }
-
-impl<'n, First, Second> Pair<'n> for (First, Second)
+impl<'i, 's: 'i, Input: 's, First: 's, Second: 's> Pair<'i, 's> for ComposeNode<Input, First, Second>
 where
-	First: Node,
-	First: NodeIO<'n, Input = Self::Input>,
-	Second: Node,
-	Second: NodeIO<'n, Input = <First as NodeIO<'n>>::Output, Output = Self::Output>,
+	First: Node<Input = Input>,
+	Second: Node<Input = <First as NodeIO<'i>>::Output>,
 {
 	type First = First;
 	type Second = Second;
 }
-
-impl<'i, First, Second> NodeIO<'i> for ComposeNode<First, Second>
-where
-	First: Node,
-	Second: Node<Input = <First as NodeIO<'i>>::Output>,
-{
-	type Input = <First as NodeIO<'i>>::Input;
-	type Output = <Second as NodeIO<'i>>::Output;
-}
-
-impl<First, Second> Node for ComposeNode<First, Second>
+/*
+impl<Input, First, Second> Node for ComposeNode<Input, First, Second>
 where
 	Self: for<'a> Pair<'a>,
 	First: Node,
@@ -65,21 +76,22 @@ where
 		let arg = self.first.eval(input);
 		self.second.eval(arg.into())
 	}
-}
+}*/
+/*
 impl<First: StaticTypeSized, Second: StaticTypeSized> dyn_any::StaticType for ComposeNode<First, Second> {
 	type Static = ComposeNode<First::Static, Second::Static>;
-}
+}*/
 
-impl<'n, First, Second> ComposeNode<First, Second>
+impl<'n, Input, First, Second> ComposeNode<Input, First, Second>
 where
-	First: Node + 'n,
+	First: Node<Input = Input> + 'n,
 	Second: Node<Input = <First as NodeIO<'n>>::Output>,
 {
 	pub const fn new(first: First, second: Second) -> Self {
-		ComposeNode::<First, Second> { first, second }
+		ComposeNode::<Input, First, Second> { first, second, _phantom: PhantomData }
 	}
 }
-
+/*
 pub trait Then<'n>: Sized {
 	fn then<Second>(self, second: Second) -> ComposeNode<Self, Second>
 	where
@@ -113,4 +125,4 @@ impl<Root: Node<Input = Input>, Input> ConsNode<Root, Input> {
 	pub fn new(root: Root) -> Self {
 		ConsNode(root, PhantomData)
 	}
-}
+}*/
