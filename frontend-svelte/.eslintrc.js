@@ -1,5 +1,3 @@
-const webpackConfigPath = require.resolve("@vue/cli-service/webpack.config.js");
-
 module.exports = {
 	root: true,
 	env: {
@@ -22,24 +20,6 @@ module.exports = {
 		// General Prettier defaults
 		"prettier",
 	],
-	settings: {
-		// https://github.com/import-js/eslint-plugin-import#resolvers
-		"import/resolver": {
-			// `node` must be listed first!
-			node: {},
-			webpack: { config: webpackConfigPath },
-		},
-
-		// https://github.com/meteorlxy/eslint-plugin-prettier-vue
-		"prettier-vue": {
-			// Use Prettier to format the HTML, CSS, and JS blocks of .vue single-file components
-			SFCBlocks: {
-				template: true,
-				style: true,
-				script: true,
-			},
-		},
-	},
 	ignorePatterns: [
 		// Ignore generated directories
 		"node_modules/",
