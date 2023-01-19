@@ -66,6 +66,7 @@
 
 		editor.subscriptions.subscribeJsMessage(UpdateLayerTreeOptionsLayout, (updateLayerTreeOptionsLayout) => {
 			patchWidgetLayout(layerTreeOptionsLayout, updateLayerTreeOptionsLayout);
+			layerTreeOptionsLayout = layerTreeOptionsLayout;
 		});
 
 		editor.subscriptions.subscribeJsMessage(UpdateDocumentLayerDetails, (updateDocumentLayerDetails) => {

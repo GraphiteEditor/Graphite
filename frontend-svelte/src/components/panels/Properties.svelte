@@ -16,10 +16,12 @@
 	onMount(() => {
 		editor.subscriptions.subscribeJsMessage(UpdatePropertyPanelOptionsLayout, (updatePropertyPanelOptionsLayout) => {
 			patchWidgetLayout(propertiesOptionsLayout, updatePropertyPanelOptionsLayout);
+			propertiesOptionsLayout = propertiesOptionsLayout;
 		});
 
 		editor.subscriptions.subscribeJsMessage(UpdatePropertyPanelSectionsLayout, (updatePropertyPanelSectionsLayout) => {
 			patchWidgetLayout(propertiesSectionsLayout, updatePropertyPanelSectionsLayout);
+			propertiesSectionsLayout = propertiesSectionsLayout;
 		});
 	});
 </script>
