@@ -13,71 +13,25 @@ use alloc::boxed::Box;
 use async_trait::async_trait;
 
 pub mod generic;
-pub mod ops;
+//pub mod ops;
 pub mod structural;
 pub mod value;
 
 #[cfg(feature = "gpu")]
 pub mod gpu;
 
-pub mod raster;
+//pub mod raster;
 
 #[cfg(feature = "alloc")]
-pub mod vector;
+//pub mod vector;
 
-pub trait Node<T> {
+pub trait NodeIO<'a, _WhereSelfUsableWithinA = &'a Self> {
+	type Input;
 	type Output;
-
-	fn eval(self, input: T) -> Self::Output;
 }
 
-trait Input<I> {
-	unsafe fn input(&self, input: I);
-}
-
-pub trait RefNode<T> {
-	type Output;
-
-	fn eval_ref(&self, input: T) -> Self::Output;
-}
-
-impl<'n, N: 'n, I> RefNode<I> for &'n N
-where
-	&'n N: Node<I>,
-	Self: 'n,
-{
-	type Output = <&'n N as Node<I>>::Output;
-	fn eval_ref(&self, input: I) -> Self::Output {
-		self.eval(input)
-	}
-}
-
-pub trait AsRefNode<'n, T>
-where
-	&'n Self: Node<T>,
-	Self: 'n,
-{
-	type Output;
-	fn eval_box(&'n self, input: T) -> <Self>::Output;
-}
-
-impl<'n, N: 'n, I> AsRefNode<'n, I> for N
-where
-	&'n N: Node<I>,
-	N: Node<I>,
-	Self: 'n,
-{
-	type Output = <&'n N as Node<I>>::Output;
-	fn eval_box(&'n self, input: I) -> <Self>::Output {
-		self.eval(input)
-	}
-}
-
-impl<'n, T> Node<T> for &'n (dyn AsRefNode<'n, T, Output = T> + 'n) {
-	type Output = T;
-	fn eval(self, input: T) -> Self::Output {
-		self.eval_box(input)
-	}
+pub trait Node: for<'n> NodeIO<'n> {
+	fn eval<'i, 's: 'i>(&'s self, input: <Self as NodeIO<'i>>::Input) -> <Self as NodeIO<'i>>::Output;
 }
 
 #[cfg(feature = "async")]
@@ -98,27 +52,19 @@ impl<'n, N: Node<T> + Send + Sync + 'n, T: Send + 'n> AsyncNode<T> for N {
 	}
 }*/
 
-pub trait Cache {
-	fn clear(&mut self);
-}
-
 #[cfg(feature = "async")]
-impl<N, I> Node<I> for Box<N>
+impl<'n, N> NodeIO<'n> for Box<N>
 where
-	N: Node<I>,
+	N: NodeIO<'n>,
 {
-	type Output = <N as Node<I>>::Output;
-	fn eval(self, input: I) -> Self::Output {
-		(*self).eval(input)
-	}
+	type Input = <N as NodeIO<'n>>::Input;
+	type Output = <N as NodeIO<'n>>::Output;
 }
 #[cfg(feature = "async")]
-impl<'n, N, I> Node<I> for &'n Box<N>
+impl<'n: 'i, 'i, N> NodeIO<'i> for &'n Box<N>
 where
-	&'n N: Node<I>,
+	for<'a> &'a N: NodeIO<'a>,
 {
-	type Output = <&'n N as Node<I>>::Output;
-	fn eval(self, input: I) -> Self::Output {
-		self.as_ref().eval(input)
-	}
+	type Input = <&'i N as NodeIO<'i>>::Input;
+	type Output = <&'i N as NodeIO<'i>>::Output;
 }
