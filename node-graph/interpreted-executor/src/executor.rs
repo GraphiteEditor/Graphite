@@ -2,6 +2,7 @@ use std::error::Error;
 use std::{collections::HashMap, sync::Arc};
 
 use borrow_stack::{BorrowStack, FixedSizeStack};
+use dyn_any::{DynAny, StaticType};
 use graph_craft::document::value::Value;
 use graph_craft::document::NodeId;
 use graph_craft::proto::{ConstructionArgs, ProtoNode, ProtoNodeInput};
@@ -36,11 +37,15 @@ impl Executor for DynamicExecutor {
 
 pub struct NodeContainer<'n> {
 	node: TypeErasedNode<'n>,
-	dependencies: Vec<Arc<NodeContainer<'n>>>,
+	// the dependencies are only kept to ensure that the nodes are not dropped while still in use
+	_dependencies: Vec<Arc<NodeContainer<'n>>>,
 }
 
 impl<'a> NodeContainer<'a> {
-	pub unsafe fn static_ref(&self) -> &'static TypeErasedNode<'a> {
+	/// Return a static reference to the TypeErasedNode
+	/// # Safety
+	/// This is unsafe because the returned reference is only valid as long as the NodeContainer is alive
+	pub unsafe fn static_ref<'b>(&self) -> &'b TypeErasedNode<'a> {
 		&*(&self.node as *const TypeErasedNode<'a>)
 	}
 }
@@ -75,13 +80,22 @@ impl BorrowTree {
 	}
 
 	fn store_node(&mut self, node: TypeErasedNode<'static>, id: NodeId, dependencies: Vec<Arc<NodeContainer<'static>>>) -> Arc<NodeContainer<'static>> {
-		let node = Arc::new(NodeContainer { node, dependencies });
+		let node = Arc::new(NodeContainer { node, _dependencies: dependencies });
 		self.nodes.insert(id, node.clone());
 		node
 	}
 
 	pub fn get(&self, id: NodeId) -> Option<Arc<NodeContainer<'static>>> {
 		self.nodes.get(&id).cloned()
+	}
+
+	pub fn eval<'i, I: StaticType + 'i, O: StaticType + 'i>(&self, id: NodeId, input: I) -> Option<O> {
+		use dyn_any::IntoDynAny;
+
+		let node = self.nodes.get(&id).cloned()?;
+		let node_ref = unsafe { node.static_ref() };
+		let output = node_ref.eval(Box::new(input) as Box<dyn DynAny<'i> + 'i>);
+		dyn_any::downcast::<O>(output).ok().map(|o| *o)
 	}
 
 	fn free_node(&mut self, id: NodeId) {
@@ -110,21 +124,6 @@ impl BorrowTree {
 				self.store_node(node, id, self.node_deps(ids.as_slice()));
 			}
 		}
-
-		/*
-		if let Some((_id, f)) = self.nodes.get(proto_node.identifier) {
-			f(proto_node, stack);
-		} else {
-			let other_types = NODE_REGISTRY
-				.iter()
-				.map(|(id, _)| id)
-				.filter(|id| id.name.as_ref() == proto_node.identifier.name.as_ref())
-				.collect::<Vec<_>>();
-			panic!(
-				"NodeImplementation: {:?} not found in Registry. Types for which the node is implemented:\n {:#?}",
-				proto_node.identifier, other_types
-			);
-		}*/
 	}
 }
 

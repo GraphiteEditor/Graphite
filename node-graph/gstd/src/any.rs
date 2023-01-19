@@ -2,6 +2,11 @@ use dyn_any::{DynAny, StaticType, StaticTypeSized};
 pub use graphene_core::{generic, ops /*, structural*/, Node, RefNode};
 use std::{marker::PhantomData, pin::Pin};
 
+pub trait TypeErasedCall<'a> {
+	type Input;
+	type Output;
+}
+
 pub struct DynAnyNode<N, I: StaticType, O: StaticType, ORef: StaticType>(pub N, pub PhantomData<(I, O, ORef)>);
 /*impl<'n, I: StaticType, N: RefNode<'n, &'n I, Output = O> + 'n, O: 'n + StaticType> Node<&'n dyn DynAny<'n>> for DynAnyNode<'n, N, I> {
 	type Output = Box<dyn dyn_any::DynAny<'n> + 'n>;
@@ -47,7 +52,7 @@ where
 		Box::new((&self.0).eval_ref(*input))
 	}
 }
-pub struct TypeErasedNode<'n>(pub Pin<Box<dyn AsRefNode<'n, Any<'n>, Output = Any<'n>> + 'n>>);
+pub struct TypeErasedNode<'n>(pub Pin<Box<dyn for<'i> AsRefNode<'n, Any<'i>, Output = Any<'i>> + 'n>>);
 impl<'n> Node<Any<'n>> for &'n TypeErasedNode<'n> {
 	type Output = Any<'n>;
 	fn eval(self, input: Any<'n>) -> Self::Output {
@@ -71,8 +76,8 @@ impl<'n> StaticTypeSized for TypeErasedNode<'n> {
 
 impl<'n, N: 'n> IntoTypeErasedNode<'n> for N
 where
-	N: AsRefNode<'n, Any<'n>, Output = Any<'n>>,
-	&'n N: Node<Any<'n>, Output = Any<'n>>,
+	N: for<'i> AsRefNode<'n, Any<'i>, Output = Any<'i>>,
+	&'n N: for<'i> Node<Any<'i>, Output = Any<'i>>,
 {
 	fn into_type_erased(self) -> TypeErasedNode<'n> {
 		TypeErasedNode(Box::pin(self))
