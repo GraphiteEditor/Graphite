@@ -15,7 +15,7 @@
 	"dependencies": {
 		"@tauri-apps/api": "^1.2.0",
 		"class-transformer": "^0.5.1",
-		"graphite-wasm-svelte": "link:wasm/pkg",
+		"graphite-wasm-svelte": "file:wasm/pkg",
 		"idb-keyval": "^6.2.0",
 		"reflect-metadata": "^0.1.13"
 	},
@@ -29,6 +29,7 @@
 		"eslint-plugin-import": "^2.26.0",
 		"eslint-plugin-svelte3": "^4.0.0",
 		"prettier": "^2.8.2",
+		"rollup-plugin-license": "^3.0.1",
 		"sass": "^1.57.1",
 		"svelte": "^3.55.0",
 		"svelte-check": "^3.0.2",
@@ -36,6 +37,7 @@
 		"tslib": "^2.4.1",
 		"typescript": "^4.9.4",
 		"vite": "^4.0.4",
+		"vite-plugin-top-level-await": "^1.2.2",
 		"vite-plugin-wasm": "^3.1.1"
 	},
 	"//": "Notes about dependency issues and incompatibilities should be added here when needed.",
