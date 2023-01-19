@@ -21,6 +21,7 @@ pub enum DocumentResponse {
 	LayerChanged {
 		path: Vec<LayerId>,
 	},
+	DeletedSelectedManipulatorPoints,
 }
 
 impl fmt::Display for DocumentResponse {
