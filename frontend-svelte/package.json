@@ -4,18 +4,7 @@
 	"description": "Graphite's web app frontend. Planned to be replaced by a native GUI written in Rust in the future.",
 	"author": "Graphite Authors <contact@graphite.rs>",
 	"scripts": {
-		"start": "npm run serve",
-		"serve": "webpack serve || (npm run print-building-help && exit 1)",
-		"build-dev": "webpack build || (npm run print-building-help && exit 1)",
-		"build-prod-unix": "NODE_ENV=production webpack build || (npm run print-building-help && exit 1)",
-		"build-prod-windows": "set NODE_ENV=production && webpack build || (npm run print-building-help && exit 1)",
-		"check": "svelte-check",
-		"lint": "webpack lint || (npm run print-linting-help && exit 1)",
-		"lint-no-fix": "webpack lint --no-fix || (npm run print-linting-help && exit 1)",
-		"tauri:build": "webpack tauri:build",
-		"tauri:serve": "webpack tauri:serve",
-		"print-building-help": "echo 'Graphite project failed to build. Did you remember to `npm install` the dependencies in `/frontend`?'",
-		"print-linting-help": "echo 'Graphite project had lint errors, or may have otherwise failed. In the latter case, did you remember to `npm install` the dependencies in `/frontend`?'"
+		"lint": "eslint .",
 	},
 	"dependencies": {
 		"@tauri-apps/api": "^1.2.0",
@@ -24,35 +13,17 @@
 		"reflect-metadata": "^0.1.13"
 	},
 	"devDependencies": {
-		"@types/license-checker-webpack-plugin": "^0.2.1",
 		"@types/node": "^18.11.18",
-		"@types/webpack": "^5.28.0",
-		"@types/webpack-dev-server": "^4.7.2",
 		"@typescript-eslint/eslint-plugin": "^5.48.0",
 		"@typescript-eslint/parser": "^5.48.0",
-		"@wasm-tool/wasm-pack-plugin": "^1.6.0",
-		"css-loader": "^6.7.3",
 		"eslint": "^8.31.0",
 		"eslint-config-prettier": "^8.6.0",
 		"eslint-plugin-import": "^2.26.0",
-		"license-checker-webpack-plugin": "^0.2.1",
 		"prettier": "^2.8.2",
 		"sass": "^1.57.1",
-		"sass-loader": "^13.2.0",
 		"svelte": "^3.55.0",
-		"svelte-check": "^3.0.1",
-		"svelte-check-plugin": "^1.0.4",
-		"svelte-loader": "^3.1.4",
 		"svelte-preprocess": "^5.0.0",
-		"ts-loader": "^9.4.2",
-		"ts-node": "^10.9.1",
-		"typescript": "^4.9.4",
-		"webpack": "^5.75.0",
-		"webpack-cli": "^5.0.1",
-		"webpack-dev-server": "^4.11.1"
-	},
-	"optionalDependencies": {
-		"wasm-pack": "^0.10.3"
+		"typescript": "^4.9.4"
 	},
 	"//": "Notes about dependency issues and incompatibilities should be added here when needed.",
 	"homepage": "https://graphite.rs",
