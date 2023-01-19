@@ -5,13 +5,13 @@ use crate::{Node, NodeIO};
 #[derive(Default, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub struct IntNode<const N: u32>;
 
-impl<'n, const N: u32> NodeIO<'n> for IntNode<N> {
+impl<'i, const N: u32> NodeIO<'i> for IntNode<N> {
 	type Output = u32;
 	type Input = ();
 }
 
-impl<const N: u32> Node for IntNode<N> {
-	fn eval<'i, 's: 'i>(&'s self, _input: <Self as NodeIO<'i>>::Input) -> <Self as NodeIO<'i>>::Output {
+impl<'i, 's: 'i, const N: u32> Node<'i, 's> for IntNode<N> {
+	fn eval(&'s self, _input: <Self as NodeIO<'i>>::Input) -> <Self as NodeIO<'i>>::Output {
 		N
 	}
 }
@@ -19,13 +19,13 @@ impl<const N: u32> Node for IntNode<N> {
 #[derive(Default, Debug)]
 pub struct ValueNode<T>(pub T);
 
-impl<'n, T> NodeIO<'n> for ValueNode<T> {
-	type Output = &'n T;
+impl<'i, T> NodeIO<'i> for ValueNode<T> {
+	type Output = &'i T;
 	type Input = ();
 }
 
-impl<'n, T: 'n> Node for ValueNode<T> {
-	fn eval<'i, 's: 'i>(&'s self, _input: <Self as NodeIO<'i>>::Input) -> <Self as NodeIO<'i>>::Output {
+impl<'i, 's: 'i, T: 'i> Node<'i, 's> for ValueNode<T> {
+	fn eval(&'s self, _input: <Self as NodeIO<'i>>::Input) -> <Self as NodeIO<'i>>::Output {
 		&self.0
 	}
 }
@@ -56,8 +56,8 @@ impl<'n, T: Default> NodeIO<'n> for DefaultNode<T> {
 	type Input = ();
 }
 
-impl<'n, T: Default + 'n> Node for DefaultNode<T> {
-	fn eval<'i, 's: 'i>(&'s self, _input: <Self as NodeIO<'i>>::Input) -> <Self as NodeIO<'i>>::Output {
+impl<'i, 's: 'i, T: Default + 'i> Node<'i, 's> for DefaultNode<T> {
+	fn eval(&self, _input: <Self as NodeIO<'i>>::Input) -> <Self as NodeIO<'i>>::Output {
 		T::default()
 	}
 }
@@ -78,8 +78,8 @@ impl<'n> NodeIO<'n> for UnitNode {
 	type Input = ();
 }
 
-impl Node for UnitNode {
-	fn eval<'i, 's: 'i>(&'s self, _input: <Self as NodeIO<'i>>::Input) -> <Self as NodeIO<'i>>::Output {}
+impl<'i, 's: 'i> Node<'i, 's> for UnitNode {
+	fn eval(&self, _input: <Self as NodeIO<'i>>::Input) -> <Self as NodeIO<'i>>::Output {}
 }
 
 impl UnitNode {

@@ -20,11 +20,12 @@ pub mod gpu;
 #[cfg(feature = "alloc")]
 //pub mod vector;
 
-pub trait NodeIO<'a, _WhereSelfUsableWithinA = &'a Self> {
+pub trait NodeIO<'a, _WhereSelfUsableWithinA = &'a Self>: 'a {
 	type Input;
 	type Output;
 }
 
-pub trait Node: for<'n> NodeIO<'n> {
-	fn eval<'i, 's: 'i>(&'s self, input: <Self as NodeIO<'i>>::Input) -> <Self as NodeIO<'i>>::Output;
+//pub trait Node: for<'n> NodeIO<'n> {
+pub trait Node<'i, 's: 'i>: NodeIO<'i> {
+	fn eval(&'s self, input: <Self as NodeIO<'i>>::Input) -> <Self as NodeIO<'i>>::Output;
 }

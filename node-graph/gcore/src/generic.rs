@@ -3,13 +3,13 @@ use core::marker::PhantomData;
 use crate::{Node, NodeIO};
 pub struct FnNode<T: Fn(I) -> O, I, O>(T, PhantomData<(I, O)>);
 
-impl<'n, I, O, T: Fn(I) -> O> NodeIO<'n> for FnNode<T, I, O> {
+impl<'i, 's: 'i, I, O, T: Fn(I) -> O> NodeIO<'i> for FnNode<T, I, O> {
 	type Input = I;
 	type Output = O;
 }
 
-impl<T: Fn(I) -> O, O, I> Node for FnNode<T, I, O> {
-	fn eval<'i, 's: 'i>(&'s self, input: <Self as NodeIO<'i>>::Input) -> <Self as NodeIO<'i>>::Output {
+impl<'i, 's: 'i, T: Fn(I) -> O + 'i, O: 'i, I: 'i> Node<'i, 's> for FnNode<T, I, O> {
+	fn eval(&'s self, input: <Self as NodeIO<'i>>::Input) -> <Self as NodeIO<'i>>::Output {
 		self.0(input)
 	}
 }
@@ -20,17 +20,17 @@ impl<T: Fn(I) -> O, I, O> FnNode<T, I, O> {
 	}
 }
 
-pub struct FnNodeWithState<T: for<'s> Fn(I, &'s State) -> O, I, O, State>(T, State, PhantomData<(O, I)>);
-impl<'n, I, O, State, T: for<'s> Fn(I, &'s State) -> O> NodeIO<'n> for FnNodeWithState<T, I, O, State> {
+pub struct FnNodeWithState<'i, T: Fn(I, &'i State) -> O, I, O, State: 'i>(T, State, PhantomData<(&'i O, I)>);
+impl<'i, 's: 'i, I: 'i, O: 'i, State: 'i, T: Fn(I, &'i State) -> O + 'i> NodeIO<'i> for FnNodeWithState<'i, T, I, O, State> {
 	type Input = I;
 	type Output = O;
 }
-impl<I, O, State, T: for<'state> Fn(I, &'state State) -> O> Node for FnNodeWithState<T, I, O, State> {
-	fn eval<'i, 's: 'i>(&'s self, input: <Self as NodeIO<'i>>::Input) -> <Self as NodeIO<'i>>::Output {
+impl<'i, 's: 'i, I: 'i, O: 'i, State, T: Fn(I, &'i State) -> O + 'i> Node<'i, 's> for FnNodeWithState<'i, T, I, O, State> {
+	fn eval(&'s self, input: <Self as NodeIO<'i>>::Input) -> <Self as NodeIO<'i>>::Output {
 		(self.0)(input, &self.1)
 	}
 }
-impl<I, O, State, T: for<'s> Fn(I, &'s State) -> O> FnNodeWithState<T, I, O, State> {
+impl<'i, 's: 'i, I, O, State, T: Fn(I, &'i State) -> O> FnNodeWithState<'i, T, I, O, State> {
 	pub fn new(f: T, state: State) -> Self {
 		FnNodeWithState(f, state, PhantomData)
 	}

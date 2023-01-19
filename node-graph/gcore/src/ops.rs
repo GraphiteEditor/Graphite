@@ -6,13 +6,13 @@ use crate::{Node, NodeIO};
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub struct AddNode<L: Add<R>, R>(PhantomData<(L, R)>);
 
-impl<'n, L: Add<R>, R> NodeIO<'n> for AddNode<L, R> {
+impl<'i, 's: 'i, L: Add<R>, R> NodeIO<'i> for AddNode<L, R> {
 	type Output = <L as Add<R>>::Output;
 	type Input = (L, R);
 }
 
-impl<'n, L: Add<R, Output = O> + 'n, R, O: 'n> Node for AddNode<L, R> {
-	fn eval<'i, 's: 'i>(&'s self, input: <Self as NodeIO<'i>>::Input) -> <Self as NodeIO<'i>>::Output {
+impl<'i, 's: 'i, L: Add<R, Output = O> + 'i, R: 'i, O: 'i> Node<'i, 's> for AddNode<L, R> {
+	fn eval(&'s self, input: <Self as NodeIO<'i>>::Input) -> <Self as NodeIO<'i>>::Output {
 		input.0 + input.1
 	}
 }
@@ -52,8 +52,8 @@ pub mod dynamic {
 	};
 }
 
-	impl<'n> Node<(Dynamic<'n>, Dynamic<'n>)> for DynamicAddNode {
-		type Output = Dynamic<'n>;
+	impl<'i> Node<(Dynamic<'i>, Dynamic<'i>)> for DynamicAddNode {
+		type Output = Dynamic<'i>;
 		fn eval(self, (left, right): (Dynamic, Dynamic)) -> Self::Output {
 			resolve_dynamic_types! { AddNode =>
 			(left: usize, right: usize)
@@ -74,26 +74,31 @@ pub mod dynamic {
 	}
 }*/
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub struct CloneNode<O>(PhantomData<O>);
-impl<'n, O: Clone> NodeIO<'n> for CloneNode<O> {
-	type Input = &'n O;
+impl<'i, 's: 'i, O: Clone> NodeIO<'i> for CloneNode<O> {
+	type Input = &'i O;
 	type Output = O;
 }
-impl<'n, O: Clone> Node for CloneNode<O> {
-	fn eval<'i, 's: 'i>(&'s self, input: <Self as NodeIO<'i>>::Input) -> <Self as NodeIO<'i>>::Output {
+impl<'i, 's: 'i, O: Clone + 'i> Node<'i, 's> for CloneNode<O> {
+	fn eval(&'s self, input: <Self as NodeIO<'i>>::Input) -> <Self as NodeIO<'i>>::Output {
 		input.clone()
+	}
+}
+impl<O> CloneNode<O> {
+	pub fn new() -> Self {
+		Self(PhantomData)
 	}
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub struct FstNode<L, R>(PhantomData<(L, R)>);
-impl<'n, L, R> NodeIO<'n> for FstNode<L, R> {
+impl<'i, 's: 'i, L, R> NodeIO<'i> for FstNode<L, R> {
 	type Input = (L, R);
 	type Output = L;
 }
-impl<'n, L, R> Node for FstNode<L, R> {
-	fn eval<'i, 's: 'i>(&'s self, input: <Self as NodeIO<'i>>::Input) -> <Self as NodeIO<'i>>::Output {
+impl<'i, 's: 'i, L: 'i, R: 'i> Node<'i, 's> for FstNode<L, R> {
+	fn eval(&'s self, input: <Self as NodeIO<'i>>::Input) -> <Self as NodeIO<'i>>::Output {
 		input.0
 	}
 }
@@ -106,12 +111,12 @@ impl<L, R> FstNode<L, R> {
 /// Destructures a Tuple of two values and returns the first one
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct SndNode<L, R>(PhantomData<(L, R)>);
-impl<'n, L, R> NodeIO<'n> for SndNode<L, R> {
+impl<'i, 's: 'i, L, R> NodeIO<'i> for SndNode<L, R> {
 	type Input = (L, R);
 	type Output = R;
 }
-impl<'n, L, R> Node for SndNode<L, R> {
-	fn eval<'i, 's: 'i>(&'s self, input: <Self as NodeIO<'i>>::Input) -> <Self as NodeIO<'i>>::Output {
+impl<'i, 's: 'i, L: 'i, R: 'i> Node<'i, 's> for SndNode<L, R> {
+	fn eval(&'s self, input: <Self as NodeIO<'i>>::Input) -> <Self as NodeIO<'i>>::Output {
 		input.1
 	}
 }
@@ -124,12 +129,12 @@ impl<L, R> SndNode<L, R> {
 /// Destructures a Tuple of two values and returns them in reverse order
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct SwapNode<L, R>(PhantomData<(L, R)>);
-impl<'n, L, R> NodeIO<'n> for SwapNode<L, R> {
+impl<'i, 's: 'i, L, R> NodeIO<'i> for SwapNode<L, R> {
 	type Input = (L, R);
 	type Output = (R, L);
 }
-impl<'n, L, R> Node for SwapNode<L, R> {
-	fn eval<'i, 's: 'i>(&'s self, input: <Self as NodeIO<'i>>::Input) -> <Self as NodeIO<'i>>::Output {
+impl<'i, 's: 'i, L: 'i, R: 'i> Node<'i, 's> for SwapNode<L, R> {
+	fn eval(&'s self, input: <Self as NodeIO<'i>>::Input) -> <Self as NodeIO<'i>>::Output {
 		let (a, b) = input;
 		(b, a)
 	}
@@ -143,16 +148,16 @@ impl<L, R> SwapNode<L, R> {
 /// Return a tuple with two instances of the input argument
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct DupNode<O>(PhantomData<O>);
-impl<'n, O: Clone> NodeIO<'n> for DupNode<O> {
+impl<'i, 's: 'i, O: Clone> NodeIO<'i> for DupNode<O> {
 	type Input = O;
 	type Output = (O, O);
 }
-impl<'n, O: Clone> Node for DupNode<O> {
-	fn eval<'i, 's: 'i>(&'s self, input: <Self as NodeIO<'i>>::Input) -> <Self as NodeIO<'i>>::Output {
+impl<'i, 's: 'i, O: Clone + 'i> Node<'i, 's> for DupNode<O> {
+	fn eval(&'s self, input: <Self as NodeIO<'i>>::Input) -> <Self as NodeIO<'i>>::Output {
 		(input.clone(), input)
 	}
 }
-impl<'n, O: Clone> DupNode<O> {
+impl<'i, 's: 'i, O: Clone> DupNode<O> {
 	pub fn new() -> Self {
 		Self(PhantomData)
 	}
@@ -161,12 +166,12 @@ impl<'n, O: Clone> DupNode<O> {
 /// Return the Input Argument
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub struct IdNode<O>(PhantomData<O>);
-impl<'n, O> NodeIO<'n> for IdNode<O> {
+impl<'i, 's: 'i, O> NodeIO<'i> for IdNode<O> {
 	type Input = O;
 	type Output = O;
 }
-impl<'n, O> Node for IdNode<O> {
-	fn eval<'i, 's: 'i>(&'s self, input: <Self as NodeIO<'i>>::Input) -> <Self as NodeIO<'i>>::Output {
+impl<'i, 's: 'i, O: 'i> Node<'i, 's> for IdNode<O> {
+	fn eval(&'s self, input: <Self as NodeIO<'i>>::Input) -> <Self as NodeIO<'i>>::Output {
 		input
 	}
 }
@@ -180,57 +185,57 @@ impl<O> IdNode<O> {
 /// Ascribe the node types
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub struct TypeNode<N, I, O>(pub N, pub PhantomData<(I, O)>);
-impl<'n, N, I, O> NodeIO<'n> for TypeNode<N, I, O>
+impl<'i, 's: 'i, N, I, O> NodeIO<'i> for TypeNode<N, I, O>
 where
-	N: NodeIO<'n, Input = I, Output = O>,
+	N: NodeIO<'i, Input = I, Output = O>,
 {
 	type Input = I;
 	type Output = O;
 }
 
-impl<'n, N: Node> TypeNode<N, <N as NodeIO<'n>>::Input, <N as NodeIO<'n>>::Output> {
+impl<'i, 's: 'i, N: Node<'i, 's>> TypeNode<N, <N as NodeIO<'i>>::Input, <N as NodeIO<'i>>::Output> {
 	pub fn new(node: N) -> Self {
 		Self(node, PhantomData)
 	}
 }
 
-impl<'n, N: Node + Clone> Clone for TypeNode<N, <N as NodeIO<'n>>::Input, <N as NodeIO<'n>>::Output> {
+impl<'i, 's: 'i, N: Node<'i, 's> + Clone> Clone for TypeNode<N, <N as NodeIO<'i>>::Input, <N as NodeIO<'i>>::Output> {
 	fn clone(&self) -> Self {
 		Self(self.0.clone(), self.1)
 	}
 }
-impl<'n, N: Node + Copy> Copy for TypeNode<N, <N as NodeIO<'n>>::Input, <N as NodeIO<'n>>::Output> {}
+impl<'i, 's: 'i, N: Node<'i, 's> + Copy> Copy for TypeNode<N, <N as NodeIO<'i>>::Input, <N as NodeIO<'i>>::Output> {}
 
 /// input.map(|x| self.0.eval(x))
 pub struct MapResultNode<MN, I, E>(pub MN, pub PhantomData<(I, E)>);
-impl<'n, MN, I, E> NodeIO<'n> for MapResultNode<MN, I, E>
+impl<'i, 's: 'i, MN, I, E> NodeIO<'i> for MapResultNode<MN, I, E>
 where
-	MN: NodeIO<'n, Input = I>,
+	MN: NodeIO<'i, Input = I>,
 {
 	type Input = Result<I, E>;
-	type Output = Result<<MN as NodeIO<'n>>::Output, E>;
+	type Output = Result<<MN as NodeIO<'i>>::Output, E>;
 }
 
-impl<MN: Node<Input = I>, I, E> Node for MapResultNode<MN, I, E> {
-	fn eval<'i, 's: 'i>(&'s self, input: <Self as NodeIO<'i>>::Input) -> <Self as NodeIO<'i>>::Output {
+impl<'i, 's: 'i, MN: Node<'i, 's, Input = I>, I: 'i, E: 'i> Node<'i, 's> for MapResultNode<MN, I, E> {
+	fn eval(&'s self, input: <Self as NodeIO<'i>>::Input) -> <Self as NodeIO<'i>>::Output {
 		input.map(|x| self.0.eval(x))
 	}
 }
 
-impl<'n, MN: Node> MapResultNode<MN, <MN as NodeIO<'n>>::Input, <MN as NodeIO<'n>>::Output> {
+impl<'i, 's: 'i, MN: Node<'i, 's>> MapResultNode<MN, <MN as NodeIO<'i>>::Input, <MN as NodeIO<'i>>::Output> {
 	pub fn new(node: MN) -> Self {
 		Self(node, PhantomData)
 	}
 }
 
-pub struct FlatMapResultNode<MN: Node<Input = I>, I, E>(pub MN, pub PhantomData<(I, E)>);
-impl<'n, MN: Node<Input = I, Output = Result<O, E>>, O, I, E> NodeIO<'n> for FlatMapResultNode<MN, I, E> {
+pub struct FlatMapResultNode<'i, 's: 'i, MN: Node<'i, 's, Input = I>, I, E>(pub MN, pub PhantomData<&'s (&'i I, E)>);
+impl<'i, 's: 'i, MN: Node<'i, 's, Input = I, Output = Result<O, E>>, O, I, E> NodeIO<'i> for FlatMapResultNode<'i, 's, MN, I, E> {
 	type Input = Result<I, E>;
-	type Output = <MN as NodeIO<'n>>::Output;
+	type Output = <MN as NodeIO<'i>>::Output;
 }
 
-impl<MN: Node<Input = I, Output = Result<O, E>>, I, O, E> Node for FlatMapResultNode<MN, I, E> {
-	fn eval<'i, 's: 'i>(&'s self, input: <Self as NodeIO<'i>>::Input) -> <Self as NodeIO<'i>>::Output {
+impl<'i, 's: 'i, MN: Node<'i, 's, Input = I, Output = Result<O, E>>, I, O, E> Node<'i, 's> for FlatMapResultNode<'i, 's, MN, I, E> {
+	fn eval(&'s self, input: <Self as NodeIO<'i>>::Input) -> <Self as NodeIO<'i>>::Output {
 		match input.map(|x| self.0.eval(x)) {
 			Ok(Ok(x)) => Ok(x),
 			Ok(Err(e)) => Err(e),
@@ -238,7 +243,7 @@ impl<MN: Node<Input = I, Output = Result<O, E>>, I, O, E> Node for FlatMapResult
 		}
 	}
 }
-impl<'n, MN: Node<Input = I>, I> FlatMapResultNode<MN, <MN as NodeIO<'n>>::Input, <MN as NodeIO<'n>>::Output> {
+impl<'i, 's: 'i, MN: Node<'i, 's, Input = I>, I> FlatMapResultNode<'i, 's, MN, <MN as NodeIO<'i>>::Input, <MN as NodeIO<'i>>::Output> {
 	pub fn new(node: MN) -> Self {
 		Self(node, PhantomData)
 	}
@@ -253,13 +258,12 @@ mod test {
 	pub fn dup_node() {
 		let value = ValueNode(4u32);
 		let dup = ComposeNode::new(value, DupNode::new());
-		//assert_eq!(dup.eval(()), (&4, &4));
+		assert_eq!(dup.eval(()), (&4, &4));
 	}
-	/*
 	#[test]
 	pub fn id_node() {
 		let value = ValueNode(4u32).then(IdNode::new());
-		assert_eq!(value.eval(()), 4);
+		assert_eq!(value.eval(()), &4);
 	}
 	#[test]
 	pub fn clone_node() {
@@ -268,21 +272,22 @@ mod test {
 	}
 	#[test]
 	pub fn fst_node() {
-		let fst = ValueNode((4u32, "a")).then(FstNode::new());
+		let fst = ValueNode((4u32, "a")).then(CloneNode::new()).then(FstNode::new());
 		assert_eq!(fst.eval(()), 4);
 	}
 	#[test]
 	pub fn snd_node() {
-		let fst = ValueNode((4u32, "a")).then(SndNode::new());
+		let fst = ValueNode((4u32, "a")).then(CloneNode::new()).then(SndNode::new());
 		assert_eq!(fst.eval(()), "a");
 	}
 	#[test]
 	pub fn add_node() {
 		let a = ValueNode(42u32);
 		let b = ValueNode(6u32);
-		let cons_a = ConsNode(a, PhantomData);
+		let cons_a = ConsNode::new(a);
+		let tuple = b.then(cons_a);
 
-		let sum = b.then(cons_a).then(AddNode);
+		let sum = tuple.then(AddNode::new());
 
 		assert_eq!(sum.eval(()), 48);
 	}
@@ -297,7 +302,7 @@ mod test {
 		let fnn = FnNode::new(&swap);
 		let fns = FnNodeWithState::new(int, 42u32);
 		assert_eq!(fnn.eval((1u32, 2u32)), (2, 1));
-		let result: u32 = (&fns).eval(());
+		let result: u32 = fns.eval(());
 		assert_eq!(result, 42);
-	}*/
+	}
 }
