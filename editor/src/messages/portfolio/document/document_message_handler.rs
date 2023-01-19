@@ -142,6 +142,29 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 								);
 							}
 							DocumentResponse::DocumentChanged => responses.push_back(RenderDocument.into()),
+							DocumentResponse::DeletedSelectedManipulatorPoints => {
+								// clear Properties panel after deleting all points
+								responses.push_back(
+									FrontendMessage::UpdatePropertyPanelOptionsLayout {
+										layout_target: PropertiesOptions,
+										diff: vec![WidgetDiff {
+											widget_path: vec![],
+											new_value: DiffUpdate::SubLayout(vec![]),
+										}],
+									}
+									.into(),
+								);
+								responses.push_back(
+									FrontendMessage::UpdatePropertyPanelSectionsLayout {
+										layout_target: PropertiesSections,
+										diff: vec![WidgetDiff {
+											widget_path: vec![],
+											new_value: DiffUpdate::SubLayout(vec![]),
+										}],
+									}
+									.into(),
+								);
+							}
 						};
 						responses.push_back(BroadcastEvent::DocumentIsDirty.into());
 					}
