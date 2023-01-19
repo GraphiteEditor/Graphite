@@ -14,7 +14,7 @@
 	import TextInput from "@/components/widgets/inputs/TextInput.svelte";
 	import Separator from "@/components/widgets/labels/Separator.svelte";
 	import TextLabel from "@/components/widgets/labels/TextLabel.svelte";
-	import { type Editor } from "@/wasm-communication/editor";
+	import type { Editor } from "@/wasm-communication/editor";
 
 	type PresetColors = "none" | "black" | "white" | "red" | "yellow" | "green" | "cyan" | "blue" | "magenta";
 
