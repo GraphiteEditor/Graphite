@@ -50,13 +50,13 @@
 
 	// Rulers
 	let rulerOrigin: XY = { x: 0, y: 0 };
-	let rulerSpacing: number = 100;
-	let rulerInterval: number = 100;
+	let rulerSpacing = 100;
+	let rulerInterval = 100;
 
 	// Rendered SVG viewport data
-	let artworkSvg: string = "";
-	let artboardSvg: string = "";
-	let overlaysSvg: string = "";
+	let artworkSvg = "";
+	let artboardSvg = "";
+	let overlaysSvg = "";
 
 	// Rasterized SVG viewport data, or none if it's not up-to-date
 	let rasterizedCanvas: HTMLCanvasElement | undefined = undefined;

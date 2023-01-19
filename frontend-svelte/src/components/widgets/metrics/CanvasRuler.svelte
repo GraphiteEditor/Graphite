@@ -12,8 +12,8 @@
 	export let origin: number;
 	export let numberInterval: number;
 	export let majorMarkSpacing: number;
-	export let mediumDivisions: number = 5;
-	export let minorDivisions: number = 2;
+	export let mediumDivisions = 5;
+	export let minorDivisions = 2;
 
 	let canvasRuler: HTMLDivElement;
 	let rulerLength = 0;

@@ -2,24 +2,25 @@ module.exports = {
 	root: true,
 	env: {
 		browser: true,
-		node: true,
 		es2020: true,
 	},
 	parserOptions: {
 		ecmaVersion: 2020,
+		sourceType: "module",
 	},
+	plugins: [
+		"svelte3",
+		"@typescript-eslint",
+	],
 	extends: [
-		// Vue-specific defaults
-		"plugin:vue/vue3-essential",
-		// Vue-compatible JS defaults
-		"@vue/airbnb",
-		// Vue-compatible TS defaults
-		"@vue/typescript/recommended",
-		// Vue-compatible Prettier defaults
-		"plugin:prettier-vue/recommended",
+		"eslint:recommended",
+		"plugin:@typescript-eslint/recommended",
 		// General Prettier defaults
 		"prettier",
 	],
+	settings: {
+		"svelte3/typescript": () => require("typescript"),
+	},
 	ignorePatterns: [
 		// Ignore generated directories
 		"node_modules/",
@@ -28,8 +29,8 @@ module.exports = {
 		"wasm/pkg/",
 
 		// Don't ignore JS and TS dotfiles in this folder
-		"!.*.js",
-		"!.*.ts",
+		// "!.*.js",
+		// "!.*.ts",
 	],
 	rules: {
 		// Standard ESLint config
@@ -63,46 +64,31 @@ module.exports = {
 
 		// Import plugin config (used to intelligently validate module import statements)
 		"import/prefer-default-export": "off",
-		"import/no-relative-packages": "error",
-		"import/order": [
-			"error",
-			{
-				alphabetize: {
-					order: "asc",
-					caseInsensitive: true,
-				},
-				warnOnUnassignedImports: true,
-				"newlines-between": "always-and-inside-groups",
-				pathGroups: [
-					{
-						pattern: "**/*.vue",
-						group: "unknown",
-						position: "after",
-					},
-				],
-			},
-		],
-
-		// Prettier plugin config (used to enforce HTML, CSS, and JS formatting styles as an ESLint plugin, where fixes are reported to ESLint to be applied when linting)
-		"prettier-vue/prettier": [
-			"error",
-			{
-				tabWidth: 4,
-				tabs: true,
-				printWidth: 200,
-				singleQuote: false,
-			},
-		],
-
-		// Vue plugin config (used to validate Vue single-file components)
-		"vue/multi-word-component-names": "off",
-
-		// Vue Accessibility plugin config (included by airbnb defaults but undesirable for a web app project)
-		"vuejs-accessibility/form-control-has-label": "off",
-		"vuejs-accessibility/label-has-for": "off",
-		"vuejs-accessibility/click-events-have-key-events": "off",
+		// "import/no-relative-packages": "error",
+		// "import/order": [
+		// 	"error",
+		// 	{
+		// 		alphabetize: {
+		// 			order: "asc",
+		// 			caseInsensitive: true,
+		// 		},
+		// 		warnOnUnassignedImports: true,
+		// 		"newlines-between": "always-and-inside-groups",
+		// 		pathGroups: [
+		// 			{
+		// 				pattern: "**/*.vue",
+		// 				group: "unknown",
+		// 				position: "after",
+		// 			},
+		// 		],
+		// 	},
+		// ],
 	},
 	overrides: [
+		{
+			files: ["**.svelte"],
+			processor: "svelte3/svelte3"
+		},
 		{
 			files: ["*.js"],
 			rules: {

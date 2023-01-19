@@ -47,7 +47,7 @@
 	const editor = getContext<Editor>("editor");
 
 	// Layer data
-	let layerCache: Map<string, LayerPanelEntry> = new Map(); // TODO: replace with BigUint64Array as index
+	let layerCache = new Map<string, LayerPanelEntry>(); // TODO: replace with BigUint64Array as index
 	let layers: LayerListingInfo[] = [];
 
 	// Interactive dragging
