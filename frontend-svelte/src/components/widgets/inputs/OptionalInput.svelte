@@ -18,7 +18,7 @@
 	.optional-input {
 		flex-grow: 0;
 
-		label {
+		.checkbox-input label {
 			align-items: center;
 			justify-content: center;
 			white-space: nowrap;
@@ -29,7 +29,7 @@
 			box-sizing: border-box;
 		}
 
-		&.disabled label {
+		&.disabled .checkbox-input label {
 			border: 1px solid var(--color-4-dimgray);
 		}
 	}
