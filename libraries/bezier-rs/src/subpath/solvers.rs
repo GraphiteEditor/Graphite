@@ -73,7 +73,7 @@ impl Subpath {
 			y_extremas.extend(extremas[1].iter().map(|t| ((index as f64) + t) / number_of_curves).collect::<Vec<f64>>());
 		}
 
-		// TODO: Consider the point between bezier curves.
+		// TODO: Consider the shared point between adjacent beziers.
 		[x_extremas, y_extremas]
 	}
 
@@ -85,14 +85,14 @@ impl Subpath {
 			// There is no bounding box for empty subpath.
 			None
 		} else {
-			let mut min_points = bounding_boxes[0][0];
-			let mut max_points = bounding_boxes[0][1];
+			let mut min_point = bounding_boxes[0][0];
+			let mut max_point = bounding_boxes[0][1];
 			for bounding_box in bounding_boxes {
 				// We take min of mins and max of maxes.
-				min_points = min_points.min(bounding_box[0]);
-				max_points = max_points.max(bounding_box[1]);
+				min_point = min_point.min(bounding_box[0]);
+				max_point = max_point.max(bounding_box[1]);
 			}
-			Some([min_points, max_points])
+			Some([min_point, max_point])
 		}
 	}
 
@@ -114,7 +114,7 @@ impl Subpath {
 			})
 			.collect();
 
-		// TODO: Consider the point between bezier curves.
+		// TODO: Consider the shared point between adjacent beziers.
 		inflection_t_values
 	}
 }
