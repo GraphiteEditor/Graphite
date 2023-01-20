@@ -2,11 +2,6 @@ use dyn_any::{DynAny, StaticType, StaticTypeSized};
 pub use graphene_core::{generic, ops /*, structural*/, Node, RefNode};
 use std::{marker::PhantomData, pin::Pin};
 
-pub trait TypeErasedCall<'a> {
-	type Input;
-	type Output;
-}
-
 pub struct DynAnyNode<N, I: StaticType, O: StaticType, ORef: StaticType>(pub N, pub PhantomData<(I, O, ORef)>);
 /*impl<'n, I: StaticType, N: RefNode<'n, &'n I, Output = O> + 'n, O: 'n + StaticType> Node<&'n dyn DynAny<'n>> for DynAnyNode<'n, N, I> {
 	type Output = Box<dyn dyn_any::DynAny<'n> + 'n>;

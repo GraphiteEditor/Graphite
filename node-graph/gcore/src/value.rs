@@ -5,13 +5,12 @@ use crate::{Node, NodeIO};
 #[derive(Default, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub struct IntNode<const N: u32>;
 
-impl<'i, const N: u32> NodeIO<'i> for IntNode<N> {
+impl<'i, const N: u32> NodeIO<'i, ()> for IntNode<N> {
 	type Output = u32;
-	type Input = ();
 }
 
-impl<'i, 's: 'i, const N: u32> Node<'i, 's> for IntNode<N> {
-	fn eval(&'s self, _input: <Self as NodeIO<'i>>::Input) -> <Self as NodeIO<'i>>::Output {
+impl<'i, 's: 'i, const N: u32> Node<'i, 's, ()> for IntNode<N> {
+	fn eval(&'s self, _input: ()) -> <Self as NodeIO<'i, ()>>::Output {
 		N
 	}
 }
@@ -19,13 +18,12 @@ impl<'i, 's: 'i, const N: u32> Node<'i, 's> for IntNode<N> {
 #[derive(Default, Debug)]
 pub struct ValueNode<T>(pub T);
 
-impl<'i, T> NodeIO<'i> for ValueNode<T> {
+impl<'i, T> NodeIO<'i, ()> for ValueNode<T> {
 	type Output = &'i T;
-	type Input = ();
 }
 
-impl<'i, 's: 'i, T: 'i> Node<'i, 's> for ValueNode<T> {
-	fn eval(&'s self, _input: <Self as NodeIO<'i>>::Input) -> <Self as NodeIO<'i>>::Output {
+impl<'i, 's: 'i, T: 'i> Node<'i, 's, ()> for ValueNode<T> {
+	fn eval(&'s self, _input: ()) -> <Self as NodeIO<'i, ()>>::Output {
 		&self.0
 	}
 }
@@ -51,13 +49,12 @@ impl<T: Clone + Copy> Copy for ValueNode<T> {}
 #[derive(Default)]
 pub struct DefaultNode<T>(PhantomData<T>);
 
-impl<'n, T: Default> NodeIO<'n> for DefaultNode<T> {
+impl<'n, T: Default> NodeIO<'n, ()> for DefaultNode<T> {
 	type Output = T;
-	type Input = ();
 }
 
-impl<'i, 's: 'i, T: Default + 'i> Node<'i, 's> for DefaultNode<T> {
-	fn eval(&self, _input: <Self as NodeIO<'i>>::Input) -> <Self as NodeIO<'i>>::Output {
+impl<'i, 's: 'i, T: Default + 'i> Node<'i, 's, ()> for DefaultNode<T> {
+	fn eval(&self, _input: ()) -> <Self as NodeIO<'i, ()>>::Output {
 		T::default()
 	}
 }
@@ -73,13 +70,12 @@ impl<T> DefaultNode<T> {
 #[derive(Default, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub struct UnitNode;
 
-impl<'n> NodeIO<'n> for UnitNode {
+impl<'n> NodeIO<'n, ()> for UnitNode {
 	type Output = ();
-	type Input = ();
 }
 
-impl<'i, 's: 'i> Node<'i, 's> for UnitNode {
-	fn eval(&self, _input: <Self as NodeIO<'i>>::Input) -> <Self as NodeIO<'i>>::Output {}
+impl<'i, 's: 'i> Node<'i, 's, ()> for UnitNode {
+	fn eval(&self, _input: ()) -> <Self as NodeIO<'i, ()>>::Output {}
 }
 
 impl UnitNode {
