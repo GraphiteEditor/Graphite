@@ -143,7 +143,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 							}
 							DocumentResponse::DocumentChanged => responses.push_back(RenderDocument.into()),
 							DocumentResponse::DeletedSelectedManipulatorPoints => {
-								// clear Properties panel after deleting all points
+								// Clear Properties panel after deleting all points
 								responses.push_back(
 									FrontendMessage::UpdatePropertyPanelOptionsLayout {
 										layout_target: LayoutTarget::PropertiesOptions,

@@ -1098,7 +1098,7 @@ impl Document {
 
 						// Delete the layer if there are no longer any manipulator groups
 						if (shape.manipulator_groups().len() - 1) == 0 {
-							// delegate deletion to DeleteLayer to update Layer Tree in frontend
+							// Delegate deletion to DeleteLayer to update Layer Tree in frontend
 							match self.handle_operation(Operation::DeleteLayer { path: layer_path.clone() }, font_cache) {
 								Ok(Some(delete_responses)) => {
 									responses.extend(delete_responses);
