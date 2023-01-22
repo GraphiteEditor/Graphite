@@ -12,7 +12,7 @@ use document_legacy::Operation as DocumentOperation;
 use glam::DAffine2;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 pub struct ArtboardMessageHandler {
 	pub artboards_document: DocumentLegacy,
 	pub artboard_ids: Vec<LayerId>,
