@@ -660,9 +660,10 @@ impl JsEditorHandle {
 
 	/// Pastes an image
 	#[wasm_bindgen(js_name = pasteImage)]
-	pub fn paste_image(&self, mime: String, image_data: Vec<u8>, mouse_x: Option<f64>, mouse_y: Option<f64>) {
+	pub fn paste_image(&self, image_data: Vec<u8>, width: u32, height: u32, mouse_x: Option<f64>, mouse_y: Option<f64>) {
 		let mouse = mouse_x.and_then(|x| mouse_y.map(|y| (x, y)));
-		let message = DocumentMessage::PasteImage { mime, image_data, mouse };
+		let image = graphene_core::raster::Image::from_image_data(&image_data, width, height);
+		let message = DocumentMessage::PasteImage { image, mouse };
 		self.dispatch(message);
 	}
 
