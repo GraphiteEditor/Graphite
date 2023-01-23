@@ -1,5 +1,5 @@
-import { cSliderOptions } from "@/utils/options";
-import { ComputeType, SliderOption, SubpathCallback, WasmSubpathInstance } from "@/utils/types";
+import { tSliderOptions } from "@/utils/options";
+import { TVariant, SliderOption, SubpathCallback, WasmSubpathInstance } from "@/utils/types";
 
 const subpathFeatures = {
 	constructor: {
@@ -8,10 +8,10 @@ const subpathFeatures = {
 	},
 	insert: {
 		name: "Insert",
-		callback: (subpath: WasmSubpathInstance, options: Record<string, number>, _: undefined, computeType: ComputeType): string => subpath.insert(options.c, computeType),
-		sliderOptions: [cSliderOptions],
+		callback: (subpath: WasmSubpathInstance, options: Record<string, number>, _: undefined, tVariant: TVariant): string => subpath.insert(options.t, tVariant),
+		sliderOptions: [tSliderOptions],
 		// TODO: Uncomment this after implementing the Euclidean version
-		// chooseComputeType: true,
+		// chooseTVariant: true,
 	},
 	length: {
 		name: "Length",
@@ -19,9 +19,9 @@ const subpathFeatures = {
 	},
 	evaluate: {
 		name: "Evaluate",
-		callback: (subpath: WasmSubpathInstance, options: Record<string, number>, _: undefined, computeType: ComputeType): string => subpath.evaluate(options.c, computeType),
-		sliderOptions: [cSliderOptions],
-		chooseComputeType: true,
+		callback: (subpath: WasmSubpathInstance, options: Record<string, number>, _: undefined, tVariant: TVariant): string => subpath.evaluate(options.t, tVariant),
+		sliderOptions: [tSliderOptions],
+		chooseTVariant: true,
 	},
 	project: {
 		name: "Project",
@@ -81,6 +81,6 @@ export type SubpathFeatureOptions = {
 	callback: SubpathCallback;
 	sliderOptions?: SliderOption[];
 	triggerOnMouseMove?: boolean;
-	chooseComputeType?: boolean;
+	chooseTVariant?: boolean;
 };
 export default subpathFeatures as Record<SubpathFeatureKey, SubpathFeatureOptions>;

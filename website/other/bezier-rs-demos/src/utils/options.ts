@@ -1,9 +1,9 @@
-export const cSliderOptions = {
+export const tSliderOptions = {
 	min: 0,
 	max: 1,
 	step: 0.01,
 	default: 0.5,
-	variable: "c",
+	variable: "t",
 };
 
 export const errorOptions = {

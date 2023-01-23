@@ -1,5 +1,5 @@
 use crate::svg_drawing::*;
-use bezier_rs::{ArcStrategy, ArcsOptions, Bezier, ComputeType, ProjectionOptions};
+use bezier_rs::{ArcStrategy, ArcsOptions, Bezier, ProjectionOptions, TValue};
 use glam::DVec2;
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
@@ -41,11 +41,11 @@ fn convert_wasm_maximize_arcs(wasm_enum_value: WasmMaximizeArcs) -> ArcStrategy 
 	}
 }
 
-fn parse_compute_type(compute_type: &String, c: f64) -> ComputeType {
-	match compute_type.as_str() {
-		"Parametric" => ComputeType::Parametric(c),
-		"Euclidean" => ComputeType::Euclidean(c),
-		_ => panic!("Unexpected ComputeType string: '{}'", compute_type),
+fn parse_t_variant(t_variant: &String, t: f64) -> TValue {
+	match t_variant.as_str() {
+		"Parametric" => TValue::Parametric(t),
+		"Euclidean" => TValue::Euclidean(t),
+		_ => panic!("Unexpected TValue string: '{}'", t_variant),
 	}
 }
 
@@ -136,10 +136,10 @@ impl WasmBezier {
 		wrap_svg_tag(format!("{bezier}{}", draw_text(format!("Length: {:.2}", self.0.length(None)), TEXT_OFFSET_X, TEXT_OFFSET_Y, BLACK)))
 	}
 
-	pub fn evaluate(&self, raw_c: f64, compute_type: String) -> String {
+	pub fn evaluate(&self, raw_t: f64, t_variant: String) -> String {
 		let bezier = self.get_bezier_path();
-		let c = parse_compute_type(&compute_type, raw_c);
-		let point = self.0.evaluate(c);
+		let t = parse_t_variant(&t_variant, raw_t);
+		let point = self.0.evaluate(t);
 		let content = format!("{bezier}{}", draw_circle(point, 4., RED, 1.5, WHITE));
 		wrap_svg_tag(content)
 	}
@@ -174,12 +174,12 @@ impl WasmBezier {
 		wrap_svg_tag(content)
 	}
 
-	pub fn tangent(&self, raw_c: f64, compute_type: String) -> String {
+	pub fn tangent(&self, raw_t: f64, t_variant: String) -> String {
 		let bezier = self.get_bezier_path();
-		let c = parse_compute_type(&compute_type, raw_c);
+		let t = parse_t_variant(&t_variant, raw_t);
 
-		let tangent_point = self.0.tangent(c);
-		let intersection_point = self.0.evaluate(c);
+		let tangent_point = self.0.tangent(t);
+		let intersection_point = self.0.evaluate(t);
 		let tangent_end = intersection_point + tangent_point * SCALE_UNIT_VECTOR_FACTOR;
 
 		let content = format!(
@@ -191,12 +191,12 @@ impl WasmBezier {
 		wrap_svg_tag(content)
 	}
 
-	pub fn normal(&self, raw_c: f64, compute_type: String) -> String {
+	pub fn normal(&self, raw_t: f64, t_variant: String) -> String {
 		let bezier = self.get_bezier_path();
-		let c = parse_compute_type(&compute_type, raw_c);
+		let t = parse_t_variant(&t_variant, raw_t);
 
-		let normal_point = self.0.normal(c);
-		let intersection_point = self.0.evaluate(c);
+		let normal_point = self.0.normal(t);
+		let intersection_point = self.0.evaluate(t);
 		let normal_end = intersection_point + normal_point * SCALE_UNIT_VECTOR_FACTOR;
 
 		let content = format!(
@@ -208,13 +208,13 @@ impl WasmBezier {
 		wrap_svg_tag(content)
 	}
 
-	pub fn curvature(&self, raw_c: f64, compute_type: String) -> String {
+	pub fn curvature(&self, raw_t: f64, t_variant: String) -> String {
 		let bezier = self.get_bezier_path();
-		let c = parse_compute_type(&compute_type, raw_c);
+		let t = parse_t_variant(&t_variant, raw_t);
 
-		let radius = 1. / self.0.curvature(c);
-		let normal_point = self.0.normal(c);
-		let intersection_point = self.0.evaluate(c);
+		let radius = 1. / self.0.curvature(t);
+		let normal_point = self.0.normal(t);
+		let intersection_point = self.0.evaluate(t);
 
 		let curvature_center = intersection_point + normal_point * radius;
 
@@ -228,9 +228,9 @@ impl WasmBezier {
 		wrap_svg_tag(content)
 	}
 
-	pub fn split(&self, raw_c: f64, compute_type: String) -> String {
-		let c = parse_compute_type(&compute_type, raw_c);
-		let beziers: [Bezier; 2] = self.0.split(c);
+	pub fn split(&self, raw_t: f64, t_variant: String) -> String {
+		let t = parse_t_variant(&t_variant, raw_t);
+		let beziers: [Bezier; 2] = self.0.split(t);
 
 		let mut original_bezier_svg = String::new();
 		self.0.to_svg(
@@ -262,9 +262,9 @@ impl WasmBezier {
 		wrap_svg_tag(format!("{original_bezier_svg}{bezier_svg_1}{bezier_svg_2}"))
 	}
 
-	pub fn trim(&self, raw_c1: f64, raw_c2: f64, compute_type: String) -> String {
-		let (c1, c2) = (parse_compute_type(&compute_type, raw_c1), parse_compute_type(&compute_type, raw_c2));
-		let trimmed_bezier = self.0.trim(c1, c2);
+	pub fn trim(&self, raw_t1: f64, raw_t2: f64, t_variant: String) -> String {
+		let (t1, t2) = (parse_t_variant(&t_variant, raw_t1), parse_t_variant(&t_variant, raw_t2));
+		let trimmed_bezier = self.0.trim(t1, t2);
 
 		let mut trimmed_bezier_svg = String::new();
 		trimmed_bezier.to_svg(
@@ -280,7 +280,7 @@ impl WasmBezier {
 
 	pub fn project(&self, x: f64, y: f64) -> String {
 		let projected_t_value = self.0.project(DVec2::new(x, y), ProjectionOptions::default());
-		let projected_point = self.0.evaluate(ComputeType::Parametric(projected_t_value));
+		let projected_point = self.0.evaluate(TValue::Parametric(projected_t_value));
 
 		let bezier = self.get_bezier_path();
 		let content = format!("{bezier}{}", draw_line(projected_point.x, projected_point.y, x, y, RED, 1.),);
@@ -296,7 +296,7 @@ impl WasmBezier {
 			.zip([RED, GREEN])
 			.flat_map(|(t_value_list, color)| {
 				t_value_list.iter().map(|&t_value| {
-					let point = self.0.evaluate(ComputeType::Parametric(t_value));
+					let point = self.0.evaluate(TValue::Parametric(t_value));
 					draw_circle(point, 3., color, 1.5, WHITE)
 				})
 			})
@@ -331,7 +331,7 @@ impl WasmBezier {
 		let circles: String = inflections
 			.iter()
 			.map(|&t_value| {
-				let point = self.0.evaluate(ComputeType::Parametric(t_value));
+				let point = self.0.evaluate(TValue::Parametric(t_value));
 				draw_circle(point, 3., RED, 1.5, WHITE)
 			})
 			.fold("".to_string(), |acc, circle| acc + &circle);
@@ -339,9 +339,9 @@ impl WasmBezier {
 		wrap_svg_tag(content)
 	}
 
-	pub fn de_casteljau_points(&self, raw_c: f64, compute_type: String) -> String {
-		let c = parse_compute_type(&compute_type, raw_c);
-		let points: Vec<Vec<DVec2>> = self.0.de_casteljau_points(c);
+	pub fn de_casteljau_points(&self, raw_t: f64, t_variant: String) -> String {
+		let t = parse_t_variant(&t_variant, raw_t);
+		let points: Vec<Vec<DVec2>> = self.0.de_casteljau_points(t);
 
 		let bezier_svg = self.get_bezier_path();
 
@@ -425,7 +425,7 @@ impl WasmBezier {
 			.intersect(&line, None, None)
 			.iter()
 			.map(|intersection_t| {
-				let point = &self.0.evaluate(ComputeType::Parametric(*intersection_t));
+				let point = &self.0.evaluate(TValue::Parametric(*intersection_t));
 				draw_circle(*point, 4., RED, 1.5, WHITE)
 			})
 			.fold(String::new(), |acc, item| format!("{acc}{item}"));
@@ -445,7 +445,7 @@ impl WasmBezier {
 			.intersect(&quadratic, Some(error), Some(minimum_separation))
 			.iter()
 			.map(|intersection_t| {
-				let point = &self.0.evaluate(ComputeType::Parametric(*intersection_t));
+				let point = &self.0.evaluate(TValue::Parametric(*intersection_t));
 				draw_circle(*point, 4., RED, 1.5, WHITE)
 			})
 			.fold(String::new(), |acc, item| format!("{acc}{item}"));
@@ -465,7 +465,7 @@ impl WasmBezier {
 			.intersect(&cubic, Some(error), Some(minimum_separation))
 			.iter()
 			.map(|intersection_t| {
-				let point = &self.0.evaluate(ComputeType::Parametric(*intersection_t));
+				let point = &self.0.evaluate(TValue::Parametric(*intersection_t));
 				draw_circle(*point, 4., RED, 1.5, WHITE)
 			})
 			.fold(String::new(), |acc, item| format!("{acc}{item}"));
@@ -481,7 +481,7 @@ impl WasmBezier {
 			.self_intersections(Some(error))
 			.iter()
 			.map(|intersection_t| {
-				let point = &self.0.evaluate(ComputeType::Parametric(intersection_t[0]));
+				let point = &self.0.evaluate(TValue::Parametric(intersection_t[0]));
 				draw_circle(*point, 4., RED, 1.5, WHITE)
 			})
 			.fold(bezier_curve_svg, |acc, item| format!("{acc}{item}"));
@@ -509,7 +509,7 @@ impl WasmBezier {
 			.rectangle_intersections(points[0], points[1])
 			.iter()
 			.map(|intersection_t| {
-				let point = &self.0.evaluate(ComputeType::Parametric(*intersection_t));
+				let point = &self.0.evaluate(TValue::Parametric(*intersection_t));
 				draw_circle(*point, 4., RED, 1.5, WHITE)
 			})
 			.fold(String::new(), |acc, item| format!("{acc}{item}"));

@@ -1,5 +1,5 @@
 use super::*;
-use crate::utils::ComputeType;
+use crate::utils::TValue;
 
 use glam::DMat2;
 use std::ops::Range;
@@ -9,8 +9,8 @@ impl Bezier {
 	/// Returns a list of lists of points representing the De Casteljau points for all iterations at the point `c` along the curve using De Casteljau's algorithm.
 	/// The `i`th element of the list represents the set of points in the `i`th iteration.
 	/// More information on the algorithm can be found in the [De Casteljau section](https://pomax.github.io/bezierinfo/#decasteljau) in Pomax's primer.
-	pub fn de_casteljau_points(&self, c: ComputeType) -> Vec<Vec<DVec2>> {
-		let t = self.compute_type_to_parametric(c);
+	pub fn de_casteljau_points(&self, t: TValue) -> Vec<Vec<DVec2>> {
+		let t = self.compute_type_to_parametric(t);
 		let bezier_points = match self.handles {
 			BezierHandles::Linear => vec![self.start, self.end],
 			BezierHandles::Quadratic { handle } => vec![self.start, handle, self.end],
@@ -31,7 +31,7 @@ impl Bezier {
 		de_casteljau_points
 	}
 
-	/// Returns a Bezier representing the derivative of the original curve.
+	/// Returns a [Bezier] representing the derivative of the original curve.
 	/// - This function returns `None` for a linear segment.
 	pub fn derivative(&self) -> Option<Bezier> {
 		match self.handles {
@@ -51,28 +51,28 @@ impl Bezier {
 	}
 
 	/// Returns a normalized unit vector representing the tangent at the point `c` along the curve.
-	pub fn tangent(&self, c: ComputeType) -> DVec2 {
-		let t = self.compute_type_to_parametric(c);
+	pub fn tangent(&self, t: TValue) -> DVec2 {
+		let t = self.compute_type_to_parametric(t);
 		match self.handles {
 			BezierHandles::Linear => self.end - self.start,
-			_ => self.derivative().unwrap().evaluate(ComputeType::Parametric(t)),
+			_ => self.derivative().unwrap().evaluate(TValue::Parametric(t)),
 		}
 		.normalize()
 	}
 
 	/// Returns a normalized unit vector representing the direction of the normal at the point `c` along the curve.
-	pub fn normal(&self, c: ComputeType) -> DVec2 {
-		self.tangent(c).perp()
+	pub fn normal(&self, t: TValue) -> DVec2 {
+		self.tangent(t).perp()
 	}
 
 	/// Returns the curvature, a scalar value for the derivative at the point `c` along the curve.
 	/// Curvature is 1 over the radius of a circle with an equivalent derivative.
-	pub fn curvature(&self, c: ComputeType) -> f64 {
-		let t = self.compute_type_to_parametric(c);
+	pub fn curvature(&self, t: TValue) -> f64 {
+		let t = self.compute_type_to_parametric(t);
 		let (d, dd) = match &self.derivative() {
 			Some(first_derivative) => match first_derivative.derivative() {
-				Some(second_derivative) => (first_derivative.evaluate(ComputeType::Parametric(t)), second_derivative.evaluate(ComputeType::Parametric(t))),
-				None => (first_derivative.evaluate(ComputeType::Parametric(t)), first_derivative.end - first_derivative.start),
+				Some(second_derivative) => (first_derivative.evaluate(TValue::Parametric(t)), second_derivative.evaluate(TValue::Parametric(t))),
+				None => (first_derivative.evaluate(TValue::Parametric(t)), first_derivative.end - first_derivative.start),
 			},
 			None => (self.end - self.start, DVec2::new(0., 0.)),
 		};
@@ -132,7 +132,7 @@ impl Bezier {
 		let extrema = self.local_extrema();
 		for t_values in extrema {
 			for t in t_values {
-				let point = self.evaluate(ComputeType::Parametric(t));
+				let point = self.evaluate(TValue::Parametric(t));
 				// Update bounding box if new min/max is found.
 				endpoints_min = endpoints_min.min(point);
 				endpoints_max = endpoints_max.max(point);
@@ -216,8 +216,8 @@ impl Bezier {
 			}
 
 			// Split curves in half and repeat with the combinations of the two halves of each curve
-			let [split_1_a, split_1_b] = self.split(ComputeType::Parametric(0.5));
-			let [split_2_a, split_2_b] = other.split(ComputeType::Parametric(0.5));
+			let [split_1_a, split_1_b] = self.split(TValue::Parametric(0.5));
+			let [split_2_a, split_2_b] = other.split(TValue::Parametric(0.5));
 
 			[
 				split_1_a.intersections_between_subcurves(self_start_t..self_mid_t, &split_2_a, other_start_t..other_mid_t, error),
@@ -385,7 +385,7 @@ mod tests {
 	#[test]
 	fn test_de_casteljau_points() {
 		let bezier = Bezier::from_cubic_coordinates(0., 0., 0., 100., 100., 100., 100., 0.);
-		let de_casteljau_points = bezier.de_casteljau_points(ComputeType::Parametric(0.5));
+		let de_casteljau_points = bezier.de_casteljau_points(TValue::Parametric(0.5));
 		let expected_de_casteljau_points = vec![
 			vec![DVec2::new(0., 0.), DVec2::new(0., 100.), DVec2::new(100., 100.), DVec2::new(100., 0.)],
 			vec![DVec2::new(0., 50.), DVec2::new(50., 100.), DVec2::new(100., 50.)],
@@ -394,7 +394,7 @@ mod tests {
 		];
 		assert_eq!(&de_casteljau_points, &expected_de_casteljau_points);
 
-		assert_eq!(expected_de_casteljau_points[3][0], bezier.evaluate(ComputeType::Parametric(0.5)));
+		assert_eq!(expected_de_casteljau_points[3][0], bezier.evaluate(TValue::Parametric(0.5)));
 	}
 
 	#[test]
@@ -434,16 +434,16 @@ mod tests {
 
 		let linear = Bezier::from_linear_dvec2(p1, p2);
 		let unit_slope = DVec2::new(30., 20.).normalize();
-		assert_eq!(linear.tangent(ComputeType::Parametric(0.)), unit_slope);
-		assert_eq!(linear.tangent(ComputeType::Parametric(1.)), unit_slope);
+		assert_eq!(linear.tangent(TValue::Parametric(0.)), unit_slope);
+		assert_eq!(linear.tangent(TValue::Parametric(1.)), unit_slope);
 
 		let quadratic = Bezier::from_quadratic_dvec2(p1, p2, p3);
-		assert_eq!(quadratic.tangent(ComputeType::Parametric(0.)), DVec2::new(60., 40.).normalize());
-		assert_eq!(quadratic.tangent(ComputeType::Parametric(1.)), DVec2::new(40., 60.).normalize());
+		assert_eq!(quadratic.tangent(TValue::Parametric(0.)), DVec2::new(60., 40.).normalize());
+		assert_eq!(quadratic.tangent(TValue::Parametric(1.)), DVec2::new(40., 60.).normalize());
 
 		let cubic = Bezier::from_cubic_dvec2(p1, p2, p3, p4);
-		assert_eq!(cubic.tangent(ComputeType::Parametric(0.)), DVec2::new(90., 60.).normalize());
-		assert_eq!(cubic.tangent(ComputeType::Parametric(1.)), DVec2::new(30., 120.).normalize());
+		assert_eq!(cubic.tangent(TValue::Parametric(0.)), DVec2::new(90., 60.).normalize());
+		assert_eq!(cubic.tangent(TValue::Parametric(1.)), DVec2::new(30., 120.).normalize());
 	}
 
 	#[test]
@@ -456,16 +456,16 @@ mod tests {
 
 		let linear = Bezier::from_linear_dvec2(p1, p2);
 		let unit_slope = DVec2::new(-20., 30.).normalize();
-		assert_eq!(linear.normal(ComputeType::Parametric(0.)), unit_slope);
-		assert_eq!(linear.normal(ComputeType::Parametric(1.)), unit_slope);
+		assert_eq!(linear.normal(TValue::Parametric(0.)), unit_slope);
+		assert_eq!(linear.normal(TValue::Parametric(1.)), unit_slope);
 
 		let quadratic = Bezier::from_quadratic_dvec2(p1, p2, p3);
-		assert_eq!(quadratic.normal(ComputeType::Parametric(0.)), DVec2::new(-40., 60.).normalize());
-		assert_eq!(quadratic.normal(ComputeType::Parametric(1.)), DVec2::new(-60., 40.).normalize());
+		assert_eq!(quadratic.normal(TValue::Parametric(0.)), DVec2::new(-40., 60.).normalize());
+		assert_eq!(quadratic.normal(TValue::Parametric(1.)), DVec2::new(-60., 40.).normalize());
 
 		let cubic = Bezier::from_cubic_dvec2(p1, p2, p3, p4);
-		assert_eq!(cubic.normal(ComputeType::Parametric(0.)), DVec2::new(-60., 90.).normalize());
-		assert_eq!(cubic.normal(ComputeType::Parametric(1.)), DVec2::new(-120., 30.).normalize());
+		assert_eq!(cubic.normal(TValue::Parametric(0.)), DVec2::new(-60., 90.).normalize());
+		assert_eq!(cubic.normal(TValue::Parametric(1.)), DVec2::new(-120., 30.).normalize());
 	}
 
 	#[test]
@@ -476,24 +476,24 @@ mod tests {
 		let p4 = DVec2::new(50., 10.);
 
 		let linear = Bezier::from_linear_dvec2(p1, p2);
-		assert_eq!(linear.curvature(ComputeType::Parametric(0.)), 0.);
-		assert_eq!(linear.curvature(ComputeType::Parametric(0.5)), 0.);
-		assert_eq!(linear.curvature(ComputeType::Parametric(1.)), 0.);
+		assert_eq!(linear.curvature(TValue::Parametric(0.)), 0.);
+		assert_eq!(linear.curvature(TValue::Parametric(0.5)), 0.);
+		assert_eq!(linear.curvature(TValue::Parametric(1.)), 0.);
 
 		let quadratic = Bezier::from_quadratic_dvec2(p1, p2, p3);
-		assert!(compare_f64s(quadratic.curvature(ComputeType::Parametric(0.)), 0.0125));
-		assert!(compare_f64s(quadratic.curvature(ComputeType::Parametric(0.5)), 0.035355));
-		assert!(compare_f64s(quadratic.curvature(ComputeType::Parametric(1.)), 0.0125));
+		assert!(compare_f64s(quadratic.curvature(TValue::Parametric(0.)), 0.0125));
+		assert!(compare_f64s(quadratic.curvature(TValue::Parametric(0.5)), 0.035355));
+		assert!(compare_f64s(quadratic.curvature(TValue::Parametric(1.)), 0.0125));
 
 		let cubic = Bezier::from_cubic_dvec2(p1, p2, p3, p4);
-		assert!(compare_f64s(cubic.curvature(ComputeType::Parametric(0.)), 0.016667));
-		assert!(compare_f64s(cubic.curvature(ComputeType::Parametric(0.5)), 0.));
-		assert!(compare_f64s(cubic.curvature(ComputeType::Parametric(1.)), 0.));
+		assert!(compare_f64s(cubic.curvature(TValue::Parametric(0.)), 0.016667));
+		assert!(compare_f64s(cubic.curvature(TValue::Parametric(0.5)), 0.));
+		assert!(compare_f64s(cubic.curvature(TValue::Parametric(1.)), 0.));
 
 		// The curvature at an inflection point is zero
 		let inflection_curve = Bezier::from_cubic_coordinates(30., 30., 30., 150., 150., 30., 150., 150.);
 		let inflections = inflection_curve.inflections();
-		assert_eq!(inflection_curve.curvature(ComputeType::Parametric(inflections[0])), 0.);
+		assert_eq!(inflection_curve.curvature(TValue::Parametric(inflections[0])), 0.);
 	}
 
 	#[test]
@@ -610,12 +610,12 @@ mod tests {
 		let line1 = Bezier::from_linear_coordinates(20., 60., 70., 60.);
 		let intersections1 = bezier.intersections(&line1, None, None);
 		assert!(intersections1.len() == 1);
-		assert!(compare_points(bezier.evaluate(ComputeType::Parametric(intersections1[0])), DVec2::new(30., 60.)));
+		assert!(compare_points(bezier.evaluate(TValue::Parametric(intersections1[0])), DVec2::new(30., 60.)));
 
 		// Intersection in the middle of curve
 		let line2 = Bezier::from_linear_coordinates(150., 150., 30., 30.);
 		let intersections2 = bezier.intersections(&line2, None, None);
-		assert!(compare_points(bezier.evaluate(ComputeType::Parametric(intersections2[0])), DVec2::new(96., 96.)));
+		assert!(compare_points(bezier.evaluate(TValue::Parametric(intersections2[0])), DVec2::new(96., 96.)));
 	}
 
 	#[test]
@@ -629,12 +629,12 @@ mod tests {
 		let line1 = Bezier::from_linear_coordinates(20., 50., 40., 50.);
 		let intersections1 = bezier.intersections(&line1, None, None);
 		assert!(intersections1.len() == 1);
-		assert!(compare_points(bezier.evaluate(ComputeType::Parametric(intersections1[0])), p1));
+		assert!(compare_points(bezier.evaluate(TValue::Parametric(intersections1[0])), p1));
 
 		// Intersection in the middle of curve
 		let line2 = Bezier::from_linear_coordinates(150., 150., 30., 30.);
 		let intersections2 = bezier.intersections(&line2, None, None);
-		assert!(compare_points(bezier.evaluate(ComputeType::Parametric(intersections2[0])), DVec2::new(47.77355, 47.77354)));
+		assert!(compare_points(bezier.evaluate(TValue::Parametric(intersections2[0])), DVec2::new(47.77355, 47.77354)));
 	}
 
 	#[test]
@@ -649,14 +649,14 @@ mod tests {
 		let line1 = Bezier::from_linear_coordinates(20., 30., 40., 30.);
 		let intersections1 = bezier.intersections(&line1, None, None);
 		assert!(intersections1.len() == 1);
-		assert!(compare_points(bezier.evaluate(ComputeType::Parametric(intersections1[0])), p1));
+		assert!(compare_points(bezier.evaluate(TValue::Parametric(intersections1[0])), p1));
 
 		// Intersection at edge and in middle of curve, Discriminant < 0
 		let line2 = Bezier::from_linear_coordinates(150., 150., 30., 30.);
 		let intersections2 = bezier.intersections(&line2, None, None);
 		assert!(intersections2.len() == 2);
-		assert!(compare_points(bezier.evaluate(ComputeType::Parametric(intersections2[0])), p1));
-		assert!(compare_points(bezier.evaluate(ComputeType::Parametric(intersections2[1])), DVec2::new(85.84, 85.84)));
+		assert!(compare_points(bezier.evaluate(TValue::Parametric(intersections2[0])), p1));
+		assert!(compare_points(bezier.evaluate(TValue::Parametric(intersections2[1])), DVec2::new(85.84, 85.84)));
 	}
 
 	#[test]
@@ -673,7 +673,7 @@ mod tests {
 		let intersections = bezier.intersections(&line, None, None);
 
 		assert_eq!(intersections.len(), 1);
-		assert!(compare_points(bezier.evaluate(ComputeType::Parametric(intersections[0])), p4));
+		assert!(compare_points(bezier.evaluate(TValue::Parametric(intersections[0])), p4));
 	}
 
 	#[test]
@@ -700,8 +700,8 @@ mod tests {
 		let intersections1 = bezier1.intersections(&bezier2, None, None);
 		let intersections2 = bezier2.intersections(&bezier1, None, None);
 
-		let intersections1_points: Vec<DVec2> = intersections1.iter().map(|&t| bezier1.evaluate(ComputeType::Parametric(t))).collect();
-		let intersections2_points: Vec<DVec2> = intersections2.iter().map(|&t| bezier2.evaluate(ComputeType::Parametric(t))).rev().collect();
+		let intersections1_points: Vec<DVec2> = intersections1.iter().map(|&t| bezier1.evaluate(TValue::Parametric(t))).collect();
+		let intersections2_points: Vec<DVec2> = intersections2.iter().map(|&t| bezier2.evaluate(TValue::Parametric(t))).rev().collect();
 
 		assert!(compare_vec_of_points(intersections1_points, intersections2_points, 2.));
 	}
@@ -711,8 +711,8 @@ mod tests {
 		let bezier = Bezier::from_cubic_coordinates(160., 180., 170., 10., 30., 90., 180., 140.);
 		let intersections = bezier.self_intersections(Some(0.5));
 		assert!(compare_vec_of_points(
-			intersections.iter().map(|&t| bezier.evaluate(ComputeType::Parametric(t[0]))).collect(),
-			intersections.iter().map(|&t| bezier.evaluate(ComputeType::Parametric(t[1]))).collect(),
+			intersections.iter().map(|&t| bezier.evaluate(TValue::Parametric(t[0]))).collect(),
+			intersections.iter().map(|&t| bezier.evaluate(TValue::Parametric(t[1]))).collect(),
 			2.
 		));
 		assert!(Bezier::from_linear_coordinates(160., 180., 170., 10.).self_intersections(None).is_empty());

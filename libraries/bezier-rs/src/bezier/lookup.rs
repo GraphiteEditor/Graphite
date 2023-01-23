@@ -1,4 +1,4 @@
-use crate::utils::{f64_compare, ComputeType};
+use crate::utils::{f64_compare, TValue};
 
 use super::*;
 
@@ -13,7 +13,7 @@ impl Bezier {
 
 		while low < high {
 			mid = (low + high) / 2.;
-			let test_ratio = self.trim(ComputeType::Parametric(0.), ComputeType::Parametric(mid)).length(None) / total_length;
+			let test_ratio = self.trim(TValue::Parametric(0.), TValue::Parametric(mid)).length(None) / total_length;
 			if f64_compare(test_ratio, ratio, error) {
 				break;
 			} else if test_ratio < ratio {
@@ -26,20 +26,20 @@ impl Bezier {
 		mid
 	}
 
-	/// Convert a [ComputeType] to a parametric `t`-value.
-	pub(crate) fn compute_type_to_parametric(&self, c: ComputeType) -> f64 {
-		match c {
-			ComputeType::Parametric(t) => {
+	/// Convert a [TValue] to a parametric `t`-value.
+	pub(crate) fn compute_type_to_parametric(&self, t: TValue) -> f64 {
+		match t {
+			TValue::Parametric(t) => {
 				assert!((0.0..=1.).contains(&t));
 				t
 			}
-			ComputeType::Euclidean(r) => {
-				assert!((0.0..=1.).contains(&r));
-				self.euclidean_to_parametric(r, DEFAULT_EUCLIDEAN_ERROR_BOUND)
+			TValue::Euclidean(t) => {
+				assert!((0.0..=1.).contains(&t));
+				self.euclidean_to_parametric(t, DEFAULT_EUCLIDEAN_ERROR_BOUND)
 			}
-			ComputeType::EuclideanWithinError { r, error } => {
-				assert!((0.0..=1.).contains(&r));
-				self.euclidean_to_parametric(r, error)
+			TValue::EuclideanWithinError { t, error } => {
+				assert!((0.0..=1.).contains(&t));
+				self.euclidean_to_parametric(t, error)
 			}
 		}
 	}
@@ -65,8 +65,8 @@ impl Bezier {
 
 	/// Calculate the coordinates of the point `c` along the curve.
 	/// Expects `t` or `distance` argument enclosed within `c` to be within the inclusive range `[0, 1]`.
-	pub fn evaluate(&self, c: ComputeType) -> DVec2 {
-		let t = self.compute_type_to_parametric(c);
+	pub fn evaluate(&self, t: TValue) -> DVec2 {
+		let t = self.compute_type_to_parametric(t);
 		self.unrestricted_parametric_evaluate(t)
 	}
 
@@ -78,7 +78,7 @@ impl Bezier {
 		let mut steps_array = Vec::with_capacity(steps_unwrapped + 1);
 
 		for t in 0..steps_unwrapped + 1 {
-			steps_array.push(self.evaluate(ComputeType::Parametric(f64::from(t as i32) * ratio)))
+			steps_array.push(self.evaluate(TValue::Parametric(f64::from(t as i32) * ratio)))
 		}
 
 		steps_array
@@ -165,7 +165,7 @@ impl Bezier {
 				if step_index == 0 {
 					distance = *table_distance;
 				} else {
-					distance = point.distance(self.evaluate(ComputeType::Parametric(iterator_t)));
+					distance = point.distance(self.evaluate(TValue::Parametric(iterator_t)));
 					*table_distance = distance;
 				}
 				if distance < new_minimum_distance {
@@ -215,17 +215,17 @@ mod tests {
 		let p4 = DVec2::new(30., 21.);
 
 		let bezier1 = Bezier::from_quadratic_dvec2(p1, p2, p3);
-		assert_eq!(bezier1.evaluate(ComputeType::Parametric(0.5)), DVec2::new(12.5, 6.25));
+		assert_eq!(bezier1.evaluate(TValue::Parametric(0.5)), DVec2::new(12.5, 6.25));
 
 		let bezier2 = Bezier::from_cubic_dvec2(p1, p2, p3, p4);
-		assert_eq!(bezier2.evaluate(ComputeType::Parametric(0.5)), DVec2::new(16.5, 9.625));
+		assert_eq!(bezier2.evaluate(TValue::Parametric(0.5)), DVec2::new(16.5, 9.625));
 	}
 
 	#[test]
 	fn test_compute_lookup_table() {
 		let bezier1 = Bezier::from_quadratic_coordinates(10., 10., 30., 30., 50., 10.);
 		let lookup_table1 = bezier1.compute_lookup_table(Some(2));
-		assert_eq!(lookup_table1, vec![bezier1.start(), bezier1.evaluate(ComputeType::Parametric(0.5)), bezier1.end()]);
+		assert_eq!(lookup_table1, vec![bezier1.start(), bezier1.evaluate(TValue::Parametric(0.5)), bezier1.end()]);
 
 		let bezier2 = Bezier::from_cubic_coordinates(10., 10., 30., 30., 70., 70., 90., 10.);
 		let lookup_table2 = bezier2.compute_lookup_table(Some(4));
@@ -233,9 +233,9 @@ mod tests {
 			lookup_table2,
 			vec![
 				bezier2.start(),
-				bezier2.evaluate(ComputeType::Parametric(0.25)),
-				bezier2.evaluate(ComputeType::Parametric(0.50)),
-				bezier2.evaluate(ComputeType::Parametric(0.75)),
+				bezier2.evaluate(TValue::Parametric(0.25)),
+				bezier2.evaluate(TValue::Parametric(0.50)),
+				bezier2.evaluate(TValue::Parametric(0.75)),
 				bezier2.end()
 			]
 		);

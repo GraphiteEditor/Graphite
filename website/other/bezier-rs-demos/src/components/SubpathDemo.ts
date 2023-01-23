@@ -2,7 +2,7 @@ import { WasmSubpath } from "@/../wasm/pkg";
 import subpathFeatures, { SubpathFeatureKey } from "@/features/subpath-features";
 import { renderDemo } from "@/utils/render";
 
-import { SubpathCallback, WasmSubpathInstance, WasmSubpathManipulatorKey, SliderOption, ComputeType } from "@/utils/types";
+import { SubpathCallback, WasmSubpathInstance, WasmSubpathManipulatorKey, SliderOption, TVariant } from "@/utils/types";
 
 const SELECTABLE_RANGE = 10;
 const POINT_INDEX_TO_MANIPULATOR: WasmSubpathManipulatorKey[] = ["set_anchor", "set_in_handle", "set_out_handle"];
@@ -21,7 +21,7 @@ class SubpathDemo extends HTMLElement {
 
 	triggerOnMouseMove!: boolean;
 
-	computeType!: ComputeType;
+	tVariant!: TVariant;
 
 	// Data
 	subpath!: WasmSubpath;
@@ -37,12 +37,12 @@ class SubpathDemo extends HTMLElement {
 	sliderUnits!: Record<string, string | string[]>;
 
 	static get observedAttributes(): string[] {
-		return ["computetype"];
+		return ["tvariant"];
 	}
 
 	attributeChangedCallback(name: string, oldValue: string, newValue: string): void {
-		if (name === "computetype" && oldValue) {
-			this.computeType = (newValue || "Parametric") as ComputeType;
+		if (name === "tvariant" && oldValue) {
+			this.tVariant = (newValue || "Parametric") as TVariant;
 			const figure = this.querySelector("figure") as HTMLElement;
 			this.drawDemo(figure);
 		}
@@ -55,7 +55,7 @@ class SubpathDemo extends HTMLElement {
 		this.sliderOptions = JSON.parse(this.getAttribute("sliderOptions") || "[]");
 		this.triggerOnMouseMove = this.getAttribute("triggerOnMouseMove") === "true";
 		this.closed = this.getAttribute("closed") === "true";
-		this.computeType = (this.getAttribute("computetype") || "Parametric") as ComputeType;
+		this.tVariant = (this.getAttribute("tvariant") || "Parametric") as TVariant;
 
 		this.callback = subpathFeatures[this.key].callback as SubpathCallback;
 		this.subpath = WasmSubpath.from_triples(this.triples, this.closed) as WasmSubpathInstance;
@@ -73,7 +73,7 @@ class SubpathDemo extends HTMLElement {
 	}
 
 	drawDemo(figure: HTMLElement, mouseLocation?: [number, number]): void {
-		figure.innerHTML = this.callback(this.subpath, this.sliderData, mouseLocation, this.computeType);
+		figure.innerHTML = this.callback(this.subpath, this.sliderData, mouseLocation, this.tVariant);
 	}
 
 	onMouseDown(event: MouseEvent): void {
