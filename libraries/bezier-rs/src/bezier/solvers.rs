@@ -6,7 +6,7 @@ use std::ops::Range;
 
 /// Functionality that solve for various curve information such as derivative, tangent, intersect, etc.
 impl Bezier {
-	/// Returns a list of lists of points representing the De Casteljau points for all iterations at the point `c` along the curve using De Casteljau's algorithm.
+	/// Returns a list of lists of points representing the De Casteljau points for all iterations at the point `t` along the curve using De Casteljau's algorithm.
 	/// The `i`th element of the list represents the set of points in the `i`th iteration.
 	/// More information on the algorithm can be found in the [De Casteljau section](https://pomax.github.io/bezierinfo/#decasteljau) in Pomax's primer.
 	pub fn de_casteljau_points(&self, t: TValue) -> Vec<Vec<DVec2>> {
@@ -50,7 +50,7 @@ impl Bezier {
 		}
 	}
 
-	/// Returns a normalized unit vector representing the tangent at the point `c` along the curve.
+	/// Returns a normalized unit vector representing the tangent at the point `t` along the curve.
 	pub fn tangent(&self, t: TValue) -> DVec2 {
 		let t = self.compute_type_to_parametric(t);
 		match self.handles {
@@ -60,12 +60,12 @@ impl Bezier {
 		.normalize()
 	}
 
-	/// Returns a normalized unit vector representing the direction of the normal at the point `c` along the curve.
+	/// Returns a normalized unit vector representing the direction of the normal at the point `t` along the curve.
 	pub fn normal(&self, t: TValue) -> DVec2 {
 		self.tangent(t).perp()
 	}
 
-	/// Returns the curvature, a scalar value for the derivative at the point `c` along the curve.
+	/// Returns the curvature, a scalar value for the derivative at the point `t` along the curve.
 	/// Curvature is 1 over the radius of a circle with an equivalent derivative.
 	pub fn curvature(&self, t: TValue) -> f64 {
 		let t = self.compute_type_to_parametric(t);

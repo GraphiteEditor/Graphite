@@ -68,10 +68,10 @@ const subpathFeatures = {
 	},
 	split: {
 		name: "Split",
-		callback: (subpath: WasmSubpathInstance, options: Record<string, number>, _: undefined, computeType: ComputeType): string => subpath.split(options.computeArgument, computeType),
-		sliderOptions: [{ ...tSliderOptions, variable: "computeArgument" }],
+		callback: (subpath: WasmSubpathInstance, options: Record<string, number>, _: undefined, tVariant: TVariant): string => subpath.split(options.t, tVariant),
+		sliderOptions: [tSliderOptions],
 		// TODO: Uncomment this after implementing the Euclidean version
-		// chooseComputeType: true,
+		// chooseTVariant: true,
 	},
 };
 

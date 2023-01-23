@@ -1,14 +1,14 @@
 use super::*;
-use crate::ComputeType;
+use crate::TValue;
 
 /// Functionality that transforms Subpaths, such as split, reduce, offset, etc.
 impl Subpath {
 	/// Returns either one or two Subpaths that result from splitting the original Subpath at the point corresponding to `t`.
 	/// If the original Subpath was closed, a single open Subpath will be returned.
 	/// If the original Subpath was open, two open Subpaths will be returned.
-	pub fn split(&self, t: ComputeType) -> (Subpath, Option<Subpath>) {
+	pub fn split(&self, t: TValue) -> (Subpath, Option<Subpath>) {
 		match t {
-			ComputeType::Parametric(t) => {
+			TValue::Parametric(t) => {
 				assert!((0.0..=1.).contains(&t));
 
 				let number_of_curves = self.len_segments() as f64;
@@ -22,7 +22,7 @@ impl Subpath {
 				let optional_curve = self.iter().nth(target_curve_index as usize);
 				let curve = optional_curve.unwrap_or_else(|| self.iter().last().unwrap());
 
-				let [first_bezier, second_bezier] = curve.split(if t == 1. { t } else { target_curve_t });
+				let [first_bezier, second_bezier] = curve.split(TValue::Parametric(if t == 1. { t } else { target_curve_t }));
 
 				let mut clone = self.manipulator_groups.clone();
 				let (mut first_split, mut second_split) = if t > 0. {
@@ -83,8 +83,8 @@ impl Subpath {
 				}
 			}
 			// TODO: change this implementation to Euclidean compute
-			ComputeType::Euclidean(_t) => todo!(),
-			ComputeType::EuclideanWithinError { t: _, epsilon: _ } => todo!(),
+			TValue::Euclidean(_t) => todo!(),
+			TValue::EuclideanWithinError { t: _, error: _ } => todo!(),
 		}
 	}
 }
@@ -140,9 +140,9 @@ mod tests {
 	#[test]
 	fn split_an_open_subpath() {
 		let subpath = set_up_open_subpath();
-		let location = subpath.evaluate(ComputeType::Parametric(0.2));
+		let location = subpath.evaluate(TValue::Parametric(0.2));
 		let split_pair = subpath.iter().next().unwrap().split((0.2 * 3.) % 1.);
-		let (first, second) = subpath.split(ComputeType::Parametric(0.2));
+		let (first, second) = subpath.split(TValue::Parametric(0.2));
 		assert!(second.is_some());
 		let second = second.unwrap();
 		assert_eq!(first.manipulator_groups[1].anchor, location);
@@ -154,9 +154,9 @@ mod tests {
 	#[test]
 	fn split_at_start_of_an_open_subpath() {
 		let subpath = set_up_open_subpath();
-		let location = subpath.evaluate(ComputeType::Parametric(0.));
+		let location = subpath.evaluate(TValue::Parametric(0.));
 		let split_pair = subpath.iter().next().unwrap().split(0.);
-		let (first, second) = subpath.split(ComputeType::Parametric(0.));
+		let (first, second) = subpath.split(TValue::Parametric(0.));
 		assert!(second.is_some());
 		let second = second.unwrap();
 		assert_eq!(
@@ -175,9 +175,9 @@ mod tests {
 	#[test]
 	fn split_at_end_of_an_open_subpath() {
 		let subpath = set_up_open_subpath();
-		let location = subpath.evaluate(ComputeType::Parametric(1.));
+		let location = subpath.evaluate(TValue::Parametric(1.));
 		let split_pair = subpath.iter().last().unwrap().split(1.);
-		let (first, second) = subpath.split(ComputeType::Parametric(1.));
+		let (first, second) = subpath.split(TValue::Parametric(1.));
 		assert!(second.is_some());
 		let second = second.unwrap();
 		assert_eq!(first.manipulator_groups[3].anchor, location);
@@ -196,9 +196,9 @@ mod tests {
 	#[test]
 	fn split_a_closed_subpath() {
 		let subpath = set_up_closed_subpath();
-		let location = subpath.evaluate(ComputeType::Parametric(0.2));
+		let location = subpath.evaluate(TValue::Parametric(0.2));
 		let split_pair = subpath.iter().next().unwrap().split((0.2 * 4.) % 1.);
-		let (first, second) = subpath.split(ComputeType::Parametric(0.2));
+		let (first, second) = subpath.split(TValue::Parametric(0.2));
 		assert!(second.is_none());
 		assert_eq!(first.manipulator_groups[0].anchor, location);
 		assert_eq!(first.manipulator_groups[5].anchor, location);
@@ -210,8 +210,8 @@ mod tests {
 	#[test]
 	fn split_at_start_of_a_closed_subpath() {
 		let subpath = set_up_closed_subpath();
-		let location = subpath.evaluate(ComputeType::Parametric(0.));
-		let (first, second) = subpath.split(ComputeType::Parametric(0.));
+		let location = subpath.evaluate(TValue::Parametric(0.));
+		let (first, second) = subpath.split(TValue::Parametric(0.));
 		assert!(second.is_none());
 		assert_eq!(first.manipulator_groups[0].anchor, location);
 		assert_eq!(first.manipulator_groups[4].anchor, location);
@@ -224,8 +224,8 @@ mod tests {
 	#[test]
 	fn split_at_end_of_a_closed_subpath() {
 		let subpath = set_up_closed_subpath();
-		let location = subpath.evaluate(ComputeType::Parametric(1.));
-		let (first, second) = subpath.split(ComputeType::Parametric(1.));
+		let location = subpath.evaluate(TValue::Parametric(1.));
+		let (first, second) = subpath.split(TValue::Parametric(1.));
 		assert!(second.is_none());
 		assert_eq!(first.manipulator_groups[0].anchor, location);
 		assert_eq!(first.manipulator_groups[4].anchor, location);

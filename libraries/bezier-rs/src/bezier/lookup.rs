@@ -63,7 +63,7 @@ impl Bezier {
 		}
 	}
 
-	/// Calculate the coordinates of the point `c` along the curve.
+	/// Calculate the coordinates of the point `t` along the curve.
 	/// Expects `t` or `distance` argument enclosed within `c` to be within the inclusive range `[0, 1]`.
 	pub fn evaluate(&self, t: TValue) -> DVec2 {
 		let t = self.compute_type_to_parametric(t);

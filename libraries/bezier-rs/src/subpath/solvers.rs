@@ -54,35 +54,35 @@ impl Subpath {
 		intersection_t_values
 	}
 
-	pub fn tangent(&self, t: ComputeType) -> DVec2 {
+	pub fn tangent(&self, t: TValue) -> DVec2 {
 		match t {
-			ComputeType::Parametric(t) => {
+			TValue::Parametric(t) => {
 				assert!((0.0..=1.).contains(&t));
 
 				if let (Some(curve), target_curve_t) = self.find_curve_parametric(t) {
-					curve.tangent(target_curve_t)
+					curve.tangent(TValue::Parametric(target_curve_t))
 				} else {
-					self.iter().last().unwrap().tangent(1.)
+					self.iter().last().unwrap().tangent(TValue::Parametric(1.))
 				}
 			}
-			ComputeType::Euclidean(_t) => unimplemented!(),
-			ComputeType::EuclideanWithinError { t: _, epsilon: _ } => todo!(),
+			TValue::Euclidean(_t) => unimplemented!(),
+			TValue::EuclideanWithinError { t: _, error: _ } => todo!(),
 		}
 	}
 
-	pub fn normal(&self, t: ComputeType) -> DVec2 {
+	pub fn normal(&self, t: TValue) -> DVec2 {
 		match t {
-			ComputeType::Parametric(t) => {
+			TValue::Parametric(t) => {
 				assert!((0.0..=1.).contains(&t));
 
 				if let (Some(curve), target_curve_t) = self.find_curve_parametric(t) {
-					curve.normal(target_curve_t)
+					curve.normal(TValue::Parametric(target_curve_t))
 				} else {
-					self.iter().last().unwrap().normal(1.)
+					self.iter().last().unwrap().normal(TValue::Parametric(1.))
 				}
 			}
-			ComputeType::Euclidean(_t) => unimplemented!(),
-			ComputeType::EuclideanWithinError { t: _, epsilon: _ } => todo!(),
+			TValue::Euclidean(_t) => unimplemented!(),
+			TValue::EuclideanWithinError { t: _, error: _ } => todo!(),
 		}
 	}
 }

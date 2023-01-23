@@ -6,7 +6,7 @@ use std::f64::consts::PI;
 
 /// Functionality that transform Beziers, such as split, reduce, offset, etc.
 impl Bezier {
-	/// Returns the pair of Bezier curves that result from splitting the original curve at the point `c` along the curve.
+	/// Returns the pair of Bezier curves that result from splitting the original curve at the point `t` along the curve.
 	pub fn split(&self, t: TValue) -> [Bezier; 2] {
 		let t = self.compute_type_to_parametric(t);
 		let split_point = self.evaluate(TValue::Parametric(t));

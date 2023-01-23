@@ -92,8 +92,8 @@ impl WasmSubpath {
 	}
 
 	pub fn tangent(&self, t: f64) -> String {
-		let intersection_point = self.0.evaluate(ComputeType::Parametric(t));
-		let tangent_point = self.0.tangent(ComputeType::Parametric(t));
+		let intersection_point = self.0.evaluate(TValue::Parametric(t));
+		let tangent_point = self.0.tangent(TValue::Parametric(t));
 		let tangent_end = intersection_point + tangent_point * SCALE_UNIT_VECTOR_FACTOR;
 
 		let point_text = draw_circle(intersection_point, 4., RED, 1.5, WHITE);
@@ -103,8 +103,8 @@ impl WasmSubpath {
 	}
 
 	pub fn normal(&self, t: f64) -> String {
-		let intersection_point = self.0.evaluate(ComputeType::Parametric(t));
-		let normal_point = self.0.normal(ComputeType::Parametric(t));
+		let intersection_point = self.0.evaluate(TValue::Parametric(t));
+		let normal_point = self.0.normal(TValue::Parametric(t));
 		let normal_end = intersection_point + normal_point * SCALE_UNIT_VECTOR_FACTOR;
 
 		let point_text = draw_circle(intersection_point, 4., RED, 1.5, WHITE);
@@ -211,8 +211,8 @@ impl WasmSubpath {
 
 	pub fn split(&self, t: f64, compute_type: String) -> String {
 		let (main_subpath, optional_subpath) = match compute_type.as_str() {
-			"Euclidean" => self.0.split(ComputeType::Euclidean(t)),
-			"Parametric" => self.0.split(ComputeType::Parametric(t)),
+			"Euclidean" => self.0.split(TValue::Euclidean(t)),
+			"Parametric" => self.0.split(TValue::Parametric(t)),
 			_ => panic!("Unexpected ComputeType string: '{}'", compute_type),
 		};
 
