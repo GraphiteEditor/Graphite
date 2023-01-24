@@ -7,7 +7,7 @@ license = "Apache-2.0"
 repository = ""
 default-run = "graphite-desktop"
 edition = "2021"
-rust-version = "1.59"
+rust-version = "1.66.0"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
