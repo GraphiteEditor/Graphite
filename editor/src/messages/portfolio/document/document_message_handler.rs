@@ -247,7 +247,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 					responses.push_back(BroadcastEvent::DocumentIsDirty.into());
 				}
 			}
-			BackupDocument { document, layer_metadata } => self.backup_with_document(document, layer_metadata, responses),
+			BackupDocument { document, artboard, layer_metadata } => self.backup_with_document(document, *artboard, layer_metadata, responses),
 			BooleanOperation(op) => {
 				// Convert Vec<&[LayerId]> to Vec<Vec<&LayerId>> because Vec<&[LayerId]> does not implement several traits (Debug, Serialize, Deserialize, ...) required by DocumentOperation enum
 				responses.push_back(StartTransaction.into());
@@ -1329,9 +1329,9 @@ impl DocumentMessageHandler {
 	}
 
 	/// Places a document into the history system
-	fn backup_with_document(&mut self, document: DocumentLegacy, layer_metadata: HashMap<Vec<LayerId>, LayerMetadata>, responses: &mut VecDeque<Message>) {
+	fn backup_with_document(&mut self, document: DocumentLegacy, artboard: ArtboardMessageHandler, layer_metadata: HashMap<Vec<LayerId>, LayerMetadata>, responses: &mut VecDeque<Message>) {
 		self.document_redo_history.clear();
-		self.document_undo_history.push_back((document, layer_metadata));
+		self.document_undo_history.push_back(DocumentSave { document, artboard, layer_metadata });
 		if self.document_undo_history.len() > crate::consts::MAX_UNDO_HISTORY_LEN {
 			self.document_undo_history.pop_front();
 		}
@@ -1342,7 +1342,7 @@ impl DocumentMessageHandler {
 
 	/// Copies the entire document into the history system
 	pub fn backup(&mut self, responses: &mut VecDeque<Message>) {
-		self.backup_with_document(self.document_legacy.clone(), self.layer_metadata.clone(), responses);
+		self.backup_with_document(self.document_legacy.clone(), self.artboard_message_handler.clone(), self.layer_metadata.clone(), responses);
 	}
 
 	/// Push a message backing up the document in its current state
@@ -1350,6 +1350,7 @@ impl DocumentMessageHandler {
 		responses.push_back(
 			DocumentMessage::BackupDocument {
 				document: self.document_legacy.clone(),
+				artboard: Box::new(self.artboard_message_handler.clone()),
 				layer_metadata: self.layer_metadata.clone(),
 			}
 			.into(),
@@ -1362,6 +1363,23 @@ impl DocumentMessageHandler {
 		// TODO: Consider if we should check if the document is saved
 	}
 
+	/// Replace the document with a new document save, returning the document save.
+	pub fn replace_document(&mut self, DocumentSave { document, artboard, layer_metadata }: DocumentSave) -> DocumentSave {
+		// Keeping the root is required if the bounds of the viewport have changed during the operation
+		let old_root = self.document_legacy.root.transform;
+		let old_artboard_root = self.artboard_message_handler.artboards_document.root.transform;
+		let document = std::mem::replace(&mut self.document_legacy, document);
+		let artboard = std::mem::replace(&mut self.artboard_message_handler, artboard);
+		self.document_legacy.root.transform = old_root;
+		self.artboard_message_handler.artboards_document.root.transform = old_artboard_root;
+		self.document_legacy.root.cache_dirty = true;
+		self.artboard_message_handler.artboards_document.root.cache_dirty = true;
+
+		let layer_metadata = std::mem::replace(&mut self.layer_metadata, layer_metadata);
+
+		DocumentSave { document, artboard, layer_metadata }
+	}
+
 	pub fn undo(&mut self, responses: &mut VecDeque<Message>) -> Result<(), EditorError> {
 		// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
 		responses.push_back(PortfolioMessage::UpdateOpenDocumentsList.into());
@@ -1369,7 +1387,7 @@ impl DocumentMessageHandler {
 		let selected_paths: Vec<Vec<LayerId>> = self.selected_layers().map(|path| path.to_vec()).collect();
 
 		match self.document_undo_history.pop_back() {
-			Some((document, layer_metadata)) => {
+			Some(DocumentSave { document, artboard, layer_metadata }) => {
 				// Update the currently displayed layer on the Properties panel if the selection changes after an undo action
 				// Also appropriately update the Properties panel if an undo action results in a layer being deleted
 				let prev_selected_paths: Vec<Vec<LayerId>> = layer_metadata.iter().filter_map(|(layer_id, metadata)| metadata.selected.then_some(layer_id.clone())).collect();
@@ -1378,14 +1396,9 @@ impl DocumentMessageHandler {
 					responses.push_back(BroadcastEvent::SelectionChanged.into());
 				}
 
-				// Keeping the root is required if the bounds of the viewport have changed during the operation
-				let old_root = self.document_legacy.root.transform;
-				let document = std::mem::replace(&mut self.document_legacy, document);
-				self.document_legacy.root.transform = old_root;
-				self.document_legacy.root.cache_dirty = true;
+				let document_save = self.replace_document(DocumentSave { document, artboard, layer_metadata });
 
-				let layer_metadata = std::mem::replace(&mut self.layer_metadata, layer_metadata);
-				self.document_redo_history.push_back((document, layer_metadata));
+				self.document_redo_history.push_back(document_save);
 				if self.document_redo_history.len() > crate::consts::MAX_UNDO_HISTORY_LEN {
 					self.document_redo_history.pop_front();
 				}
@@ -1409,7 +1422,7 @@ impl DocumentMessageHandler {
 		let selected_paths: Vec<Vec<LayerId>> = self.selected_layers().map(|path| path.to_vec()).collect();
 
 		match self.document_redo_history.pop_back() {
-			Some((document, layer_metadata)) => {
+			Some(DocumentSave { document, artboard, layer_metadata }) => {
 				// Update currently displayed layer on property panel if selection changes after redo action
 				// Also appropriately update property panel if redo action results in a layer being added
 				let next_selected_paths: Vec<Vec<LayerId>> = layer_metadata.iter().filter_map(|(layer_id, metadata)| metadata.selected.then_some(layer_id.clone())).collect();
@@ -1418,14 +1431,8 @@ impl DocumentMessageHandler {
 					responses.push_back(BroadcastEvent::SelectionChanged.into());
 				}
 
-				// Keeping the root is required if the bounds of the viewport have changed during the operation
-				let old_root = self.document_legacy.root.transform;
-				let document = std::mem::replace(&mut self.document_legacy, document);
-				self.document_legacy.root.transform = old_root;
-				self.document_legacy.root.cache_dirty = true;
-
-				let layer_metadata = std::mem::replace(&mut self.layer_metadata, layer_metadata);
-				self.document_undo_history.push_back((document, layer_metadata));
+				let document_save = self.replace_document(DocumentSave { document, artboard, layer_metadata });
+				self.document_undo_history.push_back(document_save);
 				if self.document_undo_history.len() > crate::consts::MAX_UNDO_HISTORY_LEN {
 					self.document_undo_history.pop_front();
 				}
@@ -1448,7 +1455,7 @@ impl DocumentMessageHandler {
 		self.document_undo_history
 			.iter()
 			.last()
-			.map(|(document_legacy, _)| document_legacy.current_state_identifier())
+			.map(|DocumentSave { document, .. }| document.current_state_identifier())
 			.unwrap_or(0)
 	}
 

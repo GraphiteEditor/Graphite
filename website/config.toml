@@ -4,6 +4,8 @@ base_url = "https://graphite.rs"
 # Whether to automatically compile all Sass files in the sass directory
 compile_sass = true
 
+title = "Graphite"
+description = "2D raster & vector editor that melds traditional layers & tools with a modern node-based procedural workflow."
 feed_filename = "rss.xml"
 
 [markdown]
