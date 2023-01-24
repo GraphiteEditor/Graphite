@@ -183,4 +183,48 @@ impl WasmSubpath {
 
 		wrap_svg_tag(format!("{subpath_svg}{line_svg}{intersections_svg}"))
 	}
+
+	pub fn split(&self, t: f64, compute_type: String) -> String {
+		let (main_subpath, optional_subpath) = match compute_type.as_str() {
+			"Euclidean" => self.0.split(ComputeType::Euclidean(t)),
+			"Parametric" => self.0.split(ComputeType::Parametric(t)),
+			_ => panic!("Unexpected ComputeType string: '{}'", compute_type),
+		};
+
+		let mut main_subpath_svg = String::new();
+		let mut other_subpath_svg = String::new();
+		if optional_subpath.is_some() {
+			main_subpath.to_svg(
+				&mut main_subpath_svg,
+				CURVE_ATTRIBUTES.to_string().replace(BLACK, ORANGE),
+				ANCHOR_ATTRIBUTES.to_string().replace(BLACK, ORANGE),
+				HANDLE_ATTRIBUTES.to_string().replace(BLACK, ORANGE),
+				HANDLE_LINE_ATTRIBUTES.to_string().replace(BLACK, ORANGE),
+			);
+		} else {
+			main_subpath
+				.iter()
+				.enumerate()
+				.for_each(|(index, bezier)| bezier.curve_to_svg(&mut main_subpath_svg, CURVE_ATTRIBUTES.to_string().replace(BLACK, &format!("hsl({}, 100%, 50%)", (40 * index)))));
+			main_subpath.to_svg(
+				&mut main_subpath_svg,
+				"".to_string(),
+				ANCHOR_ATTRIBUTES.to_string(),
+				HANDLE_ATTRIBUTES.to_string(),
+				HANDLE_LINE_ATTRIBUTES.to_string(),
+			);
+		}
+
+		if optional_subpath.is_some() {
+			optional_subpath.unwrap().to_svg(
+				&mut other_subpath_svg,
+				CURVE_ATTRIBUTES.to_string().replace(BLACK, RED),
+				ANCHOR_ATTRIBUTES.to_string().replace(BLACK, RED),
+				HANDLE_ATTRIBUTES.to_string().replace(BLACK, RED),
+				HANDLE_LINE_ATTRIBUTES.to_string().replace(BLACK, RED),
+			);
+		}
+
+		wrap_svg_tag(format!("{}{}{}", self.to_default_svg(), main_subpath_svg, other_subpath_svg))
+	}
 }
