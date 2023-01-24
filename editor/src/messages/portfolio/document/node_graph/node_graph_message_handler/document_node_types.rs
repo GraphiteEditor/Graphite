@@ -393,7 +393,7 @@ pub fn resolve_document_node_type(name: &str) -> Option<&DocumentNodeType> {
 }
 
 pub fn collect_node_types() -> Vec<FrontendNodeType> {
-	document_node_types()
+	DOCUMENT_NODE_TYPES
 		.iter()
 		.filter(|node_type| !node_type.category.eq_ignore_ascii_case("ignore"))
 		.map(|node_type| FrontendNodeType::new(node_type.name, node_type.category))
