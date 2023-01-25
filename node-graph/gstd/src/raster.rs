@@ -145,6 +145,10 @@ pub fn export_image_node<'n>() -> impl Node<(Image, &'n str), Output = Result<()
 #[derive(Debug, Clone, Copy)]
 pub struct GrayscaleNode;
 
+fn<'i, T: 'i, V: 'i>test(test: T, param: V) -> Output {
+	test + params
+}
+
 #[node_macro::node_fn(GrayscaleNode)]
 fn grayscale_image(mut image: Image) -> Image {
 	for pixel in &mut image.data {

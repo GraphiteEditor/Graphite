@@ -1,6 +1,6 @@
-use core::fmt::Debug;
+use core::{fmt::Debug, marker::PhantomData};
 
-use crate::Node;
+use crate::{Node, NodeIO};
 
 pub mod color;
 pub use self::color::Color;
@@ -14,6 +14,21 @@ fn grayscale_color_node(input: Color) -> Color {
 	Color::from_rgbaf32_unchecked(avg, avg, avg, input.a())
 }
 
+#[derive(Debug, Clone, Copy, Default)]
+pub struct MapNode<Iter, MapFn> {
+	map_fn: MapFn,
+	_iter: PhantomData<Iter>,
+	_map_fn: PhantomData<MapFn>,
+}
+
+#[node_macro::node_fn(MapNode<Iter, MapFn>)]
+fn map_node<Iter: Iterator, MapFn>(input: Iter) -> MapFnIterator<'input, Iter, MapFn>
+where
+	MapFn: Node<'input, 'node, Iter::Item>,
+{
+	MapFnIterator::new(input, self.map_fn)
+}
+/*
 #[derive(Debug)]
 pub struct MapNode<Iter: Iterator, MapFn: Node<Iter::Item>> {
 	map_fn: MapFn,
@@ -55,37 +70,42 @@ impl<Iter: Iterator<Item = Item>, MapFn: Node<Item, Output = Out> + Copy, Item, 
 	fn eval(self, input: Iter) -> Self::Output {
 		MapFnIterator::new(input, self.map_fn)
 	}
-}
+}*/
 
 #[must_use = "iterators are lazy and do nothing unless consumed"]
 #[derive(Clone)]
-pub struct MapFnIterator<Iter, MapFn> {
+pub struct MapFnIterator<'s, Iter, MapFn> {
 	iter: Iter,
 	map_fn: MapFn,
+	_phantom: core::marker::PhantomData<&'s ()>,
 }
 
-impl<Iter: Debug, MapFn> Debug for MapFnIterator<Iter, MapFn> {
+impl<'s, Iter: Debug, MapFn> Debug for MapFnIterator<'s, Iter, MapFn> {
 	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
 		f.debug_struct("MapFnIterator").field("iter", &self.iter).field("map_fn", &"MapFn").finish()
 	}
 }
 
-impl<Iter: Copy, MapFn: Copy> Copy for MapFnIterator<Iter, MapFn> {}
+impl<'s, Iter: Copy, MapFn: Copy> Copy for MapFnIterator<'s, Iter, MapFn> {}
 
-impl<Iter, MapFn> MapFnIterator<Iter, MapFn> {
+impl<'s, Iter, MapFn> MapFnIterator<'s, Iter, MapFn> {
 	pub fn new(iter: Iter, map_fn: MapFn) -> Self {
-		Self { iter, map_fn }
+		Self {
+			iter,
+			map_fn,
+			_phantom: core::marker::PhantomData,
+		}
 	}
 }
 
-impl<B, I: Iterator, F> Iterator for MapFnIterator<I, F>
+impl<'s, I: Iterator, F> Iterator for MapFnIterator<'s, I, F>
 where
-	F: Node<I::Item, Output = B> + Copy,
+	F: Node<'s, 's, I::Item> + Copy,
 {
-	type Item = B;
+	type Item = F::Output;
 
 	#[inline]
-	fn next(&mut self) -> Option<B> {
+	fn next(&mut self) -> Option<F::Output> {
 		self.iter.next().map(|x| self.map_fn.eval(x))
 	}
 
@@ -95,53 +115,55 @@ where
 	}
 }
 
-#[derive(Debug, Clone, Copy, Default)]
-pub struct WeightedAvgNode<Iter> {
-	_phantom: core::marker::PhantomData<Iter>,
+#[derive(Debug, Clone, Copy)]
+struct WeightedAvgNode<Iter, MapFn> {
+	_iter: PhantomData<Iter>,
+	_mapfn: PhantomData<MapFn>,
 }
 
-impl<Iter> WeightedAvgNode<Iter> {
-	pub fn new() -> Self {
-		Self { _phantom: core::marker::PhantomData }
-	}
-}
-
-#[inline]
-fn weighted_avg_node<Iter: Iterator<Item = (Color, f32)> + Clone>(input: Iter) -> Color {
+#[node_macro::node_fn(WeightedAvgNode<Iter, MapFn>)]
+fn weighted_avg_node<Iter: Iterator<Item = (Color, f32)>, MapFn>(input: Iter) -> Color
+where
+	MapFn: Node<'input, 'node, Iter::Item>,
+{
 	let total_weight: f32 = input.clone().map(|(_, weight)| weight).sum();
 	let total_r: f32 = input.clone().map(|(color, weight)| color.r() * weight).sum();
 	let total_g: f32 = input.clone().map(|(color, weight)| color.g() * weight).sum();
 	let total_b: f32 = input.clone().map(|(color, weight)| color.b() * weight).sum();
 	let total_a: f32 = input.map(|(color, weight)| color.a() * weight).sum();
-	Color::from_rgbaf32_unchecked(total_r / total_weight, total_g / total_weight, total_b / total_weight, total_a / total_weight)
 }
 
-impl<Iter: Iterator<Item = (Color, f32)> + Clone> Node<Iter> for WeightedAvgNode<Iter> {
-	type Output = Color;
-
-	#[inline]
-	fn eval(self, input: Iter) -> Self::Output {
-		weighted_avg_node(input)
+mod test {
+	#[derive(Debug, Clone, Copy)]
+	pub struct GaussianNode<Sigma> {
+		sigma: Sigma,
 	}
-}
-impl<Iter: Iterator<Item = (Color, f32)> + Clone> Node<Iter> for &WeightedAvgNode<Iter> {
-	type Output = Color;
-
-	#[inline]
-	fn eval(self, input: Iter) -> Self::Output {
-		weighted_avg_node(input)
-	}
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct GaussianNode<Sigma> {
-	sigma: Sigma,
-}
-
-#[node_macro::node_fn(GaussianNode)]
-fn gaussian_node(input: f32, sigma: f64) -> f32 {
-	let sigma = sigma as f32;
-	(1.0 / (2.0 * core::f32::consts::PI * sigma * sigma).sqrt()) * (-input * input / (2.0 * sigma * sigma)).exp()
+	use super::*;
+	impl < 'input, 'node : 'input, S0 : 'node > NodeIO < 'input, f32 > for
+		GaussianNode<S0> S0 : 'node : Node < (), Output = f64 >
+{ type Output = f32 ; } impl < 'input, 'node : 'input, S0 : 'node > Node <
+'input, 'node, f32 > for GaussianNode < S0 > S0 : 'node : Node < (), Output =
+f64 >
+{
+    fn eval(& 'node self, input : f32) -> < Self as NodeIO < 'input, f32 >> ::
+    Output
+    {
+        let sigma = self.sigma.eval(()) ;
+        {
+            let sigma = sigma as f32 ;
+            (1.0 / (2.0 * core :: f32 :: consts :: PI * sigma * sigma).sqrt())
+            * (- input * input / (2.0 * sigma * sigma)).exp()
+        }
+    }
+} impl < 'input, 'node : 'input, S0 : 'node > GaussianNode < S0 > S0 : 'node :
+Node < (), Output = f64 >
+{ pub fn new(sigma : S0 : 'node) -> Self { Self { sigma } } }
+/*
+	#[node_macro::node_fn(GaussianNode)]
+	fn gaussian_node(input: f32, sigma: f64) -> f32 {
+		let sigma = sigma as f32;
+		(1.0 / (2.0 * core::f32::consts::PI * sigma * sigma).sqrt()) * (-input * input / (2.0 * sigma * sigma)).exp()
+	}*/
 }
 
 #[derive(Debug, Clone, Copy)]
