@@ -198,21 +198,16 @@ impl WasmSubpath {
 				&mut main_subpath_svg,
 				CURVE_ATTRIBUTES.to_string().replace(BLACK, ORANGE),
 				ANCHOR_ATTRIBUTES.to_string().replace(BLACK, ORANGE),
-				HANDLE_ATTRIBUTES.to_string().replace(BLACK, ORANGE),
-				HANDLE_LINE_ATTRIBUTES.to_string().replace(BLACK, ORANGE),
+				HANDLE_ATTRIBUTES.to_string().replace(GRAY, ORANGE),
+				HANDLE_LINE_ATTRIBUTES.to_string().replace(GRAY, ORANGE),
 			);
 		} else {
-			main_subpath
-				.iter()
-				.enumerate()
-				.for_each(|(index, bezier)| bezier.curve_to_svg(&mut main_subpath_svg, CURVE_ATTRIBUTES.to_string().replace(BLACK, &format!("hsl({}, 100%, 50%)", (40 * index)))));
-			main_subpath.to_svg(
-				&mut main_subpath_svg,
-				"".to_string(),
-				ANCHOR_ATTRIBUTES.to_string(),
-				HANDLE_ATTRIBUTES.to_string(),
-				HANDLE_LINE_ATTRIBUTES.to_string(),
-			);
+			main_subpath.iter().enumerate().for_each(|(index, bezier)| {
+				bezier.curve_to_svg(&mut main_subpath_svg, CURVE_ATTRIBUTES.to_string().replace(BLACK, &format!("hsl({}, 100%, 50%)", (40 * index))));
+				bezier.anchors_to_svg(&mut main_subpath_svg, ANCHOR_ATTRIBUTES.to_string().replace(BLACK, &format!("hsl({}, 100%, 50%)", (40 * index))));
+				bezier.handles_to_svg(&mut main_subpath_svg, HANDLE_ATTRIBUTES.to_string().replace(GRAY, &format!("hsl({}, 100%, 50%)", (40 * index))));
+				bezier.handle_lines_to_svg(&mut main_subpath_svg, HANDLE_LINE_ATTRIBUTES.to_string().replace(GRAY, &format!("hsl({}, 100%, 50%)", (40 * index))));
+			});
 		}
 
 		if optional_subpath.is_some() {
@@ -220,8 +215,8 @@ impl WasmSubpath {
 				&mut other_subpath_svg,
 				CURVE_ATTRIBUTES.to_string().replace(BLACK, RED),
 				ANCHOR_ATTRIBUTES.to_string().replace(BLACK, RED),
-				HANDLE_ATTRIBUTES.to_string().replace(BLACK, RED),
-				HANDLE_LINE_ATTRIBUTES.to_string().replace(BLACK, RED),
+				HANDLE_ATTRIBUTES.to_string().replace(GRAY, RED),
+				HANDLE_LINE_ATTRIBUTES.to_string().replace(GRAY, RED),
 			);
 		}
 

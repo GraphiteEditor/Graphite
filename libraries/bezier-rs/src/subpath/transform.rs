@@ -3,7 +3,9 @@ use crate::ComputeType;
 
 /// Functionality that transform Subpaths, such as split, reduce, offset, etc.
 impl Subpath {
-	/// Returns the pair of Bezier curves that result from splitting the original curve at the point corresponding to `t`.
+	/// Returns either one or two Subpaths that result from splitting the original Subpath at the point corresponding to `t`.
+	/// If the original Subpath was closed, a single opened Subpath will be returned.
+	/// If the original Subpath was opened, two opened Subpaths will be returned.
 	pub fn split(&self, t: ComputeType) -> (Subpath, Option<Subpath>) {
 		match t {
 			ComputeType::Parametric(t) => {
@@ -19,12 +21,10 @@ impl Subpath {
 				// The only case where `curve` would be `None` is if the provided argument was 1
 				// But the above if case would catch that, since `target_curve_t` would be 0.
 				let curve = self.iter().nth(target_curve_index as usize);
-				let curve = if curve.is_none() {
+				let curve = curve.unwrap_or_else(|| {
 					target_curve_t = 1.;
 					self.iter().last().unwrap()
-				} else {
-					curve.unwrap()
-				};
+				});
 
 				let [first_bezier, second_bezier] = curve.split(target_curve_t);
 				let mut first_split = self.manipulator_groups.clone();
@@ -46,10 +46,12 @@ impl Subpath {
 						out_handle: None,
 					});
 				} else {
-					if first_split.len() > 0 {
+					if !first_split.is_empty() {
 						let num_elements = first_split.len();
 						first_split[num_elements - 1].out_handle = first_bezier.handle_start();
 					}
+					// Push a new manipulator group to represent the location that was split at
+					// Add the manipulator group except for the cases where the splitting point is on a non-first anchor point
 					if (target_curve_t != 0. && target_curve_t != 1.) || t == 0. {
 						first_split.push(ManipulatorGroup {
 							anchor: first_bezier.end(),
@@ -58,9 +60,12 @@ impl Subpath {
 						});
 					}
 
-					if second_split.len() > 0 {
+					if !second_split.is_empty() {
 						second_split[0].in_handle = second_bezier.handle_end();
 					}
+
+					// Push a new manipulator group to represent the location that was split at
+					// Add the manipulator group except for the case where the splitting point is in the first anchor point
 					if t != 0. {
 						second_split.insert(
 							0,
@@ -73,12 +78,13 @@ impl Subpath {
 					}
 				}
 
-				return if self.closed {
+				if self.closed {
+					// "Rotate" the manipulator groups list so that the split point becomes the start and end of the open subpath
 					second_split.append(&mut first_split);
 					(Subpath::new(second_split, false), None)
 				} else {
 					(Subpath::new(first_split, false), Some(Subpath::new(second_split, false)))
-				};
+				}
 			}
 			// TODO: change this implementation to Euclidean compute
 			ComputeType::Euclidean(_t) => todo!(),
