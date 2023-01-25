@@ -174,6 +174,11 @@ impl ShapeEditor {
 		self.iter(document).flat_map(|shape| shape.manipulator_groups().iter())
 	}
 
+	// Sets the selected points to all points for the corresponding intersection
+	pub fn select_all_anchors(&self, responses: &mut VecDeque<Message>, itersections: Vec<u64>) {
+		responses.push_back(Operation::SelectAllManipulatorPoints { layer_path: itersections }.into());
+	}
+
 	/// Provide the currently selected points by reference.
 	pub fn selected_points<'a>(&'a self, document: &'a Document) -> impl Iterator<Item = &'a ManipulatorPoint> {
 		self.selected_manipulator_groups(document).flat_map(|manipulator_group| manipulator_group.selected_points())

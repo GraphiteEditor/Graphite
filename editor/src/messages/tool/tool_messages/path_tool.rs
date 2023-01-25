@@ -219,12 +219,16 @@ impl Fsm for PathToolFsmState {
 							if toggle_add_to_selection {
 								responses.push_back(DocumentMessage::AddSelectedLayers { additional_layers: intersection }.into());
 							} else {
+								let intersection_temp = intersection[0].clone();
 								responses.push_back(
 									DocumentMessage::SetSelectedLayers {
 										replacement_selected_layers: intersection,
 									}
 									.into(),
 								);
+								// Selects all the anchor points when clicking in a filled area of shape. If two shapes intersect we pick the bottom-most layer
+								tool_data.shape_editor.select_all_anchors(responses, intersection_temp);		
+								return PathToolFsmState::Dragging;
 							}
 						} else {
 							// Clear the previous selection if we didn't find anything
@@ -262,7 +266,7 @@ impl Fsm for PathToolFsmState {
 
 					// Move the selected points by the mouse position
 					let snapped_position = tool_data.snap_manager.snap_position(responses, document, input.mouse.position);
-					tool_data.shape_editor.move_selected_points(snapped_position - tool_data.drag_start_pos, responses);
+					tool_data.shape_editor.move_selected_points(snapped_position - tool_data.drag_start_pos, responses); 
 					tool_data.drag_start_pos = snapped_position;
 					PathToolFsmState::Dragging
 				}

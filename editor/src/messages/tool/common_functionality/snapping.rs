@@ -202,7 +202,7 @@ impl SnapManager {
 				if closest_distance.y.abs() > SNAP_AXIS_TOLERANCE { 0. } else { closest_distance.y },
 			)
 		};
-
+		
 		self.snap_overlays.update_overlays(responses, (x_axis, y_axis, points), clamped_closest_distance);
 
 		clamped_closest_distance

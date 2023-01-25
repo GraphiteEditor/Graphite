@@ -129,6 +129,9 @@ pub enum Operation {
 		layer_path: Vec<LayerId>,
 		point_ids: Vec<(u64, ManipulatorType)>,
 	},
+	SelectAllManipulatorPoints {
+		layer_path: Vec<LayerId>,
+	},
 	DeselectAllManipulatorPoints {
 		layer_path: Vec<LayerId>,
 	},
