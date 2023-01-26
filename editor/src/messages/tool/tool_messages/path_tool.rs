@@ -219,15 +219,17 @@ impl Fsm for PathToolFsmState {
 							if toggle_add_to_selection {
 								responses.push_back(DocumentMessage::AddSelectedLayers { additional_layers: intersection }.into());
 							} else {
-								let intersection_temp = intersection[0].clone();
+								// selects the top most layer when selecting intersecting shapes
+								let top_most_intersection = intersection[intersection.len() - 1].clone();
 								responses.push_back(
 									DocumentMessage::SetSelectedLayers {
 										replacement_selected_layers: intersection,
 									}
 									.into(),
 								);
+								tool_data.drag_start_pos = input.mouse.position;
 								// Selects all the anchor points when clicking in a filled area of shape. If two shapes intersect we pick the bottom-most layer
-								tool_data.shape_editor.select_all_anchors(responses, intersection_temp);		
+								tool_data.shape_editor.select_all_anchors(responses, top_most_intersection);		
 								return PathToolFsmState::Dragging;
 							}
 						} else {
