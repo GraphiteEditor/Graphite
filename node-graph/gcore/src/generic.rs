@@ -3,7 +3,7 @@ use core::marker::PhantomData;
 use crate::{Node, NodeIO};
 pub struct FnNode<T: Fn(I) -> O, I, O>(T, PhantomData<(I, O)>);
 
-impl<'i, 's: 'i, I, O, T: Fn(I) -> O> NodeIO<'i, I> for FnNode<T, I, O> {
+impl<'i, 's: 'i, I: 'i, O: 'i, T: Fn(I) -> O> NodeIO<'i, I> for FnNode<T, I, O> {
 	type Output = O;
 }
 

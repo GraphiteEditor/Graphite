@@ -1,8 +1,10 @@
 use dyn_any::{DynAny, StaticType, StaticTypeSized};
-pub use graphene_core::{generic, ops /*, structural*/, Node, RefNode};
+pub use graphene_core::{generic, ops /*, structural*/, Node, NodeIO};
 use std::{marker::PhantomData, pin::Pin};
 
-pub struct DynAnyNode<N, I: StaticType, O: StaticType, ORef: StaticType>(pub N, pub PhantomData<(I, O, ORef)>);
+pub struct DynAnyNode<Node> {
+	node: Node,
+}
 /*impl<'n, I: StaticType, N: RefNode<'n, &'n I, Output = O> + 'n, O: 'n + StaticType> Node<&'n dyn DynAny<'n>> for DynAnyNode<'n, N, I> {
 	type Output = Box<dyn dyn_any::DynAny<'n> + 'n>;
 	fn eval(self, input: &'n dyn DynAny<'n>) -> Self::Output {
@@ -25,29 +27,17 @@ impl<'n, I: StaticType, N: RefNode<'n, I, Output = O> + 'n, O: 'n + StaticType> 
 		Box::new(self.0.eval_ref(*input))
 	}
 }*/
-impl<'n, I: StaticType, N: 'n, O: 'n + StaticType, ORef: 'n + StaticType> Node<Any<'n>> for DynAnyNode<N, I, O, ORef>
+#[node_macro::node_fn(DynAnyNode)]
+fn any_node<I: StaticType, O: StaticType, N>(input: Any<'input>, node: N) -> Any<'input>
 where
-	N: Node<I, Output = O>,
+	N: Node<'input, 'node, I, Output = O>,
 {
-	type Output = Any<'n>;
-	fn eval(self, input: Any<'n>) -> Self::Output {
-		let node = core::any::type_name::<N>();
-		let input: Box<I> = dyn_any::downcast(input).unwrap_or_else(|_| panic!("DynAnyNode Input in:\n{node}"));
-		Box::new(self.0.eval(*input))
-	}
+	let node = core::any::type_name::<N>();
+	let input: Box<I> = dyn_any::downcast(input).unwrap_or_else(|_| panic!("DynAnyNode Input in:\n{node}"));
+	Box::new(self.0.eval(*input))
 }
-impl<'n, I: StaticType, N: 'n, O: 'n + StaticType, ORef: 'n + StaticType> Node<Any<'n>> for &'n DynAnyNode<N, I, O, ORef>
-where
-	&'n N: Node<I, Output = ORef>,
-{
-	type Output = Any<'n>;
-	fn eval(self, input: Any<'n>) -> Self::Output {
-		let node = core::any::type_name::<N>();
-		let input: Box<I> = dyn_any::downcast(input).unwrap_or_else(|_| panic!("DynAnyNode Input in:\n{node}"));
-		Box::new((&self.0).eval_ref(*input))
-	}
-}
-pub struct TypeErasedNode<'n>(pub Pin<Box<dyn for<'i> AsRefNode<'n, Any<'i>, Output = Any<'i>> + 'n>>);
+
+pub struct TypeErasedNode<'n>{node : Pin<Box<dyn for<'i, 's> Node<'i, 's, Any<'i>, Output = Any<'i>> + 's>>};
 impl<'n> Node<Any<'n>> for &'n TypeErasedNode<'n> {
 	type Output = Any<'n>;
 	fn eval(self, input: Any<'n>) -> Self::Output {

@@ -177,7 +177,7 @@ impl IdNode {
 /// Ascribe the node types
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub struct TypeNode<N, I, O>(pub N, pub PhantomData<(I, O)>);
-impl<'i, 's: 'i, N, I, O> NodeIO<'i, I> for TypeNode<N, I, O>
+impl<'i, 's: 'i, N, I: 'i, O: 'i> NodeIO<'i, I> for TypeNode<N, I, O>
 where
 	N: NodeIO<'i, I, Output = O>,
 {
@@ -207,7 +207,7 @@ impl<'i, 's: 'i, N: Node<'i, 's, I> + Copy, I: 'i> Copy for TypeNode<N, I, <N as
 
 /// input.map(|x| self.0.eval(x))
 pub struct MapResultNode<MN, I, E>(pub MN, pub PhantomData<(I, E)>);
-impl<'i, 's: 'i, MN, I, E> NodeIO<'i, Result<I, E>> for MapResultNode<MN, I, E>
+impl<'i, 's: 'i, MN, I: 'i, E: 'i> NodeIO<'i, Result<I, E>> for MapResultNode<MN, I, E>
 where
 	MN: NodeIO<'i, I>,
 {
@@ -227,11 +227,11 @@ impl<'i, 's: 'i, MN: Node<'i, 's, I>, I: 'i> MapResultNode<MN, I, <MN as NodeIO<
 }
 
 pub struct FlatMapResultNode<'i, 's: 'i, MN: Node<'i, 's, I>, I, E>(pub MN, pub PhantomData<&'s (&'i I, E)>);
-impl<'i, 's: 'i, MN: Node<'i, 's, I, Output = Result<O, E>>, O, I, E> NodeIO<'i, Result<I, E>> for FlatMapResultNode<'i, 's, MN, I, E> {
+impl<'i, 's: 'i, MN: Node<'i, 's, I, Output = Result<O, E>>, O: 'i, I, E> NodeIO<'i, Result<I, E>> for FlatMapResultNode<'i, 's, MN, I, E> {
 	type Output = <MN as NodeIO<'i, I>>::Output;
 }
 
-impl<'i, 's: 'i, MN: Node<'i, 's, I, Output = Result<O, E>>, I, O, E> Node<'i, 's, Result<I, E>> for FlatMapResultNode<'i, 's, MN, I, E> {
+impl<'i, 's: 'i, MN: Node<'i, 's, I, Output = Result<O, E>>, I, O: 'i, E> Node<'i, 's, Result<I, E>> for FlatMapResultNode<'i, 's, MN, I, E> {
 	fn eval(&'s self, input: Result<I, E>) -> <Self as NodeIO<'i, Result<I, E>>>::Output {
 		match input.map(|x| self.0.eval(x)) {
 			Ok(Ok(x)) => Ok(x),
@@ -276,6 +276,12 @@ mod test {
 	pub fn snd_node() {
 		let fst = ValueNode((4u32, "a")).then(CloneNode::new()).then(SndNode::new());
 		assert_eq!(fst.eval(()), "a");
+	}
+	#[test]
+	pub fn object_safe() {
+		let fst = ValueNode((4u32, "a")).then(CloneNode::new()).then(SndNode::new());
+		let foo = &fst as &dyn Node<(), Output = &str>;
+		assert_eq!(foo.eval(()), "a");
 	}
 	#[test]
 	pub fn add_node() {

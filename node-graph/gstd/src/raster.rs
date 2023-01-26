@@ -3,54 +3,9 @@ use dyn_any::{DynAny, StaticType};
 use graphene_core::ops::FlatMapResultNode;
 use graphene_core::raster::{Color, Image};
 use graphene_core::structural::{ComposeNode, ConsNode};
-use graphene_core::{generic::FnNode, ops::MapResultNode, structural::Then, value::ValueNode, Node};
+use graphene_core::{generic::FnNode, ops::MapResultNode, structural::Then, value::ValueNode, Node, NodeIO};
 use image::Pixel;
 use std::path::Path;
-
-pub struct MapNode<MN: Node<S>, I: IntoIterator<Item = S>, S>(pub MN, PhantomData<(S, I)>);
-
-impl<I: IntoIterator<Item = S>, MN: Node<S> + Copy, S> Node<I> for MapNode<MN, I, S> {
-	type Output = Vec<MN::Output>;
-	fn eval(self, input: I) -> Self::Output {
-		input.into_iter().map(|x| self.0.eval(x)).collect()
-	}
-}
-
-impl<I: IntoIterator<Item = S>, MN: Node<S>, S> MapNode<MN, I, S> {
-	pub const fn new(mn: MN) -> Self {
-		MapNode(mn, PhantomData)
-	}
-}
-
-pub struct MapImageNode<MN: Node<Color, Output = Color> + Copy>(pub MN);
-
-impl<MN: Node<Color, Output = Color> + Copy> Node<Image> for MapImageNode<MN> {
-	type Output = Image;
-	fn eval(self, input: Image) -> Self::Output {
-		Image {
-			width: input.width,
-			height: input.height,
-			data: input.data.iter().map(|x| self.0.eval(*x)).collect(),
-		}
-	}
-}
-
-impl<'n, MN: Node<Color, Output = Color> + Copy> Node<Image> for &'n MapImageNode<MN> {
-	type Output = Image;
-	fn eval(self, input: Image) -> Self::Output {
-		Image {
-			width: input.width,
-			height: input.height,
-			data: input.data.iter().map(|x| self.0.eval(*x)).collect(),
-		}
-	}
-}
-
-impl<MN: Node<Color, Output = Color> + Copy> MapImageNode<MN> {
-	pub const fn new(mn: MN) -> Self {
-		MapImageNode(mn)
-	}
-}
 
 #[derive(Debug, DynAny)]
 pub enum Error {
@@ -77,28 +32,19 @@ impl FileSystem for StdFs {
 }
 type Reader = Box<dyn std::io::Read>;
 
-pub struct FileNode<P: AsRef<Path>, FS: FileSystem>(PhantomData<(P, FS)>);
-impl<P: AsRef<Path>, FS: FileSystem> Node<(P, FS)> for FileNode<P, FS> {
-	type Output = Result<Reader, Error>;
-
-	fn eval(self, input: (P, FS)) -> Self::Output {
-		let (path, fs) = input;
-		fs.open(path)
-	}
+pub struct FileNode;
+#[node_macro::node_fn(FileNode)]
+fn file_node<P: AsRef<Path>, FS: FileSystem>(path: P, fs: FS) -> Result<Reader, Error> {
+	Ok(fs.open(path)?)
 }
 
 pub struct BufferNode;
-impl<Reader: std::io::Read> Node<Reader> for BufferNode {
-	type Output = Result<Vec<u8>, Error>;
-
-	fn eval(self, mut reader: Reader) -> Self::Output {
-		let mut buffer = Vec::new();
-		reader.read_to_end(&mut buffer)?;
-		Ok(buffer)
-	}
+#[node_macro::node_fn(BufferNode)]
+fn buffer_node<R: std::io::Read>(reader: R) -> Result<Vec<u8>, Error> {
+	Ok(std::io::Read::bytes(reader).collect::<Result<Vec<_>, _>>()?)
 }
 
-pub fn file_node<'n, P: AsRef<Path> + 'n>() -> impl Node<P, Output = Result<Vec<u8>, Error>> {
+pub fn file_node<'i, 's: 'i, P: AsRef<Path> + 'i>() -> impl Node<'i, 's, P, Output = Result<Vec<u8>, Error>> {
 	let fs = ValueNode(StdFs).clone();
 	let fs = ConsNode::new(fs);
 	let file = fs.then(FileNode(PhantomData));
@@ -106,7 +52,7 @@ pub fn file_node<'n, P: AsRef<Path> + 'n>() -> impl Node<P, Output = Result<Vec<
 	file.then(FlatMapResultNode::new(BufferNode))
 }
 
-pub fn image_node<'n, P: AsRef<Path> + 'n>() -> impl Node<P, Output = Result<Image, Error>> {
+pub fn image_node<'i, 's: 'i, P: AsRef<Path> + 'i>() -> impl Node<'i, 's, P, Output = Result<Image, Error>> {
 	let file = file_node();
 	let image_loader = FnNode::new(|data: Vec<u8>| image::load_from_memory(&data).map_err(Error::Image).map(|image| image.into_rgba32f()));
 	let image: ComposeNode<_, _, P> = file.then(FlatMapResultNode::new(image_loader));
@@ -128,7 +74,7 @@ pub fn image_node<'n, P: AsRef<Path> + 'n>() -> impl Node<P, Output = Result<Ima
 	image.then(MapResultNode::new(convert_image))
 }
 
-pub fn export_image_node<'n>() -> impl Node<(Image, &'n str), Output = Result<(), Error>> {
+pub fn export_image_node<'i, 's: 'i>() -> impl Node<'i, 's, (Image, &'i str), Output = Result<(), Error>> {
 	FnNode::new(|input: (Image, &str)| {
 		let (image, path) = input;
 		let mut new_image = image::ImageBuffer::new(image.width, image.height);
@@ -144,10 +90,6 @@ pub fn export_image_node<'n>() -> impl Node<(Image, &'n str), Output = Result<()
 
 #[derive(Debug, Clone, Copy)]
 pub struct GrayscaleNode;
-
-fn<'i, T: 'i, V: 'i>test(test: T, param: V) -> Output {
-	test + params
-}
 
 #[node_macro::node_fn(GrayscaleNode)]
 fn grayscale_image(mut image: Image) -> Image {
@@ -289,23 +231,12 @@ fn imaginate(image: Image, cached: Option<std::sync::Arc<graphene_core::raster::
 #[cfg(test)]
 mod test {
 	use super::*;
-	use graphene_core::raster::color::Color;
-	use graphene_core::raster::GrayscaleColorNode;
-
-	#[test]
-	fn map_node() {
-		let array = [Color::from_rgbaf32(1.0, 0.0, 0.0, 1.0).unwrap()];
-		let map = MapNode(GrayscaleColorNode, PhantomData);
-		let values = map.eval(array.into_iter());
-		assert_eq!(values[0], Color::from_rgbaf32(0.33333334, 0.33333334, 0.33333334, 1.0).unwrap());
-	}
 
 	#[test]
 	fn load_image() {
 		let image = image_node::<&str>();
-		let gray = MapImageNode::new(GrayscaleColorNode);
 
-		let grayscale_picture = image.then(MapResultNode::new(&gray));
+		let grayscale_picture = image.then(MapResultNode::new(&image));
 		let export = export_image_node();
 
 		let picture = grayscale_picture.eval("test-image-1.png").expect("Failed to load image");

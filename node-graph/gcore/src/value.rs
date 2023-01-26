@@ -18,7 +18,7 @@ impl<'i, 's: 'i, const N: u32> Node<'i, 's, ()> for IntNode<N> {
 #[derive(Default, Debug)]
 pub struct ValueNode<T>(pub T);
 
-impl<'i, T> NodeIO<'i, ()> for ValueNode<T> {
+impl<'i, T: 'i> NodeIO<'i, ()> for ValueNode<T> {
 	type Output = &'i T;
 }
 
@@ -49,7 +49,7 @@ impl<T: Clone + Copy> Copy for ValueNode<T> {}
 #[derive(Default)]
 pub struct DefaultNode<T>(PhantomData<T>);
 
-impl<'n, T: Default> NodeIO<'n, ()> for DefaultNode<T> {
+impl<'i, T: Default + 'i> NodeIO<'i, ()> for DefaultNode<T> {
 	type Output = T;
 }
 
