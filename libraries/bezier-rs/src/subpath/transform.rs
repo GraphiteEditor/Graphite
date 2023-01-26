@@ -4,8 +4,8 @@ use crate::ComputeType;
 /// Functionality that transform Subpaths, such as split, reduce, offset, etc.
 impl Subpath {
 	/// Returns either one or two Subpaths that result from splitting the original Subpath at the point corresponding to `t`.
-	/// If the original Subpath was closed, a single opened Subpath will be returned.
-	/// If the original Subpath was opened, two opened Subpaths will be returned.
+	/// If the original Subpath was closed, a single open Subpath will be returned.
+	/// If the original Subpath was open, two open Subpaths will be returned.
 	pub fn split(&self, t: ComputeType) -> (Subpath, Option<Subpath>) {
 		match t {
 			ComputeType::Parametric(t) => {
@@ -15,30 +15,26 @@ impl Subpath {
 				let scaled_t = t * number_of_curves;
 
 				let target_curve_index = scaled_t.floor() as i32;
-				let mut target_curve_t = scaled_t % 1.;
+				let target_curve_t = scaled_t % 1.;
 				let num_manipulator_groups = self.manipulator_groups.len();
 
 				// The only case where `curve` would be `None` is if the provided argument was 1
-				// But the above if case would catch that, since `target_curve_t` would be 0.
-				let curve = self.iter().nth(target_curve_index as usize);
-				let curve = curve.unwrap_or_else(|| {
-					target_curve_t = 1.;
-					self.iter().last().unwrap()
-				});
+				let optional_curve = self.iter().nth(target_curve_index as usize);
+				let curve = optional_curve.unwrap_or_else(|| self.iter().last().unwrap());
 
-				let [first_bezier, second_bezier] = curve.split(target_curve_t);
-				let mut first_split = self.manipulator_groups.clone();
-				let mut second_split = if t > 0. {
-					first_split.split_off(num_manipulator_groups.min((target_curve_index as usize) + 1))
+				let [first_bezier, second_bezier] = curve.split(if t == 1. { t } else { target_curve_t });
+
+				let mut clone = self.manipulator_groups.clone();
+				let (mut first_split, mut second_split) = if t > 0. {
+					let clone2 = clone.split_off(num_manipulator_groups.min((target_curve_index as usize) + 1));
+					(clone, clone2)
 				} else {
-					let temp = first_split;
-					first_split = vec![];
-					temp
+					(vec![], clone)
 				};
 
 				if self.closed && (t == 0. || t == 1.) {
 					// The entire vector of manipulator groups will be in the second_split because target_curve_index == 0.
-					// Add a new manipulator group to with the same anchor as the first node to represent the end of the now opened subpath
+					// Add a new manipulator group with the same anchor as the first node to represent the end of the now opened subpath
 					let last_curve = self.iter().last().unwrap();
 					first_split.push(ManipulatorGroup {
 						anchor: first_bezier.end(),
@@ -50,9 +46,15 @@ impl Subpath {
 						let num_elements = first_split.len();
 						first_split[num_elements - 1].out_handle = first_bezier.handle_start();
 					}
-					// Push a new manipulator group to represent the location that was split at
-					// Add the manipulator group except for the cases where the splitting point is on a non-first anchor point
-					if (target_curve_t != 0. && target_curve_t != 1.) || t == 0. {
+
+					if !second_split.is_empty() {
+						second_split[0].in_handle = second_bezier.handle_end();
+					}
+
+					// Push new manipulator groups to represent the location of the split at the end of the first group and at the start of the second
+					// If the split was at a manipulator group's anchor, add only one manipulator group
+					// Add it to the first list when the split location is on the first manipulator group, otherwise add to the second list
+					if target_curve_t != 0. || t == 0. {
 						first_split.push(ManipulatorGroup {
 							anchor: first_bezier.end(),
 							in_handle: first_bezier.handle_end(),
@@ -60,12 +62,6 @@ impl Subpath {
 						});
 					}
 
-					if !second_split.is_empty() {
-						second_split[0].in_handle = second_bezier.handle_end();
-					}
-
-					// Push a new manipulator group to represent the location that was split at
-					// Add the manipulator group except for the case where the splitting point is in the first anchor point
 					if t != 0. {
 						second_split.insert(
 							0,
