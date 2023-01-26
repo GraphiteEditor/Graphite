@@ -101,10 +101,10 @@ const tSliderOptions = {
 
 const tErrorOptions = {
 	variable: "error",
-	min: 0.01,
+	min: 0.001,
 	max: 0.525,
-	step: 0.025,
-	default: 0.2,
+	step: 0.0025,
+	default: 0.02,
 };
 
 const tMinimumSeperationOptions = {

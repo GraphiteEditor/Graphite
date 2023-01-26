@@ -68,7 +68,9 @@ impl Subpath {
 	/// - `error` - For intersections with non-linear beziers, `error` defines the threshold for bounding boxes to be considered an intersection point.
 	/// - `minimum_seperation`: the minimum difference 2 adjacent `t`-values must have when comparing adjacent `t`-values in sorted order.
 	/// If the comparison condition is not satisfied, the function takes the larger `t`-value of the 2
-	pub fn self_intersections(&self, error: Option<f64>, minimum_seperation: Option<f64>, include_endpoints: Option<bool>) -> Vec<f64> {
+	///
+	///  **NOTE**: if an intersection were to occur within an `error` distance away from an anchor point, the algorithm will filter that intersection out.
+	pub fn self_intersections(&self, error: Option<f64>, minimum_seperation: Option<f64>) -> Vec<f64> {
 		let mut intersections_vec = Vec::new();
 		let n = self.len_segments();
 		// TODO: optimization opportunity - this for-loop currently compares all intersections with all curve-segments in the subpath collection
@@ -80,10 +82,8 @@ impl Subpath {
 						.intersections(&other, error, minimum_seperation)
 						.iter()
 						.filter(|&value| {
-							if include_endpoints.unwrap_or(false) {
-								return true;
-							}
-							value > &MAX_ABSOLUTE_DIFFERENCE && (1. - value) > MAX_ABSOLUTE_DIFFERENCE
+							let err = error.unwrap_or(MAX_ABSOLUTE_DIFFERENCE);
+							value > &err && (1. - value) > err
 						})
 						.map(|value| (value + (j as f64)) / (n as f64)),
 				);

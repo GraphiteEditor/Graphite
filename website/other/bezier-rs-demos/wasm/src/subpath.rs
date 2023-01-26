@@ -168,7 +168,7 @@ impl WasmSubpath {
 		let subpath_svg = self.to_default_svg();
 		let self_intersections_svg = self
 			.0
-			.self_intersections(Some(error), Some(minimum_separation), None)
+			.self_intersections(Some(error), Some(minimum_separation))
 			.iter()
 			.map(|intersection_t| {
 				let point = self.0.evaluate(ComputeType::Parametric(*intersection_t));
