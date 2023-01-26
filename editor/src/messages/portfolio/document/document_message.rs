@@ -126,6 +126,10 @@ pub enum DocumentMessage {
 	RenderDocument,
 	RollbackTransaction,
 	SaveDocument,
+	ScaleSelectedLayer {
+		delta_x: f64,
+		delta_y: f64,
+	},
 	SelectAllLayers,
 	SelectedLayersLower,
 	SelectedLayersLowerToBack,

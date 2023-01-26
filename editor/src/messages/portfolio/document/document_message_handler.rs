@@ -655,6 +655,19 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 					.into(),
 				)
 			}
+			ScaleSelectedLayer { delta_x, delta_y} => {
+				//meant to scale the layer
+				//so far it nudges the layer like NudgeSelectedLayers
+				self.backup(responses);
+				for path in self.selected_layers().map(|path| path.to_vec()) {
+					let operation = DocumentOperation::TransformLayerInViewport {
+						path,
+						transform: DAffine2::from_translation((delta_x, delta_y).into()).to_cols_array(),
+					};
+					responses.push_back(operation.into());
+				}
+				responses.push_back(BroadcastEvent::DocumentIsDirty.into());
+			}
 			SelectAllLayers => {
 				let all = self.all_layers().map(|path| path.to_vec()).collect();
 				responses.push_front(SetSelectedLayers { replacement_selected_layers: all }.into());
@@ -918,6 +931,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				DeleteSelectedLayers,
 				DuplicateSelectedLayers,
 				NudgeSelectedLayers,
+				ScaleSelectedLayer,
 				SelectedLayersLower,
 				SelectedLayersLowerToBack,
 				SelectedLayersRaise,
