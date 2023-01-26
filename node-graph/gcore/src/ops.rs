@@ -225,24 +225,22 @@ impl<'i, 's: 'i, MN: Node<'i, 's, I>, I: 'i> MapResultNode<MN, I, <MN as NodeIO<
 		Self(node, PhantomData)
 	}
 }
-
-pub struct FlatMapResultNode<'i, 's: 'i, MN: Node<'i, 's, I>, I, E>(pub MN, pub PhantomData<&'s (&'i I, E)>);
-impl<'i, 's: 'i, MN: Node<'i, 's, I, Output = Result<O, E>>, O: 'i, I, E> NodeIO<'i, Result<I, E>> for FlatMapResultNode<'i, 's, MN, I, E> {
-	type Output = <MN as NodeIO<'i, I>>::Output;
+pub struct FlatMapResultNode<I, O, E, Mn> {
+	node: Mn,
+	_i: PhantomData<I>,
+	_o: PhantomData<O>,
+	_e: PhantomData<E>,
 }
 
-impl<'i, 's: 'i, MN: Node<'i, 's, I, Output = Result<O, E>>, I, O: 'i, E> Node<'i, 's, Result<I, E>> for FlatMapResultNode<'i, 's, MN, I, E> {
-	fn eval(&'s self, input: Result<I, E>) -> <Self as NodeIO<'i, Result<I, E>>>::Output {
-		match input.map(|x| self.0.eval(x)) {
-			Ok(Ok(x)) => Ok(x),
-			Ok(Err(e)) => Err(e),
-			Err(e) => Err(e),
-		}
-	}
-}
-impl<'i, 's: 'i, MN: Node<'i, 's, I>, I> FlatMapResultNode<'i, 's, MN, I, <MN as NodeIO<'i, I>>::Output> {
-	pub fn new(node: MN) -> Self {
-		Self(node, PhantomData)
+#[node_macro::node_fn(FlatMapResultNode<_I, _O, _E>)]
+fn flat_map<_I, _O, _E, N>(input: Result<_I, _E>, node: &'node N) -> Result<_O, _E>
+where
+	N: Node<'input, 'node, _I, Output = Result<_O, _E>> + 'node,
+{
+	match input.map(|x| node.eval(x)) {
+		Ok(Ok(x)) => Ok(x),
+		Ok(Err(e)) => Err(e),
+		Err(e) => Err(e),
 	}
 }
 
@@ -282,6 +280,21 @@ mod test {
 		let fst = ValueNode((4u32, "a")).then(CloneNode::new()).then(SndNode::new());
 		let foo = &fst as &dyn Node<(), Output = &str>;
 		assert_eq!(foo.eval(()), "a");
+	}
+	#[test]
+	pub fn map_result() {
+		let fst = ValueNode(Ok(&4u32)).then(CloneNode::new()).then(MapResultNode::new(CloneNode::new()));
+		assert_eq!(fst.eval(()), Ok(4u32));
+	}
+	#[test]
+	pub fn flat_map_result() {
+		let fst = ValueNode(Ok(&4u32)).then(CloneNode::new()); //.then(FlatMapResultNode::new(FnNode::new(|x| Ok(x))));
+		let fn_node: FnNode<_, &u32, Result<&u32, _>> = FnNode::new(|_| Err(8u32));
+		assert_eq!(fn_node.eval(&4u32), Err(8u32));
+		let flat_map = FlatMapResultNode::new(ValueNode::new(fn_node));
+		//let flat_map = TypeNode::new(flat_map);
+		let fst = fst.then(flat_map);
+		assert_eq!(fst.eval(()), Err(8u32));
 	}
 	#[test]
 	pub fn add_node() {
