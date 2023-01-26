@@ -3,7 +3,7 @@ use glam::DVec2;
 use graphene_core::generic::FnNode;
 use graphene_core::ops::{AddNode, CloneNode, IdNode, TypeNode};
 use graphene_core::raster::color::Color;
-use graphene_core::raster::{Image, MapFnIterator};
+use graphene_core::raster::Image;
 use graphene_core::structural::{ComposeNode, ConsNode, Then};
 use graphene_core::value::ValueNode;
 use graphene_core::vector::subpath::Subpath;
@@ -483,7 +483,7 @@ static NODE_REGISTRY: &[(NodeIdentifier, NodeConstructor)] = &[
 	(NodeIdentifier::new("graphene_std::memo::CacheNode", &[concrete!("Image")]), |proto_node, stack| {
 		let node_id = proto_node.input.unwrap_node() as usize;
 		use graphene_core::raster::*;
-		if let ConstructionArgs::Nodes(image_args) = proto_node.construction_args {
+		if let ConstructionArgs::Nodes(_image_args) = proto_node.construction_args {
 			stack.push_fn(move |nodes| {
 				let image = nodes.get(node_id).unwrap();
 				let node: DynAnyNode<_, Image, Image, &Image> = DynAnyNode::new(CacheNode::new());

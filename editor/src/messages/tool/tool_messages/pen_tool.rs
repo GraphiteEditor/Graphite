@@ -203,6 +203,11 @@ impl Fsm for PenToolFsmState {
 					for layer_path in document.all_layers() {
 						tool_data.overlay_renderer.layer_overlay_visibility(&document.document_legacy, layer_path.to_vec(), false, responses);
 					}
+
+					// Redraw the overlays of the newly selected layers
+					for layer_path in document.selected_visible_layers() {
+						tool_data.overlay_renderer.render_subpath_overlays(&document.document_legacy, layer_path.to_vec(), responses);
+					}
 					self
 				}
 				(PenToolFsmState::Ready, PenToolMessage::DragStart) => {
@@ -229,7 +234,6 @@ impl Fsm for PenToolFsmState {
 							let op = Operation::SetManipulatorHandleMirroring {
 								layer_path: layer.to_vec(),
 								id,
-								mirror_distance: false,
 								mirror_angle: false,
 							};
 							responses.push_back(op.into());
@@ -323,7 +327,6 @@ impl Fsm for PenToolFsmState {
 								let op = Operation::SetManipulatorHandleMirroring {
 									layer_path: layer_path.clone(),
 									id: previous_id,
-									mirror_distance: false,
 									mirror_angle: false,
 								};
 								responses.push_back(op.into());
@@ -381,7 +384,6 @@ impl Fsm for PenToolFsmState {
 							let op = Operation::SetManipulatorHandleMirroring {
 								layer_path: layer_path.clone(),
 								id: first_id,
-								mirror_distance: false,
 								mirror_angle: false,
 							};
 							responses.push_back(op.into());
@@ -470,7 +472,6 @@ impl Fsm for PenToolFsmState {
 						let op = Operation::SetManipulatorHandleMirroring {
 							layer_path: layer_path.clone(),
 							id: last_id,
-							mirror_distance: should_mirror,
 							mirror_angle: should_mirror,
 						};
 						responses.push_back(op.into());

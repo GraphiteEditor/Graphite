@@ -175,12 +175,13 @@ impl ShapeEditor {
 	}
 
 	/// Move the selected points by dragging the mouse.
-	pub fn move_selected_points(&self, delta: DVec2, responses: &mut VecDeque<Message>) {
+	pub fn move_selected_points(&self, delta: DVec2, mirror_distance: bool, responses: &mut VecDeque<Message>) {
 		for layer_path in &self.selected_layers {
 			responses.push_back(
 				DocumentMessage::MoveSelectedManipulatorPoints {
 					layer_path: layer_path.clone(),
 					delta: (delta.x, delta.y),
+					mirror_distance,
 				}
 				.into(),
 			);
@@ -193,13 +194,12 @@ impl ShapeEditor {
 	}
 
 	/// Toggle if the handles should mirror angle across the anchor position.
-	pub fn toggle_handle_mirroring_on_selected(&self, toggle_angle: bool, toggle_distance: bool, responses: &mut VecDeque<Message>) {
+	pub fn toggle_handle_mirroring_on_selected(&self, toggle_angle: bool, responses: &mut VecDeque<Message>) {
 		for layer_path in &self.selected_layers {
 			responses.push_back(
 				DocumentMessage::ToggleSelectedHandleMirroring {
 					layer_path: layer_path.clone(),
 					toggle_angle,
-					toggle_distance,
 				}
 				.into(),
 			);
@@ -391,7 +391,6 @@ impl ShapeEditor {
 					Operation::SetManipulatorHandleMirroring {
 						layer_path: layer_path.to_vec(),
 						id: bezier_id,
-						mirror_distance: false,
 						mirror_angle: true,
 					}
 					.into(),

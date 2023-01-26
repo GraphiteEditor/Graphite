@@ -53,6 +53,26 @@ impl WasmSubpath {
 		subpath_svg
 	}
 
+	pub fn insert(&self, t: f64, compute_type: String) -> String {
+		let mut subpath = self.0.clone();
+		let point = match compute_type.as_str() {
+			"Euclidean" => {
+				let parameter = ComputeType::Euclidean(t);
+				subpath.insert(parameter);
+				self.0.evaluate(parameter)
+			}
+			"Parametric" => {
+				let parameter = ComputeType::Parametric(t);
+				subpath.insert(parameter);
+				self.0.evaluate(parameter)
+			}
+			_ => panic!("Unexpected ComputeType string: '{}'", compute_type),
+		};
+		let point_text = draw_circle(point, 4., RED, 1.5, WHITE);
+
+		wrap_svg_tag(format!("{}{}", WasmSubpath(subpath).to_default_svg(), point_text))
+	}
+
 	pub fn length(&self) -> String {
 		let length_text = draw_text(format!("Length: {:.2}", self.0.length(None)), 5., 193., BLACK);
 		wrap_svg_tag(format!("{}{}", self.to_default_svg(), length_text))

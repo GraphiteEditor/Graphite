@@ -1,0 +1,4 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">
+	<path class="bright" d="M8,1h2c1.65,0,3,1.35,3,3v4H8V1z" />
+	<path class="dim" d="M6,1h1v1H6C4.9,2,4,2.9,4,4v6c0,2.21,1.79,4,4,4s4-1.79,4-4V9h1v1c0,2.76-2.24,5-5,5s-5-2.24-5-5V4C3,2.35,4.35,1,6,1z" />
+</svg>
