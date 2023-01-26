@@ -18,7 +18,7 @@ pub mod gpu;
 pub mod raster;
 
 #[cfg(feature = "alloc")]
-//pub mod vector;
+pub mod vector;
 
 pub trait NodeIO<'i, Input: 'i, _WhereSelfUsableWithinA = &'i Self>: 'i {
 	type Output;

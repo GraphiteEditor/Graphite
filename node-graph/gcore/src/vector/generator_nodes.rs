@@ -1,4 +1,4 @@
-use crate::Node;
+use crate::{Node, NodeIO};
 use glam::{DAffine2, DVec2};
 
 use super::subpath::Subpath;
@@ -35,7 +35,7 @@ fn generate_path(_input: (), path_data: Subpath) -> VectorData {
 use crate::raster::Image;
 
 #[derive(Debug, Clone, Copy)]
-pub struct BlitSubpath<P: Node<(), Output = Subpath>> {
+pub struct BlitSubpath<P> {
 	path_data: P,
 }
 
@@ -68,9 +68,10 @@ pub struct TransformSubpathNode<Translation, Rotation, Scale, Shear> {
 }
 
 #[node_macro::node_fn(TransformSubpathNode)]
-fn transform_subpath(mut subpath: Subpath, translate: DVec2, rotate: f64, scale: DVec2, shear: DVec2) -> VectorData {
+fn transform_subpath(subpath: Subpath, translate: DVec2, rotate: f64, scale: DVec2, shear: DVec2) -> VectorData {
 	let (sin, cos) = rotate.sin_cos();
 
+	let mut subpath = subpath;
 	subpath.apply_affine(DAffine2::from_cols_array(&[scale.x + cos, shear.y + sin, shear.x - sin, scale.y + cos, translate.x, translate.y]));
 	subpath
 }
