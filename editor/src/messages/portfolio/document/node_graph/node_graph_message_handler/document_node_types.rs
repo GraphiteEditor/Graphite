@@ -69,7 +69,7 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 		identifier: NodeIdentifier::new("graphene_core::ops::IdNode", &[concrete!("Any<'_>")]),
 		inputs: &[DocumentInputType::new("Image", TaggedValue::Image(Image::empty()), false)],
 		outputs: &[FrontendGraphDataType::Raster],
-		properties: |_document_node, _node_id, _context| node_properties::string_properties("A bitmap image embedded into the graph"),
+		properties: |_document_node, _node_id, _context| node_properties::string_properties("A bitmap image embedded in this node"),
 	},
 	DocumentNodeType {
 		name: "Input",

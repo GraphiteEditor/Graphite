@@ -488,39 +488,21 @@ impl Layer {
 		}
 	}
 
-	/// Get a mutable reference to the Image element wrapped by the layer.
-	/// This operation will fail if the [Layer type](Layer::data) is not `LayerDataType::Image`.
-	pub fn as_image_mut(&mut self) -> Result<&mut ImageLayer, DocumentError> {
-		match &mut self.data {
-			LayerDataType::Image(img) => Ok(img),
-			_ => Err(DocumentError::NotAnImage),
-		}
-	}
-
-	/// Get a reference to the Image element wrapped by the layer.
-	/// This operation will fail if the [Layer type](Layer::data) is not `LayerDataType::Image`.
-	pub fn as_image(&self) -> Result<&ImageLayer, DocumentError> {
-		match &self.data {
-			LayerDataType::Image(img) => Ok(img),
-			_ => Err(DocumentError::NotAnImage),
-		}
-	}
-
 	/// Get a mutable reference to the NodeNetwork
 	/// This operation will fail if the [Layer type](Layer::data) is not `LayerDataType::NodeGraphFrame`.
-	pub fn as_node_network_mut(&mut self) -> Result<&mut graph_craft::document::NodeNetwork, DocumentError> {
+	pub fn as_node_graph_mut(&mut self) -> Result<&mut graph_craft::document::NodeNetwork, DocumentError> {
 		match &mut self.data {
 			LayerDataType::NodeGraphFrame(frame) => Ok(&mut frame.network),
-			_ => Err(DocumentError::NotANodeGraph),
+			_ => Err(DocumentError::NotNodeGraph),
 		}
 	}
 
 	/// Get a reference to the NodeNetwork
 	/// This operation will fail if the [Layer type](Layer::data) is not `LayerDataType::NodeGraphFrame`.
-	pub fn as_node_network(&self) -> Result<&graph_craft::document::NodeNetwork, DocumentError> {
+	pub fn as_node_graph(&self) -> Result<&graph_craft::document::NodeNetwork, DocumentError> {
 		match &self.data {
 			LayerDataType::NodeGraphFrame(frame) => Ok(&frame.network),
-			_ => Err(DocumentError::NotANodeGraph),
+			_ => Err(DocumentError::NotNodeGraph),
 		}
 	}
 
@@ -528,7 +510,7 @@ impl Layer {
 		match &self.data {
 			LayerDataType::Shape(s) => Ok(&s.style),
 			LayerDataType::Text(t) => Ok(&t.path_style),
-			_ => Err(DocumentError::NotAShape),
+			_ => Err(DocumentError::NotShape),
 		}
 	}
 
@@ -536,7 +518,7 @@ impl Layer {
 		match &mut self.data {
 			LayerDataType::Shape(s) => Ok(&mut s.style),
 			LayerDataType::Text(t) => Ok(&mut t.path_style),
-			_ => Err(DocumentError::NotAShape),
+			_ => Err(DocumentError::NotShape),
 		}
 	}
 }

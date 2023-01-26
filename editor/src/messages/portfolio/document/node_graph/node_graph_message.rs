@@ -62,7 +62,7 @@ pub enum NodeGraphMessage {
 		nodes: Vec<NodeId>,
 	},
 	SendGraph {
-		rerender: bool,
+		should_rerender: bool,
 	},
 	SetDrawing {
 		new_drawing: bool,

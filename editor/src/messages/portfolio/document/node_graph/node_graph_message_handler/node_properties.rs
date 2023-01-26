@@ -633,7 +633,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 		LayoutGroup::Row { widgets }.with_tooltip(
 			"Amplification of the text prompt's influence over the outcome. At 0, the prompt is entirely ignored.\n\
 			\n\
-			Lower values are more creative and exploratory. Higher values are more literal and uninspired, but may be lower quality.\n\
+			Lower values are more creative and exploratory. Higher values are more literal and uninspired.\n\
 			\n\
 			This parameter is otherwise known as CFG (classifier-free guidance).",
 		)

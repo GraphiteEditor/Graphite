@@ -1,10 +1,6 @@
 use crate::document::value::TaggedValue;
 use crate::generic;
 use crate::proto::{ConstructionArgs, NodeIdentifier, ProtoNetwork, ProtoNode, ProtoNodeInput, Type};
-use std::collections::{HashMap, HashSet};
-use std::sync::Mutex;
-
-pub mod value;
 
 use dyn_any::{DynAny, StaticType};
 use glam::IVec2;
@@ -12,6 +8,10 @@ use rand_chacha::{
 	rand_core::{RngCore, SeedableRng},
 	ChaCha20Rng,
 };
+use std::collections::{HashMap, HashSet};
+use std::sync::Mutex;
+
+pub mod value;
 
 pub type NodeId = u64;
 static RNG: Mutex<Option<ChaCha20Rng>> = Mutex::new(None);
@@ -227,7 +227,7 @@ impl NodeNetwork {
 		self.flatten_with_fns(node, merge_ids, generate_uuid)
 	}
 
-	/// Recursively dissolve non primitive document nodes and return a single flattened network of nodes.
+	/// Recursively dissolve non-primitive document nodes and return a single flattened network of nodes.
 	pub fn flatten_with_fns(&mut self, node: NodeId, map_ids: impl Fn(NodeId, NodeId) -> NodeId + Copy, gen_id: impl Fn() -> NodeId + Copy) {
 		let (id, mut node) = self
 			.nodes
@@ -350,8 +350,8 @@ impl NodeNetwork {
 	pub fn nested_network(&self, nested_path: &[NodeId]) -> Option<&Self> {
 		let mut network = Some(self);
 
-		for segement in nested_path {
-			network = network.and_then(|network| network.nodes.get(segement)).and_then(|node| node.implementation.get_network());
+		for segment in nested_path {
+			network = network.and_then(|network| network.nodes.get(segment)).and_then(|node| node.implementation.get_network());
 		}
 		network
 	}
@@ -360,8 +360,8 @@ impl NodeNetwork {
 	pub fn nested_network_mut(&mut self, nested_path: &[NodeId]) -> Option<&mut Self> {
 		let mut network = Some(self);
 
-		for segement in nested_path {
-			network = network.and_then(|network| network.nodes.get_mut(segement)).and_then(|node| node.implementation.get_network_mut());
+		for segment in nested_path {
+			network = network.and_then(|network| network.nodes.get_mut(segment)).and_then(|node| node.implementation.get_network_mut());
 		}
 		network
 	}
@@ -373,7 +373,7 @@ impl NodeNetwork {
 			return true;
 		}
 		// Get the output
-		let Some(output_node) = self.nodes.get(&self.output) else{
+		let Some(output_node) = self.nodes.get(&self.output) else {
 			return false;
 		};
 		let mut stack = vec![output_node];
@@ -392,8 +392,8 @@ impl NodeNetwork {
 						return true;
 					}
 					// Add the referenced node to the stack
-					let Some(ref_node) = self.nodes.get(&ref_id) else{
-						continue
+					let Some(ref_node) = self.nodes.get(&ref_id) else {
+						continue;
 					};
 					already_visited.insert(ref_id);
 					stack.push(ref_node);

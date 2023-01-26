@@ -2,8 +2,9 @@ use crate::messages::input_mapper::utility_types::misc::ActionKeys;
 use crate::messages::layout::utility_types::layout_widget::WidgetCallback;
 use crate::messages::portfolio::document::node_graph::FrontendGraphDataType;
 
-use derivative::*;
 use graphite_proc_macros::WidgetBuilder;
+
+use derivative::*;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Default, Derivative, Serialize, Deserialize, WidgetBuilder)]

@@ -555,7 +555,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				let image_node_id = 2;
 				let mut network = graph_craft::document::NodeNetwork::new_network(32, image_node_id);
 
-				let Some(image_node_type) = crate::messages::portfolio::document::node_graph::resolve_document_node_type("Image") else{ 
+				let Some(image_node_type) = crate::messages::portfolio::document::node_graph::resolve_document_node_type("Image") else {
 					warn!("Image node should be in registry");
 					return;
 				};
@@ -589,15 +589,15 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				// Transform of parent folder
 				let to_parent_folder = self.document_legacy.generate_transform_across_scope(&path[..path.len() - 1], None).unwrap_or_default();
 
-				// Align the layer with the mouse or centre of viewport
+				// Align the layer with the mouse or center of viewport
 				let viewport_location = mouse.map_or(ipp.viewport_bounds.center(), |pos| pos.into());
-				let centre_in_viewport = DAffine2::from_translation(viewport_location - ipp.viewport_bounds.top_left);
-				let centre_in_viewport_layerspace = to_parent_folder.inverse() * centre_in_viewport;
+				let center_in_viewport = DAffine2::from_translation(viewport_location - ipp.viewport_bounds.top_left);
+				let center_in_viewport_layerspace = to_parent_folder.inverse() * center_in_viewport;
 
 				// Make layer the size of the image
 				let fit_image_size = DAffine2::from_scale_angle_translation(image_size, 0., image_size / -2.);
 
-				let transform = (centre_in_viewport_layerspace * fit_image_size).to_cols_array();
+				let transform = (center_in_viewport_layerspace * fit_image_size).to_cols_array();
 				responses.push_back(DocumentOperation::SetLayerTransform { path, transform }.into());
 
 				responses.push_back(DocumentMessage::NodeGraphFrameGenerate.into());
@@ -972,7 +972,7 @@ impl DocumentMessageHandler {
 
 		// Prepare the node graph input image
 
-		let Some(node_network) = self.document_legacy.layer(&layer_path).ok().and_then(|layer|layer.as_node_network().ok()) else {
+		let Some(node_network) = self.document_legacy.layer(&layer_path).ok().and_then(|layer|layer.as_node_graph().ok()) else {
 			return None;
 		};
 
@@ -1407,7 +1407,7 @@ impl DocumentMessageHandler {
 					responses.push_back(DocumentMessage::LayerChanged { affected_layer_path: layer.clone() }.into())
 				}
 
-				responses.push_back(NodeGraphMessage::SendGraph { rerender: true }.into());
+				responses.push_back(NodeGraphMessage::SendGraph { should_rerender: true }.into());
 
 				Ok(())
 			}
@@ -1441,7 +1441,7 @@ impl DocumentMessageHandler {
 					responses.push_back(DocumentMessage::LayerChanged { affected_layer_path: layer.clone() }.into())
 				}
 
-				responses.push_back(NodeGraphMessage::SendGraph { rerender: true }.into());
+				responses.push_back(NodeGraphMessage::SendGraph { should_rerender: true }.into());
 
 				Ok(())
 			}
