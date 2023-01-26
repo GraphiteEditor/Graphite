@@ -183,6 +183,14 @@ where
 {
 	type Output = O;
 }
+impl<'i, 's: 'i, N, I: 'i, O: 'i> Node<'i, 's, I> for TypeNode<N, I, O>
+where
+	N: Node<'i, 's, I, Output = O>,
+{
+	fn eval(&'s self, input: I) -> <Self as NodeIO<'i, I>>::Output {
+		self.0.eval(input)
+	}
+}
 
 impl<'i, 's: 'i, N: Node<'i, 's, I>, I: 'i> TypeNode<N, I, <N as NodeIO<'i, I>>::Output> {
 	pub fn new(node: N) -> Self {

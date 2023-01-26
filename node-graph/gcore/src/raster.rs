@@ -14,13 +14,12 @@ fn grayscale_color_node(input: Color) -> Color {
 	Color::from_rgbaf32_unchecked(avg, avg, avg, input.a())
 }
 
-#[derive(Debug, Clone, Copy, Default)]
-pub struct MapNode<Iter, MapFn> {
+#[derive(Debug, Clone, Default)]
+pub struct MapNode<MapFn> {
 	map_fn: MapFn,
-	_iter: PhantomData<Iter>,
 }
 
-#[node_macro::node_fn(MapNode<_Iter>)]
+#[node_macro::node_fn(MapNode)]
 fn map_node<_Iter: Iterator, MapFnNode>(input: _Iter, map_fn: &'node MapFnNode) -> MapFnIterator<'input, 'input, _Iter, MapFnNode>
 where
 	MapFnNode: Node<'input, 'node, _Iter::Item> + 'node,
@@ -29,7 +28,6 @@ where
 }
 
 #[must_use = "iterators are lazy and do nothing unless consumed"]
-#[derive(Clone)]
 pub struct MapFnIterator<'i, 's, Iter, MapFn> {
 	iter: Iter,
 	map_fn: &'s MapFn,
@@ -42,7 +40,16 @@ impl<'i, 's: 'i, Iter: Debug, MapFn> Debug for MapFnIterator<'i, 's, Iter, MapFn
 	}
 }
 
-impl<'i, 's: 'i, Iter: Copy, MapFn: Copy> Copy for MapFnIterator<'i, 's, Iter, MapFn> {}
+impl<'i, 's: 'i, Iter: Clone, MapFn> Clone for MapFnIterator<'i, 's, Iter, MapFn> {
+	fn clone(&self) -> Self {
+		Self {
+			iter: self.iter.clone(),
+			map_fn: self.map_fn,
+			_phantom: core::marker::PhantomData,
+		}
+	}
+}
+impl<'i, 's: 'i, Iter: Copy, MapFn> Copy for MapFnIterator<'i, 's, Iter, MapFn> {}
 
 impl<'i, 's: 'i, Iter, MapFn> MapFnIterator<'i, 's, Iter, MapFn> {
 	pub fn new(iter: Iter, map_fn: &'s MapFn) -> Self {
@@ -56,7 +63,7 @@ impl<'i, 's: 'i, Iter, MapFn> MapFnIterator<'i, 's, Iter, MapFn> {
 
 impl<'i, 's: 'i, I: Iterator + 's, F> Iterator for MapFnIterator<'i, 's, I, F>
 where
-	F: Node<'i, 's, I::Item> + Copy + 'i,
+	F: Node<'i, 's, I::Item> + 'i,
 	Self: 'i,
 {
 	type Item = F::Output;
@@ -73,11 +80,9 @@ where
 }
 
 #[derive(Debug, Clone, Copy)]
-struct WeightedAvgNode<Iter> {
-	_iter: PhantomData<Iter>,
-}
+struct WeightedAvgNode {}
 
-#[node_macro::node_fn(WeightedAvgNode<_Iter>)]
+#[node_macro::node_fn(WeightedAvgNode)]
 fn weighted_avg_node<_Iter: Iterator<Item = (Color, f32)>>(input: _Iter) -> Color
 where
 	_Iter: Clone,
@@ -90,7 +95,7 @@ where
 	Color::from_rgbaf32_unchecked(total_r / total_weight, total_g / total_weight, total_b / total_weight, total_a / total_weight)
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct GaussianNode<Sigma> {
 	sigma: Sigma,
 }
@@ -117,7 +122,7 @@ fn image_index_iter_node(input: ImageSlice<'input>) -> core::ops::Range<u32> {
 	0..(input.width * input.height)
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct WindowNode<Radius, Image> {
 	radius: Radius,
 	image: Image,
@@ -196,7 +201,7 @@ where
 	(a, map_fn.eval(b))
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct BrightenColorNode<Brightness> {
 	brightness: Brightness,
 }
@@ -206,7 +211,7 @@ fn brighten_color_node(color: Color, brightness: f32) -> Color {
 	Color::from_rgbaf32_unchecked(per_channel(color.r()), per_channel(color.g()), per_channel(color.b()), color.a())
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct GammaColorNode<Gamma> {
 	gamma: Gamma,
 }
@@ -220,7 +225,7 @@ fn gamma_color_node(color: Color, gamma: f32) -> Color {
 #[cfg(not(target_arch = "spirv"))]
 mod hue_shift {
 	use super::*;
-	#[derive(Debug, Clone, Copy)]
+	#[derive(Debug, Clone)]
 	pub struct HueShiftColorNode<Angle> {
 		angle: Angle,
 	}
@@ -233,7 +238,7 @@ mod hue_shift {
 	}
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct ForEachNode<Iter, MapNode> {
 	map_node: MapNode,
 	_iter: PhantomData<Iter>,
@@ -328,12 +333,10 @@ mod image {
 		image.as_slice()
 	}
 
-	#[derive(Debug, Clone, Copy)]
-	pub struct CollectNode<Iter> {
-		_iter: core::marker::PhantomData<Iter>,
-	}
+	#[derive(Debug, Clone)]
+	pub struct CollectNode {}
 
-	#[node_macro::node_fn(CollectNode<_Iter>)]
+	#[node_macro::node_fn(CollectNode)]
 	fn collect_node<_Iter>(input: _Iter) -> Vec<_Iter::Item>
 	where
 		_Iter: Iterator,
@@ -375,27 +378,27 @@ where
 #[cfg(test)]
 mod test {
 	use crate::{
-		ops::TypeNode,
-		structural::{ComposeNode, Then},
+		ops::{CloneNode, TypeNode},
+		structural::Then,
 		value::ValueNode,
+		Node,
 	};
 
 	use super::*;
-	use alloc::vec::Vec;
 
 	#[test]
 	fn map_node() {
 		// let array = &mut [Color::from_rgbaf32(1.0, 0.0, 0.0, 1.0).unwrap()];
-		(&GrayscaleColorNode).eval(Color::from_rgbf32_unchecked(1., 0., 0.));
+		GrayscaleColorNode.eval(Color::from_rgbf32_unchecked(1., 0., 0.));
 		/*let map = ForEachNode(MutWrapper(GrayscaleNode));
 		(&map).eval(array.iter_mut());
 		assert_eq!(array[0], Color::from_rgbaf32(0.33333334, 0.33333334, 0.33333334, 1.0).unwrap());*/
 	}
 	#[test]
 	fn window_node() {
-		let radius = ValueNode::new(1u32);
-		static data: &[Color] = &[Color::from_rgbf32_unchecked(1., 0., 0.); 25];
-		let image = ValueNode::<_>::new(ImageSlice { width: 5, height: 5, data });
+		let radius = ValueNode::new(1u32).then(CloneNode::new());
+		static DATA: &[Color] = &[Color::from_rgbf32_unchecked(1., 0., 0.); 25];
+		let image = ValueNode::<_>::new(ImageSlice { width: 5, height: 5, data: DATA }).then(CloneNode::new());
 		let window = WindowNode::new(radius, image);
 		//let window: TypeNode<_, u32, ImageWindowIterator<'static>> = TypeNode::new(window);
 		let vec = window.eval(0);
@@ -408,27 +411,33 @@ mod test {
 
 	#[test]
 	fn blur_node() {
-		let radius = ValueNode::new(1u32);
-		let sigma = ValueNode::new(3f64);
-		static data: &[Color] = &[Color::from_rgbf32_unchecked(1., 0., 0.); 20];
-		let image = ValueNode::<_>::new(ImageSlice { width: 10, height: 2, data });
-		let window = WindowNode::new(radius, image);
+		let radius = ValueNode::new(1u32).then(CloneNode::new());
+		let sigma = ValueNode::new(3f64).then(CloneNode::new());
+		static DATA: &[Color] = &[Color::from_rgbf32_unchecked(1., 0., 0.); 20];
+		let image = ValueNode::<_>::new(ImageSlice { width: 10, height: 2, data: DATA }).then(CloneNode::new());
+		let window = WindowNode::new(radius, image.clone());
 		let window: TypeNode<_, u32, ImageWindowIterator<'static>> = TypeNode::new(window);
-		let pos_to_dist = MapSndNode::new(DistanceNode);
+		let distance = ValueNode::new(DistanceNode::new());
+		let pos_to_dist = MapSndNode::new(distance);
+		let pos_to_dist = ValueNode(pos_to_dist);
 		let distance = window.then(MapNode::new(pos_to_dist));
-		let map_gaussian = MapSndNode::new(GaussianNode::new(sigma));
-		let map_distances: MapNode<_, MapSndNode<_>> = MapNode::new(map_gaussian);
+		let map_gaussian = MapSndNode::new(ValueNode(GaussianNode::new(sigma)));
+		let map_gaussian: TypeNode<_, (_, f32), (_, f32)> = TypeNode::new(map_gaussian);
+		let map_gaussian = ValueNode(map_gaussian);
+		let map_gaussian: TypeNode<_, (), &_> = TypeNode::new(map_gaussian);
+		let map_distances = MapNode::new(map_gaussian);
+		let map_distances: TypeNode<_, _, MapFnIterator<'_, '_, _, _>> = TypeNode::new(map_distances);
 		let gaussian_iter = distance.then(map_distances);
 		let avg = gaussian_iter.then(WeightedAvgNode::new());
 		let avg: TypeNode<_, u32, Color> = TypeNode::new(avg);
-		let blur_iter = MapNode::new(avg);
+		let blur_iter = MapNode::new(ValueNode::new(avg));
 		let blur = image.then(ImageIndexIterNode).then(blur_iter);
 		let blur: TypeNode<_, (), MapFnIterator<_, _>> = TypeNode::new(blur);
-		let collect = CollectNode {};
+		let collect = CollectNode::new();
 		let vec = collect.eval(0..10);
 		assert_eq!(vec.len(), 10);
-		let vec = ComposeNode::new(blur, collect);
-		let vec: TypeNode<_, (), Vec<Color>> = TypeNode::new(vec);
-		let image = vec.eval(());
+		let _ = blur.eval(());
+		let vec = blur.then(collect);
+		let _image = vec.eval(());
 	}
 }

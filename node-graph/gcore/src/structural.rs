@@ -1,8 +1,8 @@
-use dyn_any::{StaticType, StaticTypeSized};
+use dyn_any::StaticTypeSized;
 
 use crate::{Node, NodeIO};
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct ComposeNode<First, Second> {
 	first: First,
 	second: Second,
