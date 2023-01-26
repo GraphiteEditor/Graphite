@@ -144,12 +144,12 @@ pub fn node_fn(attr: TokenStream, item: TokenStream) -> TokenStream {
 
 		impl <#(#args),*> #node_name<#(#args),*>
 		{
-				pub fn new(#(#parameter_idents: #struct_generics_iter),*) -> Self{
-					Self{
-						#(#parameter_idents,)*
-						#(#arg_idents: core::marker::PhantomData,)*
-					}
+			pub const fn new(#(#parameter_idents: #struct_generics_iter),*) -> Self{
+				Self{
+					#(#parameter_idents,)*
+					#(#arg_idents: core::marker::PhantomData,)*
 				}
+			}
 		}
 
 	}

@@ -17,7 +17,7 @@ impl<'i, 's: 'i, L: Add<R, Output = O> + 'i, R: 'i, O: 'i> Node<'i, 's, (L, R)> 
 }
 
 impl AddNode {
-	pub fn new() -> Self {
+	pub const fn new() -> Self {
 		Self
 	}
 }
@@ -292,7 +292,6 @@ mod test {
 		let fn_node: FnNode<_, &u32, Result<&u32, _>> = FnNode::new(|_| Err(8u32));
 		assert_eq!(fn_node.eval(&4u32), Err(8u32));
 		let flat_map = FlatMapResultNode::new(ValueNode::new(fn_node));
-		//let flat_map = TypeNode::new(flat_map);
 		let fst = fst.then(flat_map);
 		assert_eq!(fst.eval(()), Err(8u32));
 	}
