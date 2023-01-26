@@ -1,4 +1,4 @@
-use dyn_any::{DynAny, StaticType, StaticTypeSized};
+use dyn_any::{DynAny, StaticType};
 pub use graphene_core::{generic, ops /*, structural*/, Node, NodeIO};
 use std::{marker::PhantomData, pin::Pin};
 
@@ -49,7 +49,7 @@ where
 	N: Node<'input, 'node, Any<'input>, Output = Any<'input>> + 'node,
 {
 	let node_name = core::any::type_name::<N>();
-	let out = dyn_any::downcast(node.eval(input)).expect(format!("DynAnyNode Input in:\n{node_name}").as_str());
+	let out = dyn_any::downcast(node.eval(input)).unwrap_or_else(|_| panic!("DynAnyNode Input in:\n{node_name}"));
 	*out
 }
 
@@ -72,13 +72,13 @@ impl<N: Clone, I: StaticType, O: StaticType> Clone for DowncastBothNode<I, O, N>
 impl<N: Copy, I: StaticType, O: StaticType> Copy for DowncastBothNode<I, O, N> {}
 
 #[node_macro::node_fn(DowncastBothNode<_I,_O>)]
-fn downcast_both<N, _O: StaticType, _I: StaticType>(input: _I, node: &'input N) -> _O
+fn downcast_both<N, _O: StaticType, _I: StaticType>(input: _I, node: &'node N) -> _O
 where
-	N: Node<'input, 'node, Any<'input>, Output = Any<'input>>,
+	N: Node<'input, 'node, Any<'input>, Output = Any<'input>> + 'node,
 {
-	let node = core::any::type_name::<N>();
+	let node_name = core::any::type_name::<N>();
 	let input = Box::new(input);
-	let out = dyn_any::downcast(input).expect(format!("DynAnyNode Input in:\n{node}").as_str());
+	let out = dyn_any::downcast(node.eval(input)).unwrap_or_else(|_| panic!("DynAnyNode Input in:\n{node_name}"));
 	*out
 }
 
