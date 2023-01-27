@@ -1,21 +1,5 @@
-import { tSliderOptions } from "@/utils/options";
+import { tSliderOptions, intersectionErrorOptions, intersectionMinimumSeperationOptions } from "@/utils/options";
 import { ComputeType, SliderOption, SubpathCallback, WasmSubpathInstance } from "@/utils/types";
-
-const tErrorOptions = {
-	variable: "error",
-	min: 0.001,
-	max: 0.525,
-	step: 0.0025,
-	default: 0.02,
-};
-
-const tMinimumSeperationOptions = {
-	variable: "minimum_seperation",
-	min: 0.001,
-	max: 0.25,
-	step: 0.001,
-	default: 0.05,
-};
 
 const subpathFeatures = {
 	Constructor: {
@@ -50,7 +34,7 @@ const subpathFeatures = {
 				options.error,
 				options.minimum_seperation
 			),
-		sliderOptions: [tErrorOptions, tMinimumSeperationOptions],
+		sliderOptions: [intersectionErrorOptions, intersectionMinimumSeperationOptions],
 	},
 	"Intersect (Quadratic segment)": {
 		callback: (subpath: WasmSubpathInstance, options: Record<string, number>): string =>
@@ -63,7 +47,7 @@ const subpathFeatures = {
 				options.error,
 				options.minimum_seperation
 			),
-		sliderOptions: [tErrorOptions, tMinimumSeperationOptions],
+		sliderOptions: [intersectionErrorOptions, intersectionMinimumSeperationOptions],
 	},
 	"Intersect (Cubic segment)": {
 		callback: (subpath: WasmSubpathInstance, options: Record<string, number>): string =>
@@ -77,11 +61,11 @@ const subpathFeatures = {
 				options.error,
 				options.minimum_seperation
 			),
-		sliderOptions: [tErrorOptions, tMinimumSeperationOptions],
+		sliderOptions: [intersectionErrorOptions, intersectionMinimumSeperationOptions],
 	},
 	"Self Intersect": {
 		callback: (subpath: WasmSubpathInstance, options: Record<string, number>): string => subpath.self_intersections(options.error, options.minimum_seperation),
-		sliderOptions: [tErrorOptions, tMinimumSeperationOptions],
+		sliderOptions: [intersectionErrorOptions, intersectionMinimumSeperationOptions],
 	},
 };
 
