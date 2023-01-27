@@ -1,5 +1,5 @@
 use crate::messages::frontend::utility_types::MouseCursorIcon;
-use crate::messages::input_mapper::utility_types::input_keyboard::{Key, KeysGroup, MouseMotion};
+use crate::messages::input_mapper::utility_types::input_keyboard::{Key, MouseMotion};
 use crate::messages::layout::utility_types::layout_widget::PropertyHolder;
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
@@ -52,23 +52,7 @@ impl PropertyHolder for NavigateTool {}
 
 impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for NavigateTool {
 	fn process_message(&mut self, message: ToolMessage, tool_data: ToolActionHandlerData<'a>, responses: &mut VecDeque<Message>) {
-		if message == ToolMessage::UpdateHints {
-			self.fsm_state.update_hints(responses);
-			return;
-		}
-
-		if message == ToolMessage::UpdateCursor {
-			self.fsm_state.update_cursor(responses);
-			return;
-		}
-
-		let new_state = self.fsm_state.transition(message, &mut self.tool_data, tool_data, &(), responses);
-
-		if self.fsm_state != new_state {
-			self.fsm_state = new_state;
-			self.fsm_state.update_hints(responses);
-			self.fsm_state.update_cursor(responses);
-		}
+		self.fsm_state.process_event(message, &mut self.tool_data, tool_data, &(), responses, true);
 	}
 
 	fn actions(&self) -> ActionList {
@@ -99,18 +83,13 @@ impl ToolTransition for NavigateTool {
 	}
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 enum NavigateToolFsmState {
+	#[default]
 	Ready,
 	Panning,
 	Tilting,
 	Zooming,
-}
-
-impl Default for NavigateToolFsmState {
-	fn default() -> Self {
-		NavigateToolFsmState::Ready
-	}
 }
 
 #[derive(Clone, Debug, Default)]
@@ -192,76 +171,13 @@ impl Fsm for NavigateToolFsmState {
 	fn update_hints(&self, responses: &mut VecDeque<Message>) {
 		let hint_data = match self {
 			NavigateToolFsmState::Ready => HintData(vec![
-				HintGroup(vec![
-					HintInfo {
-						key_groups: vec![],
-						key_groups_mac: None,
-						mouse: Some(MouseMotion::Lmb),
-						label: String::from("Zoom In"),
-						plus: false,
-					},
-					HintInfo {
-						key_groups: vec![KeysGroup(vec![Key::Shift]).into()],
-						key_groups_mac: None,
-						mouse: None,
-						label: String::from("Zoom Out"),
-						plus: true,
-					},
-				]),
-				HintGroup(vec![
-					HintInfo {
-						key_groups: vec![],
-						key_groups_mac: None,
-						mouse: Some(MouseMotion::LmbDrag),
-						label: String::from("Zoom"),
-						plus: false,
-					},
-					HintInfo {
-						key_groups: vec![KeysGroup(vec![Key::Control]).into()],
-						key_groups_mac: None,
-						mouse: None,
-						label: String::from("Snap Increments"),
-						plus: true,
-					},
-				]),
-				HintGroup(vec![HintInfo {
-					key_groups: vec![],
-					key_groups_mac: None,
-					mouse: Some(MouseMotion::MmbDrag),
-					label: String::from("Pan"),
-					plus: false,
-				}]),
-				HintGroup(vec![
-					HintInfo {
-						key_groups: vec![],
-						key_groups_mac: None,
-						mouse: Some(MouseMotion::RmbDrag),
-						label: String::from("Tilt"),
-						plus: false,
-					},
-					HintInfo {
-						key_groups: vec![KeysGroup(vec![Key::Control]).into()],
-						key_groups_mac: None,
-						mouse: None,
-						label: String::from("Snap 15°"),
-						plus: true,
-					},
-				]),
+				HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Zoom In"), HintInfo::key([Key::Shift], "Zoom Out").prepend_plus()]),
+				HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Zoom"), HintInfo::key([Key::Control], "Snap Increments").prepend_plus()]),
+				HintGroup(vec![HintInfo::mouse(MouseMotion::MmbDrag, "Pan")]),
+				HintGroup(vec![HintInfo::mouse(MouseMotion::RmbDrag, "Tilt"), HintInfo::key([Key::Control], "Snap 15°").prepend_plus()]),
 			]),
-			NavigateToolFsmState::Tilting => HintData(vec![HintGroup(vec![HintInfo {
-				key_groups: vec![KeysGroup(vec![Key::Control]).into()],
-				key_groups_mac: None,
-				mouse: None,
-				label: String::from("Snap 15°"),
-				plus: false,
-			}])]),
-			NavigateToolFsmState::Zooming => HintData(vec![HintGroup(vec![HintInfo {
-				key_groups: vec![KeysGroup(vec![Key::Control]).into()],
-				key_groups_mac: None,
-				mouse: None,
-				label: String::from("Snap Increments"),
-				plus: false,
-			}])]),
+			NavigateToolFsmState::Tilting => HintData(vec![HintGroup(vec![HintInfo::key([Key::Control], "Snap 15°")])]),
+			NavigateToolFsmState::Zooming => HintData(vec![HintGroup(vec![HintInfo::key([Key::Control], "Snap Increments")])]),
 			_ => HintData(Vec::new()),
 		};
 

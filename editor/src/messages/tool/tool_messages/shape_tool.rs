@@ -1,7 +1,6 @@
-use crate::consts::DRAG_THRESHOLD;
 use crate::messages::frontend::utility_types::MouseCursorIcon;
-use crate::messages::input_mapper::utility_types::input_keyboard::{Key, KeysGroup, MouseMotion};
-use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, PropertyHolder, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
+use crate::messages::input_mapper::utility_types::input_keyboard::{Key, MouseMotion};
+use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, PropertyHolder, WidgetLayout};
 use crate::messages::layout::utility_types::widgets::input_widgets::NumberInput;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::resize::Resize;
@@ -69,32 +68,20 @@ impl ToolMetadata for ShapeTool {
 
 impl PropertyHolder for ShapeTool {
 	fn properties(&self) -> Layout {
-		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row {
-			widgets: vec![WidgetHolder::new(Widget::NumberInput(NumberInput {
-				label: "Sides".into(),
-				value: Some(self.options.vertices as f64),
-				is_integer: true,
-				min: Some(3.),
-				max: Some(1000.),
-				on_update: WidgetCallback::new(|number_input: &NumberInput| ShapeToolMessage::UpdateOptions(ShapeOptionsUpdate::Vertices(number_input.value.unwrap() as u32)).into()),
-				..NumberInput::default()
-			}))],
-		}]))
+		let sides = NumberInput::new(Some(self.options.vertices as f64))
+			.label("Sides")
+			.int()
+			.min(3.)
+			.max(1000.)
+			.mode(crate::messages::layout::utility_types::widget_prelude::NumberInputMode::Increment)
+			.on_update(|number_input: &NumberInput| ShapeToolMessage::UpdateOptions(ShapeOptionsUpdate::Vertices(number_input.value.unwrap() as u32)).into())
+			.widget_holder();
+		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row { widgets: vec![sides] }]))
 	}
 }
 
 impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for ShapeTool {
 	fn process_message(&mut self, message: ToolMessage, tool_data: ToolActionHandlerData<'a>, responses: &mut VecDeque<Message>) {
-		if message == ToolMessage::UpdateHints {
-			self.fsm_state.update_hints(responses);
-			return;
-		}
-
-		if message == ToolMessage::UpdateCursor {
-			self.fsm_state.update_cursor(responses);
-			return;
-		}
-
 		if let ToolMessage::Shape(ShapeToolMessage::UpdateOptions(action)) = message {
 			match action {
 				ShapeOptionsUpdate::Vertices(vertices) => self.options.vertices = vertices,
@@ -102,13 +89,7 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for ShapeTool {
 			return;
 		}
 
-		let new_state = self.fsm_state.transition(message, &mut self.tool_data, tool_data, &self.options, responses);
-
-		if self.fsm_state != new_state {
-			self.fsm_state = new_state;
-			self.fsm_state.update_hints(responses);
-			self.fsm_state.update_cursor(responses);
-		}
+		self.fsm_state.process_event(message, &mut self.tool_data, tool_data, &self.options, responses, true);
 	}
 
 	fn actions(&self) -> ActionList {
@@ -137,17 +118,13 @@ impl ToolTransition for ShapeTool {
 	}
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 enum ShapeToolFsmState {
+	#[default]
 	Ready,
 	Drawing,
 }
 
-impl Default for ShapeToolFsmState {
-	fn default() -> Self {
-		ShapeToolFsmState::Ready
-	}
-}
 #[derive(Clone, Debug, Default)]
 struct ShapeToolData {
 	sides: u32,
@@ -201,11 +178,7 @@ impl Fsm for ShapeToolFsmState {
 					state
 				}
 				(Drawing, DragStop) => {
-					match shape_data.viewport_drag_start(document).distance(input.mouse.position) <= DRAG_THRESHOLD {
-						true => responses.push_back(DocumentMessage::AbortTransaction.into()),
-						false => responses.push_back(DocumentMessage::CommitTransaction.into()),
-					}
-
+					input.mouse.finish_transaction(shape_data.viewport_drag_start(document), responses);
 					shape_data.cleanup(responses);
 
 					Ready
@@ -227,44 +200,11 @@ impl Fsm for ShapeToolFsmState {
 	fn update_hints(&self, responses: &mut VecDeque<Message>) {
 		let hint_data = match self {
 			ShapeToolFsmState::Ready => HintData(vec![HintGroup(vec![
-				HintInfo {
-					key_groups: vec![],
-					key_groups_mac: None,
-					mouse: Some(MouseMotion::LmbDrag),
-					label: String::from("Draw Shape"),
-					plus: false,
-				},
-				HintInfo {
-					key_groups: vec![KeysGroup(vec![Key::Shift]).into()],
-					key_groups_mac: None,
-					mouse: None,
-					label: String::from("Constrain 1:1 Aspect"),
-					plus: true,
-				},
-				HintInfo {
-					key_groups: vec![KeysGroup(vec![Key::Alt]).into()],
-					key_groups_mac: None,
-					mouse: None,
-					label: String::from("From Center"),
-					plus: true,
-				},
+				HintInfo::mouse(MouseMotion::LmbDrag, "Draw Shape"),
+				HintInfo::key([Key::Shift], "Constrain 1:1 Aspect").prepend_plus(),
+				HintInfo::key([Key::Alt], "From Center").prepend_plus(),
 			])]),
-			ShapeToolFsmState::Drawing => HintData(vec![HintGroup(vec![
-				HintInfo {
-					key_groups: vec![KeysGroup(vec![Key::Shift]).into()],
-					key_groups_mac: None,
-					mouse: None,
-					label: String::from("Constrain 1:1 Aspect"),
-					plus: false,
-				},
-				HintInfo {
-					key_groups: vec![KeysGroup(vec![Key::Alt]).into()],
-					key_groups_mac: None,
-					mouse: None,
-					label: String::from("From Center"),
-					plus: false,
-				},
-			])]),
+			ShapeToolFsmState::Drawing => HintData(vec![HintGroup(vec![HintInfo::key([Key::Shift], "Constrain 1:1 Aspect"), HintInfo::key([Key::Alt], "From Center")])]),
 		};
 
 		responses.push_back(FrontendMessage::UpdateInputHints { hint_data }.into());

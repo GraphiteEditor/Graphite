@@ -1,4 +1,6 @@
 use super::tool_messages::*;
+use crate::messages::input_mapper::utility_types::input_keyboard::Key;
+use crate::messages::input_mapper::utility_types::input_keyboard::KeysGroup;
 use crate::messages::input_mapper::utility_types::input_keyboard::LayoutKeysGroup;
 use crate::messages::input_mapper::utility_types::input_keyboard::MouseMotion;
 use crate::messages::input_mapper::utility_types::macros::action_keys;
@@ -32,6 +34,48 @@ pub trait Fsm {
 
 	fn update_hints(&self, responses: &mut VecDeque<Message>);
 	fn update_cursor(&self, responses: &mut VecDeque<Message>);
+
+	fn standard_tool_messages(&self, message: &ToolMessage, messages: &mut VecDeque<Message>) -> bool {
+		// Check for standard hits or cursor events
+		match message {
+			ToolMessage::UpdateHints => {
+				self.update_hints(messages);
+				true
+			}
+			ToolMessage::UpdateCursor => {
+				self.update_cursor(messages);
+				true
+			}
+			_ => false,
+		}
+	}
+	fn process_event(
+		&mut self,
+		message: ToolMessage,
+		tool_data: &mut Self::ToolData,
+		transition_data: ToolActionHandlerData,
+		options: &Self::ToolOptions,
+		messages: &mut VecDeque<Message>,
+		update_cursor_on_transition: bool,
+	) where
+		Self: PartialEq + Sized + Copy,
+	{
+		if self.standard_tool_messages(&message, messages) {
+			return;
+		}
+
+		// Transition the tool
+		let new_state = self.transition(message, tool_data, transition_data, options, messages);
+
+		// Update state
+		if *self != new_state {
+			*self = new_state;
+			self.update_hints(messages);
+			if update_cursor_on_transition {
+				self.update_cursor(messages);
+			}
+		}
+	}
 }
 
 #[derive(Debug, Clone)]
@@ -453,6 +497,47 @@ pub struct HintInfo {
 	pub label: String,
 	/// Draws a prepended "+" symbol which indicates that this is a refinement upon a previous hint in the group.
 	pub plus: bool,
+}
+
+impl HintInfo {
+	pub fn key(keys: impl IntoIterator<Item = Key>, label: impl Into<String>) -> Self {
+		let keys: Vec<_> = keys.into_iter().collect();
+		let convert_key_to_mac = |&key| if key == Key::Control { Key::Command } else { key };
+		Self {
+			key_groups_mac: keys.contains(&Key::Control).then(|| vec![KeysGroup(keys.iter().map(convert_key_to_mac).collect::<Vec<_>>()).into()]),
+			key_groups: vec![KeysGroup(keys).into()],
+			mouse: None,
+			label: label.into(),
+			plus: false,
+		}
+	}
+	pub fn mouse(mouse_motion: MouseMotion, label: impl Into<String>) -> Self {
+		Self {
+			key_groups_mac: None,
+			key_groups: vec![],
+			mouse: Some(mouse_motion),
+			label: label.into(),
+			plus: false,
+		}
+	}
+	pub fn arrow_keys(label: impl Into<String>) -> Self {
+		HintInfo {
+			key_groups: vec![
+				KeysGroup(vec![Key::ArrowUp]).into(),
+				KeysGroup(vec![Key::ArrowRight]).into(),
+				KeysGroup(vec![Key::ArrowDown]).into(),
+				KeysGroup(vec![Key::ArrowLeft]).into(),
+			],
+			key_groups_mac: None,
+			mouse: None,
+			label: label.into(),
+			plus: false,
+		}
+	}
+	pub fn prepend_plus(mut self) -> Self {
+		self.plus = true;
+		self
+	}
 }
 
 #[cfg(test)]

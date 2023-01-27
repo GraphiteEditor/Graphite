@@ -423,6 +423,10 @@ impl<const LENGTH: usize> BitVector<LENGTH> {
 		(self.0[offset] & bit) != 0
 	}
 
+	pub fn key(&self, key: Key) -> bool {
+		self.get(key as usize)
+	}
+
 	pub fn is_empty(&self) -> bool {
 		let mut result = 0;
 
