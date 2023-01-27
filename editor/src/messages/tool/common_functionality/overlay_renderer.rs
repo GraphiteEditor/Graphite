@@ -62,7 +62,7 @@ impl OverlayRenderer {
 
 					// Only view in and out handles if they are not on top of the anchor
 					let [in_handle, out_handle] = {
-						let Some(anchor) = manipulator_group.points[ManipulatorType::Anchor].as_ref() else{
+						let Some(anchor) = manipulator_group.points[ManipulatorType::Anchor].as_ref() else {
 							continue;
 						};
 

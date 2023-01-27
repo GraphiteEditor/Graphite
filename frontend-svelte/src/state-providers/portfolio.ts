@@ -4,7 +4,7 @@ import {writable} from "svelte/store";
 
 import { downloadFileText, downloadFileBlob, upload } from "@/utility-functions/files";
 import { imaginateGenerate, imaginateCheckConnection, imaginateTerminate, updateBackendImage } from "@/utility-functions/imaginate";
-import { rasterizeSVG, rasterizeSVGCanvas } from "@/utility-functions/rasterization";
+import { extractPixelData, rasterizeSVG, rasterizeSVGCanvas } from "@/utility-functions/rasterization";
 import { type Editor } from "@/wasm-communication/editor";
 import {
 	type FrontendDocumentDetails,
@@ -52,7 +52,8 @@ export function createPortfolioState(editor: Editor) {
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerImport, async () => {
 		const data = await upload("image/*", "data");
-		editor.instance.pasteImage(data.type, Uint8Array.from(data.content));
+		const imageData = await extractPixelData(new Blob([data.content], { type: data.type }));
+		editor.instance.pasteImage(new Uint8Array(imageData.data), imageData.width, imageData.height);
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerFileDownload, (triggerFileDownload) => {
 		downloadFileText(triggerFileDownload.name, triggerFileDownload.document);

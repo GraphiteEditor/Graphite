@@ -276,14 +276,13 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 			} => {
 				let get = |name: &str| IMAGINATE_NODE.inputs.iter().position(|input| input.name == name).unwrap_or_else(|| panic!("Input {name} not found"));
 
-				let data = image_data.chunks_exact(4).map(|v| graphene_core::raster::color::Color::from_rgba8(v[0], v[1], v[2], v[3])).collect();
-				let image = Image { width, height, data };
+				let image = Image::from_image_data(&image_data, width, height);
 				responses.push_back(
 					PortfolioMessage::DocumentPassMessage {
 						document_id,
 						message: NodeGraphMessage::SetQualifiedInputValue {
-							layer_path: layer_path.clone(),
-							node_path: node_path.clone(),
+							layer_path,
+							node_path,
 							input_index: get("Cached Data"),
 							value: TaggedValue::RcImage(Some(std::sync::Arc::new(image))),
 						}
@@ -769,15 +768,13 @@ impl PortfolioMessageHandler {
 		&mut self,
 		document_id: u64,
 		layer_path: Vec<LayerId>,
-		(image_data, size): (Vec<u8>, (u32, u32)),
+		(image_data, (width, height)): (Vec<u8>, (u32, u32)),
 		imaginate_node: Option<Vec<NodeId>>,
 		preferences: &PreferencesMessageHandler,
 		responses: &mut VecDeque<Message>,
 	) -> Result<(), String> {
 		// Reformat the input image data into an f32 image
-		let data = image_data.chunks_exact(4).map(|v| graphene_core::raster::color::Color::from_rgba8(v[0], v[1], v[2], v[3])).collect();
-		let (width, height) = size;
-		let image = graphene_core::raster::Image { width, height, data };
+		let image = graphene_core::raster::Image::from_image_data(&image_data, width, height);
 
 		// Get the node graph layer
 		let document = self.documents.get_mut(&document_id).ok_or_else(|| "Invalid document".to_string())?;
@@ -885,8 +882,7 @@ impl PortfolioMessageHandler {
 
 			// If no image was generated, use the input image
 			if image.width == 0 || image.height == 0 {
-				let data = image_data.chunks_exact(4).map(|v| graphene_core::raster::color::Color::from_rgba8(v[0], v[1], v[2], v[3])).collect();
-				image = graphene_core::raster::Image { width, height, data };
+				image = graphene_core::raster::Image::from_image_data(&image_data, width, height);
 			}
 
 			let (image_data, _size) = Self::encode_img(image, None, image::ImageOutputFormat::Bmp)?;

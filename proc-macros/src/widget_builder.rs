@@ -16,10 +16,10 @@ fn has_attribute(attrs: &[Attribute], target: &str) -> bool {
 /// Returns the new input type and a conversion to the origional.
 fn easier_string_assignment(field_ty: &Type, field_ident: &Ident) -> (TokenStream2, TokenStream2) {
 	if let Type::Path(type_path) = field_ty {
-		if let Some(last_segement) = type_path.path.segments.last() {
+		if let Some(last_segment) = type_path.path.segments.last() {
 			// Check if this type is a `String`
 			// Based on https://stackoverflow.com/questions/66906261/rust-proc-macro-derive-how-do-i-check-if-a-field-is-of-a-primitive-type-like-b
-			if last_segement.ident == Ident::new("String", last_segement.ident.span()) {
+			if last_segment.ident == Ident::new("String", last_segment.ident.span()) {
 				return (
 					quote::quote_spanned!(type_path.span() => impl Into<String>),
 					quote::quote_spanned!(field_ident.span() => #field_ident.into()),
@@ -49,10 +49,10 @@ fn find_type_and_assignment(field: &Field) -> syn::Result<(TokenStream2, TokenSt
 
 	// Check if type is `WidgetCallback`
 	if let Type::Path(type_path) = field_ty {
-		if let Some(last_segement) = type_path.path.segments.last() {
-			if let PathArguments::AngleBracketed(generic_args) = &last_segement.arguments {
+		if let Some(last_segment) = type_path.path.segments.last() {
+			if let PathArguments::AngleBracketed(generic_args) = &last_segment.arguments {
 				if let Some(first_generic) = generic_args.args.first() {
-					if last_segement.ident == Ident::new("WidgetCallback", last_segement.ident.span()) {
+					if last_segment.ident == Ident::new("WidgetCallback", last_segment.ident.span()) {
 						// Assign builder pattern to assign the closure directly
 						function_input_ty = quote::quote_spanned!(field_ty.span() => impl Fn(&#first_generic) -> crate::messages::message::Message + 'static + Send + Sync);
 						assignment = quote::quote_spanned!(field_ident.span() => crate::messages::layout::utility_types::layout_widget::WidgetCallback::new(#field_ident));
