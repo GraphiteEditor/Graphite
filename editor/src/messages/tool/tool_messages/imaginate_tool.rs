@@ -2,7 +2,7 @@ use crate::consts::DRAG_THRESHOLD;
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, KeysGroup, MouseMotion};
 use crate::messages::layout::utility_types::layout_widget::PropertyHolder;
-use crate::messages::portfolio::document::node_graph::IMAGINATE_NODE;
+use crate::messages::portfolio::document::node_graph::{NodeImplementation, IMAGINATE_NODE};
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::resize::Resize;
 use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
