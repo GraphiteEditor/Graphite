@@ -130,7 +130,7 @@ static STATIC_NODES: &[DocumentNodeType] = &[
 	DocumentNodeType {
 		name: "Image",
 		category: "Ignore",
-		identifier: NodeIdentifier::new("graphene_core::ops::IdNode", &[concrete!("Any<'_>")]),
+		identifier: NodeImplementation::proto("graphene_core::ops::IdNode", &[concrete!("Any<'_>")]),
 		inputs: &[DocumentInputType::new("Image", TaggedValue::Image(Image::empty()), false)],
 		outputs: &[FrontendGraphDataType::Raster],
 		properties: |_document_node, _node_id, _context| node_properties::string_properties("A bitmap image embedded in this node"),
