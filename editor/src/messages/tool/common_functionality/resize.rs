@@ -18,11 +18,11 @@ pub struct Resize {
 
 impl Resize {
 	/// Starts a resize, assigning the snap targets and snapping the starting position.
-	pub fn start(&mut self, responses: &mut VecDeque<Message>, document: &DocumentMessageHandler, mouse_position: DVec2, font_cache: &FontCache) {
-		self.snap_manager.start_snap(document, document.bounding_boxes(None, None, font_cache), true, true);
-		self.snap_manager.add_all_document_handles(document, &[], &[], &[]);
+	pub fn start(&mut self, responses: &mut VecDeque<Message>, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, font_cache: &FontCache) {
+		self.snap_manager.start_snap(document, input, document.bounding_boxes(None, None, font_cache), true, true);
+		self.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
 		let root_transform = document.document_legacy.root.transform;
-		self.drag_start = root_transform.inverse().transform_point2(self.snap_manager.snap_position(responses, document, mouse_position));
+		self.drag_start = root_transform.inverse().transform_point2(self.snap_manager.snap_position(responses, document, input.mouse.position));
 	}
 
 	/// Calculate the drag start position in viewport space.
