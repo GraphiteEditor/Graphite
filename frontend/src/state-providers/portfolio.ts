@@ -1,10 +1,9 @@
 /* eslint-disable max-classes-per-file */
 import { reactive, readonly } from "vue";
 
-import { extractPixelData } from "@/utility-functions/extract-pixel-data";
 import { downloadFileText, downloadFileBlob, upload } from "@/utility-functions/files";
 import { imaginateGenerate, imaginateCheckConnection, imaginateTerminate, updateBackendImage } from "@/utility-functions/imaginate";
-import { rasterizeSVG, rasterizeSVGCanvas } from "@/utility-functions/rasterization";
+import { extractPixelData, rasterizeSVG, rasterizeSVGCanvas } from "@/utility-functions/rasterization";
 import { type Editor } from "@/wasm-communication/editor";
 import {
 	type FrontendDocumentDetails,

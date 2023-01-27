@@ -227,9 +227,8 @@
 <script lang="ts">
 import { defineComponent, nextTick } from "vue";
 
-import { extractPixelData } from "@/utility-functions/extract-pixel-data";
 import { textInputCleanup } from "@/utility-functions/keyboard-entry";
-import { rasterizeSVGCanvas } from "@/utility-functions/rasterization";
+import { extractPixelData, rasterizeSVGCanvas } from "@/utility-functions/rasterization";
 import { type DisplayEditableTextbox, type MouseCursorIcon, type XY } from "@/wasm-communication/messages";
 
 import EyedropperPreview, { ZOOM_WINDOW_DIMENSIONS } from "@/components/floating-menus/EyedropperPreview.vue";
