@@ -109,6 +109,8 @@ fn document_node_types() -> Vec<DocumentNodeType> {
 	vec
 }
 
+// We use the once cell for lazy initialization to avoid the overhead of reconstructing the node list every time.
+// TODO: make document nodes not require a `'static` lifetime to avoid having to split the construction into const and non-const parts.
 static DOCUMENT_NODE_TYPES: once_cell::sync::Lazy<Vec<DocumentNodeType>> = once_cell::sync::Lazy::new(document_node_types);
 
 // TODO: Dynamic node library
