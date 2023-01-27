@@ -139,68 +139,24 @@ impl Fsm for ImaginateToolFsmState {
 					shape_data.path = Some(document.get_path_for_new_layer());
 					responses.push_back(DocumentMessage::DeselectAllLayers.into());
 
-					use graph_craft::{document::*, generic, proto::*};
+					use graph_craft::document::*;
 
 					let imaginate_node_type = IMAGINATE_NODE;
-					let num_inputs = imaginate_node_type.inputs.len();
 
-					let imaginate_inner_network = NodeNetwork {
-						inputs: (0..num_inputs).map(|_| 0).collect(),
-						output: 0,
-						nodes: [(
-							0,
-							DocumentNode {
-								name: format!("{}_impl", imaginate_node_type.name),
-								// TODO: Allow inserting nodes that contain other nodes.
-								implementation: DocumentNodeImplementation::Unresolved(imaginate_node_type.identifier.clone()),
-								inputs: (0..num_inputs).map(|_| NodeInput::Network).collect(),
-								metadata: DocumentNodeMetadata::default(),
-							},
-						)]
-						.into_iter()
-						.collect(),
-						..Default::default()
-					};
 					let mut imaginate_inputs: Vec<NodeInput> = imaginate_node_type.inputs.iter().map(|input| input.default.clone()).collect();
 					imaginate_inputs[0] = NodeInput::Node(0);
 
-					let network = NodeNetwork {
-						inputs: vec![0],
-						output: 1,
-						nodes: [
-							(
-								0,
-								DocumentNode {
-									name: "Input".into(),
-									inputs: vec![NodeInput::Network],
-									implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode", &[generic!("T")])),
-									metadata: DocumentNodeMetadata { position: (8, 4).into() },
-								},
-							),
-							(
-								1,
-								DocumentNode {
-									name: "Output".into(),
-									inputs: vec![NodeInput::Node(2)],
-									implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode", &[generic!("T")])),
-									metadata: DocumentNodeMetadata { position: (32, 4).into() },
-								},
-							),
-							(
-								2,
-								DocumentNode {
-									name: imaginate_node_type.name.to_string(),
-									inputs: imaginate_inputs,
-									// TODO: Allow inserting nodes that contain other nodes.
-									implementation: DocumentNodeImplementation::Network(imaginate_inner_network),
-									metadata: graph_craft::document::DocumentNodeMetadata { position: (20, 4).into() },
-								},
-							),
-						]
-						.into_iter()
-						.collect(),
-						..Default::default()
-					};
+					let imaginate_node_id = 2;
+					let mut network = NodeNetwork::new_network(32, imaginate_node_id);
+					network.nodes.insert(
+						imaginate_node_id,
+						DocumentNode {
+							name: imaginate_node_type.name.to_string(),
+							inputs: imaginate_inputs,
+							implementation: imaginate_node_type.generate_implementation(),
+							metadata: graph_craft::document::DocumentNodeMetadata { position: (20, 4).into() },
+						},
+					);
 
 					responses.push_back(
 						Operation::AddNodeGraphFrame {

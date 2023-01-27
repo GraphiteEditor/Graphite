@@ -3,7 +3,7 @@ use crate::messages::layout::utility_types::layout_widget::LayoutGroup;
 
 use graph_craft::concrete;
 use graph_craft::document::value::*;
-use graph_craft::document::{DocumentNode, NodeId, NodeInput};
+use graph_craft::document::*;
 use graph_craft::imaginate_input::ImaginateSamplingMethod;
 use graph_craft::proto::{NodeIdentifier, Type};
 use graphene_core::raster::Image;
@@ -61,11 +61,19 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 			default: NodeInput::Node(0),
 		}],
 		outputs: &[FrontendGraphDataType::General],
-		properties: |_document_node, _node_id, _context| node_properties::string_properties("The identity node simply returns the input".to_string()),
+		properties: |_document_node, _node_id, _context| node_properties::string_properties("The identity node simply returns the input"),
+	},
+	DocumentNodeType {
+		name: "Image",
+		category: "Ignore",
+		identifier: NodeIdentifier::new("graphene_core::ops::IdNode", &[concrete!("Any<'_>")]),
+		inputs: &[DocumentInputType::new("Image", TaggedValue::Image(Image::empty()), false)],
+		outputs: &[FrontendGraphDataType::Raster],
+		properties: |_document_node, _node_id, _context| node_properties::string_properties("A bitmap image embedded in this node"),
 	},
 	DocumentNodeType {
 		name: "Input",
-		category: "Meta",
+		category: "Ignore",
 		identifier: NodeIdentifier::new("graphene_core::ops::IdNode", &[concrete!("Any<'_>")]),
 		inputs: &[DocumentInputType {
 			name: "In",
@@ -77,7 +85,7 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 	},
 	DocumentNodeType {
 		name: "Output",
-		category: "Meta",
+		category: "Ignore",
 		identifier: NodeIdentifier::new("graphene_core::ops::IdNode", &[concrete!("Any<'_>")]),
 		inputs: &[DocumentInputType {
 			name: "In",
@@ -337,7 +345,32 @@ pub fn resolve_document_node_type(name: &str) -> Option<&DocumentNodeType> {
 pub fn collect_node_types() -> Vec<FrontendNodeType> {
 	DOCUMENT_NODE_TYPES
 		.iter()
-		.filter(|node_type| !matches!(node_type.name, "Input" | "Output"))
+		.filter(|node_type| !node_type.category.eq_ignore_ascii_case("ignore"))
 		.map(|node_type| FrontendNodeType::new(node_type.name, node_type.category))
 		.collect()
+}
+
+impl DocumentNodeType {
+	/// Generate a [`DocumentNodeImplementation`] from this node type, using a nested network.
+	pub fn generate_implementation(&self) -> DocumentNodeImplementation {
+		let number_of_inputs = self.inputs.len();
+		let network = NodeNetwork {
+			inputs: (0..number_of_inputs).map(|_| 0).collect(),
+			output: 0,
+			nodes: [(
+				0,
+				DocumentNode {
+					name: format!("{}_impl", self.name),
+					// TODO: Allow inserting nodes that contain other nodes.
+					implementation: DocumentNodeImplementation::Unresolved(self.identifier.clone()),
+					inputs: (0..number_of_inputs).map(|_| NodeInput::Network).collect(),
+					metadata: DocumentNodeMetadata::default(),
+				},
+			)]
+			.into_iter()
+			.collect(),
+			..Default::default()
+		};
+		DocumentNodeImplementation::Network(network)
+	}
 }

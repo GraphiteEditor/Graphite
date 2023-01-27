@@ -459,6 +459,11 @@ mod image {
 				data: self.data.as_slice(),
 			}
 		}
+		/// Generate Image from some frontend image data (the canvas pixels as u8s in a flat array)
+		pub fn from_image_data(image_data: &[u8], width: u32, height: u32) -> Self {
+			let data = image_data.chunks_exact(4).map(|v| Color::from_rgba8(v[0], v[1], v[2], v[3])).collect();
+			Image { width, height, data }
+		}
 	}
 
 	impl IntoIterator for Image {
@@ -544,8 +549,8 @@ mod test {
 	#[test]
 	fn window_node() {
 		let radius = ValueNode::new(1u32);
-		static data: &[Color] = &[Color::from_rgbf32_unchecked(1., 0., 0.); 25];
-		let image = ValueNode::<_>::new(ImageSlice { width: 5, height: 5, data });
+		static DATA: &[Color] = &[Color::from_rgbf32_unchecked(1., 0., 0.); 25];
+		let image = ValueNode::<_>::new(ImageSlice { width: 5, height: 5, data: DATA });
 		let window = WindowNode::new(radius, image);
 		//let window: TypeNode<_, u32, ImageWindowIterator<'static>> = TypeNode::new(window);
 		let vec = window.eval(0);
@@ -560,8 +565,8 @@ mod test {
 	fn blur_node() {
 		let radius = ValueNode::new(1u32);
 		let sigma = ValueNode::new(3f64);
-		static data: &[Color] = &[Color::from_rgbf32_unchecked(1., 0., 0.); 20];
-		let image = ValueNode::<_>::new(ImageSlice { width: 10, height: 2, data });
+		static DATA: &[Color] = &[Color::from_rgbf32_unchecked(1., 0., 0.); 20];
+		let image = ValueNode::<_>::new(ImageSlice { width: 10, height: 2, data: DATA });
 		let window = WindowNode::new(radius, image);
 		let window: TypeNode<_, u32, ImageWindowIterator<'static>> = TypeNode::new(window);
 		let pos_to_dist = MapSndNode::new(DistanceNode);
@@ -579,6 +584,6 @@ mod test {
 		assert_eq!(vec.len(), 10);
 		let vec = ComposeNode::new(blur, collect);
 		let vec: TypeNode<_, (), Vec<Color>> = TypeNode::new(vec);
-		let image = vec.eval(());
+		let _image = vec.eval(());
 	}
 }

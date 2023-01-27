@@ -234,7 +234,6 @@ impl Fsm for PenToolFsmState {
 							let op = Operation::SetManipulatorHandleMirroring {
 								layer_path: layer.to_vec(),
 								id,
-								mirror_distance: false,
 								mirror_angle: false,
 							};
 							responses.push_back(op.into());
@@ -328,7 +327,6 @@ impl Fsm for PenToolFsmState {
 								let op = Operation::SetManipulatorHandleMirroring {
 									layer_path: layer_path.clone(),
 									id: previous_id,
-									mirror_distance: false,
 									mirror_angle: false,
 								};
 								responses.push_back(op.into());
@@ -386,7 +384,6 @@ impl Fsm for PenToolFsmState {
 							let op = Operation::SetManipulatorHandleMirroring {
 								layer_path: layer_path.clone(),
 								id: first_id,
-								mirror_distance: false,
 								mirror_angle: false,
 							};
 							responses.push_back(op.into());
@@ -475,7 +472,6 @@ impl Fsm for PenToolFsmState {
 						let op = Operation::SetManipulatorHandleMirroring {
 							layer_path: layer_path.clone(),
 							id: last_id,
-							mirror_distance: should_mirror,
 							mirror_angle: should_mirror,
 						};
 						responses.push_back(op.into());

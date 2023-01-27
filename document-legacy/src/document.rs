@@ -1045,7 +1045,7 @@ impl Document {
 				match &mut layer.data {
 					LayerDataType::Shape(s) => s.style = style,
 					LayerDataType::Text(text) => text.path_style = style,
-					_ => return Err(DocumentError::NotAShape),
+					_ => return Err(DocumentError::NotShape),
 				}
 				self.mark_as_dirty(&path)?;
 				Some([vec![DocumentChanged, LayerChanged { path: path.clone() }], update_thumbnails_upstream(&path)].concat())
@@ -1113,42 +1113,32 @@ impl Document {
 				}
 				Some(responses)
 			}
-			Operation::MoveSelectedManipulatorPoints { layer_path, delta } => {
+			Operation::MoveSelectedManipulatorPoints { layer_path, delta, mirror_distance } => {
 				if let Ok(viewspace) = self.generate_transform_relative_to_viewport(&layer_path) {
 					let objectspace = &viewspace.inverse();
 					let delta = objectspace.transform_vector2(DVec2::new(delta.0, delta.1));
 					let layer = self.layer_mut(&layer_path)?;
 					if let Some(shape) = layer.as_subpath_mut() {
-						shape.move_selected(delta);
+						shape.move_selected(delta, mirror_distance);
 					}
 				}
 				self.mark_as_dirty(&layer_path)?;
 				Some([vec![DocumentChanged, LayerChanged { path: layer_path.clone() }], update_thumbnails_upstream(&layer_path)].concat())
 			}
-			Operation::SetManipulatorHandleMirroring {
-				layer_path,
-				id,
-				mirror_distance,
-				mirror_angle,
-			} => {
+			Operation::SetManipulatorHandleMirroring { layer_path, id, mirror_angle } => {
 				if let Ok(Some(shape)) = self.layer_mut(&layer_path).map(|layer| layer.as_subpath_mut()) {
 					if let Some(manipulator_group) = shape.manipulator_groups_mut().by_id_mut(id) {
-						manipulator_group.editor_state.mirror_distance_between_handles = mirror_distance;
 						manipulator_group.editor_state.mirror_angle_between_handles = mirror_angle;
 						self.mark_as_dirty(&layer_path)?;
 					}
 				}
 				Some([update_thumbnails_upstream(&layer_path), vec![DocumentChanged, LayerChanged { path: layer_path }]].concat())
 			}
-			Operation::SetSelectedHandleMirroring {
-				layer_path,
-				toggle_distance,
-				toggle_angle,
-			} => {
+			Operation::SetSelectedHandleMirroring { layer_path, toggle_angle } => {
 				let layer = self.layer_mut(&layer_path)?;
 				if let Some(shape) = layer.as_subpath_mut() {
 					for manipulator_group in shape.selected_manipulator_groups_any_points_mut() {
-						manipulator_group.toggle_mirroring(toggle_distance, toggle_angle);
+						manipulator_group.toggle_mirroring(toggle_angle);
 					}
 				}
 				// This does nothing visually so we don't need to send any messages

@@ -247,7 +247,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 					responses.push_back(BroadcastEvent::DocumentIsDirty.into());
 				}
 			}
-			BackupDocument { document, layer_metadata } => self.backup_with_document(document, layer_metadata, responses),
+			BackupDocument { document, artboard, layer_metadata } => self.backup_with_document(document, *artboard, layer_metadata, responses),
 			BooleanOperation(op) => {
 				// Convert Vec<&[LayerId]> to Vec<Vec<&LayerId>> because Vec<&[LayerId]> does not implement several traits (Debug, Serialize, Deserialize, ...) required by DocumentOperation enum
 				responses.push_back(StartTransaction.into());
@@ -496,9 +496,9 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 					.into(),
 				);
 			}
-			MoveSelectedManipulatorPoints { layer_path, delta } => {
+			MoveSelectedManipulatorPoints { layer_path, delta, mirror_distance } => {
 				if let Ok(_layer) = self.document_legacy.layer(&layer_path) {
-					responses.push_back(DocumentOperation::MoveSelectedManipulatorPoints { layer_path, delta }.into());
+					responses.push_back(DocumentOperation::MoveSelectedManipulatorPoints { layer_path, delta, mirror_distance }.into());
 				}
 			}
 			NodeGraphFrameGenerate => {
@@ -546,25 +546,36 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				}
 				responses.push_back(BroadcastEvent::DocumentIsDirty.into());
 			}
-			PasteImage { mime, image_data, mouse } => {
+			PasteImage { image, mouse } => {
+				let image_size = DVec2::new(image.width as f64, image.height as f64);
+
 				responses.push_back(DocumentMessage::StartTransaction.into());
 
 				let path = vec![generate_uuid()];
-				responses.push_back(
-					DocumentOperation::AddImage {
-						path: path.clone(),
-						transform: DAffine2::ZERO.to_cols_array(),
-						insert_index: -1,
-						image_data: image_data.clone(),
-						mime: mime.clone(),
-					}
-					.into(),
+				let image_node_id = 2;
+				let mut network = graph_craft::document::NodeNetwork::new_network(32, image_node_id);
+
+				let Some(image_node_type) = crate::messages::portfolio::document::node_graph::resolve_document_node_type("Image") else {
+					warn!("Image node should be in registry");
+					return;
+				};
+
+				network.nodes.insert(
+					image_node_id,
+					graph_craft::document::DocumentNode {
+						name: image_node_type.name.to_string(),
+						inputs: vec![graph_craft::document::NodeInput::value(graph_craft::document::value::TaggedValue::Image(image), false)],
+						implementation: image_node_type.generate_implementation(),
+						metadata: graph_craft::document::DocumentNodeMetadata { position: (20, 4).into() },
+					},
 				);
-				let image_data = std::sync::Arc::new(image_data);
+
 				responses.push_back(
-					FrontendMessage::UpdateImageData {
-						document_id,
-						image_data: vec![FrontendImageData { path: path.clone(), image_data, mime }],
+					DocumentOperation::AddNodeGraphFrame {
+						path: path.clone(),
+						insert_index: -1,
+						transform: DAffine2::ZERO.to_cols_array(),
+						network,
 					}
 					.into(),
 				);
@@ -575,9 +586,21 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 					.into(),
 				);
 
-				let mouse = mouse.map_or(ipp.viewport_bounds.center(), |pos| pos.into());
-				let transform = DAffine2::from_translation(mouse - ipp.viewport_bounds.top_left).to_cols_array();
-				responses.push_back(DocumentOperation::SetLayerTransformInViewport { path, transform }.into());
+				// Transform of parent folder
+				let to_parent_folder = self.document_legacy.generate_transform_across_scope(&path[..path.len() - 1], None).unwrap_or_default();
+
+				// Align the layer with the mouse or center of viewport
+				let viewport_location = mouse.map_or(ipp.viewport_bounds.center(), |pos| pos.into());
+				let center_in_viewport = DAffine2::from_translation(viewport_location - ipp.viewport_bounds.top_left);
+				let center_in_viewport_layerspace = to_parent_folder.inverse() * center_in_viewport;
+
+				// Make layer the size of the image
+				let fit_image_size = DAffine2::from_scale_angle_translation(image_size, 0., image_size / -2.);
+
+				let transform = (center_in_viewport_layerspace * fit_image_size).to_cols_array();
+				responses.push_back(DocumentOperation::SetLayerTransform { path, transform }.into());
+
+				responses.push_back(DocumentMessage::NodeGraphFrameGenerate.into());
 			}
 			Redo => {
 				responses.push_back(SelectToolMessage::Abort.into());
@@ -826,19 +849,8 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				responses.push_back(DocumentOperation::ToggleLayerVisibility { path: layer_path }.into());
 				responses.push_back(BroadcastEvent::DocumentIsDirty.into());
 			}
-			ToggleSelectedHandleMirroring {
-				layer_path,
-				toggle_distance,
-				toggle_angle,
-			} => {
-				responses.push_back(
-					DocumentOperation::SetSelectedHandleMirroring {
-						layer_path,
-						toggle_distance,
-						toggle_angle,
-					}
-					.into(),
-				);
+			ToggleSelectedHandleMirroring { layer_path, toggle_angle } => {
+				responses.push_back(DocumentOperation::SetSelectedHandleMirroring { layer_path, toggle_angle }.into());
 			}
 			Undo => {
 				self.undo_in_progress = true;
@@ -959,6 +971,24 @@ impl DocumentMessageHandler {
 		};
 
 		// Prepare the node graph input image
+
+		let Some(node_network) = self.document_legacy.layer(&layer_path).ok().and_then(|layer|layer.as_node_graph().ok()) else {
+			return None;
+		};
+
+		// Skip processing under node graph frame input if not connected
+		if !node_network.connected_to_output(node_network.inputs[0]) {
+			return Some(
+				PortfolioMessage::ProcessNodeGraphFrame {
+					document_id,
+					layer_path,
+					image_data: Default::default(),
+					size: (0, 0),
+					imaginate_node,
+				}
+				.into(),
+			);
+		}
 
 		// Calculate the size of the region to be exported
 
@@ -1299,9 +1329,9 @@ impl DocumentMessageHandler {
 	}
 
 	/// Places a document into the history system
-	fn backup_with_document(&mut self, document: DocumentLegacy, layer_metadata: HashMap<Vec<LayerId>, LayerMetadata>, responses: &mut VecDeque<Message>) {
+	fn backup_with_document(&mut self, document: DocumentLegacy, artboard: ArtboardMessageHandler, layer_metadata: HashMap<Vec<LayerId>, LayerMetadata>, responses: &mut VecDeque<Message>) {
 		self.document_redo_history.clear();
-		self.document_undo_history.push_back((document, layer_metadata));
+		self.document_undo_history.push_back(DocumentSave { document, artboard, layer_metadata });
 		if self.document_undo_history.len() > crate::consts::MAX_UNDO_HISTORY_LEN {
 			self.document_undo_history.pop_front();
 		}
@@ -1312,7 +1342,7 @@ impl DocumentMessageHandler {
 
 	/// Copies the entire document into the history system
 	pub fn backup(&mut self, responses: &mut VecDeque<Message>) {
-		self.backup_with_document(self.document_legacy.clone(), self.layer_metadata.clone(), responses);
+		self.backup_with_document(self.document_legacy.clone(), self.artboard_message_handler.clone(), self.layer_metadata.clone(), responses);
 	}
 
 	/// Push a message backing up the document in its current state
@@ -1320,6 +1350,7 @@ impl DocumentMessageHandler {
 		responses.push_back(
 			DocumentMessage::BackupDocument {
 				document: self.document_legacy.clone(),
+				artboard: Box::new(self.artboard_message_handler.clone()),
 				layer_metadata: self.layer_metadata.clone(),
 			}
 			.into(),
@@ -1332,6 +1363,23 @@ impl DocumentMessageHandler {
 		// TODO: Consider if we should check if the document is saved
 	}
 
+	/// Replace the document with a new document save, returning the document save.
+	pub fn replace_document(&mut self, DocumentSave { document, artboard, layer_metadata }: DocumentSave) -> DocumentSave {
+		// Keeping the root is required if the bounds of the viewport have changed during the operation
+		let old_root = self.document_legacy.root.transform;
+		let old_artboard_root = self.artboard_message_handler.artboards_document.root.transform;
+		let document = std::mem::replace(&mut self.document_legacy, document);
+		let artboard = std::mem::replace(&mut self.artboard_message_handler, artboard);
+		self.document_legacy.root.transform = old_root;
+		self.artboard_message_handler.artboards_document.root.transform = old_artboard_root;
+		self.document_legacy.root.cache_dirty = true;
+		self.artboard_message_handler.artboards_document.root.cache_dirty = true;
+
+		let layer_metadata = std::mem::replace(&mut self.layer_metadata, layer_metadata);
+
+		DocumentSave { document, artboard, layer_metadata }
+	}
+
 	pub fn undo(&mut self, responses: &mut VecDeque<Message>) -> Result<(), EditorError> {
 		// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
 		responses.push_back(PortfolioMessage::UpdateOpenDocumentsList.into());
@@ -1339,7 +1387,7 @@ impl DocumentMessageHandler {
 		let selected_paths: Vec<Vec<LayerId>> = self.selected_layers().map(|path| path.to_vec()).collect();
 
 		match self.document_undo_history.pop_back() {
-			Some((document, layer_metadata)) => {
+			Some(DocumentSave { document, artboard, layer_metadata }) => {
 				// Update the currently displayed layer on the Properties panel if the selection changes after an undo action
 				// Also appropriately update the Properties panel if an undo action results in a layer being deleted
 				let prev_selected_paths: Vec<Vec<LayerId>> = layer_metadata.iter().filter_map(|(layer_id, metadata)| metadata.selected.then_some(layer_id.clone())).collect();
@@ -1348,14 +1396,9 @@ impl DocumentMessageHandler {
 					responses.push_back(BroadcastEvent::SelectionChanged.into());
 				}
 
-				// Keeping the root is required if the bounds of the viewport have changed during the operation
-				let old_root = self.document_legacy.root.transform;
-				let document = std::mem::replace(&mut self.document_legacy, document);
-				self.document_legacy.root.transform = old_root;
-				self.document_legacy.root.cache_dirty = true;
+				let document_save = self.replace_document(DocumentSave { document, artboard, layer_metadata });
 
-				let layer_metadata = std::mem::replace(&mut self.layer_metadata, layer_metadata);
-				self.document_redo_history.push_back((document, layer_metadata));
+				self.document_redo_history.push_back(document_save);
 				if self.document_redo_history.len() > crate::consts::MAX_UNDO_HISTORY_LEN {
 					self.document_redo_history.pop_front();
 				}
@@ -1364,7 +1407,7 @@ impl DocumentMessageHandler {
 					responses.push_back(DocumentMessage::LayerChanged { affected_layer_path: layer.clone() }.into())
 				}
 
-				responses.push_back(NodeGraphMessage::SendGraph.into());
+				responses.push_back(NodeGraphMessage::SendGraph { should_rerender: true }.into());
 
 				Ok(())
 			}
@@ -1379,7 +1422,7 @@ impl DocumentMessageHandler {
 		let selected_paths: Vec<Vec<LayerId>> = self.selected_layers().map(|path| path.to_vec()).collect();
 
 		match self.document_redo_history.pop_back() {
-			Some((document, layer_metadata)) => {
+			Some(DocumentSave { document, artboard, layer_metadata }) => {
 				// Update currently displayed layer on property panel if selection changes after redo action
 				// Also appropriately update property panel if redo action results in a layer being added
 				let next_selected_paths: Vec<Vec<LayerId>> = layer_metadata.iter().filter_map(|(layer_id, metadata)| metadata.selected.then_some(layer_id.clone())).collect();
@@ -1388,14 +1431,8 @@ impl DocumentMessageHandler {
 					responses.push_back(BroadcastEvent::SelectionChanged.into());
 				}
 
-				// Keeping the root is required if the bounds of the viewport have changed during the operation
-				let old_root = self.document_legacy.root.transform;
-				let document = std::mem::replace(&mut self.document_legacy, document);
-				self.document_legacy.root.transform = old_root;
-				self.document_legacy.root.cache_dirty = true;
-
-				let layer_metadata = std::mem::replace(&mut self.layer_metadata, layer_metadata);
-				self.document_undo_history.push_back((document, layer_metadata));
+				let document_save = self.replace_document(DocumentSave { document, artboard, layer_metadata });
+				self.document_undo_history.push_back(document_save);
 				if self.document_undo_history.len() > crate::consts::MAX_UNDO_HISTORY_LEN {
 					self.document_undo_history.pop_front();
 				}
@@ -1404,7 +1441,7 @@ impl DocumentMessageHandler {
 					responses.push_back(DocumentMessage::LayerChanged { affected_layer_path: layer.clone() }.into())
 				}
 
-				responses.push_back(NodeGraphMessage::SendGraph.into());
+				responses.push_back(NodeGraphMessage::SendGraph { should_rerender: true }.into());
 
 				Ok(())
 			}
@@ -1418,7 +1455,7 @@ impl DocumentMessageHandler {
 		self.document_undo_history
 			.iter()
 			.last()
-			.map(|(document_legacy, _)| document_legacy.current_state_identifier())
+			.map(|DocumentSave { document, .. }| document.current_state_identifier())
 			.unwrap_or(0)
 	}
 

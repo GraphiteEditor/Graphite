@@ -190,6 +190,8 @@ impl Fsm for ArtboardToolFsmState {
 					};
 
 					if let Some(selected_edges) = dragging_bounds {
+						responses.push_back(DocumentMessage::StartTransaction.into());
+
 						let snap_x = selected_edges.2 || selected_edges.3;
 						let snap_y = selected_edges.0 || selected_edges.1;
 
@@ -208,6 +210,7 @@ impl Fsm for ArtboardToolFsmState {
 
 						ArtboardToolFsmState::ResizingBounds
 					} else {
+						responses.push_back(DocumentMessage::StartTransaction.into());
 						let tolerance = DVec2::splat(SELECTION_TOLERANCE);
 						let quad = Quad::from_box([input.mouse.position - tolerance, input.mouse.position + tolerance]);
 						let intersection = document.artboard_message_handler.artboards_document.intersects_quad_root(quad, font_cache);
