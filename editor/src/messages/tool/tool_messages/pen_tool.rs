@@ -214,8 +214,8 @@ impl Fsm for PenToolFsmState {
 					responses.push_back(DocumentMessage::StartTransaction.into());
 
 					// Initialize snapping
-					tool_data.snap_manager.start_snap(document, document.bounding_boxes(None, None, font_cache), true, true);
-					tool_data.snap_manager.add_all_document_handles(document, &[], &[], &[]);
+					tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(None, None, font_cache), true, true);
+					tool_data.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
 
 					// Disable this tool's mirroring
 					tool_data.should_mirror = false;

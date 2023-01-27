@@ -475,8 +475,8 @@ impl Fsm for SelectToolFsmState {
 					let state = if tool_data.pivot.is_over(input.mouse.position) {
 						responses.push_back(DocumentMessage::StartTransaction.into());
 
-						tool_data.snap_manager.start_snap(document, document.bounding_boxes(None, None, font_cache), true, true);
-						tool_data.snap_manager.add_all_document_handles(document, &[], &[], &[]);
+						tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(None, None, font_cache), true, true);
+						tool_data.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
 
 						DraggingPivot
 					} else if let Some(selected_edges) = dragging_bounds {
@@ -485,10 +485,12 @@ impl Fsm for SelectToolFsmState {
 						let snap_x = selected_edges.2 || selected_edges.3;
 						let snap_y = selected_edges.0 || selected_edges.1;
 
-						tool_data.snap_manager.start_snap(document, document.bounding_boxes(Some(&selected), None, font_cache), snap_x, snap_y);
 						tool_data
 							.snap_manager
-							.add_all_document_handles(document, &[], &selected.iter().map(|x| x.as_slice()).collect::<Vec<_>>(), &[]);
+							.start_snap(document, input, document.bounding_boxes(Some(&selected), None, font_cache), snap_x, snap_y);
+						tool_data
+							.snap_manager
+							.add_all_document_handles(document, input, &[], &selected.iter().map(|x| x.as_slice()).collect::<Vec<_>>(), &[]);
 
 						tool_data.layers_dragging = selected;
 
@@ -521,7 +523,7 @@ impl Fsm for SelectToolFsmState {
 
 						tool_data
 							.snap_manager
-							.start_snap(document, document.bounding_boxes(Some(&tool_data.layers_dragging), None, font_cache), true, true);
+							.start_snap(document, input, document.bounding_boxes(Some(&tool_data.layers_dragging), None, font_cache), true, true);
 
 						Dragging
 					} else {
@@ -537,7 +539,7 @@ impl Fsm for SelectToolFsmState {
 							tool_data.layers_dragging.append(&mut selected);
 							tool_data
 								.snap_manager
-								.start_snap(document, document.bounding_boxes(Some(&tool_data.layers_dragging), None, font_cache), true, true);
+								.start_snap(document, input, document.bounding_boxes(Some(&tool_data.layers_dragging), None, font_cache), true, true);
 
 							Dragging
 						} else {
