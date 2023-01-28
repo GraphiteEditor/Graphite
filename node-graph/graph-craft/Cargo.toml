@@ -11,7 +11,7 @@ serde = ["dep:serde", "graphene-core/serde", "glam/serde"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-graphene-core = { path = "../gcore", features = ["async", "std", "alloc"] }
+graphene-core = { path = "../gcore", features = ["alloc"] }
 dyn-any = { path = "../../libraries/dyn-any", features = ["log-bad-types", "rc", "glam"] }
 num-traits = "0.2"
 dyn-clone = "1.0"

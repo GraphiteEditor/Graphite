@@ -1,12 +1,14 @@
 use crate::messages::layout::utility_types::layout_widget::WidgetCallback;
+use graphite_proc_macros::WidgetBuilder;
 
 use derivative::*;
 use glam::DVec2;
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Default, Derivative, Serialize, Deserialize, specta::Type)]
+#[derive(Clone, Default, Derivative, Serialize, Deserialize, WidgetBuilder, specta::Type)]
 #[derivative(Debug, PartialEq)]
 pub struct PivotAssist {
+	#[widget_builder(constructor)]
 	pub position: PivotPosition,
 
 	pub disabled: bool,

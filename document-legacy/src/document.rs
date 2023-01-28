@@ -1045,7 +1045,7 @@ impl Document {
 				match &mut layer.data {
 					LayerDataType::Shape(s) => s.style = style,
 					LayerDataType::Text(text) => text.path_style = style,
-					_ => return Err(DocumentError::NotAShape),
+					_ => return Err(DocumentError::NotShape),
 				}
 				self.mark_as_dirty(&path)?;
 				Some([vec![DocumentChanged, LayerChanged { path: path.clone() }], update_thumbnails_upstream(&path)].concat())

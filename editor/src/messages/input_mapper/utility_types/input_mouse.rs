@@ -1,6 +1,10 @@
+use crate::consts::DRAG_THRESHOLD;
+use crate::messages::prelude::*;
+
 use bitflags::bitflags;
 use glam::DVec2;
 use serde::{Deserialize, Serialize};
+use std::collections::VecDeque;
 
 // Origin is top left
 pub type ViewportPosition = DVec2;
@@ -83,6 +87,13 @@ impl MouseState {
 			position,
 			mouse_keys,
 			scroll_delta: ScrollDelta::default(),
+		}
+	}
+
+	pub fn finish_transaction(&self, drag_start: DVec2, responses: &mut VecDeque<Message>) {
+		match drag_start.distance(self.position) <= DRAG_THRESHOLD {
+			true => responses.push_back(DocumentMessage::AbortTransaction.into()),
+			false => responses.push_back(DocumentMessage::CommitTransaction.into()),
 		}
 	}
 }

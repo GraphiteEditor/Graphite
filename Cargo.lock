@@ -1763,6 +1763,7 @@ version = "0.0.0"
 dependencies = [
  "bezier-rs",
  "graph-craft",
+ "graphene-core",
  "graphite-document-legacy",
  "graphite-editor",
  "js-sys",
@@ -1781,6 +1782,7 @@ version = "0.0.0"
 dependencies = [
  "bezier-rs",
  "graph-craft",
+ "graphene-core",
  "graphite-document-legacy",
  "graphite-editor",
  "js-sys",

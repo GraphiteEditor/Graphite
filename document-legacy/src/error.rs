@@ -9,10 +9,9 @@ pub enum DocumentError {
 	IndexOutOfBounds,
 	NotAFolder,
 	NonReorderableSelection,
-	NotAShape,
+	NotShape,
 	NotText,
-	NotAnImage,
-	NotAnImaginate,
+	NotNodeGraph,
 	InvalidFile(String),
 	BooleanOperationError(BooleanOperationError),
 }
