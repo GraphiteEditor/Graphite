@@ -1,7 +1,7 @@
 use crate::application::generate_uuid;
 use crate::consts::SELECTION_TOLERANCE;
 use crate::messages::frontend::utility_types::MouseCursorIcon;
-use crate::messages::input_mapper::utility_types::input_keyboard::{Key, KeysGroup, MouseMotion};
+use crate::messages::input_mapper::utility_types::input_keyboard::{Key, MouseMotion};
 use crate::messages::layout::utility_types::layout_widget::PropertyHolder;
 use crate::messages::portfolio::document::utility_types::misc::TargetDocument;
 use crate::messages::prelude::*;
@@ -59,23 +59,8 @@ impl ToolMetadata for ArtboardTool {
 }
 
 impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for ArtboardTool {
-	fn process_message(&mut self, message: ToolMessage, data: ToolActionHandlerData<'a>, responses: &mut VecDeque<Message>) {
-		if message == ToolMessage::UpdateHints {
-			self.fsm_state.update_hints(responses);
-			return;
-		}
-
-		if message == ToolMessage::UpdateCursor {
-			responses.push_back(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default }.into());
-			return;
-		}
-
-		let new_state = self.fsm_state.transition(message, &mut self.data, data, &(), responses);
-
-		if self.fsm_state != new_state {
-			self.fsm_state = new_state;
-			self.fsm_state.update_hints(responses);
-		}
+	fn process_message(&mut self, message: ToolMessage, transition_data: ToolActionHandlerData<'a>, responses: &mut VecDeque<Message>) {
+		self.fsm_state.process_event(message, &mut self.data, transition_data, &(), responses, false);
 	}
 
 	advertise_actions!(ArtboardToolMessageDiscriminant;
@@ -100,18 +85,13 @@ impl ToolTransition for ArtboardTool {
 	}
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 enum ArtboardToolFsmState {
+	#[default]
 	Ready,
 	Drawing,
 	ResizingBounds,
 	Dragging,
-}
-
-impl Default for ArtboardToolFsmState {
-	fn default() -> Self {
-		ArtboardToolFsmState::Ready
-	}
 }
 
 #[derive(Clone, Debug, Default)]
@@ -138,14 +118,9 @@ impl Fsm for ArtboardToolFsmState {
 	) -> Self {
 		if let ToolMessage::Artboard(event) = event {
 			match (self, event) {
-				(ArtboardToolFsmState::Ready | ArtboardToolFsmState::ResizingBounds | ArtboardToolFsmState::Dragging, ArtboardToolMessage::DocumentIsDirty) => {
-					match (
-						tool_data
-							.selected_artboard
-							.map(|path| document.artboard_bounding_box_and_transform(&[path], font_cache))
-							.unwrap_or(None),
-						tool_data.bounding_box_overlays.take(),
-					) {
+				(state, ArtboardToolMessage::DocumentIsDirty) if state != ArtboardToolFsmState::Drawing => {
+					let current_artboard = tool_data.selected_artboard.and_then(|path| document.artboard_bounding_box_and_transform(&[path], font_cache));
+					match (current_artboard, tool_data.bounding_box_overlays.take()) {
 						(None, Some(bounding_box_overlays)) => bounding_box_overlays.delete(responses),
 						(Some((bounds, transform)), paths) => {
 							let mut bounding_box_overlays = paths.unwrap_or_else(|| BoundingBoxOverlays::new(responses));
@@ -443,51 +418,14 @@ impl Fsm for ArtboardToolFsmState {
 	fn update_hints(&self, responses: &mut VecDeque<Message>) {
 		let hint_data = match self {
 			ArtboardToolFsmState::Ready => HintData(vec![
-				HintGroup(vec![HintInfo {
-					key_groups: vec![],
-					key_groups_mac: None,
-					mouse: Some(MouseMotion::LmbDrag),
-					label: String::from("Draw Artboard"),
-					plus: false,
-				}]),
-				HintGroup(vec![HintInfo {
-					key_groups: vec![],
-					key_groups_mac: None,
-					mouse: Some(MouseMotion::LmbDrag),
-					label: String::from("Move Artboard"),
-					plus: false,
-				}]),
-				HintGroup(vec![HintInfo {
-					key_groups: vec![KeysGroup(vec![Key::Backspace]).into()],
-					key_groups_mac: None,
-					mouse: None,
-					label: String::from("Delete Artboard"),
-					plus: false,
-				}]),
+				HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Draw Artboard")]),
+				HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Move Artboard")]),
+				HintGroup(vec![HintInfo::keys([Key::Backspace], "Delete Artboard")]),
 			]),
-			ArtboardToolFsmState::Dragging => HintData(vec![HintGroup(vec![HintInfo {
-				key_groups: vec![KeysGroup(vec![Key::Shift]).into()],
-				key_groups_mac: None,
-				mouse: None,
-				label: String::from("Constrain to Axis"),
-				plus: false,
-			}])]),
-			ArtboardToolFsmState::Drawing | ArtboardToolFsmState::ResizingBounds => HintData(vec![HintGroup(vec![
-				HintInfo {
-					key_groups: vec![KeysGroup(vec![Key::Shift]).into()],
-					key_groups_mac: None,
-					mouse: None,
-					label: String::from("Constrain Square"),
-					plus: false,
-				},
-				HintInfo {
-					key_groups: vec![KeysGroup(vec![Key::Alt]).into()],
-					key_groups_mac: None,
-					mouse: None,
-					label: String::from("From Center"),
-					plus: false,
-				},
-			])]),
+			ArtboardToolFsmState::Dragging => HintData(vec![HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain to Axis")])]),
+			ArtboardToolFsmState::Drawing | ArtboardToolFsmState::ResizingBounds => {
+				HintData(vec![HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain Square"), HintInfo::keys([Key::Alt], "From Center")])])
+			}
 		};
 
 		responses.push_back(FrontendMessage::UpdateInputHints { hint_data }.into());
