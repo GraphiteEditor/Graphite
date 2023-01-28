@@ -1,16 +1,13 @@
 use core::marker::PhantomData;
 
-use crate::{Node, NodeIO};
+use crate::Node;
 
 #[derive(Default, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub struct IntNode<const N: u32>;
 
-impl<'i, const N: u32> NodeIO<'i, ()> for IntNode<N> {
+impl<'i, const N: u32> Node<'i, ()> for IntNode<N> {
 	type Output = u32;
-}
-
-impl<'i, 's: 'i, const N: u32> Node<'i, 's, ()> for IntNode<N> {
-	fn eval(&'s self, _input: ()) -> <Self as NodeIO<'i, ()>>::Output {
+	fn eval<'s: 'i>(&'s self, _input: ()) -> Self::Output {
 		N
 	}
 }
@@ -18,12 +15,9 @@ impl<'i, 's: 'i, const N: u32> Node<'i, 's, ()> for IntNode<N> {
 #[derive(Default, Debug)]
 pub struct ValueNode<T>(pub T);
 
-impl<'i, T: 'i> NodeIO<'i, ()> for ValueNode<T> {
+impl<'i, T: 'i> Node<'i, ()> for ValueNode<T> {
 	type Output = &'i T;
-}
-
-impl<'i, 's: 'i, T: 'i> Node<'i, 's, ()> for ValueNode<T> {
-	fn eval(&'s self, _input: ()) -> <Self as NodeIO<'i, ()>>::Output {
+	fn eval<'s: 'i>(&'s self, _input: ()) -> Self::Output {
 		&self.0
 	}
 }
@@ -49,12 +43,9 @@ impl<T: Clone + Copy> Copy for ValueNode<T> {}
 #[derive(Default)]
 pub struct DefaultNode<T>(PhantomData<T>);
 
-impl<'i, T: Default + 'i> NodeIO<'i, ()> for DefaultNode<T> {
+impl<'i, T: Default + 'i> Node<'i, ()> for DefaultNode<T> {
 	type Output = T;
-}
-
-impl<'i, 's: 'i, T: Default + 'i> Node<'i, 's, ()> for DefaultNode<T> {
-	fn eval(&self, _input: ()) -> <Self as NodeIO<'i, ()>>::Output {
+	fn eval<'s: 'i>(&self, _input: ()) -> Self::Output {
 		T::default()
 	}
 }
@@ -70,12 +61,9 @@ impl<T> DefaultNode<T> {
 #[derive(Default, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub struct UnitNode;
 
-impl<'n> NodeIO<'n, ()> for UnitNode {
+impl<'i> Node<'i, ()> for UnitNode {
 	type Output = ();
-}
-
-impl<'i, 's: 'i> Node<'i, 's, ()> for UnitNode {
-	fn eval(&self, _input: ()) -> <Self as NodeIO<'i, ()>>::Output {}
+	fn eval<'s: 'i>(&self, _input: ()) -> Self::Output {}
 }
 
 impl UnitNode {

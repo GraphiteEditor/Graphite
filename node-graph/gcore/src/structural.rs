@@ -1,6 +1,6 @@
 use dyn_any::StaticTypeSized;
 
-use crate::{Node, NodeIO};
+use crate::Node;
 
 #[derive(Debug, Clone)]
 pub struct ComposeNode<First, Second> {
@@ -8,21 +8,14 @@ pub struct ComposeNode<First, Second> {
 	second: Second,
 }
 
-impl<'i, 's: 'i, Input: 'i, First, Second> NodeIO<'i, Input> for ComposeNode<First, Second>
+impl<'i, Input: 'i, First, Second> Node<'i, Input> for ComposeNode<First, Second>
 where
-	First: Node<'i, 's, Input>,
-	Second: Node<'i, 's, <First as NodeIO<'i, Input>>::Output>,
+	First: Node<'i, Input>,
+	Second: Node<'i, First::Output>,
 {
-	type Output = <Second as NodeIO<'i, <First as NodeIO<'i, Input>>::Output>>::Output;
-}
-
-impl<'i, 's: 'i, Input: 'i, First, Second> Node<'i, 's, Input> for ComposeNode<First, Second>
-where
-	First: Node<'i, 's, Input>,
-	Second: Node<'i, 's, <First as NodeIO<'i, Input>>::Output>,
-{
-	fn eval(&'s self, input: Input) -> <Self as NodeIO<'i, Input>>::Output {
-		// evaluate the first node with the given input
+	type Output = Second::Output;
+	fn eval<'s: 'i>(&'s self, input: Input) -> Self::Output {
+		// eval<'s: 'i>uate the first node with the given input
 		// and then pipe the result from the first computation
 		// into the second node
 		let arg = self.first.eval(input);
@@ -33,39 +26,36 @@ impl<First: StaticTypeSized, Second: StaticTypeSized> dyn_any::StaticType for Co
 	type Static = ComposeNode<First::Static, Second::Static>;
 }
 
-impl<'i, 's: 'i, First, Second> ComposeNode<First, Second> {
+impl<'i, First, Second> ComposeNode<First, Second> {
 	pub const fn new(first: First, second: Second) -> Self {
 		ComposeNode::<First, Second> { first, second }
 	}
 }
-pub trait Then<'i, 's: 'i, Input: 'i>: Sized {
+pub trait Then<'i, Input: 'i>: Sized {
 	fn then<Second>(self, second: Second) -> ComposeNode<Self, Second>
 	where
-		Self: Node<'i, 's, Input>,
-		Second: Node<'i, 's, <Self as NodeIO<'i, Input>>::Output>,
+		Self: Node<'i, Input>,
+		Second: Node<'i, Self::Output>,
 	{
 		ComposeNode::<Self, Second> { first: self, second }
 	}
 }
 
-impl<'i, 's: 'i, First: Node<'i, 's, Input>, Input: 'i> Then<'i, 's, Input> for First {}
+impl<'i, First: Node<'i, Input>, Input: 'i> Then<'i, Input> for First {}
 
 pub struct ConsNode<Root>(pub Root);
 
-impl<'i, 's: 'i, Input: 'i, Root: Node<'i, 's, ()>> NodeIO<'i, Input> for ConsNode<Root> {
-	type Output = (Input, <Root as NodeIO<'i, ()>>::Output);
-}
-
-impl<'i, 's: 'i, Root, Input: 'i> Node<'i, 's, Input> for ConsNode<Root>
+impl<'i, Root, Input: 'i> Node<'i, Input> for ConsNode<Root>
 where
-	Root: Node<'i, 's, ()>,
+	Root: Node<'i, ()>,
 {
-	fn eval(&'s self, input: Input) -> <Self as NodeIO<'i, Input>>::Output {
+	type Output = (Input, Root::Output);
+	fn eval<'s: 'i>(&'s self, input: Input) -> Self::Output {
 		let arg = self.0.eval(());
 		(input, arg)
 	}
 }
-impl<'i, 's: 'i, Root: Node<'i, 's, ()>> ConsNode<Root> {
+impl<'i, Root: Node<'i, ()>> ConsNode<Root> {
 	pub fn new(root: Root) -> Self {
 		ConsNode(root)
 	}

@@ -1,17 +1,14 @@
 use core::marker::PhantomData;
 use core::ops::Add;
 
-use crate::{Node, NodeIO};
+use crate::Node;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub struct AddNode;
 
-impl<'i, 's: 'i, L: Add<R> + 'i, R: 'i> NodeIO<'i, (L, R)> for AddNode {
+impl<'i, L: Add<R, Output = O> + 'i, R: 'i, O: 'i> Node<'i, (L, R)> for AddNode {
 	type Output = <L as Add<R>>::Output;
-}
-
-impl<'i, 's: 'i, L: Add<R, Output = O> + 'i, R: 'i, O: 'i> Node<'i, 's, (L, R)> for AddNode {
-	fn eval(&'s self, input: (L, R)) -> <Self as NodeIO<'i, (L, R)>>::Output {
+	fn eval<'s: 'i>(&'s self, input: (L, R)) -> Self::Output {
 		input.0 + input.1
 	}
 }
@@ -53,7 +50,7 @@ pub mod dynamic {
 
 	impl<'i> Node<(Dynamic<'i>, Dynamic<'i>)> for DynamicAddNode {
 		type Output = Dynamic<'i>;
-		fn eval(self, (left, right): (Dynamic, Dynamic)) -> Self::Output {
+		fn eval<'s: 'i>(self, (left, right): (Dynamic, Dynamic)) -> Self::Output {
 			resolve_dynamic_types! { AddNode =>
 			(left: usize, right: usize)
 			(left: u8, right: u8)
@@ -75,11 +72,9 @@ pub mod dynamic {
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub struct CloneNode<O>(PhantomData<O>);
-impl<'i, 's: 'i, O: Clone> NodeIO<'i, &'i O> for CloneNode<O> {
+impl<'i, O: Clone + 'i> Node<'i, &'i O> for CloneNode<O> {
 	type Output = O;
-}
-impl<'i, 's: 'i, O: Clone + 'i> Node<'i, 's, &'i O> for CloneNode<O> {
-	fn eval(&'s self, input: &'i O) -> <Self as NodeIO<'i, &'i O>>::Output {
+	fn eval<'s: 'i>(&'s self, input: &'i O) -> Self::Output {
 		input.clone()
 	}
 }
@@ -91,11 +86,9 @@ impl<O> CloneNode<O> {
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub struct FstNode;
-impl<'i, 's: 'i, L: 'i, R: 'i> NodeIO<'i, (L, R)> for FstNode {
+impl<'i, L: 'i, R: 'i> Node<'i, (L, R)> for FstNode {
 	type Output = L;
-}
-impl<'i, 's: 'i, L: 'i, R: 'i> Node<'i, 's, (L, R)> for FstNode {
-	fn eval(&'s self, input: (L, R)) -> <Self as NodeIO<'i, (L, R)>>::Output {
+	fn eval<'s: 'i>(&'s self, input: (L, R)) -> Self::Output {
 		input.0
 	}
 }
@@ -108,11 +101,9 @@ impl FstNode {
 /// Destructures a Tuple of two values and returns the first one
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub struct SndNode;
-impl<'i, 's: 'i, L: 'i, R: 'i> NodeIO<'i, (L, R)> for SndNode {
+impl<'i, L: 'i, R: 'i> Node<'i, (L, R)> for SndNode {
 	type Output = R;
-}
-impl<'i, 's: 'i, L: 'i, R: 'i> Node<'i, 's, (L, R)> for SndNode {
-	fn eval(&'s self, input: (L, R)) -> <Self as NodeIO<'i, (L, R)>>::Output {
+	fn eval<'s: 'i>(&'s self, input: (L, R)) -> Self::Output {
 		input.1
 	}
 }
@@ -125,11 +116,9 @@ impl SndNode {
 /// Destructures a Tuple of two values and returns them in reverse order
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub struct SwapNode;
-impl<'i, 's: 'i, L: 'i, R: 'i> NodeIO<'i, (L, R)> for SwapNode {
+impl<'i, L: 'i, R: 'i> Node<'i, (L, R)> for SwapNode {
 	type Output = (R, L);
-}
-impl<'i, 's: 'i, L: 'i, R: 'i> Node<'i, 's, (L, R)> for SwapNode {
-	fn eval(&'s self, input: (L, R)) -> <Self as NodeIO<'i, (L, R)>>::Output {
+	fn eval<'s: 'i>(&'s self, input: (L, R)) -> Self::Output {
 		(input.1, input.0)
 	}
 }
@@ -142,11 +131,9 @@ impl SwapNode {
 /// Return a tuple with two instances of the input argument
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub struct DupNode;
-impl<'i, 's: 'i, O: Clone + 'i> NodeIO<'i, O> for DupNode {
+impl<'i, O: Clone + 'i> Node<'i, O> for DupNode {
 	type Output = (O, O);
-}
-impl<'i, 's: 'i, O: Clone + 'i> Node<'i, 's, O> for DupNode {
-	fn eval(&'s self, input: O) -> <Self as NodeIO<'i, O>>::Output {
+	fn eval<'s: 'i>(&'s self, input: O) -> Self::Output {
 		(input.clone(), input)
 	}
 }
@@ -159,11 +146,9 @@ impl DupNode {
 /// Return the Input Argument
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub struct IdNode;
-impl<'i, 's: 'i, O: 'i> NodeIO<'i, O> for IdNode {
+impl<'i, O: 'i> Node<'i, O> for IdNode {
 	type Output = O;
-}
-impl<'i, 's: 'i, O: 'i> Node<'i, 's, O> for IdNode {
-	fn eval(&'s self, input: O) -> <Self as NodeIO<'i, O>>::Output {
+	fn eval<'s: 'i>(&'s self, input: O) -> Self::Output {
 		input
 	}
 }
@@ -177,50 +162,40 @@ impl IdNode {
 /// Ascribe the node types
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub struct TypeNode<N, I, O>(pub N, pub PhantomData<(I, O)>);
-impl<'i, 's: 'i, N, I: 'i, O: 'i> NodeIO<'i, I> for TypeNode<N, I, O>
+impl<'i, N, I: 'i, O: 'i> Node<'i, I> for TypeNode<N, I, O>
 where
-	N: NodeIO<'i, I, Output = O>,
+	N: Node<'i, I, Output = O>,
 {
 	type Output = O;
-}
-impl<'i, 's: 'i, N, I: 'i, O: 'i> Node<'i, 's, I> for TypeNode<N, I, O>
-where
-	N: Node<'i, 's, I, Output = O>,
-{
-	fn eval(&'s self, input: I) -> <Self as NodeIO<'i, I>>::Output {
+	fn eval<'s: 'i>(&'s self, input: I) -> Self::Output {
 		self.0.eval(input)
 	}
 }
 
-impl<'i, 's: 'i, N: Node<'i, 's, I>, I: 'i> TypeNode<N, I, <N as NodeIO<'i, I>>::Output> {
+impl<'i, N: Node<'i, I>, I: 'i> TypeNode<N, I, N::Output> {
 	pub fn new(node: N) -> Self {
 		Self(node, PhantomData)
 	}
 }
 
-impl<'i, 's: 'i, N: Node<'i, 's, I> + Clone, I: 'i> Clone for TypeNode<N, I, <N as NodeIO<'i, I>>::Output> {
+impl<'i, N: Node<'i, I> + Clone, I: 'i> Clone for TypeNode<N, I, N::Output> {
 	fn clone(&self) -> Self {
 		Self(self.0.clone(), self.1)
 	}
 }
-impl<'i, 's: 'i, N: Node<'i, 's, I> + Copy, I: 'i> Copy for TypeNode<N, I, <N as NodeIO<'i, I>>::Output> {}
+impl<'i, N: Node<'i, I> + Copy, I: 'i> Copy for TypeNode<N, I, N::Output> {}
 
 /// input.map(|x| self.0.eval(x))
 pub struct MapResultNode<MN, I, E>(pub MN, pub PhantomData<(I, E)>);
-impl<'i, 's: 'i, MN, I: 'i, E: 'i> NodeIO<'i, Result<I, E>> for MapResultNode<MN, I, E>
-where
-	MN: NodeIO<'i, I>,
-{
-	type Output = Result<<MN as NodeIO<'i, I>>::Output, E>;
-}
 
-impl<'i, 's: 'i, MN: Node<'i, 's, I>, I: 'i, E: 'i> Node<'i, 's, Result<I, E>> for MapResultNode<MN, I, E> {
-	fn eval(&'s self, input: Result<I, E>) -> <Self as NodeIO<'i, Result<I, E>>>::Output {
+impl<'i, MN: Node<'i, I>, I: 'i, E: 'i> Node<'i, Result<I, E>> for MapResultNode<MN, I, E> {
+	type Output = Result<MN::Output, E>;
+	fn eval<'s: 'i>(&'s self, input: Result<I, E>) -> Self::Output {
 		input.map(|x| self.0.eval(x))
 	}
 }
 
-impl<'i, 's: 'i, MN: Node<'i, 's, I>, I: 'i> MapResultNode<MN, I, <MN as NodeIO<'i, I>>::Output> {
+impl<'i, MN: Node<'i, I>, I: 'i> MapResultNode<MN, I, MN::Output> {
 	pub fn new(node: MN) -> Self {
 		Self(node, PhantomData)
 	}
@@ -233,9 +208,9 @@ pub struct FlatMapResultNode<I, O, E, Mn> {
 }
 
 #[node_macro::node_fn(FlatMapResultNode<_I, _O, _E>)]
-fn flat_map<_I, _O, _E, N>(input: Result<_I, _E>, node: &'node N) -> Result<_O, _E>
+fn flat_map<_I, _O, _E, N>(input: Result<_I, _E>, node: &'input N) -> Result<_O, _E>
 where
-	N: Node<'input, 'node, _I, Output = Result<_O, _E>> + 'node,
+	N: Node<'input, _I, Output = Result<_O, _E>>,
 {
 	match input.map(|x| node.eval(x)) {
 		Ok(Ok(x)) => Ok(x),

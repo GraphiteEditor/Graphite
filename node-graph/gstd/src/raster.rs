@@ -3,7 +3,7 @@ use dyn_any::{DynAny, StaticType};
 use graphene_core::ops::{CloneNode, FlatMapResultNode};
 use graphene_core::raster::{Color, Image};
 use graphene_core::structural::{ComposeNode, ConsNode};
-use graphene_core::{generic::FnNode, ops::MapResultNode, structural::Then, value::ValueNode, Node, NodeIO};
+use graphene_core::{generic::FnNode, ops::MapResultNode, structural::Then, value::ValueNode, Node};
 use image::Pixel;
 use std::path::Path;
 

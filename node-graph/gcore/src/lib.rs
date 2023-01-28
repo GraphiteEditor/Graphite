@@ -20,11 +20,8 @@ pub mod raster;
 #[cfg(feature = "alloc")]
 pub mod vector;
 
-pub trait NodeIO<'i, Input: 'i> {
-	type Output: 'i;
-}
-
 // pub trait Node: for<'n> NodeIO<'n> {
-pub trait Node<'i, 's: 'i, Input: 'i>: NodeIO<'i, Input> {
-	fn eval(&'s self, input: Input) -> <Self as NodeIO<'i, Input>>::Output;
+pub trait Node<'i, Input: 'i> {
+	type Output: 'i;
+	fn eval<'s: 'i>(&'s self, input: Input) -> Self::Output;
 }

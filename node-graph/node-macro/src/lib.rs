@@ -87,7 +87,7 @@ pub fn node_fn(attr: TokenStream, item: TokenStream) -> TokenStream {
 				attrs: vec![],
 				ident,
 				colon_token: Some(Default::default()),
-				bounds: Punctuated::from_iter([TypeParamBound::Lifetime(Lifetime::new("'node", Span::call_site()))].iter().cloned()),
+				bounds: Punctuated::from_iter([TypeParamBound::Lifetime(Lifetime::new("'input", Span::call_site()))].iter().cloned()),
 				eq_token: None,
 				default: None,
 			})
@@ -115,7 +115,7 @@ pub fn node_fn(attr: TokenStream, item: TokenStream) -> TokenStream {
 					paren_token: None,
 					modifier: syn::TraitBoundModifier::None,
 					lifetimes: None,
-					path: syn::parse_quote!(Node<'input, 'node, (), Output = #ty>),
+					path: syn::parse_quote!(Node<'input, (), Output = #ty>),
 				})]),
 			})
 		})
@@ -123,17 +123,13 @@ pub fn node_fn(attr: TokenStream, item: TokenStream) -> TokenStream {
 	where_clause.predicates.extend(extra_where_clause);
 
 	quote::quote! {
-		impl <'input, 'node: 'input, #generics> NodeIO<'input, #primary_input_ty> for #node_name<#(#args),*>
+
+		impl <'input, #generics> Node<'input, #primary_input_ty> for #node_name<#(#args),*>
 			#where_clause
 		{
 			type Output = #output;
-		}
-
-		impl <'input, 'node: 'input, #generics> Node<'input, 'node, #primary_input_ty> for #node_name<#(#args),*>
-			#where_clause
-		{
 			#[inline]
-			fn eval(&'node self, #primary_input_ident: #primary_input_ty) -> <Self as NodeIO<'input, #primary_input_ty>>::Output {
+			fn eval<'node: 'input>(&'node self, #primary_input_ident: #primary_input_ty) -> Self::Output {
 				#(
 					let #parameter_idents = self.#parameter_idents.eval(());
 				)*

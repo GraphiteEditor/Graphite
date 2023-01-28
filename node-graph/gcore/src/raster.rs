@@ -1,6 +1,6 @@
 use core::{fmt::Debug, marker::PhantomData};
 
-use crate::{Node, NodeIO};
+use crate::Node;
 
 pub mod color;
 pub use self::color::Color;
@@ -20,9 +20,9 @@ pub struct MapNode<MapFn> {
 }
 
 #[node_macro::node_fn(MapNode)]
-fn map_node<_Iter: Iterator, MapFnNode>(input: _Iter, map_fn: &'node MapFnNode) -> MapFnIterator<'input, 'input, _Iter, MapFnNode>
+fn map_node<_Iter: Iterator, MapFnNode>(input: _Iter, map_fn: &'input MapFnNode) -> MapFnIterator<'input, 'input, _Iter, MapFnNode>
 where
-	MapFnNode: Node<'input, 'node, _Iter::Item> + 'node,
+	MapFnNode: Node<'input, _Iter::Item>,
 {
 	MapFnIterator::new(input, map_fn)
 }
@@ -63,7 +63,7 @@ impl<'i, 's: 'i, Iter, MapFn> MapFnIterator<'i, 's, Iter, MapFn> {
 
 impl<'i, 's: 'i, I: Iterator + 's, F> Iterator for MapFnIterator<'i, 's, I, F>
 where
-	F: Node<'i, 's, I::Item> + 'i,
+	F: Node<'i, I::Item> + 'i,
 	Self: 'i,
 {
 	type Item = F::Output;
@@ -193,9 +193,9 @@ pub struct MapSndNode<First, Second, MapFn> {
 }
 
 #[node_macro::node_fn(MapSndNode< _First, _Second>)]
-fn map_snd_node<MapFn, _First, _Second>(input: (_First, _Second), map_fn: &'node MapFn) -> (_First, MapFn::Output)
+fn map_snd_node<MapFn, _First, _Second>(input: (_First, _Second), map_fn: &'input MapFn) -> (_First, MapFn::Output)
 where
-	MapFn: Node<'input, 'node, _Second> + 'node,
+	MapFn: Node<'input, _Second>,
 {
 	let (a, b) = input;
 	(a, map_fn.eval(b))
@@ -245,9 +245,9 @@ pub struct ForEachNode<Iter, MapNode> {
 }
 
 #[node_macro::node_fn(ForEachNode<_Iter>)]
-fn map_node<_Iter: Iterator, MapNode>(input: _Iter, map_node: &'node MapNode) -> ()
+fn map_node<_Iter: Iterator, MapNode>(input: _Iter, map_node: &'input MapNode) -> ()
 where
-	MapNode: Node<'input, 'node, _Iter::Item, Output = ()> + 'node,
+	MapNode: Node<'input, _Iter::Item, Output = ()>,
 {
 	input.for_each(|x| map_node.eval(x));
 }
@@ -288,7 +288,7 @@ pub use image::{CollectNode, Image, ImageRefNode};
 #[cfg(feature = "alloc")]
 mod image {
 	use super::{Color, ImageSlice};
-	use crate::{Node, NodeIO};
+	use crate::Node;
 	use alloc::vec::Vec;
 	use dyn_any::{DynAny, StaticType};
 
@@ -350,9 +350,9 @@ mod image {
 	}
 
 	#[node_macro::node_fn(MapImageSliceNode)]
-	fn map_node<MapFn>(image: ImageSlice<'input>, map_fn: &'node MapFn) -> Image
+	fn map_node<MapFn>(image: ImageSlice<'input>, map_fn: &'input MapFn) -> Image
 	where
-		MapFn: Node<'input, 'node, ImageSlice<'input>, Output = Vec<Color>> + 'node,
+		MapFn: Node<'input, ImageSlice<'input>, Output = Vec<Color>>,
 	{
 		let data = map_fn.eval(image);
 		Image {
