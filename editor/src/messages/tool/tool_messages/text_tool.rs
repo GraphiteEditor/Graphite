@@ -391,7 +391,7 @@ impl Fsm for TextToolFsmState {
 		let hint_data = match self {
 			TextToolFsmState::Ready => HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Add Text"), HintInfo::mouse(MouseMotion::Lmb, "Edit Text")])]),
 			TextToolFsmState::Editing => HintData(vec![HintGroup(vec![
-				HintInfo::key([Key::Control, Key::Enter], "Commit Edit"),
+				HintInfo::key([Key::Control, Key::Enter], "Commit Edit").add_mac_key([Key::Command, Key::Enter]),
 				HintInfo::key([Key::Escape], "Discard Edit"),
 			])]),
 		};

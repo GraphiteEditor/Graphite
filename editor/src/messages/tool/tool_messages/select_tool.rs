@@ -730,7 +730,7 @@ impl Fsm for SelectToolFsmState {
 				]),
 				HintGroup(vec![
 					HintInfo::mouse(MouseMotion::Lmb, "Select Object"),
-					HintInfo::key([Key::Control], "Innermost").prepend_plus(),
+					HintInfo::key([Key::Control], "Innermost").add_mac_key([Key::Command]).prepend_plus(),
 					HintInfo::key([Key::Shift], "Grow/Shrink Selection").prepend_plus(),
 				]),
 				HintGroup(vec![
@@ -738,7 +738,10 @@ impl Fsm for SelectToolFsmState {
 					HintInfo::key([Key::Shift], "Grow/Shrink Selection").prepend_plus(),
 				]),
 				HintGroup(vec![HintInfo::arrow_keys("Nudge Selected"), HintInfo::key([Key::Shift], "Big Increment Nudge").prepend_plus()]),
-				HintGroup(vec![HintInfo::key([Key::Alt], "Move Duplicate"), HintInfo::key([Key::Control, Key::KeyD], "Duplicate")]),
+				HintGroup(vec![
+					HintInfo::key([Key::Alt], "Move Duplicate"),
+					HintInfo::key([Key::Control, Key::KeyD], "Duplicate").add_mac_key([Key::Command, Key::KeyD]),
+				]),
 			]),
 			SelectToolFsmState::Dragging => HintData(vec![HintGroup(vec![
 				HintInfo::key([Key::Shift], "Constrain to Axis"),

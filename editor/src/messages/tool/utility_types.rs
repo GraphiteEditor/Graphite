@@ -520,10 +520,9 @@ pub struct HintInfo {
 impl HintInfo {
 	pub fn key(keys: impl IntoIterator<Item = Key>, label: impl Into<String>) -> Self {
 		let keys: Vec<_> = keys.into_iter().collect();
-		let convert_key_to_mac = |&key| if key == Key::Control { Key::Command } else { key };
 		Self {
-			key_groups_mac: keys.contains(&Key::Control).then(|| vec![KeysGroup(keys.iter().map(convert_key_to_mac).collect::<Vec<_>>()).into()]),
 			key_groups: vec![KeysGroup(keys).into()],
+			key_groups_mac: None,
 			mouse: None,
 			label: label.into(),
 			plus: false,
@@ -532,8 +531,8 @@ impl HintInfo {
 
 	pub fn mouse(mouse_motion: MouseMotion, label: impl Into<String>) -> Self {
 		Self {
-			key_groups_mac: None,
 			key_groups: vec![],
+			key_groups_mac: None,
 			mouse: Some(mouse_motion),
 			label: label.into(),
 			plus: false,
@@ -557,6 +556,12 @@ impl HintInfo {
 
 	pub fn prepend_plus(mut self) -> Self {
 		self.plus = true;
+		self
+	}
+
+	pub fn add_mac_key(mut self, keys: impl IntoIterator<Item = Key>) -> Self {
+		let mac_keys: Vec<_> = keys.into_iter().collect();
+		self.key_groups_mac = Some(vec![KeysGroup(mac_keys).into()]);
 		self
 	}
 }
