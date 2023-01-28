@@ -20,6 +20,7 @@ use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, 
 use crate::messages::portfolio::document::utility_types::vectorize_layer_metadata;
 use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::*;
+use crate::messages::tool::utility_types::ToolType;
 
 use document_legacy::boolean_ops::BooleanOperationError;
 use document_legacy::color::Color;
@@ -601,6 +602,9 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				responses.push_back(DocumentOperation::SetLayerTransform { path, transform }.into());
 
 				responses.push_back(DocumentMessage::NodeGraphFrameGenerate.into());
+
+				// Force chosen tool to be Select Tool after importing image.
+				responses.push_back(ToolMessage::ActivateTool { tool_type: ToolType::Select }.into());
 			}
 			Redo => {
 				responses.push_back(SelectToolMessage::Abort.into());
