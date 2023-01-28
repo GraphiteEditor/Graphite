@@ -1,7 +1,7 @@
 use crate::consts::DRAG_THRESHOLD;
 use crate::messages::frontend::utility_types::MouseCursorIcon;
-use crate::messages::input_mapper::utility_types::input_keyboard::{Key, KeysGroup, MouseMotion};
-use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, PropertyHolder, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
+use crate::messages::input_mapper::utility_types::input_keyboard::{Key, MouseMotion};
+use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, PropertyHolder, WidgetLayout};
 use crate::messages::layout::utility_types::widgets::input_widgets::NumberInput;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::snapping::SnapManager;
@@ -49,8 +49,9 @@ pub enum SplineToolMessage {
 	UpdateOptions(SplineOptionsUpdate),
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 enum SplineToolFsmState {
+	#[default]
 	Ready,
 	Drawing,
 }
@@ -75,32 +76,18 @@ impl ToolMetadata for SplineTool {
 
 impl PropertyHolder for SplineTool {
 	fn properties(&self) -> Layout {
-		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row {
-			widgets: vec![WidgetHolder::new(Widget::NumberInput(NumberInput {
-				unit: " px".into(),
-				label: "Weight".into(),
-				value: Some(self.options.line_weight),
-				is_integer: false,
-				min: Some(0.),
-				on_update: WidgetCallback::new(|number_input: &NumberInput| SplineToolMessage::UpdateOptions(SplineOptionsUpdate::LineWeight(number_input.value.unwrap())).into()),
-				..NumberInput::default()
-			}))],
-		}]))
+		let weight = NumberInput::new(Some(self.options.line_weight))
+			.unit(" px")
+			.label("Weight")
+			.min(0.)
+			.on_update(|number_input: &NumberInput| SplineToolMessage::UpdateOptions(SplineOptionsUpdate::LineWeight(number_input.value.unwrap())).into())
+			.widget_holder();
+		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row { widgets: vec![weight] }]))
 	}
 }
 
 impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for SplineTool {
 	fn process_message(&mut self, message: ToolMessage, tool_data: ToolActionHandlerData<'a>, responses: &mut VecDeque<Message>) {
-		if message == ToolMessage::UpdateHints {
-			self.fsm_state.update_hints(responses);
-			return;
-		}
-
-		if message == ToolMessage::UpdateCursor {
-			self.fsm_state.update_cursor(responses);
-			return;
-		}
-
 		if let ToolMessage::Spline(SplineToolMessage::UpdateOptions(action)) = message {
 			match action {
 				SplineOptionsUpdate::LineWeight(line_weight) => self.options.line_weight = line_weight,
@@ -108,13 +95,7 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for SplineTool {
 			return;
 		}
 
-		let new_state = self.fsm_state.transition(message, &mut self.tool_data, tool_data, &self.options, responses);
-
-		if self.fsm_state != new_state {
-			self.fsm_state = new_state;
-			self.fsm_state.update_hints(responses);
-			self.fsm_state.update_cursor(responses);
-		}
+		self.fsm_state.process_event(message, &mut self.tool_data, tool_data, &self.options, responses, true);
 	}
 
 	fn actions(&self) -> ActionList {
@@ -148,11 +129,6 @@ impl ToolTransition for SplineTool {
 	}
 }
 
-impl Default for SplineToolFsmState {
-	fn default() -> Self {
-		SplineToolFsmState::Ready
-	}
-}
 #[derive(Clone, Debug, Default)]
 struct SplineToolData {
 	points: Vec<DVec2>,
@@ -251,28 +227,10 @@ impl Fsm for SplineToolFsmState {
 
 	fn update_hints(&self, responses: &mut VecDeque<Message>) {
 		let hint_data = match self {
-			SplineToolFsmState::Ready => HintData(vec![HintGroup(vec![HintInfo {
-				key_groups: vec![],
-				key_groups_mac: None,
-				mouse: Some(MouseMotion::Lmb),
-				label: String::from("Draw Spline"),
-				plus: false,
-			}])]),
+			SplineToolFsmState::Ready => HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Draw Spline")])]),
 			SplineToolFsmState::Drawing => HintData(vec![
-				HintGroup(vec![HintInfo {
-					key_groups: vec![],
-					key_groups_mac: None,
-					mouse: Some(MouseMotion::Lmb),
-					label: String::from("Extend Spline"),
-					plus: false,
-				}]),
-				HintGroup(vec![HintInfo {
-					key_groups: vec![KeysGroup(vec![Key::Enter]).into()],
-					key_groups_mac: None,
-					mouse: None,
-					label: String::from("End Spline"),
-					plus: false,
-				}]),
+				HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Extend Spline")]),
+				HintGroup(vec![HintInfo::keys([Key::Enter], "End Spline")]),
 			]),
 		};
 
