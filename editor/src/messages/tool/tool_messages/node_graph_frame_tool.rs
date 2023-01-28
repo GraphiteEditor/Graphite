@@ -1,6 +1,5 @@
-use crate::consts::DRAG_THRESHOLD;
 use crate::messages::frontend::utility_types::MouseCursorIcon;
-use crate::messages::input_mapper::utility_types::input_keyboard::{Key, KeysGroup, MouseMotion};
+use crate::messages::input_mapper::utility_types::input_keyboard::{Key, MouseMotion};
 use crate::messages::layout::utility_types::layout_widget::PropertyHolder;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::resize::Resize;
@@ -39,23 +38,7 @@ impl PropertyHolder for NodeGraphFrameTool {}
 
 impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for NodeGraphFrameTool {
 	fn process_message(&mut self, message: ToolMessage, tool_data: ToolActionHandlerData<'a>, responses: &mut VecDeque<Message>) {
-		if message == ToolMessage::UpdateHints {
-			self.fsm_state.update_hints(responses);
-			return;
-		}
-
-		if message == ToolMessage::UpdateCursor {
-			self.fsm_state.update_cursor(responses);
-			return;
-		}
-
-		let new_state = self.fsm_state.transition(message, &mut self.tool_data, tool_data, &(), responses);
-
-		if self.fsm_state != new_state {
-			self.fsm_state = new_state;
-			self.fsm_state.update_hints(responses);
-			self.fsm_state.update_cursor(responses);
-		}
+		self.fsm_state.process_event(message, &mut self.tool_data, tool_data, &(), responses, true);
 	}
 
 	fn actions(&self) -> ActionList {
@@ -96,17 +79,13 @@ impl ToolTransition for NodeGraphFrameTool {
 	}
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 enum NodeGraphToolFsmState {
+	#[default]
 	Ready,
 	Drawing,
 }
 
-impl Default for NodeGraphToolFsmState {
-	fn default() -> Self {
-		NodeGraphToolFsmState::Ready
-	}
-}
 #[derive(Clone, Debug, Default)]
 struct NodeGraphToolData {
 	data: Resize,
@@ -160,11 +139,7 @@ impl Fsm for NodeGraphToolFsmState {
 					state
 				}
 				(Drawing, DragStop) => {
-					match shape_data.viewport_drag_start(document).distance(input.mouse.position) <= DRAG_THRESHOLD {
-						true => responses.push_back(DocumentMessage::AbortTransaction.into()),
-						false => responses.push_back(DocumentMessage::CommitTransaction.into()),
-					}
-
+					input.mouse.finish_transaction(shape_data.viewport_drag_start(document), responses);
 					responses.push_back(NodeGraphMessage::SetDrawing { new_drawing: false }.into());
 					shape_data.cleanup(responses);
 
@@ -188,44 +163,11 @@ impl Fsm for NodeGraphToolFsmState {
 	fn update_hints(&self, responses: &mut VecDeque<Message>) {
 		let hint_data = match self {
 			NodeGraphToolFsmState::Ready => HintData(vec![HintGroup(vec![
-				HintInfo {
-					key_groups: vec![],
-					key_groups_mac: None,
-					mouse: Some(MouseMotion::LmbDrag),
-					label: String::from("Draw Repaint Frame"),
-					plus: false,
-				},
-				HintInfo {
-					key_groups: vec![KeysGroup(vec![Key::Shift]).into()],
-					key_groups_mac: None,
-					mouse: None,
-					label: String::from("Constrain Square"),
-					plus: true,
-				},
-				HintInfo {
-					key_groups: vec![KeysGroup(vec![Key::Alt]).into()],
-					key_groups_mac: None,
-					mouse: None,
-					label: String::from("From Center"),
-					plus: true,
-				},
+				HintInfo::mouse(MouseMotion::LmbDrag, "Draw Repaint Frame"),
+				HintInfo::keys([Key::Shift], "Constrain Square").prepend_plus(),
+				HintInfo::keys([Key::Alt], "From Center").prepend_plus(),
 			])]),
-			NodeGraphToolFsmState::Drawing => HintData(vec![HintGroup(vec![
-				HintInfo {
-					key_groups: vec![KeysGroup(vec![Key::Shift]).into()],
-					key_groups_mac: None,
-					mouse: None,
-					label: String::from("Constrain Square"),
-					plus: false,
-				},
-				HintInfo {
-					key_groups: vec![KeysGroup(vec![Key::Alt]).into()],
-					key_groups_mac: None,
-					mouse: None,
-					label: String::from("From Center"),
-					plus: false,
-				},
-			])]),
+			NodeGraphToolFsmState::Drawing => HintData(vec![HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain Square"), HintInfo::keys([Key::Alt], "From Center")])]),
 		};
 
 		responses.push_back(FrontendMessage::UpdateInputHints { hint_data }.into());
