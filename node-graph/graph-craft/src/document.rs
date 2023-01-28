@@ -185,20 +185,20 @@ impl DocumentNodeImplementation {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct NodeNetwork {
 	pub inputs: Vec<NodeId>,
-	pub output: NodeId,
+	pub outputs: Vec<NodeId>,
 	pub nodes: HashMap<NodeId, DocumentNode>,
 	/// These nodes are replaced with identity nodes when flattening
 	pub disabled: Vec<NodeId>,
 	/// In the case where a new node is chosen as output - what was the origional
-	pub previous_output: Option<NodeId>,
+	pub previous_outputs: Option<Vec<NodeId>>,
 }
 
 impl NodeNetwork {
 	pub fn map_ids(&mut self, f: impl Fn(NodeId) -> NodeId + Copy) {
 		self.inputs.iter_mut().for_each(|id| *id = f(*id));
-		self.output = f(self.output);
+		self.outputs.iter_mut().for_each(|id| *id = f(*id));
 		self.disabled.iter_mut().for_each(|id| *id = f(*id));
-		self.previous_output = self.previous_output.map(f);
+		self.previous_outputs.iter_mut().for_each(|nodes| nodes.iter_mut().for_each(|id| *id = f(*id)));
 		let mut empty = HashMap::new();
 		std::mem::swap(&mut self.nodes, &mut empty);
 		self.nodes = empty
@@ -289,7 +289,7 @@ impl NodeNetwork {
 					}
 				}
 				node.implementation = DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode", &[generic!("T")]));
-				node.inputs = vec![NodeInput::Node(inner_network.output)];
+				node.inputs = inner_network.outputs.iter().map(|&id| NodeInput::Node(id)).collect();
 				for node_id in new_nodes {
 					self.flatten_with_fns(node_id, map_ids, gen_id);
 				}
@@ -300,26 +300,28 @@ impl NodeNetwork {
 		self.nodes.insert(id, node);
 	}
 
-	pub fn into_proto_network(self) -> ProtoNetwork {
+	pub fn into_proto_networks(self) -> impl Iterator<Item = ProtoNetwork> {
 		let mut nodes: Vec<_> = self.nodes.into_iter().map(|(id, node)| (id, node.resolve_proto_node())).collect();
 		nodes.sort_unstable_by_key(|(i, _)| *i);
-		ProtoNetwork {
-			inputs: self.inputs,
-			output: self.output,
-			nodes,
-		}
+
+		// Create a network to evaluate each output
+		self.outputs.into_iter().map(move |output_id| ProtoNetwork {
+			inputs: self.inputs.clone(),
+			output: output_id,
+			nodes: nodes.clone(),
+		})
 	}
 
-	/// Get the original output node of this network, ignoring any preview node
-	pub fn original_output(&self) -> NodeId {
-		self.previous_output.unwrap_or(self.output)
+	/// Get the original output nodes of this network, ignoring any preview node
+	pub fn original_outputs(&self) -> &Vec<NodeId> {
+		self.previous_outputs.as_ref().unwrap_or(&self.outputs)
 	}
 
 	/// A graph with just an input and output node
 	pub fn new_network(output_offset: i32, output_node_id: NodeId) -> Self {
 		Self {
 			inputs: vec![0],
-			output: 1,
+			outputs: vec![1],
 			nodes: [
 				(
 					0,
@@ -369,16 +371,15 @@ impl NodeNetwork {
 	/// Check if the specified node id is connected to the output
 	pub fn connected_to_output(&self, node_id: NodeId) -> bool {
 		// If the node is the output then return true
-		if self.output == node_id {
+		if self.outputs.contains(&node_id) {
 			return true;
 		}
-		// Get the output
-		let Some(output_node) = self.nodes.get(&self.output) else {
+		// Get the outputs
+		let Some(mut stack) = self.outputs.iter().map(|&output| self.nodes.get(&output)).collect::<Option<Vec<_>>>() else {
 			return false;
 		};
-		let mut stack = vec![output_node];
 		let mut already_visited = HashSet::new();
-		already_visited.insert(self.output);
+		already_visited.extend(self.outputs.iter());
 
 		while let Some(node) = stack.pop() {
 			for input in &node.inputs {
@@ -421,7 +422,7 @@ mod test {
 	fn add_network() -> NodeNetwork {
 		NodeNetwork {
 			inputs: vec![0, 0],
-			output: 1,
+			outputs: vec![1],
 			nodes: [
 				(
 					0,
@@ -454,7 +455,7 @@ mod test {
 		network.map_ids(|id| id + 1);
 		let maped_add = NodeNetwork {
 			inputs: vec![1, 1],
-			output: 2,
+			outputs: vec![2],
 			nodes: [
 				(
 					1,
@@ -486,7 +487,7 @@ mod test {
 	fn flatten_add() {
 		let mut network = NodeNetwork {
 			inputs: vec![1],
-			output: 1,
+			outputs: vec![1],
 			nodes: [(
 				1,
 				DocumentNode {
@@ -568,17 +569,17 @@ mod test {
 			.collect(),
 		};
 		let network = flat_network();
-		let resolved_network = network.into_proto_network();
+		let resolved_network = network.into_proto_networks().collect::<Vec<_>>();
 
-		println!("{:#?}", resolved_network);
+		println!("{:#?}", resolved_network[0]);
 		println!("{:#?}", construction_network);
-		assert_eq!(resolved_network, construction_network);
+		assert_eq!(resolved_network[0], construction_network);
 	}
 
 	fn flat_network() -> NodeNetwork {
 		NodeNetwork {
 			inputs: vec![10],
-			output: 1,
+			outputs: vec![1],
 			nodes: [
 				(
 					1,

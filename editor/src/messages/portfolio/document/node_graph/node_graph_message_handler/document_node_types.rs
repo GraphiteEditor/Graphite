@@ -76,7 +76,7 @@ fn document_node_types() -> Vec<DocumentNodeType> {
 		category: "Image Filters",
 		identifier: NodeImplementation::DocumentNode(NodeNetwork {
 			inputs: vec![0, 1, 1],
-			output: 1,
+			outputs: vec![1],
 			nodes: vec![
 				(
 					0,
@@ -430,7 +430,7 @@ impl DocumentNodeType {
 			NodeImplementation::ProtoNode(ident) => {
 				NodeNetwork {
 					inputs: (0..num_inputs).map(|_| 0).collect(),
-					output: 0,
+					outputs: vec![0],
 					nodes: [(
 						0,
 						DocumentNode {

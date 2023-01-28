@@ -52,7 +52,7 @@ mod tests {
 		fn add_network() -> NodeNetwork {
 			NodeNetwork {
 				inputs: vec![0, 0],
-				output: 1,
+				outputs: vec![1],
 				nodes: [
 					(
 						0,
@@ -81,7 +81,7 @@ mod tests {
 
 		let network = NodeNetwork {
 			inputs: vec![0],
-			output: 0,
+			outputs: vec![0],
 			nodes: [(
 				0,
 				DocumentNode {
@@ -106,7 +106,7 @@ mod tests {
 		use graph_craft::executor::{Compiler, Executor};
 
 		let compiler = Compiler {};
-		let protograph = compiler.compile(network, true);
+		let protograph = compiler.compile_single(network, true).unwrap();
 
 		let exec = DynamicExecutor::new(protograph);
 

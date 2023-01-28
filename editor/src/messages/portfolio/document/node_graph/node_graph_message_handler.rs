@@ -176,7 +176,7 @@ impl NodeGraphMessageHandler {
 			let mut widgets = Vec::new();
 
 			// Don't allow disabling input or output nodes
-			let mut selected_nodes = self.selected_nodes.iter().filter(|&&id| !network.inputs.contains(&id) && network.original_output() != id);
+			let mut selected_nodes = self.selected_nodes.iter().filter(|&&id| !network.inputs.contains(&id) && !network.original_outputs().contains(&id));
 
 			// If there is at least one other selected node then show the hide or show button
 			if selected_nodes.next().is_some() {
@@ -187,13 +187,11 @@ impl NodeGraphMessageHandler {
 				let multiple_nodes = selected_nodes.next().is_some();
 
 				// Generate the enable or disable button accordingly
-				let hide_button = WidgetHolder::new(Widget::TextButton(TextButton {
-					label: if is_hidden { "Show" } else { "Hide" }.to_string(),
-					tooltip: if is_hidden { "Show node" } else { "Hide node" }.to_string() + if multiple_nodes { "s" } else { "" },
-					tooltip_shortcut: action_keys!(NodeGraphMessageDiscriminant::ToggleHidden),
-					on_update: WidgetCallback::new(move |_| NodeGraphMessage::ToggleHidden.into()),
-					..Default::default()
-				}));
+				let hide_button = TextButton::new(if is_hidden { "Show" } else { "Hide" })
+					.tooltip(if is_hidden { "Show node" } else { "Hide node" }.to_string() + if multiple_nodes { "s" } else { "" })
+					.tooltip_shortcut(action_keys!(NodeGraphMessageDiscriminant::ToggleHidden))
+					.on_update(move |_| NodeGraphMessage::ToggleHidden.into())
+					.widget_holder();
 				widgets.push(hide_button);
 			}
 
@@ -201,10 +199,10 @@ impl NodeGraphMessageHandler {
 			if self.selected_nodes.len() == 1 {
 				let node_id = self.selected_nodes[0];
 				// Is this node the current output
-				let is_output = network.output == node_id;
+				let is_output = network.outputs.contains(&node_id);
 
 				// Don't show stop previewing button on the original output node
-				if !(is_output && network.previous_output.filter(|&id| id != self.selected_nodes[0]).is_none()) {
+				if !(is_output && network.previous_outputs.as_ref().map_or(true, |previous_outputs| !previous_outputs.contains(&self.selected_nodes[0]))) {
 					let output_button = WidgetHolder::new(Widget::TextButton(TextButton {
 						label: if is_output { "End Preview" } else { "Preview" }.to_string(),
 						tooltip: if is_output { "Restore preview to Output node" } else { "Preview node" }.to_string() + " (shortcut: Alt+click node)",
@@ -220,6 +218,7 @@ impl NodeGraphMessageHandler {
 		self.send_node_bar_layout(responses);
 	}
 
+	/// Collate the properties panel sections for a node graph
 	pub fn collate_properties(&self, node_graph_frame: &NodeGraphFrameLayer, context: &mut NodePropertiesContext, sections: &mut Vec<LayoutGroup>) {
 		let mut network = &node_graph_frame.network;
 		for segment in &self.nested_path {
@@ -228,7 +227,7 @@ impl NodeGraphMessageHandler {
 
 		// If empty, show all nodes in the network starting with the output
 		if self.selected_nodes.is_empty() {
-			let mut stack = vec![network.output];
+			let mut stack = network.outputs.clone();
 			let mut nodes = Vec::new();
 			while let Some(node_id) = stack.pop() {
 				let Some(document_node) = network.nodes.get(&node_id) else {
@@ -242,6 +241,7 @@ impl NodeGraphMessageHandler {
 				sections.push(node_properties::generate_node_properties(document_node, node_id, context));
 			}
 		}
+		// Show properties for all selected nodes
 		for node_id in &self.selected_nodes {
 			let Some(document_node) = network.nodes.get(node_id) else {
 				continue;
@@ -300,7 +300,7 @@ impl NodeGraphMessageHandler {
 					.collect(),
 				outputs: node_type.outputs.to_vec(),
 				position: node.metadata.position.into(),
-				output: network.output == *id,
+				output: network.outputs.contains(id),
 				disabled: network.disabled.contains(id),
 			})
 		}
@@ -318,24 +318,24 @@ impl NodeGraphMessageHandler {
 		);
 	}
 
-	fn remove_references_from_network(network: &mut NodeNetwork, node_id: NodeId) -> bool {
-		if network.inputs.iter().any(|&id| id == node_id) {
+	fn remove_references_from_network(network: &mut NodeNetwork, deleting_node_id: NodeId) -> bool {
+		if network.inputs.contains(&deleting_node_id) {
 			warn!("Deleting input node");
 			return false;
 		}
-		if network.output == node_id {
+		if network.outputs.contains(&deleting_node_id) {
 			warn!("Deleting the output node!");
 			return false;
 		}
-		for (id, node) in network.nodes.iter_mut() {
-			if *id == node_id {
+		for (node_id, node) in network.nodes.iter_mut() {
+			if *node_id == deleting_node_id {
 				continue;
 			}
 			for (input_index, input) in node.inputs.iter_mut().enumerate() {
 				let NodeInput::Node(id) = input else {
 					continue;
 				};
-				if *id != node_id {
+				if *id != deleting_node_id {
 					continue;
 				}
 
@@ -344,19 +344,17 @@ impl NodeGraphMessageHandler {
 						return false;
 					};
 				if let NodeInput::Value { tagged_value, .. } = &node_type.inputs[input_index].default {
-					*input = NodeInput::Value {
-						tagged_value: tagged_value.clone(),
-						exposed: true,
-					};
+					*input = NodeInput::value(tagged_value.clone(), true);
 				}
 			}
 			if let DocumentNodeImplementation::Network(network) = &mut node.implementation {
-				Self::remove_references_from_network(network, node_id);
+				Self::remove_references_from_network(network, deleting_node_id);
 			}
 		}
 		true
 	}
 
+	/// Tries to remove a node from the network, returning true on success.
 	fn remove_node(&mut self, network: &mut NodeNetwork, node_id: NodeId) -> bool {
 		if Self::remove_references_from_network(network, node_id) {
 			network.nodes.remove(&node_id);
@@ -378,7 +376,7 @@ impl NodeGraphMessageHandler {
 	fn copy_nodes<'a>(network: &'a NodeNetwork, new_ids: &'a HashMap<NodeId, NodeId>) -> impl Iterator<Item = (NodeId, DocumentNode)> + 'a {
 		new_ids
 			.iter()
-			.filter(|&(&id, _)| id != network.output && !network.inputs.contains(&id))
+			.filter(|&(&id, _)| !network.outputs.contains(&id) && !network.inputs.contains(&id))
 			.filter_map(|(&id, &new)| network.nodes.get(&id).map(|node| (new, node.clone())))
 			.map(move |(new, node)| (new, node.map_ids(Self::default_node_input, new_ids)))
 	}
@@ -812,9 +810,11 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &mut dyn Iterator<Item = &
 						// Remove all selected nodes from the disabled list
 						network.disabled.retain(|id| !self.selected_nodes.contains(id));
 					} else {
-						let original_output = network.original_output();
+						let original_outputs = network.original_outputs().clone();
 						// Add all selected nodes to the disabled list (excluding input or output nodes)
-						network.disabled.extend(self.selected_nodes.iter().filter(|&id| !network.inputs.contains(id) && original_output != *id));
+						network
+							.disabled
+							.extend(self.selected_nodes.iter().filter(|&id| !network.inputs.contains(id) && !original_outputs.contains(id)));
 					}
 					Self::send_graph(network, responses);
 
@@ -831,12 +831,12 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &mut dyn Iterator<Item = &
 			}
 			NodeGraphMessage::TogglePreviewImpl { node_id } => {
 				if let Some(network) = self.get_active_network_mut(document) {
-					// Check if the node is not already
-					if network.output != node_id {
-						network.previous_output = Some(network.previous_output.unwrap_or(network.output));
-						network.output = node_id;
-					} else if let Some(output) = network.previous_output.take() {
-						network.output = output
+					// Check if the node is already being previewed and so the output should return to default
+					if network.outputs.contains(&node_id) {
+						network.previous_outputs = Some(network.previous_outputs.to_owned().unwrap_or_else(|| network.outputs.clone()));
+						network.outputs[0] = node_id;
+					} else if let Some(outputs) = network.previous_outputs.take() {
+						network.outputs = outputs
 					} else {
 						return;
 					}
