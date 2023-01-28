@@ -1,6 +1,6 @@
 use crate::consts::{SELECTION_THRESHOLD, SELECTION_TOLERANCE};
 use crate::messages::frontend::utility_types::MouseCursorIcon;
-use crate::messages::input_mapper::utility_types::input_keyboard::{Key, KeysGroup, MouseMotion};
+use crate::messages::input_mapper::utility_types::input_keyboard::{Key, MouseMotion};
 use crate::messages::layout::utility_types::layout_widget::PropertyHolder;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::overlay_renderer::OverlayRenderer;
@@ -62,23 +62,7 @@ impl PropertyHolder for PathTool {}
 
 impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for PathTool {
 	fn process_message(&mut self, message: ToolMessage, tool_data: ToolActionHandlerData<'a>, responses: &mut VecDeque<Message>) {
-		if message == ToolMessage::UpdateHints {
-			self.fsm_state.update_hints(responses);
-			return;
-		}
-
-		if message == ToolMessage::UpdateCursor {
-			self.fsm_state.update_cursor(responses);
-			return;
-		}
-
-		let new_state = self.fsm_state.transition(message, &mut self.tool_data, tool_data, &(), responses);
-
-		if self.fsm_state != new_state {
-			self.fsm_state = new_state;
-			self.fsm_state.update_hints(responses);
-			self.fsm_state.update_cursor(responses);
-		}
+		self.fsm_state.process_event(message, &mut self.tool_data, tool_data, &(), responses, true);
 	}
 
 	// Different actions depending on state may be wanted:
@@ -111,16 +95,11 @@ impl ToolTransition for PathTool {
 	}
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 enum PathToolFsmState {
+	#[default]
 	Ready,
 	Dragging,
-}
-
-impl Default for PathToolFsmState {
-	fn default() -> Self {
-		PathToolFsmState::Ready
-	}
 }
 
 #[derive(Default)]
@@ -188,7 +167,7 @@ impl Fsm for PathToolFsmState {
 						let ignore_document = tool_data.shape_editor.selected_layers().clone();
 						tool_data
 							.snap_manager
-							.start_snap(document, document.bounding_boxes(Some(&ignore_document), None, font_cache), true, true);
+							.start_snap(document, input, document.bounding_boxes(Some(&ignore_document), None, font_cache), true, true);
 
 						// Do not snap against handles when anchor is selected
 						let mut extension = Vec::new();
@@ -201,7 +180,7 @@ impl Fsm for PathToolFsmState {
 						new_selected.extend(extension);
 
 						let include_handles = tool_data.shape_editor.selected_layers_ref();
-						tool_data.snap_manager.add_all_document_handles(document, &include_handles, &[], &new_selected);
+						tool_data.snap_manager.add_all_document_handles(document, input, &include_handles, &[], &new_selected);
 
 						tool_data.drag_start_pos = input.mouse.position - offset;
 						PathToolFsmState::Dragging
@@ -309,88 +288,23 @@ impl Fsm for PathToolFsmState {
 		let hint_data = match self {
 			PathToolFsmState::Ready => HintData(vec![
 				HintGroup(vec![
-					HintInfo {
-						key_groups: vec![],
-						key_groups_mac: None,
-						mouse: Some(MouseMotion::Lmb),
-						label: String::from("Select Point"),
-						plus: false,
-					},
-					HintInfo {
-						key_groups: vec![KeysGroup(vec![Key::Shift]).into()],
-						key_groups_mac: None,
-						mouse: None,
-						label: String::from("Grow/Shrink Selection"),
-						plus: true,
-					},
+					HintInfo::mouse(MouseMotion::Lmb, "Select Point"),
+					HintInfo::keys([Key::Shift], "Grow/Shrink Selection").prepend_plus(),
 				]),
-				HintGroup(vec![HintInfo {
-					key_groups: vec![],
-					key_groups_mac: None,
-					mouse: Some(MouseMotion::LmbDrag),
-					label: String::from("Drag Selected"),
-					plus: false,
-				}]),
+				HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Drag Selected")]),
 				HintGroup(vec![
-					HintInfo {
-						key_groups: vec![
-							KeysGroup(vec![Key::ArrowUp]).into(),
-							KeysGroup(vec![Key::ArrowRight]).into(),
-							KeysGroup(vec![Key::ArrowDown]).into(),
-							KeysGroup(vec![Key::ArrowLeft]).into(),
-						],
-						key_groups_mac: None,
-						mouse: None,
-						label: String::from("Nudge Selected (coming soon)"),
-						plus: false,
-					},
-					HintInfo {
-						key_groups: vec![KeysGroup(vec![Key::Shift]).into()],
-						key_groups_mac: None,
-						mouse: None,
-						label: String::from("Big Increment Nudge"),
-						plus: true,
-					},
+					HintInfo::arrow_keys("Nudge Selected (coming soon)"),
+					HintInfo::keys([Key::Shift], "Big Increment Nudge").prepend_plus(),
 				]),
 				HintGroup(vec![
-					HintInfo {
-						key_groups: vec![KeysGroup(vec![Key::KeyG]).into()],
-						key_groups_mac: None,
-						mouse: None,
-						label: String::from("Grab Selected (coming soon)"),
-						plus: false,
-					},
-					HintInfo {
-						key_groups: vec![KeysGroup(vec![Key::KeyR]).into()],
-						key_groups_mac: None,
-						mouse: None,
-						label: String::from("Rotate Selected (coming soon)"),
-						plus: false,
-					},
-					HintInfo {
-						key_groups: vec![KeysGroup(vec![Key::KeyS]).into()],
-						key_groups_mac: None,
-						mouse: None,
-						label: String::from("Scale Selected (coming soon)"),
-						plus: false,
-					},
+					HintInfo::keys([Key::KeyG], "Grab Selected (coming soon)"),
+					HintInfo::keys([Key::KeyR], "Rotate Selected (coming soon)"),
+					HintInfo::keys([Key::KeyS], "Scale Selected (coming soon)"),
 				]),
 			]),
 			PathToolFsmState::Dragging => HintData(vec![HintGroup(vec![
-				HintInfo {
-					key_groups: vec![KeysGroup(vec![Key::Alt]).into()],
-					key_groups_mac: None,
-					mouse: None,
-					label: String::from("Split/Align Handles (Toggle)"),
-					plus: false,
-				},
-				HintInfo {
-					key_groups: vec![KeysGroup(vec![Key::Shift]).into()],
-					key_groups_mac: None,
-					mouse: None,
-					label: String::from("Share Lengths of Aligned Handles"),
-					plus: false,
-				},
+				HintInfo::keys([Key::Alt], "Split/Align Handles (Toggle)"),
+				HintInfo::keys([Key::Shift], "Share Lengths of Aligned Handles"),
 			])]),
 		};
 

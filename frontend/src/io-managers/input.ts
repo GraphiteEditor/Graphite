@@ -3,6 +3,7 @@ import { type FullscreenState } from "@/state-providers/fullscreen";
 import { type PortfolioState } from "@/state-providers/portfolio";
 import { makeKeyboardModifiersBitfield, textInputCleanup, getLocalizedScanCode } from "@/utility-functions/keyboard-entry";
 import { platformIsMac } from "@/utility-functions/platform";
+import { extractPixelData } from "@/utility-functions/rasterization";
 import { stripIndents } from "@/utility-functions/strip-indents";
 import { type Editor } from "@/wasm-communication/editor";
 import { TriggerPaste } from "@/wasm-communication/messages";
@@ -270,10 +271,8 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 
 			const file = item.getAsFile();
 			if (file?.type.startsWith("image")) {
-				file.arrayBuffer().then((buffer): void => {
-					const u8Array = new Uint8Array(buffer);
-
-					editor.instance.pasteImage(file.type, u8Array);
+				extractPixelData(file).then((imageData): void => {
+					editor.instance.pasteImage(new Uint8Array(imageData.data), imageData.width, imageData.height);
 				});
 			}
 		});
@@ -317,10 +316,11 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 				if (imageType) {
 					const blob = await item.getType(imageType);
 					const reader = new FileReader();
-					reader.onload = (): void => {
-						const u8Array = new Uint8Array(reader.result as ArrayBuffer);
-
-						editor.instance.pasteImage(imageType, u8Array);
+					reader.onload = async (): Promise<void> => {
+						if (reader.result instanceof ArrayBuffer) {
+							const imageData = await extractPixelData(new Blob([reader.result], { type: imageType }));
+							editor.instance.pasteImage(new Uint8Array(imageData.data), imageData.width, imageData.height);
+						}
 					};
 					reader.readAsArrayBuffer(blob);
 				}

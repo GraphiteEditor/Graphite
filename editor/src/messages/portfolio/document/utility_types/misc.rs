@@ -1,4 +1,5 @@
 pub use super::layer_panel::{LayerMetadata, LayerPanelEntry};
+use crate::messages::prelude::ArtboardMessageHandler;
 
 use document_legacy::color::Color;
 use document_legacy::document::Document as DocumentLegacy;
@@ -8,7 +9,12 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt;
 
-pub type DocumentSave = (DocumentLegacy, HashMap<Vec<LayerId>, LayerMetadata>);
+#[derive(Debug, Clone)]
+pub struct DocumentSave {
+	pub document: DocumentLegacy,
+	pub artboard: ArtboardMessageHandler,
+	pub layer_metadata: HashMap<Vec<LayerId>, LayerMetadata>,
+}
 
 #[derive(PartialEq, Eq, Clone, Debug, Serialize, Deserialize, Hash)]
 pub enum FlipAxis {

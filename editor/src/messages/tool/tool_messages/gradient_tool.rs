@@ -1,8 +1,8 @@
 use crate::application::generate_uuid;
-use crate::consts::{COLOR_ACCENT, DRAG_THRESHOLD, LINE_ROTATE_SNAP_ANGLE, MANIPULATOR_GROUP_MARKER_SIZE, SELECTION_THRESHOLD, SELECTION_TOLERANCE};
+use crate::consts::{COLOR_ACCENT, LINE_ROTATE_SNAP_ANGLE, MANIPULATOR_GROUP_MARKER_SIZE, SELECTION_THRESHOLD, SELECTION_TOLERANCE};
 use crate::messages::frontend::utility_types::MouseCursorIcon;
-use crate::messages::input_mapper::utility_types::input_keyboard::{Key, KeysGroup, MouseMotion};
-use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, PropertyHolder, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
+use crate::messages::input_mapper::utility_types::input_keyboard::{Key, MouseMotion};
+use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, PropertyHolder, WidgetLayout};
 use crate::messages::layout::utility_types::widgets::input_widgets::{RadioEntryData, RadioInput};
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::snapping::SnapManager;
@@ -78,15 +78,6 @@ impl ToolMetadata for GradientTool {
 
 impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for GradientTool {
 	fn process_message(&mut self, message: ToolMessage, data: ToolActionHandlerData<'a>, responses: &mut VecDeque<Message>) {
-		if message == ToolMessage::UpdateHints {
-			self.fsm_state.update_hints(responses);
-			return;
-		}
-
-		if message == ToolMessage::UpdateCursor {
-			self.fsm_state.update_cursor(responses);
-			return;
-		}
 		if let ToolMessage::Gradient(GradientToolMessage::UpdateOptions(action)) = message {
 			match action {
 				GradientOptionsUpdate::Type(gradient_type) => {
@@ -100,12 +91,7 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for GradientTool
 			return;
 		}
 
-		let new_state = self.fsm_state.transition(message, &mut self.data, data, &self.options, responses);
-
-		if self.fsm_state != new_state {
-			self.fsm_state = new_state;
-			self.fsm_state.update_hints(responses);
-		}
+		self.fsm_state.process_event(message, &mut self.data, data, &self.options, responses, false);
 	}
 
 	advertise_actions!(GradientToolMessageDiscriminant;
@@ -120,45 +106,27 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for GradientTool
 
 impl PropertyHolder for GradientTool {
 	fn properties(&self) -> Layout {
-		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row {
-			widgets: vec![WidgetHolder::new(Widget::RadioInput(RadioInput {
-				selected_index: if self.selected_gradient().unwrap_or(self.options.gradient_type) == GradientType::Radial {
-					1
-				} else {
-					0
-				},
-				entries: vec![
-					RadioEntryData {
-						value: "linear".into(),
-						label: "Linear".into(),
-						tooltip: "Linear Gradient".into(),
-						on_update: WidgetCallback::new(move |_| GradientToolMessage::UpdateOptions(GradientOptionsUpdate::Type(GradientType::Linear)).into()),
-						..RadioEntryData::default()
-					},
-					RadioEntryData {
-						value: "radial".into(),
-						label: "Radial".into(),
-						tooltip: "Radial Gradient".into(),
-						on_update: WidgetCallback::new(move |_| GradientToolMessage::UpdateOptions(GradientOptionsUpdate::Type(GradientType::Radial)).into()),
-						..RadioEntryData::default()
-					},
-				],
-				..Default::default()
-			}))],
-		}]))
+		let gradient_type = RadioInput::new(vec![
+			RadioEntryData::new("Linear")
+				.value("linear")
+				.tooltip("Linear Gradient")
+				.on_update(move |_| GradientToolMessage::UpdateOptions(GradientOptionsUpdate::Type(GradientType::Linear)).into()),
+			RadioEntryData::new("Radial")
+				.value("radial")
+				.tooltip("Radial Gradient")
+				.on_update(move |_| GradientToolMessage::UpdateOptions(GradientOptionsUpdate::Type(GradientType::Radial)).into()),
+		])
+		.selected_index((self.selected_gradient().unwrap_or(self.options.gradient_type) == GradientType::Radial) as u32)
+		.widget_holder();
+		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row { widgets: vec![gradient_type] }]))
 	}
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 enum GradientToolFsmState {
+	#[default]
 	Ready,
 	Drawing,
-}
-
-impl Default for GradientToolFsmState {
-	fn default() -> Self {
-		GradientToolFsmState::Ready
-	}
 }
 
 /// Computes the transform from gradient space to layer space (where gradient space is 0..1 in layer space)
@@ -416,9 +384,9 @@ struct GradientToolData {
 	drag_start: DVec2,
 }
 
-pub fn start_snap(snap_manager: &mut SnapManager, document: &DocumentMessageHandler, font_cache: &FontCache) {
-	snap_manager.start_snap(document, document.bounding_boxes(None, None, font_cache), true, true);
-	snap_manager.add_all_document_handles(document, &[], &[], &[]);
+pub fn start_snap(snap_manager: &mut SnapManager, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, font_cache: &FontCache) {
+	snap_manager.start_snap(document, input, document.bounding_boxes(None, None, font_cache), true, true);
+	snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
 }
 
 impl Fsm for GradientToolFsmState {
@@ -573,7 +541,7 @@ impl Fsm for GradientToolFsmState {
 						] {
 							if pos.distance_squared(mouse) < tolerance {
 								dragging = true;
-								start_snap(&mut tool_data.snap_manager, document, font_cache);
+								start_snap(&mut tool_data.snap_manager, document, input, font_cache);
 								tool_data.selected_gradient = Some(SelectedGradient {
 									path: overlay.path.clone(),
 									transform: overlay.transform,
@@ -621,7 +589,7 @@ impl Fsm for GradientToolFsmState {
 
 							tool_data.selected_gradient = Some(selected_gradient);
 
-							start_snap(&mut tool_data.snap_manager, document, font_cache);
+							start_snap(&mut tool_data.snap_manager, document, input, font_cache);
 
 							GradientToolFsmState::Drawing
 						} else {
@@ -638,14 +606,7 @@ impl Fsm for GradientToolFsmState {
 				}
 
 				(GradientToolFsmState::Drawing, GradientToolMessage::PointerUp) => {
-					match tool_data.drag_start.distance(input.mouse.position) <= DRAG_THRESHOLD {
-						true => {
-							responses.push_back(DocumentMessage::AbortTransaction.into());
-							responses.push_back(GradientToolMessage::DocumentIsDirty.into());
-						}
-						false => responses.push_back(DocumentMessage::CommitTransaction.into()),
-					}
-
+					input.mouse.finish_transaction(tool_data.drag_start, responses);
 					tool_data.snap_manager.cleanup(responses);
 
 					GradientToolFsmState::Ready
@@ -669,28 +630,10 @@ impl Fsm for GradientToolFsmState {
 	fn update_hints(&self, responses: &mut VecDeque<Message>) {
 		let hint_data = match self {
 			GradientToolFsmState::Ready => HintData(vec![HintGroup(vec![
-				HintInfo {
-					key_groups: vec![],
-					key_groups_mac: None,
-					mouse: Some(MouseMotion::LmbDrag),
-					label: String::from("Draw Gradient"),
-					plus: false,
-				},
-				HintInfo {
-					key_groups: vec![KeysGroup(vec![Key::Shift]).into()],
-					key_groups_mac: None,
-					mouse: None,
-					label: String::from("Snap 15°"),
-					plus: true,
-				},
+				HintInfo::mouse(MouseMotion::LmbDrag, "Draw Gradient"),
+				HintInfo::keys([Key::Shift], "Snap 15°").prepend_plus(),
 			])]),
-			GradientToolFsmState::Drawing => HintData(vec![HintGroup(vec![HintInfo {
-				key_groups: vec![KeysGroup(vec![Key::Shift]).into()],
-				key_groups_mac: None,
-				mouse: None,
-				label: String::from("Snap 15°"),
-				plus: false,
-			}])]),
+			GradientToolFsmState::Drawing => HintData(vec![HintGroup(vec![HintInfo::keys([Key::Shift], "Snap 15°")])]),
 		};
 
 		responses.push_back(FrontendMessage::UpdateInputHints { hint_data }.into());
