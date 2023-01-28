@@ -144,24 +144,18 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 							}
 							DocumentResponse::DocumentChanged => responses.push_back(RenderDocument.into()),
 							DocumentResponse::DeletedSelectedManipulatorPoints => {
-								// Clear Properties panel after deleting all points
+								// Clear Properties panel after deleting all points by updating backend widget state.
 								responses.push_back(
-									FrontendMessage::UpdatePropertyPanelOptionsLayout {
+									LayoutMessage::SendLayout {
+										layout: Layout::WidgetLayout(WidgetLayout::new(vec![])),
 										layout_target: LayoutTarget::PropertiesOptions,
-										diff: vec![WidgetDiff {
-											widget_path: vec![],
-											new_value: DiffUpdate::SubLayout(vec![]),
-										}],
 									}
 									.into(),
 								);
 								responses.push_back(
-									FrontendMessage::UpdatePropertyPanelSectionsLayout {
+									LayoutMessage::SendLayout {
+										layout: Layout::WidgetLayout(WidgetLayout::new(vec![])),
 										layout_target: LayoutTarget::PropertiesSections,
-										diff: vec![WidgetDiff {
-											widget_path: vec![],
-											new_value: DiffUpdate::SubLayout(vec![]),
-										}],
 									}
 									.into(),
 								);
