@@ -1,3 +1,5 @@
+use core::marker::PhantomData;
+
 use dyn_any::StaticTypeSized;
 
 use crate::Node;
@@ -43,20 +45,20 @@ pub trait Then<'i, Input: 'i>: Sized {
 
 impl<'i, First: Node<'i, Input>, Input: 'i> Then<'i, Input> for First {}
 
-pub struct ConsNode<Root>(pub Root);
+pub struct ConsNode<I: From<()>, Root>(pub Root, PhantomData<I>);
 
-impl<'i, Root, Input: 'i> Node<'i, Input> for ConsNode<Root>
+impl<'i, Root, Input: 'i, I: 'i + From<()>> Node<'i, Input> for ConsNode<I, Root>
 where
-	Root: Node<'i, ()>,
+	Root: Node<'i, I>,
 {
 	type Output = (Input, Root::Output);
 	fn eval<'s: 'i>(&'s self, input: Input) -> Self::Output {
-		let arg = self.0.eval(());
+		let arg = self.0.eval(I::from(()));
 		(input, arg)
 	}
 }
-impl<'i, Root: Node<'i, ()>> ConsNode<Root> {
+impl<'i, Root: Node<'i, I>, I: 'i + From<()>> ConsNode<I, Root> {
 	pub fn new(root: Root) -> Self {
-		ConsNode(root)
+		ConsNode(root, PhantomData)
 	}
 }

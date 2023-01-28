@@ -1,4 +1,5 @@
 use dyn_any::{DynAny, StaticType};
+use graphene_core::value::ValueNode;
 pub use graphene_core::{generic, ops /*, structural*/, Node};
 use std::{marker::PhantomData, pin::Pin};
 
@@ -85,8 +86,8 @@ where
 
 pub type Any<'n> = Box<dyn DynAny<'n> + 'n>;
 
-pub fn input_node<'i, O: StaticType, N: Node<'i, Any<'i>>>(n: N) -> DowncastBothNode<(), O, N> {
-	DowncastBothNode::new(n)
+pub fn input_node<'n, O: StaticType, N: 'n + ?Sized + for<'i> Node<'i, Any<'i>, Output = Any<'i>>>(n: &Pin<Box<N>>) -> DowncastBothNode<(), O, ValueNode<&Pin<Box<N>>>> {
+	DowncastBothNode::new(ValueNode::new(n))
 }
 
 #[cfg(test)]

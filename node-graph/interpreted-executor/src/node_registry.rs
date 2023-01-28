@@ -16,7 +16,7 @@ use graphene_std::any::{Any, DowncastNode, DynAnyNode, IntoTypeErasedNode, TypeE
 use graph_craft::proto::Type;
 use graph_craft::proto::{ConstructionArgs, NodeIdentifier, ProtoNode, ProtoNodeInput};
 
-type NodeConstructor<'a> = fn(Vec<&'a TypeErasedPinned<'a>>) -> TypeErasedPinned<'a>;
+type NodeConstructor = for<'a> fn(Vec<&'a TypeErasedPinned<'a>>) -> TypeErasedPinned<'a>;
 
 use graph_craft::{concrete, generic};
 use graphene_std::memo::CacheNode;
@@ -29,7 +29,7 @@ macro_rules! register_node {
 			args.reverse();
 			let node = <$path>::new($(graphene_std::any::input_node::<$type, _>(args.pop().expect("not enough arguments provided to construct node"))),*);
 			let any: DynAnyNode<$input, _, _> = graphene_std::any::DynAnyNode::new(node);
-			any.into_type_erased()
+			Box::pin(any) as TypeErasedPinned
 		})
 	};
 }
@@ -39,16 +39,21 @@ static NODE_REGISTRY: &[(NodeIdentifier, NodeConstructor)] = &[
 		args.reverse();
 		let node = <graphene_core::ops::IdNode>::new();
 		let any = graphene_std::any::DynAnyNode::new(node);
-		any.into_type_erased()
+		Box::pin(any) as TypeErasedPinned
+		//any.into_type_erased()
 	}),
 	(
 		{ NodeIdentifier::new("graphene_core::structural::ConsNode<_, _>", &[Type::Concrete(std::borrow::Cow::Borrowed("u32"))]) },
 		|args| {
 			let mut args = args.clone();
 			args.reverse();
-			let node = <graphene_core::structural::ConsNode<_, _>>::new(graphene_std::any::input_node::<u32, _>(args.pop().expect("not enough arguments provided to construct node")));
+			let first = args.pop().unwrap();
+			first.eval(Box::new(()));
+			let input_node = graphene_std::any::input_node::<u32, _>(first);
+			input_node.eval(());
+			let node = <graphene_core::structural::ConsNode<_, _>>::new(input_node);
 			let any: DynAnyNode<u32, _, _> = graphene_std::any::DynAnyNode::new(node);
-			any.into_type_erased()
+			Box::pin(any) as TypeErasedPinned
 		},
 	),
 	/*

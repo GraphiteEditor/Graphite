@@ -116,7 +116,7 @@ impl BorrowTree {
 			ConstructionArgs::Value(value) => {
 				let node = graphene_core::generic::FnNode::new(move |_| value.clone().up_box() as Any<'_>);
 
-				let node = node.into_type_erased();
+				let node = Box::pin(node) as TypeErasedPinned;
 				self.store_node(node, id, vec![]);
 			}
 			ConstructionArgs::Nodes(ids) => {

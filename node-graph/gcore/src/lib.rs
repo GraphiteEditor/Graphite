@@ -1,5 +1,7 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
+use core::pin::Pin;
+
 #[cfg(feature = "alloc")]
 extern crate alloc;
 
