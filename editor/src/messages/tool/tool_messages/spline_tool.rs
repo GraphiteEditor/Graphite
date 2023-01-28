@@ -230,7 +230,7 @@ impl Fsm for SplineToolFsmState {
 			SplineToolFsmState::Ready => HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Draw Spline")])]),
 			SplineToolFsmState::Drawing => HintData(vec![
 				HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Extend Spline")]),
-				HintGroup(vec![HintInfo::key([Key::Enter], "End Spline")]),
+				HintGroup(vec![HintInfo::keys([Key::Enter], "End Spline")]),
 			]),
 		};
 

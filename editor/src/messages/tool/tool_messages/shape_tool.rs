@@ -201,10 +201,10 @@ impl Fsm for ShapeToolFsmState {
 		let hint_data = match self {
 			ShapeToolFsmState::Ready => HintData(vec![HintGroup(vec![
 				HintInfo::mouse(MouseMotion::LmbDrag, "Draw Shape"),
-				HintInfo::key([Key::Shift], "Constrain 1:1 Aspect").prepend_plus(),
-				HintInfo::key([Key::Alt], "From Center").prepend_plus(),
+				HintInfo::keys([Key::Shift], "Constrain 1:1 Aspect").prepend_plus(),
+				HintInfo::keys([Key::Alt], "From Center").prepend_plus(),
 			])]),
-			ShapeToolFsmState::Drawing => HintData(vec![HintGroup(vec![HintInfo::key([Key::Shift], "Constrain 1:1 Aspect"), HintInfo::key([Key::Alt], "From Center")])]),
+			ShapeToolFsmState::Drawing => HintData(vec![HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain 1:1 Aspect"), HintInfo::keys([Key::Alt], "From Center")])]),
 		};
 
 		responses.push_back(FrontendMessage::UpdateInputHints { hint_data }.into());

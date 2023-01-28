@@ -201,14 +201,14 @@ impl Fsm for LineToolFsmState {
 		let hint_data = match self {
 			LineToolFsmState::Ready => HintData(vec![HintGroup(vec![
 				HintInfo::mouse(MouseMotion::LmbDrag, "Draw Line"),
-				HintInfo::key([Key::Shift], "Snap 15°").prepend_plus(),
-				HintInfo::key([Key::Alt], "From Center").prepend_plus(),
-				HintInfo::key([Key::Control], "Lock Angle").prepend_plus(),
+				HintInfo::keys([Key::Shift], "Snap 15°").prepend_plus(),
+				HintInfo::keys([Key::Alt], "From Center").prepend_plus(),
+				HintInfo::keys([Key::Control], "Lock Angle").prepend_plus(),
 			])]),
 			LineToolFsmState::Drawing => HintData(vec![HintGroup(vec![
-				HintInfo::key([Key::Shift], "Snap 15°"),
-				HintInfo::key([Key::Alt], "From Center"),
-				HintInfo::key([Key::Control], "Lock Angle"),
+				HintInfo::keys([Key::Shift], "Snap 15°"),
+				HintInfo::keys([Key::Alt], "From Center"),
+				HintInfo::keys([Key::Control], "Lock Angle"),
 			])]),
 		};
 

@@ -164,10 +164,10 @@ impl Fsm for NodeGraphToolFsmState {
 		let hint_data = match self {
 			NodeGraphToolFsmState::Ready => HintData(vec![HintGroup(vec![
 				HintInfo::mouse(MouseMotion::LmbDrag, "Draw Repaint Frame"),
-				HintInfo::key([Key::Shift], "Constrain Square").prepend_plus(),
-				HintInfo::key([Key::Alt], "From Center").prepend_plus(),
+				HintInfo::keys([Key::Shift], "Constrain Square").prepend_plus(),
+				HintInfo::keys([Key::Alt], "From Center").prepend_plus(),
 			])]),
-			NodeGraphToolFsmState::Drawing => HintData(vec![HintGroup(vec![HintInfo::key([Key::Shift], "Constrain Square"), HintInfo::key([Key::Alt], "From Center")])]),
+			NodeGraphToolFsmState::Drawing => HintData(vec![HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain Square"), HintInfo::keys([Key::Alt], "From Center")])]),
 		};
 
 		responses.push_back(FrontendMessage::UpdateInputHints { hint_data }.into());

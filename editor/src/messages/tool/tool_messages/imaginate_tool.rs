@@ -1,7 +1,7 @@
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, MouseMotion};
 use crate::messages::layout::utility_types::layout_widget::PropertyHolder;
-use crate::messages::portfolio::document::node_graph::{NodeImplementation, IMAGINATE_NODE};
+use crate::messages::portfolio::document::node_graph::IMAGINATE_NODE;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::resize::Resize;
 use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
@@ -183,10 +183,10 @@ impl Fsm for ImaginateToolFsmState {
 		let hint_data = match self {
 			ImaginateToolFsmState::Ready => HintData(vec![HintGroup(vec![
 				HintInfo::mouse(MouseMotion::LmbDrag, "Draw Repaint Frame"),
-				HintInfo::key([Key::Shift], "Constrain Square").prepend_plus(),
-				HintInfo::key([Key::Alt], "From Center").prepend_plus(),
+				HintInfo::keys([Key::Shift], "Constrain Square").prepend_plus(),
+				HintInfo::keys([Key::Alt], "From Center").prepend_plus(),
 			])]),
-			ImaginateToolFsmState::Drawing => HintData(vec![HintGroup(vec![HintInfo::key([Key::Shift], "Constrain Square"), HintInfo::key([Key::Alt], "From Center")])]),
+			ImaginateToolFsmState::Drawing => HintData(vec![HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain Square"), HintInfo::keys([Key::Alt], "From Center")])]),
 		};
 
 		responses.push_back(FrontendMessage::UpdateInputHints { hint_data }.into());

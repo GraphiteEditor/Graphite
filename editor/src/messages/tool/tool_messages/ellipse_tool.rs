@@ -159,10 +159,10 @@ impl Fsm for EllipseToolFsmState {
 		let hint_data = match self {
 			EllipseToolFsmState::Ready => HintData(vec![HintGroup(vec![
 				HintInfo::mouse(MouseMotion::LmbDrag, "Draw Ellipse"),
-				HintInfo::key([Key::Shift], "Constrain Circular").prepend_plus(),
-				HintInfo::key([Key::Alt], "From Center").prepend_plus(),
+				HintInfo::keys([Key::Shift], "Constrain Circular").prepend_plus(),
+				HintInfo::keys([Key::Alt], "From Center").prepend_plus(),
 			])]),
-			EllipseToolFsmState::Drawing => HintData(vec![HintGroup(vec![HintInfo::key([Key::Shift], "Constrain Circular"), HintInfo::key([Key::Alt], "From Center")])]),
+			EllipseToolFsmState::Drawing => HintData(vec![HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain Circular"), HintInfo::keys([Key::Alt], "From Center")])]),
 		};
 
 		responses.push_back(FrontendMessage::UpdateInputHints { hint_data }.into());

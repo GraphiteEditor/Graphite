@@ -289,22 +289,22 @@ impl Fsm for PathToolFsmState {
 			PathToolFsmState::Ready => HintData(vec![
 				HintGroup(vec![
 					HintInfo::mouse(MouseMotion::Lmb, "Select Point"),
-					HintInfo::key([Key::Shift], "Grow/Shrink Selection").prepend_plus(),
+					HintInfo::keys([Key::Shift], "Grow/Shrink Selection").prepend_plus(),
 				]),
 				HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Drag Selected")]),
 				HintGroup(vec![
 					HintInfo::arrow_keys("Nudge Selected (coming soon)"),
-					HintInfo::key([Key::Shift], "Big Increment Nudge").prepend_plus(),
+					HintInfo::keys([Key::Shift], "Big Increment Nudge").prepend_plus(),
 				]),
 				HintGroup(vec![
-					HintInfo::key([Key::KeyG], "Grab Selected (coming soon)"),
-					HintInfo::key([Key::KeyR], "Rotate Selected (coming soon)"),
-					HintInfo::key([Key::KeyS], "Scale Selected (coming soon)"),
+					HintInfo::keys([Key::KeyG], "Grab Selected (coming soon)"),
+					HintInfo::keys([Key::KeyR], "Rotate Selected (coming soon)"),
+					HintInfo::keys([Key::KeyS], "Scale Selected (coming soon)"),
 				]),
 			]),
 			PathToolFsmState::Dragging => HintData(vec![HintGroup(vec![
-				HintInfo::key([Key::Alt], "Split/Align Handles (Toggle)"),
-				HintInfo::key([Key::Shift], "Share Lengths of Aligned Handles"),
+				HintInfo::keys([Key::Alt], "Split/Align Handles (Toggle)"),
+				HintInfo::keys([Key::Shift], "Share Lengths of Aligned Handles"),
 			])]),
 		};
 

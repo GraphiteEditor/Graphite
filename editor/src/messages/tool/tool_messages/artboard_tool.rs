@@ -420,11 +420,11 @@ impl Fsm for ArtboardToolFsmState {
 			ArtboardToolFsmState::Ready => HintData(vec![
 				HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Draw Artboard")]),
 				HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Move Artboard")]),
-				HintGroup(vec![HintInfo::key([Key::Backspace], "Delete Artboard")]),
+				HintGroup(vec![HintInfo::keys([Key::Backspace], "Delete Artboard")]),
 			]),
-			ArtboardToolFsmState::Dragging => HintData(vec![HintGroup(vec![HintInfo::key([Key::Shift], "Constrain to Axis")])]),
+			ArtboardToolFsmState::Dragging => HintData(vec![HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain to Axis")])]),
 			ArtboardToolFsmState::Drawing | ArtboardToolFsmState::ResizingBounds => {
-				HintData(vec![HintGroup(vec![HintInfo::key([Key::Shift], "Constrain Square"), HintInfo::key([Key::Alt], "From Center")])])
+				HintData(vec![HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain Square"), HintInfo::keys([Key::Alt], "From Center")])])
 			}
 		};
 

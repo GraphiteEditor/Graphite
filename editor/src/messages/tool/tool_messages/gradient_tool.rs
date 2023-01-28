@@ -631,9 +631,9 @@ impl Fsm for GradientToolFsmState {
 		let hint_data = match self {
 			GradientToolFsmState::Ready => HintData(vec![HintGroup(vec![
 				HintInfo::mouse(MouseMotion::LmbDrag, "Draw Gradient"),
-				HintInfo::key([Key::Shift], "Snap 15°").prepend_plus(),
+				HintInfo::keys([Key::Shift], "Snap 15°").prepend_plus(),
 			])]),
-			GradientToolFsmState::Drawing => HintData(vec![HintGroup(vec![HintInfo::key([Key::Shift], "Snap 15°")])]),
+			GradientToolFsmState::Drawing => HintData(vec![HintGroup(vec![HintInfo::keys([Key::Shift], "Snap 15°")])]),
 		};
 
 		responses.push_back(FrontendMessage::UpdateInputHints { hint_data }.into());

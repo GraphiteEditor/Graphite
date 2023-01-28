@@ -518,7 +518,7 @@ pub struct HintInfo {
 }
 
 impl HintInfo {
-	pub fn key(keys: impl IntoIterator<Item = Key>, label: impl Into<String>) -> Self {
+	pub fn keys(keys: impl IntoIterator<Item = Key>, label: impl Into<String>) -> Self {
 		let keys: Vec<_> = keys.into_iter().collect();
 		Self {
 			key_groups: vec![KeysGroup(keys).into()],
@@ -559,7 +559,7 @@ impl HintInfo {
 		self
 	}
 
-	pub fn add_mac_key(mut self, keys: impl IntoIterator<Item = Key>) -> Self {
+	pub fn add_mac_keys(mut self, keys: impl IntoIterator<Item = Key>) -> Self {
 		let mac_keys: Vec<_> = keys.into_iter().collect();
 		self.key_groups_mac = Some(vec![KeysGroup(mac_keys).into()]);
 		self

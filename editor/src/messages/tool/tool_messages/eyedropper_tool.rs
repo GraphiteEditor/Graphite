@@ -144,7 +144,7 @@ impl Fsm for EyedropperToolFsmState {
 				HintInfo::mouse(MouseMotion::Lmb, "Sample to Primary"),
 				HintInfo::mouse(MouseMotion::Rmb, "Sample to Secondary"),
 			])]),
-			EyedropperToolFsmState::SamplingPrimary | EyedropperToolFsmState::SamplingSecondary => HintData(vec![HintGroup(vec![HintInfo::key([Key::Escape], "Cancel")])]),
+			EyedropperToolFsmState::SamplingPrimary | EyedropperToolFsmState::SamplingSecondary => HintData(vec![HintGroup(vec![HintInfo::keys([Key::Escape], "Cancel")])]),
 		};
 
 		responses.push_back(FrontendMessage::UpdateInputHints { hint_data }.into());
