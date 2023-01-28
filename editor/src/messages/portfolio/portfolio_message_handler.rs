@@ -684,8 +684,9 @@ impl PortfolioMessageHandler {
 
 	/// Execute the network by flattening it and creating a borrow stack. Casts the output to the generic `T`.
 	fn execute_network<T: dyn_any::StaticType>(executor: &mut DynamicExecutor, network: NodeNetwork, image: Image) -> Result<T, String> {
+		assert_eq!(network.outputs.len(), 1, "Graph with multiple outputs not yet handled");
 		let c = Compiler {};
-		let proto_network = c.compile(network, true);
+		let proto_network = c.compile_single(network, true)?;
 
 		assert_ne!(proto_network.nodes.len(), 0, "No protonodes exist?");
 		executor.update(proto_network);
@@ -705,7 +706,7 @@ impl PortfolioMessageHandler {
 		'outer: for end in (0..node_path.len()).rev() {
 			let mut inner_network = &mut network;
 			for &node_id in &node_path[..end] {
-				inner_network.output = node_id;
+				inner_network.outputs[0] = node_id;
 
 				let Some(new_inner) = inner_network.nodes.get_mut(&node_id).and_then(|node| node.implementation.get_network_mut()) else {
 					return Err("Failed to find network".to_string());
@@ -728,7 +729,7 @@ impl PortfolioMessageHandler {
 				NodeInput::Value { tagged_value, .. } => return dyn_any::downcast::<T>(tagged_value.clone().to_any()).map(|v| *v),
 				// If the input is from a node, set the node to be the output (so that is what is evaluated)
 				NodeInput::Node(n) => {
-					inner_network.output = *n;
+					inner_network.outputs[0] = *n;
 					break 'outer;
 				}
 			}

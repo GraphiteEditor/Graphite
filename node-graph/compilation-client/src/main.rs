@@ -9,9 +9,9 @@ fn main() {
 
 	let network = NodeNetwork {
 		inputs: vec![0],
-		output: 0,
+		outputs: vec![0],
 		disabled: vec![],
-		previous_output: None,
+		previous_outputs: None,
 		nodes: [(
 			0,
 			DocumentNode {
@@ -39,9 +39,9 @@ fn main() {
 fn add_network() -> NodeNetwork {
 	NodeNetwork {
 		inputs: vec![0, 0],
-		output: 1,
+		outputs: vec![1],
 		disabled: vec![],
-		previous_output: None,
+		previous_outputs: None,
 		nodes: [
 			(
 				0,
