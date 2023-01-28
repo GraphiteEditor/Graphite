@@ -1,9 +1,9 @@
 use crate::application::generate_uuid;
 use crate::consts::{ROTATE_SNAP_ANGLE, SELECTION_TOLERANCE};
 use crate::messages::frontend::utility_types::MouseCursorIcon;
-use crate::messages::input_mapper::utility_types::input_keyboard::{Key, KeysGroup, MouseMotion};
+use crate::messages::input_mapper::utility_types::input_keyboard::{Key, MouseMotion};
 use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
-use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, PropertyHolder, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
+use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, PropertyHolder, Widget, WidgetHolder, WidgetLayout};
 use crate::messages::layout::utility_types::misc::LayoutTarget;
 use crate::messages::layout::utility_types::widgets::assist_widgets::{PivotAssist, PivotPosition};
 use crate::messages::layout::utility_types::widgets::button_widgets::{IconButton, PopoverButton};
@@ -85,182 +85,112 @@ impl PropertyHolder for SelectTool {
 	fn properties(&self) -> Layout {
 		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row {
 			widgets: vec![
-				WidgetHolder::new(Widget::IconButton(IconButton {
-					icon: "AlignLeft".into(),
-					tooltip: "Align Left".into(),
-					size: 24,
-					on_update: WidgetCallback::new(|_| {
+				IconButton::new("AlignLeft", 24)
+					.tooltip("Align Left")
+					.on_update(|_| {
 						DocumentMessage::AlignSelectedLayers {
 							axis: AlignAxis::X,
 							aggregate: AlignAggregate::Min,
 						}
 						.into()
-					}),
-					..IconButton::default()
-				})),
-				WidgetHolder::new(Widget::IconButton(IconButton {
-					icon: "AlignHorizontalCenter".into(),
-					tooltip: "Align Horizontal Center".into(),
-					size: 24,
-					on_update: WidgetCallback::new(|_| {
+					})
+					.widget_holder(),
+				IconButton::new("AlignHorizontalCenter", 24)
+					.tooltip("Align Horizontal Center")
+					.on_update(|_| {
 						DocumentMessage::AlignSelectedLayers {
 							axis: AlignAxis::X,
 							aggregate: AlignAggregate::Center,
 						}
 						.into()
-					}),
-					..IconButton::default()
-				})),
-				WidgetHolder::new(Widget::IconButton(IconButton {
-					icon: "AlignRight".into(),
-					tooltip: "Align Right".into(),
-					size: 24,
-					on_update: WidgetCallback::new(|_| {
+					})
+					.widget_holder(),
+				IconButton::new("AlignRight", 24)
+					.tooltip("Align Right")
+					.on_update(|_| {
 						DocumentMessage::AlignSelectedLayers {
 							axis: AlignAxis::X,
 							aggregate: AlignAggregate::Max,
 						}
 						.into()
-					}),
-					..IconButton::default()
-				})),
-				WidgetHolder::new(Widget::Separator(Separator {
-					direction: SeparatorDirection::Horizontal,
-					separator_type: SeparatorType::Unrelated,
-				})),
-				WidgetHolder::new(Widget::IconButton(IconButton {
-					icon: "AlignTop".into(),
-					tooltip: "Align Top".into(),
-					size: 24,
-					on_update: WidgetCallback::new(|_| {
+					})
+					.widget_holder(),
+				WidgetHolder::unrelated_separator(),
+				IconButton::new("AlignTop", 24)
+					.tooltip("Align Top")
+					.on_update(|_| {
 						DocumentMessage::AlignSelectedLayers {
 							axis: AlignAxis::Y,
 							aggregate: AlignAggregate::Min,
 						}
 						.into()
-					}),
-					..IconButton::default()
-				})),
-				WidgetHolder::new(Widget::IconButton(IconButton {
-					icon: "AlignVerticalCenter".into(),
-					tooltip: "Align Vertical Center".into(),
-					size: 24,
-					on_update: WidgetCallback::new(|_| {
+					})
+					.widget_holder(),
+				IconButton::new("AlignVerticalCenter", 24)
+					.tooltip("Align Vertical Center")
+					.on_update(|_| {
 						DocumentMessage::AlignSelectedLayers {
 							axis: AlignAxis::Y,
 							aggregate: AlignAggregate::Center,
 						}
 						.into()
-					}),
-					..IconButton::default()
-				})),
-				WidgetHolder::new(Widget::IconButton(IconButton {
-					icon: "AlignBottom".into(),
-					tooltip: "Align Bottom".into(),
-					size: 24,
-					on_update: WidgetCallback::new(|_| {
+					})
+					.widget_holder(),
+				IconButton::new("AlignBottom", 24)
+					.tooltip("Align Bottom")
+					.on_update(|_| {
 						DocumentMessage::AlignSelectedLayers {
 							axis: AlignAxis::Y,
 							aggregate: AlignAggregate::Max,
 						}
 						.into()
-					}),
-					..IconButton::default()
-				})),
-				WidgetHolder::new(Widget::Separator(Separator {
-					direction: SeparatorDirection::Horizontal,
-					separator_type: SeparatorType::Related,
-				})),
-				WidgetHolder::new(Widget::PopoverButton(PopoverButton {
-					header: "Align".into(),
-					text: "Coming soon".into(),
-					..Default::default()
-				})),
-				WidgetHolder::new(Widget::Separator(Separator {
-					direction: SeparatorDirection::Horizontal,
-					separator_type: SeparatorType::Section,
-				})),
-				WidgetHolder::new(Widget::IconButton(IconButton {
-					icon: "FlipHorizontal".into(),
-					tooltip: "Flip Horizontal".into(),
-					size: 24,
-					on_update: WidgetCallback::new(|_| SelectToolMessage::FlipHorizontal.into()),
-					..IconButton::default()
-				})),
-				WidgetHolder::new(Widget::IconButton(IconButton {
-					icon: "FlipVertical".into(),
-					tooltip: "Flip Vertical".into(),
-					size: 24,
-					on_update: WidgetCallback::new(|_| SelectToolMessage::FlipVertical.into()),
-					..IconButton::default()
-				})),
-				WidgetHolder::new(Widget::Separator(Separator {
-					direction: SeparatorDirection::Horizontal,
-					separator_type: SeparatorType::Related,
-				})),
+					})
+					.widget_holder(),
+				WidgetHolder::related_separator(),
+				PopoverButton::new("Align", "Coming soon").widget_holder(),
+				Separator::new(SeparatorDirection::Horizontal, SeparatorType::Section).widget_holder(),
+				IconButton::new("FlipHorizontal", 24)
+					.tooltip("Flip Horizontal")
+					.on_update(|_| SelectToolMessage::FlipHorizontal.into())
+					.widget_holder(),
+				IconButton::new("FlipVertical", 24)
+					.tooltip("Flip Vertical")
+					.on_update(|_| SelectToolMessage::FlipVertical.into())
+					.widget_holder(),
+				WidgetHolder::related_separator(),
 				WidgetHolder::new(Widget::PopoverButton(PopoverButton {
 					header: "Flip".into(),
 					text: "Coming soon".into(),
 					..Default::default()
 				})),
-				WidgetHolder::new(Widget::Separator(Separator {
-					direction: SeparatorDirection::Horizontal,
-					separator_type: SeparatorType::Section,
-				})),
-				WidgetHolder::new(Widget::IconButton(IconButton {
-					icon: "BooleanUnion".into(),
-					tooltip: "Boolean Union".into(),
-					size: 24,
-					on_update: WidgetCallback::new(|_| DocumentMessage::BooleanOperation(BooleanOperation::Union).into()),
-					..IconButton::default()
-				})),
-				WidgetHolder::new(Widget::IconButton(IconButton {
-					icon: "BooleanSubtractFront".into(),
-					tooltip: "Boolean Subtract Front".into(),
-					size: 24,
-					on_update: WidgetCallback::new(|_| DocumentMessage::BooleanOperation(BooleanOperation::SubtractFront).into()),
-					..IconButton::default()
-				})),
-				WidgetHolder::new(Widget::IconButton(IconButton {
-					icon: "BooleanSubtractBack".into(),
-					tooltip: "Boolean Subtract Back".into(),
-					size: 24,
-					on_update: WidgetCallback::new(|_| DocumentMessage::BooleanOperation(BooleanOperation::SubtractBack).into()),
-					..IconButton::default()
-				})),
-				WidgetHolder::new(Widget::IconButton(IconButton {
-					icon: "BooleanIntersect".into(),
-					tooltip: "Boolean Intersect".into(),
-					size: 24,
-					on_update: WidgetCallback::new(|_| DocumentMessage::BooleanOperation(BooleanOperation::Intersection).into()),
-					..IconButton::default()
-				})),
-				WidgetHolder::new(Widget::IconButton(IconButton {
-					icon: "BooleanDifference".into(),
-					tooltip: "Boolean Difference".into(),
-					size: 24,
-					on_update: WidgetCallback::new(|_| DocumentMessage::BooleanOperation(BooleanOperation::Difference).into()),
-					..IconButton::default()
-				})),
-				WidgetHolder::new(Widget::Separator(Separator {
-					direction: SeparatorDirection::Horizontal,
-					separator_type: SeparatorType::Related,
-				})),
-				WidgetHolder::new(Widget::PopoverButton(PopoverButton {
-					header: "Boolean".into(),
-					text: "Coming soon".into(),
-					..Default::default()
-				})),
-				WidgetHolder::new(Widget::Separator(Separator {
-					direction: SeparatorDirection::Horizontal,
-					separator_type: SeparatorType::Section,
-				})),
+				Separator::new(SeparatorDirection::Horizontal, SeparatorType::Section).widget_holder(),
+				IconButton::new("BooleanUnion", 24)
+					.tooltip("Boolean Union")
+					.on_update(|_| DocumentMessage::BooleanOperation(BooleanOperation::Union).into())
+					.widget_holder(),
+				IconButton::new("BooleanSubtractFront", 24)
+					.tooltip("Boolean Subtract Front")
+					.on_update(|_| DocumentMessage::BooleanOperation(BooleanOperation::SubtractFront).into())
+					.widget_holder(),
+				IconButton::new("BooleanSubtractBack", 24)
+					.tooltip("Boolean Subtract Back")
+					.on_update(|_| DocumentMessage::BooleanOperation(BooleanOperation::SubtractBack).into())
+					.widget_holder(),
+				IconButton::new("BooleanIntersect", 24)
+					.tooltip("Boolean Intersect")
+					.on_update(|_| DocumentMessage::BooleanOperation(BooleanOperation::Intersection).into())
+					.widget_holder(),
+				IconButton::new("BooleanDifference", 24)
+					.tooltip("Boolean Difference")
+					.on_update(|_| DocumentMessage::BooleanOperation(BooleanOperation::Difference).into())
+					.widget_holder(),
+				WidgetHolder::related_separator(),
+				PopoverButton::new("Boolean", "Coming soon").widget_holder(),
+				Separator::new(SeparatorDirection::Horizontal, SeparatorType::Section).widget_holder(),
 				// We'd like this widget to hide and show itself whenever the transformation cage is active or inactive (i.e. when no layers are selected)
-				WidgetHolder::new(Widget::PivotAssist(PivotAssist {
-					position: self.tool_data.pivot.to_pivot_position(),
-					on_update: WidgetCallback::new(|pivot_assist: &PivotAssist| SelectToolMessage::SetPivot { position: pivot_assist.position }.into()),
-					..Default::default()
-				})),
+				PivotAssist::new(self.tool_data.pivot.to_pivot_position())
+					.on_update(|pivot_assist: &PivotAssist| SelectToolMessage::SetPivot { position: pivot_assist.position }.into())
+					.widget_holder(),
 			],
 		}]))
 	}
@@ -268,26 +198,11 @@ impl PropertyHolder for SelectTool {
 
 impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for SelectTool {
 	fn process_message(&mut self, message: ToolMessage, tool_data: ToolActionHandlerData<'a>, responses: &mut VecDeque<Message>) {
-		if message == ToolMessage::UpdateHints {
-			self.fsm_state.update_hints(responses);
-			return;
-		}
-
-		if message == ToolMessage::UpdateCursor {
-			responses.push_back(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default }.into());
-			return;
-		}
-
-		let new_state = self.fsm_state.transition(message, &mut self.tool_data, tool_data, &(), responses);
+		self.fsm_state.process_event(message, &mut self.tool_data, tool_data, &(), responses, false);
 
 		if self.tool_data.pivot.should_refresh_pivot_position() {
 			// Notify the frontend about the updated pivot position (a bit ugly to do it here not in the fsm but that doesn't have SelectTool)
 			self.register_properties(responses, LayoutTarget::ToolOptions);
-		}
-
-		if self.fsm_state != new_state {
-			self.fsm_state = new_state;
-			self.fsm_state.update_hints(responses);
 		}
 	}
 
@@ -321,20 +236,15 @@ impl ToolTransition for SelectTool {
 	}
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 enum SelectToolFsmState {
+	#[default]
 	Ready,
 	Dragging,
 	DrawingBox,
 	ResizingBounds,
 	RotatingBounds,
 	DraggingPivot,
-}
-
-impl Default for SelectToolFsmState {
-	fn default() -> Self {
-		SelectToolFsmState::Ready
-	}
 }
 
 #[derive(Clone, Debug, Default)]
@@ -812,138 +722,34 @@ impl Fsm for SelectToolFsmState {
 	fn update_hints(&self, responses: &mut VecDeque<Message>) {
 		let hint_data = match self {
 			SelectToolFsmState::Ready => HintData(vec![
-				HintGroup(vec![HintInfo {
-					key_groups: vec![],
-					key_groups_mac: None,
-					mouse: Some(MouseMotion::LmbDrag),
-					label: String::from("Drag Selected"),
-					plus: false,
-				}]),
+				HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Drag Selected")]),
 				HintGroup(vec![
-					HintInfo {
-						key_groups: vec![KeysGroup(vec![Key::KeyG]).into()],
-						key_groups_mac: None,
-						mouse: None,
-						label: String::from("Grab Selected"),
-						plus: false,
-					},
-					HintInfo {
-						key_groups: vec![KeysGroup(vec![Key::KeyR]).into()],
-						key_groups_mac: None,
-						mouse: None,
-						label: String::from("Rotate Selected"),
-						plus: false,
-					},
-					HintInfo {
-						key_groups: vec![KeysGroup(vec![Key::KeyS]).into()],
-						key_groups_mac: None,
-						mouse: None,
-						label: String::from("Scale Selected"),
-						plus: false,
-					},
+					HintInfo::keys([Key::KeyG], "Grab Selected"),
+					HintInfo::keys([Key::KeyR], "Rotate Selected"),
+					HintInfo::keys([Key::KeyS], "Scale Selected"),
 				]),
 				HintGroup(vec![
-					HintInfo {
-						key_groups: vec![],
-						key_groups_mac: None,
-						mouse: Some(MouseMotion::Lmb),
-						label: String::from("Select Object"),
-						plus: false,
-					},
-					HintInfo {
-						key_groups: vec![KeysGroup(vec![Key::Control]).into()],
-						key_groups_mac: Some(vec![KeysGroup(vec![Key::Command]).into()]),
-						mouse: None,
-						label: String::from("Innermost"),
-						plus: true,
-					},
-					HintInfo {
-						key_groups: vec![KeysGroup(vec![Key::Shift]).into()],
-						key_groups_mac: None,
-						mouse: None,
-						label: String::from("Grow/Shrink Selection"),
-						plus: true,
-					},
+					HintInfo::mouse(MouseMotion::Lmb, "Select Object"),
+					HintInfo::keys([Key::Control], "Innermost").add_mac_keys([Key::Command]).prepend_plus(),
+					HintInfo::keys([Key::Shift], "Grow/Shrink Selection").prepend_plus(),
 				]),
 				HintGroup(vec![
-					HintInfo {
-						key_groups: vec![],
-						key_groups_mac: None,
-						mouse: Some(MouseMotion::LmbDrag),
-						label: String::from("Select Area"),
-						plus: false,
-					},
-					HintInfo {
-						key_groups: vec![KeysGroup(vec![Key::Shift]).into()],
-						key_groups_mac: None,
-						mouse: None,
-						label: String::from("Grow/Shrink Selection"),
-						plus: true,
-					},
+					HintInfo::mouse(MouseMotion::LmbDrag, "Select Area"),
+					HintInfo::keys([Key::Shift], "Grow/Shrink Selection").prepend_plus(),
 				]),
+				HintGroup(vec![HintInfo::arrow_keys("Nudge Selected"), HintInfo::keys([Key::Shift], "Big Increment Nudge").prepend_plus()]),
 				HintGroup(vec![
-					HintInfo {
-						key_groups: vec![
-							KeysGroup(vec![Key::ArrowUp]).into(),
-							KeysGroup(vec![Key::ArrowRight]).into(),
-							KeysGroup(vec![Key::ArrowDown]).into(),
-							KeysGroup(vec![Key::ArrowLeft]).into(),
-						],
-						key_groups_mac: None,
-						mouse: None,
-						label: String::from("Nudge Selected"),
-						plus: false,
-					},
-					HintInfo {
-						key_groups: vec![KeysGroup(vec![Key::Shift]).into()],
-						key_groups_mac: None,
-						mouse: None,
-						label: String::from("Big Increment Nudge"),
-						plus: true,
-					},
-				]),
-				HintGroup(vec![
-					HintInfo {
-						key_groups: vec![KeysGroup(vec![Key::Alt]).into()],
-						key_groups_mac: None,
-						mouse: Some(MouseMotion::LmbDrag),
-						label: String::from("Move Duplicate"),
-						plus: false,
-					},
-					HintInfo {
-						key_groups: vec![KeysGroup(vec![Key::Control, Key::KeyD]).into()],
-						key_groups_mac: Some(vec![KeysGroup(vec![Key::Command, Key::KeyD]).into()]),
-						mouse: None,
-						label: String::from("Duplicate"),
-						plus: false,
-					},
+					HintInfo::keys([Key::Alt], "Move Duplicate"),
+					HintInfo::keys([Key::Control, Key::KeyD], "Duplicate").add_mac_keys([Key::Command, Key::KeyD]),
 				]),
 			]),
 			SelectToolFsmState::Dragging => HintData(vec![HintGroup(vec![
-				HintInfo {
-					key_groups: vec![KeysGroup(vec![Key::Shift]).into()],
-					key_groups_mac: None,
-					mouse: None,
-					label: String::from("Constrain to Axis"),
-					plus: false,
-				},
-				HintInfo {
-					key_groups: vec![KeysGroup(vec![Key::Control]).into()],
-					key_groups_mac: None,
-					mouse: None,
-					label: String::from("Snap to Points (coming soon)"),
-					plus: false,
-				},
+				HintInfo::keys([Key::Shift], "Constrain to Axis"),
+				HintInfo::keys([Key::Control], "Snap to Points (coming soon)"),
 			])]),
 			SelectToolFsmState::DrawingBox => HintData(vec![]),
 			SelectToolFsmState::ResizingBounds => HintData(vec![]),
-			SelectToolFsmState::RotatingBounds => HintData(vec![HintGroup(vec![HintInfo {
-				key_groups: vec![KeysGroup(vec![Key::Control]).into()],
-				key_groups_mac: None,
-				mouse: None,
-				label: String::from("Snap 15°"),
-				plus: false,
-			}])]),
+			SelectToolFsmState::RotatingBounds => HintData(vec![HintGroup(vec![HintInfo::keys([Key::Control], "Snap 15°")])]),
 			SelectToolFsmState::DraggingPivot => HintData(vec![]),
 		};
 
