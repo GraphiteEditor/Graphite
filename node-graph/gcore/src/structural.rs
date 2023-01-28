@@ -26,7 +26,7 @@ impl<First: StaticTypeSized, Second: StaticTypeSized> dyn_any::StaticType for Co
 	type Static = ComposeNode<First::Static, Second::Static>;
 }
 
-impl<'i, First, Second> ComposeNode<First, Second> {
+impl<First, Second> ComposeNode<First, Second> {
 	pub const fn new(first: First, second: Second) -> Self {
 		ComposeNode::<First, Second> { first, second }
 	}

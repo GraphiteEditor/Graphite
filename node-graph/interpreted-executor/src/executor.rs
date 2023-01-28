@@ -7,13 +7,13 @@ use graph_craft::document::value::Value;
 use graph_craft::document::NodeId;
 use graph_craft::proto::{ConstructionArgs, ProtoNode, ProtoNodeInput};
 use graphene_core::Node;
-use graphene_std::any::{Any, IntoTypeErasedNode, TypeErasedNode};
+use graphene_std::any::{Any, IntoTypeErasedNode, TypeErasedNode, TypeErasedPinned};
 
 use crate::node_registry::constrcut_node;
 use graph_craft::{executor::Executor, proto::ProtoNetwork};
 
 pub struct DynamicExecutor {
-	stack: FixedSizeStack<TypeErasedNode<'static>>,
+	stack: FixedSizeStack<()>,
 }
 
 impl DynamicExecutor {
@@ -30,13 +30,14 @@ impl DynamicExecutor {
 
 impl Executor for DynamicExecutor {
 	fn execute(&self, input: Any<'static>) -> Result<Any<'static>, Box<dyn Error>> {
-		let result = unsafe { self.stack.get().last().unwrap().eval(input) };
-		Ok(result)
+		/*let result = unsafe { self.stack.get().last().unwrap().eval(input) };
+		Ok(result)*/
+		todo!()
 	}
 }
 
 pub struct NodeContainer<'n> {
-	node: TypeErasedNode<'n>,
+	node: TypeErasedPinned<'n>,
 	// the dependencies are only kept to ensure that the nodes are not dropped while still in use
 	_dependencies: Vec<Arc<NodeContainer<'n>>>,
 }
@@ -45,13 +46,13 @@ impl<'a> NodeContainer<'a> {
 	/// Return a static reference to the TypeErasedNode
 	/// # Safety
 	/// This is unsafe because the returned reference is only valid as long as the NodeContainer is alive
-	pub unsafe fn static_ref<'b>(&self) -> &'b TypeErasedNode<'a> {
-		&*(&self.node as *const TypeErasedNode<'a>)
+	pub unsafe fn static_ref<'b>(&self) -> &'b TypeErasedPinned<'a> {
+		&*(&self.node as *const TypeErasedPinned<'a>)
 	}
 }
 
-impl<'a> AsRef<TypeErasedNode<'a>> for NodeContainer<'a> {
-	fn as_ref(&self) -> &TypeErasedNode<'a> {
+impl<'a> AsRef<TypeErasedPinned<'a>> for NodeContainer<'a> {
+	fn as_ref(&self) -> &TypeErasedPinned<'a> {
 		&self.node
 	}
 }
@@ -69,17 +70,17 @@ impl BorrowTree {
 		}
 		nodes
 	}
-	fn node_refs(&self, nodes: &[NodeId]) -> Vec<&'static TypeErasedNode<'static>> {
+	fn node_refs(&self, nodes: &[NodeId]) -> Vec<&'static TypeErasedPinned<'static>> {
 		nodes
 			.iter()
-			.map(|node| unsafe { &*((&self.nodes.get(node).unwrap().as_ref().node) as *const TypeErasedNode<'static>) as &'static TypeErasedNode<'static> })
+			.map(|node| unsafe { &*((&self.nodes.get(node).unwrap().as_ref().node) as *const TypeErasedPinned<'static>) as &'static TypeErasedPinned<'static> })
 			.collect()
 	}
 	fn node_deps(&self, nodes: &[NodeId]) -> Vec<Arc<NodeContainer<'static>>> {
 		nodes.iter().map(|node| self.nodes.get(node).unwrap().clone()).collect()
 	}
 
-	fn store_node(&mut self, node: TypeErasedNode<'static>, id: NodeId, dependencies: Vec<Arc<NodeContainer<'static>>>) -> Arc<NodeContainer<'static>> {
+	fn store_node(&mut self, node: TypeErasedPinned<'static>, id: NodeId, dependencies: Vec<Arc<NodeContainer<'static>>>) -> Arc<NodeContainer<'static>> {
 		let node = Arc::new(NodeContainer { node, _dependencies: dependencies });
 		self.nodes.insert(id, node.clone());
 		node
@@ -113,7 +114,7 @@ impl BorrowTree {
 
 		match construction_args {
 			ConstructionArgs::Value(value) => {
-				let node = graphene_core::generic::FnNode::new(move |_| value.clone().up_box() as Any<'static>);
+				let node = graphene_core::generic::FnNode::new(move |_| value.clone().up_box() as Any<'_>);
 
 				let node = node.into_type_erased();
 				self.store_node(node, id, vec![]);

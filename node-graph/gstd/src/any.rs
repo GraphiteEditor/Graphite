@@ -17,17 +17,18 @@ where
 	Box::new(node.eval(*input))
 }
 
-type TypeErasedNode<'n> = Pin<Box<dyn for<'i> Node<'i, Any<'i>, Output = Any<'i>> + 'n>>;
+pub type TypeErasedNode<'n> = dyn for<'i> Node<'i, Any<'i>, Output = Any<'i>> + 'n;
+pub type TypeErasedPinned<'n> = Pin<Box<TypeErasedNode<'n>>>;
 
 pub trait IntoTypeErasedNode<'n> {
-	fn into_type_erased(self) -> TypeErasedNode<'n>;
+	fn into_type_erased(self) -> TypeErasedPinned<'n>;
 }
 
 impl<'n, N: 'n> IntoTypeErasedNode<'n> for N
 where
 	N: for<'i> Node<'i, Any<'i>, Output = Any<'i>>,
 {
-	fn into_type_erased(self) -> TypeErasedNode<'n> {
+	fn into_type_erased(self) -> TypeErasedPinned<'n> {
 		Box::pin(self)
 	}
 }
@@ -84,6 +85,10 @@ where
 
 pub type Any<'n> = Box<dyn DynAny<'n> + 'n>;
 
+pub fn input_node<'i, O: StaticType, N: Node<'i, Any<'i>>>(n: N) -> DowncastBothNode<(), O, N> {
+	DowncastBothNode::new(n)
+}
+
 #[cfg(test)]
 mod test {
 	use super::*;
@@ -97,12 +102,16 @@ mod test {
 		//let add = DynAnyNode::new(AddNode::new()).into_type_erased();
 		//add.eval(Box::new(&("32", 32u32)));
 		let dyn_any = DynAnyNode::<(u32, u32), u32, _>::new(ValueNode::new(AddNode::new()));
-		let type_erased = Box::pin(dyn_any) as TypeErasedNode<'_>;
+		let type_erased = dyn_any.into_type_erased();
+		//let type_erased = Box::pin(dyn_any) as TypeErasedPinned<'_>;
 		type_erased.eval(Box::new(&("32", 32u32)));
 	}
 
 	#[test]
 	pub fn dyn_input_storage_composition() {
 		// todo readd test
+		let node = <graphene_core::ops::IdNode>::new();
+		let any: DynAnyNode<Any<'_>, _, _> = DynAnyNode::new(node);
+		any.into_type_erased()
 	}
 }
