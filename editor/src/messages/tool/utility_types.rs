@@ -1,8 +1,5 @@
 use super::tool_messages::*;
-use crate::messages::input_mapper::utility_types::input_keyboard::Key;
-use crate::messages::input_mapper::utility_types::input_keyboard::KeysGroup;
-use crate::messages::input_mapper::utility_types::input_keyboard::LayoutKeysGroup;
-use crate::messages::input_mapper::utility_types::input_keyboard::MouseMotion;
+use crate::messages::input_mapper::utility_types::input_keyboard::{Key, KeysGroup, LayoutKeysGroup, MouseMotion};
 use crate::messages::input_mapper::utility_types::macros::action_keys;
 use crate::messages::input_mapper::utility_types::misc::ActionKeys;
 use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, PropertyHolder, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
@@ -25,16 +22,33 @@ impl<T> ToolCommon for T where T: for<'a> MessageHandler<ToolMessage, ToolAction
 
 type Tool = dyn ToolCommon + Send + Sync;
 
+/// The FSM (finite state machine) is a flowchart between different operating states that a specific tool might be in.
+/// It is the central "core" logic area of each tool which is in charge of maintaining the state of the tool and responding to events coming from outside (like user input).
+/// For example, a tool might be `Ready` or `Drawing` depending on if the user is idle or actively drawing with the mouse held down.
+/// The FSM keeps track of what the tool is doing and allows the tool to take action when events are directed at the FSM.
+/// Every tool, which implements this trait, must implement the `transition()` function.
+/// That is where new events are sent, and where the flowchart transition logic occurs to respond to events and end in a new state.
 pub trait Fsm {
+	/// The implementing tool must set this to a struct designed to store the internal values stored in the tool.
+	/// For example, it might be used to store the starting location of a point when a drag began so the displacement distance can be calculated.
 	type ToolData;
+	/// The implementing tool must set this to a struct (or `()` if none) designed to store the values of the tool options set by the user in the Options Bar
+	/// (located above the viewport, below the document's tab).
 	type ToolOptions;
 
+	/// Implementing this mandatory trait function lets a specific tool react accordingly (and potentially change its state or internal variables) upon receiving an event to do something.
+	/// Based on its current state, and what the event is, the FSM (finite state machine) should direct the tool to an appropriate outcome.
+	/// For example, if the tool's FSM is in a `Ready` state and receives a `DragStart` message as its event, it may decide to send some messages,
+	/// update some internal tool variables, and end by transitioning to a `Drawing` state.
 	#[must_use]
 	fn transition(self, message: ToolMessage, tool_data: &mut Self::ToolData, transition_data: ToolActionHandlerData, options: &Self::ToolOptions, messages: &mut VecDeque<Message>) -> Self;
 
+	/// Implementing this trait function lets a specific tool provide a list of hints (user input actions presently available) to draw in the footer bar.
 	fn update_hints(&self, responses: &mut VecDeque<Message>);
+	/// Implementing this trait function lets a specific tool set the current mouse cursor icon.
 	fn update_cursor(&self, responses: &mut VecDeque<Message>);
 
+	/// If this message is a standard tool message, process it and return true. Standard tool messages are those which are common across every tool.
 	fn standard_tool_messages(&self, message: &ToolMessage, messages: &mut VecDeque<Message>) -> bool {
 		// Check for standard hits or cursor events
 		match message {
@@ -49,6 +63,9 @@ pub trait Fsm {
 			_ => false,
 		}
 	}
+
+	/// When an event makes the tool change or do something, it is processed here to perform a step (transition) on the tool's finite state machine (FSM).
+	/// This function is called by the specific tool's message handler when the dispatcher routes a message to the active tool.
 	fn process_event(
 		&mut self,
 		message: ToolMessage,
@@ -60,6 +77,7 @@ pub trait Fsm {
 	) where
 		Self: PartialEq + Sized + Copy,
 	{
+		// If this message is one of the standard tool messages, process it and exit early
 		if self.standard_tool_messages(&message, messages) {
 			return;
 		}
@@ -511,6 +529,7 @@ impl HintInfo {
 			plus: false,
 		}
 	}
+
 	pub fn mouse(mouse_motion: MouseMotion, label: impl Into<String>) -> Self {
 		Self {
 			key_groups_mac: None,
@@ -520,6 +539,7 @@ impl HintInfo {
 			plus: false,
 		}
 	}
+
 	pub fn arrow_keys(label: impl Into<String>) -> Self {
 		HintInfo {
 			key_groups: vec![
@@ -534,6 +554,7 @@ impl HintInfo {
 			plus: false,
 		}
 	}
+
 	pub fn prepend_plus(mut self) -> Self {
 		self.plus = true;
 		self

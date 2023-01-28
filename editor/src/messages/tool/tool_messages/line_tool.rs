@@ -91,7 +91,7 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for LineTool {
 			return;
 		}
 
-		self.fsm_state.process_event(message, &mut self.tool_data, transition_data, &self.options, messages, true)
+		self.fsm_state.process_event(message, &mut self.tool_data, transition_data, &self.options, messages, true);
 	}
 
 	fn actions(&self) -> ActionList {
