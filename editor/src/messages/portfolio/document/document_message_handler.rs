@@ -143,6 +143,23 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 								);
 							}
 							DocumentResponse::DocumentChanged => responses.push_back(RenderDocument.into()),
+							DocumentResponse::DeletedSelectedManipulatorPoints => {
+								// Clear Properties panel after deleting all points by updating backend widget state.
+								responses.push_back(
+									LayoutMessage::SendLayout {
+										layout: Layout::WidgetLayout(WidgetLayout::new(vec![])),
+										layout_target: LayoutTarget::PropertiesOptions,
+									}
+									.into(),
+								);
+								responses.push_back(
+									LayoutMessage::SendLayout {
+										layout: Layout::WidgetLayout(WidgetLayout::new(vec![])),
+										layout_target: LayoutTarget::PropertiesSections,
+									}
+									.into(),
+								);
+							}
 						};
 						responses.push_back(BroadcastEvent::DocumentIsDirty.into());
 					}
