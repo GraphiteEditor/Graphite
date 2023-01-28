@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 #[remain::sorted]
 #[impl_message(Message, DocumentMessage, Artboard)]
-#[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
+#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub enum ArtboardMessage {
 	// Sub-messages
 	#[remain::unsorted]

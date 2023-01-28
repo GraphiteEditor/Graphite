@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 
 #[remain::sorted]
 #[impl_message(Message, InputPreprocessor)]
-#[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
+#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub enum InputPreprocessorMessage {
 	BoundsOfViewports { bounds_of_viewports: Vec<ViewportBounds> },
 	DoubleClick { editor_mouse_state: EditorMouseState, modifier_keys: ModifierKeys },

@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 #[remain::sorted]
 #[impl_message(Message, DocumentMessage, Overlays)]
-#[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
+#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub enum OverlaysMessage {
 	// Sub-messages
 	#[remain::unsorted]

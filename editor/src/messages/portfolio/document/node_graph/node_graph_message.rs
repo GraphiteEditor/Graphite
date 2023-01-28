@@ -6,7 +6,7 @@ use graph_craft::document::{DocumentNode, NodeId, NodeInput};
 
 #[remain::sorted]
 #[impl_message(Message, DocumentMessage, NodeGraph)]
-#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
+#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum NodeGraphMessage {
 	// Messages
 	CloseNodeGraph,

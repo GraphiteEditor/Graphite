@@ -43,10 +43,6 @@ bitflags! {
 	}
 }
 
-#[derive(specta::Type)]
-#[specta(remote = "ModifierKeys", inline)]
-struct ModifierKeysDef(u8);
-
 // Currently this is mostly based on the JS `KeyboardEvent.code` list: <https://www.w3.org/TR/uievents-code/>
 // But in the future, especially once users can customize keyboard mappings, we should deviate more from this so we have actual symbols
 // like `+` (which doesn't exist because it's the shifted version of `=` on the US keyboard, after which these scan codes are named).

@@ -8,7 +8,7 @@ use std::hash::{Hash, Hasher};
 
 #[remain::sorted]
 #[impl_message]
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, specta::Type)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Message {
 	#[remain::unsorted]
 	NoOp,

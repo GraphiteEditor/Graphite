@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 
 #[remain::sorted]
 #[impl_message(Message, PortfolioMessage, Document)]
-#[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
+#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub enum DocumentMessage {
 	// Sub-messages
 	#[remain::unsorted]
@@ -51,7 +51,6 @@ pub enum DocumentMessage {
 	BackupDocument {
 		document: DocumentLegacy,
 		artboard: Box<ArtboardMessageHandler>,
-		#[specta(type = HashMap<String, LayerMetadata>)]
 		layer_metadata: HashMap<Vec<LayerId>, LayerMetadata>,
 	},
 	BooleanOperation(BooleanOperationType),

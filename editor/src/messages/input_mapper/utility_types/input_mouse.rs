@@ -10,7 +10,7 @@ use std::collections::VecDeque;
 pub type ViewportPosition = DVec2;
 pub type EditorPosition = DVec2;
 
-#[derive(PartialEq, Clone, Debug, Default, Serialize, Deserialize, specta::Type)]
+#[derive(PartialEq, Clone, Debug, Default, Serialize, Deserialize)]
 pub struct ViewportBounds {
 	pub top_left: DVec2,
 	pub bottom_right: DVec2,
@@ -37,7 +37,7 @@ impl ViewportBounds {
 	}
 }
 
-#[derive(Debug, Copy, Clone, Default, Eq, PartialEq, Hash, Serialize, Deserialize, specta::Type)]
+#[derive(Debug, Copy, Clone, Default, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct ScrollDelta {
 	// TODO: Switch these to `f64` values (not trivial because floats don't provide PartialEq, Eq, and Hash)
 	pub x: i32,
@@ -98,7 +98,7 @@ impl MouseState {
 	}
 }
 
-#[derive(Debug, Copy, Clone, Default, PartialEq, Serialize, Deserialize, specta::Type)]
+#[derive(Debug, Copy, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct EditorMouseState {
 	pub editor_position: EditorPosition,
 	pub mouse_keys: MouseKeys,
@@ -147,8 +147,3 @@ bitflags! {
 		const NONE   = 0b0000_0000;
 	}
 }
-
-#[derive(specta::Type)]
-#[specta(remote = "MouseKeys", inline)]
-// #[repr(transparent)]
-struct MouseKeysDef(u8);

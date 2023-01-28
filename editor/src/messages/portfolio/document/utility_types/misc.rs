@@ -16,7 +16,7 @@ pub struct DocumentSave {
 	pub layer_metadata: HashMap<Vec<LayerId>, LayerMetadata>,
 }
 
-#[derive(PartialEq, Eq, Clone, Debug, Serialize, Deserialize, Hash, specta::Type)]
+#[derive(PartialEq, Eq, Clone, Debug, Serialize, Deserialize, Hash)]
 pub enum FlipAxis {
 	X,
 	Y,
@@ -36,13 +36,13 @@ pub enum AlignAggregate {
 	Average,
 }
 
-#[derive(PartialEq, Eq, Clone, Copy, Debug, Serialize, Deserialize, specta::Type)]
+#[derive(PartialEq, Eq, Clone, Copy, Debug, Serialize, Deserialize)]
 pub enum TargetDocument {
 	Artboard,
 	Artwork,
 }
 
-#[derive(PartialEq, Eq, Clone, Copy, Debug, Serialize, Deserialize, specta::Type)]
+#[derive(PartialEq, Eq, Clone, Copy, Debug, Serialize, Deserialize)]
 pub enum DocumentMode {
 	DesignMode,
 	SelectMode,

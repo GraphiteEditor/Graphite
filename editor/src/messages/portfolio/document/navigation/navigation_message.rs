@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 #[remain::sorted]
 #[impl_message(Message, DocumentMessage, Navigation)]
-#[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
+#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub enum NavigationMessage {
 	// Messages
 	DecreaseCanvasZoom {

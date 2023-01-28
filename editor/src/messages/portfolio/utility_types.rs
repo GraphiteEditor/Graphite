@@ -26,7 +26,7 @@ pub enum ImaginateServerStatus {
 	Connected,
 }
 
-#[derive(PartialEq, Eq, Clone, Copy, Default, Debug, Serialize, Deserialize, specta::Type)]
+#[derive(PartialEq, Eq, Clone, Copy, Default, Debug, Serialize, Deserialize)]
 pub enum Platform {
 	#[default]
 	Unknown,
