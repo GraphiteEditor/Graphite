@@ -117,8 +117,8 @@ impl WasmSubpath {
 			.0
 			.intersections(&line, Some(error), Some(minimum_separation))
 			.iter()
-			.map(|intersection_t| {
-				let point = self.0.evaluate(ComputeType::Parametric(*intersection_t));
+			.map(|(segment_index, intersection_t)| {
+				let point = self.0.evaluate(ComputeType::Parametric(((*segment_index as f64) + *intersection_t) / (self.0.len_segments() as f64)));
 				draw_circle(point, 4., RED, 1.5, WHITE)
 			})
 			.fold(String::new(), |acc, item| format!("{acc}{item}"));
@@ -146,8 +146,8 @@ impl WasmSubpath {
 			.0
 			.intersections(&line, Some(error), Some(minimum_separation))
 			.iter()
-			.map(|intersection_t| {
-				let point = self.0.evaluate(ComputeType::Parametric(*intersection_t));
+			.map(|(segment_index, intersection_t)| {
+				let point = self.0.evaluate(ComputeType::Parametric(((*segment_index as f64) + *intersection_t) / (self.0.len_segments() as f64)));
 				draw_circle(point, 4., RED, 1.5, WHITE)
 			})
 			.fold(String::new(), |acc, item| format!("{acc}{item}"));
@@ -175,8 +175,8 @@ impl WasmSubpath {
 			.0
 			.intersections(&line, Some(error), Some(minimum_separation))
 			.iter()
-			.map(|intersection_t| {
-				let point = self.0.evaluate(ComputeType::Parametric(*intersection_t));
+			.map(|(segment_index, intersection_t)| {
+				let point = self.0.evaluate(ComputeType::Parametric(((*segment_index as f64) + *intersection_t) / (self.0.len_segments() as f64)));
 				draw_circle(point, 4., RED, 1.5, WHITE)
 			})
 			.fold(String::new(), |acc, item| format!("{acc}{item}"));
@@ -190,8 +190,8 @@ impl WasmSubpath {
 			.0
 			.self_intersections(Some(error), Some(minimum_separation))
 			.iter()
-			.map(|intersection_t| {
-				let point = self.0.evaluate(ComputeType::Parametric(*intersection_t));
+			.map(|(segment_index, intersection_t)| {
+				let point = self.0.evaluate(ComputeType::Parametric(((*segment_index as f64) + *intersection_t) / (self.0.len_segments() as f64)));
 				draw_circle(point, 4., RED, 1.5, WHITE)
 			})
 			.fold(String::new(), |acc, item| format!("{acc}{item}"));

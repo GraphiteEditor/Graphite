@@ -38,26 +38,19 @@ impl Subpath {
 	/// - `error`: an optional f64 value to provide an error bound
 	/// - `minimum_seperation`: the minimum difference two adjacent `t`-values must have when comparing adjacent `t`-values in sorted order.
 	/// If the comparison condition is not satisfied, the function takes the larger `t`-value of the two
-	pub fn intersections(&self, other: &Bezier, error: Option<f64>, minimum_seperation: Option<f64>) -> Vec<f64> {
+	pub fn intersections(&self, other: &Bezier, error: Option<f64>, minimum_seperation: Option<f64>) -> Vec<(usize, f64)> {
 		// TODO: account for either euclidean or parametric type
-		let number_of_curves = self.len_segments() as f64;
-		let intersection_t_values: Vec<f64> = self
+		let intersection_t_values: Vec<(usize, f64)> = self
 			.iter()
 			.enumerate()
-			.flat_map(|(index, bezier)| {
-				bezier
-					.intersections(other, error, minimum_seperation)
-					.into_iter()
-					.map(|t| ((index as f64) + t) / number_of_curves)
-					.collect::<Vec<f64>>()
-			})
+			.flat_map(|(index, bezier)| bezier.intersections(other, error, minimum_seperation).into_iter().map(|t| (index, t)).collect::<Vec<(usize, f64)>>())
 			.collect();
 
-		intersection_t_values.iter().fold(Vec::new(), |mut accumulator, t| {
-			if !accumulator.is_empty() && (accumulator.last().unwrap() - t).abs() < minimum_seperation.unwrap_or(MIN_SEPERATION_VALUE) {
+		intersection_t_values.iter().fold(Vec::<(usize, f64)>::new(), |mut accumulator, (index, t)| {
+			if !accumulator.is_empty() && (accumulator.last().unwrap().1 - t).abs() < minimum_seperation.unwrap_or(MIN_SEPERATION_VALUE) {
 				accumulator.pop();
 			}
-			accumulator.push(*t);
+			accumulator.push((*index, *t));
 			accumulator
 		});
 
@@ -70,20 +63,19 @@ impl Subpath {
 	/// If the comparison condition is not satisfied, the function takes the larger `t`-value of the two
 	///
 	///  **NOTE**: if an intersection were to occur within an `error` distance away from an anchor point, the algorithm will filter that intersection out.
-	pub fn self_intersections(&self, error: Option<f64>, minimum_seperation: Option<f64>) -> Vec<f64> {
+	pub fn self_intersections(&self, error: Option<f64>, minimum_seperation: Option<f64>) -> Vec<(usize, f64)> {
 		let mut intersections_vec = Vec::new();
-		let n = self.len_segments();
 		let err = error.unwrap_or(MAX_ABSOLUTE_DIFFERENCE);
 		// TODO: optimization opportunity - this for-loop currently compares all intersections with all curve-segments in the subpath collection
 		self.iter().enumerate().for_each(|(i, other)| {
-			intersections_vec.extend(other.self_intersections(error).iter().map(|value| (value[0] + (i as f64)) / (n as f64)));
+			intersections_vec.extend(other.self_intersections(error).iter().map(|value| (i, value[0])));
 			self.iter().enumerate().skip(i + 1).for_each(|(j, curve)| {
 				intersections_vec.extend(
 					curve
 						.intersections(&other, error, minimum_seperation)
 						.iter()
 						.filter(|&value| value > &err && (1. - value) > err)
-						.map(|value| (value + (j as f64)) / (n as f64)),
+						.map(|value| (j, *value)),
 				);
 			});
 		});
