@@ -12,7 +12,7 @@ pub struct PropertiesPanelMessageHandlerData<'a> {
 	pub node_graph_message_handler: &'a NodeGraphMessageHandler,
 }
 
-#[derive(PartialEq, Eq, Clone, Copy, Debug, Serialize, Deserialize)]
+#[derive(PartialEq, Eq, Clone, Copy, Debug, Serialize, Deserialize, specta::Type)]
 pub enum TransformOp {
 	X,
 	Y,

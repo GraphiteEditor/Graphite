@@ -39,7 +39,7 @@ impl Default for GradientOptions {
 
 #[remain::sorted]
 #[impl_message(Message, ToolMessage, Gradient)]
-#[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize)]
+#[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize, specta::Type)]
 pub enum GradientToolMessage {
 	// Standard messages
 	#[remain::unsorted]
@@ -59,7 +59,7 @@ pub enum GradientToolMessage {
 }
 
 #[remain::sorted]
-#[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize)]
+#[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize, specta::Type)]
 pub enum GradientOptionsUpdate {
 	Type(GradientType),
 }

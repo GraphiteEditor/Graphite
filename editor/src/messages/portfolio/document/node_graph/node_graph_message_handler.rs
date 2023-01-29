@@ -15,7 +15,7 @@ mod node_properties;
 
 use glam::IVec2;
 
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum FrontendGraphDataType {
 	#[default]
 	#[serde(rename = "general")]
@@ -50,14 +50,14 @@ impl FrontendGraphDataType {
 	}
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct NodeGraphInput {
 	#[serde(rename = "dataType")]
 	data_type: FrontendGraphDataType,
 	name: String,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct FrontendNode {
 	pub id: graph_craft::document::NodeId,
 	#[serde(rename = "displayName")]
@@ -73,7 +73,7 @@ pub struct FrontendNode {
 }
 
 // (link_start, link_end, link_end_input_index)
-#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct FrontendNodeLink {
 	#[serde(rename = "linkStart")]
 	pub link_start: u64,
@@ -83,7 +83,7 @@ pub struct FrontendNodeLink {
 	pub link_end_input_index: u64,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct FrontendNodeType {
 	pub name: String,
 	pub category: String,

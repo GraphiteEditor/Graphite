@@ -32,13 +32,13 @@ fn merge_ids(a: u64, b: u64) -> u64 {
 	hasher.finish()
 }
 
-#[derive(Clone, Debug, PartialEq, Default)]
+#[derive(Clone, Debug, PartialEq, Default, specta::Type)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct DocumentNodeMetadata {
 	pub position: IVec2,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, specta::Type)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct DocumentNode {
 	pub name: String,
@@ -120,7 +120,7 @@ impl DocumentNode {
 	}
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, specta::Type)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum NodeInput {
 	Node(NodeId),
@@ -156,7 +156,7 @@ impl PartialEq for NodeInput {
 	}
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, specta::Type)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum DocumentNodeImplementation {
 	Network(NodeNetwork),
@@ -181,7 +181,7 @@ impl DocumentNodeImplementation {
 	}
 }
 
-#[derive(Clone, Debug, Default, PartialEq, DynAny)]
+#[derive(Clone, Debug, Default, PartialEq, DynAny, specta::Type)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct NodeNetwork {
 	pub inputs: Vec<NodeId>,
