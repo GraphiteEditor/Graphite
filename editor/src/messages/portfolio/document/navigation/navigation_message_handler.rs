@@ -141,7 +141,7 @@ impl MessageHandler<NavigationMessage, (&Document, &InputPreprocessorMessageHand
 					}
 					self.snap_zoom = new_snap;
 
-					let difference = self.mouse_position.y as f64 - ipp.mouse.position.y as f64;
+					let difference = self.mouse_position.y - ipp.mouse.position.y;
 					let amount = 1. + difference * VIEWPORT_ZOOM_MOUSE_RATE;
 
 					self.zoom *= amount;

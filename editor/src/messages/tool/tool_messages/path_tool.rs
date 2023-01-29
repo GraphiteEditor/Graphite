@@ -4,7 +4,7 @@ use crate::messages::input_mapper::utility_types::input_keyboard::{Key, MouseMot
 use crate::messages::layout::utility_types::layout_widget::PropertyHolder;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::overlay_renderer::OverlayRenderer;
-use crate::messages::tool::common_functionality::shape_editor::ShapeEditor;
+use crate::messages::tool::common_functionality::shape_editor::{ManipulatorPointInfo, ShapeEditor};
 use crate::messages::tool::common_functionality::snapping::SnapManager;
 use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
@@ -157,10 +157,9 @@ impl Fsm for PathToolFsmState {
 					let toggle_add_to_selection = input.keyboard.get(add_to_selection as usize);
 
 					// Select the first point within the threshold (in pixels)
-					if let Some((mut new_selected, offset)) =
-						tool_data
-							.shape_editor
-							.select_point(&document.document_legacy, input.mouse.position, SELECTION_THRESHOLD, toggle_add_to_selection, responses)
+					if let Some(mut selected_points) = tool_data
+						.shape_editor
+						.select_point(&document.document_legacy, input.mouse.position, SELECTION_THRESHOLD, toggle_add_to_selection, responses)
 					{
 						responses.push_back(DocumentMessage::StartTransaction.into());
 
@@ -171,18 +170,24 @@ impl Fsm for PathToolFsmState {
 
 						// Do not snap against handles when anchor is selected
 						let mut extension = Vec::new();
-						for &(path, id, point_type) in new_selected.iter() {
-							if point_type == ManipulatorType::Anchor {
-								extension.push((path, id, ManipulatorType::InHandle));
-								extension.push((path, id, ManipulatorType::OutHandle));
+						for point in selected_points.points.iter() {
+							if point.manipulator_type == ManipulatorType::Anchor {
+								extension.push(ManipulatorPointInfo {
+									manipulator_type: ManipulatorType::InHandle,
+									..*point
+								});
+								extension.push(ManipulatorPointInfo {
+									manipulator_type: ManipulatorType::OutHandle,
+									..*point
+								});
 							}
 						}
-						new_selected.extend(extension);
+						selected_points.points.extend(extension);
 
 						let include_handles = tool_data.shape_editor.selected_layers_ref();
-						tool_data.snap_manager.add_all_document_handles(document, input, &include_handles, &[], &new_selected);
+						tool_data.snap_manager.add_all_document_handles(document, input, &include_handles, &[], &selected_points.points);
 
-						tool_data.drag_start_pos = input.mouse.position - offset;
+						tool_data.drag_start_pos = input.mouse.position - selected_points.offset;
 						PathToolFsmState::Dragging
 					}
 					// We didn't find a point nearby, so consider selecting the nearest shape instead

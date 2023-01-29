@@ -164,7 +164,7 @@ impl Layout {
 			// Simply diff the internal layout
 			(Self::WidgetLayout(current), Self::WidgetLayout(new)) => current.diff(new, widget_path, widget_diffs),
 			(current, Self::WidgetLayout(widget_layout)) => {
-				// Upate current to the new value
+				// Update current to the new value
 				*current = Self::WidgetLayout(widget_layout.clone());
 
 				// Push an update sublayout value
@@ -179,7 +179,7 @@ impl Layout {
 
 impl Default for Layout {
 	fn default() -> Self {
-		Layout::WidgetLayout(WidgetLayout::default())
+		Self::WidgetLayout(WidgetLayout::default())
 	}
 }
 

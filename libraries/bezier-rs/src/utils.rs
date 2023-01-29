@@ -45,7 +45,7 @@ pub fn get_closest_point_in_lut(lut: &[DVec2], point: DVec2) -> (usize, f64) {
 	lut.iter()
 		.enumerate()
 		.map(|(i, p)| (i, point.distance_squared(*p)))
-		.min_by(|x, y| (&(x.1)).partial_cmp(&(y.1)).unwrap())
+		.min_by(|x, y| (x.1).partial_cmp(&(y.1)).unwrap())
 		.unwrap()
 }
 

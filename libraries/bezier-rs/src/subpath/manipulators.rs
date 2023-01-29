@@ -58,7 +58,7 @@ mod tests {
 		let handle2 = DVec2::new(40., 30.);
 		let handle3 = DVec2::new(10., 10.);
 
-		return Subpath::new(
+		Subpath::new(
 			vec![
 				ManipulatorGroup {
 					anchor: start,
@@ -82,7 +82,7 @@ mod tests {
 				},
 			],
 			false,
-		);
+		)
 	}
 
 	fn set_up_closed_subpath() -> Subpath {

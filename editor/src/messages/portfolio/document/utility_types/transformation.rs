@@ -11,17 +11,12 @@ use std::collections::{HashMap, VecDeque};
 
 pub type OriginalTransforms = HashMap<Vec<LayerId>, DAffine2>;
 
-#[derive(Debug, Clone, PartialEq, Eq, Copy)]
+#[derive(Default, Debug, Clone, PartialEq, Eq, Copy)]
 pub enum Axis {
+	#[default]
 	Both,
 	X,
 	Y,
-}
-
-impl Default for Axis {
-	fn default() -> Self {
-		Self::Both
-	}
 }
 
 impl Axis {
@@ -137,18 +132,13 @@ impl Scale {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Copy)]
+#[derive(Default, Debug, Clone, PartialEq, Copy)]
 pub enum TransformOperation {
+	#[default]
 	None,
 	Grabbing(Translation),
 	Rotating(Rotation),
 	Scaling(Scale),
-}
-
-impl Default for TransformOperation {
-	fn default() -> Self {
-		TransformOperation::None
-	}
 }
 
 impl TransformOperation {

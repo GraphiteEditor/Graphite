@@ -271,7 +271,7 @@ impl Document {
 	}
 
 	pub fn folder_children_paths(&self, path: &[LayerId]) -> Vec<Vec<LayerId>> {
-		if let Ok(folder) = self.folder(&path) {
+		if let Ok(folder) = self.folder(path) {
 			folder.list_layers().iter().map(|f| [path, &[*f]].concat()).collect()
 		} else {
 			vec![]

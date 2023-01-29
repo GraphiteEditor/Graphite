@@ -21,20 +21,15 @@ fn format_opacity(name: &str, opacity: f32) -> String {
 }
 
 /// Represents different ways of rendering an object
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, specta::Type)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, specta::Type)]
 pub enum ViewMode {
 	/// Render with normal coloration at the current viewport resolution
+	#[default]
 	Normal,
 	/// Render only the outlines of shapes at the current viewport resolution
 	Outline,
 	/// Render with normal coloration at the document resolution, showing the pixels when the current viewport resolution is higher
 	Pixels,
-}
-
-impl Default for ViewMode {
-	fn default() -> Self {
-		ViewMode::Normal
-	}
 }
 
 /// Contains metadata for rendering the document as an svg
@@ -55,16 +50,11 @@ impl<'a> RenderData<'a> {
 	}
 }
 
-#[derive(PartialEq, Eq, Clone, Copy, Debug, Hash, Serialize, Deserialize, specta::Type)]
+#[derive(Default, PartialEq, Eq, Clone, Copy, Debug, Hash, Serialize, Deserialize, specta::Type)]
 pub enum GradientType {
+	#[default]
 	Linear,
 	Radial,
-}
-
-impl Default for GradientType {
-	fn default() -> Self {
-		GradientType::Linear
-	}
 }
 
 /// A gradient fill.
@@ -183,17 +173,12 @@ impl Gradient {
 ///
 /// Can be None, a solid [Color], a linear [Gradient], a radial [Gradient] or potentially some sort of image or pattern in the future
 #[repr(C)]
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
+#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
 pub enum Fill {
+	#[default]
 	None,
 	Solid(Color),
 	Gradient(Gradient),
-}
-
-impl Default for Fill {
-	fn default() -> Self {
-		Self::None
-	}
 }
 
 impl Fill {

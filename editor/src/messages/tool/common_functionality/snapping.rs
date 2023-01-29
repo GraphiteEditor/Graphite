@@ -1,3 +1,4 @@
+use super::shape_editor::ManipulatorPointInfo;
 use crate::application::generate_uuid;
 use crate::consts::{
 	COLOR_ACCENT, SNAP_AXIS_OVERLAY_FADE_DISTANCE, SNAP_AXIS_TOLERANCE, SNAP_AXIS_UNSNAPPED_OPACITY, SNAP_POINT_OVERLAY_FADE_FAR, SNAP_POINT_OVERLAY_FADE_NEAR, SNAP_POINT_SIZE, SNAP_POINT_TOLERANCE,
@@ -257,7 +258,7 @@ impl SnapManager {
 		layer: &Layer,
 		path: &[LayerId],
 		include_handles: bool,
-		ignore_points: &[(&[LayerId], u64, ManipulatorType)],
+		ignore_points: &[ManipulatorPointInfo],
 	) {
 		if let LayerDataType::Shape(shape_layer) = &layer.data {
 			let transform = document_message_handler.document_legacy.multiply_transforms(path).unwrap();
@@ -277,7 +278,13 @@ impl SnapManager {
 					}
 				})
 				.filter_map(|(id, point)| point.as_ref().map(|val| (id, val)))
-				.filter(|(id, point)| !ignore_points.contains(&(path, *id, point.manipulator_type)))
+				.filter(|(id, point)| {
+					!ignore_points.contains(&ManipulatorPointInfo {
+						shape_layer_path: path,
+						manipulator_group_id: *id,
+						manipulator_type: point.manipulator_type,
+					})
+				})
 				.map(|(_id, point)| DVec2::new(point.position.x, point.position.y))
 				.map(|pos| transform.transform_point2(pos));
 			self.add_snap_points(document_message_handler, input, snap_points);
@@ -291,7 +298,7 @@ impl SnapManager {
 		input: &InputPreprocessorMessageHandler,
 		include_handles: &[&[LayerId]],
 		exclude: &[&[LayerId]],
-		ignore_points: &[(&[LayerId], u64, ManipulatorType)],
+		ignore_points: &[ManipulatorPointInfo],
 	) {
 		for path in document_message_handler.all_layers() {
 			if !exclude.contains(&path) {
