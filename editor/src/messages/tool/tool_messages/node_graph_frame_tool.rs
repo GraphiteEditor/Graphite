@@ -19,7 +19,7 @@ pub struct NodeGraphFrameTool {
 
 #[remain::sorted]
 #[impl_message(Message, ToolMessage, NodeGraphFrame)]
-#[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize)]
+#[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize, specta::Type)]
 pub enum NodeGraphFrameToolMessage {
 	// Standard messages
 	#[remain::unsorted]

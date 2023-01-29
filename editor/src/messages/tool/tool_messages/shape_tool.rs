@@ -32,7 +32,7 @@ impl Default for ShapeOptions {
 
 #[remain::sorted]
 #[impl_message(Message, ToolMessage, Shape)]
-#[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize)]
+#[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize, specta::Type)]
 pub enum ShapeToolMessage {
 	// Standard messages
 	#[remain::unsorted]
@@ -49,7 +49,7 @@ pub enum ShapeToolMessage {
 }
 
 #[remain::sorted]
-#[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize)]
+#[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize, specta::Type)]
 pub enum ShapeOptionsUpdate {
 	Vertices(u32),
 }

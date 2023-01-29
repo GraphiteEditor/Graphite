@@ -10,7 +10,7 @@ use kurbo::{Affine, BezPath, Shape as KurboShape};
 use serde::{Deserialize, Serialize};
 use std::fmt::Write;
 
-#[derive(Clone, Debug, Default, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Default, PartialEq, Deserialize, Serialize, specta::Type)]
 pub struct NodeGraphFrameLayer {
 	// Image stored in layer after generation completes
 	pub mime: String,
@@ -26,9 +26,10 @@ pub struct NodeGraphFrameLayer {
 	pub image_data: Option<ImageData>,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Deserialize, Serialize, specta::Type)]
 pub struct ImageData {
 	#[serde(serialize_with = "base64_serde::as_base64", deserialize_with = "base64_serde::from_base64")]
+	#[specta(type = String)]
 	pub image_data: std::sync::Arc<Vec<u8>>,
 }
 

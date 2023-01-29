@@ -3,7 +3,7 @@ use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};
 
 /// [ManipulatorPoint] represents any editable Bezier point, either an anchor or handle
-#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
+#[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
 pub struct ManipulatorPoint {
 	/// The sibling element if this is a handle
 	pub position: glam::DVec2,
@@ -60,7 +60,7 @@ impl ManipulatorPoint {
 	}
 }
 
-#[derive(PartialEq, Eq, Clone, Debug)]
+#[derive(PartialEq, Eq, Clone, Debug, specta::Type)]
 pub struct ManipulatorPointEditorState {
 	/// Whether or not this manipulator point can be selected.
 	pub can_be_selected: bool,

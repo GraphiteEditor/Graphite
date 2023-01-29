@@ -43,7 +43,7 @@ impl Default for TextOptions {
 
 #[remain::sorted]
 #[impl_message(Message, ToolMessage, Text)]
-#[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize)]
+#[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize, specta::Type)]
 pub enum TextToolMessage {
 	// Standard messages
 	#[remain::unsorted]
@@ -65,7 +65,7 @@ pub enum TextToolMessage {
 }
 
 #[remain::sorted]
-#[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize)]
+#[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize, specta::Type)]
 pub enum TextOptionsUpdate {
 	Font { family: String, style: String },
 	FontSize(u32),

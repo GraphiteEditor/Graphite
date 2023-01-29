@@ -29,6 +29,9 @@ exclude = [
 	"node-graph/gpu-compiler",
 ]
 
+[workspace.dependencies]
+specta = { git = "https://github.com/oscartbeaumont/rspc", rev = "9725ddbfe40183debc055b88c37910eb6f818eae", features = ["glam"] }
+
 [profile.release.package.graphite-wasm]
 opt-level = 3
 

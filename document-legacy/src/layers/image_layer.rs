@@ -10,10 +10,11 @@ use kurbo::{Affine, BezPath, Shape as KurboShape};
 use serde::{Deserialize, Serialize};
 use std::fmt::Write;
 
-#[derive(Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, PartialEq, Deserialize, Serialize, specta::Type)]
 pub struct ImageLayer {
 	pub mime: String,
 	#[serde(serialize_with = "base64_serde::as_base64", deserialize_with = "base64_serde::from_base64")]
+	#[specta(type = String)]
 	pub image_data: std::sync::Arc<Vec<u8>>,
 	// TODO: Have the browser dispose of this blob URL when this is dropped (like when the layer is deleted)
 	#[serde(skip)]

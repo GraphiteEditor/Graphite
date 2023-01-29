@@ -20,7 +20,7 @@ pub struct RectangleTool {
 
 #[remain::sorted]
 #[impl_message(Message, ToolMessage, Rectangle)]
-#[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize)]
+#[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize, specta::Type)]
 pub enum RectangleToolMessage {
 	// Standard messages
 	#[remain::unsorted]

@@ -35,7 +35,7 @@ impl Default for LineOptions {
 
 #[remain::sorted]
 #[impl_message(Message, ToolMessage, Line)]
-#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
+#[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
 pub enum LineToolMessage {
 	// Standard messages
 	#[remain::unsorted]
@@ -53,7 +53,7 @@ pub enum LineToolMessage {
 }
 
 #[remain::sorted]
-#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
+#[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
 pub enum LineOptionsUpdate {
 	LineWeight(f64),
 }
