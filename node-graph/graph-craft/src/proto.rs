@@ -96,7 +96,7 @@ pub struct ProtoNetwork {
 
 #[derive(Debug)]
 pub enum ConstructionArgs {
-	Value(value::Value),
+	Value(value::Value<'static>),
 	Nodes(Vec<NodeId>),
 }
 

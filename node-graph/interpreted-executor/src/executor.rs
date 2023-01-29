@@ -3,11 +3,12 @@ use std::{collections::HashMap, sync::Arc};
 
 use borrow_stack::{BorrowStack, FixedSizeStack};
 use dyn_any::{DynAny, StaticType};
-use graph_craft::document::value::Value;
+use graph_craft::document::value::{UpcastNode, Value};
 use graph_craft::document::NodeId;
 use graph_craft::proto::{ConstructionArgs, ProtoNode, ProtoNodeInput};
+use graphene_core::value::ValueNode;
 use graphene_core::Node;
-use graphene_std::any::{Any, IntoTypeErasedNode, TypeErasedNode, TypeErasedPinned};
+use graphene_std::any::{Any, DynAnyNode, IntoTypeErasedNode, TypeErasedNode, TypeErasedPinned, TypeErasedPinnedRef};
 
 use crate::node_registry::constrcut_node;
 use graph_craft::{executor::Executor, proto::ProtoNetwork};
@@ -46,8 +47,8 @@ impl<'a> NodeContainer<'a> {
 	/// Return a static reference to the TypeErasedNode
 	/// # Safety
 	/// This is unsafe because the returned reference is only valid as long as the NodeContainer is alive
-	pub unsafe fn static_ref<'b>(&self) -> &'b TypeErasedPinned<'a> {
-		&*(&self.node as *const TypeErasedPinned<'a>)
+	pub unsafe fn erase_lifetime(self) -> NodeContainer<'static> {
+		std::mem::transmute(self)
 	}
 }
 
@@ -58,11 +59,11 @@ impl<'a> AsRef<TypeErasedPinned<'a>> for NodeContainer<'a> {
 }
 
 #[derive(Default)]
-pub struct BorrowTree {
-	nodes: HashMap<NodeId, Arc<NodeContainer<'static>>>,
+pub struct BorrowTree<'a> {
+	nodes: HashMap<NodeId, Arc<NodeContainer<'a>>>,
 }
 
-impl BorrowTree {
+impl<'a> BorrowTree<'a> {
 	pub fn new(proto_network: ProtoNetwork) -> Self {
 		let mut nodes = BorrowTree::default();
 		for (id, node) in proto_network.nodes {
@@ -70,32 +71,28 @@ impl BorrowTree {
 		}
 		nodes
 	}
-	fn node_refs(&self, nodes: &[NodeId]) -> Vec<&'static TypeErasedPinned<'static>> {
-		nodes
-			.iter()
-			.map(|node| unsafe { &*((&self.nodes.get(node).unwrap().as_ref().node) as *const TypeErasedPinned<'static>) as &'static TypeErasedPinned<'static> })
-			.collect()
+	fn node_refs(&self, nodes: &[NodeId]) -> Vec<TypeErasedPinnedRef> {
+		nodes.iter().map(|node| (self.nodes.get(node).unwrap().as_ref().node).as_ref()).collect()
 	}
-	fn node_deps(&self, nodes: &[NodeId]) -> Vec<Arc<NodeContainer<'static>>> {
+	fn node_deps(&self, nodes: &[NodeId]) -> Vec<Arc<NodeContainer<'a>>> {
 		nodes.iter().map(|node| self.nodes.get(node).unwrap().clone()).collect()
 	}
 
-	fn store_node(&mut self, node: TypeErasedPinned<'static>, id: NodeId, dependencies: Vec<Arc<NodeContainer<'static>>>) -> Arc<NodeContainer<'static>> {
-		let node = Arc::new(NodeContainer { node, _dependencies: dependencies });
+	fn store_node(&mut self, node: Arc<NodeContainer<'static>>, id: NodeId) -> Arc<NodeContainer<'static>> {
 		self.nodes.insert(id, node.clone());
 		node
 	}
 
-	pub fn get(&self, id: NodeId) -> Option<Arc<NodeContainer<'static>>> {
+	pub fn get(&self, id: NodeId) -> Option<Arc<NodeContainer<'a>>> {
 		self.nodes.get(&id).cloned()
 	}
 
-	pub fn eval<'i, I: StaticType + 'i, O: StaticType + 'i>(&self, id: NodeId, input: I) -> Option<O> {
-		use dyn_any::IntoDynAny;
-
+	pub fn eval<'i, I: StaticType + 'i, O: StaticType + 'i>(&self, id: NodeId, input: I) -> Option<O>
+	where
+		'a: 'i,
+	{
 		let node = self.nodes.get(&id).cloned()?;
-		let node_ref = unsafe { node.static_ref() };
-		let output = node_ref.eval(Box::new(input) as Box<dyn DynAny<'i> + 'i>);
+		let output = node.node.eval(Box::new(input));
 		dyn_any::downcast::<O>(output).ok().map(|o| *o)
 	}
 
@@ -114,15 +111,21 @@ impl BorrowTree {
 
 		match construction_args {
 			ConstructionArgs::Value(value) => {
-				let node = graphene_core::generic::FnNode::new(move |_| value.clone().up_box() as Any<'_>);
-
-				let node = Box::pin(node) as TypeErasedPinned;
-				self.store_node(node, id, vec![]);
+				let upcasted = UpcastNode::new(value);
+				let node = Box::pin(upcasted) as TypeErasedPinned<'_>;
+				let node = NodeContainer { node, _dependencies: vec![] };
+				let node = unsafe { node.erase_lifetime() };
+				self.store_node(Arc::new(node), id);
 			}
 			ConstructionArgs::Nodes(ids) => {
 				let construction_nodes = self.node_refs(ids.as_slice());
 				let node = constrcut_node(identifier, construction_nodes);
-				self.store_node(node, id, self.node_deps(ids.as_slice()));
+				let node = NodeContainer {
+					node,
+					_dependencies: self.node_deps(&ids),
+				};
+				let node = unsafe { node.erase_lifetime() };
+				self.store_node(Arc::new(node), id);
 			}
 		}
 	}

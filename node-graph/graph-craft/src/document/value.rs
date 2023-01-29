@@ -2,6 +2,7 @@ pub use dyn_any::StaticType;
 use dyn_any::{DynAny, Upcast};
 use dyn_clone::DynClone;
 pub use glam::DVec2;
+use graphene_core::Node;
 use std::hash::Hash;
 pub use std::sync::Arc;
 
@@ -30,9 +31,9 @@ pub enum TaggedValue {
 	LayerPath(Option<Vec<u64>>),
 }
 
-impl TaggedValue {
+impl<'a> TaggedValue {
 	/// Converts to a Box<dyn DynAny> - this isn't very neat but I'm not sure of a better approach
-	pub fn to_value(self) -> Value {
+	pub fn to_value(self) -> Value<'a> {
 		match self {
 			TaggedValue::None => Box::new(()),
 			TaggedValue::String(x) => Box::new(x),
@@ -55,19 +56,35 @@ impl TaggedValue {
 	}
 }
 
-pub type Value = Box<dyn ValueTrait>;
+pub struct UpcastNode {
+	value: Value<'static>,
+}
+impl<'input> Node<'input, Box<dyn DynAny<'input> + 'input>> for UpcastNode {
+	type Output = Box<dyn DynAny<'input> + 'input>;
 
-pub trait ValueTrait: DynAny<'static> + Upcast<dyn DynAny<'static>> + std::fmt::Debug + DynClone {}
+	fn eval<'s: 'input>(&'s self, _: Box<dyn DynAny<'input> + 'input>) -> Self::Output {
+		self.value.clone().up_box()
+	}
+}
+impl UpcastNode {
+	pub fn new(value: Value<'static>) -> Self {
+		Self { value }
+	}
+}
 
-pub trait IntoValue: Sized + ValueTrait + 'static {
-	fn into_any(self) -> Value {
+pub type Value<'a> = Box<dyn for<'i> ValueTrait<'i> + 'a>;
+
+pub trait ValueTrait<'a>: DynAny<'a> + Upcast<dyn DynAny<'a> + 'a> + std::fmt::Debug + DynClone + 'a {}
+
+pub trait IntoValue<'a>: Sized + for<'i> ValueTrait<'i> + 'a {
+	fn into_any(self) -> Value<'a> {
 		Box::new(self)
 	}
 }
 
-impl<T: 'static + StaticType + Upcast<dyn DynAny<'static>> + std::fmt::Debug + PartialEq + Clone> ValueTrait for T {}
+impl<'a, T: 'a + StaticType + Upcast<dyn DynAny<'a> + 'a> + std::fmt::Debug + PartialEq + Clone + 'a> ValueTrait<'a> for T {}
 
-impl<T: 'static + ValueTrait> IntoValue for T {}
+impl<'a, T: for<'i> ValueTrait<'i> + 'a> IntoValue<'a> for T {}
 
 #[repr(C)]
 pub(crate) struct Vtable {
@@ -82,7 +99,7 @@ pub(crate) struct TraitObject {
 	pub(crate) vtable: &'static Vtable,
 }
 
-impl PartialEq for Box<dyn ValueTrait> {
+impl<'a> PartialEq for Box<dyn for<'i> ValueTrait<'i> + 'a> {
 	#[cfg_attr(miri, ignore)]
 	fn eq(&self, other: &Self) -> bool {
 		if self.type_id() != other.type_id() {
@@ -97,7 +114,7 @@ impl PartialEq for Box<dyn ValueTrait> {
 	}
 }
 
-impl Hash for Value {
+impl<'a> Hash for Value<'a> {
 	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
 		let self_trait_object = unsafe { std::mem::transmute::<&dyn ValueTrait, TraitObject>(self.as_ref()) };
 		let size = self_trait_object.vtable.size;
@@ -106,7 +123,7 @@ impl Hash for Value {
 	}
 }
 
-impl Clone for Value {
+impl<'a> Clone for Value<'a> {
 	fn clone(&self) -> Self {
 		let self_trait_object = unsafe { std::mem::transmute::<&dyn ValueTrait, TraitObject>(self.as_ref()) };
 		let size = self_trait_object.vtable.size;

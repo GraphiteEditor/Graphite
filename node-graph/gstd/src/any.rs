@@ -19,7 +19,8 @@ where
 }
 
 pub type TypeErasedNode<'n> = dyn for<'i> Node<'i, Any<'i>, Output = Any<'i>> + 'n;
-pub type TypeErasedPinned<'n> = Pin<Box<TypeErasedNode<'n>>>;
+pub type TypeErasedPinnedRef<'n> = Pin<&'n (dyn for<'i> Node<'i, Any<'i>, Output = Any<'i>> + 'n)>;
+pub type TypeErasedPinned<'n> = Pin<Box<dyn for<'i> Node<'i, Any<'i>, Output = Any<'i>> + 'n>>;
 
 pub trait IntoTypeErasedNode<'n> {
 	fn into_type_erased(self) -> TypeErasedPinned<'n>;
@@ -57,22 +58,13 @@ where
 
 /// Boxes the input and downcasts the output.
 /// Wraps around a node taking Box<dyn DynAny> and returning Box<dyn DynAny>
-pub struct DowncastBothNode<I, O, Node> {
-	node: Node,
+pub struct DowncastBothNode<'a, I, O> {
+	node: TypeErasedPinnedRef<'a>,
 	_i: PhantomData<I>,
 	_o: PhantomData<O>,
 }
-impl<N: Clone, I: StaticType, O: StaticType> Clone for DowncastBothNode<I, O, N> {
-	fn clone(&self) -> Self {
-		Self {
-			node: self.node.clone(),
-			_i: self._i,
-			_o: self._o,
-		}
-	}
-}
-impl<N: Copy, I: StaticType, O: StaticType> Copy for DowncastBothNode<I, O, N> {}
 
+/*
 #[node_macro::node_fn(DowncastBothNode<_I,_O>)]
 fn downcast_both<N, _O: StaticType, _I: StaticType>(input: _I, node: &'input N) -> _O
 where
@@ -82,12 +74,32 @@ where
 	let input = Box::new(input);
 	let out = dyn_any::downcast(node.eval(input)).unwrap_or_else(|_| panic!("DynAnyNode Input in:\n{node_name}"));
 	*out
+} */
+impl<'n, 'input, O: 'input + StaticType, I: 'input + StaticType> Node<'input, I> for DowncastBothNode<'n, I, O> {
+	type Output = O;
+	#[inline]
+	fn eval<'node: 'input>(&'node self, input: I) -> Self::Output {
+		{
+			let input = Box::new(input);
+			let out = dyn_any::downcast(self.node.eval(input)).unwrap_or_else(|_| panic!("DynAnyNode Input "));
+			*out
+		}
+	}
+}
+impl<'n, I, O> DowncastBothNode<'n, I, O> {
+	pub const fn new(node: TypeErasedPinnedRef<'n>) -> Self {
+		Self {
+			node,
+			_i: core::marker::PhantomData,
+			_o: core::marker::PhantomData,
+		}
+	}
 }
 
 pub type Any<'n> = Box<dyn DynAny<'n> + 'n>;
 
-pub fn input_node<'n, O: StaticType, N: 'n + ?Sized + for<'i> Node<'i, Any<'i>, Output = Any<'i>>>(n: &Pin<Box<N>>) -> DowncastBothNode<(), O, ValueNode<&Pin<Box<N>>>> {
-	DowncastBothNode::new(ValueNode::new(n))
+pub fn input_node<O: StaticType>(n: TypeErasedPinnedRef) -> DowncastBothNode<(), O> {
+	DowncastBothNode::new(n)
 }
 
 #[cfg(test)]
@@ -104,15 +116,29 @@ mod test {
 		//add.eval(Box::new(&("32", 32u32)));
 		let dyn_any = DynAnyNode::<(u32, u32), u32, _>::new(ValueNode::new(AddNode::new()));
 		let type_erased = dyn_any.into_type_erased();
+		let ref_type_erased = type_erased.as_ref();
 		//let type_erased = Box::pin(dyn_any) as TypeErasedPinned<'_>;
 		type_erased.eval(Box::new(&("32", 32u32)));
+	}
+
+	#[test]
+	#[should_panic]
+	pub fn dyn_input_invalid_eval_panic_() {
+		static ADD: &DynAnyNode<(u32, u32), u32, AddNode> = &DynAnyNode::new(AddNode::new());
+
+		//let add = DynAnyNode::new(AddNode::new()).into_type_erased();
+		//add.eval(Box::new(&("32", 32u32)));
+		let dyn_any = DynAnyNode::<(u32, u32), u32, _>::new(ValueNode::new(AddNode::new()));
+		let type_erased = dyn_any.into_type_erased();
+		let downcast: DowncastBothNode<(), u32> = DowncastBothNode::new(type_erased.as_ref());
+		downcast.eval(());
 	}
 
 	#[test]
 	pub fn dyn_input_storage_composition() {
 		// todo readd test
 		let node = <graphene_core::ops::IdNode>::new();
-		let any: DynAnyNode<Any<'_>, _, _> = DynAnyNode::new(node);
-		any.into_type_erased()
+		let any: DynAnyNode<Any<'_>, _, _> = DynAnyNode::new(ValueNode::new(node));
+		any.into_type_erased();
 	}
 }
