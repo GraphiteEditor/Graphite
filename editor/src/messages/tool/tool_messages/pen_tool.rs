@@ -98,7 +98,7 @@ impl PropertyHolder for PenTool {
 }
 
 impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for PenTool {
-	fn process_message(&mut self, message: ToolMessage, tool_data: ToolActionHandlerData<'a>, responses: &mut VecDeque<Message>) {
+	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: ToolActionHandlerData<'a>) {
 		if let ToolMessage::Pen(PenToolMessage::UpdateOptions(action)) = message {
 			match action {
 				PenOptionsUpdate::LineWeight(line_weight) => self.options.line_weight = line_weight,

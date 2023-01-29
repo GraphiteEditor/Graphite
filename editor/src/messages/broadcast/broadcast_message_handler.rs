@@ -7,7 +7,7 @@ pub struct BroadcastMessageHandler {
 
 impl MessageHandler<BroadcastMessage, ()> for BroadcastMessageHandler {
 	#[remain::check]
-	fn process_message(&mut self, message: BroadcastMessage, _data: (), responses: &mut VecDeque<Message>) {
+	fn process_message(&mut self, message: BroadcastMessage, responses: &mut VecDeque<Message>, _data: ()) {
 		#[remain::sorted]
 		match message {
 			// Sub-messages

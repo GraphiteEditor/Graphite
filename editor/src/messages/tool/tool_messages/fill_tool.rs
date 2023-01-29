@@ -47,8 +47,8 @@ impl ToolMetadata for FillTool {
 impl PropertyHolder for FillTool {}
 
 impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for FillTool {
-	fn process_message(&mut self, message: ToolMessage, data: ToolActionHandlerData<'a>, responses: &mut VecDeque<Message>) {
-		self.fsm_state.process_event(message, &mut self.data, data, &(), responses, true);
+	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: ToolActionHandlerData<'a>) {
+		self.fsm_state.process_event(message, &mut self.data, tool_data, &(), responses, true);
 	}
 
 	advertise_actions!(FillToolMessageDiscriminant;

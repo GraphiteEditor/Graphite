@@ -106,15 +106,15 @@ impl Dispatcher {
 					queue.push_back(FrontendMessage::TriggerFontLoad { font, is_default: true }.into());
 				}
 
-				Broadcast(message) => self.message_handlers.broadcast_message_handler.process_message(message, (), &mut queue),
+				Broadcast(message) => self.message_handlers.broadcast_message_handler.process_message(message, &mut queue, ()),
 				Debug(message) => {
-					self.message_handlers.debug_message_handler.process_message(message, (), &mut queue);
+					self.message_handlers.debug_message_handler.process_message(message, &mut queue, ());
 				}
 				Dialog(message) => {
 					self.message_handlers.dialog_message_handler.process_message(
 						message,
-						(&self.message_handlers.portfolio_message_handler, &self.message_handlers.preferences_message_handler),
 						&mut queue,
+						(&self.message_handlers.portfolio_message_handler, &self.message_handlers.preferences_message_handler),
 					);
 				}
 				Frontend(message) => {
@@ -131,55 +131,53 @@ impl Dispatcher {
 					}
 				}
 				Globals(message) => {
-					self.message_handlers.globals_message_handler.process_message(message, (), &mut queue);
+					self.message_handlers.globals_message_handler.process_message(message, &mut queue, ());
 				}
 				InputMapper(message) => {
 					let actions = self.collect_actions();
 
 					self.message_handlers
 						.input_mapper_message_handler
-						.process_message(message, (&self.message_handlers.input_preprocessor_message_handler, actions), &mut queue);
+						.process_message(message, &mut queue, (&self.message_handlers.input_preprocessor_message_handler, actions));
 				}
 				InputPreprocessor(message) => {
 					let keyboard_platform = GLOBAL_PLATFORM.get().copied().unwrap_or_default().as_keyboard_platform_layout();
 
-					self.message_handlers.input_preprocessor_message_handler.process_message(message, keyboard_platform, &mut queue);
+					self.message_handlers.input_preprocessor_message_handler.process_message(message, &mut queue, keyboard_platform);
 				}
 				Layout(message) => {
 					let action_input_mapping = &|action_to_find: &MessageDiscriminant| self.message_handlers.input_mapper_message_handler.action_input_mapping(action_to_find);
 
-					self.message_handlers.layout_message_handler.process_message(message, action_input_mapping, &mut queue);
+					self.message_handlers.layout_message_handler.process_message(message, &mut queue, action_input_mapping);
 				}
 				Portfolio(message) => {
 					self.message_handlers.portfolio_message_handler.process_message(
 						message,
-						(&self.message_handlers.input_preprocessor_message_handler, &self.message_handlers.preferences_message_handler),
 						&mut queue,
+						(&self.message_handlers.input_preprocessor_message_handler, &self.message_handlers.preferences_message_handler),
 					);
 				}
 				Preferences(message) => {
-					self.message_handlers.preferences_message_handler.process_message(message, (), &mut queue);
+					self.message_handlers.preferences_message_handler.process_message(message, &mut queue, ());
 				}
 				Tool(message) => {
 					if let Some(document) = self.message_handlers.portfolio_message_handler.active_document() {
 						self.message_handlers.tool_message_handler.process_message(
 							message,
+							&mut queue,
 							(
 								document,
 								self.message_handlers.portfolio_message_handler.active_document_id().unwrap(),
 								&self.message_handlers.input_preprocessor_message_handler,
 								&self.message_handlers.portfolio_message_handler.persistent_data,
 							),
-							&mut queue,
 						);
 					} else {
 						warn!("Called ToolMessage without an active document.\nGot {:?}", message);
 					}
 				}
 				Workspace(message) => {
-					self.message_handlers
-						.workspace_message_handler
-						.process_message(message, &self.message_handlers.input_preprocessor_message_handler, &mut queue);
+					self.message_handlers.workspace_message_handler.process_message(message, &mut queue, ());
 				}
 			}
 

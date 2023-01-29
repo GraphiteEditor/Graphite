@@ -37,7 +37,7 @@ pub enum NodeGraphFrameToolMessage {
 impl PropertyHolder for NodeGraphFrameTool {}
 
 impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for NodeGraphFrameTool {
-	fn process_message(&mut self, message: ToolMessage, tool_data: ToolActionHandlerData<'a>, responses: &mut VecDeque<Message>) {
+	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: ToolActionHandlerData<'a>) {
 		self.fsm_state.process_event(message, &mut self.tool_data, tool_data, &(), responses, true);
 	}
 

@@ -11,7 +11,7 @@ pub struct OverlaysMessageHandler {
 
 impl MessageHandler<OverlaysMessage, (bool, &FontCache, &InputPreprocessorMessageHandler)> for OverlaysMessageHandler {
 	#[remain::check]
-	fn process_message(&mut self, message: OverlaysMessage, (overlays_visible, font_cache, ipp): (bool, &FontCache, &InputPreprocessorMessageHandler), responses: &mut VecDeque<Message>) {
+	fn process_message(&mut self, message: OverlaysMessage, responses: &mut VecDeque<Message>, (overlays_visible, font_cache, ipp): (bool, &FontCache, &InputPreprocessorMessageHandler)) {
 		use OverlaysMessage::*;
 
 		#[remain::sorted]

@@ -109,8 +109,8 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 	fn process_message(
 		&mut self,
 		message: DocumentMessage,
-		(document_id, ipp, persistent_data, preferences): (u64, &InputPreprocessorMessageHandler, &PersistentData, &PreferencesMessageHandler),
 		responses: &mut VecDeque<Message>,
+		(document_id, ipp, persistent_data, preferences): (u64, &InputPreprocessorMessageHandler, &PersistentData, &PreferencesMessageHandler),
 	) {
 		use DocumentMessage::*;
 
@@ -177,21 +177,21 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 			},
 			#[remain::unsorted]
 			Artboard(message) => {
-				self.artboard_message_handler.process_message(message, &persistent_data.font_cache, responses);
+				self.artboard_message_handler.process_message(message, responses, &persistent_data.font_cache);
 			}
 			#[remain::unsorted]
 			Navigation(message) => {
-				self.navigation_handler.process_message(message, (&self.document_legacy, ipp), responses);
+				self.navigation_handler.process_message(message, responses, (&self.document_legacy, ipp));
 			}
 			#[remain::unsorted]
 			Overlays(message) => {
 				self.overlays_message_handler
-					.process_message(message, (self.overlays_visible, &persistent_data.font_cache, ipp), responses);
+					.process_message(message, responses, (self.overlays_visible, &persistent_data.font_cache, ipp));
 			}
 			#[remain::unsorted]
 			TransformLayer(message) => {
 				self.transform_layer_handler
-					.process_message(message, (&mut self.layer_metadata, &mut self.document_legacy, ipp, &persistent_data.font_cache), responses);
+					.process_message(message, responses, (&mut self.layer_metadata, &mut self.document_legacy, ipp, &persistent_data.font_cache));
 			}
 			#[remain::unsorted]
 			PropertiesPanel(message) => {
@@ -202,12 +202,12 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 					node_graph_message_handler: &self.node_graph_handler,
 				};
 				self.properties_panel_message_handler
-					.process_message(message, (persistent_data, properties_panel_message_handler_data), responses);
+					.process_message(message, responses, (persistent_data, properties_panel_message_handler_data));
 			}
 			#[remain::unsorted]
 			NodeGraph(message) => {
 				let selected_layers = &mut self.layer_metadata.iter().filter_map(|(path, data)| data.selected.then_some(path.as_slice()));
-				self.node_graph_handler.process_message(message, (&mut self.document_legacy, selected_layers), responses);
+				self.node_graph_handler.process_message(message, responses, (&mut self.document_legacy, selected_layers));
 			}
 
 			// Messages
@@ -1074,7 +1074,7 @@ impl DocumentMessageHandler {
 			.to_cols_array()
 			.iter()
 			.enumerate()
-			.fold(String::new(), |accum, (i, entry)| accum + &(entry.to_string() + if i == 5 { "" } else { "," }));
+			.fold(String::new(), |acc, (i, entry)| acc + &(entry.to_string() + if i == 5 { "" } else { "," }));
 		let svg = format!(
 			r#"<svg xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none" viewBox="0 0 1 1" width="{}" height="{}">{}{}<g transform="matrix({})">{}{}</g></svg>"#,
 			size.x, size.y, "\n", outside_artboards, matrix, artboards, artwork

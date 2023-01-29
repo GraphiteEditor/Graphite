@@ -20,7 +20,7 @@ pub struct ArtboardMessageHandler {
 
 impl MessageHandler<ArtboardMessage, &FontCache> for ArtboardMessageHandler {
 	#[remain::check]
-	fn process_message(&mut self, message: ArtboardMessage, font_cache: &FontCache, responses: &mut VecDeque<Message>) {
+	fn process_message(&mut self, message: ArtboardMessage, responses: &mut VecDeque<Message>, font_cache: &FontCache) {
 		use ArtboardMessage::*;
 
 		#[remain::sorted]

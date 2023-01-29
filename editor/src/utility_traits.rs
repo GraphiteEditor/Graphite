@@ -10,7 +10,7 @@ where
 	<M::Discriminant as TransitiveChild>::TopParent: TransitiveChild<Parent = <M::Discriminant as TransitiveChild>::TopParent, TopParent = <M::Discriminant as TransitiveChild>::TopParent> + AsMessage,
 {
 	/// Return true if the Action is consumed.
-	fn process_message(&mut self, message: M, data: D, responses: &mut VecDeque<Message>);
+	fn process_message(&mut self, message: M, responses: &mut VecDeque<Message>, data: D);
 
 	fn actions(&self) -> ActionList;
 }

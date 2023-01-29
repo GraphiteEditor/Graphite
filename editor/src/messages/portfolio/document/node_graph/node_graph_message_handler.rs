@@ -184,12 +184,12 @@ impl NodeGraphMessageHandler {
 				let is_hidden = self.selected_nodes.iter().any(|id| network.disabled.contains(id));
 
 				// Check if multiple nodes are selected
-				let mutliple_nodes = selected_nodes.next().is_some();
+				let multiple_nodes = selected_nodes.next().is_some();
 
 				// Generate the enable or disable button accordingly
 				let hide_button = WidgetHolder::new(Widget::TextButton(TextButton {
 					label: if is_hidden { "Show" } else { "Hide" }.to_string(),
-					tooltip: if is_hidden { "Show node" } else { "Hide node" }.to_string() + if mutliple_nodes { "s" } else { "" },
+					tooltip: if is_hidden { "Show node" } else { "Hide node" }.to_string() + if multiple_nodes { "s" } else { "" },
 					tooltip_shortcut: action_keys!(NodeGraphMessageDiscriminant::ToggleHidden),
 					on_update: WidgetCallback::new(move |_| NodeGraphMessage::ToggleHidden.into()),
 					..Default::default()
@@ -203,7 +203,7 @@ impl NodeGraphMessageHandler {
 				// Is this node the current output
 				let is_output = network.output == node_id;
 
-				// Don't show stop previewing button on the origional output node
+				// Don't show stop previewing button on the original output node
 				if !(is_output && network.previous_output.filter(|&id| id != self.selected_nodes[0]).is_none()) {
 					let output_button = WidgetHolder::new(Widget::TextButton(TextButton {
 						label: if is_output { "End Preview" } else { "Preview" }.to_string(),
@@ -386,7 +386,7 @@ impl NodeGraphMessageHandler {
 
 impl MessageHandler<NodeGraphMessage, (&mut Document, &mut dyn Iterator<Item = &[LayerId]>)> for NodeGraphMessageHandler {
 	#[remain::check]
-	fn process_message(&mut self, message: NodeGraphMessage, (document, selected): (&mut Document, &mut dyn Iterator<Item = &[LayerId]>), responses: &mut VecDeque<Message>) {
+	fn process_message(&mut self, message: NodeGraphMessage, responses: &mut VecDeque<Message>, (document, selected): (&mut Document, &mut dyn Iterator<Item = &[LayerId]>)) {
 		#[remain::sorted]
 		match message {
 			NodeGraphMessage::CloseNodeGraph => {
@@ -416,7 +416,7 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &mut dyn Iterator<Item = &
 					return;
 				};
 				let Some((input_index, _)) = input_node.inputs.iter().enumerate().filter(|input|input.1.is_exposed()).nth(input_node_connector_index) else {
-					error!("Failed to find actual index of connector indes {input_node_connector_index} on node {input_node:#?}");
+					error!("Failed to find actual index of connector index {input_node_connector_index} on node {input_node:#?}");
 					return;
 				};
 
