@@ -19,7 +19,7 @@ impl Default for PreferencesMessageHandler {
 
 impl MessageHandler<PreferencesMessage, ()> for PreferencesMessageHandler {
 	#[remain::check]
-	fn process_message(&mut self, message: PreferencesMessage, _data: (), responses: &mut VecDeque<Message>) {
+	fn process_message(&mut self, message: PreferencesMessage, responses: &mut VecDeque<Message>, _data: ()) {
 		match message {
 			PreferencesMessage::Load { preferences } => {
 				if let Ok(deserialized_preferences) = serde_json::from_str::<PreferencesMessageHandler>(&preferences) {

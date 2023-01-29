@@ -1,6 +1,7 @@
 /// Running this test will generate a `types.ts` file at the root of the repo,
 /// containing every type annotated with `specta::Type`
 // #[cfg(all(test, feature = "specta-export"))]
+#[ignore]
 #[test]
 fn generate_ts_types() {
 	use crate::messages::prelude::FrontendMessage;

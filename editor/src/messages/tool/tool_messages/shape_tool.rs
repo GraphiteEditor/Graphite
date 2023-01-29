@@ -81,7 +81,7 @@ impl PropertyHolder for ShapeTool {
 }
 
 impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for ShapeTool {
-	fn process_message(&mut self, message: ToolMessage, tool_data: ToolActionHandlerData<'a>, responses: &mut VecDeque<Message>) {
+	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: ToolActionHandlerData<'a>) {
 		if let ToolMessage::Shape(ShapeToolMessage::UpdateOptions(action)) = message {
 			match action {
 				ShapeOptionsUpdate::Vertices(vertices) => self.options.vertices = vertices,

@@ -59,8 +59,8 @@ impl ToolMetadata for ArtboardTool {
 }
 
 impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for ArtboardTool {
-	fn process_message(&mut self, message: ToolMessage, transition_data: ToolActionHandlerData<'a>, responses: &mut VecDeque<Message>) {
-		self.fsm_state.process_event(message, &mut self.data, transition_data, &(), responses, false);
+	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: ToolActionHandlerData<'a>) {
+		self.fsm_state.process_event(message, &mut self.data, tool_data, &(), responses, false);
 	}
 
 	advertise_actions!(ArtboardToolMessageDiscriminant;

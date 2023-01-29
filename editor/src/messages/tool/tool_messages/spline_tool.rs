@@ -87,7 +87,7 @@ impl PropertyHolder for SplineTool {
 }
 
 impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for SplineTool {
-	fn process_message(&mut self, message: ToolMessage, tool_data: ToolActionHandlerData<'a>, responses: &mut VecDeque<Message>) {
+	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: ToolActionHandlerData<'a>) {
 		if let ToolMessage::Spline(SplineToolMessage::UpdateOptions(action)) = message {
 			match action {
 				SplineOptionsUpdate::LineWeight(line_weight) => self.options.line_weight = line_weight,

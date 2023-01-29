@@ -36,17 +36,17 @@ pub struct PortfolioMessageHandler {
 
 impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &PreferencesMessageHandler)> for PortfolioMessageHandler {
 	#[remain::check]
-	fn process_message(&mut self, message: PortfolioMessage, (ipp, preferences): (&InputPreprocessorMessageHandler, &PreferencesMessageHandler), responses: &mut VecDeque<Message>) {
+	fn process_message(&mut self, message: PortfolioMessage, responses: &mut VecDeque<Message>, (ipp, preferences): (&InputPreprocessorMessageHandler, &PreferencesMessageHandler)) {
 		#[remain::sorted]
 		match message {
 			// Sub-messages
 			#[remain::unsorted]
-			PortfolioMessage::MenuBar(message) => self.menu_bar_message_handler.process_message(message, (), responses),
+			PortfolioMessage::MenuBar(message) => self.menu_bar_message_handler.process_message(message, responses, ()),
 			#[remain::unsorted]
 			PortfolioMessage::Document(message) => {
 				if let Some(document_id) = self.active_document_id {
 					if let Some(document) = self.documents.get_mut(&document_id) {
-						document.process_message(message, (document_id, ipp, &self.persistent_data, preferences), responses)
+						document.process_message(message, responses, (document_id, ipp, &self.persistent_data, preferences))
 					}
 				}
 			}
@@ -55,7 +55,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 			#[remain::unsorted]
 			PortfolioMessage::DocumentPassMessage { document_id, message } => {
 				if let Some(document) = self.documents.get_mut(&document_id) {
-					document.process_message(message, (document_id, ipp, &self.persistent_data, preferences), responses)
+					document.process_message(message, responses, (document_id, ipp, &self.persistent_data, preferences))
 				}
 			}
 			PortfolioMessage::AutoSaveActiveDocument => {
@@ -749,7 +749,7 @@ impl PortfolioMessageHandler {
 		let size_estimate = (image_width * image_height * 4) as usize;
 
 		let mut result_bytes = Vec::with_capacity(size_estimate);
-		result_bytes.extend(image.data.into_iter().flat_map(|colour| colour.to_rgba8()));
+		result_bytes.extend(image.data.into_iter().flat_map(|color| color.to_rgba8()));
 		let mut output: ImageBuffer<Rgba<u8>, _> = image::ImageBuffer::from_raw(image_width, image_height, result_bytes).ok_or_else(|| "Invalid image size".to_string())?;
 		if let Some(size) = resize {
 			let size = size.as_uvec2();

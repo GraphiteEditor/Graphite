@@ -83,7 +83,7 @@ impl PropertyHolder for LineTool {
 }
 
 impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for LineTool {
-	fn process_message(&mut self, message: ToolMessage, transition_data: ToolActionHandlerData<'a>, messages: &mut VecDeque<Message>) {
+	fn process_message(&mut self, message: ToolMessage, messages: &mut VecDeque<Message>, tool_data: ToolActionHandlerData<'a>) {
 		if let ToolMessage::Line(LineToolMessage::UpdateOptions(action)) = message {
 			match action {
 				LineOptionsUpdate::LineWeight(line_weight) => self.options.line_weight = line_weight,
@@ -91,7 +91,7 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for LineTool {
 			return;
 		}
 
-		self.fsm_state.process_event(message, &mut self.tool_data, transition_data, &self.options, messages, true);
+		self.fsm_state.process_event(message, &mut self.tool_data, tool_data, &self.options, messages, true);
 	}
 
 	fn actions(&self) -> ActionList {
