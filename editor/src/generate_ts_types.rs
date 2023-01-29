@@ -2,7 +2,7 @@
 /// containing every type annotated with `specta::Type`
 // #[cfg(all(test, feature = "specta-export"))]
 #[test]
-fn export_types() {
+fn generate_ts_types() {
 	use crate::messages::prelude::FrontendMessage;
 	use specta::{
 		ts::{export_datatype, BigIntExportBehavior, ExportConfiguration},
