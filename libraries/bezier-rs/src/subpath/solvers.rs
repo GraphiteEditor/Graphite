@@ -278,21 +278,27 @@ mod tests {
 
 		assert!(utils::dvec2_compare(
 			cubic_bezier.evaluate(ComputeType::Parametric(cubic_intersections[0])),
-			subpath.evaluate(ComputeType::Parametric(subpath_intersections[0])),
+			subpath.evaluate(ComputeType::Parametric(
+				((subpath_intersections[0].0 as f64) + subpath_intersections[0].1) / (subpath.len_segments() as f64)
+			)),
 			MAX_ABSOLUTE_DIFFERENCE
 		)
 		.all());
 
 		assert!(utils::dvec2_compare(
 			quadratic_bezier_1.evaluate(ComputeType::Parametric(quadratic_1_intersections[0])),
-			subpath.evaluate(ComputeType::Parametric(subpath_intersections[1])),
+			subpath.evaluate(ComputeType::Parametric(
+				((subpath_intersections[1].0 as f64) + subpath_intersections[1].1) / (subpath.len_segments() as f64)
+			)),
 			MAX_ABSOLUTE_DIFFERENCE
 		)
 		.all());
 
 		assert!(utils::dvec2_compare(
 			quadratic_bezier_1.evaluate(ComputeType::Parametric(quadratic_1_intersections[1])),
-			subpath.evaluate(ComputeType::Parametric(subpath_intersections[2])),
+			subpath.evaluate(ComputeType::Parametric(
+				((subpath_intersections[2].0 as f64) + subpath_intersections[2].1) / (subpath.len_segments() as f64)
+			)),
 			MAX_ABSOLUTE_DIFFERENCE
 		)
 		.all());
@@ -345,14 +351,18 @@ mod tests {
 
 		assert!(utils::dvec2_compare(
 			cubic_bezier.evaluate(ComputeType::Parametric(cubic_intersections[0])),
-			subpath.evaluate(ComputeType::Parametric(subpath_intersections[0])),
+			subpath.evaluate(ComputeType::Parametric(
+				((subpath_intersections[0].0 as f64) + subpath_intersections[0].1) / (subpath.len_segments() as f64)
+			)),
 			MAX_ABSOLUTE_DIFFERENCE
 		)
 		.all());
 
 		assert!(utils::dvec2_compare(
 			quadratic_bezier_1.evaluate(ComputeType::Parametric(quadratic_1_intersections[0])),
-			subpath.evaluate(ComputeType::Parametric(subpath_intersections[1])),
+			subpath.evaluate(ComputeType::Parametric(
+				((subpath_intersections[1].0 as f64) + subpath_intersections[1].1) / (subpath.len_segments() as f64)
+			)),
 			MAX_ABSOLUTE_DIFFERENCE
 		)
 		.all());
@@ -404,21 +414,27 @@ mod tests {
 
 		assert!(utils::dvec2_compare(
 			cubic_bezier.evaluate(ComputeType::Parametric(cubic_intersections[0])),
-			subpath.evaluate(ComputeType::Parametric(subpath_intersections[0])),
+			subpath.evaluate(ComputeType::Parametric(
+				((subpath_intersections[0].0 as f64) + subpath_intersections[0].1) / (subpath.len_segments() as f64)
+			)),
 			MAX_ABSOLUTE_DIFFERENCE
 		)
 		.all());
 
 		assert!(utils::dvec2_compare(
 			quadratic_bezier_1.evaluate(ComputeType::Parametric(quadratic_1_intersections[0])),
-			subpath.evaluate(ComputeType::Parametric(subpath_intersections[1])),
+			subpath.evaluate(ComputeType::Parametric(
+				((subpath_intersections[1].0 as f64) + subpath_intersections[1].1) / (subpath.len_segments() as f64)
+			)),
 			MAX_ABSOLUTE_DIFFERENCE
 		)
 		.all());
 
 		assert!(utils::dvec2_compare(
 			quadratic_bezier_1.evaluate(ComputeType::Parametric(quadratic_1_intersections[1])),
-			subpath.evaluate(ComputeType::Parametric(subpath_intersections[2])),
+			subpath.evaluate(ComputeType::Parametric(
+				((subpath_intersections[2].0 as f64) + subpath_intersections[2].1) / (subpath.len_segments() as f64)
+			)),
 			MAX_ABSOLUTE_DIFFERENCE
 		)
 		.all());
