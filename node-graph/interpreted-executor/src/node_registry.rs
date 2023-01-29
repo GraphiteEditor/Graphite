@@ -16,7 +16,7 @@ use graphene_std::any::{DowncastBothNode, TypeErasedPinnedRef};
 use graph_craft::proto::Type;
 use graph_craft::proto::{ConstructionArgs, NodeIdentifier, ProtoNode, ProtoNodeInput};
 
-type NodeConstructor = for<'a> fn(Vec<TypeErasedPinnedRef<'a>>) -> TypeErasedPinned<'a>;
+type NodeConstructor = for<'a> fn(Vec<TypeErasedPinnedRef<'static>>) -> TypeErasedPinned<'static>;
 
 use graph_craft::{concrete, generic};
 use graphene_std::memo::CacheNode;
@@ -34,7 +34,6 @@ macro_rules! register_node {
 	};
 }
 
-/*
 //TODO: turn into hashmap
 static NODE_REGISTRY: &[(NodeIdentifier, NodeConstructor)] = &[
 	register_node!(graphene_core::ops::IdNode, input: Any<'_>, params: []),
@@ -43,25 +42,7 @@ static NODE_REGISTRY: &[(NodeIdentifier, NodeConstructor)] = &[
 	register_node!(graphene_core::ops::AddNode, input: (&u32, u32), params: []),
 	register_node!(graphene_core::ops::AddNode, input: (u32, &u32), params: []),
 	register_node!(graphene_core::ops::AddNode, input: (&u32, &u32), params: []),
-	register_node!(graphene_core::raster::GrayscaleColorNode, input: Color, params: []),*/
-static NODE_REGISTRY: &[(NodeIdentifier, NodeConstructor)] = &[
-	({ NodeIdentifier::new("graphene_core::ops::IdNode", &[]) }, |args| {
-		let mut args = args.clone();
-		args.reverse();
-		let node = <graphene_core::ops::IdNode>::new();
-		let any: DynAnyNode<Any<'_>, _, _> = graphene_std::any::DynAnyNode::new(graphene_core::value::ValueNode::new(node));
-		Box::pin(any) as TypeErasedPinned
-	}),
-	(
-		{ NodeIdentifier::new("graphene_core::structural::ConsNode<_, _>", &[Type::Concrete(std::borrow::Cow::Borrowed("u32"))]) },
-		|args| {
-			let mut args = args.clone();
-			args.reverse();
-			let node = <graphene_core::structural::ConsNode<_, _>>::new(graphene_std::any::input_node::<u32>(args.pop().expect("not enough arguments provided to construct node")));
-			let any: DynAnyNode<u32, _, _> = graphene_std::any::DynAnyNode::new(graphene_core::value::ValueNode::new(node));
-			Box::pin(any) as TypeErasedPinned
-		},
-	),
+	register_node!(graphene_core::raster::GrayscaleColorNode, input: Color, params: []),
 	/*
 	(NodeIdentifier::new("graphene_core::ops::IdNode", &[concrete!("Any<'_>")]), |proto_node, stack| {
 		stack.push_fn(|nodes| {
@@ -619,7 +600,7 @@ static NODE_REGISTRY: &[(NodeIdentifier, NodeConstructor)] = &[
 	*/
 ];
 
-pub fn constrcut_node<'a>(ident: NodeIdentifier, construction_args: Vec<TypeErasedPinnedRef<'a>>) -> TypeErasedPinned<'a> {
+pub fn constrcut_node<'a>(ident: NodeIdentifier, construction_args: Vec<TypeErasedPinnedRef<'static>>) -> TypeErasedPinned<'a> {
 	if let Some((_id, f)) = NODE_REGISTRY.iter().find(|(id, _)| *id == ident) {
 		f(construction_args)
 	} else {

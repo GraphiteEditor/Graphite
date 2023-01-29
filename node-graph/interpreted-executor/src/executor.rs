@@ -30,7 +30,7 @@ impl DynamicExecutor {
 }
 
 impl Executor for DynamicExecutor {
-	fn execute(&self, input: Any<'static>) -> Result<Any<'static>, Box<dyn Error>> {
+	fn execute<'a>(&self, input: Any<'a>) -> Result<Any<'a>, Box<dyn Error>> {
 		/*let result = unsafe { self.stack.get().last().unwrap().eval(input) };
 		Ok(result)*/
 		todo!()
@@ -40,7 +40,7 @@ impl Executor for DynamicExecutor {
 pub struct NodeContainer<'n> {
 	node: TypeErasedPinned<'n>,
 	// the dependencies are only kept to ensure that the nodes are not dropped while still in use
-	_dependencies: Vec<Arc<NodeContainer<'n>>>,
+	_dependencies: Vec<Arc<NodeContainer<'static>>>,
 }
 
 impl<'a> NodeContainer<'a> {
@@ -51,19 +51,26 @@ impl<'a> NodeContainer<'a> {
 		std::mem::transmute(self)
 	}
 }
-
-impl<'a> AsRef<TypeErasedPinned<'a>> for NodeContainer<'a> {
-	fn as_ref(&self) -> &TypeErasedPinned<'a> {
-		&self.node
+impl NodeContainer<'static> {
+	unsafe fn static_ref(&self) -> TypeErasedPinnedRef<'static> {
+		let s = &*(self as *const Self);
+		*(&s.node.as_ref() as *const TypeErasedPinnedRef<'static>)
 	}
 }
 
+/*
+impl<'a> AsRef<TypeErasedPinnedRef<'a>> for NodeContainer<'a> {
+	fn as_ref(&self) -> &'a TypeErasedPinnedRef<'a> {
+		self.node.as_ref()
+	}
+}*/
+
 #[derive(Default)]
-pub struct BorrowTree<'a> {
-	nodes: HashMap<NodeId, Arc<NodeContainer<'a>>>,
+pub struct BorrowTree {
+	nodes: HashMap<NodeId, Arc<NodeContainer<'static>>>,
 }
 
-impl<'a> BorrowTree<'a> {
+impl BorrowTree {
 	pub fn new(proto_network: ProtoNetwork) -> Self {
 		let mut nodes = BorrowTree::default();
 		for (id, node) in proto_network.nodes {
@@ -71,10 +78,10 @@ impl<'a> BorrowTree<'a> {
 		}
 		nodes
 	}
-	fn node_refs(&self, nodes: &[NodeId]) -> Vec<TypeErasedPinnedRef> {
-		nodes.iter().map(|node| (self.nodes.get(node).unwrap().as_ref().node).as_ref()).collect()
+	fn node_refs(&self, nodes: &[NodeId]) -> Vec<TypeErasedPinnedRef<'static>> {
+		self.node_deps(nodes).into_iter().map(|node| unsafe { node.as_ref().static_ref() }).collect()
 	}
-	fn node_deps(&self, nodes: &[NodeId]) -> Vec<Arc<NodeContainer<'a>>> {
+	fn node_deps(&self, nodes: &[NodeId]) -> Vec<Arc<NodeContainer<'static>>> {
 		nodes.iter().map(|node| self.nodes.get(node).unwrap().clone()).collect()
 	}
 
@@ -83,14 +90,11 @@ impl<'a> BorrowTree<'a> {
 		node
 	}
 
-	pub fn get(&self, id: NodeId) -> Option<Arc<NodeContainer<'a>>> {
+	pub fn get(&self, id: NodeId) -> Option<Arc<NodeContainer<'static>>> {
 		self.nodes.get(&id).cloned()
 	}
 
-	pub fn eval<'i, I: StaticType + 'i, O: StaticType + 'i>(&self, id: NodeId, input: I) -> Option<O>
-	where
-		'a: 'i,
-	{
+	pub fn eval<'i, I: StaticType + 'i, O: StaticType + 'i>(&self, id: NodeId, input: I) -> Option<O> {
 		let node = self.nodes.get(&id).cloned()?;
 		let output = node.node.eval(Box::new(input));
 		dyn_any::downcast::<O>(output).ok().map(|o| *o)
@@ -118,7 +122,7 @@ impl<'a> BorrowTree<'a> {
 				self.store_node(Arc::new(node), id);
 			}
 			ConstructionArgs::Nodes(ids) => {
-				let construction_nodes = self.node_refs(ids.as_slice());
+				let construction_nodes = self.node_refs(&ids);
 				let node = constrcut_node(identifier, construction_nodes);
 				let node = NodeContainer {
 					node,
@@ -141,8 +145,6 @@ mod test {
 		let val_1_protonode = ProtoNode::value(ConstructionArgs::Value(Box::new(2u32)));
 		tree.push_node(0, val_1_protonode);
 		let node = tree.get(0).unwrap();
-		let node = unsafe { node.static_ref() };
-		let value = node.eval(().into());
-		assert_eq!(*dyn_any::downcast::<u32>(value).unwrap(), 2u32);
+		assert_eq!(tree.eval(0, ()), Some(2u32));
 	}
 }
