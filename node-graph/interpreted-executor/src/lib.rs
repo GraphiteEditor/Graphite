@@ -4,20 +4,20 @@ extern crate log;
 pub mod executor;
 pub mod node_registry;
 
-/*
 #[cfg(test)]
 mod tests {
 
 	use std::marker::PhantomData;
 
+	use graphene_core::structural::*;
 	use graphene_core::value::ValueNode;
-	use graphene_core::{structural::*, RefNode};
 
 	use borrow_stack::BorrowStack;
 	use dyn_any::{downcast, IntoDynAny};
 	use graphene_std::any::{Any, DowncastNode, DynAnyNode, TypeErasedNode};
 	use graphene_std::ops::AddNode;
 
+	/*
 	#[test]
 	fn borrow_stack() {
 		let stack = borrow_stack::FixedSizeStack::new(256);
@@ -49,7 +49,7 @@ mod tests {
 		assert_eq!(*downcast::<u32>(add).unwrap(), 6_u32);
 		let add = unsafe { &stack.get()[3] }.eval_ref(4_u32.into_dyn());
 		assert_eq!(*downcast::<u32>(add).unwrap(), 6_u32);
-	}
+	}*/
 
 	#[test]
 	fn execute_add() {
@@ -128,4 +128,3 @@ mod tests {
 		assert_eq!(val, 33_u32);
 	}
 }
-*/

@@ -26,5 +26,5 @@ impl Compiler {
 pub type Any<'a> = Box<dyn DynAny<'a> + 'a>;
 
 pub trait Executor {
-	fn execute(&self, input: Any<'static>) -> Result<Any<'static>, Box<dyn Error>>;
+	fn execute<'a, 's: 'a>(&'s self, input: Any<'a>) -> Result<Any<'a>, Box<dyn Error>>;
 }

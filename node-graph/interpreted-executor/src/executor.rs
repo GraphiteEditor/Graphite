@@ -14,26 +14,23 @@ use crate::node_registry::constrcut_node;
 use graph_craft::{executor::Executor, proto::ProtoNetwork};
 
 pub struct DynamicExecutor {
-	stack: FixedSizeStack<()>,
+	output: NodeId,
+	tree: BorrowTree,
 }
 
 impl DynamicExecutor {
 	pub fn new(proto_network: ProtoNetwork) -> Self {
-		assert_eq!(proto_network.inputs.len(), 1);
-		let node_count = proto_network.nodes.len();
-		let stack = FixedSizeStack::new(node_count);
-		for (_id, node) in proto_network.nodes {
-			//constrcut_node(node, &stack);
-		}
-		Self { stack }
+		let output = proto_network.output;
+		let tree = BorrowTree::new(proto_network);
+		Self { tree, output }
 	}
 }
 
 impl Executor for DynamicExecutor {
-	fn execute<'a>(&self, input: Any<'a>) -> Result<Any<'a>, Box<dyn Error>> {
+	fn execute<'a, 's: 'a>(&'s self, input: Any<'a>) -> Result<Any<'a>, Box<dyn Error>> {
 		/*let result = unsafe { self.stack.get().last().unwrap().eval(input) };
 		Ok(result)*/
-		todo!()
+		self.tree.eval_any(self.output, input).ok_or_else(|| "Failed to execute".into())
 	}
 }
 
@@ -57,13 +54,6 @@ impl NodeContainer<'static> {
 		*(&s.node.as_ref() as *const TypeErasedPinnedRef<'static>)
 	}
 }
-
-/*
-impl<'a> AsRef<TypeErasedPinnedRef<'a>> for NodeContainer<'a> {
-	fn as_ref(&self) -> &'a TypeErasedPinnedRef<'a> {
-		self.node.as_ref()
-	}
-}*/
 
 #[derive(Default)]
 pub struct BorrowTree {
@@ -98,6 +88,10 @@ impl BorrowTree {
 		let node = self.nodes.get(&id).cloned()?;
 		let output = node.node.eval(Box::new(input));
 		dyn_any::downcast::<O>(output).ok().map(|o| *o)
+	}
+	pub fn eval_any<'i, 's: 'i>(&'s self, id: NodeId, input: Any<'i>) -> Option<Any<'i>> {
+		let node = self.nodes.get(&id)?;
+		Some(node.node.eval(input))
 	}
 
 	fn free_node(&mut self, id: NodeId) {
