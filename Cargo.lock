@@ -4115,7 +4115,6 @@ name = "specta"
 version = "0.0.6"
 source = "git+https://github.com/oscartbeaumont/rspc?rev=9725ddbfe40183debc055b88c37910eb6f818eae#9725ddbfe40183debc055b88c37910eb6f818eae"
 dependencies = [
- "ctor",
  "document-features",
  "glam",
  "once_cell",
