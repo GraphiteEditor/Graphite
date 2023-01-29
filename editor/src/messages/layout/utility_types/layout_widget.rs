@@ -28,7 +28,7 @@ pub trait PropertyHolder {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
 pub enum Layout {
 	WidgetLayout(WidgetLayout),
 	MenuLayout(MenuLayout),
@@ -37,7 +37,7 @@ pub enum Layout {
 /// The new value of the UI, sent as part of a diff.
 ///
 /// An update can represent a single widget or an entire SubLayout, or just a single layout group.
-#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
+#[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
 pub enum DiffUpdate {
 	#[serde(rename = "subLayout")]
 	SubLayout(SubLayout),
@@ -48,7 +48,7 @@ pub enum DiffUpdate {
 }
 
 /// A single change to part of the UI, containing the location of the change and the new value.
-#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
+#[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
 pub struct WidgetDiff {
 	/// A path to the change
 	/// e.g. [0, 1, 2] in the properties panel is the first section, second row and third widget.
@@ -183,7 +183,7 @@ impl Default for Layout {
 	}
 }
 
-#[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq, specta::Type)]
 pub struct WidgetLayout {
 	pub layout: SubLayout,
 }
@@ -305,7 +305,7 @@ impl<'a> Iterator for WidgetIterMut<'a> {
 pub type SubLayout = Vec<LayoutGroup>;
 
 #[remain::sorted]
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
 pub enum LayoutGroup {
 	#[serde(rename = "column")]
 	Column {
@@ -435,7 +435,7 @@ impl LayoutGroup {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
 pub struct WidgetHolder {
 	#[serde(rename = "widgetId")]
 	pub widget_id: u64,
@@ -494,7 +494,7 @@ impl<T> Default for WidgetCallback<T> {
 }
 
 #[remain::sorted]
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
 pub enum Widget {
 	BreadcrumbTrailButtons(BreadcrumbTrailButtons),
 	CheckboxInput(CheckboxInput),

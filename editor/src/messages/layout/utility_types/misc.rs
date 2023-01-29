@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 #[remain::sorted]
-#[derive(PartialEq, Clone, Debug, Hash, Eq, Copy, Serialize, Deserialize)]
+#[derive(PartialEq, Clone, Debug, Hash, Eq, Copy, Serialize, Deserialize, specta::Type)]
 #[repr(u8)]
 pub enum LayoutTarget {
 	DialogDetails,

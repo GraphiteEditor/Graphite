@@ -77,7 +77,7 @@ pub struct MappingEntry {
 	pub modifiers: KeyStates,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize, specta::Type)]
 pub enum ActionKeys {
 	Action(MessageDiscriminant),
 	#[serde(rename = "keys")]

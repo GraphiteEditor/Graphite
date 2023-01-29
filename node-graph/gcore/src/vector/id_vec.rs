@@ -17,7 +17,7 @@ use alloc::vec::Vec;
 /// The downside is that currently it requires a lot of iteration.
 
 type ElementId = u64;
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, specta::Type)]
 pub struct IdBackedVec<T> {
 	/// Contained elements
 	elements: Vec<T>,

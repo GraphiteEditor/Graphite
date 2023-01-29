@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use super::input_widgets::InvisibleStandinInput;
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default, specta::Type)]
 pub struct MenuBarEntryChildren(pub Vec<Vec<MenuBarEntry>>);
 
 impl MenuBarEntryChildren {
@@ -30,7 +30,7 @@ impl MenuBarEntryChildren {
 	}
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, specta::Type)]
 pub struct MenuBarEntry {
 	pub label: String,
 	pub icon: Option<String>,
@@ -71,7 +71,7 @@ impl Default for MenuBarEntry {
 	}
 }
 
-#[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
 pub struct MenuLayout {
 	pub layout: Vec<MenuBarEntry>,
 }
