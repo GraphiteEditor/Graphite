@@ -127,7 +127,7 @@ impl PropertyHolder for TextTool {
 }
 
 impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for TextTool {
-	fn process_message(&mut self, message: ToolMessage, tool_data: ToolActionHandlerData<'a>, responses: &mut VecDeque<Message>) {
+	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: ToolActionHandlerData<'a>) {
 		if let ToolMessage::Text(TextToolMessage::UpdateOptions(action)) = message {
 			match action {
 				TextOptionsUpdate::Font { family, style } => {

@@ -19,7 +19,7 @@ pub struct PropertiesPanelMessageHandler {
 
 impl<'a> MessageHandler<PropertiesPanelMessage, (&PersistentData, PropertiesPanelMessageHandlerData<'a>)> for PropertiesPanelMessageHandler {
 	#[remain::check]
-	fn process_message(&mut self, message: PropertiesPanelMessage, (persistent_data, data): (&PersistentData, PropertiesPanelMessageHandlerData), responses: &mut VecDeque<Message>) {
+	fn process_message(&mut self, message: PropertiesPanelMessage, responses: &mut VecDeque<Message>, (persistent_data, data): (&PersistentData, PropertiesPanelMessageHandlerData)) {
 		let PropertiesPanelMessageHandlerData {
 			artwork_document,
 			artboard_document,

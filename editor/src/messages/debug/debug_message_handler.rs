@@ -8,7 +8,7 @@ pub struct DebugMessageHandler {
 
 impl MessageHandler<DebugMessage, ()> for DebugMessageHandler {
 	#[remain::check]
-	fn process_message(&mut self, message: DebugMessage, _data: (), responses: &mut VecDeque<Message>) {
+	fn process_message(&mut self, message: DebugMessage, responses: &mut VecDeque<Message>, _data: ()) {
 		match message {
 			DebugMessage::ToggleTraceLogs => {
 				if log::max_level() == log::LevelFilter::Debug {

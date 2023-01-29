@@ -83,7 +83,7 @@ impl PropertyHolder for FreehandTool {
 }
 
 impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for FreehandTool {
-	fn process_message(&mut self, message: ToolMessage, data: ToolActionHandlerData<'a>, responses: &mut VecDeque<Message>) {
+	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: ToolActionHandlerData<'a>) {
 		if let ToolMessage::Freehand(FreehandToolMessage::UpdateOptions(action)) = message {
 			match action {
 				FreehandToolMessageOptionsUpdate::LineWeight(line_weight) => self.options.line_weight = line_weight,
@@ -91,7 +91,7 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for FreehandTool
 			return;
 		}
 
-		self.fsm_state.process_event(message, &mut self.data, data, &self.options, responses, true);
+		self.fsm_state.process_event(message, &mut self.data, tool_data, &self.options, responses, true);
 	}
 
 	fn actions(&self) -> ActionList {
