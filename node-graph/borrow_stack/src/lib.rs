@@ -26,7 +26,7 @@ impl<'n, T: 'n + dyn_any::StaticTypeSized> FixedSizeStack<T> {
 	pub fn new(capacity: usize) -> Self {
 		let layout = std::alloc::Layout::array::<MaybeUninit<T>>(capacity).unwrap();
 		let array = unsafe { std::alloc::alloc(layout) };
-		let array = Box::into_pin(unsafe { Box::from_raw(std::slice::from_raw_parts_mut(array as *mut MaybeUninit<T>, capacity) as *mut [MaybeUninit<T>]) });
+		let array = Box::into_pin(unsafe { Box::from_raw(core::ptr::slice_from_raw_parts_mut(array as *mut MaybeUninit<T>, capacity)) });
 
 		Self {
 			data: array,

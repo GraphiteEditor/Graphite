@@ -686,16 +686,7 @@ pub fn line_intersect_point(a: &Line, b: &Line) -> Option<Point> {
 
 /// Returns intersection point and `t` values, treating lines as Bezier curves.
 pub fn line_intersection(a: &Line, b: &Line) -> Option<Intersect> {
-	match line_intersection_unchecked(a, b) {
-		Some(intersect) => {
-			if valid_t(intersect.t_a) && valid_t(intersect.t_b) {
-				Some(intersect)
-			} else {
-				None
-			}
-		}
-		None => None,
-	}
+	line_intersection_unchecked(a, b).filter(|intersect| valid_t(intersect.t_a) && valid_t(intersect.t_b))
 }
 
 /// Returns intersection point and `t` values, treating lines as rays.

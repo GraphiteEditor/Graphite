@@ -467,7 +467,7 @@ impl<'a, const LENGTH: usize> Iterator for BitVectorIter<'a, LENGTH> {
 	type Item = usize;
 
 	fn next(&mut self) -> Option<Self::Item> {
-		while self.iter_index < (STORAGE_SIZE_BITS as usize) * LENGTH {
+		while self.iter_index < STORAGE_SIZE_BITS * LENGTH {
 			let bit_value = self.bitvector.get(self.iter_index);
 
 			self.iter_index += 1;

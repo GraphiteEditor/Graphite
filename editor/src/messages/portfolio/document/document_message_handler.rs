@@ -1661,7 +1661,10 @@ impl DocumentMessageHandler {
 				direction: SeparatorDirection::Horizontal,
 			})),
 			WidgetHolder::new(Widget::RadioInput(RadioInput {
-				selected_index: if self.view_mode == ViewMode::Normal { 0 } else { 1 },
+				selected_index: match self.view_mode {
+					ViewMode::Normal => 0,
+					_ => 1,
+				},
 				entries: vec![
 					RadioEntryData {
 						value: "normal".into(),

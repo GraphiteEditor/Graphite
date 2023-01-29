@@ -287,7 +287,7 @@ pub struct ToolFsmState {
 
 impl Default for ToolFsmState {
 	fn default() -> Self {
-		ToolFsmState {
+		Self {
 			tool_data: ToolData {
 				active_tool_type: ToolType::Select,
 				tools: list_tools_in_groups()
