@@ -29,18 +29,22 @@ pub struct ShapeEditor {
 	selected_layers: Vec<Vec<LayerId>>,
 }
 
+pub struct SelectedPointsInfo<'a> {
+	pub points: Vec<ManipulatorPointInfo<'a>>,
+	pub offset: DVec2,
+}
+#[derive(Clone, Copy, Eq, PartialEq)]
+pub struct ManipulatorPointInfo<'a> {
+	pub shape_layer_path: &'a [LayerId],
+	pub manipulator_group_id: u64,
+	pub manipulator_type: ManipulatorType,
+}
+
 // TODO Consider keeping a list of selected manipulators to minimize traversals of the layers
 impl ShapeEditor {
 	/// Select the first point within the selection threshold.
-	/// Returns a tuple of the points if found and the offset, or None otherwise.
-	pub fn select_point(
-		&self,
-		document: &Document,
-		mouse_position: DVec2,
-		select_threshold: f64,
-		add_to_selection: bool,
-		responses: &mut VecDeque<Message>,
-	) -> Option<(Vec<(&[LayerId], u64, ManipulatorType)>, DVec2)> {
+	/// Returns a tuple of the points if found and the offset, or `None` otherwise.
+	pub fn select_point(&self, document: &Document, mouse_position: DVec2, select_threshold: f64, add_to_selection: bool, responses: &mut VecDeque<Message>) -> Option<SelectedPointsInfo> {
 		if self.selected_layers.is_empty() {
 			return None;
 		}
@@ -73,7 +77,11 @@ impl ShapeEditor {
 						.enumerate()
 						.filter(|(_id, manipulator_group)| manipulator_group.is_anchor_selected())
 						.flat_map(|(id, manipulator_group)| manipulator_group.selected_points().map(move |point| (id, point.manipulator_type)))
-						.map(|(anchor, manipulator_point)| (path.as_slice(), *anchor, manipulator_point))
+						.map(|(anchor, manipulator_point)| ManipulatorPointInfo {
+							shape_layer_path: path.as_slice(),
+							manipulator_group_id: *anchor,
+							manipulator_type: manipulator_point,
+						})
 				})
 				.collect::<Vec<_>>();
 
@@ -82,32 +90,36 @@ impl ShapeEditor {
 
 			// This is selecting the manipulator only for now, next to generalize to points
 			if should_select {
+				// If we're replacing the selection, clear all points in other selected shapes
 				let add = add_to_selection || is_point_selected;
-				let point = (manipulator_group_id, ManipulatorType::from_index(manipulator_point_index));
-				// Clear all point in other selected shapes
 				if !add {
+					points.clear();
 					responses.push_back(DocumentMessage::DeselectAllManipulatorPoints.into());
-					points = vec![(shape_layer_path, point.0, point.1)];
-				} else {
-					points.push((shape_layer_path, point.0, point.1));
 				}
+
+				// Add to the selected points
+				let point_info = ManipulatorPointInfo {
+					shape_layer_path,
+					manipulator_group_id,
+					manipulator_type: ManipulatorType::from_index(manipulator_point_index),
+				};
+				points.push(point_info);
 				responses.push_back(
 					Operation::SelectManipulatorPoints {
 						layer_path: shape_layer_path.to_vec(),
-						point_ids: vec![point],
+						point_ids: vec![(point_info.manipulator_group_id, point_info.manipulator_type)],
 						add,
 					}
 					.into(),
 				);
 
 				// Offset to snap the selected point to the cursor
-				let offset = if let Ok(viewspace) = document.generate_transform_relative_to_viewport(shape_layer_path) {
-					mouse_position - viewspace.transform_point2(point_position)
-				} else {
-					DVec2::ZERO
-				};
+				let offset = document
+					.generate_transform_relative_to_viewport(shape_layer_path)
+					.map(|viewspace| mouse_position - viewspace.transform_point2(point_position))
+					.unwrap_or_default();
 
-				return Some((points, offset));
+				return Some(SelectedPointsInfo { points, offset });
 			} else {
 				responses.push_back(
 					Operation::DeselectManipulatorPoints {
@@ -116,7 +128,13 @@ impl ShapeEditor {
 					}
 					.into(),
 				);
-				points.retain(|x| *x != (shape_layer_path, manipulator_group_id, ManipulatorType::from_index(manipulator_point_index)));
+				points.retain(|x| {
+					*x != ManipulatorPointInfo {
+						shape_layer_path,
+						manipulator_group_id,
+						manipulator_type: ManipulatorType::from_index(manipulator_point_index),
+					}
+				});
 
 				return None;
 			}

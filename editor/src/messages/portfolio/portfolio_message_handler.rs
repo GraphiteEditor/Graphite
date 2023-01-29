@@ -256,8 +256,8 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 					PortfolioMessage::DocumentPassMessage {
 						document_id,
 						message: NodeGraphMessage::SetQualifiedInputValue {
-							layer_path: layer_path.clone(),
-							node_path: node_path.clone(),
+							layer_path,
+							node_path,
 							input_index: get("Status"),
 							value: TaggedValue::ImaginateStatus(status),
 						}
@@ -706,11 +706,10 @@ impl PortfolioMessageHandler {
 		// Adjust the output of the graph so we find the relevant output
 		'outer: for end in (0..node_path.len()).rev() {
 			let mut inner_network = &mut network;
-			for index in 0..end {
-				let node_id = node_path[index];
-				inner_network.output = node_id;
+			for node_id in node_path.iter().take(end) {
+				inner_network.output = *node_id;
 
-				let Some(new_inner) = inner_network.nodes.get_mut(&node_id).and_then(|node| node.implementation.get_network_mut()) else {
+				let Some(new_inner) = inner_network.nodes.get_mut(node_id).and_then(|node| node.implementation.get_network_mut()) else {
 					return Err("Failed to find network".to_string());
 				};
 				inner_network = new_inner;
@@ -859,9 +858,9 @@ impl PortfolioMessageHandler {
 
 			responses.push_back(
 				FrontendMessage::TriggerImaginateGenerate {
-					parameters,
-					base_image,
-					mask_image,
+					parameters: Box::new(parameters),
+					base_image: base_image.map(Box::new),
+					mask_image: mask_image.map(Box::new),
 					mask_paint_mode: if Self::compute_input::<bool>(&network, &imaginate_node, get("Inpaint"), Cow::Borrowed(&image))? {
 						ImaginateMaskPaintMode::Inpaint
 					} else {
