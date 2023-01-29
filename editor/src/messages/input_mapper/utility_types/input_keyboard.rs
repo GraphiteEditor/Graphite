@@ -50,7 +50,7 @@ bitflags! {
 // (although we ignore the shift key, so the user doesn't have to press `Ctrl Shift +` on a US keyboard), even if the keyboard layout
 // is for a different locale where the `+` key is somewhere entirely different, shifted or not. This would then also work for numpad `+`.
 #[impl_message(Message, InputMapperMessage, KeyDown)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize, specta::Type)]
 pub enum Key {
 	// Writing system keys
 	Digit0,
@@ -224,7 +224,7 @@ impl fmt::Display for Key {
 			return write!(f, "{}", key_name.chars().skip(KEY_PREFIX.len()).collect::<String>());
 		}
 
-		let keyboard_layout = || GLOBAL_PLATFORM.get().expect("Failed to get GLOBAL_PLATFORM").as_keyboard_platform_layout();
+		let keyboard_layout = || GLOBAL_PLATFORM.get().copied().unwrap_or_default().as_keyboard_platform_layout();
 
 		let name = match self {
 			// Writing system keys
@@ -304,7 +304,7 @@ impl From<Key> for LayoutKey {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, specta::Type)]
 struct LayoutKey {
 	key: String,
 	label: String,
@@ -338,7 +338,7 @@ impl fmt::Display for KeysGroup {
 			.0
 			.iter()
 			.map(|key| {
-				let keyboard_layout = GLOBAL_PLATFORM.get().expect("Failed to get GLOBAL_PLATFORM").as_keyboard_platform_layout();
+				let keyboard_layout = GLOBAL_PLATFORM.get().copied().unwrap_or_default().as_keyboard_platform_layout();
 				let key_is_modifier = matches!(*key, Key::Control | Key::Command | Key::Alt | Key::Shift | Key::Meta | Key::Accel);
 
 				if keyboard_layout == KeyboardPlatformLayout::Mac && key_is_modifier {
@@ -365,7 +365,7 @@ impl From<KeysGroup> for String {
 	}
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 pub struct LayoutKeysGroup(Vec<LayoutKey>);
 
 impl From<KeysGroup> for LayoutKeysGroup {
@@ -374,7 +374,7 @@ impl From<KeysGroup> for LayoutKeysGroup {
 	}
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, specta::Type)]
 pub enum MouseMotion {
 	None,
 	Lmb,
@@ -423,6 +423,10 @@ impl<const LENGTH: usize> BitVector<LENGTH> {
 		(self.0[offset] & bit) != 0
 	}
 
+	pub fn key(&self, key: Key) -> bool {
+		self.get(key as usize)
+	}
+
 	pub fn is_empty(&self) -> bool {
 		let mut result = 0;
 
@@ -463,7 +467,7 @@ impl<'a, const LENGTH: usize> Iterator for BitVectorIter<'a, LENGTH> {
 	type Item = usize;
 
 	fn next(&mut self) -> Option<Self::Item> {
-		while self.iter_index < (STORAGE_SIZE_BITS as usize) * LENGTH {
+		while self.iter_index < STORAGE_SIZE_BITS * LENGTH {
 			let bit_value = self.bitvector.get(self.iter_index);
 
 			self.iter_index += 1;

@@ -1,8 +1,8 @@
-use crate::consts::{DRAG_THRESHOLD, LINE_ROTATE_SNAP_ANGLE};
+use crate::consts::LINE_ROTATE_SNAP_ANGLE;
 use crate::messages::frontend::utility_types::MouseCursorIcon;
-use crate::messages::input_mapper::utility_types::input_keyboard::{Key, KeysGroup, MouseMotion};
+use crate::messages::input_mapper::utility_types::input_keyboard::{Key, MouseMotion};
 use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
-use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, PropertyHolder, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
+use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, PropertyHolder, WidgetLayout};
 use crate::messages::layout::utility_types::widgets::input_widgets::NumberInput;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::snapping::SnapManager;
@@ -35,7 +35,7 @@ impl Default for LineOptions {
 
 #[remain::sorted]
 #[impl_message(Message, ToolMessage, Line)]
-#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
+#[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
 pub enum LineToolMessage {
 	// Standard messages
 	#[remain::unsorted]
@@ -53,7 +53,7 @@ pub enum LineToolMessage {
 }
 
 #[remain::sorted]
-#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
+#[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
 pub enum LineOptionsUpdate {
 	LineWeight(f64),
 }
@@ -72,32 +72,18 @@ impl ToolMetadata for LineTool {
 
 impl PropertyHolder for LineTool {
 	fn properties(&self) -> Layout {
-		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row {
-			widgets: vec![WidgetHolder::new(Widget::NumberInput(NumberInput {
-				unit: " px".into(),
-				label: "Weight".into(),
-				value: Some(self.options.line_weight as f64),
-				is_integer: false,
-				min: Some(0.),
-				on_update: WidgetCallback::new(|number_input: &NumberInput| LineToolMessage::UpdateOptions(LineOptionsUpdate::LineWeight(number_input.value.unwrap())).into()),
-				..NumberInput::default()
-			}))],
-		}]))
+		let weight = NumberInput::new(Some(self.options.line_weight))
+			.unit(" px")
+			.label("Weight")
+			.min(0.)
+			.on_update(|number_input: &NumberInput| LineToolMessage::UpdateOptions(LineOptionsUpdate::LineWeight(number_input.value.unwrap())).into())
+			.widget_holder();
+		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row { widgets: vec![weight] }]))
 	}
 }
 
 impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for LineTool {
-	fn process_message(&mut self, message: ToolMessage, tool_data: ToolActionHandlerData<'a>, responses: &mut VecDeque<Message>) {
-		if message == ToolMessage::UpdateHints {
-			self.fsm_state.update_hints(responses);
-			return;
-		}
-
-		if message == ToolMessage::UpdateCursor {
-			self.fsm_state.update_cursor(responses);
-			return;
-		}
-
+	fn process_message(&mut self, message: ToolMessage, messages: &mut VecDeque<Message>, tool_data: ToolActionHandlerData<'a>) {
 		if let ToolMessage::Line(LineToolMessage::UpdateOptions(action)) = message {
 			match action {
 				LineOptionsUpdate::LineWeight(line_weight) => self.options.line_weight = line_weight,
@@ -105,27 +91,13 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for LineTool {
 			return;
 		}
 
-		let new_state = self.fsm_state.transition(message, &mut self.tool_data, tool_data, &self.options, responses);
-
-		if self.fsm_state != new_state {
-			self.fsm_state = new_state;
-			self.fsm_state.update_hints(responses);
-			self.fsm_state.update_cursor(responses);
-		}
+		self.fsm_state.process_event(message, &mut self.tool_data, tool_data, &self.options, messages, true);
 	}
 
 	fn actions(&self) -> ActionList {
-		use LineToolFsmState::*;
-
 		match self.fsm_state {
-			Ready => actions!(LineToolMessageDiscriminant;
-				DragStart,
-			),
-			Drawing => actions!(LineToolMessageDiscriminant;
-				DragStop,
-				Redraw,
-				Abort,
-			),
+			LineToolFsmState::Ready => actions!(LineToolMessageDiscriminant; DragStart),
+			LineToolFsmState::Drawing => actions!(LineToolMessageDiscriminant; DragStop, Redraw, Abort),
 		}
 	}
 }
@@ -140,16 +112,11 @@ impl ToolTransition for LineTool {
 	}
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 enum LineToolFsmState {
+	#[default]
 	Ready,
 	Drawing,
-}
-
-impl Default for LineToolFsmState {
-	fn default() -> Self {
-		LineToolFsmState::Ready
-	}
 }
 
 #[derive(Clone, Debug, Default)]
@@ -180,8 +147,8 @@ impl Fsm for LineToolFsmState {
 		if let ToolMessage::Line(event) = event {
 			match (self, event) {
 				(Ready, DragStart) => {
-					tool_data.snap_manager.start_snap(document, document.bounding_boxes(None, None, font_cache), true, true);
-					tool_data.snap_manager.add_all_document_handles(document, &[], &[], &[]);
+					tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(None, None, font_cache), true, true);
+					tool_data.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
 					tool_data.drag_start = tool_data.snap_manager.snap_position(responses, document, input.mouse.position);
 
 					responses.push_back(DocumentMessage::StartTransaction.into());
@@ -205,20 +172,14 @@ impl Fsm for LineToolFsmState {
 				(Drawing, Redraw { center, snap_angle, lock_angle }) => {
 					tool_data.drag_current = tool_data.snap_manager.snap_position(responses, document, input.mouse.position);
 
-					let values: Vec<_> = [lock_angle, snap_angle, center].iter().map(|k| input.keyboard.get(*k as usize)).collect();
-					responses.push_back(generate_transform(tool_data, values[0], values[1], values[2]));
+					let keyboard = &input.keyboard;
+					responses.push_back(generate_transform(tool_data, keyboard.key(lock_angle), keyboard.key(snap_angle), keyboard.key(center)));
 
 					Drawing
 				}
 				(Drawing, DragStop) => {
-					tool_data.drag_current = tool_data.snap_manager.snap_position(responses, document, input.mouse.position);
 					tool_data.snap_manager.cleanup(responses);
-
-					match tool_data.drag_start.distance(input.mouse.position) <= DRAG_THRESHOLD {
-						true => responses.push_back(DocumentMessage::AbortTransaction.into()),
-						false => responses.push_back(DocumentMessage::CommitTransaction.into()),
-					}
-
+					input.mouse.finish_transaction(tool_data.drag_start, responses);
 					tool_data.path = None;
 
 					Ready
@@ -239,57 +200,15 @@ impl Fsm for LineToolFsmState {
 	fn update_hints(&self, responses: &mut VecDeque<Message>) {
 		let hint_data = match self {
 			LineToolFsmState::Ready => HintData(vec![HintGroup(vec![
-				HintInfo {
-					key_groups: vec![],
-					key_groups_mac: None,
-					mouse: Some(MouseMotion::LmbDrag),
-					label: String::from("Draw Line"),
-					plus: false,
-				},
-				HintInfo {
-					key_groups: vec![KeysGroup(vec![Key::Shift]).into()],
-					key_groups_mac: None,
-					mouse: None,
-					label: String::from("Snap 15°"),
-					plus: true,
-				},
-				HintInfo {
-					key_groups: vec![KeysGroup(vec![Key::Alt]).into()],
-					key_groups_mac: None,
-					mouse: None,
-					label: String::from("From Center"),
-					plus: true,
-				},
-				HintInfo {
-					key_groups: vec![KeysGroup(vec![Key::Control]).into()],
-					key_groups_mac: None,
-					mouse: None,
-					label: String::from("Lock Angle"),
-					plus: true,
-				},
+				HintInfo::mouse(MouseMotion::LmbDrag, "Draw Line"),
+				HintInfo::keys([Key::Shift], "Snap 15°").prepend_plus(),
+				HintInfo::keys([Key::Alt], "From Center").prepend_plus(),
+				HintInfo::keys([Key::Control], "Lock Angle").prepend_plus(),
 			])]),
 			LineToolFsmState::Drawing => HintData(vec![HintGroup(vec![
-				HintInfo {
-					key_groups: vec![KeysGroup(vec![Key::Shift]).into()],
-					key_groups_mac: None,
-					mouse: None,
-					label: String::from("Snap 15°"),
-					plus: false,
-				},
-				HintInfo {
-					key_groups: vec![KeysGroup(vec![Key::Alt]).into()],
-					key_groups_mac: None,
-					mouse: None,
-					label: String::from("From Center"),
-					plus: false,
-				},
-				HintInfo {
-					key_groups: vec![KeysGroup(vec![Key::Control]).into()],
-					key_groups_mac: None,
-					mouse: None,
-					label: String::from("Lock Angle"),
-					plus: false,
-				},
+				HintInfo::keys([Key::Shift], "Snap 15°"),
+				HintInfo::keys([Key::Alt], "From Center"),
+				HintInfo::keys([Key::Control], "Lock Angle"),
 			])]),
 		};
 
@@ -301,40 +220,38 @@ impl Fsm for LineToolFsmState {
 	}
 }
 
-fn generate_transform(tool_data: &mut LineToolData, lock: bool, snap: bool, center: bool) -> Message {
+fn generate_transform(tool_data: &mut LineToolData, lock_angle: bool, snap_angle: bool, center: bool) -> Message {
 	let mut start = tool_data.drag_start;
-	let stop = tool_data.drag_current;
+	let line_vector = tool_data.drag_current - start;
 
-	let dir = stop - start;
+	let mut angle = -line_vector.angle_between(DVec2::X);
 
-	let mut angle = -dir.angle_between(DVec2::X);
+	if lock_angle {
+		angle = tool_data.angle;
+	}
 
-	if lock {
-		angle = tool_data.angle
-	};
-
-	if snap {
+	if snap_angle {
 		let snap_resolution = LINE_ROTATE_SNAP_ANGLE.to_radians();
 		angle = (angle / snap_resolution).round() * snap_resolution;
 	}
 
 	tool_data.angle = angle;
 
-	let mut scale = dir.length();
+	let mut line_length = line_vector.length();
 
-	if lock {
+	if lock_angle {
 		let angle_vec = DVec2::new(angle.cos(), angle.sin());
-		scale = dir.dot(angle_vec);
+		line_length = line_vector.dot(angle_vec);
 	}
 
 	if center {
-		start -= scale * DVec2::new(angle.cos(), angle.sin());
-		scale *= 2.;
+		start -= line_length * DVec2::new(angle.cos(), angle.sin());
+		line_length *= 2.;
 	}
 
 	Operation::SetLayerTransformInViewport {
 		path: tool_data.path.clone().unwrap(),
-		transform: glam::DAffine2::from_scale_angle_translation(DVec2::new(scale, 1.), angle, start).to_cols_array(),
+		transform: glam::DAffine2::from_scale_angle_translation(DVec2::new(line_length, 1.), angle, start).to_cols_array(),
 	}
 	.into()
 }

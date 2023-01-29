@@ -21,7 +21,7 @@ pub struct FillTool {
 
 #[remain::sorted]
 #[impl_message(Message, ToolMessage, Fill)]
-#[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize)]
+#[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize, specta::Type)]
 pub enum FillToolMessage {
 	// Standard messages
 	#[remain::unsorted]
@@ -47,24 +47,8 @@ impl ToolMetadata for FillTool {
 impl PropertyHolder for FillTool {}
 
 impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for FillTool {
-	fn process_message(&mut self, message: ToolMessage, data: ToolActionHandlerData<'a>, responses: &mut VecDeque<Message>) {
-		if message == ToolMessage::UpdateHints {
-			self.fsm_state.update_hints(responses);
-			return;
-		}
-
-		if message == ToolMessage::UpdateCursor {
-			self.fsm_state.update_cursor(responses);
-			return;
-		}
-
-		let new_state = self.fsm_state.transition(message, &mut self.data, data, &(), responses);
-
-		if self.fsm_state != new_state {
-			self.fsm_state = new_state;
-			self.fsm_state.update_hints(responses);
-			self.fsm_state.update_cursor(responses);
-		}
+	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: ToolActionHandlerData<'a>) {
+		self.fsm_state.process_event(message, &mut self.data, tool_data, &(), responses, true);
 	}
 
 	advertise_actions!(FillToolMessageDiscriminant;
@@ -83,15 +67,10 @@ impl ToolTransition for FillTool {
 	}
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 enum FillToolFsmState {
+	#[default]
 	Ready,
-}
-
-impl Default for FillToolFsmState {
-	fn default() -> Self {
-		FillToolFsmState::Ready
-	}
 }
 
 #[derive(Clone, Debug, Default)]
@@ -144,20 +123,8 @@ impl Fsm for FillToolFsmState {
 	fn update_hints(&self, responses: &mut VecDeque<Message>) {
 		let hint_data = match self {
 			FillToolFsmState::Ready => HintData(vec![HintGroup(vec![
-				HintInfo {
-					key_groups: vec![],
-					key_groups_mac: None,
-					mouse: Some(MouseMotion::Lmb),
-					label: String::from("Fill with Primary"),
-					plus: false,
-				},
-				HintInfo {
-					key_groups: vec![],
-					key_groups_mac: None,
-					mouse: Some(MouseMotion::Rmb),
-					label: String::from("Fill with Secondary"),
-					plus: false,
-				},
+				HintInfo::mouse(MouseMotion::Lmb, "Fill with Primary"),
+				HintInfo::mouse(MouseMotion::Rmb, "Fill with Secondary"),
 			])]),
 		};
 

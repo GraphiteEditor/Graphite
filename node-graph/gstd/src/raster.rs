@@ -1,9 +1,11 @@
 use core::marker::PhantomData;
 use dyn_any::{DynAny, StaticType};
-use graphene_core::ops::FlatMapResultNode;
+use graphene_core::generic::FnNode;
+use graphene_core::ops::{FlatMapResultNode, MapResultNode};
 use graphene_core::raster::{Color, Image};
-use graphene_core::structural::{ComposeNode, ConsNode};
-use graphene_core::{generic::FnNode, ops::MapResultNode, structural::Then, value::ValueNode, Node};
+use graphene_core::structural::{ComposeNode, ConsNode, Then};
+use graphene_core::value::ValueNode;
+use graphene_core::Node;
 use image::Pixel;
 use std::path::Path;
 
@@ -132,7 +134,7 @@ pub fn export_image_node<'n>() -> impl Node<(Image, &'n str), Output = Result<()
 	FnNode::new(|input: (Image, &str)| {
 		let (image, path) = input;
 		let mut new_image = image::ImageBuffer::new(image.width, image.height);
-		for ((x, y, pixel), color) in new_image.enumerate_pixels_mut().zip((&image).into_iter()) {
+		for ((x, y, pixel), color) in new_image.enumerate_pixels_mut().zip(image.data.iter()) {
 			let color: Color = *color;
 			assert!(x < image.width);
 			assert!(y < image.height);

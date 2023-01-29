@@ -18,8 +18,8 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, u64, &InputPreprocess
 	fn process_message(
 		&mut self,
 		message: ToolMessage,
-		(document, document_id, input, persistent_data): (&DocumentMessageHandler, u64, &InputPreprocessorMessageHandler, &PersistentData),
 		responses: &mut VecDeque<Message>,
+		(document, document_id, input, persistent_data): (&DocumentMessageHandler, u64, &InputPreprocessorMessageHandler, &PersistentData),
 	) {
 		#[remain::sorted]
 		match message {
@@ -73,12 +73,12 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, u64, &InputPreprocess
 				let mut send_abort_to_tool = |tool_type, update_hints_and_cursor: bool| {
 					if let Some(tool) = tool_data.tools.get_mut(&tool_type) {
 						if let Some(tool_abort_message) = tool.event_to_message_map().tool_abort {
-							tool.process_message(tool_abort_message, (document, document_id, document_data, input, &persistent_data.font_cache), responses);
+							tool.process_message(tool_abort_message, responses, (document, document_id, document_data, input, &persistent_data.font_cache));
 						}
 
 						if update_hints_and_cursor {
-							tool.process_message(ToolMessage::UpdateHints, (document, document_id, document_data, input, &persistent_data.font_cache), responses);
-							tool.process_message(ToolMessage::UpdateCursor, (document, document_id, document_data, input, &persistent_data.font_cache), responses);
+							tool.process_message(ToolMessage::UpdateHints, responses, (document, document_id, document_data, input, &persistent_data.font_cache));
+							tool.process_message(ToolMessage::UpdateCursor, responses, (document, document_id, document_data, input, &persistent_data.font_cache));
 						}
 					}
 				};
@@ -100,8 +100,8 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, u64, &InputPreprocess
 				// Send the DocumentIsDirty message to the active tool's sub-tool message handler
 				responses.push_back(BroadcastEvent::DocumentIsDirty.into());
 
-				// Send Properties to the frontend
-				tool_data.tools.get(&tool_type).unwrap().register_properties(responses, LayoutTarget::ToolOptions);
+				// Send tool options to the frontend
+				responses.push_back(ToolMessage::RefreshToolOptions.into());
 
 				// Notify the frontend about the new active tool to be displayed
 				tool_data.register_properties(responses, LayoutTarget::ToolShelf);
@@ -134,10 +134,10 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, u64, &InputPreprocess
 				// Set initial hints and cursor
 				tool_data
 					.active_tool_mut()
-					.process_message(ToolMessage::UpdateHints, (document, document_id, document_data, input, &persistent_data.font_cache), responses);
+					.process_message(ToolMessage::UpdateHints, responses, (document, document_id, document_data, input, &persistent_data.font_cache));
 				tool_data
 					.active_tool_mut()
-					.process_message(ToolMessage::UpdateCursor, (document, document_id, document_data, input, &persistent_data.font_cache), responses);
+					.process_message(ToolMessage::UpdateCursor, responses, (document, document_id, document_data, input, &persistent_data.font_cache));
 			}
 			ToolMessage::RefreshToolOptions => {
 				let tool_data = &mut self.tool_state.tool_data;
@@ -196,7 +196,7 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, u64, &InputPreprocess
 
 				if let Some(tool) = tool_data.tools.get_mut(&tool_type) {
 					if tool_type == tool_data.active_tool_type {
-						tool.process_message(tool_message, (document, document_id, document_data, input, &persistent_data.font_cache), responses);
+						tool.process_message(tool_message, responses, (document, document_id, document_data, input, &persistent_data.font_cache));
 					}
 				}
 			}

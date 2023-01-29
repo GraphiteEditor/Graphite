@@ -28,10 +28,10 @@ pub struct TransformLayerMessageHandler {
 type TransformData<'a> = (&'a mut HashMap<Vec<LayerId>, LayerMetadata>, &'a mut Document, &'a InputPreprocessorMessageHandler, &'a FontCache);
 impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformLayerMessageHandler {
 	#[remain::check]
-	fn process_message(&mut self, message: TransformLayerMessage, (layer_metadata, document, ipp, font_cache): TransformData, responses: &mut VecDeque<Message>) {
+	fn process_message(&mut self, message: TransformLayerMessage, responses: &mut VecDeque<Message>, (layer_metadata, document, ipp, font_cache): TransformData) {
 		use TransformLayerMessage::*;
 
-		let selected_layers = layer_metadata.iter().filter_map(|(layer_path, data)| data.selected.then(|| layer_path)).collect::<Vec<_>>();
+		let selected_layers = layer_metadata.iter().filter_map(|(layer_path, data)| data.selected.then_some(layer_path)).collect::<Vec<_>>();
 		let mut selected = Selected::new(&mut self.original_transforms, &mut self.pivot, &selected_layers, responses, document);
 
 		let mut begin_operation = |operation: TransformOperation, typing: &mut Typing, mouse_position: &mut DVec2, start_mouse: &mut DVec2| {

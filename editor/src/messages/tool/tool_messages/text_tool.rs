@@ -1,11 +1,10 @@
 use crate::application::generate_uuid;
 use crate::consts::{COLOR_ACCENT, SELECTION_TOLERANCE};
 use crate::messages::frontend::utility_types::MouseCursorIcon;
-use crate::messages::input_mapper::utility_types::input_keyboard::{Key, KeysGroup, MouseMotion};
-use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, PropertyHolder, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
+use crate::messages::input_mapper::utility_types::input_keyboard::{Key, MouseMotion};
+use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, PropertyHolder, WidgetCallback, WidgetHolder, WidgetLayout};
 use crate::messages::layout::utility_types::misc::LayoutTarget;
 use crate::messages::layout::utility_types::widgets::input_widgets::{FontInput, NumberInput};
-use crate::messages::layout::utility_types::widgets::label_widgets::{Separator, SeparatorDirection, SeparatorType};
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
@@ -44,7 +43,7 @@ impl Default for TextOptions {
 
 #[remain::sorted]
 #[impl_message(Message, ToolMessage, Text)]
-#[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize)]
+#[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize, specta::Type)]
 pub enum TextToolMessage {
 	// Standard messages
 	#[remain::unsorted]
@@ -66,7 +65,7 @@ pub enum TextToolMessage {
 }
 
 #[remain::sorted]
-#[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize)]
+#[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize, specta::Type)]
 pub enum TextOptionsUpdate {
 	Font { family: String, style: String },
 	FontSize(u32),
@@ -86,68 +85,49 @@ impl ToolMetadata for TextTool {
 
 impl PropertyHolder for TextTool {
 	fn properties(&self) -> Layout {
+		let font = FontInput {
+			is_style_picker: false,
+			font_family: self.options.font_name.clone(),
+			font_style: self.options.font_style.clone(),
+			on_update: WidgetCallback::new(|font_input: &FontInput| {
+				TextToolMessage::UpdateOptions(TextOptionsUpdate::Font {
+					family: font_input.font_family.clone(),
+					style: font_input.font_style.clone(),
+				})
+				.into()
+			}),
+			..Default::default()
+		}
+		.widget_holder();
+		let style = FontInput {
+			is_style_picker: true,
+			font_family: self.options.font_name.clone(),
+			font_style: self.options.font_style.clone(),
+			on_update: WidgetCallback::new(|font_input: &FontInput| {
+				TextToolMessage::UpdateOptions(TextOptionsUpdate::Font {
+					family: font_input.font_family.clone(),
+					style: font_input.font_style.clone(),
+				})
+				.into()
+			}),
+			..Default::default()
+		}
+		.widget_holder();
+		let size = NumberInput::new(Some(self.options.font_size as f64))
+			.unit(" px")
+			.label("Size")
+			.int()
+			.min(1.)
+			.on_update(|number_input: &NumberInput| TextToolMessage::UpdateOptions(TextOptionsUpdate::FontSize(number_input.value.unwrap() as u32)).into())
+			.widget_holder();
 		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row {
-			widgets: vec![
-				WidgetHolder::new(Widget::FontInput(FontInput {
-					is_style_picker: false,
-					font_family: self.options.font_name.clone(),
-					font_style: self.options.font_style.clone(),
-					on_update: WidgetCallback::new(|font_input: &FontInput| {
-						TextToolMessage::UpdateOptions(TextOptionsUpdate::Font {
-							family: font_input.font_family.clone(),
-							style: font_input.font_style.clone(),
-						})
-						.into()
-					}),
-					..Default::default()
-				})),
-				WidgetHolder::new(Widget::Separator(Separator {
-					direction: SeparatorDirection::Horizontal,
-					separator_type: SeparatorType::Related,
-				})),
-				WidgetHolder::new(Widget::FontInput(FontInput {
-					is_style_picker: true,
-					font_family: self.options.font_name.clone(),
-					font_style: self.options.font_style.clone(),
-					on_update: WidgetCallback::new(|font_input: &FontInput| {
-						TextToolMessage::UpdateOptions(TextOptionsUpdate::Font {
-							family: font_input.font_family.clone(),
-							style: font_input.font_style.clone(),
-						})
-						.into()
-					}),
-					..Default::default()
-				})),
-				WidgetHolder::new(Widget::Separator(Separator {
-					direction: SeparatorDirection::Horizontal,
-					separator_type: SeparatorType::Related,
-				})),
-				WidgetHolder::new(Widget::NumberInput(NumberInput {
-					unit: " px".into(),
-					label: "Size".into(),
-					value: Some(self.options.font_size as f64),
-					is_integer: true,
-					min: Some(1.),
-					on_update: WidgetCallback::new(|number_input: &NumberInput| TextToolMessage::UpdateOptions(TextOptionsUpdate::FontSize(number_input.value.unwrap() as u32)).into()),
-					..NumberInput::default()
-				})),
-			],
+			widgets: vec![font, WidgetHolder::related_separator(), style, WidgetHolder::related_separator(), size],
 		}]))
 	}
 }
 
 impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for TextTool {
-	fn process_message(&mut self, message: ToolMessage, tool_data: ToolActionHandlerData<'a>, responses: &mut VecDeque<Message>) {
-		if message == ToolMessage::UpdateHints {
-			self.fsm_state.update_hints(responses);
-			return;
-		}
-
-		if message == ToolMessage::UpdateCursor {
-			self.fsm_state.update_cursor(responses);
-			return;
-		}
-
+	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: ToolActionHandlerData<'a>) {
 		if let ToolMessage::Text(TextToolMessage::UpdateOptions(action)) = message {
 			match action {
 				TextOptionsUpdate::Font { family, style } => {
@@ -161,13 +141,7 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for TextTool {
 			return;
 		}
 
-		let new_state = self.fsm_state.transition(message, &mut self.tool_data, tool_data, &self.options, responses);
-
-		if self.fsm_state != new_state {
-			self.fsm_state = new_state;
-			self.fsm_state.update_hints(responses);
-			self.fsm_state.update_cursor(responses);
-		}
+		self.fsm_state.process_event(message, &mut self.tool_data, tool_data, &self.options, responses, true);
 	}
 
 	fn actions(&self) -> ActionList {
@@ -196,22 +170,24 @@ impl ToolTransition for TextTool {
 	}
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 enum TextToolFsmState {
+	#[default]
 	Ready,
 	Editing,
 }
-
-impl Default for TextToolFsmState {
-	fn default() -> Self {
-		TextToolFsmState::Ready
-	}
-}
-
 #[derive(Clone, Debug, Default)]
 struct TextToolData {
-	path: Vec<LayerId>,
+	layer_path: Vec<LayerId>,
 	overlays: Vec<Vec<LayerId>>,
+}
+
+impl TextToolData {
+	/// Set the editing state of the currently modifying layer
+	fn set_editing(&self, editable: bool, responses: &mut VecDeque<Message>) {
+		let path = self.layer_path.clone();
+		responses.push_back(DocumentMessage::SetTextboxEditability { path, editable }.into());
+	}
 }
 
 fn transform_from_box(pos1: DVec2, pos2: DVec2) -> [f64; 6] {
@@ -293,55 +269,44 @@ impl Fsm for TextToolFsmState {
 					let tolerance = DVec2::splat(SELECTION_TOLERANCE);
 					let quad = Quad::from_box([mouse_pos - tolerance, mouse_pos + tolerance]);
 
-					let new_state = if let Some(l) = document
+					// Check if the user has selected an existing text layer
+					let new_state = if let Some(clicked_text_layer_path) = document
 						.document_legacy
 						.intersects_quad_root(quad, font_cache)
 						.last()
 						.filter(|l| document.document_legacy.layer(l).map(|l| l.as_text().is_ok()).unwrap_or(false))
-					// Editing existing text
 					{
 						if state == TextToolFsmState::Editing {
-							responses.push_back(
-								DocumentMessage::SetTextboxEditability {
-									path: tool_data.path.clone(),
-									editable: false,
-								}
-								.into(),
-							);
+							tool_data.set_editing(false, responses);
 						}
 
-						tool_data.path = l.clone();
+						tool_data.layer_path = clicked_text_layer_path.clone();
 
-						responses.push_back(
-							DocumentMessage::SetTextboxEditability {
-								path: tool_data.path.clone(),
-								editable: true,
-							}
-							.into(),
-						);
-						responses.push_back(
-							DocumentMessage::SetSelectedLayers {
-								replacement_selected_layers: vec![tool_data.path.clone()],
-							}
-							.into(),
-						);
+						responses.push_back(DocumentMessage::StartTransaction.into());
+
+						tool_data.set_editing(true, responses);
+
+						let replacement_selected_layers = vec![tool_data.layer_path.clone()];
+						responses.push_back(DocumentMessage::SetSelectedLayers { replacement_selected_layers }.into());
 
 						Editing
 					}
-					// Creating new text
+					// Create new text
 					else if state == TextToolFsmState::Ready {
+						responses.push_back(DocumentMessage::StartTransaction.into());
+
 						let transform = DAffine2::from_translation(input.mouse.position).to_cols_array();
 						let font_size = tool_options.font_size;
 						let font_name = tool_options.font_name.clone();
 						let font_style = tool_options.font_style.clone();
-						tool_data.path = document.get_path_for_new_layer();
+						tool_data.layer_path = document.get_path_for_new_layer();
 
 						responses.push_back(
 							Operation::AddText {
-								path: tool_data.path.clone(),
+								path: tool_data.layer_path.clone(),
 								transform: DAffine2::ZERO.to_cols_array(),
 								insert_index: -1,
-								text: r#""#.to_string(),
+								text: String::new(),
 								style: style::PathStyle::new(None, Fill::solid(global_tool_data.primary_color)),
 								size: font_size as f64,
 								font_name,
@@ -351,37 +316,22 @@ impl Fsm for TextToolFsmState {
 						);
 						responses.push_back(
 							Operation::SetLayerTransformInViewport {
-								path: tool_data.path.clone(),
+								path: tool_data.layer_path.clone(),
 								transform,
 							}
 							.into(),
 						);
 
-						responses.push_back(
-							DocumentMessage::SetTextboxEditability {
-								path: tool_data.path.clone(),
-								editable: true,
-							}
-							.into(),
-						);
+						tool_data.set_editing(true, responses);
 
-						responses.push_back(
-							DocumentMessage::SetSelectedLayers {
-								replacement_selected_layers: vec![tool_data.path.clone()],
-							}
-							.into(),
-						);
+						let replacement_selected_layers = vec![tool_data.layer_path.clone()];
+
+						responses.push_back(DocumentMessage::SetSelectedLayers { replacement_selected_layers }.into());
 
 						Editing
 					} else {
 						// Removing old text as editable
-						responses.push_back(
-							DocumentMessage::SetTextboxEditability {
-								path: tool_data.path.clone(),
-								editable: false,
-							}
-							.into(),
-						);
+						tool_data.set_editing(false, responses);
 
 						resize_overlays(&mut tool_data.overlays, responses, 0);
 
@@ -392,13 +342,7 @@ impl Fsm for TextToolFsmState {
 				}
 				(state, Abort) => {
 					if state == TextToolFsmState::Editing {
-						responses.push_back(
-							DocumentMessage::SetTextboxEditability {
-								path: tool_data.path.clone(),
-								editable: false,
-							}
-							.into(),
-						);
+						tool_data.set_editing(false, responses);
 					}
 
 					resize_overlays(&mut tool_data.overlays, responses, 0);
@@ -411,21 +355,10 @@ impl Fsm for TextToolFsmState {
 					Editing
 				}
 				(Editing, TextChange { new_text }) => {
-					responses.push_back(
-						Operation::SetTextContent {
-							path: tool_data.path.clone(),
-							new_text,
-						}
-						.into(),
-					);
+					let path = tool_data.layer_path.clone();
+					responses.push_back(Operation::SetTextContent { path, new_text }.into());
 
-					responses.push_back(
-						DocumentMessage::SetTextboxEditability {
-							path: tool_data.path.clone(),
-							editable: false,
-						}
-						.into(),
-					);
+					tool_data.set_editing(false, responses);
 
 					resize_overlays(&mut tool_data.overlays, responses, 0);
 
@@ -433,10 +366,10 @@ impl Fsm for TextToolFsmState {
 				}
 				(Editing, UpdateBounds { new_text }) => {
 					resize_overlays(&mut tool_data.overlays, responses, 1);
-					let text = document.document_legacy.layer(&tool_data.path).unwrap().as_text().unwrap();
+					let text = document.document_legacy.layer(&tool_data.layer_path).unwrap().as_text().unwrap();
 					let quad = text.bounding_box(&new_text, text.load_face(font_cache));
 
-					let transformed_quad = document.document_legacy.multiply_transforms(&tool_data.path).unwrap() * quad;
+					let transformed_quad = document.document_legacy.multiply_transforms(&tool_data.layer_path).unwrap() * quad;
 					let bounds = transformed_quad.bounding_box();
 
 					let operation = Operation::SetLayerTransformInViewport {
@@ -456,37 +389,10 @@ impl Fsm for TextToolFsmState {
 
 	fn update_hints(&self, responses: &mut VecDeque<Message>) {
 		let hint_data = match self {
-			TextToolFsmState::Ready => HintData(vec![HintGroup(vec![
-				HintInfo {
-					key_groups: vec![],
-					key_groups_mac: None,
-					mouse: Some(MouseMotion::Lmb),
-					label: String::from("Add Text"),
-					plus: false,
-				},
-				HintInfo {
-					key_groups: vec![],
-					key_groups_mac: None,
-					mouse: Some(MouseMotion::Lmb),
-					label: String::from("Edit Text"),
-					plus: false,
-				},
-			])]),
+			TextToolFsmState::Ready => HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Add Text"), HintInfo::mouse(MouseMotion::Lmb, "Edit Text")])]),
 			TextToolFsmState::Editing => HintData(vec![HintGroup(vec![
-				HintInfo {
-					key_groups: vec![KeysGroup(vec![Key::Control, Key::Enter]).into()],
-					key_groups_mac: Some(vec![KeysGroup(vec![Key::Command, Key::Enter]).into()]),
-					mouse: None,
-					label: String::from("Commit Edit"),
-					plus: false,
-				},
-				HintInfo {
-					key_groups: vec![KeysGroup(vec![Key::Escape]).into()],
-					key_groups_mac: None,
-					mouse: None,
-					label: String::from("Discard Edit"),
-					plus: false,
-				},
+				HintInfo::keys([Key::Control, Key::Enter], "Commit Edit").add_mac_keys([Key::Command, Key::Enter]),
+				HintInfo::keys([Key::Escape], "Discard Edit"),
 			])]),
 		};
 

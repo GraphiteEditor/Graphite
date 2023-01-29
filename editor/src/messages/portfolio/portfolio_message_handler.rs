@@ -11,6 +11,7 @@ use crate::messages::portfolio::document::utility_types::misc::DocumentRenderMod
 use crate::messages::portfolio::utility_types::ImaginateServerStatus;
 use crate::messages::prelude::*;
 
+use crate::messages::tool::utility_types::{HintData, HintGroup};
 use document_legacy::document::pick_safe_imaginate_resolution;
 use document_legacy::layers::layer_info::{LayerDataType, LayerDataTypeDiscriminant};
 use document_legacy::layers::text_layer::Font;
@@ -35,17 +36,17 @@ pub struct PortfolioMessageHandler {
 
 impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &PreferencesMessageHandler)> for PortfolioMessageHandler {
 	#[remain::check]
-	fn process_message(&mut self, message: PortfolioMessage, (ipp, preferences): (&InputPreprocessorMessageHandler, &PreferencesMessageHandler), responses: &mut VecDeque<Message>) {
+	fn process_message(&mut self, message: PortfolioMessage, responses: &mut VecDeque<Message>, (ipp, preferences): (&InputPreprocessorMessageHandler, &PreferencesMessageHandler)) {
 		#[remain::sorted]
 		match message {
 			// Sub-messages
 			#[remain::unsorted]
-			PortfolioMessage::MenuBar(message) => self.menu_bar_message_handler.process_message(message, (), responses),
+			PortfolioMessage::MenuBar(message) => self.menu_bar_message_handler.process_message(message, responses, ()),
 			#[remain::unsorted]
 			PortfolioMessage::Document(message) => {
 				if let Some(document_id) = self.active_document_id {
 					if let Some(document) = self.documents.get_mut(&document_id) {
-						document.process_message(message, (document_id, ipp, &self.persistent_data, preferences), responses)
+						document.process_message(message, responses, (document_id, ipp, &self.persistent_data, preferences))
 					}
 				}
 			}
@@ -54,7 +55,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 			#[remain::unsorted]
 			PortfolioMessage::DocumentPassMessage { document_id, message } => {
 				if let Some(document) = self.documents.get_mut(&document_id) {
-					document.process_message(message, (document_id, ipp, &self.persistent_data, preferences), responses)
+					document.process_message(message, responses, (document_id, ipp, &self.persistent_data, preferences))
 				}
 			}
 			PortfolioMessage::AutoSaveActiveDocument => {
@@ -92,9 +93,11 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 					responses.push_back(BroadcastEvent::ToolAbort.into());
 					responses.push_back(ToolMessage::DeactivateTools.into());
 
-					// Clear properties panel and layer tree
+					// Clear relevant UI layouts if there are no documents
 					responses.push_back(PropertiesPanelMessage::ClearSelection.into());
 					responses.push_back(DocumentMessage::ClearLayerTree.into());
+					let hint_data = HintData(vec![HintGroup(vec![])]);
+					responses.push_back(FrontendMessage::UpdateInputHints { hint_data }.into());
 				}
 
 				for document_id in &self.document_ids {
@@ -107,9 +110,11 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 			PortfolioMessage::CloseDocument { document_id } => {
 				// Is this the last document?
 				if self.documents.len() == 1 && self.document_ids[0] == document_id {
-					// Clear properties panel and layer tree
+					// Clear UI layouts that assume the existence of a document
 					responses.push_back(PropertiesPanelMessage::ClearSelection.into());
 					responses.push_back(DocumentMessage::ClearLayerTree.into());
+					let hint_data = HintData(vec![HintGroup(vec![])]);
+					responses.push_back(FrontendMessage::UpdateInputHints { hint_data }.into());
 				}
 				// Actually delete the document (delay to delete document is required to let the document and properties panel messages above get processed)
 				responses.push_back(PortfolioMessage::DeleteDocument { document_id }.into());
@@ -251,8 +256,8 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 					PortfolioMessage::DocumentPassMessage {
 						document_id,
 						message: NodeGraphMessage::SetQualifiedInputValue {
-							layer_path: layer_path.clone(),
-							node_path: node_path.clone(),
+							layer_path,
+							node_path,
 							input_index: get("Status"),
 							value: TaggedValue::ImaginateStatus(status),
 						}
@@ -271,14 +276,13 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 			} => {
 				let get = |name: &str| IMAGINATE_NODE.inputs.iter().position(|input| input.name == name).unwrap_or_else(|| panic!("Input {name} not found"));
 
-				let data = image_data.chunks_exact(4).map(|v| graphene_core::raster::color::Color::from_rgba8(v[0], v[1], v[2], v[3])).collect();
-				let image = Image { width, height, data };
+				let image = Image::from_image_data(&image_data, width, height);
 				responses.push_back(
 					PortfolioMessage::DocumentPassMessage {
 						document_id,
 						message: NodeGraphMessage::SetQualifiedInputValue {
-							layer_path: layer_path.clone(),
-							node_path: node_path.clone(),
+							layer_path,
+							node_path,
 							input_index: get("Cached Data"),
 							value: TaggedValue::RcImage(Some(std::sync::Arc::new(image))),
 						}
@@ -702,11 +706,10 @@ impl PortfolioMessageHandler {
 		// Adjust the output of the graph so we find the relevant output
 		'outer: for end in (0..node_path.len()).rev() {
 			let mut inner_network = &mut network;
-			for index in 0..end {
-				let node_id = node_path[index];
-				inner_network.output = node_id;
+			for node_id in node_path.iter().take(end) {
+				inner_network.output = *node_id;
 
-				let Some(new_inner) = inner_network.nodes.get_mut(&node_id).and_then(|node| node.implementation.get_network_mut()) else{
+				let Some(new_inner) = inner_network.nodes.get_mut(node_id).and_then(|node| node.implementation.get_network_mut()) else {
 					return Err("Failed to find network".to_string());
 				};
 				inner_network = new_inner;
@@ -746,7 +749,7 @@ impl PortfolioMessageHandler {
 		let size_estimate = (image_width * image_height * 4) as usize;
 
 		let mut result_bytes = Vec::with_capacity(size_estimate);
-		result_bytes.extend(image.data.into_iter().flat_map(|colour| colour.to_rgba8()));
+		result_bytes.extend(image.data.into_iter().flat_map(|color| color.to_rgba8()));
 		let mut output: ImageBuffer<Rgba<u8>, _> = image::ImageBuffer::from_raw(image_width, image_height, result_bytes).ok_or_else(|| "Invalid image size".to_string())?;
 		if let Some(size) = resize {
 			let size = size.as_uvec2();
@@ -764,15 +767,13 @@ impl PortfolioMessageHandler {
 		&mut self,
 		document_id: u64,
 		layer_path: Vec<LayerId>,
-		(image_data, size): (Vec<u8>, (u32, u32)),
+		(image_data, (width, height)): (Vec<u8>, (u32, u32)),
 		imaginate_node: Option<Vec<NodeId>>,
 		preferences: &PreferencesMessageHandler,
 		responses: &mut VecDeque<Message>,
 	) -> Result<(), String> {
 		// Reformat the input image data into an f32 image
-		let data = image_data.chunks_exact(4).map(|v| graphene_core::raster::color::Color::from_rgba8(v[0], v[1], v[2], v[3])).collect();
-		let (width, height) = size;
-		let image = graphene_core::raster::Image { width, height, data };
+		let image = graphene_core::raster::Image::from_image_data(&image_data, width, height);
 
 		// Get the node graph layer
 		let document = self.documents.get_mut(&document_id).ok_or_else(|| "Invalid document".to_string())?;
@@ -857,9 +858,9 @@ impl PortfolioMessageHandler {
 
 			responses.push_back(
 				FrontendMessage::TriggerImaginateGenerate {
-					parameters,
-					base_image,
-					mask_image,
+					parameters: Box::new(parameters),
+					base_image: base_image.map(Box::new),
+					mask_image: mask_image.map(Box::new),
 					mask_paint_mode: if Self::compute_input::<bool>(&network, &imaginate_node, get("Inpaint"), Cow::Borrowed(&image))? {
 						ImaginateMaskPaintMode::Inpaint
 					} else {
@@ -880,8 +881,7 @@ impl PortfolioMessageHandler {
 
 			// If no image was generated, use the input image
 			if image.width == 0 || image.height == 0 {
-				let data = image_data.chunks_exact(4).map(|v| graphene_core::raster::color::Color::from_rgba8(v[0], v[1], v[2], v[3])).collect();
-				image = graphene_core::raster::Image { width, height, data };
+				image = graphene_core::raster::Image::from_image_data(&image_data, width, height);
 			}
 
 			let (image_data, _size) = Self::encode_img(image, None, image::ImageOutputFormat::Bmp)?;

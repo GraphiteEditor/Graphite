@@ -12,7 +12,7 @@ use document_legacy::Operation as DocumentOperation;
 use glam::DAffine2;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, specta::Type)]
 pub struct ArtboardMessageHandler {
 	pub artboards_document: DocumentLegacy,
 	pub artboard_ids: Vec<LayerId>,
@@ -20,7 +20,7 @@ pub struct ArtboardMessageHandler {
 
 impl MessageHandler<ArtboardMessage, &FontCache> for ArtboardMessageHandler {
 	#[remain::check]
-	fn process_message(&mut self, message: ArtboardMessage, font_cache: &FontCache, responses: &mut VecDeque<Message>) {
+	fn process_message(&mut self, message: ArtboardMessage, responses: &mut VecDeque<Message>, font_cache: &FontCache) {
 		use ArtboardMessage::*;
 
 		#[remain::sorted]

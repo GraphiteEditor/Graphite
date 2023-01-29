@@ -28,7 +28,7 @@ pub trait PropertyHolder {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
 pub enum Layout {
 	WidgetLayout(WidgetLayout),
 	MenuLayout(MenuLayout),
@@ -37,7 +37,7 @@ pub enum Layout {
 /// The new value of the UI, sent as part of a diff.
 ///
 /// An update can represent a single widget or an entire SubLayout, or just a single layout group.
-#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
+#[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
 pub enum DiffUpdate {
 	#[serde(rename = "subLayout")]
 	SubLayout(SubLayout),
@@ -48,7 +48,7 @@ pub enum DiffUpdate {
 }
 
 /// A single change to part of the UI, containing the location of the change and the new value.
-#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
+#[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
 pub struct WidgetDiff {
 	/// A path to the change
 	/// e.g. [0, 1, 2] in the properties panel is the first section, second row and third widget.
@@ -164,7 +164,7 @@ impl Layout {
 			// Simply diff the internal layout
 			(Self::WidgetLayout(current), Self::WidgetLayout(new)) => current.diff(new, widget_path, widget_diffs),
 			(current, Self::WidgetLayout(widget_layout)) => {
-				// Upate current to the new value
+				// Update current to the new value
 				*current = Self::WidgetLayout(widget_layout.clone());
 
 				// Push an update sublayout value
@@ -179,11 +179,11 @@ impl Layout {
 
 impl Default for Layout {
 	fn default() -> Self {
-		Layout::WidgetLayout(WidgetLayout::default())
+		Self::WidgetLayout(WidgetLayout::default())
 	}
 }
 
-#[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq, specta::Type)]
 pub struct WidgetLayout {
 	pub layout: SubLayout,
 }
@@ -305,7 +305,7 @@ impl<'a> Iterator for WidgetIterMut<'a> {
 pub type SubLayout = Vec<LayoutGroup>;
 
 #[remain::sorted]
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
 pub enum LayoutGroup {
 	#[serde(rename = "column")]
 	Column {
@@ -435,7 +435,7 @@ impl LayoutGroup {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
 pub struct WidgetHolder {
 	#[serde(rename = "widgetId")]
 	pub widget_id: u64,
@@ -447,29 +447,16 @@ impl WidgetHolder {
 		Self { widget_id: generate_uuid(), widget }
 	}
 	pub fn unrelated_separator() -> Self {
-		WidgetHolder::new(Widget::Separator(Separator {
-			separator_type: SeparatorType::Unrelated,
-			direction: SeparatorDirection::Horizontal,
-		}))
+		Separator::new(SeparatorDirection::Horizontal, SeparatorType::Unrelated).widget_holder()
 	}
 	pub fn related_separator() -> Self {
-		WidgetHolder::new(Widget::Separator(Separator {
-			separator_type: SeparatorType::Related,
-			direction: SeparatorDirection::Horizontal,
-		}))
+		Separator::new(SeparatorDirection::Horizontal, SeparatorType::Related).widget_holder()
 	}
 	pub fn text_widget(text: impl Into<String>) -> Self {
-		WidgetHolder::new(Widget::TextLabel(TextLabel {
-			value: text.into(),
-			..Default::default()
-		}))
+		TextLabel::new(text).widget_holder()
 	}
 	pub fn bold_text(text: impl Into<String>) -> Self {
-		WidgetHolder::new(Widget::TextLabel(TextLabel {
-			value: text.into(),
-			bold: true,
-			..Default::default()
-		}))
+		TextLabel::new(text).bold(true).widget_holder()
 	}
 	/// Diffing updates self (where self is old) based on new, updating the list of modifications as it does so.
 	pub fn diff(&mut self, new: Self, widget_path: &mut [usize], widget_diffs: &mut Vec<WidgetDiff>) {
@@ -507,7 +494,7 @@ impl<T> Default for WidgetCallback<T> {
 }
 
 #[remain::sorted]
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
 pub enum Widget {
 	BreadcrumbTrailButtons(BreadcrumbTrailButtons),
 	CheckboxInput(CheckboxInput),

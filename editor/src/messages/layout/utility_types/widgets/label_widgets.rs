@@ -1,8 +1,10 @@
 use derivative::*;
+use graphite_proc_macros::WidgetBuilder;
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Serialize, Deserialize, Derivative, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Serialize, Deserialize, Derivative, Debug, Default, PartialEq, Eq, WidgetBuilder, specta::Type)]
 pub struct IconLabel {
+	#[widget_builder(constructor)]
 	pub icon: String,
 
 	pub disabled: bool,
@@ -10,29 +12,33 @@ pub struct IconLabel {
 	pub tooltip: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, WidgetBuilder, specta::Type)]
 pub struct Separator {
+	#[widget_builder(constructor)]
 	pub direction: SeparatorDirection,
 
 	#[serde(rename = "type")]
+	#[widget_builder(constructor)]
 	pub separator_type: SeparatorType,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 pub enum SeparatorDirection {
+	#[default]
 	Horizontal,
 	Vertical,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 pub enum SeparatorType {
 	Related,
+	#[default]
 	Unrelated,
 	Section,
 	List,
 }
 
-#[derive(Clone, Serialize, Deserialize, Derivative, Debug, PartialEq, Eq, Default)]
+#[derive(Clone, Serialize, Deserialize, Derivative, Debug, PartialEq, Eq, Default, WidgetBuilder, specta::Type)]
 pub struct TextLabel {
 	pub disabled: bool,
 
@@ -51,6 +57,7 @@ pub struct TextLabel {
 	pub tooltip: String,
 
 	// Body
+	#[widget_builder(constructor)]
 	pub value: String,
 }
 

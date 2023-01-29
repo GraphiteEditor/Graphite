@@ -17,7 +17,7 @@ mod to_path;
 /// A line, or multiple lines, of text drawn in the document.
 /// Like [ShapeLayers](super::shape_layer::ShapeLayer), [TextLayer] are rendered as
 /// [`<path>`s](https://developer.mozilla.org/en-US/docs/Web/SVG/Element/path).
-#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize, specta::Type)]
 pub struct TextLayer {
 	/// The string of text, encompassing one or multiple lines.
 	pub text: String,
@@ -34,13 +34,13 @@ pub struct TextLayer {
 }
 
 impl LayerData for TextLayer {
-	fn render(&mut self, svg: &mut String, svg_defs: &mut String, transforms: &mut Vec<DAffine2>, render_data: RenderData) {
+	fn render(&mut self, svg: &mut String, svg_defs: &mut String, transforms: &mut Vec<DAffine2>, render_data: RenderData) -> bool {
 		let transform = self.transform(transforms, render_data.view_mode);
 		let inverse = transform.inverse();
 
 		if !inverse.is_finite() {
 			let _ = write!(svg, "<!-- SVG shape has an invalid transform -->");
-			return;
+			return false;
 		}
 
 		let _ = writeln!(svg, r#"<g transform="matrix("#);
@@ -85,6 +85,8 @@ impl LayerData for TextLayer {
 			);
 		}
 		let _ = svg.write_str("</g>");
+
+		false
 	}
 
 	fn bounding_box(&self, transform: glam::DAffine2, font_cache: &FontCache) -> Option<[DVec2; 2]> {

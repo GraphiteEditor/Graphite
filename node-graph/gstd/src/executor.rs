@@ -1,9 +1,12 @@
+use graph_craft::document::*;
+use graph_craft::proto::*;
+use graphene_core::raster::Image;
+use graphene_core::value::ValueNode;
+use graphene_core::Node;
+
 use bytemuck::Pod;
 use core::marker::PhantomData;
 use dyn_any::StaticTypeSized;
-use graph_craft::document::*;
-use graph_craft::proto::*;
-use graphene_core::{raster::Image, value::ValueNode, Node};
 
 pub struct MapGpuNode<NN: Node<()>, I: IntoIterator<Item = S>, S: StaticTypeSized + Sync + Send + Pod, O: StaticTypeSized + Sync + Send + Pod>(pub NN, PhantomData<(S, I, O)>);
 
@@ -14,47 +17,26 @@ impl<'n, I: IntoIterator<Item = S>, NN: Node<(), Output = &'n NodeNetwork> + Cop
 	fn eval(self, input: I) -> Self::Output {
 		let network = self.0.eval(());
 
-		use graph_craft::executor::Compiler;
-		use graph_craft::executor::Executor;
-		use graph_craft::gpu::compiler::Metadata;
-		let compiler = Compiler {};
-		let proto_network = compiler.compile(network.clone(), true);
-
-		let m = Metadata::new("project".to_owned(), vec!["test@example.com".to_owned()]);
-		let temp_dir = tempfile::tempdir().expect("failed to create tempdir");
-
-		use graph_craft::gpu::context::Context;
-		use graph_craft::gpu::executor::GpuExecutor;
-		let executor: GpuExecutor<S, O> = GpuExecutor::new(Context::new(), proto_network, m, temp_dir.path()).unwrap();
-
-		let data: Vec<_> = input.into_iter().collect();
-		let result = executor.execute(Box::new(data)).unwrap();
-		let result = dyn_any::downcast::<Vec<O>>(result).unwrap();
-		*result
+		map_gpu_impl(network, input)
 	}
+}
+
+fn map_gpu_impl<I: IntoIterator<Item = S>, S: StaticTypeSized + Sync + Send + Pod, O: StaticTypeSized + Sync + Send + Pod>(network: &NodeNetwork, input: I) -> Vec<O> {
+	use graph_craft::executor::Executor;
+	let bytes = compilation_client::compile_sync::<S, O>(network.clone()).unwrap();
+	let words = unsafe { std::slice::from_raw_parts(bytes.as_ptr() as *const u32, bytes.len() / 4) };
+	use wgpu_executor::{Context, GpuExecutor};
+	let executor: GpuExecutor<S, O> = GpuExecutor::new(Context::new_sync().unwrap(), words.into(), "gpu::eval".into()).unwrap();
+	let data: Vec<_> = input.into_iter().collect();
+	let result = executor.execute(Box::new(data)).unwrap();
+	let result = dyn_any::downcast::<Vec<O>>(result).unwrap();
+	*result
 }
 impl<'n, I: IntoIterator<Item = S>, NN: Node<(), Output = &'n NodeNetwork> + Copy, S: StaticTypeSized + Sync + Send + Pod, O: StaticTypeSized + Sync + Send + Pod> Node<I> for MapGpuNode<NN, I, S, O> {
 	type Output = Vec<O>;
 	fn eval(self, input: I) -> Self::Output {
 		let network = self.0.eval(());
-
-		use graph_craft::executor::Compiler;
-		use graph_craft::executor::Executor;
-		use graph_craft::gpu::compiler::Metadata;
-		let compiler = Compiler {};
-		let proto_network = compiler.compile(network.clone(), true);
-
-		let m = Metadata::new("project".to_owned(), vec!["test@example.com".to_owned()]);
-		let temp_dir = tempfile::tempdir().expect("failed to create tempdir");
-
-		use graph_craft::gpu::context::Context;
-		use graph_craft::gpu::executor::GpuExecutor;
-		let executor: GpuExecutor<S, O> = GpuExecutor::new(Context::new(), proto_network, m, temp_dir.path()).unwrap();
-
-		let data: Vec<_> = input.into_iter().collect();
-		let result = executor.execute(Box::new(data)).unwrap();
-		let result = dyn_any::downcast::<Vec<O>>(result).unwrap();
-		*result
+		map_gpu_impl(network, input)
 	}
 }
 
@@ -79,6 +61,8 @@ impl<NN: Node<(), Output = String> + Copy> Node<Image> for MapGpuSingleImageNode
 
 		let network = NodeNetwork {
 			inputs: vec![0],
+			disabled: vec![],
+			previous_output: None,
 			output: 0,
 			nodes: [(
 				0,
@@ -114,6 +98,8 @@ impl<NN: Node<(), Output = String> + Copy> Node<Image> for &MapGpuSingleImageNod
 		let network = NodeNetwork {
 			inputs: vec![0],
 			output: 0,
+			disabled: vec![],
+			previous_output: None,
 			nodes: [(
 				0,
 				DocumentNode {

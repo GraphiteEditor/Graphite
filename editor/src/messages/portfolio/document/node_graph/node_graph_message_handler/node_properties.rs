@@ -1,5 +1,4 @@
-use crate::messages::layout::utility_types::layout_widget::*;
-use crate::messages::layout::utility_types::widgets::{button_widgets::*, input_widgets::*};
+use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::utility_types::ImaginateServerStatus;
 use crate::messages::prelude::*;
 
@@ -18,32 +17,31 @@ pub fn string_properties(text: impl Into<String>) -> Vec<LayoutGroup> {
 	vec![LayoutGroup::Row { widgets: vec![widget] }]
 }
 
-fn update_value<T, F: Fn(&T) -> TaggedValue + 'static + Send + Sync>(value: F, node_id: NodeId, input_index: usize) -> WidgetCallback<T> {
-	WidgetCallback::new(move |input_value: &T| {
+fn update_value<T>(value: impl Fn(&T) -> TaggedValue + 'static + Send + Sync, node_id: NodeId, input_index: usize) -> impl Fn(&T) -> Message + 'static + Send + Sync {
+	move |input_value: &T| {
 		NodeGraphMessage::SetInputValue {
-			node: node_id,
+			node_id,
 			input_index,
 			value: value(input_value),
 		}
 		.into()
-	})
+	}
 }
 
 fn expose_widget(node_id: NodeId, index: usize, data_type: FrontendGraphDataType, exposed: bool) -> WidgetHolder {
-	WidgetHolder::new(Widget::ParameterExposeButton(ParameterExposeButton {
-		exposed,
-		data_type,
-		tooltip: "Expose this parameter input in node graph".into(),
-		on_update: WidgetCallback::new(move |_parameter| {
+	ParameterExposeButton::new()
+		.exposed(exposed)
+		.data_type(data_type)
+		.tooltip("Expose this parameter input in node graph")
+		.on_update(move |_parameter| {
 			NodeGraphMessage::ExposeInput {
 				node_id,
 				input_index: index,
 				new_exposed: !exposed,
 			}
 			.into()
-		}),
-		..Default::default()
-	}))
+		})
+		.widget_holder()
 }
 
 fn start_widgets(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, data_type: FrontendGraphDataType, blank_assist: bool) -> Vec<WidgetHolder> {
@@ -64,25 +62,23 @@ fn start_widgets(document_node: &DocumentNode, node_id: NodeId, index: usize, na
 	widgets
 }
 
-fn text_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> Vec<WidgetHolder> {
-	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::Text, blank_assist);
+// fn text_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> Vec<WidgetHolder> {
+// 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::Text, blank_assist);
 
-	if let NodeInput::Value {
-		tagged_value: TaggedValue::String(x),
-		exposed: false,
-	} = &document_node.inputs[index]
-	{
-		widgets.extend_from_slice(&[
-			WidgetHolder::unrelated_separator(),
-			WidgetHolder::new(Widget::TextInput(TextInput {
-				value: x.clone(),
-				on_update: update_value(|x: &TextInput| TaggedValue::String(x.value.clone()), node_id, index),
-				..TextInput::default()
-			})),
-		])
-	}
-	widgets
-}
+// 	if let NodeInput::Value {
+// 		tagged_value: TaggedValue::String(x),
+// 		exposed: false,
+// 	} = &document_node.inputs[index]
+// 	{
+// 		widgets.extend_from_slice(&[
+// 			WidgetHolder::unrelated_separator(),
+// 			TextInput::new(x.clone())
+// 				.on_update(update_value(|x: &TextInput| TaggedValue::String(x.value.clone()), node_id, index))
+// 				.widget_holder(),
+// 		])
+// 	}
+// 	widgets
+// }
 
 fn text_area_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> Vec<WidgetHolder> {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::Text, blank_assist);
@@ -94,11 +90,9 @@ fn text_area_widget(document_node: &DocumentNode, node_id: NodeId, index: usize,
 	{
 		widgets.extend_from_slice(&[
 			WidgetHolder::unrelated_separator(),
-			WidgetHolder::new(Widget::TextAreaInput(TextAreaInput {
-				value: x.clone(),
-				on_update: update_value(|x: &TextAreaInput| TaggedValue::String(x.value.clone()), node_id, index),
-				..TextAreaInput::default()
-			})),
+			TextAreaInput::new(x.clone())
+				.on_update(update_value(|x: &TextAreaInput| TaggedValue::String(x.value.clone()), node_id, index))
+				.widget_holder(),
 		])
 	}
 	widgets
@@ -114,11 +108,9 @@ fn bool_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name
 	{
 		widgets.extend_from_slice(&[
 			WidgetHolder::unrelated_separator(),
-			WidgetHolder::new(Widget::CheckboxInput(CheckboxInput {
-				checked: *x,
-				on_update: update_value(|x: &CheckboxInput| TaggedValue::Bool(x.checked), node_id, index),
-				..CheckboxInput::default()
-			})),
+			CheckboxInput::new(*x)
+				.on_update(update_value(|x: &CheckboxInput| TaggedValue::Bool(x.checked), node_id, index))
+				.widget_holder(),
 		])
 	}
 	widgets
@@ -134,11 +126,22 @@ fn number_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, na
 	{
 		widgets.extend_from_slice(&[
 			WidgetHolder::unrelated_separator(),
-			WidgetHolder::new(Widget::NumberInput(NumberInput {
-				value: Some(x),
-				on_update: update_value(|x: &NumberInput| TaggedValue::F64(x.value.unwrap()), node_id, index),
-				..number_props
-			})),
+			number_props
+				.value(Some(x))
+				.on_update(update_value(|x: &NumberInput| TaggedValue::F64(x.value.unwrap()), node_id, index))
+				.widget_holder(),
+		])
+	} else if let NodeInput::Value {
+		tagged_value: TaggedValue::U32(x),
+		exposed: false,
+	} = document_node.inputs[index]
+	{
+		widgets.extend_from_slice(&[
+			WidgetHolder::unrelated_separator(),
+			number_props
+				.value(Some(x as f64))
+				.on_update(update_value(|x: &NumberInput| TaggedValue::U32(x.value.unwrap() as u32), node_id, index))
+				.widget_holder(),
 		])
 	}
 	widgets
@@ -147,19 +150,17 @@ fn number_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, na
 /// Properties for the input node, with information describing how frames work and a refresh button
 pub fn input_properties(_document_node: &DocumentNode, _node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let information = WidgetHolder::text_widget("The graph's input is the artwork under the frame layer");
-	let refresh_button = WidgetHolder::new(Widget::TextButton(TextButton {
-		label: "Refresh Input".to_string(),
-		tooltip: "Refresh the artwork under the frame".to_string(),
-		on_update: WidgetCallback::new(|_| DocumentMessage::NodeGraphFrameGenerate.into()),
-		..Default::default()
-	}));
+	let refresh_button = TextButton::new("Refresh Input")
+		.tooltip("Refresh the artwork under the frame")
+		.on_update(|_| DocumentMessage::NodeGraphFrameGenerate.into())
+		.widget_holder();
 	vec![LayoutGroup::Row { widgets: vec![information] }, LayoutGroup::Row { widgets: vec![refresh_button] }]
 }
 
 pub fn adjust_hsl_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let hue_shift = number_widget(document_node, node_id, 1, "Hue Shift", NumberInput::new().min(-180.).max(180.).unit("°"), true);
-	let saturation_shift = number_widget(document_node, node_id, 2, "Saturation Shift", NumberInput::new().min(-100.).max(100.).unit("%"), true);
-	let lightness_shift = number_widget(document_node, node_id, 3, "Lightness Shift", NumberInput::new().min(-100.).max(100.).unit("%"), true);
+	let hue_shift = number_widget(document_node, node_id, 1, "Hue Shift", NumberInput::default().min(-180.).max(180.).unit("°"), true);
+	let saturation_shift = number_widget(document_node, node_id, 2, "Saturation Shift", NumberInput::default().min(-100.).max(100.).unit("%"), true);
+	let lightness_shift = number_widget(document_node, node_id, 3, "Lightness Shift", NumberInput::default().min(-100.).max(100.).unit("%"), true);
 
 	vec![
 		LayoutGroup::Row { widgets: hue_shift },
@@ -169,18 +170,26 @@ pub fn adjust_hsl_properties(document_node: &DocumentNode, node_id: NodeId, _con
 }
 
 pub fn brighten_image_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let brightness = number_widget(document_node, node_id, 1, "Brightness", NumberInput::new().min(-255.).max(255.), true);
-	let contrast = number_widget(document_node, node_id, 2, "Contrast", NumberInput::new().min(-255.).max(255.), true);
+	let brightness = number_widget(document_node, node_id, 1, "Brightness", NumberInput::default().min(-255.).max(255.), true);
+	let contrast = number_widget(document_node, node_id, 2, "Contrast", NumberInput::default().min(-255.).max(255.), true);
 
 	vec![LayoutGroup::Row { widgets: brightness }, LayoutGroup::Row { widgets: contrast }]
 }
 
+pub fn blur_image_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let radius = number_widget(document_node, node_id, 1, "Radius", NumberInput::default().min(0.).max(20.).int(), true);
+	let sigma = number_widget(document_node, node_id, 2, "Sigma", NumberInput::default().min(0.).max(10000.), true);
+
+	vec![LayoutGroup::Row { widgets: radius }, LayoutGroup::Row { widgets: sigma }]
+}
+
 pub fn adjust_gamma_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let gamma = number_widget(document_node, node_id, 1, "Gamma", NumberInput::new().min(0.01), true);
+	let gamma = number_widget(document_node, node_id, 1, "Gamma", NumberInput::default().min(0.01), true);
 
 	vec![LayoutGroup::Row { widgets: gamma }]
 }
 
+#[cfg(feature = "gpu")]
 pub fn gpu_map_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let map = text_widget(document_node, node_id, 1, "Map", true);
 
@@ -188,26 +197,33 @@ pub fn gpu_map_properties(document_node: &DocumentNode, node_id: NodeId, _contex
 }
 
 pub fn multiply_opacity(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let gamma = number_widget(document_node, node_id, 1, "Factor", NumberInput::new().min(0.).max(1.), true);
+	let gamma = number_widget(document_node, node_id, 1, "Factor", NumberInput::default().min(0.).max(1.), true);
 
 	vec![LayoutGroup::Row { widgets: gamma }]
 }
 
 pub fn posterize_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let value = number_widget(document_node, node_id, 1, "Levels", NumberInput::new().min(2.).max(255.).int(), true);
+	let value = number_widget(document_node, node_id, 1, "Levels", NumberInput::default().min(2.).max(255.).int(), true);
 
 	vec![LayoutGroup::Row { widgets: value }]
 }
 
+#[cfg(feature = "quantization")]
+pub fn quantize_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let value = number_widget(document_node, node_id, 1, "Levels", NumberInput::default().min(1.).max(1000.).int(), true);
+	let index = number_widget(document_node, node_id, 1, "Fit Fn Index", NumberInput::default().min(0.).max(2.).int(), true);
+
+	vec![LayoutGroup::Row { widgets: value }, LayoutGroup::Row { widgets: index }]
+}
 pub fn exposure_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let value = number_widget(document_node, node_id, 1, "Value", NumberInput::new().min(-3.).max(3.), true);
+	let value = number_widget(document_node, node_id, 1, "Value", NumberInput::default().min(-3.).max(3.), true);
 
 	vec![LayoutGroup::Row { widgets: value }]
 }
 
 pub fn add_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let operand = |name: &str, index| {
-		let widgets = number_widget(document_node, node_id, index, name, NumberInput::new(), true);
+		let widgets = number_widget(document_node, node_id, index, name, NumberInput::default(), true);
 
 		LayoutGroup::Row { widgets }
 	};
@@ -227,21 +243,17 @@ pub fn _transform_properties(document_node: &DocumentNode, node_id: NodeId, _con
 		{
 			widgets.extend_from_slice(&[
 				WidgetHolder::unrelated_separator(),
-				WidgetHolder::new(Widget::NumberInput(NumberInput {
-					value: Some(vec2.x),
-					label: "X".into(),
-					unit: " px".into(),
-					on_update: update_value(move |number_input: &NumberInput| TaggedValue::DVec2(DVec2::new(number_input.value.unwrap(), vec2.y)), node_id, index),
-					..NumberInput::default()
-				})),
+				NumberInput::new(Some(vec2.x))
+					.label("X")
+					.unit(" px")
+					.on_update(update_value(move |input: &NumberInput| TaggedValue::DVec2(DVec2::new(input.value.unwrap(), vec2.y)), node_id, index))
+					.widget_holder(),
 				WidgetHolder::unrelated_separator(),
-				WidgetHolder::new(Widget::NumberInput(NumberInput {
-					value: Some(vec2.y),
-					label: "Y".into(),
-					unit: " px".into(),
-					on_update: update_value(move |number_input: &NumberInput| TaggedValue::DVec2(DVec2::new(vec2.x, number_input.value.unwrap())), node_id, index),
-					..NumberInput::default()
-				})),
+				NumberInput::new(Some(vec2.y))
+					.label("Y")
+					.unit(" px")
+					.on_update(update_value(move |input: &NumberInput| TaggedValue::DVec2(DVec2::new(vec2.x, input.value.unwrap())), node_id, index))
+					.widget_holder(),
 			]);
 		}
 
@@ -260,15 +272,13 @@ pub fn _transform_properties(document_node: &DocumentNode, node_id: NodeId, _con
 		{
 			widgets.extend_from_slice(&[
 				WidgetHolder::unrelated_separator(),
-				WidgetHolder::new(Widget::NumberInput(NumberInput {
-					value: Some(val.to_degrees()),
-					unit: "°".into(),
-					mode: NumberInputMode::Range,
-					range_min: Some(-180.),
-					range_max: Some(180.),
-					on_update: update_value(|number_input: &NumberInput| TaggedValue::F64(number_input.value.unwrap().to_radians()), node_id, index),
-					..NumberInput::default()
-				})),
+				NumberInput::new(Some(val.to_degrees()))
+					.unit("°")
+					.mode(NumberInputMode::Range)
+					.range_min(Some(-180.))
+					.range_max(Some(180.))
+					.on_update(update_value(|number_input: &NumberInput| TaggedValue::F64(number_input.value.unwrap().to_radians()), node_id, index))
+					.widget_holder(),
 			]);
 		}
 
@@ -287,21 +297,15 @@ pub fn _transform_properties(document_node: &DocumentNode, node_id: NodeId, _con
 		{
 			widgets.extend_from_slice(&[
 				WidgetHolder::unrelated_separator(),
-				WidgetHolder::new(Widget::NumberInput(NumberInput {
-					value: Some(vec2.x),
-					label: "X".into(),
-					unit: "".into(),
-					on_update: update_value(move |number_input: &NumberInput| TaggedValue::DVec2(DVec2::new(number_input.value.unwrap(), vec2.y)), node_id, index),
-					..NumberInput::default()
-				})),
+				NumberInput::new(Some(vec2.x))
+					.label("X")
+					.on_update(update_value(move |input: &NumberInput| TaggedValue::DVec2(DVec2::new(input.value.unwrap(), vec2.y)), node_id, index))
+					.widget_holder(),
 				WidgetHolder::unrelated_separator(),
-				WidgetHolder::new(Widget::NumberInput(NumberInput {
-					value: Some(vec2.y),
-					label: "Y".into(),
-					unit: "".into(),
-					on_update: update_value(move |number_input: &NumberInput| TaggedValue::DVec2(DVec2::new(vec2.x, number_input.value.unwrap())), node_id, index),
-					..NumberInput::default()
-				})),
+				NumberInput::new(Some(vec2.y))
+					.label("Y")
+					.on_update(update_value(move |input: &NumberInput| TaggedValue::DVec2(DVec2::new(vec2.x, input.value.unwrap())), node_id, index))
+					.widget_holder(),
 			]);
 		}
 
@@ -350,34 +354,28 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 		let widgets = vec![
 			WidgetHolder::text_widget("Server"),
 			WidgetHolder::unrelated_separator(),
-			WidgetHolder::new(Widget::IconButton(IconButton {
-				size: 24,
-				icon: "Settings".into(),
-				tooltip: "Preferences: Imaginate".into(),
-				on_update: WidgetCallback::new(|_| DialogMessage::RequestPreferencesDialog.into()),
-				..Default::default()
-			})),
+			IconButton::new("Settings", 24)
+				.tooltip("Preferences: Imaginate")
+				.on_update(|_| DialogMessage::RequestPreferencesDialog.into())
+				.widget_holder(),
 			WidgetHolder::unrelated_separator(),
 			WidgetHolder::bold_text(status),
 			WidgetHolder::related_separator(),
-			WidgetHolder::new(Widget::IconButton(IconButton {
-				size: 24,
-				icon: "Reload".into(),
-				tooltip: "Refresh connection status".into(),
-				on_update: WidgetCallback::new(|_| PortfolioMessage::ImaginateCheckServerStatus.into()),
-				..Default::default()
-			})),
+			IconButton::new("Reload", 24)
+				.tooltip("Refresh connection status")
+				.on_update(|_| PortfolioMessage::ImaginateCheckServerStatus.into())
+				.widget_holder(),
 		];
 		LayoutGroup::Row { widgets }.with_tooltip("Connection status to the server that computes generated images")
 	};
 
-	let &NodeInput::Value {tagged_value: TaggedValue::ImaginateStatus( imaginate_status),..} = status_value else{
+	let &NodeInput::Value {tagged_value: TaggedValue::ImaginateStatus( imaginate_status),..} = status_value else {
 		panic!("Invalid status input")
 	};
-	let NodeInput::Value {tagged_value: TaggedValue::RcImage( cached_data),..} = cached_value else{
+	let NodeInput::Value {tagged_value: TaggedValue::RcImage( cached_data),..} = cached_value else {
 		panic!("Invalid cached image input")
 	};
-	let &NodeInput::Value {tagged_value: TaggedValue::F64( percent_complete),..} = complete_value else{
+	let &NodeInput::Value {tagged_value: TaggedValue::F64( percent_complete),..} = complete_value else {
 		panic!("Invalid percent complete input")
 	};
 	let use_base_image = if let &NodeInput::Value {
@@ -431,70 +429,58 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 		match imaginate_status {
 			ImaginateStatus::Beginning | ImaginateStatus::Uploading(_) => {
 				widgets.extend_from_slice(&assist_separators);
-				widgets.push(WidgetHolder::new(Widget::TextButton(TextButton {
-					label: "Beginning...".into(),
-					tooltip: "Sending image generation request to the server".into(),
-					disabled: true,
-					..Default::default()
-				})));
+				widgets.push(TextButton::new("Beginning...").tooltip("Sending image generation request to the server").disabled(true).widget_holder());
 			}
 			ImaginateStatus::Generating => {
 				widgets.extend_from_slice(&assist_separators);
-				widgets.push(WidgetHolder::new(Widget::TextButton(TextButton {
-					label: "Terminate".into(),
-					tooltip: "Cancel the in-progress image generation and keep the latest progress".into(),
-					on_update: WidgetCallback::new(move |_| {
-						DocumentMessage::NodeGraphFrameImaginateTerminate {
-							layer_path: layer_path.clone(),
-							node_path: imaginate_node.clone(),
-						}
-						.into()
-					}),
-					..Default::default()
-				})));
+				widgets.push(
+					TextButton::new("Terminate")
+						.tooltip("Cancel the in-progress image generation and keep the latest progress")
+						.on_update(move |_| {
+							DocumentMessage::NodeGraphFrameImaginateTerminate {
+								layer_path: layer_path.clone(),
+								node_path: imaginate_node.clone(),
+							}
+							.into()
+						})
+						.widget_holder(),
+				);
 			}
 			ImaginateStatus::Terminating => {
 				widgets.extend_from_slice(&assist_separators);
-				widgets.push(WidgetHolder::new(Widget::TextButton(TextButton {
-					label: "Terminating...".into(),
-					tooltip: "Waiting on the final image generated after termination".into(),
-					disabled: true,
-					..Default::default()
-				})));
+				widgets.push(
+					TextButton::new("Terminating...")
+						.tooltip("Waiting on the final image generated after termination")
+						.disabled(true)
+						.widget_holder(),
+				);
 			}
 			ImaginateStatus::Idle | ImaginateStatus::Terminated => widgets.extend_from_slice(&[
-				WidgetHolder::new(Widget::IconButton(IconButton {
-					size: 24,
-					icon: "Random".into(),
-					tooltip: "Generate with a new random seed".into(),
-					on_update: WidgetCallback::new(move |_| {
+				IconButton::new("Random", 24)
+					.tooltip("Generate with a new random seed")
+					.on_update(move |_| {
 						DocumentMessage::NodeGraphFrameImaginateRandom {
 							imaginate_node: imaginate_node.clone(),
 						}
 						.into()
-					}),
-					..Default::default()
-				})),
+					})
+					.widget_holder(),
 				WidgetHolder::unrelated_separator(),
-				WidgetHolder::new(Widget::TextButton(TextButton {
-					label: "Generate".into(),
-					tooltip: "Fill layer frame by generating a new image".into(),
-					on_update: WidgetCallback::new(move |_| {
+				TextButton::new("Generate")
+					.tooltip("Fill layer frame by generating a new image")
+					.on_update(move |_| {
 						DocumentMessage::NodeGraphFrameImaginate {
 							imaginate_node: imaginate_node_1.clone(),
 						}
 						.into()
-					}),
-					..Default::default()
-				})),
+					})
+					.widget_holder(),
 				WidgetHolder::related_separator(),
-				WidgetHolder::new(Widget::TextButton(TextButton {
-					label: "Clear".into(),
-					tooltip: "Remove generated image from the layer frame".into(),
-					disabled: cached_data.is_none(),
-					on_update: update_value(|_| TaggedValue::RcImage(None), node_id, cached_index),
-					..Default::default()
-				})),
+				TextButton::new("Clear")
+					.tooltip("Remove generated image from the layer frame")
+					.disabled(cached_data.is_none())
+					.on_update(update_value(|_| TaggedValue::RcImage(None), node_id, cached_index))
+					.widget_holder(),
 			]),
 		}
 		LayoutGroup::Row { widgets }.with_tooltip("Buttons that control the image generation process")
@@ -511,21 +497,16 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 		{
 			widgets.extend_from_slice(&[
 				WidgetHolder::unrelated_separator(),
-				WidgetHolder::new(Widget::IconButton(IconButton {
-					size: 24,
-					icon: "Regenerate".into(),
-					tooltip: "Set a new random seed".into(),
-					on_update: update_value(move |_| TaggedValue::F64((generate_uuid() >> 1) as f64), node_id, seed_index),
-					..Default::default()
-				})),
+				IconButton::new("Regenerate", 24)
+					.tooltip("Set a new random seed")
+					.on_update(update_value(move |_| TaggedValue::F64((generate_uuid() >> 1) as f64), node_id, seed_index))
+					.widget_holder(),
 				WidgetHolder::unrelated_separator(),
-				WidgetHolder::new(Widget::NumberInput(NumberInput {
-					value: Some(seed),
-					min: Some(0.),
-					is_integer: true,
-					on_update: update_value(move |input: &NumberInput| TaggedValue::F64(input.value.unwrap()), node_id, seed_index),
-					..Default::default()
-				})),
+				NumberInput::new(Some(seed))
+					.min(0.)
+					.int()
+					.on_update(update_value(move |input: &NumberInput| TaggedValue::F64(input.value.unwrap()), node_id, seed_index))
+					.widget_holder(),
 			])
 		}
 		// Note: Limited by f64. You cannot even have all the possible u64 values :)
@@ -561,25 +542,21 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 			let layer_path = context.layer_path.to_vec();
 			widgets.extend_from_slice(&[
 				WidgetHolder::unrelated_separator(),
-				WidgetHolder::new(Widget::IconButton(IconButton {
-					size: 24,
-					icon: "Rescale".into(),
-					tooltip: "Set the Node Graph Frame layer dimensions to this resolution".into(),
-					on_update: WidgetCallback::new(move |_| {
+				IconButton::new("Rescale", 24)
+					.tooltip("Set the Node Graph Frame layer dimensions to this resolution")
+					.on_update(move |_| {
 						Operation::SetLayerScaleAroundPivot {
 							path: layer_path.clone(),
 							new_scale: vec2.into(),
 						}
 						.into()
-					}),
-					..Default::default()
-				})),
+					})
+					.widget_holder(),
 				WidgetHolder::unrelated_separator(),
-				WidgetHolder::new(Widget::CheckboxInput(CheckboxInput {
-					checked: !dimensions_is_auto,
-					icon: "Edit".into(),
-					tooltip: "Set a custom resolution instead of using the frame's rounded dimensions".into(),
-					on_update: update_value(
+				CheckboxInput::new(!dimensions_is_auto)
+					.icon("Edit")
+					.tooltip("Set a custom resolution instead of using the frame's rounded dimensions")
+					.on_update(update_value(
 						move |checkbox_input: &CheckboxInput| {
 							if checkbox_input.checked {
 								TaggedValue::OptionalDVec2(Some(vec2))
@@ -589,35 +566,30 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 						},
 						node_id,
 						resolution_index,
-					),
-					..CheckboxInput::default()
-				})),
+					))
+					.widget_holder(),
 				WidgetHolder::unrelated_separator(),
-				WidgetHolder::new(Widget::NumberInput(NumberInput {
-					value: Some(vec2.x),
-					label: "W".into(),
-					unit: " px".into(),
-					disabled: dimensions_is_auto,
-					on_update: update_value(
+				NumberInput::new(Some(vec2.x))
+					.label("W")
+					.unit(" px")
+					.disabled(dimensions_is_auto)
+					.on_update(update_value(
 						move |number_input: &NumberInput| TaggedValue::OptionalDVec2(round(DVec2::new(number_input.value.unwrap(), vec2.y))),
 						node_id,
 						resolution_index,
-					),
-					..NumberInput::default()
-				})),
+					))
+					.widget_holder(),
 				WidgetHolder::related_separator(),
-				WidgetHolder::new(Widget::NumberInput(NumberInput {
-					value: Some(vec2.y),
-					label: "H".into(),
-					unit: " px".into(),
-					disabled: dimensions_is_auto,
-					on_update: update_value(
+				NumberInput::new(Some(vec2.y))
+					.label("H")
+					.unit(" px")
+					.disabled(dimensions_is_auto)
+					.on_update(update_value(
 						move |number_input: &NumberInput| TaggedValue::OptionalDVec2(round(DVec2::new(vec2.x, number_input.value.unwrap()))),
 						node_id,
 						resolution_index,
-					),
-					..NumberInput::default()
-				})),
+					))
+					.widget_holder(),
 			])
 		}
 		LayoutGroup::Row { widgets }.with_tooltip(
@@ -629,7 +601,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 	};
 
 	let sampling_steps = {
-		let widgets = number_widget(document_node, node_id, samples_index, "Sampling Steps", NumberInput::new().min(0.).max(150.).int(), true);
+		let widgets = number_widget(document_node, node_id, samples_index, "Sampling Steps", NumberInput::default().min(0.).max(150.).int(), true);
 		LayoutGroup::Row { widgets }.with_tooltip("Number of iterations to improve the image generation quality, with diminishing returns around 40 when using the Euler A sampling method")
 	};
 
@@ -644,32 +616,24 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 			let sampling_methods = ImaginateSamplingMethod::list();
 			let mut entries = Vec::with_capacity(sampling_methods.len());
 			for method in sampling_methods {
-				entries.push(DropdownEntryData {
-					label: method.to_string(),
-					on_update: update_value(move |_| TaggedValue::ImaginateSamplingMethod(method), node_id, sampling_method_index),
-					..DropdownEntryData::default()
-				});
+				entries.push(DropdownEntryData::new(method.to_string()).on_update(update_value(move |_| TaggedValue::ImaginateSamplingMethod(method), node_id, sampling_method_index)));
 			}
 			let entries = vec![entries];
 
 			widgets.extend_from_slice(&[
 				WidgetHolder::unrelated_separator(),
-				WidgetHolder::new(Widget::DropdownInput(DropdownInput {
-					entries,
-					selected_index: Some(sampling_method as u32),
-					..Default::default()
-				})),
+				DropdownInput::new(entries).selected_index(Some(sampling_method as u32)).widget_holder(),
 			]);
 		}
 		LayoutGroup::Row { widgets }.with_tooltip("Algorithm used to generate the image during each sampling step")
 	};
 
 	let text_guidance = {
-		let widgets = number_widget(document_node, node_id, text_guidance_index, "Prompt Guidance", NumberInput::new().min(0.).max(30.), true);
+		let widgets = number_widget(document_node, node_id, text_guidance_index, "Prompt Guidance", NumberInput::default().min(0.).max(30.), true);
 		LayoutGroup::Row { widgets }.with_tooltip(
 			"Amplification of the text prompt's influence over the outcome. At 0, the prompt is entirely ignored.\n\
 			\n\
-			Lower values are more creative and exploratory. Higher values are more literal and uninspired, but may be lower quality.\n\
+			Lower values are more creative and exploratory. Higher values are more literal and uninspired.\n\
 			\n\
 			This parameter is otherwise known as CFG (classifier-free guidance).",
 		)
@@ -695,7 +659,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 		LayoutGroup::Row { widgets }.with_tooltip("Generate an image based upon the bitmap data plugged into this node")
 	};
 	let image_creativity = {
-		let props = NumberInput::new().percentage().disabled(!use_base_image);
+		let props = NumberInput::default().percentage().disabled(!use_base_image);
 		let widgets = number_widget(document_node, node_id, img_creativity_index, "Image Creativity", props, true);
 		LayoutGroup::Row { widgets }.with_tooltip(
 			"Strength of the artistic liberties allowing changes from the input image. The image is unchanged at 0% and completely different at 100%.\n\
@@ -725,14 +689,10 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 
 			widgets.extend_from_slice(&[
 				WidgetHolder::unrelated_separator(),
-				WidgetHolder::new(Widget::LayerReferenceInput(LayerReferenceInput {
-					value: layer_path.clone(),
-					layer_name: layer_reference_input_layer_name.cloned(),
-					layer_type: layer_reference_input_layer_type.cloned(),
-					disabled: !use_base_image,
-					on_update: update_value(|input: &LayerReferenceInput| TaggedValue::LayerPath(input.value.clone()), node_id, mask_index),
-					..Default::default()
-				})),
+				LayerReferenceInput::new(layer_path.clone(), layer_reference_input_layer_name.cloned(), layer_reference_input_layer_type.cloned())
+					.disabled(!use_base_image)
+					.on_update(update_value(|input: &LayerReferenceInput| TaggedValue::LayerPath(input.value.clone()), node_id, mask_index))
+					.widget_holder(),
 			]);
 		}
 		LayoutGroup::Row { widgets }.with_tooltip(
@@ -769,18 +729,14 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 			{
 				widgets.extend_from_slice(&[
 					WidgetHolder::unrelated_separator(),
-					WidgetHolder::new(Widget::RadioInput(RadioInput {
-						entries: [(true, "Inpaint"), (false, "Outpaint")]
+					RadioInput::new(
+						[(true, "Inpaint"), (false, "Outpaint")]
 							.into_iter()
-							.map(|(paint, name)| RadioEntryData {
-								label: name.to_string(),
-								on_update: update_value(move |_| TaggedValue::Bool(paint), node_id, inpaint_index),
-								..Default::default()
-							})
+							.map(|(paint, name)| RadioEntryData::new(name).on_update(update_value(move |_| TaggedValue::Bool(paint), node_id, inpaint_index)))
 							.collect(),
-						selected_index: 1 - in_paint as u32,
-						..Default::default()
-					})),
+					)
+					.selected_index(1 - in_paint as u32)
+					.widget_holder(),
 				]);
 			}
 			LayoutGroup::Row { widgets }.with_tooltip(
@@ -793,7 +749,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 		};
 
 		let blur_radius = {
-			let widgets = number_widget(document_node, node_id, mask_blur_index, "Mask Blur", NumberInput::new().unit(" px").min(0.).max(25.).int(), true);
+			let widgets = number_widget(document_node, node_id, mask_blur_index, "Mask Blur", NumberInput::default().unit(" px").min(0.).max(25.).int(), true);
 			LayoutGroup::Row { widgets }.with_tooltip("Blur radius for the mask. Useful for softening sharp edges to blend the masked area with the rest of the image.")
 		};
 
@@ -808,21 +764,13 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 				let mask_fill_content_modes = ImaginateMaskStartingFill::list();
 				let mut entries = Vec::with_capacity(mask_fill_content_modes.len());
 				for mode in mask_fill_content_modes {
-					entries.push(DropdownEntryData {
-						label: mode.to_string(),
-						on_update: update_value(move |_| TaggedValue::ImaginateMaskStartingFill(mode), node_id, mask_fill_index),
-						..DropdownEntryData::default()
-					});
+					entries.push(DropdownEntryData::new(mode.to_string()).on_update(update_value(move |_| TaggedValue::ImaginateMaskStartingFill(mode), node_id, mask_fill_index)));
 				}
 				let entries = vec![entries];
 
 				widgets.extend_from_slice(&[
 					WidgetHolder::unrelated_separator(),
-					WidgetHolder::new(Widget::DropdownInput(DropdownInput {
-						entries,
-						selected_index: Some(starting_fill as u32),
-						..Default::default()
-					})),
+					DropdownInput::new(entries).selected_index(Some(starting_fill as u32)).widget_holder(),
 				]);
 			}
 			LayoutGroup::Row { widgets }.with_tooltip(

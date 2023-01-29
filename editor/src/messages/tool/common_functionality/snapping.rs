@@ -1,3 +1,4 @@
+use super::shape_editor::ManipulatorPointInfo;
 use crate::application::generate_uuid;
 use crate::consts::{
 	COLOR_ACCENT, SNAP_AXIS_OVERLAY_FADE_DISTANCE, SNAP_AXIS_TOLERANCE, SNAP_AXIS_UNSNAPPED_OPACITY, SNAP_POINT_OVERLAY_FADE_FAR, SNAP_POINT_OVERLAY_FADE_NEAR, SNAP_POINT_SIZE, SNAP_POINT_TOLERANCE,
@@ -210,13 +211,25 @@ impl SnapManager {
 
 	/// Gets a list of snap targets for the X and Y axes (if specified) in Viewport coords for the target layers (usually all layers or all non-selected layers.)
 	/// This should be called at the start of a drag.
-	pub fn start_snap(&mut self, document_message_handler: &DocumentMessageHandler, bounding_boxes: impl Iterator<Item = [DVec2; 2]>, snap_x: bool, snap_y: bool) {
+	pub fn start_snap(
+		&mut self,
+		document_message_handler: &DocumentMessageHandler,
+		input: &InputPreprocessorMessageHandler,
+		bounding_boxes: impl Iterator<Item = [DVec2; 2]>,
+		snap_x: bool,
+		snap_y: bool,
+	) {
 		if document_message_handler.snapping_enabled {
 			self.snap_x = snap_x;
 			self.snap_y = snap_y;
 
 			// Could be made into sorted Vec or a HashSet for more performant lookups.
-			self.bound_targets = Some(bounding_boxes.flat_map(expand_bounds).collect());
+			self.bound_targets = Some(
+				bounding_boxes
+					.flat_map(expand_bounds)
+					.filter(|&pos| pos.x >= 0. && pos.y >= 0. && pos.x < input.viewport_bounds.size().x && pos.y <= input.viewport_bounds.size().y)
+					.collect(),
+			);
 			self.point_targets = None;
 		}
 	}
@@ -224,8 +237,9 @@ impl SnapManager {
 	/// Add arbitrary snapping points
 	///
 	/// This should be called after start_snap
-	pub fn add_snap_points(&mut self, document_message_handler: &DocumentMessageHandler, snap_points: impl Iterator<Item = DVec2>) {
+	pub fn add_snap_points(&mut self, document_message_handler: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, snap_points: impl Iterator<Item = DVec2>) {
 		if document_message_handler.snapping_enabled {
+			let snap_points = snap_points.filter(|&pos| pos.x >= 0. && pos.y >= 0. && pos.x < input.viewport_bounds.size().x && pos.y <= input.viewport_bounds.size().y);
 			if let Some(targets) = &mut self.point_targets {
 				targets.extend(snap_points);
 			} else {
@@ -237,7 +251,15 @@ impl SnapManager {
 	/// Add the [ManipulatorGroup]s (optionally including handles) of the specified shape layer to the snapping points
 	///
 	/// This should be called after start_snap
-	pub fn add_snap_path(&mut self, document_message_handler: &DocumentMessageHandler, layer: &Layer, path: &[LayerId], include_handles: bool, ignore_points: &[(&[LayerId], u64, ManipulatorType)]) {
+	pub fn add_snap_path(
+		&mut self,
+		document_message_handler: &DocumentMessageHandler,
+		input: &InputPreprocessorMessageHandler,
+		layer: &Layer,
+		path: &[LayerId],
+		include_handles: bool,
+		ignore_points: &[ManipulatorPointInfo],
+	) {
 		if let LayerDataType::Shape(shape_layer) = &layer.data {
 			let transform = document_message_handler.document_legacy.multiply_transforms(path).unwrap();
 			let snap_points = shape_layer
@@ -256,10 +278,16 @@ impl SnapManager {
 					}
 				})
 				.filter_map(|(id, point)| point.as_ref().map(|val| (id, val)))
-				.filter(|(id, point)| !ignore_points.contains(&(path, *id, point.manipulator_type)))
+				.filter(|(id, point)| {
+					!ignore_points.contains(&ManipulatorPointInfo {
+						shape_layer_path: path,
+						manipulator_group_id: *id,
+						manipulator_type: point.manipulator_type,
+					})
+				})
 				.map(|(_id, point)| DVec2::new(point.position.x, point.position.y))
 				.map(|pos| transform.transform_point2(pos));
-			self.add_snap_points(document_message_handler, snap_points);
+			self.add_snap_points(document_message_handler, input, snap_points);
 		}
 	}
 
@@ -267,14 +295,15 @@ impl SnapManager {
 	pub fn add_all_document_handles(
 		&mut self,
 		document_message_handler: &DocumentMessageHandler,
+		input: &InputPreprocessorMessageHandler,
 		include_handles: &[&[LayerId]],
 		exclude: &[&[LayerId]],
-		ignore_points: &[(&[LayerId], u64, ManipulatorType)],
+		ignore_points: &[ManipulatorPointInfo],
 	) {
 		for path in document_message_handler.all_layers() {
 			if !exclude.contains(&path) {
 				let layer = document_message_handler.document_legacy.layer(path).expect("Could not get layer for snapping");
-				self.add_snap_path(document_message_handler, layer, path, include_handles.contains(&path), ignore_points);
+				self.add_snap_path(document_message_handler, input, layer, path, include_handles.contains(&path), ignore_points);
 			}
 		}
 	}

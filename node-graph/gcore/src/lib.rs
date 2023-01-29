@@ -1,4 +1,4 @@
-#![no_std]
+#![cfg_attr(not(feature = "std"), no_std)]
 
 #[cfg(feature = "alloc")]
 extern crate alloc;
@@ -15,6 +15,7 @@ use async_trait::async_trait;
 pub mod generic;
 pub mod ops;
 pub mod structural;
+pub mod uuid;
 pub mod value;
 
 #[cfg(feature = "gpu")]

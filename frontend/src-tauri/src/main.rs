@@ -1,18 +1,19 @@
 #![cfg_attr(all(not(debug_assertions), target_os = "windows"), windows_subsystem = "windows")]
 
-use std::sync::Arc;
+use graphite_editor::application::Editor;
+use graphite_editor::messages::frontend::utility_types::FrontendImageData;
+use graphite_editor::messages::prelude::*;
 
 use axum::body::StreamBody;
 use axum::extract::Path;
 use axum::http;
 use axum::response::IntoResponse;
-use axum::{routing::get, Router};
+use axum::routing::get;
+use axum::Router;
 use fern::colors::{Color, ColoredLevelConfig};
-use graphite_editor::application::Editor;
-use graphite_editor::messages::frontend::utility_types::FrontendImageData;
-use graphite_editor::messages::prelude::*;
 use http::{Response, StatusCode};
 use std::collections::HashMap;
+use std::sync::Arc;
 use std::sync::Mutex;
 use tauri::Manager;
 
@@ -32,7 +33,8 @@ async fn respond_to(id: Path<String>) -> impl IntoResponse {
 	builder.body(StreamBody::new(stream)).unwrap()
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
 	println!("Starting server...");
 
 	let colors = ColoredLevelConfig::new().debug(Color::Magenta).info(Color::Green).error(Color::Red);
@@ -113,8 +115,6 @@ fn handle_message(message: String) -> String {
 		let serialized = ron::to_string(&send_frontend_message_to_js(response.clone())).unwrap();
 		if let Err(error) = ron::from_str::<FrontendMessage>(&serialized) {
 			log::error!("Error deserializing message: {}", error);
-			log::debug!("{:#?}", response);
-			log::debug!("{}", serialized);
 		}
 	}
 

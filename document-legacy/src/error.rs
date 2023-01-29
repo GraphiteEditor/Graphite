@@ -9,16 +9,15 @@ pub enum DocumentError {
 	IndexOutOfBounds,
 	NotAFolder,
 	NonReorderableSelection,
-	NotAShape,
+	NotShape,
 	NotText,
-	NotAnImage,
-	NotAnImaginate,
+	NotNodeGraph,
 	InvalidFile(String),
+	BooleanOperationError(BooleanOperationError),
 }
 
-// TODO: change how BooleanOperationErrors are handled
 impl From<BooleanOperationError> for DocumentError {
 	fn from(err: BooleanOperationError) -> Self {
-		DocumentError::InvalidFile(format!("{:?}", err))
+		DocumentError::BooleanOperationError(err)
 	}
 }

@@ -2,7 +2,7 @@
 name = "graphite-wasm"
 publish = false
 version = "0.0.0"
-rust-version = "1.65.0"
+rust-version = "1.66.0"
 authors = ["Graphite Authors <contact@graphite.rs>"]
 edition = "2021"
 readme = "../../README.md"
@@ -12,6 +12,7 @@ license = "Apache-2.0"
 
 [features]
 tauri = ["ron"]
+gpu = ["editor/gpu"]
 default = []
 
 [lib]
@@ -21,6 +22,7 @@ crate-type = ["cdylib", "rlib"]
 editor = { path = "../../editor", package = "graphite-editor" }
 document-legacy = { path = "../../document-legacy", package = "graphite-document-legacy" }
 graph-craft = { path = "../../node-graph/graph-craft" }
+graphene-core = { path = "../../node-graph/gcore", features = ["async", "std", "alloc"] }
 log = "0.4"
 serde = { version = "1.0", features = ["derive"] }
 wasm-bindgen = { version = "0.2.73" }

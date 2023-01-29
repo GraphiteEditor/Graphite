@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 ///     /            |            \
 /// "Anchor"    "InHandle"    "OutHandle"    <- These are ManipulatorPoints and the only editable "primitive"
 /// ```
-#[derive(PartialEq, Clone, Debug, Serialize, Deserialize, Default)]
+#[derive(PartialEq, Clone, Debug, Serialize, Deserialize, Default, specta::Type)]
 pub struct ManipulatorGroup {
 	/// Editable points for the anchor and handles.
 	pub points: [Option<ManipulatorPoint>; 3],
@@ -78,12 +78,23 @@ impl ManipulatorGroup {
 	}
 
 	/// Finds the closest [ManipulatorPoint] owned by this [ManipulatorGroup]. This may return the anchor or either handle.
-	pub fn closest_point(&self, transform_space: &DAffine2, target: glam::DVec2) -> usize {
+	pub fn closest_point(&self, transform_space: &DAffine2, target: glam::DVec2, hide_handle_distance: f64) -> usize {
 		let mut closest_index: usize = 0;
 		let mut closest_distance_squared: f64 = f64::MAX; // Not ideal
 		for (index, point) in self.points.iter().enumerate() {
 			if let Some(point) = point {
-				let distance_squared = transform_space.transform_point2(point.position).distance_squared(target);
+				let transfomed_point = transform_space.transform_point2(point.position);
+
+				// Don't check handles under the anchor
+				if index != ManipulatorType::Anchor as usize {
+					if let Some(anchor) = &self.points[ManipulatorType::Anchor] {
+						if transfomed_point.distance_squared(transform_space.transform_point2(anchor.position)) < hide_handle_distance * hide_handle_distance {
+							continue;
+						}
+					}
+				}
+
+				let distance_squared = transfomed_point.distance_squared(target);
 				if distance_squared < closest_distance_squared {
 					closest_distance_squared = distance_squared;
 					closest_index = index;
@@ -94,9 +105,8 @@ impl ManipulatorGroup {
 	}
 
 	/// Move the selected points by the provided transform.
-	pub fn move_selected_points(&mut self, delta: DVec2) {
+	pub fn move_selected_points(&mut self, delta: DVec2, mirror_distance: bool) {
 		let mirror_angle = self.editor_state.mirror_angle_between_handles;
-		let mirror_distance = self.editor_state.mirror_distance_between_handles;
 
 		// Move the point absolutely or relatively depending on if the point is under the cursor (the last selected point)
 		let move_point = |point: &mut ManipulatorPoint, delta: DVec2| {
@@ -259,10 +269,7 @@ impl ManipulatorGroup {
 	}
 
 	/// Set the mirroring state
-	pub fn toggle_mirroring(&mut self, toggle_distance: bool, toggle_angle: bool) {
-		if toggle_distance {
-			self.editor_state.mirror_distance_between_handles = !self.editor_state.mirror_distance_between_handles;
-		}
+	pub fn toggle_mirroring(&mut self, toggle_angle: bool) {
 		if toggle_angle {
 			self.editor_state.mirror_angle_between_handles = !self.editor_state.mirror_angle_between_handles;
 		}
@@ -290,15 +297,10 @@ impl ManipulatorGroup {
 pub struct ManipulatorGroupEditorState {
 	// Whether the angle between the handles should be maintained
 	pub mirror_angle_between_handles: bool,
-	// Whether the distance between the handles should be equidistant to the anchor
-	pub mirror_distance_between_handles: bool,
 }
 
 impl Default for ManipulatorGroupEditorState {
 	fn default() -> Self {
-		Self {
-			mirror_angle_between_handles: true,
-			mirror_distance_between_handles: false,
-		}
+		Self { mirror_angle_between_handles: true }
 	}
 }
