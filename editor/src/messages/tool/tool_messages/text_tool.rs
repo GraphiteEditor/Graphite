@@ -10,6 +10,7 @@ use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, ToolActionHan
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 
 use document_legacy::intersection::Quad;
+use document_legacy::layers::layer_info::LayerDataType;
 use document_legacy::layers::style::{self, Fill, RenderData, Stroke};
 use document_legacy::LayerId;
 use document_legacy::Operation;
