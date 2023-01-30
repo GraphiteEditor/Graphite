@@ -1,12 +1,11 @@
 use crate::boolean_ops::composite_boolean_operation;
 use crate::intersection::Quad;
 use crate::layers::folder_layer::FolderLayer;
-use crate::layers::image_layer::ImageLayer;
 use crate::layers::layer_info::{Layer, LayerData, LayerDataType, LayerDataTypeDiscriminant};
 use crate::layers::nodegraph_layer::NodeGraphFrameLayer;
 use crate::layers::shape_layer::ShapeLayer;
 use crate::layers::style::RenderData;
-use crate::layers::text_layer::{Font, FontCache, TextLayer};
+use crate::layers::text_layer::{Font, TextLayer};
 use crate::{DocumentError, DocumentResponse, Operation};
 
 use graphene_std::vector::subpath::Subpath;
@@ -49,7 +48,7 @@ impl Default for Document {
 
 impl Document {
 	/// Wrapper around render, that returns the whole document as a Response.
-	pub fn render_root(&mut self, render_data: RenderData) -> String {
+	pub fn render_root(&mut self, render_data: &RenderData) -> String {
 		// Render and append to the defs section
 		let mut svg_defs = String::from("<defs>");
 		self.root.render(&mut vec![], &mut svg_defs, render_data);
@@ -62,7 +61,7 @@ impl Document {
 	}
 
 	/// Renders everything below the given layer contained within its parent folder.
-	pub fn render_layers_below(&mut self, below_layer_path: &[LayerId], render_data: RenderData) -> Option<String> {
+	pub fn render_layers_below(&mut self, below_layer_path: &[LayerId], render_data: &RenderData) -> Option<String> {
 		// Split the path into the layer ID and its parent folder
 		let (layer_id_to_render_below, parent_folder_path) = below_layer_path.split_last()?;
 
@@ -89,7 +88,7 @@ impl Document {
 	}
 
 	/// Renders a layer and its children
-	pub fn render_layer(&mut self, layer_path: &[LayerId], render_data: RenderData) -> Option<String> {
+	pub fn render_layer(&mut self, layer_path: &[LayerId], render_data: &RenderData) -> Option<String> {
 		// Note: it is bad practice to directly clone and modify the document structure, this is a temporary hack until this whole system is replaced by the node graph
 		let mut temp_clone = self.layer_mut(layer_path).ok()?.clone();
 
@@ -109,14 +108,14 @@ impl Document {
 	}
 
 	/// Checks whether each layer under `path` intersects with the provided `quad` and adds all intersection layers as paths to `intersections`.
-	pub fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, font_cache: &FontCache) {
-		self.layer(path).unwrap().intersects_quad(quad, path, intersections, font_cache);
+	pub fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, render_data: &RenderData) {
+		self.layer(path).unwrap().intersects_quad(quad, path, intersections, render_data);
 	}
 
 	/// Checks whether each layer under the root path intersects with the provided `quad` and returns the paths to all intersecting layers.
-	pub fn intersects_quad_root(&self, quad: Quad, font_cache: &FontCache) -> Vec<Vec<LayerId>> {
+	pub fn intersects_quad_root(&self, quad: Quad, render_data: &RenderData) -> Vec<Vec<LayerId>> {
 		let mut intersections = Vec::new();
-		self.intersects_quad(quad, &mut vec![], &mut intersections, font_cache);
+		self.intersects_quad(quad, &mut vec![], &mut intersections, render_data);
 		intersections
 	}
 
@@ -407,32 +406,32 @@ impl Document {
 		Ok(())
 	}
 
-	pub fn viewport_bounding_box(&self, path: &[LayerId], font_cache: &FontCache) -> Result<Option<[DVec2; 2]>, DocumentError> {
+	pub fn viewport_bounding_box(&self, path: &[LayerId], render_data: &RenderData) -> Result<Option<[DVec2; 2]>, DocumentError> {
 		let layer = self.layer(path)?;
 		let transform = self.multiply_transforms(path)?;
-		Ok(layer.data.bounding_box(transform, font_cache))
+		Ok(layer.data.bounding_box(transform, render_data))
 	}
 
-	pub fn bounding_box_and_transform(&self, path: &[LayerId], font_cache: &FontCache) -> Result<Option<([DVec2; 2], DAffine2)>, DocumentError> {
+	pub fn bounding_box_and_transform(&self, path: &[LayerId], render_data: &RenderData) -> Result<Option<([DVec2; 2], DAffine2)>, DocumentError> {
 		let layer = self.layer(path)?;
 		let transform = self.multiply_transforms(&path[..path.len() - 1])?;
-		Ok(layer.data.bounding_box(layer.transform, font_cache).map(|bounds| (bounds, transform)))
+		Ok(layer.data.bounding_box(layer.transform, render_data).map(|bounds| (bounds, transform)))
 	}
 
 	/// Compute the center of transformation multiplied with `Document::multiply_transforms`.
-	pub fn pivot(&self, path: &[LayerId], font_cache: &FontCache) -> Option<DVec2> {
+	pub fn pivot(&self, path: &[LayerId], render_data: &RenderData) -> Option<DVec2> {
 		let layer = self.layer(path).ok()?;
-		Some(self.multiply_transforms(path).unwrap_or_default().transform_point2(layer.layerspace_pivot(font_cache)))
+		Some(self.multiply_transforms(path).unwrap_or_default().transform_point2(layer.layerspace_pivot(render_data)))
 	}
 
-	pub fn visible_layers_bounding_box(&self, font_cache: &FontCache) -> Option<[DVec2; 2]> {
+	pub fn visible_layers_bounding_box(&self, render_data: &RenderData) -> Option<[DVec2; 2]> {
 		let mut paths = vec![];
 		self.visible_layers(&mut vec![], &mut paths).ok()?;
-		self.combined_viewport_bounding_box(paths.iter().map(|x| x.as_slice()), font_cache)
+		self.combined_viewport_bounding_box(paths.iter().map(|x| x.as_slice()), render_data)
 	}
 
-	pub fn combined_viewport_bounding_box<'a>(&self, paths: impl Iterator<Item = &'a [LayerId]>, font_cache: &FontCache) -> Option<[DVec2; 2]> {
-		let boxes = paths.filter_map(|path| self.viewport_bounding_box(path, font_cache).ok()?);
+	pub fn combined_viewport_bounding_box<'a>(&self, paths: impl Iterator<Item = &'a [LayerId]>, render_data: &RenderData) -> Option<[DVec2; 2]> {
+		let boxes = paths.filter_map(|path| self.viewport_bounding_box(path, render_data).ok()?);
 		boxes.reduce(|a, b| [a[0].min(b[0]), a[1].max(b[1])])
 	}
 
@@ -552,7 +551,7 @@ impl Document {
 
 	/// Mutate the document by applying the `operation` to it. If the operation necessitates a
 	/// reaction from the frontend, responses may be returned.
-	pub fn handle_operation(&mut self, operation: Operation, font_cache: &FontCache) -> Result<Option<Vec<DocumentResponse>>, DocumentError> {
+	pub fn handle_operation(&mut self, operation: Operation, render_data: &RenderData) -> Result<Option<Vec<DocumentResponse>>, DocumentError> {
 		use DocumentResponse::*;
 
 		operation.pseudo_hash().hash(&mut self.state_identifier);
@@ -590,23 +589,9 @@ impl Document {
 				font_style,
 			} => {
 				let font = Font::new(font_name, font_style);
-				let layer_text = TextLayer::new(text, style, size, font, font_cache);
+				let layer_text = TextLayer::new(text, style, size, font, render_data);
 				let layer_data = LayerDataType::Text(layer_text);
 				let layer = Layer::new(layer_data, transform);
-
-				self.set_layer(&path, layer, insert_index)?;
-
-				Some([vec![DocumentChanged, CreatedLayer { path: path.clone() }], update_thumbnails_upstream(&path)].concat())
-			}
-			Operation::AddImage {
-				path,
-				transform,
-				insert_index,
-				image_data,
-				mime,
-			} => {
-				let image_data = std::sync::Arc::new(image_data);
-				let layer = Layer::new(LayerDataType::Image(ImageLayer::new(mime, image_data)), transform);
 
 				self.set_layer(&path, layer, insert_index)?;
 
@@ -658,7 +643,7 @@ impl Document {
 					.layer_mut(id)
 					.ok_or_else(|| DocumentError::LayerNotFound(path.clone()))?
 					.as_text_mut()?
-					.update_text(new_text, font_cache);
+					.update_text(new_text, render_data);
 
 				self.mark_as_dirty(&path)?;
 
@@ -808,7 +793,7 @@ impl Document {
 
 				text.font = Font::new(font_family, font_style);
 				text.size = size;
-				text.cached_path = Some(text.generate_path(text.load_face(font_cache)));
+				text.cached_path = Some(text.generate_path(text.load_face(render_data)));
 				self.mark_as_dirty(&path)?;
 				Some([vec![DocumentChanged, LayerChanged { path: path.clone() }], update_thumbnails_upstream(&path)].concat())
 			}
@@ -836,18 +821,14 @@ impl Document {
 				Some([vec![DocumentChanged], update_thumbnails_upstream(&path)].concat())
 			}
 			Operation::SetLayerBlobUrl { layer_path, blob_url, resolution } => {
-				let layer = self.layer_mut(&layer_path).unwrap_or_else(|_| panic!("Blob url for invalid layer with path '{:?}'", layer_path));
-				match &mut layer.data {
-					LayerDataType::Image(image) => {
-						image.blob_url = Some(blob_url);
-						image.dimensions = resolution.into();
-					}
-					LayerDataType::NodeGraphFrame(node_graph_frame) => {
-						node_graph_frame.blob_url = Some(blob_url);
-						node_graph_frame.dimensions = resolution.into();
-					}
-					_ => panic!("Incorrectly trying to set the image blob URL for a layer that is not an Image, NodeGraphFrame or Imaginate layer type"),
-				}
+				let layer = self.layer_mut(&layer_path).unwrap_or_else(|_| panic!("Blob URL for invalid layer with path '{:?}'", layer_path));
+
+				let LayerDataType::NodeGraphFrame(node_graph_frame) = &mut layer.data else {
+					panic!("Incorrectly trying to set the image blob URL for a layer that is not a NodeGraphFrame layer type");
+				};
+
+				node_graph_frame.blob_url = Some(blob_url);
+				node_graph_frame.dimensions = resolution.into();
 
 				self.mark_as_dirty(&layer_path)?;
 				Some([vec![DocumentChanged, LayerChanged { path: layer_path.clone() }], update_thumbnails_upstream(&layer_path)].concat())
@@ -1099,7 +1080,7 @@ impl Document {
 						// Delete the layer if there are no longer any manipulator groups
 						if (shape.manipulator_groups().len() - 1) == 0 {
 							// Delegate deletion to DeleteLayer to update Layer Tree in frontend
-							match self.handle_operation(Operation::DeleteLayer { path: layer_path.clone() }, font_cache) {
+							match self.handle_operation(Operation::DeleteLayer { path: layer_path.clone() }, render_data) {
 								Ok(Some(delete_responses)) => {
 									responses.extend(delete_responses);
 									responses.push(DocumentResponse::DeletedSelectedManipulatorPoints);
@@ -1169,8 +1150,8 @@ fn update_thumbnails_upstream(path: &[LayerId]) -> Vec<DocumentResponse> {
 	responses
 }
 
-pub fn pick_layer_safe_imaginate_resolution(layer: &Layer, font_cache: &FontCache) -> (u64, u64) {
-	let layer_bounds = layer.bounding_transform(font_cache);
+pub fn pick_layer_safe_imaginate_resolution(layer: &Layer, render_data: &RenderData) -> (u64, u64) {
+	let layer_bounds = layer.bounding_transform(render_data);
 	let layer_bounds_size = (layer_bounds.transform_vector2((1., 0.).into()).length(), layer_bounds.transform_vector2((0., 1.).into()).length());
 
 	pick_safe_imaginate_resolution(layer_bounds_size)

@@ -1,12 +1,10 @@
 use super::blend_mode::BlendMode;
 use super::folder_layer::FolderLayer;
-use super::image_layer::ImageLayer;
 use super::nodegraph_layer::NodeGraphFrameLayer;
 use super::shape_layer::ShapeLayer;
 use super::style::{PathStyle, RenderData};
 use super::text_layer::TextLayer;
 use crate::intersection::Quad;
-use crate::layers::text_layer::FontCache;
 use crate::DocumentError;
 use crate::LayerId;
 
@@ -26,8 +24,6 @@ pub enum LayerDataType {
 	Shape(ShapeLayer),
 	/// A layer that wraps a [TextLayer] struct.
 	Text(TextLayer),
-	/// A layer that wraps an [ImageLayer] struct.
-	Image(ImageLayer),
 	/// A layer that wraps an [NodeGraphFrameLayer] struct.
 	NodeGraphFrame(NodeGraphFrameLayer),
 }
@@ -38,7 +34,6 @@ impl LayerDataType {
 			LayerDataType::Shape(s) => s,
 			LayerDataType::Folder(f) => f,
 			LayerDataType::Text(t) => t,
-			LayerDataType::Image(i) => i,
 			LayerDataType::NodeGraphFrame(n) => n,
 		}
 	}
@@ -48,7 +43,6 @@ impl LayerDataType {
 			LayerDataType::Shape(s) => s,
 			LayerDataType::Folder(f) => f,
 			LayerDataType::Text(t) => t,
-			LayerDataType::Image(i) => i,
 			LayerDataType::NodeGraphFrame(n) => n,
 		}
 	}
@@ -83,7 +77,6 @@ impl From<&LayerDataType> for LayerDataTypeDiscriminant {
 			Folder(_) => LayerDataTypeDiscriminant::Folder,
 			Shape(_) => LayerDataTypeDiscriminant::Shape,
 			Text(_) => LayerDataTypeDiscriminant::Text,
-			Image(_) => LayerDataTypeDiscriminant::Image,
 			NodeGraphFrame(_) => LayerDataTypeDiscriminant::NodeGraphFrame,
 		}
 	}
@@ -133,8 +126,8 @@ pub trait LayerData {
 	///
 	/// // Render the shape without any transforms, in normal view mode
 	/// # let font_cache = Default::default();
-	/// let render_data = RenderData::new(ViewMode::Normal, &font_cache, None);
-	/// shape.render(&mut svg, &mut String::new(), &mut vec![], render_data);
+	/// let render_data = RenderData::new(&font_cache, ViewMode::Normal, None);
+	/// shape.render(&mut svg, &mut String::new(), &mut vec![], &render_data);
 	///
 	/// assert_eq!(
 	///     svg,
@@ -143,13 +136,13 @@ pub trait LayerData {
 	///     </g>"
 	/// );
 	/// ```
-	fn render(&mut self, svg: &mut String, svg_defs: &mut String, transforms: &mut Vec<glam::DAffine2>, render_data: RenderData) -> bool;
+	fn render(&mut self, svg: &mut String, svg_defs: &mut String, transforms: &mut Vec<glam::DAffine2>, render_data: &RenderData) -> bool;
 
 	/// Determine the layers within this layer that intersect a given quad.
 	/// # Example
 	/// ```
 	/// # use graphite_document_legacy::layers::shape_layer::ShapeLayer;
-	/// # use graphite_document_legacy::layers::style::{Fill, PathStyle, ViewMode};
+	/// # use graphite_document_legacy::layers::style::{Fill, PathStyle, ViewMode, RenderData};
 	/// # use graphite_document_legacy::layers::layer_info::LayerData;
 	/// # use graphite_document_legacy::intersection::Quad;
 	/// # use glam::f64::{DAffine2, DVec2};
@@ -162,18 +155,20 @@ pub trait LayerData {
 	/// let quad = Quad::from_box([DVec2::ZERO, DVec2::ONE]);
 	/// let mut intersections = vec![];
 	///
-	/// shape.intersects_quad(quad, &mut vec![shape_id], &mut intersections, &Default::default());
+	/// let font_cache = Default::default();
+	/// let render_data = RenderData::new(&font_cache, Default::default(), None);
+	/// shape.intersects_quad(quad, &mut vec![shape_id], &mut intersections, &render_data);
 	///
 	/// assert_eq!(intersections, vec![vec![shape_id]]);
 	/// ```
-	fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, font_cache: &FontCache);
+	fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, render_data: &RenderData);
 
 	// TODO: this doctest fails because 0 != 1e-32, maybe assert difference < epsilon?
 	/// Calculate the bounding box for the layer's contents after applying a given transform.
 	/// # Example
 	/// ```no_run
 	/// # use graphite_document_legacy::layers::shape_layer::ShapeLayer;
-	/// # use graphite_document_legacy::layers::style::{Fill, PathStyle};
+	/// # use graphite_document_legacy::layers::style::{Fill, PathStyle, RenderData};
 	/// # use graphite_document_legacy::layers::layer_info::LayerData;
 	/// # use glam::f64::{DAffine2, DVec2};
 	/// # use std::collections::HashMap;
@@ -182,24 +177,26 @@ pub trait LayerData {
 	/// // Calculate the bounding box without applying any transformations.
 	/// // (The identity transform maps every vector to itself.)
 	/// let transform = DAffine2::IDENTITY;
-	/// let bounding_box = shape.bounding_box(transform, &Default::default());
+	/// let font_cache = Default::default();
+	/// let render_data = RenderData::new(&font_cache, Default::default(), None);
+	/// let bounding_box = shape.bounding_box(transform, &render_data);
 	///
 	/// assert_eq!(bounding_box, Some([DVec2::ZERO, DVec2::ONE]));
 	/// ```
-	fn bounding_box(&self, transform: glam::DAffine2, font_cache: &FontCache) -> Option<[DVec2; 2]>;
+	fn bounding_box(&self, transform: glam::DAffine2, render_data: &RenderData) -> Option<[DVec2; 2]>;
 }
 
 impl LayerData for LayerDataType {
-	fn render(&mut self, svg: &mut String, svg_defs: &mut String, transforms: &mut Vec<glam::DAffine2>, render_data: RenderData) -> bool {
+	fn render(&mut self, svg: &mut String, svg_defs: &mut String, transforms: &mut Vec<glam::DAffine2>, render_data: &RenderData) -> bool {
 		self.inner_mut().render(svg, svg_defs, transforms, render_data)
 	}
 
-	fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, font_cache: &FontCache) {
-		self.inner().intersects_quad(quad, path, intersections, font_cache)
+	fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, render_data: &RenderData) {
+		self.inner().intersects_quad(quad, path, intersections, render_data)
 	}
 
-	fn bounding_box(&self, transform: glam::DAffine2, font_cache: &FontCache) -> Option<[DVec2; 2]> {
-		self.inner().bounding_box(transform, font_cache)
+	fn bounding_box(&self, transform: glam::DAffine2, render_data: &RenderData) -> Option<[DVec2; 2]> {
+		self.inner().bounding_box(transform, render_data)
 	}
 }
 
@@ -305,7 +302,7 @@ impl Layer {
 	}
 
 	/// Renders the layer, returning the result and if a redraw is required
-	pub fn render(&mut self, transforms: &mut Vec<DAffine2>, svg_defs: &mut String, render_data: RenderData) -> (&str, bool) {
+	pub fn render(&mut self, transforms: &mut Vec<DAffine2>, svg_defs: &mut String, render_data: &RenderData) -> (&str, bool) {
 		if !self.visible {
 			return ("", false);
 		}
@@ -314,10 +311,7 @@ impl Layer {
 
 		// Skip rendering if outside the viewport bounds
 		if let Some(viewport_bounds) = render_data.culling_bounds {
-			if let Some(bounding_box) = self
-				.data
-				.bounding_box(transforms.iter().cloned().reduce(|a, b| a * b).unwrap_or(DAffine2::IDENTITY), render_data.font_cache)
-			{
+			if let Some(bounding_box) = self.data.bounding_box(transforms.iter().cloned().reduce(|a, b| a * b).unwrap_or(DAffine2::IDENTITY), render_data) {
 				let is_overlapping =
 					viewport_bounds[0].x < bounding_box[1].x && bounding_box[0].x < viewport_bounds[1].x && viewport_bounds[0].y < bounding_box[1].y && bounding_box[0].y < viewport_bounds[1].y;
 				if !is_overlapping {
@@ -363,13 +357,13 @@ impl Layer {
 		(self.cache.as_str(), requires_redraw)
 	}
 
-	pub fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, font_cache: &FontCache) {
+	pub fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, render_data: &RenderData) {
 		if !self.visible {
 			return;
 		}
 
 		let transformed_quad = self.transform.inverse() * quad;
-		self.data.intersects_quad(transformed_quad, path, intersections, font_cache)
+		self.data.intersects_quad(transformed_quad, path, intersections, render_data)
 	}
 
 	/// Compute the bounding box of the layer after applying a transform to it.
@@ -378,7 +372,7 @@ impl Layer {
 	/// ```
 	/// # use graphite_document_legacy::layers::shape_layer::ShapeLayer;
 	/// # use graphite_document_legacy::layers::layer_info::Layer;
-	/// # use graphite_document_legacy::layers::style::PathStyle;
+	/// # use graphite_document_legacy::layers::style::{PathStyle, RenderData};
 	/// # use glam::DVec2;
 	/// # use glam::f64::DAffine2;
 	/// # use std::collections::HashMap;
@@ -386,27 +380,30 @@ impl Layer {
 	/// let layer: Layer = ShapeLayer::rectangle(PathStyle::default()).into();
 	///
 	/// // Apply the Identity transform, which leaves the points unchanged
+	/// let transform = DAffine2::IDENTITY;
+	/// let font_cache = Default::default();
+	/// let render_data = RenderData::new(&font_cache, Default::default(), None);
 	/// assert_eq!(
-	///     layer.aabb_for_transform(DAffine2::IDENTITY, &Default::default()),
+	///     layer.aabb_for_transform(transform, &render_data),
 	///     Some([DVec2::ZERO, DVec2::ONE]),
 	/// );
 	///
 	/// // Apply a transform that scales every point by a factor of two
 	/// let transform = DAffine2::from_scale(DVec2::ONE * 2.);
 	/// assert_eq!(
-	///     layer.aabb_for_transform(transform, &Default::default()),
+	///     layer.aabb_for_transform(transform, &render_data),
 	///     Some([DVec2::ZERO, DVec2::ONE * 2.]),
 	/// );
-	pub fn aabb_for_transform(&self, transform: DAffine2, font_cache: &FontCache) -> Option<[DVec2; 2]> {
-		self.data.bounding_box(transform, font_cache)
+	pub fn aabb_for_transform(&self, transform: DAffine2, render_data: &RenderData) -> Option<[DVec2; 2]> {
+		self.data.bounding_box(transform, render_data)
 	}
 
-	pub fn aabb(&self, font_cache: &FontCache) -> Option<[DVec2; 2]> {
-		self.aabb_for_transform(self.transform, font_cache)
+	pub fn aabb(&self, render_data: &RenderData) -> Option<[DVec2; 2]> {
+		self.aabb_for_transform(self.transform, render_data)
 	}
 
-	pub fn bounding_transform(&self, font_cache: &FontCache) -> DAffine2 {
-		let scale = match self.aabb_for_transform(DAffine2::IDENTITY, font_cache) {
+	pub fn bounding_transform(&self, render_data: &RenderData) -> DAffine2 {
+		let scale = match self.aabb_for_transform(DAffine2::IDENTITY, render_data) {
 			Some([a, b]) => {
 				let dimensions = b - a;
 				DAffine2::from_scale(dimensions)
@@ -417,8 +414,8 @@ impl Layer {
 		self.transform * scale
 	}
 
-	pub fn layerspace_pivot(&self, font_cache: &FontCache) -> DVec2 {
-		let [mut min, max] = self.aabb_for_transform(DAffine2::IDENTITY, font_cache).unwrap_or([DVec2::ZERO, DVec2::ONE]);
+	pub fn layerspace_pivot(&self, render_data: &RenderData) -> DVec2 {
+		let [mut min, max] = self.aabb_for_transform(DAffine2::IDENTITY, render_data).unwrap_or([DVec2::ZERO, DVec2::ONE]);
 
 		// If the layer bounds are 0 in either axis then set them to one (to avoid div 0)
 		if (max.x - min.x) < f64::EPSILON * 1000. {
@@ -557,12 +554,6 @@ impl From<ShapeLayer> for Layer {
 impl From<TextLayer> for Layer {
 	fn from(from: TextLayer) -> Layer {
 		Layer::new(LayerDataType::Text(from), DAffine2::IDENTITY.to_cols_array())
-	}
-}
-
-impl From<ImageLayer> for Layer {
-	fn from(from: ImageLayer) -> Layer {
-		Layer::new(LayerDataType::Image(from), DAffine2::IDENTITY.to_cols_array())
 	}
 }
 

@@ -288,7 +288,7 @@ impl Fsm for SelectToolFsmState {
 		self,
 		event: ToolMessage,
 		tool_data: &mut Self::ToolData,
-		(document, _document_id, _global_tool_data, input, font_cache): ToolActionHandlerData,
+		(document, _document_id, _global_tool_data, input, render_data): ToolActionHandlerData,
 		_tool_options: &Self::ToolOptions,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
@@ -298,7 +298,7 @@ impl Fsm for SelectToolFsmState {
 		if let ToolMessage::Select(event) = event {
 			match (self, event) {
 				(_, DocumentIsDirty | SelectionChanged) => {
-					match (document.selected_visible_layers_bounding_box(font_cache), tool_data.bounding_box_overlays.take()) {
+					match (document.selected_visible_layers_bounding_box(render_data), tool_data.bounding_box_overlays.take()) {
 						(None, Some(bounding_box_overlays)) => bounding_box_overlays.delete(responses),
 						(Some(bounds), paths) => {
 							let mut bounding_box_overlays = paths.unwrap_or_else(|| BoundingBoxOverlays::new(responses));
@@ -313,9 +313,9 @@ impl Fsm for SelectToolFsmState {
 						(_, _) => {}
 					};
 
-					tool_data.path_outlines.update_selected(document.selected_visible_layers(), document, responses, font_cache);
-					tool_data.path_outlines.intersect_test_hovered(input, document, responses, font_cache);
-					tool_data.pivot.update_pivot(document, font_cache, responses);
+					tool_data.path_outlines.update_selected(document.selected_visible_layers(), document, responses, render_data);
+					tool_data.path_outlines.intersect_test_hovered(input, document, responses, render_data);
+					tool_data.pivot.update_pivot(document, render_data, responses);
 
 					self
 				}
@@ -328,7 +328,7 @@ impl Fsm for SelectToolFsmState {
 					let quad = Quad::from_box([mouse_pos - tolerance, mouse_pos + tolerance]);
 
 					// Check the last (top most) intersection layer.
-					if let Some(intersect_layer_path) = document.document_legacy.intersects_quad_root(quad, font_cache).last() {
+					if let Some(intersect_layer_path) = document.document_legacy.intersects_quad_root(quad, render_data).last() {
 						if let Ok(intersect) = document.document_legacy.layer(intersect_layer_path) {
 							match intersect.data {
 								LayerDataType::Text(_) => {
@@ -379,7 +379,7 @@ impl Fsm for SelectToolFsmState {
 
 					let mut selected: Vec<_> = document.selected_visible_layers().map(|path| path.to_vec()).collect();
 					let quad = tool_data.selection_quad();
-					let mut intersection = document.document_legacy.intersects_quad_root(quad, font_cache);
+					let mut intersection = document.document_legacy.intersects_quad_root(quad, render_data);
 					// If the user is dragging the bounding box bounds, go into ResizingBounds mode.
 					// If the user is dragging the rotate trigger, go into RotatingBounds mode.
 					// If the user clicks on a layer that is in their current selection, go into the dragging mode.
@@ -388,7 +388,7 @@ impl Fsm for SelectToolFsmState {
 					let state = if tool_data.pivot.is_over(input.mouse.position) {
 						responses.push_back(DocumentMessage::StartTransaction.into());
 
-						tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(None, None, font_cache), true, true);
+						tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(None, None, render_data), true, true);
 						tool_data.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
 
 						DraggingPivot
@@ -400,7 +400,7 @@ impl Fsm for SelectToolFsmState {
 
 						tool_data
 							.snap_manager
-							.start_snap(document, input, document.bounding_boxes(Some(&selected), None, font_cache), snap_x, snap_y);
+							.start_snap(document, input, document.bounding_boxes(Some(&selected), None, render_data), snap_x, snap_y);
 						tool_data
 							.snap_manager
 							.add_all_document_handles(document, input, &[], &selected.iter().map(|x| x.as_slice()).collect::<Vec<_>>(), &[]);
@@ -412,7 +412,7 @@ impl Fsm for SelectToolFsmState {
 
 							let selected = &tool_data.layers_dragging.iter().collect::<Vec<_>>();
 							let mut selected = Selected::new(&mut bounds.original_transforms, &mut bounds.center_of_transformation, selected, responses, document);
-							bounds.center_of_transformation = selected.mean_average_of_pivots(font_cache);
+							bounds.center_of_transformation = selected.mean_average_of_pivots(render_data);
 						}
 
 						ResizingBounds
@@ -423,7 +423,7 @@ impl Fsm for SelectToolFsmState {
 							let selected = selected.iter().collect::<Vec<_>>();
 							let mut selected = Selected::new(&mut bounds.original_transforms, &mut bounds.center_of_transformation, &selected, responses, &document.document_legacy);
 
-							bounds.center_of_transformation = selected.mean_average_of_pivots(font_cache);
+							bounds.center_of_transformation = selected.mean_average_of_pivots(render_data);
 						}
 
 						tool_data.layers_dragging = selected;
@@ -436,7 +436,7 @@ impl Fsm for SelectToolFsmState {
 
 						tool_data
 							.snap_manager
-							.start_snap(document, input, document.bounding_boxes(Some(&tool_data.layers_dragging), None, font_cache), true, true);
+							.start_snap(document, input, document.bounding_boxes(Some(&tool_data.layers_dragging), None, render_data), true, true);
 
 						Dragging
 					} else {
@@ -452,7 +452,7 @@ impl Fsm for SelectToolFsmState {
 							tool_data.layers_dragging.append(&mut selected);
 							tool_data
 								.snap_manager
-								.start_snap(document, input, document.bounding_boxes(Some(&tool_data.layers_dragging), None, font_cache), true, true);
+								.start_snap(document, input, document.bounding_boxes(Some(&tool_data.layers_dragging), None, render_data), true, true);
 
 							Dragging
 						} else {
@@ -475,7 +475,7 @@ impl Fsm for SelectToolFsmState {
 					let snap = tool_data
 						.layers_dragging
 						.iter()
-						.filter_map(|path| document.document_legacy.viewport_bounding_box(path, font_cache).ok()?)
+						.filter_map(|path| document.document_legacy.viewport_bounding_box(path, render_data).ok()?)
 						.flat_map(snapping::expand_bounds)
 						.collect();
 
@@ -549,7 +549,7 @@ impl Fsm for SelectToolFsmState {
 				(DraggingPivot, PointerMove { .. }) => {
 					let mouse_position = input.mouse.position;
 					let snapped_mouse_position = tool_data.snap_manager.snap_position(responses, document, mouse_position);
-					tool_data.pivot.set_viewport_position(snapped_mouse_position, document, font_cache, responses);
+					tool_data.pivot.set_viewport_position(snapped_mouse_position, document, render_data, responses);
 
 					DraggingPivot
 				}
@@ -578,7 +578,7 @@ impl Fsm for SelectToolFsmState {
 
 					// Generate the select outline (but not if the user is going to use the bound overlays)
 					if cursor == MouseCursorIcon::Default {
-						tool_data.path_outlines.intersect_test_hovered(input, document, responses, font_cache);
+						tool_data.path_outlines.intersect_test_hovered(input, document, responses, render_data);
 					} else {
 						tool_data.path_outlines.clear_hovered(responses);
 					}
@@ -642,7 +642,7 @@ impl Fsm for SelectToolFsmState {
 					let quad = tool_data.selection_quad();
 					responses.push_front(
 						DocumentMessage::AddSelectedLayers {
-							additional_layers: document.document_legacy.intersects_quad_root(quad, font_cache),
+							additional_layers: document.document_legacy.intersects_quad_root(quad, render_data),
 						}
 						.into(),
 					);
@@ -728,7 +728,7 @@ impl Fsm for SelectToolFsmState {
 					responses.push_back(DocumentMessage::StartTransaction.into());
 
 					let pos: Option<DVec2> = position.into();
-					tool_data.pivot.set_normalized_position(pos.unwrap(), document, font_cache, responses);
+					tool_data.pivot.set_normalized_position(pos.unwrap(), document, render_data, responses);
 
 					self
 				}

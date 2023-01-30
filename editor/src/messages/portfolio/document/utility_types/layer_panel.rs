@@ -1,6 +1,5 @@
 use document_legacy::layers::layer_info::{Layer, LayerData, LayerDataTypeDiscriminant};
-use document_legacy::layers::style::{RenderData, ViewMode};
-use document_legacy::layers::text_layer::FontCache;
+use document_legacy::layers::style::RenderData;
 use document_legacy::LayerId;
 
 use glam::{DAffine2, DVec2};
@@ -65,7 +64,7 @@ pub struct LayerPanelEntry {
 }
 
 impl LayerPanelEntry {
-	pub fn new(layer_metadata: &LayerMetadata, transform: DAffine2, layer: &Layer, path: Vec<LayerId>, font_cache: &FontCache) -> Self {
+	pub fn new(layer_metadata: &LayerMetadata, transform: DAffine2, layer: &Layer, path: Vec<LayerId>, render_data: &RenderData) -> Self {
 		let name = layer.name.clone().unwrap_or_else(|| String::from(""));
 
 		let mut tooltip = name.clone();
@@ -75,11 +74,10 @@ impl LayerPanelEntry {
 			tooltip = tooltip.trim().to_string();
 		}
 
-		let arr = layer.data.bounding_box(transform, font_cache).unwrap_or([DVec2::ZERO, DVec2::ZERO]);
+		let arr = layer.data.bounding_box(transform, render_data).unwrap_or([DVec2::ZERO, DVec2::ZERO]);
 		let arr = arr.iter().map(|x| (*x).into()).collect::<Vec<(f64, f64)>>();
 		let mut thumbnail = String::new();
 		let mut svg_defs = String::new();
-		let render_data = RenderData::new(ViewMode::Normal, font_cache, None);
 		layer.data.clone().render(&mut thumbnail, &mut svg_defs, &mut vec![transform], render_data);
 		let transform = transform.to_cols_array().iter().map(ToString::to_string).collect::<Vec<_>>().join(",");
 		let thumbnail = if let [(x_min, y_min), (x_max, y_max)] = arr.as_slice() {

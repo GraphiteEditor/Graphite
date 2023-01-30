@@ -10,10 +10,9 @@ use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, ToolActionHan
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 
 use document_legacy::intersection::Quad;
-use document_legacy::layers::layer_info::LayerDataType;
-use document_legacy::layers::style::{self, Fill, Stroke};
-use document_legacy::layers::text_layer::FontCache;
-use document_legacy::{LayerId, Operation};
+use document_legacy::layers::style::{self, Fill, RenderData, Stroke};
+use document_legacy::LayerId;
+use document_legacy::Operation;
 
 use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};
@@ -214,7 +213,7 @@ fn resize_overlays(overlays: &mut Vec<Vec<LayerId>>, responses: &mut VecDeque<Me
 	}
 }
 
-fn update_overlays(document: &DocumentMessageHandler, tool_data: &mut TextToolData, responses: &mut VecDeque<Message>, font_cache: &FontCache) {
+fn update_overlays(document: &DocumentMessageHandler, tool_data: &mut TextToolData, responses: &mut VecDeque<Message>, render_data: &RenderData) {
 	let visible_text_layers = document.selected_visible_text_layers().collect::<Vec<_>>();
 	resize_overlays(&mut tool_data.overlays, responses, visible_text_layers.len());
 
@@ -226,7 +225,7 @@ fn update_overlays(document: &DocumentMessageHandler, tool_data: &mut TextToolDa
 				.document_legacy
 				.layer(layer_path)
 				.unwrap()
-				.aabb_for_transform(document.document_legacy.multiply_transforms(layer_path).unwrap(), font_cache)
+				.aabb_for_transform(document.document_legacy.multiply_transforms(layer_path).unwrap(), render_data)
 				.map(|bounds| (bounds, overlay_path))
 		})
 		.collect::<Vec<_>>();
@@ -251,7 +250,7 @@ impl Fsm for TextToolFsmState {
 		self,
 		event: ToolMessage,
 		tool_data: &mut Self::ToolData,
-		(document, _document_id, global_tool_data, input, font_cache): ToolActionHandlerData,
+		(document, _document_id, global_tool_data, input, render_data): ToolActionHandlerData,
 		tool_options: &Self::ToolOptions,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
@@ -261,7 +260,7 @@ impl Fsm for TextToolFsmState {
 		if let ToolMessage::Text(event) = event {
 			match (self, event) {
 				(state, DocumentIsDirty) => {
-					update_overlays(document, tool_data, responses, font_cache);
+					update_overlays(document, tool_data, responses, render_data);
 
 					state
 				}
@@ -273,7 +272,7 @@ impl Fsm for TextToolFsmState {
 					// Check if the user has selected an existing text layer
 					let new_state = if let Some(clicked_text_layer_path) = document
 						.document_legacy
-						.intersects_quad_root(quad, font_cache)
+						.intersects_quad_root(quad, render_data)
 						.last()
 						.filter(|l| document.document_legacy.layer(l).map(|l| l.as_text().is_ok()).unwrap_or(false))
 					{
@@ -397,7 +396,7 @@ impl Fsm for TextToolFsmState {
 				(Editing, UpdateBounds { new_text }) => {
 					resize_overlays(&mut tool_data.overlays, responses, 1);
 					let text = document.document_legacy.layer(&tool_data.layer_path).unwrap().as_text().unwrap();
-					let quad = text.bounding_box(&new_text, text.load_face(font_cache));
+					let quad = text.bounding_box(&new_text, text.load_face(render_data));
 
 					let transformed_quad = document.document_legacy.multiply_transforms(&tool_data.layer_path).unwrap() * quad;
 					let bounds = transformed_quad.bounding_box();

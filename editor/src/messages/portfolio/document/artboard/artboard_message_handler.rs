@@ -1,10 +1,10 @@
 use crate::application::generate_uuid;
+use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::*;
 
 use document_legacy::color::Color;
 use document_legacy::document::Document as DocumentLegacy;
 use document_legacy::layers::style::{self, Fill, RenderData, ViewMode};
-use document_legacy::layers::text_layer::FontCache;
 use document_legacy::DocumentResponse;
 use document_legacy::LayerId;
 use document_legacy::Operation as DocumentOperation;
@@ -18,30 +18,34 @@ pub struct ArtboardMessageHandler {
 	pub artboard_ids: Vec<LayerId>,
 }
 
-impl MessageHandler<ArtboardMessage, &FontCache> for ArtboardMessageHandler {
+impl MessageHandler<ArtboardMessage, &PersistentData> for ArtboardMessageHandler {
 	#[remain::check]
-	fn process_message(&mut self, message: ArtboardMessage, responses: &mut VecDeque<Message>, font_cache: &FontCache) {
+	fn process_message(&mut self, message: ArtboardMessage, responses: &mut VecDeque<Message>, persistent_data: &PersistentData) {
 		use ArtboardMessage::*;
 
 		#[remain::sorted]
 		match message {
 			// Sub-messages
 			#[remain::unsorted]
-			DispatchOperation(operation) => match self.artboards_document.handle_operation(*operation, font_cache) {
-				Ok(Some(document_responses)) => {
-					for response in document_responses {
-						match &response {
-							DocumentResponse::LayerChanged { path } => responses.push_back(PropertiesPanelMessage::CheckSelectedWasUpdated { path: path.clone() }.into()),
-							DocumentResponse::DeletedLayer { path } => responses.push_back(PropertiesPanelMessage::CheckSelectedWasDeleted { path: path.clone() }.into()),
-							DocumentResponse::DocumentChanged => responses.push_back(ArtboardMessage::RenderArtboards.into()),
-							_ => {}
-						};
-						responses.push_back(BroadcastEvent::DocumentIsDirty.into());
+			DispatchOperation(operation) => {
+				let render_data = RenderData::new(&persistent_data.font_cache, ViewMode::Normal, None);
+
+				match self.artboards_document.handle_operation(*operation, &render_data) {
+					Ok(Some(document_responses)) => {
+						for response in document_responses {
+							match &response {
+								DocumentResponse::LayerChanged { path } => responses.push_back(PropertiesPanelMessage::CheckSelectedWasUpdated { path: path.clone() }.into()),
+								DocumentResponse::DeletedLayer { path } => responses.push_back(PropertiesPanelMessage::CheckSelectedWasDeleted { path: path.clone() }.into()),
+								DocumentResponse::DocumentChanged => responses.push_back(ArtboardMessage::RenderArtboards.into()),
+								_ => {}
+							};
+							responses.push_back(BroadcastEvent::DocumentIsDirty.into());
+						}
 					}
+					Ok(None) => {}
+					Err(e) => error!("Artboard Error: {:?}", e),
 				}
-				Ok(None) => {}
-				Err(e) => error!("Artboard Error: {:?}", e),
-			},
+			}
 
 			// Messages
 			AddArtboard { id, position, size } => {
@@ -85,10 +89,10 @@ impl MessageHandler<ArtboardMessage, &FontCache> for ArtboardMessageHandler {
 						.into(),
 					)
 				} else {
-					let render_data = RenderData::new(ViewMode::Normal, font_cache, None);
+					let render_data = RenderData::new(&persistent_data.font_cache, ViewMode::Normal, None);
 					responses.push_back(
 						FrontendMessage::UpdateDocumentArtboards {
-							svg: self.artboards_document.render_root(render_data),
+							svg: self.artboards_document.render_root(&render_data),
 						}
 						.into(),
 					);
