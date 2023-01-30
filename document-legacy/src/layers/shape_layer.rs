@@ -1,7 +1,6 @@
 use super::layer_info::LayerData;
 use super::style::{self, PathStyle, RenderData, ViewMode};
 use crate::intersection::{intersect_quad_bez_path, Quad};
-use crate::layers::text_layer::FontCache;
 use crate::LayerId;
 
 use graphene_std::vector::subpath::Subpath;
@@ -27,7 +26,7 @@ pub struct ShapeLayer {
 }
 
 impl LayerData for ShapeLayer {
-	fn render(&mut self, svg: &mut String, svg_defs: &mut String, transforms: &mut Vec<DAffine2>, render_data: RenderData) -> bool {
+	fn render(&mut self, svg: &mut String, svg_defs: &mut String, transforms: &mut Vec<DAffine2>, render_data: &RenderData) -> bool {
 		let mut subpath = self.shape.clone();
 
 		let layer_bounds = subpath.bounding_box().unwrap_or_default();
@@ -58,7 +57,7 @@ impl LayerData for ShapeLayer {
 		false
 	}
 
-	fn bounding_box(&self, transform: glam::DAffine2, _font_cache: &FontCache) -> Option<[DVec2; 2]> {
+	fn bounding_box(&self, transform: glam::DAffine2, _render_data: &RenderData) -> Option<[DVec2; 2]> {
 		let mut subpath = self.shape.clone();
 		if transform.matrix2 == DMat2::ZERO {
 			return None;
@@ -68,7 +67,7 @@ impl LayerData for ShapeLayer {
 		subpath.bounding_box()
 	}
 
-	fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, _font_cache: &FontCache) {
+	fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, _render_data: &RenderData) {
 		let filled = self.style.fill().is_some() || self.shape.manipulator_groups().last().filter(|manipulator_group| manipulator_group.is_close()).is_some();
 		if intersect_quad_bez_path(quad, &(&self.shape).into(), filled) {
 			intersections.push(path.clone());

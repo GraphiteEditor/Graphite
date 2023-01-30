@@ -2,7 +2,6 @@ use super::base64_serde;
 use super::layer_info::LayerData;
 use super::style::{RenderData, ViewMode};
 use crate::intersection::{intersect_quad_bez_path, Quad};
-use crate::layers::text_layer::FontCache;
 use crate::LayerId;
 
 use glam::{DAffine2, DMat2, DVec2};
@@ -34,7 +33,7 @@ pub struct ImageData {
 }
 
 impl LayerData for NodeGraphFrameLayer {
-	fn render(&mut self, svg: &mut String, _svg_defs: &mut String, transforms: &mut Vec<DAffine2>, render_data: RenderData) -> bool {
+	fn render(&mut self, svg: &mut String, _svg_defs: &mut String, transforms: &mut Vec<DAffine2>, render_data: &RenderData) -> bool {
 		let transform = self.transform(transforms, render_data.view_mode);
 		let inverse = transform.inverse();
 
@@ -81,7 +80,7 @@ impl LayerData for NodeGraphFrameLayer {
 		false
 	}
 
-	fn bounding_box(&self, transform: glam::DAffine2, _font_cache: &FontCache) -> Option<[DVec2; 2]> {
+	fn bounding_box(&self, transform: glam::DAffine2, _render_data: &RenderData) -> Option<[DVec2; 2]> {
 		let mut path = self.bounds();
 
 		if transform.matrix2 == DMat2::ZERO {
@@ -93,7 +92,7 @@ impl LayerData for NodeGraphFrameLayer {
 		Some([(x0, y0).into(), (x1, y1).into()])
 	}
 
-	fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, _font_cache: &FontCache) {
+	fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, _render_data: &RenderData) {
 		if intersect_quad_bez_path(quad, &self.bounds(), true) {
 			intersections.push(path.clone());
 		}

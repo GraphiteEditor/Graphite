@@ -10,12 +10,12 @@ use crate::messages::layout::utility_types::widgets::label_widgets::{Separator, 
 use crate::messages::prelude::*;
 
 use document_legacy::color::Color;
-use document_legacy::layers::text_layer::FontCache;
+use document_legacy::layers::style::RenderData;
 
 use serde::{Deserialize, Serialize};
 use std::fmt::{self, Debug};
 
-pub type ToolActionHandlerData<'a> = (&'a DocumentMessageHandler, u64, &'a DocumentToolData, &'a InputPreprocessorMessageHandler, &'a FontCache);
+pub type ToolActionHandlerData<'a> = (&'a DocumentMessageHandler, u64, &'a DocumentToolData, &'a InputPreprocessorMessageHandler, &'a RenderData<'a>);
 
 pub trait ToolCommon: for<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> + PropertyHolder + ToolTransition + ToolMetadata {}
 impl<T> ToolCommon for T where T: for<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> + PropertyHolder + ToolTransition + ToolMetadata {}

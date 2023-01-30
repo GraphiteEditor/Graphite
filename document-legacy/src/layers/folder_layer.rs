@@ -1,7 +1,6 @@
 use super::layer_info::{Layer, LayerData, LayerDataType};
 use super::style::RenderData;
 use crate::intersection::Quad;
-use crate::layers::text_layer::FontCache;
 use crate::{DocumentError, LayerId};
 
 use glam::DVec2;
@@ -21,7 +20,7 @@ pub struct FolderLayer {
 }
 
 impl LayerData for FolderLayer {
-	fn render(&mut self, svg: &mut String, svg_defs: &mut String, transforms: &mut Vec<glam::DAffine2>, render_data: RenderData) -> bool {
+	fn render(&mut self, svg: &mut String, svg_defs: &mut String, transforms: &mut Vec<glam::DAffine2>, render_data: &RenderData) -> bool {
 		let mut any_child_requires_redraw = false;
 		for layer in &mut self.layers {
 			let (svg_value, requires_redraw) = layer.render(transforms, svg_defs, render_data);
@@ -31,18 +30,18 @@ impl LayerData for FolderLayer {
 		any_child_requires_redraw
 	}
 
-	fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, font_cache: &FontCache) {
+	fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, render_data: &RenderData) {
 		for (layer, layer_id) in self.layers().iter().zip(&self.layer_ids) {
 			path.push(*layer_id);
-			layer.intersects_quad(quad, path, intersections, font_cache);
+			layer.intersects_quad(quad, path, intersections, render_data);
 			path.pop();
 		}
 	}
 
-	fn bounding_box(&self, transform: glam::DAffine2, font_cache: &FontCache) -> Option<[DVec2; 2]> {
+	fn bounding_box(&self, transform: glam::DAffine2, render_data: &RenderData) -> Option<[DVec2; 2]> {
 		self.layers
 			.iter()
-			.filter_map(|layer| layer.data.bounding_box(transform * layer.transform, font_cache))
+			.filter_map(|layer| layer.data.bounding_box(transform * layer.transform, render_data))
 			.reduce(|a, b| [a[0].min(b[0]), a[1].max(b[1])])
 	}
 }
