@@ -26,6 +26,11 @@ impl<T> CacheNode<T> {
 		CacheNode { cache: OnceCell::new() }
 	}
 }
+impl<T> Default for CacheNode<T> {
+	fn default() -> Self {
+		Self::new()
+	}
+}
 impl<T> Cache for CacheNode<T> {
 	fn clear(&mut self) {
 		self.cache = OnceCell::new();

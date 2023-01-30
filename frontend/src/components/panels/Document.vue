@@ -228,7 +228,7 @@
 import { defineComponent, nextTick } from "vue";
 
 import { textInputCleanup } from "@/utility-functions/keyboard-entry";
-import { rasterizeSVGCanvas } from "@/utility-functions/rasterization";
+import { extractPixelData, rasterizeSVGCanvas } from "@/utility-functions/rasterization";
 import { type DisplayEditableTextbox, type MouseCursorIcon, type XY } from "@/wasm-communication/messages";
 
 import EyedropperPreview, { ZOOM_WINDOW_DIMENSIONS } from "@/components/floating-menus/EyedropperPreview.vue";
@@ -300,10 +300,9 @@ export default defineComponent({
 			Array.from(dataTransfer.items).forEach(async (item) => {
 				const file = item.getAsFile();
 				if (file?.type.startsWith("image")) {
-					const buffer = await file.arrayBuffer();
-					const u8Array = new Uint8Array(buffer);
+					const imageData = await extractPixelData(file);
 
-					this.editor.instance.pasteImage(file.type, u8Array, e.clientX, e.clientY);
+					this.editor.instance.pasteImage(new Uint8Array(imageData.data), imageData.width, imageData.height, e.clientX, e.clientY);
 				}
 			});
 		},

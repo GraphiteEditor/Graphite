@@ -5,9 +5,9 @@ pub struct WorkspaceMessageHandler {
 	node_graph_visible: bool,
 }
 
-impl MessageHandler<WorkspaceMessage, &InputPreprocessorMessageHandler> for WorkspaceMessageHandler {
+impl MessageHandler<WorkspaceMessage, ()> for WorkspaceMessageHandler {
 	#[remain::check]
-	fn process_message(&mut self, message: WorkspaceMessage, _ipp: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
+	fn process_message(&mut self, message: WorkspaceMessage, responses: &mut VecDeque<Message>, _data: ()) {
 		use WorkspaceMessage::*;
 
 		#[remain::sorted]

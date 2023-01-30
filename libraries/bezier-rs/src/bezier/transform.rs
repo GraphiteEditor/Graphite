@@ -61,8 +61,8 @@ impl Bezier {
 			};
 		}
 		// Depending on the order of `t1` and `t2`, determine which half of the split we need to keep
-		let t1_split_side = if t1 <= t2 { 1 } else { 0 };
-		let t2_split_side = if t1 <= t2 { 0 } else { 1 };
+		let t1_split_side = usize::from(t1 <= t2);
+		let t2_split_side = usize::from(t1 > t2);
 		let bezier_starting_at_t1 = self.split(t1)[t1_split_side];
 		// Adjust the ratio `t2` to its corresponding value on the new curve that was split on `t1`
 		let adjusted_t2 = if t1 < t2 || t1 == 0. {
