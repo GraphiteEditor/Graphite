@@ -394,8 +394,8 @@ impl Bezier {
 
 #[cfg(test)]
 mod tests {
-	use super::compare::{compare_f64s, compare_points, compare_vec_of_points};
 	use super::*;
+	use crate::compare::{compare_f64s, compare_points, compare_vec_of_points};
 
 	#[test]
 	fn test_de_casteljau_points() {

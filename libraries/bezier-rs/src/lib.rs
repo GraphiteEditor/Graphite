@@ -1,4 +1,6 @@
 //! Bezier-rs: A Bezier Math Library for Rust
+#[cfg(test)]
+pub(crate) mod compare;
 
 mod bezier;
 mod consts;

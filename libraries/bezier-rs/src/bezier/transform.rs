@@ -549,10 +549,9 @@ impl Bezier {
 
 #[cfg(test)]
 mod tests {
-	use crate::utils::TValue;
-
-	use super::compare::{compare_arcs, compare_vector_of_beziers};
 	use super::*;
+	use crate::compare::{compare_arcs, compare_vector_of_beziers};
+	use crate::utils::TValue;
 
 	#[test]
 	fn test_split() {

@@ -1,6 +1,3 @@
-#[cfg(test)]
-pub(super) mod compare;
-
 mod core;
 mod lookup;
 mod manipulators;
@@ -47,6 +44,13 @@ pub struct Bezier {
 
 impl Debug for Bezier {
 	fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-		write!(f, "{:?}", self.get_points().collect::<Vec<DVec2>>())
+		let mut debug_struct = f.debug_struct("Bezier");
+		let mut debug_struct_ref = debug_struct.field("start", &self.start);
+		debug_struct_ref = match self.handles {
+			BezierHandles::Linear => debug_struct_ref,
+			BezierHandles::Quadratic { handle } => debug_struct_ref.field("handle", &handle),
+			BezierHandles::Cubic { handle_start, handle_end } => debug_struct_ref.field("handle start", &handle_start).field("handle_end", &handle_end),
+		};
+		debug_struct_ref.field("end", &self.end).finish()
 	}
 }
