@@ -535,6 +535,29 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 					.into(),
 				);
 			}
+			NudgeResizeSelectedLayer { delta_x, delta_y, is_bottom_right} => {
+				//Scale the layer by pixels
+				//if is_bottom_right is true, it resizes the bottom/right edges, otherwise the top/left edges
+				self.backup(responses);
+				for path in self.selected_layers().map(|path| path.to_vec()) {
+					if let Ok(Some(existing_bounds)) = self.document_legacy.viewport_bounding_box(&path, &persistent_data.font_cache){
+						//get an array of positions of top left and bottom right
+						let scale_size_x = (existing_bounds[0].x - existing_bounds[1].x - delta_x) / (existing_bounds[0].x - existing_bounds[1].x);
+						let scale_size_y = (existing_bounds[0].y - existing_bounds[1].y - delta_y) / (existing_bounds[0].y - existing_bounds[1].y);
+						let offset = if is_bottom_right {DAffine2::from_translation((-existing_bounds[0].x, -existing_bounds[0].y).into())} 
+										else {DAffine2::from_translation((-existing_bounds[1].x, -existing_bounds[1].y).into())};
+						let scale = DAffine2::from_scale((scale_size_x, scale_size_y).into());
+						let offset_back = if is_bottom_right {DAffine2::from_translation((existing_bounds[0].x, existing_bounds[0].y).into())}
+										else {DAffine2::from_translation((existing_bounds[1].x, existing_bounds[1].y).into())};
+						let operation = DocumentOperation::TransformLayerInViewport {
+						path,
+						transform: (offset_back * scale * offset).to_cols_array(),
+						};
+						responses.push_back(operation.into());
+					}
+				}
+				responses.push_back(BroadcastEvent::DocumentIsDirty.into());
+			}
 			NudgeSelectedLayers { delta_x, delta_y } => {
 				self.backup(responses);
 				for path in self.selected_layers().map(|path| path.to_vec()) {
@@ -654,19 +677,6 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 					}
 					.into(),
 				)
-			}
-			ScaleSelectedLayer { delta_x, delta_y} => {
-				//meant to scale the layer
-				//so far it nudges the layer like NudgeSelectedLayers
-				self.backup(responses);
-				for path in self.selected_layers().map(|path| path.to_vec()) {
-					let operation = DocumentOperation::TransformLayerInViewport {
-						path,
-						transform: DAffine2::from_translation((delta_x, delta_y).into()).to_cols_array(),
-					};
-					responses.push_back(operation.into());
-				}
-				responses.push_back(BroadcastEvent::DocumentIsDirty.into());
 			}
 			SelectAllLayers => {
 				let all = self.all_layers().map(|path| path.to_vec()).collect();
@@ -931,7 +941,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				DeleteSelectedLayers,
 				DuplicateSelectedLayers,
 				NudgeSelectedLayers,
-				ScaleSelectedLayer,
+				NudgeResizeSelectedLayer,
 				SelectedLayersLower,
 				SelectedLayersLowerToBack,
 				SelectedLayersRaise,

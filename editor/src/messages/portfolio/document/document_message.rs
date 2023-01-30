@@ -109,6 +109,11 @@ pub enum DocumentMessage {
 		layer_path: Vec<LayerId>,
 		node_path: Vec<NodeId>,
 	},
+	NudgeResizeSelectedLayer {
+		delta_x: f64,
+		delta_y: f64,
+		is_bottom_right: bool,
+	},
 	NudgeSelectedLayers {
 		delta_x: f64,
 		delta_y: f64,
@@ -126,10 +131,6 @@ pub enum DocumentMessage {
 	RenderDocument,
 	RollbackTransaction,
 	SaveDocument,
-	ScaleSelectedLayer {
-		delta_x: f64,
-		delta_y: f64,
-	},
 	SelectAllLayers,
 	SelectedLayersLower,
 	SelectedLayersLowerToBack,
