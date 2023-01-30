@@ -10,7 +10,7 @@ license = "MIT OR Apache-2.0"
 
 [features]
 std = ["dyn-any", "dyn-any/std"]
-default = ["async", "serde", "kurbo", "log"]
+default = ["async", "serde", "kurbo", "log", "std"]
 log = ["dep:log"]
 serde = ["dep:serde", "glam/serde"]
 gpu = ["spirv-std", "bytemuck", "glam/bytemuck", "dyn-any"]
