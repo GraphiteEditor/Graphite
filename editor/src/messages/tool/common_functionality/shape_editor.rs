@@ -103,7 +103,7 @@ impl ShapeEditor {
 				};
 
 				// Checks if point clicked on is one of the selected points
-				if points.contains(&point_info){
+				if points.contains(&point_info) {
 					responses.push_back(DocumentMessage::DeselectAllManipulatorPoints.into());
 				}
 

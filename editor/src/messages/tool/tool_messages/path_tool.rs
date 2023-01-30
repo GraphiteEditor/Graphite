@@ -211,7 +211,7 @@ impl Fsm for PathToolFsmState {
 								);
 								tool_data.drag_start_pos = input.mouse.position;
 								// Selects all the anchor points when clicking in a filled area of shape. If two shapes intersect we pick the bottom-most layer
-								tool_data.shape_editor.select_all_anchors(responses, top_most_intersection);		
+								tool_data.shape_editor.select_all_anchors(responses, top_most_intersection);
 								return PathToolFsmState::Dragging;
 							}
 						} else {
