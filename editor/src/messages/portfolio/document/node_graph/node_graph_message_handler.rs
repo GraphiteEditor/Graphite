@@ -204,7 +204,7 @@ impl NodeGraphMessageHandler {
 				let is_output = network.outputs_contains(node_id);
 
 				// Don't show stop previewing button on the original output node
-				if !(is_output && !network.previous_outputs_contains(node_id)) {
+				if !(is_output && network.previous_outputs_contains(node_id).unwrap_or(true)) {
 					let output_button = WidgetHolder::new(Widget::TextButton(TextButton {
 						label: if is_output { "End Preview" } else { "Preview" }.to_string(),
 						tooltip: if is_output { "Restore preview to Output node" } else { "Preview node" }.to_string() + " (shortcut: Alt+click node)",
@@ -842,8 +842,8 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &mut dyn Iterator<Item = &
 			}
 			NodeGraphMessage::TogglePreviewImpl { node_id } => {
 				if let Some(network) = self.get_active_network_mut(document) {
-					// Check if the node is already being previewed and so the output should return to default
-					if network.outputs_contains(node_id) {
+					// Check if the node is not already being previewed
+					if !network.outputs_contains(node_id) {
 						network.previous_outputs = Some(network.previous_outputs.to_owned().unwrap_or_else(|| network.outputs.clone()));
 						network.outputs[0] = NodeOutput::new(node_id, 0);
 					} else if let Some(outputs) = network.previous_outputs.take() {
