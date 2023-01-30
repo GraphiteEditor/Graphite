@@ -120,7 +120,7 @@ impl Fsm for PathToolFsmState {
 		self,
 		event: ToolMessage,
 		tool_data: &mut Self::ToolData,
-		(document, _document_id, _global_tool_data, input, font_cache): ToolActionHandlerData,
+		(document, _document_id, _global_tool_data, input, render_data): ToolActionHandlerData,
 		_tool_options: &Self::ToolOptions,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
@@ -166,7 +166,7 @@ impl Fsm for PathToolFsmState {
 						let ignore_document = tool_data.shape_editor.selected_layers().clone();
 						tool_data
 							.snap_manager
-							.start_snap(document, input, document.bounding_boxes(Some(&ignore_document), None, font_cache), true, true);
+							.start_snap(document, input, document.bounding_boxes(Some(&ignore_document), None, render_data), true, true);
 
 						// Do not snap against handles when anchor is selected
 						let mut extension = Vec::new();
@@ -196,7 +196,7 @@ impl Fsm for PathToolFsmState {
 						// Select shapes directly under our mouse
 						let intersection = document
 							.document_legacy
-							.intersects_quad_root(Quad::from_box([input.mouse.position - selection_size, input.mouse.position + selection_size]), font_cache);
+							.intersects_quad_root(Quad::from_box([input.mouse.position - selection_size, input.mouse.position + selection_size]), render_data);
 						if !intersection.is_empty() {
 							if toggle_add_to_selection {
 								responses.push_back(DocumentMessage::AddSelectedLayers { additional_layers: intersection }.into());

@@ -12,11 +12,10 @@ use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 use document_legacy::color::Color;
 use document_legacy::intersection::Quad;
 use document_legacy::layers::layer_info::Layer;
-use document_legacy::layers::style::{Fill, Gradient, GradientType, PathStyle, Stroke};
+use document_legacy::layers::style::{Fill, Gradient, GradientType, PathStyle, RenderData, Stroke};
 use document_legacy::LayerId;
 use document_legacy::Operation;
 
-use document_legacy::layers::text_layer::FontCache;
 use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};
 
@@ -130,8 +129,8 @@ enum GradientToolFsmState {
 }
 
 /// Computes the transform from gradient space to layer space (where gradient space is 0..1 in layer space)
-fn gradient_space_transform(path: &[LayerId], layer: &Layer, document: &DocumentMessageHandler, font_cache: &FontCache) -> DAffine2 {
-	let bounds = layer.aabb_for_transform(DAffine2::IDENTITY, font_cache).unwrap();
+fn gradient_space_transform(path: &[LayerId], layer: &Layer, document: &DocumentMessageHandler, render_data: &RenderData) -> DAffine2 {
+	let bounds = layer.aabb_for_transform(DAffine2::IDENTITY, render_data).unwrap();
 	let bound_transform = DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
 
 	let multiplied = document.document_legacy.multiply_transforms(path).unwrap();
@@ -195,9 +194,9 @@ impl GradientOverlay {
 		layer: &Layer,
 		document: &DocumentMessageHandler,
 		responses: &mut VecDeque<Message>,
-		font_cache: &FontCache,
+		render_data: &RenderData,
 	) -> Self {
-		let transform = gradient_space_transform(path, layer, document, font_cache);
+		let transform = gradient_space_transform(path, layer, document, render_data);
 		let Gradient { start, end, positions, .. } = fill;
 		let [start, end] = [transform.transform_point2(*start), transform.transform_point2(*end)];
 
@@ -261,8 +260,8 @@ struct SelectedGradient {
 }
 
 impl SelectedGradient {
-	pub fn new(gradient: Gradient, path: &[LayerId], layer: &Layer, document: &DocumentMessageHandler, font_cache: &FontCache) -> Self {
-		let transform = gradient_space_transform(path, layer, document, font_cache);
+	pub fn new(gradient: Gradient, path: &[LayerId], layer: &Layer, document: &DocumentMessageHandler, render_data: &RenderData) -> Self {
+		let transform = gradient_space_transform(path, layer, document, render_data);
 		Self {
 			path: path.to_vec(),
 			transform,
@@ -272,7 +271,7 @@ impl SelectedGradient {
 	}
 
 	/// Update the selected gradient, checking for removal or change of gradient.
-	pub fn update(gradient: &mut Option<Self>, document: &DocumentMessageHandler, font_cache: &FontCache, responses: &mut VecDeque<Message>) {
+	pub fn update(gradient: &mut Option<Self>, document: &DocumentMessageHandler, render_data: &RenderData, responses: &mut VecDeque<Message>) {
 		let Some(inner_gradient) = gradient else {
 			return;
 		};
@@ -285,7 +284,7 @@ impl SelectedGradient {
 		};
 
 		// Update transform
-		inner_gradient.transform = gradient_space_transform(&inner_gradient.path, layer, document, font_cache);
+		inner_gradient.transform = gradient_space_transform(&inner_gradient.path, layer, document, render_data);
 
 		// Clear if no longer a gradient
 		let Some(gradient) = layer.style().ok().and_then(|style|style.fill().as_gradient()) else {
@@ -384,8 +383,8 @@ struct GradientToolData {
 	drag_start: DVec2,
 }
 
-pub fn start_snap(snap_manager: &mut SnapManager, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, font_cache: &FontCache) {
-	snap_manager.start_snap(document, input, document.bounding_boxes(None, None, font_cache), true, true);
+pub fn start_snap(snap_manager: &mut SnapManager, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, render_data: &RenderData) {
+	snap_manager.start_snap(document, input, document.bounding_boxes(None, None, render_data), true, true);
 	snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
 }
 
@@ -397,7 +396,7 @@ impl Fsm for GradientToolFsmState {
 		self,
 		event: ToolMessage,
 		tool_data: &mut Self::ToolData,
-		(document, _document_id, global_tool_data, input, font_cache): ToolActionHandlerData,
+		(document, _document_id, global_tool_data, input, render_data): ToolActionHandlerData,
 		tool_options: &Self::ToolOptions,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
@@ -409,7 +408,7 @@ impl Fsm for GradientToolFsmState {
 					}
 
 					if self != GradientToolFsmState::Drawing {
-						SelectedGradient::update(&mut tool_data.selected_gradient, document, font_cache, responses);
+						SelectedGradient::update(&mut tool_data.selected_gradient, document, render_data, responses);
 					}
 
 					for path in document.selected_visible_layers() {
@@ -423,7 +422,9 @@ impl Fsm for GradientToolFsmState {
 								.selected_gradient
 								.as_ref()
 								.and_then(|selected| if selected.path == path { Some(selected.dragging) } else { None });
-							tool_data.gradient_overlays.push(GradientOverlay::new(gradient, dragging, path, layer, document, responses, font_cache))
+							tool_data
+								.gradient_overlays
+								.push(GradientOverlay::new(gradient, dragging, path, layer, document, responses, render_data))
 						}
 					}
 
@@ -493,7 +494,7 @@ impl Fsm for GradientToolFsmState {
 
 								let layer = document.document_legacy.layer(&overlay.path);
 								if let Ok(layer) = layer {
-									let mut selected_gradient = SelectedGradient::new(gradient, &overlay.path, layer, document, font_cache);
+									let mut selected_gradient = SelectedGradient::new(gradient, &overlay.path, layer, document, render_data);
 
 									// Select the new point
 									selected_gradient.dragging = GradientDragTarget::Step(index);
@@ -541,7 +542,7 @@ impl Fsm for GradientToolFsmState {
 						] {
 							if pos.distance_squared(mouse) < tolerance {
 								dragging = true;
-								start_snap(&mut tool_data.snap_manager, document, input, font_cache);
+								start_snap(&mut tool_data.snap_manager, document, input, render_data);
 								tool_data.selected_gradient = Some(SelectedGradient {
 									path: overlay.path.clone(),
 									transform: overlay.transform,
@@ -557,7 +558,7 @@ impl Fsm for GradientToolFsmState {
 					} else {
 						let tolerance = DVec2::splat(SELECTION_TOLERANCE);
 						let quad = Quad::from_box([input.mouse.position - tolerance, input.mouse.position + tolerance]);
-						let intersection = document.document_legacy.intersects_quad_root(quad, font_cache).pop();
+						let intersection = document.document_legacy.intersects_quad_root(quad, render_data).pop();
 
 						if let Some(intersection) = intersection {
 							if !document.selected_layers_contains(&intersection) {
@@ -585,11 +586,11 @@ impl Fsm for GradientToolFsmState {
 									tool_options.gradient_type,
 								)
 							};
-							let selected_gradient = SelectedGradient::new(gradient, &intersection, layer, document, font_cache).with_gradient_start(input.mouse.position);
+							let selected_gradient = SelectedGradient::new(gradient, &intersection, layer, document, render_data).with_gradient_start(input.mouse.position);
 
 							tool_data.selected_gradient = Some(selected_gradient);
 
-							start_snap(&mut tool_data.snap_manager, document, input, font_cache);
+							start_snap(&mut tool_data.snap_manager, document, input, render_data);
 
 							GradientToolFsmState::Drawing
 						} else {

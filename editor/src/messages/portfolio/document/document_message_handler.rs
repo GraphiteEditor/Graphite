@@ -29,7 +29,7 @@ use document_legacy::layers::blend_mode::BlendMode;
 use document_legacy::layers::folder_layer::FolderLayer;
 use document_legacy::layers::layer_info::{LayerDataType, LayerDataTypeDiscriminant};
 use document_legacy::layers::style::{Fill, RenderData, ViewMode};
-use document_legacy::layers::text_layer::{Font, FontCache};
+use document_legacy::layers::text_layer::Font;
 use document_legacy::{DocumentError, DocumentResponse, LayerId, Operation as DocumentOperation};
 use graph_craft::document::NodeId;
 use graphene_std::vector::subpath::Subpath;
@@ -114,70 +114,74 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 	) {
 		use DocumentMessage::*;
 
+		let render_data = RenderData::new(&persistent_data.font_cache, self.view_mode, Some(ipp.document_bounds()));
+
 		#[remain::sorted]
 		match message {
 			// Sub-messages
 			#[remain::unsorted]
-			DispatchOperation(op) => match self.document_legacy.handle_operation(*op, &persistent_data.font_cache) {
-				Ok(Some(document_responses)) => {
-					for response in document_responses {
-						match &response {
-							DocumentResponse::FolderChanged { path } => responses.push_back(FolderChanged { affected_folder_path: path.clone() }.into()),
-							DocumentResponse::DeletedLayer { path } => {
-								self.layer_metadata.remove(path);
-							}
-							DocumentResponse::LayerChanged { path } => responses.push_back(LayerChanged { affected_layer_path: path.clone() }.into()),
-							DocumentResponse::CreatedLayer { path } => {
-								if self.layer_metadata.contains_key(path) {
-									warn!("CreatedLayer overrides existing layer metadata.");
+			DispatchOperation(op) => {
+				match self.document_legacy.handle_operation(*op, &render_data) {
+					Ok(Some(document_responses)) => {
+						for response in document_responses {
+							match &response {
+								DocumentResponse::FolderChanged { path } => responses.push_back(FolderChanged { affected_folder_path: path.clone() }.into()),
+								DocumentResponse::DeletedLayer { path } => {
+									self.layer_metadata.remove(path);
 								}
-								self.layer_metadata.insert(path.clone(), LayerMetadata::new(false));
+								DocumentResponse::LayerChanged { path } => responses.push_back(LayerChanged { affected_layer_path: path.clone() }.into()),
+								DocumentResponse::CreatedLayer { path } => {
+									if self.layer_metadata.contains_key(path) {
+										warn!("CreatedLayer overrides existing layer metadata.");
+									}
+									self.layer_metadata.insert(path.clone(), LayerMetadata::new(false));
 
-								responses.push_back(LayerChanged { affected_layer_path: path.clone() }.into());
-								self.layer_range_selection_reference = path.clone();
-								responses.push_back(
-									AddSelectedLayers {
-										additional_layers: vec![path.clone()],
-									}
-									.into(),
-								);
-							}
-							DocumentResponse::DocumentChanged => responses.push_back(RenderDocument.into()),
-							DocumentResponse::DeletedSelectedManipulatorPoints => {
-								// Clear Properties panel after deleting all points by updating backend widget state.
-								responses.push_back(
-									LayoutMessage::SendLayout {
-										layout: Layout::WidgetLayout(WidgetLayout::new(vec![])),
-										layout_target: LayoutTarget::PropertiesOptions,
-									}
-									.into(),
-								);
-								responses.push_back(
-									LayoutMessage::SendLayout {
-										layout: Layout::WidgetLayout(WidgetLayout::new(vec![])),
-										layout_target: LayoutTarget::PropertiesSections,
-									}
-									.into(),
-								);
-							}
-						};
-						responses.push_back(BroadcastEvent::DocumentIsDirty.into());
+									responses.push_back(LayerChanged { affected_layer_path: path.clone() }.into());
+									self.layer_range_selection_reference = path.clone();
+									responses.push_back(
+										AddSelectedLayers {
+											additional_layers: vec![path.clone()],
+										}
+										.into(),
+									);
+								}
+								DocumentResponse::DocumentChanged => responses.push_back(RenderDocument.into()),
+								DocumentResponse::DeletedSelectedManipulatorPoints => {
+									// Clear Properties panel after deleting all points by updating backend widget state.
+									responses.push_back(
+										LayoutMessage::SendLayout {
+											layout: Layout::WidgetLayout(WidgetLayout::new(vec![])),
+											layout_target: LayoutTarget::PropertiesOptions,
+										}
+										.into(),
+									);
+									responses.push_back(
+										LayoutMessage::SendLayout {
+											layout: Layout::WidgetLayout(WidgetLayout::new(vec![])),
+											layout_target: LayoutTarget::PropertiesSections,
+										}
+										.into(),
+									);
+								}
+							};
+							responses.push_back(BroadcastEvent::DocumentIsDirty.into());
+						}
 					}
+					// Display boolean operation error to the user (except if it is a nothing done error).
+					Err(DocumentError::BooleanOperationError(boolean_operation_error)) if boolean_operation_error != BooleanOperationError::NothingDone => responses.push_back(
+						DialogMessage::DisplayDialogError {
+							title: "Failed to calculate boolean operation".into(),
+							description: format!("Unfortunately, this feature not that robust yet.\n\nError: {boolean_operation_error:?}"),
+						}
+						.into(),
+					),
+					Err(e) => error!("DocumentError: {:?}", e),
+					Ok(_) => (),
 				}
-				// Display boolean operation error to the user (except if it is a nothing done error).
-				Err(DocumentError::BooleanOperationError(boolean_operation_error)) if boolean_operation_error != BooleanOperationError::NothingDone => responses.push_back(
-					DialogMessage::DisplayDialogError {
-						title: "Failed to calculate boolean operation".into(),
-						description: format!("Unfortunately, this feature not that robust yet.\n\nError: {boolean_operation_error:?}"),
-					}
-					.into(),
-				),
-				Err(e) => error!("DocumentError: {:?}", e),
-				Ok(_) => (),
-			},
+			}
 			#[remain::unsorted]
 			Artboard(message) => {
-				self.artboard_message_handler.process_message(message, responses, &persistent_data.font_cache);
+				self.artboard_message_handler.process_message(message, responses, persistent_data);
 			}
 			#[remain::unsorted]
 			Navigation(message) => {
@@ -185,13 +189,12 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 			}
 			#[remain::unsorted]
 			Overlays(message) => {
-				self.overlays_message_handler
-					.process_message(message, responses, (self.overlays_visible, &persistent_data.font_cache, ipp));
+				self.overlays_message_handler.process_message(message, responses, (self.overlays_visible, persistent_data, ipp));
 			}
 			#[remain::unsorted]
 			TransformLayer(message) => {
 				self.transform_layer_handler
-					.process_message(message, responses, (&mut self.layer_metadata, &mut self.document_legacy, ipp, &persistent_data.font_cache));
+					.process_message(message, responses, (&mut self.layer_metadata, &mut self.document_legacy, ipp, &render_data));
 			}
 			#[remain::unsorted]
 			PropertiesPanel(message) => {
@@ -219,20 +222,20 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 			}
 			AddSelectedLayers { additional_layers } => {
 				for layer_path in &additional_layers {
-					responses.extend(self.select_layer(layer_path, &persistent_data.font_cache));
+					responses.extend(self.select_layer(layer_path, &render_data));
 				}
 
 				// TODO: Correctly update layer panel in clear_selection instead of here
 				responses.push_back(FolderChanged { affected_folder_path: vec![] }.into());
 				responses.push_back(BroadcastEvent::SelectionChanged.into());
 
-				self.update_layer_tree_options_bar_widgets(responses, &persistent_data.font_cache);
+				self.update_layer_tree_options_bar_widgets(responses, &render_data);
 			}
 			AlignSelectedLayers { axis, aggregate } => {
 				self.backup(responses);
 				let (paths, boxes): (Vec<_>, Vec<_>) = self
 					.selected_layers()
-					.filter_map(|path| self.document_legacy.viewport_bounding_box(path, &persistent_data.font_cache).ok()?.map(|b| (path, b)))
+					.filter_map(|path| self.document_legacy.viewport_bounding_box(path, &render_data).ok()?.map(|b| (path, b)))
 					.unzip();
 
 				let axis = match axis {
@@ -240,7 +243,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 					AlignAxis::Y => DVec2::Y,
 				};
 				let lerp = |bbox: &[DVec2; 2]| bbox[0].lerp(bbox[1], 0.5);
-				if let Some(combined_box) = self.document_legacy.combined_viewport_bounding_box(self.selected_layers(), &persistent_data.font_cache) {
+				if let Some(combined_box) = self.document_legacy.combined_viewport_bounding_box(self.selected_layers(), &render_data) {
 					let aggregated = match aggregate {
 						AlignAggregate::Min => combined_box[0],
 						AlignAggregate::Max => combined_box[1],
@@ -376,14 +379,9 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 
 				// Calculate the bounding box of the region to be exported
 				let bounds = match bounds {
-					ExportBounds::AllArtwork => self.all_layer_bounds(&persistent_data.font_cache),
-					ExportBounds::Selection => self.selected_visible_layers_bounding_box(&persistent_data.font_cache),
-					ExportBounds::Artboard(id) => self
-						.artboard_message_handler
-						.artboards_document
-						.layer(&[id])
-						.ok()
-						.and_then(|layer| layer.aabb(&persistent_data.font_cache)),
+					ExportBounds::AllArtwork => self.all_layer_bounds(&render_data),
+					ExportBounds::Selection => self.selected_visible_layers_bounding_box(&render_data),
+					ExportBounds::Artboard(id) => self.artboard_message_handler.artboards_document.layer(&[id]).ok().and_then(|layer| layer.aabb(&render_data)),
 				}
 				.unwrap_or_default();
 				let size = bounds[1] - bounds[0];
@@ -412,7 +410,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 					FlipAxis::X => DVec2::new(-1., 1.),
 					FlipAxis::Y => DVec2::new(1., -1.),
 				};
-				if let Some([min, max]) = self.document_legacy.combined_viewport_bounding_box(self.selected_layers(), &persistent_data.font_cache) {
+				if let Some([min, max]) = self.document_legacy.combined_viewport_bounding_box(self.selected_layers(), &render_data) {
 					let center = (max + min) / 2.;
 					let bbox_trans = DAffine2::from_translation(-center);
 					for path in self.selected_layers() {
@@ -483,11 +481,11 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				);
 			}
 			LayerChanged { affected_layer_path } => {
-				if let Ok(layer_entry) = self.layer_panel_entry(affected_layer_path.clone(), &persistent_data.font_cache) {
+				if let Ok(layer_entry) = self.layer_panel_entry(affected_layer_path.clone(), &render_data) {
 					responses.push_back(FrontendMessage::UpdateDocumentLayerDetails { data: layer_entry }.into());
 				}
 				responses.push_back(PropertiesPanelMessage::CheckSelectedWasUpdated { path: affected_layer_path }.into());
-				self.update_layer_tree_options_bar_widgets(responses, &persistent_data.font_cache);
+				self.update_layer_tree_options_bar_widgets(responses, &render_data);
 			}
 			MoveSelectedLayersTo {
 				folder_path,
@@ -632,10 +630,9 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 			}
 			RenameLayer { layer_path, new_name } => responses.push_back(DocumentOperation::RenameLayer { layer_path, new_name }.into()),
 			RenderDocument => {
-				let render_data = RenderData::new(self.view_mode, &persistent_data.font_cache, Some(ipp.document_bounds()));
 				responses.push_back(
 					FrontendMessage::UpdateDocumentArtwork {
-						svg: self.document_legacy.render_root(render_data),
+						svg: self.document_legacy.render_root(&render_data),
 					}
 					.into(),
 				);
@@ -645,7 +642,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				let scale = 0.5 + ASYMPTOTIC_EFFECT + document_transform_scale * SCALE_EFFECT;
 				let viewport_size = ipp.viewport_bounds.size();
 				let viewport_mid = ipp.viewport_bounds.center();
-				let [bounds1, bounds2] = self.document_bounds(&persistent_data.font_cache).unwrap_or([viewport_mid; 2]);
+				let [bounds1, bounds2] = self.document_bounds(&render_data).unwrap_or([viewport_mid; 2]);
 				let bounds1 = bounds1.min(viewport_mid) - viewport_size * scale;
 				let bounds2 = bounds2.max(viewport_mid) + viewport_size * scale;
 				let bounds_length = (bounds2 - bounds1) * (1. + SCROLLBAR_SPACING);
@@ -782,7 +779,6 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 							responses.push_back(FrontendMessage::TriggerRevokeBlobUrl { url: url.clone() }.into());
 						}
 					}
-					LayerDataType::Image(_) => {}
 					other => panic!(
 						"Setting blob URL for invalid layer type, which must be an `Imaginate`, `NodeGraphFrame` or `Image`. Found: `{:?}`",
 						other
@@ -803,7 +799,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				responses.push_back(LayerChanged { affected_layer_path: layer_path }.into())
 			}
 			SetLayerName { layer_path, name } => {
-				if let Some(layer) = self.layer_panel_entry_from_path(&layer_path, &persistent_data.font_cache) {
+				if let Some(layer) = self.layer_panel_entry_from_path(&layer_path, &render_data) {
 					// Only save the history state if the name actually changed to something different
 					if layer.name != name {
 						self.backup(responses);
@@ -926,7 +922,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				responses.push_front(NavigationMessage::SetCanvasZoom { zoom_factor: 2. }.into());
 			}
 			ZoomCanvasToFitAll => {
-				if let Some(bounds) = self.document_bounds(&persistent_data.font_cache) {
+				if let Some(bounds) = self.document_bounds(&render_data) {
 					responses.push_back(
 						NavigationMessage::FitViewportToBounds {
 							bounds,
@@ -1057,14 +1053,14 @@ impl DocumentMessageHandler {
 	pub fn render_document(&mut self, size: DVec2, transform: DAffine2, persistent_data: &PersistentData, render_mode: DocumentRenderMode) -> String {
 		// Render the document SVG code
 
-		let render_data = RenderData::new(ViewMode::Normal, &persistent_data.font_cache, None);
+		let render_data = RenderData::new(&persistent_data.font_cache, ViewMode::Normal, None);
 
 		let (artwork, outside) = match render_mode {
-			DocumentRenderMode::Root => (self.document_legacy.render_root(render_data), None),
-			DocumentRenderMode::OnlyBelowLayerInFolder(below_layer_path) => (self.document_legacy.render_layers_below(below_layer_path, render_data).unwrap(), None),
-			DocumentRenderMode::LayerCutout(layer_path, background) => (self.document_legacy.render_layer(layer_path, render_data).unwrap(), Some(background)),
+			DocumentRenderMode::Root => (self.document_legacy.render_root(&render_data), None),
+			DocumentRenderMode::OnlyBelowLayerInFolder(below_layer_path) => (self.document_legacy.render_layers_below(below_layer_path, &render_data).unwrap(), None),
+			DocumentRenderMode::LayerCutout(layer_path, background) => (self.document_legacy.render_layer(layer_path, &render_data).unwrap(), Some(background)),
 		};
-		let artboards = self.artboard_message_handler.artboards_document.render_root(render_data);
+		let artboards = self.artboard_message_handler.artboards_document.render_root(&render_data);
 		let outside_artboards_color = outside.map_or_else(
 			|| if self.artboard_message_handler.artboard_ids.is_empty() { "ffffff" } else { "222222" }.to_string(),
 			|col| col.rgba_hex(),
@@ -1129,12 +1125,14 @@ impl DocumentMessageHandler {
 			&& self.name.starts_with(DEFAULT_DOCUMENT_NAME)
 	}
 
-	fn select_layer(&mut self, path: &[LayerId], font_cache: &FontCache) -> Option<Message> {
+	fn select_layer(&mut self, path: &[LayerId], render_data: &RenderData) -> Option<Message> {
 		println!("Select_layer fail: {:?}", self.all_layers_sorted());
 
 		if let Some(layer) = self.layer_metadata.get_mut(path) {
+			let render_data = RenderData::new(render_data.font_cache, self.view_mode, None);
+
 			layer.selected = true;
-			let data = self.layer_panel_entry(path.to_vec(), font_cache).ok()?;
+			let data = self.layer_panel_entry(path.to_vec(), &render_data).ok()?;
 			(!path.is_empty()).then(|| FrontendMessage::UpdateDocumentLayerDetails { data }.into())
 		} else {
 			warn!("Tried to select non existing layer {:?}", path);
@@ -1142,13 +1140,13 @@ impl DocumentMessageHandler {
 		}
 	}
 
-	pub fn selected_visible_layers_bounding_box(&self, font_cache: &FontCache) -> Option<[DVec2; 2]> {
+	pub fn selected_visible_layers_bounding_box(&self, render_data: &RenderData) -> Option<[DVec2; 2]> {
 		let paths = self.selected_visible_layers();
-		self.document_legacy.combined_viewport_bounding_box(paths, font_cache)
+		self.document_legacy.combined_viewport_bounding_box(paths, render_data)
 	}
 
-	pub fn artboard_bounding_box_and_transform(&self, path: &[LayerId], font_cache: &FontCache) -> Option<([DVec2; 2], DAffine2)> {
-		self.artboard_message_handler.artboards_document.bounding_box_and_transform(path, font_cache).unwrap_or(None)
+	pub fn artboard_bounding_box_and_transform(&self, path: &[LayerId], render_data: &RenderData) -> Option<([DVec2; 2], DAffine2)> {
+		self.artboard_message_handler.artboards_document.bounding_box_and_transform(path, render_data).unwrap_or(None)
 	}
 
 	pub fn selected_layers(&self) -> impl Iterator<Item = &[LayerId]> {
@@ -1220,16 +1218,16 @@ impl DocumentMessageHandler {
 	}
 
 	/// Returns the bounding boxes for all visible layers and artboards, optionally excluding any paths.
-	pub fn bounding_boxes<'a>(&'a self, ignore_document: Option<&'a Vec<Vec<LayerId>>>, ignore_artboard: Option<LayerId>, font_cache: &'a FontCache) -> impl Iterator<Item = [DVec2; 2]> + 'a {
+	pub fn bounding_boxes<'a>(&'a self, ignore_document: Option<&'a Vec<Vec<LayerId>>>, ignore_artboard: Option<LayerId>, render_data: &'a RenderData) -> impl Iterator<Item = [DVec2; 2]> + 'a {
 		self.visible_layers()
 			.filter(move |path| ignore_document.map_or(true, |ignore_document| !ignore_document.iter().any(|ig| ig.as_slice() == *path)))
-			.filter_map(|path| self.document_legacy.viewport_bounding_box(path, font_cache).ok()?)
+			.filter_map(|path| self.document_legacy.viewport_bounding_box(path, render_data).ok()?)
 			.chain(
 				self.artboard_message_handler
 					.artboard_ids
 					.iter()
 					.filter(move |&&id| Some(id) != ignore_artboard)
-					.filter_map(|&path| self.artboard_message_handler.artboards_document.viewport_bounding_box(&[path], font_cache).ok()?),
+					.filter_map(|&path| self.artboard_message_handler.artboards_document.viewport_bounding_box(&[path], render_data).ok()?),
 			)
 	}
 
@@ -1505,31 +1503,31 @@ impl DocumentMessageHandler {
 	}
 
 	// TODO: This should probably take a slice not a vec, also why does this even exist when `layer_panel_entry_from_path` also exists?
-	pub fn layer_panel_entry(&mut self, path: Vec<LayerId>, font_cache: &FontCache) -> Result<LayerPanelEntry, EditorError> {
+	pub fn layer_panel_entry(&mut self, path: Vec<LayerId>, render_data: &RenderData) -> Result<LayerPanelEntry, EditorError> {
 		let data: LayerMetadata = *self
 			.layer_metadata
 			.get_mut(&path)
 			.ok_or_else(|| EditorError::Document(format!("Could not get layer metadata for {:?}", path)))?;
 		let layer = self.document_legacy.layer(&path)?;
-		let entry = LayerPanelEntry::new(&data, self.document_legacy.multiply_transforms(&path)?, layer, path, font_cache);
+		let entry = LayerPanelEntry::new(&data, self.document_legacy.multiply_transforms(&path)?, layer, path, render_data);
 		Ok(entry)
 	}
 
 	/// Returns a list of `LayerPanelEntry`s intended for display purposes. These don't contain
 	/// any actual data, but rather attributes such as visibility and names of the layers.
-	pub fn layer_panel(&mut self, path: &[LayerId], font_cache: &FontCache) -> Result<Vec<LayerPanelEntry>, EditorError> {
+	pub fn layer_panel(&mut self, path: &[LayerId], render_data: &RenderData) -> Result<Vec<LayerPanelEntry>, EditorError> {
 		let folder = self.document_legacy.folder(path)?;
 		let paths: Vec<Vec<LayerId>> = folder.layer_ids.iter().map(|id| [path, &[*id]].concat()).collect();
-		let entries = paths.iter().rev().filter_map(|path| self.layer_panel_entry_from_path(path, font_cache)).collect();
+		let entries = paths.iter().rev().filter_map(|path| self.layer_panel_entry_from_path(path, render_data)).collect();
 		Ok(entries)
 	}
 
-	pub fn layer_panel_entry_from_path(&self, path: &[LayerId], font_cache: &FontCache) -> Option<LayerPanelEntry> {
+	pub fn layer_panel_entry_from_path(&self, path: &[LayerId], render_data: &RenderData) -> Option<LayerPanelEntry> {
 		let layer_metadata = self.layer_metadata(path);
 		let transform = self.document_legacy.generate_transform_across_scope(path, Some(self.document_legacy.root.transform.inverse())).ok()?;
 		let layer = self.document_legacy.layer(path).ok()?;
 
-		Some(LayerPanelEntry::new(layer_metadata, transform, layer, path.to_vec(), font_cache))
+		Some(LayerPanelEntry::new(layer_metadata, transform, layer, path.to_vec(), render_data))
 	}
 
 	/// When working with an insert index, deleting the layers may cause the insert index to point to a different location (if the layer being deleted was located before the insert index).
@@ -1544,16 +1542,16 @@ impl DocumentMessageHandler {
 	}
 
 	/// Calculates the bounding box of all layers in the document
-	pub fn all_layer_bounds(&self, font_cache: &FontCache) -> Option<[DVec2; 2]> {
-		self.document_legacy.viewport_bounding_box(&[], font_cache).ok().flatten()
+	pub fn all_layer_bounds(&self, render_data: &RenderData) -> Option<[DVec2; 2]> {
+		self.document_legacy.viewport_bounding_box(&[], render_data).ok().flatten()
 	}
 
 	/// Calculates the document bounds used for scrolling and centring (the layer bounds or the artboard (if applicable))
-	pub fn document_bounds(&self, font_cache: &FontCache) -> Option<[DVec2; 2]> {
+	pub fn document_bounds(&self, render_data: &RenderData) -> Option<[DVec2; 2]> {
 		if self.artboard_message_handler.is_infinite_canvas() {
-			self.all_layer_bounds(font_cache)
+			self.all_layer_bounds(render_data)
 		} else {
-			self.artboard_message_handler.artboards_document.viewport_bounding_box(&[], font_cache).ok().flatten()
+			self.artboard_message_handler.artboards_document.viewport_bounding_box(&[], render_data).ok().flatten()
 		}
 	}
 
@@ -1581,11 +1579,6 @@ impl DocumentMessageHandler {
 				LayerDataType::Text(text) => {
 					fonts.insert(text.font.clone());
 				}
-				LayerDataType::Image(image) => image_data.push(FrontendImageData {
-					path: path.clone(),
-					image_data: image.image_data.clone(),
-					mime: image.mime.clone(),
-				}),
 				LayerDataType::NodeGraphFrame(node_graph_frame) => {
 					if let Some(data) = &node_graph_frame.image_data {
 						image_data.push(FrontendImageData {
@@ -1829,7 +1822,7 @@ impl DocumentMessageHandler {
 		);
 	}
 
-	pub fn update_layer_tree_options_bar_widgets(&self, responses: &mut VecDeque<Message>, font_cache: &FontCache) {
+	pub fn update_layer_tree_options_bar_widgets(&self, responses: &mut VecDeque<Message>, render_data: &RenderData) {
 		let mut opacity = None;
 		let mut opacity_is_mixed = false;
 
@@ -1838,7 +1831,7 @@ impl DocumentMessageHandler {
 
 		self.layer_metadata
 			.keys()
-			.filter_map(|path| self.layer_panel_entry_from_path(path, font_cache))
+			.filter_map(|path| self.layer_panel_entry_from_path(path, render_data))
 			.filter(|layer_panel_entry| layer_panel_entry.layer_metadata.selected)
 			.flat_map(|layer_panel_entry| self.document_legacy.layer(layer_panel_entry.path.as_slice()))
 			.for_each(|layer| {
