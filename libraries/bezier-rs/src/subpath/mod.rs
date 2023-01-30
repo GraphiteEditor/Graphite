@@ -8,6 +8,7 @@ pub use structs::*;
 
 use crate::Bezier;
 
+use std::fmt::{Debug, Formatter, Result};
 use std::ops::{Index, IndexMut};
 
 /// Structure used to represent a path composed of [Bezier] curves.
@@ -56,17 +57,12 @@ impl<ManipulatorGroupId: crate::Identifier> Iterator for SubpathIter<'_, Manipul
 		let end_index = (self.index + 1) % self.sub_path.len();
 		self.index += 1;
 
-		let start = self.sub_path[start_index].anchor;
-		let end = self.sub_path[end_index].anchor;
-		let out_handle = self.sub_path[start_index].out_handle;
-		let in_handle = self.sub_path[end_index].in_handle;
+		Some(self.sub_path[start_index].to_bezier(&self.sub_path[end_index]))
+	}
+}
 
-		if let (Some(handle1), Some(handle2)) = (out_handle, in_handle) {
-			Some(Bezier::from_cubic_dvec2(start, handle1, handle2, end))
-		} else if let Some(handle) = out_handle.or(in_handle) {
-			Some(Bezier::from_quadratic_dvec2(start, handle, end))
-		} else {
-			Some(Bezier::from_linear_dvec2(start, end))
-		}
+impl<ManipulatorGroupId: crate::Identifier> Debug for Subpath<ManipulatorGroupId> {
+	fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+		f.debug_struct("Subpath").field("closed", &self.closed).field("manipulator_groups", &self.manipulator_groups).finish()
 	}
 }

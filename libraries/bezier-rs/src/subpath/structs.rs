@@ -31,15 +31,11 @@ pub struct ManipulatorGroup<ManipulatorGroupId: crate::Identifier> {
 
 impl<ManipulatorGroupId: crate::Identifier> Debug for ManipulatorGroup<ManipulatorGroupId> {
 	fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-		if self.in_handle.is_some() && self.out_handle.is_some() {
-			write!(f, "anchor: {}, in: {}, out: {}", self.anchor, self.in_handle.unwrap(), self.out_handle.unwrap())
-		} else if self.in_handle.is_some() {
-			write!(f, "anchor: {}, in: {}, out: n/a", self.anchor, self.in_handle.unwrap())
-		} else if self.out_handle.is_some() {
-			write!(f, "anchor: {}, in: n/a, out: {}", self.anchor, self.out_handle.unwrap())
-		} else {
-			write!(f, "anchor: {}, in: n/a, out: n/a", self.anchor)
-		}
+		f.debug_struct("ManipulatorGroup")
+			.field("anchor", &self.anchor)
+			.field("in_handle", &self.in_handle)
+			.field("out_handle", &self.out_handle)
+			.finish()
 	}
 }
 
