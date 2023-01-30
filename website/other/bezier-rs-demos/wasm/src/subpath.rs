@@ -359,4 +359,21 @@ impl WasmSubpath {
 
 		wrap_svg_tag(format!("{}{}{}", self.to_default_svg(), main_subpath_svg, other_subpath_svg))
 	}
+
+	pub fn trim(&self, t1: f64, t2: f64, t_variant: String) -> String {
+		let t1 = parse_t_variant(&t_variant, t1);
+		let t2 = parse_t_variant(&t_variant, t2);
+		let trimmed_subpath = self.0.trim(t1, t2);
+
+		let mut trimmed_subpath_svg = String::new();
+		trimmed_subpath.to_svg(
+			&mut trimmed_subpath_svg,
+			CURVE_ATTRIBUTES.to_string().replace(BLACK, RED),
+			ANCHOR_ATTRIBUTES.to_string().replace(BLACK, RED),
+			HANDLE_ATTRIBUTES.to_string().replace(GRAY, RED),
+			HANDLE_LINE_ATTRIBUTES.to_string().replace(GRAY, RED),
+		);
+
+		wrap_svg_tag(format!("{}{}", self.to_default_svg(), trimmed_subpath_svg))
+	}
 }
