@@ -115,7 +115,7 @@ fn document_node_types() -> Vec<DocumentNodeType> {
 	];
 	let input_multiple = DocumentNodeType {
 		name: "Input Multiple",
-		category: "Image Filters",
+		category: "Ignore",
 		identifier: NodeImplementation::DocumentNode(NodeNetwork {
 			inputs: vec![0, 1],
 			outputs: vec![NodeOutput::new(0, 0), NodeOutput::new(1, 0)],

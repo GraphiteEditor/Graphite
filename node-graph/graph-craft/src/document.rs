@@ -546,8 +546,8 @@ impl NodeNetwork {
 	}
 
 	/// Is the node being used directly as a previous output?
-	pub fn previous_outputs_contains(&self, node_id: NodeId) -> bool {
-		self.previous_outputs.as_ref().map_or(false, |outputs| outputs.iter().any(|output| output.node_id == node_id))
+	pub fn previous_outputs_contains(&self, node_id: NodeId) -> Option<bool> {
+		self.previous_outputs.as_ref().map(|outputs| outputs.iter().any(|output| output.node_id == node_id))
 	}
 }
 
