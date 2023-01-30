@@ -87,7 +87,7 @@ impl Fsm for EyedropperToolFsmState {
 		self,
 		event: ToolMessage,
 		_tool_data: &mut Self::ToolData,
-		(_document, _document_id, global_tool_data, input, _font_cache): ToolActionHandlerData,
+		(_document, _document_id, global_tool_data, input, _render_data): ToolActionHandlerData,
 		_tool_options: &Self::ToolOptions,
 		responses: &mut VecDeque<Message>,
 	) -> Self {

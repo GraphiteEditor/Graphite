@@ -4,8 +4,7 @@ use crate::messages::prelude::*;
 
 use document_legacy::intersection::Quad;
 use document_legacy::layers::layer_info::LayerDataType;
-use document_legacy::layers::style::{self, Fill, Stroke};
-use document_legacy::layers::text_layer::FontCache;
+use document_legacy::layers::style::{self, Fill, RenderData, Stroke};
 use document_legacy::{LayerId, Operation};
 use graphene_std::vector::subpath::Subpath;
 
@@ -26,7 +25,7 @@ impl PathOutline {
 		overlay_path: Option<Vec<LayerId>>,
 		document: &DocumentMessageHandler,
 		responses: &mut VecDeque<Message>,
-		font_cache: &FontCache,
+		render_data: &RenderData,
 	) -> Option<Vec<LayerId>> {
 		// Get layer data
 		let document_layer = document.document_legacy.layer(&document_layer_path).ok()?;
@@ -35,8 +34,8 @@ impl PathOutline {
 		// Get the bezpath from the shape or text
 		let subpath = match &document_layer.data {
 			LayerDataType::Shape(layer_shape) => Some(layer_shape.shape.clone()),
-			LayerDataType::Text(text) => Some(text.to_subpath_nonmut(font_cache)),
-			_ => document_layer.aabb_for_transform(DAffine2::IDENTITY, font_cache).map(|[p1, p2]| Subpath::new_rect(p1, p2)),
+			LayerDataType::Text(text) => Some(text.to_subpath_nonmut(render_data)),
+			_ => document_layer.aabb_for_transform(DAffine2::IDENTITY, render_data).map(|[p1, p2]| Subpath::new_rect(p1, p2)),
 		}?;
 
 		// Generate a new overlay layer if necessary
@@ -74,16 +73,16 @@ impl PathOutline {
 
 	/// Creates an outline of a layer either with a pre-existing overlay or by generating a new one
 	///
-	/// Creates an outline, discarding the overlay on failiure
+	/// Creates an outline, discarding the overlay on failure
 	fn create_outline(
 		document_layer_path: Vec<LayerId>,
 		overlay_path: Option<Vec<LayerId>>,
 		document: &DocumentMessageHandler,
 		responses: &mut VecDeque<Message>,
-		font_cache: &FontCache,
+		render_data: &RenderData,
 	) -> Option<Vec<LayerId>> {
 		let copied_overlay_path = overlay_path.clone();
-		let result = Self::try_create_outline(document_layer_path, overlay_path, document, responses, font_cache);
+		let result = Self::try_create_outline(document_layer_path, overlay_path, document, responses, render_data);
 		if result.is_none() {
 			// Discard the overlay layer if it exists
 			if let Some(overlay_path) = copied_overlay_path {
@@ -104,17 +103,17 @@ impl PathOutline {
 	}
 
 	/// Performs an intersect test and generates a hovered overlay if necessary
-	pub fn intersect_test_hovered(&mut self, input: &InputPreprocessorMessageHandler, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>, font_cache: &FontCache) {
+	pub fn intersect_test_hovered(&mut self, input: &InputPreprocessorMessageHandler, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>, render_data: &RenderData) {
 		// Get the layer the user is hovering over
 		let tolerance = DVec2::splat(SELECTION_TOLERANCE);
 		let quad = Quad::from_box([input.mouse.position - tolerance, input.mouse.position + tolerance]);
-		let mut intersection = document.document_legacy.intersects_quad_root(quad, font_cache);
+		let mut intersection = document.document_legacy.intersects_quad_root(quad, render_data);
 
 		// If the user is hovering over a layer they have not already selected, then update outline
 		if let Some(path) = intersection.pop() {
 			if !document.selected_visible_layers().any(|visible| visible == path.as_slice()) {
 				// Updates the overlay, generating a new one if necessary
-				self.hovered_overlay_path = Self::create_outline(path.clone(), self.hovered_overlay_path.take(), document, responses, font_cache);
+				self.hovered_overlay_path = Self::create_outline(path.clone(), self.hovered_overlay_path.take(), document, responses, render_data);
 				if self.hovered_overlay_path.is_none() {
 					self.clear_hovered(responses);
 				}
@@ -137,11 +136,11 @@ impl PathOutline {
 	}
 
 	/// Updates the selected overlays, generating or removing overlays if necessary
-	pub fn update_selected<'a>(&mut self, selected: impl Iterator<Item = &'a [LayerId]>, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>, font_cache: &FontCache) {
+	pub fn update_selected<'a>(&mut self, selected: impl Iterator<Item = &'a [LayerId]>, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>, render_data: &RenderData) {
 		let mut old_overlay_paths = std::mem::take(&mut self.selected_overlay_paths);
 
 		for document_layer_path in selected {
-			if let Some(overlay_path) = Self::create_outline(document_layer_path.to_vec(), old_overlay_paths.pop(), document, responses, font_cache) {
+			if let Some(overlay_path) = Self::create_outline(document_layer_path.to_vec(), old_overlay_paths.pop(), document, responses, render_data) {
 				self.selected_overlay_paths.push(overlay_path);
 			}
 		}

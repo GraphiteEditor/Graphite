@@ -12,14 +12,14 @@ use crate::messages::prelude::*;
 use document_legacy::color::Color;
 use document_legacy::document::Document;
 use document_legacy::layers::layer_info::{Layer, LayerDataType, LayerDataTypeDiscriminant};
-use document_legacy::layers::style::{Fill, Gradient, GradientType, LineCap, LineJoin, Stroke};
-use document_legacy::layers::text_layer::{FontCache, TextLayer};
+use document_legacy::layers::style::{Fill, Gradient, GradientType, LineCap, LineJoin, RenderData, Stroke, ViewMode};
+use document_legacy::layers::text_layer::TextLayer;
 
 use glam::{DAffine2, DVec2};
 use std::f64::consts::PI;
 use std::sync::Arc;
 
-pub fn apply_transform_operation(layer: &Layer, transform_op: TransformOp, value: f64, font_cache: &FontCache) -> [f64; 6] {
+pub fn apply_transform_operation(layer: &Layer, transform_op: TransformOp, value: f64, render_data: &RenderData) -> [f64; 6] {
 	let transformation = match transform_op {
 		TransformOp::X => DAffine2::update_x,
 		TransformOp::Y => DAffine2::update_y,
@@ -29,8 +29,8 @@ pub fn apply_transform_operation(layer: &Layer, transform_op: TransformOp, value
 	};
 
 	let scale = match transform_op {
-		TransformOp::Width => layer.bounding_transform(font_cache).scale_x() / layer.transform.scale_x(),
-		TransformOp::Height => layer.bounding_transform(font_cache).scale_y() / layer.transform.scale_y(),
+		TransformOp::Width => layer.bounding_transform(render_data).scale_x() / layer.transform.scale_x(),
+		TransformOp::Height => layer.bounding_transform(render_data).scale_y() / layer.transform.scale_y(),
 		_ => 1.,
 	};
 
@@ -43,7 +43,7 @@ pub fn apply_transform_operation(layer: &Layer, transform_op: TransformOp, value
 	}
 
 	// Find the layerspace pivot
-	let pivot = DAffine2::from_translation(layer.transform.transform_point2(layer.layerspace_pivot(font_cache)));
+	let pivot = DAffine2::from_translation(layer.transform.transform_point2(layer.layerspace_pivot(render_data)));
 
 	// Find the delta transform
 	let mut delta = layer.transform.inverse() * transform;
@@ -94,17 +94,15 @@ pub fn register_artboard_layer_properties(layer: &Layer, responses: &mut VecDequ
 	}];
 
 	let properties_body = {
-		let shape = if let LayerDataType::Shape(shape) = &layer.data {
-			shape
-		} else {
+		let LayerDataType::Shape(shape) = &layer.data else {
 			panic!("Artboards can only be shapes")
 		};
-		let color = if let Fill::Solid(color) = shape.style.fill() {
-			color
-		} else {
+		let Fill::Solid(color) = shape.style.fill() else {
 			panic!("Artboard must have a solid fill")
 		};
-		let pivot = layer.transform.transform_vector2(layer.layerspace_pivot(&persistent_data.font_cache));
+
+		let render_data = RenderData::new(&persistent_data.font_cache, ViewMode::default(), None);
+		let pivot = layer.transform.transform_vector2(layer.layerspace_pivot(&render_data));
 
 		vec![LayoutGroup::Section {
 			name: "Artboard".into(),
@@ -167,7 +165,7 @@ pub fn register_artboard_layer_properties(layer: &Layer, responses: &mut VecDequ
 						WidgetHolder::related_separator(),
 						WidgetHolder::unrelated_separator(),
 						WidgetHolder::new(Widget::NumberInput(NumberInput {
-							value: Some(layer.bounding_transform(&persistent_data.font_cache).scale_x()),
+							value: Some(layer.bounding_transform(&render_data).scale_x()),
 							label: "W".into(),
 							unit: " px".into(),
 							is_integer: true,
@@ -183,7 +181,7 @@ pub fn register_artboard_layer_properties(layer: &Layer, responses: &mut VecDequ
 						})),
 						WidgetHolder::related_separator(),
 						WidgetHolder::new(Widget::NumberInput(NumberInput {
-							value: Some(layer.bounding_transform(&persistent_data.font_cache).scale_y()),
+							value: Some(layer.bounding_transform(&render_data).scale_y()),
 							label: "H".into(),
 							unit: " px".into(),
 							is_integer: true,
@@ -267,11 +265,6 @@ pub fn register_artwork_layer_properties(
 					tooltip: "Text".into(),
 					..Default::default()
 				})),
-				LayerDataType::Image(_) => WidgetHolder::new(Widget::IconLabel(IconLabel {
-					icon: "NodeImage".into(),
-					tooltip: "Image".into(),
-					..Default::default()
-				})),
 				LayerDataType::NodeGraphFrame(_) => WidgetHolder::new(Widget::IconLabel(IconLabel {
 					icon: "NodeNodes".into(),
 					tooltip: "Node Graph Frame".into(),
@@ -321,9 +314,6 @@ pub fn register_artwork_layer_properties(
 				node_section_stroke(&text.path_style.stroke().unwrap_or_default()),
 			]
 		}
-		LayerDataType::Image(_) => {
-			vec![node_section_transform(layer, persistent_data)]
-		}
 		LayerDataType::NodeGraphFrame(node_graph_frame) => {
 			let mut properties_sections = vec![node_section_transform(layer, persistent_data)];
 
@@ -360,7 +350,8 @@ pub fn register_artwork_layer_properties(
 }
 
 fn node_section_transform(layer: &Layer, persistent_data: &PersistentData) -> LayoutGroup {
-	let pivot = layer.transform.transform_vector2(layer.layerspace_pivot(&persistent_data.font_cache));
+	let render_data = RenderData::new(&persistent_data.font_cache, ViewMode::default(), None);
+	let pivot = layer.transform.transform_vector2(layer.layerspace_pivot(&render_data));
 	LayoutGroup::Section {
 		name: "Transform".into(),
 		layout: vec![
@@ -492,7 +483,7 @@ fn node_section_transform(layer: &Layer, persistent_data: &PersistentData) -> La
 					WidgetHolder::unrelated_separator(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
 					WidgetHolder::unrelated_separator(),
 					WidgetHolder::new(Widget::NumberInput(NumberInput {
-						value: Some(layer.bounding_transform(&persistent_data.font_cache).scale_x()),
+						value: Some(layer.bounding_transform(&render_data).scale_x()),
 						label: "W".into(),
 						unit: " px".into(),
 						on_update: WidgetCallback::new(|number_input: &NumberInput| {
@@ -506,7 +497,7 @@ fn node_section_transform(layer: &Layer, persistent_data: &PersistentData) -> La
 					})),
 					WidgetHolder::related_separator(),
 					WidgetHolder::new(Widget::NumberInput(NumberInput {
-						value: Some(layer.bounding_transform(&persistent_data.font_cache).scale_y()),
+						value: Some(layer.bounding_transform(&render_data).scale_y()),
 						label: "H".into(),
 						unit: " px".into(),
 						on_update: WidgetCallback::new(|number_input: &NumberInput| {

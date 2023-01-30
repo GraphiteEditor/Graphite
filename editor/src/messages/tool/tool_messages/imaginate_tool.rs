@@ -100,7 +100,7 @@ impl Fsm for ImaginateToolFsmState {
 		self,
 		event: ToolMessage,
 		tool_data: &mut Self::ToolData,
-		(document, _document_id, _global_tool_data, input, font_cache): ToolActionHandlerData,
+		(document, _document_id, _global_tool_data, input, render_data): ToolActionHandlerData,
 		_tool_options: &Self::ToolOptions,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
@@ -112,7 +112,7 @@ impl Fsm for ImaginateToolFsmState {
 		if let ToolMessage::Imaginate(event) = event {
 			match (self, event) {
 				(Ready, DragStart) => {
-					shape_data.start(responses, document, input, font_cache);
+					shape_data.start(responses, document, input, render_data);
 					responses.push_back(DocumentMessage::StartTransaction.into());
 					responses.push_back(NodeGraphMessage::SetDrawing { new_drawing: true }.into());
 					shape_data.path = Some(document.get_path_for_new_layer());

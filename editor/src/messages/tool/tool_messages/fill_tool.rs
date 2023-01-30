@@ -84,7 +84,7 @@ impl Fsm for FillToolFsmState {
 		self,
 		event: ToolMessage,
 		_tool_data: &mut Self::ToolData,
-		(document, _document_id, global_tool_data, input, font_cache): ToolActionHandlerData,
+		(document, _document_id, global_tool_data, input, render_data): ToolActionHandlerData,
 		_tool_options: &Self::ToolOptions,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
@@ -98,7 +98,7 @@ impl Fsm for FillToolFsmState {
 					let tolerance = DVec2::splat(SELECTION_TOLERANCE);
 					let quad = Quad::from_box([mouse_pos - tolerance, mouse_pos + tolerance]);
 
-					if let Some(path) = document.document_legacy.intersects_quad_root(quad, font_cache).last() {
+					if let Some(path) = document.document_legacy.intersects_quad_root(quad, render_data).last() {
 						let color = match lmb_or_rmb {
 							LeftPointerDown => global_tool_data.primary_color,
 							RightPointerDown => global_tool_data.secondary_color,

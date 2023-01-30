@@ -14,6 +14,7 @@ use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::{HintData, HintGroup};
 use document_legacy::document::pick_safe_imaginate_resolution;
 use document_legacy::layers::layer_info::{LayerDataType, LayerDataTypeDiscriminant};
+use document_legacy::layers::style::RenderData;
 use document_legacy::layers::text_layer::Font;
 use document_legacy::{LayerId, Operation as DocumentOperation};
 use graph_craft::document::value::TaggedValue;
@@ -635,19 +636,21 @@ impl PortfolioMessageHandler {
 		}
 	}
 
-	// TODO Fix how this doesn't preserve tab order upon loading new document from *File > Load*
+	// TODO: Fix how this doesn't preserve tab order upon loading new document from *File > Load*
 	fn load_document(&mut self, new_document: DocumentMessageHandler, document_id: u64, responses: &mut VecDeque<Message>) {
+		let render_data = RenderData::new(&self.persistent_data.font_cache, new_document.view_mode, None);
+
 		self.document_ids.push(document_id);
 
 		responses.extend(
 			new_document
 				.layer_metadata
 				.keys()
-				.filter_map(|path| new_document.layer_panel_entry_from_path(path, &self.persistent_data.font_cache))
+				.filter_map(|path| new_document.layer_panel_entry_from_path(path, &render_data))
 				.map(|entry| FrontendMessage::UpdateDocumentLayerDetails { data: entry }.into())
 				.collect::<Vec<_>>(),
 		);
-		new_document.update_layer_tree_options_bar_widgets(responses, &self.persistent_data.font_cache);
+		new_document.update_layer_tree_options_bar_widgets(responses, &render_data);
 
 		self.documents.insert(document_id, new_document);
 
