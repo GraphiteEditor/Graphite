@@ -10,10 +10,10 @@ use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, ToolActionHan
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 
 use document_legacy::intersection::Quad;
+use document_legacy::layers::layer_info::LayerDataType;
 use document_legacy::layers::style::{self, Fill, Stroke};
 use document_legacy::layers::text_layer::FontCache;
-use document_legacy::LayerId;
-use document_legacy::Operation;
+use document_legacy::{LayerId, Operation};
 
 use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};
@@ -54,6 +54,7 @@ pub enum TextToolMessage {
 
 	// Tool-specific messages
 	CommitText,
+	EditSelected,
 	Interact,
 	TextChange {
 		new_text: String,
@@ -339,6 +340,35 @@ impl Fsm for TextToolFsmState {
 					};
 
 					new_state
+				}
+				(state, EditSelected) => {
+					let mut selected_layers = document.selected_layers();
+
+					if let Some(layer_path) = selected_layers.next() {
+						// Check that only one layer is selected
+						if selected_layers.next().is_none() {
+							if let Ok(layer) = document.document_legacy.layer(layer_path) {
+								if let LayerDataType::Text(_) = layer.data {
+									if state == TextToolFsmState::Editing {
+										tool_data.set_editing(false, responses);
+									}
+
+									tool_data.layer_path = layer_path.into();
+
+									responses.push_back(DocumentMessage::StartTransaction.into());
+
+									tool_data.set_editing(true, responses);
+
+									let replacement_selected_layers = vec![tool_data.layer_path.clone()];
+									responses.push_back(DocumentMessage::SetSelectedLayers { replacement_selected_layers }.into());
+
+									return Editing;
+								}
+							}
+						}
+					}
+
+					state
 				}
 				(state, Abort) => {
 					if state == TextToolFsmState::Editing {
