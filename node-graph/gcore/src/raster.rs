@@ -245,6 +245,9 @@ fn gamma_color_node(color: Color, gamma: f32) -> Color {
 }
 
 #[cfg(not(target_arch = "spirv"))]
+pub use hue_shift::HueShiftColorNode;
+
+#[cfg(not(target_arch = "spirv"))]
 mod hue_shift {
 	use super::*;
 	#[derive(Debug)]
