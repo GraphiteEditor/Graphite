@@ -33,4 +33,5 @@ kurbo = { git = "https://github.com/linebender/kurbo.git", features = [
 ], optional = true }
 glam = { version = "^0.22", default-features = false, features = ["scalar-math", "libm"]}
 node-macro = {path = "../node-macro"}
+specta.workspace = true
 # forma = { version = "0.1.0", package = "forma-render" }

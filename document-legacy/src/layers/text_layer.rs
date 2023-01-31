@@ -17,7 +17,7 @@ mod to_path;
 /// A line, or multiple lines, of text drawn in the document.
 /// Like [ShapeLayers](super::shape_layer::ShapeLayer), [TextLayer] are rendered as
 /// [`<path>`s](https://developer.mozilla.org/en-US/docs/Web/SVG/Element/path).
-#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize, specta::Type)]
 pub struct TextLayer {
 	/// The string of text, encompassing one or multiple lines.
 	pub text: String,
@@ -34,7 +34,7 @@ pub struct TextLayer {
 }
 
 impl LayerData for TextLayer {
-	fn render(&mut self, svg: &mut String, svg_defs: &mut String, transforms: &mut Vec<DAffine2>, render_data: RenderData) -> bool {
+	fn render(&mut self, svg: &mut String, svg_defs: &mut String, transforms: &mut Vec<DAffine2>, render_data: &RenderData) -> bool {
 		let transform = self.transform(transforms, render_data.view_mode);
 		let inverse = transform.inverse();
 
@@ -67,7 +67,7 @@ impl LayerData for TextLayer {
 				font.map(|_| r#" style="font-family: local-font;""#).unwrap_or_default()
 			);
 		} else {
-			let buzz_face = self.load_face(render_data.font_cache);
+			let buzz_face = self.load_face(render_data);
 
 			let mut path = self.to_subpath(buzz_face);
 
@@ -89,8 +89,8 @@ impl LayerData for TextLayer {
 		false
 	}
 
-	fn bounding_box(&self, transform: glam::DAffine2, font_cache: &FontCache) -> Option<[DVec2; 2]> {
-		let buzz_face = Some(self.load_face(font_cache)?);
+	fn bounding_box(&self, transform: glam::DAffine2, render_data: &RenderData) -> Option<[DVec2; 2]> {
+		let buzz_face = Some(self.load_face(render_data)?);
 
 		if transform.matrix2 == DMat2::ZERO {
 			return None;
@@ -99,8 +99,8 @@ impl LayerData for TextLayer {
 		Some((transform * self.bounding_box(&self.text, buzz_face)).bounding_box())
 	}
 
-	fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, font_cache: &FontCache) {
-		let buzz_face = self.load_face(font_cache);
+	fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, render_data: &RenderData) {
+		let buzz_face = self.load_face(render_data);
 
 		if intersect_quad_bez_path(quad, &self.bounding_box(&self.text, buzz_face).path(), true) {
 			intersections.push(path.clone());
@@ -109,8 +109,8 @@ impl LayerData for TextLayer {
 }
 
 impl TextLayer {
-	pub fn load_face<'a>(&self, font_cache: &'a FontCache) -> Option<Face<'a>> {
-		font_cache.get(&self.font).map(|data| rustybuzz::Face::from_slice(data, 0).expect("Loading font failed"))
+	pub fn load_face<'a>(&self, render_data: &'a RenderData) -> Option<Face<'a>> {
+		render_data.font_cache.get(&self.font).map(|data| rustybuzz::Face::from_slice(data, 0).expect("Loading font failed"))
 	}
 
 	pub fn transform(&self, transforms: &[DAffine2], mode: ViewMode) -> DAffine2 {
@@ -121,7 +121,7 @@ impl TextLayer {
 		transforms.iter().skip(start).cloned().reduce(|a, b| a * b).unwrap_or(DAffine2::IDENTITY)
 	}
 
-	pub fn new(text: String, style: PathStyle, size: f64, font: Font, font_cache: &FontCache) -> Self {
+	pub fn new(text: String, style: PathStyle, size: f64, font: Font, render_data: &RenderData) -> Self {
 		let mut new = Self {
 			text,
 			path_style: style,
@@ -132,7 +132,7 @@ impl TextLayer {
 			cached_path: None,
 		};
 
-		new.cached_path = Some(new.generate_path(new.load_face(font_cache)));
+		new.cached_path = Some(new.generate_path(new.load_face(render_data)));
 
 		new
 	}
@@ -150,8 +150,8 @@ impl TextLayer {
 
 	/// Converts to a [Subpath], without populating the cache.
 	#[inline]
-	pub fn to_subpath_nonmut(&self, font_cache: &FontCache) -> Subpath {
-		let buzz_face = self.load_face(font_cache);
+	pub fn to_subpath_nonmut(&self, render_data: &RenderData) -> Subpath {
+		let buzz_face = self.load_face(render_data);
 
 		self.cached_path
 			.clone()
@@ -170,8 +170,8 @@ impl TextLayer {
 		Quad::from_box([DVec2::ZERO, far])
 	}
 
-	pub fn update_text(&mut self, text: String, font_cache: &FontCache) {
-		let buzz_face = self.load_face(font_cache);
+	pub fn update_text(&mut self, text: String, render_data: &RenderData) {
+		let buzz_face = self.load_face(render_data);
 
 		self.text = text;
 		self.cached_path = Some(self.generate_path(buzz_face));

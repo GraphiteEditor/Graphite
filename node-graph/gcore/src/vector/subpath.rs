@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 /// [Subpath] represents a single vector path, containing many [ManipulatorGroups].
 /// For each closed shape we keep a [Subpath] which contains the [ManipulatorGroup]s (handles and anchors) that define that shape.
 // TODO Add "closed" bool to subpath
-#[derive(PartialEq, Clone, Debug, Default, Serialize, Deserialize, DynAny)]
+#[derive(PartialEq, Clone, Debug, Default, Serialize, Deserialize, DynAny, specta::Type)]
 pub struct Subpath(IdBackedVec<ManipulatorGroup>);
 
 impl Subpath {

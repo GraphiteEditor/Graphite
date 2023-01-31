@@ -10,7 +10,7 @@ use crate::messages::prelude::*;
 pub struct PreferencesDialogMessageHandler {}
 
 impl MessageHandler<PreferencesDialogMessage, &PreferencesMessageHandler> for PreferencesDialogMessageHandler {
-	fn process_message(&mut self, message: PreferencesDialogMessage, preferences: &PreferencesMessageHandler, responses: &mut VecDeque<Message>) {
+	fn process_message(&mut self, message: PreferencesDialogMessage, responses: &mut VecDeque<Message>, preferences: &PreferencesMessageHandler) {
 		match message {
 			PreferencesDialogMessage::Confirm => {}
 		}

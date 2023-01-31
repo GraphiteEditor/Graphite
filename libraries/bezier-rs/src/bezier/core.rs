@@ -150,7 +150,7 @@ impl Bezier {
 
 	/// Appends to the `svg` mutable string with an SVG shape representation of the handle lines.
 	pub fn handle_lines_to_svg(&self, svg: &mut String, attributes: String) {
-		let _ = write!(svg, r#"<path d="{}" {}/>"#, self.svg_handle_line_argument().unwrap_or_else(|| "".to_string()), attributes);
+		let _ = write!(svg, r#"<path d="{}" {}/>"#, self.svg_handle_line_argument().unwrap_or_default(), attributes);
 	}
 
 	/// Appends to the `svg` mutable string with an SVG shape representation of the anchors.

@@ -10,6 +10,7 @@ use document_legacy::layers::style::ViewMode;
 use document_legacy::LayerId;
 use document_legacy::Operation as DocumentOperation;
 use graph_craft::document::NodeId;
+use graphene_core::raster::Image;
 use serde::{Deserialize, Serialize};
 
 #[remain::sorted]
@@ -115,8 +116,7 @@ pub enum DocumentMessage {
 		delta_y: f64,
 	},
 	PasteImage {
-		mime: String,
-		image_data: Vec<u8>,
+		image: Image,
 		mouse: Option<(f64, f64)>,
 	},
 	Redo,

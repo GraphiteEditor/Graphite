@@ -16,7 +16,7 @@ pub struct ProjectionOptions {
 
 impl Default for ProjectionOptions {
 	fn default() -> Self {
-		ProjectionOptions {
+		Self {
 			lut_size: 20,
 			convergence_epsilon: 1e-4,
 			convergence_limit: 3,
@@ -56,7 +56,7 @@ pub struct ArcsOptions {
 
 impl Default for ArcsOptions {
 	fn default() -> Self {
-		ArcsOptions {
+		Self {
 			strategy: ArcStrategy::Automatic,
 			error: 0.5,
 			max_iterations: 100,
@@ -85,7 +85,7 @@ impl Debug for CircleArc {
 
 impl Default for CircleArc {
 	fn default() -> Self {
-		CircleArc {
+		Self {
 			center: DVec2::ZERO,
 			radius: 0.,
 			start_angle: 0.,

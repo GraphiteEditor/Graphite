@@ -12,15 +12,15 @@ pub struct DialogMessageHandler {
 
 impl MessageHandler<DialogMessage, (&PortfolioMessageHandler, &PreferencesMessageHandler)> for DialogMessageHandler {
 	#[remain::check]
-	fn process_message(&mut self, message: DialogMessage, (portfolio, preferences): (&PortfolioMessageHandler, &PreferencesMessageHandler), responses: &mut VecDeque<Message>) {
+	fn process_message(&mut self, message: DialogMessage, responses: &mut VecDeque<Message>, (portfolio, preferences): (&PortfolioMessageHandler, &PreferencesMessageHandler)) {
 		#[remain::sorted]
 		match message {
 			#[remain::unsorted]
-			DialogMessage::ExportDialog(message) => self.export_dialog.process_message(message, (), responses),
+			DialogMessage::ExportDialog(message) => self.export_dialog.process_message(message, responses, ()),
 			#[remain::unsorted]
-			DialogMessage::NewDocumentDialog(message) => self.new_document_dialog.process_message(message, (), responses),
+			DialogMessage::NewDocumentDialog(message) => self.new_document_dialog.process_message(message, responses, ()),
 			#[remain::unsorted]
-			DialogMessage::PreferencesDialog(message) => self.preferences_dialog.process_message(message, preferences, responses),
+			DialogMessage::PreferencesDialog(message) => self.preferences_dialog.process_message(message, responses, preferences),
 
 			DialogMessage::CloseAllDocumentsWithConfirmation => {
 				let dialog = simple_dialogs::CloseAllDocumentsDialog;

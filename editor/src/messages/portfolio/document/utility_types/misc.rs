@@ -22,13 +22,13 @@ pub enum FlipAxis {
 	Y,
 }
 
-#[derive(PartialEq, Eq, Clone, Debug, Serialize, Deserialize, Hash)]
+#[derive(PartialEq, Eq, Clone, Debug, Serialize, Deserialize, Hash, specta::Type)]
 pub enum AlignAxis {
 	X,
 	Y,
 }
 
-#[derive(PartialEq, Eq, Clone, Debug, Serialize, Deserialize, Hash)]
+#[derive(PartialEq, Eq, Clone, Debug, Serialize, Deserialize, Hash, specta::Type)]
 pub enum AlignAggregate {
 	Min,
 	Max,

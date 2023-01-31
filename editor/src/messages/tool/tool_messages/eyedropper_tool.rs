@@ -1,5 +1,5 @@
 use crate::messages::frontend::utility_types::MouseCursorIcon;
-use crate::messages::input_mapper::utility_types::input_keyboard::{Key, KeysGroup, MouseMotion};
+use crate::messages::input_mapper::utility_types::input_keyboard::{Key, MouseMotion};
 use crate::messages::layout::utility_types::layout_widget::PropertyHolder;
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::{DocumentToolData, EventToMessageMap, Fsm, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
@@ -15,7 +15,7 @@ pub struct EyedropperTool {
 
 #[remain::sorted]
 #[impl_message(Message, ToolMessage, Eyedropper)]
-#[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize)]
+#[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize, specta::Type)]
 pub enum EyedropperToolMessage {
 	// Standard messages
 	#[remain::unsorted]
@@ -44,24 +44,8 @@ impl ToolMetadata for EyedropperTool {
 impl PropertyHolder for EyedropperTool {}
 
 impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for EyedropperTool {
-	fn process_message(&mut self, message: ToolMessage, data: ToolActionHandlerData<'a>, responses: &mut VecDeque<Message>) {
-		if message == ToolMessage::UpdateHints {
-			self.fsm_state.update_hints(responses);
-			return;
-		}
-
-		if message == ToolMessage::UpdateCursor {
-			self.fsm_state.update_cursor(responses);
-			return;
-		}
-
-		let new_state = self.fsm_state.transition(message, &mut self.data, data, &(), responses);
-
-		if self.fsm_state != new_state {
-			self.fsm_state = new_state;
-			self.fsm_state.update_hints(responses);
-			self.fsm_state.update_cursor(responses);
-		}
+	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: ToolActionHandlerData<'a>) {
+		self.fsm_state.process_event(message, &mut self.data, tool_data, &(), responses, true);
 	}
 
 	advertise_actions!(EyedropperToolMessageDiscriminant;
@@ -84,17 +68,12 @@ impl ToolTransition for EyedropperTool {
 	}
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 enum EyedropperToolFsmState {
+	#[default]
 	Ready,
 	SamplingPrimary,
 	SamplingSecondary,
-}
-
-impl Default for EyedropperToolFsmState {
-	fn default() -> Self {
-		EyedropperToolFsmState::Ready
-	}
 }
 
 #[derive(Clone, Debug, Default)]
@@ -108,7 +87,7 @@ impl Fsm for EyedropperToolFsmState {
 		self,
 		event: ToolMessage,
 		_tool_data: &mut Self::ToolData,
-		(_document, _document_id, global_tool_data, input, _font_cache): ToolActionHandlerData,
+		(_document, _document_id, global_tool_data, input, _render_data): ToolActionHandlerData,
 		_tool_options: &Self::ToolOptions,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
@@ -162,28 +141,10 @@ impl Fsm for EyedropperToolFsmState {
 	fn update_hints(&self, responses: &mut VecDeque<Message>) {
 		let hint_data = match self {
 			EyedropperToolFsmState::Ready => HintData(vec![HintGroup(vec![
-				HintInfo {
-					key_groups: vec![],
-					key_groups_mac: None,
-					mouse: Some(MouseMotion::Lmb),
-					label: String::from("Sample to Primary"),
-					plus: false,
-				},
-				HintInfo {
-					key_groups: vec![],
-					key_groups_mac: None,
-					mouse: Some(MouseMotion::Rmb),
-					label: String::from("Sample to Secondary"),
-					plus: false,
-				},
+				HintInfo::mouse(MouseMotion::Lmb, "Sample to Primary"),
+				HintInfo::mouse(MouseMotion::Rmb, "Sample to Secondary"),
 			])]),
-			EyedropperToolFsmState::SamplingPrimary | EyedropperToolFsmState::SamplingSecondary => HintData(vec![HintGroup(vec![HintInfo {
-				key_groups: vec![KeysGroup(vec![Key::Escape]).into()],
-				key_groups_mac: None,
-				mouse: None,
-				label: String::from("Cancel"),
-				plus: false,
-			}])]),
+			EyedropperToolFsmState::SamplingPrimary | EyedropperToolFsmState::SamplingSecondary => HintData(vec![HintGroup(vec![HintInfo::keys([Key::Escape], "Cancel")])]),
 		};
 
 		responses.push_back(FrontendMessage::UpdateInputHints { hint_data }.into());

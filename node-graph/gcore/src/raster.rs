@@ -436,7 +436,7 @@ mod image {
 	use super::{Color, ImageSlice};
 	use alloc::vec::Vec;
 	use dyn_any::{DynAny, StaticType};
-	#[derive(Clone, Debug, PartialEq, DynAny, Default)]
+	#[derive(Clone, Debug, PartialEq, DynAny, Default, specta::Type)]
 	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 	pub struct Image {
 		pub width: u32,
@@ -458,6 +458,11 @@ mod image {
 				height: self.height,
 				data: self.data.as_slice(),
 			}
+		}
+		/// Generate Image from some frontend image data (the canvas pixels as u8s in a flat array)
+		pub fn from_image_data(image_data: &[u8], width: u32, height: u32) -> Self {
+			let data = image_data.chunks_exact(4).map(|v| Color::from_rgba8(v[0], v[1], v[2], v[3])).collect();
+			Image { width, height, data }
 		}
 	}
 

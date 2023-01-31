@@ -3,7 +3,7 @@ use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::snapping::SnapManager;
 
-use document_legacy::layers::text_layer::FontCache;
+use document_legacy::layers::style::RenderData;
 use document_legacy::LayerId;
 use document_legacy::Operation;
 
@@ -18,11 +18,11 @@ pub struct Resize {
 
 impl Resize {
 	/// Starts a resize, assigning the snap targets and snapping the starting position.
-	pub fn start(&mut self, responses: &mut VecDeque<Message>, document: &DocumentMessageHandler, mouse_position: DVec2, font_cache: &FontCache) {
-		self.snap_manager.start_snap(document, document.bounding_boxes(None, None, font_cache), true, true);
-		self.snap_manager.add_all_document_handles(document, &[], &[], &[]);
+	pub fn start(&mut self, responses: &mut VecDeque<Message>, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, render_data: &RenderData) {
+		self.snap_manager.start_snap(document, input, document.bounding_boxes(None, None, render_data), true, true);
+		self.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
 		let root_transform = document.document_legacy.root.transform;
-		self.drag_start = root_transform.inverse().transform_point2(self.snap_manager.snap_position(responses, document, mouse_position));
+		self.drag_start = root_transform.inverse().transform_point2(self.snap_manager.snap_position(responses, document, input.mouse.position));
 	}
 
 	/// Calculate the drag start position in viewport space.
