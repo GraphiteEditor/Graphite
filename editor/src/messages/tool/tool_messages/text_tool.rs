@@ -10,6 +10,7 @@ use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, ToolActionHan
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 
 use document_legacy::intersection::Quad;
+use document_legacy::layers::layer_info::LayerDataType;
 use document_legacy::layers::style::{self, Fill, RenderData, Stroke};
 use document_legacy::LayerId;
 use document_legacy::Operation;
@@ -53,6 +54,7 @@ pub enum TextToolMessage {
 
 	// Tool-specific messages
 	CommitText,
+	EditSelected,
 	Interact,
 	TextChange {
 		new_text: String,
@@ -241,6 +243,21 @@ fn update_overlays(document: &DocumentMessageHandler, tool_data: &mut TextToolDa
 	resize_overlays(&mut tool_data.overlays, responses, new_len);
 }
 
+fn set_edit_layer(layer_path: &[LayerId], tool_state: TextToolFsmState, tool_data: &mut TextToolData, responses: &mut VecDeque<Message>) {
+	if tool_state == TextToolFsmState::Editing {
+		tool_data.set_editing(false, responses);
+	}
+
+	tool_data.layer_path = layer_path.into();
+
+	responses.push_back(DocumentMessage::StartTransaction.into());
+
+	tool_data.set_editing(true, responses);
+
+	let replacement_selected_layers = vec![tool_data.layer_path.clone()];
+	responses.push_back(DocumentMessage::SetSelectedLayers { replacement_selected_layers }.into());
+}
+
 impl Fsm for TextToolFsmState {
 	type ToolData = TextToolData;
 	type ToolOptions = TextOptions;
@@ -275,18 +292,7 @@ impl Fsm for TextToolFsmState {
 						.last()
 						.filter(|l| document.document_legacy.layer(l).map(|l| l.as_text().is_ok()).unwrap_or(false))
 					{
-						if state == TextToolFsmState::Editing {
-							tool_data.set_editing(false, responses);
-						}
-
-						tool_data.layer_path = clicked_text_layer_path.clone();
-
-						responses.push_back(DocumentMessage::StartTransaction.into());
-
-						tool_data.set_editing(true, responses);
-
-						let replacement_selected_layers = vec![tool_data.layer_path.clone()];
-						responses.push_back(DocumentMessage::SetSelectedLayers { replacement_selected_layers }.into());
+						set_edit_layer(clicked_text_layer_path, state, tool_data, responses);
 
 						Editing
 					}
@@ -338,6 +344,24 @@ impl Fsm for TextToolFsmState {
 					};
 
 					new_state
+				}
+				(state, EditSelected) => {
+					let mut selected_layers = document.selected_layers();
+
+					if let Some(layer_path) = selected_layers.next() {
+						// Check that only one layer is selected
+						if selected_layers.next().is_none() {
+							if let Ok(layer) = document.document_legacy.layer(layer_path) {
+								if let LayerDataType::Text(_) = layer.data {
+									set_edit_layer(layer_path, state, tool_data, responses);
+
+									return Editing;
+								}
+							}
+						}
+					}
+
+					state
 				}
 				(state, Abort) => {
 					if state == TextToolFsmState::Editing {
