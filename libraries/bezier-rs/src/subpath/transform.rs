@@ -1,7 +1,7 @@
 use super::*;
 use crate::ComputeType;
 
-/// Functionality that transform Subpaths, such as split, reduce, offset, etc.
+/// Functionality that transforms Subpaths, such as split, reduce, offset, etc.
 impl Subpath {
 	/// Returns either one or two Subpaths that result from splitting the original Subpath at the point corresponding to `t`.
 	/// If the original Subpath was closed, a single open Subpath will be returned.
@@ -104,7 +104,7 @@ mod tests {
 		let handle2 = DVec2::new(40., 30.);
 		let handle3 = DVec2::new(10., 10.);
 
-		return Subpath::new(
+		Subpath::new(
 			vec![
 				ManipulatorGroup {
 					anchor: start,
@@ -128,7 +128,7 @@ mod tests {
 				},
 			],
 			false,
-		);
+		)
 	}
 
 	fn set_up_closed_subpath() -> Subpath {
@@ -216,7 +216,7 @@ mod tests {
 		assert_eq!(first.manipulator_groups[0].anchor, location);
 		assert_eq!(first.manipulator_groups[4].anchor, location);
 		assert_eq!(subpath.manipulator_groups[0..], first.manipulator_groups[..4]);
-		assert_eq!(first.closed, false);
+		assert!(!first.closed);
 		assert_eq!(first.iter().last().unwrap(), subpath.iter().last().unwrap());
 		assert_eq!(first.iter().next().unwrap(), subpath.iter().next().unwrap());
 	}
@@ -230,7 +230,7 @@ mod tests {
 		assert_eq!(first.manipulator_groups[0].anchor, location);
 		assert_eq!(first.manipulator_groups[4].anchor, location);
 		assert_eq!(subpath.manipulator_groups[0..], first.manipulator_groups[..4]);
-		assert_eq!(first.closed, false);
+		assert!(!first.closed);
 		assert_eq!(first.iter().last().unwrap(), subpath.iter().last().unwrap());
 		assert_eq!(first.iter().next().unwrap(), subpath.iter().next().unwrap());
 	}
