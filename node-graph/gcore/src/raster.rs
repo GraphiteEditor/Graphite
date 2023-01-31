@@ -14,7 +14,7 @@ fn grayscale_color_node(input: Color) -> Color {
 	Color::from_rgbaf32_unchecked(avg, avg, avg, input.a())
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Default)]
 pub struct MapNode<MapFn> {
 	map_fn: MapFn,
 }
@@ -95,7 +95,7 @@ where
 	Color::from_rgbaf32_unchecked(total_r / total_weight, total_g / total_weight, total_b / total_weight, total_a / total_weight)
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct GaussianNode<Sigma> {
 	sigma: Sigma,
 }
@@ -122,16 +122,39 @@ fn image_index_iter_node(input: ImageSlice<'input>) -> core::ops::Range<u32> {
 	0..(input.width * input.height)
 }
 
-#[derive(Debug, Clone)]
-pub struct WindowNode<Radius, Image> {
+#[derive(Debug)]
+pub struct WindowNode<Radius: for<'i> Node<'i, (), Output = u32>, Image: for<'i> Node<'i, (), Output = ImageSlice<'i>>> {
 	radius: Radius,
 	image: Image,
 }
+
+impl<'input, S0: 'input, S1: 'input> Node<'input, u32> for WindowNode<S0, S1>
+where
+	S0: for<'any_input> Node<'any_input, (), Output = u32>,
+	S1: for<'any_input> Node<'any_input, (), Output = ImageSlice<'any_input>>,
+{
+	type Output = ImageWindowIterator<'input>;
+	#[inline]
+	fn eval<'node: 'input>(&'node self, input: u32) -> Self::Output {
+		let radius = self.radius.eval(());
+		let image = self.image.eval(());
+		{
+			let iter = ImageWindowIterator::new(image, radius, input);
+			iter
+		}
+	}
+}
+impl<S0: for<'i> Node<'i, (), Output = u32>, S1: for<'i> Node<'i, (), Output = ImageSlice<'i>>> WindowNode<S0, S1> {
+	pub const fn new(radius: S0, image: S1) -> Self {
+		Self { radius, image }
+	}
+}
+/*
 #[node_macro::node_fn(WindowNode)]
 fn window_node(input: u32, radius: u32, image: ImageSlice<'input>) -> ImageWindowIterator<'input> {
 	let iter = ImageWindowIterator::new(image, radius, input);
 	iter
-}
+}*/
 
 #[derive(Debug, Clone, Copy)]
 pub struct ImageWindowIterator<'a> {
@@ -184,7 +207,7 @@ impl<'a> Iterator for ImageWindowIterator<'a> {
 	}
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct MapSndNode<First, Second, MapFn> {
 	map_fn: MapFn,
 	_first: PhantomData<First>,
@@ -200,7 +223,7 @@ where
 	(a, map_fn.eval(b))
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct BrightenColorNode<Brightness> {
 	brightness: Brightness,
 }
@@ -210,7 +233,7 @@ fn brighten_color_node(color: Color, brightness: f32) -> Color {
 	Color::from_rgbaf32_unchecked(per_channel(color.r()), per_channel(color.g()), per_channel(color.b()), color.a())
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct GammaColorNode<Gamma> {
 	gamma: Gamma,
 }
@@ -224,7 +247,7 @@ fn gamma_color_node(color: Color, gamma: f32) -> Color {
 #[cfg(not(target_arch = "spirv"))]
 mod hue_shift {
 	use super::*;
-	#[derive(Debug, Clone)]
+	#[derive(Debug)]
 	pub struct HueShiftColorNode<Angle> {
 		angle: Angle,
 	}
@@ -237,7 +260,7 @@ mod hue_shift {
 	}
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct ForEachNode<Iter, MapNode> {
 	map_node: MapNode,
 	_iter: PhantomData<Iter>,
@@ -343,7 +366,7 @@ mod image {
 		input.collect()
 	}
 
-	#[derive(Debug, Clone)]
+	#[derive(Debug)]
 	pub struct MapImageSliceNode<MapFn> {
 		map_fn: MapFn,
 	}
@@ -393,38 +416,52 @@ mod test {
 		(&map).eval(array.iter_mut());
 		assert_eq!(array[0], Color::from_rgbaf32(0.33333334, 0.33333334, 0.33333334, 1.0).unwrap());*/
 	}
+
 	#[test]
 	fn window_node() {
+		use alloc::vec;
 		let radius = ValueNode::new(1u32).then(CloneNode::new());
-		static DATA: &[Color] = &[Color::from_rgbf32_unchecked(1., 0., 0.); 25];
-		let image = ValueNode::<_>::new(ImageSlice { width: 5, height: 5, data: DATA }).then(CloneNode::new());
+		let image = ValueNode::<_>::new(Image {
+			width: 5,
+			height: 5,
+			data: vec![Color::from_rgbf32_unchecked(1., 0., 0.); 25],
+		});
+		let image = image.then(ImageRefNode::new());
 		let window = WindowNode::new(radius, image);
-		let window = &window as &dyn for<'a> Node<'a, u32, Output = ImageWindowIterator<'a>>;
-		//let window: TypeNode<_, u32, _> = TypeNode::new(type_erased);
 		let vec = window.eval(0);
 		assert_eq!(vec.count(), 4);
 		let vec = window.eval(5);
 		assert_eq!(vec.count(), 6);
 		let vec = window.eval(12);
 		assert_eq!(vec.count(), 9);
-		let type_erased = &window as &dyn for<'a> Node<'a, u32, Output = ImageWindowIterator<'a>>;
-		let vec = type_erased.eval(12);
 	}
+
+	// TODO: I can't be bothered to fix this test rn
 	/*
 	#[test]
 	fn blur_node() {
+		use alloc::vec;
 		let radius = ValueNode::new(1u32).then(CloneNode::new());
 		let sigma = ValueNode::new(3f64).then(CloneNode::new());
-		static DATA: &[Color] = &[Color::from_rgbf32_unchecked(1., 0., 0.); 20];
-		let image = ValueNode::<_>::new(ImageSlice { width: 10, height: 2, data: DATA }).then(CloneNode::new());
-		let window = WindowNode::new(radius, image.clone());
+		let radius = ValueNode::new(1u32).then(CloneNode::new());
+		let image = ValueNode::<_>::new(Image {
+			width: 5,
+			height: 5,
+			data: vec![Color::from_rgbf32_unchecked(1., 0., 0.); 25],
+		});
+		let image = image.then(ImageRefNode::new());
+		let window = WindowNode::new(radius, image);
 		let window: TypeNode<_, u32, ImageWindowIterator<'_>> = TypeNode::new(window);
 		let distance = ValueNode::new(DistanceNode::new());
 		let pos_to_dist = MapSndNode::new(distance);
-		let pos_to_dist = ValueNode(pos_to_dist);
 		let type_erased = &window as &dyn for<'a> Node<'a, u32, Output = ImageWindowIterator<'a>>;
 		type_erased.eval(0);
-		let distance = window.then(MapNode::new(pos_to_dist));
+		let map_pos_to_dist = MapNode::new(ValueNode::new(pos_to_dist));
+
+		let type_erased = &map_pos_to_dist as &dyn for<'a> Node<'a, u32, Output = ImageWindowIterator<'a>>;
+		type_erased.eval(0);
+
+		let distance = window.then(map_pos_to_dist);
 		let map_gaussian = MapSndNode::new(ValueNode(GaussianNode::new(sigma)));
 		let map_gaussian: TypeNode<_, (_, f32), (_, f32)> = TypeNode::new(map_gaussian);
 		let map_gaussian = ValueNode(map_gaussian);
@@ -443,5 +480,6 @@ mod test {
 		let _ = blur.eval(());
 		let vec = blur.then(collect);
 		let _image = vec.eval(());
-	}*/
+	}
+	*/
 }

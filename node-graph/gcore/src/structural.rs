@@ -1,7 +1,5 @@
 use core::marker::PhantomData;
 
-use dyn_any::StaticTypeSized;
-
 use crate::Node;
 
 #[derive(Debug, Clone)]
@@ -75,8 +73,8 @@ mod test {
 	fn compose() {
 		let value = ValueNode::new(4u32);
 		let compose = value.then(IdNode::new());
-		assert_eq!(compose.eval(()), &5u32);
+		assert_eq!(compose.eval(()), &4u32);
 		let type_erased = &compose as &dyn for<'i> Node<'i, (), Output = &'i u32>;
-		assert_eq!(type_erased.eval(()), &5u32);
+		assert_eq!(type_erased.eval(()), &4u32);
 	}
 }
