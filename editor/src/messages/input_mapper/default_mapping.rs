@@ -57,7 +57,7 @@ pub fn default_mapping() -> Mapping {
 		entry!(KeyDown(Rmb); action_dispatch=SelectToolMessage::Abort),
 		entry!(KeyDown(Escape); action_dispatch=SelectToolMessage::Abort),
 		//
-		
+
 		// ArtboardToolMessage
 		entry!(KeyDown(Lmb); action_dispatch=ArtboardToolMessage::PointerDown),
 		entry!(PointerMove; refresh_keys=[Shift, Alt], action_dispatch=ArtboardToolMessage::PointerMove { constrain_axis_or_aspect: Shift, center: Alt }),
@@ -88,8 +88,6 @@ pub fn default_mapping() -> Mapping {
 		entry!(KeyDown(ArrowRight); modifiers=[ArrowUp], action_dispatch=ArtboardToolMessage::NudgeSelected { delta_x: NUDGE_AMOUNT, delta_y: -NUDGE_AMOUNT }),
 		entry!(KeyDown(ArrowRight); modifiers=[ArrowDown], action_dispatch=ArtboardToolMessage::NudgeSelected { delta_x: NUDGE_AMOUNT, delta_y: NUDGE_AMOUNT }),
 		entry!(KeyDown(ArrowRight); action_dispatch=ArtboardToolMessage::NudgeSelected { delta_x: NUDGE_AMOUNT, delta_y: 0. }),
-		
-		
 		//
 		// NavigateToolMessage
 		entry!(KeyUp(Lmb); modifiers=[Shift], action_dispatch=NavigateToolMessage::ClickZoom { zoom_in: false }),
@@ -274,7 +272,6 @@ pub fn default_mapping() -> Mapping {
 		entry!(KeyDown(ArrowUp); modifiers=[Alt], action_dispatch=DocumentMessage::NudgeResizeSelectedLayer { delta_x: 0., delta_y: -NUDGE_AMOUNT, is_bottom_right: true }),
 		entry!(KeyDown(ArrowUp); modifiers=[Alt, ArrowRight], action_dispatch=DocumentMessage::NudgeResizeSelectedLayer { delta_x: NUDGE_AMOUNT, delta_y: -NUDGE_AMOUNT, is_bottom_right: true }),
 		entry!(KeyDown(ArrowUp); modifiers=[Alt, ArrowLeft], action_dispatch=DocumentMessage::NudgeResizeSelectedLayer { delta_x: -NUDGE_AMOUNT, delta_y: -NUDGE_AMOUNT, is_bottom_right: true }),
-		
 		entry!(KeyDown(ArrowRight); modifiers=[Alt, Shift], action_dispatch=DocumentMessage::NudgeResizeSelectedLayer { delta_x: BIG_NUDGE_AMOUNT, delta_y: 0., is_bottom_right: true }),
 		entry!(KeyDown(ArrowRight); modifiers=[Alt, Shift, ArrowDown], action_dispatch=DocumentMessage::NudgeResizeSelectedLayer { delta_x: BIG_NUDGE_AMOUNT, delta_y: BIG_NUDGE_AMOUNT, is_bottom_right: true }),
 		entry!(KeyDown(ArrowRight); modifiers=[Alt, Shift, ArrowUp], action_dispatch=DocumentMessage::NudgeResizeSelectedLayer { delta_x: BIG_NUDGE_AMOUNT, delta_y: -BIG_NUDGE_AMOUNT, is_bottom_right: true }),
@@ -301,7 +298,6 @@ pub fn default_mapping() -> Mapping {
 		entry!(KeyDown(ArrowUp); modifiers=[Alt, Control], action_dispatch=DocumentMessage::NudgeResizeSelectedLayer { delta_x: 0., delta_y: NUDGE_AMOUNT, is_bottom_right: false }),
 		entry!(KeyDown(ArrowUp); modifiers=[Alt, Control, ArrowRight], action_dispatch=DocumentMessage::NudgeResizeSelectedLayer { delta_x: -NUDGE_AMOUNT, delta_y: NUDGE_AMOUNT, is_bottom_right: false }),
 		entry!(KeyDown(ArrowUp); modifiers=[Alt, Control, ArrowLeft], action_dispatch=DocumentMessage::NudgeResizeSelectedLayer { delta_x: NUDGE_AMOUNT, delta_y: NUDGE_AMOUNT, is_bottom_right: false }),
-		
 		entry!(KeyDown(ArrowRight); modifiers=[Alt, Control, Shift], action_dispatch=DocumentMessage::NudgeResizeSelectedLayer { delta_x: -BIG_NUDGE_AMOUNT, delta_y: 0., is_bottom_right: false }),
 		entry!(KeyDown(ArrowRight); modifiers=[Alt, Control, Shift, ArrowDown], action_dispatch=DocumentMessage::NudgeResizeSelectedLayer { delta_x: -BIG_NUDGE_AMOUNT, delta_y: -BIG_NUDGE_AMOUNT, is_bottom_right: false }),
 		entry!(KeyDown(ArrowRight); modifiers=[Alt, Control, Shift, ArrowUp], action_dispatch=DocumentMessage::NudgeResizeSelectedLayer { delta_x: -BIG_NUDGE_AMOUNT, delta_y: BIG_NUDGE_AMOUNT, is_bottom_right: false }),
@@ -315,12 +311,10 @@ pub fn default_mapping() -> Mapping {
 		entry!(KeyDown(ArrowUp); modifiers=[Alt, Control, Shift, ArrowRight], action_dispatch=DocumentMessage::NudgeResizeSelectedLayer { delta_x: -BIG_NUDGE_AMOUNT, delta_y: BIG_NUDGE_AMOUNT, is_bottom_right: false }),
 		entry!(KeyDown(ArrowUp); modifiers=[Alt, Control, Shift, ArrowLeft], action_dispatch=DocumentMessage::NudgeResizeSelectedLayer { delta_x: BIG_NUDGE_AMOUNT, delta_y: BIG_NUDGE_AMOUNT, is_bottom_right: false }),
 		entry!(KeyDown(ArrowUp); modifiers=[Alt, Control, Shift, ArrowLeft], action_dispatch=DocumentMessage::NudgeResizeSelectedLayer { delta_x: BIG_NUDGE_AMOUNT, delta_y: BIG_NUDGE_AMOUNT, is_bottom_right: false }),
-		
 		// TransformLayerMessage
 		entry!(KeyDown(KeyG); action_dispatch=TransformLayerMessage::BeginGrab),
 		entry!(KeyDown(KeyR); action_dispatch=TransformLayerMessage::BeginRotate),
 		entry!(KeyDown(KeyS); action_dispatch=TransformLayerMessage::BeginScale),
-		
 		//
 		// NavigationMessage
 		entry!(KeyDown(Mmb); modifiers=[Control], action_dispatch=NavigationMessage::RotateCanvasBegin),
