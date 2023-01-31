@@ -24,6 +24,14 @@ const subpathFeatures = {
 			mouseLocation ? subpath.project(mouseLocation[0], mouseLocation[1]) : subpath.to_svg(),
 		triggerOnMouseMove: true,
 	},
+	Tangent: {
+		callback: (subpath: WasmSubpathInstance, options: Record<string, number>): string => subpath.tangent(options.t),
+		sliderOptions: [tSliderOptions],
+	},
+	Normal: {
+		callback: (subpath: WasmSubpathInstance, options: Record<string, number>): string => subpath.normal(options.t),
+		sliderOptions: [tSliderOptions],
+	},
 	"Intersect (Line Segment)": {
 		callback: (subpath: WasmSubpathInstance): string =>
 			subpath.intersect_line_segment([
@@ -47,6 +55,12 @@ const subpathFeatures = {
 				[40, 120],
 				[175, 140],
 			]),
+	},
+	Split: {
+		callback: (subpath: WasmSubpathInstance, options: Record<string, number>, _: undefined, computeType: ComputeType): string => subpath.split(options.computeArgument, computeType),
+		sliderOptions: [{ ...tSliderOptions, variable: "computeArgument" }],
+		// TODO: Uncomment this after implementing the Euclidean version
+		// chooseComputeType: true,
 	},
 };
 

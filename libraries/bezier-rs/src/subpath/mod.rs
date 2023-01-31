@@ -3,6 +3,7 @@ mod lookup;
 mod manipulators;
 mod solvers;
 mod structs;
+mod transform;
 pub use structs::*;
 
 use crate::Bezier;
