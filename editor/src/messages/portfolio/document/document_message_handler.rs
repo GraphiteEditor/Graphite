@@ -564,42 +564,23 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				for path in self.selected_layers().map(|path| path.to_vec()) {
 					if is_scale {
 						if let Ok(Some(existing_bounds)) = self.document_legacy.viewport_bounding_box(&path, &render_data) {
-							let scale_size_x = if is_bottom_right {
-								if (existing_bounds[1].x - existing_bounds[0].x + delta_x) > 1. {
-									(existing_bounds[1].x - existing_bounds[0].x + delta_x) / (existing_bounds[1].x - existing_bounds[0].x)
-								} else {
-									1. / (existing_bounds[1].x - existing_bounds[0].x)
-								}
-							} else {
-								if (existing_bounds[1].x - existing_bounds[0].x - delta_x) > 1. {
-									(existing_bounds[1].x - existing_bounds[0].x - delta_x) / (existing_bounds[1].x - existing_bounds[0].x)
-								} else {
-									1. / (existing_bounds[1].x - existing_bounds[0].x)
-								}
-							};
-							let scale_size_y = if is_bottom_right {
-								if (existing_bounds[1].y - existing_bounds[0].y + delta_y) > 1. {
-									(existing_bounds[1].y - existing_bounds[0].y + delta_y) / (existing_bounds[1].y - existing_bounds[0].y)
-								} else {
-									1. / (existing_bounds[1].y - existing_bounds[0].y)
-								}
-							} else {
-								if (existing_bounds[1].y - existing_bounds[0].y - delta_y) > 1. {
-									(existing_bounds[1].y - existing_bounds[0].y - delta_y) / (existing_bounds[1].y - existing_bounds[0].y)
-								} else {
-									1. / (existing_bounds[1].y - existing_bounds[0].y)
-								}
-							};
+							let [existing_top_left, existing_bottom_right] = [existing_bounds[0], existing_bounds[1]];
+							let width = existing_bottom_right.x - existing_top_left.x;
+							let height = existing_bottom_right.y - existing_top_left.y;
+							let new_width = if is_bottom_right { width + delta_x } else { width - delta_x };
+							let new_height = if is_bottom_right { height + delta_y } else { height - delta_y };
+							let scale_size_x = if new_width > 1. { new_width / width } else { 1. / width };
+							let scale_size_y = if new_height > 1. { new_height / height } else { 1. / height };
 							let offset = if is_bottom_right {
-								DAffine2::from_translation((-existing_bounds[0].x, -existing_bounds[0].y).into())
+								DAffine2::from_translation(-existing_top_left)
 							} else {
-								DAffine2::from_translation((-existing_bounds[1].x, -existing_bounds[1].y).into())
+								DAffine2::from_translation(-existing_bottom_right)
 							};
 							let scale = DAffine2::from_scale((scale_size_x, scale_size_y).into());
 							let offset_back = if is_bottom_right {
-								DAffine2::from_translation((existing_bounds[0].x, existing_bounds[0].y).into())
+								DAffine2::from_translation(existing_top_left)
 							} else {
-								DAffine2::from_translation((existing_bounds[1].x, existing_bounds[1].y).into())
+								DAffine2::from_translation(existing_bottom_right)
 							};
 							let operation = DocumentOperation::TransformLayerInViewport {
 								path,
