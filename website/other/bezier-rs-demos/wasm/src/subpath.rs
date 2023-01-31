@@ -209,11 +209,11 @@ impl WasmSubpath {
 		wrap_svg_tag(format!("{subpath_svg}{line_svg}{intersections_svg}"))
 	}
 
-	pub fn split(&self, t: f64, compute_type: String) -> String {
-		let (main_subpath, optional_subpath) = match compute_type.as_str() {
+	pub fn split(&self, t: f64, tVariant: String) -> String {
+		let (main_subpath, optional_subpath) = match tVariant.as_str() {
 			"Euclidean" => self.0.split(TValue::Euclidean(t)),
 			"Parametric" => self.0.split(TValue::Parametric(t)),
-			_ => panic!("Unexpected ComputeType string: '{}'", compute_type),
+			_ => panic!("Unexpected ComputeType string: '{}'", tVariant),
 		};
 
 		let mut main_subpath_svg = String::new();

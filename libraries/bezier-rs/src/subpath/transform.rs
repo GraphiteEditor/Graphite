@@ -141,7 +141,7 @@ mod tests {
 	fn split_an_open_subpath() {
 		let subpath = set_up_open_subpath();
 		let location = subpath.evaluate(TValue::Parametric(0.2));
-		let split_pair = subpath.iter().next().unwrap().split((0.2 * 3.) % 1.);
+		let split_pair = subpath.iter().next().unwrap().split(TValue::Parametric((0.2 * 3.) % 1.));
 		let (first, second) = subpath.split(TValue::Parametric(0.2));
 		assert!(second.is_some());
 		let second = second.unwrap();
@@ -155,7 +155,7 @@ mod tests {
 	fn split_at_start_of_an_open_subpath() {
 		let subpath = set_up_open_subpath();
 		let location = subpath.evaluate(TValue::Parametric(0.));
-		let split_pair = subpath.iter().next().unwrap().split(0.);
+		let split_pair = subpath.iter().next().unwrap().split(TValue::Parametric(0.));
 		let (first, second) = subpath.split(TValue::Parametric(0.));
 		assert!(second.is_some());
 		let second = second.unwrap();
@@ -176,7 +176,7 @@ mod tests {
 	fn split_at_end_of_an_open_subpath() {
 		let subpath = set_up_open_subpath();
 		let location = subpath.evaluate(TValue::Parametric(1.));
-		let split_pair = subpath.iter().last().unwrap().split(1.);
+		let split_pair = subpath.iter().last().unwrap().split(TValue::Parametric(1.));
 		let (first, second) = subpath.split(TValue::Parametric(1.));
 		assert!(second.is_some());
 		let second = second.unwrap();
@@ -197,7 +197,7 @@ mod tests {
 	fn split_a_closed_subpath() {
 		let subpath = set_up_closed_subpath();
 		let location = subpath.evaluate(TValue::Parametric(0.2));
-		let split_pair = subpath.iter().next().unwrap().split((0.2 * 4.) % 1.);
+		let split_pair = subpath.iter().next().unwrap().split(TValue::Parametric((0.2 * 4.) % 1.));
 		let (first, second) = subpath.split(TValue::Parametric(0.2));
 		assert!(second.is_none());
 		assert_eq!(first.manipulator_groups[0].anchor, location);
