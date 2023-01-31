@@ -11,7 +11,6 @@ use crate::messages::layout::utility_types::widgets::button_widgets::{IconButton
 use crate::messages::layout::utility_types::widgets::input_widgets::{
 	DropdownEntryData, DropdownInput, NumberInput, NumberInputIncrementBehavior, NumberInputMode, OptionalInput, RadioEntryData, RadioInput,
 };
-
 use crate::messages::layout::utility_types::widgets::label_widgets::{Separator, SeparatorDirection, SeparatorType};
 use crate::messages::portfolio::document::properties_panel::utility_types::PropertiesPanelMessageHandlerData;
 use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
@@ -552,24 +551,44 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 					.into(),
 				);
 			}
-			NudgeResizeSelectedLayer { delta_x, delta_y, alt, ctrl } => {
+			NudgeSelectedLayers {
+				delta_x,
+				delta_y,
+				resize,
+				resize_opposite_corner,
+			} => {
 				self.backup(responses);
 				let keyboard = &ipp.keyboard;
-				let is_scale = keyboard.key(alt);
-				let is_bottom_right = !keyboard.key(ctrl);
+				let is_scale = keyboard.key(resize);
+				let is_bottom_right = !keyboard.key(resize_opposite_corner);
 				for path in self.selected_layers().map(|path| path.to_vec()) {
-					let mut transform_matrix = DAffine2::from_translation((delta_x, delta_y).into()).to_cols_array();
 					if is_scale {
 						if let Ok(Some(existing_bounds)) = self.document_legacy.viewport_bounding_box(&path, &render_data) {
 							let scale_size_x = if is_bottom_right {
-								(existing_bounds[0].x - existing_bounds[1].x - delta_x) / (existing_bounds[0].x - existing_bounds[1].x)
+								if (existing_bounds[1].x - existing_bounds[0].x + delta_x) > 1. {
+									(existing_bounds[1].x - existing_bounds[0].x + delta_x) / (existing_bounds[1].x - existing_bounds[0].x)
+								} else {
+									1. / (existing_bounds[1].x - existing_bounds[0].x)
+								}
 							} else {
-								(existing_bounds[0].x - existing_bounds[1].x + delta_x) / (existing_bounds[0].x - existing_bounds[1].x)
+								if (existing_bounds[1].x - existing_bounds[0].x - delta_x) > 1. {
+									(existing_bounds[1].x - existing_bounds[0].x - delta_x) / (existing_bounds[1].x - existing_bounds[0].x)
+								} else {
+									1. / (existing_bounds[1].x - existing_bounds[0].x)
+								}
 							};
 							let scale_size_y = if is_bottom_right {
-								(existing_bounds[0].y - existing_bounds[1].y - delta_y) / (existing_bounds[0].y - existing_bounds[1].y)
+								if (existing_bounds[1].y - existing_bounds[0].y + delta_y) > 1. {
+									(existing_bounds[1].y - existing_bounds[0].y + delta_y) / (existing_bounds[1].y - existing_bounds[0].y)
+								} else {
+									1. / (existing_bounds[1].y - existing_bounds[0].y)
+								}
 							} else {
-								(existing_bounds[0].y - existing_bounds[1].y + delta_y) / (existing_bounds[0].y - existing_bounds[1].y)
+								if (existing_bounds[1].y - existing_bounds[0].y - delta_y) > 1. {
+									(existing_bounds[1].y - existing_bounds[0].y - delta_y) / (existing_bounds[1].y - existing_bounds[0].y)
+								} else {
+									1. / (existing_bounds[1].y - existing_bounds[0].y)
+								}
 							};
 							let offset = if is_bottom_right {
 								DAffine2::from_translation((-existing_bounds[0].x, -existing_bounds[0].y).into())
@@ -582,11 +601,19 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 							} else {
 								DAffine2::from_translation((existing_bounds[1].x, existing_bounds[1].y).into())
 							};
-							transform_matrix = (offset_back * scale * offset).to_cols_array();
+							let operation = DocumentOperation::TransformLayerInViewport {
+								path,
+								transform: (offset_back * scale * offset).to_cols_array(),
+							};
+							responses.push_back(operation.into());
 						}
+					} else {
+						let operation = DocumentOperation::TransformLayerInViewport {
+							path,
+							transform: DAffine2::from_translation((delta_x, delta_y).into()).to_cols_array(),
+						};
+						responses.push_back(operation.into());
 					}
-					let operation = DocumentOperation::TransformLayerInViewport { path, transform: transform_matrix };
-					responses.push_back(operation.into());
 				}
 				responses.push_back(BroadcastEvent::DocumentIsDirty.into());
 			}
@@ -985,7 +1012,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 			let select = actions!(DocumentMessageDiscriminant;
 				DeleteSelectedLayers,
 				DuplicateSelectedLayers,
-				NudgeResizeSelectedLayer,
+				NudgeSelectedLayers,
 				SelectedLayersLower,
 				SelectedLayersLowerToBack,
 				SelectedLayersRaise,

@@ -112,11 +112,11 @@ pub enum DocumentMessage {
 		layer_path: Vec<LayerId>,
 		node_path: Vec<NodeId>,
 	},
-	NudgeResizeSelectedLayer {
+	NudgeSelectedLayers {
 		delta_x: f64,
 		delta_y: f64,
-		alt: Key,
-		ctrl: Key,
+		resize: Key,
+		resize_opposite_corner: Key,
 	},
 	PasteImage {
 		image: Image,
