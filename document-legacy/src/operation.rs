@@ -45,13 +45,6 @@ pub enum Operation {
 		font_name: String,
 		font_style: String,
 	},
-	AddImage {
-		path: Vec<LayerId>,
-		insert_index: isize,
-		transform: [f64; 6],
-		mime: String,
-		image_data: Vec<u8>,
-	},
 	AddNodeGraphFrame {
 		path: Vec<LayerId>,
 		insert_index: isize,

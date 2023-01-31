@@ -8,6 +8,7 @@ use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::*;
 
 use document_legacy::layers::layer_info::LayerDataTypeDiscriminant;
+use document_legacy::layers::style::{RenderData, ViewMode};
 use document_legacy::{LayerId, Operation};
 
 use serde::{Deserialize, Serialize};
@@ -20,6 +21,8 @@ pub struct PropertiesPanelMessageHandler {
 impl<'a> MessageHandler<PropertiesPanelMessage, (&PersistentData, PropertiesPanelMessageHandlerData<'a>)> for PropertiesPanelMessageHandler {
 	#[remain::check]
 	fn process_message(&mut self, message: PropertiesPanelMessage, responses: &mut VecDeque<Message>, (persistent_data, data): (&PersistentData, PropertiesPanelMessageHandlerData)) {
+		use PropertiesPanelMessage::*;
+
 		let PropertiesPanelMessageHandlerData {
 			artwork_document,
 			artboard_document,
@@ -30,7 +33,8 @@ impl<'a> MessageHandler<PropertiesPanelMessage, (&PersistentData, PropertiesPane
 			TargetDocument::Artboard => artboard_document,
 			TargetDocument::Artwork => artwork_document,
 		};
-		use PropertiesPanelMessage::*;
+		let render_data = RenderData::new(&persistent_data.font_cache, ViewMode::Normal, None);
+
 		match message {
 			SetActiveLayers { paths, document } => {
 				if paths.len() != 1 {
@@ -99,7 +103,7 @@ impl<'a> MessageHandler<PropertiesPanelMessage, (&PersistentData, PropertiesPane
 				let (path, target_document) = self.active_selection.as_ref().expect("Received update for properties panel with no active layer");
 				let layer = get_document(*target_document).layer(path).unwrap();
 
-				let transform = apply_transform_operation(layer, transform_op, value, &persistent_data.font_cache);
+				let transform = apply_transform_operation(layer, transform_op, value, &render_data);
 
 				self.create_document_operation(Operation::SetLayerTransform { path: path.clone(), transform }, true, responses);
 			}

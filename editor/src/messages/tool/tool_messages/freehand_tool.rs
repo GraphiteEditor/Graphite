@@ -137,7 +137,7 @@ impl Fsm for FreehandToolFsmState {
 		self,
 		event: ToolMessage,
 		tool_data: &mut Self::ToolData,
-		(document, _document_id, global_tool_data, input, _font_cache): ToolActionHandlerData,
+		(document, _document_id, global_tool_data, input, _render_data): ToolActionHandlerData,
 		tool_options: &Self::ToolOptions,
 		responses: &mut VecDeque<Message>,
 	) -> Self {

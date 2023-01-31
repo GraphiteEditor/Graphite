@@ -112,14 +112,14 @@ impl Fsm for ArtboardToolFsmState {
 		self,
 		event: ToolMessage,
 		tool_data: &mut Self::ToolData,
-		(document, _document_id, _global_tool_data, input, font_cache): ToolActionHandlerData,
+		(document, _document_id, _global_tool_data, input, render_data): ToolActionHandlerData,
 		_tool_options: &Self::ToolOptions,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
 		if let ToolMessage::Artboard(event) = event {
 			match (self, event) {
 				(state, ArtboardToolMessage::DocumentIsDirty) if state != ArtboardToolFsmState::Drawing => {
-					let current_artboard = tool_data.selected_artboard.and_then(|path| document.artboard_bounding_box_and_transform(&[path], font_cache));
+					let current_artboard = tool_data.selected_artboard.and_then(|path| document.artboard_bounding_box_and_transform(&[path], render_data));
 					match (current_artboard, tool_data.bounding_box_overlays.take()) {
 						(None, Some(bounding_box_overlays)) => bounding_box_overlays.delete(responses),
 						(Some((bounds, transform)), paths) => {
@@ -173,11 +173,11 @@ impl Fsm for ArtboardToolFsmState {
 						let artboard = tool_data.selected_artboard.unwrap();
 						tool_data
 							.snap_manager
-							.start_snap(document, input, document.bounding_boxes(None, Some(artboard), font_cache), snap_x, snap_y);
+							.start_snap(document, input, document.bounding_boxes(None, Some(artboard), render_data), snap_x, snap_y);
 						tool_data.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
 
 						if let Some(bounds) = &mut tool_data.bounding_box_overlays {
-							let pivot = document.artboard_message_handler.artboards_document.pivot(&[artboard], font_cache).unwrap_or_default();
+							let pivot = document.artboard_message_handler.artboards_document.pivot(&[artboard], render_data).unwrap_or_default();
 							let root = document.document_legacy.root.transform;
 							let pivot = root.inverse().transform_point2(pivot);
 							bounds.center_of_transformation = pivot;
@@ -188,7 +188,7 @@ impl Fsm for ArtboardToolFsmState {
 						responses.push_back(DocumentMessage::StartTransaction.into());
 						let tolerance = DVec2::splat(SELECTION_TOLERANCE);
 						let quad = Quad::from_box([input.mouse.position - tolerance, input.mouse.position + tolerance]);
-						let intersection = document.artboard_message_handler.artboards_document.intersects_quad_root(quad, font_cache);
+						let intersection = document.artboard_message_handler.artboards_document.intersects_quad_root(quad, render_data);
 
 						responses.push_back(BroadcastEvent::DocumentIsDirty.into());
 						if let Some(intersection) = intersection.last() {
@@ -196,7 +196,7 @@ impl Fsm for ArtboardToolFsmState {
 
 							tool_data
 								.snap_manager
-								.start_snap(document, input, document.bounding_boxes(None, Some(intersection[0]), font_cache), true, true);
+								.start_snap(document, input, document.bounding_boxes(None, Some(intersection[0]), render_data), true, true);
 							tool_data.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
 
 							responses.push_back(
@@ -304,7 +304,7 @@ impl Fsm for ArtboardToolFsmState {
 						let id = generate_uuid();
 						tool_data.selected_artboard = Some(id);
 
-						tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(None, Some(id), font_cache), true, true);
+						tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(None, Some(id), render_data), true, true);
 						tool_data.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
 
 						responses.push_back(

@@ -146,7 +146,7 @@ impl Fsm for SplineToolFsmState {
 		self,
 		event: ToolMessage,
 		tool_data: &mut Self::ToolData,
-		(document, _document_id, global_tool_data, input, font_cache): ToolActionHandlerData,
+		(document, _document_id, global_tool_data, input, render_data): ToolActionHandlerData,
 		tool_options: &Self::ToolOptions,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
@@ -162,7 +162,7 @@ impl Fsm for SplineToolFsmState {
 					responses.push_back(DocumentMessage::DeselectAllLayers.into());
 					tool_data.path = Some(document.get_path_for_new_layer());
 
-					tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(None, None, font_cache), true, true);
+					tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(None, None, render_data), true, true);
 					tool_data.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
 					let snapped_position = tool_data.snap_manager.snap_position(responses, document, input.mouse.position);
 
