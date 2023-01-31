@@ -10,6 +10,8 @@ use wasm_bindgen::prelude::*;
 #[wasm_bindgen]
 pub struct WasmSubpath(Subpath);
 
+const SCALE_UNIT_VECTOR_FACTOR: f64 = 50.;
+
 #[wasm_bindgen]
 impl WasmSubpath {
 	/// Expects js_points to be an unbounded list of triples, where each item is a tuple of floats.
@@ -87,6 +89,28 @@ impl WasmSubpath {
 		};
 		let point_text = draw_circle(point, 4., RED, 1.5, WHITE);
 		wrap_svg_tag(format!("{}{}", self.to_default_svg(), point_text))
+	}
+
+	pub fn tangent(&self, t: f64) -> String {
+		let intersection_point = self.0.evaluate(ComputeType::Parametric(t));
+		let tangent_point = self.0.tangent(ComputeType::Parametric(t));
+		let tangent_end = intersection_point + tangent_point * SCALE_UNIT_VECTOR_FACTOR;
+
+		let point_text = draw_circle(intersection_point, 4., RED, 1.5, WHITE);
+		let line_text = draw_line(intersection_point.x, intersection_point.y, tangent_end.x, tangent_end.y, RED, 1.);
+		let tangent_end_point = draw_circle(tangent_end, 3., RED, 1., WHITE);
+		wrap_svg_tag(format!("{}{}{}{}", self.to_default_svg(), point_text, line_text, tangent_end_point))
+	}
+
+	pub fn normal(&self, t: f64) -> String {
+		let intersection_point = self.0.evaluate(ComputeType::Parametric(t));
+		let normal_point = self.0.normal(ComputeType::Parametric(t));
+		let normal_end = intersection_point + normal_point * SCALE_UNIT_VECTOR_FACTOR;
+
+		let point_text = draw_circle(intersection_point, 4., RED, 1.5, WHITE);
+		let line_text = draw_line(intersection_point.x, intersection_point.y, normal_end.x, normal_end.y, RED, 1.);
+		let normal_end_point = draw_circle(normal_end, 3., RED, 1., WHITE);
+		wrap_svg_tag(format!("{}{}{}{}", self.to_default_svg(), point_text, line_text, normal_end_point))
 	}
 
 	pub fn project(&self, x: f64, y: f64) -> String {
