@@ -221,21 +221,21 @@ impl WasmSubpath {
 		if optional_subpath.is_some() {
 			main_subpath.to_svg(
 				&mut main_subpath_svg,
-				CURVE_ATTRIBUTES.to_string().replace(BLACK, ORANGE),
+				CURVE_ATTRIBUTES.to_string().replace(BLACK, ORANGE).replace("stroke-width=\"2\"", "stroke-width=\"8\"") + " opacity=\"0.5\"",
 				ANCHOR_ATTRIBUTES.to_string().replace(BLACK, ORANGE),
 				HANDLE_ATTRIBUTES.to_string().replace(GRAY, ORANGE),
 				HANDLE_LINE_ATTRIBUTES.to_string().replace(GRAY, ORANGE),
 			);
 		} else {
 			main_subpath.iter().enumerate().for_each(|(index, bezier)| {
-				let hue1 = &format!("hsl({}, 100%, 50%)", 40 * index);
-				let hue2 = &format!("hsl({}, 100%, 50%)", 40 * (index + 1));
+				let hue1 = &format!("hsla({}, 100%, 50%, 0.5)", 40 * index);
+				let hue2 = &format!("hsla({}, 100%, 50%, 0.5)", 40 * (index + 1));
 				let gradient_id = &format!("gradient{}", index);
 				let start = bezier.start();
 				let end = bezier.end();
 				let _ = write!(
 					main_subpath_svg,
-					r#"<defs><linearGradient id="{}" x1="{}%" y1="{}%" x2="{}%" y2="{}%"><stop offset="0%" stop-color="{}"/><stop offset="100%" stop-color="{}"/></linearGradient></defs>"#, //
+					r#"<defs><linearGradient id="{}" x1="{}%" y1="{}%" x2="{}%" y2="{}%"><stop offset="0%" stop-color="{}"/><stop offset="100%" stop-color="{}"/></linearGradient></defs>"#,
 					gradient_id,
 					start.x / 2.,
 					start.y / 2.,
@@ -246,17 +246,20 @@ impl WasmSubpath {
 				);
 
 				let stroke = &format!("url(#{})", gradient_id);
-				bezier.curve_to_svg(&mut main_subpath_svg, CURVE_ATTRIBUTES.to_string().replace(BLACK, stroke));
+				bezier.curve_to_svg(
+					&mut main_subpath_svg,
+					CURVE_ATTRIBUTES.to_string().replace(BLACK, stroke).replace("stroke-width=\"2\"", "stroke-width=\"8\""),
+				);
 				bezier.anchors_to_svg(&mut main_subpath_svg, ANCHOR_ATTRIBUTES.to_string().replace(BLACK, hue1));
 				bezier.handles_to_svg(&mut main_subpath_svg, HANDLE_ATTRIBUTES.to_string().replace(GRAY, hue1));
 				bezier.handle_lines_to_svg(&mut main_subpath_svg, HANDLE_LINE_ATTRIBUTES.to_string().replace(GRAY, hue1));
 			});
 		}
 
-		if optional_subpath.is_some() {
-			optional_subpath.unwrap().to_svg(
+		if let Some(subpath) = optional_subpath {
+			subpath.to_svg(
 				&mut other_subpath_svg,
-				CURVE_ATTRIBUTES.to_string().replace(BLACK, RED),
+				CURVE_ATTRIBUTES.to_string().replace(BLACK, RED).replace("stroke-width=\"2\"", "stroke-width=\"8\"") + " opacity=\"0.5\"",
 				ANCHOR_ATTRIBUTES.to_string().replace(BLACK, RED),
 				HANDLE_ATTRIBUTES.to_string().replace(GRAY, RED),
 				HANDLE_LINE_ATTRIBUTES.to_string().replace(GRAY, RED),
