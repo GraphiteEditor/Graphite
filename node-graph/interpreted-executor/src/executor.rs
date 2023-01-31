@@ -28,8 +28,6 @@ impl DynamicExecutor {
 
 impl Executor for DynamicExecutor {
 	fn execute<'a, 's: 'a>(&'s self, input: Any<'a>) -> Result<Any<'a>, Box<dyn Error>> {
-		/*let result = unsafe { self.stack.get().last().unwrap().eval(input) };
-		Ok(result)*/
 		self.tree.eval_any(self.output, input).ok_or_else(|| "Failed to execute".into())
 	}
 }
@@ -101,11 +99,13 @@ impl BorrowTree {
 	pub fn push_node(&mut self, id: NodeId, proto_node: ProtoNode) {
 		let ProtoNode { input, construction_args, identifier } = proto_node;
 
-		assert_eq!(
+		/*assert_eq!(
 			input,
 			ProtoNodeInput::None,
-			"Only nodes without inputs are supported. Any inputs should already be resolved by placing ComposeNodes"
-		);
+			"Only nodes without inputs are supported. Any inputs should already be resolved by placing ComposeNodes {:?}, {:?}",
+			identifier,
+			construction_args
+		);*/
 
 		match construction_args {
 			ConstructionArgs::Value(value) => {

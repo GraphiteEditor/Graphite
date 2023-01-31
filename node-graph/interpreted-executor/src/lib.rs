@@ -55,6 +55,7 @@ mod tests {
 	fn execute_add() {
 		use graph_craft::document::*;
 		use graph_craft::proto::*;
+		use graph_craft::*;
 
 		fn add_network() -> NodeNetwork {
 			NodeNetwork {
@@ -66,10 +67,7 @@ mod tests {
 						DocumentNode {
 							name: "Cons".into(),
 							inputs: vec![NodeInput::Network, NodeInput::Network],
-							implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new(
-								"graphene_core::structural::ConsNode",
-								&[Type::Concrete(std::borrow::Cow::Borrowed("u32")), Type::Concrete(std::borrow::Cow::Borrowed("u32"))],
-							)),
+							implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::structural::ConsNode<_, _>", &[concrete!("u32"), concrete!("u32")])),
 							metadata: DocumentNodeMetadata::default(),
 						},
 					),
@@ -78,10 +76,7 @@ mod tests {
 						DocumentNode {
 							name: "Add".into(),
 							inputs: vec![NodeInput::Node(0)],
-							implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new(
-								"graphene_core::ops::AddNode",
-								&[Type::Concrete(std::borrow::Cow::Borrowed("u32")), Type::Concrete(std::borrow::Cow::Borrowed("u32"))],
-							)),
+							implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::AddNode", &[concrete!("(u32, u32)")])),
 							metadata: DocumentNodeMetadata::default(),
 						},
 					),
@@ -119,7 +114,7 @@ mod tests {
 		use graph_craft::executor::{Compiler, Executor};
 
 		let compiler = Compiler {};
-		let protograph = compiler.compile(network, false);
+		let protograph = compiler.compile(network, true);
 
 		let exec = DynamicExecutor::new(protograph);
 

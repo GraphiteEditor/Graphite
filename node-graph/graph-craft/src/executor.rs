@@ -20,6 +20,7 @@ impl Compiler {
 		}
 		println!("reordering ids");
 		proto_network.reorder_ids();
+		proto_network.generate_stable_node_ids();
 		proto_network
 	}
 }

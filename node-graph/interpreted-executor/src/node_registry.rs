@@ -23,7 +23,7 @@ use graphene_std::memo::CacheNode;
 
 macro_rules! register_node {
 	($path:ty, input: $input:ty, params: [$($type:ty),*]) => {
-		( {NodeIdentifier::new(stringify!($path), &[$(concrete!(stringify!($type))),*])},
+		( {NodeIdentifier::new(stringify!($path), &[concrete!(stringify!($input)), $(concrete!(stringify!($type))),*])},
 		|args| {
 			let mut args = args.clone();
 			args.reverse();
@@ -43,6 +43,11 @@ static NODE_REGISTRY: &[(NodeIdentifier, NodeConstructor)] = &[
 	register_node!(graphene_core::ops::AddNode, input: (u32, &u32), params: []),
 	register_node!(graphene_core::ops::AddNode, input: (&u32, &u32), params: []),
 	register_node!(graphene_core::raster::GrayscaleColorNode, input: Color, params: []),
+	(NodeIdentifier::new("graphene_core::structural::ComposeNode<_, _>", &[generic!("U"), generic!("T")]), |args| {
+		let mut args = args.clone();
+		let node = ComposeNode::new(args[0], args[1]);
+		Box::pin(node) as TypeErasedPinned
+	}),
 	/*
 	(NodeIdentifier::new("graphene_core::ops::IdNode", &[concrete!("Any<'_>")]), |proto_node, stack| {
 		stack.push_fn(|nodes| {
