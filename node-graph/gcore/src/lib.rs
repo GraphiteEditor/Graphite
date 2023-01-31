@@ -33,7 +33,7 @@ pub trait Node<'i, Input: 'i> {
 		(**self).eval(input)
 	}
 }*/
-impl<'i, I: 'i, O: 'i> Node<'i, I> for &dyn Node<'i, I, Output = O> {
+impl<'i, I: 'i, O: 'i> Node<'i, I> for &dyn for<'a> Node<'a, I, Output = O> {
 	type Output = O;
 
 	fn eval<'s: 'i>(&'s self, input: I) -> Self::Output {

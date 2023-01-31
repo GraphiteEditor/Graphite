@@ -79,7 +79,7 @@ impl<'i, O: Clone + 'i> Node<'i, &'i O> for CloneNode<O> {
 	}
 }
 impl<O> CloneNode<O> {
-	pub fn new() -> Self {
+	pub const fn new() -> Self {
 		Self(PhantomData)
 	}
 }
@@ -161,10 +161,10 @@ impl IdNode {
 
 /// Ascribe the node types
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
-pub struct TypeNode<N, I, O>(pub N, pub PhantomData<(I, O)>);
+pub struct TypeNode<N: for<'a> Node<'a, I>, I, O>(pub N, pub PhantomData<(I, O)>);
 impl<'i, N, I: 'i, O: 'i> Node<'i, I> for TypeNode<N, I, O>
 where
-	N: Node<'i, I, Output = O>,
+	N: for<'n> Node<'n, I, Output = O>,
 {
 	type Output = O;
 	fn eval<'s: 'i>(&'s self, input: I) -> Self::Output {
@@ -172,33 +172,32 @@ where
 	}
 }
 
-impl<'i, N: Node<'i, I>, I: 'i> TypeNode<N, I, N::Output> {
+impl<'i, N: for<'a> Node<'a, I>, I: 'i> TypeNode<N, I, <N as Node<'i, I>>::Output> {
 	pub fn new(node: N) -> Self {
 		Self(node, PhantomData)
 	}
 }
 
-impl<'i, N: Node<'i, I> + Clone, I: 'i> Clone for TypeNode<N, I, N::Output> {
+impl<'i, N: for<'a> Node<'a, I> + Clone, I: 'i> Clone for TypeNode<N, I, <N as Node<'i, I>>::Output> {
 	fn clone(&self) -> Self {
 		Self(self.0.clone(), self.1)
 	}
 }
-impl<'i, N: Node<'i, I> + Copy, I: 'i> Copy for TypeNode<N, I, N::Output> {}
+impl<'i, N: for<'a> Node<'a, I> + Copy, I: 'i> Copy for TypeNode<N, I, <N as Node<'i, I>>::Output> {}
 
 /// input.map(|x| self.0.eval(x))
-pub struct MapResultNode<MN, I, E>(pub MN, pub PhantomData<(I, E)>);
-
-impl<'i, MN: Node<'i, I>, I: 'i, E: 'i> Node<'i, Result<I, E>> for MapResultNode<MN, I, E> {
-	type Output = Result<MN::Output, E>;
-	fn eval<'s: 'i>(&'s self, input: Result<I, E>) -> Self::Output {
-		input.map(|x| self.0.eval(x))
-	}
+pub struct MapResultNode<I, E, Mn> {
+	node: Mn,
+	_i: PhantomData<I>,
+	_e: PhantomData<E>,
 }
 
-impl<'i, MN: Node<'i, I>, I: 'i> MapResultNode<MN, I, MN::Output> {
-	pub fn new(node: MN) -> Self {
-		Self(node, PhantomData)
-	}
+#[node_macro::node_fn(MapResultNode<_I,  _E>)]
+fn flat_map<_I, _E, N>(input: Result<_I, _E>, node: &'any_input N) -> Result<<N as Node<'input, _I>>::Output, _E>
+where
+	N: for<'a> Node<'a, _I>,
+{
+	input.map(|x| node.eval(x))
 }
 pub struct FlatMapResultNode<I, O, E, Mn> {
 	node: Mn,
@@ -208,9 +207,9 @@ pub struct FlatMapResultNode<I, O, E, Mn> {
 }
 
 #[node_macro::node_fn(FlatMapResultNode<_I, _O, _E>)]
-fn flat_map<_I, _O, _E, N>(input: Result<_I, _E>, node: &'input N) -> Result<_O, _E>
+fn flat_map<_I, _O, _E, N>(input: Result<_I, _E>, node: &'any_input N) -> Result<_O, _E>
 where
-	N: Node<'input, _I, Output = Result<_O, _E>>,
+	N: for<'a> Node<'a, _I, Output = Result<_O, _E>>,
 {
 	match input.map(|x| node.eval(x)) {
 		Ok(Ok(x)) => Ok(x),
@@ -239,6 +238,10 @@ mod test {
 	pub fn clone_node() {
 		let cloned = ValueNode(4u32).then(CloneNode::new());
 		assert_eq!(cloned.eval(()), 4);
+		let type_erased = &CloneNode::new() as &dyn for<'a> Node<'a, &'a u32, Output = u32>;
+		assert_eq!(type_erased.eval(&4), 4);
+		let type_erased = &cloned as &dyn for<'a> Node<'a, (), Output = u32>;
+		assert_eq!(type_erased.eval(()), 4);
 	}
 	#[test]
 	pub fn fst_node() {
@@ -258,7 +261,15 @@ mod test {
 	}
 	#[test]
 	pub fn map_result() {
-		let fst = ValueNode(Ok(&4u32)).then(CloneNode::new()).then(MapResultNode::new(CloneNode::new()));
+		let value: ClonedNode<Result<&u32, ()>> = ClonedNode(Ok(&4u32));
+		assert_eq!(value.eval(()), Ok(&4u32));
+		static clone: &CloneNode<u32> = &CloneNode::new();
+		//let type_erased_clone = clone as &dyn for<'a> Node<'a, &'a u32, Output = u32>;
+		let map_result = MapResultNode::new(ValueNode::new(FnNode::new(|x: &u32| x.clone())));
+		//et type_erased = &map_result as &dyn for<'a> Node<'a, Result<&'a u32, ()>, Output = Result<u32, ()>>;
+		assert_eq!(map_result.eval(Ok(&4u32)), Ok(4u32));
+		let fst = value.then(map_result);
+		//let type_erased = &fst as &dyn for<'a> Node<'a, (), Output = Result<u32, ()>>;
 		assert_eq!(fst.eval(()), Ok(4u32));
 	}
 	#[test]

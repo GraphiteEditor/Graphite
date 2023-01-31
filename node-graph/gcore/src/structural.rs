@@ -5,12 +5,13 @@ use dyn_any::StaticTypeSized;
 use crate::Node;
 
 #[derive(Debug, Clone)]
-pub struct ComposeNode<First, Second> {
+pub struct ComposeNode<First: for<'i> Node<'i, I>, Second: for<'i> Node<'i, <First as Node<'i, I>>::Output>, I> {
 	first: First,
 	second: Second,
+	phantom: PhantomData<I>,
 }
 
-impl<'i, Input: 'i, First, Second> Node<'i, Input> for ComposeNode<First, Second>
+impl<'i, Input: 'i, First, Second> Node<'i, Input> for ComposeNode<First, Second, Input>
 where
 	First: for<'a> Node<'a, Input>,
 	Second: for<'a> Node<'a, <First as Node<'a, Input>>::Output>,
@@ -24,22 +25,23 @@ where
 		self.second.eval(arg)
 	}
 }
-impl<First: StaticTypeSized, Second: StaticTypeSized> dyn_any::StaticType for ComposeNode<First, Second> {
-	type Static = ComposeNode<First::Static, Second::Static>;
-}
 
-impl<First, Second> ComposeNode<First, Second> {
+impl<First, Second, Input> ComposeNode<First, Second, Input>
+where
+	First: for<'a> Node<'a, Input>,
+	Second: for<'a> Node<'a, <First as Node<'a, Input>>::Output>,
+{
 	pub const fn new(first: First, second: Second) -> Self {
-		ComposeNode::<First, Second> { first, second }
+		ComposeNode::<First, Second, Input> { first, second, phantom: PhantomData }
 	}
 }
 pub trait Then<'i, Input: 'i>: Sized {
-	fn then<Second>(self, second: Second) -> ComposeNode<Self, Second>
+	fn then<Second>(self, second: Second) -> ComposeNode<Self, Second, Input>
 	where
 		Self: for<'a> Node<'a, Input>,
 		Second: for<'a> Node<'a, <Self as Node<'a, Input>>::Output>,
 	{
-		ComposeNode::<Self, Second> { first: self, second }
+		ComposeNode::new(self, second)
 	}
 }
 
@@ -72,9 +74,9 @@ mod test {
 	#[test]
 	fn compose() {
 		let value = ValueNode::new(4u32);
-		let compose = ComposeNode::new(value, IdNode::new());
-		assert_eq!(compose.eval(()), &4u32);
-		let type_erased = &compose as &dyn for<'i> Node<'i, (), Output = &u32>;
-		assert_eq!(type_erased.eval(()), &4u32);
+		let compose = value.then(IdNode::new());
+		assert_eq!(compose.eval(()), &5u32);
+		let type_erased = &compose as &dyn for<'i> Node<'i, (), Output = &'i u32>;
+		assert_eq!(type_erased.eval(()), &5u32);
 	}
 }

@@ -114,8 +114,8 @@ pub fn node_fn(attr: TokenStream, item: TokenStream) -> TokenStream {
 				bounds: Punctuated::from_iter([TypeParamBound::Trait(TraitBound {
 					paren_token: None,
 					modifier: syn::TraitBoundModifier::None,
-					lifetimes: None,
-					path: syn::parse_quote!(Node<'input, (), Output = #ty>),
+					lifetimes: syn::parse_quote!(for<'any_input>),
+					path: syn::parse_quote!(Node<'any_input, (), Output = #ty>),
 				})]),
 			})
 		})

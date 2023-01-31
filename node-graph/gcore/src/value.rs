@@ -40,6 +40,29 @@ impl<T: Clone> Clone for ValueNode<T> {
 }
 impl<T: Clone + Copy> Copy for ValueNode<T> {}
 
+#[derive(Clone)]
+pub struct ClonedNode<T: Clone>(pub T);
+
+impl<'i, T: Clone + 'i> Node<'i, ()> for ClonedNode<T> {
+	type Output = T;
+	fn eval<'s: 'i>(&'s self, _input: ()) -> Self::Output {
+		self.0.clone()
+	}
+}
+
+impl<T: Clone> ClonedNode<T> {
+	pub const fn new(value: T) -> ClonedNode<T> {
+		ClonedNode(value)
+	}
+}
+
+impl<T: Clone> From<T> for ClonedNode<T> {
+	fn from(value: T) -> Self {
+		ClonedNode::new(value)
+	}
+}
+impl<T: Clone + Copy> Copy for ClonedNode<T> {}
+
 #[derive(Default)]
 pub struct DefaultNode<T>(PhantomData<T>);
 
@@ -84,7 +107,9 @@ mod test {
 	#[test]
 	fn test_value_node() {
 		let node = ValueNode::new(5);
-		assert_eq!(*node.eval(()), 5);
+		assert_eq!(node.eval(()), &5);
+		let type_erased = &node as &dyn for<'a> Node<'a, (), Output = &'a i32>;
+		assert_eq!(type_erased.eval(()), &5);
 	}
 	#[test]
 	fn test_default_node() {
