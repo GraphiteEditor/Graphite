@@ -56,6 +56,12 @@ const subpathFeatures = {
 				[175, 140],
 			]),
 	},
+	Split: {
+		callback: (subpath: WasmSubpathInstance, options: Record<string, number>, _: undefined, computeType: ComputeType): string => subpath.split(options.computeArgument, computeType),
+		sliderOptions: [{ ...tSliderOptions, variable: "computeArgument" }],
+		// TODO: Uncomment this after implementing the Euclidean version
+		// chooseComputeType: true,
+	},
 };
 
 export type SubpathFeatureName = keyof typeof subpathFeatures;
