@@ -102,11 +102,6 @@ impl ShapeEditor {
 					manipulator_type: ManipulatorType::from_index(manipulator_point_index),
 				};
 
-				// Checks if point clicked on is one of the selected points
-				if points.contains(&point_info) {
-					responses.push_back(DocumentMessage::DeselectAllManipulatorPoints.into());
-				}
-
 				points.push(point_info);
 				responses.push_back(
 					Operation::SelectManipulatorPoints {
