@@ -40,3 +40,12 @@ impl<'i, I: 'i, O: 'i> Node<'i, I> for &dyn for<'a> Node<'a, I, Output = O> {
 		(**self).eval(input)
 	}
 }
+use core::pin::Pin;
+#[cfg(feature = "alloc")]
+impl<'i, I: 'i, O: 'i> Node<'i, I> for Pin<Box<dyn for<'a> Node<'a, I, Output = O> + 'i>> {
+	type Output = O;
+
+	fn eval<'s: 'i>(&'s self, input: I) -> Self::Output {
+		(**self).eval(input)
+	}
+}

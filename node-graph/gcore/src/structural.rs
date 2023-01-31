@@ -2,7 +2,6 @@ use core::marker::PhantomData;
 
 use crate::Node;
 
-#[derive(Debug, Clone)]
 pub struct ComposeNode<First: for<'i> Node<'i, I>, Second: for<'i> Node<'i, <First as Node<'i, I>>::Output>, I> {
 	first: First,
 	second: Second,
@@ -11,8 +10,8 @@ pub struct ComposeNode<First: for<'i> Node<'i, I>, Second: for<'i> Node<'i, <Fir
 
 impl<'i, Input: 'i, First, Second> Node<'i, Input> for ComposeNode<First, Second, Input>
 where
-	First: for<'a> Node<'a, Input>,
-	Second: for<'a> Node<'a, <First as Node<'a, Input>>::Output>,
+	First: for<'a> Node<'a, Input> + 'i,
+	Second: for<'a> Node<'a, <First as Node<'a, Input>>::Output> + 'i,
 {
 	type Output = <Second as Node<'i, <First as Node<'i, Input>>::Output>>::Output;
 	fn eval<'s: 'i>(&'s self, input: Input) -> Self::Output {
@@ -33,6 +32,7 @@ where
 		ComposeNode::<First, Second, Input> { first, second, phantom: PhantomData }
 	}
 }
+
 pub trait Then<'i, Input: 'i>: Sized {
 	fn then<Second>(self, second: Second) -> ComposeNode<Self, Second, Input>
 	where

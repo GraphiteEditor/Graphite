@@ -9,9 +9,9 @@ pub struct DynAnyNode<I, O, Node> {
 	_o: PhantomData<O>,
 }
 #[node_macro::node_fn(DynAnyNode<_I, _O>)]
-fn any_node<_I: StaticType, _O: StaticType, N>(input: Any<'input>, node: &'input N) -> Any<'input>
+fn any_node<_I: StaticType, _O: StaticType, N>(input: Any<'input>, node: &'any_input N) -> Any<'input>
 where
-	N: Node<'input, _I, Output = _O>,
+	N: for<'any_input> Node<'any_input, _I, Output = _O>,
 {
 	let node_name = core::any::type_name::<N>();
 	let input: Box<_I> = dyn_any::downcast(input).unwrap_or_else(|_| panic!("DynAnyNode Input in:\n{node_name}"));
@@ -96,6 +96,25 @@ impl<'n, I, O> DowncastBothNode<'n, I, O> {
 	}
 }
 
+pub struct ComposeTypeErased<'a> {
+	first: TypeErasedPinnedRef<'a>,
+	second: TypeErasedPinnedRef<'a>,
+}
+
+impl<'i, 'a: 'i> Node<'i, Any<'i>> for ComposeTypeErased<'a> {
+	type Output = Any<'i>;
+	fn eval<'s: 'i>(&'s self, input: Any<'i>) -> Self::Output {
+		let arg = self.first.eval(input);
+		self.second.eval(arg)
+	}
+}
+
+impl<'a> ComposeTypeErased<'a> {
+	pub const fn new(first: TypeErasedPinnedRef<'a>, second: TypeErasedPinnedRef<'a>) -> Self {
+		ComposeTypeErased { first, second }
+	}
+}
+
 pub type Any<'n> = Box<dyn DynAny<'n> + 'n>;
 
 pub fn input_node<O: StaticType>(n: TypeErasedPinnedRef) -> DowncastBothNode<(), O> {
@@ -105,7 +124,7 @@ pub fn input_node<O: StaticType>(n: TypeErasedPinnedRef) -> DowncastBothNode<(),
 #[cfg(test)]
 mod test {
 	use super::*;
-	use graphene_core::{ops::AddNode, value::ValueNode};
+	use graphene_core::{ops::AddNode, ops::IdNode, structural::ComposeNode, structural::Then, value::ValueNode};
 
 	#[test]
 	#[should_panic]
@@ -122,16 +141,18 @@ mod test {
 	}
 
 	#[test]
-	#[should_panic]
 	pub fn dyn_input_invalid_eval_panic_() {
-		static ADD: &DynAnyNode<(u32, u32), u32, AddNode> = &DynAnyNode::new(AddNode::new());
-
 		//let add = DynAnyNode::new(AddNode::new()).into_type_erased();
 		//add.eval(Box::new(&("32", 32u32)));
 		let dyn_any = DynAnyNode::<(u32, u32), u32, _>::new(ValueNode::new(AddNode::new()));
-		let type_erased = dyn_any.into_type_erased();
-		let downcast: DowncastBothNode<(), u32> = DowncastBothNode::new(type_erased.as_ref());
-		downcast.eval(());
+		let type_erased = Box::pin(dyn_any) as TypeErasedPinned<'_>;
+		type_erased.eval(Box::new((4u32, 2u32)));
+		let id_node = IdNode::new();
+		let type_erased_id = Box::pin(id_node) as TypeErasedPinned;
+		let type_erased = ComposeTypeErased::new(type_erased.as_ref(), type_erased_id.as_ref());
+		type_erased.eval(Box::new((4u32, 2u32)));
+		//let downcast: DowncastBothNode<(u32, u32), u32> = DowncastBothNode::new(type_erased.as_ref());
+		//downcast.eval((4u32, 2u32));
 	}
 
 	#[test]

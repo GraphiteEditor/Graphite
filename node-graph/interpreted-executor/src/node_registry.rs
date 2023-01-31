@@ -10,7 +10,7 @@ use graphene_core::structural::{ComposeNode, ConsNode, Then};
 use graphene_core::value::ValueNode;
 use graphene_core::vector::subpath::Subpath;
 use graphene_core::Node;
-use graphene_std::any::{Any, DowncastNode, DynAnyNode, IntoTypeErasedNode, TypeErasedPinned};
+use graphene_std::any::{Any, ComposeTypeErased, DowncastNode, DynAnyNode, IntoTypeErasedNode, TypeErasedPinned};
 use graphene_std::any::{DowncastBothNode, TypeErasedPinnedRef};
 
 use graph_craft::proto::Type;
@@ -43,11 +43,12 @@ static NODE_REGISTRY: &[(NodeIdentifier, NodeConstructor)] = &[
 	register_node!(graphene_core::ops::AddNode, input: (u32, &u32), params: []),
 	register_node!(graphene_core::ops::AddNode, input: (&u32, &u32), params: []),
 	register_node!(graphene_core::raster::GrayscaleColorNode, input: Color, params: []),
-	(NodeIdentifier::new("graphene_core::structural::ComposeNode<_, _>", &[generic!("U"), generic!("T")]), |args| {
+	(NodeIdentifier::new("graphene_core::structural::ComposeNode<_, _, _>", &[generic!("T"), generic!("U")]), |args| {
 		let mut args = args.clone();
-		let node = ComposeNode::new(args[0], args[1]);
+		let node = ComposeTypeErased::new(args[0], args[1]);
 		Box::pin(node) as TypeErasedPinned
 	}),
+	(NodeIdentifier::new("graphene_core::ops::IdNode", &[generic!("T")]), |_| IdNode::new().into_type_erased()),
 	/*
 	(NodeIdentifier::new("graphene_core::ops::IdNode", &[concrete!("Any<'_>")]), |proto_node, stack| {
 		stack.push_fn(|nodes| {
