@@ -234,7 +234,6 @@ pub fn default_mapping() -> Mapping {
 		entry!(KeyDown(BracketRight); modifiers=[Accel, Shift], action_dispatch=DocumentMessage::SelectedLayersRaiseToFront),
 		entry!(KeyDown(BracketLeft); modifiers=[Accel], action_dispatch=DocumentMessage::SelectedLayersLower),
 		entry!(KeyDown(BracketRight); modifiers=[Accel], action_dispatch=DocumentMessage::SelectedLayersRaise),
-
 		entry!(KeyDown(ArrowUp); modifiers=[Shift, ArrowLeft], action_dispatch=DocumentMessage::NudgeResizeSelectedLayer { delta_x: -BIG_NUDGE_AMOUNT, delta_y: -BIG_NUDGE_AMOUNT, alt: Alt, ctrl: Control }),
 		entry!(KeyDown(ArrowUp); modifiers=[Shift, ArrowRight], action_dispatch=DocumentMessage::NudgeResizeSelectedLayer { delta_x: BIG_NUDGE_AMOUNT, delta_y: -BIG_NUDGE_AMOUNT, alt: Alt, ctrl: Control }),
 		entry!(KeyDown(ArrowUp); modifiers=[Shift], action_dispatch=DocumentMessage::NudgeResizeSelectedLayer { delta_x: 0., delta_y: -BIG_NUDGE_AMOUNT, alt: Alt, ctrl: Control }),
@@ -261,7 +260,7 @@ pub fn default_mapping() -> Mapping {
 		entry!(KeyDown(ArrowRight); action_dispatch=DocumentMessage::NudgeResizeSelectedLayer { delta_x: NUDGE_AMOUNT, delta_y: 0., alt: Alt, ctrl: Control }),
 		//
 		// alt+arrow key to resize the bottom/right edges
-		
+
 		// TransformLayerMessage
 		entry!(KeyDown(KeyG); action_dispatch=TransformLayerMessage::BeginGrab),
 		entry!(KeyDown(KeyR); action_dispatch=TransformLayerMessage::BeginRotate),

@@ -561,10 +561,16 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 					let mut transform_matrix = DAffine2::from_translation((delta_x, delta_y).into()).to_cols_array();
 					if is_scale {
 						if let Ok(Some(existing_bounds)) = self.document_legacy.viewport_bounding_box(&path, &render_data) {
-							let scale_size_x = if is_bottom_right {(existing_bounds[0].x - existing_bounds[1].x - delta_x) / (existing_bounds[0].x - existing_bounds[1].x)}
-												else {(existing_bounds[0].x - existing_bounds[1].x + delta_x) / (existing_bounds[0].x - existing_bounds[1].x)};
-							let scale_size_y = if is_bottom_right {(existing_bounds[0].y - existing_bounds[1].y - delta_y) / (existing_bounds[0].y - existing_bounds[1].y)}
-												else {(existing_bounds[0].y - existing_bounds[1].y + delta_y) / (existing_bounds[0].y - existing_bounds[1].y)};
+							let scale_size_x = if is_bottom_right {
+								(existing_bounds[0].x - existing_bounds[1].x - delta_x) / (existing_bounds[0].x - existing_bounds[1].x)
+							} else {
+								(existing_bounds[0].x - existing_bounds[1].x + delta_x) / (existing_bounds[0].x - existing_bounds[1].x)
+							};
+							let scale_size_y = if is_bottom_right {
+								(existing_bounds[0].y - existing_bounds[1].y - delta_y) / (existing_bounds[0].y - existing_bounds[1].y)
+							} else {
+								(existing_bounds[0].y - existing_bounds[1].y + delta_y) / (existing_bounds[0].y - existing_bounds[1].y)
+							};
 							let offset = if is_bottom_right {
 								DAffine2::from_translation((-existing_bounds[0].x, -existing_bounds[0].y).into())
 							} else {
@@ -579,10 +585,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 							transform_matrix = (offset_back * scale * offset).to_cols_array();
 						}
 					}
-					let operation = DocumentOperation::TransformLayerInViewport {
-						path,
-						transform: transform_matrix,
-					};
+					let operation = DocumentOperation::TransformLayerInViewport { path, transform: transform_matrix };
 					responses.push_back(operation.into());
 				}
 				responses.push_back(BroadcastEvent::DocumentIsDirty.into());

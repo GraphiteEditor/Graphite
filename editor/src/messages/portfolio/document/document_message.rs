@@ -1,7 +1,7 @@
 use crate::messages::frontend::utility_types::{ExportBounds, FileType};
+use crate::messages::input_mapper::utility_types::input_keyboard::Key;
 use crate::messages::portfolio::document::utility_types::layer_panel::LayerMetadata;
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis};
-use crate::messages::input_mapper::utility_types::input_keyboard::Key;
 use crate::messages::prelude::*;
 
 use document_legacy::boolean_ops::BooleanOperation as BooleanOperationType;
