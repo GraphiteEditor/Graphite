@@ -18,7 +18,7 @@ use bytemuck::{Pod, Zeroable};
 #[repr(C)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "gpu", derive(Pod, Zeroable))]
-#[derive(Debug, Clone, Copy, PartialEq, Default, DynAny)]
+#[derive(Debug, Clone, Copy, PartialEq, Default, DynAny, specta::Type)]
 pub struct Color {
 	red: f32,
 	green: f32,

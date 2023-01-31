@@ -20,7 +20,7 @@ pub struct ExportDialogMessageHandler {
 }
 
 impl MessageHandler<ExportDialogMessage, ()> for ExportDialogMessageHandler {
-	fn process_message(&mut self, message: ExportDialogMessage, _data: (), responses: &mut VecDeque<Message>) {
+	fn process_message(&mut self, message: ExportDialogMessage, responses: &mut VecDeque<Message>, _data: ()) {
 		match message {
 			ExportDialogMessage::FileName(name) => self.file_name = name,
 			ExportDialogMessage::FileType(export_type) => self.file_type = export_type,

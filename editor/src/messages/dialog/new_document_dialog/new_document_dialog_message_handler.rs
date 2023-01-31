@@ -16,7 +16,7 @@ pub struct NewDocumentDialogMessageHandler {
 }
 
 impl MessageHandler<NewDocumentDialogMessage, ()> for NewDocumentDialogMessageHandler {
-	fn process_message(&mut self, message: NewDocumentDialogMessage, _data: (), responses: &mut VecDeque<Message>) {
+	fn process_message(&mut self, message: NewDocumentDialogMessage, responses: &mut VecDeque<Message>, _data: ()) {
 		match message {
 			NewDocumentDialogMessage::Name(name) => self.name = name,
 			NewDocumentDialogMessage::Infinite(infinite) => self.infinite = infinite,

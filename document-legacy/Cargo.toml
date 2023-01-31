@@ -2,7 +2,7 @@
 name = "graphite-document-legacy"
 publish = false
 version = "0.0.0"
-rust-version = "1.65.0"
+rust-version = "1.66.0"
 authors = ["Graphite Authors <contact@graphite.rs>"]
 edition = "2021"
 readme = "../README.md"
@@ -21,6 +21,7 @@ bezier-rs = { path = "../libraries/bezier-rs" }
 kurbo = { git = "https://github.com/linebender/kurbo.git", features = [
 	"serde",
 ] }
+specta.workspace = true
 serde = { version = "1.0", features = ["derive"] }
 base64 = "0.13"
 glam = { version = "0.22", features = ["serde"] }

@@ -1,9 +1,6 @@
+use crate::document::value::TaggedValue;
 use crate::generic;
 use crate::proto::{ConstructionArgs, NodeIdentifier, ProtoNetwork, ProtoNode, ProtoNodeInput, Type};
-use std::collections::HashMap;
-use std::sync::Mutex;
-
-pub mod value;
 
 use dyn_any::{DynAny, StaticType};
 use glam::IVec2;
@@ -11,6 +8,10 @@ use rand_chacha::{
 	rand_core::{RngCore, SeedableRng},
 	ChaCha20Rng,
 };
+use std::collections::{HashMap, HashSet};
+use std::sync::Mutex;
+
+pub mod value;
 
 pub type NodeId = u64;
 static RNG: Mutex<Option<ChaCha20Rng>> = Mutex::new(None);
@@ -31,13 +32,13 @@ fn merge_ids(a: u64, b: u64) -> u64 {
 	hasher.finish()
 }
 
-#[derive(Clone, Debug, PartialEq, Default)]
+#[derive(Clone, Debug, PartialEq, Default, specta::Type)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct DocumentNodeMetadata {
 	pub position: IVec2,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, specta::Type)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct DocumentNode {
 	pub name: String,
@@ -119,7 +120,7 @@ impl DocumentNode {
 	}
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, specta::Type)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum NodeInput {
 	Node(NodeId),
@@ -155,7 +156,7 @@ impl PartialEq for NodeInput {
 	}
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, specta::Type)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum DocumentNodeImplementation {
 	Network(NodeNetwork),
@@ -180,7 +181,7 @@ impl DocumentNodeImplementation {
 	}
 }
 
-#[derive(Clone, Debug, Default, PartialEq, DynAny)]
+#[derive(Clone, Debug, Default, PartialEq, DynAny, specta::Type)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct NodeNetwork {
 	pub inputs: Vec<NodeId>,
@@ -226,7 +227,7 @@ impl NodeNetwork {
 		self.flatten_with_fns(node, merge_ids, generate_uuid)
 	}
 
-	/// Recursively dissolve non primitive document nodes and return a single flattened network of nodes.
+	/// Recursively dissolve non-primitive document nodes and return a single flattened network of nodes.
 	pub fn flatten_with_fns(&mut self, node: NodeId, map_ids: impl Fn(NodeId, NodeId) -> NodeId + Copy, gen_id: impl Fn() -> NodeId + Copy) {
 		let (id, mut node) = self
 			.nodes
@@ -258,10 +259,18 @@ impl NodeNetwork {
 							network_input.populate_first_network_input(node, *offset);
 						}
 						NodeInput::Value { tagged_value, exposed } => {
-							let name = format!("Value: {:?}", tagged_value.clone().to_value());
+							// Skip formatting very large values for seconds in performance speedup
+							let name = if matches!(
+								tagged_value,
+								TaggedValue::Image(_) | TaggedValue::RcImage(_) | TaggedValue::Color(_) | TaggedValue::Subpath(_) | TaggedValue::RcSubpath(_)
+							) {
+								"Value".to_string()
+							} else {
+								format!("Value: {:?}", tagged_value.clone().to_value())
+							};
 							let new_id = map_ids(id, gen_id());
 							let value_node = DocumentNode {
-								name: name.clone(),
+								name,
 								inputs: vec![NodeInput::Value { tagged_value, exposed }],
 								implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::value::ValueNode", &[generic!("T")])),
 								metadata: DocumentNodeMetadata::default(),
@@ -304,6 +313,95 @@ impl NodeNetwork {
 	/// Get the original output node of this network, ignoring any preview node
 	pub fn original_output(&self) -> NodeId {
 		self.previous_output.unwrap_or(self.output)
+	}
+
+	/// A graph with just an input and output node
+	pub fn new_network(output_offset: i32, output_node_id: NodeId) -> Self {
+		Self {
+			inputs: vec![0],
+			output: 1,
+			nodes: [
+				(
+					0,
+					DocumentNode {
+						name: "Input".into(),
+						inputs: vec![NodeInput::Network],
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode", &[generic!("T")])),
+						metadata: DocumentNodeMetadata { position: (8, 4).into() },
+					},
+				),
+				(
+					1,
+					DocumentNode {
+						name: "Output".into(),
+						inputs: vec![NodeInput::Node(output_node_id)],
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode", &[generic!("T")])),
+						metadata: DocumentNodeMetadata { position: (output_offset, 4).into() },
+					},
+				),
+			]
+			.into_iter()
+			.collect(),
+			..Default::default()
+		}
+	}
+
+	/// Get the nested network given by the path of node ids
+	pub fn nested_network(&self, nested_path: &[NodeId]) -> Option<&Self> {
+		let mut network = Some(self);
+
+		for segment in nested_path {
+			network = network.and_then(|network| network.nodes.get(segment)).and_then(|node| node.implementation.get_network());
+		}
+		network
+	}
+
+	/// Get the mutable nested network given by the path of node ids
+	pub fn nested_network_mut(&mut self, nested_path: &[NodeId]) -> Option<&mut Self> {
+		let mut network = Some(self);
+
+		for segment in nested_path {
+			network = network.and_then(|network| network.nodes.get_mut(segment)).and_then(|node| node.implementation.get_network_mut());
+		}
+		network
+	}
+
+	/// Check if the specified node id is connected to the output
+	pub fn connected_to_output(&self, node_id: NodeId) -> bool {
+		// If the node is the output then return true
+		if self.output == node_id {
+			return true;
+		}
+		// Get the output
+		let Some(output_node) = self.nodes.get(&self.output) else {
+			return false;
+		};
+		let mut stack = vec![output_node];
+		let mut already_visited = HashSet::new();
+		already_visited.insert(self.output);
+
+		while let Some(node) = stack.pop() {
+			for input in &node.inputs {
+				if let &NodeInput::Node(ref_id) = input {
+					// Skip if already viewed
+					if already_visited.contains(&ref_id) {
+						continue;
+					}
+					// If the target node is used as input then return true
+					if ref_id == node_id {
+						return true;
+					}
+					// Add the referenced node to the stack
+					let Some(ref_node) = self.nodes.get(&ref_id) else {
+						continue;
+					};
+					already_visited.insert(ref_id);
+					stack.push(ref_node);
+				}
+			}
+		}
+
+		false
 	}
 }
 

@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 
 #[remain::sorted]
 #[impl_message(Message, Frontend)]
-#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
+#[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
 pub enum FrontendMessage {
 	// Display prefix: make the frontend show something, like a dialog
 	DisplayDialog {
@@ -58,11 +58,11 @@ pub enum FrontendMessage {
 		hostname: String,
 	},
 	TriggerImaginateGenerate {
-		parameters: ImaginateGenerationParameters,
+		parameters: Box<ImaginateGenerationParameters>,
 		#[serde(rename = "baseImage")]
-		base_image: Option<ImaginateBaseImage>,
+		base_image: Option<Box<ImaginateBaseImage>>,
 		#[serde(rename = "maskImage")]
-		mask_image: Option<ImaginateMaskImage>,
+		mask_image: Option<Box<ImaginateMaskImage>>,
 		#[serde(rename = "maskPaintMode")]
 		mask_paint_mode: ImaginateMaskPaintMode,
 		#[serde(rename = "maskBlurPx")]

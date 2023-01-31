@@ -45,9 +45,7 @@ impl LayoutMessageHandler {
 
 impl<F: Fn(&MessageDiscriminant) -> Vec<KeysGroup>> MessageHandler<LayoutMessage, F> for LayoutMessageHandler {
 	#[remain::check]
-	fn process_message(&mut self, message: LayoutMessage, data: F, responses: &mut std::collections::VecDeque<Message>) {
-		let action_input_mapping = data;
-
+	fn process_message(&mut self, message: LayoutMessage, responses: &mut std::collections::VecDeque<Message>, action_input_mapping: F) {
 		use LayoutMessage::*;
 		#[remain::sorted]
 		match message {

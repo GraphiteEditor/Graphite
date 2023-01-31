@@ -1,10 +1,10 @@
 use crate::consts::{SELECTION_THRESHOLD, SELECTION_TOLERANCE};
 use crate::messages::frontend::utility_types::MouseCursorIcon;
-use crate::messages::input_mapper::utility_types::input_keyboard::{Key, KeysGroup, MouseMotion};
+use crate::messages::input_mapper::utility_types::input_keyboard::{Key, MouseMotion};
 use crate::messages::layout::utility_types::layout_widget::PropertyHolder;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::overlay_renderer::OverlayRenderer;
-use crate::messages::tool::common_functionality::shape_editor::ShapeEditor;
+use crate::messages::tool::common_functionality::shape_editor::{ManipulatorPointInfo, ShapeEditor};
 use crate::messages::tool::common_functionality::snapping::SnapManager;
 use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
@@ -23,7 +23,7 @@ pub struct PathTool {
 
 #[remain::sorted]
 #[impl_message(Message, ToolMessage, Path)]
-#[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize)]
+#[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize, specta::Type)]
 pub enum PathToolMessage {
 	// Standard messages
 	#[remain::unsorted]
@@ -61,24 +61,8 @@ impl ToolMetadata for PathTool {
 impl PropertyHolder for PathTool {}
 
 impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for PathTool {
-	fn process_message(&mut self, message: ToolMessage, tool_data: ToolActionHandlerData<'a>, responses: &mut VecDeque<Message>) {
-		if message == ToolMessage::UpdateHints {
-			self.fsm_state.update_hints(responses);
-			return;
-		}
-
-		if message == ToolMessage::UpdateCursor {
-			self.fsm_state.update_cursor(responses);
-			return;
-		}
-
-		let new_state = self.fsm_state.transition(message, &mut self.tool_data, tool_data, &(), responses);
-
-		if self.fsm_state != new_state {
-			self.fsm_state = new_state;
-			self.fsm_state.update_hints(responses);
-			self.fsm_state.update_cursor(responses);
-		}
+	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: ToolActionHandlerData<'a>) {
+		self.fsm_state.process_event(message, &mut self.tool_data, tool_data, &(), responses, true);
 	}
 
 	// Different actions depending on state may be wanted:
@@ -111,16 +95,11 @@ impl ToolTransition for PathTool {
 	}
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 enum PathToolFsmState {
+	#[default]
 	Ready,
 	Dragging,
-}
-
-impl Default for PathToolFsmState {
-	fn default() -> Self {
-		PathToolFsmState::Ready
-	}
 }
 
 #[derive(Default)]
@@ -141,7 +120,7 @@ impl Fsm for PathToolFsmState {
 		self,
 		event: ToolMessage,
 		tool_data: &mut Self::ToolData,
-		(document, _document_id, _global_tool_data, input, font_cache): ToolActionHandlerData,
+		(document, _document_id, _global_tool_data, input, render_data): ToolActionHandlerData,
 		_tool_options: &Self::ToolOptions,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
@@ -178,32 +157,37 @@ impl Fsm for PathToolFsmState {
 					let toggle_add_to_selection = input.keyboard.get(add_to_selection as usize);
 
 					// Select the first point within the threshold (in pixels)
-					if let Some((mut new_selected, offset)) =
-						tool_data
-							.shape_editor
-							.select_point(&document.document_legacy, input.mouse.position, SELECTION_THRESHOLD, toggle_add_to_selection, responses)
+					if let Some(mut selected_points) = tool_data
+						.shape_editor
+						.select_point(&document.document_legacy, input.mouse.position, SELECTION_THRESHOLD, toggle_add_to_selection, responses)
 					{
 						responses.push_back(DocumentMessage::StartTransaction.into());
 
 						let ignore_document = tool_data.shape_editor.selected_layers().clone();
 						tool_data
 							.snap_manager
-							.start_snap(document, document.bounding_boxes(Some(&ignore_document), None, font_cache), true, true);
+							.start_snap(document, input, document.bounding_boxes(Some(&ignore_document), None, render_data), true, true);
 
 						// Do not snap against handles when anchor is selected
 						let mut extension = Vec::new();
-						for &(path, id, point_type) in new_selected.iter() {
-							if point_type == ManipulatorType::Anchor {
-								extension.push((path, id, ManipulatorType::InHandle));
-								extension.push((path, id, ManipulatorType::OutHandle));
+						for point in selected_points.points.iter() {
+							if point.manipulator_type == ManipulatorType::Anchor {
+								extension.push(ManipulatorPointInfo {
+									manipulator_type: ManipulatorType::InHandle,
+									..*point
+								});
+								extension.push(ManipulatorPointInfo {
+									manipulator_type: ManipulatorType::OutHandle,
+									..*point
+								});
 							}
 						}
-						new_selected.extend(extension);
+						selected_points.points.extend(extension);
 
 						let include_handles = tool_data.shape_editor.selected_layers_ref();
-						tool_data.snap_manager.add_all_document_handles(document, &include_handles, &[], &new_selected);
+						tool_data.snap_manager.add_all_document_handles(document, input, &include_handles, &[], &selected_points.points);
 
-						tool_data.drag_start_pos = input.mouse.position - offset;
+						tool_data.drag_start_pos = input.mouse.position - selected_points.offset;
 						PathToolFsmState::Dragging
 					}
 					// We didn't find a point nearby, so consider selecting the nearest shape instead
@@ -212,7 +196,7 @@ impl Fsm for PathToolFsmState {
 						// Select shapes directly under our mouse
 						let intersection = document
 							.document_legacy
-							.intersects_quad_root(Quad::from_box([input.mouse.position - selection_size, input.mouse.position + selection_size]), font_cache);
+							.intersects_quad_root(Quad::from_box([input.mouse.position - selection_size, input.mouse.position + selection_size]), render_data);
 						if !intersection.is_empty() {
 							if toggle_add_to_selection {
 								responses.push_back(DocumentMessage::AddSelectedLayers { additional_layers: intersection }.into());
@@ -309,88 +293,23 @@ impl Fsm for PathToolFsmState {
 		let hint_data = match self {
 			PathToolFsmState::Ready => HintData(vec![
 				HintGroup(vec![
-					HintInfo {
-						key_groups: vec![],
-						key_groups_mac: None,
-						mouse: Some(MouseMotion::Lmb),
-						label: String::from("Select Point"),
-						plus: false,
-					},
-					HintInfo {
-						key_groups: vec![KeysGroup(vec![Key::Shift]).into()],
-						key_groups_mac: None,
-						mouse: None,
-						label: String::from("Grow/Shrink Selection"),
-						plus: true,
-					},
+					HintInfo::mouse(MouseMotion::Lmb, "Select Point"),
+					HintInfo::keys([Key::Shift], "Grow/Shrink Selection").prepend_plus(),
 				]),
-				HintGroup(vec![HintInfo {
-					key_groups: vec![],
-					key_groups_mac: None,
-					mouse: Some(MouseMotion::LmbDrag),
-					label: String::from("Drag Selected"),
-					plus: false,
-				}]),
+				HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Drag Selected")]),
 				HintGroup(vec![
-					HintInfo {
-						key_groups: vec![
-							KeysGroup(vec![Key::ArrowUp]).into(),
-							KeysGroup(vec![Key::ArrowRight]).into(),
-							KeysGroup(vec![Key::ArrowDown]).into(),
-							KeysGroup(vec![Key::ArrowLeft]).into(),
-						],
-						key_groups_mac: None,
-						mouse: None,
-						label: String::from("Nudge Selected (coming soon)"),
-						plus: false,
-					},
-					HintInfo {
-						key_groups: vec![KeysGroup(vec![Key::Shift]).into()],
-						key_groups_mac: None,
-						mouse: None,
-						label: String::from("Big Increment Nudge"),
-						plus: true,
-					},
+					HintInfo::arrow_keys("Nudge Selected (coming soon)"),
+					HintInfo::keys([Key::Shift], "Big Increment Nudge").prepend_plus(),
 				]),
 				HintGroup(vec![
-					HintInfo {
-						key_groups: vec![KeysGroup(vec![Key::KeyG]).into()],
-						key_groups_mac: None,
-						mouse: None,
-						label: String::from("Grab Selected (coming soon)"),
-						plus: false,
-					},
-					HintInfo {
-						key_groups: vec![KeysGroup(vec![Key::KeyR]).into()],
-						key_groups_mac: None,
-						mouse: None,
-						label: String::from("Rotate Selected (coming soon)"),
-						plus: false,
-					},
-					HintInfo {
-						key_groups: vec![KeysGroup(vec![Key::KeyS]).into()],
-						key_groups_mac: None,
-						mouse: None,
-						label: String::from("Scale Selected (coming soon)"),
-						plus: false,
-					},
+					HintInfo::keys([Key::KeyG], "Grab Selected (coming soon)"),
+					HintInfo::keys([Key::KeyR], "Rotate Selected (coming soon)"),
+					HintInfo::keys([Key::KeyS], "Scale Selected (coming soon)"),
 				]),
 			]),
 			PathToolFsmState::Dragging => HintData(vec![HintGroup(vec![
-				HintInfo {
-					key_groups: vec![KeysGroup(vec![Key::Alt]).into()],
-					key_groups_mac: None,
-					mouse: None,
-					label: String::from("Split/Align Handles (Toggle)"),
-					plus: false,
-				},
-				HintInfo {
-					key_groups: vec![KeysGroup(vec![Key::Shift]).into()],
-					key_groups_mac: None,
-					mouse: None,
-					label: String::from("Share Lengths of Aligned Handles"),
-					plus: false,
-				},
+				HintInfo::keys([Key::Alt], "Split/Align Handles (Toggle)"),
+				HintInfo::keys([Key::Shift], "Share Lengths of Aligned Handles"),
 			])]),
 		};
 

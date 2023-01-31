@@ -3,7 +3,7 @@ use core::ops::{Index, IndexMut};
 use serde::{Deserialize, Serialize};
 
 #[repr(usize)]
-#[derive(PartialEq, Eq, Clone, Debug, Copy, Serialize, Deserialize)]
+#[derive(PartialEq, Eq, Clone, Debug, Copy, Serialize, Deserialize, specta::Type)]
 pub enum ManipulatorType {
 	Anchor,
 	InHandle,

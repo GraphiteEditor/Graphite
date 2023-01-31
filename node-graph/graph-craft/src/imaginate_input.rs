@@ -2,7 +2,7 @@ use dyn_any::{DynAny, StaticType};
 use glam::DVec2;
 use std::fmt::Debug;
 
-#[derive(Default, Debug, Clone, Copy, PartialEq, DynAny)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, DynAny, specta::Type)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ImaginateStatus {
 	#[default]
@@ -14,7 +14,7 @@ pub enum ImaginateStatus {
 	Terminated,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, specta::Type)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ImaginateBaseImage {
 	pub mime: String,
@@ -23,7 +23,7 @@ pub struct ImaginateBaseImage {
 	pub size: DVec2,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, specta::Type)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ImaginateMaskImage {
 	pub svg: String,
@@ -31,7 +31,7 @@ pub struct ImaginateMaskImage {
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Default, Clone, Copy, Eq, PartialEq)]
+#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, specta::Type)]
 pub enum ImaginateMaskPaintMode {
 	#[default]
 	Inpaint,
@@ -39,7 +39,7 @@ pub enum ImaginateMaskPaintMode {
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, DynAny)]
+#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, DynAny, specta::Type)]
 pub enum ImaginateMaskStartingFill {
 	#[default]
 	Fill,
@@ -70,7 +70,7 @@ impl std::fmt::Display for ImaginateMaskStartingFill {
 	}
 }
 
-#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, DynAny)]
+#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, DynAny, specta::Type)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ImaginateSamplingMethod {
 	#[default]
@@ -163,7 +163,7 @@ impl std::fmt::Display for ImaginateSamplingMethod {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, specta::Type)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ImaginateGenerationParameters {
 	pub seed: u64,

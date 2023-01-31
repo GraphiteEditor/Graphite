@@ -1,7 +1,7 @@
 use crate::consts::LINE_ROTATE_SNAP_ANGLE;
 use crate::messages::frontend::utility_types::MouseCursorIcon;
-use crate::messages::input_mapper::utility_types::input_keyboard::{Key, KeysGroup, MouseMotion};
-use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, PropertyHolder, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
+use crate::messages::input_mapper::utility_types::input_keyboard::{Key, MouseMotion};
+use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, PropertyHolder, WidgetLayout};
 use crate::messages::layout::utility_types::widgets::input_widgets::NumberInput;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::overlay_renderer::OverlayRenderer;
@@ -37,7 +37,7 @@ impl Default for PenOptions {
 
 #[remain::sorted]
 #[impl_message(Message, ToolMessage, Pen)]
-#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
+#[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
 pub enum PenToolMessage {
 	// Standard messages
 	#[remain::unsorted]
@@ -59,15 +59,16 @@ pub enum PenToolMessage {
 	UpdateOptions(PenOptionsUpdate),
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 enum PenToolFsmState {
+	#[default]
 	Ready,
 	DraggingHandle,
 	PlacingAnchor,
 }
 
 #[remain::sorted]
-#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
+#[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
 pub enum PenOptionsUpdate {
 	LineWeight(f64),
 }
@@ -86,32 +87,18 @@ impl ToolMetadata for PenTool {
 
 impl PropertyHolder for PenTool {
 	fn properties(&self) -> Layout {
-		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row {
-			widgets: vec![WidgetHolder::new(Widget::NumberInput(NumberInput {
-				unit: " px".into(),
-				label: "Weight".into(),
-				value: Some(self.options.line_weight),
-				is_integer: false,
-				min: Some(0.),
-				on_update: WidgetCallback::new(|number_input: &NumberInput| PenToolMessage::UpdateOptions(PenOptionsUpdate::LineWeight(number_input.value.unwrap())).into()),
-				..NumberInput::default()
-			}))],
-		}]))
+		let weight = NumberInput::new(Some(self.options.line_weight))
+			.unit(" px")
+			.label("Weight")
+			.min(0.)
+			.on_update(|number_input: &NumberInput| PenToolMessage::UpdateOptions(PenOptionsUpdate::LineWeight(number_input.value.unwrap())).into())
+			.widget_holder();
+		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row { widgets: vec![weight] }]))
 	}
 }
 
 impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for PenTool {
-	fn process_message(&mut self, message: ToolMessage, tool_data: ToolActionHandlerData<'a>, responses: &mut VecDeque<Message>) {
-		if message == ToolMessage::UpdateHints {
-			self.fsm_state.update_hints(responses);
-			return;
-		}
-
-		if message == ToolMessage::UpdateCursor {
-			self.fsm_state.update_cursor(responses);
-			return;
-		}
-
+	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: ToolActionHandlerData<'a>) {
 		if let ToolMessage::Pen(PenToolMessage::UpdateOptions(action)) = message {
 			match action {
 				PenOptionsUpdate::LineWeight(line_weight) => self.options.line_weight = line_weight,
@@ -119,13 +106,7 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for PenTool {
 			return;
 		}
 
-		let new_state = self.fsm_state.transition(message, &mut self.tool_data, tool_data, &self.options, responses);
-
-		if self.fsm_state != new_state {
-			self.fsm_state = new_state;
-			self.fsm_state.update_hints(responses);
-			self.fsm_state.update_cursor(responses);
-		}
+		self.fsm_state.process_event(message, &mut self.tool_data, tool_data, &self.options, responses, true);
 	}
 
 	fn actions(&self) -> ActionList {
@@ -158,11 +139,6 @@ impl ToolTransition for PenTool {
 	}
 }
 
-impl Default for PenToolFsmState {
-	fn default() -> Self {
-		PenToolFsmState::Ready
-	}
-}
 #[derive(Clone, Debug, Default)]
 struct PenToolData {
 	weight: f64,
@@ -182,7 +158,7 @@ impl Fsm for PenToolFsmState {
 		self,
 		event: ToolMessage,
 		tool_data: &mut Self::ToolData,
-		(document, _document_id, global_tool_data, input, font_cache): ToolActionHandlerData,
+		(document, _document_id, global_tool_data, input, render_data): ToolActionHandlerData,
 		tool_options: &Self::ToolOptions,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
@@ -214,8 +190,8 @@ impl Fsm for PenToolFsmState {
 					responses.push_back(DocumentMessage::StartTransaction.into());
 
 					// Initialize snapping
-					tool_data.snap_manager.start_snap(document, document.bounding_boxes(None, None, font_cache), true, true);
-					tool_data.snap_manager.add_all_document_handles(document, &[], &[], &[]);
+					tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(None, None, render_data), true, true);
+					tool_data.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
 
 					// Disable this tool's mirroring
 					tool_data.should_mirror = false;
@@ -614,49 +590,13 @@ impl Fsm for PenToolFsmState {
 
 	fn update_hints(&self, responses: &mut VecDeque<Message>) {
 		let hint_data = match self {
-			PenToolFsmState::Ready => HintData(vec![HintGroup(vec![HintInfo {
-				key_groups: vec![],
-				key_groups_mac: None,
-				mouse: Some(MouseMotion::Lmb),
-				label: String::from("Draw Path"),
-				plus: false,
-			}])]),
+			PenToolFsmState::Ready => HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Draw Path")])]),
 			PenToolFsmState::DraggingHandle | PenToolFsmState::PlacingAnchor => HintData(vec![
-				HintGroup(vec![HintInfo {
-					key_groups: vec![],
-					key_groups_mac: None,
-					mouse: Some(MouseMotion::LmbDrag),
-					label: String::from("Add Handle"),
-					plus: false,
-				}]),
-				HintGroup(vec![HintInfo {
-					key_groups: vec![],
-					key_groups_mac: None,
-					mouse: Some(MouseMotion::Lmb),
-					label: String::from("Add Anchor"),
-					plus: false,
-				}]),
-				HintGroup(vec![HintInfo {
-					key_groups: vec![KeysGroup(vec![Key::Control]).into()],
-					key_groups_mac: None,
-					mouse: None,
-					label: String::from("Snap 15°"),
-					plus: false,
-				}]),
-				HintGroup(vec![HintInfo {
-					key_groups: vec![KeysGroup(vec![Key::Shift]).into()],
-					key_groups_mac: None,
-					mouse: None,
-					label: String::from("Break Handle"),
-					plus: false,
-				}]),
-				HintGroup(vec![HintInfo {
-					key_groups: vec![KeysGroup(vec![Key::Enter]).into()],
-					key_groups_mac: None,
-					mouse: None,
-					label: String::from("End Path"),
-					plus: false,
-				}]),
+				HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Add Handle")]),
+				HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Add Anchor")]),
+				HintGroup(vec![HintInfo::keys([Key::Control], "Snap 15°")]),
+				HintGroup(vec![HintInfo::keys([Key::Shift], "Break Handle")]),
+				HintGroup(vec![HintInfo::keys([Key::Enter], "End Path")]),
 			]),
 		};
 

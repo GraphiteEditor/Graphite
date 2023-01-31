@@ -1,6 +1,6 @@
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::input_mapper::utility_types::input_keyboard::MouseMotion;
-use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, PropertyHolder, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
+use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, PropertyHolder, WidgetLayout};
 use crate::messages::layout::utility_types::widgets::input_widgets::NumberInput;
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::{DocumentToolData, EventToMessageMap, Fsm, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
@@ -32,7 +32,7 @@ impl Default for FreehandOptions {
 
 #[remain::sorted]
 #[impl_message(Message, ToolMessage, Freehand)]
-#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
+#[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
 pub enum FreehandToolMessage {
 	// Standard messages
 	#[remain::unsorted]
@@ -46,13 +46,14 @@ pub enum FreehandToolMessage {
 }
 
 #[remain::sorted]
-#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
+#[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
 pub enum FreehandToolMessageOptionsUpdate {
 	LineWeight(f64),
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 enum FreehandToolFsmState {
+	#[default]
 	Ready,
 	Drawing,
 }
@@ -71,32 +72,18 @@ impl ToolMetadata for FreehandTool {
 
 impl PropertyHolder for FreehandTool {
 	fn properties(&self) -> Layout {
-		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row {
-			widgets: vec![WidgetHolder::new(Widget::NumberInput(NumberInput {
-				unit: " px".into(),
-				label: "Weight".into(),
-				value: Some(self.options.line_weight as f64),
-				is_integer: false,
-				min: Some(1.),
-				on_update: WidgetCallback::new(|number_input: &NumberInput| FreehandToolMessage::UpdateOptions(FreehandToolMessageOptionsUpdate::LineWeight(number_input.value.unwrap())).into()),
-				..NumberInput::default()
-			}))],
-		}]))
+		let weight = NumberInput::new(Some(self.options.line_weight))
+			.unit(" px")
+			.label("Weight")
+			.min(1.)
+			.on_update(|number_input: &NumberInput| FreehandToolMessage::UpdateOptions(FreehandToolMessageOptionsUpdate::LineWeight(number_input.value.unwrap())).into())
+			.widget_holder();
+		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row { widgets: vec![weight] }]))
 	}
 }
 
 impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for FreehandTool {
-	fn process_message(&mut self, message: ToolMessage, data: ToolActionHandlerData<'a>, responses: &mut VecDeque<Message>) {
-		if message == ToolMessage::UpdateHints {
-			self.fsm_state.update_hints(responses);
-			return;
-		}
-
-		if message == ToolMessage::UpdateCursor {
-			self.fsm_state.update_cursor(responses);
-			return;
-		}
-
+	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: ToolActionHandlerData<'a>) {
 		if let ToolMessage::Freehand(FreehandToolMessage::UpdateOptions(action)) = message {
 			match action {
 				FreehandToolMessageOptionsUpdate::LineWeight(line_weight) => self.options.line_weight = line_weight,
@@ -104,13 +91,7 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for FreehandTool
 			return;
 		}
 
-		let new_state = self.fsm_state.transition(message, &mut self.data, data, &self.options, responses);
-
-		if self.fsm_state != new_state {
-			self.fsm_state = new_state;
-			self.fsm_state.update_hints(responses);
-			self.fsm_state.update_cursor(responses);
-		}
+		self.fsm_state.process_event(message, &mut self.data, tool_data, &self.options, responses, true);
 	}
 
 	fn actions(&self) -> ActionList {
@@ -141,11 +122,6 @@ impl ToolTransition for FreehandTool {
 	}
 }
 
-impl Default for FreehandToolFsmState {
-	fn default() -> Self {
-		FreehandToolFsmState::Ready
-	}
-}
 #[derive(Clone, Debug, Default)]
 struct FreehandToolData {
 	points: Vec<DVec2>,
@@ -161,7 +137,7 @@ impl Fsm for FreehandToolFsmState {
 		self,
 		event: ToolMessage,
 		tool_data: &mut Self::ToolData,
-		(document, _document_id, global_tool_data, input, _font_cache): ToolActionHandlerData,
+		(document, _document_id, global_tool_data, input, _render_data): ToolActionHandlerData,
 		tool_options: &Self::ToolOptions,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
@@ -222,13 +198,7 @@ impl Fsm for FreehandToolFsmState {
 
 	fn update_hints(&self, responses: &mut VecDeque<Message>) {
 		let hint_data = match self {
-			FreehandToolFsmState::Ready => HintData(vec![HintGroup(vec![HintInfo {
-				key_groups: vec![],
-				key_groups_mac: None,
-				mouse: Some(MouseMotion::LmbDrag),
-				label: String::from("Draw Polyline"),
-				plus: false,
-			}])]),
+			FreehandToolFsmState::Ready => HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Draw Polyline")])]),
 			FreehandToolFsmState::Drawing => HintData(vec![]),
 		};
 

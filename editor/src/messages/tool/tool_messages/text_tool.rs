@@ -1,18 +1,16 @@
 use crate::application::generate_uuid;
 use crate::consts::{COLOR_ACCENT, SELECTION_TOLERANCE};
 use crate::messages::frontend::utility_types::MouseCursorIcon;
-use crate::messages::input_mapper::utility_types::input_keyboard::{Key, KeysGroup, MouseMotion};
-use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, PropertyHolder, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
+use crate::messages::input_mapper::utility_types::input_keyboard::{Key, MouseMotion};
+use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, PropertyHolder, WidgetCallback, WidgetHolder, WidgetLayout};
 use crate::messages::layout::utility_types::misc::LayoutTarget;
 use crate::messages::layout::utility_types::widgets::input_widgets::{FontInput, NumberInput};
-use crate::messages::layout::utility_types::widgets::label_widgets::{Separator, SeparatorDirection, SeparatorType};
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 
 use document_legacy::intersection::Quad;
-use document_legacy::layers::style::{self, Fill, Stroke};
-use document_legacy::layers::text_layer::FontCache;
+use document_legacy::layers::style::{self, Fill, RenderData, Stroke};
 use document_legacy::LayerId;
 use document_legacy::Operation;
 
@@ -44,7 +42,7 @@ impl Default for TextOptions {
 
 #[remain::sorted]
 #[impl_message(Message, ToolMessage, Text)]
-#[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize)]
+#[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize, specta::Type)]
 pub enum TextToolMessage {
 	// Standard messages
 	#[remain::unsorted]
@@ -66,7 +64,7 @@ pub enum TextToolMessage {
 }
 
 #[remain::sorted]
-#[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize)]
+#[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize, specta::Type)]
 pub enum TextOptionsUpdate {
 	Font { family: String, style: String },
 	FontSize(u32),
@@ -86,68 +84,49 @@ impl ToolMetadata for TextTool {
 
 impl PropertyHolder for TextTool {
 	fn properties(&self) -> Layout {
+		let font = FontInput {
+			is_style_picker: false,
+			font_family: self.options.font_name.clone(),
+			font_style: self.options.font_style.clone(),
+			on_update: WidgetCallback::new(|font_input: &FontInput| {
+				TextToolMessage::UpdateOptions(TextOptionsUpdate::Font {
+					family: font_input.font_family.clone(),
+					style: font_input.font_style.clone(),
+				})
+				.into()
+			}),
+			..Default::default()
+		}
+		.widget_holder();
+		let style = FontInput {
+			is_style_picker: true,
+			font_family: self.options.font_name.clone(),
+			font_style: self.options.font_style.clone(),
+			on_update: WidgetCallback::new(|font_input: &FontInput| {
+				TextToolMessage::UpdateOptions(TextOptionsUpdate::Font {
+					family: font_input.font_family.clone(),
+					style: font_input.font_style.clone(),
+				})
+				.into()
+			}),
+			..Default::default()
+		}
+		.widget_holder();
+		let size = NumberInput::new(Some(self.options.font_size as f64))
+			.unit(" px")
+			.label("Size")
+			.int()
+			.min(1.)
+			.on_update(|number_input: &NumberInput| TextToolMessage::UpdateOptions(TextOptionsUpdate::FontSize(number_input.value.unwrap() as u32)).into())
+			.widget_holder();
 		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row {
-			widgets: vec![
-				WidgetHolder::new(Widget::FontInput(FontInput {
-					is_style_picker: false,
-					font_family: self.options.font_name.clone(),
-					font_style: self.options.font_style.clone(),
-					on_update: WidgetCallback::new(|font_input: &FontInput| {
-						TextToolMessage::UpdateOptions(TextOptionsUpdate::Font {
-							family: font_input.font_family.clone(),
-							style: font_input.font_style.clone(),
-						})
-						.into()
-					}),
-					..Default::default()
-				})),
-				WidgetHolder::new(Widget::Separator(Separator {
-					direction: SeparatorDirection::Horizontal,
-					separator_type: SeparatorType::Related,
-				})),
-				WidgetHolder::new(Widget::FontInput(FontInput {
-					is_style_picker: true,
-					font_family: self.options.font_name.clone(),
-					font_style: self.options.font_style.clone(),
-					on_update: WidgetCallback::new(|font_input: &FontInput| {
-						TextToolMessage::UpdateOptions(TextOptionsUpdate::Font {
-							family: font_input.font_family.clone(),
-							style: font_input.font_style.clone(),
-						})
-						.into()
-					}),
-					..Default::default()
-				})),
-				WidgetHolder::new(Widget::Separator(Separator {
-					direction: SeparatorDirection::Horizontal,
-					separator_type: SeparatorType::Related,
-				})),
-				WidgetHolder::new(Widget::NumberInput(NumberInput {
-					unit: " px".into(),
-					label: "Size".into(),
-					value: Some(self.options.font_size as f64),
-					is_integer: true,
-					min: Some(1.),
-					on_update: WidgetCallback::new(|number_input: &NumberInput| TextToolMessage::UpdateOptions(TextOptionsUpdate::FontSize(number_input.value.unwrap() as u32)).into()),
-					..NumberInput::default()
-				})),
-			],
+			widgets: vec![font, WidgetHolder::related_separator(), style, WidgetHolder::related_separator(), size],
 		}]))
 	}
 }
 
 impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for TextTool {
-	fn process_message(&mut self, message: ToolMessage, tool_data: ToolActionHandlerData<'a>, responses: &mut VecDeque<Message>) {
-		if message == ToolMessage::UpdateHints {
-			self.fsm_state.update_hints(responses);
-			return;
-		}
-
-		if message == ToolMessage::UpdateCursor {
-			self.fsm_state.update_cursor(responses);
-			return;
-		}
-
+	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: ToolActionHandlerData<'a>) {
 		if let ToolMessage::Text(TextToolMessage::UpdateOptions(action)) = message {
 			match action {
 				TextOptionsUpdate::Font { family, style } => {
@@ -161,13 +140,7 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for TextTool {
 			return;
 		}
 
-		let new_state = self.fsm_state.transition(message, &mut self.tool_data, tool_data, &self.options, responses);
-
-		if self.fsm_state != new_state {
-			self.fsm_state = new_state;
-			self.fsm_state.update_hints(responses);
-			self.fsm_state.update_cursor(responses);
-		}
+		self.fsm_state.process_event(message, &mut self.tool_data, tool_data, &self.options, responses, true);
 	}
 
 	fn actions(&self) -> ActionList {
@@ -196,18 +169,12 @@ impl ToolTransition for TextTool {
 	}
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 enum TextToolFsmState {
+	#[default]
 	Ready,
 	Editing,
 }
-
-impl Default for TextToolFsmState {
-	fn default() -> Self {
-		TextToolFsmState::Ready
-	}
-}
-
 #[derive(Clone, Debug, Default)]
 struct TextToolData {
 	layer_path: Vec<LayerId>,
@@ -245,7 +212,7 @@ fn resize_overlays(overlays: &mut Vec<Vec<LayerId>>, responses: &mut VecDeque<Me
 	}
 }
 
-fn update_overlays(document: &DocumentMessageHandler, tool_data: &mut TextToolData, responses: &mut VecDeque<Message>, font_cache: &FontCache) {
+fn update_overlays(document: &DocumentMessageHandler, tool_data: &mut TextToolData, responses: &mut VecDeque<Message>, render_data: &RenderData) {
 	let visible_text_layers = document.selected_visible_text_layers().collect::<Vec<_>>();
 	resize_overlays(&mut tool_data.overlays, responses, visible_text_layers.len());
 
@@ -257,7 +224,7 @@ fn update_overlays(document: &DocumentMessageHandler, tool_data: &mut TextToolDa
 				.document_legacy
 				.layer(layer_path)
 				.unwrap()
-				.aabb_for_transform(document.document_legacy.multiply_transforms(layer_path).unwrap(), font_cache)
+				.aabb_for_transform(document.document_legacy.multiply_transforms(layer_path).unwrap(), render_data)
 				.map(|bounds| (bounds, overlay_path))
 		})
 		.collect::<Vec<_>>();
@@ -282,7 +249,7 @@ impl Fsm for TextToolFsmState {
 		self,
 		event: ToolMessage,
 		tool_data: &mut Self::ToolData,
-		(document, _document_id, global_tool_data, input, font_cache): ToolActionHandlerData,
+		(document, _document_id, global_tool_data, input, render_data): ToolActionHandlerData,
 		tool_options: &Self::ToolOptions,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
@@ -292,7 +259,7 @@ impl Fsm for TextToolFsmState {
 		if let ToolMessage::Text(event) = event {
 			match (self, event) {
 				(state, DocumentIsDirty) => {
-					update_overlays(document, tool_data, responses, font_cache);
+					update_overlays(document, tool_data, responses, render_data);
 
 					state
 				}
@@ -304,7 +271,7 @@ impl Fsm for TextToolFsmState {
 					// Check if the user has selected an existing text layer
 					let new_state = if let Some(clicked_text_layer_path) = document
 						.document_legacy
-						.intersects_quad_root(quad, font_cache)
+						.intersects_quad_root(quad, render_data)
 						.last()
 						.filter(|l| document.document_legacy.layer(l).map(|l| l.as_text().is_ok()).unwrap_or(false))
 					{
@@ -399,7 +366,7 @@ impl Fsm for TextToolFsmState {
 				(Editing, UpdateBounds { new_text }) => {
 					resize_overlays(&mut tool_data.overlays, responses, 1);
 					let text = document.document_legacy.layer(&tool_data.layer_path).unwrap().as_text().unwrap();
-					let quad = text.bounding_box(&new_text, text.load_face(font_cache));
+					let quad = text.bounding_box(&new_text, text.load_face(render_data));
 
 					let transformed_quad = document.document_legacy.multiply_transforms(&tool_data.layer_path).unwrap() * quad;
 					let bounds = transformed_quad.bounding_box();
@@ -421,37 +388,10 @@ impl Fsm for TextToolFsmState {
 
 	fn update_hints(&self, responses: &mut VecDeque<Message>) {
 		let hint_data = match self {
-			TextToolFsmState::Ready => HintData(vec![HintGroup(vec![
-				HintInfo {
-					key_groups: vec![],
-					key_groups_mac: None,
-					mouse: Some(MouseMotion::Lmb),
-					label: String::from("Add Text"),
-					plus: false,
-				},
-				HintInfo {
-					key_groups: vec![],
-					key_groups_mac: None,
-					mouse: Some(MouseMotion::Lmb),
-					label: String::from("Edit Text"),
-					plus: false,
-				},
-			])]),
+			TextToolFsmState::Ready => HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Add Text"), HintInfo::mouse(MouseMotion::Lmb, "Edit Text")])]),
 			TextToolFsmState::Editing => HintData(vec![HintGroup(vec![
-				HintInfo {
-					key_groups: vec![KeysGroup(vec![Key::Control, Key::Enter]).into()],
-					key_groups_mac: Some(vec![KeysGroup(vec![Key::Command, Key::Enter]).into()]),
-					mouse: None,
-					label: String::from("Commit Edit"),
-					plus: false,
-				},
-				HintInfo {
-					key_groups: vec![KeysGroup(vec![Key::Escape]).into()],
-					key_groups_mac: None,
-					mouse: None,
-					label: String::from("Discard Edit"),
-					plus: false,
-				},
+				HintInfo::keys([Key::Control, Key::Enter], "Commit Edit").add_mac_keys([Key::Command, Key::Enter]),
+				HintInfo::keys([Key::Escape], "Discard Edit"),
 			])]),
 		};
 

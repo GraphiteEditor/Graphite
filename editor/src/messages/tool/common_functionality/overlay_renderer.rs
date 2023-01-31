@@ -58,11 +58,11 @@ impl OverlayRenderer {
 
 				// Create, place, and style the manipulator overlays
 				for (manipulator_group_id, manipulator_group) in shape.manipulator_groups().enumerate() {
-					let manipulator_group_cache = self.manipulator_group_overlay_cache.entry((*layer_id, *manipulator_group_id)).or_insert(Default::default());
+					let manipulator_group_cache = self.manipulator_group_overlay_cache.entry((*layer_id, *manipulator_group_id)).or_default();
 
 					// Only view in and out handles if they are not on top of the anchor
 					let [in_handle, out_handle] = {
-						let Some(anchor) = manipulator_group.points[ManipulatorType::Anchor].as_ref() else{
+						let Some(anchor) = manipulator_group.points[ManipulatorType::Anchor].as_ref() else {
 							continue;
 						};
 

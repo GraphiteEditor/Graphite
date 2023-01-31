@@ -13,7 +13,7 @@ use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
 #[repr(C)]
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, specta::Type)]
 // TODO: Rename all instances of `path` to `layer_path`
 /// Operations that can be performed to mutate the document.
 pub enum Operation {
@@ -44,13 +44,6 @@ pub enum Operation {
 		size: f64,
 		font_name: String,
 		font_style: String,
-	},
-	AddImage {
-		path: Vec<LayerId>,
-		insert_index: isize,
-		transform: [f64; 6],
-		mime: String,
-		image_data: Vec<u8>,
 	},
 	AddNodeGraphFrame {
 		path: Vec<LayerId>,
