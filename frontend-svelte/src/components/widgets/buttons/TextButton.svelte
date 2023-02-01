@@ -42,6 +42,7 @@
 		justify-content: center;
 		align-items: center;
 		flex: 0 0 auto;
+		width: 0;
 		height: 24px;
 		margin: 0;
 		padding: 0 8px;
@@ -83,6 +84,11 @@
 		.icon-label {
 			position: relative;
 			left: -4px;
+		}
+		
+		span {
+			overflow: hidden;
+			text-overflow: ellipsis;
 		}
 	}
 </style>
