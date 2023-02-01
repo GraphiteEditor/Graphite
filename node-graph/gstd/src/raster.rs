@@ -89,15 +89,34 @@ pub fn export_image_node<'i, 's: 'i>() -> impl Node<'i, 's, (Image, &'i str), Ou
 		new_image.save(path).map_err(Error::Image)
 	})
 }
+*/
 
 #[derive(Debug, Clone, Copy)]
 pub struct GrayscaleNode;
 
 #[node_macro::node_fn(GrayscaleNode)]
-fn grayscale_image(mut image: Image) -> Image {
+fn grayscale_image(image: Image) -> Image {
+	let mut image = image;
 	for pixel in &mut image.data {
 		let avg = (pixel.r() + pixel.g() + pixel.b()) / 3.;
 		*pixel = Color::from_rgbaf32_unchecked(avg, avg, avg, pixel.a());
+	}
+	image
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct MapImageNode<MapFn> {
+	map_fn: MapFn,
+}
+
+#[node_macro::node_fn(MapImageNode)]
+fn grayscale_image<MapFn>(image: Image, map_fn: &'any_input MapFn) -> Image
+where
+	MapFn: for<'any_input> Node<'any_input, Color, Output = Color> + 'input,
+{
+	let mut image = image;
+	for pixel in &mut image.data {
+		*pixel = map_fn.eval(*pixel);
 	}
 	image
 }
@@ -107,11 +126,12 @@ pub struct InvertRGBNode;
 
 #[node_macro::node_fn(InvertRGBNode)]
 fn invert_image(mut image: Image) -> Image {
+	let mut image = image;
 	for pixel in &mut image.data {
 		*pixel = Color::from_rgbaf32_unchecked(1. - pixel.r(), 1. - pixel.g(), 1. - pixel.b(), pixel.a());
 	}
 	image
-}*/
+}
 
 #[derive(Debug, Clone, Copy)]
 pub struct HueSaturationNode<Hue, Sat, Lit> {

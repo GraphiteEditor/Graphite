@@ -15,9 +15,6 @@ where
 {
 	type Output = <Second as Node<'i, <First as Node<'i, Input>>::Output>>::Output;
 	fn eval<'s: 'i>(&'s self, input: Input) -> Self::Output {
-		// eval<'s: 'i>uate the first node with the given input
-		// and then pipe the result from the first computation
-		// into the second node
 		let arg = self.first.eval(input);
 		self.second.eval(arg)
 	}
@@ -26,6 +23,7 @@ where
 impl<First, Second, Input> ComposeNode<First, Second, Input>
 where
 	First: for<'a> Node<'a, Input>,
+	// Pin<Box<dyn for<'a> Node<'a, Input>> + '_>
 	Second: for<'a> Node<'a, <First as Node<'a, Input>>::Output>,
 {
 	pub const fn new(first: First, second: Second) -> Self {

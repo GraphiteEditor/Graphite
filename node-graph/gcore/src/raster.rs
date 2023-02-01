@@ -215,9 +215,9 @@ pub struct MapSndNode<First, Second, MapFn> {
 }
 
 #[node_macro::node_fn(MapSndNode< _First, _Second>)]
-fn map_snd_node<MapFn, _First, _Second>(input: (_First, _Second), map_fn: &'any_input MapFn) -> (_First, MapFn::Output)
+fn map_snd_node<MapFn, _First, _Second>(input: (_First, _Second), map_fn: &'any_input MapFn) -> (_First, <MapFn as Node<'input, _Second>>::Output)
 where
-	MapFn: Node<'input, _Second>,
+	MapFn: for<'any_input> Node<'any_input, _Second>,
 {
 	let (a, b) = input;
 	(a, map_fn.eval(b))
@@ -272,7 +272,7 @@ pub struct ForEachNode<Iter, MapNode> {
 #[node_macro::node_fn(ForEachNode<_Iter>)]
 fn map_node<_Iter: Iterator, MapNode>(input: _Iter, map_node: &'any_input MapNode) -> ()
 where
-	MapNode: Node<'input, _Iter::Item, Output = ()>,
+	MapNode: for<'any_input> Node<'any_input, _Iter::Item, Output = ()> + 'input,
 {
 	input.for_each(|x| map_node.eval(x));
 }
