@@ -1,14 +1,12 @@
+use std::collections::HashSet;
 use std::error::Error;
 use std::{collections::HashMap, sync::Arc};
 
-use borrow_stack::{BorrowStack, FixedSizeStack};
-use dyn_any::{DynAny, StaticType};
-use graph_craft::document::value::{UpcastNode, Value};
+use dyn_any::StaticType;
+use graph_craft::document::value::UpcastNode;
 use graph_craft::document::NodeId;
 use graph_craft::proto::{ConstructionArgs, ProtoNode, ProtoNodeInput};
-use graphene_core::value::ValueNode;
-use graphene_core::Node;
-use graphene_std::any::{Any, DynAnyNode, IntoTypeErasedNode, TypeErasedNode, TypeErasedPinned, TypeErasedPinnedRef};
+use graphene_std::any::{Any, TypeErasedPinned, TypeErasedPinnedRef};
 
 use crate::node_registry::constrcut_node;
 use graph_craft::{executor::Executor, proto::ProtoNetwork};
@@ -23,6 +21,11 @@ impl DynamicExecutor {
 		let output = proto_network.output;
 		let tree = BorrowTree::new(proto_network);
 		Self { tree, output }
+	}
+
+	pub fn update(&mut self, proto_network: ProtoNetwork) {
+		self.output = proto_network.output;
+		self.tree.update(proto_network);
 	}
 }
 
@@ -66,6 +69,19 @@ impl BorrowTree {
 		}
 		nodes
 	}
+
+	/// Pushes new nodes into the tree and return orphaned nodes
+	pub fn update(&mut self, proto_network: ProtoNetwork) -> Vec<NodeId> {
+		let mut old_nodes: HashSet<_> = self.nodes.keys().copied().collect();
+		for (id, node) in proto_network.nodes {
+			if !self.nodes.contains_key(&id) {
+				self.push_node(id, node);
+				old_nodes.remove(&id);
+			}
+		}
+		old_nodes.into_iter().collect()
+	}
+
 	fn node_refs(&self, nodes: &[NodeId]) -> Vec<TypeErasedPinnedRef<'static>> {
 		self.node_deps(nodes).into_iter().map(|node| unsafe { node.as_ref().static_ref() }).collect()
 	}
@@ -92,20 +108,19 @@ impl BorrowTree {
 		Some(node.node.eval(input))
 	}
 
-	fn free_node(&mut self, id: NodeId) {
+	pub fn free_node(&mut self, id: NodeId) {
 		self.nodes.remove(&id);
 	}
 
 	pub fn push_node(&mut self, id: NodeId, proto_node: ProtoNode) {
 		let ProtoNode { input, construction_args, identifier } = proto_node;
 
-		/*assert_eq!(
-			input,
-			ProtoNodeInput::None,
+		assert!(
+			!matches!(input, ProtoNodeInput::Node(_)),
 			"Only nodes without inputs are supported. Any inputs should already be resolved by placing ComposeNodes {:?}, {:?}",
 			identifier,
 			construction_args
-		);*/
+		);
 
 		match construction_args {
 			ConstructionArgs::Value(value) => {

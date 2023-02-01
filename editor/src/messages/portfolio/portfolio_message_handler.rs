@@ -686,19 +686,13 @@ impl PortfolioMessageHandler {
 		let mut proto_network = network.into_proto_network();
 		proto_network.reorder_ids();
 
-
 		assert_ne!(proto_network.nodes.len(), 0, "No protonodes exist?");
-		let output = proto_network.output;
-		let tree = interpreted_executor::executor::BorrowTree::new(proto_network);
+		let tree = interpreted_executor::executor::DynamicExecutor::new(proto_network);
 
-		use borrow_stack::BorrowStack;
 		use dyn_any::IntoDynAny;
-		use graphene_core::Node;
+		use graph_craft::executor::Executor;
 
-		let node = tree.get(output).unwrap();
-		let node = node.as_ref();
-		let node = unsafe { node.static_ref() };
-		let boxed = node.eval(image.into_dyn());
+		let boxed = tree.execute(image.into_dyn()).map_err(|e| e.to_string())?;
 
 		dyn_any::downcast::<T>(boxed).map(|v| *v)
 	}
@@ -709,8 +703,7 @@ impl PortfolioMessageHandler {
 		// Adjust the output of the graph so we find the relevant output
 		'outer: for end in (0..node_path.len()).rev() {
 			let mut inner_network = &mut network;
-			for index in 0..end {
-				let node_id = node_path[index];
+			for &node_id in &node_path[..end] {
 				inner_network.output = node_id;
 
 				let Some(new_inner) = inner_network.nodes.get_mut(&node_id).and_then(|node| node.implementation.get_network_mut()) else {

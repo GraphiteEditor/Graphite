@@ -27,10 +27,10 @@ impl<'a, I: StaticTypeSized, O> GpuExecutor<'a, I, O> {
 }
 
 impl<'a, I: StaticTypeSized + Sync + Pod + Send, O: StaticTypeSized + Send + Sync + Pod> Executor for GpuExecutor<'a, I, O> {
-	fn execute(&self, input: Any<'static>) -> Result<Any<'static>, Box<dyn std::error::Error>> {
+	fn execute<'i, 's: 'i>(&'s self, input: Any<'i>) -> Result<Any<'i>, Box<dyn std::error::Error>> {
 		let input = dyn_any::downcast::<Vec<I>>(input).expect("Wrong input type");
 		let context = &self.context;
-		let future = execute_shader(context.device.clone(), context.queue.clone(), self.shader.to_vec().into(), *input, self.entry_point.clone());
+		let future = execute_shader(context.device.clone(), context.queue.clone(), self.shader.to_vec(), *input, self.entry_point.clone());
 		let result = future_executor::block_on(future);
 
 		let result: Vec<O> = result.ok_or_else(|| String::from("Failed to execute shader"))?;
