@@ -322,6 +322,17 @@ mod image {
 			let data = image_data.chunks_exact(4).map(|v| Color::from_rgba8(v[0], v[1], v[2], v[3])).collect();
 			Image { width, height, data }
 		}
+
+		/// Flattens each channel casted to a u8
+		pub fn as_flat_u8(self) -> (Vec<u8>, u32, u32) {
+			let Image { width, height, data } = self;
+
+			info!("Data {data:?}");
+			let result_bytes = data.into_iter().flat_map(|color| color.to_rgba8()).collect();
+			info!("result_bytes {result_bytes:?}");
+
+			(result_bytes, width, height)
+		}
 	}
 
 	impl IntoIterator for Image {
