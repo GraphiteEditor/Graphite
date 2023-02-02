@@ -21,7 +21,7 @@ pub mod raster;
 pub mod vector;
 
 // pub trait Node: for<'n> NodeIO<'n> {
-pub trait Node<'i, Input: 'i> {
+pub trait Node<'i, Input: 'i>: 'i {
 	type Output: 'i;
 	fn eval<'s: 'i>(&'s self, input: Input) -> Self::Output;
 }
@@ -33,7 +33,7 @@ pub trait Node<'i, Input: 'i> {
 		(**self).eval(input)
 	}
 }*/
-impl<'i, I: 'i, O: 'i> Node<'i, I> for &dyn for<'a> Node<'a, I, Output = O> {
+impl<'i, 'n: 'i, I: 'i, O: 'i> Node<'i, I> for &'n dyn for<'a> Node<'a, I, Output = O> {
 	type Output = O;
 
 	fn eval<'s: 'i>(&'s self, input: I) -> Self::Output {

@@ -17,6 +17,28 @@ where
 	let input: Box<_I> = dyn_any::downcast(input).unwrap_or_else(|_| panic!("DynAnyNode Input in:\n{node_name}"));
 	Box::new(node.eval(*input))
 }
+pub struct DynAnyRefNode<I, O, Node> {
+	node: Node,
+	_i: PhantomData<(I, O)>,
+}
+impl<'input, _I: 'input + StaticType, _O: 'input + StaticType, N: 'input> Node<'input, Any<'input>> for DynAnyRefNode<_I, _O, N>
+where
+	N: for<'any_input> Node<'any_input, _I, Output = &'any_input _O>,
+{
+	type Output = Any<'input>;
+	fn eval<'node: 'input>(&'node self, input: Any<'input>) -> Self::Output {
+		{
+			let node_name = core::any::type_name::<N>();
+			let input: Box<_I> = dyn_any::downcast(input).unwrap_or_else(|_| panic!("DynAnyNode Input in:\n{node_name}"));
+			Box::new(self.node.eval(*input))
+		}
+	}
+}
+impl<_I, _O, S0> DynAnyRefNode<_I, _O, S0> {
+	pub const fn new(node: S0) -> Self {
+		Self { node, _i: core::marker::PhantomData }
+	}
+}
 
 pub type TypeErasedNode<'n> = dyn for<'i> Node<'i, Any<'i>, Output = Any<'i>> + 'n;
 pub type TypeErasedPinnedRef<'n> = Pin<&'n (dyn for<'i> Node<'i, Any<'i>, Output = Any<'i>> + 'n)>;
@@ -64,7 +86,7 @@ pub struct DowncastBothNode<'a, I, O> {
 	_i: PhantomData<I>,
 	_o: PhantomData<O>,
 }
-impl<'n, 'input, O: 'input + StaticType, I: 'input + StaticType> Node<'input, I> for DowncastBothNode<'n, I, O> {
+impl<'n: 'input, 'input, O: 'input + StaticType, I: 'input + StaticType> Node<'input, I> for DowncastBothNode<'n, I, O> {
 	type Output = O;
 	#[inline]
 	fn eval<'node: 'input>(&'node self, input: I) -> Self::Output {
@@ -91,7 +113,7 @@ pub struct DowncastBothRefNode<'a, I, O> {
 	node: TypeErasedPinnedRef<'a>,
 	_i: PhantomData<(I, O)>,
 }
-impl<'n, 'input, O: 'input + StaticType, I: 'input + StaticType> Node<'input, I> for DowncastBothRefNode<'n, I, O> {
+impl<'n: 'input, 'input, O: 'input + StaticType, I: 'input + StaticType> Node<'input, I> for DowncastBothRefNode<'n, I, O> {
 	type Output = &'input O;
 	#[inline]
 	fn eval<'node: 'input>(&'node self, input: I) -> Self::Output {

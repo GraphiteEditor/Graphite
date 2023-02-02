@@ -54,7 +54,7 @@ static NODE_REGISTRY: &[(NodeIdentifier, NodeConstructor)] = &[
 	register_node!(graphene_core::raster::HueShiftColorNode<_>, input: Color, params: [f32]),
 	(NodeIdentifier::new("graphene_core::structural::ComposeNode<_, _, _>", &[generic!("T"), generic!("U")]), |args| {
 		let node = ComposeTypeErased::new(args[0], args[1]);
-		Box::pin(node) as TypeErasedPinned
+		node.into_type_erased()
 	}),
 	(NodeIdentifier::new("graphene_core::ops::IdNode", &[generic!("T")]), |_| IdNode::new().into_type_erased()),
 	register_node!(graphene_std::raster::GrayscaleNode, input: Image, params: []),
@@ -63,7 +63,7 @@ static NODE_REGISTRY: &[(NodeIdentifier, NodeConstructor)] = &[
 		let map_fn: DowncastBothNode<Color, Color> = DowncastBothNode::new(args[0]);
 		let node = graphene_std::raster::MapImageNode::new(ValueNode::new(map_fn));
 		let any: DynAnyNode<Image, _, _> = graphene_std::any::DynAnyNode::new(graphene_core::value::ValueNode::new(node));
-		Box::pin(any) as TypeErasedPinned
+		any.into_type_erased()
 	}),
 	register_node!(graphene_std::raster::HueSaturationNode<_, _, _>, input: Image, params: [f64, f64, f64]),
 	register_node!(graphene_std::raster::BrightnessContrastNode< _, _>, input: Image, params: [f64, f64]),
@@ -102,8 +102,15 @@ static NODE_REGISTRY: &[(NodeIdentifier, NodeConstructor)] = &[
 		let new_image = dimensions.then(new_image);
 		let node: DynAnyNode<(), _, _> = DynAnyNode::new(ValueNode::new(new_image));
 		node.eval(Box::new(()));
-		Box::pin(node) as TypeErasedPinned
+		node.into_type_erased()
 	}),
+	//register_node!(graphene_std::memo::CacheNode<_>, input: Image, params: []),
+	(NodeIdentifier::new("graphene_std::memo::CacheNode", &[concrete!("Image")]), |_| {
+		let node: CacheNode<Image> = graphene_std::memo::CacheNode::new();
+		let any = graphene_std::any::DynAnyRefNode::new(node);
+		any.into_type_erased()
+	}),
+	register_node!(graphene_core::structural::ConsNode<_, _>, input: Image, params: [&str]),
 	/*
 	(NodeIdentifier::new("graphene_std::raster::ImageNode", &[concrete!("&str")]), |_proto_node, stack| {
 		stack.push_fn(|_nodes| {
@@ -141,21 +148,6 @@ static NODE_REGISTRY: &[(NodeIdentifier, NodeConstructor)] = &[
 			}
 		},
 	),
-	(NodeIdentifier::new("graphene_std::memo::CacheNode", &[concrete!("Image")]), |proto_node, stack| {
-		let node_id = proto_node.input.unwrap_node() as usize;
-		use graphene_core::raster::*;
-		if let ConstructionArgs::Nodes(image_args) = proto_node.construction_args {
-			stack.push_fn(move |nodes| {
-				let image = nodes.get(node_id).unwrap();
-				let node: DynAnyNode<_, Image, Image, &Image> = DynAnyNode::new(CacheNode::new());
-
-				let node = image.then(node);
-				node.into_type_erased()
-			})
-		} else {
-			unimplemented!()
-		}
-	}),
 	(NodeIdentifier::new("graphene_std::vector::generator_nodes::UnitCircleGenerator", &[]), |_proto_node, stack| {
 		stack.push_fn(|_nodes| DynAnyNode::new(graphene_std::vector::generator_nodes::UnitCircleGenerator).into_type_erased())
 	}),
