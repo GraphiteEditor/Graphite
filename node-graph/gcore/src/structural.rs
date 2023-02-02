@@ -23,11 +23,25 @@ where
 impl<First, Second, Input> ComposeNode<First, Second, Input>
 where
 	First: for<'a> Node<'a, Input>,
-	// Pin<Box<dyn for<'a> Node<'a, Input>> + '_>
 	Second: for<'a> Node<'a, <First as Node<'a, Input>>::Output>,
 {
 	pub const fn new(first: First, second: Second) -> Self {
 		ComposeNode::<First, Second, Input> { first, second, phantom: PhantomData }
+	}
+}
+
+// impl Clone for ComposeNode<First, Second, Input>
+impl<First, Second, Input> Clone for ComposeNode<First, Second, Input>
+where
+	First: for<'a> Node<'a, Input> + Clone,
+	Second: for<'a> Node<'a, <First as Node<'a, Input>>::Output> + Clone,
+{
+	fn clone(&self) -> Self {
+		ComposeNode::<First, Second, Input> {
+			first: self.first.clone(),
+			second: self.second.clone(),
+			phantom: PhantomData,
+		}
 	}
 }
 

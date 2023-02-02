@@ -80,7 +80,7 @@ where
 }
 
 #[derive(Debug, Clone, Copy)]
-struct WeightedAvgNode {}
+pub struct WeightedAvgNode {}
 
 #[node_macro::node_fn(WeightedAvgNode)]
 fn weighted_avg_node<_Iter: Iterator<Item = (Color, f32)>>(input: _Iter) -> Color
@@ -144,7 +144,11 @@ where
 		}
 	}
 }
-impl<S0: for<'i> Node<'i, (), Output = u32>, S1: for<'i> Node<'i, (), Output = ImageSlice<'i>>> WindowNode<S0, S1> {
+impl<S0, S1> WindowNode<S0, S1>
+where
+	S0: for<'any_input> Node<'any_input, (), Output = u32>,
+	S1: for<'any_input> Node<'any_input, (), Output = ImageSlice<'any_input>>,
+{
 	pub const fn new(radius: S0, image: S1) -> Self {
 		Self { radius, image }
 	}
@@ -308,8 +312,16 @@ impl<'a> IntoIterator for &'a ImageSlice<'a> {
 	}
 }
 
+#[derive(Debug)]
+pub struct ImageDimensionsNode;
+
+#[node_macro::node_fn(ImageDimensionsNode)]
+fn dimensions_node(input: ImageSlice<'input>) -> (u32, u32) {
+	(input.width, input.height)
+}
+
 #[cfg(feature = "alloc")]
-pub use image::{CollectNode, Image, ImageRefNode};
+pub use image::{CollectNode, Image, ImageRefNode, MapImageSliceNode};
 #[cfg(feature = "alloc")]
 mod image {
 	use super::{Color, ImageSlice};
@@ -370,19 +382,15 @@ mod image {
 	}
 
 	#[derive(Debug)]
-	pub struct MapImageSliceNode<MapFn> {
-		map_fn: MapFn,
+	pub struct MapImageSliceNode<Data> {
+		data: Data,
 	}
 
 	#[node_macro::node_fn(MapImageSliceNode)]
-	fn map_node<MapFn>(image: ImageSlice<'input>, map_fn: &'any_input MapFn) -> Image
-	where
-		MapFn: Node<'input, ImageSlice<'input>, Output = Vec<Color>>,
-	{
-		let data = map_fn.eval(image);
+	fn map_node(input: (u32, u32), data: Vec<Color>) -> Image {
 		Image {
-			width: image.width,
-			height: image.height,
+			width: input.0,
+			height: input.1,
 			data,
 		}
 	}

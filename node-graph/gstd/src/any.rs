@@ -58,23 +58,12 @@ where
 
 /// Boxes the input and downcasts the output.
 /// Wraps around a node taking Box<dyn DynAny> and returning Box<dyn DynAny>
+#[derive(Clone, Copy)]
 pub struct DowncastBothNode<'a, I, O> {
 	node: TypeErasedPinnedRef<'a>,
 	_i: PhantomData<I>,
 	_o: PhantomData<O>,
 }
-
-/*
-#[node_macro::node_fn(DowncastBothNode<_I,_O>)]
-fn downcast_both<N, _O: StaticType, _I: StaticType>(input: _I, node: &'input N) -> _O
-where
-	N: Node<'input, Any<'input>, Output = Any<'input>>,
-{
-	let node_name = core::any::type_name::<N>();
-	let input = Box::new(input);
-	let out = dyn_any::downcast(node.eval(input)).unwrap_or_else(|_| panic!("DynAnyNode Input in:\n{node_name}"));
-	*out
-} */
 impl<'n, 'input, O: 'input + StaticType, I: 'input + StaticType> Node<'input, I> for DowncastBothNode<'n, I, O> {
 	type Output = O;
 	#[inline]
@@ -93,6 +82,29 @@ impl<'n, I, O> DowncastBothNode<'n, I, O> {
 			_i: core::marker::PhantomData,
 			_o: core::marker::PhantomData,
 		}
+	}
+}
+/// Boxes the input and downcasts the output.
+/// Wraps around a node taking Box<dyn DynAny> and returning Box<dyn DynAny>
+#[derive(Clone, Copy)]
+pub struct DowncastBothRefNode<'a, I, O> {
+	node: TypeErasedPinnedRef<'a>,
+	_i: PhantomData<(I, O)>,
+}
+impl<'n, 'input, O: 'input + StaticType, I: 'input + StaticType> Node<'input, I> for DowncastBothRefNode<'n, I, O> {
+	type Output = &'input O;
+	#[inline]
+	fn eval<'node: 'input>(&'node self, input: I) -> Self::Output {
+		{
+			let input = Box::new(input);
+			let out = dyn_any::downcast(self.node.eval(input)).unwrap_or_else(|_| panic!("DynAnyNode Input "));
+			*out
+		}
+	}
+}
+impl<'n, I, O> DowncastBothRefNode<'n, I, O> {
+	pub const fn new(node: TypeErasedPinnedRef<'n>) -> Self {
+		Self { node, _i: core::marker::PhantomData }
 	}
 }
 
