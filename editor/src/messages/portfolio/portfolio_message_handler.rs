@@ -762,13 +762,9 @@ impl PortfolioMessageHandler {
 		use image::{ImageBuffer, Rgba};
 		use std::io::Cursor;
 
-		let mut image_data: Vec<u8> = Vec::new();
-		let [image_width, image_height] = [image.width, image.height];
-		let size_estimate = (image_width * image_height * 4) as usize;
+		let (result_bytes, width, height) = image.as_flat_u8();
 
-		let mut result_bytes = Vec::with_capacity(size_estimate);
-		result_bytes.extend(image.data.into_iter().flat_map(|color| color.to_rgba8()));
-		let mut output: ImageBuffer<Rgba<u8>, _> = image::ImageBuffer::from_raw(image_width, image_height, result_bytes).ok_or_else(|| "Invalid image size".to_string())?;
+		let mut output: ImageBuffer<Rgba<u8>, _> = image::ImageBuffer::from_raw(width, height, result_bytes).ok_or_else(|| "Invalid image size".to_string())?;
 		if let Some(size) = resize {
 			let size = size.as_uvec2();
 			if size.x > 0 && size.y > 0 {
@@ -776,7 +772,9 @@ impl PortfolioMessageHandler {
 			}
 		}
 		let size = output.dimensions();
+		let mut image_data: Vec<u8> = Vec::new();
 		output.write_to(&mut Cursor::new(&mut image_data), format).map_err(|e| e.to_string())?;
+		debug!("Returning from encode image");
 		Ok::<_, String>((image_data, size))
 	}
 
@@ -841,7 +839,9 @@ impl PortfolioMessageHandler {
 				let image: Image = Self::compute_input(&mut self.executor, &network, &imaginate_node, get("Input Image"), Cow::Borrowed(&image_frame))?;
 				// Only use if has size
 				if image.width > 0 && image.height > 0 {
+					debug!("Start image encode");
 					let (image_data, size) = Self::encode_img(image, Some(resolution), image::ImageOutputFormat::Png)?;
+					debug!("End image encode");
 					let size = DVec2::new(size.0 as f64, size.1 as f64);
 					let mime = "image/png".to_string();
 					Some(ImaginateBaseImage { image_data, size, mime })
@@ -907,7 +907,9 @@ impl PortfolioMessageHandler {
 				image = graphene_core::raster::Image::from_image_data(&image_data, width, height);
 			}
 
+			debug!("Start image encode");
 			let (image_data, _size) = Self::encode_img(image, None, image::ImageOutputFormat::Bmp)?;
+			debug!("End image encode");
 
 			responses.push_back(
 				DocumentOperation::SetNodeGraphFrameImageData {
