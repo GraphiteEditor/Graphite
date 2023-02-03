@@ -63,37 +63,22 @@ impl Subpath {
 	/// The list of `t`-values returned are filtered such that they fall within the range `[0, 1]`.
 	/// <iframe frameBorder="0" width="100%" height="400px" src="https://graphite.rs/bezier-rs-demos#subpath/local-extrema/solo" title="Local Extrema Demo"></iframe>
 	pub fn local_extrema(&self) -> [Vec<f64>; 2] {
-		let (mut x_extremas, mut y_extremas) = (Vec::new(), Vec::new());
 		let number_of_curves = self.len_segments() as f64;
 
-		for (index, bezier) in self.iter().enumerate() {
-			// Convert t-values of bezier curve to t-values of subpath
-			let extremas = bezier.local_extrema();
-			x_extremas.extend(extremas[0].iter().map(|t| ((index as f64) + t) / number_of_curves).collect::<Vec<f64>>());
-			y_extremas.extend(extremas[1].iter().map(|t| ((index as f64) + t) / number_of_curves).collect::<Vec<f64>>());
-		}
-
 		// TODO: Consider the shared point between adjacent beziers.
-		[x_extremas, y_extremas]
+		self.iter().enumerate().fold([Vec::new(), Vec::new()], |mut acc, elem| {
+			let extremas = elem.1.local_extrema();
+			// Convert t-values of bezier curve to t-values of subpath
+			acc[0].extend(extremas[0].iter().map(|t| ((elem.0 as f64) + t) / number_of_curves).collect::<Vec<f64>>());
+			acc[1].extend(extremas[1].iter().map(|t| ((elem.0 as f64) + t) / number_of_curves).collect::<Vec<f64>>());
+			acc
+		})
 	}
 
 	/// Return the min and max corners that represent the bounding box of the subpath.
 	/// <iframe frameBorder="0" width="100%" height="400px" src="https://graphite.rs/bezier-rs-demos#subpath/bounding-box/solo" title="Bounding Box Demo"></iframe>
 	pub fn bounding_box(&self) -> Option<[DVec2; 2]> {
-		let bounding_boxes = self.iter().map(|bezier| bezier.bounding_box()).collect::<Vec<[DVec2; 2]>>();
-		if bounding_boxes.is_empty() {
-			// There is no bounding box for empty subpath.
-			None
-		} else {
-			let mut min_point = bounding_boxes[0][0];
-			let mut max_point = bounding_boxes[0][1];
-			for bounding_box in bounding_boxes {
-				// We take min of mins and max of maxes.
-				min_point = min_point.min(bounding_box[0]);
-				max_point = max_point.max(bounding_box[1]);
-			}
-			Some([min_point, max_point])
-		}
+		self.iter().map(|bezier| bezier.bounding_box()).reduce(|bbox1, bbox2| [bbox1[0].min(bbox2[0]), bbox1[1].max(bbox2[1])])
 	}
 
 	/// Returns list of `t`-values representing the inflection points of the subpath.
@@ -109,8 +94,7 @@ impl Subpath {
 					.inflections()
 					.into_iter()
 					// Convert t-values of bezier curve to t-values of subpath
-					.map(|t| ((index as f64) + t) / number_of_curves)
-					.collect::<Vec<f64>>()
+					.map(move |t| ((index as f64) + t) / number_of_curves)
 			})
 			.collect();
 
