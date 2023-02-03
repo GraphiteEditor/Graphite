@@ -2,6 +2,17 @@ use super::*;
 use crate::utils::SubpathTValue;
 use crate::utils::TValue;
 
+/// Helper function to ensure the index and t value pair is mapped within a maximimum index value.
+/// Allows for the point to be fetched without needing to handle an additional edge case.
+/// - Ex. Via `subpath.iter().nth(index).evaluate(t);`
+fn adjust_index_and_t_value(index: usize, t: f64, max_size: usize) -> (usize, f64) {
+	if max_size > 0 && index == max_size && t == 0. {
+		(index - 1, 1.)
+	} else {
+		(index, t)
+	}
+}
+
 /// Functionality that transforms Subpaths, such as split, reduce, offset, etc.
 impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	/// Returns either one or two Subpaths that result from splitting the original Subpath at the point corresponding to `t`.
@@ -79,9 +90,10 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		}
 	}
 
-	/// Returns either one or two Subpaths that result from splitting the original Subpath at the point corresponding to `t`.
-	/// If the original Subpath was closed, a single open Subpath will be returned.
-	/// If the original Subpath was open, two open Subpaths will be returned.
+	/// Returns an open Subpath that result from trimming the original Subpath at the points corresponding to `t1` and `t2`.
+	/// If `t1` > `t2`, then behaviour for the resulting will differ depending on whether the original Subpath is open or closed:
+	/// - If the original Subpath was closed, an open subpath from `t1` to `t2` that crosses the break between 1 and 0 will be returned.
+	/// - If the original Subpath was open, a reversed open subpath from `t1` to `t2` will be returned.
 	/// <iframe frameBorder="0" width="100%" height="400px" src="https://graphite.rs/bezier-rs-demos#subpath/trim/solo" title="Trim Demo"></iframe>
 	pub fn trim(&self, t1: SubpathTValue, t2: SubpathTValue) -> Subpath {
 		// Return a clone of the Subpath if it is not long enough to be a valid Bezier
@@ -94,6 +106,17 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 
 		let (mut t1_curve_index, mut t1_curve_t) = self.t_value_to_parametric(t1);
 		let (mut t2_curve_index, mut t2_curve_t) = self.t_value_to_parametric(t2);
+
+		// The only case where t would be 1. is when the input parameter refers to the the very last point on the subpath.
+		// We want these index and t pairs to always represent that point as the next curve index with t == 0.
+		if t1_curve_t == 1. {
+			t1_curve_index += 1;
+			t1_curve_t = 0.;
+		}
+		if t2_curve_t == 1. {
+			t2_curve_index += 1;
+			t2_curve_t = 0.;
+		}
 
 		// Check if the trimmed result is in the reverse direction
 		let are_arguments_reversed = t1_curve_index > t2_curve_index || (t1_curve_index == t2_curve_index && t1_curve_t > t2_curve_t);
@@ -110,13 +133,13 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 			back.truncate(t2_curve_index + ((t2_curve_t != 0.) as usize) + 1);
 			// Reconnect the two ends in the new order
 			front.extend(back);
-			if t1_curve_index == t2_curve_index {
+			if t1_curve_index == t2_curve_index % self.len_segments() {
 				// If the start and end of the trim are in the same bezier segment, we want to add a duplicate of the first two manipulator groups
 				// This is to make sure the the closed loop is correctly represented and because this segment needs to be trimmed on both ends of the resulting subpath
 				front.push(front[0]);
 				front.push(front[1]);
 			}
-			if t1_curve_index == t2_curve_index + 1 {
+			if t1_curve_index == t2_curve_index % self.len_segments() + 1 {
 				// If the start and end of the trim are in adjacent bezier segments, we want to add a duplicate of the first manipulator group
 				// This is to make sure the the closed loop is correctly represented
 				front.push(front[0]);
@@ -143,6 +166,27 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 			clone.drain(range_start..range_end.min(clone.len())).collect::<Vec<ManipulatorGroup>>()
 		};
 
+		// Adjust curve indices to match the cloned list
+		if self.closed && are_arguments_reversed {
+			// If trimmed subpath required rotating the manipulator group, adjust the indices to match
+			t2_curve_index = (t2_curve_index + self.len_segments() - t1_curve_index) % self.len_segments();
+			if t2_curve_index == 0 {
+				// If the case is where the start and end are in the same bezier,
+				// change the index to point to the duplicate of this bezier that was pushed to the vector
+				t2_curve_index += self.len_segments();
+			}
+			t1_curve_index = 0;
+		} else {
+			let min_index = t1_curve_index.min(t2_curve_index);
+			t1_curve_index -= min_index;
+			t2_curve_index -= min_index;
+		}
+
+		// Change the representation of the point corresponding to the end point of the subpath
+		// So that we do not need an additional edges case in the later code to handle this point
+		(t1_curve_index, t1_curve_t) = adjust_index_and_t_value(t1_curve_index, t1_curve_t, new_manipulator_groups.len() - 1);
+		(t2_curve_index, t2_curve_t) = adjust_index_and_t_value(t2_curve_index, t2_curve_t, new_manipulator_groups.len() - 1);
+
 		// Reverse the subpath and update the curve t values to still refer to the same position
 		if !self.closed && are_arguments_reversed {
 			new_manipulator_groups = new_manipulator_groups
@@ -156,21 +200,19 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 				.collect::<Vec<ManipulatorGroup>>();
 			t1_curve_t = 1. - t1_curve_t;
 			t2_curve_t = 1. - t2_curve_t;
-		} else if self.closed && are_arguments_reversed {
-			// If trimmed subpath required rotating the manipulator group, adjust the indices to match
-			t2_curve_index = (t2_curve_index + self.len_segments() - t1_curve_index) % self.len_segments();
-			if t2_curve_index == 0 {
-				// If the case is where the start and end are in the same bezier,
-				// change the index to point to the duplicate of this bezier that was pushed to the vector
-				t2_curve_index += self.len_segments();
-			}
-			t1_curve_index = 0;
-		};
+		}
 
 		if new_manipulator_groups.len() == 1 {
-			// This case will only occur when t1_curve_t == t2_curve_t == 0. (aka they are on one of the manipulator group anchors)
+			// This case will occur when `t1` and `t2` both represent one of the manipulator group anchors
 			// Add a duplicate manipulator group so that the returned Subpath is still a valid Bezier
-			new_manipulator_groups.push(new_manipulator_groups[0]);
+			let mut point = new_manipulator_groups[0];
+			if point.in_handle.is_some() {
+				point.in_handle = Some(point.anchor);
+			}
+			if point.out_handle.is_some() {
+				point.out_handle = Some(point.anchor);
+			}
+			new_manipulator_groups = vec![point, point];
 		}
 
 		let len_new_manip_groups = new_manipulator_groups.len();
@@ -182,10 +224,8 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 			return Subpath::from_bezier(curve1.trim(TValue::Parametric(t1_curve_t), TValue::Parametric(t2_curve_t)));
 		}
 
-		let t1_split_t = t1_curve_t;
-		let [_, front_split] = curve1.split(TValue::Parametric(t1_split_t));
-		let t2_split_t = t2_curve_t;
-		let [back_split, _] = curve2.split(TValue::Parametric(t2_split_t));
+		let [_, front_split] = curve1.split(TValue::Parametric(t1_curve_t));
+		let [back_split, _] = curve2.split(TValue::Parametric(t2_curve_t));
 
 		new_manipulator_groups[1].in_handle = front_split.handle_end();
 		new_manipulator_groups[0] = ManipulatorGroup {
@@ -392,6 +432,32 @@ mod tests {
 	}
 
 	#[test]
+	fn trim_first_segment_of_an_open_subpath() {
+		let subpath = set_up_closed_subpath();
+		let location_front = subpath.evaluate(SubpathTValue::GlobalParametric(0.));
+		let location_back = subpath.evaluate(SubpathTValue::GlobalParametric(0.25));
+		let trimmed = subpath.iter().next().unwrap().trim(TValue::Parametric(0.), TValue::Parametric(1.));
+		let result = subpath.trim(SubpathTValue::GlobalParametric(0.), SubpathTValue::GlobalParametric(0.25));
+
+		assert_eq!(result.manipulator_groups[0].anchor, location_front);
+		assert_eq!(result.manipulator_groups[1].anchor, location_back);
+		assert_eq!(trimmed, result.iter().next().unwrap());
+	}
+
+	#[test]
+	fn trim_second_segment_of_an_open_subpath() {
+		let subpath = set_up_closed_subpath();
+		let location_front = subpath.evaluate(SubpathTValue::GlobalParametric(0.25));
+		let location_back = subpath.evaluate(SubpathTValue::GlobalParametric(0.5));
+		let trimmed = subpath.iter().nth(1).unwrap().trim(TValue::Parametric(0.), TValue::Parametric(1.));
+		let result = subpath.trim(SubpathTValue::GlobalParametric(0.25), SubpathTValue::GlobalParametric(0.5));
+
+		assert_eq!(result.manipulator_groups[0].anchor, location_front);
+		assert_eq!(result.manipulator_groups[1].anchor, location_back);
+		assert_eq!(trimmed, result.iter().next().unwrap());
+	}
+
+	#[test]
 	fn trim_reverse_in_open_subpath() {
 		let subpath = set_up_open_subpath();
 		let location_front = subpath.evaluate(SubpathTValue::GlobalParametric(0.8));
@@ -595,5 +661,44 @@ mod tests {
 		assert_eq!(result.manipulator_groups[5].anchor, location_back);
 		assert_eq!(trim_front, result.iter().next().unwrap());
 		assert_eq!(trim_back, result.iter().last().unwrap());
+	}
+
+	#[test]
+	fn trim_at_break_in_closed_subpath_where_end_is_the_start() {
+		let subpath = set_up_closed_subpath();
+		let location_front = subpath.evaluate(SubpathTValue::GlobalParametric(0.8));
+		let location_back = subpath.evaluate(SubpathTValue::GlobalParametric(0.));
+		let trimmed = subpath.iter().last().unwrap().trim(TValue::Parametric((0.8 * 4.) % 1.), TValue::Parametric(1.));
+		let result = subpath.trim(SubpathTValue::GlobalParametric(0.8), SubpathTValue::GlobalParametric(0.));
+
+		assert_eq!(result.manipulator_groups[0].anchor, location_front);
+		assert_eq!(result.manipulator_groups[1].anchor, location_back);
+		assert_eq!(trimmed, result.iter().next().unwrap());
+	}
+
+	#[test]
+	fn trim_at_break_in_closed_subpath_where_start_is_the_end() {
+		let subpath = set_up_closed_subpath();
+		let location_front = subpath.evaluate(SubpathTValue::GlobalParametric(1.));
+		let location_back = subpath.evaluate(SubpathTValue::GlobalParametric(0.2));
+		let trimmed = subpath.iter().next().unwrap().trim(TValue::Parametric(0.), TValue::Parametric((0.2 * 4.) % 1.));
+		let result = subpath.trim(SubpathTValue::GlobalParametric(1.), SubpathTValue::GlobalParametric(0.2));
+
+		assert_eq!(result.manipulator_groups[0].anchor, location_front);
+		assert_eq!(result.manipulator_groups[1].anchor, location_back);
+		assert_eq!(trimmed, result.iter().next().unwrap());
+	}
+
+	#[test]
+	fn trim_at_break_in_closed_subpath_from_1_to_0() {
+		let subpath = set_up_closed_subpath();
+		let location_front = subpath.evaluate(SubpathTValue::GlobalParametric(1.));
+		let location_back = subpath.evaluate(SubpathTValue::GlobalParametric(0.));
+		let trimmed = subpath.iter().next().unwrap().trim(TValue::Parametric(0.), TValue::Parametric(0.));
+		let result = subpath.trim(SubpathTValue::GlobalParametric(1.), SubpathTValue::GlobalParametric(0.));
+
+		assert_eq!(result.manipulator_groups[0].anchor, location_front);
+		assert_eq!(result.manipulator_groups[1].anchor, location_back);
+		assert_eq!(trimmed, result.iter().next().unwrap());
 	}
 }

@@ -368,7 +368,7 @@ impl WasmSubpath {
 		let mut trimmed_subpath_svg = String::new();
 		trimmed_subpath.to_svg(
 			&mut trimmed_subpath_svg,
-			CURVE_ATTRIBUTES.to_string().replace(BLACK, RED),
+			CURVE_ATTRIBUTES.to_string().replace(BLACK, RED).replace("stroke-width=\"2\"", "stroke-width=\"8\"") + " opacity=\"0.5\"",
 			ANCHOR_ATTRIBUTES.to_string().replace(BLACK, RED),
 			HANDLE_ATTRIBUTES.to_string().replace(GRAY, RED),
 			HANDLE_LINE_ATTRIBUTES.to_string().replace(GRAY, RED),
