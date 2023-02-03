@@ -7,6 +7,7 @@ use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup,
 use crate::messages::layout::utility_types::misc::LayoutTarget;
 use crate::messages::layout::utility_types::widgets::assist_widgets::{PivotAssist, PivotPosition};
 use crate::messages::layout::utility_types::widgets::button_widgets::{IconButton, PopoverButton};
+use crate::messages::layout::utility_types::widgets::input_widgets::{RadioEntryData, RadioInput};
 use crate::messages::layout::utility_types::widgets::label_widgets::{Separator, SeparatorDirection, SeparatorType};
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis};
 use crate::messages::portfolio::document::utility_types::transformation::Selected;
@@ -22,6 +23,7 @@ use document_legacy::boolean_ops::BooleanOperation;
 use document_legacy::document::Document;
 use document_legacy::intersection::Quad;
 use document_legacy::layers::layer_info::LayerDataType;
+use document_legacy::layers::style::SelectType;
 use document_legacy::LayerId;
 use document_legacy::Operation;
 
@@ -32,6 +34,17 @@ use serde::{Deserialize, Serialize};
 pub struct SelectTool {
 	fsm_state: SelectToolFsmState,
 	tool_data: SelectToolData,
+	options: SelectOptions,
+}
+
+pub struct SelectOptions {
+	select_type: SelectType,
+}
+
+impl Default for SelectOptions {
+	fn default() -> Self {
+		Self { select_type: SelectType::Layer }
+	}
 }
 
 #[remain::sorted]
@@ -53,6 +66,7 @@ pub enum SelectToolMessage {
 	},
 	DragStart {
 		add_to_selection: Key,
+		layer_selection: Key,
 	},
 	DragStop,
 	EditLayer,
@@ -65,9 +79,16 @@ pub enum SelectToolMessage {
 		center: Key,
 		duplicate: Key,
 	},
+	SelectOptions(SelectOptionsUpdate),
 	SetPivot {
 		position: PivotPosition,
 	},
+}
+
+#[remain::sorted]
+#[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize, specta::Type)]
+pub enum SelectOptionsUpdate {
+	Type(SelectType),
 }
 
 impl ToolMetadata for SelectTool {
@@ -84,8 +105,24 @@ impl ToolMetadata for SelectTool {
 
 impl PropertyHolder for SelectTool {
 	fn properties(&self) -> Layout {
+		// let gradient_type = RadioInput::new(vec![
+		// 	RadioEntryData::new("Layer")
+		// 		.value("layer")
+		// 		.tooltip("Layer")
+		// 		.on_update(move |_| SelectToolMessage::SelectOptions(SelectOptionsUpdate::Type(SelectType::Layer)).into()),
+		// 	RadioEntryData::new("Group")
+		// 		.value("group")
+		// 		.tooltip("Group")
+		// 		.on_update(move |_| SelectToolMessage::SelectOptions(SelectOptionsUpdate::Type(SelectType::Group)).into()),
+		// ])
+		// .selected_index((self.selected_gradient().unwrap_or(self.options.gradient_type) == SelectType::Group) as u32)
+		// .widget_holder();
+
 		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row {
 			widgets: vec![
+				//
+				// Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row { widgets: vec![gradient_type] }])),
+				//
 				IconButton::new("AlignLeft", 24)
 					.tooltip("Align Left")
 					.on_update(|_| {
@@ -320,6 +357,9 @@ impl Fsm for SelectToolFsmState {
 					self
 				}
 				(_, EditLayer) => {
+					// LOOK HERE!!!!!!!!!!!!!!
+					// TO DO:
+					// Toggle with code we worked on
 					// On double click with select tool we sometimes want to edit the double clicked layers
 
 					// Setup required data for checking the clicked layer
@@ -351,7 +391,7 @@ impl Fsm for SelectToolFsmState {
 
 					self
 				}
-				(Ready, DragStart { add_to_selection }) => {
+				(Ready, DragStart { add_to_selection, layer_selection }) => {
 					tool_data.path_outlines.clear_hovered(responses);
 
 					tool_data.drag_start = input.mouse.position;
@@ -447,13 +487,30 @@ impl Fsm for SelectToolFsmState {
 
 						if let Some(intersection) = intersection.pop() {
 							selected = vec![intersection];
-							responses.push_back(DocumentMessage::AddSelectedLayers { additional_layers: selected.clone() }.into());
+							// responses.push_back(DocumentMessage::AddSelectedLayers { additional_layers: selected.clone() }.into());
 							responses.push_back(DocumentMessage::StartTransaction.into());
-							tool_data.layers_dragging.append(&mut selected);
+							tool_data.layers_dragging.append(&mut selected.clone());
 							tool_data
 								.snap_manager
 								.start_snap(document, input, document.bounding_boxes(Some(&tool_data.layers_dragging), None, render_data), true, true);
 
+							// Control Click
+							if input.keyboard.get(layer_selection as usize) {
+								responses.push_back(DocumentMessage::AddSelectedLayers { additional_layers: selected.clone() }.into());
+							}
+							// Shallowest Folder
+							else {
+								let parent_folder = selected[0..1].to_vec();
+								let folder_id = *parent_folder.first().unwrap().first().unwrap();
+								let folder_id_as_vector = vec![vec![folder_id]];
+
+								responses.push_back(
+									DocumentMessage::AddSelectedLayers {
+										additional_layers: folder_id_as_vector,
+									}
+									.into(),
+								);
+							}
 							Dragging
 						} else {
 							tool_data.drag_box_overlay_layer = Some(add_bounding_box(responses));
@@ -591,12 +648,10 @@ impl Fsm for SelectToolFsmState {
 					Ready
 				}
 				(Dragging, DragStop | Enter) => {
-					let response = match input.mouse.position.distance(tool_data.drag_start) < 10. * f64::EPSILON {
-						true => DocumentMessage::Undo,
-						false => DocumentMessage::CommitTransaction,
-					};
+					if input.mouse.position.distance(tool_data.drag_start) >= 10. * f64::EPSILON {
+						responses.push_front(DocumentMessage::CommitTransaction.into());
+					}
 					tool_data.snap_manager.cleanup(responses);
-					responses.push_front(response.into());
 					Ready
 				}
 				(ResizingBounds, DragStop | Enter) => {

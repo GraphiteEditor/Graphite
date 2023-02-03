@@ -58,6 +58,13 @@ pub enum GradientType {
 	Radial,
 }
 
+#[derive(Default, PartialEq, Eq, Clone, Copy, Debug, Hash, Serialize, Deserialize, specta::Type)]
+pub enum SelectType {
+	#[default]
+	Layer,
+	Group,
+}
+
 /// A gradient fill.
 ///
 /// Contains the start and end points, along with the colors at varying points along the length.
