@@ -114,23 +114,6 @@ impl ManipulatorGroup {
 			assert!(point.position.is_finite(), "Point is not finite!")
 		};
 
-		// Find the correctly mirrored handle position based on mirroring settings
-		let move_symmetrical_handle = |position: DVec2, opposing_handle: Option<&mut ManipulatorPoint>, center: DVec2| {
-			// Early out for cases where we can't mirror
-			if !mirror_angle || opposing_handle.is_none() {
-				return;
-			}
-			let opposing_handle = opposing_handle.unwrap();
-
-			// Keep rotational similarity, but distance variable
-			let radius = if mirror_distance { center.distance(position) } else { center.distance(opposing_handle.position) };
-
-			if let Some(offset) = (position - center).try_normalize() {
-				opposing_handle.position = center - offset * radius;
-				assert!(opposing_handle.position.is_finite(), "Opposing handle not finite!")
-			}
-		};
-
 		// If no points are selected, why are we here at all?
 		if !self.any_points_selected() {
 			return;
@@ -158,10 +141,40 @@ impl ManipulatorGroup {
 		let selected_handle = self.selected_handles_mut().next().unwrap();
 		move_point(selected_handle, delta);
 
-		// Move the opposing handle symmetrically if our mirroring flags allow
 		let selected_handle = &selected_handle.clone();
-		let opposing_handle = self.opposing_handle_mut(selected_handle);
-		move_symmetrical_handle(selected_handle.position, opposing_handle, reflect_center);
+
+		// Find the correctly mirrored handle position based on mirroring settings
+		// Early out for cases where we can't mirror
+		if !mirror_angle || self.opposing_handle(selected_handle).is_none() {
+			self.editor_state.previous_opposing_handle_length = None;
+			return;
+		}
+
+		// Keep rotational similarity, but distance variable
+		let radius;
+		if mirror_distance {
+			if self.editor_state.previous_opposing_handle_length.is_none() {
+				let handle_length = self.opposing_handle(selected_handle).unwrap().position.distance(reflect_center);
+				self.editor_state.previous_opposing_handle_length = Some(handle_length);
+			}
+			radius = reflect_center.distance(selected_handle.position);
+		} else {
+			match self.editor_state.previous_opposing_handle_length {
+				Some(previous_length) => {
+					radius = previous_length;
+					self.editor_state.previous_opposing_handle_length = None;
+				}
+				None => {
+					radius = reflect_center.distance(self.opposing_handle(selected_handle).unwrap().position);
+				}
+			}
+		}
+
+		if let Some(offset) = (selected_handle.position - reflect_center).try_normalize() {
+			let opposing_handle = self.opposing_handle_mut(selected_handle).unwrap();
+			opposing_handle.position = reflect_center - offset * radius;
+			assert!(opposing_handle.position.is_finite(), "Opposing handle not finite!")
+		}
 	}
 
 	/// Delete any [ManipulatorPoint] that are selected, this includes handles or the anchor.
@@ -275,6 +288,10 @@ impl ManipulatorGroup {
 		}
 	}
 
+	pub fn reset_previous_opposing_handle_length(&mut self) {
+		self.editor_state.previous_opposing_handle_length = None;
+	}
+
 	/// Helper function to more easily set position of [ManipulatorPoints]
 	pub fn set_point_position(&mut self, point_index: usize, position: DVec2) {
 		assert!(position.is_finite(), "Tried to set_point_position to non finite");
@@ -297,10 +314,14 @@ impl ManipulatorGroup {
 pub struct ManipulatorGroupEditorState {
 	// Whether the angle between the handles should be maintained
 	pub mirror_angle_between_handles: bool,
+	previous_opposing_handle_length: Option<f64>,
 }
 
 impl Default for ManipulatorGroupEditorState {
 	fn default() -> Self {
-		Self { mirror_angle_between_handles: true }
+		Self {
+			mirror_angle_between_handles: true,
+			previous_opposing_handle_length: None,
+		}
 	}
 }

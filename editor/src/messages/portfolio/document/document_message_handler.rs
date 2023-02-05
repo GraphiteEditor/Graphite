@@ -705,6 +705,9 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 					.into(),
 				);
 			}
+			ResetPreviousOpposingHandleLength { layer_path } => {
+				responses.push_back(DocumentOperation::ResetPreviousOpposingHandleLength { layer_path }.into());
+			}
 			RollbackTransaction => {
 				self.rollback(responses).unwrap_or_else(|e| warn!("{}", e));
 				responses.extend([RenderDocument.into(), DocumentStructureChanged.into()]);

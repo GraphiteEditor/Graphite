@@ -224,6 +224,12 @@ impl ShapeEditor {
 		}
 	}
 
+	pub fn reset_previous_opposing_handle_length(&self, responses: &mut VecDeque<Message>) {
+		for layer_path in &self.selected_layers {
+			responses.push_back(DocumentMessage::ResetPreviousOpposingHandleLength { layer_path: layer_path.clone() }.into());
+		}
+	}
+
 	/// Deselect all manipulators from the shapes that the manipulation handler has created.
 	pub fn deselect_all_points(&self, responses: &mut VecDeque<Message>) {
 		responses.push_back(DocumentMessage::DeselectAllManipulatorPoints.into());

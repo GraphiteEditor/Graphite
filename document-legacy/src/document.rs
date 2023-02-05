@@ -1131,6 +1131,16 @@ impl Document {
 				// This does nothing visually so we don't need to send any messages
 				None
 			}
+			Operation::ResetPreviousOpposingHandleLength { layer_path } => {
+				let layer = self.layer_mut(&layer_path)?;
+				if let Some(shape) = layer.as_subpath_mut() {
+					for manipulator_group in shape.selected_manipulator_groups_any_points_mut() {
+						manipulator_group.reset_previous_opposing_handle_length();
+					}
+				}
+				// This does nothing visually so we don't need to send any messages
+				None
+			}
 		};
 		Ok(responses)
 	}

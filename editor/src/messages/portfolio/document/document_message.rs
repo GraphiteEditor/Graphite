@@ -128,6 +128,9 @@ pub enum DocumentMessage {
 		new_name: String,
 	},
 	RenderDocument,
+	ResetPreviousOpposingHandleLength {
+		layer_path: Vec<LayerId>,
+	},
 	RollbackTransaction,
 	SaveDocument,
 	SelectAllLayers,

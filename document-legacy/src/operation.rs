@@ -272,6 +272,9 @@ pub enum Operation {
 		layer_path: Vec<LayerId>,
 		toggle_angle: bool,
 	},
+	ResetPreviousOpposingHandleLength {
+		layer_path: Vec<LayerId>,
+	},
 }
 
 impl Operation {

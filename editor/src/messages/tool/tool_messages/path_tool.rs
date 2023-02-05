@@ -247,6 +247,7 @@ impl Fsm for PathToolFsmState {
 				// Mouse up
 				(_, PathToolMessage::DragStop) => {
 					tool_data.snap_manager.cleanup(responses);
+					tool_data.shape_editor.reset_previous_opposing_handle_length(responses);
 					PathToolFsmState::Ready
 				}
 				// Delete key
