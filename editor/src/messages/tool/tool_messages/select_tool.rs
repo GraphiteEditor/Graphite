@@ -23,7 +23,7 @@ use document_legacy::boolean_ops::BooleanOperation;
 use document_legacy::document::Document;
 use document_legacy::intersection::Quad;
 use document_legacy::layers::layer_info::LayerDataType;
-use document_legacy::layers::style::SelectType;
+use document_legacy::layers::style::SelectedType;
 use document_legacy::LayerId;
 use document_legacy::Operation;
 
@@ -34,17 +34,22 @@ use serde::{Deserialize, Serialize};
 pub struct SelectTool {
 	fsm_state: SelectToolFsmState,
 	tool_data: SelectToolData,
-	options: SelectOptions,
 }
 
 pub struct SelectOptions {
-	select_type: SelectType,
+	selected_type: SelectedType,
 }
 
 impl Default for SelectOptions {
 	fn default() -> Self {
-		Self { select_type: SelectType::Layer }
+		Self { selected_type: SelectedType::Layer }
 	}
+}
+
+#[remain::sorted]
+#[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize, specta::Type)]
+pub enum SelectOptionsUpdate {
+	Type(SelectedType),
 }
 
 #[remain::sorted]
@@ -85,12 +90,6 @@ pub enum SelectToolMessage {
 	},
 }
 
-#[remain::sorted]
-#[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize, specta::Type)]
-pub enum SelectOptionsUpdate {
-	Type(SelectType),
-}
-
 impl ToolMetadata for SelectTool {
 	fn icon_name(&self) -> String {
 		"GeneralSelectTool".into()
@@ -105,24 +104,20 @@ impl ToolMetadata for SelectTool {
 
 impl PropertyHolder for SelectTool {
 	fn properties(&self) -> Layout {
-		// let gradient_type = RadioInput::new(vec![
-		// 	RadioEntryData::new("Layer")
-		// 		.value("layer")
-		// 		.tooltip("Layer")
-		// 		.on_update(move |_| SelectToolMessage::SelectOptions(SelectOptionsUpdate::Type(SelectType::Layer)).into()),
-		// 	RadioEntryData::new("Group")
-		// 		.value("group")
-		// 		.tooltip("Group")
-		// 		.on_update(move |_| SelectToolMessage::SelectOptions(SelectOptionsUpdate::Type(SelectType::Group)).into()),
-		// ])
-		// .selected_index((self.selected_gradient().unwrap_or(self.options.gradient_type) == SelectType::Group) as u32)
-		// .widget_holder();
-
 		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row {
 			widgets: vec![
-				//
-				// Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row { widgets: vec![gradient_type] }])),
-				//
+				RadioInput::new(vec![
+					RadioEntryData::new("Layer")
+						.value("layer")
+						.tooltip("Layer")
+						.on_update(move |_| SelectToolMessage::SelectOptions(SelectOptionsUpdate::Type(SelectedType::Layer)).into()),
+					RadioEntryData::new("Group")
+						.value("group")
+						.tooltip("Group")
+						.on_update(move |_| SelectToolMessage::SelectOptions(SelectOptionsUpdate::Type(SelectedType::Group)).into()),
+				])
+				.selected_index((self.tool_data.selected_type == SelectedType::Group) as u32)
+				.widget_holder(),
 				IconButton::new("AlignLeft", 24)
 					.tooltip("Align Left")
 					.on_update(|_| {
@@ -236,6 +231,15 @@ impl PropertyHolder for SelectTool {
 
 impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for SelectTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: ToolActionHandlerData<'a>) {
+		if let ToolMessage::Select(SelectToolMessage::SelectOptions(action)) = message {
+			match action {
+				SelectOptionsUpdate::Type(selected_type) => {
+					self.tool_data.selected_type = selected_type;
+				}
+			}
+			return;
+		}
+
 		self.fsm_state.process_event(message, &mut self.tool_data, tool_data, &(), responses, false);
 
 		if self.tool_data.pivot.should_refresh_pivot_position() {
@@ -299,6 +303,7 @@ struct SelectToolData {
 	snap_manager: SnapManager,
 	cursor: MouseCursorIcon,
 	pivot: Pivot,
+	selected_type: SelectedType,
 }
 
 impl SelectToolData {
@@ -357,9 +362,6 @@ impl Fsm for SelectToolFsmState {
 					self
 				}
 				(_, EditLayer) => {
-					// LOOK HERE!!!!!!!!!!!!!!
-					// TO DO:
-					// Toggle with code we worked on
 					// On double click with select tool we sometimes want to edit the double clicked layers
 
 					// Setup required data for checking the clicked layer
@@ -471,9 +473,7 @@ impl Fsm for SelectToolFsmState {
 						RotatingBounds
 					} else if intersection.last().map(|last| selected.contains(last)).unwrap_or(false) {
 						responses.push_back(DocumentMessage::StartTransaction.into());
-
 						tool_data.layers_dragging = selected;
-
 						tool_data
 							.snap_manager
 							.start_snap(document, input, document.bounding_boxes(Some(&tool_data.layers_dragging), None, render_data), true, true);
@@ -494,22 +494,28 @@ impl Fsm for SelectToolFsmState {
 								.snap_manager
 								.start_snap(document, input, document.bounding_boxes(Some(&tool_data.layers_dragging), None, render_data), true, true);
 
-							// Control Click
-							if input.keyboard.get(layer_selection as usize) {
-								responses.push_back(DocumentMessage::AddSelectedLayers { additional_layers: selected.clone() }.into());
-							}
-							// Shallowest Folder
-							else {
-								let parent_folder = selected[0..1].to_vec();
-								let folder_id = *parent_folder.first().unwrap().first().unwrap();
-								let folder_id_as_vector = vec![vec![folder_id]];
+							// Group manipulation
+							if tool_data.selected_type == SelectedType::Group {
+								if input.keyboard.get(layer_selection as usize) {
+									responses.push_back(DocumentMessage::AddSelectedLayers { additional_layers: selected.clone() }.into());
+								}
+								// Shallowest Root Folder
+								else {
+									let parent_folder = selected[0..1].to_vec();
+									let folder_id = *parent_folder.first().unwrap().first().unwrap();
+									let folder_id_as_vector = vec![vec![folder_id]];
 
-								responses.push_back(
-									DocumentMessage::AddSelectedLayers {
-										additional_layers: folder_id_as_vector,
-									}
-									.into(),
-								);
+									responses.push_back(
+										DocumentMessage::AddSelectedLayers {
+											additional_layers: folder_id_as_vector,
+										}
+										.into(),
+									);
+								}
+							}
+							// Layer Manipulation
+							else {
+								responses.push_back(DocumentMessage::AddSelectedLayers { additional_layers: selected.clone() }.into());
 							}
 							Dragging
 						} else {
@@ -538,16 +544,38 @@ impl Fsm for SelectToolFsmState {
 
 					let closest_move = tool_data.snap_manager.snap_layers(responses, document, snap, mouse_delta);
 					// TODO: Cache the result of `shallowest_unique_layers` to avoid this heavy computation every frame of movement, see https://github.com/GraphiteEditor/Graphite/pull/481
-					for path in Document::shallowest_unique_layers(tool_data.layers_dragging.iter()) {
-						responses.push_front(
-							Operation::TransformLayerInViewport {
-								path: path.clone(),
-								transform: DAffine2::from_translation(mouse_delta + closest_move).to_cols_array(),
-							}
-							.into(),
-						);
+
+					// Group manipulation
+					if tool_data.selected_type == SelectedType::Group {
+						for path in Document::shallowest_unique_layers(tool_data.layers_dragging.iter()) {
+							let selected = vec![path];
+							let parent_folder = selected[0..1].to_vec();
+							let folder_id = *parent_folder.first().unwrap().first().unwrap();
+							let folder_id_as_vector = vec![folder_id];
+
+							responses.push_front(
+								Operation::TransformLayerInViewport {
+									path: folder_id_as_vector,
+									transform: DAffine2::from_translation(mouse_delta + closest_move).to_cols_array(),
+								}
+								.into(),
+							);
+						}
+						tool_data.drag_current = mouse_position + closest_move;
 					}
-					tool_data.drag_current = mouse_position + closest_move;
+					// Layer manipulation
+					else {
+						for path in Document::shallowest_unique_layers(tool_data.layers_dragging.iter()) {
+							responses.push_front(
+								Operation::TransformLayerInViewport {
+									path: path.clone(),
+									transform: DAffine2::from_translation(mouse_delta + closest_move).to_cols_array(),
+								}
+								.into(),
+							);
+						}
+						tool_data.drag_current = mouse_position + closest_move;
+					}
 
 					if input.keyboard.get(duplicate as usize) && tool_data.not_duplicated_layers.is_none() {
 						tool_data.start_duplicates(document, responses);

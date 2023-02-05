@@ -59,7 +59,7 @@ pub enum GradientType {
 }
 
 #[derive(Default, PartialEq, Eq, Clone, Copy, Debug, Hash, Serialize, Deserialize, specta::Type)]
-pub enum SelectType {
+pub enum SelectedType {
 	#[default]
 	Layer,
 	Group,
