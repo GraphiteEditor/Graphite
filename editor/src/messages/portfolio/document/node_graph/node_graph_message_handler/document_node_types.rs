@@ -90,7 +90,7 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 	DocumentNodeType {
 		name: "Grayscale",
 		category: "Image Adjustments",
-		identifier: NodeIdentifier::new("graphene_std::raster::GrayscaleNode", &[]),
+		identifier: NodeIdentifier::new("graphene_std::raster::GrayscaleNode", &[concrete!("Image")]),
 		inputs: &[DocumentInputType::new("Image", TaggedValue::Image(Image::empty()), true)],
 		outputs: &[FrontendGraphDataType::Raster],
 		properties: node_properties::no_properties,
@@ -139,11 +139,12 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 	DocumentNodeType {
 		name: "Gaussian Blur",
 		category: "Image Filters",
-		identifier: NodeIdentifier::new("graphene_core::raster::BlurNode", &[]),
+		identifier: NodeIdentifier::new("graphene_core::raster::BlurNode", &[concrete!("Image")]),
 		inputs: &[
-			DocumentInputType::new("Image", TaggedValue::Image(Image::empty()), true),
+			DocumentInputType::new("Image", TaggedValue::None, false),
 			DocumentInputType::new("Radius", TaggedValue::U32(3), false),
 			DocumentInputType::new("Sigma", TaggedValue::F64(1.), false),
+			DocumentInputType::new("Image", TaggedValue::Image(Image::empty()), true),
 		],
 		outputs: &[FrontendGraphDataType::Raster],
 		properties: node_properties::blur_image_properties,
@@ -159,7 +160,7 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 	DocumentNodeType {
 		name: "Invert RGB",
 		category: "Image Adjustments",
-		identifier: NodeIdentifier::new("graphene_std::raster::InvertRGBNode", &[]),
+		identifier: NodeIdentifier::new("graphene_std::raster::InvertRGBNode", &[concrete!("Image")]),
 		inputs: &[DocumentInputType::new("Image", TaggedValue::Image(Image::empty()), true)],
 		outputs: &[FrontendGraphDataType::Raster],
 		properties: node_properties::no_properties,
@@ -167,7 +168,7 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 	DocumentNodeType {
 		name: "Hue/Saturation",
 		category: "Image Adjustments",
-		identifier: NodeIdentifier::new("graphene_std::raster::HueSaturationNode", &[concrete!("&TypeErasedNode")]),
+		identifier: NodeIdentifier::new("graphene_std::raster::HueSaturationNode", &[concrete!("Image")]),
 		inputs: &[
 			DocumentInputType::new("Image", TaggedValue::Image(Image::empty()), true),
 			DocumentInputType::new("Hue Shift", TaggedValue::F64(0.), false),
@@ -180,7 +181,7 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 	DocumentNodeType {
 		name: "Brightness/Contrast",
 		category: "Image Adjustments",
-		identifier: NodeIdentifier::new("graphene_std::raster::BrightnessContrastNode", &[concrete!("&TypeErasedNode")]),
+		identifier: NodeIdentifier::new("graphene_std::raster::BrightnessContrastNode", &[concrete!("Image")]),
 		inputs: &[
 			DocumentInputType::new("Image", TaggedValue::Image(Image::empty()), true),
 			DocumentInputType::new("Brightness", TaggedValue::F64(0.), false),
@@ -192,7 +193,7 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 	DocumentNodeType {
 		name: "Gamma",
 		category: "Image Adjustments",
-		identifier: NodeIdentifier::new("graphene_std::raster::GammaNode", &[concrete!("&TypeErasedNode")]),
+		identifier: NodeIdentifier::new("graphene_std::raster::GammaNode", &[concrete!("Image")]),
 		inputs: &[
 			DocumentInputType::new("Image", TaggedValue::Image(Image::empty()), true),
 			DocumentInputType::new("Gamma", TaggedValue::F64(1.), false),
@@ -203,7 +204,7 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 	DocumentNodeType {
 		name: "Opacity",
 		category: "Image Adjustments",
-		identifier: NodeIdentifier::new("graphene_std::raster::OpacityNode", &[concrete!("&TypeErasedNode")]),
+		identifier: NodeIdentifier::new("graphene_std::raster::OpacityNode", &[concrete!("Image")]),
 		inputs: &[
 			DocumentInputType::new("Image", TaggedValue::Image(Image::empty()), true),
 			DocumentInputType::new("Factor", TaggedValue::F64(1.), false),
@@ -214,7 +215,7 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 	DocumentNodeType {
 		name: "Posterize",
 		category: "Image Adjustments",
-		identifier: NodeIdentifier::new("graphene_std::raster::PosterizeNode", &[concrete!("&TypeErasedNode")]),
+		identifier: NodeIdentifier::new("graphene_std::raster::PosterizeNode", &[concrete!("Image")]),
 		inputs: &[
 			DocumentInputType::new("Image", TaggedValue::Image(Image::empty()), true),
 			DocumentInputType::new("Value", TaggedValue::F64(5.), false),
@@ -225,7 +226,7 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 	DocumentNodeType {
 		name: "Exposure",
 		category: "Image Adjustments",
-		identifier: NodeIdentifier::new("graphene_std::raster::ExposureNode", &[concrete!("&TypeErasedNode")]),
+		identifier: NodeIdentifier::new("graphene_std::raster::ExposureNode", &[concrete!("Image")]),
 		inputs: &[
 			DocumentInputType::new("Image", TaggedValue::Image(Image::empty()), true),
 			DocumentInputType::new("Value", TaggedValue::F64(0.), false),
@@ -237,7 +238,7 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 	DocumentNodeType {
 		name: "Add",
 		category: "Math",
-		identifier: NodeIdentifier::new("graphene_core::ops::AddNode", &[concrete!("&TypeErasedNode")]),
+		identifier: NodeIdentifier::new("graphene_core::ops::AddNode", &[concrete!("Image")]),
 		inputs: &[
 			DocumentInputType::new("Input", TaggedValue::F64(0.), true),
 			DocumentInputType::new("Addend", TaggedValue::F64(0.), true),

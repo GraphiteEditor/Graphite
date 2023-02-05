@@ -14,7 +14,7 @@ where
 	N: for<'any_input> Node<'any_input, _I, Output = _O>,
 {
 	let node_name = core::any::type_name::<N>();
-	let input: Box<_I> = dyn_any::downcast(input).unwrap_or_else(|_| panic!("DynAnyNode Input in:\n{node_name}"));
+	let input: Box<_I> = dyn_any::downcast(input).unwrap_or_else(|e| panic!("DynAnyNode Input, {e} in:\n{node_name}"));
 	Box::new(node.eval(*input))
 }
 pub struct DynAnyRefNode<I, O, Node> {
@@ -29,7 +29,7 @@ where
 	fn eval<'node: 'input>(&'node self, input: Any<'input>) -> Self::Output {
 		{
 			let node_name = core::any::type_name::<N>();
-			let input: Box<_I> = dyn_any::downcast(input).unwrap_or_else(|_| panic!("DynAnyNode Input in:\n{node_name}"));
+			let input: Box<_I> = dyn_any::downcast(input).unwrap_or_else(|e| panic!("DynAnyNode Input, {e} in:\n{node_name}"));
 			Box::new(self.node.eval(*input))
 		}
 	}
@@ -74,7 +74,7 @@ where
 	N: Node<'input, Any<'input>, Output = Any<'input>>,
 {
 	let node_name = core::any::type_name::<N>();
-	let out = dyn_any::downcast(node.eval(input)).unwrap_or_else(|_| panic!("DynAnyNode Input in:\n{node_name}"));
+	let out = dyn_any::downcast(node.eval(input)).unwrap_or_else(|e| panic!("DynAnyNode Input {e} in:\n{node_name}"));
 	*out
 }
 
@@ -92,7 +92,7 @@ impl<'n: 'input, 'input, O: 'input + StaticType, I: 'input + StaticType> Node<'i
 	fn eval<'node: 'input>(&'node self, input: I) -> Self::Output {
 		{
 			let input = Box::new(input);
-			let out = dyn_any::downcast(self.node.eval(input)).unwrap_or_else(|_| panic!("DynAnyNode Input "));
+			let out = dyn_any::downcast(self.node.eval(input)).unwrap_or_else(|e| panic!("DynAnyNode Input {e}"));
 			*out
 		}
 	}
@@ -119,7 +119,7 @@ impl<'n: 'input, 'input, O: 'input + StaticType, I: 'input + StaticType> Node<'i
 	fn eval<'node: 'input>(&'node self, input: I) -> Self::Output {
 		{
 			let input = Box::new(input);
-			let out = dyn_any::downcast(self.node.eval(input)).unwrap_or_else(|_| panic!("DynAnyNode Input "));
+			let out: Box<&_> = dyn_any::downcast::<&O>(self.node.eval(input)).unwrap_or_else(|e| panic!("DynAnyNode Input {e}"));
 			*out
 		}
 	}

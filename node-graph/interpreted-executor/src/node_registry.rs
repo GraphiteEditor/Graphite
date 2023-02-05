@@ -73,7 +73,7 @@ static NODE_REGISTRY: &[(NodeIdentifier, NodeConstructor)] = &[
 	register_node!(graphene_std::raster::PosterizeNode<_>, input: Image, params: [f64]),
 	register_node!(graphene_std::raster::ExposureNode<_>, input: Image, params: [f64]),
 	register_node!(graphene_std::raster::ImaginateNode<_>, input: Image, params: [Option<std::sync::Arc<Image>>]),
-	(NodeIdentifier::new("graphene_core::raster::BlurNode", &[]), |args| {
+	(NodeIdentifier::new("graphene_core::raster::BlurNode", &[concrete!("Image")]), |args| {
 		static EMPTY_IMAGE: ValueNode<Image> = ValueNode::new(Image::empty());
 		let radius = DowncastBothNode::<(), u32>::new(args[0]);
 		let sigma = DowncastBothNode::<(), f64>::new(args[1]);
@@ -83,9 +83,7 @@ static NODE_REGISTRY: &[(NodeIdentifier, NodeConstructor)] = &[
 		// evaluated a second time
 		let image = image.then(ImageRefNode::new());
 
-		image.eval(());
 		let window = WindowNode::new(radius, image.clone());
-		window.eval(0);
 		let map_gaussian = MapSndNode::new(ValueNode::new(DistanceNode.then(GaussianNode::new(sigma))));
 		let map_distances = MapNode::new(ValueNode::new(map_gaussian));
 		let gaussian_iter = window.then(map_distances);
@@ -97,12 +95,10 @@ static NODE_REGISTRY: &[(NodeIdentifier, NodeConstructor)] = &[
 		let collect = CollectNode {};
 		let vec = blur.then(collect);
 		let new_image = MapImageSliceNode::new(vec);
-		new_image.eval((0, 0));
 		let dimensions = image.then(ImageDimensionsNode::new());
 		let dimensions: TypeNode<_, (), (u32, u32)> = TypeNode::new(dimensions);
 		let new_image = dimensions.then(new_image);
 		let node: DynAnyNode<(), _, _> = DynAnyNode::new(ValueNode::new(new_image));
-		node.eval(Box::new(()));
 		node.into_type_erased()
 	}),
 	//register_node!(graphene_std::memo::CacheNode<_>, input: Image, params: []),
