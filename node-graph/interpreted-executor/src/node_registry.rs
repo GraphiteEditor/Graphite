@@ -36,6 +36,7 @@ macro_rules! register_node {
 //TODO: turn into hashmap
 static NODE_REGISTRY: &[(NodeIdentifier, NodeConstructor)] = &[
 	register_node!(graphene_core::ops::IdNode, input: Any<'_>, params: []),
+	(NodeIdentifier::new("graphene_core::ops::IdNode", &[generic!("T")]), |_| IdNode::new().into_type_erased()),
 	// TODO: create macro to impl for all types
 	register_node!(graphene_core::structural::ConsNode<_, _>, input: u32, params: [u32]),
 	register_node!(graphene_core::structural::ConsNode<_, _>, input: u32, params: [&u32]),

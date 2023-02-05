@@ -116,10 +116,11 @@ impl BorrowTree {
 		let ProtoNode { input, construction_args, identifier } = proto_node;
 
 		assert!(
-			!matches!(input, ProtoNodeInput::Node(_)),
-			"Only nodes without inputs are supported. Any inputs should already be resolved by placing ComposeNodes {:?}, {:?}",
+			!matches!(&input, &ProtoNodeInput::Node(_)),
+			"Only nodes without inputs are supported. Any inputs should already be resolved by placing ComposeNodes {:?}, {:?}, {:?}",
 			identifier,
-			construction_args
+			construction_args,
+			input,
 		);
 
 		match construction_args {

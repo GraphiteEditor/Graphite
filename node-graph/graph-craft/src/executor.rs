@@ -8,10 +8,10 @@ pub struct Compiler {}
 
 impl Compiler {
 	pub fn compile(&self, mut network: NodeNetwork, resolve_inputs: bool) -> ProtoNetwork {
-		let node_count = network.nodes.len();
+		let node_ids = network.nodes.keys().copied().collect::<Vec<_>>();
 		println!("flattening");
-		for id in 0..node_count {
-			network.flatten(id as u64);
+		for id in node_ids {
+			network.flatten(id);
 		}
 		let mut proto_network = network.into_proto_network();
 		if resolve_inputs {

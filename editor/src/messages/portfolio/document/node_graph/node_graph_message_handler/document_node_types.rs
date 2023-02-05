@@ -1,11 +1,11 @@
 use super::{node_properties, FrontendGraphDataType, FrontendNodeType};
 use crate::messages::layout::utility_types::layout_widget::LayoutGroup;
 
-use graph_craft::concrete;
 use graph_craft::document::value::*;
 use graph_craft::document::{DocumentNode, NodeId, NodeInput};
 use graph_craft::imaginate_input::ImaginateSamplingMethod;
 use graph_craft::proto::{NodeIdentifier, Type};
+use graph_craft::{concrete, generic};
 use graphene_core::raster::Image;
 
 use std::collections::VecDeque;
@@ -54,7 +54,7 @@ static DOCUMENT_NODE_TYPES: &[DocumentNodeType] = &[
 	DocumentNodeType {
 		name: "Identity",
 		category: "General",
-		identifier: NodeIdentifier::new("graphene_core::ops::IdNode", &[concrete!("Any<'_>")]),
+		identifier: NodeIdentifier::new("graphene_core::ops::IdNode", &[generic!("T")]),
 		inputs: &[DocumentInputType {
 			name: "In",
 			data_type: FrontendGraphDataType::General,

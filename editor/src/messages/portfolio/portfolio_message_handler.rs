@@ -19,6 +19,7 @@ use document_legacy::{LayerId, Operation as DocumentOperation};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::NodeId;
 use graph_craft::document::{NodeInput, NodeNetwork};
+use graph_craft::executor::Compiler;
 use graphene_core::raster::Image;
 
 use glam::DVec2;
@@ -683,8 +684,8 @@ impl PortfolioMessageHandler {
 			network.flatten(node_id);
 		}
 
-		let mut proto_network = network.into_proto_network();
-		proto_network.reorder_ids();
+		let c = Compiler {};
+		let proto_network = c.compile(network, true);
 
 		assert_ne!(proto_network.nodes.len(), 0, "No protonodes exist?");
 		let tree = interpreted_executor::executor::DynamicExecutor::new(proto_network);
