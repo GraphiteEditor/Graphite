@@ -143,6 +143,7 @@ impl ToolTransition for PenTool {
 struct PenToolData {
 	weight: f64,
 	path: Option<Vec<LayerId>>,
+	paths: Vec<Option<Vec<LayerId>>>,
 	overlay_renderer: OverlayRenderer,
 	snap_manager: SnapManager,
 	should_mirror: bool,
@@ -166,6 +167,44 @@ impl Fsm for PenToolFsmState {
 
 		if let ToolMessage::Pen(event) = event {
 			match (self, event) {
+				(_, PenToolMessage::Undo) => {
+					let mut process = || {
+						let last_layer_path = tool_data.paths[tool_data.paths.len() - 1].as_ref()?;
+						let last_layer_path_ext_ref = tool_data.paths[tool_data.paths.len() - 1].clone();
+						let subpath = document.document_legacy.layer(last_layer_path).ok().and_then(|layer| layer.as_subpath())?;
+
+						// Get the last manipulator group and the one previous to that
+						let mut manipulator_groups = subpath.manipulator_groups().enumerate();
+						let (&last_id, last_manipulator_group) = if tool_data.from_start { manipulator_groups.next()? } else { manipulator_groups.next_back()? };
+						let (&previous_id, previous_manipulator_group) = if tool_data.from_start { manipulator_groups.next()? } else { manipulator_groups.next_back()? };
+
+						// Get correct handle types
+						let outwards_handle = if tool_data.from_start { ManipulatorType::InHandle } else { ManipulatorType::OutHandle };
+
+						// Remove last manipulator group
+						let op = Operation::RemoveManipulatorGroup {
+							layer_path: last_layer_path.clone(),
+							id: last_id,
+						};
+						responses.push_back(op.into());
+
+						// Add a new manipulator for the next anchor , which will attach to the 2nd-to-last manipulator
+						if let Some(out_handle) = &previous_manipulator_group.points[outwards_handle] {
+							responses.push_back(add_manipulator_group(
+								&last_layer_path_ext_ref,
+								tool_data.from_start,
+								ManipulatorGroup::new_with_anchor(out_handle.position),
+							));
+						}
+
+						tool_data.path = last_layer_path_ext_ref;
+
+						Some(())
+					};
+					process();
+
+					PenToolFsmState::PlacingAnchor
+				}
 				(_, PenToolMessage::DocumentIsDirty) => {
 					// When the document has moved / needs to be redraw, re-render the overlays
 					// TODO the overlay system should probably receive this message instead of the tool
@@ -390,6 +429,7 @@ impl Fsm for PenToolFsmState {
 						}
 						// Add a new manipulator for the next anchor that we will place
 						if let Some(out_handle) = &last_manipulator_group.points[outwards_handle] {
+							responses.push_back(DocumentMessage::StartTransaction.into());
 							responses.push_back(add_manipulator_group(&tool_data.path, tool_data.from_start, ManipulatorGroup::new_with_anchor(out_handle.position)));
 						}
 
@@ -569,6 +609,9 @@ impl Fsm for PenToolFsmState {
 					for layer_path in document.all_layers() {
 						tool_data.overlay_renderer.clear_subpath_overlays(&document.document_legacy, layer_path.to_vec(), responses);
 					}
+					// Backup path in Pen tool's history so Pen creation can be accessed after it's done being created
+					tool_data.paths.push(tool_data.path.clone());
+
 					tool_data.path = None;
 					tool_data.snap_manager.cleanup(responses);
 

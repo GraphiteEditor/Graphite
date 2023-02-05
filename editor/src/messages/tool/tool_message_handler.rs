@@ -187,6 +187,19 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, u64, &InputPreprocess
 				document_data.update_working_colors(responses);
 			}
 
+			ToolMessage::Undo => {
+				// Handle specific undo logic for each tool
+				let tool_data = &mut self.tool_state.tool_data;
+				let current_tool = tool_data.active_tool_type;
+				match current_tool {
+					ToolType::Pen => {
+						responses.push_back(PenToolMessage::Undo.into());
+					}
+					ToolType::Spline => {}
+					_ => {}
+				}
+			}
+
 			// Sub-messages
 			#[remain::unsorted]
 			tool_message => {

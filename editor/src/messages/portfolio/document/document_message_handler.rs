@@ -908,6 +908,9 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				responses.push_back(RenderDocument.into());
 				responses.push_back(FolderChanged { affected_folder_path: vec![] }.into());
 				responses.push_back(UndoFinished.into());
+
+				// Emit a message to handle undo logic for specific tool being used
+				responses.push_back(ToolMessage::Undo.into());
 			}
 			UndoFinished => self.undo_in_progress = false,
 			UngroupLayers { folder_path } => {
