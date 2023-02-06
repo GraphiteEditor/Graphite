@@ -49,7 +49,7 @@ impl Debug for Bezier {
 		debug_struct_ref = match self.handles {
 			BezierHandles::Linear => debug_struct_ref,
 			BezierHandles::Quadratic { handle } => debug_struct_ref.field("handle", &handle),
-			BezierHandles::Cubic { handle_start, handle_end } => debug_struct_ref.field("handle start", &handle_start).field("handle_end", &handle_end),
+			BezierHandles::Cubic { handle_start, handle_end } => debug_struct_ref.field("handle_start", &handle_start).field("handle_end", &handle_end),
 		};
 		debug_struct_ref.field("end", &self.end).finish()
 	}

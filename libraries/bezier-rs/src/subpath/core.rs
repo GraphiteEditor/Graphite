@@ -62,7 +62,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 
 	/// Returns an iterator of the [Bezier]s along the `Subpath`.
 	pub fn iter(&self) -> SubpathIter<ManipulatorGroupId> {
-		SubpathIter { sub_path: self, index: 0 }
+		SubpathIter { subpath: self, index: 0 }
 	}
 
 	/// Appends to the `svg` mutable string with an SVG shape representation of the curve.

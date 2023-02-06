@@ -21,7 +21,7 @@ pub struct Subpath<ManipulatorGroupId: crate::Identifier> {
 /// Iteration structure for iterating across each curve of a `Subpath`, using an intermediate `Bezier` representation.
 pub struct SubpathIter<'a, ManipulatorGroupId: crate::Identifier> {
 	index: usize,
-	sub_path: &'a Subpath<ManipulatorGroupId>,
+	subpath: &'a Subpath<ManipulatorGroupId>,
 }
 
 impl<ManipulatorGroupId: crate::Identifier> Index<usize> for Subpath<ManipulatorGroupId> {
@@ -45,8 +45,8 @@ impl<ManipulatorGroupId: crate::Identifier> Iterator for SubpathIter<'_, Manipul
 
 	// Returns the Bezier representation of each `Subpath` segment, defined between a pair of adjacent manipulator points.
 	fn next(&mut self) -> Option<Self::Item> {
-		let len = self.sub_path.len() - 1
-			+ match self.sub_path.closed {
+		let len = self.subpath.len() - 1
+			+ match self.subpath.closed {
 				true => 1,
 				false => 0,
 			};
@@ -54,10 +54,10 @@ impl<ManipulatorGroupId: crate::Identifier> Iterator for SubpathIter<'_, Manipul
 			return None;
 		}
 		let start_index = self.index;
-		let end_index = (self.index + 1) % self.sub_path.len();
+		let end_index = (self.index + 1) % self.subpath.len();
 		self.index += 1;
 
-		Some(self.sub_path[start_index].to_bezier(&self.sub_path[end_index]))
+		Some(self.subpath[start_index].to_bezier(&self.subpath[end_index]))
 	}
 }
 

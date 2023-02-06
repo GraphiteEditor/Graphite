@@ -4,6 +4,11 @@ use crate::utils::f64_compare;
 use crate::{SubpathTValue, TValue};
 
 impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
+	/// Get whether the subpath is closed.
+	pub fn closed(&self) -> bool {
+		self.closed
+	}
+
 	/// Inserts a `ManipulatorGroup` at a certain point along the subpath based on the parametric `t`-value provided.
 	/// Expects `t` to be within the inclusive range `[0, 1]`.
 	pub fn insert(&mut self, t: SubpathTValue) {
