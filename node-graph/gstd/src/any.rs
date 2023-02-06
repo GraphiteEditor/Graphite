@@ -39,9 +39,9 @@ impl<_I, _O, S0> DynAnyRefNode<_I, _O, S0> {
 	}
 }
 
-pub type TypeErasedNode<'n> = dyn for<'i> Node<'i, Any<'i>, Output = Any<'i>> + 'n;
-pub type TypeErasedPinnedRef<'n> = Pin<&'n (dyn for<'i> Node<'i, Any<'i>, Output = Any<'i>> + 'n)>;
-pub type TypeErasedPinned<'n> = Pin<Box<dyn for<'i> Node<'i, Any<'i>, Output = Any<'i>> + 'n>>;
+pub type TypeErasedNode<'n> = dyn for<'i> Node<'i, Any<'i>, Output = Any<'i>> + 'n + Send + Sync;
+pub type TypeErasedPinnedRef<'n> = Pin<&'n (dyn for<'i> Node<'i, Any<'i>, Output = Any<'i>> + 'n + Send + Sync)>;
+pub type TypeErasedPinned<'n> = Pin<Box<dyn for<'i> Node<'i, Any<'i>, Output = Any<'i>> + 'n + Send + Sync>>;
 
 pub trait IntoTypeErasedNode<'n> {
 	fn into_type_erased(self) -> TypeErasedPinned<'n>;
@@ -49,7 +49,7 @@ pub trait IntoTypeErasedNode<'n> {
 
 impl<'n, N: 'n> IntoTypeErasedNode<'n> for N
 where
-	N: for<'i> Node<'i, Any<'i>, Output = Any<'i>>,
+	N: for<'i> Node<'i, Any<'i>, Output = Any<'i>> + Send + Sync + 'n,
 {
 	fn into_type_erased(self) -> TypeErasedPinned<'n> {
 		Box::pin(self)

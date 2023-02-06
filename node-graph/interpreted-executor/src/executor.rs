@@ -11,6 +11,7 @@ use graphene_std::any::{Any, TypeErasedPinned, TypeErasedPinnedRef};
 
 use crate::node_registry::constrcut_node;
 
+#[derive(Default, Debug, Clone)]
 pub struct DynamicExecutor {
 	output: NodeId,
 	tree: BorrowTree,
@@ -41,6 +42,12 @@ pub struct NodeContainer<'n> {
 	_dependencies: Vec<Arc<NodeContainer<'static>>>,
 }
 
+impl<'a> core::fmt::Debug for NodeContainer<'a> {
+	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.debug_struct("NodeContainer").finish()
+	}
+}
+
 impl<'a> NodeContainer<'a> {
 	/// Return a static reference to the TypeErasedNode
 	/// # Safety
@@ -56,7 +63,7 @@ impl NodeContainer<'static> {
 	}
 }
 
-#[derive(Default)]
+#[derive(Default, Debug, Clone)]
 pub struct BorrowTree {
 	nodes: HashMap<NodeId, Arc<NodeContainer<'static>>>,
 }

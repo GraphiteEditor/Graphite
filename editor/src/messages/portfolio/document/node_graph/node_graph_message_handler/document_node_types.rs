@@ -130,7 +130,7 @@ static STATIC_NODES: &[DocumentNodeType] = &[
 	DocumentNodeType {
 		name: "Image",
 		category: "Ignore",
-		identifier: NodeImplementation::proto("graphene_core::ops::IdNode", &[concrete!("Any<'_>")]),
+		identifier: NodeImplementation::proto("graphene_core::ops::IdNode", &[generic!("T")]),
 		inputs: &[DocumentInputType::new("Image", TaggedValue::Image(Image::empty()), false)],
 		outputs: &[FrontendGraphDataType::Raster],
 		properties: |_document_node, _node_id, _context| node_properties::string_properties("A bitmap image embedded in this node"),
@@ -138,7 +138,7 @@ static STATIC_NODES: &[DocumentNodeType] = &[
 	DocumentNodeType {
 		name: "Input",
 		category: "Ignore",
-		identifier: NodeImplementation::proto("graphene_core::ops::IdNode", &[concrete!("Any<'_>")]),
+		identifier: NodeImplementation::proto("graphene_core::ops::IdNode", &[generic!("T")]),
 		inputs: &[DocumentInputType {
 			name: "In",
 			data_type: FrontendGraphDataType::Raster,
@@ -150,7 +150,7 @@ static STATIC_NODES: &[DocumentNodeType] = &[
 	DocumentNodeType {
 		name: "Output",
 		category: "Ignore",
-		identifier: NodeImplementation::proto("graphene_core::ops::IdNode", &[concrete!("Any<'_>")]),
+		identifier: NodeImplementation::proto("graphene_core::ops::IdNode", &[generic!("T")]),
 		inputs: &[DocumentInputType {
 			name: "In",
 			data_type: FrontendGraphDataType::Raster,
@@ -324,7 +324,7 @@ static STATIC_NODES: &[DocumentNodeType] = &[
 	DocumentNodeType {
 		name: "Path Generator",
 		category: "Vector",
-		identifier: NodeImplementation::proto("graphene_core::ops::IdNode", &[concrete!("Any<'_>")]),
+		identifier: NodeImplementation::proto("graphene_core::ops::IdNode", &[generic!("T")]),
 		inputs: &[DocumentInputType {
 			name: "Path Data",
 			data_type: FrontendGraphDataType::Subpath,

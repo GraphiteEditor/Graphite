@@ -74,7 +74,7 @@ impl UpcastNode {
 
 pub type Value<'a> = Box<dyn for<'i> ValueTrait<'i> + 'a>;
 
-pub trait ValueTrait<'a>: DynAny<'a> + Upcast<dyn DynAny<'a> + 'a> + std::fmt::Debug + DynClone + 'a {}
+pub trait ValueTrait<'a>: DynAny<'a> + Upcast<dyn DynAny<'a> + 'a> + std::fmt::Debug + DynClone + Sync + Send + 'a {}
 
 pub trait IntoValue<'a>: Sized + for<'i> ValueTrait<'i> + 'a {
 	fn into_any(self) -> Value<'a> {
@@ -82,7 +82,7 @@ pub trait IntoValue<'a>: Sized + for<'i> ValueTrait<'i> + 'a {
 	}
 }
 
-impl<'a, T: 'a + StaticType + Upcast<dyn DynAny<'a> + 'a> + std::fmt::Debug + PartialEq + Clone + 'a> ValueTrait<'a> for T {}
+impl<'a, T: 'a + StaticType + Upcast<dyn DynAny<'a> + 'a> + std::fmt::Debug + PartialEq + Clone + Sync + Send + 'a> ValueTrait<'a> for T {}
 
 impl<'a, T: for<'i> ValueTrait<'i> + 'a> IntoValue<'a> for T {}
 

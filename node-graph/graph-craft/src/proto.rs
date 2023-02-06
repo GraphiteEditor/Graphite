@@ -278,7 +278,7 @@ impl ProtoNetwork {
 			self.nodes.push((
 				compose_node_id,
 				ProtoNode {
-					identifier: NodeIdentifier::new("graphene_core::structural::ComposeNode<_, _, _>", &[generic!("T"), Type::Generic(Cow::Borrowed("U"))]),
+					identifier: NodeIdentifier::new("graphene_core::structural::ComposeNode<_, _, _>", &[generic!("T"), generic!("U")]),
 					construction_args: ConstructionArgs::Nodes(vec![input_node, id]),
 					input,
 				},
