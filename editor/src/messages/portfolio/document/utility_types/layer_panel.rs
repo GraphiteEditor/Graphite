@@ -9,15 +9,10 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, specta::Type)]
 pub struct RawBuffer(Vec<u8>);
 
-impl From<Vec<u64>> for RawBuffer {
-	fn from(iter: Vec<u64>) -> Self {
+impl From<&[u64]> for RawBuffer {
+	fn from(iter: &[u64]) -> Self {
 		// https://github.com/rust-lang/rust-clippy/issues/4484
-		let v_from_raw: Vec<u8> = unsafe {
-			// prepare for an auto-forget of the initial vec:
-			let v_orig: &mut Vec<_> = &mut *std::mem::ManuallyDrop::new(iter);
-			Vec::from_raw_parts(v_orig.as_mut_ptr() as *mut u8, v_orig.len() * 8, v_orig.capacity() * 8)
-			// v_orig is never used again, so no aliasing issue
-		};
+		let v_from_raw: Vec<u8> = iter.iter().flat_map(|x| x.to_ne_bytes()).collect();
 		Self(v_from_raw)
 	}
 }
