@@ -72,11 +72,11 @@ static NODE_REGISTRY: &[(NodeIdentifier, NodeConstructor)] = &[
 		let sigma = DowncastBothNode::<(), f64>::new(args[1]);
 		let image = DowncastBothRefNode::<Image, Image>::new(args[2]);
 		let empty_image: ValueNode<Image> = ValueNode::new(Image::empty());
+		let empty: TypeNode<_, (), Image> = TypeNode::new(empty_image.then(CloneNode::new()));
+
 		//let image = &image as &dyn for<'a> Node<'a, (), Output = &'a Image>;
 		// dirty hack: we abuse that the cache node will ignore the input if it is
 		// evaluated a second time
-
-		let empty: TypeNode<_, (), Image> = TypeNode::new(empty_image.then(CloneNode::new()));
 		let image = empty.then(image).then(ImageRefNode::new());
 
 		let window = WindowNode::new(radius, image.clone());
