@@ -170,74 +170,74 @@ async fn execute_shader<I: Pod + Send + Sync, O: Pod + Send + Sync>(device: Arc<
 	}
 }
 
-#[cfg(test)]
-mod test {
-	use super::*;
-	use graph_craft::concrete;
-	use graph_craft::generic;
-	use graph_craft::proto::*;
+// TODO: Fix this test
+// #[cfg(test)]
+// mod test {
+// 	use super::*;
+// 	use graph_craft::concrete;
+// 	use graph_craft::generic;
+// 	use graph_craft::proto::*;
 
-	fn inc_network() -> ProtoNetwork {
-		let mut construction_network = ProtoNetwork {
-			inputs: vec![10],
-			output: 1,
-			nodes: [
-				(
-					1,
-					ProtoNode {
-						identifier: NodeIdentifier::new("graphene_core::ops::IdNode", &[generic!("u32")]),
-						input: ProtoNodeInput::Node(11),
-						construction_args: ConstructionArgs::Nodes(vec![]),
-					},
-				),
-				(
-					10,
-					ProtoNode {
-						identifier: NodeIdentifier::new("graphene_core::structural::ConsNode", &[generic!("&ValueNode<u32>"), generic!("()")]),
-						input: ProtoNodeInput::Network,
-						construction_args: ConstructionArgs::Nodes(vec![14]),
-					},
-				),
-				(
-					11,
-					ProtoNode {
-						identifier: NodeIdentifier::new("graphene_core::ops::AddNode", &[generic!("u32"), generic!("u32")]),
-						input: ProtoNodeInput::Node(10),
-						construction_args: ConstructionArgs::Nodes(vec![]),
-					},
-				),
-				(
-					14,
-					ProtoNode {
-						identifier: NodeIdentifier::new("graphene_core::value::ValueNode", &[concrete!("u32")]),
-						input: ProtoNodeInput::None,
-						construction_args: ConstructionArgs::Value(Box::new(3_u32)),
-					},
-				),
-			]
-			.into_iter()
-			.collect(),
-		};
-		construction_network.resolve_inputs();
-		construction_network.reorder_ids();
-		construction_network
-	}
+// 	#[test]
+// 	fn add_on_gpu() {
+// 		use crate::executor::Executor;
+// 		let m = compiler::Metadata::new("project".to_owned(), vec!["test@example.com".to_owned()]);
+// 		let network = inc_network();
+// 		let temp_dir = tempfile::tempdir().expect("failed to create tempdir");
 
-	// TODO: Fix this test
-	/*#[test]
-	fn add_on_gpu() {
-		use crate::executor::Executor;
-		let m = compiler::Metadata::new("project".to_owned(), vec!["test@example.com".to_owned()]);
-		let network = inc_network();
-		let temp_dir = tempfile::tempdir().expect("failed to create tempdir");
+// 		let executor: GpuExecutor<u32, u32> = GpuExecutor::new(Context::new(), network, m, temp_dir.path()).unwrap();
 
-		let executor: GpuExecutor<u32, u32> = GpuExecutor::new(Context::new(), network, m, temp_dir.path()).unwrap();
+// 		let data: Vec<_> = (0..1024).map(|x| x as u32).collect();
+// 		let result = executor.execute(Box::new(data)).unwrap();
+// 		let result = dyn_any::downcast::<Vec<u32>>(result).unwrap();
+// 		for (i, r) in result.iter().enumerate() {
+// 			assert_eq!(*r, i as u32 + 3);
+// 		}
+// 	}
 
-		let data: Vec<_> = (0..1024).map(|x| x as u32).collect();
-		let result = executor.execute(Box::new(data)).unwrap();
-		let result = dyn_any::downcast::<Vec<u32>>(result).unwrap();
-		for (i, r) in result.iter().enumerate() {
-			assert_eq!(*r, i as u32 + 3);
-		}
-	}*/
-}
+// 	fn inc_network() -> ProtoNetwork {
+// 		let mut construction_network = ProtoNetwork {
+// 			inputs: vec![10],
+// 			output: 1,
+// 			nodes: [
+// 				(
+// 					1,
+// 					ProtoNode {
+// 						identifier: NodeIdentifier::new("graphene_core::ops::IdNode", &[generic!("u32")]),
+// 						input: ProtoNodeInput::Node(11),
+// 						construction_args: ConstructionArgs::Nodes(vec![]),
+// 					},
+// 				),
+// 				(
+// 					10,
+// 					ProtoNode {
+// 						identifier: NodeIdentifier::new("graphene_core::structural::ConsNode", &[generic!("&ValueNode<u32>"), generic!("()")]),
+// 						input: ProtoNodeInput::Network,
+// 						construction_args: ConstructionArgs::Nodes(vec![14]),
+// 					},
+// 				),
+// 				(
+// 					11,
+// 					ProtoNode {
+// 						identifier: NodeIdentifier::new("graphene_core::ops::AddNode", &[generic!("u32"), generic!("u32")]),
+// 						input: ProtoNodeInput::Node(10),
+// 						construction_args: ConstructionArgs::Nodes(vec![]),
+// 					},
+// 				),
+// 				(
+// 					14,
+// 					ProtoNode {
+// 						identifier: NodeIdentifier::new("graphene_core::value::ValueNode", &[concrete!("u32")]),
+// 						input: ProtoNodeInput::None,
+// 						construction_args: ConstructionArgs::Value(Box::new(3_u32)),
+// 					},
+// 				),
+// 			]
+// 			.into_iter()
+// 			.collect(),
+// 		};
+// 		construction_network.resolve_inputs();
+// 		construction_network.reorder_ids();
+// 		construction_network
+// 	}
+// }

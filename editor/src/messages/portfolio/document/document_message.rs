@@ -49,6 +49,7 @@ pub enum DocumentMessage {
 	},
 	BackupDocument {
 		document: DocumentLegacy,
+		artboard: Box<ArtboardMessageHandler>,
 		layer_metadata: HashMap<Vec<LayerId>, LayerMetadata>,
 	},
 	BooleanOperation(BooleanOperationType),
@@ -96,6 +97,7 @@ pub enum DocumentMessage {
 	MoveSelectedManipulatorPoints {
 		layer_path: Vec<LayerId>,
 		delta: (f64, f64),
+		mirror_distance: bool,
 	},
 	NodeGraphFrameGenerate,
 	NodeGraphFrameImaginate {
@@ -183,7 +185,6 @@ pub enum DocumentMessage {
 	},
 	ToggleSelectedHandleMirroring {
 		layer_path: Vec<LayerId>,
-		toggle_distance: bool,
 		toggle_angle: bool,
 	},
 	Undo,

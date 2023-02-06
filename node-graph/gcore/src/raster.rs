@@ -396,18 +396,6 @@ mod image {
 	}
 }
 
-/*pub struct MutWrapper<N>(pub N);
-
-impl<'n, T: Clone, N> Node<&'n mut T> for &'n MutWrapper<N>
-where
-	&'n N: Node<T, Output = T>,
-{
-	type Output = ();
-	fn eval(self, value: &'n mut T) {
-		*value = (&self.0).eval(value.clone());
-	}
-}*/
-
 #[cfg(test)]
 mod test {
 	use crate::{

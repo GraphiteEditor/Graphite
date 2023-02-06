@@ -1,9 +1,11 @@
 use core::marker::PhantomData;
 use dyn_any::{DynAny, StaticType};
-use graphene_core::ops::{CloneNode, FlatMapResultNode};
+use graphene_core::generic::FnNode;
+use graphene_core::ops::{CloneNode, FlatMapResultNode, MapResultNode};
 use graphene_core::raster::{Color, Image};
-use graphene_core::structural::{ComposeNode, ConsNode};
-use graphene_core::{generic::FnNode, ops::MapResultNode, structural::Then, value::ValueNode, Node};
+use graphene_core::structural::{ComposeNode, ConsNode, Then};
+use graphene_core::value::ValueNode;
+use graphene_core::Node;
 use image::Pixel;
 use std::path::Path;
 
@@ -37,7 +39,7 @@ pub struct FileNode<FileSystem> {
 }
 #[node_macro::node_fn(FileNode)]
 fn file_node<P: AsRef<Path>, FS: FileSystem>(path: P, fs: FS) -> Result<Reader, Error> {
-	Ok(fs.open(path)?)
+	fs.open(path)
 }
 
 pub struct BufferNode;

@@ -5,11 +5,11 @@ use std::{collections::HashMap, sync::Arc};
 use dyn_any::StaticType;
 use graph_craft::document::value::UpcastNode;
 use graph_craft::document::NodeId;
-use graph_craft::proto::{ConstructionArgs, ProtoNode, ProtoNodeInput};
+use graph_craft::executor::Executor;
+use graph_craft::proto::{ConstructionArgs, ProtoNetwork, ProtoNode, ProtoNodeInput};
 use graphene_std::any::{Any, TypeErasedPinned, TypeErasedPinnedRef};
 
 use crate::node_registry::constrcut_node;
-use graph_craft::{executor::Executor, proto::ProtoNetwork};
 
 pub struct DynamicExecutor {
 	output: NodeId,
