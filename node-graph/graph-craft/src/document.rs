@@ -409,7 +409,6 @@ impl NodeNetwork {
 mod test {
 	use super::*;
 	use crate::proto::{ConstructionArgs, NodeIdentifier, ProtoNetwork, ProtoNode, ProtoNodeInput};
-	use value::IntoValue;
 
 	fn gen_node_id() -> NodeId {
 		static mut NODE_ID: NodeId = 3;

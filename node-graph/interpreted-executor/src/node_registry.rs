@@ -2,7 +2,7 @@ use graphene_core::ops::{CloneNode, IdNode, TypeNode};
 use graphene_core::raster::color::Color;
 use graphene_core::raster::*;
 use graphene_core::structural::Then;
-use graphene_core::value::ValueNode;
+use graphene_core::value::{ForgetNode, ValueNode};
 use graphene_core::vector::subpath::Subpath;
 use graphene_std::any::{Any, ComposeTypeErased, DowncastBothNode, DowncastBothRefNode, DynAnyNode, IntoTypeErasedNode, TypeErasedPinned, TypeErasedPinnedRef};
 
@@ -94,7 +94,8 @@ static NODE_REGISTRY: &[(NodeIdentifier, NodeConstructor)] = &[
 		let dimensions = image.then(ImageDimensionsNode::new());
 		let dimensions: TypeNode<_, (), (u32, u32)> = TypeNode::new(dimensions);
 		let new_image = dimensions.then(new_image);
-		let node: DynAnyNode<(), _, _> = DynAnyNode::new(ValueNode::new(new_image));
+		let new_image = ForgetNode::new().then(new_image);
+		let node: DynAnyNode<&Image, _, _> = DynAnyNode::new(ValueNode::new(new_image));
 		node.into_type_erased()
 	}),
 	//register_node!(graphene_std::memo::CacheNode<_>, input: Image, params: []),

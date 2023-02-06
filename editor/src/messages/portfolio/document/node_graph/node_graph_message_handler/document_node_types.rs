@@ -91,7 +91,7 @@ fn document_node_types() -> Vec<DocumentNodeType> {
 					1,
 					DocumentNode {
 						name: "BlurNode".to_string(),
-						inputs: vec![NodeInput::Node(0), NodeInput::Network, NodeInput::Network],
+						inputs: vec![NodeInput::Node(0), NodeInput::Network, NodeInput::Network, NodeInput::Node(0)],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::raster::BlurNode", &[concrete!("Image")])),
 						metadata: Default::default(),
 					},

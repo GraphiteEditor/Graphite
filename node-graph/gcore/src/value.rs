@@ -82,16 +82,16 @@ impl<T> DefaultNode<T> {
 #[repr(C)]
 /// Return the unit value
 #[derive(Default, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
-pub struct UnitNode;
+pub struct ForgetNode;
 
-impl<'i> Node<'i, ()> for UnitNode {
+impl<'i, T: 'i> Node<'i, T> for ForgetNode {
 	type Output = ();
-	fn eval<'s: 'i>(&self, _input: ()) -> Self::Output {}
+	fn eval<'s: 'i>(&self, _input: T) -> Self::Output {}
 }
 
-impl UnitNode {
+impl ForgetNode {
 	pub const fn new() -> Self {
-		UnitNode
+		ForgetNode
 	}
 }
 
@@ -118,7 +118,7 @@ mod test {
 	}
 	#[test]
 	fn test_unit_node() {
-		let node = UnitNode::new();
+		let node = ForgetNode::new();
 		assert_eq!(node.eval(()), ());
 	}
 }
