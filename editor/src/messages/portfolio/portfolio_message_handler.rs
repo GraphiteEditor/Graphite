@@ -729,7 +729,7 @@ impl PortfolioMessageHandler {
 						.0;
 				}
 				// If the input is just a value, return that value
-				NodeInput::Value { tagged_value, .. } => return dyn_any::downcast::<T>(tagged_value.clone().to_value().up_box()).map(|v| *v),
+				NodeInput::Value { tagged_value, .. } => return dyn_any::downcast::<T>(tagged_value.clone().to_any()).map(|v| *v),
 				// If the input is from a node, set the node to be the output (so that is what is evaluated)
 				NodeInput::Node(n) => {
 					inner_network.output = *n;

@@ -329,7 +329,7 @@ mod image {
 	use alloc::vec::Vec;
 	use dyn_any::{DynAny, StaticType};
 
-	#[derive(Clone, Debug, PartialEq, DynAny, Default, specta::Type)]
+	#[derive(Clone, Debug, PartialEq, DynAny, Default, specta::Type, Hash)]
 	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 	pub struct Image {
 		pub width: u32,

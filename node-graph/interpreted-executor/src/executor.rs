@@ -154,12 +154,14 @@ impl BorrowTree {
 
 #[cfg(test)]
 mod test {
+	use graph_craft::document::value::TaggedValue;
+
 	use super::*;
 
 	#[test]
 	fn push_node() {
 		let mut tree = BorrowTree::default();
-		let val_1_protonode = ProtoNode::value(ConstructionArgs::Value(Box::new(2u32)));
+		let val_1_protonode = ProtoNode::value(ConstructionArgs::Value(TaggedValue::U32(2u32)));
 		tree.push_node(0, val_1_protonode);
 		let node = tree.get(0).unwrap();
 		assert_eq!(tree.eval(0, ()), Some(2u32));

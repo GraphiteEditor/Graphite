@@ -96,7 +96,7 @@ pub struct ProtoNetwork {
 
 #[derive(Debug)]
 pub enum ConstructionArgs {
-	Value(value::Value<'static>),
+	Value(value::TaggedValue),
 	Nodes(Vec<NodeId>),
 }
 
@@ -432,18 +432,18 @@ mod test {
 		assert_eq!(
 			ids,
 			vec![
-				9188000751767037325,
+				17495035641492238530,
 				5865678846923584030,
 				2268573767208263092,
-				3242938302173674298,
+				666021810875792436,
 				12110007198416821768,
-				15126059990334077620
+				6701085244080028535
 			]
 		);
 	}
 
 	fn test_network() -> ProtoNetwork {
-		let construction_network = ProtoNetwork {
+		ProtoNetwork {
 			inputs: vec![10],
 			output: 1,
 			nodes: [
@@ -484,13 +484,12 @@ mod test {
 					ProtoNode {
 						identifier: "value".into(),
 						input: ProtoNodeInput::None,
-						construction_args: ConstructionArgs::Value(2_u32.into_any()),
+						construction_args: ConstructionArgs::Value(value::TaggedValue::U32(2)),
 					},
 				),
 			]
 			.into_iter()
 			.collect(),
-		};
-		construction_network
+		}
 	}
 }

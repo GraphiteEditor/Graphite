@@ -68,7 +68,7 @@ impl DocumentNode {
 			let (input, mut args) = match first {
 				NodeInput::Value { tagged_value, .. } => {
 					assert_eq!(self.inputs.len(), 0);
-					(ProtoNodeInput::None, ConstructionArgs::Value(tagged_value.to_value()))
+					(ProtoNodeInput::None, ConstructionArgs::Value(tagged_value))
 				}
 				NodeInput::Node(id) => (ProtoNodeInput::Node(id), ConstructionArgs::Nodes(vec![])),
 				NodeInput::Network => (ProtoNodeInput::Network, ConstructionArgs::Nodes(vec![])),
@@ -266,7 +266,7 @@ impl NodeNetwork {
 							) {
 								"Value".to_string()
 							} else {
-								format!("Value: {:?}", tagged_value.clone().to_value())
+								format!("Value: {:?}", tagged_value)
 							};
 							let new_id = map_ids(id, gen_id());
 							let value_node = DocumentNode {
@@ -563,7 +563,7 @@ mod test {
 						construction_args: ConstructionArgs::Nodes(vec![]),
 					},
 				),
-				(14, ProtoNode::value(ConstructionArgs::Value(2_u32.into_any()))),
+				(14, ProtoNode::value(ConstructionArgs::Value(TaggedValue::U32(2)))),
 			]
 			.into_iter()
 			.collect(),
@@ -602,7 +602,7 @@ mod test {
 				(
 					14,
 					DocumentNode {
-						name: "Value: 2".into(),
+						name: "Value: U32(2)".into(),
 						inputs: vec![NodeInput::Value {
 							tagged_value: value::TaggedValue::U32(2),
 							exposed: false,

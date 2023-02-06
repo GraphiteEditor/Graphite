@@ -6,6 +6,7 @@ use graphene_core::Node;
 use std::hash::Hash;
 pub use std::sync::Arc;
 
+use crate::executor::Any;
 pub use crate::imaginate_input::{ImaginateMaskStartingFill, ImaginateSamplingMethod, ImaginateStatus};
 
 /// A type that is known, allowing serialization (serde::Deserialize is not object safe)
@@ -31,9 +32,83 @@ pub enum TaggedValue {
 	LayerPath(Option<Vec<u64>>),
 }
 
+#[allow(clippy::derive_hash_xor_eq)]
+impl Hash for TaggedValue {
+	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+		match self {
+			Self::None => 0.hash(state),
+			Self::String(s) => {
+				1.hash(state);
+				s.hash(state)
+			}
+			Self::U32(u) => {
+				2.hash(state);
+				u.hash(state)
+			}
+			Self::F32(f) => {
+				3.hash(state);
+				f.to_bits().hash(state)
+			}
+			Self::F64(f) => {
+				4.hash(state);
+				f.to_bits().hash(state)
+			}
+			Self::Bool(b) => {
+				5.hash(state);
+				b.hash(state)
+			}
+			Self::DVec2(v) => {
+				6.hash(state);
+				v.to_array().iter().for_each(|x| x.to_bits().hash(state))
+			}
+			Self::OptionalDVec2(None) => 7.hash(state),
+			Self::OptionalDVec2(Some(v)) => {
+				8.hash(state);
+				Self::DVec2(*v).hash(state)
+			}
+			Self::Image(i) => {
+				9.hash(state);
+				i.hash(state)
+			}
+			Self::RcImage(i) => {
+				10.hash(state);
+				i.hash(state)
+			}
+			Self::Color(c) => {
+				11.hash(state);
+				c.hash(state)
+			}
+			Self::Subpath(s) => {
+				12.hash(state);
+				s.hash(state)
+			}
+			Self::RcSubpath(s) => {
+				13.hash(state);
+				s.hash(state)
+			}
+			Self::ImaginateSamplingMethod(m) => {
+				14.hash(state);
+				m.hash(state)
+			}
+			Self::ImaginateMaskStartingFill(f) => {
+				15.hash(state);
+				f.hash(state)
+			}
+			Self::ImaginateStatus(s) => {
+				16.hash(state);
+				s.hash(state)
+			}
+			Self::LayerPath(p) => {
+				17.hash(state);
+				p.hash(state)
+			}
+		}
+	}
+}
+
 impl<'a> TaggedValue {
 	/// Converts to a Box<dyn DynAny> - this isn't very neat but I'm not sure of a better approach
-	pub fn to_value(self) -> Value<'a> {
+	pub fn to_any(self) -> Any<'a> {
 		match self {
 			TaggedValue::None => Box::new(()),
 			TaggedValue::String(x) => Box::new(x),
@@ -57,17 +132,17 @@ impl<'a> TaggedValue {
 }
 
 pub struct UpcastNode {
-	value: Value<'static>,
+	value: TaggedValue,
 }
 impl<'input> Node<'input, Box<dyn DynAny<'input> + 'input>> for UpcastNode {
 	type Output = Box<dyn DynAny<'input> + 'input>;
 
 	fn eval<'s: 'input>(&'s self, _: Box<dyn DynAny<'input> + 'input>) -> Self::Output {
-		self.value.clone().up_box()
+		self.value.clone().to_any()
 	}
 }
 impl UpcastNode {
-	pub fn new(value: Value<'static>) -> Self {
+	pub fn new(value: TaggedValue) -> Self {
 		Self { value }
 	}
 }
@@ -143,6 +218,7 @@ mod test {
 	use super::*;
 
 	#[test]
+	#[cfg_attr(miri, ignore)]
 	fn test_any_src() {
 		assert!(2_u32.into_any() == 2_u32.into_any());
 		assert!(2_u32.into_any() != 3_u32.into_any());
