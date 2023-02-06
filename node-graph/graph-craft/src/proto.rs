@@ -225,16 +225,21 @@ impl ProtoNetwork {
 	}
 
 	pub fn generate_stable_node_ids(&mut self) {
-		let mut lookup = self.nodes.iter().map(|(id, _)| (*id, *id)).collect::<HashMap<_, _>>();
-		for (ref mut id, node) in self.nodes.iter_mut() {
-			if let Some(sni) = node.stable_node_id() {
-				lookup.insert(*id, sni);
-				*id = sni;
-			} else {
-				panic!("failed to generate stable node id for node {:#?}", node);
-			}
+		for i in 0..self.nodes.len() {
+			self.generate_stable_node_id(i);
 		}
-		self.replace_node_references(&lookup)
+	}
+
+	pub fn generate_stable_node_id(&mut self, index: usize) -> NodeId {
+		let mut lookup = self.nodes.iter().map(|(id, _)| (*id, *id)).collect::<HashMap<_, _>>();
+		if let Some(sni) = self.nodes[index].1.stable_node_id() {
+			lookup.insert(self.nodes[index].0, sni);
+			self.replace_node_references(&lookup);
+			self.nodes[index].0 = sni;
+			sni
+		} else {
+			panic!("failed to generate stable node id for node {:#?}", self.nodes[index].1);
+		}
 	}
 
 	pub fn collect_inwards_edges(&self) -> HashMap<NodeId, Vec<NodeId>> {
@@ -433,11 +438,11 @@ mod test {
 			ids,
 			vec![
 				17495035641492238530,
-				5865678846923584030,
+				14931179783740213471,
 				2268573767208263092,
-				666021810875792436,
+				14616574692620381527,
 				12110007198416821768,
-				6701085244080028535
+				11185814750012198757
 			]
 		);
 	}

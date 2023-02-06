@@ -683,14 +683,11 @@ impl PortfolioMessageHandler {
 	}
 
 	/// Execute the network by flattening it and creating a borrow stack. Casts the output to the generic `T`.
-	fn execute_network<T: dyn_any::StaticType>(executor: &mut DynamicExecutor, mut network: NodeNetwork, image: Image) -> Result<T, String> {
-		for node_id in network.nodes.keys().copied().collect::<Vec<_>>() {
-			network.flatten(node_id);
-		}
-
+	fn execute_network<T: dyn_any::StaticType>(executor: &mut DynamicExecutor, network: NodeNetwork, image: Image) -> Result<T, String> {
 		let c = Compiler {};
 		let proto_network = c.compile(network, true);
 
+		log::debug!("Executing network: {:#?}", proto_network);
 		assert_ne!(proto_network.nodes.len(), 0, "No protonodes exist?");
 		executor.update(proto_network);
 

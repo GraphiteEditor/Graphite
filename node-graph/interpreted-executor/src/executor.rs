@@ -26,6 +26,7 @@ impl DynamicExecutor {
 
 	pub fn update(&mut self, proto_network: ProtoNetwork) {
 		self.output = proto_network.output;
+		log::info!("setting output to {}", self.output);
 		self.tree.update(proto_network);
 	}
 }
