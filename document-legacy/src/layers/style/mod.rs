@@ -5,6 +5,7 @@ use crate::consts::{LAYER_OUTLINE_STROKE_COLOR, LAYER_OUTLINE_STROKE_WEIGHT};
 
 use graphene_core::raster::color::Color;
 
+use core::hash::{Hash, Hasher};
 use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};
 use std::fmt::{self, Display, Write};
@@ -70,6 +71,13 @@ pub struct Gradient {
 	pub positions: Vec<(f64, Option<Color>)>,
 	uuid: u64,
 	pub gradient_type: GradientType,
+}
+
+#[allow(clippy::derive_hash_xor_eq)]
+impl Hash for Gradient {
+	fn hash<H: Hasher>(&self, state: &mut H) {
+		self.uuid.hash(state);
+	}
 }
 
 impl Gradient {
@@ -174,7 +182,7 @@ impl Gradient {
 ///
 /// Can be None, a solid [Color], a linear [Gradient], a radial [Gradient] or potentially some sort of image or pattern in the future
 #[repr(C)]
-#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
+#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type, Hash)]
 pub enum Fill {
 	#[default]
 	None,
@@ -227,7 +235,7 @@ impl Fill {
 
 /// The stroke (outline) style of an SVG element.
 #[repr(C)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type, Hash)]
 pub enum LineCap {
 	Butt,
 	Round,
@@ -245,7 +253,7 @@ impl Display for LineCap {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type, Hash)]
 pub enum LineJoin {
 	Miter,
 	Bevel,
@@ -274,6 +282,19 @@ pub struct Stroke {
 	line_cap: LineCap,
 	line_join: LineJoin,
 	line_join_miter_limit: f64,
+}
+
+#[allow(clippy::derive_hash_xor_eq)]
+impl core::hash::Hash for Stroke {
+	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+		self.color.hash(state);
+		self.weight.to_bits().hash(state);
+		self.dash_lengths.iter().for_each(|x| x.to_bits().hash(state));
+		self.dash_offset.to_bits().hash(state);
+		self.line_cap.hash(state);
+		self.line_join.hash(state);
+		self.line_join_miter_limit.to_bits().hash(state);
+	}
 }
 
 impl Stroke {
@@ -395,7 +416,7 @@ impl Default for Stroke {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize, specta::Type)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize, specta::Type, Hash)]
 pub struct PathStyle {
 	stroke: Option<Stroke>,
 	fill: Fill,

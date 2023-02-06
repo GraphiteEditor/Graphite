@@ -33,6 +33,18 @@ pub struct TextLayer {
 	pub cached_path: Option<Subpath>,
 }
 
+#[allow(clippy::derive_hash_xor_eq)]
+impl core::hash::Hash for TextLayer {
+	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+		self.text.hash(state);
+		self.path_style.hash(state);
+		self.size.to_bits().hash(state);
+		self.line_width.map(|x| x.to_bits()).hash(state);
+		self.font.hash(state);
+		self.editable.hash(state);
+	}
+}
+
 impl LayerData for TextLayer {
 	fn render(&mut self, svg: &mut String, svg_defs: &mut String, transforms: &mut Vec<DAffine2>, render_data: &RenderData) -> bool {
 		let transform = self.transform(transforms, render_data.view_mode);

@@ -274,23 +274,375 @@ pub enum Operation {
 	},
 }
 
-impl Operation {
-	/// Returns the byte representation of the message.
-	///
-	/// # Safety
-	/// This function reads from uninitialized memory!!!
-	/// Only use if you know what you are doing
-	unsafe fn as_slice(&self) -> &[u8] {
-		core::slice::from_raw_parts(self as *const Operation as *const u8, std::mem::size_of::<Operation>())
-	}
-	/// Returns a pseudo hash that should uniquely identify the operation.
-	/// This is needed because `Hash` is not implemented for f64s
-	///
-	/// # Safety
-	/// This function reads from uninitialized memory but the generated value should be fine.
-	pub fn pseudo_hash(&self) -> u64 {
-		let mut s = DefaultHasher::new();
-		unsafe { self.as_slice() }.hash(&mut s);
-		s.finish()
+#[allow(clippy::derive_hash_xor_eq)]
+impl Hash for Operation {
+	fn hash<H: Hasher>(&self, state: &mut H) {
+		use Operation::*;
+		match self {
+			AddEllipse { path, insert_index, transform, style } => {
+				0.hash(state);
+				path.hash(state);
+				insert_index.hash(state);
+				transform.iter().for_each(|x| x.to_bits().hash(state));
+				style.hash(state);
+			}
+			AddRect { path, insert_index, transform, style } => {
+				1.hash(state);
+				path.hash(state);
+				insert_index.hash(state);
+				transform.iter().for_each(|x| x.to_bits().hash(state));
+				style.hash(state);
+			}
+			AddLine { path, insert_index, transform, style } => {
+				2.hash(state);
+				path.hash(state);
+				insert_index.hash(state);
+				transform.iter().for_each(|x| x.to_bits().hash(state));
+				style.hash(state);
+			}
+			AddText {
+				path,
+				insert_index,
+				transform,
+				style,
+				text,
+				size,
+				font_name,
+				font_style,
+			} => {
+				3.hash(state);
+				path.hash(state);
+				insert_index.hash(state);
+				transform.iter().for_each(|x| x.to_bits().hash(state));
+				style.hash(state);
+				text.hash(state);
+				size.to_bits().hash(state);
+				font_name.hash(state);
+				font_style.hash(state);
+			}
+			AddNodeGraphFrame {
+				path,
+				insert_index,
+				transform,
+				network,
+			} => {
+				4.hash(state);
+				path.hash(state);
+				insert_index.hash(state);
+				transform.iter().for_each(|x| x.to_bits().hash(state));
+				network.hash(state);
+			}
+			SetNodeGraphFrameImageData { layer_path, image_data } => {
+				5.hash(state);
+				layer_path.hash(state);
+				image_data.hash(state);
+			}
+			SetLayerBlobUrl { layer_path, blob_url, resolution } => {
+				6.hash(state);
+				layer_path.hash(state);
+				blob_url.hash(state);
+				resolution.0.to_bits().hash(state);
+				resolution.1.to_bits().hash(state);
+			}
+			ClearBlobURL { path } => {
+				7.hash(state);
+				path.hash(state);
+			}
+			SetPivot { layer_path, pivot } => {
+				8.hash(state);
+				layer_path.hash(state);
+				[pivot.0, pivot.1].iter().for_each(|x| x.to_bits().hash(state));
+			}
+			SetTextEditability { path, editable } => {
+				9.hash(state);
+				path.hash(state);
+				editable.hash(state);
+			}
+			SetTextContent { path, new_text } => {
+				10.hash(state);
+				path.hash(state);
+				new_text.hash(state);
+			}
+			AddPolyline {
+				path,
+				insert_index,
+				transform,
+				style,
+				points,
+			} => {
+				11.hash(state);
+				path.hash(state);
+				insert_index.hash(state);
+				transform.iter().for_each(|x| x.to_bits().hash(state));
+				style.hash(state);
+				points.iter().flat_map(|x| [x.0, x.1]).for_each(|x| x.to_bits().hash(state));
+			}
+			AddSpline {
+				path,
+				insert_index,
+				transform,
+				style,
+				points,
+			} => {
+				12.hash(state);
+				path.hash(state);
+				insert_index.hash(state);
+				transform.iter().for_each(|x| x.to_bits().hash(state));
+				style.hash(state);
+				points.iter().flat_map(|x| [x.0, x.1]).for_each(|x| x.to_bits().hash(state));
+			}
+			AddNgon {
+				path,
+				insert_index,
+				transform,
+				style,
+				sides,
+			} => {
+				13.hash(state);
+				path.hash(state);
+				insert_index.hash(state);
+				transform.iter().for_each(|x| x.to_bits().hash(state));
+				style.hash(state);
+				sides.hash(state);
+			}
+			AddShape {
+				path,
+				insert_index,
+				transform,
+				style,
+				subpath,
+			} => {
+				14.hash(state);
+				path.hash(state);
+				insert_index.hash(state);
+				transform.iter().for_each(|x| x.to_bits().hash(state));
+				style.hash(state);
+				subpath.hash(state);
+			}
+			BooleanOperation { operation, selected } => {
+				15.hash(state);
+				operation.hash(state);
+				selected.hash(state);
+			}
+			DeleteLayer { path } => {
+				16.hash(state);
+				path.hash(state);
+			}
+			DeleteSelectedManipulatorPoints { layer_paths } => {
+				17.hash(state);
+				layer_paths.hash(state);
+			}
+			DeselectManipulatorPoints { layer_path, point_ids } => {
+				18.hash(state);
+				layer_path.hash(state);
+				point_ids.hash(state);
+			}
+			DeselectAllManipulatorPoints { layer_path } => {
+				19.hash(state);
+				layer_path.hash(state);
+			}
+			DuplicateLayer { path } => {
+				20.hash(state);
+				path.hash(state);
+			}
+			ModifyFont { path, font_family, size, font_style } => {
+				21.hash(state);
+				path.hash(state);
+				font_family.hash(state);
+				size.to_bits().hash(state);
+				font_style.hash(state);
+			}
+			MoveSelectedManipulatorPoints { layer_path, delta, mirror_distance } => {
+				22.hash(state);
+				layer_path.hash(state);
+				[delta.0, delta.1].iter().for_each(|x| x.to_bits().hash(state));
+				mirror_distance.hash(state);
+			}
+			MoveManipulatorPoint {
+				layer_path,
+				id,
+				manipulator_type,
+				position,
+			} => {
+				23.hash(state);
+				layer_path.hash(state);
+				id.hash(state);
+				manipulator_type.hash(state);
+				[position.0, position.1].iter().for_each(|x| x.to_bits().hash(state));
+			}
+			SetManipulatorPoints {
+				layer_path,
+				id,
+				manipulator_type,
+				position,
+			} => {
+				24.hash(state);
+				layer_path.hash(state);
+				id.hash(state);
+				manipulator_type.hash(state);
+				position.map(|x| [x.0, x.1].iter().for_each(|x| x.to_bits().hash(state)));
+				position.is_none().hash(state);
+			}
+			RenameLayer { layer_path, new_name } => {
+				25.hash(state);
+				layer_path.hash(state);
+				new_name.hash(state);
+			}
+			InsertLayer {
+				layer,
+				destination_path,
+				insert_index,
+			} => {
+				26.hash(state);
+				layer.hash(state);
+				destination_path.hash(state);
+				insert_index.hash(state);
+			}
+			CreateFolder { path } => {
+				27.hash(state);
+				path.hash(state);
+			}
+			TransformLayer { path, transform } => {
+				28.hash(state);
+				path.hash(state);
+				transform.iter().for_each(|x| x.to_bits().hash(state));
+			}
+			TransformLayerInViewport { path, transform } => {
+				29.hash(state);
+				path.hash(state);
+				transform.iter().for_each(|x| x.to_bits().hash(state));
+			}
+			SetLayerTransformInViewport { path, transform } => {
+				30.hash(state);
+				path.hash(state);
+				transform.iter().for_each(|x| x.to_bits().hash(state));
+			}
+			SelectManipulatorPoints { layer_path, point_ids, add } => {
+				31.hash(state);
+				layer_path.hash(state);
+				point_ids.hash(state);
+				add.hash(state);
+			}
+			SetShapePath { path, subpath } => {
+				32.hash(state);
+				path.hash(state);
+				subpath.hash(state);
+			}
+			InsertManipulatorGroup {
+				layer_path,
+				manipulator_group,
+				after_id,
+			} => {
+				33.hash(state);
+				layer_path.hash(state);
+				manipulator_group.hash(state);
+				after_id.hash(state);
+			}
+			PushManipulatorGroup { layer_path, manipulator_group } => {
+				34.hash(state);
+				layer_path.hash(state);
+				manipulator_group.hash(state);
+			}
+			PushFrontManipulatorGroup { layer_path, manipulator_group } => {
+				35.hash(state);
+				layer_path.hash(state);
+				manipulator_group.hash(state);
+			}
+			RemoveManipulatorGroup { layer_path, id } => {
+				36.hash(state);
+				layer_path.hash(state);
+				id.hash(state);
+			}
+			RemoveManipulatorPoint { layer_path, id, manipulator_type } => {
+				37.hash(state);
+				layer_path.hash(state);
+				id.hash(state);
+				manipulator_type.hash(state);
+			}
+			TransformLayerInScope { path, transform, scope } => {
+				38.hash(state);
+				path.hash(state);
+				transform.iter().for_each(|x| x.to_bits().hash(state));
+				scope.iter().for_each(|x| x.to_bits().hash(state));
+			}
+			SetLayerTransformInScope { path, transform, scope } => {
+				39.hash(state);
+				path.hash(state);
+				transform.iter().for_each(|x| x.to_bits().hash(state));
+				scope.iter().for_each(|x| x.to_bits().hash(state));
+			}
+			TransformLayerScaleAroundPivot { path, scale_factor } => {
+				40.hash(state);
+				path.hash(state);
+				let (x, y) = scale_factor;
+				[x, y].iter().for_each(|x| x.to_bits().hash(state));
+			}
+			SetLayerScaleAroundPivot { path, new_scale } => {
+				41.hash(state);
+				path.hash(state);
+				let (x, y) = new_scale;
+				[x, y].iter().for_each(|x| x.to_bits().hash(state));
+			}
+			SetLayerTransform { path, transform } => {
+				42.hash(state);
+				path.hash(state);
+				transform.iter().for_each(|x| x.to_bits().hash(state));
+			}
+			ToggleLayerVisibility { path } => {
+				43.hash(state);
+				path.hash(state);
+			}
+			SetLayerVisibility { path, visible } => {
+				44.hash(state);
+				path.hash(state);
+				visible.hash(state);
+			}
+			SetLayerName { path, name } => {
+				45.hash(state);
+				path.hash(state);
+				name.hash(state);
+			}
+			SetLayerPreserveAspect { layer_path, preserve_aspect } => {
+				46.hash(state);
+				layer_path.hash(state);
+				preserve_aspect.hash(state);
+			}
+			SetLayerBlendMode { path, blend_mode } => {
+				47.hash(state);
+				path.hash(state);
+				blend_mode.hash(state);
+			}
+			SetLayerOpacity { path, opacity } => {
+				48.hash(state);
+				path.hash(state);
+				opacity.to_bits().hash(state);
+			}
+			SetLayerStyle { path, style } => {
+				49.hash(state);
+				path.hash(state);
+				style.hash(state);
+			}
+			SetLayerFill { path, fill } => {
+				50.hash(state);
+				path.hash(state);
+				fill.hash(state);
+			}
+			SetLayerStroke { path, stroke } => {
+				51.hash(state);
+				path.hash(state);
+				stroke.hash(state);
+			}
+			SetManipulatorHandleMirroring { layer_path, id, mirror_angle } => {
+				52.hash(state);
+				layer_path.hash(state);
+				id.hash(state);
+				mirror_angle.hash(state);
+			}
+			SetSelectedHandleMirroring { layer_path, toggle_angle } => {
+				53.hash(state);
+				layer_path.hash(state);
+				toggle_angle.hash(state);
+			}
+		};
 	}
 }

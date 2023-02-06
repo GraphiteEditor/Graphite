@@ -15,7 +15,7 @@ use glam::{DAffine2, DMat2, DVec2};
 use serde::{Deserialize, Serialize};
 use std::fmt::Write;
 
-#[derive(Debug, Clone, PartialEq, Deserialize, Serialize, specta::Type)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize, specta::Type, Hash)]
 /// Represents different types of layers.
 pub enum LayerDataType {
 	/// A layer that wraps a [FolderLayer] struct.
@@ -246,6 +246,20 @@ pub struct Layer {
 	pub blend_mode: BlendMode,
 	/// The opacity, in the range of 0 to 1.
 	pub opacity: f64,
+}
+
+#[allow(clippy::derive_hash_xor_eq)]
+impl core::hash::Hash for Layer {
+	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+		self.visible.hash(state);
+		self.name.hash(state);
+		self.data.hash(state);
+		self.transform.to_cols_array().iter().for_each(|x| x.to_bits().hash(state));
+		self.preserve_aspect.hash(state);
+		self.pivot.to_array().iter().for_each(|x| x.to_bits().hash(state));
+		self.blend_mode.hash(state);
+		self.opacity.to_bits().hash(state);
+	}
 }
 
 impl Layer {

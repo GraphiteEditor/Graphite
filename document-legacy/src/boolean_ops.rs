@@ -9,7 +9,7 @@ use std::cell::RefCell;
 use std::fmt::{self, Debug, Formatter};
 use std::mem::swap;
 
-#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq, specta::Type)]
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq, specta::Type, Hash)]
 pub enum BooleanOperation {
 	Union,
 	Difference,

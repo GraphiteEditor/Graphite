@@ -15,7 +15,7 @@ use std::fmt::Write;
 /// elements inside a
 /// [`<g>`](https://developer.mozilla.org/en-US/docs/Web/SVG/Element/g)
 /// group that the transformation matrix is applied to.
-#[derive(Debug, Clone, PartialEq, Deserialize, Serialize, specta::Type)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize, specta::Type, Hash)]
 pub struct ShapeLayer {
 	/// The geometry of the layer.
 	pub shape: Subpath,

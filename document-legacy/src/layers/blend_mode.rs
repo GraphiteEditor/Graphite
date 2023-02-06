@@ -3,7 +3,7 @@ use std::fmt;
 
 /// Describes how overlapping SVG elements should be blended together.
 /// See the [MDN Docs](https://developer.mozilla.org/en-US/docs/Web/CSS/blend-mode#examples) for examples.
-#[derive(PartialEq, Eq, Copy, Clone, Debug, Serialize, Deserialize, specta::Type)]
+#[derive(PartialEq, Eq, Copy, Clone, Debug, Serialize, Deserialize, specta::Type, Hash)]
 pub enum BlendMode {
 	// Basic group
 	Normal,

@@ -2,6 +2,7 @@ use crate::document::value::TaggedValue;
 use crate::generic;
 use crate::proto::{ConstructionArgs, NodeIdentifier, ProtoNetwork, ProtoNode, ProtoNodeInput, Type};
 
+use core::hash::{Hash, Hasher};
 use dyn_any::{DynAny, StaticType};
 use glam::IVec2;
 use rand_chacha::{
@@ -32,13 +33,13 @@ fn merge_ids(a: u64, b: u64) -> u64 {
 	hasher.finish()
 }
 
-#[derive(Clone, Debug, PartialEq, Default, specta::Type)]
+#[derive(Clone, Debug, PartialEq, Default, specta::Type, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct DocumentNodeMetadata {
 	pub position: IVec2,
 }
 
-#[derive(Clone, Debug, PartialEq, specta::Type)]
+#[derive(Clone, Debug, PartialEq, specta::Type, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct DocumentNode {
 	pub name: String,
@@ -120,7 +121,7 @@ impl DocumentNode {
 	}
 }
 
-#[derive(Clone, Debug, specta::Type)]
+#[derive(Clone, Debug, specta::Type, PartialEq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum NodeInput {
 	Node(NodeId),
@@ -146,17 +147,7 @@ impl NodeInput {
 	}
 }
 
-impl PartialEq for NodeInput {
-	fn eq(&self, other: &Self) -> bool {
-		match (&self, &other) {
-			(Self::Node(n1), Self::Node(n2)) => n1 == n2,
-			(Self::Value { tagged_value: v1, .. }, Self::Value { tagged_value: v2, .. }) => v1 == v2,
-			_ => core::mem::discriminant(self) == core::mem::discriminant(other),
-		}
-	}
-}
-
-#[derive(Clone, Debug, PartialEq, specta::Type)]
+#[derive(Clone, Debug, PartialEq, specta::Type, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum DocumentNodeImplementation {
 	Network(NodeNetwork),
@@ -191,6 +182,18 @@ pub struct NodeNetwork {
 	pub disabled: Vec<NodeId>,
 	/// In the case where a new node is chosen as output - what was the origional
 	pub previous_output: Option<NodeId>,
+}
+
+#[allow(clippy::derive_hash_xor_eq)]
+impl Hash for NodeNetwork {
+	fn hash<H: Hasher>(&self, state: &mut H) {
+		self.inputs.hash(state);
+		self.output.hash(state);
+		let mut values = self.nodes.iter().collect::<Vec<_>>();
+		values.sort_by_key(|(id, _)| *id);
+		values.hash(state);
+		self.disabled.hash(state);
+	}
 }
 
 impl NodeNetwork {

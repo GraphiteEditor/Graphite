@@ -18,7 +18,7 @@ macro_rules! generic {
 	};
 }
 
-#[derive(Clone, Debug, PartialEq, specta::Type)]
+#[derive(Clone, Debug, PartialEq, specta::Type, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct NodeIdentifier {
 	pub name: std::borrow::Cow<'static, str>,
@@ -41,7 +41,7 @@ impl NodeIdentifier {
 	}
 }
 
-#[derive(Clone, Debug, PartialEq, specta::Type)]
+#[derive(Clone, Debug, PartialEq, specta::Type, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Type {
 	Generic(std::borrow::Cow<'static, str>),

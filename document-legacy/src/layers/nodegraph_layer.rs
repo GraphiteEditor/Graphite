@@ -25,7 +25,18 @@ pub struct NodeGraphFrameLayer {
 	pub image_data: Option<ImageData>,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Deserialize, Serialize, specta::Type)]
+#[allow(clippy::derive_hash_xor_eq)]
+impl core::hash::Hash for NodeGraphFrameLayer {
+	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+		self.mime.hash(state);
+		self.network.hash(state);
+		self.blob_url.hash(state);
+		self.dimensions.to_array().iter().for_each(|x| x.to_bits().hash(state));
+		self.image_data.hash(state);
+	}
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Deserialize, Serialize, specta::Type, Hash)]
 pub struct ImageData {
 	#[serde(serialize_with = "base64_serde::as_base64", deserialize_with = "base64_serde::from_base64")]
 	#[specta(type = String)]

@@ -554,7 +554,7 @@ impl Document {
 	pub fn handle_operation(&mut self, operation: Operation, render_data: &RenderData) -> Result<Option<Vec<DocumentResponse>>, DocumentError> {
 		use DocumentResponse::*;
 
-		operation.pseudo_hash().hash(&mut self.state_identifier);
+		operation.hash(&mut self.state_identifier);
 
 		let responses = match operation {
 			Operation::AddEllipse { path, insert_index, transform, style } => {
