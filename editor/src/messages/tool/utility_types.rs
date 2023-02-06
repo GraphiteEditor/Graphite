@@ -1,6 +1,5 @@
 use super::tool_messages::*;
-use crate::messages::input_mapper::utility_types::input_keyboard::LayoutKeysGroup;
-use crate::messages::input_mapper::utility_types::input_keyboard::MouseMotion;
+use crate::messages::input_mapper::utility_types::input_keyboard::{Key, KeysGroup, LayoutKeysGroup, MouseMotion};
 use crate::messages::input_mapper::utility_types::macros::action_keys;
 use crate::messages::input_mapper::utility_types::misc::ActionKeys;
 use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, PropertyHolder, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
@@ -11,27 +10,90 @@ use crate::messages::layout::utility_types::widgets::label_widgets::{Separator, 
 use crate::messages::prelude::*;
 
 use document_legacy::color::Color;
-use document_legacy::layers::text_layer::FontCache;
+use document_legacy::layers::style::RenderData;
 
 use serde::{Deserialize, Serialize};
 use std::fmt::{self, Debug};
 
-pub type ToolActionHandlerData<'a> = (&'a DocumentMessageHandler, u64, &'a DocumentToolData, &'a InputPreprocessorMessageHandler, &'a FontCache);
+pub type ToolActionHandlerData<'a> = (&'a DocumentMessageHandler, u64, &'a DocumentToolData, &'a InputPreprocessorMessageHandler, &'a RenderData<'a>);
 
 pub trait ToolCommon: for<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> + PropertyHolder + ToolTransition + ToolMetadata {}
 impl<T> ToolCommon for T where T: for<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> + PropertyHolder + ToolTransition + ToolMetadata {}
 
 type Tool = dyn ToolCommon + Send + Sync;
 
+/// The FSM (finite state machine) is a flowchart between different operating states that a specific tool might be in.
+/// It is the central "core" logic area of each tool which is in charge of maintaining the state of the tool and responding to events coming from outside (like user input).
+/// For example, a tool might be `Ready` or `Drawing` depending on if the user is idle or actively drawing with the mouse held down.
+/// The FSM keeps track of what the tool is doing and allows the tool to take action when events are directed at the FSM.
+/// Every tool, which implements this trait, must implement the `transition()` function.
+/// That is where new events are sent, and where the flowchart transition logic occurs to respond to events and end in a new state.
 pub trait Fsm {
+	/// The implementing tool must set this to a struct designed to store the internal values stored in the tool.
+	/// For example, it might be used to store the starting location of a point when a drag began so the displacement distance can be calculated.
 	type ToolData;
+	/// The implementing tool must set this to a struct (or `()` if none) designed to store the values of the tool options set by the user in the Options Bar
+	/// (located above the viewport, below the document's tab).
 	type ToolOptions;
 
+	/// Implementing this mandatory trait function lets a specific tool react accordingly (and potentially change its state or internal variables) upon receiving an event to do something.
+	/// Based on its current state, and what the event is, the FSM (finite state machine) should direct the tool to an appropriate outcome.
+	/// For example, if the tool's FSM is in a `Ready` state and receives a `DragStart` message as its event, it may decide to send some messages,
+	/// update some internal tool variables, and end by transitioning to a `Drawing` state.
 	#[must_use]
 	fn transition(self, message: ToolMessage, tool_data: &mut Self::ToolData, transition_data: ToolActionHandlerData, options: &Self::ToolOptions, messages: &mut VecDeque<Message>) -> Self;
 
+	/// Implementing this trait function lets a specific tool provide a list of hints (user input actions presently available) to draw in the footer bar.
 	fn update_hints(&self, responses: &mut VecDeque<Message>);
+	/// Implementing this trait function lets a specific tool set the current mouse cursor icon.
 	fn update_cursor(&self, responses: &mut VecDeque<Message>);
+
+	/// If this message is a standard tool message, process it and return true. Standard tool messages are those which are common across every tool.
+	fn standard_tool_messages(&self, message: &ToolMessage, messages: &mut VecDeque<Message>) -> bool {
+		// Check for standard hits or cursor events
+		match message {
+			ToolMessage::UpdateHints => {
+				self.update_hints(messages);
+				true
+			}
+			ToolMessage::UpdateCursor => {
+				self.update_cursor(messages);
+				true
+			}
+			_ => false,
+		}
+	}
+
+	/// When an event makes the tool change or do something, it is processed here to perform a step (transition) on the tool's finite state machine (FSM).
+	/// This function is called by the specific tool's message handler when the dispatcher routes a message to the active tool.
+	fn process_event(
+		&mut self,
+		message: ToolMessage,
+		tool_data: &mut Self::ToolData,
+		transition_data: ToolActionHandlerData,
+		options: &Self::ToolOptions,
+		messages: &mut VecDeque<Message>,
+		update_cursor_on_transition: bool,
+	) where
+		Self: PartialEq + Sized + Copy,
+	{
+		// If this message is one of the standard tool messages, process it and exit early
+		if self.standard_tool_messages(&message, messages) {
+			return;
+		}
+
+		// Transition the tool
+		let new_state = self.transition(message, tool_data, transition_data, options, messages);
+
+		// Update state
+		if *self != new_state {
+			*self = new_state;
+			self.update_hints(messages);
+			if update_cursor_on_transition {
+				self.update_cursor(messages);
+			}
+		}
+	}
 }
 
 #[derive(Debug, Clone)]
@@ -225,7 +287,7 @@ pub struct ToolFsmState {
 
 impl Default for ToolFsmState {
 	fn default() -> Self {
-		ToolFsmState {
+		Self {
 			tool_data: ToolData {
 				active_tool_type: ToolType::Select,
 				tools: list_tools_in_groups()
@@ -252,7 +314,7 @@ impl ToolFsmState {
 }
 
 #[repr(usize)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, specta::Type)]
 pub enum ToolType {
 	// General tool group
 	Select,
@@ -431,13 +493,13 @@ pub fn tool_type_to_activate_tool_message(tool_type: ToolType) -> ToolMessageDis
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 pub struct HintData(pub Vec<HintGroup>);
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 pub struct HintGroup(pub Vec<HintInfo>);
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 pub struct HintInfo {
 	/// A `KeysGroup` specifies all the keys pressed simultaneously to perform an action (like "Ctrl C" to copy).
 	/// Usually at most one is given, but less commonly, multiple can be used to describe additional hotkeys not used simultaneously (like the four different arrow keys to nudge a layer).
@@ -453,6 +515,55 @@ pub struct HintInfo {
 	pub label: String,
 	/// Draws a prepended "+" symbol which indicates that this is a refinement upon a previous hint in the group.
 	pub plus: bool,
+}
+
+impl HintInfo {
+	pub fn keys(keys: impl IntoIterator<Item = Key>, label: impl Into<String>) -> Self {
+		let keys: Vec<_> = keys.into_iter().collect();
+		Self {
+			key_groups: vec![KeysGroup(keys).into()],
+			key_groups_mac: None,
+			mouse: None,
+			label: label.into(),
+			plus: false,
+		}
+	}
+
+	pub fn mouse(mouse_motion: MouseMotion, label: impl Into<String>) -> Self {
+		Self {
+			key_groups: vec![],
+			key_groups_mac: None,
+			mouse: Some(mouse_motion),
+			label: label.into(),
+			plus: false,
+		}
+	}
+
+	pub fn arrow_keys(label: impl Into<String>) -> Self {
+		HintInfo {
+			key_groups: vec![
+				KeysGroup(vec![Key::ArrowUp]).into(),
+				KeysGroup(vec![Key::ArrowRight]).into(),
+				KeysGroup(vec![Key::ArrowDown]).into(),
+				KeysGroup(vec![Key::ArrowLeft]).into(),
+			],
+			key_groups_mac: None,
+			mouse: None,
+			label: label.into(),
+			plus: false,
+		}
+	}
+
+	pub fn prepend_plus(mut self) -> Self {
+		self.plus = true;
+		self
+	}
+
+	pub fn add_mac_keys(mut self, keys: impl IntoIterator<Item = Key>) -> Self {
+		let mac_keys: Vec<_> = keys.into_iter().collect();
+		self.key_groups_mac = Some(vec![KeysGroup(mac_keys).into()]);
+		self
+	}
 }
 
 #[cfg(test)]

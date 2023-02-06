@@ -1,6 +1,5 @@
 use dyn_any::{DynAny, StaticType};
-use graphene_core::value::ValueNode;
-pub use graphene_core::{generic, ops /*, structural*/, Node};
+pub use graphene_core::{generic, ops, Node};
 use std::{marker::PhantomData, pin::Pin};
 
 pub struct DynAnyNode<I, O, Node> {

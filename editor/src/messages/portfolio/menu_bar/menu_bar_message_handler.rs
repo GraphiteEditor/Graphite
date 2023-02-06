@@ -10,7 +10,7 @@ pub struct MenuBarMessageHandler {}
 
 impl MessageHandler<MenuBarMessage, ()> for MenuBarMessageHandler {
 	#[remain::check]
-	fn process_message(&mut self, message: MenuBarMessage, _data: (), responses: &mut VecDeque<Message>) {
+	fn process_message(&mut self, message: MenuBarMessage, responses: &mut VecDeque<Message>, _data: ()) {
 		use MenuBarMessage::*;
 
 		#[remain::sorted]

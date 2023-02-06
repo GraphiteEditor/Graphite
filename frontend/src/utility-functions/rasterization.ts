@@ -1,6 +1,6 @@
 import { replaceBlobURLsWithBase64 } from "@/utility-functions/files";
 
-// Rasterize the string of an SVG document at a given width and height and turn it into the blob data of an image file matching the given MIME type
+// Rasterize the string of an SVG document at a given width and height and return the canvas it was drawn onto during the rasterization process
 export async function rasterizeSVGCanvas(svg: string, width: number, height: number, backgroundColor?: string): Promise<HTMLCanvasElement> {
 	// A canvas to render our SVG to in order to get a raster image
 	const canvas = document.createElement("canvas");
@@ -22,6 +22,7 @@ export async function rasterizeSVGCanvas(svg: string, width: number, height: num
 	const svgBlob = new Blob([svgWithBase64Images], { type: "image/svg+xml;charset=utf-8" });
 	const url = URL.createObjectURL(svgBlob);
 
+	// Load the Image from the URL and wait until it's done
 	const image = new Image();
 	image.src = url;
 	await new Promise<void>((resolve) => {
@@ -37,6 +38,7 @@ export async function rasterizeSVGCanvas(svg: string, width: number, height: num
 	return canvas;
 }
 
+// Rasterize the string of an SVG document at a given width and height and turn it into the blob data of an image file matching the given MIME type
 export async function rasterizeSVG(svg: string, width: number, height: number, mime: string, backgroundColor?: string): Promise<Blob> {
 	const canvas = await rasterizeSVGCanvas(svg, width, height, backgroundColor);
 
@@ -50,4 +52,50 @@ export async function rasterizeSVG(svg: string, width: number, height: number, m
 	if (!blob) throw new Error("Converting canvas to blob data failed in rasterizeSVG()");
 
 	return blob;
+}
+
+/// Convert an image source (e.g. PNG document) into pixel data, a width and a height
+export async function extractPixelData(imageData: ImageBitmapSource): Promise<ImageData> {
+	// Special handling to rasterize an SVG file
+	let svgImageData;
+	if (imageData instanceof File && imageData.type === "image/svg+xml") {
+		const svgSource = await imageData.text();
+		const svgElement = new DOMParser().parseFromString(svgSource, "image/svg+xml").querySelector("svg");
+		if (!svgElement) throw new Error("Error reading SVG file");
+
+		let bounds = svgElement.viewBox.baseVal;
+
+		// If the bounds are zero (which will happen if the `viewBox` is not provided), set bounds to the artwork's bounding box
+		if (bounds.width === 0 || bounds.height === 0) {
+			// It's necessary to measure while the element is in the DOM, otherwise the dimensions are zero
+			const toRemove = document.body.insertAdjacentElement("beforeend", svgElement);
+			bounds = svgElement.getBBox();
+			toRemove?.remove();
+		}
+
+		svgImageData = await rasterizeSVGCanvas(svgSource, bounds.width, bounds.height);
+	}
+
+	// Decode the image file binary data
+	const image = await createImageBitmap(svgImageData || imageData);
+
+	// Halve the image size until the editor lag is somewhat usable
+	// TODO: Fix lag so this can be removed
+	const MAX_IMAGE_SIZE = 512;
+	let { width, height } = image;
+	while (width > MAX_IMAGE_SIZE || height > MAX_IMAGE_SIZE) {
+		width /= 2;
+		height /= 2;
+	}
+	width = Math.floor(width);
+	height = Math.floor(height);
+
+	// Render image to canvas
+	const canvas = document.createElement("canvas");
+	canvas.width = width;
+	canvas.height = height;
+	const context = canvas.getContext("2d");
+	if (!context) throw new Error("Could not create canvas context");
+	context.drawImage(image, 0, 0, image.width, image.height, 0, 0, width, height);
+	return context.getImageData(0, 0, width, height);
 }

@@ -10,6 +10,7 @@ extern crate log;
 pub mod generic;
 pub mod ops;
 pub mod structural;
+pub mod uuid;
 pub mod value;
 
 #[cfg(feature = "gpu")]

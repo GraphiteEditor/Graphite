@@ -8,17 +8,17 @@
 
 <h1 align="center">Redefining state-of-the-art graphics editing.</h1>
 
-Graphite is an in-development raster and vector 2D graphics editor that is free and open source. It is designed to be powered by a node graph compositing engine that supercharges your layer stack, providing a completely non-destructive editing experience.
+Graphite is an in-development raster and vector 2D graphics editor that is free and open source. It is powered by a node graph compositing engine that supercharges your layer stack, providing a completely non-destructive editing experience.
 
-Right now, Graphite is a lightweight vector graphics editor [available for alpha testing](https://editor.graphite.rs) in your web browser. The node system is in the prototype stage and will be usable in later 2022, while raster graphics editing and a native desktop application will come next year.
+Graphite is a lightweight vector graphics editor that runs in your browser. Its nascent node-based compositor lets you apply raster effects and co-create amazing art with AI in a non-destructive workflow. Fully-featured raster image editing, and a native desktop application, are current high-level development goals.
 
-Learn more on the [project website.](https://graphite.rs/)
+Launch the [latest alpha version](https://editor.graphite.rs) and learn more on the [project website.](https://graphite.rs/)
 
 ⭐ Please star this GitHub repository to help build momentum. ⭐
 
 ## Discord
 
-If the Graphite project strikes your fancy, [join our Discord community](https://discord.graphite.rs) to chat with the community and development team. You're invited to stop by just to lurk, ask questions, offer suggestions, or get involved in the project. We are seeking collaborators to help design and develop the software and this is where we communicate.
+[Join our Discord community](https://discord.graphite.rs) to chat with the community and development team. Feel free to lurk, ask questions, give suggestions, or get involved in the project. We are always seeking new collaborators to help design and develop the software and this is where we communicate.
 
 ## Building/Contributing
 
@@ -28,17 +28,17 @@ We are also in search of artists to create beautiful sample work in Graphite and
 
 ## Design
 
-The #1 priority for the Graphite software is providing a delightful user experience. Unlike some other open source applications, the UI, UX, and product design is not an afterthought, but a central guiding light in the software development process.
+The #1 priority for the Graphite software is providing a delightful user experience. The UI, UX, and product design is not an afterthought, but is a central guiding light in the software development process.
 
-Below are some mockups demonstrating future goals for the user interface once nodes and raster photo editing is possible.
+Below are some mockups demonstrating future goals for the user interface once nodes and raster photo editing is fully available.
 
 ![Graphite raster UI viewport mockup](https://static.graphite.rs/content/index/gui-mockup-viewport.png)
 
-*Viewport interface mockup showcasing a photo editing project that utilizes Graphite's raster graphics pipeline, one of the upcoming roadmap milestones. Raster editing is not yet supported.*
+_Viewport interface mockup showcasing a photo editing project that utilizes Graphite's raster graphics pipeline, one of the upcoming roadmap milestones. Raster editing is not yet supported._
 
 ![Graphite raster UI node graph mockup](https://static.graphite.rs/content/index/gui-mockup-nodes.png)
 
-*Node graph mockup demonstrating how the layers directly correspond to nodes. Thick vertical (upward) lines represent compositing stacks and horizontal (rightward) links represent data flow connections.*
+_Node graph mockup demonstrating how the layers directly correspond to nodes. Thick vertical (upward) lines represent compositing stacks and horizontal (rightward) links represent data flow connections._
 
 ## Features/Roadmap
 

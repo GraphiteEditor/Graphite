@@ -2,7 +2,7 @@
 	import { getContext, onMount, tick } from "svelte";
 
 	import { textInputCleanup } from "@/utility-functions/keyboard-entry";
-	import { rasterizeSVGCanvas } from "@/utility-functions/rasterization";
+	import { extractPixelData, rasterizeSVGCanvas } from "@/utility-functions/rasterization";
 	import {
 		type MouseCursorIcon,
 		type XY,
@@ -82,10 +82,9 @@
 		Array.from(dataTransfer.items).forEach(async (item) => {
 			const file = item.getAsFile();
 			if (file?.type.startsWith("image")) {
-				const buffer = await file.arrayBuffer();
-				const u8Array = new Uint8Array(buffer);
+				const imageData = await extractPixelData(file);
 
-				editor.instance.pasteImage(file.type, u8Array, e.clientX, e.clientY);
+				editor.instance.pasteImage(new Uint8Array(imageData.data), imageData.width, imageData.height, e.clientX, e.clientY);
 			}
 		});
 	}

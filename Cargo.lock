@@ -3,6 +3,12 @@
 version = 3
 
 [[package]]
+name = "Inflector"
+version = "0.11.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fe438c63458706e03479442743baae6c88256498e6431708f6dfc520a26515d3"
+
+[[package]]
 name = "adler"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -972,6 +978,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fea41bba32d969b513997752735605054bc0dfa92b4c56bf1189f2e174be7a10"
 
 [[package]]
+name = "document-features"
+version = "0.2.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e493c573fce17f00dcab13b6ac057994f3ce17d1af4dc39bfd482b83c6eb6157"
+dependencies = [
+ "litrs",
+]
+
+[[package]]
 name = "dtoa"
 version = "0.4.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1616,6 +1631,7 @@ dependencies = [
  "num-traits",
  "rand_chacha 0.3.1",
  "serde",
+ "specta",
 ]
 
 [[package]]
@@ -1631,6 +1647,7 @@ dependencies = [
  "log",
  "node-macro",
  "serde",
+ "specta",
  "spirv-std",
 ]
 
@@ -1695,6 +1712,7 @@ dependencies = [
  "log",
  "rustybuzz",
  "serde",
+ "specta",
 ]
 
 [[package]]
@@ -1722,6 +1740,7 @@ dependencies = [
  "remain",
  "serde",
  "serde_json",
+ "specta",
  "spin 0.9.4",
  "test-case",
  "thiserror",
@@ -1744,6 +1763,7 @@ version = "0.0.0"
 dependencies = [
  "bezier-rs",
  "graph-craft",
+ "graphene-core",
  "graphite-document-legacy",
  "graphite-editor",
  "js-sys",
@@ -1762,6 +1782,7 @@ version = "0.0.0"
 dependencies = [
  "bezier-rs",
  "graph-craft",
+ "graphene-core",
  "graphite-document-legacy",
  "graphite-editor",
  "js-sys",
@@ -2347,6 +2368,12 @@ checksum = "ecd207c9c713c34f95a097a5b029ac2ce6010530c7b49d7fea24d977dede04f5"
 dependencies = [
  "cc",
 ]
+
+[[package]]
+name = "litrs"
+version = "0.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f9275e0933cf8bb20f008924c0cb07a0692fe54d8064996520bf998de9eb79aa"
 
 [[package]]
 name = "lock_api"
@@ -4082,6 +4109,32 @@ dependencies = [
  "gobject-sys",
  "libc",
  "system-deps 5.0.0",
+]
+
+[[package]]
+name = "specta"
+version = "0.0.6"
+source = "git+https://github.com/oscartbeaumont/rspc?rev=9725ddbfe40183debc055b88c37910eb6f818eae#9725ddbfe40183debc055b88c37910eb6f818eae"
+dependencies = [
+ "document-features",
+ "glam",
+ "once_cell",
+ "paste",
+ "serde",
+ "serde_json",
+ "specta-macros",
+]
+
+[[package]]
+name = "specta-macros"
+version = "0.0.6"
+source = "git+https://github.com/oscartbeaumont/rspc?rev=9725ddbfe40183debc055b88c37910eb6f818eae#9725ddbfe40183debc055b88c37910eb6f818eae"
+dependencies = [
+ "Inflector",
+ "proc-macro2",
+ "quote",
+ "syn",
+ "termcolor",
 ]
 
 [[package]]

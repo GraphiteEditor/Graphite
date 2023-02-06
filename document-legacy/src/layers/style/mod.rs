@@ -21,9 +21,10 @@ fn format_opacity(name: &str, opacity: f32) -> String {
 }
 
 /// Represents different ways of rendering an object
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, specta::Type)]
 pub enum ViewMode {
 	/// Render with normal coloration at the current viewport resolution
+	#[default]
 	Normal,
 	/// Render only the outlines of shapes at the current viewport resolution
 	Outline,
@@ -31,47 +32,36 @@ pub enum ViewMode {
 	Pixels,
 }
 
-impl Default for ViewMode {
-	fn default() -> Self {
-		ViewMode::Normal
-	}
-}
-
 /// Contains metadata for rendering the document as an svg
 #[derive(Debug, Clone, Copy)]
 pub struct RenderData<'a> {
-	pub view_mode: ViewMode,
 	pub font_cache: &'a FontCache,
+	pub view_mode: ViewMode,
 	pub culling_bounds: Option<[DVec2; 2]>,
 }
 
 impl<'a> RenderData<'a> {
-	pub fn new(view_mode: ViewMode, font_cache: &'a FontCache, culling_bounds: Option<[DVec2; 2]>) -> Self {
+	pub fn new(font_cache: &'a FontCache, view_mode: ViewMode, culling_bounds: Option<[DVec2; 2]>) -> Self {
 		Self {
-			view_mode,
 			font_cache,
+			view_mode,
 			culling_bounds,
 		}
 	}
 }
 
-#[derive(PartialEq, Eq, Clone, Copy, Debug, Hash, Serialize, Deserialize)]
+#[derive(Default, PartialEq, Eq, Clone, Copy, Debug, Hash, Serialize, Deserialize, specta::Type)]
 pub enum GradientType {
+	#[default]
 	Linear,
 	Radial,
-}
-
-impl Default for GradientType {
-	fn default() -> Self {
-		GradientType::Linear
-	}
 }
 
 /// A gradient fill.
 ///
 /// Contains the start and end points, along with the colors at varying points along the length.
 #[repr(C)]
-#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize, specta::Type)]
 pub struct Gradient {
 	pub start: DVec2,
 	pub end: DVec2,
@@ -183,17 +173,12 @@ impl Gradient {
 ///
 /// Can be None, a solid [Color], a linear [Gradient], a radial [Gradient] or potentially some sort of image or pattern in the future
 #[repr(C)]
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
 pub enum Fill {
+	#[default]
 	None,
 	Solid(Color),
 	Gradient(Gradient),
-}
-
-impl Default for Fill {
-	fn default() -> Self {
-		Self::None
-	}
 }
 
 impl Fill {
@@ -241,7 +226,7 @@ impl Fill {
 
 /// The stroke (outline) style of an SVG element.
 #[repr(C)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 pub enum LineCap {
 	Butt,
 	Round,
@@ -259,7 +244,7 @@ impl Display for LineCap {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 pub enum LineJoin {
 	Miter,
 	Bevel,
@@ -277,7 +262,7 @@ impl Display for LineJoin {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
 pub struct Stroke {
 	/// Stroke color
 	color: Option<Color>,
@@ -409,7 +394,7 @@ impl Default for Stroke {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize, specta::Type)]
 pub struct PathStyle {
 	stroke: Option<Stroke>,
 	fill: Fill,

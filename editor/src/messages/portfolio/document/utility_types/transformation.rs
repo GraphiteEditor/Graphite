@@ -2,7 +2,7 @@ use crate::consts::{ROTATE_SNAP_ANGLE, SCALE_SNAP_INTERVAL};
 use crate::messages::prelude::*;
 
 use document_legacy::document::Document;
-use document_legacy::layers::text_layer::FontCache;
+use document_legacy::layers::style::RenderData;
 use document_legacy::LayerId;
 use document_legacy::Operation as DocumentOperation;
 
@@ -11,17 +11,12 @@ use std::collections::{HashMap, VecDeque};
 
 pub type OriginalTransforms = HashMap<Vec<LayerId>, DAffine2>;
 
-#[derive(Debug, Clone, PartialEq, Eq, Copy)]
+#[derive(Default, Debug, Clone, PartialEq, Eq, Copy)]
 pub enum Axis {
+	#[default]
 	Both,
 	X,
 	Y,
-}
-
-impl Default for Axis {
-	fn default() -> Self {
-		Self::Both
-	}
 }
 
 impl Axis {
@@ -137,18 +132,13 @@ impl Scale {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Copy)]
+#[derive(Default, Debug, Clone, PartialEq, Copy)]
 pub enum TransformOperation {
+	#[default]
 	None,
 	Grabbing(Translation),
 	Rotating(Rotation),
 	Scaling(Scale),
-}
-
-impl Default for TransformOperation {
-	fn default() -> Self {
-		TransformOperation::None
-	}
 }
 
 impl TransformOperation {
@@ -216,20 +206,20 @@ impl<'a> Selected<'a> {
 		}
 	}
 
-	pub fn mean_average_of_pivots(&mut self, font_cache: &FontCache) -> DVec2 {
-		let xy_summation = self.selected.iter().filter_map(|path| self.document.pivot(path, font_cache)).reduce(|a, b| a + b).unwrap_or_default();
+	pub fn mean_average_of_pivots(&mut self, render_data: &RenderData) -> DVec2 {
+		let xy_summation = self.selected.iter().filter_map(|path| self.document.pivot(path, render_data)).reduce(|a, b| a + b).unwrap_or_default();
 
 		xy_summation / self.selected.len() as f64
 	}
 
-	pub fn center_of_aabb(&mut self, font_cache: &FontCache) -> DVec2 {
+	pub fn center_of_aabb(&mut self, render_data: &RenderData) -> DVec2 {
 		let [min, max] = self
 			.selected
 			.iter()
 			.filter_map(|path| {
 				let multiplied_transform = self.document.multiply_transforms(path).unwrap();
 
-				self.document.layer(path).unwrap().aabb_for_transform(multiplied_transform, font_cache)
+				self.document.layer(path).unwrap().aabb_for_transform(multiplied_transform, render_data)
 			})
 			.reduce(|a, b| [a[0].min(b[0]), a[1].max(b[1])])
 			.unwrap_or_default();

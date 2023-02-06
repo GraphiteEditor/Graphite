@@ -47,8 +47,8 @@ fn bilt_subpath(base_image: Image, path_data: Subpath) -> Image {
 	let composition = Composition::new();
 	let mut renderer = cpu::Renderer::new();
 	let mut path_builder = PathBuilder::new();
-	for path_segement in path_data.bezier_iter() {
-		let points = path_segement.internal.get_points().collect::<Vec<_>>();
+	for path_segment in path_data.bezier_iter() {
+		let points = path_segment.internal.get_points().collect::<Vec<_>>();
 		match points.len() {
 			2 => path_builder.line_to(points[1].into()),
 			3 => path_builder.quad_to(points[1].into(), points[2].into()),

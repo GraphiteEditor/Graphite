@@ -9,7 +9,7 @@ pub use std::sync::Arc;
 pub use crate::imaginate_input::{ImaginateMaskStartingFill, ImaginateSamplingMethod, ImaginateStatus};
 
 /// A type that is known, allowing serialization (serde::Deserialize is not object safe)
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, specta::Type)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum TaggedValue {
 	None,
