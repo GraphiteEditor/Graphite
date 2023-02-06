@@ -259,6 +259,7 @@ impl Fsm for PathToolFsmState {
 					for layer_path in document.all_layers() {
 						tool_data.overlay_renderer.clear_subpath_overlays(&document.document_legacy, layer_path.to_vec(), responses);
 					}
+					tool_data.shape_editor.reset_previous_opposing_handle_length(responses);
 					PathToolFsmState::Ready
 				}
 				(_, PathToolMessage::InsertPoint) => {
@@ -275,6 +276,7 @@ impl Fsm for PathToolFsmState {
 					for layer_path in document.all_layers() {
 						tool_data.overlay_renderer.clear_subpath_overlays(&document.document_legacy, layer_path.to_vec(), responses);
 					}
+					tool_data.shape_editor.reset_previous_opposing_handle_length(responses);
 					PathToolFsmState::Ready
 				}
 				(
