@@ -425,12 +425,15 @@ export default defineComponent({
 	},
 	methods: {
 		resolveLink(link: FrontendNodeLink, containerBounds: HTMLDivElement): { nodePrimaryOutput: HTMLDivElement | undefined; nodePrimaryInput: HTMLDivElement | undefined } {
-			const connectorIndex = Number(link.linkEndInputIndex);
+			const outputIndex = Number(link.linkStartOutputIndex);
+			const inputIndex = Number(link.linkEndInputIndex);
 
-			const nodePrimaryOutput = (containerBounds.querySelector(`[data-node="${String(link.linkStart)}"] [data-port="output"]`) || undefined) as HTMLDivElement | undefined;
-
+			const nodeOutputConnectors = containerBounds.querySelectorAll(`[data-node="${String(link.linkStart)}"] [data-port="output"]`) || undefined;
 			const nodeInputConnectors = containerBounds.querySelectorAll(`[data-node="${String(link.linkEnd)}"] [data-port="input"]`) || undefined;
-			const nodePrimaryInput = nodeInputConnectors?.[connectorIndex] as HTMLDivElement | undefined;
+
+			const nodePrimaryOutput = nodeOutputConnectors?.[outputIndex] as HTMLDivElement | undefined;
+			const nodePrimaryInput = nodeInputConnectors?.[inputIndex] as HTMLDivElement | undefined;
+
 			return { nodePrimaryOutput, nodePrimaryInput };
 		},
 		async refreshLinks(): Promise<void> {
@@ -593,8 +596,8 @@ export default defineComponent({
 						const inputIndexInt = BigInt(inputIndex);
 						const links = this.nodeGraph.state.links;
 						const linkIndex = links.findIndex((value) => value.linkEnd === nodeIdInt && value.linkEndInputIndex === inputIndexInt);
-						const queryString = `[data-node="${String(links[linkIndex].linkStart)}"] [data-port="output"]`;
-						this.linkInProgressFromConnector = (containerBounds.querySelector(queryString) || undefined) as HTMLDivElement | undefined;
+						const nodeOutputConnectors = containerBounds.querySelectorAll(`[data-node="${String(links[linkIndex].linkStart)}"] [data-port="output"]`) || undefined;
+						this.linkInProgressFromConnector = nodeOutputConnectors?.[Number(links[linkIndex].linkEndInputIndex)] as HTMLDivElement | undefined;
 						const nodeInputConnectors = containerBounds.querySelectorAll(`[data-node="${String(links[linkIndex].linkEnd)}"] [data-port="input"]`) || undefined;
 						this.linkInProgressToConnector = nodeInputConnectors?.[Number(links[linkIndex].linkEndInputIndex)] as HTMLDivElement | undefined;
 						this.disconnecting = { nodeId: nodeIdInt, inputIndex, linkIndex };
@@ -688,13 +691,16 @@ export default defineComponent({
 
 				if (outputNode && inputNode && outputConnectedNodeID && inputConnectedNodeID) {
 					const inputNodeInPorts = Array.from(inputNode.querySelectorAll(`[data-port="input"]`));
+					const outputNodeInPorts = Array.from(outputNode.querySelectorAll(`[data-port="output"]`));
+
 					const inputNodeConnectionIndexSearch = inputNodeInPorts.indexOf(this.linkInProgressToConnector);
+					const outputNodeConnectionIndexSearch = outputNodeInPorts.indexOf(this.linkInProgressFromConnector);
+
 					const inputNodeConnectionIndex = inputNodeConnectionIndexSearch > -1 ? inputNodeConnectionIndexSearch : undefined;
+					const outputNodeConnectionIndex = outputNodeConnectionIndexSearch > -1 ? outputNodeConnectionIndexSearch : undefined;
 
-					if (inputNodeConnectionIndex !== undefined) {
-						// const oneBasedIndex = inputNodeConnectionIndex + 1;
-
-						this.editor.instance.connectNodesByLink(BigInt(outputConnectedNodeID), BigInt(inputConnectedNodeID), inputNodeConnectionIndex);
+					if (inputNodeConnectionIndex !== undefined && outputNodeConnectionIndex !== undefined) {
+						this.editor.instance.connectNodesByLink(BigInt(outputConnectedNodeID), outputNodeConnectionIndex, BigInt(inputConnectedNodeID), inputNodeConnectionIndex);
 					}
 				}
 			} else if (this.draggingNodes) {
@@ -742,8 +748,8 @@ export default defineComponent({
 						});
 						// If the node has been dragged on top of the link then connect it into the middle.
 						if (link) {
-							this.editor.instance.connectNodesByLink(link.linkStart, selectedNodeId, 0);
-							this.editor.instance.connectNodesByLink(selectedNodeId, link.linkEnd, Number(link.linkEndInputIndex));
+							this.editor.instance.connectNodesByLink(link.linkStart, 0, selectedNodeId, 0);
+							this.editor.instance.connectNodesByLink(selectedNodeId, 0, link.linkEnd, Number(link.linkEndInputIndex));
 							this.editor.instance.shiftNode(selectedNodeId);
 						}
 					}

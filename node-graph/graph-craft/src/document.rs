@@ -293,6 +293,9 @@ impl NodeNetwork {
 			let mut new_node = origional_node.clone();
 			// Update the required outputs from a nested network to be just the relevant output
 			if let DocumentNodeImplementation::Network(network) = &mut new_node.implementation {
+				if network.outputs.is_empty() {
+					continue;
+				}
 				network.outputs = vec![network.outputs[output_index]];
 			}
 			self.nodes.insert(new_node_id, new_node);
@@ -301,6 +304,9 @@ impl NodeNetwork {
 		// Ensure all nodes only have one output
 		for node in self.nodes.values_mut() {
 			if let DocumentNodeImplementation::Network(network) = &mut node.implementation {
+				if network.outputs.is_empty() {
+					continue;
+				}
 				network.outputs = vec![network.outputs[0]];
 			}
 		}
@@ -319,7 +325,7 @@ impl NodeNetwork {
 			if let DocumentNodeImplementation::Network(network) = &mut document_node.implementation {
 				// Remove inputs to the parent node if they have been removed from the child
 				let mut retain_inputs = network.remove_dead_nodes().into_iter();
-				document_node.inputs.retain(|_| retain_inputs.next().unwrap())
+				document_node.inputs.retain(|_| retain_inputs.next().unwrap_or(true))
 			}
 			// Visit all nodes that this node references
 			stack.extend(

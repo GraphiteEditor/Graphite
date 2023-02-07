@@ -105,6 +105,8 @@ export class FrontendNode {
 export class FrontendNodeLink {
 	readonly linkStart!: bigint;
 
+	readonly linkStartOutputIndex!: bigint;
+
 	readonly linkEnd!: bigint;
 
 	readonly linkEndInputIndex!: bigint;
