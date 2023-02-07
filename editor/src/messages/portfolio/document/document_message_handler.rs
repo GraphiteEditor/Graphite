@@ -551,14 +551,45 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 					.into(),
 				);
 			}
-			NudgeSelectedLayers { delta_x, delta_y } => {
+			NudgeSelectedLayers {
+				delta_x,
+				delta_y,
+				resize,
+				resize_opposite_corner,
+			} => {
 				self.backup(responses);
+
+				let opposite_corner = ipp.keyboard.key(resize_opposite_corner);
+				let sign = if opposite_corner { -1. } else { 1. };
+
 				for path in self.selected_layers().map(|path| path.to_vec()) {
-					let operation = DocumentOperation::TransformLayerInViewport {
-						path,
-						transform: DAffine2::from_translation((delta_x, delta_y).into()).to_cols_array(),
+					// Nudge translation
+					let transform = if !ipp.keyboard.key(resize) {
+						Some(DAffine2::from_translation((delta_x, delta_y).into()).to_cols_array())
+					}
+					// Nudge resize
+					else {
+						self.document_legacy
+							.viewport_bounding_box(&path, &render_data)
+							.ok()
+							.flatten()
+							.map(|[existing_top_left, existing_bottom_right]| {
+								let width = existing_bottom_right.x - existing_top_left.x;
+								let height = existing_bottom_right.y - existing_top_left.y;
+
+								let new_width = (width + delta_x * sign).max(1.);
+								let new_height = (height + delta_y * sign).max(1.);
+
+								let offset = DAffine2::from_translation(if opposite_corner { -existing_bottom_right } else { -existing_top_left });
+								let scale = DAffine2::from_scale((new_width / width, new_height / height).into());
+
+								(offset.inverse() * scale * offset).to_cols_array()
+							})
 					};
-					responses.push_back(operation.into());
+
+					if let Some(transform) = transform {
+						responses.push_back(DocumentOperation::TransformLayerInViewport { path, transform }.into());
+					}
 				}
 				responses.push_back(BroadcastEvent::DocumentIsDirty.into());
 			}
