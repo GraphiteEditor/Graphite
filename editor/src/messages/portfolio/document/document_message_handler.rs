@@ -599,8 +599,8 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				responses.push_back(DocumentMessage::StartTransaction.into());
 
 				let path = vec![generate_uuid()];
-				let image_node_id = 2;
-				let mut network = graph_craft::document::NodeNetwork::new_network(32, image_node_id);
+				let image_node_id = 100;
+				let mut network = crate::messages::portfolio::document::node_graph::new_image_network(32, image_node_id);
 
 				let Some(image_node_type) = crate::messages::portfolio::document::node_graph::resolve_document_node_type("Image") else {
 					warn!("Image node should be in registry");
@@ -609,12 +609,10 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 
 				network.nodes.insert(
 					image_node_id,
-					graph_craft::document::DocumentNode {
-						name: image_node_type.name.to_string(),
-						inputs: vec![graph_craft::document::NodeInput::value(graph_craft::document::value::TaggedValue::Image(image), false)],
-						implementation: image_node_type.generate_implementation(),
-						metadata: graph_craft::document::DocumentNodeMetadata { position: (20, 4).into() },
-					},
+					image_node_type.to_document_node(
+						[graph_craft::document::NodeInput::value(graph_craft::document::value::TaggedValue::Image(image), false)],
+						graph_craft::document::DocumentNodeMetadata::position((20, 4)),
+					),
 				);
 
 				responses.push_back(

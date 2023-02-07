@@ -38,6 +38,12 @@ pub struct DocumentNodeMetadata {
 	pub position: IVec2,
 }
 
+impl DocumentNodeMetadata {
+	pub fn position(position: impl Into<IVec2>) -> Self {
+		Self { position: position.into() }
+	}
+}
+
 #[derive(Clone, Debug, PartialEq, specta::Type)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct DocumentNode {

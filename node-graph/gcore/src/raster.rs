@@ -285,13 +285,14 @@ fn dimensions_node(input: ImageSlice<'input>) -> (u32, u32) {
 }
 
 #[cfg(feature = "alloc")]
-pub use image::{CollectNode, Image, ImageRefNode, MapImageSliceNode};
+pub use image::{CollectNode, Image, ImageFrame, ImageRefNode, MapImageSliceNode};
 #[cfg(feature = "alloc")]
 mod image {
 	use super::{Color, ImageSlice};
 	use crate::Node;
 	use alloc::vec::Vec;
 	use dyn_any::{DynAny, StaticType};
+	use glam::DAffine2;
 
 	#[derive(Clone, Debug, PartialEq, DynAny, Default, specta::Type, Hash)]
 	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -362,6 +363,10 @@ mod image {
 			height: input.1,
 			data,
 		}
+	}
+	pub struct ImageFrame {
+		pub image: Image,
+		pub transform: DAffine2,
 	}
 }
 

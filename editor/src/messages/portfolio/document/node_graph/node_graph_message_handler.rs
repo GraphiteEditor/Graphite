@@ -452,12 +452,10 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &mut dyn Iterator<Item = &
 
 				responses.push_back(DocumentMessage::StartTransaction.into());
 
-				let document_node = DocumentNode {
-					name: node_type.clone(),
-					inputs: document_node_type.inputs.iter().map(|input| input.default.clone()).collect(),
-					implementation: document_node_type.generate_implementation(),
-					metadata: graph_craft::document::DocumentNodeMetadata { position: (x, y).into() },
-				};
+				let document_node = document_node_type.to_document_node(
+					document_node_type.inputs.iter().map(|input| input.default.clone()),
+					graph_craft::document::DocumentNodeMetadata::position((x, y)),
+				);
 				responses.push_back(NodeGraphMessage::InsertNode { node_id, document_node }.into());
 
 				responses.push_back(NodeGraphMessage::SendGraph { should_rerender: false }.into());
