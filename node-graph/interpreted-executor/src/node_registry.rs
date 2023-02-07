@@ -36,6 +36,7 @@ static NODE_REGISTRY: &[(NodeIdentifier, NodeConstructor)] = &[
 	register_node!(graphene_core::structural::ConsNode<_, _>, input: u32, params: [&u32]),
 	register_node!(graphene_core::structural::ConsNode<_, _>, input: &u32, params: [u32]),
 	register_node!(graphene_core::structural::ConsNode<_, _>, input: &u32, params: [&u32]),
+	register_node!(graphene_core::ops::AddNode, input: (u32, u32), params: []),
 	register_node!(graphene_core::ops::AddParameterNode<_>, input: u32, params: [u32]),
 	register_node!(graphene_core::ops::AddParameterNode<_>, input: &u32, params: [u32]),
 	register_node!(graphene_core::ops::AddParameterNode<_>, input: u32, params: [&u32]),
