@@ -7,11 +7,6 @@ extern crate alloc;
 #[cfg(feature = "log")]
 extern crate log;
 
-#[cfg(feature = "async")]
-use alloc::boxed::Box;
-#[cfg(feature = "async")]
-use async_trait::async_trait;
-
 pub mod generic;
 pub mod ops;
 pub mod structural;
@@ -26,100 +21,32 @@ pub mod raster;
 #[cfg(feature = "alloc")]
 pub mod vector;
 
-pub trait Node<T> {
-	type Output;
-
-	fn eval(self, input: T) -> Self::Output;
+// pub trait Node: for<'n> NodeIO<'n> {
+pub trait Node<'i, Input: 'i>: 'i {
+	type Output: 'i;
+	fn eval<'s: 'i>(&'s self, input: Input) -> Self::Output;
 }
 
-trait Input<I> {
-	unsafe fn input(&self, input: I);
-}
+/*impl<'i, I: 'i, O: 'i> Node<'i, I> for &'i dyn for<'n> Node<'n, I, Output = O> {
+	type Output = O;
 
-pub trait RefNode<T> {
-	type Output;
-
-	fn eval_ref(&self, input: T) -> Self::Output;
-}
-
-impl<'n, N: 'n, I> RefNode<I> for &'n N
-where
-	&'n N: Node<I>,
-	Self: 'n,
-{
-	type Output = <&'n N as Node<I>>::Output;
-	fn eval_ref(&self, input: I) -> Self::Output {
-		self.eval(input)
-	}
-}
-
-pub trait AsRefNode<'n, T>
-where
-	&'n Self: Node<T>,
-	Self: 'n,
-{
-	type Output;
-	fn eval_box(&'n self, input: T) -> <Self>::Output;
-}
-
-impl<'n, N: 'n, I> AsRefNode<'n, I> for N
-where
-	&'n N: Node<I>,
-	N: Node<I>,
-	Self: 'n,
-{
-	type Output = <&'n N as Node<I>>::Output;
-	fn eval_box(&'n self, input: I) -> <Self>::Output {
-		self.eval(input)
-	}
-}
-
-impl<'n, T> Node<T> for &'n (dyn AsRefNode<'n, T, Output = T> + 'n) {
-	type Output = T;
-	fn eval(self, input: T) -> Self::Output {
-		self.eval_box(input)
-	}
-}
-
-#[cfg(feature = "async")]
-#[async_trait]
-pub trait AsyncNode<T> {
-	type Output;
-
-	async fn eval_async(self, input: T) -> Self::Output;
-}
-
-/*#[cfg(feature = "async")]
-#[async_trait]
-impl<'n, N: Node<T> + Send + Sync + 'n, T: Send + 'n> AsyncNode<T> for N {
-	type Output = N::Output;
-
-	async fn eval_async(self, input: T) -> Self::Output {
-		Node::eval(self, input)
+	fn eval<'s: 'i>(&'s self, input: I) -> Self::Output {
+		(**self).eval(input)
 	}
 }*/
+impl<'i, 'n: 'i, I: 'i, O: 'i> Node<'i, I> for &'n dyn for<'a> Node<'a, I, Output = O> {
+	type Output = O;
 
-pub trait Cache {
-	fn clear(&mut self);
-}
-
-#[cfg(feature = "async")]
-impl<N, I> Node<I> for Box<N>
-where
-	N: Node<I>,
-{
-	type Output = <N as Node<I>>::Output;
-	fn eval(self, input: I) -> Self::Output {
-		(*self).eval(input)
+	fn eval<'s: 'i>(&'s self, input: I) -> Self::Output {
+		(**self).eval(input)
 	}
 }
-#[cfg(feature = "async")]
-impl<'n, N, I> Node<I> for &'n Box<N>
-where
-	&'n N: Node<I>,
-{
-	type Output = <&'n N as Node<I>>::Output;
-	fn eval(self, input: I) -> Self::Output {
-		self.as_ref().eval(input)
+use core::pin::Pin;
+#[cfg(feature = "alloc")]
+impl<'i, I: 'i, O: 'i> Node<'i, I> for Pin<Box<dyn for<'a> Node<'a, I, Output = O> + 'i>> {
+	type Output = O;
+
+	fn eval<'s: 'i>(&'s self, input: I) -> Self::Output {
+		(**self).eval(input)
 	}
 }

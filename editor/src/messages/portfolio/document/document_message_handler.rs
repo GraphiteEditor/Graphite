@@ -284,7 +284,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 			}
 			ClearLayerTree => {
 				// Send an empty layer tree
-				let data_buffer: RawBuffer = Self::default().serialize_root().into();
+				let data_buffer: RawBuffer = Self::default().serialize_root().as_slice().into();
 				responses.push_back(FrontendMessage::UpdateDocumentLayerTreeStructure { data_buffer }.into());
 
 				// Clear the options bar
@@ -360,7 +360,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 			DocumentHistoryBackward => self.undo(responses).unwrap_or_else(|e| warn!("{}", e)),
 			DocumentHistoryForward => self.redo(responses).unwrap_or_else(|e| warn!("{}", e)),
 			DocumentStructureChanged => {
-				let data_buffer: RawBuffer = self.serialize_root().into();
+				let data_buffer: RawBuffer = self.serialize_root().as_slice().into();
 				responses.push_back(FrontendMessage::UpdateDocumentLayerTreeStructure { data_buffer }.into())
 			}
 			DuplicateSelectedLayers => {

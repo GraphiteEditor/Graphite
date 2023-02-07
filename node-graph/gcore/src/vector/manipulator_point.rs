@@ -1,3 +1,5 @@
+use core::hash::Hash;
+
 use super::consts::ManipulatorType;
 use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};
@@ -23,6 +25,16 @@ impl Default for ManipulatorPoint {
 			manipulator_type: ManipulatorType::Anchor,
 			editor_state: ManipulatorPointEditorState::default(),
 		}
+	}
+}
+
+#[allow(clippy::derive_hash_xor_eq)]
+impl Hash for ManipulatorPoint {
+	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+		self.position.to_array().iter().for_each(|x| x.to_bits().hash(state));
+		self.manipulator_type.hash(state);
+
+		self.editor_state.hash(state);
 	}
 }
 
@@ -60,7 +72,7 @@ impl ManipulatorPoint {
 	}
 }
 
-#[derive(PartialEq, Eq, Clone, Debug, specta::Type)]
+#[derive(PartialEq, Eq, Clone, Debug, specta::Type, Hash)]
 pub struct ManipulatorPointEditorState {
 	/// Whether or not this manipulator point can be selected.
 	pub can_be_selected: bool,
