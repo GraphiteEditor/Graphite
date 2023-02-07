@@ -39,7 +39,7 @@ impl FrontendGraphDataType {
 	pub const fn with_tagged_value(value: &TaggedValue) -> Self {
 		match value {
 			TaggedValue::String(_) => Self::Text,
-			TaggedValue::F32(_) | TaggedValue::F64(_) | TaggedValue::U32(_) => Self::Number,
+			TaggedValue::F32(_) | TaggedValue::F64(_) | TaggedValue::U32(_) | TaggedValue::DAffine2(_) => Self::Number,
 			TaggedValue::Bool(_) => Self::Boolean,
 			TaggedValue::DVec2(_) => Self::Vector,
 			TaggedValue::Image(_) => Self::Raster,
