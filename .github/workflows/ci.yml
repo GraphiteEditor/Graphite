@@ -13,10 +13,6 @@ env:
 jobs:
   build:
     runs-on: self-hosted
-    env:
-      RUSTC_WRAPPER: /usr/bin/sccache
-      CARGO_INCREMENTAL: 0
-      SCCACHE_DIR: /var/lib/github-actions/.cache
 
     steps:
     - uses: actions/checkout@v2
@@ -36,6 +32,11 @@ jobs:
         rustc --version
         rustup update stable
         rustc --version
+        
+    - name: Configure sccache
+      uses: visvirial/sccache-action@v1.0.1
+      with:
+        cache-key: sccache-ubuntu-latest
 
     - name: 🌐 Build Graphite web code
       env:
@@ -43,7 +44,7 @@ jobs:
         SKIP_CARGO_ABOUT: true
       run: |
         cd frontend
-        npm run build
+        mold -run npm run build
 
     - name: 👕 Lint Graphite web formatting
       env:
