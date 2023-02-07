@@ -685,6 +685,8 @@ impl PortfolioMessageHandler {
 	/// Execute the network by flattening it and creating a borrow stack. Casts the output to the generic `T`.
 	fn execute_network<T: dyn_any::StaticType>(executor: &mut DynamicExecutor, mut network: NodeNetwork, image: Image) -> Result<T, String> {
 		network.duplicate_outputs(&mut generate_uuid);
+		network.remove_dead_nodes();
+
 		// We assume only one output
 		assert_eq!(network.outputs.len(), 1, "Graph with multiple outputs not yet handled");
 		let c = Compiler {};

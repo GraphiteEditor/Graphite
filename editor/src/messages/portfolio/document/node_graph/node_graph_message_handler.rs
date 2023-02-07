@@ -77,8 +77,8 @@ pub struct FrontendNode {
 pub struct FrontendNodeLink {
 	#[serde(rename = "linkStart")]
 	pub link_start: u64,
-	#[serde(rename = "linkStartIndex")]
-	pub link_start_index: usize,
+	#[serde(rename = "linkStartOutputIndex")]
+	pub link_start_output_index: usize,
 	#[serde(rename = "linkEnd")]
 	pub link_end: u64,
 	#[serde(rename = "linkEndInputIndex")]
@@ -274,7 +274,7 @@ impl NodeGraphMessageHandler {
 				{
 					Some(FrontendNodeLink {
 						link_start,
-						link_start_index,
+						link_start_output_index: link_start_index,
 						link_end,
 						link_end_input_index: link_end_input_index as u64,
 					})
@@ -412,6 +412,7 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &mut dyn Iterator<Item = &
 			}
 			NodeGraphMessage::ConnectNodesByLink {
 				output_node,
+				output_node_connector_index,
 				input_node,
 				input_node_connector_index,
 			} => {
@@ -432,7 +433,7 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &mut dyn Iterator<Item = &
 
 				responses.push_back(DocumentMessage::StartTransaction.into());
 
-				let input = NodeInput::node(output_node, 0);
+				let input = NodeInput::node(output_node, output_node_connector_index);
 				responses.push_back(NodeGraphMessage::SetNodeInput { node_id, input_index, input }.into());
 
 				let should_rerender = network.connected_to_output(node_id);
