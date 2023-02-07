@@ -141,7 +141,7 @@ fn document_node_types() -> Vec<DocumentNodeType> {
 		}),
 		inputs: INPUT_MULTIPLE_INPUTS,
 		outputs: &[FrontendGraphDataType::Raster, FrontendGraphDataType::Number],
-		properties: node_properties::no_properties,
+		properties: node_properties::input_properties,
 	};
 	vec.push(input_multiple);
 	vec.push(blur);
@@ -184,14 +184,6 @@ static STATIC_NODES: &[DocumentNodeType] = &[
 			default: NodeInput::Network,
 		}],
 		outputs: &[FrontendGraphDataType::Raster],
-		properties: node_properties::input_properties,
-	},
-	DocumentNodeType {
-		name: "Input Multiple",
-		category: "Ignore",
-		identifier: NodeImplementation::proto("graphene_core::ops::IdNode", &[concrete!("Any<'_>")]),
-		inputs: &[],
-		outputs: &[FrontendGraphDataType::Raster, FrontendGraphDataType::General],
 		properties: node_properties::input_properties,
 	},
 	DocumentNodeType {

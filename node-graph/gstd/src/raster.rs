@@ -118,6 +118,7 @@ fn imaginate(image: Image, cached: Option<std::sync::Arc<graphene_core::raster::
 	cached.map(|mut x| std::sync::Arc::make_mut(&mut x).clone()).unwrap_or(image)
 }
 
+#[derive(Debug, Clone, Copy)]
 pub struct ImageFrameNode<Transform> {
 	transform: Transform,
 }

@@ -364,6 +364,8 @@ mod image {
 			data,
 		}
 	}
+
+	#[derive(Clone, Debug, PartialEq, DynAny, Default)]
 	pub struct ImageFrame {
 		pub image: Image,
 		pub transform: DAffine2,
