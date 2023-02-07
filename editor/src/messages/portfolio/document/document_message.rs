@@ -1,4 +1,5 @@
 use crate::messages::frontend::utility_types::{ExportBounds, FileType};
+use crate::messages::input_mapper::utility_types::input_keyboard::Key;
 use crate::messages::portfolio::document::utility_types::layer_panel::LayerMetadata;
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis};
 use crate::messages::prelude::*;
@@ -114,6 +115,8 @@ pub enum DocumentMessage {
 	NudgeSelectedLayers {
 		delta_x: f64,
 		delta_y: f64,
+		resize: Key,
+		resize_opposite_corner: Key,
 	},
 	PasteImage {
 		image: Image,
