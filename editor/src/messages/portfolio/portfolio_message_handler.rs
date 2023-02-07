@@ -21,9 +21,9 @@ use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeOutput};
 use graph_craft::document::{NodeInput, NodeNetwork};
 use graph_craft::executor::Compiler;
-use graphene_core::raster::Image;
+use graphene_core::raster::{Image, ImageFrame};
 
-use glam::DVec2;
+use glam::{DAffine2, DVec2};
 use interpreted_executor::executor::DynamicExecutor;
 use std::borrow::Cow;
 
@@ -682,8 +682,17 @@ impl PortfolioMessageHandler {
 		self.document_ids.iter().position(|id| id == &document_id).expect("Active document is missing from document ids")
 	}
 
+	/// Sets the transform property on the input node
+	fn set_input_transform(network: &mut NodeNetwork, transform: DAffine2) {
+		let Some(input_node) = network.nodes.get_mut(&network.inputs[0]) else {
+			return;
+		};
+		input_node.inputs[1] = NodeInput::value(TaggedValue::DAffine2(transform), false);
+	}
+
 	/// Execute the network by flattening it and creating a borrow stack. Casts the output to the generic `T`.
-	fn execute_network<T: dyn_any::StaticType>(executor: &mut DynamicExecutor, mut network: NodeNetwork, image: Image) -> Result<T, String> {
+	fn execute_network<T: dyn_any::StaticType>(executor: &mut DynamicExecutor, mut network: NodeNetwork, image_frame: ImageFrame) -> Result<T, String> {
+		Self::set_input_transform(&mut network, image_frame.transform);
 		network.duplicate_outputs(&mut generate_uuid);
 		network.remove_dead_nodes();
 
@@ -698,13 +707,19 @@ impl PortfolioMessageHandler {
 		use dyn_any::IntoDynAny;
 		use graph_craft::executor::Executor;
 
-		let boxed = executor.execute(image.into_dyn()).map_err(|e| e.to_string())?;
+		let boxed = executor.execute(image_frame.image.into_dyn()).map_err(|e| e.to_string())?;
 
 		dyn_any::downcast::<T>(boxed).map(|v| *v)
 	}
 
 	/// Computes an input for a node in the graph
-	fn compute_input<T: dyn_any::StaticType>(executor: &mut DynamicExecutor, old_network: &NodeNetwork, node_path: &[NodeId], mut input_index: usize, image: Cow<Image>) -> Result<T, String> {
+	fn compute_input<T: dyn_any::StaticType>(
+		executor: &mut DynamicExecutor,
+		old_network: &NodeNetwork,
+		node_path: &[NodeId],
+		mut input_index: usize,
+		image_frame: Cow<ImageFrame>,
+	) -> Result<T, String> {
 		let mut network = old_network.clone();
 		// Adjust the output of the graph so we find the relevant output
 		'outer: for end in (0..node_path.len()).rev() {
@@ -739,7 +754,7 @@ impl PortfolioMessageHandler {
 			}
 		}
 
-		Self::execute_network(executor, network, image.into_owned())
+		Self::execute_network(executor, network, image_frame.into_owned())
 	}
 
 	/// Encodes an image into a format using the image crate
@@ -781,6 +796,11 @@ impl PortfolioMessageHandler {
 		// Get the node graph layer
 		let document = self.documents.get_mut(&document_id).ok_or_else(|| "Invalid document".to_string())?;
 		let layer = document.document_legacy.layer(&layer_path).map_err(|e| format!("No layer: {e:?}"))?;
+
+		// Construct the input image frame
+		let transform = layer.transform;
+		let image_frame = ImageFrame { image, transform };
+
 		let node_graph_frame = match &layer.data {
 			LayerDataType::NodeGraphFrame(frame) => Ok(frame),
 			_ => Err("Invalid layer type".to_string()),
@@ -793,7 +813,7 @@ impl PortfolioMessageHandler {
 
 			let get = |name: &str| IMAGINATE_NODE.inputs.iter().position(|input| input.name == name).unwrap_or_else(|| panic!("Input {name} not found"));
 
-			let resolution: Option<glam::DVec2> = Self::compute_input(&mut self.executor, &network, &imaginate_node, get("Resolution"), Cow::Borrowed(&image))?;
+			let resolution: Option<glam::DVec2> = Self::compute_input(&mut self.executor, &network, &imaginate_node, get("Resolution"), Cow::Borrowed(&image_frame))?;
 			let resolution = resolution.unwrap_or_else(|| {
 				let transform = document.document_legacy.root.transform.inverse() * document.document_legacy.multiply_transforms(&layer_path).unwrap();
 				let (x, y) = pick_safe_imaginate_resolution((transform.transform_vector2(DVec2::new(1., 0.)).length(), transform.transform_vector2(DVec2::new(0., 1.)).length()));
@@ -802,23 +822,23 @@ impl PortfolioMessageHandler {
 
 			let transform = document.document_legacy.root.transform.inverse() * document.document_legacy.multiply_transforms(&layer_path).unwrap();
 			let parameters = ImaginateGenerationParameters {
-				seed: Self::compute_input::<f64>(&mut self.executor, &network, &imaginate_node, get("Seed"), Cow::Borrowed(&image))? as u64,
+				seed: Self::compute_input::<f64>(&mut self.executor, &network, &imaginate_node, get("Seed"), Cow::Borrowed(&image_frame))? as u64,
 				resolution: resolution.as_uvec2().into(),
-				samples: Self::compute_input::<f64>(&mut self.executor, &network, &imaginate_node, get("Samples"), Cow::Borrowed(&image))? as u32,
-				sampling_method: Self::compute_input::<ImaginateSamplingMethod>(&mut self.executor, &network, &imaginate_node, get("Sampling Method"), Cow::Borrowed(&image))?
+				samples: Self::compute_input::<f64>(&mut self.executor, &network, &imaginate_node, get("Samples"), Cow::Borrowed(&image_frame))? as u32,
+				sampling_method: Self::compute_input::<ImaginateSamplingMethod>(&mut self.executor, &network, &imaginate_node, get("Sampling Method"), Cow::Borrowed(&image_frame))?
 					.api_value()
 					.to_string(),
-				text_guidance: Self::compute_input(&mut self.executor, &network, &imaginate_node, get("Prompt Guidance"), Cow::Borrowed(&image))?,
-				text_prompt: Self::compute_input(&mut self.executor, &network, &imaginate_node, get("Prompt"), Cow::Borrowed(&image))?,
-				negative_prompt: Self::compute_input(&mut self.executor, &network, &imaginate_node, get("Negative Prompt"), Cow::Borrowed(&image))?,
-				image_creativity: Some(Self::compute_input::<f64>(&mut self.executor, &network, &imaginate_node, get("Image Creativity"), Cow::Borrowed(&image))? / 100.),
-				restore_faces: Self::compute_input(&mut self.executor, &network, &imaginate_node, get("Improve Faces"), Cow::Borrowed(&image))?,
-				tiling: Self::compute_input(&mut self.executor, &network, &imaginate_node, get("Tiling"), Cow::Borrowed(&image))?,
+				text_guidance: Self::compute_input(&mut self.executor, &network, &imaginate_node, get("Prompt Guidance"), Cow::Borrowed(&image_frame))?,
+				text_prompt: Self::compute_input(&mut self.executor, &network, &imaginate_node, get("Prompt"), Cow::Borrowed(&image_frame))?,
+				negative_prompt: Self::compute_input(&mut self.executor, &network, &imaginate_node, get("Negative Prompt"), Cow::Borrowed(&image_frame))?,
+				image_creativity: Some(Self::compute_input::<f64>(&mut self.executor, &network, &imaginate_node, get("Image Creativity"), Cow::Borrowed(&image_frame))? / 100.),
+				restore_faces: Self::compute_input(&mut self.executor, &network, &imaginate_node, get("Improve Faces"), Cow::Borrowed(&image_frame))?,
+				tiling: Self::compute_input(&mut self.executor, &network, &imaginate_node, get("Tiling"), Cow::Borrowed(&image_frame))?,
 			};
-			let use_base_image = Self::compute_input::<bool>(&mut self.executor, &network, &imaginate_node, get("Adapt Input Image"), Cow::Borrowed(&image))?;
+			let use_base_image = Self::compute_input::<bool>(&mut self.executor, &network, &imaginate_node, get("Adapt Input Image"), Cow::Borrowed(&image_frame))?;
 
 			let base_image = if use_base_image {
-				let image: Image = Self::compute_input(&mut self.executor, &network, &imaginate_node, get("Input Image"), Cow::Borrowed(&image))?;
+				let image: Image = Self::compute_input(&mut self.executor, &network, &imaginate_node, get("Input Image"), Cow::Borrowed(&image_frame))?;
 				// Only use if has size
 				if image.width > 0 && image.height > 0 {
 					let (image_data, size) = Self::encode_img(image, Some(resolution), image::ImageOutputFormat::Png)?;
@@ -834,7 +854,7 @@ impl PortfolioMessageHandler {
 
 			let mask_image =
 				if base_image.is_some() {
-					let mask_path: Option<Vec<LayerId>> = Self::compute_input(&mut self.executor, &network, &imaginate_node, get("Masking Layer"), Cow::Borrowed(&image))?;
+					let mask_path: Option<Vec<LayerId>> = Self::compute_input(&mut self.executor, &network, &imaginate_node, get("Masking Layer"), Cow::Borrowed(&image_frame))?;
 
 					// Calculate the size of the node graph frame
 					let size = DVec2::new(transform.transform_vector2(DVec2::new(1., 0.)).length(), transform.transform_vector2(DVec2::new(0., 1.)).length());
@@ -864,13 +884,13 @@ impl PortfolioMessageHandler {
 					parameters: Box::new(parameters),
 					base_image: base_image.map(Box::new),
 					mask_image: mask_image.map(Box::new),
-					mask_paint_mode: if Self::compute_input::<bool>(&mut self.executor, &network, &imaginate_node, get("Inpaint"), Cow::Borrowed(&image))? {
+					mask_paint_mode: if Self::compute_input::<bool>(&mut self.executor, &network, &imaginate_node, get("Inpaint"), Cow::Borrowed(&image_frame))? {
 						ImaginateMaskPaintMode::Inpaint
 					} else {
 						ImaginateMaskPaintMode::Outpaint
 					},
-					mask_blur_px: Self::compute_input::<f64>(&mut self.executor, &network, &imaginate_node, get("Mask Blur"), Cow::Borrowed(&image))? as u32,
-					imaginate_mask_starting_fill: Self::compute_input(&mut self.executor, &network, &imaginate_node, get("Mask Starting Fill"), Cow::Borrowed(&image))?,
+					mask_blur_px: Self::compute_input::<f64>(&mut self.executor, &network, &imaginate_node, get("Mask Blur"), Cow::Borrowed(&image_frame))? as u32,
+					imaginate_mask_starting_fill: Self::compute_input(&mut self.executor, &network, &imaginate_node, get("Mask Starting Fill"), Cow::Borrowed(&image_frame))?,
 					hostname: preferences.imaginate_server_hostname.clone(),
 					refresh_frequency: preferences.imaginate_refresh_frequency,
 					document_id,
@@ -880,7 +900,7 @@ impl PortfolioMessageHandler {
 				.into(),
 			);
 		} else {
-			let mut image: Image = Self::execute_network(&mut self.executor, network, image)?;
+			let ImageFrame { mut image, transform } = Self::execute_network(&mut self.executor, network, image_frame)?;
 
 			// If no image was generated, use the input image
 			if image.width == 0 || image.height == 0 {
@@ -898,13 +918,16 @@ impl PortfolioMessageHandler {
 			);
 			let mime = "image/bmp".to_string();
 			let image_data = std::sync::Arc::new(image_data);
-			responses.push_back(
-				FrontendMessage::UpdateImageData {
-					document_id,
-					image_data: vec![FrontendImageData { path: layer_path, image_data, mime }],
-				}
-				.into(),
-			);
+			let image_data = vec![FrontendImageData {
+				path: layer_path.clone(),
+				image_data,
+				mime,
+			}];
+			responses.push_back(FrontendMessage::UpdateImageData { document_id, image_data }.into());
+
+			// Update the transform based on the graph output
+			let transform = transform.to_cols_array();
+			responses.push_back(DocumentOperation::SetLayerTransform { path: layer_path, transform }.into());
 		}
 
 		Ok(())
