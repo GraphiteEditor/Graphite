@@ -13,10 +13,12 @@ env:
 jobs:
   build:
     runs-on: self-hosted
+    env:
+      RUSTC_WRAPPER: /usr/bin/sccache
 
     steps:
     - uses: actions/checkout@v2
-
+    
     - name: 🔧 Set up Node
       uses: actions/setup-node@v1
       with:
@@ -50,15 +52,15 @@ jobs:
 
     - name: 🔬 Check Rust formatting
       run: |
-        sccache mold -run cargo fmt --all -- --check
+        mold -run cargo fmt --all -- --check
 
     - name: 🦀 Build Rust code
       run: |
-        sccache mold -run cargo build
+        mold -run cargo build
 
     - name: 🧪 Run Rust tests
       run: |
-        sccache mold -run cargo nextest run
+        mold -run cargo nextest run
 
   cargo-deny:
     runs-on: ubuntu-latest
