@@ -227,7 +227,10 @@ static STATIC_NODES: &[DocumentNodeType] = &[
 	DocumentNodeType {
 		name: "Hue/Saturation",
 		category: "Image Adjustments",
-		identifier: NodeImplementation::proto("graphene_std::raster::HueSaturationNode", &[concrete!("Image")]),
+		identifier: NodeImplementation::proto(
+			"graphene_std::raster::HueSaturationNode<_, _, _>",
+			&[concrete!("Image"), concrete!("f64"), concrete!("f64"), concrete!("f64")],
+		),
 		inputs: &[
 			DocumentInputType::new("Image", TaggedValue::Image(Image::empty()), true),
 			DocumentInputType::new("Hue Shift", TaggedValue::F64(0.), false),
@@ -240,7 +243,7 @@ static STATIC_NODES: &[DocumentNodeType] = &[
 	DocumentNodeType {
 		name: "Brightness/Contrast",
 		category: "Image Adjustments",
-		identifier: NodeImplementation::proto("graphene_std::raster::BrightnessContrastNode", &[concrete!("Image")]),
+		identifier: NodeImplementation::proto("graphene_std::raster::BrightnessContrastNode<_, _>", &[concrete!("Image"), concrete!("f64"), concrete!("f64")]),
 		inputs: &[
 			DocumentInputType::new("Image", TaggedValue::Image(Image::empty()), true),
 			DocumentInputType::new("Brightness", TaggedValue::F64(0.), false),
@@ -252,7 +255,7 @@ static STATIC_NODES: &[DocumentNodeType] = &[
 	DocumentNodeType {
 		name: "Gamma",
 		category: "Image Adjustments",
-		identifier: NodeImplementation::proto("graphene_std::raster::GammaNode", &[concrete!("Image")]),
+		identifier: NodeImplementation::proto("graphene_std::raster::GammaNode<_>", &[concrete!("Image"), concrete!("f64")]),
 		inputs: &[
 			DocumentInputType::new("Image", TaggedValue::Image(Image::empty()), true),
 			DocumentInputType::new("Gamma", TaggedValue::F64(1.), false),
@@ -263,7 +266,7 @@ static STATIC_NODES: &[DocumentNodeType] = &[
 	DocumentNodeType {
 		name: "Opacity",
 		category: "Image Adjustments",
-		identifier: NodeImplementation::proto("graphene_std::raster::OpacityNode", &[concrete!("Image")]),
+		identifier: NodeImplementation::proto("graphene_std::raster::OpacityNode<_>", &[concrete!("Image"), concrete!("f64")]),
 		inputs: &[
 			DocumentInputType::new("Image", TaggedValue::Image(Image::empty()), true),
 			DocumentInputType::new("Factor", TaggedValue::F64(1.), false),
@@ -274,7 +277,7 @@ static STATIC_NODES: &[DocumentNodeType] = &[
 	DocumentNodeType {
 		name: "Posterize",
 		category: "Image Adjustments",
-		identifier: NodeImplementation::proto("graphene_std::raster::PosterizeNode", &[concrete!("Image")]),
+		identifier: NodeImplementation::proto("graphene_std::raster::PosterizeNode<_>", &[concrete!("Image"), concrete!("f64")]),
 		inputs: &[
 			DocumentInputType::new("Image", TaggedValue::Image(Image::empty()), true),
 			DocumentInputType::new("Value", TaggedValue::F64(5.), false),
@@ -285,7 +288,7 @@ static STATIC_NODES: &[DocumentNodeType] = &[
 	DocumentNodeType {
 		name: "Exposure",
 		category: "Image Adjustments",
-		identifier: NodeImplementation::proto("graphene_std::raster::ExposureNode", &[concrete!("Image")]),
+		identifier: NodeImplementation::proto("graphene_std::raster::ExposureNode<_>", &[concrete!("Image"), concrete!("f64")]),
 		inputs: &[
 			DocumentInputType::new("Image", TaggedValue::Image(Image::empty()), true),
 			DocumentInputType::new("Value", TaggedValue::F64(0.), false),
@@ -297,7 +300,7 @@ static STATIC_NODES: &[DocumentNodeType] = &[
 	DocumentNodeType {
 		name: "Add",
 		category: "Math",
-		identifier: NodeImplementation::proto("graphene_core::ops::AddNode", &[concrete!("Image")]),
+		identifier: NodeImplementation::proto("graphene_core::ops::AddNode", &[concrete!("(&f64, &f64)")]),
 		inputs: &[
 			DocumentInputType::new("Input", TaggedValue::F64(0.), true),
 			DocumentInputType::new("Addend", TaggedValue::F64(0.), true),
