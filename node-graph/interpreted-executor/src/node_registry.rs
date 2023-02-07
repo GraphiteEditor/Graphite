@@ -67,6 +67,16 @@ static NODE_REGISTRY: &[(NodeIdentifier, NodeConstructor)] = &[
 	register_node!(graphene_std::raster::PosterizeNode<_>, input: Image, params: [f64]),
 	register_node!(graphene_std::raster::ExposureNode<_>, input: Image, params: [f64]),
 	register_node!(graphene_std::raster::ImaginateNode<_>, input: Image, params: [Option<std::sync::Arc<Image>>]),
+	(
+		NodeIdentifier::new("graphene_std::raster::ImaginateNode<_>", &[concrete!("Image"), concrete!("Option<std::sync::Arc<Image>>")]),
+		|args| {
+			let node = graphene_std::raster::ImaginateNode::new(graphene_std::any::input_node::<Option<std::sync::Arc<Image>>>(
+				*args.get(15).expect("not enough arguments provided to construct node"),
+			));
+			let any = DynAnyNode::new(ValueNode::new(node));
+			any.into_type_erased()
+		},
+	),
 	(NodeIdentifier::new("graphene_core::raster::BlurNode", &[concrete!("Image")]), |args| {
 		let radius = DowncastBothNode::<(), u32>::new(args[0]);
 		let sigma = DowncastBothNode::<(), f64>::new(args[1]);

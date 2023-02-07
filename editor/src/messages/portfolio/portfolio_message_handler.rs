@@ -687,7 +687,6 @@ impl PortfolioMessageHandler {
 		let c = Compiler {};
 		let proto_network = c.compile(network, true);
 
-		log::debug!("Executing network: {:#?}", proto_network);
 		assert_ne!(proto_network.nodes.len(), 0, "No protonodes exist?");
 		executor.update(proto_network);
 

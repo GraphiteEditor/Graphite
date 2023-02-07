@@ -373,7 +373,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 		panic!("Invalid status input")
 	};
 	let NodeInput::Value {tagged_value: TaggedValue::RcImage( cached_data),..} = cached_value else {
-		panic!("Invalid cached image input")
+		panic!("Invalid cached image input, recieved {:?}, index: {}", cached_value, cached_index)
 	};
 	let &NodeInput::Value {tagged_value: TaggedValue::F64( percent_complete),..} = complete_value else {
 		panic!("Invalid percent complete input")
