@@ -11,7 +11,6 @@ pub struct RawBuffer(Vec<u8>);
 
 impl From<&[u64]> for RawBuffer {
 	fn from(iter: &[u64]) -> Self {
-		// https://github.com/rust-lang/rust-clippy/issues/4484
 		let v_from_raw: Vec<u8> = iter.iter().flat_map(|x| x.to_ne_bytes()).collect();
 		Self(v_from_raw)
 	}
