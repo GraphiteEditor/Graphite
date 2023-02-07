@@ -757,7 +757,12 @@ impl Fsm for SelectToolFsmState {
 					HintInfo::mouse(MouseMotion::LmbDrag, "Select Area"),
 					HintInfo::keys([Key::Shift], "Grow/Shrink Selection").prepend_plus(),
 				]),
-				HintGroup(vec![HintInfo::arrow_keys("Nudge Selected"), HintInfo::keys([Key::Shift], "Big Increment Nudge").prepend_plus()]),
+				HintGroup(vec![
+					HintInfo::arrow_keys("Nudge Selected"),
+					HintInfo::keys([Key::Shift], "10x").prepend_plus(),
+					HintInfo::keys([Key::Alt], "Resize Corner").prepend_plus(),
+					HintInfo::keys([Key::Shift], "Opp. Corner").prepend_plus(),
+				]),
 				HintGroup(vec![
 					HintInfo::keys([Key::Alt], "Move Duplicate"),
 					HintInfo::keys([Key::Control, Key::KeyD], "Duplicate").add_mac_keys([Key::Command, Key::KeyD]),
