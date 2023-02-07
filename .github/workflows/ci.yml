@@ -50,15 +50,15 @@ jobs:
 
     - name: 🔬 Check Rust formatting
       run: |
-        mold -run cargo fmt --all -- --check
+        sccache mold -run cargo fmt --all -- --check
 
     - name: 🦀 Build Rust code
       run: |
-        mold -run cargo build
+        sccache mold -run cargo build
 
     - name: 🧪 Run Rust tests
       run: |
-        mold -run cargo nextest run
+        sccache mold -run cargo nextest run
 
   cargo-deny:
     runs-on: ubuntu-latest
