@@ -13,6 +13,10 @@ env:
 jobs:
   build:
     runs-on: self-hosted
+    env:
+      RUSTC_WRAPPER: /usr/bin/sccache
+      CARGO_INCREMENTAL: 0
+      SCCACHE_DIR: /var/lib/github-actions/.cache
 
     steps:
     - uses: actions/checkout@v2
