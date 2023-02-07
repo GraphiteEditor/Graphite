@@ -18,7 +18,7 @@ use document_legacy::layers::style::RenderData;
 use document_legacy::layers::text_layer::Font;
 use document_legacy::{LayerId, Operation as DocumentOperation};
 use graph_craft::document::value::TaggedValue;
-use graph_craft::document::NodeId;
+use graph_craft::document::{NodeId, NodeOutput};
 use graph_craft::document::{NodeInput, NodeNetwork};
 use graph_craft::executor::Compiler;
 use graphene_core::raster::Image;
@@ -683,7 +683,9 @@ impl PortfolioMessageHandler {
 	}
 
 	/// Execute the network by flattening it and creating a borrow stack. Casts the output to the generic `T`.
-	fn execute_network<T: dyn_any::StaticType>(executor: &mut DynamicExecutor, network: NodeNetwork, image: Image) -> Result<T, String> {
+	fn execute_network<T: dyn_any::StaticType>(executor: &mut DynamicExecutor, mut network: NodeNetwork, image: Image) -> Result<T, String> {
+		network.duplicate_outputs(&mut generate_uuid);
+		// We assume only one output
 		assert_eq!(network.outputs.len(), 1, "Graph with multiple outputs not yet handled");
 		let c = Compiler {};
 		let proto_network = c.compile_single(network, true)?;
@@ -706,7 +708,7 @@ impl PortfolioMessageHandler {
 		'outer: for end in (0..node_path.len()).rev() {
 			let mut inner_network = &mut network;
 			for &node_id in &node_path[..end] {
-				inner_network.outputs[0] = node_id;
+				inner_network.outputs[0] = NodeOutput::new(node_id, 0);
 
 				let Some(new_inner) = inner_network.nodes.get_mut(&node_id).and_then(|node| node.implementation.get_network_mut()) else {
 					return Err("Failed to find network".to_string());
@@ -728,8 +730,8 @@ impl PortfolioMessageHandler {
 				// If the input is just a value, return that value
 				NodeInput::Value { tagged_value, .. } => return dyn_any::downcast::<T>(tagged_value.clone().to_any()).map(|v| *v),
 				// If the input is from a node, set the node to be the output (so that is what is evaluated)
-				NodeInput::Node(n) => {
-					inner_network.outputs[0] = *n;
+				NodeInput::Node { node_id, output_index } => {
+					inner_network.outputs[0] = NodeOutput::new(*node_id, *output_index);
 					break 'outer;
 				}
 			}
