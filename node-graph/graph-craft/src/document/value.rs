@@ -1,7 +1,7 @@
 pub use dyn_any::StaticType;
 use dyn_any::{DynAny, Upcast};
 use dyn_clone::DynClone;
-pub use glam::DVec2;
+pub use glam::{DAffine2, DVec2};
 use graphene_core::Node;
 use std::hash::Hash;
 pub use std::sync::Arc;
@@ -21,6 +21,7 @@ pub enum TaggedValue {
 	Bool(bool),
 	DVec2(DVec2),
 	OptionalDVec2(Option<DVec2>),
+	DAffine2(DAffine2),
 	Image(graphene_core::raster::Image),
 	RcImage(Option<Arc<graphene_core::raster::Image>>),
 	Color(graphene_core::raster::color::Color),
@@ -65,6 +66,10 @@ impl Hash for TaggedValue {
 			Self::OptionalDVec2(Some(v)) => {
 				8.hash(state);
 				Self::DVec2(*v).hash(state)
+			}
+			Self::DAffine2(m) => {
+				9.hash(state);
+				m.to_cols_array().iter().for_each(|x| x.to_bits().hash(state))
 			}
 			Self::Image(i) => {
 				9.hash(state);
@@ -118,6 +123,7 @@ impl<'a> TaggedValue {
 			TaggedValue::Bool(x) => Box::new(x),
 			TaggedValue::DVec2(x) => Box::new(x),
 			TaggedValue::OptionalDVec2(x) => Box::new(x),
+			TaggedValue::DAffine2(x) => Box::new(x),
 			TaggedValue::Image(x) => Box::new(x),
 			TaggedValue::RcImage(x) => Box::new(x),
 			TaggedValue::Color(x) => Box::new(x),

@@ -105,6 +105,45 @@ fn document_node_types() -> Vec<DocumentNodeType> {
 		outputs: &[FrontendGraphDataType::Raster],
 		properties: node_properties::blur_image_properties,
 	};
+	const INPUT_MULTIPLE_INPUTS: &[DocumentInputType] = &[
+		DocumentInputType {
+			name: "In",
+			data_type: FrontendGraphDataType::General,
+			default: NodeInput::Network,
+		},
+		DocumentInputType::new("Transform", TaggedValue::DAffine2(DAffine2::IDENTITY), false),
+	];
+	let input_multiple = DocumentNodeType {
+		name: "Input Multiple",
+		category: "Image Filters",
+		identifier: NodeImplementation::DocumentNode(NodeNetwork {
+			inputs: vec![0, 1],
+			outputs: vec![0, 1],
+			nodes: [
+				DocumentNode {
+					name: "Identity".to_string(),
+					inputs: vec![NodeInput::Network],
+					implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode", &[concrete!("Any<'_>")])),
+					metadata: Default::default(),
+				},
+				DocumentNode {
+					name: "Identity".to_string(),
+					inputs: vec![NodeInput::Network],
+					implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode", &[concrete!("Any<'_>")])),
+					metadata: Default::default(),
+				},
+			]
+			.into_iter()
+			.enumerate()
+			.map(|(id, node)| (id as NodeId, node))
+			.collect(),
+			..Default::default()
+		}),
+		inputs: INPUT_MULTIPLE_INPUTS,
+		outputs: &[FrontendGraphDataType::Raster, FrontendGraphDataType::Number],
+		properties: node_properties::no_properties,
+	};
+	vec.push(input_multiple);
 	vec.push(blur);
 	vec
 }
@@ -148,6 +187,14 @@ static STATIC_NODES: &[DocumentNodeType] = &[
 		properties: node_properties::input_properties,
 	},
 	DocumentNodeType {
+		name: "Input Multiple",
+		category: "Ignore",
+		identifier: NodeImplementation::proto("graphene_core::ops::IdNode", &[concrete!("Any<'_>")]),
+		inputs: &[],
+		outputs: &[FrontendGraphDataType::Raster, FrontendGraphDataType::General],
+		properties: node_properties::input_properties,
+	},
+	DocumentNodeType {
 		name: "Output",
 		category: "Ignore",
 		identifier: NodeImplementation::proto("graphene_core::ops::IdNode", &[generic!("T")]),
@@ -157,7 +204,18 @@ static STATIC_NODES: &[DocumentNodeType] = &[
 			default: NodeInput::value(TaggedValue::Image(Image::empty()), true),
 		}],
 		outputs: &[],
-		properties: |_document_node, _node_id, _context| node_properties::string_properties("The graph's output is rendered into the frame".to_string()),
+		properties: |_document_node, _node_id, _context| node_properties::string_properties("The graph's output is rendered into the frame"),
+	},
+	DocumentNodeType {
+		name: "Image Frame",
+		category: "General",
+		identifier: NodeImplementation::proto("graphene_std::raster::ImageFrameNode", &[concrete!("Image"), concrete!("DAffine2")]),
+		inputs: &[
+			DocumentInputType::new("Image", TaggedValue::Image(Image::empty()), true),
+			DocumentInputType::new("Transform", TaggedValue::DAffine2(DAffine2::IDENTITY), true),
+		],
+		outputs: &[FrontendGraphDataType::Raster],
+		properties: |_document_node, _node_id, _context| node_properties::string_properties("Creates an embedded image with the given transform"),
 	},
 	DocumentNodeType {
 		name: "Grayscale",
@@ -449,5 +507,38 @@ impl DocumentNodeType {
 			NodeImplementation::DocumentNode(network) => network.clone(),
 		};
 		DocumentNodeImplementation::Network(inner_network)
+	}
+
+	pub fn to_document_node(&self, inputs: impl IntoIterator<Item = NodeInput>, metadata: graph_craft::document::DocumentNodeMetadata) -> DocumentNode {
+		DocumentNode {
+			name: self.name.to_string(),
+			inputs: inputs.into_iter().collect(),
+			implementation: self.generate_implementation(),
+			metadata,
+		}
+	}
+}
+
+pub fn new_image_network(output_offset: i32, output_node_id: NodeId) -> NodeNetwork {
+	NodeNetwork {
+		inputs: vec![0],
+		outputs: vec![1],
+		nodes: [
+			resolve_document_node_type("Input Multiple").expect("Input mutliple node does not exist").to_document_node(
+				[NodeInput::Network, NodeInput::value(TaggedValue::DAffine2(DAffine2::IDENTITY), false)],
+				DocumentNodeMetadata::position((8, 4)),
+			),
+			resolve_document_node_type("Output")
+				.expect("Output node does not exist")
+				.to_document_node([NodeInput::Node(2)], DocumentNodeMetadata::position((output_offset + 8, 4))),
+			resolve_document_node_type("Image Frame")
+				.expect("Image frame node does not exist")
+				.to_document_node([NodeInput::Node(output_node_id), NodeInput::Node(0)], DocumentNodeMetadata::position((output_offset, 4))),
+		]
+		.into_iter()
+		.enumerate()
+		.map(|(id, node)| (id as NodeId, node))
+		.collect(),
+		..Default::default()
 	}
 }

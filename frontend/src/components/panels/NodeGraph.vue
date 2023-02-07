@@ -67,19 +67,33 @@
 						<IconLabel :icon="nodeIcon(node.displayName)" />
 						<TextLabel>{{ node.displayName }}</TextLabel>
 					</div>
-					<div v-if="node.exposedInputs.length > 0" class="arguments">
-						<div v-for="(argument, index) in node.exposedInputs" :key="index" class="argument">
+					<div v-if="node.exposedInputs.length > 0 || node.outputs.length > 1" class="arguments">
+						<!-- Note here index is inclusive and starts with an initial value of 1 instead of 0. (probably just to be inconsistant with the rest of the world) -->
+						<div v-for="index in Math.max(node.exposedInputs.length, node.outputs.length - 1)" :key="index" class="argument">
 							<div class="ports">
 								<div
+									v-if="node.exposedInputs.length >= index"
 									class="input port"
 									data-port="input"
-									:data-datatype="argument.dataType"
-									:style="{ '--data-color': `var(--color-data-${argument.dataType})`, '--data-color-dim': `var(--color-data-${argument.dataType}-dim)` }"
+									:data-datatype="node.exposedInputs[index - 1].dataType"
+									:style="{
+										'--data-color': `var(--color-data-${node.exposedInputs[index - 1].dataType})`,
+										'--data-color-dim': `var(--color-data-${node.exposedInputs[index - 1].dataType}-dim)`,
+									}"
+								>
+									<div></div>
+								</div>
+								<div
+									v-if="node.outputs.length >= index + 1"
+									class="output port"
+									data-port="output"
+									:data-datatype="node.outputs[index]"
+									:style="{ '--data-color': `var(--color-data-${node.outputs[index]})`, '--data-color-dim': `var(--color-data-${node.outputs[index]}-dim)` }"
 								>
 									<div></div>
 								</div>
 							</div>
-							<TextLabel>{{ argument.name }}</TextLabel>
+							<TextLabel v-if="node.exposedInputs.length >= index">{{ node.exposedInputs[index - 1].name }}</TextLabel>
 						</div>
 					</div>
 				</div>

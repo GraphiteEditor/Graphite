@@ -1,7 +1,7 @@
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, MouseMotion};
 use crate::messages::layout::utility_types::layout_widget::PropertyHolder;
-use crate::messages::portfolio::document::node_graph::IMAGINATE_NODE;
+use crate::messages::portfolio::document::node_graph::{self, IMAGINATE_NODE};
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::resize::Resize;
 use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
@@ -125,16 +125,11 @@ impl Fsm for ImaginateToolFsmState {
 					let mut imaginate_inputs: Vec<NodeInput> = imaginate_node_type.inputs.iter().map(|input| input.default.clone()).collect();
 					imaginate_inputs[0] = NodeInput::Node(0);
 
-					let imaginate_node_id = 2;
-					let mut network = NodeNetwork::new_network(32, imaginate_node_id);
+					let imaginate_node_id = 100;
+					let mut network = node_graph::new_image_network(32, imaginate_node_id);
 					network.nodes.insert(
 						imaginate_node_id,
-						DocumentNode {
-							name: imaginate_node_type.name.to_string(),
-							inputs: imaginate_inputs,
-							implementation: imaginate_node_type.generate_implementation(),
-							metadata: graph_craft::document::DocumentNodeMetadata { position: (20, 4).into() },
-						},
+						imaginate_node_type.to_document_node(imaginate_inputs, graph_craft::document::DocumentNodeMetadata::position((20, 4))),
 					);
 
 					responses.push_back(
