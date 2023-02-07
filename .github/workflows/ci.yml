@@ -32,11 +32,6 @@ jobs:
         rustc --version
         rustup update stable
         rustc --version
-        
-    - name: Configure sccache
-      uses: visvirial/sccache-action@v1.0.1
-      with:
-        cache-key: sccache-ubuntu-latest
 
     - name: 🌐 Build Graphite web code
       env:
