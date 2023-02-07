@@ -157,18 +157,16 @@ pub fn input_node<O: StaticType>(n: TypeErasedPinnedRef) -> DowncastBothNode<(),
 #[cfg(test)]
 mod test {
 	use super::*;
-	use graphene_core::{ops::AddNode, ops::IdNode, structural::ComposeNode, structural::Then, value::ValueNode};
+	use graphene_core::{ops::AddNode, ops::IdNode, value::ValueNode};
 
 	#[test]
 	#[should_panic]
 	pub fn dyn_input_invalid_eval_panic() {
-		static ADD: &DynAnyNode<(u32, u32), u32, AddNode> = &DynAnyNode::new(AddNode::new());
-
 		//let add = DynAnyNode::new(AddNode::new()).into_type_erased();
 		//add.eval(Box::new(&("32", 32u32)));
 		let dyn_any = DynAnyNode::<(u32, u32), u32, _>::new(ValueNode::new(AddNode::new()));
 		let type_erased = dyn_any.into_type_erased();
-		let ref_type_erased = type_erased.as_ref();
+		let _ref_type_erased = type_erased.as_ref();
 		//let type_erased = Box::pin(dyn_any) as TypeErasedPinned<'_>;
 		type_erased.eval(Box::new(&("32", 32u32)));
 	}

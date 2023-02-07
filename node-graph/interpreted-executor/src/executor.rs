@@ -26,7 +26,7 @@ impl DynamicExecutor {
 
 	pub fn update(&mut self, proto_network: ProtoNetwork) {
 		self.output = proto_network.output;
-		log::info!("setting output to {}", self.output);
+		info!("setting output to {}", self.output);
 		self.tree.update(proto_network);
 	}
 }
@@ -164,7 +164,7 @@ mod test {
 		let mut tree = BorrowTree::default();
 		let val_1_protonode = ProtoNode::value(ConstructionArgs::Value(TaggedValue::U32(2u32)));
 		tree.push_node(0, val_1_protonode);
-		let node = tree.get(0).unwrap();
+		let _node = tree.get(0).unwrap();
 		assert_eq!(tree.eval(0, ()), Some(2u32));
 	}
 }

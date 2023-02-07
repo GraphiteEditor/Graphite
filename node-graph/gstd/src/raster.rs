@@ -1,12 +1,8 @@
-use core::marker::PhantomData;
 use dyn_any::{DynAny, StaticType};
-use graphene_core::generic::FnNode;
-use graphene_core::ops::{CloneNode, FlatMapResultNode, MapResultNode};
+
 use graphene_core::raster::{Color, Image};
-use graphene_core::structural::{ComposeNode, ConsNode, Then};
-use graphene_core::value::ValueNode;
 use graphene_core::Node;
-use image::Pixel;
+
 use std::path::Path;
 
 #[derive(Debug, DynAny)]
@@ -260,7 +256,6 @@ fn imaginate(image: Image, cached: Option<std::sync::Arc<graphene_core::raster::
 
 #[cfg(test)]
 mod test {
-	use super::*;
 
 	#[test]
 	fn load_image() {

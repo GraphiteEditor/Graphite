@@ -3,8 +3,8 @@ use graphene_core::raster::color::Color;
 use graphene_core::raster::*;
 use graphene_core::structural::Then;
 use graphene_core::value::{ForgetNode, ValueNode};
-use graphene_core::vector::subpath::Subpath;
-use graphene_std::any::{Any, ComposeTypeErased, DowncastBothNode, DowncastBothRefNode, DynAnyNode, IntoTypeErasedNode, TypeErasedPinned, TypeErasedPinnedRef};
+
+use graphene_std::any::{ComposeTypeErased, DowncastBothNode, DowncastBothRefNode, DynAnyNode, IntoTypeErasedNode, TypeErasedPinned, TypeErasedPinnedRef};
 
 use graph_craft::proto::NodeIdentifier;
 use graph_craft::proto::Type;
