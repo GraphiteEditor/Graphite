@@ -14,11 +14,11 @@ pub struct Color {
 }
 
 impl Color {
-	pub const BLACK: Color = Color::from_unsafe(0., 0., 0.);
-	pub const WHITE: Color = Color::from_unsafe(1., 1., 1.);
-	pub const RED: Color = Color::from_unsafe(1., 0., 0.);
-	pub const GREEN: Color = Color::from_unsafe(0., 1., 0.);
-	pub const BLUE: Color = Color::from_unsafe(0., 0., 1.);
+	pub const BLACK: Color = Color::from_uchecked(0., 0., 0.);
+	pub const WHITE: Color = Color::from_uchecked(1., 1., 1.);
+	pub const RED: Color = Color::from_uchecked(1., 0., 0.);
+	pub const GREEN: Color = Color::from_uchecked(0., 1., 0.);
+	pub const BLUE: Color = Color::from_uchecked(0., 0., 1.);
 	pub const TRANSPARENT: Color = Self {
 		red: 0.,
 		green: 0.,
@@ -46,7 +46,7 @@ impl Color {
 	}
 
 	/// Return an opaque `Color` from given `f32` RGB channels.
-	pub const fn from_unsafe(red: f32, green: f32, blue: f32) -> Color {
+	pub const fn from_uchecked(red: f32, green: f32, blue: f32) -> Color {
 		Color { red, green, blue, alpha: 1. }
 	}
 

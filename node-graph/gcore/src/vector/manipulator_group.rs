@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 ///     /            |            \
 /// "Anchor"    "InHandle"    "OutHandle"    <- These are ManipulatorPoints and the only editable "primitive"
 /// ```
-#[derive(PartialEq, Clone, Debug, Serialize, Deserialize, Default, specta::Type)]
+#[derive(PartialEq, Clone, Debug, Serialize, Deserialize, Default, specta::Type, Hash)]
 pub struct ManipulatorGroup {
 	/// Editable points for the anchor and handles.
 	pub points: [Option<ManipulatorPoint>; 3],
@@ -293,7 +293,7 @@ impl ManipulatorGroup {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ManipulatorGroupEditorState {
 	// Whether the angle between the handles should be maintained
 	pub mirror_angle_between_handles: bool,
