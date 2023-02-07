@@ -58,7 +58,7 @@ jobs:
 
     - name: 🧪 Run Rust tests
       run: |
-        mold -run cargo test
+        mold -run cargo nextest run
 
   cargo-deny:
     runs-on: ubuntu-latest
