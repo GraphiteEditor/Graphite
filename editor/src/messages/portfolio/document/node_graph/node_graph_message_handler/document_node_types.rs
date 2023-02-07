@@ -366,9 +366,10 @@ static STATIC_NODES: &[DocumentNodeType] = &[
 pub const IMAGINATE_NODE: DocumentNodeType = DocumentNodeType {
 	name: "Imaginate",
 	category: "Image Synthesis",
-	identifier: NodeImplementation::proto("graphene_std::raster::ImaginateNode", &[concrete!("Image")]),
+	identifier: NodeImplementation::proto("graphene_std::raster::ImaginateNode<_>", &[concrete!("Image"), concrete!("Option<std::sync::Arc<Image>>")]),
 	inputs: &[
 		DocumentInputType::new("Input Image", TaggedValue::Image(Image::empty()), true),
+		DocumentInputType::new("Cached Data", TaggedValue::RcImage(None), false),
 		DocumentInputType::new("Seed", TaggedValue::F64(0.), false),
 		DocumentInputType::new("Resolution", TaggedValue::OptionalDVec2(None), false),
 		DocumentInputType::new("Samples", TaggedValue::F64(30.), false),
@@ -385,7 +386,6 @@ pub const IMAGINATE_NODE: DocumentNodeType = DocumentNodeType {
 		DocumentInputType::new("Improve Faces", TaggedValue::Bool(false), false),
 		DocumentInputType::new("Tiling", TaggedValue::Bool(false), false),
 		// Non-user status (is document input the right way to do this?)
-		DocumentInputType::new("Cached Data", TaggedValue::RcImage(None), false),
 		DocumentInputType::new("Percent Complete", TaggedValue::F64(0.), false),
 		DocumentInputType::new("Status", TaggedValue::ImaginateStatus(ImaginateStatus::Idle), false),
 	],
