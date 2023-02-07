@@ -205,8 +205,8 @@ impl Fsm for PathToolFsmState {
 							if toggle_add_to_selection {
 								responses.push_back(DocumentMessage::AddSelectedLayers { additional_layers: intersection }.into());
 							} else {
-								// Selects the top most layer when selecting intersecting shapes
-								let top_most_intersection = intersection[intersection.len() - 1].clone();
+								// Selects the topmost layer when selecting intersecting shapes
+								let topmost_intersection = intersection[intersection.len() - 1].clone();
 								responses.push_back(
 									DocumentMessage::SetSelectedLayers {
 										replacement_selected_layers: intersection,
@@ -215,8 +215,8 @@ impl Fsm for PathToolFsmState {
 								);
 								tool_data.drag_start_pos = input.mouse.position;
 								tool_data.previous_mouse_position = input.mouse.position;
-								// Selects all the anchor points when clicking in a filled area of shape. If two shapes intersect we pick the top-most layer
-								tool_data.shape_editor.select_all_anchors(responses, top_most_intersection);
+								// Selects all the anchor points when clicking in a filled area of shape. If two shapes intersect we pick the topmost layer.
+								tool_data.shape_editor.select_all_anchors(responses, topmost_intersection);
 								return PathToolFsmState::Dragging;
 							}
 						} else {
@@ -262,6 +262,7 @@ impl Fsm for PathToolFsmState {
 					let selected_points = tool_data.shape_editor.selected_points(&document.document_legacy);
 					let nearest_point = tool_data.shape_editor.find_nearest_point(&document.document_legacy, input.mouse.position, SELECTION_THRESHOLD);
 					let shift_pressed = input.keyboard.get(shift_mirror_distance as usize);
+
 					if tool_data.drag_start_pos.distance(input.mouse.position) <= DRAG_THRESHOLD && !shift_pressed {
 						for point in selected_points {
 							if nearest_point == Some(point) {

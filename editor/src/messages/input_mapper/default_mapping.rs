@@ -167,7 +167,7 @@ pub fn default_mapping() -> Mapping {
 		entry!(PointerMove; refresh_keys=[Alt, Shift], action_dispatch=PathToolMessage::PointerMove { alt_mirror_angle: Alt, shift_mirror_distance: Shift }),
 		entry!(KeyDown(Delete); action_dispatch=PathToolMessage::Delete),
 		entry!(KeyDown(Backspace); action_dispatch=PathToolMessage::Delete),
-		entry!(KeyUp(Lmb); refresh_keys=[Shift], action_dispatch=PathToolMessage::DragStop{ shift_mirror_distance: Shift }),
+		entry!(KeyUp(Lmb); action_dispatch=PathToolMessage::DragStop { shift_mirror_distance: Shift }),
 		entry!(DoubleClick; action_dispatch=PathToolMessage::InsertPoint),
 		//
 		// PenToolMessage

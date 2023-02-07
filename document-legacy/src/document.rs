@@ -1064,8 +1064,8 @@ impl Document {
 			}
 			Operation::SelectAllManipulatorPoints { layer_path } => {
 				let layer = self.layer_mut(&layer_path)?;
-				if let Some(shape) = layer.as_subpath_mut() {
-					shape.select_all_anchors();
+				if let Some(subpath) = layer.as_subpath_mut() {
+					subpath.select_all_anchors();
 				}
 				Some(vec![LayerChanged { path: layer_path.clone() }])
 			}
