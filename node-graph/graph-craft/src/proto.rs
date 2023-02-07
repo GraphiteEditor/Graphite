@@ -1,5 +1,6 @@
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
+use std::hash::Hash;
 
 use crate::document::value;
 use crate::document::NodeId;
@@ -87,6 +88,7 @@ impl NodeIdentifier {
 
 #[derive(Debug, Default, PartialEq)]
 pub struct ProtoNetwork {
+	// Should a proto Network even allow inputs? Don't think so
 	pub inputs: Vec<NodeId>,
 	pub output: NodeId,
 	pub nodes: Vec<(NodeId, ProtoNode)>,
@@ -94,7 +96,7 @@ pub struct ProtoNetwork {
 
 #[derive(Debug)]
 pub enum ConstructionArgs {
-	Value(value::Value),
+	Value(value::TaggedValue),
 	Nodes(Vec<NodeId>),
 }
 
@@ -104,6 +106,20 @@ impl PartialEq for ConstructionArgs {
 			(Self::Nodes(n1), Self::Nodes(n2)) => n1 == n2,
 			(Self::Value(v1), Self::Value(v2)) => v1 == v2,
 			_ => core::mem::discriminant(self) == core::mem::discriminant(other),
+		}
+	}
+}
+
+impl Hash for ConstructionArgs {
+	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+		match self {
+			Self::Nodes(nodes) => {
+				"nodes".hash(state);
+				for node in nodes {
+					node.hash(state);
+				}
+			}
+			Self::Value(value) => value.hash(state),
 		}
 	}
 }
@@ -142,6 +158,19 @@ impl ProtoNodeInput {
 }
 
 impl ProtoNode {
+	pub fn stable_node_id(&self) -> Option<NodeId> {
+		use std::hash::Hasher;
+		let mut hasher = std::collections::hash_map::DefaultHasher::new();
+		self.identifier.fully_qualified_name().hash(&mut hasher);
+		self.construction_args.hash(&mut hasher);
+		match self.input {
+			ProtoNodeInput::None => "none".hash(&mut hasher),
+			ProtoNodeInput::Network => "network".hash(&mut hasher),
+			ProtoNodeInput::Node(id) => id.hash(&mut hasher),
+		};
+		Some(hasher.finish() as NodeId)
+	}
+
 	pub fn value(value: ConstructionArgs) -> Self {
 		Self {
 			identifier: NodeIdentifier::new("graphene_core::value::ValueNode", &[Type::Generic(Cow::Borrowed("T"))]),
@@ -195,6 +224,24 @@ impl ProtoNetwork {
 		edges
 	}
 
+	pub fn generate_stable_node_ids(&mut self) {
+		for i in 0..self.nodes.len() {
+			self.generate_stable_node_id(i);
+		}
+	}
+
+	pub fn generate_stable_node_id(&mut self, index: usize) -> NodeId {
+		let mut lookup = self.nodes.iter().map(|(id, _)| (*id, *id)).collect::<HashMap<_, _>>();
+		if let Some(sni) = self.nodes[index].1.stable_node_id() {
+			lookup.insert(self.nodes[index].0, sni);
+			self.replace_node_references(&lookup);
+			self.nodes[index].0 = sni;
+			sni
+		} else {
+			panic!("failed to generate stable node id for node {:#?}", self.nodes[index].1);
+		}
+	}
+
 	pub fn collect_inwards_edges(&self) -> HashMap<NodeId, Vec<NodeId>> {
 		let mut edges: HashMap<NodeId, Vec<NodeId>> = HashMap::new();
 		for (id, node) in &self.nodes {
@@ -236,7 +283,7 @@ impl ProtoNetwork {
 			self.nodes.push((
 				compose_node_id,
 				ProtoNode {
-					identifier: NodeIdentifier::new("graphene_core::structural::ComposeNode", &[generic!("T"), Type::Generic(Cow::Borrowed("U"))]),
+					identifier: NodeIdentifier::new("graphene_core::structural::ComposeNode<_, _, _>", &[generic!("T"), generic!("U")]),
 					construction_args: ConstructionArgs::Nodes(vec![input_node, id]),
 					input,
 				},
@@ -330,7 +377,6 @@ impl ProtoNetwork {
 mod test {
 	use super::*;
 	use crate::proto::{ConstructionArgs, ProtoNetwork, ProtoNode, ProtoNodeInput};
-	use value::IntoValue;
 
 	#[test]
 	fn topological_sort() {
@@ -378,8 +424,30 @@ mod test {
 		assert_eq!(construction_network.nodes[5].1.construction_args, ConstructionArgs::Nodes(vec![3, 4]));
 	}
 
+	#[test]
+	fn stable_node_id_generation() {
+		let mut construction_network = test_network();
+		construction_network.reorder_ids();
+		construction_network.generate_stable_node_ids();
+		construction_network.resolve_inputs();
+		construction_network.generate_stable_node_ids();
+		assert_eq!(construction_network.nodes[0].1.identifier.name.as_ref(), "value");
+		let ids: Vec<_> = construction_network.nodes.iter().map(|(id, _)| *id).collect();
+		assert_eq!(
+			ids,
+			vec![
+				17495035641492238530,
+				14931179783740213471,
+				2268573767208263092,
+				14616574692620381527,
+				12110007198416821768,
+				11185814750012198757
+			]
+		);
+	}
+
 	fn test_network() -> ProtoNetwork {
-		let construction_network = ProtoNetwork {
+		ProtoNetwork {
 			inputs: vec![10],
 			output: 1,
 			nodes: [
@@ -420,13 +488,12 @@ mod test {
 					ProtoNode {
 						identifier: "value".into(),
 						input: ProtoNodeInput::None,
-						construction_args: ConstructionArgs::Value(2_u32.into_any()),
+						construction_args: ConstructionArgs::Value(value::TaggedValue::U32(2)),
 					},
 				),
 			]
 			.into_iter()
 			.collect(),
-		};
-		construction_network
+		}
 	}
 }

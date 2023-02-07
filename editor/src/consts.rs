@@ -68,7 +68,7 @@ pub const ASYMPTOTIC_EFFECT: f64 = 0.5;
 pub const SCALE_EFFECT: f64 = 0.5;
 
 // Colors
-pub const COLOR_ACCENT: Color = Color::from_unsafe(0x00 as f32 / 255., 0xA8 as f32 / 255., 0xFF as f32 / 255.);
+pub const COLOR_ACCENT: Color = Color::from_uchecked(0x00 as f32 / 255., 0xA8 as f32 / 255., 0xFF as f32 / 255.);
 
 // Fonts
 pub const DEFAULT_FONT_FAMILY: &str = "Merriweather";
