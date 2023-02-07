@@ -123,7 +123,7 @@ impl Fsm for ImaginateToolFsmState {
 					let imaginate_node_type = IMAGINATE_NODE;
 
 					let mut imaginate_inputs: Vec<NodeInput> = imaginate_node_type.inputs.iter().map(|input| input.default.clone()).collect();
-					imaginate_inputs[0] = NodeInput::Node(0);
+					imaginate_inputs[0] = NodeInput::node(0, 0);
 
 					let imaginate_node_id = 100;
 					let mut network = node_graph::new_image_network(32, imaginate_node_id);
