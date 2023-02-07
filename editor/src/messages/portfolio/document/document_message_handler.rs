@@ -558,35 +558,37 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				resize_opposite_corner,
 			} => {
 				self.backup(responses);
-				let keyboard = &ipp.keyboard;
+
+				let opposite_corner = ipp.keyboard.key(resize_opposite_corner);
+				let sign = if opposite_corner { -1. } else { 1. };
 
 				for path in self.selected_layers().map(|path| path.to_vec()) {
-					if keyboard.key(resize) {
-						//
-						if let Ok(Some(existing_bounds)) = self.document_legacy.viewport_bounding_box(&path, &render_data) {
-							let [existing_top_left, existing_bottom_right] = existing_bounds;
-							let width = existing_bottom_right.x - existing_top_left.x;
-							let height = existing_bottom_right.y - existing_top_left.y;
+					// Nudge translation
+					let transform = if !ipp.keyboard.key(resize) {
+						Some(DAffine2::from_translation((delta_x, delta_y).into()).to_cols_array())
+					}
+					// Nudge resize
+					else {
+						self.document_legacy
+							.viewport_bounding_box(&path, &render_data)
+							.ok()
+							.flatten()
+							.and_then(|[existing_top_left, existing_bottom_right]| {
+								let width = existing_bottom_right.x - existing_top_left.x;
+								let height = existing_bottom_right.y - existing_top_left.y;
 
-							let sign = if !keyboard.key(resize_opposite_corner) { 1. } else { -1. };
-							let new_width = if (width + sign * delta_x) > 1. { width + sign * delta_x } else { 1. };
-							let new_height = if (height + sign * delta_y) > 1. { height + sign * delta_y } else { 1. };
+								let new_width = (width + delta_x * sign).max(1.);
+								let new_height = (height + delta_y * sign).max(1.);
 
-							let offset = DAffine2::from_translation(if !keyboard.key(resize_opposite_corner) { -existing_top_left } else { -existing_bottom_right });
-							let scale = DAffine2::from_scale((new_width / width, new_height / height).into());
+								let offset = DAffine2::from_translation(if opposite_corner { -existing_bottom_right } else { -existing_top_left });
+								let scale = DAffine2::from_scale((new_width / width, new_height / height).into());
 
-							let operation = DocumentOperation::TransformLayerInViewport {
-								path,
-								transform: (offset.inverse() * scale * offset).to_cols_array(),
-							};
-							responses.push_back(operation.into());
-						}
-					} else {
-						let operation = DocumentOperation::TransformLayerInViewport {
-							path,
-							transform: DAffine2::from_translation((delta_x, delta_y).into()).to_cols_array(),
-						};
-						responses.push_back(operation.into());
+								Some((offset.inverse() * scale * offset).to_cols_array())
+							})
+					};
+
+					if let Some(transform) = transform {
+						responses.push_back(DocumentOperation::TransformLayerInViewport { path, transform }.into());
 					}
 				}
 				responses.push_back(BroadcastEvent::DocumentIsDirty.into());
