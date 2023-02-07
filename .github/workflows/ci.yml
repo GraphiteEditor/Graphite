@@ -15,6 +15,7 @@ jobs:
     runs-on: self-hosted
     env:
       RUSTC_WRAPPER: /usr/bin/sccache
+      CARGO_INCREMENTAL: 0
 
     steps:
     - uses: actions/checkout@v2
