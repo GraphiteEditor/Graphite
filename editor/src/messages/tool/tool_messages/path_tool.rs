@@ -324,10 +324,7 @@ impl Fsm for PathToolFsmState {
 					HintInfo::keys([Key::Shift], "Grow/Shrink Selection").prepend_plus(),
 				]),
 				HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Drag Selected")]),
-				HintGroup(vec![
-					HintInfo::arrow_keys("Nudge Selected (coming soon)"),
-					HintInfo::keys([Key::Shift], "Big Increment Nudge").prepend_plus(),
-				]),
+				HintGroup(vec![HintInfo::arrow_keys("Nudge Selected (coming soon)"), HintInfo::keys([Key::Shift], "10x").prepend_plus()]),
 				HintGroup(vec![
 					HintInfo::keys([Key::KeyG], "Grab Selected (coming soon)"),
 					HintInfo::keys([Key::KeyR], "Rotate Selected (coming soon)"),

@@ -56,6 +56,7 @@ pub enum SelectToolMessage {
 	},
 	DragStop,
 	EditLayer,
+	Enter,
 	FlipHorizontal,
 	FlipVertical,
 	PointerMove {
@@ -215,12 +216,14 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for SelectTool {
 				PointerMove,
 				Abort,
 				EditLayer,
+				Enter,
 			),
 			_ => actions!(SelectToolMessageDiscriminant;
 				DragStop,
 				PointerMove,
 				Abort,
 				EditLayer,
+				Enter,
 			),
 		}
 	}
@@ -587,7 +590,7 @@ impl Fsm for SelectToolFsmState {
 
 					Ready
 				}
-				(Dragging, DragStop) => {
+				(Dragging, DragStop | Enter) => {
 					let response = match input.mouse.position.distance(tool_data.drag_start) < 10. * f64::EPSILON {
 						true => DocumentMessage::Undo,
 						false => DocumentMessage::CommitTransaction,
@@ -596,7 +599,7 @@ impl Fsm for SelectToolFsmState {
 					responses.push_front(response.into());
 					Ready
 				}
-				(ResizingBounds, DragStop) => {
+				(ResizingBounds, DragStop | Enter) => {
 					let response = match input.mouse.position.distance(tool_data.drag_start) < 10. * f64::EPSILON {
 						true => DocumentMessage::Undo,
 						false => DocumentMessage::CommitTransaction,
@@ -611,7 +614,7 @@ impl Fsm for SelectToolFsmState {
 
 					Ready
 				}
-				(RotatingBounds, DragStop) => {
+				(RotatingBounds, DragStop | Enter) => {
 					let response = match input.mouse.position.distance(tool_data.drag_start) < 10. * f64::EPSILON {
 						true => DocumentMessage::Undo,
 						false => DocumentMessage::CommitTransaction,
@@ -624,7 +627,7 @@ impl Fsm for SelectToolFsmState {
 
 					Ready
 				}
-				(DraggingPivot, DragStop) => {
+				(DraggingPivot, DragStop | Enter) => {
 					let response = match input.mouse.position.distance(tool_data.drag_start) < 10. * f64::EPSILON {
 						true => DocumentMessage::Undo,
 						false => DocumentMessage::CommitTransaction,
@@ -635,7 +638,7 @@ impl Fsm for SelectToolFsmState {
 
 					Ready
 				}
-				(DrawingBox, DragStop) => {
+				(DrawingBox, DragStop | Enter) => {
 					let quad = tool_data.selection_quad();
 					responses.push_front(
 						DocumentMessage::AddSelectedLayers {
@@ -652,6 +655,23 @@ impl Fsm for SelectToolFsmState {
 						)
 						.into(),
 					);
+					Ready
+				}
+				(Ready, Enter) => {
+					let mut selected_layers = document.selected_layers();
+
+					if let Some(layer_path) = selected_layers.next() {
+						// Check that only one layer is selected
+						if selected_layers.next().is_none() {
+							if let Ok(layer) = document.document_legacy.layer(layer_path) {
+								if let LayerDataType::Text(_) = layer.data {
+									responses.push_front(ToolMessage::ActivateTool { tool_type: ToolType::Text }.into());
+									responses.push_back(TextToolMessage::EditSelected.into());
+								}
+							}
+						}
+					}
+
 					Ready
 				}
 				(Dragging, Abort) => {
@@ -737,7 +757,12 @@ impl Fsm for SelectToolFsmState {
 					HintInfo::mouse(MouseMotion::LmbDrag, "Select Area"),
 					HintInfo::keys([Key::Shift], "Grow/Shrink Selection").prepend_plus(),
 				]),
-				HintGroup(vec![HintInfo::arrow_keys("Nudge Selected"), HintInfo::keys([Key::Shift], "Big Increment Nudge").prepend_plus()]),
+				HintGroup(vec![
+					HintInfo::arrow_keys("Nudge Selected"),
+					HintInfo::keys([Key::Shift], "10x").prepend_plus(),
+					HintInfo::keys([Key::Alt], "Resize Corner").prepend_plus(),
+					HintInfo::keys([Key::Shift], "Opp. Corner").prepend_plus(),
+				]),
 				HintGroup(vec![
 					HintInfo::keys([Key::Alt], "Move Duplicate"),
 					HintInfo::keys([Key::Control, Key::KeyD], "Duplicate").add_mac_keys([Key::Command, Key::KeyD]),
