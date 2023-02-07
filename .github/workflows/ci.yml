@@ -13,10 +13,14 @@ env:
 jobs:
   build:
     runs-on: self-hosted
+    env:
+      RUSTC_WRAPPER: /usr/bin/sccache
+      CARGO_INCREMENTAL: 0
+      SCCACHE_DIR: /var/lib/github-actions/.cache
 
     steps:
     - uses: actions/checkout@v2
-
+    
     - name: 🔧 Set up Node
       uses: actions/setup-node@v1
       with:
@@ -39,7 +43,7 @@ jobs:
         SKIP_CARGO_ABOUT: true
       run: |
         cd frontend
-        npm run build
+        mold -run npm run build
 
     - name: 👕 Lint Graphite web formatting
       env:
@@ -58,7 +62,7 @@ jobs:
 
     - name: 🧪 Run Rust tests
       run: |
-        mold -run cargo test
+        mold -run cargo nextest run
 
   cargo-deny:
     runs-on: ubuntu-latest
