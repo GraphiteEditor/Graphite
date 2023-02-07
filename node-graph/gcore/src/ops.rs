@@ -18,6 +18,18 @@ impl AddNode {
 		Self
 	}
 }
+pub struct AddParameterNode<Second> {
+	second: Second,
+}
+
+#[node_macro::node_fn(AddParameterNode)]
+fn flat_map<U, T>(first: U, second: T) -> <U as Add<T>>::Output
+where
+	U: Add<T>,
+{
+	first + second
+}
+
 /*
 #[cfg(feature = "std")]
 pub mod dynamic {

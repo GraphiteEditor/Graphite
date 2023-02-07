@@ -300,7 +300,7 @@ static STATIC_NODES: &[DocumentNodeType] = &[
 	DocumentNodeType {
 		name: "Add",
 		category: "Math",
-		identifier: NodeImplementation::proto("graphene_core::ops::AddNode", &[concrete!("(&f64, &f64)")]),
+		identifier: NodeImplementation::proto("graphene_core::ops::AddParameterNode<_>", &[concrete!("f64"), concrete!("f64")]),
 		inputs: &[
 			DocumentInputType::new("Input", TaggedValue::F64(0.), true),
 			DocumentInputType::new("Addend", TaggedValue::F64(0.), true),
