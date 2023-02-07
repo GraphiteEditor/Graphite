@@ -377,7 +377,6 @@ impl ProtoNetwork {
 mod test {
 	use super::*;
 	use crate::proto::{ConstructionArgs, ProtoNetwork, ProtoNode, ProtoNodeInput};
-	
 
 	#[test]
 	fn topological_sort() {
