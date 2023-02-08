@@ -573,7 +573,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 							.viewport_bounding_box(&path, &render_data)
 							.ok()
 							.flatten()
-							.and_then(|[existing_top_left, existing_bottom_right]| {
+							.map(|[existing_top_left, existing_bottom_right]| {
 								let width = existing_bottom_right.x - existing_top_left.x;
 								let height = existing_bottom_right.y - existing_top_left.y;
 
@@ -583,7 +583,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 								let offset = DAffine2::from_translation(if opposite_corner { -existing_bottom_right } else { -existing_top_left });
 								let scale = DAffine2::from_scale((new_width / width, new_height / height).into());
 
-								Some((offset.inverse() * scale * offset).to_cols_array())
+								(offset.inverse() * scale * offset).to_cols_array()
 							})
 					};
 

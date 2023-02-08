@@ -190,8 +190,7 @@ impl Fsm for PathToolFsmState {
 						let include_handles = tool_data.shape_editor.selected_layers_ref();
 						tool_data.snap_manager.add_all_document_handles(document, input, &include_handles, &[], &selected_points.points);
 
-						tool_data.drag_start_pos = input.mouse.position;
-						tool_data.previous_mouse_position = input.mouse.position - selected_points.offset;
+						tool_data.drag_start_pos = input.mouse.position - selected_points.offset;
 						PathToolFsmState::Dragging
 					}
 					// We didn't find a point nearby, so consider selecting the nearest shape instead
@@ -251,10 +250,8 @@ impl Fsm for PathToolFsmState {
 
 					// Move the selected points by the mouse position
 					let snapped_position = tool_data.snap_manager.snap_position(responses, document, input.mouse.position);
-					tool_data
-						.shape_editor
-						.move_selected_points(snapped_position - tool_data.previous_mouse_position, shift_pressed, responses);
-					tool_data.previous_mouse_position = snapped_position;
+					tool_data.shape_editor.move_selected_points(snapped_position - tool_data.drag_start_pos, shift_pressed, responses);
+					tool_data.drag_start_pos = snapped_position;
 					PathToolFsmState::Dragging
 				}
 				// Mouse up
