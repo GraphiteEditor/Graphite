@@ -69,7 +69,8 @@ static NODE_REGISTRY: &[(NodeIdentifier, NodeConstructor)] = &[
 	//filters
 	raster_node!(graphene_core::raster::GrayscaleColorNode, params: []),
 	raster_node!(graphene_core::raster::HueShiftColorNode<_, _, _>, params: [f32, f32, f32]),
-	register_node!(graphene_std::raster::InvertRGBNode, input: Image, params: []),
+	raster_node!(graphene_core::raster::InvertRGBNode, params: []),
+	raster_node!(graphene_core::raster::ThresholdNode<_>, params: [f32]),
 	(NodeIdentifier::new("graphene_core::structural::MapImageNode", &[]), |args| {
 		let map_fn: DowncastBothNode<Color, Color> = DowncastBothNode::new(args[0]);
 		let node = graphene_std::raster::MapImageNode::new(ValueNode::new(map_fn));

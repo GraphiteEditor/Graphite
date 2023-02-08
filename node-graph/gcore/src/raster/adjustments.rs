@@ -46,6 +46,34 @@ mod hue_shift {
 	#[node_macro::node_fn(HueShiftColorNode)]
 	fn hue_shift_color_node(color: Color, hue_shift: f32, saturation_shift: f32, lightness_shift: f32) -> Color {
 		let [hue, saturation, lightness, alpha] = color.to_hsla();
-		Color::from_hsla(hue + hue_shift / 360., saturation + saturation_shift, lightness + lightness_shift, alpha)
+		Color::from_hsla(
+			(hue + hue_shift / 360.) % 1.,
+			(saturation + saturation_shift / 100.).clamp(0., 1.),
+			(lightness + lightness_shift / 100.).clamp(0., 1.),
+			alpha,
+		)
 	}
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct InvertRGBNode;
+
+#[node_macro::node_fn(InvertRGBNode)]
+fn invert_image(color: Color) -> Color {
+    map_rgb(color, |c| 1. - c)
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct ThresholdNode<Threshold>{
+    threshold: Threshold
+}
+
+#[node_macro::node_fn(ThresholdNode)]
+fn threshold_node(color: Color, threshold: f32) -> Color {
+	let avg = (color.r() + color.g() + color.b()) / 3.0;
+    if avg >= threshold {
+        Color::BLACK
+    } else {
+        Color::WHITE
+    }
 }
