@@ -2,8 +2,6 @@ use super::Color;
 use core::{fmt::Debug, marker::PhantomData};
 
 use crate::Node;
-#[derive(Debug, Clone, Copy, Default)]
-pub struct GrayscaleColorNode;
 
 pub fn map_rgba<F: Fn(f32) -> f32>(color: Color, f: F) -> Color {
 	Color::from_rgbaf32_unchecked(f(color.r()), f(color.g()), f(color.b()), f(color.a()))
@@ -11,6 +9,9 @@ pub fn map_rgba<F: Fn(f32) -> f32>(color: Color, f: F) -> Color {
 pub fn map_rgb<F: Fn(f32) -> f32>(color: Color, f: F) -> Color {
 	Color::from_rgbaf32_unchecked(f(color.r()), f(color.g()), f(color.b()), color.a())
 }
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct GrayscaleColorNode;
 
 #[node_macro::node_fn(GrayscaleColorNode)]
 fn grayscale_color_node(input: Color) -> Color {
@@ -36,14 +37,15 @@ pub use hue_shift::HueShiftColorNode;
 mod hue_shift {
 	use super::*;
 	#[derive(Debug)]
-	pub struct HueShiftColorNode<Angle> {
-		angle: Angle,
+	pub struct HueShiftColorNode<Hue, Saturation, Lightness> {
+        hue_shift: Hue,
+        saturation_shift: Saturation,
+        lightness_shift: Lightness
 	}
 
 	#[node_macro::node_fn(HueShiftColorNode)]
-	fn hue_shift_color_node(color: Color, angle: f32) -> Color {
-		let hue_shift = angle;
+	fn hue_shift_color_node(color: Color, hue_shift: f32, saturation_shift: f32, lightness_shift: f32) -> Color {
 		let [hue, saturation, lightness, alpha] = color.to_hsla();
-		Color::from_hsla(hue + hue_shift / 360., saturation, lightness, alpha)
+		Color::from_hsla(hue + hue_shift / 360., saturation + saturation_shift, lightness + lightness_shift, alpha)
 	}
 }
