@@ -14,6 +14,23 @@ pub enum ImaginateStatus {
 	Terminated,
 }
 
+#[allow(clippy::derive_hash_xor_eq)]
+impl core::hash::Hash for ImaginateStatus {
+	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+		match self {
+			Self::Idle => 0.hash(state),
+			Self::Beginning => 1.hash(state),
+			Self::Uploading(f) => {
+				2.hash(state);
+				f.to_bits().hash(state);
+			}
+			Self::Generating => 3.hash(state),
+			Self::Terminating => 4.hash(state),
+			Self::Terminated => 5.hash(state),
+		}
+	}
+}
+
 #[derive(Debug, Clone, PartialEq, specta::Type)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ImaginateBaseImage {
@@ -31,7 +48,7 @@ pub struct ImaginateMaskImage {
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, specta::Type)]
+#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, specta::Type, Hash)]
 pub enum ImaginateMaskPaintMode {
 	#[default]
 	Inpaint,
@@ -39,7 +56,7 @@ pub enum ImaginateMaskPaintMode {
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, DynAny, specta::Type)]
+#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, DynAny, specta::Type, Hash)]
 pub enum ImaginateMaskStartingFill {
 	#[default]
 	Fill,
@@ -70,7 +87,7 @@ impl std::fmt::Display for ImaginateMaskStartingFill {
 	}
 }
 
-#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, DynAny, specta::Type)]
+#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, DynAny, specta::Type, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ImaginateSamplingMethod {
 	#[default]

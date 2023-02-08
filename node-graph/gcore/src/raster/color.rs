@@ -1,3 +1,5 @@
+use core::hash::Hash;
+
 use dyn_any::{DynAny, StaticType};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -26,12 +28,28 @@ pub struct Color {
 	alpha: f32,
 }
 
+#[allow(clippy::derive_hash_xor_eq)]
+impl Hash for Color {
+	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+		self.red.to_bits().hash(state);
+		self.green.to_bits().hash(state);
+		self.blue.to_bits().hash(state);
+		self.alpha.to_bits().hash(state);
+	}
+}
+
 impl Color {
 	pub const BLACK: Color = Color::from_rgbf32_unchecked(0., 0., 0.);
 	pub const WHITE: Color = Color::from_rgbf32_unchecked(1., 1., 1.);
 	pub const RED: Color = Color::from_rgbf32_unchecked(1., 0., 0.);
 	pub const GREEN: Color = Color::from_rgbf32_unchecked(0., 1., 0.);
 	pub const BLUE: Color = Color::from_rgbf32_unchecked(0., 0., 1.);
+	pub const TRANSPARENT: Color = Self {
+		red: 0.,
+		green: 0.,
+		blue: 0.,
+		alpha: 0.,
+	};
 
 	/// Returns `Some(Color)` if `red`, `green`, `blue` and `alpha` have a valid value. Negative numbers (including `-0.0`), NaN, and infinity are not valid values and return `None`.
 	/// Alpha values greater than `1.0` are not valid.
@@ -55,13 +73,13 @@ impl Color {
 	}
 
 	/// Return an opaque `Color` from given `f32` RGB channels.
-	pub const fn from_rgbaf32_unchecked(red: f32, green: f32, blue: f32, alpha: f32) -> Color {
-		Color { red, green, blue, alpha }
+	pub const fn from_rgbf32_unchecked(red: f32, green: f32, blue: f32) -> Color {
+		Color { red, green, blue, alpha: 1. }
 	}
 
 	/// Return an opaque `Color` from given `f32` RGB channels.
-	pub const fn from_rgbf32_unchecked(red: f32, green: f32, blue: f32) -> Color {
-		Color { red, green, blue, alpha: 1. }
+	pub const fn from_rgbaf32_unchecked(red: f32, green: f32, blue: f32, alpha: f32) -> Color {
+		Color { red, green, blue, alpha }
 	}
 
 	/// Return an opaque SDR `Color` given RGB channels from `0` to `255`.
@@ -190,6 +208,34 @@ impl Color {
 		(self.red, self.green, self.blue, self.alpha)
 	}
 
+	/// Return an 8-character RGBA hex string (without a # prefix).
+	///
+	/// # Examples
+	/// ```
+	/// use graphene_core::raster::color::Color;
+	/// let color = Color::from_rgba8(0x7C, 0x67, 0xFA, 0x61);
+	/// assert!("7C67FA61" == color.rgba_hex())
+	/// ```
+	pub fn rgba_hex(&self) -> String {
+		format!(
+			"{:02X?}{:02X?}{:02X?}{:02X?}",
+			(self.r() * 255.) as u8,
+			(self.g() * 255.) as u8,
+			(self.b() * 255.) as u8,
+			(self.a() * 255.) as u8,
+		)
+	}
+
+	/// Return a 6-character RGB hex string (without a # prefix).
+	/// ```
+	/// use graphene_core::raster::color::Color;
+	/// let color = Color::from_rgba8(0x7C, 0x67, 0xFA, 0x61);
+	/// assert!("7C67FA" == color.rgb_hex())
+	/// ```
+	pub fn rgb_hex(&self) -> String {
+		format!("{:02X?}{:02X?}{:02X?}", (self.r() * 255.) as u8, (self.g() * 255.) as u8, (self.b() * 255.) as u8,)
+	}
+
 	/// Return the all components as a u8 slice, first component is red, followed by green, followed by blue, followed by alpha.
 	///
 	/// # Examples
@@ -274,6 +320,19 @@ impl Color {
 		let b = u8::from_str_radix(&color_str[4..6], 16).ok()?;
 
 		Some(Color::from_rgb8(r, g, b))
+	}
+
+	/// Linearly interpolates between two colors based on t.
+	///
+	/// T must be between 0 and 1.
+	pub fn lerp(self, other: Color, t: f32) -> Option<Self> {
+		assert!((0. ..=1.).contains(&t));
+		Color::from_rgbaf32(
+			self.red + ((other.red - self.red) * t),
+			self.green + ((other.green - self.green) * t),
+			self.blue + ((other.blue - self.blue) * t),
+			self.alpha + ((other.alpha - self.alpha) * t),
+		)
 	}
 }
 

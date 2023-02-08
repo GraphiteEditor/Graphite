@@ -23,7 +23,6 @@ use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::ToolType;
 
 use document_legacy::boolean_ops::BooleanOperationError;
-use document_legacy::color::Color;
 use document_legacy::document::Document as DocumentLegacy;
 use document_legacy::layers::blend_mode::BlendMode;
 use document_legacy::layers::folder_layer::FolderLayer;
@@ -32,6 +31,7 @@ use document_legacy::layers::style::{Fill, RenderData, ViewMode};
 use document_legacy::layers::text_layer::Font;
 use document_legacy::{DocumentError, DocumentResponse, LayerId, Operation as DocumentOperation};
 use graph_craft::document::NodeId;
+use graphene_core::raster::color::Color;
 use graphene_std::vector::subpath::Subpath;
 
 use glam::{DAffine2, DVec2};
@@ -284,7 +284,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 			}
 			ClearLayerTree => {
 				// Send an empty layer tree
-				let data_buffer: RawBuffer = Self::default().serialize_root().into();
+				let data_buffer: RawBuffer = Self::default().serialize_root().as_slice().into();
 				responses.push_back(FrontendMessage::UpdateDocumentLayerTreeStructure { data_buffer }.into());
 
 				// Clear the options bar
@@ -360,7 +360,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 			DocumentHistoryBackward => self.undo(responses).unwrap_or_else(|e| warn!("{}", e)),
 			DocumentHistoryForward => self.redo(responses).unwrap_or_else(|e| warn!("{}", e)),
 			DocumentStructureChanged => {
-				let data_buffer: RawBuffer = self.serialize_root().into();
+				let data_buffer: RawBuffer = self.serialize_root().as_slice().into();
 				responses.push_back(FrontendMessage::UpdateDocumentLayerTreeStructure { data_buffer }.into())
 			}
 			DuplicateSelectedLayers => {

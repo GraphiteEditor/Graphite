@@ -2,12 +2,12 @@ use crate::application::generate_uuid;
 use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::*;
 
-use document_legacy::color::Color;
 use document_legacy::document::Document as DocumentLegacy;
 use document_legacy::layers::style::{self, Fill, RenderData, ViewMode};
 use document_legacy::DocumentResponse;
 use document_legacy::LayerId;
 use document_legacy::Operation as DocumentOperation;
+use graphene_core::raster::color::Color;
 
 use glam::DAffine2;
 use serde::{Deserialize, Serialize};

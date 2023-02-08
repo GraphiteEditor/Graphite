@@ -3,10 +3,10 @@ use crate::consts::VIEWPORT_GRID_ROUNDING_BIAS;
 use crate::consts::{COLOR_ACCENT, HIDE_HANDLE_DISTANCE, MANIPULATOR_GROUP_MARKER_SIZE, PATH_OUTLINE_WEIGHT};
 use crate::messages::prelude::*;
 
-use document_legacy::color::Color;
 use document_legacy::document::Document;
 use document_legacy::layers::style::{self, Fill, Stroke};
 use document_legacy::{LayerId, Operation};
+use graphene_core::raster::color::Color;
 use graphene_std::vector::consts::ManipulatorType;
 use graphene_std::vector::manipulator_group::ManipulatorGroup;
 use graphene_std::vector::manipulator_point::ManipulatorPoint;

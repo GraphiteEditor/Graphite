@@ -1,14 +1,44 @@
 use proc_macro::TokenStream;
+use proc_macro2::Span;
 use quote::{format_ident, ToTokens};
-use syn::{parse_macro_input, FnArg, Ident, ItemFn, Pat, PatIdent, ReturnType};
+use syn::{
+	parse_macro_input, punctuated::Punctuated, token::Comma, FnArg, GenericParam, Ident, ItemFn, Lifetime, Pat, PatIdent, PathArguments, PredicateType, ReturnType, Token, TraitBound, Type, TypeParam,
+	TypeParamBound, WhereClause, WherePredicate,
+};
 
 #[proc_macro_attribute]
 pub fn node_fn(attr: TokenStream, item: TokenStream) -> TokenStream {
-	let node_name = parse_macro_input!(attr as Ident);
+	//let node_name = parse_macro_input!(attr as Ident);
+	let node = parse_macro_input!(attr as syn::PathSegment);
+
 	let function = parse_macro_input!(item as ItemFn);
 
-	let function_name = &function.sig.ident;
+	let node = &node;
+	let node_name = &node.ident;
+	let mut args = match node.arguments.clone() {
+		PathArguments::AngleBracketed(args) => args
+			.args
+			.into_iter()
+			.map(|arg| match arg {
+				syn::GenericArgument::Type(ty) => ty,
+				_ => panic!("Only types are allowed as arguments"),
+			})
+			.collect::<Vec<_>>(),
+		_ => Default::default(),
+	};
+	let arg_idents = args
+		.iter()
+		.filter(|x| x.to_token_stream().to_string().starts_with('_'))
+		.map(|arg| Ident::new(arg.to_token_stream().to_string().to_lowercase().as_str(), Span::call_site()))
+		.collect::<Vec<_>>();
+
 	let mut function_inputs = function.sig.inputs.iter().filter_map(|arg| if let FnArg::Typed(typed_arg) = arg { Some(typed_arg) } else { None });
+
+	let mut type_generics = function.sig.generics.params.clone();
+	let mut where_clause = function.sig.generics.where_clause.clone().unwrap_or(WhereClause {
+		where_token: Token![where](Span::call_site()),
+		predicates: Default::default(),
+	});
 
 	// Extract primary input as first argument
 	let primary_input = function_inputs.next().expect("Primary input required - set to `()` if not needed.");
@@ -17,9 +47,11 @@ pub fn node_fn(attr: TokenStream, item: TokenStream) -> TokenStream {
 	};
 	let primary_input_ty = &primary_input.ty;
 
+	let body = function.block;
+
 	// Extract secondary inputs as all other arguments
-	let secondary_inputs = function_inputs.collect::<Vec<_>>();
-	let secondary_idents = secondary_inputs
+	let parameter_inputs = function_inputs.collect::<Vec<_>>();
+	let parameter_idents = parameter_inputs
 		.iter()
 		.map(|input| {
 			let Pat::Ident(PatIdent { ident: primary_input_ident,.. }) = &*input.pat else { panic!("Expected ident for secondary input."); };
@@ -34,50 +66,88 @@ pub fn node_fn(attr: TokenStream, item: TokenStream) -> TokenStream {
 		quote::quote!(())
 	};
 
+	let struct_generics = (0..parameter_inputs.len())
+		.map(|x| {
+			let ident = format_ident!("S{x}");
+			ident
+		})
+		.collect::<Punctuated<_, Comma>>();
+	let struct_generics_iter = struct_generics.iter();
+
+	for ident in struct_generics.iter() {
+		args.push(Type::Verbatim(quote::quote!(#ident)));
+	}
+
 	// Generics are simply `S0` through to `Sn-1` where n is the number of secondary inputs
-	let generics = (0..secondary_inputs.len()).map(|x| format_ident!("S{x}")).collect::<Vec<_>>();
-	// Bindings for all of the above generics to a node with an input of `()` and an output of the type in the function
-	let where_clause = secondary_inputs
+	let node_generics = struct_generics
 		.iter()
-		.zip(&generics)
+		.cloned()
+		.map(|ident| {
+			GenericParam::Type(TypeParam {
+				attrs: vec![],
+				ident,
+				colon_token: Some(Default::default()),
+				bounds: Punctuated::from_iter([TypeParamBound::Lifetime(Lifetime::new("'input", Span::call_site()))].iter().cloned()),
+				eq_token: None,
+				default: None,
+			})
+		})
+		.collect::<Punctuated<_, Comma>>();
+	type_generics.iter_mut().for_each(|x| {
+		if let GenericParam::Type(t) = x {
+			t.bounds.insert(0, TypeParamBound::Lifetime(Lifetime::new("'input", Span::call_site())));
+		}
+	});
+	let generics = type_generics.into_iter().chain(node_generics.iter().cloned()).collect::<Punctuated<_, Comma>>();
+	// Bindings for all of the above generics to a node with an input of `()` and an output of the type in the function
+	let extra_where_clause = parameter_inputs
+		.iter()
+		.zip(&node_generics)
 		.map(|(ty, name)| {
 			let ty = &ty.ty;
-			quote::quote!(#name: Node<(), Output = #ty>)
+			let GenericParam::Type(generic_ty) = name else { panic!("Expected type generic."); };
+			let ident = &generic_ty.ident;
+			WherePredicate::Type(PredicateType {
+				lifetimes: None,
+				bounded_ty: Type::Verbatim(ident.to_token_stream()),
+				colon_token: Default::default(),
+				bounds: Punctuated::from_iter([TypeParamBound::Trait(TraitBound {
+					paren_token: None,
+					modifier: syn::TraitBoundModifier::None,
+					lifetimes: syn::parse_quote!(for<'any_input>),
+					path: syn::parse_quote!(Node<'any_input, (), Output = #ty>),
+				})]),
+			})
 		})
 		.collect::<Vec<_>>();
+	where_clause.predicates.extend(extra_where_clause);
 
 	quote::quote! {
-		#function
 
-		impl <#(#generics),*> Node<#primary_input_ty> for #node_name<#(#generics),*>
-			where
-			#(#where_clause),* {
-
+		impl <'input, #generics> Node<'input, #primary_input_ty> for #node_name<#(#args),*>
+			#where_clause
+		{
 			type Output = #output;
-			fn eval(self, #primary_input_ident: #primary_input_ty) -> #output{
-				#function_name(#primary_input_ident #(, self.#secondary_idents.eval(()))*)
+			#[inline]
+			fn eval<'node: 'input>(&'node self, #primary_input_ident: #primary_input_ty) -> Self::Output {
+				#(
+					let #parameter_idents = self.#parameter_idents.eval(());
+				)*
+
+				#body
 			}
 		}
 
-		impl <#(#generics),*> Node<#primary_input_ty> for &#node_name<#(#generics),*>
-			where
-			#(#where_clause + Copy),* {
-
-			type Output = #output;
-			fn eval(self, #primary_input_ident: #primary_input_ty) -> #output{
-				#function_name(#primary_input_ident #(, self.#secondary_idents.eval(()))*)
-			}
-		}
-
-		impl <#(#generics),*> #node_name<#(#generics),*>
-			where
-			#(#where_clause + Copy),* {
-				pub fn new(#(#secondary_idents: #generics),*) -> Self{
-					Self{
-						#(#secondary_idents),*
-					}
+		impl <#(#args),*> #node_name<#(#args),*>
+		{
+			pub const fn new(#(#parameter_idents: #struct_generics_iter),*) -> Self{
+				Self{
+					#(#parameter_idents,)*
+					#(#arg_idents: core::marker::PhantomData,)*
 				}
+			}
 		}
+
 	}
 	.into()
 }

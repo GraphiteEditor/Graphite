@@ -1,144 +1,92 @@
 use core::marker::PhantomData;
 
-use crate::{AsRefNode, Node, RefNode};
+use crate::Node;
 
-#[derive(Debug, Clone, Copy)]
-pub struct ComposeNode<First, Second, Input> {
+pub struct ComposeNode<First: for<'i> Node<'i, I>, Second: for<'i> Node<'i, <First as Node<'i, I>>::Output>, I> {
 	first: First,
 	second: Second,
-	_phantom: PhantomData<Input>,
+	phantom: PhantomData<I>,
 }
 
-impl<Input, Inter, First, Second> Node<Input> for ComposeNode<First, Second, Input>
+impl<'i, Input: 'i, First, Second> Node<'i, Input> for ComposeNode<First, Second, Input>
 where
-	First: Node<Input, Output = Inter>,
-	Second: Node<Inter>,
+	First: for<'a> Node<'a, Input> + 'i,
+	Second: for<'a> Node<'a, <First as Node<'a, Input>>::Output> + 'i,
 {
-	type Output = <Second as Node<Inter>>::Output;
-
-	fn eval(self, input: Input) -> Self::Output {
-		// evaluate the first node with the given input
-		// and then pipe the result from the first computation
-		// into the second node
-		let arg: Inter = self.first.eval(input);
+	type Output = <Second as Node<'i, <First as Node<'i, Input>>::Output>>::Output;
+	fn eval<'s: 'i>(&'s self, input: Input) -> Self::Output {
+		let arg = self.first.eval(input);
 		self.second.eval(arg)
 	}
 }
-impl<'n, Input, Inter, First, Second> Node<Input> for &'n ComposeNode<First, Second, Input>
+
+impl<First, Second, Input> ComposeNode<First, Second, Input>
 where
-	First: AsRefNode<'n, Input, Output = Inter>,
-	Second: AsRefNode<'n, Inter>,
-	&'n First: Node<Input, Output = Inter>,
-	&'n Second: Node<Inter>,
+	First: for<'a> Node<'a, Input>,
+	Second: for<'a> Node<'a, <First as Node<'a, Input>>::Output>,
 {
-	type Output = <Second as AsRefNode<'n, Inter>>::Output;
-
-	fn eval(self, input: Input) -> Self::Output {
-		// evaluate the first node with the given input
-		// and then pipe the result from the first computation
-		// into the second node
-		let arg: Inter = (self.first).eval_box(input);
-		(self.second).eval_box(arg)
-	}
-}
-impl<Input, Inter, First, Second> RefNode<Input> for ComposeNode<First, Second, Input>
-where
-	First: RefNode<Input, Output = Inter> + Copy,
-	Second: RefNode<Inter> + Copy,
-{
-	type Output = <Second as RefNode<Inter>>::Output;
-
-	fn eval_ref(&self, input: Input) -> Self::Output {
-		// evaluate the first node with the given input
-		// and then pipe the result from the first computation
-		// into the second node
-		let arg: Inter = (self.first).eval_ref(input);
-		(self.second).eval_ref(arg)
-	}
-}
-impl<Input: 'static, First: 'static, Second: 'static> dyn_any::StaticType for ComposeNode<First, Second, Input> {
-	type Static = ComposeNode<First, Second, Input>;
-}
-
-impl<'n, Input, First: 'n, Second: 'n> ComposeNode<First, Second, Input> {
 	pub const fn new(first: First, second: Second) -> Self {
-		ComposeNode::<First, Second, Input> { first, second, _phantom: PhantomData }
+		ComposeNode::<First, Second, Input> { first, second, phantom: PhantomData }
 	}
 }
 
-pub trait Then<Inter, Input>: Sized {
+// impl Clone for ComposeNode<First, Second, Input>
+impl<First, Second, Input> Clone for ComposeNode<First, Second, Input>
+where
+	First: for<'a> Node<'a, Input> + Clone,
+	Second: for<'a> Node<'a, <First as Node<'a, Input>>::Output> + Clone,
+{
+	fn clone(&self) -> Self {
+		ComposeNode::<First, Second, Input> {
+			first: self.first.clone(),
+			second: self.second.clone(),
+			phantom: PhantomData,
+		}
+	}
+}
+
+pub trait Then<'i, Input: 'i>: Sized {
 	fn then<Second>(self, second: Second) -> ComposeNode<Self, Second, Input>
 	where
-		Self: Node<Input, Output = Inter>,
-		Second: Node<Inter>,
+		Self: for<'a> Node<'a, Input>,
+		Second: for<'a> Node<'a, <Self as Node<'a, Input>>::Output>,
 	{
-		ComposeNode::<Self, Second, Input> {
-			first: self,
-			second,
-			_phantom: PhantomData,
-		}
+		ComposeNode::new(self, second)
 	}
 }
 
-impl<First: Node<Input, Output = Inter>, Inter, Input> Then<Inter, Input> for First {}
+impl<'i, First: for<'a> Node<'a, Input>, Input: 'i> Then<'i, Input> for First {}
 
-pub trait ThenRef<Inter, Input>: Sized {
-	fn after<'n, Second: 'n>(&'n self, second: Second) -> ComposeNode<&'n Self, Second, Input>
-	where
-		&'n Self: Node<Input, Output = Inter> + Copy,
-		Second: Node<Inter>,
-		Self: 'n,
-	{
-		ComposeNode::<&'n Self, Second, Input> {
-			first: self,
-			second,
-			_phantom: PhantomData,
-		}
-	}
-}
-impl<'n, First: 'n, Inter, Input> ThenRef<Inter, Input> for First where &'n First: Node<Input, Output = Inter> {}
+pub struct ConsNode<I: From<()>, Root>(pub Root, PhantomData<I>);
 
-#[cfg(feature = "async")]
-pub trait ThenBox<Inter, Input> {
-	fn then<'n, Second: 'n>(self, second: Second) -> ComposeNode<Self, Second, Input>
-	where
-		alloc::boxed::Box<Self>: Node<Input, Output = Inter>,
-		Second: Node<Inter> + Copy,
-		Self: Sized,
-	{
-		ComposeNode::<Self, Second, Input> {
-			first: self,
-			second,
-			_phantom: PhantomData,
-		}
-	}
-}
-#[cfg(feature = "async")]
-impl<'n, First: 'n, Inter, Input> ThenBox<Inter, Input> for alloc::boxed::Box<First> where &'n alloc::boxed::Box<First>: Node<Input, Output = Inter> {}
-
-pub struct ConsNode<Root, T: From<()>>(pub Root, pub PhantomData<T>);
-
-impl<Root, Input, T: From<()>> Node<Input> for ConsNode<Root, T>
+impl<'i, Root, Input: 'i, I: 'i + From<()>> Node<'i, Input> for ConsNode<I, Root>
 where
-	Root: Node<T>,
+	Root: Node<'i, I>,
 {
-	type Output = (Input, <Root as Node<T>>::Output);
-
-	fn eval(self, input: Input) -> Self::Output {
-		let arg = self.0.eval(().into());
-		(input, arg)
-	}
-}
-impl<'n, Root: Node<T> + Copy, T: From<()>, Input> Node<Input> for &'n ConsNode<Root, T> {
 	type Output = (Input, Root::Output);
-
-	fn eval(self, input: Input) -> Self::Output {
-		let arg = self.0.eval(().into());
+	fn eval<'s: 'i>(&'s self, input: Input) -> Self::Output {
+		let arg = self.0.eval(I::from(()));
 		(input, arg)
 	}
 }
-impl<Root, T: From<()>> ConsNode<Root, T> {
+impl<'i, Root: Node<'i, I>, I: 'i + From<()>> ConsNode<I, Root> {
 	pub fn new(root: Root) -> Self {
 		ConsNode(root, PhantomData)
+	}
+}
+
+#[cfg(test)]
+mod test {
+	use crate::{ops::IdNode, value::ValueNode};
+
+	use super::*;
+
+	#[test]
+	fn compose() {
+		let value = ValueNode::new(4u32);
+		let compose = value.then(IdNode::new());
+		assert_eq!(compose.eval(()), &4u32);
+		let type_erased = &compose as &dyn for<'i> Node<'i, (), Output = &'i u32>;
+		assert_eq!(type_erased.eval(()), &4u32);
 	}
 }

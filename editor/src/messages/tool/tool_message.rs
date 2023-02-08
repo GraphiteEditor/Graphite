@@ -1,7 +1,7 @@
 use super::utility_types::ToolType;
 use crate::messages::prelude::*;
 
-use document_legacy::color::Color;
+use graphene_core::raster::color::Color;
 
 use serde::{Deserialize, Serialize};
 

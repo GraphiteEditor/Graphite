@@ -1,8 +1,9 @@
 //! Contains stylistic options for SVG elements.
 
 use super::text_layer::FontCache;
-use crate::color::Color;
 use crate::consts::{LAYER_OUTLINE_STROKE_COLOR, LAYER_OUTLINE_STROKE_WEIGHT};
+
+use graphene_core::raster::color::Color;
 
 use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};
@@ -410,7 +411,7 @@ impl PathStyle {
 	/// # Example
 	/// ```
 	/// # use graphite_document_legacy::layers::style::{Fill, PathStyle};
-	/// # use graphite_document_legacy::color::Color;
+	/// # use graphene_core::raster::color::Color;
 	/// let fill = Fill::solid(Color::RED);
 	/// let style = PathStyle::new(None, fill.clone());
 	///
@@ -425,7 +426,7 @@ impl PathStyle {
 	/// # Example
 	/// ```
 	/// # use graphite_document_legacy::layers::style::{Fill, Stroke, PathStyle};
-	/// # use graphite_document_legacy::color::Color;
+	/// # use graphene_core::raster::color::Color;
 	/// let stroke = Stroke::new(Color::GREEN, 42.);
 	/// let style = PathStyle::new(Some(stroke.clone()), Fill::None);
 	///
@@ -440,7 +441,7 @@ impl PathStyle {
 	/// # Example
 	/// ```
 	/// # use graphite_document_legacy::layers::style::{Fill, PathStyle};
-	/// # use graphite_document_legacy::color::Color;
+	/// # use graphene_core::raster::color::Color;
 	/// let mut style = PathStyle::default();
 	///
 	/// assert_eq!(*style.fill(), Fill::None);
@@ -459,7 +460,7 @@ impl PathStyle {
 	/// # Example
 	/// ```
 	/// # use graphite_document_legacy::layers::style::{Stroke, PathStyle};
-	/// # use graphite_document_legacy::color::Color;
+	/// # use graphene_core::raster::color::Color;
 	/// let mut style = PathStyle::default();
 	///
 	/// assert_eq!(style.stroke(), None);
@@ -478,7 +479,7 @@ impl PathStyle {
 	/// # Example
 	/// ```
 	/// # use graphite_document_legacy::layers::style::{Fill, PathStyle};
-	/// # use graphite_document_legacy::color::Color;
+	/// # use graphene_core::raster::color::Color;
 	/// let mut style = PathStyle::new(None, Fill::Solid(Color::RED));
 	///
 	/// assert!(style.fill().is_some());
@@ -496,7 +497,7 @@ impl PathStyle {
 	/// # Example
 	/// ```
 	/// # use graphite_document_legacy::layers::style::{Fill, Stroke, PathStyle};
-	/// # use graphite_document_legacy::color::Color;
+	/// # use graphene_core::raster::color::Color;
 	/// let mut style = PathStyle::new(Some(Stroke::new(Color::GREEN, 42.)), Fill::None);
 	///
 	/// assert!(style.stroke().is_some());

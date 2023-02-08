@@ -1,58 +1,9 @@
-use core::marker::PhantomData;
 use dyn_any::{DynAny, StaticType};
-use graphene_core::generic::FnNode;
-use graphene_core::ops::{FlatMapResultNode, MapResultNode};
+
 use graphene_core::raster::{Color, Image};
-use graphene_core::structural::{ComposeNode, ConsNode, Then};
-use graphene_core::value::ValueNode;
 use graphene_core::Node;
-use image::Pixel;
+
 use std::path::Path;
-
-pub struct MapNode<MN: Node<S>, I: IntoIterator<Item = S>, S>(pub MN, PhantomData<(S, I)>);
-
-impl<I: IntoIterator<Item = S>, MN: Node<S> + Copy, S> Node<I> for MapNode<MN, I, S> {
-	type Output = Vec<MN::Output>;
-	fn eval(self, input: I) -> Self::Output {
-		input.into_iter().map(|x| self.0.eval(x)).collect()
-	}
-}
-
-impl<I: IntoIterator<Item = S>, MN: Node<S>, S> MapNode<MN, I, S> {
-	pub const fn new(mn: MN) -> Self {
-		MapNode(mn, PhantomData)
-	}
-}
-
-pub struct MapImageNode<MN: Node<Color, Output = Color> + Copy>(pub MN);
-
-impl<MN: Node<Color, Output = Color> + Copy> Node<Image> for MapImageNode<MN> {
-	type Output = Image;
-	fn eval(self, input: Image) -> Self::Output {
-		Image {
-			width: input.width,
-			height: input.height,
-			data: input.data.iter().map(|x| self.0.eval(*x)).collect(),
-		}
-	}
-}
-
-impl<'n, MN: Node<Color, Output = Color> + Copy> Node<Image> for &'n MapImageNode<MN> {
-	type Output = Image;
-	fn eval(self, input: Image) -> Self::Output {
-		Image {
-			width: input.width,
-			height: input.height,
-			data: input.data.iter().map(|x| self.0.eval(*x)).collect(),
-		}
-	}
-}
-
-impl<MN: Node<Color, Output = Color> + Copy> MapImageNode<MN> {
-	pub const fn new(mn: MN) -> Self {
-		MapImageNode(mn)
-	}
-}
 
 #[derive(Debug, DynAny)]
 pub enum Error {
@@ -79,39 +30,32 @@ impl FileSystem for StdFs {
 }
 type Reader = Box<dyn std::io::Read>;
 
-pub struct FileNode<P: AsRef<Path>, FS: FileSystem>(PhantomData<(P, FS)>);
-impl<P: AsRef<Path>, FS: FileSystem> Node<(P, FS)> for FileNode<P, FS> {
-	type Output = Result<Reader, Error>;
-
-	fn eval(self, input: (P, FS)) -> Self::Output {
-		let (path, fs) = input;
-		fs.open(path)
-	}
+pub struct FileNode<FileSystem> {
+	fs: FileSystem,
+}
+#[node_macro::node_fn(FileNode)]
+fn file_node<P: AsRef<Path>, FS: FileSystem>(path: P, fs: FS) -> Result<Reader, Error> {
+	fs.open(path)
 }
 
 pub struct BufferNode;
-impl<Reader: std::io::Read> Node<Reader> for BufferNode {
-	type Output = Result<Vec<u8>, Error>;
-
-	fn eval(self, mut reader: Reader) -> Self::Output {
-		let mut buffer = Vec::new();
-		reader.read_to_end(&mut buffer)?;
-		Ok(buffer)
-	}
+#[node_macro::node_fn(BufferNode)]
+fn buffer_node<R: std::io::Read>(reader: R) -> Result<Vec<u8>, Error> {
+	Ok(std::io::Read::bytes(reader).collect::<Result<Vec<_>, _>>()?)
 }
 
-pub fn file_node<'n, P: AsRef<Path> + 'n>() -> impl Node<P, Output = Result<Vec<u8>, Error>> {
-	let fs = ValueNode(StdFs).clone();
-	let fs = ConsNode::new(fs);
-	let file = fs.then(FileNode(PhantomData));
+/*
+pub fn file_node<'i, 's: 'i, P: AsRef<Path> + 'i>() -> impl Node<'i, 's, P, Output = Result<Vec<u8>, Error>> {
+	let fs = ValueNode(StdFs).then(CloneNode::new());
+	let file = FileNode::new(fs);
 
-	file.then(FlatMapResultNode::new(BufferNode))
+	file.then(FlatMapResultNode::new(ValueNode::new(BufferNode)))
 }
 
-pub fn image_node<'n, P: AsRef<Path> + 'n>() -> impl Node<P, Output = Result<Image, Error>> {
+pub fn image_node<'i, 's: 'i, P: AsRef<Path> + 'i>() -> impl Node<'i, 's, P, Output = Result<Image, Error>> {
 	let file = file_node();
 	let image_loader = FnNode::new(|data: Vec<u8>| image::load_from_memory(&data).map_err(Error::Image).map(|image| image.into_rgba32f()));
-	let image: ComposeNode<_, _, P> = file.then(FlatMapResultNode::new(image_loader));
+	let image = file.then(FlatMapResultNode::new(ValueNode::new(image_loader)));
 	let convert_image = FnNode::new(|image: image::ImageBuffer<_, _>| {
 		let data = image
 			.enumerate_pixels()
@@ -130,7 +74,7 @@ pub fn image_node<'n, P: AsRef<Path> + 'n>() -> impl Node<P, Output = Result<Ima
 	image.then(MapResultNode::new(convert_image))
 }
 
-pub fn export_image_node<'n>() -> impl Node<(Image, &'n str), Output = Result<(), Error>> {
+pub fn export_image_node<'i, 's: 'i>() -> impl Node<'i, 's, (Image, &'i str), Output = Result<(), Error>> {
 	FnNode::new(|input: (Image, &str)| {
 		let (image, path) = input;
 		let mut new_image = image::ImageBuffer::new(image.width, image.height);
@@ -143,15 +87,34 @@ pub fn export_image_node<'n>() -> impl Node<(Image, &'n str), Output = Result<()
 		new_image.save(path).map_err(Error::Image)
 	})
 }
+*/
 
 #[derive(Debug, Clone, Copy)]
 pub struct GrayscaleNode;
 
 #[node_macro::node_fn(GrayscaleNode)]
-fn grayscale_image(mut image: Image) -> Image {
+fn grayscale_image(image: Image) -> Image {
+	let mut image = image;
 	for pixel in &mut image.data {
 		let avg = (pixel.r() + pixel.g() + pixel.b()) / 3.;
 		*pixel = Color::from_rgbaf32_unchecked(avg, avg, avg, pixel.a());
+	}
+	image
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct MapImageNode<MapFn> {
+	map_fn: MapFn,
+}
+
+#[node_macro::node_fn(MapImageNode)]
+fn grayscale_image<MapFn>(image: Image, map_fn: &'any_input MapFn) -> Image
+where
+	MapFn: for<'any_input> Node<'any_input, Color, Output = Color> + 'input,
+{
+	let mut image = image;
+	for pixel in &mut image.data {
+		*pixel = map_fn.eval(*pixel);
 	}
 	image
 }
@@ -161,6 +124,7 @@ pub struct InvertRGBNode;
 
 #[node_macro::node_fn(InvertRGBNode)]
 fn invert_image(mut image: Image) -> Image {
+	let mut image = image;
 	for pixel in &mut image.data {
 		*pixel = Color::from_rgbaf32_unchecked(1. - pixel.r(), 1. - pixel.g(), 1. - pixel.b(), pixel.a());
 	}
@@ -175,7 +139,8 @@ pub struct HueSaturationNode<Hue, Sat, Lit> {
 }
 
 #[node_macro::node_fn(HueSaturationNode)]
-fn shift_image_hsl(mut image: Image, hue_shift: f64, saturation_shift: f64, lightness_shift: f64) -> Image {
+fn shift_image_hsl(image: Image, hue_shift: f64, saturation_shift: f64, lightness_shift: f64) -> Image {
+	let mut image = image;
 	let (hue_shift, saturation_shift, lightness_shift) = (hue_shift as f32, saturation_shift as f32, lightness_shift as f32);
 	for pixel in &mut image.data {
 		let [hue, saturation, lightness, alpha] = pixel.to_hsla();
@@ -197,7 +162,8 @@ pub struct BrightnessContrastNode<Brightness, Contrast> {
 
 // From https://stackoverflow.com/questions/2976274/adjust-bitmap-image-brightness-contrast-using-c
 #[node_macro::node_fn(BrightnessContrastNode)]
-fn adjust_image_brightness_and_contrast(mut image: Image, brightness: f64, contrast: f64) -> Image {
+fn adjust_image_brightness_and_contrast(image: Image, brightness: f64, contrast: f64) -> Image {
+	let mut image = image;
 	let (brightness, contrast) = (brightness as f32, contrast as f32);
 	let factor = (259. * (contrast + 255.)) / (255. * (259. - contrast));
 	let channel = |channel: f32| ((factor * (channel * 255. + brightness - 128.) + 128.) / 255.).clamp(0., 1.);
@@ -215,7 +181,8 @@ pub struct GammaNode<G> {
 
 // https://www.dfstudios.co.uk/articles/programming/image-programming-algorithms/image-processing-algorithms-part-6-gamma-correction/
 #[node_macro::node_fn(GammaNode)]
-fn image_gamma(mut image: Image, gamma: f64) -> Image {
+fn image_gamma(image: Image, gamma: f64) -> Image {
+	let mut image = image;
 	let inverse_gamma = 1. / gamma;
 	let channel = |channel: f32| channel.powf(inverse_gamma as f32);
 	for pixel in &mut image.data {
@@ -230,7 +197,8 @@ pub struct OpacityNode<O> {
 }
 
 #[node_macro::node_fn(OpacityNode)]
-fn image_opacity(mut image: Image, opacity_multiplier: f64) -> Image {
+fn image_opacity(image: Image, opacity_multiplier: f64) -> Image {
+	let mut image = image;
 	let opacity_multiplier = opacity_multiplier as f32;
 	for pixel in &mut image.data {
 		*pixel = Color::from_rgbaf32_unchecked(pixel.r(), pixel.g(), pixel.b(), pixel.a() * opacity_multiplier)
@@ -245,7 +213,8 @@ pub struct PosterizeNode<P> {
 
 // Based on http://www.axiomx.com/posterize.htm
 #[node_macro::node_fn(PosterizeNode)]
-fn posterize(mut image: Image, posterize_value: f64) -> Image {
+fn posterize(image: Image, posterize_value: f64) -> Image {
+	let mut image = image;
 	let posterize_value = posterize_value as f32;
 	let number_of_areas = posterize_value.recip();
 	let size_of_areas = (posterize_value - 1.).recip();
@@ -263,7 +232,8 @@ pub struct ExposureNode<E> {
 
 // Based on https://stackoverflow.com/questions/12166117/what-is-the-math-behind-exposure-adjustment-on-photoshop
 #[node_macro::node_fn(ExposureNode)]
-fn exposure(mut image: Image, exposure: f64) -> Image {
+fn exposure(image: Image, exposure: f64) -> Image {
+	let mut image = image;
 	let multiplier = 2f32.powf(exposure as f32);
 	let channel = |channel: f32| channel * multiplier;
 	for pixel in &mut image.data {
@@ -286,27 +256,18 @@ fn imaginate(image: Image, cached: Option<std::sync::Arc<graphene_core::raster::
 
 #[cfg(test)]
 mod test {
-	use super::*;
-	use graphene_core::raster::color::Color;
-	use graphene_core::raster::GrayscaleColorNode;
-
-	#[test]
-	fn map_node() {
-		let array = [Color::from_rgbaf32(1.0, 0.0, 0.0, 1.0).unwrap()];
-		let map = MapNode(GrayscaleColorNode, PhantomData);
-		let values = map.eval(array.into_iter());
-		assert_eq!(values[0], Color::from_rgbaf32(0.33333334, 0.33333334, 0.33333334, 1.0).unwrap());
-	}
 
 	#[test]
 	fn load_image() {
+		// TODO: reenable this test
+		/*
 		let image = image_node::<&str>();
-		let gray = MapImageNode::new(GrayscaleColorNode);
 
-		let grayscale_picture = image.then(MapResultNode::new(&gray));
+		let grayscale_picture = image.then(MapResultNode::new(&image));
 		let export = export_image_node();
 
 		let picture = grayscale_picture.eval("test-image-1.png").expect("Failed to load image");
 		export.eval((picture, "test-image-1-result.png")).unwrap();
+		*/
 	}
 }

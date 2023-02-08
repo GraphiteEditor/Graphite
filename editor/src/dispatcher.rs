@@ -255,9 +255,9 @@ mod test {
 	use crate::messages::prelude::*;
 	use crate::test_utils::EditorTestUtils;
 
-	use document_legacy::color::Color;
 	use document_legacy::LayerId;
 	use document_legacy::Operation;
+	use graphene_core::raster::color::Color;
 
 	fn init_logger() {
 		let _ = env_logger::builder().is_test(true).try_init();
