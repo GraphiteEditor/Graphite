@@ -1,4 +1,4 @@
-use document_legacy::color::Color;
+use graphene_core::raster::color::Color;
 
 // Viewport
 pub const VIEWPORT_ZOOM_WHEEL_RATE: f64 = (1. / 600.) * 3.;
@@ -68,7 +68,7 @@ pub const ASYMPTOTIC_EFFECT: f64 = 0.5;
 pub const SCALE_EFFECT: f64 = 0.5;
 
 // Colors
-pub const COLOR_ACCENT: Color = Color::from_uchecked(0x00 as f32 / 255., 0xA8 as f32 / 255., 0xFF as f32 / 255.);
+pub const COLOR_ACCENT: Color = Color::from_rgbf32_unchecked(0x00 as f32 / 255., 0xA8 as f32 / 255., 0xFF as f32 / 255.);
 
 // Fonts
 pub const DEFAULT_FONT_FAMILY: &str = "Merriweather";

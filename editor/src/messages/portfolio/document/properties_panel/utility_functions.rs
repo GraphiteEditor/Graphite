@@ -9,11 +9,11 @@ use crate::messages::layout::utility_types::widgets::label_widgets::{IconLabel, 
 use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::*;
 
-use document_legacy::color::Color;
 use document_legacy::document::Document;
 use document_legacy::layers::layer_info::{Layer, LayerDataType, LayerDataTypeDiscriminant};
 use document_legacy::layers::style::{Fill, Gradient, GradientType, LineCap, LineJoin, RenderData, Stroke, ViewMode};
 use document_legacy::layers::text_layer::TextLayer;
+use graphene_core::raster::color::Color;
 
 use glam::{DAffine2, DVec2};
 use std::f64::consts::PI;

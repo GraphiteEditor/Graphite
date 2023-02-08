@@ -9,12 +9,12 @@ use crate::messages::tool::common_functionality::snapping::SnapManager;
 use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 
-use document_legacy::color::Color;
 use document_legacy::intersection::Quad;
 use document_legacy::layers::layer_info::Layer;
 use document_legacy::layers::style::{Fill, Gradient, GradientType, PathStyle, RenderData, Stroke};
 use document_legacy::LayerId;
 use document_legacy::Operation;
+use graphene_core::raster::color::Color;
 
 use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};

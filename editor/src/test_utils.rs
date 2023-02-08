@@ -6,7 +6,7 @@ use crate::messages::portfolio::utility_types::Platform;
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::ToolType;
 
-use document_legacy::color::Color;
+use graphene_core::raster::color::Color;
 
 /// A set of utility functions to make the writing of editor test more declarative
 pub trait EditorTestUtils {

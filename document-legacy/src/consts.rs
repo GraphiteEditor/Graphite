@@ -1,4 +1,4 @@
-use crate::color::Color;
+use graphene_core::raster::color::Color;
 
 // RENDERING
 pub const LAYER_OUTLINE_STROKE_COLOR: Color = Color::BLACK;

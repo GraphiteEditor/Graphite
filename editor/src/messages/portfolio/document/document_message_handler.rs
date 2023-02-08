@@ -23,7 +23,6 @@ use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::ToolType;
 
 use document_legacy::boolean_ops::BooleanOperationError;
-use document_legacy::color::Color;
 use document_legacy::document::Document as DocumentLegacy;
 use document_legacy::layers::blend_mode::BlendMode;
 use document_legacy::layers::folder_layer::FolderLayer;
@@ -32,6 +31,7 @@ use document_legacy::layers::style::{Fill, RenderData, ViewMode};
 use document_legacy::layers::text_layer::Font;
 use document_legacy::{DocumentError, DocumentResponse, LayerId, Operation as DocumentOperation};
 use graph_craft::document::NodeId;
+use graphene_core::raster::color::Color;
 use graphene_std::vector::subpath::Subpath;
 
 use glam::{DAffine2, DVec2};
