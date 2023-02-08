@@ -58,31 +58,27 @@ static NODE_REGISTRY: &[(NodeIdentifier, NodeConstructor)] = &[
 	register_node!(graphene_core::ops::AddParameterNode<_>, input: &f64, params: [f64]),
 	register_node!(graphene_core::ops::AddParameterNode<_>, input: f64, params: [&f64]),
 	register_node!(graphene_core::ops::AddParameterNode<_>, input: &f64, params: [&f64]),
-	register_node!(graphene_core::raster::GrayscaleColorNode, input: Color, params: []),
-	register_node!(graphene_core::raster::BrightenColorNode<_>, input: Color, params: [f32]),
 	(NodeIdentifier::new("graphene_core::structural::ComposeNode<_, _, _>", &[generic!("T"), generic!("U")]), |args| {
 		let node = ComposeTypeErased::new(args[0], args[1]);
 		node.into_type_erased()
 	}),
 	(NodeIdentifier::new("graphene_core::ops::IdNode", &[generic!("T")]), |_| IdNode::new().into_type_erased()),
-	register_node!(graphene_std::raster::GrayscaleNode, input: Image, params: []),
 	//filters
-	raster_node!(graphene_core::raster::GrayscaleColorNode, params: []),
-	raster_node!(graphene_core::raster::HueShiftColorNode<_, _, _>, params: [f32, f32, f32]),
+	raster_node!(graphene_core::raster::GrayscaleNode, params: []),
+	raster_node!(graphene_core::raster::HueSaturationNode<_, _, _>, params: [f64, f64, f64]),
 	raster_node!(graphene_core::raster::InvertRGBNode, params: []),
-	raster_node!(graphene_core::raster::ThresholdNode<_>, params: [f32]),
+	raster_node!(graphene_core::raster::ThresholdNode<_>, params: [f64]),
+	raster_node!(graphene_core::raster::BrightnessContrastNode< _, _>,  params: [f64, f64]),
+	raster_node!(graphene_core::raster::GammaNode<_>, params: [f64]),
+	raster_node!(graphene_core::raster::OpacityNode<_>, params: [f64]),
+	raster_node!(graphene_core::raster::PosterizeNode<_>, params: [f64]),
+	raster_node!(graphene_core::raster::ExposureNode<_>, params: [f64]),
 	(NodeIdentifier::new("graphene_core::structural::MapImageNode", &[]), |args| {
 		let map_fn: DowncastBothNode<Color, Color> = DowncastBothNode::new(args[0]);
 		let node = graphene_std::raster::MapImageNode::new(ValueNode::new(map_fn));
 		let any: DynAnyNode<Image, _, _> = graphene_std::any::DynAnyNode::new(graphene_core::value::ValueNode::new(node));
 		any.into_type_erased()
 	}),
-	register_node!(graphene_std::raster::HueSaturationNode<_, _, _>, input: Image, params: [f64, f64, f64]),
-	register_node!(graphene_std::raster::BrightnessContrastNode< _, _>, input: Image, params: [f64, f64]),
-	register_node!(graphene_std::raster::GammaNode<_>, input: Image, params: [f64]),
-	register_node!(graphene_std::raster::OpacityNode<_>, input: Image, params: [f64]),
-	register_node!(graphene_std::raster::PosterizeNode<_>, input: Image, params: [f64]),
-	register_node!(graphene_std::raster::ExposureNode<_>, input: Image, params: [f64]),
 	(
 		NodeIdentifier::new("graphene_std::raster::ImaginateNode<_>", &[concrete!("Image"), concrete!("Option<std::sync::Arc<Image>>")]),
 		|args| {

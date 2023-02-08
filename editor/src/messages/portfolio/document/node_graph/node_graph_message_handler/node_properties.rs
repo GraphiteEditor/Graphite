@@ -189,6 +189,12 @@ pub fn adjust_gamma_properties(document_node: &DocumentNode, node_id: NodeId, _c
 	vec![LayoutGroup::Row { widgets: gamma }]
 }
 
+pub fn adjust_threshold_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let gamma = number_widget(document_node, node_id, 1, "Threshold", NumberInput::default().min(0.00).max(1.), true);
+
+	vec![LayoutGroup::Row { widgets: gamma }]
+}
+
 #[cfg(feature = "gpu")]
 pub fn gpu_map_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let map = text_widget(document_node, node_id, 1, "Map", true);

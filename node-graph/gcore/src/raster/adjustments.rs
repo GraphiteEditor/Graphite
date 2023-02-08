@@ -1,5 +1,5 @@
 use super::Color;
-use core::{fmt::Debug, marker::PhantomData};
+use core::fmt::Debug;
 
 use crate::Node;
 
@@ -11,45 +11,47 @@ pub fn map_rgb<F: Fn(f32) -> f32>(color: Color, f: F) -> Color {
 }
 
 #[derive(Debug, Clone, Copy, Default)]
-pub struct GrayscaleColorNode;
+pub struct GrayscaleNode;
 
-#[node_macro::node_fn(GrayscaleColorNode)]
+#[node_macro::node_fn(GrayscaleNode)]
 fn grayscale_color_node(input: Color) -> Color {
 	let avg = (input.r() + input.g() + input.b()) / 3.0;
 	map_rgb(input, |_| avg)
 }
 
 #[derive(Debug)]
-pub struct GammaColorNode<Gamma> {
+pub struct GammaNode<Gamma> {
 	gamma: Gamma,
 }
 
-#[node_macro::node_fn(GammaColorNode)]
-fn gamma_color_node(color: Color, gamma: f32) -> Color {
-	let per_channel = |col: f32| col.powf(gamma);
+// https://www.dfstudios.co.uk/articles/programming/image-programming-algorithms/image-processing-algorithms-part-6-gamma-correction/
+#[node_macro::node_fn(GammaNode)]
+fn gamma_color_node(color: Color, gamma: f64) -> Color {
+	let inverse_gamma = 1. / gamma;
+	let per_channel = |channel: f32| channel.powf(inverse_gamma as f32);
 	map_rgb(color, per_channel)
 }
 
 #[cfg(not(target_arch = "spirv"))]
-pub use hue_shift::HueShiftColorNode;
+pub use hue_shift::HueSaturationNode;
 
 #[cfg(not(target_arch = "spirv"))]
 mod hue_shift {
 	use super::*;
 	#[derive(Debug)]
-	pub struct HueShiftColorNode<Hue, Saturation, Lightness> {
-        hue_shift: Hue,
-        saturation_shift: Saturation,
-        lightness_shift: Lightness
+	pub struct HueSaturationNode<Hue, Saturation, Lightness> {
+		hue_shift: Hue,
+		saturation_shift: Saturation,
+		lightness_shift: Lightness,
 	}
 
-	#[node_macro::node_fn(HueShiftColorNode)]
-	fn hue_shift_color_node(color: Color, hue_shift: f32, saturation_shift: f32, lightness_shift: f32) -> Color {
+	#[node_macro::node_fn(HueSaturationNode)]
+	fn hue_shift_color_node(color: Color, hue_shift: f64, saturation_shift: f64, lightness_shift: f64) -> Color {
 		let [hue, saturation, lightness, alpha] = color.to_hsla();
 		Color::from_hsla(
-			(hue + hue_shift / 360.) % 1.,
-			(saturation + saturation_shift / 100.).clamp(0., 1.),
-			(lightness + lightness_shift / 100.).clamp(0., 1.),
+			(hue + hue_shift as f32 / 360.) % 1.,
+			(saturation + saturation_shift as f32 / 100.).clamp(0., 1.),
+			(lightness + lightness_shift as f32 / 100.).clamp(0., 1.),
 			alpha,
 		)
 	}
@@ -60,20 +62,73 @@ pub struct InvertRGBNode;
 
 #[node_macro::node_fn(InvertRGBNode)]
 fn invert_image(color: Color) -> Color {
-    map_rgb(color, |c| 1. - c)
+	map_rgb(color, |c| 1. - c)
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct ThresholdNode<Threshold>{
-    threshold: Threshold
+pub struct ThresholdNode<Threshold> {
+	threshold: Threshold,
 }
 
 #[node_macro::node_fn(ThresholdNode)]
-fn threshold_node(color: Color, threshold: f32) -> Color {
+fn threshold_node(color: Color, threshold: f64) -> Color {
 	let avg = (color.r() + color.g() + color.b()) / 3.0;
-    if avg >= threshold {
-        Color::BLACK
-    } else {
-        Color::WHITE
-    }
+	if avg >= threshold as f32 {
+		Color::BLACK
+	} else {
+		Color::WHITE
+	}
+}
+#[derive(Debug, Clone, Copy)]
+pub struct BrightnessContrastNode<Brightness, Contrast> {
+	brightness: Brightness,
+	contrast: Contrast,
+}
+
+// From https://stackoverflow.com/questions/2976274/adjust-bitmap-image-brightness-contrast-using-c
+#[node_macro::node_fn(BrightnessContrastNode)]
+fn adjust_image_brightness_and_contrast(color: Color, brightness: f64, contrast: f64) -> Color {
+	let (brightness, contrast) = (brightness as f32, contrast as f32);
+	let factor = (259. * (contrast + 255.)) / (255. * (259. - contrast));
+	let channel = |channel: f32| ((factor * (channel * 255. + brightness - 128.) + 128.) / 255.).clamp(0., 1.);
+	map_rgb(color, channel)
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct OpacityNode<O> {
+	opacity_multiplier: O,
+}
+
+#[node_macro::node_fn(OpacityNode)]
+fn image_opacity(color: Color, opacity_multiplier: f64) -> Color {
+	let opacity_multiplier = opacity_multiplier as f32;
+	Color::from_rgbaf32_unchecked(color.r(), color.g(), color.b(), color.a() * opacity_multiplier)
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct PosterizeNode<P> {
+	posterize_value: P,
+}
+
+// Based on http://www.axiomx.com/posterize.htm
+#[node_macro::node_fn(PosterizeNode)]
+fn posterize(color: Color, posterize_value: f64) -> Color {
+	let posterize_value = posterize_value as f32;
+	let number_of_areas = posterize_value.recip();
+	let size_of_areas = (posterize_value - 1.).recip();
+	let channel = |channel: f32| (channel / number_of_areas).floor() * size_of_areas;
+	map_rgb(color, channel)
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct ExposureNode<E> {
+	exposure: E,
+}
+
+// Based on https://stackoverflow.com/questions/12166117/what-is-the-math-behind-exposure-adjustment-on-photoshop
+#[node_macro::node_fn(ExposureNode)]
+fn exposure(color: Color, exposure: f64) -> Color {
+	let multiplier = 2f32.powf(exposure as f32);
+	let channel = |channel: f32| channel * multiplier;
+	map_rgb(color, channel)
 }

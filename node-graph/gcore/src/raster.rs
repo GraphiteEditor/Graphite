@@ -374,7 +374,7 @@ mod test {
 	#[test]
 	fn map_node() {
 		// let array = &mut [Color::from_rgbaf32(1.0, 0.0, 0.0, 1.0).unwrap()];
-		GrayscaleColorNode.eval(Color::from_rgbf32_unchecked(1., 0., 0.));
+		GrayscaleNode.eval(Color::from_rgbf32_unchecked(1., 0., 0.));
 		/*let map = ForEachNode(MutWrapper(GrayscaleNode));
 		(&map).eval(array.iter_mut());
 		assert_eq!(array[0], Color::from_rgbaf32(0.33333334, 0.33333334, 0.33333334, 1.0).unwrap());*/
