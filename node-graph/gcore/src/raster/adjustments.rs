@@ -79,6 +79,20 @@ fn threshold_node(color: Color, threshold: f64) -> Color {
 		Color::WHITE
 	}
 }
+
+#[derive(Debug, Clone, Copy)]
+pub struct VibranceNode<Vibrance> {
+	vibrance: Vibrance,
+}
+
+#[node_macro::node_fn(VibranceNode)]
+fn vibrance_node(color: Color, vibrance: f64) -> Color {
+	let [hue, saturation, lightness, alpha] = color.to_hsla();
+	let vibrance = vibrance as f32 / 100.;
+	let saturation = saturation + vibrance * (1. - saturation);
+	Color::from_hsla(hue, saturation, lightness, alpha)
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct BrightnessContrastNode<Brightness, Contrast> {
 	brightness: Brightness,

@@ -275,6 +275,17 @@ static STATIC_NODES: &[DocumentNodeType] = &[
 		properties: node_properties::adjust_threshold_properties,
 	},
 	DocumentNodeType {
+		name: "Vibrance",
+		category: "Image Adjustments",
+		identifier: NodeImplementation::proto("graphene_core::raster::VibranceNode<_>", &[concrete!("Image"), concrete!("f64")]),
+		inputs: &[
+			DocumentInputType::new("Image", TaggedValue::Image(Image::empty()), true),
+			DocumentInputType::new("Vibrance", TaggedValue::F64(1.), false),
+		],
+		outputs: &[FrontendGraphDataType::Raster],
+		properties: node_properties::adjust_vibrance_properties,
+	},
+	DocumentNodeType {
 		name: "Opacity",
 		category: "Image Adjustments",
 		identifier: NodeImplementation::proto("graphene_core::raster::OpacityNode<_>", &[concrete!("Image"), concrete!("f64")]),
