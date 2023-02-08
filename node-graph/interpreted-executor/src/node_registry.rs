@@ -27,11 +27,14 @@ macro_rules! register_node {
 	};
 }
 macro_rules! raster_node {
-	($path:ty) => {
-		({ NodeIdentifier::new(stringify!($path), &[concrete!("Image")]) }, |args| {
-			assert_eq!(args.len(), 0);
-			let node = graphene_std::raster::MapImageNode::new(graphene_core::value::ValueNode::new(<$path>::new()));
-			let any: DynAnyNode<Image, _, _> = graphene_std::any::DynAnyNode::new(graphene_core::value::ValueNode::new(node));
+	($path:ty,  params: [$($type:ty),*]) => {
+		( {NodeIdentifier::new(stringify!($path), &[concrete!("Image"), $(concrete!(stringify!($type))),*])},
+		|args| {
+			let mut args = args.clone();
+			args.reverse();
+			let node = <$path>::new($(graphene_std::any::input_node::<$type>(args.pop().expect("not enough arguments provided to construct node"))),*);
+            let map_node = graphene_std::raster::MapImageNode::new(graphene_core::value::ValueNode::new(node));
+			let any: DynAnyNode<Image, _, _> = graphene_std::any::DynAnyNode::new(graphene_core::value::ValueNode::new(map_node));
 			Box::pin(any) as TypeErasedPinned
 		})
 	};
@@ -57,14 +60,15 @@ static NODE_REGISTRY: &[(NodeIdentifier, NodeConstructor)] = &[
 	register_node!(graphene_core::ops::AddParameterNode<_>, input: &f64, params: [&f64]),
 	register_node!(graphene_core::raster::GrayscaleColorNode, input: Color, params: []),
 	register_node!(graphene_core::raster::BrightenColorNode<_>, input: Color, params: [f32]),
-	register_node!(graphene_core::raster::HueShiftColorNode<_>, input: Color, params: [f32]),
 	(NodeIdentifier::new("graphene_core::structural::ComposeNode<_, _, _>", &[generic!("T"), generic!("U")]), |args| {
 		let node = ComposeTypeErased::new(args[0], args[1]);
 		node.into_type_erased()
 	}),
 	(NodeIdentifier::new("graphene_core::ops::IdNode", &[generic!("T")]), |_| IdNode::new().into_type_erased()),
 	register_node!(graphene_std::raster::GrayscaleNode, input: Image, params: []),
-	raster_node!(graphene_core::raster::GrayscaleColorNode),
+	//filters
+	raster_node!(graphene_core::raster::GrayscaleColorNode, params: []),
+	raster_node!(graphene_core::raster::HueShiftColorNode<_, _, _>, params: [f32, f32, f32]),
 	register_node!(graphene_std::raster::InvertRGBNode, input: Image, params: []),
 	(NodeIdentifier::new("graphene_core::structural::MapImageNode", &[]), |args| {
 		let map_fn: DowncastBothNode<Color, Color> = DowncastBothNode::new(args[0]);
