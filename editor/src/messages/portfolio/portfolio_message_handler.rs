@@ -838,7 +838,7 @@ impl PortfolioMessageHandler {
 					let old_transforms = document.remove_document_transform();
 					let mask_is_some = mask_path.is_some();
 					let mask_image = mask_path.filter(|mask_layer_path| document.document_legacy.layer(mask_layer_path).is_ok()).map(|mask_layer_path| {
-						let render_mode = DocumentRenderMode::LayerCutout(&mask_layer_path, document_legacy::color::Color::WHITE);
+						let render_mode = DocumentRenderMode::LayerCutout(&mask_layer_path, graphene_core::raster::color::Color::WHITE);
 						let svg = document.render_document(size, transform.inverse(), &self.persistent_data, render_mode);
 
 						ImaginateMaskImage { svg, size }

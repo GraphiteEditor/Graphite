@@ -6,8 +6,8 @@ use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::ToolType;
 
-use document_legacy::color::Color;
 use document_legacy::layers::style::RenderData;
+use graphene_core::raster::color::Color;
 
 #[derive(Debug, Default)]
 pub struct ToolMessageHandler {

@@ -1,9 +1,9 @@
 pub use super::layer_panel::{LayerMetadata, LayerPanelEntry};
 use crate::messages::prelude::ArtboardMessageHandler;
 
-use document_legacy::color::Color;
 use document_legacy::document::Document as DocumentLegacy;
 use document_legacy::LayerId;
+use graphene_core::raster::color::Color;
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
