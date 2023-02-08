@@ -5,14 +5,8 @@ use crate::Node;
 pub mod color;
 pub use self::color::Color;
 
-#[derive(Debug, Clone, Copy, Default)]
-pub struct GrayscaleColorNode;
-
-#[node_macro::node_fn(GrayscaleColorNode)]
-fn grayscale_color_node(input: Color) -> Color {
-	let avg = (input.r() + input.g() + input.b()) / 3.0;
-	Color::from_rgbaf32_unchecked(avg, avg, avg, input.a())
-}
+pub mod adjustments;
+pub use adjustments::*;
 
 #[derive(Debug, Default)]
 pub struct MapNode<MapFn> {
@@ -235,36 +229,6 @@ pub struct BrightenColorNode<Brightness> {
 fn brighten_color_node(color: Color, brightness: f32) -> Color {
 	let per_channel = |col: f32| (col + brightness / 255.).clamp(0., 1.);
 	Color::from_rgbaf32_unchecked(per_channel(color.r()), per_channel(color.g()), per_channel(color.b()), color.a())
-}
-
-#[derive(Debug)]
-pub struct GammaColorNode<Gamma> {
-	gamma: Gamma,
-}
-
-#[node_macro::node_fn(GammaColorNode)]
-fn gamma_color_node(color: Color, gamma: f32) -> Color {
-	let per_channel = |col: f32| col.powf(gamma);
-	Color::from_rgbaf32_unchecked(per_channel(color.r()), per_channel(color.g()), per_channel(color.b()), color.a())
-}
-
-#[cfg(not(target_arch = "spirv"))]
-pub use hue_shift::HueShiftColorNode;
-
-#[cfg(not(target_arch = "spirv"))]
-mod hue_shift {
-	use super::*;
-	#[derive(Debug)]
-	pub struct HueShiftColorNode<Angle> {
-		angle: Angle,
-	}
-
-	#[node_macro::node_fn(HueShiftColorNode)]
-	fn hue_shift_color_node(color: Color, angle: f32) -> Color {
-		let hue_shift = angle;
-		let [hue, saturation, lightness, alpha] = color.to_hsla();
-		Color::from_hsla(hue + hue_shift / 360., saturation, lightness, alpha)
-	}
 }
 
 #[derive(Debug)]
