@@ -40,6 +40,10 @@ pub enum PathToolMessage {
 	},
 	DragStop,
 	InsertPoint,
+	NudgeSelectedPoints {
+		delta_x: i32,
+		delta_y: i32,
+	},
 	PointerMove {
 		alt_mirror_angle: Key,
 		shift_mirror_distance: Key,
@@ -74,6 +78,7 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for PathTool {
 				InsertPoint,
 				DragStart,
 				Delete,
+				NudgeSelectedPoints,
 			),
 			Dragging => actions!(PathToolMessageDiscriminant;
 				InsertPoint,
@@ -283,7 +288,19 @@ impl Fsm for PathToolFsmState {
 						shift_mirror_distance: _,
 					},
 				) => self,
+				(_, PathToolMessage::NudgeSelectedPoints { delta_x, delta_y}) => {
+					//if let Some(mut selected_points) = tool_data
+					//responses.push_back(DocumentMessage::StartTransaction.into());
+					let nudge_x = delta_x as f64;
+					let nudge_y = delta_y as f64;
+					tool_data
+						.shape_editor
+						.move_selected_points((nudge_x, nudge_y).into(), true, responses);
+					PathToolFsmState::Ready
+					//responses.push_back(PathToolMessage::DocumentIsDirty.into());
 			}
+			}
+			
 		} else {
 			self
 		}
