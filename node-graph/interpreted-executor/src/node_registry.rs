@@ -26,6 +26,16 @@ macro_rules! register_node {
 		})
 	};
 }
+macro_rules! raster_node {
+	($path:ty) => {
+		({ NodeIdentifier::new(stringify!($path), &[concrete!("Image")]) }, |args| {
+			assert_eq!(args.len(), 0);
+			let node = graphene_std::raster::MapImageNode::new(graphene_core::value::ValueNode::new(<$path>::new()));
+			let any: DynAnyNode<Image, _, _> = graphene_std::any::DynAnyNode::new(graphene_core::value::ValueNode::new(node));
+			Box::pin(any) as TypeErasedPinned
+		})
+	};
+}
 
 //TODO: turn into hashmap
 static NODE_REGISTRY: &[(NodeIdentifier, NodeConstructor)] = &[
@@ -54,6 +64,7 @@ static NODE_REGISTRY: &[(NodeIdentifier, NodeConstructor)] = &[
 	}),
 	(NodeIdentifier::new("graphene_core::ops::IdNode", &[generic!("T")]), |_| IdNode::new().into_type_erased()),
 	register_node!(graphene_std::raster::GrayscaleNode, input: Image, params: []),
+	raster_node!(graphene_core::raster::GrayscaleColorNode),
 	register_node!(graphene_std::raster::InvertRGBNode, input: Image, params: []),
 	(NodeIdentifier::new("graphene_core::structural::MapImageNode", &[]), |args| {
 		let map_fn: DowncastBothNode<Color, Color> = DowncastBothNode::new(args[0]);
