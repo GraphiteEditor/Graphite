@@ -123,13 +123,13 @@ fn document_node_types() -> Vec<DocumentNodeType> {
 				DocumentNode {
 					name: "Identity".to_string(),
 					inputs: vec![NodeInput::Network],
-					implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode", &[concrete!("Any<'_>")])),
+					implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode", &[generic!("T")])),
 					metadata: Default::default(),
 				},
 				DocumentNode {
 					name: "Identity".to_string(),
 					inputs: vec![NodeInput::Network],
-					implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode", &[concrete!("Any<'_>")])),
+					implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode", &[generic!("T")])),
 					metadata: Default::default(),
 				},
 			]
@@ -201,7 +201,7 @@ static STATIC_NODES: &[DocumentNodeType] = &[
 	DocumentNodeType {
 		name: "Image Frame",
 		category: "General",
-		identifier: NodeImplementation::proto("graphene_std::raster::ImageFrameNode", &[concrete!("Image"), concrete!("DAffine2")]),
+		identifier: NodeImplementation::proto("graphene_std::raster::ImageFrameNode<_>", &[concrete!("Image"), concrete!("DAffine2")]),
 		inputs: &[
 			DocumentInputType::new("Image", TaggedValue::Image(Image::empty()), true),
 			DocumentInputType::new("Transform", TaggedValue::DAffine2(DAffine2::IDENTITY), true),
