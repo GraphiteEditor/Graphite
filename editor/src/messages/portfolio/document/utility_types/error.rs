@@ -1,5 +1,5 @@
-use document_legacy::color::Color;
 use document_legacy::DocumentError;
+use graphene_core::raster::color::Color;
 
 use thiserror::Error;
 

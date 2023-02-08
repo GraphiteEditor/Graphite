@@ -5,7 +5,6 @@
 use crate::helpers::{translate_key, Error};
 use crate::{EDITOR_HAS_CRASHED, EDITOR_INSTANCES, JS_EDITOR_HANDLES};
 
-use document_legacy::color::Color;
 use document_legacy::LayerId;
 use editor::application::generate_uuid;
 use editor::application::Editor;
@@ -15,6 +14,7 @@ use editor::messages::input_mapper::utility_types::input_mouse::{EditorMouseStat
 use editor::messages::portfolio::utility_types::{ImaginateServerStatus, Platform};
 use editor::messages::prelude::*;
 use graph_craft::document::NodeId;
+use graphene_core::raster::color::Color;
 
 use serde::Serialize;
 use serde_wasm_bindgen::{self, from_value};
