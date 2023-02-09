@@ -15,7 +15,7 @@ mod node_properties;
 
 use glam::IVec2;
 
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum FrontendGraphDataType {
 	#[default]
 	#[serde(rename = "general")]
@@ -310,7 +310,7 @@ impl NodeGraphMessageHandler {
 				exposed_inputs: node
 					.inputs
 					.iter()
-					.zip(node_type.inputs)
+					.zip(node_type.inputs.iter())
 					.skip(1)
 					.filter(|(input, _)| input.is_exposed())
 					.map(|(_, input_type)| NodeGraphInput {

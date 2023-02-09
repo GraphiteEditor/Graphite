@@ -1,6 +1,6 @@
 use core::{fmt::Debug, marker::PhantomData};
 
-use crate::Node;
+use crate::{Node};
 
 pub mod color;
 pub use self::color::Color;
@@ -289,7 +289,7 @@ pub use image::{CollectNode, Image, ImageFrame, ImageRefNode, MapImageSliceNode}
 #[cfg(feature = "alloc")]
 mod image {
 	use super::{Color, ImageSlice};
-	use crate::Node;
+	use crate::{Node};
 	use alloc::vec::Vec;
 	use dyn_any::{DynAny, StaticType};
 	use glam::DAffine2;

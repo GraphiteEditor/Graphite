@@ -3,7 +3,7 @@ use dyn_any::{DynAny, Upcast};
 use dyn_clone::DynClone;
 pub use glam::{DAffine2, DVec2};
 use graphene_core::raster::LuminanceCalculation;
-use graphene_core::Node;
+use graphene_core::{Node, Type};
 use std::hash::Hash;
 pub use std::sync::Arc;
 
@@ -140,6 +140,32 @@ impl<'a> TaggedValue {
 			TaggedValue::ImaginateMaskStartingFill(x) => Box::new(x),
 			TaggedValue::ImaginateStatus(x) => Box::new(x),
 			TaggedValue::LayerPath(x) => Box::new(x),
+		}
+	}
+
+	pub fn ty(&self) -> Type {
+		use graphene_core::TypeDescriptor;
+		use std::borrow::Cow;
+		match self {
+			TaggedValue::None => concrete!(()),
+			TaggedValue::String(_) => concrete!(String),
+			TaggedValue::U32(_) => concrete!(u32),
+			TaggedValue::F32(_) => concrete!(f32),
+			TaggedValue::F64(_) => concrete!(f64),
+			TaggedValue::Bool(_) => concrete!(bool),
+			TaggedValue::DVec2(_) => concrete!(DVec2),
+			TaggedValue::OptionalDVec2(_) => concrete!(Option<DVec2>),
+			TaggedValue::Image(_) => concrete!(graphene_core::raster::Image),
+			TaggedValue::RcImage(_) => concrete!(Arc<graphene_core::raster::Image>),
+			TaggedValue::Color(_) => concrete!(graphene_core::raster::Color),
+			TaggedValue::Subpath(_) => concrete!(graphene_core::vector::subpath::Subpath),
+			TaggedValue::RcSubpath(_) => concrete!(Arc<graphene_core::vector::subpath::Subpath>),
+			TaggedValue::ImaginateSamplingMethod(_) => concrete!(ImaginateSamplingMethod),
+			TaggedValue::ImaginateMaskStartingFill(_) => concrete!(ImaginateMaskStartingFill),
+			TaggedValue::ImaginateStatus(_) => concrete!(ImaginateStatus),
+			TaggedValue::LayerPath(_) => concrete!(Option<Vec<u64>>),
+			TaggedValue::DAffine2(_) => concrete!(DAffine2),
+			TaggedValue::LuminanceCalculation(_) => concrete!(LuminanceCalculation),
 		}
 	}
 }

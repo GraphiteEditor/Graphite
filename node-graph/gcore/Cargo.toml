@@ -9,7 +9,7 @@ license = "MIT OR Apache-2.0"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-std = ["dyn-any", "dyn-any/std"]
+std = ["dyn-any", "dyn-any/std", "alloc"]
 default = ["async", "serde", "kurbo", "log", "std"]
 log = ["dep:log"]
 serde = ["dep:serde", "glam/serde"]
@@ -19,7 +19,7 @@ nightly = []
 alloc = ["dyn-any", "bezier-rs"]
 
 [dependencies]
-dyn-any = {path = "../../libraries/dyn-any", features = ["derive"], optional = true, default-features = false }
+dyn-any = {path = "../../libraries/dyn-any", features = ["derive", "glam"], optional = true, default-features = false }
 
 spirv-std = { git = "https://github.com/EmbarkStudios/rust-gpu", features = ["glam"] , optional = true}
 bytemuck = {version = "1.8", features = ["derive"], optional = true}
@@ -34,4 +34,5 @@ kurbo = { git = "https://github.com/linebender/kurbo.git", features = [
 glam = { version = "^0.22", default-features = false, features = ["scalar-math", "libm"]}
 node-macro = {path = "../node-macro"}
 specta.workspace = true
+once_cell = { version = "1.17.0", default-features = false }
 # forma = { version = "0.1.0", package = "forma-render" }

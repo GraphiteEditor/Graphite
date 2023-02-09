@@ -1,6 +1,6 @@
 use crate::document::value::TaggedValue;
-use crate::generic;
-use crate::proto::{ConstructionArgs, NodeIdentifier, ProtoNetwork, ProtoNode, ProtoNodeInput, Type};
+use crate::proto::{ConstructionArgs, ProtoNetwork, ProtoNode, ProtoNodeInput};
+use graphene_core::{generic, Cow, NodeIdentifier, Type};
 
 use dyn_any::{DynAny, StaticType};
 use glam::IVec2;
@@ -129,7 +129,7 @@ impl DocumentNode {
 	}
 }
 
-#[derive(Clone, Debug, specta::Type)]
+#[derive(Debug, Clone, PartialEq, Hash, specta::Type)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum NodeInput {
 	Node { node_id: NodeId, output_index: usize },
@@ -154,16 +154,6 @@ impl NodeInput {
 			NodeInput::Node { .. } => true,
 			NodeInput::Value { exposed, .. } => *exposed,
 			NodeInput::Network => false,
-		}
-	}
-}
-
-impl PartialEq for NodeInput {
-	fn eq(&self, other: &Self) -> bool {
-		match (&self, &other) {
-			(Self::Node { node_id: n0, output_index: o0 }, Self::Node { node_id: n1, output_index: o1 }) => n0 == n1 && o0 == o1,
-			(Self::Value { tagged_value: v1, .. }, Self::Value { tagged_value: v2, .. }) => v1 == v2,
-			_ => core::mem::discriminant(self) == core::mem::discriminant(other),
 		}
 	}
 }
@@ -357,7 +347,7 @@ impl NodeNetwork {
 			.unwrap_or_else(|| panic!("The node which was supposed to be flattened does not exist in the network, id {} network {:#?}", node, self));
 
 		if self.disabled.contains(&id) {
-			node.implementation = DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode", &[generic!("T")]));
+			node.implementation = DocumentNodeImplementation::Unresolved("graphene_core::ops::IdNode".into());
 			node.inputs.drain(1..);
 			self.nodes.insert(id, node);
 			return;
@@ -394,7 +384,7 @@ impl NodeNetwork {
 							let value_node = DocumentNode {
 								name,
 								inputs: vec![NodeInput::Value { tagged_value, exposed }],
-								implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::value::ValueNode", &[generic!("T")])),
+								implementation: DocumentNodeImplementation::Unresolved("graphene_core::value::ValueNode".into()),
 								metadata: DocumentNodeMetadata::default(),
 							};
 							assert!(!self.nodes.contains_key(&new_id));
@@ -410,7 +400,7 @@ impl NodeNetwork {
 						}
 					}
 				}
-				node.implementation = DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode", &[generic!("T")]));
+				node.implementation = DocumentNodeImplementation::Unresolved("graphene_core::ops::IdNode".into());
 				node.inputs = inner_network
 					.outputs
 					.iter()
@@ -419,6 +409,7 @@ impl NodeNetwork {
 						output_index: node_output_index,
 					})
 					.collect();
+
 				for node_id in new_nodes {
 					self.flatten_with_fns(node_id, map_ids, gen_id);
 				}
@@ -457,7 +448,7 @@ impl NodeNetwork {
 					DocumentNode {
 						name: "Input".into(),
 						inputs: vec![NodeInput::Network],
-						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode", &[generic!("T")])),
+						implementation: DocumentNodeImplementation::Unresolved("graphene_core::ops::IdNode".into()),
 						metadata: DocumentNodeMetadata { position: (8, 4).into() },
 					},
 				),
@@ -466,7 +457,7 @@ impl NodeNetwork {
 					DocumentNode {
 						name: "Output".into(),
 						inputs: vec![NodeInput::node(output_node_id, 0)],
-						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode", &[generic!("T")])),
+						implementation: DocumentNodeImplementation::Unresolved("graphene_core::ops::IdNode".into()),
 						metadata: DocumentNodeMetadata { position: (output_offset, 4).into() },
 					},
 				),
@@ -553,7 +544,8 @@ impl NodeNetwork {
 #[cfg(test)]
 mod test {
 	use super::*;
-	use crate::proto::{ConstructionArgs, NodeIdentifier, ProtoNetwork, ProtoNode, ProtoNodeInput};
+	use crate::proto::{ConstructionArgs, ProtoNetwork, ProtoNode, ProtoNodeInput};
+	use graphene_core::NodeIdentifier;
 
 	fn gen_node_id() -> NodeId {
 		static mut NODE_ID: NodeId = 3;
@@ -574,7 +566,7 @@ mod test {
 						name: "Cons".into(),
 						inputs: vec![NodeInput::Network, NodeInput::Network],
 						metadata: DocumentNodeMetadata::default(),
-						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::structural::ConsNode", &[generic!("T"), generic!("U")])),
+						implementation: DocumentNodeImplementation::Unresolved("graphene_core::structural::ConsNode".into()),
 					},
 				),
 				(
@@ -583,7 +575,7 @@ mod test {
 						name: "Add".into(),
 						inputs: vec![NodeInput::node(0, 0)],
 						metadata: DocumentNodeMetadata::default(),
-						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::AddNode", &[generic!("T"), generic!("U")])),
+						implementation: DocumentNodeImplementation::Unresolved("graphene_core::ops::AddNode".into()),
 					},
 				),
 			]
@@ -607,7 +599,7 @@ mod test {
 						name: "Cons".into(),
 						inputs: vec![NodeInput::Network, NodeInput::Network],
 						metadata: DocumentNodeMetadata::default(),
-						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::structural::ConsNode", &[generic!("T"), generic!("U")])),
+						implementation: DocumentNodeImplementation::Unresolved("graphene_core::structural::ConsNode".into()),
 					},
 				),
 				(
@@ -616,7 +608,7 @@ mod test {
 						name: "Add".into(),
 						inputs: vec![NodeInput::node(1, 0)],
 						metadata: DocumentNodeMetadata::default(),
-						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::AddNode", &[generic!("T"), generic!("U")])),
+						implementation: DocumentNodeImplementation::Unresolved("graphene_core::ops::AddNode".into()),
 					},
 				),
 			]
@@ -665,12 +657,12 @@ mod test {
 			name: "Cons".into(),
 			inputs: vec![NodeInput::Network, NodeInput::node(0, 0)],
 			metadata: DocumentNodeMetadata::default(),
-			implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::structural::ConsNode", &[generic!("T"), generic!("U")])),
+			implementation: DocumentNodeImplementation::Unresolved("graphene_core::structural::ConsNode".into()),
 		};
 
 		let proto_node = document_node.resolve_proto_node();
 		let reference = ProtoNode {
-			identifier: NodeIdentifier::new("graphene_core::structural::ConsNode", &[generic!("T"), generic!("U")]),
+			identifier: "graphene_core::structural::ConsNode".into(),
 			input: ProtoNodeInput::Network,
 			construction_args: ConstructionArgs::Nodes(vec![0]),
 		};
@@ -686,7 +678,7 @@ mod test {
 				(
 					1,
 					ProtoNode {
-						identifier: NodeIdentifier::new("graphene_core::ops::IdNode", &[generic!("T")]),
+						identifier: "graphene_core::ops::IdNode".into(),
 						input: ProtoNodeInput::Node(11),
 						construction_args: ConstructionArgs::Nodes(vec![]),
 					},
@@ -694,7 +686,7 @@ mod test {
 				(
 					10,
 					ProtoNode {
-						identifier: NodeIdentifier::new("graphene_core::structural::ConsNode", &[generic!("T"), generic!("U")]),
+						identifier: "graphene_core::structural::ConsNode".into(),
 						input: ProtoNodeInput::Network,
 						construction_args: ConstructionArgs::Nodes(vec![14]),
 					},
@@ -702,7 +694,7 @@ mod test {
 				(
 					11,
 					ProtoNode {
-						identifier: NodeIdentifier::new("graphene_core::ops::AddNode", &[generic!("T"), generic!("U")]),
+						identifier: "graphene_core::ops::AddNode".into(),
 						input: ProtoNodeInput::Node(10),
 						construction_args: ConstructionArgs::Nodes(vec![]),
 					},
@@ -731,7 +723,7 @@ mod test {
 						name: "Inc".into(),
 						inputs: vec![NodeInput::node(11, 0)],
 						metadata: DocumentNodeMetadata::default(),
-						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode", &[generic!("T")])),
+						implementation: DocumentNodeImplementation::Unresolved("graphene_core::ops::IdNode".into()),
 					},
 				),
 				(
@@ -740,7 +732,7 @@ mod test {
 						name: "Cons".into(),
 						inputs: vec![NodeInput::Network, NodeInput::node(14, 0)],
 						metadata: DocumentNodeMetadata::default(),
-						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::structural::ConsNode", &[generic!("T"), generic!("U")])),
+						implementation: DocumentNodeImplementation::Unresolved("graphene_core::structural::ConsNode".into()),
 					},
 				),
 				(
@@ -752,7 +744,7 @@ mod test {
 							exposed: false,
 						}],
 						metadata: DocumentNodeMetadata::default(),
-						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::value::ValueNode", &[generic!("T")])),
+						implementation: DocumentNodeImplementation::Unresolved("graphene_core::value::ValueNode".into()),
 					},
 				),
 				(
@@ -761,7 +753,7 @@ mod test {
 						name: "Add".into(),
 						inputs: vec![NodeInput::node(10, 0)],
 						metadata: DocumentNodeMetadata::default(),
-						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::AddNode", &[generic!("T"), generic!("U")])),
+						implementation: DocumentNodeImplementation::Unresolved("graphene_core::ops::AddNode".into()),
 					},
 				),
 			]
@@ -782,7 +774,7 @@ mod test {
 						name: "Identity 1".into(),
 						inputs: vec![NodeInput::Network],
 						metadata: DocumentNodeMetadata::default(),
-						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode", &[generic!("T")])),
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode")),
 					},
 				),
 				(
@@ -791,7 +783,7 @@ mod test {
 						name: "Identity 2".into(),
 						inputs: vec![NodeInput::Network],
 						metadata: DocumentNodeMetadata::default(),
-						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode", &[generic!("T")])),
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode")),
 					},
 				),
 			]
@@ -821,7 +813,7 @@ mod test {
 						name: "Result".into(),
 						inputs: vec![result_node_input],
 						metadata: DocumentNodeMetadata::default(),
-						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode", &[generic!("T")])),
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode")),
 					},
 				),
 			]

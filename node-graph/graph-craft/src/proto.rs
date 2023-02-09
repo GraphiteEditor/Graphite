@@ -4,87 +4,16 @@ use std::hash::Hash;
 
 use crate::document::value;
 use crate::document::NodeId;
+use dyn_any::DynAny;
+use graphene_core::*;
+use std::pin::Pin;
 
-#[macro_export]
-macro_rules! concrete {
-	($type:expr) => {
-		Type::Concrete(std::borrow::Cow::Borrowed($type))
-	};
-}
-#[macro_export]
-macro_rules! generic {
-	($type:expr) => {
-		Type::Generic(std::borrow::Cow::Borrowed($type))
-	};
-}
+pub type Any<'n> = Box<dyn DynAny<'n> + 'n>;
+pub type TypeErasedNode<'n> = dyn for<'i> NodeIO<'i, Any<'i>, Output = Any<'i>> + 'n + Send + Sync;
+pub type TypeErasedPinnedRef<'n> = Pin<&'n (dyn for<'i> NodeIO<'i, Any<'i>, Output = Any<'i>> + 'n + Send + Sync)>;
+pub type TypeErasedPinned<'n> = Pin<Box<dyn for<'i> NodeIO<'i, Any<'i>, Output = Any<'i>> + 'n + Send + Sync>>;
 
-#[derive(Clone, Debug, PartialEq, specta::Type)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct NodeIdentifier {
-	pub name: std::borrow::Cow<'static, str>,
-	pub types: std::borrow::Cow<'static, [Type]>,
-}
-
-impl NodeIdentifier {
-	pub fn fully_qualified_name(&self) -> String {
-		let mut name = String::new();
-		name.push_str(self.name.as_ref());
-		name.push('<');
-		for t in self.types.as_ref() {
-			name.push_str(t.to_string().as_str());
-			name.push_str(", ");
-		}
-		name.pop();
-		name.pop();
-		name.push('>');
-		name
-	}
-}
-
-#[derive(Clone, Debug, PartialEq, specta::Type)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub enum Type {
-	Generic(std::borrow::Cow<'static, str>),
-	Concrete(std::borrow::Cow<'static, str>),
-}
-
-impl From<&'static str> for Type {
-	fn from(s: &'static str) -> Self {
-		Type::Concrete(std::borrow::Cow::Borrowed(s))
-	}
-}
-impl std::fmt::Display for Type {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		match self {
-			Type::Generic(name) => write!(f, "{}", name),
-			Type::Concrete(name) => write!(f, "{}", name),
-		}
-	}
-}
-
-impl Type {
-	pub const fn from_str(concrete: &'static str) -> Self {
-		Type::Concrete(std::borrow::Cow::Borrowed(concrete))
-	}
-}
-
-impl From<&'static str> for NodeIdentifier {
-	fn from(s: &'static str) -> Self {
-		NodeIdentifier {
-			name: std::borrow::Cow::Borrowed(s),
-			types: std::borrow::Cow::Borrowed(&[]),
-		}
-	}
-}
-
-impl NodeIdentifier {
-	pub const fn new(name: &'static str, types: &'static [Type]) -> Self {
-		NodeIdentifier {
-			name: std::borrow::Cow::Borrowed(name),
-			types: std::borrow::Cow::Borrowed(types),
-		}
-	}
-}
+pub type NodeConstructor = for<'a> fn(Vec<TypeErasedPinnedRef<'static>>) -> TypeErasedPinned<'static>;
 
 #[derive(Debug, Default, PartialEq)]
 pub struct ProtoNetwork {
@@ -161,7 +90,7 @@ impl ProtoNode {
 	pub fn stable_node_id(&self) -> Option<NodeId> {
 		use std::hash::Hasher;
 		let mut hasher = std::collections::hash_map::DefaultHasher::new();
-		self.identifier.fully_qualified_name().hash(&mut hasher);
+		self.identifier.name.hash(&mut hasher);
 		self.construction_args.hash(&mut hasher);
 		match self.input {
 			ProtoNodeInput::None => "none".hash(&mut hasher),
@@ -173,7 +102,7 @@ impl ProtoNode {
 
 	pub fn value(value: ConstructionArgs) -> Self {
 		Self {
-			identifier: NodeIdentifier::new("graphene_core::value::ValueNode", &[Type::Generic(Cow::Borrowed("T"))]),
+			identifier: NodeIdentifier::new("graphene_core::value::ValueNode"),
 			construction_args: value,
 			input: ProtoNodeInput::None,
 		}
@@ -283,7 +212,7 @@ impl ProtoNetwork {
 			self.nodes.push((
 				compose_node_id,
 				ProtoNode {
-					identifier: NodeIdentifier::new("graphene_core::structural::ComposeNode<_, _, _>", &[generic!("T"), generic!("U")]),
+					identifier: NodeIdentifier::new("graphene_core::structural::ComposeNode<_, _, _>"),
 					construction_args: ConstructionArgs::Nodes(vec![input_node, id]),
 					input,
 				},
@@ -373,6 +302,85 @@ impl ProtoNetwork {
 	}
 }
 
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct TypingContext {
+	lookup: Cow<'static, HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstructor>>>,
+	infered: HashMap<NodeId, NodeIOTypes>,
+	constructor: HashMap<NodeId, NodeConstructor>,
+}
+
+impl TypingContext {
+	pub fn new(lookup: &'static HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstructor>>) -> Self {
+		Self {
+			lookup: Cow::Borrowed(lookup),
+			..Default::default()
+		}
+	}
+	pub fn update(&mut self, network: &ProtoNetwork) -> Result<(), String> {
+		for (id, node) in network.nodes.iter() {
+			self.infer(*id, node)?;
+		}
+		Ok(())
+	}
+	pub fn constructor(&self, node_id: NodeId) -> Option<NodeConstructor> {
+		self.constructor.get(&node_id).copied()
+	}
+
+	pub fn infer(&mut self, node_id: NodeId, node: &ProtoNode) -> Result<NodeIOTypes, String> {
+		let identifier = node.identifier.name.clone();
+		if let Some(infered) = self.infered.get(&node_id) {
+			return Ok(infered.clone());
+		}
+		let parameters = match node.construction_args {
+			ConstructionArgs::Value(ref v) => {
+				assert!(matches!(node.input, ProtoNodeInput::None));
+				let types = NodeIOTypes::new(concrete!(()), v.ty(), vec![]);
+				self.infered.insert(node_id, types.clone());
+				return Ok(types);
+			}
+			ConstructionArgs::Nodes(ref nodes) => nodes
+				.iter()
+				.map(|id| {
+					self.infered
+						.get(id)
+						.ok_or(format!("Infering type of {node_id} depends on {id} which is not present in the typing context"))
+						.map(|node| node.output.clone())
+				})
+				.collect::<Result<Vec<Type>, String>>()?,
+		};
+
+		let input = match node.input {
+			ProtoNodeInput::None => concrete!(()),
+			ProtoNodeInput::Network => generic!(T),
+			ProtoNodeInput::Node(id) => {
+				let input = self
+					.infered
+					.get(&id)
+					.ok_or(format!("Infering type of {node_id} depends on {id} which is not present in the typing context"))?;
+				input.output.clone()
+			}
+		};
+		let impls = self.lookup.get(&node.identifier).ok_or(format!("No implementations found for {:?}", node.identifier))?;
+
+		let valid_output_types = impls.keys().filter(|node_io| node_io.input == input && node_io.parameters == parameters).collect::<Vec<_>>();
+		match valid_output_types.as_slice() {
+			[] => Err(format!(
+				"No valid output types found for {identifier} with input {input:?} and parameters {parameters:?}.\nTypes that are implemented: {:?}",
+				impls.keys()
+			)),
+			[node_io] => {
+				let types = NodeIOTypes::new(input, node_io.output.clone(), parameters);
+				self.infered.insert(node_id, types.clone());
+				self.constructor.insert(node_id, impls[node_io]);
+				Ok(types)
+			}
+			_ => Err(format!(
+				"Multiple valid output types found for {identifier} with input {input:?} and parameters {parameters:?} (valid types: {valid_output_types:?}"
+			)),
+		}
+	}
+}
+
 #[cfg(test)]
 mod test {
 	use super::*;
@@ -436,12 +444,12 @@ mod test {
 		assert_eq!(
 			ids,
 			vec![
-				17495035641492238530,
-				14931179783740213471,
-				2268573767208263092,
-				14616574692620381527,
-				12110007198416821768,
-				11185814750012198757
+				15907139529964845467,
+				7008762588924534619,
+				17522454908046327116,
+				11144576768288379207,
+				4508311079153412646,
+				12802780320957283374
 			]
 		);
 	}

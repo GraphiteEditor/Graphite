@@ -6,28 +6,44 @@ use dyn_any::StaticType;
 use graph_craft::document::value::UpcastNode;
 use graph_craft::document::NodeId;
 use graph_craft::executor::Executor;
-use graph_craft::proto::{ConstructionArgs, ProtoNetwork, ProtoNode, ProtoNodeInput};
+use graph_craft::proto::{ConstructionArgs, ProtoNetwork, ProtoNode, ProtoNodeInput, TypingContext};
 use graphene_std::any::{Any, TypeErasedPinned, TypeErasedPinnedRef};
 
-use crate::node_registry::constrcut_node;
+use crate::node_registry;
 
-#[derive(Default, Debug, Clone)]
+#[derive(Debug, Clone)]
 pub struct DynamicExecutor {
 	output: NodeId,
 	tree: BorrowTree,
+	typing_context: TypingContext,
+}
+
+impl Default for DynamicExecutor {
+	fn default() -> Self {
+		Self {
+			output: Default::default(),
+			tree: Default::default(),
+			typing_context: TypingContext::new(&*node_registry::NODE_REGISTRY),
+		}
+	}
 }
 
 impl DynamicExecutor {
-	pub fn new(proto_network: ProtoNetwork) -> Self {
+	pub fn new(proto_network: ProtoNetwork) -> Result<Self, String> {
+		let mut typing_context = TypingContext::new(&*node_registry::NODE_REGISTRY);
+		typing_context.update(&proto_network)?;
 		let output = proto_network.output;
-		let tree = BorrowTree::new(proto_network);
-		Self { tree, output }
+		let tree = BorrowTree::new(proto_network, &typing_context)?;
+
+		Ok(Self { tree, output, typing_context })
 	}
 
-	pub fn update(&mut self, proto_network: ProtoNetwork) {
+	pub fn update(&mut self, proto_network: ProtoNetwork) -> Result<(), String> {
 		self.output = proto_network.output;
+		self.typing_context.update(&proto_network)?;
 		trace!("setting output to {}", self.output);
-		self.tree.update(proto_network);
+		self.tree.update(proto_network, &self.typing_context)?;
+		Ok(())
 	}
 }
 
@@ -38,7 +54,7 @@ impl Executor for DynamicExecutor {
 }
 
 pub struct NodeContainer<'n> {
-	node: TypeErasedPinned<'n>,
+	pub node: TypeErasedPinned<'n>,
 	// the dependencies are only kept to ensure that the nodes are not dropped while still in use
 	_dependencies: Vec<Arc<NodeContainer<'static>>>,
 }
@@ -50,6 +66,10 @@ impl<'a> core::fmt::Debug for NodeContainer<'a> {
 }
 
 impl<'a> NodeContainer<'a> {
+	pub fn new(node: TypeErasedPinned<'a>, _dependencies: Vec<Arc<NodeContainer<'static>>>) -> Self {
+		Self { node, _dependencies }
+	}
+
 	/// Return a static reference to the TypeErasedNode
 	/// # Safety
 	/// This is unsafe because the returned reference is only valid as long as the NodeContainer is alive
@@ -58,7 +78,7 @@ impl<'a> NodeContainer<'a> {
 	}
 }
 impl NodeContainer<'static> {
-	unsafe fn static_ref(&self) -> TypeErasedPinnedRef<'static> {
+	pub unsafe fn static_ref(&self) -> TypeErasedPinnedRef<'static> {
 		let s = &*(self as *const Self);
 		*(&s.node.as_ref() as *const TypeErasedPinnedRef<'static>)
 	}
@@ -70,24 +90,24 @@ pub struct BorrowTree {
 }
 
 impl BorrowTree {
-	pub fn new(proto_network: ProtoNetwork) -> Self {
+	pub fn new(proto_network: ProtoNetwork, typing_context: &TypingContext) -> Result<Self, String> {
 		let mut nodes = BorrowTree::default();
 		for (id, node) in proto_network.nodes {
-			nodes.push_node(id, node)
+			nodes.push_node(id, node, typing_context)?
 		}
-		nodes
+		Ok(nodes)
 	}
 
 	/// Pushes new nodes into the tree and return orphaned nodes
-	pub fn update(&mut self, proto_network: ProtoNetwork) -> Vec<NodeId> {
+	pub fn update(&mut self, proto_network: ProtoNetwork, typing_context: &TypingContext) -> Result<Vec<NodeId>, String> {
 		let mut old_nodes: HashSet<_> = self.nodes.keys().copied().collect();
 		for (id, node) in proto_network.nodes {
 			if !self.nodes.contains_key(&id) {
-				self.push_node(id, node);
+				self.push_node(id, node, typing_context)?;
 				old_nodes.remove(&id);
 			}
 		}
-		old_nodes.into_iter().collect()
+		Ok(old_nodes.into_iter().collect())
 	}
 
 	fn node_refs(&self, nodes: &[NodeId]) -> Vec<TypeErasedPinnedRef<'static>> {
@@ -120,7 +140,7 @@ impl BorrowTree {
 		self.nodes.remove(&id);
 	}
 
-	pub fn push_node(&mut self, id: NodeId, proto_node: ProtoNode) {
+	pub fn push_node(&mut self, id: NodeId, proto_node: ProtoNode, typing_context: &TypingContext) -> Result<(), String> {
 		let ProtoNode { input, construction_args, identifier } = proto_node;
 
 		assert!(
@@ -141,7 +161,8 @@ impl BorrowTree {
 			}
 			ConstructionArgs::Nodes(ids) => {
 				let construction_nodes = self.node_refs(&ids);
-				let node = constrcut_node(identifier, construction_nodes);
+				let constructor = typing_context.constructor(id).ok_or(format!("No constructor found for node {:?}", identifier))?;
+				let node = constructor(construction_nodes);
 				let node = NodeContainer {
 					node,
 					_dependencies: self.node_deps(&ids),
@@ -149,7 +170,8 @@ impl BorrowTree {
 				let node = unsafe { node.erase_lifetime() };
 				self.store_node(Arc::new(node), id);
 			}
-		}
+		};
+		Ok(())
 	}
 }
 
@@ -163,7 +185,7 @@ mod test {
 	fn push_node() {
 		let mut tree = BorrowTree::default();
 		let val_1_protonode = ProtoNode::value(ConstructionArgs::Value(TaggedValue::U32(2u32)));
-		tree.push_node(0, val_1_protonode);
+		tree.push_node(0, val_1_protonode, &TypingContext::default()).unwrap();
 		let _node = tree.get(0).unwrap();
 		assert_eq!(tree.eval(0, ()), Some(2u32));
 	}

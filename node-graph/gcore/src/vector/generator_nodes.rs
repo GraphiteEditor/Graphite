@@ -1,4 +1,4 @@
-use crate::Node;
+use crate::{Node};
 use glam::{DAffine2, DVec2};
 
 use super::subpath::Subpath;

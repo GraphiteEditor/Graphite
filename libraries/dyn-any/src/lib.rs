@@ -206,12 +206,13 @@ use core::{
 	marker::{PhantomData, PhantomPinned},
 	mem::{ManuallyDrop, MaybeUninit},
 	num::Wrapping,
+	ops::Range,
 	time::Duration,
 };
 
 impl_type!(
 	Option<T>, Result<T, E>, Cell<T>, UnsafeCell<T>, RefCell<T>, MaybeUninit<T>,
-	 ManuallyDrop<T>, PhantomData<T>, PhantomPinned, Empty<T>,
+	 ManuallyDrop<T>, PhantomData<T>, PhantomPinned, Empty<T>, Range<T>,
 	Wrapping<T>, Duration, bool, f32, f64, char,
 	u8, AtomicU8, u16, AtomicU16, u32, AtomicU32, u64,  usize, AtomicUsize,
 	i8, AtomicI8, i16, AtomicI16, i32, AtomicI32, i64,  isize, AtomicIsize,

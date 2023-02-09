@@ -1,8 +1,9 @@
 use gpu_compiler_bin_wrapper::CompileRequest;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::*;
-use graph_craft::proto::*;
-use graph_craft::{concrete, generic};
+
+use graph_craft::{concrete, generic, NodeIdentifier, Type, TypeDescriptor};
+use std::borrow::Cow;
 
 fn main() {
 	let client = reqwest::blocking::Client::new();
@@ -49,7 +50,7 @@ fn add_network() -> NodeNetwork {
 					name: "Cons".into(),
 					inputs: vec![NodeInput::Network, NodeInput::Network],
 					metadata: DocumentNodeMetadata::default(),
-					implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::structural::ConsNode", &[generic!("T"), concrete!("u32")])),
+					implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::structural::ConsNode")),
 				},
 			),
 			(
@@ -58,7 +59,7 @@ fn add_network() -> NodeNetwork {
 					name: "Add".into(),
 					inputs: vec![NodeInput::node(0, 0)],
 					metadata: DocumentNodeMetadata::default(),
-					implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::AddNode", &[generic!("T"), generic!("U")])),
+					implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::AddNode")),
 				},
 			),
 		]
