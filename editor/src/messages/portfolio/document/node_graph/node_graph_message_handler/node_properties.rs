@@ -157,6 +157,26 @@ pub fn input_properties(_document_node: &DocumentNode, _node_id: NodeId, _contex
 	vec![LayoutGroup::Row { widgets: vec![information] }, LayoutGroup::Row { widgets: vec![refresh_button] }]
 }
 
+pub fn weigted_grayscale_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+    let min = -200.;
+    let max = 300.;
+	let r_weight = number_widget(document_node, node_id, 1, "Red", NumberInput::default().min(min).max(max).unit("%"), true);
+	let g_weight = number_widget(document_node, node_id, 2, "Green", NumberInput::default().min(min).max(max).unit("%"), true);
+	let b_weight = number_widget(document_node, node_id, 3, "Blue", NumberInput::default().min(min).max(max).unit("%"), true);
+	let c_weight = number_widget(document_node, node_id, 4, "Cyan", NumberInput::default().min(min).max(max).unit("%"), true);
+	let m_weight = number_widget(document_node, node_id, 5, "Magenta", NumberInput::default().min(min).max(max).unit("%"), true);
+	let y_weight = number_widget(document_node, node_id, 6, "Yellow", NumberInput::default().min(min).max(max).unit("%"), true);
+
+	vec![
+		LayoutGroup::Row { widgets: r_weight },
+		LayoutGroup::Row { widgets: y_weight },
+		LayoutGroup::Row { widgets: g_weight },
+		LayoutGroup::Row { widgets: c_weight },
+		LayoutGroup::Row { widgets: b_weight },
+		LayoutGroup::Row { widgets: m_weight },
+	]
+}
+
 pub fn adjust_hsl_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let hue_shift = number_widget(document_node, node_id, 1, "Hue Shift", NumberInput::default().min(-180.).max(180.).unit("°"), true);
 	let saturation_shift = number_widget(document_node, node_id, 2, "Saturation Shift", NumberInput::default().min(-100.).max(100.).unit("%"), true);

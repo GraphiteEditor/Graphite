@@ -65,6 +65,7 @@ static NODE_REGISTRY: &[(NodeIdentifier, NodeConstructor)] = &[
 	(NodeIdentifier::new("graphene_core::ops::IdNode", &[generic!("T")]), |_| IdNode::new().into_type_erased()),
 	// Filters
 	raster_node!(graphene_core::raster::GrayscaleNode, params: []),
+	raster_node!(graphene_core::raster::WeightedGrayscaleNode<_, _, _, _, _, _>, params: [f64, f64, f64, f64, f64, f64]),
 	raster_node!(graphene_core::raster::HueSaturationNode<_, _, _>, params: [f64, f64, f64]),
 	raster_node!(graphene_core::raster::InvertRGBNode, params: []),
 	raster_node!(graphene_core::raster::ThresholdNode<_>, params: [f64]),

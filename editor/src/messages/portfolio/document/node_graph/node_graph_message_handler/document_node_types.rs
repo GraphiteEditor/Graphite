@@ -160,6 +160,61 @@ static STATIC_NODES: &[DocumentNodeType] = &[
 		properties: |_document_node, _node_id, _context| node_properties::string_properties("The graph's output is rendered into the frame".to_string()),
 	},
 	DocumentNodeType {
+		name: "Weighted Grayscale",
+		category: "Image Adjustments",
+		identifier: NodeImplementation::proto(
+			"graphene_core::raster::WeightedGrayscaleNode<_, _, _, _, _, _>",
+			&[
+				concrete!("Image"),
+				concrete!("f64"),
+				concrete!("f64"),
+				concrete!("f64"),
+				concrete!("f64"),
+				concrete!("f64"),
+				concrete!("f64"),
+			],
+		),
+		inputs: &[
+			DocumentInputType {
+				name: "Image",
+				data_type: FrontendGraphDataType::Raster,
+				default: NodeInput::value(TaggedValue::Image(Image::empty()), true),
+			},
+			DocumentInputType {
+				name: "Red Weight",
+				data_type: FrontendGraphDataType::Number,
+				default: NodeInput::value(TaggedValue::F64(0.), false),
+			},
+			DocumentInputType {
+				name: "Green Weight",
+				data_type: FrontendGraphDataType::Number,
+				default: NodeInput::value(TaggedValue::F64(0.), false),
+			},
+			DocumentInputType {
+				name: "Blue Weight",
+				data_type: FrontendGraphDataType::Number,
+				default: NodeInput::value(TaggedValue::F64(0.), false),
+			},
+			DocumentInputType {
+				name: "Cyan Weight",
+				data_type: FrontendGraphDataType::Number,
+				default: NodeInput::value(TaggedValue::F64(0.), false),
+			},
+			DocumentInputType {
+				name: "Magenta Weight",
+				data_type: FrontendGraphDataType::Number,
+				default: NodeInput::value(TaggedValue::F64(0.), false),
+			},
+			DocumentInputType {
+				name: "Yellow Weight",
+				data_type: FrontendGraphDataType::Number,
+				default: NodeInput::value(TaggedValue::F64(0.), false),
+			},
+		],
+		outputs: &[FrontendGraphDataType::Raster],
+		properties: node_properties::weigted_grayscale_properties,
+	},
+	DocumentNodeType {
 		name: "Grayscale",
 		category: "Image Adjustments",
 		identifier: NodeImplementation::proto("graphene_core::raster::GrayscaleNode", &[concrete!("Image")]),
