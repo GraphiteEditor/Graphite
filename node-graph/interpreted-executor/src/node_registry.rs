@@ -70,10 +70,9 @@ static NODE_REGISTRY: &[(NodeIdentifier, NodeConstructor)] = &[
 	raster_node!(graphene_core::raster::ThresholdNode<_>, params: [f64]),
 	raster_node!(graphene_core::raster::VibranceNode<_>, params: [f64]),
 	raster_node!(graphene_core::raster::BrightnessContrastNode< _, _>, params: [f64, f64]),
-	raster_node!(graphene_core::raster::GammaNode<_>, params: [f64]),
 	raster_node!(graphene_core::raster::OpacityNode<_>, params: [f64]),
 	raster_node!(graphene_core::raster::PosterizeNode<_>, params: [f64]),
-	raster_node!(graphene_core::raster::ExposureNode<_>, params: [f64]),
+	raster_node!(graphene_core::raster::ExposureNode<_, _, _>, params: [f64, f64, f64]),
 	(NodeIdentifier::new("graphene_core::structural::MapImageNode", &[]), |args| {
 		let map_fn: DowncastBothNode<Color, Color> = DowncastBothNode::new(args[0]);
 		let node = graphene_std::raster::MapImageNode::new(ValueNode::new(map_fn));

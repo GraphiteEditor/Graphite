@@ -278,6 +278,18 @@ impl NumberInput {
 		self.mode = NumberInputMode::Range;
 		self
 	}
+	pub fn mode_range(mut self) -> Self {
+		self.mode = NumberInputMode::Range;
+		self
+	}
+	pub fn mode_increment(mut self) -> Self {
+		self.mode = NumberInputMode::Increment;
+		self
+	}
+	pub fn increment_step(mut self, step: f64) -> Self {
+		self.step = step;
+		self
+	}
 	pub fn percentage(self) -> Self {
 		self.min(0.).max(100.).unit("%").display_decimal_places(2)
 	}
