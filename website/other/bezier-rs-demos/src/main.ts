@@ -76,18 +76,18 @@ function renderExamples(): void {
 		renderSubpathPane(splitHash[1] as SubpathFeatureKey, document.getElementById("subpath-demos"));
 	} else {
 		window.document.body.innerHTML = `
-    <h1>Bezier-rs Interactive Documentation</h1>
-    <p>
-      This is the interactive documentation for the <a href="https://crates.io/crates/bezier-rs"><b>Bezier-rs</b></a> library. View the
-      <a href="https://docs.rs/bezier-rs/latest/bezier_rs">crate documentation</a>
-      for detailed function descriptions and API usage. Click and drag on the endpoints of the demo curves to visualize the various Bezier utilities and functions.
-    </p>
-    
-    <h2>Beziers</h2>
-    <div id="bezier-demos"></div>
-    <h2>Subpaths</h2>
-    <div id="subpath-demos"></div>
-    `.trim();
+		<h1>Bezier-rs Interactive Documentation</h1>
+		<p>
+			This is the interactive documentation for the <a href="https://crates.io/crates/bezier-rs"><b>Bezier-rs</b></a> library. View the
+			<a href="https://docs.rs/bezier-rs/latest/bezier_rs">crate documentation</a>
+			for detailed function descriptions and API usage. Click and drag on the endpoints of the demo curves to visualize the various Bezier utilities and functions.
+		</p>
+		
+		<h2>Beziers</h2>
+		<div id="bezier-demos"></div>
+		<h2>Subpaths</h2>
+		<div id="subpath-demos"></div>
+		`.trim();
 
 		const bezierDemos = document.getElementById("bezier-demos");
 		const subpathDemos = document.getElementById("subpath-demos");
