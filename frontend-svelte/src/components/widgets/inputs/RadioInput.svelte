@@ -109,8 +109,7 @@
 		.text-label {
 			margin: 0 4px;
 			overflow: hidden;
-			text-overflow: ellipsis;
-		}		
+		}
 
 		&.combined-before button:first-of-type,
 		&.combined-after button:last-of-type {
