@@ -20,7 +20,7 @@
 	display: flex;
 	justify-content: center;
 	align-items: center;
-	flex: 0 0 0;
+	flex: 0 0 auto;
 	height: 24px;
 	margin: 0;
 	padding: 0 8px;
