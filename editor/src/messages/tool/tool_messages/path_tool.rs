@@ -288,19 +288,14 @@ impl Fsm for PathToolFsmState {
 						shift_mirror_distance: _,
 					},
 				) => self,
-				(_, PathToolMessage::NudgeSelectedPoints { delta_x, delta_y}) => {
-					//if let Some(mut selected_points) = tool_data
-					//responses.push_back(DocumentMessage::StartTransaction.into());
+				(_, PathToolMessage::NudgeSelectedPoints { delta_x, delta_y }) => {
 					let nudge_x = delta_x as f64;
 					let nudge_y = delta_y as f64;
-					tool_data
-						.shape_editor
-						.move_selected_points((nudge_x, nudge_y).into(), true, responses);
-					PathToolFsmState::Ready
+					tool_data.shape_editor.move_selected_points((nudge_x, nudge_y).into(), true, responses);
 					//responses.push_back(PathToolMessage::DocumentIsDirty.into());
+					PathToolFsmState::Ready
+				}
 			}
-			}
-			
 		} else {
 			self
 		}
