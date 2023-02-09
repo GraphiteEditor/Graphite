@@ -7,7 +7,7 @@ const bezierFeatures = {
 		name: "Constructor",
 		callback: (bezier: WasmBezierInstance, _: Record<string, number>): string => bezier.to_svg(),
 	},
-	bezierThroughPoints: {
+	"bezier-through-points": {
 		name: "Bezier Through Points",
 		callback: (bezier: WasmBezierInstance, options: Record<string, number>): string => {
 			const points = JSON.parse(bezier.get_points());
@@ -75,7 +75,7 @@ const bezierFeatures = {
 		},
 		chooseComputeType: true,
 	},
-	lookupTable: {
+	"lookup-table": {
 		name: "Lookup Table",
 		callback: (bezier: WasmBezierInstance, options: Record<string, number>): string => bezier.compute_lookup_table(options.steps),
 		demoOptions: {
@@ -185,7 +185,7 @@ const bezierFeatures = {
 			mouseLocation ? bezier.project(mouseLocation[0], mouseLocation[1]) : bezier.to_svg(),
 		triggerOnMouseMove: true,
 	},
-	localExtrema: {
+	"local-extrema": {
 		name: "Local Extrema",
 		callback: (bezier: WasmBezierInstance, _: Record<string, number>): string => bezier.local_extrema(),
 		demoOptions: {
@@ -206,7 +206,7 @@ const bezierFeatures = {
 			},
 		},
 	},
-	boundingBox: {
+	"bounding-box": {
 		name: "Bounding Box",
 		callback: (bezier: WasmBezierInstance, _: Record<string, number>): string => bezier.bounding_box(),
 	},
@@ -260,7 +260,7 @@ const bezierFeatures = {
 			},
 		},
 	},
-	graduatedOutline: {
+	"graduated-outline": {
 		name: "Graduated Outline",
 		callback: (bezier: WasmBezierInstance, options: Record<string, number>): string => bezier.graduated_outline(options.start_distance, options.end_distance),
 		demoOptions: {
@@ -292,7 +292,7 @@ const bezierFeatures = {
 			],
 		},
 	},
-	skewedOutline: {
+	"skewed-outline": {
 		name: "Skewed Outline",
 		callback: (bezier: WasmBezierInstance, options: Record<string, number>): string => bezier.skewed_outline(options.distance1, options.distance2, options.distance3, options.distance4),
 		demoOptions: {
@@ -382,7 +382,7 @@ const bezierFeatures = {
 			};
 		})(),
 	},
-	intersectLinear: {
+	"intersect-linear": {
 		name: "Intersect (Line Segment)",
 		callback: (bezier: WasmBezierInstance): string => {
 			const line = [
@@ -392,7 +392,7 @@ const bezierFeatures = {
 			return bezier.intersect_line_segment(line);
 		},
 	},
-	intersectQuadratic: {
+	"intersect-quadratic": {
 		name: "Intersect (Quadratic)",
 		callback: (bezier: WasmBezierInstance, options: Record<string, number>): string => {
 			const quadratic = [
@@ -408,7 +408,7 @@ const bezierFeatures = {
 			},
 		},
 	},
-	intersectCubic: {
+	"intersect-cubic": {
 		name: "Intersect (Cubic)",
 		callback: (bezier: WasmBezierInstance, options: Record<string, number>): string => {
 			const cubic = [
@@ -425,7 +425,7 @@ const bezierFeatures = {
 			},
 		},
 	},
-	intersectSelf: {
+	"intersect-self": {
 		name: "Intersect (Self)",
 		callback: (bezier: WasmBezierInstance, options: Record<string, number>): string => bezier.intersect_self(options.error),
 		demoOptions: {
@@ -442,7 +442,7 @@ const bezierFeatures = {
 			},
 		},
 	},
-	intersectRectangle: {
+	"intersect-rectangle": {
 		name: "Intersect (Rectangle)",
 		callback: (bezier: WasmBezierInstance): string =>
 			bezier.intersect_rectangle([
@@ -468,7 +468,7 @@ const bezierFeatures = {
 			},
 		},
 	},
-	deCasteljauPoints: {
+	"de-casteljau-points": {
 		name: "De Casteljau Points",
 		callback: (bezier: WasmBezierInstance, options: Record<string, number>): string => bezier.de_casteljau_points(options.t),
 		demoOptions: {

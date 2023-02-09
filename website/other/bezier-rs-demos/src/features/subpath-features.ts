@@ -39,7 +39,7 @@ const subpathFeatures = {
 		callback: (subpath: WasmSubpathInstance, options: Record<string, number>): string => subpath.normal(options.t),
 		sliderOptions: [tSliderOptions],
 	},
-	intersectLinear: {
+	"intersect-linear": {
 		name: "Intersect (Line Segment)",
 		callback: (subpath: WasmSubpathInstance): string =>
 			subpath.intersect_line_segment([
@@ -47,7 +47,7 @@ const subpathFeatures = {
 				[20, 20],
 			]),
 	},
-	intersectQuadratic: {
+	"intersect-quadratic": {
 		name: "Intersect (Quadratic segment)",
 		callback: (subpath: WasmSubpathInstance): string =>
 			subpath.intersect_quadratic_segment([
@@ -56,7 +56,7 @@ const subpathFeatures = {
 				[90, 120],
 			]),
 	},
-	intersectCubic: {
+	"intersect-cubic": {
 		name: "Intersect (Cubic segment)",
 		callback: (subpath: WasmSubpathInstance): string =>
 			subpath.intersect_cubic_segment([

@@ -50,7 +50,7 @@ class SubpathDemoPane extends HTMLElement implements DemoPane {
 		this.computeType = "Parametric";
 
 		this.key = (this.getAttribute("name") || "") as SubpathFeatureKey;
-		this.id = `subpath_${this.key}`;
+		this.id = `subpath/${this.key}`;
 		this.name = subpathFeatures[this.key].name;
 		this.sliderOptions = JSON.parse(this.getAttribute("sliderOptions") || "[]");
 		this.triggerOnMouseMove = this.getAttribute("triggerOnMouseMove") === "true";

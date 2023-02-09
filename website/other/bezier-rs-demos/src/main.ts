@@ -48,7 +48,7 @@ function renderSubpathPane(featureName: SubpathFeatureKey, container: HTMLElemen
 
 function isUrlSolo(url: string): boolean {
 	const hash = url.split("#")?.[1];
-	const splitHash = hash?.split("_");
+	const splitHash = hash?.split("/");
 	return splitHash?.length === 3 && splitHash?.[2] === "solo";
 }
 
@@ -56,7 +56,7 @@ window.addEventListener("hashchange", (e: Event): void => {
 	const hashChangeEvent = e as HashChangeEvent;
 	const isOldHashSolo = isUrlSolo(hashChangeEvent.oldURL);
 	const isNewHashSolo = isUrlSolo(hashChangeEvent.newURL);
-	const target = document.querySelector(window.location.hash);
+	const target = document.getElementById(window.location.hash.substring(1));
 	// Determine whether the page needs to recompute which examples to show
 	if (!target || isOldHashSolo !== isNewHashSolo) {
 		renderExamples();
@@ -65,7 +65,7 @@ window.addEventListener("hashchange", (e: Event): void => {
 
 function renderExamples(): void {
 	const hash = window.location.hash;
-	const splitHash = hash.split("_");
+	const splitHash = hash.split("/");
 
 	// Determine which examples to render based on hash
 	if (splitHash[0] === "#bezier" && splitHash[1] in bezierFeatures && splitHash[2] === "solo") {
@@ -98,7 +98,7 @@ function renderExamples(): void {
 
 	// Scroll to specified hash if it exists
 	if (hash) {
-		const target = document.querySelector(hash);
+		const target = document.getElementById(hash.substring(1));
 		if (target) {
 			target.scrollIntoView();
 		}
