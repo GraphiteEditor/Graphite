@@ -1,5 +1,5 @@
 import { WasmSubpath } from "@/../wasm/pkg";
-import subpathFeatures, { SubpathFeatureName } from "@/features/subpath-features";
+import subpathFeatures, { SubpathFeatureKey } from "@/features/subpath-features";
 import { renderDemo } from "@/utils/render";
 
 import { SubpathCallback, WasmSubpathInstance, WasmSubpathManipulatorKey, SliderOption, ComputeType } from "@/utils/types";
@@ -13,7 +13,7 @@ class SubpathDemo extends HTMLElement {
 
 	triples!: (number[] | undefined)[][];
 
-	name!: SubpathFeatureName;
+	key!: SubpathFeatureKey;
 
 	closed!: boolean;
 
@@ -51,13 +51,13 @@ class SubpathDemo extends HTMLElement {
 	connectedCallback(): void {
 		this.title = this.getAttribute("title") || "";
 		this.triples = JSON.parse(this.getAttribute("triples") || "[]");
-		this.name = this.getAttribute("name") as SubpathFeatureName;
+		this.key = this.getAttribute("key") as SubpathFeatureKey;
 		this.sliderOptions = JSON.parse(this.getAttribute("sliderOptions") || "[]");
 		this.triggerOnMouseMove = this.getAttribute("triggerOnMouseMove") === "true";
 		this.closed = this.getAttribute("closed") === "true";
 		this.computeType = (this.getAttribute("computetype") || "Parametric") as ComputeType;
 
-		this.callback = subpathFeatures[this.name].callback as SubpathCallback;
+		this.callback = subpathFeatures[this.key].callback as SubpathCallback;
 		this.subpath = WasmSubpath.from_triples(this.triples, this.closed) as WasmSubpathInstance;
 		this.sliderData = Object.assign({}, ...this.sliderOptions.map((s) => ({ [s.variable]: s.default })));
 		this.sliderUnits = Object.assign({}, ...this.sliderOptions.map((s) => ({ [s.variable]: s.unit })));

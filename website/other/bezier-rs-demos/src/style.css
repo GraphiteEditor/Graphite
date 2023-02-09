@@ -1,9 +1,15 @@
 html,
 body {
-	height: 100%;
 	font-family: Arial, sans-serif;
 	text-align: center;
+}
+
+body > h1 {
 	margin: 40px 0;
+}
+
+body > h1 ~ :last-child {
+	margin-bottom: 40px;
 }
 
 body > h1 + p {
@@ -29,8 +35,24 @@ body > h2 {
 }
 
 .demo-pane-header {
+	display: inline-block;
+	position: relative;
 	margin-top: 2em;
 	margin-bottom: 0;
+	padding: 0 1em;
+}
+
+.demo-pane-header a {
+	display: none;
+	position: absolute;
+	left: 0;
+	text-decoration: none;
+	color: inherit;
+	opacity: 0.5;
+}
+
+.demo-pane-header:hover a {
+	display: inline-block;
 }
 
 .demo-pane-container {
