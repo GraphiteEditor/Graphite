@@ -1,5 +1,5 @@
 import { WasmBezier } from "@/../wasm/pkg";
-import bezierFeatures, { BezierFeatureName } from "@/features/bezier-features";
+import bezierFeatures, { BezierFeatureKey } from "@/features/bezier-features";
 import { renderDemo } from "@/utils/render";
 import { getConstructorKey, getCurveType, BezierCallback, BezierCurveType, SliderOption, WasmBezierManipulatorKey, ComputeType, Demo } from "@/utils/types";
 
@@ -18,7 +18,7 @@ class BezierDemo extends HTMLElement implements Demo {
 
 	points!: number[][];
 
-	name!: BezierFeatureName;
+	key!: BezierFeatureKey;
 
 	sliderOptions!: SliderOption[];
 
@@ -54,12 +54,12 @@ class BezierDemo extends HTMLElement implements Demo {
 	connectedCallback(): void {
 		this.title = this.getAttribute("title") || "";
 		this.points = JSON.parse(this.getAttribute("points") || "[]");
-		this.name = this.getAttribute("name") as BezierFeatureName;
+		this.key = this.getAttribute("key") as BezierFeatureKey;
 		this.sliderOptions = JSON.parse(this.getAttribute("sliderOptions") || "[]");
 		this.triggerOnMouseMove = this.getAttribute("triggerOnMouseMove") === "true";
 		this.computeType = (this.getAttribute("computetype") || "Parametric") as ComputeType;
 
-		this.callback = bezierFeatures[this.name].callback as BezierCallback;
+		this.callback = bezierFeatures[this.key].callback as BezierCallback;
 		const curveType = getCurveType(this.points.length);
 
 		this.manipulatorKeys = MANIPULATOR_KEYS_FROM_BEZIER_TYPE[curveType];
