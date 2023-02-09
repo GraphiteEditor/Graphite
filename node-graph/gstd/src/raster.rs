@@ -90,25 +90,12 @@ pub fn export_image_node<'i, 's: 'i>() -> impl Node<'i, 's, (Image, &'i str), Ou
 */
 
 #[derive(Debug, Clone, Copy)]
-pub struct GrayscaleNode;
-
-#[node_macro::node_fn(GrayscaleNode)]
-fn grayscale_image(image: Image) -> Image {
-	let mut image = image;
-	for pixel in &mut image.data {
-		let avg = (pixel.r() + pixel.g() + pixel.b()) / 3.;
-		*pixel = Color::from_rgbaf32_unchecked(avg, avg, avg, pixel.a());
-	}
-	image
-}
-
-#[derive(Debug, Clone, Copy)]
 pub struct MapImageNode<MapFn> {
 	map_fn: MapFn,
 }
 
 #[node_macro::node_fn(MapImageNode)]
-fn grayscale_image<MapFn>(image: Image, map_fn: &'any_input MapFn) -> Image
+fn map_image<MapFn>(image: Image, map_fn: &'any_input MapFn) -> Image
 where
 	MapFn: for<'any_input> Node<'any_input, Color, Output = Color> + 'input,
 {
@@ -120,134 +107,10 @@ where
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct InvertRGBNode;
-
-#[node_macro::node_fn(InvertRGBNode)]
-fn invert_image(mut image: Image) -> Image {
-	let mut image = image;
-	for pixel in &mut image.data {
-		*pixel = Color::from_rgbaf32_unchecked(1. - pixel.r(), 1. - pixel.g(), 1. - pixel.b(), pixel.a());
-	}
-	image
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct HueSaturationNode<Hue, Sat, Lit> {
-	hue_shift: Hue,
-	saturation_shift: Sat,
-	lightness_shift: Lit,
-}
-
-#[node_macro::node_fn(HueSaturationNode)]
-fn shift_image_hsl(image: Image, hue_shift: f64, saturation_shift: f64, lightness_shift: f64) -> Image {
-	let mut image = image;
-	let (hue_shift, saturation_shift, lightness_shift) = (hue_shift as f32, saturation_shift as f32, lightness_shift as f32);
-	for pixel in &mut image.data {
-		let [hue, saturation, lightness, alpha] = pixel.to_hsla();
-		*pixel = Color::from_hsla(
-			(hue + hue_shift / 360.) % 1.,
-			(saturation + saturation_shift / 100.).clamp(0., 1.),
-			(lightness + lightness_shift / 100.).clamp(0., 1.),
-			alpha,
-		);
-	}
-	image
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct BrightnessContrastNode<Brightness, Contrast> {
-	brightness: Brightness,
-	contrast: Contrast,
-}
-
-// From https://stackoverflow.com/questions/2976274/adjust-bitmap-image-brightness-contrast-using-c
-#[node_macro::node_fn(BrightnessContrastNode)]
-fn adjust_image_brightness_and_contrast(image: Image, brightness: f64, contrast: f64) -> Image {
-	let mut image = image;
-	let (brightness, contrast) = (brightness as f32, contrast as f32);
-	let factor = (259. * (contrast + 255.)) / (255. * (259. - contrast));
-	let channel = |channel: f32| ((factor * (channel * 255. + brightness - 128.) + 128.) / 255.).clamp(0., 1.);
-
-	for pixel in &mut image.data {
-		*pixel = Color::from_rgbaf32_unchecked(channel(pixel.r()), channel(pixel.g()), channel(pixel.b()), pixel.a())
-	}
-	image
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct GammaNode<G> {
-	gamma: G,
-}
-
-// https://www.dfstudios.co.uk/articles/programming/image-programming-algorithms/image-processing-algorithms-part-6-gamma-correction/
-#[node_macro::node_fn(GammaNode)]
-fn image_gamma(image: Image, gamma: f64) -> Image {
-	let mut image = image;
-	let inverse_gamma = 1. / gamma;
-	let channel = |channel: f32| channel.powf(inverse_gamma as f32);
-	for pixel in &mut image.data {
-		*pixel = Color::from_rgbaf32_unchecked(channel(pixel.r()), channel(pixel.g()), channel(pixel.b()), pixel.a())
-	}
-	image
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct OpacityNode<O> {
-	opacity_multiplier: O,
-}
-
-#[node_macro::node_fn(OpacityNode)]
-fn image_opacity(image: Image, opacity_multiplier: f64) -> Image {
-	let mut image = image;
-	let opacity_multiplier = opacity_multiplier as f32;
-	for pixel in &mut image.data {
-		*pixel = Color::from_rgbaf32_unchecked(pixel.r(), pixel.g(), pixel.b(), pixel.a() * opacity_multiplier)
-	}
-	image
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct PosterizeNode<P> {
-	posterize_value: P,
-}
-
-// Based on http://www.axiomx.com/posterize.htm
-#[node_macro::node_fn(PosterizeNode)]
-fn posterize(image: Image, posterize_value: f64) -> Image {
-	let mut image = image;
-	let posterize_value = posterize_value as f32;
-	let number_of_areas = posterize_value.recip();
-	let size_of_areas = (posterize_value - 1.).recip();
-	let channel = |channel: f32| (channel / number_of_areas).floor() * size_of_areas;
-	for pixel in &mut image.data {
-		*pixel = Color::from_rgbaf32_unchecked(channel(pixel.r()), channel(pixel.g()), channel(pixel.b()), pixel.a())
-	}
-	image
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct ExposureNode<E> {
-	exposure: E,
-}
-
-// Based on https://stackoverflow.com/questions/12166117/what-is-the-math-behind-exposure-adjustment-on-photoshop
-#[node_macro::node_fn(ExposureNode)]
-fn exposure(image: Image, exposure: f64) -> Image {
-	let mut image = image;
-	let multiplier = 2f32.powf(exposure as f32);
-	let channel = |channel: f32| channel * multiplier;
-	for pixel in &mut image.data {
-		*pixel = Color::from_rgbaf32_unchecked(channel(pixel.r()), channel(pixel.g()), channel(pixel.b()), pixel.a())
-	}
-	image
-}
-
-#[derive(Debug, Clone, Copy)]
 pub struct ImaginateNode<E> {
 	cached: E,
 }
 
-// Based on https://stackoverflow.com/questions/12166117/what-is-the-math-behind-exposure-adjustment-on-photoshop
 #[node_macro::node_fn(ImaginateNode)]
 fn imaginate(image: Image, cached: Option<std::sync::Arc<graphene_core::raster::Image>>) -> Image {
 	info!("Imaginating image with {} pixels", image.data.len());
