@@ -183,10 +183,16 @@ pub fn blur_image_properties(document_node: &DocumentNode, node_id: NodeId, _con
 	vec![LayoutGroup::Row { widgets: radius }, LayoutGroup::Row { widgets: sigma }]
 }
 
-pub fn adjust_gamma_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let gamma = number_widget(document_node, node_id, 1, "Gamma", NumberInput::default().min(0.01), true);
+pub fn adjust_threshold_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let thereshold = number_widget(document_node, node_id, 1, "Threshold", NumberInput::default().min(0.).max(1.), true);
 
-	vec![LayoutGroup::Row { widgets: gamma }]
+	vec![LayoutGroup::Row { widgets: thereshold }]
+}
+
+pub fn adjust_vibrance_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let vibrance = number_widget(document_node, node_id, 1, "Vibrance", NumberInput::default().min(-100.).max(100.).unit("%"), true);
+
+	vec![LayoutGroup::Row { widgets: vibrance }]
 }
 
 #[cfg(feature = "gpu")]
@@ -216,9 +222,22 @@ pub fn quantize_properties(document_node: &DocumentNode, node_id: NodeId, _conte
 	vec![LayoutGroup::Row { widgets: value }, LayoutGroup::Row { widgets: index }]
 }
 pub fn exposure_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let value = number_widget(document_node, node_id, 1, "Value", NumberInput::default().min(-3.).max(3.), true);
+	let exposure = number_widget(document_node, node_id, 1, "Exposure", NumberInput::default().min(-20.).max(20.), true);
+	let offset = number_widget(document_node, node_id, 2, "Offset", NumberInput::default().min(-0.5).max(0.5), true);
+	let gamma_correction = number_widget(
+		document_node,
+		node_id,
+		3,
+		"Gamma Correction",
+		NumberInput::default().min(0.01).max(9.99).mode_increment().increment_step(0.1),
+		true,
+	);
 
-	vec![LayoutGroup::Row { widgets: value }]
+	vec![
+		LayoutGroup::Row { widgets: exposure },
+		LayoutGroup::Row { widgets: offset },
+		LayoutGroup::Row { widgets: gamma_correction },
+	]
 }
 
 pub fn add_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
