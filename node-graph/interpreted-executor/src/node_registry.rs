@@ -27,13 +27,13 @@ macro_rules! register_node {
 	};
 }
 macro_rules! raster_node {
-	($path:ty,  params: [$($type:ty),*]) => {
+	($path:ty, params: [$($type:ty),*]) => {
 		( {NodeIdentifier::new(stringify!($path), &[concrete!("Image"), $(concrete!(stringify!($type))),*])},
 		|args| {
 			let mut args = args.clone();
 			args.reverse();
-			let node = <$path>::new($(graphene_std::any::input_node::<$type>(args.pop().expect("not enough arguments provided to construct node"))),*);
-            let map_node = graphene_std::raster::MapImageNode::new(graphene_core::value::ValueNode::new(node));
+			let node = <$path>::new($(graphene_std::any::input_node::<$type>(args.pop().expect("Not enough arguments provided to construct node"))),*);
+			let map_node = graphene_std::raster::MapImageNode::new(graphene_core::value::ValueNode::new(node));
 			let any: DynAnyNode<Image, _, _> = graphene_std::any::DynAnyNode::new(graphene_core::value::ValueNode::new(map_node));
 			Box::pin(any) as TypeErasedPinned
 		})
@@ -63,13 +63,13 @@ static NODE_REGISTRY: &[(NodeIdentifier, NodeConstructor)] = &[
 		node.into_type_erased()
 	}),
 	(NodeIdentifier::new("graphene_core::ops::IdNode", &[generic!("T")]), |_| IdNode::new().into_type_erased()),
-	//filters
+	// Filters
 	raster_node!(graphene_core::raster::GrayscaleNode, params: []),
 	raster_node!(graphene_core::raster::HueSaturationNode<_, _, _>, params: [f64, f64, f64]),
 	raster_node!(graphene_core::raster::InvertRGBNode, params: []),
 	raster_node!(graphene_core::raster::ThresholdNode<_>, params: [f64]),
 	raster_node!(graphene_core::raster::VibranceNode<_>, params: [f64]),
-	raster_node!(graphene_core::raster::BrightnessContrastNode< _, _>,  params: [f64, f64]),
+	raster_node!(graphene_core::raster::BrightnessContrastNode< _, _>, params: [f64, f64]),
 	raster_node!(graphene_core::raster::GammaNode<_>, params: [f64]),
 	raster_node!(graphene_core::raster::OpacityNode<_>, params: [f64]),
 	raster_node!(graphene_core::raster::PosterizeNode<_>, params: [f64]),
@@ -97,8 +97,7 @@ static NODE_REGISTRY: &[(NodeIdentifier, NodeConstructor)] = &[
 		let empty: TypeNode<_, (), Image> = TypeNode::new(empty_image.then(CloneNode::new()));
 
 		//let image = &image as &dyn for<'a> Node<'a, (), Output = &'a Image>;
-		// dirty hack: we abuse that the cache node will ignore the input if it is
-		// evaluated a second time
+		// dirty hack: we abuse that the cache node will ignore the input if it is evaluated a second time
 		let image = empty.then(image).then(ImageRefNode::new());
 
 		let window = WindowNode::new(radius, image.clone());
@@ -289,6 +288,7 @@ pub fn constrcut_node<'a>(ident: NodeIdentifier, construction_args: Vec<TypeEras
 		panic!("NodeImplementation: {:?} not found in Registry. Types for which the node is implemented:\n {:#?}", ident, other_types);
 	}
 }
+
 /*
 #[cfg(test)]
 mod protograph_testing {

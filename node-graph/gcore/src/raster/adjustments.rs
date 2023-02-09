@@ -1,14 +1,7 @@
 use super::Color;
-use core::fmt::Debug;
-
 use crate::Node;
 
-pub fn map_rgba<F: Fn(f32) -> f32>(color: Color, f: F) -> Color {
-	Color::from_rgbaf32_unchecked(f(color.r()), f(color.g()), f(color.b()), f(color.a()))
-}
-pub fn map_rgb<F: Fn(f32) -> f32>(color: Color, f: F) -> Color {
-	Color::from_rgbaf32_unchecked(f(color.r()), f(color.g()), f(color.b()), color.a())
-}
+use core::fmt::Debug;
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct GrayscaleNode;
@@ -35,6 +28,7 @@ fn gamma_color_node(color: Color, gamma: f64) -> Color {
 #[cfg(not(target_arch = "spirv"))]
 pub use hue_shift::HueSaturationNode;
 
+// TODO: Make this work on GPU so it can be removed from the wrapper module that excludes GPU (it doesn't work because of the modulo)
 #[cfg(not(target_arch = "spirv"))]
 mod hue_shift {
 	use super::*;
@@ -74,9 +68,9 @@ pub struct ThresholdNode<Threshold> {
 fn threshold_node(color: Color, threshold: f64) -> Color {
 	let avg = (color.r() + color.g() + color.b()) / 3.0;
 	if avg >= threshold as f32 {
-		Color::BLACK
-	} else {
 		Color::WHITE
+	} else {
+		Color::BLACK
 	}
 }
 
@@ -85,6 +79,7 @@ pub struct VibranceNode<Vibrance> {
 	vibrance: Vibrance,
 }
 
+// TODO: The current results are incorrect, try implementing this from https://stackoverflow.com/questions/33966121/what-is-the-algorithm-for-vibrance-filters
 #[node_macro::node_fn(VibranceNode)]
 fn vibrance_node(color: Color, vibrance: f64) -> Color {
 	let [hue, saturation, lightness, alpha] = color.to_hsla();
@@ -142,7 +137,14 @@ pub struct ExposureNode<E> {
 // Based on https://stackoverflow.com/questions/12166117/what-is-the-math-behind-exposure-adjustment-on-photoshop
 #[node_macro::node_fn(ExposureNode)]
 fn exposure(color: Color, exposure: f64) -> Color {
-	let multiplier = 2f32.powf(exposure as f32);
+	let multiplier = 2_f32.powf(exposure as f32);
 	let channel = |channel: f32| channel * multiplier;
 	map_rgb(color, channel)
+}
+
+pub fn map_rgba<F: Fn(f32) -> f32>(color: Color, f: F) -> Color {
+	Color::from_rgbaf32_unchecked(f(color.r()), f(color.g()), f(color.b()), f(color.a()))
+}
+pub fn map_rgb<F: Fn(f32) -> f32>(color: Color, f: F) -> Color {
+	Color::from_rgbaf32_unchecked(f(color.r()), f(color.g()), f(color.b()), color.a())
 }

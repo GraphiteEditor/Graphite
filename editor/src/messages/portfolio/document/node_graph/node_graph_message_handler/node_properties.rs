@@ -190,7 +190,7 @@ pub fn adjust_gamma_properties(document_node: &DocumentNode, node_id: NodeId, _c
 }
 
 pub fn adjust_threshold_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let thereshold = number_widget(document_node, node_id, 1, "Threshold", NumberInput::default().min(0.00).max(1.), true);
+	let thereshold = number_widget(document_node, node_id, 1, "Threshold", NumberInput::default().min(0.).max(1.), true);
 
 	vec![LayoutGroup::Row { widgets: thereshold }]
 }
