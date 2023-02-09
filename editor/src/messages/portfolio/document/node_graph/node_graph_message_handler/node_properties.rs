@@ -335,7 +335,6 @@ pub fn _transform_properties(document_node: &DocumentNode, node_id: NodeId, _con
 
 pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let imaginate_node = [context.nested_path, &[node_id]].concat();
-	let imaginate_node_1 = imaginate_node.clone();
 	let layer_path = context.layer_path.to_vec();
 
 	let resolve_input = |name: &str| IMAGINATE_NODE.inputs.iter().position(|input| input.name == name).unwrap_or_else(|| panic!("Input {name} not found"));
@@ -455,12 +454,15 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 				widgets.push(
 					TextButton::new("Terminate")
 						.tooltip("Cancel the in-progress image generation and keep the latest progress")
-						.on_update(move |_| {
-							DocumentMessage::NodeGraphFrameImaginateTerminate {
-								layer_path: layer_path.clone(),
-								node_path: imaginate_node.clone(),
+						.on_update({
+							let imaginate_node = imaginate_node.clone();
+							move |_| {
+								DocumentMessage::NodeGraphFrameImaginateTerminate {
+									layer_path: layer_path.clone(),
+									node_path: imaginate_node.clone(),
+								}
+								.into()
 							}
-							.into()
 						})
 						.widget_holder(),
 				);
@@ -477,21 +479,27 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 			ImaginateStatus::Idle | ImaginateStatus::Terminated => widgets.extend_from_slice(&[
 				IconButton::new("Random", 24)
 					.tooltip("Generate with a new random seed")
-					.on_update(move |_| {
-						DocumentMessage::NodeGraphFrameImaginateRandom {
-							imaginate_node: imaginate_node.clone(),
+					.on_update({
+						let imaginate_node = imaginate_node.clone();
+						move |_| {
+							DocumentMessage::NodeGraphFrameImaginateRandom {
+								imaginate_node: imaginate_node.clone(),
+							}
+							.into()
 						}
-						.into()
 					})
 					.widget_holder(),
 				WidgetHolder::unrelated_separator(),
 				TextButton::new("Generate")
 					.tooltip("Fill layer frame by generating a new image")
-					.on_update(move |_| {
-						DocumentMessage::NodeGraphFrameImaginate {
-							imaginate_node: imaginate_node_1.clone(),
+					.on_update({
+						let imaginate_node = imaginate_node.clone();
+						move |_| {
+							DocumentMessage::NodeGraphFrameImaginate {
+								imaginate_node: imaginate_node.clone(),
+							}
+							.into()
 						}
-						.into()
 					})
 					.widget_holder(),
 				WidgetHolder::related_separator(),
@@ -532,6 +540,16 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 		LayoutGroup::Row { widgets }.with_tooltip("Seed determines the random outcome, enabling limitless unique variations")
 	};
 
+	// Get the existing layer transform
+	let transform = context.document.root.transform.inverse() * context.document.multiply_transforms(context.layer_path).unwrap();
+	// Create the input to the graph using an empty image
+	let image_frame = std::borrow::Cow::Owned(graphene_core::raster::ImageFrame {
+		image: graphene_core::raster::Image::empty(),
+		transform,
+	});
+	// Comput the transform input to the node graph frame
+	let transform: glam::DAffine2 = context.executor.compute_input(context.network, &imaginate_node, 1, image_frame).unwrap_or_default();
+
 	let resolution = {
 		use document_legacy::document::pick_safe_imaginate_resolution;
 
@@ -549,7 +567,6 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 		{
 			let dimensions_is_auto = vec2.is_none();
 			let vec2 = vec2.unwrap_or_else(|| {
-				let transform = context.document.root.transform.inverse() * context.document.multiply_transforms(context.layer_path).unwrap();
 				let w = transform.transform_vector2(DVec2::new(1., 0.)).length();
 				let h = transform.transform_vector2(DVec2::new(0., 1.)).length();
 
