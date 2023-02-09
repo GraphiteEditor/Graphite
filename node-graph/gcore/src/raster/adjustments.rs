@@ -7,22 +7,16 @@ use core::fmt::Debug;
 pub struct GrayscaleNode;
 
 #[node_macro::node_fn(GrayscaleNode)]
-fn grayscale_color_node(input: Color) -> Color {
-	let avg = (input.r() + input.g() + input.b()) / 3.0;
-	map_rgb(input, |_| avg)
-}
+fn grayscale_color_node(color: Color) -> Color {
+	// TODO: Remove conversion to linear when the whole node graph uses linear color
+	let color = color.to_linear_srgb();
 
-#[derive(Debug)]
-pub struct GammaNode<Gamma> {
-	gamma: Gamma,
-}
+	let luminance = color.luminance();
 
-// https://www.dfstudios.co.uk/articles/programming/image-programming-algorithms/image-processing-algorithms-part-6-gamma-correction/
-#[node_macro::node_fn(GammaNode)]
-fn gamma_color_node(color: Color, gamma: f64) -> Color {
-	let inverse_gamma = 1. / gamma;
-	let per_channel = |channel: f32| channel.powf(inverse_gamma as f32);
-	map_rgb(color, per_channel)
+	// TODO: Remove conversion to linear when the whole node graph uses linear color
+	let luminance = Color::linear_to_srgb(luminance);
+
+	color.map_rgb(|_| luminance)
 }
 
 #[cfg(not(target_arch = "spirv"))]
@@ -56,7 +50,7 @@ pub struct InvertRGBNode;
 
 #[node_macro::node_fn(InvertRGBNode)]
 fn invert_image(color: Color) -> Color {
-	map_rgb(color, |c| 1. - c)
+	color.map_rgb(|c| 1. - c)
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -66,8 +60,12 @@ pub struct ThresholdNode<Threshold> {
 
 #[node_macro::node_fn(ThresholdNode)]
 fn threshold_node(color: Color, threshold: f64) -> Color {
-	let avg = (color.r() + color.g() + color.b()) / 3.0;
-	if avg >= threshold as f32 {
+	let threshold = Color::srgb_to_linear(threshold as f32);
+
+	// TODO: Remove conversion to linear when the whole node graph uses linear color
+	let color = color.to_linear_srgb();
+
+	if color.luminance() >= threshold {
 		Color::WHITE
 	} else {
 		Color::BLACK
@@ -100,7 +98,7 @@ fn adjust_image_brightness_and_contrast(color: Color, brightness: f64, contrast:
 	let (brightness, contrast) = (brightness as f32, contrast as f32);
 	let factor = (259. * (contrast + 255.)) / (255. * (259. - contrast));
 	let channel = |channel: f32| ((factor * (channel * 255. + brightness - 128.) + 128.) / 255.).clamp(0., 1.);
-	map_rgb(color, channel)
+	color.map_rgb(channel)
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -126,25 +124,25 @@ fn posterize(color: Color, posterize_value: f64) -> Color {
 	let number_of_areas = posterize_value.recip();
 	let size_of_areas = (posterize_value - 1.).recip();
 	let channel = |channel: f32| (channel / number_of_areas).floor() * size_of_areas;
-	map_rgb(color, channel)
+	color.map_rgb(channel)
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct ExposureNode<E> {
-	exposure: E,
+pub struct ExposureNode<Exposure, Offset, GammaCorrection> {
+	exposure: Exposure,
+	offset: Offset,
+	gamma_correction: GammaCorrection,
 }
 
 // Based on https://stackoverflow.com/questions/12166117/what-is-the-math-behind-exposure-adjustment-on-photoshop
 #[node_macro::node_fn(ExposureNode)]
-fn exposure(color: Color, exposure: f64) -> Color {
+fn exposure(color: Color, exposure: f64, offset: f64, gamma_correction: f64) -> Color {
 	let multiplier = 2_f32.powf(exposure as f32);
-	let channel = |channel: f32| channel * multiplier;
-	map_rgb(color, channel)
-}
-
-pub fn map_rgba<F: Fn(f32) -> f32>(color: Color, f: F) -> Color {
-	Color::from_rgbaf32_unchecked(f(color.r()), f(color.g()), f(color.b()), f(color.a()))
-}
-pub fn map_rgb<F: Fn(f32) -> f32>(color: Color, f: F) -> Color {
-	Color::from_rgbaf32_unchecked(f(color.r()), f(color.g()), f(color.b()), color.a())
+	color
+		// TODO: Fix incorrect behavior of offset
+		.map_rgb(|channel: f32| channel + offset as f32)
+		// TODO: Fix incorrect behavior of exposure
+		.map_rgb(|channel: f32| channel * multiplier)
+		// TODO: While gamma correction is correct on its own, determine and implement the correct order of these three operations
+		.gamma(gamma_correction as f32)
 }

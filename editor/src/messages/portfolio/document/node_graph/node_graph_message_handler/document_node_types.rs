@@ -253,17 +253,6 @@ static STATIC_NODES: &[DocumentNodeType] = &[
 		properties: node_properties::brighten_image_properties,
 	},
 	DocumentNodeType {
-		name: "Gamma",
-		category: "Image Adjustments",
-		identifier: NodeImplementation::proto("graphene_core::raster::GammaNode<_>", &[concrete!("Image"), concrete!("f64")]),
-		inputs: &[
-			DocumentInputType::new("Image", TaggedValue::Image(Image::empty()), true),
-			DocumentInputType::new("Gamma", TaggedValue::F64(1.), false),
-		],
-		outputs: &[FrontendGraphDataType::Raster],
-		properties: node_properties::adjust_gamma_properties,
-	},
-	DocumentNodeType {
 		name: "Threshold",
 		category: "Image Adjustments",
 		identifier: NodeImplementation::proto("graphene_core::raster::ThresholdNode<_>", &[concrete!("Image"), concrete!("f64")]),
@@ -310,10 +299,15 @@ static STATIC_NODES: &[DocumentNodeType] = &[
 	DocumentNodeType {
 		name: "Exposure",
 		category: "Image Adjustments",
-		identifier: NodeImplementation::proto("graphene_core::raster::ExposureNode<_>", &[concrete!("Image"), concrete!("f64")]),
+		identifier: NodeImplementation::proto(
+			"graphene_core::raster::ExposureNode<_, _, _>",
+			&[concrete!("Image"), concrete!("f64"), concrete!("f64"), concrete!("f64")],
+		),
 		inputs: &[
 			DocumentInputType::new("Image", TaggedValue::Image(Image::empty()), true),
-			DocumentInputType::new("Value", TaggedValue::F64(0.), false),
+			DocumentInputType::new("Exposure", TaggedValue::F64(0.), false),
+			DocumentInputType::new("Offset", TaggedValue::F64(0.), false),
+			DocumentInputType::new("Gamma Correction", TaggedValue::F64(1.), false),
 		],
 		outputs: &[FrontendGraphDataType::Raster],
 		properties: node_properties::exposure_properties,

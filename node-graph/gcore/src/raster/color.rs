@@ -196,6 +196,22 @@ impl Color {
 		self.alpha
 	}
 
+	// From https://stackoverflow.com/a/56678483/775283
+	pub fn luminance(&self) -> f32 {
+		0.2126 * self.red + 0.7152 * self.green + 0.0722 * self.blue
+	}
+
+	// From https://stackoverflow.com/a/56678483/775283
+	pub fn perceptual_luminance(&self) -> f32 {
+		let luminance = self.luminance();
+
+		if luminance <= 0.008856 {
+			(luminance * 903.3) / 100.
+		} else {
+			(luminance.powf(1. / 3.) * 116. - 16.) / 100.
+		}
+	}
+
 	/// Return the all components as a tuple, first component is red, followed by green, followed by blue, followed by alpha.
 	///
 	/// # Examples
@@ -333,6 +349,54 @@ impl Color {
 			self.blue + ((other.blue - self.blue) * t),
 			self.alpha + ((other.alpha - self.alpha) * t),
 		)
+	}
+
+	pub fn gamma(&self, gamma: f32) -> Color {
+		// From https://www.dfstudios.co.uk/articles/programming/image-programming-algorithms/image-processing-algorithms-part-6-gamma-correction/
+		let inverse_gamma = 1. / gamma;
+		let per_channel = |channel: f32| channel.powf(inverse_gamma);
+		self.map_rgb(per_channel)
+	}
+
+	pub fn to_linear_srgb(&self) -> Self {
+		Self {
+			red: Self::srgb_to_linear(self.red),
+			green: Self::srgb_to_linear(self.green),
+			blue: Self::srgb_to_linear(self.blue),
+			alpha: self.alpha,
+		}
+	}
+
+	pub fn to_gamma_srgb(&self) -> Self {
+		Self {
+			red: Self::linear_to_srgb(self.red),
+			green: Self::linear_to_srgb(self.green),
+			blue: Self::linear_to_srgb(self.blue),
+			alpha: self.alpha,
+		}
+	}
+
+	pub fn srgb_to_linear(channel: f32) -> f32 {
+		if channel <= 0.04045 {
+			channel / 12.92
+		} else {
+			((channel + 0.055) / 1.055).powf(2.4)
+		}
+	}
+
+	pub fn linear_to_srgb(channel: f32) -> f32 {
+		if channel <= 0.0031308 {
+			channel * 12.92
+		} else {
+			1.055 * channel.powf(1. / 2.4) - 0.055
+		}
+	}
+
+	pub fn map_rgba<F: Fn(f32) -> f32>(&self, f: F) -> Self {
+		Self::from_rgbaf32_unchecked(f(self.r()), f(self.g()), f(self.b()), f(self.a()))
+	}
+	pub fn map_rgb<F: Fn(f32) -> f32>(&self, f: F) -> Self {
+		Self::from_rgbaf32_unchecked(f(self.r()), f(self.g()), f(self.b()), self.a())
 	}
 }
 
