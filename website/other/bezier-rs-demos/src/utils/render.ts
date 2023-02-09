@@ -42,9 +42,16 @@ export function renderDemoPane(demoPane: DemoPane): void {
 	const container = document.createElement("div");
 	container.className = "demo-pane-container";
 
+	const headerAnchorLink = document.createElement("a");
+	headerAnchorLink.innerText = "#";
+	const currentHash = window.location.hash.split("/");
+	// Add href anchor if not on a solo example page
+	if (currentHash.length !== 3 && currentHash[2] !== "solo") headerAnchorLink.href = `#${demoPane.id}`;
+
 	const header = document.createElement("h3");
 	header.innerText = demoPane.name;
 	header.className = "demo-pane-header";
+	header.append(headerAnchorLink);
 
 	const computeTypeContainer = document.createElement("div");
 	computeTypeContainer.className = "compute-type-choice";
