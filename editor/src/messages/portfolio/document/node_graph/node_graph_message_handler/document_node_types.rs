@@ -520,7 +520,7 @@ pub fn new_image_network(output_offset: i32, output_node_id: NodeId) -> NodeNetw
 		inputs: vec![0],
 		outputs: vec![NodeOutput::new(1, 0)],
 		nodes: [
-			resolve_document_node_type("Input Multiple").expect("Input mutliple node does not exist").to_document_node(
+			resolve_document_node_type("Input Multiple").expect("Input multiple node does not exist").to_document_node(
 				[NodeInput::Network, NodeInput::value(TaggedValue::DAffine2(DAffine2::IDENTITY), false)],
 				DocumentNodeMetadata::position((8, 4)),
 			),

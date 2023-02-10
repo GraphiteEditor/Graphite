@@ -124,7 +124,6 @@ impl NodeGraphExecutor {
 		let get = |name: &str| IMAGINATE_NODE.inputs.iter().position(|input| input.name == name).unwrap_or_else(|| panic!("Input {name} not found"));
 
 		let transform: DAffine2 = self.compute_input(&network, &imaginate_node, get("Transform"), Cow::Borrowed(&image_frame))?;
-		debug!("Transform {transform} x {x} y {y}");
 
 		let resolution: Option<glam::DVec2> = self.compute_input(&network, &imaginate_node, get("Resolution"), Cow::Borrowed(&image_frame))?;
 		let resolution = resolution.unwrap_or_else(|| {

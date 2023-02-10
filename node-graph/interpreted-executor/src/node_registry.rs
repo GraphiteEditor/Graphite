@@ -1,4 +1,4 @@
-use glam::{DAffine2, DVec2};
+use glam::DAffine2;
 use graphene_core::ops::{CloneNode, IdNode, TypeNode};
 use graphene_core::raster::color::Color;
 use graphene_core::raster::*;
