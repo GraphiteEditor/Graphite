@@ -2,16 +2,48 @@ use super::Color;
 use crate::Node;
 
 use core::fmt::Debug;
+use dyn_any::{DynAny, StaticType};
+
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, DynAny, specta::Type, Hash)]
+pub enum LuminanceCalculation {
+	#[default]
+	SRGB,
+	Perceptual,
+	AverageChannels,
+}
+
+impl LuminanceCalculation {
+	pub fn list() -> [LuminanceCalculation; 3] {
+		[LuminanceCalculation::SRGB, LuminanceCalculation::Perceptual, LuminanceCalculation::AverageChannels]
+	}
+}
+
+impl std::fmt::Display for LuminanceCalculation {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self {
+			LuminanceCalculation::SRGB => write!(f, "sRGB"),
+			LuminanceCalculation::Perceptual => write!(f, "Perceptual"),
+			LuminanceCalculation::AverageChannels => write!(f, "Average Channels"),
+		}
+	}
+}
 
 #[derive(Debug, Clone, Copy, Default)]
-pub struct GrayscaleNode;
+pub struct LuminanceNode<Calculation> {
+	calculation: Calculation,
+}
 
-#[node_macro::node_fn(GrayscaleNode)]
-fn grayscale_color_node(color: Color) -> Color {
+#[node_macro::node_fn(LuminanceNode)]
+fn luminance_color_node(color: Color, calculation: LuminanceCalculation) -> Color {
 	// TODO: Remove conversion to linear when the whole node graph uses linear color
 	let color = color.to_linear_srgb();
 
-	let luminance = color.luminance();
+	let luminance = match calculation {
+		LuminanceCalculation::SRGB => color.luminance_srgb(),
+		LuminanceCalculation::Perceptual => color.luminance_perceptual(),
+		LuminanceCalculation::AverageChannels => color.average_rgb(),
+	};
 
 	// TODO: Remove conversion to linear when the whole node graph uses linear color
 	let luminance = Color::linear_to_srgb(luminance);
@@ -20,44 +52,46 @@ fn grayscale_color_node(color: Color) -> Color {
 }
 
 #[derive(Debug, Clone, Copy, Default)]
-pub struct WeightedGrayscaleNode<RWeight, GWeight, BWeight, CWeight, MWeight, YWeight> {
-	r_weight: RWeight,
-	g_weight: GWeight,
-	b_weight: BWeight,
-	c_weight: CWeight,
-	m_weight: MWeight,
-	y_weight: YWeight,
+pub struct GrayscaleNode<Reds, Yellows, Greens, Cyans, Blues, Magentas> {
+	reds: Reds,
+	yellows: Yellows,
+	greens: Greens,
+	cyans: Cyans,
+	blues: Blues,
+	magentas: Magentas,
 }
 
-#[node_macro::node_fn(WeightedGrayscaleNode)]
-fn weighted_grayscale_color_node(color: Color, r_weight: f64, g_weight: f64, b_weight: f64, c_weight: f64, m_weight: f64, y_weight: f64) -> Color {
-	// TODO: Remove conversion to linear when the whole node graph uses linear color
-//	let color = color.to_linear_srgb();
+// From <https://stackoverflow.com/a/55233732/775283>
+// Works the same for gamma and linear color
+#[node_macro::node_fn(GrayscaleNode)]
+fn grayscale_color_node(color: Color, reds: f64, yellows: f64, greens: f64, cyans: f64, blues: f64, magentas: f64) -> Color {
+	let reds = reds as f32 / 100.;
+	let yellows = yellows as f32 / 100.;
+	let greens = greens as f32 / 100.;
+	let cyans = cyans as f32 / 100.;
+	let blues = blues as f32 / 100.;
+	let magentas = magentas as f32 / 100.;
 
-	let [hue, saturation, lightness, _alpha] = color.to_hsla();
-	/// Calculates the black and white filter for a single pixel.
-	let hue_val = hue;
-	let v_coeff_values = [r_weight, y_weight, g_weight, c_weight, b_weight, m_weight];
-    let v_coeff_values: Vec<_> =v_coeff_values.iter().map(|x|(x - 50.) / 50.).collect();
-	let hue_radius = 1. / 6.;
-	let hue_values: Vec<_> = (0..v_coeff_values.len()).map(|x| x as f64 / 6.).collect();
+	let gray_base = color.r().min(color.g()).min(color.b());
 
-	//fn process_pixel_black_white_filter(hue_val: f64, hue_values: &[f64], v_coeff_values: &[f64], hue_radius: f64) -> f64 {
-	let mut lum_coeff = 0.0;
+	let red_part = color.r() - gray_base;
+	let green_part = color.g() - gray_base;
+	let blue_part = color.b() - gray_base;
 
-	let diff_val = hue_val.min(1.0 - hue_val) as f64;
-	lum_coeff += v_coeff_values[0] * (hue_radius - diff_val).max(0.0);
+	let additional = if red_part == 0. {
+		let cyan_part = green_part.min(blue_part);
+		cyan_part * cyans + (green_part - cyan_part) * greens + (blue_part - cyan_part) * blues
+	} else if green_part == 0. {
+		let magenta_part = red_part.min(blue_part);
+		magenta_part * magentas + (red_part - magenta_part) * reds + (blue_part - magenta_part) * blues
+	} else {
+		let yellow_part = red_part.min(green_part);
+		yellow_part * yellows + (red_part - yellow_part) * reds + (green_part - yellow_part) * greens
+	};
 
-	for (hue_value, coeff) in hue_values.iter().zip(v_coeff_values.iter()).skip(1) {
-		lum_coeff += coeff * (hue_radius - (hue_value - hue_val as f64).abs()).max(0.0);
-	}
-    
-	let luminance = lightness * (1.0 + saturation * lum_coeff as f32);
+	let luminance = gray_base + additional;
 
-	// TODO: Remove conversion to linear when the whole node graph uses linear color
-//	let luminance = Color::linear_to_srgb(luminance);
-	
-    color.map_rgb(|_| luminance)
+	color.map_rgb(|_| luminance)
 }
 
 #[cfg(not(target_arch = "spirv"))]
@@ -95,18 +129,25 @@ fn invert_image(color: Color) -> Color {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct ThresholdNode<Threshold> {
+pub struct ThresholdNode<LuminanceCalculation, Threshold> {
+	luma_calculation: LuminanceCalculation,
 	threshold: Threshold,
 }
 
 #[node_macro::node_fn(ThresholdNode)]
-fn threshold_node(color: Color, threshold: f64) -> Color {
-	let threshold = Color::srgb_to_linear(threshold as f32);
+fn threshold_node(color: Color, luma_calculation: LuminanceCalculation, threshold: f64) -> Color {
+	let threshold = Color::srgb_to_linear(threshold as f32 / 100.);
 
 	// TODO: Remove conversion to linear when the whole node graph uses linear color
 	let color = color.to_linear_srgb();
 
-	if color.luminance() >= threshold {
+	let luminance = match luma_calculation {
+		LuminanceCalculation::SRGB => color.luminance_srgb(),
+		LuminanceCalculation::Perceptual => color.luminance_perceptual(),
+		LuminanceCalculation::AverageChannels => color.average_rgb(),
+	};
+
+	if luminance >= threshold {
 		Color::WHITE
 	} else {
 		Color::BLACK
@@ -149,7 +190,7 @@ pub struct OpacityNode<O> {
 
 #[node_macro::node_fn(OpacityNode)]
 fn image_opacity(color: Color, opacity_multiplier: f64) -> Color {
-	let opacity_multiplier = opacity_multiplier as f32;
+	let opacity_multiplier = opacity_multiplier as f32 / 100.;
 	Color::from_rgbaf32_unchecked(color.r(), color.g(), color.b(), color.a() * opacity_multiplier)
 }
 

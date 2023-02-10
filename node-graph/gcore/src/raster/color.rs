@@ -196,14 +196,18 @@ impl Color {
 		self.alpha
 	}
 
+	pub fn average_rgb(&self) -> f32 {
+		(self.red + self.green + self.blue) / 3.
+	}
+
 	// From https://stackoverflow.com/a/56678483/775283
-	pub fn luminance(&self) -> f32 {
+	pub fn luminance_srgb(&self) -> f32 {
 		0.2126 * self.red + 0.7152 * self.green + 0.0722 * self.blue
 	}
 
 	// From https://stackoverflow.com/a/56678483/775283
-	pub fn perceptual_luminance(&self) -> f32 {
-		let luminance = self.luminance();
+	pub fn luminance_perceptual(&self) -> f32 {
+		let luminance = self.luminance_srgb();
 
 		if luminance <= 0.008856 {
 			(luminance * 903.3) / 100.
@@ -273,31 +277,30 @@ impl Color {
 	/// let color = Color::from_hsla(0.5, 0.2, 0.3, 1.).to_hsla();
 	/// ```
 	pub fn to_hsla(&self) -> [f32; 4] {
-        let red = self.red;
-        let green = self.green;
-        let blue = self.blue;
-		let min = self.red.min(self.green).min(self.blue);
-		let max = self.red.max(self.green).max(self.blue);
-        let luminace = (max + min) / 2.0;
+		let min_channel = self.red.min(self.green).min(self.blue);
+		let max_channel = self.red.max(self.green).max(self.blue);
 
-        if max.eq(&min) {
-            return [0.0, 0.0, luminace * 100.0, self.alpha];
-        }
+		let lightness = (min_channel + max_channel) / 2.;
+		let saturation = if min_channel == max_channel {
+			0.
+		} else if lightness <= 0.5 {
+			(max_channel - min_channel) / (max_channel + min_channel)
+		} else {
+			(max_channel - min_channel) / (2. - max_channel - min_channel)
+		};
+		let hue = if self.red >= self.green && self.red >= self.blue {
+			(self.green - self.blue) / (max_channel - min_channel)
+		} else if self.green >= self.red && self.green >= self.blue {
+			2. + (self.blue - self.red) / (max_channel - min_channel)
+		} else {
+			4. + (self.red - self.green) / (max_channel - min_channel)
+		} / 6.;
+		#[cfg(not(target_arch = "spirv"))]
+		let hue = hue.rem_euclid(1.);
+		#[cfg(target_arch = "spirv")]
+		let hue = hue.rem_euclid(&1.);
 
-        let max_min_delta = max - min;
-        let saturation =
-            if luminace > 0.5 { max_min_delta / (2.0 - max - min) } else { max_min_delta / (max + min) };
-
-        let hue = if red.eq(&max) {
-            let x = if green < blue { 6.0 } else { 0.0 };
-            (green - blue) / max_min_delta + x
-        } else if green.eq(&max) {
-            (blue - red) / max_min_delta + 2.0
-        } else {
-            (red - green) / max_min_delta + 4.0
-        };
-
-        [hue * 60.0, saturation * 100.0, luminace * 100.0, self.alpha]
+		[hue, saturation, lightness, self.alpha]
 	}
 
 	// TODO: Readd formatting

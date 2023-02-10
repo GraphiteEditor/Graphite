@@ -8,6 +8,7 @@ use glam::DVec2;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{generate_uuid, DocumentNode, NodeId, NodeInput};
 use graph_craft::imaginate_input::*;
+use graphene_core::raster::LuminanceCalculation;
 
 use super::document_node_types::NodePropertiesContext;
 use super::{FrontendGraphDataType, IMAGINATE_NODE};
@@ -147,6 +148,29 @@ fn number_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, na
 	widgets
 }
 
+// TODO: Generalize this for all dropdowns
+fn luminance_calculation(document_node: &DocumentNode, node_id: u64, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
+	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
+	if let &NodeInput::Value {
+		tagged_value: TaggedValue::LuminanceCalculation(calculation),
+		exposed: false,
+	} = &document_node.inputs[index]
+	{
+		let calculation_modes = LuminanceCalculation::list();
+		let mut entries = Vec::with_capacity(calculation_modes.len());
+		for method in calculation_modes {
+			entries.push(DropdownEntryData::new(method.to_string()).on_update(update_value(move |_| TaggedValue::LuminanceCalculation(method), node_id, index)));
+		}
+		let entries = vec![entries];
+
+		widgets.extend_from_slice(&[
+			WidgetHolder::unrelated_separator(),
+			DropdownInput::new(entries).selected_index(Some(calculation as u32)).widget_holder(),
+		]);
+	}
+	LayoutGroup::Row { widgets }.with_tooltip("Formula used to calculate the luminance of a pixel")
+}
+
 /// Properties for the input node, with information describing how frames work and a refresh button
 pub fn input_properties(_document_node: &DocumentNode, _node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let information = WidgetHolder::text_widget("The graph's input is the artwork under the frame layer");
@@ -157,15 +181,16 @@ pub fn input_properties(_document_node: &DocumentNode, _node_id: NodeId, _contex
 	vec![LayoutGroup::Row { widgets: vec![information] }, LayoutGroup::Row { widgets: vec![refresh_button] }]
 }
 
-pub fn weigted_grayscale_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-    let min = -200.;
-    let max = 300.;
-	let r_weight = number_widget(document_node, node_id, 1, "Red", NumberInput::default().min(min).max(max).unit("%"), true);
-	let g_weight = number_widget(document_node, node_id, 2, "Green", NumberInput::default().min(min).max(max).unit("%"), true);
-	let b_weight = number_widget(document_node, node_id, 3, "Blue", NumberInput::default().min(min).max(max).unit("%"), true);
-	let c_weight = number_widget(document_node, node_id, 4, "Cyan", NumberInput::default().min(min).max(max).unit("%"), true);
-	let m_weight = number_widget(document_node, node_id, 5, "Magenta", NumberInput::default().min(min).max(max).unit("%"), true);
-	let y_weight = number_widget(document_node, node_id, 6, "Yellow", NumberInput::default().min(min).max(max).unit("%"), true);
+pub fn grayscale_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	const MIN: f64 = -200.;
+	const MAX: f64 = 300.;
+	// TODO: Add tint color (blended above using the "Color" blend mode)
+	let r_weight = number_widget(document_node, node_id, 1, "Reds", NumberInput::default().min(MIN).max(MAX).unit("%"), true);
+	let y_weight = number_widget(document_node, node_id, 2, "Yellows", NumberInput::default().min(MIN).max(MAX).unit("%"), true);
+	let g_weight = number_widget(document_node, node_id, 3, "Greens", NumberInput::default().min(MIN).max(MAX).unit("%"), true);
+	let c_weight = number_widget(document_node, node_id, 4, "Cyans", NumberInput::default().min(MIN).max(MAX).unit("%"), true);
+	let b_weight = number_widget(document_node, node_id, 5, "Blues", NumberInput::default().min(MIN).max(MAX).unit("%"), true);
+	let m_weight = number_widget(document_node, node_id, 6, "Magentas", NumberInput::default().min(MIN).max(MAX).unit("%"), true);
 
 	vec![
 		LayoutGroup::Row { widgets: r_weight },
@@ -175,6 +200,12 @@ pub fn weigted_grayscale_properties(document_node: &DocumentNode, node_id: NodeI
 		LayoutGroup::Row { widgets: b_weight },
 		LayoutGroup::Row { widgets: m_weight },
 	]
+}
+
+pub fn luminance_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let luma_calculation = luminance_calculation(document_node, node_id, 1, "Luma Calculation", true);
+
+	vec![luma_calculation]
 }
 
 pub fn adjust_hsl_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
@@ -204,9 +235,10 @@ pub fn blur_image_properties(document_node: &DocumentNode, node_id: NodeId, _con
 }
 
 pub fn adjust_threshold_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let thereshold = number_widget(document_node, node_id, 1, "Threshold", NumberInput::default().min(0.).max(1.), true);
+	let luma_calculation = luminance_calculation(document_node, node_id, 1, "Luma Calculation", true);
+	let thereshold = number_widget(document_node, node_id, 2, "Threshold", NumberInput::default().min(0.).max(100.).unit("%"), true);
 
-	vec![LayoutGroup::Row { widgets: thereshold }]
+	vec![luma_calculation, LayoutGroup::Row { widgets: thereshold }]
 }
 
 pub fn adjust_vibrance_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
@@ -223,7 +255,7 @@ pub fn gpu_map_properties(document_node: &DocumentNode, node_id: NodeId, _contex
 }
 
 pub fn multiply_opacity(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let gamma = number_widget(document_node, node_id, 1, "Factor", NumberInput::default().min(0.).max(1.), true);
+	let gamma = number_widget(document_node, node_id, 1, "Factor", NumberInput::default().min(0.).max(100.).unit("%"), true);
 
 	vec![LayoutGroup::Row { widgets: gamma }]
 }

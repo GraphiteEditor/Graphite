@@ -6,7 +6,7 @@ use graph_craft::document::*;
 use graph_craft::imaginate_input::ImaginateSamplingMethod;
 use graph_craft::proto::{NodeIdentifier, Type};
 use graph_craft::{concrete, generic};
-use graphene_core::raster::Image;
+use graphene_core::raster::{Image, LuminanceCalculation};
 
 use std::collections::VecDeque;
 
@@ -160,10 +160,10 @@ static STATIC_NODES: &[DocumentNodeType] = &[
 		properties: |_document_node, _node_id, _context| node_properties::string_properties("The graph's output is rendered into the frame".to_string()),
 	},
 	DocumentNodeType {
-		name: "Weighted Grayscale",
+		name: "Grayscale",
 		category: "Image Adjustments",
 		identifier: NodeImplementation::proto(
-			"graphene_core::raster::WeightedGrayscaleNode<_, _, _, _, _, _>",
+			"graphene_core::raster::GrayscaleNode<_, _, _, _, _, _>",
 			&[
 				concrete!("Image"),
 				concrete!("f64"),
@@ -181,46 +181,49 @@ static STATIC_NODES: &[DocumentNodeType] = &[
 				default: NodeInput::value(TaggedValue::Image(Image::empty()), true),
 			},
 			DocumentInputType {
-				name: "Red Weight",
+				name: "Reds",
 				data_type: FrontendGraphDataType::Number,
-				default: NodeInput::value(TaggedValue::F64(0.), false),
+				default: NodeInput::value(TaggedValue::F64(50.), false),
 			},
 			DocumentInputType {
-				name: "Green Weight",
+				name: "Yellows",
 				data_type: FrontendGraphDataType::Number,
-				default: NodeInput::value(TaggedValue::F64(0.), false),
+				default: NodeInput::value(TaggedValue::F64(50.), false),
 			},
 			DocumentInputType {
-				name: "Blue Weight",
+				name: "Greens",
 				data_type: FrontendGraphDataType::Number,
-				default: NodeInput::value(TaggedValue::F64(0.), false),
+				default: NodeInput::value(TaggedValue::F64(50.), false),
 			},
 			DocumentInputType {
-				name: "Cyan Weight",
+				name: "Cyans",
 				data_type: FrontendGraphDataType::Number,
-				default: NodeInput::value(TaggedValue::F64(0.), false),
+				default: NodeInput::value(TaggedValue::F64(50.), false),
 			},
 			DocumentInputType {
-				name: "Magenta Weight",
+				name: "Blues",
 				data_type: FrontendGraphDataType::Number,
-				default: NodeInput::value(TaggedValue::F64(0.), false),
+				default: NodeInput::value(TaggedValue::F64(50.), false),
 			},
 			DocumentInputType {
-				name: "Yellow Weight",
+				name: "Magentas",
 				data_type: FrontendGraphDataType::Number,
-				default: NodeInput::value(TaggedValue::F64(0.), false),
+				default: NodeInput::value(TaggedValue::F64(50.), false),
 			},
 		],
 		outputs: &[FrontendGraphDataType::Raster],
-		properties: node_properties::weigted_grayscale_properties,
+		properties: node_properties::grayscale_properties,
 	},
 	DocumentNodeType {
-		name: "Grayscale",
+		name: "Luminance",
 		category: "Image Adjustments",
-		identifier: NodeImplementation::proto("graphene_core::raster::GrayscaleNode", &[concrete!("Image")]),
-		inputs: &[DocumentInputType::new("Image", TaggedValue::Image(Image::empty()), true)],
+		identifier: NodeImplementation::proto("graphene_core::raster::LuminanceNode<_>", &[concrete!("Image"), concrete!("LuminanceCalculation")]),
+		inputs: &[
+			DocumentInputType::new("Image", TaggedValue::Image(Image::empty()), true),
+			DocumentInputType::new("Luma Calculation", TaggedValue::LuminanceCalculation(LuminanceCalculation::SRGB), false),
+		],
 		outputs: &[FrontendGraphDataType::Raster],
-		properties: node_properties::no_properties,
+		properties: node_properties::luminance_properties,
 	},
 	#[cfg(feature = "gpu")]
 	DocumentNodeType {
@@ -310,10 +313,11 @@ static STATIC_NODES: &[DocumentNodeType] = &[
 	DocumentNodeType {
 		name: "Threshold",
 		category: "Image Adjustments",
-		identifier: NodeImplementation::proto("graphene_core::raster::ThresholdNode<_>", &[concrete!("Image"), concrete!("f64")]),
+		identifier: NodeImplementation::proto("graphene_core::raster::ThresholdNode<_, _>", &[concrete!("Image"), concrete!("LuminanceCalculation"), concrete!("f64")]),
 		inputs: &[
 			DocumentInputType::new("Image", TaggedValue::Image(Image::empty()), true),
-			DocumentInputType::new("Threshold", TaggedValue::F64(1.), false),
+			DocumentInputType::new("Luma Calculation", TaggedValue::LuminanceCalculation(LuminanceCalculation::SRGB), false),
+			DocumentInputType::new("Threshold", TaggedValue::F64(50.), false),
 		],
 		outputs: &[FrontendGraphDataType::Raster],
 		properties: node_properties::adjust_threshold_properties,
@@ -324,7 +328,7 @@ static STATIC_NODES: &[DocumentNodeType] = &[
 		identifier: NodeImplementation::proto("graphene_core::raster::VibranceNode<_>", &[concrete!("Image"), concrete!("f64")]),
 		inputs: &[
 			DocumentInputType::new("Image", TaggedValue::Image(Image::empty()), true),
-			DocumentInputType::new("Vibrance", TaggedValue::F64(1.), false),
+			DocumentInputType::new("Vibrance", TaggedValue::F64(0.), false),
 		],
 		outputs: &[FrontendGraphDataType::Raster],
 		properties: node_properties::adjust_vibrance_properties,
@@ -335,7 +339,7 @@ static STATIC_NODES: &[DocumentNodeType] = &[
 		identifier: NodeImplementation::proto("graphene_core::raster::OpacityNode<_>", &[concrete!("Image"), concrete!("f64")]),
 		inputs: &[
 			DocumentInputType::new("Image", TaggedValue::Image(Image::empty()), true),
-			DocumentInputType::new("Factor", TaggedValue::F64(1.), false),
+			DocumentInputType::new("Factor", TaggedValue::F64(100.), false),
 		],
 		outputs: &[FrontendGraphDataType::Raster],
 		properties: node_properties::multiply_opacity,
@@ -346,7 +350,7 @@ static STATIC_NODES: &[DocumentNodeType] = &[
 		identifier: NodeImplementation::proto("graphene_core::raster::PosterizeNode<_>", &[concrete!("Image"), concrete!("f64")]),
 		inputs: &[
 			DocumentInputType::new("Image", TaggedValue::Image(Image::empty()), true),
-			DocumentInputType::new("Value", TaggedValue::F64(5.), false),
+			DocumentInputType::new("Value", TaggedValue::F64(4.), false),
 		],
 		outputs: &[FrontendGraphDataType::Raster],
 		properties: node_properties::posterize_properties,
