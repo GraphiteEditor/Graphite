@@ -11,17 +11,18 @@ use crate::messages::layout::utility_types::widgets::input_widgets::{RadioEntryD
 use crate::messages::layout::utility_types::widgets::label_widgets::{Separator, SeparatorDirection, SeparatorType};
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis};
 use crate::messages::portfolio::document::utility_types::transformation::Selected;
-use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::path_outline::*;
 use crate::messages::tool::common_functionality::pivot::Pivot;
 use crate::messages::tool::common_functionality::snapping::{self, SnapManager};
 use crate::messages::tool::common_functionality::transformation_cage::*;
 use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
+use crate::messages::{debug, prelude::*};
 
 use document_legacy::boolean_ops::BooleanOperation;
 use document_legacy::document::Document;
 use document_legacy::intersection::Quad;
+use document_legacy::layers::folder_layer::FolderLayer;
 use document_legacy::layers::layer_info::LayerDataType;
 use document_legacy::layers::style::SelectedType;
 use document_legacy::LayerId;
@@ -362,8 +363,7 @@ impl Fsm for SelectToolFsmState {
 					self
 				}
 				(_, EditLayer) => {
-					// On double click with select tool we sometimes want to edit the double clicked layers
-
+					debug!("EDIT");
 					// Setup required data for checking the clicked layer
 					let mouse_pos = input.mouse.position;
 					let tolerance = DVec2::splat(SELECTION_TOLERANCE);
@@ -372,21 +372,80 @@ impl Fsm for SelectToolFsmState {
 					// Check the last (top most) intersection layer.
 					if let Some(intersect_layer_path) = document.document_legacy.intersects_quad_root(quad, render_data).last() {
 						if let Ok(intersect) = document.document_legacy.layer(intersect_layer_path) {
-							match intersect.data {
-								LayerDataType::Text(_) => {
-									responses.push_front(ToolMessage::ActivateTool { tool_type: ToolType::Text }.into());
-									responses.push_back(TextToolMessage::Interact.into());
+							// Group manipulation
+							if tool_data.selected_type == SelectedType::Group {
+								let mut selected_layers = document.selected_layers();
+								// Something was previously selected
+								if let Some(layer_path) = selected_layers.next() {
+									let mut layer_path_vector = layer_path.to_vec();
+
+									for path in intersect_layer_path {
+										if !layer_path_vector.contains(path) {
+											layer_path_vector.push(*path);
+											break;
+										}
+									}
+									responses.push_back(DocumentMessage::DeselectAllLayers.into());
+									responses.push_back(
+										DocumentMessage::AddSelectedLayers {
+											additional_layers: vec![layer_path_vector],
+										}
+										.into(),
+									);
 								}
-								LayerDataType::Shape(_) => {
-									responses.push_front(ToolMessage::ActivateTool { tool_type: ToolType::Path }.into());
+							// Nothing was previously selected
+							// else {
+							// 	selected = vec![intersection];
+							// 	let parent_folder = selected[0..1].to_vec();
+							// 	let folder_id = *parent_folder.first().unwrap().first().unwrap();
+							// 	let folder_id_as_vector = vec![vec![folder_id]];
+							// 	// debug!("folder id: {:?}", folder_id_as_vector);
+							// 	responses.push_back(
+							// 		DocumentMessage::AddSelectedLayers {
+							// 			additional_layers: folder_id_as_vector,
+							// 		}
+							// 		.into(),
+							// 	);
+							// }
+
+							// let parent_layer_path = [intersect_layer_path.clone()[0]];
+							// let parent_is_folder = document.document_legacy.is_folder(parent_layer_path.as_ref());
+
+							// If intersection is folder?
+							// if parent_is_folder {
+							// 	let child_layer_path = vec![intersect_layer_path[..2].to_vec()];
+							// 	debug!("child path: {:?}", child_layer_path);
+							// 	responses.push_back(DocumentMessage::DeselectAllLayers.into());
+							// 	responses.push_back(DocumentMessage::AddSelectedLayers { additional_layers: child_layer_path }.into());
+							// }
+							// // If interesection is shape
+							// else {
+							// 	responses.push_back(
+							// 		DocumentMessage::AddSelectedLayers {
+							// 			additional_layers: vec![vec![parent_layer_path[0]]],
+							// 		}
+							// 		.into(),
+							// 	);
+							// }
+							}
+							// Layer manipulation
+							else {
+								match intersect.data {
+									LayerDataType::Text(_) => {
+										responses.push_front(ToolMessage::ActivateTool { tool_type: ToolType::Text }.into());
+										responses.push_back(TextToolMessage::Interact.into());
+									}
+									LayerDataType::Shape(_) => {
+										responses.push_front(ToolMessage::ActivateTool { tool_type: ToolType::Path }.into());
+									}
+									LayerDataType::NodeGraphFrame(_) => {
+										let replacement_selected_layers = vec![intersect_layer_path.clone()];
+										let layer_path = intersect_layer_path.clone();
+										responses.push_back(DocumentMessage::SetSelectedLayers { replacement_selected_layers }.into());
+										responses.push_back(NodeGraphMessage::OpenNodeGraph { layer_path }.into());
+									}
+									_ => {}
 								}
-								LayerDataType::NodeGraphFrame(_) => {
-									let replacement_selected_layers = vec![intersect_layer_path.clone()];
-									let layer_path = intersect_layer_path.clone();
-									responses.push_back(DocumentMessage::SetSelectedLayers { replacement_selected_layers }.into());
-									responses.push_back(NodeGraphMessage::OpenNodeGraph { layer_path }.into());
-								}
-								_ => {}
 							}
 						}
 					}
@@ -394,6 +453,7 @@ impl Fsm for SelectToolFsmState {
 					self
 				}
 				(Ready, DragStart { add_to_selection, layer_selection }) => {
+					// check if in group
 					tool_data.path_outlines.clear_hovered(responses);
 
 					tool_data.drag_start = input.mouse.position;
@@ -480,45 +540,95 @@ impl Fsm for SelectToolFsmState {
 
 						Dragging
 					} else {
-						if !input.keyboard.get(add_to_selection as usize) {
+						if !input.keyboard.get(add_to_selection as usize) && tool_data.selected_type == SelectedType::Layer {
 							responses.push_back(DocumentMessage::DeselectAllLayers.into());
 							tool_data.layers_dragging.clear();
 						}
 
 						if let Some(intersection) = intersection.pop() {
 							selected = vec![intersection];
-							// responses.push_back(DocumentMessage::AddSelectedLayers { additional_layers: selected.clone() }.into());
-							responses.push_back(DocumentMessage::StartTransaction.into());
-							tool_data.layers_dragging.append(&mut selected.clone());
-							tool_data
-								.snap_manager
-								.start_snap(document, input, document.bounding_boxes(Some(&tool_data.layers_dragging), None, render_data), true, true);
-
 							// Group manipulation
 							if tool_data.selected_type == SelectedType::Group {
+								// Control Click
+								// Maybe combine the logic for layer manpulation to control click to reduce code
 								if input.keyboard.get(layer_selection as usize) {
+									responses.push_back(DocumentMessage::DeselectAllLayers.into());
+									tool_data.layers_dragging.clear();
 									responses.push_back(DocumentMessage::AddSelectedLayers { additional_layers: selected.clone() }.into());
-								}
-								// Shallowest Root Folder
-								else {
-									let parent_folder = selected[0..1].to_vec();
-									let folder_id = *parent_folder.first().unwrap().first().unwrap();
-									let folder_id_as_vector = vec![vec![folder_id]];
+								} else {
+									tool_data.layers_dragging.clear();
+									// Check whether a layer is selected for next selection calculations
+									let mut previously_selected_layers = document.selected_layers();
+									if let Some(previous_layer_path) = previously_selected_layers.next() {
+										let previous_layer_path_vector = previous_layer_path.to_vec();
+										let new_layer_path_vector = selected.first().unwrap();
 
-									responses.push_back(
-										DocumentMessage::AddSelectedLayers {
-											additional_layers: folder_id_as_vector,
+										// traverse laterally
+										if new_layer_path_vector.len() == previous_layer_path_vector.len() {
+											tool_data.layers_dragging.append(&mut vec![new_layer_path_vector.to_vec()]);
+											responses.push_back(DocumentMessage::DeselectAllLayers.into());
+											responses.push_back(
+												DocumentMessage::AddSelectedLayers {
+													additional_layers: vec![new_layer_path_vector.to_vec()],
+												}
+												.into(),
+											);
 										}
-										.into(),
-									);
+										// traverse laterally for folders
+										else if new_layer_path_vector.len() > previous_layer_path_vector.len() {
+											let updated_layer_path_vector = &new_layer_path_vector[..previous_layer_path_vector.len()];
+											tool_data.layers_dragging.append(&mut vec![updated_layer_path_vector.to_vec()]);
+											responses.push_back(DocumentMessage::DeselectAllLayers.into());
+											responses.push_back(
+												DocumentMessage::AddSelectedLayers {
+													additional_layers: vec![updated_layer_path_vector.to_vec()],
+												}
+												.into(),
+											);
+										}
+										// traverse up tree
+										else if new_layer_path_vector.len() < previous_layer_path_vector.len() {
+											tool_data.layers_dragging.append(&mut vec![new_layer_path_vector.to_vec()]);
+											responses.push_back(DocumentMessage::DeselectAllLayers.into());
+											responses.push_back(
+												DocumentMessage::AddSelectedLayers {
+													additional_layers: vec![new_layer_path_vector.to_vec()],
+												}
+												.into(),
+											);
+										}
+									} else {
+										// Select root most layer
+										let parent_folder = selected[0..1].to_vec();
+										let folder_id = *parent_folder.first().unwrap().first().unwrap();
+										let folder_id_as_vector = vec![vec![folder_id]];
+										tool_data.layers_dragging.append(&mut folder_id_as_vector.clone());
+										responses.push_back(
+											DocumentMessage::AddSelectedLayers {
+												additional_layers: folder_id_as_vector,
+											}
+											.into(),
+										);
+									}
 								}
 							}
 							// Layer Manipulation
 							else {
 								responses.push_back(DocumentMessage::AddSelectedLayers { additional_layers: selected.clone() }.into());
+								responses.push_back(DocumentMessage::StartTransaction.into());
+								tool_data.layers_dragging.append(&mut selected);
+								tool_data
+									.snap_manager
+									.start_snap(document, input, document.bounding_boxes(Some(&tool_data.layers_dragging), None, render_data), true, true);
 							}
 							Dragging
 						} else {
+							// If group manipulation is toggled and you select nothing deselect
+							// Neccesary since for group, we need to know the current selected layers to determine next
+							if tool_data.selected_type == SelectedType::Group {
+								responses.push_back(DocumentMessage::DeselectAllLayers.into());
+								tool_data.layers_dragging.clear();
+							}
 							tool_data.drag_box_overlay_layer = Some(add_bounding_box(responses));
 							DrawingBox
 						}
@@ -546,36 +656,31 @@ impl Fsm for SelectToolFsmState {
 					// TODO: Cache the result of `shallowest_unique_layers` to avoid this heavy computation every frame of movement, see https://github.com/GraphiteEditor/Graphite/pull/481
 
 					// Group manipulation
-					if tool_data.selected_type == SelectedType::Group {
-						for path in Document::shallowest_unique_layers(tool_data.layers_dragging.iter()) {
-							let selected = vec![path];
-							let parent_folder = selected[0..1].to_vec();
-							let folder_id = *parent_folder.first().unwrap().first().unwrap();
-							let folder_id_as_vector = vec![folder_id];
-
-							responses.push_front(
-								Operation::TransformLayerInViewport {
-									path: folder_id_as_vector,
-									transform: DAffine2::from_translation(mouse_delta + closest_move).to_cols_array(),
-								}
-								.into(),
-							);
-						}
-						tool_data.drag_current = mouse_position + closest_move;
+					// if tool_data.selected_type == SelectedType::Group {
+					for path in Document::shallowest_unique_layers(tool_data.layers_dragging.iter()) {
+						responses.push_front(
+							Operation::TransformLayerInViewport {
+								path: path.to_vec(),
+								transform: DAffine2::from_translation(mouse_delta + closest_move).to_cols_array(),
+							}
+							.into(),
+						);
 					}
+					tool_data.drag_current = mouse_position + closest_move;
+					// }
 					// Layer manipulation
-					else {
-						for path in Document::shallowest_unique_layers(tool_data.layers_dragging.iter()) {
-							responses.push_front(
-								Operation::TransformLayerInViewport {
-									path: path.clone(),
-									transform: DAffine2::from_translation(mouse_delta + closest_move).to_cols_array(),
-								}
-								.into(),
-							);
-						}
-						tool_data.drag_current = mouse_position + closest_move;
-					}
+					// else {
+					// 	for path in Document::shallowest_unique_layers(tool_data.layers_dragging.iter()) {
+					// 		responses.push_front(
+					// 			Operation::TransformLayerInViewport {
+					// 				path: path.clone(),
+					// 				transform: DAffine2::from_translation(mouse_delta + closest_move).to_cols_array(),
+					// 			}
+					// 			.into(),
+					// 		);
+					// 	}
+					// 	tool_data.drag_current = mouse_position + closest_move;
+					// }
 
 					if input.keyboard.get(duplicate as usize) && tool_data.not_duplicated_layers.is_none() {
 						tool_data.start_duplicates(document, responses);
