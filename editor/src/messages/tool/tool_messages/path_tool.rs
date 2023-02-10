@@ -6,6 +6,7 @@ use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::overlay_renderer::OverlayRenderer;
 use crate::messages::tool::common_functionality::shape_editor::{ManipulatorPointInfo, ShapeEditor};
 use crate::messages::tool::common_functionality::snapping::SnapManager;
+use crate::messages::tool::common_functionality::transformation_cage::axis_align_drag;
 use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 
@@ -157,12 +158,12 @@ impl Fsm for PathToolFsmState {
 				}
 				// Mouse down
 				(_, PathToolMessage::DragStart { add_to_selection }) => {
-					let toggle_add_to_selection = input.keyboard.get(add_to_selection as usize);
+					let shift_pressed = input.keyboard.get(add_to_selection as usize);
 
 					// Select the first point within the threshold (in pixels)
 					if let Some(mut selected_points) = tool_data
 						.shape_editor
-						.select_point(&document.document_legacy, input.mouse.position, SELECTION_THRESHOLD, toggle_add_to_selection, responses)
+						.select_point(&document.document_legacy, input.mouse.position, SELECTION_THRESHOLD, shift_pressed, responses)
 					{
 						responses.push_back(DocumentMessage::StartTransaction.into());
 
@@ -190,8 +191,12 @@ impl Fsm for PathToolFsmState {
 						let include_handles = tool_data.shape_editor.selected_layers_ref();
 						tool_data.snap_manager.add_all_document_handles(document, input, &include_handles, &[], &selected_points.points);
 
-						tool_data.drag_start_pos = input.mouse.position;
-						tool_data.previous_mouse_position = input.mouse.position - selected_points.offset;
+						let snapped_position = tool_data.snap_manager.snap_position(responses, document, input.mouse.position);
+						let axis_aligned_position = axis_align_drag(shift_pressed, snapped_position, tool_data.drag_start_pos);
+						tool_data
+							.shape_editor
+							.move_selected_points(axis_aligned_position - tool_data.previous_mouse_position, shift_pressed, responses);
+						tool_data.previous_mouse_position = axis_aligned_position;
 						PathToolFsmState::Dragging
 					}
 					// We didn't find a point nearby, so consider selecting the nearest shape instead
@@ -202,26 +207,26 @@ impl Fsm for PathToolFsmState {
 							.document_legacy
 							.intersects_quad_root(Quad::from_box([input.mouse.position - selection_size, input.mouse.position + selection_size]), render_data);
 						if !intersection.is_empty() {
-							if toggle_add_to_selection {
+							if shift_pressed {
 								responses.push_back(DocumentMessage::AddSelectedLayers { additional_layers: intersection }.into());
 							} else {
 								// Selects the topmost layer when selecting intersecting shapes
-								let topmost_intersection = intersection[intersection.len() - 1].clone();
+								let top_most_intersection = intersection[intersection.len() - 1].clone();
 								responses.push_back(
 									DocumentMessage::SetSelectedLayers {
-										replacement_selected_layers: intersection,
+										replacement_selected_layers: vec![top_most_intersection.clone()],
 									}
 									.into(),
 								);
 								tool_data.drag_start_pos = input.mouse.position;
 								tool_data.previous_mouse_position = input.mouse.position;
 								// Selects all the anchor points when clicking in a filled area of shape. If two shapes intersect we pick the topmost layer.
-								tool_data.shape_editor.select_all_anchors(responses, topmost_intersection);
+								tool_data.shape_editor.select_all_anchors(responses, top_most_intersection);
 								return PathToolFsmState::Dragging;
 							}
 						} else {
 							// Clear the previous selection if we didn't find anything
-							if !input.keyboard.get(toggle_add_to_selection as usize) {
+							if !input.keyboard.get(shift_pressed as usize) {
 								responses.push_back(DocumentMessage::DeselectAllLayers.into());
 							}
 						}
