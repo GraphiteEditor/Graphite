@@ -52,7 +52,8 @@ fn luminance_color_node(color: Color, luma_calculation: LuminanceCalculation) ->
 }
 
 #[derive(Debug, Clone, Copy, Default)]
-pub struct GrayscaleNode<Reds, Yellows, Greens, Cyans, Blues, Magentas> {
+pub struct GrayscaleNode<Tint, Reds, Yellows, Greens, Cyans, Blues, Magentas> {
+	tint: Tint,
 	reds: Reds,
 	yellows: Yellows,
 	greens: Greens,
@@ -64,7 +65,7 @@ pub struct GrayscaleNode<Reds, Yellows, Greens, Cyans, Blues, Magentas> {
 // From <https://stackoverflow.com/a/55233732/775283>
 // Works the same for gamma and linear color
 #[node_macro::node_fn(GrayscaleNode)]
-fn grayscale_color_node(color: Color, reds: f64, yellows: f64, greens: f64, cyans: f64, blues: f64, magentas: f64) -> Color {
+fn grayscale_color_node(color: Color, tint: Color, reds: f64, yellows: f64, greens: f64, cyans: f64, blues: f64, magentas: f64) -> Color {
 	let reds = reds as f32 / 100.;
 	let yellows = yellows as f32 / 100.;
 	let greens = greens as f32 / 100.;
@@ -91,7 +92,7 @@ fn grayscale_color_node(color: Color, reds: f64, yellows: f64, greens: f64, cyan
 
 	let luminance = gray_base + additional;
 
-	color.map_rgb(|_| luminance)
+	tint.set_luminocity(luminance)
 }
 
 #[cfg(not(target_arch = "spirv"))]

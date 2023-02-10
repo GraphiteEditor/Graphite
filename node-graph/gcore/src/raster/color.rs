@@ -216,6 +216,11 @@ impl Color {
 		}
 	}
 
+	pub fn set_luminocity(&self, luminocity: f32) -> Color {
+		let d = luminocity - self.luminance_srgb();
+		self.map_rgb(|c| (c + d).min(1.).max(0.))
+	}
+
 	/// Return the all components as a tuple, first component is red, followed by green, followed by blue, followed by alpha.
 	///
 	/// # Examples

@@ -6,7 +6,7 @@ use graph_craft::document::*;
 use graph_craft::imaginate_input::ImaginateSamplingMethod;
 use graph_craft::proto::{NodeIdentifier, Type};
 use graph_craft::{concrete, generic};
-use graphene_core::raster::{Image, LuminanceCalculation};
+use graphene_core::raster::{Color, Image, LuminanceCalculation};
 
 use std::collections::VecDeque;
 
@@ -163,9 +163,10 @@ static STATIC_NODES: &[DocumentNodeType] = &[
 		name: "Grayscale",
 		category: "Image Adjustments",
 		identifier: NodeImplementation::proto(
-			"graphene_core::raster::GrayscaleNode<_, _, _, _, _, _>",
+			"graphene_core::raster::GrayscaleNode<_, _, _, _, _, _, _>",
 			&[
 				concrete!("Image"),
+				concrete!("Color"),
 				concrete!("f64"),
 				concrete!("f64"),
 				concrete!("f64"),
@@ -179,6 +180,11 @@ static STATIC_NODES: &[DocumentNodeType] = &[
 				name: "Image",
 				data_type: FrontendGraphDataType::Raster,
 				default: NodeInput::value(TaggedValue::Image(Image::empty()), true),
+			},
+			DocumentInputType {
+				name: "Tint",
+				data_type: FrontendGraphDataType::Number,
+				default: NodeInput::value(TaggedValue::Color(Color::BLACK), false),
 			},
 			DocumentInputType {
 				name: "Reds",

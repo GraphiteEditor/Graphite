@@ -8,7 +8,7 @@ use glam::DVec2;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{generate_uuid, DocumentNode, NodeId, NodeInput};
 use graph_craft::imaginate_input::*;
-use graphene_core::raster::LuminanceCalculation;
+use graphene_core::raster::{Color, LuminanceCalculation};
 
 use super::document_node_types::NodePropertiesContext;
 use super::{FrontendGraphDataType, IMAGINATE_NODE};
@@ -171,6 +171,24 @@ fn luminance_calculation(document_node: &DocumentNode, node_id: u64, index: usiz
 	LayoutGroup::Row { widgets }.with_tooltip("Formula used to calculate the luminance of a pixel")
 }
 
+fn color_widget(document_node: &DocumentNode, node_id: u64, index: usize, name: &str, color_props: ColorInput, blank_assist: bool) -> LayoutGroup {
+	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::Number, blank_assist);
+
+	if let NodeInput::Value {
+		tagged_value: TaggedValue::Color(x),
+		exposed: false,
+	} = document_node.inputs[index]
+	{
+		widgets.extend_from_slice(&[
+			WidgetHolder::unrelated_separator(),
+			color_props
+				.value(Some(x as Color))
+				.on_update(update_value(|x: &ColorInput| TaggedValue::Color(x.value.unwrap()), node_id, index))
+				.widget_holder(),
+		])
+	}
+	LayoutGroup::Row { widgets }
+}
 /// Properties for the input node, with information describing how frames work and a refresh button
 pub fn input_properties(_document_node: &DocumentNode, _node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let information = WidgetHolder::text_widget("The graph's input is the artwork under the frame layer");
@@ -185,14 +203,16 @@ pub fn grayscale_properties(document_node: &DocumentNode, node_id: NodeId, _cont
 	const MIN: f64 = -200.;
 	const MAX: f64 = 300.;
 	// TODO: Add tint color (blended above using the "Color" blend mode)
-	let r_weight = number_widget(document_node, node_id, 1, "Reds", NumberInput::default().min(MIN).max(MAX).unit("%"), true);
-	let y_weight = number_widget(document_node, node_id, 2, "Yellows", NumberInput::default().min(MIN).max(MAX).unit("%"), true);
-	let g_weight = number_widget(document_node, node_id, 3, "Greens", NumberInput::default().min(MIN).max(MAX).unit("%"), true);
-	let c_weight = number_widget(document_node, node_id, 4, "Cyans", NumberInput::default().min(MIN).max(MAX).unit("%"), true);
-	let b_weight = number_widget(document_node, node_id, 5, "Blues", NumberInput::default().min(MIN).max(MAX).unit("%"), true);
-	let m_weight = number_widget(document_node, node_id, 6, "Magentas", NumberInput::default().min(MIN).max(MAX).unit("%"), true);
+	let tint = color_widget(document_node, node_id, 1, "Tint", ColorInput::default(), true);
+	let r_weight = number_widget(document_node, node_id, 2, "Reds", NumberInput::default().min(MIN).max(MAX).unit("%"), true);
+	let y_weight = number_widget(document_node, node_id, 3, "Yellows", NumberInput::default().min(MIN).max(MAX).unit("%"), true);
+	let g_weight = number_widget(document_node, node_id, 4, "Greens", NumberInput::default().min(MIN).max(MAX).unit("%"), true);
+	let c_weight = number_widget(document_node, node_id, 5, "Cyans", NumberInput::default().min(MIN).max(MAX).unit("%"), true);
+	let b_weight = number_widget(document_node, node_id, 6, "Blues", NumberInput::default().min(MIN).max(MAX).unit("%"), true);
+	let m_weight = number_widget(document_node, node_id, 7, "Magentas", NumberInput::default().min(MIN).max(MAX).unit("%"), true);
 
 	vec![
+		tint,
 		LayoutGroup::Row { widgets: r_weight },
 		LayoutGroup::Row { widgets: y_weight },
 		LayoutGroup::Row { widgets: g_weight },
