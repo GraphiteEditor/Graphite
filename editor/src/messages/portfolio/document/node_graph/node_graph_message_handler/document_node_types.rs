@@ -1,5 +1,6 @@
 use super::{node_properties, FrontendGraphDataType, FrontendNodeType};
 use crate::messages::layout::utility_types::layout_widget::LayoutGroup;
+use crate::node_graph_executor::NodeGraphExecutor;
 
 use graph_craft::document::value::*;
 use graph_craft::document::*;
@@ -38,6 +39,8 @@ pub struct NodePropertiesContext<'a> {
 	pub responses: &'a mut VecDeque<crate::messages::prelude::Message>,
 	pub layer_path: &'a [document_legacy::LayerId],
 	pub nested_path: &'a [NodeId],
+	pub executor: &'a mut NodeGraphExecutor,
+	pub network: &'a NodeNetwork,
 }
 
 #[derive(Clone)]
@@ -500,6 +503,7 @@ pub const IMAGINATE_NODE: DocumentNodeType = DocumentNodeType {
 	identifier: NodeImplementation::proto("graphene_std::raster::ImaginateNode<_>", &[concrete!("Image"), concrete!("Option<std::sync::Arc<Image>>")]),
 	inputs: &[
 		DocumentInputType::new("Input Image", TaggedValue::Image(Image::empty()), true),
+		DocumentInputType::new("Transform", TaggedValue::DAffine2(DAffine2::IDENTITY), true),
 		DocumentInputType::new("Seed", TaggedValue::F64(0.), false),
 		DocumentInputType::new("Resolution", TaggedValue::OptionalDVec2(None), false),
 		DocumentInputType::new("Samples", TaggedValue::F64(30.), false),
@@ -581,7 +585,7 @@ pub fn new_image_network(output_offset: i32, output_node_id: NodeId) -> NodeNetw
 		inputs: vec![0],
 		outputs: vec![NodeOutput::new(1, 0)],
 		nodes: [
-			resolve_document_node_type("Input Multiple").expect("Input mutliple node does not exist").to_document_node(
+			resolve_document_node_type("Input Multiple").expect("Input multiple node does not exist").to_document_node(
 				[NodeInput::Network, NodeInput::value(TaggedValue::DAffine2(DAffine2::IDENTITY), false)],
 				DocumentNodeMetadata::position((8, 4)),
 			),

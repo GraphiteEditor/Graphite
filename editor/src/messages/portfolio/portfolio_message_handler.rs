@@ -2,37 +2,29 @@ use super::utility_types::PersistentData;
 use crate::application::generate_uuid;
 use crate::consts::{DEFAULT_DOCUMENT_NAME, GRAPHITE_DOCUMENT_VERSION};
 use crate::messages::dialog::simple_dialogs;
-use crate::messages::frontend::utility_types::{FrontendDocumentDetails, FrontendImageData};
+use crate::messages::frontend::utility_types::FrontendDocumentDetails;
 use crate::messages::layout::utility_types::layout_widget::PropertyHolder;
 use crate::messages::layout::utility_types::misc::LayoutTarget;
 use crate::messages::portfolio::document::node_graph::IMAGINATE_NODE;
 use crate::messages::portfolio::document::utility_types::clipboards::{Clipboard, CopyBufferEntry, INTERNAL_CLIPBOARD_COUNT};
-use crate::messages::portfolio::document::utility_types::misc::DocumentRenderMode;
 use crate::messages::portfolio::utility_types::ImaginateServerStatus;
 use crate::messages::prelude::*;
-
 use crate::messages::tool::utility_types::{HintData, HintGroup};
-use document_legacy::document::pick_safe_imaginate_resolution;
-use document_legacy::layers::layer_info::{LayerDataType, LayerDataTypeDiscriminant};
+use crate::node_graph_executor::NodeGraphExecutor;
+
+use document_legacy::layers::layer_info::LayerDataTypeDiscriminant;
 use document_legacy::layers::style::RenderData;
 use document_legacy::layers::text_layer::Font;
-use document_legacy::{LayerId, Operation as DocumentOperation};
+use document_legacy::Operation as DocumentOperation;
 use graph_craft::document::value::TaggedValue;
-use graph_craft::document::{NodeId, NodeOutput};
-use graph_craft::document::{NodeInput, NodeNetwork};
-use graph_craft::executor::Compiler;
-use graphene_core::raster::{Image, ImageFrame};
-
-use glam::{DAffine2, DVec2};
-use interpreted_executor::executor::DynamicExecutor;
-use std::borrow::Cow;
+use graphene_core::raster::Image;
 
 #[derive(Debug, Clone, Default)]
 pub struct PortfolioMessageHandler {
 	menu_bar_message_handler: MenuBarMessageHandler,
 	documents: HashMap<u64, DocumentMessageHandler>,
 	document_ids: Vec<u64>,
-	executor: interpreted_executor::executor::DynamicExecutor,
+	executor: NodeGraphExecutor,
 	active_document_id: Option<u64>,
 	copy_buffer: [Vec<CopyBufferEntry>; INTERNAL_CLIPBOARD_COUNT as usize],
 	pub persistent_data: PersistentData,
@@ -50,7 +42,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 			PortfolioMessage::Document(message) => {
 				if let Some(document_id) = self.active_document_id {
 					if let Some(document) = self.documents.get_mut(&document_id) {
-						document.process_message(message, responses, (document_id, ipp, &self.persistent_data, preferences))
+						document.process_message(message, responses, (document_id, ipp, &self.persistent_data, preferences, &mut self.executor))
 					}
 				}
 			}
@@ -59,7 +51,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 			#[remain::unsorted]
 			PortfolioMessage::DocumentPassMessage { document_id, message } => {
 				if let Some(document) = self.documents.get_mut(&document_id) {
-					document.process_message(message, responses, (document_id, ipp, &self.persistent_data, preferences))
+					document.process_message(message, responses, (document_id, ipp, &self.persistent_data, preferences, &mut self.executor))
 				}
 			}
 			PortfolioMessage::AutoSaveActiveDocument => {
@@ -489,7 +481,14 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 				size,
 				imaginate_node,
 			} => {
-				if let Err(description) = self.evaluate_node_graph(document_id, layer_path, (image_data, size), imaginate_node, preferences, responses) {
+				if let Err(description) = self.executor.evaluate_node_graph(
+					(document_id, &mut self.documents),
+					layer_path,
+					(image_data, size),
+					imaginate_node,
+					(preferences, &self.persistent_data),
+					responses,
+				) {
 					responses.push_back(
 						DialogMessage::DisplayDialogError {
 							title: "Unable to update node graph".to_string(),
@@ -680,258 +679,5 @@ impl PortfolioMessageHandler {
 
 	fn document_index(&self, document_id: u64) -> usize {
 		self.document_ids.iter().position(|id| id == &document_id).expect("Active document is missing from document ids")
-	}
-
-	/// Sets the transform property on the input node
-	fn set_input_transform(network: &mut NodeNetwork, transform: DAffine2) {
-		let Some(input_node) = network.nodes.get_mut(&network.inputs[0]) else {
-			return;
-		};
-		input_node.inputs[1] = NodeInput::value(TaggedValue::DAffine2(transform), false);
-	}
-
-	/// Execute the network by flattening it and creating a borrow stack. Casts the output to the generic `T`.
-	fn execute_network<T: dyn_any::StaticType>(executor: &mut DynamicExecutor, mut network: NodeNetwork, image_frame: ImageFrame) -> Result<T, String> {
-		Self::set_input_transform(&mut network, image_frame.transform);
-		network.duplicate_outputs(&mut generate_uuid);
-		network.remove_dead_nodes();
-
-		// We assume only one output
-		assert_eq!(network.outputs.len(), 1, "Graph with multiple outputs not yet handled");
-		let c = Compiler {};
-		let proto_network = c.compile_single(network, true)?;
-
-		assert_ne!(proto_network.nodes.len(), 0, "No protonodes exist?");
-		executor.update(proto_network);
-
-		use dyn_any::IntoDynAny;
-		use graph_craft::executor::Executor;
-
-		let boxed = executor.execute(image_frame.image.into_dyn()).map_err(|e| e.to_string())?;
-
-		dyn_any::downcast::<T>(boxed).map(|v| *v)
-	}
-
-	/// Computes an input for a node in the graph
-	fn compute_input<T: dyn_any::StaticType>(
-		executor: &mut DynamicExecutor,
-		old_network: &NodeNetwork,
-		node_path: &[NodeId],
-		mut input_index: usize,
-		image_frame: Cow<ImageFrame>,
-	) -> Result<T, String> {
-		let mut network = old_network.clone();
-		// Adjust the output of the graph so we find the relevant output
-		'outer: for end in (0..node_path.len()).rev() {
-			let mut inner_network = &mut network;
-			for &node_id in &node_path[..end] {
-				inner_network.outputs[0] = NodeOutput::new(node_id, 0);
-
-				let Some(new_inner) = inner_network.nodes.get_mut(&node_id).and_then(|node| node.implementation.get_network_mut()) else {
-					return Err("Failed to find network".to_string());
-				};
-				inner_network = new_inner;
-			}
-			match &inner_network.nodes.get(&node_path[end]).unwrap().inputs[input_index] {
-				// If the input is from a parent network then adjust the input index and continue iteration
-				NodeInput::Network => {
-					input_index = inner_network
-						.inputs
-						.iter()
-						.enumerate()
-						.filter(|&(_index, &id)| id == node_path[end])
-						.nth(input_index)
-						.ok_or_else(|| "Invalid network input".to_string())?
-						.0;
-				}
-				// If the input is just a value, return that value
-				NodeInput::Value { tagged_value, .. } => return dyn_any::downcast::<T>(tagged_value.clone().to_any()).map(|v| *v),
-				// If the input is from a node, set the node to be the output (so that is what is evaluated)
-				NodeInput::Node { node_id, output_index } => {
-					inner_network.outputs[0] = NodeOutput::new(*node_id, *output_index);
-					break 'outer;
-				}
-			}
-		}
-
-		Self::execute_network(executor, network, image_frame.into_owned())
-	}
-
-	/// Encodes an image into a format using the image crate
-	fn encode_img(image: Image, resize: Option<DVec2>, format: image::ImageOutputFormat) -> Result<(Vec<u8>, (u32, u32)), String> {
-		use image::{ImageBuffer, Rgba};
-		use std::io::Cursor;
-
-		let (result_bytes, width, height) = image.as_flat_u8();
-
-		let mut output: ImageBuffer<Rgba<u8>, _> = image::ImageBuffer::from_raw(width, height, result_bytes).ok_or_else(|| "Invalid image size".to_string())?;
-		if let Some(size) = resize {
-			let size = size.as_uvec2();
-			if size.x > 0 && size.y > 0 {
-				output = image::imageops::resize(&output, size.x, size.y, image::imageops::Triangle);
-			}
-		}
-		let size = output.dimensions();
-		let mut image_data: Vec<u8> = Vec::new();
-		output.write_to(&mut Cursor::new(&mut image_data), format).map_err(|e| e.to_string())?;
-		debug!("Returning from encode image");
-		Ok::<_, String>((image_data, size))
-	}
-
-	/// Evaluates a node graph, computing either the imaginate node or the entire graph
-	fn evaluate_node_graph(
-		&mut self,
-		document_id: u64,
-		layer_path: Vec<LayerId>,
-		(image_data, (width, height)): (Vec<u8>, (u32, u32)),
-		imaginate_node: Option<Vec<NodeId>>,
-		preferences: &PreferencesMessageHandler,
-		responses: &mut VecDeque<Message>,
-	) -> Result<(), String> {
-		// Reformat the input image data into an f32 image
-		let image = graphene_core::raster::Image::from_image_data(&image_data, width, height);
-
-		// Get the node graph layer
-		let document = self.documents.get_mut(&document_id).ok_or_else(|| "Invalid document".to_string())?;
-		let layer = document.document_legacy.layer(&layer_path).map_err(|e| format!("No layer: {e:?}"))?;
-
-		// Construct the input image frame
-		let transform = layer.transform;
-		let image_frame = ImageFrame { image, transform };
-
-		let node_graph_frame = match &layer.data {
-			LayerDataType::NodeGraphFrame(frame) => Ok(frame),
-			_ => Err("Invalid layer type".to_string()),
-		}?;
-		let network = node_graph_frame.network.clone();
-
-		// Execute the node graph
-		if let Some(imaginate_node) = imaginate_node {
-			use graph_craft::imaginate_input::*;
-
-			let get = |name: &str| IMAGINATE_NODE.inputs.iter().position(|input| input.name == name).unwrap_or_else(|| panic!("Input {name} not found"));
-
-			let resolution: Option<glam::DVec2> = Self::compute_input(&mut self.executor, &network, &imaginate_node, get("Resolution"), Cow::Borrowed(&image_frame))?;
-			let resolution = resolution.unwrap_or_else(|| {
-				let transform = document.document_legacy.root.transform.inverse() * document.document_legacy.multiply_transforms(&layer_path).unwrap();
-				let (x, y) = pick_safe_imaginate_resolution((transform.transform_vector2(DVec2::new(1., 0.)).length(), transform.transform_vector2(DVec2::new(0., 1.)).length()));
-				DVec2::new(x as f64, y as f64)
-			});
-
-			let transform = document.document_legacy.root.transform.inverse() * document.document_legacy.multiply_transforms(&layer_path).unwrap();
-			let parameters = ImaginateGenerationParameters {
-				seed: Self::compute_input::<f64>(&mut self.executor, &network, &imaginate_node, get("Seed"), Cow::Borrowed(&image_frame))? as u64,
-				resolution: resolution.as_uvec2().into(),
-				samples: Self::compute_input::<f64>(&mut self.executor, &network, &imaginate_node, get("Samples"), Cow::Borrowed(&image_frame))? as u32,
-				sampling_method: Self::compute_input::<ImaginateSamplingMethod>(&mut self.executor, &network, &imaginate_node, get("Sampling Method"), Cow::Borrowed(&image_frame))?
-					.api_value()
-					.to_string(),
-				text_guidance: Self::compute_input(&mut self.executor, &network, &imaginate_node, get("Prompt Guidance"), Cow::Borrowed(&image_frame))?,
-				text_prompt: Self::compute_input(&mut self.executor, &network, &imaginate_node, get("Prompt"), Cow::Borrowed(&image_frame))?,
-				negative_prompt: Self::compute_input(&mut self.executor, &network, &imaginate_node, get("Negative Prompt"), Cow::Borrowed(&image_frame))?,
-				image_creativity: Some(Self::compute_input::<f64>(&mut self.executor, &network, &imaginate_node, get("Image Creativity"), Cow::Borrowed(&image_frame))? / 100.),
-				restore_faces: Self::compute_input(&mut self.executor, &network, &imaginate_node, get("Improve Faces"), Cow::Borrowed(&image_frame))?,
-				tiling: Self::compute_input(&mut self.executor, &network, &imaginate_node, get("Tiling"), Cow::Borrowed(&image_frame))?,
-			};
-			let use_base_image = Self::compute_input::<bool>(&mut self.executor, &network, &imaginate_node, get("Adapt Input Image"), Cow::Borrowed(&image_frame))?;
-
-			let base_image = if use_base_image {
-				let image: Image = Self::compute_input(&mut self.executor, &network, &imaginate_node, get("Input Image"), Cow::Borrowed(&image_frame))?;
-				// Only use if has size
-				if image.width > 0 && image.height > 0 {
-					debug!("Start image encode");
-					let (image_data, size) = Self::encode_img(image, Some(resolution), image::ImageOutputFormat::Png)?;
-					debug!("End image encode");
-					let size = DVec2::new(size.0 as f64, size.1 as f64);
-					let mime = "image/png".to_string();
-					Some(ImaginateBaseImage { image_data, size, mime })
-				} else {
-					None
-				}
-			} else {
-				None
-			};
-
-			let mask_image =
-				if base_image.is_some() {
-					let mask_path: Option<Vec<LayerId>> = Self::compute_input(&mut self.executor, &network, &imaginate_node, get("Masking Layer"), Cow::Borrowed(&image_frame))?;
-
-					// Calculate the size of the node graph frame
-					let size = DVec2::new(transform.transform_vector2(DVec2::new(1., 0.)).length(), transform.transform_vector2(DVec2::new(0., 1.)).length());
-
-					// Render the masking layer within the node graph frame
-					let old_transforms = document.remove_document_transform();
-					let mask_is_some = mask_path.is_some();
-					let mask_image = mask_path.filter(|mask_layer_path| document.document_legacy.layer(mask_layer_path).is_ok()).map(|mask_layer_path| {
-						let render_mode = DocumentRenderMode::LayerCutout(&mask_layer_path, graphene_core::raster::color::Color::WHITE);
-						let svg = document.render_document(size, transform.inverse(), &self.persistent_data, render_mode);
-
-						ImaginateMaskImage { svg, size }
-					});
-
-					if mask_is_some && mask_image.is_none() {
-						return Err("Imagination masking layer is missing.\nIt may have been deleted or moved. Please drag a new layer reference\ninto the 'Masking Layer' parameter input, then generate again.".to_string());
-					}
-
-					document.restore_document_transform(old_transforms);
-					mask_image
-				} else {
-					None
-				};
-
-			responses.push_back(
-				FrontendMessage::TriggerImaginateGenerate {
-					parameters: Box::new(parameters),
-					base_image: base_image.map(Box::new),
-					mask_image: mask_image.map(Box::new),
-					mask_paint_mode: if Self::compute_input::<bool>(&mut self.executor, &network, &imaginate_node, get("Inpaint"), Cow::Borrowed(&image_frame))? {
-						ImaginateMaskPaintMode::Inpaint
-					} else {
-						ImaginateMaskPaintMode::Outpaint
-					},
-					mask_blur_px: Self::compute_input::<f64>(&mut self.executor, &network, &imaginate_node, get("Mask Blur"), Cow::Borrowed(&image_frame))? as u32,
-					imaginate_mask_starting_fill: Self::compute_input(&mut self.executor, &network, &imaginate_node, get("Mask Starting Fill"), Cow::Borrowed(&image_frame))?,
-					hostname: preferences.imaginate_server_hostname.clone(),
-					refresh_frequency: preferences.imaginate_refresh_frequency,
-					document_id,
-					layer_path,
-					node_path: imaginate_node,
-				}
-				.into(),
-			);
-		} else {
-			let ImageFrame { mut image, transform } = Self::execute_network(&mut self.executor, network, image_frame)?;
-
-			// If no image was generated, use the input image
-			if image.width == 0 || image.height == 0 {
-				image = graphene_core::raster::Image::from_image_data(&image_data, width, height);
-			}
-
-			debug!("Start image encode");
-			let (image_data, _size) = Self::encode_img(image, None, image::ImageOutputFormat::Bmp)?;
-			debug!("End image encode");
-
-			responses.push_back(
-				DocumentOperation::SetNodeGraphFrameImageData {
-					layer_path: layer_path.clone(),
-					image_data: image_data.clone(),
-				}
-				.into(),
-			);
-			let mime = "image/bmp".to_string();
-			let image_data = std::sync::Arc::new(image_data);
-			let image_data = vec![FrontendImageData {
-				path: layer_path.clone(),
-				image_data,
-				mime,
-			}];
-			responses.push_back(FrontendMessage::UpdateImageData { document_id, image_data }.into());
-
-			// Update the transform based on the graph output
-			let transform = transform.to_cols_array();
-			responses.push_back(DocumentOperation::SetLayerTransform { path: layer_path, transform }.into());
-		}
-
-		Ok(())
 	}
 }
