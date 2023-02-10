@@ -108,6 +108,7 @@
 
 		.text-label {
 			margin: 0 4px;
+			overflow: hidden;
 		}
 
 		&.combined-before button:first-of-type,
