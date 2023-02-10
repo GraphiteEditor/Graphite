@@ -123,14 +123,15 @@ impl NodeGraphExecutor {
 
 		let get = |name: &str| IMAGINATE_NODE.inputs.iter().position(|input| input.name == name).unwrap_or_else(|| panic!("Input {name} not found"));
 
+		let transform: DAffine2 = self.compute_input(&network, &imaginate_node, get("Transform"), Cow::Borrowed(&image_frame))?;
+		debug!("Transform {transform} x {x} y {y}");
+
 		let resolution: Option<glam::DVec2> = self.compute_input(&network, &imaginate_node, get("Resolution"), Cow::Borrowed(&image_frame))?;
 		let resolution = resolution.unwrap_or_else(|| {
-			let transform = document.document_legacy.root.transform.inverse() * document.document_legacy.multiply_transforms(&layer_path).unwrap();
 			let (x, y) = pick_safe_imaginate_resolution((transform.transform_vector2(DVec2::new(1., 0.)).length(), transform.transform_vector2(DVec2::new(0., 1.)).length()));
 			DVec2::new(x as f64, y as f64)
 		});
 
-		let transform = document.document_legacy.root.transform.inverse() * document.document_legacy.multiply_transforms(&layer_path).unwrap();
 		let parameters = ImaginateGenerationParameters {
 			seed: self.compute_input::<f64>(&network, &imaginate_node, get("Seed"), Cow::Borrowed(&image_frame))? as u64,
 			resolution: resolution.as_uvec2().into(),
