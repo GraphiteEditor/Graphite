@@ -196,13 +196,23 @@ impl Color {
 		self.alpha
 	}
 
-	pub fn average_rgb(&self) -> f32 {
+	pub fn average_rgb_channels(&self) -> f32 {
 		(self.red + self.green + self.blue) / 3.
 	}
 
 	// From https://stackoverflow.com/a/56678483/775283
 	pub fn luminance_srgb(&self) -> f32 {
 		0.2126 * self.red + 0.7152 * self.green + 0.0722 * self.blue
+	}
+
+	// From https://en.wikipedia.org/wiki/Luma_(video)#Rec._601_luma_versus_Rec._709_luma_coefficients
+	pub fn luminance_rec_601(&self) -> f32 {
+		0.299 * self.red + 0.587 * self.green + 0.114 * self.blue
+	}
+
+	// From https://en.wikipedia.org/wiki/Luma_(video)#Rec._601_luma_versus_Rec._709_luma_coefficients
+	pub fn luminance_rec_601_rounded(&self) -> f32 {
+		0.3 * self.red + 0.59 * self.green + 0.11 * self.blue
 	}
 
 	// From https://stackoverflow.com/a/56678483/775283
@@ -216,9 +226,9 @@ impl Color {
 		}
 	}
 
-	pub fn set_luminocity(&self, luminocity: f32) -> Color {
-		let d = luminocity - self.luminance_srgb();
-		self.map_rgb(|c| (c + d).min(1.).max(0.))
+	pub fn with_luminance(&self, luminance: f32) -> Color {
+		let d = luminance - self.luminance_rec_601();
+		self.map_rgb(|c| (c + d).clamp(0., 1.))
 	}
 
 	/// Return the all components as a tuple, first component is red, followed by green, followed by blue, followed by alpha.

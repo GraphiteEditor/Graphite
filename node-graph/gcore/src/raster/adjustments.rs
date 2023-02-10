@@ -42,7 +42,7 @@ fn luminance_color_node(color: Color, luma_calculation: LuminanceCalculation) ->
 	let luminance = match luma_calculation {
 		LuminanceCalculation::SRGB => color.luminance_srgb(),
 		LuminanceCalculation::Perceptual => color.luminance_perceptual(),
-		LuminanceCalculation::AverageChannels => color.average_rgb(),
+		LuminanceCalculation::AverageChannels => color.average_rgb_channels(),
 	};
 
 	// TODO: Remove conversion to linear when the whole node graph uses linear color
@@ -92,7 +92,8 @@ fn grayscale_color_node(color: Color, tint: Color, reds: f64, yellows: f64, gree
 
 	let luminance = gray_base + additional;
 
-	tint.set_luminocity(luminance)
+	// TODO: Fix "Color" blend mode implementation so it matches the expected behavior perfectly (it's currently close)
+	tint.with_luminance(luminance)
 }
 
 #[cfg(not(target_arch = "spirv"))]
@@ -145,7 +146,7 @@ fn threshold_node(color: Color, luma_calculation: LuminanceCalculation, threshol
 	let luminance = match luma_calculation {
 		LuminanceCalculation::SRGB => color.luminance_srgb(),
 		LuminanceCalculation::Perceptual => color.luminance_perceptual(),
-		LuminanceCalculation::AverageChannels => color.average_rgb(),
+		LuminanceCalculation::AverageChannels => color.average_rgb_channels(),
 	};
 
 	if luminance >= threshold {
