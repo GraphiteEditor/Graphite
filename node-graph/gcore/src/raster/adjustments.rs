@@ -30,16 +30,16 @@ impl std::fmt::Display for LuminanceCalculation {
 }
 
 #[derive(Debug, Clone, Copy, Default)]
-pub struct LuminanceNode<Calculation> {
-	calculation: Calculation,
+pub struct LuminanceNode<LuminanceCalculation> {
+	luma_calculation: LuminanceCalculation,
 }
 
 #[node_macro::node_fn(LuminanceNode)]
-fn luminance_color_node(color: Color, calculation: LuminanceCalculation) -> Color {
+fn luminance_color_node(color: Color, luma_calculation: LuminanceCalculation) -> Color {
 	// TODO: Remove conversion to linear when the whole node graph uses linear color
 	let color = color.to_linear_srgb();
 
-	let luminance = match calculation {
+	let luminance = match luma_calculation {
 		LuminanceCalculation::SRGB => color.luminance_srgb(),
 		LuminanceCalculation::Perceptual => color.luminance_perceptual(),
 		LuminanceCalculation::AverageChannels => color.average_rgb(),
