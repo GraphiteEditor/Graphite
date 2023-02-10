@@ -338,6 +338,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 	let layer_path = context.layer_path.to_vec();
 
 	let resolve_input = |name: &str| IMAGINATE_NODE.inputs.iter().position(|input| input.name == name).unwrap_or_else(|| panic!("Input {name} not found"));
+	let transform_index = resolve_input("Transform");
 	let seed_index = resolve_input("Seed");
 	let resolution_index = resolve_input("Resolution");
 	let samples_index = resolve_input("Samples");
@@ -405,6 +406,9 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 	} else {
 		true
 	};
+
+	let transform_not_connected = matches!(document_node.inputs[transform_index], NodeInput::Value { .. });
+
 	let progress = {
 		// Since we don't serialize the status, we need to derive from other state whether the Idle state is actually supposed to be the Terminated state
 		let mut interpreted_status = imaginate_status;
@@ -589,9 +593,10 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 					})
 					.widget_holder(),
 				WidgetHolder::unrelated_separator(),
-				CheckboxInput::new(!dimensions_is_auto)
+				CheckboxInput::new(!dimensions_is_auto || transform_not_connected)
 					.icon("Edit")
 					.tooltip("Set a custom resolution instead of using the frame's rounded dimensions")
+					.disabled(transform_not_connected)
 					.on_update(update_value(
 						move |checkbox_input: &CheckboxInput| {
 							if checkbox_input.checked {
@@ -608,7 +613,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 				NumberInput::new(Some(vec2.x))
 					.label("W")
 					.unit(" px")
-					.disabled(dimensions_is_auto)
+					.disabled(dimensions_is_auto && !transform_not_connected)
 					.on_update(update_value(
 						move |number_input: &NumberInput| TaggedValue::OptionalDVec2(round(DVec2::new(number_input.value.unwrap(), vec2.y))),
 						node_id,
@@ -619,7 +624,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 				NumberInput::new(Some(vec2.y))
 					.label("H")
 					.unit(" px")
-					.disabled(dimensions_is_auto)
+					.disabled(dimensions_is_auto && !transform_not_connected)
 					.on_update(update_value(
 						move |number_input: &NumberInput| TaggedValue::OptionalDVec2(round(DVec2::new(vec2.x, number_input.value.unwrap()))),
 						node_id,
