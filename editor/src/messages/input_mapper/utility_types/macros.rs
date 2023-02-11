@@ -80,7 +80,6 @@ macro_rules! mapping {
 					InputMapperMessage::DoubleClick => &mut double_click,
 					InputMapperMessage::WheelScroll => &mut wheel_scroll,
 					InputMapperMessage::PointerMove => &mut pointer_move,
-                    _ => panic!("Use one of the actual input variants directly"),
 				};
 				// Push each entry to the corresponding `KeyMappingEntries` list for its input type
 				corresponding_list.push(entry.clone());
