@@ -336,3 +336,37 @@ pub fn default_mapping() -> Mapping {
 		pointer_move,
 	}
 }
+
+/// Default, but scroll without modifiers is bound to zooming, similar to Blender.
+pub fn scroll_as_zoom() -> Mapping {
+	// TODO(multisn8): for other keymaps this patterns might be useful
+	use InputMapperMessage::*;
+
+	let mut mapping = default_mapping();
+
+	for entry in [
+		entry!(WheelScroll; modifiers=[Control], action_dispatch=NavigationMessage::WheelCanvasZoom),
+		entry!(WheelScroll; modifiers=[Shift], action_dispatch=NavigationMessage::WheelCanvasTranslate { use_y_as_x: true }),
+		entry!(WheelScroll; action_dispatch=NavigationMessage::WheelCanvasTranslate { use_y_as_x: false }),
+	]
+	.into_iter()
+	.flat_map(|inner| inner.iter())
+	.flat_map(|inner| inner.iter())
+	{
+		mapping.delete(entry);
+	}
+
+	for entry in [
+		entry!(WheelScroll; modifiers=[Control], action_dispatch=NavigationMessage::WheelCanvasTranslate { use_y_as_x: true }),
+		entry!(WheelScroll; modifiers=[Shift], action_dispatch=NavigationMessage::WheelCanvasTranslate { use_y_as_x: false }),
+		entry!(WheelScroll; action_dispatch=NavigationMessage::WheelCanvasZoom),
+	]
+	.into_iter()
+	.flat_map(|inner| inner.iter())
+	.flat_map(|inner| inner.iter())
+	{
+		mapping.create(entry.clone());
+	}
+
+	mapping
+}
