@@ -272,10 +272,10 @@ impl Color {
 		F: Fn(f32, f32) -> f32,
 	{
 		Color {
-			red: f(self.red, other.red),
-			green: f(self.green, other.green),
-			blue: f(self.blue, other.blue),
-			alpha: f(self.alpha, other.alpha),
+			red: f(self.red, other.red).clamp(0., 1.),
+			green: f(self.green, other.green).clamp(0., 1.),
+			blue: f(self.blue, other.blue).clamp(0., 1.),
+			alpha: f(self.alpha, other.alpha).clamp(0., 1.),
 		}
 		.lerp(*self, 1. - opacity)
 		.unwrap()
@@ -301,6 +301,10 @@ impl Color {
 		}
 	}
 
+	pub fn blend_linear_burn(c_b: f32, c_s: f32) -> f32 {
+		c_b + c_s - 1.
+	}
+
 	pub fn blend_screen(c_b: f32, c_s: f32) -> f32 {
 		1. - (1. - c_s) * (1. - c_b)
 	}
@@ -315,6 +319,10 @@ impl Color {
 		} else {
 			(c_b / (1. - c_s)).min(1.)
 		}
+	}
+
+	pub fn blend_linear_dodge(c_b: f32, c_s: f32) -> f32 {
+		c_b + c_s
 	}
 
 	pub fn blend_softlight(c_b: f32, c_s: f32) -> f32 {
@@ -334,12 +342,56 @@ impl Color {
 		}
 	}
 
+	pub fn blend_vivid_light(c_b: f32, c_s: f32) -> f32 {
+		if c_s <= 0.5 {
+			Color::blend_color_burn(2. * c_s, c_b)
+		} else {
+			Color::blend_color_dodge(2. * c_s - 1., c_b)
+		}
+	}
+
+	pub fn blend_linear_light(c_b: f32, c_s: f32) -> f32 {
+		if c_s <= 0.5 {
+			Color::blend_linear_burn(2. * c_s, c_b)
+		} else {
+			Color::blend_linear_dodge(2. * c_s - 1., c_b)
+		}
+	}
+
+	pub fn blend_pin_light(c_b: f32, c_s: f32) -> f32 {
+		if c_s <= 0.5 {
+			Color::blend_darken(2. * c_s, c_b)
+		} else {
+			Color::blend_lighten(2. * c_s - 1., c_b)
+		}
+	}
+
+	pub fn blend_hard_mix(c_b: f32, c_s: f32) -> f32 {
+		if Color::blend_linear_light(c_b, c_s) < 0.5 {
+			0.
+		} else {
+			1.
+		}
+	}
+
 	pub fn blend_difference(c_b: f32, c_s: f32) -> f32 {
 		(c_b - c_s).abs()
 	}
 
 	pub fn blend_exclusion(c_b: f32, c_s: f32) -> f32 {
 		c_b + c_s - 2. * c_b * c_s
+	}
+
+	pub fn blend_subtract(c_b: f32, c_s: f32) -> f32 {
+		c_b - c_s
+	}
+
+	pub fn blend_divide(c_b: f32, c_s: f32) -> f32 {
+		if c_b == 0. {
+			1.
+		} else {
+			c_b / c_s
+		}
 	}
 
 	pub fn blend_hue(&self, c_s: Color, opacity: f32) -> Color {
