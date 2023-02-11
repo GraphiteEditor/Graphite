@@ -285,13 +285,14 @@ fn dimensions_node(input: ImageSlice<'input>) -> (u32, u32) {
 }
 
 #[cfg(feature = "alloc")]
-pub use image::{CollectNode, Image, ImageRefNode, MapImageSliceNode};
+pub use image::{CollectNode, Image, ImageFrame, ImageRefNode, MapImageSliceNode};
 #[cfg(feature = "alloc")]
 mod image {
 	use super::{Color, ImageSlice};
 	use crate::Node;
 	use alloc::vec::Vec;
 	use dyn_any::{DynAny, StaticType};
+	use glam::DAffine2;
 
 	#[derive(Clone, Debug, PartialEq, DynAny, Default, specta::Type, Hash)]
 	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -320,6 +321,15 @@ mod image {
 		pub fn from_image_data(image_data: &[u8], width: u32, height: u32) -> Self {
 			let data = image_data.chunks_exact(4).map(|v| Color::from_rgba8(v[0], v[1], v[2], v[3])).collect();
 			Image { width, height, data }
+		}
+
+		/// Flattens each channel cast to a u8
+		pub fn as_flat_u8(self) -> (Vec<u8>, u32, u32) {
+			let Image { width, height, data } = self;
+
+			let result_bytes = data.into_iter().flat_map(|color| color.to_rgba8()).collect();
+
+			(result_bytes, width, height)
 		}
 	}
 
@@ -362,6 +372,12 @@ mod image {
 			height: input.1,
 			data,
 		}
+	}
+
+	#[derive(Clone, Debug, PartialEq, DynAny, Default)]
+	pub struct ImageFrame {
+		pub image: Image,
+		pub transform: DAffine2,
 	}
 }
 
