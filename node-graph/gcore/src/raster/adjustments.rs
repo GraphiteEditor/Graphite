@@ -313,46 +313,46 @@ fn threshold_node(color: Color, luma_calculation: LuminanceCalculation, threshol
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct BlendNode<Backdrop, BlendMode, Opacity> {
-	backdrop: Backdrop,
+pub struct BlendNode<SourceColor, BlendMode, Opacity> {
+	source_color: SourceColor,
 	blend_mode: BlendMode,
 	opacity: Opacity,
 }
 
 #[node_macro::node_fn(BlendNode)]
-fn blend_node(color: Color, backdrop: Color, blend_mode: BlendMode, opacity: f64) -> Color {
-	let actual_opacity = (opacity / 100.) as f32;
+fn blend_node(backdrop: Color, source_color: Color, blend_mode: BlendMode, opacity: f64) -> Color {
+	let actual_opacity = 1. - (opacity / 100.) as f32;
 	return match blend_mode {
-		BlendMode::Normal => color,
-		BlendMode::Multiply => color.blend_rgb(backdrop, actual_opacity, Color::blend_multiply),
-		BlendMode::Darken => color.blend_rgb(backdrop, actual_opacity, Color::blend_darken),
-		BlendMode::ColorBurn => color.blend_rgb(backdrop, actual_opacity, Color::blend_color_burn),
-		BlendMode::LinearBurn => color,
-		BlendMode::DarkerColor => color,
+		BlendMode::Normal => backdrop.blend_rgb(source_color, actual_opacity, Color::blend_normal),
+		BlendMode::Multiply => backdrop.blend_rgb(source_color, actual_opacity, Color::blend_multiply),
+		BlendMode::Darken => backdrop.blend_rgb(source_color, actual_opacity, Color::blend_darken),
+		BlendMode::ColorBurn => backdrop.blend_rgb(source_color, actual_opacity, Color::blend_color_burn),
+		BlendMode::LinearBurn => backdrop,
+		BlendMode::DarkerColor => backdrop,
 
-		BlendMode::Screen => color.blend_rgb(backdrop, actual_opacity, Color::blend_screen),
-		BlendMode::Lighten => color.blend_rgb(backdrop, actual_opacity, Color::blend_lighten),
-		BlendMode::ColorDodge => color.blend_rgb(backdrop, actual_opacity, Color::blend_color_dodge),
-		BlendMode::LinearDodge => color,
-		BlendMode::LighterColor => color,
+		BlendMode::Screen => backdrop.blend_rgb(source_color, actual_opacity, Color::blend_screen),
+		BlendMode::Lighten => backdrop.blend_rgb(source_color, actual_opacity, Color::blend_lighten),
+		BlendMode::ColorDodge => backdrop.blend_rgb(source_color, actual_opacity, Color::blend_color_dodge),
+		BlendMode::LinearDodge => backdrop, // A + B
+		BlendMode::LighterColor => backdrop,
 
-		BlendMode::Overlay => color.blend_rgb(backdrop, actual_opacity, Color::blend_hardlight), // IDK why this is the case, but it is
-		BlendMode::SoftLight => color.blend_rgb(backdrop, actual_opacity, Color::blend_softlight),
-		BlendMode::HardLight => color.blend_rgb(backdrop, actual_opacity, Color::blend_hardlight),
-		BlendMode::VividLight => color,
-		BlendMode::LinearLight => color,
-		BlendMode::PinLight => color,
-		BlendMode::HardMix => color,
+		BlendMode::Overlay => source_color.blend_rgb(backdrop, actual_opacity, Color::blend_hardlight),
+		BlendMode::SoftLight => backdrop.blend_rgb(source_color, actual_opacity, Color::blend_softlight),
+		BlendMode::HardLight => backdrop.blend_rgb(source_color, actual_opacity, Color::blend_hardlight),
+		BlendMode::VividLight => backdrop,
+		BlendMode::LinearLight => backdrop,
+		BlendMode::PinLight => backdrop,
+		BlendMode::HardMix => backdrop,
 
-		BlendMode::Difference => color.blend_rgb(backdrop, actual_opacity, Color::blend_exclusion),
-		BlendMode::Exclusion => color.blend_rgb(backdrop, actual_opacity, Color::blend_exclusion),
-		BlendMode::Subtract => color,
-		BlendMode::Divide => color,
+		BlendMode::Difference => backdrop.blend_rgb(source_color, actual_opacity, Color::blend_exclusion),
+		BlendMode::Exclusion => backdrop.blend_rgb(source_color, actual_opacity, Color::blend_exclusion),
+		BlendMode::Subtract => backdrop,
+		BlendMode::Divide => backdrop,
 
-		BlendMode::Hue => color,
-		BlendMode::Saturation => color,
-		BlendMode::Color => color,
-		BlendMode::Luminosity => color,
+		BlendMode::Hue => backdrop.blend_hue(source_color, actual_opacity),
+		BlendMode::Saturation => backdrop.blend_saturation(source_color, actual_opacity),
+		BlendMode::Color => backdrop.blend_color(source_color, actual_opacity),
+		BlendMode::Luminosity => backdrop.blend_luminosity(source_color, actual_opacity),
 	};
 }
 
