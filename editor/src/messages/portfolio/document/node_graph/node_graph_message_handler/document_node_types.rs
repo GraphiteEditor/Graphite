@@ -79,12 +79,11 @@ pub struct DocumentNodeType {
 fn document_node_types() -> Vec<DocumentNodeType> {
 	let mut vec: Vec<_> = STATIC_NODES.to_vec();
 
-	const INPUTS: &[DocumentInputType] = &[
+	const GAUSSIAN_BLUR_NODE_INPUTS: &[DocumentInputType] = &[
 		DocumentInputType::new("Image", TaggedValue::Image(Image::empty()), true),
 		DocumentInputType::new("Radius", TaggedValue::U32(3), false),
 		DocumentInputType::new("Sigma", TaggedValue::F64(1.), false),
 	];
-
 	let blur = DocumentNodeType {
 		name: "Gaussian Blur",
 		category: "Image Filters",
@@ -115,14 +114,16 @@ fn document_node_types() -> Vec<DocumentNodeType> {
 			.collect(),
 			..Default::default()
 		}),
-		inputs: INPUTS,
+		inputs: GAUSSIAN_BLUR_NODE_INPUTS,
 		outputs: &[DocumentOutputType {
 			name: "Image",
 			data_type: FrontendGraphDataType::Raster,
 		}],
 		properties: node_properties::blur_image_properties,
 	};
-	const INPUT_MULTIPLE_INPUTS: &[DocumentInputType] = &[
+	vec.push(blur);
+
+	const INPUT_NODE_INPUTS: &[DocumentInputType] = &[
 		DocumentInputType {
 			name: "In",
 			data_type: FrontendGraphDataType::General,
@@ -130,8 +131,8 @@ fn document_node_types() -> Vec<DocumentNodeType> {
 		},
 		DocumentInputType::new("Transform", TaggedValue::DAffine2(DAffine2::IDENTITY), false),
 	];
-	let input_multiple = DocumentNodeType {
-		name: "Input Multiple",
+	let input = DocumentNodeType {
+		name: "Input",
 		category: "Ignore",
 		identifier: NodeImplementation::DocumentNode(NodeNetwork {
 			inputs: vec![0, 1],
@@ -156,7 +157,7 @@ fn document_node_types() -> Vec<DocumentNodeType> {
 			.collect(),
 			..Default::default()
 		}),
-		inputs: INPUT_MULTIPLE_INPUTS,
+		inputs: INPUT_NODE_INPUTS,
 		outputs: &[
 			DocumentOutputType {
 				name: "Image",
@@ -169,8 +170,8 @@ fn document_node_types() -> Vec<DocumentNodeType> {
 		],
 		properties: node_properties::input_properties,
 	};
-	vec.push(input_multiple);
-	vec.push(blur);
+	vec.push(input);
+
 	vec
 }
 
@@ -200,18 +201,18 @@ static STATIC_NODES: &[DocumentNodeType] = &[
 		outputs: &[DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
 		properties: |_document_node, _node_id, _context| node_properties::string_properties("A bitmap image embedded in this node"),
 	},
-	DocumentNodeType {
-		name: "Input",
-		category: "Ignore",
-		identifier: NodeImplementation::proto("graphene_core::ops::IdNode", &[generic!("T")]),
-		inputs: &[DocumentInputType {
-			name: "In",
-			data_type: FrontendGraphDataType::Raster,
-			default: NodeInput::Network,
-		}],
-		outputs: &[DocumentOutputType::new("Out", FrontendGraphDataType::Raster)],
-		properties: node_properties::input_properties,
-	},
+	// DocumentNodeType {
+	// 	name: "Input",
+	// 	category: "Ignore",
+	// 	identifier: NodeImplementation::proto("graphene_core::ops::IdNode", &[generic!("T")]),
+	// 	inputs: &[DocumentInputType {
+	// 		name: "In",
+	// 		data_type: FrontendGraphDataType::Raster,
+	// 		default: NodeInput::Network,
+	// 	}],
+	// 	outputs: &[DocumentOutputType::new("Out", FrontendGraphDataType::Raster)],
+	// 	properties: node_properties::input_properties,
+	// },
 	DocumentNodeType {
 		name: "Output",
 		category: "Ignore",
@@ -608,7 +609,7 @@ pub fn new_image_network(output_offset: i32, output_node_id: NodeId) -> NodeNetw
 		inputs: vec![0],
 		outputs: vec![NodeOutput::new(1, 0)],
 		nodes: [
-			resolve_document_node_type("Input Multiple").expect("Input multiple node does not exist").to_document_node(
+			resolve_document_node_type("Input").expect("Input node does not exist").to_document_node(
 				[NodeInput::Network, NodeInput::value(TaggedValue::DAffine2(DAffine2::IDENTITY), false)],
 				DocumentNodeMetadata::position((8, 4)),
 			),
