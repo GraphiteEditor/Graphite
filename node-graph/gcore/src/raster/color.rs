@@ -231,6 +231,77 @@ impl Color {
 		self.map_rgb(|c| (c + d).clamp(0., 1.))
 	}
 
+	pub fn blend_rgba<F>(&self, other: Color, opacity: f32, f: F) -> Color
+	where
+		F: Fn(f32, f32) -> f32,
+	{
+		Color {
+			red: f(self.red, other.red),
+			green: f(self.green, other.green),
+			blue: f(self.blue, other.blue),
+			alpha: f(self.alpha, other.alpha),
+		}
+		.lerp(*self, 1. - opacity)
+		.unwrap()
+	}
+
+	pub fn blend_multiply(c: f32, o: f32) -> f32 {
+		c * o
+	}
+
+	pub fn blend_darken(c: f32, o: f32) -> f32 {
+		c.min(o)
+	}
+
+	pub fn blend_color_burn(c: f32, o: f32) -> f32 {
+		if c > 0. {
+			1. - ((1. - o) / c).min(1.)
+		} else {
+			0.
+		}
+	}
+
+	pub fn blend_screen(c: f32, o: f32) -> f32 {
+		1. - (1. - c) * (1. - o)
+	}
+
+	pub fn blend_lighten(c: f32, o: f32) -> f32 {
+		c.max(o)
+	}
+
+	pub fn blend_color_dodge(c: f32, o: f32) -> f32 {
+		if c == 1. {
+			1.
+		} else {
+			1. - ((1. - o) / c).min(1.)
+		}
+	}
+
+	pub fn blend_softlight(c: f32, o: f32) -> f32 {
+		if c <= 0.5 {
+			o - (1. - 2. * c) * o * (1. - o)
+		} else {
+			let d: fn(f32) -> f32 = |x| if x <= 0.25 { ((16. * x - 12.) * x + 4.) * x } else { x.sqrt() };
+			o + (2. * c - 1.) * (d(o) - o)
+		}
+	}
+
+	pub fn blend_hardlight(c: f32, o: f32) -> f32 {
+		if c <= 0.5 {
+			Color::blend_multiply(c, o)
+		} else {
+			Color::blend_screen(c, o)
+		}
+	}
+
+	pub fn blend_difference(c: f32, o: f32) -> f32 {
+		(c - o).abs()
+	}
+
+	pub fn blend_exclusion(c: f32, o: f32) -> f32 {
+		o + c - 2. * o * c
+	}
+
 	/// Return the all components as a tuple, first component is red, followed by green, followed by blue, followed by alpha.
 	///
 	/// # Examples
@@ -416,6 +487,11 @@ impl Color {
 	}
 	pub fn map_rgb<F: Fn(f32) -> f32>(&self, f: F) -> Self {
 		Self::from_rgbaf32_unchecked(f(self.r()), f(self.g()), f(self.b()), self.a())
+	}
+	pub fn blend_rgb<F: Fn(f32, f32) -> f32>(&self, other: Color, opacity: f32, f: F) -> Self {
+		Self::from_rgbaf32_unchecked(f(self.r(), other.r()), f(self.g(), other.g()), f(self.b(), other.b()), self.a())
+			.lerp(*self, 1. - opacity)
+			.unwrap()
 	}
 }
 

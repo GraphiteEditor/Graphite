@@ -7,8 +7,8 @@ use graph_craft::document::value::*;
 use graph_craft::document::*;
 use graph_craft::imaginate_input::ImaginateSamplingMethod;
 
-use graph_craft::NodeIdentifier;
-use graphene_core::raster::{Color, Image, LuminanceCalculation};
+use graph_craft::{concrete};
+use graphene_core::raster::{BlendMode, Color, Image, LuminanceCalculation};
 use graphene_core::*;
 
 use std::collections::VecDeque;
@@ -192,6 +192,19 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
 			properties: |_document_node, _node_id, _context| node_properties::string_properties("Creates an embedded image with the given transform"),
 		},
+        DocumentNodeType {
+            name: "BlendNode",
+            category: "Image Adjustments",
+            identifier: NodeImplementation::proto("graphene_core::raster::BlendNode<_, _, _>"),
+            inputs: vec![
+                DocumentInputType::value("Image", TaggedValue::Image(Image::empty()), true),
+                DocumentInputType::value("Backdrop", TaggedValue::Color(Color::BLACK), false),
+                DocumentInputType::value("BlendMode", TaggedValue::BlendMode(BlendMode::Normal), false),
+                DocumentInputType::value("Opacity", TaggedValue::F64(100.), false),
+            ],
+            outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
+            properties: node_properties::blend_properties,
+        },
 		DocumentNodeType {
 			name: "Levels",
 			category: "Image Adjustments",

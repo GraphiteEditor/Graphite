@@ -2,8 +2,8 @@ pub use dyn_any::StaticType;
 use dyn_any::{DynAny, Upcast};
 use dyn_clone::DynClone;
 pub use glam::{DAffine2, DVec2};
-use graphene_core::raster::LuminanceCalculation;
 use graphene_core::{Node, Type};
+use graphene_core::raster::{BlendMode, LuminanceCalculation};
 use std::hash::Hash;
 pub use std::sync::Arc;
 
@@ -28,6 +28,7 @@ pub enum TaggedValue {
 	Color(graphene_core::raster::color::Color),
 	Subpath(graphene_core::vector::subpath::Subpath),
 	RcSubpath(Arc<graphene_core::vector::subpath::Subpath>),
+	BlendMode(BlendMode),
 	LuminanceCalculation(LuminanceCalculation),
 	ImaginateSamplingMethod(ImaginateSamplingMethod),
 	ImaginateMaskStartingFill(ImaginateMaskStartingFill),
@@ -93,24 +94,28 @@ impl Hash for TaggedValue {
 				14.hash(state);
 				s.hash(state)
 			}
-			Self::LuminanceCalculation(l) => {
+			Self::BlendMode(b) => {
 				15.hash(state);
+				b.hash(state)
+			}
+			Self::LuminanceCalculation(l) => {
+				16.hash(state);
 				l.hash(state)
 			}
 			Self::ImaginateSamplingMethod(m) => {
-				16.hash(state);
+				17.hash(state);
 				m.hash(state)
 			}
 			Self::ImaginateMaskStartingFill(f) => {
-				17.hash(state);
+				18.hash(state);
 				f.hash(state)
 			}
 			Self::ImaginateStatus(s) => {
-				18.hash(state);
+				19.hash(state);
 				s.hash(state)
 			}
 			Self::LayerPath(p) => {
-				19.hash(state);
+				20.hash(state);
 				p.hash(state)
 			}
 		}
@@ -135,6 +140,7 @@ impl<'a> TaggedValue {
 			TaggedValue::Color(x) => Box::new(x),
 			TaggedValue::Subpath(x) => Box::new(x),
 			TaggedValue::RcSubpath(x) => Box::new(x),
+			TaggedValue::BlendMode(x) => Box::new(x),
 			TaggedValue::LuminanceCalculation(x) => Box::new(x),
 			TaggedValue::ImaginateSamplingMethod(x) => Box::new(x),
 			TaggedValue::ImaginateMaskStartingFill(x) => Box::new(x),
@@ -160,6 +166,7 @@ impl<'a> TaggedValue {
 			TaggedValue::Color(_) => concrete!(graphene_core::raster::Color),
 			TaggedValue::Subpath(_) => concrete!(graphene_core::vector::subpath::Subpath),
 			TaggedValue::RcSubpath(_) => concrete!(Arc<graphene_core::vector::subpath::Subpath>),
+            TaggedValue::BlendMode(_) => concrete!(BlendMode),
 			TaggedValue::ImaginateSamplingMethod(_) => concrete!(ImaginateSamplingMethod),
 			TaggedValue::ImaginateMaskStartingFill(_) => concrete!(ImaginateMaskStartingFill),
 			TaggedValue::ImaginateStatus(_) => concrete!(ImaginateStatus),
