@@ -247,6 +247,7 @@ impl NodeGraphMessageHandler {
 					document_node
 						.inputs
 						.iter()
+						.take(1) // Only show the primary input
 						.filter_map(|input| if let NodeInput::Node { node_id: ref_id, .. } = input { Some(*ref_id) } else { None }),
 				);
 				nodes.push((document_node, node_id));
