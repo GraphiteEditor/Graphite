@@ -331,6 +331,13 @@ mod image {
 				data: Vec::new(),
 			}
 		}
+		pub fn new(width: u32, height: u32) -> Self {
+			Self {
+				width,
+				height,
+				data: (0..width * height).map(|_| Color::BLACK).collect(),
+			}
+		}
 		pub fn as_slice(&self) -> ImageSlice {
 			ImageSlice {
 				width: self.width,

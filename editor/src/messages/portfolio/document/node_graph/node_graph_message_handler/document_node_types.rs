@@ -690,3 +690,49 @@ pub fn new_image_network(output_offset: i32, output_node_id: NodeId) -> NodeNetw
 		..Default::default()
 	}
 }
+
+#[cfg(feature = "bench")]
+mod bench {
+	use crate::node_graph_executor::NodeGraphExecutor;
+	use graph_craft::executor::{Compiler, Executor};
+	use interpreted_executor::executor::DynamicExecutor;
+	use test::Bencher;
+
+	use graph_craft::document::value::*;
+	use graph_craft::document::*;
+	use graphene_core::raster::{Color, Direction, Image, LuminanceCalculation};
+
+	#[bench]
+	fn blur_bench(b: &mut Bencher) {
+		let mut image = Image::new(20, 20);
+
+		let executor = blur_net();
+
+		b.iter(|| test::black_box(executor.execute(Box::new(image.clone()))));
+	}
+
+	#[test]
+	fn blur_test() {
+		for _ in 0..100 {
+			let mut image = Image::new(20, 20);
+			test::black_box(blur_net().execute(Box::new(image)));
+		}
+	}
+
+	fn blur_net() -> DynamicExecutor {
+		let node = super::DOCUMENT_NODE_TYPES.iter().find(|x| x.name == "Gaussian Blur").unwrap();
+		let node = node.to_document_node(
+			[NodeInput::Network, NodeInput::value(TaggedValue::U32(3), false), NodeInput::value(TaggedValue::F64(2.), false)],
+			Default::default(),
+		);
+		let node_network = NodeNetwork {
+			inputs: vec![0],
+			outputs: vec![NodeOutput::new(0, 0)],
+			nodes: [(0, node)].into_iter().collect(),
+			..Default::default()
+		};
+		let compiler = Compiler {};
+		let proto = compiler.compile_single(node_network, true).unwrap();
+		DynamicExecutor::new(proto)
+	}
+}

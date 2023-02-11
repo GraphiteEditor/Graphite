@@ -1,3 +1,7 @@
+#![cfg_attr(feature = "bench", feature(test))]
+
+extern crate test;
+
 extern crate graphite_proc_macros;
 
 // `macro_use` puts these macros into scope for all descendant code files

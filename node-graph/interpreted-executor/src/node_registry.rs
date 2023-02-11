@@ -3,7 +3,7 @@ use graphene_core::ops::{CloneNode, IdNode, TypeNode};
 use graphene_core::raster::color::Color;
 use graphene_core::raster::*;
 use graphene_core::structural::Then;
-use graphene_core::value::{ForgetNode, ValueNode};
+use graphene_core::value::{ClonedNode, ForgetNode, ValueNode};
 use graphene_core::Node;
 
 use graphene_std::any::{ComposeTypeErased, DowncastBothNode, DowncastBothRefNode, DynAnyNode, IntoTypeErasedNode, TypeErasedPinned, TypeErasedPinnedRef};
@@ -125,6 +125,11 @@ static NODE_REGISTRY: &[(NodeIdentifier, NodeConstructor)] = &[
 		let radius = DowncastBothNode::<(), u32>::new(args[0]);
 		let sigma = DowncastBothNode::<(), f64>::new(args[1]);
 		let direction = DowncastBothNode::<(), Direction>::new(args[2]);
+
+		let radius = ClonedNode::new(radius.eval(()));
+		let sigma = ClonedNode::new(sigma.eval(()));
+		let direction = ClonedNode::new(direction.eval(()));
+
 		let image = DowncastBothRefNode::<Image, Image>::new(args[3]);
 		let empty_image: ValueNode<Image> = ValueNode::new(Image::empty());
 		let empty: TypeNode<_, (), Image> = TypeNode::new(empty_image.then(CloneNode::new()));
