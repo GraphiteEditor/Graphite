@@ -4,6 +4,7 @@ use graphene_core::raster::color::Color;
 use graphene_core::raster::*;
 use graphene_core::structural::Then;
 use graphene_core::value::{ForgetNode, ValueNode};
+use graphene_core::Node;
 
 use graphene_std::any::{ComposeTypeErased, DowncastBothNode, DowncastBothRefNode, DynAnyNode, IntoTypeErasedNode, TypeErasedPinned, TypeErasedPinnedRef};
 
@@ -102,6 +103,37 @@ static NODE_REGISTRY: &[(NodeIdentifier, NodeConstructor)] = &[
 		let image = empty.then(image).then(ImageRefNode::new());
 
 		let window = WindowNode::new(radius, image.clone());
+		let map_gaussian = MapSndNode::new(ValueNode::new(DistanceNode.then(GaussianNode::new(sigma))));
+		let map_distances = MapNode::new(ValueNode::new(map_gaussian));
+		let gaussian_iter = window.then(map_distances);
+		let avg = gaussian_iter.then(WeightedAvgNode::new());
+		let avg: TypeNode<_, u32, Color> = TypeNode::new(avg);
+		let blur_iter = MapNode::new(ValueNode::new(avg));
+		let pixel_iter = image.clone().then(ImageIndexIterNode::new());
+		let blur = pixel_iter.then(blur_iter);
+		let collect = CollectNode {};
+		let vec = blur.then(collect);
+		let new_image = MapImageSliceNode::new(vec);
+		let dimensions = image.then(ImageDimensionsNode::new());
+		let dimensions: TypeNode<_, (), (u32, u32)> = TypeNode::new(dimensions);
+		let new_image = dimensions.then(new_image);
+		let new_image = ForgetNode::new().then(new_image);
+		let node: DynAnyNode<&Image, _, _> = DynAnyNode::new(ValueNode::new(new_image));
+		node.into_type_erased()
+	}),
+	(NodeIdentifier::new("graphene_core::raster::LineBlurNode", &[concrete!("Image")]), |args| {
+		let radius = DowncastBothNode::<(), u32>::new(args[0]);
+		let sigma = DowncastBothNode::<(), f64>::new(args[1]);
+		let direction = DowncastBothNode::<(), Direction>::new(args[2]);
+		let image = DowncastBothRefNode::<Image, Image>::new(args[3]);
+		let empty_image: ValueNode<Image> = ValueNode::new(Image::empty());
+		let empty: TypeNode<_, (), Image> = TypeNode::new(empty_image.then(CloneNode::new()));
+
+		//let image = &image as &dyn for<'a> Node<'a, (), Output = &'a Image>;
+		// dirty hack: we abuse that the cache node will ignore the input if it is evaluated a second time
+		let image = empty.then(image).then(ImageRefNode::new());
+
+		let window = LineWindowNode::new(radius, image.clone(), direction);
 		let map_gaussian = MapSndNode::new(ValueNode::new(DistanceNode.then(GaussianNode::new(sigma))));
 		let map_distances = MapNode::new(ValueNode::new(map_gaussian));
 		let gaussian_iter = window.then(map_distances);

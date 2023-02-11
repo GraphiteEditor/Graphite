@@ -7,7 +7,7 @@ use graph_craft::document::*;
 use graph_craft::imaginate_input::ImaginateSamplingMethod;
 use graph_craft::proto::{NodeIdentifier, Type};
 use graph_craft::{concrete, generic};
-use graphene_core::raster::{Color, Image, LuminanceCalculation};
+use graphene_core::raster::{Color, Direction, Image, LuminanceCalculation};
 
 use std::collections::VecDeque;
 
@@ -84,28 +84,91 @@ fn document_node_types() -> Vec<DocumentNodeType> {
 		DocumentInputType::new("Radius", TaggedValue::U32(3), false),
 		DocumentInputType::new("Sigma", TaggedValue::F64(1.), false),
 	];
+	let blur_network = NodeNetwork {
+		inputs: vec![0, 1, 1, 1],
+		outputs: vec![NodeOutput::new(1, 0)],
+		nodes: vec![
+			(
+				0,
+				DocumentNode {
+					name: "CacheNode".to_string(),
+					inputs: vec![NodeInput::Network],
+					implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_std::memo::CacheNode", &[concrete!("Image")])),
+					metadata: Default::default(),
+				},
+			),
+			(
+				1,
+				DocumentNode {
+					name: "BlurNode".to_string(),
+					inputs: vec![NodeInput::node(0, 0), NodeInput::Network, NodeInput::Network, NodeInput::Network, NodeInput::node(0, 0)],
+					implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::raster::LineBlurNode", &[concrete!("Image")])),
+					metadata: Default::default(),
+				},
+			),
+		]
+		.into_iter()
+		.collect(),
+		..Default::default()
+	};
 	let blur = DocumentNodeType {
 		name: "Gaussian Blur",
 		category: "Image Filters",
 		identifier: NodeImplementation::DocumentNode(NodeNetwork {
-			inputs: vec![0, 1, 1],
-			outputs: vec![NodeOutput::new(1, 0)],
+			inputs: vec![2, 0, 1],
+			outputs: vec![NodeOutput::new(4, 0)],
 			nodes: vec![
 				(
 					0,
 					DocumentNode {
-						name: "CacheNode".to_string(),
+						name: "Sigma".to_string(),
 						inputs: vec![NodeInput::Network],
-						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_std::memo::CacheNode", &[concrete!("Image")])),
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode", &[generic!("T")])),
 						metadata: Default::default(),
 					},
 				),
 				(
 					1,
 					DocumentNode {
-						name: "BlurNode".to_string(),
-						inputs: vec![NodeInput::node(0, 0), NodeInput::Network, NodeInput::Network, NodeInput::node(0, 0)],
-						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::raster::BlurNode", &[concrete!("Image")])),
+						name: "Radius".to_string(),
+						inputs: vec![NodeInput::Network],
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode", &[generic!("T")])),
+						metadata: Default::default(),
+					},
+				),
+				(
+					2,
+					DocumentNode {
+						name: "XLineBlur".to_string(),
+						inputs: vec![NodeInput::Network, NodeInput::node(0, 0), NodeInput::node(1, 0), NodeInput::node(3, 0)],
+						implementation: DocumentNodeImplementation::Network(blur_network.clone()),
+						metadata: Default::default(),
+					},
+				),
+				(
+					3,
+					DocumentNode {
+						name: "Horizontal".to_string(),
+						inputs: vec![NodeInput::value(TaggedValue::Direction(Direction::Horizontal), false)],
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::value::ClonedNode", &[concrete!("Direction")])),
+						metadata: Default::default(),
+					},
+				),
+				(
+					4,
+					DocumentNode {
+						name: "YLineBlur".to_string(),
+						inputs: vec![NodeInput::node(2, 0), NodeInput::node(0, 0), NodeInput::node(1, 0), NodeInput::node(5, 0)],
+						implementation: DocumentNodeImplementation::Network(blur_network),
+						metadata: Default::default(),
+					},
+				),
+				(
+					5,
+					DocumentNode {
+						name: "Vertical".to_string(),
+						inputs: vec![NodeInput::value(TaggedValue::Direction(Direction::Horizontal), false)],
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::value::ClonedNode", &[concrete!("Direction")])),
 						metadata: Default::default(),
 					},
 				),

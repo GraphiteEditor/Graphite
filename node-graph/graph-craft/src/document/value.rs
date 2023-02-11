@@ -33,6 +33,7 @@ pub enum TaggedValue {
 	ImaginateMaskStartingFill(ImaginateMaskStartingFill),
 	ImaginateStatus(ImaginateStatus),
 	LayerPath(Option<Vec<u64>>),
+	Direction(graphene_core::raster::Direction),
 }
 
 #[allow(clippy::derive_hash_xor_eq)]
@@ -113,6 +114,10 @@ impl Hash for TaggedValue {
 				19.hash(state);
 				p.hash(state)
 			}
+			Self::Direction(d) => {
+				20.hash(state);
+				d.hash(state)
+			}
 		}
 	}
 }
@@ -140,6 +145,7 @@ impl<'a> TaggedValue {
 			TaggedValue::ImaginateMaskStartingFill(x) => Box::new(x),
 			TaggedValue::ImaginateStatus(x) => Box::new(x),
 			TaggedValue::LayerPath(x) => Box::new(x),
+			TaggedValue::Direction(x) => Box::new(x),
 		}
 	}
 }

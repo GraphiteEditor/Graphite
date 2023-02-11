@@ -117,35 +117,27 @@ fn image_index_iter_node(input: ImageSlice<'input>) -> core::ops::Range<u32> {
 }
 
 #[derive(Debug)]
-pub struct WindowNode<Radius: for<'i> Node<'i, (), Output = u32>, Image: for<'i> Node<'i, (), Output = ImageSlice<'i>>> {
+pub struct WindowNode<Radius, Image> {
 	radius: Radius,
 	image: Image,
 }
 
-impl<'input, S0: 'input, S1: 'input> Node<'input, u32> for WindowNode<S0, S1>
-where
-	S0: for<'any_input> Node<'any_input, (), Output = u32>,
-	S1: for<'any_input> Node<'any_input, (), Output = ImageSlice<'any_input>>,
-{
-	type Output = ImageWindowIterator<'input>;
-	#[inline]
-	fn eval<'node: 'input>(&'node self, input: u32) -> Self::Output {
-		let radius = self.radius.eval(());
-		let image = self.image.eval(());
-		{
-			let iter = ImageWindowIterator::new(image, radius, input);
-			iter
-		}
-	}
+#[node_macro::node_fn(WindowNode)]
+fn window_node(input: u32, radius: u32, image: ImageSlice<'any_input>) -> ImageWindowIterator<'input> {
+	let iter = ImageWindowIterator::new(image, radius, input);
+	iter
 }
-impl<S0, S1> WindowNode<S0, S1>
-where
-	S0: for<'any_input> Node<'any_input, (), Output = u32>,
-	S1: for<'any_input> Node<'any_input, (), Output = ImageSlice<'any_input>>,
-{
-	pub const fn new(radius: S0, image: S1) -> Self {
-		Self { radius, image }
-	}
+#[derive(Debug)]
+pub struct LineWindowNode<Length, Image, Direction> {
+	length: Length,
+	image: Image,
+	direction: Direction,
+}
+
+#[node_macro::node_fn(LineWindowNode)]
+fn window_node(input: u32, length: u32, image: ImageSlice<'any_input>, direction: Direction) -> ImageWindowIterator<'input> {
+	let iter = ImageWindowIterator::new_line(image, length, input, direction);
+	iter
 }
 /*
 #[node_macro::node_fn(WindowNode)]
@@ -157,10 +149,19 @@ fn window_node(input: u32, radius: u32, image: ImageSlice<'input>) -> ImageWindo
 #[derive(Debug, Clone, Copy)]
 pub struct ImageWindowIterator<'a> {
 	image: ImageSlice<'a>,
-	radius: u32,
-	index: u32,
 	x: u32,
 	y: u32,
+	min_x: u32,
+	min_y: u32,
+	max_x: u32,
+	max_y: u32,
+}
+
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, DynAny, specta::Type)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum Direction {
+	Horizontal,
+	Vertical,
 }
 
 impl<'a> ImageWindowIterator<'a> {
@@ -169,14 +170,38 @@ impl<'a> ImageWindowIterator<'a> {
 		let start_y = index as i32 / image.width as i32;
 		let min_x = (start_x - radius as i32).max(0) as u32;
 		let min_y = (start_y - radius as i32).max(0) as u32;
+		let radius = radius as i32;
+		let max_x = (start_x + radius).min(image.width as i32 - 1) as u32;
+		let max_y = (start_y + radius).min(image.height as i32 - 1) as u32;
 
 		Self {
 			image,
-			radius,
-			index,
 			x: min_x,
 			y: min_y,
+			min_x,
+			min_y,
+			max_x,
+			max_y,
 		}
+	}
+	fn new_line(image: ImageSlice<'a>, length: u32, index: u32, direction: Direction) -> Self {
+		let mut iter = Self::new(image, length, index);
+		let start_x = index % image.width;
+		let start_y = index / image.width;
+
+		match direction {
+			Direction::Horizontal => {
+				iter.min_y = start_y;
+				iter.y = start_y;
+				iter.max_y = start_y;
+			}
+			Direction::Vertical => {
+				iter.min_x = start_x;
+				iter.x = start_x;
+				iter.max_x = start_x;
+			}
+		};
+		iter
 	}
 }
 
@@ -184,21 +209,17 @@ impl<'a> Iterator for ImageWindowIterator<'a> {
 	type Item = (Color, (i32, i32));
 	#[inline]
 	fn next(&mut self) -> Option<Self::Item> {
-		let start_x = self.index as i32 % self.image.width as i32;
-		let start_y = self.index as i32 / self.image.width as i32;
-		let radius = self.radius as i32;
+		let start_x = self.min_x as i32 + (self.max_x - self.min_x) as i32 / 2;
+		let start_y = self.min_y as i32 + (self.max_y - self.min_y) as i32 / 2;
 
-		let min_x = (start_x - radius).max(0) as u32;
-		let max_x = (start_x + radius).min(self.image.width as i32 - 1) as u32;
-		let max_y = (start_y + radius).min(self.image.height as i32 - 1) as u32;
-		if self.y > max_y {
+		if self.y > self.max_y {
 			return None;
 		}
 		let value = Some((self.image.data[(self.x + self.y * self.image.width) as usize], (self.x as i32 - start_x, self.y as i32 - start_y)));
 
 		self.x += 1;
-		if self.x > max_x {
-			self.x = min_x;
+		if self.x > self.max_x {
+			self.x = self.min_x;
 			self.y += 1;
 		}
 		value
@@ -383,7 +404,11 @@ mod image {
 
 #[cfg(test)]
 mod test {
-	use crate::{ops::CloneNode, structural::Then, value::ValueNode, Node};
+	use crate::{
+		structural::Then,
+		value::{ClonedNode, ValueNode},
+		Node,
+	};
 
 	use super::*;
 
@@ -402,7 +427,7 @@ mod test {
 	#[test]
 	fn window_node() {
 		use alloc::vec;
-		let radius = ValueNode::new(1u32).then(CloneNode::new());
+		let radius = ClonedNode::new(1u32);
 		let image = ValueNode::<_>::new(Image {
 			width: 5,
 			height: 5,
@@ -416,6 +441,34 @@ mod test {
 		assert_eq!(vec.count(), 6);
 		let vec = window.eval(12);
 		assert_eq!(vec.count(), 9);
+	}
+
+	#[test]
+	fn window_node_line() {
+		use alloc::vec;
+		let radius = ClonedNode::new(1u32);
+		let image = ValueNode::<_>::new(Image {
+			width: 5,
+			height: 5,
+			data: vec![Color::from_rgbf32_unchecked(1., 0., 0.); 25],
+		});
+		let image_slice = image.then(ImageRefNode::new());
+		let x_window = LineWindowNode::new(radius, image_slice.clone(), ClonedNode::new(Direction::Horizontal));
+		let vec = x_window.eval(0);
+		assert_eq!(vec.count(), 2);
+		let vec = x_window.eval(5);
+		assert_eq!(vec.count(), 2);
+		let vec = x_window.eval(12);
+		assert_eq!(vec.count(), 3);
+
+		let y_window = LineWindowNode::new(radius, image_slice, ClonedNode::new(Direction::Vertical));
+		let vec = y_window.eval(0);
+		assert_eq!(vec.count(), 2);
+		let vec = y_window.eval(5);
+		println!("{:?}", vec.collect::<Vec<_>>());
+		assert_eq!(vec.count(), 3);
+		let vec = y_window.eval(12);
+		assert_eq!(vec.count(), 3);
 	}
 
 	// TODO: I can't be bothered to fix this test rn

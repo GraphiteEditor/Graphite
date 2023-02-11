@@ -44,5 +44,14 @@ opt-level = 3
 [profile.dev.package.graphite-wasm-svelte]
 opt-level = 3
 
+[profile.dev.package.graphene-core]
+opt-level = 1
+
+[profile.dev.package.graphene-std]
+opt-level = 3
+
+[profile.dev.package.interpreted-executor]
+opt-level = 3
+
 #[profile.dev]
 #opt-level = 3
