@@ -105,7 +105,6 @@ impl NodeGraphExecutor {
 		let size = output.dimensions();
 		let mut image_data: Vec<u8> = Vec::new();
 		output.write_to(&mut Cursor::new(&mut image_data), format).map_err(|e| e.to_string())?;
-		debug!("Returning from encode image");
 		Ok::<_, String>((image_data, size))
 	}
 
@@ -152,9 +151,7 @@ impl NodeGraphExecutor {
 			let image: Image = self.compute_input(&network, &imaginate_node, get("Input Image"), Cow::Borrowed(&image_frame))?;
 			// Only use if has size
 			if image.width > 0 && image.height > 0 {
-				debug!("Start image encode");
 				let (image_data, size) = Self::encode_img(image, Some(resolution), image::ImageOutputFormat::Png)?;
-				debug!("End image encode");
 				let size = DVec2::new(size.0 as f64, size.1 as f64);
 				let mime = "image/png".to_string();
 				Some(ImaginateBaseImage { image_data, size, mime })

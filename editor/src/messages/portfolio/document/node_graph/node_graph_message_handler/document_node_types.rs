@@ -33,6 +33,17 @@ impl DocumentInputType {
 	}
 }
 
+pub struct DocumentOutputType {
+	pub name: &'static str,
+	pub data_type: FrontendGraphDataType,
+}
+
+impl DocumentOutputType {
+	pub const fn new(name: &'static str, data_type: FrontendGraphDataType) -> Self {
+		Self { name, data_type }
+	}
+}
+
 pub struct NodePropertiesContext<'a> {
 	pub persistent_data: &'a crate::messages::portfolio::utility_types::PersistentData,
 	pub document: &'a document_legacy::document::Document,
@@ -61,7 +72,7 @@ pub struct DocumentNodeType {
 	pub category: &'static str,
 	pub identifier: NodeImplementation,
 	pub inputs: &'static [DocumentInputType],
-	pub outputs: &'static [FrontendGraphDataType],
+	pub outputs: &'static [DocumentOutputType],
 	pub properties: fn(&DocumentNode, NodeId, &mut NodePropertiesContext) -> Vec<LayoutGroup>,
 }
 
@@ -105,7 +116,10 @@ fn document_node_types() -> Vec<DocumentNodeType> {
 			..Default::default()
 		}),
 		inputs: INPUTS,
-		outputs: &[FrontendGraphDataType::Raster],
+		outputs: &[DocumentOutputType {
+			name: "Image",
+			data_type: FrontendGraphDataType::Raster,
+		}],
 		properties: node_properties::blur_image_properties,
 	};
 	const INPUT_MULTIPLE_INPUTS: &[DocumentInputType] = &[
@@ -143,7 +157,16 @@ fn document_node_types() -> Vec<DocumentNodeType> {
 			..Default::default()
 		}),
 		inputs: INPUT_MULTIPLE_INPUTS,
-		outputs: &[FrontendGraphDataType::Raster, FrontendGraphDataType::Number],
+		outputs: &[
+			DocumentOutputType {
+				name: "Image",
+				data_type: FrontendGraphDataType::Raster,
+			},
+			DocumentOutputType {
+				name: "Transform",
+				data_type: FrontendGraphDataType::Number,
+			},
+		],
 		properties: node_properties::input_properties,
 	};
 	vec.push(input_multiple);
@@ -166,7 +189,7 @@ static STATIC_NODES: &[DocumentNodeType] = &[
 			data_type: FrontendGraphDataType::General,
 			default: NodeInput::node(0, 0),
 		}],
-		outputs: &[FrontendGraphDataType::General],
+		outputs: &[DocumentOutputType::new("Out", FrontendGraphDataType::General)],
 		properties: |_document_node, _node_id, _context| node_properties::string_properties("The identity node simply returns the input"),
 	},
 	DocumentNodeType {
@@ -174,7 +197,7 @@ static STATIC_NODES: &[DocumentNodeType] = &[
 		category: "Ignore",
 		identifier: NodeImplementation::proto("graphene_core::ops::IdNode", &[generic!("T")]),
 		inputs: &[DocumentInputType::new("Image", TaggedValue::Image(Image::empty()), false)],
-		outputs: &[FrontendGraphDataType::Raster],
+		outputs: &[DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
 		properties: |_document_node, _node_id, _context| node_properties::string_properties("A bitmap image embedded in this node"),
 	},
 	DocumentNodeType {
@@ -186,7 +209,7 @@ static STATIC_NODES: &[DocumentNodeType] = &[
 			data_type: FrontendGraphDataType::Raster,
 			default: NodeInput::Network,
 		}],
-		outputs: &[FrontendGraphDataType::Raster],
+		outputs: &[DocumentOutputType::new("Out", FrontendGraphDataType::Raster)],
 		properties: node_properties::input_properties,
 	},
 	DocumentNodeType {
@@ -209,7 +232,7 @@ static STATIC_NODES: &[DocumentNodeType] = &[
 			DocumentInputType::new("Image", TaggedValue::Image(Image::empty()), true),
 			DocumentInputType::new("Transform", TaggedValue::DAffine2(DAffine2::IDENTITY), true),
 		],
-		outputs: &[FrontendGraphDataType::Raster],
+		outputs: &[DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
 		properties: |_document_node, _node_id, _context| node_properties::string_properties("Creates an embedded image with the given transform"),
 	},
 	DocumentNodeType {
@@ -270,7 +293,7 @@ static STATIC_NODES: &[DocumentNodeType] = &[
 				default: NodeInput::value(TaggedValue::F64(50.), false),
 			},
 		],
-		outputs: &[FrontendGraphDataType::Raster],
+		outputs: &[DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
 		properties: node_properties::grayscale_properties,
 	},
 	DocumentNodeType {
@@ -281,7 +304,7 @@ static STATIC_NODES: &[DocumentNodeType] = &[
 			DocumentInputType::new("Image", TaggedValue::Image(Image::empty()), true),
 			DocumentInputType::new("Luma Calculation", TaggedValue::LuminanceCalculation(LuminanceCalculation::SRGB), false),
 		],
-		outputs: &[FrontendGraphDataType::Raster],
+		outputs: &[DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
 		properties: node_properties::luminance_properties,
 	},
 	#[cfg(feature = "gpu")]
@@ -297,7 +320,7 @@ static STATIC_NODES: &[DocumentNodeType] = &[
 				default: NodeInput::value(TaggedValue::String(String::new()), false),
 			},
 		],
-		outputs: &[FrontendGraphDataType::Raster],
+		outputs: &[DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
 		properties: node_properties::gpu_map_properties,
 	},
 	#[cfg(feature = "quantization")]
@@ -322,7 +345,7 @@ static STATIC_NODES: &[DocumentNodeType] = &[
 				default: NodeInput::value(TaggedValue::U32(0), false),
 			},
 		],
-		outputs: &[FrontendGraphDataType::Raster],
+		outputs: &[DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
 		properties: node_properties::quantize_properties,
 	},
 	DocumentNodeType {
@@ -330,7 +353,7 @@ static STATIC_NODES: &[DocumentNodeType] = &[
 		category: "Structural",
 		identifier: NodeImplementation::proto("graphene_std::memo::CacheNode", &[concrete!("Image")]),
 		inputs: &[DocumentInputType::new("Image", TaggedValue::Image(Image::empty()), true)],
-		outputs: &[FrontendGraphDataType::Raster],
+		outputs: &[DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
 		properties: node_properties::no_properties,
 	},
 	DocumentNodeType {
@@ -338,7 +361,7 @@ static STATIC_NODES: &[DocumentNodeType] = &[
 		category: "Image Adjustments",
 		identifier: NodeImplementation::proto("graphene_core::raster::InvertRGBNode", &[concrete!("Image")]),
 		inputs: &[DocumentInputType::new("Image", TaggedValue::Image(Image::empty()), true)],
-		outputs: &[FrontendGraphDataType::Raster],
+		outputs: &[DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
 		properties: node_properties::no_properties,
 	},
 	DocumentNodeType {
@@ -354,7 +377,7 @@ static STATIC_NODES: &[DocumentNodeType] = &[
 			DocumentInputType::new("Saturation Shift", TaggedValue::F64(0.), false),
 			DocumentInputType::new("Lightness Shift", TaggedValue::F64(0.), false),
 		],
-		outputs: &[FrontendGraphDataType::Raster],
+		outputs: &[DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
 		properties: node_properties::adjust_hsl_properties,
 	},
 	DocumentNodeType {
@@ -366,7 +389,7 @@ static STATIC_NODES: &[DocumentNodeType] = &[
 			DocumentInputType::new("Brightness", TaggedValue::F64(0.), false),
 			DocumentInputType::new("Contrast", TaggedValue::F64(0.), false),
 		],
-		outputs: &[FrontendGraphDataType::Raster],
+		outputs: &[DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
 		properties: node_properties::brighten_image_properties,
 	},
 	DocumentNodeType {
@@ -378,7 +401,7 @@ static STATIC_NODES: &[DocumentNodeType] = &[
 			DocumentInputType::new("Luma Calculation", TaggedValue::LuminanceCalculation(LuminanceCalculation::SRGB), false),
 			DocumentInputType::new("Threshold", TaggedValue::F64(50.), false),
 		],
-		outputs: &[FrontendGraphDataType::Raster],
+		outputs: &[DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
 		properties: node_properties::adjust_threshold_properties,
 	},
 	DocumentNodeType {
@@ -389,7 +412,7 @@ static STATIC_NODES: &[DocumentNodeType] = &[
 			DocumentInputType::new("Image", TaggedValue::Image(Image::empty()), true),
 			DocumentInputType::new("Vibrance", TaggedValue::F64(0.), false),
 		],
-		outputs: &[FrontendGraphDataType::Raster],
+		outputs: &[DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
 		properties: node_properties::adjust_vibrance_properties,
 	},
 	DocumentNodeType {
@@ -400,7 +423,7 @@ static STATIC_NODES: &[DocumentNodeType] = &[
 			DocumentInputType::new("Image", TaggedValue::Image(Image::empty()), true),
 			DocumentInputType::new("Factor", TaggedValue::F64(100.), false),
 		],
-		outputs: &[FrontendGraphDataType::Raster],
+		outputs: &[DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
 		properties: node_properties::multiply_opacity,
 	},
 	DocumentNodeType {
@@ -411,7 +434,7 @@ static STATIC_NODES: &[DocumentNodeType] = &[
 			DocumentInputType::new("Image", TaggedValue::Image(Image::empty()), true),
 			DocumentInputType::new("Value", TaggedValue::F64(4.), false),
 		],
-		outputs: &[FrontendGraphDataType::Raster],
+		outputs: &[DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
 		properties: node_properties::posterize_properties,
 	},
 	DocumentNodeType {
@@ -427,7 +450,7 @@ static STATIC_NODES: &[DocumentNodeType] = &[
 			DocumentInputType::new("Offset", TaggedValue::F64(0.), false),
 			DocumentInputType::new("Gamma Correction", TaggedValue::F64(1.), false),
 		],
-		outputs: &[FrontendGraphDataType::Raster],
+		outputs: &[DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
 		properties: node_properties::exposure_properties,
 	},
 	IMAGINATE_NODE,
@@ -439,7 +462,7 @@ static STATIC_NODES: &[DocumentNodeType] = &[
 			DocumentInputType::new("Input", TaggedValue::F64(0.), true),
 			DocumentInputType::new("Addend", TaggedValue::F64(0.), true),
 		],
-		outputs: &[FrontendGraphDataType::Number],
+		outputs: &[DocumentOutputType::new("Output", FrontendGraphDataType::Number)],
 		properties: node_properties::add_properties,
 	},
 	/*DocumentNodeType {
@@ -447,7 +470,7 @@ static STATIC_NODES: &[DocumentNodeType] = &[
 		category: "Vector",
 		identifier: NodeImplementation::proto("graphene_std::vector::generator_nodes::UnitCircleGenerator", &[]),
 		inputs: &[DocumentInputType::none()],
-		outputs: &[FrontendGraphDataType::Subpath],
+		outputs: &[DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
 		properties: node_properties::no_properties,
 	},
 	DocumentNodeType {
@@ -455,7 +478,7 @@ static STATIC_NODES: &[DocumentNodeType] = &[
 		category: "Vector",
 		identifier: NodeImplementation::proto("graphene_std::vector::generator_nodes::UnitSquareGenerator", &[]),
 		inputs: &[DocumentInputType::none()],
-		outputs: &[FrontendGraphDataType::Subpath],
+		outputs: &[DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
 		properties: node_properties::no_properties,
 	},
 	DocumentNodeType {
@@ -467,7 +490,7 @@ static STATIC_NODES: &[DocumentNodeType] = &[
 			data_type: FrontendGraphDataType::Subpath,
 			default: NodeInput::value(TaggedValue::Subpath(Subpath::new()), false),
 		}],
-		outputs: &[FrontendGraphDataType::Subpath],
+		outputs: &[DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
 		properties: node_properties::no_properties,
 	},
 	DocumentNodeType {
@@ -481,7 +504,7 @@ static STATIC_NODES: &[DocumentNodeType] = &[
 			DocumentInputType::new("Scale", TaggedValue::DVec2(DVec2::ONE), false),
 			DocumentInputType::new("Skew", TaggedValue::DVec2(DVec2::ZERO), false),
 		],
-		outputs: &[FrontendGraphDataType::Subpath],
+		outputs: &[DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
 		properties: node_properties::transform_properties,
 	},
 	DocumentNodeType {
@@ -492,7 +515,7 @@ static STATIC_NODES: &[DocumentNodeType] = &[
 			DocumentInputType::new("Image", TaggedValue::Image(Image::empty()), true),
 			DocumentInputType::new("Subpath", TaggedValue::Subpath(Subpath::empty()), true),
 		],
-		outputs: &[FrontendGraphDataType::Raster],
+		outputs: &[DocumentOutputType::new("Vector", FrontendGraphDataType::Raster)],
 		properties: node_properties::no_properties,
 	},*/
 ];
@@ -524,7 +547,7 @@ pub const IMAGINATE_NODE: DocumentNodeType = DocumentNodeType {
 		DocumentInputType::new("Percent Complete", TaggedValue::F64(0.), false),
 		DocumentInputType::new("Status", TaggedValue::ImaginateStatus(ImaginateStatus::Idle), false),
 	],
-	outputs: &[FrontendGraphDataType::Raster],
+	outputs: &[DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
 	properties: node_properties::imaginate_properties,
 };
 

@@ -58,6 +58,13 @@ pub struct NodeGraphInput {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
+pub struct NodeGraphOutput {
+	#[serde(rename = "dataType")]
+	data_type: FrontendGraphDataType,
+	name: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct FrontendNode {
 	pub id: graph_craft::document::NodeId,
 	#[serde(rename = "displayName")]
@@ -66,10 +73,10 @@ pub struct FrontendNode {
 	pub primary_input: Option<FrontendGraphDataType>,
 	#[serde(rename = "exposedInputs")]
 	pub exposed_inputs: Vec<NodeGraphInput>,
-	pub outputs: Vec<FrontendGraphDataType>,
+	pub outputs: Vec<NodeGraphOutput>, // TODO: Break this apart into `primary_output` and `exposed_outputs`
 	pub position: (i32, i32),
 	pub disabled: bool,
-	pub output: bool,
+	pub previewed: bool,
 }
 
 // (link_start, link_end, link_end_input_index)
@@ -310,9 +317,16 @@ impl NodeGraphMessageHandler {
 						name: input_type.name.to_string(),
 					})
 					.collect(),
-				outputs: node_type.outputs.to_vec(),
+				outputs: node_type
+					.outputs
+					.iter()
+					.map(|output_type| NodeGraphOutput {
+						data_type: output_type.data_type,
+						name: output_type.name.to_string(),
+					})
+					.collect(),
 				position: node.metadata.position.into(),
-				output: network.outputs_contains(*id),
+				previewed: network.outputs_contains(*id),
 				disabled: network.disabled.contains(id),
 			})
 		}

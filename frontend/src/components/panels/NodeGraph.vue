@@ -36,7 +36,7 @@
 					v-for="node in nodes"
 					:key="String(node.id)"
 					class="node"
-					:class="{ selected: selected.includes(node.id), output: node.output, disabled: node.disabled }"
+					:class="{ selected: selected.includes(node.id), previewed: node.previewed, disabled: node.disabled }"
 					:style="{
 						'--offset-left': (node.position?.x || 0) + (selected.includes(node.id) ? draggingNodes?.roundX || 0 : 0),
 						'--offset-top': (node.position?.y || 0) + (selected.includes(node.id) ? draggingNodes?.roundY || 0 : 0),
@@ -58,8 +58,8 @@
 								v-if="node.outputs.length > 0"
 								class="output port"
 								data-port="output"
-								:data-datatype="node.outputs[0]"
-								:style="{ '--data-color': `var(--color-data-${node.outputs[0]})`, '--data-color-dim': `var(--color-data-${node.outputs[0]}-dim)` }"
+								:data-datatype="node.outputs[0].dataType"
+								:style="{ '--data-color': `var(--color-data-${node.outputs[0].dataType})`, '--data-color-dim': `var(--color-data-${node.outputs[0].dataType}-dim)` }"
 							>
 								<div></div>
 							</div>
@@ -67,33 +67,32 @@
 						<IconLabel :icon="nodeIcon(node.displayName)" />
 						<TextLabel>{{ node.displayName }}</TextLabel>
 					</div>
-					<div v-if="node.exposedInputs.length > 0 || node.outputs.length > 1" class="arguments">
-						<!-- Note here index is inclusive and starts with an initial value of 1 instead of 0. (probably just to be inconsistant with the rest of the world) -->
-						<div v-for="index in Math.max(node.exposedInputs.length, node.outputs.length - 1)" :key="index" class="argument">
+					<div v-if="[...node.exposedInputs, ...node.outputs.slice(1)].length > 0" class="parameters">
+						<div v-for="(parameter, index) in [...node.exposedInputs, ...node.outputs.slice(1)]" :key="index" class="parameter">
 							<div class="ports">
 								<div
-									v-if="node.exposedInputs.length >= index"
+									v-if="index < node.exposedInputs.length"
 									class="input port"
 									data-port="input"
-									:data-datatype="node.exposedInputs[index - 1].dataType"
+									:data-datatype="parameter.dataType"
 									:style="{
-										'--data-color': `var(--color-data-${node.exposedInputs[index - 1].dataType})`,
-										'--data-color-dim': `var(--color-data-${node.exposedInputs[index - 1].dataType}-dim)`,
+										'--data-color': `var(--color-data-${parameter.dataType})`,
+										'--data-color-dim': `var(--color-data-${parameter.dataType}-dim)`,
 									}"
 								>
 									<div></div>
 								</div>
 								<div
-									v-if="node.outputs.length >= index + 1"
+									v-else
 									class="output port"
 									data-port="output"
-									:data-datatype="node.outputs[index]"
-									:style="{ '--data-color': `var(--color-data-${node.outputs[index]})`, '--data-color-dim': `var(--color-data-${node.outputs[index]}-dim)` }"
+									:data-datatype="parameter.dataType"
+									:style="{ '--data-color': `var(--color-data-${parameter.dataType})`, '--data-color-dim': `var(--color-data-${parameter.dataType}-dim)` }"
 								>
 									<div></div>
 								</div>
 							</div>
-							<TextLabel v-if="node.exposedInputs.length >= index">{{ node.exposedInputs[index - 1].name }}</TextLabel>
+							<TextLabel :class="index < node.exposedInputs.length ? 'name' : 'output'">{{ parameter.name }}</TextLabel>
 						</div>
 					</div>
 				</div>
@@ -222,7 +221,7 @@
 					}
 				}
 
-				&.output {
+				&.previewed {
 					outline: 3px solid var(--color-data-vector);
 				}
 
@@ -245,20 +244,28 @@
 					}
 				}
 
-				.arguments {
+				.parameters {
 					display: flex;
 					flex-direction: column;
 					width: 100%;
 					position: relative;
 
-					.argument {
+					.parameter {
 						position: relative;
 						display: flex;
 						align-items: center;
 						height: 24px;
-						width: 100%;
+						width: calc(100% - 24px * 2);
 						margin-left: 24px;
 						margin-right: 24px;
+
+						.text-label {
+							width: 100%;
+
+							&.output {
+								text-align: right;
+							}
+						}
 					}
 
 					// Squares to cover up the rounded corners of the primary area and make them have a straight edge
@@ -328,8 +335,6 @@
 
 <script lang="ts">
 import { defineComponent, nextTick } from "vue";
-
-// import type { FrontendNode } from "@/wasm-communication/messages";
 
 import type { IconName } from "@/utility-functions/icons";
 

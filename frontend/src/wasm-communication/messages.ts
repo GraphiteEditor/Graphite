@@ -83,6 +83,12 @@ export class NodeGraphInput {
 	readonly name!: string;
 }
 
+export class NodeGraphOutput {
+	readonly dataType!: FrontendGraphDataType;
+
+	readonly name!: string;
+}
+
 export class FrontendNode {
 	readonly id!: bigint;
 
@@ -92,12 +98,12 @@ export class FrontendNode {
 
 	readonly exposedInputs!: NodeGraphInput[];
 
-	readonly outputs!: FrontendGraphDataType[];
+	readonly outputs!: NodeGraphOutput[];
 
 	@TupleToVec2
 	readonly position!: XY | undefined;
 
-	readonly output!: boolean;
+	readonly previewed!: boolean;
 
 	readonly disabled!: boolean;
 }
