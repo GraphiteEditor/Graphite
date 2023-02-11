@@ -9,9 +9,9 @@ fn main() {
 
 	let network = NodeNetwork {
 		inputs: vec![0],
-		output: 0,
+		outputs: vec![NodeOutput::new(0, 0)],
 		disabled: vec![],
-		previous_output: None,
+		previous_outputs: None,
 		nodes: [(
 			0,
 			DocumentNode {
@@ -39,9 +39,9 @@ fn main() {
 fn add_network() -> NodeNetwork {
 	NodeNetwork {
 		inputs: vec![0, 0],
-		output: 1,
+		outputs: vec![NodeOutput::new(1, 0)],
 		disabled: vec![],
-		previous_output: None,
+		previous_outputs: None,
 		nodes: [
 			(
 				0,
@@ -56,7 +56,7 @@ fn add_network() -> NodeNetwork {
 				1,
 				DocumentNode {
 					name: "Add".into(),
-					inputs: vec![NodeInput::Node(0)],
+					inputs: vec![NodeInput::node(0, 0)],
 					metadata: DocumentNodeMetadata::default(),
 					implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::AddNode", &[generic!("T"), generic!("U")])),
 				},

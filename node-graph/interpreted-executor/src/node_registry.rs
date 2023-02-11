@@ -1,3 +1,4 @@
+use glam::DAffine2;
 use graphene_core::ops::{CloneNode, IdNode, TypeNode};
 use graphene_core::raster::color::Color;
 use graphene_core::raster::*;
@@ -83,7 +84,7 @@ static NODE_REGISTRY: &[(NodeIdentifier, NodeConstructor)] = &[
 	(
 		NodeIdentifier::new("graphene_std::raster::ImaginateNode<_>", &[concrete!("Image"), concrete!("Option<std::sync::Arc<Image>>")]),
 		|args| {
-			let cached = graphene_std::any::input_node::<Option<std::sync::Arc<Image>>>(args[15]);
+			let cached = graphene_std::any::input_node::<Option<std::sync::Arc<Image>>>(args[16]);
 			let node = graphene_std::raster::ImaginateNode::new(cached);
 			let any = DynAnyNode::new(ValueNode::new(node));
 			any.into_type_erased()
@@ -126,6 +127,7 @@ static NODE_REGISTRY: &[(NodeIdentifier, NodeConstructor)] = &[
 		any.into_type_erased()
 	}),
 	register_node!(graphene_core::structural::ConsNode<_, _>, input: Image, params: [&str]),
+	register_node!(graphene_std::raster::ImageFrameNode<_>, input: Image, params: [DAffine2]),
 	/*
 		(NodeIdentifier::new("graphene_std::raster::ImageNode", &[concrete!("&str")]), |_proto_node, stack| {
 			stack.push_fn(|_nodes| {

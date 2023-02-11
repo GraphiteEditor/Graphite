@@ -52,7 +52,7 @@ mod tests {
 		fn add_network() -> NodeNetwork {
 			NodeNetwork {
 				inputs: vec![0, 0],
-				output: 1,
+				outputs: vec![NodeOutput::new(1, 0)],
 				nodes: [
 					(
 						0,
@@ -67,7 +67,7 @@ mod tests {
 						1,
 						DocumentNode {
 							name: "Add".into(),
-							inputs: vec![NodeInput::Node(0)],
+							inputs: vec![NodeInput::node(0, 0)],
 							implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::AddNode", &[concrete!("(u32, u32)")])),
 							metadata: DocumentNodeMetadata::default(),
 						},
@@ -81,7 +81,7 @@ mod tests {
 
 		let network = NodeNetwork {
 			inputs: vec![0],
-			output: 0,
+			outputs: vec![NodeOutput::new(0, 0)],
 			nodes: [(
 				0,
 				DocumentNode {
@@ -106,7 +106,7 @@ mod tests {
 		use graph_craft::executor::{Compiler, Executor};
 
 		let compiler = Compiler {};
-		let protograph = compiler.compile(network, true);
+		let protograph = compiler.compile_single(network, true).expect("Graph should be generated");
 
 		let exec = DynamicExecutor::new(protograph);
 

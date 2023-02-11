@@ -28,6 +28,7 @@ impl<'a> MessageHandler<PropertiesPanelMessage, (&PersistentData, PropertiesPane
 			artboard_document,
 			selected_layers,
 			node_graph_message_handler,
+			executor,
 		} = data;
 		let get_document = |document_selector: TargetDocument| match document_selector {
 			TargetDocument::Artboard => artboard_document,
@@ -166,7 +167,7 @@ impl<'a> MessageHandler<PropertiesPanelMessage, (&PersistentData, PropertiesPane
 					let layer = document.layer(&path).unwrap();
 					match target_document {
 						TargetDocument::Artboard => register_artboard_layer_properties(layer, responses, persistent_data),
-						TargetDocument::Artwork => register_artwork_layer_properties(document, path, layer, responses, persistent_data, node_graph_message_handler),
+						TargetDocument::Artwork => register_artwork_layer_properties(document, path, layer, responses, persistent_data, node_graph_message_handler, executor),
 					}
 				}
 			}

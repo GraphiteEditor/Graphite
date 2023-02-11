@@ -275,7 +275,6 @@ mod test {
 	pub fn map_result() {
 		let value: ClonedNode<Result<&u32, ()>> = ClonedNode(Ok(&4u32));
 		assert_eq!(value.eval(()), Ok(&4u32));
-		static clone: &CloneNode<u32> = &CloneNode::new();
 		//let type_erased_clone = clone as &dyn for<'a> Node<'a, &'a u32, Output = u32>;
 		let map_result = MapResultNode::new(ValueNode::new(FnNode::new(|x: &u32| x.clone())));
 		//et type_erased = &map_result as &dyn for<'a> Node<'a, Result<&'a u32, ()>, Output = Result<u32, ()>>;

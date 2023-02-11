@@ -6,7 +6,7 @@ use document_legacy::layers::layer_info::LayerDataTypeDiscriminant;
 use document_legacy::Operation;
 use glam::DVec2;
 use graph_craft::document::value::TaggedValue;
-use graph_craft::document::{generate_uuid, DocumentNode, NodeId, NodeInput};
+use graph_craft::document::{DocumentNode, NodeId, NodeInput};
 use graph_craft::imaginate_input::*;
 use graphene_core::raster::{Color, LuminanceCalculation};
 
@@ -407,10 +407,10 @@ pub fn _transform_properties(document_node: &DocumentNode, node_id: NodeId, _con
 
 pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let imaginate_node = [context.nested_path, &[node_id]].concat();
-	let imaginate_node_1 = imaginate_node.clone();
 	let layer_path = context.layer_path.to_vec();
 
 	let resolve_input = |name: &str| IMAGINATE_NODE.inputs.iter().position(|input| input.name == name).unwrap_or_else(|| panic!("Input {name} not found"));
+	let transform_index = resolve_input("Transform");
 	let seed_index = resolve_input("Seed");
 	let resolution_index = resolve_input("Resolution");
 	let samples_index = resolve_input("Samples");
@@ -478,6 +478,9 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 	} else {
 		true
 	};
+
+	let transform_not_connected = matches!(document_node.inputs[transform_index], NodeInput::Value { .. });
+
 	let progress = {
 		// Since we don't serialize the status, we need to derive from other state whether the Idle state is actually supposed to be the Terminated state
 		let mut interpreted_status = imaginate_status;
@@ -527,12 +530,15 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 				widgets.push(
 					TextButton::new("Terminate")
 						.tooltip("Cancel the in-progress image generation and keep the latest progress")
-						.on_update(move |_| {
-							DocumentMessage::NodeGraphFrameImaginateTerminate {
-								layer_path: layer_path.clone(),
-								node_path: imaginate_node.clone(),
+						.on_update({
+							let imaginate_node = imaginate_node.clone();
+							move |_| {
+								DocumentMessage::NodeGraphFrameImaginateTerminate {
+									layer_path: layer_path.clone(),
+									node_path: imaginate_node.clone(),
+								}
+								.into()
 							}
-							.into()
 						})
 						.widget_holder(),
 				);
@@ -549,21 +555,28 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 			ImaginateStatus::Idle | ImaginateStatus::Terminated => widgets.extend_from_slice(&[
 				IconButton::new("Random", 24)
 					.tooltip("Generate with a new random seed")
-					.on_update(move |_| {
-						DocumentMessage::NodeGraphFrameImaginateRandom {
-							imaginate_node: imaginate_node.clone(),
+					.on_update({
+						let imaginate_node = imaginate_node.clone();
+						move |_| {
+							DocumentMessage::NodeGraphFrameImaginateRandom {
+								imaginate_node: imaginate_node.clone(),
+								then_generate: true,
+							}
+							.into()
 						}
-						.into()
 					})
 					.widget_holder(),
 				WidgetHolder::unrelated_separator(),
 				TextButton::new("Generate")
 					.tooltip("Fill layer frame by generating a new image")
-					.on_update(move |_| {
-						DocumentMessage::NodeGraphFrameImaginate {
-							imaginate_node: imaginate_node_1.clone(),
+					.on_update({
+						let imaginate_node = imaginate_node.clone();
+						move |_| {
+							DocumentMessage::NodeGraphFrameImaginate {
+								imaginate_node: imaginate_node.clone(),
+							}
+							.into()
 						}
-						.into()
 					})
 					.widget_holder(),
 				WidgetHolder::related_separator(),
@@ -590,7 +603,16 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 				WidgetHolder::unrelated_separator(),
 				IconButton::new("Regenerate", 24)
 					.tooltip("Set a new random seed")
-					.on_update(update_value(move |_| TaggedValue::F64((generate_uuid() >> 1) as f64), node_id, seed_index))
+					.on_update({
+						let imaginate_node = imaginate_node.clone();
+						move |_| {
+							DocumentMessage::NodeGraphFrameImaginateRandom {
+								imaginate_node: imaginate_node.clone(),
+								then_generate: false,
+							}
+							.into()
+						}
+					})
 					.widget_holder(),
 				WidgetHolder::unrelated_separator(),
 				NumberInput::new(Some(seed))
@@ -603,6 +625,16 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 		// Note: Limited by f64. You cannot even have all the possible u64 values :)
 		LayoutGroup::Row { widgets }.with_tooltip("Seed determines the random outcome, enabling limitless unique variations")
 	};
+
+	// Get the existing layer transform
+	let transform = context.document.root.transform.inverse() * context.document.multiply_transforms(context.layer_path).unwrap();
+	// Create the input to the graph using an empty image
+	let image_frame = std::borrow::Cow::Owned(graphene_core::raster::ImageFrame {
+		image: graphene_core::raster::Image::empty(),
+		transform,
+	});
+	// Compute the transform input to the node graph frame
+	let transform: glam::DAffine2 = context.executor.compute_input(context.network, &imaginate_node, 1, image_frame).unwrap_or_default();
 
 	let resolution = {
 		use document_legacy::document::pick_safe_imaginate_resolution;
@@ -621,7 +653,6 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 		{
 			let dimensions_is_auto = vec2.is_none();
 			let vec2 = vec2.unwrap_or_else(|| {
-				let transform = context.document.root.transform.inverse() * context.document.multiply_transforms(context.layer_path).unwrap();
 				let w = transform.transform_vector2(DVec2::new(1., 0.)).length();
 				let h = transform.transform_vector2(DVec2::new(0., 1.)).length();
 
@@ -644,9 +675,21 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 					})
 					.widget_holder(),
 				WidgetHolder::unrelated_separator(),
-				CheckboxInput::new(!dimensions_is_auto)
+				CheckboxInput::new(!dimensions_is_auto || transform_not_connected)
 					.icon("Edit")
-					.tooltip("Set a custom resolution instead of using the frame's rounded dimensions")
+					.tooltip({
+						let message = "Set a custom resolution instead of using the frame's rounded dimensions";
+						let manual_message = "Set a custom resolution instead of using the frame's rounded dimensions.\n\
+							\n\
+							(Resolution must be set manually while the 'Transform' input is disconnected.)";
+
+						if transform_not_connected {
+							manual_message
+						} else {
+							message
+						}
+					})
+					.disabled(transform_not_connected)
 					.on_update(update_value(
 						move |checkbox_input: &CheckboxInput| {
 							if checkbox_input.checked {
@@ -663,7 +706,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 				NumberInput::new(Some(vec2.x))
 					.label("W")
 					.unit(" px")
-					.disabled(dimensions_is_auto)
+					.disabled(dimensions_is_auto && !transform_not_connected)
 					.on_update(update_value(
 						move |number_input: &NumberInput| TaggedValue::OptionalDVec2(round(DVec2::new(number_input.value.unwrap(), vec2.y))),
 						node_id,
@@ -674,7 +717,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 				NumberInput::new(Some(vec2.y))
 					.label("H")
 					.unit(" px")
-					.disabled(dimensions_is_auto)
+					.disabled(dimensions_is_auto && !transform_not_connected)
 					.on_update(update_value(
 						move |number_input: &NumberInput| TaggedValue::OptionalDVec2(round(DVec2::new(vec2.x, number_input.value.unwrap()))),
 						node_id,
@@ -778,18 +821,22 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 			let layer_reference_input_layer_name = layer_reference_input_layer.as_ref().map(|(layer_name, _)| layer_name);
 			let layer_reference_input_layer_type = layer_reference_input_layer.as_ref().map(|(_, layer_type)| layer_type);
 
-			widgets.extend_from_slice(&[
-				WidgetHolder::unrelated_separator(),
-				LayerReferenceInput::new(layer_path.clone(), layer_reference_input_layer_name.cloned(), layer_reference_input_layer_type.cloned())
-					.disabled(!use_base_image)
-					.on_update(update_value(|input: &LayerReferenceInput| TaggedValue::LayerPath(input.value.clone()), node_id, mask_index))
-					.widget_holder(),
-			]);
+			widgets.push(WidgetHolder::unrelated_separator());
+			if !transform_not_connected {
+				widgets.push(
+					LayerReferenceInput::new(layer_path.clone(), layer_reference_input_layer_name.cloned(), layer_reference_input_layer_type.cloned())
+						.disabled(!use_base_image)
+						.on_update(update_value(|input: &LayerReferenceInput| TaggedValue::LayerPath(input.value.clone()), node_id, mask_index))
+						.widget_holder(),
+				);
+			} else {
+				widgets.push(TextLabel::new("Requires Transform Input").italic(true).widget_holder());
+			}
 		}
 		LayoutGroup::Row { widgets }.with_tooltip(
 			"Reference to a layer or folder which masks parts of the input image. Image generation is constrained to masked areas.\n\
 			\n\
-			Black shapes represent the masked regions. Lighter shades of gray act as a partial mask, and colors become grayscale.",
+			Black shapes represent the masked regions. Lighter shades of gray act as a partial mask, and colors become grayscale. (This is the reverse of traditional masks because it is easier to draw black shapes; this will be changed later when the mask input is a bitmap.)",
 		)
 	};
 
