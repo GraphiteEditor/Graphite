@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 pub struct PreferencesMessageHandler {
 	pub imaginate_server_hostname: String,
 	pub imaginate_refresh_frequency: f64,
+	pub use_scroll_as_zoom: bool,
 }
 
 impl Default for PreferencesMessageHandler {
@@ -13,6 +14,7 @@ impl Default for PreferencesMessageHandler {
 		Self {
 			imaginate_server_hostname: "http://localhost:7860/".into(),
 			imaginate_refresh_frequency: 1.,
+			use_scroll_as_zoom: false,
 		}
 	}
 }
