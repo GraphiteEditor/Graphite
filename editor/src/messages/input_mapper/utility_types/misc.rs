@@ -27,12 +27,12 @@ impl Mapping {
 		list.match_mapping(keyboard_state, actions)
 	}
 
-	pub fn delete(&mut self, target_entry: &MappingEntry) {
+	pub fn remove(&mut self, target_entry: &MappingEntry) {
 		let list = self.associated_entries_mut(&target_entry.input);
 		list.remove(target_entry);
 	}
 
-	pub fn create(&mut self, new_entry: MappingEntry) {
+	pub fn add(&mut self, new_entry: MappingEntry) {
 		let list = self.associated_entries_mut(&new_entry.input);
 		list.push(new_entry);
 	}

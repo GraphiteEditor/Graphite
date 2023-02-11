@@ -344,29 +344,32 @@ pub fn scroll_as_zoom() -> Mapping {
 
 	let mut mapping = default_mapping();
 
-	for entry in [
+	let remove = [
 		entry!(WheelScroll; modifiers=[Control], action_dispatch=NavigationMessage::WheelCanvasZoom),
 		entry!(WheelScroll; modifiers=[Shift], action_dispatch=NavigationMessage::WheelCanvasTranslate { use_y_as_x: true }),
 		entry!(WheelScroll; action_dispatch=NavigationMessage::WheelCanvasTranslate { use_y_as_x: false }),
-	]
-	.into_iter()
-	.flat_map(|inner| inner.iter())
-	.flat_map(|inner| inner.iter())
-	{
-		mapping.delete(entry);
-	}
-
-	for entry in [
+	];
+	let add = [
 		entry!(WheelScroll; modifiers=[Control], action_dispatch=NavigationMessage::WheelCanvasTranslate { use_y_as_x: true }),
 		entry!(WheelScroll; modifiers=[Shift], action_dispatch=NavigationMessage::WheelCanvasTranslate { use_y_as_x: false }),
 		entry!(WheelScroll; action_dispatch=NavigationMessage::WheelCanvasZoom),
-	]
-	.into_iter()
-	.flat_map(|inner| inner.iter())
-	.flat_map(|inner| inner.iter())
-	{
-		mapping.create(entry.clone());
-	}
+	];
+
+	apply_mapping_patch(&mut mapping, remove, add);
 
 	mapping
+}
+
+fn apply_mapping_patch<'a, const N: usize, const M: usize, const X: usize, const Y: usize>(
+	mapping: &mut Mapping,
+	remove: impl IntoIterator<Item = &'a [&'a [MappingEntry; N]; M]>,
+	add: impl IntoIterator<Item = &'a [&'a [MappingEntry; X]; Y]>,
+) {
+	for entry in remove.into_iter().flat_map(|inner| inner.iter()).flat_map(|inner| inner.iter()) {
+		mapping.remove(entry);
+	}
+
+	for entry in add.into_iter().flat_map(|inner| inner.iter()).flat_map(|inner| inner.iter()) {
+		mapping.add(entry.clone());
+	}
 }
