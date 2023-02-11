@@ -323,7 +323,7 @@ mod image {
 			Image { width, height, data }
 		}
 
-		/// Flattens each channel casted to a u8
+		/// Flattens each channel cast to a u8
 		pub fn as_flat_u8(self) -> (Vec<u8>, u32, u32) {
 			let Image { width, height, data } = self;
 

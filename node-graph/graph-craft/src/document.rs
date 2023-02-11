@@ -213,7 +213,7 @@ pub struct NodeNetwork {
 	pub nodes: HashMap<NodeId, DocumentNode>,
 	/// These nodes are replaced with identity nodes when flattening
 	pub disabled: Vec<NodeId>,
-	/// In the case where a new node is chosen as output - what was the origional
+	/// In the case where a new node is chosen as output - what was the original
 	pub previous_outputs: Option<Vec<NodeOutput>>,
 }
 
@@ -249,7 +249,7 @@ impl NodeNetwork {
 		outwards_links
 	}
 
-	/// When a node has multiple outputs, we actually just duplicate the node and evaluate each output seperatly
+	/// When a node has multiple outputs, we actually just duplicate the node and evaluate each output separately
 	pub fn duplicate_outputs(&mut self, mut gen_id: &mut impl FnMut() -> NodeId) {
 		let mut duplicating_nodes = HashMap::new();
 		// Find the nodes where the inputs require duplicating
@@ -260,7 +260,7 @@ impl NodeNetwork {
 			}
 
 			for input in &mut node.inputs {
-				let &mut NodeInput::Node { node_id, output_index}= input else {
+				let &mut NodeInput::Node { node_id, output_index} = input else {
 					continue;
 				};
 				// Use the initial node when getting the first output
@@ -285,11 +285,11 @@ impl NodeNetwork {
 			*network_output = NodeOutput::new(duplicated_node_id, 0);
 		}
 		// Duplicate the nodes
-		for ((origional_node_id, output_index), new_node_id) in duplicating_nodes {
-			let Some(origional_node) = self.nodes.get(&origional_node_id) else {
+		for ((original_node_id, output_index), new_node_id) in duplicating_nodes {
+			let Some(original_node) = self.nodes.get(&original_node_id) else {
 				continue;
 			};
-			let mut new_node = origional_node.clone();
+			let mut new_node = original_node.clone();
 			// Update the required outputs from a nested network to be just the relevant output
 			if let DocumentNodeImplementation::Network(network) = &mut new_node.implementation {
 				if network.outputs.is_empty() {
@@ -535,17 +535,17 @@ impl NodeNetwork {
 	}
 
 	/// Is the node being used directly as an output?
-	pub fn outputs_contains(&self, node_id: NodeId) -> bool {
+	pub fn outputs_contain(&self, node_id: NodeId) -> bool {
 		self.outputs.iter().any(|output| output.node_id == node_id)
 	}
 
-	/// Is the node being used directly as an origional output?
-	pub fn origional_outputs_contains(&self, node_id: NodeId) -> bool {
+	/// Is the node being used directly as an original output?
+	pub fn original_outputs_contain(&self, node_id: NodeId) -> bool {
 		self.original_outputs().iter().any(|output| output.node_id == node_id)
 	}
 
 	/// Is the node being used directly as a previous output?
-	pub fn previous_outputs_contains(&self, node_id: NodeId) -> Option<bool> {
+	pub fn previous_outputs_contain(&self, node_id: NodeId) -> Option<bool> {
 		self.previous_outputs.as_ref().map(|outputs| outputs.iter().any(|output| output.node_id == node_id))
 	}
 }
@@ -854,7 +854,7 @@ mod test {
 	fn out_of_order_duplicate() {
 		let result = output_duplicate(vec![NodeOutput::new(10, 1), NodeOutput::new(10, 0)], NodeInput::node(10, 0));
 		assert_eq!(result.outputs[0], NodeOutput::new(101, 0), "The first network output should be from a duplicated nested network");
-		assert_eq!(result.outputs[1], NodeOutput::new(10, 0), "The second network output should be from the origional nested network");
+		assert_eq!(result.outputs[1], NodeOutput::new(10, 0), "The second network output should be from the original nested network");
 		assert!(
 			result.nodes.contains_key(&10) && result.nodes.contains_key(&101) && result.nodes.len() == 2,
 			"Network should contain two duplicated nodes"

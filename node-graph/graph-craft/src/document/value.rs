@@ -74,43 +74,43 @@ impl Hash for TaggedValue {
 				m.to_cols_array().iter().for_each(|x| x.to_bits().hash(state))
 			}
 			Self::Image(i) => {
-				9.hash(state);
-				i.hash(state)
-			}
-			Self::RcImage(i) => {
 				10.hash(state);
 				i.hash(state)
 			}
-			Self::Color(c) => {
+			Self::RcImage(i) => {
 				11.hash(state);
+				i.hash(state)
+			}
+			Self::Color(c) => {
+				12.hash(state);
 				c.hash(state)
 			}
 			Self::Subpath(s) => {
-				12.hash(state);
-				s.hash(state)
-			}
-			Self::RcSubpath(s) => {
 				13.hash(state);
 				s.hash(state)
 			}
-			Self::LuminanceCalculation(l) => {
+			Self::RcSubpath(s) => {
 				14.hash(state);
+				s.hash(state)
+			}
+			Self::LuminanceCalculation(l) => {
+				15.hash(state);
 				l.hash(state)
 			}
 			Self::ImaginateSamplingMethod(m) => {
-				15.hash(state);
+				16.hash(state);
 				m.hash(state)
 			}
 			Self::ImaginateMaskStartingFill(f) => {
-				16.hash(state);
+				17.hash(state);
 				f.hash(state)
 			}
 			Self::ImaginateStatus(s) => {
-				17.hash(state);
+				18.hash(state);
 				s.hash(state)
 			}
 			Self::LayerPath(p) => {
-				18.hash(state);
+				19.hash(state);
 				p.hash(state)
 			}
 		}

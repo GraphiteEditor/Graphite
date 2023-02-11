@@ -185,7 +185,7 @@ impl NodeGraphMessageHandler {
 			let mut widgets = Vec::new();
 
 			// Don't allow disabling input or output nodes
-			let mut selected_nodes = self.selected_nodes.iter().filter(|&&id| !network.inputs.contains(&id) && !network.origional_outputs_contains(id));
+			let mut selected_nodes = self.selected_nodes.iter().filter(|&&id| !network.inputs.contains(&id) && !network.original_outputs_contain(id));
 
 			// If there is at least one other selected node then show the hide or show button
 			if selected_nodes.next().is_some() {
@@ -208,10 +208,10 @@ impl NodeGraphMessageHandler {
 			if self.selected_nodes.len() == 1 {
 				let node_id = self.selected_nodes[0];
 				// Is this node the current output
-				let is_output = network.outputs_contains(node_id);
+				let is_output = network.outputs_contain(node_id);
 
 				// Don't show stop previewing button on the original output node
-				if !(is_output && network.previous_outputs_contains(node_id).unwrap_or(true)) {
+				if !(is_output && network.previous_outputs_contain(node_id).unwrap_or(true)) {
 					let output_button = WidgetHolder::new(Widget::TextButton(TextButton {
 						label: if is_output { "End Preview" } else { "Preview" }.to_string(),
 						tooltip: if is_output { "Restore preview to Output node" } else { "Preview node" }.to_string() + " (Shortcut: Alt-click node)",
@@ -326,7 +326,7 @@ impl NodeGraphMessageHandler {
 					})
 					.collect(),
 				position: node.metadata.position.into(),
-				previewed: network.outputs_contains(*id),
+				previewed: network.outputs_contain(*id),
 				disabled: network.disabled.contains(id),
 			})
 		}
@@ -349,7 +349,7 @@ impl NodeGraphMessageHandler {
 			warn!("Deleting input node");
 			return false;
 		}
-		if network.outputs_contains(deleting_node_id) {
+		if network.outputs_contain(deleting_node_id) {
 			warn!("Deleting the output node!");
 			return false;
 		}
@@ -358,7 +358,7 @@ impl NodeGraphMessageHandler {
 				continue;
 			}
 			for (input_index, input) in node.inputs.iter_mut().enumerate() {
-				let NodeInput::Node{node_id,..}= input else {
+				let NodeInput::Node{ node_id, .. } = input else {
 					continue;
 				};
 				if *node_id != deleting_node_id {
@@ -402,7 +402,7 @@ impl NodeGraphMessageHandler {
 	fn copy_nodes<'a>(network: &'a NodeNetwork, new_ids: &'a HashMap<NodeId, NodeId>) -> impl Iterator<Item = (NodeId, DocumentNode)> + 'a {
 		new_ids
 			.iter()
-			.filter(|&(&id, _)| !network.outputs_contains(id) && !network.inputs.contains(&id))
+			.filter(|&(&id, _)| !network.outputs_contain(id) && !network.inputs.contains(&id))
 			.filter_map(|(&id, &new)| network.nodes.get(&id).map(|node| (new, node.clone())))
 			.map(move |(new, node)| (new, node.map_ids(Self::default_node_input, new_ids)))
 	}
@@ -857,7 +857,7 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &mut dyn Iterator<Item = &
 			NodeGraphMessage::TogglePreviewImpl { node_id } => {
 				if let Some(network) = self.get_active_network_mut(document) {
 					// Check if the node is not already being previewed
-					if !network.outputs_contains(node_id) {
+					if !network.outputs_contain(node_id) {
 						network.previous_outputs = Some(network.previous_outputs.to_owned().unwrap_or_else(|| network.outputs.clone()));
 						network.outputs[0] = NodeOutput::new(node_id, 0);
 					} else if let Some(outputs) = network.previous_outputs.take() {
