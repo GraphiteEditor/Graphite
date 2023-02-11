@@ -243,18 +243,9 @@ impl Color {
 		let max = self.red.max(self.green).max(self.blue);
 		let mid = self.red + self.green + self.blue - min - max;
 
-		let mut new_min = min;
-		let mut new_max = max;
-		let mut new_mid = mid;
-
-		if max > min {
-			new_mid = ((mid - min) * saturation) / (max - min);
-			new_max = saturation;
-		} else {
-			new_mid = 0.;
-			new_max = 0.;
-		}
-		new_min = 0.;
+		let new_min = 0.0;
+		let new_max = if max > min { saturation } else { 0.0 };
+		let new_mid = if max > min { ((mid - min) * saturation) / (max - min) } else { 0.0 };
 
 		self.map_rgb(|c| {
 			if c == min {
@@ -265,20 +256,6 @@ impl Color {
 				new_mid
 			}
 		})
-	}
-
-	pub fn blend_rgba<F>(&self, other: Color, opacity: f32, f: F) -> Color
-	where
-		F: Fn(f32, f32) -> f32,
-	{
-		Color {
-			red: f(self.red, other.red).clamp(0., 1.),
-			green: f(self.green, other.green).clamp(0., 1.),
-			blue: f(self.blue, other.blue).clamp(0., 1.),
-			alpha: f(self.alpha, other.alpha).clamp(0., 1.),
-		}
-		.lerp(*self, 1. - opacity)
-		.unwrap()
 	}
 
 	pub fn blend_normal(_c_b: f32, c_s: f32) -> f32 {
@@ -394,29 +371,29 @@ impl Color {
 		}
 	}
 
-	pub fn blend_hue(&self, c_s: Color, opacity: f32) -> Color {
+	pub fn blend_hue(&self, c_s: Color) -> Color {
 		let sat_b = self.saturation();
 		let lum_b = self.luminance_rec_601();
-		c_s.with_saturation(sat_b).with_luminance(lum_b).lerp(*self, opacity).unwrap()
+		c_s.with_saturation(sat_b).with_luminance(lum_b)
 	}
 
-	pub fn blend_saturation(&self, c_s: Color, opacity: f32) -> Color {
+	pub fn blend_saturation(&self, c_s: Color) -> Color {
 		let sat_s = c_s.saturation();
 		let lum_b = self.luminance_rec_601();
 
-		self.with_saturation(sat_s).with_luminance(lum_b).lerp(*self, opacity).unwrap()
+		self.with_saturation(sat_s).with_luminance(lum_b)
 	}
 
-	pub fn blend_color(&self, c_s: Color, opacity: f32) -> Color {
+	pub fn blend_color(&self, c_s: Color) -> Color {
 		let lum_b = self.luminance_rec_601();
 
-		c_s.with_luminance(lum_b).lerp(*self, opacity).unwrap().lerp(*self, opacity).unwrap()
+		c_s.with_luminance(lum_b)
 	}
 
-	pub fn blend_luminosity(&self, c_s: Color, opacity: f32) -> Color {
+	pub fn blend_luminosity(&self, c_s: Color) -> Color {
 		let lum_s = c_s.luminance_rec_601();
 
-		self.with_luminance(lum_s).lerp(*self, opacity).unwrap().lerp(*self, opacity).unwrap()
+		self.with_luminance(lum_s)
 	}
 
 	/// Return the all components as a tuple, first component is red, followed by green, followed by blue, followed by alpha.
@@ -605,7 +582,7 @@ impl Color {
 	pub fn map_rgb<F: Fn(f32) -> f32>(&self, f: F) -> Self {
 		Self::from_rgbaf32_unchecked(f(self.r()), f(self.g()), f(self.b()), self.a())
 	}
-	pub fn blend_rgb<F: Fn(f32, f32) -> f32>(&self, other: Color, opacity: f32, f: F) -> Self {
+	pub fn blend_rgb<F: Fn(f32, f32) -> f32>(&self, other: Color, f: F) -> Self {
 		let color = Color {
 			red: f(self.red, other.red),
 			green: f(self.green, other.green),
@@ -616,13 +593,11 @@ impl Color {
 			debug!("{} {} {} {}", color.red, color.green, color.blue, color.alpha);
 		}
 		Color {
-			red: f(self.red, other.red),
-			green: f(self.green, other.green),
-			blue: f(self.blue, other.blue),
+			red: f(self.red, other.red).clamp(0., 1.),
+			green: f(self.green, other.green).clamp(0., 1.),
+			blue: f(self.blue, other.blue).clamp(0., 1.),
 			alpha: self.alpha,
 		}
-		.lerp(*self, 1. - opacity)
-		.unwrap()
 	}
 }
 

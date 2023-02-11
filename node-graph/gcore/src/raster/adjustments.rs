@@ -321,39 +321,41 @@ pub struct BlendNode<SourceColor, BlendMode, Opacity> {
 
 #[node_macro::node_fn(BlendNode)]
 fn blend_node(backdrop: Color, source_color: Color, blend_mode: BlendMode, opacity: f64) -> Color {
-	let actual_opacity = 1. - (opacity / 100.) as f32;
+	let actual_opacity = (opacity / 100.) as f32;
 	return match blend_mode {
-		BlendMode::Normal => backdrop.blend_rgb(source_color, actual_opacity, Color::blend_normal),
-		BlendMode::Multiply => backdrop.blend_rgb(source_color, actual_opacity, Color::blend_multiply),
-		BlendMode::Darken => backdrop.blend_rgb(source_color, actual_opacity, Color::blend_darken),
-		BlendMode::ColorBurn => backdrop.blend_rgb(source_color, actual_opacity, Color::blend_color_burn),
-		BlendMode::LinearBurn => backdrop.blend_rgb(source_color, actual_opacity, Color::blend_linear_burn),
+		BlendMode::Normal => backdrop.blend_rgb(source_color, Color::blend_normal),
+		BlendMode::Multiply => backdrop.blend_rgb(source_color, Color::blend_multiply),
+		BlendMode::Darken => backdrop.blend_rgb(source_color, Color::blend_darken),
+		BlendMode::ColorBurn => backdrop.blend_rgb(source_color, Color::blend_color_burn),
+		BlendMode::LinearBurn => backdrop.blend_rgb(source_color, Color::blend_linear_burn),
 		BlendMode::DarkerColor => backdrop,
 
-		BlendMode::Screen => backdrop.blend_rgb(source_color, actual_opacity, Color::blend_screen),
-		BlendMode::Lighten => backdrop.blend_rgb(source_color, actual_opacity, Color::blend_lighten),
-		BlendMode::ColorDodge => backdrop.blend_rgb(source_color, actual_opacity, Color::blend_color_dodge),
-		BlendMode::LinearDodge => backdrop.blend_rgb(source_color, actual_opacity, Color::blend_linear_dodge),
+		BlendMode::Screen => backdrop.blend_rgb(source_color, Color::blend_screen),
+		BlendMode::Lighten => backdrop.blend_rgb(source_color, Color::blend_lighten),
+		BlendMode::ColorDodge => backdrop.blend_rgb(source_color, Color::blend_color_dodge),
+		BlendMode::LinearDodge => backdrop.blend_rgb(source_color, Color::blend_linear_dodge),
 		BlendMode::LighterColor => backdrop,
 
-		BlendMode::Overlay => source_color.blend_rgb(backdrop, actual_opacity, Color::blend_hardlight),
-		BlendMode::SoftLight => backdrop.blend_rgb(source_color, actual_opacity, Color::blend_softlight),
-		BlendMode::HardLight => backdrop.blend_rgb(source_color, actual_opacity, Color::blend_hardlight),
-		BlendMode::VividLight => backdrop.blend_rgb(source_color, actual_opacity, Color::blend_vivid_light),
-		BlendMode::LinearLight => backdrop.blend_rgb(source_color, actual_opacity, Color::blend_linear_light),
-		BlendMode::PinLight => backdrop.blend_rgb(source_color, actual_opacity, Color::blend_pin_light),
-		BlendMode::HardMix => backdrop.blend_rgb(source_color, actual_opacity, Color::blend_hard_mix),
+		BlendMode::Overlay => source_color.blend_rgb(backdrop, Color::blend_hardlight),
+		BlendMode::SoftLight => backdrop.blend_rgb(source_color, Color::blend_softlight),
+		BlendMode::HardLight => backdrop.blend_rgb(source_color, Color::blend_hardlight),
+		BlendMode::VividLight => backdrop.blend_rgb(source_color, Color::blend_vivid_light),
+		BlendMode::LinearLight => backdrop.blend_rgb(source_color, Color::blend_linear_light),
+		BlendMode::PinLight => backdrop.blend_rgb(source_color, Color::blend_pin_light),
+		BlendMode::HardMix => backdrop.blend_rgb(source_color, Color::blend_hard_mix),
 
-		BlendMode::Difference => backdrop.blend_rgb(source_color, actual_opacity, Color::blend_exclusion),
-		BlendMode::Exclusion => backdrop.blend_rgb(source_color, actual_opacity, Color::blend_exclusion),
-		BlendMode::Subtract => backdrop.blend_rgb(source_color, actual_opacity, Color::blend_subtract),
-		BlendMode::Divide => backdrop.blend_rgb(source_color, actual_opacity, Color::blend_divide),
+		BlendMode::Difference => backdrop.blend_rgb(source_color, Color::blend_exclusion),
+		BlendMode::Exclusion => backdrop.blend_rgb(source_color, Color::blend_exclusion),
+		BlendMode::Subtract => backdrop.blend_rgb(source_color, Color::blend_subtract),
+		BlendMode::Divide => backdrop.blend_rgb(source_color, Color::blend_divide),
 
-		BlendMode::Hue => backdrop.blend_hue(source_color, actual_opacity),
-		BlendMode::Saturation => backdrop.blend_saturation(source_color, actual_opacity),
-		BlendMode::Color => backdrop.blend_color(source_color, actual_opacity),
-		BlendMode::Luminosity => backdrop.blend_luminosity(source_color, actual_opacity),
-	};
+		BlendMode::Hue => backdrop.blend_hue(source_color),
+		BlendMode::Saturation => backdrop.blend_saturation(source_color),
+		BlendMode::Color => backdrop.blend_color(source_color),
+		BlendMode::Luminosity => backdrop.blend_luminosity(source_color),
+	}
+	.lerp(backdrop, 1. - actual_opacity)
+	.unwrap();
 }
 
 #[derive(Debug, Clone, Copy)]
