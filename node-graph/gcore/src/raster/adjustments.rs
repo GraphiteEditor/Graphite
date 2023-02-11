@@ -328,13 +328,13 @@ fn blend_node(backdrop: Color, source_color: Color, blend_mode: BlendMode, opaci
 		BlendMode::Darken => backdrop.blend_rgb(source_color, Color::blend_darken),
 		BlendMode::ColorBurn => backdrop.blend_rgb(source_color, Color::blend_color_burn),
 		BlendMode::LinearBurn => backdrop.blend_rgb(source_color, Color::blend_linear_burn),
-		BlendMode::DarkerColor => backdrop,
+		BlendMode::DarkerColor => backdrop.blend_darker_color(source_color),
 
 		BlendMode::Screen => backdrop.blend_rgb(source_color, Color::blend_screen),
 		BlendMode::Lighten => backdrop.blend_rgb(source_color, Color::blend_lighten),
 		BlendMode::ColorDodge => backdrop.blend_rgb(source_color, Color::blend_color_dodge),
 		BlendMode::LinearDodge => backdrop.blend_rgb(source_color, Color::blend_linear_dodge),
-		BlendMode::LighterColor => backdrop,
+		BlendMode::LighterColor => backdrop.blend_lighter_color(source_color),
 
 		BlendMode::Overlay => source_color.blend_rgb(backdrop, Color::blend_hardlight),
 		BlendMode::SoftLight => backdrop.blend_rgb(source_color, Color::blend_softlight),

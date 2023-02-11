@@ -271,15 +271,25 @@ impl Color {
 	}
 
 	pub fn blend_color_burn(c_b: f32, c_s: f32) -> f32 {
-		if c_s > 0. {
-			1. - ((1. - c_b) / c_s).min(1.)
+		if c_b == 1. {
+            1.
+        } else if c_s == 0. {
+            0.
 		} else {
-			0.
+			1. - ((1. - c_b) / c_s).min(1.)
 		}
 	}
 
 	pub fn blend_linear_burn(c_b: f32, c_s: f32) -> f32 {
 		c_b + c_s - 1.
+	}
+
+	pub fn blend_darker_color(&self, other: Color) -> Color {
+		if self.average_rgb_channels() <= other.average_rgb_channels() {
+			*self
+		} else {
+			other
+		}
 	}
 
 	pub fn blend_screen(c_b: f32, c_s: f32) -> f32 {
@@ -300,6 +310,14 @@ impl Color {
 
 	pub fn blend_linear_dodge(c_b: f32, c_s: f32) -> f32 {
 		c_b + c_s
+	}
+
+	pub fn blend_lighter_color(&self, other: Color) -> Color {
+		if self.average_rgb_channels() >= other.average_rgb_channels() {
+			*self
+		} else {
+			other
+		}
 	}
 
 	pub fn blend_softlight(c_b: f32, c_s: f32) -> f32 {
