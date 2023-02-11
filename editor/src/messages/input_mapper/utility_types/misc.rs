@@ -16,12 +16,13 @@ pub struct Mapping {
 
 impl Mapping {
 	pub fn match_input_message(&self, message: InputMapperMessage, keyboard_state: &KeyStates, actions: ActionList) -> Option<Message> {
-		let list = match message {
+		match message {
 			InputMapperMessage::KeyDown(key) => &self.key_down[key as usize],
 			InputMapperMessage::KeyUp(key) => &self.key_up[key as usize],
 			InputMapperMessage::DoubleClick => &self.double_click,
 			InputMapperMessage::WheelScroll => &self.wheel_scroll,
 			InputMapperMessage::PointerMove => &self.pointer_move,
+			InputMapperMessage::DeleteMapping(mapping) | InputMapperMessage::CreateMapping(mapping) => todo!(),
 		};
 		list.match_mapping(keyboard_state, actions)
 	}

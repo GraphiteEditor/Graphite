@@ -1,4 +1,4 @@
-use crate::messages::input_mapper::utility_types::input_keyboard::Key;
+use crate::messages::input_mapper::utility_types::{input_keyboard::Key, misc::MappingEntry};
 use crate::messages::prelude::*;
 
 use serde::{Deserialize, Serialize};
@@ -19,4 +19,11 @@ pub enum InputMapperMessage {
 	DoubleClick,
 	PointerMove,
 	WheelScroll,
+
+	// TODO(multisn8): this is really unclean, perhaps the actual input messages should go in a
+	// subenum?
+	#[remain::unsorted]
+	DeleteMapping(Box<MappingEntry>),
+	#[remain::unsorted]
+	CreateMapping(Box<MappingEntry>),
 }
