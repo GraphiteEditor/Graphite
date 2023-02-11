@@ -529,18 +529,22 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 					responses.push_back(message);
 				}
 			}
-			NodeGraphFrameImaginateRandom { imaginate_node } => {
+			NodeGraphFrameImaginateRandom { imaginate_node, then_generate } => {
 				// Set a random seed input
 				responses.push_back(
 					NodeGraphMessage::SetInputValue {
 						node_id: *imaginate_node.last().unwrap(),
-						input_index: 1,
+						// Needs to match the index of the seed parameter in `pub const IMAGINATE_NODE: DocumentNodeType` in `document_node_type.rs`
+						input_index: 2,
 						value: graph_craft::document::value::TaggedValue::F64((generate_uuid() >> 1) as f64),
 					}
 					.into(),
 				);
+
 				// Generate the image
-				responses.push_back(DocumentMessage::NodeGraphFrameImaginate { imaginate_node }.into());
+				if then_generate {
+					responses.push_back(DocumentMessage::NodeGraphFrameImaginate { imaginate_node }.into());
+				}
 			}
 			NodeGraphFrameImaginateTerminate { layer_path, node_path } => {
 				responses.push_back(

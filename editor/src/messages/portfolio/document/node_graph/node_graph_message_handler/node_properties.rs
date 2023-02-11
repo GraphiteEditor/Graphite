@@ -6,7 +6,7 @@ use document_legacy::layers::layer_info::LayerDataTypeDiscriminant;
 use document_legacy::Operation;
 use glam::DVec2;
 use graph_craft::document::value::TaggedValue;
-use graph_craft::document::{generate_uuid, DocumentNode, NodeId, NodeInput};
+use graph_craft::document::{DocumentNode, NodeId, NodeInput};
 use graph_craft::imaginate_input::*;
 use graphene_core::raster::{Color, LuminanceCalculation};
 
@@ -560,6 +560,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 						move |_| {
 							DocumentMessage::NodeGraphFrameImaginateRandom {
 								imaginate_node: imaginate_node.clone(),
+								then_generate: true,
 							}
 							.into()
 						}
@@ -602,7 +603,16 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 				WidgetHolder::unrelated_separator(),
 				IconButton::new("Regenerate", 24)
 					.tooltip("Set a new random seed")
-					.on_update(update_value(move |_| TaggedValue::F64((generate_uuid() >> 1) as f64), node_id, seed_index))
+					.on_update({
+						let imaginate_node = imaginate_node.clone();
+						move |_| {
+							DocumentMessage::NodeGraphFrameImaginateRandom {
+								imaginate_node: imaginate_node.clone(),
+								then_generate: false,
+							}
+							.into()
+						}
+					})
 					.widget_holder(),
 				WidgetHolder::unrelated_separator(),
 				NumberInput::new(Some(seed))
@@ -667,7 +677,18 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 				WidgetHolder::unrelated_separator(),
 				CheckboxInput::new(!dimensions_is_auto || transform_not_connected)
 					.icon("Edit")
-					.tooltip("Set a custom resolution instead of using the frame's rounded dimensions")
+					.tooltip({
+						let message = "Set a custom resolution instead of using the frame's rounded dimensions";
+						let manual_message = "Set a custom resolution instead of using the frame's rounded dimensions.\n\
+							\n\
+							(Resolution must be set manually while the 'Transform' input is disconnected.)";
+
+						if transform_not_connected {
+							manual_message
+						} else {
+							message
+						}
+					})
 					.disabled(transform_not_connected)
 					.on_update(update_value(
 						move |checkbox_input: &CheckboxInput| {
@@ -800,18 +821,22 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 			let layer_reference_input_layer_name = layer_reference_input_layer.as_ref().map(|(layer_name, _)| layer_name);
 			let layer_reference_input_layer_type = layer_reference_input_layer.as_ref().map(|(_, layer_type)| layer_type);
 
-			widgets.extend_from_slice(&[
-				WidgetHolder::unrelated_separator(),
-				LayerReferenceInput::new(layer_path.clone(), layer_reference_input_layer_name.cloned(), layer_reference_input_layer_type.cloned())
-					.disabled(!use_base_image)
-					.on_update(update_value(|input: &LayerReferenceInput| TaggedValue::LayerPath(input.value.clone()), node_id, mask_index))
-					.widget_holder(),
-			]);
+			widgets.push(WidgetHolder::unrelated_separator());
+			if !transform_not_connected {
+				widgets.push(
+					LayerReferenceInput::new(layer_path.clone(), layer_reference_input_layer_name.cloned(), layer_reference_input_layer_type.cloned())
+						.disabled(!use_base_image)
+						.on_update(update_value(|input: &LayerReferenceInput| TaggedValue::LayerPath(input.value.clone()), node_id, mask_index))
+						.widget_holder(),
+				);
+			} else {
+				widgets.push(TextLabel::new("Requires Transform Input").italic(true).widget_holder());
+			}
 		}
 		LayoutGroup::Row { widgets }.with_tooltip(
 			"Reference to a layer or folder which masks parts of the input image. Image generation is constrained to masked areas.\n\
 			\n\
-			Black shapes represent the masked regions. Lighter shades of gray act as a partial mask, and colors become grayscale.",
+			Black shapes represent the masked regions. Lighter shades of gray act as a partial mask, and colors become grayscale. (This is the reverse of traditional masks because it is easier to draw black shapes; this will be changed later when the mask input is a bitmap.)",
 		)
 	};
 

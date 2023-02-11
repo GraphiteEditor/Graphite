@@ -527,11 +527,11 @@ pub const IMAGINATE_NODE: DocumentNodeType = DocumentNodeType {
 	inputs: &[
 		DocumentInputType::new("Input Image", TaggedValue::Image(Image::empty()), true),
 		DocumentInputType::new("Transform", TaggedValue::DAffine2(DAffine2::IDENTITY), true),
-		DocumentInputType::new("Seed", TaggedValue::F64(0.), false),
+		DocumentInputType::new("Seed", TaggedValue::F64(0.), false), // Remember to keep index used in `NodeGraphFrameImaginateRandom` updated with this entry's index
 		DocumentInputType::new("Resolution", TaggedValue::OptionalDVec2(None), false),
 		DocumentInputType::new("Samples", TaggedValue::F64(30.), false),
 		DocumentInputType::new("Sampling Method", TaggedValue::ImaginateSamplingMethod(ImaginateSamplingMethod::EulerA), false),
-		DocumentInputType::new("Prompt Guidance", TaggedValue::F64(10.), false),
+		DocumentInputType::new("Prompt Guidance", TaggedValue::F64(7.5), false),
 		DocumentInputType::new("Prompt", TaggedValue::String(String::new()), false),
 		DocumentInputType::new("Negative Prompt", TaggedValue::String(String::new()), false),
 		DocumentInputType::new("Adapt Input Image", TaggedValue::Bool(false), false),
