@@ -1,6 +1,6 @@
 use std::process::Command;
 
-const GRAPHITE_RELEASE_SERIES: &str = "Alpha Milestone 1";
+const GRAPHITE_RELEASE_SERIES: &str = "Alpha Milestone 2";
 
 fn main() {
 	// Execute a Git command for its stdout. Early exit if it fails for any of the possible reasons.
