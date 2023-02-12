@@ -9,6 +9,7 @@ use graph_craft::imaginate_input::ImaginateSamplingMethod;
 
 use graph_craft::NodeIdentifier;
 use graphene_core::raster::{Color, Image, LuminanceCalculation};
+use graphene_core::*;
 
 use std::collections::VecDeque;
 
@@ -131,13 +132,13 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				nodes: [
 					DocumentNode {
 						name: "Identity".to_string(),
-						inputs: vec![NodeInput::Network],
+						inputs: vec![NodeInput::Network(concrete!(Image))],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode")),
 						metadata: Default::default(),
 					},
 					DocumentNode {
 						name: "Identity".to_string(),
-						inputs: vec![NodeInput::Network],
+						inputs: vec![NodeInput::Network(concrete!(DAffine2))],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode")),
 						metadata: Default::default(),
 					},
@@ -152,7 +153,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				DocumentInputType {
 					name: "In",
 					data_type: FrontendGraphDataType::General,
-					default: NodeInput::Network,
+					default: NodeInput::Network(concrete!(Image)),
 				},
 				DocumentInputType::value("Transform", TaggedValue::DAffine2(DAffine2::IDENTITY), false),
 			],
@@ -262,7 +263,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 						0,
 						DocumentNode {
 							name: "CacheNode".to_string(),
-							inputs: vec![NodeInput::Network],
+							inputs: vec![NodeInput::Network(concrete!(Image))],
 							implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_std::memo::CacheNode")),
 							metadata: Default::default(),
 						},
@@ -271,7 +272,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 						1,
 						DocumentNode {
 							name: "BlurNode".to_string(),
-							inputs: vec![NodeInput::node(0, 0), NodeInput::Network, NodeInput::Network, NodeInput::node(0, 0)],
+							inputs: vec![NodeInput::node(0, 0), NodeInput::Network(concrete!(u32)), NodeInput::Network(concrete!(f64)), NodeInput::node(0, 0)],
 							implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::raster::BlurNode")),
 							metadata: Default::default(),
 						},
@@ -558,7 +559,7 @@ impl DocumentNodeType {
 							name: format!("{}_impl", self.name),
 							// TODO: Allow inserting nodes that contain other nodes.
 							implementation: DocumentNodeImplementation::Unresolved(ident.clone()),
-							inputs: (0..num_inputs).map(|_| NodeInput::Network).collect(),
+							inputs: self.inputs.iter().map(|i| NodeInput::Network(i.default.ty())).collect(),
 							metadata: DocumentNodeMetadata::default(),
 						},
 					)]
@@ -588,7 +589,7 @@ pub fn new_image_network(output_offset: i32, output_node_id: NodeId) -> NodeNetw
 		outputs: vec![NodeOutput::new(1, 0)],
 		nodes: [
 			resolve_document_node_type("Input").expect("Input node does not exist").to_document_node(
-				[NodeInput::Network, NodeInput::value(TaggedValue::DAffine2(DAffine2::IDENTITY), false)],
+				[NodeInput::Network(concrete!(Image)), NodeInput::value(TaggedValue::DAffine2(DAffine2::IDENTITY), false)],
 				DocumentNodeMetadata::position((8, 4)),
 			),
 			resolve_document_node_type("Output")

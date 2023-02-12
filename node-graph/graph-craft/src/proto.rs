@@ -5,7 +5,6 @@ use std::hash::Hash;
 use crate::document::value;
 use crate::document::NodeId;
 use dyn_any::DynAny;
-use graphene_core::raster::Image;
 use graphene_core::*;
 use std::pin::Pin;
 
@@ -70,11 +69,10 @@ pub struct ProtoNode {
 	pub identifier: NodeIdentifier,
 }
 
-#[derive(Debug, Default, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum ProtoNodeInput {
 	None,
-	#[default]
-	Network,
+	Network(Type),
 	Node(NodeId),
 }
 
@@ -95,7 +93,10 @@ impl ProtoNode {
 		self.construction_args.hash(&mut hasher);
 		match self.input {
 			ProtoNodeInput::None => "none".hash(&mut hasher),
-			ProtoNodeInput::Network => "network".hash(&mut hasher),
+			ProtoNodeInput::Network(ref ty) => {
+				"network".hash(&mut hasher);
+				ty.hash(&mut hasher);
+			}
 			ProtoNodeInput::Node(id) => id.hash(&mut hasher),
 		};
 		Some(hasher.finish() as NodeId)
@@ -197,13 +198,13 @@ impl ProtoNetwork {
 
 		let mut lookup = self.nodes.iter().map(|(id, _)| (*id, *id)).collect::<HashMap<_, _>>();
 		let compose_node_id = self.nodes.len() as NodeId;
-		let inputs = self.nodes.iter().map(|(_, node)| node.input).collect::<Vec<_>>();
+		let inputs = self.nodes.iter().map(|(_, node)| node.input.clone()).collect::<Vec<_>>();
 
 		if let Some((input_node, id, input)) = self.nodes.iter_mut().find_map(|(id, node)| {
 			if let ProtoNodeInput::Node(input_node) = node.input {
 				node.input = ProtoNodeInput::None;
 				let pre_node_input = inputs.get(input_node as usize).expect("input node should exist");
-				Some((input_node, *id, *pre_node_input))
+				Some((input_node, *id, pre_node_input.clone()))
 			} else {
 				None
 			}
@@ -353,7 +354,7 @@ impl TypingContext {
 		let input = match node.input {
 			ProtoNodeInput::None => concrete!(()),
 			// TODO: fix this
-			ProtoNodeInput::Network => concrete!(Image),
+			ProtoNodeInput::Network(ref ty) => ty.clone(),
 			ProtoNodeInput::Node(id) => {
 				let input = self
 					.infered
@@ -364,13 +365,12 @@ impl TypingContext {
 		};
 		let impls = self.lookup.get(&node.identifier).ok_or(format!("No implementations found for {:?}", node.identifier))?;
 
-		// TODO: implement type checking for network inputs/outputs
-		/*if matches!(input, Type::Generic(_)) {
+		if matches!(input, Type::Generic(_)) {
 			return Err(format!("Generic types are not supported as inputs yet {:?}", input));
 		}
 		if parameters.iter().any(|p| matches!(p, Type::Generic(_))) {
 			return Err(format!("Generic types are not supported in parameters: {:?}", parameters));
-		}*/
+		}
 		let covariant = |output, input| match (output, input) {
 			(Type::Concrete(t1), Type::Concrete(t2)) => t1 == t2,
 			(Type::Concrete(_), Type::Generic(_)) => true,
@@ -464,11 +464,11 @@ mod test {
 			ids,
 			vec![
 				15907139529964845467,
-				7008762588924534619,
+				14791354678635908268,
 				17522454908046327116,
-				11144576768288379207,
+				12722973206210391299,
 				4508311079153412646,
-				12802780320957283374
+				13250284155406988548
 			]
 		);
 	}
@@ -498,7 +498,7 @@ mod test {
 					10,
 					ProtoNode {
 						identifier: "cons".into(),
-						input: ProtoNodeInput::Network,
+						input: ProtoNodeInput::Network(concrete!(u32)),
 						construction_args: ConstructionArgs::Nodes(vec![14]),
 					},
 				),

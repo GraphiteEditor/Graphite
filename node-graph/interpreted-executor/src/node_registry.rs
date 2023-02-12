@@ -36,7 +36,8 @@ macro_rules! register_node {
                 let _node = unsafe { node.erase_lifetime().static_ref() };
                 let node = <$path>::new($(graphene_std::any::input_node::<$type>(_node)),*);
                 let params = vec![$(concrete!($type)),*];
-                let node_io =  <$path as NodeIO<'_, $input>>::to_node_io(&node, params);
+                let mut  node_io =  <$path as NodeIO<'_, $input>>::to_node_io(&node, params);
+                node_io.input = concrete!($input);
                 node_io
             }
         )

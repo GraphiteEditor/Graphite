@@ -6,8 +6,9 @@ pub mod node_registry;
 
 #[cfg(test)]
 mod tests {
-
 	use dyn_any::IntoDynAny;
+	use graphene_core::*;
+	use std::borrow::Cow;
 
 	/*
 	#[test]
@@ -58,7 +59,7 @@ mod tests {
 						0,
 						DocumentNode {
 							name: "Cons".into(),
-							inputs: vec![NodeInput::Network, NodeInput::Network],
+							inputs: vec![NodeInput::Network(concrete!(u32)), NodeInput::Network(concrete!(u32))],
 							implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::structural::ConsNode<_, _>")),
 							metadata: DocumentNodeMetadata::default(),
 						},
@@ -87,7 +88,7 @@ mod tests {
 				DocumentNode {
 					name: "Inc".into(),
 					inputs: vec![
-						NodeInput::Network,
+						NodeInput::Network(concrete!(u32)),
 						NodeInput::Value {
 							tagged_value: graph_craft::document::value::TaggedValue::U32(1u32),
 							exposed: false,
@@ -108,7 +109,7 @@ mod tests {
 		let compiler = Compiler {};
 		let protograph = compiler.compile_single(network, true).expect("Graph should be generated");
 
-		let exec = DynamicExecutor::new(protograph).unwrap();
+		let exec = DynamicExecutor::new(protograph).unwrap_or_else(|e| panic!("Failed to create executor: {}", e));
 
 		let result = exec.execute(32_u32.into_dyn()).unwrap();
 		let val = *dyn_any::downcast::<u32>(result).unwrap();

@@ -1,13 +1,15 @@
 use crate::document::value::TaggedValue;
 use crate::proto::{ConstructionArgs, ProtoNetwork, ProtoNode, ProtoNodeInput};
-use graphene_core::NodeIdentifier;
+use graphene_core::{NodeIdentifier, Type};
 
 use dyn_any::{DynAny, StaticType};
 use glam::IVec2;
+use graphene_core::TypeDescriptor;
 use rand_chacha::{
 	rand_core::{RngCore, SeedableRng},
 	ChaCha20Rng,
 };
+use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
 
@@ -59,7 +61,7 @@ impl DocumentNode {
 			.inputs
 			.iter()
 			.enumerate()
-			.filter(|(_, input)| matches!(input, NodeInput::Network))
+			.filter(|(_, input)| matches!(input, NodeInput::Network(_)))
 			.nth(offset)
 			.expect("no network input");
 
@@ -80,9 +82,9 @@ impl DocumentNode {
 					assert_eq!(output_index, 0, "Outputs should be flattened before converting to protonode.");
 					(ProtoNodeInput::Node(node_id), ConstructionArgs::Nodes(vec![]))
 				}
-				NodeInput::Network => (ProtoNodeInput::Network, ConstructionArgs::Nodes(vec![])),
+				NodeInput::Network(ty) => (ProtoNodeInput::Network(ty), ConstructionArgs::Nodes(vec![])),
 			};
-			assert!(!self.inputs.iter().any(|input| matches!(input, NodeInput::Network)), "recieved non resolved parameter");
+			assert!(!self.inputs.iter().any(|input| matches!(input, NodeInput::Network(_))), "recieved non resolved parameter");
 			assert!(
 				!self.inputs.iter().any(|input| matches!(input, NodeInput::Value { .. })),
 				"recieved value as parameter. inupts: {:#?}, construction_args: {:#?}",
@@ -134,7 +136,7 @@ impl DocumentNode {
 pub enum NodeInput {
 	Node { node_id: NodeId, output_index: usize },
 	Value { tagged_value: value::TaggedValue, exposed: bool },
-	Network,
+	Network(Type),
 }
 
 impl NodeInput {
@@ -153,7 +155,14 @@ impl NodeInput {
 		match self {
 			NodeInput::Node { .. } => true,
 			NodeInput::Value { exposed, .. } => *exposed,
-			NodeInput::Network => false,
+			NodeInput::Network(_) => false,
+		}
+	}
+	pub fn ty(&self) -> Type {
+		match self {
+			NodeInput::Node { .. } => unreachable!("ty() called on NodeInput::Node"),
+			NodeInput::Value { tagged_value, .. } => tagged_value.ty(),
+			NodeInput::Network(ty) => ty.clone(),
 		}
 	}
 }
@@ -392,7 +401,7 @@ impl NodeNetwork {
 							let network_input = self.nodes.get_mut(network_input).unwrap();
 							network_input.populate_first_network_input(new_id, 0, *offset);
 						}
-						NodeInput::Network => {
+						NodeInput::Network(_) => {
 							*network_offsets.get_mut(network_input).unwrap() += 1;
 							if let Some(index) = self.inputs.iter().position(|i| *i == id) {
 								self.inputs[index] = *network_input;
@@ -447,7 +456,7 @@ impl NodeNetwork {
 					0,
 					DocumentNode {
 						name: "Input".into(),
-						inputs: vec![NodeInput::Network],
+						inputs: vec![NodeInput::Network(concrete!(u32))],
 						implementation: DocumentNodeImplementation::Unresolved("graphene_core::ops::IdNode".into()),
 						metadata: DocumentNodeMetadata { position: (8, 4).into() },
 					},
@@ -564,7 +573,7 @@ mod test {
 					0,
 					DocumentNode {
 						name: "Cons".into(),
-						inputs: vec![NodeInput::Network, NodeInput::Network],
+						inputs: vec![NodeInput::Network(concrete!(u32)), NodeInput::Network(concrete!(u32))],
 						metadata: DocumentNodeMetadata::default(),
 						implementation: DocumentNodeImplementation::Unresolved("graphene_core::structural::ConsNode".into()),
 					},
@@ -597,7 +606,7 @@ mod test {
 					1,
 					DocumentNode {
 						name: "Cons".into(),
-						inputs: vec![NodeInput::Network, NodeInput::Network],
+						inputs: vec![NodeInput::Network(concrete!(u32)), NodeInput::Network(concrete!(u32))],
 						metadata: DocumentNodeMetadata::default(),
 						implementation: DocumentNodeImplementation::Unresolved("graphene_core::structural::ConsNode".into()),
 					},
@@ -629,7 +638,7 @@ mod test {
 				DocumentNode {
 					name: "Inc".into(),
 					inputs: vec![
-						NodeInput::Network,
+						NodeInput::Network(concrete!(u32)),
 						NodeInput::Value {
 							tagged_value: value::TaggedValue::U32(2),
 							exposed: false,
@@ -655,7 +664,7 @@ mod test {
 	fn resolve_proto_node_add() {
 		let document_node = DocumentNode {
 			name: "Cons".into(),
-			inputs: vec![NodeInput::Network, NodeInput::node(0, 0)],
+			inputs: vec![NodeInput::Network(concrete!(u32)), NodeInput::node(0, 0)],
 			metadata: DocumentNodeMetadata::default(),
 			implementation: DocumentNodeImplementation::Unresolved("graphene_core::structural::ConsNode".into()),
 		};
@@ -663,7 +672,7 @@ mod test {
 		let proto_node = document_node.resolve_proto_node();
 		let reference = ProtoNode {
 			identifier: "graphene_core::structural::ConsNode".into(),
-			input: ProtoNodeInput::Network,
+			input: ProtoNodeInput::Network(concrete!(u32)),
 			construction_args: ConstructionArgs::Nodes(vec![0]),
 		};
 		assert_eq!(proto_node, reference);
@@ -687,7 +696,7 @@ mod test {
 					10,
 					ProtoNode {
 						identifier: "graphene_core::structural::ConsNode".into(),
-						input: ProtoNodeInput::Network,
+						input: ProtoNodeInput::Network(concrete!(u32)),
 						construction_args: ConstructionArgs::Nodes(vec![14]),
 					},
 				),
@@ -730,7 +739,7 @@ mod test {
 					10,
 					DocumentNode {
 						name: "Cons".into(),
-						inputs: vec![NodeInput::Network, NodeInput::node(14, 0)],
+						inputs: vec![NodeInput::Network(concrete!(u32)), NodeInput::node(14, 0)],
 						metadata: DocumentNodeMetadata::default(),
 						implementation: DocumentNodeImplementation::Unresolved("graphene_core::structural::ConsNode".into()),
 					},
@@ -772,7 +781,7 @@ mod test {
 					1,
 					DocumentNode {
 						name: "Identity 1".into(),
-						inputs: vec![NodeInput::Network],
+						inputs: vec![NodeInput::Network(concrete!(u32))],
 						metadata: DocumentNodeMetadata::default(),
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode")),
 					},
@@ -781,7 +790,7 @@ mod test {
 					2,
 					DocumentNode {
 						name: "Identity 2".into(),
-						inputs: vec![NodeInput::Network],
+						inputs: vec![NodeInput::Network(concrete!(u32))],
 						metadata: DocumentNodeMetadata::default(),
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode")),
 					},

@@ -65,7 +65,7 @@ impl NodeGraphExecutor {
 			}
 			match &inner_network.nodes.get(&node_path[end]).unwrap().inputs[input_index] {
 				// If the input is from a parent network then adjust the input index and continue iteration
-				NodeInput::Network => {
+				NodeInput::Network(_) => {
 					input_index = inner_network
 						.inputs
 						.iter()
