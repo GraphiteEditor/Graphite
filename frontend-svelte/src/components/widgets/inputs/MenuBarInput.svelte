@@ -77,6 +77,7 @@
 <div class="menu-bar-input" bind:this={self} data-menu-bar-input>
 	{#each entries as entry, index (index)}
 		<div class="entry-container">
+			<!-- svelte-ignore a11y-no-noninteractive-tabindex -->
 			<div
 				on:click={(e) => clickEntry(entry, e)}
 				on:keydown={(e) => entry.ref?.keydown(e, false)}
@@ -94,7 +95,9 @@
 			</div>
 			{#if entry.children && entry.children.length > 0}
 				<MenuList
-					on:open={(e) => (entry.ref.isOpen = e.detail)}
+					on:open={(e) => {
+						if (entry.ref) entry.ref.isOpen = e.detail;
+					}}
 					open={entry.ref?.isOpen || false}
 					entries={entry.children || []}
 					direction="Bottom"
