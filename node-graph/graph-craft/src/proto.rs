@@ -362,7 +362,22 @@ impl TypingContext {
 		};
 		let impls = self.lookup.get(&node.identifier).ok_or(format!("No implementations found for {:?}", node.identifier))?;
 
-		let valid_output_types = impls.keys().filter(|node_io| node_io.input == input && node_io.parameters == parameters).collect::<Vec<_>>();
+		if matches!(input, Type::Generic(_)) {
+			return Err("Generic types are not supported in parameters".to_string());
+		}
+		if parameters.iter().any(|p| matches!(p, Type::Generic(_))) {
+			return Err("Generic types are not supported in parameters".to_string());
+		}
+		let covariant = |output, input| match (output, input) {
+			(Type::Generic(_), _) => unreachable!(),
+			(Type::Concrete(t1), Type::Concrete(t2)) => t1 == t2,
+			(Type::Concrete(_), Type::Generic(_)) => true,
+		};
+
+		let valid_output_types = impls
+			.keys()
+			.filter(|node_io| covariant(node_io.output.clone(), input.clone()) && node_io.parameters.iter().zip(parameters.iter()).all(|(p1, p2)| covariant(p1.clone(), p2.clone())))
+			.collect::<Vec<_>>();
 		match valid_output_types.as_slice() {
 			[] => Err(format!(
 				"No valid output types found for {identifier} with input {input:?} and parameters {parameters:?}.\nTypes that are implemented: {:?}",
