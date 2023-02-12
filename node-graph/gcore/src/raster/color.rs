@@ -239,8 +239,8 @@ impl Color {
 	}
 
 	pub fn with_saturation(&self, saturation: f32) -> Color {
-        let [hue, _, lightness, alpha] = self.to_hsla();
-        Color::from_hsla(hue, saturation, lightness, alpha)
+		let [hue, _, lightness, alpha] = self.to_hsla();
+		Color::from_hsla(hue, saturation, lightness, alpha)
 	}
 
 	pub fn blend_normal(_c_b: f32, c_s: f32) -> f32 {
@@ -257,9 +257,9 @@ impl Color {
 
 	pub fn blend_color_burn(c_b: f32, c_s: f32) -> f32 {
 		if c_b == 1. {
-            1.
-        } else if c_s == 0. {
-            0.
+			1.
+		} else if c_s == 0. {
+			0.
 		} else {
 			1. - ((1. - c_b) / c_s).min(1.)
 		}
