@@ -145,6 +145,34 @@ impl ShapeEditor {
 		None
 	}
 
+	pub fn opposing_handle_lengths(&self, document: &Document) -> HashMap<Vec<LayerId>, HashMap<u64, f64>> {
+		self.selected_layers()
+			.iter()
+			.filter_map(|path| document.layer(path).ok().map(|layer| (path, layer)))
+			.filter_map(|(path, shape)| shape.as_subpath().map(|subpath| (path, subpath)))
+			.map(|(path, shape)| {
+				let opposing_handle_lengths = shape
+					.manipulator_groups()
+					.enumerate()
+					.filter_map(|(id, manipulator_group)| {
+						let mut selected_handles = manipulator_group.selected_handles();
+						let handle = selected_handles.next()?;
+						// Check that handle is the only selected handle.
+						if selected_handles.next().is_none() {
+							let opposing_handle_position = manipulator_group.opposing_handle(handle)?.position;
+							let anchor_position = manipulator_group.points[ManipulatorType::Anchor].as_ref()?.position;
+							let opposing_handle_length = opposing_handle_position.distance(anchor_position);
+							Some((*id, opposing_handle_length))
+						} else {
+							None
+						}
+					})
+					.collect::<HashMap<_, _>>();
+				(path.clone(), opposing_handle_lengths)
+			})
+			.collect::<HashMap<_, _>>()
+	}
+
 	/// A wrapper for `find_nearest_point_indices()` and returns a [ManipulatorPoint].
 	pub fn find_nearest_point<'a>(&'a self, document: &'a Document, mouse_position: DVec2, select_threshold: f64) -> Option<&'a ManipulatorPoint> {
 		let (shape_layer_path, manipulator_group_id, manipulator_point_index) = self.find_nearest_point_indices(document, mouse_position, select_threshold)?;
@@ -193,16 +221,31 @@ impl ShapeEditor {
 	}
 
 	/// Move the selected points by dragging the mouse.
-	pub fn move_selected_points(&self, delta: DVec2, mirror_distance: bool, responses: &mut VecDeque<Message>) {
-		for layer_path in &self.selected_layers {
-			responses.push_back(
-				DocumentMessage::MoveSelectedManipulatorPoints {
-					layer_path: layer_path.clone(),
-					delta: (delta.x, delta.y),
-					mirror_distance,
-				}
-				.into(),
-			);
+	pub fn move_selected_points(&self, delta: DVec2, mirror_distance: bool, reset_opposing_handle_lengths: Option<HashMap<Vec<LayerId>, HashMap<u64, f64>>>, responses: &mut VecDeque<Message>) {
+		if let Some(opposing_handle_lengths) = reset_opposing_handle_lengths {
+			for layer_path in &self.selected_layers {
+				responses.push_back(
+					DocumentMessage::MoveSelectedManipulatorPoints {
+						layer_path: layer_path.clone(),
+						delta: (delta.x, delta.y),
+						mirror_distance,
+						reset_opposing_handle_lengths: opposing_handle_lengths.get(layer_path).cloned(),
+					}
+					.into(),
+				);
+			}
+		} else {
+			for layer_path in &self.selected_layers {
+				responses.push_back(
+					DocumentMessage::MoveSelectedManipulatorPoints {
+						layer_path: layer_path.clone(),
+						delta: (delta.x, delta.y),
+						mirror_distance,
+						reset_opposing_handle_lengths: None,
+					}
+					.into(),
+				);
+			}
 		}
 	}
 
@@ -221,12 +264,6 @@ impl ShapeEditor {
 				}
 				.into(),
 			);
-		}
-	}
-
-	pub fn reset_previous_opposing_handle_length(&self, responses: &mut VecDeque<Message>) {
-		for layer_path in &self.selected_layers {
-			responses.push_back(DocumentMessage::ResetPreviousOpposingHandleLength { layer_path: layer_path.clone() }.into());
 		}
 	}
 

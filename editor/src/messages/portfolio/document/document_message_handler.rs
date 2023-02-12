@@ -512,9 +512,22 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 					.into(),
 				);
 			}
-			MoveSelectedManipulatorPoints { layer_path, delta, mirror_distance } => {
+			MoveSelectedManipulatorPoints {
+				layer_path,
+				delta,
+				mirror_distance,
+				reset_opposing_handle_lengths,
+			} => {
 				if let Ok(_layer) = self.document_legacy.layer(&layer_path) {
-					responses.push_back(DocumentOperation::MoveSelectedManipulatorPoints { layer_path, delta, mirror_distance }.into());
+					responses.push_back(
+						DocumentOperation::MoveSelectedManipulatorPoints {
+							layer_path,
+							delta,
+							mirror_distance,
+							reset_opposing_handle_lengths,
+						}
+						.into(),
+					);
 				}
 			}
 			NodeGraphFrameGenerate => {
@@ -704,9 +717,6 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 					}
 					.into(),
 				);
-			}
-			ResetPreviousOpposingHandleLength { layer_path } => {
-				responses.push_back(DocumentOperation::ResetPreviousOpposingHandleLength { layer_path }.into());
 			}
 			RollbackTransaction => {
 				self.rollback(responses).unwrap_or_else(|e| warn!("{}", e));

@@ -10,6 +10,7 @@ use graphene_std::vector::subpath::Subpath;
 
 use serde::{Deserialize, Serialize};
 use std::collections::hash_map::DefaultHasher;
+use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 
 #[repr(C)]
@@ -138,6 +139,7 @@ pub enum Operation {
 		layer_path: Vec<LayerId>,
 		delta: (f64, f64),
 		mirror_distance: bool,
+		reset_opposing_handle_lengths: Option<HashMap<u64, f64>>,
 	},
 	MoveManipulatorPoint {
 		layer_path: Vec<LayerId>,
@@ -271,9 +273,6 @@ pub enum Operation {
 	SetSelectedHandleMirroring {
 		layer_path: Vec<LayerId>,
 		toggle_angle: bool,
-	},
-	ResetPreviousOpposingHandleLength {
-		layer_path: Vec<LayerId>,
 	},
 }
 

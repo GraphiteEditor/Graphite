@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use super::consts::ManipulatorType;
 use super::id_vec::IdBackedVec;
 use super::manipulator_group::ManipulatorGroup;
@@ -182,9 +184,14 @@ impl Subpath {
 	}
 
 	/// Move the selected points by the delta vector
-	pub fn move_selected(&mut self, delta: DVec2, mirror_distance: bool) {
-		self.selected_manipulator_groups_any_points_mut()
-			.for_each(|manipulator_group| manipulator_group.move_selected_points(delta, mirror_distance));
+	pub fn move_selected(&mut self, delta: DVec2, mirror_distance: bool, reset_opposing_handle_lengths: Option<HashMap<u64, f64>>) {
+		if let Some(opposing_handle_lengths) = reset_opposing_handle_lengths {
+			self.selected_manipulator_groups_any_points_mut_with_id()
+				.for_each(|(id, manipulator_group)| manipulator_group.move_selected_points(delta, mirror_distance, opposing_handle_lengths.get(id).copied()));
+		} else {
+			self.selected_manipulator_groups_any_points_mut()
+				.for_each(|manipulator_group| manipulator_group.move_selected_points(delta, mirror_distance, None));
+		}
 	}
 
 	/// Delete the selected points from the [Subpath]
@@ -287,6 +294,11 @@ impl Subpath {
 	/// Return all the selected [ManipulatorPoint]s by mutable reference
 	pub fn selected_manipulator_groups_any_points_mut(&mut self) -> impl Iterator<Item = &mut ManipulatorGroup> {
 		self.manipulator_groups_mut().iter_mut().filter(|manipulator_group| manipulator_group.any_points_selected())
+	}
+
+	/// Return all the selected [ManipulatorPoint]s by mutable reference along with id
+	pub fn selected_manipulator_groups_any_points_mut_with_id(&mut self) -> impl Iterator<Item = (&u64, &mut ManipulatorGroup)> {
+		self.manipulator_groups_mut().enumerate_mut().filter(|(_id, manipulator_group)| manipulator_group.any_points_selected())
 	}
 
 	/// An alias for `self.0`

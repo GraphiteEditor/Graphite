@@ -10,6 +10,7 @@ use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, ToolActionHan
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 
 use document_legacy::intersection::Quad;
+use document_legacy::LayerId;
 use graphene_std::vector::consts::ManipulatorType;
 
 use glam::DVec2;
@@ -110,6 +111,7 @@ struct PathToolData {
 
 	drag_start_pos: DVec2,
 	alt_debounce: bool,
+	opposing_handle_lengths: Option<HashMap<Vec<LayerId>, HashMap<u64, f64>>>,
 }
 
 impl Fsm for PathToolFsmState {
@@ -188,6 +190,7 @@ impl Fsm for PathToolFsmState {
 						tool_data.snap_manager.add_all_document_handles(document, input, &include_handles, &[], &selected_points.points);
 
 						tool_data.drag_start_pos = input.mouse.position - selected_points.offset;
+						tool_data.opposing_handle_lengths = None;
 						PathToolFsmState::Dragging
 					}
 					// We didn't find a point nearby, so consider selecting the nearest shape instead
@@ -229,6 +232,7 @@ impl Fsm for PathToolFsmState {
 					let alt_pressed = input.keyboard.get(alt_mirror_angle as usize);
 					if alt_pressed != tool_data.alt_debounce {
 						tool_data.alt_debounce = alt_pressed;
+						tool_data.opposing_handle_lengths = None;
 						// Only on alt down
 						if alt_pressed {
 							tool_data.shape_editor.toggle_handle_mirroring_on_selected(true, responses);
@@ -238,16 +242,29 @@ impl Fsm for PathToolFsmState {
 					// Determine when shift state changes
 					let shift_pressed = input.keyboard.get(shift_mirror_distance as usize);
 
+					let mut reset_opposing_handle_lengths = None;
+					if shift_pressed {
+						if tool_data.opposing_handle_lengths.is_none() {
+							tool_data.opposing_handle_lengths = Some(tool_data.shape_editor.opposing_handle_lengths(&document.document_legacy));
+						}
+					} else {
+						if let Some(opposing_handle_lengths) = &tool_data.opposing_handle_lengths {
+							reset_opposing_handle_lengths = Some(opposing_handle_lengths.clone());
+							tool_data.opposing_handle_lengths = None;
+						}
+					}
+
 					// Move the selected points by the mouse position
 					let snapped_position = tool_data.snap_manager.snap_position(responses, document, input.mouse.position);
-					tool_data.shape_editor.move_selected_points(snapped_position - tool_data.drag_start_pos, shift_pressed, responses);
+					tool_data
+						.shape_editor
+						.move_selected_points(snapped_position - tool_data.drag_start_pos, shift_pressed, reset_opposing_handle_lengths, responses);
 					tool_data.drag_start_pos = snapped_position;
 					PathToolFsmState::Dragging
 				}
 				// Mouse up
 				(_, PathToolMessage::DragStop) => {
 					tool_data.snap_manager.cleanup(responses);
-					tool_data.shape_editor.reset_previous_opposing_handle_length(responses);
 					PathToolFsmState::Ready
 				}
 				// Delete key
@@ -259,7 +276,6 @@ impl Fsm for PathToolFsmState {
 					for layer_path in document.all_layers() {
 						tool_data.overlay_renderer.clear_subpath_overlays(&document.document_legacy, layer_path.to_vec(), responses);
 					}
-					tool_data.shape_editor.reset_previous_opposing_handle_length(responses);
 					PathToolFsmState::Ready
 				}
 				(_, PathToolMessage::InsertPoint) => {
@@ -276,7 +292,6 @@ impl Fsm for PathToolFsmState {
 					for layer_path in document.all_layers() {
 						tool_data.overlay_renderer.clear_subpath_overlays(&document.document_legacy, layer_path.to_vec(), responses);
 					}
-					tool_data.shape_editor.reset_previous_opposing_handle_length(responses);
 					PathToolFsmState::Ready
 				}
 				(

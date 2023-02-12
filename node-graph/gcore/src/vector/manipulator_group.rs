@@ -105,7 +105,7 @@ impl ManipulatorGroup {
 	}
 
 	/// Move the selected points by the provided transform.
-	pub fn move_selected_points(&mut self, delta: DVec2, mirror_distance: bool) {
+	pub fn move_selected_points(&mut self, delta: DVec2, mirror_distance: bool, reset_opposing_handle_length: Option<f64>) {
 		let mirror_angle = self.editor_state.mirror_angle_between_handles;
 
 		// Move the point absolutely or relatively depending on if the point is under the cursor (the last selected point)
@@ -146,29 +146,17 @@ impl ManipulatorGroup {
 		// Find the correctly mirrored handle position based on mirroring settings
 		// Early out for cases where we can't mirror
 		if !mirror_angle || self.opposing_handle(selected_handle).is_none() {
-			self.editor_state.previous_opposing_handle_length = None;
 			return;
 		}
 
 		// Keep rotational similarity, but distance variable
-		let radius;
-		if mirror_distance {
-			if self.editor_state.previous_opposing_handle_length.is_none() {
-				let handle_length = self.opposing_handle(selected_handle).unwrap().position.distance(reflect_center);
-				self.editor_state.previous_opposing_handle_length = Some(handle_length);
-			}
-			radius = reflect_center.distance(selected_handle.position);
+		let radius = if let Some(r) = reset_opposing_handle_length {
+			r
+		} else if mirror_distance {
+			reflect_center.distance(selected_handle.position)
 		} else {
-			match self.editor_state.previous_opposing_handle_length {
-				Some(previous_length) => {
-					radius = previous_length;
-					self.editor_state.previous_opposing_handle_length = None;
-				}
-				None => {
-					radius = reflect_center.distance(self.opposing_handle(selected_handle).unwrap().position);
-				}
-			}
-		}
+			reflect_center.distance(self.opposing_handle(selected_handle).unwrap().position)
+		};
 
 		if let Some(offset) = (selected_handle.position - reflect_center).try_normalize() {
 			let opposing_handle = self.opposing_handle_mut(selected_handle).unwrap();
@@ -288,10 +276,6 @@ impl ManipulatorGroup {
 		}
 	}
 
-	pub fn reset_previous_opposing_handle_length(&mut self) {
-		self.editor_state.previous_opposing_handle_length = None;
-	}
-
 	/// Helper function to more easily set position of [ManipulatorPoints]
 	pub fn set_point_position(&mut self, point_index: usize, position: DVec2) {
 		assert!(position.is_finite(), "Tried to set_point_position to non finite");
@@ -314,14 +298,10 @@ impl ManipulatorGroup {
 pub struct ManipulatorGroupEditorState {
 	// Whether the angle between the handles should be maintained
 	pub mirror_angle_between_handles: bool,
-	previous_opposing_handle_length: Option<f64>,
 }
 
 impl Default for ManipulatorGroupEditorState {
 	fn default() -> Self {
-		Self {
-			mirror_angle_between_handles: true,
-			previous_opposing_handle_length: None,
-		}
+		Self { mirror_angle_between_handles: true }
 	}
 }

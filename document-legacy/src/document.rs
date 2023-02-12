@@ -1100,13 +1100,18 @@ impl Document {
 				}
 				Some(responses)
 			}
-			Operation::MoveSelectedManipulatorPoints { layer_path, delta, mirror_distance } => {
+			Operation::MoveSelectedManipulatorPoints {
+				layer_path,
+				delta,
+				mirror_distance,
+				reset_opposing_handle_lengths,
+			} => {
 				if let Ok(viewspace) = self.generate_transform_relative_to_viewport(&layer_path) {
 					let objectspace = &viewspace.inverse();
 					let delta = objectspace.transform_vector2(DVec2::new(delta.0, delta.1));
 					let layer = self.layer_mut(&layer_path)?;
 					if let Some(shape) = layer.as_subpath_mut() {
-						shape.move_selected(delta, mirror_distance);
+						shape.move_selected(delta, mirror_distance, reset_opposing_handle_lengths);
 					}
 				}
 				self.mark_as_dirty(&layer_path)?;
@@ -1126,16 +1131,6 @@ impl Document {
 				if let Some(shape) = layer.as_subpath_mut() {
 					for manipulator_group in shape.selected_manipulator_groups_any_points_mut() {
 						manipulator_group.toggle_mirroring(toggle_angle);
-					}
-				}
-				// This does nothing visually so we don't need to send any messages
-				None
-			}
-			Operation::ResetPreviousOpposingHandleLength { layer_path } => {
-				let layer = self.layer_mut(&layer_path)?;
-				if let Some(shape) = layer.as_subpath_mut() {
-					for manipulator_group in shape.selected_manipulator_groups_any_points_mut() {
-						manipulator_group.reset_previous_opposing_handle_length();
 					}
 				}
 				// This does nothing visually so we don't need to send any messages
