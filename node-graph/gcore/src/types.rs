@@ -49,11 +49,20 @@ pub struct TypeDescriptor {
 	pub name: Cow<'static, str>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash, specta::Type)]
+#[derive(Clone, PartialEq, Eq, Hash, specta::Type)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Type {
 	Generic(Cow<'static, str>),
 	Concrete(TypeDescriptor),
+}
+
+impl core::fmt::Debug for Type {
+	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+		match self {
+			Self::Generic(arg0) => f.write_fmt(format_args!("Generic({})", arg0)),
+			Self::Concrete(arg0) => f.write_fmt(format_args!("Concrete({})", arg0.name)),
+		}
+	}
 }
 
 impl std::fmt::Display for Type {

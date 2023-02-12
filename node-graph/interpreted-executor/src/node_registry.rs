@@ -74,11 +74,6 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 			|_| IdNode::new().into_type_erased(),
 			NodeIOTypes::new(generic!(T), generic!(T), vec![]),
 		),
-		(
-			NodeIdentifier::new("graphene_core::ops::IdNode"),
-			|_| IdNode::new().into_type_erased(),
-			NodeIOTypes::new(concrete!(()), concrete!(()), vec![]),
-		),
 		// TODO: create macro to impl for all types
 		register_node!(graphene_core::structural::ConsNode<_, _>, input: u32, params: [u32]),
 		register_node!(graphene_core::structural::ConsNode<_, _>, input: u32, params: [&u32]),

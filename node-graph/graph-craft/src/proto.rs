@@ -5,6 +5,7 @@ use std::hash::Hash;
 use crate::document::value;
 use crate::document::NodeId;
 use dyn_any::DynAny;
+use graphene_core::raster::Image;
 use graphene_core::*;
 use std::pin::Pin;
 
@@ -351,7 +352,8 @@ impl TypingContext {
 
 		let input = match node.input {
 			ProtoNodeInput::None => concrete!(()),
-			ProtoNodeInput::Network => generic!(T),
+			// TODO: fix this
+			ProtoNodeInput::Network => concrete!(Image),
 			ProtoNodeInput::Node(id) => {
 				let input = self
 					.infered
@@ -362,16 +364,18 @@ impl TypingContext {
 		};
 		let impls = self.lookup.get(&node.identifier).ok_or(format!("No implementations found for {:?}", node.identifier))?;
 
-		if matches!(input, Type::Generic(_)) {
-			return Err("Generic types are not supported in parameters".to_string());
+		// TODO: implement type checking for network inputs/outputs
+		/*if matches!(input, Type::Generic(_)) {
+			return Err(format!("Generic types are not supported as inputs yet {:?}", input));
 		}
 		if parameters.iter().any(|p| matches!(p, Type::Generic(_))) {
-			return Err("Generic types are not supported in parameters".to_string());
-		}
+			return Err(format!("Generic types are not supported in parameters: {:?}", parameters));
+		}*/
 		let covariant = |output, input| match (output, input) {
-			(Type::Generic(_), _) => unreachable!(),
 			(Type::Concrete(t1), Type::Concrete(t2)) => t1 == t2,
 			(Type::Concrete(_), Type::Generic(_)) => true,
+			(Type::Generic(t1), Type::Generic(t2)) => t1 == t2,
+			(Type::Generic(_), Type::Concrete(_)) => true,
 		};
 
 		let valid_output_types = impls
