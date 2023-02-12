@@ -9,7 +9,7 @@ use graphene_core::structural::Then;
 use graphene_core::value::{ForgetNode, ValueNode};
 use graphene_core::{Node, NodeIO, NodeIOTypes};
 
-use graphene_std::any::{ComposeTypeErased, DowncastBothNode, DowncastBothRefNode, DynAnyNode, IntoTypeErasedNode, TypeErasedPinned, TypeErasedPinnedRef};
+use graphene_std::any::{ComposeTypeErased, DowncastBothNode, DowncastBothRefNode, DynAnyNode, IntoTypeErasedNode};
 
 use graphene_core::{Cow, NodeIdentifier, Type, TypeDescriptor};
 
@@ -98,7 +98,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 		),
 		// Filters
 		raster_node!(graphene_core::raster::LuminanceNode<_>, params: [LuminanceCalculation]),
-	raster_node!(graphene_core::raster::GrayscaleNode<_, _, _, _, _, _, _>, params: [Color, f64, f64, f64, f64, f64, f64]),
+		raster_node!(graphene_core::raster::GrayscaleNode<_, _, _, _, _, _, _>, params: [Color, f64, f64, f64, f64, f64, f64]),
 		raster_node!(graphene_core::raster::HueSaturationNode<_, _, _>, params: [f64, f64, f64]),
 		raster_node!(graphene_core::raster::InvertRGBNode, params: []),
 		raster_node!(graphene_core::raster::ThresholdNode<_, _>, params: [LuminanceCalculation, f64]),
@@ -173,7 +173,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 		),
 		register_node!(graphene_core::structural::ConsNode<_, _>, input: Image, params: [&str]),
 		register_node!(graphene_std::raster::ImageFrameNode<_>, input: Image, params: [DAffine2]),
-	/*
+		/*
 			(NodeIdentifier::new("graphene_std::raster::ImageNode", &[concrete!("&str")]), |_proto_node, stack| {
 				stack.push_fn(|_nodes| {
 					let image = FnNode::new(|s: &str| graphene_std::raster::image_node::<&str>().eval(s).unwrap());

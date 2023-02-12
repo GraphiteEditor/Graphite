@@ -1,8 +1,6 @@
 use core::marker::PhantomData;
 
-
-
-use crate::{Node};
+use crate::Node;
 
 #[derive(Default, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub struct IntNode<const N: u32>;

@@ -1,6 +1,6 @@
 use core::marker::PhantomData;
 
-use crate::{Node};
+use crate::Node;
 
 pub struct ComposeNode<First: for<'i> Node<'i, I>, Second: for<'i> Node<'i, <First as Node<'i, I>>::Output>, I> {
 	first: First,

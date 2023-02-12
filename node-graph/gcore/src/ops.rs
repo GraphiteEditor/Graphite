@@ -1,7 +1,7 @@
 use core::marker::PhantomData;
 use core::ops::Add;
 
-use crate::{Node};
+use crate::Node;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub struct AddNode;

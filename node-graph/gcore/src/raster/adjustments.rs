@@ -1,5 +1,5 @@
 use super::Color;
-use crate::{Node};
+use crate::Node;
 
 use core::fmt::Debug;
 use dyn_any::{DynAny, StaticType};

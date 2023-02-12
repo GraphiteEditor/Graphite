@@ -48,7 +48,6 @@ mod tests {
 		use graph_craft::document::*;
 
 		use graph_craft::*;
-		use graphene_core::*;
 
 		fn add_network() -> NodeNetwork {
 			NodeNetwork {

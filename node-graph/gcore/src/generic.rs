@@ -1,6 +1,6 @@
 use core::marker::PhantomData;
 
-use crate::{Node};
+use crate::Node;
 pub struct FnNode<T: Fn(I) -> O, I, O>(T, PhantomData<(I, O)>);
 
 impl<'i, T: Fn(I) -> O + 'i, O: 'i, I: 'i> Node<'i, I> for FnNode<T, I, O> {

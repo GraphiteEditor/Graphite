@@ -2,7 +2,7 @@ use dyn_any::{DynAny, StaticType};
 
 use glam::DAffine2;
 use graphene_core::raster::{Color, Image};
-use graphene_core::{Node};
+use graphene_core::Node;
 
 use std::path::Path;
 

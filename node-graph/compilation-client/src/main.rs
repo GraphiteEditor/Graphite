@@ -2,8 +2,7 @@ use gpu_compiler_bin_wrapper::CompileRequest;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::*;
 
-use graph_craft::{concrete, generic, NodeIdentifier, Type, TypeDescriptor};
-use std::borrow::Cow;
+use graph_craft::NodeIdentifier;
 
 fn main() {
 	let client = reqwest::blocking::Client::new();
