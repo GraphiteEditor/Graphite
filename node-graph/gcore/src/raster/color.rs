@@ -239,23 +239,8 @@ impl Color {
 	}
 
 	pub fn with_saturation(&self, saturation: f32) -> Color {
-		let min = self.red.min(self.green).min(self.blue);
-		let max = self.red.max(self.green).max(self.blue);
-		let mid = self.red + self.green + self.blue - min - max;
-
-		let new_min = 0.0;
-		let new_max = if max > min { saturation } else { 0.0 };
-		let new_mid = if max > min { ((mid - min) * saturation) / (max - min) } else { 0.0 };
-
-		self.map_rgb(|c| {
-			if c == min {
-				new_min
-			} else if c == max {
-				new_max
-			} else {
-				new_mid
-			}
-		})
+        let [hue, _, lightness, alpha] = self.to_hsla();
+        Color::from_hsla(hue, saturation, lightness, alpha)
 	}
 
 	pub fn blend_normal(_c_b: f32, c_s: f32) -> f32 {
