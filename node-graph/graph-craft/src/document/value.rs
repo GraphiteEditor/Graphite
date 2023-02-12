@@ -1,7 +1,8 @@
 pub use dyn_any::StaticType;
 use dyn_any::{DynAny, Upcast};
 use dyn_clone::DynClone;
-pub use glam::DVec2;
+pub use glam::{DAffine2, DVec2};
+use graphene_core::raster::LuminanceCalculation;
 use graphene_core::Node;
 use std::hash::Hash;
 pub use std::sync::Arc;
@@ -21,11 +22,13 @@ pub enum TaggedValue {
 	Bool(bool),
 	DVec2(DVec2),
 	OptionalDVec2(Option<DVec2>),
+	DAffine2(DAffine2),
 	Image(graphene_core::raster::Image),
 	RcImage(Option<Arc<graphene_core::raster::Image>>),
 	Color(graphene_core::raster::color::Color),
 	Subpath(graphene_core::vector::subpath::Subpath),
 	RcSubpath(Arc<graphene_core::vector::subpath::Subpath>),
+	LuminanceCalculation(LuminanceCalculation),
 	ImaginateSamplingMethod(ImaginateSamplingMethod),
 	ImaginateMaskStartingFill(ImaginateMaskStartingFill),
 	ImaginateStatus(ImaginateStatus),
@@ -66,40 +69,48 @@ impl Hash for TaggedValue {
 				8.hash(state);
 				Self::DVec2(*v).hash(state)
 			}
-			Self::Image(i) => {
+			Self::DAffine2(m) => {
 				9.hash(state);
-				i.hash(state)
+				m.to_cols_array().iter().for_each(|x| x.to_bits().hash(state))
 			}
-			Self::RcImage(i) => {
+			Self::Image(i) => {
 				10.hash(state);
 				i.hash(state)
 			}
-			Self::Color(c) => {
+			Self::RcImage(i) => {
 				11.hash(state);
+				i.hash(state)
+			}
+			Self::Color(c) => {
+				12.hash(state);
 				c.hash(state)
 			}
 			Self::Subpath(s) => {
-				12.hash(state);
-				s.hash(state)
-			}
-			Self::RcSubpath(s) => {
 				13.hash(state);
 				s.hash(state)
 			}
-			Self::ImaginateSamplingMethod(m) => {
+			Self::RcSubpath(s) => {
 				14.hash(state);
+				s.hash(state)
+			}
+			Self::LuminanceCalculation(l) => {
+				15.hash(state);
+				l.hash(state)
+			}
+			Self::ImaginateSamplingMethod(m) => {
+				16.hash(state);
 				m.hash(state)
 			}
 			Self::ImaginateMaskStartingFill(f) => {
-				15.hash(state);
+				17.hash(state);
 				f.hash(state)
 			}
 			Self::ImaginateStatus(s) => {
-				16.hash(state);
+				18.hash(state);
 				s.hash(state)
 			}
 			Self::LayerPath(p) => {
-				17.hash(state);
+				19.hash(state);
 				p.hash(state)
 			}
 		}
@@ -118,11 +129,13 @@ impl<'a> TaggedValue {
 			TaggedValue::Bool(x) => Box::new(x),
 			TaggedValue::DVec2(x) => Box::new(x),
 			TaggedValue::OptionalDVec2(x) => Box::new(x),
+			TaggedValue::DAffine2(x) => Box::new(x),
 			TaggedValue::Image(x) => Box::new(x),
 			TaggedValue::RcImage(x) => Box::new(x),
 			TaggedValue::Color(x) => Box::new(x),
 			TaggedValue::Subpath(x) => Box::new(x),
 			TaggedValue::RcSubpath(x) => Box::new(x),
+			TaggedValue::LuminanceCalculation(x) => Box::new(x),
 			TaggedValue::ImaginateSamplingMethod(x) => Box::new(x),
 			TaggedValue::ImaginateMaskStartingFill(x) => Box::new(x),
 			TaggedValue::ImaginateStatus(x) => Box::new(x),

@@ -1,6 +1,7 @@
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, MouseMotion};
 use crate::messages::layout::utility_types::layout_widget::PropertyHolder;
+use crate::messages::portfolio::document::node_graph;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::resize::Resize;
 use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
@@ -117,7 +118,7 @@ impl Fsm for NodeGraphToolFsmState {
 					shape_data.path = Some(document.get_path_for_new_layer());
 					responses.push_back(DocumentMessage::DeselectAllLayers.into());
 
-					let network = graph_craft::document::NodeNetwork::new_network(20, 0);
+					let network = node_graph::new_image_network(20, 0);
 
 					responses.push_back(
 						Operation::AddNodeGraphFrame {

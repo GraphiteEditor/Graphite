@@ -108,6 +108,7 @@ pub enum DocumentMessage {
 	},
 	NodeGraphFrameImaginateRandom {
 		imaginate_node: Vec<NodeId>,
+		then_generate: bool,
 	},
 	NodeGraphFrameImaginateTerminate {
 		layer_path: Vec<LayerId>,
