@@ -392,9 +392,9 @@ impl TypingContext {
 					.try_for_each(|generic| check_generic(node_io, &input, &parameters, generic).map(|_| ()))
 					.map(|_| {
 						if let Type::Generic(out) = &node_io.output {
-							check_generic(node_io, &input, &parameters, out).unwrap()
+							((*node_io).clone(), check_generic(node_io, &input, &parameters, out).unwrap())
 						} else {
-							node_io.output.clone()
+							((*node_io).clone(), node_io.output.clone())
 						}
 					})
 			})
@@ -407,11 +407,11 @@ impl TypingContext {
 				"No valid implementations found for {identifier} with input {input:?} and parameters {parameters:?}.\nTypes that are implemented: {:?}",
 				substitution_results,
 			)),
-			[output] => {
+			[(org_nio, output)] => {
 				let node_io = NodeIOTypes::new(input, (*output).clone(), parameters);
 
 				self.infered.insert(node_id, node_io.clone());
-				self.constructor.insert(node_id, impls[&node_io]);
+				self.constructor.insert(node_id, impls[org_nio]);
 				Ok(node_io)
 			}
 			_ => Err(format!(

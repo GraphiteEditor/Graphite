@@ -59,7 +59,7 @@ mod tests {
 						0,
 						DocumentNode {
 							name: "Cons".into(),
-							inputs: vec![NodeInput::Network(concrete!(u32)), NodeInput::Network(concrete!(u32))],
+							inputs: vec![NodeInput::Network(concrete!(u32)), NodeInput::Network(concrete!(&u32))],
 							implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::structural::ConsNode<_, _>")),
 							metadata: DocumentNodeMetadata::default(),
 						},

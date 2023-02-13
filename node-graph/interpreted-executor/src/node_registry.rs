@@ -81,6 +81,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 		register_node!(graphene_core::structural::ConsNode<_, _>, input: &u32, params: [u32]),
 		register_node!(graphene_core::structural::ConsNode<_, _>, input: &u32, params: [&u32]),
 		register_node!(graphene_core::ops::AddNode, input: (u32, u32), params: []),
+		register_node!(graphene_core::ops::AddNode, input: (u32, &u32), params: []),
 		register_node!(graphene_core::ops::AddParameterNode<_>, input: u32, params: [u32]),
 		register_node!(graphene_core::ops::AddParameterNode<_>, input: &u32, params: [u32]),
 		register_node!(graphene_core::ops::AddParameterNode<_>, input: u32, params: [&u32]),
@@ -95,7 +96,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 				let node = ComposeTypeErased::new(args[0], args[1]);
 				node.into_type_erased()
 			},
-			NodeIOTypes::new(generic!(X), generic!(U), vec![]),
+			NodeIOTypes::new(generic!(T), generic!(U), vec![generic!(V), generic!(U)]),
 		),
 		// Filters
 		raster_node!(graphene_core::raster::LuminanceNode<_>, params: [LuminanceCalculation]),
