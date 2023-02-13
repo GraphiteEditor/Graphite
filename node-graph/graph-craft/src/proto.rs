@@ -94,7 +94,7 @@ pub struct ProtoNetwork {
 	pub nodes: Vec<(NodeId, ProtoNode)>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ConstructionArgs {
 	Value(value::TaggedValue),
 	Nodes(Vec<NodeId>),
@@ -133,7 +133,7 @@ impl ConstructionArgs {
 	}
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct ProtoNode {
 	pub construction_args: ConstructionArgs,
 	pub input: ProtoNodeInput,

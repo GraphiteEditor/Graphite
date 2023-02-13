@@ -26,6 +26,10 @@
 	.sections {
 		flex: 1 1 100%;
 	}
+
+	.text-button {
+		flex-basis: 0;
+	}
 }
 </style>
 

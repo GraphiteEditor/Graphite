@@ -92,12 +92,15 @@
 	}
 
 	function resolveLink(link: FrontendNodeLink, containerBounds: HTMLDivElement): { nodePrimaryOutput: HTMLDivElement | undefined; nodePrimaryInput: HTMLDivElement | undefined } {
-		const connectorIndex = Number(link.linkEndInputIndex);
+		const outputIndex = Number(link.linkStartOutputIndex);
+		const inputIndex = Number(link.linkEndInputIndex);
 
-		const nodePrimaryOutput = (containerBounds.querySelector(`[data-node="${String(link.linkStart)}"] [data-port="output"]`) || undefined) as HTMLDivElement | undefined;
+		const nodeOutputConnectors = containerBounds.querySelectorAll(`[data-node="${String(link.linkStart)}"] [data-port="output"]`) || undefined;
 
 		const nodeInputConnectors = containerBounds.querySelectorAll(`[data-node="${String(link.linkEnd)}"] [data-port="input"]`) || undefined;
-		const nodePrimaryInput = nodeInputConnectors?.[connectorIndex] as HTMLDivElement | undefined;
+
+		const nodePrimaryOutput = nodeOutputConnectors?.[outputIndex] as HTMLDivElement | undefined;
+		const nodePrimaryInput = nodeInputConnectors?.[inputIndex] as HTMLDivElement | undefined;
 		return { nodePrimaryOutput, nodePrimaryInput };
 	}
 
@@ -263,8 +266,8 @@
 					const inputIndexInt = BigInt(inputIndex);
 					const links = $nodeGraph.links;
 					const linkIndex = links.findIndex((value) => value.linkEnd === nodeIdInt && value.linkEndInputIndex === inputIndexInt);
-					const queryString = `[data-node="${String(links[linkIndex].linkStart)}"] [data-port="output"]`;
-					linkInProgressFromConnector = (nodesContainer.querySelector(queryString) || undefined) as HTMLDivElement | undefined;
+					const nodeOutputConnectors = nodesContainer.querySelectorAll(`[data-node="${String(links[linkIndex].linkStart)}"] [data-port="output"]`) || undefined;
+					linkInProgressFromConnector = nodeOutputConnectors?.[Number(links[linkIndex].linkEndInputIndex)] as HTMLDivElement | undefined;
 					const nodeInputConnectors = nodesContainer.querySelectorAll(`[data-node="${String(links[linkIndex].linkEnd)}"] [data-port="input"]`) || undefined;
 					linkInProgressToConnector = nodeInputConnectors?.[Number(links[linkIndex].linkEndInputIndex)] as HTMLDivElement | undefined;
 					disconnecting = { nodeId: nodeIdInt, inputIndex, linkIndex };
@@ -359,13 +362,16 @@
 
 			if (outputNode && inputNode && outputConnectedNodeID && inputConnectedNodeID) {
 				const inputNodeInPorts = Array.from(inputNode.querySelectorAll(`[data-port="input"]`));
+				const outputNodeInPorts = Array.from(outputNode.querySelectorAll(`[data-port="output"]`));
+
 				const inputNodeConnectionIndexSearch = inputNodeInPorts.indexOf(linkInProgressToConnector);
+				const outputNodeConnectionIndexSearch = outputNodeInPorts.indexOf(linkInProgressFromConnector);
+
 				const inputNodeConnectionIndex = inputNodeConnectionIndexSearch > -1 ? inputNodeConnectionIndexSearch : undefined;
+				const outputNodeConnectionIndex = outputNodeConnectionIndexSearch > -1 ? outputNodeConnectionIndexSearch : undefined;
 
-				if (inputNodeConnectionIndex !== undefined) {
-					// const oneBasedIndex = inputNodeConnectionIndex + 1;
-
-					editor.instance.connectNodesByLink(BigInt(outputConnectedNodeID), BigInt(inputConnectedNodeID), inputNodeConnectionIndex);
+				if (inputNodeConnectionIndex !== undefined && outputNodeConnectionIndex !== undefined) {
+					editor.instance.connectNodesByLink(BigInt(outputConnectedNodeID), outputNodeConnectionIndex, BigInt(inputConnectedNodeID), inputNodeConnectionIndex);
 				}
 			}
 		} else if (draggingNodes) {
@@ -411,8 +417,8 @@
 					});
 					// If the node has been dragged on top of the link then connect it into the middle.
 					if (link) {
-						editor.instance.connectNodesByLink(link.linkStart, selectedNodeId, 0);
-						editor.instance.connectNodesByLink(selectedNodeId, link.linkEnd, Number(link.linkEndInputIndex));
+						editor.instance.connectNodesByLink(link.linkStart, 0, selectedNodeId, 0);
+						editor.instance.connectNodesByLink(selectedNodeId, 0, link.linkEnd, Number(link.linkEndInputIndex));
 						editor.instance.shiftNode(selectedNodeId);
 					}
 				}
@@ -482,10 +488,11 @@
 		{/if}
 		<div class="nodes" style:transform={`scale(${transform.scale}) translate(${transform.x}px, ${transform.y}px)`} style:transform-origin={`0 0`} bind:this={nodesContainer}>
 			{#each $nodeGraph.nodes as node (String(node.id))}
+				{@const exposedInputsOutputs = [...node.exposedInputs, ...node.outputs.slice(1)]}
 				<div
 					class="node"
 					class:selected={selected.includes(node.id)}
-					class:output={node.output}
+					class:previewed={node.previewed}
 					class:disabled={node.disabled}
 					style:--offset-left={(node.position?.x || 0) + (selected.includes(node.id) ? draggingNodes?.roundX || 0 : 0)}
 					style:--offset-top={(node.position?.y || 0) + (selected.includes(node.id) ? draggingNodes?.roundY || 0 : 0)}
@@ -508,9 +515,9 @@
 								<div
 									class="output port"
 									data-port="output"
-									data-datatype={node.outputs[0]}
-									style:--data-color={`var(--color-data-${node.outputs[0]})`}
-									style:--data-color-dim={`var(--color-data-${node.outputs[0]}-dim)`}
+									data-datatype={node.outputs[0].dataType}
+									style:--data-color={`var(--color-data-${node.outputs[0].dataType})`}
+									style:--data-color-dim={`var(--color-data-${node.outputs[0].dataType}-dim)`}
 								>
 									<div />
 								</div>
@@ -519,22 +526,34 @@
 						<IconLabel icon={nodeIcon(node.displayName)} />
 						<TextLabel>{node.displayName}</TextLabel>
 					</div>
-					{#if node.exposedInputs.length > 0}
-						<div class="arguments">
-							{#each node.exposedInputs as argument, index (index)}
-								<div class="argument">
+					{#if exposedInputsOutputs.length > 0}
+						<div class="parameters">
+							{#each exposedInputsOutputs as parameter, index (index)}
+								<div class="parameter">
 									<div class="ports">
-										<div
-											class="input port"
-											data-port="input"
-											data-datatype={argument.dataType}
-											style:--data-color={`var(--color-data-${argument.dataType})`}
-											style:--data-color-dim={`var(--color-data-${argument.dataType}-dim)`}
-										>
-											<div />
-										</div>
+										{#if index < node.exposedInputs.length}
+											<div
+												class="input port"
+												data-port="input"
+												data-datatype={parameter.dataType}
+												style:--data-color={`var(--color-data-${parameter.dataType})`}
+												style:--data-color-dim={`var(--color-data-${parameter.dataType}-dim)`}
+											>
+												<div />
+											</div>
+										{:else}
+											<div
+												class="output port"
+												data-port="output"
+												data-datatype={parameter.dataType}
+												style:--data-color={`var(--color-data-${parameter.dataType})`}
+												style:--data-color-dim={`var(--color-data-${parameter.dataType}-dim)`}
+											>
+												<div />
+											</div>
+										{/if}
 									</div>
-									<TextLabel>{argument.name}</TextLabel>
+									<TextLabel class={index < node.exposedInputs.length ? "name" : "output"}>{parameter.name}</TextLabel>
 								</div>
 							{/each}
 						</div>
@@ -656,7 +675,7 @@
 						}
 					}
 
-					&.output {
+					&.previewed {
 						outline: 3px solid var(--color-data-vector);
 					}
 
@@ -679,20 +698,28 @@
 						}
 					}
 
-					.arguments {
+					.parameters {
 						display: flex;
 						flex-direction: column;
 						width: 100%;
 						position: relative;
 
-						.argument {
+						.parameter {
 							position: relative;
 							display: flex;
 							align-items: center;
 							height: 24px;
-							width: 100%;
+							width: calc(100% - 24px * 2);
 							margin-left: 24px;
 							margin-right: 24px;
+
+							.text-label {
+								width: 100%;
+
+								&.output {
+									text-align: right;
+								}
+							}
 						}
 
 						// Squares to cover up the rounded corners of the primary area and make them have a straight edge
