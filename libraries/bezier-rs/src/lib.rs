@@ -7,4 +7,4 @@ mod utils;
 
 pub use bezier::*;
 pub use subpath::*;
-pub use utils::TValue;
+pub use utils::{SubpathTValue, TValue};
