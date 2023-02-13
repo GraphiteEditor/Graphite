@@ -27,7 +27,7 @@ impl Bezier {
 	}
 
 	/// Convert a [TValue] to a parametric `t`-value.
-	pub(crate) fn compute_type_to_parametric(&self, t: TValue) -> f64 {
+	pub(crate) fn t_value_to_parametric(&self, t: TValue) -> f64 {
 		match t {
 			TValue::Parametric(t) => {
 				assert!((0.0..=1.).contains(&t));
@@ -66,7 +66,7 @@ impl Bezier {
 	/// Calculate the coordinates of the point `t` along the curve.
 	/// Expects `t` to be within the inclusive range `[0, 1]`.
 	pub fn evaluate(&self, t: TValue) -> DVec2 {
-		let t = self.compute_type_to_parametric(t);
+		let t = self.t_value_to_parametric(t);
 		self.unrestricted_parametric_evaluate(t)
 	}
 

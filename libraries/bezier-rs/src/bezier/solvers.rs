@@ -10,7 +10,7 @@ impl Bezier {
 	/// The `i`th element of the list represents the set of points in the `i`th iteration.
 	/// More information on the algorithm can be found in the [De Casteljau section](https://pomax.github.io/bezierinfo/#decasteljau) in Pomax's primer.
 	pub fn de_casteljau_points(&self, t: TValue) -> Vec<Vec<DVec2>> {
-		let t = self.compute_type_to_parametric(t);
+		let t = self.t_value_to_parametric(t);
 		let bezier_points = match self.handles {
 			BezierHandles::Linear => vec![self.start, self.end],
 			BezierHandles::Quadratic { handle } => vec![self.start, handle, self.end],
@@ -52,7 +52,7 @@ impl Bezier {
 
 	/// Returns a normalized unit vector representing the tangent at the point `t` along the curve.
 	pub fn tangent(&self, t: TValue) -> DVec2 {
-		let t = self.compute_type_to_parametric(t);
+		let t = self.t_value_to_parametric(t);
 		match self.handles {
 			BezierHandles::Linear => self.end - self.start,
 			_ => self.derivative().unwrap().evaluate(TValue::Parametric(t)),
@@ -68,7 +68,7 @@ impl Bezier {
 	/// Returns the curvature, a scalar value for the derivative at the point `t` along the curve.
 	/// Curvature is 1 over the radius of a circle with an equivalent derivative.
 	pub fn curvature(&self, t: TValue) -> f64 {
-		let t = self.compute_type_to_parametric(t);
+		let t = self.t_value_to_parametric(t);
 		let (d, dd) = match &self.derivative() {
 			Some(first_derivative) => match first_derivative.derivative() {
 				Some(second_derivative) => (first_derivative.evaluate(TValue::Parametric(t)), second_derivative.evaluate(TValue::Parametric(t))),

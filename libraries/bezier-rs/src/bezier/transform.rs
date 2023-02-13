@@ -8,7 +8,7 @@ use std::f64::consts::PI;
 impl Bezier {
 	/// Returns the pair of Bezier curves that result from splitting the original curve at the point `t` along the curve.
 	pub fn split(&self, t: TValue) -> [Bezier; 2] {
-		let t = self.compute_type_to_parametric(t);
+		let t = self.t_value_to_parametric(t);
 		let split_point = self.evaluate(TValue::Parametric(t));
 
 		match self.handles {
@@ -53,7 +53,7 @@ impl Bezier {
 	/// Returns the Bezier curve representing the sub-curve starting at the point `t1` and ending at the point `t2` along the curve.
 	/// When `t1 < t2`, returns the reversed sub-curve starting at `t2` and ending at `t1`.
 	pub fn trim(&self, t1: TValue, t2: TValue) -> Bezier {
-		let (t1, t2) = (self.compute_type_to_parametric(t1), self.compute_type_to_parametric(t2));
+		let (t1, t2) = (self.t_value_to_parametric(t1), self.t_value_to_parametric(t2));
 		// If t1 is equal to t2, return a bezier comprised entirely of the same point
 		if f64_compare(t1, t2, MAX_ABSOLUTE_DIFFERENCE) {
 			let point = self.evaluate(TValue::Parametric(t1));
