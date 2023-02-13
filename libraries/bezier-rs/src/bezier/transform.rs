@@ -50,9 +50,10 @@ impl Bezier {
 		}
 	}
 
-	/// Returns the Bezier curve representing the sub-curve starting at the point `c1` and ending at the point `c2` along the curve.
-	pub fn trim(&self, c1: TValue, c2: TValue) -> Bezier {
-		let (t1, t2) = (self.compute_type_to_parametric(c1), self.compute_type_to_parametric(c2));
+	/// Returns the Bezier curve representing the sub-curve starting at the point `t1` and ending at the point `t2` along the curve.
+	/// When `t1 < t2`, returns the reversed sub-curve starting at `t2` and ending at `t1`.
+	pub fn trim(&self, t1: TValue, t2: TValue) -> Bezier {
+		let (t1, t2) = (self.compute_type_to_parametric(t1), self.compute_type_to_parametric(t2));
 		// If t1 is equal to t2, return a bezier comprised entirely of the same point
 		if f64_compare(t1, t2, MAX_ABSOLUTE_DIFFERENCE) {
 			let point = self.evaluate(TValue::Parametric(t1));
