@@ -31,7 +31,7 @@ function renderBezierPane(featureName: BezierFeatureKey, container: HTMLElement 
 	demo.setAttribute("name", featureName);
 	demo.setAttribute("demoOptions", JSON.stringify(feature.demoOptions || {}));
 	demo.setAttribute("triggerOnMouseMove", String(feature.triggerOnMouseMove));
-	demo.setAttribute("chooseComputeType", String(feature.chooseComputeType));
+	demo.setAttribute("chooseTVariant", String(feature.chooseTVariant));
 	container?.append(demo);
 }
 
@@ -42,7 +42,7 @@ function renderSubpathPane(featureName: SubpathFeatureKey, container: HTMLElemen
 	demo.setAttribute("name", featureName);
 	demo.setAttribute("sliderOptions", JSON.stringify(feature.sliderOptions || []));
 	demo.setAttribute("triggerOnMouseMove", String(feature.triggerOnMouseMove));
-	demo.setAttribute("chooseComputeType", String(feature.chooseComputeType));
+	demo.setAttribute("chooseTVariant", String(feature.chooseTVariant));
 	container?.append(demo);
 }
 

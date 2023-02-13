@@ -1,7 +1,7 @@
 import { WasmBezier } from "@/../wasm/pkg";
 import bezierFeatures, { BezierFeatureKey } from "@/features/bezier-features";
 import { renderDemo } from "@/utils/render";
-import { getConstructorKey, getCurveType, BezierCallback, BezierCurveType, SliderOption, WasmBezierManipulatorKey, ComputeType, Demo } from "@/utils/types";
+import { getConstructorKey, getCurveType, BezierCallback, BezierCurveType, SliderOption, WasmBezierManipulatorKey, TVariant, Demo } from "@/utils/types";
 
 const SELECTABLE_RANGE = 10;
 
@@ -24,7 +24,7 @@ class BezierDemo extends HTMLElement implements Demo {
 
 	triggerOnMouseMove!: boolean;
 
-	computeType!: ComputeType;
+	tVariant!: TVariant;
 
 	// Data
 	bezier!: WasmBezier;
@@ -40,12 +40,12 @@ class BezierDemo extends HTMLElement implements Demo {
 	sliderUnits!: Record<string, string | string[]>;
 
 	static get observedAttributes(): string[] {
-		return ["computetype"];
+		return ["tvariant"];
 	}
 
 	attributeChangedCallback(name: string, oldValue: string, newValue: string): void {
-		if (name === "computetype" && oldValue) {
-			this.computeType = (newValue || "Parametric") as ComputeType;
+		if (name === "tvariant" && oldValue) {
+			this.tVariant = (newValue || "Parametric") as TVariant;
 			const figure = this.querySelector("figure") as HTMLElement;
 			this.drawDemo(figure);
 		}
@@ -57,7 +57,7 @@ class BezierDemo extends HTMLElement implements Demo {
 		this.key = this.getAttribute("key") as BezierFeatureKey;
 		this.sliderOptions = JSON.parse(this.getAttribute("sliderOptions") || "[]");
 		this.triggerOnMouseMove = this.getAttribute("triggerOnMouseMove") === "true";
-		this.computeType = (this.getAttribute("computetype") || "Parametric") as ComputeType;
+		this.tVariant = (this.getAttribute("tvariant") || "Parametric") as TVariant;
 
 		this.callback = bezierFeatures[this.key].callback as BezierCallback;
 		const curveType = getCurveType(this.points.length);
@@ -78,7 +78,7 @@ class BezierDemo extends HTMLElement implements Demo {
 	}
 
 	drawDemo(figure: HTMLElement, mouseLocation?: [number, number]): void {
-		figure.innerHTML = this.callback(this.bezier, this.sliderData, mouseLocation, this.computeType);
+		figure.innerHTML = this.callback(this.bezier, this.sliderData, mouseLocation, this.tVariant);
 	}
 
 	onMouseDown(event: MouseEvent): void {

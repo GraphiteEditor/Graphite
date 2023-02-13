@@ -1,6 +1,6 @@
 import { WasmBezier } from "@/../wasm/pkg";
-import { tSliderOptions, tErrorOptions, tMinimumSeperationOptions } from "@/utils/options";
-import { ComputeType, BezierDemoOptions, WasmBezierInstance, BezierCallback } from "@/utils/types";
+import { tSliderOptions, errorOptions, minimumSeparationOptions } from "@/utils/options";
+import { TVariant, BezierDemoOptions, WasmBezierInstance, BezierCallback } from "@/utils/types";
 
 const bezierFeatures = {
 	constructor: {
@@ -67,13 +67,13 @@ const bezierFeatures = {
 	},
 	evaluate: {
 		name: "Evaluate",
-		callback: (bezier: WasmBezierInstance, options: Record<string, number>, _: undefined, computeType: ComputeType): string => bezier.evaluate(options.computeArgument, computeType),
+		callback: (bezier: WasmBezierInstance, options: Record<string, number>, _: undefined, tVariant: TVariant): string => bezier.evaluate(options.t, tVariant),
 		demoOptions: {
 			Quadratic: {
-				sliderOptions: [{ ...tSliderOptions, variable: "computeArgument" }],
+				sliderOptions: [tSliderOptions],
 			},
 		},
-		chooseComputeType: true,
+		chooseTVariant: true,
 	},
 	"lookup-table": {
 		name: "Lookup Table",
@@ -118,25 +118,27 @@ const bezierFeatures = {
 	},
 	tangent: {
 		name: "Tangent",
-		callback: (bezier: WasmBezierInstance, options: Record<string, number>): string => bezier.tangent(options.t),
+		callback: (bezier: WasmBezierInstance, options: Record<string, number>, _: undefined, tVariant: TVariant): string => bezier.tangent(options.t, tVariant),
 		demoOptions: {
 			Quadratic: {
 				sliderOptions: [tSliderOptions],
 			},
 		},
+		chooseTVariant: true,
 	},
 	normal: {
 		name: "Normal",
-		callback: (bezier: WasmBezierInstance, options: Record<string, number>): string => bezier.normal(options.t),
+		callback: (bezier: WasmBezierInstance, options: Record<string, number>, _: undefined, tVariant: TVariant): string => bezier.normal(options.t, tVariant),
 		demoOptions: {
 			Quadratic: {
 				sliderOptions: [tSliderOptions],
 			},
 		},
+		chooseTVariant: true,
 	},
 	curvature: {
 		name: "Curvature",
-		callback: (bezier: WasmBezierInstance, options: Record<string, number>): string => bezier.curvature(options.t),
+		callback: (bezier: WasmBezierInstance, options: Record<string, number>, _: undefined, tVariant: TVariant): string => bezier.curvature(options.t, tVariant),
 		demoOptions: {
 			Linear: {
 				disabled: true,
@@ -145,19 +147,21 @@ const bezierFeatures = {
 				sliderOptions: [tSliderOptions],
 			},
 		},
+		chooseTVariant: true,
 	},
 	split: {
 		name: "Split",
-		callback: (bezier: WasmBezierInstance, options: Record<string, number>): string => bezier.split(options.t),
+		callback: (bezier: WasmBezierInstance, options: Record<string, number>, _: undefined, tVariant: TVariant): string => bezier.split(options.t, tVariant),
 		demoOptions: {
 			Quadratic: {
 				sliderOptions: [tSliderOptions],
 			},
 		},
+		chooseTVariant: true,
 	},
 	trim: {
 		name: "Trim",
-		callback: (bezier: WasmBezierInstance, options: Record<string, number>): string => bezier.trim(options.t1, options.t2),
+		callback: (bezier: WasmBezierInstance, options: Record<string, number>, _: undefined, tVariant: TVariant): string => bezier.trim(options.t1, options.t2, tVariant),
 		demoOptions: {
 			Quadratic: {
 				sliderOptions: [
@@ -178,6 +182,7 @@ const bezierFeatures = {
 				],
 			},
 		},
+		chooseTVariant: true,
 	},
 	project: {
 		name: "Project",
@@ -400,11 +405,11 @@ const bezierFeatures = {
 				[180, 10],
 				[90, 120],
 			];
-			return bezier.intersect_quadratic_segment(quadratic, options.error, options.minimum_seperation);
+			return bezier.intersect_quadratic_segment(quadratic, options.error, options.minimum_separation);
 		},
 		demoOptions: {
 			Quadratic: {
-				sliderOptions: [tErrorOptions, tMinimumSeperationOptions],
+				sliderOptions: [errorOptions, minimumSeparationOptions],
 			},
 		},
 	},
@@ -417,11 +422,11 @@ const bezierFeatures = {
 				[40, 120],
 				[175, 140],
 			];
-			return bezier.intersect_cubic_segment(cubic, options.error, options.minimum_seperation);
+			return bezier.intersect_cubic_segment(cubic, options.error, options.minimum_separation);
 		},
 		demoOptions: {
 			Quadratic: {
-				sliderOptions: [tErrorOptions, tMinimumSeperationOptions],
+				sliderOptions: [errorOptions, minimumSeparationOptions],
 			},
 		},
 	},
@@ -430,7 +435,7 @@ const bezierFeatures = {
 		callback: (bezier: WasmBezierInstance, options: Record<string, number>): string => bezier.intersect_self(options.error),
 		demoOptions: {
 			Quadratic: {
-				sliderOptions: [tErrorOptions],
+				sliderOptions: [errorOptions],
 			},
 			Cubic: {
 				customPoints: [
@@ -470,12 +475,13 @@ const bezierFeatures = {
 	},
 	"de-casteljau-points": {
 		name: "De Casteljau Points",
-		callback: (bezier: WasmBezierInstance, options: Record<string, number>): string => bezier.de_casteljau_points(options.t),
+		callback: (bezier: WasmBezierInstance, options: Record<string, number>, _: undefined, tVariant: TVariant): string => bezier.de_casteljau_points(options.t, tVariant),
 		demoOptions: {
 			Quadratic: {
 				sliderOptions: [tSliderOptions],
 			},
 		},
+		chooseTVariant: true,
 	},
 };
 
@@ -485,6 +491,6 @@ export type BezierFeatureOptions = {
 	callback: BezierCallback;
 	demoOptions?: Partial<BezierDemoOptions>;
 	triggerOnMouseMove?: boolean;
-	chooseComputeType?: boolean;
+	chooseTVariant?: boolean;
 };
 export default bezierFeatures as Record<BezierFeatureKey, BezierFeatureOptions>;
