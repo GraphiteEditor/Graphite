@@ -366,10 +366,10 @@ impl TypingContext {
 		let impls = self.lookup.get(&node.identifier).ok_or(format!("No implementations found for {:?}", node.identifier))?;
 
 		if matches!(input, Type::Generic(_)) {
-			return Err(format!("Generic types are not supported as inputs yet {:?}", input));
+			return Err(format!("Generic types are not supported as inputs yet {:?} occured in {:?}", &input, node.identifier));
 		}
 		if parameters.iter().any(|p| matches!(p, Type::Generic(_))) {
-			return Err(format!("Generic types are not supported in parameters: {:?}", parameters));
+			return Err(format!("Generic types are not supported in parameters: {:?} occured in {:?}", parameters, node.identifier));
 		}
 		let covariant = |output, input| match (output, input) {
 			(Type::Concrete(t1), Type::Concrete(t2)) => t1 == t2,
@@ -382,22 +382,69 @@ impl TypingContext {
 			.keys()
 			.filter(|node_io| covariant(node_io.output.clone(), input.clone()) && node_io.parameters.iter().zip(parameters.iter()).all(|(p1, p2)| covariant(p1.clone(), p2.clone())))
 			.collect::<Vec<_>>();
-		match valid_output_types.as_slice() {
+
+		let substitution_results = valid_output_types
+			.iter()
+			.map(|node_io| {
+				collect_generics(node_io)
+					.iter()
+					.try_for_each(|generic| check_generic(node_io, &input, &parameters, generic).map(|_| ()))
+					.map(|_| {
+						if let Type::Generic(out) = &node_io.output {
+							check_generic(node_io, &input, &parameters, out).unwrap()
+						} else {
+							node_io.output.clone()
+						}
+					})
+			})
+			.collect::<Vec<_>>();
+
+		let valid_impls = substitution_results.iter().filter_map(|result| result.as_ref().ok()).collect::<Vec<_>>();
+
+		match valid_impls.as_slice() {
 			[] => Err(format!(
-				"No valid output types found for {identifier} with input {input:?} and parameters {parameters:?}.\nTypes that are implemented: {:?}",
-				impls.keys()
+				"No valid implementations found for {identifier} with input {input:?} and parameters {parameters:?}.\nTypes that are implemented: {:?}",
+				substitution_results,
 			)),
-			[node_io] => {
-				let types = NodeIOTypes::new(input, node_io.output.clone(), parameters);
-				self.infered.insert(node_id, types.clone());
-				self.constructor.insert(node_id, impls[node_io]);
-				Ok(types)
+			[output] => {
+				let node_io = NodeIOTypes::new(input, (*output).clone(), parameters);
+
+				self.infered.insert(node_id, node_io.clone());
+				self.constructor.insert(node_id, impls[&node_io]);
+				Ok(node_io)
 			}
 			_ => Err(format!(
-				"Multiple valid output types found for {identifier} with input {input:?} and parameters {parameters:?} (valid types: {valid_output_types:?}"
+				"Multiple implementations found for {identifier} with input {input:?} and parameters {parameters:?} (valid types: {valid_output_types:?}"
 			)),
 		}
 	}
+}
+
+fn collect_generics(types: &NodeIOTypes) -> Vec<Cow<'static, str>> {
+	let inputs = [&types.input].into_iter().chain(types.parameters.iter());
+	let mut generics = inputs
+		.filter_map(|t| match t {
+			Type::Generic(out) => Some(out.clone()),
+			_ => None,
+		})
+		.collect::<Vec<_>>();
+	if let Type::Generic(out) = &types.output {
+		generics.push(out.clone());
+	}
+	generics.dedup();
+	generics
+}
+
+fn check_generic(types: &NodeIOTypes, input: &Type, parameters: &[Type], generic: &str) -> Result<Type, String> {
+	let inputs = [(&types.input, input)].into_iter().chain(types.parameters.iter().zip(parameters.iter()));
+	let mut concrete_inputs = inputs.filter(|(ni, _)| matches!(ni, Type::Generic(input) if generic == input));
+	let (_, out_ty) = concrete_inputs
+		.next()
+		.ok_or_else(|| format!("Generic output type {generic} is not dependent on input {input:?} or parameters {parameters:?}",))?;
+	if concrete_inputs.any(|(_, ty)| ty != out_ty) {
+		return Err(format!("Generic output type {generic} is dependent on multiple inputs or parameters",));
+	}
+	Ok(out_ty.clone())
 }
 
 #[cfg(test)]

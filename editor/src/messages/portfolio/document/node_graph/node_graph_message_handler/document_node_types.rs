@@ -500,7 +500,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 	]
 }
 
-pub const IMAGINATE_NODE: Lazy<DocumentNodeType> = Lazy::new(|| DocumentNodeType {
+pub static IMAGINATE_NODE: Lazy<DocumentNodeType> = Lazy::new(|| DocumentNodeType {
 	name: "Imaginate",
 	category: "Image Synthesis",
 	identifier: NodeImplementation::proto("graphene_std::raster::ImaginateNode<_>"),
