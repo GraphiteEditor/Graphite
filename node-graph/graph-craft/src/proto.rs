@@ -374,13 +374,14 @@ impl TypingContext {
 		let covariant = |output, input| match (output, input) {
 			(Type::Concrete(t1), Type::Concrete(t2)) => t1 == t2,
 			(Type::Concrete(_), Type::Generic(_)) => true,
-			(Type::Generic(t1), Type::Generic(t2)) => t1 == t2,
+			// TODO: verify if this actually corerct
+			(Type::Generic(t1), Type::Generic(t2)) => true,
 			(Type::Generic(_), Type::Concrete(_)) => true,
 		};
 
 		let valid_output_types = impls
 			.keys()
-			.filter(|node_io| covariant(node_io.output.clone(), input.clone()) && node_io.parameters.iter().zip(parameters.iter()).all(|(p1, p2)| covariant(p1.clone(), p2.clone())))
+			.filter(|node_io| covariant(node_io.input.clone(), input.clone()) && node_io.parameters.iter().zip(parameters.iter()).all(|(p1, p2)| covariant(p1.clone(), p2.clone())))
 			.collect::<Vec<_>>();
 
 		let substitution_results = valid_output_types
