@@ -7,8 +7,8 @@ use std::collections::HashMap;
 use graphene_core::raster::color::Color;
 use graphene_core::raster::*;
 use graphene_core::structural::Then;
-use graphene_core::value::{ClonedNode, ForgetNode, ValueNode};
 use graphene_core::{Node, NodeIO, NodeIOTypes};
+use graphene_core::value::{ClonedNode, ForgetNode, ValueNode};
 
 use graphene_std::any::{ComposeTypeErased, DowncastBothNode, DowncastBothRefNode, DynAnyNode, IntoTypeErasedNode};
 
@@ -114,8 +114,23 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 		),
 		// Filters
 		raster_node!(graphene_core::raster::LuminanceNode<_>, params: [LuminanceCalculation]),
-        raster_node!(graphene_core::raster::BlendNode<_, _, _>, params: [Color, BlendMode, f64]),
 		raster_node!(graphene_core::raster::LevelsNode<_, _, _, _, _>, params: [f64, f64, f64, f64, f64]),
+        (
+            NodeIdentifier::new(
+                "graphene_core::raster::BlendNode<_, _, _, _>"),
+            |args| {
+                use graphene_core::Node;
+                let image: DowncastBothNode<(), Image> = DowncastBothNode::new(args[0]);
+                let blend_mode: DowncastBothNode<(), BlendMode> = DowncastBothNode::new(args[1]);
+                let opacity: DowncastBothNode<(), f64> = DowncastBothNode::new(args[2]);
+                let blend_node = graphene_core::raster::BlendNode::new(ClonedNode::new(blend_mode.eval(())), ClonedNode::new(opacity.eval(())));
+                let node = graphene_std::raster::BlendImageNode::new(image, ValueNode::new(blend_node));
+                let _ = &node as &dyn for<'i> Node<'i, Image, Output = Image>;
+                let any: DynAnyNode<Image, _, _> = graphene_std::any::DynAnyNode::new(graphene_core::value::ValueNode::new(node));
+                any.into_type_erased()
+            },
+			NodeIOTypes::new(concrete!(Image), concrete!(Image), vec![concrete!(Image), concrete!(BlendMode), concrete!(f64)]),
+        ),
 		raster_node!(graphene_core::raster::GrayscaleNode<_, _, _, _, _, _, _>, params: [Color, f64, f64, f64, f64, f64, f64]),
 		raster_node!(graphene_core::raster::HueSaturationNode<_, _, _>, params: [f64, f64, f64]),
 		raster_node!(graphene_core::raster::InvertRGBNode, params: []),

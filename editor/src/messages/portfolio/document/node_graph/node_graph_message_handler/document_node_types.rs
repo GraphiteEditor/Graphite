@@ -195,10 +195,10 @@ fn static_nodes() -> Vec<DocumentNodeType> {
         DocumentNodeType {
             name: "Blend Node",
             category: "Image Adjustments",
-            identifier: NodeImplementation::proto("graphene_core::raster::BlendNode<_, _, _>"),
+            identifier: NodeImplementation::proto("graphene_core::raster::BlendNode<_, _, _, _>"),
             inputs: vec![
                 DocumentInputType::value("Image", TaggedValue::Image(Image::empty()), true),
-                DocumentInputType::value("Backdrop", TaggedValue::Color(Color::BLACK), false),
+                DocumentInputType::value("Second", TaggedValue::Image(Image::empty()), true),
                 DocumentInputType::value("BlendMode", TaggedValue::BlendMode(BlendMode::Normal), false),
                 DocumentInputType::value("Opacity", TaggedValue::F64(100.), false),
             ],

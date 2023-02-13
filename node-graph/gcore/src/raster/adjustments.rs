@@ -313,14 +313,14 @@ fn threshold_node(color: Color, luma_calculation: LuminanceCalculation, threshol
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct BlendNode<SourceColor, BlendMode, Opacity> {
-	source_color: SourceColor,
+pub struct BlendNode<BlendMode, Opacity> {
 	blend_mode: BlendMode,
 	opacity: Opacity,
 }
 
 #[node_macro::node_fn(BlendNode)]
-fn blend_node(backdrop: Color, source_color: Color, blend_mode: BlendMode, opacity: f64) -> Color {
+fn blend_node(input: (Color, Color), blend_mode: BlendMode, opacity: f64) -> Color {
+	let (backdrop, source_color) = input;
 	let actual_opacity = 1. - (opacity / 100.) as f32;
 	//let c_s = backdrop.blend_rgb(source_color, |b,s| (s * actual_opacity) + (b * (1.-actual_opacity)));
 	let c_s = source_color;
