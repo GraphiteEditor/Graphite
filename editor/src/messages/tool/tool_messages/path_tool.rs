@@ -6,13 +6,14 @@ use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::overlay_renderer::OverlayRenderer;
 use crate::messages::tool::common_functionality::shape_editor::{ManipulatorPointInfo, ShapeEditor};
 use crate::messages::tool::common_functionality::snapping::SnapManager;
+use crate::messages::tool::common_functionality::transformation_cage::axis_align_drag;
 use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 
 use document_legacy::intersection::Quad;
 use graphene_std::vector::consts::ManipulatorType;
 
-use glam::DVec2;
+use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};
 
 #[derive(Default)]
@@ -28,6 +29,8 @@ pub enum PathToolMessage {
 	// Standard messages
 	#[remain::unsorted]
 	Abort,
+	BeginGrab,
+	BeginRotate,
 	#[remain::unsorted]
 	DocumentIsDirty,
 	#[remain::unsorted]
@@ -74,12 +77,24 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for PathTool {
 				InsertPoint,
 				DragStart,
 				Delete,
+				BeginGrab,
+				BeginRotate,
 			),
 			Dragging => actions!(PathToolMessageDiscriminant;
 				InsertPoint,
 				DragStop,
 				PointerMove,
 				Delete,
+				BeginGrab,
+				BeginRotate,
+			),
+			Rotating => actions!(PathToolMessageDiscriminant;
+				InsertPoint,
+				DragStop,
+				PointerMove,
+				Delete,
+				BeginGrab,
+				BeginRotate,
 			),
 		}
 	}
@@ -100,6 +115,7 @@ enum PathToolFsmState {
 	#[default]
 	Ready,
 	Dragging,
+	Rotating,
 }
 
 #[derive(Default)]
@@ -109,6 +125,7 @@ struct PathToolData {
 	snap_manager: SnapManager,
 
 	drag_start_pos: DVec2,
+	previous_mouse_position: DVec2,
 	alt_debounce: bool,
 }
 
@@ -187,7 +204,9 @@ impl Fsm for PathToolFsmState {
 						let include_handles = tool_data.shape_editor.selected_layers_ref();
 						tool_data.snap_manager.add_all_document_handles(document, input, &include_handles, &[], &selected_points.points);
 
-						tool_data.drag_start_pos = input.mouse.position - selected_points.offset;
+						tool_data.drag_start_pos = input.mouse.position;
+						tool_data.previous_mouse_position = input.mouse.position;
+						
 						PathToolFsmState::Dragging
 					}
 					// We didn't find a point nearby, so consider selecting the nearest shape instead
@@ -214,9 +233,48 @@ impl Fsm for PathToolFsmState {
 								responses.push_back(DocumentMessage::DeselectAllLayers.into());
 							}
 						}
+
 						PathToolFsmState::Ready
 					}
 				}
+				//Rotating
+				(PathToolFsmState::Rotating, PathToolMessage::PointerMove {alt_mirror_angle,shift_mirror_distance,},) => {
+
+					let mut center = DVec2::new(0.0,0.0);
+					let x = center.x;
+					let points = tool_data.shape_editor.selected_points(&document.document_legacy);
+					let mut count = 0;
+					for point in points{
+						debug!("Point {}{}", point.position.x, point.position.y);
+						center.x += point.position.x;
+						center.y += point.position.y;
+						count += 1;
+					}
+					center.x = center.x / count as f64;
+					center.y = center.y / count as f64;
+					debug!("Center {}", center);
+
+
+					let angle = {
+							let start_offset = tool_data.drag_start_pos - center;
+							let end_offset = input.mouse.position -center;
+
+							start_offset.angle_between(end_offset)
+						};
+					debug!("Angle {}", angle);
+					let delta = DAffine2::from_angle(angle);
+					//apply transformation to each point
+					// let mut points = tool_data.shape_editor.selected_points(&document.document_legacy);
+					// for mut point in &mut points{
+					// 	let mut p = point.clone();
+					// 	p.transform(&delta);
+					// 	point = &p;
+					// }
+						
+
+					PathToolFsmState::Rotating
+				}
+
 				// Dragging
 				(
 					PathToolFsmState::Dragging,
@@ -238,12 +296,27 @@ impl Fsm for PathToolFsmState {
 					// Determine when shift state changes
 					let shift_pressed = input.keyboard.get(shift_mirror_distance as usize);
 
-					// Move the selected points by the mouse position
-					let snapped_position = tool_data.snap_manager.snap_position(responses, document, input.mouse.position);
-					tool_data.shape_editor.move_selected_points(snapped_position - tool_data.drag_start_pos, shift_pressed, responses);
-					tool_data.drag_start_pos = snapped_position;
+				
+					let snapped_position = tool_data.snap_manager.snap_position(responses, document, input.mouse.position);					
+					let axis_aligned_position = axis_align_drag(shift_pressed, snapped_position, tool_data.drag_start_pos);        
+					tool_data.shape_editor.move_selected_points(axis_aligned_position - tool_data.previous_mouse_position, shift_pressed, responses);   
+					tool_data.previous_mouse_position = axis_aligned_position;
 					PathToolFsmState::Dragging
 				}
+
+				(_, PathToolMessage::BeginGrab) => {
+					tool_data.previous_mouse_position = input.mouse.position;
+					tool_data.drag_start_pos = input.mouse.position;
+					
+					PathToolFsmState::Dragging
+
+				}
+				(_, PathToolMessage::BeginRotate) => {
+					
+					PathToolFsmState::Rotating
+
+				}
+
 				// Mouse up
 				(_, PathToolMessage::DragStop) => {
 					tool_data.snap_manager.cleanup(responses);
@@ -305,6 +378,10 @@ impl Fsm for PathToolFsmState {
 				]),
 			]),
 			PathToolFsmState::Dragging => HintData(vec![HintGroup(vec![
+				HintInfo::keys([Key::Alt], "Split/Align Handles (Toggle)"),
+				HintInfo::keys([Key::Shift], "Share Lengths of Aligned Handles"),
+			])]),
+			PathToolFsmState::Rotating => HintData(vec![HintGroup(vec![
 				HintInfo::keys([Key::Alt], "Split/Align Handles (Toggle)"),
 				HintInfo::keys([Key::Shift], "Share Lengths of Aligned Handles"),
 			])]),
