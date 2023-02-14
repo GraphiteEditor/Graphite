@@ -424,7 +424,7 @@ impl TypingContext {
 			[] => {
 				dbg!(&self.inferred);
 				Err(format!(
-					"No implementations found for {identifier} with input {input:?} and parameters {parameters:?}.\nTypes that are implemented: {:?}",
+					"No implementations found for {identifier} with \ninput: {input:?} and \nparameters: {parameters:?}.\nOther Implementations found: {:?}",
 					impls,
 				))
 			}

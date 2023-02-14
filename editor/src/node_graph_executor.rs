@@ -39,7 +39,10 @@ impl NodeGraphExecutor {
 		let proto_network = c.compile_single(network, true)?;
 
 		assert_ne!(proto_network.nodes.len(), 0, "No protonodes exist?");
-		self.executor.update(proto_network)?;
+		if let Err(e) = self.executor.update(proto_network) {
+            error!("Failed to update executor:\n{}", e);
+            return Err(e);
+        }
 
 		use dyn_any::IntoDynAny;
 		use graph_craft::executor::Executor;
