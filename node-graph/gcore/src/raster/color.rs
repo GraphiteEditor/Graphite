@@ -200,6 +200,14 @@ impl Color {
 		(self.red + self.green + self.blue) / 3.
 	}
 
+	pub fn minimum_rgb_channels(&self) -> f32 {
+		self.red.min(self.green).min(self.blue)
+	}
+
+	pub fn maximum_rgb_channels(&self) -> f32 {
+		self.red.max(self.green).max(self.blue)
+	}
+
 	// From https://stackoverflow.com/a/56678483/775283
 	pub fn luminance_srgb(&self) -> f32 {
 		0.2126 * self.red + 0.7152 * self.green + 0.0722 * self.blue

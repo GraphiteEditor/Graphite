@@ -11,11 +11,19 @@ pub enum LuminanceCalculation {
 	SRGB,
 	Perceptual,
 	AverageChannels,
+	MinimumChannels,
+	MaximumChannels,
 }
 
 impl LuminanceCalculation {
-	pub fn list() -> [LuminanceCalculation; 3] {
-		[LuminanceCalculation::SRGB, LuminanceCalculation::Perceptual, LuminanceCalculation::AverageChannels]
+	pub fn list() -> [LuminanceCalculation; 5] {
+		[
+			LuminanceCalculation::SRGB,
+			LuminanceCalculation::Perceptual,
+			LuminanceCalculation::AverageChannels,
+			LuminanceCalculation::MinimumChannels,
+			LuminanceCalculation::MaximumChannels,
+		]
 	}
 }
 
@@ -25,6 +33,8 @@ impl std::fmt::Display for LuminanceCalculation {
 			LuminanceCalculation::SRGB => write!(f, "sRGB"),
 			LuminanceCalculation::Perceptual => write!(f, "Perceptual"),
 			LuminanceCalculation::AverageChannels => write!(f, "Average Channels"),
+			LuminanceCalculation::MinimumChannels => write!(f, "Minimum Channels"),
+			LuminanceCalculation::MaximumChannels => write!(f, "Maximum Channels"),
 		}
 	}
 }
@@ -43,6 +53,8 @@ fn luminance_color_node(color: Color, luma_calculation: LuminanceCalculation) ->
 		LuminanceCalculation::SRGB => color.luminance_srgb(),
 		LuminanceCalculation::Perceptual => color.luminance_perceptual(),
 		LuminanceCalculation::AverageChannels => color.average_rgb_channels(),
+		LuminanceCalculation::MinimumChannels => color.minimum_rgb_channels(),
+		LuminanceCalculation::MaximumChannels => color.maximum_rgb_channels(),
 	};
 
 	// TODO: Remove conversion to linear when the whole node graph uses linear color
@@ -188,6 +200,8 @@ fn threshold_node(color: Color, luma_calculation: LuminanceCalculation, threshol
 		LuminanceCalculation::SRGB => color.luminance_srgb(),
 		LuminanceCalculation::Perceptual => color.luminance_perceptual(),
 		LuminanceCalculation::AverageChannels => color.average_rgb_channels(),
+		LuminanceCalculation::MinimumChannels => color.minimum_rgb_channels(),
+		LuminanceCalculation::MaximumChannels => color.maximum_rgb_channels(),
 	};
 
 	if luminance >= threshold {
