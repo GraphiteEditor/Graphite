@@ -141,15 +141,7 @@ impl BorrowTree {
 	}
 
 	pub fn push_node(&mut self, id: NodeId, proto_node: ProtoNode, typing_context: &TypingContext) -> Result<(), String> {
-		let ProtoNode { input, construction_args, identifier } = proto_node;
-
-		assert!(
-			!matches!(&input, &ProtoNodeInput::Node(_)),
-			"Only nodes without inputs are supported. Any inputs should already be resolved by placing ComposeNodes {:?}, {:?}, {:?}",
-			identifier,
-			construction_args,
-			input,
-		);
+		let ProtoNode { construction_args, identifier, .. } = proto_node;
 
 		match construction_args {
 			ConstructionArgs::Value(value) => {

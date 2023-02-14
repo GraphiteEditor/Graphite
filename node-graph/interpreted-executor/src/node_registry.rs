@@ -20,6 +20,8 @@ use graphene_std::memo::CacheNode;
 
 use crate::executor::NodeContainer;
 
+use dyn_any::StaticType;
+
 macro_rules! register_node {
 	($path:ty, input: $input:ty, params: [$($type:ty),*]) => {
 		(
@@ -37,7 +39,7 @@ macro_rules! register_node {
                 let node = <$path>::new($(graphene_std::any::input_node::<$type>(_node)),*);
                 let params = vec![$(concrete!($type)),*];
                 let mut  node_io =  <$path as NodeIO<'_, $input>>::to_node_io(&node, params);
-                node_io.input = concrete!($input);
+                node_io.input = concrete!(<$input as StaticType>::Static);
                 node_io
             }
         )

@@ -191,18 +191,20 @@ impl ProtoNetwork {
 	}
 
 	pub fn resolve_inputs(&mut self) {
-		while !self.resolve_inputs_impl() {}
+		let mut resolved = HashSet::new();
+		while !self.resolve_inputs_impl(&mut resolved) {}
 	}
-	fn resolve_inputs_impl(&mut self) -> bool {
+	fn resolve_inputs_impl(&mut self, resolved: &mut HashSet<NodeId>) -> bool {
 		self.reorder_ids();
 
 		let mut lookup = self.nodes.iter().map(|(id, _)| (*id, *id)).collect::<HashMap<_, _>>();
 		let compose_node_id = self.nodes.len() as NodeId;
 		let inputs = self.nodes.iter().map(|(_, node)| node.input.clone()).collect::<Vec<_>>();
 
-		if let Some((input_node, id, input)) = self.nodes.iter_mut().find_map(|(id, node)| {
+		let resolved_lookup = resolved.clone();
+		if let Some((input_node, id, input)) = self.nodes.iter_mut().filter(|(id, _)| !resolved_lookup.contains(id)).find_map(|(id, node)| {
 			if let ProtoNodeInput::Node(input_node) = node.input {
-				node.input = ProtoNodeInput::None;
+				resolved.insert(*id);
 				let pre_node_input = inputs.get(input_node as usize).expect("input node should exist");
 				Some((input_node, *id, pre_node_input.clone()))
 			} else {
@@ -371,17 +373,16 @@ impl TypingContext {
 		if parameters.iter().any(|p| matches!(p, Type::Generic(_))) {
 			return Err(format!("Generic types are not supported in parameters: {:?} occured in {:?}", parameters, node.identifier));
 		}
-		let covariant = |output, input| match (output, input) {
+		let covariant = |output, input| match (&output, &input) {
 			(Type::Concrete(t1), Type::Concrete(t2)) => t1 == t2,
 			(Type::Concrete(_), Type::Generic(_)) => true,
 			// TODO: verify if this actually corerct
-			(Type::Generic(t1), Type::Generic(t2)) => true,
-			(Type::Generic(_), Type::Concrete(_)) => true,
+			(Type::Generic(_), _) => false,
 		};
 
 		let valid_output_types = impls
 			.keys()
-			.filter(|node_io| covariant(node_io.input.clone(), input.clone()) && node_io.parameters.iter().zip(parameters.iter()).all(|(p1, p2)| covariant(p1.clone(), p2.clone())))
+			.filter(|node_io| covariant(input.clone(), node_io.input.clone()) && parameters.iter().zip(node_io.parameters.iter()).all(|(p1, p2)| covariant(p1.clone(), p2.clone())))
 			.collect::<Vec<_>>();
 
 		let substitution_results = valid_output_types
@@ -403,10 +404,13 @@ impl TypingContext {
 		let valid_impls = substitution_results.iter().filter_map(|result| result.as_ref().ok()).collect::<Vec<_>>();
 
 		match valid_impls.as_slice() {
-			[] => Err(format!(
-				"No valid implementations found for {identifier} with input {input:?} and parameters {parameters:?}.\nTypes that are implemented: {:?}",
-				substitution_results,
-			)),
+			[] => {
+				dbg!(&self.infered);
+				Err(format!(
+					"No implementations found for {identifier} with input {input:?} and parameters {parameters:?}.\nTypes that are implemented: {:?}",
+					impls,
+				))
+			}
 			[(org_nio, output)] => {
 				let node_io = NodeIOTypes::new(input, (*output).clone(), parameters);
 
@@ -512,11 +516,11 @@ mod test {
 			ids,
 			vec![
 				15907139529964845467,
-				14791354678635908268,
-				17522454908046327116,
-				12722973206210391299,
-				4508311079153412646,
-				13250284155406988548
+				17186311536944112733,
+				1674503539363691855,
+				10408773954839245246,
+				1677533587730447846,
+				6826908746727711035
 			]
 		);
 	}

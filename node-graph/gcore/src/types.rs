@@ -40,13 +40,25 @@ pub struct NodeIdentifier {
 	pub name: Cow<'static, str>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash, specta::Type)]
+#[derive(Clone, Debug, Eq, specta::Type)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct TypeDescriptor {
 	#[cfg_attr(feature = "serde", serde(skip))]
 	#[specta(skip)]
 	pub id: Option<TypeId>,
 	pub name: Cow<'static, str>,
+}
+
+impl core::hash::Hash for TypeDescriptor {
+	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+		self.id.hash(state);
+	}
+}
+
+impl PartialEq for TypeDescriptor {
+	fn eq(&self, other: &Self) -> bool {
+		self.id == other.id
+	}
 }
 
 #[derive(Clone, PartialEq, Eq, Hash, specta::Type)]
@@ -60,7 +72,7 @@ impl core::fmt::Debug for Type {
 	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
 		match self {
 			Self::Generic(arg0) => f.write_fmt(format_args!("Generic({})", arg0)),
-			Self::Concrete(arg0) => f.write_fmt(format_args!("Concrete({})", arg0.name)),
+			Self::Concrete(arg0) => f.write_fmt(format_args!("Concrete(({}, {:?}))", arg0.name, arg0.id)),
 		}
 	}
 }
