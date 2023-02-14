@@ -309,7 +309,7 @@ impl ProtoNetwork {
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct TypingContext {
 	lookup: Cow<'static, HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstructor>>>,
-	infered: HashMap<NodeId, NodeIOTypes>,
+	inferred: HashMap<NodeId, NodeIOTypes>,
 	constructor: HashMap<NodeId, NodeConstructor>,
 }
 
@@ -332,20 +332,20 @@ impl TypingContext {
 
 	pub fn infer(&mut self, node_id: NodeId, node: &ProtoNode) -> Result<NodeIOTypes, String> {
 		let identifier = node.identifier.name.clone();
-		if let Some(infered) = self.infered.get(&node_id) {
+		if let Some(infered) = self.inferred.get(&node_id) {
 			return Ok(infered.clone());
 		}
 		let parameters = match node.construction_args {
 			ConstructionArgs::Value(ref v) => {
 				assert!(matches!(node.input, ProtoNodeInput::None));
 				let types = NodeIOTypes::new(concrete!(()), v.ty(), vec![]);
-				self.infered.insert(node_id, types.clone());
+				self.inferred.insert(node_id, types.clone());
 				return Ok(types);
 			}
 			ConstructionArgs::Nodes(ref nodes) => nodes
 				.iter()
 				.map(|id| {
-					self.infered
+					self.inferred
 						.get(id)
 						.ok_or(format!("Infering type of {node_id} depends on {id} which is not present in the typing context"))
 						.map(|node| node.output.clone())
@@ -359,7 +359,7 @@ impl TypingContext {
 			ProtoNodeInput::Network(ref ty) => ty.clone(),
 			ProtoNodeInput::Node(id) => {
 				let input = self
-					.infered
+					.inferred
 					.get(&id)
 					.ok_or(format!("Infering type of {node_id} depends on {id} which is not present in the typing context"))?;
 				input.output.clone()
@@ -405,7 +405,7 @@ impl TypingContext {
 
 		match valid_impls.as_slice() {
 			[] => {
-				dbg!(&self.infered);
+				dbg!(&self.inferred);
 				Err(format!(
 					"No implementations found for {identifier} with input {input:?} and parameters {parameters:?}.\nTypes that are implemented: {:?}",
 					impls,
@@ -414,7 +414,7 @@ impl TypingContext {
 			[(org_nio, output)] => {
 				let node_io = NodeIOTypes::new(input, (*output).clone(), parameters);
 
-				self.infered.insert(node_id, node_io.clone());
+				self.inferred.insert(node_id, node_io.clone());
 				self.constructor.insert(node_id, impls[org_nio]);
 				Ok(node_io)
 			}

@@ -6,7 +6,7 @@ use dyn_any::StaticType;
 use graph_craft::document::value::UpcastNode;
 use graph_craft::document::NodeId;
 use graph_craft::executor::Executor;
-use graph_craft::proto::{ConstructionArgs, ProtoNetwork, ProtoNode, ProtoNodeInput, TypingContext};
+use graph_craft::proto::{ConstructionArgs, ProtoNetwork, ProtoNode, TypingContext};
 use graphene_std::any::{Any, TypeErasedPinned, TypeErasedPinnedRef};
 
 use crate::node_registry;
@@ -23,14 +23,14 @@ impl Default for DynamicExecutor {
 		Self {
 			output: Default::default(),
 			tree: Default::default(),
-			typing_context: TypingContext::new(&*node_registry::NODE_REGISTRY),
+			typing_context: TypingContext::new(&node_registry::NODE_REGISTRY),
 		}
 	}
 }
 
 impl DynamicExecutor {
 	pub fn new(proto_network: ProtoNetwork) -> Result<Self, String> {
-		let mut typing_context = TypingContext::new(&*node_registry::NODE_REGISTRY);
+		let mut typing_context = TypingContext::new(&node_registry::NODE_REGISTRY);
 		typing_context.update(&proto_network)?;
 		let output = proto_network.output;
 		let tree = BorrowTree::new(proto_network, &typing_context)?;
