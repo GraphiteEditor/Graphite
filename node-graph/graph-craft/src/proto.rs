@@ -306,6 +306,7 @@ impl ProtoNetwork {
 	}
 }
 
+/// The `TypingContext` is used to store the types of the nodes indexed by their stable node id.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct TypingContext {
 	lookup: Cow<'static, HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstructor>>>,
@@ -314,54 +315,67 @@ pub struct TypingContext {
 }
 
 impl TypingContext {
+	/// Creates a new `TypingContext` with the given lookup table.
 	pub fn new(lookup: &'static HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstructor>>) -> Self {
 		Self {
 			lookup: Cow::Borrowed(lookup),
 			..Default::default()
 		}
 	}
+
+	/// Updates the `TypingContext` wtih a given proto network. This will infer the types of the nodes
+	/// and store them in the `inferred` field. The proto network has to be topologically sorted
+	/// and contain fully resolved stable node ids.
 	pub fn update(&mut self, network: &ProtoNetwork) -> Result<(), String> {
 		for (id, node) in network.nodes.iter() {
 			self.infer(*id, node)?;
 		}
 		Ok(())
 	}
+
+	/// Returns the node constructor for a given node id.
 	pub fn constructor(&self, node_id: NodeId) -> Option<NodeConstructor> {
 		self.constructor.get(&node_id).copied()
 	}
 
+	/// Returns the inferred types for a given node id.
 	pub fn infer(&mut self, node_id: NodeId, node: &ProtoNode) -> Result<NodeIOTypes, String> {
 		let identifier = node.identifier.name.clone();
+
+		// Return the inferred type if it is already known
 		if let Some(infered) = self.inferred.get(&node_id) {
 			return Ok(infered.clone());
 		}
+
 		let parameters = match node.construction_args {
+			// If the node has a value parameter we can infer the return type from it
 			ConstructionArgs::Value(ref v) => {
 				assert!(matches!(node.input, ProtoNodeInput::None));
 				let types = NodeIOTypes::new(concrete!(()), v.ty(), vec![]);
 				self.inferred.insert(node_id, types.clone());
 				return Ok(types);
 			}
+			// If the node has nodes as parameters we can infer the types from the node outputs
 			ConstructionArgs::Nodes(ref nodes) => nodes
 				.iter()
 				.map(|id| {
 					self.inferred
 						.get(id)
-						.ok_or(format!("Infering type of {node_id} depends on {id} which is not present in the typing context"))
+						.ok_or(format!("Inferring type of {node_id} depends on {id} which is not present in the typing context"))
 						.map(|node| node.output.clone())
 				})
 				.collect::<Result<Vec<Type>, String>>()?,
 		};
 
+		// Get the node input type from the proto node declaration
 		let input = match node.input {
 			ProtoNodeInput::None => concrete!(()),
-			// TODO: fix this
 			ProtoNodeInput::Network(ref ty) => ty.clone(),
 			ProtoNodeInput::Node(id) => {
 				let input = self
 					.inferred
 					.get(&id)
-					.ok_or(format!("Infering type of {node_id} depends on {id} which is not present in the typing context"))?;
+					.ok_or(format!("Inferring type of {node_id} depends on {id} which is not present in the typing context"))?;
 				input.output.clone()
 			}
 		};
@@ -376,15 +390,17 @@ impl TypingContext {
 		let covariant = |output, input| match (&output, &input) {
 			(Type::Concrete(t1), Type::Concrete(t2)) => t1 == t2,
 			(Type::Concrete(_), Type::Generic(_)) => true,
-			// TODO: verify if this actually corerct
+			// TODO: relax this requirement when allowing generic types as inputs
 			(Type::Generic(_), _) => false,
 		};
 
+		// List of all implementations that match the input and parameter types
 		let valid_output_types = impls
 			.keys()
 			.filter(|node_io| covariant(input.clone(), node_io.input.clone()) && parameters.iter().zip(node_io.parameters.iter()).all(|(p1, p2)| covariant(p1.clone(), p2.clone())))
 			.collect::<Vec<_>>();
 
+		// Attempt to substitute generic types with concrete types and save the list of results
 		let substitution_results = valid_output_types
 			.iter()
 			.map(|node_io| {
@@ -401,6 +417,7 @@ impl TypingContext {
 			})
 			.collect::<Vec<_>>();
 
+		// Collect all substitutions that are valid
 		let valid_impls = substitution_results.iter().filter_map(|result| result.as_ref().ok()).collect::<Vec<_>>();
 
 		match valid_impls.as_slice() {
@@ -414,6 +431,7 @@ impl TypingContext {
 			[(org_nio, output)] => {
 				let node_io = NodeIOTypes::new(input, (*output).clone(), parameters);
 
+				// Save the inferred type
 				self.inferred.insert(node_id, node_io.clone());
 				self.constructor.insert(node_id, impls[org_nio]);
 				Ok(node_io)
@@ -425,6 +443,7 @@ impl TypingContext {
 	}
 }
 
+/// Returns a list of all generic types used in the node
 fn collect_generics(types: &NodeIOTypes) -> Vec<Cow<'static, str>> {
 	let inputs = [&types.input].into_iter().chain(types.parameters.iter());
 	let mut generics = inputs
@@ -440,6 +459,7 @@ fn collect_generics(types: &NodeIOTypes) -> Vec<Cow<'static, str>> {
 	generics
 }
 
+/// Checks if a generic type can be substituted with a concrete type and returns the concrete type
 fn check_generic(types: &NodeIOTypes, input: &Type, parameters: &[Type], generic: &str) -> Result<Type, String> {
 	let inputs = [(&types.input, input)].into_iter().chain(types.parameters.iter().zip(parameters.iter()));
 	let mut concrete_inputs = inputs.filter(|(ni, _)| matches!(ni, Type::Generic(input) if generic == input));
