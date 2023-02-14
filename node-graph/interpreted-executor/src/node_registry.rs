@@ -1,4 +1,5 @@
-use glam::DAffine2;
+use glam::{DAffine2, DVec2};
+use graph_craft::imaginate_input::{ImaginateMaskStartingFill, ImaginateSamplingMethod, ImaginateStatus};
 use graphene_core::ops::{CloneNode, IdNode, TypeNode};
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
@@ -129,7 +130,30 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 				let any = DynAnyNode::new(ValueNode::new(node));
 				any.into_type_erased()
 			},
-			NodeIOTypes::new(concrete!(Image), concrete!(Image), vec![concrete!(Option<std::sync::Arc<Image>>)]),
+			NodeIOTypes::new(
+				concrete!(Image),
+				concrete!(Image),
+				vec![
+					concrete!(DAffine2),
+					concrete!(f64),
+					concrete!(Option<DVec2>),
+					concrete!(f64),
+					concrete!(ImaginateSamplingMethod),
+					concrete!(f64),
+					concrete!(String),
+					concrete!(String),
+					concrete!(bool),
+					concrete!(f64),
+					concrete!(Option<Vec<u64>>),
+					concrete!(bool),
+					concrete!(ImaginateMaskStartingFill),
+					concrete!(bool),
+					concrete!(bool),
+					concrete!(Option<std::sync::Arc<Image>>),
+					concrete!(f64),
+					concrete!(ImaginateStatus),
+				],
+			),
 		),
 		(
 			NodeIdentifier::new("graphene_core::raster::BlurNode"),

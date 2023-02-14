@@ -72,7 +72,7 @@ impl core::fmt::Debug for Type {
 	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
 		match self {
 			Self::Generic(arg0) => f.write_fmt(format_args!("Generic({})", arg0)),
-			Self::Concrete(arg0) => f.write_fmt(format_args!("Concrete(({}, {:?}))", arg0.name, arg0.id)),
+			Self::Concrete(arg0) => f.write_fmt(format_args!("Concrete({}))", arg0.name)),
 		}
 	}
 }
