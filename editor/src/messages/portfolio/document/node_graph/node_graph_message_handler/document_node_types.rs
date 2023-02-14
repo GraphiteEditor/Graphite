@@ -237,6 +237,48 @@ static STATIC_NODES: &[DocumentNodeType] = &[
 		properties: |_document_node, _node_id, _context| node_properties::string_properties("Creates an embedded image with the given transform"),
 	},
 	DocumentNodeType {
+		name: "Levels",
+		category: "Image Adjustments",
+		identifier: NodeImplementation::proto(
+			"graphene_core::raster::LevelsNode<_, _, _, _, _>",
+			&[concrete!("Image"), concrete!("f64"), concrete!("f64"), concrete!("f64"), concrete!("f64"), concrete!("f64")],
+		),
+		inputs: &[
+			DocumentInputType {
+				name: "Image",
+				data_type: FrontendGraphDataType::Raster,
+				default: NodeInput::value(TaggedValue::Image(Image::empty()), true),
+			},
+			DocumentInputType {
+				name: "Input range start",
+				data_type: FrontendGraphDataType::Number,
+				default: NodeInput::value(TaggedValue::F64(0.), false),
+			},
+			DocumentInputType {
+				name: "Input range middle",
+				data_type: FrontendGraphDataType::Number,
+				default: NodeInput::value(TaggedValue::F64(50.), false),
+			},
+			DocumentInputType {
+				name: "Input range end",
+				data_type: FrontendGraphDataType::Number,
+				default: NodeInput::value(TaggedValue::F64(100.), false),
+			},
+			DocumentInputType {
+				name: "Output start",
+				data_type: FrontendGraphDataType::Number,
+				default: NodeInput::value(TaggedValue::F64(0.), false),
+			},
+			DocumentInputType {
+				name: "Output end",
+				data_type: FrontendGraphDataType::Number,
+				default: NodeInput::value(TaggedValue::F64(100.), false),
+			},
+		],
+		outputs: &[DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
+		properties: node_properties::levels_properties,
+	},
+	DocumentNodeType {
 		name: "Grayscale",
 		category: "Image Adjustments",
 		identifier: NodeImplementation::proto(
