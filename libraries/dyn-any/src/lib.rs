@@ -137,13 +137,13 @@ where
 }
 
 macro_rules! impl_type {
-    ($($id:ident$(<$($(($l:lifetime, $s:lifetime)),*|)?$($T:ident),*>)?),*) => {
-        $(
-        impl< $($($T:  $crate::StaticTypeSized ,)*)?> $crate::StaticType for $id $(<$($($l,)*)?$($T, )*>)?{
-            type Static = $id$(<$($($s,)*)?$(<$T as $crate::StaticTypeSized>::Static,)*>)?;
-        }
-        )*
-    };
+	($($id:ident$(<$($(($l:lifetime, $s:lifetime)),*|)?$($T:ident),*>)?),*) => {
+		$(
+		impl< $($($T:  $crate::StaticTypeSized ,)*)?> $crate::StaticType for $id $(<$($($l,)*)?$($T, )*>)?{
+			type Static = $id$(<$($($s,)*)?$(<$T as $crate::StaticTypeSized>::Static,)*>)?;
+		}
+		)*
+	};
 }
 
 #[cfg(feature = "alloc")]
@@ -266,19 +266,19 @@ fn test_tuple_of_boxes() {
 }
 
 macro_rules! impl_tuple {
-    (@rec $t:ident) => { };
-    (@rec $_:ident $($t:ident)+) => {
-        impl_tuple! { @impl $($t)* }
-        impl_tuple! { @rec $($t)* }
-    };
-    (@impl $($t:ident)*) => {
-        impl< $($t: StaticTypeSized,)*> StaticType for ($($t,)*) {
-            type Static = ($(<$t as $crate::StaticTypeSized>::Static,)*);
-        }
-    };
-    ($($t:ident)*) => {
-        impl_tuple! { @rec _t $($t)* }
-    };
+	(@rec $t:ident) => { };
+	(@rec $_:ident $($t:ident)+) => {
+		impl_tuple! { @impl $($t)* }
+		impl_tuple! { @rec $($t)* }
+	};
+	(@impl $($t:ident)*) => {
+		impl< $($t: StaticTypeSized,)*> StaticType for ($($t,)*) {
+			type Static = ($(<$t as $crate::StaticTypeSized>::Static,)*);
+		}
+	};
+	($($t:ident)*) => {
+		impl_tuple! { @rec _t $($t)* }
+	};
 }
 
 impl_tuple! {
