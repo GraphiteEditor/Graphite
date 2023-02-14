@@ -444,6 +444,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			outputs: vec![DocumentOutputType::new("Output", FrontendGraphDataType::Number)],
 			properties: node_properties::add_properties,
 		},
+		(*IMAGINATE_NODE).clone(),
 		/*DocumentNodeType {
 			name: "Unit Circle Generator",
 			category: "Vector",
