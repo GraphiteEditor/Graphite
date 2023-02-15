@@ -430,6 +430,16 @@ impl Fsm for SelectToolFsmState {
 
 						RotatingBounds
 					} else if intersection.last().map(|last| selected.contains(last)).unwrap_or(false) {
+						if input.keyboard.get(add_to_selection as usize) {
+							let last_selected = intersection.last().unwrap();
+							let replacement_selected_layers = document.selected_layers()
+								.filter(|layer| layer != last_selected)
+								.map(|path| path.iter().map(|p| p.clone()).collect())
+								.collect();
+							responses.push_back(DocumentMessage::SetSelectedLayers { replacement_selected_layers }.into());
+							return Ready;
+						}
+
 						responses.push_back(DocumentMessage::StartTransaction.into());
 
 						tool_data.layers_dragging = selected;
