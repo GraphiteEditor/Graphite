@@ -100,7 +100,6 @@ pub enum DocumentMessage {
 		layer_path: Vec<LayerId>,
 		delta: (f64, f64),
 		mirror_distance: bool,
-		reset_opposing_handle_lengths: Option<HashMap<u64, f64>>,
 	},
 	NodeGraphFrameGenerate,
 	NodeGraphFrameImaginate {

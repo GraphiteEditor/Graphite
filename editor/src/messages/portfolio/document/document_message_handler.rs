@@ -514,22 +514,9 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 					.into(),
 				);
 			}
-			MoveSelectedManipulatorPoints {
-				layer_path,
-				delta,
-				mirror_distance,
-				reset_opposing_handle_lengths,
-			} => {
+			MoveSelectedManipulatorPoints { layer_path, delta, mirror_distance } => {
 				if let Ok(_layer) = self.document_legacy.layer(&layer_path) {
-					responses.push_back(
-						DocumentOperation::MoveSelectedManipulatorPoints {
-							layer_path,
-							delta,
-							mirror_distance,
-							reset_opposing_handle_lengths,
-						}
-						.into(),
-					);
+					responses.push_back(DocumentOperation::MoveSelectedManipulatorPoints { layer_path, delta, mirror_distance }.into());
 				}
 			}
 			NodeGraphFrameGenerate => {

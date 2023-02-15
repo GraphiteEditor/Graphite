@@ -105,13 +105,30 @@ impl ManipulatorGroup {
 	}
 
 	/// Move the selected points by the provided transform.
-	pub fn move_selected_points(&mut self, delta: DVec2, mirror_distance: bool, reset_opposing_handle_length: Option<f64>) {
+	pub fn move_selected_points(&mut self, delta: DVec2, mirror_distance: bool) {
 		let mirror_angle = self.editor_state.mirror_angle_between_handles;
 
 		// Move the point absolutely or relatively depending on if the point is under the cursor (the last selected point)
 		let move_point = |point: &mut ManipulatorPoint, delta: DVec2| {
 			point.position += delta;
 			assert!(point.position.is_finite(), "Point is not finite!")
+		};
+
+		// Find the correctly mirrored handle position based on mirroring settings
+		let move_symmetrical_handle = |position: DVec2, opposing_handle: Option<&mut ManipulatorPoint>, center: DVec2| {
+			// Early out for cases where we can't mirror
+			if !mirror_angle || opposing_handle.is_none() {
+				return;
+			}
+			let opposing_handle = opposing_handle.unwrap();
+
+			// Keep rotational similarity, but distance variable
+			let radius = if mirror_distance { center.distance(position) } else { center.distance(opposing_handle.position) };
+
+			if let Some(offset) = (position - center).try_normalize() {
+				opposing_handle.position = center - offset * radius;
+				assert!(opposing_handle.position.is_finite(), "Opposing handle not finite!")
+			}
 		};
 
 		// If no points are selected, why are we here at all?
@@ -129,6 +146,7 @@ impl ManipulatorGroup {
 
 		// If the anchor isn't selected, but both handles are, drag only handles
 		if self.both_handles_selected() {
+			self.editor_state.mirror_angle_between_handles = false;
 			for point in self.selected_handles_mut() {
 				move_point(point, delta);
 			}
@@ -141,28 +159,10 @@ impl ManipulatorGroup {
 		let selected_handle = self.selected_handles_mut().next().unwrap();
 		move_point(selected_handle, delta);
 
+		// Move the opposing handle symmetrically if our mirroring flags allow
 		let selected_handle = &selected_handle.clone();
-
-		// Find the correctly mirrored handle position based on mirroring settings
-		// Early out for cases where we can't mirror
-		if !mirror_angle || self.opposing_handle(selected_handle).is_none() {
-			return;
-		}
-
-		// Keep rotational similarity, but distance variable
-		let radius = if let Some(r) = reset_opposing_handle_length {
-			r
-		} else if mirror_distance {
-			reflect_center.distance(selected_handle.position)
-		} else {
-			reflect_center.distance(self.opposing_handle(selected_handle).unwrap().position)
-		};
-
-		if let Some(offset) = (selected_handle.position - reflect_center).try_normalize() {
-			let opposing_handle = self.opposing_handle_mut(selected_handle).unwrap();
-			opposing_handle.position = reflect_center - offset * radius;
-			assert!(opposing_handle.position.is_finite(), "Opposing handle not finite!")
-		}
+		let opposing_handle = self.opposing_handle_mut(selected_handle);
+		move_symmetrical_handle(selected_handle.position, opposing_handle, reflect_center);
 	}
 
 	/// Delete any [ManipulatorPoint] that are selected, this includes handles or the anchor.

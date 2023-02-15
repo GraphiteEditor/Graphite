@@ -242,23 +242,20 @@ impl Fsm for PathToolFsmState {
 					// Determine when shift state changes
 					let shift_pressed = input.keyboard.get(shift_mirror_distance as usize);
 
-					let mut reset_opposing_handle_lengths = None;
 					if shift_pressed {
 						if tool_data.opposing_handle_lengths.is_none() {
 							tool_data.opposing_handle_lengths = Some(tool_data.shape_editor.opposing_handle_lengths(&document.document_legacy));
 						}
 					} else {
-						if let Some(opposing_handle_lengths) = &tool_data.opposing_handle_lengths {
-							reset_opposing_handle_lengths = Some(opposing_handle_lengths.clone());
-							tool_data.opposing_handle_lengths = None;
+						let opposing_handle_lengths = tool_data.opposing_handle_lengths.take();
+						if let Some(opposing_handle_lengths) = opposing_handle_lengths {
+							tool_data.shape_editor.reset_opposing_handle_lengths(&document.document_legacy, opposing_handle_lengths, responses);
 						}
 					}
 
 					// Move the selected points by the mouse position
 					let snapped_position = tool_data.snap_manager.snap_position(responses, document, input.mouse.position);
-					tool_data
-						.shape_editor
-						.move_selected_points(snapped_position - tool_data.drag_start_pos, shift_pressed, reset_opposing_handle_lengths, responses);
+					tool_data.shape_editor.move_selected_points(snapped_position - tool_data.drag_start_pos, shift_pressed, responses);
 					tool_data.drag_start_pos = snapped_position;
 					PathToolFsmState::Dragging
 				}
