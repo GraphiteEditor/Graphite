@@ -250,27 +250,27 @@ static STATIC_NODES: &[DocumentNodeType] = &[
 				default: NodeInput::value(TaggedValue::Image(Image::empty()), true),
 			},
 			DocumentInputType {
-				name: "Input range start",
+				name: "Shadows",
 				data_type: FrontendGraphDataType::Number,
 				default: NodeInput::value(TaggedValue::F64(0.), false),
 			},
 			DocumentInputType {
-				name: "Input range middle",
+				name: "Midtones",
 				data_type: FrontendGraphDataType::Number,
 				default: NodeInput::value(TaggedValue::F64(50.), false),
 			},
 			DocumentInputType {
-				name: "Input range end",
+				name: "Highlights",
 				data_type: FrontendGraphDataType::Number,
 				default: NodeInput::value(TaggedValue::F64(100.), false),
 			},
 			DocumentInputType {
-				name: "Output start",
+				name: "Output Minimums",
 				data_type: FrontendGraphDataType::Number,
 				default: NodeInput::value(TaggedValue::F64(0.), false),
 			},
 			DocumentInputType {
-				name: "Output end",
+				name: "Output Maximums",
 				data_type: FrontendGraphDataType::Number,
 				default: NodeInput::value(TaggedValue::F64(100.), false),
 			},

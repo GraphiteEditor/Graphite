@@ -200,18 +200,18 @@ pub fn input_properties(_document_node: &DocumentNode, _node_id: NodeId, _contex
 }
 
 pub fn levels_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let input_start = number_widget(document_node, node_id, 1, "Input range start", NumberInput::default().min(0.).max(100.).unit("%"), true);
-	let input_mid = number_widget(document_node, node_id, 2, "Input range middle", NumberInput::default().min(0.).max(100.).unit("%"), true);
-	let input_end = number_widget(document_node, node_id, 3, "Input range end", NumberInput::default().min(0.).max(100.).unit("%"), true);
-	let output_start = number_widget(document_node, node_id, 4, "Output range start", NumberInput::default().min(0.).max(100.).unit("%"), true);
-	let output_end = number_widget(document_node, node_id, 5, "Output range end", NumberInput::default().min(0.).max(100.).unit("%"), true);
+	let input_shadows = number_widget(document_node, node_id, 1, "Shadows", NumberInput::default().min(0.).max(100.).unit("%"), true);
+	let input_midtones = number_widget(document_node, node_id, 2, "Midtones", NumberInput::default().min(0.).max(100.).unit("%"), true);
+	let input_highlights = number_widget(document_node, node_id, 3, "Highlights", NumberInput::default().min(0.).max(100.).unit("%"), true);
+	let output_minimums = number_widget(document_node, node_id, 4, "Output Minimums", NumberInput::default().min(0.).max(100.).unit("%"), true);
+	let output_maximums = number_widget(document_node, node_id, 5, "Output Maximums", NumberInput::default().min(0.).max(100.).unit("%"), true);
 
 	vec![
-		LayoutGroup::Row { widgets: input_start },
-		LayoutGroup::Row { widgets: input_mid },
-		LayoutGroup::Row { widgets: input_end },
-		LayoutGroup::Row { widgets: output_start },
-		LayoutGroup::Row { widgets: output_end },
+		LayoutGroup::Row { widgets: input_shadows },
+		LayoutGroup::Row { widgets: input_midtones },
+		LayoutGroup::Row { widgets: input_highlights },
+		LayoutGroup::Row { widgets: output_minimums },
+		LayoutGroup::Row { widgets: output_maximums },
 	]
 }
 

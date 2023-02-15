@@ -60,35 +60,36 @@ pub struct LevelsNode<InputStart, InputMid, InputEnd, OutputStart, OutputEnd> {
 	output_end: OutputEnd,
 }
 
-// From <https://stackoverflow.com/a/55233732/775283>
-// Works the same for gamma and linear color
+// From https://stackoverflow.com/questions/39510072/algorithm-for-adjustment-of-image-levels
 #[node_macro::node_fn(LevelsNode)]
 fn levels_node(color: Color, input_start: f64, input_mid: f64, input_end: f64, output_start: f64, output_end: f64) -> Color {
 	// Input Range
-	let i_start = (input_start / 100.) as f32;
-	let i_mid = (input_mid / 100.) as f32;
-	let i_end = (input_end / 100.) as f32;
+	let input_shadows = (input_start / 100.) as f32;
+	let input_midtones = (input_mid / 100.) as f32;
+	let input_highlights = (input_end / 100.) as f32;
 
-	// Ouput Range
-	let o_start = (output_start / 100.) as f32;
-	let o_end = (output_end / 100.) as f32;
+	// Output Range
+	let output_minimums = (output_start / 100.) as f32;
+	let output_maximums = (output_end / 100.) as f32;
 
 	// Midtones interpolation factor between minimums and maximums
-	let mut midtones = i_start + (i_end - i_start) * i_mid;
-
-	// Algorithm from https://stackoverflow.com/questions/39510072/algorithm-for-adjustment-of-image-levels
+	let midtones = output_minimums + (output_maximums - output_minimums) * input_midtones;
 
 	// Gamma correction
 	let gamma = if midtones < 0.5 {
-		midtones *= 2.0;
-		1.0 + (9.0 * (1.0 - midtones))
+		(1. + (9. * (1. - midtones * 2.))).min(9.99)
 	} else {
-		midtones = (midtones * 2.0) - 1.0;
-		1.0 - midtones
+		((1. - midtones) * 2.).max(0.01)
 	};
-	let gamma_correction = 1.0 / gamma.clamp(0.1, 9.99);
 
-	color.map_rgb(|c| ((c - i_start) / (i_end - i_start)).powf(gamma_correction) * (o_end - o_start) + o_start)
+	// Input levels
+	let color = color.map_rgb(|channel| (channel - input_shadows) / (input_highlights - input_shadows));
+
+	// Midtones
+	let color = color.map_rgb(|channel| channel.powf(gamma));
+
+	// Output levels
+	color.map_rgb(|channel| channel * (output_maximums - output_minimums) + output_minimums)
 }
 
 #[derive(Debug, Clone, Copy, Default)]
