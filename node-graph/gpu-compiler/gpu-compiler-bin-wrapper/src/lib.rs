@@ -14,19 +14,19 @@ pub fn compile_spirv(network: &graph_craft::document::NodeNetwork, input_type: &
 		.arg("--release")
 		.arg("--manifest-path")
 		.arg(manifest_path)
-        .current_dir(manifest_path.replace("Cargo.toml", ""))
-        .env_clear()
-        .envs(non_cargo_env_vars)
+		.current_dir(manifest_path.replace("Cargo.toml", ""))
+		.env_clear()
+		.envs(non_cargo_env_vars)
 		.arg("--features")
 		.arg(features)
-        .arg("--")
-        .arg(input_type)
-        .arg(output_type)
-        // TODO: handle None case properly
-        .arg(compile_dir.unwrap())
+		.arg("--")
+		.arg(input_type)
+		.arg(output_type)
+		// TODO: handle None case properly
+		.arg(compile_dir.unwrap())
 		.stdin(std::process::Stdio::piped())
 		.stdout(std::process::Stdio::piped())
-        .spawn()?;
+		.spawn()?;
 
 	cargo_command.stdin.as_mut().unwrap().write_all(serialized_graph.as_bytes())?;
 	let output = cargo_command.wait_with_output()?;

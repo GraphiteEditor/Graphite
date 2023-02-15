@@ -21,10 +21,50 @@ pub mod raster;
 #[cfg(feature = "alloc")]
 pub mod vector;
 
+use core::any::TypeId;
+
 // pub trait Node: for<'n> NodeIO<'n> {
 pub trait Node<'i, Input: 'i>: 'i {
 	type Output: 'i;
 	fn eval<'s: 'i>(&'s self, input: Input) -> Self::Output;
+}
+
+#[cfg(feature = "alloc")]
+mod types;
+pub use types::*;
+
+pub trait NodeIO<'i, Input: 'i>: 'i + Node<'i, Input>
+where
+	Self::Output: 'i + StaticType,
+	Input: 'i + StaticType,
+{
+	fn input_type(&self) -> TypeId {
+		TypeId::of::<Input::Static>()
+	}
+	fn input_type_name(&self) -> &'static str {
+		core::any::type_name::<Input>()
+	}
+	fn output_type(&self) -> core::any::TypeId {
+		TypeId::of::<<Self::Output as StaticType>::Static>()
+	}
+	fn output_type_name(&self) -> &'static str {
+		core::any::type_name::<Self::Output>()
+	}
+	#[cfg(feature = "alloc")]
+	fn to_node_io(&self, parameters: Vec<Type>) -> NodeIOTypes {
+		NodeIOTypes {
+			input: concrete!(<Input as StaticType>::Static),
+			output: concrete!(<Self::Output as StaticType>::Static),
+			parameters,
+		}
+	}
+}
+
+impl<'i, N: Node<'i, I>, I> NodeIO<'i, I> for N
+where
+	N::Output: 'i + StaticType,
+	I: 'i + StaticType,
+{
 }
 
 /*impl<'i, I: 'i, O: 'i> Node<'i, I> for &'i dyn for<'n> Node<'n, I, Output = O> {
@@ -42,6 +82,8 @@ impl<'i, 'n: 'i, I: 'i, O: 'i> Node<'i, I> for &'n dyn for<'a> Node<'a, I, Outpu
 	}
 }
 use core::pin::Pin;
+
+use dyn_any::StaticType;
 #[cfg(feature = "alloc")]
 impl<'i, I: 'i, O: 'i> Node<'i, I> for Pin<Box<dyn for<'a> Node<'a, I, Output = O> + 'i>> {
 	type Output = O;

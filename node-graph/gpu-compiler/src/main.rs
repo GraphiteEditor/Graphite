@@ -1,18 +1,18 @@
-use graph_craft::document::NodeNetwork;
 use gpu_compiler as compiler;
+use graph_craft::document::NodeNetwork;
 use std::io::Write;
 
-fn main() ->  anyhow::Result<()> {
-    println!("Starting Gpu Compiler!");
+fn main() -> anyhow::Result<()> {
+	println!("Starting GPU Compiler!");
 	let mut stdin = std::io::stdin();
 	let mut stdout = std::io::stdout();
 	let input_type = std::env::args().nth(1).expect("input type arg missing");
 	let output_type = std::env::args().nth(2).expect("output type arg missing");
 	let compile_dir = std::env::args().nth(3).map(|x| std::path::PathBuf::from(&x)).unwrap_or(tempfile::tempdir()?.into_path());
 	let network: NodeNetwork = serde_json::from_reader(&mut stdin)?;
-	let compiler = graph_craft::executor::Compiler{};
+	let compiler = graph_craft::executor::Compiler {};
 	let proto_network = compiler.compile(network, true);
-    dbg!(&compile_dir);
+	dbg!(&compile_dir);
 
 	let metadata = compiler::Metadata::new("project".to_owned(), vec!["test@example.com".to_owned()]);
 
