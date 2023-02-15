@@ -50,9 +50,12 @@ impl Subpath {
 		number_of_curves
 	}
 
-	/// Returns a copy of the bezier segment at
-	pub fn get_segment(&self, segment_index: usize) -> Bezier {
-		self[segment_index].to_bezier(&self[(segment_index + 1) % self.len()])
+	/// Returns a copy of the bezier segment at given segment index, if this segment exists.
+	pub fn get_segment(&self, segment_index: usize) -> Option<Bezier> {
+		if segment_index >= self.len_segments() {
+			return None;
+		}
+		Some(self[segment_index].to_bezier(&self[(segment_index + 1) % self.len()]))
 	}
 
 	/// Returns an iterator of the [Bezier]s along the `Subpath`.

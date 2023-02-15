@@ -10,7 +10,7 @@ impl Subpath {
 	/// Expects `t` to be within the inclusive range `[0, 1]`.
 	pub fn evaluate(&self, t: SubpathTValue) -> DVec2 {
 		let (segment_index, t) = self.t_value_to_parametric(t);
-		self.get_segment(segment_index).evaluate(TValue::Parametric(t))
+		self.get_segment(segment_index).unwrap().evaluate(TValue::Parametric(t))
 	}
 
 	/// Calculates the intersection points the subpath has with a given curve and returns a list of parameteric `t`-values.
@@ -45,12 +45,12 @@ impl Subpath {
 
 	pub fn tangent(&self, t: SubpathTValue) -> DVec2 {
 		let (segment_index, t) = self.t_value_to_parametric(t);
-		self.get_segment(segment_index).tangent(TValue::Parametric(t))
+		self.get_segment(segment_index).unwrap().tangent(TValue::Parametric(t))
 	}
 
 	pub fn normal(&self, t: SubpathTValue) -> DVec2 {
 		let (segment_index, t) = self.t_value_to_parametric(t);
-		self.get_segment(segment_index).normal(TValue::Parametric(t))
+		self.get_segment(segment_index).unwrap().normal(TValue::Parametric(t))
 	}
 }
 

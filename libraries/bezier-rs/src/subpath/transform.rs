@@ -9,7 +9,7 @@ impl Subpath {
 	/// If the original Subpath was open, two open Subpaths will be returned.
 	pub fn split(&self, t: SubpathTValue) -> (Subpath, Option<Subpath>) {
 		let (segment_index, t) = self.t_value_to_parametric(t);
-		let curve = self.get_segment(segment_index);
+		let curve = self.get_segment(segment_index).unwrap();
 
 		let [first_bezier, second_bezier] = curve.split(TValue::Parametric(t));
 
