@@ -39,7 +39,10 @@ impl NodeGraphExecutor {
 		let proto_network = c.compile_single(network, true)?;
 
 		assert_ne!(proto_network.nodes.len(), 0, "No protonodes exist?");
-		self.executor.update(proto_network);
+		if let Err(e) = self.executor.update(proto_network) {
+			error!("Failed to update executor:\n{}", e);
+			return Err(e);
+		}
 
 		use dyn_any::IntoDynAny;
 		use graph_craft::executor::Executor;
@@ -65,7 +68,7 @@ impl NodeGraphExecutor {
 			}
 			match &inner_network.nodes.get(&node_path[end]).unwrap().inputs[input_index] {
 				// If the input is from a parent network then adjust the input index and continue iteration
-				NodeInput::Network => {
+				NodeInput::Network(_) => {
 					input_index = inner_network
 						.inputs
 						.iter()
