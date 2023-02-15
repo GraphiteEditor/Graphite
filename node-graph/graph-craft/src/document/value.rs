@@ -156,7 +156,7 @@ impl<'a> TaggedValue {
 			TaggedValue::DVec2(_) => concrete!(DVec2),
 			TaggedValue::OptionalDVec2(_) => concrete!(Option<DVec2>),
 			TaggedValue::Image(_) => concrete!(graphene_core::raster::Image),
-			TaggedValue::RcImage(_) => concrete!(Arc<graphene_core::raster::Image>),
+			TaggedValue::RcImage(_) => concrete!(Option<Arc<graphene_core::raster::Image>>),
 			TaggedValue::Color(_) => concrete!(graphene_core::raster::Color),
 			TaggedValue::Subpath(_) => concrete!(graphene_core::vector::subpath::Subpath),
 			TaggedValue::RcSubpath(_) => concrete!(Arc<graphene_core::vector::subpath::Subpath>),

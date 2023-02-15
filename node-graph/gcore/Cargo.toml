@@ -17,6 +17,7 @@ gpu = ["spirv-std", "bytemuck", "glam/bytemuck", "dyn-any"]
 async = ["async-trait", "alloc"]
 nightly = []
 alloc = ["dyn-any", "bezier-rs"]
+type_id_logging = []
 
 [dependencies]
 dyn-any = {path = "../../libraries/dyn-any", features = ["derive", "glam"], optional = true, default-features = false }

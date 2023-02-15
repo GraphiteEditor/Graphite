@@ -150,7 +150,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 					concrete!(ImaginateMaskStartingFill),
 					concrete!(bool),
 					concrete!(bool),
-					concrete!(std::sync::Arc<Image>),
+					concrete!(Option<std::sync::Arc<Image>>),
 					concrete!(f64),
 					concrete!(ImaginateStatus),
 				],

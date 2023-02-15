@@ -23,7 +23,7 @@ macro_rules! concrete {
 	($type:ty) => {
 		Type::Concrete(TypeDescriptor {
 			id: Some(core::any::TypeId::of::<$type>()),
-			name: Cow::Borrowed(stringify!($type)),
+			name: Cow::Borrowed(core::any::type_name::<$type>()),
 		})
 	};
 }
@@ -57,7 +57,13 @@ impl core::hash::Hash for TypeDescriptor {
 
 impl PartialEq for TypeDescriptor {
 	fn eq(&self, other: &Self) -> bool {
-		self.id == other.id
+		match (self.id, other.id) {
+			(Some(id), Some(other_id)) => id == other_id,
+			_ => {
+				warn!("TypeDescriptor::eq: comparing types without ids based on name");
+				self.name == other.name
+			}
+		}
 	}
 }
 
@@ -72,7 +78,10 @@ impl core::fmt::Debug for Type {
 	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
 		match self {
 			Self::Generic(arg0) => f.write_fmt(format_args!("Generic({})", arg0)),
-			Self::Concrete(arg0) => f.write_fmt(format_args!("Concrete({}))", arg0.name)),
+			#[cfg(feature = "type_id_logging")]
+			Self::Concrete(arg0) => f.write_fmt(format_args!("Concrete({}, {:?}))", arg0.name, arg0.id)),
+			#[cfg(not(feature = "type_id_logging"))]
+			Self::Concrete(arg0) => f.write_fmt(format_args!("Concrete({})", arg0.name)),
 		}
 	}
 }
