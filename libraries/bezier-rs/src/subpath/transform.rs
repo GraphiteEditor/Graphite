@@ -1,5 +1,6 @@
 use super::*;
-use crate::{consts::MAX_ABSOLUTE_DIFFERENCE, utils::f64_compare, SubpathTValue, TValue};
+use crate::utils::SubpathTValue;
+use crate::utils::TValue;
 
 /// Functionality that transforms Subpaths, such as split, reduce, offset, etc.
 impl Subpath {
@@ -12,37 +13,11 @@ impl Subpath {
 
 		let [first_bezier, second_bezier] = curve.split(TValue::Parametric(t));
 
-		// Handle edge case where the split point is the start or end of the subpath
-		if !self.closed {
-			// Return the point subpath of the starting point and a clone
-			if f64_compare(t, 0., MAX_ABSOLUTE_DIFFERENCE) && segment_index == 0 {
-				let point_subpath = Subpath::new(
-					vec![ManipulatorGroup {
-						anchor: self[0].anchor,
-						in_handle: None,
-						out_handle: None,
-					}],
-					false,
-				);
-				return (point_subpath, Some(self.clone()));
-			}
-			// Return a clone and a point subpath of the end point
-			if f64_compare(t, 1., MAX_ABSOLUTE_DIFFERENCE) && segment_index == self.len_segments() - 1 {
-				let point_subpath = Subpath::new(
-					vec![ManipulatorGroup {
-						anchor: self[self.len() - 1].anchor,
-						in_handle: None,
-						out_handle: None,
-					}],
-					false,
-				);
-				return (self.clone(), Some(point_subpath));
-			}
-		}
-
 		let mut clone = self.manipulator_groups.clone();
-		let (mut first_split, mut second_split) = if t > 0. {
-			let clone2 = clone.split_off(self.len().min(segment_index + 1));
+		// Split the manipulator group list such that the split location is between the last and first elements of the two split halves
+		// If the split is on an anchor point, include this anchor point in the first half of the split, except for the first manipulator group which we want in the second group
+		let (mut first_split, mut second_split) = if !(t == 0. && segment_index == 0) {
+			let clone2 = clone.split_off(self.len().min(segment_index + 1 + (t == 1.) as usize));
 			(clone, clone2)
 		} else {
 			(vec![], clone)
@@ -50,7 +25,7 @@ impl Subpath {
 
 		// If the subpath is closed and the split point is the start or end of the Subpath
 		if self.closed && ((t == 0. && segment_index == 0) || (t == 1. && segment_index == self.len_segments() - 1)) {
-			// The entire vector of manipulator groups will be in the second_split because target_curve_index == 0.
+			// The entire vector of manipulator groups will be in the second_split
 			// Add a new manipulator group with the same anchor as the first node to represent the end of the now opened subpath
 			let last_curve = self.iter().last().unwrap();
 			first_split.push(ManipulatorGroup {
@@ -71,7 +46,7 @@ impl Subpath {
 			// Push new manipulator groups to represent the location of the split at the end of the first group and at the start of the second
 			// If the split was at a manipulator group's anchor, add only one manipulator group
 			// Add it to the first list when the split location is on the first manipulator group, otherwise add to the second list
-			if t != 0. || segment_index != 0 {
+			if (t % 1. != 0.) || segment_index == 0 {
 				first_split.push(ManipulatorGroup {
 					anchor: first_bezier.end(),
 					in_handle: first_bezier.handle_end(),

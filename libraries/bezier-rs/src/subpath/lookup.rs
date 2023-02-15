@@ -1,5 +1,7 @@
 use super::*;
-use crate::{consts::DEFAULT_EUCLIDEAN_ERROR_BOUND, utils::SubpathTValue, ProjectionOptions, TValue};
+use crate::consts::DEFAULT_EUCLIDEAN_ERROR_BOUND;
+use crate::utils::{SubpathTValue, TValue};
+use crate::ProjectionOptions;
 use glam::DVec2;
 
 /// Functionality relating to looking up properties of the `Subpath` or points along the `Subpath`.
@@ -93,7 +95,8 @@ impl Subpath {
 
 #[cfg(test)]
 mod tests {
-	use crate::{consts::MAX_ABSOLUTE_DIFFERENCE, utils::f64_compare};
+	use crate::consts::MAX_ABSOLUTE_DIFFERENCE;
+	use crate::utils::f64_compare;
 
 	use super::*;
 
