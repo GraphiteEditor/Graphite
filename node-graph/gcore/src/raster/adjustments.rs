@@ -73,10 +73,14 @@ fn levels_node(color: Color, input_start: f64, input_mid: f64, input_end: f64, o
 	let output_maximums = (output_end / 100.) as f32;
 
 	// Midtones interpolation factor between minimums and maximums
-	let midtones = input_shadows + (input_highlights - input_shadows) * input_midtones;
+	let midtones = output_minimums + (output_maximums - output_minimums) * input_midtones;
 
 	// Gamma correction
-	let gamma = 1. / if midtones < 0.5 { 1. + (9. * (1. - midtones * 2.)) } else { (1. - midtones) * 2. }.clamp(0.1, 9.99);
+	let gamma = if midtones < 0.5 {
+		1. / (1. + (9. * (1. - midtones * 2.))).min(9.99)
+	} else {
+		1. / ((1. - midtones) * 2.).max(0.01)
+	};
 
 	// Input levels
 	let color = color.map_rgb(|channel| (channel - input_shadows) / (input_highlights - input_shadows));
