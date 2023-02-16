@@ -6,6 +6,7 @@
 	"scripts": {
 		"start": "npm run serve",
 		"serve": "vue-cli-service serve || (npm run print-building-help && exit 1)",
+		"dev": "cargo watch -s \"wasm-pack build frontend/wasm --dev\" & vite || kill $!",
 		"build": "vue-cli-service build || (npm run print-building-help && exit 1)",
 		"lint": "vue-cli-service lint || (npm run print-linting-help && exit 1)",
 		"lint-no-fix": "vue-cli-service lint --no-fix || (npm run print-linting-help && exit 1)",
@@ -16,7 +17,9 @@
 	},
 	"dependencies": {
 		"@tauri-apps/api": "^1.2.0",
+		"@vitejs/plugin-vue": "^4.0.0",
 		"class-transformer": "^0.5.1",
+		"graphite-wasm": "file:wasm/pkg",
 		"idb-keyval": "^6.2.0",
 		"reflect-metadata": "^0.1.13",
 		"vue": "^3.2.26"
@@ -24,13 +27,10 @@
 	"devDependencies": {
 		"@typescript-eslint/eslint-plugin": "^5.43.0",
 		"@typescript-eslint/parser": "^5.43.0",
-		"@vue/cli-plugin-eslint": "^5.0.8",
-		"@vue/cli-plugin-typescript": "^5.0.8",
-		"@vue/cli-service": "^5.0.8",
 		"@vue/compiler-sfc": "^3.2.31",
 		"@vue/eslint-config-airbnb": "^6.0.0",
 		"@vue/eslint-config-typescript": "^11.0.2",
-		"@wasm-tool/wasm-pack-plugin": "^1.6.0",
+		"@vitejs/plugin-vue": "^4.0.0",
 		"eslint": "^8.27.0",
 		"eslint-config-prettier": "^8.5.0",
 		"eslint-plugin-import": "^2.26.0",
@@ -38,12 +38,14 @@
 		"eslint-plugin-vue": "^9.7.0",
 		"license-checker-webpack-plugin": "^0.2.1",
 		"prettier": "^2.7.1",
+		"rollup-plugin-license": "^3.0.1",
 		"sass": "^1.56.1",
-		"sass-loader": "^13.2.0",
 		"typescript": "^4.9.3",
+		"vite": "^4.1.1",
+		"vite-plugin-top-level-await": "^1.2.2",
+		"vite-plugin-wasm": "^3.1.1",
 		"vue-cli-plugin-tauri": "~1.0.0",
-		"vue-loader": "^17.0.1",
-		"vue-template-compiler": "^2.7.14"
+		"vue-loader": "^17.0.1"
 	},
 	"//": "Notes about dependency issues and incompatibilities should be added here when needed.",
 	"homepage": "https://graphite.rs",
