@@ -5,11 +5,11 @@
 	"description": "Graphite's web app frontend. Planned to be replaced by a native GUI written in Rust in the future.",
 	"author": "Graphite Authors <contact@graphite.rs>",
 	"scripts": {
-		"dev": "npm run watch:wasm & vite",
+		"dev": "cargo watch -s \"wasm-pack build frontend-svelte/wasm --dev\" & vite || kill $!",
 		"lint": "eslint src",
 		"build": "npm run build-wasm && vite build",
 		"build-wasm": "wasm-pack build ./wasm --release",
-		"watch:wasm": "cargo watch -s \"wasm-pack build ./wasm --dev\"",
+		"watch:wasm": "cd wasm && cargo watch -s \"wasm-pack build --dev\"",
 		"preview": "vite preview",
 		"check": "svelte-check --tsconfig ./tsconfig.json"
 	},
