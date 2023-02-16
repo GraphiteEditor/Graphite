@@ -1,3 +1,5 @@
+use std::ptr::null;
+
 use crate::application::generate_uuid;
 use crate::consts::{ROTATE_SNAP_ANGLE, SELECTION_TOLERANCE};
 use crate::messages::frontend::utility_types::MouseCursorIcon;
@@ -363,7 +365,6 @@ impl Fsm for SelectToolFsmState {
 					self
 				}
 				(_, EditLayer) => {
-					debug!("EDIT");
 					// Setup required data for checking the clicked layer
 					let mouse_pos = input.mouse.position;
 					let tolerance = DVec2::splat(SELECTION_TOLERANCE);
@@ -375,58 +376,25 @@ impl Fsm for SelectToolFsmState {
 							// Group manipulation
 							if tool_data.selected_type == SelectedType::Group {
 								let mut selected_layers = document.selected_layers();
-								// Something was previously selected
+								// Check if something was previously selected
 								if let Some(layer_path) = selected_layers.next() {
-									let mut layer_path_vector = layer_path.to_vec();
-
+									let mut new_layer_path_vector = layer_path.to_vec();
+									// Double-clicking any layer within an already selected folder should select that layer
+									// Add the first layer path not already included from the intersected to our new layer path
 									for path in intersect_layer_path {
-										if !layer_path_vector.contains(path) {
-											layer_path_vector.push(*path);
+										if !new_layer_path_vector.contains(path) {
+											new_layer_path_vector.push(*path);
 											break;
 										}
 									}
 									responses.push_back(DocumentMessage::DeselectAllLayers.into());
 									responses.push_back(
 										DocumentMessage::AddSelectedLayers {
-											additional_layers: vec![layer_path_vector],
+											additional_layers: vec![new_layer_path_vector],
 										}
 										.into(),
 									);
 								}
-							// Nothing was previously selected
-							// else {
-							// 	selected = vec![intersection];
-							// 	let parent_folder = selected[0..1].to_vec();
-							// 	let folder_id = *parent_folder.first().unwrap().first().unwrap();
-							// 	let folder_id_as_vector = vec![vec![folder_id]];
-							// 	// debug!("folder id: {:?}", folder_id_as_vector);
-							// 	responses.push_back(
-							// 		DocumentMessage::AddSelectedLayers {
-							// 			additional_layers: folder_id_as_vector,
-							// 		}
-							// 		.into(),
-							// 	);
-							// }
-
-							// let parent_layer_path = [intersect_layer_path.clone()[0]];
-							// let parent_is_folder = document.document_legacy.is_folder(parent_layer_path.as_ref());
-
-							// If intersection is folder?
-							// if parent_is_folder {
-							// 	let child_layer_path = vec![intersect_layer_path[..2].to_vec()];
-							// 	debug!("child path: {:?}", child_layer_path);
-							// 	responses.push_back(DocumentMessage::DeselectAllLayers.into());
-							// 	responses.push_back(DocumentMessage::AddSelectedLayers { additional_layers: child_layer_path }.into());
-							// }
-							// // If interesection is shape
-							// else {
-							// 	responses.push_back(
-							// 		DocumentMessage::AddSelectedLayers {
-							// 			additional_layers: vec![vec![parent_layer_path[0]]],
-							// 		}
-							// 		.into(),
-							// 	);
-							// }
 							}
 							// Layer manipulation
 							else {
@@ -549,63 +517,51 @@ impl Fsm for SelectToolFsmState {
 							selected = vec![intersection];
 							// Group manipulation
 							if tool_data.selected_type == SelectedType::Group {
-								// Control Click
-								// Maybe combine the logic for layer manpulation to control click to reduce code
+								// Control click selects the layer directly
 								if input.keyboard.get(layer_selection as usize) {
 									responses.push_back(DocumentMessage::DeselectAllLayers.into());
 									tool_data.layers_dragging.clear();
 									responses.push_back(DocumentMessage::AddSelectedLayers { additional_layers: selected.clone() }.into());
 								} else {
 									tool_data.layers_dragging.clear();
-									// Check whether a layer is selected for next selection calculations
+
 									let mut previously_selected_layers = document.selected_layers();
+									// Check whether a layer is selected for next selection calculations
 									if let Some(previous_layer_path) = previously_selected_layers.next() {
 										let previous_layer_path_vector = previous_layer_path.to_vec();
-										let new_layer_path_vector = selected.first().unwrap();
+										let incoming_layer_path_vector = selected.first().unwrap();
 
-										// traverse laterally
-										if new_layer_path_vector.len() == previous_layer_path_vector.len() {
-											tool_data.layers_dragging.append(&mut vec![new_layer_path_vector.to_vec()]);
-											responses.push_back(DocumentMessage::DeselectAllLayers.into());
-											responses.push_back(
-												DocumentMessage::AddSelectedLayers {
-													additional_layers: vec![new_layer_path_vector.to_vec()],
-												}
-												.into(),
-											);
+										// Single-clicking any layer that's contained within a folder should select its shallowest parent folder
+										let mut new_layer_path_vector = None;
+										// Traverse laterally across layer tree hierarchy
+										if incoming_layer_path_vector.len() == previous_layer_path_vector.len() {
+											new_layer_path_vector = Some(vec![incoming_layer_path_vector.to_vec()]);
 										}
-										// traverse laterally for folders
-										else if new_layer_path_vector.len() > previous_layer_path_vector.len() {
-											let updated_layer_path_vector = &new_layer_path_vector[..previous_layer_path_vector.len()];
-											tool_data.layers_dragging.append(&mut vec![updated_layer_path_vector.to_vec()]);
-											responses.push_back(DocumentMessage::DeselectAllLayers.into());
-											responses.push_back(
-												DocumentMessage::AddSelectedLayers {
-													additional_layers: vec![updated_layer_path_vector.to_vec()],
-												}
-												.into(),
-											);
+										// Traverse laterally across layer tree hierarchy if the selected layer is a folder
+										else if incoming_layer_path_vector.len() > previous_layer_path_vector.len() {
+											// Update layer path to the root most folder containing the layer
+											let updated_layer_path_vector = &incoming_layer_path_vector[..previous_layer_path_vector.len()];
+											new_layer_path_vector = Some(vec![updated_layer_path_vector.to_vec()]);
 										}
-										// traverse up tree
-										else if new_layer_path_vector.len() < previous_layer_path_vector.len() {
-											tool_data.layers_dragging.append(&mut vec![new_layer_path_vector.to_vec()]);
-											responses.push_back(DocumentMessage::DeselectAllLayers.into());
-											responses.push_back(
-												DocumentMessage::AddSelectedLayers {
-													additional_layers: vec![new_layer_path_vector.to_vec()],
-												}
-												.into(),
-											);
+										// Traverse up layer tree hierarchy
+										else if incoming_layer_path_vector.len() < previous_layer_path_vector.len() {
+											new_layer_path_vector = Some(vec![incoming_layer_path_vector.to_vec()]);
 										}
-									} else {
-										// Select root most layer
-										let parent_folder = selected[0..1].to_vec();
-										let folder_id = *parent_folder.first().unwrap().first().unwrap();
-										let folder_id_as_vector = vec![vec![folder_id]];
-										tool_data.layers_dragging.append(&mut folder_id_as_vector.clone());
+										tool_data.layers_dragging.append(&mut new_layer_path_vector.clone().unwrap());
+										responses.push_back(DocumentMessage::DeselectAllLayers.into());
 										responses.push_back(
 											DocumentMessage::AddSelectedLayers {
-												additional_layers: folder_id_as_vector,
+												additional_layers: new_layer_path_vector.unwrap(),
+											}
+											.into(),
+										);
+									} else {
+										// Select root-most layer
+										let parent_folder_id = selected.first().unwrap().first().unwrap();
+										tool_data.layers_dragging.append(&mut vec![vec![*parent_folder_id]]);
+										responses.push_back(
+											DocumentMessage::AddSelectedLayers {
+												additional_layers: vec![vec![*parent_folder_id]],
 											}
 											.into(),
 										);
