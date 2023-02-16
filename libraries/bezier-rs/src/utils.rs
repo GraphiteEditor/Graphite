@@ -23,8 +23,8 @@ pub enum SubpathTValue {
 	Parametric { segment_index: usize, t: f64 },
 	GlobalParametric(f64),
 	Euclidean { segment_index: usize, t: f64 },
-	EuclideanWithinError { segment_index: usize, t: f64, error: f64 },
 	GlobalEuclidean(f64),
+	EuclideanWithinError { segment_index: usize, t: f64, error: f64 },
 	GlobalEuclideanWithinError { t: f64, error: f64 },
 }
 

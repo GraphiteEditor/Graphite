@@ -28,7 +28,7 @@ impl Subpath {
 	}
 
 	/// Convert a [SubpathTValue] to a parametric `(segment_index, t)` tuple.
-	/// - Asserts that `t` values contained within the `SubpathTValue` argument lie between 0 and 1.
+	/// - Asserts that `t` values contained within the `SubpathTValue` argument lie in the range [0, 1].
 	/// - If the argument is a variant containing a `segment_index`, asserts that the index references a valid segment on the curve.
 	pub(crate) fn t_value_to_parametric(&self, t: SubpathTValue) -> (usize, f64) {
 		assert!(self.len() > 1);
@@ -57,17 +57,17 @@ impl Subpath {
 				assert!((0..self.len_segments()).contains(&segment_index));
 				(segment_index, self.get_segment(segment_index).unwrap().euclidean_to_parametric(t, DEFAULT_EUCLIDEAN_ERROR_BOUND))
 			}
-			SubpathTValue::EuclideanWithinError { segment_index, t, error } => {
-				assert!((0.0..=1.).contains(&t));
-				assert!((0..self.len_segments()).contains(&segment_index));
-				(segment_index, self.get_segment(segment_index).unwrap().euclidean_to_parametric(t, error))
-			}
 			SubpathTValue::GlobalEuclidean(t) => {
 				let (segment_index, segment_t) = self.global_euclidean_to_local_euclidean(t);
 				(
 					segment_index,
 					self.get_segment(segment_index).unwrap().euclidean_to_parametric(segment_t, DEFAULT_EUCLIDEAN_ERROR_BOUND),
 				)
+			}
+			SubpathTValue::EuclideanWithinError { segment_index, t, error } => {
+				assert!((0.0..=1.).contains(&t));
+				assert!((0..self.len_segments()).contains(&segment_index));
+				(segment_index, self.get_segment(segment_index).unwrap().euclidean_to_parametric(t, error))
 			}
 			SubpathTValue::GlobalEuclideanWithinError { t, error } => {
 				let (segment_index, segment_t) = self.global_euclidean_to_local_euclidean(t);

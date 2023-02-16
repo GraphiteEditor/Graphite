@@ -50,7 +50,7 @@ impl Subpath {
 		number_of_curves
 	}
 
-	/// Returns a copy of the bezier segment at given segment index, if this segment exists.
+	/// Returns a copy of the bezier segment at the given segment index, if this segment exists.
 	pub fn get_segment(&self, segment_index: usize) -> Option<Bezier> {
 		if segment_index >= self.len_segments() {
 			return None;

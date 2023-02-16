@@ -32,12 +32,10 @@ impl ManipulatorGroup {
 		let out_handle = self.out_handle;
 		let in_handle = end_group.in_handle;
 
-		if let (Some(handle1), Some(handle2)) = (out_handle, in_handle) {
-			Bezier::from_cubic_dvec2(start, handle1, handle2, end)
-		} else if let Some(handle) = out_handle.or(in_handle) {
-			Bezier::from_quadratic_dvec2(start, handle, end)
-		} else {
-			Bezier::from_linear_dvec2(start, end)
+		match (out_handle, in_handle) {
+			(Some(handle1), Some(handle2)) => Bezier::from_cubic_dvec2(start, handle1, handle2, end),
+			(Some(handle), None) | (None, Some(handle)) => Bezier::from_quadratic_dvec2(start, handle, end),
+			(None, None) => Bezier::from_linear_dvec2(start, end),
 		}
 	}
 }
