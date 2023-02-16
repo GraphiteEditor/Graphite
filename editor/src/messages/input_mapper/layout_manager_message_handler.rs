@@ -11,7 +11,7 @@ impl MessageHandler<LayoutManagerMessage, (&InputPreprocessorMessageHandler, Act
 	fn process_message(&mut self, message: LayoutManagerMessage, responses: &mut VecDeque<Message>, data: (&InputPreprocessorMessageHandler, ActionList)) {
 		match message {
 			LayoutManagerMessage::Lookup(input) => self.mapping_handler.process_message(input, responses, data),
-			_ => todo!(),
+			LayoutManagerMessage::ModifyLayout(new_layout) => self.mapping_handler.set_mapping(new_layout.into()),
 		}
 	}
 	advertise_actions!();

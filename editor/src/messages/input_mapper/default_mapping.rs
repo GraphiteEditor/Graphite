@@ -3,10 +3,20 @@ use crate::messages::input_mapper::utility_types::input_keyboard::{Key, KeyState
 use crate::messages::input_mapper::utility_types::macros::*;
 use crate::messages::input_mapper::utility_types::misc::MappingEntry;
 use crate::messages::input_mapper::utility_types::misc::{KeyMappingEntries, Mapping};
+use crate::messages::input_mapper::LayoutVariant;
 use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
 use crate::messages::prelude::*;
 
 use glam::DVec2;
+
+impl From<LayoutVariant> for Mapping {
+	fn from(value: LayoutVariant) -> Self {
+		match value {
+			LayoutVariant::Default => default_mapping(),
+			LayoutVariant::ScrollAsZoom => scroll_as_zoom(),
+		}
+	}
+}
 
 pub fn default_mapping() -> Mapping {
 	use InputMapperMessage::*;

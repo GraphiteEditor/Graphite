@@ -11,6 +11,6 @@ pub use input_mapper_message::{InputMapperMessage, InputMapperMessageDiscriminan
 #[doc(inline)]
 pub use input_mapper_message_handler::InputMapperMessageHandler;
 #[doc(inline)]
-pub use layout_manager_message::{LayoutManagerMessage, LayoutManagerMessageDiscriminant};
+pub use layout_manager_message::{LayoutManagerMessage, LayoutManagerMessageDiscriminant, LayoutVariant, LayoutVariantDiscriminant};
 #[doc(inline)]
 pub use layout_manager_message_handler::LayoutManagerMessageHandler;
