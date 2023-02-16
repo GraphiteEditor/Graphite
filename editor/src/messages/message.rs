@@ -26,11 +26,11 @@ pub enum Message {
 	#[child]
 	Globals(GlobalsMessage),
 	#[child]
-	InputMapper(InputMapperMessage),
-	#[child]
 	InputPreprocessor(InputPreprocessorMessage),
 	#[child]
 	Layout(LayoutMessage),
+	#[child]
+	LayoutManager(LayoutManagerMessage),
 	#[child]
 	Portfolio(PortfolioMessage),
 	#[child]
