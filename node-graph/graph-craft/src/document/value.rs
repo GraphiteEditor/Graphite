@@ -2,8 +2,8 @@ pub use dyn_any::StaticType;
 use dyn_any::{DynAny, Upcast};
 use dyn_clone::DynClone;
 pub use glam::{DAffine2, DVec2};
-use graphene_core::{Node, Type};
 use graphene_core::raster::{BlendMode, LuminanceCalculation};
+use graphene_core::{Node, Type};
 use std::hash::Hash;
 pub use std::sync::Arc;
 
@@ -166,7 +166,7 @@ impl<'a> TaggedValue {
 			TaggedValue::Color(_) => concrete!(graphene_core::raster::Color),
 			TaggedValue::Subpath(_) => concrete!(graphene_core::vector::subpath::Subpath),
 			TaggedValue::RcSubpath(_) => concrete!(Arc<graphene_core::vector::subpath::Subpath>),
-            TaggedValue::BlendMode(_) => concrete!(BlendMode),
+			TaggedValue::BlendMode(_) => concrete!(BlendMode),
 			TaggedValue::ImaginateSamplingMethod(_) => concrete!(ImaginateSamplingMethod),
 			TaggedValue::ImaginateMaskStartingFill(_) => concrete!(ImaginateMaskStartingFill),
 			TaggedValue::ImaginateStatus(_) => concrete!(ImaginateStatus),
