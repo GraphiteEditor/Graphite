@@ -3,7 +3,7 @@
 	"build": {
 		"beforeBuildCommand": "npm run build",
 		"beforeDevCommand": "npm start",
-		"distDir": "../dist-tauri",
+		"distDir": "../dist",
 		"devPath": "http://127.0.0.1:8080"
 	},
 	"package": {
