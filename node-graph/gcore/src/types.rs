@@ -51,7 +51,7 @@ pub struct TypeDescriptor {
 
 impl core::hash::Hash for TypeDescriptor {
 	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
-		self.id.hash(state);
+		self.name.hash(state);
 	}
 }
 
