@@ -332,6 +332,40 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			}],
 			properties: node_properties::blur_image_properties,
 		},
+		DocumentNodeType {
+			name: "Cache",
+			category: "Structural",
+			identifier: NodeImplementation::DocumentNode(NodeNetwork {
+				inputs: vec![0],
+				outputs: vec![NodeOutput::new(1, 0)],
+				nodes: vec![
+					(
+						0,
+						DocumentNode {
+							name: "CacheNode".to_string(),
+							inputs: vec![NodeInput::Network(concrete!(Image))],
+							implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_std::memo::CacheNode")),
+							metadata: Default::default(),
+						},
+					),
+					(
+						1,
+						DocumentNode {
+							name: "CloneNode".to_string(),
+							inputs: vec![NodeInput::node(0, 0)],
+							implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::CloneNode<_>")),
+							metadata: Default::default(),
+						},
+					),
+				]
+				.into_iter()
+				.collect(),
+				..Default::default()
+			}),
+			inputs: vec![DocumentInputType::value("Image", TaggedValue::Image(Image::empty()), true)],
+			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
+			properties: node_properties::no_properties,
+		},
 		#[cfg(feature = "gpu")]
 		DocumentNodeType {
 			name: "GpuImage",
@@ -372,14 +406,6 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
 			properties: node_properties::quantize_properties,
-		},
-		DocumentNodeType {
-			name: "Cache",
-			category: "Structural",
-			identifier: NodeImplementation::proto("graphene_std::memo::CacheNode"),
-			inputs: vec![DocumentInputType::value("Image", TaggedValue::Image(Image::empty()), true)],
-			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
-			properties: node_properties::no_properties,
 		},
 		DocumentNodeType {
 			name: "Invert RGB",
