@@ -1,6 +1,8 @@
-use dyn_any::{DynAny, StaticType};
+use dyn_any::StaticType;
+pub use graph_craft::proto::{Any, TypeErasedNode, TypeErasedPinned, TypeErasedPinnedRef};
+use graphene_core::NodeIO;
 pub use graphene_core::{generic, ops, Node};
-use std::{marker::PhantomData, pin::Pin};
+use std::marker::PhantomData;
 
 pub struct DynAnyNode<I, O, Node> {
 	node: Node,
@@ -39,17 +41,13 @@ impl<_I, _O, S0> DynAnyRefNode<_I, _O, S0> {
 	}
 }
 
-pub type TypeErasedNode<'n> = dyn for<'i> Node<'i, Any<'i>, Output = Any<'i>> + 'n + Send + Sync;
-pub type TypeErasedPinnedRef<'n> = Pin<&'n (dyn for<'i> Node<'i, Any<'i>, Output = Any<'i>> + 'n + Send + Sync)>;
-pub type TypeErasedPinned<'n> = Pin<Box<dyn for<'i> Node<'i, Any<'i>, Output = Any<'i>> + 'n + Send + Sync>>;
-
 pub trait IntoTypeErasedNode<'n> {
 	fn into_type_erased(self) -> TypeErasedPinned<'n>;
 }
 
 impl<'n, N: 'n> IntoTypeErasedNode<'n> for N
 where
-	N: for<'i> Node<'i, Any<'i>, Output = Any<'i>> + Send + Sync + 'n,
+	N: for<'i> NodeIO<'i, Any<'i>, Output = Any<'i>> + Send + Sync + 'n,
 {
 	fn into_type_erased(self) -> TypeErasedPinned<'n> {
 		Box::pin(self)
@@ -70,7 +68,7 @@ impl<N: Copy, O: StaticType> Copy for DowncastNode<O, N> {}
 #[node_macro::node_fn(DowncastNode<_O>)]
 fn downcast<N, _O: StaticType>(input: Any<'input>, node: &'input N) -> _O
 where
-	N: Node<'input, Any<'input>, Output = Any<'input>>,
+	N: for<'any_input> Node<'any_input, Any<'any_input>, Output = Any<'any_input>> + 'input,
 {
 	let node_name = core::any::type_name::<N>();
 	let out = dyn_any::downcast(node.eval(input)).unwrap_or_else(|e| panic!("DowncastNode Input {e} in:\n{node_name}"));
@@ -147,8 +145,6 @@ impl<'a> ComposeTypeErased<'a> {
 		ComposeTypeErased { first, second }
 	}
 }
-
-pub type Any<'n> = Box<dyn DynAny<'n> + 'n>;
 
 pub fn input_node<O: StaticType>(n: TypeErasedPinnedRef) -> DowncastBothNode<(), O> {
 	DowncastBothNode::new(n)
