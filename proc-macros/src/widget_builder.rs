@@ -13,7 +13,7 @@ fn has_attribute(attrs: &[Attribute], target: &str) -> bool {
 
 /// Make setting strings easier by allowing all types that `impl Into<String>`
 ///
-/// Returns the new input type and a conversion to the origional.
+/// Returns the new input type and a conversion to the original.
 fn easier_string_assignment(field_ty: &Type, field_ident: &Ident) -> (TokenStream2, TokenStream2) {
 	if let Type::Path(type_path) = field_ty {
 		if let Some(last_segment) = type_path.path.segments.last() {

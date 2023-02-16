@@ -9,13 +9,14 @@ use document_legacy::layers::layer_info::LayerDataTypeDiscriminant;
 use document_legacy::layers::nodegraph_layer::NodeGraphFrameLayer;
 use document_legacy::LayerId;
 use graph_craft::document::value::TaggedValue;
-use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork};
+use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork, NodeOutput};
+use graphene_core::*;
 mod document_node_types;
 mod node_properties;
 
 use glam::IVec2;
 
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum FrontendGraphDataType {
 	#[default]
 	#[serde(rename = "general")]
@@ -39,7 +40,7 @@ impl FrontendGraphDataType {
 	pub const fn with_tagged_value(value: &TaggedValue) -> Self {
 		match value {
 			TaggedValue::String(_) => Self::Text,
-			TaggedValue::F32(_) | TaggedValue::F64(_) | TaggedValue::U32(_) => Self::Number,
+			TaggedValue::F32(_) | TaggedValue::F64(_) | TaggedValue::U32(_) | TaggedValue::DAffine2(_) => Self::Number,
 			TaggedValue::Bool(_) => Self::Boolean,
 			TaggedValue::DVec2(_) => Self::Vector,
 			TaggedValue::Image(_) => Self::Raster,
@@ -58,6 +59,13 @@ pub struct NodeGraphInput {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
+pub struct NodeGraphOutput {
+	#[serde(rename = "dataType")]
+	data_type: FrontendGraphDataType,
+	name: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct FrontendNode {
 	pub id: graph_craft::document::NodeId,
 	#[serde(rename = "displayName")]
@@ -66,10 +74,10 @@ pub struct FrontendNode {
 	pub primary_input: Option<FrontendGraphDataType>,
 	#[serde(rename = "exposedInputs")]
 	pub exposed_inputs: Vec<NodeGraphInput>,
-	pub outputs: Vec<FrontendGraphDataType>,
+	pub outputs: Vec<NodeGraphOutput>, // TODO: Break this apart into `primary_output` and `exposed_outputs`
 	pub position: (i32, i32),
 	pub disabled: bool,
-	pub output: bool,
+	pub previewed: bool,
 }
 
 // (link_start, link_end, link_end_input_index)
@@ -77,6 +85,8 @@ pub struct FrontendNode {
 pub struct FrontendNodeLink {
 	#[serde(rename = "linkStart")]
 	pub link_start: u64,
+	#[serde(rename = "linkStartOutputIndex")]
+	pub link_start_output_index: usize,
 	#[serde(rename = "linkEnd")]
 	pub link_end: u64,
 	#[serde(rename = "linkEndInputIndex")]
@@ -176,7 +186,7 @@ impl NodeGraphMessageHandler {
 			let mut widgets = Vec::new();
 
 			// Don't allow disabling input or output nodes
-			let mut selected_nodes = self.selected_nodes.iter().filter(|&&id| !network.inputs.contains(&id) && network.original_output() != id);
+			let mut selected_nodes = self.selected_nodes.iter().filter(|&&id| !network.inputs.contains(&id) && !network.original_outputs_contain(id));
 
 			// If there is at least one other selected node then show the hide or show button
 			if selected_nodes.next().is_some() {
@@ -187,13 +197,11 @@ impl NodeGraphMessageHandler {
 				let multiple_nodes = selected_nodes.next().is_some();
 
 				// Generate the enable or disable button accordingly
-				let hide_button = WidgetHolder::new(Widget::TextButton(TextButton {
-					label: if is_hidden { "Show" } else { "Hide" }.to_string(),
-					tooltip: if is_hidden { "Show node" } else { "Hide node" }.to_string() + if multiple_nodes { "s" } else { "" },
-					tooltip_shortcut: action_keys!(NodeGraphMessageDiscriminant::ToggleHidden),
-					on_update: WidgetCallback::new(move |_| NodeGraphMessage::ToggleHidden.into()),
-					..Default::default()
-				}));
+				let hide_button = TextButton::new(if is_hidden { "Show" } else { "Hide" })
+					.tooltip(if is_hidden { "Show node" } else { "Hide node" }.to_string() + if multiple_nodes { "s" } else { "" })
+					.tooltip_shortcut(action_keys!(NodeGraphMessageDiscriminant::ToggleHidden))
+					.on_update(move |_| NodeGraphMessage::ToggleHidden.into())
+					.widget_holder();
 				widgets.push(hide_button);
 			}
 
@@ -201,13 +209,13 @@ impl NodeGraphMessageHandler {
 			if self.selected_nodes.len() == 1 {
 				let node_id = self.selected_nodes[0];
 				// Is this node the current output
-				let is_output = network.output == node_id;
+				let is_output = network.outputs_contain(node_id);
 
 				// Don't show stop previewing button on the original output node
-				if !(is_output && network.previous_output.filter(|&id| id != self.selected_nodes[0]).is_none()) {
+				if !(is_output && network.previous_outputs_contain(node_id).unwrap_or(true)) {
 					let output_button = WidgetHolder::new(Widget::TextButton(TextButton {
 						label: if is_output { "End Preview" } else { "Preview" }.to_string(),
-						tooltip: if is_output { "Restore preview to Output node" } else { "Preview node" }.to_string() + " (shortcut: Alt+click node)",
+						tooltip: if is_output { "Restore preview to Output node" } else { "Preview node" }.to_string() + " (Shortcut: Alt-click node)",
 						on_update: WidgetCallback::new(move |_| NodeGraphMessage::TogglePreview { node_id }.into()),
 						..Default::default()
 					}));
@@ -220,6 +228,7 @@ impl NodeGraphMessageHandler {
 		self.send_node_bar_layout(responses);
 	}
 
+	/// Collate the properties panel sections for a node graph
 	pub fn collate_properties(&self, node_graph_frame: &NodeGraphFrameLayer, context: &mut NodePropertiesContext, sections: &mut Vec<LayoutGroup>) {
 		let mut network = &node_graph_frame.network;
 		for segment in &self.nested_path {
@@ -228,20 +237,27 @@ impl NodeGraphMessageHandler {
 
 		// If empty, show all nodes in the network starting with the output
 		if self.selected_nodes.is_empty() {
-			let mut stack = vec![network.output];
+			let mut stack = network.outputs.iter().map(|output| output.node_id).collect::<Vec<_>>();
 			let mut nodes = Vec::new();
 			while let Some(node_id) = stack.pop() {
 				let Some(document_node) = network.nodes.get(&node_id) else {
 					continue;
 				};
 
-				stack.extend(document_node.inputs.iter().filter_map(|input| if let NodeInput::Node(ref_id) = input { Some(*ref_id) } else { None }));
+				stack.extend(
+					document_node
+						.inputs
+						.iter()
+						.take(1) // Only show the primary input
+						.filter_map(|input| if let NodeInput::Node { node_id: ref_id, .. } = input { Some(*ref_id) } else { None }),
+				);
 				nodes.push((document_node, node_id));
 			}
 			for &(document_node, node_id) in nodes.iter().rev() {
 				sections.push(node_properties::generate_node_properties(document_node, node_id, context));
 			}
 		}
+		// Show properties for all selected nodes
 		for node_id in &self.selected_nodes {
 			let Some(document_node) = network.nodes.get(node_id) else {
 				continue;
@@ -260,9 +276,14 @@ impl NodeGraphMessageHandler {
 			.iter()
 			.flat_map(|(link_end, node)| node.inputs.iter().filter(|input| input.is_exposed()).enumerate().map(move |(index, input)| (input, link_end, index)))
 			.filter_map(|(input, &link_end, link_end_input_index)| {
-				if let NodeInput::Node(link_start) = *input {
+				if let NodeInput::Node {
+					node_id: link_start,
+					output_index: link_start_index,
+				} = *input
+				{
 					Some(FrontendNodeLink {
 						link_start,
+						link_start_output_index: link_start_index,
 						link_end,
 						link_end_input_index: link_end_input_index as u64,
 					})
@@ -290,7 +311,7 @@ impl NodeGraphMessageHandler {
 				exposed_inputs: node
 					.inputs
 					.iter()
-					.zip(node_type.inputs)
+					.zip(node_type.inputs.iter())
 					.skip(1)
 					.filter(|(input, _)| input.is_exposed())
 					.map(|(_, input_type)| NodeGraphInput {
@@ -298,9 +319,16 @@ impl NodeGraphMessageHandler {
 						name: input_type.name.to_string(),
 					})
 					.collect(),
-				outputs: node_type.outputs.to_vec(),
+				outputs: node_type
+					.outputs
+					.iter()
+					.map(|output_type| NodeGraphOutput {
+						data_type: output_type.data_type,
+						name: output_type.name.to_string(),
+					})
+					.collect(),
 				position: node.metadata.position.into(),
-				output: network.output == *id,
+				previewed: network.outputs_contain(*id),
 				disabled: network.disabled.contains(id),
 			})
 		}
@@ -318,24 +346,24 @@ impl NodeGraphMessageHandler {
 		);
 	}
 
-	fn remove_references_from_network(network: &mut NodeNetwork, node_id: NodeId) -> bool {
-		if network.inputs.iter().any(|&id| id == node_id) {
+	fn remove_references_from_network(network: &mut NodeNetwork, deleting_node_id: NodeId) -> bool {
+		if network.inputs.contains(&deleting_node_id) {
 			warn!("Deleting input node");
 			return false;
 		}
-		if network.output == node_id {
+		if network.outputs_contain(deleting_node_id) {
 			warn!("Deleting the output node!");
 			return false;
 		}
-		for (id, node) in network.nodes.iter_mut() {
-			if *id == node_id {
+		for (node_id, node) in network.nodes.iter_mut() {
+			if *node_id == deleting_node_id {
 				continue;
 			}
 			for (input_index, input) in node.inputs.iter_mut().enumerate() {
-				let NodeInput::Node(id) = input else {
+				let NodeInput::Node{ node_id, .. } = input else {
 					continue;
 				};
-				if *id != node_id {
+				if *node_id != deleting_node_id {
 					continue;
 				}
 
@@ -344,19 +372,17 @@ impl NodeGraphMessageHandler {
 						return false;
 					};
 				if let NodeInput::Value { tagged_value, .. } = &node_type.inputs[input_index].default {
-					*input = NodeInput::Value {
-						tagged_value: tagged_value.clone(),
-						exposed: true,
-					};
+					*input = NodeInput::value(tagged_value.clone(), true);
 				}
 			}
 			if let DocumentNodeImplementation::Network(network) = &mut node.implementation {
-				Self::remove_references_from_network(network, node_id);
+				Self::remove_references_from_network(network, deleting_node_id);
 			}
 		}
 		true
 	}
 
+	/// Tries to remove a node from the network, returning true on success.
 	fn remove_node(&mut self, network: &mut NodeNetwork, node_id: NodeId) -> bool {
 		if Self::remove_references_from_network(network, node_id) {
 			network.nodes.remove(&node_id);
@@ -378,7 +404,7 @@ impl NodeGraphMessageHandler {
 	fn copy_nodes<'a>(network: &'a NodeNetwork, new_ids: &'a HashMap<NodeId, NodeId>) -> impl Iterator<Item = (NodeId, DocumentNode)> + 'a {
 		new_ids
 			.iter()
-			.filter(|&(&id, _)| id != network.output && !network.inputs.contains(&id))
+			.filter(|&(&id, _)| !network.outputs_contain(id) && !network.inputs.contains(&id))
 			.filter_map(|(&id, &new)| network.nodes.get(&id).map(|node| (new, node.clone())))
 			.map(move |(new, node)| (new, node.map_ids(Self::default_node_input, new_ids)))
 	}
@@ -402,6 +428,7 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &mut dyn Iterator<Item = &
 			}
 			NodeGraphMessage::ConnectNodesByLink {
 				output_node,
+				output_node_connector_index,
 				input_node,
 				input_node_connector_index,
 			} => {
@@ -422,7 +449,7 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &mut dyn Iterator<Item = &
 
 				responses.push_back(DocumentMessage::StartTransaction.into());
 
-				let input = NodeInput::Node(output_node);
+				let input = NodeInput::node(output_node, output_node_connector_index);
 				responses.push_back(NodeGraphMessage::SetNodeInput { node_id, input_index, input }.into());
 
 				let should_rerender = network.connected_to_output(node_id);
@@ -454,12 +481,10 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &mut dyn Iterator<Item = &
 
 				responses.push_back(DocumentMessage::StartTransaction.into());
 
-				let document_node = DocumentNode {
-					name: node_type.clone(),
-					inputs: document_node_type.inputs.iter().map(|input| input.default.clone()).collect(),
-					implementation: document_node_type.generate_implementation(),
-					metadata: graph_craft::document::DocumentNodeMetadata { position: (x, y).into() },
-				};
+				let document_node = document_node_type.to_document_node(
+					document_node_type.inputs.iter().map(|input| input.default.clone()),
+					graph_craft::document::DocumentNodeMetadata::position((x, y)),
+				);
 				responses.push_back(NodeGraphMessage::InsertNode { node_id, document_node }.into());
 
 				responses.push_back(NodeGraphMessage::SendGraph { should_rerender: false }.into());
@@ -745,7 +770,7 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &mut dyn Iterator<Item = &
 					if let Some(node) = network.nodes.get_mut(node_id) {
 						// Extend number of inputs if not already large enough
 						if input_index >= node.inputs.len() {
-							node.inputs.extend(((node.inputs.len() - 1)..input_index).map(|_| NodeInput::Network));
+							node.inputs.extend(((node.inputs.len() - 1)..input_index).map(|_| NodeInput::Network(generic!(T))));
 						}
 						node.inputs[input_index] = NodeInput::Value { tagged_value: value, exposed: false };
 						if network.connected_to_output(*node_id) {
@@ -782,7 +807,7 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &mut dyn Iterator<Item = &
 					.get(&node_id)
 					.map_or(&Vec::new(), |node| &node.inputs)
 					.iter()
-					.filter_map(|input| if let NodeInput::Node(previous_id) = input { Some(*previous_id) } else { None })
+					.filter_map(|input| if let NodeInput::Node { node_id: previous_id, .. } = input { Some(*previous_id) } else { None })
 					.collect::<Vec<_>>();
 
 				for input_node in inputs {
@@ -812,9 +837,11 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &mut dyn Iterator<Item = &
 						// Remove all selected nodes from the disabled list
 						network.disabled.retain(|id| !self.selected_nodes.contains(id));
 					} else {
-						let original_output = network.original_output();
+						let original_outputs = network.original_outputs().iter().map(|output| output.node_id).collect::<Vec<_>>();
 						// Add all selected nodes to the disabled list (excluding input or output nodes)
-						network.disabled.extend(self.selected_nodes.iter().filter(|&id| !network.inputs.contains(id) && original_output != *id));
+						network
+							.disabled
+							.extend(self.selected_nodes.iter().filter(|&id| !network.inputs.contains(id) && !original_outputs.contains(id)));
 					}
 					Self::send_graph(network, responses);
 
@@ -831,12 +858,12 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &mut dyn Iterator<Item = &
 			}
 			NodeGraphMessage::TogglePreviewImpl { node_id } => {
 				if let Some(network) = self.get_active_network_mut(document) {
-					// Check if the node is not already
-					if network.output != node_id {
-						network.previous_output = Some(network.previous_output.unwrap_or(network.output));
-						network.output = node_id;
-					} else if let Some(output) = network.previous_output.take() {
-						network.output = output
+					// Check if the node is not already being previewed
+					if !network.outputs_contain(node_id) {
+						network.previous_outputs = Some(network.previous_outputs.to_owned().unwrap_or_else(|| network.outputs.clone()));
+						network.outputs[0] = NodeOutput::new(node_id, 0);
+					} else if let Some(outputs) = network.previous_outputs.take() {
+						network.outputs = outputs
 					} else {
 						return;
 					}

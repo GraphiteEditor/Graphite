@@ -8,6 +8,7 @@ use crate::messages::layout::utility_types::widgets::input_widgets::{CheckboxInp
 use crate::messages::layout::utility_types::widgets::label_widgets::{IconLabel, TextLabel};
 use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::*;
+use crate::node_graph_executor::NodeGraphExecutor;
 
 use document_legacy::document::Document;
 use document_legacy::layers::layer_info::{Layer, LayerDataType, LayerDataTypeDiscriminant};
@@ -246,6 +247,7 @@ pub fn register_artwork_layer_properties(
 	responses: &mut VecDeque<Message>,
 	persistent_data: &PersistentData,
 	node_graph_message_handler: &NodeGraphMessageHandler,
+	executor: &mut NodeGraphExecutor,
 ) {
 	let options_bar = vec![LayoutGroup::Row {
 		widgets: vec![
@@ -323,6 +325,8 @@ pub fn register_artwork_layer_properties(
 				responses,
 				nested_path: &node_graph_message_handler.nested_path,
 				layer_path: &layer_path,
+				executor,
+				network: &node_graph_frame.network,
 			};
 			node_graph_message_handler.collate_properties(node_graph_frame, &mut context, &mut properties_sections);
 

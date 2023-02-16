@@ -1,6 +1,6 @@
 import subpathFeatures, { SubpathFeatureKey } from "@/features/subpath-features";
 import { renderDemoPane } from "@/utils/render";
-import { ComputeType, Demo, DemoPane, SliderOption, SubpathDemoArgs } from "@/utils/types";
+import { TVariant, Demo, DemoPane, SliderOption, SubpathDemoArgs } from "@/utils/types";
 
 class SubpathDemoPane extends HTMLElement implements DemoPane {
 	// Props
@@ -12,14 +12,14 @@ class SubpathDemoPane extends HTMLElement implements DemoPane {
 
 	triggerOnMouseMove!: boolean;
 
-	chooseComputeType!: boolean;
+	chooseTVariant!: boolean;
 
 	// Data
 	demos!: SubpathDemoArgs[];
 
 	id!: string;
 
-	computeType!: ComputeType;
+	tVariant!: TVariant;
 
 	connectedCallback(): void {
 		this.demos = [
@@ -47,14 +47,13 @@ class SubpathDemoPane extends HTMLElement implements DemoPane {
 				closed: true,
 			},
 		];
-		this.computeType = "Parametric";
-
+		this.tVariant = "Parametric";
 		this.key = (this.getAttribute("name") || "") as SubpathFeatureKey;
 		this.id = `subpath/${this.key}`;
 		this.name = subpathFeatures[this.key].name;
 		this.sliderOptions = JSON.parse(this.getAttribute("sliderOptions") || "[]");
 		this.triggerOnMouseMove = this.getAttribute("triggerOnMouseMove") === "true";
-		this.chooseComputeType = this.getAttribute("chooseComputeType") === "true";
+		this.chooseTVariant = this.getAttribute("chooseTVariant") === "true";
 
 		this.render();
 	}
@@ -71,7 +70,7 @@ class SubpathDemoPane extends HTMLElement implements DemoPane {
 		subpathDemo.setAttribute("key", this.key);
 		subpathDemo.setAttribute("sliderOptions", JSON.stringify(this.sliderOptions));
 		subpathDemo.setAttribute("triggerOnMouseMove", String(this.triggerOnMouseMove));
-		subpathDemo.setAttribute("computetype", this.computeType);
+		subpathDemo.setAttribute("tvariant", this.tVariant);
 		return subpathDemo;
 	}
 }
