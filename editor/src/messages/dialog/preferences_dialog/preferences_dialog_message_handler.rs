@@ -1,7 +1,7 @@
 use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
 use crate::messages::layout::utility_types::misc::LayoutTarget;
 use crate::messages::layout::utility_types::widgets::button_widgets::TextButton;
-use crate::messages::layout::utility_types::widgets::input_widgets::{NumberInput, TextInput};
+use crate::messages::layout::utility_types::widgets::input_widgets::{CheckboxInput, NumberInput, TextInput};
 use crate::messages::layout::utility_types::widgets::label_widgets::{Separator, SeparatorDirection, SeparatorType, TextLabel};
 use crate::messages::prelude::*;
 
@@ -78,6 +78,30 @@ impl PreferencesDialogMessageHandler {
 			})),
 		];
 
+		let scroll_as_zoom = vec![
+			WidgetHolder::new(Widget::TextLabel(TextLabel {
+				value: "Interpret scroll as zoom".into(),
+				min_width: 200,
+				table_align: true,
+				..Default::default()
+			})),
+			WidgetHolder::new(Widget::Separator(Separator {
+				separator_type: SeparatorType::Unrelated,
+				direction: SeparatorDirection::Horizontal,
+			})),
+			WidgetHolder::new(Widget::CheckboxInput(CheckboxInput {
+				checked: preferences.scroll_as_zoom,
+				tooltip: "Like in Blender, this will make scroll without modifiers correspond to zooming".into(),
+				on_update: WidgetCallback::new(|checkbox_input: &CheckboxInput| {
+					PreferencesMessage::ModifyLayout {
+						scroll_as_zoom: checkbox_input.checked,
+					}
+					.into()
+				}),
+				..Default::default()
+			})),
+		];
+
 		let button_widgets = vec![
 			WidgetHolder::new(Widget::TextButton(TextButton {
 				label: "Ok".to_string(),
@@ -109,6 +133,7 @@ impl PreferencesDialogMessageHandler {
 			},
 			LayoutGroup::Row { widgets: imaginate_server_hostname },
 			LayoutGroup::Row { widgets: imaginate_refresh_frequency },
+			LayoutGroup::Row { widgets: scroll_as_zoom },
 			LayoutGroup::Row { widgets: button_widgets },
 		]))
 	}

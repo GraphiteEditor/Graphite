@@ -57,7 +57,6 @@ impl MessageHandler<PreferencesMessage, ()> for PreferencesMessageHandler {
 				responses.push_back(PortfolioMessage::ImaginateCheckServerStatus.into());
 			}
 			PreferencesMessage::ModifyLayout { scroll_as_zoom } => {
-				// TODO(multisn8): not sure if the persistence is even needed
 				self.scroll_as_zoom = scroll_as_zoom;
 
 				let variant = match scroll_as_zoom {
