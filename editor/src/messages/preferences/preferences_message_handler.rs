@@ -1,3 +1,4 @@
+use crate::messages::input_mapper::LayoutVariant;
 use crate::messages::prelude::*;
 
 use serde::{Deserialize, Serialize};
@@ -6,6 +7,7 @@ use serde::{Deserialize, Serialize};
 pub struct PreferencesMessageHandler {
 	pub imaginate_server_hostname: String,
 	pub imaginate_refresh_frequency: f64,
+	pub scroll_as_zoom: bool,
 }
 
 impl Default for PreferencesMessageHandler {
@@ -13,6 +15,7 @@ impl Default for PreferencesMessageHandler {
 		Self {
 			imaginate_server_hostname: "http://localhost:7860/".into(),
 			imaginate_refresh_frequency: 1.,
+			scroll_as_zoom: matches!(LayoutVariant::default(), LayoutVariant::ScrollAsZoom),
 		}
 	}
 }
@@ -52,6 +55,16 @@ impl MessageHandler<PreferencesMessage, ()> for PreferencesMessageHandler {
 
 				self.imaginate_server_hostname = hostname;
 				responses.push_back(PortfolioMessage::ImaginateCheckServerStatus.into());
+			}
+			PreferencesMessage::ModifyLayout { scroll_as_zoom } => {
+				// TODO(multisn8): not sure if the persistence is even needed
+				self.scroll_as_zoom = scroll_as_zoom;
+
+				let variant = match scroll_as_zoom {
+					false => LayoutVariant::Default,
+					true => LayoutVariant::ScrollAsZoom,
+				};
+				responses.push_back(LayoutManagerMessage::ModifyLayout(variant).into())
 			}
 		}
 
